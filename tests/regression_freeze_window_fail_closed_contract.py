@@ -7,7 +7,9 @@ from typing import Any
 import pytest
 
 from core.infrastructure.errors import ValidationError
+from core.services.scheduler.degradation_messages import FREEZE_WINDOW_DEGRADED_MESSAGE
 from core.services.scheduler.freeze_window import build_freeze_window_seed
+from core.services.scheduler.run.freeze_window_prefixes import prefix_op_ids_for_batch
 
 
 class _ExplodingScheduleRepo:
@@ -213,6 +215,44 @@ def test_freeze_window_seed_limits_frozen_results_to_explicit_reschedulable_subs
     assert repo.calls[0]["op_ids"] == [3], repo.calls
     assert frozen_op_ids == {3}, frozen_op_ids
     assert [item.get("op_id") for item in seed_results] == [3], seed_results
+    assert warnings == [], warnings
+    assert meta.get("freeze_state") == "active", meta
+
+
+def test_freeze_window_prefix_uses_explicit_subset_only_within_same_batch() -> None:
+    meta = {}
+    svc = _StubSvc()
+    repo = _RecordingScheduleRepo(
+        [
+            {
+                "op_id": 2,
+                "machine_id": "MC002",
+                "operator_id": "OP002",
+                "start_time": datetime(2026, 4, 1, 11, 0, 0),
+                "end_time": datetime(2026, 4, 1, 12, 0, 0),
+            },
+        ]
+    )
+    svc.schedule_repo = repo
+    operations = [
+        SimpleNamespace(id=1, op_code="B001_10", batch_id="B001", seq=10, source="internal", op_type_name="A"),
+        SimpleNamespace(id=2, op_code="B001_20", batch_id="B001", seq=20, source="internal", op_type_name="B"),
+    ]
+
+    frozen_op_ids, seed_results, warnings = build_freeze_window_seed(
+        svc,
+        cfg=_cfg(),
+        prev_version=1,
+        start_dt=datetime(2026, 4, 1, 8, 0, 0),
+        operations=operations,
+        reschedulable_operations=[operations[1]],
+        strict_mode=False,
+        meta=meta,
+    )
+
+    assert repo.calls[0]["op_ids"] == [2], repo.calls
+    assert frozen_op_ids == {2}, frozen_op_ids
+    assert [item.get("op_id") for item in seed_results] == [2], seed_results
     assert warnings == [], warnings
     assert meta.get("freeze_state") == "active", meta
 
@@ -731,5 +771,39 @@ def test_freeze_window_all_missing_prefix_surfaces_unapplied_status() -> None:
     assert meta.get("freeze_state") == "degraded", meta
     assert meta.get("freeze_applied") is False, meta
     assert meta.get("freeze_application_status") == "unapplied", meta
-    assert "未应用冻结窗口种子" in str(meta.get("freeze_degradation_reason") or ""), meta
+    assert meta.get("freeze_degradation_reason") == FREEZE_WINDOW_DEGRADED_MESSAGE, meta
+    assert warnings, warnings
+
+
+def test_freeze_window_missing_prefix_sample_keeps_seed_operation_order() -> None:
+    meta = {}
+    svc = _StubSvc()
+    repo = _RecordingScheduleRepo(
+        [
+            {"op_id": 30, "start_time": "2026-04-01 11:00:00", "end_time": "2026-04-01 12:00:00"},
+        ]
+    )
+    svc.schedule_repo = repo
+    operations = [
+        SimpleNamespace(id=30, op_code="B001_30", batch_id="B001", seq=30, source="internal", op_type_name="C"),
+        SimpleNamespace(id=20, op_code="B001_20", batch_id="B001", seq=20, source="internal", op_type_name="B"),
+        SimpleNamespace(id=10, op_code="B001_10", batch_id="B001", seq=10, source="internal", op_type_name="A"),
+    ]
+
+    frozen_op_ids, seed_results, warnings = build_freeze_window_seed(
+        svc,
+        cfg=_cfg(),
+        prev_version=1,
+        start_dt=datetime(2026, 4, 1, 8, 0, 0),
+        operations=operations,
+        reschedulable_operations=operations,
+        strict_mode=False,
+        meta=meta,
+    )
+
+    assert repo.calls[0]["op_ids"] == [10, 20, 30], repo.calls
+    assert frozen_op_ids == set(), frozen_op_ids
+    assert seed_results == [], seed_results
+    prefix = prefix_op_ids_for_batch(operations, "B001", 30)
+    assert [oid for oid in prefix if oid not in {30}] == [20, 10], prefix
     assert warnings, warnings

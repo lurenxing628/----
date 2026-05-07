@@ -85,7 +85,8 @@ class WeightedStrategy(BaseSortStrategy):
 score = priority_weight×priority_score + due_weight×due_score
 
 说明：
-- V1.1 起，“齐套权重”作为预留字段，不参与当前排序（排产本身只排齐套批次）
+- V1.1 起，“齐套权重”作为预留字段，不参与当前排序。
+- 齐套状态是否作为排产门槛，由本次排产的 readiness_gate_enabled 控制。
 """
 
     def __init__(self, priority_weight: float = 0.4, due_weight: float = 0.5):
@@ -170,4 +171,3 @@ def parse_strategy(value: Any, default: SortStrategy = SortStrategy.PRIORITY_FIR
         return SortStrategy(s)
     except Exception:
         return default
-

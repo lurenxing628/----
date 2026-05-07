@@ -86,7 +86,8 @@ def _run_case(*, name: str, operations, batches, start_dt: datetime, resource_po
         stack.enter_context(mock.patch.object(internal_slot_module, "estimate_internal_slot", side_effect=_wrapped_estimator))
         stack.enter_context(mock.patch.object(auto_assign_module, "estimate_internal_slot", side_effect=_wrapped_estimator))
         stack.enter_context(mock.patch.object(sgs_module, "estimate_internal_slot", side_effect=_wrapped_estimator))
-        stack.enter_context(mock.patch.object(scheduler_module, "estimate_internal_slot", side_effect=_wrapped_estimator))
+        if hasattr(scheduler_module, "estimate_internal_slot"):
+            stack.enter_context(mock.patch.object(scheduler_module, "estimate_internal_slot", side_effect=_wrapped_estimator))
         results, summary, _strategy, _params = scheduler.schedule(
             operations=operations,
             batches=batches,

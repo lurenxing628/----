@@ -17,6 +17,7 @@ def _size_bytes(obj) -> int:
 
 def _selected_case(n: int):
     return {
+        "readiness": {"gate_enabled": True},
         "algo": {"attempts": [], "improvement_trace": [], "best_batch_order": [f"B{i:05d}" for i in range(n)]},
         "warnings": [],
         "selected_batch_ids": [f"B{i:05d}" for i in range(n)],
@@ -145,6 +146,7 @@ def main() -> None:
     selected_after_obj = apply_summary_size_guard(selected_obj)
     selected_after = _size_bytes(selected_after_obj)
     assert bool(selected_after_obj.get("summary_truncated")), "selected_case 未标记 summary_truncated"
+    assert selected_after_obj.get("readiness") == {"gate_enabled": True}, "selected_case 不应裁掉 readiness"
     assert int(selected_after_obj.get("original_size_bytes") or 0) == selected_before, "selected_case 未记录原始大小"
     assert selected_after <= SUMMARY_SIZE_LIMIT_BYTES, "selected_case 截断后仍超过 512KB"
     assert len(selected_after_obj.get("selected_batch_ids") or []) < 60000, "selected_case 未裁剪 selected_batch_ids"

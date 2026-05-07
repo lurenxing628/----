@@ -16,7 +16,7 @@ class Batch:
     due_date: Optional[str] = None  # YYYY-MM-DD（SQLite DATE）
     priority: str = BatchPriority.NORMAL.value  # normal/urgent/critical
     ready_status: str = ReadyStatus.YES.value  # yes/no/partial
-    ready_date: Optional[str] = None  # YYYY-MM-DD（SQLite DATE）；可选，表示最早可开工日
+    ready_date: Optional[str] = None  # YYYY-MM-DD（SQLite DATE）；仅启用齐套检查时表示最早可开工日
     status: str = BatchStatus.PENDING.value  # pending/scheduled/processing/completed/cancelled
     remark: Optional[str] = None
     created_at: Optional[str] = None
@@ -61,4 +61,3 @@ class Batch:
                 "updated_at": self.updated_at,
             }
         )
-

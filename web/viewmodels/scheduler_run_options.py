@@ -18,8 +18,8 @@ def build_run_options(*, cfg: Any, config_field_warnings: Dict[str, str]) -> Tup
             toggle=UiToggleRow(
                 "runEnforceReady",
                 "enforce_ready",
-                "启用齐套约束",
-                "未齐套批次不进入排产。",
+                "本次启用齐套检查",
+                "默认不启用。启用后，未齐套批次不进入排产，齐套日期作为最早开工日。",
                 checked_attr=checked_attr(getattr(cfg, "enforce_ready_default", None) == "yes"),
             ),
             note=str(config_field_warnings.get("enforce_ready_default") or ""),

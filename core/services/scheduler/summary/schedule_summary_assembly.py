@@ -289,6 +289,7 @@ def _build_result_summary_obj(
         "summary_schema_version": "1.2",
         "is_simulation": bool(ctx.simulate),
         "completion_status": str(completion_status or ""),
+        "readiness": {"gate_enabled": bool(ctx.readiness_gate_enabled)},
         "version": int(ctx.version),
         "strategy": ctx.used_strategy.value,
         "strategy_params": ctx.used_params or {},

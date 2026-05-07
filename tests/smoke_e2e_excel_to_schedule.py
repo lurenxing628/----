@@ -679,7 +679,7 @@ def main():
         finally:
             conn.close()
 
-        # 更新到料：使其齐套（available >= required），应回写批次 ready_status=yes 且 ready_date 非空
+        # 更新到料：使其齐套（available >= required），应回写批次 ready_status=yes，ready_date 默认保持为空
         resp = client.post(
             f"/material/requirements/{bm_id}/update",
             data={"batch_id": bid, "required_qty": "10", "available_qty": "10"},
@@ -693,8 +693,8 @@ def main():
             lines.append(f"- 齐套后批次齐套：{st2['ready_status']} ready_date={st2['ready_date']}")
             if st2["ready_status"] != "yes":
                 raise RuntimeError(f"物料齐套后批次 ready_status 异常：{st2['ready_status']}")
-            if not st2["ready_date"]:
-                raise RuntimeError("物料齐套后批次 ready_date 为空（期望写入）")
+            if st2["ready_date"] is not None:
+                raise RuntimeError(f"物料齐套后批次 ready_date 应默认为空，实际：{st2['ready_date']!r}")
         finally:
             conn.close()
 

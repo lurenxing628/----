@@ -54,7 +54,7 @@
           </select>
         </div>
         <div class="form-field">
-          <label for="batchManageReadyStatusInput">齐套</label>
+          <label for="batchManageReadyStatusInput">齐套显示</label>
           <select id="batchManageReadyStatusInput" name="ready_status">
             <option value="yes" selected>齐套（默认）</option>
             <option value="partial">部分齐套</option>
@@ -64,6 +64,7 @@
         <div class="form-field">
           <label for="batchManageReadyDateInput">齐套日期（可选）</label>
           <input id="batchManageReadyDateInput" type="date" name="ready_date">
+          <div class="muted text-xs">默认留空；只有启用齐套检查时才会影响排产。</div>
         </div>
         <div class="form-field aps-field-wide">
           <label for="batchManageRemarkInput">备注</label>
@@ -95,7 +96,7 @@
         </select>
       </div>
       <div class="form-field">
-        <label for="batchManageReadyFilter">筛选：齐套</label>
+        <label for="batchManageReadyFilter">筛选：齐套显示</label>
         <select id="batchManageReadyFilter" name="only_ready">
           <option value="" {% if not only_ready %}selected{% endif %}>（全部）</option>
           <option value="yes" {% if only_ready=='yes' %}selected{% endif %}>齐套</option>
@@ -143,7 +144,7 @@
               <th class="w-80 text-right" data-col-key="quantity" data-default-w="80" data-min-w="64" data-sort="number">数量</th>
               <th class="w-120" data-col-key="due_date" data-default-w="120" data-min-w="104" data-sort="date">交期</th>
               <th class="w-90" data-col-key="priority" data-default-w="90" data-min-w="76" data-sort="text">优先级</th>
-              <th class="w-100" data-col-key="ready" data-default-w="100" data-min-w="84" data-sort="text">齐套</th>
+              <th class="w-100" data-col-key="ready" data-default-w="100" data-min-w="84" data-sort="text">齐套显示</th>
               <th class="w-90" data-col-key="status" data-default-w="90" data-min-w="76" data-sort="text">状态</th>
               <th class="w-150" data-col-key="actions" data-default-w="150" data-min-w="140" data-resize="1">操作</th>
             </tr>

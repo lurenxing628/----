@@ -49,7 +49,25 @@ def test_override_rejects_invalid_batch_order_items(override: list[str]) -> None
     assert exc_info.value.field == "batch_order_override"
 
 
-def test_strict_ready_date_error_is_not_hidden_by_full_override() -> None:
+def test_strict_ready_date_is_ignored_when_readiness_gate_disabled() -> None:
+    batches = {
+        "B1": SimpleNamespace(
+            batch_id="B1",
+            priority="normal",
+            due_date=date(2026, 1, 2),
+            ready_status="yes",
+            ready_date="bad-ready-date",
+            created_at=None,
+        )
+    }
+
+    rows = build_batch_sort_inputs(batches, strict_mode=True, strategy=SortStrategy.PRIORITY_FIRST)
+
+    assert rows[0].ready_status == "yes"
+    assert rows[0].ready_date is None
+
+
+def test_strict_ready_date_error_is_kept_when_readiness_gate_enabled() -> None:
     batches = {
         "B1": SimpleNamespace(
             batch_id="B1",
@@ -62,7 +80,12 @@ def test_strict_ready_date_error_is_not_hidden_by_full_override() -> None:
     }
 
     with pytest.raises(ValidationError) as exc_info:
-        build_batch_sort_inputs(batches, strict_mode=True, strategy=SortStrategy.PRIORITY_FIRST)
+        build_batch_sort_inputs(
+            batches,
+            strict_mode=True,
+            strategy=SortStrategy.PRIORITY_FIRST,
+            readiness_gate_enabled=True,
+        )
 
     assert exc_info.value.field == "ready_date"
 

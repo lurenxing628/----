@@ -52,6 +52,7 @@ def _run_local_search(**kwargs):
     kwargs.setdefault("clock", time.time)
     kwargs.setdefault("rng_factory", random.Random)
     kwargs.setdefault("schedule_fn", _schedule_with_optional_strict_mode)
+    kwargs.setdefault("readiness_gate_enabled", False)
     return _run_local_search_impl(**kwargs)
 
 
@@ -80,6 +81,7 @@ def optimize_schedule(
     resource_pool: Optional[Dict[str, Any]],
     version: int,
     logger: Any = None,
+    readiness_gate_enabled: bool = False,
     strict_mode: bool = False,
     _runtime: Optional[OptimizerRuntime] = None,
 ) -> OptimizationOutcome:
@@ -109,6 +111,7 @@ def optimize_schedule(
             normalized_batches_for_sort,
             strict_mode=bool(strict_mode),
             strategy=strategy0,
+            readiness_gate_enabled=bool(readiness_gate_enabled),
         )
         sorter0 = StrategyFactory.create(strategy0, **(params or {}))
         return [item.batch_id for item in sorter0.sort(batch_for_sort, base_date=start_dt.date())]
@@ -139,6 +142,7 @@ def optimize_schedule(
         optimizer_algo_stats=optimizer_algo_stats,
         t_begin=t_begin,
         logger=logger,
+        readiness_gate_enabled=bool(readiness_gate_enabled),
         strict_mode=bool(strict_mode),
         clock=runtime.clock,
     )
@@ -165,6 +169,7 @@ def optimize_schedule(
         optimizer_algo_stats=optimizer_algo_stats,
         t_begin=t_begin,
         build_order=_build_order,
+        readiness_gate_enabled=bool(readiness_gate_enabled),
         strict_mode=bool(strict_mode),
         clock=runtime.clock,
     )
@@ -190,6 +195,7 @@ def optimize_schedule(
         improvement_trace=state.improvement_trace,
         optimizer_algo_stats=optimizer_algo_stats,
         t_begin=t_begin,
+        readiness_gate_enabled=bool(readiness_gate_enabled),
         strict_mode=bool(strict_mode),
         clock=runtime.clock,
         rng_factory=runtime.rng_factory,
@@ -209,6 +215,7 @@ def optimize_schedule(
             machine_downtimes=downtime_map,
             seed_results=seed_sr_list,
             resource_pool=resource_pool,
+            readiness_gate_enabled=bool(readiness_gate_enabled),
         )
         best_metrics = compute_metrics(results, batches)
         best_score = (float(summary.failed_ops),) + objective_score(optimizer_cfg.objective_name, best_metrics)

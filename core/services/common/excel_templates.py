@@ -372,7 +372,7 @@ def get_default_templates() -> List[Dict[str, Any]]:
             # 对齐路由 `web/routes/scheduler_excel_batches.py` 的兜底模板与导入字段（含齐套日期）
             "headers": ["批次号", "图号", "数量", "交期", "优先级", "齐套", "齐套日期", "备注"],
             "sample_rows": [
-                ["B001", "A1234", 50, "2026-01-25", "急件", "齐套", "2026-01-24", "示例"]
+                ["B001", "A1234", 50, "2026-01-25", "急件", "齐套", None, "示例"]
             ],
             "format_spec": {
                 "text_cols": [0, 1, 7],

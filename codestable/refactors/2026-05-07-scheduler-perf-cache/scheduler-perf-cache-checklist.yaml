@@ -1,0 +1,45 @@
+doc_type: refactor-checklist
+refactor: 2026-05-07-scheduler-perf-cache
+status: completed
+steps:
+  - id: baseline-and-docs
+    title: Create refactor records and resolve baseline blockers
+    status: completed
+    exit_signal: Refactor files exist; user dirty evidence file is untouched; baseline blockers are documented or fixed.
+  - id: strict-mode-signature-cache
+    title: Cache scheduler strict_mode signature support
+    status: completed
+    exit_signal: Signature cache tests and optimizer strict-mode regressions pass.
+  - id: freeze-window-prefix-grouping
+    title: Group freeze-window prefix operations per batch
+    status: completed
+    exit_signal: Freeze-window contracts pass and freeze_window.py remains under 500 lines.
+  - id: sgs-total-hours-cache
+    title: Cache SGS internal total hours for scoring
+    status: completed
+    exit_signal: SGS contracts pass and invalid-hour behavior stays unchanged.
+  - id: compute-metrics-aggregation
+    title: Aggregate compute_metrics result state in one pass
+    status: completed
+    exit_signal: Metrics contracts pass and compute_metrics complexity is below threshold.
+  - id: final-quality-gate
+    title: Run final quality gates and all benchmark scenarios
+    status: completed
+    exit_signal: Targeted tests, benchmark runs, ledger check, quality gate, and clean-worktree gate pass or remaining blockers are listed exactly.
+checks:
+  - id: no-cross-run-cache
+    title: No cross-run or disk business cache
+    status: completed
+  - id: no-public-output-drift
+    title: No public result field drift
+    status: completed
+  - id: no-new-fallback
+    title: No new silent fallback or swallowed error
+    status: completed
+  - id: no-new-test-debt
+    title: No new xfail or test debt
+    status: completed
+  - id: quality-gate-clean
+    title: Final clean quality gate is bound to a clean worktree
+    status: completed
+    proof: PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree

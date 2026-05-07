@@ -66,7 +66,7 @@ def test_scheduler_run_entry_is_visible_before_batch_table() -> None:
             '"enforce_ready"',
             '"strict_mode"',
             "UiRunOption",
-            "未齐套批次不进入排产。",
+            "默认不启用。启用后，未齐套批次不进入排产，齐套日期作为最早开工日。",
             "配置不合法时直接停下",
         ):
             assert marker in vm_source

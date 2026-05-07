@@ -150,9 +150,9 @@ def batch_material_add(batch_id: str):
             batch_id=batch_id,
             material_id=request.form.get("material_id"),
             required_qty=request.form.get("required_qty"),
-            available_qty=request.form.get("available_qty") or 0,
+            available_qty=request.form.get("available_qty"),
         )
-        flash("已新增批次物料需求，并已同步齐套状态。", "success")
+        flash("已新增批次物料需求，并按到料数量更新齐套显示。", "success")
     except AppError as e:
         flash(e.message, "error")
     except Exception:
@@ -173,7 +173,7 @@ def batch_material_update(bm_id: int):
             required_qty=request.form.get("required_qty"),
             available_qty=request.form.get("available_qty"),
         )
-        flash("已更新批次物料，并已同步齐套状态。", "success")
+        flash("已更新批次物料，并按到料数量更新齐套显示。", "success")
     except AppError as e:
         flash(e.message, "error")
     except Exception:
@@ -190,7 +190,7 @@ def batch_material_delete(bm_id: int):
     batch_material_svc = g.services.batch_material_service
     try:
         batch_material_svc.delete_requirement(bm_id)
-        flash("已删除批次物料需求，并已同步齐套状态。", "success")
+        flash("已删除批次物料需求，并已更新齐套显示。", "success")
     except AppError as e:
         flash(e.message, "error")
     except Exception:

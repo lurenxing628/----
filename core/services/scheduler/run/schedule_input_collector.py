@@ -28,6 +28,7 @@ class ScheduleRunInput:
     cal_svc: Any
     cfg_svc: Any
     cfg: Any
+    readiness_gate_enabled: bool
     batches: Dict[str, Batch]
     operations: List[BatchOperation]
     reschedulable_operations: List[BatchOperation]
@@ -269,6 +270,7 @@ def collect_schedule_run_input(
         cal_svc=cal_svc,
         cfg_svc=cfg_svc,
         cfg=cfg,
+        readiness_gate_enabled=bool(enforce_ready_effective),
         batches=batches,
         operations=operations,
         reschedulable_operations=reschedulable_operations,

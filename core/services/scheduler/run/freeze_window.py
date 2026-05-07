@@ -13,6 +13,11 @@ from core.services.scheduler.degradation_messages import (
 )
 
 from ..number_utils import to_yes_no
+from .freeze_window_prefixes import (
+    group_seed_operations_by_batch,
+    max_seq_by_batch,
+    prefix_op_ids_for_batch,
+)
 
 _FREEZE_DEGRADATION_CODE = "freeze_seed_unavailable"
 _FREEZE_CONFIG_FIELDS = {"freeze_window_enabled", "freeze_window_days"}
@@ -37,6 +42,7 @@ class _FreezeSeedScope:
     start_str: str
     freeze_end_str: str
     seed_operations: List[Any]
+    seed_operations_by_batch: Dict[str, List[Any]]
     op_by_id: Dict[int, Any]
     op_ids_all: List[int]
 
@@ -199,24 +205,6 @@ def _load_schedule_map(
     )
 
 
-def _max_seq_by_batch(schedule_map: Dict[int, Dict[str, Any]], op_by_id: Dict[int, Any]) -> Dict[str, int]:
-    max_seq_by_batch: Dict[str, int] = {}
-    for oid in schedule_map.keys():
-        op0 = op_by_id.get(int(oid))
-        if not op0:
-            continue
-        bid = str(op0.batch_id or "")
-        seq0 = int(op0.seq or 0)
-        if seq0 <= 0:
-            continue
-        max_seq_by_batch[bid] = max(max_seq_by_batch.get(bid, 0), seq0)
-    return max_seq_by_batch
-
-
-def _prefix_op_ids_for_batch(operations: List[Any], bid: str, max_seq: int) -> List[int]:
-    return [int(op.id) for op in operations if op and op.id and op.batch_id == bid and int(op.seq or 0) <= max_seq]
-
-
 def _cache_seed_for_prefix(
     svc,
     *,
@@ -306,6 +294,7 @@ def _prepare_freeze_seed_scope(
 
     freeze_end = start_dt + timedelta(days=freeze_days)
     seed_operations = reschedulable_operations if reschedulable_operations is not None else operations
+    seed_operations_by_batch = group_seed_operations_by_batch(seed_operations)
     op_by_id: Dict[int, Any] = {int(op.id): op for op in seed_operations if op and op.id}
     op_ids_all = sorted(list(op_by_id.keys()))
     if not op_ids_all:
@@ -317,6 +306,7 @@ def _prepare_freeze_seed_scope(
         start_str=svc._format_dt(start_dt),
         freeze_end_str=svc._format_dt(freeze_end),
         seed_operations=seed_operations,
+        seed_operations_by_batch=seed_operations_by_batch,
         op_by_id=op_by_id,
         op_ids_all=op_ids_all,
     )
@@ -381,12 +371,12 @@ def _apply_freeze_prefixes(
     strict_mode: bool,
 ) -> Set[int]:
     frozen_op_ids: Set[int] = set()
-    max_seq_by_batch = _max_seq_by_batch(schedule_map, scope.op_by_id)
+    max_seq_lookup = max_seq_by_batch(schedule_map, scope.op_by_id)
 
-    for bid, max_seq in max_seq_by_batch.items():
+    for bid, max_seq in max_seq_lookup.items():
         if max_seq <= 0:
             continue
-        prefix = _prefix_op_ids_for_batch(scope.seed_operations, bid, max_seq)
+        prefix = prefix_op_ids_for_batch(scope.seed_operations_by_batch.get(bid, []), bid, max_seq)
         missing = [oid for oid in prefix if oid not in schedule_map]
         if missing:
             sample = ", ".join([str(x) for x in missing[:5]])

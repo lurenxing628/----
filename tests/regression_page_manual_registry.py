@@ -228,7 +228,7 @@ def main() -> None:
         "excel_op_types": ["自制 / 外协", "新文件请只填这两个中文选项"],
         "excel_suppliers": ["填 `0`、负数或文字都会报错", "在用/正常/禁用", "状态和备注两列"],
         "excel_calendar": ["留空按 `工作日` 处理", "高级设置中的“假期默认效率”"],
-        "material_batch": ["需求数量必须大于 0", "已到数量允许为 0，但不能为负数"],
+        "material_batch": ["需求数量必须大于 0", "到料数量不填会按已到齐处理", "明确填 0 或不足数量才会显示未齐套"],
         "system_backup": ["恢复前自动备份", "回滚到恢复前自动备份"],
     }
     for manual_id, phrases in manual_semantic_cases.items():

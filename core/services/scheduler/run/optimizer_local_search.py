@@ -80,6 +80,7 @@ def _evaluate_candidate(
     objective_name: str,
     optimizer_algo_stats: Optional[Dict[str, Any]],
     schedule_fn: Callable[..., Any],
+    readiness_gate_enabled: bool,
 ) -> Dict[str, Any]:
     res, summ, used_strat, used_params = schedule_fn(
         scheduler,
@@ -96,6 +97,7 @@ def _evaluate_candidate(
         dispatch_mode=dispatch_mode,
         dispatch_rule=dispatch_rule,
         resource_pool=resource_pool,
+        readiness_gate_enabled=bool(readiness_gate_enabled),
     )
     metrics = compute_metrics(res, batches)
     algo_stats = merge_algo_stats(optimizer_algo_stats, snapshot_algo_stats(scheduler))
@@ -232,6 +234,7 @@ def run_local_search(
     improvement_trace: List[Dict[str, Any]],
     optimizer_algo_stats: Optional[Dict[str, Any]],
     t_begin: float,
+    readiness_gate_enabled: bool,
     strict_mode: bool,
     clock: Callable[[], float],
     rng_factory: Callable[[int], Any],
@@ -279,6 +282,7 @@ def run_local_search(
                 objective_name=objective_name,
                 optimizer_algo_stats=optimizer_algo_stats,
                 schedule_fn=schedule_fn,
+                readiness_gate_enabled=bool(readiness_gate_enabled),
             ),
             attempts=attempts,
             move=move,

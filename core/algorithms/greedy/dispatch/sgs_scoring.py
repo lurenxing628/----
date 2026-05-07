@@ -73,6 +73,16 @@ def _collect_sgs_candidates(
     return candidates
 
 
+def _positive_op_id(value: Any) -> Optional[int]:
+    if isinstance(value, bool):
+        return None
+    try:
+        op_id = int(value or 0)
+    except (TypeError, ValueError):
+        return None
+    return op_id if op_id > 0 else None
+
+
 def _score_external_candidate(
     *,
     ctx: Any,
@@ -124,11 +134,19 @@ def _score_internal_candidate(
     resource_pool: Optional[Dict[str, Any]],
     avg_proc_hours: float,
     strict_mode: bool,
+    total_hours_by_op_id: Optional[Dict[int, float]] = None,
     estimate_slot: Callable[..., Any] = estimate_internal_slot,
     dispatch_key_builder: Callable[[DispatchInputs], Tuple[float, ...]] = build_dispatch_key,
 ) -> Tuple[float, ...]:
     meta = _candidate_meta(op=op, batch=batch, batch_id=batch_id, state=state, strict_mode=strict_mode)
-    total_hours = _scoring_total_hours(ctx, op=op, batch=batch, strict_mode=strict_mode)
+    total_hours = _scoring_total_hours(
+        ctx,
+        op=op,
+        batch=batch,
+        strict_mode=strict_mode,
+        total_hours_by_op_id=total_hours_by_op_id,
+        op_id=int(meta["op_id"]),
+    )
     machine_id, operator_id = _scoring_resources(
         ctx,
         state=state,
@@ -207,11 +225,26 @@ def _parse_external_days(value: Any, *, field: str, strict_mode: bool, default_d
     return parse_required_float(value, field=field, min_value=0.0, min_inclusive=False)
 
 
-def _scoring_total_hours(ctx: Any, *, op: Any, batch: Any, strict_mode: bool) -> float:
+def _scoring_total_hours(
+    ctx: Any,
+    *,
+    op: Any,
+    batch: Any,
+    strict_mode: bool,
+    total_hours_by_op_id: Optional[Dict[int, float]] = None,
+    op_id: Optional[int] = None,
+) -> float:
+    cache_key = _positive_op_id(op_id if op_id is not None else getattr(op, "id", 0))
+    if total_hours_by_op_id is not None and cache_key is not None:
+        if cache_key in total_hours_by_op_id:
+            return float(total_hours_by_op_id[cache_key])
     try:
-        return validate_internal_hours_for_mode(op, batch, strict_mode=strict_mode)
+        total_hours = validate_internal_hours_for_mode(op, batch, strict_mode=strict_mode)
     except ValueError as exc:
         raise_strict_internal_hours_validation(op, batch, exc)
+    if total_hours_by_op_id is not None and cache_key is not None:
+        total_hours_by_op_id[cache_key] = float(total_hours)
+    return float(total_hours)
 
 
 def _scoring_resources(

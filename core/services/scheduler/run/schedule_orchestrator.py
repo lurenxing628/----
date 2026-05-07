@@ -240,6 +240,7 @@ def orchestrate_schedule_run(
             resource_pool=schedule_input.resource_pool,
             version=schedule_input.optimizer_seed_version,
             logger=svc.logger,
+            readiness_gate_enabled=bool(schedule_input.readiness_gate_enabled),
             strict_mode=bool(strict_mode),
         )
     )
@@ -284,6 +285,7 @@ def orchestrate_schedule_run(
         input_build_outcome=schedule_input.algo_input_outcome,
         downtime_meta=schedule_input.downtime_meta,
         resource_pool_meta=schedule_input.resource_pool_meta,
+        readiness_gate_enabled=bool(schedule_input.readiness_gate_enabled),
         algo_stats=optimizer_outcome.algo_stats,
         algo_warnings=list(schedule_input.algo_warnings or []),
         warning_merge_status=warning_merge_status,

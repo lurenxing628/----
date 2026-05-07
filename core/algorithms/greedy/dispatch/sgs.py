@@ -15,6 +15,7 @@ from ..run_state import ScheduleRunState
 from .batch_order import _coerce_state, _schedule_op
 from .sgs_scoring import (
     _collect_sgs_candidates,
+    _positive_op_id,
     _score_external_candidate,
 )
 from .sgs_scoring import (
@@ -88,7 +89,12 @@ def dispatch_sgs(
     ops_by_batch = _group_sgs_ops(sorted_ops=sorted_ops, batches=batches, state=run_state)
     batch_ids = sorted(list(ops_by_batch.keys()), key=lambda item: (batch_order.get(item, 999999), item))
     next_idx: Dict[str, int] = {batch_id: 0 for batch_id in batch_ids}
-    avg_proc_hours = _average_proc_hours(ctx, ops_by_batch=ops_by_batch, batches=batches, strict_mode=bool(strict_mode))
+    avg_proc_hours, total_hours_by_op_id = _average_proc_hours(
+        ctx,
+        ops_by_batch=ops_by_batch,
+        batches=batches,
+        strict_mode=bool(strict_mode),
+    )
     _run_sgs_loop(
         ctx,
         run_state,
@@ -104,6 +110,7 @@ def dispatch_sgs(
         resource_pool,
         bool(strict_mode),
         avg_proc_hours,
+        total_hours_by_op_id,
     )
     _ = scheduled_count
     return run_state.scheduled_count, run_state.failed_count
@@ -128,24 +135,37 @@ def _group_sgs_ops(*, sorted_ops: List[Any], batches: Dict[str, Any], state: Sch
     return grouped
 
 
-def _average_proc_hours(ctx: Any, *, ops_by_batch: Dict[str, List[Any]], batches: Dict[str, Any], strict_mode: bool) -> float:
+def _average_proc_hours(
+    ctx: Any,
+    *,
+    ops_by_batch: Dict[str, List[Any]],
+    batches: Dict[str, Any],
+    strict_mode: bool,
+) -> Tuple[float, Dict[int, float]]:
     samples: List[float] = []
+    total_hours_by_op_id: Dict[int, float] = {}
     for batch_id, operations in ops_by_batch.items():
         batch = batches.get(batch_id)
         for op in operations:
             if batch and (getattr(op, "source", INTERNAL) or INTERNAL).strip().lower() == INTERNAL:
-                _append_proc_sample(samples, op=op, batch=batch, strict_mode=strict_mode)
+                sample = _append_proc_sample(samples, op=op, batch=batch, strict_mode=strict_mode)
+                if sample is not None:
+                    cache_key = _positive_op_id(getattr(op, "id", 0))
+                    if cache_key is not None:
+                        total_hours_by_op_id[cache_key] = float(sample)
     if samples:
-        return sum(samples) / float(len(samples))
+        return sum(samples) / float(len(samples)), total_hours_by_op_id
     ctx.increment("dispatch_key_avg_proc_hours_fallback_count")
-    return 1.0
+    return 1.0, total_hours_by_op_id
 
 
-def _append_proc_sample(samples: List[float], *, op: Any, batch: Any, strict_mode: bool) -> None:
+def _append_proc_sample(samples: List[float], *, op: Any, batch: Any, strict_mode: bool) -> Optional[float]:
     try:
-        samples.append(validate_internal_hours_for_mode(op, batch, strict_mode=strict_mode))
+        sample = validate_internal_hours_for_mode(op, batch, strict_mode=strict_mode)
     except ValueError:
-        return
+        return None
+    samples.append(sample)
+    return float(sample)
 
 
 def _run_sgs_loop(
@@ -163,6 +183,7 @@ def _run_sgs_loop(
     resource_pool: Optional[Dict[str, Any]],
     strict_mode: bool,
     avg_proc_hours: float,
+    total_hours_by_op_id: Dict[int, float],
 ) -> None:
     while True:
         candidates = _collect_sgs_candidates(
@@ -187,6 +208,7 @@ def _run_sgs_loop(
                 resource_pool,
                 strict_mode,
                 avg_proc_hours,
+                total_hours_by_op_id,
             )
         )
         _dispatch_selected(
@@ -218,6 +240,7 @@ def _score_candidates(
     resource_pool: Optional[Dict[str, Any]],
     strict_mode: bool,
     avg_proc_hours: float,
+    total_hours_by_op_id: Dict[int, float],
 ) -> List[Tuple[Tuple[float, ...], str, Any]]:
     return [
         (
@@ -235,6 +258,7 @@ def _score_candidates(
                 resource_pool,
                 strict_mode,
                 avg_proc_hours,
+                total_hours_by_op_id,
             ),
             batch_id,
             op,
@@ -257,6 +281,7 @@ def _score_candidate(
     resource_pool: Optional[Dict[str, Any]],
     strict_mode: bool,
     avg_proc_hours: float,
+    total_hours_by_op_id: Dict[int, float],
 ) -> Tuple[float, ...]:
     def score() -> Tuple[float, ...]:
         if (getattr(op, "source", INTERNAL) or INTERNAL).strip().lower() == EXTERNAL:
@@ -286,6 +311,7 @@ def _score_candidate(
             auto_assign_enabled=auto_assign_enabled,
             resource_pool=resource_pool,
             avg_proc_hours=avg_proc_hours,
+            total_hours_by_op_id=total_hours_by_op_id,
             strict_mode=strict_mode,
         )
 
