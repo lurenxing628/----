@@ -399,6 +399,18 @@ def _assert_scheduler_manual_required_content(markdown_text: str, label: str) ->
     for needle in ("TRUE/FALSE", "NaN", "Inf", "Infinity", "5e0", "1E2", "最后更新：2026年4月"):
         assert needle in markdown_text, f"{label} 缺少说明书必备内容：{needle}"
 
+    for needle in (
+        "旧模板中已有数据行不会被系统擅自改写",
+        "新填数据请使用 `自制`/`外协`",
+        "批次自动生成工序时的模板提醒，是当前页局部提醒",
+        "正式排产或模拟排产成功后的排产结果提醒",
+        "可以到系统历史查看",
+        "不填版本、版本为空，或版本填 `latest`",
+        "输入不存在的数字版本时",
+        "输入 `abc` 这类不是数字的版本号",
+    ):
+        assert needle in markdown_text, f"{label} 缺少说明书必备内容：{needle}"
+
     batch_warning_paragraph = _extract_paragraph_containing(markdown_text, "自动生成批次工序时产生提醒")
     assert "当前页面确认写入后只会展示去重后的前 3 条提醒" in batch_warning_paragraph
     assert "另有 X 条提醒" in batch_warning_paragraph or "剩余提醒" in batch_warning_paragraph

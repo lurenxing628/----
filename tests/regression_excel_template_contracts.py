@@ -19,6 +19,20 @@ PROCESS_TEMPLATE_FILES = (
     "零件工序工时.xlsx",
 )
 
+PAGE_MANUAL_TEMPLATE_COLUMN_CONTRACTS = {
+    "excel_personnel": "人员基本信息.xlsx",
+    "excel_personnel_link": "人员设备关联.xlsx",
+    "excel_personnel_calendar": "人员专属工作日历.xlsx",
+    "excel_equipment": "设备信息.xlsx",
+    "excel_equipment_link": "设备人员关联.xlsx",
+    "excel_op_types": "工种配置.xlsx",
+    "excel_suppliers": "供应商配置.xlsx",
+    "excel_routes": "零件工艺路线.xlsx",
+    "excel_part_op_hours": "零件工序工时.xlsx",
+    "excel_batches": "批次信息.xlsx",
+    "excel_calendar": "工作日历.xlsx",
+}
+
 DROPDOWN_MANUAL_CONTRACTS: Mapping[str, Mapping[str, Any]] = {
     "工种配置.xlsx": {
         "manual_id": "excel_op_types",
@@ -77,6 +91,14 @@ def _extract_markdown_section(markdown_text: str, heading: str) -> str:
     return markdown_text[start:end]
 
 
+def _is_allowed_legacy_op_type_note(section_text: str, phrase: str) -> bool:
+    return (
+        phrase == "内部/外部"
+        and "旧模板中已有数据行不会被系统擅自改写" in section_text
+        and "新填数据请使用 `自制`/`外协`" in section_text
+    )
+
+
 def _definition_enum_values_by_header(definition: Mapping[str, Any]) -> dict[str, list[str]]:
     headers = [str(item) for item in (definition.get("headers") or [])]
     enum_cols = ((definition.get("format_spec") or {}).get("enum_cols") or {})
@@ -115,6 +137,53 @@ def _actual_enum_values_by_header(ws: Any, headers: Sequence[str]) -> dict[str, 
         if values:
             out[str(header)] = values
     return out
+
+
+def _normalize_help_column_label(raw: str) -> str:
+    text = re.sub(r"[`*]", "", str(raw or "")).strip().rstrip("。.")
+
+    def _replace_note(match: re.Match[str]) -> str:
+        inner = str(match.group(1) or match.group(2) or "").strip()
+        return "(h)" if inner.lower() == "h" else ""
+
+    text = re.sub(r"（([^）]*)）|\(([^)]*)\)", _replace_note, text)
+    text = re.split(r"[；;]", text, maxsplit=1)[0]
+    return text.strip()
+
+
+def _split_help_columns(column_text: str) -> list[str]:
+    columns: list[str] = []
+    current: list[str] = []
+    depth = 0
+    for char in column_text:
+        if char in "（(":
+            depth += 1
+        elif char in "）)" and depth > 0:
+            depth -= 1
+        if char in "、,，" and depth == 0:
+            columns.append("".join(current).strip())
+            current = []
+            continue
+        current.append(char)
+    if current:
+        columns.append("".join(current).strip())
+    return columns
+
+
+def _extract_help_card_columns(payload: Mapping[str, Any]) -> list[str]:
+    help_card = payload.get("help_card") or {}
+    for item in help_card.get("items") or []:
+        text = str(item or "").strip()
+        if text.startswith("列："):
+            column_text = text[len("列：") :].strip()
+        elif text.startswith("模板列："):
+            column_text = text[len("模板列：") :].strip()
+        else:
+            continue
+        column_text = re.split(r"[。]", column_text, maxsplit=1)[0].strip()
+        raw_columns = _split_help_columns(column_text)
+        return [_normalize_help_column_label(column) for column in raw_columns if _normalize_help_column_label(column)]
+    raise AssertionError(f"{payload.get('title')} 页面帮助卡缺少“列：...”说明")
 
 
 def _read_sample_rows(ws: Any, *, width: int, count: int) -> list[list[Any]]:
@@ -299,12 +368,31 @@ def _assert_process_excel_dropdown_values_match_page_and_full_manuals() -> None:
         for phrase in contract["forbidden_page_phrases"]:
             assert phrase not in page_text, f"{contract['manual_id']} 页面说明仍包含旧说法：{phrase}"
         for phrase in contract["forbidden_manual_phrases"]:
+            if _is_allowed_legacy_op_type_note(full_manual_section, phrase):
+                continue
             assert phrase not in full_manual_section, f"{contract['manual_heading']} 说明书章节仍包含旧说法：{phrase}"
+
+
+def _assert_page_manual_help_columns_match_template_headers() -> None:
+    _ensure_repo_on_path()
+    page_manuals = importlib.import_module("web.viewmodels.page_manuals")
+
+    for manual_id, filename in PAGE_MANUAL_TEMPLATE_COLUMN_CONTRACTS.items():
+        definition = _template_definition(filename)
+        expected_headers = [str(item) for item in definition.get("headers") or []]
+        payload = page_manuals.build_manual_payload(manual_id, include_sections=True)
+        assert payload is not None, f"{manual_id} 无法构建页面说明"
+        actual_columns = _extract_help_card_columns(payload)
+        assert actual_columns == expected_headers, (
+            f"{manual_id} 帮助卡列顺序必须和 {filename} 模板表头一致；"
+            f"期望 {expected_headers}，实际 {actual_columns}"
+        )
 
 
 def main() -> None:
     _assert_process_excel_template_files_match_registered_definitions()
     _assert_process_excel_dropdown_values_match_page_and_full_manuals()
+    _assert_page_manual_help_columns_match_template_headers()
     _assert_legacy_op_type_template_refreshes()
     _assert_legacy_op_type_template_with_extra_rows_repairs_dropdown_without_overwriting_data()
     print("OK")

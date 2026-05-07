@@ -244,9 +244,10 @@ PROCESS_USER_CORRECTED_REQUIRED_PHRASES = {
         "Excel 表头必须写“工种ID”，不要改成“工种编号”",
     ],
     "excel_suppliers": [
-        "列：供应商ID（必填不重复）、名称（必填）、默认周期、状态、对应工种、备注。",
+        "列：供应商ID（必填不重复）、名称（必填）、对应工种、默认周期、状态、备注。",
         "供应商ID就是系统里的供应商编号",
         "Excel 表头必须写“供应商ID”，不要改成“供应商编号”",
+        "旧模板中已有数据行不会被系统擅自改写",
     ],
     "excel_routes": [
         "5数铣10钳20数车35标印",
@@ -257,6 +258,10 @@ PROCESS_USER_CORRECTED_REQUIRED_PHRASES = {
     "excel_part_op_hours": [
         "只补空工时",
         "只补自制工序里“换型时间和单件工时都为 0”的行",
+    ],
+    "scheduler_analysis": [
+        "不填版本、版本为空或填 latest，都会看最新历史版本",
+        "输入不存在的版本时，页面会显示该版本不存在的占位，不会自动选最新",
     ],
 }
 
