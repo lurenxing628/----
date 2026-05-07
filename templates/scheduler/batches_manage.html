@@ -8,14 +8,14 @@
       <div class="page-actions page-actions-context"></div>
     </div>
     <p class="aps-page-purpose">
-      <strong>本页用于：</strong>维护排产批次，支持新增、导入、复制、删除和批量修改。
+      <strong>本页用于：</strong>维护排产批次，支持新增、批量维护、复制、删除和批量修改。
     </p>
     {{ ui.scheduler_nav('batches_manage') }}
   </div>
 
   {{ excel_cards_ui.action_cards(
     '批量维护',
-    '适合 Excel 下发计划、整批新增或更新批次。',
+    '适合按计划表整批新增或更新批次。',
     excel_cards,
     ui
   ) }}
@@ -207,7 +207,7 @@
         </div>
       </form>
     {% else %}
-      <div class="muted">暂无批次数据，可以在上方手动新增或通过 Excel 导入。</div>
+      <div class="muted">暂无批次数据，可以在上方手动新增或使用批量维护。</div>
     {% endif %}
   </div>
 {% endblock %}

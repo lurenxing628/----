@@ -3,12 +3,12 @@
 {% block content %}
   {{ ui.aps_page_hero(
     '批量停机计划',
-    '为设备安排停机时间，可以按单台、按类别或全部设备设置；系统会按设备逐条保存停机记录。',
+    '为设备安排停机时间，可以按单台、按类别或全部设备设置；按类别或全部创建时默认只作用于可用设备。',
     nav_html=ui.equipment_nav('downtime_batch')
   ) }}
 
   <div class="card aps-form-card aps-downtime-form-card">
-    {{ ui.aps_card_header('创建停机区间', '选择停机范围、时间和原因后创建记录。') }}
+    {{ ui.aps_card_header('创建停机区间', '选择停机范围、时间和原因后创建记录；按类别或全部默认只作用于可用设备。') }}
     <form method="post" action="{{ url_for('equipment.downtime_batch_create') }}">
       <div class="aps-edit-form-grid aps-downtime-form-grid">
         <div class="form-field aps-downtime-scope-type">
@@ -66,7 +66,7 @@
 
   <div class="card">
     <div class="muted">
-      提示：创建后可到对应设备的详情页查看和管理停机记录。如需查看停机对排产的影响，请到报表中心的“停机影响统计”。
+      提示：选择“设备类别”或“全部设备”时，系统默认只给状态为可用的设备创建停机记录。创建后可到对应设备的详情页查看和管理停机记录；如需查看停机对排产的影响，请到报表中心的“停机影响统计”。
     </div>
   </div>
 

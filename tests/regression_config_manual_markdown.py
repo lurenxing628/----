@@ -11,6 +11,32 @@ from pathlib import Path
 
 from flask import url_for
 
+LEGACY_EXCEL_ENTRY_TERMS = (
+    "零件工艺路线（Excel导入/导出）",
+    "零件工序工时（Excel导入/导出）",
+    "人员基本信息（Excel导入/导出）",
+    "设备信息（Excel导入/导出）",
+    "人员设备关联（Excel）",
+    "设备人员关联（Excel）",
+    "Excel 导入/导出",
+    "Excel导入/导出",
+    "Excel 导入导出",
+    "Excel导入导出",
+)
+
+MANUAL_BATCH_MAINTENANCE_SECTIONS = (
+    "工种配置",
+    "供应商配置",
+    "零件工艺路线",
+    "零件工序工时",
+    "人员基本信息",
+    "设备信息",
+    "人员设备关联",
+    "工作日历",
+    "个人工作日历",
+    "批次信息",
+)
+
 
 def _find_repo_root() -> str:
     here = os.path.dirname(os.path.abspath(__file__))
@@ -54,6 +80,53 @@ def _extract_internal_hashes(markdown_text: str) -> list[str]:
         if link.startswith("#"):
             refs.append(link[1:])
     return refs
+
+
+def _find_legacy_excel_entry_terms(markdown_text: str) -> list[str]:
+    hits: list[str] = []
+    for line_no, line in enumerate(markdown_text.splitlines(), start=1):
+        for term in LEGACY_EXCEL_ENTRY_TERMS:
+            if _is_historical_legacy_entry_note(line, term):
+                continue
+            if term in line:
+                hits.append(f"{line_no}: {term} -> {line.strip()}")
+                break
+    return hits
+
+
+def _is_historical_legacy_entry_note(line: str, term: str) -> bool:
+    if term not in ("Excel 导入导出", "Excel导入导出"):
+        return False
+    return "老资料" in line and "旧入口" in line and "批量维护" in line
+
+
+def _find_heading_entry_line(markdown_text: str, section_name: str) -> str:
+    lines = markdown_text.splitlines()
+    for idx, line in enumerate(lines):
+        if not re.match(r"^####\s+", line):
+            continue
+        heading_text = re.sub(r"^####\s+\d+(?:\.\d+)*\s+", "", line).strip()
+        is_target_heading = heading_text == section_name or heading_text.startswith(f"{section_name}（")
+        if not is_target_heading:
+            continue
+        for next_line in lines[idx + 1 :]:
+            if re.match(r"^####\s+", next_line):
+                break
+            if re.match(r"^(?:\*\*进入方式\*\*|进入方式|入口)[:：]", next_line):
+                return next_line.strip()
+    raise RuntimeError(f"说明书缺少“{section_name}”章节的进入方式")
+
+
+def _assert_manual_uses_batch_maintenance_entry_names(markdown_text: str) -> None:
+    legacy_hits = _find_legacy_excel_entry_terms(markdown_text)
+    assert not legacy_hits, "说明书仍出现旧 Excel 入口叫法：\n" + "\n".join(legacy_hits[:20])
+
+    missing_batch_maintenance = []
+    for section_name in MANUAL_BATCH_MAINTENANCE_SECTIONS:
+        entry_line = _find_heading_entry_line(markdown_text, section_name)
+        if "批量维护" not in entry_line:
+            missing_batch_maintenance.append(f"{section_name}: {entry_line}")
+    assert not missing_batch_maintenance, "说明书主流程入口必须叫“批量维护”：\n" + "\n".join(missing_batch_maintenance)
 
 
 def _run_hash_runtime_check(js_path: str, mode: str) -> dict:
@@ -315,6 +388,23 @@ def _extract_json_config(html_text: str) -> dict:
     return json.loads(raw)
 
 
+def _extract_paragraph_containing(markdown_text: str, needle: str) -> str:
+    for paragraph in re.split(r"\n\s*\n", markdown_text):
+        if needle in paragraph:
+            return paragraph.strip()
+    raise AssertionError(f"说明书缺少段落：{needle}")
+
+
+def _assert_scheduler_manual_required_content(markdown_text: str, label: str) -> None:
+    for needle in ("TRUE/FALSE", "NaN", "Inf", "Infinity", "5e0", "1E2", "最后更新：2026年4月"):
+        assert needle in markdown_text, f"{label} 缺少说明书必备内容：{needle}"
+
+    batch_warning_paragraph = _extract_paragraph_containing(markdown_text, "自动生成批次工序时产生提醒")
+    assert "当前页面确认写入后只会展示去重后的前 3 条提醒" in batch_warning_paragraph
+    assert "另有 X 条提醒" in batch_warning_paragraph or "剩余提醒" in batch_warning_paragraph
+    assert "系统历史" not in batch_warning_paragraph, f"{label} 的批次剩余提醒口径不应再要求去系统历史：{batch_warning_paragraph}"
+
+
 def main() -> None:
     repo_root = _find_repo_root()
     js_path = os.path.join(repo_root, "static", "js", "config_manual.js")
@@ -402,6 +492,9 @@ def main() -> None:
     assert manual_text.startswith("# 系统使用说明"), "主说明书标题未更新为“系统使用说明”"
     assert manual_v2_text is not None, f"未找到 v2 说明书镜像副本：{manual_v2_path}"
     assert manual_text == manual_v2_text, "主说明书与 v2 镜像副本必须完全同步"
+    _assert_scheduler_manual_required_content(manual_text, "主说明书")
+    _assert_scheduler_manual_required_content(manual_v2_text, "v2 说明书镜像副本")
+    _assert_manual_uses_batch_maintenance_entry_names(manual_text)
     heading_ids = _extract_heading_ids(manual_text)
     internal_hashes = _extract_internal_hashes(manual_text)
     missing_hashes = [item for item in internal_hashes if item not in heading_ids]
@@ -459,7 +552,10 @@ def main() -> None:
         )
         assert 'data-manual-markdown="' in page_html, f"{ui_mode} 模式页面级说明缺少 related Markdown 渲染占位"
         assert "## 物料主数据" in page_html, f"{ui_mode} 模式 noscript 缺少当前页 fallback 标题"
-        assert "#### 维护顺序建议" in page_html, f"{ui_mode} 模式 noscript 缺少 related 关键说明 fallback"
+        current_sections = list((page_cfg.get("currentManual") or {}).get("sections") or [])
+        assert current_sections, f"{ui_mode} 模式页面级说明缺少当前页章节"
+        first_section_title = str(current_sections[0].get("title") or "").strip()
+        assert first_section_title and f"### {first_section_title}" in page_html, f"{ui_mode} 模式 noscript 缺少当前页关键说明 fallback"
 
     print("OK")
 

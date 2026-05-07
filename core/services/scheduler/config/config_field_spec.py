@@ -117,7 +117,7 @@ _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
         field_type="yes_no",
         default="no",
         label="默认启用齐套检查",
-        description="默认关闭。关闭时，齐套和齐套日期只作为显示信息；打开后，未齐套批次不排，齐套日期会作为最早开工日。",
+        description="默认关闭。关闭时，齐套和齐套日期只作为显示信息；打开后，只要所选批次里有未齐套或部分齐套，本次排产会报错并停止；系统不会自动跳过这些批次继续排其它批次，齐套日期只对齐套批次作为最早开工日。",
         choices=_YES_NO_CHOICES,
         choice_labels=_YES_NO_LABELS,
     ),

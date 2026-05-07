@@ -15,7 +15,7 @@
 
   {{ excel_cards_ui.action_cards(
     '批量维护',
-    '批量导入/导出供应商配置；手工新增继续使用下方表单。',
+    '可下载模板、上传检查、确认写入或导出供应商配置；手工新增继续使用下方表单。',
     excel_cards,
     ui
   ) }}
@@ -122,7 +122,7 @@
       </table>
       </div>
     {% else %}
-      <div class="muted">暂无供应商数据，可以在上方手动新增或通过 Excel 导入。</div>
+      <div class="muted">暂无供应商数据，可以在上方手动新增或使用批量维护。</div>
     {% endif %}
   </div>
 {% endblock %}

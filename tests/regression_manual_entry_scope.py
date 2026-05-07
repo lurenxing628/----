@@ -25,6 +25,19 @@ from urllib.parse import quote
 
 from flask import url_for
 
+LEGACY_EXCEL_ENTRY_TERMS = (
+    "零件工艺路线（Excel导入/导出）",
+    "零件工序工时（Excel导入/导出）",
+    "人员基本信息（Excel导入/导出）",
+    "设备信息（Excel导入/导出）",
+    "人员设备关联（Excel）",
+    "设备人员关联（Excel）",
+    "Excel 导入/导出",
+    "Excel导入/导出",
+    "Excel 导入导出",
+    "Excel导入导出",
+)
+
 
 def find_repo_root() -> str:
     here = os.path.dirname(os.path.abspath(__file__))
@@ -74,6 +87,42 @@ def _assert_not_contains(content: str, needle: str, message: str) -> None:
         raise RuntimeError(f"{message}（出现了不应存在的片段：{needle}）")
 
 
+def _find_legacy_excel_entry_terms(content: str) -> list[str]:
+    hits: list[str] = []
+    for line_no, line in enumerate(content.splitlines(), start=1):
+        for term in LEGACY_EXCEL_ENTRY_TERMS:
+            if _is_historical_legacy_entry_note(line, term):
+                continue
+            if term in line:
+                hits.append(f"{line_no}: {term} -> {line.strip()}")
+                break
+    return hits
+
+
+def _is_historical_legacy_entry_note(line: str, term: str) -> bool:
+    if term not in ("Excel 导入导出", "Excel导入导出"):
+        return False
+    return "老资料" in line and "旧入口" in line and "批量维护" in line
+
+
+def _assert_no_legacy_excel_entry_terms(content: str, label: str) -> None:
+    hits = _find_legacy_excel_entry_terms(content)
+    if hits:
+        raise RuntimeError(f"{label} 仍出现旧 Excel 入口叫法：\n" + "\n".join(hits[:20]))
+
+
+def _assert_manual_markdown_scope(repo_root: str) -> str:
+    manual_path = Path(repo_root) / "static" / "docs" / "scheduler_manual.md"
+    manual_v2_path = Path(repo_root) / "web_new_test" / "static" / "docs" / "scheduler_manual.md"
+    manual_text = manual_path.read_text(encoding="utf-8")
+    manual_v2_text = manual_v2_path.read_text(encoding="utf-8")
+    if manual_text != manual_v2_text:
+        raise RuntimeError("系统使用说明主文件与现代界面镜像不一致")
+    _assert_no_legacy_excel_entry_terms(manual_text, "系统使用说明")
+    _assert_contains(manual_text, "批量维护", "系统使用说明主流程入口应使用“批量维护”叫法")
+    return manual_text
+
+
 def _extract_href_by_class(content: str, class_name: str) -> str | None:
     exact_pattern = rf'<a href="([^"]+)" class="{re.escape(class_name)}(?:\s[^"]*)?"'
     m = re.search(exact_pattern, content)
@@ -121,6 +170,12 @@ def main() -> None:
     app = _load_app(repo_root)
     page_manuals = importlib.import_module("web.viewmodels.page_manuals")
     client = app.test_client()
+    manual_text = _assert_manual_markdown_scope(repo_root)
+    material_manual = page_manuals.build_manual_for_endpoint("material.materials_page", include_sections=True)
+    material_sections = list((material_manual or {}).get("sections") or [])
+    material_first_section_title = str((material_sections[0] if material_sections else {}).get("title") or "").strip()
+    if not material_first_section_title:
+        raise RuntimeError("物料主数据页面说明缺少可用于 fallback 回归的章节标题")
 
     renderable_pages = _collect_renderable_manual_endpoints(app, set(page_manuals.ENDPOINT_TO_MANUAL_ID))
 
@@ -189,6 +244,10 @@ def main() -> None:
         full_fallback_text = _extract_template_content_by_id(manual_html, "aps-config-manual-fallback")
         if not full_fallback_text or len(full_fallback_text) < 100:
             raise RuntimeError(f"{ui_mode} 模式下整本说明书页 fallback 正文为空或过短")
+        if full_fallback_text != manual_text.strip():
+            raise RuntimeError(f"{ui_mode} 模式下整本说明书页 fallback 与说明书 Markdown 不一致")
+        _assert_no_legacy_excel_entry_terms(full_fallback_text, f"{ui_mode} 模式下整本说明书页 fallback")
+        _assert_contains(full_fallback_text, "批量维护", f"{ui_mode} 模式下整本说明书页 fallback 未使用“批量维护”叫法")
         _assert_not_contains(manual_html, "floating-manual-btn", f"{ui_mode} 模式下说明书页不应显示悬浮入口")
         _assert_not_contains(manual_html, "当前页面主题：", f"{ui_mode} 模式下整本说明书页不应出现页面模式标识")
         _assert_not_contains(manual_html, "相关模块说明", f"{ui_mode} 模式下整本说明书页不应显示相关模块列表")
@@ -221,7 +280,7 @@ def main() -> None:
         _assert_contains(page_material_html, "查看完整原文对应章节", f"{ui_mode} 模式下页面级说明缺少原文章节入口")
         _assert_contains(page_material_html, "下载整本说明书", f"{ui_mode} 模式下页面级说明下载按钮文案不正确")
         _assert_contains(page_material_html, '<div class="aps-summary-label">整本说明书更新时间</div>', f"{ui_mode} 模式下页面级说明更新时间文案不正确")
-        _assert_contains(page_material_html, "维护顺序建议", f"{ui_mode} 模式下 related 模块未渲染关键说明段落")
+        _assert_contains(page_material_html, material_first_section_title, f"{ui_mode} 模式下页面级说明未渲染当前事实源关键段落")
         _assert_contains(page_material_html, 'id="aps-config-manual-fallback"', f"{ui_mode} 模式下页面级说明缺少服务端 fallback 模板")
         material_fallback_text = _extract_template_content_by_id(page_material_html, "aps-config-manual-fallback")
         if not material_fallback_text:

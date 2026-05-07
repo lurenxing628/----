@@ -163,7 +163,7 @@ def build_scheduler_config_toggles(cfg: Any, *, config_field_metadata: Dict[str,
             id="enforceReadyDefault",
             name="enforce_ready_default",
             title=_config_field_label(config_field_metadata, "enforce_ready_default"),
-            desc=_config_field_hint(config_field_metadata, "enforce_ready_default", default="默认关闭。启用后，未齐套批次不排，齐套日期作为最早开工日。"),
+            desc=_config_field_hint(config_field_metadata, "enforce_ready_default", default="默认关闭。启用后，只要所选批次里有未齐套或部分齐套，本次排产会报错并停止；系统不会自动跳过这些批次继续排其它批次，齐套日期只对齐套批次作为最早开工日。"),
             checked_attr=checked_attr(str(getattr(cfg, "enforce_ready_default", "")).strip() == "yes"),
         ),
         "auto_assign_enabled": UiToggleRow(

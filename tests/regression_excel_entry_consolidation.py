@@ -123,7 +123,8 @@ def main() -> None:
             active_label="批次管理",
         )
 
-        calendar_html = _assert_page_contains(client, "/scheduler/calendar", ["导入/导出工作日历"])
+        calendar_html = _assert_page_contains(client, "/scheduler/calendar", ["批量维护工作日历"])
+        assert "导入/导出工作日历" not in calendar_html
         _assert_subnav_clean(
             calendar_html,
             forbidden=["工作日历（Excel 导入/导出）", "批次信息（Excel 导入/导出）"],

@@ -8,7 +8,7 @@
   ) }}
 
   <div class="card aps-scheduler-filter-card">
-    <h3 class="section-title">常用方案（模板）</h3>
+    <h3 class="section-title">常用方案</h3>
     <div class="muted mb-2">切换后排产参数会立刻变化。</div>
     {% set preset_apply_url = safe_url_for('scheduler.preset_apply') %}
     {% if preset_apply_url %}
@@ -25,7 +25,7 @@
         </div>
         {% set config_url = safe_url_for('scheduler.config_page') %}
         {% if config_url %}
-          <div class="aps-scheduler-filter-actions">{{ ui.link_button('管理模板/高级设置', config_url, 'secondary', 'md') }}</div>
+          <div class="aps-scheduler-filter-actions">{{ ui.link_button('管理方案/高级设置', config_url, 'secondary', 'md') }}</div>
         {% else %}
           <span class="muted">这个入口还没加载出来，请先重启系统；如果重启后还没有，请让管理员检查安装版本。</span>
           <details class="debug-details muted">
@@ -171,7 +171,7 @@
             <div class="aps-run-panel-header">
               <div>
                 <h4 class="aps-run-panel-title">排产操作</h4>
-                <p class="aps-run-panel-desc">当前没有可勾选的待排批次。先到批次管理新增或导入批次，再回到这里执行排产。</p>
+                <p class="aps-run-panel-desc">当前没有可勾选的待排批次。先到批次管理新增或批量维护批次，再回到这里执行排产。</p>
               </div>
               <span class="aps-run-panel-status">已选 <strong id="jsSelectedCount">0</strong> 个批次</span>
             </div>
@@ -186,7 +186,7 @@
           </div>
         </form>
       {% endif %}
-      {{ ui.empty_state('暂无批次数据', '当前筛选条件下暂无批次数据，可以调整状态或齐套条件，也可以到批次管理手动新增或通过 Excel 导入。') }}
+      {{ ui.empty_state('暂无批次数据', '当前筛选条件下暂无批次数据，可以调整状态或齐套条件，也可以到批次管理手动新增或批量维护。') }}
     {% endif %}
   </div>
 

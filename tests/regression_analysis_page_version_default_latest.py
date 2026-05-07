@@ -61,6 +61,13 @@ def test_analysis_page_version_default_latest(tmp_path, monkeypatch) -> None:
     assert 'aps-summary-label">版本' in html
     assert 'aps-summary-value">v7' in html
 
+    resp_empty = client.get("/scheduler/analysis?version=")
+    assert resp_empty.status_code == 200
+    empty_html = resp_empty.get_data(as_text=True)
+    assert "版本概览" in empty_html
+    assert 'aps-summary-label">版本' in empty_html
+    assert 'aps-summary-value">v7' in empty_html
+
     resp_latest = client.get("/scheduler/analysis?version=latest")
     assert resp_latest.status_code == 200
     latest_html = resp_latest.get_data(as_text=True)

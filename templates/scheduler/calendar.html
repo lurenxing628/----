@@ -6,7 +6,7 @@
 {% block content %}
   {% set calendar_actions %}
     {{ ui.link_button('去执行排产', url_for('scheduler.batches_page'), 'primary', 'md') }}
-    {{ ui.link_button('导入/导出工作日历', url_for('scheduler.excel_calendar_page'), 'secondary', 'md') }}
+    {{ ui.link_button('批量维护工作日历', url_for('scheduler.excel_calendar_page'), 'secondary', 'md') }}
   {% endset %}
   {{ ui.aps_page_hero(
     '工作日历配置',

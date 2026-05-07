@@ -69,7 +69,7 @@
       {% endif %}
 
       {% if preset_save_url %}
-        <form method="post" action="{{ preset_save_url }}" class="aps-settings-action-card" data-confirm="将当前高级设置保存为新模板，确定？">
+        <form method="post" action="{{ preset_save_url }}" class="aps-settings-action-card" data-confirm="将当前高级设置保存为新方案，确定？">
           <div class="form-field">
             <label for="schedulerPresetSave">保存为新方案</label>
             <input id="schedulerPresetSave" name="preset_name" placeholder="输入方案名称" class="w-220">
@@ -82,7 +82,7 @@
     {% if preset_delete_url %}
       <div class="aps-danger-zone">
         <div class="aps-summary-label">危险操作</div>
-        <form method="post" action="{{ preset_delete_url }}" class="aps-query-form-grid" data-confirm="确定删除该模板吗？">
+        <form method="post" action="{{ preset_delete_url }}" class="aps-query-form-grid" data-confirm="确定删除该方案吗？">
           <div class="form-field">
             <label for="schedulerPresetDelete">删除方案</label>
             <select id="schedulerPresetDelete" name="preset_name" class="w-220">

@@ -38,9 +38,11 @@ def test_scheduler_config_and_batch_hints_are_user_facing_chinese() -> None:
         assert expected_batch_manage_hint in source
         assert "解析器不支持 strict_mode" not in source
 
+    run_panel = _read("templates/scheduler/_run_panel.html")
+    assert expected_batch_schedule_hint in run_panel
     for rel_path in ("templates/scheduler/batches.html", "web_new_test/templates/scheduler/batches.html"):
         source = _read(rel_path)
-        assert expected_batch_schedule_hint in source
+        assert '{% include "scheduler/_run_panel.html" %}' in source
         assert "dispatch_mode / dispatch_rule / auto_assign_enabled" not in source
         assert "设了截止日期的话，排不完会提示失败。" not in source
 
@@ -48,8 +50,18 @@ def test_scheduler_config_and_batch_hints_are_user_facing_chinese() -> None:
 def test_scheduler_config_repair_notices_use_public_field_labels() -> None:
     for rel_path in ("templates/scheduler/config.html", "web_new_test/templates/scheduler/config.html"):
         source = _read(rel_path)
-        assert "notice.field_labels" in source
+        assert "current_config_notice_items" in source
+        assert "ui.details_notice(notice" in source
         assert "notice.fields" not in source
+
+    panel_vm = _read("web/viewmodels/scheduler_config_panel.py")
+    assert 'raw_notice.get("field_labels")' in panel_vm
+    assert "detail_items = tuple" in panel_vm
+    assert 'raw_notice.get("fields")' not in panel_vm
+
+    config_outcome = _read("core/services/scheduler/config/config_page_outcome.py")
+    assert '"field_labels"' in config_outcome
+    assert "public_config_field_labels" in config_outcome
 
     active_preset_service = _read("core/services/scheduler/config/active_preset_service.py")
     assert "当前启用排产配置模板的结构化来源记录" in active_preset_service
@@ -221,11 +233,11 @@ def test_manuals_keep_backend_supported_english_aliases_but_mark_them_as_compati
     )
 
     expected_alias_phrases = (
-        "以前的 Excel 如果写过英文或旧说法，系统会尽量按中文意思读取；新文件请直接填中文",
-        "以前文件里写过 `新手/一般/中级/高级/专家` 的，系统会尽量读懂",
-        "以前文件里写过 `1`/`0` 的，系统会尽量读懂",
+        "以前文件里写过 新手 / 一般 / 中级 / 高级 / 专家 的，系统会尽量读懂",
+        "以前文件里写过 1/0 的，系统会尽量读懂",
         "新文件请按这些中文选项填写",
         "新文件请填中文",
+        "归属可填：自制 / 外协。新文件请只填这两个中文选项",
     )
     for phrase in expected_alias_phrases:
         assert phrase in manual_sources
@@ -260,10 +272,11 @@ def test_manuals_keep_backend_supported_english_aliases_but_mark_them_as_compati
     assert normalize_calendar_day_type_value("weekend") == CalendarDayType.HOLIDAY.value
 
     static_manual = _read("static/docs/scheduler_manual.md")
-    assert "资料不完整就停下" in static_manual
+    assert "发现问题就停下" in static_manual
     assert "缺工种、缺供应商或外协周期不正确" in static_manual
     assert "route_raw 自动补建模板" not in static_manual
-    assert "排产方式、智能派工策略、自动分配设备人员" in static_manual
+    assert "未指定设备或人员时，系统自动分配" in static_manual
+    assert "智能派工策略" in static_manual
     assert "dispatch_mode / dispatch_rule / auto_assign_enabled" not in static_manual
 
 
@@ -275,8 +288,8 @@ def test_supplier_manual_matches_required_default_days_and_template_columns() ->
             "static/docs/scheduler_manual.md",
         )
     )
-    assert "默认周期填正数(天)，必须填写" in manual_sources
-    assert "默认周期` 填大于 0 的天数；不能留空" in manual_sources
+    assert "默认周期必须填写大于 0 的有限数字(天)" in manual_sources
+    assert "`默认周期` 必填，必须是大于 0 的有限数字" in manual_sources
     assert "下载的模板包含“状态”和“备注”两列" in manual_sources
     assert "模板只有4列" not in manual_sources
     assert "不填默认1天" not in manual_sources
@@ -559,7 +572,9 @@ def test_scheduler_analysis_hides_internal_schema_and_attempt_tags() -> None:
     analysis_template = _read("templates/scheduler/analysis.html")
     assert "compat_fallback.missing_field_labels" in analysis_template
     assert "compat_fallback.missing_fields | join" not in analysis_template
-    assert "<th>方案来源</th>" in analysis_template
+    assert 'data-col-key="source"' in analysis_template
+    assert ">方案来源</th>" in analysis_template
+    assert "<th>方案来源</th>" not in analysis_template
     assert "r.display_tag" in analysis_template or "{{ r.tag }}" in analysis_template
     assert "方案 {{ loop.index }}" not in analysis_template
     assert "row_dispatch_rule" in analysis_template
