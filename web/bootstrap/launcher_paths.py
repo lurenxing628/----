@@ -163,6 +163,8 @@ def resolve_runtime_stop_context(runtime_dir_or_state_dir: str) -> Tuple[str, st
 
 
 def runtime_log_mirror_dir(runtime_dir: str, cfg_log_dir: Optional[str] = None) -> str:
+    if getattr(sys, "frozen", False):
+        return ""
     repo_log_dir = os.path.abspath(runtime_log_dir(runtime_dir))
     state_dir = resolve_runtime_state_dir(runtime_dir, cfg_log_dir)
     if os.path.normcase(repo_log_dir) == os.path.normcase(state_dir):

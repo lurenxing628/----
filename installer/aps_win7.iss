@@ -56,6 +56,7 @@ Source: "{#LauncherBatSource}"; DestDir: "{app}"; DestName: "{#LauncherBatName}"
 
 [Icons]
 Name: "{commonprograms}\{#MyAppName}"; Filename: "{cmd}"; Parameters: "/c ""{app}\{#LauncherBatName}"""; WorkingDir: "{app}"; IconFilename: "{app}\{#MyAppExeName}"
+Name: "{commonprograms}\{#MyAppName} - 启动诊断"; Filename: "{cmd}"; Parameters: "/k ""{app}\{#LauncherBatName}"""; WorkingDir: "{app}"; IconFilename: "{app}\{#MyAppExeName}"
 Name: "{commondesktop}\{#MyAppName}"; Filename: "{cmd}"; Parameters: "/c ""{app}\{#LauncherBatName}"""; WorkingDir: "{app}"; IconFilename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Registry]

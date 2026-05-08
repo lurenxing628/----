@@ -77,6 +77,14 @@ def _import_paths():
     return importlib.import_module("web.bootstrap.paths")
 
 
+def _import_launcher_paths():
+    repo_root = _repo_root()
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+    sys.modules.pop("web.bootstrap.launcher_paths", None)
+    return importlib.import_module("web.bootstrap.launcher_paths")
+
+
 def test_runtime_base_dir_fallback_logs_to_stderr(monkeypatch, capsys):
     paths_mod = _import_paths()
     original_resolve = paths_mod.Path.resolve
@@ -118,6 +126,28 @@ def test_resolve_prelaunch_log_dir_uses_shared_root(monkeypatch, tmp_path):
     monkeypatch.setenv("APS_SHARED_DATA_ROOT", str(shared_root))
     got = launcher.resolve_prelaunch_log_dir(str(tmp_path / "runtime"), frozen=True)
     assert got == os.path.abspath(str(shared_root / "logs"))
+
+
+def test_runtime_log_mirror_dir_disabled_when_frozen(monkeypatch, tmp_path):
+    launcher_paths = _import_launcher_paths()
+    runtime_dir = tmp_path / "Program Files" / "APS" / "SchedulerApp"
+    shared_log_dir = tmp_path / "ProgramData" / "APS" / "shared-data" / "logs"
+
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+
+    got = launcher_paths.runtime_log_mirror_dir(str(runtime_dir), str(shared_log_dir))
+
+    assert got == ""
+
+
+def test_runtime_log_mirror_dir_keeps_dev_mirror_when_not_frozen(monkeypatch, tmp_path):
+    launcher_paths = _import_launcher_paths()
+    runtime_dir = tmp_path / "repo"
+    shared_log_dir = tmp_path / "shared" / "logs"
+
+    monkeypatch.setattr(sys, "frozen", False, raising=False)
+
+    assert launcher_paths.runtime_log_mirror_dir(str(runtime_dir), str(shared_log_dir)) == os.path.abspath(str(runtime_dir / "logs"))
 
 
 def test_apply_runtime_config_uses_shared_root_for_all_data_dirs(monkeypatch, tmp_path):
@@ -1587,6 +1617,29 @@ def test_launcher_bat_chrome_alive_probe_scopes_to_profile_specific_process():
     )
 
 
+def test_launcher_bat_has_no_unescaped_rc_parentheses_in_if_blocks():
+    text = (Path(_repo_root()) / "assets" / "启动_排产系统_Chrome.bat").read_text(encoding="utf-8")
+
+    assert "App launch command failed (rc=" not in text
+    assert "Chrome start failed (rc=" not in text
+    assert "App launch command failed, rc=%APP_START_RC%." in text
+    assert "Chrome start failed, rc=%START_RC%." in text
+
+
+def test_launcher_bat_digit_validation_does_not_echo_trailing_space_before_pipe():
+    text = (Path(_repo_root()) / "assets" / "启动_排产系统_Chrome.bat").read_text(encoding="utf-8")
+
+    assert "echo !FILE_PORT! | findstr" not in text
+    assert "echo !CONTRACT_PID! | findstr" not in text
+    assert "echo !CONTRACT_PORT! | findstr" not in text
+    assert "echo !LOCK_PID! | findstr" not in text
+
+    assert "echo(!FILE_PORT!| findstr" in text
+    assert "echo(!CONTRACT_PID!| findstr" in text
+    assert "echo(!CONTRACT_PORT!| findstr" in text
+    assert "echo(!LOCK_PID!| findstr" in text
+
+
 def test_launcher_bat_contains_json_health_probe_and_owner_fallback():
     text = (Path(_repo_root()) / "assets" / "启动_排产系统_Chrome.bat").read_text(encoding="utf-8")
     assert "chcp 65001 >nul 2>&1" in text
@@ -1693,6 +1746,15 @@ def test_installer_uninstall_stop_checks_multiple_runtime_roots():
     assert "TryStopKnownApsRuntime" in text
     assert "LegacyDataRootPath" in text
     assert "ExpandConstant('{app}')" in text
+
+
+def test_installers_include_diagnostic_cmd_k_shortcut():
+    repo_root = Path(_repo_root())
+    main_text = (repo_root / "installer" / "aps_win7.iss").read_text(encoding="utf-8")
+    legacy_text = (repo_root / "installer" / "aps_win7_legacy.iss").read_text(encoding="utf-8")
+
+    for text in (main_text, legacy_text):
+        assert ' - 启动诊断"; Filename: "{cmd}"; Parameters: "/k ""{app}\\{#LauncherBatName}"""' in text
 
 
 def test_main_installer_contains_precleanup_and_skip_legacy_migration():

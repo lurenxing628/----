@@ -1,23 +1,23 @@
 # 项目进度
 - Project: APS Test
-- Updated At: 2026-05-08T01:57:53+08:00
+- Updated At: 2026-05-08T10:23:52.598Z
 - Status: active
 - Phase: implementation
 
 ## 当前摘要
 
 <!-- LIMCODE_PROGRESS_SUMMARY_START -->
-- 当前进度：前端说明书字段级补强已完成主体提交；本轮根据复审意见追加最小修复，正在收口供应商列顺序、提醒去向、版本规则和证据状态。
+- 当前进度：尚无里程碑记录
 - 当前焦点：把复审指出的“页面说明会误导填表”和“证据文件仍是旧红灯”的问题收掉，再绑定最终干净质量门禁。
-- 最新结论：说明书主流程和页面说明已经按当前后端行为补清：齐套检查是报错并停止，不会过滤后继续排；批次自动生成工序的提醒是当前页局部提醒；正式/模拟排产结果提醒属于历史版本提醒，可到系统历史查看；供应商、工种、日历、工序工时等字段级拒绝条件已经进入说明和测试合同。
-- 当前阻塞：无已知代码阻塞。本进度文件不是机器证明，最终 clean gate 以 `scripts/run_quality_gate.py --require-clean-worktree` 和忽略目录中的 `evidence/QualityGate/quality_gate_manifest.json` 为准。
-- 下一步：提交本轮 follow-up 后，在干净工作区复跑质量门禁；如门禁通过，即可把本轮说明书补强视为已闭环。
+- 最新结论：本次审查未发现阻断问题。启动脚本、运行日志路径、安装器入口和新增测试整体一致，能对准这次 Win7 启动失败的根因和后续排查痛点。建议按既定流程重新打包安装器，并在 Win7 机器上做一次冷启动实测。
+- 当前阻塞：无已知代码阻塞。本进度文件不是机器证明，最终 clean gate 以 scripts/run_quality_gate.py --require-clean-worktree 和忽略目录中的 evidence/QualityGate/quality_gate_manifest.json 为准。
+- 下一步：重新打包安装器，然后在 Win7 环境安装验证冷启动、复用已有后台和诊断快捷方式。
 <!-- LIMCODE_PROGRESS_SUMMARY_END -->
 
 ## 关联文档
 
 <!-- LIMCODE_PROGRESS_ARTIFACTS_START -->
-- 审查：`.limcode/review/frontend_manual_backend_behavior_three_round_review.md`
+- 审查：`.limcode/review/win7_launcher_runtime_fix_review.md`
 <!-- LIMCODE_PROGRESS_ARTIFACTS_END -->
 
 ## 当前 TODO 快照
@@ -40,7 +40,6 @@
 ## 风险与阻塞
 
 <!-- LIMCODE_PROGRESS_RISKS_START -->
-- risk-dirty-worktree | mitigated | 工作区收口风险：上一轮 clean gate 已通过；本轮 follow-up 修改尚需提交后重新跑 clean gate，最终以机器 manifest 和最终回复为准。
 - risk-schema-v7-duplicate-schedule | active | schema v7 会拦住重复排程老库：已有重复 Schedule(version, op_id) 的老库会在 v7 迁移时被阻止继续升级；部署前要先备份并清理重复排程行。
 - risk-full-test-debt-unchanged | active | full-test-debt 未减少：当前 full-test-debt 仍是 5 条已登记旧 xfail；本轮 P1 不能写成减少 full-test-debt。
 <!-- LIMCODE_PROGRESS_RISKS_END -->
@@ -59,6 +58,11 @@
 - 2026-05-07T15:53:28.907Z | artifact_changed | review | 同步审查里程碑：round1-frontend-entry-render-chain
 - 2026-05-07T16:20:33.962Z | artifact_changed | review | 同步审查里程碑：round2-backend-behavior-alignment
 - 2026-05-08T01:57:53+08:00 | artifact_changed | progress | 根据复审意见更新前端说明书补强收口状态：供应商列顺序、提醒去向、版本规则和证据状态进入 follow-up 收口。
+- 2026-05-08T10:19:53.946Z | artifact_changed | review | 同步审查文档：.limcode/review/win7_launcher_runtime_fix_review.md
+- 2026-05-08T10:21:05.104Z | artifact_changed | review | 同步审查里程碑：review-launcher-bat
+- 2026-05-08T10:21:41.634Z | artifact_changed | review | 同步审查里程碑：review-runtime-paths-installers
+- 2026-05-08T10:23:37.150Z | artifact_changed | review | 同步审查里程碑：review-regression-tests
+- 2026-05-08T10:23:52.598Z | artifact_changed | review | 同步审查结论：.limcode/review/win7_launcher_runtime_fix_review.md
 <!-- LIMCODE_PROGRESS_LOG_END -->
 
 <!-- LIMCODE_PROGRESS_METADATA_START -->
@@ -68,15 +72,15 @@
   "projectId": "aps-test",
   "projectName": "APS Test",
   "createdAt": "2026-04-07T06:34:24.925Z",
-  "updatedAt": "2026-05-08T01:57:53+08:00",
+  "updatedAt": "2026-05-08T10:23:52.598Z",
   "status": "active",
   "phase": "implementation",
   "currentFocus": "把复审指出的“页面说明会误导填表”和“证据文件仍是旧红灯”的问题收掉，再绑定最终干净质量门禁。",
-  "latestConclusion": "说明书主流程和页面说明已经按当前后端行为补清：齐套检查是报错并停止，不会过滤后继续排；批次自动生成工序的提醒是当前页局部提醒；正式/模拟排产结果提醒属于历史版本提醒，可到系统历史查看；供应商、工种、日历、工序工时等字段级拒绝条件已经进入说明和测试合同。",
+  "latestConclusion": "本次审查未发现阻断问题。启动脚本、运行日志路径、安装器入口和新增测试整体一致，能对准这次 Win7 启动失败的根因和后续排查痛点。建议按既定流程重新打包安装器，并在 Win7 机器上做一次冷启动实测。",
   "currentBlocker": "无已知代码阻塞。本进度文件不是机器证明，最终 clean gate 以 scripts/run_quality_gate.py --require-clean-worktree 和忽略目录中的 evidence/QualityGate/quality_gate_manifest.json 为准。",
-  "nextAction": "提交本轮 follow-up 后，在干净工作区复跑质量门禁；如门禁通过，即可把本轮说明书补强视为已闭环。",
+  "nextAction": "重新打包安装器，然后在 Win7 环境安装验证冷启动、复用已有后台和诊断快捷方式。",
   "activeArtifacts": {
-    "review": ".limcode/review/frontend_manual_backend_behavior_three_round_review.md"
+    "review": ".limcode/review/win7_launcher_runtime_fix_review.md"
   },
   "todos": [
     {
@@ -112,12 +116,6 @@
   ],
   "milestones": [],
   "risks": [
-    {
-      "id": "risk-dirty-worktree",
-      "title": "工作区未收口",
-      "description": "上一轮 clean gate 已通过；本轮 follow-up 修改尚需提交后重新跑 clean gate，最终以机器 manifest 和最终回复为准。",
-      "status": "mitigated"
-    },
     {
       "id": "risk-schema-v7-duplicate-schedule",
       "title": "schema v7 会拦住重复排程老库",
@@ -197,6 +195,36 @@
       "type": "artifact_changed",
       "refId": "progress",
       "message": "根据复审意见更新前端说明书补强收口状态：供应商列顺序、提醒去向、版本规则和证据状态进入 follow-up 收口。"
+    },
+    {
+      "at": "2026-05-08T10:19:53.946Z",
+      "type": "artifact_changed",
+      "refId": "review",
+      "message": "同步审查文档：.limcode/review/win7_launcher_runtime_fix_review.md"
+    },
+    {
+      "at": "2026-05-08T10:21:05.104Z",
+      "type": "artifact_changed",
+      "refId": "review",
+      "message": "同步审查里程碑：review-launcher-bat"
+    },
+    {
+      "at": "2026-05-08T10:21:41.634Z",
+      "type": "artifact_changed",
+      "refId": "review",
+      "message": "同步审查里程碑：review-runtime-paths-installers"
+    },
+    {
+      "at": "2026-05-08T10:23:37.150Z",
+      "type": "artifact_changed",
+      "refId": "review",
+      "message": "同步审查里程碑：review-regression-tests"
+    },
+    {
+      "at": "2026-05-08T10:23:52.598Z",
+      "type": "artifact_changed",
+      "refId": "review",
+      "message": "同步审查结论：.limcode/review/win7_launcher_runtime_fix_review.md"
     }
   ],
   "stats": {
@@ -210,8 +238,8 @@
   },
   "render": {
     "rendererVersion": 1,
-    "generatedAt": "2026-05-08T01:57:53+08:00",
-    "bodyHash": "sha256:manual-followup-refresh-2026-05-08"
+    "generatedAt": "2026-05-08T10:23:52.598Z",
+    "bodyHash": "sha256:3a17db359ec801fa578323d213e6fa71e716195b0f98e256eb8686f746349961"
   }
 }
 <!-- LIMCODE_PROGRESS_METADATA_END -->

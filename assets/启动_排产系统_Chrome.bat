@@ -176,7 +176,7 @@ start "" "%APP_EXE%"
 set "APP_START_RC=%ERRORLEVEL%"
 call :log app_spawn_probe=start rc=%APP_START_RC%
 if not "%APP_START_RC%"=="0" (
-  echo [launcher] App launch command failed (rc=%APP_START_RC%).
+  echo [launcher] App launch command failed, rc=%APP_START_RC%.
   echo [launcher] Check shared logs: %LAUNCHER_LOG%
   pause
   exit /b 6
@@ -259,7 +259,7 @@ start "" /D "%CHROME_RUN_DIR%" "%CHROME_EXE%" --user-data-dir="%CHROME_PROFILE_D
 set "START_RC=%ERRORLEVEL%"
 call :log chrome_start_rc=%START_RC%
 if not "%START_RC%"=="0" (
-  echo [launcher] Chrome start failed (rc=%START_RC%).
+  echo [launcher] Chrome start failed, rc=%START_RC%.
   echo [launcher] Check shared logs and run the logged chrome_cmd in cmd.
   pause
   exit /b 5
@@ -517,11 +517,11 @@ del /f /q "!CONTRACT_TMP!" >nul 2>&1
 call :log contract_owner_normalized="%CONTRACT_OWNER%"
 
 if defined CONTRACT_PID (
-  echo !CONTRACT_PID! | findstr /R "^[0-9][0-9]*$" >nul
+  echo(!CONTRACT_PID!| findstr /R "^[0-9][0-9]*$" >nul
   if not !errorlevel!==0 set "CONTRACT_PID="
 )
 if defined CONTRACT_PORT (
-  echo !CONTRACT_PORT! | findstr /R "^[0-9][0-9]*$" >nul
+  echo(!CONTRACT_PORT!| findstr /R "^[0-9][0-9]*$" >nul
   if not !errorlevel!==0 set "CONTRACT_PORT="
 )
 if not "%CONTRACT_VERSION%"=="1" (
@@ -541,7 +541,7 @@ set "LOCK_ACTIVE="
 set "LOCK_QUERY_TMP="
 set "LOCK_QUERY_ERROR="
 if not defined LOCK_PID exit /b 0
-echo !LOCK_PID! | findstr /R "^[0-9][0-9]*$" >nul
+echo(!LOCK_PID!| findstr /R "^[0-9][0-9]*$" >nul
 if not !errorlevel!==0 (
   set "LOCK_ACTIVE=UNKNOWN"
   set "LOCK_QUERY_ERROR=lock_pid_invalid"
@@ -651,7 +651,7 @@ set "FILE_PORT="
 if exist "%PORT_FILE%" (
   set /p FILE_PORT=<"%PORT_FILE%"
   set "FILE_PORT=!FILE_PORT: =!"
-  echo !FILE_PORT! | findstr /R "^[0-9][0-9]*$" >nul
+  echo(!FILE_PORT!| findstr /R "^[0-9][0-9]*$" >nul
   if not !errorlevel!==0 (
     call :log port_file_invalid=!FILE_PORT!
     set "FILE_PORT="
