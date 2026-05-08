@@ -114,6 +114,10 @@ LEGACY_PAGE_TITLE_TERMS = (
 
 
 USER_CORRECTED_TOPIC_SEMANTIC_CASES = {
+    "excel_suppliers": [
+        "对应工种",
+        "启用/停用",
+    ],
     "excel_batches": [
         "齐套和齐套日期默认只是显示信息",
         "只有执行排产时启用“齐套检查”",
@@ -123,9 +127,22 @@ USER_CORRECTED_TOPIC_SEMANTIC_CASES = {
         "齐套日期只对齐套批次作为最早开工日",
     ],
     "material_batch": [
+        "齐套概览",
+        "无需求行默认齐套",
         "齐套日期：它不是到料数量",
         "只有启用“齐套检查”时，它才会影响排产",
+        "新增时到料数量留空",
+        "更新已有行时，到料数量留空",
         "系统不会自动跳过未齐套或部分齐套批次继续排其它批次",
+    ],
+    "scheduler_gantt": [
+        "空白甘特图",
+        "版本不存在",
+        "不要把版本不存在当成普通空白",
+    ],
+    "scheduler_batches_manage": [
+        "自动生成批次工序只处理新增和更新行",
+        "无变化或跳过的批次不会刷新工序",
     ],
     "excel_calendar": [
         "类型可填：工作日 / 假期 / 周末 / 节假日",
@@ -214,10 +231,29 @@ SCHEDULER_PAGE_MANUAL_TITLE_CASES = {
 }
 
 
+HOME_PAGE_MANUAL_REQUIRED_PHRASES = [
+    "第一次使用路线图",
+    "先准备基础资料，再做模拟和正式排产",
+    "不要一上来只导批次",
+    "空工时按 0 小时处理",
+    "日历类型空着按工作日理解",
+    "先模拟排产",
+    "确认没问题再执行排产",
+    "甘特图",
+    "周计划导出",
+    "资源排班中心",
+    "排产优化分析",
+    "排产历史只用来查看、搜索、分页查看版本摘要和结果概况",
+    "不在这里导出或恢复版本",
+    "运行提醒只展示前 5 条",
+]
+
+
 SCHEDULER_PAGE_MANUAL_FORBIDDEN_PHRASES = {
     "scheduler_batches": ["未齐套批次不排", "未齐套批次不进入排产", "不参与排产"],
     "scheduler_config": ["未齐套批次不排", "未齐套批次不进入排产"],
     "scheduler_week_plan": ["导出维度"],
+    "system_history": ["导出、恢复这些版本"],
 }
 
 
@@ -274,6 +310,8 @@ PROCESS_USER_CORRECTED_FORBIDDEN_PHRASES = {
     "excel_suppliers": [
         "列：供应商编号",
         "`供应商编号` 和 `名称` 必填",
+        "新填数据请使用自制/外协",
+        "新填数据请使用 `自制`/`外协`",
     ],
     "process_suppliers": [
         "外协工序会自动从这里取供应商和天数",
@@ -285,6 +323,42 @@ PROCESS_USER_CORRECTED_FORBIDDEN_PHRASES = {
         "外协工序会自动关联启用供应商与默认周期",
     ],
 }
+
+
+MATERIAL_UNSUPPORTED_BATCH_COPY_TERMS = (
+    "Excel",
+    "批量维护",
+)
+
+
+EXCEL_BLANK_DEFAULT_PAGE_CONTRACTS = {
+    "excel_op_types": [
+        "归属可留空",
+        "留空默认自制",
+    ],
+    "excel_batches": [
+        "不填默认普通",
+        "不填默认齐套",
+    ],
+    "excel_calendar": [
+        "工作日不填默认8",
+        "假期不填默认0",
+        "工作日默认1.0",
+    ],
+    "excel_personnel_calendar": [
+        "班次开始写 08:00 这种格式，留空按 08:00",
+        "不填默认是",
+    ],
+    "excel_part_op_hours": [
+        "留空默认 0",
+        "空单元格按 0 处理",
+    ],
+}
+
+
+EXCEL_COMMON_ERROR_BLANK_CONFLICT_COPY = (
+    "数量、工时、周期这类数字如果填成文字、负数、空值或无穷大",
+)
 
 
 def _ensure_repo_on_path(repo_root: str) -> None:
@@ -303,12 +377,15 @@ def main() -> None:
     _assert_excel_page_manual_title_contracts(page_manuals)
     _assert_process_user_corrected_wording_contracts(page_manuals)
     _assert_scheduler_page_manual_title_contracts(page_manuals)
+    _assert_home_page_manual_contract(page_manuals)
     manual_path = os.path.join(repo_root, "static", "docs", "scheduler_manual.md")
     manual_text = _read(manual_path)
     _assert_user_corrected_semantic_contracts(page_manuals, manual_text)
     _assert_ready_check_visible_copy_contract(repo_root, page_manuals, manual_text)
     _assert_excel_common_fragment_contracts(page_manuals)
     _assert_page_manual_refusal_conditions(page_manuals)
+    _assert_material_manual_scope_contracts(page_manuals)
+    _assert_blank_default_pages_do_not_conflict_with_common_errors(page_manuals)
     manual_heading_ids = _extract_heading_ids(manual_text)
 
     endpoint_to_manual_id = dict(page_manuals.ENDPOINT_TO_MANUAL_ID)
@@ -363,6 +440,7 @@ def main() -> None:
         "system.logs_page",
         "system.history_page",
         "process.excel_part_ops_page",
+        "dashboard.index",
     }
     assert len(endpoint_to_manual_id) == len(legacy_endpoints), f"页面级说明 endpoint 数量异常：{len(endpoint_to_manual_id)}"
 
@@ -455,8 +533,17 @@ def main() -> None:
         "excel_op_types": ["自制 / 外协", "新文件请只填这两个中文选项"],
         "excel_suppliers": ["留空、`0`、负数、文字、`TRUE/FALSE`、`NaN`、`Inf`、`Infinity`", "在用/正常/禁用", "状态和备注列"],
         "excel_calendar": ["留空按 `工作日` 处理", "高级设置中的“假期默认效率”"],
+        "excel_part_op_hours": ["留空默认 0", "只补空工时"],
+        "scheduler_batches": ["当前页只展示前 5 条", "如果排产成功但有运行提醒，页面只列前 5 条"],
+        "scheduler_batches_manage": ["当前页只展示前 3 条模板提醒"],
+        "scheduler_batch_detail": ["生成或刷新后如果看到前 3 条提醒"],
         "material_batch": ["需求数量必须大于 0", "到料数量不填会按已到齐处理", "明确填 0 或不足数量才会显示未齐套"],
         "system_backup": ["恢复前自动备份", "回滚到恢复前自动备份"],
+        "system_history": [
+            "排产历史",
+            "只展示普通用户需要看的结果、完成状态和提醒",
+            "不会生成、删除或恢复排产历史",
+        ],
     }
     for manual_id, phrases in manual_semantic_cases.items():
         payload = page_manuals.build_manual_payload(manual_id, include_sections=True)
@@ -472,11 +559,36 @@ def main() -> None:
         '"需求数量"必须大于 0',
         "如果恢复过程失败，系统会尝试恢复到这份备份",
         "批量删除前先确认筛选条件、已选条数和本次删除范围",
+        "最后更新：2026年5月",
+        "空工时按 0 小时处理",
+        "日历类型空着按工作日理解",
+        "只用来查看、搜索、分页查看版本摘要和结果概况，不在这里导出或恢复版本",
     ]
     for phrase in full_manual_phrases:
         assert phrase in manual_text, f"总说明书缺少已核实语义片段：{phrase}"
+    assert "用来查看、导出、恢复这些版本" not in manual_text, "总说明书不应再把排产历史写成可导出或恢复版本"
 
     print("OK")
+
+
+def _assert_material_manual_scope_contracts(page_manuals) -> None:
+    for manual_id in ("material_master", "material_batch"):
+        payload = page_manuals.build_manual_payload(manual_id, include_sections=True)
+        assert payload is not None, f"{manual_id} 无法构建物料说明 payload"
+        payload_text = _build_payload_text(payload)
+        for term in MATERIAL_UNSUPPORTED_BATCH_COPY_TERMS:
+            assert term not in payload_text, f"{manual_id} 不应出现当前物料页面不支持的说法：{term}"
+
+
+def _assert_blank_default_pages_do_not_conflict_with_common_errors(page_manuals) -> None:
+    for manual_id, required_phrases in EXCEL_BLANK_DEFAULT_PAGE_CONTRACTS.items():
+        payload = page_manuals.build_manual_payload(manual_id, include_sections=True)
+        assert payload is not None, f"{manual_id} 无法构建允许留空默认值页面 payload"
+        payload_text = _build_payload_text(payload)
+        for phrase in required_phrases:
+            assert phrase in payload_text, f"{manual_id} 缺少允许留空默认值说明：{phrase}"
+        for forbidden in EXCEL_COMMON_ERROR_BLANK_CONFLICT_COPY:
+            assert forbidden not in payload_text, f"{manual_id} 不能套用会否定留空默认值的通用错误说明：{forbidden}"
 
 
 def _assert_user_corrected_semantic_contracts(page_manuals, manual_text: str) -> None:
@@ -564,6 +676,10 @@ def _assert_excel_common_fragment_contracts(page_manuals) -> None:
     assert "新增、更新、跳过、错误" in write_result, "导入完成统计必须写新增/更新/跳过/错误"
     assert "预览里的“无变化”常会并入跳过" in write_result, "导入完成统计必须写清无变化可能并入跳过"
     assert "新增、更新、无变化、跳过" not in write_result, "导入完成统计不应再承诺一定单独显示无变化"
+    for forbidden in EXCEL_COMMON_ERROR_BLANK_CONFLICT_COPY:
+        assert forbidden not in str(shared_fragments.get("excel_common_errors") or ""), (
+            f"通用错误说明不能把允许留空默认值的字段一概说成会报错：{forbidden}"
+        )
 
 
 def _assert_page_manual_refusal_conditions(page_manuals) -> None:
@@ -654,6 +770,23 @@ def _assert_scheduler_page_manual_title_contracts(page_manuals) -> None:
         _assert_no_legacy_page_title_terms(endpoint, current_manual)
 
 
+def _assert_home_page_manual_contract(page_manuals) -> None:
+    bundle = page_manuals.build_page_manual_bundle("dashboard.index")
+    assert bundle is not None, "dashboard.index 应可构建首页页面级说明 bundle"
+    current_manual = bundle.get("current_manual") or {}
+    assert current_manual.get("manual_id") == "dashboard_first_run", "首页说明 manual_id 不应漂移"
+    assert current_manual.get("title") == "第一次使用路线图", "首页说明标题不应漂移"
+    payload_text = _build_payload_text(current_manual)
+    for phrase in HOME_PAGE_MANUAL_REQUIRED_PHRASES:
+        assert phrase in payload_text, f"首页第一次使用路线图缺少关键文案：{phrase}"
+    related_manuals = list(bundle.get("related_manuals") or [])
+    assert related_manuals, "首页说明应提供相关页面说明，方便新用户继续看"
+    related_ids = {str(item.get("manual_id") or "") for item in related_manuals}
+    assert {"excel_routes", "excel_part_op_hours", "excel_calendar", "scheduler_batches"} <= related_ids, (
+        f"首页说明 related_manuals 不完整：{sorted(related_ids)}"
+    )
+
+
 def test_page_manual_registry_contract() -> None:
     main()
 
@@ -686,6 +819,13 @@ def test_scheduler_page_manual_title_contracts() -> None:
     _assert_scheduler_page_manual_title_contracts(page_manuals)
 
 
+def test_home_page_manual_contract() -> None:
+    repo_root = _find_repo_root()
+    _ensure_repo_on_path(repo_root)
+    page_manuals = importlib.import_module("web.viewmodels.page_manuals")
+    _assert_home_page_manual_contract(page_manuals)
+
+
 def test_user_corrected_manual_semantic_contracts() -> None:
     repo_root = _find_repo_root()
     _ensure_repo_on_path(repo_root)
@@ -699,6 +839,20 @@ def test_page_manual_refusal_conditions() -> None:
     _ensure_repo_on_path(repo_root)
     page_manuals = importlib.import_module("web.viewmodels.page_manuals")
     _assert_page_manual_refusal_conditions(page_manuals)
+
+
+def test_material_manual_scope_contracts() -> None:
+    repo_root = _find_repo_root()
+    _ensure_repo_on_path(repo_root)
+    page_manuals = importlib.import_module("web.viewmodels.page_manuals")
+    _assert_material_manual_scope_contracts(page_manuals)
+
+
+def test_blank_default_pages_do_not_conflict_with_common_errors() -> None:
+    repo_root = _find_repo_root()
+    _ensure_repo_on_path(repo_root)
+    page_manuals = importlib.import_module("web.viewmodels.page_manuals")
+    _assert_blank_default_pages_do_not_conflict_with_common_errors(page_manuals)
 
 
 if __name__ == "__main__":

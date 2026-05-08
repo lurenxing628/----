@@ -395,8 +395,43 @@ def _extract_paragraph_containing(markdown_text: str, needle: str) -> str:
     raise AssertionError(f"说明书缺少段落：{needle}")
 
 
+def _extract_section(markdown_text: str, heading: str) -> str:
+    start = markdown_text.find(heading)
+    assert start >= 0, f"说明书缺少章节：{heading}"
+    rest = markdown_text[start + len(heading) :]
+    next_heading = re.search(r"^##\s+", rest, flags=re.M)
+    end = start + len(heading) + next_heading.start() if next_heading else len(markdown_text)
+    return markdown_text[start:end]
+
+
+def _assert_ordered_phrases(markdown_text: str, label: str, phrases: tuple[str, ...]) -> None:
+    cursor = -1
+    for phrase in phrases:
+        idx = markdown_text.find(phrase, cursor + 1)
+        assert idx >= 0, f"{label} 缺少流程节点：{phrase}"
+        assert idx > cursor, f"{label} 流程节点顺序错误：{phrase}"
+        cursor = idx
+
+
+def _assert_history_section_does_not_claim_export_or_restore(markdown_text: str, label: str) -> None:
+    section = _extract_section(markdown_text, "### 10.3 排产历史")
+    for needle in ("不能导出版本", "不能恢复某个排产版本"):
+        assert needle in section, f"{label} 排产历史章节缺少边界说明：{needle}"
+    forbidden_positive_phrases = (
+        "用来查看、导出、恢复这些版本",
+        "可以导出排产历史",
+        "可以恢复排产历史",
+        "支持导出排产历史",
+        "支持恢复排产历史",
+        "导出历史版本",
+        "恢复此版本",
+    )
+    for phrase in forbidden_positive_phrases:
+        assert phrase not in section, f"{label} 排产历史章节仍像是在承诺导出/恢复能力：{phrase}"
+
+
 def _assert_scheduler_manual_required_content(markdown_text: str, label: str) -> None:
-    for needle in ("TRUE/FALSE", "NaN", "Inf", "Infinity", "5e0", "1E2", "最后更新：2026年4月"):
+    for needle in ("TRUE/FALSE", "NaN", "Inf", "Infinity", "5e0", "1E2", "最后更新：2026年5月"):
         assert needle in markdown_text, f"{label} 缺少说明书必备内容：{needle}"
 
     for needle in (
@@ -408,13 +443,33 @@ def _assert_scheduler_manual_required_content(markdown_text: str, label: str) ->
         "不填版本、版本为空，或版本填 `latest`",
         "输入不存在的数字版本时",
         "输入 `abc` 这类不是数字的版本号",
+        "空工时按 0 小时处理",
+        "日历类型空着按工作日理解",
+        "连续外协周期示例",
+        "只用来查看、搜索、分页查看版本摘要和结果概况，不在这里导出或恢复版本",
     ):
         assert needle in markdown_text, f"{label} 缺少说明书必备内容：{needle}"
+    assert "用来查看、导出、恢复这些版本" not in markdown_text, f"{label} 不应再写排产历史可以导出或恢复版本"
 
     batch_warning_paragraph = _extract_paragraph_containing(markdown_text, "自动生成批次工序时产生提醒")
     assert "当前页面确认写入后只会展示去重后的前 3 条提醒" in batch_warning_paragraph
     assert "另有 X 条提醒" in batch_warning_paragraph or "剩余提醒" in batch_warning_paragraph
     assert "系统历史" not in batch_warning_paragraph, f"{label} 的批次剩余提醒口径不应再要求去系统历史：{batch_warning_paragraph}"
+
+    full_flow_section = _extract_section(markdown_text, "## 6. 排产操作：完整指南")
+    _assert_ordered_phrases(
+        full_flow_section,
+        f"{label} 完整排产流程",
+        (
+            "先建基础资料",
+            "再建批次",
+            "生成并补齐批次工序",
+            "先模拟排产",
+            "再正式排产",
+            "最后复盘和下发",
+        ),
+    )
+    _assert_history_section_does_not_claim_export_or_restore(markdown_text, label)
 
 
 def main() -> None:

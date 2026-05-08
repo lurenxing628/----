@@ -39,6 +39,28 @@ LEGACY_EXCEL_ENTRY_TERMS = (
 )
 
 
+HOME_WORKSPACE_BUTTON_CONTRACTS = (
+    ("执行排产", "scheduler.batches_page", {}),
+    ("批次管理", "scheduler.batches_manage_page", {}),
+    ("设备甘特图", "scheduler.gantt_page", {"view": "machine"}),
+    ("资源排班", "scheduler.resource_dispatch_page", {}),
+    ("工艺模板", "process.list_parts", {}),
+    ("设备管理", "equipment.list_page", {}),
+    ("人员管理", "personnel.list_page", {}),
+    ("工作日历", "scheduler.calendar_page", {}),
+    ("报表中心", "reports.index", {}),
+    ("周计划", "scheduler.week_plan_page", {}),
+    ("排产历史", "system.history_page", {}),
+)
+
+
+HOME_WORKSPACE_GROUPS = (
+    "排产作业",
+    "基础资料",
+    "分析复盘",
+)
+
+
 def find_repo_root() -> str:
     here = os.path.dirname(os.path.abspath(__file__))
     repo_root = os.path.abspath(os.path.join(here, ".."))
@@ -121,6 +143,16 @@ def _assert_manual_markdown_scope(repo_root: str) -> str:
     _assert_no_legacy_excel_entry_terms(manual_text, "系统使用说明")
     _assert_contains(manual_text, "批量维护", "系统使用说明主流程入口应使用“批量维护”叫法")
     return manual_text
+
+
+def _assert_home_workspace_buttons(app, content: str, label: str) -> None:
+    for group_title in HOME_WORKSPACE_GROUPS:
+        _assert_contains(content, group_title, f"{label} 首页缺少常用工作区分组：{group_title}")
+
+    for button_label, endpoint, values in HOME_WORKSPACE_BUTTON_CONTRACTS:
+        href = _build_url(app, endpoint, **values).replace("&", "&amp;")
+        _assert_contains(content, button_label, f"{label} 首页缺少真实工作区按钮：{button_label}")
+        _assert_contains(content, href, f"{label} 首页工作区按钮链接不正确：{button_label}")
 
 
 def _extract_href_by_class(content: str, class_name: str) -> str | None:
@@ -231,7 +263,18 @@ def main() -> None:
         if home_resp.status_code != 200:
             raise RuntimeError(f"{ui_mode} 模式访问首页返回非 200：{home_resp.status_code}")
         home_html = home_resp.get_data(as_text=True)
-        _assert_not_contains(home_html, "floating-manual-btn", f"{ui_mode} 模式下首页不应显示悬浮说明入口")
+        home_manual_href = _build_url(
+            app,
+            "scheduler.config_manual_page",
+            page="dashboard.index",
+            src=_encode_src("/"),
+        )
+        _assert_contains(home_html, "floating-manual-btn", f"{ui_mode} 模式下首页应显示第一次使用说明入口")
+        _assert_contains(home_html, "本页说明", f"{ui_mode} 模式下首页说明入口文案缺失")
+        _assert_contains(home_html, home_manual_href.replace("&", "&amp;"), f"{ui_mode} 模式下首页说明入口链接不正确")
+        _assert_contains(home_html, "第一次使用先按路线图走", f"{ui_mode} 模式下首页说明速览缺少新手路线图标题")
+        _assert_contains(home_html, "运行提醒只展示前 5 条", f"{ui_mode} 模式下首页说明速览缺少运行提醒前 5 条口径")
+        _assert_home_workspace_buttons(app, home_html, f"{ui_mode} 模式")
 
         full_material_url = _build_url(app, "scheduler.config_manual_page", src=material_src)
         manual_resp = client.get(full_material_url, headers=_mode_headers(ui_mode))
@@ -298,6 +341,24 @@ def main() -> None:
             raise RuntimeError(f"{ui_mode} 模式下页面级说明右列结构顺序异常")
         _assert_not_contains(page_material_html, "scheduler-subnav-main", f"{ui_mode} 模式下页面级说明不应显示排产子导航")
         _assert_not_contains(page_material_html, "floating-manual-btn", f"{ui_mode} 模式下页面级说明页不应显示悬浮入口")
+
+        page_home_url = _build_url(
+            app,
+            "scheduler.config_manual_page",
+            page="dashboard.index",
+            src=_encode_src("/"),
+        )
+        page_home_resp = client.get(page_home_url, headers=_mode_headers(ui_mode))
+        if page_home_resp.status_code != 200:
+            raise RuntimeError(f"{ui_mode} 模式访问首页页面级说明返回非 200：{page_home_resp.status_code}")
+        page_home_html = page_home_resp.get_data(as_text=True)
+        _assert_contains(page_home_html, "本页说明 - 第一次使用路线图", f"{ui_mode} 模式下首页页面级说明标题不正确")
+        _assert_contains(page_home_html, "先准备资料", f"{ui_mode} 模式下首页页面级说明缺少资料准备步骤")
+        _assert_contains(page_home_html, "先模拟，再正式排产", f"{ui_mode} 模式下首页页面级说明缺少排产步骤")
+        _assert_contains(page_home_html, "排完去哪里看", f"{ui_mode} 模式下首页页面级说明缺少结果查看步骤")
+        _assert_contains(page_home_html, "不在这里导出或恢复版本", f"{ui_mode} 模式下首页页面级说明缺少排产历史边界")
+        _assert_contains(page_home_html, "当前页只展示前 5 条", f"{ui_mode} 模式下首页页面级说明缺少运行提醒前 5 条口径")
+        _assert_not_contains(page_home_html, "scheduler-subnav-main", f"{ui_mode} 模式下首页页面级说明不应显示排产子导航")
         expected_download_href = _build_url(
             app,
             "scheduler.config_manual_download",

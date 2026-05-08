@@ -38,6 +38,7 @@ DROPDOWN_MANUAL_CONTRACTS: Mapping[str, Mapping[str, Any]] = {
         "manual_id": "excel_op_types",
         "manual_heading": "#### 1.5.1 工种配置",
         "dropdowns": {"归属": ["自制", "外协"]},
+        "compatible_values": {"归属": ["内部", "外部"]},
         "page_phrases": ["归属可填：自制 / 外协", "新文件请只填这两个中文选项"],
         "manual_phrases": ["填 `自制` 或 `外协`", "新文件请只填这两个中文值"],
         "forbidden_page_phrases": ["内部/外部", "内部 / 外部", "内部、外部", "内部，外部"],
@@ -47,8 +48,49 @@ DROPDOWN_MANUAL_CONTRACTS: Mapping[str, Mapping[str, Any]] = {
         "manual_id": "excel_suppliers",
         "manual_heading": "#### 1.5.2 供应商配置",
         "dropdowns": {"状态": ["启用", "停用"]},
-        "page_phrases": ["状态可填 启用/停用", "在用/正常/禁用", "状态和备注"],
+        "compatible_values": {"状态": ["在用", "正常", "禁用"]},
+        "page_phrases": ["启用/停用", "对应工种", "状态和备注"],
         "manual_phrases": ["`启用`/`停用`", "`在用`/`正常`/`禁用`", "状态", "备注"],
+        "forbidden_page_phrases": ["新填数据请使用自制/外协", "新填数据请使用 `自制`/`外协`"],
+        "forbidden_manual_phrases": [],
+    },
+    "人员基本信息.xlsx": {
+        "manual_id": "excel_personnel",
+        "manual_heading": "#### 1.5.5 人员基本信息",
+        "dropdowns": {"状态": ["在岗", "停用"]},
+        "compatible_values": {"状态": ["启用", "可用", "正常", "休假", "离岗"]},
+        "page_phrases": ["状态", "在岗", "停用"],
+        "manual_phrases": ["`在岗` 或 `停用`"],
+        "forbidden_page_phrases": [],
+        "forbidden_manual_phrases": [],
+    },
+    "设备信息.xlsx": {
+        "manual_id": "excel_equipment",
+        "manual_heading": "#### 1.5.6 设备信息",
+        "dropdowns": {"状态": ["可用", "停用", "维修"]},
+        "compatible_values": {"状态": ["启用", "正常", "禁用", "不可用", "维护", "维护中", "维修中", "保养"]},
+        "page_phrases": ["状态", "可用", "停用", "维修"],
+        "manual_phrases": ["`可用`、`停用`、`维修`"],
+        "forbidden_page_phrases": [],
+        "forbidden_manual_phrases": [],
+    },
+    "批次信息.xlsx": {
+        "manual_id": "excel_batches",
+        "manual_heading": "#### 1.5.10 批次信息（排产核心）",
+        "dropdowns": {"优先级": ["普通", "急件", "特急"], "齐套": ["齐套", "未齐套", "部分齐套"]},
+        "compatible_values": {"优先级": ["急"], "齐套": ["是", "否"]},
+        "page_phrases": ["优先级", "普通", "急件", "特急", "齐套", "未齐套", "部分齐套"],
+        "manual_phrases": ["`普通`、`急件`、`特急`", "`齐套`、`未齐套`、`部分齐套`"],
+        "forbidden_page_phrases": [],
+        "forbidden_manual_phrases": [],
+    },
+    "工作日历.xlsx": {
+        "manual_id": "excel_calendar",
+        "manual_heading": "#### 1.5.8 工作日历",
+        "dropdowns": {"类型": ["工作日", "假期"], "允许普通件": ["是", "否"], "允许急件": ["是", "否"]},
+        "compatible_values": {"类型": ["周末", "节假日"]},
+        "page_phrases": ["类型", "工作日", "假期", "允许普通件", "允许急件", "是", "否"],
+        "manual_phrases": ["`工作日`", "`假期`", "`是` 或 `否`"],
         "forbidden_page_phrases": [],
         "forbidden_manual_phrases": [],
     },
@@ -84,6 +126,13 @@ def _manual_payload_text(payload: Mapping[str, Any]) -> str:
 
 def _extract_markdown_section(markdown_text: str, heading: str) -> str:
     start = markdown_text.find(heading)
+    if start < 0 and heading.startswith("#### "):
+        heading_title = re.sub(r"^####\s+\d+(?:\.\d+)*\s+", "", heading).strip()
+        pattern = rf"^####\s+\d+(?:\.\d+)*\s+{re.escape(heading_title)}\s*$"
+        m = re.search(pattern, markdown_text, flags=re.M)
+        if m:
+            start = m.start()
+            heading = m.group(0)
     assert start >= 0, f"总说明书缺少章节标题：{heading}"
     rest = markdown_text[start + len(heading) :]
     next_heading = re.search(r"^####\s+\d+(?:\.\d+)*\s+", rest, flags=re.M)
@@ -97,6 +146,47 @@ def _is_allowed_legacy_op_type_note(section_text: str, phrase: str) -> bool:
         and "旧模板中已有数据行不会被系统擅自改写" in section_text
         and "新填数据请使用 `自制`/`外协`" in section_text
     )
+
+
+def _compact_text(text: str) -> str:
+    return re.sub(r"\s+", "", str(text or ""))
+
+
+def _value_has_compatibility_context(text: str, value: str) -> bool:
+    markers = ("旧文件", "旧模板", "以前", "兼容", "也能识别", "尽量读懂", "也可以填", "按假期")
+    for match in re.finditer(re.escape(value), text):
+        start = max(0, match.start() - 50)
+        end = min(len(text), match.end() + 50)
+        context = text[start:end]
+        if any(marker in context for marker in markers):
+            return True
+    return False
+
+
+def _assert_dropdown_copy_distinguishes_recommended_and_compatible(
+    text: str,
+    *,
+    label: str,
+    dropdowns: Mapping[str, Sequence[str]],
+    compatible_values: Mapping[str, Sequence[str]],
+) -> None:
+    compact = _compact_text(text)
+    for column_name, recommended_values in dropdowns.items():
+        assert column_name in text, f"{label} 缺少下拉字段名：{column_name}"
+        for value in recommended_values:
+            assert value in text, f"{label} 缺少模板推荐下拉值：{column_name}={value}"
+        joined = "/".join(str(value) for value in recommended_values)
+        assert joined in compact or any(marker in text for marker in ("新文件", "新表", "新填数据", "推荐填", "建议填")), (
+            f"{label} 应把 {column_name} 的推荐值和兼容旧写法分开说明：{joined}"
+        )
+
+    for column_name, values in compatible_values.items():
+        for value in values:
+            if value not in text:
+                continue
+            assert _value_has_compatibility_context(text, value), (
+                f"{label} 里的兼容写法没有标清是旧写法或兼容写法：{column_name}={value}"
+            )
 
 
 def _definition_enum_values_by_header(definition: Mapping[str, Any]) -> dict[str, list[str]]:
@@ -365,6 +455,18 @@ def _assert_process_excel_dropdown_values_match_page_and_full_manuals() -> None:
             assert phrase in page_text, f"{contract['manual_id']} 页面说明缺少推荐值：{phrase}"
         for phrase in contract["manual_phrases"]:
             assert phrase in full_manual_section, f"{contract['manual_heading']} 说明书章节缺少推荐值：{phrase}"
+        _assert_dropdown_copy_distinguishes_recommended_and_compatible(
+            page_text,
+            label=f"{contract['manual_id']} 页面说明",
+            dropdowns=contract["dropdowns"],
+            compatible_values=contract.get("compatible_values", {}),
+        )
+        _assert_dropdown_copy_distinguishes_recommended_and_compatible(
+            full_manual_section,
+            label=f"{contract['manual_heading']} 说明书章节",
+            dropdowns=contract["dropdowns"],
+            compatible_values=contract.get("compatible_values", {}),
+        )
         for phrase in contract["forbidden_page_phrases"]:
             assert phrase not in page_text, f"{contract['manual_id']} 页面说明仍包含旧说法：{phrase}"
         for phrase in contract["forbidden_manual_phrases"]:
