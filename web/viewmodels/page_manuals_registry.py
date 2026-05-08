@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict
 
 ENDPOINT_TO_MANUAL_ID: Dict[str, str] = {
+    "dashboard.index": "dashboard_first_run",
     "excel_demo.index": "excel_demo",
     "personnel.list_page": "personnel_management",
     "personnel.detail_page": "personnel_detail",
