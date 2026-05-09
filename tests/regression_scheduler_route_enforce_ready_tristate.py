@@ -36,7 +36,10 @@ def _invoke_scheduler_run(form_data: Any):
         app = Flask(__name__)
         app.secret_key = "aps-test-secret"
         with app.test_request_context("/scheduler/run", method="POST", data=form_data):
-            g.services = SimpleNamespace(schedule_service=_StubScheduleService())
+            g.services = SimpleNamespace(
+                schedule_service=_StubScheduleService(),
+                gantt_service=SimpleNamespace(get_version_time_span_dates=lambda _version: None),
+            )
             g.app_logger = None
             g.op_logger = None
             resp = route_mod.run_schedule()
@@ -64,7 +67,10 @@ def _invoke_scheduler_simulate(form_data: Any):
         app = Flask(__name__)
         app.secret_key = "aps-test-secret"
         with app.test_request_context("/scheduler/simulate", method="POST", data=form_data):
-            g.services = SimpleNamespace(schedule_service=_StubScheduleService())
+            g.services = SimpleNamespace(
+                schedule_service=_StubScheduleService(),
+                gantt_service=SimpleNamespace(get_version_time_span_dates=lambda _version: None),
+            )
             g.app_logger = None
             g.op_logger = None
             resp = route_mod.simulate_schedule()

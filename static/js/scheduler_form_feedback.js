@@ -21,6 +21,10 @@
     return isFinite(n);
   }
 
+  function isBlank(value) {
+    return !trim(value);
+  }
+
   function setFieldError(field, message) {
     if (!field) return;
     var wrap = field.closest ? field.closest(".form-field") : null;
@@ -141,24 +145,14 @@
     var isInternal = row.getAttribute("data-linkage-row") === "1";
 
     if (isInternal) {
-      var machine = controlInRow(row, formId, "machine_id");
-      var operator = controlInRow(row, formId, "operator_id");
       var setupHours = controlInRow(row, formId, "setup_hours");
       var unitHours = controlInRow(row, formId, "unit_hours");
 
-      if (!trim(machine && machine.value)) {
-        messages.push("请选择设备");
-        setControlInvalid(machine, true);
-      }
-      if (!trim(operator && operator.value)) {
-        messages.push("请选择人员");
-        setControlInvalid(operator, true);
-      }
-      if (!isFiniteNumber(setupHours && setupHours.value) || Number(setupHours.value) < 0) {
+      if (!isBlank(setupHours && setupHours.value) && (!isFiniteNumber(setupHours.value) || Number(setupHours.value) < 0)) {
         messages.push("换型工时要填 0 或正数");
         setControlInvalid(setupHours, true);
       }
-      if (!isFiniteNumber(unitHours && unitHours.value) || Number(unitHours.value) < 0) {
+      if (!isBlank(unitHours && unitHours.value) && (!isFiniteNumber(unitHours.value) || Number(unitHours.value) < 0)) {
         messages.push("单件工时要填 0 或正数");
         setControlInvalid(unitHours, true);
       }

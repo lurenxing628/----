@@ -227,9 +227,26 @@ def test_manuals_keep_backend_supported_english_aliases_but_mark_them_as_compati
             _read("web/viewmodels/page_manuals_process_excel.py"),
         )
     )
-    scheduler_manuals = _read("web/viewmodels/page_manuals_scheduler.py")
-    personnel_manuals = _read("web/viewmodels/page_manuals_personnel.py")
-    equipment_manuals = _read("web/viewmodels/page_manuals_equipment.py")
+    scheduler_manuals = "\n".join(
+        (
+            _read("web/viewmodels/page_manuals_scheduler.py"),
+            _read("web/viewmodels/page_manuals_scheduler_admin.py"),
+            _read("web/viewmodels/page_manuals_scheduler_outputs.py"),
+            _read("web/viewmodels/page_manuals_scheduler_week_plan.py"),
+        )
+    )
+    personnel_manuals = "\n".join(
+        (
+            _read("web/viewmodels/page_manuals_personnel.py"),
+            _read("web/viewmodels/page_manuals_personnel_excel.py"),
+        )
+    )
+    equipment_manuals = "\n".join(
+        (
+            _read("web/viewmodels/page_manuals_equipment.py"),
+            _read("web/viewmodels/page_manuals_equipment_excel.py"),
+        )
+    )
     full_manual = _read("static/docs/scheduler_manual.md")
     manual_sources = "\n".join((process_manuals, scheduler_manuals, personnel_manuals, equipment_manuals, full_manual))
 

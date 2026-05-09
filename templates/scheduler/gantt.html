@@ -17,11 +17,10 @@
       'manual': '手动排产'
     } %}
   {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'simulated': '模拟排产', 'ok': '成功', 'fail': '失败', 'ok2': '成功'} %}
-  {# 导航基准：视图切换沿用后端算出的有效日期范围；周切换锚定当前显示范围。 #}
-  {% set base_week_start = ((request.args.get('week_start') or '') | trim) or week_start %}
-  {% set base_start_date = (((request.args.get('start_date') or '') | trim) or start_date) %}
-  {% set base_end_date = (((request.args.get('end_date') or '') | trim) or end_date) %}
-  {% set nav_offset = 0 if (base_start_date or base_end_date) else offset %}
+  {# 导航基准只使用后端算出的有效范围，避免旧查询参数继续污染链接。 #}
+  {% set base_week_start = week_start %}
+  {% set base_start_date = start_date %}
+  {% set base_end_date = end_date %}
 
   {{ ui.aps_page_hero(
     '甘特图（' ~ ('设备视图' if view=='machine' else '人员视图') ~ '）',
@@ -65,11 +64,11 @@
         <label>视图</label>
         <div class="aps-form-actions">
           {% if view == 'machine' %}
-            {{ ui.link_button('设备视图', url_for('scheduler.gantt_page', view='machine', week_start=base_week_start, offset=nav_offset, version=version, start_date=base_start_date, end_date=base_end_date), 'primary', 'sm') }}
-            {{ ui.link_button('人员视图', url_for('scheduler.gantt_page', view='operator', week_start=base_week_start, offset=nav_offset, version=version, start_date=base_start_date, end_date=base_end_date), 'secondary', 'sm') }}
+            {{ ui.link_button('设备视图', url_for('scheduler.gantt_page', view='machine', version=version, start_date=base_start_date, end_date=base_end_date), 'primary', 'sm') }}
+            {{ ui.link_button('人员视图', url_for('scheduler.gantt_page', view='operator', version=version, start_date=base_start_date, end_date=base_end_date), 'secondary', 'sm') }}
           {% else %}
-            {{ ui.link_button('设备视图', url_for('scheduler.gantt_page', view='machine', week_start=base_week_start, offset=nav_offset, version=version, start_date=base_start_date, end_date=base_end_date), 'secondary', 'sm') }}
-            {{ ui.link_button('人员视图', url_for('scheduler.gantt_page', view='operator', week_start=base_week_start, offset=nav_offset, version=version, start_date=base_start_date, end_date=base_end_date), 'primary', 'sm') }}
+            {{ ui.link_button('设备视图', url_for('scheduler.gantt_page', view='machine', version=version, start_date=base_start_date, end_date=base_end_date), 'secondary', 'sm') }}
+            {{ ui.link_button('人员视图', url_for('scheduler.gantt_page', view='operator', version=version, start_date=base_start_date, end_date=base_end_date), 'primary', 'sm') }}
           {% endif %}
         </div>
       </div>
@@ -93,10 +92,6 @@
         <div class="form-field">
           <label>排产区间（止）</label>
           <input type="date" name="end_date" value="{{ end_date }}" class="w-160">
-        </div>
-        <div class="form-field">
-          <label title="任意日期，系统会自动归到周一">指定周</label>
-          <input name="week_start" value="{{ week_start }}" placeholder="如：2026-03-13" class="w-160">
         </div>
         <div class="form-field">
           <label>版本</label>

@@ -112,10 +112,16 @@ def main() -> None:
     with open(boot_js_path, "r", encoding="utf-8") as f:
         src = f.read()
     _assert_true("const hasEffectiveRange = !!(cfg.startDate || cfg.endDate);" in src, "gantt_boot.js 缺少有效区间判断")
+    range_idx = src.index("const hasEffectiveRange = !!(cfg.startDate || cfg.endDate);")
+    explicit_idx = src.index("if (hasEffectiveRange)", range_idx)
+    start_idx = src.index('url.searchParams.set("start_date", cfg.startDate)', explicit_idx)
+    end_idx = src.index('url.searchParams.set("end_date", cfg.endDate)', start_idx)
+    week_branch_idx = src.index("} else {", end_idx)
+    week_idx = src.index('url.searchParams.set("week_start", cfg.weekStart)', week_branch_idx)
+    offset_idx = src.index('url.searchParams.set("offset", String(cfg.offset))', week_idx)
     _assert_true(
-        'if (!hasEffectiveRange && typeof cfg.offset !== "undefined") url.searchParams.set("offset", String(cfg.offset));'
-        in src,
-        "gantt_boot.js 缺少 offset 防重复逻辑",
+        explicit_idx < start_idx < end_idx < week_branch_idx < week_idx < offset_idx,
+        "gantt_boot.js 缺少 start/end 与 week_start/offset 二选一逻辑",
     )
 
     print("OK")

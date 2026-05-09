@@ -4,7 +4,8 @@ from typing import Any, Dict, Optional, Sequence, cast
 
 from flask import flash, g, redirect, request, url_for
 
-from core.infrastructure.errors import AppError
+from core.infrastructure.errors import AppError, ValidationError
+from core.shared.strict_parse import parse_required_int
 from web.routes.form_values import form_optional_toggle_bool, form_toggle_bool
 from web.viewmodels.scheduler_run_view_result import RunScheduleViewResult, build_run_schedule_view_result
 
@@ -18,20 +19,15 @@ from .scheduler_user_messages import scheduler_user_visible_app_error_message
 
 
 def _build_success_gantt_redirect_kwargs(result: dict) -> Dict[str, Any]:
-    kwargs: Dict[str, Any] = {"view": "machine"}
-    try:
-        version = int(result.get("version") or 0)
-    except (TypeError, ValueError):
-        version = 0
-    if version > 0:
-        kwargs["version"] = version
+    if "version" not in result:
+        raise ValidationError("排产结果缺少可查看的版本号，本次不会跳到甘特图。请重试或联系管理员。", field="排产版本")
+    version = parse_required_int(result["version"], field="排产版本", min_value=1)
+    kwargs: Dict[str, Any] = {"view": "machine", "version": version}
 
-    gantt_service = getattr(getattr(g, "services", None), "gantt_service", None)
-    if version > 0 and gantt_service is not None and hasattr(gantt_service, "get_version_time_span_dates"):
-        span = gantt_service.get_version_time_span_dates(version)
-        if span:
-            kwargs["start_date"] = span["start_date"]
-            kwargs["end_date"] = span["end_date"]
+    span = g.services.gantt_service.get_version_time_span_dates(version)
+    if span:
+        kwargs["start_date"] = span["start_date"]
+        kwargs["end_date"] = span["end_date"]
     return kwargs
 
 
@@ -71,9 +67,11 @@ def run_schedule():
             strict_mode=strict_mode,
         )
         view_result = build_run_schedule_view_result(result)
-        _flash_run_schedule_view_result(view_result)
         if view_result.result_status != "failed":
-            return redirect(url_for("scheduler.gantt_page", **_build_success_gantt_redirect_kwargs(result)))
+            redirect_kwargs = _build_success_gantt_redirect_kwargs(result)
+            _flash_run_schedule_view_result(view_result)
+            return redirect(url_for("scheduler.gantt_page", **redirect_kwargs))
+        _flash_run_schedule_view_result(view_result)
     except AppError as e:
         flash(scheduler_user_visible_app_error_message(e), "error")
 

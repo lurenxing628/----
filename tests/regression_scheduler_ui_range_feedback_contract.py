@@ -99,5 +99,12 @@ def test_targeted_form_feedback_script_is_page_scoped() -> None:
         assert "js/scheduler_form_feedback.js" in source
     assert "validateBatchCreate" in js
     assert "validateOperationForm" in js
+    assert "请选择设备" not in js
+    assert "请选择人员" not in js
+    assert '!isBlank(setupHours && setupHours.value)' in js
+    assert '!isBlank(unitHours && unitHours.value)' in js
+    assert "Number(setupHours.value) < 0" in js
+    assert "Number(unitHours.value) < 0" in js
+    assert "外协周期要填大于 0 的天数" in js
     assert 'data-aps-validate="operator-create"' in personnel
     assert 'data-aps-validate="machine-create"' in equipment

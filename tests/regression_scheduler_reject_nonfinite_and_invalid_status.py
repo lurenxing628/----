@@ -114,6 +114,11 @@ def main() -> None:
             lambda: sch_svc.update_external_operation(op_ex.id, ext_days="inf"),
             "update_external_operation(ext_days=inf)",
         )
+        op_in_blank = sch_svc.update_internal_operation(op_in.id, machine_id="", operator_id="", setup_hours="", unit_hours="")
+        assert op_in_blank.machine_id is None, f"内部工序设备应允许清空：{op_in_blank.machine_id!r}"
+        assert op_in_blank.operator_id is None, f"内部工序人员应允许清空：{op_in_blank.operator_id!r}"
+        assert float(op_in_blank.setup_hours or 0.0) == 0.0, f"空换型工时应保存为 0：{op_in_blank.setup_hours!r}"
+        assert float(op_in_blank.unit_hours or 0.0) == 0.0, f"空单件工时应保存为 0：{op_in_blank.unit_hours!r}"
 
         # 4) 工序状态白名单：非法值拒绝，合法值放行
         _expect_validation_error(

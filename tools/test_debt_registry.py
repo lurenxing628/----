@@ -358,13 +358,39 @@ def _validate_candidate_nodeids(payload: Dict[str, Any], *, expected_nodeids: Se
     candidate_nodeids = baseline_candidate_nodeids(payload)
     expected = sorted(str(nodeid) for nodeid in expected_nodeids)
     if candidate_nodeids != expected:
-        raise QualityGateError("candidate_test_debt 与待承接 baseline 候选集合不一致")
+        raise QualityGateError(
+            "candidate_test_debt 与待承接 baseline 候选集合不一致："
+            + _format_candidate_nodeid_diff(candidate_nodeids, expected)
+        )
     summary = dict(payload.get("summary") or {})
     counts = dict(summary.get("classification_counts") or {})
     if int(counts.get("candidate_test_debt") or 0) != len(expected):
-        raise QualityGateError("candidate_test_debt 数量与待承接 baseline 候选集合不一致")
+        raise QualityGateError(
+            "candidate_test_debt 数量与待承接 baseline 候选集合不一致："
+            f"实际数量={int(counts.get('candidate_test_debt') or 0)}，期望数量={len(expected)}；"
+            + _format_candidate_nodeid_diff(candidate_nodeids, expected)
+        )
     if int(summary.get("failed_nodeid_count") or 0) != len(expected):
-        raise QualityGateError("failed_nodeid_count 与待承接 baseline 候选集合不一致")
+        raise QualityGateError(
+            "failed_nodeid_count 与待承接 baseline 候选集合不一致："
+            f"实际数量={int(summary.get('failed_nodeid_count') or 0)}，期望数量={len(expected)}；"
+            + _format_candidate_nodeid_diff(candidate_nodeids, expected)
+        )
+
+
+def _format_candidate_nodeid_diff(candidate_nodeids: Sequence[str], expected_nodeids: Sequence[str]) -> str:
+    actual = sorted(str(nodeid) for nodeid in candidate_nodeids)
+    expected = sorted(str(nodeid) for nodeid in expected_nodeids)
+    extra = [nodeid for nodeid in actual if nodeid not in expected]
+    missing = [nodeid for nodeid in expected if nodeid not in actual]
+    parts = [f"实际 {len(actual)} 个，期望 {len(expected)} 个"]
+    if extra:
+        parts.append("多出：" + ", ".join(extra))
+    if missing:
+        parts.append("缺少：" + ", ".join(missing))
+    if not extra and not missing:
+        parts.append("集合内容相同但顺序或重复项不一致")
+    return "；".join(parts)
 
 
 def build_test_debt_entries(payload: Dict[str, Any], *, last_verified_at: str) -> List[Dict[str, Any]]:

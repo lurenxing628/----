@@ -198,6 +198,34 @@ def test_check_full_test_debt_rejects_invalid_current_proof(payload_update, mess
         checker.build_full_test_debt_summary(payload, ledger=_ledger(entry))
 
 
+def test_check_full_test_debt_candidate_mismatch_lists_nodeids() -> None:
+    checker = _import_checker()
+    nodeid = "tests/test_new_failure.py::test_new_failure"
+    payload = _payload(
+        collected_nodeids=[nodeid],
+        reports=[
+            _report(
+                nodeid,
+                outcome="failed",
+                wasxfail_reason="",
+                xfail_marker_present=False,
+                xfail_marker_reason="",
+                xfail_marker_strict=False,
+                xfail_marker_run=False,
+            )
+        ],
+        candidate_test_debt=[nodeid],
+    )
+
+    with pytest.raises(checker.QualityGateError) as exc_info:
+        checker.build_full_test_debt_summary(payload, ledger=_ledger(max_registered_xfail=0))
+
+    message = str(exc_info.value)
+    assert "candidate_test_debt 与待承接 baseline 候选集合不一致" in message
+    assert "实际 1 个，期望 0 个" in message
+    assert f"多出：{nodeid}" in message
+
+
 def test_check_full_test_debt_rejects_fixed_entry_still_marked_xfail() -> None:
     checker = _import_checker()
     nodeid = FIXED_DEBT_NODEID

@@ -3,7 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any, cast
 
-from flask import Flask, g
+from flask import Flask, g, get_flashed_messages
 
 from core.infrastructure.errors import ValidationError
 from core.models import BatchOperation
@@ -70,19 +70,40 @@ def test_scheduler_ops_update_route_success_branch(monkeypatch) -> None:
     }
 
 
-def test_scheduler_ops_update_route_rejects_machine_operator_mismatch(monkeypatch) -> None:
-    app = _build_app(monkeypatch, _ScheduleServiceMismatch())
+def test_scheduler_ops_update_route_allows_blank_internal_assignment(monkeypatch) -> None:
+    schedule_service = _ScheduleServiceSuccess()
+    app = _build_app(monkeypatch, schedule_service)
     client = app.test_client()
 
     response = client.post(
         "/scheduler/ops/1/update",
-        data={"machine_id": "M1", "operator_id": "O9", "setup_hours": "1.5", "unit_hours": "2.5"},
-        headers={"Accept": "application/json"},
+        data={"machine_id": "", "operator_id": "", "setup_hours": "", "unit_hours": ""},
     )
 
-    payload = response.get_json()
-    assert response.status_code == 400
-    assert payload["error"]["message"] == "设备与人员不匹配"
+    assert response.status_code in (301, 302)
+    assert schedule_service.saved == {
+        "op_id": 1,
+        "machine_id": None,
+        "operator_id": None,
+        "setup_hours": "",
+        "unit_hours": "",
+    }
+
+
+def test_scheduler_ops_update_route_rejects_machine_operator_mismatch(monkeypatch) -> None:
+    app = _build_app(monkeypatch, _ScheduleServiceMismatch())
+    client = app.test_client()
+
+    with client:
+        response = client.post(
+            "/scheduler/ops/1/update",
+            data={"machine_id": "M1", "operator_id": "O9", "setup_hours": "1.5", "unit_hours": "2.5"},
+            headers={"Accept": "application/json"},
+        )
+        flashes = get_flashed_messages(with_categories=True)
+
+    assert response.status_code in (301, 302)
+    assert any(cat == "error" and msg == "设备与人员不匹配" for cat, msg in flashes), flashes
 
 
 def test_operator_machine_mismatch_message_keeps_user_ids_without_internal_names() -> None:

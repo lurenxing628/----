@@ -51,7 +51,10 @@ def test_scheduler_run_surfaces_resource_pool_warning() -> None:
         app = Flask(__name__)
         app.secret_key = "aps-test-secret"
         with app.test_request_context("/scheduler/run", method="POST", data={"batch_ids": ["B001"]}):
-            g.services = SimpleNamespace(schedule_service=_StubScheduleService())
+            g.services = SimpleNamespace(
+                schedule_service=_StubScheduleService(),
+                gantt_service=SimpleNamespace(get_version_time_span_dates=lambda _version: None),
+            )
             g.app_logger = app.logger
             g.op_logger = None
             resp = route_mod.run_schedule()
@@ -99,7 +102,10 @@ def test_scheduler_simulate_surfaces_schedule_warnings() -> None:
         app = Flask(__name__)
         app.secret_key = "aps-test-secret"
         with app.test_request_context("/scheduler/simulate", method="POST", data={"batch_ids": ["B001"]}):
-            g.services = SimpleNamespace(schedule_service=_StubScheduleService())
+            g.services = SimpleNamespace(
+                schedule_service=_StubScheduleService(),
+                gantt_service=SimpleNamespace(get_version_time_span_dates=lambda _version: None),
+            )
             g.app_logger = app.logger
             g.op_logger = None
             resp = route_mod.simulate_schedule()
@@ -152,7 +158,10 @@ def test_scheduler_simulate_redirects_to_generated_schedule_start_range() -> Non
             method="POST",
             data={"batch_ids": ["B001"], "start_dt": "2026-06-01T08:00"},
         ):
-            g.services = SimpleNamespace(schedule_service=_StubScheduleService())
+            g.services = SimpleNamespace(
+                schedule_service=_StubScheduleService(),
+                gantt_service=SimpleNamespace(get_version_time_span_dates=lambda _version: None),
+            )
             g.app_logger = app.logger
             g.op_logger = None
             resp = route_mod.simulate_schedule()
@@ -198,7 +207,10 @@ def test_scheduler_run_partial_result_is_not_flashed_as_success() -> None:
         app = Flask(__name__)
         app.secret_key = "aps-test-partial-status"
         with app.test_request_context("/scheduler/run", method="POST", data={"batch_ids": ["B001"]}):
-            g.services = SimpleNamespace(schedule_service=_StubScheduleService())
+            g.services = SimpleNamespace(
+                schedule_service=_StubScheduleService(),
+                gantt_service=SimpleNamespace(get_version_time_span_dates=lambda _version: None),
+            )
             g.app_logger = app.logger
             g.op_logger = None
             resp = route_mod.run_schedule()
@@ -248,7 +260,10 @@ def test_scheduler_run_partial_result_still_surfaces_primary_degradation() -> No
         app = Flask(__name__)
         app.secret_key = "aps-test-partial-degraded-status"
         with app.test_request_context("/scheduler/run", method="POST", data={"batch_ids": ["B001"]}):
-            g.services = SimpleNamespace(schedule_service=_StubScheduleService())
+            g.services = SimpleNamespace(
+                schedule_service=_StubScheduleService(),
+                gantt_service=SimpleNamespace(get_version_time_span_dates=lambda _version: None),
+            )
             g.app_logger = app.logger
             g.op_logger = None
             resp = route_mod.run_schedule()
@@ -299,7 +314,10 @@ def test_scheduler_run_flashes_secondary_degradation_messages_without_warning_du
         app = Flask(__name__)
         app.secret_key = "aps-test-secondary-degradation"
         with app.test_request_context("/scheduler/run", method="POST", data={"batch_ids": ["B001"]}):
-            g.services = SimpleNamespace(schedule_service=_StubScheduleService())
+            g.services = SimpleNamespace(
+                schedule_service=_StubScheduleService(),
+                gantt_service=SimpleNamespace(get_version_time_span_dates=lambda _version: None),
+            )
             g.app_logger = app.logger
             g.op_logger = None
             resp = route_mod.run_schedule()
@@ -345,7 +363,10 @@ def test_scheduler_run_dedupes_secondary_messages_already_summarized_by_primary(
         app = Flask(__name__)
         app.secret_key = "aps-test-secondary-primary-dedupe"
         with app.test_request_context("/scheduler/run", method="POST", data={"batch_ids": ["B001"]}):
-            g.services = SimpleNamespace(schedule_service=_StubScheduleService())
+            g.services = SimpleNamespace(
+                schedule_service=_StubScheduleService(),
+                gantt_service=SimpleNamespace(get_version_time_span_dates=lambda _version: None),
+            )
             g.app_logger = app.logger
             g.op_logger = None
             resp = route_mod.run_schedule()
@@ -399,7 +420,10 @@ def test_scheduler_simulate_surfaces_canonical_summary_errors() -> None:
         app = Flask(__name__)
         app.secret_key = "aps-test-simulate-errors"
         with app.test_request_context("/scheduler/simulate", method="POST", data={"batch_ids": ["B001"]}):
-            g.services = SimpleNamespace(schedule_service=_StubScheduleService())
+            g.services = SimpleNamespace(
+                schedule_service=_StubScheduleService(),
+                gantt_service=SimpleNamespace(get_version_time_span_dates=lambda _version: None),
+            )
             g.app_logger = app.logger
             g.op_logger = None
             resp = route_mod.simulate_schedule()
@@ -457,7 +481,10 @@ def test_scheduler_run_surfaces_summary_display_errors_preview() -> None:
         app = Flask(__name__)
         app.secret_key = "aps-test-run-errors-preview"
         with app.test_request_context("/scheduler/run", method="POST", data={"batch_ids": ["B001"]}):
-            g.services = SimpleNamespace(schedule_service=_StubScheduleService())
+            g.services = SimpleNamespace(
+                schedule_service=_StubScheduleService(),
+                gantt_service=SimpleNamespace(get_version_time_span_dates=lambda _version: None),
+            )
             g.app_logger = app.logger
             g.op_logger = None
             resp = route_mod.run_schedule()
@@ -506,7 +533,10 @@ def test_scheduler_simulate_uses_simulated_degradation_message_without_duplicate
         app = Flask(__name__)
         app.secret_key = "aps-test-simulated-degradation-message"
         with app.test_request_context("/scheduler/simulate", method="POST", data={"batch_ids": ["B001"]}):
-            g.services = SimpleNamespace(schedule_service=_StubScheduleService())
+            g.services = SimpleNamespace(
+                schedule_service=_StubScheduleService(),
+                gantt_service=SimpleNamespace(get_version_time_span_dates=lambda _version: None),
+            )
             g.app_logger = app.logger
             g.op_logger = None
             resp = route_mod.simulate_schedule()

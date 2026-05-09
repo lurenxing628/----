@@ -76,6 +76,7 @@ def test_gantt_page_without_range_uses_selected_version_span(tmp_path, monkeypat
     assert 'data-end-date="2026-05-16"' in html
     assert 'data-range-source="version_span"' in html
     assert "2026-05-11 ～ 2026-05-16" in html
+    assert 'name="week_start"' not in html
 
 
 def test_gantt_data_without_range_uses_selected_version_span(tmp_path, monkeypatch) -> None:
@@ -130,9 +131,11 @@ def test_gantt_page_and_data_ignore_offset_when_explicit_dates_present(tmp_path,
     assert 'data-end-date="2026-05-10"' in html
     assert 'data-range-source="request"' in html
     assert (
-        "view=operator&amp;week_start=2026-05-04&amp;offset=0&amp;version=3"
-        "&amp;start_date=2026-05-04&amp;end_date=2026-05-10"
+        "view=operator&amp;version=3&amp;start_date=2026-05-04&amp;end_date=2026-05-10"
     ) in html
+    assert "view=operator&amp;week_start=" not in html
+    assert "week_start=2026-05-04&amp;offset=1&amp;version=3" in html
+    assert "week_start=2026-05-04&amp;offset=1&amp;version=3&amp;start_date" not in html
 
     data_resp = client.get(
         "/scheduler/gantt/data?view=machine&version=3&start_date=2026-05-04&end_date=2026-05-10&offset=1"
@@ -145,6 +148,20 @@ def test_gantt_page_and_data_ignore_offset_when_explicit_dates_present(tmp_path,
     assert data.get("week_end") == "2026-05-10"
     assert data.get("range_source") == "request"
     assert data.get("tasks") == []
+
+
+def test_gantt_boot_sends_one_range_mode_to_data_endpoint() -> None:
+    js = (REPO_ROOT / "static/js/gantt_boot.js").read_text(encoding="utf-8")
+
+    start_idx = js.index('if (hasEffectiveRange) {')
+    start_date_idx = js.index('url.searchParams.set("start_date", cfg.startDate)', start_idx)
+    end_date_idx = js.index('url.searchParams.set("end_date", cfg.endDate)', start_idx)
+    else_idx = js.index('} else {', end_date_idx)
+    week_idx = js.index('url.searchParams.set("week_start", cfg.weekStart)', else_idx)
+    offset_idx = js.index('url.searchParams.set("offset", String(cfg.offset))', week_idx)
+
+    assert start_idx < start_date_idx < end_date_idx < else_idx < week_idx < offset_idx
+    assert 'if (cfg.weekStart) url.searchParams.set("week_start", cfg.weekStart);\n    if (cfg.startDate)' not in js
 
 
 def test_gantt_without_version_span_keeps_request_range_source(tmp_path, monkeypatch) -> None:

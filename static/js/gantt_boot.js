@@ -261,11 +261,13 @@
     }
     const hasEffectiveRange = !!(cfg.startDate || cfg.endDate);
     if (cfg.view) url.searchParams.set("view", cfg.view);
-    if (cfg.weekStart) url.searchParams.set("week_start", cfg.weekStart);
-    if (cfg.startDate) url.searchParams.set("start_date", cfg.startDate);
-    if (cfg.endDate) url.searchParams.set("end_date", cfg.endDate);
-    // start/end 已是页面层计算后的有效区间；再叠加 offset 会导致区间二次偏移
-    if (!hasEffectiveRange && typeof cfg.offset !== "undefined") url.searchParams.set("offset", String(cfg.offset));
+    if (hasEffectiveRange) {
+      if (cfg.startDate) url.searchParams.set("start_date", cfg.startDate);
+      if (cfg.endDate) url.searchParams.set("end_date", cfg.endDate);
+    } else {
+      if (cfg.weekStart) url.searchParams.set("week_start", cfg.weekStart);
+      if (typeof cfg.offset !== "undefined") url.searchParams.set("offset", String(cfg.offset));
+    }
     if (cfg.version) url.searchParams.set("version", String(cfg.version));
     const fetchTimeoutMs = parsePositiveInt(cfg.fetchTimeoutMs, 12000);
 

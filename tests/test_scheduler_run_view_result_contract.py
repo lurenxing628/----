@@ -299,6 +299,67 @@ def test_scheduler_run_partial_redirects_to_gantt_with_version_when_span_missing
         route_mod.url_for = old_url_for
 
 
+@pytest.mark.parametrize(
+    ("result_status", "include_version", "bad_version", "expected_error"),
+    [
+        ("success", False, None, "排产结果缺少可查看的版本号"),
+        ("success", True, "", "排产版本"),
+        ("success", True, 0, "排产版本"),
+        ("success", True, "abc", "排产版本"),
+        ("partial", False, None, "排产结果缺少可查看的版本号"),
+    ],
+)
+def test_scheduler_run_success_or_partial_requires_valid_version_before_success_flash(
+    result_status: str,
+    include_version: bool,
+    bad_version,
+    expected_error: str,
+) -> None:
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+    _reset_scheduler_route_modules()
+
+    import web.routes.scheduler_run as route_mod
+
+    class _StubScheduleService:
+        def run_schedule(self, **_kwargs):
+            result = {
+                "result_status": result_status,
+                "overdue_batches": [],
+                "summary": {
+                    "scheduled_ops": 1,
+                    "total_ops": 1,
+                    "failed_ops": 0,
+                    "warnings": [],
+                    "errors": [],
+                },
+            }
+            if include_version:
+                result["version"] = bad_version
+            return result
+
+    class _UnexpectedGanttService:
+        def get_version_time_span_dates(self, _version):
+            raise AssertionError("坏版本号不应继续读取甘特图范围")
+
+    old_url_for = route_mod.url_for
+    route_mod.url_for = lambda endpoint, **_kwargs: f"/{endpoint}"
+    try:
+        app = Flask(__name__)
+        app.secret_key = "aps-test-run-invalid-version"
+        with app.test_request_context("/scheduler/run", method="POST", data={"batch_ids": ["B001"]}):
+            g.services = SimpleNamespace(schedule_service=_StubScheduleService(), gantt_service=_UnexpectedGanttService())
+            resp = route_mod.run_schedule()
+            flashes = get_flashed_messages(with_categories=True)
+
+        assert getattr(resp, "status_code", 0) in (301, 302)
+        assert resp.headers["Location"] == "/scheduler.batches_page"
+        assert any(cat == "error" and expected_error in msg for cat, msg in flashes), flashes
+        assert not any(cat in ("success", "warning") and ("排产完成" in msg or "部分完成" in msg) for cat, msg in flashes), flashes
+    finally:
+        route_mod.url_for = old_url_for
+
+
 def test_scheduler_run_route_flashes_ready_error_without_generic_boundary() -> None:
     if str(REPO_ROOT) not in sys.path:
         sys.path.insert(0, str(REPO_ROOT))
