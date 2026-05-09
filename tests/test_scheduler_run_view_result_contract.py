@@ -307,6 +307,9 @@ def test_scheduler_run_partial_redirects_to_gantt_with_version_when_span_missing
         ("success", True, 0, "排产版本"),
         ("success", True, "abc", "排产版本"),
         ("partial", False, None, "排产结果缺少可查看的版本号"),
+        ("partial", True, "", "排产版本"),
+        ("partial", True, 0, "排产版本"),
+        ("partial", True, "abc", "排产版本"),
     ],
 )
 def test_scheduler_run_success_or_partial_requires_valid_version_before_success_flash(

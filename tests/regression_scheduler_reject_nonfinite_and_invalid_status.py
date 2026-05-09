@@ -111,6 +111,10 @@ def main() -> None:
             "update_internal_operation(setup_hours=NaN)",
         )
         _expect_validation_error(
+            lambda: sch_svc.update_internal_operation(op_in.id, setup_hours=-0.1, unit_hours=0.5),
+            "update_internal_operation(setup_hours=-0.1)",
+        )
+        _expect_validation_error(
             lambda: sch_svc.update_external_operation(op_ex.id, ext_days="inf"),
             "update_external_operation(ext_days=inf)",
         )
