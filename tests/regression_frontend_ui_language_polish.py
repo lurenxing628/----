@@ -221,7 +221,12 @@ def test_manuals_keep_backend_supported_english_aliases_but_mark_them_as_compati
         normalize_ready_status_value,
     )
 
-    process_manuals = _read("web/viewmodels/page_manuals_process.py")
+    process_manuals = "\n".join(
+        (
+            _read("web/viewmodels/page_manuals_process.py"),
+            _read("web/viewmodels/page_manuals_process_excel.py"),
+        )
+    )
     scheduler_manuals = _read("web/viewmodels/page_manuals_scheduler.py")
     personnel_manuals = _read("web/viewmodels/page_manuals_personnel.py")
     equipment_manuals = _read("web/viewmodels/page_manuals_equipment.py")
@@ -278,6 +283,7 @@ def test_supplier_manual_matches_required_default_days_and_template_columns() ->
         _read(rel_path)
         for rel_path in (
             "web/viewmodels/page_manuals_process.py",
+            "web/viewmodels/page_manuals_process_excel.py",
             "static/docs/scheduler_manual.md",
         )
     )

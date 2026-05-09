@@ -304,6 +304,69 @@ class GanttService:
                     break
             return dict(computed)
 
+    def _history_payload_for_gantt(self, *, version: int, include_history: bool) -> Optional[Dict[str, Any]]:
+        if not include_history:
+            return None
+        hist = self.history_repo.get_by_version(version)
+        return hist.to_dict() if hist else None
+
+    @staticmethod
+    def _collect_gantt_degradation_events(
+        *,
+        calendar_days_outcome: Any,
+        tasks_outcome: Any,
+        critical_chain: Dict[str, Any],
+    ) -> DegradationCollector:
+        collector = DegradationCollector()
+        collector.extend(calendar_days_outcome.events)
+        collector.extend(tasks_outcome.events)
+        if critical_chain.get("available") is False:
+            reason = str(critical_chain.get("reason") or "").strip() or "unknown"
+            collector.add(
+                DegradationEvent(
+                    code="critical_chain_unavailable",
+                    scope="scheduler.gantt",
+                    field="critical_chain",
+                    message=f"关键链不可用（reason={reason}）。",
+                )
+            )
+        return collector
+
+    @staticmethod
+    def _empty_message_for_out_of_range(
+        *,
+        tasks: Sequence[Dict[str, Any]],
+        version_span: Optional[Dict[str, Any]],
+        wr: WeekRange,
+    ) -> str:
+        if tasks or not version_span:
+            return ""
+        requested_start, requested_end = wr.week_start_date.isoformat(), wr.week_end_date.isoformat()
+        actual_start, actual_end = str(version_span.get("start_date") or ""), str(version_span.get("end_date") or "")
+        if requested_start == actual_start and requested_end == actual_end:
+            return ""
+        return f"当前范围无任务，请切换到 {actual_start} ～ {actual_end}。"
+
+    @staticmethod
+    def _attach_gantt_range_metadata(
+        data: Dict[str, Any],
+        *,
+        resolution: VersionResolution,
+        version_span: Optional[Dict[str, Any]],
+        range_source: str,
+        wr: WeekRange,
+    ) -> None:
+        data.update(
+            has_history=True,
+            status="ok",
+            requested_version=resolution.requested_version,
+            version_time_span=version_span,
+            range_source=range_source,
+        )
+        empty_message = GanttService._empty_message_for_out_of_range(tasks=list(data.get("tasks") or []), version_span=version_span, wr=wr)
+        if empty_message:
+            data["empty_message"] = empty_message
+
     def get_gantt_tasks(
         self,
         *,
@@ -315,10 +378,7 @@ class GanttService:
         version: Optional[int] = None,
         include_history: bool = False,
     ) -> Dict[str, Any]:
-        """
-        返回甘特图数据（tasks + 元信息）。
-        view：machine / operator
-        """
+        """返回甘特图数据（tasks + 元信息）。"""
         view = (view or "").strip() or "machine"
         if view not in ("machine", "operator"):
             raise ValidationError("视图不正确，请选择：设备 / 人员。", field="视图")
@@ -348,28 +408,16 @@ class GanttService:
         overdue_meta = self._overdue_batch_ids_from_history(ver)
         overdue_set = set(overdue_meta.get("ids") or [])
 
-        hist_dict = None
-        if include_history:
-            hist = self.history_repo.get_by_version(ver)
-            hist_dict = hist.to_dict() if hist else None
-
         tasks_outcome = build_tasks(view=view, wr=wr, rows=rows, overdue_set=overdue_set)
-        degradation_collector = DegradationCollector()
-        degradation_collector.extend(calendar_days_outcome.events)
-        degradation_collector.extend(tasks_outcome.events)
         empty_reason = tasks_outcome.empty_reason or calendar_days_outcome.empty_reason
 
         critical_chain = self._get_critical_chain(ver)
-        if critical_chain.get("available") is False:
-            reason = str(critical_chain.get("reason") or "").strip() or "unknown"
-            degradation_collector.add(
-                DegradationEvent(
-                    code="critical_chain_unavailable",
-                    scope="scheduler.gantt",
-                    field="critical_chain",
-                    message=f"关键链不可用（reason={reason}）。",
-                )
-            )
+        degradation_collector = self._collect_gantt_degradation_events(
+            calendar_days_outcome=calendar_days_outcome,
+            tasks_outcome=tasks_outcome,
+            critical_chain=critical_chain,
+        )
+        hist_dict = self._history_payload_for_gantt(version=ver, include_history=include_history)
 
         data = build_gantt_contract(
             contract_version=self.CONTRACT_VERSION,
@@ -390,18 +438,13 @@ class GanttService:
             include_history=include_history,
             history=hist_dict if include_history else None,
         )
-        data["has_history"] = True
-        data["status"] = "ok"
-        data["requested_version"] = resolution.requested_version
-        data["version_time_span"] = version_span
-        data["range_source"] = range_source
-        if not data.get("tasks") and version_span:
-            requested_start = wr.week_start_date.isoformat()
-            requested_end = wr.week_end_date.isoformat()
-            actual_start = str(version_span.get("start_date") or "")
-            actual_end = str(version_span.get("end_date") or "")
-            if requested_start != actual_start or requested_end != actual_end:
-                data["empty_message"] = f"当前范围无任务，请切换到 {actual_start} ～ {actual_end}。"
+        self._attach_gantt_range_metadata(
+            data,
+            resolution=resolution,
+            version_span=version_span,
+            range_source=range_source,
+            wr=wr,
+        )
         return data
 
     def get_week_plan_rows(
