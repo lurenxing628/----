@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BLUEPRINT_PATH = REPO_ROOT / "docs" / "frontend_manual_audit_and_rewrite_blueprint.md"
 
