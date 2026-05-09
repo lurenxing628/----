@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import os
+import sys
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 from flask import current_app, flash, g, redirect, request, send_file, url_for
 
@@ -82,6 +83,18 @@ def _resolve_scheduler_manual_md_path() -> Tuple[Optional[str], List[str]]:
         return normalized[0], normalized
 
     return None, normalized
+
+
+def _resolve_scheduler_manual_md_path_for_download() -> Tuple[Optional[str], List[str]]:
+    module = sys.modules.get("web.routes.domains.scheduler.scheduler_config")
+    resolver = getattr(module, "_resolve_scheduler_manual_md_path", None)
+    if callable(resolver) and resolver is not _resolve_scheduler_manual_md_path:
+        return cast(Tuple[Optional[str], List[str]], resolver())
+    compat_module = sys.modules.get("web.routes.scheduler_config")
+    compat_resolver = getattr(compat_module, "_resolve_scheduler_manual_md_path", None)
+    if callable(compat_resolver) and compat_resolver is not _resolve_scheduler_manual_md_path:
+        return cast(Tuple[Optional[str], List[str]], compat_resolver())
+    return _resolve_scheduler_manual_md_path()
 
 
 def _resolve_manual_back_url(raw_src: Optional[str]) -> Optional[str]:
@@ -283,7 +296,7 @@ def config_manual_download():
     raw_src = (request.args.get("src") or "").strip()
     raw_page = (request.args.get("page") or "").strip()
     safe_src, safe_page, _bundle, _page_warning = _normalize_scheduler_manual_args(raw_src, raw_page)
-    manual_path, candidates = _resolve_scheduler_manual_md_path()
+    manual_path, candidates = _resolve_scheduler_manual_md_path_for_download()
     if not manual_path:
         if not candidates:
             flash("系统找不到使用说明文件：运行配置缺失，BASE_DIR 未配置或为空，请联系管理员检查软件安装目录。", "error")
