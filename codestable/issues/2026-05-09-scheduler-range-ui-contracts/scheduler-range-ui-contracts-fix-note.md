@@ -1,10 +1,10 @@
 ---
 doc_type: issue-fix
 issue: 2026-05-09-scheduler-range-ui-contracts
-status: pending-clean-proof
-clean_proof_status: blocked_by_dirty_worktree
+status: completed
+clean_proof_status: passed
 path: fast-track
-fix_date: 2026-05-09
+fix_date: 2026-05-10
 tags: [scheduler, gantt, week-plan, ui-contract, python38]
 ---
 
@@ -47,63 +47,108 @@ tags: [scheduler, gantt, week-plan, ui-contract, python38]
 
 ## 5. 验证结果
 
-已通过：
+本轮先做定点验证，再做干净工作区总门禁。代码修复提交为 `7abd67d0`。
+
+已通过的定点验证：
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_week_plan_summary_observability.py tests/regression_week_plan_filename_uses_normalized_version.py tests/regression_gantt_default_version_span.py tests/test_scheduler_run_view_result_contract.py tests/regression_scheduler_ui_range_feedback_contract.py tests/regression_frontend_common_interactions.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_page_manual_registry.py tests/regression_frontend_manual_blueprint_contract.py tests/regression_frontend_ui_language_polish.py tests/regression_manual_entry_scope.py
 ```
 
-结果：`38 passed`。
+结果：`41 passed`。
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_run_entry_layout_contract.py tests/regression_form_run_option_checkbox_layout_contract.py tests/regression_mirror_template_sync.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_gantt_default_version_span.py tests/test_scheduler_run_view_result_contract.py tests/regression_scheduler_ui_range_feedback_contract.py tests/regression_scheduler_ops_update_route_contract.py
 ```
 
-结果：`14 passed`。
+结果：`32 passed`。
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_gantt_*.py tests/regression_week_plan_*.py tests/regression_scheduler_week_plan_*.py tests/test_gantt_safe_int_parsing.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tests/regression_scheduler_reject_nonfinite_and_invalid_status.py
 ```
 
-结果：`59 passed`。
+结果：`OK`。
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_run_quality_gate.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_architecture_fitness.py::test_file_size_limit tests/regression_page_manual_registry.py
 ```
 
-结果：`24 passed`。
+结果：`12 passed`。
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_scheduler_resource_dispatch_smoke.py tests/test_resource_dispatch_viewmodel.py tests/test_resource_dispatch_labels_boundary.py tests/regression_resource_dispatch_*.py tests/regression_scheduler_resource_dispatch_invalid_query_cleanup.py tests/regression_batch_detail_linkage.py tests/regression_scheduler_batch_detail_route_contract.py tests/regression_calendar_layout_contract.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_check_full_test_debt.py tests/regression_gantt_offset_range_consistency.py
 ```
 
-结果：`45 passed`。
+结果：`25 passed`。
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_operator_machine_exception_paths.py tests/test_operator_machine_excel_route_error_handling.py tests/regression_operator_machine_detail_readside_normalization.py tests/regression_operator_machine_dirty_flags_visible.py tests/regression_manual_entry_scope.py tests/regression_page_manual_registry.py tests/regression_config_manual_markdown.py tests/regression_frontend_manual_blueprint_contract.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_run_surfaces_resource_pool_warning.py tests/regression_frontend_ui_language_polish.py::test_manuals_keep_backend_supported_english_aliases_but_mark_them_as_compatible tests/regression_scheduler_route_enforce_ready_tristate.py
 ```
 
-结果：`29 passed`。
+结果：`12 passed`。
 
 ```bash
-git diff --check
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_gantt_default_version_span.py tests/test_scheduler_run_view_result_contract.py tests/regression_scheduler_ui_range_feedback_contract.py tests/regression_scheduler_ops_update_route_contract.py tests/regression_gantt_offset_range_consistency.py tests/test_check_full_test_debt.py tests/test_architecture_fitness.py::test_file_size_limit tests/regression_page_manual_registry.py tests/regression_scheduler_run_surfaces_resource_pool_warning.py tests/regression_frontend_ui_language_polish.py::test_manuals_keep_backend_supported_english_aliases_but_mark_them_as_compatible tests/regression_scheduler_route_enforce_ready_tristate.py
+```
+
+结果：`81 passed`。
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check
 ```
 
 结果：通过。
 
-最终 clean proof 尚未形成。原因是本轮开始前工作区已有大量未提交改动，执行：
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright -p pyrightconfig.gate.json
+```
+
+结果：`0 errors, 6 warnings`。6 个 warning 是既有的 `core/services/scheduler/__init__.py` 中 `__all__` 导出提示，本轮没有新增类型错误。
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py
+```
+
+结果：
+
+```json
+{
+  "active_xfail_count": 0,
+  "collected_count": 1005,
+  "collection_error_count": 0,
+  "fixed_count": 5,
+  "max_registered_xfail": 0,
+  "status": "passed",
+  "unexpected_failure_count": 0
+}
+```
+
+最终 clean proof：
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
 ```
 
-结果被干净工作区检查拦截：`ERROR: dirty worktree: clean proof requires an empty worktree before the gate runs`。
+结果：`质量门禁通过`。
+
+对抗性复查：
+
+- 只读子代理确认甘特图正常页面链路不再同时带 `start_date/end_date` 和 `week_start/offset` 两套范围。
+- 只读子代理确认 `/scheduler/run` 不再把坏版本号当成 `0`、`None` 或最新版本静默放过去。
+- 只读子代理确认批次详情自制工序允许设备、人员、工时留空保存；空工时落成 0；非法数字仍会被拦；外协规则未被误伤。
+- 子代理指出旧 `regression_gantt_offset_range_consistency.py` 仍按旧字符串查 `gantt_boot.js`，本轮已把测试改成检查真实的“起止日期”和“周入口”二选一行为。
 
 ## 6. 收口说明
 
-本轮已经完成代码和局部回归测试层面的修复闭环，但还不能标成最终完成。原因有两个：
+本轮收口后，三条小尾巴都已处理：
 
-- 还没有做浏览器手工复验。
-- 还没有在干净工作区拿到最终总门禁。
+- 甘特图主查询不再提交 `week_start` 输入；视图切换只保留后端算好的起止日期；周切换按钮仍只走 `week_start/offset`。
+- 正式排产成功或部分成功后，跳甘特图前必须有合法版本号；坏版本号直接显示中文错误并留在批次页，不再静默跳到别的版本。
+- 批次详情自制工序保存口径统一为“可以先留空保存，正式排产前建议补齐或开启自动分配”；前端只拦填了但明显非法的工时值。
 
-后续要形成最终验收，需要先把本轮改动和既有未提交改动按边界整理清楚，再在干净工作区跑 `scripts/run_quality_gate.py --require-clean-worktree`，并按 `docs/dev/aps-browser-scheduler-qa-replay.md` 补周计划导出和正式排产后甘特图可见性的页面记录。
+另外，总门禁一度被两个质量问题挡住，本轮也一起修掉：
+
+- `tools/check_full_test_debt.py` 以前只吐一句“候选集合不一致”，定位非常费时间；现在会直接列出多出的或缺少的 nodeid。
+- 页面帮助文字变多后，几个 viewmodel 文件超过 500 行；本轮没有加白名单，而是按主题拆成小文件，内容不变、入口不变。
+
+浏览器手工复验说明：本轮没有重新按 `docs/dev/aps-browser-scheduler-qa-replay.md` 跑完整浏览器压测造数；本记录的完成依据是定点回归、只读对抗审查和干净工作区质量门禁。后续如果要补真实浏览器截图和导出核对，应继续按该手册复跑。
