@@ -1274,6 +1274,10 @@ button.aps-theme-switch:focus-visible {
   min-width: 1240px;
 }
 
+.aps-calendar-table th[data-col-key="date"] {
+  min-width: 140px;
+}
+
 .aps-calendar-table th,
 .aps-calendar-table td {
   white-space: nowrap;
@@ -1282,6 +1286,7 @@ button.aps-theme-switch:focus-visible {
 .aps-calendar-table .aps-calendar-remark-cell {
   min-width: 220px;
   white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .readonly-value {
@@ -1676,6 +1681,122 @@ table td {
 #batchOpsTable .muted.mt-2 {
   white-space: normal;
   word-break: break-all;
+}
+
+.aps-cell-ellipsis,
+.aps-col-code,
+.aps-col-name {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aps-code-cell {
+  font-variant-numeric: tabular-nums;
+}
+
+.aps-col-note {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.aps-batch-ops-table {
+  min-width: 1780px;
+}
+
+.aps-batch-ops-table select {
+  width: 100%;
+  min-width: 200px;
+}
+
+.aps-batch-ops-table .js-machine-select,
+.aps-batch-ops-table .js-operator-select {
+  min-width: 220px;
+}
+
+.aps-resource-target-selects > select.is-hidden {
+  display: none;
+}
+
+.aps-resource-team-axis-field.is-disabled {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.aps-table-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.aps-table-switch input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.aps-table-switch-track {
+  position: relative;
+  width: 30px;
+  height: 16px;
+  border-radius: 999px;
+  background: #cbd5e1;
+}
+
+.aps-table-switch-track::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s ease;
+}
+
+.aps-table-switch input:checked + .aps-table-switch-track {
+  background: var(--ui-success);
+}
+
+.aps-table-switch input:checked + .aps-table-switch-track::after {
+  transform: translateX(14px);
+}
+
+.aps-table-switch-text {
+  font-size: 12px;
+  color: var(--ui-muted);
+}
+
+.aps-field-error {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--ui-danger-text);
+}
+
+.form-field.is-invalid input,
+.form-field.is-invalid select,
+.form-field.is-invalid textarea {
+  border-color: var(--ui-danger);
+}
+
+.aps-invalid-control {
+  border-color: var(--ui-danger) !important;
+}
+
+.aps-row-error {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  min-width: 160px;
+}
+
+.aps-run-panel-error {
+  margin-bottom: 0.65rem;
 }
 
 #pluginStatusTable .aps-table-cell-note,
@@ -2112,6 +2233,25 @@ button.toc-toggle:hover {
   min-width: 0;
 }
 
+.manual-related-item {
+  min-width: 0;
+  padding: 14px 0;
+  border-top: 1px solid var(--ui-border);
+}
+
+.manual-related-item:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.manual-related-title {
+  margin: 0;
+  color: var(--ui-text);
+  font-size: 1rem;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
 .manual-content h1,
 .manual-related-body h1 {
   font-size: 28px;
@@ -2383,8 +2523,8 @@ button.toc-toggle:hover {
 
 .manual-popover {
   position: absolute;
-  left: 0;
-  right: auto;
+  left: auto;
+  right: 0;
   bottom: calc(100% + 12px);
   width: 320px;
   max-width: calc(100vw - 32px);
@@ -4766,6 +4906,14 @@ html[data-theme="dark"] .aps-danger-zone {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
+}
+
+.aps-calendar-date-field {
+  min-width: 260px;
+}
+
+.aps-calendar-date-field .aps-date-picker-field {
+  grid-template-columns: minmax(180px, 1fr) auto;
 }
 
 .aps-date-picker-field .btn {

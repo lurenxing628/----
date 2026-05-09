@@ -104,10 +104,11 @@
                 </select>
               </td>
               <td>
-                <label class="muted">
+                <label class="aps-table-switch" title="设为该人员主操设备">
                   <input type="checkbox" name="is_primary" value="yes" form="linkform_{{ loop.index0 }}"
                          {{ 'checked' if (op.is_primary or 'no') == 'yes' else '' }}>
-                  主操
+                  <span class="aps-table-switch-track" aria-hidden="true"></span>
+                  <span class="aps-table-switch-text">主操</span>
                 </label>
               </td>
               <td>

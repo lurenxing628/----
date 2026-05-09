@@ -109,21 +109,21 @@
                     </div>
                   </form>
                 {% else %}
-                  <span class="muted">周期由连续外协工序组统一管理</span>
+                  <span class="muted aps-col-note">周期由连续外协工序组统一管理</span>
                 {% endif %}
               </td>
               <td>
                 {% if op.source == 'external' %}
                   {% set s = suppliers_map.get(op.supplier_id) %}
-                  <div class="muted text-xs">
-                    供应商：{{ (s.name if s else '-') }}
-                  </div>
-                  {% if op.ext_group_id %}
-                    <div class="muted text-xs">连续外协工序组：{{ op.ext_group_id }}</div>
-                  {% endif %}
-                  <div class="muted text-xs">
-                    周期：{% if op.ext_days is not none %}{{ op.ext_days }} 天{% else %}-{% endif %}
-                  </div>
+	                  <div class="muted text-xs aps-col-note">
+	                    供应商：{{ (s.name if s else '-') }}
+	                  </div>
+	                  {% if op.ext_group_id %}
+	                    <div class="muted text-xs aps-col-note">连续外协工序组：{{ op.ext_group_id }}</div>
+	                  {% endif %}
+	                  <div class="muted text-xs aps-col-note">
+	                    周期：{% if op.ext_days is not none %}{{ op.ext_days }} 天{% else %}-{% endif %}
+	                  </div>
                 {% else %}
                   <span class="muted">-</span>
                 {% endif %}

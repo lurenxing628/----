@@ -22,15 +22,17 @@
 
   <div class="card aps-form-card">
     <h3 class="section-title">新增设备</h3>
-    <form method="post" action="{{ url_for('equipment.create_machine') }}">
+    <form method="post" action="{{ url_for('equipment.create_machine') }}" data-aps-validate="machine-create" novalidate>
       <div class="aps-edit-form-grid">
         <div class="form-field">
           <label for="machineIdInput">设备编号</label>
           <input id="machineIdInput" name="machine_id" required placeholder="如：CNC-01">
+          <div class="aps-field-error" data-field-error-for="machine_id"></div>
         </div>
         <div class="form-field">
           <label for="machineNameInput">设备名称</label>
           <input id="machineNameInput" name="name" required placeholder="如：数控车床1">
+          <div class="aps-field-error" data-field-error-for="name"></div>
         </div>
         <div class="form-field">
           <label for="machineOpTypeInput">工种</label>
@@ -193,4 +195,5 @@
     {% endif %}
   </div>
 
+  <script src="{{ url_for('static', filename='js/scheduler_form_feedback.js') }}" defer></script>
 {% endblock %}

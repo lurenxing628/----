@@ -180,17 +180,21 @@ def create_machine():
     team_id = request.form.get("team_id") or None
 
     svc = MachineService(g.db, op_logger=getattr(g, "op_logger", None))
-    m = svc.create(
-        machine_id=machine_id,
-        name=name,
-        op_type_id=op_type_id,
-        category=category,
-        status=status,
-        remark=remark,
-        team_id=team_id,
-    )
-    flash(f"已创建设备：{m.machine_id} {m.name}", "success")
-    return redirect(url_for("equipment.detail_page", machine_id=m.machine_id))
+    try:
+        m = svc.create(
+            machine_id=machine_id,
+            name=name,
+            op_type_id=op_type_id,
+            category=category,
+            status=status,
+            remark=remark,
+            team_id=team_id,
+        )
+        flash(f"已创建设备：{m.machine_id} {m.name}", "success")
+        return redirect(url_for("equipment.detail_page", machine_id=m.machine_id))
+    except AppError as e:
+        flash(e.message, "error")
+        return redirect(url_for("equipment.list_page"))
 
 
 @bp.get("/<machine_id>")

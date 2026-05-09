@@ -22,11 +22,12 @@
 
   <div class="card aps-scheduler-filter-card aps-form-card">
     <h3 class="section-title">手工新增批次</h3>
-    <form method="post" action="{{ url_for('scheduler.create_batch') }}">
+    <form id="batchCreateForm" method="post" action="{{ url_for('scheduler.create_batch') }}" novalidate>
       <div class="aps-edit-form-grid">
         <div class="form-field">
           <label for="batchManageBatchIdInput">批次号</label>
           <input id="batchManageBatchIdInput" name="batch_id" required placeholder="如：B001">
+          <div class="aps-field-error" data-field-error-for="batch_id"></div>
         </div>
         <div class="form-field">
           <label for="batchManagePartNoInput">图号</label>
@@ -36,14 +37,17 @@
               <option value="{{ v }}">{{ label }}</option>
             {% endfor %}
           </select>
+          <div class="aps-field-error" data-field-error-for="part_no"></div>
         </div>
         <div class="form-field">
           <label for="batchManageQuantityInput">数量</label>
-          <input id="batchManageQuantityInput" name="quantity" required placeholder="如：50">
+          <input id="batchManageQuantityInput" name="quantity" type="number" min="1" step="1" required placeholder="如：50">
+          <div class="aps-field-error" data-field-error-for="quantity"></div>
         </div>
         <div class="form-field">
           <label for="batchManageDueDateInput">交期（可选）</label>
           <input id="batchManageDueDateInput" type="date" name="due_date">
+          <div class="aps-field-error" data-field-error-for="due_date"></div>
         </div>
         <div class="form-field">
           <label for="batchManagePriorityInput">优先级</label>
@@ -210,4 +214,5 @@
       <div class="muted">暂无批次数据，可以在上方手动新增或使用批量维护。</div>
     {% endif %}
   </div>
+  <script src="{{ url_for('static', filename='js/scheduler_form_feedback.js') }}" defer></script>
 {% endblock %}

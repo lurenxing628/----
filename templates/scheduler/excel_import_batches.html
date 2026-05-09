@@ -154,7 +154,7 @@
                 {% if r.status.value == 'skip' %}<span class="badge badge-skip">跳过</span>{% endif %}
                 {% if r.status.value == 'error' %}<span class="badge badge-error">错误</span>{% endif %}
               </td>
-              <td class="{{ 'error' if r.status.value == 'error' else '' }}">{{ r.message }}</td>
+              <td class="{{ 'error aps-col-note' if r.status.value == 'error' else 'aps-col-note' }}">{{ r.message }}</td>
               <td>
                 <details class="aps-row-detail">
                   <summary>查看数据</summary>
@@ -200,14 +200,14 @@
         <tbody>
           {% for r in existing_list %}
             <tr>
-              <td>{{ r["批次号"] }}</td>
-              <td>{{ r["图号"] }}</td>
+              <td><span class="aps-col-code" title="{{ r['批次号'] }}">{{ r["批次号"] }}</span></td>
+              <td><span class="aps-col-code" title="{{ r['图号'] }}">{{ r["图号"] }}</span></td>
               <td>{{ r["数量"] }}</td>
               <td>{% if r["交期"] %}{{ r["交期"] }}{% else %}<span class="muted">-</span>{% endif %}</td>
               <td>{{ r["优先级显示"] or '-' }}</td>
               <td>{{ r["齐套显示"] or '-' }}</td>
               <td>{% if r["齐套日期"] %}{{ r["齐套日期"] }}{% else %}<span class="muted">-</span>{% endif %}</td>
-              <td>{% if r["备注"] %}{{ r["备注"] }}{% else %}<span class="muted">-</span>{% endif %}</td>
+              <td class="aps-col-note">{% if r["备注"] %}{{ r["备注"] }}{% else %}<span class="muted">-</span>{% endif %}</td>
             </tr>
           {% endfor %}
         </tbody>

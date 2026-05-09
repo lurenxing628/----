@@ -54,18 +54,18 @@
 
     {% if operations and operations|length > 0 %}
       <div class="aps-table-scroll">
-      <table id="batchOpsTable" class="mt-3 table-sticky-col table-layout-fixed aps-table-xwide" data-col-resize="1" data-table-key="v3_batchOpsTable">
+      <table id="batchOpsTable" class="mt-3 table-sticky-col table-layout-fixed aps-table-xwide aps-batch-ops-table" data-col-resize="1" data-table-key="v3_batchOpsTable">
         <thead>
           <tr>
-            <th class="w-140" data-col-key="op_code" data-default-w="140" data-min-w="120">工序编码</th>
+            <th class="w-180" data-col-key="op_code" data-default-w="180" data-min-w="150">工序编码</th>
             <th class="w-80" data-col-key="seq" data-default-w="80" data-min-w="70">工序</th>
             <th class="w-160" data-col-key="op_type" data-default-w="160" data-min-w="130">工种</th>
             <th class="w-100" data-col-key="source" data-default-w="100" data-min-w="90">归属</th>
-            <th class="w-220" data-col-key="machine" data-default-w="220" data-min-w="180">设备</th>
-            <th class="w-220" data-col-key="operator" data-default-w="220" data-min-w="180">人员</th>
+            <th class="w-260" data-col-key="machine" data-default-w="260" data-min-w="220">设备</th>
+            <th class="w-260" data-col-key="operator" data-default-w="260" data-min-w="220">人员</th>
             <th class="w-130" data-col-key="setup_hours" data-default-w="130" data-min-w="110">换型（小时）</th>
             <th class="w-130" data-col-key="unit_hours" data-default-w="130" data-min-w="110">单件（小时）</th>
-            <th class="w-240" data-col-key="supplier" data-default-w="240" data-min-w="190">供应商</th>
+            <th class="w-280" data-col-key="supplier" data-default-w="280" data-min-w="220">供应商</th>
             <th class="w-150" data-col-key="ext_days" data-default-w="150" data-min-w="130">外协周期(天)</th>
             <th class="w-120" data-col-key="actions" data-default-w="120" data-min-w="110" data-resize="1">操作</th>
           </tr>
@@ -74,7 +74,11 @@
           {% for op in operations %}
             {% set src = (op.source|default('')|lower) %}
             <tr {% if src == 'internal' %}data-linkage-row="1" data-op-id="{{ op.id }}" data-op-code="{{ op.op_code }}"{% endif %}>
-              <td>{{ op.op_code }}</td>
+              <td>
+              <span class="aps-cell-ellipsis aps-code-cell aps-col-code" title="{{ op.op_code }}">
+                  {{ op.op_code }}
+                </span>
+              </td>
               <td>{{ op.seq }}</td>
               <td>{{ op.op_type_name }}</td>
               <td>
@@ -310,4 +314,5 @@
     }
   </script>
   <script src="{{ url_for('static', filename='js/batch_detail_linkage.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/scheduler_form_feedback.js') }}" defer></script>
 {% endblock %}

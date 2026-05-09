@@ -117,8 +117,15 @@ def main() -> None:
     _assert_contains(equipment_html, 'aria-label=\"搜索设备，输入设备编号或名称关键词\"', "设备列表搜索应具备 aria-label")
     _assert_contains(process_html, 'aria-label=\"搜索零件，输入图号或名称关键词\"', "工艺列表搜索应具备 aria-label")
 
-    # 8) data-auto-submit 页面契约
-    _assert_contains(batches_html, 'data-auto-submit=\"1\"', "批次页应使用 data-auto-submit")
+    # 8) auto-submit 页面契约
+    _assert_contains(
+        batches_html,
+        'data-scheduler-preset-auto-submit=\"1\"',
+        "批次页排产方案切换应使用页面专用脚本，避免公共 auto-submit 直接刷新并丢失已选批次",
+    )
+    if 'id="schedulerPresetSelect" name="preset_name" data-auto-submit=\"1\"' in batches_html:
+        raise AssertionError("批次页排产方案切换不应再使用公共 data-auto-submit")
+    _assert_contains(batches_html, "js/scheduler_run.js", "批次页应加载排产方案切换和空批次提交提示脚本")
     _assert_contains(config_html, 'data-auto-submit=\"1\"', "配置页应使用 data-auto-submit")
 
     print("OK")

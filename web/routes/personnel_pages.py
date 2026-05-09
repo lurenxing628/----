@@ -95,9 +95,13 @@ def create_operator():
     team_id = request.form.get("team_id") or None
 
     svc = OperatorService(g.db, op_logger=getattr(g, "op_logger", None))
-    op = svc.create(operator_id=op_id, name=name, status=status, remark=remark, team_id=team_id)
-    flash(f"已创建人员：{op.operator_id} {op.name}", "success")
-    return redirect(url_for("personnel.detail_page", operator_id=op.operator_id))
+    try:
+        op = svc.create(operator_id=op_id, name=name, status=status, remark=remark, team_id=team_id)
+        flash(f"已创建人员：{op.operator_id} {op.name}", "success")
+        return redirect(url_for("personnel.detail_page", operator_id=op.operator_id))
+    except AppError as e:
+        flash(e.message, "error")
+        return redirect(url_for("personnel.list_page"))
 
 
 @bp.get("/<operator_id>")

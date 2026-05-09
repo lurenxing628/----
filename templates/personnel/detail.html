@@ -7,12 +7,7 @@
       <div class="page-actions page-actions-context"></div>
     </div>
     <p class="page-subtitle text-meta">工号：<strong>{{ operator.operator_id }}</strong>　姓名：<strong>{{ operator.name }}</strong>　班组：<strong>{{ operator_team_name or '未设置' }}</strong></p>
-    {{ ui.personnel_nav('list') }}
-    <div class="info-line mt-2">
-      {{ ui.link_button('个人工作日历', url_for('personnel.operator_calendar_page', operator_id=operator.operator_id), 'secondary', 'sm') }}
-      <span class="info-sep">|</span>
-      {{ ui.link_button('全局工作日历', url_for('scheduler.calendar_page'), 'secondary', 'sm') }}
-    </div>
+    {{ ui.personnel_nav('list', operator_id=operator.operator_id, include_calendar=True) }}
     <div class="muted mt-2">
       为个别人员设置特殊的工作/休息日（如请假、加班）。
     </div>
@@ -114,10 +109,11 @@
                 {% endif %}
               </td>
               <td>
-                <label class="muted">
+                <label class="aps-table-switch" title="设为主操设备">
                   <input type="checkbox" name="is_primary" value="yes" form="linkform_{{ loop.index0 }}"
                          {{ 'checked' if (m.is_primary or 'no') == 'yes' else '' }}>
-                  主操
+                  <span class="aps-table-switch-track" aria-hidden="true"></span>
+                  <span class="aps-table-switch-text">主操</span>
                 </label>
                 {% if m.dirty_fields and 'is_primary' in m.dirty_fields %}
                   <div class="muted mt-1">旧格式已自动修正：{{ (m.dirty_reasons or {}).get('is_primary') }}</div>

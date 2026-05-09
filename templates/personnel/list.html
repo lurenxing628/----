@@ -22,15 +22,17 @@
 
   <div class="card aps-form-card">
     <h3 class="section-title">新增人员</h3>
-    <form method="post" action="{{ url_for('personnel.create_operator') }}">
+    <form method="post" action="{{ url_for('personnel.create_operator') }}" data-aps-validate="operator-create" novalidate>
       <div class="aps-edit-form-grid">
         <div class="form-field">
           <label for="operatorIdInput">工号</label>
           <input id="operatorIdInput" name="operator_id" required placeholder="如：OP001">
+          <div class="aps-field-error" data-field-error-for="operator_id"></div>
         </div>
         <div class="form-field">
           <label for="operatorNameInput">姓名</label>
           <input id="operatorNameInput" name="name" required placeholder="如：张三">
+          <div class="aps-field-error" data-field-error-for="name"></div>
         </div>
         <div class="form-field">
           <label for="operatorStatusInput">状态</label>
@@ -166,4 +168,5 @@
     {% endif %}
   </div>
 
+  <script src="{{ url_for('static', filename='js/scheduler_form_feedback.js') }}" defer></script>
 {% endblock %}

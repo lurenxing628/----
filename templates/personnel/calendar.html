@@ -13,7 +13,7 @@
     '个人工作日历',
     '设置个人的特殊工作日，例如请假、加班、轮班；这些日期会优先于全局工作日历。',
     actions_html=calendar_actions,
-    nav_html=ui.personnel_nav('list')
+    nav_html=ui.personnel_nav('operator_calendar', operator_id=operator.operator_id, include_calendar=True)
   ) }}
 
   <div class="card">

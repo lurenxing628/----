@@ -58,6 +58,11 @@
     return '<span class="muted">-</span>';
   }
 
+  function codeCell(value) {
+    const v = text(value);
+    return '<span class="aps-col-code" title="' + escapeHtml(v) + '">' + escapeHtml(v) + '</span>';
+  }
+
   function renderFlags(row) {
     const items = [];
     if (trim(row && row.lock_status) === "locked") items.push(badge("已锁定", "update"));
@@ -91,9 +96,6 @@
   function bindFieldToggles() {
     const scopeTypeEl = $("rdScopeType");
     const periodPresetEl = $("rdPeriodPreset");
-    const operatorField = $("rdOperatorField");
-    const machineField = $("rdMachineField");
-    const teamField = $("rdTeamField");
     const teamAxisField = $("rdTeamAxisField");
     const queryDateField = $("rdQueryDateField");
     const startField = $("rdStartField");
@@ -101,10 +103,27 @@
 
     function applyScopeType() {
       const value = trim(scopeTypeEl && scopeTypeEl.value) || "operator";
-      show(operatorField, value === "operator");
-      show(machineField, value === "machine");
-      show(teamField, value === "team");
-      show(teamAxisField, value === "team");
+      const labelEl = $("rdScopeTargetLabel");
+      const targetMap = {
+        operator: "人员",
+        machine: "设备",
+        team: "班组"
+      };
+      if (labelEl) labelEl.textContent = targetMap[value] || "人员";
+
+      document.querySelectorAll("[data-scope-target]").forEach(function (el) {
+        const active = trim(el.getAttribute("data-scope-target")) === value;
+        show(el, active);
+        el.disabled = !active;
+      });
+
+      const teamAxisSelect = teamAxisField ? teamAxisField.querySelector("select") : null;
+      if (teamAxisField && teamAxisField.classList) {
+        teamAxisField.classList.toggle("is-disabled", value !== "team");
+      }
+      if (teamAxisSelect) {
+        teamAxisSelect.disabled = value !== "team";
+      }
     }
 
     function applyPeriodPreset() {
@@ -147,9 +166,9 @@
         '<tr>' +
           '<td>' + escapeHtml(row.start_time || "") + '</td>' +
           '<td>' + escapeHtml(row.end_time || "") + '</td>' +
-          '<td>' + escapeHtml(row.batch_id || "") + '</td>' +
-          '<td>' + escapeHtml(row.part_no || "") + '</td>' +
-          '<td>' + escapeHtml(row.op_code || "") + '</td>' +
+          '<td>' + codeCell(row.batch_id || "") + '</td>' +
+          '<td>' + codeCell(row.part_no || "") + '</td>' +
+          '<td>' + codeCell(row.op_code || "") + '</td>' +
           '<td>' + escapeHtml(row.seq) + '</td>' +
           '<td>' + escapeHtml(row.counterpart_resource_label || "") + '</td>' +
           '<td>' + relationBadge(row.team_relation_label) + '</td>' +

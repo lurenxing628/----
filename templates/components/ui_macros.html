@@ -290,7 +290,7 @@
     <li>模板文件只支持 <code>.xlsx</code>，表头不要改。</li>
     <li>系统只读取第一个工作表，不要把有效数据挪到第二个工作表。</li>
     <li>先“上传 Excel 并检查”，把错误行全部修完，再点“确认写入系统”。</li>
-    <li>只要有 1 行是“错误”，整份文件都不会导入。</li>
+    <li>检查结果里只要还有“错误”行，就不能确认写入；确认写入阶段如果又出问题，以页面最终提示为准，可能整次被拒绝，也可能出现部分完成。</li>
     <li>导入完成后，建议再导出一次当前数据做复核。</li>
     <li>单次上传文件大小不超过 16MB。</li>
   </ul>
@@ -432,12 +432,16 @@
 
 {#
   人员导航
-  active: list | teams
+  active: list | teams | operator_calendar | global_calendar
 #}
-{% macro personnel_nav(active='', size='sm', class='') %}
+{% macro personnel_nav(active='', size='sm', class='', operator_id=None, include_calendar=False) %}
 <div class="scheduler-subnav scheduler-subnav-main {{ class }}">
   {{ link_button('人员管理', url_for('personnel.list_page'), 'primary' if active == 'list' else 'secondary', size) }}
   {{ link_button('班组管理', url_for('personnel.teams_page'), 'primary' if active == 'teams' else 'secondary', size) }}
+  {% if include_calendar and operator_id %}
+    {{ link_button('个人工作日历', url_for('personnel.operator_calendar_page', operator_id=operator_id), 'primary' if active == 'operator_calendar' else 'secondary', size) }}
+    {{ link_button('全局工作日历', url_for('scheduler.calendar_page'), 'primary' if active == 'global_calendar' else 'secondary', size) }}
+  {% endif %}
 </div>
 {% endmacro %}
 

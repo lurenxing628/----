@@ -16,12 +16,15 @@
         <input type="hidden" name="next" value="{{ request.full_path }}">
         <div class="form-field aps-scheduler-filter-wide">
           <label for="schedulerPresetSelect">方案</label>
-          <select id="schedulerPresetSelect" name="preset_name" data-auto-submit="1">
+          <select id="schedulerPresetSelect" name="preset_name" data-scheduler-preset-auto-submit="1">
             <option value="custom" {% if not active_preset or active_preset == 'custom' %}selected{% endif %}>自定义（以高级设置为准）</option>
             {% for p in presets or [] %}
               <option value="{{ p.name }}" {% if active_preset == p.name %}selected{% endif %}>{{ p.name }}</option>
             {% endfor %}
           </select>
+          <div class="muted text-xs mt-1">
+            切换方案会刷新排产参数；如果下方已勾选批次，系统会先提示确认。
+          </div>
         </div>
         {% set config_url = safe_url_for('scheduler.config_page') %}
         {% if config_url %}
@@ -252,4 +255,8 @@
       {{ ui.empty_state('还没有排过产', '排产后这里会显示最近一次排产结果。') }}
     {% endif %}
   </div>
+{% endblock %}
+
+{% block extra_scripts %}
+  <script src="{{ url_for('static', filename='js/scheduler_run.js') }}" defer></script>
 {% endblock %}
