@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional, Sequence, cast
+from typing import Any, Dict, Optional, Sequence, cast
 
 from flask import flash, g, redirect, request, url_for
 
@@ -17,8 +17,8 @@ from .scheduler_bp import (
 from .scheduler_user_messages import scheduler_user_visible_app_error_message
 
 
-def _build_success_gantt_redirect_kwargs(result: dict) -> dict:
-    kwargs = {"view": "machine"}
+def _build_success_gantt_redirect_kwargs(result: dict) -> Dict[str, Any]:
+    kwargs: Dict[str, Any] = {"view": "machine"}
     try:
         version = int(result.get("version") or 0)
     except (TypeError, ValueError):

@@ -103,8 +103,8 @@ class GanttService:
         if not span:
             return None
 
-        start_time = str(span["start_time"]).strip()
-        end_time = str(span["end_time"]).strip()
+        start_time = str(span.get("start_time") or "").strip()
+        end_time = str(span.get("end_time") or "").strip()
         if not start_time or not end_time:
             return None
 
