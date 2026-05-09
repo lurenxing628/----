@@ -38,7 +38,7 @@ class CalendarAdmin:
 
     def _get_holiday_default_efficiency(self) -> float:
         """
-        获取“假期默认效率”（>0）。
+        获取“假期工作效率”（>0）。
         - 来自 ScheduleConfig.holiday_default_efficiency
         - 写入链必须严格依赖合法配置，不允许在该层静默回退默认值
         """

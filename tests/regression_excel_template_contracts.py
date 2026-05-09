@@ -33,6 +33,23 @@ PAGE_MANUAL_TEMPLATE_COLUMN_CONTRACTS = {
     "excel_calendar": "工作日历.xlsx",
 }
 
+RELATION_REVERSE_HEADER_COPY_CONTRACTS: Mapping[str, Mapping[str, Any]] = {
+    "excel_personnel_link": {
+        "filename": "人员设备关联.xlsx",
+        "required_phrases": [
+            "列：工号(必填)、设备编号(必填)、技能等级、主操设备。",
+            "设备侧模板列顺序是 设备编号 / 工号",
+        ],
+    },
+    "excel_equipment_link": {
+        "filename": "设备人员关联.xlsx",
+        "required_phrases": [
+            "列：设备编号(必填)、工号(必填)、技能等级、主操设备。",
+            "和人员侧导入的区别主要是列顺序：这里是“设备编号在前、工号在后”",
+        ],
+    },
+}
+
 DROPDOWN_MANUAL_CONTRACTS: Mapping[str, Mapping[str, Any]] = {
     "工种配置.xlsx": {
         "manual_id": "excel_op_types",
@@ -59,10 +76,36 @@ DROPDOWN_MANUAL_CONTRACTS: Mapping[str, Mapping[str, Any]] = {
         "manual_heading": "#### 1.5.5 人员基本信息",
         "dropdowns": {"状态": ["在岗", "停用"]},
         "compatible_values": {"状态": ["启用", "可用", "正常", "休假", "离岗"]},
-        "page_phrases": ["状态", "在岗", "停用"],
+        "page_phrases": ["状态", "在岗", "停用", "状态模板下拉优先选：在岗 / 停用"],
         "manual_phrases": ["`在岗` 或 `停用`"],
+        "forbidden_page_phrases": ["在岗 / 停用 / 休假", "`在岗/停用/休假`", "模板下拉优先选：在岗 / 停用 / 休假"],
+        "forbidden_manual_phrases": [],
+    },
+    "人员设备关联.xlsx": {
+        "manual_id": "excel_personnel_link",
+        "manual_heading": "#### 1.6.7 人员设备关联",
+        "dropdowns": {"技能等级": ["初级", "普通", "熟练"], "主操设备": ["是", "否"]},
+        "compatible_values": {"技能等级": ["新手", "一般", "中级", "高级", "专家"], "主操设备": ["主操", "非主操", "主", "非主", "1", "0"]},
+        "page_phrases": ["新手/一般/中级/高级/专家", "主/非主", "1/0"],
+        "manual_phrases": ["`新手`、`一般`、`中级`、`高级`、`专家`", "`主操`、`非主操`、`主`、`非主`、`1`、`0`"],
         "forbidden_page_phrases": [],
         "forbidden_manual_phrases": [],
+    },
+    "人员专属工作日历.xlsx": {
+        "manual_id": "excel_personnel_calendar",
+        "manual_heading": "#### 1.6.9 个人工作日历",
+        "dropdowns": {"类型": ["工作日", "假期"], "允许普通件": ["是", "否"], "允许急件": ["是", "否"]},
+        "compatible_values": {"类型": ["周末", "节假日"], "允许普通件": ["1", "0"], "允许急件": ["1", "0"]},
+        "page_phrases": ["类型建议填：工作日 / 假期", "以前写过周末 / 节假日", "允许普通件/急件模板下拉优先填 是/否", "以前文件里写过 1/0"],
+        "manual_phrases": ["旧文件里的 `周末`、`节假日`", "旧文件里的 `1/0`"],
+        "forbidden_page_phrases": [
+            "类型可填：工作日 / 假期 / 周末 / 节假日",
+            "可填写：工作日 / 假期 / 周末 / 节假日",
+        ],
+        "forbidden_manual_phrases": [
+            "类型可填：工作日 / 假期 / 周末 / 节假日",
+            "可填写：工作日 / 假期 / 周末 / 节假日",
+        ],
     },
     "设备信息.xlsx": {
         "manual_id": "excel_equipment",
@@ -81,7 +124,11 @@ DROPDOWN_MANUAL_CONTRACTS: Mapping[str, Mapping[str, Any]] = {
         "compatible_values": {"优先级": ["急"], "齐套": ["是", "否"]},
         "page_phrases": ["优先级", "普通", "急件", "特急", "齐套", "未齐套", "部分齐套"],
         "manual_phrases": ["`普通`、`急件`、`特急`", "`齐套`、`未齐套`、`部分齐套`"],
-        "forbidden_page_phrases": [],
+        "forbidden_page_phrases": [
+            "优先级可填：普通 / 急件 / 特急 / 急",
+            "齐套可填：齐套 / 未齐套 / 部分齐套 / 是 / 否",
+            "新文件请按这些中文选项填写",
+        ],
         "forbidden_manual_phrases": [],
     },
     "工作日历.xlsx": {
@@ -91,8 +138,14 @@ DROPDOWN_MANUAL_CONTRACTS: Mapping[str, Mapping[str, Any]] = {
         "compatible_values": {"类型": ["周末", "节假日"]},
         "page_phrases": ["类型", "工作日", "假期", "允许普通件", "允许急件", "是", "否"],
         "manual_phrases": ["`工作日`", "`假期`", "`是` 或 `否`"],
-        "forbidden_page_phrases": [],
-        "forbidden_manual_phrases": [],
+        "forbidden_page_phrases": [
+            "类型可填：工作日 / 假期 / 周末 / 节假日",
+            "可填写：工作日 / 假期 / 周末 / 节假日",
+        ],
+        "forbidden_manual_phrases": [
+            "类型可填：工作日 / 假期 / 周末 / 节假日",
+            "可填写：工作日 / 假期 / 周末 / 节假日",
+        ],
     },
 }
 
@@ -421,6 +474,48 @@ def _assert_process_excel_template_files_match_registered_definitions() -> None:
         assert actual_enums == expected_enums, f"{filename} 下拉值和模板定义不一致"
 
 
+def _assert_page_manual_excel_template_files_match_registered_definitions() -> None:
+    for filename in sorted(set(PAGE_MANUAL_TEMPLATE_COLUMN_CONTRACTS.values())):
+        template_path = REPO_ROOT / "templates_excel" / filename
+        assert template_path.exists(), f"页面说明提到的 Excel 模板文件不存在：{template_path}"
+
+        definition = _template_definition(filename)
+        expected_headers = [str(item) for item in definition.get("headers") or []]
+        expected_enums = _definition_enum_values_by_header(definition)
+        actual_headers, _actual_sample_rows, actual_enums = _read_template_snapshot(template_path, definition)
+
+        assert actual_headers == expected_headers, f"{filename} 真实文件表头和页面说明引用的模板定义不一致"
+        assert actual_enums == expected_enums, f"{filename} 真实文件下拉值和页面说明引用的模板定义不一致"
+
+
+def _assert_supplier_conversion_output_matches_current_template_contract() -> None:
+    filename = "供应商配置.xlsx"
+    template_path = REPO_ROOT / "templates_excel" / "转换输出" / filename
+    assert template_path.exists(), f"缺少供应商配置转换输出示例：{template_path}"
+
+    definition = _template_definition(filename)
+    expected_headers = [str(item) for item in definition.get("headers") or []]
+    expected_enums = _definition_enum_values_by_header(definition)
+    actual_headers, _actual_sample_rows, actual_enums = _read_template_snapshot(template_path, definition)
+
+    assert actual_headers == expected_headers, "供应商配置转换输出仍是旧列，必须补齐状态和备注"
+    assert actual_enums == expected_enums, "供应商配置转换输出的状态下拉必须和正式模板一致"
+
+    workbook = load_workbook(template_path, data_only=True)
+    try:
+        ws = workbook.active
+        row_count = 0
+        for row_idx in range(2, ws.max_row + 1):
+            values = [ws.cell(row_idx, col_idx).value for col_idx in range(1, len(expected_headers) + 1)]
+            if not any(value not in (None, "") for value in values):
+                continue
+            row_count += 1
+            assert values[4] in ("启用", "停用"), f"供应商配置转换输出第 {row_idx} 行状态必须是启用或停用"
+        assert row_count > 0, "供应商配置转换输出至少要保留一行示例或转换结果"
+    finally:
+        workbook.close()
+
+
 def _assert_process_excel_dropdown_values_match_page_and_full_manuals() -> None:
     _ensure_repo_on_path()
     page_manuals = importlib.import_module("web.viewmodels.page_manuals")
@@ -491,10 +586,46 @@ def _assert_page_manual_help_columns_match_template_headers() -> None:
         )
 
 
+def _assert_relation_reverse_header_copy_matches_templates() -> None:
+    _ensure_repo_on_path()
+    page_manuals = importlib.import_module("web.viewmodels.page_manuals")
+    static_manual_text = _read_static_manual()
+
+    assert "人员设备关联，也可以用设备人员关联，填的是同一类关系" in static_manual_text, (
+        "总说明书必须写清人员设备关联和设备人员关联是同一类关系"
+    )
+    relation_section = _extract_markdown_section(static_manual_text, "#### 1.6.7 人员设备关联")
+    assert "| 人员管理侧 | 工号、设备编号、技能等级、主操设备 |" in relation_section, (
+        "总说明书必须写清人员管理侧人员设备关联模板列顺序"
+    )
+    assert "| 设备管理侧 | 设备编号、工号、技能等级、主操设备 |" in relation_section, (
+        "总说明书必须写清设备管理侧设备人员关联模板列顺序"
+    )
+
+    for manual_id, contract in RELATION_REVERSE_HEADER_COPY_CONTRACTS.items():
+        filename = str(contract["filename"])
+        definition = _template_definition(filename)
+        expected_headers = [str(item) for item in definition.get("headers") or []]
+        payload = page_manuals.build_manual_payload(manual_id, include_sections=True)
+        assert payload is not None, f"{manual_id} 无法构建设备/人员关联反向表头校验 payload"
+        actual_columns = _extract_help_card_columns(payload)
+        assert actual_columns == expected_headers, (
+            f"{manual_id} 帮助卡列顺序必须和 {filename} 模板表头一致；"
+            f"期望 {expected_headers}，实际 {actual_columns}"
+        )
+
+        payload_text = _manual_payload_text(payload)
+        for phrase in contract["required_phrases"]:
+            assert phrase in payload_text, f"{manual_id} 缺少设备/人员关联反向表头说明：{phrase}"
+
+
 def main() -> None:
     _assert_process_excel_template_files_match_registered_definitions()
+    _assert_page_manual_excel_template_files_match_registered_definitions()
+    _assert_supplier_conversion_output_matches_current_template_contract()
     _assert_process_excel_dropdown_values_match_page_and_full_manuals()
     _assert_page_manual_help_columns_match_template_headers()
+    _assert_relation_reverse_header_copy_matches_templates()
     _assert_legacy_op_type_template_refreshes()
     _assert_legacy_op_type_template_with_extra_rows_repairs_dropdown_without_overwriting_data()
     print("OK")

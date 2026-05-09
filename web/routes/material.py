@@ -89,7 +89,7 @@ def materials_delete(material_id: str):
         flash(e.message, "error")
     except Exception:
         current_app.logger.exception("删除物料失败（material_id=%s）", material_id)
-        flash("删除物料失败，请稍后重试。", "error")
+        flash("删除物料失败：可能仍被批次物料需求引用，请先处理关联需求后再试；如果仍失败，再联系维护人员。", "error")
     return redirect(url_for("material.materials_page"))
 
 

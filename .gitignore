@@ -120,3 +120,7 @@ backups/_tmp_arch_debt_scan.txt
 
 # 审计临时 diff 片段（代码审查过程中产出，不纳入版本控制）
 audit/**/_tmp_review/
+.DS_Store
+
+# Iris 本地计划文件（本机工具临时产物，不纳入版本控制）
+.iris/

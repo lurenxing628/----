@@ -398,8 +398,17 @@ def _extract_paragraph_containing(markdown_text: str, needle: str) -> str:
 def _extract_section(markdown_text: str, heading: str) -> str:
     start = markdown_text.find(heading)
     assert start >= 0, f"说明书缺少章节：{heading}"
+    heading_level = len(heading) - len(heading.lstrip("#"))
     rest = markdown_text[start + len(heading) :]
-    next_heading = re.search(r"^##\s+", rest, flags=re.M)
+
+    def _same_or_higher_heading(match: re.Match[str]) -> bool:
+        return len(match.group(1)) <= heading_level
+
+    next_heading = None
+    for candidate in re.finditer(r"^(#{1,6})\s+", rest, flags=re.M):
+        if _same_or_higher_heading(candidate):
+            next_heading = candidate
+            break
     end = start + len(heading) + next_heading.start() if next_heading else len(markdown_text)
     return markdown_text[start:end]
 
@@ -430,6 +439,51 @@ def _assert_history_section_does_not_claim_export_or_restore(markdown_text: str,
         assert phrase not in section, f"{label} 排产历史章节仍像是在承诺导出/恢复能力：{phrase}"
 
 
+def _assert_scheduler_manual_closeout_contracts(markdown_text: str, label: str) -> None:
+    for needle in (
+        "页面上的 **本页说明** 按钮",
+        "只打开操作说明",
+        "设备 Excel 真实模板只有这 5 列：设备编号、设备名称、工种、班组、状态",
+    ):
+        assert needle in markdown_text, f"{label} 缺少本轮说明书收口内容：{needle}"
+
+    resource_load_section = _extract_section(markdown_text, "### 9.2 资源负荷与利用率")
+    for needle in (
+        "设备、人员的负荷",
+        "设备和人员两个工作表",
+        "设备负荷",
+        "人员负荷",
+    ):
+        assert needle in resource_load_section, f"{label} 资源负荷章节缺少设备/人员两张表口径：{needle}"
+
+    config_section = _extract_section(markdown_text, "## 7. 高级设置：每个开关的作用")
+    for needle in (
+        "优化目标",
+        "最少超期",
+        "最少拖期小时",
+        "最少加权拖期小时",
+        "最少换型次数",
+    ):
+        assert needle in config_section, f"{label} 高级设置章节缺少优化目标口径：{needle}"
+
+    scheduler_section = _extract_section(markdown_text, "### 6.3 执行排产与模拟排产")
+    for needle in ("排产截止日期", "这是严格限制，不是普通备注"):
+        assert needle in scheduler_section, f"{label} 执行排产章节缺少截止日期严格限制口径：{needle}"
+    for forbidden in (
+        "超过截止日期就一定失败",
+        "超过截止日期必然失败",
+        "截止日期一定会导致排产失败",
+        "截止日期必然导致失败",
+        "排产截止日期不是严格限制",
+        "截止日期不是严格限制",
+        "不算严格限制",
+    ):
+        assert forbidden not in scheduler_section, f"{label} 截止日期说明写得过死或写反：{forbidden}"
+
+    gantt_section = _extract_section(markdown_text, "### 6.4 甘特图")
+    assert "`latest` 是英文，意思就是“最新”" in gantt_section, f"{label} 甘特图章节缺少 latest 大白话解释"
+
+
 def _assert_scheduler_manual_required_content(markdown_text: str, label: str) -> None:
     for needle in ("TRUE/FALSE", "NaN", "Inf", "Infinity", "5e0", "1E2", "最后更新：2026年5月"):
         assert needle in markdown_text, f"{label} 缺少说明书必备内容：{needle}"
@@ -446,10 +500,29 @@ def _assert_scheduler_manual_required_content(markdown_text: str, label: str) ->
         "空工时按 0 小时处理",
         "日历类型空着按工作日理解",
         "连续外协周期示例",
-        "只用来查看、搜索、分页查看版本摘要和结果概况，不在这里导出或恢复版本",
+        "系统管理 → 排产历史** 只看版本摘要、提醒和结果概况",
+        "选择查看最近 10 条、50 条这类记录",
+        "首页统计卡怎么看",
+        "如果停机时间填错，先取消原停机，再按正确时间新建",
+        "保存补齐资源",
+        "报表首页的两个数字只做快速速览",
+        "同一批次里，同一个物料只能新增一次",
+        "物料下拉框只显示状态为“可用”的物料",
+        "批次齐套日期会自动清空",
+        "趋势图只使用有排产指标的版本",
+        "只有历史摘要读取失败时，页面才会提示读取失败的版本数量",
+        "正式排产和模拟排产都算",
+        "按这个最新版本的超期清单口径重新计算",
+        "查询结果表包含 10 列",
+        "| 日志序号 | 当前查询结果里的顺序，不是固定不变的数据库编号 |",
+        "导入批次时“自动生成工序”覆盖了手工补的数据怎么办？",
+        "版本下拉为空或提示“暂无排产历史”怎么办？",
+        "恢复备份后数据和之前不一样？",
+        "排产成功但甘特图上看不到任务？",
     ):
         assert needle in markdown_text, f"{label} 缺少说明书必备内容：{needle}"
     assert "用来查看、导出、恢复这些版本" not in markdown_text, f"{label} 不应再写排产历史可以导出或恢复版本"
+    _assert_scheduler_manual_closeout_contracts(markdown_text, label)
 
     batch_warning_paragraph = _extract_paragraph_containing(markdown_text, "自动生成批次工序时产生提醒")
     assert "当前页面确认写入后只会展示去重后的前 3 条提醒" in batch_warning_paragraph

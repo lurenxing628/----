@@ -37,6 +37,6 @@
     {{ ui.button('模拟排产（插单模拟）', 'success', 'md', type_attr='submit', formaction=url_for('scheduler.simulate_schedule'), confirm='将对所选批次执行一次【模拟排产】并生成新版本（不更新批次状态）。确定继续？') }}
   </div>
   <div class="aps-action-card-note">
-    设置截止日期后，若无法在期限内完成，系统会提示排产失败。工序的设备、人员、工时必须填写完整，否则排产会失败。
+    设置截止日期后，系统会把它当成硬限制，不是备注。工时空着时可能按 0 小时继续排，结果会偏短；正式排产前请补真实工时，填了负数、文字、NaN、Inf 这类异常值时会报错。
   </div>
 </div>

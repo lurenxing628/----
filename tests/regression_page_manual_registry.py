@@ -145,12 +145,20 @@ USER_CORRECTED_TOPIC_SEMANTIC_CASES = {
         "无变化或跳过的批次不会刷新工序",
     ],
     "excel_calendar": [
-        "类型可填：工作日 / 假期 / 周末 / 节假日",
-        "周末和节假日都会按假期保存",
+        "类型模板下拉推荐填：工作日 / 假期",
+        "以前文件里写过 周末 / 节假日 的，系统会按假期理解",
+    ],
+    "excel_personnel_calendar": [
+        "类型建议填：工作日 / 假期",
+        "以前写过周末 / 节假日的，系统会按假期理解",
+        "允许普通件/急件模板下拉优先填 是/否",
+        "以前文件里写过 1/0 的，系统会尽量读懂",
     ],
     "scheduler_calendar": [
-        "批量维护里填“周末”或“节假日”也会按假期处理",
-        "系统会当成 `假期` 保存",
+        "旧批量文件里填过“周末”或“节假日”的，系统会按假期兼容处理",
+        "新模板仍建议填工作日或假期",
+        "系统会当成 `假期` 兼容保存",
+        "班次开始/结束",
     ],
     "scheduler_dispatch": [
         "自定义日期范围最多 62 天",
@@ -160,6 +168,7 @@ USER_CORRECTED_TOPIC_SEMANTIC_CASES = {
         "页面只预览前 50 行",
         "完整周计划以导出的表格为准",
         "导出周计划表.xlsx",
+        "想按指定周查看时，先清空上面的起止日期",
     ],
     "reports_overdue": [
         "超期(天)按当前实现显示小数天",
@@ -185,7 +194,8 @@ USER_CORRECTED_FULL_MANUAL_PHRASES = [
     "齐套日期只有在启用齐套检查时才影响排产",
     "系统不会自动跳过这些批次继续排其它批次",
     "齐套日期只对齐套批次作为最早开工日",
-    "手填 `周末` 或 `节假日`，系统也按假期算",
+    "旧 Excel 里如果已经手填 `周末` 或 `节假日`，系统也会按假期处理",
+    "新模板不要故意写旧叫法",
     "自定义日期范围最多 62 天；查更长时间要分段查",
     "页面只预览前 50 行，并显示总行数",
     "完整周计划以 **导出周计划表.xlsx** 为准",
@@ -213,7 +223,7 @@ PAGE_MANUAL_REFUSAL_CONDITION_CASES = {
     "excel_suppliers": [
         "默认周期必须填写大于 0 的有限数字(天)",
         "留空、0、负数、文字、TRUE/FALSE、NaN、Inf、Infinity 都会报错",
-        "如果供应商已被零件工序清单、批次工序或外协组引用，会拒绝导入",
+        "如果供应商已被零件工序清单、批次工序或连续外协工序组引用，会拒绝导入",
     ],
     "excel_part_op_hours": [
         "换型时间和单件工时填非负的有限数字(小时)",
@@ -241,9 +251,16 @@ HOME_PAGE_MANUAL_REQUIRED_PHRASES = [
     "确认没问题再执行排产",
     "甘特图",
     "周计划导出",
-    "资源排班中心",
+    "资源排班",
     "排产优化分析",
-    "排产历史只用来查看、搜索、分页查看版本摘要和结果概况",
+    "排产历史只看版本摘要、提醒和结果概况",
+    "查看最近 10 条、50 条这类记录",
+    "待排批次",
+    "已排批次",
+    "模拟排产只生成版本，不会把这里的批次改成已排",
+    "超期批次",
+    "最近排产版本",
+    "不是所有历史版本累计",
     "不在这里导出或恢复版本",
     "运行提醒只展示前 5 条",
 ]
@@ -255,6 +272,29 @@ SCHEDULER_PAGE_MANUAL_FORBIDDEN_PHRASES = {
     "scheduler_week_plan": ["导出维度"],
     "system_history": ["导出、恢复这些版本"],
 }
+
+
+PAGE_MANUAL_CLOSEOUT_FORBIDDEN_PHRASES = (
+    "改工种名或工种编号前",
+    "先用筛选缩小范围",
+    "需要找少量记录时，可以用筛选缩小范围",
+    "可以用筛选缩小范围；只是新增资料",
+    "右下角“本页说明”",
+    "CV值",
+    "版本分析",
+)
+
+PAGE_MANUAL_CLOSEOUT_FORBIDDEN_TEMPLATE_PHRASES = (
+    "类型可填“工作日、假期、周末、节假日”",
+    "可填写：工作日 / 假期 / 周末 / 节假日",
+)
+
+
+PAGE_MANUAL_LIST_BASICS_REQUIRED_COPY = (
+    "可以用筛选或翻页缩小范围",
+    "具体筛选方式因页面而异",
+    "有些页面有搜索框和下拉筛选，有些只有翻页",
+)
 
 
 READY_CHECK_REQUIRED_COPY = (
@@ -386,6 +426,7 @@ def main() -> None:
     _assert_page_manual_refusal_conditions(page_manuals)
     _assert_material_manual_scope_contracts(page_manuals)
     _assert_blank_default_pages_do_not_conflict_with_common_errors(page_manuals)
+    _assert_page_manual_closeout_forbidden_phrases(page_manuals)
     manual_heading_ids = _extract_heading_ids(manual_text)
 
     endpoint_to_manual_id = dict(page_manuals.ENDPOINT_TO_MANUAL_ID)
@@ -532,7 +573,7 @@ def main() -> None:
         "excel_personnel_link": ["新手/一般/中级/高级/专家", "主/非主"],
         "excel_op_types": ["自制 / 外协", "新文件请只填这两个中文选项"],
         "excel_suppliers": ["留空、`0`、负数、文字、`TRUE/FALSE`、`NaN`、`Inf`、`Infinity`", "在用/正常/禁用", "状态和备注列"],
-        "excel_calendar": ["留空按 `工作日` 处理", "高级设置中的“假期默认效率”"],
+        "excel_calendar": ["留空按 `工作日` 处理", "高级设置中的“假期工作效率”"],
         "excel_part_op_hours": ["留空默认 0", "只补空工时"],
         "scheduler_batches": ["当前页只展示前 5 条", "如果排产成功但有运行提醒，页面只列前 5 条"],
         "scheduler_batches_manage": ["当前页只展示前 3 条模板提醒"],
@@ -554,15 +595,22 @@ def main() -> None:
 
     full_manual_phrases = [
         "固定选项字段请填写中文值",
-        '假期不填默认高级设置中的"假期默认效率"',
+        "假期不填默认高级设置中的“假期工作效率”",
         "库存数量可以为 0，但不能为负数",
         '"需求数量"必须大于 0',
-        "如果恢复过程失败，系统会尝试恢复到这份备份",
+        "如果恢复过程失败，系统会尽最大努力恢复到这份备份",
         "批量删除前先确认筛选条件、已选条数和本次删除范围",
         "最后更新：2026年5月",
         "空工时按 0 小时处理",
         "日历类型空着按工作日理解",
-        "只用来查看、搜索、分页查看版本摘要和结果概况，不在这里导出或恢复版本",
+        "系统管理 → 排产历史** 只看版本摘要、提醒和结果概况",
+        "选择查看最近 10 条、50 条这类记录",
+        "备份文件名由系统自动按时间和用途生成",
+        "如果停机时间填错，先取消原停机，再按正确时间新建",
+        "保存补齐资源",
+        "最新排产版本",
+        "模拟排产会留下版本记录，但不会把这里的批次状态改成已排",
+        "部分报表导出可能只是直接下载文件，不一定都有操作日志",
     ]
     for phrase in full_manual_phrases:
         assert phrase in manual_text, f"总说明书缺少已核实语义片段：{phrase}"
@@ -608,6 +656,43 @@ def _assert_user_corrected_semantic_contracts(page_manuals, manual_text: str) ->
 
     for phrase in USER_CORRECTED_FULL_MANUAL_PHRASES:
         assert phrase in manual_text, f"总说明书缺少用户点名纠偏语义片段：{phrase}"
+
+
+def _assert_page_manual_closeout_forbidden_phrases(page_manuals) -> None:
+    surfaces: dict[str, str] = {}
+    for key, fragment in dict(page_manuals.SHARED_FRAGMENTS).items():
+        surfaces[f"shared_fragment:{key}"] = str(fragment or "")
+
+    for manual_id in dict(page_manuals.MANUAL_TOPICS):
+        payload = page_manuals.build_manual_payload(manual_id, include_sections=True)
+        assert payload is not None, f"{manual_id} 无法构建页面说明禁用文案校验 payload"
+        surfaces[f"page_manual:{manual_id}"] = _build_payload_text(payload)
+
+    repo_root = _find_repo_root()
+    surfaces["static/docs/scheduler_manual.md"] = _read(os.path.join(repo_root, "static", "docs", "scheduler_manual.md"))
+
+    for source_name, text in surfaces.items():
+        for phrase in PAGE_MANUAL_CLOSEOUT_FORBIDDEN_PHRASES:
+            assert phrase not in text, f"{source_name} 仍包含本轮明确禁用的页面帮助文案：{phrase}"
+
+    visible_sources = {
+        "templates/scheduler/excel_import_calendar.html": _read(
+            os.path.join(repo_root, "templates", "scheduler", "excel_import_calendar.html")
+        ),
+        "core/services/common/excel_validators.py": _read(
+            os.path.join(repo_root, "core", "services", "common", "excel_validators.py")
+        ),
+        "web/routes/domains/scheduler/scheduler_excel_calendar_rows.py": _read(
+            os.path.join(repo_root, "web", "routes", "domains", "scheduler", "scheduler_excel_calendar_rows.py")
+        ),
+    }
+    for source_name, text in visible_sources.items():
+        for phrase in PAGE_MANUAL_CLOSEOUT_FORBIDDEN_TEMPLATE_PHRASES:
+            assert phrase not in text, f"{source_name} 仍包含工作日历旧推荐文案：{phrase}"
+
+    list_basics = str(dict(page_manuals.SHARED_FRAGMENTS).get("list_page_basics") or "")
+    for phrase in PAGE_MANUAL_LIST_BASICS_REQUIRED_COPY:
+        assert phrase in list_basics, f"list_page_basics 缺少按页面差异收窄后的列表说明：{phrase}"
 
 
 def _assert_ready_check_visible_copy_contract(repo_root: str, page_manuals, manual_text: str) -> None:
@@ -824,6 +909,13 @@ def test_home_page_manual_contract() -> None:
     _ensure_repo_on_path(repo_root)
     page_manuals = importlib.import_module("web.viewmodels.page_manuals")
     _assert_home_page_manual_contract(page_manuals)
+
+
+def test_page_manual_closeout_forbidden_phrases() -> None:
+    repo_root = _find_repo_root()
+    _ensure_repo_on_path(repo_root)
+    page_manuals = importlib.import_module("web.viewmodels.page_manuals")
+    _assert_page_manual_closeout_forbidden_phrases(page_manuals)
 
 
 def test_user_corrected_manual_semantic_contracts() -> None:

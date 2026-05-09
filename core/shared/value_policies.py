@@ -123,7 +123,7 @@ _FIELD_POLICIES = (
         strict_reason_code="invalid_number",
         compat_reason_code="invalid_number",
         blank_reason_code="blank_required",
-        notes="假期默认效率：兼容读取必须由调用方显式传入运行时默认值。",
+        notes="假期工作效率：兼容读取必须由调用方显式传入运行时默认值。",
     ),
     FieldPolicy(
         field="freeze_window_days",

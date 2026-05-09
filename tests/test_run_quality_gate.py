@@ -337,6 +337,7 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
     assert "tests/regression_gantt_critical_outline_sync.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_route_version_normalizers_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_gantt_page_version_default_latest.py" in module.REQUIRED_TEST_ARGS
+    assert "tests/regression_gantt_default_version_span.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_reports_page_version_default_latest.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_reports_export_version_default_latest.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_gantt_calendar_load_failed_degraded.py" in module.REQUIRED_TEST_ARGS
@@ -345,6 +346,7 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
     assert "tests/regression_gantt_critical_chain_unavailable.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_quality_gate_scan_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_scheduler_run_entry_layout_contract.py" in module.REQUIRED_TEST_ARGS
+    assert "tests/test_scheduler_run_view_result_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_action_card_button_layout_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_mirror_template_sync.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_stable_form_layout_allowlist.py" in module.REQUIRED_TEST_ARGS
@@ -356,7 +358,14 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
     assert "tests/regression_system_logs_layout_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_system_logs_presenter_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_form_run_option_checkbox_layout_contract.py" in module.REQUIRED_TEST_ARGS
+    assert "tests/regression_scheduler_ui_range_feedback_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_scheduler_route_enforce_ready_tristate.py" in module.REQUIRED_TEST_ARGS
+    assert "tests/regression_config_manual_markdown.py" in module.REQUIRED_TEST_ARGS
+    assert "tests/regression_frontend_manual_blueprint_contract.py" in module.REQUIRED_TEST_ARGS
+    assert "tests/regression_frontend_ui_language_polish.py" in module.REQUIRED_TEST_ARGS
+    assert "tests/regression_manual_entry_scope.py" in module.REQUIRED_TEST_ARGS
+    assert "tests/regression_page_manual_registry.py" in module.REQUIRED_TEST_ARGS
+    assert "tests/regression_excel_template_contracts.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_ui_browser_geometry_smoke.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_gantt_layout_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_request_services_contract.py" in module.REQUIRED_TEST_ARGS

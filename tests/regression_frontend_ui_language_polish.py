@@ -221,27 +221,20 @@ def test_manuals_keep_backend_supported_english_aliases_but_mark_them_as_compati
         normalize_ready_status_value,
     )
 
-    manual_sources = "\n".join(
-        _read(rel_path)
-        for rel_path in (
-            "web/viewmodels/page_manuals_process.py",
-            "web/viewmodels/page_manuals_scheduler.py",
-            "web/viewmodels/page_manuals_personnel.py",
-            "web/viewmodels/page_manuals_equipment.py",
-            "static/docs/scheduler_manual.md",
-        )
-    )
+    process_manuals = _read("web/viewmodels/page_manuals_process.py")
+    scheduler_manuals = _read("web/viewmodels/page_manuals_scheduler.py")
+    personnel_manuals = _read("web/viewmodels/page_manuals_personnel.py")
+    equipment_manuals = _read("web/viewmodels/page_manuals_equipment.py")
+    full_manual = _read("static/docs/scheduler_manual.md")
+    manual_sources = "\n".join((process_manuals, scheduler_manuals, personnel_manuals, equipment_manuals, full_manual))
 
-    expected_alias_phrases = (
-        "以前文件里写过 新手 / 一般 / 中级 / 高级 / 专家 的，系统会尽量读懂",
-        "以前文件里写过 1/0 的，系统会尽量读懂",
-        "新文件请按这些中文选项填写",
-        "新文件请填中文",
-        "归属可填：自制 / 外协。新文件请只填这两个中文选项",
-    )
-    for phrase in expected_alias_phrases:
-        assert phrase in manual_sources
-    assert "归属可填：自制 / 外协。新文件请只填这两个中文选项" in manual_sources
+    assert "以前文件里写过 新手 / 一般 / 中级 / 高级 / 专家 的，系统会尽量读懂" in personnel_manuals
+    assert "以前文件里写过 1/0 的，系统会尽量读懂" in scheduler_manuals
+    assert "类型模板下拉推荐填：工作日 / 假期" in scheduler_manuals
+    assert "新表按下拉推荐写" in scheduler_manuals
+    assert "状态模板下拉优先选：在岗 / 停用" in personnel_manuals
+    assert "新文件请填中文" in full_manual
+    assert "归属可填：自制 / 外协。新文件请只填这两个中文选项" in process_manuals
     assert "兼容英文标准值" not in manual_sources
     assert "internal` / `external" not in manual_sources
     assert "兼容英文标准值 `internal`/`external`" not in manual_sources
@@ -296,6 +289,20 @@ def test_supplier_manual_matches_required_default_days_and_template_columns() ->
     assert "不填默认 1 天" not in manual_sources
     assert "留空默认 1 天" not in manual_sources
     assert "周期默认1天" not in manual_sources
+
+
+def test_material_status_and_delete_messages_match_user_page_labels() -> None:
+    material_page = _read("web/viewmodels/page_manuals_material.py")
+    material_route = _read("web/routes/material.py")
+    material_service = _read("core/services/material/material_service.py")
+
+    assert "状态为可用" in material_page
+    assert "删除可能失败；这时先去处理引用它的批次物料需求" in material_page
+    assert "请先处理关联需求后再试" in material_route
+    delete_block = material_route.split("def materials_delete", 1)[-1].split("# ============================================================", 1)[0]
+    assert "请稍后重试" not in delete_block
+    assert "请选择：可用 / 停用" in material_service
+    assert "请选择：启用 / 停用" not in material_service
 
 
 def test_excel_templates_default_to_chinese_enum_values_accepted_by_backend() -> None:
@@ -483,6 +490,7 @@ def test_import_errors_present_chinese_first_and_english_as_compatible_aliases()
             "web/routes/process_excel_op_types.py",
             "web/routes/process_excel_suppliers.py",
             "web/routes/domains/scheduler/scheduler_excel_calendar.py",
+            "web/routes/domains/scheduler/scheduler_excel_calendar_rows.py",
             "core/services/personnel/operator_machine_normalizers.py",
         )
     )
@@ -493,8 +501,8 @@ def test_import_errors_present_chinese_first_and_english_as_compatible_aliases()
     assert "允许：internal / external；或中文" not in sources
     assert "允许：active / inactive；或中文" not in sources
     assert "可填写：普通 / 急件 / 特急。以前的 Excel 如果写过英文，系统会尽量按中文意思读取；新文件请直接填中文" in sources
-    assert "可填写：齐套 / 未齐套 / 部分齐套 / 是 / 否。以前的 Excel 如果写过英文，系统会尽量按中文意思读取；新文件请直接填中文" in sources
-    assert "可填写：工作日 / 假期 / 周末 / 节假日。以前的 Excel 如果写过英文，系统会尽量按中文意思读取；新文件请直接填中文" in sources
+    assert "新文件请填写：齐套 / 未齐套 / 部分齐套。以前的 Excel 如果写过 是 / 否 或英文，系统会尽量按中文意思读取；新文件请直接填中文推荐值" in sources
+    assert "新文件请填写：工作日 / 假期。以前的 Excel 如果写过周末 / 节假日或英文，系统会尽量按中文意思读取；新文件请直接填中文推荐值" in sources
     assert "可填写：是 / 否。以前的 Excel 如果写过英文，系统会尽量按中文意思读取；新文件请直接填中文" in sources
     assert "请填写中文：自制、外协。以前的 Excel 如果写过“内部、外部、内、外”，系统会尽量按自制或外协读取" in sources
     assert "可填写：启用 / 停用 / 在用 / 正常 / 禁用。以前的 Excel 如果写过英文状态，系统会尽量按中文意思读取；新文件请直接填中文" in sources

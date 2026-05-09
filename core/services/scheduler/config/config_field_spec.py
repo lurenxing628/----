@@ -108,7 +108,7 @@ _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
         field_type="float",
         default=0.8,
         label="假期工作效率",
-        description="工作日历：假期默认效率（>0；假期安排工作且效率未填时使用）",
+        description="工作日历：假期工作效率（>0；假期安排工作且效率未填时使用）",
         min_value=0.0,
         min_inclusive=False,
     ),

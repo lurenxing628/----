@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% import "components/ui_macros.html" as ui %}
 {% block content %}
+  {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'simulated': '模拟排产', 'ok': '成功', 'fail': '失败', 'ok2': '成功'} %}
   {{ ui.aps_page_hero(
     '报表中心',
     '根据排产历史版本查看超期、资源负荷和停机影响；没有排产结果时页面会显示为空，也不会导出空 Excel。',
@@ -16,19 +17,25 @@
       <div class="stat-card type-info">
         <div class="stat-card-label">最新排产版本</div>
         <div class="stat-card-value">v{{ latest_version.version }}</div>
+        <div class="text-xs text-meta mt-1">{{ status_zh.get(latest_version.result_status, '结果状态未知') }}</div>
       </div>
     </div>
   {% endif %}
 
-  <div class="card">
-    {{ ui.aps_card_header('报表总览', '选择报表类型查看详细数据。有可导出的结果时，页面会提供 Excel 导出按钮。') }}
+  <section class="reports-overview">
+    <div class="page-header">
+      <div class="page-title-group">
+        <h3 class="section-title">报表总览</h3>
+        <p class="text-meta">选择报表类型查看详细数据。有可导出的结果时，页面会提供 Excel 导出按钮。</p>
+      </div>
+    </div>
     {% if not has_history %}
       <div class="muted mb-2">暂无排产历史，请先执行排产后再查看报表。</div>
     {% endif %}
     <div class="nav-grid">
       <a href="{{ url_for('reports.overdue_page') }}" class="nav-card">
         <div class="nav-card-title"><svg class="icon"><use href="{{ url_for('static', filename='icons.svg') }}#icon-warn"/></svg> 超期清单</div>
-        <div class="nav-card-desc">已排产批次中交期已过但未完成的清单。{% if has_history %}当前 {{ overdue_count }} 个超期。{% endif %}</div>
+        <div class="nav-card-desc">进入后可按版本查看交期风险：已排但晚于交期的批次、交期已过还没排上的批次。{% if has_history %}当前最新版本 {{ overdue_count }} 个超期。{% endif %}</div>
       </a>
       <a href="{{ url_for('reports.utilization_page') }}" class="nav-card">
         <div class="nav-card-title"><svg class="icon"><use href="{{ url_for('static', filename='icons.svg') }}#icon-chart"/></svg> 资源负荷与利用率</div>
@@ -39,5 +46,5 @@
         <div class="nav-card-desc">停机计划对排产结果的影响分析。</div>
       </a>
     </div>
-  </div>
+  </section>
 {% endblock %}

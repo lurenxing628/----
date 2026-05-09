@@ -72,42 +72,40 @@
         </div>
         <template id="aps-config-manual-fallback">{{ fallback_text if manual_mode == 'page' else manual_text }}</template>
 
-	        {% if manual_mode == 'page' and related_manuals %}
-	          <div class="card no-print manual-related-panel">
-	            <h3 class="section-title">相关模块说明</h3>
-	            <noscript>
-	              <pre class="manual-inline-pre">#### 维护顺序建议
+        {% if manual_mode == 'page' and related_manuals %}
+          <div class="card no-print manual-related-panel">
+            <h3 class="section-title">相关模块说明</h3>
+            <noscript>
+              <pre class="manual-inline-pre">#### 维护顺序建议
 - 先看当前页面说明，再看下面相关模块说明。
 - 需要完整流程时，点“查看完整原文对应章节”。</pre>
-	            </noscript>
-	            {% for item in related_manuals %}
-	              <div{% if not loop.first %} class="mt-2"{% endif %}>
-	                <div class="card p-card-tight">
-                  <div class="page-header">
-                    <div class="page-title-group">
-                      <h4 class="page-title">{{ item['title'] }}</h4>
-                    </div>
-                    <div class="page-actions page-actions-context">
-                      {% if item['url'] %}
-                        {{ ui.link_button('查看该页说明', item['url'], 'secondary', 'sm') }}
-                      {% endif %}
-                      {% if item['full_manual_section_url'] %}
-                        {{ ui.link_button('查看完整原文对应章节', item['full_manual_section_url'], 'ghost', 'sm') }}
-                      {% endif %}
-                    </div>
+            </noscript>
+            {% for item in related_manuals %}
+              <div class="manual-related-item{% if not loop.first %} mt-2{% endif %}">
+                <div class="page-header">
+                  <div class="page-title-group">
+                    <h4 class="manual-related-title">{{ item['title'] }}</h4>
                   </div>
-                  <p class="text-meta">{{ item['summary'] }}</p>
-                  {% for sec in item['preview_sections'] or [] %}
-	                    <div{% if not loop.first %} class="mt-2"{% endif %}>
-	                      <h5 class="section-title">{{ sec['title'] }}</h5>
-	                      <div class="manual-related-body manual-markdown-body" data-manual-markdown="{{ sec['body_md'] | tojson | forceescape }}"></div>
-	                      <noscript>
-	                        <pre class="manual-inline-pre">#### {{ sec['title'] }}
-{{ sec['body_md'] }}</pre>
-	                      </noscript>
-	                    </div>
-	                  {% endfor %}
+                  <div class="page-actions page-actions-context">
+                    {% if item['url'] %}
+                      {{ ui.link_button('查看该页说明', item['url'], 'secondary', 'sm') }}
+                    {% endif %}
+                    {% if item['full_manual_section_url'] %}
+                      {{ ui.link_button('查看完整原文对应章节', item['full_manual_section_url'], 'ghost', 'sm') }}
+                    {% endif %}
+                  </div>
                 </div>
+                <p class="text-meta">{{ item['summary'] }}</p>
+                {% for sec in item['preview_sections'] or [] %}
+                  <div{% if not loop.first %} class="mt-2"{% endif %}>
+                    <h5 class="section-title">{{ sec['title'] }}</h5>
+                    <div class="manual-related-body manual-markdown-body" data-manual-markdown="{{ sec['body_md'] | tojson | forceescape }}"></div>
+                    <noscript>
+                      <pre class="manual-inline-pre">#### {{ sec['title'] }}
+{{ sec['body_md'] }}</pre>
+                    </noscript>
+                  </div>
+                {% endfor %}
               </div>
             {% endfor %}
           </div>

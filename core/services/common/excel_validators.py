@@ -133,7 +133,7 @@ def get_batch_row_validate_and_normalize(
 
         target["齐套"] = _normalize_ready_status(target.get("齐套"))
         if target["齐套"] not in READY_STATUS_VALUES:
-            return "“齐套”不合法，可填写：齐套 / 未齐套 / 部分齐套 / 是 / 否。以前的 Excel 如果写过英文，系统会尽量按中文意思读取；新文件请直接填中文。"
+            return "“齐套”不合法，新文件请填写：齐套 / 未齐套 / 部分齐套。以前的 Excel 如果写过 是 / 否 或英文，系统会尽量按中文意思读取；新文件请直接填中文推荐值。"
 
         ready_res = _normalize_batch_date_cell(target.get("齐套日期"), field_label="齐套日期")
         if ready_res.get("error"):
@@ -157,9 +157,9 @@ def get_operator_calendar_row_validate_and_normalize(
     inplace: bool = True,
 ) -> Callable[[dict], str | None]:
     repo = op_repo if op_repo is not None else OperatorRepository(conn)
-    hde = parse_finite_float(holiday_default_efficiency, field="假期默认效率", allow_none=False)
+    hde = parse_finite_float(holiday_default_efficiency, field="假期工作效率", allow_none=False)
     if hde <= 0:
-        raise ValidationError("假期默认效率必须大于 0。", field="假期默认效率")
+        raise ValidationError("假期工作效率必须大于 0。", field="假期工作效率")
 
     def _validate_and_normalize(row: dict) -> str | None:
         target = row if inplace else dict(row)
@@ -181,7 +181,7 @@ def get_operator_calendar_row_validate_and_normalize(
 
         target["类型"] = _normalize_operator_calendar_day_type(target.get("类型"))
         if target["类型"] not in CALENDAR_DAY_TYPE_STORED_VALUES:
-            return "“类型”不合法，可填写：工作日 / 假期 / 周末 / 节假日。以前的 Excel 如果写过英文，系统会尽量按中文意思读取；新文件请直接填中文。"
+            return "“类型”不合法，新文件请填写：工作日 / 假期。以前的 Excel 如果写过周末 / 节假日或英文，系统会尽量按中文意思读取；新文件请直接填中文推荐值。"
 
         try:
             ss = normalize_hhmm(target.get("班次开始"), field="班次开始", allow_none=True)
