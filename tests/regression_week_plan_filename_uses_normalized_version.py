@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import importlib
+import io
 import os
 import sys
 from pathlib import Path
+
+import openpyxl
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
@@ -40,6 +43,9 @@ def _build_app(tmp_path, monkeypatch, *, with_history: bool = True):
     conn.commit()
     conn.close()
 
+    for name in list(sys.modules):
+        if name.startswith("web.routes.scheduler") or name.startswith("web.routes.domains.scheduler"):
+            sys.modules.pop(name, None)
     sys.modules.pop("app", None)
     app_mod = importlib.import_module("app")
     return app_mod.create_app()
@@ -104,3 +110,53 @@ def test_week_plan_no_history_page_empty_and_export_404(tmp_path, monkeypatch) -
     export_resp = client.get("/scheduler/week-plan/export?week_start=2026-03-02")
     assert export_resp.status_code == 404
     assert "暂无排产历史" in export_resp.get_data(as_text=True)
+
+
+def test_week_plan_export_uses_week_start_only_when_stale_range_present(tmp_path, monkeypatch) -> None:
+    app = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+
+    from core.services.scheduler.gantt_service import GanttService
+
+    calls = []
+
+    def _fake_rows(self, **kwargs):
+        calls.append(dict(kwargs))
+        return {
+            "rows": [
+                {
+                    "日期": "2026-05-11",
+                    "批次号": "B001",
+                    "图号": "P001",
+                    "工序": 10,
+                    "设备": "M001",
+                    "人员": "OP001",
+                    "时段": "08:00-10:00",
+                }
+            ],
+            "version": 7,
+            "status": "ok",
+            "has_history": True,
+            "week_start": "2026-05-11",
+            "week_end": "2026-05-17",
+        }
+
+    monkeypatch.setattr(GanttService, "get_week_plan_rows", _fake_rows)
+
+    resp = client.get(
+        "/scheduler/week-plan/export"
+        "?week_start=2026-05-11"
+        "&start_date=2026-05-04"
+        "&end_date=2026-05-10"
+        "&version=7"
+    )
+
+    assert resp.status_code == 200
+    assert calls == [{"week_start": "2026-05-11", "offset_weeks": 0, "version": "7"}]
+    disposition = resp.headers.get("Content-Disposition", "")
+    assert "v7_2026-05-11_to_2026-05-17.xlsx" in disposition, disposition
+
+    workbook = openpyxl.load_workbook(io.BytesIO(resp.data))
+    sheet = workbook.active
+    assert sheet["A2"].value == "2026-05-11"
+    assert sheet["B2"].value == "B001"

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import threading
 from collections import OrderedDict
-from typing import Any, Dict, Optional, Sequence
+from typing import Any, Dict, Optional, Sequence, Tuple
 
 from core.infrastructure.errors import ValidationError
 from core.services.common.degradation import DegradationCollector, DegradationEvent, degradation_events_to_dicts
@@ -97,6 +97,83 @@ class GanttService:
         end_date: Optional[str] = None,
     ) -> WeekRange:
         return resolve_week_range(week_start=week_start, offset_weeks=offset_weeks, start_date=start_date, end_date=end_date)
+
+    def get_version_time_span_dates(self, version: int) -> Optional[Dict[str, Any]]:
+        span = self.schedule_repo.get_version_time_span(int(version))
+        if not span:
+            return None
+
+        start_time = str(span["start_time"]).strip()
+        end_time = str(span["end_time"]).strip()
+        if not start_time or not end_time:
+            return None
+
+        start_date = start_time.replace("T", " ").split(" ", 1)[0]
+        end_date = end_time.replace("T", " ").split(" ", 1)[0]
+        if not start_date or not end_date:
+            return None
+
+        return {
+            "version": int(version),
+            "start_time": start_time,
+            "end_time": end_time,
+            "start_date": start_date,
+            "end_date": end_date,
+        }
+
+    @staticmethod
+    def _has_explicit_gantt_range(
+        *,
+        week_start: Optional[str],
+        offset_weeks: int,
+        start_date: Optional[str],
+        end_date: Optional[str],
+    ) -> bool:
+        try:
+            offset_int = int(offset_weeks or 0)
+        except Exception as e:
+            raise ValidationError("offset_weeks 不合法（期望整数）", field="offset_weeks") from e
+        return bool(
+            str(week_start or "").strip()
+            or str(start_date or "").strip()
+            or str(end_date or "").strip()
+            or offset_int != 0
+        )
+
+    def resolve_gantt_range_for_version(
+        self,
+        *,
+        version: Optional[int],
+        week_start: Optional[str] = None,
+        offset_weeks: int = 0,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ) -> Tuple[WeekRange, Optional[Dict[str, Any]], str]:
+        version_span = self.get_version_time_span_dates(int(version)) if version is not None else None
+        effective_offset_weeks = 0 if (str(start_date or "").strip() or str(end_date or "").strip()) else offset_weeks
+        explicit_range = self._has_explicit_gantt_range(
+            week_start=week_start,
+            offset_weeks=effective_offset_weeks,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
+        if not explicit_range and version_span:
+            wr = self.resolve_week_range(
+                week_start=None,
+                offset_weeks=0,
+                start_date=version_span["start_date"],
+                end_date=version_span["end_date"],
+            )
+            return wr, version_span, "version_span"
+
+        wr = self.resolve_week_range(
+            week_start=week_start,
+            offset_weeks=effective_offset_weeks,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        return wr, version_span, "request"
 
     def _log_overdue_marker_degraded(self, *, version: int, reason: str, message: str) -> None:
         if self.logger is None:
@@ -246,7 +323,6 @@ class GanttService:
         if view not in ("machine", "operator"):
             raise ValidationError("视图不正确，请选择：设备 / 人员。", field="视图")
 
-        wr = self.resolve_week_range(week_start=week_start, offset_weeks=offset_weeks, start_date=start_date, end_date=end_date)
         resolution = self.resolve_version(version)
         if resolution.status == "no_history":
             return self._empty_gantt_contract(
@@ -259,6 +335,13 @@ class GanttService:
                 resolution=resolution,
             )
         ver = require_selected_version(resolution)
+        wr, version_span, range_source = self.resolve_gantt_range_for_version(
+            version=ver,
+            week_start=week_start,
+            offset_weeks=offset_weeks,
+            start_date=start_date,
+            end_date=end_date,
+        )
 
         calendar_days_outcome = build_calendar_days(self.conn, wr=wr, logger=self.logger, op_logger=self.op_logger)
         rows = self.schedule_repo.list_overlapping_with_details(wr.start_str, wr.end_exclusive_str, ver)
@@ -310,6 +393,15 @@ class GanttService:
         data["has_history"] = True
         data["status"] = "ok"
         data["requested_version"] = resolution.requested_version
+        data["version_time_span"] = version_span
+        data["range_source"] = range_source
+        if not data.get("tasks") and version_span:
+            requested_start = wr.week_start_date.isoformat()
+            requested_end = wr.week_end_date.isoformat()
+            actual_start = str(version_span.get("start_date") or "")
+            actual_end = str(version_span.get("end_date") or "")
+            if requested_start != actual_start or requested_end != actual_end:
+                data["empty_message"] = f"当前范围无任务，请切换到 {actual_start} ～ {actual_end}。"
         return data
 
     def get_week_plan_rows(

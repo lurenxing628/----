@@ -29,7 +29,8 @@ def test_gantt_control_css_keeps_query_controls_horizontal() -> None:
         ".aps-gantt-control-row",
         ".aps-gantt-range-form",
         ".aps-gantt-version-summary",
-        "grid-template-columns: repeat(4, minmax(0, 1fr)) auto;",
+        "grid-template-columns: repeat(4, minmax(150px, 1fr)) auto;",
+        "grid-column: 1 / -1;",
         "width: fit-content;",
         ".aps-gantt-control-group > label",
     ):

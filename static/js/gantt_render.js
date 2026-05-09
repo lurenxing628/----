@@ -794,6 +794,10 @@
   }
 
   function _emptyStateMessage() {
+    const message = str(state.emptyMessage || "");
+    if (message) {
+      return message;
+    }
     const reason = norm(state.emptyReason);
     const allTasks = Array.isArray(state.allTasks) ? state.allTasks : [];
     if (reason === "all_rows_filtered_by_invalid_time") {

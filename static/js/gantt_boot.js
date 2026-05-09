@@ -204,6 +204,9 @@
         offset: ds.offset || 0,
         version: ds.version || "",
         hasHistory: ds.hasHistory || "",
+        versionSpanStart: ds.versionSpanStart || "",
+        versionSpanEnd: ds.versionSpanEnd || "",
+        rangeSource: ds.rangeSource || "",
         fetchTimeoutMs: ds.fetchTimeoutMs || ds.fetchTimeout || "",
       };
     })();
@@ -320,6 +323,8 @@
       ? data.degradation_counters
       : {};
     state.emptyReason = str(data.empty_reason || "");
+    state.emptyMessage = str(data.empty_message || "");
+    state.versionTimeSpan = data.version_time_span || null;
     state.allTasks = tasks;
     state.overdueMarkersDegraded = data.overdue_markers_degraded === true;
     state.overdueMarkersPartial = data.overdue_markers_partial === true;

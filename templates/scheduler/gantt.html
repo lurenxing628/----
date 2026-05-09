@@ -17,10 +17,11 @@
       'manual': '手动排产'
     } %}
   {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'simulated': '模拟排产', 'ok': '成功', 'fail': '失败', 'ok2': '成功'} %}
-  {# 导航基准：必须使用“原始请求参数”，否则 week_start/offset 会被重复叠加导致跳周 #}
-  {% set base_week_start = ((request.args.get('week_start') or '') | trim) or None %}
-  {% set base_start_date = ((request.args.get('start_date') or '') | trim) or None %}
-  {% set base_end_date = ((request.args.get('end_date') or '') | trim) or None %}
+  {# 导航基准：视图切换沿用后端算出的有效日期范围；周切换锚定当前显示范围。 #}
+  {% set base_week_start = ((request.args.get('week_start') or '') | trim) or week_start %}
+  {% set base_start_date = (((request.args.get('start_date') or '') | trim) or start_date) %}
+  {% set base_end_date = (((request.args.get('end_date') or '') | trim) or end_date) %}
+  {% set nav_offset = 0 if (base_start_date or base_end_date) else offset %}
 
   {{ ui.aps_page_hero(
     '甘特图（' ~ ('设备视图' if view=='machine' else '人员视图') ~ '）',
@@ -64,11 +65,11 @@
         <label>视图</label>
         <div class="aps-form-actions">
           {% if view == 'machine' %}
-            {{ ui.link_button('设备视图', url_for('scheduler.gantt_page', view='machine', week_start=base_week_start, offset=offset, version=version, start_date=base_start_date, end_date=base_end_date), 'primary', 'sm') }}
-            {{ ui.link_button('人员视图', url_for('scheduler.gantt_page', view='operator', week_start=base_week_start, offset=offset, version=version, start_date=base_start_date, end_date=base_end_date), 'secondary', 'sm') }}
+            {{ ui.link_button('设备视图', url_for('scheduler.gantt_page', view='machine', week_start=base_week_start, offset=nav_offset, version=version, start_date=base_start_date, end_date=base_end_date), 'primary', 'sm') }}
+            {{ ui.link_button('人员视图', url_for('scheduler.gantt_page', view='operator', week_start=base_week_start, offset=nav_offset, version=version, start_date=base_start_date, end_date=base_end_date), 'secondary', 'sm') }}
           {% else %}
-            {{ ui.link_button('设备视图', url_for('scheduler.gantt_page', view='machine', week_start=base_week_start, offset=offset, version=version, start_date=base_start_date, end_date=base_end_date), 'secondary', 'sm') }}
-            {{ ui.link_button('人员视图', url_for('scheduler.gantt_page', view='operator', week_start=base_week_start, offset=offset, version=version, start_date=base_start_date, end_date=base_end_date), 'primary', 'sm') }}
+            {{ ui.link_button('设备视图', url_for('scheduler.gantt_page', view='machine', week_start=base_week_start, offset=nav_offset, version=version, start_date=base_start_date, end_date=base_end_date), 'secondary', 'sm') }}
+            {{ ui.link_button('人员视图', url_for('scheduler.gantt_page', view='operator', week_start=base_week_start, offset=nav_offset, version=version, start_date=base_start_date, end_date=base_end_date), 'primary', 'sm') }}
           {% endif %}
         </div>
       </div>
@@ -172,9 +173,21 @@
         <div class="aps-gantt-filter-item aps-gantt-filter-checks">
           <label>勾选项</label><br/>
           <div class="aps-gantt-check-group" role="group" aria-label="筛选勾选项">
-            <label for="ganttOnlyOverdue"><input type="checkbox" id="ganttOnlyOverdue" aria-label="仅显示超期任务"> 仅超期</label>
-            <label for="ganttOnlyExternal"><input type="checkbox" id="ganttOnlyExternal" aria-label="仅显示外协任务"> 仅外协</label>
-            <label for="ganttHighlightCC"><input type="checkbox" id="ganttHighlightCC" checked aria-label="高亮关键链任务"> 高亮关键链</label>
+            <label class="aps-compact-switch" for="ganttOnlyOverdue">
+              <input type="checkbox" id="ganttOnlyOverdue" aria-label="仅显示超期任务">
+              <span class="aps-compact-switch-track" aria-hidden="true"></span>
+              <span class="aps-compact-switch-text">仅超期</span>
+            </label>
+            <label class="aps-compact-switch" for="ganttOnlyExternal">
+              <input type="checkbox" id="ganttOnlyExternal" aria-label="仅显示外协任务">
+              <span class="aps-compact-switch-track" aria-hidden="true"></span>
+              <span class="aps-compact-switch-text">仅外协</span>
+            </label>
+            <label class="aps-compact-switch" for="ganttHighlightCC">
+              <input type="checkbox" id="ganttHighlightCC" checked aria-label="高亮关键链任务">
+              <span class="aps-compact-switch-track" aria-hidden="true"></span>
+              <span class="aps-compact-switch-text">高亮关键链</span>
+            </label>
           </div>
         </div>
         <div class="aps-gantt-filter-item">
@@ -210,6 +223,9 @@
       data-offset="{{ offset }}"
       data-version="{{ version or '' }}"
       data-has-history="{{ '1' if has_history else '0' }}"
+      data-version-span-start="{{ version_span.start_date if version_span else '' }}"
+      data-version-span-end="{{ version_span.end_date if version_span else '' }}"
+      data-range-source="{{ range_source or '' }}"
       data-fetch-timeout-ms="12000"
     ></div>
   </div>

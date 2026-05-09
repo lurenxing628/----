@@ -71,6 +71,31 @@ class _GanttServiceStub:
         }
 
 
+class _WeekPlanRangeCaptureGanttService:
+    def __init__(self):
+        self.resolve_calls = []
+        self.row_calls = []
+
+    def resolve_week_range(self, **kwargs):
+        self.resolve_calls.append(dict(kwargs))
+
+        class _Range:
+            week_start_date = date(2026, 5, 11)
+            week_end_date = date(2026, 5, 17)
+
+        return _Range()
+
+    def get_week_plan_rows(self, **kwargs):
+        self.row_calls.append(dict(kwargs))
+        return {
+            "rows": [],
+            "version": int(kwargs.get("version") or 3),
+            "week_start": "2026-05-11",
+            "week_end": "2026-05-17",
+            "has_history": True,
+        }
+
+
 def _build_app(monkeypatch, history_service: _HistoryServiceStub, *, gantt_service=None) -> Flask:
     for name in list(sys.modules):
         if name.startswith("web.routes.scheduler") or name.startswith("web.routes.domains.scheduler"):
@@ -93,6 +118,31 @@ def _build_app(monkeypatch, history_service: _HistoryServiceStub, *, gantt_servi
         g.op_logger = None
 
     return app
+
+
+def test_week_plan_prefers_week_start_and_drops_stale_start_end(monkeypatch) -> None:
+    history_service = _HistoryServiceStub("{}")
+    gantt_service = _WeekPlanRangeCaptureGanttService()
+    app = _build_app(monkeypatch, history_service, gantt_service=gantt_service)
+    client = app.test_client()
+
+    response = client.get(
+        "/scheduler/week-plan"
+        "?week_start=2026-05-11"
+        "&start_date=2026-05-04"
+        "&end_date=2026-05-10"
+        "&version=3"
+    )
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    assert payload["week_start"] == "2026-05-11"
+    assert payload["week_end"] == "2026-05-17"
+    assert gantt_service.resolve_calls == [{"week_start": "2026-05-11", "offset_weeks": 0}]
+    assert gantt_service.row_calls == [{"week_start": "2026-05-11", "offset_weeks": 0, "version": "3"}]
+    assert "week_start=2026-05-11" in payload["export_url"]
+    assert "start_date=2026-05-04" not in payload["export_url"]
+    assert "end_date=2026-05-10" not in payload["export_url"]
 
 
 def _build_real_app(tmp_path, monkeypatch, *, summary_obj, result_status: str = "partial") -> Flask:
@@ -125,6 +175,9 @@ def _build_real_app(tmp_path, monkeypatch, *, summary_obj, result_status: str = 
     conn.commit()
     conn.close()
 
+    for name in list(sys.modules):
+        if name.startswith("web.routes.scheduler") or name.startswith("web.routes.domains.scheduler"):
+            sys.modules.pop(name, None)
     sys.modules.pop("app", None)
     app_mod = importlib.import_module("app")
     app = app_mod.create_app()

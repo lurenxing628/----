@@ -69,6 +69,7 @@ def gantt_page():
     end_date = (request.args.get("end_date") or "").strip() or None
     services = g.services
     offset = _get_int_arg("offset", 0)
+    effective_offset = 0 if (start_date or end_date) else offset
     svc = services.gantt_service
     version_resolution = svc.resolve_version(request.args.get("version"))
     if version_resolution.status == "missing_history":
@@ -81,8 +82,14 @@ def gantt_page():
                 "status": version_resolution.status,
             },
         )
-    wr = svc.resolve_week_range(week_start=week_start, offset_weeks=offset, start_date=start_date, end_date=end_date)
     ver = version_resolution.selected_version
+    wr, version_span, range_source = svc.resolve_gantt_range_for_version(
+        version=ver,
+        week_start=week_start,
+        offset_weeks=effective_offset,
+        start_date=start_date,
+        end_date=end_date,
+    )
 
     versions = decorate_history_version_options(services.schedule_history_query_service.list_versions(limit=30))
     log_history_version_option_parse_warnings(versions, log_label="甘特图页")
@@ -95,12 +102,14 @@ def gantt_page():
         week_end=wr.week_end_date.isoformat(),
         start_date=wr.week_start_date.isoformat(),
         end_date=wr.week_end_date.isoformat(),
-        offset=offset,
+        offset=effective_offset,
         version=ver,
         version_resolution=version_resolution.to_dict(),
         versions=versions,
         selected_result_status_label=selected_result_status_label,
         has_history=bool(versions),
+        version_span=version_span,
+        range_source=range_source,
         data_url=url_for("scheduler.gantt_data"),
     )
 

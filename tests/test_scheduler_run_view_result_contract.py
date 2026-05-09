@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import urlencode
 
 import pytest
 from flask import Flask, g, get_flashed_messages
@@ -193,6 +194,107 @@ def test_scheduler_run_route_flashes_app_error_user_message() -> None:
         assert [msg for cat, msg in flashes if cat == "error"] == ["所选批次没有可重排工序，本次未执行排产。"]
         assert not any("排产完成" in msg for _cat, msg in flashes), flashes
         assert not any("[1001]" in msg or "ValidationError" in msg or "field" in msg for _cat, msg in flashes), flashes
+    finally:
+        route_mod.url_for = old_url_for
+
+
+def test_scheduler_run_success_redirects_to_gantt_actual_span() -> None:
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+    _reset_scheduler_route_modules()
+
+    import web.routes.scheduler_run as route_mod
+
+    class _StubScheduleService:
+        def run_schedule(self, **_kwargs):
+            return {
+                "version": 31,
+                "result_status": "success",
+                "overdue_batches": [],
+                "summary": {
+                    "scheduled_ops": 2,
+                    "total_ops": 2,
+                    "failed_ops": 0,
+                    "warnings": [],
+                    "errors": [],
+                },
+            }
+
+    class _StubGanttService:
+        def get_version_time_span_dates(self, version):
+            assert int(version) == 31
+            return {"start_date": "2026-05-11", "end_date": "2026-05-16"}
+
+    old_url_for = route_mod.url_for
+
+    def _fake_url_for(endpoint, **kwargs):
+        return f"/{endpoint}?{urlencode(kwargs)}"
+
+    route_mod.url_for = _fake_url_for
+    try:
+        app = Flask(__name__)
+        app.secret_key = "aps-test-run-success-gantt-redirect"
+        with app.test_request_context("/scheduler/run", method="POST", data={"batch_ids": ["B001"]}):
+            g.services = SimpleNamespace(schedule_service=_StubScheduleService(), gantt_service=_StubGanttService())
+            resp = route_mod.run_schedule()
+            flashes = get_flashed_messages(with_categories=True)
+
+        assert getattr(resp, "status_code", 0) in (301, 302)
+        location = resp.headers["Location"]
+        assert location.startswith("/scheduler.gantt_page?")
+        assert "view=machine" in location
+        assert "version=31" in location
+        assert "start_date=2026-05-11" in location
+        assert "end_date=2026-05-16" in location
+        assert any(cat == "success" and "排产完成（版本 31）" in msg for cat, msg in flashes), flashes
+    finally:
+        route_mod.url_for = old_url_for
+
+
+def test_scheduler_run_partial_redirects_to_gantt_with_version_when_span_missing() -> None:
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+    _reset_scheduler_route_modules()
+
+    import web.routes.scheduler_run as route_mod
+
+    class _StubScheduleService:
+        def run_schedule(self, **_kwargs):
+            return {
+                "version": 32,
+                "result_status": "partial",
+                "overdue_batches": [],
+                "summary": {
+                    "scheduled_ops": 1,
+                    "total_ops": 2,
+                    "failed_ops": 1,
+                    "warnings": [],
+                    "errors": [],
+                },
+            }
+
+    class _StubGanttService:
+        def get_version_time_span_dates(self, _version):
+            return None
+
+    old_url_for = route_mod.url_for
+    route_mod.url_for = lambda endpoint, **kwargs: f"/{endpoint}?{urlencode(kwargs)}"
+    try:
+        app = Flask(__name__)
+        app.secret_key = "aps-test-run-partial-gantt-redirect"
+        with app.test_request_context("/scheduler/run", method="POST", data={"batch_ids": ["B001"]}):
+            g.services = SimpleNamespace(schedule_service=_StubScheduleService(), gantt_service=_StubGanttService())
+            resp = route_mod.run_schedule()
+            flashes = get_flashed_messages(with_categories=True)
+
+        assert getattr(resp, "status_code", 0) in (301, 302)
+        location = resp.headers["Location"]
+        assert "scheduler.gantt_page" in location
+        assert "view=machine" in location
+        assert "version=32" in location
+        assert "start_date=" not in location
+        assert "end_date=" not in location
+        assert any(cat == "warning" and "部分" in msg for cat, msg in flashes), flashes
     finally:
         route_mod.url_for = old_url_for
 

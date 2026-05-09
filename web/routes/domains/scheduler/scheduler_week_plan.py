@@ -136,18 +136,16 @@ def _build_simulate_gantt_redirect_kwargs(summary: Any, *, start_dt: Any, versio
 @bp.get("/week-plan")
 def week_plan_page():
     week_start = (request.args.get("week_start") or "").strip() or None
-    start_date = (request.args.get("start_date") or "").strip() or None
-    end_date = (request.args.get("end_date") or "").strip() or None
     services = g.services
     offset = _get_int_arg("offset", 0)
     svc = services.gantt_service
-    wr = svc.resolve_week_range(week_start=week_start, offset_weeks=offset, start_date=start_date, end_date=end_date)
+    wr = svc.resolve_week_range(week_start=week_start, offset_weeks=offset)
 
     versions = decorate_history_version_options(services.schedule_history_query_service.list_versions(limit=30))
     log_history_version_option_parse_warnings(versions, log_label="周计划页")
     data = svc.get_week_plan_rows(
-        start_date=wr.week_start_date.isoformat(),
-        end_date=wr.week_end_date.isoformat(),
+        week_start=wr.week_start_date.isoformat(),
+        offset_weeks=0,
         version=request.args.get("version"),
     )
     ver = data.get("version")
@@ -171,8 +169,6 @@ def week_plan_page():
         empty_message=preview_state["empty_message"],
         week_start=wr.week_start_date.isoformat(),
         week_end=wr.week_end_date.isoformat(),
-        start_date=wr.week_start_date.isoformat(),
-        end_date=wr.week_end_date.isoformat(),
         offset=offset,
         version=ver,
         has_history=bool(data.get("has_history")),
@@ -186,8 +182,7 @@ def week_plan_page():
         export_url=(
             url_for(
                 "scheduler.week_plan_export",
-                start_date=wr.week_start_date.isoformat(),
-                end_date=wr.week_end_date.isoformat(),
+                week_start=wr.week_start_date.isoformat(),
                 version=ver,
             )
             if ver is not None
@@ -200,14 +195,14 @@ def week_plan_page():
 def week_plan_export():
     start = time.time()
     week_start = (request.args.get("week_start") or "").strip() or None
-    start_date = (request.args.get("start_date") or "").strip() or None
-    end_date = (request.args.get("end_date") or "").strip() or None
     offset = _get_int_arg("offset", 0)
 
     svc = g.services.gantt_service
     try:
         data = svc.get_week_plan_rows(
-            week_start=week_start, offset_weeks=offset, start_date=start_date, end_date=end_date, version=request.args.get("version")
+            week_start=week_start,
+            offset_weeks=offset,
+            version=request.args.get("version"),
         )
         if data.get("status") == "no_history":
             raise BusinessError(ErrorCode.NOT_FOUND, "暂无排产历史，无法导出周计划。", details={"field": "version", "status": "no_history"})

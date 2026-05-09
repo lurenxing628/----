@@ -17,6 +17,24 @@ from .scheduler_bp import (
 from .scheduler_user_messages import scheduler_user_visible_app_error_message
 
 
+def _build_success_gantt_redirect_kwargs(result: dict) -> dict:
+    kwargs = {"view": "machine"}
+    try:
+        version = int(result.get("version") or 0)
+    except (TypeError, ValueError):
+        version = 0
+    if version > 0:
+        kwargs["version"] = version
+
+    gantt_service = getattr(getattr(g, "services", None), "gantt_service", None)
+    if version > 0 and gantt_service is not None and hasattr(gantt_service, "get_version_time_span_dates"):
+        span = gantt_service.get_version_time_span_dates(version)
+        if span:
+            kwargs["start_date"] = span["start_date"]
+            kwargs["end_date"] = span["end_date"]
+    return kwargs
+
+
 def _flash_run_schedule_view_result(view_result: RunScheduleViewResult) -> None:
     flash(view_result.headline_message, view_result.headline_category)
     if view_result.primary_degradation_message:
@@ -52,7 +70,10 @@ def run_schedule():
             enforce_ready=enforce_ready,
             strict_mode=strict_mode,
         )
-        _flash_run_schedule_view_result(build_run_schedule_view_result(result))
+        view_result = build_run_schedule_view_result(result)
+        _flash_run_schedule_view_result(view_result)
+        if view_result.result_status != "failed":
+            return redirect(url_for("scheduler.gantt_page", **_build_success_gantt_redirect_kwargs(result)))
     except AppError as e:
         flash(scheduler_user_visible_app_error_message(e), "error")
 
