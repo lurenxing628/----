@@ -357,6 +357,7 @@ def test_batches_page_renders_config_degraded_public_messages(tmp_path, monkeypa
     assert "当前配置有 " in body
     assert "个需要复核的修正项" in body
     assert "平时不直接显示的设置需要检查" in body
+    assert "自动补设备人员" in body
     assert "保存补齐资源" in body
     assert "查看处理提示" in body
     assert "auto_assign_persist" not in body
@@ -610,7 +611,7 @@ def test_batches_page_latest_algo_config_snapshot_renders_public_snapshot_state(
                     "changeover_count": 1,
                     "machine_util_avg": 0.5,
                 },
-                "config_snapshot": {"auto_assign_persist": "yes"},
+                "config_snapshot": {"auto_assign_enabled": "no", "auto_assign_persist": "yes"},
             },
             "warnings": [],
             "errors": [],
@@ -626,6 +627,8 @@ def test_batches_page_latest_algo_config_snapshot_renders_public_snapshot_state(
     assert 'aps-latest-schedule-value">v8' in body
     assert "排产方式" in body
     assert "优先级优先" in body
+    assert "自动补设备人员" in body
+    assert 'aps-summary-value">已关闭' in body
     assert "保存补齐资源" in body
     assert "查看说明" in body
     assert 'aps-summary-value">已启用' in body

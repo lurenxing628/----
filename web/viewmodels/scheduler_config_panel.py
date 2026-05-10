@@ -105,6 +105,39 @@ def _current_auto_assign_persist_item(state: Dict[str, Any]) -> UiSummaryItem:
     )
 
 
+def _current_auto_assign_enabled_item(cfg: Any) -> UiSummaryItem:
+    normalized = str(getattr(cfg, "auto_assign_enabled", "") or "").strip().lower()
+    if normalized == "yes":
+        return UiSummaryItem(
+            "自动补设备人员",
+            "已启用",
+            "自制工序没填设备或人员时，系统会尝试自动补上。",
+            details_summary="查看说明",
+        )
+    if normalized == "no":
+        return UiSummaryItem(
+            "自动补设备人员",
+            "已关闭",
+            "自制工序没填设备或人员时，系统不会自动补；请先补齐后再排产。",
+            details_summary="查看说明",
+        )
+    if not normalized:
+        return UiSummaryItem(
+            "自动补设备人员",
+            "未记录",
+            "当前配置没有记录是否自动补设备和人员，请到高级设置检查后保存一次。",
+            tone="warning",
+            details_summary="查看说明",
+        )
+    return UiSummaryItem(
+        "自动补设备人员",
+        "记录异常",
+        "当前配置里的自动补设备人员取值不正确，请到高级设置检查后保存一次。",
+        tone="warning",
+        details_summary="查看说明",
+    )
+
+
 def build_scheduler_config_panel_state(
     *,
     cfg: Any,
@@ -138,6 +171,7 @@ def build_scheduler_config_panel_state(
         current_config_state=current_config_state,
         active_preset=active_preset,
     )
+    current_auto_assign_enabled_item = _current_auto_assign_enabled_item(cfg)
     current_auto_assign_persist_item = _current_auto_assign_persist_item(current_auto_assign_persist_state)
     return SchedulerConfigPanelState(
         cfg=cfg,
@@ -156,7 +190,11 @@ def build_scheduler_config_panel_state(
         current_config_summary_items=current_config_summary_items,
         current_config_notice_items=current_config_notice_items,
         current_auto_assign_persist_item=current_auto_assign_persist_item,
-        current_config_display_items=(*current_config_summary_items, current_auto_assign_persist_item),
+        current_config_display_items=(
+            *current_config_summary_items,
+            current_auto_assign_enabled_item,
+            current_auto_assign_persist_item,
+        ),
     )
 
 

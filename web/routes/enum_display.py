@@ -65,7 +65,9 @@ def priority_zh(v: str) -> str:
         return "特急"
     if s == BatchPriority.URGENT.value:
         return "急件"
-    return "普通"
+    if s == BatchPriority.NORMAL.value or not s:
+        return "普通"
+    return "未知"
 
 
 def ready_zh(v: str) -> str:
@@ -75,4 +77,3 @@ def ready_zh(v: str) -> str:
     if s == ReadyStatus.PARTIAL.value:
         return "部分齐套"
     return "未齐套"
-

@@ -137,7 +137,7 @@
         </div>
         <span class="muted text-xs aps-export-note">仅当前页排序</span>
       </div>
-      <form method="post" action="{{ url_for('scheduler.bulk_update_batches') }}">
+      <form method="post" action="{{ url_for('scheduler.bulk_update_batches') }}" data-aps-batch-bulk-form="1" aria-describedby="batchBulkActionHelp batchBulkActionError">
         <div class="aps-table-scroll">
         <table id="batchesManageTable" data-table-key="v4_batchesManageTable" class="table-sticky table-layout-fixed table-sticky-col aps-table-wide aps-scheduler-batch-table" data-sort-enabled="1" data-col-resize="1">
           <thead>
@@ -205,9 +205,10 @@
             {{ ui.button('修改所选', 'primary', 'md', type_attr='submit', confirm='确定批量修改所选批次吗？仅会修改你填写的字段。') }}
             <span class="aps-action-card-status">已选 <strong id="jsSelectedCount">0</strong> 个批次</span>
           </div>
-          <div class="aps-action-card-note">
+          <div id="batchBulkActionHelp" class="aps-action-card-note">
             批量修改只会更新已填写的字段；留空字段不会覆盖原数据。复制和删除只作用于已勾选的批次。
           </div>
+          <div id="batchBulkActionError" class="aps-field-error aps-bulk-action-error is-hidden" role="alert" aria-live="polite"></div>
         </div>
       </form>
     {% else %}

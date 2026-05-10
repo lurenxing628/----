@@ -176,9 +176,105 @@
     return true;
   }
 
+  function selectedBatchCount(form) {
+    if (!form) return 0;
+    return form.querySelectorAll(".js-batch-check:checked").length;
+  }
+
+  function setBatchBulkError(form, message) {
+    if (!form) return;
+    var error = form.querySelector(".aps-bulk-action-error");
+    if (!error) return;
+    error.textContent = message || "";
+    error.classList.toggle("is-hidden", !message);
+    if (message) {
+      if (!error.getAttribute("tabindex")) error.setAttribute("tabindex", "-1");
+      if (error.focus) error.focus();
+    }
+  }
+
+  function batchBulkSubmitFormForTarget(target) {
+    if (!target || !target.closest) return null;
+    var button = target.closest("button, input[type='submit']");
+    if (!button || !button.form) return null;
+    var form = button.form;
+    if (!form || form.getAttribute("data-aps-batch-bulk-form") !== "1") return null;
+    return form;
+  }
+
+  function batchBulkFormForImplicitSubmitTarget(target) {
+    if (!target || !target.form) return null;
+    var form = target.form;
+    if (!form || form.getAttribute("data-aps-batch-bulk-form") !== "1") return null;
+    return form;
+  }
+
+  function shouldBlockEmptyBatchBulk(form) {
+    return !!form && selectedBatchCount(form) <= 0;
+  }
+
+  function clearBatchBulkErrorIfSelected(form) {
+    if (form && selectedBatchCount(form) > 0) {
+      setBatchBulkError(form, "");
+    }
+  }
+
+  function deferClearBatchBulkErrorIfSelected(form) {
+    if (!form) return;
+    window.setTimeout(function () {
+      clearBatchBulkErrorIfSelected(form);
+    }, 0);
+  }
+
+  function blockEmptyBatchBulk(event, form) {
+    if (!shouldBlockEmptyBatchBulk(form)) {
+      setBatchBulkError(form, "");
+      return false;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+    setBatchBulkError(form, "请先勾选至少一个批次。");
+    return true;
+  }
+
+  document.addEventListener("click", function (event) {
+    var target = event.target;
+    if (target && target.classList) {
+      if (target.classList.contains("js-batch-check") || target.classList.contains("js-select-all")) {
+        deferClearBatchBulkErrorIfSelected(target.closest ? target.closest("form[data-aps-batch-bulk-form='1']") : null);
+        return;
+      }
+    }
+    var form = batchBulkSubmitFormForTarget(event.target);
+    if (!form) return;
+    blockEmptyBatchBulk(event, form);
+  }, true);
+
+  document.addEventListener("keydown", function (event) {
+    var key = event.key || event.code || "";
+    if (key !== "Enter" && key !== "NumpadEnter") return;
+    var form = batchBulkFormForImplicitSubmitTarget(event.target);
+    if (!form) return;
+    blockEmptyBatchBulk(event, form);
+  }, true);
+
+  document.addEventListener("change", function (event) {
+    var target = event.target;
+    if (!target || !target.classList) return;
+    if (!target.classList.contains("js-batch-check") && !target.classList.contains("js-select-all")) return;
+    var form = target.closest ? target.closest("form[data-aps-batch-bulk-form='1']") : null;
+    clearBatchBulkErrorIfSelected(form);
+    deferClearBatchBulkErrorIfSelected(form);
+  });
+
   document.addEventListener("submit", function (event) {
     var form = event.target;
     if (!form || !form.getAttribute) return;
+
+    if (form.getAttribute("data-aps-batch-bulk-form") === "1" && blockEmptyBatchBulk(event, form)) {
+      return;
+    }
 
     if (form.id === "batchCreateForm" && !validateBatchCreate(form)) {
       event.preventDefault();

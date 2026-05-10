@@ -48,7 +48,8 @@ def test_latest_history_panel_builds_template_ready_items() -> None:
     assert panel.latest_mode_label == _ALGO_MODE_LABELS["improve"]
     assert panel.latest_result_status_label == "成功"
     assert [item.label for item in panel.head_items] == ["版本", "结果", "排产时间"]
-    assert [item.label for item in panel.meta_items] == ["排产方式", "模式", "目标"]
+    assert [item.label for item in panel.meta_items] == ["排产方式", "模式", "目标", "自动补设备人员"]
+    assert panel.meta_items[-1].value == "旧历史未记录"
     assert [item.label for item in panel.metric_items] == [
         "超期数量",
         "拖期",

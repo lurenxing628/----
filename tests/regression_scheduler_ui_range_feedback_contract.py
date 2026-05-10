@@ -99,6 +99,27 @@ def test_targeted_form_feedback_script_is_page_scoped() -> None:
         assert "js/scheduler_form_feedback.js" in source
     assert "validateBatchCreate" in js
     assert "validateOperationForm" in js
+    assert 'data-aps-batch-bulk-form="1"' in batches_manage
+    assert 'aria-describedby="batchBulkActionHelp batchBulkActionError"' in batches_manage
+    assert "aps-bulk-action-error" in batches_manage
+    assert 'id="batchBulkActionError"' in batches_manage
+    assert 'role="alert" aria-live="polite"' in batches_manage
+    assert "blockEmptyBatchBulk" in js
+    assert "batchBulkSubmitFormForTarget" in js
+    assert "batchBulkFormForImplicitSubmitTarget" in js
+    assert "deferClearBatchBulkErrorIfSelected" in js
+    assert "window.setTimeout(function ()" in js
+    assert 'document.addEventListener("keydown"' in js
+    assert 'key !== "Enter" && key !== "NumpadEnter"' in js
+    assert "请先勾选至少一个批次。" in js
+    assert "stopImmediatePropagation" in js
+    assert 'document.addEventListener("change"' in js
+    assert 'document.addEventListener("change", function (event)' in js
+    change_start = js.index('document.addEventListener("change", function (event)')
+    submit_start = js.index('document.addEventListener("submit"', change_start)
+    change_listener = js[change_start:submit_start]
+    assert "}, true);" not in change_listener
+    assert 'if (error.focus) error.focus();' in js
     assert "请选择设备" not in js
     assert "请选择人员" not in js
     assert '!isBlank(setupHours && setupHours.value)' in js

@@ -224,6 +224,17 @@ def _latest_history_items(
     )
 
 
+def _latest_auto_assign_enabled_item(value: Any) -> UiSummaryItem:
+    normalized = str(value or "").strip().lower()
+    if normalized == "yes":
+        return UiSummaryItem("自动补设备人员", "已启用")
+    if normalized == "no":
+        return UiSummaryItem("自动补设备人员", "已关闭")
+    if not normalized:
+        return UiSummaryItem("自动补设备人员", "旧历史未记录", tone="warning")
+    return UiSummaryItem("自动补设备人员", "记录异常", tone="warning")
+
+
 def _latest_algo_items(
     latest_algo: Dict[str, Any],
     *,
@@ -237,11 +248,19 @@ def _latest_algo_items(
     config_snapshot = latest_algo.get("config_snapshot")
     if isinstance(config_snapshot, dict):
         auto_assign_state = auto_assign_persist_display_builder(config_snapshot.get("auto_assign_persist"))
+        auto_assign_enabled_item = _latest_auto_assign_enabled_item(config_snapshot.get("auto_assign_enabled"))
+    else:
+        auto_assign_enabled_item = None
     return (
         objective_label,
         mode_label,
         latest_metrics,
-        (*meta_items, UiSummaryItem("模式", mode_label), UiSummaryItem("目标", objective_label)),
+        (
+            *meta_items,
+            UiSummaryItem("模式", mode_label),
+            UiSummaryItem("目标", objective_label),
+            *((auto_assign_enabled_item,) if auto_assign_enabled_item else ()),
+        ),
         auto_assign_state,
     )
 

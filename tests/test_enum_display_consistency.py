@@ -48,7 +48,7 @@ def test_enum_display_wrappers_expected_outputs() -> None:
     assert priority_zh("urgent") == "急件"
     assert priority_zh("normal") == "普通"
     assert priority_zh("  urgent  ") == "急件"
-    assert priority_zh("weird") == "普通"
+    assert priority_zh("weird") == "未知"
     assert priority_zh("") == "普通"
     assert priority_zh(None) == "普通"
 
@@ -59,4 +59,3 @@ def test_enum_display_wrappers_expected_outputs() -> None:
     assert ready_zh("weird") == "未齐套"
     assert ready_zh("") == "未齐套"
     assert ready_zh(None) == "未齐套"
-
