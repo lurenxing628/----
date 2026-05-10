@@ -200,7 +200,10 @@ def create_batch():
             rebuild_ops=False,
             strict_mode=strict_mode,
         )
-        flash(f"已创建批次并生成工序：{b.batch_id}（共 {len(batch_svc.list_operations(b.batch_id))} 道工序）", "success")
+        flash(
+            f"已创建批次并生成工序：{b.batch_id}（共 {len(batch_svc.list_operations(b.batch_id))} 道工序；交期：{due_date or '未填写'}；齐套日期：{ready_date or '未填写'}）",
+            "success",
+        )
         _surface_schedule_warnings(
             batch_svc.consume_user_visible_warnings(),
             limit=3,

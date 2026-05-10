@@ -116,6 +116,24 @@ def test_scheduler_resource_dispatch_page_data_export_and_dashboard_entry(tmp_pa
     html_dashboard_v2 = resp_dashboard_v2.data.decode("utf-8", errors="ignore")
     assert "资源排班" in html_dashboard_v2
 
+    default_query = "period_preset=week&query_date=2026-03-02&version=1"
+
+    resp_default_page = client.get(f"/scheduler/resource-dispatch?{default_query}")
+    _assert_status(resp_default_page, "GET /scheduler/resource-dispatch (default all operators)")
+    html_default_page = resp_default_page.data.decode("utf-8", errors="ignore")
+    assert 'data-can-query="1"' in html_default_page
+    assert "全部人员" in html_default_page
+
+    resp_default_data = client.get(f"/scheduler/resource-dispatch/data?{default_query}")
+    _assert_status(resp_default_data, "GET /scheduler/resource-dispatch/data (default all operators)")
+    default_payload = json.loads(resp_default_data.data.decode("utf-8", errors="ignore") or "{}")
+    assert default_payload.get("success") is True
+    default_data = default_payload.get("data") or {}
+    assert (default_data.get("filters") or {}).get("scope_id") == ""
+    assert (default_data.get("filters") or {}).get("scope_label") == "全部人员"
+    assert len(default_data.get("detail_rows") or []) == 1
+    assert (default_data.get("detail_rows") or [])[0].get("current_resource_label") == "OP001 张三"
+
     query = "scope_type=operator&operator_id=OP001&period_preset=week&query_date=2026-03-02&version=1"
 
     resp_page = client.get(f"/scheduler/resource-dispatch?{query}")

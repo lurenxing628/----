@@ -13,10 +13,10 @@ from ._sched_display_utils import (
     duration_minutes as _duration_minutes,
 )
 from ._sched_display_utils import (
-    fmt_dt as _fmt_dt,
+    fmt_day_segment as _fmt_day_segment,
 )
 from ._sched_display_utils import (
-    fmt_hhmm as _fmt_hhmm,
+    fmt_dt as _fmt_dt,
 )
 from ._sched_display_utils import (
     parse_dt as _parse_dt,
@@ -317,7 +317,7 @@ def build_dispatch_tasks(
 
 
 def _calendar_item_text(item: Dict[str, Any], start_dt: datetime, end_dt: datetime) -> str:
-    parts = [f"{_fmt_hhmm(start_dt)}-{_fmt_hhmm(end_dt)}"]
+    parts = [_fmt_day_segment(start_dt, end_dt)]
     title = _text(item.get("op_code")) or _text(item.get("batch_id"))
     if title:
         parts.append(title)
@@ -380,6 +380,7 @@ def _append_calendar_segments(group_item: Dict[str, Any], normalized: Dict[str, 
             {
                 "start": _fmt_dt(part_start),
                 "end": _fmt_dt(part_end),
+                "time_label": _fmt_day_segment(part_start, part_end),
                 "text": _calendar_item_text(normalized, part_start, part_end),
                 "batch_id": normalized.get("batch_id"),
                 "op_code": normalized.get("op_code"),

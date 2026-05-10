@@ -36,7 +36,7 @@
   {% endset %}
   {{ ui.aps_page_hero(
     '资源排班',
-    '按人员、设备或班组查看排产任务，适合检查某个资源在一周或一月内的工作安排。',
+    '默认查看全部人员任务，也可切到单人、设备或班组检查一周或一月内的工作安排。',
     actions_html=resource_dispatch_actions,
     nav_html=ui.scheduler_nav('resource_dispatch')
   ) }}
@@ -71,14 +71,14 @@
         <label id="rdScopeTargetLabel">{{ filters.scope_type_label or '人员' }}</label>
         <div class="aps-resource-target-selects">
           <select name="operator_id" id="rdOperatorSelect" class="w-240 {% if filters.scope_type != 'operator' %}is-hidden{% endif %}" data-scope-target="operator" {% if filters.scope_type != 'operator' %}disabled{% endif %}>
-            <option value="">请选择人员</option>
+            <option value="">全部人员</option>
             {% for item in operator_options %}
               <option value="{{ item.id }}" {% if filters.operator_id == item.id %}selected{% endif %}>{{ item.label }}</option>
             {% endfor %}
           </select>
 
           <select name="machine_id" id="rdMachineSelect" class="w-240 {% if filters.scope_type != 'machine' %}is-hidden{% endif %}" data-scope-target="machine" {% if filters.scope_type != 'machine' %}disabled{% endif %}>
-            <option value="">请选择设备</option>
+            <option value="">全部设备</option>
             {% for item in machine_options %}
               <option value="{{ item.id }}" {% if filters.machine_id == item.id %}selected{% endif %}>{{ item.label }}</option>
             {% endfor %}
@@ -149,7 +149,7 @@
     {% if not has_history %}
       <div class="error mt-2" role="alert" aria-live="assertive">系统里还没有排产版本。请先在【执行排产】页面生成排产结果。</div>
     {% elif not can_query %}
-      <div class="muted mt-2">请选择单人、单机或班组后点击“查询”。</div>
+      <div class="muted mt-2">班组视角需要先选择一个班组；人员和设备视角可以直接查看全部。</div>
     {% else %}
       <div class="text-meta mt-2">支持按周、按月和自定义区间查看单人、单机与班组排班，跨天任务会在日历矩阵中按自然日拆分展示。</div>
     {% endif %}
@@ -227,6 +227,7 @@
               <th class="w-160" data-col-key="part_no" data-default-w="160" data-min-w="130">图号</th>
               <th class="w-140" data-col-key="op_code" data-default-w="140" data-min-w="120">工序编码</th>
               <th class="w-80" data-col-key="seq" data-default-w="80" data-min-w="70">工序</th>
+              <th class="w-220" data-col-key="current_resource" data-default-w="220" data-min-w="180">查询对象</th>
               <th class="w-220" data-col-key="resource" data-default-w="220" data-min-w="180">对应资源</th>
               <th class="w-140" data-col-key="team_relation" data-default-w="140" data-min-w="120">班组关系</th>
               <th class="w-120" data-col-key="source" data-default-w="120" data-min-w="100">来源</th>
@@ -235,7 +236,7 @@
           </thead>
           <tbody id="rdDetailBody">
             <tr>
-              <td colspan="10" class="muted">加载中...</td>
+              <td colspan="11" class="muted">加载中...</td>
             </tr>
           </tbody>
         </table>
@@ -262,6 +263,7 @@
               <th class="w-160" data-col-key="part_no" data-default-w="160" data-min-w="130">图号</th>
               <th class="w-140" data-col-key="op_code" data-default-w="140" data-min-w="120">工序编码</th>
               <th class="w-80" data-col-key="seq" data-default-w="80" data-min-w="70">工序</th>
+              <th class="w-220" data-col-key="current_resource" data-default-w="220" data-min-w="180">查询对象</th>
               <th class="w-220" data-col-key="resource" data-default-w="220" data-min-w="180">对应资源</th>
               <th class="w-140" data-col-key="team_relation" data-default-w="140" data-min-w="120">班组关系</th>
               <th class="w-120" data-col-key="source" data-default-w="120" data-min-w="100">来源</th>
@@ -270,7 +272,7 @@
           </thead>
           <tbody id="rdTeamOperatorBody">
             <tr>
-              <td colspan="10" class="muted">暂无数据。</td>
+              <td colspan="11" class="muted">暂无数据。</td>
             </tr>
           </tbody>
         </table>
@@ -287,6 +289,7 @@
               <th class="w-160" data-col-key="part_no" data-default-w="160" data-min-w="130">图号</th>
               <th class="w-140" data-col-key="op_code" data-default-w="140" data-min-w="120">工序编码</th>
               <th class="w-80" data-col-key="seq" data-default-w="80" data-min-w="70">工序</th>
+              <th class="w-220" data-col-key="current_resource" data-default-w="220" data-min-w="180">查询对象</th>
               <th class="w-220" data-col-key="resource" data-default-w="220" data-min-w="180">对应资源</th>
               <th class="w-140" data-col-key="team_relation" data-default-w="140" data-min-w="120">班组关系</th>
               <th class="w-120" data-col-key="source" data-default-w="120" data-min-w="100">来源</th>
@@ -295,7 +298,7 @@
           </thead>
           <tbody id="rdTeamMachineBody">
             <tr>
-              <td colspan="10" class="muted">暂无数据。</td>
+              <td colspan="11" class="muted">暂无数据。</td>
             </tr>
           </tbody>
         </table>
@@ -313,6 +316,7 @@
                 <th class="w-160" data-col-key="part_no" data-default-w="160" data-min-w="130">图号</th>
                 <th class="w-140" data-col-key="op_code" data-default-w="140" data-min-w="120">工序编码</th>
                 <th class="w-80" data-col-key="seq" data-default-w="80" data-min-w="70">工序</th>
+                <th class="w-220" data-col-key="current_resource" data-default-w="220" data-min-w="180">查询对象</th>
                 <th class="w-220" data-col-key="resource" data-default-w="220" data-min-w="180">对应资源</th>
                 <th class="w-140" data-col-key="team_relation" data-default-w="140" data-min-w="120">班组关系</th>
                 <th class="w-120" data-col-key="source" data-default-w="120" data-min-w="100">来源</th>
@@ -321,7 +325,7 @@
             </thead>
             <tbody id="rdTeamCrossBody">
               <tr>
-                <td colspan="10" class="muted">暂无跨班组任务。</td>
+                <td colspan="11" class="muted">暂无跨班组任务。</td>
               </tr>
             </tbody>
           </table>

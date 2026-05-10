@@ -311,4 +311,7 @@ def test_system_history_template_uses_presenter_status_fields() -> None:
     assert "{{ v.version_option_label }}" in template
     assert "selected_summary_display.result_status_label" in template
     assert "r.result_summary_display.result_status_label" in template
+    assert "scheduler.gantt_page', view='machine', version=version" in template
+    assert "scheduler.week_plan_page', version=version" in template
+    assert "scheduler.resource_dispatch_page', version=version" in template
     assert "aps-table--multiline" in template

@@ -15,7 +15,7 @@ from ._sched_display_utils import (
     display_operator as _display_operator,
 )
 from ._sched_display_utils import (
-    fmt_hhmm as _fmt_hhmm,
+    fmt_day_segment as _fmt_day_segment,
 )
 from ._sched_display_utils import (
     parse_dt as _parse_dt,
@@ -65,7 +65,7 @@ def build_week_plan_rows(*, rows: Sequence[Mapping[str, Any]], wr: WeekRange) ->
                     "工序": row.get("seq") if row.get("seq") is not None else "",
                     "设备": machine_cell,
                     "人员": operator_cell,
-                    "时段": f"{_fmt_hhmm(a0)}-{_fmt_hhmm(b0)}",
+                    "时段": _fmt_day_segment(a0, b0),
                 }
             )
 

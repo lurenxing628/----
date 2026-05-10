@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Sequence, cast
+from typing import Optional, Sequence, cast
 
 from flask import flash, g, redirect, request, url_for
 
-from core.infrastructure.errors import AppError, ValidationError
-from core.shared.strict_parse import parse_required_int
+from core.infrastructure.errors import AppError
 from web.routes.form_values import form_optional_toggle_bool, form_toggle_bool
 from web.viewmodels.scheduler_run_view_result import RunScheduleViewResult, build_run_schedule_view_result
 
@@ -15,20 +14,8 @@ from .scheduler_bp import (
     _surface_secondary_degradation_messages,
     bp,
 )
+from .scheduler_gantt_redirect import build_success_gantt_redirect_kwargs
 from .scheduler_user_messages import scheduler_user_visible_app_error_message
-
-
-def _build_success_gantt_redirect_kwargs(result: dict) -> Dict[str, Any]:
-    if "version" not in result:
-        raise ValidationError("排产结果缺少可查看的版本号，本次不会跳到甘特图。请重试或联系管理员。", field="排产版本")
-    version = parse_required_int(result["version"], field="排产版本", min_value=1)
-    kwargs: Dict[str, Any] = {"view": "machine", "version": version}
-
-    span = g.services.gantt_service.get_version_time_span_dates(version)
-    if span:
-        kwargs["start_date"] = span["start_date"]
-        kwargs["end_date"] = span["end_date"]
-    return kwargs
 
 
 def _flash_run_schedule_view_result(view_result: RunScheduleViewResult) -> None:
@@ -68,7 +55,7 @@ def run_schedule():
         )
         view_result = build_run_schedule_view_result(result)
         if view_result.result_status != "failed":
-            redirect_kwargs = _build_success_gantt_redirect_kwargs(result)
+            redirect_kwargs = build_success_gantt_redirect_kwargs(result)
             _flash_run_schedule_view_result(view_result)
             return redirect(url_for("scheduler.gantt_page", **redirect_kwargs))
         _flash_run_schedule_view_result(view_result)

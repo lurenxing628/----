@@ -1,5 +1,14 @@
 {% extends "base.html" %}
 {% import "components/ui_macros.html" as ui %}
+{% macro history_version_links(version) -%}
+  <div class="table-actions">
+    <a href="{{ url_for('scheduler.gantt_page', view='machine', version=version) }}" class="table-action-link">设备甘特图</a>
+    <a href="{{ url_for('scheduler.gantt_page', view='operator', version=version) }}" class="table-action-link">人员甘特图</a>
+    <a href="{{ url_for('scheduler.week_plan_page', version=version) }}" class="table-action-link">周计划</a>
+    <a href="{{ url_for('scheduler.resource_dispatch_page', version=version) }}" class="table-action-link">资源排班</a>
+    <a href="{{ url_for('scheduler.analysis_page', version=version) }}" class="table-action-link">优化分析</a>
+  </div>
+{%- endmacro %}
 {% block content %}
   {{ ui.aps_page_hero(
     '系统管理 - 排产历史',
@@ -53,6 +62,7 @@
         {{ ui.summary_item('工序', selected.op_count) }}
         {{ ui.summary_item('创建人', selected.created_by or '-') }}
       </div>
+      {{ history_version_links(selected.version) }}
       {% if selected_summary_display.summary_parse_state.parse_failed %}
         <div class="flash-card flash-warning mt-2">
           {{ selected_summary_display.summary_parse_state.user_message }}
@@ -198,6 +208,7 @@
             <th class="w-120" data-col-key="count" data-default-w="120" data-min-w="100">批次/工序</th>
             <th class="w-120" data-col-key="result" data-default-w="120" data-min-w="100">结果</th>
             <th class="w-360" data-col-key="summary" data-default-w="360" data-min-w="260">摘要与提示</th>
+            <th class="w-360" data-col-key="actions" data-default-w="360" data-min-w="260">查看结果</th>
           </tr>
         </thead>
         <tbody>
@@ -248,6 +259,7 @@
                   <span class="muted">-</span>
                 {% endif %}
               </td>
+              <td>{{ history_version_links(r.version) }}</td>
             </tr>
           {% endfor %}
         </tbody>

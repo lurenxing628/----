@@ -57,7 +57,7 @@ def test_dynamic_business_state_is_not_rendered_inside_hero() -> None:
 
     week_plan = _read("templates/scheduler/week_plan.html")
     week_start = week_plan.index("ui.aps_page_hero(")
-    week_end = week_plan.index('<div class="card">', week_start)
+    week_end = week_plan.index('<div class="card aps-query-card">', week_start)
     week_hero = week_plan[week_start:week_end]
     for forbidden in ("周范围", "暂无版本", "meta_items", "aps-page-meta-row"):
         assert forbidden not in week_hero, f"周计划页头不应承载动态业务状态：{forbidden}"
@@ -65,7 +65,7 @@ def test_dynamic_business_state_is_not_rendered_inside_hero() -> None:
 
     resource_dispatch = _read("templates/scheduler/resource_dispatch.html")
     rd_start = resource_dispatch.index("ui.aps_page_hero(")
-    rd_end = resource_dispatch.index('<div class="card">', rd_start)
+    rd_end = resource_dispatch.index('<div class="card aps-query-card">', rd_start)
     rd_hero = resource_dispatch[rd_start:rd_end]
     for forbidden in ("查询对象", "区间", "当前暂无排产历史", "请选择单人", "aps-page-meta-row"):
         assert forbidden not in rd_hero, f"资源排班页头不应承载动态业务状态：{forbidden}"

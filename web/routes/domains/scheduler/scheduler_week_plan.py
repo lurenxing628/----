@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import time
-from datetime import date, datetime, timedelta
-from typing import Any, Optional
+from typing import Any
 
 from flask import current_app, flash, g, redirect, request, send_file, url_for
 
@@ -26,6 +25,7 @@ from .scheduler_bp import (
     _surface_secondary_degradation_messages,
     bp,
 )
+from .scheduler_gantt_redirect import build_success_gantt_redirect_kwargs
 from .scheduler_history_resolution import build_requested_history_resolution
 from .scheduler_user_messages import scheduler_user_visible_app_error_message
 
@@ -108,29 +108,6 @@ def _flash_simulate_summary(summary, summary_display) -> None:
         summary_display.get("errors_preview"),
         total=int(summary_display.get("error_total") or 0),
     )
-
-
-def _parse_schedule_anchor_date(value: Any) -> Optional[date]:
-    text = str(value or "").strip()
-    if not text:
-        return None
-    normalized = text.replace("/", "-").replace("T", " ")
-    date_part = normalized.split(" ", 1)[0].strip()
-    try:
-        return datetime.strptime(date_part, "%Y-%m-%d").date()
-    except ValueError:
-        return None
-
-
-def _build_simulate_gantt_redirect_kwargs(summary: Any, *, start_dt: Any, version: int) -> dict:
-    summary_start = summary.get("start_time") if isinstance(summary, dict) else None
-    anchor = _parse_schedule_anchor_date(summary_start) or _parse_schedule_anchor_date(start_dt) or date.today()
-    return {
-        "view": "machine",
-        "start_date": anchor.isoformat(),
-        "end_date": (anchor + timedelta(days=6)).isoformat(),
-        "version": int(version),
-    }
 
 
 @bp.get("/week-plan")
@@ -296,7 +273,7 @@ def simulate_schedule():
         return redirect(
             url_for(
                 "scheduler.gantt_page",
-                **_build_simulate_gantt_redirect_kwargs(summary, start_dt=start_dt, version=ver),
+                **build_success_gantt_redirect_kwargs(result, requested_start_dt=start_dt),
             )
         )
     except AppError as e:

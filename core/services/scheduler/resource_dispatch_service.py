@@ -97,6 +97,11 @@ class ResourceDispatchService:
             raise ValidationError(f"所选{label}不存在：{scope_id}", field="scope_id")
         return str(getattr(record, "name", "") or "").strip()
 
+    def _scope_name_for_query(self, scope_type: str, scope_id: Optional[str]) -> str:
+        if scope_id:
+            return self._scope_name(scope_type, scope_id)
+        return {"operator": "全部人员", "machine": "全部设备", "team": ""}.get(scope_type, "")
+
     def _build_scope_options(self) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
         operator_options = [
             {
@@ -201,7 +206,7 @@ class ResourceDispatchService:
             machine_id=machine_id,
             team_id=team_id,
         )
-        selected_scope_name = self._scope_name(normalized_scope_type, selected_scope_id) if selected_scope_id else ""
+        selected_scope_name = self._scope_name_for_query(normalized_scope_type, selected_scope_id)
         operator_options, machine_options, team_options = self._build_scope_options()
         version_resolution = self._resolve_version(version, latest_version=latest_version)
         if version_resolution.status == "missing_history":
@@ -227,7 +232,7 @@ class ResourceDispatchService:
             "operator_options": operator_options,
             "machine_options": machine_options,
             "team_options": team_options,
-            "can_query": bool(selected_scope_id),
+            "can_query": bool(selected_version) and (normalized_scope_type != "team" or bool(selected_scope_id)),
         }
 
     def get_dispatch_payload(
@@ -267,9 +272,9 @@ class ResourceDispatchService:
             machine_id=machine_id,
             team_id=team_id,
         )
-        if not selected_scope_id:
+        if normalized_scope_type == "team" and not selected_scope_id:
             raise ValidationError("请选择查询对象", field="scope_id")
-        selected_scope_name = self._scope_name(normalized_scope_type, selected_scope_id)
+        selected_scope_name = self._scope_name_for_query(normalized_scope_type, selected_scope_id)
         dr = resolve_dispatch_range(
             period_preset=period_preset or "week",
             query_date=query_date,
@@ -288,7 +293,7 @@ class ResourceDispatchService:
 
         if normalized_scope_type == "team":
             payload = build_team_scope_payload(
-                selected_scope_id=selected_scope_id,
+                selected_scope_id=selected_scope_id or "",
                 selected_scope_name=selected_scope_name,
                 normalized_team_axis=normalized_team_axis,
                 dr=dr,
@@ -298,7 +303,7 @@ class ResourceDispatchService:
         else:
             payload = build_single_scope_payload(
                 normalized_scope_type=normalized_scope_type,
-                selected_scope_id=selected_scope_id,
+                selected_scope_id=selected_scope_id or "",
                 selected_scope_name=selected_scope_name,
                 dr=dr,
                 rows=rows,
@@ -306,7 +311,7 @@ class ResourceDispatchService:
             )
         payload["filters"] = build_dispatch_filters(
             normalized_scope_type=normalized_scope_type,
-            selected_scope_id=selected_scope_id,
+            selected_scope_id=selected_scope_id or "",
             selected_scope_name=selected_scope_name,
             normalized_team_axis=normalized_team_axis,
             dr=dr,

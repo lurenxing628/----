@@ -127,14 +127,15 @@
                 <span class="muted">-</span>
               {% endif %}
             </th>
-            <th class="w-140" data-col-key="batch_id" data-default-w="140" data-min-w="110" data-sort="text">批次号</th>
-            <th class="w-160" data-col-key="part_no" data-default-w="160" data-min-w="130" data-sort="text">图号</th>
+            <th class="w-120" data-col-key="batch_id" data-default-w="120" data-min-w="96" data-sort="text">批次号</th>
+            <th class="w-140" data-col-key="part_no" data-default-w="140" data-min-w="110" data-sort="text">图号</th>
             <th class="w-80 text-right" data-col-key="quantity" data-default-w="80" data-min-w="64" data-sort="number">数量</th>
-            <th class="w-120" data-col-key="due_date" data-default-w="120" data-min-w="104" data-sort="date">交期</th>
-            <th class="w-90" data-col-key="priority" data-default-w="90" data-min-w="76" data-sort="text">优先级</th>
-            <th class="w-100" data-col-key="ready" data-default-w="100" data-min-w="84" data-sort="text">齐套显示</th>
-            <th class="w-90" data-col-key="status" data-default-w="90" data-min-w="76" data-sort="text">状态</th>
-            <th class="w-150" data-col-key="actions" data-default-w="150" data-min-w="140" data-resize="1">操作</th>
+            <th class="w-110" data-col-key="due_date" data-default-w="110" data-min-w="88" data-sort="date">交期</th>
+            <th class="w-110" data-col-key="ready_date" data-default-w="110" data-min-w="88" data-sort="date">齐套日期</th>
+            <th class="w-80" data-col-key="priority" data-default-w="80" data-min-w="68" data-sort="text">优先级</th>
+            <th class="w-90" data-col-key="ready" data-default-w="90" data-min-w="76" data-sort="text">齐套显示</th>
+            <th class="w-80" data-col-key="status" data-default-w="80" data-min-w="68" data-sort="text">状态</th>
+            <th class="w-120" data-col-key="actions" data-default-w="110" data-min-w="100" data-resize="1">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -151,6 +152,7 @@
               <td>{{ r.part_no }}</td>
               <td class="text-right">{{ r.quantity }}</td>
               <td>{% if r.due_date %}{{ r.due_date }}{% else %}<span class="muted">-</span>{% endif %}</td>
+              <td>{{ r.ready_date or '-' }}</td>
               <td>{{ r.priority_label }}</td>
               <td>{{ r.ready_status_label }}</td>
               <td>{{ r.status_label }}</td>

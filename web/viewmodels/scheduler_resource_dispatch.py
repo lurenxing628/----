@@ -141,19 +141,8 @@ def _decorate_detail_rows(rows: Any) -> None:
             _decorate_detail_row(row)
 
 
-def _hhmm(value: Any) -> str:
-    text = _text(value)
-    if len(text) >= 16 and text[10] in (" ", "T"):
-        return text[11:16]
-    return text
-
-
 def _calendar_item_text(item: MutableMapping[str, Any]) -> str:
-    parts: List[str] = []
-    start = _hhmm(item.get("start"))
-    end = _hhmm(item.get("end"))
-    if start or end:
-        parts.append(f"{start}-{end}".strip("-"))
+    parts: List[str] = [_text(item.get("time_label"))]
     title = _text(item.get("op_code")) or _text(item.get("batch_id"))
     if title:
         parts.append(title)

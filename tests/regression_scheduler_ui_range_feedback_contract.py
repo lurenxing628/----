@@ -98,6 +98,8 @@ def test_targeted_form_feedback_script_is_page_scoped() -> None:
     for source in (batches_manage, batch_detail, personnel, equipment):
         assert "js/scheduler_form_feedback.js" in source
     assert "validateBatchCreate" in js
+    assert "form.elements.ready_date" in js
+    assert "齐套日期格式不正确，请选择日期。" in js
     assert "validateOperationForm" in js
     assert 'data-aps-batch-bulk-form="1"' in batches_manage
     assert 'aria-describedby="batchBulkActionHelp batchBulkActionError"' in batches_manage

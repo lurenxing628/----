@@ -105,6 +105,7 @@ def test_resource_dispatch_payload_decorates_detail_tasks_and_calendar_text() ->
                             {
                                 "start": "2026-03-02 08:00:00",
                                 "end": "2026-03-02 10:00:00",
+                                "time_label": "08:00-10:00",
                                 "scope_type": "operator",
                                 "machine_id": "MC001",
                                 "machine_name": "数控车床1",
@@ -135,6 +136,46 @@ def test_resource_dispatch_payload_decorates_detail_tasks_and_calendar_text() ->
     assert calendar_item["counterpart_resource_label"] == "MC001 数控车床1"
     assert calendar_item["text"] == "08:00-10:00 OP10 MC001 数控车床1 P001"
     assert calendar_row["cells"][0]["text"] == "08:00-10:00 OP10 MC001 数控车床1 P001"
+
+
+def test_resource_dispatch_payload_keeps_calendar_day_segment_label() -> None:
+    payload = {
+        "calendar_rows": [
+            {
+                "scope_type": "operator",
+                "scope_id": "OP001",
+                "scope_name": "张三",
+                "current_resource_id": "OP001",
+                "current_resource_name": "张三",
+                "operator_id": "OP001",
+                "operator_name": "张三",
+                "cells": [
+                    {
+                        "date": "2026-03-03",
+                        "items": [
+                            {
+                                "start": "2026-03-03 00:00:00",
+                                "end": "2026-03-04 00:00:00",
+                                "time_label": "全天",
+                                "scope_type": "operator",
+                                "machine_id": "MC001",
+                                "machine_name": "数控车床1",
+                                "operator_id": "OP001",
+                                "operator_name": "张三",
+                                "op_code": "OP10",
+                            }
+                        ],
+                    }
+                ],
+            }
+        ]
+    }
+
+    out = decorate_resource_dispatch_payload(payload)
+
+    item_text = out["calendar_rows"][0]["cells"][0]["items"][0]["text"]
+    assert item_text == "全天 OP10 MC001 数控车床1"
+    assert "00:00-00:00" not in item_text
 
 
 def test_resource_dispatch_payload_labels_external_and_unassigned_resources() -> None:

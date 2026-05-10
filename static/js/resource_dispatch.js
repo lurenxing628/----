@@ -157,7 +157,7 @@
   function buildDetailRowsHtml(rows, emptyText) {
     const list = Array.isArray(rows) ? rows : [];
     if (!list.length) {
-      return '<tr><td colspan="10" class="muted">' + escapeHtml(emptyText || "暂无排班任务。") + '</td></tr>';
+      return '<tr><td colspan="11" class="muted">' + escapeHtml(emptyText || "暂无排班任务。") + '</td></tr>';
     }
     const html = [];
     for (let i = 0; i < list.length; i++) {
@@ -170,6 +170,7 @@
           '<td>' + codeCell(row.part_no || "") + '</td>' +
           '<td>' + codeCell(row.op_code || "") + '</td>' +
           '<td>' + escapeHtml(row.seq) + '</td>' +
+          '<td>' + escapeHtml(row.current_resource_label || "") + '</td>' +
           '<td>' + escapeHtml(row.counterpart_resource_label || "") + '</td>' +
           '<td>' + relationBadge(row.team_relation_label) + '</td>' +
           '<td>' + escapeHtml(sourceLabel(row.source)) + '</td>' +

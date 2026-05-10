@@ -96,6 +96,12 @@ def fmt_hhmm(dt: datetime) -> str:
     return dt.strftime("%H:%M")
 
 
+def fmt_day_segment(start_dt: datetime, end_dt: datetime) -> str:
+    start_text = fmt_hhmm(start_dt)
+    end_text = "24:00" if end_dt.date() > start_dt.date() and end_dt.hour == 0 and end_dt.minute == 0 else fmt_hhmm(end_dt)
+    return "全天" if start_text == "00:00" and end_text == "24:00" else f"{start_text}-{end_text}"
+
+
 def split_by_day(start_dt: datetime, end_dt: datetime) -> List[Tuple[date, datetime, datetime]]:
     cur = start_dt
     out: List[Tuple[date, datetime, datetime]] = []

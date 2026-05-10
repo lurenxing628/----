@@ -54,6 +54,7 @@
     var partNo = form.elements.part_no;
     var quantity = form.elements.quantity;
     var dueDate = form.elements.due_date;
+    var readyDate = form.elements.ready_date;
 
     if (!trim(batchId && batchId.value)) {
       setFieldError(batchId, "请填写批次号。");
@@ -69,6 +70,10 @@
     }
     if (trim(dueDate && dueDate.value) && !/^\d{4}-\d{2}-\d{2}$/.test(trim(dueDate.value))) {
       setFieldError(dueDate, "交期格式不正确，请选择日期。");
+      ok = false;
+    }
+    if (trim(readyDate && readyDate.value) && !/^\d{4}-\d{2}-\d{2}$/.test(trim(readyDate.value))) {
+      setFieldError(readyDate, "齐套日期格式不正确，请选择日期。");
       ok = false;
     }
     return ok;
