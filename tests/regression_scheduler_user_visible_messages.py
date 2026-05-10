@@ -477,6 +477,101 @@ def test_summary_display_unknown_degradation_and_errors_do_not_echo_raw_messages
     assert "password leaked" not in str(display["errors_preview"])
 
 
+def test_summary_display_keeps_known_scheduler_errors_actionable() -> None:
+    display = build_summary_display_state(
+        {
+            "errors_sample": [
+                "自制工序未补全设备或人员，无法排产：工序 UX-0510-E01_05",
+                "排产窗口截止到 2026-05-12：自制工序 OP-10（批次 B-1）预计完工 2026-05-13 10:00 超出窗口",
+                "工序 OP001 排产异常：database password leaked",
+            ],
+            "error_count": 3,
+            "counts": {"op_count": 3, "scheduled_ops": 1, "failed_ops": 2},
+        },
+        result_status="partial",
+    )
+
+    assert display["errors_preview"] == [
+        "自制工序未补全设备或人员，无法排产：工序 UX-0510-E01_05",
+        "排产窗口截止到 2026-05-12：自制工序 OP-10（批次 B-1）预计完工 2026-05-13 10:00 超出窗口",
+        "排产执行遇到问题，请联系管理员查看日志。",
+    ]
+    assert "password leaked" not in str(display["errors_preview"])
+
+
+def test_summary_display_keeps_full_error_detail_list_for_history_pages() -> None:
+    errors = [
+        f"排产窗口截止到 2026-05-12：自制工序 OP-{idx:02d}（批次 B-{idx}）预计完工 2026-05-13 10:00 超出窗口"
+        for idx in range(1, 6)
+    ]
+
+    display = build_summary_display_state(
+        {
+            "errors": errors,
+            "errors_sample": errors[:3],
+            "error_count": len(errors),
+            "counts": {"op_count": 5, "scheduled_ops": 0, "failed_ops": 5},
+        },
+        result_status="failed",
+    )
+
+    assert display["errors_preview"] == errors[:3]
+    assert display["errors_display"] == errors
+    assert display["error_hidden_count"] == 0
+
+
+def test_summary_display_known_error_prefix_still_hides_sensitive_tail() -> None:
+    display = build_summary_display_state(
+        {
+            "errors": [
+                "工时不合法：工序 OP001 Traceback sqlite database password leaked /Users/private/aps.db",
+                "外协周期不合法：工序 OP002 SECRET_TOKEN=abc123",
+            ],
+            "error_count": 2,
+            "counts": {"op_count": 2, "scheduled_ops": 0, "failed_ops": 2},
+        },
+        result_status="failed",
+    )
+
+    assert display["errors_display"] == ["排产执行遇到问题，请联系管理员查看日志。"]
+    assert "Traceback" not in str(display["errors_display"])
+    assert "password" not in str(display["errors_display"])
+    assert "SECRET_TOKEN" not in str(display["errors_display"])
+    assert "/Users/private" not in str(display["errors_display"])
+
+
+def test_summary_display_formats_missing_internal_resource_ops() -> None:
+    display = build_summary_display_state(
+        {
+            "missing_internal_resource_count": 2,
+            "missing_internal_resource_ops": [
+                {
+                    "op_id": 101,
+                    "batch_id": "B-001",
+                    "seq": 5,
+                    "op_type_name": "车削",
+                    "missing_fields": ["设备", "人员"],
+                },
+                {
+                    "op_id": 102,
+                    "batch_id": "B-002",
+                    "seq": 10,
+                    "op_code": "OP-10",
+                    "missing_fields": ["人员"],
+                },
+            ],
+        },
+        result_status="partial",
+    )
+
+    assert display["missing_internal_resource_count"] == 2
+    assert display["missing_internal_resource_hidden_count"] == 0
+    assert display["missing_internal_resource_ops"][0]["label"] == "B-001 / 工序5 / 车削"
+    assert display["missing_internal_resource_ops"][0]["missing_text"] == "设备、人员"
+    assert display["missing_internal_resource_ops"][1]["label"] == "B-002 / 工序10 / OP-10"
+    assert display["missing_internal_resource_ops"][1]["missing_text"] == "人员"
+
+
 def test_summary_display_warnings_preview_filters_historical_raw_warnings() -> None:
     display = build_summary_display_state(
         {

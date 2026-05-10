@@ -33,6 +33,27 @@ def _size_guard_dict(raw: Any, *, max_items: int = 20, max_value_chars: int = 12
     return out
 
 
+def _copy_minimal_error_fields(minimal: Dict[str, Any], result_summary_obj: Dict[str, Any]) -> None:
+    if result_summary_obj.get("error_count") is not None:
+        minimal["error_count"] = _size_guard_scalar(result_summary_obj.get("error_count"), max_chars=40)
+    if isinstance(result_summary_obj.get("errors_sample"), list):
+        minimal["errors_sample"] = [str(item)[:200] for item in list(result_summary_obj.get("errors_sample") or [])[:10]]
+    if result_summary_obj.get("errors_truncated"):
+        minimal["errors_truncated"] = True
+
+
+def _copy_minimal_missing_resource_fields(minimal: Dict[str, Any], result_summary_obj: Dict[str, Any]) -> None:
+    if result_summary_obj.get("missing_internal_resource_count") is not None:
+        minimal["missing_internal_resource_count"] = _size_guard_scalar(
+            result_summary_obj.get("missing_internal_resource_count"),
+            max_chars=40,
+        )
+    if isinstance(result_summary_obj.get("missing_internal_resource_ops"), list):
+        minimal["missing_internal_resource_ops"] = list(result_summary_obj.get("missing_internal_resource_ops") or [])[:10]
+    if result_summary_obj.get("missing_internal_resource_ops_truncated"):
+        minimal["missing_internal_resource_ops_truncated"] = True
+
+
 def _minimal_summary_for_size_guard(
     result_summary_obj: Dict[str, Any],
     *,
@@ -68,6 +89,8 @@ def _minimal_summary_for_size_guard(
         minimal["unscheduled_batch_count"] = _size_guard_scalar(result_summary_obj.get("unscheduled_batch_count"), max_chars=40)
     if overdue_dict:
         minimal["overdue_batches"] = {"count": _size_guard_scalar(overdue_dict.get("count"), max_chars=40)}
+    _copy_minimal_error_fields(minimal, result_summary_obj)
+    _copy_minimal_missing_resource_fields(minimal, result_summary_obj)
 
     minimal_algo = _size_guard_dict(
         {
@@ -101,6 +124,8 @@ def apply_summary_size_guard(result_summary_obj: Dict[str, Any]) -> Dict[str, An
     algo_dict = algo if isinstance(algo, dict) else {}
     trace = algo_dict.get("improvement_trace")
     warnings = result_summary_obj.get("warnings")
+    errors = result_summary_obj.get("errors")
+    missing_internal_resource_ops = result_summary_obj.get("missing_internal_resource_ops")
     attempts = algo_dict.get("attempts")
     best_batch_order = algo_dict.get("best_batch_order")
     selected_batch_ids = result_summary_obj.get("selected_batch_ids")
@@ -133,6 +158,20 @@ def apply_summary_size_guard(result_summary_obj: Dict[str, Any]) -> Dict[str, An
     def _trim_warnings(limit: int) -> None:
         if isinstance(warnings, list):
             result_summary_obj["warnings"] = warnings[:limit]
+
+    def _trim_errors(limit: int) -> None:
+        if not isinstance(errors, list):
+            return
+        result_summary_obj["errors"] = errors[:limit]
+        if len(errors) > limit:
+            result_summary_obj["errors_truncated"] = True
+
+    def _trim_missing_internal_resource_ops(limit: int) -> None:
+        if not isinstance(missing_internal_resource_ops, list):
+            return
+        result_summary_obj["missing_internal_resource_ops"] = missing_internal_resource_ops[:limit]
+        if len(missing_internal_resource_ops) > limit:
+            result_summary_obj["missing_internal_resource_ops_truncated"] = True
 
     def _trim_attempts(limit: int) -> None:
         if isinstance(attempts, list):
@@ -211,8 +250,10 @@ def apply_summary_size_guard(result_summary_obj: Dict[str, Any]) -> Dict[str, An
             _trim_best_batch_order(tier.best_order_limit)
         if tier.selected_ids_limit is not None:
             _trim_selected_batch_ids(tier.selected_ids_limit)
+            _trim_errors(max(tier.selected_ids_limit, 10))
         if tier.overdue_items_limit is not None:
             _trim_overdue_items(tier.overdue_items_limit)
+            _trim_missing_internal_resource_ops(tier.overdue_items_limit)
         result_summary_obj["summary_truncated"] = True
         result_summary_obj["original_size_bytes"] = int(original_size)
         if _summary_size_bytes(result_summary_obj) <= SUMMARY_SIZE_LIMIT_BYTES:

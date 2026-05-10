@@ -150,7 +150,7 @@ def test_scheduler_error_summaries_render_as_summary_cards() -> None:
         assert "aps-summary-grid mt-2 aps-summary-health-grid" in block
         assert "ui.summary_item_block('错误摘要'" in block
         assert "'danger'" in block
-        assert "ui.flash_details('查看前 '" in block
+        assert "ui.flash_details('查看 '" in block
         assert "<div>错误摘要：" not in block
         assert "flash-card flash-warning mt-2" not in block
 

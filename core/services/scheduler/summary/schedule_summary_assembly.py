@@ -7,6 +7,7 @@ from core.algorithms.objective_specs import best_score_schema, comparison_metric
 from core.models.enums import YesNo
 from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot
 from core.services.scheduler.run.optimizer_search_state import compact_attempts
+from core.services.scheduler.run.schedule_persistence_errors import missing_internal_resource_samples
 
 from .optimizer_public_summary import project_public_algo_summary
 from .schedule_summary_types import (
@@ -53,6 +54,37 @@ def _finish_time_by_batch(results: List[Any]) -> Dict[str, datetime]:
         if current is None or finish_time > current:
             finish_by_batch[batch_id] = finish_time
     return finish_by_batch
+
+
+def _positive_result_op_ids(results: List[Any]) -> set[int]:
+    op_ids: set[int] = set()
+    for result in list(results or []):
+        try:
+            op_id = int(getattr(result, "op_id", 0) or 0)
+        except Exception:
+            continue
+        if op_id > 0:
+            op_ids.add(op_id)
+    return op_ids
+
+
+def _positive_int_set(values: Any) -> set[int]:
+    out: set[int] = set()
+    for value in list(values or []):
+        try:
+            number = int(value or 0)
+        except Exception:
+            continue
+        if number > 0:
+            out.add(number)
+    return out
+
+
+def _actionable_missing_internal_resource_op_ids(ctx: SummaryBuildContext) -> set[int]:
+    missing_ids = _positive_int_set(ctx.missing_internal_resource_op_ids)
+    if not missing_ids:
+        return set()
+    return missing_ids - _positive_result_op_ids(ctx.results)
 
 
 def _record_invalid_due(
@@ -284,6 +316,10 @@ def _build_result_summary_obj(
     serialize_end_date_fn: Callable[[Optional[Any]], Optional[str]],
 ) -> Dict[str, Any]:
     summary_errors = list(getattr(ctx.summary, "errors", None) or [])
+    missing_resource_ops = missing_internal_resource_samples(
+        ctx.operations,
+        _actionable_missing_internal_resource_op_ids(ctx),
+    )
     public_algo, optimizer_diagnostics = project_public_algo_summary(_algo_dict(algorithm_state))
     result_summary = {
         "summary_schema_version": "1.2",
@@ -315,7 +351,10 @@ def _build_result_summary_obj(
         },
         "overdue_batches": {"count": len(runtime_state.overdue_items), "items": runtime_state.overdue_items},
         "error_count": len(summary_errors),
+        "errors": summary_errors,
         "errors_sample": summary_errors[:10],
+        "missing_internal_resource_count": len(missing_resource_ops),
+        "missing_internal_resource_ops": missing_resource_ops,
         "warnings": list(freeze_state.all_warnings),
         "time_cost_ms": int(time_cost_ms),
     }

@@ -144,17 +144,38 @@
       {% if selected_summary_display.error_total %}
         <div class="aps-summary-grid mt-2 aps-summary-health-grid">
           {% call ui.summary_item_block('错误摘要', selected_summary_display.error_total ~ ' 条', 'danger') %}
-            {% call ui.flash_details('查看前 ' ~ (selected_summary_display.errors_preview|length) ~ ' 条错误') %}
+            {% set error_items = selected_summary_display.errors_display or selected_summary_display.errors_preview %}
+            {% call ui.flash_details('查看 ' ~ (error_items|length) ~ ' 条错误') %}
               <ul class="list-tight">
-                {% for item in selected_summary_display.errors_preview %}
+                {% for item in error_items %}
                   <li>{{ item }}</li>
                 {% endfor %}
               </ul>
             {% endcall %}
             {% if selected_summary_display.error_hidden_count > 0 %}
-              <div class="muted text-xs">另有 {{ selected_summary_display.error_hidden_count }} 条错误，请到系统历史查看。</div>
+              <div class="muted text-xs">另有 {{ selected_summary_display.error_hidden_count }} 条错误未在当前页面逐条展示，可缩小排产范围后重试。</div>
             {% endif %}
           {% endcall %}
+        </div>
+      {% endif %}
+      {% if selected_summary_display.missing_internal_resource_count %}
+        <div class="flash-card flash-warning mt-2">
+          <div>需要补设备/人员：{{ selected_summary_display.missing_internal_resource_count }} 道工序</div>
+          {% call ui.flash_details('查看需要补设备/人员的工序') %}
+            <ul class="list-tight">
+              {% for item in selected_summary_display.missing_internal_resource_ops %}
+                <li>
+                  {{ item.label }} 缺{{ item.missing_text }}
+                  {% if item.batch_id %}
+                    <a class="table-action-link" href="{{ url_for('scheduler.batch_detail', batch_id=item.batch_id) }}">去补充</a>
+                  {% endif %}
+                </li>
+              {% endfor %}
+            </ul>
+          {% endcall %}
+          {% if selected_summary_display.missing_internal_resource_hidden_count > 0 %}
+            <div class="muted text-xs">另有 {{ selected_summary_display.missing_internal_resource_hidden_count }} 道工序未在当前摘要中展开。</div>
+          {% endif %}
         </div>
       {% endif %}
     </div>

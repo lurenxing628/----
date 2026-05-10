@@ -133,6 +133,28 @@ def _malformed_large_list_field_case():
     }
 
 
+def _large_errors_case(n: int):
+    return {
+        "summary_schema_version": "1.2",
+        "is_simulation": False,
+        "completion_status": "partial",
+        "version": 44,
+        "strategy": "priority_first",
+        "algo": {"attempts": [], "improvement_trace": [], "best_batch_order": []},
+        "warnings": [],
+        "selected_batch_ids": [],
+        "overdue_batches": {"count": 0, "items": []},
+        "counts": {"scheduled_ops": 0, "failed_ops": n},
+        "error_count": n,
+        "errors": [
+            f"自制工序未补全设备或人员，无法排产：工序 B{i:05d}_05，附加说明 {'x' * 80}"
+            for i in range(n)
+        ],
+        "errors_sample": [f"自制工序未补全设备或人员，无法排产：工序 B{i:05d}_05" for i in range(10)],
+        "time_cost_ms": 1,
+    }
+
+
 def main() -> None:
     repo_root = find_repo_root()
     if repo_root not in sys.path:
@@ -217,6 +239,18 @@ def main() -> None:
     assert bool(malformed_list_after_obj.get("summary_truncated")), "malformed_large_list_field_case 未标记 summary_truncated"
     assert int(malformed_list_after_obj.get("original_size_bytes") or 0) == malformed_list_before
     assert malformed_list_after <= SUMMARY_SIZE_LIMIT_BYTES, "malformed_large_list_field_case 截断后仍超过 512KB"
+
+    large_errors_obj = _large_errors_case(12000)
+    large_errors_before = _size_bytes(large_errors_obj)
+    assert large_errors_before > SUMMARY_SIZE_LIMIT_BYTES, "large_errors_case 应先超过 size guard 上限"
+    large_errors_after_obj = apply_summary_size_guard(large_errors_obj)
+    large_errors_after = _size_bytes(large_errors_after_obj)
+    assert bool(large_errors_after_obj.get("summary_truncated")), "large_errors_case 未标记 summary_truncated"
+    assert bool(large_errors_after_obj.get("errors_truncated")), "large_errors_case 未标记 errors_truncated"
+    assert int(large_errors_after_obj.get("error_count") or 0) == 12000, "large_errors_case 不应改动 error_count"
+    assert len(large_errors_after_obj.get("errors") or []) < 12000, "large_errors_case 未裁剪 errors"
+    assert large_errors_after_obj.get("errors_sample"), "large_errors_case 裁剪后仍应保留 errors_sample"
+    assert large_errors_after <= SUMMARY_SIZE_LIMIT_BYTES, "large_errors_case 截断后仍超过 512KB"
 
     print("OK")
 

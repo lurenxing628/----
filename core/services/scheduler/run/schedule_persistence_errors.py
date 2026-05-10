@@ -66,6 +66,24 @@ def _missing_internal_resource_samples(
     return samples
 
 
+def missing_internal_resource_samples(
+    operations: Optional[List[Any]],
+    missing_internal_resource_op_ids: Optional[Set[int]],
+    *,
+    limit: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    samples = _missing_internal_resource_samples(operations, missing_internal_resource_op_ids)
+    if limit is None:
+        return samples
+    try:
+        normalized_limit = int(limit)
+    except (TypeError, ValueError):
+        return samples
+    if normalized_limit < 0:
+        return []
+    return samples[:normalized_limit]
+
+
 def _format_missing_internal_resource_sample(samples: List[Dict[str, Any]]) -> str:
     messages: List[str] = []
     for item in samples[:10]:
@@ -106,4 +124,4 @@ def raise_no_actionable_schedule_error(
     raise exc
 
 
-__all__ = ["raise_no_actionable_schedule_error"]
+__all__ = ["missing_internal_resource_samples", "raise_no_actionable_schedule_error"]

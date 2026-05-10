@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import json
 import sys
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -234,6 +235,98 @@ def test_result_summary_roundtrip_keeps_public_attempts_and_diagnostics_separate
         "message": INTERNAL_SECRET,
     }
     assert "score" not in rejected[0]
+
+
+def test_result_summary_keeps_full_errors_and_missing_resource_details() -> None:
+    op_id = 101
+    _cfg_obj, _batch, _result, _summary, ctx = _build_summary_for_op(op_id=op_id)
+    errors = [
+        f"自制工序未补全设备或人员，无法排产：工序 B001_{idx:02d}"
+        for idx in range(1, 13)
+    ]
+    missing_op = SimpleNamespace(
+        id=op_id,
+        batch_id="B001",
+        seq=5,
+        op_code="OP-B001-005",
+        op_type_name="车削",
+        machine_id="",
+        operator_id=None,
+    )
+    summary = SimpleNamespace(success=False, total_ops=12, scheduled_ops=0, failed_ops=12, warnings=[], errors=errors)
+    ctx = replace(
+        ctx,
+        operations=[missing_op],
+        results=[],
+        summary=summary,
+        missing_internal_resource_op_ids={op_id},
+    )
+    svc = SimpleNamespace(
+        _format_dt=lambda value: value.strftime("%Y-%m-%d %H:%M:%S"),
+        _normalize_text=lambda value: str(value).strip() if value else None,
+    )
+
+    _overdue, _result_status, result_summary_obj, _result_summary_json, _time_cost_ms = build_result_summary(svc, ctx=ctx)
+
+    assert result_summary_obj["error_count"] == 12
+    assert result_summary_obj["errors"] == errors
+    assert result_summary_obj["errors_sample"] == errors[:10]
+    assert result_summary_obj["missing_internal_resource_count"] == 1
+    assert result_summary_obj["missing_internal_resource_ops"] == [
+        {
+            "op_id": op_id,
+            "batch_id": "B001",
+            "op_code": "OP-B001-005",
+            "seq": 5,
+            "op_type_name": "车削",
+            "missing_fields": ["设备", "人员"],
+        }
+    ]
+
+
+def test_result_summary_does_not_mark_auto_assigned_success_as_missing_resource() -> None:
+    op_id = 102
+    cfg, batch, _result, _summary, ctx = _build_summary_for_op(op_id=op_id)
+    start = datetime(2026, 4, 1, 8, 0, 0)
+    end = datetime(2026, 4, 1, 10, 0, 0)
+    missing_original_op = SimpleNamespace(
+        id=op_id,
+        batch_id="B001",
+        seq=5,
+        op_code="OP-B001-005",
+        op_type_name="车削",
+        machine_id="",
+        operator_id="",
+    )
+    auto_assigned_result = SimpleNamespace(
+        op_id=op_id,
+        batch_id="B001",
+        machine_id="MC1",
+        operator_id="OP1",
+        start_time=start,
+        end_time=end,
+        source="internal",
+    )
+    summary = SimpleNamespace(success=True, total_ops=1, scheduled_ops=1, failed_ops=0, warnings=[], errors=[])
+    ctx = replace(
+        ctx,
+        cfg=cfg,
+        batches={"B001": batch},
+        operations=[missing_original_op],
+        results=[auto_assigned_result],
+        summary=summary,
+        missing_internal_resource_op_ids={op_id},
+    )
+    svc = SimpleNamespace(
+        _format_dt=lambda value: value.strftime("%Y-%m-%d %H:%M:%S"),
+        _normalize_text=lambda value: str(value).strip() if value else None,
+    )
+
+    _overdue, _result_status, result_summary_obj, _result_summary_json, _time_cost_ms = build_result_summary(svc, ctx=ctx)
+
+    assert result_summary_obj["error_count"] == 0
+    assert result_summary_obj["missing_internal_resource_count"] == 0
+    assert result_summary_obj["missing_internal_resource_ops"] == []
 
 
 def test_optimizer_diagnostics_secret_is_not_rendered_on_public_scheduler_surfaces(tmp_path, monkeypatch) -> None:

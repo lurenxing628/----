@@ -281,6 +281,7 @@ def orchestrate_schedule_run(
         attempts=optimizer_outcome.attempts,
         improvement_trace=optimizer_outcome.improvement_trace,
         frozen_op_ids=set(schedule_input.frozen_op_ids),
+        missing_internal_resource_op_ids=set(schedule_input.missing_internal_resource_op_ids or set()),
         freeze_meta=schedule_input.freeze_meta,
         input_build_outcome=schedule_input.algo_input_outcome,
         downtime_meta=schedule_input.downtime_meta,

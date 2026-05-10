@@ -37,6 +37,7 @@ class SummaryBuildContext:
     attempts: List[Dict[str, Any]]
     improvement_trace: List[Dict[str, Any]]
     frozen_op_ids: Set[int]
+    missing_internal_resource_op_ids: Optional[Set[int]] = None
     freeze_meta: Optional[Dict[str, Any]] = None
     input_build_outcome: Optional[BuildOutcome[Any]] = None
     downtime_meta: Optional[Dict[str, Any]] = None
