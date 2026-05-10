@@ -124,7 +124,9 @@ def _seed(conn: sqlite3.Connection) -> None:
             ('B1', 'P001', '零件一', '2026-05-01', 'urgent'),
             ('B2', 'P002', '零件二', '2026-05-02', 'normal'),
             ('B3', 'P003', '零件三', '2026-05-03', 'low'),
-            ('B4', 'P004', '零件四', '2026-05-04', 'normal');
+            ('B4', 'P004', '零件四', '2026-05-04', 'normal'),
+            ('B5', 'P005', '零件五', '2026-05-05', 'normal'),
+            ('B6', 'P006', '零件六', '2026-05-06', 'normal');
 
         INSERT INTO BatchOperations(
             id, op_code, batch_id, piece_id, seq, op_type_name, source, status, supplier_id
@@ -133,7 +135,9 @@ def _seed(conn: sqlite3.Connection) -> None:
             (10, 'OP10', 'B1', 'piece-a', 1, '车削', 'internal', 'scheduled', 'S1'),
             (11, 'OP11', 'B2', 'piece-b', 2, '磨削', 'internal', 'scheduled', NULL),
             (12, 'OP12', 'B3', 'piece-c', 3, '装配', 'internal', 'scheduled', NULL),
-            (13, 'OP13', 'B4', 'piece-d', 4, '外协', 'external', 'scheduled', 'S2');
+            (13, 'OP13', 'B4', 'piece-d', 4, '外协', 'external', 'scheduled', 'S2'),
+            (14, 'OP14', 'B5', 'piece-e', 5, '人工检验', 'internal', 'scheduled', NULL),
+            (15, 'OP15', 'B6', 'piece-f', 6, '设备试切', 'internal', 'scheduled', NULL);
 
         INSERT INTO Schedule(
             id, op_id, machine_id, operator_id, start_time, end_time, lock_status, version
@@ -143,6 +147,8 @@ def _seed(conn: sqlite3.Connection) -> None:
             (2, 11, 'M2', 'O2', '2026-05-01 07:00', '2026-05-01 09:00', 'unlocked', 1),
             (3, 12, 'M1', 'O2', '2026-05-01 10:00', '2026-05-01 11:00', 'unlocked', 1),
             (4, 13, NULL, NULL, '2026-05-01 09:30', '2026-05-01 10:30', 'unlocked', 1),
+            (6, 14, NULL, 'O1', '2026-05-01 08:45', '2026-05-01 09:15', 'unlocked', 3),
+            (7, 15, 'M2', NULL, '2026-05-01 08:50', '2026-05-01 09:20', 'unlocked', 3),
             (5, 10, 'M1', 'O1', '2026-05-01 08:00', '2026-05-01 10:00', 'unlocked', 2);
         """
     )
@@ -244,26 +250,46 @@ def test_schedule_dispatch_query_filters_unassigned_rows_for_all_operator_and_ma
     operator_rows = repo.list_dispatch_rows_with_resource_context(
         start_time="2026-05-01 08:30",
         end_time="2026-05-01 10:00",
-        version=1,
+        version=3,
         scope_type="operator",
         scope_id=None,
     )
     machine_rows = repo.list_dispatch_rows_with_resource_context(
         start_time="2026-05-01 08:30",
         end_time="2026-05-01 10:00",
-        version=1,
+        version=3,
         scope_type="machine",
         scope_id="",
     )
     all_rows = repo.list_dispatch_rows_with_resource_context(
         start_time="2026-05-01 08:30",
         end_time="2026-05-01 10:00",
-        version=1,
+        version=3,
     )
 
-    assert _ids(operator_rows) == [2, 1]
-    assert _ids(machine_rows) == [2, 1]
-    assert _ids(all_rows) == [2, 1, 4]
+    assert _ids(operator_rows) == [6]
+    assert _ids(machine_rows) == [7]
+    assert _ids(all_rows) == [6, 7]
+
+
+def test_schedule_dispatch_query_normalizes_scope_type_for_all_operator_and_machine_scopes() -> None:
+    repo = _repo()
+
+    operator_rows = repo.list_dispatch_rows_with_resource_context(
+        start_time="2026-05-01 08:30",
+        end_time="2026-05-01 10:00",
+        version=3,
+        scope_type=" Operator ",
+    )
+    machine_rows = repo.list_dispatch_rows_with_resource_context(
+        start_time="2026-05-01 08:30",
+        end_time="2026-05-01 10:00",
+        version=3,
+        scope_type=" Machine ",
+    )
+
+    assert _ids(operator_rows) == [6]
+    assert _ids(machine_rows) == [7]
 
 
 def test_schedule_dispatch_query_keeps_left_join_for_unassigned_external_rows() -> None:

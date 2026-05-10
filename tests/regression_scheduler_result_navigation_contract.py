@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from types import SimpleNamespace
 
@@ -113,18 +114,23 @@ def test_schedule_success_redirect_falls_back_to_requested_start_when_summary_st
     }
 
 
-def test_schedule_success_redirect_keeps_no_date_when_all_fallback_anchors_invalid() -> None:
+def test_schedule_success_redirect_logs_warning_and_keeps_no_date_when_all_fallback_anchors_invalid(caplog) -> None:
     app = Flask(__name__)
 
     with app.app_context():
         g.services = SimpleNamespace(gantt_service=SimpleNamespace(get_version_time_span_dates=lambda _version: None))
 
-        kwargs = build_success_gantt_redirect_kwargs(
-            {"version": 12, "summary": {"start_time": "bad-start"}},
-            requested_start_dt="also-bad",
-        )
+        with caplog.at_level(logging.WARNING, logger=app.logger.name):
+            kwargs = build_success_gantt_redirect_kwargs(
+                {"version": 12, "summary": {"start_time": "bad-start"}},
+                requested_start_dt="also-bad",
+            )
 
     assert kwargs == {"view": "machine", "version": 12}
+    assert "排产成功跳转甘特图缺少可解析日期范围" in caplog.text
+    assert "version=12" in caplog.text
+    assert "summary_start='bad-start'" in caplog.text
+    assert "requested_start_dt='also-bad'" in caplog.text
 
 
 def test_fmt_day_segment_only_uses_24_hour_label_for_exact_midnight() -> None:
