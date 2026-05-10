@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.infrastructure.errors import ValidationError
+from core.models.scheduler_public_errors import public_safe_identifier, public_safe_label
 
 
 def _positive_int(value: Any) -> Optional[int]:
@@ -31,11 +32,11 @@ def _operation_sort_key(op: Any) -> Tuple[str, int, int]:
 
 
 def _safe_short_identifier(value: Any, *, max_chars: int = 80) -> str:
-    text = str(value or "").strip()
-    text = text.replace("\r", " ").replace("\n", " ")
-    while "  " in text:
-        text = text.replace("  ", " ")
-    return text[:max_chars]
+    return public_safe_identifier(value, max_chars=max_chars)
+
+
+def _safe_short_label(value: Any, *, max_chars: int = 80) -> str:
+    return public_safe_label(value, max_chars=max_chars)
 
 
 def _safe_missing_fields(op: Any) -> List[str]:
@@ -54,7 +55,7 @@ def _missing_internal_resource_sample(op: Any, *, op_id: int) -> Dict[str, Any]:
         "batch_id": _safe_short_identifier(getattr(op, "batch_id", "")),
         "op_code": _safe_short_identifier(getattr(op, "op_code", "")),
         "seq": int(seq),
-        "op_type_name": _safe_short_identifier(getattr(op, "op_type_name", "")),
+        "op_type_name": _safe_short_label(getattr(op, "op_type_name", "")),
         "missing_fields": _safe_missing_fields(op),
     }
 

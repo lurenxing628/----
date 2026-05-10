@@ -4,6 +4,12 @@ import json
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
+from core.models.scheduler_public_errors import (
+    public_error_message_from_detail,
+    public_safe_identifier,
+    public_safe_label,
+)
+
 from .schedule_summary_types import DEFAULT_TRUNCATION_TIERS
 
 SUMMARY_SIZE_LIMIT_BYTES = 512 * 1024
@@ -83,9 +89,16 @@ def _size_guard_public_error_detail(raw: Any) -> Dict[str, Any]:
         return {}
     out: Dict[str, Any] = {}
     _copy_guarded_text_fields(raw, out, ("schema_version", "code", "severity"), max_chars=80)
-    _copy_guarded_text_fields(raw, out, ("message",), max_chars=500)
+    message = public_error_message_from_detail(raw)
+    if message:
+        out["message"] = message
     _copy_guarded_int_fields(raw, out, ("op_id", "seq"))
-    _copy_guarded_text_fields(raw, out, ("batch_id", "op_code"), max_chars=80)
+    batch_id = public_safe_identifier(raw.get("batch_id"))
+    if batch_id:
+        out["batch_id"] = batch_id
+    op_code = public_safe_identifier(raw.get("op_code"))
+    if op_code:
+        out["op_code"] = op_code
     fields = _guard_missing_fields(raw.get("missing_fields"))
     if fields:
         out["missing_fields"] = fields
@@ -97,7 +110,15 @@ def _size_guard_missing_resource_item(raw: Any) -> Dict[str, Any]:
         return {}
     out: Dict[str, Any] = {}
     _copy_guarded_int_fields(raw, out, ("op_id", "seq"))
-    _copy_guarded_text_fields(raw, out, ("batch_id", "op_code", "op_type_name"), max_chars=80)
+    batch_id = public_safe_identifier(raw.get("batch_id"))
+    if batch_id:
+        out["batch_id"] = batch_id
+    op_code = public_safe_identifier(raw.get("op_code"))
+    if op_code:
+        out["op_code"] = op_code
+    op_type_name = public_safe_label(raw.get("op_type_name"))
+    if op_type_name:
+        out["op_type_name"] = op_type_name
     fields = _guard_missing_fields(raw.get("missing_fields"))
     if fields:
         out["missing_fields"] = fields

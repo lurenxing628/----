@@ -495,6 +495,26 @@ def test_public_error_details_are_preferred_over_raw_errors() -> None:
     assert display["errors_display"] == ["自制工序未补全设备或人员，无法排产：工序 B001_05"]
 
 
+def test_malicious_public_error_details_are_generic() -> None:
+    display = build_summary_display_state(
+        {
+            "error_count": 1,
+            "public_error_details": [
+                {
+                    "schema_version": "1.0",
+                    "code": "missing_internal_resource",
+                    "message": "Traceback sqlite database password leaked /home/app/secret.py",
+                }
+            ],
+        },
+        result_status="failed",
+    )
+
+    assert display["errors_display"] == ["排产执行遇到问题，请联系管理员查看日志。"]
+    assert display["errors_preview"] == ["排产执行遇到问题，请联系管理员查看日志。"]
+    assert display["error_display_count"] == 1
+
+
 @pytest.mark.parametrize(
     "raw",
     [
@@ -663,6 +683,33 @@ def test_summary_display_sanitizes_historical_missing_resource_fields() -> None:
     assert item["missing_fields"] == ["设备", "人员"]
     assert item["missing_text"] == "设备、人员"
     assert "数据库密码" not in str(item)
+
+
+def test_summary_display_drops_sensitive_missing_resource_legacy_fields() -> None:
+    display = build_summary_display_state(
+        {
+            "missing_internal_resource_count": 1,
+            "missing_internal_resource_ops": [
+                {
+                    "op_id": 101,
+                    "batch_id": "B001 SECRET_TOKEN=abc",
+                    "seq": 5,
+                    "op_code": "OP001",
+                    "op_type_name": "Traceback database password leaked",
+                    "missing_fields": ["设备", "人员"],
+                }
+            ],
+        },
+        result_status="partial",
+    )
+
+    item = display["missing_internal_resource_ops"][0]
+    assert item["batch_id"] == ""
+    assert item["op_type_name"] == ""
+    assert item["op_code"] == "OP001"
+    assert item["label"] == "工序5 / OP001"
+    assert display["missing_internal_resource_count"] == 1
+    assert display["missing_internal_resource_hidden_count"] == 0
 
 
 def test_summary_display_exposes_truncated_flags() -> None:

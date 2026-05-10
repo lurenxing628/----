@@ -18,6 +18,14 @@ _SENSITIVE_ERROR_MARKERS: Tuple[str, ...] = (
     "token",
     "apikey",
     "api_key",
+    "authorization",
+    "bearer",
+    "cookie",
+    "session",
+    "credential",
+    "dsn=",
+    "access_key",
+    "private key",
     "sqlite",
     "operationalerror",
     "database",
@@ -25,13 +33,23 @@ _SENSITIVE_ERROR_MARKERS: Tuple[str, ...] = (
     "file \"",
     ".py",
     ".db",
+    ".sqlite",
+    ".env",
     "/users/",
     "\\users\\",
     "/home/",
     "/tmp/",
     "/var/",
     "/etc/",
+    "/mnt/",
+    "/root/",
+    "/opt/",
+    "/app/",
     "\\",
+)
+_PATH_LIKE_RE = re.compile(
+    r"(^|\s)(/[A-Za-z0-9_.-]+/|[A-Za-z]:\\|\\\\|[^\s]*\.(?:py|db|sqlite|env)\b)",
+    re.IGNORECASE,
 )
 
 LEGACY_PUBLIC_PATTERNS: Tuple[Pattern[str], ...] = (
@@ -51,31 +69,49 @@ LEGACY_PUBLIC_PATTERNS: Tuple[Pattern[str], ...] = (
 )
 
 
-def _clean_short_text(value: Any, *, max_chars: int = 120) -> str:
+def _clean_text(value: Any) -> str:
     text = str(value or "").strip()
     text = text.replace("\r", " ").replace("\n", " ")
     while "  " in text:
         text = text.replace("  ", " ")
+    return text
+
+
+def _clean_short_text(value: Any, *, max_chars: int = 120) -> str:
+    text = _clean_text(value)
     return text[:max_chars]
 
 
 def _contains_sensitive_marker(text: str) -> bool:
     lower_text = str(text or "").lower()
-    return any(marker in lower_text for marker in _SENSITIVE_ERROR_MARKERS)
+    if any(marker in lower_text for marker in _SENSITIVE_ERROR_MARKERS):
+        return True
+    return bool(_PATH_LIKE_RE.search(str(text or "")))
 
 
+def public_safe_identifier(value: Any, *, max_chars: int = 80) -> str:
+    full_text = _clean_text(value)
+    if not full_text or _contains_sensitive_marker(full_text):
+        return ""
+    text = full_text[:max_chars]
+    if text.startswith(("/", "\\")):
+        return ""
+    if not _ALLOWED_IDENTIFIER_RE.fullmatch(text):
+        return ""
+    return text[:max_chars]
+
+
+def public_safe_label(value: Any, *, max_chars: int = 80) -> str:
+    full_text = _clean_text(value)
+    if not full_text or _contains_sensitive_marker(full_text):
+        return ""
+    text = full_text[:max_chars]
+    return text[:max_chars]
+
+
+# Backward-compatible private alias for callers inside this module.
 def _safe_identifier(value: Any, *, max_chars: int = 80) -> str:
-    text = _clean_short_text(value, max_chars=max_chars)
-    if not text or _contains_sensitive_marker(text):
-        return ""
-    if text.startswith(('/', '\\')):
-        return ""
-    if _ALLOWED_IDENTIFIER_RE.fullmatch(text):
-        return text[:max_chars]
-    cleaned = re.sub(r"[^\w\u4e00-\u9fff./:-]+", "", text)[:max_chars]
-    if not cleaned or cleaned.startswith(('/', '\\')) or _contains_sensitive_marker(cleaned):
-        return ""
-    return cleaned
+    return public_safe_identifier(value, max_chars=max_chars)
 
 
 def _positive_int(value: Any) -> int:
@@ -97,17 +133,21 @@ def make_public_error(
     seq: Any = None,
     missing_fields: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
+    full_message = _clean_text(message)
+    clean_message = full_message[:500]
+    if not clean_message or _contains_sensitive_marker(full_message):
+        clean_message = GENERIC_PUBLIC_ERROR_MESSAGE
     item: Dict[str, Any] = {
         "schema_version": PUBLIC_ERROR_SCHEMA_VERSION,
         "code": _clean_short_text(code, max_chars=80) or "scheduler_error",
         "severity": _clean_short_text(severity, max_chars=20) or "error",
-        "message": _clean_short_text(message, max_chars=500) or GENERIC_PUBLIC_ERROR_MESSAGE,
+        "message": clean_message,
     }
 
-    safe_batch_id = _safe_identifier(batch_id)
+    safe_batch_id = public_safe_identifier(batch_id)
     if safe_batch_id:
         item["batch_id"] = safe_batch_id
-    safe_op_code = _safe_identifier(op_code)
+    safe_op_code = public_safe_identifier(op_code)
     if safe_op_code:
         item["op_code"] = safe_op_code
 
@@ -145,6 +185,29 @@ def legacy_public_error_message(raw: Any) -> str:
             return f"外部组合并周期未设置或不合法：批次 {match.group('batch')} 组 {match.group('group')}"
         return text[:500]
     return ""
+
+
+def public_error_message_from_detail(raw: Any) -> str:
+    if not isinstance(raw, dict):
+        return ""
+
+    schema_version = str(raw.get("schema_version") or "").strip()
+    if schema_version and schema_version != PUBLIC_ERROR_SCHEMA_VERSION:
+        return GENERIC_PUBLIC_ERROR_MESSAGE
+
+    full_message = _clean_text(raw.get("message"))
+    if not full_message:
+        return ""
+    if _contains_sensitive_marker(full_message):
+        return GENERIC_PUBLIC_ERROR_MESSAGE
+    message = full_message[:500]
+
+    legacy_message = legacy_public_error_message(message)
+    if legacy_message:
+        return legacy_message
+    if message == GENERIC_PUBLIC_ERROR_MESSAGE:
+        return GENERIC_PUBLIC_ERROR_MESSAGE
+    return GENERIC_PUBLIC_ERROR_MESSAGE
 
 
 def infer_legacy_public_code(message: Any) -> str:
@@ -207,4 +270,7 @@ __all__ = [
     "infer_legacy_public_code",
     "legacy_public_error_message",
     "make_public_error",
+    "public_error_message_from_detail",
+    "public_safe_identifier",
+    "public_safe_label",
 ]

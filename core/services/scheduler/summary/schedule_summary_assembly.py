@@ -85,9 +85,12 @@ def _actionable_missing_internal_resource_op_ids(ctx: SummaryBuildContext) -> se
     missing_ids = _positive_int_set(ctx.missing_internal_resource_op_ids)
     if not missing_ids:
         return set()
-    scheduled_ids = _positive_int_set(ctx.scheduled_op_ids)
-    if not scheduled_ids:
+
+    if ctx.scheduled_op_ids is None:
         scheduled_ids = _positive_result_op_ids(ctx.results)
+    else:
+        scheduled_ids = _positive_int_set(ctx.scheduled_op_ids)
+
     return missing_ids - scheduled_ids
 
 

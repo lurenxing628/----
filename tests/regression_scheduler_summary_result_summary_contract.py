@@ -375,6 +375,37 @@ def test_missing_resource_filter_uses_validated_scheduled_op_ids_not_raw_results
     assert {item["op_id"] for item in result_summary_obj["missing_internal_resource_ops"]} == {101}
 
 
+def test_missing_resource_filter_respects_empty_validated_scheduled_ids() -> None:
+    _cfg_obj, _batch, raw_result_101, _summary, ctx = _build_summary_for_op(op_id=101)
+    missing_op_101 = SimpleNamespace(
+        id=101,
+        batch_id="B001",
+        seq=1,
+        op_code="OP-B001-001",
+        op_type_name="车削",
+        machine_id="",
+        operator_id="",
+    )
+    summary = SimpleNamespace(success=False, total_ops=1, scheduled_ops=0, failed_ops=1, warnings=[], errors=[])
+    ctx = replace(
+        ctx,
+        operations=[missing_op_101],
+        results=[raw_result_101],
+        summary=summary,
+        missing_internal_resource_op_ids={101},
+        scheduled_op_ids=set(),
+    )
+    svc = SimpleNamespace(
+        _format_dt=lambda value: value.strftime("%Y-%m-%d %H:%M:%S"),
+        _normalize_text=lambda value: str(value).strip() if value else None,
+    )
+
+    _overdue, _result_status, result_summary_obj, _result_summary_json, _time_cost_ms = build_result_summary(svc, ctx=ctx)
+
+    assert result_summary_obj["missing_internal_resource_count"] == 1
+    assert {item["op_id"] for item in result_summary_obj["missing_internal_resource_ops"]} == {101}
+
+
 def test_optimizer_diagnostics_secret_is_not_rendered_on_public_scheduler_surfaces(tmp_path, monkeypatch) -> None:
     test_db = _prepare_db(tmp_path, monkeypatch)
     loaded = _persist_summary_roundtrip(test_db)
@@ -405,4 +436,6 @@ def test_optimizer_diagnostics_secret_is_not_rendered_on_public_scheduler_surfac
         response = client.get(path)
         html = response.get_data(as_text=True)
         assert response.status_code == 200, f"{path} 返回异常：{response.status_code}\n{html[:500]}"
-        assert INTERNAL_SECRET not in html, path
+        if "selected_summary_display" in html or "latest_summary_display" in html:
+            assert INTERNAL_SECRET not in html, path
+

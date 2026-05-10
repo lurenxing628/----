@@ -11,6 +11,9 @@ from core.models.scheduler_degradation_messages import (
 from core.models.scheduler_public_errors import (
     GENERIC_PUBLIC_ERROR_MESSAGE,
     legacy_public_error_message,
+    public_error_message_from_detail,
+    public_safe_identifier,
+    public_safe_label,
 )
 
 from .scheduler_degradation_presenter import (
@@ -74,7 +77,7 @@ def _public_error_messages_from_details(value: Any) -> List[str]:
     for item in value:
         if not isinstance(item, dict):
             continue
-        message = str(item.get("message") or "").strip().replace("\r", " ").replace("\n", " ")[:500]
+        message = public_error_message_from_detail(item)
         if not message or message in seen:
             continue
         seen.add(message)
@@ -106,20 +109,12 @@ def _normalize_missing_resource_fields(value: Any) -> List[str]:
     return [item for item in fields if item in {"设备", "人员"}]
 
 
-def _safe_short_display_text(value: Any, *, max_chars: int = 80) -> str:
-    text = str(value or "").strip()
-    text = text.replace("\r", " ").replace("\n", " ")
-    while "  " in text:
-        text = text.replace("  ", " ")
-    return text[:max_chars]
-
-
 def _missing_resource_label(item: Dict[str, Any]) -> str:
     seq = _safe_positive_int(item.get("seq"))
     label_parts = [
-        _safe_short_display_text(item.get("batch_id")),
+        public_safe_identifier(item.get("batch_id")),
         f"工序{seq}" if seq is not None else "",
-        _safe_short_display_text(item.get("op_type_name") or item.get("op_code")),
+        public_safe_label(item.get("op_type_name")) or public_safe_identifier(item.get("op_code")),
     ]
     label = " / ".join([part for part in label_parts if part])
     return label or "未标明工序"
@@ -136,12 +131,12 @@ def _missing_resource_display_items(value: Any) -> List[Dict[str, Any]]:
             continue
         fields = _normalize_missing_resource_fields(raw_item.get("missing_fields"))
         missing_text = "、".join(fields) if fields else "设备/人员"
-        batch_id = _safe_short_display_text(raw_item.get("batch_id"))
+        batch_id = public_safe_identifier(raw_item.get("batch_id"))
         op_id = _safe_positive_int(raw_item.get("op_id"))
         seq = _safe_positive_int(raw_item.get("seq"))
-        op_code = _safe_short_display_text(raw_item.get("op_code"))
-        op_type_name = _safe_short_display_text(raw_item.get("op_type_name"))
-        dedupe_key = (op_id, batch_id, seq, op_code, tuple(fields))
+        op_code = public_safe_identifier(raw_item.get("op_code"))
+        op_type_name = public_safe_label(raw_item.get("op_type_name"))
+        dedupe_key = (op_id, batch_id, seq, op_code, op_type_name, tuple(fields))
         if dedupe_key in seen:
             continue
         seen.add(dedupe_key)
