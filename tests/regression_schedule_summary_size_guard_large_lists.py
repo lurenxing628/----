@@ -155,6 +155,47 @@ def _large_errors_case(n: int):
     }
 
 
+def _large_missing_resource_case(n: int):
+    return {
+        "summary_schema_version": "1.2",
+        "is_simulation": False,
+        "completion_status": "partial",
+        "version": 45,
+        "strategy": "priority_first",
+        "algo": {"attempts": [], "improvement_trace": [], "best_batch_order": []},
+        "warnings": [],
+        "selected_batch_ids": [],
+        "overdue_batches": {"count": 0, "items": []},
+        "counts": {"scheduled_ops": 0, "failed_ops": n},
+        "error_count": n,
+        "raw_error_count": n,
+        "errors": [f"自制工序未补全设备或人员，无法排产：工序 B{i:05d}_05" for i in range(n)],
+        "errors_sample": [f"自制工序未补全设备或人员，无法排产：工序 B{i:05d}_05" for i in range(10)],
+        "public_error_details": [
+            {
+                "schema_version": "1.0",
+                "code": "missing_internal_resource",
+                "severity": "error",
+                "message": f"自制工序未补全设备或人员，无法排产：工序 B{i:05d}_05",
+            }
+            for i in range(n)
+        ],
+        "missing_internal_resource_count": n,
+        "missing_internal_resource_ops": [
+            {
+                "op_id": i + 1,
+                "batch_id": "B" + "x" * 1000,
+                "op_code": "OP" + "y" * 1000,
+                "op_type_name": "TYPE" + "z" * 1000,
+                "seq": i + 1,
+                "missing_fields": ["设备", "人员", "不该出现的字段"],
+            }
+            for i in range(n)
+        ],
+        "time_cost_ms": 1,
+    }
+
+
 def main() -> None:
     repo_root = find_repo_root()
     if repo_root not in sys.path:
@@ -252,7 +293,32 @@ def main() -> None:
     assert large_errors_after_obj.get("errors_sample"), "large_errors_case 裁剪后仍应保留 errors_sample"
     assert large_errors_after <= SUMMARY_SIZE_LIMIT_BYTES, "large_errors_case 截断后仍超过 512KB"
 
+    large_missing_obj = _large_missing_resource_case(10000)
+    large_missing_before = _size_bytes(large_missing_obj)
+    assert large_missing_before > SUMMARY_SIZE_LIMIT_BYTES, "large_missing_resource_case 应先超过 size guard 上限"
+    large_missing_after_obj = apply_summary_size_guard(large_missing_obj)
+    large_missing_after = _size_bytes(large_missing_after_obj)
+    assert bool(large_missing_after_obj.get("summary_truncated")), "large_missing_resource_case 未标记 summary_truncated"
+    assert bool(large_missing_after_obj.get("errors_truncated")), "large_missing_resource_case 未标记 errors_truncated"
+    assert bool(large_missing_after_obj.get("missing_internal_resource_ops_truncated")), (
+        "large_missing_resource_case 未标记 missing_internal_resource_ops_truncated"
+    )
+    assert int(large_missing_after_obj.get("error_count") or 0) == 10000
+    assert int(large_missing_after_obj.get("missing_internal_resource_count") or 0) == 10000
+    assert len(large_missing_after_obj.get("public_error_details") or []) < 10000
+    assert len(large_missing_after_obj.get("missing_internal_resource_ops") or []) < 10000
+    assert large_missing_after <= SUMMARY_SIZE_LIMIT_BYTES, "large_missing_resource_case 截断后仍超过 512KB"
+    for item in large_missing_after_obj.get("missing_internal_resource_ops") or []:
+        assert len(item.get("batch_id", "")) <= 80
+        assert len(item.get("op_code", "")) <= 80
+        assert len(item.get("op_type_name", "")) <= 80
+        assert set(item.get("missing_fields", [])) <= {"设备", "人员"}
+
     print("OK")
+
+
+def test_summary_size_guard_large_lists() -> None:
+    main()
 
 
 if __name__ == "__main__":

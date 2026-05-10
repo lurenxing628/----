@@ -8,6 +8,10 @@ from core.models.scheduler_degradation_messages import (
     public_summary_merge_error_code,
     public_summary_warning_messages,
 )
+from core.models.scheduler_public_errors import (
+    GENERIC_PUBLIC_ERROR_MESSAGE,
+    legacy_public_error_message,
+)
 
 from .scheduler_degradation_presenter import (
     build_primary_degradation,
@@ -25,28 +29,7 @@ _RESULT_STATUS_LABELS = {
     "unknown": "完成状态未知",
 }
 _COMPLETION_STATUS_VALUES = {"success", "partial", "failed"}
-_GENERIC_ERROR_MESSAGE = "排产执行遇到问题，请联系管理员查看日志。"
-_PUBLIC_ERROR_PREFIXES = (
-    "自制工序未补全设备或人员，无法排产：工序 ",
-    "自制工序未补全设备或人员，而且系统自动分配失败：工序 ",
-    "排产窗口截止到 ",
-    "工时不合法：工序 ",
-    "外协周期不合法：工序 ",
-    "外部组合并周期未设置或不合法：",
-)
-_SENSITIVE_ERROR_MARKERS = (
-    "traceback",
-    "password",
-    "secret",
-    "token",
-    "sqlite",
-    "operationalerror",
-    "database",
-    "connection string",
-    "/users/",
-    "\\users\\",
-    ".db",
-)
+_GENERIC_ERROR_MESSAGE = GENERIC_PUBLIC_ERROR_MESSAGE
 
 
 def _normalize_text_list(value: Any) -> List[str]:
@@ -76,17 +59,34 @@ def _public_error_messages(value: Any) -> List[str]:
         return []
     out: List[str] = []
     for item in raw_errors:
-        lower_item = item.lower()
-        safe_public_error = item.startswith(_PUBLIC_ERROR_PREFIXES) and not any(
-            marker in lower_item for marker in _SENSITIVE_ERROR_MARKERS
-        )
-        message = item[:500] if safe_public_error else _GENERIC_ERROR_MESSAGE
+        public_message = legacy_public_error_message(item)
+        message = public_message if public_message else _GENERIC_ERROR_MESSAGE
         if message not in out:
             out.append(message)
     return out
 
 
+def _public_error_messages_from_details(value: Any) -> List[str]:
+    if not isinstance(value, (list, tuple)):
+        return []
+    out: List[str] = []
+    seen = set()
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        message = str(item.get("message") or "").strip().replace("\r", " ").replace("\n", " ")[:500]
+        if not message or message in seen:
+            continue
+        seen.add(message)
+        out.append(message)
+    return out
+
+
 def _summary_error_messages(summary: Dict[str, Any]) -> List[str]:
+    detail_messages = _public_error_messages_from_details(summary.get("public_error_details"))
+    if detail_messages:
+        return detail_messages
+
     raw_errors = summary.get("errors")
     if not raw_errors:
         raw_errors = summary.get("errors_sample")
@@ -103,15 +103,23 @@ def _safe_positive_int(value: Any) -> Optional[int]:
 
 def _normalize_missing_resource_fields(value: Any) -> List[str]:
     fields = _normalize_text_list(value)
-    return [item for item in fields if item in {"设备", "人员"}] or fields
+    return [item for item in fields if item in {"设备", "人员"}]
+
+
+def _safe_short_display_text(value: Any, *, max_chars: int = 80) -> str:
+    text = str(value or "").strip()
+    text = text.replace("\r", " ").replace("\n", " ")
+    while "  " in text:
+        text = text.replace("  ", " ")
+    return text[:max_chars]
 
 
 def _missing_resource_label(item: Dict[str, Any]) -> str:
     seq = _safe_positive_int(item.get("seq"))
     label_parts = [
-        str(item.get("batch_id") or "").strip(),
+        _safe_short_display_text(item.get("batch_id")),
         f"工序{seq}" if seq is not None else "",
-        str(item.get("op_type_name") or item.get("op_code") or "").strip(),
+        _safe_short_display_text(item.get("op_type_name") or item.get("op_code")),
     ]
     label = " / ".join([part for part in label_parts if part])
     return label or "未标明工序"
@@ -128,15 +136,23 @@ def _missing_resource_display_items(value: Any) -> List[Dict[str, Any]]:
             continue
         fields = _normalize_missing_resource_fields(raw_item.get("missing_fields"))
         missing_text = "、".join(fields) if fields else "设备/人员"
-        batch_id = str(raw_item.get("batch_id") or "").strip()
+        batch_id = _safe_short_display_text(raw_item.get("batch_id"))
         op_id = _safe_positive_int(raw_item.get("op_id"))
         seq = _safe_positive_int(raw_item.get("seq"))
-        op_code = str(raw_item.get("op_code") or "").strip()
-        op_type_name = str(raw_item.get("op_type_name") or "").strip()
+        op_code = _safe_short_display_text(raw_item.get("op_code"))
+        op_type_name = _safe_short_display_text(raw_item.get("op_type_name"))
         dedupe_key = (op_id, batch_id, seq, op_code, tuple(fields))
         if dedupe_key in seen:
             continue
         seen.add(dedupe_key)
+        display_item = {
+            "op_id": op_id,
+            "batch_id": batch_id,
+            "seq": seq,
+            "op_code": op_code,
+            "op_type_name": op_type_name,
+            "missing_fields": fields,
+        }
         out.append(
             {
                 "op_id": op_id,
@@ -146,7 +162,7 @@ def _missing_resource_display_items(value: Any) -> List[Dict[str, Any]]:
                 "op_type_name": op_type_name,
                 "missing_fields": fields,
                 "missing_text": missing_text,
-                "label": _missing_resource_label(raw_item),
+                "label": _missing_resource_label(display_item),
             }
         )
     return out
@@ -442,6 +458,9 @@ def build_summary_display_state(
         "missing_internal_resource_ops": missing_resource_items,
         "missing_internal_resource_count": missing_resource_total,
         "missing_internal_resource_hidden_count": max(0, missing_resource_total - len(missing_resource_items)),
+        "errors_truncated": bool(summary_dict.get("errors_truncated")),
+        "missing_internal_resource_ops_truncated": bool(summary_dict.get("missing_internal_resource_ops_truncated")),
+        "summary_truncated": bool(summary_dict.get("summary_truncated")),
         "summary_parse_state": parse_state_dict,
     }
 

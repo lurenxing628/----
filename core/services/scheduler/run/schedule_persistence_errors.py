@@ -30,7 +30,15 @@ def _operation_sort_key(op: Any) -> Tuple[str, int, int]:
     )
 
 
-def _missing_fields(op: Any) -> List[str]:
+def _safe_short_identifier(value: Any, *, max_chars: int = 80) -> str:
+    text = str(value or "").strip()
+    text = text.replace("\r", " ").replace("\n", " ")
+    while "  " in text:
+        text = text.replace("  ", " ")
+    return text[:max_chars]
+
+
+def _safe_missing_fields(op: Any) -> List[str]:
     missing: List[str] = []
     if not str(getattr(op, "machine_id", "") or "").strip():
         missing.append("设备")
@@ -40,13 +48,14 @@ def _missing_fields(op: Any) -> List[str]:
 
 
 def _missing_internal_resource_sample(op: Any, *, op_id: int) -> Dict[str, Any]:
+    seq = _positive_int(getattr(op, "seq", 0)) or 0
     return {
-        "op_id": op_id,
-        "batch_id": str(getattr(op, "batch_id", "") or ""),
-        "op_code": str(getattr(op, "op_code", "") or ""),
-        "seq": int(getattr(op, "seq", 0) or 0),
-        "op_type_name": str(getattr(op, "op_type_name", "") or ""),
-        "missing_fields": _missing_fields(op),
+        "op_id": int(op_id),
+        "batch_id": _safe_short_identifier(getattr(op, "batch_id", "")),
+        "op_code": _safe_short_identifier(getattr(op, "op_code", "")),
+        "seq": int(seq),
+        "op_type_name": _safe_short_identifier(getattr(op, "op_type_name", "")),
+        "missing_fields": _safe_missing_fields(op),
     }
 
 

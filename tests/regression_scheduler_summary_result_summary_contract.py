@@ -271,6 +271,9 @@ def test_result_summary_keeps_full_errors_and_missing_resource_details() -> None
     assert result_summary_obj["error_count"] == 12
     assert result_summary_obj["errors"] == errors
     assert result_summary_obj["errors_sample"] == errors[:10]
+    assert result_summary_obj["raw_error_count"] == 12
+    assert "public_error_details" in result_summary_obj
+    assert result_summary_obj["errors"] == [item["message"] for item in result_summary_obj["public_error_details"]]
     assert result_summary_obj["missing_internal_resource_count"] == 1
     assert result_summary_obj["missing_internal_resource_ops"] == [
         {
@@ -310,6 +313,9 @@ def test_result_summary_does_not_mark_auto_assigned_success_as_missing_resource(
     summary = SimpleNamespace(success=True, total_ops=1, scheduled_ops=1, failed_ops=0, warnings=[], errors=[])
     ctx = replace(
         ctx,
+        # 旧调用路径仍可只依赖 raw results；主路径会传入 validator scheduled_op_ids。
+        # 这里显式保持 None，验证兼容 fallback 不破坏自动补资源成功提示。
+        scheduled_op_ids=None,
         cfg=cfg,
         batches={"B001": batch},
         operations=[missing_original_op],
@@ -327,6 +333,46 @@ def test_result_summary_does_not_mark_auto_assigned_success_as_missing_resource(
     assert result_summary_obj["error_count"] == 0
     assert result_summary_obj["missing_internal_resource_count"] == 0
     assert result_summary_obj["missing_internal_resource_ops"] == []
+
+
+def test_missing_resource_filter_uses_validated_scheduled_op_ids_not_raw_results() -> None:
+    _cfg_obj, _batch, raw_result_101, _summary, ctx = _build_summary_for_op(op_id=101)
+    missing_op_101 = SimpleNamespace(
+        id=101,
+        batch_id="B001",
+        seq=1,
+        op_code="OP-B001-001",
+        op_type_name="车削",
+        machine_id="",
+        operator_id="",
+    )
+    missing_op_102 = SimpleNamespace(
+        id=102,
+        batch_id="B001",
+        seq=2,
+        op_code="OP-B001-002",
+        op_type_name="铣削",
+        machine_id="",
+        operator_id="",
+    )
+    summary = SimpleNamespace(success=True, total_ops=2, scheduled_ops=1, failed_ops=1, warnings=[], errors=[])
+    ctx = replace(
+        ctx,
+        operations=[missing_op_101, missing_op_102],
+        results=[raw_result_101],
+        summary=summary,
+        missing_internal_resource_op_ids={101, 102},
+        scheduled_op_ids={102},
+    )
+    svc = SimpleNamespace(
+        _format_dt=lambda value: value.strftime("%Y-%m-%d %H:%M:%S"),
+        _normalize_text=lambda value: str(value).strip() if value else None,
+    )
+
+    _overdue, _result_status, result_summary_obj, _result_summary_json, _time_cost_ms = build_result_summary(svc, ctx=ctx)
+
+    assert result_summary_obj["missing_internal_resource_count"] == 1
+    assert {item["op_id"] for item in result_summary_obj["missing_internal_resource_ops"]} == {101}
 
 
 def test_optimizer_diagnostics_secret_is_not_rendered_on_public_scheduler_surfaces(tmp_path, monkeypatch) -> None:

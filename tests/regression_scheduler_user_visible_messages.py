@@ -477,6 +477,71 @@ def test_summary_display_unknown_degradation_and_errors_do_not_echo_raw_messages
     assert "password leaked" not in str(display["errors_preview"])
 
 
+def test_public_error_details_are_preferred_over_raw_errors() -> None:
+    display = build_summary_display_state(
+        {
+            "error_count": 1,
+            "errors": ["排产执行遇到问题，请联系管理员查看日志。"],
+            "public_error_details": [
+                {
+                    "code": "missing_internal_resource",
+                    "message": "自制工序未补全设备或人员，无法排产：工序 B001_05",
+                }
+            ],
+        },
+        result_status="failed",
+    )
+
+    assert display["errors_display"] == ["自制工序未补全设备或人员，无法排产：工序 B001_05"]
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "自制工序未补全设备或人员，无法排产：工序 B001_05\nTraceback ...",
+        "自制工序未补全设备或人员，无法排产：工序 B001_05 /home/app/service.py",
+        "自制工序未补全设备或人员，无法排产：工序 B001_05 File \"x.py\", line 1",
+        "自制工序未补全设备或人员，无法排产：工序 B001_05 apikey=abc",
+    ],
+)
+def test_legacy_error_with_sensitive_tail_is_generic(raw: str) -> None:
+    display = build_summary_display_state(
+        {
+            "error_count": 1,
+            "errors": [raw],
+            "counts": {"op_count": 1, "scheduled_ops": 0, "failed_ops": 1},
+        },
+        result_status="failed",
+    )
+
+    assert display["errors_display"] == ["排产执行遇到问题，请联系管理员查看日志。"]
+    assert "Traceback" not in str(display["errors_display"])
+    assert "apikey" not in str(display["errors_display"])
+    assert "/home/app" not in str(display["errors_display"])
+
+
+def test_schedule_summary_raw_internal_error_is_not_saved_in_public_errors() -> None:
+    from core.models.scheduler_public_errors import build_public_error_records
+
+    records = build_public_error_records(
+        [
+            "工时不合法：工序 OP001 工时字段不合法：setup_hours='abc'",
+            "工时不合法：工序 OP002 Traceback sqlite database password leaked /Users/private/aps.db",
+            "外协周期不合法：工序 OP003 ext_days='bad'",
+        ]
+    )
+
+    messages = [item["message"] for item in records]
+    assert messages == [
+        "工时不合法：工序 OP001",
+        "排产执行遇到问题，请联系管理员查看日志。",
+        "外协周期不合法：工序 OP003",
+    ]
+    assert "setup_hours" not in str(records)
+    assert "ext_days" not in str(records)
+    assert "/Users/private" not in str(records)
+
+
 def test_summary_display_keeps_known_scheduler_errors_actionable() -> None:
     display = build_summary_display_state(
         {
@@ -570,6 +635,49 @@ def test_summary_display_formats_missing_internal_resource_ops() -> None:
     assert display["missing_internal_resource_ops"][0]["missing_text"] == "设备、人员"
     assert display["missing_internal_resource_ops"][1]["label"] == "B-002 / 工序10 / OP-10"
     assert display["missing_internal_resource_ops"][1]["missing_text"] == "人员"
+
+
+def test_summary_display_sanitizes_historical_missing_resource_fields() -> None:
+    long_batch = "B" + "x" * 120
+    display = build_summary_display_state(
+        {
+            "missing_internal_resource_count": 1,
+            "missing_internal_resource_ops": [
+                {
+                    "op_id": 101,
+                    "batch_id": long_batch + "\nSECRET_TOKEN=abc",
+                    "seq": 5,
+                    "op_code": "OP" + "y" * 120,
+                    "op_type_name": "车削\nTraceback hidden",
+                    "missing_fields": ["设备", "人员", "数据库密码"],
+                }
+            ],
+        },
+        result_status="partial",
+    )
+
+    item = display["missing_internal_resource_ops"][0]
+    assert len(item["batch_id"]) <= 80
+    assert "\n" not in item["batch_id"]
+    assert "\n" not in item["op_type_name"]
+    assert item["missing_fields"] == ["设备", "人员"]
+    assert item["missing_text"] == "设备、人员"
+    assert "数据库密码" not in str(item)
+
+
+def test_summary_display_exposes_truncated_flags() -> None:
+    display = build_summary_display_state(
+        {
+            "errors_truncated": True,
+            "missing_internal_resource_ops_truncated": True,
+            "summary_truncated": True,
+        },
+        result_status="partial",
+    )
+
+    assert display["errors_truncated"] is True
+    assert display["missing_internal_resource_ops_truncated"] is True
+    assert display["summary_truncated"] is True
 
 
 def test_summary_display_warnings_preview_filters_historical_raw_warnings() -> None:

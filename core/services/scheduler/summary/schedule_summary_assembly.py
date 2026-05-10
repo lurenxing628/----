@@ -5,6 +5,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from core.algorithms.objective_specs import best_score_schema, comparison_metric_key
 from core.models.enums import YesNo
+from core.models.scheduler_public_errors import build_public_error_records
 from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot
 from core.services.scheduler.run.optimizer_search_state import compact_attempts
 from core.services.scheduler.run.schedule_persistence_errors import missing_internal_resource_samples
@@ -84,7 +85,10 @@ def _actionable_missing_internal_resource_op_ids(ctx: SummaryBuildContext) -> se
     missing_ids = _positive_int_set(ctx.missing_internal_resource_op_ids)
     if not missing_ids:
         return set()
-    return missing_ids - _positive_result_op_ids(ctx.results)
+    scheduled_ids = _positive_int_set(ctx.scheduled_op_ids)
+    if not scheduled_ids:
+        scheduled_ids = _positive_result_op_ids(ctx.results)
+    return missing_ids - scheduled_ids
 
 
 def _record_invalid_due(
@@ -315,7 +319,9 @@ def _build_result_summary_obj(
     time_cost_ms: int,
     serialize_end_date_fn: Callable[[Optional[Any]], Optional[str]],
 ) -> Dict[str, Any]:
-    summary_errors = list(getattr(ctx.summary, "errors", None) or [])
+    raw_summary_errors = list(getattr(ctx.summary, "errors", None) or [])
+    public_error_details = build_public_error_records(raw_summary_errors)
+    public_error_messages = [str(item.get("message") or "") for item in public_error_details if item.get("message")]
     missing_resource_ops = missing_internal_resource_samples(
         ctx.operations,
         _actionable_missing_internal_resource_op_ids(ctx),
@@ -350,9 +356,11 @@ def _build_result_summary_obj(
             "unscheduled_batch_count": int(runtime_state.unscheduled_batch_count),
         },
         "overdue_batches": {"count": len(runtime_state.overdue_items), "items": runtime_state.overdue_items},
-        "error_count": len(summary_errors),
-        "errors": summary_errors,
-        "errors_sample": summary_errors[:10],
+        "error_count": len(raw_summary_errors),
+        "errors": public_error_messages,
+        "errors_sample": public_error_messages[:10],
+        "public_error_details": public_error_details,
+        "raw_error_count": len(raw_summary_errors),
         "missing_internal_resource_count": len(missing_resource_ops),
         "missing_internal_resource_ops": missing_resource_ops,
         "warnings": list(freeze_state.all_warnings),

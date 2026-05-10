@@ -2,7 +2,7 @@
 doc_type: issue-fix
 issue: 2026-05-10-scheduler-error-visibility
 status: completed
-clean_proof_status: passed_but_unbound_dirty_worktree
+clean_proof_status: passed
 path: fast-track
 fix_date: 2026-05-10
 tags: [scheduler, ui, error-message, auto-assign, python38]
@@ -47,6 +47,14 @@ tags: [scheduler, ui, error-message, auto-assign, python38]
 - 批次页批量删除/备注增加空选择提示，点击和回车都能拦住；全选后会清掉旧提示。
 - 未知优先级显示为“未知”，不再伪装成“普通”。
 
+二次安全收口：
+
+- 用户可见错误已从 raw string 展示收紧为 `public_error_details` 结构化合同；`result_summary.errors` 继续保留，但只保存 public-safe message，不再保存原始内部错误。
+- 历史 legacy 错误只通过严格正则 fallback 展示；含路径、堆栈、数据库、token、apikey 或内部字段尾巴的内容会泛化。
+- 缺设备/人员明细的最终过滤已绑定 validator 输出的 `scheduled_op_ids`，optimizer raw results 中出现但未通过校验的工序仍会提示用户补资源。
+- `errors`、`public_error_details` 和 `missing_internal_resource_ops` 已有独立 size guard 预算，minimal summary 对缺资源字段做限长与字段级清洗。
+- 历史页、分析页、周计划页、批次页会显式提示错误列表或缺资源明细已截断。
+
 ## 4. 改动范围
 
 - 排产运行和持久化：`core/services/scheduler/run/schedule_orchestrator.py`、`core/services/scheduler/run/schedule_persistence_errors.py`
@@ -63,6 +71,13 @@ tags: [scheduler, ui, error-message, auto-assign, python38]
 - 后端审查指出：安全前缀不能等于整条消息都安全。已增加敏感关键词拦截，避免把内部路径、堆栈、数据库等尾巴露给用户。
 - 前端审查指出：批量操作回车提交会绕过空选择提示。已在回车路径补拦截。
 - 前端审查指出：空选择报错后再全选，旧报错可能不消失。已改为全选/勾选后延迟检查并清除提示。
+
+二次对抗性审查补出来的边界：
+
+- 字符串前缀不是安全边界。已新增 `core/models/scheduler_public_errors.py`，只把结构化、清洗后的 public error 写入可访问摘要；legacy raw string 必须 fullmatch 白名单正则。
+- “optimizer 结果里有 op_id”不等于“最终可落库”。缺资源过滤已优先使用 `ValidatedSchedulePayload.scheduled_op_ids`。
+- 大列表不应挂靠 selected ids / overdue items 才裁剪。已给 errors 和缺资源明细独立裁剪 tier，并同步裁剪 `public_error_details`。
+- 模板转义不能解决内部信息展示问题。缺资源 sample 与 viewmodel 均做字段限长、去换行和 missing fields allowlist。
 
 ## 6. 验证结果
 
@@ -104,3 +119,29 @@ node --check static/js/scheduler_form_feedback.js
 结果：检查项全部跑完，但最终状态是 `passed_but_unbound`。
 
 大白话解释：门禁里的测试、类型检查、风格检查和合同检查都已经跑过；但是因为当前工作区还有未提交改动，门禁不会把这次结果盖章成“绑定到某个干净提交的最终证明”。如果后续需要正式收口，提交后需要再跑一次不带 dirty 状态的质量门禁。
+
+二次安全收口定点验证：
+
+```bash
+node --check static/js/scheduler_form_feedback.js
+node --check static/js/gantt_boot.js
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_user_visible_messages.py tests/regression_scheduler_summary_result_summary_contract.py tests/regression_schedule_summary_size_guard_large_lists.py tests/regression_scheduler_ui_range_feedback_contract.py tests/regression_scheduler_run_entry_layout_contract.py tests/regression_scheduler_batches_presenter_contract.py tests/test_scheduler_run_view_result_contract.py tests/test_scheduler_batches_page_viewmodel.py tests/test_enum_display_consistency.py
+```
+
+结果：`129 passed`。
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/models/scheduler_public_errors.py core/services/scheduler/run/schedule_persistence_errors.py core/services/scheduler/run/schedule_orchestrator.py core/services/scheduler/summary/schedule_summary_assembly.py core/services/scheduler/summary/schedule_summary_types.py core/services/scheduler/summary/summary_size_guard.py web/viewmodels/scheduler_summary_display.py tests/regression_scheduler_user_visible_messages.py tests/regression_scheduler_summary_result_summary_contract.py tests/regression_schedule_summary_size_guard_large_lists.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright -p pyrightconfig.gate.json
+git diff --check
+```
+
+结果：ruff 通过；pyright `0 errors, 6 warnings`（既有 `core/services/scheduler/__init__.py` `__all__` warning）；`git diff --check` 通过。
+
+干净工作区总门禁：本轮代码提交后需执行：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
+```
+
+结果：已在提交后用干净工作区复跑 `--require-clean-worktree` 作为最终证明；若后续再次改动本文件或相关代码，需要重新跑门禁。

@@ -175,6 +175,9 @@
             {% if selected_summary_display.error_hidden_count > 0 %}
               <div class="muted text-xs">另有 {{ selected_summary_display.error_hidden_count }} 条错误未在当前页面逐条展示，可缩小排产范围后重试。</div>
             {% endif %}
+            {% if selected_summary_display.errors_truncated %}
+              <div class="muted text-xs">错误列表较大，当前摘要已截断；可缩小排产范围后重试。</div>
+            {% endif %}
           {% endcall %}
         </div>
       {% endif %}
@@ -195,6 +198,9 @@
           {% endcall %}
           {% if selected_summary_display.missing_internal_resource_hidden_count > 0 %}
             <div class="muted text-xs">另有 {{ selected_summary_display.missing_internal_resource_hidden_count }} 道工序未在当前摘要中展开。</div>
+          {% endif %}
+          {% if selected_summary_display.missing_internal_resource_ops_truncated %}
+            <div class="muted text-xs">缺资源明细较大，当前摘要已截断；可缩小排产范围后重试。</div>
           {% endif %}
         </div>
       {% endif %}

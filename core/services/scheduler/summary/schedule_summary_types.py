@@ -38,6 +38,7 @@ class SummaryBuildContext:
     improvement_trace: List[Dict[str, Any]]
     frozen_op_ids: Set[int]
     missing_internal_resource_op_ids: Optional[Set[int]] = None
+    scheduled_op_ids: Optional[Set[int]] = None
     freeze_meta: Optional[Dict[str, Any]] = None
     input_build_outcome: Optional[BuildOutcome[Any]] = None
     downtime_meta: Optional[Dict[str, Any]] = None
@@ -115,16 +116,18 @@ class TruncationTier:
     best_order_limit: Optional[int] = None
     selected_ids_limit: Optional[int] = None
     overdue_items_limit: Optional[int] = None
+    errors_limit: Optional[int] = None
+    missing_resource_limit: Optional[int] = None
 
 
 DEFAULT_TRUNCATION_TIERS: Tuple[TruncationTier, ...] = (
-    TruncationTier(80, 50, 12),
-    TruncationTier(20, 20, 12),
-    TruncationTier(0, 20, 12),
-    TruncationTier(0, 10, 6),
-    TruncationTier(0, 0, 6, 2000, 2000, 500),
-    TruncationTier(0, 0, 6, 500, 1000, 200),
-    TruncationTier(0, 0, 6, 100, 200, 50),
-    TruncationTier(0, 0, 6, 0, 50, 20),
-    TruncationTier(0, 0, 0, 0, 0, 0),
+    TruncationTier(80, 50, 12, errors_limit=500, missing_resource_limit=500),
+    TruncationTier(20, 20, 12, errors_limit=200, missing_resource_limit=200),
+    TruncationTier(0, 20, 12, errors_limit=100, missing_resource_limit=100),
+    TruncationTier(0, 10, 6, errors_limit=50, missing_resource_limit=50),
+    TruncationTier(0, 0, 6, 2000, 2000, 500, errors_limit=50, missing_resource_limit=50),
+    TruncationTier(0, 0, 6, 500, 1000, 200, errors_limit=30, missing_resource_limit=30),
+    TruncationTier(0, 0, 6, 100, 200, 50, errors_limit=20, missing_resource_limit=20),
+    TruncationTier(0, 0, 6, 0, 50, 20, errors_limit=10, missing_resource_limit=10),
+    TruncationTier(0, 0, 0, 0, 0, 0, errors_limit=10, missing_resource_limit=10),
 )
