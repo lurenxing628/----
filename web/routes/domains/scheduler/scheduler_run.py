@@ -55,7 +55,7 @@ def run_schedule():
         )
         view_result = build_run_schedule_view_result(result)
         if view_result.result_status != "failed":
-            redirect_kwargs = build_success_gantt_redirect_kwargs(result)
+            redirect_kwargs = build_success_gantt_redirect_kwargs(result, requested_start_dt=start_dt)
             _flash_run_schedule_view_result(view_result)
             return redirect(url_for("scheduler.gantt_page", **redirect_kwargs))
         _flash_run_schedule_view_result(view_result)

@@ -142,7 +142,12 @@ def _decorate_detail_rows(rows: Any) -> None:
 
 
 def _calendar_item_text(item: MutableMapping[str, Any]) -> str:
-    parts: List[str] = [_text(item.get("time_label"))]
+    time_label = _text(item.get("time_label"))
+    if not time_label:
+        legacy_text = _text(item.get("text"))
+        if legacy_text:
+            return legacy_text
+    parts: List[str] = [time_label]
     title = _text(item.get("op_code")) or _text(item.get("batch_id"))
     if title:
         parts.append(title)

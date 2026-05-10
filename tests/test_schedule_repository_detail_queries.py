@@ -238,6 +238,34 @@ def test_schedule_dispatch_query_keeps_machine_and_team_scope_filters() -> None:
     assert _ids(team_rows) == [2, 3]
 
 
+def test_schedule_dispatch_query_filters_unassigned_rows_for_all_operator_and_machine_scopes() -> None:
+    repo = _repo()
+
+    operator_rows = repo.list_dispatch_rows_with_resource_context(
+        start_time="2026-05-01 08:30",
+        end_time="2026-05-01 10:00",
+        version=1,
+        scope_type="operator",
+        scope_id=None,
+    )
+    machine_rows = repo.list_dispatch_rows_with_resource_context(
+        start_time="2026-05-01 08:30",
+        end_time="2026-05-01 10:00",
+        version=1,
+        scope_type="machine",
+        scope_id="",
+    )
+    all_rows = repo.list_dispatch_rows_with_resource_context(
+        start_time="2026-05-01 08:30",
+        end_time="2026-05-01 10:00",
+        version=1,
+    )
+
+    assert _ids(operator_rows) == [2, 1]
+    assert _ids(machine_rows) == [2, 1]
+    assert _ids(all_rows) == [2, 1, 4]
+
+
 def test_schedule_dispatch_query_keeps_left_join_for_unassigned_external_rows() -> None:
     repo = _repo()
 

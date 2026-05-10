@@ -134,17 +134,22 @@ class ScheduleRepository(BaseRepository):
         scope_type: Optional[str] = None,
         scope_id: Optional[str] = None,
     ) -> List[ScheduleDispatchRow]:
+        scope_id_text = str(scope_id or "").strip()
         where_clauses = ["s.version = ?", "s.start_time < ?", "s.end_time > ?"]
         params: List[Any] = [int(version), end_time, start_time]
-        if scope_type == "operator" and scope_id:
-            where_clauses.append("s.operator_id = ?")
-            params.append(scope_id)
-        elif scope_type == "machine" and scope_id:
-            where_clauses.append("s.machine_id = ?")
-            params.append(scope_id)
-        elif scope_type == "team" and scope_id:
+        if scope_type == "operator" and scope_id_text:
+            where_clauses.append("TRIM(COALESCE(s.operator_id, '')) = ?")
+            params.append(scope_id_text)
+        elif scope_type == "operator":
+            where_clauses.append("TRIM(COALESCE(s.operator_id, '')) <> ''")
+        elif scope_type == "machine" and scope_id_text:
+            where_clauses.append("TRIM(COALESCE(s.machine_id, '')) = ?")
+            params.append(scope_id_text)
+        elif scope_type == "machine":
+            where_clauses.append("TRIM(COALESCE(s.machine_id, '')) <> ''")
+        elif scope_type == "team" and scope_id_text:
             where_clauses.append("((o.team_id = ?) OR (m.team_id = ?))")
-            params.extend([scope_id, scope_id])
+            params.extend([scope_id_text, scope_id_text])
         sql = build_schedule_detail_sql(
             where_clauses=tuple(where_clauses),
             include_team_context=True,

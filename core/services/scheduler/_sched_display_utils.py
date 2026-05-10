@@ -98,7 +98,14 @@ def fmt_hhmm(dt: datetime) -> str:
 
 def fmt_day_segment(start_dt: datetime, end_dt: datetime) -> str:
     start_text = fmt_hhmm(start_dt)
-    end_text = "24:00" if end_dt.date() > start_dt.date() and end_dt.hour == 0 and end_dt.minute == 0 else fmt_hhmm(end_dt)
+    is_exact_next_midnight = (
+        end_dt.date() > start_dt.date()
+        and end_dt.hour == 0
+        and end_dt.minute == 0
+        and end_dt.second == 0
+        and end_dt.microsecond == 0
+    )
+    end_text = "24:00" if is_exact_next_midnight else fmt_hhmm(end_dt)
     return "全天" if start_text == "00:00" and end_text == "24:00" else f"{start_text}-{end_text}"
 
 

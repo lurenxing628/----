@@ -178,6 +178,47 @@ def test_resource_dispatch_payload_keeps_calendar_day_segment_label() -> None:
     assert "00:00-00:00" not in item_text
 
 
+def test_resource_dispatch_payload_keeps_legacy_calendar_text_when_time_label_missing() -> None:
+    payload = {
+        "calendar_rows": [
+            {
+                "scope_type": "operator",
+                "scope_id": "OP001",
+                "scope_name": "张三",
+                "current_resource_id": "OP001",
+                "current_resource_name": "张三",
+                "operator_id": "OP001",
+                "operator_name": "张三",
+                "cells": [
+                    {
+                        "date": "2026-03-03",
+                        "items": [
+                            {
+                                "start": "2026-03-03 08:00:00",
+                                "end": "2026-03-03 10:00:00",
+                                "text": "08:00-10:00 OP10 legacy",
+                                "scope_type": "operator",
+                                "machine_id": "MC001",
+                                "machine_name": "数控车床1",
+                                "operator_id": "OP001",
+                                "operator_name": "张三",
+                                "op_code": "OP10",
+                                "part_no": "P001",
+                            }
+                        ],
+                    }
+                ],
+            }
+        ]
+    }
+
+    out = decorate_resource_dispatch_payload(payload)
+
+    cell = out["calendar_rows"][0]["cells"][0]
+    assert cell["items"][0]["text"] == "08:00-10:00 OP10 legacy"
+    assert cell["text"] == "08:00-10:00 OP10 legacy"
+
+
 def test_resource_dispatch_payload_labels_external_and_unassigned_resources() -> None:
     payload = {
         "detail_rows": [

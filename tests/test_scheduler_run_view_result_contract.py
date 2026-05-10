@@ -251,7 +251,7 @@ def test_scheduler_run_success_redirects_to_gantt_actual_span() -> None:
         route_mod.url_for = old_url_for
 
 
-def test_scheduler_run_partial_redirects_to_gantt_with_version_when_span_missing() -> None:
+def test_scheduler_run_partial_redirects_to_gantt_with_requested_start_when_span_missing() -> None:
     if str(REPO_ROOT) not in sys.path:
         sys.path.insert(0, str(REPO_ROOT))
     _reset_scheduler_route_modules()
@@ -282,7 +282,11 @@ def test_scheduler_run_partial_redirects_to_gantt_with_version_when_span_missing
     try:
         app = Flask(__name__)
         app.secret_key = "aps-test-run-partial-gantt-redirect"
-        with app.test_request_context("/scheduler/run", method="POST", data={"batch_ids": ["B001"]}):
+        with app.test_request_context(
+            "/scheduler/run",
+            method="POST",
+            data={"batch_ids": ["B001"], "start_dt": "2026/06/01 09:00:00"},
+        ):
             g.services = SimpleNamespace(schedule_service=_StubScheduleService(), gantt_service=_StubGanttService())
             resp = route_mod.run_schedule()
             flashes = get_flashed_messages(with_categories=True)
@@ -292,8 +296,8 @@ def test_scheduler_run_partial_redirects_to_gantt_with_version_when_span_missing
         assert "scheduler.gantt_page" in location
         assert "view=machine" in location
         assert "version=32" in location
-        assert "start_date=" not in location
-        assert "end_date=" not in location
+        assert "start_date=2026-06-01" in location
+        assert "end_date=2026-06-07" in location
         assert any(cat == "warning" and "部分" in msg for cat, msg in flashes), flashes
     finally:
         route_mod.url_for = old_url_for

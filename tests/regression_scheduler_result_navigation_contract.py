@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from datetime import datetime
 from types import SimpleNamespace
 
 from flask import Flask, g
 
+from core.services.scheduler._sched_display_utils import fmt_day_segment
 from core.services.scheduler.gantt_range import resolve_week_range
 from core.services.scheduler.gantt_week_plan import build_week_plan_rows
 from core.services.scheduler.resource_dispatch_range import resolve_dispatch_range
@@ -90,3 +92,43 @@ def test_schedule_success_redirect_uses_version_real_span() -> None:
         "start_date": "2026-05-11",
         "end_date": "2026-05-18",
     }
+
+
+def test_schedule_success_redirect_falls_back_to_requested_start_when_summary_start_invalid() -> None:
+    app = Flask(__name__)
+
+    with app.app_context():
+        g.services = SimpleNamespace(gantt_service=SimpleNamespace(get_version_time_span_dates=lambda _version: None))
+
+        kwargs = build_success_gantt_redirect_kwargs(
+            {"version": 12, "summary": {"start_time": "bad-start"}},
+            requested_start_dt="2026/06/01 09:00:00",
+        )
+
+    assert kwargs == {
+        "view": "machine",
+        "version": 12,
+        "start_date": "2026-06-01",
+        "end_date": "2026-06-07",
+    }
+
+
+def test_schedule_success_redirect_keeps_no_date_when_all_fallback_anchors_invalid() -> None:
+    app = Flask(__name__)
+
+    with app.app_context():
+        g.services = SimpleNamespace(gantt_service=SimpleNamespace(get_version_time_span_dates=lambda _version: None))
+
+        kwargs = build_success_gantt_redirect_kwargs(
+            {"version": 12, "summary": {"start_time": "bad-start"}},
+            requested_start_dt="also-bad",
+        )
+
+    assert kwargs == {"view": "machine", "version": 12}
+
+
+def test_fmt_day_segment_only_uses_24_hour_label_for_exact_midnight() -> None:
+    start_dt = datetime(2026, 3, 2, 8, 0, 0)
+
+    assert fmt_day_segment(start_dt, datetime(2026, 3, 3, 0, 0, 0)) == "08:00-24:00"
+    assert fmt_day_segment(start_dt, datetime(2026, 3, 3, 0, 0, 30)) == "08:00-00:00"
