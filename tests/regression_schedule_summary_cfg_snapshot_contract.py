@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from types import SimpleNamespace
 
+from core.services.scheduler.config.config_field_spec import default_snapshot_values
 from core.services.scheduler.config_snapshot import ScheduleConfigSnapshot
 from core.services.scheduler.schedule_summary import build_result_summary
 
@@ -15,29 +16,27 @@ class _StubSvc:
         return value.strftime("%Y-%m-%d %H:%M:%S")
 
 
-def _build_snapshot(**overrides) -> ScheduleConfigSnapshot:
-    data = {
-        "sort_strategy": "priority_first",
-        "priority_weight": 0.4,
-        "due_weight": 0.5,
-        "ready_weight": 0.1,
-        "holiday_default_efficiency": 0.8,
-        "enforce_ready_default": "no",
-        "prefer_primary_skill": "no",
-        "dispatch_mode": "batch_order",
-        "dispatch_rule": "slack",
-        "auto_assign_enabled": "no",
-        "auto_assign_persist": "yes",
-        "ortools_enabled": "no",
-        "ortools_time_limit_seconds": 5,
-        "algo_mode": "greedy",
-        "time_budget_seconds": 20,
-        "objective": "min_overdue",
-        "freeze_window_enabled": "no",
-        "freeze_window_days": 0,
-    }
+def _build_cfg(**overrides):
+    data = default_snapshot_values()
     data.update(overrides)
-    return ScheduleConfigSnapshot(**data)
+    return data
+
+
+def _build_snapshot(**overrides) -> ScheduleConfigSnapshot:
+    return ScheduleConfigSnapshot(**_build_cfg(**overrides))
+
+
+def _degradation_event_contract(summary):
+    return [
+        (
+            str(event.get("code") or ""),
+            str(event.get("scope") or ""),
+            str(event.get("field") or ""),
+            int(event.get("count") or 0),
+        )
+        for event in (summary.get("degradation_events") or [])
+        if isinstance(event, dict)
+    ]
 
 
 def _build_summary(cfg):
@@ -82,12 +81,12 @@ def _build_summary(cfg):
 
 def test_schedule_summary_normalizes_raw_cfg_into_single_snapshot() -> None:
     result_summary_obj = _build_summary(
-        {
-            "objective": " MIN_CHANGEOVER ",
-            "auto_assign_enabled": " YES ",
-            "freeze_window_enabled": " YES ",
-            "freeze_window_days": " 3 ",
-        }
+        _build_cfg(
+            objective=" MIN_CHANGEOVER ",
+            auto_assign_enabled=" YES ",
+            freeze_window_enabled=" YES ",
+            freeze_window_days=" 3 ",
+        )
     )
 
     algo = result_summary_obj.get("algo") or {}
@@ -100,6 +99,10 @@ def test_schedule_summary_normalizes_raw_cfg_into_single_snapshot() -> None:
     schema_keys = [item.get("key") for item in (algo.get("best_score_schema") or []) if isinstance(item, dict)]
     assert schema_keys[:2] == ["failed_ops", "changeover_count"]
     assert "freeze_window" in (algo.get("hard_constraints") or [])
+    assert result_summary_obj.get("degraded_success") is False
+    assert result_summary_obj.get("degraded_causes") == []
+    assert result_summary_obj.get("degradation_counters") == {}
+    assert _degradation_event_contract(result_summary_obj) == []
 
 
 def test_schedule_summary_dirty_snapshot_matches_raw_cfg_contract() -> None:
@@ -143,9 +146,19 @@ def test_schedule_summary_dirty_snapshot_matches_raw_cfg_contract() -> None:
     assert "config_fallback" in list(snapshot_result.get("degraded_causes") or [])
     raw_events = list(raw_result.get("degradation_events") or [])
     snapshot_events = list(snapshot_result.get("degradation_events") or [])
-    assert any(str(event.get("field") or "") == "objective" for event in raw_events), raw_events
-    assert any(str(event.get("field") or "") == "algo_mode" for event in raw_events), raw_events
-    assert any(str(event.get("field") or "") == "dispatch_mode" for event in raw_events), raw_events
-    assert any(str(event.get("field") or "") == "dispatch_rule" for event in raw_events), raw_events
-    assert any(str(event.get("field") or "") == "time_budget_seconds" for event in raw_events), raw_events
     assert snapshot_events == raw_events
+    assert raw_result.get("degradation_counters") == {
+        "invalid_choice": 5,
+        "blank_required": 1,
+        "config_fallback": 1,
+    }
+    assert snapshot_result.get("degradation_counters") == raw_result.get("degradation_counters")
+    assert _degradation_event_contract(raw_result) == [
+        ("invalid_choice", "scheduler.summary", "dispatch_mode", 1),
+        ("invalid_choice", "scheduler.summary", "dispatch_rule", 1),
+        ("invalid_choice", "scheduler.summary", "auto_assign_enabled", 1),
+        ("invalid_choice", "scheduler.summary", "algo_mode", 1),
+        ("blank_required", "scheduler.summary", "time_budget_seconds", 1),
+        ("invalid_choice", "scheduler.summary", "objective", 1),
+        ("config_fallback", "schedule.summary.config_snapshot", "config_snapshot", 1),
+    ]

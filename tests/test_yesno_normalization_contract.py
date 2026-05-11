@@ -72,8 +72,9 @@ def test_calendar_admin_yesno_is_narrow_unknown_raises() -> None:
     assert CalendarAdmin._normalize_yesno("false", field="允许普通件") == YesNo.NO.value
     assert CalendarAdmin._normalize_yesno("0", field="允许普通件") == YesNo.NO.value
 
-    with pytest.raises(ValidationError):
-        CalendarAdmin._normalize_yesno("maybe", field="允许普通件")
-    with pytest.raises(ValidationError):
-        CalendarAdmin._normalize_yesno("on", field="允许普通件")
-
+    expected_message = "“允许普通件”不正确，请选择：是 / 否。以前的 Excel 如果写过英文，系统会尽量按中文意思读取；新文件请直接填中文。"
+    for raw in ("maybe", "on"):
+        with pytest.raises(ValidationError, match="“允许普通件”不正确") as exc_info:
+            CalendarAdmin._normalize_yesno(raw, field="允许普通件")
+        assert exc_info.value.message == expected_message
+        assert exc_info.value.field == "允许普通件"

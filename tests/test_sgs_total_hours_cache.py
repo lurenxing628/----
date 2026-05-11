@@ -89,31 +89,47 @@ def test_sgs_reuses_successful_total_hours_between_average_and_scoring(monkeypat
 def test_sgs_average_does_not_cache_non_positive_or_missing_op_ids() -> None:
     missing_id_op = _internal_op(3, "B1", 5.0)
     delattr(missing_id_op, "id")
+    bool_id_op = _internal_op(4, "B1", 7.0)
+    bool_id_op.id = True
+    invalid_id_op = _internal_op(5, "B1", 11.0)
+    invalid_id_op.id = "not-an-id"
     avg_proc_hours, total_hours_by_op_id = sgs_module._average_proc_hours(
         SimpleNamespace(),
-        ops_by_batch={"B1": [_internal_op(0, "B1", 1.0), missing_id_op]},
+        ops_by_batch={"B1": [_internal_op(0, "B1", 1.0), _internal_op(-1, "B1", 2.0), missing_id_op, bool_id_op, invalid_id_op]},
         batches={"B1": _batch("B1")},
         strict_mode=False,
     )
 
-    assert avg_proc_hours == 3.0
+    assert avg_proc_hours == pytest.approx(5.2)
     assert total_hours_by_op_id == {}
 
 
-def test_sgs_scoring_ignores_cache_for_non_positive_op_id() -> None:
-    cached_hours_by_op_id = {0: 99.0}
+@pytest.mark.parametrize(
+    ("op_id", "cached_hours_by_op_id"),
+    [
+        (0, {0: 99.0}),
+        (-1, {-1: 99.0}),
+        (True, {1: 99.0}),
+        (None, {0: 99.0}),
+        ("not-an-id", {7: 99.0}),
+    ],
+)
+def test_sgs_scoring_ignores_cache_for_non_positive_or_invalid_op_id(op_id: Any, cached_hours_by_op_id: dict[int, float]) -> None:
+    op = _internal_op(7, "B1", 1.0)
+    op.id = op_id
+    original_cache = dict(cached_hours_by_op_id)
 
     total_hours = sgs_scoring_module._scoring_total_hours(
         SimpleNamespace(),
-        op=_internal_op(0, "B1", 1.0),
+        op=op,
         batch=_batch("B1"),
         strict_mode=False,
         total_hours_by_op_id=cached_hours_by_op_id,
-        op_id=0,
+        op_id=op_id,
     )
 
     assert total_hours == 1.0
-    assert cached_hours_by_op_id == {0: 99.0}
+    assert cached_hours_by_op_id == original_cache
 
 
 def test_sgs_invalid_total_hours_is_not_cached_or_hidden() -> None:

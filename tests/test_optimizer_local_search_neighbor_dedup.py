@@ -38,6 +38,10 @@ class _DeterministicRandom:
         return a
 
 
+def _first_swap_order(order_length: int) -> tuple[str, ...]:
+    return ("B1", "B0", *(f"B{i}" for i in range(2, order_length)))
+
+
 def _run_case(monkeypatch, *, order_length: int):
     fake_time = _FakeTime()
     monkeypatch.setattr(schedule_optimizer_module.time, "time", fake_time.time)
@@ -101,12 +105,13 @@ def _run_case(monkeypatch, *, order_length: int):
 
 def test_local_search_dedups_duplicate_neighbors_when_order_large(monkeypatch):
     schedule_calls = _run_case(monkeypatch, order_length=10)
-    assert len(schedule_calls) == 1
+    assert schedule_calls == [_first_swap_order(10)]
 
 
 def test_local_search_keeps_retrying_duplicates_when_order_small(monkeypatch):
     schedule_calls = _run_case(monkeypatch, order_length=5)
     assert len(schedule_calls) >= 2
+    assert set(schedule_calls) == {_first_swap_order(5)}
 
 
 def test_local_search_records_rejected_neighbor_and_keeps_existing_best(monkeypatch):
@@ -159,11 +164,20 @@ def test_local_search_records_rejected_neighbor_and_keeps_existing_best(monkeypa
 
     assert returned is best
     rejected = [attempt for attempt in attempts if attempt.get("source") == "candidate_rejected"]
-    assert len(rejected) == 1
-    assert rejected[0]["tag"].startswith("local:")
-    assert rejected[0]["dispatch_mode"] == "sgs"
-    assert rejected[0]["origin"]["field"] == "resource"
-    assert "score" not in rejected[0]
+    assert rejected == [
+        {
+            "tag": "local:swap",
+            "strategy": SortStrategy.PRIORITY_FIRST.value,
+            "dispatch_mode": "sgs",
+            "dispatch_rule": "slack",
+            "source": "candidate_rejected",
+            "origin": {
+                "type": "ValidationError",
+                "field": "resource",
+                "message": "[1001] 局部搜索候选缺少资源",
+            },
+        }
+    ]
 
 
 def test_local_search_strict_mode_raises_rejected_neighbor_validation_error(monkeypatch):
@@ -275,9 +289,20 @@ def test_local_search_records_rejected_neighbor_after_existing_attempt_cap(monke
     )
 
     rejected = [attempt for attempt in attempts if attempt.get("source") == "candidate_rejected"]
-    assert len(rejected) == 1
-    assert rejected[0]["origin"]["field"] == "resource"
-    assert "score" not in rejected[0]
+    assert rejected == [
+        {
+            "tag": "local:swap",
+            "strategy": SortStrategy.PRIORITY_FIRST.value,
+            "dispatch_mode": "sgs",
+            "dispatch_rule": "slack",
+            "source": "candidate_rejected",
+            "origin": {
+                "type": "ValidationError",
+                "field": "resource",
+                "message": "[1001] 局部搜索候选缺少资源",
+            },
+        }
+    ]
 
     compacted = compact_attempts(attempts, limit=12)
     public_algo, diagnostics = project_public_algo_summary({"attempts": compacted})
@@ -289,8 +314,7 @@ def test_local_search_records_rejected_neighbor_after_existing_attempt_cap(monke
             diagnostics["optimizer"]["attempts"],
         )
     )
-    assert len(diagnostic_rejections) == 1
-    assert diagnostic_rejections[0]["origin"]["field"] == "resource"
+    assert diagnostic_rejections == rejected
 
 
 def test_local_search_keeps_distinct_rejected_neighbor_origins(monkeypatch):
@@ -352,9 +376,31 @@ def test_local_search_keeps_distinct_rejected_neighbor_origins(monkeypatch):
         strict_mode=False,
     )
 
-    rejected_fields = {
-        attempt["origin"]["field"]
-        for attempt in attempts
-        if attempt.get("source") == "candidate_rejected"
-    }
-    assert rejected_fields == {"resource", "hours"}
+    rejected_attempts = [attempt for attempt in attempts if attempt.get("source") == "candidate_rejected"]
+    assert len(schedule_calls) > len(rejected_attempts)
+    assert rejected_attempts == [
+        {
+            "tag": "local:swap",
+            "strategy": SortStrategy.PRIORITY_FIRST.value,
+            "dispatch_mode": "sgs",
+            "dispatch_rule": "slack",
+            "source": "candidate_rejected",
+            "origin": {
+                "type": "ValidationError",
+                "field": "resource",
+                "message": "[1001] 局部搜索候选缺少资源",
+            },
+        },
+        {
+            "tag": "local:swap",
+            "strategy": SortStrategy.PRIORITY_FIRST.value,
+            "dispatch_mode": "sgs",
+            "dispatch_rule": "slack",
+            "source": "candidate_rejected",
+            "origin": {
+                "type": "ValidationError",
+                "field": "hours",
+                "message": "[1001] 局部搜索候选工时非法",
+            },
+        },
+    ]

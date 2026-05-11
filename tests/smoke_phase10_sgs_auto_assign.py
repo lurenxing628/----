@@ -285,6 +285,8 @@ def main():
         lines.append(traceback.format_exc())
         lines.append("```")
         lines.append(f"- 总耗时：{round(time.time() - t0, 3)}s")
+        write_report(os.path.join(repo_root, "evidence", "Phase10", "smoke_phase10_report.md"), lines)
+        raise
 
     report_path = os.path.join(repo_root, "evidence", "Phase10", "smoke_phase10_report.md")
     write_report(report_path, lines)
@@ -293,4 +295,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

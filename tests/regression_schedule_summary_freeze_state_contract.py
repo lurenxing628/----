@@ -19,6 +19,7 @@ REPO_ROOT = find_repo_root()
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
+from core.services.scheduler.config.config_field_spec import default_snapshot_values
 from core.services.scheduler.degradation_messages import FREEZE_WINDOW_DEGRADED_MESSAGE
 from core.services.scheduler.schedule_summary import build_result_summary
 
@@ -37,6 +38,42 @@ class _StubSvc:
         return str(value)
 
 
+_FREEZE_WINDOW_DEGRADED_EVENT = [
+    ("freeze_window_degraded", "schedule.summary.freeze_window", "freeze_window", 1)
+]
+
+
+def _base_cfg(**overrides):
+    cfg = default_snapshot_values()
+    cfg.update(
+        {
+            "auto_assign_enabled": "no",
+            "freeze_window_enabled": "yes",
+            "freeze_window_days": 3,
+        }
+    )
+    cfg.update(overrides)
+    return cfg
+
+
+def _degradation_event_contract(summary):
+    return [
+        (
+            str(event.get("code") or ""),
+            str(event.get("scope") or ""),
+            str(event.get("field") or ""),
+            int(event.get("count") or 0),
+        )
+        for event in (summary.get("degradation_events") or [])
+        if isinstance(event, dict)
+    ]
+
+
+def _assert_degradation_contract(summary, *, counters, events) -> None:
+    assert summary.get("degradation_counters") == counters
+    assert _degradation_event_contract(summary) == events
+
+
 def _base_kwargs():
     summary = SimpleNamespace(
         success=True,
@@ -48,7 +85,7 @@ def _base_kwargs():
     )
     return {
         "svc": _StubSvc(),
-        "cfg": {"auto_assign_enabled": "no", "freeze_window_enabled": "yes", "freeze_window_days": 3},
+        "cfg": _base_cfg(),
         "version": 1,
         "normalized_batch_ids": ["B001"],
         "start_dt": datetime(2026, 4, 1, 8, 0, 0),
@@ -92,6 +129,7 @@ def test_schedule_summary_freeze_state_controls_hard_constraints() -> None:
     assert active_freeze.get("freeze_state") == "active", active_freeze
     assert active_freeze.get("freeze_applied") is True, active_freeze
     assert "freeze_window" in (active_algo.get("hard_constraints") or []), active_algo
+    _assert_degradation_contract(active_summary, counters={}, events=[])
 
     kwargs_mixed = _base_kwargs()
     kwargs_mixed.update(
@@ -114,6 +152,12 @@ def test_schedule_summary_freeze_state_controls_hard_constraints() -> None:
     assert "未应用冻结窗口种子" not in str(mixed_freeze.get("degradation_reason") or ""), mixed_freeze
     assert mixed_freeze.get("freeze_degradation_codes") == ["freeze_seed_unavailable"], mixed_freeze
     assert "freeze_window" in (mixed_algo.get("hard_constraints") or []), mixed_algo
+    assert mixed_summary.get("degraded_causes") == ["freeze_window_degraded"], mixed_summary
+    _assert_degradation_contract(
+        mixed_summary,
+        counters={"freeze_window_degraded": 1},
+        events=_FREEZE_WINDOW_DEGRADED_EVENT,
+    )
 
     kwargs_degraded = _base_kwargs()
     kwargs_degraded.update(
@@ -137,11 +181,12 @@ def test_schedule_summary_freeze_state_controls_hard_constraints() -> None:
     assert "freeze_window" not in (degraded_algo.get("hard_constraints") or []), degraded_algo
     warnings = degraded_summary.get("warnings") or []
     assert not any("freeze_window" in str(item) for item in warnings), warnings
-    assert any(
-        str(item.get("code") or "") == "freeze_window_degraded"
-        for item in (degraded_summary.get("degradation_events") or [])
-        if isinstance(item, dict)
-    ), degraded_summary.get("degradation_events")
+    assert degraded_summary.get("degraded_causes") == ["freeze_window_degraded"], degraded_summary
+    _assert_degradation_contract(
+        degraded_summary,
+        counters={"freeze_window_degraded": 1},
+        events=_FREEZE_WINDOW_DEGRADED_EVENT,
+    )
 
     kwargs_not_applied = _base_kwargs()
     kwargs_not_applied.update(
@@ -160,13 +205,14 @@ def test_schedule_summary_freeze_state_controls_hard_constraints() -> None:
     assert not_applied_freeze.get("freeze_state") in (None, "disabled"), not_applied_freeze
     assert not_applied_freeze.get("freeze_applied") in (None, False), not_applied_freeze
     assert "freeze_window" not in (not_applied_algo.get("hard_constraints") or []), not_applied_algo
+    _assert_degradation_contract(not_applied_summary, counters={}, events=[])
 
 
 def test_schedule_summary_exposes_freeze_disabled_reason_without_degradation() -> None:
     kwargs = _base_kwargs()
     kwargs.update(
         {
-            "cfg": {"auto_assign_enabled": "no", "freeze_window_enabled": "no", "freeze_window_days": 0},
+            "cfg": _base_cfg(freeze_window_enabled="no", freeze_window_days=0),
             "frozen_op_ids": set(),
             "freeze_meta": {
                 "freeze_state": "disabled",
@@ -184,11 +230,7 @@ def test_schedule_summary_exposes_freeze_disabled_reason_without_degradation() -
     assert freeze_window.get("freeze_disabled_reason") == "config_disabled", freeze_window
     assert not freeze_window.get("degraded"), freeze_window
     assert "freeze_window" not in (algo.get("hard_constraints") or []), algo
-    assert not any(
-        str(item.get("code") or "") == "freeze_window_degraded"
-        for item in (summary.get("degradation_events") or [])
-        if isinstance(item, dict)
-    ), summary.get("degradation_events")
+    _assert_degradation_contract(summary, counters={}, events=[])
 
 
 def test_schedule_summary_freeze_disabled_reason_does_not_expand_warning_fallback() -> None:
@@ -207,6 +249,12 @@ def test_schedule_summary_freeze_disabled_reason_does_not_expand_warning_fallbac
 
     assert any("freeze_window" in str(item) for item in warnings), warnings
     assert "freeze_disabled_reason" not in freeze_window, freeze_window
+    assert summary.get("degraded_causes") == ["freeze_window_degraded"], summary
+    _assert_degradation_contract(
+        summary,
+        counters={"freeze_window_degraded": 1},
+        events=_FREEZE_WINDOW_DEGRADED_EVENT,
+    )
 
 
 def test_schedule_summary_config_degraded_does_not_expose_disabled_reason() -> None:
@@ -226,11 +274,15 @@ def test_schedule_summary_config_degraded_does_not_expose_disabled_reason() -> N
 
     _overdue, _status, summary, _json_text, _ms = build_result_summary(**kwargs)
     freeze_window = (summary.get("algo") or {}).get("freeze_window") or {}
-    degradation_events = summary.get("degradation_events") or []
 
     assert freeze_window.get("freeze_state") == "degraded", freeze_window
     assert "freeze_disabled_reason" not in freeze_window, freeze_window
-    assert any(str(item.get("code") or "") == "freeze_window_degraded" for item in degradation_events), degradation_events
+    assert summary.get("degraded_causes") == ["freeze_window_degraded"], summary
+    _assert_degradation_contract(
+        summary,
+        counters={"freeze_window_degraded": 1},
+        events=_FREEZE_WINDOW_DEGRADED_EVENT,
+    )
 
 
 def test_schedule_summary_freeze_degradation_prefers_structured_event_over_warning_text() -> None:
@@ -250,11 +302,15 @@ def test_schedule_summary_freeze_degradation_prefers_structured_event_over_warni
 
     _overdue, _status, degraded_summary, _json_text, _ms = build_result_summary(**kwargs)
     warnings = degraded_summary.get("warnings") or []
-    degradation_events = degraded_summary.get("degradation_events") or []
 
     assert not any("freeze_window" in str(item) for item in warnings), warnings
     assert not any("冻结窗口" in str(item) for item in warnings), warnings
-    assert any(str(item.get("code") or "") == "freeze_window_degraded" for item in degradation_events), degradation_events
+    assert degraded_summary.get("degraded_causes") == ["freeze_window_degraded"], degraded_summary
+    _assert_degradation_contract(
+        degraded_summary,
+        counters={"freeze_window_degraded": 1},
+        events=_FREEZE_WINDOW_DEGRADED_EVENT,
+    )
 
 
 def test_schedule_summary_freeze_warning_fallback_survives_without_freeze_meta() -> None:
@@ -271,6 +327,12 @@ def test_schedule_summary_freeze_warning_fallback_survives_without_freeze_meta()
     warnings = degraded_summary.get("warnings") or []
 
     assert any("freeze_window" in str(item) for item in warnings), warnings
+    assert degraded_summary.get("degraded_causes") == ["freeze_window_degraded"], degraded_summary
+    _assert_degradation_contract(
+        degraded_summary,
+        counters={"freeze_window_degraded": 1},
+        events=_FREEZE_WINDOW_DEGRADED_EVENT,
+    )
 
 
 def main() -> None:

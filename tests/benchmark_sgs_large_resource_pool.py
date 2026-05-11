@@ -109,7 +109,22 @@ def _run_case(*, name: str, operations, batches, start_dt: datetime, resource_po
     }
 
 
-def main() -> None:
+def _benchmark_errors(outcome: Dict[str, object]) -> List[str]:
+    name = str(outcome.get("name") or "<unknown>")
+    scheduled_ops = int(outcome.get("scheduled_ops") or 0)
+    failed_ops = int(outcome.get("failed_ops") or 0)
+    result_count = int(outcome.get("result_count") or 0)
+    errors: List[str] = []
+    if scheduled_ops <= 0:
+        errors.append(f"{name}: scheduled_ops 应大于 0，实际 {scheduled_ops}")
+    if failed_ops != 0:
+        errors.append(f"{name}: failed_ops 应为 0，实际 {failed_ops}")
+    if result_count != scheduled_ops:
+        errors.append(f"{name}: result_count 应等于 scheduled_ops，实际 result_count={result_count} scheduled_ops={scheduled_ops}")
+    return errors
+
+
+def main() -> int:
     repo_root = find_repo_root()
     start_dt = datetime(2026, 1, 1, 8, 0, 0)
 
@@ -214,6 +229,7 @@ def main() -> None:
         "",
     ]
 
+    all_errors: List[str] = []
     for case in cases:
         outcome = _run_case(
             name=case["name"],
@@ -223,6 +239,8 @@ def main() -> None:
             resource_pool=case["resource_pool"],
             seed_results=case["seed_results"],
         )
+        errors = _benchmark_errors(outcome)
+        all_errors.extend(errors)
         lines.extend(
             [
                 f"## {case['name']}",
@@ -232,6 +250,7 @@ def main() -> None:
                 f"- 统一估算器调用次数：{outcome['estimate_calls']}",
                 f"- scheduled_ops={outcome['scheduled_ops']} failed_ops={outcome['failed_ops']} result_count={outcome['result_count']}",
                 f"- 总耗时：{round(outcome['elapsed_seconds'], 6)}s",
+                f"- 校验：{'通过' if not errors else '失败：' + '；'.join(errors)}",
                 "",
             ]
         )
@@ -239,7 +258,10 @@ def main() -> None:
     report_path = os.path.join(repo_root, "evidence", "Benchmark", "sgs_large_resource_pool_report.md")
     _write_report(report_path, lines)
     print(f"[benchmark_sgs_large_resource_pool] report: {report_path}")
+    if all_errors:
+        raise RuntimeError("SGS 大资源池基准失败：\n- " + "\n- ".join(all_errors))
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

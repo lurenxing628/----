@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
+from io import BytesIO
 
 
 def find_repo_root() -> str:
@@ -15,13 +16,76 @@ def find_repo_root() -> str:
 
 def _assert_xlsx(resp, name: str, expect_version: int) -> None:
     if resp.status_code != 200:
-        raise RuntimeError(f"{name} 返回 {resp.status_code}，期望 200")
+        body = resp.data.decode("utf-8", errors="ignore") if getattr(resp, "data", None) else ""
+        raise RuntimeError(f"{name} 返回 {resp.status_code}，期望 200，body={body[:500]}")
     ct = resp.headers.get("Content-Type", "")
     if "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" not in ct:
         raise RuntimeError(f"{name} content-type 异常：{ct}")
     cd = resp.headers.get("Content-Disposition", "")
     if f"v{int(expect_version)}" not in cd:
         raise RuntimeError(f"{name} filename 未包含 v{expect_version}（Content-Disposition={cd!r}）")
+
+
+def _load_xlsx(resp):
+    import openpyxl
+
+    return openpyxl.load_workbook(BytesIO(resp.data), data_only=True)
+
+
+def _assert_number(actual, expect: float, name: str) -> None:
+    try:
+        actual_number = round(float(actual), 2)
+    except Exception as exc:
+        raise RuntimeError(f"{name} 不是数字：{actual!r}") from exc
+    if actual_number != round(float(expect), 2):
+        raise RuntimeError(f"{name} 异常：{actual!r}，期望 {expect!r}")
+
+
+def _assert_single_data_row(ws, name: str) -> None:
+    if ws.max_row != 2:
+        raise RuntimeError(f"{name} 数据行数异常：max_row={ws.max_row}，期望 2")
+
+
+def _assert_overdue_export(resp, name: str, expect_version: int, expect_finish_time: str, expect_delay_hours: float) -> None:
+    _assert_xlsx(resp, name, expect_version)
+    wb = _load_xlsx(resp)
+    try:
+        ws = wb["overdue"]
+        _assert_single_data_row(ws, name)
+        if ws["B2"].value != "B_REPORT":
+            raise RuntimeError(f"{name} 超期批次异常：{ws['B2'].value!r}")
+        if ws["G2"].value != expect_finish_time:
+            raise RuntimeError(f"{name} 完工时间异常：{ws['G2'].value!r}，期望 {expect_finish_time!r}")
+        _assert_number(ws["I2"].value, expect_delay_hours, f"{name} 超期小时")
+    finally:
+        wb.close()
+
+
+def _assert_utilization_export(resp, name: str, expect_version: int, expect_machine_hours: float) -> None:
+    _assert_xlsx(resp, name, expect_version)
+    wb = _load_xlsx(resp)
+    try:
+        ws = wb["machines"]
+        _assert_single_data_row(ws, name)
+        if ws["A2"].value != "MC_REPORT":
+            raise RuntimeError(f"{name} 设备编号异常：{ws['A2'].value!r}")
+        _assert_number(ws["C2"].value, expect_machine_hours, f"{name} 设备负荷小时")
+    finally:
+        wb.close()
+
+
+def _assert_downtime_export(resp, name: str, expect_version: int, expect_overlap_hours: float) -> None:
+    _assert_xlsx(resp, name, expect_version)
+    wb = _load_xlsx(resp)
+    try:
+        ws = wb["停机影响"]
+        _assert_single_data_row(ws, name)
+        if ws["A2"].value != "MC_REPORT":
+            raise RuntimeError(f"{name} 停机设备编号异常：{ws['A2'].value!r}")
+        _assert_number(ws["C2"].value, 2.0, f"{name} 停机小时")
+        _assert_number(ws["E2"].value, expect_overlap_hours, f"{name} 排程重叠小时")
+    finally:
+        wb.close()
 
 
 def _assert_invalid_version(resp, name: str) -> None:
@@ -34,16 +98,62 @@ def _assert_invalid_version(resp, name: str) -> None:
         raise RuntimeError(f"{name} 未返回统一版本错误文案：{body[:200]!r}")
 
 
-def _assert_empty_export(resp, name: str) -> None:
-    if resp.status_code != 400:
-        raise RuntimeError(f"{name} 返回 {resp.status_code}，期望 400")
-    body = resp.get_data(as_text=True)
-    if "overdue" in name:
-        expected = "当前版本没有可导出的超期结果，请换一个排产版本后再试。"
-    else:
-        expected = "暂无数据，不能导出。请调整版本或日期范围后再试。"
-    if expected not in body:
-        raise RuntimeError(f"{name} 未返回空数据不可导出提示：{body[:200]!r}")
+def _seed_distinguishable_report_data(conn) -> None:
+    conn.execute("INSERT INTO Parts(part_no, part_name) VALUES (?, ?)", ("P_REPORT", "报表测试零件"))
+    conn.execute(
+        "INSERT INTO Machines(machine_id, name, status) VALUES (?, ?, ?)",
+        ("MC_REPORT", "报表测试设备", "active"),
+    )
+    conn.execute(
+        "INSERT INTO Operators(operator_id, name, status) VALUES (?, ?, ?)",
+        ("OP_REPORT", "报表测试人员", "active"),
+    )
+    conn.execute(
+        """
+        INSERT INTO Batches(batch_id, part_no, part_name, quantity, due_date, priority, ready_status, status, remark)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        ("B_REPORT", "P_REPORT", "报表测试零件", 1, "2026-01-01", "normal", "yes", "pending", "latest export"),
+    )
+    conn.execute(
+        """
+        INSERT INTO BatchOperations(op_code, batch_id, seq, op_type_name, source, machine_id, operator_id, setup_hours, unit_hours, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        ("B_REPORT_10", "B_REPORT", 10, "数铣", "internal", "MC_REPORT", "OP_REPORT", 0, 1, "scheduled"),
+    )
+    row = conn.execute("SELECT id FROM BatchOperations WHERE op_code=?", ("B_REPORT_10",)).fetchone()
+    if not row:
+        raise RuntimeError("未插入报表测试工序")
+    op_id = int(row["id"])
+
+    conn.executemany(
+        """
+        INSERT INTO Schedule(op_id, machine_id, operator_id, start_time, end_time, lock_status, version)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (op_id, "MC_REPORT", "OP_REPORT", "2026-01-02 08:00:00", "2026-01-02 10:00:00", "unlocked", 6),
+            (op_id, "MC_REPORT", "OP_REPORT", "2026-01-03 08:00:00", "2026-01-03 12:00:00", "unlocked", 7),
+        ],
+    )
+    conn.executemany(
+        """
+        INSERT INTO ScheduleHistory (version, strategy, batch_count, op_count, result_status, result_summary, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (6, "test", 1, 1, "ok", None, "regression"),
+            (7, "test", 1, 1, "ok", None, "regression"),
+        ],
+    )
+    conn.execute(
+        """
+        INSERT INTO MachineDowntimes(machine_id, start_time, end_time, reason_code, reason_detail, status)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        ("MC_REPORT", "2026-01-03 09:00:00", "2026-01-03 11:00:00", "maintenance", "latest export", "active"),
+    )
 
 
 def main() -> None:
@@ -71,16 +181,10 @@ def main() -> None:
 
     ensure_schema(test_db, logger=None, schema_path=os.path.join(repo_root, "schema.sql"))
 
-    # 准备 1 条排产历史，让 latest_version() 有确定值
+    # 准备 v6/v7 两套可区分报表数据，让 latest_version() 稳定落到 v7
     conn = get_connection(test_db)
     try:
-        conn.execute(
-            """
-            INSERT INTO ScheduleHistory (version, strategy, batch_count, op_count, result_status, result_summary, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (7, "test", 0, 0, "ok", None, "regression"),
-        )
+        _seed_distinguishable_report_data(conn)
         conn.commit()
     finally:
         conn.close()
@@ -96,24 +200,61 @@ def main() -> None:
     ed = "2026-01-07"
 
     # 1) overdue/export
-    _assert_empty_export(client.get("/reports/overdue/export"), "GET /reports/overdue/export（missing version）")
-    _assert_empty_export(client.get("/reports/overdue/export?version="), "GET /reports/overdue/export（empty version）")
-    _assert_empty_export(client.get("/reports/overdue/export?version=latest"), "GET /reports/overdue/export（version=latest）")
+    _assert_overdue_export(
+        client.get("/reports/overdue/export?version=6"),
+        "GET /reports/overdue/export（version=6）",
+        6,
+        "2026-01-02 10:00:00",
+        10.0,
+    )
+    _assert_overdue_export(
+        client.get("/reports/overdue/export"),
+        "GET /reports/overdue/export（missing version）",
+        7,
+        "2026-01-03 12:00:00",
+        36.0,
+    )
+    _assert_overdue_export(
+        client.get("/reports/overdue/export?version="),
+        "GET /reports/overdue/export（empty version）",
+        7,
+        "2026-01-03 12:00:00",
+        36.0,
+    )
+    _assert_overdue_export(
+        client.get("/reports/overdue/export?version=latest"),
+        "GET /reports/overdue/export（version=latest）",
+        7,
+        "2026-01-03 12:00:00",
+        36.0,
+    )
     _assert_invalid_version(client.get("/reports/overdue/export?version=abc"), "GET /reports/overdue/export（invalid version）")
     _assert_invalid_version(client.get("/reports/overdue/export?version=0"), "GET /reports/overdue/export（version=0）")
 
     # 2) utilization/export（需要 start/end）
-    _assert_empty_export(
+    _assert_utilization_export(
+        client.get(f"/reports/utilization/export?version=6&start_date={sd}&end_date={ed}"),
+        "GET /reports/utilization/export（version=6）",
+        6,
+        2.0,
+    )
+    _assert_utilization_export(
         client.get(f"/reports/utilization/export?start_date={sd}&end_date={ed}"),
         "GET /reports/utilization/export（missing version）",
+        7,
+        4.0,
     )
-    _assert_empty_export(
+    _assert_utilization_export(
         client.get(f"/reports/utilization/export?version=&start_date={sd}&end_date={ed}"),
         "GET /reports/utilization/export（empty version）",
+        7,
+        4.0,
     )
-    _assert_empty_export(
+    _assert_utilization_export(
         client.get(f"/reports/utilization/export?version=latest&start_date={sd}&end_date={ed}"),
         "GET /reports/utilization/export（version=latest）",
+        7,
+        4.0,
     )
     _assert_invalid_version(
         client.get(f"/reports/utilization/export?version=abc&start_date={sd}&end_date={ed}"),
@@ -125,17 +266,29 @@ def main() -> None:
     )
 
     # 3) downtime/export（需要 start/end）
-    _assert_empty_export(
+    _assert_downtime_export(
+        client.get(f"/reports/downtime/export?version=6&start_date={sd}&end_date={ed}"),
+        "GET /reports/downtime/export（version=6）",
+        6,
+        0.0,
+    )
+    _assert_downtime_export(
         client.get(f"/reports/downtime/export?start_date={sd}&end_date={ed}"),
         "GET /reports/downtime/export（missing version）",
+        7,
+        2.0,
     )
-    _assert_empty_export(
+    _assert_downtime_export(
         client.get(f"/reports/downtime/export?version=&start_date={sd}&end_date={ed}"),
         "GET /reports/downtime/export（empty version）",
+        7,
+        2.0,
     )
-    _assert_empty_export(
+    _assert_downtime_export(
         client.get(f"/reports/downtime/export?version=latest&start_date={sd}&end_date={ed}"),
         "GET /reports/downtime/export（version=latest）",
+        7,
+        2.0,
     )
     _assert_invalid_version(
         client.get(f"/reports/downtime/export?version=abc&start_date={sd}&end_date={ed}"),

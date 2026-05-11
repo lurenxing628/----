@@ -17,7 +17,14 @@ class _Scheduler:
         self._last_algo_stats = {"fallback_counts": {}, "param_fallbacks": {}}
 
     def schedule(self, operations, batches, strategy=None, strategy_params=None, **kwargs):
-        self.calls.append((getattr(strategy, "value", str(strategy)), kwargs.get("dispatch_mode"), kwargs.get("dispatch_rule")))
+        self.calls.append(
+            (
+                getattr(strategy, "value", str(strategy)),
+                kwargs.get("dispatch_mode"),
+                kwargs.get("dispatch_rule"),
+                tuple(kwargs.get("batch_order_override") or []),
+            )
+        )
         summary = SimpleNamespace(
             success=True,
             total_ops=int(len(operations or [])),
@@ -76,11 +83,11 @@ def test_build_order_is_cached_per_strategy_within_single_multi_start_call():
 
     def _build_order(strategy, params):
         build_calls.append((strategy.value, tuple(sorted((params or {}).items()))))
-        return ["B1"]
+        return [f"{strategy.value}:B1"]
 
     def _invoke_multi_start() -> dict[str, object] | None:
         return _run_multi_start(
-            keys=["priority_first"],
+            keys=["priority_first", "due_date_first"],
             dispatch_modes=["batch_order", "sgs"],
             dispatch_rule_cfg="slack",
             valid_dispatch_rules=["slack", "cr"],
@@ -106,15 +113,26 @@ def test_build_order_is_cached_per_strategy_within_single_multi_start_call():
 
     best = _invoke_multi_start()
     assert best is not None
-    assert len(build_calls) == 1
+    assert build_calls == [
+        (SortStrategy.PRIORITY_FIRST.value, ()),
+        (SortStrategy.DUE_DATE_FIRST.value, ()),
+    ]
     assert scheduler.calls == [
-        (SortStrategy.PRIORITY_FIRST.value, "batch_order", "slack"),
-        (SortStrategy.PRIORITY_FIRST.value, "sgs", "slack"),
-        (SortStrategy.PRIORITY_FIRST.value, "sgs", "cr"),
+        (SortStrategy.PRIORITY_FIRST.value, "batch_order", "slack", ("priority_first:B1",)),
+        (SortStrategy.DUE_DATE_FIRST.value, "batch_order", "slack", ("due_date_first:B1",)),
+        (SortStrategy.PRIORITY_FIRST.value, "sgs", "slack", ("priority_first:B1",)),
+        (SortStrategy.PRIORITY_FIRST.value, "sgs", "cr", ("priority_first:B1",)),
+        (SortStrategy.DUE_DATE_FIRST.value, "sgs", "slack", ("due_date_first:B1",)),
+        (SortStrategy.DUE_DATE_FIRST.value, "sgs", "cr", ("due_date_first:B1",)),
     ]
 
     _invoke_multi_start()
-    assert len(build_calls) == 2, "第二次 multi-start 调用不应复用上一次的本地缓存"
+    assert build_calls == [
+        (SortStrategy.PRIORITY_FIRST.value, ()),
+        (SortStrategy.DUE_DATE_FIRST.value, ()),
+        (SortStrategy.PRIORITY_FIRST.value, ()),
+        (SortStrategy.DUE_DATE_FIRST.value, ()),
+    ], "第二次 multi-start 调用不应复用上一次的本地缓存"
 
 
 def test_multi_start_records_optional_sgs_validation_error_without_losing_primary_best():

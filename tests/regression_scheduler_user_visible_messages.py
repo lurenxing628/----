@@ -16,6 +16,7 @@ from core.algorithms.sort_strategies import SortStrategy
 from core.infrastructure.errors import ValidationError
 from core.services.scheduler.schedule_summary import build_result_summary
 from web.routes.domains.scheduler import scheduler_config as scheduler_config_route
+from web.viewmodels.scheduler_run_view_result import build_run_schedule_view_result
 from web.viewmodels.scheduler_summary_display import (
     build_display_secondary_degradation_messages,
     build_summary_display_state,
@@ -205,15 +206,102 @@ def test_error_handler_hides_english_internal_message(tmp_path, monkeypatch) -> 
     assert "填写不正确，请检查后重试。" in body
 
 
-def test_scheduler_run_degraded_success_message_is_user_facing_chinese() -> None:
-    route_source = (REPO_ROOT / "web/routes/domains/scheduler/scheduler_run.py").read_text(encoding="utf-8")
-    presenter_source = (REPO_ROOT / "web/viewmodels/scheduler_degradation_presenter.py").read_text(encoding="utf-8")
+@pytest.mark.parametrize(
+    ("result_status", "scheduled_ops", "failed_ops", "headline_category", "headline_prefix", "degradation_message"),
+    [
+        (
+            "success",
+            3,
+            0,
+            "success",
+            "排产完成",
+            "本次排产已成功，但有些数据或设置需要复核，系统先按能确认的内容继续。",
+        ),
+        (
+            "partial",
+            2,
+            1,
+            "warning",
+            "排产部分完成",
+            "本次排产部分完成，并且有些数据或设置需要复核，系统先按能确认的内容继续。",
+        ),
+        (
+            "failed",
+            0,
+            3,
+            "error",
+            "排产失败",
+            "本次排产失败，并且有些数据或设置需要复核，系统先按能确认的内容继续。",
+        ),
+    ],
+)
+def test_scheduler_run_degradation_messages_are_user_visible_and_sanitized(
+    result_status: str,
+    scheduled_ops: int,
+    failed_ops: int,
+    headline_category: str,
+    headline_prefix: str,
+    degradation_message: str,
+) -> None:
+    summary = {
+        "completion_status": result_status,
+        "total_ops": 3,
+        "scheduled_ops": scheduled_ops,
+        "failed_ops": failed_ops,
+        "degradation_events": [
+            {
+                "code": "unknown_debug_degradation",
+                "message": "sqlite OperationalError raw_internal_error code=E_SECRET /tmp/private.db",
+                "scope": "scheduler.internal_scope",
+                "field": "secret_token",
+                "sample": "SECRET_TOKEN=abc123",
+                "count": 1,
+            }
+        ],
+    }
+    if result_status == "failed":
+        summary.update(
+            {
+                "error_count": 1,
+                "errors_sample": ["Traceback sqlite raw_internal_error code=E_SECRET /tmp/private.db"],
+            }
+        )
 
-    assert "primary_degradation" in route_source
-    assert "degraded_success" not in route_source
-    assert "本次排产已成功，但有些数据或设置需要复核，系统先按能确认的内容继续。" in presenter_source
-    assert "本次排产部分完成，并且有些数据或设置需要复核，系统先按能确认的内容继续。" in presenter_source
-    assert "本次排产失败，并且有些数据或设置需要复核，系统先按能确认的内容继续。" in presenter_source
+    view_result = build_run_schedule_view_result(
+        {
+            "version": 8,
+            "result_status": result_status,
+            "summary": summary,
+            "overdue_batches": [],
+        }
+    )
+
+    secondary_messages = [
+        str(item.get("message") or item.get("label") or "")
+        for item in list(view_result.secondary_degradation_messages or [])
+        if isinstance(item, dict)
+    ]
+    visible_messages = [
+        view_result.headline_message,
+        view_result.primary_degradation_message or "",
+        *(view_result.error_preview or ()),
+        *secondary_messages,
+    ]
+    visible_text = "\n".join(visible_messages)
+
+    assert view_result.headline_category == headline_category
+    assert view_result.headline_message.startswith(f"{headline_prefix}（版本 8）"), view_result.headline_message
+    assert view_result.primary_degradation_message is not None
+    assert degradation_message in view_result.primary_degradation_message
+    assert "排产摘要里有需要注意的提示" in view_result.primary_degradation_message
+    if result_status == "failed":
+        assert view_result.error_preview == ["排产执行遇到问题，请联系管理员查看日志。"]
+    assert "unknown_debug_degradation" not in visible_text
+    assert "raw_internal_error" not in visible_text
+    assert "E_SECRET" not in visible_text
+    assert "/tmp/private.db" not in visible_text
+    assert "SECRET_TOKEN" not in visible_text
+    assert "scheduler.internal_scope" not in visible_text
 
 
 class _SummaryStubSvc:

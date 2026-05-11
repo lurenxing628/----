@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from core.infrastructure.errors import ValidationError
+from core.services.scheduler.config.config_field_spec import default_snapshot_values
 from core.services.scheduler.config_snapshot import build_schedule_config_snapshot
 
 
@@ -33,31 +34,22 @@ class _InvalidRepoStub:
 
 
 def _build_defaults():
+    return default_snapshot_values()
+
+
+def _event_codes_by_field(snapshot):
     return {
-        "sort_strategy": "priority_first",
-        "priority_weight": 0.4,
-        "due_weight": 0.5,
-        "ready_weight": 0.1,
-        "holiday_default_efficiency": 0.8,
-        "enforce_ready_default": "no",
-        "prefer_primary_skill": "no",
-        "dispatch_mode": "batch_order",
-        "dispatch_rule": "slack",
-        "auto_assign_enabled": "no",
-        "ortools_enabled": "no",
-        "ortools_time_limit_seconds": 5,
-        "algo_mode": "greedy",
-        "time_budget_seconds": 20,
-        "objective": "min_overdue",
-        "freeze_window_enabled": "no",
-        "freeze_window_days": 0,
+        str(event.get("field") or ""): str(event.get("code") or "")
+        for event in (snapshot.degradation_events or ())
     }
 
 
 def _build_snapshot(values, *, strict_mode: bool):
     defaults = _build_defaults()
+    repo_values = dict(defaults)
+    repo_values.update(values or {})
     return build_schedule_config_snapshot(
-        _RepoStub(values),
+        _RepoStub(repo_values),
         defaults=defaults,
         strict_mode=strict_mode,
     )
@@ -77,7 +69,8 @@ def test_build_schedule_config_snapshot_relaxed_explicit_none_values_fall_back(
     snapshot = _build_snapshot({field: None}, strict_mode=False)
 
     assert getattr(snapshot, field) == expected
-    assert sum(int(v) for v in snapshot.degradation_counters.values()) >= 1, snapshot.degradation_counters
+    assert snapshot.degradation_counters == {"blank_required": 1}
+    assert _event_codes_by_field(snapshot) == {field: "blank_required"}
 
 
 @pytest.mark.parametrize("field", ("priority_weight", "ortools_time_limit_seconds"))
@@ -103,11 +96,12 @@ def test_build_schedule_config_snapshot_relaxed_invalid_choice_and_yesno_are_obs
     assert snapshot.auto_assign_enabled == "no"
 
     counters = snapshot.degradation_counters or {}
-    assert int(counters.get("invalid_choice") or 0) == 3, counters
-    event_codes = {str(event.get("field") or ""): str(event.get("code") or "") for event in (snapshot.degradation_events or ())}
-    assert event_codes.get("sort_strategy") == "invalid_choice"
-    assert event_codes.get("dispatch_mode") == "invalid_choice"
-    assert event_codes.get("auto_assign_enabled") == "invalid_choice"
+    assert counters == {"invalid_choice": 3}
+    assert _event_codes_by_field(snapshot) == {
+        "sort_strategy": "invalid_choice",
+        "dispatch_mode": "invalid_choice",
+        "auto_assign_enabled": "invalid_choice",
+    }
 
 
 def test_build_schedule_config_snapshot_relaxed_explicit_blank_choice_and_yesno_emit_blank_required() -> None:
@@ -122,7 +116,11 @@ def test_build_schedule_config_snapshot_relaxed_explicit_blank_choice_and_yesno_
     assert snapshot.dispatch_rule == "slack"
     assert snapshot.freeze_window_enabled == "no"
     counters = snapshot.degradation_counters or {}
-    assert int(counters.get("blank_required") or 0) == 2, counters
+    assert counters == {"blank_required": 2}
+    assert _event_codes_by_field(snapshot) == {
+        "dispatch_rule": "blank_required",
+        "freeze_window_enabled": "blank_required",
+    }
 
 
 @pytest.mark.parametrize("strict_mode", (False, True))

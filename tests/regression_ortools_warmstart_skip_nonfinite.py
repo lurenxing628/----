@@ -1,7 +1,7 @@
 import os
 import sys
 from datetime import datetime
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 
 
 def find_repo_root() -> str:
@@ -12,18 +12,92 @@ def find_repo_root() -> str:
     raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
+class _FakeExpr:
+    def __add__(self, other):
+        return _FakeExpr()
+
+    __radd__ = __add__
+
+    def __sub__(self, other):
+        return _FakeExpr()
+
+    def __rsub__(self, other):
+        return _FakeExpr()
+
+    def __ge__(self, other):
+        return _FakeExpr()
+
+    def __mul__(self, other):
+        return _FakeExpr()
+
+    __rmul__ = __mul__
+
+
+class _FakeVar(_FakeExpr):
+    def __init__(self, name: str):
+        self.name = name
+
+
+class _FakeCpModel:
+    interval_durations = []
+
+    def NewIntVar(self, lb, ub, name):
+        return _FakeVar(str(name))
+
+    def NewIntervalVar(self, start, duration, end, name):
+        self.interval_durations.append(int(duration))
+        return (start, duration, end, name)
+
+    def Add(self, constraint):
+        return None
+
+    def AddNoOverlap(self, intervals):
+        return None
+
+    def Minimize(self, objective):
+        return None
+
+
+class _FakeCpSolver:
+    def __init__(self):
+        self.parameters = SimpleNamespace()
+
+    def Solve(self, model):
+        return 4
+
+    def Value(self, var):
+        name = getattr(var, "name", "")
+        if name.startswith("s_"):
+            return int(name.split("_", 1)[1]) * 100
+        return 0
+
+
+def install_fake_cp_model() -> None:
+    cp_model = ModuleType("ortools.sat.python.cp_model")
+    cp_model.CpModel = _FakeCpModel
+    cp_model.CpSolver = _FakeCpSolver
+    cp_model.OPTIMAL = 4
+    cp_model.FEASIBLE = 2
+
+    ortools = ModuleType("ortools")
+    sat = ModuleType("ortools.sat")
+    python = ModuleType("ortools.sat.python")
+    python.cp_model = cp_model
+    sat.python = python
+    ortools.sat = sat
+
+    sys.modules["ortools"] = ortools
+    sys.modules["ortools.sat"] = sat
+    sys.modules["ortools.sat.python"] = python
+    sys.modules["ortools.sat.python.cp_model"] = cp_model
+
+
 def main() -> None:
     repo_root = find_repo_root()
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
 
-    # OR-Tools 是可选依赖：未安装时直接 SKIP（退出 0）
-    try:
-        from ortools.sat.python import cp_model as _cp_model  # noqa: F401
-    except Exception:
-        print("SKIP (ortools not installed)")
-        print("OK")
-        return
+    install_fake_cp_model()
 
     from core.algorithms.ortools_bottleneck import try_solve_bottleneck_batch_order
 
@@ -92,10 +166,13 @@ def main() -> None:
     assert order is not None, "过滤非有限工时后应仍可产生 warm-start 顺序"
     assert len(order) == 2, f"期望仅包含 2 个批次，实际 order={order!r}"
     assert order == ["B1", "B2"], f"期望短工时优先（B1 在前）：order={order!r}"
+    assert _FakeCpModel.interval_durations == [60, 120], (
+        "CP 模型里只能出现有限工时任务，"
+        f"实际 durations={_FakeCpModel.interval_durations!r}"
+    )
 
     print("OK")
 
 
 if __name__ == "__main__":
     main()
-

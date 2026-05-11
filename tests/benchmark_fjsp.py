@@ -614,6 +614,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ap.add_argument("--calendar-days", type=int, default=120, help="how many days to seed 24h calendar")
     ap.add_argument("--time-budget", type=int, default=20, help="time_budget_seconds for improve mode")
     ap.add_argument("--full-matrix", action="store_true", help="run all fold strategies for all algo modes")
+    ap.add_argument("--allow-invalid", action="store_true", help="write the report even if a run has failed_ops or no makespan")
     args = ap.parse_args(list(argv) if argv is not None else None)
 
     repo_root = find_repo_root()
@@ -682,9 +683,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     # also print short console summary
     valid_cnt = sum(1 for r in runs if r.get("valid"))
     print(f"runs={len(runs)} valid={valid_cnt}")
+    if valid_cnt != len(runs) and not args.allow_invalid:
+        invalid = [r for r in runs if not r.get("valid")]
+        for r in invalid:
+            print(
+                "invalid run: "
+                + f"instance={r.get('instance')} algo={r.get('algo_mode')} fold={r.get('fold_strategy')} "
+                + f"failed_ops={r.get('failed_ops')} makespan_hours={r.get('makespan_hours')}",
+                file=sys.stderr,
+            )
+        return 1
     return 0
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

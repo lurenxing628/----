@@ -37,6 +37,6 @@ def test_normalize_skill_level_canonical3_and_legacy_aliases() -> None:
     assert normalize_skill_level(None, default="normal", allow_none=True) is None
     assert normalize_skill_level("", default="normal", allow_none=True) is None
 
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError, match="invalid skill_level") as exc_info:
         normalize_skill_level("unknown_level", default="normal", allow_none=False)
-
+    assert str(exc_info.value) == "invalid skill_level: 'unknown_level'"

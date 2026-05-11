@@ -164,20 +164,20 @@ def main() -> None:
     algo_stats = outcome.algo_stats or {}
     fallback_counts = algo_stats.get("fallback_counts") or {}
     param_fallbacks = algo_stats.get("param_fallbacks") or {}
-    assert int(fallback_counts.get("dispatch_key_proc_hours_fallback_count") or 0) == 3, f"scheduler algo_stats 未进入 outcome：{algo_stats!r}"
-    assert int(param_fallbacks.get("optimizer_priority_weight_defaulted_count") or 0) >= 1, (
-        f"optimizer priority_weight fallback 未计数：{algo_stats!r}"
-    )
-    assert int(param_fallbacks.get("optimizer_due_weight_defaulted_count") or 0) >= 1, (
-        f"optimizer due_weight fallback 未计数：{algo_stats!r}"
-    )
+    expected_fallback_counts = {"dispatch_key_proc_hours_fallback_count": 3}
+    expected_param_fallbacks = {
+        "dispatch_rule_defaulted_count": 1,
+        "optimizer_due_weight_defaulted_count": 1,
+        "optimizer_priority_weight_defaulted_count": 1,
+    }
+    assert fallback_counts == expected_fallback_counts, f"scheduler algo_stats 计数不精确：{algo_stats!r}"
+    assert param_fallbacks == expected_param_fallbacks, f"optimizer 参数 fallback 计数不精确：{algo_stats!r}"
 
     attempts = list(outcome.attempts or [])
     assert attempts and isinstance(attempts[0], dict), f"attempts 缺失：{attempts!r}"
     attempt_stats = attempts[0].get("algo_stats") or {}
-    assert int((attempt_stats.get("fallback_counts") or {}).get("dispatch_key_proc_hours_fallback_count") or 0) == 3, (
-        f"attempts[*].algo_stats 未保留：{attempt_stats!r}"
-    )
+    assert attempt_stats.get("fallback_counts") == expected_fallback_counts, f"attempts[*].fallback_counts 不精确：{attempt_stats!r}"
+    assert attempt_stats.get("param_fallbacks") == expected_param_fallbacks, f"attempts[*].param_fallbacks 不精确：{attempt_stats!r}"
 
     print("OK")
 

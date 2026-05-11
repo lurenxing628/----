@@ -336,13 +336,17 @@ def _read_sample_rows(ws: Any, *, width: int, count: int) -> list[list[Any]]:
     return rows
 
 
+def _read_header_row(ws: Any) -> list[Any]:
+    return [ws.cell(1, col_idx).value for col_idx in range(1, ws.max_column + 1)]
+
+
 def _read_template_snapshot(template_path: Path, definition: Mapping[str, Any]) -> tuple[list[Any], list[list[Any]], dict[str, list[str]]]:
     expected_headers = [str(item) for item in definition.get("headers") or []]
     expected_sample_rows = list(definition.get("sample_rows") or [])
     workbook = load_workbook(template_path, data_only=True)
     try:
         ws = workbook.active
-        actual_headers = [ws.cell(1, col_idx).value for col_idx in range(1, len(expected_headers) + 1)]
+        actual_headers = _read_header_row(ws)
         actual_sample_rows = _read_sample_rows(
             ws,
             width=len(expected_headers),
@@ -447,7 +451,7 @@ def _assert_legacy_op_type_template_with_extra_rows_repairs_dropdown_without_ove
         workbook = load_workbook(template_path, data_only=True)
         try:
             ws = workbook.active
-            actual_headers = [ws.cell(1, col_idx).value for col_idx in range(1, len(expected_headers) + 1)]
+            actual_headers = _read_header_row(ws)
             actual_rows = _read_sample_rows(ws, width=len(expected_headers), count=len(original_rows))
             actual_enums = _actual_enum_values_by_header(ws, expected_headers)
         finally:

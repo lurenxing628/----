@@ -316,8 +316,38 @@ def test_viewmodels_do_not_import_flask_or_services_or_repositories_or_routes():
 
 # ─── Fitness 2: 循环依赖 ──────────────────────────────────────
 
+def _canonical_dependency_cycle(cycle: List[str]) -> Tuple[str, ...]:
+    body = tuple(cycle[:-1])
+    rotations = [body[index:] + body[:index] for index in range(len(body))]
+    return min(rotations)
+
+
+def _find_dependency_cycles(pkg_deps: Dict[str, Set[str]]) -> List[str]:
+    cycles: Set[Tuple[str, ...]] = set()
+
+    def visit(start: str, current: str, path: List[str]) -> None:
+        for dep in sorted(pkg_deps.get(current, set())):
+            if dep not in pkg_deps:
+                continue
+            if dep == start:
+                cycles.add(_canonical_dependency_cycle(path + [dep]))
+            elif dep not in path:
+                visit(start, dep, path + [dep])
+
+    for pkg in sorted(pkg_deps):
+        visit(pkg, pkg, [pkg])
+
+    return [" -> ".join(list(cycle) + [cycle[0]]) for cycle in sorted(cycles)]
+
+
+def test_dependency_cycle_detector_covers_two_node_and_multi_node_cycles():
+    assert _find_dependency_cycles({"a": {"b"}, "b": {"a"}}) == ["a -> b -> a"]
+    assert _find_dependency_cycles({"a": {"b"}, "b": {"c"}, "c": {"a"}}) == ["a -> b -> c -> a"]
+    assert _find_dependency_cycles({"a": {"b"}, "b": {"c"}, "c": set()}) == []
+
+
 def test_no_circular_service_dependencies():
-    """Service 包之间禁止循环导入（A→B 且 B→A）。"""
+    """Service 包之间禁止循环导入（包含 A→B→C→A 这类多节点环）。"""
     svc_base = os.path.join(REPO_ROOT, "core", "services")
     if not os.path.isdir(svc_base):
         return
@@ -339,19 +369,7 @@ def test_no_circular_service_dependencies():
                     if target_pkg != pkg:
                         deps.add(target_pkg)
 
-    cycles = []
-    checked: Set[Tuple[str, str]] = set()
-    for pkg_a, deps_a in pkg_deps.items():
-        for dep in deps_a:
-            if pkg_a <= dep:
-                pair: Tuple[str, str] = (pkg_a, dep)
-            else:
-                pair = (dep, pkg_a)
-            if pair in checked:
-                continue
-            checked.add(pair)
-            if dep in pkg_deps and pkg_a in pkg_deps.get(dep, set()):
-                cycles.append(f"{pkg_a} <-> {dep}")
+    cycles = _find_dependency_cycles(pkg_deps)
 
     known_cycles: Set[str] = set()
     new_cycles = [c for c in cycles if c not in known_cycles]

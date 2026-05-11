@@ -50,9 +50,12 @@ def test_apply_preview_rows_invalid_status_raises_and_rolls_back_all_changes() -
             _pr({"设备编号": "MC002", "设备名称": "CNC-02", "状态": "BAD"}, row_num=3),
         ]
 
-        with pytest.raises(ValidationError):
+        expected_message = "状态不合法，可填写：可用 / 停用 / 维修。以前的 Excel 如果写过英文状态，系统会尽量按中文意思读取；新文件请直接填中文。"
+        with pytest.raises(ValidationError, match="状态不合法") as exc_info:
             svc.apply_preview_rows(preview_rows, mode=ImportMode.OVERWRITE, existing_ids=set())
 
+        assert exc_info.value.message == expected_message
+        assert exc_info.value.field == "状态"
         assert _count_machines(conn) == 0
     finally:
         try:
@@ -73,9 +76,11 @@ def test_apply_preview_rows_missing_name_raises_validation_error() -> None:
             _pr({"设备编号": "MC001", "设备名称": "", "状态": "active"}, row_num=2),
         ]
 
-        with pytest.raises(ValidationError):
+        with pytest.raises(ValidationError, match="设备名称不能为空") as exc_info:
             svc.apply_preview_rows(preview_rows, mode=ImportMode.OVERWRITE, existing_ids=set())
 
+        assert exc_info.value.message == "设备名称不能为空"
+        assert exc_info.value.field == "设备名称"
         assert _count_machines(conn) == 0
     finally:
         try:
@@ -96,10 +101,12 @@ def test_apply_preview_rows_missing_status_raises_specific_message() -> None:
             _pr({"设备编号": "MC001", "设备名称": "CNC-01", "状态": ""}, row_num=2),
         ]
 
-        with pytest.raises(ValidationError) as e:
+        expected_message = "状态不能为空，请填写：可用 / 停用 / 维修。以前的 Excel 如果写过英文状态，系统会尽量按中文意思读取；新文件请直接填中文。"
+        with pytest.raises(ValidationError, match="状态不能为空") as e:
             svc.apply_preview_rows(preview_rows, mode=ImportMode.OVERWRITE, existing_ids=set())
 
-        assert "状态不能为空" in str(e.value.message or ""), e.value.message
+        assert e.value.message == expected_message
+        assert e.value.field == "状态"
         assert _count_machines(conn) == 0
     finally:
         try:

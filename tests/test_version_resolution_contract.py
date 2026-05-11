@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from core.infrastructure.errors import ValidationError
-from core.services.scheduler.version_resolution import resolve_version_or_latest
+from core.services.scheduler.version_resolution import VERSION_ERROR_MESSAGE, resolve_version_or_latest
 
 
 def test_version_resolution_defaults_to_latest() -> None:
@@ -46,8 +46,12 @@ def test_version_resolution_reports_missing_explicit_history() -> None:
 
 
 def test_version_resolution_rejects_invalid_explicit_value() -> None:
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match="版本号不对") as exc_info:
         resolve_version_or_latest("bad", latest_version=9)
+    assert exc_info.value.message == VERSION_ERROR_MESSAGE
+    assert exc_info.value.field == "version"
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match="版本号不对") as exc_info:
         resolve_version_or_latest("0", latest_version=9)
+    assert exc_info.value.message == VERSION_ERROR_MESSAGE
+    assert exc_info.value.field == "version"
