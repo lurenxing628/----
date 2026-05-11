@@ -17,7 +17,7 @@ _PUBLIC_EVENT_MESSAGES = {
     "freeze_window_partially_applied": FREEZE_WINDOW_PARTIALLY_APPLIED_MESSAGE,
     "downtime_avoid_degraded": DOWNTIME_LOAD_FAILED_MESSAGE,
     "resource_pool_degraded": RESOURCE_POOL_BUILD_FAILED_MESSAGE,
-    "summary_merge_failed": "排产完成了，但部分提示没有整理好。请到系统管理里的排产历史查看这次排产的详细提示。",
+    "summary_merge_failed": "排产完成了，但部分提示没有整理好。请到系统管理里的排产历史查看这次排产的详细提醒。",
     "invalid_due_date": "部分交期数据无法使用，本次已按可确认数据继续。",
     "invalid_choice": "部分选项填得不对，本次先按默认值处理。",
     "invalid_number": "部分数字填得不对，本次先按默认值处理。",

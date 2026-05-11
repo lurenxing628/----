@@ -129,6 +129,11 @@ def _install_stub_scheduler(monkeypatch) -> None:
     monkeypatch.setattr(schedule_optimizer, "_run_local_search", lambda **kwargs: kwargs.get("best"))
 
 
+def _assert_public_message(exc: ValidationError, *, public_label: str, internal_key: str) -> None:
+    assert public_label in exc.message, f"提示未包含现场字段名 {public_label!r}：{exc.message!r}"
+    assert internal_key not in exc.message, f"提示不应暴露内部字段 {internal_key!r}：{exc.message!r}"
+
+
 def test_optimizer_accepts_raw_dict_cfg(monkeypatch) -> None:
     _install_stub_scheduler(monkeypatch)
     outcome = _optimize_with_cfg({"objective": " MIN_OVERDUE "})
@@ -178,6 +183,7 @@ def test_optimizer_strict_mode_rejects_blank_numeric_for_all_cfg_shapes(monkeypa
     with pytest.raises(ValidationError) as exc_info:
         _optimize_with_cfg(cfg, strict_mode=True)
     assert exc_info.value.field == "priority_weight"
+    _assert_public_message(exc_info.value, public_label="优先级权重", internal_key="priority_weight")
 
 
 def test_optimizer_strict_config_validation_precedes_invalid_seed_results(monkeypatch) -> None:
@@ -217,6 +223,7 @@ def test_optimizer_strict_mode_rejects_blank_numeric_on_raw_cfg(monkeypatch, cfg
     with pytest.raises(ValidationError) as exc_info:
         _optimize_with_cfg(cfg, strict_mode=True)
     assert exc_info.value.field == "time_budget_seconds"
+    _assert_public_message(exc_info.value, public_label="计算时间上限", internal_key="time_budget_seconds")
 
 
 @pytest.mark.parametrize(

@@ -39,35 +39,31 @@ def test_gantt_control_css_keeps_query_controls_horizontal() -> None:
 
 def test_gantt_popup_keeps_readable_width_and_autofits_visible_area() -> None:
     css = _read("static/css/aps_gantt.css")
-    js = _read("static/js/gantt_render.js")
+    fit_js = _read("static/js/gantt_popup_fit.js")
 
     for token in (
         "#gantt .gantt-container .popup-wrapper",
         "#rdGantt .gantt-container .popup-wrapper",
         "width: min(420px, calc(100vw - 32px));",
-        "min-width: min(280px, calc(100vw - 32px));",
+        "min-width: min(160px, calc(100vw - 32px));",
         "box-sizing: border-box;",
     ):
         assert token in css
 
     for token in (
-        "function installPopupAutoFit(gantt)",
+        "window.__APS_GANTT_POPUP_FIT__",
+        "function computeFitGeometry(input, options)",
+        "availableWidth",
+        "popup.style.maxWidth",
+        "window.ResizeObserver",
         "container.scrollLeft",
         "container.clientWidth",
         "requestAnimationFrame",
-        "installPopupAutoFit(gantt);",
     ):
-        assert token in js
+        assert token in fit_js
 
-    rd_js = _read("static/js/resource_dispatch.js")
-    for token in (
-        "function installResourceGanttPopupAutoFit(gantt)",
-        "container.scrollLeft",
-        "container.clientWidth",
-        "requestAnimationFrame",
-        "installResourceGanttPopupAutoFit(state.gantt);",
-    ):
-        assert token in rd_js
+    for rel_path in ("templates/scheduler/gantt.html", "templates/scheduler/resource_dispatch.html"):
+        assert "js/gantt_popup_fit.js" in _read(rel_path)
 
 
 def main() -> None:

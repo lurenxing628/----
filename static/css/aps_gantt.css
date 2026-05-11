@@ -175,7 +175,7 @@
 #gantt .gantt-container .popup-wrapper,
 #rdGantt .gantt-container .popup-wrapper {
   width: min(420px, calc(100vw - 32px));
-  min-width: min(280px, calc(100vw - 32px));
+  min-width: min(160px, calc(100vw - 32px));
 }
 .gantt-container .popup-wrapper .title {
   border-bottom: 3px solid #38bdf8;

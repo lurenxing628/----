@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Any, List, Mapping, NoReturn, Optional, Sequence, Tuple
 
 from core.infrastructure.errors import ValidationError
+from core.shared.field_labels import display_field_label
 
 from .downtime import find_overlap_shift_end
 
@@ -97,7 +98,7 @@ def raise_strict_internal_hours_validation(op: Any, batch: Any, exc: ValueError)
         except Exception:
             raise
         _raise_if_invalid_strict_number(field, raw_value)
-    raise ValidationError(str(exc), field="setup_hours")
+    raise ValidationError("工时总量不合法，请检查换型时间、单件工时和数量。", field="setup_hours")
 
 
 def _internal_hour_fields(op: Any, batch: Any) -> Tuple[Tuple[str, Any], ...]:
@@ -109,14 +110,15 @@ def _internal_hour_fields(op: Any, batch: Any) -> Tuple[Tuple[str, Any], ...]:
 
 
 def _raise_if_invalid_strict_number(field: str, raw_value: Any) -> None:
+    label = display_field_label(field, fallback=field)
     try:
         parsed = float(raw_value)
     except Exception as parse_exc:
-        raise ValidationError(f"“{field}”必须是数字", field=field) from parse_exc
+        raise ValidationError(f"“{label}”必须是数字", field=field) from parse_exc
     if not math.isfinite(parsed):
-        raise ValidationError(f"“{field}”必须是有限数字", field=field)
+        raise ValidationError(f"“{label}”必须是有限数字", field=field)
     if parsed < 0:
-        raise ValidationError(f"“{field}”必须大于等于 0", field=field)
+        raise ValidationError(f"“{label}”必须大于等于 0", field=field)
 
 
 def _resolve_efficiency(

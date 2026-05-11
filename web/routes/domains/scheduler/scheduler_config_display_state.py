@@ -117,7 +117,7 @@ def build_auto_assign_persist_display_state(value: Any) -> Dict[str, Any]:
         "enabled": None,
         "value": "invalid",
         "label": "记录异常",
-        "description": "这条记录里的保存补齐资源取值不正确，请到系统管理里的排产历史查看。",
+        "description": "这条记录里的保存补齐资源取值不正确，请到系统管理里的排产历史查看这次排产的详细提醒。",
     }
 
 

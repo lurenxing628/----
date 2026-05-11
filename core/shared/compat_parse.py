@@ -5,6 +5,7 @@ from typing import Any, Optional
 
 from core.infrastructure.errors import ValidationError
 from core.shared.degradation import DegradationCollector
+from core.shared.field_labels import display_field_label
 from core.shared.strict_parse import (
     is_blank_input,
     parse_optional_date,
@@ -58,19 +59,48 @@ def _format_fallback_value(value: Any) -> str:
     return str(value)
 
 
-def _compat_message(code: str, *, field: str, fallback: Any) -> str:
+def _unit_for_field(field: str) -> str:
+    if field in {"default_days", "ext_days", "ext_group_total_days"}:
+        return " 天"
+    if field in {"setup_hours", "unit_hours"}:
+        return " 小时"
+    if field in {"ortools_time_limit_seconds", "time_budget_seconds"}:
+        return " 秒"
+    return ""
+
+
+def _format_fallback_with_unit(field: str, fallback: Any) -> str:
+    return f"{_format_fallback_value(fallback)}{_unit_for_field(field)}"
+
+
+def _compat_message(code: str, *, field: str, field_label: str, fallback: Any) -> str:
     fallback_text = _format_fallback_value(fallback)
+    label = str(field_label or "").strip() or display_field_label(field, fallback="这项内容")
+    if field in {"setup_hours", "unit_hours"}:
+        return f"{label}没有填或填得不对，本次先按 {_format_fallback_with_unit(field, fallback)} 继续排，请到批次工序或零件工序工时里补正。"
+    if field in {"ext_days", "default_days", "ext_group_total_days"}:
+        return f"{label}没有填或填得不对，本次先按 {_format_fallback_with_unit(field, fallback)} 继续排，请到批次工序或供应商/工艺资料里补正。"
+    if field in {
+        "priority_weight",
+        "due_weight",
+        "ready_weight",
+        "holiday_default_efficiency",
+        "freeze_window_days",
+        "ortools_time_limit_seconds",
+        "time_budget_seconds",
+    }:
+        return f"{label}填得不对，本次先按默认值 {_format_fallback_with_unit(field, fallback)} 继续，请到高级设置里重新保存。"
     prefixes = {
-        "blank_required": f"字段“{field}”为空",
-        "invalid_number": f"字段“{field}”历史数值无效",
-        "invalid_due_date": f"字段“{field}”历史日期无效",
-        "legacy_external_days_defaulted": f"字段“{field}”历史外协周期无效",
-        "freeze_seed_unavailable": f"字段“{field}”历史冻结窗口配置无效",
-        "bad_time_row_skipped": f"字段“{field}”历史时间值无效",
+        "blank_required": f"{label}为空",
+        "invalid_number": f"{label}数值无效",
+        "invalid_due_date": f"{label}日期无效",
+        "legacy_external_days_defaulted": f"{label}无效",
+        "freeze_seed_unavailable": f"{label}配置无效",
+        "bad_time_row_skipped": f"{label}时间值无效",
     }
-    prefix = prefixes.get(code, f"字段“{field}”历史值无效")
+    prefix = prefixes.get(code, f"{label}历史值无效")
     if code == "legacy_external_days_defaulted":
-        return f"{prefix}，本次先按 {fallback_text} 天计算，请补上真实周期。"
+        return f"{prefix}，本次先按 {_format_fallback_with_unit(field, fallback)} 计算，请补上真实周期。"
     if fallback is None:
         return f"{prefix}，本次先留空，请检查后保存。"
     return f"{prefix}，本次先按 {fallback_text} 处理，请检查后保存。"
@@ -83,13 +113,15 @@ def _emit_event(
     scope: str,
     raw_value: Any,
     fallback: Any,
+    field_label: Optional[str] = None,
 ) -> None:
     code = _reason_code_for_failure(policy, raw_value=raw_value)
+    label = display_field_label(policy.field, fallback="这项内容") if field_label is None else str(field_label or "这项内容")
     collector.add(
         code=code,
         scope=scope,
         field=policy.field,
-        message=f"兼容读取：{_compat_message(code, field=policy.field, fallback=fallback)}",
+        message=_compat_message(code, field=policy.field, field_label=label, fallback=fallback),
         sample=repr(raw_value),
     )
 
@@ -127,16 +159,18 @@ def parse_compat_float(
     fallback: Any = _FALLBACK_UNSET,
     min_value: Optional[float] = None,
     min_inclusive: bool = True,
+    field_label: Optional[str] = None,
 ) -> Optional[float]:
     policy = _resolve_compat_policy(field, expected_kind=VALUE_FLOAT)
     parser = parse_optional_float if policy.write_mode == WRITE_OPTIONAL else parse_required_float
+    label = display_field_label(field, fallback="这项内容") if field_label is None else str(field_label or "这项内容")
     try:
-        return parser(value, field=field, min_value=min_value, min_inclusive=min_inclusive)
+        return parser(value, field=label, min_value=min_value, min_inclusive=min_inclusive)
     except ValidationError:
         compat_value = _float_fallback(
-            _resolve_fallback(policy, fallback), field=field, min_value=min_value, min_inclusive=min_inclusive
+            _resolve_fallback(policy, fallback), field=label, min_value=min_value, min_inclusive=min_inclusive
         )
-        _emit_event(collector, policy=policy, scope=scope, raw_value=value, fallback=compat_value)
+        _emit_event(collector, policy=policy, scope=scope, raw_value=value, fallback=compat_value, field_label=label)
         return compat_value
 
 
@@ -148,14 +182,16 @@ def parse_compat_int(
     collector: DegradationCollector,
     fallback: Any = _FALLBACK_UNSET,
     min_value: Optional[int] = None,
+    field_label: Optional[str] = None,
 ) -> Optional[int]:
     policy = _resolve_compat_policy(field, expected_kind=VALUE_INT)
     parser = parse_optional_int if policy.write_mode == WRITE_OPTIONAL else parse_required_int
+    label = display_field_label(field, fallback="这项内容") if field_label is None else str(field_label or "这项内容")
     try:
-        return parser(value, field=field, min_value=min_value)
+        return parser(value, field=label, min_value=min_value)
     except ValidationError:
-        compat_value = _int_fallback(_resolve_fallback(policy, fallback), field=field, min_value=min_value)
-        _emit_event(collector, policy=policy, scope=scope, raw_value=value, fallback=compat_value)
+        compat_value = _int_fallback(_resolve_fallback(policy, fallback), field=label, min_value=min_value)
+        _emit_event(collector, policy=policy, scope=scope, raw_value=value, fallback=compat_value, field_label=label)
         return compat_value
 
 
@@ -166,12 +202,14 @@ def parse_compat_date(
     scope: str,
     collector: DegradationCollector,
     fallback: Any = _FALLBACK_UNSET,
+    field_label: Optional[str] = None,
 ) -> Optional[date]:
     policy = _resolve_compat_policy(field, expected_kind=VALUE_DATE)
     parser = parse_optional_date if policy.write_mode == WRITE_OPTIONAL else parse_required_date
+    label = display_field_label(field, fallback="这项内容") if field_label is None else str(field_label or "这项内容")
     try:
-        return parser(value, field=field)
+        return parser(value, field=label)
     except ValidationError:
-        compat_value = _date_fallback(_resolve_fallback(policy, fallback), field=field)
-        _emit_event(collector, policy=policy, scope=scope, raw_value=value, fallback=compat_value)
+        compat_value = _date_fallback(_resolve_fallback(policy, fallback), field=label)
+        _emit_event(collector, policy=policy, scope=scope, raw_value=value, fallback=compat_value, field_label=label)
         return compat_value

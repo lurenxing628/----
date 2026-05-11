@@ -339,7 +339,7 @@ def main() -> None:
     assert "冻结窗口存在跳批风险" in new_html, "未展示 warnings_preview"
     assert "停机区间加载失败，本次先按常规能力继续" in new_html, "未展示第二条 warnings_preview"
     assert "存在 1 个批次未命中首选技能" in new_html, "未展示第三条 warnings_preview"
-    assert "另有 1 条提醒，请到系统管理里的排产历史查看。" in new_html, "未展示 warning_hidden_count"
+    assert "另有 1 条提醒，请到系统管理里的排产历史查看这次排产的详细提醒。" in new_html, "未展示 warning_hidden_count"
     assert "另有提醒需要在排产历史查看" not in new_html, "第 4 条 warning 不应出现在 preview 中"
     assert "停机时间资料不完整" in new_html, "未展示停机提示"
     assert "停机区间加载失败" in new_html, "未展示停机降级原因"

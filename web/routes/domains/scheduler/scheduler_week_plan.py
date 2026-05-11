@@ -69,7 +69,13 @@ def _build_week_plan_preview_state(data):
         degradation_message = f"已过滤 {bad_time_skipped} 条开始或结束时间写法不对的排程记录。"
     empty_message = "暂无数据（该周/该版本没有排程记录）。"
     if not rows and str(data.get("empty_reason") or "") == "all_rows_filtered_by_invalid_time":
-        empty_message = "当前区间的排程开始或结束时间写法不对，已全部过滤，请检查排产结果。"
+        if bad_time_skipped > 0:
+            empty_message = (
+                f"已过滤 {bad_time_skipped} 条开始或结束时间写法不对的排程记录。"
+                "当前区间没有可显示排程，请到系统管理里的排产历史查看这次排产的详细提醒。"
+            )
+        else:
+            empty_message = "当前区间的排程开始或结束时间写法不对，已全部过滤，请到系统管理里的排产历史查看这次排产的详细提醒。"
     return {
         "rows": rows,
         "preview_rows": rows[:50],

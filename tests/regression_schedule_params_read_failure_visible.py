@@ -71,7 +71,7 @@ def main() -> None:
         config=_ExplodingConfig(),
         strict_mode=False,
         expected_field="sort_strategy",
-        expected_text="sort_strategy",
+        expected_text="排产策略",
     )
     _assert_visible_read_failure(
         resolve_schedule_params,
@@ -79,7 +79,7 @@ def main() -> None:
         config=_ExplodingConfig(),
         strict_mode=True,
         expected_field="sort_strategy",
-        expected_text="sort_strategy",
+        expected_text="排产策略",
     )
     _assert_visible_read_failure(
         resolve_schedule_params,
@@ -87,7 +87,7 @@ def main() -> None:
         config=_ExplodingWeightedConfig(),
         strict_mode=False,
         expected_field="priority_weight",
-        expected_text="priority_weight",
+        expected_text="优先级权重",
     )
     _assert_visible_read_failure(
         resolve_schedule_params,
@@ -95,7 +95,7 @@ def main() -> None:
         config=_ExplodingWeightedConfig(),
         strict_mode=True,
         expected_field="priority_weight",
-        expected_text="priority_weight",
+        expected_text="优先级权重",
     )
 
     print("OK")

@@ -433,7 +433,7 @@ def test_batches_page_degrades_unknown_latest_history_display_value(
     body = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert "最近一次排产历史摘要不完整，请到系统管理里的排产历史查看。" in body
+    assert "最近一次排产历史摘要不完整，请到系统管理里的排产历史查看这次排产的提醒摘要。" in body
     assert 'aps-latest-schedule-value">v9' in body
     assert "B-PENDING" in body
     assert "jsRunScheduleForm" in body
@@ -508,7 +508,7 @@ def test_batches_page_degrades_incomplete_latest_history_display_value(
     body = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert "最近一次排产历史摘要不完整，请到系统管理里的排产历史查看。" in body
+    assert "最近一次排产历史摘要不完整，请到系统管理里的排产历史查看这次排产的提醒摘要。" in body
     assert 'aps-latest-schedule-value">v10' in body
     assert "B-PENDING" in body
     assert "jsRunScheduleForm" in body
@@ -543,7 +543,7 @@ def test_batches_page_degrades_latest_history_missing_algo(
     body = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert "最近一次排产历史摘要不完整，请到系统管理里的排产历史查看。" in body
+    assert "最近一次排产历史摘要不完整，请到系统管理里的排产历史查看这次排产的提醒摘要。" in body
     assert 'aps-latest-schedule-value">v11' in body
     assert "B-PENDING" in body
     assert "jsRunScheduleForm" in body
@@ -587,7 +587,7 @@ def test_batches_page_degrades_latest_history_missing_or_invalid_metrics(
     body = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert "最近一次排产历史摘要不完整，请到系统管理里的排产历史查看。" in body
+    assert "最近一次排产历史摘要不完整，请到系统管理里的排产历史查看这次排产的提醒摘要。" in body
     assert 'aps-latest-schedule-value">v12' in body
     assert "B-PENDING" in body
     assert "jsRunScheduleForm" in body

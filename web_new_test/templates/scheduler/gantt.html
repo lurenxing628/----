@@ -127,7 +127,7 @@
       若看不到条形，请先在【排产调度】执行排产生成排程数据。
     </p>
     <div id="ganttOverdueWarning" class="flash-card flash-warning mt-3 is-hidden" role="alert" aria-live="polite">
-      有些超期红框可能暂时没标出来，排程数据本身还在。请刷新后重试，或到系统管理里的排产历史查看原因。
+      有些超期红框可能暂时没标出来，排程数据本身还在。请刷新后重试，或到系统管理里的排产历史查看这次排产的详细提醒。
     </div>
     <div id="ganttDegradationWarning" class="flash-card flash-warning mt-3 is-hidden" role="alert" aria-live="polite">
       工作日历加载失败，当前不显示假期/停工背景标注。
@@ -234,6 +234,7 @@
     <script src="{{ url_for('static', filename='js/gantt_color.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/gantt_outline.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/gantt_contract.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/gantt_popup_fit.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/gantt_render.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/gantt_ui.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/gantt_boot.js') }}" defer></script>

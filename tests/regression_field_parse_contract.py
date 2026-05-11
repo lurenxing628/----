@@ -4,7 +4,7 @@ from typing import cast
 
 import pytest
 
-import core.services.common.field_parse as field_parse_mod
+import core.shared.field_parse as field_parse_mod
 from core.infrastructure.errors import ValidationError
 from core.services.common.degradation import DegradationCollector
 
@@ -26,6 +26,9 @@ def test_parse_field_float_non_strict_invalid_number_compat_fallback_visible() -
     events = collector.to_list()
     assert len(events) == 1, events
     assert events[0].code == "invalid_number", events
+    assert "优先级权重" in events[0].message
+    assert "priority_weight" not in events[0].message
+    assert "兼容读取" not in events[0].message
     assert collector.to_counters() == {"invalid_number": 1}, collector.to_counters()
 
 
@@ -59,6 +62,8 @@ def test_parse_field_float_min_violation_uses_precise_reason_and_single_parse(mo
     events = collector.to_list()
     assert len(events) == 1, events
     assert events[0].code == "number_below_minimum", events
+    assert "优先级权重" in events[0].message
+    assert "priority_weight" not in events[0].message
     assert collector.to_counters() == {"number_below_minimum": 1}, collector.to_counters()
 
 
@@ -77,6 +82,8 @@ def test_parse_field_int_strict_mode_still_fast_fail() -> None:
         )
 
     assert exc_info.value.field == "freeze_window_days"
+    assert "锁定天数" in exc_info.value.message
+    assert "freeze_window_days" not in exc_info.value.message
 
 
 def test_parse_field_requires_collector() -> None:

@@ -47,7 +47,15 @@ def main() -> None:
         "blank_required",
         "invalid_due_date",
     ], f"退化原因码异常：{codes!r}"
-    assert all("兼容读取" in event.message for event in events), f"退化文案异常：{events!r}"
+    messages = [event.message for event in events]
+    assert "供应商默认周期" in messages[0], f"供应商默认周期退化文案异常：{messages[0]!r}"
+    assert "外协周期" in messages[1], f"外协周期退化文案异常：{messages[1]!r}"
+    assert "优先级权重" in messages[2], f"优先级权重退化文案异常：{messages[2]!r}"
+    assert "交期" in messages[3], f"交期退化文案异常：{messages[3]!r}"
+    forbidden_text = " ".join(messages)
+    for internal_key in ("default_days", "ext_days", "priority_weight", "due_date"):
+        assert internal_key not in forbidden_text, f"退化文案不应暴露内部字段 {internal_key!r}：{messages!r}"
+    assert "兼容读取" not in forbidden_text, f"退化文案不应使用开发口径：{messages!r}"
     assert all(event.sample is not None for event in events), "兼容读取事件应保留样本值"
 
     counters = collector.to_counters()

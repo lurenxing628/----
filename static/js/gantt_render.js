@@ -669,44 +669,9 @@
   }
 
   function installPopupAutoFit(gantt) {
-    const container = gantt && gantt.$container;
-    if (!container || container.__apsPopupAutoFitInstalled) return;
-    container.__apsPopupAutoFitInstalled = true;
-
-    const fit = function () {
-      const popup = container.querySelector(".popup-wrapper");
-      if (!popup) return;
-      const opacity = Number(window.getComputedStyle(popup).opacity || "0");
-      if (!opacity) return;
-
-      const gap = 12;
-      const visibleLeft = container.scrollLeft + gap;
-      const visibleRight = container.scrollLeft + container.clientWidth - gap;
-      const popupWidth = popup.offsetWidth || popup.getBoundingClientRect().width || 0;
-      if (!popupWidth || !isFinite(popupWidth)) return;
-
-      let left = parseFloat(popup.style.left || "0");
-      if (!isFinite(left)) left = 0;
-      if (left + popupWidth > visibleRight) {
-        left = Math.max(visibleLeft, visibleRight - popupWidth);
-      }
-      if (left < visibleLeft) {
-        left = visibleLeft;
-      }
-      popup.style.left = `${Math.round(left)}px`;
-    };
-
-    const scheduleFit = function () {
-      if (typeof window.requestAnimationFrame === "function") {
-        window.requestAnimationFrame(fit);
-      } else {
-        window.setTimeout(fit, 0);
-      }
-    };
-
-    container.addEventListener("click", scheduleFit);
-    container.addEventListener("focusin", scheduleFit);
-    container.addEventListener("scroll", fit);
+    if (window.__APS_GANTT_POPUP_FIT__ && typeof window.__APS_GANTT_POPUP_FIT__.install === "function") {
+      window.__APS_GANTT_POPUP_FIT__.install(gantt);
+    }
   }
 
   function decorateDynamic(opts) {
@@ -842,7 +807,14 @@
     const reason = norm(state.emptyReason);
     const allTasks = Array.isArray(state.allTasks) ? state.allTasks : [];
     if (reason === "all_rows_filtered_by_invalid_time") {
-      return "当前区间的排程开始或结束时间写法不对，已全部过滤，请检查排产结果。";
+      const counters = state.degradationCounters && typeof state.degradationCounters === "object"
+        ? state.degradationCounters
+        : {};
+      const badTimeSkipped = Number(counters.bad_time_row_skipped || 0);
+      if (badTimeSkipped > 0) {
+        return "已过滤 " + badTimeSkipped + " 条开始或结束时间写法不对的排程记录。当前区间没有可显示排程，请到系统管理里的排产历史查看这次排产的详细提醒。";
+      }
+      return "当前区间的排程开始或结束时间写法不对，已全部过滤，请到系统管理里的排产历史查看这次排产的详细提醒。";
     }
     if (allTasks.length > 0) {
       return "当前筛选条件下暂无可显示任务。";

@@ -59,6 +59,11 @@ def test_config_validator_preset_degradation_and_min_clamp() -> None:
 
     counters = snap.degradation_counters or {}
     assert int(counters.get("number_below_minimum") or 0) == 5
+    event_messages = " ".join(str(event.get("message") or "") for event in (snap.degradation_events or ()))
+    assert "优先级权重" in event_messages
+    assert "锁定天数" in event_messages
+    assert "priority_weight" not in event_messages
+    assert "freeze_window_days" not in event_messages
 
 
 def test_config_validator_preset_strict_blank_rejected_but_missing_allowed() -> None:
@@ -131,6 +136,9 @@ def test_config_validator_preset_relaxed_invalid_numeric_falls_back_with_degrada
     assert snap.priority_weight == 0.4
     counters = snap.degradation_counters or {}
     assert int(counters.get("invalid_number") or 0) == 1, counters
+    event_messages = " ".join(str(event.get("message") or "") for event in (snap.degradation_events or ()))
+    assert "优先级权重" in event_messages
+    assert "priority_weight" not in event_messages
 
 
 def test_config_validator_preset_strict_invalid_numeric_still_rejected() -> None:
@@ -142,6 +150,8 @@ def test_config_validator_preset_strict_invalid_numeric_still_rejected() -> None
         )
 
     assert exc_info.value.field == "priority_weight"
+    assert "优先级权重" in exc_info.value.message
+    assert "priority_weight" not in exc_info.value.message
 
 
 def test_config_validator_preset_relaxed_invalid_choice_and_yesno_are_observable() -> None:

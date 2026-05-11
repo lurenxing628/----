@@ -8,6 +8,7 @@ from typing import Any, Optional
 from flask import current_app, jsonify, render_template, request
 
 from core.infrastructure.errors import AppError, ErrorCode, app_error_http_status, error_response
+from core.shared.field_labels import user_field_label
 
 _INTERNAL_ASCII_RE = re.compile(r"[A-Za-z]")
 _INTERNAL_KEY_RE = re.compile(r"\b[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]*\b")
@@ -96,6 +97,9 @@ def get_user_visible_field_label(field: Any) -> str:
     key = str(field or "").strip()
     if not key:
         return ""
+    shared_label = user_field_label(key)
+    if shared_label and shared_label != key:
+        return shared_label
     try:
         from core.services.scheduler.config import ConfigService
 

@@ -288,7 +288,11 @@
     }
 
     if (allFiltered) {
-      messages.push("当前区间的排程开始或结束时间写法不对，已全部过滤，请检查排产结果。");
+      if (badTimeSkipped > 0) {
+        messages.push("已过滤 " + badTimeSkipped + " 条开始或结束时间写法不对的排程记录。当前区间没有可显示排程，请到系统管理里的排产历史查看这次排产的详细提醒。");
+      } else {
+        messages.push("当前区间的排程开始或结束时间写法不对，已全部过滤，请到系统管理里的排产历史查看这次排产的详细提醒。");
+      }
     } else if (badTimeSkipped > 0) {
       messages.push("已过滤 " + badTimeSkipped + " 条开始或结束时间写法不对的排程记录。");
     }
@@ -313,7 +317,7 @@
     if (message) return message;
     return partial
       ? "部分超期标记可能不完整，当前仍按已识别条目标记。"
-      : "超期标记可能不完整，请刷新后重试，或到系统管理里的排产历史查看原因。";
+      : "超期标记可能不完整，请刷新后重试，或到系统管理里的排产历史查看这次排产的详细提醒。";
   }
 
   function getCriticalTooltip(task, critical) {

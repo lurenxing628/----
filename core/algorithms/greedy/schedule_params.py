@@ -140,9 +140,9 @@ def _validate_runtime_weight_triplet(config: Any) -> Tuple[float, float, float]:
         values["due_weight"],
         values["ready_weight"],
         require_sum_1=True,
-        priority_field="priority_weight",
-        due_field="due_weight",
-        ready_field="ready_weight",
+        priority_field="优先级权重",
+        due_field="交期权重",
+        ready_field="齐套权重",
     )
 
 
@@ -164,6 +164,7 @@ def _weighted_override_value(
         fallback=fallback,
         collector=collector,
         min_value=0.0,
+        field_label=_field_label(key),
     )
     for event in collector.to_list():
         code = str(event.code or "").strip()

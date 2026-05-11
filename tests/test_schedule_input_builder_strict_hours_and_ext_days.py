@@ -49,6 +49,34 @@ def test_schedule_input_builder_strict_blank_setup_hours_rejected() -> None:
         build_algo_operations(svc, [internal], strict_mode=True)
 
     assert exc_info.value.field == "setup_hours", f"内部工序空白 setup_hours 未被 strict_mode 拒绝：{exc_info.value.field!r}"
+    assert "换型时间" in exc_info.value.message
+    assert "setup_hours" not in exc_info.value.message
+
+
+def test_schedule_input_builder_strict_nan_unit_hours_rejected_with_user_label() -> None:
+    svc = _StubSvc()
+    internal = SimpleNamespace(
+        id=4,
+        op_code="OP_INT_02",
+        batch_id="B001",
+        seq=15,
+        op_type_id="OT01",
+        op_type_name="车削",
+        source="internal",
+        machine_id="M001",
+        operator_id="O001",
+        supplier_id=None,
+        setup_hours=0.0,
+        unit_hours="NaN",
+        ext_days=None,
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        build_algo_operations(svc, [internal], strict_mode=True)
+
+    assert exc_info.value.field == "unit_hours", f"内部工序 NaN unit_hours 未被 strict_mode 拒绝：{exc_info.value.field!r}"
+    assert "单件工时" in exc_info.value.message
+    assert "unit_hours" not in exc_info.value.message
 
 
 def test_schedule_input_builder_strict_blank_ext_days_rejected() -> None:
@@ -73,6 +101,8 @@ def test_schedule_input_builder_strict_blank_ext_days_rejected() -> None:
         build_algo_operations(svc, [external], strict_mode=True)
 
     assert exc_info.value.field == "ext_days", f"外协工序空白 ext_days 未被 strict_mode 拒绝：{exc_info.value.field!r}"
+    assert "外协周期" in exc_info.value.message
+    assert "ext_days" not in exc_info.value.message
 
 
 def test_schedule_input_builder_does_not_fallback_to_legacy_private_lookup() -> None:

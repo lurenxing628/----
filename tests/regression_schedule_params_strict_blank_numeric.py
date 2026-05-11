@@ -30,6 +30,8 @@ def test_schedule_params_strict_blank_weight_rejected() -> None:
         )
 
     assert exc_info.value.field == "priority_weight", f"strict_mode 权重空白未定位到 priority_weight：{exc_info.value.field!r}"
+    assert "优先级权重" in exc_info.value.message
+    assert "priority_weight" not in exc_info.value.message
 
 
 def test_schedule_params_partial_weighted_strategy_params_rejected() -> None:

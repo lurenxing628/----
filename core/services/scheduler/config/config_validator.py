@@ -4,6 +4,7 @@ from typing import Any, Dict
 
 from core.infrastructure.errors import ValidationError
 from core.shared.degradation import DegradationCollector, degradation_events_to_dicts
+from core.shared.field_labels import display_field_label
 
 from .config_field_spec import MISSING_POLICY_INHERIT_LEGACY_OMISSION, coerce_config_field
 from .config_snapshot import ScheduleConfigSnapshot
@@ -17,11 +18,12 @@ def _emit_number_below_minimum(
     raw_value: Any,
     fallback: Any,
 ) -> None:
+    label = display_field_label(key, fallback="配置项")
     collector.add(
         code="number_below_minimum",
         scope="config_validator.preset",
         field=key,
-        message=f"“{key}”数字太小，本次先按默认值 {fallback} 处理。",
+        message=f"“{label}”数字太小，本次先按默认值 {fallback} 处理。",
         sample=str(raw_value or ""),
     )
 
@@ -126,11 +128,11 @@ def normalize_preset_snapshot(
     derived_pw, derived_dw, derived_rw = derive_ready_weight_from_priority_due(
         pw,
         dw,
-        priority_field="priority_weight",
-        due_field="due_weight",
+        priority_field="优先级权重",
+        due_field="交期权重",
     )
     if strict_mode:
-        explicit_ready_weight = normalize_single_weight(rw, field="ready_weight")
+        explicit_ready_weight = normalize_single_weight(rw, field="齐套权重")
         if abs(float(explicit_ready_weight) - float(derived_rw)) > 1e-6:
             raise ValidationError("齐套权重应与优先级权重、交期权重的派生值一致。", field="权重")
     pw = derived_pw

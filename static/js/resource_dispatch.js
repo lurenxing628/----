@@ -274,44 +274,9 @@
   }
 
   function installResourceGanttPopupAutoFit(gantt) {
-    const container = gantt && gantt.$container;
-    if (!container || container.__apsPopupAutoFitInstalled) return;
-    container.__apsPopupAutoFitInstalled = true;
-
-    const fit = function () {
-      const popup = container.querySelector(".popup-wrapper");
-      if (!popup) return;
-      const opacity = Number(window.getComputedStyle(popup).opacity || "0");
-      if (!opacity) return;
-
-      const gap = 12;
-      const visibleLeft = container.scrollLeft + gap;
-      const visibleRight = container.scrollLeft + container.clientWidth - gap;
-      const popupWidth = popup.offsetWidth || popup.getBoundingClientRect().width || 0;
-      if (!popupWidth || !isFinite(popupWidth)) return;
-
-      let left = parseFloat(popup.style.left || "0");
-      if (!isFinite(left)) left = 0;
-      if (left + popupWidth > visibleRight) {
-        left = Math.max(visibleLeft, visibleRight - popupWidth);
-      }
-      if (left < visibleLeft) {
-        left = visibleLeft;
-      }
-      popup.style.left = `${Math.round(left)}px`;
-    };
-
-    const scheduleFit = function () {
-      if (typeof window.requestAnimationFrame === "function") {
-        window.requestAnimationFrame(fit);
-      } else {
-        window.setTimeout(fit, 0);
-      }
-    };
-
-    container.addEventListener("click", scheduleFit);
-    container.addEventListener("focusin", scheduleFit);
-    container.addEventListener("scroll", fit);
+    if (window.__APS_GANTT_POPUP_FIT__ && typeof window.__APS_GANTT_POPUP_FIT__.install === "function") {
+      window.__APS_GANTT_POPUP_FIT__.install(gantt);
+    }
   }
 
   function renderGantt(tasks) {
@@ -483,7 +448,7 @@
       const hasOverdueWarning = state.data.overdue_markers_degraded === true || state.data.overdue_markers_partial === true;
       const overdueWarningFallback = state.data.overdue_markers_partial
         ? "部分超期标记可能不完整，当前仍按已识别条目标记。"
-        : "超期统计和标记可能不完整，请刷新后重试，或到系统管理里的排产历史查看原因。";
+        : "超期统计和标记可能不完整，请刷新后重试，或到系统管理里的排产历史查看这次排产的详细提醒。";
       setOverdueWarning(
         hasOverdueWarning ? (state.data.overdue_markers_message || overdueWarningFallback) : ""
       );

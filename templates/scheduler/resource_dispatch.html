@@ -188,7 +188,7 @@
   </div>
 
   <div id="rdOverdueWarning" class="flash-card flash-warning is-hidden" role="alert" aria-live="polite">
-    超期统计和标记可能不完整，请刷新后重试，或到系统管理里的排产历史查看原因。
+    超期统计和标记可能不完整，请刷新后重试，或到系统管理里的排产历史查看这次排产的详细提醒。
   </div>
 
   <div id="rdDegradationSummary" class="flash-card flash-warning is-hidden" role="alert" aria-live="polite">
@@ -339,6 +339,7 @@
 {% block extra_scripts %}
   {% if has_history %}
     <script src="{{ url_for('static', filename='js/frappe-gantt.min.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/gantt_popup_fit.js') }}" defer></script>
   {% endif %}
   <script src="{{ url_for('static', filename='js/resource_dispatch.js') }}" defer></script>
 {% endblock %}

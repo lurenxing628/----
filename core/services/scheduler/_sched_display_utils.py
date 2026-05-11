@@ -66,13 +66,18 @@ def bad_time_row_sample(row: Dict[str, Any]) -> Optional[str]:
         parts.append(f"排程记录编号={row.get('schedule_id')}")
     if row.get("op_id") is not None:
         parts.append(f"工序编号={row.get('op_id')}")
+    op_code = str(row.get("op_code") or "").strip()
+    if op_code:
+        parts.append(f"工序编码={op_code}")
     batch_id = str(row.get("batch_id") or "").strip()
     if batch_id:
         parts.append(f"批次号={batch_id}")
-    if row.get("start_time") is not None:
-        parts.append(f"start_time={row.get('start_time')}")
-    if row.get("end_time") is not None:
-        parts.append(f"end_time={row.get('end_time')}")
+    bad_fields: List[str] = []
+    if row.get("start_time") is not None and parse_dt(row.get("start_time")) is None:
+        bad_fields.append("开始时间")
+    if row.get("end_time") is not None and parse_dt(row.get("end_time")) is None:
+        bad_fields.append("结束时间")
+    parts.append(f"字段={'、'.join(bad_fields) if bad_fields else '开始时间或结束时间'}")
     return " / ".join(parts) if parts else None
 
 

@@ -4,6 +4,7 @@ import json
 import sqlite3
 from pathlib import Path
 
+from core.services.scheduler._sched_display_utils import bad_time_row_sample
 from core.services.scheduler.resource_dispatch_service import ResourceDispatchService
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -12,6 +13,28 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 def _load_schema(conn: sqlite3.Connection) -> None:
     conn.executescript((REPO_ROOT / "schema.sql").read_text(encoding="utf-8"))
     conn.commit()
+
+
+def test_bad_time_row_sample_keeps_location_without_raw_bad_time() -> None:
+    sample = bad_time_row_sample(
+        {
+            "schedule_id": 17,
+            "op_id": 23,
+            "op_code": "OP-B001-10",
+            "batch_id": "B001",
+            "start_time": "2026-03-02 99:00:00",
+            "end_time": "2026-03-02 13:00:00",
+        }
+    )
+
+    assert sample is not None
+    assert "排程记录编号=17" in sample
+    assert "工序编码=OP-B001-10" in sample
+    assert "批次号=B001" in sample
+    assert "字段=开始时间" in sample
+    assert "99:00:00" not in sample
+    assert "start_time" not in sample
+    assert "end_time" not in sample
 
 
 def test_resource_dispatch_bad_time_rows_surface_degraded() -> None:
@@ -71,6 +94,8 @@ def test_resource_dispatch_bad_time_rows_surface_degraded() -> None:
         assert payload.get("detail_rows") == []
         assert payload.get("tasks") == []
         assert payload.get("calendar_rows") == []
-        assert "已全部过滤" in str(payload.get("empty_message") or "")
+        empty_message = str(payload.get("empty_message") or "")
+        assert "已过滤 1 条开始或结束时间写法不对的排班记录" in empty_message
+        assert "详细提醒" in empty_message
     finally:
         conn.close()

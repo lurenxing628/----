@@ -43,13 +43,17 @@ def _default_snapshot_kwargs():
     }
 
 
-def _expect_validation(label, func, field):
+def _expect_validation(label, func, field, message_contains=None, forbidden_message_text=None):
     from core.infrastructure.errors import ValidationError
 
     try:
         func()
     except ValidationError as exc:
         assert exc.field == field, f"{label} 字段异常：{exc.field!r}"
+        if message_contains:
+            assert message_contains in exc.message, f"{label} 提示未包含 {message_contains!r}：{exc.message!r}"
+        if forbidden_message_text:
+            assert forbidden_message_text not in exc.message, f"{label} 提示泄露内部字段：{exc.message!r}"
         return
     raise AssertionError(f"{label} 应抛出 ValidationError(field={field!r})")
 
@@ -92,6 +96,8 @@ def main() -> None:
         "strict.priority_weight",
         lambda: _build({**defaults, "priority_weight": "abc"}, strict_mode=True),
         "priority_weight",
+        message_contains="优先级权重",
+        forbidden_message_text="priority_weight",
     )
     _expect_validation(
         "strict.due_weight",
@@ -117,6 +123,8 @@ def main() -> None:
         "strict.freeze_window_days",
         lambda: _build({**defaults, "freeze_window_days": "-1"}, strict_mode=True),
         "freeze_window_days",
+        message_contains="锁定天数",
+        forbidden_message_text="freeze_window_days",
     )
     _expect_validation(
         "strict.sort_strategy.blank",

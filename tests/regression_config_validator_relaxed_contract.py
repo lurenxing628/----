@@ -49,3 +49,8 @@ def test_relaxed_preset_numeric_fields_follow_field_coercion_contract() -> None:
     counters = snap.degradation_counters or {}
     assert int(counters.get("invalid_number") or 0) >= 2, counters
     assert int(counters.get("number_below_minimum") or 0) >= 3, counters
+    event_messages = " ".join(str(event.get("message") or "") for event in (snap.degradation_events or ()))
+    assert "优先级权重" in event_messages
+    assert "锁定天数" in event_messages
+    assert "priority_weight" not in event_messages
+    assert "freeze_window_days" not in event_messages

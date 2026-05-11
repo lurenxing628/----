@@ -776,6 +776,7 @@ def test_gantt_contract_asset_is_tracked_and_loaded_before_render_in_all_templat
         "js/gantt_color.js",
         "js/gantt_outline.js",
         "js/gantt_contract.js",
+        "js/gantt_popup_fit.js",
         "js/gantt_render.js",
         "js/gantt_ui.js",
         "js/gantt_boot.js",

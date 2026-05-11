@@ -149,6 +149,8 @@ def test_schedule_params_weighted_override_invalid_values_rejected_in_strict_mod
         )
 
     assert exc_info.value.field == "priority_weight"
+    assert "优先级权重" in exc_info.value.message
+    assert "priority_weight" not in exc_info.value.message
 
 
 def test_schedule_params_strict_mode_rejects_inconsistent_runtime_weight_triplet() -> None:

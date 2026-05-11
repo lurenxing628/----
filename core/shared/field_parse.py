@@ -5,6 +5,7 @@ from typing import Any, Optional
 from core.infrastructure.errors import ValidationError
 from core.shared.compat_parse import parse_compat_float, parse_compat_int
 from core.shared.degradation import DegradationCollector
+from core.shared.field_labels import display_field_label
 from core.shared.strict_parse import parse_required_float, parse_required_int
 
 _MIN_VIOLATION_USE_DEFAULT = object()
@@ -22,10 +23,10 @@ def _format_fallback_value(value: Any) -> str:
     return str(value)
 
 
-def _minimum_violation_message(*, field: str, fallback: Any, min_value: Any, min_inclusive: bool) -> str:
+def _minimum_violation_message(*, field: str, field_label: str, fallback: Any, min_value: Any, min_inclusive: bool) -> str:
     compare_text = "大于等于" if bool(min_inclusive) else "大于"
     return (
-        f"字段“{field}”数值太小（要求{compare_text} {min_value}），"
+        f"{field_label}数值太小（要求{compare_text} {min_value}），"
         f"本次先按 {_format_fallback_value(fallback)} 处理，请检查后保存。"
     )
 
@@ -39,13 +40,16 @@ def _emit_min_violation(
     fallback: Any,
     min_value: Any,
     min_inclusive: bool,
+    field_label: Optional[str] = None,
 ) -> None:
+    label = display_field_label(field, fallback="字段") if field_label is None else str(field_label or "字段")
     collector.add(
         code="number_below_minimum",
         scope=scope,
         field=field,
         message=_minimum_violation_message(
             field=field,
+            field_label=label,
             fallback=fallback,
             min_value=min_value,
             min_inclusive=min_inclusive,
@@ -65,13 +69,18 @@ def parse_field_float(
     min_value: Optional[float] = None,
     min_inclusive: bool = True,
     min_violation_fallback: Any = _MIN_VIOLATION_USE_DEFAULT,
+    field_label: Optional[str] = None,
 ) -> float:
     active_collector = _require_collector(collector)
+    label = display_field_label(field, fallback="字段") if field_label is None else str(field_label or "字段")
     if strict_mode:
-        return float(parse_required_float(value, field=field, min_value=min_value, min_inclusive=min_inclusive))
+        try:
+            return float(parse_required_float(value, field=label, min_value=min_value, min_inclusive=min_inclusive))
+        except ValidationError as exc:
+            raise ValidationError(exc.message, field=field) from exc
 
     try:
-        parsed = float(parse_required_float(value, field=field))
+        parsed = float(parse_required_float(value, field=label))
     except ValidationError:
         compat_value = parse_compat_float(
             value,
@@ -79,6 +88,7 @@ def parse_field_float(
             scope=scope,
             collector=active_collector,
             fallback=fallback,
+            field_label=label,
         )
         return float(fallback if compat_value is None else compat_value)
 
@@ -94,6 +104,7 @@ def parse_field_float(
                 fallback=compat_fallback,
                 min_value=min_value,
                 min_inclusive=min_inclusive,
+                field_label=label,
             )
             return float(compat_fallback)
 
@@ -110,13 +121,18 @@ def parse_field_int(
     collector: DegradationCollector,
     min_value: Optional[int] = None,
     min_violation_fallback: Any = _MIN_VIOLATION_USE_DEFAULT,
+    field_label: Optional[str] = None,
 ) -> int:
     active_collector = _require_collector(collector)
+    label = display_field_label(field, fallback="字段") if field_label is None else str(field_label or "字段")
     if strict_mode:
-        return int(parse_required_int(value, field=field, min_value=min_value))
+        try:
+            return int(parse_required_int(value, field=label, min_value=min_value))
+        except ValidationError as exc:
+            raise ValidationError(exc.message, field=field) from exc
 
     try:
-        parsed = int(parse_required_int(value, field=field))
+        parsed = int(parse_required_int(value, field=label))
     except ValidationError:
         compat_value = parse_compat_int(
             value,
@@ -124,6 +140,7 @@ def parse_field_int(
             scope=scope,
             collector=active_collector,
             fallback=fallback,
+            field_label=label,
         )
         return int(fallback if compat_value is None else compat_value)
 
@@ -137,6 +154,7 @@ def parse_field_int(
             fallback=compat_fallback,
             min_value=min_value,
             min_inclusive=True,
+            field_label=label,
         )
         return int(compat_fallback)
 

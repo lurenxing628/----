@@ -75,7 +75,10 @@ def test_gantt_bad_time_rows_surface_degraded() -> None:
     assert "bad_time_row_skipped" in gantt_contract_js, "gantt_contract.js 未消费 bad_time_row_skipped"
     assert "all_rows_filtered_by_invalid_time" in gantt_contract_js, "gantt_contract.js 未消费统一空原因码"
     assert "已过滤 " in gantt_contract_js, "gantt_contract.js 未提供部分过滤提示"
-    assert "当前区间的排程开始或结束时间写法不对，已全部过滤，请检查排产结果。" in gantt_render_js, (
+    assert "已过滤 \" + badTimeSkipped + \" 条开始或结束时间写法不对的排程记录。当前区间没有可显示排程" in gantt_render_js, (
+        "gantt_render.js 未在坏时间全量过滤空态展示过滤条数"
+    )
+    assert "当前区间的排程开始或结束时间写法不对，已全部过滤，请到系统管理里的排产历史查看这次排产的详细提醒。" in gantt_render_js, (
         "gantt_render.js 未区分坏时间全量过滤空态"
     )
     assert "当前筛选条件下暂无可显示任务。" in gantt_render_js, "gantt_render.js 未区分前端筛选后的空态"

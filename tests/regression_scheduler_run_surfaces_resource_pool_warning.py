@@ -66,7 +66,7 @@ def test_scheduler_run_surfaces_resource_pool_warning() -> None:
             cat == "warning" and "自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员。" in msg
             for cat, msg in flashes
         ), flashes
-        assert any(cat == "warning" and "另有 1 条提醒，请到系统管理里的排产历史查看。" in msg for cat, msg in flashes), flashes
+        assert any(cat == "warning" and "另有 1 条提醒，请到系统管理里的排产历史查看这次排产的详细提醒。" in msg for cat, msg in flashes), flashes
         assert not any(cat == "warning" and msg == "第 6 条告警" for cat, msg in flashes), flashes
     finally:
         route_mod.url_for = old_url_for
@@ -117,7 +117,7 @@ def test_scheduler_simulate_surfaces_schedule_warnings() -> None:
             cat == "warning" and "自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员。" in msg
             for cat, msg in flashes
         ), flashes
-        assert any(cat == "warning" and "另有 1 条提醒，请到系统管理里的排产历史查看。" in msg for cat, msg in flashes), flashes
+        assert any(cat == "warning" and "另有 1 条提醒，请到系统管理里的排产历史查看这次排产的详细提醒。" in msg for cat, msg in flashes), flashes
         assert not any(cat == "warning" and msg == "第 6 条告警" for cat, msg in flashes), flashes
     finally:
         route_mod.url_for = old_url_for

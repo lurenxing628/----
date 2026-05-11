@@ -12,6 +12,7 @@ from core.infrastructure.errors import ValidationError
 from core.models.enums import MergeMode, SourceType
 from core.services.common.build_outcome import BuildOutcome
 from core.shared.degradation import DegradationCollector, degradation_events_to_dicts
+from core.shared.field_labels import user_field_label
 from core.shared.field_parse import parse_field_float
 from core.shared.strict_parse import parse_required_float
 
@@ -74,14 +75,14 @@ def _merged_total_days(
         return float(
             parse_required_float(
                 raw_value,
-                field="ext_group_total_days",
+                field=user_field_label("ext_group_total_days") or "合并外协周期",
                 min_value=0.0,
                 min_inclusive=False,
             )
         )
-    except ValidationError:
+    except ValidationError as exc:
         if strict_mode:
-            raise
+            raise ValidationError(exc.message, field="ext_group_total_days") from exc
         collector.add(
             code="invalid_number",
             scope=scope,
@@ -160,6 +161,7 @@ def _build_external_merge_context(
         ext_days = parse_field_float(
             getattr(op, "ext_days", None),
             field="ext_days",
+            field_label="外协周期",
             strict_mode=bool(strict_mode),
             scope=scope,
             fallback=1.0,
@@ -230,6 +232,7 @@ def _build_algo_operations_outcome(
         setup_hours = parse_field_float(
             getattr(op, "setup_hours", None),
             field="setup_hours",
+            field_label="换型时间",
             strict_mode=bool(strict_mode),
             scope=scope,
             fallback=0.0,
@@ -239,6 +242,7 @@ def _build_algo_operations_outcome(
         unit_hours = parse_field_float(
             getattr(op, "unit_hours", None),
             field="unit_hours",
+            field_label="单件工时",
             strict_mode=bool(strict_mode),
             scope=scope,
             fallback=0.0,

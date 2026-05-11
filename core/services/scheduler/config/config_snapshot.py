@@ -9,6 +9,7 @@ from core.shared.degradation import (
     DegradationEvent,
     degradation_events_to_dicts,
 )
+from core.shared.field_labels import display_field_label
 
 from .config_field_spec import (
     MISSING_POLICY_ERROR,
@@ -90,7 +91,8 @@ def _read_runtime_cfg_raw_value(cfg: Any, key: str) -> Tuple[bool, Any]:
 
 
 def _runtime_cfg_read_error(key: str, exc: Exception) -> ValidationError:
-    return ValidationError(f"读取运行期配置字段“{key}”失败：{exc}", field=key)
+    label = display_field_label(key, fallback="配置项")
+    return ValidationError(f"读取运行期配置“{label}”失败。", field=key)
 
 
 def _read_runtime_cfg_mapping_like_value(cfg: Any, key: str, raw_missing: object) -> Tuple[bool, Any]:
@@ -237,9 +239,9 @@ def _build_schedule_config_snapshot_from_runtime_cfg(
             values["due_weight"],
             values["ready_weight"],
             require_sum_1=True,
-            priority_field="priority_weight",
-            due_field="due_weight",
-            ready_field="ready_weight",
+            priority_field="优先级权重",
+            due_field="交期权重",
+            ready_field="齐套权重",
         )
 
     return ScheduleConfigSnapshot(
@@ -379,9 +381,9 @@ def build_schedule_config_snapshot(
             values["due_weight"],
             values["ready_weight"],
             require_sum_1=True,
-            priority_field="priority_weight",
-            due_field="due_weight",
-            ready_field="ready_weight",
+            priority_field="优先级权重",
+            due_field="交期权重",
+            ready_field="齐套权重",
         )
 
     return ScheduleConfigSnapshot(

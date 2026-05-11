@@ -20,6 +20,12 @@ _FIELD_LABELS = {
     "objective": "优化目标",
     "algo_mode": "计算模式",
     "seed_results": "已有排产记录",
+    "priority_weight": "优先级权重",
+    "due_weight": "交期权重",
+    "ready_weight": "齐套权重",
+    "time_budget_seconds": "计算时间上限",
+    "ortools_time_limit_seconds": "深度优化尝试时间",
+    "freeze_window_days": "锁定天数",
 }
 
 
@@ -64,11 +70,19 @@ def require_choice(value: Any, *, field: str, valid_values: Tuple[str, ...]) -> 
 
 
 def require_float(value: Any, *, field: str, min_value: float) -> float:
-    return float(parse_required_float(value, field=field, min_value=min_value))
+    label = field_label(field)
+    try:
+        return float(parse_required_float(value, field=label, min_value=min_value))
+    except ValidationError as exc:
+        raise ValidationError(exc.message, field=field) from exc
 
 
 def require_int(value: Any, *, field: str, min_value: int) -> int:
-    return int(parse_required_int(value, field=field, min_value=min_value))
+    label = field_label(field)
+    try:
+        return int(parse_required_int(value, field=label, min_value=min_value))
+    except ValidationError as exc:
+        raise ValidationError(exc.message, field=field) from exc
 
 
 def normalized_choice_values(values: Any) -> Tuple[str, ...]:

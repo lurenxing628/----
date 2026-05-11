@@ -455,7 +455,15 @@ def build_empty_dispatch_message(
 ) -> str:
     empty_reason = _text((summary or {}).get("empty_reason"))
     if empty_reason == _BAD_TIME_EMPTY_REASON:
-        return f"在 {dr.start_date.isoformat()} 至 {dr.end_date.isoformat()} 范围内，排班开始或结束时间写法不对，已全部过滤，请检查排产结果。"
+        counters = (summary or {}).get("degradation_counters") or {}
+        bad_time_skipped = int(counters.get("bad_time_row_skipped") or 0)
+        if bad_time_skipped > 0:
+            return (
+                f"在 {dr.start_date.isoformat()} 至 {dr.end_date.isoformat()} 范围内，"
+                f"已过滤 {bad_time_skipped} 条开始或结束时间写法不对的排班记录。"
+                "当前没有可显示排班，请到系统管理里的排产历史查看这次排产的详细提醒。"
+            )
+        return f"在 {dr.start_date.isoformat()} 至 {dr.end_date.isoformat()} 范围内，排班开始或结束时间写法不对，已全部过滤，请到系统管理里的排产历史查看这次排产的详细提醒。"
     if normalized_scope_type == "team":
         if not operator_rows and not machine_rows:
             return f"在 {dr.start_date.isoformat()} 至 {dr.end_date.isoformat()} 范围内未查询到该班组的排班任务。"

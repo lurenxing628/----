@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional, Tuple
 from core.infrastructure.errors import ValidationError
 from core.shared.boolean_normalize import normalize_yes_no_wide
 from core.shared.degradation import DegradationCollector, degradation_events_to_dicts
+from core.shared.field_labels import display_field_label
 from core.shared.field_parse import parse_field_float, parse_field_int
 
 from .schedule_config_runtime_fields import (
@@ -47,14 +48,15 @@ def _handle_missing_value(
     scope: str,
     missing_policy: str,
 ) -> Any:
+    label = display_field_label(field_name, fallback="配置项")
     policy = str(missing_policy or MISSING_POLICY_FALLBACK_WITH_DEGRADATION).strip().lower()
     if policy == MISSING_POLICY_ERROR:
-        raise ValidationError(f"缺少“{field_name}”配置", field=field_name)
+        raise ValidationError(f"缺少“{label}”配置", field=field_name)
     collector.add(
         code="missing_required",
         scope=scope,
         field=field_name,
-        message=f"缺少“{field_name}”配置，本次先按默认值 {fallback} 处理。",
+        message=f"缺少“{label}”配置，本次先按默认值 {fallback} 处理。",
         sample=None,
     )
     return fallback
@@ -68,11 +70,12 @@ def _record_blank_choice_degradation(
     raw_value: Any,
     fallback: str,
 ) -> None:
+    label = display_field_label(field_name, fallback="配置项")
     collector.add(
         code="blank_required",
         scope=scope,
         field=field_name,
-        message=f"“{field_name}”没有填写，本次先按默认值 {fallback} 处理。",
+        message=f"“{label}”没有填写，本次先按默认值 {fallback} 处理。",
         sample=None,
     )
 
@@ -86,12 +89,13 @@ def _record_invalid_choice_degradation(
     fallback: str,
     valid_values: Tuple[str, ...],
 ) -> None:
+    label = display_field_label(field_name, fallback="配置项")
     collector.add(
         code="invalid_choice",
         scope=scope,
         field=field_name,
         message=(
-            f"“{field_name}”填写不正确（当前值：{raw_value}，可选值：{_format_choice_allow_text(valid_values)}），"
+            f"“{label}”填写不正确（当前值：{raw_value}，可选值：{_format_choice_allow_text(valid_values)}），"
             f"本次先按默认值 {fallback} 处理。"
         ),
         sample=str(raw_value or ""),
@@ -126,8 +130,9 @@ def _choice_with_degradation(
         ).strip().lower()
 
     text = "" if raw_value is None else str(raw_value).strip().lower()
+    label = display_field_label(field_name, fallback="配置项")
     if strict_mode and text == "":
-        raise ValidationError(f"“{field_name}”不能为空", field=field_name)
+        raise ValidationError(f"“{label}”不能为空", field=field_name)
     if text == "":
         _record_blank_choice_degradation(
             collector,
@@ -140,7 +145,7 @@ def _choice_with_degradation(
     if normalized_valid and text not in normalized_valid:
         if strict_mode:
             raise ValidationError(
-                f"“{field_name}”填写不正确：{raw_value}（可填写：{_format_choice_allow_text(normalized_valid)}）",
+                f"“{label}”填写不正确：{raw_value}（可填写：{_format_choice_allow_text(normalized_valid)}）",
                 field=field_name,
             )
         _record_invalid_choice_degradation(
@@ -178,10 +183,11 @@ def _yes_no_with_degradation(
         return normalize_yes_no_wide(handled, default=normalized_default, unknown_policy="no")
 
     text = "" if raw_value is None else str(raw_value).strip().lower()
+    label = display_field_label(field_name, fallback="配置项")
     true_vals = {"yes", "y", "true", "1", "on"}
     false_vals = {"no", "n", "false", "0", "off"}
     if strict_mode and text == "":
-        raise ValidationError(f"“{field_name}”不能为空", field=field_name)
+        raise ValidationError(f"“{label}”不能为空", field=field_name)
     if text == "":
         _record_blank_choice_degradation(
             collector,
@@ -193,7 +199,7 @@ def _yes_no_with_degradation(
         return normalized_default
     if text not in true_vals and text not in false_vals:
         if strict_mode:
-            raise ValidationError(f"“{field_name}”填写不正确：{raw_value}（请填写：是 / 否）", field=field_name)
+            raise ValidationError(f"“{label}”填写不正确：{raw_value}（请填写：是 / 否）", field=field_name)
         _record_invalid_choice_degradation(
             collector,
             scope=scope,
@@ -220,6 +226,7 @@ def _coerce_config_field(
     spec = get_field_spec(key)
     active_collector = collector if collector is not None else DegradationCollector()
     effective_fallback = spec.default if fallback is None else fallback
+    label = display_field_label(spec.key, fallback="配置项")
 
     if spec.field_type == "enum":
         return _choice_with_degradation(
@@ -263,6 +270,7 @@ def _coerce_config_field(
                 collector=active_collector,
                 min_value=spec.min_value,
                 min_inclusive=bool(spec.min_inclusive),
+                field_label=label,
             )
         )
     if spec.field_type == "int":
@@ -279,6 +287,7 @@ def _coerce_config_field(
                 collector=active_collector,
                 min_value=(None if spec.min_value is None else int(spec.min_value)),
                 min_violation_fallback=min_violation_fallback,
+                field_label=label,
             )
         )
     raise TypeError(f"不支持的运行期配置字段类型：{spec.field_type!r}")
@@ -339,9 +348,9 @@ def ensure_schedule_config_snapshot(
             values["due_weight"],
             values["ready_weight"],
             require_sum_1=True,
-            priority_field="priority_weight",
-            due_field="due_weight",
-            ready_field="ready_weight",
+            priority_field="优先级权重",
+            due_field="交期权重",
+            ready_field="齐套权重",
         )
 
     return ScheduleConfigSnapshot(
