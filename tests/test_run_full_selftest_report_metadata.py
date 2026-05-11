@@ -78,13 +78,23 @@ def _write_verified_manifest(
         receipt_path = repo_root / receipt_rel
         receipt_path.parent.mkdir(parents=True, exist_ok=True)
         is_collect_command = command["display"] == "python -m pytest --collect-only -q tests"
+        stdout_text = collect_proc.stdout if is_collect_command else (f"{command['display']} ok\n" if command.get("capture_output") else "")
+        stderr_text = collect_proc.stderr if is_collect_command else ""
+        stem = receipt_path.stem
+        stdout_log_rel = f"evidence/QualityGate/logs/{stem}.stdout.log"
+        stderr_log_rel = f"evidence/QualityGate/logs/{stem}.stderr.log"
+        (repo_root / stdout_log_rel).parent.mkdir(parents=True, exist_ok=True)
+        (repo_root / stdout_log_rel).write_text(stdout_text, encoding="utf-8")
+        (repo_root / stderr_log_rel).write_text(stderr_text, encoding="utf-8")
         receipt_payload = shared.build_quality_gate_command_receipt(
             command,
             run_id=run_id,
             command_index=index,
             returncode=int(collect_proc.returncode) if is_collect_command else 0,
-            stdout=collect_proc.stdout if is_collect_command else (f"{command['display']} ok\n" if command.get("capture_output") else ""),
-            stderr=collect_proc.stderr if is_collect_command else "",
+            stdout=stdout_text,
+            stderr=stderr_text,
+            stdout_log_path=stdout_log_rel,
+            stderr_log_path=stderr_log_rel,
         )
         receipt_path.write_text(json.dumps(receipt_payload, ensure_ascii=False), encoding="utf-8")
         command_receipts.append(
@@ -351,6 +361,11 @@ def test_quality_gate_replay_rejects_forged_non_collect_receipt_output(tmp_path)
     receipt_rel = shared.build_quality_gate_receipt_rel_path(1, command["display"])
     receipt_path = repo_root / receipt_rel
     receipt_path.parent.mkdir(parents=True)
+    stdout_log_rel = "evidence/QualityGate/logs/01_forged.stdout.log"
+    stderr_log_rel = "evidence/QualityGate/logs/01_forged.stderr.log"
+    (repo_root / stdout_log_rel).parent.mkdir(parents=True, exist_ok=True)
+    (repo_root / stdout_log_rel).write_text("forged-output\n", encoding="utf-8")
+    (repo_root / stderr_log_rel).write_text("", encoding="utf-8")
     receipt_payload = shared.build_quality_gate_command_receipt(
         command,
         run_id="test-run",
@@ -358,6 +373,8 @@ def test_quality_gate_replay_rejects_forged_non_collect_receipt_output(tmp_path)
         returncode=0,
         stdout="forged-output\n",
         stderr="",
+        stdout_log_path=stdout_log_rel,
+        stderr_log_path=stderr_log_rel,
     )
     receipt_path.write_text(json.dumps(receipt_payload, ensure_ascii=False), encoding="utf-8")
 

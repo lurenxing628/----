@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 from typing import Any, Dict, List, Sequence, Tuple, cast
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -42,11 +43,32 @@ REPORT_MACHINE_FIELDS = (
 )
 
 
-def parse_collector_payload(stdout: str) -> Dict[str, Any]:
+def _short_text_summary(text: str, *, max_lines: int = 20, max_chars: int = 2000) -> str:
+    raw = str(text or "")
+    if not raw:
+        return "<空>"
+    lines = raw.splitlines()
+    rendered = "\n".join(lines[:max_lines])
+    if len(lines) > max_lines:
+        rendered += f"\n... 另外 {len(lines) - max_lines} 行未显示"
+    if len(rendered) > max_chars:
+        rendered = rendered[:max_chars] + "...<截断>"
+    return rendered
+
+
+def _progress(message: str) -> None:
+    print(f"[full-test-debt] {message}", file=sys.stderr, flush=True)
+
+
+def parse_collector_payload(stdout: str, stderr: str = "") -> Dict[str, Any]:
     try:
         payload = json.loads(stdout)
     except json.JSONDecodeError as exc:
-        raise QualityGateError(f"collector stdout 不是 JSON：{exc}") from exc
+        raise QualityGateError(
+            f"collector stdout 不是 JSON：{exc}；"
+            f"stdout 摘要：{_short_text_summary(stdout)}；"
+            f"stderr 摘要：{_short_text_summary(stderr)}"
+        ) from exc
     if not isinstance(payload, dict):
         raise QualityGateError("collector stdout JSON 顶层必须是对象")
     return cast(Dict[str, Any], payload)
@@ -205,6 +227,31 @@ def _format_nodeid_list(values: Sequence[Any], *, limit: int = 20) -> str:
     return "".join(lines)
 
 
+def _format_collection_error_items(values: Sequence[Any], *, limit: int = 20) -> str:
+    visible = list(values)[:limit]
+    lines = []
+    for item in visible:
+        if isinstance(item, dict):
+            nodeid = str(item.get("nodeid") or "<unknown>")
+            outcome = str(item.get("outcome") or "")
+            first_longrepr_line = next(
+                (line.strip() for line in str(item.get("longrepr") or "").splitlines() if line.strip()),
+                "",
+            )
+            parts = [nodeid]
+            if outcome:
+                parts.append(outcome)
+            if first_longrepr_line:
+                parts.append(first_longrepr_line)
+            lines.append("\n  - " + " | ".join(parts))
+        else:
+            lines.append(f"\n  - {item}")
+    hidden_count = len(values) - len(visible)
+    if hidden_count > 0:
+        lines.append(f"\n  - ... 另外 {hidden_count} 个未显示")
+    return "".join(lines)
+
+
 def _format_classification_error(key: str, values: Sequence[Any]) -> str:
     return f"{key} 非空（{len(values)} 个）：{_format_nodeid_list(values)}"
 
@@ -212,7 +259,7 @@ def _format_classification_error(key: str, values: Sequence[Any]) -> str:
 def _format_collection_errors(values: Sequence[Any], *, collection_error_count: int) -> str:
     if not values:
         return f"collection_errors 计数非 0（{collection_error_count} 个），但明细为空"
-    return f"collection_errors 非空（{collection_error_count} 个）：{_format_nodeid_list(values)}"
+    return f"collection_errors 非空（{collection_error_count} 个）：{_format_collection_error_items(values)}"
 
 
 def _validate_active_entries(
@@ -365,38 +412,69 @@ def build_full_test_debt_summary(payload: Dict[str, Any], *, ledger: Dict[str, A
 
 
 def collect_current_payload() -> Dict[str, Any]:
-    completed = subprocess.run(
+    _progress(f"开始收集 full pytest 结果：{COLLECTOR_DISPLAY}")
+    stderr_chunks: List[str] = []
+
+    def pump_stderr(stream) -> None:
+        try:
+            for chunk in iter(stream.readline, ""):
+                stderr_chunks.append(str(chunk))
+                print(str(chunk), end="", file=sys.stderr, flush=True)
+        finally:
+            stream.close()
+
+    process = subprocess.Popen(
         [sys.executable, *COLLECTOR_ARGS],
         cwd=REPO_ROOT,
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
         encoding="utf-8",
         errors="replace",
     )
-    if not isinstance(completed.stdout, str):
+    if process.stdout is None or process.stderr is None:  # pragma: no cover
+        raise QualityGateError("无法捕获 collector stdout/stderr")
+    assert process.stdout is not None
+    assert process.stderr is not None
+    stderr_thread = threading.Thread(target=pump_stderr, args=(process.stderr,), daemon=True)
+    stderr_thread.start()
+    stdout = process.stdout.read()
+    returncode = process.wait()
+    stderr_thread.join()
+    stderr = "".join(stderr_chunks)
+    _progress("collector 已结束，正在解析 current payload JSON")
+
+    if not isinstance(stdout, str):
         raise QualityGateError("collector stdout 必须是字符串")
-    payload = parse_collector_payload(completed.stdout)
+    payload = parse_collector_payload(stdout, stderr)
     payload_exitstatus = _require_int(payload.get("exitstatus"), "collector payload.exitstatus")
-    if int(completed.returncode) != int(payload_exitstatus):
+    if int(returncode) != int(payload_exitstatus):
         raise QualityGateError(
-            f"collector returncode 与 payload.exitstatus 不一致：returncode={completed.returncode} exitstatus={payload_exitstatus}"
+            f"collector returncode 与 payload.exitstatus 不一致：returncode={returncode} exitstatus={payload_exitstatus}；"
+            f"stdout 摘要：{_short_text_summary(stdout)}；"
+            f"stderr 摘要：{_short_text_summary(stderr)}"
         )
+    _progress("collector payload 已解析，开始校验测试债务台账")
     return payload
 
 
 def run_check() -> Dict[str, Any]:
+    _progress("开始加载治理台账")
     ledger = load_ledger(required=True)
+    _progress("治理台账已加载")
     payload = collect_current_payload()
-    return build_full_test_debt_summary(payload, ledger=ledger)
+    summary = build_full_test_debt_summary(payload, ledger=ledger)
+    _progress("full-test-debt proof 校验完成")
+    return summary
 
 
 def main() -> int:
     try:
         summary = run_check()
     except QualityGateError as exc:
-        print(f"ERROR: {exc}", file=sys.stderr)
+        print(f"ERROR: {exc}", file=sys.stderr, flush=True)
         return 2
-    print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
+    print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True), flush=True)
     return 0
 
 

@@ -42,6 +42,12 @@ STAGE_RECORD_PATH = os.path.join(REPO_ROOT, "开发文档", "阶段留痕与验�
 TEST_ARCH_FITNESS_PATH = os.path.join(REPO_ROOT, "tests", "test_architecture_fitness.py")
 QUALITY_GATE_MANIFEST_REL = os.path.join("evidence", "QualityGate", "quality_gate_manifest.json")
 QUALITY_GATE_RECEIPTS_DIR_REL = os.path.join("evidence", "QualityGate", "receipts")
+QUALITY_GATE_LOGS_DIR_REL = os.path.join("evidence", "QualityGate", "logs")
+QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL = os.path.join(
+    "evidence",
+    "QualityGate",
+    "current_full_test_debt.json",
+)
 QUALITY_GATE_PYRIGHT_GATE_CONFIG = "pyrightconfig.gate.json"
 QUALITY_GATE_PROOF_SCOPE = {
     "claim": "required_registry_bound_to_clean_worktree",
@@ -69,6 +75,7 @@ QUALITY_GATE_SOURCE_FILES = tuple(
         (
             ".github/workflows/quality.yml",
             ".limcode/skills/aps-full-selftest/scripts/run_full_selftest.py",
+            "pyproject.toml",
             "开发文档/技术债务治理台账.md",
             QUALITY_GATE_PYRIGHT_GATE_CONFIG,
             *QUALITY_GATE_TOOL_PATHS,
@@ -440,6 +447,8 @@ def _normalize_command_receipt_payload(payload: Dict[str, Any]) -> Dict[str, Any
         "returncode": int(payload.get("returncode") or 0),
         "stdout_sha256": str(payload.get("stdout_sha256") or "").strip(),
         "stderr_sha256": str(payload.get("stderr_sha256") or "").strip(),
+        "stdout_log_path": str(payload.get("stdout_log_path") or "").replace("\\", "/"),
+        "stderr_log_path": str(payload.get("stderr_log_path") or "").replace("\\", "/"),
     }
 
 
@@ -555,11 +564,28 @@ def replay_quality_gate_command_plan(
             except Exception:
                 return "UNBOUND: quality gate command receipt unreadable during replay"
             receipt = _normalize_command_receipt_payload(receipt_payload if isinstance(receipt_payload, dict) else {})
+            stdout_log_rel = str(receipt.get("stdout_log_path") or "").replace("\\", "/")
+            stderr_log_rel = str(receipt.get("stderr_log_path") or "").replace("\\", "/")
+            for log_rel in (stdout_log_rel, stderr_log_rel):
+                if not log_rel:
+                    return f"UNBOUND: quality gate command receipt log missing during replay: {display}"
+                log_abs = os.path.join(os.fspath(repo_root), log_rel.replace("/", os.sep))
+                if not os.path.isfile(log_abs):
+                    return f"UNBOUND: quality gate command receipt log missing during replay: {display}"
             policy = _command_output_policy(command)
             if receipt.get("stdout_sha256") != _hash_command_output(str(proc.stdout or ""), policy=policy):
                 return f"UNBOUND: quality gate command receipt stdout replay mismatch: {display}"
             if receipt.get("stderr_sha256") != _hash_command_output(str(proc.stderr or ""), policy=policy):
                 return f"UNBOUND: quality gate command receipt stderr replay mismatch: {display}"
+            try:
+                stdout_log_text = read_text_file(os.path.join(os.fspath(repo_root), stdout_log_rel.replace("/", os.sep)))
+                stderr_log_text = read_text_file(os.path.join(os.fspath(repo_root), stderr_log_rel.replace("/", os.sep)))
+            except Exception:
+                return f"UNBOUND: quality gate command receipt log unreadable during replay: {display}"
+            if receipt.get("stdout_sha256") != _hash_command_output(stdout_log_text, policy=policy):
+                return f"UNBOUND: quality gate command receipt stdout log mismatch: {display}"
+            if receipt.get("stderr_sha256") != _hash_command_output(stderr_log_text, policy=policy):
+                return f"UNBOUND: quality gate command receipt stderr log mismatch: {display}"
     return None
 
 
@@ -678,6 +704,8 @@ def build_quality_gate_command_receipt(
     returncode: int,
     stdout: str = "",
     stderr: str = "",
+    stdout_log_path: str = "",
+    stderr_log_path: str = "",
 ) -> Dict[str, Any]:
     normalized_command = _normalize_command_rows([command])[0]
     output_policy = _command_output_policy(normalized_command)
@@ -694,6 +722,8 @@ def build_quality_gate_command_receipt(
             "returncode": int(returncode),
             "stdout_sha256": _hash_command_output(str(stdout or ""), policy=output_policy),
             "stderr_sha256": _hash_command_output(str(stderr or ""), policy=output_policy),
+            "stdout_log_path": str(stdout_log_path or "").replace("\\", "/"),
+            "stderr_log_path": str(stderr_log_path or "").replace("\\", "/"),
         }
     )
 
@@ -909,6 +939,12 @@ def _verify_receipt_output_hashes(
     for key in ("stdout_sha256", "stderr_sha256"):
         if len(str(receipt.get(key) or "")) != 64:
             return f"UNBOUND: quality gate command receipt {key.replace('_sha256', '')} hash mismatch"
+    for key in ("stdout_log_path", "stderr_log_path"):
+        path = str(receipt.get(key) or "").replace("\\", "/")
+        if not path:
+            return f"UNBOUND: quality gate command receipt {key} missing"
+        if not path.startswith(QUALITY_GATE_LOGS_DIR_REL.replace("\\", "/") + "/"):
+            return f"UNBOUND: quality gate command receipt {key} mismatch"
     collect_policy = _command_output_policy(normalized_command)
     if index == 1 and receipt.get("stdout_sha256") != _hash_command_output(current_collect_stdout, policy=collect_policy):
         return "UNBOUND: quality gate collect receipt stdout hash mismatch"

@@ -30,9 +30,16 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from tools.quality_gate_shared import (  # noqa: E402
+    QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL,
     iter_quality_gate_required_tests,
     quality_gate_required_test_nodeid_matches,
 )
+
+CURRENT_PAYLOAD_REL = QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL.replace("\\", "/")
+
+
+def _progress(message: str) -> None:
+    print(f"[collect-full-test-debt] {message}", file=sys.stderr, flush=True)
 
 
 def _now_iso() -> str:
@@ -431,11 +438,79 @@ def _write_baseline_atomically(path: Path, payload: Dict[str, Any]) -> None:
             tmp_path.unlink()
 
 
+def _write_json_atomically(path: Path, payload: Dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path: Optional[Path] = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=str(path.parent),
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            tmp_path = Path(handle.name)
+            json.dump(payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
+            handle.write("\n")
+        tmp_path.replace(path)
+    finally:
+        if tmp_path is not None and tmp_path.exists():
+            tmp_path.unlink()
+
+
+def _first_line(text: str) -> str:
+    return next((line.strip() for line in str(text or "").splitlines() if line.strip()), "")
+
+
+def _render_failure_preview(payload: Dict[str, Any], *, limit: int = 10) -> str:
+    lines = ["full test debt 收集发现失败分类："]
+    classifications = dict(payload.get("classifications") or {})
+    for key in [
+        "required_or_quality_gate_self_failure",
+        "main_style_isolation_candidate",
+        "candidate_test_debt",
+    ]:
+        nodeids = [str(nodeid) for nodeid in list(classifications.get(key) or [])]
+        if not nodeids:
+            continue
+        lines.append(f"- {key}（{len(nodeids)} 个）：")
+        for nodeid in nodeids[:limit]:
+            lines.append(f"  - {nodeid}")
+        if len(nodeids) > limit:
+            lines.append(f"  - ... 另外 {len(nodeids) - limit} 个未显示")
+    collection_errors = list(payload.get("collection_errors") or [])
+    if collection_errors:
+        lines.append(f"- collection_errors（{len(collection_errors)} 个）：")
+        for item in collection_errors[:limit]:
+            if isinstance(item, dict):
+                nodeid = str(item.get("nodeid") or "<unknown>")
+                detail = _first_line(str(item.get("longrepr") or ""))
+                lines.append(f"  - {nodeid}" + (f"：{detail}" if detail else ""))
+            else:
+                lines.append(f"  - {item}")
+        if len(collection_errors) > limit:
+            lines.append(f"  - ... 另外 {len(collection_errors) - limit} 个未显示")
+    blockers = [str(item) for item in list(payload.get("importable_blockers") or [])]
+    if blockers:
+        lines.append("- importable_blockers：" + ", ".join(blockers[:limit]))
+    lines.append(f"完整 JSON 已写入：{CURRENT_PAYLOAD_REL}")
+    return "\n".join(lines)
+
+
+def _payload_has_failure_preview(payload: Dict[str, Any]) -> bool:
+    classifications = dict(payload.get("classifications") or {})
+    return any(list(classifications.get(key) or []) for key in classifications) or bool(
+        payload.get("collection_errors") or payload.get("importable_blockers")
+    )
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = _parse_args(argv)
     import pytest
 
     cwd = Path.cwd()
+    current_payload_path = cwd / CURRENT_PAYLOAD_REL
     baseline_path = Path(str(args.write_baseline)) if args.write_baseline else None
     target_status_path = _relative_to_cwd(baseline_path, cwd) if baseline_path is not None else ""
     git_status_short_before: Optional[List[str]] = None
@@ -445,14 +520,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             git_status_short_before = _git_status_short(cwd)
         except RuntimeError as exc:
             _remove_existing_file(baseline_path)
-            sys.stderr.write(f"dirty_before_baseline: {exc}\n")
+            print(f"dirty_before_baseline: {exc}", file=sys.stderr, flush=True)
             return 2
         worktree_clean_before = not git_status_short_before
         if git_status_short_before:
             _remove_existing_file(baseline_path)
-            sys.stderr.write("dirty_before_baseline: 正式测试债务基线生成前工作区必须干净：")
-            sys.stderr.write(", ".join(git_status_short_before))
-            sys.stderr.write("\n")
+            print(
+                "dirty_before_baseline: 正式测试债务基线生成前工作区必须干净："
+                + ", ".join(git_status_short_before),
+                file=sys.stderr,
+                flush=True,
+            )
             return 2
 
     logging.raiseExceptions = False
@@ -463,12 +541,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     head_sha = _git_head_sha(cwd)
     required_paths = iter_quality_gate_required_tests()
 
+    _progress("开始执行 pytest 并收集 full-test-debt 结果")
     with contextlib.redirect_stderr(pytest_stderr):
         with contextlib.redirect_stdout(pytest_stdout):
             exitstatus = int(pytest.main(list(args.pytest_args), plugins=[collector]))
         if collector.exitstatus is not None:
             exitstatus = int(collector.exitstatus)
 
+    _progress(f"pytest 执行完成：exitstatus={exitstatus}；开始分类失败与构建 payload")
     payload = _build_payload(
         baseline_kind=str(args.baseline_kind),
         importable=bool(args.importable_debt_baseline),
@@ -483,6 +563,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         git_status_short_before=git_status_short_before,
         worktree_clean_before=worktree_clean_before,
     )
+    if _payload_has_failure_preview(payload):
+        print(_render_failure_preview(payload), file=sys.stderr, flush=True)
     if args.importable_debt_baseline:
         blockers = _importable_baseline_blockers(payload)
         candidate_count = int(
@@ -492,43 +574,62 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if current_proof_without_seed:
             payload["importable"] = False
             payload["importable_blockers"] = ["candidate_test_debt_empty"]
+            _progress(f"正在写入 current payload：{CURRENT_PAYLOAD_REL}")
+            _write_json_atomically(current_payload_path, payload)
+            _progress(f"已写入 current payload：{CURRENT_PAYLOAD_REL}")
         try:
             after_pytest_status = _git_status_short(cwd)
         except RuntimeError:
             after_pytest_status = ["git_status_after_pytest_failed"]
-        unexpected_after_pytest = _unexpected_status_lines(after_pytest_status, allowed_paths=[])
+        allowed_after_pytest_paths = [CURRENT_PAYLOAD_REL] if current_proof_without_seed else []
+        unexpected_after_pytest = _unexpected_status_lines(
+            after_pytest_status,
+            allowed_paths=allowed_after_pytest_paths,
+        )
         if unexpected_after_pytest:
             blockers.append("worktree_drift_after_pytest")
             payload["git_status_short_after_pytest"] = after_pytest_status
         if blockers:
             payload["importable"] = False
             payload["importable_blockers"] = blockers
+            _progress(f"正在写入 current payload：{CURRENT_PAYLOAD_REL}")
+            _write_json_atomically(current_payload_path, payload)
+            _progress(f"已写入 current payload：{CURRENT_PAYLOAD_REL}")
             _remove_existing_file(baseline_path)
-            sys.stderr.write("正式测试债务基线不能导入，存在禁入分类或收集错误：")
-            sys.stderr.write(", ".join(blockers))
-            sys.stderr.write("\n")
+            print("正式测试债务基线不能导入，存在禁入分类或收集错误：" + ", ".join(blockers), file=sys.stderr, flush=True)
             sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
             sys.stdout.write("\n")
+            sys.stdout.flush()
             return 2
     if args.write_baseline:
+        _progress(f"正在写入 baseline：{args.write_baseline}")
         _write_baseline_atomically(Path(str(args.write_baseline)), payload)
+        _progress(f"已写入 baseline：{args.write_baseline}")
         if args.importable_debt_baseline:
             after_write_status = _git_status_short(cwd)
             payload["git_status_short_after_write"] = after_write_status
-            unexpected_after_write = _unexpected_status_lines(after_write_status, allowed_paths=[target_status_path])
+            unexpected_after_write = _unexpected_status_lines(after_write_status, allowed_paths=[target_status_path, CURRENT_PAYLOAD_REL])
             if unexpected_after_write:
                 payload["importable"] = False
                 payload["importable_blockers"] = ["worktree_drift_after_write"]
+                _progress(f"正在写入 current payload：{CURRENT_PAYLOAD_REL}")
+                _write_json_atomically(current_payload_path, payload)
+                _progress(f"已写入 current payload：{CURRENT_PAYLOAD_REL}")
                 _remove_existing_file(baseline_path)
-                sys.stderr.write("正式测试债务基线写入后出现非 baseline 文件改动：")
-                sys.stderr.write(", ".join(unexpected_after_write))
-                sys.stderr.write("\n")
+                print("正式测试债务基线写入后出现非 baseline 文件改动：" + ", ".join(unexpected_after_write), file=sys.stderr, flush=True)
                 sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
                 sys.stdout.write("\n")
+                sys.stdout.flush()
                 return 2
+            _progress(f"正在重写 importable baseline：{args.write_baseline}")
             _write_baseline_atomically(Path(str(args.write_baseline)), payload)
+            _progress(f"已重写 importable baseline：{args.write_baseline}")
+    _progress(f"正在写入 current payload：{CURRENT_PAYLOAD_REL}")
+    _write_json_atomically(current_payload_path, payload)
+    _progress(f"已写入 current payload：{CURRENT_PAYLOAD_REL}")
     sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
     sys.stdout.write("\n")
+    sys.stdout.flush()
     if args.importable_debt_baseline:
         return 0
     return int(exitstatus)

@@ -28,6 +28,102 @@ def _shared_quality_registry():
     return importlib.import_module("tools.quality_gate_shared")
 
 
+def _patch_basic_gate_environment(monkeypatch, module, repo_root: Path, *, statuses=None, head_sha: str = "deadbeef"):
+    monkeypatch.setattr(module, "REPO_ROOT", str(repo_root))
+    monkeypatch.setattr(module, "_assert_no_active_runtime", lambda: None)
+    monkeypatch.setattr(module, "_assert_guard_tests_ready", lambda: None)
+    monkeypatch.setattr(module, "_git_head_sha", lambda: head_sha)
+    status_iter = iter(statuses if statuses is not None else [[], []])
+    monkeypatch.setattr(module, "_git_status_lines", lambda: next(status_iter))
+    monkeypatch.setattr(module, "_runtime_state_snapshot", lambda: {"runtime_state": "absent"})
+
+
+def _successful_result_for_display(display: str, nodeid_suffix: str = "test_quality_gate") -> dict:
+    if display == "python -m ruff --version":
+        return {"stdout": "ruff 0.15.4", "stderr": "", "returncode": 0}
+    if display == "python -m pyright --version":
+        return {"stdout": "pyright 1.1.406", "stderr": "", "returncode": 0}
+    if display == "python -m pytest --collect-only -q tests":
+        return {"stdout": f"tests/test_run_quality_gate.py::{nodeid_suffix}\n", "stderr": "", "returncode": 0}
+    return {"stdout": "", "stderr": "", "returncode": 0}
+
+
+def _manifest_path(repo_root: Path) -> Path:
+    return repo_root / "evidence" / "QualityGate" / "quality_gate_manifest.json"
+
+
+def _load_manifest(module, repo_root: Path) -> dict:
+    return module.json.loads(_manifest_path(repo_root).read_text(encoding="utf-8"))
+
+
+def _seed_failed_manifest_with_receipts(
+    module,
+    repo_root: Path,
+    command_plan,
+    *,
+    failed_index: int,
+    old_run_id: str = "old-run",
+    head_sha: str = "deadbeef",
+) -> dict:
+    old_receipts = []
+    for index, command in enumerate(command_plan, start=1):
+        display = str(command["display"])
+        result = _successful_result_for_display(display, f"test_resume_{index}")
+        if index == failed_index:
+            result = {"stdout": "", "stderr": "boom", "returncode": 1}
+        old_receipts.append(
+            module._write_command_receipt(
+                command,
+                run_id=old_run_id,
+                index=index,
+                result=result,
+            )
+        )
+    old_manifest = {
+        "status": "failed",
+        "run_id": old_run_id,
+        "planned_commands": [module._command_identity(command) for command in command_plan],
+        "planned_commands_hash": module.hash_quality_gate_commands(command_plan),
+        "commands": list(command_plan),
+        "head_sha": head_sha,
+        "command_receipts": old_receipts,
+        "failure_message": f"命令失败：{command_plan[failed_index - 1]['display']}",
+    }
+    manifest_path = _manifest_path(repo_root)
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(module.json.dumps(old_manifest, ensure_ascii=False), encoding="utf-8")
+    return old_manifest
+
+
+def _small_quality_gate_plan():
+    return [
+        {
+            "display": "python -m pytest --collect-only -q tests",
+            "args": ["python", "-m", "pytest", "--collect-only", "-q", "tests"],
+            "capture_output": True,
+            "output_policy": "normalized",
+        },
+        {
+            "display": "python -m ruff --version",
+            "args": ["python", "-m", "ruff", "--version"],
+            "capture_output": True,
+            "output_policy": "exact",
+        },
+        {
+            "display": "python -m pyright --version",
+            "args": ["python", "-m", "pyright", "--version"],
+            "capture_output": True,
+            "output_policy": "normalized",
+        },
+        {
+            "display": "python tools/failing_command.py",
+            "args": ["python", "tools/failing_command.py"],
+            "capture_output": False,
+            "output_policy": "normalized",
+        },
+    ]
+
+
 def test_shared_quality_registry_does_not_split_quality_gate_error_identity():
     repo_root = _repo_root()
     if repo_root not in sys.path:
@@ -245,6 +341,7 @@ def test_full_test_debt_proof_is_in_shared_quality_gate_plan() -> None:
         "tests/main_style_regression_runner.py",
         "tests/test_architecture_fitness.py",
         "tests/check_quickref_vs_routes.py",
+        "pyproject.toml",
         "开发文档/技术债务治理台账.md",
     ]:
         assert rel_path in source_paths
@@ -428,6 +525,9 @@ def test_main_rebuilds_ignored_receipts_without_dirtying_clean_worktree(monkeypa
     stale_receipt = repo_root / "evidence" / "QualityGate" / "receipts" / "stale.json"
     stale_receipt.parent.mkdir(parents=True)
     stale_receipt.write_text("{}", encoding="utf-8")
+    stale_log = repo_root / "evidence" / "QualityGate" / "logs" / "stale.log"
+    stale_log.parent.mkdir(parents=True)
+    stale_log.write_text("stale", encoding="utf-8")
 
     monkeypatch.setattr(module, "REPO_ROOT", str(repo_root))
     monkeypatch.setattr(module, "_assert_no_active_runtime", lambda: None)
@@ -447,6 +547,7 @@ def test_main_rebuilds_ignored_receipts_without_dirtying_clean_worktree(monkeypa
 
     assert module.main(["--require-clean-worktree"]) == 0
     assert not stale_receipt.exists()
+    assert not stale_log.exists()
 
     status = subprocess.run(
         ["git", "status", "--short"],
@@ -464,6 +565,8 @@ def test_main_rebuilds_ignored_receipts_without_dirtying_clean_worktree(monkeypa
     assert manifest["clean_worktree_excluded_paths"] == [
         "evidence/QualityGate/quality_gate_manifest.json",
         "evidence/QualityGate/receipts/",
+        "evidence/QualityGate/logs/",
+        "evidence/QualityGate/current_full_test_debt.json",
     ]
     assert len(manifest["command_receipts"]) == len(manifest["commands"])
 
@@ -528,6 +631,7 @@ def test_main_writes_quality_gate_manifest_with_git_and_collection_proof(monkeyp
                 [
                     "tests/test_run_quality_gate.py::test_main_runs_guard_preflight_before_static_and_startup_checks",
                     "tests/test_sp05_path_topology_contract.py::test_scheduler_route_topology",
+                    "tests/regression_system_history_route_contract.py::test_system_history_route_uses_request_services",
                 ]
             )
         return ""
@@ -558,6 +662,8 @@ def test_main_writes_quality_gate_manifest_with_git_and_collection_proof(monkeyp
     assert manifest["collection_proof_hash"] == shared.hash_quality_gate_collection_proof(manifest["collection_proof"])
     assert manifest["command_receipts_hash"] == shared.hash_quality_gate_command_receipts(manifest["command_receipts"])
     assert manifest["gate_sources_hash"] == shared.hash_quality_gate_source_proof(manifest["gate_sources"])
+    assert manifest["planned_commands"] == [module._command_identity(command) for command in manifest["commands"]]
+    assert manifest["planned_commands_hash"] == shared.hash_quality_gate_commands(manifest["commands"])
     assert len(manifest["command_receipts"]) == len(manifest["commands"])
     for receipt in manifest["command_receipts"]:
         receipt_path = repo_root / receipt["path"]
@@ -567,6 +673,10 @@ def test_main_writes_quality_gate_manifest_with_git_and_collection_proof(monkeyp
         assert receipt_payload["run_id"] == manifest["run_id"]
         assert receipt_payload["command_hash"]
         assert receipt_payload["output_policy"] in {"exact", "normalized"}
+        assert receipt_payload["stdout_log_path"].startswith("evidence/QualityGate/logs/")
+        assert receipt_payload["stderr_log_path"].startswith("evidence/QualityGate/logs/")
+        assert (repo_root / receipt_payload["stdout_log_path"]).exists()
+        assert (repo_root / receipt_payload["stderr_log_path"]).exists()
     assert "scripts/run_quality_gate.py" in {item["path"] for item in manifest["gate_sources"]}
     assert "tools/quality_gate_entries.py" in {item["path"] for item in manifest["gate_sources"]}
     assert "tools/quality_gate_ledger.py" in {item["path"] for item in manifest["gate_sources"]}
@@ -575,11 +685,18 @@ def test_main_writes_quality_gate_manifest_with_git_and_collection_proof(monkeyp
     assert "scripts/sync_debt_ledger.py" in {item["path"] for item in manifest["gate_sources"]}
     assert "tools/test_registry.py" in {item["path"] for item in manifest["gate_sources"]}
     assert ".github/workflows/quality.yml" in {item["path"] for item in manifest["gate_sources"]}
+    assert "pyproject.toml" in {item["path"] for item in manifest["gate_sources"]}
     assert manifest["collection_proof"]["default_collect_nodeids"]
     quality_gate_entry = next(
         item for item in manifest["collection_proof"]["key_tests"] if item["path"] == "tests/test_run_quality_gate.py"
     )
     assert quality_gate_entry["execution_mode"] == "default_collect"
+    regression_entry = next(
+        item
+        for item in manifest["collection_proof"]["key_tests"]
+        if item["path"] == "tests/regression_system_history_route_contract.py"
+    )
+    assert regression_entry["execution_mode"] == "default_collect"
 
 
 def test_guard_collect_only_keeps_analysis_and_history_in_default_collect() -> None:
@@ -590,8 +707,9 @@ def test_guard_collect_only_keeps_analysis_and_history_in_default_collect() -> N
             "pytest",
             "--collect-only",
             "-q",
-            "tests/regression_scheduler_analysis_observability.py",
-            "tests/regression_system_history_route_contract.py",
+            "-p",
+            "no:cacheprovider",
+            "tests",
         ],
         cwd=_repo_root(),
         capture_output=True,
@@ -602,6 +720,10 @@ def test_guard_collect_only_keeps_analysis_and_history_in_default_collect() -> N
     output = result.stdout
     assert "tests/regression_scheduler_analysis_observability.py::regression_scheduler_analysis_observability" in output
     assert "tests/regression_system_history_route_contract.py::test_system_history_route_uses_request_services" in output
+    assert (
+        "tests/regression_auto_assign_persist_truthy_variants.py::"
+        "test_auto_assign_persist_truthy_variant_is_normalized_before_persistence"
+    ) in output
 
 
 def test_main_allow_dirty_worktree_marks_manifest_unbound(monkeypatch, tmp_path, capsys):
@@ -720,67 +842,12 @@ def test_main_allow_dirty_resumes_from_previous_failed_command(monkeypatch, tmp_
     module = _import_run_quality_gate()
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
-    monkeypatch.setattr(module, "REPO_ROOT", str(repo_root))
-
-    command_plan = [
-        {
-            "display": "python -m pytest --collect-only -q tests",
-            "args": ["python", "-m", "pytest", "--collect-only", "-q", "tests"],
-            "capture_output": True,
-            "output_policy": "normalized",
-        },
-        {
-            "display": "python -m ruff --version",
-            "args": ["python", "-m", "ruff", "--version"],
-            "capture_output": True,
-            "output_policy": "exact",
-        },
-        {
-            "display": "python -m pyright --version",
-            "args": ["python", "-m", "pyright", "--version"],
-            "capture_output": True,
-            "output_policy": "normalized",
-        },
-        {
-            "display": "python tools/failing_command.py",
-            "args": ["python", "tools/failing_command.py"],
-            "capture_output": False,
-            "output_policy": "normalized",
-        },
-    ]
-    old_run_id = "old-run"
-    old_receipts = []
-    for index, command in enumerate(command_plan, start=1):
-        old_receipts.append(
-            module._write_command_receipt(
-                command,
-                run_id=old_run_id,
-                index=index,
-                result={"stdout": "", "stderr": "boom" if index == 4 else "", "returncode": 1 if index == 4 else 0},
-            )
-        )
-    old_manifest = {
-        "status": "failed",
-        "run_id": old_run_id,
-        "commands": command_plan,
-        "command_receipts": old_receipts,
-        "collection_proof": {"default_collect_nodeids": ["tests/test_run_quality_gate.py::test_resume"]},
-        "ruff_version": "ruff 0.15.4",
-        "pyright_version": "pyright 1.1.406",
-        "failure_message": "命令失败：python tools/failing_command.py",
-    }
-    manifest_path = repo_root / "evidence" / "QualityGate" / "quality_gate_manifest.json"
-    manifest_path.parent.mkdir(parents=True, exist_ok=True)
-    manifest_path.write_text(module.json.dumps(old_manifest, ensure_ascii=False), encoding="utf-8")
+    command_plan = _small_quality_gate_plan()
+    _patch_basic_gate_environment(monkeypatch, module, repo_root, statuses=[[" M app.py"], [" M app.py"]])
+    _seed_failed_manifest_with_receipts(module, repo_root, command_plan, failed_index=4)
 
     calls = []
     monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
-    monkeypatch.setattr(module, "_assert_no_active_runtime", lambda: None)
-    monkeypatch.setattr(module, "_assert_guard_tests_ready", lambda: None)
-    monkeypatch.setattr(module, "_git_head_sha", lambda: "deadbeef")
-    git_status_calls = iter([[" M app.py"], [" M app.py"]])
-    monkeypatch.setattr(module, "_git_status_lines", lambda: next(git_status_calls))
-    monkeypatch.setattr(module, "_runtime_state_snapshot", lambda: {"runtime_state": "absent"})
 
     def fake_run_command(display, args, capture_output=False):
         calls.append(display)
@@ -791,17 +858,200 @@ def test_main_allow_dirty_resumes_from_previous_failed_command(monkeypatch, tmp_
     assert module.main(["--allow-dirty-worktree"]) == 2
 
     output = capsys.readouterr().out
-    assert "从第 4 个命令继续" in output
+    assert "从第 4/4 步继续" in output
     assert "resume-skip" in output
     assert calls == ["python tools/failing_command.py"]
 
-    manifest = module.json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest = _load_manifest(module, repo_root)
     assert manifest["status"] == "passed_but_unbound"
     assert manifest["resume"]["enabled"] is True
+    assert manifest["resume"]["proof_status"] == "fast_feedback_only"
     assert manifest["resume"]["skip_count"] == 3
     assert manifest["resume"]["start_command_display"] == "python tools/failing_command.py"
     assert len(manifest["commands"]) == 4
     assert len(manifest["command_receipts"]) == 4
+
+
+def test_main_does_not_resume_when_previous_manifest_head_sha_differs(monkeypatch, tmp_path, capsys):
+    module = _import_run_quality_gate()
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    command_plan = _small_quality_gate_plan()
+    _patch_basic_gate_environment(
+        monkeypatch,
+        module,
+        repo_root,
+        statuses=[[" M app.py"], [" M app.py"]],
+        head_sha="new-head",
+    )
+    _seed_failed_manifest_with_receipts(module, repo_root, command_plan, failed_index=4, head_sha="old-head")
+    monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
+
+    calls = []
+
+    def fake_run_command(display, args, capture_output=False):
+        calls.append(display)
+        return _successful_result_for_display(display, "test_resume_head_mismatch")
+
+    monkeypatch.setattr(module, "_run_command", fake_run_command)
+
+    assert module.main(["--allow-dirty-worktree"]) == 2
+
+    assert calls == [str(command["display"]) for command in command_plan]
+    output = capsys.readouterr().out
+    assert "未使用续跑" in output
+    assert "head_sha" in output
+    assert "HEAD 不一致" in output
+    manifest = _load_manifest(module, repo_root)
+    assert manifest["resume"]["enabled"] is False
+
+
+def test_main_no_resume_forces_full_rerun(monkeypatch, tmp_path, capsys):
+    module = _import_run_quality_gate()
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    command_plan = _small_quality_gate_plan()
+    _patch_basic_gate_environment(monkeypatch, module, repo_root, statuses=[[" M app.py"], [" M app.py"]])
+    _seed_failed_manifest_with_receipts(module, repo_root, command_plan, failed_index=4)
+    monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
+
+    calls = []
+
+    def fake_run_command(display, args, capture_output=False):
+        calls.append(display)
+        return _successful_result_for_display(display, "test_no_resume")
+
+    monkeypatch.setattr(module, "_run_command", fake_run_command)
+
+    assert module.main(["--allow-dirty-worktree", "--no-resume"]) == 2
+
+    assert calls == [str(command["display"]) for command in command_plan]
+    output = capsys.readouterr().out
+    assert "--no-resume" in output
+    assert "未使用续跑" in output
+
+
+@pytest.mark.parametrize("break_kind", ["missing_receipt", "hash_mismatch", "bad_json"])
+def test_main_does_not_resume_when_previous_receipt_invalid(monkeypatch, tmp_path, capsys, break_kind: str):
+    module = _import_run_quality_gate()
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    command_plan = _small_quality_gate_plan()
+    _patch_basic_gate_environment(monkeypatch, module, repo_root, statuses=[[" M app.py"], [" M app.py"]])
+    old_manifest = _seed_failed_manifest_with_receipts(module, repo_root, command_plan, failed_index=4)
+    monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
+
+    first_receipt_path = repo_root / old_manifest["command_receipts"][0]["path"]
+    if break_kind == "missing_receipt":
+        first_receipt_path.unlink()
+    elif break_kind == "hash_mismatch":
+        first_receipt_path.write_text(first_receipt_path.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+    else:
+        first_receipt_path.write_text("not json", encoding="utf-8")
+        old_manifest["command_receipts"][0]["sha256"] = module._sha256_file(str(first_receipt_path))
+        _manifest_path(repo_root).write_text(module.json.dumps(old_manifest, ensure_ascii=False), encoding="utf-8")
+
+    calls = []
+
+    def fake_run_command(display, args, capture_output=False):
+        calls.append(display)
+        return _successful_result_for_display(display, f"test_invalid_receipt_{break_kind}")
+
+    monkeypatch.setattr(module, "_run_command", fake_run_command)
+
+    assert module.main(["--allow-dirty-worktree"]) == 2
+
+    assert calls == [str(command["display"]) for command in command_plan]
+    output = capsys.readouterr().out
+    assert "未使用续跑" in output
+    assert "完整重跑" in output
+
+
+def test_main_does_not_resume_when_full_command_plan_changes_after_failure(monkeypatch, tmp_path, capsys):
+    module = _import_run_quality_gate()
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    old_plan = _small_quality_gate_plan()
+    new_plan = [dict(command) for command in old_plan]
+    new_plan[-1] = {
+        "display": "python tools/changed_command.py",
+        "args": ["python", "tools/changed_command.py"],
+        "capture_output": False,
+        "output_policy": "normalized",
+    }
+    _patch_basic_gate_environment(monkeypatch, module, repo_root, statuses=[[" M app.py"], [" M app.py"]])
+    _seed_failed_manifest_with_receipts(module, repo_root, old_plan, failed_index=2)
+    monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(new_plan))
+
+    calls = []
+
+    def fake_run_command(display, args, capture_output=False):
+        calls.append(display)
+        return _successful_result_for_display(display, "test_changed_plan")
+
+    monkeypatch.setattr(module, "_run_command", fake_run_command)
+
+    assert module.main(["--allow-dirty-worktree"]) == 2
+
+    assert calls == [str(command["display"]) for command in new_plan]
+    assert "命令计划已变化" in capsys.readouterr().out
+
+
+def test_main_never_skips_previous_failed_command(monkeypatch, tmp_path):
+    module = _import_run_quality_gate()
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    command_plan = _small_quality_gate_plan()
+    _patch_basic_gate_environment(monkeypatch, module, repo_root, statuses=[[" M app.py"], [" M app.py"]])
+    _seed_failed_manifest_with_receipts(module, repo_root, command_plan, failed_index=2)
+    monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
+
+    calls = []
+
+    def fake_run_command(display, args, capture_output=False):
+        calls.append(display)
+        return _successful_result_for_display(display, "test_never_skip_failed")
+
+    monkeypatch.setattr(module, "_run_command", fake_run_command)
+
+    assert module.main(["--allow-dirty-worktree"]) == 2
+
+    assert calls[0] == command_plan[1]["display"]
+    assert calls == [str(command["display"]) for command in command_plan[1:]]
+
+
+def test_command_failure_prints_step_receipt_logs_and_last_80_lines(monkeypatch, tmp_path, capsys):
+    module = _import_run_quality_gate()
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    command_plan = _small_quality_gate_plan()[:3]
+    _patch_basic_gate_environment(monkeypatch, module, repo_root, statuses=[[], []])
+    monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
+
+    def fake_run_command(display, args, capture_output=False):
+        if display == "python -m pytest --collect-only -q tests":
+            return _successful_result_for_display(display, "test_failure_tail")
+        if display == "python -m ruff --version":
+            stderr = "\n".join(f"err line {index}" for index in range(1, 101))
+            return {"stdout": "", "stderr": stderr, "returncode": 1}
+        return _successful_result_for_display(display, "test_failure_tail")
+
+    monkeypatch.setattr(module, "_run_command", fake_run_command)
+
+    with pytest.raises(module.QualityGateError) as exc_info:
+        module.main(["--require-clean-worktree"])
+
+    captured = capsys.readouterr()
+    message = str(exc_info.value)
+    output = captured.out + captured.err
+    combined = output + message
+    assert "第 2/3 步失败" in combined
+    assert "python -m ruff --version" in combined
+    assert "evidence/QualityGate/receipts/" in combined
+    assert "evidence/QualityGate/logs/" in combined
+    assert "err line 100" in combined
+    assert "err line 1" not in combined.splitlines()
+
 
 
 def test_main_rejects_dirty_worktree_by_default(monkeypatch, tmp_path):

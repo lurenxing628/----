@@ -9,3 +9,23 @@ repos:
         entry: python -m ruff check --fix --exit-non-zero-on-fix
         language: system
         types_or: [python]
+        stages: [pre-commit]
+      - id: block-local-artifacts
+        name: block local runtime/generated artifacts
+        entry: python tools/git_hook_checks.py check-staged-artifacts
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+      - id: readable-commit-message
+        name: readable commit message
+        entry: python tools/git_hook_checks.py check-commit-msg
+        language: system
+        stages: [commit-msg]
+      - id: aps-quality-gate
+        name: APS quality gate before push
+        entry: python tools/git_hook_checks.py run-quality-gate
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]

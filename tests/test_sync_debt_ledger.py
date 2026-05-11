@@ -114,6 +114,22 @@ def _write_baseline(path: Path, payload: dict) -> None:
     )
 
 
+def _baseline_report(nodeid: str, *, outcome: str = "failed", longrepr: str = "known candidate") -> dict:
+    return {
+        "nodeid": nodeid,
+        "when": "call",
+        "outcome": outcome,
+        "duration": 0.0,
+        "longrepr": longrepr,
+        "xfail_marker_present": False,
+        "xfail_marker_reason": "",
+        "xfail_marker_strict": False,
+        "xfail_marker_run": False,
+        "wasxfail_reason": "",
+        "strict_xpass": False,
+    }
+
+
 def _baseline_payload(**overrides) -> dict:
     payload = {
         "schema_version": 2,
@@ -145,7 +161,7 @@ def _baseline_payload(**overrides) -> dict:
         "exitstatus": 1,
         "collected_nodeids": list(P0_TEST_DEBT_NODEIDS),
         "collection_errors": [],
-        "reports": [],
+        "reports": [_baseline_report(nodeid) for nodeid in P0_TEST_DEBT_NODEIDS],
         "classifications": {
             "candidate_test_debt": list(P0_TEST_DEBT_NODEIDS),
             "main_style_isolation_candidate": [],
@@ -1635,6 +1651,359 @@ def test_import_test_debt_baseline_command_imports_seed_entries(monkeypatch, tmp
     assert f'"verified_head_sha": "{VERIFIED_SHA}"' in stdout
 
 
+
+def test_import_test_debt_baseline_uses_existing_current_payload(monkeypatch, tmp_path: Path, capsys):
+    module = _import_sync_debt_ledger()
+
+    baseline_path = tmp_path / "baseline.md"
+    _write_baseline(baseline_path, _baseline_payload())
+
+    current_payload_path = tmp_path / "current_full_test_debt.json"
+    current_payload_path.write_text(
+        json.dumps(_baseline_payload(importable=False, head_sha=VERIFIED_SHA), ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(module, "load_ledger_for_test_debt_import", lambda: _legacy_schema1_ledger())
+    monkeypatch.setattr(
+        module,
+        "collect_current_test_debt_payload",
+        lambda: (_ for _ in ()).throw(AssertionError("不应重新跑 collector")),
+    )
+    saved = {}
+    monkeypatch.setattr(module, "save_ledger", lambda ledger: saved.setdefault("ledger", ledger))
+    monkeypatch.setattr(module, "current_git_head_sha", lambda: VERIFIED_SHA)
+    monkeypatch.setattr(module, "current_git_status_short", lambda: [])
+    monkeypatch.setattr(module, "now_shanghai_iso", lambda: "2026-04-27T08:00:00+08:00")
+
+    rc = module.main([
+        "import-test-debt-baseline",
+        "--baseline",
+        str(baseline_path),
+        "--current-payload",
+        str(current_payload_path),
+    ])
+
+    assert rc == 0
+    assert "ledger" in saved
+    assert "测试债务 baseline 已导入治理台账" in capsys.readouterr().out
+
+
+def test_import_current_payload_rejects_dirty_current_worktree_even_when_head_matches(
+    monkeypatch, tmp_path: Path, capsys
+):
+    module = _import_sync_debt_ledger()
+
+    baseline_path = tmp_path / "baseline.md"
+    _write_baseline(baseline_path, _baseline_payload())
+
+    current_payload_path = tmp_path / "current_full_test_debt.json"
+    current_payload_path.write_text(
+        json.dumps(_baseline_payload(importable=False, head_sha=VERIFIED_SHA), ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(module, "load_ledger_for_test_debt_import", lambda: _legacy_schema1_ledger())
+    monkeypatch.setattr(module, "current_git_head_sha", lambda: VERIFIED_SHA)
+    monkeypatch.setattr(module, "current_git_status_short", lambda: [" M tools/test_debt_registry.py"])
+    saved = {}
+    monkeypatch.setattr(module, "save_ledger", lambda ledger: saved.setdefault("ledger", ledger))
+    monkeypatch.setattr(
+        module,
+        "collect_current_test_debt_payload",
+        lambda: (_ for _ in ()).throw(AssertionError("不应重新跑 collector")),
+    )
+
+    rc = module.main([
+        "import-test-debt-baseline",
+        "--baseline",
+        str(baseline_path),
+        "--current-payload",
+        str(current_payload_path),
+    ])
+
+    stderr = capsys.readouterr().err
+    assert rc == 2
+    assert "ledger" not in saved
+    assert "当前工作区不干净" in stderr
+    assert "tools/test_debt_registry.py" in stderr
+
+
+def test_import_current_payload_rejects_payload_recorded_dirty_worktree(
+    monkeypatch, tmp_path: Path, capsys
+):
+    module = _import_sync_debt_ledger()
+
+    baseline_path = tmp_path / "baseline.md"
+    _write_baseline(baseline_path, _baseline_payload())
+
+    current_payload_path = tmp_path / "current_full_test_debt.json"
+    current_payload_path.write_text(
+        json.dumps(
+            _baseline_payload(
+                importable=False,
+                head_sha=VERIFIED_SHA,
+                worktree_clean_before=False,
+                git_status_short_before=[" M scripts/sync_debt_ledger.py"],
+            ),
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(module, "load_ledger_for_test_debt_import", lambda: _legacy_schema1_ledger())
+    monkeypatch.setattr(module, "current_git_head_sha", lambda: VERIFIED_SHA)
+    monkeypatch.setattr(module, "current_git_status_short", lambda: [])
+    saved = {}
+    monkeypatch.setattr(module, "save_ledger", lambda ledger: saved.setdefault("ledger", ledger))
+    monkeypatch.setattr(
+        module,
+        "collect_current_test_debt_payload",
+        lambda: (_ for _ in ()).throw(AssertionError("不应重新跑 collector")),
+    )
+
+    rc = module.main([
+        "import-test-debt-baseline",
+        "--baseline",
+        str(baseline_path),
+        "--current-payload",
+        str(current_payload_path),
+    ])
+
+    stderr = capsys.readouterr().err
+    assert rc == 2
+    assert "ledger" not in saved
+    assert "生成时工作区不是干净状态" in stderr
+    assert str(current_payload_path) in stderr
+
+
+def test_import_current_payload_rejects_missing_payload_status_before(
+    monkeypatch, tmp_path: Path, capsys
+):
+    module = _import_sync_debt_ledger()
+
+    baseline_path = tmp_path / "baseline.md"
+    _write_baseline(baseline_path, _baseline_payload())
+
+    current_payload = _baseline_payload(importable=False, head_sha=VERIFIED_SHA)
+    current_payload.pop("git_status_short_before")
+    current_payload_path = tmp_path / "current_full_test_debt.json"
+    current_payload_path.write_text(json.dumps(current_payload, ensure_ascii=False), encoding="utf-8")
+
+    monkeypatch.setattr(module, "load_ledger_for_test_debt_import", lambda: _legacy_schema1_ledger())
+    monkeypatch.setattr(module, "current_git_head_sha", lambda: VERIFIED_SHA)
+    monkeypatch.setattr(module, "current_git_status_short", lambda: [])
+    saved = {}
+    monkeypatch.setattr(module, "save_ledger", lambda ledger: saved.setdefault("ledger", ledger))
+    monkeypatch.setattr(
+        module,
+        "collect_current_test_debt_payload",
+        lambda: (_ for _ in ()).throw(AssertionError("不应重新跑 collector")),
+    )
+
+    rc = module.main([
+        "import-test-debt-baseline",
+        "--baseline",
+        str(baseline_path),
+        "--current-payload",
+        str(current_payload_path),
+    ])
+
+    stderr = capsys.readouterr().err
+    assert rc == 2
+    assert "ledger" not in saved
+    assert "git_status_short_before 必须存在且为空列表" in stderr
+    assert str(current_payload_path) in stderr
+
+
+def test_import_current_payload_rejects_stale_head_sha(monkeypatch, tmp_path: Path, capsys):
+    module = _import_sync_debt_ledger()
+
+    baseline_path = tmp_path / "baseline.md"
+    _write_baseline(baseline_path, _baseline_payload())
+
+    stale_sha = "c" * 40
+    current_payload_path = tmp_path / "current_full_test_debt.json"
+    current_payload_path.write_text(
+        json.dumps(_baseline_payload(importable=False, head_sha=stale_sha), ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(module, "load_ledger_for_test_debt_import", lambda: _legacy_schema1_ledger())
+    monkeypatch.setattr(module, "current_git_head_sha", lambda: VERIFIED_SHA)
+    saved = {}
+    monkeypatch.setattr(module, "save_ledger", lambda ledger: saved.setdefault("ledger", ledger))
+    monkeypatch.setattr(
+        module,
+        "collect_current_test_debt_payload",
+        lambda: (_ for _ in ()).throw(AssertionError("不应重新跑 collector")),
+    )
+
+    rc = module.main([
+        "import-test-debt-baseline",
+        "--baseline",
+        str(baseline_path),
+        "--current-payload",
+        str(current_payload_path),
+    ])
+
+    assert rc == 2
+    assert "ledger" not in saved
+    stderr = capsys.readouterr().err
+    assert "head_sha" in stderr
+    assert "当前 git HEAD 不一致" in stderr
+    assert stale_sha in stderr
+    assert VERIFIED_SHA in stderr
+
+
+def test_import_current_payload_rejects_missing_head_sha(monkeypatch, tmp_path: Path, capsys):
+    module = _import_sync_debt_ledger()
+
+    baseline_path = tmp_path / "baseline.md"
+    _write_baseline(baseline_path, _baseline_payload())
+
+    current_payload = _baseline_payload(importable=False)
+    current_payload.pop("head_sha")
+    current_payload_path = tmp_path / "current_full_test_debt.json"
+    current_payload_path.write_text(json.dumps(current_payload, ensure_ascii=False), encoding="utf-8")
+
+    monkeypatch.setattr(module, "load_ledger_for_test_debt_import", lambda: _legacy_schema1_ledger())
+    monkeypatch.setattr(module, "current_git_head_sha", lambda: VERIFIED_SHA)
+    saved = {}
+    monkeypatch.setattr(module, "save_ledger", lambda ledger: saved.setdefault("ledger", ledger))
+    monkeypatch.setattr(
+        module,
+        "collect_current_test_debt_payload",
+        lambda: (_ for _ in ()).throw(AssertionError("不应重新跑 collector")),
+    )
+
+    rc = module.main([
+        "import-test-debt-baseline",
+        "--baseline",
+        str(baseline_path),
+        "--current-payload",
+        str(current_payload_path),
+    ])
+
+    assert rc == 2
+    assert "ledger" not in saved
+    stderr = capsys.readouterr().err
+    assert "缺少 head_sha" in stderr
+    assert VERIFIED_SHA in stderr
+
+
+def test_import_current_payload_parse_error_includes_path_and_excerpt(monkeypatch, tmp_path: Path, capsys):
+    module = _import_sync_debt_ledger()
+
+    baseline_path = tmp_path / "baseline.md"
+    _write_baseline(baseline_path, _baseline_payload())
+
+    current_payload_path = tmp_path / "current_full_test_debt.json"
+    current_payload_path.write_text("not json\nline2\nline3", encoding="utf-8")
+
+    monkeypatch.setattr(module, "load_ledger_for_test_debt_import", lambda: _legacy_schema1_ledger())
+
+    rc = module.main([
+        "import-test-debt-baseline",
+        "--baseline",
+        str(baseline_path),
+        "--current-payload",
+        str(current_payload_path),
+    ])
+
+    stderr = capsys.readouterr().err
+    assert rc == 2
+    assert str(current_payload_path) in stderr
+    assert "不是合法 JSON" in stderr
+    assert "not json" in stderr
+
+
+def test_import_current_payload_blocked_classification_lists_nodeid(monkeypatch, tmp_path: Path, capsys):
+    module = _import_sync_debt_ledger()
+
+    baseline_path = tmp_path / "baseline.md"
+    _write_baseline(baseline_path, _baseline_payload())
+
+    blocked_nodeid = "tests/test_run_quality_gate.py::test_quality_gate_self_failure"
+    current_payload = _baseline_payload(
+        importable=False,
+        classifications={
+            "candidate_test_debt": list(P0_TEST_DEBT_NODEIDS),
+            "main_style_isolation_candidate": [],
+            "required_or_quality_gate_self_failure": [blocked_nodeid],
+        },
+        summary={
+            "collected_count": 588,
+            "failed_nodeid_count": 6,
+            "collection_error_count": 0,
+            "classification_counts": {
+                "candidate_test_debt": 5,
+                "main_style_isolation_candidate": 0,
+                "required_or_quality_gate_self_failure": 1,
+            },
+            "outcome_counts": {"call:failed": 6},
+        },
+    )
+    current_payload_path = tmp_path / "current_full_test_debt.json"
+    current_payload_path.write_text(json.dumps(current_payload, ensure_ascii=False), encoding="utf-8")
+
+    monkeypatch.setattr(module, "load_ledger_for_test_debt_import", lambda: _legacy_schema1_ledger())
+    monkeypatch.setattr(
+        module,
+        "save_ledger",
+        lambda _ledger: (_ for _ in ()).throw(AssertionError("坏 payload 不应导入")),
+    )
+
+    rc = module.main([
+        "import-test-debt-baseline",
+        "--baseline",
+        str(baseline_path),
+        "--current-payload",
+        str(current_payload_path),
+    ])
+
+    stderr = capsys.readouterr().err
+    assert rc == 2
+    assert "required_or_quality_gate_self_failure" in stderr
+    assert blocked_nodeid in stderr
+
+
+def test_import_current_payload_rejects_candidate_without_failure_report(
+    monkeypatch, tmp_path: Path, capsys
+):
+    module = _import_sync_debt_ledger()
+
+    baseline_path = tmp_path / "baseline.md"
+    _write_baseline(baseline_path, _baseline_payload())
+
+    missing_nodeid = P0_TEST_DEBT_NODEIDS[0]
+    current_payload = _baseline_payload(importable=False, head_sha=VERIFIED_SHA)
+    current_payload["reports"] = [report for report in current_payload["reports"] if report["nodeid"] != missing_nodeid]
+    current_payload_path = tmp_path / "current_full_test_debt.json"
+    current_payload_path.write_text(json.dumps(current_payload, ensure_ascii=False), encoding="utf-8")
+
+    monkeypatch.setattr(module, "load_ledger_for_test_debt_import", lambda: _legacy_schema1_ledger())
+    monkeypatch.setattr(module, "current_git_head_sha", lambda: VERIFIED_SHA)
+    monkeypatch.setattr(
+        module,
+        "save_ledger",
+        lambda _ledger: (_ for _ in ()).throw(AssertionError("坏 current payload 不应导入")),
+    )
+
+    rc = module.main([
+        "import-test-debt-baseline",
+        "--baseline",
+        str(baseline_path),
+        "--current-payload",
+        str(current_payload_path),
+    ])
+
+    stderr = capsys.readouterr().err
+    assert rc == 2
+    assert "candidate_test_debt 每个 nodeid 都必须有失败报告 reports 明细" in stderr
+    assert missing_nodeid in stderr
+
+
 def test_importable_baseline_contract_rejects_zero_candidate_current_proof(tmp_path: Path):
     registry = _import_test_debt_registry()
     baseline_path = tmp_path / "zero_candidate_baseline.md"
@@ -1655,11 +2024,11 @@ def test_importable_baseline_contract_rejects_zero_candidate_current_proof(tmp_p
         ({"importable": 1}, "importable"),
         ({"exitstatus": 4}, "pytest_exitstatus"),
         (
-            {
-                "reports": [
-                    {
-                        "nodeid": P0_TEST_DEBT_NODEIDS[0],
-                        "when": "call",
+                {
+                    "reports": [
+                        {
+                            "nodeid": P0_TEST_DEBT_NODEIDS[0],
+                            "when": "call",
                         "outcome": "failed",
                         "duration": 0.0,
                         "longrepr": "[XPASS(strict)] test-debt:sample",
@@ -1667,12 +2036,13 @@ def test_importable_baseline_contract_rejects_zero_candidate_current_proof(tmp_p
                         "xfail_marker_reason": "test-debt:sample: 旧测试合同尚未更新",
                         "xfail_marker_strict": True,
                         "xfail_marker_run": True,
-                        "wasxfail_reason": "",
-                        "strict_xpass": True,
-                    }
-                ],
-            },
-            "xfail_signal",
+                            "wasxfail_reason": "",
+                            "strict_xpass": True,
+                        },
+                        *[_baseline_report(nodeid) for nodeid in P0_TEST_DEBT_NODEIDS[1:]],
+                    ],
+                },
+                "xfail_signal",
         ),
         (
             {
@@ -1722,6 +2092,7 @@ def test_importable_baseline_contract_rejects_zero_candidate_current_proof(tmp_p
                         "wasxfail_reason": "",
                         "strict_xpass": False,
                     },
+                    *[_baseline_report(nodeid) for nodeid in P0_TEST_DEBT_NODEIDS[1:]],
                 ],
             },
             "xfail_signal",
@@ -1784,6 +2155,30 @@ def test_import_test_debt_baseline_command_rejects_malformed_machine_contract(
     assert rc == 2
     assert "saved_ledger" not in calls
     assert expected_message in capsys.readouterr().err
+
+
+def test_import_test_debt_baseline_command_rejects_candidate_without_failure_report(
+    monkeypatch, tmp_path: Path, capsys
+):
+    module = _import_sync_debt_ledger()
+    baseline_path = tmp_path / "missing_report_baseline.md"
+    payload = _baseline_payload()
+    missing_nodeid = P0_TEST_DEBT_NODEIDS[-1]
+    payload["reports"] = [report for report in payload["reports"] if report["nodeid"] != missing_nodeid]
+    _write_baseline(baseline_path, payload)
+    calls = {}
+
+    monkeypatch.setattr(module, "load_ledger_for_test_debt_import", lambda: _legacy_schema1_ledger())
+    monkeypatch.setattr(module, "collect_current_test_debt_payload", lambda: _baseline_payload(importable=False, head_sha=VERIFIED_SHA))
+    monkeypatch.setattr(module, "save_ledger", lambda ledger: calls.setdefault("saved_ledger", ledger))
+
+    rc = module.main(["import-test-debt-baseline", "--baseline", str(baseline_path)])
+
+    stderr = capsys.readouterr().err
+    assert rc == 2
+    assert "saved_ledger" not in calls
+    assert "candidate_test_debt 每个 nodeid 都必须有失败报告 reports 明细" in stderr
+    assert missing_nodeid in stderr
 
 
 def test_import_test_debt_baseline_command_rejects_blocked_classifications(monkeypatch, tmp_path: Path, capsys):
@@ -1861,11 +2256,13 @@ def test_import_test_debt_baseline_command_rejects_unknown_candidate_nodeid(monk
     payload = _baseline_payload()
     payload["classifications"]["candidate_test_debt"] = ["tests/test_unknown.py::test_unknown"]
     payload["collected_nodeids"] = ["tests/test_unknown.py::test_unknown"]
+    payload["reports"] = [_baseline_report("tests/test_unknown.py::test_unknown")]
     payload["summary"]["classification_counts"]["candidate_test_debt"] = 1
     payload["summary"]["failed_nodeid_count"] = 1
     current_payload = _baseline_payload(importable=False, head_sha=VERIFIED_SHA)
     current_payload["classifications"]["candidate_test_debt"] = ["tests/test_unknown.py::test_unknown"]
     current_payload["collected_nodeids"] = ["tests/test_unknown.py::test_unknown"]
+    current_payload["reports"] = [_baseline_report("tests/test_unknown.py::test_unknown")]
     current_payload["summary"]["classification_counts"]["candidate_test_debt"] = 1
     current_payload["summary"]["failed_nodeid_count"] = 1
     _write_baseline(baseline_path, payload)

@@ -79,6 +79,8 @@ logs/aps_secret_key.txt
 evidence/FullSelfTest/logs/
 evidence/QualityGate/quality_gate_manifest.json
 evidence/QualityGate/receipts/
+evidence/QualityGate/logs/
+evidence/QualityGate/current_full_test_debt.json
 tmp_binding_probe/
 
 # Raw test/benchmark console output (binary encoding, only keep formatted reports)
@@ -124,3 +126,6 @@ audit/**/_tmp_review/
 
 # Iris 本地计划文件（本机工具临时产物，不纳入版本控制）
 .iris/
+
+# Codex 本地工具配置与 hook 脚本（本机工作区产物，不纳入版本控制）
+.codex/

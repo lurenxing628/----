@@ -5,7 +5,8 @@ import json
 import os
 import subprocess
 import sys
-from typing import Dict, List, Optional
+from pathlib import Path
+from typing import Dict, List, Optional, cast
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:
@@ -48,6 +49,42 @@ def current_git_head_sha() -> str:
     return proc.stdout.strip()
 
 
+def current_git_status_short() -> List[str]:
+    proc = subprocess.run(
+        ["git", "status", "--short"],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    return [line for line in proc.stdout.splitlines() if line.strip()]
+
+
+def _short_text_summary(text: object, *, max_lines: int = 20, max_chars: int = 2000) -> str:
+    raw = str(text or "")
+    if not raw:
+        return "<空>"
+    lines = raw.splitlines()
+    rendered = "\n".join(lines[:max_lines])
+    if len(lines) > max_lines:
+        rendered += f"\n... 另外 {len(lines) - max_lines} 行未显示"
+    if len(rendered) > max_chars:
+        rendered = rendered[:max_chars] + "...<截断>"
+    return rendered
+
+
+def _file_excerpt_head(text: str, *, max_chars: int = 1000) -> str:
+    excerpt = str(text or "")[:max_chars]
+    return excerpt if excerpt else "<空>"
+
+
+def _file_excerpt_tail(text: str, *, max_chars: int = 1000) -> str:
+    raw = str(text or "")
+    excerpt = raw[-max_chars:] if raw else ""
+    return excerpt if excerpt else "<空>"
+
+
 def collect_current_test_debt_payload() -> Dict[str, object]:
     env = dict(os.environ)
     env["PYTHONDONTWRITEBYTECODE"] = "1"
@@ -75,10 +112,37 @@ def collect_current_test_debt_payload() -> Dict[str, object]:
     try:
         payload = json.loads(str(proc.stdout or ""))
     except json.JSONDecodeError as exc:
-        raise QualityGateError("当前 full pytest dry-run 未输出可解析 JSON") from exc
+        raise QualityGateError(
+            "当前 full pytest dry-run 未输出可解析 JSON："
+            f"returncode={proc.returncode}；"
+            f"stdout 摘要：{_short_text_summary(proc.stdout)}；"
+            f"stderr 摘要：{_short_text_summary(proc.stderr)}"
+        ) from exc
     if not isinstance(payload, dict):
         raise QualityGateError("当前 full pytest dry-run 输出不是对象")
-    return payload
+    return cast(Dict[str, object], payload)
+
+
+def load_current_test_debt_payload(path: str) -> Dict[str, object]:
+    payload_path = Path(os.path.abspath(path))
+    try:
+        text = payload_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise QualityGateError(f"current payload 读取失败：path={path}；原因：{exc}") from exc
+
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise QualityGateError(
+            "current payload 不是合法 JSON："
+            f"path={path}；原因={exc}；"
+            f"文件开头：{_file_excerpt_head(text)}；"
+            f"文件结尾：{_file_excerpt_tail(text)}"
+        ) from exc
+
+    if not isinstance(payload, dict):
+        raise QualityGateError(f"current payload 顶层必须是对象：path={path}")
+    return cast(Dict[str, object], payload)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -125,6 +189,10 @@ def _build_parser() -> argparse.ArgumentParser:
         help="把已核实的 full pytest 测试债务 baseline 受控导入治理台账",
     )
     import_test_debt_parser.add_argument("--baseline", required=True, help="full pytest P0 测试债务 baseline 文件")
+    import_test_debt_parser.add_argument(
+        "--current-payload",
+        help="已有 full test debt current payload JSON，例如 evidence/QualityGate/current_full_test_debt.json",
+    )
     import_test_debt_parser.set_defaults(handler=_handle_import_test_debt_baseline)
 
     mark_test_debt_fixed_parser = subparsers.add_parser(
@@ -243,18 +311,60 @@ def _handle_delete_risk(args: argparse.Namespace) -> int:
     return 0
 
 
+def _verified_head_sha_for_current_payload(current_payload: Dict[str, object], *, payload_path: Optional[str]) -> str:
+    if not payload_path:
+        return str(current_payload.get("head_sha") or current_git_head_sha())
+
+    current_head_sha = current_git_head_sha()
+    payload_head_sha = current_payload.get("head_sha")
+    if not isinstance(payload_head_sha, str) or not payload_head_sha.strip():
+        raise QualityGateError(
+            "current payload 缺少 head_sha，不能作为当前验证证据："
+            f"path={payload_path}；current_head_sha={current_head_sha}"
+        )
+    normalized_payload_head = payload_head_sha.strip()
+    if normalized_payload_head != current_head_sha:
+        raise QualityGateError(
+            "current payload head_sha 与当前 git HEAD 不一致，拒绝导入："
+            f"path={payload_path}；payload_head_sha={normalized_payload_head}；current_head_sha={current_head_sha}"
+        )
+    payload_clean_before = current_payload.get("worktree_clean_before")
+    payload_status_before = current_payload.get("git_status_short_before")
+    if payload_clean_before is not True:
+        raise QualityGateError(
+            "current payload 生成时工作区不是干净状态，不能作为当前验证证据："
+            f"path={payload_path}；worktree_clean_before={payload_clean_before!r}"
+        )
+    if payload_status_before != []:
+        raise QualityGateError(
+            "current payload 生成时 git_status_short_before 必须存在且为空列表，不能作为当前验证证据："
+            f"path={payload_path}；git_status_short_before={_short_text_summary(payload_status_before)}"
+        )
+    current_status = current_git_status_short()
+    if current_status:
+        raise QualityGateError(
+            "当前工作区不干净，不能复用 --current-payload，避免把旧证据当成当前证据："
+            f"path={payload_path}；git_status_short={_short_text_summary(current_status)}"
+        )
+    return current_head_sha
+
+
 def _handle_import_test_debt_baseline(args: argparse.Namespace) -> int:
     ledger = load_ledger_for_test_debt_import()
     payload = load_full_test_debt_baseline(str(args.baseline))
-    current_payload = collect_current_test_debt_payload()
+    if args.current_payload:
+        current_payload = load_current_test_debt_payload(str(args.current_payload))
+    else:
+        current_payload = collect_current_test_debt_payload()
     validate_current_candidate_payload(
         current_payload,
         expected_nodeids=baseline_candidate_nodeids(payload),
     )
+    verified_head_sha = _verified_head_sha_for_current_payload(current_payload, payload_path=args.current_payload)
     next_ledger, summary = build_test_debt_ledger_from_baseline(
         ledger,
         payload,
-        verified_head_sha=str(current_payload.get("head_sha") or current_git_head_sha()),
+        verified_head_sha=verified_head_sha,
         last_verified_at=now_shanghai_iso(),
     )
     save_ledger(next_ledger)

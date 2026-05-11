@@ -8,8 +8,12 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
+import time
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
+from json import JSONDecodeError
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, cast
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -17,6 +21,8 @@ if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
 from tools.quality_gate_support import (  # noqa: E402
+    QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL,
+    QUALITY_GATE_LOGS_DIR_REL,
     QUALITY_GATE_MANIFEST_REL,
     QUALITY_GATE_PYRIGHT_GATE_CONFIG,
     QUALITY_GATE_RECEIPTS_DIR_REL,
@@ -29,6 +35,7 @@ from tools.quality_gate_support import (  # noqa: E402
     build_quality_gate_command_plan,
     build_quality_gate_command_receipt,
     build_quality_gate_receipt_rel_path,
+    hash_quality_gate_commands,
     iter_quality_gate_required_tests,
     parse_pytest_collect_nodeids,
 )
@@ -44,9 +51,31 @@ QUALITY_GATE_SELFTEST = QUALITY_GATE_SELFTEST_PATH
 GENERATED_CLEAN_WORKTREE_EXCLUDED_PATHS = [
     QUALITY_GATE_MANIFEST_REL.replace("\\", "/"),
     QUALITY_GATE_RECEIPTS_DIR_REL.replace("\\", "/") + "/",
+    QUALITY_GATE_LOGS_DIR_REL.replace("\\", "/") + "/",
+    QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL.replace("\\", "/"),
 ]
 HIGH_RISK_UNTRACKED_SOURCE_PREFIXES = ("core/", "web/", "data/", "tools/", "scripts/")
 HIGH_RISK_UNTRACKED_SOURCE_SUFFIXES = (".py", ".js", ".ts", ".html", ".css", ".sql")
+
+
+@dataclass(frozen=True)
+class LoadedJsonFile:
+    payload: Optional[Dict[str, Any]]
+    error: str = ""
+
+
+@dataclass(frozen=True)
+class ResumeDecision:
+    enabled: bool
+    reason: str
+    previous_run_id: str = ""
+    previous_failure_message: str = ""
+    skip_count: int = 0
+    start_command_index: int = 0
+    start_command_display: str = ""
+    reusable_receipts: Tuple[Dict[str, str], ...] = ()
+    reusable_receipt_payloads: Tuple[Dict[str, Any], ...] = ()
+
 
 
 class RuntimeProbeState(str, Enum):
@@ -66,30 +95,65 @@ def _coerce_runtime_probe_state(value: Any) -> RuntimeProbeState:
     raise QualityGateError(f"未知运行时探针状态：{value}")
 
 
-def _run_command(display: str, args: Sequence[str], capture_output: bool = False) -> Dict[str, Any]:
-    print(f"==> {display}")
-    completed = subprocess.run(
+def _run_command(_display: str, args: Sequence[str], capture_output: bool = False) -> Dict[str, Any]:
+    stdout_chunks: List[str] = []
+    stderr_chunks: List[str] = []
+
+    def pump_stream(stream, chunks: List[str], *, sink: Optional[Any]) -> None:
+        try:
+            for chunk in iter(stream.readline, ""):
+                chunks.append(str(chunk))
+                if sink is not None:
+                    print(str(chunk), end="", file=sink, flush=True)
+        finally:
+            stream.close()
+
+    process = subprocess.Popen(
         list(args),
         cwd=REPO_ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
-        capture_output=True,
         encoding="utf-8",
         errors="replace",
+        bufsize=1,
     )
+    if process.stdout is None or process.stderr is None:  # pragma: no cover
+        raise QualityGateError("无法捕获子命令 stdout/stderr")
+    assert process.stdout is not None
+    assert process.stderr is not None
+    stdout_thread = threading.Thread(
+        target=pump_stream,
+        args=(process.stdout, stdout_chunks),
+        kwargs={"sink": None if capture_output else sys.stdout},
+        daemon=True,
+    )
+    stderr_thread = threading.Thread(
+        target=pump_stream,
+        args=(process.stderr, stderr_chunks),
+        kwargs={"sink": sys.stderr},
+        daemon=True,
+    )
+    stdout_thread.start()
+    stderr_thread.start()
+    returncode = process.wait()
+    stdout_thread.join()
+    stderr_thread.join()
+
+    stdout = "".join(stdout_chunks)
+    stderr = "".join(stderr_chunks)
     if capture_output:
-        if completed.stdout:
-            print(completed.stdout.rstrip())
-        if completed.stderr:
-            print(completed.stderr.rstrip(), file=sys.stderr)
-    elif completed.returncode != 0:
-        if completed.stdout:
-            print(completed.stdout.rstrip())
-        if completed.stderr:
-            print(completed.stderr.rstrip(), file=sys.stderr)
+        if stdout:
+            print(stdout.rstrip(), flush=True)
+    elif returncode != 0:
+        if stdout and not stdout.endswith("\n"):
+            print(flush=True)
+        if stderr and not stderr.endswith("\n"):
+            print(file=sys.stderr, flush=True)
     return {
-        "stdout": str(completed.stdout or ""),
-        "stderr": str(completed.stderr or ""),
-        "returncode": int(completed.returncode),
+        "stdout": stdout,
+        "stderr": stderr,
+        "returncode": int(returncode),
     }
 
 
@@ -99,17 +163,61 @@ def _coerce_command_result(result: Any) -> Dict[str, Any]:
             "stdout": str(result.get("stdout") or ""),
             "stderr": str(result.get("stderr") or ""),
             "returncode": int(result.get("returncode") or 0),
+            "stdout_log_path": str(result.get("stdout_log_path") or ""),
+            "stderr_log_path": str(result.get("stderr_log_path") or ""),
         }
     return {
         "stdout": str(result or ""),
         "stderr": "",
         "returncode": 0,
+        "stdout_log_path": "",
+        "stderr_log_path": "",
     }
 
 
 def _assert_command_succeeded(display: str, result: Dict[str, Any]) -> None:
     if int(result.get("returncode") or 0) != 0:
         raise QualityGateError(f"命令失败：{display}")
+
+
+def _tail_lines(text: str, limit: int = 80) -> str:
+    lines = str(text or "").splitlines()
+    if not lines:
+        return "<空>"
+    return "\n".join(lines[-limit:])
+
+
+def _print_command_log_tail(result: Dict[str, Any], *, limit: int = 80) -> None:
+    stdout_log_rel = str(result.get("stdout_log_path") or "")
+    stderr_log_rel = str(result.get("stderr_log_path") or "")
+    print(f"--- stdout 最后 {limit} 行：{stdout_log_rel or '<未落盘>'} ---", flush=True)
+    print(_tail_lines(str(result.get("stdout") or ""), limit=limit), flush=True)
+    print(f"--- stderr 最后 {limit} 行：{stderr_log_rel or '<未落盘>'} ---", file=sys.stderr, flush=True)
+    print(_tail_lines(str(result.get("stderr") or ""), limit=limit), file=sys.stderr, flush=True)
+
+
+def _raise_command_failure(
+    *,
+    index: int,
+    total: int,
+    display: str,
+    receipt_rel: str,
+    result: Dict[str, Any],
+    detail: str = "",
+) -> None:
+    _print_command_log_tail(result)
+    returncode = int(result.get("returncode") or 0)
+    message = (
+        f"质量门禁第 {index}/{total} 步失败：\n"
+        f"命令：{display}\n"
+        f"returncode：{returncode}\n"
+        f"receipt：{receipt_rel}\n"
+        f"stdout 日志：{result.get('stdout_log_path') or '<未落盘>'}\n"
+        f"stderr 日志：{result.get('stderr_log_path') or '<未落盘>'}"
+    )
+    if detail:
+        message += f"\n原因：{detail}"
+    raise QualityGateError(message)
 
 
 def _sha256_file(abs_path: str) -> str:
@@ -127,15 +235,19 @@ def _quality_gate_manifest_abs_path() -> str:
     return os.path.join(REPO_ROOT, QUALITY_GATE_MANIFEST_REL.replace("/", os.sep))
 
 
-def _load_json_file(abs_path: str) -> Optional[Dict[str, Any]]:
+def _load_json_file(abs_path: str) -> LoadedJsonFile:
     if not os.path.isfile(abs_path):
-        return None
+        return LoadedJsonFile(None, "文件不存在")
     try:
         with open(abs_path, encoding="utf-8") as handle:
             payload = json.load(handle)
-    except Exception:
-        return None
-    return payload if isinstance(payload, dict) else None
+    except JSONDecodeError as exc:
+        return LoadedJsonFile(None, f"JSON 解析失败：{exc}")
+    except OSError as exc:
+        return LoadedJsonFile(None, f"读取失败：{exc}")
+    if not isinstance(payload, dict):
+        return LoadedJsonFile(None, "JSON 顶层不是对象")
+    return LoadedJsonFile(cast(Dict[str, Any], payload), "")
 
 
 def _command_identity(command: Dict[str, Any]) -> Dict[str, Any]:
@@ -151,64 +263,203 @@ def _commands_match(left: Dict[str, Any], right: Dict[str, Any]) -> bool:
     return _command_identity(left) == _command_identity(right)
 
 
-def _load_receipt_payload(receipt_entry: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    rel_path = str(receipt_entry.get("path") or "").strip()
-    if not rel_path:
-        return None
-    abs_path = os.path.join(REPO_ROOT, rel_path.replace("/", os.sep))
-    if not os.path.isfile(abs_path):
-        return None
-    if str(receipt_entry.get("sha256") or "") != _sha256_file(abs_path):
-        return None
-    return _load_json_file(abs_path)
+def _read_repo_text(rel_path: str) -> str:
+    abs_path = os.path.join(REPO_ROOT, str(rel_path or "").replace("/", os.sep))
+    with open(abs_path, encoding="utf-8") as handle:
+        return handle.read()
 
 
-def _resume_state_from_previous_failure(command_plan: Sequence[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    manifest = _load_json_file(_quality_gate_manifest_abs_path())
-    if not manifest or str(manifest.get("status") or "") != "failed":
-        return None
-    previous_commands = list(manifest.get("commands") or [])
-    previous_receipts = list(manifest.get("command_receipts") or [])
-    if not previous_commands or not previous_receipts:
-        return None
-
-    reusable_receipts: List[Dict[str, Any]] = []
-    for index, receipt_entry in enumerate(previous_receipts, start=1):
-        if index > len(command_plan) or index > len(previous_commands):
-            break
-        previous_command = previous_commands[index - 1]
-        current_command = command_plan[index - 1]
-        if not isinstance(previous_command, dict) or not isinstance(receipt_entry, dict):
-            return None
-        if not _commands_match(previous_command, current_command):
-            return None
-        receipt_payload = _load_receipt_payload(receipt_entry)
-        if not receipt_payload:
-            return None
-        if int(receipt_payload.get("returncode") or 0) != 0:
-            break
-        reusable_receipts.append(receipt_entry)
-
-    skip_count = len(reusable_receipts)
-    if skip_count <= 0 or skip_count >= len(command_plan):
-        return None
+def _expected_command_log_rel_paths(index: int, display: str) -> Dict[str, str]:
+    receipt_rel = build_quality_gate_receipt_rel_path(index, display)
+    stem = os.path.splitext(os.path.basename(receipt_rel))[0]
+    logs_dir = QUALITY_GATE_LOGS_DIR_REL.replace("\\", "/")
     return {
-        "previous_run_id": str(manifest.get("run_id") or ""),
-        "previous_failure_message": str(manifest.get("failure_message") or ""),
-        "skip_count": skip_count,
-        "start_command_index": skip_count + 1,
-        "start_command_display": str(command_plan[skip_count].get("display") or ""),
-        "command_receipts": reusable_receipts,
-        "parsed_command_results": {
-            "collection_proof": manifest.get("collection_proof"),
-            "ruff_version_output": manifest.get("ruff_version"),
-            "pyright_version_output": manifest.get("pyright_version"),
-        },
+        "stdout_log_path": f"{logs_dir}/{stem}.stdout.log",
+        "stderr_log_path": f"{logs_dir}/{stem}.stderr.log",
     }
 
 
+def _write_command_output_logs(*, index: int, display: str, result: Dict[str, Any]) -> Dict[str, str]:
+    log_paths = _expected_command_log_rel_paths(index, display)
+    for result_key, path_key in (("stdout", "stdout_log_path"), ("stderr", "stderr_log_path")):
+        rel_path = log_paths[path_key]
+        abs_path = os.path.join(REPO_ROOT, rel_path.replace("/", os.sep))
+        os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+        with open(abs_path, "w", encoding="utf-8", newline="") as handle:
+            handle.write(str(result.get(result_key) or ""))
+    return log_paths
+
+
+def _load_resume_receipt_payload(
+    receipt_entry: Dict[str, Any],
+    command: Dict[str, Any],
+    *,
+    index: int,
+    previous_run_id: str,
+) -> Tuple[Optional[Dict[str, Any]], str]:
+    display = str(command.get("display") or "")
+    expected_path = build_quality_gate_receipt_rel_path(index, display)
+    rel_path = str(receipt_entry.get("path") or "").strip().replace("\\", "/")
+    if not rel_path:
+        return None, f"旧 receipt 缺失：第 {index} 步"
+    if rel_path != expected_path:
+        return None, f"旧 receipt 命令身份不一致：第 {index} 步"
+    abs_path = os.path.join(REPO_ROOT, rel_path.replace("/", os.sep))
+    if not os.path.isfile(abs_path):
+        return None, f"旧 receipt 缺失：{rel_path}"
+    if str(receipt_entry.get("sha256") or "") != _sha256_file(abs_path):
+        return None, f"旧 receipt hash 不一致：{rel_path}"
+
+    loaded = _load_json_file(abs_path)
+    if loaded.error:
+        return None, f"旧 receipt 不是合法 JSON：{rel_path}: {loaded.error}"
+    receipt_payload = dict(loaded.payload or {})
+
+    stdout_log_rel = str(receipt_payload.get("stdout_log_path") or "").replace("\\", "/")
+    stderr_log_rel = str(receipt_payload.get("stderr_log_path") or "").replace("\\", "/")
+    if not stdout_log_rel or not stderr_log_rel:
+        return None, f"旧 receipt 缺少日志路径：{rel_path}"
+    for log_rel in (stdout_log_rel, stderr_log_rel):
+        log_abs = os.path.join(REPO_ROOT, log_rel.replace("/", os.sep))
+        if not os.path.isfile(log_abs):
+            return None, f"旧 receipt 日志缺失：{log_rel}"
+    try:
+        stdout_text = _read_repo_text(stdout_log_rel)
+        stderr_text = _read_repo_text(stderr_log_rel)
+        returncode = int(receipt_payload.get("returncode") or 0)
+    except (OSError, ValueError) as exc:
+        return None, f"旧 receipt 证据不可读：{rel_path}: {exc}"
+
+    expected_payload = build_quality_gate_command_receipt(
+        command,
+        run_id=previous_run_id,
+        command_index=index,
+        returncode=returncode,
+        stdout=stdout_text,
+        stderr=stderr_text,
+        stdout_log_path=stdout_log_rel,
+        stderr_log_path=stderr_log_rel,
+    )
+    identity_fields = (
+        "schema_version",
+        "run_id",
+        "command_index",
+        "command_hash",
+        "display",
+        "args",
+        "capture_output",
+        "output_policy",
+        "stdout_log_path",
+        "stderr_log_path",
+    )
+    for field_name in identity_fields:
+        if receipt_payload.get(field_name) != expected_payload.get(field_name):
+            return None, f"旧 receipt 命令身份不一致：第 {index} 步"
+    if int(receipt_payload.get("returncode") or 0) != returncode:
+        return None, f"旧 receipt returncode 不一致：第 {index} 步"
+    for field_name in ("stdout_sha256", "stderr_sha256"):
+        if receipt_payload.get(field_name) != expected_payload.get(field_name):
+            return None, f"旧 receipt 输出日志 hash 不一致：第 {index} 步"
+    return receipt_payload, ""
+
+
+def _result_from_receipt_logs(receipt_payload: Dict[str, Any]) -> Dict[str, Any]:
+    stdout_log_rel = str(receipt_payload.get("stdout_log_path") or "").replace("\\", "/")
+    stderr_log_rel = str(receipt_payload.get("stderr_log_path") or "").replace("\\", "/")
+    if not stdout_log_rel or not stderr_log_rel:
+        raise QualityGateError("旧 receipt 缺少 stdout/stderr 日志路径，不能续跑")
+    return {
+        "stdout": _read_repo_text(stdout_log_rel),
+        "stderr": _read_repo_text(stderr_log_rel),
+        "returncode": int(receipt_payload.get("returncode") or 0),
+    }
+
+
+def _decide_resume_from_previous_failure(command_plan: Sequence[Dict[str, Any]], *, current_head_sha: str) -> ResumeDecision:
+    manifest_path = _quality_gate_manifest_abs_path()
+    if not os.path.isfile(manifest_path):
+        return ResumeDecision(False, "旧 manifest 不存在")
+    loaded_manifest = _load_json_file(manifest_path)
+    if loaded_manifest.error:
+        if loaded_manifest.error == "文件不存在":
+            return ResumeDecision(False, "旧 manifest 不存在")
+        return ResumeDecision(False, f"旧 manifest 不是合法 JSON：{loaded_manifest.error}")
+    manifest = dict(loaded_manifest.payload or {})
+    if str(manifest.get("status") or "") != "failed":
+        return ResumeDecision(False, "上次不是失败记录")
+
+    previous_head_sha = str(manifest.get("head_sha") or "").strip()
+    if not previous_head_sha:
+        return ResumeDecision(False, "旧 manifest 缺少 head_sha，不能续跑")
+    if previous_head_sha != str(current_head_sha or "").strip():
+        return ResumeDecision(
+            False, f"旧 manifest head_sha 与当前 HEAD 不一致，不能续跑：previous={previous_head_sha} current={current_head_sha}"
+        )
+
+    previous_run_id = str(manifest.get("run_id") or "").strip()
+    if not previous_run_id:
+        return ResumeDecision(False, "旧 manifest 缺少 run_id，不能续跑")
+    previous_planned_commands = manifest.get("planned_commands")
+    previous_planned_hash = str(manifest.get("planned_commands_hash") or "").strip()
+    if not isinstance(previous_planned_commands, list) or not previous_planned_hash:
+        return ResumeDecision(False, "旧 manifest 没有完整命令计划，不能续跑")
+
+    current_planned_commands = [_command_identity(command) for command in command_plan]
+    normalized_previous_plan = [
+        _command_identity(command) for command in previous_planned_commands if isinstance(command, dict)
+    ]
+    current_plan_hash = hash_quality_gate_commands(command_plan)
+    if normalized_previous_plan != current_planned_commands or previous_planned_hash != current_plan_hash:
+        return ResumeDecision(False, "命令计划已变化，本次完整重跑")
+
+    previous_commands = list(manifest.get("commands") or [])
+    previous_receipts = list(manifest.get("command_receipts") or [])
+    reusable_receipts: List[Dict[str, str]] = []
+    reusable_payloads: List[Dict[str, Any]] = []
+    if not previous_receipts:
+        return ResumeDecision(False, "旧 receipt 缺失：manifest 中没有 command_receipts")
+    for index, command in enumerate(command_plan, start=1):
+        if index > len(previous_commands) or not isinstance(previous_commands[index - 1], dict):
+            return ResumeDecision(False, f"旧 manifest.commands 缺少第 {index} 步，不能续跑")
+        if not _commands_match(cast(Dict[str, Any], previous_commands[index - 1]), command):
+            return ResumeDecision(False, f"旧 receipt 命令身份不一致：第 {index} 步")
+        if index > len(previous_receipts) or not isinstance(previous_receipts[index - 1], dict):
+            return ResumeDecision(False, f"旧 receipt 缺失：第 {index} 步")
+        receipt_entry = cast(Dict[str, Any], previous_receipts[index - 1])
+        receipt_payload, receipt_error = _load_resume_receipt_payload(
+            receipt_entry,
+            command,
+            index=index,
+            previous_run_id=previous_run_id,
+        )
+        if receipt_error:
+            return ResumeDecision(False, receipt_error)
+        returncode = int((receipt_payload or {}).get("returncode") or 0)
+        if returncode != 0:
+            skip_count = len(reusable_receipts)
+            if skip_count <= 0:
+                return ResumeDecision(False, "上次失败发生在第 1 步，没有可跳过的成功前缀")
+            return ResumeDecision(
+                True,
+                "找到可复用的成功前缀",
+                previous_run_id=previous_run_id,
+                previous_failure_message=str(manifest.get("failure_message") or ""),
+                skip_count=skip_count,
+                start_command_index=index,
+                start_command_display=str(command.get("display") or ""),
+                reusable_receipts=tuple(dict(item) for item in reusable_receipts),
+                reusable_receipt_payloads=tuple(dict(item) for item in reusable_payloads),
+            )
+        reusable_receipts.append({"path": str(receipt_entry.get("path") or ""), "sha256": str(receipt_entry.get("sha256") or "")})
+        reusable_payloads.append(dict(receipt_payload or {}))
+    return ResumeDecision(False, "旧记录没有可定位的失败命令 receipt")
+
+
 def _write_command_receipt(command: Dict[str, Any], *, run_id: str, index: int, result: Dict[str, Any]) -> Dict[str, str]:
-    receipt_rel = build_quality_gate_receipt_rel_path(index, str(command.get("display") or ""))
+    display = str(command.get("display") or "")
+    if not str(result.get("stdout_log_path") or "") or not str(result.get("stderr_log_path") or ""):
+        result.update(_write_command_output_logs(index=index, display=display, result=result))
+    receipt_rel = build_quality_gate_receipt_rel_path(index, display)
     receipt_abs = os.path.join(REPO_ROOT, receipt_rel.replace("/", os.sep))
     os.makedirs(os.path.dirname(receipt_abs), exist_ok=True)
     receipt_payload = build_quality_gate_command_receipt(
@@ -218,19 +469,27 @@ def _write_command_receipt(command: Dict[str, Any], *, run_id: str, index: int, 
         returncode=int(result.get("returncode") or 0),
         stdout=str(result.get("stdout") or ""),
         stderr=str(result.get("stderr") or ""),
+        stdout_log_path=str(result.get("stdout_log_path") or ""),
+        stderr_log_path=str(result.get("stderr_log_path") or ""),
     )
     with open(receipt_abs, "w", encoding="utf-8") as handle:
         json.dump(receipt_payload, handle, ensure_ascii=False, indent=2)
+        handle.write("\n")
     return {
         "path": receipt_rel,
         "sha256": _sha256_file(receipt_abs),
     }
 
 
+def _clear_quality_gate_run_outputs() -> None:
+    for rel_path in (QUALITY_GATE_RECEIPTS_DIR_REL, QUALITY_GATE_LOGS_DIR_REL):
+        abs_path = os.path.join(REPO_ROOT, rel_path)
+        if os.path.isdir(abs_path):
+            shutil.rmtree(abs_path)
+
+
 def _clear_quality_gate_receipts() -> None:
-    receipts_abs = os.path.join(REPO_ROOT, QUALITY_GATE_RECEIPTS_DIR_REL)
-    if os.path.isdir(receipts_abs):
-        shutil.rmtree(receipts_abs)
+    _clear_quality_gate_run_outputs()
 
 
 def _guard_test_abs_path(rel_path: str) -> str:
@@ -359,7 +618,7 @@ def _run_quality_gate_command_plan(
     commands: List[Dict[str, Any]],
     command_receipts: List[Dict[str, str]],
     parsed_command_results: Dict[str, Any],
-    resume_state: Optional[Dict[str, Any]] = None,
+    resume_decision: Optional[ResumeDecision] = None,
 ) -> None:
     command_result_handlers: Dict[str, CommandResultHandler] = {
         str(command["display"]): _handle_checked_quality_gate_command for command in command_plan
@@ -371,24 +630,73 @@ def _run_quality_gate_command_plan(
             "python -m pyright --version": _handle_pyright_version_quality_gate_command,
         }
     )
-    skip_count = int((resume_state or {}).get("skip_count") or 0)
+    total = len(command_plan)
+    skip_count = int(resume_decision.skip_count if resume_decision and resume_decision.enabled else 0)
     if skip_count > 0:
+        reusable_receipts = list(resume_decision.reusable_receipts if resume_decision else ())
+        reusable_payloads = list(resume_decision.reusable_receipt_payloads if resume_decision else ())
         for index, command in enumerate(command_plan[:skip_count], start=1):
-            print(f"==> [resume-skip] {command['display']}")
+            display = str(command["display"])
+            print(f"==> 第 {index}/{total} 步：[resume-skip] {display}", flush=True)
+            result = _result_from_receipt_logs(reusable_payloads[index - 1])
             commands.append(command)
-            command_receipts.append(cast(Dict[str, str], list((resume_state or {}).get("command_receipts") or [])[index - 1]))
-        for key, value in dict((resume_state or {}).get("parsed_command_results") or {}).items():
-            if value:
-                parsed_command_results[key] = value
+            command_receipts.append(dict(reusable_receipts[index - 1]))
+            try:
+                parsed_command_results.update(command_result_handlers[display](display, result))
+            except QualityGateError as exc:
+                _raise_command_failure(
+                    index=index,
+                    total=total,
+                    display=display,
+                    receipt_rel=str(command_receipts[-1].get("path") or ""),
+                    result=result,
+                    detail=str(exc),
+                )
 
-    for command in command_plan[skip_count:]:
+    for zero_based_index, command in enumerate(command_plan[skip_count:], start=skip_count):
+        command_index = zero_based_index + 1
         display = str(command["display"])
+        print(f"==> 第 {command_index}/{total} 步开始：{display}", flush=True)
+        start_monotonic = time.monotonic()
         result = _coerce_command_result(
             _run_command(display, _resolve_command_args(command), capture_output=bool(command.get("capture_output")))
         )
+        result.update(_write_command_output_logs(index=command_index, display=display, result=result))
         commands.append(command)
-        command_receipts.append(_write_command_receipt(command, run_id=run_id, index=len(command_receipts) + 1, result=result))
-        parsed_command_results.update(command_result_handlers[display](display, result))
+        receipt_entry = _write_command_receipt(command, run_id=run_id, index=command_index, result=result)
+        command_receipts.append(receipt_entry)
+        elapsed = time.monotonic() - start_monotonic
+        returncode = int(result.get("returncode") or 0)
+        if returncode != 0:
+            print(
+                f"==> 第 {command_index}/{total} 步结束：失败(returncode={returncode})，"
+                f"耗时 {elapsed:.1f}s，receipt={receipt_entry['path']}",
+                flush=True,
+            )
+            _raise_command_failure(
+                index=command_index,
+                total=total,
+                display=display,
+                receipt_rel=receipt_entry["path"],
+                result=result,
+            )
+        try:
+            parsed_command_results.update(command_result_handlers[display](display, result))
+        except QualityGateError as exc:
+            print(
+                f"==> 第 {command_index}/{total} 步结束：失败(returncode={returncode})，"
+                f"耗时 {elapsed:.1f}s，receipt={receipt_entry['path']}",
+                flush=True,
+            )
+            _raise_command_failure(
+                index=command_index,
+                total=total,
+                display=display,
+                receipt_rel=receipt_entry["path"],
+                result=result,
+                detail=str(exc),
+            )
+        print(f"==> 第 {command_index}/{total} 步结束：通过，耗时 {elapsed:.1f}s，receipt={receipt_entry['path']}", flush=True)
 
 
 def _require_quality_gate_command_proofs(parsed_command_results: Dict[str, Any]) -> None:
@@ -550,7 +858,10 @@ def _assert_no_active_runtime() -> None:
         )
 
     print(
-        "提示：检测到仓库根存在陈旧运行时痕迹，将继续执行；未自动删除：contract={} lock={}".format(paths["contract_path"], paths["lock_path"])
+        "提示：检测到仓库根存在陈旧运行时痕迹，将继续执行；未自动删除：contract={} lock={}".format(
+            paths["contract_path"], paths["lock_path"]
+        ),
+        flush=True,
     )
 
 
@@ -671,6 +982,7 @@ def _base_quality_gate_manifest(
     git_status_short_before: Sequence[str],
     runtime_snapshot: Dict[str, Any],
     status: str,
+    command_plan: Sequence[Dict[str, Any]],
 ) -> Dict[str, Any]:
     manifest = {
         "status": str(status or "").strip() or "running",
@@ -686,6 +998,8 @@ def _base_quality_gate_manifest(
         "finished_at": None,
         "collection_proof": None,
         "required_tests": list(REQUIRED_TEST_ARGS),
+        "planned_commands": [_command_identity(command) for command in command_plan],
+        "planned_commands_hash": hash_quality_gate_commands(command_plan),
         "commands": [],
         "gate_sources": [],
         "clean_worktree_excluded_paths": list(GENERATED_CLEAN_WORKTREE_EXCLUDED_PATHS),
@@ -721,22 +1035,23 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = _parse_args(argv)
     command_plan = build_quality_gate_command_plan()
-    resume_state = (
-        _resume_state_from_previous_failure(command_plan)
-        if bool(args.allow_dirty_worktree and not args.no_resume)
-        else None
-    )
     started_at = datetime.now().isoformat(timespec="seconds")
-    if resume_state:
+    head_sha = _git_head_sha()
+    if bool(args.allow_dirty_worktree and not args.no_resume):
+        resume_decision = _decide_resume_from_previous_failure(command_plan, current_head_sha=head_sha)
+    elif bool(args.allow_dirty_worktree and args.no_resume):
+        resume_decision = ResumeDecision(False, "--no-resume 已指定")
+    else:
+        resume_decision = ResumeDecision(False, "当前不是 allow-dirty-worktree 模式")
+    if resume_decision.enabled:
         print(
-            "提示：检测到上次质量门禁失败，本次从第 {index} 个命令继续：{display}".format(
-                index=resume_state["start_command_index"],
-                display=resume_state["start_command_display"],
-            )
+            f"提示：检测到上次质量门禁失败，本次从第 {resume_decision.start_command_index}/{len(command_plan)} "
+            f"步继续：{resume_decision.start_command_display}",
+            flush=True,
         )
     else:
-        _clear_quality_gate_receipts()
-    head_sha = _git_head_sha()
+        print(f"提示：未使用续跑：{resume_decision.reason}。本次完整重跑。", flush=True)
+        _clear_quality_gate_run_outputs()
     run_id = f"{head_sha}:{started_at}"
     git_status_short_before = _git_status_lines()
     runtime_snapshot = _runtime_state_snapshot()
@@ -755,15 +1070,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         git_status_short_before=git_status_short_before,
         runtime_snapshot=runtime_snapshot,
         status="running",
+        command_plan=command_plan,
     )
     manifest["resume"] = {
-        "enabled": bool(resume_state),
-        "previous_run_id": None if not resume_state else resume_state["previous_run_id"],
-        "skip_count": 0 if not resume_state else resume_state["skip_count"],
-        "start_command_index": None if not resume_state else resume_state["start_command_index"],
-        "start_command_display": None if not resume_state else resume_state["start_command_display"],
-        "previous_failure_message": None if not resume_state else resume_state["previous_failure_message"],
-        "proof_status": "fast_feedback_only" if resume_state else "full_command_plan",
+        "enabled": bool(resume_decision.enabled),
+        "reason": resume_decision.reason,
+        "previous_run_id": resume_decision.previous_run_id or None,
+        "skip_count": int(resume_decision.skip_count),
+        "start_command_index": resume_decision.start_command_index or None,
+        "start_command_display": resume_decision.start_command_display or None,
+        "previous_failure_message": resume_decision.previous_failure_message or None,
+        "proof_status": "fast_feedback_only" if resume_decision.enabled else "full_command_plan",
     }
     _write_quality_gate_manifest(manifest)
 
@@ -785,7 +1102,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             commands=commands,
             command_receipts=command_receipts,
             parsed_command_results=parsed_command_results,
-            resume_state=resume_state,
+            resume_decision=resume_decision,
         )
         collection_proof = cast(Optional[Dict[str, Any]], parsed_command_results.get("collection_proof"))
         ruff_version_output = cast(Optional[str], parsed_command_results.get("ruff_version_output"))
@@ -814,7 +1131,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             ),
         }
         success_status, success_message, success_return_code = success_by_clean_contract[require_clean_worktree]
-        if resume_state:
+        if resume_decision.enabled:
             success_message = (
                 "质量门禁续跑完成；本次跳过了上次已通过的前置命令，只能当作本地快速反馈，不能当作完整通过证明。"
             )
@@ -834,7 +1151,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         )
         apply_quality_gate_manifest_proof_fields(manifest, repo_root=REPO_ROOT)
         _write_quality_gate_manifest(manifest)
-        print(success_message)
+        print(success_message, flush=True)
         return success_return_code
     except Exception as exc:
         collection_proof = cast(Optional[Dict[str, Any]], parsed_command_results.get("collection_proof"))
@@ -873,5 +1190,5 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except QualityGateError as exc:
-        print(f"ERROR: {exc}", file=sys.stderr)
+        print(f"ERROR: {exc}", file=sys.stderr, flush=True)
         raise SystemExit(2) from exc

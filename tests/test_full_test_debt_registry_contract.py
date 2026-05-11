@@ -408,6 +408,28 @@ def test_collect_full_test_debt_records_collection_errors_and_exitstatus(tmp_pat
     assert "collect boom" in payload["collection_errors"][0]["longrepr"]
 
 
+
+def test_collect_full_test_debt_writes_current_payload_and_stderr_preview(tmp_path: Path) -> None:
+    nodeid = "tests/test_debt_candidate.py::test_debt_candidate"
+    _write(
+        tmp_path / "tests" / "test_debt_candidate.py",
+        '''
+        def test_debt_candidate():
+            assert False, "known debt"
+        ''',
+    )
+
+    proc = _run_collector(tmp_path, baseline_kind="after_main_style_isolation")
+    payload = _payload_from_stdout(proc)
+    current_payload_path = tmp_path / "evidence" / "QualityGate" / "current_full_test_debt.json"
+
+    assert current_payload_path.exists()
+    assert json.loads(current_payload_path.read_text(encoding="utf-8")) == payload
+    assert "candidate_test_debt" in proc.stderr
+    assert nodeid in proc.stderr
+    assert "current_full_test_debt.json" in proc.stderr
+
+
 def test_collect_full_test_debt_writes_raw_baseline_machine_block(tmp_path: Path) -> None:
     _write(
         tmp_path / "tests" / "test_run_quality_gate.py",

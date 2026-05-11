@@ -212,20 +212,38 @@ def _validate_candidate_nodeids_are_collected(
 
 
 def _validate_baseline_reports(payload: Dict[str, Any]) -> None:
+    report_nodeids: Set[str] = set()
+    failed_report_nodeids: Set[str] = set()
     for index, raw_report in enumerate(_require_list(payload.get("reports"), "reports")):
         report = _require_dict(raw_report, f"reports[{index}]")
         for field_name in BASELINE_REQUIRED_REPORT_FIELDS:
             if field_name not in report:
                 raise QualityGateError(f"reports[{index}] 缺少字段 {field_name}")
-        _require_text(report.get("nodeid"), f"reports[{index}].nodeid")
+        nodeid = _require_text(report.get("nodeid"), f"reports[{index}].nodeid")
+        report_nodeids.add(nodeid)
         _require_text(report.get("when"), f"reports[{index}].when")
-        _require_text(report.get("outcome"), f"reports[{index}].outcome")
+        outcome = _require_text(report.get("outcome"), f"reports[{index}].outcome")
+        if outcome == "failed":
+            failed_report_nodeids.add(nodeid)
         _require_bool(report.get("xfail_marker_present"), f"reports[{index}].xfail_marker_present")
         _require_string(report.get("xfail_marker_reason"), f"reports[{index}].xfail_marker_reason")
         _require_bool(report.get("xfail_marker_strict"), f"reports[{index}].xfail_marker_strict")
         _require_bool(report.get("xfail_marker_run"), f"reports[{index}].xfail_marker_run")
         _require_string(report.get("wasxfail_reason"), f"reports[{index}].wasxfail_reason")
         _require_bool(report.get("strict_xpass"), f"reports[{index}].strict_xpass")
+    candidate_nodeids = set(_classification_list(payload, "candidate_test_debt"))
+    missing_reports = sorted(candidate_nodeids - report_nodeids)
+    if missing_reports:
+        raise QualityGateError(
+            "candidate_test_debt 每个 nodeid 都必须有失败报告 reports 明细，缺少："
+            + _format_nodeid_list(missing_reports)
+        )
+    missing_failed_reports = sorted(candidate_nodeids - failed_report_nodeids)
+    if missing_failed_reports:
+        raise QualityGateError(
+            "candidate_test_debt 每个 nodeid 都必须有 outcome=failed 的 reports 证据，缺少："
+            + _format_nodeid_list(missing_failed_reports)
+        )
 
 
 def _validate_importable_baseline_machine_fields(payload: Dict[str, Any]) -> None:
@@ -279,6 +297,31 @@ def _format_nodeid_list(values: Sequence[Any], *, limit: int = 20) -> str:
     return "".join(parts)
 
 
+def _format_collection_error_items(values: Sequence[Any], *, limit: int = 20) -> str:
+    visible = list(values)[:limit]
+    parts = []
+    for item in visible:
+        if isinstance(item, dict):
+            nodeid = str(item.get("nodeid") or "<unknown>")
+            outcome = str(item.get("outcome") or "")
+            longrepr_first_line = next(
+                (line.strip() for line in str(item.get("longrepr") or "").splitlines() if line.strip()),
+                "",
+            )
+            row = [nodeid]
+            if outcome:
+                row.append(outcome)
+            if longrepr_first_line:
+                row.append(longrepr_first_line)
+            parts.append("\n  - " + " | ".join(row))
+        else:
+            parts.append(f"\n  - {item}")
+    hidden_count = len(values) - len(visible)
+    if hidden_count > 0:
+        parts.append(f"\n  - ... 另外 {hidden_count} 个未显示")
+    return "".join(parts)
+
+
 def baseline_candidate_nodeids(payload: Dict[str, Any]) -> List[str]:
     return sorted(_classification_list(payload, "candidate_test_debt"))
 
@@ -297,7 +340,7 @@ def _collection_error_blocker(payload: Dict[str, Any], summary: Dict[str, Any]) 
     errors = list(payload.get("collection_errors") or [])
     count = int(summary.get("collection_error_count") or 0)
     if errors:
-        return f"collection_error_count（{len(errors)} 个）：{_format_nodeid_list(errors)}"
+        return f"collection_errors 非空（{len(errors)} 个）：{_format_collection_error_items(errors)}"
     if count != 0:
         return f"collection_error_count 统计数为 {count}，但明细为空"
     return None

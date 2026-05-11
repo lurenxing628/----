@@ -425,11 +425,40 @@ def test_check_full_test_debt_rejects_new_registered_xfail_even_if_ratchet_is_ra
         checker.build_full_test_debt_summary(payload, ledger=_ledger(entry, max_registered_xfail=1))
 
 
-def test_check_full_test_debt_rejects_bad_collector_json() -> None:
+def test_check_full_test_debt_bad_collector_json_includes_stdout_stderr_summary() -> None:
     checker = _import_checker()
 
-    with pytest.raises(checker.QualityGateError, match="JSON"):
-        checker.parse_collector_payload("not json")
+    with pytest.raises(checker.QualityGateError) as exc_info:
+        checker.parse_collector_payload(
+            "not json\nsecond line",
+            "pytest import failed\nthird line",
+        )
+
+    message = str(exc_info.value)
+    assert "collector stdout 不是 JSON" in message
+    assert "not json" in message
+    assert "pytest import failed" in message
+
+
+def test_check_full_test_debt_collection_errors_list_entries() -> None:
+    checker = _import_checker()
+    nodeid = "tests/test_bad_import.py"
+    payload = _payload(
+        collected_nodeids=[],
+        reports=[],
+        collection_errors=[
+            {"nodeid": nodeid, "outcome": "failed", "longrepr": "ImportError: boom\ntrace"}
+        ],
+        exitstatus=2,
+    )
+
+    with pytest.raises(checker.QualityGateError) as exc_info:
+        checker.build_full_test_debt_summary(payload, ledger=_ledger(max_registered_xfail=0))
+
+    message = str(exc_info.value)
+    assert "collection_errors" in message
+    assert nodeid in message
+    assert "ImportError: boom" in message
 
 
 def test_check_full_test_debt_rejects_required_test_active_xfail() -> None:
