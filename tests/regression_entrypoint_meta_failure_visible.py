@@ -75,6 +75,12 @@ def _make_state() -> Dict[str, List[Any]]:
     }
 
 
+def _anchor_file(tmp_path: Path) -> str:
+    anchor = tmp_path / "app.py"
+    anchor.write_text("# test anchor\n", encoding="utf-8")
+    return str(anchor)
+
+
 def _build_deps(
     app: _App,
     state: Dict[str, List[Any]],
@@ -178,13 +184,13 @@ def test_clear_launch_error_failure_visible(tmp_path: Path, monkeypatch: pytest.
     monkeypatch.delenv("APS_HOST", raising=False)
     monkeypatch.delenv("APS_PORT", raising=False)
 
-    rc = entrypoint_mod.app_main(anchor_file=__file__, argv=[], deps=deps)
+    rc = entrypoint_mod.app_main(anchor_file=_anchor_file(tmp_path), argv=[], deps=deps)
 
     assert rc == 0
     assert "清理历史启动错误文件失败" in capsys.readouterr().err
 
 
-def test_create_app_failure_write_launch_error_failure_visible(capsys) -> None:
+def test_create_app_failure_write_launch_error_failure_visible(tmp_path: Path, capsys) -> None:
     state = _make_state()
     deps = EntryPointDeps(
         create_app=lambda: (_ for _ in ()).throw(RuntimeError("app boom")),
@@ -208,7 +214,7 @@ def test_create_app_failure_write_launch_error_failure_visible(capsys) -> None:
         atexit_register=lambda *args, **kwargs: state["atexit"].append((args, kwargs)),
     )
 
-    rc = entrypoint_mod.app_main(anchor_file=__file__, argv=[], deps=deps)
+    rc = entrypoint_mod.app_main(anchor_file=_anchor_file(tmp_path), argv=[], deps=deps)
 
     stderr_text = capsys.readouterr().err
     assert rc == 14
@@ -226,7 +232,7 @@ def test_invalid_aps_port_logs_warning_and_uses_default_preferred_port(
     monkeypatch.delenv("APS_HOST", raising=False)
     monkeypatch.setenv("APS_PORT", "not-a-port")
 
-    rc = entrypoint_mod.app_main(anchor_file=__file__, argv=[], deps=deps)
+    rc = entrypoint_mod.app_main(anchor_file=_anchor_file(tmp_path), argv=[], deps=deps)
 
     assert rc == 0
     assert state["pick_port"][0][1] == 5000
@@ -248,7 +254,7 @@ def test_env_write_failure_visible(tmp_path: Path, monkeypatch: pytest.MonkeyPat
 
     monkeypatch.setattr(entrypoint_mod.os, "environ", env)
 
-    rc = entrypoint_mod.app_main(anchor_file=__file__, argv=[], deps=deps)
+    rc = entrypoint_mod.app_main(anchor_file=_anchor_file(tmp_path), argv=[], deps=deps)
 
     assert rc == 0
     assert any("回写 APS_HOST/APS_PORT 环境变量失败" in text for level, text in app.logger.messages if level == "warning")
@@ -266,7 +272,7 @@ def test_host_fallback_warning_visible(tmp_path: Path, monkeypatch: pytest.Monke
     monkeypatch.setenv("APS_HOST", "192.0.2.10")
     monkeypatch.delenv("APS_PORT", raising=False)
 
-    rc = entrypoint_mod.app_main(anchor_file=__file__, argv=[], deps=deps)
+    rc = entrypoint_mod.app_main(anchor_file=_anchor_file(tmp_path), argv=[], deps=deps)
 
     assert rc == 0
     assert any("APS_HOST=192.0.2.10 不可绑定" in text for level, text in app.logger.messages if level == "warning")
@@ -286,7 +292,7 @@ def test_acquire_runtime_lock_meta_failure_visible(tmp_path: Path, monkeypatch: 
     monkeypatch.delenv("APS_HOST", raising=False)
     monkeypatch.delenv("APS_PORT", raising=False)
 
-    rc = entrypoint_mod.app_main(anchor_file=__file__, argv=[], deps=deps)
+    rc = entrypoint_mod.app_main(anchor_file=_anchor_file(tmp_path), argv=[], deps=deps)
 
     assert rc == 13
     assert any("获取运行时锁失败：lock boom，但写入启动错误文件失败：launch file boom" in text for level, text in app.logger.messages if level == "error")
@@ -308,7 +314,7 @@ def test_configure_runtime_contract_meta_failure_visible_when_logger_error_fails
     monkeypatch.delenv("APS_HOST", raising=False)
     monkeypatch.delenv("APS_PORT", raising=False)
 
-    rc = entrypoint_mod.app_main(anchor_file=__file__, argv=[], deps=deps)
+    rc = entrypoint_mod.app_main(anchor_file=_anchor_file(tmp_path), argv=[], deps=deps)
 
     stderr_text = capsys.readouterr().err
     assert rc == 15
@@ -324,7 +330,7 @@ def test_parent_skip_info_visible_when_logger_fails(tmp_path: Path, monkeypatch:
     monkeypatch.delenv("APS_HOST", raising=False)
     monkeypatch.delenv("APS_PORT", raising=False)
 
-    rc = entrypoint_mod.app_main(anchor_file=__file__, argv=[], deps=deps)
+    rc = entrypoint_mod.app_main(anchor_file=_anchor_file(tmp_path), argv=[], deps=deps)
 
     assert rc == 0
     assert "开发重载父进程跳过获取运行时锁与运行时契约" in capsys.readouterr().err

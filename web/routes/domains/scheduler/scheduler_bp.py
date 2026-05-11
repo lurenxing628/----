@@ -6,8 +6,17 @@ from flask import Blueprint, flash
 
 from ...enum_display import batch_status_zh, day_type_zh, priority_zh, ready_zh
 
+
+class _SchedulerBlueprint(Blueprint):
+    def register(self, app, options):
+        from .scheduler_route_registrar import register_scheduler_routes
+
+        register_scheduler_routes()
+        super().register(app, options)
+
+
 # 统一蓝图对象；其余拆分文件通过 import bp 注册路由。
-bp = Blueprint("scheduler", __name__)
+bp = _SchedulerBlueprint("scheduler", __name__)
 
 
 def _priority_zh(v: str) -> str:

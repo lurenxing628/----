@@ -119,6 +119,7 @@ def _write_launch_error_with_observability(
             exc,
             runtime_dir=runtime_dir,
             state_dir=log_dir,
+            logger_level="error",
         )
 
 

@@ -28,12 +28,13 @@ def launcher_log_warning(
     state_dir: Optional[str] = None,
     cfg_log_dir: Optional[str] = None,
     write_launch_error: bool = False,
+    logger_level: str = "warning",
 ) -> LauncherLogResult:
     text = _format_message(message, *args)
     attempted_paths: List[str] = []
     errors: List[str] = []
 
-    logger_ok = _write_logger_warning(logger, text, errors)
+    logger_ok = _write_logger(logger, logger_level, text, errors)
     target_dir = _resolve_log_target_dir(runtime_dir=runtime_dir, state_dir=state_dir, cfg_log_dir=cfg_log_dir)
     file_ok = False
     error_file_ok = False
@@ -69,8 +70,8 @@ def _format_file_line(text: str) -> str:
     return "{} [WARNING] {}\n".format(time.strftime("%Y-%m-%d %H:%M:%S"), text)
 
 
-def _write_logger_warning(logger: Optional[Any], text: str, errors: List[str]) -> bool:
-    method = getattr(logger, "warning", None) if logger is not None else None
+def _write_logger(logger: Optional[Any], level: str, text: str, errors: List[str]) -> bool:
+    method = getattr(logger, str(level or "").strip(), None) if logger is not None else None
     if not callable(method):
         return False
     try:
@@ -137,4 +138,3 @@ def _write_stderr(text: str, errors: List[str]) -> bool:
     except Exception as exc:
         errors.append(f"stderr:{exc}")
         return False
-

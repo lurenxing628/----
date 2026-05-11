@@ -4,6 +4,7 @@ import importlib
 import io
 import os
 import sys
+from html.parser import HTMLParser
 from pathlib import Path
 
 TESTS_DIR = Path(__file__).resolve().parent
@@ -15,6 +16,53 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from excel_preview_confirm_helpers import build_confirm_payload, extract_raw_rows_json
+
+_STALE_PREVIEW_MESSAGE = "导入被拒绝：数据已变化，请重新上传 Excel 并检查后再确认写入。"
+
+
+class _FlashMessageParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.messages: list[tuple[str, str]] = []
+        self._category: str | None = None
+        self._depth = 0
+        self._parts: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attrs_dict = dict(attrs)
+        if self._category is None and tag == "div" and attrs_dict.get("data-flash"):
+            self._category = str(attrs_dict["data-flash"])
+            self._depth = 1
+            self._parts = []
+            return
+        if self._category is not None:
+            self._depth += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        if self._category is None:
+            return
+        self._depth -= 1
+        if self._depth == 0:
+            message = " ".join(" ".join(self._parts).split())
+            self.messages.append((self._category, message))
+            self._category = None
+            self._parts = []
+
+    def handle_data(self, data: str) -> None:
+        if self._category is not None:
+            self._parts.append(data)
+
+
+def _flash_messages(html: str, category: str) -> list[str]:
+    parser = _FlashMessageParser()
+    parser.feed(html)
+    return [message for flash_category, message in parser.messages if flash_category == category]
+
+
+def _assert_stale_preview_error(html: str, *, expected: bool) -> None:
+    error_messages = _flash_messages(html, "error")
+    matched = any(_STALE_PREVIEW_MESSAGE in message for message in error_messages)
+    assert matched is expected, error_messages
 
 
 def _build_app(tmp_path, monkeypatch):
@@ -163,7 +211,7 @@ def test_scheduler_excel_batches_unrelated_part_change_does_not_force_repreview(
 
     confirm_html = _confirm_batches(client, preview_html, auto_generate_ops="0")
 
-    assert "请重新上传 Excel 并检查" not in confirm_html
+    _assert_stale_preview_error(confirm_html, expected=False)
     _assert_batch_present(db_path, "B_SCOPE_OK")
 
 
@@ -214,7 +262,7 @@ def test_scheduler_excel_batches_autobuild_supplier_default_days_drift_requires_
 
     confirm_html = _confirm_batches(client, preview_html, auto_generate_ops="1")
 
-    assert "请重新上传 Excel 并检查" in confirm_html
+    _assert_stale_preview_error(confirm_html, expected=True)
     _assert_batch_absent(db_path, "B_PARSE_REVIEW")
 
 
@@ -266,7 +314,7 @@ def test_scheduler_excel_batches_autobuild_non_effective_supplier_change_does_no
 
     confirm_html = _confirm_batches(client, preview_html, auto_generate_ops="1")
 
-    assert "请重新上传 Excel 并检查" not in confirm_html
+    _assert_stale_preview_error(confirm_html, expected=False)
     _assert_batch_present(db_path, "B_PARSE_SECONDARY_OK")
 
 
@@ -317,5 +365,5 @@ def test_scheduler_excel_batches_autobuild_supplier_status_change_requires_repre
 
     confirm_html = _confirm_batches(client, preview_html, auto_generate_ops="1")
 
-    assert "请重新上传 Excel 并检查" in confirm_html
+    _assert_stale_preview_error(confirm_html, expected=True)
     _assert_batch_absent(db_path, "B_PARSE_STATUS_OK")
