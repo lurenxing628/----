@@ -132,7 +132,7 @@ class GanttService:
         try:
             offset_int = int(offset_weeks or 0)
         except Exception as e:
-            raise ValidationError("offset_weeks 不合法（期望整数）", field="offset_weeks") from e
+            raise ValidationError("周偏移填写不对，请填写整数。", field="offset_weeks") from e
         return bool(
             str(week_start or "").strip()
             or str(start_date or "").strip()

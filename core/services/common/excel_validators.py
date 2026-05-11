@@ -181,7 +181,7 @@ def get_operator_calendar_row_validate_and_normalize(
 
         target["类型"] = _normalize_operator_calendar_day_type(target.get("类型"))
         if target["类型"] not in CALENDAR_DAY_TYPE_STORED_VALUES:
-            return "“类型”不合法，新文件请填写：工作日 / 假期。以前的 Excel 如果写过周末 / 节假日或英文，系统会尽量按中文意思读取；新文件请直接填中文推荐值。"
+            return "“类型”这一列系统没认出来，新文件请填写：工作日 / 假期。以前的 Excel 如果写过周末 / 节假日或英文，系统会尽量按中文意思读取；新文件请直接填中文推荐值。"
 
         try:
             ss = normalize_hhmm(target.get("班次开始"), field="班次开始", allow_none=True)
@@ -235,10 +235,10 @@ def get_operator_calendar_row_validate_and_normalize(
 
         target["允许普通件"] = _normalize_yesno(target.get("允许普通件"))
         if target["允许普通件"] not in YESNO_VALUES:
-            return "“允许普通件”不合法，可填写：是 / 否。以前的 Excel 如果写过英文，系统会尽量按中文意思读取；新文件请直接填中文。"
+            return "“允许普通件”这一列系统没认出来，可填写：是 / 否。以前的 Excel 如果写过英文，系统会尽量按中文意思读取；新文件请直接填中文。"
         target["允许急件"] = _normalize_yesno(target.get("允许急件"))
         if target["允许急件"] not in YESNO_VALUES:
-            return "“允许急件”不合法，可填写：是 / 否。以前的 Excel 如果写过英文，系统会尽量按中文意思读取；新文件请直接填中文。"
+            return "“允许急件”这一列系统没认出来，可填写：是 / 否。以前的 Excel 如果写过英文，系统会尽量按中文意思读取；新文件请直接填中文。"
 
         target["__id"] = f"{op_id}|{target.get('日期')}"
         return None

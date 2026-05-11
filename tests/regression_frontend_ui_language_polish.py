@@ -20,8 +20,9 @@ def test_scheduler_config_and_batch_hints_are_user_facing_chinese() -> None:
         "不勾选：能确认的工序会先生成；缺少外协周期时会先按 1 天记录并提醒补正。"
     )
     expected_batch_schedule_hint = (
-        "勾选后：派工方式、智能派工策略、自动分配设备人员这几项如果配置不合法，会直接停止排产并提示原因。"
-        "不勾选：系统会按页面提示的安全取值继续排产，并告诉你哪些设置需要重新保存。"
+        "勾选后：系统会先检查两类内容。第一，高级设置里的选项必须是页面能选到的值，例如派工方式、智能派工策略、自动分配设备人员不能乱填。"
+        "第二，工时、外协周期、权重、锁定天数这类数字必须是正常数字，不能空着、填负数或填文字。"
+        "发现这些问题会停下，让你先修改。不勾选：为了兼容旧数据，系统会先按默认值继续排，例如空工时按 0 小时、外协周期缺失按 1 天、坏掉的高级设置按页面默认项，并在结果提醒里告诉你需要回去补哪项。"
     )
 
     for rel_path in ("templates/scheduler/config.html", "web_new_test/templates/scheduler/config.html"):
@@ -40,11 +41,44 @@ def test_scheduler_config_and_batch_hints_are_user_facing_chinese() -> None:
 
     run_panel = _read("templates/scheduler/_run_panel.html")
     assert expected_batch_schedule_hint in run_panel
+    assert "配置不合法" not in run_panel
+    assert "安全取值" not in run_panel
+    assert "工时空着时可能按 0" not in run_panel
     for rel_path in ("templates/scheduler/batches.html", "web_new_test/templates/scheduler/batches.html"):
         source = _read(rel_path)
         assert '{% include "scheduler/_run_panel.html" %}' in source
         assert "dispatch_mode / dispatch_rule / auto_assign_enabled" not in source
         assert "设了截止日期的话，排不完会提示失败。" not in source
+
+
+def test_scheduler_run_copy_avoids_vague_vocabulary_for_operators() -> None:
+    forbidden_terms = (
+        "配置不合法",
+        "安全取值",
+        "工时空着时可能",
+        "可能按 0 小时",
+        "当前配置无效",
+        "配置无效",
+        "格式不合法",
+        "时间不合法",
+        "外协周期缺失或不合法",
+    )
+    user_facing_sources = (
+        "templates/scheduler/_run_panel.html",
+        "web/viewmodels/scheduler_run_options.py",
+        "web/viewmodels/page_manuals_scheduler.py",
+        "web/viewmodels/page_manuals_scheduler_week_plan.py",
+        "web/viewmodels/scheduler_degradation_presenter.py",
+        "core/services/scheduler/summary/schedule_summary_degradation.py",
+        "static/js/gantt_contract.js",
+        "static/docs/scheduler_manual.md",
+        "web_new_test/static/docs/scheduler_manual.md",
+    )
+
+    for rel_path in user_facing_sources:
+        source = _read(rel_path)
+        for term in forbidden_terms:
+            assert term not in source, f"{rel_path} 仍包含含糊旧说法：{term}"
 
 
 def test_scheduler_config_repair_notices_use_public_field_labels() -> None:

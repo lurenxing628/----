@@ -89,7 +89,7 @@ def has_actionable_schedule_rows(results: List[Any], *, allowed_op_ids: Optional
 
 
 def _raise_invalid_schedule_rows_error(validation_errors: List[str]) -> None:
-    exc = ValidationError("优化结果里有不合法的排程记录，已拒绝写入。", field="schedule_results")
+    exc = ValidationError("优化结果里有填写不对的排程记录，已拒绝写入。", field="schedule_results")
     exc.details = dict(exc.details or {})
     exc.details["reason"] = "invalid_schedule_rows"
     exc.details["validation_errors"] = list(validation_errors)

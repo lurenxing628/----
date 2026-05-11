@@ -451,7 +451,7 @@ def test_scheduler_config_visible_degradation_warning_hides_raw_event_message() 
             {
                 "code": "invalid_choice",
                 "field": "sort_strategy",
-                "message": "sort_strategy 取值不正确（当前值：'SECRET_BAD_MODE'，可选值：priority_first），本次先按安全值处理。",
+                "message": "sort_strategy 取值不正确（当前值：'SECRET_BAD_MODE'，可选值：priority_first），本次先按默认值处理。",
                 "sample": "SECRET_BAD_MODE",
             },
         ),
@@ -466,7 +466,8 @@ def test_scheduler_config_visible_degradation_warning_hides_raw_event_message() 
     assert degraded_fields == ["sort_strategy"]
     assert hidden_warnings == []
     assert "排产策略" in rendered
-    assert "当前配置无效" in rendered
+    assert "这项设置现在不能直接用" in rendered
+    assert "当前配置无效" not in rendered
     assert "priority_first" not in rendered
     assert "SECRET_BAD_MODE" not in rendered
     assert "sort_strategy" not in rendered
@@ -900,7 +901,7 @@ def test_scheduler_config_page_exposes_hidden_degraded_warning_summary(monkeypat
             "code": "invalid_choice",
             "scope": "scheduler.config_snapshot",
             "field": "auto_assign_persist",
-            "message": "字段“auto_assign_persist”取值不正确，本次先按安全值 yes 处理。",
+            "message": "字段“auto_assign_persist”取值不正确，本次先按默认值 yes 处理。",
             "count": 1,
         },
     )

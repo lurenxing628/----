@@ -83,7 +83,7 @@ def _normalize_schedule_window(svc: Any, *, start_dt: Any, end_date: Any) -> tup
         start_dt_norm = svc._normalize_datetime(start_dt)
         if start_dt_norm is None:
             raise ValidationError(
-                "开始时间格式不合法（允许：YYYY-MM-DD / YYYY-MM-DD HH:MM(:SS)）",
+                "开始时间写法不对，请填写日期或日期加时间，例如 2026-05-20 或 2026-05-20 08:00。",
                 field="start_dt",
             )
     else:
@@ -94,7 +94,7 @@ def _normalize_schedule_window(svc: Any, *, start_dt: Any, end_date: Any) -> tup
     if end_date is not None and str(end_date).strip() != "":
         end_dt = svc._normalize_datetime(end_date)
         if not end_dt:
-            raise ValidationError("结束日期格式不合法（期望：YYYY-MM-DD）", field="end_date")
+            raise ValidationError("结束日期写法不对，请填写类似 2026-05-20 的日期。", field="end_date")
         end_date_norm = end_dt.date()
         if end_date_norm < start_dt_norm.date():
             raise ValidationError("结束日期不能早于开始时间所在日期", field="end_date")

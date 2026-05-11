@@ -121,7 +121,7 @@ def _load_holiday_default_efficiency_for_excel(
             "工作日历 Excel 导入读取假期工作效率配置失败，已拒绝操作：%s",
             exc.message,
         )
-        flash("“假期工作效率”配置无效，无法继续工作日历 Excel 导入，请先在排产参数中修复。", "error")
+        flash("“假期工作效率”这项设置现在不能直接用，无法继续工作日历 Excel 导入，请先在排产参数中修复。", "error")
         return None, _render_excel_calendar_page(
             existing_list=existing_list,
             preview_rows=None,
@@ -131,7 +131,7 @@ def _load_holiday_default_efficiency_for_excel(
             filename=filename,
             holiday_default_efficiency=None,
             holiday_default_efficiency_degraded=True,
-            holiday_default_efficiency_warning="“假期工作效率”配置无效，无法继续工作日历 Excel 导入，请先在排产参数中修复。",
+            holiday_default_efficiency_warning="“假期工作效率”这项设置现在不能直接用，无法继续工作日历 Excel 导入，请先在排产参数中修复。",
         )
 
 

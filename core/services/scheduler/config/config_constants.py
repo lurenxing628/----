@@ -87,7 +87,7 @@ CONFIG_PAGE_VISIBLE_CHANGE_FIELDS: Tuple[str, ...] = CONFIG_PAGE_FIELDS + (
 CONFIG_PAGE_HIDDEN_REPAIR_FIELDS: Tuple[str, ...] = ("auto_assign_persist",)
 
 HOLIDAY_DEFAULT_EFFICIENCY_PAGE_WARNING_TEMPLATE = (
-    "“假期工作效率”配置当前无效，页面已临时按 {value:g} 显示默认值；"
+    "“假期工作效率”这项设置现在不能直接用，页面已临时按 {value:g} 显示默认值；"
     "请先到排产参数页修复配置后再继续依赖该默认值进行操作。"
 )
 

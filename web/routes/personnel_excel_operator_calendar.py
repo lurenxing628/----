@@ -144,7 +144,7 @@ def _load_holiday_default_efficiency_for_excel(
             exc.message,
         )
         flash(
-            "“假期工作效率”配置无效，无法继续人员专属工作日历 Excel 导入，请先在排产参数中修复。",
+            "“假期工作效率”这项设置现在不能直接用，无法继续人员专属工作日历 Excel 导入，请先在排产参数中修复。",
             "error",
         )
         return None, _render_excel_operator_calendar_page(

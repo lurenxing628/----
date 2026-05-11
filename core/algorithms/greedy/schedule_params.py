@@ -74,7 +74,7 @@ def _require_choice(raw_value: Any, *, field: str, valid_values: set[str]) -> st
     if not text:
         raise ValidationError(f"“{label}”不能为空。", field=field)
     if text not in valid_values:
-        raise ValidationError(f"“{label}”配置无效，请返回排产参数页重新选择。", field=field)
+        raise ValidationError(f"“{label}”这项设置现在不能直接用，请返回排产参数页重新选择。", field=field)
     return text
 
 
@@ -212,7 +212,7 @@ def _require_yes_no(raw_value: Any, *, field: str) -> str:
     label = _field_label(field)
     text = str("" if raw_value is None else raw_value).strip().lower()
     if text not in {"yes", "no"}:
-        raise ValidationError(f"“{label}”配置无效，请返回排产参数页重新选择“是”或“否”。", field=field)
+        raise ValidationError(f"“{label}”这项设置现在不能直接用，请返回排产参数页重新选择“是”或“否”。", field=field)
     return text
 
 
@@ -235,7 +235,7 @@ def _resolve_base_time(
         warnings.append(f"开始时间已规范化为：{parsed.strftime('%Y-%m-%d %H:%M:%S')}")
         return parsed
     if strict_mode:
-        raise ValidationError("“开始时间”格式不合法。", field="start_dt")
+        raise ValidationError("“开始时间”写法不对，请填写类似 2026-05-20 08:00 的时间。", field="start_dt")
     warnings.append(f"开始时间无法解析，已忽略：{start_dt!r}")
     increment_counter(algo_stats, "start_dt_default_now_count", bucket="param_fallbacks")
     return datetime.now()
@@ -253,7 +253,7 @@ def _resolve_end_dt_exclusive(
         text = str(end_date).strip()
         if text:
             if strict_mode:
-                raise ValidationError("“截止日期”格式不合法。", field="end_date")
+                raise ValidationError("“截止日期”写法不对，请填写类似 2026-05-20 的日期。", field="end_date")
             warnings.append(f"截止日期无法解析，已忽略：{end_date!r}")
             increment_counter(algo_stats, "end_date_ignored_count", bucket="param_fallbacks")
     if not end_d:

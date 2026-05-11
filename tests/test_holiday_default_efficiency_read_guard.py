@@ -159,6 +159,80 @@ def _make_xlsx(headers, rows) -> io.BytesIO:
         wb.close()
 
 
+def test_calendar_excel_row_errors_use_plain_column_copy() -> None:
+    from web.routes.domains.scheduler.scheduler_excel_calendar_rows import validate_calendar_import_row
+
+    base = {
+        "日期": "2026-04-01",
+        "类型": "工作日",
+        "可用工时": 8,
+        "效率": 1,
+        "允许普通件": "是",
+        "允许急件": "是",
+        "说明": "copy",
+    }
+
+    type_error = validate_calendar_import_row({**base, "类型": "随便写"}, holiday_default_efficiency=0.8)
+    assert type_error == (
+        "“类型”这一列系统没认出来，新文件请填写：工作日 / 假期。以前的 Excel 如果写过周末 / 节假日或英文，"
+        "系统会尽量按中文意思读取；新文件请直接填中文推荐值。"
+    )
+
+    normal_error = validate_calendar_import_row({**base, "允许普通件": "随便写"}, holiday_default_efficiency=0.8)
+    assert normal_error == (
+        "“允许普通件”这一列系统没认出来，可填写：是 / 否。以前的 Excel 如果写过 1 / 0 或英文，"
+        "系统会尽量按中文意思读取；新文件请直接填中文。"
+    )
+
+    urgent_error = validate_calendar_import_row({**base, "允许急件": "随便写"}, holiday_default_efficiency=0.8)
+    assert urgent_error == (
+        "“允许急件”这一列系统没认出来，可填写：是 / 否。以前的 Excel 如果写过 1 / 0 或英文，"
+        "系统会尽量按中文意思读取；新文件请直接填中文。"
+    )
+
+
+def test_operator_calendar_excel_row_errors_use_plain_column_copy(tmp_path, monkeypatch) -> None:
+    from core.services.common.excel_validators import get_operator_calendar_row_validate_and_normalize
+
+    _app, db_path = _build_app(tmp_path, monkeypatch)
+    _seed_operator(db_path)
+    conn = get_connection(db_path)
+    try:
+        validate = get_operator_calendar_row_validate_and_normalize(conn, holiday_default_efficiency=0.8)
+        base = {
+            "工号": "OP001",
+            "日期": "2026-04-01",
+            "类型": "工作日",
+            "班次开始": "08:00",
+            "班次结束": "",
+            "可用工时": 8,
+            "效率": 1,
+            "允许普通件": "是",
+            "允许急件": "是",
+            "说明": "copy",
+        }
+
+        type_error = validate({**base, "类型": "随便写"})
+        assert type_error == (
+            "“类型”这一列系统没认出来，新文件请填写：工作日 / 假期。以前的 Excel 如果写过周末 / 节假日或英文，"
+            "系统会尽量按中文意思读取；新文件请直接填中文推荐值。"
+        )
+
+        normal_error = validate({**base, "允许普通件": "随便写"})
+        assert normal_error == (
+            "“允许普通件”这一列系统没认出来，可填写：是 / 否。以前的 Excel 如果写过英文，"
+            "系统会尽量按中文意思读取；新文件请直接填中文。"
+        )
+
+        urgent_error = validate({**base, "允许急件": "随便写"})
+        assert urgent_error == (
+            "“允许急件”这一列系统没认出来，可填写：是 / 否。以前的 Excel 如果写过英文，"
+            "系统会尽量按中文意思读取；新文件请直接填中文。"
+        )
+    finally:
+        conn.close()
+
+
 def test_calendar_pages_show_degraded_warning_when_holiday_default_efficiency_invalid(tmp_path, monkeypatch) -> None:
     app, db_path = _build_app(tmp_path, monkeypatch)
     _seed_operator(db_path)
@@ -214,7 +288,7 @@ def test_scheduler_config_page_shows_degraded_warning_when_holiday_default_effic
     assert resp.status_code == 200
     assert 'name="holiday_default_efficiency"' in body
     assert 'value="0.8"' in body
-    assert "假期工作效率 当前配置无效" in body
+    assert "假期工作效率 这项设置现在不能直接用" in body
     assert 'class="flash-card flash-warning"' in body
 
 

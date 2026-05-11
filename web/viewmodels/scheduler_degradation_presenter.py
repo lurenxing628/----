@@ -8,8 +8,8 @@ from core.models.scheduler_degradation_messages import (
 )
 
 _SUMMARY_DEGRADATION_LABELS = {
-    "config_fallback": "配置中有已按安全取值处理的设置",
-    "input_fallback": "排产输入里有已按安全取值处理的数据",
+    "config_fallback": "系统已先按默认值处理的排产设置",
+    "input_fallback": "系统已先按默认值处理的排产数据",
     "freeze_window_degraded": "冻结窗口资料不完整",
     "downtime_avoid_degraded": "停机时间资料不完整",
     "resource_pool_degraded": "资源池资料不完整",

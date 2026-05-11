@@ -49,7 +49,7 @@ def main() -> None:
 
     assert isinstance(summary.warnings, list), f"warnings 未被归一化为 list：{summary.warnings!r}"
     assert summary.warnings[0] == "已有告警", f"原有告警未保留：{summary.warnings!r}"
-    assert any("due_date 格式不合法" in str(item) for item in summary.warnings), (
+    assert any("交期写法不对" in str(item) for item in summary.warnings), (
         f"非法 due_date 告警未写回 summary.warnings：{summary.warnings!r}"
     )
 

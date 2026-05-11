@@ -83,7 +83,7 @@ def operator_calendar_upsert(operator_id: str):
         )
     except ValidationError as exc:
         if str(exc.field or "").strip() == "holiday_default_efficiency":
-            flash(f"“假期工作效率”配置无效，无法保存个人日历，请先在排产参数中修复。{user_visible_app_error_message(exc)}", "error")
+            flash(f"“假期工作效率”这项设置现在不能直接用，无法保存个人日历，请先在排产参数中修复。{user_visible_app_error_message(exc)}", "error")
         else:
             flash(user_visible_app_error_message(exc), "error")
         return redirect(url_for("personnel.operator_calendar_page", operator_id=operator_id))

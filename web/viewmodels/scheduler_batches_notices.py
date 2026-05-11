@@ -137,7 +137,7 @@ def latest_detail_notice_items(
     if latest_warning_total:
         footer = ""
         if latest_warning_hidden_count > 0:
-            footer = f"另有 {latest_warning_hidden_count} 条提醒，请到系统历史查看。"
+            footer = f"另有 {latest_warning_hidden_count} 条提醒，请到系统管理里的排产历史查看。"
         notices.append(
             UiDetailsNotice(
                 "排产提醒",

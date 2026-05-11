@@ -105,7 +105,7 @@ def main() -> None:
     assert int(algo_metrics.get("unscheduled_batch_count") or 0) == 2, algo_metrics
 
     warnings = list(result_summary_obj.get("warnings") or [])
-    assert any("due_date 格式不合法" in w for w in warnings), warnings
+    assert any("交期写法不对" in w for w in warnings), warnings
     assert any("未形成完工结果" in w for w in warnings), warnings
 
     print("OK")

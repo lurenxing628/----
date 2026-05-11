@@ -97,7 +97,7 @@ class BatchService:
         try:
             return _dt.strptime(text, "%Y-%m-%d").date().isoformat()
         except Exception as exc:
-            raise ValidationError("日期格式不合法（期望：YYYY-MM-DD）", field="日期") from exc
+            raise ValidationError("日期写法不对，请填写类似 2026-05-20 的日期。", field="日期") from exc
 
     @staticmethod
     def _validate_enum(value: Optional[str], allowed: tuple[str, ...], field: str) -> Optional[str]:

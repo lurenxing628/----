@@ -63,7 +63,7 @@ def resolve_week_range(
     try:
         offset_weeks_int = int(offset_weeks)
     except Exception as e:
-        raise ValidationError("offset_weeks 不合法（期望整数）", field="offset_weeks") from e
+        raise ValidationError("周偏移填写不对，请填写整数。", field="offset_weeks") from e
 
     start_date_provided = start_date is not None and str(start_date).strip() != ""
     end_date_provided = end_date is not None and str(end_date).strip() != ""
@@ -72,13 +72,13 @@ def resolve_week_range(
     if start_date_provided:
         sd = _parse_date(start_date)
         if not sd:
-            raise ValidationError("start_date 格式不合法（期望：YYYY-MM-DD）", field="start_date")
+            raise ValidationError("开始日期写法不对，请填写类似 2026-05-20 的日期。", field="start_date")
 
     ed: Optional[date] = None
     if end_date_provided:
         ed = _parse_date(end_date)
         if not ed:
-            raise ValidationError("end_date 格式不合法（期望：YYYY-MM-DD）", field="end_date")
+            raise ValidationError("结束日期写法不对，请填写类似 2026-05-20 的日期。", field="end_date")
 
     if start_date_provided or end_date_provided:
         # 区间模式：默认 start_date=明天；end_date 未填则默认 7 天窗口
@@ -102,7 +102,7 @@ def resolve_week_range(
     if week_start:
         d = _parse_date(week_start)
         if not d:
-            raise ValidationError("week_start 格式不合法（期望：YYYY-MM-DD）", field="week_start")
+            raise ValidationError("周开始日期写法不对，请填写类似 2026-05-20 的日期。", field="week_start")
         monday = _monday_of(d)
     else:
         # 默认：明天所在周（便于用户“从明天开始看排程”）
@@ -113,4 +113,3 @@ def resolve_week_range(
     start_dt = datetime(monday.year, monday.month, monday.day, 0, 0, 0)
     end_dt_exclusive = start_dt + timedelta(days=7)
     return WeekRange(week_start_date=monday, week_end_date=sunday, start_dt=start_dt, end_dt_exclusive=end_dt_exclusive)
-

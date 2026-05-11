@@ -340,13 +340,17 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
     assert "tests/regression_gantt_default_version_span.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_reports_page_version_default_latest.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_reports_export_version_default_latest.py" in module.REQUIRED_TEST_ARGS
+    assert "tests/regression_week_plan_bad_time_rows_surface_degraded.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_gantt_calendar_load_failed_degraded.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_gantt_bad_time_rows_surface_degraded.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_gantt_contract_snapshot.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_gantt_critical_chain_unavailable.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_quality_gate_scan_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_scheduler_run_entry_layout_contract.py" in module.REQUIRED_TEST_ARGS
+    assert "tests/test_scheduler_batches_page_viewmodel.py" in module.REQUIRED_TEST_ARGS
     assert "tests/test_scheduler_run_view_result_contract.py" in module.REQUIRED_TEST_ARGS
+    assert "tests/regression_resource_dispatch_bad_time_rows_surface_degraded.py" in module.REQUIRED_TEST_ARGS
+    assert "tests/regression_resource_dispatch_export_surfaces_degraded.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_action_card_button_layout_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_mirror_template_sync.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_stable_form_layout_allowlist.py" in module.REQUIRED_TEST_ARGS
@@ -377,6 +381,8 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
     assert "tests/regression_optimizer_public_summary_projection_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_optimizer_runtime_seam_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_optimizer_seed_boundary_contract.py" in module.REQUIRED_TEST_ARGS
+    assert "tests/regression_schedule_summary_invalid_due_and_unscheduled_counts.py" in module.REQUIRED_TEST_ARGS
+    assert "tests/regression_schedule_summary_overdue_warning_append_fallback.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_schedule_summary_size_guard_large_lists.py" in module.REQUIRED_TEST_ARGS
 
     command_plan = shared.build_quality_gate_command_plan()

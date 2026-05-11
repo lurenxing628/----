@@ -81,7 +81,7 @@ def record_bad_time_row(
     *,
     scope: str,
     row: Dict[str, Any],
-    message: str = "存在开始/结束时间不合法的排程行，已跳过。",
+    message: str = "存在开始或结束时间写法不对的排程行，已跳过。",
 ) -> None:
     collector.add(
         code="bad_time_row_skipped",

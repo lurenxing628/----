@@ -23,7 +23,7 @@ def _get_int_arg(name: str, default: int = 0) -> int:
     try:
         return int(str(raw).strip())
     except Exception as e:
-        raise ValidationError(f"{name} 不合法（期望整数）", field=name) from e
+        raise ValidationError(f"{name} 填写不对，请填写整数。", field=name) from e
 
 
 def _get_bool_arg(name: str, default: bool = False) -> bool:
@@ -35,7 +35,7 @@ def _get_bool_arg(name: str, default: bool = False) -> bool:
         return True
     if v in ("0", "false", "no", "n", "off", ""):
         return False
-    raise ValidationError(f"{name} 不合法（这里期望填写是或否）", field=name)
+    raise ValidationError(f"{name} 填写不对，这里只能填写是或否。", field=name)
 
 
 def _selected_version_result_status_label(services, version: Optional[int]) -> str:

@@ -154,7 +154,7 @@
       var unitHours = controlInRow(row, formId, "unit_hours");
 
       if (!isBlank(setupHours && setupHours.value) && (!isFiniteNumber(setupHours.value) || Number(setupHours.value) < 0)) {
-        messages.push("换型工时要填 0 或正数");
+        messages.push("换型时间要填 0 或正数");
         setControlInvalid(setupHours, true);
       }
       if (!isBlank(unitHours && unitHours.value) && (!isFiniteNumber(unitHours.value) || Number(unitHours.value) < 0)) {

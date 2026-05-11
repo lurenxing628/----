@@ -59,7 +59,7 @@ def require_choice(value: Any, *, field: str, valid_values: Tuple[str, ...]) -> 
     label = field_label(field)
     text = str(value or "").strip().lower()
     if text not in set(valid_values):
-        raise ValidationError(f"“{label}”配置无效，请返回排产参数页重新选择。", field=field)
+        raise ValidationError(f"“{label}”这项设置现在不能直接用，请返回排产参数页重新选择。", field=field)
     return text
 
 

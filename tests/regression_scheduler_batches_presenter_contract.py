@@ -455,4 +455,4 @@ def test_latest_history_panel_builds_parse_and_warning_notices(monkeypatch) -> N
     ]
     assert panel.detail_notice_items[0].detail_items == ("缺少日历",)
     assert panel.detail_notice_items[1].detail_items == ("组合合同资料不完整：已跳过组合并检查",)
-    assert panel.detail_notice_items[2].footer == "另有 1 条提醒，请到系统历史查看。"
+    assert panel.detail_notice_items[2].footer == "另有 1 条提醒，请到系统管理里的排产历史查看。"

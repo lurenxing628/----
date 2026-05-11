@@ -76,7 +76,7 @@ def resolve_dispatch_range(
 
     day_count = (end - start).days + 1
     if day_count <= 0:
-        raise ValidationError("日期范围不合法", field="date_range")
+        raise ValidationError("日期范围写法不对，请重新选择开始日期和结束日期。", field="date_range")
     if day_count > int(max_day_count):
         raise ValidationError(f"日期范围不能超过 {int(max_day_count)} 天", field="date_range")
 

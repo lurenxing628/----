@@ -83,7 +83,7 @@ def build_config_degraded_display_state(
                 config_field_metadata=config_field_metadata,
             )
             fallback_note = f"当前页面先按“{display_value}”展示，请检查后保存一次。"
-            warnings[field] = f"{label} 当前配置无效，{fallback_note}"
+            warnings[field] = f"{label} 这项设置现在不能直接用，{fallback_note}"
             degraded_fields.append(field)
             continue
         hidden_warnings.append(public_hidden_config_warning(field))
@@ -117,7 +117,7 @@ def build_auto_assign_persist_display_state(value: Any) -> Dict[str, Any]:
         "enabled": None,
         "value": "invalid",
         "label": "记录异常",
-        "description": "这条记录里的保存补齐资源取值不正确，请到系统历史查看。",
+        "description": "这条记录里的保存补齐资源取值不正确，请到系统管理里的排产历史查看。",
     }
 
 

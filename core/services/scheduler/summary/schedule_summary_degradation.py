@@ -278,7 +278,7 @@ def _summary_degradation_state(
         scope="schedule.summary.config_snapshot",
         field="config_snapshot",
         message=None,
-        default_message="配置中有已按安全取值处理的设置，摘要已按处理后的配置生成。",
+        default_message="配置中有填写不完整或不正确的设置，本次先按默认值生成摘要。",
     )
     _add_input_events(collector, input_state)
     _add_state_event(
@@ -288,7 +288,7 @@ def _summary_degradation_state(
         scope="schedule.summary.input_contract",
         field="input_contract",
         message=None,
-        default_message="排产输入里有已按安全取值处理的数据，摘要已按处理后的数据生成。",
+        default_message="排产输入里有填写不完整或不正确的数据，本次先按默认值生成摘要。",
     )
     _add_counted_event(
         collector,
@@ -305,7 +305,7 @@ def _summary_degradation_state(
         code="legacy_external_days_defaulted",
         scope="greedy.external",
         field="ext_days",
-        message="部分外协周期缺失或不合法，本次先按 1 天计算。",
+        message="部分外协周期缺失或填写不对，本次先按 1 天计算。",
     )
     _add_counted_event(
         collector,

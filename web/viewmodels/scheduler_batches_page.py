@@ -33,7 +33,7 @@ _REQUIRED_METRIC_KEYS = (
     "changeover_count",
     "machine_util_avg",
 )
-_LATEST_HISTORY_DEGRADED_MESSAGE = "最近一次排产历史摘要不完整，请到系统历史查看。"
+_LATEST_HISTORY_DEGRADED_MESSAGE = "最近一次排产历史摘要不完整，请到系统管理里的排产历史查看。"
 
 
 @dataclass(frozen=True)

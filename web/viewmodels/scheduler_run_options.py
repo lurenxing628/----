@@ -29,7 +29,7 @@ def build_run_options(*, cfg: Any, config_field_warnings: Dict[str, str]) -> Tup
                 "runStrictMode",
                 "strict_mode",
                 "发现参数问题就停止排产",
-                "配置不合法时直接停下，并提示需要处理的设置。",
+                "打开后，发现排产设置填得不对会先停下，例如选项不是页面能选的值，或工时、权重、锁定天数为空、为负数、不是正常数字。",
                 checked_attr="",
                 submitted_value="no",
             ),
