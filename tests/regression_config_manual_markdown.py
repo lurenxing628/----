@@ -493,7 +493,7 @@ def _assert_scheduler_manual_required_content(markdown_text: str, label: str) ->
         "新填数据请使用 `自制`/`外协`",
         "批次自动生成工序时的模板提醒，是当前页局部提醒",
         "正式排产或模拟排产成功后的排产结果提醒",
-        "可以到系统历史查看",
+        "可以到排产历史查看",
         "不填版本、版本为空，或版本填 `latest`",
         "输入不存在的数字版本时",
         "输入 `abc` 这类不是数字的版本号",
@@ -514,14 +514,34 @@ def _assert_scheduler_manual_required_content(markdown_text: str, label: str) ->
         "正式排产和模拟排产都算",
         "按这个最新版本的超期清单口径重新计算",
         "查询结果表包含 10 列",
+        "任务明细表有 11 列",
+        "| 查询对象 | 当前视角正在看的人员、设备或班组 |",
         "| 日志序号 | 当前查询结果里的顺序，不是固定不变的数据库编号 |",
         "导入批次时“自动生成工序”覆盖了手工补的数据怎么办？",
         "版本下拉为空或提示“暂无排产历史”怎么办？",
         "恢复备份后数据和之前不一样？",
         "排产成功但甘特图上看不到任务？",
+        "系统默认按待排批次查看",
+        "先确认状态筛选是 **待排**",
+        "模拟排产后网页不会记住上一次表单里的临时勾选，所以正式排产前一定要重新勾选",
+        "备份/恢复",
+        "深度优化 + 深度优化尝试时间",
     ):
         assert needle in markdown_text, f"{label} 缺少说明书必备内容：{needle}"
     assert "用来查看、导出、恢复这些版本" not in markdown_text, f"{label} 不应再写排产历史可以导出或恢复版本"
+    for forbidden in (
+        "备份与恢复",
+        "默认是全部",
+        "默认选中\"（全部）\"",
+        "默认选中“（全部）”",
+        "单件时间",
+        "换型工时",
+        "均匀程度 CV",
+        "启用 OR-Tools",
+        "OR-Tools 尝试时间",
+        "贪心",
+    ):
+        assert forbidden not in markdown_text, f"{label} 不应继续出现旧说明口径：{forbidden}"
     _assert_scheduler_manual_closeout_contracts(markdown_text, label)
 
     batch_warning_paragraph = _extract_paragraph_containing(markdown_text, "自动生成批次工序时产生提醒")

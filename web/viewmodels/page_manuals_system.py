@@ -136,9 +136,9 @@ SYSTEM_TOPICS: Dict[str, Dict[str, Any]] = {
         related_manual_ids=["excel_routes", "excel_part_op_hours", "excel_calendar", "scheduler_batches"],
     ),
     "system_backup": _topic(
-        title="备份与恢复",
-        summary="备份与恢复是系统级高风险操作页，主要用于先留一份当前数据，再在需要时恢复到某个历史备份。",
-        full_manual_anchor="#10-1备份与恢复",
+        title="备份/恢复",
+        summary="备份/恢复页是系统级高风险操作页，主要用于先留一份当前数据，再在需要时恢复到某个历史备份。",
+        full_manual_anchor="#10-1备份恢复",
         help_card=_card(
             "备份和恢复都是高风险操作",
             "大批量导入前、\u201c清空本类数据后重导\u201d模式导入前、恢复历史库前，都应该先备份。",

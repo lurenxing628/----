@@ -163,6 +163,7 @@ USER_CORRECTED_TOPIC_SEMANTIC_CASES = {
     "scheduler_dispatch": [
         "自定义日期范围最多 62 天",
         "最多只能查 62 天",
+        "查询对象、对应资源",
     ],
     "scheduler_week_plan": [
         "页面只预览前 50 行",
@@ -281,6 +282,13 @@ PAGE_MANUAL_CLOSEOUT_FORBIDDEN_PHRASES = (
     "可以用筛选缩小范围；只是新增资料",
     "右下角“本页说明”",
     "CV值",
+    "均匀程度 CV",
+    "系统历史",
+    "备份与恢复",
+    "OR-Tools",
+    "贪心",
+    "单件时间",
+    "换型工时",
     "版本分析",
 )
 
@@ -498,6 +506,8 @@ def main() -> None:
     missing_topic_ids = sorted({manual_id for manual_id in endpoint_to_manual_id.values() if manual_id not in manual_topics})
     assert not missing_topic_ids, f"ENDPOINT_TO_MANUAL_ID 引用了不存在的 manual_id：{missing_topic_ids}"
     assert set(manual_topics) == set(manual_entry_endpoints), "MANUAL_ENTRY_ENDPOINTS 必须与 MANUAL_TOPICS 一一对应"
+    assert manual_topics["system_backup"]["title"] == "备份/恢复"
+    assert manual_topics["system_history"]["title"] == "排产历史"
     invalid_entry_endpoints = sorted(
         manual_id for manual_id, endpoint in manual_entry_endpoints.items() if endpoint not in registered_endpoints
     )
