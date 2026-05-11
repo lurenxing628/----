@@ -249,9 +249,9 @@
       url = new URL(dataUrl, window.location.origin);
     } catch (e) {
       if (errEl) {
-        errEl.textContent = "甘特图配置错误：数据接口地址不合法，请刷新页面后重试。";
+        errEl.textContent = "甘特图页面打开不完整，暂时读不到排程数据，请刷新页面后重试。";
       }
-      reportClientError("甘特图数据接口地址不合法", e);
+      reportClientError("甘特图数据接口地址填写不对", e);
       resetCalendarDegradationState();
       applyCalendarDegradationState();
       resetOverdueMarkerState();

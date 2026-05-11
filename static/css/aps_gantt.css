@@ -165,10 +165,17 @@
 /* popup a bit cleaner */
 .gantt-container .popup-wrapper {
   border-radius: 8px;
+  box-sizing: border-box;
   max-width: min(460px, calc(100vw - 32px));
   overflow-wrap: anywhere;
   white-space: normal;
   line-height: 1.5;
+  z-index: 20;
+}
+#gantt .gantt-container .popup-wrapper,
+#rdGantt .gantt-container .popup-wrapper {
+  width: min(420px, calc(100vw - 32px));
+  min-width: min(280px, calc(100vw - 32px));
 }
 .gantt-container .popup-wrapper .title {
   border-bottom: 3px solid #38bdf8;

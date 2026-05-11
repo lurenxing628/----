@@ -33,7 +33,7 @@ from ._sched_display_utils import (
 from .gantt_tasks import _attach_process_dependencies, _sort_tasks
 from .resource_dispatch_range import DispatchRange
 
-_BAD_TIME_ROW_MESSAGE = "存在开始/结束时间不合法的排班行，已跳过。"
+_BAD_TIME_ROW_MESSAGE = "存在开始或结束时间写法不对的排班行，已跳过。"
 
 
 def _text(value: Any) -> str:

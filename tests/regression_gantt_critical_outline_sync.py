@@ -1859,7 +1859,7 @@ process.stdout.write(JSON.stringify({{
     assert formal["degradation"] == preview["degradation"]
     assert formal["overdue"] == preview["overdue"]
     assert "工作日历加载失败" in formal["degradation"]
-    assert "已过滤 2 条时间不合法的排程记录。" in formal["degradation"]
+    assert "已过滤 2 条开始或结束时间写法不对的排程记录。" in formal["degradation"]
     assert overdue_message in formal["overdue"]
     for result in (formal, preview):
         assert "假期/停工(停用)" in result["legend"]

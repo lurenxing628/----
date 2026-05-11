@@ -37,7 +37,7 @@ def _get_int_arg(name: str, default: int = 0) -> int:
     try:
         return int(str(raw).strip())
     except (TypeError, ValueError) as e:
-        raise ValidationError(f"{name} 不合法（期望整数）", field=name) from e
+        raise ValidationError(f"{name} 填写不对，请填写整数。", field=name) from e
 
 
 def _load_selected_week_plan_summary(services, version: int):
@@ -66,10 +66,10 @@ def _build_week_plan_preview_state(data):
     bad_time_skipped = int(degradation_counters.get("bad_time_row_skipped") or 0)
     degradation_message = ""
     if bad_time_skipped > 0:
-        degradation_message = f"已过滤 {bad_time_skipped} 条时间不合法的排程记录。"
+        degradation_message = f"已过滤 {bad_time_skipped} 条开始或结束时间写法不对的排程记录。"
     empty_message = "暂无数据（该周/该版本没有排程记录）。"
     if not rows and str(data.get("empty_reason") or "") == "all_rows_filtered_by_invalid_time":
-        empty_message = "当前区间存在时间非法的排程数据，已全部过滤，请检查排产结果。"
+        empty_message = "当前区间的排程开始或结束时间写法不对，已全部过滤，请检查排产结果。"
     return {
         "rows": rows,
         "preview_rows": rows[:50],

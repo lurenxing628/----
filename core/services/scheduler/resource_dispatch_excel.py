@@ -131,7 +131,7 @@ def _empty_reason_text(value: Any) -> str:
     if not text:
         return ""
     if text == "all_rows_filtered_by_invalid_time":
-        return "存在时间非法的排班数据，已全部过滤。"
+        return "排班开始或结束时间写法不对，已全部过滤。"
     return text
 
 

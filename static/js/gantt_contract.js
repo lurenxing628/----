@@ -288,9 +288,9 @@
     }
 
     if (allFiltered) {
-      messages.push("当前区间存在时间非法的排程数据，已全部过滤，请检查排产结果。");
+      messages.push("当前区间的排程开始或结束时间写法不对，已全部过滤，请检查排产结果。");
     } else if (badTimeSkipped > 0) {
-      messages.push("已过滤 " + badTimeSkipped + " 条时间不合法的排程记录。");
+      messages.push("已过滤 " + badTimeSkipped + " 条开始或结束时间写法不对的排程记录。");
     }
 
     if (criticalChainUnavailable) {
@@ -313,7 +313,7 @@
     if (message) return message;
     return partial
       ? "部分超期标记可能不完整，当前仍按已识别条目标记。"
-      : "超期标记可能不完整，请稍后重试或查看系统历史。";
+      : "超期标记可能不完整，请刷新后重试，或到系统管理里的排产历史查看原因。";
   }
 
   function getCriticalTooltip(task, critical) {
