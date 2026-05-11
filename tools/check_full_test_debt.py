@@ -181,8 +181,9 @@ def _classification_errors(payload: Dict[str, Any]) -> List[str]:
     classifications = _require_dict(payload.get("classifications"), "classifications")
     errors: List[str] = []
     collection_error_count = _require_int(summary.get("collection_error_count"), "summary.collection_error_count")
-    if collection_error_count != 0 or _require_list(payload.get("collection_errors"), "collection_errors"):
-        errors.append("collection_errors 非空")
+    collection_errors = _require_list(payload.get("collection_errors"), "collection_errors")
+    if collection_error_count != 0 or collection_errors:
+        errors.append(_format_collection_errors(collection_errors, collection_error_count=collection_error_count))
     for key in [
         "required_or_quality_gate_self_failure",
         "main_style_isolation_candidate",
@@ -190,8 +191,28 @@ def _classification_errors(payload: Dict[str, Any]) -> List[str]:
     ]:
         values = _require_list(classifications.get(key), key)
         if values:
-            errors.append(f"{key} 非空")
+            errors.append(_format_classification_error(key, values))
     return errors
+
+
+def _format_nodeid_list(values: Sequence[Any], *, limit: int = 20) -> str:
+    nodeids = [str(value) for value in values]
+    visible = nodeids[:limit]
+    lines = [f"\n  - {nodeid}" for nodeid in visible]
+    hidden_count = len(nodeids) - len(visible)
+    if hidden_count > 0:
+        lines.append(f"\n  - ... 另外 {hidden_count} 个未显示")
+    return "".join(lines)
+
+
+def _format_classification_error(key: str, values: Sequence[Any]) -> str:
+    return f"{key} 非空（{len(values)} 个）：{_format_nodeid_list(values)}"
+
+
+def _format_collection_errors(values: Sequence[Any], *, collection_error_count: int) -> str:
+    if not values:
+        return f"collection_errors 计数非 0（{collection_error_count} 个），但明细为空"
+    return f"collection_errors 非空（{collection_error_count} 个）：{_format_nodeid_list(values)}"
 
 
 def _validate_active_entries(

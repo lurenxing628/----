@@ -716,6 +716,94 @@ def test_main_updates_manifest_to_failed_on_command_error(monkeypatch, tmp_path)
     assert manifests[-1]["tracked_drift_detected"] is False
 
 
+def test_main_allow_dirty_resumes_from_previous_failed_command(monkeypatch, tmp_path, capsys):
+    module = _import_run_quality_gate()
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    monkeypatch.setattr(module, "REPO_ROOT", str(repo_root))
+
+    command_plan = [
+        {
+            "display": "python -m pytest --collect-only -q tests",
+            "args": ["python", "-m", "pytest", "--collect-only", "-q", "tests"],
+            "capture_output": True,
+            "output_policy": "normalized",
+        },
+        {
+            "display": "python -m ruff --version",
+            "args": ["python", "-m", "ruff", "--version"],
+            "capture_output": True,
+            "output_policy": "exact",
+        },
+        {
+            "display": "python -m pyright --version",
+            "args": ["python", "-m", "pyright", "--version"],
+            "capture_output": True,
+            "output_policy": "normalized",
+        },
+        {
+            "display": "python tools/failing_command.py",
+            "args": ["python", "tools/failing_command.py"],
+            "capture_output": False,
+            "output_policy": "normalized",
+        },
+    ]
+    old_run_id = "old-run"
+    old_receipts = []
+    for index, command in enumerate(command_plan, start=1):
+        old_receipts.append(
+            module._write_command_receipt(
+                command,
+                run_id=old_run_id,
+                index=index,
+                result={"stdout": "", "stderr": "boom" if index == 4 else "", "returncode": 1 if index == 4 else 0},
+            )
+        )
+    old_manifest = {
+        "status": "failed",
+        "run_id": old_run_id,
+        "commands": command_plan,
+        "command_receipts": old_receipts,
+        "collection_proof": {"default_collect_nodeids": ["tests/test_run_quality_gate.py::test_resume"]},
+        "ruff_version": "ruff 0.15.4",
+        "pyright_version": "pyright 1.1.406",
+        "failure_message": "命令失败：python tools/failing_command.py",
+    }
+    manifest_path = repo_root / "evidence" / "QualityGate" / "quality_gate_manifest.json"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(module.json.dumps(old_manifest, ensure_ascii=False), encoding="utf-8")
+
+    calls = []
+    monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
+    monkeypatch.setattr(module, "_assert_no_active_runtime", lambda: None)
+    monkeypatch.setattr(module, "_assert_guard_tests_ready", lambda: None)
+    monkeypatch.setattr(module, "_git_head_sha", lambda: "deadbeef")
+    git_status_calls = iter([[" M app.py"], [" M app.py"]])
+    monkeypatch.setattr(module, "_git_status_lines", lambda: next(git_status_calls))
+    monkeypatch.setattr(module, "_runtime_state_snapshot", lambda: {"runtime_state": "absent"})
+
+    def fake_run_command(display, args, capture_output=False):
+        calls.append(display)
+        return {"stdout": "", "stderr": "", "returncode": 0}
+
+    monkeypatch.setattr(module, "_run_command", fake_run_command)
+
+    assert module.main(["--allow-dirty-worktree"]) == 2
+
+    output = capsys.readouterr().out
+    assert "从第 4 个命令继续" in output
+    assert "resume-skip" in output
+    assert calls == ["python tools/failing_command.py"]
+
+    manifest = module.json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["status"] == "passed_but_unbound"
+    assert manifest["resume"]["enabled"] is True
+    assert manifest["resume"]["skip_count"] == 3
+    assert manifest["resume"]["start_command_display"] == "python tools/failing_command.py"
+    assert len(manifest["commands"]) == 4
+    assert len(manifest["command_receipts"]) == 4
+
+
 def test_main_rejects_dirty_worktree_by_default(monkeypatch, tmp_path):
     module = _import_run_quality_gate()
     repo_root = tmp_path / "repo"

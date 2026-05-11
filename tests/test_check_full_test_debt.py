@@ -226,6 +226,35 @@ def test_check_full_test_debt_candidate_mismatch_lists_nodeids() -> None:
     assert f"多出：{nodeid}" in message
 
 
+def test_check_full_test_debt_blocked_classification_lists_nodeids() -> None:
+    checker = _import_checker()
+    nodeid = "tests/test_run_quality_gate.py::test_quality_gate_self_failure"
+    payload = _payload(
+        collected_nodeids=[nodeid],
+        reports=[
+            _report(
+                nodeid,
+                outcome="failed",
+                wasxfail_reason="",
+                xfail_marker_present=False,
+                xfail_marker_reason="",
+                xfail_marker_strict=False,
+                xfail_marker_run=False,
+            )
+        ],
+        required_or_quality_gate_self_failure=[nodeid],
+        exitstatus=1,
+    )
+
+    with pytest.raises(checker.QualityGateError) as exc_info:
+        checker.build_full_test_debt_summary(payload, ledger=_ledger(max_registered_xfail=0))
+
+    message = str(exc_info.value)
+    assert "required_or_quality_gate_self_failure" in message
+    assert "1 个" in message
+    assert nodeid in message
+
+
 def test_check_full_test_debt_rejects_fixed_entry_still_marked_xfail() -> None:
     checker = _import_checker()
     nodeid = FIXED_DEBT_NODEID

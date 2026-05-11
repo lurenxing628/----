@@ -269,19 +269,37 @@ def _classification_list(payload: Dict[str, Any], key: str) -> List[str]:
     return [str(nodeid) for nodeid in list(classifications.get(key) or [])]
 
 
+def _format_nodeid_list(values: Sequence[Any], *, limit: int = 20) -> str:
+    nodeids = [str(value) for value in values]
+    visible = nodeids[:limit]
+    parts = [f"\n  - {nodeid}" for nodeid in visible]
+    hidden_count = len(nodeids) - len(visible)
+    if hidden_count > 0:
+        parts.append(f"\n  - ... 另外 {hidden_count} 个未显示")
+    return "".join(parts)
+
+
 def baseline_candidate_nodeids(payload: Dict[str, Any]) -> List[str]:
     return sorted(_classification_list(payload, "candidate_test_debt"))
 
 
 def _count_or_actual_blocker(payload: Dict[str, Any], counts: Dict[str, Any], key: str) -> Optional[str]:
-    if _classification_list(payload, key) or int(counts.get(key) or 0) != 0:
-        return key
+    nodeids = _classification_list(payload, key)
+    count = int(counts.get(key) or 0)
+    if nodeids:
+        return f"{key}（{len(nodeids)} 个）：{_format_nodeid_list(nodeids)}"
+    if count != 0:
+        return f"{key} 统计数为 {count}，但明细为空"
     return None
 
 
 def _collection_error_blocker(payload: Dict[str, Any], summary: Dict[str, Any]) -> Optional[str]:
-    if list(payload.get("collection_errors") or []) or int(summary.get("collection_error_count") or 0) != 0:
-        return "collection_error_count"
+    errors = list(payload.get("collection_errors") or [])
+    count = int(summary.get("collection_error_count") or 0)
+    if errors:
+        return f"collection_error_count（{len(errors)} 个）：{_format_nodeid_list(errors)}"
+    if count != 0:
+        return f"collection_error_count 统计数为 {count}，但明细为空"
     return None
 
 
@@ -319,7 +337,9 @@ def _baseline_blockers(payload: Dict[str, Any], *, require_importable: bool) -> 
     collection_blocker = _collection_error_blocker(payload, summary)
     if collection_blocker:
         blockers.append(collection_blocker)
-    blockers.extend(["xfail_signal"] * (require_importable and bool(_xfail_signal_nodeids(payload))))
+    xfail_signal_nodeids = _xfail_signal_nodeids(payload)
+    if require_importable and xfail_signal_nodeids:
+        blockers.append(f"xfail_signal（{len(xfail_signal_nodeids)} 个）：{_format_nodeid_list(xfail_signal_nodeids)}")
     return blockers
 
 

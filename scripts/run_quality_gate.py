@@ -123,6 +123,90 @@ def _sha256_file(abs_path: str) -> str:
     return hasher.hexdigest()
 
 
+def _quality_gate_manifest_abs_path() -> str:
+    return os.path.join(REPO_ROOT, QUALITY_GATE_MANIFEST_REL.replace("/", os.sep))
+
+
+def _load_json_file(abs_path: str) -> Optional[Dict[str, Any]]:
+    if not os.path.isfile(abs_path):
+        return None
+    try:
+        with open(abs_path, encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except Exception:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _command_identity(command: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "display": str(command.get("display") or "").strip(),
+        "args": [str(arg) for arg in list(command.get("args") or [])],
+        "capture_output": bool(command.get("capture_output")),
+        "output_policy": str(command.get("output_policy") or "normalized").strip() or "normalized",
+    }
+
+
+def _commands_match(left: Dict[str, Any], right: Dict[str, Any]) -> bool:
+    return _command_identity(left) == _command_identity(right)
+
+
+def _load_receipt_payload(receipt_entry: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    rel_path = str(receipt_entry.get("path") or "").strip()
+    if not rel_path:
+        return None
+    abs_path = os.path.join(REPO_ROOT, rel_path.replace("/", os.sep))
+    if not os.path.isfile(abs_path):
+        return None
+    if str(receipt_entry.get("sha256") or "") != _sha256_file(abs_path):
+        return None
+    return _load_json_file(abs_path)
+
+
+def _resume_state_from_previous_failure(command_plan: Sequence[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    manifest = _load_json_file(_quality_gate_manifest_abs_path())
+    if not manifest or str(manifest.get("status") or "") != "failed":
+        return None
+    previous_commands = list(manifest.get("commands") or [])
+    previous_receipts = list(manifest.get("command_receipts") or [])
+    if not previous_commands or not previous_receipts:
+        return None
+
+    reusable_receipts: List[Dict[str, Any]] = []
+    for index, receipt_entry in enumerate(previous_receipts, start=1):
+        if index > len(command_plan) or index > len(previous_commands):
+            break
+        previous_command = previous_commands[index - 1]
+        current_command = command_plan[index - 1]
+        if not isinstance(previous_command, dict) or not isinstance(receipt_entry, dict):
+            return None
+        if not _commands_match(previous_command, current_command):
+            return None
+        receipt_payload = _load_receipt_payload(receipt_entry)
+        if not receipt_payload:
+            return None
+        if int(receipt_payload.get("returncode") or 0) != 0:
+            break
+        reusable_receipts.append(receipt_entry)
+
+    skip_count = len(reusable_receipts)
+    if skip_count <= 0 or skip_count >= len(command_plan):
+        return None
+    return {
+        "previous_run_id": str(manifest.get("run_id") or ""),
+        "previous_failure_message": str(manifest.get("failure_message") or ""),
+        "skip_count": skip_count,
+        "start_command_index": skip_count + 1,
+        "start_command_display": str(command_plan[skip_count].get("display") or ""),
+        "command_receipts": reusable_receipts,
+        "parsed_command_results": {
+            "collection_proof": manifest.get("collection_proof"),
+            "ruff_version_output": manifest.get("ruff_version"),
+            "pyright_version_output": manifest.get("pyright_version"),
+        },
+    }
+
+
 def _write_command_receipt(command: Dict[str, Any], *, run_id: str, index: int, result: Dict[str, Any]) -> Dict[str, str]:
     receipt_rel = build_quality_gate_receipt_rel_path(index, str(command.get("display") or ""))
     receipt_abs = os.path.join(REPO_ROOT, receipt_rel.replace("/", os.sep))
@@ -275,6 +359,7 @@ def _run_quality_gate_command_plan(
     commands: List[Dict[str, Any]],
     command_receipts: List[Dict[str, str]],
     parsed_command_results: Dict[str, Any],
+    resume_state: Optional[Dict[str, Any]] = None,
 ) -> None:
     command_result_handlers: Dict[str, CommandResultHandler] = {
         str(command["display"]): _handle_checked_quality_gate_command for command in command_plan
@@ -286,7 +371,17 @@ def _run_quality_gate_command_plan(
             "python -m pyright --version": _handle_pyright_version_quality_gate_command,
         }
     )
-    for command in command_plan:
+    skip_count = int((resume_state or {}).get("skip_count") or 0)
+    if skip_count > 0:
+        for index, command in enumerate(command_plan[:skip_count], start=1):
+            print(f"==> [resume-skip] {command['display']}")
+            commands.append(command)
+            command_receipts.append(cast(Dict[str, str], list((resume_state or {}).get("command_receipts") or [])[index - 1]))
+        for key, value in dict((resume_state or {}).get("parsed_command_results") or {}).items():
+            if value:
+                parsed_command_results[key] = value
+
+    for command in command_plan[skip_count:]:
         display = str(command["display"])
         result = _coerce_command_result(
             _run_command(display, _resolve_command_args(command), capture_output=bool(command.get("capture_output")))
@@ -612,6 +707,11 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="APS quality gate")
     parser.add_argument("--require-clean-worktree", action="store_true", help="require a clean worktree")
     parser.add_argument("--allow-dirty-worktree", action="store_true", help="allow a dirty worktree but mark the run unbound")
+    parser.add_argument(
+        "--no-resume",
+        action="store_true",
+        help="do not reuse the successful prefix from the previous failed dirty-worktree run",
+    )
     parsed = parser.parse_args(list(argv) if argv is not None else None)
     if parsed.require_clean_worktree and parsed.allow_dirty_worktree:
         parser.error("--require-clean-worktree and --allow-dirty-worktree are mutually exclusive")
@@ -621,8 +721,21 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = _parse_args(argv)
     command_plan = build_quality_gate_command_plan()
+    resume_state = (
+        _resume_state_from_previous_failure(command_plan)
+        if bool(args.allow_dirty_worktree and not args.no_resume)
+        else None
+    )
     started_at = datetime.now().isoformat(timespec="seconds")
-    _clear_quality_gate_receipts()
+    if resume_state:
+        print(
+            "提示：检测到上次质量门禁失败，本次从第 {index} 个命令继续：{display}".format(
+                index=resume_state["start_command_index"],
+                display=resume_state["start_command_display"],
+            )
+        )
+    else:
+        _clear_quality_gate_receipts()
     head_sha = _git_head_sha()
     run_id = f"{head_sha}:{started_at}"
     git_status_short_before = _git_status_lines()
@@ -643,6 +756,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         runtime_snapshot=runtime_snapshot,
         status="running",
     )
+    manifest["resume"] = {
+        "enabled": bool(resume_state),
+        "previous_run_id": None if not resume_state else resume_state["previous_run_id"],
+        "skip_count": 0 if not resume_state else resume_state["skip_count"],
+        "start_command_index": None if not resume_state else resume_state["start_command_index"],
+        "start_command_display": None if not resume_state else resume_state["start_command_display"],
+        "previous_failure_message": None if not resume_state else resume_state["previous_failure_message"],
+        "proof_status": "fast_feedback_only" if resume_state else "full_command_plan",
+    }
     _write_quality_gate_manifest(manifest)
 
     try:
@@ -663,6 +785,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             commands=commands,
             command_receipts=command_receipts,
             parsed_command_results=parsed_command_results,
+            resume_state=resume_state,
         )
         collection_proof = cast(Optional[Dict[str, Any]], parsed_command_results.get("collection_proof"))
         ruff_version_output = cast(Optional[str], parsed_command_results.get("ruff_version_output"))
@@ -691,6 +814,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             ),
         }
         success_status, success_message, success_return_code = success_by_clean_contract[require_clean_worktree]
+        if resume_state:
+            success_message = (
+                "质量门禁续跑完成；本次跳过了上次已通过的前置命令，只能当作本地快速反馈，不能当作完整通过证明。"
+            )
         manifest.update(
             {
                 "status": success_status,
