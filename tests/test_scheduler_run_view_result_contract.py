@@ -101,6 +101,29 @@ def test_run_schedule_view_result_respects_explicit_unknown_before_success_count
     assert "排产完成状态未知（版本 11）" in view_result.headline_message
 
 
+def test_run_schedule_view_result_treats_missing_completion_status_with_errors_as_unknown() -> None:
+    result = {
+        "version": 11,
+        "overdue_batches": [],
+        "summary": {
+            "counts": {"op_count": 1, "scheduled_ops": 1, "failed_ops": 0},
+            "scheduled_ops": 1,
+            "total_ops": 1,
+            "failed_ops": 0,
+            "error_count": 1,
+            "errors": ["Traceback sqlite /tmp/private.db"],
+            "warnings": [],
+        },
+    }
+
+    view_result = build_run_schedule_view_result(result)
+
+    assert view_result.result_status == "unknown"
+    assert view_result.headline_category == "error"
+    assert "排产完成状态未知（版本 11）" in view_result.headline_message
+    assert view_result.error_preview == ["排产执行遇到问题，请联系管理员查看日志。"]
+
+
 def test_run_schedule_view_result_builds_failed_headline_and_overdue_sample() -> None:
     result = {
         "version": 12,

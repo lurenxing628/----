@@ -361,6 +361,22 @@ def _completion_status_from_counts(*, status: str, scheduled_ops: int, failed_op
     return "success"
 
 
+def _has_summary_errors(summary: Dict[str, Any]) -> bool:
+    try:
+        if int(summary.get("error_count") or 0) > 0:
+            return True
+    except Exception:
+        pass
+
+    for key in ("errors", "errors_sample", "public_error_details"):
+        value = summary.get(key)
+        if isinstance(value, (list, tuple)) and len(value) > 0:
+            return True
+        if isinstance(value, str) and value.strip():
+            return True
+    return False
+
+
 def derive_completion_status(*, result_status: Any, summary: Optional[Dict[str, Any]]) -> str:
     summary_dict = summary if isinstance(summary, dict) else {}
     summary_status = _known_completion_status(summary_dict.get("completion_status"))
@@ -371,6 +387,9 @@ def derive_completion_status(*, result_status: Any, summary: Optional[Dict[str, 
     known_status = _known_completion_status(status)
     if known_status:
         return known_status
+
+    if _has_summary_errors(summary_dict):
+        return "unknown"
 
     counts = _counts_from_summary(summary_dict)
     return _completion_status_from_counts(
