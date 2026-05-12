@@ -185,10 +185,9 @@ def _build_warning_state(
     merge_context_degraded = bool(input_state.get("merge_context_degraded"))
     merge_context_events = list(input_state.get("merge_context_events") or [])
     if int(runtime_state.unscheduled_batch_count) > 0:
-        sample_text = "、".join(list(runtime_state.unscheduled_batch_ids_sample or [])[:10])
         all_warnings = _merge_warning_lists(
             all_warnings,
-            [f"存在 {int(runtime_state.unscheduled_batch_count)} 个批次未形成完工结果（示例批次：{sample_text}）。"],
+            [f"存在 {int(runtime_state.unscheduled_batch_count)} 个批次未形成完工结果，请到系统管理里的排产历史查看这次排产的详细提醒。"],
         )
     return WarningState(
         summary_warnings=summary_warnings,

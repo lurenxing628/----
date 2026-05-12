@@ -340,7 +340,7 @@ def _summary_degradation_state(
         scope="schedule.summary.resource_pool",
         field="resource_pool",
         message=resource_pool_degradation_reason,
-        default_message="资源池资料不完整，本次先按可用资源继续。",
+        default_message="自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员。",
     )
     _add_state_event(
         collector,

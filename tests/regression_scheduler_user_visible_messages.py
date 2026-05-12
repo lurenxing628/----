@@ -16,6 +16,7 @@ from core.algorithms.sort_strategies import SortStrategy
 from core.infrastructure.errors import ValidationError
 from core.services.scheduler.schedule_summary import build_result_summary
 from web.routes.domains.scheduler import scheduler_config as scheduler_config_route
+from web.routes.domains.scheduler.scheduler_user_messages import scheduler_user_visible_app_error_message
 from web.viewmodels.scheduler_run_view_result import build_run_schedule_view_result
 from web.viewmodels.scheduler_summary_display import (
     build_display_secondary_degradation_messages,
@@ -204,6 +205,37 @@ def test_error_handler_hides_english_internal_message(tmp_path, monkeypatch) -> 
     assert resp.status_code == 400
     assert "bad objective" not in body
     assert "填写不正确，请检查后重试。" in body
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["batch_ids", "end_date", "start_dt", "批次", "排产", "排产版本", "齐套"],
+)
+def test_scheduler_direct_validation_fields_keep_user_visible_message(field: str) -> None:
+    exc = ValidationError("组合模板资料缺失，请先补齐模板后再排产。", field=field)
+
+    assert scheduler_user_visible_app_error_message(exc) == "组合模板资料缺失，请先补齐模板后再排产。"
+
+
+@pytest.mark.parametrize("field", ["template", "ext_group_id"])
+def test_scheduler_template_validation_fields_do_not_echo_raw_message_without_public_detail(field: str) -> None:
+    exc = ValidationError("SECRET_TOKEN /tmp/private.db raw SQL", field=field)
+
+    visible = scheduler_user_visible_app_error_message(exc)
+
+    assert "SECRET_TOKEN" not in visible
+    assert "/tmp/private.db" not in visible
+    assert "raw SQL" not in visible
+    assert "填写不正确，请检查后重试" in visible
+
+
+@pytest.mark.parametrize("field", ["template", "ext_group_id"])
+def test_scheduler_template_validation_fields_accept_explicit_public_user_message(field: str) -> None:
+    exc = ValidationError("internal detail SECRET_TOKEN", field=field)
+    exc.details = dict(exc.details or {})
+    exc.details["user_message"] = "外协工序资料不完整，已停止排产。请检查零件工艺后重试。"
+
+    assert scheduler_user_visible_app_error_message(exc) == "外协工序资料不完整，已停止排产。请检查零件工艺后重试。"
 
 
 @pytest.mark.parametrize(

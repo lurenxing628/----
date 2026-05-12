@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from typing import Any, Iterable
+import re
+from typing import Any, Dict, Iterable, List, Optional
 
 DOWNTIME_LOAD_FAILED_MESSAGE = "停机区间加载失败，本次排产先不使用停机约束。"
 DOWNTIME_EXTEND_FAILED_MESSAGE = "停机区间扩展加载失败，部分候选设备可能还没有避开停机时间。"
 FREEZE_WINDOW_DEGRADED_MESSAGE = "冻结窗口资料不完整，本次排产未使用冻结窗口。"
 FREEZE_WINDOW_PARTIALLY_APPLIED_MESSAGE = "冻结窗口资料不完整，本次只保留能确认的冻结工序。"
 RESOURCE_POOL_BUILD_FAILED_MESSAGE = "自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员。"
+AUTO_ASSIGN_RESOURCE_MISSING_MESSAGE = "自动分配已启用，但可用设备或人员资料缺失，自制工序无法自动分配设备或人员。"
 SCHEDULE_OPERATION_FAILED_MESSAGE = "工序排产异常，请查看系统日志。"
 
 _PUBLIC_EVENT_MESSAGES = {
@@ -40,11 +42,50 @@ _PUBLIC_EVENT_MESSAGES = {
     "plugin_bootstrap_telemetry_failed": "扩展功能启动记录写入失败，请查看系统日志。",
 }
 
+_PUBLIC_RESOURCE_POOL_WARNING_MESSAGE = RESOURCE_POOL_BUILD_FAILED_MESSAGE
+
 _PUBLIC_WARNING_MESSAGES = {
     "冻结窗口存在跳批风险",
     "停机区间加载失败，本次先按常规能力继续",
     "存在 1 个批次未命中首选技能",
-    "资源池资料不完整，本次已按可用资源继续",
+    "开始时间无法解析，本次已改用当前时间。",
+    "截止日期无法解析，本次已忽略这个截止日期。",
+    AUTO_ASSIGN_RESOURCE_MISSING_MESSAGE,
+    _PUBLIC_RESOURCE_POOL_WARNING_MESSAGE,
+}
+
+_PUBLIC_NORMALIZED_START_TIME_WARNING_RE = re.compile(
+    r"^开始时间已规范化为：\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$"
+)
+_PUBLIC_UNSCHEDULED_BATCH_WARNING_RE = re.compile(
+    r"^存在 \d+ 个批次未形成完工结果，请到系统管理里的排产历史查看这次排产的详细提醒。$"
+)
+
+_PUBLIC_FIELD_WARNING_LABELS = {
+    "运行期配置快照",
+    "开始时间",
+    "截止日期",
+    "排序策略",
+    "派工方式",
+    "派工规则",
+    "策略参数",
+    "优先级权重",
+    "交期权重",
+    "就绪权重",
+    "自动分配",
+}
+
+_PUBLIC_FIELD_WARNING_MESSAGES = {
+    _PUBLIC_EVENT_MESSAGES["invalid_choice"],
+    _PUBLIC_EVENT_MESSAGES["invalid_number"],
+    _PUBLIC_EVENT_MESSAGES["missing_required"],
+    _PUBLIC_EVENT_MESSAGES["blank_required"],
+    _PUBLIC_EVENT_MESSAGES["number_below_minimum"],
+}
+
+_PUBLIC_WARNING_MESSAGE_ALIASES = {
+    RESOURCE_POOL_BUILD_FAILED_MESSAGE: _PUBLIC_RESOURCE_POOL_WARNING_MESSAGE,
+    "自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员（请查看日志）。": _PUBLIC_RESOURCE_POOL_WARNING_MESSAGE,
 }
 
 _SUMMARY_MERGE_ERROR_CODES = {
@@ -73,9 +114,25 @@ def is_public_freeze_degradation_message(message: object) -> bool:
     }
 
 
-def public_summary_warning_messages(value: Any) -> list[str]:
+def _is_public_summary_warning_message(text: str) -> bool:
+    return (
+        text in _PUBLIC_WARNING_MESSAGES
+        or _PUBLIC_NORMALIZED_START_TIME_WARNING_RE.fullmatch(text) is not None
+        or _PUBLIC_UNSCHEDULED_BATCH_WARNING_RE.fullmatch(text) is not None
+        or _is_public_field_warning_message(text)
+    )
+
+
+def _is_public_field_warning_message(text: str) -> bool:
+    field_label, sep, message = str(text or "").partition("：")
+    if sep != "：":
+        return False
+    return field_label in _PUBLIC_FIELD_WARNING_LABELS and message in _PUBLIC_FIELD_WARNING_MESSAGES
+
+
+def public_summary_warning_messages(value: Any) -> List[str]:
     if value is None:
-        raw_items: list[Any] = []
+        raw_items: List[Any] = []
     elif isinstance(value, str):
         raw_items = [value]
     elif isinstance(value, (list, tuple)):
@@ -83,18 +140,23 @@ def public_summary_warning_messages(value: Any) -> list[str]:
     else:
         raw_items = [value]
 
-    out: list[str] = []
-    seen: set[str] = set()
+    out: List[str] = []
+    seen = set()
     for item in raw_items:
         text = str(item or "").strip()
-        if not text or text not in _PUBLIC_WARNING_MESSAGES or text in seen:
+        public_text = _PUBLIC_WARNING_MESSAGE_ALIASES.get(text, text)
+        if (
+            not public_text
+            or not _is_public_summary_warning_message(public_text)
+            or public_text in seen
+        ):
             continue
-        seen.add(text)
-        out.append(text)
+        seen.add(public_text)
+        out.append(public_text)
     return out
 
 
-def public_summary_merge_error_code(value: Any) -> str | None:
+def public_summary_merge_error_code(value: Any) -> Optional[str]:
     text = str(value or "").strip()
     if not text:
         return None
@@ -109,9 +171,9 @@ def _event_value(event: Any, key: str) -> Any:
     return getattr(event, key, None)
 
 
-def public_degradation_events(events: Iterable[Any]) -> list[dict[str, Any]]:
-    by_code: dict[str, dict[str, Any]] = {}
-    order: list[str] = []
+def public_degradation_events(events: Iterable[Any]) -> List[Dict[str, Any]]:
+    by_code: Dict[str, Dict[str, Any]] = {}
+    order: List[str] = []
     for event in list(events or []):
         code = str(_event_value(event, "code") or "").strip()
         if not code:

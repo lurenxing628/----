@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 from core.services.scheduler.config.config_field_spec import default_snapshot_values
 from core.services.scheduler.config.config_snapshot import ScheduleConfigSnapshot
+from core.services.scheduler.summary.optimizer_public_summary import project_public_algo_summary
 
 
 class _SummaryContract:
@@ -198,3 +199,32 @@ def test_schedule_service_returns_merge_context_degraded_summary_without_input_f
     assert "input_fallback" not in summary["degraded_causes"]
     assert summary["algo"]["merge_context_degraded"] is True
     assert [event["code"] for event in summary["algo"]["merge_context_events"]] == ["external_group_missing"]
+    visible_algo = str(summary["algo"])
+    assert "ext_group_id=G404" not in visible_algo
+    assert "本次先按单道外协周期排产" not in visible_algo
+    assert "组合周期资料和当前零件工艺对不上" not in visible_algo
+    assert not any("sample" in event for event in summary["algo"]["merge_context_events"])
+    assert not any("sample" in event for event in summary["algo"]["input_contract"]["degradation_events"])
+    assert summary["algo"]["input_contract"]["degradation_events"] == [
+        {
+            "code": "external_group_missing",
+            "message": "组合并外协组资料不完整，本次未使用这项资料。",
+            "count": 1,
+        }
+    ]
+
+
+def test_public_algo_summary_rejects_non_list_degradation_event_shapes() -> None:
+    public_algo, diagnostics = project_public_algo_summary(
+        {
+            "input_contract": {
+                "degraded": True,
+                "degradation_events": {"code": "external_group_missing", "sample": "ext_group_id=SECRET"},
+            },
+            "merge_context_events": {"code": "external_group_missing", "sample": "ext_group_id=SECRET"},
+        }
+    )
+
+    assert public_algo["input_contract"]["degradation_events"] == []
+    assert public_algo["merge_context_events"] == []
+    assert diagnostics == {}

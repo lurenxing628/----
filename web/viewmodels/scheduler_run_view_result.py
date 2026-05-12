@@ -3,12 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Sequence, Tuple, cast
 
+from core.models.scheduler_degradation_messages import public_summary_warning_messages
+
 from .scheduler_summary_display import build_summary_display_state
 
 _STATUS_SUCCESS = "success"
 _STATUS_PARTIAL = "partial"
 _STATUS_FAILED = "failed"
 _STATUS_SIMULATED = "simulated"
+_STATUS_UNKNOWN = "unknown"
 
 
 @dataclass(frozen=True)
@@ -21,12 +24,21 @@ class RunScheduleViewResult:
     overdue_sample_message: Optional[str]
     secondary_degradation_messages: object
     warning_messages: object
+    raw_warning_messages: object
     error_preview: Optional[Sequence[str]]
     error_total: int
 
 
-def _result_status(result: Dict[str, Any]) -> str:
-    return str(result.get("result_status") or _STATUS_SUCCESS).strip().lower()
+def _result_status(result: Dict[str, Any], summary_display: Dict[str, Any]) -> str:
+    raw_status = str(result.get("result_status") or "").strip().lower()
+    if raw_status == _STATUS_SIMULATED:
+        return _STATUS_SIMULATED
+    outcome_status = str(summary_display.get("completion_status") or "").strip().lower()
+    if outcome_status in {_STATUS_SUCCESS, _STATUS_PARTIAL, _STATUS_FAILED, _STATUS_UNKNOWN}:
+        return outcome_status
+    if raw_status in {_STATUS_SUCCESS, _STATUS_PARTIAL, _STATUS_FAILED}:
+        return raw_status
+    return _STATUS_UNKNOWN
 
 
 def _headline_prefix_and_category(result_status: str) -> Tuple[str, str]:
@@ -37,6 +49,9 @@ def _headline_prefix_and_category(result_status: str) -> Tuple[str, str]:
         category = "warning"
     elif result_status == _STATUS_FAILED:
         prefix = "排产失败"
+        category = "error"
+    elif result_status == _STATUS_UNKNOWN:
+        prefix = "排产完成状态未知"
         category = "error"
     elif result_status == _STATUS_SIMULATED:
         raise RuntimeError("unexpected simulated result_status on /scheduler/run")
@@ -53,9 +68,12 @@ def _headline_message(
     summary = result.get("summary") or {}
     prefix, category = _headline_prefix_and_category(result_status)
     version_text = f"（版本 {ver}）" if ver else ""
+    scheduled_ops = summary.get("scheduled_ops", 0)
+    total_ops = summary.get("total_ops", 0)
+    failed_ops = summary.get("failed_ops", 0)
     message = (
-        f"{prefix}{version_text}：成功 {summary.get('scheduled_ops')}/{summary.get('total_ops')}，"
-        f"失败 {summary.get('failed_ops')}。{overdue_text}。"
+        f"{prefix}{version_text}：成功 {scheduled_ops}/{total_ops}，"
+        f"失败 {failed_ops}。{overdue_text}。"
     )
     return message, category
 
@@ -85,12 +103,12 @@ def _primary_degradation_message(summary_display: Dict[str, Any]) -> Optional[st
 
 
 def build_run_schedule_view_result(result: Dict[str, Any]) -> RunScheduleViewResult:
-    result_status = _result_status(result)
     summary = result.get("summary") or {}
     summary_display = build_summary_display_state(
         summary if isinstance(summary, dict) else None,
         result_status=result.get("result_status"),
     )
+    result_status = _result_status(result, summary_display)
     overdue_batches = result.get("overdue_batches") or []
     overdue_sample = _overdue_sample(overdue_batches)
     headline_message, headline_category = _headline_message(
@@ -107,7 +125,8 @@ def build_run_schedule_view_result(result: Dict[str, Any]) -> RunScheduleViewRes
         overdue_sample=overdue_sample,
         overdue_sample_message=_overdue_sample_message(overdue_sample),
         secondary_degradation_messages=summary_display.get("display_secondary_degradation_messages"),
-        warning_messages=summary.get("warnings"),
+        warning_messages=public_summary_warning_messages(summary.get("warnings")),
+        raw_warning_messages=summary.get("warnings"),
         error_preview=cast(Optional[Sequence[str]], summary_display.get("errors_preview")),
         error_total=int(summary_display.get("error_total") or 0),
     )

@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import urlencode
 
+import pytest
 from flask import Flask, g, get_flashed_messages
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -35,6 +36,7 @@ def test_scheduler_run_surfaces_resource_pool_warning() -> None:
                     "failed_ops": 0,
                     "warnings": [
                         "自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员。",
+                        "开始时间已规范化为：2026-05-20 08:00:00",
                         "第 2 条告警",
                         "第 3 条告警",
                         "第 4 条告警",
@@ -62,12 +64,10 @@ def test_scheduler_run_surfaces_resource_pool_warning() -> None:
 
         assert getattr(resp, "status_code", 0) in (301, 302)
         assert any(cat == "success" and "排产完成（版本 7）" in msg for cat, msg in flashes), flashes
-        assert any(
-            cat == "warning" and "自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员。" in msg
-            for cat, msg in flashes
-        ), flashes
-        assert any(cat == "warning" and "另有 1 条提醒，请到系统管理里的排产历史查看这次排产的详细提醒。" in msg for cat, msg in flashes), flashes
-        assert not any(cat == "warning" and msg == "第 6 条告警" for cat, msg in flashes), flashes
+        assert any(cat == "warning" and "自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员" in msg for cat, msg in flashes), flashes
+        assert any(cat == "warning" and "开始时间已规范化为：2026-05-20 08:00:00" in msg for cat, msg in flashes), flashes
+        assert any(cat == "warning" and "另有 5 条提醒" in msg for cat, msg in flashes), flashes
+        assert not any(cat == "warning" and "第 " in msg for cat, msg in flashes), flashes
     finally:
         route_mod.url_for = old_url_for
 
@@ -85,8 +85,11 @@ def test_scheduler_simulate_surfaces_schedule_warnings() -> None:
             return {
                 "version": 8,
                 "summary": {
+                    "completion_status": "success",
+                    "counts": {"op_count": 1, "scheduled_ops": 1, "failed_ops": 0},
                     "warnings": [
                         "自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员。",
+                        "截止日期无法解析，本次已忽略这个截止日期。",
                         "第 2 条告警",
                         "第 3 条告警",
                         "第 4 条告警",
@@ -113,12 +116,9 @@ def test_scheduler_simulate_surfaces_schedule_warnings() -> None:
 
         assert getattr(resp, "status_code", 0) in (301, 302)
         assert any(cat == "success" and "模拟排产完成：生成版本 8" in msg for cat, msg in flashes), flashes
-        assert any(
-            cat == "warning" and "自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员。" in msg
-            for cat, msg in flashes
-        ), flashes
-        assert any(cat == "warning" and "另有 1 条提醒，请到系统管理里的排产历史查看这次排产的详细提醒。" in msg for cat, msg in flashes), flashes
-        assert not any(cat == "warning" and msg == "第 6 条告警" for cat, msg in flashes), flashes
+        assert any(cat == "warning" and "自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员" in msg for cat, msg in flashes), flashes
+        assert any(cat == "warning" and "截止日期无法解析，本次已忽略这个截止日期。" in msg for cat, msg in flashes), flashes
+        assert not any(cat == "warning" and "第 " in msg for cat, msg in flashes), flashes
     finally:
         route_mod.url_for = old_url_for
 
@@ -136,6 +136,8 @@ def test_scheduler_simulate_redirects_to_generated_schedule_start_range() -> Non
             return {
                 "version": 18,
                 "summary": {
+                    "completion_status": "success",
+                    "counts": {"op_count": 1, "scheduled_ops": 1, "failed_ops": 0},
                     "start_time": "2026-05-04 08:00:00",
                     "warnings": [],
                 },
@@ -174,6 +176,214 @@ def test_scheduler_simulate_redirects_to_generated_schedule_start_range() -> Non
         assert kwargs.get("end_date") == "2026-05-10"
         assert kwargs.get("version") == 18
         assert "week_start" not in kwargs
+    finally:
+        route_mod.url_for = old_url_for
+
+
+def test_scheduler_simulate_failed_result_stays_on_batches_page() -> None:
+    repo_root = str(REPO_ROOT)
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+    _reset_scheduler_route_modules()
+
+    import web.routes.scheduler_week_plan as route_mod
+
+    class _StubScheduleService:
+        def run_schedule(self, **_kwargs):
+            return {
+                "version": 40,
+                "result_status": "simulated",
+                "summary": {
+                    "completion_status": "failed",
+                    "warnings": [],
+                    "errors": ["Traceback sqlite raw_internal_error code=E_SECRET /tmp/private.db"],
+                    "errors_sample": ["Traceback sqlite raw_internal_error code=E_SECRET /tmp/private.db"],
+                    "error_count": 2,
+                    "counts": {"op_count": 1, "scheduled_ops": 0, "failed_ops": 1},
+                },
+            }
+
+    class _UnexpectedGanttService:
+        def get_version_time_span_dates(self, _version):
+            raise AssertionError("失败的模拟排产不应该跳去甘特图")
+
+    captured_endpoints = []
+    old_url_for = route_mod.url_for
+    route_mod.url_for = lambda endpoint, **_kwargs: captured_endpoints.append(endpoint) or f"/{endpoint}"
+    try:
+        app = Flask(__name__)
+        app.secret_key = "aps-test-simulate-failed-stays-on-batches"
+        with app.test_request_context("/scheduler/simulate", method="POST", data={"batch_ids": ["B001"]}):
+            g.services = SimpleNamespace(
+                schedule_service=_StubScheduleService(),
+                gantt_service=_UnexpectedGanttService(),
+            )
+            g.app_logger = app.logger
+            g.op_logger = None
+            resp = route_mod.simulate_schedule()
+            flashes = get_flashed_messages(with_categories=True)
+
+        assert getattr(resp, "status_code", 0) in (301, 302)
+        assert resp.location == "/scheduler.batches_page"
+        assert "scheduler.gantt_page" not in captured_endpoints
+        assert any(cat == "error" and "模拟排产失败：生成版本 40" in msg for cat, msg in flashes), flashes
+        assert any(cat == "error" and msg == "排产执行遇到问题，请联系管理员查看日志。" for cat, msg in flashes), flashes
+        assert not any(cat == "warning" and "排产执行遇到问题" in msg for cat, msg in flashes), flashes
+        visible = "\n".join(msg for _cat, msg in flashes)
+        assert "raw_internal_error" not in visible
+        assert "E_SECRET" not in visible
+        assert "/tmp/private.db" not in visible
+        assert "Traceback" not in visible
+    finally:
+        route_mod.url_for = old_url_for
+
+
+def test_scheduler_simulate_unknown_result_stays_on_batches_page() -> None:
+    repo_root = str(REPO_ROOT)
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+    _reset_scheduler_route_modules()
+
+    import web.routes.scheduler_week_plan as route_mod
+
+    class _StubScheduleService:
+        def run_schedule(self, **_kwargs):
+            return {
+                "version": 41,
+                "result_status": "simulated",
+                "summary": {
+                    "warnings": [],
+                    "errors": [],
+                },
+            }
+
+    class _UnexpectedGanttService:
+        def get_version_time_span_dates(self, _version):
+            raise AssertionError("完成状态未知的模拟排产不应该跳去甘特图")
+
+    captured_endpoints = []
+    old_url_for = route_mod.url_for
+    route_mod.url_for = lambda endpoint, **_kwargs: captured_endpoints.append(endpoint) or f"/{endpoint}"
+    try:
+        app = Flask(__name__)
+        app.secret_key = "aps-test-simulate-unknown-stays-on-batches"
+        with app.test_request_context("/scheduler/simulate", method="POST", data={"batch_ids": ["B001"]}):
+            g.services = SimpleNamespace(
+                schedule_service=_StubScheduleService(),
+                gantt_service=_UnexpectedGanttService(),
+            )
+            g.app_logger = app.logger
+            g.op_logger = None
+            resp = route_mod.simulate_schedule()
+            flashes = get_flashed_messages(with_categories=True)
+
+        assert getattr(resp, "status_code", 0) in (301, 302)
+        assert resp.location == "/scheduler.batches_page"
+        assert "scheduler.gantt_page" not in captured_endpoints
+        assert any(cat == "error" and "模拟排产完成状态未知：生成版本 41" in msg for cat, msg in flashes), flashes
+        assert not any(cat == "success" and "模拟排产完成" in msg for cat, msg in flashes), flashes
+    finally:
+        route_mod.url_for = old_url_for
+
+
+def test_scheduler_simulate_explicit_unknown_with_success_counts_stays_on_batches_page() -> None:
+    repo_root = str(REPO_ROOT)
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+    _reset_scheduler_route_modules()
+
+    import web.routes.scheduler_week_plan as route_mod
+
+    class _StubScheduleService:
+        def run_schedule(self, **_kwargs):
+            return {
+                "version": 42,
+                "result_status": "simulated",
+                "summary": {
+                    "completion_status": "unknown",
+                    "counts": {"op_count": 1, "scheduled_ops": 1, "failed_ops": 0},
+                    "errors": ["Traceback sqlite raw_internal_error code=E_SECRET /tmp/private.db"],
+                    "errors_sample": ["Traceback sqlite raw_internal_error code=E_SECRET /tmp/private.db"],
+                    "error_count": 1,
+                    "warnings": [],
+                },
+            }
+
+    class _UnexpectedGanttService:
+        def get_version_time_span_dates(self, _version):
+            raise AssertionError("显式未知完成状态不应该跳去甘特图")
+
+    captured_endpoints = []
+    old_url_for = route_mod.url_for
+    route_mod.url_for = lambda endpoint, **_kwargs: captured_endpoints.append(endpoint) or f"/{endpoint}"
+    try:
+        app = Flask(__name__)
+        app.secret_key = "aps-test-simulate-explicit-unknown"
+        with app.test_request_context("/scheduler/simulate", method="POST", data={"batch_ids": ["B001"]}):
+            g.services = SimpleNamespace(
+                schedule_service=_StubScheduleService(),
+                gantt_service=_UnexpectedGanttService(),
+            )
+            g.app_logger = app.logger
+            g.op_logger = None
+            resp = route_mod.simulate_schedule()
+            flashes = get_flashed_messages(with_categories=True)
+
+        assert getattr(resp, "status_code", 0) in (301, 302)
+        assert resp.location == "/scheduler.batches_page"
+        assert "scheduler.gantt_page" not in captured_endpoints
+        assert any(cat == "error" and "模拟排产完成状态未知：生成版本 42" in msg for cat, msg in flashes), flashes
+        assert any(cat == "error" and msg == "排产执行遇到问题，请联系管理员查看日志。" for cat, msg in flashes), flashes
+        assert not any(cat == "success" and "模拟排产完成" in msg for cat, msg in flashes), flashes
+    finally:
+        route_mod.url_for = old_url_for
+
+
+@pytest.mark.parametrize(
+    "result, expected_message",
+    [
+        ({"summary": {}}, "排产结果缺少可查看的版本号"),
+        ({"version": 0, "summary": {}}, "排产版本"),
+        ({"version": "abc", "summary": {}}, "排产版本"),
+    ],
+)
+def test_scheduler_simulate_requires_valid_version_before_completion_flash(result, expected_message: str) -> None:
+    repo_root = str(REPO_ROOT)
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+    _reset_scheduler_route_modules()
+
+    import web.routes.scheduler_week_plan as route_mod
+
+    class _StubScheduleService:
+        def run_schedule(self, **_kwargs):
+            return result
+
+    class _UnexpectedGanttService:
+        def get_version_time_span_dates(self, _version):
+            raise AssertionError("版本号无效时不应该查询甘特图范围")
+
+    captured_endpoints = []
+    old_url_for = route_mod.url_for
+    route_mod.url_for = lambda endpoint, **_kwargs: captured_endpoints.append(endpoint) or f"/{endpoint}"
+    try:
+        app = Flask(__name__)
+        app.secret_key = "aps-test-simulate-invalid-version"
+        with app.test_request_context("/scheduler/simulate", method="POST", data={"batch_ids": ["B001"]}):
+            g.services = SimpleNamespace(
+                schedule_service=_StubScheduleService(),
+                gantt_service=_UnexpectedGanttService(),
+            )
+            g.app_logger = app.logger
+            g.op_logger = None
+            resp = route_mod.simulate_schedule()
+            flashes = get_flashed_messages(with_categories=True)
+
+        assert getattr(resp, "status_code", 0) in (301, 302)
+        assert resp.location == "/scheduler.batches_page"
+        assert "scheduler.gantt_page" not in captured_endpoints
+        assert any(cat == "error" and expected_message in msg for cat, msg in flashes), flashes
+        assert not any("模拟排产完成" in msg or "模拟排产失败" in msg for _cat, msg in flashes), flashes
     finally:
         route_mod.url_for = old_url_for
 
@@ -286,7 +496,8 @@ def test_scheduler_run_flashes_secondary_degradation_messages_without_warning_du
 
     import web.routes.scheduler_run as route_mod
 
-    duplicate_message = "自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员。"
+    duplicate_message = "自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员（请查看日志）。"
+    public_duplicate_message = "自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员。"
     distinct_message = "冻结窗口资料不完整，本次只保留能确认的冻结工序。"
 
     class _StubScheduleService:
@@ -325,7 +536,8 @@ def test_scheduler_run_flashes_secondary_degradation_messages_without_warning_du
 
         assert getattr(resp, "status_code", 0) in (301, 302)
         warning_messages = [msg for cat, msg in flashes if cat == "warning"]
-        assert sum(1 for msg in warning_messages if duplicate_message in msg) == 1, warning_messages
+        assert sum(1 for msg in warning_messages if public_duplicate_message in msg) == 1, warning_messages
+        assert not any(duplicate_message in msg for msg in warning_messages), warning_messages
         assert sum(1 for msg in warning_messages if distinct_message in msg) == 1, warning_messages
     finally:
         route_mod.url_for = old_url_for

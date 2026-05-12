@@ -9,6 +9,7 @@ _DIRECT_SCHEDULER_VALIDATION_FIELDS = {
     "start_dt",
     "批次",
     "排产",
+    "排产版本",
     "齐套",
 }
 

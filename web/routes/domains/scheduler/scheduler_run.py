@@ -9,8 +9,8 @@ from web.routes.form_values import form_optional_toggle_bool, form_toggle_bool
 from web.viewmodels.scheduler_run_view_result import RunScheduleViewResult, build_run_schedule_view_result
 
 from .scheduler_bp import (
+    _surface_public_summary_warnings,
     _surface_schedule_errors,
-    _surface_schedule_warnings,
     _surface_secondary_degradation_messages,
     bp,
 )
@@ -29,8 +29,9 @@ def _flash_run_schedule_view_result(view_result: RunScheduleViewResult) -> None:
         view_result.secondary_degradation_messages,
         suppress_messages=warning_messages,
     )
-    _surface_schedule_warnings(view_result.warning_messages)
-    _surface_schedule_errors(view_result.error_preview, total=view_result.error_total)
+    _surface_public_summary_warnings(view_result.raw_warning_messages)
+    error_category = "error" if view_result.result_status in {"failed", "unknown"} else "warning"
+    _surface_schedule_errors(view_result.error_preview, total=view_result.error_total, category=error_category)
 
 
 @bp.post("/run")
@@ -54,7 +55,7 @@ def run_schedule():
             strict_mode=strict_mode,
         )
         view_result = build_run_schedule_view_result(result)
-        if view_result.result_status != "failed":
+        if view_result.result_status in {"success", "partial"}:
             redirect_kwargs = build_success_gantt_redirect_kwargs(result, requested_start_dt=start_dt)
             _flash_run_schedule_view_result(view_result)
             return redirect(url_for("scheduler.gantt_page", **redirect_kwargs))

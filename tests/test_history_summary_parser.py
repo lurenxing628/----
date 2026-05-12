@@ -68,6 +68,23 @@ def test_decorate_history_version_options_preserves_status_label_contract() -> N
     assert "旧版本" in decorated[0]["strategy_display_message"]
 
 
+def test_decorate_history_version_options_keeps_legacy_status_aliases() -> None:
+    decorated = decorate_history_version_options(
+        [
+            {"version": 4, "strategy": "priority_first", "result_status": "ok", "result_summary": "{}"},
+            {"version": 5, "strategy": "priority_first", "result_status": "ok2", "result_summary": "{}"},
+            {"version": 6, "strategy": "priority_first", "result_status": "fail", "result_summary": "{}"},
+        ]
+    )
+
+    assert decorated[0]["result_status_label"] == "成功"
+    assert decorated[0]["version_option_label"] == "v4 · 成功"
+    assert decorated[1]["result_status_label"] == "成功"
+    assert decorated[1]["version_option_label"] == "v5 · 成功"
+    assert decorated[2]["result_status_label"] == "失败"
+    assert decorated[2]["version_option_label"] == "v6 · 失败"
+
+
 def test_strategy_display_label_marks_unknown_values_as_history_error() -> None:
     assert strategy_display_label("priority_first") == "优先级优先"
     assert strategy_display_label("") == "旧历史未记录"

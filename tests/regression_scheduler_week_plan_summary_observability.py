@@ -323,6 +323,24 @@ def test_build_summary_display_state_does_not_infer_success_for_simulated_withou
     assert "成功" not in payload["result_status_label"]
 
 
+def test_build_summary_display_state_respects_persisted_unknown_before_counts() -> None:
+    from web.viewmodels.scheduler_summary_display import build_summary_display_state
+
+    payload = build_summary_display_state(
+        {
+            "completion_status": "unknown",
+            "counts": {"op_count": 1, "scheduled_ops": 1, "failed_ops": 0},
+            "warnings": [],
+            "errors": [],
+        },
+        result_status="simulated",
+    )
+
+    assert payload["completion_status"] == "unknown"
+    assert payload["result_state"]["outcome_status"] == "unknown"
+    assert payload["result_status_label"] == "模拟排产 / 完成状态未知"
+
+
 def test_build_summary_display_state_prefers_persisted_completion_status_before_raw_status() -> None:
     from web.viewmodels.scheduler_summary_display import build_summary_display_state
 
@@ -428,7 +446,7 @@ def test_week_plan_route_surfaces_missing_history_but_keeps_preview_rows(monkeyp
 
 def test_week_plan_page_renders_warning_pipeline_guard_html(tmp_path, monkeypatch) -> None:
     summary = {
-        "warnings": ["资源池资料不完整，本次已按可用资源继续"],
+        "warnings": ["自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员。"],
         "degraded_causes": ["summary_merge_failed"],
         "degradation_events": [{"code": "summary_merge_failed", "message": "", "count": 1}],
         "algo": {

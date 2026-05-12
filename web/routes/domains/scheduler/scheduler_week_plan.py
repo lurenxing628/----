@@ -9,6 +9,7 @@ from core.infrastructure.errors import AppError, BusinessError, ErrorCode, Valid
 from core.services.common.excel_audit import log_excel_export
 from core.services.common.excel_templates import build_xlsx_bytes
 from core.services.scheduler.summary.schedule_summary_types import ScheduleResultStatus
+from core.shared.strict_parse import parse_required_int
 from web.error_boundary import user_visible_app_error_message
 from web.routes.form_values import form_optional_toggle_bool, form_toggle_bool
 from web.routes.history_summary_logging import (
@@ -20,8 +21,8 @@ from web.viewmodels.scheduler_history_summary import decorate_history_version_op
 from web.viewmodels.scheduler_summary_display import build_summary_display_state
 
 from .scheduler_bp import (
+    _surface_public_summary_warnings,
     _surface_schedule_errors,
-    _surface_schedule_warnings,
     _surface_secondary_degradation_messages,
     bp,
 )
@@ -100,19 +101,32 @@ def _flash_simulate_completion(*, version: int, completion_status: str) -> None:
     if completion_status == ScheduleResultStatus.PARTIAL.value:
         flash(f"模拟排产部分完成：生成版本 {version}（不影响批次状态）。", "warning")
         return
+    if completion_status == "unknown":
+        flash(f"模拟排产完成状态未知：生成版本 {version}（不影响批次状态）。", "error")
+        return
     flash(f"模拟排产完成：生成版本 {version}（不影响批次状态）。", "success")
 
 
-def _flash_simulate_summary(summary, summary_display) -> None:
+def _simulate_result_version(result: Any) -> int:
+    try:
+        raw_version = result["version"]
+    except (KeyError, TypeError) as exc:
+        raise ValidationError("排产结果缺少可查看的版本号，本次不会跳到甘特图。请重试或联系管理员。", field="排产版本") from exc
+    return parse_required_int(raw_version, field="排产版本", min_value=1)
+
+
+def _flash_simulate_summary(summary, summary_display, *, completion_status: str) -> None:
     _flash_summary_primary_degradation(summary_display)
     _surface_secondary_degradation_messages(
         summary_display.get("display_secondary_degradation_messages"),
         suppress_messages=summary.get("warnings"),
     )
-    _surface_schedule_warnings(summary.get("warnings"))
+    _surface_public_summary_warnings(summary.get("warnings"))
+    error_category = "error" if completion_status in {ScheduleResultStatus.FAILED.value, "unknown"} else "warning"
     _surface_schedule_errors(
         summary_display.get("errors_preview"),
         total=int(summary_display.get("error_total") or 0),
+        category=error_category,
     )
 
 
@@ -266,15 +280,17 @@ def simulate_schedule():
             enforce_ready=enforce_ready,
             strict_mode=strict_mode,
         )
-        ver = int(result.get("version") or 1)
+        ver = _simulate_result_version(result)
         summary = result.get("summary") or {}
         summary_display = build_summary_display_state(
             summary if isinstance(summary, dict) else None,
-            result_status=result.get("result_status"),
+            result_status=result.get("result_status") or ScheduleResultStatus.SIMULATED.value,
         )
         completion_status = str(summary_display.get("completion_status") or "success")
         _flash_simulate_completion(version=ver, completion_status=completion_status)
-        _flash_simulate_summary(summary, summary_display)
+        _flash_simulate_summary(summary, summary_display, completion_status=completion_status)
+        if completion_status not in {ScheduleResultStatus.SUCCESS.value, ScheduleResultStatus.PARTIAL.value}:
+            return redirect(url_for("scheduler.batches_page"))
 
         return redirect(
             url_for(

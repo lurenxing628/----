@@ -42,6 +42,65 @@ def test_run_schedule_view_result_builds_success_headline_without_overdue() -> N
     assert view_result.overdue_sample_message is None
 
 
+def test_run_schedule_view_result_does_not_default_failed_counts_to_success() -> None:
+    result = {
+        "version": 11,
+        "overdue_batches": [],
+        "summary": {
+            "scheduled_ops": 0,
+            "total_ops": 2,
+            "failed_ops": 2,
+            "warnings": [],
+            "errors": [],
+        },
+    }
+
+    view_result = build_run_schedule_view_result(result)
+
+    assert view_result.result_status == "failed"
+    assert view_result.headline_category == "error"
+    assert "排产失败（版本 11）" in view_result.headline_message
+
+
+def test_run_schedule_view_result_marks_empty_unknown_instead_of_success() -> None:
+    result = {
+        "version": 11,
+        "overdue_batches": [],
+        "summary": {
+            "warnings": [],
+            "errors": [],
+        },
+    }
+
+    view_result = build_run_schedule_view_result(result)
+
+    assert view_result.result_status == "unknown"
+    assert view_result.headline_category == "error"
+    assert "排产完成状态未知（版本 11）" in view_result.headline_message
+
+
+def test_run_schedule_view_result_respects_explicit_unknown_before_success_counts() -> None:
+    result = {
+        "version": 11,
+        "overdue_batches": [],
+        "summary": {
+            "completion_status": "unknown",
+            "counts": {"op_count": 1, "scheduled_ops": 1, "failed_ops": 0},
+            "scheduled_ops": 1,
+            "total_ops": 1,
+            "failed_ops": 0,
+            "warnings": [],
+            "errors": [],
+        },
+    }
+
+    view_result = build_run_schedule_view_result(result)
+
+    assert view_result.result_status == "unknown"
+    assert view_result.headline_category == "error"
+    assert "排产完成状态未知（版本 11）" in view_result.headline_message
+
+
 def test_run_schedule_view_result_builds_failed_headline_and_overdue_sample() -> None:
     result = {
         "version": 12,
@@ -109,6 +168,184 @@ def test_run_schedule_view_result_surfaces_public_degradation_warning_and_errors
     assert view_result.error_total == 4
 
 
+def test_run_schedule_view_result_filters_internal_warning_messages() -> None:
+    public_warning = "自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员。"
+    result = {
+        "version": 14,
+        "overdue_batches": [],
+        "summary": {
+            "scheduled_ops": 1,
+            "total_ops": 1,
+            "failed_ops": 0,
+            "warnings": [
+                "Traceback sqlite raw_internal_warning code=E_SECRET /tmp/private.db",
+                public_warning,
+            ],
+            "errors": [],
+        },
+    }
+
+    view_result = build_run_schedule_view_result(result)
+
+    assert view_result.warning_messages == [public_warning]
+    visible = "\n".join(view_result.warning_messages)
+    assert "raw_internal_warning" not in visible
+    assert "E_SECRET" not in visible
+    assert "/tmp/private.db" not in visible
+    assert "Traceback" not in visible
+
+
+def test_run_schedule_view_result_keeps_auto_assign_resource_warning() -> None:
+    public_warning = "自动分配已启用，但可用设备或人员资料缺失，自制工序无法自动分配设备或人员。"
+    result = {
+        "version": 15,
+        "overdue_batches": [],
+        "summary": {
+            "scheduled_ops": 1,
+            "total_ops": 1,
+            "failed_ops": 0,
+            "warnings": [public_warning],
+            "errors": [],
+        },
+    }
+
+    view_result = build_run_schedule_view_result(result)
+
+    assert view_result.warning_messages == [public_warning]
+
+
+def test_run_schedule_view_result_keeps_public_field_fallback_warnings() -> None:
+    public_warnings = [
+        "排序策略：部分选项填得不对，本次先按默认值处理。",
+        "派工方式：部分必填内容缺失，本次先按默认值处理。",
+        "优先级权重：部分数字填得不对，本次先按默认值处理。",
+        "就绪权重：部分数字小于允许范围，本次先按默认值处理。",
+    ]
+    result = {
+        "version": 16,
+        "overdue_batches": [],
+        "summary": {
+            "scheduled_ops": 1,
+            "total_ops": 1,
+            "failed_ops": 0,
+            "warnings": public_warnings,
+            "errors": [],
+        },
+    }
+
+    view_result = build_run_schedule_view_result(result)
+
+    assert view_result.warning_messages == public_warnings
+
+
+def test_run_schedule_view_result_rejects_field_warning_with_raw_tail() -> None:
+    result = {
+        "version": 17,
+        "overdue_batches": [],
+        "summary": {
+            "scheduled_ops": 1,
+            "total_ops": 1,
+            "failed_ops": 0,
+            "warnings": [
+                "排序策略：部分选项填得不对，本次先按默认值处理。 Traceback /tmp/private.db",
+                "未知字段：部分选项填得不对，本次先按默认值处理。",
+                "派工方式：Traceback raw_internal_warning",
+                "排序策略：部分选项填得不对，本次先按默认值处理。",
+            ],
+            "errors": [],
+        },
+    }
+
+    view_result = build_run_schedule_view_result(result)
+
+    assert view_result.warning_messages == ["排序策略：部分选项填得不对，本次先按默认值处理。"]
+    visible = "\n".join(view_result.warning_messages)
+    assert "raw_internal_warning" not in visible
+    assert "/tmp/private.db" not in visible
+    assert "Traceback" not in visible
+
+
+def test_run_schedule_view_result_rejects_public_warning_prefix_with_raw_tail() -> None:
+    safe_start_warning = "开始时间无法解析，本次已改用当前时间。"
+    safe_end_warning = "截止日期无法解析，本次已忽略这个截止日期。"
+    safe_normalized_warning = "开始时间已规范化为：2026-05-20 08:00:00"
+    result = {
+        "version": 14,
+        "overdue_batches": [],
+        "summary": {
+            "scheduled_ops": 1,
+            "total_ops": 1,
+            "failed_ops": 0,
+            "warnings": [
+                "开始时间无法解析，已忽略：'Traceback sqlite raw_internal_warning code=E_SECRET /tmp/private.db'",
+                "截止日期无法解析，已忽略：'Traceback sqlite raw_internal_warning code=E_SECRET /tmp/private.db'",
+                "开始时间已规范化为：2026-05-20 08:00:00 Traceback sqlite raw_internal_warning",
+                safe_start_warning,
+                safe_end_warning,
+                safe_normalized_warning,
+            ],
+            "errors": [],
+        },
+    }
+
+    view_result = build_run_schedule_view_result(result)
+
+    assert view_result.warning_messages == [safe_start_warning, safe_end_warning, safe_normalized_warning]
+    visible = "\n".join(view_result.warning_messages)
+    assert "raw_internal_warning" not in visible
+    assert "E_SECRET" not in visible
+    assert "/tmp/private.db" not in visible
+    assert "Traceback" not in visible
+
+
+def test_run_schedule_view_result_keeps_unscheduled_batch_warning_without_batch_samples() -> None:
+    public_warning = "存在 2 个批次未形成完工结果，请到系统管理里的排产历史查看这次排产的详细提醒。"
+    result = {
+        "version": 18,
+        "overdue_batches": [],
+        "summary": {
+            "scheduled_ops": 1,
+            "total_ops": 3,
+            "failed_ops": 2,
+            "warnings": [public_warning],
+            "errors": [],
+        },
+    }
+
+    view_result = build_run_schedule_view_result(result)
+
+    assert view_result.warning_messages == [public_warning]
+
+
+def test_run_schedule_view_result_rejects_unscheduled_batch_warning_with_any_sample_tail() -> None:
+    result = {
+        "version": 19,
+        "overdue_batches": [],
+        "summary": {
+            "scheduled_ops": 1,
+            "total_ops": 3,
+            "failed_ops": 2,
+            "warnings": [
+                "存在 2 个批次未形成完工结果（示例批次：B001、/tmp/private.db SECRET_TOKEN）。",
+                "存在 2 个批次未形成完工结果（示例批次：B001、B002）。",
+                "存在 2 个批次未形成完工结果（示例批次：secret_token）。",
+                "存在 2 个批次未形成完工结果，请到系统管理里的排产历史查看这次排产的详细提醒。",
+            ],
+            "errors": [],
+        },
+    }
+
+    view_result = build_run_schedule_view_result(result)
+
+    visible = "\n".join(view_result.warning_messages)
+    assert view_result.warning_messages == ["存在 2 个批次未形成完工结果，请到系统管理里的排产历史查看这次排产的详细提醒。"]
+    assert "/tmp/private.db" not in visible
+    assert "SECRET_TOKEN" not in visible
+    assert "secret_token" not in visible
+    assert "B001" not in visible
+    assert "B002" not in visible
+
+
 def test_scheduler_run_route_does_not_parse_display_state_inline() -> None:
     route_source = (REPO_ROOT / "web/routes/domains/scheduler/scheduler_run.py").read_text(encoding="utf-8")
     run_body = route_source.split("def run_schedule():", 1)[1]
@@ -164,6 +401,190 @@ def test_scheduler_run_route_flashes_failed_result_and_overdue_sample_limit() ->
             for cat, msg in flashes
         ), flashes
         assert not any("B011" in msg or "B012" in msg for _cat, msg in flashes), flashes
+    finally:
+        route_mod.url_for = old_url_for
+
+
+def test_scheduler_run_failed_route_surfaces_sanitized_errors_as_error_flash() -> None:
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+    _reset_scheduler_route_modules()
+
+    import web.routes.scheduler_run as route_mod
+
+    class _StubScheduleService:
+        def run_schedule(self, **_kwargs):
+            return {
+                "version": 22,
+                "result_status": "failed",
+                "overdue_batches": [],
+                "summary": {
+                    "success": False,
+                    "scheduled_ops": 0,
+                    "total_ops": 2,
+                    "failed_ops": 2,
+                    "warnings": [],
+                    "errors": ["sqlite OperationalError raw_internal_error code=E_SECRET /tmp/private.db"],
+                    "errors_sample": ["Traceback sqlite raw_internal_error code=E_SECRET /tmp/private.db"],
+                    "error_count": 2,
+                },
+            }
+
+    old_url_for = route_mod.url_for
+    route_mod.url_for = lambda endpoint, **_kwargs: f"/{endpoint}"
+    try:
+        app = Flask(__name__)
+        app.secret_key = "aps-test-failed-sanitized-errors"
+        with app.test_request_context("/scheduler/run", method="POST", data={"batch_ids": ["B001"]}):
+            g.services = SimpleNamespace(schedule_service=_StubScheduleService())
+            resp = route_mod.run_schedule()
+            flashes = get_flashed_messages(with_categories=True)
+
+        assert getattr(resp, "status_code", 0) in (301, 302)
+        assert resp.headers["Location"] == "/scheduler.batches_page"
+        assert any(cat == "error" and "排产失败（版本 22）" in msg for cat, msg in flashes), flashes
+        assert any(cat == "error" and msg == "排产执行遇到问题，请联系管理员查看日志。" for cat, msg in flashes), flashes
+        assert any(cat == "error" and "另有 1 条错误" in msg for cat, msg in flashes), flashes
+        assert not any(cat == "warning" and "排产执行遇到问题" in msg for cat, msg in flashes), flashes
+        visible = "\n".join(msg for _cat, msg in flashes)
+        assert "raw_internal_error" not in visible
+        assert "E_SECRET" not in visible
+        assert "/tmp/private.db" not in visible
+        assert "Traceback" not in visible
+    finally:
+        route_mod.url_for = old_url_for
+
+
+def test_scheduler_run_route_counts_hidden_string_warning_without_leaking_raw_text() -> None:
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+    _reset_scheduler_route_modules()
+
+    import web.routes.scheduler_run as route_mod
+
+    class _StubScheduleService:
+        def run_schedule(self, **_kwargs):
+            return {
+                "version": 24,
+                "result_status": "success",
+                "overdue_batches": [],
+                "summary": {
+                    "completion_status": "success",
+                    "scheduled_ops": 1,
+                    "total_ops": 1,
+                    "failed_ops": 0,
+                    "warnings": "SECRET password raw SQL /tmp/private.db",
+                    "errors": [],
+                },
+            }
+
+    old_url_for = route_mod.url_for
+    route_mod.url_for = lambda endpoint, **_kwargs: f"/{endpoint}"
+    try:
+        app = Flask(__name__)
+        app.secret_key = "aps-test-string-warning-hidden-count"
+        with app.test_request_context("/scheduler/run", method="POST", data={"batch_ids": ["B001"]}):
+            g.services = SimpleNamespace(
+                schedule_service=_StubScheduleService(),
+                gantt_service=SimpleNamespace(get_version_time_span_dates=lambda _version: None),
+            )
+            resp = route_mod.run_schedule()
+            flashes = get_flashed_messages(with_categories=True)
+
+        assert getattr(resp, "status_code", 0) in (301, 302)
+        assert any(cat == "warning" and "另有 1 条提醒" in msg for cat, msg in flashes), flashes
+        visible = "\n".join(msg for _cat, msg in flashes)
+        assert "SECRET" not in visible
+        assert "password" not in visible
+        assert "raw SQL" not in visible
+        assert "/tmp/private.db" not in visible
+    finally:
+        route_mod.url_for = old_url_for
+
+
+def test_scheduler_run_route_does_not_count_public_warning_alias_as_hidden() -> None:
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+    _reset_scheduler_route_modules()
+
+    import web.routes.scheduler_run as route_mod
+
+    raw_message = "自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员（请查看日志）。"
+    public_message = "自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员。"
+
+    class _StubScheduleService:
+        def run_schedule(self, **_kwargs):
+            return {
+                "version": 25,
+                "result_status": "success",
+                "overdue_batches": [],
+                "summary": {
+                    "completion_status": "success",
+                    "scheduled_ops": 1,
+                    "total_ops": 1,
+                    "failed_ops": 0,
+                    "warnings": [raw_message, public_message],
+                    "errors": [],
+                },
+            }
+
+    old_url_for = route_mod.url_for
+    route_mod.url_for = lambda endpoint, **_kwargs: f"/{endpoint}"
+    try:
+        app = Flask(__name__)
+        app.secret_key = "aps-test-warning-alias-hidden-count"
+        with app.test_request_context("/scheduler/run", method="POST", data={"batch_ids": ["B001"]}):
+            g.services = SimpleNamespace(
+                schedule_service=_StubScheduleService(),
+                gantt_service=SimpleNamespace(get_version_time_span_dates=lambda _version: None),
+            )
+            resp = route_mod.run_schedule()
+            flashes = get_flashed_messages(with_categories=True)
+
+        assert getattr(resp, "status_code", 0) in (301, 302)
+        warning_messages = [msg for cat, msg in flashes if cat == "warning"]
+        assert sum(1 for msg in warning_messages if msg == public_message) == 1
+        assert not any("另有" in msg for msg in warning_messages), warning_messages
+    finally:
+        route_mod.url_for = old_url_for
+
+
+def test_scheduler_run_unknown_result_stays_on_batches_page_without_success_flash() -> None:
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+    _reset_scheduler_route_modules()
+
+    import web.routes.scheduler_run as route_mod
+
+    class _StubScheduleService:
+        def run_schedule(self, **_kwargs):
+            return {
+                "version": 23,
+                "overdue_batches": [],
+                "summary": {
+                    "warnings": [],
+                    "errors": [],
+                },
+            }
+
+    class _UnexpectedGanttService:
+        def get_version_time_span_dates(self, _version):
+            raise AssertionError("完成状态未知时不应该继续读取甘特图范围")
+
+    old_url_for = route_mod.url_for
+    route_mod.url_for = lambda endpoint, **_kwargs: f"/{endpoint}"
+    try:
+        app = Flask(__name__)
+        app.secret_key = "aps-test-run-unknown-status"
+        with app.test_request_context("/scheduler/run", method="POST", data={"batch_ids": ["B001"]}):
+            g.services = SimpleNamespace(schedule_service=_StubScheduleService(), gantt_service=_UnexpectedGanttService())
+            resp = route_mod.run_schedule()
+            flashes = get_flashed_messages(with_categories=True)
+
+        assert getattr(resp, "status_code", 0) in (301, 302)
+        assert resp.headers["Location"] == "/scheduler.batches_page"
+        assert any(cat == "error" and "排产完成状态未知（版本 23）" in msg for cat, msg in flashes), flashes
+        assert not any(cat == "success" and "排产完成" in msg for cat, msg in flashes), flashes
     finally:
         route_mod.url_for = old_url_for
 

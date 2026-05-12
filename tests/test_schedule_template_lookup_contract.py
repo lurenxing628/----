@@ -141,6 +141,10 @@ def test_lookup_missing_paths_raise_in_strict_mode(template, groups, expected_fi
         lookup_template_group_context_for_op(_LookupSvc(template=template, groups=groups), _op(), strict_mode=True)
 
     assert exc_info.value.field == expected_field
+    visible_message = str((exc_info.value.details or {}).get("user_message") or exc_info.value.message)
+    assert "已停止排产" in visible_message
+    assert "本次先按单道外协周期排产" not in visible_message
+    assert "SECRET_TOKEN" not in visible_message
 
 
 def test_lookup_reuses_batch_template_and_group_cache() -> None:

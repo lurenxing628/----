@@ -32,6 +32,13 @@ class _ExternalGroupViolation:
     sample: str
 
 
+def _raise_strict_lookup_error(message: str, *, field: str) -> None:
+    exc = ValidationError(message, field=field)
+    exc.details = dict(exc.details or {})
+    exc.details["user_message"] = message
+    raise exc
+
+
 def _ensure_dict_bucket(cache: Dict[str, Any], key: str) -> Dict[Any, Any]:
     bucket = cache.get(key)
     if isinstance(bucket, dict):
@@ -140,7 +147,10 @@ def _template_missing_outcome(
         "本次先按单道外协周期排产。请到零件工艺里补齐模板后再重新排产。"
     )
     if strict_mode:
-        raise ValidationError(message, field="template")
+        _raise_strict_lookup_error(
+            "外协工序找不到零件工艺模板里的对应工序，已停止排产。请到零件工艺里补齐模板后再重新排产。",
+            field="template",
+        )
     collector.add(
         code="template_missing",
         scope=ctx.event_scope,
@@ -182,7 +192,10 @@ def _template_unavailable_outcome(
         f"工序号={ctx.seq}，当前状态：{_template_status_label(status)}），本次先按单道外协周期排产。请检查零件工艺模板后重试。"
     )
     if strict_mode:
-        raise ValidationError(message, field="template")
+        _raise_strict_lookup_error(
+            "外协工序在零件工艺模板里的对应工序不可用，已停止排产。请检查零件工艺模板后重试。",
+            field="template",
+        )
     collector.add(
         code="template_missing",
         scope=ctx.event_scope,
@@ -218,7 +231,10 @@ def _external_group_invalid_outcome(
         "本次先按单道外协周期排产。请检查零件工艺里的外协组合设置后重试。"
     )
     if strict_mode:
-        raise ValidationError(message, field="ext_group_id")
+        _raise_strict_lookup_error(
+            "外协工序的组合周期资料和当前零件工艺对不上，已停止排产。请检查零件工艺里的外协组合设置后重试。",
+            field="ext_group_id",
+        )
     collector.add(
         code="external_group_missing",
         scope=ctx.event_scope,
@@ -242,7 +258,10 @@ def _external_group_missing_outcome(
         f"（批次={ctx.batch_id}, 工序号={ctx.seq}），本次先按单道外协周期排产。请检查零件工艺里的外协组合设置后重试。"
     )
     if strict_mode:
-        raise ValidationError(message, field="ext_group_id")
+        _raise_strict_lookup_error(
+            "外协工序找不到对应的组合周期资料，已停止排产。请检查零件工艺里的外协组合设置后重试。",
+            field="ext_group_id",
+        )
     collector.add(
         code="external_group_missing",
         scope=ctx.event_scope,

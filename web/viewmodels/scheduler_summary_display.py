@@ -31,7 +31,12 @@ _RESULT_STATUS_LABELS = {
     "simulated": "模拟排产",
     "unknown": "完成状态未知",
 }
-_COMPLETION_STATUS_VALUES = {"success", "partial", "failed"}
+_COMPLETION_STATUS_VALUES = {"success", "partial", "failed", "unknown"}
+_LEGACY_RESULT_STATUS_ALIASES = {
+    "ok": "success",
+    "ok2": "success",
+    "fail": "failed",
+}
 _GENERIC_ERROR_MESSAGE = GENERIC_PUBLIC_ERROR_MESSAGE
 
 
@@ -333,14 +338,19 @@ def _build_warning_pipeline_display(summary: Dict[str, Any]) -> Optional[Dict[st
 
 
 def _known_completion_status(value: Any) -> str:
-    text = str(value or "").strip().lower()
+    text = _normalize_result_status_value(value)
     if text in _COMPLETION_STATUS_VALUES:
         return text
     return ""
 
 
+def _normalize_result_status_value(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    return _LEGACY_RESULT_STATUS_ALIASES.get(text, text)
+
+
 def _completion_status_from_counts(*, status: str, scheduled_ops: int, failed_ops: int, total_ops: int) -> str:
-    if status == "simulated" and scheduled_ops <= 0 and failed_ops <= 0 and total_ops <= 0:
+    if scheduled_ops <= 0 and failed_ops <= 0 and total_ops <= 0:
         return "unknown"
     if failed_ops > 0 and scheduled_ops > 0:
         return "partial"
@@ -350,13 +360,14 @@ def _completion_status_from_counts(*, status: str, scheduled_ops: int, failed_op
         return "partial"
     return "success"
 
+
 def derive_completion_status(*, result_status: Any, summary: Optional[Dict[str, Any]]) -> str:
     summary_dict = summary if isinstance(summary, dict) else {}
     summary_status = _known_completion_status(summary_dict.get("completion_status"))
     if summary_status:
         return summary_status
 
-    status = str(result_status or "").strip().lower()
+    status = _normalize_result_status_value(result_status)
     known_status = _known_completion_status(status)
     if known_status:
         return known_status
@@ -371,8 +382,8 @@ def derive_completion_status(*, result_status: Any, summary: Optional[Dict[str, 
 
 
 def result_status_display_label(*, raw_status: Any, outcome_status: Any) -> str:
-    raw = str(raw_status or "").strip().lower()
-    outcome = str(outcome_status or "").strip().lower()
+    raw = _normalize_result_status_value(raw_status)
+    outcome = _normalize_result_status_value(outcome_status)
     raw_label = _RESULT_STATUS_LABELS.get(raw, raw or "")
     outcome_label = _RESULT_STATUS_LABELS.get(outcome, outcome or "")
     if raw == "simulated" and outcome_label:
@@ -381,7 +392,7 @@ def result_status_display_label(*, raw_status: Any, outcome_status: Any) -> str:
 
 
 def build_result_state(*, result_status: Any, summary: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    raw_status = str(result_status or "").strip().lower()
+    raw_status = _normalize_result_status_value(result_status)
     outcome_status = derive_completion_status(result_status=result_status, summary=summary)
     return {
         "raw_status": raw_status,
