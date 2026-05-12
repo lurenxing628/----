@@ -1,0 +1,84 @@
+feature: 2026-05-13-long-gate-summary-output
+created: 2026-05-13
+
+steps:
+  - action: "编排骨架：新增 feature 设计/checklist，并把 roadmap item 绑定到本 feature"
+    exit_signal: "CodeStable feature 目录存在，roadmap item 指向 2026-05-13-long-gate-summary-output"
+    status: done
+  - action: "summary 模块：新增 summary schema、entry builder、counts、markdown 渲染和 tail/copyable failure 工具"
+    exit_signal: "tests/test_long_gate_summary_output.py 覆盖纯函数行为"
+    status: done
+  - action: "runner 接入：复用同一份 long gate 决策，打印开头决策表并刷新执行结果"
+    exit_signal: "runner 测试能看到 executed 和 reused_success_cache 写入 summary"
+    status: done
+  - action: "写入顺序：正式运行先写 summary，再写新的 success cache"
+    exit_signal: "summary 写入失败时 pytest_collect_all.success.json 不会生成"
+    status: done
+  - action: "失败提示：失败时记录 FAILED entry、copyable command/nodeid、receipt 和 stdout/stderr tail"
+    exit_signal: "失败测试同时验证 summary.failure 和控制台输出"
+    status: done
+  - action: "范围守护：planned entry 不启用，explain 不写 proof，dirty 不写 success cache"
+    exit_signal: "summary 专项测试和 runner 旧测试通过"
+    status: done
+
+checks:
+  - item: "explain 模式打印完整决策表"
+    source: 验收场景
+    status: passed
+  - item: "explain 模式不执行命令、不写 success cache、不写正式 summary"
+    source: 验收场景
+    status: passed
+  - item: "正式运行成功后写 summary.json 和 summary.md"
+    source: 验收场景
+    status: passed
+  - item: "summary counts 覆盖 executed/reused/failed/planned_only/disabled"
+    source: 验收场景
+    status: passed
+  - item: "每个 entry 都有 reason 和 invalidated_by"
+    source: 验收场景
+    status: passed
+  - item: "collect-only 真实执行时 summary 记录 execution_mode=executed"
+    source: 验收场景
+    status: passed
+  - item: "collect-only 复用时 summary 记录 execution_mode=reused_success_cache"
+    source: 验收场景
+    status: passed
+  - item: "planned entry 记录 planned_only，且不启用 success cache"
+    source: 范围守护
+    status: passed
+  - item: "cache disabled 时 summary 记录 disabled reason"
+    source: 验收场景
+    status: passed
+  - item: "命令失败时 summary 记录 failure 并打印 copyable command/nodeid"
+    source: 验收场景
+    status: passed
+  - item: "失败时包含 receipt、stdout/stderr log 和 stdout/stderr tail"
+    source: 验收场景
+    status: passed
+  - item: "stdout/stderr 很长时只截尾部"
+    source: 验收场景
+    status: passed
+  - item: "summary 写入失败时不写新的 success cache"
+    source: 范围守护
+    status: passed
+  - item: "dirty worktree 时 summary 如实记录，但不写新的 success cache"
+    source: 范围守护
+    status: passed
+  - item: "interrupted/partial_write 标记进入 summary"
+    source: 验收场景
+    status: passed
+  - item: "planned long entry 真实失败时 summary 记录 failure，但不启用 success cache"
+    source: 对抗审核补强
+    status: passed
+  - item: "copyable pytest nodeid 只从 pytest 命令提取，并做 shell quoting"
+    source: 对抗审核补强
+    status: passed
+  - item: "summary 专项测试纳入正式 quality gate 必跑集合"
+    source: 对抗审核补强
+    status: passed
+  - item: "不新增 NEXT-2 CLI force/cache-dir 参数"
+    source: 明确不做
+    status: passed
+  - item: "除 pytest_collect_all 外其它 entry 仍保持 planned"
+    source: 明确不做
+    status: passed

@@ -3,7 +3,7 @@ doc_type: roadmap
 slug: quality-gate-long-cache
 status: active
 created: 2026-05-12
-last_reviewed: 2026-05-12
+last_reviewed: 2026-05-13
 tags: [quality-gate, cache, full-test-debt, pyright, ruff]
 related_requirements: []
 related_architecture: [codestable/architecture/ARCHITECTURE.md]
@@ -11,34 +11,67 @@ related_architecture: [codestable/architecture/ARCHITECTURE.md]
 
 # 质量门禁长耗时缓存路线
 
-## 1. 背景
+## 1. 当前状态确认
 
-这份 roadmap 承接用户给出的细粒度实施方案，只做后续开发的规划落盘，不直接修改门禁代码。当前本地仓库 HEAD 已核对为 `5a3e0d1e7313ce27c6ac29786c86b6832b72f496`，也就是方案声明的基准提交。
+这份 roadmap 现在只记录后续路线，不代表所有慢门禁都已经缓存。当前远端分支 `fix/scheduler-public-error-contract` 已经包含三笔本地落地提交，最新提交是 `da4eddad 接入 collect-only 成功缓存`。pre-push 的 `APS quality gate before push` 已通过，说明这些基础改动已经进入远端分支。
 
-现在仓库的统一质量门禁入口是 `scripts/run_quality_gate.py`。这个入口不是单跑一个测试，而是串起测试收集、full-test-debt proof、`ruff`、`pyright`、架构体检、必跑回归、债务台账检查、启动链回归和速查表一致性检查。当前 `tools/quality_gate_shared.py::build_quality_gate_command_plan()` 会动态生成真实命令计划，本地核对到当前共有 13 步命令。
+已经完成并可以继续沿用：
 
-本 roadmap 要解决的问题很直接：如果门禁输入完全没变，长耗时命令不应该每次都重新跑；但也不能为了快就假装通过。只有上一次成功、日志和输出文件都还在、命令身份没变、工具版本没变、配置没变、相关输入文件没变，才允许复用。只要有一点对不上，就重新执行。
+| 范围 | 当前状态 |
+|---|---|
+| CodeStable 路线和 feature 文档 | 已建立 `codestable/roadmap/quality-gate-long-cache/` 和 PR-0 到 PR-3 对应 feature 文档。 |
+| 基础模块 | 已有 `tools/long_gate_manifest.py`、`tools/long_gate_fingerprint.py`、`tools/long_gate_cache.py`、`tools/long_gate_collect.py`。 |
+| 已启用成功缓存 | 只有 `pytest_collect_all`，对应 `python -m pytest --collect-only -q tests`。 |
+| runner 参数 | 已有 `--long-gate-cache`、`--no-long-gate-cache`、`--long-gate-cache-explain`。 |
+| collect 输出 | collect-only 成功后可写 `evidence/QualityGate/collect_nodeids.json`。 |
+| receipt 字段 | 已有 `execution_mode`、`reused_from`、耗时字段、`timed_out`、`interrupted`、`partial_write`。 |
+| 缓存安全底线 | 已校验 entry、command、fingerprint、log、output、路径逃逸和损坏 JSON；后续只能继续加固，不能放松。 |
+| 防提交保护 | `evidence/QualityGate/long_gate/` 和 `evidence/QualityGate/collect_nodeids.json` 已被 `.gitignore` 和本地 hook 保护。 |
 
-## 2. 范围与明确不做
+目前只是候选，不能说已经启用成功复用：
 
-### 本 roadmap 覆盖
+- `full_test_debt`
+- `startup_runtime_regressions`
+- `architecture_fitness`
+- `required_regressions`
+- `ruff_check_full`
+- `pyright_gate_full`
+- `pyright_tools_full`
+- `debt_ledger_sync`
+- `quickref_vs_routes`
 
-- 从真实 `build_quality_gate_command_plan()` 生成长耗时门禁清单，不手写固定测试清单。
-- 为每条可复用命令建立输入指纹，覆盖文件新增、删除、改名、内容变化、配置变化、依赖变化、关键环境变量变化。
-- 为上一次成功结果建立缓存记录，校验 result JSON、stdout/stderr 日志、声明输出文件的 hash。
-- 在 `scripts/run_quality_gate.py` 里保留现有“上次失败后跳过成功前缀继续跑”的能力，再新增“上次成功且输入没变时复用单条/单组成功结果”的能力。
-- 先做 collect-only、full-test-debt、启动/必跑回归、架构体检、债务台账、quickref、ruff/pyright 等门禁项的保守整项复用，再逐步引入更细粒度缓存。
-- 输出能让普通维护者看懂的决策表：哪些是真跑、哪些是复用、为什么复用、为什么失效、失败时怎么复制命令重跑。
-- 新增足够的合同测试，保证“该重跑时一定重跑，该复用时才复用”。
+NEXT-1 已完成并可以继续沿用：
 
-### 明确不做
+- 统一 `summary.json` / `summary.md`。
+- 开头完整决策表和结束统一汇总。
+- 失败时统一打印 FAILED entry、copyable command、pytest nodeid、receipt、stdout/stderr tail。
 
-- 不把定向测试、fast precheck 当成正式全量门禁。它们只能提前发现问题，不能替代 `scripts/run_quality_gate.py --require-clean-worktree`。
-- 不把 CI 的 `actions/cache` 作为第一阶段目标。先让本地缓存机制稳定，再决定 CI 是否接入。
-- 不手写 required regression 或 startup regression 清单。所有这些清单只能从真实命令计划里提取。
-- 不删除旧 receipt 或旧 long gate cache。缓存损坏时只解释并绕过，不擅自清理证据。
-- 不改变 full-test-debt、架构体检、债务台账本身的业务判定规则；第一阶段只包一层“输入没变就复用上次成功”的能力。
-- 不放宽 clean-worktree proof。最终可合并证明仍然要绑定干净工作区和最终 HEAD。
+还没有完整落地的范围：
+
+- `--long-gate-cache-dir PATH`。
+- `--long-gate-force-rerun ENTRY_ID`。
+- `--long-gate-force-rerun-all`。
+- full-test-debt 整项复用和 nodeid 级增量复用。
+- startup / required 从真实 command plan 动态提取后缓存。
+- architecture fitness 文件级扫描缓存。
+- ruff / pyright 快速预检和正式全量缓存。
+- debt ledger sync 缓存。
+- quickref vs routes 缓存。
+- 后续完整文档和测试覆盖。
+
+## 2. 总体原则
+
+后续每打开一个 entry 的复用，都必须同时满足这些原则：
+
+| 原则 | 大白话说明 |
+|---|---|
+| 不改命令身份 | 命令必须来自真实 `build_quality_gate_command_plan()`，不能在缓存代码里手写 required/startup 清单。 |
+| 证据完整才复用 | success cache、receipt、stdout/stderr log、输出文件、hash 任何一个不完整，都重新执行。 |
+| explain 不是 proof | explain 只展示“现在会怎么决定”，不执行命令，不生成正式证明。 |
+| dirty worktree 保守 | 脏工作区、失败续跑、输出不完整时，不写新的 success cache。 |
+| 先整项，后增量 | 复杂 entry 先做“整项成功复用”，确认安全后再做 nodeid 或文件级增量。 |
+| 默认谨慎 | 本地可以显式启用，CI 默认是否启用要单独评估，不能一上来默认全开。 |
+| 可回滚 | 任一 entry 出问题时，能通过移出 enabled 列表或 `--no-long-gate-cache` 立即回到全量执行。 |
 
 ## 3. 模块拆分（概设）
 
@@ -47,224 +80,56 @@ related_architecture: [codestable/architecture/ARCHITECTURE.md]
 ├── 长耗时清单模块：从真实 command plan 识别哪些命令可复用
 ├── 输入指纹模块：把命令、文件、配置、依赖、环境变成稳定 hash
 ├── 成功缓存模块：读写上次成功结果并判断复用还是重跑
+├── summary 模块：把决策、执行、复用、失败和日志位置写成统一报告
+├── CLI 控制模块：cache dir、force rerun、explain、禁用缓存等入口
 ├── 门禁接入模块：把复用决策接入 run_quality_gate.py 的命令循环
 ├── 专项缓存模块：collect-only、full-test-debt、回归组、架构体检、台账、quickref、ruff/pyright
-└── 输出和测试模块：决策表、summary、失败重跑提示、合同测试
+└── 测试和文档模块：合同测试、双跑验证、README、CodeStable 状态回写
 ```
-
-### 长耗时清单模块
-
-- **职责**：新增 `tools/long_gate_manifest.py`，只负责从 `build_quality_gate_command_plan()` 生成清单和分类结果。
-- **不做**：不执行门禁、不读写 success cache、不复制 `tools/test_registry.py` 里的测试列表。
-- **承载的子 feature**：`long-gate-manifest-probe`。
-- **触碰的现有代码 / 模块**：`tools/quality_gate_shared.py` 只作为读取来源，第一步不改它。
-
-### 输入指纹模块
-
-- **职责**：新增 `tools/long_gate_fingerprint.py`，把“这条命令依赖了什么”变成可比较的稳定 JSON 和 hash。
-- **不做**：不根据模糊规则猜测业务影响；只记录被声明的输入范围、工具版本、配置、环境和文件集合。
-- **承载的子 feature**：`long-gate-cache-core`。
-- **触碰的现有代码 / 模块**：新增工具模块，后续被 cache 和 runner 调用。
-
-### 成功缓存模块
-
-- **职责**：新增 `tools/long_gate_cache.py`，读取 `evidence/QualityGate/long_gate/results/*.success.json`，判断 `reuse` 还是 `run`，并写入新的成功记录。
-- **不做**：不删除损坏缓存，不把失败结果写成 success cache。
-- **承载的子 feature**：`long-gate-cache-core`。
-- **触碰的现有代码 / 模块**：新增工具模块，`.gitignore` 需要忽略 `evidence/QualityGate/long_gate/`。
-
-### 门禁接入模块
-
-- **职责**：在 `scripts/run_quality_gate.py` 命令循环里接入 long gate decision；现有失败续跑能力先执行，未被续跑跳过的命令再判断是否复用上次成功。
-- **不做**：不伪造真实执行。receipt 必须明确写 `execution_mode`，让人看出这一步是执行、失败续跑复用，还是成功缓存复用。
-- **承载的子 feature**：`quality-gate-runner-collect-cache`。
-- **触碰的现有代码 / 模块**：`scripts/run_quality_gate.py`、`tools/quality_gate_shared.py` 的 receipt schema 相关辅助函数。
-
-### 专项缓存模块
-
-- **职责**：按风险从低到高逐步接入 collect-only、full-test-debt、startup runtime regression、required regression、architecture fitness、debt ledger sync、quickref vs routes、ruff/pyright。
-- **不做**：不一口气把所有门禁都改成缓存模式。每类门禁必须有对应测试和失效原因展示。
-- **承载的子 feature**：`collect-only-cache-output`、`full-test-debt-success-cache`、`runtime-and-required-regression-cache`、`architecture-file-scan-cache`、`debt-ledger-and-quickref-cache`、`static-check-cache-and-fast-precheck`。
-- **触碰的现有代码 / 模块**：`tools/check_full_test_debt.py`、`tools/collect_full_test_debt.py`、`tools/quality_gate_scan.py`、`scripts/sync_debt_ledger.py`、`tests/check_quickref_vs_routes.py` 等。
-
-### 输出和测试模块
-
-- **职责**：把每次运行的 long gate 决策写入 `summary.json`、`summary.md`，并用测试锁住复用、失效、损坏缓存、失败提示等行为。
-- **不做**：不只写快乐路径测试。缓存损坏、日志丢失、输出文件丢失、命令变化、schema 变化都必须覆盖。
-- **承载的子 feature**：`long-gate-summary-and-contract-tests`。
-- **触碰的现有代码 / 模块**：新增 `tests/test_long_gate_*.py` 系列测试，必要时补 `tests/test_run_quality_gate.py` 的集成合同。
 
 ## 4. 模块间接口契约 / 共享协议（架构层详设）
 
 这一节是后续 feature-design 的硬约束。后续实现如果发现这些结构不够用，要先回到本 roadmap 更新，不要在单个 feature 里偷偷改另一套口径。
 
-### 4.1 长耗时清单入口
+### 4.1 Manifest 和启用状态
 
-**方向**：`run_quality_gate.py` / CLI → `tools.long_gate_manifest`
+Manifest 必须继续从 `tools.quality_gate_shared.build_quality_gate_command_plan()` 生成。entry 可以被识别为 long candidate，但只有进入 enabled 列表后才允许 success cache 复用。
 
-**形式**：函数调用和命令行探测。
+当前已经 enabled：
 
-**契约**：
-
-```python
-LONG_GATE_SCHEMA_VERSION = 1
-
-def build_long_gate_manifest(repo_root: str | os.PathLike[str]) -> LongGateManifest: ...
-
-def classify_quality_gate_command(command: Mapping[str, object]) -> str: ...
-
-def build_manifest_from_quality_gate_plan(
-    command_plan: Sequence[Mapping[str, object]],
-    *,
-    receipts: Sequence[Mapping[str, object]] | None = None,
-) -> LongGateManifest: ...
+```text
+pytest_collect_all
 ```
 
-命令行入口：
+后续 planned：
 
-```bash
-python -m tools.long_gate_manifest --print
-python -m tools.long_gate_manifest --print --include-local-receipts
+```text
+full_test_debt
+startup_runtime_regressions
+architecture_fitness
+required_regressions
+ruff_check_full
+pyright_gate_full
+pyright_tools_full
+debt_ledger_sync
+quickref_vs_routes
 ```
 
-约束：
+Hash 口径必须保持一致：
 
-- `command_plan` 必须来自 `tools.quality_gate_shared.build_quality_gate_command_plan()`。
-- required regression 和 startup regression 只能从 `command_plan` 的 pytest 命令里提取，不能复制动态注册表。
-- 未识别但耗时较长的 receipt command 要在输出里 warning，不要静默丢弃。
+- `quality_gate_plan_hash`、`command_hash`、`paths_hash`、`content_hash`、`nodeid_hash` 和 `generated_from_stdout_sha256` 使用裸 64 位十六进制字符串。
+- `fingerprint.hash` / `current_fingerprint_hash` 这类展示用总指纹带 `sha256:` 前缀。
 
-### 4.2 Manifest 顶层结构
+### 4.2 统一 CacheDecision
 
-**方向**：`tools.long_gate_manifest` → `tools.long_gate_cache` / summary 输出。
-
-**形式**：deterministic JSON。
-
-**契约**：
-
-```json
-{
-  "schema_version": 1,
-  "generated_at": "2026-05-12T00:00:00",
-  "repo_root": "/abs/path",
-  "head_sha": "5a3e0d1e7313ce27c6ac29786c86b6832b72f496",
-  "quality_gate_plan_hash": "0123456789abcdef...",
-  "entries": []
-}
-```
-
-每个 entry 必须至少包含：
-
-```json
-{
-  "schema_version": 1,
-  "entry_id": "pytest_collect_all",
-  "entry_type": "pytest_collect_all",
-  "command_name": "python -m pytest --collect-only -q tests",
-  "display": "python -m pytest --collect-only -q tests",
-  "args": ["python", "-m", "pytest", "--collect-only", "-q", "tests"],
-  "capture_output": true,
-  "output_policy": "normalized",
-  "command_hash": "0123456789abcdef...",
-  "input_file_scopes": [],
-  "config_file_scopes": [],
-  "tool_file_scopes": [],
-  "dependency_file_scopes": [],
-  "env_keys": [],
-  "output_result_files": [],
-  "reuse_allowed": true,
-  "force_invalidate_on": [],
-  "fingerprint": null,
-  "previous_success": null,
-  "last_success_fingerprint": null
-}
-```
-
-约束：
-
-- 当前命令分类必须覆盖：`pytest_collect_all`、`full_test_debt`、`ruff_check_full`、`pyright_gate_full`、`pyright_tools_full`、`architecture_fitness`、`required_regressions`、`debt_ledger_sync`、`startup_runtime_regressions`、`quickref_vs_routes`、`version_or_env_probe`。
-- `version_or_env_probe` 只记录环境，不作为长耗时复用主目标。
-- `QUALITY_GATE_TOOL_PATHS` 和 `QUALITY_GATE_SOURCE_FILES` 必须直接纳入相关指纹范围。
-
-### 4.3 输入指纹结构
-
-**方向**：`tools.long_gate_fingerprint` → `tools.long_gate_cache`。
-
-**形式**：deterministic JSON + hash。
-
-**契约**：
-
-```python
-def fingerprint_entry(entry: LongGateEntry, repo_root: str | os.PathLike[str]) -> FingerprintResult: ...
-
-def fingerprint_files(paths_or_patterns: Sequence[str], repo_root: str | os.PathLike[str]) -> FileSetFingerprint: ...
-
-def fingerprint_command(command: Mapping[str, object]) -> str: ...
-
-def fingerprint_environment(keys: Sequence[str]) -> dict[str, str | None]: ...
-
-def diff_fingerprints(previous: Mapping[str, object], current: Mapping[str, object]) -> InvalidationReason: ...
-```
-
-单文件指纹：
-
-```json
-{
-  "path": "tests/example.py",
-  "exists": true,
-  "kind": "file",
-  "size": 1234,
-  "mode": "100644",
-  "sha256": "abc...",
-  "source": "tracked"
-}
-```
-
-文件集合指纹：
-
-```json
-{
-  "paths_hash": "0123456789abcdef...",
-  "content_hash": "0123456789abcdef...",
-  "files": []
-}
-```
-
-Hash 口径：`quality_gate_plan_hash`、`command_hash`、`paths_hash`、`content_hash`、`nodeid_hash` 和 `generated_from_stdout_sha256` 目前都是裸 64 位十六进制字符串；只有 `fingerprint.hash` / `current_fingerprint_hash` 这类总指纹展示字段带 `sha256:` 前缀。
-
-约束：
-
-- 路径枚举优先用 `git ls-files -z` 获取 tracked 文件。
-- 允许 dirty worktree 的本地场景还要读取 `git ls-files --others --exclude-standard -z`，避免新测试文件未提交时被漏掉。
-- 所有路径统一 `/` 分隔，排序去重。
-- hash 使用 `json.dumps(..., sort_keys=True, separators=(",", ":"), ensure_ascii=False)`。
-- 文件新增、删除、改名、内容变化、空文件替换、同内容但路径变化，都必须让指纹变。
-
-### 4.4 成功缓存结构和复用决策
-
-**方向**：`tools.long_gate_cache` → `run_quality_gate.py`。
-
-**形式**：函数调用 + success JSON。
-
-**契约**：
-
-```python
-def load_previous_success(entry_id: str) -> CachedResult | None: ...
-
-def decide_reuse(entry: LongGateEntry, current_fingerprint: FingerprintResult) -> CacheDecision: ...
-
-def write_success(entry: LongGateEntry, fingerprint: FingerprintResult, command_result: Mapping[str, object], output_files: Sequence[str]) -> None: ...
-
-def write_failure(entry: LongGateEntry, fingerprint: FingerprintResult, command_result: Mapping[str, object]) -> None: ...
-```
-
-`CacheDecision`：
+`decide_reuse()` 输出必须能同时服务 runner、summary 和 explain。
 
 ```json
 {
   "entry_id": "pytest_collect_all",
-  "decision": "reuse",
+  "decision": "reuse | run | planned_only | disabled",
   "reuse_allowed": true,
-  "reason": "fingerprint matched previous successful result",
+  "reason": "previous successful fingerprint matched",
   "invalidated_by": [],
   "previous_completed_at": "2026-05-12T00:00:00",
   "previous_result_path": "evidence/QualityGate/long_gate/results/pytest_collect_all.success.json",
@@ -272,211 +137,841 @@ def write_failure(entry: LongGateEntry, fingerprint: FingerprintResult, command_
 }
 ```
 
-成功缓存路径：
+统一拒绝复用的情况：
+
+- 上次不是 passed。
+- 上次 returncode 非 0。
+- timeout。
+- interrupted。
+- partial_write。
+- JSON 损坏。
+- 必填字段缺失。
+- stdout/stderr log 缺失。
+- stdout/stderr log hash 不一致。
+- output file 缺失。
+- output file hash 不一致。
+- `entry_id` 不匹配。
+- `command_hash` 不匹配。
+- cache schema 版本不匹配。
+- fingerprint schema 版本不匹配。
+- fingerprint hash 自身不一致。
+- success cache、log、output 路径逃出 repo root。
+- symlink 指向 repo 外。
+
+### 4.3 Summary 输出协议
+
+后续新增 `tools/long_gate_summary.py`，正式运行结束后写：
 
 ```text
-evidence/QualityGate/long_gate/
-  manifest.json
-  summary.json
-  summary.md
-  cache_index.json
-  results/
-  logs/
+evidence/QualityGate/long_gate/summary.json
+evidence/QualityGate/long_gate/summary.md
 ```
 
-约束：
-
-- 只有 `status == "passed"` 且 `returncode == 0` 才能复用。
-- timeout、interrupt、partial write 一律不能复用。
-- JSON decode error、缺字段、stdout/stderr log 缺失、output file 缺失、hash 不一致，一律 `decision=run`。
-- 损坏缓存不要删除，要写进 summary 解释本次为什么绕过。
-
-### 4.5 `run_quality_gate.py` 接入顺序
-
-**方向**：`scripts/run_quality_gate.py` → long gate 模块。
-
-**形式**：命令循环扩展。
-
-**契约**：
-
-```text
-1. 构造 command plan。
-2. 先执行现有 resume-from-failure 决策。
-3. 对未被 resume-prefix 跳过的 command，再做 long gate success cache 决策。
-4. 非 long gate command 正常执行。
-5. 真实执行通过后写现有 receipt，再写 long gate success cache。
-6. 复用时不要伪装成真实执行，receipt 写 execution_mode。
-```
-
-receipt 新增字段：
-
-```json
-{
-  "execution_mode": "executed",
-  "reused_from": null,
-  "started_at": "2026-05-12T00:00:00",
-  "ended_at": "2026-05-12T00:00:01",
-  "duration_s": 1.23,
-  "timed_out": false,
-  "interrupted": false
-}
-```
-
-`execution_mode` 允许值：
-
-```text
-executed
-reused_success_cache
-resumed_success_prefix
-```
-
-约束：
-
-- 旧 receipt 没有 duration 字段时不能报错。
-- 统计慢命令时，旧 receipt duration 缺失只标 `duration_unknown`。
-- cache 复用判定不依赖 duration。
-- `--long-gate-cache-explain` 只输出决策，不执行命令。
-
-### 4.6 collect-only 输出结构
-
-**方向**：collect-only 命令处理 → full-test-debt / required regression 后续逻辑。
-
-**形式**：`evidence/QualityGate/collect_nodeids.json`。
-
-**契约**：
+`summary.json` 顶层结构：
 
 ```json
 {
   "schema_version": 1,
-  "status": "passed",
-  "nodeids": [],
-  "nodeid_count": 0,
-  "nodeid_hash": "0123456789abcdef...",
-  "nodeids_by_file": {},
-  "pytest_version": "x.y.z",
-  "generated_from_stdout_sha256": "0123456789abcdef...",
-  "collect_stdout_log_path": "evidence/QualityGate/logs/..."
+  "run_id": "...",
+  "generated_at": "...",
+  "repo_root": "...",
+  "head_sha": "...",
+  "worktree_clean": true,
+  "cache_enabled": true,
+  "cache_dir": "evidence/QualityGate/long_gate",
+  "mode": "run | explain",
+  "counts": {
+    "executed": 0,
+    "reused": 0,
+    "failed": 0,
+    "planned_only": 0,
+    "disabled": 0
+  },
+  "entries": [],
+  "failure": null
+}
+```
+
+失败时 `failure` 结构：
+
+```json
+{
+  "entry_id": "...",
+  "display": "...",
+  "copyable_command": "python -m pytest -q ...",
+  "copyable_nodeids": ["tests/x.py::test_y"],
+  "receipt_path": "...",
+  "stdout_tail": "...",
+  "stderr_tail": "..."
 }
 ```
 
 约束：
 
-- 真实执行时用现有 collect stdout 解析逻辑生成 nodeids。
-- 复用时必须校验 `collect_nodeids.json` 存在且 hash 匹配。
-- 后续需要 nodeid proof 时，不能重新跑 collect，只能读取已校验的缓存输出。
+- 正式运行无论成功失败，都尽量写 summary。
+- explain 第一版只打印，不写 summary；后续如果要写，也必须叫 `summary.explain.json`，避免被误当 proof。
+- summary 写入失败时，不允许写新的 success cache。
+- 中断时如果能进入 finally，就记录 `partial_write: true`，但这种 summary 不能作为 success cache 证据。
 
-### 4.7 专项输出文件协议
+### 4.4 CLI 参数优先级
 
-**方向**：各专项缓存 → success cache。
+后续补齐这些参数：
 
-**形式**：每类专项声明自己的 output file，并在 success cache 中保存 hash。
+```text
+--long-gate-cache-dir PATH
+--long-gate-force-rerun ENTRY_ID
+--long-gate-force-rerun-all
+```
 
-必须覆盖：
+优先级从高到低：
 
-- `full_test_debt`：`evidence/QualityGate/current_full_test_debt.json`、`evidence/QualityGate/full_test_debt_summary.json`。
-- `startup_runtime_regressions`：`evidence/QualityGate/startup_runtime_regressions.json`。
-- `architecture_fitness`：`evidence/QualityGate/architecture_scan_cache.json`。
-- `required_regressions`：`evidence/QualityGate/required_regressions.json`。
-- `debt_ledger_sync`：`evidence/QualityGate/debt_ledger_sync.json`。
-- `quickref_vs_routes`：`evidence/Conformance/quickref_vs_routes.md`。
+1. `--no-long-gate-cache`：不读、不写 long gate success cache。
+2. 现有失败续跑逻辑优先于 long gate success cache。
+3. `--long-gate-cache-explain`：只展示决策，不执行、不写 success cache。
+4. `--long-gate-force-rerun-all`：所有可缓存 entry 都强制 run，成功后可刷新 success cache。
+5. `--long-gate-force-rerun ENTRY_ID`：指定 entry 强制 run，成功后可刷新 success cache。
+6. 正常 `decide_reuse()`。
 
-约束：
+自定义 cache dir 第一版安全规则：
 
-- 输出文件只要缺失或 hash 不一致，就必须重新执行。
-- full-test-debt 第一阶段只做整项成功复用；nodeid 级增量是第二阶段增强。
-- architecture fitness 可以先做命令级复用，再把 `tools/quality_gate_scan.py` 拆成文件级扫描缓存。
+- 默认仍是 `evidence/QualityGate/long_gate/`。
+- PATH 可以是相对路径或绝对路径。
+- 解析后必须在 repo root 内。
+- 不能通过 symlink 指到 repo 外。
+- 建议第一版必须位于 `evidence/QualityGate/long_gate/` 下面。
+- 不满足就直接报错，不偷偷降级到默认目录。
 
-## 5. 子 feature 清单
+### 4.5 专项输出文件协议
 
-1. **long-gate-manifest-probe** — 新增长耗时清单模块和探测命令，只展示真实 command plan、分类结果和本地 receipt 慢命令信息。
-   - 所属模块：长耗时清单模块。
-   - 依赖：无。
-   - 状态：done。
-   - 对应 feature：`2026-05-12-long-gate-manifest-probe`。
-   - 备注：已新增只读清单工具和合同测试；这一步没有接入真实门禁，不改变任何门禁结果。
+每个 entry 必须声明自己的 output file，并在 success cache 中保存 hash：
 
-2. **long-gate-cache-core** — 新增输入指纹和成功缓存核心模块，覆盖文件集合、环境、命令身份、损坏缓存和失效原因。
-   - 所属模块：输入指纹模块、成功缓存模块。
-   - 依赖：`long-gate-manifest-probe`。
-   - 状态：done。
-   - 对应 feature：`2026-05-12-long-gate-cache-core`。
-   - 备注：已新增输入指纹和 success cache 核心库，并用临时目录单测锁住复用/失效判定。
+| entry | 输出文件 |
+|---|---|
+| `pytest_collect_all` | `evidence/QualityGate/collect_nodeids.json` |
+| `full_test_debt` | `evidence/QualityGate/current_full_test_debt.json`、`evidence/QualityGate/full_test_debt_summary.json` |
+| `startup_runtime_regressions` | `evidence/QualityGate/startup_runtime_regressions.json` |
+| `required_regressions` | `evidence/QualityGate/required_regressions.json` |
+| `architecture_fitness` | `evidence/QualityGate/architecture_scan_cache.json` |
+| `ruff_check_full` | `evidence/QualityGate/ruff_check_full.json` |
+| `pyright_gate_full` | `evidence/QualityGate/pyright_gate_full.json` |
+| `pyright_tools_full` | `evidence/QualityGate/pyright_tools_full.json` |
+| `debt_ledger_sync` | `evidence/QualityGate/debt_ledger_sync.json` |
+| `quickref_vs_routes` | `evidence/Conformance/quickref_vs_routes.md` |
 
-3. **collect-only-cache-output** — 为 `python -m pytest --collect-only -q tests` 生成 `collect_nodeids.json`，并锁住新增/删除/修改测试文件后的失效行为。
-   - 所属模块：专项缓存模块。
-   - 依赖：`long-gate-cache-core`。
-   - 状态：done。
-   - 对应 feature：`2026-05-12-collect-only-cache-output`。
-   - 备注：已补 collect-only 输入 scope、输出 payload 和失效合同；仍未接入整个门禁循环。
+输出文件只要缺失或 hash 不一致，就必须重新执行。
 
-4. **quality-gate-runner-collect-cache** — 把 long gate decision 接入 `scripts/run_quality_gate.py`，但第一轮只对 collect-only 开启成功缓存复用。
-   - 所属模块：门禁接入模块、输出和测试模块。
-   - 依赖：`collect-only-cache-output`。
-   - 状态：done。
-   - 对应 feature：`2026-05-12-quality-gate-runner-collect-cache`。
-   - 备注：已完成最小闭环。`--long-gate-cache` 会先输出 collect-only 决策表；单测里第一次走 collect 执行分支并写 `collect_nodeids.json` / success cache，第二次输入没变时复用 collect；receipt 明确写 `execution_mode`、`reused_from`、耗时字段和完整性字段；失败续跑前缀会写 `execution_mode=resumed_success_prefix`，dirty 快速反馈不会写 long-gate success cache。完整 summary.json/summary.md 留到第 10 条收口。
+## 5. 后续实施阶段
 
-5. **full-test-debt-success-cache** — 为 `python tools/check_full_test_debt.py` 做整项成功复用，并为后续 nodeid 级增量缓存打下结构。
-   - 所属模块：专项缓存模块。
-   - 依赖：`quality-gate-runner-collect-cache`。
-   - 状态：planned。
-   - 对应 feature：未启动。
-   - 备注：第一阶段任何源码、测试、台账、collector、pytest 配置变化都整体失效。
+### NEXT-1：统一 long gate summary 输出
 
-6. **runtime-and-required-regression-cache** — 从真实 command plan 提取 startup runtime regression 和 required regression 两组 pytest 命令，做保守整组成功复用。
-   - 所属模块：专项缓存模块。
-   - 依赖：`full-test-debt-success-cache`。
-   - 状态：planned。
-   - 对应 feature：未启动。
-   - 备注：必须证明 `tools/test_registry.py` 或动态 args 变化会强制失效。
+状态：done。对应 feature：`2026-05-13-long-gate-summary-output`。
 
-7. **architecture-file-scan-cache** — 把 `tools/quality_gate_scan.py` 的架构扫描拆成文件级缓存，再让 `tests/test_architecture_fitness.py` 复用未变化文件的扫描结果。
-   - 所属模块：专项缓存模块。
-   - 依赖：`runtime-and-required-regression-cache`。
-   - 状态：planned。
-   - 对应 feature：未启动。
-   - 备注：先复用 AST/扫描结果，聚合规则仍每次重算。
+目标：补齐完整决策表、`summary.json`、`summary.md` 和失败重跑提示。
 
-8. **debt-ledger-and-quickref-cache** — 为 `scripts/sync_debt_ledger.py check` 和 `tests/check_quickref_vs_routes.py` 做成功复用，并声明台账、扫描脚本、路由、模板、速查表等输入范围。
-   - 所属模块：专项缓存模块。
-   - 依赖：`architecture-file-scan-cache`。
-   - 状态：planned。
-   - 对应 feature：未启动。
-   - 备注：quickref 的 `evidence/Conformance/quickref_vs_routes.md` 必须作为输出文件校验。
+需要修改：
 
-9. **static-check-cache-and-fast-precheck** — 为 formal `ruff`/`pyright` 全量命令做成功缓存，并新增只面向改动 Python 文件的 fast precheck。
-   - 所属模块：专项缓存模块。
-   - 依赖：`debt-ledger-and-quickref-cache`。
-   - 状态：planned。
-   - 对应 feature：未启动。
-   - 备注：fast precheck 只能提前反馈，不能替代 formal full gate。
+- `scripts/run_quality_gate.py`
+- `tools/long_gate_cache.py`
+- `tools/long_gate_manifest.py`
+- `tools/long_gate_fingerprint.py`
 
-10. **long-gate-summary-and-contract-tests** — 收口所有 summary 输出、失败重跑提示、损坏缓存提示、双跑验证、文档说明和合同测试。
-    - 所属模块：输出和测试模块。
-    - 依赖：`static-check-cache-and-fast-precheck`。
-    - 状态：planned。
-    - 对应 feature：未启动。
-    - 备注：最终要能清楚回答“这次为什么快了，以及它凭什么可信”。
+建议新增：
 
-**最小闭环**：第 4 条 `quality-gate-runner-collect-cache` 已完成代码和单测级双跑验证：第一次走 collect-only 执行分支并写成功缓存，第二次在测试文件、pytest 配置、依赖和门禁脚本都没变时复用 collect-only，同时 receipt 明确写出复用来源。完整 summary.json/summary.md 和最终干净工作区双跑仍放在第 10 条收口。
+- `tools/long_gate_summary.py`
+- `tests/test_long_gate_summary_output.py`
+- `codestable/features/2026-05-13-long-gate-summary-output/`
 
-## 6. 排期思路
+输出：
 
-推荐顺序沿用原方案的保守路线：先做清单和缓存骨架，不接入真实门禁；再拿 collect-only 做最小闭环；确认“该重跑就重跑、该复用才复用”以后，再扩大到 full-test-debt、回归组、架构扫描、台账、quickref、静态检查。
+- `evidence/QualityGate/long_gate/summary.json`
+- `evidence/QualityGate/long_gate/summary.md`
 
-这个顺序的好处是风险最小。collect-only 的输出是 nodeid 清单，比较稳定，而且后面的 full-test-debt 和回归组都需要它；如果连 collect-only 都解释不清楚，就不应该直接动 full-test-debt 或 pyright 这种影响更大的门禁项。
+测试重点：
 
-每个阶段都要有自己的退出条件：功能代码、合同测试、失效原因输出、双跑验证。不能只因为第二次跑得快，就认为缓存可信。
+- explain 模式打印完整决策表。
+- explain 模式不执行命令、不写 success cache。
+- 正式运行成功后写 summary。
+- counts 包含 executed/reused/failed/planned_only/disabled。
+- 每个 entry 都有 reason 和 invalidated_by。
+- 失败时记录 FAILED entry、copyable command、pytest nodeid、receipt、stdout tail、stderr tail。
+- summary 写入失败时不写 success cache。
 
-## 7. 观察项
+验证命令：
 
-- 当前 `.gitignore` 已忽略 `evidence/QualityGate/quality_gate_manifest.json`、`receipts/`、`logs/`、`long_gate/`、`collect_nodeids.json`、`current_full_test_debt.json`，本地缓存和门禁运行产物不会进入提交。
-- 当前 `scripts/run_quality_gate.py` 的失败续跑只在 `--allow-dirty-worktree` 场景下使用，且明确不是完整通过证明；新增成功缓存时要避免把“快速反馈”和“clean proof”混在一起。
-- 当前 README 和 `开发文档/README.md` 都强调最终 clean proof 需要干净工作区。long gate cache 即使启用，也不能绕开这个口径。
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_long_gate_summary_output.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_long_gate_cache.py tests/test_long_gate_manifest.py tests/test_long_gate_collect_cache.py tests/test_run_quality_gate.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check scripts/run_quality_gate.py tools/long_gate_summary.py tools/long_gate_manifest.py tools/long_gate_fingerprint.py tools/long_gate_cache.py tools/quality_gate_shared.py tools/test_registry.py tests/test_long_gate_summary_output.py tests/test_run_quality_gate.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright scripts/run_quality_gate.py tools/long_gate_summary.py tools/long_gate_manifest.py tools/long_gate_fingerprint.py tools/long_gate_cache.py tools/quality_gate_shared.py tools/test_registry.py tests/test_long_gate_summary_output.py tests/test_run_quality_gate.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --long-gate-cache-explain
+```
+
+完成说明：已新增 summary 模块和 runner 接入；正式 `--long-gate-cache` 运行会写 `summary.json` / `summary.md`，explain 仍只打印不写 proof，summary 写入失败时不写新的 success cache。planned long entry 如果作为真实门禁命令失败，也会写入 failure 证据，但当前仍只有 `pytest_collect_all` 允许 success cache 复用，其它 long entry 保持 planned。`tests/test_long_gate_summary_output.py` 已纳入正式 quality gate 必跑集合。
+
+回滚方式：移除 summary 调用，保留已有 collect-only 缓存逻辑。
+
+### NEXT-2：补齐 CLI 控制参数
+
+目标：补齐 cache dir 和强制重跑控制。
+
+需要修改：
+
+- `scripts/run_quality_gate.py`
+- `tools/long_gate_cache.py`
+- `tools/long_gate_manifest.py`
+- `tools/git_hook_checks.py`
+- `.gitignore`
+- `README.md`
+- `开发文档/README.md`
+
+建议新增：
+
+- `tests/test_long_gate_cli_options.py`
+- `codestable/features/2026-05-13-long-gate-cli-controls/`
+
+新增参数：
+
+- `--long-gate-cache-dir PATH`
+- `--long-gate-force-rerun ENTRY_ID`
+- `--long-gate-force-rerun-all`
+
+测试重点：
+
+- 自定义 cache dir 命中。
+- 自定义 cache dir 不读取默认目录。
+- repo 外目录被拒绝。
+- symlink 到 repo 外被拒绝。
+- force 单个 entry 后不复用。
+- force all 后全部不复用。
+- `--no-long-gate-cache` 下不读不写 success cache。
+- 不存在 ENTRY_ID 报错。
+
+验证命令：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_long_gate_cli_options.py tests/test_run_quality_gate.py
+```
+
+回滚方式：保留参数解析，但临时禁用自定义目录，继续使用默认目录。
+
+### NEXT-3：共用缓存安全和证据链加固
+
+目标：把 schema、版本、路径、symlink、runner hash 等共用安全规则集中化。
+
+需要修改：
+
+- `tools/long_gate_cache.py`
+- `tools/long_gate_fingerprint.py`
+- `tools/long_gate_manifest.py`
+- `scripts/run_quality_gate.py`
+- `tests/test_long_gate_cache.py`
+
+建议新增：
+
+- `tools/long_gate_paths.py`，集中处理 repo 内路径、symlink、rel/abs 转换。
+- `tools/long_gate_schema.py`，集中放 cache/fingerprint/summary schema version。
+
+新增 success cache 字段建议：
+
+- `cache_schema_version`
+- `fingerprint_schema_version`
+- `runner_version_hash`
+- `tooling_version_hash`
+- `cache_dir`
+- `repo_root_realpath`
+- `git_common_dir_realpath`
+
+测试重点：
+
+- cache schema 变化全失效。
+- fingerprint schema 变化全失效。
+- runner hash 变化失效。
+- stdout/stderr log 缺失或 hash mismatch 失效。
+- output file 缺失或 hash mismatch 失效。
+- top-level JSON 不是 object 失效。
+- symlink 指 repo 外不读取目标内容。
+- absolute path 在 repo 内可规范化，repo 外报错。
+
+验证命令：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_long_gate_cache.py tests/test_long_gate_manifest.py
+```
+
+回滚方式：不要放宽安全规则，只把对应 entry 从 enabled 移回 planned。
+
+### NEXT-4：full-test-debt 整项成功复用
+
+目标：为 `python tools/check_full_test_debt.py` 做整项成功复用，不做 nodeid 增量。
+
+需要修改：
+
+- `tools/long_gate_manifest.py`
+- `tools/long_gate_fingerprint.py`
+- `tools/long_gate_cache.py`
+- `scripts/run_quality_gate.py`
+- `tools/check_full_test_debt.py`，只在确实需要补输出时改。
+- `tools/collect_full_test_debt.py`，只在确实需要补输出时改。
+
+建议新增：
+
+- `tests/test_long_gate_full_test_debt_cache.py`
+- `codestable/features/2026-05-13-full-test-debt-success-cache/`
+
+输入范围：
+
+- `tests/**/*.py`
+- `tests/**/conftest.py`
+- `conftest.py`
+- `core/**/*.py`
+- `web/**/*.py`
+- `data/**/*.py`
+- `plugins/**/*.py`
+- `app.py`
+- `app_new_ui.py`
+- `config.py`
+- `schema.sql`
+- `开发文档/技术债务治理台账.md`
+- `tools/check_full_test_debt.py`
+- `tools/collect_full_test_debt.py`
+- `tools/test_debt_registry.py`
+- `tools/quality_gate_shared.py`
+- `tools/quality_gate_support.py`
+- `scripts/run_quality_gate.py`
+- pytest 配置和依赖文件。
+- `evidence/QualityGate/collect_nodeids.json` 的 `nodeid_hash`。
+
+输出：
+
+- `evidence/QualityGate/current_full_test_debt.json`
+- `evidence/QualityGate/full_test_debt_summary.json`
+
+复用条件：
+
+- 上次 success cache status 是 passed。
+- command hash 一致。
+- fingerprint hash 一致。
+- collect nodeid hash 一致。
+- 债务台账 hash 一致。
+- 两个输出文件都存在且 hash 匹配。
+- stdout/stderr log 存在且 hash 匹配。
+- 无 timeout/interrupted/partial_write。
+
+失效条件：
+
+- tests/core/web/data/plugins/app/config/schema 任一输入变化。
+- pytest 配置变化。
+- 依赖文件变化。
+- collector/checker 脚本变化。
+- collect nodeid 缺失或 `nodeid_hash` 变化。
+- 债务台账变化。
+- 输出文件缺失或 hash 不一致。
+
+验证命令：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_long_gate_full_test_debt_cache.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_long_gate_cache.py tests/test_long_gate_manifest.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --long-gate-cache-explain
+```
+
+回滚方式：从 enabled 列表移除 `ENTRY_FULL_TEST_DEBT`。
+
+### NEXT-5：full-test-debt nodeid 级增量复用
+
+目标：在整项成功复用稳定后，只在安全场景下支持部分测试文件变化时重跑相关 nodeid。
+
+需要修改：
+
+- `tools/check_full_test_debt.py`
+- `tools/collect_full_test_debt.py`
+- `tools/long_gate_collect.py`
+- `scripts/run_quality_gate.py`
+- `tools/long_gate_manifest.py`
+
+建议新增：
+
+- `tools/long_gate_full_test_debt.py`
+- 继续扩展 `tests/test_long_gate_full_test_debt_cache.py`
+- `codestable/features/2026-05-13-full-test-debt-nodeid-cache/`
+
+输出：
+
+- `evidence/QualityGate/full_test_debt_node_cache.json`
+
+第一版策略：
+
+- 只有测试文件变化时，才尝试按 `collect_nodeids.json` 的 `nodeids_by_file` 找相关 nodeid。
+- 源码变化、conftest 变化、pytest 配置变化，整体失效。
+- 只改债务台账，不重跑 pytest，只重新做台账校验和 summary。
+- 映射不到 nodeid 时，整体重跑。
+
+测试重点：
+
+- 只改一个测试文件时只选择该文件对应 nodeid。
+- 源码变化时整体失效。
+- 只改台账时不重跑 pytest，只重做台账校验。
+- node cache JSON 损坏时整体重跑。
+
+回滚方式：保留整项复用，禁用 nodeid 增量分支。
+
+### NEXT-6：startup runtime regressions 整组复用
+
+目标：为 `startup_runtime_regressions` 做整组成功复用。命令必须从真实 command plan 动态提取。
+
+需要修改：
+
+- `tools/long_gate_manifest.py`
+- `tools/long_gate_fingerprint.py`
+- `scripts/run_quality_gate.py`
+- `tools/test_registry.py`，只在需要暴露动态信息时改。
+- `tools/quality_gate_shared.py`，只在需要补 command plan 元数据时改。
+
+建议新增：
+
+- `tests/test_long_gate_startup_regression_cache.py`
+- `codestable/features/2026-05-13-startup-runtime-regression-cache/`
+
+输入范围：
+
+- startup regression 测试文件，来自 command plan。
+- `tools/test_registry.py`
+- `scripts/run_quality_gate.py`
+- `web/bootstrap/**/*.py`
+- runtime/plugin/template/security 相关源码。
+- `app.py`
+- `app_new_ui.py`
+- `config.py`
+- `schema.sql`
+- `static/**/*`
+- `templates/**/*.html`
+- pytest 配置和依赖文件。
+
+环境变量：
+
+- `APS_ENV`
+- `APS_DB_PATH`
+- `APS_LOG_DIR`
+- `APS_BACKUP_DIR`
+- `APS_EXCEL_TEMPLATE_DIR`
+- `APS_CHROME_PATH`
+- `PYTHONPATH`
+- `PYTHONUTF8`
+- `PYTHONIOENCODING`
+- Python executable realpath
+- Python version
+- pytest version
+- platform
+
+输出：
+
+- `evidence/QualityGate/startup_runtime_regressions.json`
+
+测试重点：
+
+- startup entry 必须从真实 command plan 定位。
+- args 不能来自硬编码清单。
+- 指定环境变量变化时失效。
+- bootstrap/template/static/app/config/schema 变化时失效。
+- 输出 JSON 或 log 缺失时不复用。
+
+回滚方式：把 `ENTRY_STARTUP_RUNTIME_REGRESSIONS` 移回 planned。
+
+### NEXT-7：required regressions 整组复用
+
+目标：为 `required_regressions` 做整组成功复用。命令必须从真实 command plan 动态提取。
+
+需要修改：
+
+- `tools/long_gate_manifest.py`
+- `tools/long_gate_fingerprint.py`
+- `scripts/run_quality_gate.py`
+
+建议新增：
+
+- `tests/test_long_gate_required_regression_cache.py`
+- `codestable/features/2026-05-13-required-regression-cache/`
+
+输入范围：
+
+- required test files，来自 entry args。
+- pytest 配置。
+- `tools/test_registry.py`
+- `tools/quality_gate_shared.py`
+- `scripts/run_quality_gate.py`
+- 被测源码：`core/**/*.py`、`web/**/*.py`、`data/**/*.py`、`app.py`、`config.py`、`schema.sql`。
+- 依赖文件和 lockfiles。
+
+输出：
+
+- `evidence/QualityGate/required_regressions.json`
+
+测试重点：
+
+- required args 来自真实 command plan。
+- required test file 变化失效。
+- 被测源码变化失效。
+- pytest 配置或依赖变化失效。
+- 输出 JSON 或 log 缺失时不复用。
+
+回滚方式：从 enabled 列表移除 `ENTRY_REQUIRED_REGRESSIONS`。
+
+### NEXT-8：architecture fitness 文件级扫描缓存
+
+目标：让 architecture fitness 的 AST 扫描按文件复用；跨文件规则仍每次重新聚合。
+
+需要修改：
+
+- `tools/quality_gate_scan.py`
+- `tests/test_architecture_fitness.py`
+- `scripts/run_quality_gate.py`
+- `tools/long_gate_manifest.py`
+- `tools/long_gate_fingerprint.py`
+
+建议新增：
+
+- `tools/architecture_scan_cache.py` 或 `tools/quality_gate_scan_cache.py`
+- `tests/test_architecture_scan_cache.py`
+- `codestable/features/2026-05-13-architecture-scan-file-cache/`
+
+需要拆出的函数：
+
+```python
+scan_single_file_architecture(rel_path)
+scan_files_with_cache(paths, rule_context)
+aggregate_architecture_scan(file_results)
+```
+
+输出：
+
+- `evidence/QualityGate/architecture_scan_cache.json`
+
+复用条件：
+
+- 文件 sha 没变。
+- scanner hash 没变。
+- scan schema version 没变。
+- Python version 没变。
+- 多文件规则每次重新聚合。
+
+失效条件：
+
+- scanner 代码变化。
+- scan schema 变化。
+- 文件 sha 变化。
+- 文件新增/删除。
+- cache JSON 损坏。
+- 单文件 cache 缺字段。
+
+回滚方式：architecture fitness 继续全量扫描，不启用 file cache。
+
+### NEXT-9：快速静态预检
+
+目标：新增快速预检，只检查本次改动的 Python 文件。它是提前提醒，不替代正式全量门禁。
+
+需要修改：
+
+- `scripts/run_quality_gate.py`
+- `tools/git_hook_checks.py`，如需接入 hook。
+- `README.md`
+- `开发文档/README.md`
+
+建议新增：
+
+- `tools/fast_static_precheck.py`
+- `tests/test_fast_static_precheck.py`
+- `codestable/features/2026-05-13-fast-static-precheck/`
+
+命令形式建议两个都支持：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m tools.fast_static_precheck
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --fast-precheck
+```
+
+测试重点：
+
+- staged/unstaged/untracked Python 文件会被纳入。
+- 非 Python 改动不触发 ruff/pyright。
+- 删除的 Python 文件不传给工具。
+- 文件名带空格时命令参数正确。
+- ruff 或 pyright 失败时 precheck 失败。
+- 输出明确“不能替代正式全量门禁”。
+- 不写 long gate success cache。
+
+回滚方式：移除 runner 参数，必要时保留独立脚本。
+
+### NEXT-10：ruff / pyright 正式全量缓存
+
+目标：为正式静态命令做 success cache。
+
+目标命令：
+
+- `python -m ruff check`
+- `python -m pyright -p pyrightconfig.gate.json`
+- `python -m pyright <QUALITY_GATE_TOOL_PATHS>`
+
+需要修改：
+
+- `tools/long_gate_manifest.py`
+- `tools/long_gate_fingerprint.py`
+- `scripts/run_quality_gate.py`
+- `tools/quality_gate_shared.py`，只在需要暴露 tool path hash 时改。
+
+建议新增：
+
+- `tests/test_long_gate_static_cache.py`
+- `codestable/features/2026-05-13-static-formal-cache/`
+
+输入范围：
+
+- ruff：所有 Python 文件、ruff 配置、pre-commit 配置、依赖文件、ruff version、Python version。
+- pyright gate：`pyrightconfig.gate.json`、gate 覆盖范围、依赖文件、pyright version、Python version、`PYTHONPATH`。
+- pyright tools：`QUALITY_GATE_TOOL_PATHS` 列表 hash、对应文件内容、依赖文件、pyright version、Python version。
+
+输出：
+
+- `evidence/QualityGate/ruff_check_full.json`
+- `evidence/QualityGate/pyright_gate_full.json`
+- `evidence/QualityGate/pyright_tools_full.json`
+
+测试重点：
+
+- 任意 Python 文件变化使 ruff full 失效。
+- pyright config 变化使 pyright gate 失效。
+- dependency 文件变化使 pyright/ruff 失效。
+- `QUALITY_GATE_TOOL_PATHS` 变化使 pyright tools 失效。
+- 工具版本变化使对应 cache 失效。
+
+回滚方式：先保留快速预检，禁用正式静态缓存。
+
+### NEXT-11：debt ledger sync 缓存
+
+目标：为 `python scripts/sync_debt_ledger.py check` 做整项成功复用，并在 architecture scan cache 完成后复用同一套文件级扫描事实。
+
+需要修改：
+
+- `tools/long_gate_manifest.py`
+- `tools/long_gate_fingerprint.py`
+- `scripts/run_quality_gate.py`
+- `scripts/sync_debt_ledger.py`
+- `tools/quality_gate_scan.py`
+- `tools/architecture_scan_cache.py`，如果 NEXT-8 已新增。
+
+建议新增：
+
+- `tests/test_long_gate_debt_ledger_cache.py`
+- `codestable/features/2026-05-13-debt-ledger-sync-cache/`
+
+输入范围：
+
+- `开发文档/技术债务治理台账.md`
+- `scripts/sync_debt_ledger.py`
+- `tools/quality_gate_ledger.py`
+- `tools/quality_gate_operations.py`
+- `tools/quality_gate_scan.py`
+- `tools/test_debt_registry.py`
+- `tools/check_full_test_debt.py`
+- `tools/collect_full_test_debt.py`
+- `core/**/*.py`
+- `web/**/*.py`
+- `data/**/*.py`
+- `tests/**/*.py`
+
+输出：
+
+- `evidence/QualityGate/debt_ledger_sync.json`
+
+测试重点：
+
+- 台账变化失效。
+- sync 脚本、ledger、operations、scan 工具变化失效。
+- core/web/data/tests 变化失效。
+- 输出 JSON 或 log 缺失时不复用。
+- 如果 architecture scan cache 参与，ledger allowlist 变化只重新聚合，不重扫 AST。
+
+回滚方式：debt ledger sync 不接共享 scan cache，只做整项 success cache。
+
+### NEXT-12：quickref vs routes 缓存
+
+目标：为 `python tests/check_quickref_vs_routes.py` 做整项成功复用。
+
+需要修改：
+
+- `tools/long_gate_manifest.py`
+- `tools/long_gate_fingerprint.py`
+- `scripts/run_quality_gate.py`
+- `tests/check_quickref_vs_routes.py`，只在确实需要规范输出时改。
+
+建议新增：
+
+- `tests/test_long_gate_quickref_cache.py`
+- `codestable/features/2026-05-13-quickref-vs-routes-cache/`
+
+输入范围：
+
+- `tests/check_quickref_vs_routes.py`
+- `开发文档/系统速查表.md`
+- `app.py`
+- `web/routes/**/*.py`
+- `web/bootstrap/**/*.py`
+- `templates/**/*.html`
+- `static/**/*`
+- `config.py`
+- `schema.sql`
+- dependency files。
+- 导航入口相关文件。
+- `APS_ENV`、`PYTHONPATH`、`PYTHONUTF8`、`PYTHONIOENCODING` 和脚本实际读取的其它环境变量。
+
+输出：
+
+- `evidence/Conformance/quickref_vs_routes.md`
+
+测试重点：
+
+- 系统速查表变化失效。
+- route/bootstrap/template/static/app/config/schema/dependency 变化失效。
+- 关键环境变量变化失效。
+- `quickref_vs_routes.md` 缺失或 hash mismatch 时不复用。
+- route 新增但速查表没变时必须执行。
+
+回滚方式：把 `ENTRY_QUICKREF_VS_ROUTES` 移回 planned。
+
+### NEXT-13：文档、最终收口和干净证明
+
+目标：把用户文档、开发文档、CodeStable 状态、最终验收命令统一收口。
+
+需要修改：
+
+- `README.md`
+- `开发文档/README.md`
+- 本 roadmap。
+- 各 feature 的 design / checklist / acceptance。
+
+必须说明：
+
+- explain 模式不是 proof。
+- cache 命中不等于跳过安全校验。
+- 当前哪些 entry 已启用，哪些只是候选。
+- CI 默认启用要谨慎。
+- 证据不完整时会重新执行。
+- 运行产物不能提交。
+- force rerun 参数的用法。
+- 自定义 cache dir 的路径限制。
+- 快速预检不能替代正式全量门禁。
+- 失败时如何根据 summary 找 command、nodeid、receipt 和日志 tail。
+
+最终验收：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q \
+  tests/test_long_gate_full_test_debt_cache.py \
+  tests/test_long_gate_startup_regression_cache.py \
+  tests/test_long_gate_required_regression_cache.py \
+  tests/test_architecture_scan_cache.py \
+  tests/test_fast_static_precheck.py \
+  tests/test_long_gate_static_cache.py \
+  tests/test_long_gate_debt_ledger_cache.py \
+  tests/test_long_gate_quickref_cache.py \
+  tests/test_long_gate_summary_output.py
+
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q \
+  tests/test_long_gate_cache.py \
+  tests/test_long_gate_manifest.py \
+  tests/test_run_quality_gate.py \
+  tests/test_architecture_fitness.py
+
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright -p pyrightconfig.gate.json
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
+```
+
+如果没有跑完整 clean-worktree full proof，提交说明必须明确写：
+
+```text
+未完成 clean-worktree full proof，不能宣称本 PR 已通过完整 clean-worktree quality gate。
+```
+
+## 6. 子 feature 清单
+
+详细机器可读清单在 `quality-gate-long-cache-items.yaml`。这里保留人读版顺序：
+
+1. `long-gate-manifest-probe`：done，已从真实 command plan 生成清单。
+2. `long-gate-cache-core`：done，已建立输入指纹和 success cache 核心。
+3. `collect-only-cache-output`：done，已生成 collect nodeid 输出。
+4. `quality-gate-runner-collect-cache`：done，已接入 collect-only 成功复用。
+5. `long-gate-summary-output`：done，已补统一 summary 和失败提示。
+6. `long-gate-cli-controls`：planned，补 cache dir 和 force rerun 参数。
+7. `long-gate-cache-safety-hardening`：planned，继续加固共用安全规则。
+8. `full-test-debt-success-cache`：planned，做 full-test-debt 整项复用。
+9. `full-test-debt-nodeid-cache`：planned，做 full-test-debt nodeid 增量。
+10. `startup-runtime-regression-cache`：planned，做 startup 整组复用。
+11. `required-regression-cache`：planned，做 required 整组复用。
+12. `architecture-scan-file-cache`：planned，做 architecture 文件级扫描缓存。
+13. `fast-static-precheck`：planned，做快速静态预检。
+14. `static-formal-cache`：planned，做 ruff/pyright 正式全量缓存。
+15. `debt-ledger-sync-cache`：planned，做债务台账同步缓存。
+16. `quickref-vs-routes-cache`：planned，做 quickref vs routes 缓存。
+17. `long-gate-docs-final-proof`：planned，做文档、状态回写和最终干净证明。
+
+## 7. 推荐提交颗粒度
+
+不要把多个 entry 的启用混在一笔提交里。推荐每个 NEXT 阶段至少拆成“基础结构 / runner 接入 / 测试文档 / 最后启用”几个小提交。
+
+关键边界：
+
+- summary 不混入 full-test-debt。
+- CLI 控制参数不混入新增 entry 启用。
+- 共用安全加固不混入业务 entry 复用。
+- full-test-debt 整项复用不混入 nodeid 增量。
+- startup 和 required 拆开做。
+- fast precheck 不混入 ruff/pyright formal cache。
+- debt ledger sync 和 quickref 拆开做。
+- 每个 entry 的 enabled 改动必须放在该 entry 测试和文档完成之后。
+
+## 8. 测试计划总表
+
+后续至少新增或扩展这些测试文件：
+
+| 测试文件 | 覆盖重点 |
+|---|---|
+| `tests/test_long_gate_summary_output.py` | explain、summary.json、summary.md、失败输出、tail、counts、force reason、dirty 状态。 |
+| `tests/test_long_gate_cli_options.py` | cache dir、force rerun、force all、no cache、路径逃逸、symlink。 |
+| `tests/test_long_gate_full_test_debt_cache.py` | full-test-debt 整项复用、输出文件、collect nodeid、台账、源码、collector、node cache。 |
+| `tests/test_long_gate_startup_regression_cache.py` | startup 动态 args、环境变量、bootstrap/template/static/app/config/schema、输出文件。 |
+| `tests/test_long_gate_required_regression_cache.py` | required 动态 args、测试文件、被测源码、pytest 配置、依赖。 |
+| `tests/test_architecture_scan_cache.py` | 单文件扫描复用、单文件变更、ledger allowlist、scanner hash、跨文件聚合。 |
+| `tests/test_fast_static_precheck.py` | staged/unstaged/untracked Python 文件、无 Python 文件 skip、ruff/pyright 失败、不能替代正式门禁。 |
+| `tests/test_long_gate_static_cache.py` | ruff/pyright formal cache、工具版本、配置、依赖、`QUALITY_GATE_TOOL_PATHS`。 |
+| `tests/test_long_gate_debt_ledger_cache.py` | 台账、sync 脚本、scanner、core/web/data/tests、共享 scan cache。 |
+| `tests/test_long_gate_quickref_cache.py` | 速查表、路由、模板、静态资源、输出 md、环境变量。 |
+
+## 9. 注意事项
+
+1. required/startup 测试清单必须来自真实 `build_quality_gate_command_plan()`，不要在缓存代码里复制 `QUALITY_GATE_REQUIRED_TESTS` 或 startup 清单。
+2. 不要提交运行产物，尤其是：
+   - `evidence/QualityGate/long_gate/`
+   - `evidence/QualityGate/collect_nodeids.json`
+   - `evidence/QualityGate/*_regressions.json`
+   - `evidence/QualityGate/*_cache.json`
+   - `evidence/Conformance/quickref_vs_routes.md`
+3. 不要默认所有慢命令都已经可缓存。每个 entry 只能在对应测试和文档完成后，从 planned 改成 enabled。
+4. explain 模式不是 proof。它只是决策预览。
+5. cache 命中不等于跳过安全校验。命中前必须重新校验 command、fingerprint、日志、输出文件、schema、路径。
+6. 不要为了提高命中率加宽松兜底。证据不完整就重新执行。
+7. symlink 策略继续保守。仓库外目标不读取内容，直接失效或拒绝。
+8. 自定义 cache dir 只能在 repo root 内，并且最好限制在已被忽略的 evidence 子目录下。
+9. CI 默认启用要等本地和 PR 验证稳定后再决定；第一阶段更适合本地显式 `--long-gate-cache`。
+10. 每个 PR 的最终说明都要写清楚：本 PR 新启用了哪些 entry，哪些仍然只是候选。
+
+## 10. 观察项
+
+- 当前路线图是规划层，不改 `codestable/requirements/` 和 `codestable/architecture/`。真正落地后由 feature acceptance 再回写现状档案。
 - 架构扫描文件级缓存会触碰 `tools/quality_gate_scan.py` 的内部结构，风险高于命令级缓存，应放到 collect-only/full-test-debt/回归组稳定之后。
 - full-test-debt 的 nodeid 级增量缓存需要更强的依赖映射。第一阶段只做整项成功复用，不提前承诺精准增量。
+- ruff / pyright 的 formal cache 影响面大，建议先做 fast precheck，再逐个启用正式全量缓存。
 
-## 8. 变更日志
+## 11. 变更日志
 
 - 2026-05-12：按用户提供的细粒度方案新建 roadmap，只做规划落盘；已核对当前 HEAD、真实 command plan、现有 receipt / resume 入口和 CodeStable 目录约定。
 - 2026-05-12：完成 `long-gate-manifest-probe`，新增只读 long gate manifest 探测工具、CLI 和测试，并把 PR-0 状态回写为 done。
@@ -484,3 +979,5 @@ resumed_success_prefix
 - 2026-05-12：完成 `collect-only-cache-output`，新增 collect nodeid 输出 payload、collect entry scope 和输入变化失效测试，并把 PR-2 状态回写为 done。
 - 2026-05-12：完成 `quality-gate-runner-collect-cache`，把 collect-only success cache 接入 `scripts/run_quality_gate.py`，新增 CLI 开关、决策表、复用 receipt 字段、receipt 耗时字段和双跑合同测试，并把 PR-3 状态回写为 done。
 - 2026-05-12：按对抗审核结果补强 PR-0 到 PR-3：long gate 工具纳入 `QUALITY_GATE_TOOL_PATHS` 和 gate source proof，指纹补 runtime facts 和 schema hash，缓存路径禁止逃出仓库，未知 pytest 命令不再按位置误分类，失败续跑 receipt 明确标 `resumed_success_prefix`，dirty 快速反馈不写 success cache。
+- 2026-05-13：按用户提供的新后续实施计划更新 roadmap：把 summary、CLI 控制、安全加固、full-test-debt 整项和增量、startup、required、architecture、fast precheck、formal static、debt ledger、quickref、最终文档证明拆成更细的 NEXT 阶段；明确当前只有 collect-only 已启用。
+- 2026-05-13：完成 `long-gate-summary-output`，新增 `tools/long_gate_summary.py`，正式 long gate cache 运行写 `summary.json` / `summary.md`，失败时输出 copyable command/nodeid、receipt 和 stdout/stderr tail；planned long entry 真实失败时也写 failure 证据；summary 专项测试已纳入正式 quality gate 必跑集合；explain 仍只打印不写 proof，未启用任何新的 planned entry。

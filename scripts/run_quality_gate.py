@@ -34,6 +34,12 @@ from tools.long_gate_fingerprint import (  # noqa: E402
     pytest_distribution_version,
 )
 from tools.long_gate_manifest import ENTRY_PYTEST_COLLECT_ALL, build_manifest_from_quality_gate_plan  # noqa: E402
+from tools.long_gate_summary import (  # noqa: E402
+    build_long_gate_summary,
+    build_summary_entry,
+    extract_copyable_failure,
+    write_long_gate_summary,
+)
 from tools.quality_gate_support import (  # noqa: E402
     QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL,
     QUALITY_GATE_LOGS_DIR_REL,
@@ -175,13 +181,17 @@ def _run_command(_display: str, args: Sequence[str], capture_output: bool = Fals
 
 def _coerce_command_result(result: Any) -> Dict[str, Any]:
     if isinstance(result, dict):
-        return {
+        coerced = {
             "stdout": str(result.get("stdout") or ""),
             "stderr": str(result.get("stderr") or ""),
             "returncode": int(result.get("returncode") or 0),
             "stdout_log_path": str(result.get("stdout_log_path") or ""),
             "stderr_log_path": str(result.get("stderr_log_path") or ""),
         }
+        for field_name in ("timed_out", "interrupted", "partial_write"):
+            if field_name in result:
+                coerced[field_name] = bool(result.get(field_name))
+        return coerced
     return {
         "stdout": str(result or ""),
         "stderr": "",
@@ -834,6 +844,9 @@ def _run_quality_gate_command_plan(
     resume_decision: Optional[ResumeDecision] = None,
     long_gate_cache: bool = False,
     long_gate_cache_write_success: bool = True,
+    long_gate_runtime_entries: Optional[Dict[str, Dict[str, Any]]] = None,
+    long_gate_failure: Optional[Dict[str, Any]] = None,
+    pending_long_gate_successes: Optional[List[Dict[str, Any]]] = None,
 ) -> None:
     command_result_handlers: Dict[str, CommandResultHandler] = {
         str(command["display"]): _handle_checked_quality_gate_command for command in command_plan
@@ -846,14 +859,7 @@ def _run_quality_gate_command_plan(
         }
     )
     total = len(command_plan)
-    long_gate_entries: Dict[str, Dict[str, Any]] = {}
-    if long_gate_cache:
-        long_manifest = build_manifest_from_quality_gate_plan(command_plan, repo_root=REPO_ROOT)
-        long_gate_entries = {
-            str(entry.get("display") or ""): dict(entry)
-            for entry in list(long_manifest.get("entries") or [])
-            if str(entry.get("entry_id") or "") == ENTRY_PYTEST_COLLECT_ALL
-        }
+    long_gate_entries = dict(long_gate_runtime_entries or {}) if long_gate_cache else {}
     skip_count = int(resume_decision.skip_count if resume_decision and resume_decision.enabled else 0)
     if skip_count > 0:
         reusable_receipts = list(resume_decision.reusable_receipts if resume_decision else ())
@@ -895,12 +901,13 @@ def _run_quality_gate_command_plan(
         print(f"==> 第 {command_index}/{total} 步开始：{display}", flush=True)
         command_started_at = datetime.now().isoformat(timespec="seconds")
         start_monotonic = time.monotonic()
-        long_gate_entry = long_gate_entries.get(display)
+        long_gate_runtime_entry = long_gate_entries.get(display)
+        long_gate_entry = dict((long_gate_runtime_entry or {}).get("entry") or {})
         long_gate_fingerprint: Optional[Dict[str, Any]] = None
-        if long_gate_entry is not None:
-            long_gate_fingerprint = _strict_long_gate_fingerprint(long_gate_entry)
-            reuse_evaluation = evaluate_reuse(long_gate_entry, long_gate_fingerprint, repo_root=REPO_ROOT)
-            decision = dict(reuse_evaluation["decision"])
+        if long_gate_runtime_entry is not None:
+            long_gate_fingerprint = dict(long_gate_runtime_entry.get("fingerprint") or {})
+            reuse_evaluation = dict(long_gate_runtime_entry.get("evaluation") or {})
+            decision = dict(long_gate_runtime_entry.get("decision") or {})
             if decision["decision"] == "reuse":
                 previous = reuse_evaluation["validated_success"]
                 if not isinstance(previous, dict):
@@ -927,9 +934,36 @@ def _run_quality_gate_command_plan(
                 commands.append(command)
                 receipt_entry = _write_command_receipt(command, run_id=run_id, index=command_index, result=result)
                 command_receipts.append(receipt_entry)
+                _refresh_summary_entry(
+                    long_gate_runtime_entry,
+                    result=result,
+                    receipt_path=receipt_entry["path"],
+                    output_file_paths=[
+                        str(row.get("path") or "")
+                        for row in list(previous.get("output_files") or [])
+                        if isinstance(row, dict)
+                    ],
+                )
                 try:
                     parsed_command_results.update(command_result_handlers[display](display, result))
                 except QualityGateError as exc:
+                    if long_gate_failure is not None:
+                        long_gate_failure.clear()
+                        long_gate_failure.update(
+                            extract_copyable_failure(
+                                entry_id=str(long_gate_entry.get("entry_id") or ""),
+                                display=display,
+                                result=result,
+                                receipt_path=receipt_entry["path"],
+                            )
+                        )
+                        _refresh_summary_entry(
+                            long_gate_runtime_entry,
+                            result=result,
+                            receipt_path=receipt_entry["path"],
+                            failed=True,
+                        )
+                        _print_long_gate_failure(long_gate_failure)
                     _raise_command_failure(
                         index=command_index,
                         total=total,
@@ -956,6 +990,23 @@ def _run_quality_gate_command_plan(
         command_receipts.append(receipt_entry)
         returncode = int(result.get("returncode") or 0)
         if returncode != 0:
+            if long_gate_runtime_entry is not None and long_gate_failure is not None:
+                long_gate_failure.clear()
+                long_gate_failure.update(
+                    extract_copyable_failure(
+                        entry_id=str(long_gate_entry.get("entry_id") or ""),
+                        display=display,
+                        result=result,
+                        receipt_path=receipt_entry["path"],
+                    )
+                )
+                _refresh_summary_entry(
+                    long_gate_runtime_entry,
+                    result=result,
+                    receipt_path=receipt_entry["path"],
+                    failed=True,
+                )
+                _print_long_gate_failure(long_gate_failure)
             print(
                 f"==> 第 {command_index}/{total} 步结束：失败(returncode={returncode})，"
                 f"耗时 {elapsed:.1f}s，receipt={receipt_entry['path']}",
@@ -971,6 +1022,23 @@ def _run_quality_gate_command_plan(
         try:
             parsed_command_results.update(command_result_handlers[display](display, result))
         except QualityGateError as exc:
+            if long_gate_runtime_entry is not None and long_gate_failure is not None:
+                long_gate_failure.clear()
+                long_gate_failure.update(
+                    extract_copyable_failure(
+                        entry_id=str(long_gate_entry.get("entry_id") or ""),
+                        display=display,
+                        result=result,
+                        receipt_path=receipt_entry["path"],
+                    )
+                )
+                _refresh_summary_entry(
+                    long_gate_runtime_entry,
+                    result=result,
+                    receipt_path=receipt_entry["path"],
+                    failed=True,
+                )
+                _print_long_gate_failure(long_gate_failure)
             print(
                 f"==> 第 {command_index}/{total} 步结束：失败(returncode={returncode})，"
                 f"耗时 {elapsed:.1f}s，receipt={receipt_entry['path']}",
@@ -984,7 +1052,8 @@ def _run_quality_gate_command_plan(
                 result=result,
                 detail=str(exc),
             )
-        if long_gate_entry is not None and long_gate_fingerprint is not None:
+        output_file_paths: List[str] = []
+        if long_gate_runtime_entry is not None and bool(long_gate_entry.get("reuse_allowed")):
             if not bool(long_gate_cache_write_success):
                 print(
                     f"==> 第 {command_index}/{total} 步：跳过 long-gate success cache 写入，"
@@ -998,16 +1067,25 @@ def _run_quality_gate_command_plan(
                     collect_stdout_log_path=str(result.get("stdout_log_path") or ""),
                 )
                 collect_rel_path = write_collect_nodeids(collect_payload, repo_root=REPO_ROOT)
+                output_file_paths = [collect_rel_path]
                 cache_result = dict(result)
                 cache_result.pop("stdout_log_path", None)
                 cache_result.pop("stderr_log_path", None)
-                write_long_gate_success(
-                    long_gate_entry,
-                    long_gate_fingerprint,
-                    cache_result,
-                    [os.path.join(REPO_ROOT, collect_rel_path.replace("/", os.sep))],
-                    repo_root=REPO_ROOT,
-                )
+                if pending_long_gate_successes is not None:
+                    pending_long_gate_successes.append(
+                        {
+                            "entry": dict(long_gate_entry),
+                            "fingerprint": dict(long_gate_fingerprint),
+                            "command_result": cache_result,
+                            "output_files": [os.path.join(REPO_ROOT, collect_rel_path.replace("/", os.sep))],
+                        }
+                    )
+            _refresh_summary_entry(
+                long_gate_runtime_entry,
+                result=result,
+                receipt_path=receipt_entry["path"],
+                output_file_paths=output_file_paths,
+            )
         print(f"==> 第 {command_index}/{total} 步结束：通过，耗时 {elapsed:.1f}s，receipt={receipt_entry['path']}", flush=True)
 
 
@@ -1400,38 +1478,197 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     return parsed
 
 
-def _collect_long_gate_cache_decisions(command_plan: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _planned_long_gate_decision(entry: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "entry_id": str(entry.get("entry_id") or ""),
+        "decision": "planned_only",
+        "reuse_allowed": False,
+        "reason": "long gate cache for this entry is not enabled yet",
+        "invalidated_by": [],
+        "previous_completed_at": "",
+        "previous_result_path": "",
+        "current_fingerprint_hash": "",
+    }
+
+
+def _disabled_long_gate_decision(entry: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "entry_id": str(entry.get("entry_id") or ""),
+        "decision": "disabled",
+        "reuse_allowed": False,
+        "reason": "long gate cache is disabled for this run",
+        "invalidated_by": [],
+        "previous_completed_at": "",
+        "previous_result_path": "",
+        "current_fingerprint_hash": "",
+    }
+
+
+def _prepare_long_gate_cache_decisions(
+    command_plan: Sequence[Dict[str, Any]],
+    *,
+    cache_enabled: bool,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]:
     manifest = build_manifest_from_quality_gate_plan(command_plan, repo_root=REPO_ROOT)
-    decisions: List[Dict[str, Any]] = []
-    for entry in list(manifest.get("entries") or []):
-        if str(entry.get("entry_id") or "") != ENTRY_PYTEST_COLLECT_ALL:
+    summary_entries: List[Dict[str, Any]] = []
+    runtime_entries: Dict[str, Dict[str, Any]] = {}
+    for index, raw_entry in enumerate(list(manifest.get("entries") or []), start=1):
+        entry = dict(raw_entry)
+        if not bool(entry.get("long_gate_candidate")) and not bool(entry.get("reuse_allowed")):
             continue
-        fingerprint = _strict_long_gate_fingerprint(dict(entry))
-        evaluation = evaluate_reuse(entry, fingerprint, repo_root=REPO_ROOT)
-        decision = dict(evaluation["decision"])
-        decisions.append(decision)
-    return decisions
+        fingerprint: Optional[Dict[str, Any]] = None
+        evaluation: Optional[Dict[str, Any]] = None
+        if not cache_enabled:
+            decision = _disabled_long_gate_decision(entry)
+        elif bool(entry.get("reuse_allowed")):
+            fingerprint = _strict_long_gate_fingerprint(entry)
+            evaluation = dict(evaluate_reuse(entry, fingerprint, repo_root=REPO_ROOT))
+            decision = dict(evaluation["decision"])
+        else:
+            decision = _planned_long_gate_decision(entry)
+        summary_entry = build_summary_entry(index=index, entry=entry, decision=decision)
+        summary_entries.append(summary_entry)
+        if cache_enabled:
+            runtime_entries[str(entry.get("display") or "")] = {
+                "entry": entry,
+                "fingerprint": fingerprint or {},
+                "evaluation": evaluation or {},
+                "decision": decision,
+                "summary_entry": summary_entry,
+            }
+    return summary_entries, runtime_entries
 
 
-def _print_long_gate_cache_decisions(decisions: Sequence[Dict[str, Any]]) -> None:
-    print("Long gate cache decisions (collect-only enabled in this stage)", flush=True)
+def _collect_long_gate_cache_decisions(command_plan: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    summary_entries, _runtime_entries = _prepare_long_gate_cache_decisions(command_plan, cache_enabled=True)
+    return summary_entries
+
+
+def _print_long_gate_cache_decisions(entries: Sequence[Dict[str, Any]]) -> None:
+    print("Long gate cache decisions", flush=True)
     print("note: explain mode prints decisions only; it is not a quality gate proof", flush=True)
-    if not decisions:
+    if not entries:
         print("- no eligible long-gate entries", flush=True)
         return
-    for decision in decisions:
-        status = "REUSE" if decision.get("decision") == "reuse" else "RUN"
-        print(f"- {decision.get('entry_id')}: {status}", flush=True)
-        print(f"  reason: {decision.get('reason')}", flush=True)
-        if decision.get("previous_completed_at"):
-            print(f"  previous_success: {decision.get('previous_completed_at')}", flush=True)
-        if decision.get("current_fingerprint_hash"):
-            print(f"  fingerprint: {decision.get('current_fingerprint_hash')}", flush=True)
-        invalidated_by = list(decision.get("invalidated_by") or [])
+    for entry in entries:
+        decision = str(entry.get("decision") or "")
+        status = {
+            "reuse": "REUSE",
+            "run": "RUN",
+            "planned_only": "PLANNED_ONLY",
+            "disabled": "DISABLED",
+        }.get(decision, decision.upper() or "UNKNOWN")
+        print(f"- {entry.get('entry_id')}: {status}", flush=True)
+        print(f"  cache: {entry.get('cache_status')}", flush=True)
+        print(f"  reason: {entry.get('reason')}", flush=True)
+        if entry.get("previous_result_path"):
+            print(f"  previous_result: {entry.get('previous_result_path')}", flush=True)
+        if entry.get("current_fingerprint_hash"):
+            print(f"  fingerprint: {entry.get('current_fingerprint_hash')}", flush=True)
+        invalidated_by = list(entry.get("invalidated_by") or [])
         if invalidated_by:
             print("  invalidated_by:", flush=True)
             for item in invalidated_by:
                 print(f"    - {item}", flush=True)
+
+
+def _print_long_gate_summary(summary: Dict[str, Any], summary_paths: Dict[str, str]) -> None:
+    counts = dict(summary.get("counts") or {})
+    print("Long gate summary", flush=True)
+    for key in ("executed", "reused", "failed", "planned_only", "disabled"):
+        print(f"- {key}: {int(counts.get(key) or 0)}", flush=True)
+    print(f"- summary_json: {summary_paths.get('summary_json') or ''}", flush=True)
+    print(f"- summary_md: {summary_paths.get('summary_md') or ''}", flush=True)
+
+
+def _write_and_print_long_gate_summary(
+    *,
+    run_id: str,
+    head_sha: str,
+    worktree_clean: bool,
+    cache_enabled: bool,
+    entries: Sequence[Dict[str, Any]],
+    failure: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    summary = build_long_gate_summary(
+        run_id=run_id,
+        repo_root=REPO_ROOT,
+        head_sha=head_sha,
+        worktree_clean=worktree_clean,
+        cache_enabled=cache_enabled,
+        mode="run",
+        entries=entries,
+        failure=failure,
+    )
+    summary_paths = write_long_gate_summary(summary, REPO_ROOT)
+    _print_long_gate_summary(summary, summary_paths)
+    return summary
+
+
+def _write_pending_long_gate_successes(pending_successes: Sequence[Dict[str, Any]]) -> None:
+    for pending in list(pending_successes or []):
+        write_long_gate_success(
+            dict(pending.get("entry") or {}),
+            dict(pending.get("fingerprint") or {}),
+            dict(pending.get("command_result") or {}),
+            [str(path) for path in list(pending.get("output_files") or [])],
+            repo_root=REPO_ROOT,
+        )
+
+
+def _print_long_gate_failure(failure: Dict[str, Any]) -> None:
+    print(f"FAILED: {failure.get('entry_id') or failure.get('display') or 'unknown'}", flush=True)
+    print("command:", flush=True)
+    print(f"  {failure.get('display') or ''}", flush=True)
+    print("copyable rerun:", flush=True)
+    print(f"  {failure.get('copyable_command') or ''}", flush=True)
+    print("receipt:", flush=True)
+    print(f"  {failure.get('receipt_path') or ''}", flush=True)
+    print("stdout log:", flush=True)
+    print(f"  {failure.get('stdout_log_path') or ''}", flush=True)
+    print("stderr log:", flush=True)
+    print(f"  {failure.get('stderr_log_path') or ''}", flush=True)
+    print("stdout tail:", flush=True)
+    print(str(failure.get("stdout_tail") or ""), flush=True)
+    print("stderr tail:", file=sys.stderr, flush=True)
+    print(str(failure.get("stderr_tail") or ""), file=sys.stderr, flush=True)
+
+
+def _output_file_rows(paths: Sequence[str]) -> List[Dict[str, str]]:
+    rows: List[Dict[str, str]] = []
+    for rel_path in list(paths or []):
+        normalized = str(rel_path or "").replace("\\", "/")
+        if not normalized:
+            continue
+        abs_path = os.path.join(REPO_ROOT, normalized.replace("/", os.sep))
+        if os.path.isfile(abs_path):
+            rows.append({"path": normalized, "sha256": _sha256_file(abs_path)})
+    return rows
+
+
+def _refresh_summary_entry(
+    runtime_entry: Dict[str, Any],
+    *,
+    result: Dict[str, Any],
+    receipt_path: str,
+    output_file_paths: Optional[Sequence[str]] = None,
+    failed: bool = False,
+) -> None:
+    summary_entry = runtime_entry.get("summary_entry")
+    if not isinstance(summary_entry, dict):
+        return
+    output_files = _output_file_rows(list(output_file_paths or []))
+    updated = build_summary_entry(
+        index=int(summary_entry.get("index") or 0),
+        entry=dict(runtime_entry.get("entry") or {}),
+        decision=dict(runtime_entry.get("decision") or {}),
+        result=result,
+        receipt_path=receipt_path,
+        output_files=output_files,
+        failed=failed,
+    )
+    summary_entry.clear()
+    summary_entry.update(updated)
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -1442,7 +1679,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     )
     long_gate_cache_enabled = bool((args.long_gate_cache or args.long_gate_cache_explain) and not args.no_long_gate_cache)
     if bool(args.long_gate_cache_explain):
-        _print_long_gate_cache_decisions(_collect_long_gate_cache_decisions(command_plan))
+        long_gate_summary_entries, _long_gate_runtime_entries = _prepare_long_gate_cache_decisions(
+            command_plan,
+            cache_enabled=True,
+        )
+        _print_long_gate_cache_decisions(long_gate_summary_entries)
         return 0
     started_at = datetime.now().isoformat(timespec="seconds")
     head_sha = _git_head_sha()
@@ -1465,8 +1706,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         )
     else:
         print(f"提示：未使用续跑：{resume_decision.reason}。本次完整重跑。", flush=True)
+    effective_long_gate_cache_enabled = bool(long_gate_cache_enabled and not resume_decision.enabled)
+    long_gate_summary_entries, long_gate_runtime_entries = _prepare_long_gate_cache_decisions(
+        command_plan,
+        cache_enabled=effective_long_gate_cache_enabled,
+    )
     if long_gate_cache_enabled:
-        _print_long_gate_cache_decisions(_collect_long_gate_cache_decisions(command_plan))
+        _print_long_gate_cache_decisions(long_gate_summary_entries)
     run_id = f"{head_sha}:{started_at}"
     runtime_snapshot = _runtime_state_snapshot()
     commands: List[Dict[str, Any]] = []
@@ -1475,6 +1721,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ruff_version_output: Optional[str] = None
     pyright_version_output: Optional[str] = None
     parsed_command_results: Dict[str, Any] = {}
+    long_gate_failure: Dict[str, Any] = {}
+    pending_long_gate_successes: List[Dict[str, Any]] = []
     failure_kind: Optional[str] = None
     git_status_short_after: Optional[List[str]] = None
     require_clean_worktree = bool(args.require_clean_worktree or not args.allow_dirty_worktree)
@@ -1536,10 +1784,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             command_receipts=command_receipts,
             parsed_command_results=parsed_command_results,
             resume_decision=resume_decision,
-            long_gate_cache=long_gate_cache_enabled,
+            long_gate_cache=effective_long_gate_cache_enabled,
             long_gate_cache_write_success=bool(
-                long_gate_cache_enabled and require_clean_worktree and not resume_decision.enabled
+                effective_long_gate_cache_enabled and require_clean_worktree and not resume_decision.enabled
             ),
+            long_gate_runtime_entries=long_gate_runtime_entries,
+            long_gate_failure=long_gate_failure,
+            pending_long_gate_successes=pending_long_gate_successes,
         )
         collection_proof = cast(Optional[Dict[str, Any]], parsed_command_results.get("collection_proof"))
         ruff_version_output = cast(Optional[str], parsed_command_results.get("ruff_version_output"))
@@ -1558,6 +1809,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if require_clean_worktree and git_status_short_after:
             failure_kind = "dirty_after_gate"
             raise QualityGateError("dirty worktree: clean proof requires an empty worktree after the gate runs")
+
+        if long_gate_cache_enabled:
+            _write_and_print_long_gate_summary(
+                run_id=run_id,
+                head_sha=head_sha,
+                worktree_clean=not bool(git_status_short_before or git_status_short_after),
+                cache_enabled=effective_long_gate_cache_enabled,
+                entries=long_gate_summary_entries,
+                failure=long_gate_failure or None,
+            )
+            _write_pending_long_gate_successes(pending_long_gate_successes)
 
         success_by_clean_contract = {
             True: ("passed", "质量门禁通过", 0),
@@ -1647,6 +1909,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             _write_quality_gate_manifest(manifest)
         except Exception as manifest_write_exc:
             print(f"ERROR: 无法写入失败质量门禁 manifest：{manifest_write_exc}", file=sys.stderr, flush=True)
+        if long_gate_cache_enabled:
+            try:
+                _write_and_print_long_gate_summary(
+                    run_id=run_id,
+                    head_sha=head_sha,
+                    worktree_clean=not bool(git_status_short_before or (git_status_short_after or [])),
+                    cache_enabled=effective_long_gate_cache_enabled,
+                    entries=long_gate_summary_entries,
+                    failure=long_gate_failure or None,
+                )
+            except Exception as summary_write_exc:
+                print(f"ERROR: 无法写入 long gate summary：{summary_write_exc}", file=sys.stderr, flush=True)
         raise
 
 

@@ -196,6 +196,11 @@ def _load_receipt_payload(module, repo_root: Path, manifest: dict, index: int) -
     return module.json.loads((repo_root / receipt_entry["path"]).read_text(encoding="utf-8"))
 
 
+def _load_long_gate_summary(module, repo_root: Path) -> dict:
+    summary_path = repo_root / "evidence" / "QualityGate" / "long_gate" / "summary.json"
+    return module.json.loads(summary_path.read_text(encoding="utf-8"))
+
+
 def test_shared_quality_registry_does_not_split_quality_gate_error_identity():
     repo_root = _repo_root()
     if repo_root not in sys.path:
@@ -307,6 +312,7 @@ def test_main_runs_guard_preflight_before_static_and_startup_checks(monkeypatch,
     assert "tools/long_gate_collect.py" in module.QUALITY_GATE_TOOL_PATHS
     assert "tools/long_gate_fingerprint.py" in module.QUALITY_GATE_TOOL_PATHS
     assert "tools/long_gate_manifest.py" in module.QUALITY_GATE_TOOL_PATHS
+    assert "tools/long_gate_summary.py" in module.QUALITY_GATE_TOOL_PATHS
     assert "scripts/sync_debt_ledger.py" in module.QUALITY_GATE_TOOL_PATHS
     assert "python -m pytest -q " + " ".join(module.REQUIRED_TEST_ARGS) in displays
     assert "python scripts/sync_debt_ledger.py check" in displays
@@ -422,6 +428,7 @@ def test_full_test_debt_proof_is_in_shared_quality_gate_plan() -> None:
         "tools/long_gate_collect.py",
         "tools/long_gate_fingerprint.py",
         "tools/long_gate_manifest.py",
+        "tools/long_gate_summary.py",
         "tests/conftest.py",
         "tests/main_style_regression_runner.py",
         "tests/test_check_full_test_debt.py",
@@ -444,6 +451,7 @@ def test_full_test_debt_proof_is_in_shared_quality_gate_plan() -> None:
         "tools/long_gate_collect.py",
         "tools/long_gate_fingerprint.py",
         "tools/long_gate_manifest.py",
+        "tools/long_gate_summary.py",
         "tests/conftest.py",
         "tests/main_style_regression_runner.py",
     ]:
@@ -642,6 +650,7 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
     assert "tests/regression_schedule_config_snapshot_optional_guard.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_schedule_summary_freeze_state_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/test_git_hook_checks.py" in module.REQUIRED_TEST_ARGS
+    assert "tests/test_long_gate_summary_output.py" in module.REQUIRED_TEST_ARGS
     assert "tests/test_sync_debt_ledger.py" in module.REQUIRED_TEST_ARGS
     assert "tests/test_schedule_template_lookup_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_schedule_summary_size_guard_large_lists.py" in module.REQUIRED_TEST_ARGS
@@ -884,6 +893,7 @@ def test_main_writes_quality_gate_manifest_with_git_and_collection_proof(monkeyp
     assert "tools/long_gate_collect.py" in {item["path"] for item in manifest["gate_sources"]}
     assert "tools/long_gate_fingerprint.py" in {item["path"] for item in manifest["gate_sources"]}
     assert "tools/long_gate_manifest.py" in {item["path"] for item in manifest["gate_sources"]}
+    assert "tools/long_gate_summary.py" in {item["path"] for item in manifest["gate_sources"]}
     assert ".github/workflows/quality.yml" in {item["path"] for item in manifest["gate_sources"]}
     assert "pyproject.toml" in {item["path"] for item in manifest["gate_sources"]}
     assert manifest["collection_proof"]["default_collect_nodeids"]
@@ -1122,6 +1132,8 @@ def test_main_long_gate_cache_explain_prints_decision_without_running(monkeypatc
     assert "explain mode prints decisions only; it is not a quality gate proof" in output
     assert "- pytest_collect_all: RUN" in output
     assert "no previous success cache" in output
+    assert not (repo_root / "evidence" / "QualityGate" / "long_gate" / "summary.json").exists()
+    assert not (repo_root / "evidence" / "QualityGate" / "receipts").exists()
 
 
 def test_long_gate_cache_explain_and_no_cache_are_mutually_exclusive():
@@ -1225,6 +1237,12 @@ def test_main_long_gate_cache_reuses_collect_only_success(monkeypatch, tmp_path,
             "sha256": module._sha256_file(str(repo_root / "evidence" / "QualityGate" / "collect_nodeids.json")),
         }
     ]
+    first_summary = _load_long_gate_summary(module, repo_root)
+    first_collect_summary = next(entry for entry in first_summary["entries"] if entry["entry_id"] == "pytest_collect_all")
+    assert first_collect_summary["execution_mode"] == "executed"
+    assert first_collect_summary["receipt_path"] == _load_manifest(module, repo_root)["command_receipts"][0]["path"]
+    assert first_collect_summary["current_fingerprint_hash"]
+    assert first_collect_summary["output_files"][0]["path"] == "evidence/QualityGate/collect_nodeids.json"
 
     calls.clear()
     assert module.main(["--long-gate-cache"]) == 0
@@ -1247,6 +1265,11 @@ def test_main_long_gate_cache_reuses_collect_only_success(monkeypatch, tmp_path,
     assert receipt_payload["timed_out"] is False
     assert receipt_payload["interrupted"] is False
     assert receipt_payload["partial_write"] is False
+    second_summary = _load_long_gate_summary(module, repo_root)
+    second_collect_summary = next(entry for entry in second_summary["entries"] if entry["entry_id"] == "pytest_collect_all")
+    assert second_collect_summary["execution_mode"] == "reused_success_cache"
+    assert second_collect_summary["receipt_path"] == manifest["command_receipts"][0]["path"]
+    assert second_collect_summary["previous_result_path"].endswith("pytest_collect_all.success.json")
 
 
 def test_long_gate_reuse_uses_validated_payload_without_second_cache_read(monkeypatch, tmp_path):
@@ -1312,6 +1335,10 @@ def test_main_long_gate_cache_reruns_collect_when_input_changes(monkeypatch, tmp
     output = capsys.readouterr().out
     assert "- pytest_collect_all: RUN" in output
     assert "modified input file: tests/test_cached_collect.py" in output
+    summary = _load_long_gate_summary(module, repo_root)
+    collect_summary = next(entry for entry in summary["entries"] if entry["entry_id"] == "pytest_collect_all")
+    assert collect_summary["decision"] == "run"
+    assert "modified input file: tests/test_cached_collect.py" in collect_summary["invalidated_by"]
 
 
 def test_dirty_long_gate_cache_does_not_write_success_cache(monkeypatch, tmp_path, capsys):
@@ -1344,6 +1371,9 @@ def test_dirty_long_gate_cache_does_not_write_success_cache(monkeypatch, tmp_pat
     assert not (
         repo_root / "evidence" / "QualityGate" / "long_gate" / "results" / "pytest_collect_all.success.json"
     ).exists()
+    summary = _load_long_gate_summary(module, repo_root)
+    assert summary["worktree_clean"] is False
+    assert summary["counts"]["executed"] == 1
 
 
 def test_resume_success_prefix_wins_before_long_gate_cache(monkeypatch, tmp_path, capsys):
@@ -1378,6 +1408,11 @@ def test_resume_success_prefix_wins_before_long_gate_cache(monkeypatch, tmp_path
         assert receipt_payload["duration_kind"] == "resume_overhead"
         assert receipt_payload["original_duration_s"] >= 0
         assert receipt_payload["reused_from"]["run_id"] == "old-run"
+    summary = _load_long_gate_summary(module, repo_root)
+    collect_summary = next(entry for entry in summary["entries"] if entry["entry_id"] == "pytest_collect_all")
+    assert collect_summary["decision"] == "disabled"
+    assert collect_summary["execution_mode"] == "disabled"
+    assert summary["counts"]["reused"] == 0
 
 
 def test_main_does_not_resume_when_previous_manifest_head_sha_differs(monkeypatch, tmp_path, capsys):
