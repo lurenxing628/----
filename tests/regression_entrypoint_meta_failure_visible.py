@@ -218,8 +218,55 @@ def test_create_app_failure_write_launch_error_failure_visible(tmp_path: Path, c
 
     stderr_text = capsys.readouterr().err
     assert rc == 14
-    assert "应用启动失败：app boom" in stderr_text
-    assert "写入启动错误文件失败" in stderr_text
+    assert "应用启动失败：程序没有正常启动" in stderr_text
+    assert "app boom" not in stderr_text
+    launcher_log = (tmp_path / "prelaunch-logs" / "launcher.log").read_text(encoding="utf-8")
+    launch_error = (tmp_path / "prelaunch-logs" / "aps_launch_error.txt").read_text(encoding="utf-8")
+    assert "写入启动错误文件失败" not in launcher_log
+    assert "launch file boom" not in launcher_log
+    assert "app boom" in launcher_log
+    assert "应用启动失败：程序没有正常启动" in launch_error
+    assert "app boom" not in launch_error
+
+
+def test_create_app_failure_always_writes_raw_launcher_log(tmp_path: Path, capsys) -> None:
+    state = _make_state()
+    deps = EntryPointDeps(
+        create_app=lambda: (_ for _ in ()).throw(RuntimeError("app boom")),
+        clear_launch_error=lambda *args, **kwargs: None,
+        write_launch_error=lambda runtime_dir, message, log_dir: state["write_launch_error"].append(
+            (str(runtime_dir), str(message), str(log_dir))
+        ),
+        current_runtime_owner=lambda: "DOMAIN\\tester",
+        resolve_prelaunch_log_dir=lambda runtime_dir: str(Path(runtime_dir) / "prelaunch-logs"),
+        acquire_runtime_lock=lambda *args, **kwargs: None,
+        release_runtime_lock=lambda *args, **kwargs: None,
+        delete_runtime_contract_files=lambda *args, **kwargs: None,
+        write_runtime_host_port_files=lambda *args, **kwargs: None,
+        write_runtime_contract_file=lambda *args, **kwargs: None,
+        default_chrome_profile_dir=lambda runtime_dir: str(Path(runtime_dir) / "chrome-profile"),
+        pick_bind_host=lambda raw_host, logger=None: "127.0.0.1",
+        pick_port=lambda host, preferred_port, logger=None: (host, 6100),
+        stop_runtime_from_dir=lambda runtime_dir, stop_aps_chrome=False: 0,
+        serve_runtime_app=lambda app, host, port: None,
+        should_use_runtime_reloader=lambda debug: False,
+        should_own_runtime_resources=lambda debug: False,
+        should_register_runtime_lifecycle_handlers=lambda debug: False,
+        atexit_register=lambda *args, **kwargs: state["atexit"].append((args, kwargs)),
+    )
+
+    rc = entrypoint_mod.app_main(anchor_file=_anchor_file(tmp_path), argv=[], deps=deps)
+
+    stderr_text = capsys.readouterr().err
+    assert rc == 14
+    assert "app boom" not in stderr_text
+    assert len(state["write_launch_error"]) == 0
+    launcher_log = (tmp_path / "prelaunch-logs" / "launcher.log").read_text(encoding="utf-8")
+    launch_error = (tmp_path / "prelaunch-logs" / "aps_launch_error.txt").read_text(encoding="utf-8")
+    assert "应用启动失败" in launcher_log
+    assert "app boom" in launcher_log
+    assert "应用启动失败：程序没有正常启动" in launch_error
+    assert "app boom" not in launch_error
 
 
 def test_invalid_aps_port_logs_warning_and_uses_default_preferred_port(
@@ -295,7 +342,13 @@ def test_acquire_runtime_lock_meta_failure_visible(tmp_path: Path, monkeypatch: 
     rc = entrypoint_mod.app_main(anchor_file=_anchor_file(tmp_path), argv=[], deps=deps)
 
     assert rc == 13
-    assert any("获取运行时锁失败：lock boom，但写入启动错误文件失败：launch file boom" in text for level, text in app.logger.messages if level == "error")
+    assert not any("lock boom" in text or "launch file boom" in text for _level, text in app.logger.messages)
+    launcher_log = (tmp_path / "prelaunch-logs" / "launcher.log").read_text(encoding="utf-8")
+    launch_error = (tmp_path / "prelaunch-logs" / "aps_launch_error.txt").read_text(encoding="utf-8")
+    assert "获取运行时锁失败：lock boom" in launcher_log
+    assert "launch file boom" not in launcher_log
+    assert "应用启动失败：程序没有正常启动" in launch_error
+    assert "lock boom" not in launch_error
 
 
 def test_configure_runtime_contract_meta_failure_visible_when_logger_error_fails(
@@ -318,8 +371,9 @@ def test_configure_runtime_contract_meta_failure_visible_when_logger_error_fails
 
     stderr_text = capsys.readouterr().err
     assert rc == 15
-    assert "写入运行时契约失败：contract boom" in stderr_text
-    assert "写入启动错误文件失败" in stderr_text
+    assert "应用启动失败：程序没有正常启动，请把 launcher.log 发给维护人员排查。" in stderr_text
+    assert "contract boom" not in stderr_text
+    assert "launch file boom" not in stderr_text
 
 
 def test_parent_skip_info_visible_when_logger_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys) -> None:

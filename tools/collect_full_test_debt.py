@@ -30,6 +30,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from tools.quality_gate_shared import (  # noqa: E402
+    FORMAL_FULL_TEST_PYTEST_ARGS,
     QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL,
     iter_quality_gate_required_tests,
     quality_gate_required_test_nodeid_matches,
@@ -74,6 +75,55 @@ def _git_status_short(cwd: Path) -> List[str]:
     if int(completed.returncode) != 0:
         raise RuntimeError(str(completed.stderr or completed.stdout or "git status failed").strip())
     return [line for line in str(completed.stdout or "").splitlines() if line.strip()]
+
+
+def _git_toplevel(cwd: Path) -> Path:
+    completed = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        cwd=str(cwd),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    if int(completed.returncode) != 0:
+        raise RuntimeError(str(completed.stderr or completed.stdout or "git rev-parse --show-toplevel failed").strip())
+    return Path(str(completed.stdout or "").strip()).resolve()
+
+
+def _same_path(left: Path, right: Path) -> bool:
+    return os.path.normcase(str(left.resolve())) == os.path.normcase(str(right.resolve()))
+
+
+def _path_within_root(path: Path, root: Path) -> bool:
+    path_text = os.path.normcase(str(path.resolve()))
+    root_text = os.path.normcase(str(root.resolve()))
+    try:
+        common = os.path.commonpath([path_text, root_text])
+    except ValueError:
+        return False
+    return common == root_text
+
+
+def _resolve_repo_root(raw_repo_root: str) -> Path:
+    repo_root = Path(str(raw_repo_root)).resolve()
+    git_toplevel = _git_toplevel(repo_root)
+    if not _same_path(repo_root, git_toplevel):
+        raise RuntimeError(f"--repo-root 必须指向 Git 仓库根目录：repo_root={repo_root}；git_toplevel={git_toplevel}")
+    return repo_root
+
+
+def _resolve_write_baseline(raw_path: Optional[str], *, repo_root: Path) -> Optional[Path]:
+    if not raw_path:
+        return None
+    path = Path(str(raw_path))
+    if not path.is_absolute():
+        path = repo_root / path
+    resolved = path.resolve()
+    if not _path_within_root(resolved, repo_root):
+        raise RuntimeError(f"--write-baseline 必须写在 Git 仓库内：path={resolved}；repo_root={repo_root}")
+    return resolved
 
 
 def _status_path(line: str) -> str:
@@ -219,16 +269,13 @@ def _has_main_style_pollution_signature(text: str) -> bool:
     return "subprocess.py" in haystack and "Popen" in haystack
 
 
-def _failed_report_texts(reports: Sequence[Dict[str, Any]], collection_errors: Sequence[Dict[str, Any]]) -> Dict[str, str]:
+def _failed_report_texts(reports: Sequence[Dict[str, Any]]) -> Dict[str, str]:
     out: Dict[str, List[str]] = {}
     for report in reports:
         if report.get("outcome") != "failed":
             continue
         nodeid = str(report.get("nodeid") or "")
         out.setdefault(nodeid, []).append(str(report.get("longrepr") or ""))
-    for error in collection_errors:
-        nodeid = str(error.get("nodeid") or "")
-        out.setdefault(nodeid, []).append(str(error.get("longrepr") or ""))
     return {nodeid: "\n".join(parts) for nodeid, parts in out.items()}
 
 
@@ -238,7 +285,7 @@ def _classify_failures(
     required_paths: Sequence[str],
     baseline_kind: str,
 ) -> Dict[str, List[str]]:
-    failed_texts = _failed_report_texts(reports, collection_errors)
+    failed_texts = _failed_report_texts(reports)
     classifications = {
         "required_or_quality_gate_self_failure": [],
         "main_style_isolation_candidate": [],
@@ -379,13 +426,28 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     )
     parser.add_argument("--write-baseline")
     parser.add_argument("--importable-debt-baseline", action="store_true")
+    parser.add_argument("--repo-root", default=str(Path.cwd()))
     parsed = parser.parse_args(own_args)
+    try:
+        parsed.repo_root = _resolve_repo_root(str(parsed.repo_root))
+    except RuntimeError as exc:
+        parser.error(str(exc))
+    try:
+        baseline_path = _resolve_write_baseline(parsed.write_baseline, repo_root=parsed.repo_root)
+    except RuntimeError as exc:
+        parser.error(str(exc))
+    if baseline_path is not None:
+        parsed.write_baseline = str(baseline_path)
     if not pytest_args:
         parser.error("必须在 -- 后提供 pytest 参数")
     if parsed.importable_debt_baseline and parsed.baseline_kind != "after_main_style_isolation":
+        _remove_existing_file(baseline_path)
         parser.error("--importable-debt-baseline 只能和 --baseline-kind after_main_style_isolation 一起使用")
     if parsed.importable_debt_baseline and not parsed.write_baseline:
         parser.error("--importable-debt-baseline 必须同时提供 --write-baseline")
+    if parsed.importable_debt_baseline and pytest_args != FORMAL_FULL_TEST_PYTEST_ARGS:
+        _remove_existing_file(baseline_path)
+        parser.error("--importable-debt-baseline 必须使用正式 full pytest 参数：" + " ".join(FORMAL_FULL_TEST_PYTEST_ARGS))
     parsed.pytest_args = pytest_args
     parsed.collector_argv = raw_args
     return parsed
@@ -509,13 +571,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = _parse_args(argv)
     import pytest
 
-    cwd = Path.cwd()
+    cwd = Path(str(args.repo_root)).resolve()
+    os.chdir(cwd)
     current_payload_path = cwd / CURRENT_PAYLOAD_REL
     baseline_path = Path(str(args.write_baseline)) if args.write_baseline else None
     target_status_path = _relative_to_cwd(baseline_path, cwd) if baseline_path is not None else ""
     git_status_short_before: Optional[List[str]] = None
     worktree_clean_before: Optional[bool] = None
-    if args.importable_debt_baseline:
+    should_record_worktree = bool(args.importable_debt_baseline or str(args.baseline_kind) == "after_main_style_isolation")
+    if should_record_worktree:
         try:
             git_status_short_before = _git_status_short(cwd)
         except RuntimeError as exc:
@@ -523,7 +587,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             print(f"dirty_before_baseline: {exc}", file=sys.stderr, flush=True)
             return 2
         worktree_clean_before = not git_status_short_before
-        if git_status_short_before:
+        if args.importable_debt_baseline and git_status_short_before:
             _remove_existing_file(baseline_path)
             print(
                 "dirty_before_baseline: 正式测试债务基线生成前工作区必须干净："

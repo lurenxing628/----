@@ -29,8 +29,10 @@ def launcher_log_warning(
     cfg_log_dir: Optional[str] = None,
     write_launch_error: bool = False,
     logger_level: str = "warning",
+    public_launch_error_message: Optional[str] = None,
 ) -> LauncherLogResult:
     text = _format_message(message, *args)
+    launch_error_text = _format_public_launch_error(public_launch_error_message)
     attempted_paths: List[str] = []
     errors: List[str] = []
 
@@ -39,13 +41,23 @@ def launcher_log_warning(
     file_ok = False
     error_file_ok = False
     if target_dir:
-        file_ok = _append_text_file(os.path.join(target_dir, LAUNCHER_LOG_FILE), _format_file_line(text), attempted_paths, errors)
+        file_ok = _append_text_file(
+            os.path.join(target_dir, LAUNCHER_LOG_FILE),
+            _format_file_line(text, level=logger_level),
+            attempted_paths,
+            errors,
+        )
         if write_launch_error:
-            error_file_ok = _write_text_file(os.path.join(target_dir, RUNTIME_ERROR_FILE), text.rstrip() + "\n", attempted_paths, errors)
+            error_file_ok = _write_text_file(
+                os.path.join(target_dir, RUNTIME_ERROR_FILE),
+                launch_error_text,
+                attempted_paths,
+                errors,
+            )
 
     stderr_ok = False
     if not logger_ok or not file_ok or (write_launch_error and not error_file_ok):
-        stderr_ok = _write_stderr(text, errors)
+        stderr_ok = _write_stderr(launch_error_text if write_launch_error else text, errors)
     return LauncherLogResult(
         logger_ok=logger_ok,
         file_ok=file_ok,
@@ -66,8 +78,16 @@ def _format_message(message: str, *args: Any) -> str:
         return f"{text} | args={args!r}"
 
 
-def _format_file_line(text: str) -> str:
-    return "{} [WARNING] {}\n".format(time.strftime("%Y-%m-%d %H:%M:%S"), text)
+def _format_public_launch_error(public_message: Optional[str]) -> str:
+    text = str(public_message or "").strip()
+    if not text:
+        text = "应用启动时遇到问题，请把 launcher.log 发给维护人员排查。"
+    return text.rstrip() + "\n"
+
+
+def _format_file_line(text: str, *, level: str = "warning") -> str:
+    level_text = str(level or "warning").strip().upper() or "WARNING"
+    return "{} [{}] {}\n".format(time.strftime("%Y-%m-%d %H:%M:%S"), level_text, text)
 
 
 def _write_logger(logger: Optional[Any], level: str, text: str, errors: List[str]) -> bool:

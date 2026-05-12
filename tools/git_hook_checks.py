@@ -24,6 +24,8 @@ BLOCKED_PATH_RULES: Tuple[Tuple[str, str], ...] = (
     ("logs/aps_runtime.json", "APS 本地运行时状态，换机器后无意义"),
     ("logs/aps_runtime.lock", "APS 本地运行锁文件，提交后会干扰别人"),
     ("logs/aps_secret_key.txt", "APS 本地密钥文件，不能提交"),
+    ("launcher.log", "APS 本地启动日志可能包含本机路径或错误明细，不能提交"),
+    ("*/launcher.log", "APS 本地启动日志可能包含本机路径或错误明细，不能提交"),
     ("evidence/QualityGate/quality_gate_manifest.json", "质量门禁 proof 是运行产物，应由当前门禁重新生成"),
     ("evidence/QualityGate/current_full_test_debt.json", "质量门禁债务快照是运行产物，应由当前门禁重新生成"),
     ("evidence/QualityGate/receipts/", "质量门禁 receipts 是运行产物，应由当前门禁重新生成"),
@@ -106,7 +108,7 @@ def check_staged_artifacts(_args: argparse.Namespace) -> int:
     print("提交里混入了本地临时文件或门禁运行产物，请先移出本次提交：", file=sys.stderr)
     for path, reason in blocked:
         print(f"- {path}: {reason}", file=sys.stderr)
-    print("如果确实要提交这类文件，请先单独说明原因，再临时用 SKIP=block-local-artifacts 跳过。", file=sys.stderr)
+    print("如果确实要提交这类文件，请先单独说明原因，并把对应提交边界讲清楚。", file=sys.stderr)
     return 1
 
 
@@ -144,18 +146,58 @@ def check_commit_msg(args: argparse.Namespace) -> int:
 
 
 def run_quality_gate(_args: argparse.Namespace) -> int:
-    if os.environ.get("APS_SKIP_QUALITY_GATE") == "1":
-        print("已按 APS_SKIP_QUALITY_GATE=1 跳过推送前质量门禁。")
-        return 0
-
-    python = REPO_ROOT / ".venv" / "bin" / "python"
-    executable = str(python) if python.exists() else sys.executable
+    try:
+        executable = _project_python_executable()
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
     env = os.environ.copy()
-    env.setdefault("PYTHONDONTWRITEBYTECODE", "1")
-    env.setdefault("PYTHONUTF8", "1")
-    env.setdefault("PYTHONIOENCODING", "utf-8")
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    env["PYTHONUTF8"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
+    env.pop("APS_SKIP_QUALITY_GATE", None)
     command = [executable, "scripts/run_quality_gate.py", "--require-clean-worktree"]
     return subprocess.call(command, cwd=str(REPO_ROOT), env=env)
+
+
+def run_ruff(_args: argparse.Namespace) -> int:
+    try:
+        executable = _project_python_executable()
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    command = [executable, "-m", "ruff", "check"]
+    return subprocess.call(command, cwd=str(REPO_ROOT))
+
+
+def _same_executable_path(left: str, right: str) -> bool:
+    return os.path.normcase(os.path.realpath(str(left or ""))) == os.path.normcase(os.path.realpath(str(right or "")))
+
+
+def _ensure_project_python_runtime() -> None:
+    executable = _project_python_executable()
+    if _same_executable_path(sys.executable, executable):
+        return
+    os.execv(executable, [executable, *sys.argv])
+
+
+def _project_python_executable() -> str:
+    if os.name == "nt":
+        candidates = [
+            REPO_ROOT / ".venv" / "Scripts" / "python.exe",
+            REPO_ROOT / ".venv" / "bin" / "python",
+        ]
+    else:
+        candidates = [
+            REPO_ROOT / ".venv" / "bin" / "python",
+            REPO_ROOT / ".venv" / "Scripts" / "python.exe",
+        ]
+    for python_path in candidates:
+        if python_path.exists():
+            return str(python_path)
+    raise RuntimeError(
+        "找不到项目 .venv 里的 Python。请先创建 .venv 并安装依赖，再运行本地 hook 或质量门禁。"
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -171,10 +213,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     quality_gate = subparsers.add_parser("run-quality-gate")
     quality_gate.set_defaults(func=run_quality_gate)
+
+    ruff = subparsers.add_parser("run-ruff")
+    ruff.set_defaults(func=run_ruff)
     return parser
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    if argv is None:
+        _ensure_project_python_runtime()
     parser = build_parser()
     args = parser.parse_args(argv)
     return int(args.func(args))

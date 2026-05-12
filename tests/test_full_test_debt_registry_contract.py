@@ -20,6 +20,16 @@ _ORIGINAL_POPEN = subprocess.Popen
 ALLOWED_TEST_DEBT_NODEIDS = list(FULL_TEST_DEBT_ALLOWED_ACTIVE_XFAIL_NODEIDS)
 
 
+def test_allowed_active_xfail_nodeids_are_locked_to_historical_baseline() -> None:
+    assert ALLOWED_TEST_DEBT_NODEIDS == [
+        "tests/test_operator_machine_exception_paths.py::test_list_by_operator_propagates_unexpected_readside_normalization_errors",
+        "tests/test_operator_machine_exception_paths.py::test_normalize_skill_level_optional_only_converts_value_error",
+        "tests/test_operator_machine_exception_paths.py::test_normalize_skill_level_stored_only_falls_back_for_value_error",
+        "tests/test_operator_machine_exception_paths.py::test_resolve_write_values_only_converts_validation_error",
+        "tests/test_query_services.py::test_operator_machine_query_service_lists_with_names_and_linkage_rows",
+    ]
+
+
 def _write(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(textwrap.dedent(content).lstrip(), encoding="utf-8")
@@ -122,16 +132,21 @@ def _write_main_style_conftest(project: Path) -> None:
 
 
 def _run_collector(project: Path, *extra_args: str, baseline_kind: str = "raw_before_isolation") -> subprocess.CompletedProcess:
+    if not (project / ".git").exists():
+        _init_clean_git_repo(project)
     command = [
         sys.executable,
         str(COLLECTOR),
         "--baseline-kind",
         baseline_kind,
+        "--repo-root",
+        str(project),
         *extra_args,
         "--",
         "tests",
         "-q",
         "--tb=short",
+        "-ra",
         "-p",
         "no:cacheprovider",
     ]
@@ -224,7 +239,7 @@ def test_collect_full_test_debt_records_nodeids_without_parsing_terminal_text(tm
     assert payload["schema_version"] == 2
     assert payload["baseline_kind"] == "raw_before_isolation"
     assert payload["importable"] is False
-    assert payload["pytest_args"] == ["tests", "-q", "--tb=short", "-p", "no:cacheprovider"]
+    assert payload["pytest_args"] == ["tests", "-q", "--tb=short", "-ra", "-p", "no:cacheprovider"]
     assert "tests/test_sample.py::test_param[2]" in payload["collected_nodeids"]
     assert "tests/regression_x.py::regression_x" in payload["collected_nodeids"]
     report_keys = {"nodeid", "when", "outcome", "duration", "longrepr"}
@@ -406,6 +421,8 @@ def test_collect_full_test_debt_records_collection_errors_and_exitstatus(tmp_pat
     assert payload["collection_errors"]
     assert payload["collection_errors"][0]["outcome"] == "failed"
     assert "collect boom" in payload["collection_errors"][0]["longrepr"]
+    assert payload["classifications"]["candidate_test_debt"] == []
+    assert payload["summary"]["failed_nodeid_count"] == payload["summary"]["collection_error_count"]
 
 
 
@@ -679,6 +696,7 @@ def test_collect_full_test_debt_importable_requires_after_isolation_and_output_f
             assert False, "known debt"
         ''',
     )
+    _write(baseline_path, "STALE IMPORTABLE BASELINE")
 
     raw_proc = _run_collector(
         tmp_path,
@@ -698,6 +716,50 @@ def test_collect_full_test_debt_importable_requires_after_isolation_and_output_f
     assert "after_main_style_isolation" in raw_proc.stderr
     assert "--write-baseline" in no_file_proc.stderr
     assert not baseline_path.exists()
+
+
+def test_collect_full_test_debt_rejects_baseline_path_outside_repo_root(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    outside = tmp_path / "outside"
+    project.mkdir()
+    outside.mkdir()
+    _write(project / "README.md", "clean repo")
+    outside_baseline = outside / "debt_baseline.md"
+    _write(outside_baseline, "OUTSIDE FILE MUST SURVIVE")
+    _init_clean_git_repo(project)
+    command = [
+        sys.executable,
+        str(COLLECTOR),
+        "--baseline-kind",
+        "after_main_style_isolation",
+        "--importable-debt-baseline",
+        "--repo-root",
+        str(project),
+        "--write-baseline",
+        "../outside/debt_baseline.md",
+        "--",
+        "tests",
+        "-q",
+        "--tb=short",
+        "-ra",
+        "-p",
+        "no:cacheprovider",
+    ]
+
+    with _ORIGINAL_POPEN(
+        command,
+        cwd=str(project),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+    ) as proc:
+        stdout, stderr = proc.communicate()
+
+    assert proc.returncode == 2
+    assert stdout == ""
+    assert "--write-baseline 必须写在 Git 仓库内" in stderr
+    assert outside_baseline.read_text(encoding="utf-8") == "OUTSIDE FILE MUST SURVIVE"
 
 
 def test_collect_full_test_debt_importable_requires_clean_worktree(tmp_path: Path) -> None:
@@ -832,14 +894,93 @@ def test_collect_full_test_debt_importable_rejects_bad_pytest_invocation(tmp_pat
         encoding="utf-8",
     ) as proc:
         stdout, stderr = proc.communicate()
-    payload = dict(json.loads(stdout))
 
     assert proc.returncode == 2
-    assert payload["exitstatus"] not in {0, 1}
-    assert payload["importable"] is False
-    assert "pytest_exitstatus" in payload["importable_blockers"]
-    assert "pytest_exitstatus" in stderr
+    assert stdout == ""
+    assert "--importable-debt-baseline 必须使用正式 full pytest 参数" in stderr
+    assert "tests -q --tb=short -ra -p no:cacheprovider" in stderr
     assert not baseline_path.exists()
+
+
+def test_collect_full_test_debt_bad_invocation_deletes_relative_baseline_under_repo_root(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    outside = tmp_path / "outside"
+    project.mkdir()
+    outside.mkdir()
+    _write(project / "README.md", "clean repo")
+    baseline_path = project / "audit" / "debt_baseline.md"
+    outside_baseline = outside / "audit" / "debt_baseline.md"
+    _write(baseline_path, "STALE IMPORTABLE BASELINE")
+    _write(outside_baseline, "CALLER CWD FILE MUST SURVIVE")
+    _init_clean_git_repo(project)
+    command = [
+        sys.executable,
+        str(COLLECTOR),
+        "--baseline-kind",
+        "after_main_style_isolation",
+        "--importable-debt-baseline",
+        "--repo-root",
+        str(project),
+        "--write-baseline",
+        "audit/debt_baseline.md",
+        "--",
+        "tests/does_not_exist.py",
+        "-q",
+        "--tb=short",
+        "-p",
+        "no:cacheprovider",
+    ]
+
+    with _ORIGINAL_POPEN(
+        command,
+        cwd=str(outside),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+    ) as proc:
+        stdout, stderr = proc.communicate()
+
+    assert proc.returncode == 2
+    assert stdout == ""
+    assert "--importable-debt-baseline 必须使用正式 full pytest 参数" in stderr
+    assert not baseline_path.exists()
+    assert outside_baseline.read_text(encoding="utf-8") == "CALLER CWD FILE MUST SURVIVE"
+
+
+def test_collect_full_test_debt_repo_root_must_be_git_toplevel(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    nested = project / "tests"
+    nested.mkdir(parents=True)
+    _write(project / "README.md", "clean repo")
+    _init_clean_git_repo(project)
+    command = [
+        sys.executable,
+        str(COLLECTOR),
+        "--repo-root",
+        str(nested),
+        "--",
+        "tests",
+        "-q",
+        "--tb=short",
+        "-ra",
+        "-p",
+        "no:cacheprovider",
+    ]
+
+    with _ORIGINAL_POPEN(
+        command,
+        cwd=str(project),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+    ) as proc:
+        stdout, stderr = proc.communicate()
+
+    assert proc.returncode == 2
+    assert stdout == ""
+    assert "--repo-root 必须指向 Git 仓库根目录" in stderr
 
 
 def _valid_test_debt_entry(nodeid: str = ALLOWED_TEST_DEBT_NODEIDS[0]) -> dict:
@@ -1252,7 +1393,7 @@ def test_save_ledger_writes_test_debt_snapshot_and_machine_block(monkeypatch) ->
     quality_gate_ledger.save_ledger(ledger)
 
     assert writes["path"] == "开发文档/技术债务治理台账.md"
-    assert "测试债务登记：1" in writes["text"]
+    assert "测试债务历史登记：1，当前 active xfail：1" in writes["text"]
     assert '"test_debt": {' in writes["text"]
     assert entry["nodeid"] in writes["text"]
 

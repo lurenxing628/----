@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import subprocess
 import sys
 import threading
-from typing import Any, Dict, List, Sequence, Tuple, cast
+from typing import Any, Dict, List, Optional, Sequence, Tuple, cast
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
@@ -13,7 +14,12 @@ if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
 from tools.quality_gate_ledger import load_ledger  # noqa: E402
-from tools.quality_gate_shared import QualityGateError, quality_gate_required_test_nodeid_matches  # noqa: E402
+from tools.quality_gate_shared import (  # noqa: E402
+    FORMAL_FULL_TEST_PYTEST_ARGS,
+    FULL_TEST_DEBT_ALLOWED_ACTIVE_XFAIL_NODEIDS,
+    QualityGateError,
+    quality_gate_required_test_nodeid_matches,
+)
 from tools.test_debt_registry import (  # noqa: E402
     registered_test_debt_entries,
     validate_current_candidate_payload,
@@ -26,12 +32,7 @@ COLLECTOR_ARGS = [
     "--baseline-kind",
     "after_main_style_isolation",
     "--",
-    "tests",
-    "-q",
-    "--tb=short",
-    "-ra",
-    "-p",
-    "no:cacheprovider",
+    *FORMAL_FULL_TEST_PYTEST_ARGS,
 ]
 REPORT_MACHINE_FIELDS = (
     "xfail_marker_present",
@@ -341,8 +342,37 @@ def _validate_no_unregistered_xfails(
     return errors
 
 
-def build_full_test_debt_summary(payload: Dict[str, Any], *, ledger: Dict[str, Any]) -> Dict[str, Any]:
+def _validate_historical_debt_entries_present(
+    collected_nodeids: Sequence[str],
+    *,
+    active_entries: Sequence[Dict[str, Any]],
+    fixed_entries: Sequence[Dict[str, Any]],
+    require_all_historical: bool = False,
+) -> List[str]:
+    registered_nodeids = {str(entry["nodeid"]) for entry in list(active_entries) + list(fixed_entries)}
+    historical_nodeids = {str(nodeid) for nodeid in FULL_TEST_DEBT_ALLOWED_ACTIVE_XFAIL_NODEIDS}
+    if require_all_historical:
+        missing = sorted(historical_nodeids - registered_nodeids)
+    else:
+        missing = sorted(({str(nodeid) for nodeid in collected_nodeids} & historical_nodeids) - registered_nodeids)
+    if not missing:
+        return []
+    return ["历史 full pytest 测试债务缺少 xfail/fixed 登记：" + _format_nodeid_list(missing)]
+
+
+def build_full_test_debt_summary(
+    payload: Dict[str, Any],
+    *,
+    ledger: Dict[str, Any],
+    require_historical_registry: bool = False,
+    require_clean_worktree_proof: bool = False,
+) -> Dict[str, Any]:
     validate_current_candidate_payload(payload, expected_nodeids=[])
+    if require_clean_worktree_proof:
+        if _require_bool(payload.get("worktree_clean_before"), "worktree_clean_before") is not True:
+            raise QualityGateError("worktree_clean_before 必须为 true")
+        if _require_list(payload.get("git_status_short_before"), "git_status_short_before") != []:
+            raise QualityGateError("git_status_short_before 必须为空")
     exitstatus = _require_int(payload.get("exitstatus"), "exitstatus")
     if exitstatus != 0:
         raise QualityGateError(f"exitstatus 必须为 0：{exitstatus}")
@@ -365,6 +395,14 @@ def build_full_test_debt_summary(payload: Dict[str, Any], *, ledger: Dict[str, A
     errors = []
     errors.extend(_classification_errors(payload))
     errors.extend(_validate_no_unregistered_xfails(reports, active_entries=active_entries))
+    errors.extend(
+        _validate_historical_debt_entries_present(
+            collected_nodeids,
+            active_entries=active_entries,
+            fixed_entries=fixed_entries,
+            require_all_historical=bool(require_historical_registry),
+        )
+    )
     errors.extend(
         _validate_active_entries(
             active_entries,
@@ -458,19 +496,35 @@ def collect_current_payload() -> Dict[str, Any]:
     return payload
 
 
-def run_check() -> Dict[str, Any]:
+def run_check(*, require_clean_worktree_proof: bool = True) -> Dict[str, Any]:
     _progress("开始加载治理台账")
     ledger = load_ledger(required=True)
     _progress("治理台账已加载")
     payload = collect_current_payload()
-    summary = build_full_test_debt_summary(payload, ledger=ledger)
+    summary = build_full_test_debt_summary(
+        payload,
+        ledger=ledger,
+        require_historical_registry=True,
+        require_clean_worktree_proof=bool(require_clean_worktree_proof),
+    )
     _progress("full-test-debt proof 校验完成")
     return summary
 
 
-def main() -> int:
+def _parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="APS full pytest 测试债务 proof")
+    parser.add_argument(
+        "--allow-dirty-worktree-proof",
+        action="store_true",
+        help="仅供 run_quality_gate.py --allow-dirty-worktree 诊断跑使用；不声明 clean worktree proof",
+    )
+    return parser.parse_args(list(argv) if argv is not None else None)
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    args = _parse_args(argv)
     try:
-        summary = run_check()
+        summary = run_check(require_clean_worktree_proof=not bool(args.allow_dirty_worktree_proof))
     except QualityGateError as exc:
         print(f"ERROR: {exc}", file=sys.stderr, flush=True)
         return 2

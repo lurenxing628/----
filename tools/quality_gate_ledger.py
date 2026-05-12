@@ -115,6 +115,7 @@ def render_ledger_markdown(ledger: Dict[str, Any]) -> str:
     complexity_count = len(ledger.get("complexity_allowlist") or [])
     fallback_entries = cast(Dict[str, Any], ledger.get("silent_fallback") or {}).get("entries") or []
     test_debt_entries = cast(Dict[str, Any], ledger.get("test_debt") or {}).get("entries") or []
+    active_test_debt_count = len([entry for entry in test_debt_entries if isinstance(entry, dict) and entry.get("mode") == "xfail"])
     risk_count = len(ledger.get("accepted_risks") or [])
     payload_block = render_marked_json_block(LEDGER_BEGIN, LEDGER_END, ledger)
     body = textwrap.dedent(
@@ -151,7 +152,7 @@ def render_ledger_markdown(ledger: Dict[str, Any]) -> str:
         - 超长文件登记：__OVERSIZE_COUNT__
         - 高复杂度登记：__COMPLEXITY_COUNT__
         - 静默回退登记：__FALLBACK_COUNT__
-        - 测试债务登记：__TEST_DEBT_COUNT__
+        - 测试债务历史登记：__TEST_DEBT_COUNT__，当前 active xfail：__ACTIVE_TEST_DEBT_COUNT__
         - 接受风险：__RISK_COUNT__
 
         ## SP04 人工补充记录
@@ -173,6 +174,7 @@ def render_ledger_markdown(ledger: Dict[str, Any]) -> str:
     body = body.replace("__COMPLEXITY_COUNT__", str(complexity_count))
     body = body.replace("__FALLBACK_COUNT__", str(len(fallback_entries)))
     body = body.replace("__TEST_DEBT_COUNT__", str(len(test_debt_entries)))
+    body = body.replace("__ACTIVE_TEST_DEBT_COUNT__", str(active_test_debt_count))
     body = body.replace("__RISK_COUNT__", str(risk_count))
     return body + "\n\n" + payload_block + "\n"
 

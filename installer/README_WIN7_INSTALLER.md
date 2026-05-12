@@ -11,7 +11,7 @@
 
 - **Windows 7 x64（建议 SP1）**
 - **Python 3.8.x x64**
-- **PyInstaller 4.10**（必须 4.x）
+- **PyInstaller 4.10**（必须严格 4.10，不是任意 4.x）
 - **Inno Setup 6.x（Unicode）**：需要 `ISCC.exe`
 - 浏览器运行时包 / legacy 全量包额外需要以下之一：
   - `tools\Chrome.109.0.5414.120.x64\chrome.exe`
@@ -280,4 +280,3 @@ ISCC.exe installer\aps_win7_legacy.iss
 - **术语说明**：离线浏览器运行时可能来自 `ungoogled-chromium_109*.zip`，但交付口径统一称为“Chrome109 运行时”
 - **能力边界**：正式运行时包不覆盖 PWA 文件关联、PWA 快捷方式代理、Windows 原生通知激活、Chrome 更新修复等桌面集成功能
 - **合规提醒**：把浏览器二进制打进安装包可能受分发条款约束；若对外/商用分发，请先做内部合规确认
-

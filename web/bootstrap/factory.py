@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import atexit
+import importlib
 import json
 import os
 import sys
@@ -26,6 +27,7 @@ from web.error_boundary import (
     wants_json_error_response_or_default,
 )
 from web.error_handlers import register_error_handlers
+from web.routes import scheduler as _scheduler_import_anchor
 from web.routes.dashboard import bp as dashboard_bp
 from web.routes.equipment import bp as equipment_bp
 from web.routes.excel_demo import bp as excel_demo_bp
@@ -33,8 +35,6 @@ from web.routes.material import bp as material_bp
 from web.routes.personnel import bp as personnel_bp
 from web.routes.process import bp as process_bp
 from web.routes.reports import bp as reports_bp
-from web.routes.scheduler import bp as scheduler_bp
-from web.routes.scheduler import register_scheduler_routes as register_scheduler_routes
 from web.routes.system import bp as system_bp
 from web.ui_mode import init_ui_mode
 
@@ -52,6 +52,7 @@ _RUNTIME_SERVER: Any = None
 _RUNTIME_SERVER_LOCK = threading.Lock()
 _RUNTIME_SERVER_SHUTDOWN_REQUESTED = False
 _FACTORY_ONCE_FLAGS_KEY = "aps.factory.once_flags"
+_PYINSTALLER_IMPORT_ANCHORS = (_scheduler_import_anchor,)
 
 
 def _app_log_once(app: Flask, key: str, level: str, message: str, *args: Any) -> None:
@@ -437,8 +438,9 @@ def create_app_core(
     app.register_blueprint(personnel_bp, url_prefix="/personnel")
     app.register_blueprint(equipment_bp, url_prefix="/equipment")
     app.register_blueprint(process_bp, url_prefix="/process")
-    register_scheduler_routes()
-    app.register_blueprint(scheduler_bp, url_prefix="/scheduler")
+    scheduler_routes = importlib.import_module("web.routes.scheduler")
+    scheduler_routes.register_scheduler_routes()
+    app.register_blueprint(scheduler_routes.bp, url_prefix="/scheduler")
     app.register_blueprint(material_bp, url_prefix="/material")
     app.register_blueprint(reports_bp, url_prefix="/reports")
     app.register_blueprint(system_bp, url_prefix="/system")

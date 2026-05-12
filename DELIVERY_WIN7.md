@@ -59,7 +59,7 @@
 
 - **Windows 7 x64**（建议 Win7 SP1）
 - **Python 3.8.x x64**
-- **PyInstaller 4.10**（必须 4.x，不要用 5.x/6.x）
+- **PyInstaller 4.10**（必须严格 4.10，不是任意 4.x，也不要用 5.x/6.x）
 - **离线依赖准备**（无网环境）：
   - 推荐方式：提前在有网环境下载 wheel 到本地，再拷贝到打包机安装
   - 或者：使用已经安装好依赖的 Python 环境直接打包
@@ -171,4 +171,3 @@ copy /y "assets\启动_排产系统_Chrome.bat" "dist\排产系统\启动_排产
 
 - 浏览器运行时卸载只匹配命令行里带 APS 标准 `--user-data-dir` 的 APS Chrome，不会把普通 Chrome 当成卸载目标。
 - 卸载器仍不会自动删除任何账户的 `%LOCALAPPDATA%\APS\Chrome109Profile`。
-

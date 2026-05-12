@@ -1852,6 +1852,26 @@ def test_build_scripts_guard_vendor_and_launcher_path():
 
     assert "if exist vendor (" in onedir_text
     assert "vendor 目录不存在，跳过 vendor 数据目录。" in onedir_text
+    assert "sys.version_info[:2]==(3,8)" in onedir_text
+    assert "platform.architecture()[0]=='64bit'" in onedir_text
+    assert "PyInstaller.__version__=='4.10'" in onedir_text
+    assert "%d" not in onedir_text
+    assert "%s" not in onedir_text
+    assert "function Test-OnedirToolchain" in package_text
+    main_build = package_text.split("function Invoke-MainPackageBuild", 1)[1].split("function Invoke-ChromeRuntimeBuild", 1)[0]
+    legacy_build = package_text.split("function Invoke-LegacyPackageBuild", 1)[1]
+    assert main_build.index("Test-OnedirToolchain") < main_build.index('Remove-PathWithRetry "build"')
+    assert main_build.index("Test-OnedirToolchain") < main_build.index('Remove-PathWithRetry "dist"')
+    assert legacy_build.index("Test-OnedirToolchain") < legacy_build.index('Remove-PathWithRetry "build"')
+    assert legacy_build.index("Test-OnedirToolchain") < legacy_build.index('Remove-PathWithRetry "dist"')
+    vendor_branch, no_vendor_branch = onedir_text.split(") else (", 1)
+    from web.routes.domains.scheduler.scheduler_route_registrar import _ROUTE_MODULES
+
+    hidden_modules = tuple(_ROUTE_MODULES)
+    for module_name in hidden_modules:
+        assert f"--hidden-import web.routes.domains.scheduler.{module_name}" in onedir_text
+        assert f"--hidden-import web.routes.domains.scheduler.{module_name}" in vendor_branch
+        assert f"--hidden-import web.routes.domains.scheduler.{module_name}" in no_vendor_branch
     assert r"assets\启动_排产系统_Chrome.bat" in installer_text
     assert "*Chrome*.bat" not in installer_text
     assert "[char[]](21551, 21160, 95, 25490, 20135, 31995, 32479" in package_text

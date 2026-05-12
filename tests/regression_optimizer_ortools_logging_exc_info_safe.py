@@ -13,7 +13,7 @@ def find_repo_root() -> str:
 
 class _StubLogger:
     """
-    故意让 warning 不支持 exc_info 参数，用于验证 schedule_optimizer 的回退逻辑不会崩溃。
+    故意让 warning 不支持 exc_info 参数，用于验证记录失败信息时不会二次崩溃。
     """
 
     def __init__(self):

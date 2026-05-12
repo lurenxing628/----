@@ -1,14 +1,19 @@
 from __future__ import annotations
 
+import importlib.util
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+
+import pytest
 
 from web.bootstrap.entrypoint import _write_launch_error_with_observability
 from web.bootstrap.launcher_contracts import release_runtime_lock
 from web.bootstrap.launcher_network import pick_port
 from web.bootstrap.launcher_observability import launcher_log_warning
 from web.bootstrap.launcher_processes import _run_powershell_text, set_process_log_context
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_launcher_log_warning_writes_state_dir_launcher_log(tmp_path: Path) -> None:
@@ -51,11 +56,52 @@ def test_launcher_log_warning_treats_logs_runtime_dir_as_state_dir(tmp_path: Pat
 def test_launcher_log_warning_writes_launch_error_file(tmp_path: Path) -> None:
     state_dir = tmp_path / "logs"
 
-    result = launcher_log_warning(None, "visible failure", state_dir=str(state_dir), write_launch_error=True)
+    result = launcher_log_warning(
+        None,
+        "path=/Users/me/private.db error=SECRET_TOKEN",
+        state_dir=str(state_dir),
+        write_launch_error=True,
+        public_launch_error_message="应用启动失败，请联系维护人员。",
+    )
 
     assert result.file_ok
     assert result.error_file_ok
-    assert "visible failure" in (state_dir / "aps_launch_error.txt").read_text(encoding="utf-8")
+    launch_error = (state_dir / "aps_launch_error.txt").read_text(encoding="utf-8")
+    launcher_log = (state_dir / "launcher.log").read_text(encoding="utf-8")
+    assert "应用启动失败，请联系维护人员。" in launch_error
+    assert "/Users/me" not in launch_error
+    assert "private.db" not in launch_error
+    assert "SECRET_TOKEN" not in launch_error
+    assert "SECRET_TOKEN" in launcher_log
+
+
+def test_launcher_log_warning_default_launch_error_is_public(tmp_path: Path) -> None:
+    state_dir = tmp_path / "logs"
+
+    result = launcher_log_warning(
+        None,
+        "SECRET_TOKEN /tmp/private.db",
+        state_dir=str(state_dir),
+        write_launch_error=True,
+    )
+
+    assert result.file_ok
+    launch_error = (state_dir / "aps_launch_error.txt").read_text(encoding="utf-8")
+    launcher_log = (state_dir / "launcher.log").read_text(encoding="utf-8")
+    assert "应用启动时遇到问题" in launch_error
+    assert "SECRET_TOKEN" not in launch_error
+    assert "/tmp/private.db" not in launch_error
+    assert "SECRET_TOKEN" in launcher_log
+    assert "/tmp/private.db" in launcher_log
+
+
+def test_launcher_log_warning_uses_error_level_in_launcher_log(tmp_path: Path) -> None:
+    state_dir = tmp_path / "logs"
+
+    result = launcher_log_warning(None, "serious failure", state_dir=str(state_dir), logger_level="error")
+
+    assert result.file_ok
+    assert "[ERROR] serious failure" in (state_dir / "launcher.log").read_text(encoding="utf-8")
 
 
 def test_launcher_log_warning_reports_file_write_failure(monkeypatch, tmp_path: Path) -> None:
@@ -123,25 +169,190 @@ def test_pick_port_fallback_writes_state_dir_launcher_log(monkeypatch, tmp_path:
     assert "固定候选端口均不可用" in (state_dir / "launcher.log").read_text(encoding="utf-8")
 
 
-def test_entrypoint_launch_error_write_failure_uses_launcher_log(tmp_path: Path) -> None:
+def test_entrypoint_launch_error_is_not_written_twice(tmp_path: Path) -> None:
     state_dir = tmp_path / "logs"
     runtime_dir = tmp_path / "runtime"
+    write_launch_error_calls = []
 
-    def _boom_write_launch_error(*_args, **_kwargs) -> None:
-        raise OSError("disk locked")
+    def _unexpected_write_launch_error(*_args, **_kwargs) -> None:
+        write_launch_error_calls.append(_args)
 
-    deps = SimpleNamespace(write_launch_error=_boom_write_launch_error)
+    deps = SimpleNamespace(write_launch_error=_unexpected_write_launch_error)
 
     _write_launch_error_with_observability(
         deps,
         str(runtime_dir),
-        "启动失败",
+        "启动失败 SECRET_TOKEN",
         str(state_dir),
         logger=None,
         context="启动失败",
     )
 
-    assert "写入启动错误文件失败" in (state_dir / "launcher.log").read_text(encoding="utf-8")
+    launcher_log = (state_dir / "launcher.log").read_text(encoding="utf-8")
+    launch_error = (state_dir / "aps_launch_error.txt").read_text(encoding="utf-8")
+    assert write_launch_error_calls == []
+    assert "SECRET_TOKEN" in launcher_log
+    assert "SECRET_TOKEN" not in launch_error
+
+
+def test_entrypoint_launch_error_does_not_send_raw_message_to_stderr(tmp_path: Path, capsys) -> None:
+    state_dir = tmp_path / "logs"
+    runtime_dir = tmp_path / "runtime"
+    deps = SimpleNamespace(write_launch_error=lambda *_args, **_kwargs: None)
+
+    _write_launch_error_with_observability(
+        deps,
+        str(runtime_dir),
+        "启动失败 SECRET_TOKEN /tmp/private.db",
+        str(state_dir),
+        logger=None,
+        context="启动失败 SECRET_TOKEN /tmp/private.db",
+    )
+
+    stderr_text = capsys.readouterr().err
+    launch_error = (state_dir / "aps_launch_error.txt").read_text(encoding="utf-8")
+    launcher_log = (state_dir / "launcher.log").read_text(encoding="utf-8")
+    assert "SECRET_TOKEN" not in stderr_text
+    assert "/tmp/private.db" not in stderr_text
+    assert "SECRET_TOKEN" not in launch_error
+    assert "/tmp/private.db" not in launch_error
+    assert "SECRET_TOKEN" in launcher_log
+    assert "/tmp/private.db" in launcher_log
+
+
+def test_entrypoint_launch_error_file_write_failure_keeps_return_code_contract(
+    monkeypatch,
+    tmp_path: Path,
+    capsys,
+) -> None:
+    state_dir = tmp_path / "logs"
+    runtime_dir = tmp_path / "runtime"
+    write_launch_error_calls = []
+
+    def _fail_error_file(path, text, attempted_paths, errors) -> bool:
+        attempted_paths.append(str(path))
+        errors.append("error-file:locked")
+        return False
+
+    deps = SimpleNamespace(write_launch_error=lambda *_args, **_kwargs: write_launch_error_calls.append(_args))
+    monkeypatch.setattr("web.bootstrap.launcher_observability._write_text_file", _fail_error_file)
+
+    ok = _write_launch_error_with_observability(
+        deps,
+        str(runtime_dir),
+        "启动失败 SECRET_TOKEN",
+        str(state_dir),
+        logger=None,
+        context="启动失败",
+    )
+
+    stderr_text = capsys.readouterr().err
+    launcher_log = (state_dir / "launcher.log").read_text(encoding="utf-8")
+    assert ok is False
+    assert "应用启动失败：程序没有正常启动" in stderr_text
+    assert "SECRET_TOKEN" not in stderr_text
+    assert str(state_dir / "aps_launch_error.txt") not in stderr_text
+    assert "SECRET_TOKEN" in launcher_log
+    assert "写入启动错误提示文件失败" in launcher_log
+    assert "error-file:locked" not in launcher_log
+    assert not write_launch_error_calls
+    assert not (state_dir / "aps_launch_error.txt").exists()
+
+
+def test_entrypoint_launch_error_log_write_failure_keeps_return_code_contract(
+    monkeypatch,
+    tmp_path: Path,
+    capsys,
+) -> None:
+    state_dir = tmp_path / "logs"
+    runtime_dir = tmp_path / "runtime"
+
+    def _boom_makedirs(*_args, **_kwargs) -> None:
+        raise PermissionError("locked")
+
+    deps = SimpleNamespace(write_launch_error=lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("web.bootstrap.launcher_observability.os.makedirs", _boom_makedirs)
+
+    ok = _write_launch_error_with_observability(
+        deps,
+        str(runtime_dir),
+        "启动失败 SECRET_TOKEN",
+        str(state_dir),
+        logger=None,
+        context="启动失败 SECRET_TOKEN",
+    )
+
+    stderr_text = capsys.readouterr().err
+    assert ok is False
+    assert "应用启动失败：程序没有正常启动" in stderr_text
+    assert "SECRET_TOKEN" not in stderr_text
+    assert not (state_dir / "launcher.log").exists()
+
+
+def test_app_import_failure_raises_public_error_and_writes_raw_launcher_log(monkeypatch, tmp_path: Path) -> None:
+    from web.bootstrap import entrypoint as entrypoint_module
+
+    public_message = "应用启动失败：程序文件加载失败，请把 launcher.log 发给维护人员排查。"
+    log_dir = tmp_path / "logs"
+    monkeypatch.setenv("APS_LOG_DIR", str(log_dir))
+
+    def _boom_create_app(_ui_mode: str):
+        raise RuntimeError("SECRET_TOKEN /tmp/private.db")
+
+    monkeypatch.setattr(entrypoint_module, "create_app_with_mode", _boom_create_app)
+    module_name = "_aps_app_import_failure_probe"
+    sys.modules.pop(module_name, None)
+    spec = importlib.util.spec_from_file_location(module_name, REPO_ROOT / "app.py")
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        spec.loader.exec_module(module)
+
+    assert str(exc_info.value) == public_message
+    launch_error = (log_dir / "aps_launch_error.txt").read_text(encoding="utf-8")
+    launcher_log = (log_dir / "launcher.log").read_text(encoding="utf-8")
+    assert "程序文件加载失败" in launch_error
+    assert "SECRET_TOKEN" not in launch_error
+    assert "/tmp/private.db" not in launch_error
+    assert "SECRET_TOKEN" in launcher_log
+    assert "/tmp/private.db" in launcher_log
+
+
+def test_app_import_failure_keeps_public_error_when_launcher_log_cannot_be_written(
+    monkeypatch, tmp_path: Path, capsys
+) -> None:
+    from web.bootstrap import entrypoint as entrypoint_module
+
+    log_dir = tmp_path / "logs"
+    monkeypatch.setenv("APS_LOG_DIR", str(log_dir))
+
+    def _boom_create_app(_ui_mode: str):
+        raise RuntimeError("SECRET_TOKEN /tmp/private.db")
+
+    def _boom_makedirs(*_args, **_kwargs) -> None:
+        raise PermissionError("locked")
+
+    monkeypatch.setattr(entrypoint_module, "create_app_with_mode", _boom_create_app)
+    monkeypatch.setattr("web.bootstrap.launcher_observability.os.makedirs", _boom_makedirs)
+    module_name = "_aps_app_import_failure_no_log_probe"
+    sys.modules.pop(module_name, None)
+    spec = importlib.util.spec_from_file_location(module_name, REPO_ROOT / "app.py")
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        spec.loader.exec_module(module)
+
+    stderr_text = capsys.readouterr().err
+    assert "应用启动失败：程序文件加载失败" in stderr_text
+    assert "SECRET_TOKEN" not in stderr_text
+    assert "应用启动失败：程序文件加载失败" in str(exc_info.value)
+    assert "SECRET_TOKEN" not in str(exc_info.value)
+    assert not (log_dir / "launcher.log").exists()
+    assert not (log_dir / "aps_launch_error.txt").exists()
 
 
 def test_release_runtime_lock_remove_failure_uses_launcher_log(monkeypatch, tmp_path: Path) -> None:

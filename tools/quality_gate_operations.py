@@ -657,6 +657,12 @@ def validate_ledger_against_current_scan(ledger: Dict[str, Any]) -> Dict[str, An
             )
             if key not in silent_scan:
                 raise QualityGateError("静默回退条目无法通过当前扫描定位：{}".format(entry.get("id")))
+            current_entry = silent_scan[key]
+            for field_name in ("line_start", "line_end"):
+                if int(current_entry.get(field_name) or 0) != int(entry.get(field_name) or 0):
+                    raise QualityGateError(
+                        "静默回退条目 {} 与当前扫描不一致：{}".format(field_name, entry.get("id"))
+                    )
     return {"samples": sample_summary}
 
 

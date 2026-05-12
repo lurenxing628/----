@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, cast
 
 from .quality_gate_ledger import load_ledger, sort_ledger, validate_ledger
 from .quality_gate_shared import (
+    FORMAL_FULL_TEST_PYTEST_ARGS,
     LEDGER_SCHEMA_VERSION,
     QualityGateError,
     extract_json_code_block,
@@ -190,11 +191,12 @@ def _validate_baseline_summary(
         if count != len(classification_lists[key]):
             raise QualityGateError(f"{key} 统计数与实际列表不一致")
     failed_nodeid_count = _require_plain_int(summary.get("failed_nodeid_count"), "failed_nodeid_count")
-    if failed_nodeid_count != sum(len(values) for values in classification_lists.values()):
-        raise QualityGateError("failed_nodeid_count 与分类列表总数不一致")
     collection_error_count = _require_plain_int(summary.get("collection_error_count"), "collection_error_count")
     if collection_error_count != len(_require_list(payload.get("collection_errors"), "collection_errors")):
         raise QualityGateError("collection_error_count 与 collection_errors 数量不一致")
+    expected_failed_nodeid_count = sum(len(values) for values in classification_lists.values()) + collection_error_count
+    if failed_nodeid_count != expected_failed_nodeid_count:
+        raise QualityGateError("failed_nodeid_count 与分类列表和 collection_errors 总数不一致")
     outcome_counts = _require_dict(summary.get("outcome_counts"), "outcome_counts")
     for key, value in outcome_counts.items():
         _require_text(key, "outcome_counts.key")
@@ -256,6 +258,17 @@ def _validate_importable_baseline_machine_fields(payload: Dict[str, Any]) -> Non
         raise QualityGateError("collector_argv 必须记录 --importable-debt-baseline")
 
 
+def _validate_formal_full_test_args(payload: Dict[str, Any]) -> None:
+    pytest_args = _require_string_list(payload.get("pytest_args"), "pytest_args", allow_empty=False)
+    if pytest_args != FORMAL_FULL_TEST_PYTEST_ARGS:
+        raise QualityGateError(
+            "pytest_args 必须是正式 full pytest 参数："
+            + " ".join(FORMAL_FULL_TEST_PYTEST_ARGS)
+            + "；实际："
+            + " ".join(pytest_args)
+        )
+
+
 def _validate_baseline_machine_contract(payload: Dict[str, Any], *, require_importable: bool) -> None:
     schema_version = _require_plain_int(payload.get("schema_version"), "schema_version")
     if schema_version != BASELINE_SCHEMA_VERSION:
@@ -266,6 +279,7 @@ def _validate_baseline_machine_contract(payload: Dict[str, Any], *, require_impo
     if importable is not require_importable:
         raise QualityGateError("importable 与当前导入口径不一致")
     _require_plain_int(payload.get("exitstatus"), "exitstatus")
+    _validate_formal_full_test_args(payload)
     _require_list(payload.get("collected_nodeids"), "collected_nodeids")
     _require_list(payload.get("collection_errors"), "collection_errors")
     _validate_baseline_reports(payload)

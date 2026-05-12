@@ -175,6 +175,14 @@ function Resolve-PythonExe {
     throw "python.exe not found in PATH."
 }
 
+function Test-OnedirToolchain {
+    $python = Resolve-PythonExe
+    & $python -c "import platform, sys, PyInstaller; ok=sys.version_info[:2]==(3,8) and platform.architecture()[0]=='64bit' and PyInstaller.__version__=='4.10'; print('Python %d.%d.%d %s, PyInstaller %s' % (sys.version_info[0], sys.version_info[1], sys.version_info[2], platform.architecture()[0], PyInstaller.__version__)); sys.exit(0 if ok else 1)"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Win7 package must use Python 3.8 x64 and PyInstaller==4.10 before deleting build/dist."
+    }
+}
+
 function Wait-HttpReady([string]$url, [int]$timeoutSeconds) {
     $deadline = (Get-Date).AddSeconds([Math]::Max($timeoutSeconds, 1))
     while ((Get-Date) -lt $deadline) {
@@ -544,6 +552,7 @@ function New-ChromeRuntimePayload([string]$sourceDir, [string]$payloadDir) {
 
 function Invoke-MainPackageBuild([string]$iscc) {
     Set-HostPortDefaults
+    Test-OnedirToolchain
     Remove-PathWithRetry "build"
     Remove-PathWithRetry "dist"
 
@@ -576,6 +585,7 @@ function Invoke-ChromeRuntimeBuild([string]$iscc) {
 
 function Invoke-LegacyPackageBuild([string]$iscc) {
     Set-HostPortDefaults
+    Test-OnedirToolchain
     $chrome = "tools\Chrome.109.0.5414.120.x64\chrome.exe"
     Initialize-OfflineChrome109 $chrome
     Test-PathOrThrow $chrome "Missing $chrome. Provide offline Chrome109 at tools\\Chrome.109.0.5414.120.x64\\chrome.exe or tools\\ungoogled-chromium_109*.zip"

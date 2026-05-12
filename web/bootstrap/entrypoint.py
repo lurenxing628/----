@@ -36,6 +36,8 @@ from .launcher import (
 from .launcher_observability import launcher_log_warning
 from .paths import runtime_base_dir
 
+PUBLIC_LAUNCH_ERROR_MESSAGE = "应用启动失败：程序没有正常启动，请把 launcher.log 发给维护人员排查。"
+
 
 @dataclass(frozen=True)
 class EntryPointDeps:
@@ -108,19 +110,32 @@ def _write_launch_error_with_observability(
     *,
     logger,
     context: str,
-) -> None:
-    try:
-        deps.write_launch_error(runtime_dir, message, log_dir)
-    except Exception as exc:
+) -> bool:
+    public_message = PUBLIC_LAUNCH_ERROR_MESSAGE
+    result = launcher_log_warning(
+        None,
+        "%s：%s",
+        context,
+        message,
+        runtime_dir=runtime_dir,
+        state_dir=log_dir,
+        write_launch_error=True,
+        logger_level="error",
+        public_launch_error_message=public_message,
+    )
+    if not result.file_ok:
+        return False
+    if not result.error_file_ok:
         launcher_log_warning(
-            logger,
-            "%s，但写入启动错误文件失败：%s",
-            context,
-            exc,
+            None,
+            "写入启动错误提示文件失败。",
             runtime_dir=runtime_dir,
             state_dir=log_dir,
+            write_launch_error=False,
             logger_level="error",
         )
+        return False
+    return True
 
 
 def configure_runtime_contract(
@@ -204,7 +219,7 @@ def app_main(
         app = deps.create_app()
     except Exception as e:
         _write_launch_error_with_observability(
-            deps, runtime_dir, f"应用启动失败：{e}", prelaunch_log_dir, logger=None, context=f"应用启动失败：{e}"
+            deps, runtime_dir, str(e), prelaunch_log_dir, logger=None, context="应用启动失败"
         )
         return 14
     debug = bool(app.config.get("DEBUG", False))
@@ -247,7 +262,7 @@ def app_main(
             )
         except Exception as e:
             _write_launch_error_with_observability(
-                deps, runtime_dir, str(e), prelaunch_log_dir, logger=app.logger, context=f"获取运行时锁失败：{e}"
+                deps, runtime_dir, str(e), prelaunch_log_dir, logger=app.logger, context="获取运行时锁失败"
             )
             return 13
         deps.atexit_register(deps.release_runtime_lock, lock_scope_target, os.getpid())
@@ -263,9 +278,8 @@ def app_main(
                 deps=deps,
             )
         except Exception as e:
-            safe_log(app.logger, "error", "写入运行时契约失败：%s", e)
             _write_launch_error_with_observability(
-                deps, runtime_dir, f"写入运行时契约失败：{e}", app.config.get("LOG_DIR"), logger=app.logger, context=f"写入运行时契约失败：{e}"
+                deps, runtime_dir, str(e), app.config.get("LOG_DIR"), logger=app.logger, context="写入运行时契约失败"
             )
             return 15
         if deps.should_register_runtime_lifecycle_handlers(debug):

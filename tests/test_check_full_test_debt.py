@@ -114,6 +114,8 @@ def _payload(
         "required_or_quality_gate_self_failure": required,
     }
     failed_nodeids = set(candidate + required + main_style)
+    failed_nodeids.update(str(item.get("nodeid") or "").strip() for item in errors if isinstance(item, dict))
+    failed_nodeids.discard("")
     return {
         "schema_version": 2,
         "baseline_kind": "after_main_style_isolation",
@@ -291,6 +293,110 @@ def test_check_full_test_debt_accepts_fixed_entry_when_collected_and_passed() ->
     assert summary["max_registered_xfail"] == 0
 
 
+def test_check_full_test_debt_rejects_deleted_historical_debt_entry() -> None:
+    checker = _import_checker()
+    from tools.quality_gate_shared import FULL_TEST_DEBT_ALLOWED_ACTIVE_XFAIL_NODEIDS
+
+    nodeid = FULL_TEST_DEBT_ALLOWED_ACTIVE_XFAIL_NODEIDS[0]
+    payload = _payload(
+        collected_nodeids=[nodeid],
+        reports=[
+            _report(
+                nodeid,
+                outcome="passed",
+                wasxfail_reason="",
+                xfail_marker_present=False,
+                xfail_marker_reason="",
+                xfail_marker_strict=False,
+                xfail_marker_run=False,
+            )
+        ],
+    )
+
+    with pytest.raises(checker.QualityGateError, match="历史 full pytest 测试债务缺少"):
+        checker.build_full_test_debt_summary(payload, ledger=_ledger(max_registered_xfail=0))
+
+
+def test_check_full_test_debt_rejects_removed_historical_entry_in_formal_check() -> None:
+    checker = _import_checker()
+    payload = _payload(
+        collected_nodeids=["tests/test_sample.py::test_ok"],
+        reports=[
+            _report(
+                "tests/test_sample.py::test_ok",
+                outcome="passed",
+                wasxfail_reason="",
+                xfail_marker_present=False,
+                xfail_marker_reason="",
+                xfail_marker_strict=False,
+                xfail_marker_run=False,
+            )
+        ],
+    )
+
+    with pytest.raises(checker.QualityGateError, match="历史 full pytest 测试债务缺少"):
+        checker.build_full_test_debt_summary(
+            payload,
+            ledger=_ledger(max_registered_xfail=0),
+            require_historical_registry=True,
+        )
+
+
+def test_check_full_test_debt_formal_check_requires_clean_worktree_proof() -> None:
+    checker = _import_checker()
+    nodeid = "tests/test_sample.py::test_ok"
+    payload = _payload(
+        collected_nodeids=[nodeid],
+        reports=[
+            _report(
+                nodeid,
+                outcome="passed",
+                wasxfail_reason="",
+                xfail_marker_present=False,
+                xfail_marker_reason="",
+                xfail_marker_strict=False,
+                xfail_marker_run=False,
+            )
+        ],
+    )
+
+    with pytest.raises(checker.QualityGateError, match="worktree_clean_before"):
+        checker.build_full_test_debt_summary(
+            payload,
+            ledger=_ledger(max_registered_xfail=0),
+            require_clean_worktree_proof=True,
+        )
+
+
+def test_check_full_test_debt_dirty_cli_disables_only_clean_worktree_claim(monkeypatch, capsys) -> None:
+    checker = _import_checker()
+    calls: List[bool] = []
+
+    def fake_run_check(*, require_clean_worktree_proof: bool = True):
+        calls.append(require_clean_worktree_proof)
+        return {"schema_version": 1, "status": "passed"}
+
+    monkeypatch.setattr(checker, "run_check", fake_run_check)
+
+    assert checker.main(["--allow-dirty-worktree-proof"]) == 0
+    assert calls == [False]
+    assert '"status": "passed"' in capsys.readouterr().out
+
+
+def test_check_full_test_debt_default_cli_requires_clean_worktree_claim(monkeypatch) -> None:
+    checker = _import_checker()
+    calls: List[bool] = []
+
+    def fake_run_check(*, require_clean_worktree_proof: bool = True):
+        calls.append(require_clean_worktree_proof)
+        return {"schema_version": 1, "status": "passed"}
+
+    monkeypatch.setattr(checker, "run_check", fake_run_check)
+
+    assert checker.main([]) == 0
+    assert calls == [True]
+
+
 @pytest.mark.parametrize(
     ("collected_nodeids", "reports", "message"),
     [
@@ -459,6 +565,22 @@ def test_check_full_test_debt_collection_errors_list_entries() -> None:
     assert "collection_errors" in message
     assert nodeid in message
     assert "ImportError: boom" in message
+
+
+def test_check_full_test_debt_rejects_subset_pytest_args() -> None:
+    checker = _import_checker()
+    payload = _payload(
+        collected_nodeids=["tests/test_sample.py::test_ok"],
+        reports=[_report("tests/test_sample.py::test_ok", outcome="passed")],
+    )
+    payload["pytest_args"] = ["tests/test_sample.py", "-q"]
+
+    with pytest.raises(checker.QualityGateError) as exc_info:
+        checker.build_full_test_debt_summary(payload, ledger=_ledger(max_registered_xfail=0))
+
+    message = str(exc_info.value)
+    assert "pytest_args 必须是正式 full pytest 参数" in message
+    assert "tests/test_sample.py" in message
 
 
 def test_check_full_test_debt_rejects_required_test_active_xfail() -> None:

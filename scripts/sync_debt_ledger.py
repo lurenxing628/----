@@ -45,18 +45,20 @@ def current_git_head_sha() -> str:
         capture_output=True,
         text=True,
         encoding="utf-8",
+        errors="replace",
     )
     return proc.stdout.strip()
 
 
 def current_git_status_short() -> List[str]:
     proc = subprocess.run(
-        ["git", "status", "--short"],
+        ["git", "-c", "core.quotepath=false", "status", "--short", "--untracked-files=all"],
         cwd=REPO_ROOT,
         check=True,
         capture_output=True,
         text=True,
         encoding="utf-8",
+        errors="replace",
     )
     return [line for line in proc.stdout.splitlines() if line.strip()]
 
@@ -88,12 +90,16 @@ def _file_excerpt_tail(text: str, *, max_chars: int = 1000) -> str:
 def collect_current_test_debt_payload() -> Dict[str, object]:
     env = dict(os.environ)
     env["PYTHONDONTWRITEBYTECODE"] = "1"
+    env["PYTHONUTF8"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
     proc = subprocess.run(
         [
             sys.executable,
             os.path.join(REPO_ROOT, "tools", "collect_full_test_debt.py"),
             "--baseline-kind",
             "after_main_style_isolation",
+            "--repo-root",
+            REPO_ROOT,
             "--",
             "tests",
             "-q",
@@ -107,6 +113,7 @@ def collect_current_test_debt_payload() -> Dict[str, object]:
         capture_output=True,
         text=True,
         encoding="utf-8",
+        errors="replace",
         env=env,
     )
     try:
@@ -191,7 +198,7 @@ def _build_parser() -> argparse.ArgumentParser:
     import_test_debt_parser.add_argument("--baseline", required=True, help="full pytest P0 测试债务 baseline 文件")
     import_test_debt_parser.add_argument(
         "--current-payload",
-        help="已有 full test debt current payload JSON，例如 evidence/QualityGate/current_full_test_debt.json",
+        help="已有 clean full test debt current payload JSON，例如刚在当前干净 HEAD 生成的 evidence/QualityGate/current_full_test_debt.json",
     )
     import_test_debt_parser.set_defaults(handler=_handle_import_test_debt_baseline)
 
@@ -312,39 +319,37 @@ def _handle_delete_risk(args: argparse.Namespace) -> int:
 
 
 def _verified_head_sha_for_current_payload(current_payload: Dict[str, object], *, payload_path: Optional[str]) -> str:
-    if not payload_path:
-        return str(current_payload.get("head_sha") or current_git_head_sha())
-
     current_head_sha = current_git_head_sha()
     payload_head_sha = current_payload.get("head_sha")
     if not isinstance(payload_head_sha, str) or not payload_head_sha.strip():
         raise QualityGateError(
             "current payload 缺少 head_sha，不能作为当前验证证据："
-            f"path={payload_path}；current_head_sha={current_head_sha}"
+            f"path={payload_path or '<自动收集>'}；current_head_sha={current_head_sha}"
         )
     normalized_payload_head = payload_head_sha.strip()
     if normalized_payload_head != current_head_sha:
         raise QualityGateError(
             "current payload head_sha 与当前 git HEAD 不一致，拒绝导入："
-            f"path={payload_path}；payload_head_sha={normalized_payload_head}；current_head_sha={current_head_sha}"
+            f"path={payload_path or '<自动收集>'}；payload_head_sha={normalized_payload_head}；current_head_sha={current_head_sha}"
         )
     payload_clean_before = current_payload.get("worktree_clean_before")
     payload_status_before = current_payload.get("git_status_short_before")
     if payload_clean_before is not True:
         raise QualityGateError(
             "current payload 生成时工作区不是干净状态，不能作为当前验证证据："
-            f"path={payload_path}；worktree_clean_before={payload_clean_before!r}"
+            f"path={payload_path or '<自动收集>'}；worktree_clean_before={payload_clean_before!r}"
         )
     if payload_status_before != []:
         raise QualityGateError(
             "current payload 生成时 git_status_short_before 必须存在且为空列表，不能作为当前验证证据："
-            f"path={payload_path}；git_status_short_before={_short_text_summary(payload_status_before)}"
+            f"path={payload_path or '<自动收集>'}；git_status_short_before={_short_text_summary(payload_status_before)}"
         )
     current_status = current_git_status_short()
     if current_status:
+        source = "复用 --current-payload" if payload_path else "自动收集 current payload"
         raise QualityGateError(
-            "当前工作区不干净，不能复用 --current-payload，避免把旧证据当成当前证据："
-            f"path={payload_path}；git_status_short={_short_text_summary(current_status)}"
+            "当前工作区不干净，不能把 current payload 当成当前验证证据："
+            f"source={source}；path={payload_path or '<自动收集>'}；git_status_short={_short_text_summary(current_status)}"
         )
     return current_head_sha
 

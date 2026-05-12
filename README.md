@@ -20,19 +20,19 @@
 
 ### 源码开发启动
 
-先在仓库根目录安装开发依赖并启用本地钩子：
+先在仓库根目录创建项目自己的 `.venv`，再用这个 `.venv` 安装运行依赖、开发依赖并启用本地钩子。不要用系统 Python 混着装，否则本地能启动、推送前门禁却找不到依赖：
 
 ```powershell
-python -m pip install -r requirements-dev.txt
-python -m pre_commit install
+py -3.8 -m venv .venv
+.venv\Scripts\python -m pip install -r requirements.txt -r requirements-dev.txt
+.venv\Scripts\python -m pre_commit install --hook-type pre-commit --hook-type commit-msg --hook-type pre-push
 ```
 
 常用启动入口：
 
-- `start.bat`：默认开发入口，设置开发环境变量后调用 `python app.py`。
-- `python app.py`：默认界面程序入口。
-- `start_new_ui.bat`：现代界面测试入口，设置开发环境变量后调用 `python app_new_ui.py`。
-- `python app_new_ui.py`：现代界面程序入口。
+- `.venv\Scripts\python app.py`：默认界面程序入口；只有已经激活 `.venv` 后，才可以简写成 `python app.py`。
+- `.venv\Scripts\python app_new_ui.py`：现代界面程序入口；只有已经激活 `.venv` 后，才可以简写成 `python app_new_ui.py`。
+- `start.bat` / `start_new_ui.bat`：仅适合已经确认当前命令行的 `python` 指向项目 `.venv` 时使用；否则请用上面两条 `.venv\Scripts\python ...` 命令。
 
 实际访问地址不要写死端口，以启动后生成的 `logs/aps_host.txt` 与 `logs/aps_port.txt` 为准。
 
@@ -53,41 +53,45 @@ python -m pre_commit install
 统一质量门禁入口：
 
 ```powershell
-python scripts/run_quality_gate.py
+.venv\Scripts\python scripts/run_quality_gate.py
 ```
 
 干净工作区或托管环境使用：
 
 ```powershell
-python scripts/run_quality_gate.py --require-clean-worktree
+.venv\Scripts\python scripts/run_quality_gate.py --require-clean-worktree
 ```
 
-这个入口会统一串联测试收集、full-test-debt proof、`ruff`、`pyright`、架构适应度、治理台账、启动链专项回归和速查表一致性检查。本地与托管环境都以这条入口为准。
+如果已经激活 `.venv`，也可以把上面的 `.venv\Scripts\python` 简写成 `python`。这个入口会统一串联测试收集、full-test-debt proof、`ruff`、`pyright`、架构适应度、治理台账、启动链专项回归和速查表一致性检查。本地与托管环境都以这条入口为准。
 
 full-test-debt proof 的意思是：当前没有未登记的 full pytest 失败，已登记的 full pytest 测试债务被台账管住，并且数量只能减少。它不是说历史 5 条测试债务已经全部修完。
 
 常用定向命令：
 
 ```powershell
-python -m pytest --collect-only tests -q
-python -m pytest tests/regression -q
-python -m pytest tests -q
-python -m pyright --version
-python -m pyright -p pyrightconfig.gate.json
-python -m pyright -p pyrightconfig.json
+.venv\Scripts\python -m pytest --collect-only tests -q
+.venv\Scripts\python -m pytest tests/regression -q
+.venv\Scripts\python -m pytest tests -q
+.venv\Scripts\python -m pyright --version
+.venv\Scripts\python -m pyright -p pyrightconfig.gate.json
+.venv\Scripts\python -m pyright -p pyrightconfig.json
 ```
 
 补充说明：
 
-- `python -m pytest --collect-only tests -q` 只列出测试，不执行 full pytest。
-- `python -m pytest tests/regression -q` 用于专项回归；`python -m pytest tests -q` 是直接执行全量测试。
-- 质量门禁里的 full pytest 收口检查由 `python tools/check_full_test_debt.py` 完成，它会对照治理台账确认没有新的未登记失败。
-- `requirements-dev.txt` 固定声明本地开发与托管检查共用的依赖口径。
+- `.venv\Scripts\python -m pytest --collect-only tests -q` 只列出测试，不执行 full pytest。
+- `.venv\Scripts\python -m pytest tests/regression -q` 用于专项回归；`.venv\Scripts\python -m pytest tests -q` 是直接执行全量测试。
+- 上面这些常用定向命令只适合定位问题，不能当成最终 clean proof。最终 clean proof 需要在干净工作区跑完整质量门禁，并且门禁结束后工作区仍然干净。
+- 质量门禁里的 full pytest 收口检查由 `.venv\Scripts\python tools/check_full_test_debt.py` 完成，它会对照治理台账确认没有新的未登记失败。
+- `requirements.txt` 是程序运行依赖，`requirements-dev.txt` 是本地检查和托管门禁依赖；新环境两份都要装。
 - `ruff` 版本口径为 `>=0.15,<0.16`。
 - `pyright` 版本固定为 `==1.1.406`。
-- `.pre-commit-config.yaml` 当前只执行 `ruff` 快速反馈；`pyright` 由 `scripts/run_quality_gate.py` 与 CI 作为硬门禁运行。
+- `.pre-commit-config.yaml` 安装后会管三件事：提交前跑 `ruff` 和本地临时文件拦截，提交说明阶段拦截过于含糊的标题，推送前跑 `scripts/run_quality_gate.py --require-clean-worktree`。
+- 推送前门禁必须使用项目 `.venv` 里的 Python；如果项目 `.venv` 不存在，会直接失败，不会偷偷换成系统 Python，并且会强制使用 UTF-8 环境。本地 hook 不是可选检查，正常提交流程不要绕过它。CI/托管环境会重跑质量门禁，不过提交标题检查和“暂存区有没有混入本地运行产物”主要靠本地 hook，绕过后不能当作已经通过本地提交检查。
+- `pyright` 不在提交前单独快跑，它由 `scripts/run_quality_gate.py` 与 CI 作为硬门禁运行。
 - `pyrightconfig.gate.json` 覆盖主链：`app.py`、`app_new_ui.py`、`config.py`、`core/`、`data/`、`web/`。
 - `pyrightconfig.json` 保留为全仓类型债务盘点入口，包含 `tests/` 等更宽范围，不直接作为本轮硬门禁。
+- 本地 hook 会拦截不该提交的运行产物，例如 `.DS_Store`、`.iris/`、`.playwright-mcp/`、`.limcode_*`、`launcher.log`、任意子目录里的 `launcher.log`、`logs/aps_host.txt`、`logs/aps_port.txt`、`logs/aps_db_path.txt`、`logs/aps_runtime.json`、`logs/aps_runtime.lock`、`logs/aps_secret_key.txt`、`evidence/QualityGate/quality_gate_manifest.json`、`evidence/QualityGate/current_full_test_debt.json`、`evidence/QualityGate/receipts/`、`evidence/QualityGate/logs/`、`evidence/FullSelfTest/pytest_tests_output.txt` 和 `aps_test.db*`。
 
 治理台账、测试目录命名契约与门禁细节统一维护在 `开发文档/README.md`。
 

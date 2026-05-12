@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 import os
@@ -75,6 +76,7 @@ class ResumeDecision:
     start_command_display: str = ""
     reusable_receipts: Tuple[Dict[str, str], ...] = ()
     reusable_receipt_payloads: Tuple[Dict[str, Any], ...] = ()
+    validated_dirty_fingerprint: Optional[Dict[str, Any]] = None
 
 
 
@@ -269,6 +271,104 @@ def _read_repo_text(rel_path: str) -> str:
         return handle.read()
 
 
+def _worktree_status_lines(status_lines: Sequence[str]) -> List[str]:
+    return [str(line) for line in list(status_lines or []) if str(line)]
+
+
+def _run_git_bytes(args: Sequence[str]) -> bytes:
+    completed = subprocess.run(
+        ["git", *list(args)],
+        cwd=REPO_ROOT,
+        text=False,
+        capture_output=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        stderr = bytes(completed.stderr or b"").decode("utf-8", errors="replace").strip()
+        stdout = bytes(completed.stdout or b"").decode("utf-8", errors="replace").strip()
+        detail = stderr or stdout or "git diff failed"
+        raise QualityGateError(f"无法生成脏工作区指纹：{' '.join(['git', *list(args)])}: {detail}")
+    return bytes(completed.stdout or b"")
+
+
+def _decode_status_path(path_text: str) -> str:
+    text = str(path_text or "")
+    if len(text) >= 2 and text[0] == '"' and text[-1] == '"':
+        try:
+            decoded = ast.literal_eval(text)
+        except (SyntaxError, ValueError) as exc:
+            raise QualityGateError(f"无法解析 git status 路径：{text}") from exc
+        if not isinstance(decoded, str):
+            raise QualityGateError(f"无法解析 git status 路径：{text}")
+        return decoded
+    return text
+
+
+def _status_line_path(line: str) -> str:
+    text = str(line or "")
+    if len(text) < 4:
+        return ""
+    status_code = text[:2]
+    path_text = text[3:]
+    if ("R" in status_code or "C" in status_code) and " -> " in path_text:
+        path_text = path_text.rsplit(" -> ", 1)[-1]
+    return _decode_status_path(path_text)
+
+
+def _dirty_worktree_fingerprint(status_lines: Sequence[str]) -> Dict[str, Any]:
+    normalized_lines = _worktree_status_lines(status_lines)
+    hasher = hashlib.sha256()
+    for line in normalized_lines:
+        hasher.update(line.encode("utf-8", errors="replace"))
+        hasher.update(b"\0")
+    if not normalized_lines:
+        return {
+            "status_lines": normalized_lines,
+            "content_sha256": hasher.hexdigest(),
+        }
+    for diff_kind, diff_args in (
+        ("unstaged", ["diff", "--no-ext-diff", "--binary"]),
+        ("staged", ["diff", "--cached", "--no-ext-diff", "--binary"]),
+    ):
+        hasher.update(diff_kind.encode("ascii"))
+        hasher.update(b"\0")
+        hasher.update(_run_git_bytes(diff_args))
+        hasher.update(b"\0")
+    for line in normalized_lines:
+        rel_path = _status_line_path(line)
+        if not rel_path:
+            continue
+        abs_path = os.path.join(REPO_ROOT, rel_path.replace("/", os.sep))
+        hasher.update(rel_path.encode("utf-8", errors="replace"))
+        hasher.update(b"\0")
+        if os.path.islink(abs_path):
+            hasher.update(b"symlink\0")
+            try:
+                hasher.update(os.readlink(abs_path).encode("utf-8", errors="replace"))
+            except OSError as exc:
+                raise QualityGateError(f"无法读取符号链接目标：{rel_path}: {exc}") from exc
+        elif os.path.isfile(abs_path):
+            hasher.update(_sha256_file(abs_path).encode("ascii"))
+        elif os.path.isdir(abs_path):
+            for dirpath, dirnames, filenames in os.walk(abs_path):
+                dirnames.sort()
+                filenames.sort()
+                for filename in filenames:
+                    file_path = os.path.join(dirpath, filename)
+                    rel_file = os.path.relpath(file_path, REPO_ROOT).replace(os.sep, "/")
+                    hasher.update(rel_file.encode("utf-8", errors="replace"))
+                    hasher.update(b"\0")
+                    hasher.update(_sha256_file(file_path).encode("ascii"))
+                    hasher.update(b"\0")
+        else:
+            hasher.update(b"<not-a-file>")
+        hasher.update(b"\0")
+    return {
+        "status_lines": normalized_lines,
+        "content_sha256": hasher.hexdigest(),
+    }
+
+
 def _expected_command_log_rel_paths(index: int, display: str) -> Dict[str, str]:
     receipt_rel = build_quality_gate_receipt_rel_path(index, display)
     stem = os.path.splitext(os.path.basename(receipt_rel))[0]
@@ -319,6 +419,9 @@ def _load_resume_receipt_payload(
     stderr_log_rel = str(receipt_payload.get("stderr_log_path") or "").replace("\\", "/")
     if not stdout_log_rel or not stderr_log_rel:
         return None, f"旧 receipt 缺少日志路径：{rel_path}"
+    expected_logs = _expected_command_log_rel_paths(index, display)
+    if stdout_log_rel != expected_logs["stdout_log_path"] or stderr_log_rel != expected_logs["stderr_log_path"]:
+        return None, f"旧 receipt 日志路径不匹配：第 {index} 步"
     for log_rel in (stdout_log_rel, stderr_log_rel):
         log_abs = os.path.join(REPO_ROOT, log_rel.replace("/", os.sep))
         if not os.path.isfile(log_abs):
@@ -375,7 +478,12 @@ def _result_from_receipt_logs(receipt_payload: Dict[str, Any]) -> Dict[str, Any]
     }
 
 
-def _decide_resume_from_previous_failure(command_plan: Sequence[Dict[str, Any]], *, current_head_sha: str) -> ResumeDecision:
+def _decide_resume_from_previous_failure(
+    command_plan: Sequence[Dict[str, Any]],
+    *,
+    current_head_sha: str,
+    current_git_status_short: Sequence[str],
+) -> ResumeDecision:
     manifest_path = _quality_gate_manifest_abs_path()
     if not os.path.isfile(manifest_path):
         return ResumeDecision(False, "旧 manifest 不存在")
@@ -395,6 +503,34 @@ def _decide_resume_from_previous_failure(command_plan: Sequence[Dict[str, Any]],
         return ResumeDecision(
             False, f"旧 manifest head_sha 与当前 HEAD 不一致，不能续跑：previous={previous_head_sha} current={current_head_sha}"
         )
+
+    current_identity = _repo_identity()
+    for field_name in ("checkout_root_realpath", "git_common_dir_realpath"):
+        previous_value = str(manifest.get(field_name) or "").strip()
+        current_value = str(current_identity.get(field_name) or "").strip()
+        if not previous_value or previous_value != current_value:
+            return ResumeDecision(False, f"旧 manifest 仓库身份不一致，不能续跑：{field_name}")
+    previous_python_executable = str(manifest.get("python_executable") or "").strip()
+    current_python_executable = str(sys.executable or "").strip()
+    if not previous_python_executable:
+        return ResumeDecision(False, "旧 manifest 缺少 python_executable，不能续跑")
+    previous_python_realpath = os.path.normcase(os.path.realpath(previous_python_executable))
+    current_python_realpath = os.path.normcase(os.path.realpath(current_python_executable))
+    if previous_python_realpath != current_python_realpath:
+        return ResumeDecision(False, "旧 manifest 使用的 Python 解释器与当前不一致，不能续跑")
+    previous_python_version = str(manifest.get("python_version") or "").strip()
+    current_python_version = sys.version.splitlines()[0].strip()
+    if not previous_python_version:
+        return ResumeDecision(False, "旧 manifest 缺少 python_version，不能续跑")
+    if previous_python_version != current_python_version:
+        return ResumeDecision(False, "旧 manifest 使用的 Python 版本与当前不一致，不能续跑")
+
+    previous_dirty_fingerprint = manifest.get("dirty_worktree_fingerprint_before")
+    current_dirty_fingerprint = _dirty_worktree_fingerprint(current_git_status_short)
+    if not isinstance(previous_dirty_fingerprint, dict):
+        return ResumeDecision(False, "旧 manifest 缺少脏工作区指纹，不能续跑")
+    if previous_dirty_fingerprint != current_dirty_fingerprint:
+        return ResumeDecision(False, "脏工作区内容已变化，本次完整重跑")
 
     previous_run_id = str(manifest.get("run_id") or "").strip()
     if not previous_run_id:
@@ -449,8 +585,11 @@ def _decide_resume_from_previous_failure(command_plan: Sequence[Dict[str, Any]],
                 start_command_display=str(command.get("display") or ""),
                 reusable_receipts=tuple(dict(item) for item in reusable_receipts),
                 reusable_receipt_payloads=tuple(dict(item) for item in reusable_payloads),
+                validated_dirty_fingerprint=dict(current_dirty_fingerprint),
             )
-        reusable_receipts.append({"path": str(receipt_entry.get("path") or ""), "sha256": str(receipt_entry.get("sha256") or "")})
+        reusable_receipts.append(
+            {"path": str(receipt_entry.get("path") or ""), "sha256": str(receipt_entry.get("sha256") or "")}
+        )
         reusable_payloads.append(dict(receipt_payload or {}))
     return ResumeDecision(False, "旧记录没有可定位的失败命令 receipt")
 
@@ -481,11 +620,34 @@ def _write_command_receipt(command: Dict[str, Any], *, run_id: str, index: int, 
     }
 
 
-def _clear_quality_gate_run_outputs() -> None:
+def _clear_quality_gate_run_outputs(
+    *,
+    remove_manifest: bool = True,
+    remove_receipts_and_logs: bool = True,
+    remove_current_debt: bool = True,
+) -> None:
     for rel_path in (QUALITY_GATE_RECEIPTS_DIR_REL, QUALITY_GATE_LOGS_DIR_REL):
+        if not remove_receipts_and_logs:
+            continue
         abs_path = os.path.join(REPO_ROOT, rel_path)
         if os.path.isdir(abs_path):
             shutil.rmtree(abs_path)
+    if remove_current_debt:
+        _clear_quality_gate_current_full_test_debt()
+    if remove_manifest:
+        _remove_quality_gate_manifest()
+
+
+def _clear_quality_gate_current_full_test_debt() -> None:
+    current_debt_path = os.path.join(REPO_ROOT, QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL)
+    if os.path.isfile(current_debt_path):
+        os.remove(current_debt_path)
+
+
+def _remove_quality_gate_manifest() -> None:
+    manifest_path = _quality_gate_manifest_abs_path()
+    if os.path.isfile(manifest_path):
+        os.remove(manifest_path)
 
 
 def _clear_quality_gate_receipts() -> None:
@@ -512,7 +674,7 @@ def _guard_test_tracked(rel_path: str) -> bool:
     return completed.returncode == 0
 
 
-def _git_rev_parse_path(*args: str, fallback: str) -> str:
+def _git_rev_parse_path(*args: str) -> str:
     completed = subprocess.run(
         ["git", "rev-parse", *args],
         cwd=REPO_ROOT,
@@ -527,13 +689,14 @@ def _git_rev_parse_path(*args: str, fallback: str) -> str:
         if not os.path.isabs(path_text):
             path_text = os.path.join(REPO_ROOT, path_text)
         return os.path.realpath(path_text)
-    return os.path.realpath(fallback)
+    detail = str(completed.stderr or completed.stdout or "").strip() or "git rev-parse failed"
+    raise QualityGateError(f"无法确认仓库身份：git rev-parse {' '.join(args)}: {detail}")
 
 
 def _repo_identity() -> Dict[str, str]:
     return {
-        "checkout_root_realpath": _git_rev_parse_path("--show-toplevel", fallback=REPO_ROOT),
-        "git_common_dir_realpath": _git_rev_parse_path("--git-common-dir", fallback=os.path.join(REPO_ROOT, ".git")),
+        "checkout_root_realpath": _git_rev_parse_path("--show-toplevel"),
+        "git_common_dir_realpath": _git_rev_parse_path("--git-common-dir"),
     }
 
 
@@ -881,7 +1044,7 @@ def _git_head_sha() -> str:
 
 def _git_status_lines() -> List[str]:
     completed = subprocess.run(
-        ["git", "status", "--short"],
+        ["git", "-c", "core.quotepath=false", "status", "--short", "--untracked-files=all"],
         cwd=REPO_ROOT,
         text=True,
         capture_output=True,
@@ -890,12 +1053,7 @@ def _git_status_lines() -> List[str]:
     )
     if completed.returncode != 0:
         raise QualityGateError("无法读取 git status --short")
-    return [str(line).rstrip() for line in str(completed.stdout or "").splitlines() if str(line).strip()]
-
-
-def _tracked_status_lines(lines: Sequence[str]) -> List[str]:
-    normalized = [str(line).rstrip() for line in list(lines or []) if str(line).strip()]
-    return [line for line in normalized if not line.startswith("?? ")]
+    return [str(line) for line in str(completed.stdout or "").splitlines() if str(line)]
 
 
 def _status_untracked_path(line: str) -> str:
@@ -946,6 +1104,28 @@ def _resolve_command_args(command: Dict[str, Any]) -> List[str]:
     return args
 
 
+def _command_plan_for_worktree_mode(
+    command_plan: Sequence[Dict[str, Any]],
+    *,
+    allow_dirty_worktree: bool,
+) -> List[Dict[str, Any]]:
+    if not allow_dirty_worktree:
+        return [dict(command) for command in command_plan]
+
+    checker_path = "/".join(["tools", "check_full_test_debt.py"])
+    out: List[Dict[str, Any]] = []
+    for command in command_plan:
+        args = [str(arg) for arg in list(command.get("args") or [])]
+        if args == ["python", checker_path]:
+            updated = dict(command)
+            updated["display"] = f"{str(command.get('display') or '').strip()} --allow-dirty-worktree-proof"
+            updated["args"] = [*args, "--allow-dirty-worktree-proof"]
+            out.append(updated)
+            continue
+        out.append(dict(command))
+    return out
+
+
 def _write_quality_gate_manifest(manifest: Dict[str, Any]) -> None:
     manifest_path = os.path.join(REPO_ROOT, QUALITY_GATE_MANIFEST_REL)
     os.makedirs(os.path.dirname(manifest_path), exist_ok=True)
@@ -960,19 +1140,42 @@ def _apply_worktree_proof(
     git_status_short_before: Sequence[str],
     git_status_short_after: Optional[Sequence[str]],
 ) -> None:
-    before = [str(line).rstrip() for line in list(git_status_short_before or []) if str(line).strip()]
+    before = _worktree_status_lines(git_status_short_before)
     after = None
     if git_status_short_after is not None:
-        after = [str(line).rstrip() for line in list(git_status_short_after or []) if str(line).strip()]
+        after = _worktree_status_lines(git_status_short_after)
+    previous_before_fingerprint = manifest.get("dirty_worktree_fingerprint_before")
+    if isinstance(previous_before_fingerprint, dict) and previous_before_fingerprint.get("status_lines") == before:
+        before_fingerprint = previous_before_fingerprint
+    else:
+        before_fingerprint = _dirty_worktree_fingerprint(before)
+    after_fingerprint = _dirty_worktree_fingerprint(after) if after is not None else None
     manifest.update(
         {
             "git_status_short_before": before,
+            "dirty_worktree_fingerprint_before": before_fingerprint,
             "is_dirty_before": bool(before),
             "git_status_short_after": after,
+            "dirty_worktree_fingerprint_after": after_fingerprint,
             "is_dirty_after": None if after is None else bool(after),
-            "tracked_drift_detected": None if after is None else (_tracked_status_lines(before) != _tracked_status_lines(after)),
+            "tracked_drift_detected": None if after is None else (before_fingerprint != after_fingerprint),
         }
     )
+
+
+def _assert_resume_dirty_fingerprint_still_current(
+    resume_decision: ResumeDecision,
+    *,
+    git_status_short_before: Sequence[str],
+) -> None:
+    if not resume_decision.enabled:
+        return
+    expected = resume_decision.validated_dirty_fingerprint
+    if not isinstance(expected, dict):
+        raise QualityGateError("续跑缺少已校验的脏工作区指纹")
+    current = _dirty_worktree_fingerprint(git_status_short_before)
+    if current != expected:
+        raise QualityGateError("脏工作区内容在续跑判定后又发生变化，本次不能跳过前置命令")
 
 
 def _base_quality_gate_manifest(
@@ -990,7 +1193,7 @@ def _base_quality_gate_manifest(
         "run_id": f"{head_sha}:{started_at}",
         **_repo_identity(),
         "runtime_snapshot": runtime_snapshot,
-        "python_version": sys.version.splitlines()[0],
+        "python_version": sys.version.splitlines()[0].strip(),
         "python_executable": sys.executable,
         "ruff_version": None,
         "pyright_version": None,
@@ -1009,6 +1212,13 @@ def _base_quality_gate_manifest(
     _apply_worktree_proof(manifest, git_status_short_before=git_status_short_before, git_status_short_after=None)
     apply_quality_gate_manifest_proof_fields(manifest, repo_root=REPO_ROOT)
     return manifest
+
+
+def _mark_manifest_unbound(manifest: Dict[str, Any]) -> None:
+    manifest["proof_scope"] = {
+        "claim": "diagnostic_run_completed_in_dirty_worktree",
+        "does_not_claim": "required_registry_bound_to_clean_worktree",
+    }
 
 
 def _parse_args_legacy(argv: Optional[Sequence[str]]) -> argparse.Namespace:
@@ -1034,11 +1244,19 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = _parse_args(argv)
-    command_plan = build_quality_gate_command_plan()
+    command_plan = _command_plan_for_worktree_mode(
+        build_quality_gate_command_plan(),
+        allow_dirty_worktree=bool(args.allow_dirty_worktree),
+    )
     started_at = datetime.now().isoformat(timespec="seconds")
     head_sha = _git_head_sha()
+    git_status_short_before = _git_status_lines()
     if bool(args.allow_dirty_worktree and not args.no_resume):
-        resume_decision = _decide_resume_from_previous_failure(command_plan, current_head_sha=head_sha)
+        resume_decision = _decide_resume_from_previous_failure(
+            command_plan,
+            current_head_sha=head_sha,
+            current_git_status_short=git_status_short_before,
+        )
     elif bool(args.allow_dirty_worktree and args.no_resume):
         resume_decision = ResumeDecision(False, "--no-resume 已指定")
     else:
@@ -1051,9 +1269,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         )
     else:
         print(f"提示：未使用续跑：{resume_decision.reason}。本次完整重跑。", flush=True)
-        _clear_quality_gate_run_outputs()
     run_id = f"{head_sha}:{started_at}"
-    git_status_short_before = _git_status_lines()
     runtime_snapshot = _runtime_state_snapshot()
     commands: List[Dict[str, Any]] = []
     command_receipts: List[Dict[str, str]] = []
@@ -1080,11 +1296,22 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "start_command_index": resume_decision.start_command_index or None,
         "start_command_display": resume_decision.start_command_display or None,
         "previous_failure_message": resume_decision.previous_failure_message or None,
-        "proof_status": "fast_feedback_only" if resume_decision.enabled else "full_command_plan",
+        "proof_status": "pending",
     }
+    if not require_clean_worktree:
+        _mark_manifest_unbound(manifest)
     _write_quality_gate_manifest(manifest)
 
     try:
+        try:
+            if resume_decision.enabled:
+                _clear_quality_gate_run_outputs(remove_manifest=False, remove_receipts_and_logs=False)
+            else:
+                _clear_quality_gate_run_outputs(remove_manifest=False)
+        except Exception:
+            failure_kind = "quality_gate_cleanup_failed"
+            raise
+
         if require_clean_worktree and git_status_short_before:
             failure_kind = "dirty_before_gate"
             raise QualityGateError(_dirty_worktree_message(git_status_short_before))
@@ -1095,6 +1322,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             failure_kind = "environment_blocked"
             raise
         _assert_guard_tests_ready()
+        try:
+            _assert_resume_dirty_fingerprint_still_current(
+                resume_decision,
+                git_status_short_before=git_status_short_before,
+            )
+        except QualityGateError:
+            failure_kind = "resume_dirty_fingerprint_changed"
+            raise
 
         _run_quality_gate_command_plan(
             command_plan,
@@ -1135,6 +1370,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             success_message = (
                 "质量门禁续跑完成；本次跳过了上次已通过的前置命令，只能当作本地快速反馈，不能当作完整通过证明。"
             )
+        resume_info = dict(manifest.get("resume") or {})
+        resume_info["proof_status"] = (
+            "fast_feedback_only"
+            if resume_decision.enabled
+            else ("full_command_plan_bound" if require_clean_worktree else "full_command_plan_unbound")
+        )
         manifest.update(
             {
                 "status": success_status,
@@ -1147,9 +1388,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 "pyright_version": pyright_version_output,
                 "failure_kind": None,
                 "failure_message": None,
+                "resume": resume_info,
             }
         )
         apply_quality_gate_manifest_proof_fields(manifest, repo_root=REPO_ROOT)
+        if not require_clean_worktree:
+            _mark_manifest_unbound(manifest)
         _write_quality_gate_manifest(manifest)
         print(success_message, flush=True)
         return success_return_code
@@ -1157,16 +1401,23 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         collection_proof = cast(Optional[Dict[str, Any]], parsed_command_results.get("collection_proof"))
         ruff_version_output = cast(Optional[str], parsed_command_results.get("ruff_version_output"))
         pyright_version_output = cast(Optional[str], parsed_command_results.get("pyright_version_output"))
+        worktree_proof_errors: List[str] = []
         if git_status_short_after is None:
             try:
                 git_status_short_after = _git_status_lines()
-            except QualityGateError:
-                git_status_short_after = list(git_status_short_before or [])
-        _apply_worktree_proof(
-            manifest,
-            git_status_short_before=git_status_short_before,
-            git_status_short_after=git_status_short_after,
-        )
+            except (QualityGateError, OSError) as status_exc:
+                git_status_short_after = None
+                worktree_proof_errors.append(f"git_status_after: {status_exc}")
+        try:
+            _apply_worktree_proof(
+                manifest,
+                git_status_short_before=git_status_short_before,
+                git_status_short_after=git_status_short_after,
+            )
+        except (QualityGateError, OSError) as proof_exc:
+            worktree_proof_errors.append(f"worktree_fingerprint: {proof_exc}")
+        resume_info = dict(manifest.get("resume") or {})
+        resume_info["proof_status"] = "failed"
         manifest.update(
             {
                 "status": "failed",
@@ -1179,10 +1430,21 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 "pyright_version": pyright_version_output,
                 "failure_kind": failure_kind or "quality_gate_failed",
                 "failure_message": str(exc),
+                "resume": resume_info,
             }
         )
-        apply_quality_gate_manifest_proof_fields(manifest, repo_root=REPO_ROOT)
-        _write_quality_gate_manifest(manifest)
+        if worktree_proof_errors:
+            manifest["worktree_proof_error"] = "；".join(worktree_proof_errors)
+        try:
+            apply_quality_gate_manifest_proof_fields(manifest, repo_root=REPO_ROOT)
+            if not require_clean_worktree:
+                _mark_manifest_unbound(manifest)
+        except Exception as manifest_proof_exc:
+            manifest["manifest_proof_error"] = str(manifest_proof_exc)
+        try:
+            _write_quality_gate_manifest(manifest)
+        except Exception as manifest_write_exc:
+            print(f"ERROR: 无法写入失败质量门禁 manifest：{manifest_write_exc}", file=sys.stderr, flush=True)
         raise
 
 

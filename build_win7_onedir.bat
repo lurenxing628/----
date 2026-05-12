@@ -12,10 +12,10 @@ chcp 65001 >nul 2>&1
 
 echo [build] repo: %CD%
 
-rem 1) Check PyInstaller
-python -c "import PyInstaller; print(PyInstaller.__version__)" >nul 2>&1
+rem 1) Check Python and PyInstaller before deleting build artifacts
+python -c "import platform, sys, PyInstaller; ok=sys.version_info[:2]==(3,8) and platform.architecture()[0]=='64bit' and PyInstaller.__version__=='4.10'; print('Python {}.{}.{} {}, PyInstaller {}'.format(sys.version_info[0], sys.version_info[1], sys.version_info[2], platform.architecture()[0], PyInstaller.__version__)); sys.exit(0 if ok else 1)"
 if not %errorlevel%==0 (
-  echo [build] PyInstaller not found. Please install: PyInstaller==4.10
+  echo [build] Win7 package must use Python 3.8 x64 and PyInstaller==4.10. Please fix the active python first.
   popd >nul 2>&1
   endlocal & exit /b 2
 )
@@ -46,6 +46,18 @@ if exist vendor (
     --add-data "plugins;plugins" ^
     --add-data "vendor;vendor" ^
     --add-data "schema.sql;." ^
+    --hidden-import web.routes.domains.scheduler.scheduler_analysis ^
+    --hidden-import web.routes.domains.scheduler.scheduler_batch_detail ^
+    --hidden-import web.routes.domains.scheduler.scheduler_batches ^
+    --hidden-import web.routes.domains.scheduler.scheduler_calendar_pages ^
+    --hidden-import web.routes.domains.scheduler.scheduler_config ^
+    --hidden-import web.routes.domains.scheduler.scheduler_excel_batches ^
+    --hidden-import web.routes.domains.scheduler.scheduler_excel_calendar ^
+    --hidden-import web.routes.domains.scheduler.scheduler_gantt ^
+    --hidden-import web.routes.domains.scheduler.scheduler_ops ^
+    --hidden-import web.routes.domains.scheduler.scheduler_resource_dispatch ^
+    --hidden-import web.routes.domains.scheduler.scheduler_run ^
+    --hidden-import web.routes.domains.scheduler.scheduler_week_plan ^
     --name "排产系统" ^
     app.py
 ) else (
@@ -57,6 +69,18 @@ if exist vendor (
     --add-data "templates_excel;templates_excel" ^
     --add-data "plugins;plugins" ^
     --add-data "schema.sql;." ^
+    --hidden-import web.routes.domains.scheduler.scheduler_analysis ^
+    --hidden-import web.routes.domains.scheduler.scheduler_batch_detail ^
+    --hidden-import web.routes.domains.scheduler.scheduler_batches ^
+    --hidden-import web.routes.domains.scheduler.scheduler_calendar_pages ^
+    --hidden-import web.routes.domains.scheduler.scheduler_config ^
+    --hidden-import web.routes.domains.scheduler.scheduler_excel_batches ^
+    --hidden-import web.routes.domains.scheduler.scheduler_excel_calendar ^
+    --hidden-import web.routes.domains.scheduler.scheduler_gantt ^
+    --hidden-import web.routes.domains.scheduler.scheduler_ops ^
+    --hidden-import web.routes.domains.scheduler.scheduler_resource_dispatch ^
+    --hidden-import web.routes.domains.scheduler.scheduler_run ^
+    --hidden-import web.routes.domains.scheduler.scheduler_week_plan ^
     --name "排产系统" ^
     app.py
 )

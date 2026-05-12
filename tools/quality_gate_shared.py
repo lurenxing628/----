@@ -48,6 +48,7 @@ QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL = os.path.join(
     "QualityGate",
     "current_full_test_debt.json",
 )
+FORMAL_FULL_TEST_PYTEST_ARGS = ["tests", "-q", "--tb=short", "-ra", "-p", "no:cacheprovider"]
 QUALITY_GATE_PYRIGHT_GATE_CONFIG = "pyrightconfig.gate.json"
 QUALITY_GATE_PROOF_SCOPE = {
     "claim": "required_registry_bound_to_clean_worktree",
@@ -57,6 +58,7 @@ QUALITY_GATE_PROOF_SCHEMA_VERSION = 2
 QUALITY_GATE_TOOL_PATHS = [
     "scripts/run_quality_gate.py",
     "scripts/sync_debt_ledger.py",
+    "tools/git_hook_checks.py",
     "tools/check_full_test_debt.py",
     "tools/collect_full_test_debt.py",
     "tools/quality_gate_entries.py",
@@ -73,6 +75,7 @@ QUALITY_GATE_TOOL_PATHS = [
 QUALITY_GATE_SOURCE_FILES = tuple(
     dict.fromkeys(
         (
+            ".pre-commit-config.yaml",
             ".github/workflows/quality.yml",
             ".limcode/skills/aps-full-selftest/scripts/run_full_selftest.py",
             "pyproject.toml",
@@ -83,6 +86,8 @@ QUALITY_GATE_SOURCE_FILES = tuple(
             *QUALITY_GATE_REQUIRED_TESTS,
             *QUALITY_GATE_STARTUP_REGRESSION_ARGS,
             "tests/check_quickref_vs_routes.py",
+            "tests/test_check_full_test_debt.py",
+            "tests/test_full_test_debt_registry_contract.py",
         )
     )
 )
@@ -266,8 +271,8 @@ STARTUP_SAMPLE_EXPECTATIONS = [
     SilentFallbackSample(
         path="web/bootstrap/factory.py",
         symbol="_close_db",
-        line_start=395,
-        line_end=396,
+        line_start=397,
+        line_end=398,
         fallback_kind="cleanup_best_effort",
     ),
     SilentFallbackSample(

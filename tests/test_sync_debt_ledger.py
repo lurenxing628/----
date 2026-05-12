@@ -21,7 +21,9 @@ def _import_sync_debt_ledger():
     sys.modules.pop("tools.quality_gate_support", None)
     sys.modules.pop("tools.test_debt_registry", None)
     sys.modules.pop("scripts.sync_debt_ledger", None)
-    return importlib.import_module("scripts.sync_debt_ledger")
+    module = importlib.import_module("scripts.sync_debt_ledger")
+    module.current_git_status_short = lambda: []
+    return module
 
 
 def _import_quality_gate_support():
@@ -1135,6 +1137,59 @@ def test_scan_startup_baseline_rejects_fixed_silent_entry_still_in_scan(monkeypa
         module.refresh_scan_startup_baseline(ledger)
 
 
+def test_validate_ledger_rejects_silent_fallback_line_drift(monkeypatch):
+    module = _import_quality_gate_support()
+    ledger = {
+        "oversize_allowlist": [],
+        "complexity_allowlist": [],
+        "silent_fallback": {
+            "scope": ["web/bootstrap/**/*.py"],
+            "entries": [
+                {
+                    "id": "fallback:startup-line-drift",
+                    "path": "web/bootstrap/launcher_stop.py",
+                    "symbol": "_request_runtime_shutdown",
+                    "status": "open",
+                    "owner": "SP03",
+                    "batch": "SP03",
+                    "exit_condition": "line coordinates must match current scan",
+                    "last_verified_at": "2026-04-30T21:27:43+08:00",
+                    "notes": "旧坐标",
+                    "handler_fingerprint": "sha1:line-drift",
+                    "handler_context_hash": "sha1:ctx-line-drift",
+                    "except_ordinal": 1,
+                    "line_start": 10,
+                    "line_end": 11,
+                    "fallback_kind": "observable_degrade",
+                    "source": "baseline_scan",
+                    "scope_tag": "startup_guard",
+                }
+            ],
+        },
+        "accepted_risks": [],
+    }
+    scan_entry = {
+        "id": "fallback:startup-line-drift",
+        "path": "web/bootstrap/launcher_stop.py",
+        "symbol": "_request_runtime_shutdown",
+        "handler_fingerprint": "sha1:line-drift",
+        "handler_context_hash": "sha1:ctx-line-drift",
+        "except_ordinal": 1,
+        "line_start": 20,
+        "line_end": 21,
+        "fallback_kind": "observable_degrade",
+        "scope_tag": "startup_guard",
+    }
+
+    check_globals = module.validate_ledger_against_current_scan.__globals__
+    monkeypatch.setitem(check_globals, "validate_ledger", lambda _ledger: None)
+    monkeypatch.setitem(check_globals, "validate_startup_samples", lambda: {"matched": 0})
+    monkeypatch.setitem(check_globals, "scan_silent_fallback_entries", lambda _paths: [scan_entry])
+
+    with pytest.raises(module.QualityGateError, match="line_start"):
+        module.validate_ledger_against_current_scan(ledger)
+
+
 def test_migrate_inline_facts_rejects_fixed_silent_entry_still_in_scan(monkeypatch):
     module = _import_quality_gate_support()
     ledger = {
@@ -1727,6 +1782,32 @@ def test_import_current_payload_rejects_dirty_current_worktree_even_when_head_ma
     assert "ledger" not in saved
     assert "当前工作区不干净" in stderr
     assert "tools/test_debt_registry.py" in stderr
+
+
+def test_import_auto_current_payload_rejects_dirty_worktree_after_collect(monkeypatch, tmp_path: Path, capsys):
+    module = _import_sync_debt_ledger()
+
+    baseline_path = tmp_path / "baseline.md"
+    _write_baseline(baseline_path, _baseline_payload())
+
+    monkeypatch.setattr(module, "load_ledger_for_test_debt_import", lambda: _legacy_schema1_ledger())
+    monkeypatch.setattr(module, "current_git_head_sha", lambda: VERIFIED_SHA)
+    monkeypatch.setattr(module, "current_git_status_short", lambda: ["?? evidence/QualityGate/current_full_test_debt.json"])
+    monkeypatch.setattr(
+        module,
+        "collect_current_test_debt_payload",
+        lambda: _baseline_payload(importable=False, head_sha=VERIFIED_SHA),
+    )
+    saved = {}
+    monkeypatch.setattr(module, "save_ledger", lambda ledger: saved.setdefault("ledger", ledger))
+
+    rc = module.main(["import-test-debt-baseline", "--baseline", str(baseline_path)])
+
+    stderr = capsys.readouterr().err
+    assert rc == 2
+    assert "ledger" not in saved
+    assert "自动收集 current payload" in stderr
+    assert "current_full_test_debt.json" in stderr
 
 
 def test_import_current_payload_rejects_payload_recorded_dirty_worktree(
@@ -2352,6 +2433,7 @@ def test_import_test_debt_baseline_command_does_not_overwrite_existing_test_debt
 
     monkeypatch.setattr(module, "load_ledger_for_test_debt_import", lambda: existing_ledger)
     monkeypatch.setattr(module, "collect_current_test_debt_payload", lambda: _baseline_payload(importable=False, head_sha=VERIFIED_SHA))
+    monkeypatch.setattr(module, "current_git_head_sha", lambda: VERIFIED_SHA)
     monkeypatch.setattr(module, "save_ledger", lambda ledger: calls.setdefault("saved_ledger", ledger))
 
     rc = module.main(["import-test-debt-baseline", "--baseline", str(baseline_path)])
