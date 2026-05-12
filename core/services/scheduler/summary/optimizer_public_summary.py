@@ -4,6 +4,12 @@ from typing import Any, Dict, List, Tuple
 
 from core.models.scheduler_degradation_messages import public_degradation_events
 
+_PUBLIC_INPUT_CONTRACT_KEYS = (
+    "degraded",
+    "degradation_events",
+    "degradation_counters",
+    "empty_reason",
+)
 _PUBLIC_ATTEMPT_KEYS = {
     "strategy",
     "dispatch_mode",
@@ -72,15 +78,39 @@ def _project_degradation_event_list(events: Any) -> List[Dict[str, Any]]:
     return public_degradation_events(events)
 
 
-def _project_input_contract(value: Any) -> Any:
+def _safe_counter_dict(value: Any) -> Dict[str, int]:
     if not isinstance(value, dict):
-        return value
-    public_contract = dict(value)
-    if "degradation_events" in public_contract:
-        public_contract["degradation_events"] = _project_degradation_event_list(
-            public_contract.get("degradation_events")
-        )
-    return public_contract
+        return {}
+
+    out: Dict[str, int] = {}
+    for key, raw in value.items():
+        normalized_key = str(key or "").strip()
+        if not normalized_key:
+            continue
+        try:
+            count = int(raw or 0)
+        except Exception:
+            continue
+        if count:
+            out[normalized_key] = count
+    return out
+
+
+def _project_input_contract(value: Any) -> Dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+
+    public_contract: Dict[str, Any] = {
+        "degraded": bool(value.get("degraded")),
+        "degradation_events": _project_degradation_event_list(value.get("degradation_events")),
+        "degradation_counters": _safe_counter_dict(value.get("degradation_counters")),
+    }
+
+    empty_reason = str(value.get("empty_reason") or "").strip()
+    if empty_reason:
+        public_contract["empty_reason"] = empty_reason
+
+    return {key: public_contract[key] for key in _PUBLIC_INPUT_CONTRACT_KEYS if key in public_contract}
 
 
 def project_public_algo_summary(algo: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -88,7 +118,7 @@ def project_public_algo_summary(algo: Dict[str, Any]) -> Tuple[Dict[str, Any], D
     public_attempts, diagnostic_attempts = _project_attempts(public_algo.get("attempts"))
     if isinstance(public_algo.get("attempts"), list):
         public_algo["attempts"] = public_attempts
-    if isinstance(public_algo.get("input_contract"), dict):
+    if "input_contract" in public_algo:
         public_algo["input_contract"] = _project_input_contract(public_algo.get("input_contract"))
     if "merge_context_events" in public_algo:
         public_algo["merge_context_events"] = _project_degradation_event_list(
