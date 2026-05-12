@@ -193,6 +193,7 @@ def excel_calendar_preview():
         mode=mode,
         id_column="日期",
         extra_state=calendar_baseline_extra_state(holiday_default_efficiency=hde_value),
+        rows=normalized_rows,
     )
 
     time_cost_ms = int((time.time() - start) * 1000)
@@ -242,6 +243,7 @@ def excel_calendar_confirm():
         mode=mode,
         id_column="日期",
         extra_state=calendar_baseline_extra_state(holiday_default_efficiency=hde_value),
+        rows=rows,
     ):
         flash("导入被拒绝：数据已变化，请重新上传 Excel 并检查后再确认写入。", "error")
         return _render_excel_calendar_page(

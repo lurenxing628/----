@@ -159,7 +159,7 @@ def excel_op_type_preview():
         validators=[validate_row],
         mode=mode,
     )
-    preview_baseline = build_preview_baseline_token(existing_data=existing, mode=mode, id_column="工种ID")
+    preview_baseline = build_preview_baseline_token(existing_data=existing, mode=mode, id_column="工种ID", rows=rows)
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_import(
@@ -194,7 +194,7 @@ def excel_op_type_confirm():
 
     op_type_svc = OpTypeService(g.db, op_logger=getattr(g, "op_logger", None))
     existing = op_type_svc.build_existing_for_excel()
-    if preview_baseline_is_stale(payload.preview_baseline, existing_data=existing, mode=mode, id_column="工种ID"):
+    if preview_baseline_is_stale(payload.preview_baseline, existing_data=existing, mode=mode, id_column="工种ID", rows=rows):
         flash("导入被拒绝：数据已变化，请重新上传 Excel 并检查后再确认写入。", "error")
         return _render_excel_op_type_page(
             existing=existing,

@@ -25,6 +25,7 @@ from .excel_utils import (
     build_error_rows_message,
     build_preview_baseline_token,
     collect_error_rows,
+    encode_preview_rows_payload,
     extract_import_stats,
     flash_import_result,
     load_confirm_payload,
@@ -215,7 +216,7 @@ def _render_excel_part_op_hours_page(
         title="批量维护工序工时",
         existing_list=existing_list,
         preview_rows=preview_rows,
-        raw_rows_json=raw_rows_json,
+        raw_rows_json=encode_preview_rows_payload(raw_rows_json),
         preview_baseline=preview_baseline,
         mode=mode_value,
         filename=filename,
@@ -275,6 +276,7 @@ def excel_part_op_hours_preview():
         mode=mode,
         id_column="__row_id__",
         extra_state=_build_part_op_hours_extra_state(meta_all),
+        rows=rows,
     )
 
     time_cost_ms = int((time.time() - start) * 1000)
@@ -321,6 +323,7 @@ def excel_part_op_hours_confirm():
         mode=mode,
         id_column="__row_id__",
         extra_state=_build_part_op_hours_extra_state(meta_all),
+        rows=rows,
     ):
         flash("导入被拒绝：数据已变化，请重新上传 Excel 并检查后再确认写入。", "error")
         return _render_excel_part_op_hours_page(

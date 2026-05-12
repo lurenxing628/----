@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import io
+import json
 from pathlib import Path
 
 import openpyxl
@@ -10,6 +11,7 @@ import pytest
 from core.infrastructure.database import ensure_schema, get_connection
 from core.services.personnel.operator_service import OperatorService
 from core.services.scheduler.config_service import ConfigService
+from web.routes.excel_utils import encode_preview_rows_payload
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
@@ -157,6 +159,12 @@ def _make_xlsx(headers, rows) -> io.BytesIO:
         return buf
     finally:
         wb.close()
+
+
+def _encoded_preview_rows(rows) -> str:
+    payload = encode_preview_rows_payload(json.dumps(rows, ensure_ascii=False))
+    assert payload is not None
+    return payload
 
 
 def test_calendar_excel_row_errors_use_plain_column_copy() -> None:
@@ -468,7 +476,9 @@ def test_scheduler_excel_calendar_preview_and_confirm_reject_invalid_holiday_def
         data={
             "mode": "overwrite",
             "filename": "calendar.xlsx",
-            "raw_rows_json": "[]",
+            "raw_rows_json": _encoded_preview_rows(
+                [{"日期": "2026-04-01", "类型": "holiday", "可用工时": 0, "效率": None}]
+            ),
             "preview_baseline": "dummy",
         },
     )
@@ -526,7 +536,7 @@ def test_operator_calendar_excel_preview_and_confirm_reject_invalid_holiday_defa
         data={
             "mode": "overwrite",
             "filename": "operator_calendar.xlsx",
-            "raw_rows_json": '[{"工号":"OP001","日期":"2026-04-02","__id":"OP001|2026-04-02"}]',
+            "raw_rows_json": _encoded_preview_rows([{"工号": "OP001", "日期": "2026-04-02", "__id": "OP001|2026-04-02"}]),
             "preview_baseline": "dummy",
         },
     )

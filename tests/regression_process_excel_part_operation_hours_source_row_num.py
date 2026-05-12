@@ -4,6 +4,7 @@ import os
 import re
 import sys
 import tempfile
+from base64 import urlsafe_b64decode
 from typing import Any, cast
 
 
@@ -49,6 +50,13 @@ def _extract_hidden_input(html: str, name: str) -> str:
             value = vm.group(1) if vm else ""
             return value.replace("&quot;", '"').replace("&#34;", '"').replace("&amp;", "&").strip()
     return ""
+
+
+def _decode_preview_rows_payload(raw_rows_json: str) -> str:
+    prefix = "aps-preview-json-b64:"
+    if not raw_rows_json.startswith(prefix):
+        raise RuntimeError("raw_rows_json 必须使用 aps-preview-json-b64 编码，不能退回明文 JSON")
+    return urlsafe_b64decode(raw_rows_json[len(prefix) :].encode("ascii")).decode("utf-8")
 
 
 def _assert_status(name: str, resp, expect_code: int = 200):
@@ -131,7 +139,7 @@ def main() -> None:
     if not preview_baseline:
         raise RuntimeError("预览页面缺少 preview_baseline")
 
-    preview_rows = json.loads(raw_rows_json)
+    preview_rows = json.loads(_decode_preview_rows_payload(raw_rows_json))
     if len(preview_rows) != 1:
         raise RuntimeError(f"预览 raw_rows_json 行数异常：{preview_rows!r}")
     row = preview_rows[0]

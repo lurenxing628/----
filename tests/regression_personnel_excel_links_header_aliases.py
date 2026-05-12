@@ -6,6 +6,7 @@ import os
 import re
 import sys
 import tempfile
+from base64 import urlsafe_b64decode
 
 
 def find_repo_root() -> str:
@@ -54,6 +55,13 @@ def _extract_hidden_input(html: str, name: str) -> str:
             value = vm.group(1) if vm else ""
             return value.replace("&quot;", '"').replace("&#34;", '"').replace("&amp;", "&").strip()
     return ""
+
+
+def _decode_preview_rows_payload(raw_rows_json: str) -> str:
+    prefix = "aps-preview-json-b64:"
+    if not raw_rows_json.startswith(prefix):
+        raise RuntimeError("raw_rows_json 必须使用 aps-preview-json-b64 编码，不能退回明文 JSON")
+    return urlsafe_b64decode(raw_rows_json[len(prefix) :].encode("ascii")).decode("utf-8")
 
 
 def _assert_status(name: str, resp, expect_code: int = 200):
@@ -137,7 +145,7 @@ def main() -> None:
         rows=[{"操作工号": "OP001", "机器编号": "MC001", "技能等级": "expert", "主操设备": "yes"}],
         filename="links_alias.xlsx",
     )
-    normalized_rows = json.loads(raw_rows_json)
+    normalized_rows = json.loads(_decode_preview_rows_payload(raw_rows_json))
     if normalized_rows[0].get("工号") != "OP001" or normalized_rows[0].get("设备编号") != "MC001":
         raise RuntimeError(f"alias 表头未被归一化为工号/设备编号：{normalized_rows[0]}")
 

@@ -209,6 +209,7 @@ def excel_batches_preview():
             strict_mode=strict_mode,
             rows=normalized_rows,
         ),
+        rows=normalized_rows,
     )
 
     time_cost_ms = int((time.time() - start) * 1000)
@@ -267,6 +268,7 @@ def excel_batches_confirm():
             strict_mode=strict_mode,
             rows=rows,
         ),
+        rows=rows,
     ):
         flash("导入被拒绝：数据已变化，请重新上传 Excel 并检查后再确认写入。", "error")
         return _render_excel_batches_page(

@@ -24,6 +24,7 @@ from .excel_utils import (
     build_error_rows_message,
     build_preview_baseline_token,
     collect_error_rows,
+    encode_preview_rows_payload,
     extract_import_stats,
     flash_import_result,
     load_confirm_payload,
@@ -52,7 +53,7 @@ def _render_excel_supplier_page(
         title="批量维护供应商",
         existing_list=list(existing.values()),
         preview_rows=project_preview_rows_for_display(preview_rows, {"状态": supplier_status_label}),
-        raw_rows_json=raw_rows_json,
+        raw_rows_json=encode_preview_rows_payload(raw_rows_json),
         preview_baseline=preview_baseline,
         mode=mode_value,
         filename=filename,
@@ -174,6 +175,7 @@ def excel_supplier_preview():
         mode=mode,
         id_column="供应商ID",
         extra_state=_supplier_op_type_snapshot(op_type_svc),
+        rows=rows,
     )
 
     time_cost_ms = int((time.time() - start) * 1000)
@@ -216,6 +218,7 @@ def excel_supplier_confirm():
         mode=mode,
         id_column="供应商ID",
         extra_state=_supplier_op_type_snapshot(op_type_svc),
+        rows=rows,
     ):
         flash("导入被拒绝：数据已变化，请重新上传 Excel 并检查后再确认写入。", "error")
         return _render_excel_supplier_page(

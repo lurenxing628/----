@@ -23,6 +23,7 @@ from .excel_utils import (
     build_error_rows_message,
     build_preview_baseline_token,
     collect_error_rows,
+    encode_preview_rows_payload,
     extract_import_stats,
     flash_import_result,
     load_confirm_payload,
@@ -58,7 +59,7 @@ def _render_demo_page(
         title="Excel 导入演示",
         existing_list=list(existing.values()),
         preview_rows=preview_rows,
-        raw_rows_json=raw_rows_json,
+        raw_rows_json=encode_preview_rows_payload(raw_rows_json),
         preview_baseline=preview_baseline,
         mode=mode_value,
         filename=filename,
@@ -117,7 +118,7 @@ def preview():
         validators=[_validate_operator_row],
         mode=mode,
     )
-    preview_baseline = build_preview_baseline_token(existing_data=existing, mode=mode, id_column="工号")
+    preview_baseline = build_preview_baseline_token(existing_data=existing, mode=mode, id_column="工号", rows=parsed_rows)
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_import(
@@ -150,7 +151,7 @@ def confirm():
     rows = payload.rows
 
     existing = _fetch_existing_operators(g.db)
-    if preview_baseline_is_stale(payload.preview_baseline, existing_data=existing, mode=mode, id_column="工号"):
+    if preview_baseline_is_stale(payload.preview_baseline, existing_data=existing, mode=mode, id_column="工号", rows=rows):
         flash("导入被拒绝：数据已变化，请重新上传 Excel 并检查后再确认写入。", "error")
         return _render_demo_page(
             existing=existing,

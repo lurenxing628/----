@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import importlib
 import io
+import json
 import os
 import sys
+from base64 import urlsafe_b64decode, urlsafe_b64encode
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -162,6 +164,22 @@ def _assert_batch_absent(db_path: str, batch_id: str) -> None:
         conn.close()
 
 
+def _decode_preview_rows_payload(raw_rows_json: str) -> list[dict]:
+    prefix = "aps-preview-json-b64:"
+    if not raw_rows_json.startswith(prefix):
+        raise RuntimeError("raw_rows_json 必须使用 aps-preview-json-b64 编码，不能退回明文 JSON")
+    raw = urlsafe_b64decode(raw_rows_json[len(prefix) :].encode("ascii")).decode("utf-8")
+    rows = json.loads(raw)
+    assert isinstance(rows, list)
+    return rows
+
+
+def _encode_preview_rows_payload(rows: list[dict]) -> str:
+    raw = json.dumps(rows, ensure_ascii=False)
+    encoded = urlsafe_b64encode(raw.encode("utf-8")).decode("ascii")
+    return f"aps-preview-json-b64:{encoded}"
+
+
 def test_scheduler_excel_batches_unrelated_part_change_does_not_force_repreview(tmp_path, monkeypatch) -> None:
     app, db_path = _build_app(tmp_path, monkeypatch)
 
@@ -213,6 +231,61 @@ def test_scheduler_excel_batches_unrelated_part_change_does_not_force_repreview(
 
     _assert_stale_preview_error(confirm_html, expected=False)
     _assert_batch_present(db_path, "B_SCOPE_OK")
+
+
+def test_scheduler_excel_batches_confirm_rejects_tampered_preview_rows(tmp_path, monkeypatch) -> None:
+    app, db_path = _build_app(tmp_path, monkeypatch)
+
+    from core.infrastructure.database import get_connection
+    from core.services.process.op_type_service import OpTypeService
+    from core.services.process.part_service import PartService
+
+    conn = get_connection(db_path)
+    try:
+        op_type_svc = OpTypeService(conn)
+        part_svc = PartService(conn)
+        op_type_svc.create("OT_IN", "数车", "internal")
+        part_svc.upsert_and_parse_no_tx("P_TARGET", "目标件", "5数车")
+        conn.commit()
+    finally:
+        conn.close()
+
+    client = app.test_client()
+    preview_html = _preview_batches(
+        client,
+        rows=[
+            {
+                "批次号": "B_PREVIEWED",
+                "图号": "P_TARGET",
+                "数量": 2,
+                "交期": "2026-05-01",
+                "优先级": "normal",
+                "齐套": "yes",
+                "齐套日期": None,
+                "备注": "row-signature",
+            }
+        ],
+        auto_generate_ops="0",
+    )
+    payload = build_confirm_payload(
+        preview_html,
+        mode="overwrite",
+        filename="batches.xlsx",
+        context="/scheduler/excel/batches/preview",
+        confirm_extra={"auto_generate_ops": "0", "strict_mode": "no"},
+        confirm_hidden_fields=["auto_generate_ops", "strict_mode"],
+    )
+    tampered_rows = _decode_preview_rows_payload(str(payload["raw_rows_json"]))
+    tampered_rows[0]["批次号"] = "B_TAMPERED"
+    tampered_rows[0]["备注"] = "tampered-after-preview"
+    payload["raw_rows_json"] = _encode_preview_rows_payload(tampered_rows)
+
+    response = client.post("/scheduler/excel/batches/confirm", data=payload, follow_redirects=True)
+    assert response.status_code == 200, response.get_data(as_text=True)[:500]
+    confirm_html = response.get_data(as_text=True)
+
+    _assert_stale_preview_error(confirm_html, expected=True)
+    _assert_batch_absent(db_path, "B_TAMPERED")
 
 
 def test_scheduler_excel_batches_autobuild_supplier_default_days_drift_requires_repreview(tmp_path, monkeypatch) -> None:

@@ -24,6 +24,7 @@ from .excel_utils import (
     build_error_rows_message,
     build_preview_baseline_token,
     collect_error_rows,
+    encode_preview_rows_payload,
     extract_import_stats,
     flash_import_result,
     load_confirm_payload,
@@ -116,7 +117,7 @@ def _render_excel_operator_calendar_page(
             preview_rows,
             {"类型": calendar_day_type_label, "允许普通件": yes_no_label, "允许急件": yes_no_label},
         ),
-        raw_rows_json=raw_rows_json,
+        raw_rows_json=encode_preview_rows_payload(raw_rows_json),
         preview_baseline=preview_baseline,
         mode=mode_value,
         filename=filename,
@@ -236,6 +237,7 @@ def excel_operator_calendar_preview():
             holiday_default_efficiency=hde_value,
             operator_ids=operator_ids,
         ),
+        rows=normalized_rows,
     )
 
     time_cost_ms = int((time.time() - start) * 1000)
@@ -292,6 +294,7 @@ def excel_operator_calendar_confirm():
             holiday_default_efficiency=hde_value,
             operator_ids=operator_ids,
         ),
+        rows=rows,
     ):
         flash("导入被拒绝：数据已变化，请重新上传 Excel 并检查后再确认写入。", "error")
         return _render_excel_operator_calendar_page(

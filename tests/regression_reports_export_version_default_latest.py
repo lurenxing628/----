@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
+from datetime import date
 from io import BytesIO
 
 
@@ -98,7 +99,32 @@ def _assert_invalid_version(resp, name: str) -> None:
         raise RuntimeError(f"{name} 未返回统一版本错误文案：{body[:200]!r}")
 
 
+def _assert_missing_version(resp, name: str) -> None:
+    if resp.status_code != 404:
+        raise RuntimeError(f"{name} 返回 {resp.status_code}，期望 404")
+    body = resp.get_data(as_text=True)
+    if "排产版本不存在，请先选择已有版本。" not in body:
+        raise RuntimeError(f"{name} 未返回版本不存在文案：{body[:200]!r}")
+
+
+def _assert_date_validation(resp, name: str, expected_text: str) -> None:
+    if resp.status_code != 400:
+        raise RuntimeError(f"{name} 返回 {resp.status_code}，期望 400")
+    body = resp.get_data(as_text=True)
+    if expected_text not in body:
+        raise RuntimeError(f"{name} 未返回预期日期错误文案：{body[:200]!r}")
+
+
+def _assert_no_data_export(resp, name: str) -> None:
+    if resp.status_code != 400:
+        raise RuntimeError(f"{name} 返回 {resp.status_code}，期望 400")
+    body = resp.get_data(as_text=True)
+    if "暂无数据，不能导出" not in body:
+        raise RuntimeError(f"{name} 未返回无数据导出文案：{body[:200]!r}")
+
+
 def _seed_distinguishable_report_data(conn) -> None:
+    default_day = date.today().isoformat()
     conn.execute("INSERT INTO Parts(part_no, part_name) VALUES (?, ?)", ("P_REPORT", "报表测试零件"))
     conn.execute(
         "INSERT INTO Machines(machine_id, name, status) VALUES (?, ?, ?)",
@@ -143,6 +169,7 @@ def _seed_distinguishable_report_data(conn) -> None:
         VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
         [
+            (5, "test", 0, 0, "ok", None, "regression"),
             (6, "test", 1, 1, "ok", None, "regression"),
             (7, "test", 1, 1, "ok", None, "regression"),
         ],
@@ -153,6 +180,20 @@ def _seed_distinguishable_report_data(conn) -> None:
         VALUES (?, ?, ?, ?, ?, ?)
         """,
         ("MC_REPORT", "2026-01-03 09:00:00", "2026-01-03 11:00:00", "maintenance", "latest export", "active"),
+    )
+    conn.execute(
+        """
+        INSERT INTO MachineDowntimes(machine_id, start_time, end_time, reason_code, reason_detail, status)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "MC_REPORT",
+            f"{default_day} 09:00:00",
+            f"{default_day} 11:00:00",
+            "maintenance",
+            "default seven days must not leak into version without schedule",
+            "active",
+        ),
     )
 
 
@@ -231,7 +272,7 @@ def main() -> None:
     _assert_invalid_version(client.get("/reports/overdue/export?version=abc"), "GET /reports/overdue/export（invalid version）")
     _assert_invalid_version(client.get("/reports/overdue/export?version=0"), "GET /reports/overdue/export（version=0）")
 
-    # 2) utilization/export（需要 start/end）
+    # 2) utilization/export（显式日期按参数，无日期按版本排程范围）
     _assert_utilization_export(
         client.get(f"/reports/utilization/export?version=6&start_date={sd}&end_date={ed}"),
         "GET /reports/utilization/export（version=6）",
@@ -256,6 +297,40 @@ def main() -> None:
         7,
         4.0,
     )
+    _assert_utilization_export(
+        client.get("/reports/utilization/export?version=latest"),
+        "GET /reports/utilization/export（version=latest，无日期）",
+        7,
+        4.0,
+    )
+    _assert_utilization_export(
+        client.get("/reports/utilization/export"),
+        "GET /reports/utilization/export（missing version，无日期）",
+        7,
+        4.0,
+    )
+    _assert_utilization_export(
+        client.get("/reports/utilization/export?version="),
+        "GET /reports/utilization/export（empty version，无日期）",
+        7,
+        4.0,
+    )
+    _assert_utilization_export(
+        client.get("/reports/utilization/export?version=6"),
+        "GET /reports/utilization/export（version=6，无日期）",
+        6,
+        2.0,
+    )
+    _assert_date_validation(
+        client.get("/reports/utilization/export?version=latest&start_date=bad-date"),
+        "GET /reports/utilization/export（只传坏开始日期）",
+        "日期格式不正确",
+    )
+    _assert_date_validation(
+        client.get(f"/reports/utilization/export?version=latest&start_date={sd}"),
+        "GET /reports/utilization/export（只传开始日期）",
+        "缺少开始日期或结束日期",
+    )
     _assert_invalid_version(
         client.get(f"/reports/utilization/export?version=abc&start_date={sd}&end_date={ed}"),
         "GET /reports/utilization/export（invalid version）",
@@ -264,8 +339,12 @@ def main() -> None:
         client.get(f"/reports/utilization/export?version=0&start_date={sd}&end_date={ed}"),
         "GET /reports/utilization/export（version=0）",
     )
+    _assert_missing_version(
+        client.get(f"/reports/utilization/export?version=999&start_date={sd}&end_date={ed}"),
+        "GET /reports/utilization/export（version=999）",
+    )
 
-    # 3) downtime/export（需要 start/end）
+    # 3) downtime/export（显式日期按参数，无日期按版本排程范围）
     _assert_downtime_export(
         client.get(f"/reports/downtime/export?version=6&start_date={sd}&end_date={ed}"),
         "GET /reports/downtime/export（version=6）",
@@ -290,6 +369,42 @@ def main() -> None:
         7,
         2.0,
     )
+    _assert_downtime_export(
+        client.get("/reports/downtime/export?version=latest"),
+        "GET /reports/downtime/export（version=latest，无日期）",
+        7,
+        2.0,
+    )
+    _assert_downtime_export(
+        client.get("/reports/downtime/export"),
+        "GET /reports/downtime/export（missing version，无日期）",
+        7,
+        2.0,
+    )
+    _assert_downtime_export(
+        client.get("/reports/downtime/export?version="),
+        "GET /reports/downtime/export（empty version，无日期）",
+        7,
+        2.0,
+    )
+    _assert_no_data_export(
+        client.get("/reports/downtime/export?version=6"),
+        "GET /reports/downtime/export（version=6，无日期）",
+    )
+    _assert_no_data_export(
+        client.get("/reports/downtime/export?version=5"),
+        "GET /reports/downtime/export（version=5，无排程，无日期）",
+    )
+    _assert_date_validation(
+        client.get("/reports/downtime/export?version=latest&end_date=bad-date"),
+        "GET /reports/downtime/export（只传坏结束日期）",
+        "缺少开始日期或结束日期",
+    )
+    _assert_date_validation(
+        client.get(f"/reports/downtime/export?version=latest&end_date={ed}"),
+        "GET /reports/downtime/export（只传结束日期）",
+        "缺少开始日期或结束日期",
+    )
     _assert_invalid_version(
         client.get(f"/reports/downtime/export?version=abc&start_date={sd}&end_date={ed}"),
         "GET /reports/downtime/export（invalid version）",
@@ -297,6 +412,10 @@ def main() -> None:
     _assert_invalid_version(
         client.get(f"/reports/downtime/export?version=0&start_date={sd}&end_date={ed}"),
         "GET /reports/downtime/export（version=0）",
+    )
+    _assert_missing_version(
+        client.get(f"/reports/downtime/export?version=999&start_date={sd}&end_date={ed}"),
+        "GET /reports/downtime/export（version=999）",
     )
 
     print("OK")

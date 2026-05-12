@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+import ast
+from pathlib import Path
+
+import pytest
 from flask import Flask
 
+from core.infrastructure.errors import ValidationError
 from core.services.common.excel_service import ImportMode
 from web.routes import excel_utils as excel_utils_mod
-from web.routes.excel_utils import build_preview_baseline_token, preview_baseline_matches
+from web.routes.excel_utils import build_preview_baseline_token, parse_preview_rows_json, preview_baseline_matches
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _baseline_kwargs():
@@ -13,6 +20,7 @@ def _baseline_kwargs():
         "mode": ImportMode.APPEND,
         "id_column": "编号",
         "extra_state": {"scope": "unit-test"},
+        "rows": [{"编号": "A001", "值": 2}],
     }
 
 
@@ -53,3 +61,119 @@ def test_preview_baseline_matches_returns_false_when_compare_digest_raises(monke
         assert preview_baseline_matches(token, **kwargs) is False
 
     assert logged == ["预览基线签名比较失败"]
+
+
+def test_preview_baseline_requires_rows() -> None:
+    kwargs = _baseline_kwargs()
+    kwargs.pop("rows")
+
+    with pytest.raises(TypeError, match="rows"):
+        build_preview_baseline_token(**kwargs)
+
+
+def test_parse_preview_rows_json_rejects_plain_json_payload() -> None:
+    with pytest.raises(ValidationError, match="检查数据解析失败|检查数据格式不正确"):
+        parse_preview_rows_json('[{"编号": "A001"}]')
+
+
+def _call_name(node: ast.AST) -> str:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return ""
+
+
+def _route_decorator_path(node: ast.AST) -> str:
+    if not isinstance(node, ast.Call) or not node.args:
+        return ""
+    if _call_name(node.func) not in {"post", "route"}:
+        return ""
+    first_arg = node.args[0]
+    if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
+        return first_arg.value
+    return ""
+
+
+def _is_confirm_write_call(node: ast.AST) -> bool:
+    if not isinstance(node, ast.Call):
+        return False
+    return _call_name(node.func) in {
+        "apply_preview_rows",
+        "apply_import_links",
+        "delete_all_no_tx",
+        "execute_preview_rows_transactional",
+        "import_operator_calendar_from_preview_rows",
+        "import_from_preview_rows",
+        "upsert_and_parse_no_tx",
+        "upsert_no_tx",
+    }
+
+
+def test_route_preview_baseline_calls_include_rows_fingerprint() -> None:
+    checked_names = {"build_preview_baseline_token", "preview_baseline_is_stale"}
+    missing_rows = []
+    for path in sorted((REPO_ROOT / "web" / "routes").rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            if _call_name(node.func) not in checked_names:
+                continue
+            rows_keywords = [keyword for keyword in node.keywords if keyword.arg == "rows"]
+            if not rows_keywords or any(
+                isinstance(keyword.value, ast.Constant) and keyword.value.value is None for keyword in rows_keywords
+            ):
+                rel = path.relative_to(REPO_ROOT).as_posix()
+                missing_rows.append(f"{rel}:{node.lineno}")
+
+    assert missing_rows == []
+
+
+def test_confirm_routes_validate_preview_baseline_after_loading_payload() -> None:
+    missing_validation = []
+    wrong_order = []
+    for path in sorted((REPO_ROOT / "web" / "routes").rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            route_paths = [_route_decorator_path(decorator) for decorator in node.decorator_list]
+            is_confirm_route = any(route_path.endswith("/confirm") for route_path in route_paths)
+            rel = path.relative_to(REPO_ROOT).as_posix()
+            if is_confirm_route and "excel" not in rel:
+                continue
+            payload_calls = [
+                child.lineno
+                for child in ast.walk(node)
+                if isinstance(child, ast.Call) and _call_name(child.func) == "load_confirm_payload"
+            ]
+            baseline_calls = [
+                child.lineno
+                for child in ast.walk(node)
+                if isinstance(child, ast.Call) and _call_name(child.func) == "preview_baseline_is_stale"
+            ]
+            write_calls = [child.lineno for child in ast.walk(node) if _is_confirm_write_call(child)]
+            if is_confirm_route and not payload_calls:
+                missing_validation.append(f"{rel}:{node.name}:load_confirm_payload")
+            if is_confirm_route and not baseline_calls:
+                missing_validation.append(f"{rel}:{node.name}:preview_baseline_is_stale")
+            if payload_calls and baseline_calls and min(baseline_calls) < min(payload_calls):
+                wrong_order.append(f"{rel}:{node.name}")
+            if baseline_calls and write_calls and min(write_calls) < min(baseline_calls):
+                wrong_order.append(f"{rel}:{node.name}:write_before_preview_baseline_is_stale")
+            has_confirm_payload = any(
+                isinstance(child, ast.Call) and _call_name(child.func) == "load_confirm_payload"
+                for child in ast.walk(node)
+            )
+            if not has_confirm_payload:
+                continue
+            has_baseline_check = any(
+                isinstance(child, ast.Call) and _call_name(child.func) == "preview_baseline_is_stale"
+                for child in ast.walk(node)
+            )
+            if not has_baseline_check:
+                missing_validation.append(f"{rel}:{node.name}")
+
+    assert missing_validation == []
+    assert wrong_order == []

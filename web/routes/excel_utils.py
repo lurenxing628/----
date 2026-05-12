@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from flask import current_app, flash, send_file
+from flask import current_app, flash, has_app_context, send_file
 
 from core.infrastructure.errors import AppError, ErrorCode, ValidationError
 from core.services.common.excel_backend_factory import get_excel_backend
@@ -19,6 +19,8 @@ from core.services.common.excel_service import ImportMode, RowStatus
 
 XLSX_MIMETYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 ENCODED_PREVIEW_ROWS_PREFIX = "aps-preview-json-b64:"
+PREVIEW_BASELINE_TOKEN_PREFIX = "aps-preview-baseline-v2:"
+_PREVIEW_BASELINE_PROCESS_SECRET = os.urandom(32)
 
 
 def parse_import_mode(value: str) -> ImportMode:
@@ -38,20 +40,24 @@ def build_preview_baseline_token(
     mode: ImportMode,
     id_column: str,
     extra_state: Any = None,
+    rows: List[Dict[str, Any]],
 ) -> str:
     """
     生成预览基线签名：
-    - 绑定导入模式 + 主键列 + 当前 existing 快照
+    - 绑定导入模式 + 主键列 + 当前 existing 快照 + 本次预览行内容
     - confirm 阶段若签名不一致，说明 preview 基线已变化，必须重新预览
     """
     payload = {
+        "version": 2,
         "mode": str(getattr(mode, "value", mode) or "").strip(),
         "id_column": str(id_column or "").strip(),
         "existing_data": existing_data or {},
         "extra_state": extra_state if extra_state is not None else {},
+        "rows_digest": _preview_rows_digest(_require_preview_rows(rows)),
     }
     raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    digest = hmac.new(_preview_baseline_secret(), raw.encode("utf-8"), hashlib.sha256).hexdigest()
+    return f"{PREVIEW_BASELINE_TOKEN_PREFIX}{digest}"
 
 
 def preview_baseline_matches(
@@ -61,6 +67,7 @@ def preview_baseline_matches(
     mode: ImportMode,
     id_column: str,
     extra_state: Any = None,
+    rows: List[Dict[str, Any]],
 ) -> bool:
     """
     校验客户端回传的预览基线签名是否与当前数据库快照一致。
@@ -73,6 +80,7 @@ def preview_baseline_matches(
         mode=mode,
         id_column=id_column,
         extra_state=extra_state,
+        rows=rows,
     )
     try:
         return hmac.compare_digest(provided, expected)
@@ -90,7 +98,7 @@ class ConfirmPayload:
 def parse_preview_rows_json(raw_rows_json: str) -> List[Dict[str, Any]]:
     try:
         rows = json.loads(decode_preview_rows_payload(raw_rows_json))
-        if not isinstance(rows, list):
+        if not isinstance(rows, list) or not all(isinstance(row, dict) for row in rows):
             raise ValueError("rows not list")
         return rows
     except Exception as e:
@@ -108,12 +116,36 @@ def encode_preview_rows_payload(raw_rows_json: Optional[str]) -> Optional[str]:
 def decode_preview_rows_payload(raw_rows_json: str) -> str:
     raw = str(raw_rows_json or "")
     if not raw.startswith(ENCODED_PREVIEW_ROWS_PREFIX):
-        return raw
+        raise ValidationError("检查数据格式不正确，请重新上传 Excel 并检查。")
     encoded = raw[len(ENCODED_PREVIEW_ROWS_PREFIX) :].strip()
     try:
         return base64.urlsafe_b64decode(encoded.encode("ascii")).decode("utf-8")
     except Exception as e:
         raise ValidationError("检查数据解析失败，请重新上传 Excel 并检查。") from e
+
+
+def _preview_baseline_secret() -> bytes:
+    secret: Any = None
+    if has_app_context():
+        secret = current_app.config.get("SECRET_KEY")
+    if not secret:
+        secret = os.environ.get("SECRET_KEY")
+    if isinstance(secret, bytes):
+        return secret
+    if secret:
+        return str(secret).encode("utf-8")
+    return _PREVIEW_BASELINE_PROCESS_SECRET
+
+
+def _preview_rows_digest(rows: List[Dict[str, Any]]) -> str:
+    raw = json.dumps(rows or [], ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _require_preview_rows(rows: Optional[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+    if rows is None:
+        raise ValueError("preview baseline rows is required")
+    return rows
 
 
 def _extract_error_rows(preview_rows: List[Any]) -> List[Any]:
@@ -148,6 +180,7 @@ def preview_baseline_is_stale(
     mode: ImportMode,
     id_column: str,
     extra_state: Any = None,
+    rows: List[Dict[str, Any]],
 ) -> bool:
     return not preview_baseline_matches(
         preview_baseline,
@@ -155,6 +188,7 @@ def preview_baseline_is_stale(
         mode=mode,
         id_column=id_column,
         extra_state=extra_state,
+        rows=rows,
     )
 
 

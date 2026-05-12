@@ -84,6 +84,17 @@ def _page_date_range_or_version_span(engine: ReportEngine, version: int, start_r
     return s7, e7, "default_7d", span
 
 
+def _export_date_range_or_version_span(engine: ReportEngine, version: int, start_raw: str, end_raw: str):
+    s = (start_raw or "").strip()
+    e = (end_raw or "").strip()
+    if s or e:
+        return _validate_ymd_date(s, field="开始日期"), _validate_ymd_date(e, field="结束日期")
+    span = engine.version_date_range(int(version or 0))
+    if span.get("has_data") and span.get("start_date") and span.get("end_date"):
+        return str(span["start_date"]), str(span["end_date"])
+    raise ValidationError("暂无数据，不能导出。请调整版本或日期范围后再试。", field="导出")
+
+
 def _send_report_export_file(report_export):
     resp = send_file(
         report_export.data,
@@ -234,15 +245,14 @@ def utilization_page():
 
 @bp.get("/utilization/export")
 def utilization_export():
-    start_raw = (request.args.get("start_date") or "").strip()
-    end_raw = (request.args.get("end_date") or "").strip()
-    if not start_raw or not end_raw:
-        start_date, end_date = _default_date_range(days=7)
-    else:
-        start_date = _validate_ymd_date(start_raw, field="开始日期")
-        end_date = _validate_ymd_date(end_raw, field="结束日期")
     engine = ReportEngine(g.db)
     version = _export_version_or_latest(engine)
+    start_date, end_date = _export_date_range_or_version_span(
+        engine,
+        int(version or 0),
+        request.args.get("start_date") or "",
+        request.args.get("end_date") or "",
+    )
     x = engine.export_utilization_xlsx(version, start_date, end_date)
     return _send_report_export_file(x)
 
@@ -302,14 +312,13 @@ def downtime_page():
 
 @bp.get("/downtime/export")
 def downtime_export():
-    start_raw = (request.args.get("start_date") or "").strip()
-    end_raw = (request.args.get("end_date") or "").strip()
-    if not start_raw or not end_raw:
-        start_date, end_date = _default_date_range(days=7)
-    else:
-        start_date = _validate_ymd_date(start_raw, field="开始日期")
-        end_date = _validate_ymd_date(end_raw, field="结束日期")
     engine = ReportEngine(g.db)
     version = _export_version_or_latest(engine)
+    start_date, end_date = _export_date_range_or_version_span(
+        engine,
+        int(version or 0),
+        request.args.get("start_date") or "",
+        request.args.get("end_date") or "",
+    )
     x = engine.export_downtime_impact_xlsx(version, start_date, end_date)
     return _send_report_export_file(x)

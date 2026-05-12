@@ -7,7 +7,7 @@ import os
 import re
 import sys
 import tempfile
-from base64 import urlsafe_b64decode
+from base64 import urlsafe_b64decode, urlsafe_b64encode
 from html import unescape as html_unescape
 from pathlib import Path
 
@@ -55,13 +55,28 @@ def _extract_raw_rows_payload(html: str) -> str:
     return html_unescape(match.group(1)).strip()
 
 
+def _extract_hidden_input(html: str, name: str) -> str:
+    for match in re.finditer(r"<input[^>]+>", html, re.I):
+        tag = match.group(0)
+        if re.search(rf'name="{re.escape(name)}"', tag, re.I):
+            value_match = re.search(r'value="([^"]*)"', tag, re.I)
+            return html_unescape(value_match.group(1)).strip() if value_match else ""
+    raise AssertionError(f"预览页必须提供隐藏字段：{name}")
+
+
 def _decode_preview_payload(payload: str):
     prefix = "aps-preview-json-b64:"
-    assert payload.startswith(prefix), "raw_rows_json 必须使用 aps-preview-json-b64 编码，避免页面源码泄漏内部值"
+    assert payload.startswith(prefix), "raw_rows_json 必须使用 aps-preview-json-b64 编码，避免页面源码直接出现内部值"
     decoded = urlsafe_b64decode(payload[len(prefix) :].encode("ascii")).decode("utf-8")
     rows = json.loads(decoded)
     assert isinstance(rows, list), f"raw_rows_json 解码后必须是真实列表：{type(rows)!r}"
     return rows
+
+
+def _encode_preview_payload(rows) -> str:
+    raw = json.dumps(rows, ensure_ascii=False)
+    encoded = urlsafe_b64encode(raw.encode("utf-8")).decode("ascii")
+    return f"aps-preview-json-b64:{encoded}"
 
 
 def main() -> None:
@@ -92,13 +107,47 @@ def main() -> None:
     assert "external" not in html
 
     raw_payload = _extract_raw_rows_payload(html)
+    preview_baseline = _extract_hidden_input(html, "preview_baseline")
     decoded_rows = _decode_preview_payload(raw_payload)
     assert len(decoded_rows) == 1
     assert decoded_rows[0]["工种ID"] == "OT_PAYLOAD"
     assert decoded_rows[0]["工种名称"] == "隐藏数据检查工种"
     assert decoded_rows[0]["归属"] == "internal"
 
+    tampered_rows = [dict(decoded_rows[0])]
+    tampered_rows[0]["工种ID"] = "OT_TAMPERED"
+    tampered_rows[0]["工种名称"] = "篡改后的工种"
+
+    with app.test_client() as client:
+        confirm_resp = client.post(
+            "/process/excel/op-types/confirm",
+            data={
+                "mode": "overwrite",
+                "filename": "op_types.xlsx",
+                "raw_rows_json": _encode_preview_payload(tampered_rows),
+                "preview_baseline": preview_baseline,
+            },
+            follow_redirects=True,
+        )
+        assert confirm_resp.status_code == 200, confirm_resp.get_data(as_text=True)[:1000]
+        confirm_html = confirm_resp.get_data(as_text=True)
+
+    assert "导入被拒绝：数据已变化，请重新上传 Excel 并检查后再确认写入。" in confirm_html
+
+    from core.infrastructure.database import get_connection
+
+    conn = get_connection(str(tmpdir / "aps_test.db"))
+    try:
+        count = conn.execute("SELECT COUNT(1) FROM OpTypes WHERE op_type_id=?", ("OT_TAMPERED",)).fetchone()[0]
+        assert int(count) == 0, "篡改 raw_rows_json 后不能写入未预览过的工种"
+    finally:
+        conn.close()
+
     print("OK")
+
+
+def test_excel_hidden_payload_contract() -> None:
+    main()
 
 
 if __name__ == "__main__":

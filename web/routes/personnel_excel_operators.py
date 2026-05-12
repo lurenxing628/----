@@ -23,6 +23,7 @@ from .excel_utils import (
     build_error_rows_message,
     build_preview_baseline_token,
     collect_error_rows,
+    encode_preview_rows_payload,
     extract_import_stats,
     flash_import_result,
     load_confirm_payload,
@@ -75,7 +76,7 @@ def _render_excel_operator_page(
         title="批量维护人员",
         existing_list=existing_list,
         preview_rows=project_preview_rows_for_display(preview_rows, {"状态": operator_status_label}),
-        raw_rows_json=raw_rows_json,
+        raw_rows_json=encode_preview_rows_payload(raw_rows_json),
         preview_baseline=preview_baseline,
         mode=mode_value,
         filename=filename,
@@ -169,6 +170,7 @@ def excel_operator_preview():
         mode=mode,
         id_column="工号",
         extra_state=_operator_team_snapshot(team_svc),
+        rows=normalized_rows,
     )
 
     time_cost_ms = int((time.time() - start) * 1000)
@@ -212,6 +214,7 @@ def excel_operator_confirm():
         mode=mode,
         id_column="工号",
         extra_state=_operator_team_snapshot(team_svc),
+        rows=rows,
     ):
         flash("导入被拒绝：数据已变化，请重新上传 Excel 并检查后再确认写入。", "error")
         return _render_excel_operator_page(

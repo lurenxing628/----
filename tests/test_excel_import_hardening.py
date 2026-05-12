@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import importlib
 import io
-import json
 import os
 import re
 import sys
@@ -28,7 +27,7 @@ from core.services.common.excel_validators import (
 from core.services.common.normalize import is_blank_value
 from core.services.process.op_type_excel_import_service import OpTypeExcelImportService
 from core.services.scheduler.batch_service import BatchService
-from web.routes.excel_utils import ensure_unique_ids
+from web.routes.excel_utils import ensure_unique_ids, parse_preview_rows_json
 
 
 def _new_conn(tmp_path) -> tuple:
@@ -206,7 +205,7 @@ def test_operator_calendar_preview_fallback_trims_time_suffix(tmp_path, monkeypa
         finally:
             req_conn.close()
 
-    rows = json.loads(captured["raw_rows_json"])
+    rows = parse_preview_rows_json(captured["raw_rows_json"])
     assert rows[0]["日期"] == "2026-01-25"
     assert rows[0]["__id"] == "OP001|2026-01-25"
 
