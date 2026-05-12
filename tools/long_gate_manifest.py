@@ -340,17 +340,20 @@ def _load_json_file(path: str) -> Tuple[Optional[Dict[str, Any]], str]:
     return loaded, ""
 
 
-def _coerce_int(value: Any) -> int:
+def _coerce_int(value: Any, *, field: str, warnings: List[str]) -> int:
     try:
         return int(value or 0)
     except (TypeError, ValueError):
+        warnings.append(f"invalid numeric field: {field}={value!r}")
         return 0
 
 
-def _coerce_float(value: Any) -> Optional[float]:
+def _coerce_float(value: Any, *, field: str, warnings: List[str]) -> Optional[float]:
     try:
         return float(value)
     except (TypeError, ValueError):
+        if value is not None:
+            warnings.append(f"invalid numeric field: {field}={value!r}")
         return None
 
 
@@ -361,27 +364,28 @@ def load_local_quality_gate_receipts(repo_root: Optional[str] = None) -> List[Di
     for abs_path in sorted(glob.glob(os.path.join(receipts_dir, "*.json"))):
         rel_path = os.path.relpath(abs_path, root).replace("\\", "/")
         payload, error = _load_json_file(abs_path)
+        warnings: List[str] = []
         row: Dict[str, Any] = {"path": rel_path}
         if error:
-            row.update({"load_error": error, "display": "", "command_index": 0, "duration_unknown": True})
+            row.update({"load_error": error, "display": "", "command_index": 0, "duration_unknown": True, "warnings": warnings})
         else:
             payload = payload or {}
-            duration_value = payload.get("duration_s")
-            duration_s: Optional[float]
-            try:
-                duration_s = float(duration_value)
-            except (TypeError, ValueError):
-                duration_s = None
+            duration_s = _coerce_float(payload.get("duration_s"), field="duration_s", warnings=warnings)
             row.update(
                 {
                     "display": str(payload.get("display") or "").strip(),
-                    "command_index": _coerce_int(payload.get("command_index")),
-                    "returncode": _coerce_int(payload.get("returncode")),
+                    "command_index": _coerce_int(payload.get("command_index"), field="command_index", warnings=warnings),
+                    "returncode": _coerce_int(payload.get("returncode"), field="returncode", warnings=warnings),
                     "duration_s": duration_s,
                     "duration_unknown": duration_s is None,
                     "duration_kind": str(payload.get("duration_kind") or "").strip(),
-                    "original_duration_s": _coerce_float(payload.get("original_duration_s")),
+                    "original_duration_s": _coerce_float(
+                        payload.get("original_duration_s"),
+                        field="original_duration_s",
+                        warnings=warnings,
+                    ),
                     "execution_mode": str(payload.get("execution_mode") or "executed").strip() or "executed",
+                    "warnings": warnings,
                 }
             )
         rows.append(row)
@@ -427,6 +431,10 @@ def _format_receipt_line(receipt: Mapping[str, Any]) -> str:
     return f"    receipt: {path} ({duration})"
 
 
+def _format_receipt_warnings(receipt: Mapping[str, Any]) -> List[str]:
+    return [f"    warning: {item}" for item in list(receipt.get("warnings") or [])]
+
+
 def print_long_gate_manifest(manifest: Mapping[str, Any], *, include_local_receipts: bool = False) -> None:
     entries = list(manifest.get("entries") or [])
     print("Long gate manifest")
@@ -439,6 +447,8 @@ def print_long_gate_manifest(manifest: Mapping[str, Any], *, include_local_recei
         if include_local_receipts:
             for receipt in list(entry.get("local_receipts") or []):
                 print(_format_receipt_line(receipt))
+                for warning in _format_receipt_warnings(receipt):
+                    print(warning)
     if include_local_receipts:
         has_receipts = any(entry.get("local_receipts") for entry in entries)
         warnings = [str(item) for item in list(manifest.get("warnings") or [])]

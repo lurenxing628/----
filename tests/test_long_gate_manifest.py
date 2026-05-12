@@ -186,6 +186,9 @@ def test_load_local_receipts_tolerates_bad_numeric_fields(tmp_path):
     assert receipts[0]["command_index"] == 0
     assert receipts[0]["returncode"] == 0
     assert receipts[0]["duration_unknown"] is True
+    assert "invalid numeric field: command_index='bad'" in receipts[0]["warnings"]
+    assert "invalid numeric field: returncode='bad'" in receipts[0]["warnings"]
+    assert "invalid numeric field: duration_s='bad'" in receipts[0]["warnings"]
 
 
 def test_local_receipts_report_reuse_overhead_and_original_duration(tmp_path):
