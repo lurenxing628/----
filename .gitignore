@@ -80,6 +80,8 @@ evidence/FullSelfTest/logs/
 evidence/QualityGate/quality_gate_manifest.json
 evidence/QualityGate/receipts/
 evidence/QualityGate/logs/
+evidence/QualityGate/long_gate/
+evidence/QualityGate/collect_nodeids.json
 evidence/QualityGate/current_full_test_debt.json
 tmp_binding_probe/
 

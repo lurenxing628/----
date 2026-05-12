@@ -148,6 +148,50 @@ def _small_quality_gate_plan():
     ]
 
 
+def _write_long_gate_collect_input(repo_root: Path, text: str = "def test_cached_collect():\n    assert True\n") -> Path:
+    test_path = repo_root / "tests" / "test_cached_collect.py"
+    test_path.parent.mkdir(parents=True, exist_ok=True)
+    test_path.write_text(text, encoding="utf-8")
+    return test_path
+
+
+def _collect_long_gate_entry(module, command_plan, repo_root: Path) -> dict:
+    manifest = module.build_manifest_from_quality_gate_plan(command_plan, repo_root=str(repo_root))
+    return next(
+        entry for entry in manifest["entries"] if str(entry.get("entry_id") or "") == module.ENTRY_PYTEST_COLLECT_ALL
+    )
+
+
+def _seed_collect_long_gate_success(
+    module,
+    command_plan,
+    repo_root: Path,
+    *,
+    stdout: str = "tests/test_cached_collect.py::test_cached_collect\n",
+) -> dict:
+    entry = _collect_long_gate_entry(module, command_plan, repo_root)
+    fingerprint = module.fingerprint_entry(entry, str(repo_root))
+    collect_payload = module.build_collect_nodeids_payload(
+        stdout,
+        pytest_version=module._pytest_version(),
+        collect_stdout_log_path="evidence/QualityGate/logs/seed-collect.stdout.log",
+    )
+    collect_rel_path = module.write_collect_nodeids(collect_payload, repo_root=str(repo_root))
+    module.write_long_gate_success(
+        entry,
+        fingerprint,
+        {"stdout": stdout, "stderr": "", "returncode": 0, "duration_s": 12.5},
+        [str(repo_root / collect_rel_path)],
+        repo_root=str(repo_root),
+    )
+    return entry
+
+
+def _load_receipt_payload(module, repo_root: Path, manifest: dict, index: int) -> dict:
+    receipt_entry = manifest["command_receipts"][index]
+    return module.json.loads((repo_root / receipt_entry["path"]).read_text(encoding="utf-8"))
+
+
 def test_shared_quality_registry_does_not_split_quality_gate_error_identity():
     repo_root = _repo_root()
     if repo_root not in sys.path:
@@ -255,6 +299,10 @@ def test_main_runs_guard_preflight_before_static_and_startup_checks(monkeypatch,
     assert "tools/quality_gate_support.py" in module.QUALITY_GATE_TOOL_PATHS
     assert "tools/git_hook_checks.py" in module.QUALITY_GATE_TOOL_PATHS
     assert "tools/test_registry.py" in module.QUALITY_GATE_TOOL_PATHS
+    assert "tools/long_gate_cache.py" in module.QUALITY_GATE_TOOL_PATHS
+    assert "tools/long_gate_collect.py" in module.QUALITY_GATE_TOOL_PATHS
+    assert "tools/long_gate_fingerprint.py" in module.QUALITY_GATE_TOOL_PATHS
+    assert "tools/long_gate_manifest.py" in module.QUALITY_GATE_TOOL_PATHS
     assert "scripts/sync_debt_ledger.py" in module.QUALITY_GATE_TOOL_PATHS
     assert "python -m pytest -q " + " ".join(module.REQUIRED_TEST_ARGS) in displays
     assert "python scripts/sync_debt_ledger.py check" in displays
@@ -366,6 +414,10 @@ def test_full_test_debt_proof_is_in_shared_quality_gate_plan() -> None:
         "tools/git_hook_checks.py",
         "tools/test_debt_registry.py",
         "tools/test_registry.py",
+        "tools/long_gate_cache.py",
+        "tools/long_gate_collect.py",
+        "tools/long_gate_fingerprint.py",
+        "tools/long_gate_manifest.py",
         "tests/conftest.py",
         "tests/main_style_regression_runner.py",
         "tests/test_check_full_test_debt.py",
@@ -384,6 +436,10 @@ def test_full_test_debt_proof_is_in_shared_quality_gate_plan() -> None:
         "tools/git_hook_checks.py",
         "tools/test_debt_registry.py",
         "tools/test_registry.py",
+        "tools/long_gate_cache.py",
+        "tools/long_gate_collect.py",
+        "tools/long_gate_fingerprint.py",
+        "tools/long_gate_manifest.py",
         "tests/conftest.py",
         "tests/main_style_regression_runner.py",
     ]:
@@ -391,6 +447,64 @@ def test_full_test_debt_proof_is_in_shared_quality_gate_plan() -> None:
 
     assert "tools/check_full_test_debt.py" in " ".join(displays)
     assert tuple(module.REQUIRED_TEST_ARGS) == tuple(shared.iter_quality_gate_required_tests())
+
+
+def test_quality_gate_receipt_proof_requires_execution_mode_fields() -> None:
+    shared = _shared_quality_registry()
+    command = _small_quality_gate_plan()[0]
+    stdout = "tests/test_run_quality_gate.py::test_quality_gate_receipt_proof_requires_execution_mode_fields\n"
+    payload = shared.build_quality_gate_command_receipt(
+        command,
+        run_id="run-1",
+        command_index=1,
+        returncode=0,
+        stdout=stdout,
+        stderr="",
+        stdout_log_path="evidence/QualityGate/logs/collect.stdout.log",
+        stderr_log_path="evidence/QualityGate/logs/collect.stderr.log",
+    )
+    payload.update({"execution_mode": "executed", "timed_out": False, "interrupted": False, "partial_write": False})
+
+    assert (
+        shared._verify_quality_gate_receipt_payload(
+            payload,
+            command,
+            index=1,
+            run_id="run-1",
+            current_collect_stdout=stdout,
+            current_collect_stderr="",
+        )
+        is None
+    )
+
+    missing_mode = dict(payload)
+    missing_mode.pop("execution_mode")
+    assert (
+        shared._verify_quality_gate_receipt_payload(
+            missing_mode,
+            command,
+            index=1,
+            run_id="run-1",
+            current_collect_stdout=stdout,
+            current_collect_stderr="",
+        )
+        == "UNBOUND: quality gate command receipt execution_mode mismatch"
+    )
+
+    bad_reuse = dict(payload)
+    bad_reuse["execution_mode"] = "reused_success_cache"
+    bad_reuse["reused_from"] = {}
+    assert (
+        shared._verify_quality_gate_receipt_payload(
+            bad_reuse,
+            command,
+            index=1,
+            run_id="run-1",
+            current_collect_stdout=stdout,
+            current_collect_stderr="",
+        )
+        == "UNBOUND: quality gate command receipt reused_from result_path missing"
+    )
 
 
 @pytest.mark.parametrize(
@@ -615,6 +729,7 @@ def test_main_rebuilds_ignored_receipts_without_dirtying_clean_worktree(monkeypa
         "evidence/QualityGate/quality_gate_manifest.json",
         "evidence/QualityGate/receipts/",
         "evidence/QualityGate/logs/",
+        "evidence/QualityGate/collect_nodeids.json",
         "evidence/QualityGate/current_full_test_debt.json",
     ]
     assert len(manifest["command_receipts"]) == len(manifest["commands"])
@@ -761,6 +876,10 @@ def test_main_writes_quality_gate_manifest_with_git_and_collection_proof(monkeyp
     assert "tools/quality_gate_operations.py" in {item["path"] for item in manifest["gate_sources"]}
     assert "scripts/sync_debt_ledger.py" in {item["path"] for item in manifest["gate_sources"]}
     assert "tools/test_registry.py" in {item["path"] for item in manifest["gate_sources"]}
+    assert "tools/long_gate_cache.py" in {item["path"] for item in manifest["gate_sources"]}
+    assert "tools/long_gate_collect.py" in {item["path"] for item in manifest["gate_sources"]}
+    assert "tools/long_gate_fingerprint.py" in {item["path"] for item in manifest["gate_sources"]}
+    assert "tools/long_gate_manifest.py" in {item["path"] for item in manifest["gate_sources"]}
     assert ".github/workflows/quality.yml" in {item["path"] for item in manifest["gate_sources"]}
     assert "pyproject.toml" in {item["path"] for item in manifest["gate_sources"]}
     assert manifest["collection_proof"]["default_collect_nodeids"]
@@ -970,6 +1089,221 @@ def test_main_allow_dirty_resumes_from_previous_failed_command(monkeypatch, tmp_
     assert len(manifest["commands"]) == 4
     assert len(manifest["command_receipts"]) == 4
     assert not stale_current_debt.exists()
+    for receipt_index in range(manifest["resume"]["skip_count"]):
+        receipt_payload = _load_receipt_payload(module, repo_root, manifest, receipt_index)
+        assert receipt_payload["execution_mode"] == "resumed_success_prefix"
+        assert receipt_payload["reused_from"]["run_id"] == "old-run"
+        assert receipt_payload["duration_kind"] == "resume_overhead"
+        assert receipt_payload["original_duration_s"] >= 0
+
+
+def test_main_long_gate_cache_explain_prints_decision_without_running(monkeypatch, tmp_path, capsys):
+    module = _import_run_quality_gate()
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    command_plan = _small_quality_gate_plan()
+    monkeypatch.setattr(module, "REPO_ROOT", str(repo_root))
+    monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("quality gate command should not run in explain mode")
+
+    monkeypatch.setattr(module, "_run_command", fail_if_called)
+
+    assert module.main(["--long-gate-cache-explain"]) == 0
+
+    output = capsys.readouterr().out
+    assert "Long gate cache decisions" in output
+    assert "explain mode prints decisions only; it is not a quality gate proof" in output
+    assert "- pytest_collect_all: RUN" in output
+    assert "no previous success cache" in output
+
+
+def test_long_gate_cache_explain_and_no_cache_are_mutually_exclusive():
+    module = _import_run_quality_gate()
+
+    with pytest.raises(SystemExit):
+        module._parse_args(["--long-gate-cache-explain", "--no-long-gate-cache"])
+
+
+def test_main_long_gate_cache_reuses_collect_only_success(monkeypatch, tmp_path, capsys):
+    module = _import_run_quality_gate()
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    command_plan = _small_quality_gate_plan()
+    _patch_basic_gate_environment(monkeypatch, module, repo_root, statuses=[[], [], [], []])
+    monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
+
+    calls = []
+
+    def fake_run_command(display, args, capture_output=False):
+        calls.append(display)
+        if display == "python -m ruff --version":
+            return {"stdout": "ruff 0.15.4", "stderr": "", "returncode": 0}
+        if display == "python -m pyright --version":
+            return {"stdout": "pyright 1.1.406", "stderr": "", "returncode": 0}
+        if display == "python -m pytest --collect-only -q tests":
+            return {
+                "stdout": "tests/test_run_quality_gate.py::test_main_long_gate_cache_reuses_collect_only_success\n",
+                "stderr": "",
+                "returncode": 0,
+            }
+        return {"stdout": "", "stderr": "", "returncode": 0}
+
+    monkeypatch.setattr(module, "_run_command", fake_run_command)
+
+    assert module.main(["--long-gate-cache"]) == 0
+    first_run_calls = list(calls)
+    assert "python -m pytest --collect-only -q tests" in first_run_calls
+    collect_payload = module.json.loads(
+        (repo_root / "evidence" / "QualityGate" / "collect_nodeids.json").read_text(encoding="utf-8")
+    )
+    assert collect_payload["nodeids"] == [
+        "tests/test_run_quality_gate.py::test_main_long_gate_cache_reuses_collect_only_success"
+    ]
+    assert collect_payload["nodeid_hash"]
+    assert collect_payload["collect_stdout_log_path"].startswith("evidence/QualityGate/logs/")
+    success_cache = module.json.loads(
+        (
+            repo_root
+            / "evidence"
+            / "QualityGate"
+            / "long_gate"
+            / "results"
+            / "pytest_collect_all.success.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert success_cache["output_files"] == [
+        {
+            "path": "evidence/QualityGate/collect_nodeids.json",
+            "sha256": module._sha256_file(str(repo_root / "evidence" / "QualityGate" / "collect_nodeids.json")),
+        }
+    ]
+
+    calls.clear()
+    assert module.main(["--long-gate-cache"]) == 0
+    assert "python -m pytest --collect-only -q tests" not in calls
+    assert calls == ["python -m ruff --version", "python -m pyright --version", "python tools/failing_command.py"]
+
+    output = capsys.readouterr().out
+    assert "- pytest_collect_all: RUN" in output
+    assert "- pytest_collect_all: REUSE" in output
+    assert "[long-gate-reuse]" in output
+    manifest = _load_manifest(module, repo_root)
+    receipt_payload = _load_receipt_payload(module, repo_root, manifest, 0)
+    assert receipt_payload["execution_mode"] == "reused_success_cache"
+    assert receipt_payload["reused_from"]["fingerprint_hash"]
+    assert receipt_payload["duration_kind"] == "reuse_overhead"
+    assert receipt_payload["original_duration_s"] >= 0
+    assert receipt_payload["started_at"]
+    assert receipt_payload["ended_at"]
+    assert receipt_payload["duration_s"] >= 0
+    assert receipt_payload["timed_out"] is False
+    assert receipt_payload["interrupted"] is False
+    assert receipt_payload["partial_write"] is False
+
+
+def test_main_long_gate_cache_reruns_collect_when_input_changes(monkeypatch, tmp_path, capsys):
+    module = _import_run_quality_gate()
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    command_plan = _small_quality_gate_plan()
+    _patch_basic_gate_environment(monkeypatch, module, repo_root, statuses=[[], [], []])
+    monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
+    test_path = _write_long_gate_collect_input(repo_root)
+    _seed_collect_long_gate_success(module, command_plan, repo_root)
+    test_path.write_text("def test_cached_collect():\n    assert 1 == 1\n", encoding="utf-8")
+
+    calls = []
+
+    def fake_run_command(display, args, capture_output=False):
+        calls.append(display)
+        if display == "python -m ruff --version":
+            return {"stdout": "ruff 0.15.4", "stderr": "", "returncode": 0}
+        if display == "python -m pyright --version":
+            return {"stdout": "pyright 1.1.406", "stderr": "", "returncode": 0}
+        if display == "python -m pytest --collect-only -q tests":
+            return {
+                "stdout": "tests/test_cached_collect.py::test_cached_collect\n",
+                "stderr": "",
+                "returncode": 0,
+            }
+        return {"stdout": "", "stderr": "", "returncode": 0}
+
+    monkeypatch.setattr(module, "_run_command", fake_run_command)
+
+    assert module.main(["--long-gate-cache"]) == 0
+
+    assert "python -m pytest --collect-only -q tests" in calls
+    output = capsys.readouterr().out
+    assert "- pytest_collect_all: RUN" in output
+    assert "modified input file: tests/test_cached_collect.py" in output
+
+
+def test_dirty_long_gate_cache_does_not_write_success_cache(monkeypatch, tmp_path, capsys):
+    module = _import_run_quality_gate()
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    command_plan = _small_quality_gate_plan()
+    _patch_basic_gate_environment(monkeypatch, module, repo_root, statuses=[[" M app.py"], [" M app.py"]])
+    monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
+
+    def fake_run_command(display, args, capture_output=False):
+        if display == "python -m ruff --version":
+            return {"stdout": "ruff 0.15.4", "stderr": "", "returncode": 0}
+        if display == "python -m pyright --version":
+            return {"stdout": "pyright 1.1.406", "stderr": "", "returncode": 0}
+        if display == "python -m pytest --collect-only -q tests":
+            return {
+                "stdout": "tests/test_cached_collect.py::test_cached_collect\n",
+                "stderr": "",
+                "returncode": 0,
+            }
+        return {"stdout": "", "stderr": "", "returncode": 0}
+
+    monkeypatch.setattr(module, "_run_command", fake_run_command)
+
+    assert module.main(["--allow-dirty-worktree", "--long-gate-cache"]) == 2
+
+    output = capsys.readouterr().out
+    assert "跳过 long-gate success cache 写入" in output
+    assert not (
+        repo_root / "evidence" / "QualityGate" / "long_gate" / "results" / "pytest_collect_all.success.json"
+    ).exists()
+
+
+def test_resume_success_prefix_wins_before_long_gate_cache(monkeypatch, tmp_path, capsys):
+    module = _import_run_quality_gate()
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    command_plan = _small_quality_gate_plan()
+    _write_long_gate_collect_input(repo_root)
+    _seed_collect_long_gate_success(module, command_plan, repo_root)
+    _patch_basic_gate_environment(monkeypatch, module, repo_root, statuses=[[" M app.py"], [" M app.py"]])
+    _seed_failed_manifest_with_receipts(module, repo_root, command_plan, failed_index=4)
+    monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
+
+    calls = []
+
+    def fake_run_command(display, args, capture_output=False):
+        calls.append(display)
+        return {"stdout": "", "stderr": "", "returncode": 0}
+
+    monkeypatch.setattr(module, "_run_command", fake_run_command)
+
+    assert module.main(["--allow-dirty-worktree", "--long-gate-cache"]) == 2
+
+    output = capsys.readouterr().out
+    assert "[resume-skip]" in output
+    assert "[long-gate-reuse]" not in output
+    assert calls == ["python tools/failing_command.py"]
+    manifest = _load_manifest(module, repo_root)
+    for receipt_index in range(manifest["resume"]["skip_count"]):
+        receipt_payload = _load_receipt_payload(module, repo_root, manifest, receipt_index)
+        assert receipt_payload["execution_mode"] == "resumed_success_prefix"
+        assert receipt_payload["duration_kind"] == "resume_overhead"
+        assert receipt_payload["original_duration_s"] >= 0
+        assert receipt_payload["reused_from"]["run_id"] == "old-run"
 
 
 def test_main_does_not_resume_when_previous_manifest_head_sha_differs(monkeypatch, tmp_path, capsys):

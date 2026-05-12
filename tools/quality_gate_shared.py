@@ -61,6 +61,10 @@ QUALITY_GATE_TOOL_PATHS = [
     "tools/git_hook_checks.py",
     "tools/check_full_test_debt.py",
     "tools/collect_full_test_debt.py",
+    "tools/long_gate_cache.py",
+    "tools/long_gate_collect.py",
+    "tools/long_gate_fingerprint.py",
+    "tools/long_gate_manifest.py",
     "tools/quality_gate_entries.py",
     "tools/quality_gate_ledger.py",
     "tools/quality_gate_operations.py",
@@ -454,6 +458,11 @@ def _normalize_command_receipt_payload(payload: Dict[str, Any]) -> Dict[str, Any
         "stderr_sha256": str(payload.get("stderr_sha256") or "").strip(),
         "stdout_log_path": str(payload.get("stdout_log_path") or "").replace("\\", "/"),
         "stderr_log_path": str(payload.get("stderr_log_path") or "").replace("\\", "/"),
+        "execution_mode": str(payload.get("execution_mode") or "").strip(),
+        "reused_from": dict(payload.get("reused_from") if isinstance(payload.get("reused_from"), dict) else {}),
+        "timed_out": payload.get("timed_out"),
+        "interrupted": payload.get("interrupted"),
+        "partial_write": payload.get("partial_write"),
     }
 
 
@@ -729,6 +738,11 @@ def build_quality_gate_command_receipt(
             "stderr_sha256": _hash_command_output(str(stderr or ""), policy=output_policy),
             "stdout_log_path": str(stdout_log_path or "").replace("\\", "/"),
             "stderr_log_path": str(stderr_log_path or "").replace("\\", "/"),
+            "execution_mode": "executed",
+            "reused_from": {},
+            "timed_out": False,
+            "interrupted": False,
+            "partial_write": False,
         }
     )
 
@@ -958,6 +972,29 @@ def _verify_receipt_output_hashes(
     return None
 
 
+def _verify_receipt_execution_fields(receipt: Dict[str, Any]) -> Optional[str]:
+    execution_mode = str(receipt.get("execution_mode") or "").strip()
+    if execution_mode not in {"executed", "reused_success_cache", "resumed_success_prefix"}:
+        return "UNBOUND: quality gate command receipt execution_mode mismatch"
+    for field_name in ("timed_out", "interrupted", "partial_write"):
+        if not isinstance(receipt.get(field_name), bool):
+            return f"UNBOUND: quality gate command receipt {field_name} mismatch"
+    if any(bool(receipt.get(field_name)) for field_name in ("timed_out", "interrupted", "partial_write")):
+        return "UNBOUND: quality gate command receipt incomplete execution"
+    reused_from = receipt.get("reused_from") if isinstance(receipt.get("reused_from"), dict) else {}
+    if execution_mode == "reused_success_cache":
+        if not str(reused_from.get("result_path") or "").strip():
+            return "UNBOUND: quality gate command receipt reused_from result_path missing"
+        if not str(reused_from.get("fingerprint_hash") or "").strip():
+            return "UNBOUND: quality gate command receipt reused_from fingerprint_hash missing"
+    if execution_mode == "resumed_success_prefix":
+        if not str(reused_from.get("receipt_path") or "").strip():
+            return "UNBOUND: quality gate command receipt reused_from receipt_path missing"
+        if not str(reused_from.get("run_id") or "").strip():
+            return "UNBOUND: quality gate command receipt reused_from run_id missing"
+    return None
+
+
 def _verify_quality_gate_receipt_payload(
     receipt_payload: Dict[str, Any],
     command: Dict[str, Any],
@@ -979,6 +1016,7 @@ def _verify_quality_gate_receipt_payload(
             current_collect_stdout=current_collect_stdout,
             current_collect_stderr=current_collect_stderr,
         ),
+        _verify_receipt_execution_fields(receipt),
     ):
         if error:
             return error

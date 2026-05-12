@@ -78,6 +78,24 @@ def test_blocked_paths_include_launcher_log() -> None:
     ]
 
 
+def test_blocked_paths_include_long_gate_runtime_artifacts() -> None:
+    assert git_hook_checks._blocked_paths(
+        [
+            "evidence/QualityGate/long_gate/results/pytest_collect_all.success.json",
+            "evidence/QualityGate/collect_nodeids.json",
+        ]
+    ) == [
+        (
+            "evidence/QualityGate/long_gate/results/pytest_collect_all.success.json",
+            "长耗时门禁缓存是本地运行产物，不应该混进普通提交",
+        ),
+        (
+            "evidence/QualityGate/collect_nodeids.json",
+            "pytest collect nodeid 快照是运行产物，应由当前门禁重新生成",
+        ),
+    ]
+
+
 def test_run_ruff_command_uses_project_python(monkeypatch, tmp_path: Path) -> None:
     calls = []
     project_python = str(tmp_path / ".venv" / "bin" / "python")
@@ -134,7 +152,7 @@ def test_main_does_not_reexec_when_tests_pass_explicit_argv(monkeypatch, tmp_pat
 
 
 def test_same_executable_path_accepts_current_interpreter_realpath() -> None:
-    assert git_hook_checks._same_executable_path(sys.executable, Path(sys.executable).resolve())
+    assert git_hook_checks._same_executable_path(sys.executable, str(Path(sys.executable).resolve()))
 
 
 def test_pre_commit_config_wires_quality_gate_and_ruff_hooks() -> None:

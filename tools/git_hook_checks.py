@@ -30,6 +30,8 @@ BLOCKED_PATH_RULES: Tuple[Tuple[str, str], ...] = (
     ("evidence/QualityGate/current_full_test_debt.json", "质量门禁债务快照是运行产物，应由当前门禁重新生成"),
     ("evidence/QualityGate/receipts/", "质量门禁 receipts 是运行产物，应由当前门禁重新生成"),
     ("evidence/QualityGate/logs/", "质量门禁日志是运行产物，不应该混进普通提交"),
+    ("evidence/QualityGate/long_gate/", "长耗时门禁缓存是本地运行产物，不应该混进普通提交"),
+    ("evidence/QualityGate/collect_nodeids.json", "pytest collect nodeid 快照是运行产物，应由当前门禁重新生成"),
     ("evidence/FullSelfTest/pytest_tests_output.txt", "FullSelfTest 原始输出很重，应保留格式化报告而不是原始控制台输出"),
     ("aps_test.db", "本地测试数据库，不属于项目源码"),
     ("aps_test.db-", "本地测试数据库旁路文件，不属于项目源码"),
