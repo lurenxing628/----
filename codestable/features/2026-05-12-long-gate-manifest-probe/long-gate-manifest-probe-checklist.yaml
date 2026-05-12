@@ -1,0 +1,36 @@
+feature: 2026-05-12-long-gate-manifest-probe
+created: 2026-05-12
+
+steps:
+  - action: "编排骨架：新增 feature 设计和 checklist，并回写 roadmap item 为 in-progress"
+    exit_signal: "CodeStable roadmap/features YAML 校验通过"
+    status: done
+  - action: "清单模块：从真实质量门禁 command plan 生成 long gate manifest entries"
+    exit_signal: "build_long_gate_manifest() 返回当前主要门禁 entry 分类"
+    status: done
+  - action: "本地 receipt 探测：支持 --include-local-receipts 并解释缺失、损坏或未知 receipt"
+    exit_signal: "CLI 在无 receipt 和未知 receipt 场景输出清晰提示"
+    status: done
+  - action: "合同测试：覆盖真实入口、分类、动态 args、pyright tools scope、无 receipt 提示和未知 receipt warning"
+    exit_signal: "tests/test_long_gate_manifest.py 定向通过"
+    status: done
+
+checks:
+  - item: "入口必须调用真实 build_quality_gate_command_plan()"
+    source: 名词契约
+    status: passed
+  - item: "manifest 包含 collect-only、full-test-debt、architecture、required、debt-ledger、startup、quickref 等主要分类"
+    source: 验收场景
+    status: passed
+  - item: "pyright tools entry 包含 QUALITY_GATE_TOOL_PATHS"
+    source: 名词契约
+    status: passed
+  - item: "没有本地 receipts 时输出 no receipts 提示"
+    source: 验收场景
+    status: passed
+  - item: "未知 receipt command 输出 warning，不静默丢弃"
+    source: 验收场景
+    status: passed
+  - item: "不新增 --long-gate-cache，不接入 run_quality_gate.py 执行循环"
+    source: 范围守护
+    status: passed

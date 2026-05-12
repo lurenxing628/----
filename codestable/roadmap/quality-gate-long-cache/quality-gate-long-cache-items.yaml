@@ -1,0 +1,195 @@
+roadmap: quality-gate-long-cache
+created: 2026-05-12
+last_reviewed: 2026-05-12
+
+items:
+  - slug: long-gate-manifest-probe
+    title: PR-0 长耗时门禁清单和本地 receipt 探测
+    description: "新增 tools/long_gate_manifest.py，从 build_quality_gate_command_plan() 生成长耗时门禁清单，提供 --print 和 --include-local-receipts 探测输出，不接入真实门禁执行。"
+    depends_on: []
+    status: done
+    feature: 2026-05-12-long-gate-manifest-probe
+    minimal_loop: false
+    primary_paths:
+      - tools/long_gate_manifest.py
+      - tools/quality_gate_shared.py
+      - tests/test_long_gate_manifest.py
+    exit_checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_long_gate_manifest.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m tools.long_gate_manifest --print
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m tools.long_gate_manifest --print --include-local-receipts
+    notes: "已完成：新增 tools/long_gate_manifest.py 和 tests/test_long_gate_manifest.py；清单从真实 command plan 生成，required/startup pytest 组只按真实动态 args 识别，不再按命令位置兜底；本地旧 receipt 没有 duration_s 时标 duration_unknown；没有 receipt 时输出无历史 receipt 提示；没有接入 run_quality_gate.py 执行循环。"
+
+  - slug: long-gate-cache-core
+    title: PR-1 输入指纹和成功缓存核心
+    description: "新增 long_gate_fingerprint.py 和 long_gate_cache.py，建立稳定文件集合指纹、环境指纹、命令 hash、success cache 读写、复用决策和损坏缓存绕过逻辑。"
+    depends_on: [long-gate-manifest-probe]
+    status: done
+    feature: 2026-05-12-long-gate-cache-core
+    minimal_loop: false
+    primary_paths:
+      - tools/long_gate_fingerprint.py
+      - tools/long_gate_cache.py
+      - .gitignore
+      - tests/test_long_gate_cache.py
+    exit_checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_long_gate_cache.py
+    notes: "已完成：新增 long_gate_fingerprint.py 和 long_gate_cache.py；文件集合指纹覆盖新增/删除/修改，success cache 只在 command/fingerprint/log/output 全匹配时复用；失败、timeout、interrupt、partial write、损坏 JSON、缺字段、日志或输出文件缺失、schema/command 变化都会 decision=run；已补 evidence/QualityGate/long_gate/ 忽略规则。"
+
+  - slug: collect-only-cache-output
+    title: PR-2 collect-only nodeid 输出缓存
+    description: "为 python -m pytest --collect-only -q tests 生成 collect_nodeids.json，记录 nodeids、nodeid_hash、pytest_version、stdout hash 和日志路径，并锁住输入变化后的失效解释。"
+    depends_on: [long-gate-cache-core]
+    status: done
+    feature: 2026-05-12-collect-only-cache-output
+    minimal_loop: false
+    primary_paths:
+      - tools/long_gate_manifest.py
+      - tools/long_gate_cache.py
+      - tools/long_gate_collect.py
+      - .gitignore
+      - tests/test_long_gate_collect_cache.py
+    exit_checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_long_gate_collect_cache.py
+    notes: "已完成：pytest_collect_all entry 已声明测试文件、conftest、pytest 配置、依赖约束、门禁工具、pytest 环境 key 和输出文件；新增 long_gate_collect.py 生成 collect_nodeids.json payload；测试已证明输入不变可复用，新增/删除/修改测试文件、修改 tests/conftest.py、pyproject.toml 或 requirements-dev.txt 都会使缓存失效；collect_nodeids.json 已加入忽略规则。"
+
+  - slug: quality-gate-runner-collect-cache
+    title: PR-3 run_quality_gate 接入 collect-only 成功复用
+    description: "把 long gate decision 接入 scripts/run_quality_gate.py 命令循环，但第一轮只允许 collect-only 复用；receipt 明确 execution_mode，运行开头显示执行/复用决策。"
+    depends_on: [collect-only-cache-output]
+    status: done
+    feature: 2026-05-12-quality-gate-runner-collect-cache
+    minimal_loop: true
+    primary_paths:
+      - scripts/run_quality_gate.py
+      - tools/quality_gate_shared.py
+      - tools/long_gate_manifest.py
+      - tools/long_gate_cache.py
+      - tools/long_gate_collect.py
+      - tools/git_hook_checks.py
+      - tests/test_run_quality_gate.py
+      - tests/test_git_hook_checks.py
+      - README.md
+      - 开发文档/README.md
+    exit_checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_run_quality_gate.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_long_gate_manifest.py tests/test_long_gate_cache.py tests/test_long_gate_collect_cache.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check scripts/run_quality_gate.py tests/test_run_quality_gate.py tools/long_gate_manifest.py tools/long_gate_fingerprint.py tools/long_gate_cache.py tools/long_gate_collect.py tests/test_long_gate_manifest.py tests/test_long_gate_cache.py tests/test_long_gate_collect_cache.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright scripts/run_quality_gate.py tests/test_run_quality_gate.py tools/long_gate_manifest.py tools/long_gate_fingerprint.py tools/long_gate_cache.py tools/long_gate_collect.py tests/test_long_gate_manifest.py tests/test_long_gate_cache.py tests/test_long_gate_collect_cache.py
+    notes: "已完成：新增 --long-gate-cache、--no-long-gate-cache、--long-gate-cache-explain；普通 --long-gate-cache 开头会输出 collect-only 决策表；单测里第一次走 collect-only 执行分支并写 collect_nodeids/success cache，第二次输入不变时复用；复用 receipt 写 execution_mode=reused_success_cache、reused_from、started_at、ended_at、duration_s、timed_out、interrupted、partial_write；失败续跑前缀会写 execution_mode=resumed_success_prefix；dirty 快速反馈不会写 long-gate success cache；本地 hook 会拦截 long_gate cache 和 collect_nodeids 运行产物。完整 summary.json/summary.md 留到 PR-9。"
+
+  - slug: full-test-debt-success-cache
+    title: PR-4 full-test-debt 整项成功复用
+    description: "为 python tools/check_full_test_debt.py 做整项成功缓存，校验 current_full_test_debt.json、full_test_debt_summary.json、collect nodeid hash、债务台账、测试、源码、collector、配置和依赖。"
+    depends_on: [quality-gate-runner-collect-cache]
+    status: planned
+    feature: null
+    minimal_loop: false
+    primary_paths:
+      - tools/check_full_test_debt.py
+      - tools/collect_full_test_debt.py
+      - tools/test_debt_registry.py
+      - tools/test_registry.py
+      - tools/quality_gate_shared.py
+      - scripts/run_quality_gate.py
+      - tests/test_long_gate_full_test_debt_cache.py
+    exit_checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_long_gate_full_test_debt_cache.py tests/test_check_full_test_debt.py tests/test_full_test_debt_registry_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py
+    notes: "第一阶段保守处理：core/web/data/plugins/app/config/schema/tests/台账/collector/pytest 配置任一变化都整体失效；nodeid 级增量留到后续增强。"
+
+  - slug: runtime-and-required-regression-cache
+    title: PR-5 启动链和必跑回归整组复用
+    description: "从真实 command plan 提取 required regression 和 startup runtime regression 两组 pytest 命令，做整组成功复用、动态 args hash、关键环境变量和输出文件校验。"
+    depends_on: [full-test-debt-success-cache]
+    status: planned
+    feature: null
+    minimal_loop: false
+    primary_paths:
+      - tools/long_gate_manifest.py
+      - tools/test_registry.py
+      - tools/quality_gate_shared.py
+      - scripts/run_quality_gate.py
+      - tests/test_long_gate_startup_regression_cache.py
+      - tests/test_long_gate_required_regression_cache.py
+    exit_checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_long_gate_startup_regression_cache.py tests/test_long_gate_required_regression_cache.py
+    notes: "startup args 或 required args 变化必须强制失效；无关 markdown 变化不能误伤 startup 缓存。"
+
+  - slug: architecture-file-scan-cache
+    title: PR-6 架构体检文件级扫描缓存
+    description: "把 quality_gate_scan.py 面向多文件的扫描拆出 scan_single_file_architecture、scan_files_with_cache、aggregate_architecture_scan，支持未变化文件复用扫描结果。"
+    depends_on: [runtime-and-required-regression-cache]
+    status: planned
+    feature: null
+    minimal_loop: false
+    primary_paths:
+      - tools/quality_gate_scan.py
+      - tests/test_architecture_fitness.py
+      - tests/test_architecture_scan_cache.py
+    exit_checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_architecture_scan_cache.py tests/test_architecture_fitness.py
+    notes: "文件 sha、scanner version、阈值未变时复用单文件扫描；ledger allowlist 变化不重扫 AST，但 aggregate 必须重算；scanner 代码变化全部重扫。"
+
+  - slug: debt-ledger-and-quickref-cache
+    title: PR-7 债务台账和 quickref 成功复用
+    description: "为 sync_debt_ledger.py check 和 check_quickref_vs_routes.py 做成功缓存，校验台账、扫描输入、路由、app factory、模板、静态资源、速查表和输出报告。"
+    depends_on: [architecture-file-scan-cache]
+    status: planned
+    feature: null
+    minimal_loop: false
+    primary_paths:
+      - scripts/sync_debt_ledger.py
+      - tools/quality_gate_ledger.py
+      - tools/quality_gate_operations.py
+      - tools/quality_gate_scan.py
+      - tests/check_quickref_vs_routes.py
+      - 开发文档/系统速查表.md
+      - tests/test_long_gate_debt_ledger_cache.py
+      - tests/test_long_gate_quickref_cache.py
+    exit_checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_long_gate_debt_ledger_cache.py tests/test_long_gate_quickref_cache.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tests/check_quickref_vs_routes.py
+    notes: "quickref_vs_routes.md 缺失或 hash 不一致必须失效；台账变化、scanner 脚本变化、route/template/nav 变化都必须失效。"
+
+  - slug: static-check-cache-and-fast-precheck
+    title: PR-8 ruff/pyright 全量缓存和快速预检
+    description: "为 formal ruff check、pyright gate config、pyright tool paths 做成功缓存，并新增只检查改动 Python 文件的 fast precheck。"
+    depends_on: [debt-ledger-and-quickref-cache]
+    status: planned
+    feature: null
+    minimal_loop: false
+    primary_paths:
+      - scripts/run_quality_gate.py
+      - tools/quality_gate_shared.py
+      - tools/fast_static_precheck.py
+      - tests/test_fast_static_precheck.py
+    exit_checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_fast_static_precheck.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright -p pyrightconfig.gate.json
+    notes: "fast precheck 只用于提前反馈，不能替代 formal full gate；任一 Python 文件、ruff/pyright 配置、依赖、QUALITY_GATE_TOOL_PATHS 变化都使 formal cache 失效。"
+
+  - slug: long-gate-summary-and-contract-tests
+    title: PR-9 输出收口、双跑验证和合同测试
+    description: "补齐 Long gate cache decisions、summary.json、summary.md、失败 copyable command/nodeid、损坏缓存解释、双跑验证和开发文档说明。"
+    depends_on: [static-check-cache-and-fast-precheck]
+    status: planned
+    feature: null
+    minimal_loop: false
+    primary_paths:
+      - scripts/run_quality_gate.py
+      - tools/long_gate_manifest.py
+      - tools/long_gate_cache.py
+      - tests/test_long_gate_summary_output.py
+      - README.md
+      - 开发文档/README.md
+    exit_checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_long_gate_cache.py tests/test_long_gate_manifest.py tests/test_long_gate_collect_cache.py tests/test_long_gate_full_test_debt_cache.py tests/test_long_gate_startup_regression_cache.py tests/test_architecture_scan_cache.py tests/test_fast_static_precheck.py tests/test_long_gate_debt_ledger_cache.py tests/test_long_gate_quickref_cache.py tests/test_long_gate_summary_output.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_run_quality_gate.py tests/test_check_full_test_debt.py tests/test_full_test_debt_registry_contract.py tests/test_sync_debt_ledger.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --long-gate-cache --long-gate-cache-explain
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --long-gate-cache
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --long-gate-cache
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
+    notes: "最终汇报必须分清 executed、reused、failed；门禁是否 clean proof 仍以干净工作区和最终 HEAD 为准。"

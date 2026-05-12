@@ -1,0 +1,36 @@
+feature: 2026-05-12-collect-only-cache-output
+created: 2026-05-12
+
+steps:
+  - action: "编排骨架：新增 feature 设计/checklist，并回写 roadmap item 为 in-progress"
+    exit_signal: "CodeStable roadmap/features YAML 校验通过"
+    status: done
+  - action: "manifest scope：补 collect-only 输入范围、环境 key 和输出文件"
+    exit_signal: "测试能读取 pytest_collect_all entry 的 collect scope"
+    status: done
+  - action: "collect 输出：新增 nodeid payload 生成和写文件 helper"
+    exit_signal: "nodeids、count、hash、by_file 输出正确"
+    status: done
+  - action: "合同测试：证明输入不变可复用，新增/删除/修改输入会失效"
+    exit_signal: "tests/test_long_gate_collect_cache.py 定向通过"
+    status: done
+
+checks:
+  - item: "collect stdout 生成 nodeids、count、hash、by_file 正确"
+    source: 验收场景
+    status: passed
+  - item: "输入没变且 collect_nodeids.json hash 匹配时 decision=reuse"
+    source: 验收场景
+    status: passed
+  - item: "新增测试文件会让 collect cache 失效"
+    source: 验收场景
+    status: passed
+  - item: "删除测试文件会让 collect cache 失效"
+    source: 验收场景
+    status: passed
+  - item: "修改 tests/conftest.py 会让 collect cache 失效"
+    source: 验收场景
+    status: passed
+  - item: "不接入 run_quality_gate.py，不执行 pytest collect"
+    source: 范围守护
+    status: passed

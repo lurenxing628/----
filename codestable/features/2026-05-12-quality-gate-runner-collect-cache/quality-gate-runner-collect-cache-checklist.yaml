@@ -1,0 +1,57 @@
+feature: 2026-05-12-quality-gate-runner-collect-cache
+created: 2026-05-12
+
+steps:
+  - action: "编排骨架：新增 feature 设计/checklist，并把 roadmap item 标为进行中"
+    exit_signal: "CodeStable roadmap/features YAML 校验通过"
+    status: done
+  - action: "CLI 接入：新增 --long-gate-cache、--no-long-gate-cache、--long-gate-cache-explain"
+    exit_signal: "explain 模式只输出决策，不执行门禁命令"
+    status: done
+  - action: "runner 接入：命令循环只对 pytest_collect_all 判断 success cache"
+    exit_signal: "输入不变时第二次运行不调用 pytest collect"
+    status: done
+  - action: "receipt 接入：复用时写 execution_mode 和 reused_from"
+    exit_signal: "本次 receipt 能看出复用来源"
+    status: done
+  - action: "receipt 耗时字段：新写 receipt 记录 started_at、ended_at、duration_s 和完整性布尔字段"
+    exit_signal: "测试能读取新字段，旧 receipt 仍兼容"
+    status: done
+  - action: "输出接入：普通 --long-gate-cache 运行开头打印决策表"
+    exit_signal: "输出包含 pytest_collect_all: RUN/REUSE"
+    status: done
+  - action: "合同测试：覆盖 explain、双跑复用和 clean worktree 生成物白名单"
+    exit_signal: "tests/test_run_quality_gate.py 定向和全文件通过"
+    status: done
+
+checks:
+  - item: "explain 模式不执行门禁命令"
+    source: 验收场景
+    status: passed
+  - item: "第一次无缓存时走 collect-only 执行分支"
+    source: 验收场景
+    status: passed
+  - item: "第二次输入不变时复用 collect-only"
+    source: 验收场景
+    status: passed
+  - item: "复用 receipt 写 execution_mode 和 reused_from"
+    source: 验收场景
+    status: passed
+  - item: "新写 receipt 包含耗时和完整性字段"
+    source: 验收场景
+    status: passed
+  - item: "普通 --long-gate-cache 输出决策表"
+    source: 验收场景
+    status: passed
+  - item: "collect_nodeids.json 不会污染 clean-worktree proof"
+    source: 范围守护
+    status: passed
+  - item: "失败续跑前缀优先于 long gate cache，并写 resumed_success_prefix receipt"
+    source: 对抗审核补强
+    status: passed
+  - item: "dirty 快速反馈不写 long gate success cache"
+    source: 对抗审核补强
+    status: passed
+  - item: "输入文件变化时 collect-only cache 失效并重新执行"
+    source: 对抗审核补强
+    status: passed

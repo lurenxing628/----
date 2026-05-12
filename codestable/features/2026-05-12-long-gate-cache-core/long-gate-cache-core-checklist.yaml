@@ -1,0 +1,42 @@
+feature: 2026-05-12-long-gate-cache-core
+created: 2026-05-12
+
+steps:
+  - action: "编排骨架：新增 feature 设计/checklist，并回写 roadmap item 为 in-progress"
+    exit_signal: "CodeStable roadmap/features YAML 校验通过"
+    status: done
+  - action: "输入指纹：实现命令、环境、文件集合和 entry 指纹"
+    exit_signal: "单测证明文件新增、删除、修改会改变 hash"
+    status: done
+  - action: "成功缓存：实现 success cache 读写、日志/output 校验和复用决策"
+    exit_signal: "单测覆盖 reuse 与 run 的主要失效场景"
+    status: done
+  - action: "忽略规则和验证：补 .gitignore，跑定向 pytest、ruff、pyright"
+    exit_signal: "PR-1 定向验证全部通过"
+    status: done
+
+checks:
+  - item: "同一 entry、同一文件输入、同一环境时指纹 hash 稳定"
+    source: 验收场景
+    status: passed
+  - item: "新增、删除、修改输入文件会改变文件集合指纹"
+    source: 验收场景
+    status: passed
+  - item: "上次成功且 command/fingerprint/log/output 全匹配时允许 reuse"
+    source: 验收场景
+    status: passed
+  - item: "上次失败、timeout、interrupted、partial write 不允许 reuse"
+    source: 验收场景
+    status: passed
+  - item: "cache JSON 损坏或缺字段不允许 reuse，并解释原因"
+    source: 验收场景
+    status: passed
+  - item: "stdout/stderr log 或 output file 缺失/hash 不一致不允许 reuse"
+    source: 验收场景
+    status: passed
+  - item: "command args 或 schema version 变化不允许 reuse"
+    source: 验收场景
+    status: passed
+  - item: "不接入 run_quality_gate.py，不新增 --long-gate-cache"
+    source: 范围守护
+    status: passed
