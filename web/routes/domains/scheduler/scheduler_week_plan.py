@@ -115,6 +115,13 @@ def _simulate_result_version(result: Any) -> int:
     return parse_required_int(raw_version, field="排产版本", min_value=1)
 
 
+def _result_summary_dict(result: Any) -> dict:
+    if not isinstance(result, dict):
+        return {}
+    summary = result.get("summary")
+    return summary if isinstance(summary, dict) else {}
+
+
 def _flash_simulate_summary(summary, summary_display, *, completion_status: str) -> None:
     _flash_summary_primary_degradation(summary_display)
     _surface_secondary_degradation_messages(
@@ -281,10 +288,11 @@ def simulate_schedule():
             strict_mode=strict_mode,
         )
         ver = _simulate_result_version(result)
-        summary = result.get("summary") or {}
+        result_dict = result if isinstance(result, dict) else {}
+        summary = _result_summary_dict(result_dict)
         summary_display = build_summary_display_state(
-            summary if isinstance(summary, dict) else None,
-            result_status=result.get("result_status") or ScheduleResultStatus.SIMULATED.value,
+            summary,
+            result_status=result_dict.get("result_status") or ScheduleResultStatus.SIMULATED.value,
         )
         completion_status = str(summary_display.get("completion_status") or "success")
         _flash_simulate_completion(version=ver, completion_status=completion_status)
