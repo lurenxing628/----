@@ -13,6 +13,10 @@ import sys
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
 
+class LongGateFingerprintError(RuntimeError):
+    pass
+
+
 def stable_json_hash(payload: Any) -> str:
     text = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
@@ -29,7 +33,7 @@ def _sha256_file(path: str) -> str:
     return hasher.hexdigest()
 
 
-def _run_git_paths(repo_root: str, args: Sequence[str]) -> List[str]:
+def _run_git_paths(repo_root: str, args: Sequence[str], *, strict: bool) -> List[str]:
     try:
         proc = subprocess.run(
             ["git", *list(args)],
@@ -37,9 +41,26 @@ def _run_git_paths(repo_root: str, args: Sequence[str]) -> List[str]:
             capture_output=True,
             timeout=10,
         )
-    except Exception:
+    except subprocess.TimeoutExpired as exc:
+        if strict:
+            raise LongGateFingerprintError(
+                f"git command timed out while building long gate fingerprint: git {' '.join(args)}"
+            ) from exc
+        return []
+    except OSError as exc:
+        if strict:
+            raise LongGateFingerprintError(
+                f"git command failed while building long gate fingerprint: git {' '.join(args)}: {exc}"
+            ) from exc
         return []
     if int(proc.returncode) != 0:
+        if strict:
+            stderr = bytes(proc.stderr or b"").decode("utf-8", errors="replace").strip()
+            stdout = bytes(proc.stdout or b"").decode("utf-8", errors="replace").strip()
+            detail = stderr or stdout or f"returncode={proc.returncode}"
+            raise LongGateFingerprintError(
+                f"git command failed while building long gate fingerprint: git {' '.join(args)}: {detail}"
+            )
         return []
     return [
         raw.decode("utf-8", errors="replace").replace("\\", "/")
@@ -48,10 +69,21 @@ def _run_git_paths(repo_root: str, args: Sequence[str]) -> List[str]:
     ]
 
 
-def _git_path_sources(repo_root: str) -> Tuple[Set[str], Set[str]]:
-    tracked = set(_run_git_paths(repo_root, ["ls-files", "-z"]))
-    untracked = set(_run_git_paths(repo_root, ["ls-files", "--others", "--exclude-standard", "-z"]))
-    return tracked, untracked
+def _git_path_sources(repo_root: str, *, strict: bool) -> Tuple[Set[str], Set[str], str]:
+    try:
+        tracked = set(_run_git_paths(repo_root, ["ls-files", "-z"], strict=True))
+        untracked = set(
+            _run_git_paths(
+                repo_root,
+                ["ls-files", "--others", "--exclude-standard", "-z"],
+                strict=True,
+            )
+        )
+    except LongGateFingerprintError:
+        if strict:
+            raise
+        return set(), set(), "unavailable"
+    return tracked, untracked, "available"
 
 
 def _has_glob_chars(value: str) -> bool:
@@ -186,9 +218,9 @@ def _fingerprint_one_file(rel_path: str, repo_root: str, tracked: Set[str], untr
     }
 
 
-def fingerprint_files(paths_or_patterns: Sequence[str], repo_root: str) -> Dict[str, Any]:
+def fingerprint_files(paths_or_patterns: Sequence[str], repo_root: str, *, strict: bool = False) -> Dict[str, Any]:
     root = os.path.abspath(repo_root)
-    tracked, untracked = _git_path_sources(root)
+    tracked, untracked, git_source_status = _git_path_sources(root, strict=strict)
     rel_paths: Set[str] = set()
     for scope in list(paths_or_patterns or []):
         rel_paths.update(_candidate_paths_for_scope(str(scope), root, tracked, untracked))
@@ -204,6 +236,7 @@ def fingerprint_files(paths_or_patterns: Sequence[str], repo_root: str) -> Dict[
         for row in files
     ]
     return {
+        "git_source_status": git_source_status,
         "paths_hash": stable_json_hash(path_rows),
         "content_hash": stable_json_hash(files),
         "files": files,
@@ -220,27 +253,33 @@ def fingerprint_command(command: Mapping[str, Any]) -> str:
     return stable_json_hash(normalized)
 
 
-def _pytest_version() -> str:
+def _pytest_version(*, strict: bool = False) -> str:
     try:
         return importlib.metadata.version("pytest")
-    except importlib.metadata.PackageNotFoundError:
-        return ""
+    except importlib.metadata.PackageNotFoundError as exc:
+        if strict:
+            raise LongGateFingerprintError("pytest distribution is required for long gate fingerprint") from exc
+        return "__missing_pytest_distribution__"
 
 
-def _runtime_fingerprint_value(key: str) -> Optional[str]:
+def pytest_distribution_version(*, strict: bool = False) -> str:
+    return _pytest_version(strict=strict)
+
+
+def _runtime_fingerprint_value(key: str, *, strict: bool = False) -> Optional[str]:
     if key == "python_executable_realpath":
         return os.path.realpath(sys.executable)
     if key == "python_version":
         return sys.version.splitlines()[0].strip()
     if key == "pytest_version":
-        return _pytest_version()
+        return _pytest_version(strict=strict)
     if key == "platform":
         return platform.platform()
     return os.environ.get(str(key))
 
 
-def fingerprint_environment(keys: Sequence[str]) -> Dict[str, Any]:
-    values = {str(key): _runtime_fingerprint_value(str(key)) for key in list(keys or [])}
+def fingerprint_environment(keys: Sequence[str], *, strict: bool = False) -> Dict[str, Any]:
+    values = {str(key): _runtime_fingerprint_value(str(key), strict=strict) for key in list(keys or [])}
     return {
         "keys": [str(key) for key in list(keys or [])],
         "values": values,
@@ -259,7 +298,7 @@ def _entry_output_result_files(entry: Mapping[str, Any]) -> List[str]:
     return list(dict.fromkeys(str(item).replace("\\", "/") for item in list(entry.get("output_result_files") or [])))
 
 
-def fingerprint_entry(entry: Mapping[str, Any], repo_root: str) -> Dict[str, Any]:
+def fingerprint_entry(entry: Mapping[str, Any], repo_root: str, *, strict: bool = False) -> Dict[str, Any]:
     command_payload = {
         "display": entry.get("display"),
         "args": entry.get("args"),
@@ -269,8 +308,8 @@ def fingerprint_entry(entry: Mapping[str, Any], repo_root: str) -> Dict[str, Any
     env_keys = [str(key) for key in list(entry.get("env_keys") or [])]
     components = {
         "command_hash": fingerprint_command(command_payload),
-        "files": fingerprint_files(_entry_file_scopes(entry), repo_root),
-        "environment": fingerprint_environment(env_keys),
+        "files": fingerprint_files(_entry_file_scopes(entry), repo_root, strict=strict),
+        "environment": fingerprint_environment(env_keys, strict=strict),
         "output_result_files": {
             "paths": _entry_output_result_files(entry),
             "hash": stable_json_hash(_entry_output_result_files(entry)),

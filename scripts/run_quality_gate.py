@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import ast
 import hashlib
-import importlib.metadata
 import json
 import os
 import re
@@ -22,14 +21,18 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
-from tools.long_gate_cache import decide_reuse, load_previous_success  # noqa: E402
+from tools.long_gate_cache import evaluate_reuse  # noqa: E402
 from tools.long_gate_cache import write_success as write_long_gate_success
 from tools.long_gate_collect import (  # noqa: E402
     COLLECT_NODEIDS_REL,
     build_collect_nodeids_payload,
     write_collect_nodeids,
 )
-from tools.long_gate_fingerprint import fingerprint_entry  # noqa: E402
+from tools.long_gate_fingerprint import (  # noqa: E402
+    LongGateFingerprintError,
+    fingerprint_entry,
+    pytest_distribution_version,
+)
 from tools.long_gate_manifest import ENTRY_PYTEST_COLLECT_ALL, build_manifest_from_quality_gate_plan  # noqa: E402
 from tools.quality_gate_support import (  # noqa: E402
     QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL,
@@ -489,23 +492,11 @@ def _result_from_receipt_logs(receipt_payload: Dict[str, Any]) -> Dict[str, Any]
     }
 
 
-def _result_from_long_gate_success_cache(payload: Dict[str, Any]) -> Dict[str, Any]:
-    stdout_log_rel = str(payload.get("stdout_log_path") or "").replace("\\", "/")
-    stderr_log_rel = str(payload.get("stderr_log_path") or "").replace("\\", "/")
-    if not stdout_log_rel or not stderr_log_rel:
-        raise QualityGateError("long gate success cache 缺少 stdout/stderr 日志路径，不能复用")
-    return {
-        "stdout": _read_repo_text(stdout_log_rel),
-        "stderr": _read_repo_text(stderr_log_rel),
-        "returncode": int(payload.get("returncode") or 0),
-        "execution_mode": "reused_success_cache",
-        "reused_from": {
-            "result_path": str(payload.get("result_path") or ""),
-            "completed_at": str(payload.get("completed_at") or ""),
-            "fingerprint_hash": str(payload.get("fingerprint_hash") or ""),
-            "duration_s": float(payload.get("duration_s") or 0.0),
-        },
-    }
+def _strict_long_gate_fingerprint(entry: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        return fingerprint_entry(entry, REPO_ROOT, strict=True)
+    except LongGateFingerprintError as exc:
+        raise QualityGateError(str(exc)) from exc
 
 
 def _decide_resume_from_previous_failure(
@@ -677,13 +668,6 @@ def _mark_command_timing(result: Dict[str, Any], *, started_at: str, start_monot
     result.setdefault("interrupted", False)
     result.setdefault("partial_write", False)
     return duration_s
-
-
-def _pytest_version() -> str:
-    try:
-        return importlib.metadata.version("pytest")
-    except importlib.metadata.PackageNotFoundError:
-        return ""
 
 
 def _clear_quality_gate_run_outputs(
@@ -914,15 +898,25 @@ def _run_quality_gate_command_plan(
         long_gate_entry = long_gate_entries.get(display)
         long_gate_fingerprint: Optional[Dict[str, Any]] = None
         if long_gate_entry is not None:
-            long_gate_fingerprint = fingerprint_entry(long_gate_entry, REPO_ROOT)
-            decision = decide_reuse(long_gate_entry, long_gate_fingerprint, repo_root=REPO_ROOT)
+            long_gate_fingerprint = _strict_long_gate_fingerprint(long_gate_entry)
+            reuse_evaluation = evaluate_reuse(long_gate_entry, long_gate_fingerprint, repo_root=REPO_ROOT)
+            decision = dict(reuse_evaluation["decision"])
             if decision["decision"] == "reuse":
-                previous = load_previous_success(str(long_gate_entry.get("entry_id") or ""), repo_root=REPO_ROOT)
-                if previous is None:
-                    raise QualityGateError("long gate success cache 判定可复用，但结果文件不可读")
-                previous = dict(previous)
-                previous["result_path"] = decision.get("previous_result_path")
-                cached_result = _result_from_long_gate_success_cache(previous)
+                previous = reuse_evaluation["validated_success"]
+                if not isinstance(previous, dict):
+                    raise QualityGateError("long gate success cache 判定可复用，但缺少已验证结果")
+                cached_result = {
+                    "stdout": str(reuse_evaluation.get("stdout") or ""),
+                    "stderr": str(reuse_evaluation.get("stderr") or ""),
+                    "returncode": int(previous.get("returncode") or 0),
+                    "execution_mode": "reused_success_cache",
+                    "reused_from": {
+                        "result_path": str(decision.get("previous_result_path") or ""),
+                        "completed_at": str(previous.get("completed_at") or ""),
+                        "fingerprint_hash": str(previous.get("fingerprint_hash") or ""),
+                        "duration_s": float(previous.get("duration_s") or 0.0),
+                    },
+                }
                 result = _coerce_command_result(cached_result)
                 result["execution_mode"] = "reused_success_cache"
                 result["reused_from"] = dict(cached_result.get("reused_from") or {})
@@ -1000,7 +994,7 @@ def _run_quality_gate_command_plan(
             else:
                 collect_payload = build_collect_nodeids_payload(
                     str(result.get("stdout") or ""),
-                    pytest_version=_pytest_version(),
+                    pytest_version=pytest_distribution_version(strict=True),
                     collect_stdout_log_path=str(result.get("stdout_log_path") or ""),
                 )
                 collect_rel_path = write_collect_nodeids(collect_payload, repo_root=REPO_ROOT)
@@ -1412,8 +1406,9 @@ def _collect_long_gate_cache_decisions(command_plan: Sequence[Dict[str, Any]]) -
     for entry in list(manifest.get("entries") or []):
         if str(entry.get("entry_id") or "") != ENTRY_PYTEST_COLLECT_ALL:
             continue
-        fingerprint = fingerprint_entry(entry, REPO_ROOT)
-        decision = decide_reuse(entry, fingerprint, repo_root=REPO_ROOT)
+        fingerprint = _strict_long_gate_fingerprint(dict(entry))
+        evaluation = evaluate_reuse(entry, fingerprint, repo_root=REPO_ROOT)
+        decision = dict(evaluation["decision"])
         decisions.append(decision)
     return decisions
 

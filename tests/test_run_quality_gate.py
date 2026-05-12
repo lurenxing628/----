@@ -42,6 +42,8 @@ def _patch_repo_identity(monkeypatch, module, repo_root: Path) -> None:
 
 
 def _patch_basic_gate_environment(monkeypatch, module, repo_root: Path, *, statuses=None, head_sha: str = "deadbeef"):
+    if not (repo_root / ".git").exists():
+        subprocess.run(["git", "init", "-q"], cwd=repo_root, check=True)
     monkeypatch.setattr(module, "REPO_ROOT", str(repo_root))
     _patch_repo_identity(monkeypatch, module, repo_root)
     monkeypatch.setattr(module, "_assert_no_active_runtime", lambda: None)
@@ -169,11 +171,13 @@ def _seed_collect_long_gate_success(
     *,
     stdout: str = "tests/test_cached_collect.py::test_cached_collect\n",
 ) -> dict:
+    if not (repo_root / ".git").exists():
+        subprocess.run(["git", "init", "-q"], cwd=repo_root, check=True)
     entry = _collect_long_gate_entry(module, command_plan, repo_root)
     fingerprint = module.fingerprint_entry(entry, str(repo_root))
     collect_payload = module.build_collect_nodeids_payload(
         stdout,
-        pytest_version=module._pytest_version(),
+        pytest_version=module.pytest_distribution_version(),
         collect_stdout_log_path="evidence/QualityGate/logs/seed-collect.stdout.log",
     )
     collect_rel_path = module.write_collect_nodeids(collect_payload, repo_root=str(repo_root))
@@ -1101,6 +1105,7 @@ def test_main_long_gate_cache_explain_prints_decision_without_running(monkeypatc
     module = _import_run_quality_gate()
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo_root, check=True)
     command_plan = _small_quality_gate_plan()
     monkeypatch.setattr(module, "REPO_ROOT", str(repo_root))
     monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
@@ -1124,6 +1129,47 @@ def test_long_gate_cache_explain_and_no_cache_are_mutually_exclusive():
 
     with pytest.raises(SystemExit):
         module._parse_args(["--long-gate-cache-explain", "--no-long-gate-cache"])
+
+
+def test_long_gate_cache_explain_uses_strict_fingerprint(monkeypatch, tmp_path):
+    module = _import_run_quality_gate()
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    monkeypatch.setattr(module, "REPO_ROOT", str(repo_root))
+    monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: _small_quality_gate_plan())
+    calls = []
+
+    def spy_fingerprint_entry(entry, repo_root_arg, *, strict=False):
+        calls.append(strict)
+        return {
+            "schema_version": 1,
+            "hash": "sha256:test",
+            "components": {"files": {"files": []}},
+        }
+
+    monkeypatch.setattr(module, "fingerprint_entry", spy_fingerprint_entry)
+    monkeypatch.setattr(
+        module,
+        "evaluate_reuse",
+        lambda entry, fingerprint, repo_root=None: {
+            "decision": {
+                "entry_id": "pytest_collect_all",
+                "decision": "run",
+                "reuse_allowed": False,
+                "reason": "no previous success cache",
+                "invalidated_by": [],
+                "previous_completed_at": None,
+                "previous_result_path": None,
+                "current_fingerprint_hash": fingerprint["hash"],
+            },
+            "validated_success": None,
+            "stdout": "",
+            "stderr": "",
+        },
+    )
+
+    assert module.main(["--long-gate-cache-explain"]) == 0
+    assert calls == [True]
 
 
 def test_main_long_gate_cache_reuses_collect_only_success(monkeypatch, tmp_path, capsys):
@@ -1201,6 +1247,34 @@ def test_main_long_gate_cache_reuses_collect_only_success(monkeypatch, tmp_path,
     assert receipt_payload["timed_out"] is False
     assert receipt_payload["interrupted"] is False
     assert receipt_payload["partial_write"] is False
+
+
+def test_long_gate_reuse_uses_validated_payload_without_second_cache_read(monkeypatch, tmp_path):
+    module = _import_run_quality_gate()
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    command_plan = _small_quality_gate_plan()
+    _write_long_gate_collect_input(repo_root)
+    _patch_basic_gate_environment(monkeypatch, module, repo_root, statuses=[[], []])
+    monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
+    _seed_collect_long_gate_success(module, command_plan, repo_root)
+
+    def forbidden_load_previous_success(*_args, **_kwargs):
+        raise AssertionError("runner must not re-read success cache after evaluate_reuse")
+
+    monkeypatch.setattr(module, "load_previous_success", forbidden_load_previous_success, raising=False)
+    calls = []
+
+    def fake_run_command(display, args, capture_output=False):
+        calls.append(display)
+        if display == "python -m pytest --collect-only -q tests":
+            raise AssertionError("collect-only command should be reused")
+        return _successful_result_for_display(display)
+
+    monkeypatch.setattr(module, "_run_command", fake_run_command)
+
+    assert module.main(["--long-gate-cache"]) == 0
+    assert "python -m pytest --collect-only -q tests" not in calls
 
 
 def test_main_long_gate_cache_reruns_collect_when_input_changes(monkeypatch, tmp_path, capsys):

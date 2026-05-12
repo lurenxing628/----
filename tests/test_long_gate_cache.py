@@ -6,8 +6,14 @@ from pathlib import Path
 
 import pytest
 
-from tools.long_gate_cache import decide_reuse, write_success
-from tools.long_gate_fingerprint import fingerprint_command, fingerprint_entry, fingerprint_files, stable_json_hash
+from tools.long_gate_cache import decide_reuse, evaluate_reuse, write_success
+from tools.long_gate_fingerprint import (
+    LongGateFingerprintError,
+    fingerprint_command,
+    fingerprint_entry,
+    fingerprint_files,
+    stable_json_hash,
+)
 from tools.long_gate_manifest import LONG_GATE_SCHEMA_VERSION
 
 
@@ -130,8 +136,27 @@ def test_fingerprint_files_includes_git_tracked_and_untracked_paths(tmp_path):
     fingerprint = fingerprint_files(["tests/**/*.py"], str(tmp_path))
     rows = {row["path"]: row for row in fingerprint["files"]}
 
+    assert fingerprint["git_source_status"] == "available"
     assert rows["tests/test_tracked.py"]["source"] == "tracked"
     assert rows["tests/test_untracked.py"]["source"] == "untracked"
+
+
+def test_fingerprint_files_non_strict_marks_git_unavailable(tmp_path):
+    source = tmp_path / "a.py"
+    source.write_text("print('a')\n", encoding="utf-8")
+
+    fingerprint = fingerprint_files(["*.py"], str(tmp_path))
+
+    assert fingerprint["git_source_status"] in {"available", "unavailable"}
+    assert fingerprint["files"][0]["path"] == "a.py"
+
+
+def test_fingerprint_files_strict_rejects_git_unavailable(tmp_path):
+    source = tmp_path / "a.py"
+    source.write_text("print('a')\n", encoding="utf-8")
+
+    with pytest.raises(LongGateFingerprintError, match="git command failed"):
+        fingerprint_files(["*.py"], str(tmp_path), strict=True)
 
 
 def test_fingerprint_entry_combines_command_files_and_environment(tmp_path, monkeypatch):
@@ -159,7 +184,7 @@ def test_fingerprint_entry_changes_when_runtime_facts_change(tmp_path, monkeypat
     entry["env_keys"] = ["python_executable_realpath", "python_version", "pytest_version"]
 
     first = fingerprint_entry(entry, str(tmp_path))
-    monkeypatch.setattr("tools.long_gate_fingerprint._pytest_version", lambda: "pytest-next")
+    monkeypatch.setattr("tools.long_gate_fingerprint._pytest_version", lambda *args, **kwargs: "pytest-next")
     changed = fingerprint_entry(entry, str(tmp_path))
 
     assert changed["hash"] != first["hash"]
@@ -194,6 +219,30 @@ def test_decide_reuse_when_previous_success_matches(tmp_path):
 
     assert decision["decision"] == "reuse"
     assert decision["reason"] == "fingerprint matched previous successful result"
+
+
+def test_evaluate_reuse_returns_verified_log_texts(tmp_path):
+    entry, fingerprint, _output = _write_reusable_success(tmp_path)
+
+    evaluation = evaluate_reuse(entry, fingerprint, repo_root=str(tmp_path))
+
+    assert evaluation["decision"]["decision"] == "reuse"
+    assert evaluation["stdout"] == "ok\n"
+    assert evaluation["stderr"] == ""
+    assert isinstance(evaluation["validated_success"], dict)
+
+
+def test_evaluate_reuse_does_not_return_payload_when_log_hash_mismatches(tmp_path):
+    entry, fingerprint, _output = _write_reusable_success(tmp_path)
+    payload = _load_success(tmp_path)
+    (tmp_path / payload["stdout_log_path"]).write_text("tampered\n", encoding="utf-8")
+
+    evaluation = evaluate_reuse(entry, fingerprint, repo_root=str(tmp_path))
+
+    assert evaluation["decision"]["decision"] == "run"
+    assert evaluation["decision"]["reason"] == "previous logs missing or hash mismatch"
+    assert evaluation["validated_success"] is None
+    assert evaluation["stdout"] == ""
 
 
 def test_reuse_disabled_entry_is_not_reused_even_when_cache_matches(tmp_path):
@@ -427,6 +476,36 @@ def test_write_success_rejects_missing_output_file(tmp_path):
             _fingerprint(),
             {"stdout": "ok", "stderr": "", "returncode": 0},
             [str(missing)],
+            repo_root=str(tmp_path),
+        )
+
+
+def test_write_success_rejects_nonzero_returncode(tmp_path):
+    entry = _entry()
+    output = _output_file(tmp_path)
+
+    with pytest.raises(ValueError, match="requires returncode == 0"):
+        write_success(
+            entry,
+            _fingerprint(),
+            {"stdout": "bad", "stderr": "", "returncode": 1},
+            [str(output)],
+            repo_root=str(tmp_path),
+        )
+
+
+@pytest.mark.parametrize("field", ["timed_out", "interrupted", "partial_write"])
+def test_write_success_rejects_unclean_success_flags(tmp_path, field):
+    entry = _entry()
+    output = _output_file(tmp_path)
+    command_result = {"stdout": "ok", "stderr": "", "returncode": 0, field: True}
+
+    with pytest.raises(ValueError, match=f"requires {field} == False"):
+        write_success(
+            entry,
+            _fingerprint(),
+            command_result,
+            [str(output)],
             repo_root=str(tmp_path),
         )
 
