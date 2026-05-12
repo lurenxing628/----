@@ -259,7 +259,7 @@ def test_scheduler_simulate_unknown_result_stays_on_batches_page() -> None:
 
     class _UnexpectedGanttService:
         def get_version_time_span_dates(self, _version):
-            raise AssertionError("完成状态未知的模拟排产不应该跳去甘特图")
+            raise AssertionError("结果有问题的模拟排产不应该跳去甘特图")
 
     captured_endpoints = []
     old_url_for = route_mod.url_for
@@ -280,7 +280,7 @@ def test_scheduler_simulate_unknown_result_stays_on_batches_page() -> None:
         assert getattr(resp, "status_code", 0) in (301, 302)
         assert resp.location == "/scheduler.batches_page"
         assert "scheduler.gantt_page" not in captured_endpoints
-        assert any(cat == "error" and "模拟排产完成状态未知：生成版本 41" in msg for cat, msg in flashes), flashes
+        assert any(cat == "error" and "模拟排产结果有问题，需要检查：生成版本 41" in msg for cat, msg in flashes), flashes
         assert not any(cat == "success" and "模拟排产完成" in msg for cat, msg in flashes), flashes
     finally:
         route_mod.url_for = old_url_for
@@ -332,7 +332,7 @@ def test_scheduler_simulate_non_dict_summary_does_not_crash_or_leak(raw_summary)
         assert getattr(resp, "status_code", 0) in (301, 302)
         assert resp.location == "/scheduler.batches_page"
         assert "scheduler.gantt_page" not in captured_endpoints
-        assert any(cat == "error" and "模拟排产完成状态未知：生成版本 51" in msg for cat, msg in flashes), flashes
+        assert any(cat == "error" and "模拟排产结果有问题，需要检查：生成版本 51" in msg for cat, msg in flashes), flashes
         assert not any(cat == "success" and "模拟排产完成" in msg for cat, msg in flashes), flashes
         visible = "\n".join(msg for _cat, msg in flashes)
         assert "Traceback" not in visible
@@ -386,7 +386,7 @@ def test_scheduler_simulate_missing_completion_status_with_errors_stays_on_batch
         assert getattr(resp, "status_code", 0) in (301, 302)
         assert resp.location == "/scheduler.batches_page"
         assert "scheduler.gantt_page" not in captured_endpoints
-        assert any(cat == "error" and "模拟排产完成状态未知：生成版本 52" in msg for cat, msg in flashes), flashes
+        assert any(cat == "error" and "模拟排产结果有问题，需要检查：生成版本 52" in msg for cat, msg in flashes), flashes
         assert any(cat == "error" and msg == "排产执行遇到问题，请联系管理员查看日志。" for cat, msg in flashes), flashes
         assert not any(cat == "success" and "模拟排产完成" in msg for cat, msg in flashes), flashes
         visible = "\n".join(msg for _cat, msg in flashes)
@@ -423,7 +423,7 @@ def test_scheduler_simulate_explicit_unknown_with_success_counts_stays_on_batche
 
     class _UnexpectedGanttService:
         def get_version_time_span_dates(self, _version):
-            raise AssertionError("显式未知完成状态不应该跳去甘特图")
+            raise AssertionError("显式问题状态不应该跳去甘特图")
 
     captured_endpoints = []
     old_url_for = route_mod.url_for
@@ -444,7 +444,7 @@ def test_scheduler_simulate_explicit_unknown_with_success_counts_stays_on_batche
         assert getattr(resp, "status_code", 0) in (301, 302)
         assert resp.location == "/scheduler.batches_page"
         assert "scheduler.gantt_page" not in captured_endpoints
-        assert any(cat == "error" and "模拟排产完成状态未知：生成版本 42" in msg for cat, msg in flashes), flashes
+        assert any(cat == "error" and "模拟排产结果有问题，需要检查：生成版本 42" in msg for cat, msg in flashes), flashes
         assert any(cat == "error" and msg == "排产执行遇到问题，请联系管理员查看日志。" for cat, msg in flashes), flashes
         assert not any(cat == "success" and "模拟排产完成" in msg for cat, msg in flashes), flashes
     finally:

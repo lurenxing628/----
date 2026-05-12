@@ -28,7 +28,7 @@ _VERSION_OPTION_STATUS_LABELS = {
     "success": "成功",
     "partial": "部分成功",
     "failed": "失败",
-    "unknown": "状态未知",
+    "unknown": "有问题，需检查",
 }
 
 

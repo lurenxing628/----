@@ -13,6 +13,24 @@ def test_missing_completion_status_with_errors_is_unknown_even_if_counts_look_su
     assert derive_completion_status(result_status=None, summary=summary) == "unknown"
 
 
+def test_missing_completion_status_with_string_error_count_is_unknown() -> None:
+    summary = {
+        "counts": {"op_count": 1, "scheduled_ops": 1, "failed_ops": 0},
+        "error_count": "1",
+    }
+
+    assert derive_completion_status(result_status=None, summary=summary) == "unknown"
+
+
+def test_missing_completion_status_with_malformed_error_count_is_unknown() -> None:
+    summary = {
+        "counts": {"op_count": 1, "scheduled_ops": 1, "failed_ops": 0},
+        "error_count": "not-a-number",
+    }
+
+    assert derive_completion_status(result_status=None, summary=summary) == "unknown"
+
+
 def test_explicit_completion_status_still_wins_over_errors_for_history_contract() -> None:
     summary = {
         "completion_status": "partial",

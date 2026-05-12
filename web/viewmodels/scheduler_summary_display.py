@@ -23,13 +23,14 @@ from .scheduler_degradation_presenter import (
     degradation_reason_key,
     format_degradation_detail,
 )
+from .scheduler_summary_status import error_count_blocks_success_inference
 
 _RESULT_STATUS_LABELS = {
     "success": "成功",
     "partial": "部分成功",
     "failed": "失败",
     "simulated": "模拟排产",
-    "unknown": "完成状态未知",
+    "unknown": "有问题，需检查",
 }
 _COMPLETION_STATUS_VALUES = {"success", "partial", "failed", "unknown"}
 _LEGACY_RESULT_STATUS_ALIASES = {
@@ -362,11 +363,8 @@ def _completion_status_from_counts(*, status: str, scheduled_ops: int, failed_op
 
 
 def _has_summary_errors(summary: Dict[str, Any]) -> bool:
-    try:
-        if int(summary.get("error_count") or 0) > 0:
-            return True
-    except Exception:
-        pass
+    if error_count_blocks_success_inference(summary.get("error_count")):
+        return True
 
     for key in ("errors", "errors_sample", "public_error_details"):
         value = summary.get(key)

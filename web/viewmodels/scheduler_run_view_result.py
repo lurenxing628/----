@@ -51,7 +51,7 @@ def _headline_prefix_and_category(result_status: str) -> Tuple[str, str]:
         prefix = "排产失败"
         category = "error"
     elif result_status == _STATUS_UNKNOWN:
-        prefix = "排产完成状态未知"
+        prefix = "排产结果有问题，需要检查"
         category = "error"
     elif result_status == _STATUS_SIMULATED:
         raise RuntimeError("unexpected simulated result_status on /scheduler/run")

@@ -317,9 +317,9 @@ def test_build_summary_display_state_does_not_infer_success_for_simulated_withou
         "raw_status": "simulated",
         "outcome_status": "unknown",
         "is_simulated": True,
-        "display_label": "模拟排产 / 完成状态未知",
+        "display_label": "模拟排产 / 有问题，需检查",
     }
-    assert payload["result_status_label"] == "模拟排产 / 完成状态未知"
+    assert payload["result_status_label"] == "模拟排产 / 有问题，需检查"
     assert "成功" not in payload["result_status_label"]
 
 
@@ -338,7 +338,7 @@ def test_build_summary_display_state_respects_persisted_unknown_before_counts() 
 
     assert payload["completion_status"] == "unknown"
     assert payload["result_state"]["outcome_status"] == "unknown"
-    assert payload["result_status_label"] == "模拟排产 / 完成状态未知"
+    assert payload["result_status_label"] == "模拟排产 / 有问题，需检查"
 
 
 def test_build_summary_display_state_prefers_persisted_completion_status_before_raw_status() -> None:

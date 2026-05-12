@@ -102,7 +102,7 @@ def _flash_simulate_completion(*, version: int, completion_status: str) -> None:
         flash(f"模拟排产部分完成：生成版本 {version}（不影响批次状态）。", "warning")
         return
     if completion_status == "unknown":
-        flash(f"模拟排产完成状态未知：生成版本 {version}（不影响批次状态）。", "error")
+        flash(f"模拟排产结果有问题，需要检查：生成版本 {version}（不影响批次状态）。", "error")
         return
     flash(f"模拟排产完成：生成版本 {version}（不影响批次状态）。", "success")
 

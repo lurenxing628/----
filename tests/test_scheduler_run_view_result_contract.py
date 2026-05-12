@@ -76,7 +76,7 @@ def test_run_schedule_view_result_marks_empty_unknown_instead_of_success() -> No
 
     assert view_result.result_status == "unknown"
     assert view_result.headline_category == "error"
-    assert "排产完成状态未知（版本 11）" in view_result.headline_message
+    assert "排产结果有问题，需要检查（版本 11）" in view_result.headline_message
 
 
 def test_run_schedule_view_result_respects_explicit_unknown_before_success_counts() -> None:
@@ -98,7 +98,7 @@ def test_run_schedule_view_result_respects_explicit_unknown_before_success_count
 
     assert view_result.result_status == "unknown"
     assert view_result.headline_category == "error"
-    assert "排产完成状态未知（版本 11）" in view_result.headline_message
+    assert "排产结果有问题，需要检查（版本 11）" in view_result.headline_message
 
 
 def test_run_schedule_view_result_treats_missing_completion_status_with_errors_as_unknown() -> None:
@@ -120,7 +120,7 @@ def test_run_schedule_view_result_treats_missing_completion_status_with_errors_a
 
     assert view_result.result_status == "unknown"
     assert view_result.headline_category == "error"
-    assert "排产完成状态未知（版本 11）" in view_result.headline_message
+    assert "排产结果有问题，需要检查（版本 11）" in view_result.headline_message
     assert view_result.error_preview == ["排产执行遇到问题，请联系管理员查看日志。"]
 
 
@@ -592,7 +592,7 @@ def test_scheduler_run_unknown_result_stays_on_batches_page_without_success_flas
 
     class _UnexpectedGanttService:
         def get_version_time_span_dates(self, _version):
-            raise AssertionError("完成状态未知时不应该继续读取甘特图范围")
+            raise AssertionError("排产结果有问题时不应该继续读取甘特图范围")
 
     old_url_for = route_mod.url_for
     route_mod.url_for = lambda endpoint, **_kwargs: f"/{endpoint}"
@@ -606,7 +606,7 @@ def test_scheduler_run_unknown_result_stays_on_batches_page_without_success_flas
 
         assert getattr(resp, "status_code", 0) in (301, 302)
         assert resp.headers["Location"] == "/scheduler.batches_page"
-        assert any(cat == "error" and "排产完成状态未知（版本 23）" in msg for cat, msg in flashes), flashes
+        assert any(cat == "error" and "排产结果有问题，需要检查（版本 23）" in msg for cat, msg in flashes), flashes
         assert not any(cat == "success" and "排产完成" in msg for cat, msg in flashes), flashes
     finally:
         route_mod.url_for = old_url_for
