@@ -60,7 +60,9 @@ full-test-debt proof 证明当前没有未登记的 full pytest 失败，并且�
 
 long gate cache 是给长耗时门禁准备的本地成功缓存，需要显式传入 `--long-gate-cache` 才会尝试复用。当前 enabled long gate entry 是 `pytest_collect_all`、`full_test_debt`、`startup_runtime_regressions` 和 `required_regressions`。`architecture_fitness`、`ruff_check_full`、`pyright_gate_full`、`pyright_tools_full`、`debt_ledger_sync`、`quickref_vs_routes` 仍是 planned，不会因为 cache 打开而复用。
 
-long gate cache 不是跳过正式门禁。命中前会校验 command、fingerprint、stdout/stderr 日志、输出 proof、schema、runner/tooling hash 和 repo identity；坏证据、缺 proof、日志缺失、输出缺失或 hash 不一致都会自动重跑。`--long-gate-cache-explain` 只打印本次会跑、会复用、还是仍处于 planned 的判断，不执行命令，不写 proof，也不能当作 clean proof。维护者要手动完整重跑时，可以直接运行不带 `--long-gate-cache` 的 clean gate，或显式使用 `--no-long-gate-cache`。CI 和最终 clean gate 的要求不降低。
+单独运行 `.venv\Scripts\python tools/check_full_test_debt.py` 只会写本次 full-test-debt 的 current/summary 证明，不会写 `evidence/QualityGate/long_gate/results/full_test_debt.success.json`。如果想预热 pre-push 会用到的缓存，需要跑完整门禁链：`.venv\Scripts\python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`。
+
+long gate cache 不是跳过正式门禁。命中前会校验 command、fingerprint、stdout/stderr 日志、输出 proof、schema、runner/tooling hash 和 repo identity；坏证据、缺 proof、日志缺失、输出缺失或 hash 不一致都会自动重跑。`--long-gate-cache-explain` 只打印本次会跑、会复用、还是仍处于 planned 的判断，不执行命令，不写 proof，也不能当作 clean proof。未登记的新失败仍然必须失败，已登记测试债务仍然必须被台账管住；CI 和最终 clean gate 的要求不降低。维护者要手动完整重跑时，可以直接运行不带 `--long-gate-cache` 的 clean gate，或显式使用 `--no-long-gate-cache`。
 
 ### 治理台账写入口
 

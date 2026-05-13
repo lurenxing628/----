@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import importlib
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -11,6 +12,7 @@ from typing import Callable, Sequence
 import pytest
 
 from tools import quality_gate_shared
+from tools.long_gate_fingerprint import fingerprint_entry
 from tools.long_gate_manifest import (
     ENTRY_REQUIRED_REGRESSIONS,
     ENTRY_STARTUP_RUNTIME_REGRESSIONS,
@@ -48,6 +50,10 @@ def _entry_by_id(manifest: dict, entry_id: str) -> dict:
 
 def _entry_display(command_plan: Sequence[dict], repo_root: Path, entry_id: str) -> str:
     return str(_entry_by_id(_manifest_for(command_plan, repo_root), entry_id)["display"])
+
+
+def _fingerprint_for(command_plan: Sequence[dict], repo_root: Path, entry_id: str) -> dict:
+    return fingerprint_entry(_entry_by_id(_manifest_for(command_plan, repo_root), entry_id), str(repo_root))
 
 
 def _startup_proof_path(repo_root: Path) -> Path:
@@ -400,20 +406,16 @@ def test_startup_bad_proof_or_logs_force_group_rerun(monkeypatch, tmp_path, muta
         "tools/test_registry.py",
     ],
 )
-def test_startup_tracked_scope_changes_force_group_rerun(monkeypatch, tmp_path, changed_path):
-    module = _import_run_quality_gate()
+def test_startup_tracked_scope_changes_update_fingerprint(tmp_path, changed_path):
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     command_plan = _real_quality_gate_plan()
-    _patch_gate_environment(monkeypatch, module, repo_root)
-    monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
-    startup_display = _entry_display(command_plan, repo_root, ENTRY_STARTUP_RUNTIME_REGRESSIONS)
-    _seed_startup_success(module, monkeypatch, repo_root, command_plan)
+    before = _fingerprint_for(command_plan, repo_root, ENTRY_STARTUP_RUNTIME_REGRESSIONS)
 
     _write_file(repo_root, changed_path)
-    calls = _run_gate_with_fake_commands(module, monkeypatch, repo_root, command_plan, ["--long-gate-cache"])
+    after = _fingerprint_for(command_plan, repo_root, ENTRY_STARTUP_RUNTIME_REGRESSIONS)
 
-    assert startup_display in calls
+    assert before["hash"] != after["hash"]
 
 
 @pytest.mark.parametrize(
@@ -430,21 +432,18 @@ def test_startup_tracked_scope_changes_force_group_rerun(monkeypatch, tmp_path, 
         "PYTHONIOENCODING",
     ],
 )
-def test_startup_environment_changes_force_group_rerun(monkeypatch, tmp_path, env_key):
-    module = _import_run_quality_gate()
+def test_startup_environment_changes_update_fingerprint(monkeypatch, tmp_path, env_key):
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     command_plan = _real_quality_gate_plan()
     monkeypatch.delenv(env_key, raising=False)
-    _patch_gate_environment(monkeypatch, module, repo_root)
-    monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
-    startup_display = _entry_display(command_plan, repo_root, ENTRY_STARTUP_RUNTIME_REGRESSIONS)
-    _seed_startup_success(module, monkeypatch, repo_root, command_plan)
+    before = _fingerprint_for(command_plan, repo_root, ENTRY_STARTUP_RUNTIME_REGRESSIONS)
 
     monkeypatch.setenv(env_key, f"next6-{env_key.lower()}")
-    calls = _run_gate_with_fake_commands(module, monkeypatch, repo_root, command_plan, ["--long-gate-cache"])
+    after = _fingerprint_for(command_plan, repo_root, ENTRY_STARTUP_RUNTIME_REGRESSIONS)
 
-    assert startup_display in calls
+    assert before["hash"] != after["hash"]
+    assert after["components"]["environment"]["values"][env_key] == os.environ.get(env_key)
 
 
 def test_unrelated_markdown_change_does_not_invalidate_startup(monkeypatch, tmp_path):

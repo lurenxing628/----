@@ -982,6 +982,31 @@ def test_explain_full_test_debt_writes_no_proof_files(monkeypatch, tmp_path):
     assert not (repo_root / "evidence" / "QualityGate" / "full_test_debt_summary.json").exists()
 
 
+def test_explain_full_test_debt_reports_direct_check_outputs_do_not_warm_cache(monkeypatch, tmp_path, capsys):
+    module = _import_run_quality_gate()
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo_root, check=True)
+    _write_full_outputs(repo_root, token="direct-check")
+    monkeypatch.setattr(module, "REPO_ROOT", str(repo_root))
+    monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: _quality_gate_plan())
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("explain must not execute commands")
+
+    monkeypatch.setattr(module, "_run_command", fail_if_called)
+
+    assert module.main(["--long-gate-cache-explain"]) == 0
+
+    output = capsys.readouterr().out
+    assert "- full_test_debt: RUN" in output
+    assert "cache_state: missing" in output
+    assert "direct_check_outputs:" in output
+    assert "tools/check_full_test_debt.py writes current/summary proof" in output
+    assert "scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache" in output
+    assert not _success_path(repo_root).exists()
+
+
 def test_force_rerun_full_test_debt_refreshes_only_that_enabled_entry(monkeypatch, tmp_path):
     module = _import_run_quality_gate()
     repo_root = tmp_path / "repo"

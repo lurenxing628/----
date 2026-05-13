@@ -2037,11 +2037,49 @@ def _print_long_gate_cache_decisions(entries: Sequence[Dict[str, Any]], *, cache
             print(f"  previous_result: {entry.get('previous_result_path')}", flush=True)
         if entry.get("current_fingerprint_hash"):
             print(f"  fingerprint: {entry.get('current_fingerprint_hash')}", flush=True)
+        _print_long_gate_cache_decision_hint(entry)
         invalidated_by = list(entry.get("invalidated_by") or [])
         if invalidated_by:
             print("  invalidated_by:", flush=True)
-            for item in invalidated_by:
+            for item in invalidated_by[:10]:
                 print(f"    - {item}", flush=True)
+            if len(invalidated_by) > 10:
+                print(f"    - ... {len(invalidated_by) - 10} more", flush=True)
+
+
+def _quality_gate_rel_exists(rel_path: str) -> bool:
+    return os.path.isfile(os.path.join(REPO_ROOT, str(rel_path).replace("\\", "/").replace("/", os.sep)))
+
+
+def _print_long_gate_cache_decision_hint(entry: Dict[str, Any]) -> None:
+    if str(entry.get("decision") or "") != "run":
+        return
+    if str(entry.get("reason") or "") != "no previous success cache":
+        return
+    print("  cache_state: missing", flush=True)
+    entry_id = str(entry.get("entry_id") or "")
+    if entry_id != ENTRY_FULL_TEST_DEBT:
+        return
+    direct_outputs = [
+        rel_path
+        for rel_path in [
+            QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL,
+            QUALITY_GATE_FULL_TEST_DEBT_SUMMARY_REL,
+        ]
+        if _quality_gate_rel_exists(rel_path)
+    ]
+    if direct_outputs:
+        print("  direct_check_outputs:", flush=True)
+        for rel_path in direct_outputs:
+            print(f"    - {rel_path}", flush=True)
+        print(
+            "  hint: tools/check_full_test_debt.py writes current/summary proof, but it does not create long gate success cache.",
+            flush=True,
+        )
+        print(
+            "  warmup_command: PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache",
+            flush=True,
+        )
 
 
 def _print_long_gate_summary(summary: Dict[str, Any], summary_paths: Dict[str, str]) -> None:

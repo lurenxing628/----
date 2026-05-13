@@ -373,8 +373,23 @@ def _write_invalid_runtime_contract_state(state_dir: Path, payload) -> None:
     (state_dir / "aps_port.txt").write_text("5000\n", encoding="utf-8")
 
 
+def _install_fast_stop_clock(monkeypatch, stop_mod, *, start: float = 1000.0):
+    clock = {"now": float(start), "sleeps": []}
+
+    monkeypatch.setattr(stop_mod.time, "time", lambda: clock["now"])
+
+    def _sleep(seconds):
+        sleep_for = max(float(seconds), 0.0)
+        clock["sleeps"].append(sleep_for)
+        clock["now"] += sleep_for
+
+    monkeypatch.setattr(stop_mod.time, "sleep", _sleep)
+    return clock
+
+
 def test_stop_runtime_keeps_unreadable_contract_when_endpoint_still_healthy(monkeypatch, tmp_path):
     launcher = _import_launcher()
+    _install_fast_stop_clock(monkeypatch, launcher._stop)
     state_dir = tmp_path / "logs"
     _write_unreadable_runtime_contract_state(state_dir)
     calls = {}
@@ -392,6 +407,7 @@ def test_stop_runtime_keeps_unreadable_contract_when_endpoint_still_healthy(monk
 
 def test_stop_runtime_keeps_unreadable_contract_when_endpoint_down(monkeypatch, tmp_path):
     launcher = _import_launcher()
+    _install_fast_stop_clock(monkeypatch, launcher._stop)
     state_dir = tmp_path / "logs"
     _write_unreadable_runtime_contract_state(state_dir)
     calls = {}
@@ -412,6 +428,7 @@ def test_stop_runtime_keeps_unreadable_contract_when_endpoint_down(monkeypatch, 
 
 def test_stop_runtime_keeps_invalid_contract_when_endpoint_down(monkeypatch, tmp_path):
     launcher = _import_launcher()
+    _install_fast_stop_clock(monkeypatch, launcher._stop)
     state_dir = tmp_path / "logs"
     _write_invalid_runtime_contract_state(
         state_dir,
@@ -444,6 +461,7 @@ def test_stop_runtime_keeps_invalid_contract_when_endpoint_down(monkeypatch, tmp
 
 def test_stop_runtime_keeps_invalid_shape_contract_when_endpoint_down(monkeypatch, tmp_path):
     launcher = _import_launcher()
+    _install_fast_stop_clock(monkeypatch, launcher._stop)
     state_dir = tmp_path / "logs"
     _write_invalid_runtime_contract_state(state_dir, ["not", "dict"])
     calls = {}
@@ -496,6 +514,7 @@ def test_endpoint_down_with_confirmed_contract_pid_is_mixed_not_complete():
 
 def test_stop_runtime_keeps_artifacts_when_endpoint_files_unreadable(monkeypatch, tmp_path):
     launcher_stop = _import_launcher_stop()
+    _install_fast_stop_clock(monkeypatch, launcher_stop)
     state_dir = tmp_path / "logs"
     state_dir.mkdir(parents=True)
     host_path = state_dir / "aps_host.txt"
@@ -532,8 +551,9 @@ def test_stop_runtime_keeps_artifacts_when_endpoint_files_unreadable(monkeypatch
     assert launcher_stop._runtime_stop_failure_reason(status, shutdown_requested=False) == "endpoint_files_uncertain"
 
 
-def test_stop_runtime_keeps_artifacts_when_endpoint_port_invalid(tmp_path):
+def test_stop_runtime_keeps_artifacts_when_endpoint_port_invalid(monkeypatch, tmp_path):
     launcher = _import_launcher()
+    _install_fast_stop_clock(monkeypatch, launcher._stop)
     state_dir = tmp_path / "logs"
     state_dir.mkdir(parents=True)
     (state_dir / "aps_host.txt").write_text("127.0.0.1\n", encoding="utf-8")
@@ -552,6 +572,7 @@ def test_stop_runtime_keeps_artifacts_when_endpoint_port_invalid(tmp_path):
 
 def test_stop_runtime_blocks_when_only_port_file_exists(monkeypatch, tmp_path):
     launcher_stop = _import_launcher_stop()
+    _install_fast_stop_clock(monkeypatch, launcher_stop)
     state_dir = tmp_path / "logs"
     state_dir.mkdir(parents=True)
     port_path = state_dir / "aps_port.txt"
@@ -576,6 +597,7 @@ def test_stop_runtime_blocks_when_only_port_file_exists(monkeypatch, tmp_path):
 
 def test_stop_runtime_blocks_when_only_host_file_exists(monkeypatch, tmp_path):
     launcher_stop = _import_launcher_stop()
+    _install_fast_stop_clock(monkeypatch, launcher_stop)
     state_dir = tmp_path / "logs"
     state_dir.mkdir(parents=True)
     host_path = state_dir / "aps_host.txt"
@@ -600,6 +622,7 @@ def test_stop_runtime_blocks_when_only_host_file_exists(monkeypatch, tmp_path):
 
 def test_stop_runtime_blocks_when_host_file_blank_but_port_exists(monkeypatch, tmp_path):
     launcher_stop = _import_launcher_stop()
+    _install_fast_stop_clock(monkeypatch, launcher_stop)
     state_dir = tmp_path / "logs"
     state_dir.mkdir(parents=True)
     host_path = state_dir / "aps_host.txt"
@@ -761,11 +784,13 @@ def test_legacy_read_runtime_lock_none_monkeypatch_is_respected(monkeypatch, tmp
 
 def test_stop_runtime_from_log_dir_returns_busy_when_contract_missing_but_health_ok(monkeypatch, tmp_path):
     launcher = _import_launcher()
+    clock = _install_fast_stop_clock(monkeypatch, launcher._stop)
     state_dir = tmp_path / "shared-data" / "logs"
     state_dir.mkdir(parents=True)
     (state_dir / "aps_host.txt").write_text("127.0.0.1\n", encoding="utf-8")
     (state_dir / "aps_port.txt").write_text("5000\n", encoding="utf-8")
     calls = {}
+    waits = {}
 
     monkeypatch.setattr(launcher, "_probe_runtime_health", lambda host, port, timeout_s=1.0: True)
     monkeypatch.setattr(launcher, "delete_runtime_contract_files", lambda path: calls.setdefault("delete", path))
@@ -775,8 +800,17 @@ def test_stop_runtime_from_log_dir_returns_busy_when_contract_missing_but_health
         lambda profile_dir, logger=None: calls.setdefault("chrome", profile_dir) or True,
     )
 
+    def _wait_without_real_sleep(path, deadline):
+        waits["state_dir"] = path
+        waits["deadline"] = deadline
+        return launcher._stop._classify_runtime_state(path)
+
+    monkeypatch.setattr(launcher._stop, "_wait_for_runtime_stop", _wait_without_real_sleep)
+
     assert launcher.stop_runtime_from_dir(str(state_dir), stop_aps_chrome=True) == 1
     assert calls == {}
+    assert waits["state_dir"] == os.path.abspath(str(state_dir))
+    assert waits["deadline"] - clock["now"] == pytest.approx(12.0)
 
 
 def test_stop_runtime_from_log_dir_uses_state_dir_and_parent_runtime_dir(monkeypatch, tmp_path):
