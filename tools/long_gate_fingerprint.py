@@ -7,6 +7,7 @@ import importlib.metadata
 import json
 import os
 import platform
+import shutil
 import stat
 import subprocess
 import sys
@@ -275,6 +276,53 @@ def pytest_distribution_version(*, strict: bool = False) -> str:
     return _pytest_version(strict=strict)
 
 
+def _chrome_executable_resolution() -> str:
+    candidates = (
+        os.environ.get("APS_CHROME_PATH"),
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "/Applications/Chromium.app/Contents/MacOS/Chromium",
+        shutil.which("google-chrome"),
+        shutil.which("chromium"),
+        shutil.which("chromium-browser"),
+    )
+    for candidate in candidates:
+        if candidate and os.path.exists(str(candidate)):
+            return os.path.realpath(str(candidate))
+    return "__missing_chrome_or_chromium__"
+
+
+def _node_executable_realpath() -> str:
+    node = shutil.which("node")
+    if not node:
+        return "__missing_node__"
+    return os.path.realpath(node)
+
+
+def _node_version(*, strict: bool = False) -> str:
+    node = shutil.which("node")
+    if not node:
+        return "__missing_node__"
+    try:
+        completed = subprocess.run(
+            [node, "--version"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        if strict:
+            raise LongGateFingerprintError(f"node version is required for long gate fingerprint: {exc}") from exc
+        return "__node_version_unavailable__"
+    if int(completed.returncode) != 0:
+        if strict:
+            detail = str(completed.stderr or completed.stdout or "").strip() or f"returncode={completed.returncode}"
+            raise LongGateFingerprintError(f"node version is required for long gate fingerprint: {detail}")
+        return "__node_version_unavailable__"
+    return str(completed.stdout or "").strip()
+
+
 def _pytest_plugin_distribution_versions(*, strict: bool = False) -> str:
     try:
         entry_points = importlib.metadata.entry_points()
@@ -313,6 +361,12 @@ def _runtime_fingerprint_value(key: str, *, strict: bool = False) -> Optional[st
         return _pytest_plugin_distribution_versions(strict=strict)
     if key == "platform":
         return platform.platform()
+    if key == "chrome_executable_resolution":
+        return _chrome_executable_resolution()
+    if key == "node_executable_realpath":
+        return _node_executable_realpath()
+    if key == "node_version":
+        return _node_version(strict=strict)
     return os.environ.get(str(key))
 
 

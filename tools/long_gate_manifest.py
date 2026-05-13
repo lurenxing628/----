@@ -59,6 +59,7 @@ _LONG_ENTRY_TYPES = {
 _CACHE_ENABLED_ENTRY_TYPES = {
     ENTRY_PYTEST_COLLECT_ALL,
     ENTRY_FULL_TEST_DEBT,
+    ENTRY_REQUIRED_REGRESSIONS,
     ENTRY_STARTUP_RUNTIME_REGRESSIONS,
 }
 
@@ -151,7 +152,10 @@ def _entry_id_for_command(entry_type: str, command: Mapping[str, Any], index: in
     return entry_type
 
 
-def _scopes_for_entry(entry_type: str) -> Tuple[List[str], List[str], List[str], List[str], List[str], List[str]]:
+def _scopes_for_entry(
+    entry_type: str,
+    command: Optional[Mapping[str, Any]] = None,
+) -> Tuple[List[str], List[str], List[str], List[str], List[str], List[str]]:
     input_scopes: List[str] = []
     config_scopes: List[str] = []
     tool_scopes: List[str] = []
@@ -221,7 +225,92 @@ def _scopes_for_entry(entry_type: str) -> Tuple[List[str], List[str], List[str],
         )
         output_files = ["evidence/QualityGate/collect_nodeids.json"]
     elif entry_type == ENTRY_REQUIRED_REGRESSIONS:
-        input_scopes = list(quality_gate_shared.iter_quality_gate_required_tests())
+        required_targets = _pytest_q_targets(_normalize_command(command or {}).get("args") or []) or []
+        input_scopes = list(required_targets)
+        input_scopes.extend(
+            [
+                "tests/conftest.py",
+                "tests/main_style_regression_runner.py",
+                "tests/runtime_cleanup_helper.py",
+                "core/**/*.py",
+                "web/**/*.py",
+                "data/**/*.py",
+                "plugins/**/*.py",
+                "app.py",
+                "app_new_ui.py",
+                "config.py",
+                "schema.sql",
+                "templates/**/*.html",
+                "web_new_test/templates/**/*.html",
+                "static/**/*",
+                "web_new_test/static/**/*",
+                "templates_excel/**/*",
+                "docs/frontend_manual_audit_and_rewrite_blueprint.md",
+                "docs/*manual*.md",
+                "static/docs/**/*.md",
+                "web_new_test/static/docs/**/*.md",
+                ".limcode/skills/aps-full-selftest/scripts/run_full_selftest.py",
+                ".limcode/plans/core目录系统性修复/05_后续结构债治理与文档同步.plan.md",
+                "evidence/README.md",
+                "evidence/current/README.md",
+                "audit/**/README.md",
+                "开发文档/开发文档.md",
+                "开发文档/阶段留痕与验收记录.md",
+                "开发文档/技术债务治理台账.md",
+            ]
+        )
+        config_scopes = [
+            ".pre-commit-config.yaml",
+            ".github/workflows/quality.yml",
+            "pytest.ini",
+            "pyproject.toml",
+            "setup.cfg",
+            "tox.ini",
+            "tools/test_registry.py",
+            "tools/quality_gate_shared.py",
+            "tools/quality_gate_support.py",
+        ]
+        tool_scopes = list(quality_gate_shared.QUALITY_GATE_TOOL_PATHS)
+        dependency_scopes.extend(
+            [
+                "requirements*.txt",
+                "requirements-dev*.txt",
+                "poetry.lock",
+                "uv.lock",
+                "Pipfile.lock",
+            ]
+        )
+        env_keys.extend(
+            [
+                "python_executable_realpath",
+                "python_version",
+                "pytest_version",
+                "pytest_plugin_distribution_versions",
+                "platform",
+                "chrome_executable_resolution",
+                "node_executable_realpath",
+                "node_version",
+                "APS_ENV",
+                "APS_DB_PATH",
+                "APS_LOG_DIR",
+                "APS_BACKUP_DIR",
+                "APS_EXCEL_TEMPLATE_DIR",
+                "APS_CHROME_PATH",
+                "APS_STATIC_VERSION",
+                "SECRET_KEY",
+                "CI",
+                "PATH",
+                "PYTHONPATH",
+                "PYTHONUTF8",
+                "PYTHONIOENCODING",
+                "PYTEST_ADDOPTS",
+                "PYTEST_DISABLE_PLUGIN_AUTOLOAD",
+                "PYTEST_PLUGINS",
+            ]
+        )
+        output_files = [
+            quality_gate_shared.QUALITY_GATE_REQUIRED_REGRESSIONS_REL.replace("\\", "/"),
+        ]
     elif entry_type == ENTRY_STARTUP_RUNTIME_REGRESSIONS:
         input_scopes = list(iter_startup_regressions())
         input_scopes.extend(
@@ -426,7 +515,8 @@ def _build_entry(command: Mapping[str, Any], index: int, *, entry_type: Optional
     normalized = _normalize_command(command)
     resolved_entry_type = entry_type or classify_quality_gate_command(normalized)
     input_scopes, config_scopes, tool_scopes, dependency_scopes, env_keys, output_files = _scopes_for_entry(
-        resolved_entry_type
+        resolved_entry_type,
+        normalized,
     )
     command_hash = _stable_json_hash(normalized)
     long_gate_candidate = resolved_entry_type in _LONG_ENTRY_TYPES

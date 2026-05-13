@@ -1,0 +1,54 @@
+feature: 2026-05-13-required-regression-cache
+created: 2026-05-13
+
+steps:
+  - action: "设计与状态：创建 NEXT-7 feature 文档，并把 roadmap item 绑定到本 feature"
+    exit_signal: "feature 目录、design、checklist 存在，items.yaml 中 NEXT-7 为 in-progress"
+    status: done
+  - action: "manifest 边界：启用 required 整组复用，补齐 required 专属 scope/env/output"
+    exit_signal: "enabled 只新增 required；NEXT-8 和其它 planned entry 仍 planned；无关 markdown 不进入 required 指纹"
+    status: done
+  - action: "runner proof：成功执行 required 后写 required_regressions.json 并交给通用 success cache"
+    exit_signal: "required proof 包含 schema、命令身份、target、fingerprint、日志 hash、returncode、head/run 信息"
+    status: done
+  - action: "测试覆盖：新增 required 专项测试，覆盖动态 args、scope/env、坏 proof、日志 hash、force/no-cache/explain"
+    exit_signal: "tests/test_long_gate_required_regression_cache.py 覆盖假绿风险和范围守护"
+    status: done
+  - action: "回归验证：跑 required 专项、long gate 相关测试、explain、ruff、pyright、yaml、diff check"
+    exit_signal: "窄验证和静态检查通过，explain 显示 required enabled 且后续 planned"
+    status: done
+  - action: "验收回写：写 acceptance 并同步 roadmap/items"
+    exit_signal: "NEXT-7 标为 done，NEXT-8 和后续仍 planned，验收报告记录验证命令和 clean proof 状态"
+    status: done
+
+checks:
+  - item: "required entry 从真实 command plan 定位，target 来自 entry args"
+    source: 动态命令身份
+    status: passed
+  - item: "enabled 只新增 required，不启用 NEXT-8 或其它 planned entry"
+    source: 范围守护
+    status: passed
+  - item: "required proof 缺失、损坏、schema 不匹配、输出 hash 不一致时整组重跑"
+    source: 证据完整性
+    status: passed
+  - item: "stdout/stderr 日志缺失或 hash 不一致时整组重跑"
+    source: 日志完整性
+    status: passed
+  - item: "required 测试、被测源码、模板、静态资源、Excel 模板、说明书资源变化时整组重跑"
+    source: 输入范围
+    status: passed
+  - item: "pytest 配置、依赖、runner/cache/schema/fingerprint/manifest/test registry 工具变化时整组重跑"
+    source: 工具与依赖范围
+    status: passed
+  - item: "Python/pytest/platform、pytest 环境变量、APS/浏览器相关环境变化时整组重跑"
+    source: 环境指纹
+    status: passed
+  - item: "无关普通 markdown 变化不能误伤 required"
+    source: 指纹收窄
+    status: passed
+  - item: "explain 不写 proof，no-cache 不读写 required cache，force 触发整组重跑"
+    source: CLI 守护
+    status: passed
+  - item: "collect、full-test-debt、startup 既有复用能力仍通过"
+    source: 既有能力回归
+    status: passed

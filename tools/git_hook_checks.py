@@ -29,6 +29,7 @@ BLOCKED_PATH_RULES: Tuple[Tuple[str, str], ...] = (
     ("evidence/QualityGate/quality_gate_manifest.json", "质量门禁 proof 是运行产物，应由当前门禁重新生成"),
     ("evidence/QualityGate/current_full_test_debt.json", "质量门禁债务快照是运行产物，应由当前门禁重新生成"),
     ("evidence/QualityGate/full_test_debt_node_cache.json", "full-test-debt nodeid 缓存是运行产物，应由当前门禁重新生成"),
+    ("evidence/QualityGate/required_regressions.json", "required regressions proof 是运行产物，应由当前门禁重新生成"),
     ("evidence/QualityGate/receipts/", "质量门禁 receipts 是运行产物，应由当前门禁重新生成"),
     ("evidence/QualityGate/logs/", "质量门禁日志是运行产物，不应该混进普通提交"),
     ("evidence/QualityGate/long_gate/", "长耗时门禁缓存是本地运行产物，不应该混进普通提交"),

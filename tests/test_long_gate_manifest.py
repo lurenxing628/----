@@ -96,7 +96,7 @@ def test_required_and_startup_regression_args_come_from_dynamic_plan():
     assert startup_entry["args"][4:] == iter_startup_regressions()
 
 
-def test_collect_full_test_debt_and_startup_entries_are_currently_reuse_enabled():
+def test_collect_full_test_debt_required_and_startup_entries_are_currently_reuse_enabled():
     command_plan = quality_gate_shared.build_quality_gate_command_plan()
     manifest = manifest_mod.build_manifest_from_quality_gate_plan(command_plan, repo_root=quality_gate_shared.REPO_ROOT)
 
@@ -108,12 +108,11 @@ def test_collect_full_test_debt_and_startup_entries_are_currently_reuse_enabled(
     ]
 
     full_test_debt = _entry_by_id(manifest, "full_test_debt")
+    required = _entry_by_id(manifest, "required_regressions")
     startup = _entry_by_id(manifest, "startup_runtime_regressions")
 
-    assert enabled == ["pytest_collect_all", "full_test_debt", "startup_runtime_regressions"]
+    assert enabled == ["pytest_collect_all", "full_test_debt", "required_regressions", "startup_runtime_regressions"]
     assert "ruff_check_full" in planned_candidates
-    assert "required_regressions" in planned_candidates
-    assert "required_regressions" not in enabled
     assert "codestable/tools/**/*.py" in full_test_debt["config_file_scopes"]
     assert full_test_debt["cache_status"] == "enabled"
     assert "evidence/QualityGate/collect_nodeids.json" in full_test_debt["input_file_scopes"]
@@ -123,6 +122,12 @@ def test_collect_full_test_debt_and_startup_entries_are_currently_reuse_enabled(
     assert "assets/**/*" in full_test_debt["input_file_scopes"]
     assert "installer/**/*" in full_test_debt["input_file_scopes"]
     assert "build_win7*.bat" in full_test_debt["input_file_scopes"]
+    assert required["cache_status"] == "enabled"
+    assert required["input_file_scopes"][: len(required["args"][4:])] == required["args"][4:]
+    assert "core/**/*.py" in required["input_file_scopes"]
+    assert "templates/**/*.html" in required["input_file_scopes"]
+    assert "templates_excel/**/*" in required["input_file_scopes"]
+    assert "evidence/QualityGate/required_regressions.json" in required["output_result_files"]
     assert "templates/**/*.html" in full_test_debt["input_file_scopes"]
     assert "templates_excel/**/*" in full_test_debt["input_file_scopes"]
     assert "static/**/*" in full_test_debt["input_file_scopes"]

@@ -13,7 +13,7 @@ related_architecture: [codestable/architecture/ARCHITECTURE.md]
 
 ## 1. 当前状态确认
 
-这份 roadmap 现在只记录后续路线，不代表所有慢门禁都已经缓存。当前已经完成 NEXT-1 到 NEXT-6；`full_test_debt` 先支持整项成功复用，现在又补了安全的 nodeid 级增量和台账-only 路径；`startup_runtime_regressions` 已支持整组成功复用。其它 required、ruff、pyright、architecture、debt ledger、quickref 仍保持 planned。
+这份 roadmap 现在只记录后续路线，不代表所有慢门禁都已经缓存。当前已经完成 NEXT-1 到 NEXT-7；`full_test_debt` 先支持整项成功复用，现在又补了安全的 nodeid 级增量和台账-only 路径；`startup_runtime_regressions` 和 `required_regressions` 已支持整组成功复用。其它 ruff、pyright、architecture、debt ledger、quickref 仍保持 planned。
 
 已经完成并可以继续沿用：
 
@@ -21,17 +21,16 @@ related_architecture: [codestable/architecture/ARCHITECTURE.md]
 |---|---|
 | CodeStable 路线和 feature 文档 | 已建立 `codestable/roadmap/quality-gate-long-cache/` 和 PR-0 到 PR-3 对应 feature 文档。 |
 | 基础模块 | 已有 `tools/long_gate_manifest.py`、`tools/long_gate_fingerprint.py`、`tools/long_gate_cache.py`、`tools/long_gate_collect.py`。 |
-| 已启用成功缓存 | `pytest_collect_all`、`full_test_debt` 和 `startup_runtime_regressions`。分别对应 collect-only、`python tools/check_full_test_debt.py`、以及真实 command plan 里的 startup pytest 整组命令。 |
+| 已启用成功缓存 | `pytest_collect_all`、`full_test_debt`、`startup_runtime_regressions` 和 `required_regressions`。分别对应 collect-only、`python tools/check_full_test_debt.py`、真实 command plan 里的 startup pytest 整组命令、以及真实 command plan 里的 required pytest 整组命令。 |
 | runner 参数 | 已有 `--long-gate-cache`、`--no-long-gate-cache`、`--long-gate-cache-explain`、`--long-gate-cache-dir`、`--long-gate-force-rerun`、`--long-gate-force-rerun-all`。 |
 | collect 输出 | collect-only 成功后可写 `evidence/QualityGate/collect_nodeids.json`。 |
 | receipt 字段 | 已有 `execution_mode`、`reused_from`、耗时字段、`timed_out`、`interrupted`、`partial_write`。 |
 | 缓存安全底线 | 已校验 entry、command、fingerprint、log、output、路径逃逸、损坏 JSON、cache/fingerprint schema、runner/tooling hash 和 repo identity；后续只能继续加固，不能放松。 |
-| 防提交保护 | `evidence/QualityGate/long_gate/` 和 `evidence/QualityGate/collect_nodeids.json` 已被 `.gitignore` 和本地 hook 保护。 |
+| 防提交保护 | `evidence/QualityGate/long_gate/`、`evidence/QualityGate/collect_nodeids.json`、`evidence/QualityGate/startup_runtime_regressions.json` 和 `evidence/QualityGate/required_regressions.json` 已被 `.gitignore` 和本地 hook 保护。 |
 
 目前只是候选，不能说已经启用成功复用：
 
 - `architecture_fitness`
-- `required_regressions`
 - `ruff_check_full`
 - `pyright_gate_full`
 - `pyright_tools_full`
@@ -52,7 +51,6 @@ NEXT-2 已完成并可以继续沿用：
 
 还没有完整落地的范围：
 
-- required 从真实 command plan 动态提取后缓存。
 - architecture fitness 文件级扫描缓存。
 - ruff / pyright 快速预检和正式全量缓存。
 - debt ledger sync 缓存。
@@ -100,14 +98,14 @@ Manifest 必须继续从 `tools.quality_gate_shared.build_quality_gate_command_p
 ```text
 pytest_collect_all
 full_test_debt
+startup_runtime_regressions
+required_regressions
 ```
 
 后续 planned：
 
 ```text
-startup_runtime_regressions
 architecture_fitness
-required_regressions
 ruff_check_full
 pyright_gate_full
 pyright_tools_full
@@ -544,7 +542,7 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --long-ga
 
 状态：done。对应 feature：`2026-05-13-startup-runtime-regression-cache`。
 
-完成说明：已为 `startup_runtime_regressions` 增加整组成功复用。命令仍从真实 `build_quality_gate_command_plan()` 动态生成，再由 manifest 根据 pytest args 识别；缓存逻辑没有复制 startup 测试清单。当前 enabled long gate entry 只从 `pytest_collect_all`、`full_test_debt` 扩展为 `pytest_collect_all`、`full_test_debt`、`startup_runtime_regressions`，`required_regressions` 和 NEXT-7 之后的 ruff、pyright、architecture、debt ledger、quickref 仍保持 planned。
+完成说明：已为 `startup_runtime_regressions` 增加整组成功复用。命令仍从真实 `build_quality_gate_command_plan()` 动态生成，再由 manifest 根据 pytest args 识别；缓存逻辑没有复制 startup 测试清单。NEXT-6 完成时，enabled long gate entry 只从 `pytest_collect_all`、`full_test_debt` 扩展为 `pytest_collect_all`、`full_test_debt`、`startup_runtime_regressions`；NEXT-7 已在后续完成，当前 required 状态见下一节。
 
 安全边界：startup 指纹覆盖真实 startup 测试文件、`web/bootstrap/**/*.py`、`app.py`、`app_new_ui.py`、`config.py`、`schema.sql`、模板、静态资源、插件和启动相关源码、pytest 配置、依赖文件、runner/cache/schema/fingerprint/manifest/test registry 工具，以及 `APS_ENV`、`APS_DB_PATH`、`APS_LOG_DIR`、`APS_BACKUP_DIR`、`APS_EXCEL_TEMPLATE_DIR`、`APS_CHROME_PATH`、`PYTHONPATH`、`PYTHONUTF8`、`PYTHONIOENCODING`、Python/pytest/platform 信息。普通无关 markdown 不进入 startup 指纹。
 
@@ -556,42 +554,69 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --long-ga
 
 ### NEXT-7：required regressions 整组复用
 
-目标：为 `required_regressions` 做整组成功复用。命令必须从真实 command plan 动态提取。
+状态：done。对应 feature：`2026-05-13-required-regression-cache`。
+
+完成说明：已为 `required_regressions` 增加整组成功复用。命令仍从真实 `build_quality_gate_command_plan()` 动态生成，再由 manifest 根据 pytest args 识别；缓存 proof 和 required target 都从当前 entry 的 `args[4:]` 派生，不在缓存逻辑里复制 `QUALITY_GATE_REQUIRED_TESTS`。当前 enabled long gate entry 只从 `pytest_collect_all`、`full_test_debt`、`startup_runtime_regressions` 扩展为 `pytest_collect_all`、`full_test_debt`、`startup_runtime_regressions`、`required_regressions`；NEXT-8 以及 ruff、pyright、architecture、debt ledger、quickref 仍保持 planned。
 
 需要修改：
 
 - `tools/long_gate_manifest.py`
 - `tools/long_gate_fingerprint.py`
+- `tools/quality_gate_shared.py`
+- `tools/quality_gate_support.py`
 - `scripts/run_quality_gate.py`
+- `.gitignore`
+- `tools/git_hook_checks.py`
+- `tests/test_long_gate_manifest.py`
+- `tests/test_long_gate_startup_regression_cache.py`
+- `tests/test_run_quality_gate.py`
+- `tests/test_git_hook_checks.py`
 
 建议新增：
 
 - `tests/test_long_gate_required_regression_cache.py`
 - `codestable/features/2026-05-13-required-regression-cache/`
 
-输入范围：
+安全边界：
 
-- required test files，来自 entry args。
-- pytest 配置。
-- `tools/test_registry.py`
-- `tools/quality_gate_shared.py`
-- `scripts/run_quality_gate.py`
-- 被测源码：`core/**/*.py`、`web/**/*.py`、`data/**/*.py`、`app.py`、`config.py`、`schema.sql`。
-- 依赖文件和 lockfiles。
+- required test target 来自 entry args，不复制 registry 清单。
+- 指纹覆盖 required 测试文件、`tests/conftest.py`、required 会调用的门禁工具、pytest 配置、依赖文件、runner/cache/schema/fingerprint/manifest/test registry 工具。
+- 指纹覆盖被测源码和资源：`core/**/*.py`、`web/**/*.py`、`data/**/*.py`、`plugins/**/*.py`、`app.py`、`app_new_ui.py`、`config.py`、`schema.sql`、模板、静态资源、Excel 模板。
+- 指纹覆盖 required 测试真实读取的文档和旧资产：说明书相关 docs、static docs、evidence/audit README、`.limcode/skills/aps-full-selftest/scripts/run_full_selftest.py`、`.limcode/plans/core目录系统性修复/05_后续结构债治理与文档同步.plan.md`、`开发文档/开发文档.md`、`开发文档/阶段留痕与验收记录.md`、`开发文档/技术债务治理台账.md`。
+- 不把 `docs/**/*.md`、`audit/**/*.md`、`开发文档/**/*.md` 这种宽泛普通 markdown 全部纳入 required 指纹，避免无关说明文件误伤 required。
+- 指纹覆盖 Python executable realpath、Python version、pytest version、pytest plugin versions、platform、`PYTHONPATH`、`PYTHONUTF8`、`PYTHONIOENCODING`、`PYTEST_ADDOPTS`、`PYTEST_DISABLE_PLUGIN_AUTOLOAD`、`PYTEST_PLUGINS`，以及会影响 APS/浏览器 smoke 的 `APS_ENV`、`APS_DB_PATH`、`APS_LOG_DIR`、`APS_BACKUP_DIR`、`APS_EXCEL_TEMPLATE_DIR`、`APS_CHROME_PATH`、Chrome/Node 解析结果。
 
 输出：
 
 - `evidence/QualityGate/required_regressions.json`
 
-测试重点：
+proof 字段：required 成功执行后写 `evidence/QualityGate/required_regressions.json`。proof 记录 schema、status、entry、generated_at、HEAD、run id、动态 command plan hash、命令序号、display、args、command hash、capture/output 策略、required target 数量和路径、target hash、fingerprint schema/hash、returncode、pytest exit code、execution mode、duration、长期 success cache stdout/stderr 日志路径和 hash、timed_out、interrupted、partial_write。通用 success cache 会再次记录并校验这个 proof 文件 hash 和 stdout/stderr 长期日志 hash；proof 缺失、JSON 损坏、schema 不匹配、日志缺失或 hash 不一致、输入/环境变化都会整组重跑。
+
+执行模式：`--long-gate-cache-explain` 只打印决策，不写 proof；`--no-long-gate-cache` 不读写 required cache；`--long-gate-force-rerun required_regressions` 和 `--long-gate-force-rerun-all` 会让 required 整组重跑。required 第一版不做 nodeid 级增量。
+
+测试重点已落地：
 
 - required args 来自真实 command plan。
+- required 分类不依赖 command plan 里的位置。
 - required test file 变化失效。
 - 被测源码变化失效。
 - pytest 配置或依赖变化失效。
+- required 真实读取的模板、静态资源、Excel 模板、文档、`.limcode` 脚本和门禁工具变化失效。
+- Python/pytest/platform、pytest 环境变量、APS/浏览器相关环境变化失效。
 - 输出 JSON 或 log 缺失时不复用。
+- 无关普通 markdown 变化不误伤 required。
+- explain/no-cache/force 行为符合预期。
+- collect、full-test-debt、startup 既有复用能力不被 required 失效拖坏。
 
-回滚方式：从 enabled 列表移除 `ENTRY_REQUIRED_REGRESSIONS`。
+验证结果：
+
+- `tests/test_long_gate_required_regression_cache.py` 通过。
+- long gate 相关回归组合通过。
+- `scripts/run_quality_gate.py --long-gate-cache-explain` 显示 enabled 只新增 `required_regressions`，NEXT-8 和后续仍 planned。
+- ruff、pyright、本 roadmap items/checklist YAML、`git diff --check` 通过。
+- 最终 clean-worktree proof 必须在本 feature 提交完成后运行 `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree` 才算绑定最终 HEAD；如果提交后又 amend，必须重新跑。
+
+回滚方式：把 `ENTRY_REQUIRED_REGRESSIONS` 从 enabled 列表移回 planned，删除 required output 绑定和 proof 写入；NEXT-1 到 NEXT-6 的 collect、full-test-debt、startup 复用能力可以保留。
 
 ### NEXT-8：architecture fitness 文件级扫描缓存
 
@@ -883,7 +908,7 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require
 8. `full-test-debt-success-cache`：done，已完成 full-test-debt 整项复用。
 9. `full-test-debt-nodeid-cache`：done，已完成 full-test-debt nodeid 增量和台账-only 路径。
 10. `startup-runtime-regression-cache`：done，已完成 startup 整组复用。
-11. `required-regression-cache`：planned，做 required 整组复用。
+11. `required-regression-cache`：done，已完成 required 整组复用。
 12. `architecture-scan-file-cache`：planned，做 architecture 文件级扫描缓存。
 13. `fast-static-precheck`：planned，做快速静态预检。
 14. `static-formal-cache`：planned，做 ruff/pyright 正式全量缓存。
@@ -916,7 +941,7 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require
 | `tests/test_long_gate_cli_controls.py` | cache dir、force rerun、force all、no cache、路径逃逸、planned entry 守护。 |
 | `tests/test_long_gate_full_test_debt_cache.py` | full-test-debt 整项复用、输出文件、collect nodeid、台账、源码、collector、node cache。 |
 | `tests/test_long_gate_startup_regression_cache.py` | startup 动态 args、环境变量、bootstrap/template/static/app/config/schema、输出文件。 |
-| `tests/test_long_gate_required_regression_cache.py` | required 动态 args、测试文件、被测源码、pytest 配置、依赖。 |
+| `tests/test_long_gate_required_regression_cache.py` | required 动态 args、测试文件、被测源码、模板、静态资源、Excel 模板、真实读取的文档和 `.limcode` 脚本、pytest 配置、依赖、环境变量、坏 proof、坏日志、force/no-cache/explain。 |
 | `tests/test_architecture_scan_cache.py` | 单文件扫描复用、单文件变更、ledger allowlist、scanner hash、跨文件聚合。 |
 | `tests/test_fast_static_precheck.py` | staged/unstaged/untracked Python 文件、无 Python 文件 skip、ruff/pyright 失败、不能替代正式门禁。 |
 | `tests/test_long_gate_static_cache.py` | ruff/pyright formal cache、工具版本、配置、依赖、`QUALITY_GATE_TOOL_PATHS`。 |
@@ -962,4 +987,5 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require
 - 2026-05-13：完成 `long-gate-cache-safety-hardening`，新增 `tools/long_gate_paths.py` 和 `tools/long_gate_schema.py`；success cache 显式记录并校验 cache/fingerprint schema、runner/tooling hash、cache dir、repo identity；坏 JSON、坏类型、坏 fingerprint 结构、repo 外输入路径、repo 外 symlink、日志/输出缺失、repo identity 不一致都会重新执行；该阶段完成时 enabled 范围为 `pytest_collect_all` 单项。
 - 2026-05-13：完成 `full-test-debt-success-cache`，只把 `full_test_debt` 加入 enabled；输入指纹覆盖完整 pytest 会读取的测试、源码、模板、静态资源、Excel 模板、安装脚本、`.limcode` 旧资产、CodeStable 工具、文档、台账、collector/checker、pytest 配置、依赖和 `collect_nodeids.json` 结构化 proof；输出绑定 `current_full_test_debt.json` 和 `full_test_debt_summary.json`；NEXT-5 的 nodeid 级增量仍保持 planned。
 - 2026-05-13：完成 `full-test-debt-nodeid-cache`，新增 `full_test_debt_node_cache.json` 和 `tools/long_gate_full_test_debt.py`；只有普通测试文件变化且 nodeid 映射可信时才走 nodeid 增量，只改台账时走 ledger-only；源码、conftest、pytest 配置、依赖、工具、模板、静态资源、Excel 模板、安装脚本或坏证据都会整体回退；完成时 enabled 范围仍只有 `pytest_collect_all` 和 `full_test_debt`。
-- 2026-05-13：完成 `startup-runtime-regression-cache`，只新增启用 `startup_runtime_regressions`；startup 命令从真实 command plan 动态定位，不复制测试清单；proof 写入 `evidence/QualityGate/startup_runtime_regressions.json`，绑定 command/fingerprint/returncode/测试数量/HEAD/长期日志路径和 hash；坏 proof、坏日志、输入或环境变化都会整组重跑；required 和 NEXT-7 之后条目仍保持 planned。
+- 2026-05-13：完成 `startup-runtime-regression-cache`，只新增启用 `startup_runtime_regressions`；startup 命令从真实 command plan 动态定位，不复制测试清单；proof 写入 `evidence/QualityGate/startup_runtime_regressions.json`，绑定 command/fingerprint/returncode/测试数量/HEAD/长期日志路径和 hash；坏 proof、坏日志、输入或环境变化都会整组重跑；该阶段完成时 required 和 NEXT-7 之后条目仍保持 planned。
+- 2026-05-13：完成 `required-regression-cache`，只新增启用 `required_regressions`；required 命令和 target 从真实 command plan entry 动态定位，不复制 `QUALITY_GATE_REQUIRED_TESTS`；proof 写入 `evidence/QualityGate/required_regressions.json`，绑定 command/fingerprint/returncode/target/HEAD/长期日志路径和 hash；坏 proof、坏日志、required 测试、被测源码、模板、静态资源、Excel 模板、真实读取的文档、`.limcode` 脚本、门禁工具、pytest 配置、依赖或关键环境变化都会整组重跑；NEXT-8 和后续条目仍保持 planned。

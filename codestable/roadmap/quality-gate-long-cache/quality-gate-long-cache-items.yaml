@@ -221,8 +221,8 @@ items:
     title: NEXT-7 required regressions 整组复用
     description: "从真实 command plan 定位 required_regressions，做整组 success cache；测试文件、被测源码、pytest 配置或依赖变化时失效。"
     depends_on: [startup-runtime-regression-cache]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-13-required-regression-cache
     minimal_loop: false
     primary_paths:
       - tools/long_gate_manifest.py
@@ -233,7 +233,9 @@ items:
       - tests/test_long_gate_required_regression_cache.py
     exit_checks:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_long_gate_required_regression_cache.py
-    notes: "不能复制 QUALITY_GATE_REQUIRED_TESTS；required args 必须来自真实 command plan；第一阶段只做整组复用，不做 nodeid 增量。"
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_long_gate_required_regression_cache.py tests/test_long_gate_startup_regression_cache.py tests/test_long_gate_manifest.py tests/test_long_gate_cache.py tests/test_long_gate_cli_controls.py tests/test_long_gate_summary_output.py tests/test_run_quality_gate.py tests/test_long_gate_full_test_debt_cache.py tests/test_git_hook_checks.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --long-gate-cache-explain
+    notes: "已完成 required 整组成功复用：required args 来自真实 command plan entry，不复制 QUALITY_GATE_REQUIRED_TESTS；proof 写入 evidence/QualityGate/required_regressions.json，绑定 command/fingerprint/returncode/target/HEAD/长期日志路径和 hash；坏 proof、坏日志、输入或环境变化都会整组重跑。第一版不做 nodeid 增量，NEXT-8 和后续 planned entry 仍不启用。"
 
   - slug: architecture-scan-file-cache
     title: NEXT-8 架构体检文件级扫描缓存

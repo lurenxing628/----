@@ -63,6 +63,11 @@ QUALITY_GATE_STARTUP_RUNTIME_REGRESSIONS_REL = os.path.join(
     "QualityGate",
     "startup_runtime_regressions.json",
 )
+QUALITY_GATE_REQUIRED_REGRESSIONS_REL = os.path.join(
+    "evidence",
+    "QualityGate",
+    "required_regressions.json",
+)
 FORMAL_FULL_TEST_PYTEST_ARGS = ["tests", "-q", "--tb=short", "-ra", "-p", "no:cacheprovider"]
 QUALITY_GATE_PYRIGHT_GATE_CONFIG = "pyrightconfig.gate.json"
 QUALITY_GATE_PROOF_SCOPE = {
