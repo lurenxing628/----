@@ -276,11 +276,18 @@ def test_force_planned_entry_is_reported_but_does_not_enable_cache(monkeypatch, 
     repo_root.mkdir()
     _patch_gate_environment(monkeypatch, module, repo_root, statuses=[[], []])
     monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: _small_plan(include_planned=True))
-    monkeypatch.setattr(module, "_run_command", lambda display, args, capture_output=False: _successful_result(display))
+    calls = []
+
+    def fake_run_command(display, args, capture_output=False):
+        calls.append(display)
+        return _successful_result(display)
+
+    monkeypatch.setattr(module, "_run_command", fake_run_command)
 
     assert module.main(["--long-gate-cache", "--long-gate-force-rerun", "full_test_debt"]) == 0
 
     planned = _entry_by_id(_load_summary(repo_root), "full_test_debt")
+    assert "python tools/check_full_test_debt.py" in calls
     assert planned["cache_status"] == "planned"
     assert planned["decision"] == "planned_only"
     assert planned["reason"].endswith("force rerun ignored because planned entries are not enabled")

@@ -65,6 +65,8 @@ QUALITY_GATE_TOOL_PATHS = [
     "tools/long_gate_collect.py",
     "tools/long_gate_fingerprint.py",
     "tools/long_gate_manifest.py",
+    "tools/long_gate_paths.py",
+    "tools/long_gate_schema.py",
     "tools/long_gate_summary.py",
     "tools/quality_gate_entries.py",
     "tools/quality_gate_ledger.py",

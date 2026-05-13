@@ -15,9 +15,14 @@ if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
 from tools import quality_gate_shared
+from tools.long_gate_schema import (
+    LONG_GATE_CACHE_SCHEMA_VERSION,
+    LONG_GATE_FINGERPRINT_SCHEMA_VERSION,
+    LONG_GATE_MANIFEST_SCHEMA_VERSION,
+)
 from tools.test_registry import iter_startup_regressions
 
-LONG_GATE_SCHEMA_VERSION = 1
+LONG_GATE_SCHEMA_VERSION = LONG_GATE_MANIFEST_SCHEMA_VERSION
 
 ENTRY_PYTEST_COLLECT_ALL = "pytest_collect_all"
 ENTRY_FULL_TEST_DEBT = "full_test_debt"
@@ -243,6 +248,8 @@ def _build_entry(command: Mapping[str, Any], index: int, *, entry_type: Optional
     reuse_allowed = resolved_entry_type in _CACHE_ENABLED_ENTRY_TYPES
     return {
         "schema_version": LONG_GATE_SCHEMA_VERSION,
+        "cache_schema_version": LONG_GATE_CACHE_SCHEMA_VERSION,
+        "fingerprint_schema_version": LONG_GATE_FINGERPRINT_SCHEMA_VERSION,
         "entry_id": _entry_id_for_command(resolved_entry_type, normalized, index),
         "entry_type": resolved_entry_type,
         "command_name": normalized["display"],

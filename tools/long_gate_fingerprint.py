@@ -4,7 +4,6 @@ import fnmatch
 import glob
 import hashlib
 import importlib.metadata
-import json
 import os
 import platform
 import stat
@@ -12,14 +11,11 @@ import subprocess
 import sys
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
+from tools.long_gate_schema import LONG_GATE_FINGERPRINT_SCHEMA_VERSION, stable_json_hash
+
 
 class LongGateFingerprintError(RuntimeError):
     pass
-
-
-def stable_json_hash(payload: Any) -> str:
-    text = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def _sha256_file(path: str) -> str:
@@ -126,12 +122,14 @@ def _candidate_paths_for_scope(scope: str, repo_root: str, tracked: Set[str], un
         for path in set(tracked) | set(untracked)
         if fnmatch.fnmatch(path, normalized_scope)
     }
-    filesystem_matches = glob.glob(os.path.join(repo_root, normalized_scope), recursive=True)
+    root = _real_repo_root(repo_root)
+    glob_pattern = normalized_scope if os.path.isabs(normalized_scope) else os.path.join(root, normalized_scope)
+    if not _is_within_repo(glob_pattern, root):
+        candidates.add(normalized_scope)
+    filesystem_matches = glob.glob(glob_pattern, recursive=True)
     for abs_path in filesystem_matches:
-        if not _is_within_repo(abs_path, repo_root):
-            continue
         if os.path.isfile(abs_path) or os.path.isdir(abs_path) or os.path.islink(abs_path):
-            candidates.add(os.path.relpath(abs_path, repo_root).replace("\\", "/"))
+            candidates.add(os.path.relpath(abs_path, root).replace("\\", "/"))
     return candidates
 
 
@@ -316,7 +314,7 @@ def fingerprint_entry(entry: Mapping[str, Any], repo_root: str, *, strict: bool 
         },
     }
     payload = {
-        "schema_version": 1,
+        "schema_version": LONG_GATE_FINGERPRINT_SCHEMA_VERSION,
         "components": components,
     }
     payload["hash"] = f"sha256:{stable_json_hash(payload)}"

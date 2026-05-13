@@ -13,7 +13,7 @@ related_architecture: [codestable/architecture/ARCHITECTURE.md]
 
 ## 1. 当前状态确认
 
-这份 roadmap 现在只记录后续路线，不代表所有慢门禁都已经缓存。当前远端分支 `fix/scheduler-public-error-contract` 已经包含三笔本地落地提交，最新提交是 `da4eddad 接入 collect-only 成功缓存`。pre-push 的 `APS quality gate before push` 已通过，说明这些基础改动已经进入远端分支。
+这份 roadmap 现在只记录后续路线，不代表所有慢门禁都已经缓存。当前基线已经完成 NEXT-1 和 NEXT-2，最新已知提交是 `2387ff46 补齐长耗时门禁缓存控制参数`。本轮继续落地 NEXT-3，不启用任何新的 planned entry。
 
 已经完成并可以继续沿用：
 
@@ -25,7 +25,7 @@ related_architecture: [codestable/architecture/ARCHITECTURE.md]
 | runner 参数 | 已有 `--long-gate-cache`、`--no-long-gate-cache`、`--long-gate-cache-explain`、`--long-gate-cache-dir`、`--long-gate-force-rerun`、`--long-gate-force-rerun-all`。 |
 | collect 输出 | collect-only 成功后可写 `evidence/QualityGate/collect_nodeids.json`。 |
 | receipt 字段 | 已有 `execution_mode`、`reused_from`、耗时字段、`timed_out`、`interrupted`、`partial_write`。 |
-| 缓存安全底线 | 已校验 entry、command、fingerprint、log、output、路径逃逸和损坏 JSON；后续只能继续加固，不能放松。 |
+| 缓存安全底线 | 已校验 entry、command、fingerprint、log、output、路径逃逸、损坏 JSON、cache/fingerprint schema、runner/tooling hash 和 repo identity；后续只能继续加固，不能放松。 |
 | 防提交保护 | `evidence/QualityGate/long_gate/` 和 `evidence/QualityGate/collect_nodeids.json` 已被 `.gitignore` 和本地 hook 保护。 |
 
 目前只是候选，不能说已经启用成功复用：
@@ -367,6 +367,8 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --long-ga
 
 ### NEXT-3：共用缓存安全和证据链加固
 
+状态：done。对应 feature：`2026-05-13-long-gate-cache-safety-hardening`。
+
 目标：把 schema、版本、路径、symlink、runner hash 等共用安全规则集中化。
 
 需要修改：
@@ -409,7 +411,9 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --long-ga
 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_long_gate_cache.py tests/test_long_gate_manifest.py
 ```
 
-回滚方式：不要放宽安全规则，只把对应 entry 从 enabled 移回 planned。
+完成说明：已新增 `tools/long_gate_paths.py` 和 `tools/long_gate_schema.py`；success cache 现在写入并校验 cache schema、fingerprint schema、runner hash、tooling hash、cache dir、repo root realpath 和 git common dir realpath。损坏 JSON、缺字段、bool 或坏字符串冒充数字、坏 `duration_s`、坏 fingerprint 结构、repo 外普通路径、repo 外 glob、repo 外 symlink、runner/tooling 自身的 repo 外 symlink、repo identity 不一致、runner/tooling 变化、日志/输出证据不完整都会稳定 `decision=run`，不会崩溃或误复用，也不会读取仓库外目标内容。当前 enabled 范围未改变，仍只有 `pytest_collect_all`，planned entry 仍真实执行但不会写 success cache。
+
+回滚方式：不要放宽安全规则；若本加固本身出问题，回退本 feature 的 schema/path/hash/repo identity 改动即可。NEXT-3 没有启用新的 entry，不存在把新增 entry 移回 planned 的动作。
 
 ### NEXT-4：full-test-debt 整项成功复用
 
@@ -913,7 +917,7 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require
 4. `quality-gate-runner-collect-cache`：done，已接入 collect-only 成功复用。
 5. `long-gate-summary-output`：done，已补统一 summary 和失败提示。
 6. `long-gate-cli-controls`：done，已补 cache dir 和 force rerun 参数。
-7. `long-gate-cache-safety-hardening`：planned，继续加固共用安全规则。
+7. `long-gate-cache-safety-hardening`：done，已加固共用 schema、runner/tooling hash、repo identity、路径和损坏证据拒绝规则。
 8. `full-test-debt-success-cache`：planned，做 full-test-debt 整项复用。
 9. `full-test-debt-nodeid-cache`：planned，做 full-test-debt nodeid 增量。
 10. `startup-runtime-regression-cache`：planned，做 startup 整组复用。
@@ -993,3 +997,4 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require
 - 2026-05-13：按用户提供的新后续实施计划更新 roadmap：把 summary、CLI 控制、安全加固、full-test-debt 整项和增量、startup、required、architecture、fast precheck、formal static、debt ledger、quickref、最终文档证明拆成更细的 NEXT 阶段；明确当前只有 collect-only 已启用。
 - 2026-05-13：完成 `long-gate-summary-output`，新增 `tools/long_gate_summary.py`，正式 long gate cache 运行写 `summary.json` / `summary.md`，失败时输出 copyable command/nodeid、receipt 和 stdout/stderr tail；planned long entry 真实失败时也写 failure 证据；summary 专项测试已纳入正式 quality gate 必跑集合；explain 仍只打印不写 proof，未启用任何新的 planned entry。
 - 2026-05-13：完成 `long-gate-cli-controls`，新增 `--long-gate-cache-dir`、`--long-gate-force-rerun`、`--long-gate-force-rerun-all`；自定义 success cache 目录被限制在 `evidence/QualityGate/long_gate/` 下；force 只影响 enabled entry 的复用决策，不改变 command plan，不启用任何新的 planned entry。
+- 2026-05-13：完成 `long-gate-cache-safety-hardening`，新增 `tools/long_gate_paths.py` 和 `tools/long_gate_schema.py`；success cache 显式记录并校验 cache/fingerprint schema、runner/tooling hash、cache dir、repo identity；坏 JSON、坏类型、坏 fingerprint 结构、repo 外输入路径、repo 外 symlink、日志/输出缺失、repo identity 不一致都会重新执行；当前仍只有 `pytest_collect_all` 允许 success cache 复用。

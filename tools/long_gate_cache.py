@@ -7,14 +7,22 @@ from datetime import datetime
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, TypedDict
 
 from tools.long_gate_fingerprint import diff_fingerprints, stable_json_hash
-from tools.long_gate_manifest import LONG_GATE_SCHEMA_VERSION
+from tools.long_gate_paths import (
+    LONG_GATE_CACHE_DIR_REL,
+    LONG_GATE_LOGS_DIR_NAME,
+    LONG_GATE_LOGS_DIR_REL,
+    LONG_GATE_RESULTS_DIR_NAME,
+    LONG_GATE_RESULTS_DIR_REL,
+    real_repo_root,
+    repo_relative_path,
+    resolve_repo_path,
+)
+from tools.long_gate_schema import (
+    LONG_GATE_CACHE_SCHEMA_VERSION,
+    LONG_GATE_FINGERPRINT_SCHEMA_VERSION,
+    long_gate_cache_metadata,
+)
 from tools.quality_gate_shared import REPO_ROOT
-
-LONG_GATE_CACHE_DIR_REL = os.path.join("evidence", "QualityGate", "long_gate").replace("\\", "/")
-LONG_GATE_RESULTS_DIR_REL = os.path.join(LONG_GATE_CACHE_DIR_REL, "results").replace("\\", "/")
-LONG_GATE_LOGS_DIR_REL = os.path.join(LONG_GATE_CACHE_DIR_REL, "logs").replace("\\", "/")
-LONG_GATE_RESULTS_DIR_NAME = "results"
-LONG_GATE_LOGS_DIR_NAME = "logs"
 
 
 class ReuseEvaluation(TypedDict):
@@ -29,33 +37,15 @@ def _safe_entry_id(entry_id: str) -> str:
 
 
 def _repo_root(repo_root: Optional[str]) -> str:
-    return os.path.realpath(repo_root or REPO_ROOT)
+    return real_repo_root(repo_root or REPO_ROOT)
 
 
 def _abs_from_rel(repo_root: str, rel_path: str) -> str:
-    root = os.path.realpath(repo_root)
-    raw_path = str(rel_path or "").replace("\\", "/")
-    if not raw_path:
-        raise ValueError("cache path is empty")
-    if os.path.isabs(raw_path):
-        abs_path = os.path.realpath(raw_path)
-    else:
-        abs_path = os.path.realpath(os.path.join(root, raw_path.replace("/", os.sep)))
-    if abs_path != root and not abs_path.startswith(root + os.sep):
-        raise ValueError(f"cache path escapes repo root: {raw_path}")
-    return abs_path
+    return resolve_repo_path(repo_root, rel_path, description="cache path")
 
 
 def _rel_from_path(repo_root: str, path: str) -> str:
-    root = os.path.realpath(repo_root)
-    raw_path = str(path or "").replace("\\", "/")
-    if os.path.isabs(raw_path):
-        abs_path = _abs_from_rel(root, raw_path)
-        return os.path.relpath(abs_path, root).replace("\\", "/")
-    _abs_from_rel(root, raw_path)
-    if raw_path.startswith("./"):
-        raw_path = raw_path[2:]
-    return raw_path
+    return repo_relative_path(repo_root, path, description="cache path")
 
 
 def resolve_cache_dir(repo_root: Optional[str] = None, cache_dir: Optional[str] = None) -> str:
@@ -80,8 +70,6 @@ def _cache_child_rel(cache_dir: str, child: str) -> str:
 
 
 def _sha256_bytes(path: str) -> str:
-    import hashlib
-
     hasher = hashlib.sha256()
     with open(path, "rb") as handle:
         while True:
@@ -159,12 +147,22 @@ def _missing_field(payload: Mapping[str, Any], field: str) -> Optional[str]:
 def _validate_required_fields(payload: Mapping[str, Any]) -> Optional[str]:
     for field in (
         "schema_version",
+        "cache_schema_version",
+        "fingerprint_schema_version",
+        "runner_version_hash",
+        "tooling_version_hash",
+        "runner_version_untrusted_paths",
+        "tooling_version_untrusted_paths",
+        "cache_dir",
+        "repo_root_realpath",
+        "git_common_dir_realpath",
         "entry_id",
         "status",
         "command_hash",
         "fingerprint_hash",
         "fingerprint",
         "returncode",
+        "duration_s",
         "stdout_sha256",
         "stderr_sha256",
         "stdout_log_path",
@@ -179,16 +177,79 @@ def _validate_required_fields(payload: Mapping[str, Any]) -> Optional[str]:
             return error
     if not isinstance(payload.get("output_files"), list):
         return "cache unreadable/corrupt/missing required field: output_files"
+    for field in ("runner_version_untrusted_paths", "tooling_version_untrusted_paths"):
+        if not isinstance(payload.get(field), list):
+            return f"cache unreadable/corrupt/missing required field: {field}"
     for field in ("timed_out", "interrupted", "partial_write"):
         if not isinstance(payload.get(field), bool):
             return f"cache unreadable/corrupt/missing required field: {field}"
     return None
 
 
+def _coerce_plain_int_field(payload: Mapping[str, Any], field: str) -> Tuple[Optional[int], Optional[str]]:
+    value = payload.get(field)
+    if not isinstance(value, int) or isinstance(value, bool):
+        return None, "cache unreadable/corrupt: numeric field has invalid type"
+    return int(value), None
+
+
+def _coerce_plain_float_field(payload: Mapping[str, Any], field: str) -> Tuple[Optional[float], Optional[str]]:
+    value = payload.get(field)
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return None, "cache unreadable/corrupt: numeric field has invalid type"
+    return float(value), None
+
+
+def _validate_fingerprint_shape(fingerprint: Mapping[str, Any]) -> Optional[str]:
+    schema_version = fingerprint.get("schema_version")
+    if not isinstance(schema_version, int) or isinstance(schema_version, bool):
+        return "cache unreadable/corrupt: fingerprint schema_version has invalid type"
+    components = fingerprint.get("components")
+    if not isinstance(components, dict):
+        return "cache unreadable/corrupt: fingerprint components is not an object"
+    files_component = components.get("files")
+    if files_component is not None:
+        if not isinstance(files_component, dict):
+            return "cache unreadable/corrupt: fingerprint files is not an object"
+        files = files_component.get("files")
+        if files is not None:
+            if not isinstance(files, list):
+                return "cache unreadable/corrupt: fingerprint files must be a list"
+            for row in files:
+                if not isinstance(row, dict):
+                    return "cache unreadable/corrupt: fingerprint file row is not an object"
+    return None
+
+
+def _fingerprint_untrusted_path_reason(fingerprint: Mapping[str, Any]) -> str:
+    components = fingerprint.get("components")
+    if not isinstance(components, dict):
+        return ""
+    files_component = components.get("files")
+    if not isinstance(files_component, dict):
+        return ""
+    files = files_component.get("files")
+    if not isinstance(files, list):
+        return ""
+    for row in files:
+        if not isinstance(row, dict):
+            continue
+        kind = str(row.get("kind") or "")
+        path = str(row.get("path") or "")
+        if kind == "outside_repo":
+            return f"input path is outside repo: {path}"
+        if kind == "symlink_outside_repo":
+            return f"input symlink points outside repo: {path}"
+    return ""
+
+
 def _fingerprint_hash_is_self_consistent(previous: Mapping[str, Any]) -> Optional[str]:
     fingerprint = previous.get("fingerprint")
     if not isinstance(fingerprint, dict):
         return "cache unreadable/corrupt: fingerprint is not an object"
+    shape_error = _validate_fingerprint_shape(fingerprint)
+    if shape_error:
+        return shape_error
     embedded_hash = str(fingerprint.get("hash") or "")
     top_level_hash = str(previous.get("fingerprint_hash") or "")
     if not embedded_hash or embedded_hash != top_level_hash:
@@ -383,20 +444,72 @@ def evaluate_reuse(
     required_error = _validate_required_fields(previous)
     if required_error:
         return _reuse_evaluation(_decision(entry_id, "run", required_error, current_fingerprint_hash=current_hash))
-    try:
-        schema_version = int(previous.get("schema_version") or 0)
-        returncode = int(previous.get("returncode") or 0)
-    except (TypeError, ValueError):
+    numeric_values: Dict[str, int] = {}
+    for field in ("schema_version", "cache_schema_version", "fingerprint_schema_version", "returncode"):
+        value, error = _coerce_plain_int_field(previous, field)
+        if error:
+            return _reuse_evaluation(_decision(entry_id, "run", error, current_fingerprint_hash=current_hash))
+        assert value is not None
+        numeric_values[field] = value
+    schema_version = numeric_values["schema_version"]
+    cache_schema_version = numeric_values["cache_schema_version"]
+    fingerprint_schema_version = numeric_values["fingerprint_schema_version"]
+    returncode = numeric_values["returncode"]
+    _duration_s, duration_error = _coerce_plain_float_field(previous, "duration_s")
+    if duration_error:
+        return _reuse_evaluation(_decision(entry_id, "run", duration_error, current_fingerprint_hash=current_hash))
+    if schema_version != LONG_GATE_CACHE_SCHEMA_VERSION or cache_schema_version != LONG_GATE_CACHE_SCHEMA_VERSION:
+        return _reuse_evaluation(_decision(entry_id, "run", "cache schema changed", current_fingerprint_hash=current_hash))
+    if fingerprint_schema_version != LONG_GATE_FINGERPRINT_SCHEMA_VERSION:
         return _reuse_evaluation(
             _decision(
                 entry_id,
                 "run",
-                "cache unreadable/corrupt: numeric field has invalid type",
+                "input fingerprint changed",
+                invalidated_by=["fingerprint schema changed"],
                 current_fingerprint_hash=current_hash,
             )
         )
-    if schema_version != LONG_GATE_SCHEMA_VERSION:
-        return _reuse_evaluation(_decision(entry_id, "run", "cache schema changed", current_fingerprint_hash=current_hash))
+    expected_metadata = long_gate_cache_metadata(root, cache_dir=resolved_cache_dir)
+    for untrusted_field, reason in (
+        ("runner_version_untrusted_paths", "runner version contains untrusted path"),
+        ("tooling_version_untrusted_paths", "tooling version contains untrusted path"),
+    ):
+        current_untrusted = [str(path) for path in list(expected_metadata.get(untrusted_field) or [])]
+        previous_untrusted = [str(path) for path in list(previous.get(untrusted_field) or [])]
+        if current_untrusted:
+            return _reuse_evaluation(
+                _decision(
+                    entry_id,
+                    "run",
+                    reason,
+                    invalidated_by=current_untrusted,
+                    current_fingerprint_hash=current_hash,
+                )
+            )
+        if previous_untrusted:
+            return _reuse_evaluation(
+                _decision(
+                    entry_id,
+                    "run",
+                    reason,
+                    invalidated_by=previous_untrusted,
+                    current_fingerprint_hash=current_hash,
+                )
+            )
+    for hash_field, reason in (
+        ("runner_version_hash", "runner version changed"),
+        ("tooling_version_hash", "tooling version changed"),
+    ):
+        if str(previous.get(hash_field) or "") != str(expected_metadata.get(hash_field) or ""):
+            return _reuse_evaluation(_decision(entry_id, "run", reason, current_fingerprint_hash=current_hash))
+    if str(previous.get("cache_dir") or "").replace("\\", "/") != str(expected_metadata.get("cache_dir") or ""):
+        return _reuse_evaluation(_decision(entry_id, "run", "cache dir changed", current_fingerprint_hash=current_hash))
+    for identity_field in ("repo_root_realpath", "git_common_dir_realpath"):
+        if os.path.realpath(str(previous.get(identity_field) or "")) != os.path.realpath(
+            str(expected_metadata.get(identity_field) or "")
+        ):
+            return _reuse_evaluation(_decision(entry_id, "run", "repo identity changed", current_fingerprint_hash=current_hash))
     fingerprint_error = _fingerprint_hash_is_self_consistent(previous)
     if fingerprint_error:
         return _reuse_evaluation(_decision(entry_id, "run", fingerprint_error, current_fingerprint_hash=current_hash))
@@ -419,6 +532,19 @@ def evaluate_reuse(
             _decision(entry_id, "run", "previous result was partially written", current_fingerprint_hash=current_hash)
         )
     previous_fingerprint = previous.get("fingerprint") if isinstance(previous.get("fingerprint"), dict) else {}
+    untrusted_path_reason = _fingerprint_untrusted_path_reason(current_fingerprint) or _fingerprint_untrusted_path_reason(
+        previous_fingerprint
+    )
+    if untrusted_path_reason:
+        return _reuse_evaluation(
+            _decision(
+                entry_id,
+                "run",
+                "input fingerprint contains untrusted path",
+                invalidated_by=[untrusted_path_reason],
+                current_fingerprint_hash=current_hash,
+            )
+        )
     if previous_fingerprint.get("schema_version") != current_fingerprint.get("schema_version"):
         return _reuse_evaluation(
             _decision(
@@ -544,13 +670,18 @@ def _assert_output_files_cover_declared_paths(repo_root: str, entry: Mapping[str
 def _assert_success_command_result(command_result: Mapping[str, Any]) -> None:
     if "returncode" not in command_result:
         raise ValueError("long gate success cache requires returncode")
-    try:
-        returncode = int(command_result.get("returncode"))
-    except (TypeError, ValueError) as exc:
-        raise ValueError("long gate success cache requires numeric returncode") from exc
+    returncode_value = command_result.get("returncode")
+    if not isinstance(returncode_value, int) or isinstance(returncode_value, bool):
+        raise ValueError("long gate success cache requires numeric returncode")
+    returncode = int(returncode_value)
 
     if returncode != 0:
         raise ValueError("long gate success cache requires returncode == 0")
+
+    if "duration_s" in command_result:
+        duration_value = command_result.get("duration_s")
+        if not isinstance(duration_value, (int, float)) or isinstance(duration_value, bool):
+            raise ValueError("long gate success cache requires numeric duration_s")
 
     for field in ("timed_out", "interrupted", "partial_write"):
         if bool(command_result.get(field)):
@@ -580,7 +711,8 @@ def write_success(
     output_file_rows = _hash_output_files(root, output_files)
     _assert_output_files_cover_declared_paths(root, entry, output_file_rows)
     payload = {
-        "schema_version": LONG_GATE_SCHEMA_VERSION,
+        "schema_version": LONG_GATE_CACHE_SCHEMA_VERSION,
+        **long_gate_cache_metadata(root, cache_dir=resolved_cache_dir),
         "entry_id": entry_id,
         "status": "passed",
         "completed_at": datetime.now().isoformat(timespec="seconds"),
@@ -619,7 +751,8 @@ def write_failure(
     resolved_cache_dir = resolve_cache_dir(root, cache_dir)
     entry_id = _safe_entry_id(str(entry.get("entry_id") or ""))
     payload = {
-        "schema_version": LONG_GATE_SCHEMA_VERSION,
+        "schema_version": LONG_GATE_CACHE_SCHEMA_VERSION,
+        **long_gate_cache_metadata(root, cache_dir=resolved_cache_dir),
         "entry_id": entry_id,
         "status": "failed",
         "completed_at": datetime.now().isoformat(timespec="seconds"),

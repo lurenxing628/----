@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -13,9 +14,15 @@ from tools.long_gate_fingerprint import (
     fingerprint_command,
     fingerprint_entry,
     fingerprint_files,
-    stable_json_hash,
 )
-from tools.long_gate_manifest import LONG_GATE_SCHEMA_VERSION
+from tools.long_gate_schema import (
+    LONG_GATE_CACHE_SCHEMA_VERSION,
+    LONG_GATE_FINGERPRINT_SCHEMA_VERSION,
+    long_gate_cache_metadata,
+    stable_json_hash,
+    version_hash_for_paths,
+    version_untrusted_paths_for_paths,
+)
 
 
 def _entry(scopes=None):
@@ -214,6 +221,76 @@ def test_fingerprint_files_marks_outside_repo_scope_without_reading_it(tmp_path)
     assert fingerprint["files"][0]["sha256"] == ""
 
 
+def test_outside_repo_scope_is_not_reused(tmp_path):
+    outside = tmp_path.parent / "outside-long-gate-source.py"
+    outside.write_text("SECRET = 1\n", encoding="utf-8")
+    entry = _entry([str(outside)])
+    fingerprint = fingerprint_entry(entry, str(tmp_path))
+    output = _output_file(tmp_path)
+    write_success(
+        entry,
+        fingerprint,
+        {"stdout": "ok\n", "stderr": "", "returncode": 0},
+        [str(output)],
+        repo_root=str(tmp_path),
+    )
+
+    decision = decide_reuse(entry, fingerprint, repo_root=str(tmp_path))
+
+    assert decision["decision"] == "run"
+    assert decision["reason"] == "input fingerprint contains untrusted path"
+    assert decision["invalidated_by"] == [f"input path is outside repo: {outside}"]
+
+
+def test_fingerprint_files_marks_outside_repo_glob_without_reusing_cache(tmp_path):
+    outside_dir = tmp_path.parent / f"{tmp_path.name}-outside-glob"
+    outside_dir.mkdir()
+    outside = outside_dir / "outside-long-gate-source.py"
+    outside.write_text("SECRET = 1\n", encoding="utf-8")
+    entry = _entry([str(outside_dir / "*.py")])
+    fingerprint = fingerprint_entry(entry, str(tmp_path))
+    output = _output_file(tmp_path)
+    write_success(
+        entry,
+        fingerprint,
+        {"stdout": "ok\n", "stderr": "", "returncode": 0},
+        [str(output)],
+        repo_root=str(tmp_path),
+    )
+
+    decision = decide_reuse(entry, fingerprint, repo_root=str(tmp_path))
+
+    file_kinds = {row["kind"] for row in fingerprint["components"]["files"]["files"]}
+    assert "outside_repo" in file_kinds
+    assert decision["decision"] == "run"
+    assert decision["reason"] == "input fingerprint contains untrusted path"
+
+
+def test_tooling_symlink_to_outside_repo_does_not_read_target_content_and_is_not_reused(tmp_path, monkeypatch):
+    if not hasattr(os, "symlink"):
+        pytest.skip("symlink is not available on this platform")
+    outside = tmp_path.parent / "outside-long-gate-tool.py"
+    outside.write_text("VERSION = 1\n", encoding="utf-8")
+    try:
+        os.symlink(outside, tmp_path / "tool.py")
+    except OSError as exc:
+        pytest.skip(f"symlink is unavailable: {exc}")
+
+    first = version_hash_for_paths(str(tmp_path), ["tool.py"])
+    outside.write_text("VERSION = 2\n", encoding="utf-8")
+    second = version_hash_for_paths(str(tmp_path), ["tool.py"])
+    monkeypatch.setattr("tools.long_gate_schema.LONG_GATE_TOOLING_VERSION_PATHS", ("tool.py",))
+    entry, fingerprint, _output = _write_reusable_success(tmp_path)
+
+    decision = decide_reuse(entry, fingerprint, repo_root=str(tmp_path))
+
+    assert second == first
+    assert version_untrusted_paths_for_paths(str(tmp_path), ["tool.py"]) == ["tool.py"]
+    assert decision["decision"] == "run"
+    assert decision["reason"] == "tooling version contains untrusted path"
+    assert decision["invalidated_by"] == ["tool.py"]
+
+
 def test_decide_reuse_when_previous_success_matches(tmp_path):
     entry, fingerprint, _output = _write_reusable_success(tmp_path)
 
@@ -300,6 +377,18 @@ def test_corrupt_cache_json_is_not_reused(tmp_path):
     assert "cache unreadable/corrupt" in decision["reason"]
 
 
+def test_success_cache_top_level_json_array_is_not_reused(tmp_path):
+    entry = _entry()
+    path = _success_path(tmp_path)
+    path.parent.mkdir(parents=True)
+    path.write_text("[]", encoding="utf-8")
+
+    decision = decide_reuse(entry, _fingerprint(), repo_root=str(tmp_path))
+
+    assert decision["decision"] == "run"
+    assert "top-level value is not an object" in decision["reason"]
+
+
 def test_non_utf8_cache_json_is_not_reused(tmp_path):
     entry = _entry()
     path = _success_path(tmp_path)
@@ -322,6 +411,18 @@ def test_cache_missing_required_field_is_not_reused(tmp_path):
 
     assert decision["decision"] == "run"
     assert decision["reason"] == "cache unreadable/corrupt/missing required field: fingerprint_hash"
+
+
+def test_missing_cache_schema_version_is_not_reused(tmp_path):
+    entry, fingerprint, _output = _write_reusable_success(tmp_path)
+    payload = _load_success(tmp_path)
+    payload.pop("cache_schema_version")
+    _store_success(tmp_path, payload)
+
+    decision = decide_reuse(entry, fingerprint, repo_root=str(tmp_path))
+
+    assert decision["decision"] == "run"
+    assert decision["reason"] == "cache unreadable/corrupt/missing required field: cache_schema_version"
 
 
 def test_missing_integrity_field_is_not_reused(tmp_path):
@@ -348,6 +449,31 @@ def test_invalid_numeric_fields_are_not_reused(tmp_path):
     assert "cache unreadable/corrupt" in decision["reason"]
 
 
+@pytest.mark.parametrize("field", ["schema_version", "cache_schema_version", "fingerprint_schema_version", "returncode"])
+def test_bool_numeric_fields_are_not_reused(tmp_path, field):
+    entry, fingerprint, _output = _write_reusable_success(tmp_path)
+    payload = _load_success(tmp_path)
+    payload[field] = False
+    _store_success(tmp_path, payload)
+
+    decision = decide_reuse(entry, fingerprint, repo_root=str(tmp_path))
+
+    assert decision["decision"] == "run"
+    assert decision["reason"] == "cache unreadable/corrupt: numeric field has invalid type"
+
+
+def test_bad_duration_s_is_not_reused(tmp_path):
+    entry, fingerprint, _output = _write_reusable_success(tmp_path)
+    payload = _load_success(tmp_path)
+    payload["duration_s"] = "bad"
+    _store_success(tmp_path, payload)
+
+    decision = decide_reuse(entry, fingerprint, repo_root=str(tmp_path))
+
+    assert decision["decision"] == "run"
+    assert decision["reason"] == "cache unreadable/corrupt: numeric field has invalid type"
+
+
 def test_missing_stdout_log_is_not_reused(tmp_path):
     entry, fingerprint, _output = _write_reusable_success(tmp_path)
     payload = _load_success(tmp_path)
@@ -368,6 +494,31 @@ def test_stdout_log_hash_mismatch_is_not_reused(tmp_path):
 
     assert decision["decision"] == "run"
     assert decision["reason"] == "previous logs missing or hash mismatch"
+
+
+def test_stderr_log_hash_mismatch_is_not_reused(tmp_path):
+    entry, fingerprint, _output = _write_reusable_success(tmp_path)
+    payload = _load_success(tmp_path)
+    (tmp_path / payload["stderr_log_path"]).write_text("changed stderr\n", encoding="utf-8")
+
+    decision = decide_reuse(entry, fingerprint, repo_root=str(tmp_path))
+
+    assert decision["decision"] == "run"
+    assert decision["reason"] == "previous logs missing or hash mismatch"
+
+
+def test_non_utf8_success_log_is_not_reused(tmp_path):
+    entry, fingerprint, _output = _write_reusable_success(tmp_path)
+    payload = _load_success(tmp_path)
+    stderr_path = tmp_path / payload["stderr_log_path"]
+    stderr_path.write_bytes(b"\xff")
+    payload["stderr_sha256"] = hashlib.sha256(b"\xff").hexdigest()
+    _store_success(tmp_path, payload)
+
+    decision = decide_reuse(entry, fingerprint, repo_root=str(tmp_path))
+
+    assert decision["decision"] == "run"
+    assert "previous logs unreadable as utf-8" in decision["reason"]
 
 
 def test_custom_cache_dir_rejects_success_logs_from_other_cache_dir(tmp_path):
@@ -405,6 +556,53 @@ def test_symlink_repo_root_keeps_cache_paths_repo_relative(tmp_path):
     )
     assert payload["stdout_log_path"] == f"{cache_dir}/logs/example_gate.stdout.log"
     assert payload["stderr_log_path"] == f"{cache_dir}/logs/example_gate.stderr.log"
+
+
+def test_symlink_to_outside_repo_does_not_hash_target_content(tmp_path):
+    if not hasattr(os, "symlink"):
+        pytest.skip("symlink is not available on this platform")
+    outside = tmp_path.parent / "outside-long-gate-target.txt"
+    outside.write_text("secret one\n", encoding="utf-8")
+    link_path = tmp_path / "linked.txt"
+    try:
+        os.symlink(outside, link_path)
+    except OSError as exc:
+        pytest.skip(f"symlink is unavailable: {exc}")
+
+    first = fingerprint_files(["linked.txt"], str(tmp_path))
+    outside.write_text("secret two\n", encoding="utf-8")
+    second = fingerprint_files(["linked.txt"], str(tmp_path))
+
+    assert first["files"][0]["kind"] == "symlink_outside_repo"
+    assert first["files"][0]["sha256"] == second["files"][0]["sha256"]
+    assert first["content_hash"] == second["content_hash"]
+
+
+def test_symlink_to_outside_repo_is_not_reused(tmp_path):
+    if not hasattr(os, "symlink"):
+        pytest.skip("symlink is not available on this platform")
+    outside = tmp_path.parent / "outside-long-gate-source.py"
+    outside.write_text("SECRET = 1\n", encoding="utf-8")
+    try:
+        os.symlink(outside, tmp_path / "linked.py")
+    except OSError as exc:
+        pytest.skip(f"symlink is unavailable: {exc}")
+    entry = _entry(["linked.py"])
+    fingerprint = fingerprint_entry(entry, str(tmp_path))
+    output = _output_file(tmp_path)
+    write_success(
+        entry,
+        fingerprint,
+        {"stdout": "ok\n", "stderr": "", "returncode": 0},
+        [str(output)],
+        repo_root=str(tmp_path),
+    )
+
+    decision = decide_reuse(entry, fingerprint, repo_root=str(tmp_path))
+
+    assert decision["decision"] == "run"
+    assert decision["reason"] == "input fingerprint contains untrusted path"
+    assert decision["invalidated_by"] == ["input symlink points outside repo: linked.py"]
 
 
 def test_missing_output_file_is_not_reused(tmp_path):
@@ -458,6 +656,33 @@ def test_cache_path_escape_is_not_reused(tmp_path):
     assert "cache path escapes repo root" in decision["reason"]
 
 
+def test_absolute_inside_repo_output_path_is_normalized_and_absolute_outside_is_rejected(tmp_path):
+    entry = _entry()
+    output = _output_file(tmp_path)
+
+    write_success(
+        entry,
+        _fingerprint(),
+        {"stdout": "ok", "stderr": "", "returncode": 0},
+        [str(output.resolve())],
+        repo_root=str(tmp_path),
+    )
+
+    payload = _load_success(tmp_path)
+    assert payload["output_files"][0]["path"] == "evidence/QualityGate/example_output.json"
+
+    outside = tmp_path.parent / "outside-long-gate-output.json"
+    outside.write_text("{}", encoding="utf-8")
+    with pytest.raises(ValueError, match="cache path escapes repo root"):
+        write_success(
+            entry,
+            _fingerprint(),
+            {"stdout": "ok", "stderr": "", "returncode": 0},
+            [str(outside.resolve())],
+            repo_root=str(tmp_path),
+        )
+
+
 def test_entry_id_mismatch_is_not_reused(tmp_path):
     entry, fingerprint, _output = _write_reusable_success(tmp_path)
     payload = _load_success(tmp_path)
@@ -485,7 +710,19 @@ def test_command_args_change_is_not_reused(tmp_path):
 def test_schema_version_change_is_not_reused(tmp_path):
     entry, fingerprint, _output = _write_reusable_success(tmp_path)
     payload = _load_success(tmp_path)
-    payload["schema_version"] = LONG_GATE_SCHEMA_VERSION + 1
+    payload["schema_version"] = LONG_GATE_CACHE_SCHEMA_VERSION + 1
+    _store_success(tmp_path, payload)
+
+    decision = decide_reuse(entry, fingerprint, repo_root=str(tmp_path))
+
+    assert decision["decision"] == "run"
+    assert decision["reason"] == "cache schema changed"
+
+
+def test_cache_schema_version_change_is_not_reused(tmp_path):
+    entry, fingerprint, _output = _write_reusable_success(tmp_path)
+    payload = _load_success(tmp_path)
+    payload["cache_schema_version"] = LONG_GATE_CACHE_SCHEMA_VERSION + 1
     _store_success(tmp_path, payload)
 
     decision = decide_reuse(entry, fingerprint, repo_root=str(tmp_path))
@@ -505,6 +742,18 @@ def test_fingerprint_schema_change_is_not_reused(tmp_path):
     assert decision["invalidated_by"] == ["fingerprint schema changed"]
 
 
+def test_cached_fingerprint_schema_version_change_is_not_reused(tmp_path):
+    entry, fingerprint, _output = _write_reusable_success(tmp_path)
+    payload = _load_success(tmp_path)
+    payload["fingerprint_schema_version"] = LONG_GATE_FINGERPRINT_SCHEMA_VERSION + 1
+    _store_success(tmp_path, payload)
+
+    decision = decide_reuse(entry, fingerprint, repo_root=str(tmp_path))
+
+    assert decision["decision"] == "run"
+    assert decision["invalidated_by"] == ["fingerprint schema changed"]
+
+
 def test_cache_fingerprint_hash_mismatch_is_not_reused(tmp_path):
     entry, fingerprint, _output = _write_reusable_success(tmp_path)
     payload = _load_success(tmp_path)
@@ -515,6 +764,82 @@ def test_cache_fingerprint_hash_mismatch_is_not_reused(tmp_path):
 
     assert decision["decision"] == "run"
     assert decision["reason"] == "cache unreadable/corrupt: fingerprint hash mismatch"
+
+
+def test_cached_fingerprint_with_bad_shape_is_not_reused(tmp_path):
+    entry, _fingerprint_before, _output = _write_reusable_success(tmp_path)
+    payload = _load_success(tmp_path)
+    bad_fingerprint = {
+        "schema_version": LONG_GATE_FINGERPRINT_SCHEMA_VERSION,
+        "components": {
+            "files": {"files": "not-a-list"},
+            "output_result_files": {"paths": [], "hash": stable_json_hash([])},
+        },
+    }
+    bad_fingerprint["hash"] = f"sha256:{stable_json_hash(bad_fingerprint)}"
+    payload["fingerprint"] = bad_fingerprint
+    payload["fingerprint_hash"] = bad_fingerprint["hash"]
+    _store_success(tmp_path, payload)
+
+    decision = decide_reuse(entry, bad_fingerprint, repo_root=str(tmp_path))
+
+    assert decision["decision"] == "run"
+    assert decision["reason"] == "cache unreadable/corrupt: fingerprint files must be a list"
+
+
+def test_runner_version_hash_change_is_not_reused(tmp_path):
+    entry, fingerprint, _output = _write_reusable_success(tmp_path)
+    payload = _load_success(tmp_path)
+    payload["runner_version_hash"] = "sha256:old"
+    _store_success(tmp_path, payload)
+
+    decision = decide_reuse(entry, fingerprint, repo_root=str(tmp_path))
+
+    assert decision["decision"] == "run"
+    assert decision["reason"] == "runner version changed"
+
+
+def test_tooling_version_hash_change_is_not_reused(tmp_path):
+    entry, fingerprint, _output = _write_reusable_success(tmp_path)
+    payload = _load_success(tmp_path)
+    payload["tooling_version_hash"] = "sha256:old"
+    _store_success(tmp_path, payload)
+
+    decision = decide_reuse(entry, fingerprint, repo_root=str(tmp_path))
+
+    assert decision["decision"] == "run"
+    assert decision["reason"] == "tooling version changed"
+
+
+def test_repo_identity_mismatch_is_not_reused(tmp_path):
+    entry, fingerprint, _output = _write_reusable_success(tmp_path)
+    payload = _load_success(tmp_path)
+    payload["repo_root_realpath"] = str(tmp_path / "other-checkout")
+    _store_success(tmp_path, payload)
+
+    decision = decide_reuse(entry, fingerprint, repo_root=str(tmp_path))
+
+    assert decision["decision"] == "run"
+    assert decision["reason"] == "repo identity changed"
+
+
+def test_write_success_records_common_safety_fields(tmp_path):
+    _entry_used, _fingerprint_used, _output = _write_reusable_success(tmp_path)
+    payload = _load_success(tmp_path)
+    expected = long_gate_cache_metadata(str(tmp_path))
+
+    for field in (
+        "cache_schema_version",
+        "fingerprint_schema_version",
+        "runner_version_hash",
+        "tooling_version_hash",
+        "runner_version_untrusted_paths",
+        "tooling_version_untrusted_paths",
+        "cache_dir",
+        "repo_root_realpath",
+        "git_common_dir_realpath",
+    ):
+        assert payload[field] == expected[field]
 
 
 def test_write_success_rejects_missing_output_file(tmp_path):
@@ -540,6 +865,28 @@ def test_write_success_rejects_nonzero_returncode(tmp_path):
             entry,
             _fingerprint(),
             {"stdout": "bad", "stderr": "", "returncode": 1},
+            [str(output)],
+            repo_root=str(tmp_path),
+        )
+
+
+@pytest.mark.parametrize(
+    "command_result, error",
+    [
+        ({"stdout": "ok", "stderr": "", "returncode": False}, "requires numeric returncode"),
+        ({"stdout": "ok", "stderr": "", "returncode": 0, "duration_s": False}, "requires numeric duration_s"),
+        ({"stdout": "ok", "stderr": "", "returncode": 0, "duration_s": "bad"}, "requires numeric duration_s"),
+    ],
+)
+def test_write_success_rejects_bool_or_bad_numeric_fields(tmp_path, command_result, error):
+    entry = _entry()
+    output = _output_file(tmp_path)
+
+    with pytest.raises(ValueError, match=error):
+        write_success(
+            entry,
+            _fingerprint(),
+            command_result,
             [str(output)],
             repo_root=str(tmp_path),
         )

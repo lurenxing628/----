@@ -312,6 +312,8 @@ def test_main_runs_guard_preflight_before_static_and_startup_checks(monkeypatch,
     assert "tools/long_gate_collect.py" in module.QUALITY_GATE_TOOL_PATHS
     assert "tools/long_gate_fingerprint.py" in module.QUALITY_GATE_TOOL_PATHS
     assert "tools/long_gate_manifest.py" in module.QUALITY_GATE_TOOL_PATHS
+    assert "tools/long_gate_paths.py" in module.QUALITY_GATE_TOOL_PATHS
+    assert "tools/long_gate_schema.py" in module.QUALITY_GATE_TOOL_PATHS
     assert "tools/long_gate_summary.py" in module.QUALITY_GATE_TOOL_PATHS
     assert "scripts/sync_debt_ledger.py" in module.QUALITY_GATE_TOOL_PATHS
     assert "python -m pytest -q " + " ".join(module.REQUIRED_TEST_ARGS) in displays
@@ -428,6 +430,8 @@ def test_full_test_debt_proof_is_in_shared_quality_gate_plan() -> None:
         "tools/long_gate_collect.py",
         "tools/long_gate_fingerprint.py",
         "tools/long_gate_manifest.py",
+        "tools/long_gate_paths.py",
+        "tools/long_gate_schema.py",
         "tools/long_gate_summary.py",
         "tests/conftest.py",
         "tests/main_style_regression_runner.py",
@@ -451,6 +455,8 @@ def test_full_test_debt_proof_is_in_shared_quality_gate_plan() -> None:
         "tools/long_gate_collect.py",
         "tools/long_gate_fingerprint.py",
         "tools/long_gate_manifest.py",
+        "tools/long_gate_paths.py",
+        "tools/long_gate_schema.py",
         "tools/long_gate_summary.py",
         "tests/conftest.py",
         "tests/main_style_regression_runner.py",
@@ -894,6 +900,8 @@ def test_main_writes_quality_gate_manifest_with_git_and_collection_proof(monkeyp
     assert "tools/long_gate_collect.py" in {item["path"] for item in manifest["gate_sources"]}
     assert "tools/long_gate_fingerprint.py" in {item["path"] for item in manifest["gate_sources"]}
     assert "tools/long_gate_manifest.py" in {item["path"] for item in manifest["gate_sources"]}
+    assert "tools/long_gate_paths.py" in {item["path"] for item in manifest["gate_sources"]}
+    assert "tools/long_gate_schema.py" in {item["path"] for item in manifest["gate_sources"]}
     assert "tools/long_gate_summary.py" in {item["path"] for item in manifest["gate_sources"]}
     assert ".github/workflows/quality.yml" in {item["path"] for item in manifest["gate_sources"]}
     assert "pyproject.toml" in {item["path"] for item in manifest["gate_sources"]}

@@ -131,8 +131,8 @@ items:
     title: NEXT-3 共用缓存安全和证据链加固
     description: "集中化 cache schema、fingerprint schema、runner hash、路径、symlink、repo identity 和损坏证据拒绝规则，所有 entry 共享。"
     depends_on: [long-gate-cli-controls]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-13-long-gate-cache-safety-hardening
     minimal_loop: false
     primary_paths:
       - tools/long_gate_cache.py
@@ -140,11 +140,19 @@ items:
       - tools/long_gate_manifest.py
       - tools/long_gate_paths.py
       - tools/long_gate_schema.py
+      - tools/long_gate_summary.py
+      - tools/quality_gate_shared.py
       - scripts/run_quality_gate.py
       - tests/test_long_gate_cache.py
+      - tests/test_long_gate_manifest.py
+      - tests/test_long_gate_cli_controls.py
+      - tests/test_run_quality_gate.py
     exit_checks:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_long_gate_cache.py tests/test_long_gate_manifest.py
-    notes: "证据不完整一律重跑：失败、非零返回码、timeout、interrupted、partial_write、JSON 损坏、缺字段、日志缺失、输出缺失、schema 变化、command hash 变化、路径逃逸、symlink 到仓库外。"
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_run_quality_gate.py tests/test_long_gate_cli_controls.py tests/test_long_gate_summary_output.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check tools/long_gate_cache.py tools/long_gate_fingerprint.py tools/long_gate_manifest.py tools/long_gate_paths.py tools/long_gate_schema.py tools/long_gate_summary.py tools/quality_gate_shared.py tests/test_long_gate_cache.py tests/test_long_gate_manifest.py tests/test_run_quality_gate.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright tools/long_gate_cache.py tools/long_gate_fingerprint.py tools/long_gate_manifest.py tools/long_gate_paths.py tools/long_gate_schema.py tools/long_gate_summary.py tools/quality_gate_shared.py tests/test_long_gate_cache.py tests/test_long_gate_manifest.py tests/test_run_quality_gate.py tests/test_long_gate_cli_controls.py tests/test_long_gate_summary_output.py
+    notes: "已完成：新增 long_gate_paths.py 和 long_gate_schema.py；success cache 显式记录并校验 cache/fingerprint schema、runner/tooling hash、cache dir、repo identity；bool 或坏字符串不能冒充数字，坏 duration_s、坏 fingerprint 结构、repo 外普通路径、repo 外 glob、repo 外 symlink、runner/tooling 自身的 repo 外 symlink 都只会 decision=run，且不读取仓库外目标内容；日志/输出证据不完整、路径逃逸、repo identity 不一致都会重跑。当前 enabled 范围不变，仍只有 pytest_collect_all。"
 
   - slug: full-test-debt-success-cache
     title: NEXT-4 full-test-debt 整项成功复用

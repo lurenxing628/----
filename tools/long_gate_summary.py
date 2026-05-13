@@ -7,9 +7,10 @@ import shlex
 from datetime import datetime
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
-from tools.long_gate_cache import LONG_GATE_CACHE_DIR_REL
+from tools.long_gate_paths import LONG_GATE_CACHE_DIR_REL, repo_relative_path
+from tools.long_gate_schema import LONG_GATE_SUMMARY_SCHEMA_VERSION
 
-SUMMARY_SCHEMA_VERSION = 1
+SUMMARY_SCHEMA_VERSION = LONG_GATE_SUMMARY_SCHEMA_VERSION
 SUMMARY_JSON_REL = os.path.join(LONG_GATE_CACHE_DIR_REL, "summary.json").replace("\\", "/")
 SUMMARY_MD_REL = os.path.join(LONG_GATE_CACHE_DIR_REL, "summary.md").replace("\\", "/")
 
@@ -25,14 +26,10 @@ def _rel_path(repo_root: str, path: str) -> str:
     raw_path = str(path or "").replace("\\", "/")
     if not raw_path:
         return ""
-    root = os.path.realpath(os.path.abspath(repo_root))
-    if os.path.isabs(raw_path):
-        abs_path = os.path.realpath(raw_path)
-    else:
-        abs_path = os.path.realpath(os.path.join(root, raw_path.replace("/", os.sep)))
-    if abs_path == root or abs_path.startswith(root + os.sep):
-        return os.path.relpath(abs_path, root).replace("\\", "/")
-    return raw_path
+    try:
+        return repo_relative_path(repo_root, raw_path, description="summary path")
+    except ValueError:
+        return raw_path
 
 
 def _command_text_from_display(display: str) -> str:

@@ -1,0 +1,60 @@
+feature: 2026-05-13-long-gate-cache-safety-hardening
+created: 2026-05-13
+
+steps:
+  - action: "编排骨架：创建 feature 设计/checklist，并把 roadmap item 绑定到本 feature"
+    exit_signal: "CodeStable feature 目录存在，roadmap item 指向 2026-05-13-long-gate-cache-safety-hardening"
+    status: done
+  - action: "路径集中：新增 long_gate_paths，统一 repo 内路径、realpath 和 cache 常量"
+    exit_signal: "cache、summary 共用同一套 repo 内相对路径规则"
+    status: done
+  - action: "schema 集中：新增 long_gate_schema，统一 schema version、runner/tooling hash 和 repo identity"
+    exit_signal: "success cache 写入并校验共用安全字段"
+    status: done
+  - action: "复用判定加固：坏结构、坏类型、repo identity、runner/tooling 变化全部稳定走 run"
+    exit_signal: "损坏或不可信旧证据不会崩溃，也不会复用"
+    status: done
+  - action: "测试覆盖：补齐 cache/manifest/runner 的安全合同测试"
+    exit_signal: "新增测试覆盖 schema、hash、repo identity、symlink、绝对路径和坏证据"
+    status: done
+  - action: "文档与验收：回写 roadmap/items/acceptance"
+    exit_signal: "NEXT-3 标为 done，验收报告记录验证命令和未启用 planned entry"
+    status: done
+
+checks:
+  - item: "success cache 写入新的共用安全字段"
+    source: 验收场景
+    status: passed
+  - item: "cache schema 缺失或变化会重新执行"
+    source: 安全守护
+    status: passed
+  - item: "fingerprint schema 缺失或变化会重新执行"
+    source: 安全守护
+    status: passed
+  - item: "runner/tooling hash 变化会重新执行"
+    source: 安全守护
+    status: passed
+  - item: "repo identity 不一致会重新执行"
+    source: 安全守护
+    status: passed
+  - item: "bool 不能冒充数字字段"
+    source: 安全守护
+    status: passed
+  - item: "fingerprint 结构坏时不崩溃，只重新执行"
+    source: 安全守护
+    status: passed
+  - item: "stdout/stderr log 和输出文件仍做完整 hash 校验"
+    source: 证据链
+    status: passed
+  - item: "repo 内绝对路径可规范化，repo 外绝对路径被拒绝"
+    source: 路径守护
+    status: passed
+  - item: "symlink 指向 repo 外时不读取目标文件内容，也不复用 success cache"
+    source: 路径守护
+    status: passed
+  - item: "除 pytest_collect_all 外其它 planned entry 未启用"
+    source: 明确不做
+    status: passed
+  - item: "explain 仍不写 proof"
+    source: 明确不做
+    status: passed

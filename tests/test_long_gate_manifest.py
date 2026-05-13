@@ -6,6 +6,11 @@ import sys
 
 from tools import long_gate_manifest as manifest_mod
 from tools import quality_gate_shared
+from tools.long_gate_schema import (
+    LONG_GATE_CACHE_SCHEMA_VERSION,
+    LONG_GATE_FINGERPRINT_SCHEMA_VERSION,
+    LONG_GATE_MANIFEST_SCHEMA_VERSION,
+)
 from tools.test_registry import iter_startup_regressions
 
 
@@ -63,6 +68,21 @@ def test_manifest_entry_keeps_current_and_previous_fingerprint_slots():
     assert collect_entry["fingerprint"] is None
     assert collect_entry["previous_success"] is None
     assert collect_entry["last_success_fingerprint"] is None
+
+
+def test_manifest_uses_shared_long_gate_schema_versions():
+    command_plan = quality_gate_shared.build_quality_gate_command_plan()
+    manifest = manifest_mod.build_manifest_from_quality_gate_plan(command_plan, repo_root=quality_gate_shared.REPO_ROOT)
+    collect_entry = _entry_by_id(manifest, "pytest_collect_all")
+    planned_entry = _entry_by_id(manifest, "full_test_debt")
+
+    assert manifest["schema_version"] == LONG_GATE_MANIFEST_SCHEMA_VERSION
+    assert collect_entry["schema_version"] == LONG_GATE_MANIFEST_SCHEMA_VERSION
+    assert collect_entry["cache_schema_version"] == LONG_GATE_CACHE_SCHEMA_VERSION
+    assert collect_entry["fingerprint_schema_version"] == LONG_GATE_FINGERPRINT_SCHEMA_VERSION
+    assert planned_entry["schema_version"] == LONG_GATE_MANIFEST_SCHEMA_VERSION
+    assert planned_entry["cache_schema_version"] == LONG_GATE_CACHE_SCHEMA_VERSION
+    assert planned_entry["fingerprint_schema_version"] == LONG_GATE_FINGERPRINT_SCHEMA_VERSION
 
 
 def test_required_and_startup_regression_args_come_from_dynamic_plan():
