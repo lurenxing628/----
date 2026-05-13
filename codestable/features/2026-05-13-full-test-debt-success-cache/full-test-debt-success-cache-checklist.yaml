@@ -1,0 +1,63 @@
+feature: 2026-05-13-full-test-debt-success-cache
+created: 2026-05-13
+
+steps:
+  - action: "编排骨架：创建 feature 设计/checklist，并把 roadmap item 绑定到本 feature"
+    exit_signal: "CodeStable feature 目录存在，roadmap item 指向 2026-05-13-full-test-debt-success-cache"
+    status: done
+  - action: "manifest 范围：只把 full_test_debt 加入 enabled，并补齐整项输入/输出范围"
+    exit_signal: "enabled 只有 pytest_collect_all 和 full_test_debt，其它 entry 仍是 planned"
+    status: done
+  - action: "fingerprint 范围：把 collect_nodeids.json 的 nodeid_hash 绑定到 full-test-debt 指纹"
+    exit_signal: "collect nodeid 缺失、损坏或 hash 变化都会整体重跑"
+    status: done
+  - action: "输出合同：checker 写 summary 文件，runner 按 entry 类型准备 output_files"
+    exit_signal: "full-test-debt success cache 覆盖 current payload 和 summary 两个输出文件"
+    status: done
+  - action: "测试覆盖：新增 full-test-debt 整项缓存合同测试"
+    exit_signal: "测试覆盖成功复用、输入失效、坏证据、force/explain/planned 守护"
+    status: done
+  - action: "文档与验收：回写 roadmap/items/acceptance"
+    exit_signal: "NEXT-4 标为 done，验收报告记录验证命令，NEXT-5 仍 planned"
+    status: done
+
+checks:
+  - item: "成功执行 full-test-debt 后写 success cache"
+    source: 验收场景
+    status: passed
+  - item: "输入不变时复用 full-test-debt"
+    source: 验收场景
+    status: passed
+  - item: "tests/core/web/data/plugins/app/config/schema 变化会整体重跑"
+    source: 输入范围
+    status: passed
+  - item: "技术债务台账变化会整体重跑"
+    source: 输入范围
+    status: passed
+  - item: "collector/checker/registry 和 long gate 工具变化会整体重跑"
+    source: 输入范围
+    status: passed
+  - item: "pytest 配置或依赖文件变化会整体重跑"
+    source: 输入范围
+    status: passed
+  - item: "collect_nodeids.json 缺失、损坏或 nodeid_hash 变化会整体重跑"
+    source: collect nodeid hash
+    status: passed
+  - item: "current_full_test_debt.json 和 full_test_debt_summary.json 缺失或 hash 不匹配会整体重跑"
+    source: 输出证据
+    status: passed
+  - item: "stdout/stderr 日志缺失、损坏、非 UTF-8 会整体重跑"
+    source: 证据链
+    status: passed
+  - item: "timeout/interrupted/partial_write 不会复用"
+    source: 证据链
+    status: passed
+  - item: "force rerun 只刷新 enabled entry"
+    source: CLI 守护
+    status: passed
+  - item: "explain 只打印不写 proof"
+    source: 明确不做
+    status: passed
+  - item: "NEXT-5 和其它 planned entry 仍未启用"
+    source: 范围守护
+    status: passed

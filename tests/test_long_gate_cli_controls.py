@@ -34,10 +34,10 @@ def _small_plan(*, include_planned: bool = True):
     if include_planned:
         plan.append(
             {
-                "display": "python tools/check_full_test_debt.py",
-                "args": ["python", "tools/check_full_test_debt.py"],
-                "capture_output": True,
-                "output_policy": "exact",
+                "display": "python -m ruff check",
+                "args": ["python", "-m", "ruff", "check"],
+                "capture_output": False,
+                "output_policy": "normalized",
             }
         )
     plan.extend(
@@ -261,13 +261,13 @@ def test_force_all_only_invalidates_enabled_entries_and_keeps_planned_entries(mo
 
     summary = _load_summary(repo_root)
     collect = _entry_by_id(summary, "pytest_collect_all")
-    planned = _entry_by_id(summary, "full_test_debt")
+    planned = _entry_by_id(summary, "ruff_check_full")
     assert "python -m pytest --collect-only -q tests" in calls
     assert collect["reason"] == "forced by --long-gate-force-rerun-all"
     assert planned["cache_status"] == "planned"
     assert planned["decision"] == "planned_only"
     assert planned["execution_mode"] == "planned_only"
-    assert not _success_cache_path(repo_root, cache_dir="evidence/QualityGate/long_gate", entry_id="full_test_debt").exists()
+    assert not _success_cache_path(repo_root, cache_dir="evidence/QualityGate/long_gate", entry_id="ruff_check_full").exists()
 
 
 def test_force_planned_entry_is_reported_but_does_not_enable_cache(monkeypatch, tmp_path):
@@ -284,15 +284,15 @@ def test_force_planned_entry_is_reported_but_does_not_enable_cache(monkeypatch, 
 
     monkeypatch.setattr(module, "_run_command", fake_run_command)
 
-    assert module.main(["--long-gate-cache", "--long-gate-force-rerun", "full_test_debt"]) == 0
+    assert module.main(["--long-gate-cache", "--long-gate-force-rerun", "ruff_check_full"]) == 0
 
-    planned = _entry_by_id(_load_summary(repo_root), "full_test_debt")
-    assert "python tools/check_full_test_debt.py" in calls
+    planned = _entry_by_id(_load_summary(repo_root), "ruff_check_full")
+    assert "python -m ruff check" in calls
     assert planned["cache_status"] == "planned"
     assert planned["decision"] == "planned_only"
     assert planned["reason"].endswith("force rerun ignored because planned entries are not enabled")
     assert planned["invalidated_by"] == ["force rerun ignored for planned entry"]
-    assert not _success_cache_path(repo_root, cache_dir="evidence/QualityGate/long_gate", entry_id="full_test_debt").exists()
+    assert not _success_cache_path(repo_root, cache_dir="evidence/QualityGate/long_gate", entry_id="ruff_check_full").exists()
 
 
 def test_explain_prints_cache_dir_and_force_decision_without_writing_proof(monkeypatch, tmp_path, capsys):
@@ -327,7 +327,7 @@ def test_explain_prints_cache_dir_and_force_decision_without_writing_proof(monke
     assert f"cache_dir: {cache_dir}" in output
     assert "- pytest_collect_all: RUN" in output
     assert "forced by --long-gate-force-rerun pytest_collect_all" in output
-    assert "- full_test_debt: PLANNED_ONLY" in output
+    assert "- ruff_check_full: PLANNED_ONLY" in output
     assert not _summary_path(repo_root).exists()
     assert not _manifest_path(repo_root).exists()
     assert not (repo_root / "evidence" / "QualityGate" / "receipts").exists()

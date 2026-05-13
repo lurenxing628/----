@@ -158,8 +158,8 @@ items:
     title: NEXT-4 full-test-debt 整项成功复用
     description: "为 python tools/check_full_test_debt.py 做整项成功缓存，校验 current_full_test_debt.json、full_test_debt_summary.json、collect nodeid hash、债务台账、测试、源码、collector、配置和依赖。"
     depends_on: [long-gate-cache-safety-hardening]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-13-full-test-debt-success-cache
     minimal_loop: false
     primary_paths:
       - tools/long_gate_manifest.py
@@ -175,7 +175,7 @@ items:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_long_gate_full_test_debt_cache.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_long_gate_cache.py tests/test_long_gate_manifest.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --long-gate-cache-explain
-    notes: "第一阶段保守整项复用：tests/core/web/data/plugins/app/config/schema/台账/collector/pytest 配置任一变化都整体失效；nodeid 增量留给 NEXT-5。"
+    notes: "已完成第一阶段保守整项复用：full_test_debt 与 pytest_collect_all 一起进入 enabled；测试、业务源码、模板、静态资源、Excel 模板、安装脚本、.limcode 旧资产、CodeStable 工具、文档、台账、collector/checker/pytest 配置/依赖、collect_nodeids 结构或 nodeid_hash 任一变化都会整体失效；nodeid 增量仍留给 NEXT-5。"
 
   - slug: full-test-debt-nodeid-cache
     title: NEXT-5 full-test-debt nodeid 级增量复用

@@ -48,6 +48,11 @@ QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL = os.path.join(
     "QualityGate",
     "current_full_test_debt.json",
 )
+QUALITY_GATE_FULL_TEST_DEBT_SUMMARY_REL = os.path.join(
+    "evidence",
+    "QualityGate",
+    "full_test_debt_summary.json",
+)
 FORMAL_FULL_TEST_PYTEST_ARGS = ["tests", "-q", "--tb=short", "-ra", "-p", "no:cacheprovider"]
 QUALITY_GATE_PYRIGHT_GATE_CONFIG = "pyrightconfig.gate.json"
 QUALITY_GATE_PROOF_SCOPE = {

@@ -17,6 +17,7 @@ from tools.quality_gate_ledger import load_ledger  # noqa: E402
 from tools.quality_gate_shared import (  # noqa: E402
     FORMAL_FULL_TEST_PYTEST_ARGS,
     FULL_TEST_DEBT_ALLOWED_ACTIVE_XFAIL_NODEIDS,
+    QUALITY_GATE_FULL_TEST_DEBT_SUMMARY_REL,
     QualityGateError,
     quality_gate_required_test_nodeid_matches,
 )
@@ -511,6 +512,16 @@ def run_check(*, require_clean_worktree_proof: bool = True) -> Dict[str, Any]:
     return summary
 
 
+def _write_json_atomically(rel_path: str, payload: Dict[str, Any]) -> None:
+    abs_path = os.path.join(REPO_ROOT, rel_path.replace("/", os.sep))
+    os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+    temp_path = f"{abs_path}.tmp"
+    with open(temp_path, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
+        handle.write("\n")
+    os.replace(temp_path, abs_path)
+
+
 def _parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="APS full pytest 测试债务 proof")
     parser.add_argument(
@@ -528,6 +539,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     except QualityGateError as exc:
         print(f"ERROR: {exc}", file=sys.stderr, flush=True)
         return 2
+    _write_json_atomically(QUALITY_GATE_FULL_TEST_DEBT_SUMMARY_REL, summary)
     print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True), flush=True)
     return 0
 

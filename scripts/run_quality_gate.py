@@ -34,7 +34,11 @@ from tools.long_gate_fingerprint import (  # noqa: E402
     fingerprint_entry,
     pytest_distribution_version,
 )
-from tools.long_gate_manifest import ENTRY_PYTEST_COLLECT_ALL, build_manifest_from_quality_gate_plan  # noqa: E402
+from tools.long_gate_manifest import (  # noqa: E402
+    ENTRY_FULL_TEST_DEBT,
+    ENTRY_PYTEST_COLLECT_ALL,
+    build_manifest_from_quality_gate_plan,
+)
 from tools.long_gate_summary import (  # noqa: E402
     build_long_gate_summary,
     build_summary_entry,
@@ -43,6 +47,7 @@ from tools.long_gate_summary import (  # noqa: E402
 )
 from tools.quality_gate_support import (  # noqa: E402
     QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL,
+    QUALITY_GATE_FULL_TEST_DEBT_SUMMARY_REL,
     QUALITY_GATE_LOGS_DIR_REL,
     QUALITY_GATE_MANIFEST_REL,
     QUALITY_GATE_PYRIGHT_GATE_CONFIG,
@@ -75,6 +80,7 @@ GENERATED_CLEAN_WORKTREE_EXCLUDED_PATHS = [
     QUALITY_GATE_LOGS_DIR_REL.replace("\\", "/") + "/",
     COLLECT_NODEIDS_REL.replace("\\", "/"),
     QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL.replace("\\", "/"),
+    QUALITY_GATE_FULL_TEST_DEBT_SUMMARY_REL.replace("\\", "/"),
 ]
 HIGH_RISK_UNTRACKED_SOURCE_PREFIXES = ("core/", "web/", "data/", "tools/", "scripts/")
 HIGH_RISK_UNTRACKED_SOURCE_SUFFIXES = (".py", ".js", ".ts", ".html", ".css", ".sql")
@@ -686,6 +692,7 @@ def _clear_quality_gate_run_outputs(
     remove_manifest: bool = True,
     remove_receipts_and_logs: bool = True,
     remove_current_debt: bool = True,
+    remove_full_test_debt_summary: bool = True,
 ) -> None:
     for rel_path in (QUALITY_GATE_RECEIPTS_DIR_REL, QUALITY_GATE_LOGS_DIR_REL):
         if not remove_receipts_and_logs:
@@ -695,6 +702,8 @@ def _clear_quality_gate_run_outputs(
             shutil.rmtree(abs_path)
     if remove_current_debt:
         _clear_quality_gate_current_full_test_debt()
+    if remove_full_test_debt_summary:
+        _clear_quality_gate_full_test_debt_summary()
     if remove_manifest:
         _remove_quality_gate_manifest()
 
@@ -703,6 +712,12 @@ def _clear_quality_gate_current_full_test_debt() -> None:
     current_debt_path = os.path.join(REPO_ROOT, QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL)
     if os.path.isfile(current_debt_path):
         os.remove(current_debt_path)
+
+
+def _clear_quality_gate_full_test_debt_summary() -> None:
+    summary_path = os.path.join(REPO_ROOT, QUALITY_GATE_FULL_TEST_DEBT_SUMMARY_REL)
+    if os.path.isfile(summary_path):
+        os.remove(summary_path)
 
 
 def _remove_quality_gate_manifest() -> None:
@@ -845,6 +860,7 @@ def _run_quality_gate_command_plan(
     resume_decision: Optional[ResumeDecision] = None,
     long_gate_cache: bool = False,
     long_gate_cache_write_success: bool = True,
+    long_gate_cache_dir: str = "",
     long_gate_runtime_entries: Optional[Dict[str, Dict[str, Any]]] = None,
     long_gate_failure: Optional[Dict[str, Any]] = None,
     pending_long_gate_successes: Optional[List[Dict[str, Any]]] = None,
@@ -906,6 +922,7 @@ def _run_quality_gate_command_plan(
         long_gate_entry = dict((long_gate_runtime_entry or {}).get("entry") or {})
         long_gate_fingerprint: Optional[Dict[str, Any]] = None
         if long_gate_runtime_entry is not None:
+            _refresh_full_test_debt_reuse_decision(long_gate_runtime_entry, cache_dir=long_gate_cache_dir)
             long_gate_fingerprint = dict(long_gate_runtime_entry.get("fingerprint") or {})
             reuse_evaluation = dict(long_gate_runtime_entry.get("evaluation") or {})
             decision = dict(long_gate_runtime_entry.get("decision") or {})
@@ -1062,13 +1079,15 @@ def _run_quality_gate_command_plan(
                     flush=True,
                 )
             else:
-                collect_payload = build_collect_nodeids_payload(
-                    str(result.get("stdout") or ""),
-                    pytest_version=pytest_distribution_version(strict=True),
-                    collect_stdout_log_path=str(result.get("stdout_log_path") or ""),
+                output_file_paths = _prepare_long_gate_success_output_files(long_gate_entry, result)
+                long_gate_fingerprint = _fingerprint_for_success_cache(
+                    long_gate_entry,
+                    dict(long_gate_fingerprint or {}),
                 )
-                collect_rel_path = write_collect_nodeids(collect_payload, repo_root=REPO_ROOT)
-                output_file_paths = [collect_rel_path]
+                long_gate_runtime_entry["fingerprint"] = dict(long_gate_fingerprint)
+                decision_for_summary = long_gate_runtime_entry.get("decision")
+                if isinstance(decision_for_summary, dict):
+                    decision_for_summary["current_fingerprint_hash"] = str(long_gate_fingerprint.get("hash") or "")
                 cache_result = dict(result)
                 cache_result.pop("stdout_log_path", None)
                 cache_result.pop("stderr_log_path", None)
@@ -1078,7 +1097,7 @@ def _run_quality_gate_command_plan(
                             "entry": dict(long_gate_entry),
                             "fingerprint": dict(long_gate_fingerprint),
                             "command_result": cache_result,
-                            "output_files": [os.path.join(REPO_ROOT, collect_rel_path.replace("/", os.sep))],
+                            "output_files": _abs_output_paths(output_file_paths),
                         }
                     )
             _refresh_summary_entry(
@@ -1321,6 +1340,62 @@ def _build_collection_proof(default_collect_nodeids: Sequence[str]) -> Dict[str,
     return build_quality_gate_collection_proof(default_collect_nodeids, required_tests=REQUIRED_TEST_ARGS)
 
 
+def _long_gate_declared_output_paths(entry: Dict[str, Any]) -> List[str]:
+    return list(dict.fromkeys(str(path).replace("\\", "/") for path in list(entry.get("output_result_files") or [])))
+
+
+def _prepare_long_gate_success_output_files(entry: Dict[str, Any], result: Dict[str, Any]) -> List[str]:
+    entry_id = str(entry.get("entry_id") or "")
+    if entry_id == ENTRY_PYTEST_COLLECT_ALL:
+        collect_payload = build_collect_nodeids_payload(
+            str(result.get("stdout") or ""),
+            pytest_version=pytest_distribution_version(strict=True),
+            collect_stdout_log_path=str(result.get("stdout_log_path") or ""),
+        )
+        return [write_collect_nodeids(collect_payload, repo_root=REPO_ROOT)]
+    return _long_gate_declared_output_paths(entry)
+
+
+def _fingerprint_for_success_cache(entry: Dict[str, Any], fingerprint: Dict[str, Any]) -> Dict[str, Any]:
+    if str(entry.get("entry_id") or "") == ENTRY_FULL_TEST_DEBT:
+        return _strict_long_gate_fingerprint(entry)
+    return dict(fingerprint)
+
+
+def _abs_output_paths(rel_paths: Sequence[str]) -> List[str]:
+    return [os.path.join(REPO_ROOT, str(path).replace("\\", "/").replace("/", os.sep)) for path in list(rel_paths or [])]
+
+
+def _long_gate_success_cache_exists(entry_id: str, *, cache_dir: str) -> bool:
+    safe_entry_id = str(entry_id or "").replace("\\", "_").replace("/", "_").strip() or "unknown"
+    result_path = os.path.join(
+        REPO_ROOT,
+        str(cache_dir or "evidence/QualityGate/long_gate").replace("\\", "/").replace("/", os.sep),
+        "results",
+        f"{safe_entry_id}.success.json",
+    )
+    return os.path.isfile(result_path)
+
+
+def _should_preserve_full_test_debt_outputs(
+    runtime_entry: Dict[str, Any],
+    *,
+    cache_enabled: bool,
+    cache_dir: str,
+) -> bool:
+    if not cache_enabled:
+        return False
+    entry = dict(runtime_entry.get("entry") or {})
+    if str(entry.get("entry_id") or "") != ENTRY_FULL_TEST_DEBT:
+        return False
+    decision = dict(runtime_entry.get("decision") or {})
+    if str(decision.get("decision") or "") == "reuse":
+        return True
+    if str(decision.get("reason") or "") != "collect nodeids proof is invalid":
+        return False
+    return _long_gate_success_cache_exists(ENTRY_FULL_TEST_DEBT, cache_dir=cache_dir)
+
+
 def _resolve_command_args(command: Dict[str, Any]) -> List[str]:
     args: List[str] = []
     for idx, raw_arg in enumerate(list(command.get("args") or [])):
@@ -1544,6 +1619,41 @@ def _force_long_gate_decision(entry: Dict[str, Any], decision: Dict[str, Any], *
         "previous_result_path": str(decision.get("previous_result_path") or ""),
         "current_fingerprint_hash": str(decision.get("current_fingerprint_hash") or ""),
     }
+
+
+def _refresh_full_test_debt_reuse_decision(runtime_entry: Dict[str, Any], *, cache_dir: str) -> None:
+    entry = dict(runtime_entry.get("entry") or {})
+    if str(entry.get("entry_id") or "") != ENTRY_FULL_TEST_DEBT:
+        return
+    current_decision = dict(runtime_entry.get("decision") or {})
+    if not _full_test_debt_decision_can_refresh(current_decision):
+        return
+    fingerprint = _strict_long_gate_fingerprint(entry)
+    evaluation = dict(evaluate_reuse(entry, fingerprint, repo_root=REPO_ROOT, cache_dir=cache_dir))
+    runtime_entry["fingerprint"] = dict(fingerprint)
+    runtime_entry["evaluation"] = dict(evaluation)
+    refreshed_decision = dict(evaluation["decision"])
+    runtime_entry["decision"] = refreshed_decision
+    if str(refreshed_decision.get("decision") or "") != "reuse":
+        for rel_path in list(entry.get("output_result_files") or []):
+            abs_path = os.path.join(REPO_ROOT, str(rel_path).replace("\\", "/").replace("/", os.sep))
+            if os.path.isfile(abs_path):
+                os.remove(abs_path)
+
+
+def _full_test_debt_decision_can_refresh(decision: Dict[str, Any]) -> bool:
+    decision_kind = str(decision.get("decision") or "")
+    if decision_kind == "reuse":
+        return True
+    if decision_kind != "run":
+        return False
+    reason = str(decision.get("reason") or "")
+    invalidated_by = [str(item) for item in list(decision.get("invalidated_by") or [])]
+    if reason.startswith("forced by --long-gate-force-rerun") or any(
+        item.startswith("forced by --long-gate-force-rerun") for item in invalidated_by
+    ):
+        return False
+    return True
 
 
 def _prepare_long_gate_cache_decisions(
@@ -1820,6 +1930,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     pending_long_gate_successes: List[Dict[str, Any]] = []
     failure_kind: Optional[str] = None
     git_status_short_after: Optional[List[str]] = None
+    full_test_debt_runtime_entry = long_gate_runtime_entries.get("python tools/check_full_test_debt.py", {})
+    preserve_full_test_debt_outputs = _should_preserve_full_test_debt_outputs(
+        full_test_debt_runtime_entry,
+        cache_enabled=effective_long_gate_cache_enabled,
+        cache_dir=resolved_long_gate_cache_dir,
+    )
     require_clean_worktree = bool(args.require_clean_worktree or not args.allow_dirty_worktree)
     manifest = _base_quality_gate_manifest(
         started_at=started_at,
@@ -1846,9 +1962,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     try:
         try:
             if resume_decision.enabled:
-                _clear_quality_gate_run_outputs(remove_manifest=False, remove_receipts_and_logs=False)
+                _clear_quality_gate_run_outputs(
+                    remove_manifest=False,
+                    remove_receipts_and_logs=False,
+                    remove_current_debt=not preserve_full_test_debt_outputs,
+                    remove_full_test_debt_summary=not preserve_full_test_debt_outputs,
+                )
             else:
-                _clear_quality_gate_run_outputs(remove_manifest=False)
+                _clear_quality_gate_run_outputs(
+                    remove_manifest=False,
+                    remove_current_debt=not preserve_full_test_debt_outputs,
+                    remove_full_test_debt_summary=not preserve_full_test_debt_outputs,
+                )
         except Exception:
             failure_kind = "quality_gate_cleanup_failed"
             raise
@@ -1883,6 +2008,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             long_gate_cache_write_success=bool(
                 effective_long_gate_cache_enabled and require_clean_worktree and not resume_decision.enabled
             ),
+            long_gate_cache_dir=resolved_long_gate_cache_dir,
             long_gate_runtime_entries=long_gate_runtime_entries,
             long_gate_failure=long_gate_failure,
             pending_long_gate_successes=pending_long_gate_successes,

@@ -243,6 +243,36 @@ def _fingerprint_untrusted_path_reason(fingerprint: Mapping[str, Any]) -> str:
     return ""
 
 
+def _fingerprint_invalid_collect_nodeids_reason(fingerprint: Mapping[str, Any]) -> str:
+    components = fingerprint.get("components")
+    if not isinstance(components, dict):
+        return ""
+    collect_nodeids = components.get("collect_nodeids")
+    if collect_nodeids is None:
+        return ""
+    if not isinstance(collect_nodeids, dict):
+        return "collect_nodeids fingerprint component is invalid"
+    path = str(collect_nodeids.get("path") or "evidence/QualityGate/collect_nodeids.json")
+    if not bool(collect_nodeids.get("exists")):
+        return f"collect_nodeids payload is missing: {path}"
+    error = str(collect_nodeids.get("error") or "")
+    if error:
+        return f"collect_nodeids payload is invalid: {error}"
+    if not bool(collect_nodeids.get("validated")):
+        return "collect_nodeids payload validation is missing"
+    schema_version = collect_nodeids.get("schema_version")
+    if schema_version != 1:
+        return "collect_nodeids payload schema_version is invalid"
+    if str(collect_nodeids.get("status") or "") != "passed":
+        return "collect_nodeids payload status is not passed"
+    if not str(collect_nodeids.get("nodeid_hash") or ""):
+        return "collect_nodeids payload nodeid_hash is missing"
+    nodeid_count = collect_nodeids.get("nodeid_count")
+    if not isinstance(nodeid_count, int) or isinstance(nodeid_count, bool) or int(nodeid_count) < 0:
+        return "collect_nodeids payload nodeid_count is invalid"
+    return ""
+
+
 def _fingerprint_hash_is_self_consistent(previous: Mapping[str, Any]) -> Optional[str]:
     fingerprint = previous.get("fingerprint")
     if not isinstance(fingerprint, dict):
@@ -545,6 +575,19 @@ def evaluate_reuse(
                 current_fingerprint_hash=current_hash,
             )
         )
+    collect_nodeids_reason = _fingerprint_invalid_collect_nodeids_reason(
+        current_fingerprint
+    ) or _fingerprint_invalid_collect_nodeids_reason(previous_fingerprint)
+    if collect_nodeids_reason:
+        return _reuse_evaluation(
+            _decision(
+                entry_id,
+                "run",
+                "collect nodeids proof is invalid",
+                invalidated_by=[collect_nodeids_reason],
+                current_fingerprint_hash=current_hash,
+            )
+        )
     if previous_fingerprint.get("schema_version") != current_fingerprint.get("schema_version"):
         return _reuse_evaluation(
             _decision(
@@ -701,6 +744,9 @@ def write_success(
     resolved_cache_dir = resolve_cache_dir(root, cache_dir)
     _assert_success_command_result(command_result)
     entry_id = _safe_entry_id(str(entry.get("entry_id") or ""))
+    collect_nodeids_reason = _fingerprint_invalid_collect_nodeids_reason(fingerprint)
+    if collect_nodeids_reason:
+        raise ValueError(f"long gate success cache requires valid collect_nodeids proof: {collect_nodeids_reason}")
     stdout_log_path, stderr_log_path = _log_paths_for_result(
         entry_id,
         command_result,

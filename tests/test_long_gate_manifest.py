@@ -96,7 +96,7 @@ def test_required_and_startup_regression_args_come_from_dynamic_plan():
     assert startup_entry["args"][4:] == iter_startup_regressions()
 
 
-def test_only_collect_entry_is_currently_reuse_enabled():
+def test_only_collect_and_full_test_debt_entries_are_currently_reuse_enabled():
     command_plan = quality_gate_shared.build_quality_gate_command_plan()
     manifest = manifest_mod.build_manifest_from_quality_gate_plan(command_plan, repo_root=quality_gate_shared.REPO_ROOT)
 
@@ -107,10 +107,30 @@ def test_only_collect_entry_is_currently_reuse_enabled():
         if entry.get("long_gate_candidate") and not entry.get("reuse_allowed")
     ]
 
-    assert enabled == ["pytest_collect_all"]
-    assert "full_test_debt" in planned_candidates
+    full_test_debt = _entry_by_id(manifest, "full_test_debt")
+
+    assert enabled == ["pytest_collect_all", "full_test_debt"]
     assert "ruff_check_full" in planned_candidates
-    assert _entry_by_id(manifest, "full_test_debt")["cache_status"] == "planned"
+    assert "required_regressions" in planned_candidates
+    assert "codestable/tools/**/*.py" in full_test_debt["config_file_scopes"]
+    assert full_test_debt["cache_status"] == "enabled"
+    assert "evidence/QualityGate/collect_nodeids.json" in full_test_debt["input_file_scopes"]
+    assert "assets/**/*" in full_test_debt["input_file_scopes"]
+    assert "installer/**/*" in full_test_debt["input_file_scopes"]
+    assert "build_win7*.bat" in full_test_debt["input_file_scopes"]
+    assert "templates/**/*.html" in full_test_debt["input_file_scopes"]
+    assert "templates_excel/**/*" in full_test_debt["input_file_scopes"]
+    assert "static/**/*" in full_test_debt["input_file_scopes"]
+    assert "audit/**/*.md" in full_test_debt["input_file_scopes"]
+    assert "docs/**/*.md" in full_test_debt["input_file_scopes"]
+    assert "evidence/current/README.md" in full_test_debt["input_file_scopes"]
+    assert ".limcode/skills/**/*" in full_test_debt["input_file_scopes"]
+    assert ".limcode/plans/**/*" in full_test_debt["input_file_scopes"]
+    assert "开发文档/**/*.md" in full_test_debt["input_file_scopes"]
+    assert full_test_debt["output_result_files"] == [
+        "evidence/QualityGate/current_full_test_debt.json",
+        "evidence/QualityGate/full_test_debt_summary.json",
+    ]
 
 
 def test_pyright_tools_entry_tracks_quality_gate_tool_paths():

@@ -42,10 +42,10 @@ def _small_plan(*, include_planned: bool = True):
     if include_planned:
         plan.append(
             {
-                "display": "python tools/check_full_test_debt.py",
-                "args": ["python", "tools/check_full_test_debt.py"],
-                "capture_output": True,
-                "output_policy": "exact",
+                "display": "python -m ruff check",
+                "args": ["python", "-m", "ruff", "check"],
+                "capture_output": False,
+                "output_policy": "normalized",
             }
         )
     plan.extend(
@@ -170,7 +170,7 @@ def test_explain_mode_prints_full_decision_table_and_writes_no_proof(monkeypatch
     output = capsys.readouterr().out
     assert "Long gate cache decisions" in output
     assert "pytest_collect_all: RUN" in output
-    assert "full_test_debt: PLANNED_ONLY" in output
+    assert "ruff_check_full: PLANNED_ONLY" in output
     assert "cache: enabled" in output
     assert "cache: planned" in output
     assert "explain mode prints decisions only; it is not a quality gate proof" in output
@@ -205,7 +205,7 @@ def test_successful_run_writes_json_md_counts_and_reasons(monkeypatch, tmp_path)
     assert collect["stdout_log_path"].startswith("evidence/QualityGate/logs/")
     assert collect["stderr_log_path"].startswith("evidence/QualityGate/logs/")
     assert collect["output_files"][0]["path"] == "evidence/QualityGate/collect_nodeids.json"
-    planned = _entry_by_id(summary, "full_test_debt")
+    planned = _entry_by_id(summary, "ruff_check_full")
     assert planned["decision"] == "planned_only"
     assert planned["execution_mode"] == "planned_only"
 
@@ -282,7 +282,7 @@ def test_planned_long_entry_failure_records_summary_failure(monkeypatch, tmp_pat
     monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: _small_plan(include_planned=True))
 
     def fake_run_command(display, args, capture_output=False):
-        if display == "python tools/check_full_test_debt.py":
+        if display == "python -m ruff check":
             return {
                 "stdout": "unexpected failure: tests/test_long_gate_summary_output.py::test_debt\n",
                 "stderr": "full debt failed\n",
@@ -297,10 +297,10 @@ def test_planned_long_entry_failure_records_summary_failure(monkeypatch, tmp_pat
 
     summary = _load_summary(repo_root)
     failure = summary["failure"]
-    full_debt = _entry_by_id(summary, "full_test_debt")
+    full_debt = _entry_by_id(summary, "ruff_check_full")
     assert summary["counts"]["failed"] == 1
-    assert failure["entry_id"] == "full_test_debt"
-    assert failure["copyable_command"] == "python tools/check_full_test_debt.py"
+    assert failure["entry_id"] == "ruff_check_full"
+    assert failure["copyable_command"] == "python -m ruff check"
     assert failure["copyable_nodeids"] == []
     assert "full debt failed" in failure["stderr_tail"]
     assert full_debt["decision"] == "planned_only"

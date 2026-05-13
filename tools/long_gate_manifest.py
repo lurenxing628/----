@@ -58,6 +58,7 @@ _LONG_ENTRY_TYPES = {
 
 _CACHE_ENABLED_ENTRY_TYPES = {
     ENTRY_PYTEST_COLLECT_ALL,
+    ENTRY_FULL_TEST_DEBT,
 }
 
 
@@ -222,9 +223,81 @@ def _scopes_for_entry(entry_type: str) -> Tuple[List[str], List[str], List[str],
     elif entry_type == ENTRY_QUICKREF_VS_ROUTES:
         output_files = ["evidence/Conformance/quickref_vs_routes.md"]
     elif entry_type == ENTRY_FULL_TEST_DEBT:
+        input_scopes.extend(
+            [
+                "tests/**/*.py",
+                "tests/**/conftest.py",
+                "conftest.py",
+                "core/**/*.py",
+                "web/**/*.py",
+                "data/**/*.py",
+                "plugins/**/*.py",
+                "app.py",
+                "app_new_ui.py",
+                "config.py",
+                "schema.sql",
+                "assets/**/*",
+                "installer/**/*",
+                "build_win7*.bat",
+                "templates/**/*.html",
+                "web_new_test/templates/**/*.html",
+                "templates_excel/**/*",
+                "static/**/*",
+                "web_new_test/static/**/*",
+                "audit/**/*.md",
+                "docs/**/*.md",
+                "evidence/README.md",
+                "evidence/current/README.md",
+                ".github/workflows/*.yml",
+                ".gitignore",
+                ".limcode/skills/**/*",
+                ".limcode/plans/**/*",
+                "开发文档/**/*.md",
+                "evidence/QualityGate/collect_nodeids.json",
+            ]
+        )
+        config_scopes.extend(
+            [
+                "pytest.ini",
+                "pyproject.toml",
+                "setup.cfg",
+                "tox.ini",
+                "开发文档/技术债务治理台账.md",
+                "tools/check_full_test_debt.py",
+                "tools/collect_full_test_debt.py",
+                "tools/test_debt_registry.py",
+                "tools/quality_gate_shared.py",
+                "tools/quality_gate_support.py",
+                "codestable/tools/**/*.py",
+                "scripts/run_quality_gate.py",
+            ]
+        )
+        dependency_scopes.extend(
+            [
+                "requirements*.txt",
+                "requirements-dev*.txt",
+                "poetry.lock",
+                "uv.lock",
+                "Pipfile.lock",
+            ]
+        )
+        env_keys.extend(
+            [
+                "python_executable_realpath",
+                "python_version",
+                "pytest_version",
+                "platform",
+                "PYTHONPATH",
+                "PYTHONUTF8",
+                "PYTHONIOENCODING",
+                "PYTEST_ADDOPTS",
+                "PYTEST_DISABLE_PLUGIN_AUTOLOAD",
+                "PYTEST_PLUGINS",
+            ]
+        )
         output_files = [
             quality_gate_shared.QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL.replace("\\", "/"),
-            "evidence/QualityGate/full_test_debt_summary.json",
+            quality_gate_shared.QUALITY_GATE_FULL_TEST_DEBT_SUMMARY_REL.replace("\\", "/"),
         ]
 
     return (

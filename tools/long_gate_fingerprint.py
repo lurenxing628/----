@@ -4,6 +4,7 @@ import fnmatch
 import glob
 import hashlib
 import importlib.metadata
+import json
 import os
 import platform
 import stat
@@ -13,9 +14,19 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, 
 
 from tools.long_gate_schema import LONG_GATE_FINGERPRINT_SCHEMA_VERSION, stable_json_hash
 
+_EXPECTED_COLLECT_NODEIDS_SCHEMA_VERSION = 1
+
 
 class LongGateFingerprintError(RuntimeError):
     pass
+
+
+def _collect_nodeids_by_file(nodeids: Sequence[str]) -> Dict[str, List[str]]:
+    grouped: Dict[str, List[str]] = {}
+    for nodeid in nodeids:
+        file_path = str(nodeid).split("::", 1)[0]
+        grouped.setdefault(file_path, []).append(str(nodeid))
+    return {path: grouped[path] for path in sorted(grouped)}
 
 
 def _sha256_file(path: str) -> str:
@@ -296,6 +307,54 @@ def _entry_output_result_files(entry: Mapping[str, Any]) -> List[str]:
     return list(dict.fromkeys(str(item).replace("\\", "/") for item in list(entry.get("output_result_files") or [])))
 
 
+def _collect_nodeids_component(repo_root: str) -> Dict[str, Any]:
+    rel_path = "evidence/QualityGate/collect_nodeids.json"
+    abs_path = _abs_for_scope_path(rel_path, repo_root)
+    component: Dict[str, Any] = {
+        "path": rel_path,
+        "exists": os.path.isfile(abs_path),
+        "validated": False,
+        "schema_version": None,
+        "status": "",
+        "nodeid_hash": "",
+        "nodeid_count": None,
+        "error": "",
+    }
+    if not component["exists"]:
+        return component
+    try:
+        with open(abs_path, encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        component["error"] = str(exc)
+        return component
+    if not isinstance(payload, dict):
+        component["error"] = "collect_nodeids payload must be an object"
+        return component
+    raw_nodeids = payload.get("nodeids")
+    nodeids = [str(item) for item in raw_nodeids] if isinstance(raw_nodeids, list) else []
+    expected_nodeids_by_file = _collect_nodeids_by_file(nodeids)
+    component["schema_version"] = payload.get("schema_version")
+    component["status"] = str(payload.get("status") or "")
+    component["nodeid_hash"] = str(payload.get("nodeid_hash") or "")
+    component["nodeid_count"] = payload.get("nodeid_count")
+    if component["schema_version"] != _EXPECTED_COLLECT_NODEIDS_SCHEMA_VERSION:
+        component["error"] = "collect_nodeids schema_version is invalid"
+    elif not isinstance(raw_nodeids, list) or any(not isinstance(item, str) for item in raw_nodeids):
+        component["error"] = "collect_nodeids nodeids must be a list of strings"
+    elif component["nodeid_count"] != len(nodeids):
+        component["error"] = "collect_nodeids nodeid_count does not match nodeids"
+    elif not component["nodeid_hash"]:
+        component["error"] = "collect_nodeids nodeid_hash is missing"
+    elif component["nodeid_hash"] != stable_json_hash(nodeids):
+        component["error"] = "collect_nodeids nodeid_hash does not match nodeids"
+    elif payload.get("nodeids_by_file") != expected_nodeids_by_file:
+        component["error"] = "collect_nodeids nodeids_by_file does not match nodeids"
+    else:
+        component["validated"] = True
+    return component
+
+
 def fingerprint_entry(entry: Mapping[str, Any], repo_root: str, *, strict: bool = False) -> Dict[str, Any]:
     command_payload = {
         "display": entry.get("display"),
@@ -313,6 +372,8 @@ def fingerprint_entry(entry: Mapping[str, Any], repo_root: str, *, strict: bool 
             "hash": stable_json_hash(_entry_output_result_files(entry)),
         },
     }
+    if str(entry.get("entry_id") or "") == "full_test_debt":
+        components["collect_nodeids"] = _collect_nodeids_component(repo_root)
     payload = {
         "schema_version": LONG_GATE_FINGERPRINT_SCHEMA_VERSION,
         "components": components,
