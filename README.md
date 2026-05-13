@@ -83,11 +83,14 @@ full-test-debt proof 的意思是：当前没有未登记的 full pytest 失败�
 - `.venv\Scripts\python -m pytest tests/regression -q` 用于专项回归；`.venv\Scripts\python -m pytest tests -q` 是直接执行全量测试。
 - 上面这些常用定向命令只适合定位问题，不能当成最终 clean proof。最终 clean proof 需要在干净工作区跑完整质量门禁，并且门禁结束后工作区仍然干净。
 - 质量门禁里的 full pytest 收口检查由 `.venv\Scripts\python tools/check_full_test_debt.py` 完成，它会对照治理台账确认没有新的未登记失败。
-- 长耗时门禁缓存需要显式传 `.venv\Scripts\python scripts/run_quality_gate.py --long-gate-cache` 才会尝试复用；当前真正允许复用的只有测试收集 `pytest_collect_all`。`--long-gate-cache-explain` 只打印“会不会复用”的判断，不执行门禁，也不能当作通过证明。需要换缓存目录时用 `--long-gate-cache-dir PATH`，目录必须在 `evidence/QualityGate/long_gate/` 下面；需要强制刷新时用 `--long-gate-force-rerun ENTRY_ID` 或 `--long-gate-force-rerun-all`，这些参数只会影响已启用的缓存项，不会把 planned 项变成可复用。
+- 长耗时门禁缓存需要显式传 `.venv\Scripts\python scripts/run_quality_gate.py --long-gate-cache` 才会尝试复用。当前 enabled long gate entry 是 `pytest_collect_all`、`full_test_debt`、`startup_runtime_regressions` 和 `required_regressions`；其它 `architecture_fitness`、`ruff_check_full`、`pyright_gate_full`、`pyright_tools_full`、`debt_ledger_sync`、`quickref_vs_routes` 仍保持 planned，不会因为 cache 打开而复用。
+- long gate cache 不是跳过正式门禁。命中前会校验 command、fingerprint、stdout/stderr 日志、输出 proof、schema、runner/tooling hash 和 repo identity；证据缺失、损坏或 hash 不一致都会自动重跑。
+- `--long-gate-cache-explain` 只打印“会不会复用”的判断，不执行门禁，也不能当作通过证明。维护者要手动完整重跑时，可以直接运行不带 `--long-gate-cache` 的 clean gate，或显式使用 `--no-long-gate-cache`。
+- CI 和最终 clean gate 的要求不降低。最终 clean proof 仍要在干净工作区跑完整质量门禁，并且门禁结束后工作区仍然干净。
 - `requirements.txt` 是程序运行依赖，`requirements-dev.txt` 是本地检查和托管门禁依赖；新环境两份都要装。
 - `ruff` 版本口径为 `>=0.15,<0.16`。
 - `pyright` 版本固定为 `==1.1.406`。
-- `.pre-commit-config.yaml` 安装后会管三件事：提交前跑 `ruff` 和本地临时文件拦截，提交说明阶段拦截过于含糊的标题，推送前跑 `scripts/run_quality_gate.py --require-clean-worktree`。
+- `.pre-commit-config.yaml` 安装后会管三件事：提交前跑 `ruff` 和本地临时文件拦截，提交说明阶段拦截过于含糊的标题，推送前 hook 会通过项目 `.venv` Python 运行 `scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`。
 - 推送前门禁必须使用项目 `.venv` 里的 Python；如果项目 `.venv` 不存在，会直接失败，不会偷偷换成系统 Python，并且会强制使用 UTF-8 环境。本地 hook 不是可选检查，正常提交流程不要绕过它。CI/托管环境会重跑质量门禁，不过提交标题检查和“暂存区有没有混入本地运行产物”主要靠本地 hook，绕过后不能当作已经通过本地提交检查。
 - `pyright` 不在提交前单独快跑，它由 `scripts/run_quality_gate.py` 与 CI 作为硬门禁运行。
 - `pyrightconfig.gate.json` 覆盖主链：`app.py`、`app_new_ui.py`、`config.py`、`core/`、`data/`、`web/`。

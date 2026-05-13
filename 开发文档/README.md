@@ -58,7 +58,9 @@ py -3.8 -m venv .venv
 
 full-test-debt proof 证明当前没有未登记的 full pytest 失败，并且已登记测试债务仍受台账约束；它不代表历史测试债务已经全部修完。
 
-long gate cache 是给长耗时门禁准备的本地成功缓存，需要显式传入 `--long-gate-cache` 才会尝试复用；当前真正启用的只有 `pytest_collect_all`，也就是 `python -m pytest --collect-only -q tests` 这一项。`--long-gate-cache-explain` 只打印本次会跑、会复用、还是仍处于 planned 的判断，不执行命令，不写 summary，也不能当作 clean proof。需要把成功缓存放到单独目录时，传 `--long-gate-cache-dir PATH`，目录必须在 `evidence/QualityGate/long_gate/` 本身或它的子目录下。需要强制刷新缓存时，传 `--long-gate-force-rerun ENTRY_ID` 或 `--long-gate-force-rerun-all`；这些参数只影响已经启用的缓存项，不会启用 `full_test_debt`、ruff、pyright 等 planned 项。
+long gate cache 是给长耗时门禁准备的本地成功缓存，需要显式传入 `--long-gate-cache` 才会尝试复用。当前 enabled long gate entry 是 `pytest_collect_all`、`full_test_debt`、`startup_runtime_regressions` 和 `required_regressions`。`architecture_fitness`、`ruff_check_full`、`pyright_gate_full`、`pyright_tools_full`、`debt_ledger_sync`、`quickref_vs_routes` 仍是 planned，不会因为 cache 打开而复用。
+
+long gate cache 不是跳过正式门禁。命中前会校验 command、fingerprint、stdout/stderr 日志、输出 proof、schema、runner/tooling hash 和 repo identity；坏证据、缺 proof、日志缺失、输出缺失或 hash 不一致都会自动重跑。`--long-gate-cache-explain` 只打印本次会跑、会复用、还是仍处于 planned 的判断，不执行命令，不写 proof，也不能当作 clean proof。维护者要手动完整重跑时，可以直接运行不带 `--long-gate-cache` 的 clean gate，或显式使用 `--no-long-gate-cache`。CI 和最终 clean gate 的要求不降低。
 
 ### 治理台账写入口
 
@@ -123,7 +125,7 @@ long gate cache 是给长耗时门禁准备的本地成功缓存，需要显式�
 ```
 
 - `pyright` 版本口径固定为 `==1.1.406`，以 `requirements-dev.txt` 为准。
-- `.pre-commit-config.yaml` 安装后会管三件事：提交前跑 `ruff` 和本地临时文件拦截，提交说明阶段拦截过于含糊的标题，推送前跑 `scripts/run_quality_gate.py --require-clean-worktree`。
+- `.pre-commit-config.yaml` 安装后会管三件事：提交前跑 `ruff` 和本地临时文件拦截，提交说明阶段拦截过于含糊的标题，推送前质量门禁会通过 `tools/git_hook_checks.py run-quality-gate` 使用项目 `.venv` Python 调用 `scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`。
 - 推送前质量门禁必须使用项目 `.venv` 里的 Python；如果项目 `.venv` 不存在，会直接失败，不会偷偷换成系统 Python，并且会强制使用 UTF-8 环境。本地 hook 不是可选检查，正常提交流程不要绕过它，绕过后不能当作已经通过本地提交检查。
 - `pyright` 不在提交前单独快跑，它由 `scripts/run_quality_gate.py` 和 CI 阻断。
 - `scripts/run_quality_gate.py` 固定顺序已包含：测试收集、`python tools/check_full_test_debt.py`、`ruff` 版本检查、`pyright` 版本检查、`radon` 导入检查、`ruff check`、主链 `pyright`、工具脚本 `pyright`、架构适应度、必需回归、治理台账检查、启动链专项回归与速查表核对。

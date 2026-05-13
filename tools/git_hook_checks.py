@@ -160,7 +160,12 @@ def run_quality_gate(_args: argparse.Namespace) -> int:
     env["PYTHONUTF8"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"
     env.pop("APS_SKIP_QUALITY_GATE", None)
-    command = [executable, "scripts/run_quality_gate.py", "--require-clean-worktree"]
+    command = [
+        executable,
+        "scripts/run_quality_gate.py",
+        "--require-clean-worktree",
+        "--long-gate-cache",
+    ]
     return subprocess.call(command, cwd=str(REPO_ROOT), env=env)
 
 

@@ -1,0 +1,51 @@
+feature: 2026-05-13-pre-push-long-gate-cache
+created: 2026-05-13
+
+steps:
+  - action: "只读确认 hook 链路和 long gate cache 参数"
+    exit_signal: "确认 pre-push 当前通过 tools/git_hook_checks.py 调用 scripts/run_quality_gate.py，且 run_quality_gate.py 支持 --long-gate-cache"
+    status: done
+  - action: "CodeStable 立项"
+    exit_signal: "feature design 和 checklist 已创建，roadmap item 已插入"
+    status: done
+  - action: "hook 命令接入 cache"
+    exit_signal: "tools/git_hook_checks.py 的 run_quality_gate command 同时包含 --require-clean-worktree 和 --long-gate-cache"
+    status: done
+  - action: "测试更新"
+    exit_signal: "tests/test_git_hook_checks.py 覆盖 cache 参数、保留 clean-worktree、禁止 force/explain/no-cache"
+    status: done
+  - action: "文档更新"
+    exit_signal: "README 和 开发文档/README.md 不再残留只有 pytest_collect_all 启用的旧说法"
+    status: done
+  - action: "验证"
+    exit_signal: "专项测试、相关回归、ruff、pyright、YAML 校验和 diff check 通过"
+    status: done
+  - action: "验收记录"
+    exit_signal: "acceptance 写明验证命令、未启用 NEXT-8 到 NEXT-13、默认未 push"
+    status: done
+
+checks:
+  - item: "pre-push command 保留 --require-clean-worktree"
+    source: tests/test_git_hook_checks.py
+    status: passed
+  - item: "pre-push command 增加 --long-gate-cache"
+    source: tests/test_git_hook_checks.py
+    status: passed
+  - item: "pre-push command 不包含 force/explain/no-cache"
+    source: tests/test_git_hook_checks.py
+    status: passed
+  - item: "hook 仍使用项目 .venv Python"
+    source: tests/test_git_hook_checks.py
+    status: passed
+  - item: "hook 仍设置 UTF-8 环境并清除 APS_SKIP_QUALITY_GATE"
+    source: tests/test_git_hook_checks.py
+    status: passed
+  - item: "enabled entry 只保持 collect/full-test-debt/startup/required"
+    source: tools/long_gate_manifest.py
+    status: passed
+  - item: "NEXT-8 到 NEXT-13 仍 planned"
+    source: codestable/roadmap/quality-gate-long-cache/quality-gate-long-cache-items.yaml
+    status: passed
+  - item: "README 和开发文档说明 pre-push 会带 --long-gate-cache"
+    source: README.md / 开发文档/README.md
+    status: passed

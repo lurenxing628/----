@@ -76,7 +76,7 @@ items:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_long_gate_manifest.py tests/test_long_gate_cache.py tests/test_long_gate_collect_cache.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check scripts/run_quality_gate.py tools/quality_gate_shared.py tools/git_hook_checks.py tools/long_gate_manifest.py tools/long_gate_fingerprint.py tools/long_gate_cache.py tools/long_gate_collect.py tests/test_run_quality_gate.py tests/test_git_hook_checks.py tests/test_long_gate_manifest.py tests/test_long_gate_cache.py tests/test_long_gate_collect_cache.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright scripts/run_quality_gate.py tools/quality_gate_shared.py tools/git_hook_checks.py tools/long_gate_manifest.py tools/long_gate_fingerprint.py tools/long_gate_cache.py tools/long_gate_collect.py tests/test_run_quality_gate.py tests/test_git_hook_checks.py tests/test_long_gate_manifest.py tests/test_long_gate_cache.py tests/test_long_gate_collect_cache.py
-    notes: "已完成：新增 --long-gate-cache、--no-long-gate-cache、--long-gate-cache-explain；当前只有 collect-only 已启用；dirty 快速反馈不会写 long-gate success cache；pre-push 已通过，最新远端提交是 da4eddad。"
+    notes: "已完成：新增 --long-gate-cache、--no-long-gate-cache、--long-gate-cache-explain；该阶段完成时 enabled 范围为 collect-only；dirty 快速反馈不会写 long-gate success cache；pre-push 已通过，最新远端提交是 da4eddad。"
 
   - slug: long-gate-summary-output
     title: NEXT-1 统一决策表和 summary 输出
@@ -152,7 +152,7 @@ items:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_run_quality_gate.py tests/test_long_gate_cli_controls.py tests/test_long_gate_summary_output.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check tools/long_gate_cache.py tools/long_gate_fingerprint.py tools/long_gate_manifest.py tools/long_gate_paths.py tools/long_gate_schema.py tools/long_gate_summary.py tools/quality_gate_shared.py tests/test_long_gate_cache.py tests/test_long_gate_manifest.py tests/test_run_quality_gate.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright tools/long_gate_cache.py tools/long_gate_fingerprint.py tools/long_gate_manifest.py tools/long_gate_paths.py tools/long_gate_schema.py tools/long_gate_summary.py tools/quality_gate_shared.py tests/test_long_gate_cache.py tests/test_long_gate_manifest.py tests/test_run_quality_gate.py tests/test_long_gate_cli_controls.py tests/test_long_gate_summary_output.py
-    notes: "已完成：新增 long_gate_paths.py 和 long_gate_schema.py；success cache 显式记录并校验 cache/fingerprint schema、runner/tooling hash、cache dir、repo identity；bool 或坏字符串不能冒充数字，坏 duration_s、坏 fingerprint 结构、repo 外普通路径、repo 外 glob、repo 外 symlink、runner/tooling 自身的 repo 外 symlink 都只会 decision=run，且不读取仓库外目标内容；日志/输出证据不完整、路径逃逸、repo identity 不一致都会重跑。当前 enabled 范围不变，仍只有 pytest_collect_all。"
+    notes: "已完成：新增 long_gate_paths.py 和 long_gate_schema.py；success cache 显式记录并校验 cache/fingerprint schema、runner/tooling hash、cache dir、repo identity；bool 或坏字符串不能冒充数字，坏 duration_s、坏 fingerprint 结构、repo 外普通路径、repo 外 glob、repo 外 symlink、runner/tooling 自身的 repo 外 symlink 都只会 decision=run，且不读取仓库外目标内容；日志/输出证据不完整、路径逃逸、repo identity 不一致都会重跑。该阶段完成时 enabled 范围仍为 pytest_collect_all。"
 
   - slug: full-test-debt-success-cache
     title: NEXT-4 full-test-debt 整项成功复用
@@ -237,10 +237,35 @@ items:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --long-gate-cache-explain
     notes: "已完成 required 整组成功复用：required args 来自真实 command plan entry，不复制 QUALITY_GATE_REQUIRED_TESTS；proof 写入 evidence/QualityGate/required_regressions.json，绑定 command/fingerprint/returncode/target/HEAD/长期日志路径和 hash；坏 proof、坏日志、输入或环境变化都会整组重跑。第一版不做 nodeid 增量，NEXT-8 和后续 planned entry 仍不启用。"
 
+  - slug: pre-push-long-gate-cache
+    title: NEXT-7.5 pre-push 接入已有 long gate cache
+    description: "让本地 pre-push hook 在保留 --require-clean-worktree 的同时显式传入 --long-gate-cache，只复用已经 enabled 且证据可信的 long gate entry。"
+    depends_on: [required-regression-cache]
+    status: done
+    feature: 2026-05-13-pre-push-long-gate-cache
+    minimal_loop: true
+    primary_paths:
+      - tools/git_hook_checks.py
+      - tests/test_git_hook_checks.py
+      - README.md
+      - "开发文档/README.md"
+    exit_checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_git_hook_checks.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_run_quality_gate.py tests/test_long_gate_cache.py tests/test_long_gate_manifest.py tests/test_long_gate_summary_output.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_long_gate_cli_controls.py tests/test_long_gate_full_test_debt_cache.py tests/test_long_gate_startup_regression_cache.py tests/test_long_gate_required_regression_cache.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --long-gate-cache-explain
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check tools/git_hook_checks.py tests/test_git_hook_checks.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright tools/git_hook_checks.py tests/test_git_hook_checks.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python codestable/tools/validate-yaml.py --file codestable/roadmap/quality-gate-long-cache/quality-gate-long-cache-items.yaml
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python codestable/tools/validate-yaml.py --file codestable/features/2026-05-13-pre-push-long-gate-cache/pre-push-long-gate-cache-checklist.yaml
+      - git diff --check
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
+    notes: "已完成：只给 pre-push 正式质量门禁增加 --long-gate-cache；保留 --require-clean-worktree；不加 force/explain；不启用 architecture、ruff、pyright、debt ledger 或 quickref。最终 clean-worktree proof 已在收尾阶段运行通过；后续任何 amend 都必须重跑。"
+
   - slug: architecture-scan-file-cache
     title: NEXT-8 架构体检文件级扫描缓存
     description: "拆出 scan_single_file_architecture、scan_files_with_cache、aggregate_architecture_scan；未变化文件复用 AST 派生事实，跨文件规则每次重新聚合。"
-    depends_on: [required-regression-cache]
+    depends_on: [pre-push-long-gate-cache]
     status: planned
     feature: null
     minimal_loop: false

@@ -62,7 +62,18 @@ def test_run_quality_gate_command_uses_project_python_and_utf8_env(monkeypatch, 
     assert git_hook_checks.main(["run-quality-gate"]) == 7
 
     command, cwd, env = calls[0]
-    assert command == [project_python, "scripts/run_quality_gate.py", "--require-clean-worktree"]
+    assert command == [
+        project_python,
+        "scripts/run_quality_gate.py",
+        "--require-clean-worktree",
+        "--long-gate-cache",
+    ]
+    assert command.count("--require-clean-worktree") == 1
+    assert "--long-gate-force-rerun" not in command
+    assert "--long-gate-force-rerun-all" not in command
+    assert "--long-gate-cache-explain" not in command
+    assert "--no-long-gate-cache" not in command
+    assert "--allow-dirty-worktree" not in command
     assert cwd == str(tmp_path)
     assert "APS_SKIP_QUALITY_GATE" not in env
     assert env["PYTHONDONTWRITEBYTECODE"] == "1"
@@ -176,7 +187,9 @@ def test_pre_commit_config_wires_quality_gate_and_ruff_hooks() -> None:
     assert hooks["block-local-artifacts"]["pass_filenames"] is False
     assert hooks["block-local-artifacts"]["always_run"] is True
     assert hooks["readable-commit-message"]["stages"] == ["commit-msg"]
+    assert hooks["aps-quality-gate"]["name"] == "APS quality gate before push"
     assert hooks["aps-quality-gate"]["entry"] == "python tools/git_hook_checks.py run-quality-gate"
+    assert hooks["aps-quality-gate"]["language"] == "system"
     assert hooks["aps-quality-gate"]["stages"] == ["pre-push"]
     assert hooks["aps-quality-gate"]["pass_filenames"] is False
     assert hooks["aps-quality-gate"]["always_run"] is True
