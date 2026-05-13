@@ -13,7 +13,7 @@ related_architecture: [codestable/architecture/ARCHITECTURE.md]
 
 ## 1. 当前状态确认
 
-这份 roadmap 现在只记录后续路线，不代表所有慢门禁都已经缓存。当前已经完成 NEXT-1 到 NEXT-4，本轮把 `full_test_debt` 打开为整项成功复用；NEXT-5 和其它慢项仍保持 planned。
+这份 roadmap 现在只记录后续路线，不代表所有慢门禁都已经缓存。当前已经完成 NEXT-1 到 NEXT-5；`full_test_debt` 先支持整项成功复用，现在又补了安全的 nodeid 级增量和台账-only 路径。其它 startup、required、ruff、pyright、architecture、debt ledger、quickref 仍保持 planned。
 
 已经完成并可以继续沿用：
 
@@ -532,7 +532,15 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --long-ga
 - 只改台账时不重跑 pytest，只重做台账校验。
 - node cache JSON 损坏时整体重跑。
 
-回滚方式：保留整项复用，禁用 nodeid 增量分支。
+状态：done。对应 feature：`2026-05-13-full-test-debt-nodeid-cache`。
+
+完成说明：已新增 `evidence/QualityGate/full_test_debt_node_cache.json`，它只作为 `full_test_debt` 内部辅助证据，不是新的 long gate entry，也不会提交进仓库。runner 的顺序保持为：先判断 NEXT-4 整项 success cache 是否可复用；如果整项不能复用，再判断是否只有普通 `tests/**/*.py` 文件变化且 `collect_nodeids.json.nodeids_by_file` 能映射到 nodeid；能映射时只重跑相关 nodeid，把新报告合并回完整 `current_full_test_debt.json`，再用原有台账规则重算 `full_test_debt_summary.json`。如果只改 `开发文档/技术债务治理台账.md`，则不跑 pytest，只读取可信旧 current payload，用当前台账重算 summary。
+
+安全边界：源码、`conftest.py`、pytest 配置、依赖、collector/checker/runner/schema/cache/fingerprint/manifest/summary/registry 工具、模板、静态资源、Excel 模板、安装脚本、`.limcode` 旧资产、CodeStable 文档或 `collect_nodeids.json` 损坏都会整体重跑。测试文件如果被其它测试文件静态 import、`importlib.import_module()` 动态 import、`__import__()` 动态 import，或遇到无法安全解析的动态导入，也会整体重跑。node cache JSON 损坏、schema/hash 不一致、日志缺失或 hash 不一致、旧 success cache 未声明 node cache、测试文件 hash 在非本次改动文件上不一致、current payload 与 collect nodeids 不一致，也会整体重跑。增量 pytest 失败、collector 输出不合法或合并后台账校验失败，会直接失败，不能复用旧成功掩盖。
+
+执行模式：receipt/summary 现在能区分 `reused_success_cache`、`executed`、`nodeid_incremental`、`ledger_only`。`--long-gate-force-rerun full_test_debt`、`--long-gate-force-rerun-all`、`--no-long-gate-cache` 都不会走 nodeid 增量；`--long-gate-cache-explain` 只打印决策，不写 proof。
+
+回滚方式：禁用 `scripts/run_quality_gate.py` 中的 `try_run_special_full_test_debt_mode` 分支，保留 NEXT-4 整项 success cache 即可。
 
 ### NEXT-6：startup runtime regressions 整组复用
 
@@ -923,7 +931,7 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require
 6. `long-gate-cli-controls`：done，已补 cache dir 和 force rerun 参数。
 7. `long-gate-cache-safety-hardening`：done，已加固共用 schema、runner/tooling hash、repo identity、路径和损坏证据拒绝规则。
 8. `full-test-debt-success-cache`：done，已完成 full-test-debt 整项复用。
-9. `full-test-debt-nodeid-cache`：planned，做 full-test-debt nodeid 增量。
+9. `full-test-debt-nodeid-cache`：done，已完成 full-test-debt nodeid 增量和台账-only 路径。
 10. `startup-runtime-regression-cache`：planned，做 startup 整组复用。
 11. `required-regression-cache`：planned，做 required 整组复用。
 12. `architecture-scan-file-cache`：planned，做 architecture 文件级扫描缓存。
@@ -1003,3 +1011,4 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require
 - 2026-05-13：完成 `long-gate-cli-controls`，新增 `--long-gate-cache-dir`、`--long-gate-force-rerun`、`--long-gate-force-rerun-all`；自定义 success cache 目录被限制在 `evidence/QualityGate/long_gate/` 下；force 只影响 enabled entry 的复用决策，不改变 command plan，不启用任何新的 planned entry。
 - 2026-05-13：完成 `long-gate-cache-safety-hardening`，新增 `tools/long_gate_paths.py` 和 `tools/long_gate_schema.py`；success cache 显式记录并校验 cache/fingerprint schema、runner/tooling hash、cache dir、repo identity；坏 JSON、坏类型、坏 fingerprint 结构、repo 外输入路径、repo 外 symlink、日志/输出缺失、repo identity 不一致都会重新执行；该阶段完成时 enabled 范围为 `pytest_collect_all` 单项。
 - 2026-05-13：完成 `full-test-debt-success-cache`，只把 `full_test_debt` 加入 enabled；输入指纹覆盖完整 pytest 会读取的测试、源码、模板、静态资源、Excel 模板、安装脚本、`.limcode` 旧资产、CodeStable 工具、文档、台账、collector/checker、pytest 配置、依赖和 `collect_nodeids.json` 结构化 proof；输出绑定 `current_full_test_debt.json` 和 `full_test_debt_summary.json`；NEXT-5 的 nodeid 级增量仍保持 planned。
+- 2026-05-13：完成 `full-test-debt-nodeid-cache`，新增 `full_test_debt_node_cache.json` 和 `tools/long_gate_full_test_debt.py`；只有普通测试文件变化且 nodeid 映射可信时才走 nodeid 增量，只改台账时走 ledger-only；源码、conftest、pytest 配置、依赖、工具、模板、静态资源、Excel 模板、安装脚本或坏证据都会整体回退；当前 enabled 范围仍只有 `pytest_collect_all` 和 `full_test_debt`，NEXT-6 仍保持 planned。

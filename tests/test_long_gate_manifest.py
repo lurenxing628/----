@@ -115,6 +115,9 @@ def test_only_collect_and_full_test_debt_entries_are_currently_reuse_enabled():
     assert "codestable/tools/**/*.py" in full_test_debt["config_file_scopes"]
     assert full_test_debt["cache_status"] == "enabled"
     assert "evidence/QualityGate/collect_nodeids.json" in full_test_debt["input_file_scopes"]
+    assert "scripts/**/*.py" in full_test_debt["input_file_scopes"]
+    assert "desktop/**/*.py" in full_test_debt["input_file_scopes"]
+    assert "audit/**/*.py" in full_test_debt["input_file_scopes"]
     assert "assets/**/*" in full_test_debt["input_file_scopes"]
     assert "installer/**/*" in full_test_debt["input_file_scopes"]
     assert "build_win7*.bat" in full_test_debt["input_file_scopes"]
@@ -127,9 +130,11 @@ def test_only_collect_and_full_test_debt_entries_are_currently_reuse_enabled():
     assert ".limcode/skills/**/*" in full_test_debt["input_file_scopes"]
     assert ".limcode/plans/**/*" in full_test_debt["input_file_scopes"]
     assert "开发文档/**/*.md" in full_test_debt["input_file_scopes"]
+    assert "validate_dist_exe.py" in full_test_debt["input_file_scopes"]
     assert full_test_debt["output_result_files"] == [
         "evidence/QualityGate/current_full_test_debt.json",
         "evidence/QualityGate/full_test_debt_summary.json",
+        "evidence/QualityGate/full_test_debt_node_cache.json",
     ]
 
 

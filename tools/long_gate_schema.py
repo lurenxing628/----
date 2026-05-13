@@ -10,6 +10,7 @@ from tools.quality_gate_shared import repo_identity
 
 LONG_GATE_CACHE_SCHEMA_VERSION = 1
 LONG_GATE_FINGERPRINT_SCHEMA_VERSION = 1
+FULL_TEST_DEBT_NODE_CACHE_SCHEMA_VERSION = 1
 LONG_GATE_MANIFEST_SCHEMA_VERSION = 1
 LONG_GATE_SUMMARY_SCHEMA_VERSION = 1
 
@@ -18,6 +19,7 @@ LONG_GATE_TOOLING_VERSION_PATHS = (
     "tools/long_gate_cache.py",
     "tools/long_gate_collect.py",
     "tools/long_gate_fingerprint.py",
+    "tools/long_gate_full_test_debt.py",
     "tools/long_gate_manifest.py",
     "tools/long_gate_paths.py",
     "tools/long_gate_schema.py",

@@ -17,6 +17,7 @@ from tools.quality_gate_ledger import load_ledger  # noqa: E402
 from tools.quality_gate_shared import (  # noqa: E402
     FORMAL_FULL_TEST_PYTEST_ARGS,
     FULL_TEST_DEBT_ALLOWED_ACTIVE_XFAIL_NODEIDS,
+    QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL,
     QUALITY_GATE_FULL_TEST_DEBT_SUMMARY_REL,
     QualityGateError,
     quality_gate_required_test_nodeid_matches,
@@ -512,8 +513,46 @@ def run_check(*, require_clean_worktree_proof: bool = True) -> Dict[str, Any]:
     return summary
 
 
-def _write_json_atomically(rel_path: str, payload: Dict[str, Any]) -> None:
-    abs_path = os.path.join(REPO_ROOT, rel_path.replace("/", os.sep))
+def load_current_payload(
+    *,
+    repo_root: str = REPO_ROOT,
+    rel_path: str = QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL,
+) -> Dict[str, Any]:
+    abs_path = os.path.join(str(repo_root), str(rel_path).replace("\\", "/").replace("/", os.sep))
+    with open(abs_path, encoding="utf-8") as handle:
+        payload = json.load(handle)
+    if not isinstance(payload, dict):
+        raise QualityGateError(f"{rel_path} 顶层必须是 JSON 对象")
+    return payload
+
+
+def run_check_from_existing_payload(
+    payload: Dict[str, Any],
+    *,
+    ledger: Optional[Dict[str, Any]] = None,
+    require_clean_worktree_proof: bool = True,
+) -> Dict[str, Any]:
+    resolved_ledger = ledger if ledger is not None else load_ledger(required=True)
+    summary = build_full_test_debt_summary(
+        payload,
+        ledger=resolved_ledger,
+        require_historical_registry=True,
+        require_clean_worktree_proof=bool(require_clean_worktree_proof),
+    )
+    _progress("full-test-debt proof 校验完成")
+    return summary
+
+
+def write_current_full_test_debt_payload(payload: Dict[str, Any], *, repo_root: str = REPO_ROOT) -> None:
+    _write_json_atomically(QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL, payload, repo_root=repo_root)
+
+
+def write_full_test_debt_summary(summary: Dict[str, Any], *, repo_root: str = REPO_ROOT) -> None:
+    _write_json_atomically(QUALITY_GATE_FULL_TEST_DEBT_SUMMARY_REL, summary, repo_root=repo_root)
+
+
+def _write_json_atomically(rel_path: str, payload: Dict[str, Any], *, repo_root: str = REPO_ROOT) -> None:
+    abs_path = os.path.join(str(repo_root), rel_path.replace("\\", "/").replace("/", os.sep))
     os.makedirs(os.path.dirname(abs_path), exist_ok=True)
     temp_path = f"{abs_path}.tmp"
     with open(temp_path, "w", encoding="utf-8") as handle:
@@ -539,7 +578,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     except QualityGateError as exc:
         print(f"ERROR: {exc}", file=sys.stderr, flush=True)
         return 2
-    _write_json_atomically(QUALITY_GATE_FULL_TEST_DEBT_SUMMARY_REL, summary)
+    write_full_test_debt_summary(summary)
     print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True), flush=True)
     return 0
 

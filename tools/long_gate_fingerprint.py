@@ -275,6 +275,33 @@ def pytest_distribution_version(*, strict: bool = False) -> str:
     return _pytest_version(strict=strict)
 
 
+def _pytest_plugin_distribution_versions(*, strict: bool = False) -> str:
+    try:
+        entry_points = importlib.metadata.entry_points()
+        if hasattr(entry_points, "select"):
+            pytest_plugins = entry_points.select(group="pytest11")
+        else:  # pragma: no cover - Python 3.8 compatibility path
+            pytest_plugins = entry_points.get("pytest11", [])
+        rows = []
+        for item in pytest_plugins:
+            distribution = getattr(item, "dist", None)
+            dist_name = str(getattr(distribution, "metadata", {}).get("Name", "") or getattr(item, "module", "") or "")
+            dist_version = str(getattr(distribution, "version", "") or "")
+            rows.append(
+                {
+                    "name": str(getattr(item, "name", "") or ""),
+                    "module": str(getattr(item, "module", "") or ""),
+                    "distribution": dist_name,
+                    "version": dist_version,
+                }
+            )
+        return stable_json_hash(sorted(rows, key=lambda row: (row["name"], row["module"], row["distribution"])))
+    except Exception as exc:
+        if strict:
+            raise LongGateFingerprintError(f"pytest plugin distribution list is required: {exc}") from exc
+        return "__pytest_plugin_distribution_versions_unavailable__"
+
+
 def _runtime_fingerprint_value(key: str, *, strict: bool = False) -> Optional[str]:
     if key == "python_executable_realpath":
         return os.path.realpath(sys.executable)
@@ -282,6 +309,8 @@ def _runtime_fingerprint_value(key: str, *, strict: bool = False) -> Optional[st
         return sys.version.splitlines()[0].strip()
     if key == "pytest_version":
         return _pytest_version(strict=strict)
+    if key == "pytest_plugin_distribution_versions":
+        return _pytest_plugin_distribution_versions(strict=strict)
     if key == "platform":
         return platform.platform()
     return os.environ.get(str(key))

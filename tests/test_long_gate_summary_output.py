@@ -475,3 +475,34 @@ def test_markdown_renders_failure_paths_and_tails():
     assert "evidence/QualityGate/receipts/collect.json" in markdown
     assert "FAILED tests/test_x.py::test_y" in markdown
     assert "boom" in markdown
+
+
+def test_summary_counts_incremental_modes_as_executed():
+    entry = {"entry_id": "full_test_debt", "entry_type": "full_test_debt", "cache_status": "enabled"}
+    decision = {"entry_id": "full_test_debt", "decision": "run", "reason": "input fingerprint changed"}
+    nodeid_entry = build_summary_entry(
+        index=1,
+        entry=entry,
+        decision=decision,
+        result={"stdout": "", "stderr": "", "returncode": 0, "execution_mode": "nodeid_incremental"},
+        receipt_path="evidence/QualityGate/receipts/full.json",
+    )
+    ledger_entry = build_summary_entry(
+        index=2,
+        entry=entry,
+        decision=decision,
+        result={"stdout": "", "stderr": "", "returncode": 0, "execution_mode": "ledger_only"},
+        receipt_path="evidence/QualityGate/receipts/full2.json",
+    )
+
+    summary = build_long_gate_summary(
+        run_id="run",
+        repo_root=_repo_root(),
+        head_sha="head",
+        worktree_clean=True,
+        cache_enabled=True,
+        mode="run",
+        entries=[nodeid_entry, ledger_entry],
+    )
+
+    assert summary["counts"]["executed"] == 2

@@ -34,6 +34,14 @@ from tools.long_gate_fingerprint import (  # noqa: E402
     fingerprint_entry,
     pytest_distribution_version,
 )
+from tools.long_gate_full_test_debt import (  # noqa: E402
+    NODE_CACHE_REL as FULL_TEST_DEBT_NODE_CACHE_REL,
+)
+from tools.long_gate_full_test_debt import (
+    explain_special_full_test_debt_plan,
+    try_run_special_full_test_debt_mode,
+    write_full_test_debt_node_cache_after_success,
+)
 from tools.long_gate_manifest import (  # noqa: E402
     ENTRY_FULL_TEST_DEBT,
     ENTRY_PYTEST_COLLECT_ALL,
@@ -47,6 +55,7 @@ from tools.long_gate_summary import (  # noqa: E402
 )
 from tools.quality_gate_support import (  # noqa: E402
     QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL,
+    QUALITY_GATE_FULL_TEST_DEBT_NODE_CACHE_REL,
     QUALITY_GATE_FULL_TEST_DEBT_SUMMARY_REL,
     QUALITY_GATE_LOGS_DIR_REL,
     QUALITY_GATE_MANIFEST_REL,
@@ -81,6 +90,7 @@ GENERATED_CLEAN_WORKTREE_EXCLUDED_PATHS = [
     COLLECT_NODEIDS_REL.replace("\\", "/"),
     QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL.replace("\\", "/"),
     QUALITY_GATE_FULL_TEST_DEBT_SUMMARY_REL.replace("\\", "/"),
+    QUALITY_GATE_FULL_TEST_DEBT_NODE_CACHE_REL.replace("\\", "/"),
 ]
 HIGH_RISK_UNTRACKED_SOURCE_PREFIXES = ("core/", "web/", "data/", "tools/", "scripts/")
 HIGH_RISK_UNTRACKED_SOURCE_SUFFIXES = (".py", ".js", ".ts", ".html", ".css", ".sql")
@@ -997,11 +1007,37 @@ def _run_quality_gate_command_plan(
                 )
                 continue
 
-        result = _coerce_command_result(
-            _run_command(display, _resolve_command_args(command), capture_output=bool(command.get("capture_output")))
-        )
+        raw_result: Any = None
+        decision_for_special = dict((long_gate_runtime_entry or {}).get("decision") or {})
+        if (
+            long_gate_runtime_entry is not None
+            and str(long_gate_entry.get("entry_id") or "") == ENTRY_FULL_TEST_DEBT
+            and bool(long_gate_cache_write_success)
+            and str(decision_for_special.get("decision") or "") == "run"
+            and str(decision_for_special.get("reason") or "") == "input fingerprint changed"
+        ):
+            raw_result = try_run_special_full_test_debt_mode(
+                repo_root=REPO_ROOT,
+                entry=long_gate_entry,
+                current_fingerprint=dict(long_gate_fingerprint or {}),
+                decision=decision_for_special,
+                evaluation=dict(long_gate_runtime_entry.get("evaluation") or {}),
+                cache_dir=long_gate_cache_dir,
+            )
+        if raw_result is None:
+            raw_result = _run_command(
+                display,
+                _resolve_command_args(command),
+                capture_output=bool(command.get("capture_output")),
+            )
+        result = _coerce_command_result(raw_result)
         result.update(_write_command_output_logs(index=command_index, display=display, result=result))
-        result["execution_mode"] = "executed"
+        if isinstance(raw_result, dict):
+            result["execution_mode"] = str(raw_result.get("execution_mode") or "executed")
+            if isinstance(raw_result.get("reused_from"), dict):
+                result["reused_from"] = dict(raw_result.get("reused_from") or {})
+        else:
+            result["execution_mode"] = "executed"
         elapsed = _mark_command_timing(result, started_at=command_started_at, start_monotonic=start_monotonic)
         commands.append(command)
         receipt_entry = _write_command_receipt(command, run_id=run_id, index=command_index, result=result)
@@ -1079,7 +1115,11 @@ def _run_quality_gate_command_plan(
                     flush=True,
                 )
             else:
-                output_file_paths = _prepare_long_gate_success_output_files(long_gate_entry, result)
+                output_file_paths = _prepare_long_gate_success_output_files(
+                    long_gate_entry,
+                    result,
+                    cache_dir=long_gate_cache_dir,
+                )
                 long_gate_fingerprint = _fingerprint_for_success_cache(
                     long_gate_entry,
                     dict(long_gate_fingerprint or {}),
@@ -1344,7 +1384,12 @@ def _long_gate_declared_output_paths(entry: Dict[str, Any]) -> List[str]:
     return list(dict.fromkeys(str(path).replace("\\", "/") for path in list(entry.get("output_result_files") or [])))
 
 
-def _prepare_long_gate_success_output_files(entry: Dict[str, Any], result: Dict[str, Any]) -> List[str]:
+def _prepare_long_gate_success_output_files(
+    entry: Dict[str, Any],
+    result: Dict[str, Any],
+    *,
+    cache_dir: str = "evidence/QualityGate/long_gate",
+) -> List[str]:
     entry_id = str(entry.get("entry_id") or "")
     if entry_id == ENTRY_PYTEST_COLLECT_ALL:
         collect_payload = build_collect_nodeids_payload(
@@ -1353,6 +1398,15 @@ def _prepare_long_gate_success_output_files(entry: Dict[str, Any], result: Dict[
             collect_stdout_log_path=str(result.get("stdout_log_path") or ""),
         )
         return [write_collect_nodeids(collect_payload, repo_root=REPO_ROOT)]
+    if entry_id == ENTRY_FULL_TEST_DEBT:
+        fingerprint = _strict_long_gate_fingerprint(entry)
+        write_full_test_debt_node_cache_after_success(
+            repo_root=REPO_ROOT,
+            entry=entry,
+            fingerprint=fingerprint,
+            result=result,
+            cache_dir=cache_dir,
+        )
     return _long_gate_declared_output_paths(entry)
 
 
@@ -1621,6 +1675,38 @@ def _force_long_gate_decision(entry: Dict[str, Any], decision: Dict[str, Any], *
     }
 
 
+def _annotate_full_test_debt_incremental_decision(
+    decision: Dict[str, Any],
+    *,
+    fingerprint: Dict[str, Any],
+    evaluation: Dict[str, Any],
+) -> Dict[str, Any]:
+    if str(decision.get("decision") or "") != "run":
+        return decision
+    if str(decision.get("reason") or "") != "input fingerprint changed":
+        return decision
+    node_plan = explain_special_full_test_debt_plan(
+        repo_root=REPO_ROOT,
+        current_fingerprint=fingerprint,
+        decision=decision,
+        evaluation=evaluation,
+    )
+    invalidated_by = list(decision.get("invalidated_by") or [])
+    if bool(node_plan.get("available")):
+        if str(node_plan.get("mode") or "") == "ledger_only":
+            note = "full_test_debt ledger-only path available"
+        else:
+            note = (
+                "full_test_debt nodeid incremental available: "
+                + ", ".join(str(item) for item in list(node_plan.get("selected_nodeids") or []))
+            )
+    else:
+        note = "full_test_debt nodeid incremental fallback: " + str(node_plan.get("reason") or "")
+    if note not in invalidated_by:
+        invalidated_by.append(note)
+    return {**decision, "invalidated_by": invalidated_by}
+
+
 def _refresh_full_test_debt_reuse_decision(runtime_entry: Dict[str, Any], *, cache_dir: str) -> None:
     entry = dict(runtime_entry.get("entry") or {})
     if str(entry.get("entry_id") or "") != ENTRY_FULL_TEST_DEBT:
@@ -1633,9 +1719,16 @@ def _refresh_full_test_debt_reuse_decision(runtime_entry: Dict[str, Any], *, cac
     runtime_entry["fingerprint"] = dict(fingerprint)
     runtime_entry["evaluation"] = dict(evaluation)
     refreshed_decision = dict(evaluation["decision"])
+    refreshed_decision = _annotate_full_test_debt_incremental_decision(
+        refreshed_decision,
+        fingerprint=fingerprint,
+        evaluation=dict(evaluation),
+    )
     runtime_entry["decision"] = refreshed_decision
     if str(refreshed_decision.get("decision") or "") != "reuse":
         for rel_path in list(entry.get("output_result_files") or []):
+            if str(rel_path).replace("\\", "/") == FULL_TEST_DEBT_NODE_CACHE_REL:
+                continue
             abs_path = os.path.join(REPO_ROOT, str(rel_path).replace("\\", "/").replace("/", os.sep))
             if os.path.isfile(abs_path):
                 os.remove(abs_path)
@@ -1709,6 +1802,18 @@ def _prepare_long_gate_cache_decisions(
                     force_reason=f"forced by --long-gate-force-rerun {entry_id}",
                 )
                 evaluation = {}
+            if (
+                entry_id == ENTRY_FULL_TEST_DEBT
+                and str(decision.get("decision") or "") == "run"
+                and str(decision.get("reason") or "") == "input fingerprint changed"
+                and isinstance(evaluation, dict)
+                and fingerprint is not None
+            ):
+                decision = _annotate_full_test_debt_incremental_decision(
+                    decision,
+                    fingerprint=fingerprint,
+                    evaluation=evaluation,
+                )
         else:
             decision = _planned_long_gate_decision_forced(entry, force_requested=force_requested)
         summary_entry = build_summary_entry(index=index, entry=entry, decision=decision)

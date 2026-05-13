@@ -183,7 +183,7 @@ def _count_entries(entries: Sequence[Mapping[str, Any]]) -> Dict[str, int]:
         decision = str(entry.get("decision") or "")
         if execution_mode == "reused_success_cache" or decision == "reuse":
             counts["reused"] += 1
-        elif execution_mode == "executed":
+        elif execution_mode in {"executed", "nodeid_incremental", "ledger_only"}:
             counts["executed"] += 1
         elif decision == "planned_only" or execution_mode == "planned_only":
             counts["planned_only"] += 1

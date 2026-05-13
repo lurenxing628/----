@@ -53,6 +53,11 @@ QUALITY_GATE_FULL_TEST_DEBT_SUMMARY_REL = os.path.join(
     "QualityGate",
     "full_test_debt_summary.json",
 )
+QUALITY_GATE_FULL_TEST_DEBT_NODE_CACHE_REL = os.path.join(
+    "evidence",
+    "QualityGate",
+    "full_test_debt_node_cache.json",
+)
 FORMAL_FULL_TEST_PYTEST_ARGS = ["tests", "-q", "--tb=short", "-ra", "-p", "no:cacheprovider"]
 QUALITY_GATE_PYRIGHT_GATE_CONFIG = "pyrightconfig.gate.json"
 QUALITY_GATE_PROOF_SCOPE = {
@@ -66,6 +71,7 @@ QUALITY_GATE_TOOL_PATHS = [
     "tools/git_hook_checks.py",
     "tools/check_full_test_debt.py",
     "tools/collect_full_test_debt.py",
+    "tools/long_gate_full_test_debt.py",
     "tools/long_gate_cache.py",
     "tools/long_gate_collect.py",
     "tools/long_gate_fingerprint.py",
@@ -493,13 +499,10 @@ def parse_pytest_collect_nodeids(output: str) -> List[str]:
         line = raw_line.strip()
         if not line or line.startswith("="):
             continue
-        if "collected " in line:
+        if not line.startswith("tests/") or line in seen:
             continue
-        token = line.split()[0]
-        if not token.startswith("tests/") or token in seen:
-            continue
-        seen.add(token)
-        nodeids.append(token)
+        seen.add(line)
+        nodeids.append(line)
     return nodeids
 
 
@@ -982,7 +985,13 @@ def _verify_receipt_output_hashes(
 
 def _verify_receipt_execution_fields(receipt: Dict[str, Any]) -> Optional[str]:
     execution_mode = str(receipt.get("execution_mode") or "").strip()
-    if execution_mode not in {"executed", "reused_success_cache", "resumed_success_prefix"}:
+    if execution_mode not in {
+        "executed",
+        "reused_success_cache",
+        "resumed_success_prefix",
+        "nodeid_incremental",
+        "ledger_only",
+    }:
         return "UNBOUND: quality gate command receipt execution_mode mismatch"
     for field_name in ("timed_out", "interrupted", "partial_write"):
         if not isinstance(receipt.get(field_name), bool):
@@ -1000,6 +1009,13 @@ def _verify_receipt_execution_fields(receipt: Dict[str, Any]) -> Optional[str]:
             return "UNBOUND: quality gate command receipt reused_from receipt_path missing"
         if not str(reused_from.get("run_id") or "").strip():
             return "UNBOUND: quality gate command receipt reused_from run_id missing"
+    if execution_mode in {"nodeid_incremental", "ledger_only"}:
+        if not str(reused_from.get("node_cache_path") or "").strip():
+            return "UNBOUND: quality gate command receipt reused_from node_cache_path missing"
+        if not str(reused_from.get("previous_result_path") or "").strip():
+            return "UNBOUND: quality gate command receipt reused_from previous_result_path missing"
+        if not str(reused_from.get("fingerprint_hash") or "").strip():
+            return "UNBOUND: quality gate command receipt reused_from fingerprint_hash missing"
     return None
 
 

@@ -1,0 +1,54 @@
+feature: 2026-05-13-full-test-debt-nodeid-cache
+created: 2026-05-13
+
+steps:
+  - action: "设计与状态：创建 NEXT-5 feature 文档，并把 roadmap item 绑定到本 feature"
+    exit_signal: "feature 目录、design、checklist 存在，items.yaml 中 NEXT-5 为 in-progress"
+    status: done
+  - action: "地基修复：修正 collect nodeid 解析，补 collector 输出隔离和 checker summary 复用入口"
+    exit_signal: "参数化 nodeid 不被截断，nodeid 子集收集不会覆盖正式 current payload，checker 可从已有 payload 重算 summary"
+    status: done
+  - action: "专项证据：新增 full-test-debt node cache schema、读写、坏证据拒绝和忽略/hook 保护"
+    exit_signal: "full_test_debt_node_cache.json 有 schema/hash/log/tool/ledger/test-file 可信字段，损坏时不会复用，文件不会被提交"
+    status: done
+  - action: "增量判断：实现只测试文件变化、台账-only、整体回退的分类和 nodeid 映射"
+    exit_signal: "普通测试文件能映射到稳定 nodeid；源码、conftest、配置、依赖、工具、helper 和未知变化都会整体回退"
+    status: done
+  - action: "runner 接入：整项复用优先，其次台账-only/nodeid 增量，最后整项执行"
+    exit_signal: "receipt/summary 能区分 reused、executed、nodeid_incremental、ledger_only，force/explain/no-cache 优先级不变"
+    status: done
+  - action: "测试覆盖：扩展 full-test-debt 缓存测试，覆盖假绿风险和范围守护"
+    exit_signal: "新增用例覆盖 nodeid 解析、增量成功/失败、坏 node cache、台账-only、force/explain/no-cache、planned entry 守护"
+    status: done
+  - action: "验收回写：写 acceptance 并同步 roadmap/items"
+    exit_signal: "NEXT-5 标为 done，NEXT-6 仍 planned，验收报告记录验证命令和 clean proof 状态"
+    status: done
+
+checks:
+  - item: "带空格或 collected 字样的参数化 nodeid 不被截断或误过滤"
+    source: 验收场景
+    status: done
+  - item: "只改普通测试文件时能选择对应 nodeid，多个文件时去重且顺序稳定"
+    source: 验收场景
+    status: done
+  - item: "映射不到、helper、conftest、pytest 配置、依赖、源码、工具变化会整体重跑"
+    source: 范围守护
+    status: done
+  - item: "只改台账时不跑 pytest，只用可信旧 current payload 重算 summary"
+    source: 台账-only
+    status: done
+  - item: "node cache 缺失、损坏、schema/hash/log/tool/ledger 不匹配时不会误复用"
+    source: node cache 可信字段
+    status: done
+  - item: "增量失败、collector stdout 非 JSON、exitstatus 非 0、合并后校验失败时不能用旧成功掩盖"
+    source: 假绿风险
+    status: done
+  - item: "增量成功后写 current payload、summary、node cache，并刷新 full_test_debt success cache"
+    source: 输出证据
+    status: done
+  - item: "force rerun、force all、explain、no-cache 优先级保持正确"
+    source: CLI 守护
+    status: done
+  - item: "startup、required、ruff、pyright、architecture、debt ledger、quickref 仍保持 planned"
+    source: 范围守护
+    status: done

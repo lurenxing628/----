@@ -82,6 +82,23 @@ def test_collect_nodeids_payload_groups_nodeids_by_file():
     assert payload["collect_stdout_log_path"] == "evidence/QualityGate/logs/stdout.log"
 
 
+def test_collect_nodeids_payload_preserves_parameterized_nodeids_with_spaces():
+    stdout = "\n".join(
+        [
+            "tests/test_a.py::test_name[value with spaces]",
+            "tests/test_a.py::test_collected_word[already collected text]",
+            "2 tests collected in 0.01s",
+        ]
+    )
+
+    payload = build_collect_nodeids_payload(stdout, pytest_version="pytest 8.3.5")
+
+    assert payload["nodeids"] == [
+        "tests/test_a.py::test_name[value with spaces]",
+        "tests/test_a.py::test_collected_word[already collected text]",
+    ]
+
+
 def test_collect_cache_reuses_when_inputs_and_output_match(tmp_path):
     _write_test_file(tmp_path, "tests/test_a.py")
     entry = _collect_entry(tmp_path)

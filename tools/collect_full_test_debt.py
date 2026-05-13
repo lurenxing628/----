@@ -126,6 +126,16 @@ def _resolve_write_baseline(raw_path: Optional[str], *, repo_root: Path) -> Opti
     return resolved
 
 
+def _resolve_payload_path(raw_path: Optional[str], *, repo_root: Path) -> Path:
+    path = Path(str(raw_path or CURRENT_PAYLOAD_REL))
+    if not path.is_absolute():
+        path = repo_root / path
+    resolved = path.resolve()
+    if not _path_within_root(resolved, repo_root):
+        raise RuntimeError(f"current payload 必须写在 Git 仓库内：path={resolved}；repo_root={repo_root}")
+    return resolved
+
+
 def _status_path(line: str) -> str:
     text = str(line or "")[3:].strip()
     if " -> " in text:
@@ -426,6 +436,8 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     )
     parser.add_argument("--write-baseline")
     parser.add_argument("--importable-debt-baseline", action="store_true")
+    parser.add_argument("--current-payload-path", default=CURRENT_PAYLOAD_REL)
+    parser.add_argument("--no-current-payload", action="store_true")
     parser.add_argument("--repo-root", default=str(Path.cwd()))
     parsed = parser.parse_args(own_args)
     try:
@@ -438,6 +450,10 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
         parser.error(str(exc))
     if baseline_path is not None:
         parsed.write_baseline = str(baseline_path)
+    try:
+        parsed.current_payload_path = str(_resolve_payload_path(parsed.current_payload_path, repo_root=parsed.repo_root))
+    except RuntimeError as exc:
+        parser.error(str(exc))
     if not pytest_args:
         parser.error("必须在 -- 后提供 pytest 参数")
     if parsed.importable_debt_baseline and parsed.baseline_kind != "after_main_style_isolation":
@@ -445,6 +461,8 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
         parser.error("--importable-debt-baseline 只能和 --baseline-kind after_main_style_isolation 一起使用")
     if parsed.importable_debt_baseline and not parsed.write_baseline:
         parser.error("--importable-debt-baseline 必须同时提供 --write-baseline")
+    if parsed.importable_debt_baseline and parsed.no_current_payload:
+        parser.error("--importable-debt-baseline 不能和 --no-current-payload 同时使用")
     if parsed.importable_debt_baseline and pytest_args != FORMAL_FULL_TEST_PYTEST_ARGS:
         _remove_existing_file(baseline_path)
         parser.error("--importable-debt-baseline 必须使用正式 full pytest 参数：" + " ".join(FORMAL_FULL_TEST_PYTEST_ARGS))
@@ -573,9 +591,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     cwd = Path(str(args.repo_root)).resolve()
     os.chdir(cwd)
-    current_payload_path = cwd / CURRENT_PAYLOAD_REL
+    current_payload_path = Path(str(args.current_payload_path))
     baseline_path = Path(str(args.write_baseline)) if args.write_baseline else None
     target_status_path = _relative_to_cwd(baseline_path, cwd) if baseline_path is not None else ""
+    current_status_path = _relative_to_cwd(current_payload_path, cwd)
     git_status_short_before: Optional[List[str]] = None
     worktree_clean_before: Optional[bool] = None
     should_record_worktree = bool(args.importable_debt_baseline or str(args.baseline_kind) == "after_main_style_isolation")
@@ -596,6 +615,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 flush=True,
             )
             return 2
+
+    def write_current_payload(payload_to_write: Dict[str, Any]) -> None:
+        if bool(args.no_current_payload):
+            _progress("跳过 current payload 写入：--no-current-payload")
+            return
+        _progress(f"正在写入 current payload：{current_status_path}")
+        _write_json_atomically(current_payload_path, payload_to_write)
+        _progress(f"已写入 current payload：{current_status_path}")
 
     logging.raiseExceptions = False
     collector = FullTestDebtCollector()
@@ -638,14 +665,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if current_proof_without_seed:
             payload["importable"] = False
             payload["importable_blockers"] = ["candidate_test_debt_empty"]
-            _progress(f"正在写入 current payload：{CURRENT_PAYLOAD_REL}")
-            _write_json_atomically(current_payload_path, payload)
-            _progress(f"已写入 current payload：{CURRENT_PAYLOAD_REL}")
+            write_current_payload(payload)
         try:
             after_pytest_status = _git_status_short(cwd)
         except RuntimeError:
             after_pytest_status = ["git_status_after_pytest_failed"]
-        allowed_after_pytest_paths = [CURRENT_PAYLOAD_REL] if current_proof_without_seed else []
+        allowed_after_pytest_paths = [current_status_path] if current_proof_without_seed else []
         unexpected_after_pytest = _unexpected_status_lines(
             after_pytest_status,
             allowed_paths=allowed_after_pytest_paths,
@@ -656,9 +681,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if blockers:
             payload["importable"] = False
             payload["importable_blockers"] = blockers
-            _progress(f"正在写入 current payload：{CURRENT_PAYLOAD_REL}")
-            _write_json_atomically(current_payload_path, payload)
-            _progress(f"已写入 current payload：{CURRENT_PAYLOAD_REL}")
+            write_current_payload(payload)
             _remove_existing_file(baseline_path)
             print("正式测试债务基线不能导入，存在禁入分类或收集错误：" + ", ".join(blockers), file=sys.stderr, flush=True)
             sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
@@ -672,13 +695,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if args.importable_debt_baseline:
             after_write_status = _git_status_short(cwd)
             payload["git_status_short_after_write"] = after_write_status
-            unexpected_after_write = _unexpected_status_lines(after_write_status, allowed_paths=[target_status_path, CURRENT_PAYLOAD_REL])
+            unexpected_after_write = _unexpected_status_lines(
+                after_write_status,
+                allowed_paths=[target_status_path, current_status_path],
+            )
             if unexpected_after_write:
                 payload["importable"] = False
                 payload["importable_blockers"] = ["worktree_drift_after_write"]
-                _progress(f"正在写入 current payload：{CURRENT_PAYLOAD_REL}")
-                _write_json_atomically(current_payload_path, payload)
-                _progress(f"已写入 current payload：{CURRENT_PAYLOAD_REL}")
+                write_current_payload(payload)
                 _remove_existing_file(baseline_path)
                 print("正式测试债务基线写入后出现非 baseline 文件改动：" + ", ".join(unexpected_after_write), file=sys.stderr, flush=True)
                 sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
@@ -688,9 +712,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             _progress(f"正在重写 importable baseline：{args.write_baseline}")
             _write_baseline_atomically(Path(str(args.write_baseline)), payload)
             _progress(f"已重写 importable baseline：{args.write_baseline}")
-    _progress(f"正在写入 current payload：{CURRENT_PAYLOAD_REL}")
-    _write_json_atomically(current_payload_path, payload)
-    _progress(f"已写入 current payload：{CURRENT_PAYLOAD_REL}")
+    write_current_payload(payload)
     sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
     sys.stdout.write("\n")
     sys.stdout.flush()
