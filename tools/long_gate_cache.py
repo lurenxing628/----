@@ -13,6 +13,8 @@ from tools.quality_gate_shared import REPO_ROOT
 LONG_GATE_CACHE_DIR_REL = os.path.join("evidence", "QualityGate", "long_gate").replace("\\", "/")
 LONG_GATE_RESULTS_DIR_REL = os.path.join(LONG_GATE_CACHE_DIR_REL, "results").replace("\\", "/")
 LONG_GATE_LOGS_DIR_REL = os.path.join(LONG_GATE_CACHE_DIR_REL, "logs").replace("\\", "/")
+LONG_GATE_RESULTS_DIR_NAME = "results"
+LONG_GATE_LOGS_DIR_NAME = "logs"
 
 
 class ReuseEvaluation(TypedDict):
@@ -27,7 +29,7 @@ def _safe_entry_id(entry_id: str) -> str:
 
 
 def _repo_root(repo_root: Optional[str]) -> str:
-    return os.path.abspath(repo_root or REPO_ROOT)
+    return os.path.realpath(repo_root or REPO_ROOT)
 
 
 def _abs_from_rel(repo_root: str, rel_path: str) -> str:
@@ -56,6 +58,27 @@ def _rel_from_path(repo_root: str, path: str) -> str:
     return raw_path
 
 
+def resolve_cache_dir(repo_root: Optional[str] = None, cache_dir: Optional[str] = None) -> str:
+    root = _repo_root(repo_root)
+    raw_path = str(cache_dir or LONG_GATE_CACHE_DIR_REL).replace("\\", "/").strip()
+    if not raw_path:
+        raise ValueError("long gate cache dir is empty")
+    try:
+        abs_path = _abs_from_rel(root, raw_path)
+        default_abs = _abs_from_rel(root, LONG_GATE_CACHE_DIR_REL)
+    except ValueError as exc:
+        raise ValueError(f"long gate cache dir is invalid: {exc}") from exc
+    if abs_path != default_abs and not abs_path.startswith(default_abs + os.sep):
+        raise ValueError(
+            f"long gate cache dir must be under {LONG_GATE_CACHE_DIR_REL}: {raw_path}"
+        )
+    return os.path.relpath(abs_path, root).replace("\\", "/")
+
+
+def _cache_child_rel(cache_dir: str, child: str) -> str:
+    return os.path.join(str(cache_dir or LONG_GATE_CACHE_DIR_REL), child).replace("\\", "/")
+
+
 def _sha256_bytes(path: str) -> str:
     import hashlib
 
@@ -76,12 +99,18 @@ def _write_text_if_needed(repo_root: str, rel_path: str, text: str) -> None:
         handle.write(str(text or ""))
 
 
-def _success_rel_path(entry_id: str) -> str:
-    return os.path.join(LONG_GATE_RESULTS_DIR_REL, f"{_safe_entry_id(entry_id)}.success.json").replace("\\", "/")
+def _success_rel_path(entry_id: str, *, cache_dir: str = LONG_GATE_CACHE_DIR_REL) -> str:
+    return _cache_child_rel(
+        cache_dir,
+        os.path.join(LONG_GATE_RESULTS_DIR_NAME, f"{_safe_entry_id(entry_id)}.success.json"),
+    )
 
 
-def _failure_rel_path(entry_id: str) -> str:
-    return os.path.join(LONG_GATE_RESULTS_DIR_REL, f"{_safe_entry_id(entry_id)}.failure.json").replace("\\", "/")
+def _failure_rel_path(entry_id: str, *, cache_dir: str = LONG_GATE_CACHE_DIR_REL) -> str:
+    return _cache_child_rel(
+        cache_dir,
+        os.path.join(LONG_GATE_RESULTS_DIR_NAME, f"{_safe_entry_id(entry_id)}.failure.json"),
+    )
 
 
 def _load_json_object(path: str) -> Tuple[Optional[Dict[str, Any]], str]:
@@ -90,7 +119,7 @@ def _load_json_object(path: str) -> Tuple[Optional[Dict[str, Any]], str]:
     try:
         with open(path, encoding="utf-8") as handle:
             loaded = json.load(handle)
-    except json.JSONDecodeError as exc:
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         return None, f"cache unreadable/corrupt: {exc}"
     except OSError as exc:
         return None, f"cache unreadable/corrupt: {exc}"
@@ -209,8 +238,33 @@ def _read_text_file_after_hash_check(
         return "", f"previous logs unreadable as utf-8: {rel_path}: {exc}"
 
 
-def _validated_log_texts(repo_root: str, previous: Mapping[str, Any]) -> Tuple[Optional[Dict[str, str]], Optional[str]]:
+def _cache_log_path_error(repo_root: str, rel_path: str, *, cache_dir: str, expected_rel_path: str) -> Optional[str]:
+    try:
+        abs_path = _abs_from_rel(repo_root, rel_path)
+        logs_abs = _abs_from_rel(repo_root, _cache_child_rel(cache_dir, LONG_GATE_LOGS_DIR_NAME))
+    except ValueError as exc:
+        return str(exc)
+
+    if abs_path != logs_abs and not abs_path.startswith(logs_abs + os.sep):
+        return f"previous logs path is outside current cache logs dir: {rel_path}"
+    if rel_path != expected_rel_path:
+        return f"previous logs path changed: {rel_path}"
+    return None
+
+
+def _validated_log_texts(
+    repo_root: str,
+    previous: Mapping[str, Any],
+    *,
+    cache_dir: str,
+    entry_id: str,
+) -> Tuple[Optional[Dict[str, str]], Optional[str]]:
     texts: Dict[str, str] = {}
+    expected_stdout_log_path, expected_stderr_log_path = _log_paths_for_result(entry_id, {}, cache_dir=cache_dir)
+    expected_paths = {
+        "stdout_log_path": expected_stdout_log_path,
+        "stderr_log_path": expected_stderr_log_path,
+    }
 
     for path_key, hash_key, output_key in (
         ("stdout_log_path", "stdout_sha256", "stdout"),
@@ -219,6 +273,14 @@ def _validated_log_texts(repo_root: str, previous: Mapping[str, Any]) -> Tuple[O
         rel_path = str(previous.get(path_key) or "").replace("\\", "/")
         if not rel_path:
             return None, "previous logs missing or hash mismatch"
+        path_error = _cache_log_path_error(
+            repo_root,
+            rel_path,
+            cache_dir=cache_dir,
+            expected_rel_path=expected_paths[path_key],
+        )
+        if path_error:
+            return None, path_error
         text, error = _read_text_file_after_hash_check(
             repo_root,
             rel_path,
@@ -298,15 +360,17 @@ def evaluate_reuse(
     current_fingerprint: Mapping[str, Any],
     *,
     repo_root: Optional[str] = None,
+    cache_dir: Optional[str] = None,
 ) -> ReuseEvaluation:
     root = _repo_root(repo_root)
+    resolved_cache_dir = resolve_cache_dir(root, cache_dir)
     entry_id = _safe_entry_id(str(entry.get("entry_id") or ""))
     current_hash = str(current_fingerprint.get("hash") or "")
     if not bool(entry.get("reuse_allowed")):
         return _reuse_evaluation(
             _decision(entry_id, "run", "reuse is disabled for this entry", current_fingerprint_hash=current_hash)
         )
-    result_rel = _success_rel_path(entry_id)
+    result_rel = _success_rel_path(entry_id, cache_dir=resolved_cache_dir)
     previous, load_error = _load_json_object(_abs_from_rel(root, result_rel))
     if load_error == "missing":
         return _reuse_evaluation(
@@ -390,7 +454,12 @@ def evaluate_reuse(
             )
         )
 
-    log_texts, log_error = _validated_log_texts(root, previous)
+    log_texts, log_error = _validated_log_texts(
+        root,
+        previous,
+        cache_dir=resolved_cache_dir,
+        entry_id=entry_id,
+    )
     if log_error:
         return _reuse_evaluation(_decision(entry_id, "run", log_error, current_fingerprint_hash=current_hash))
     output_error = _output_files_exist_and_hash_match(root, previous)
@@ -423,14 +492,26 @@ def decide_reuse(
     current_fingerprint: Mapping[str, Any],
     *,
     repo_root: Optional[str] = None,
+    cache_dir: Optional[str] = None,
 ) -> Dict[str, Any]:
-    return dict(evaluate_reuse(entry, current_fingerprint, repo_root=repo_root)["decision"])
+    return dict(evaluate_reuse(entry, current_fingerprint, repo_root=repo_root, cache_dir=cache_dir)["decision"])
 
 
-def _log_paths_for_result(entry_id: str, _command_result: Mapping[str, Any]) -> Tuple[str, str]:
+def _log_paths_for_result(
+    entry_id: str,
+    _command_result: Mapping[str, Any],
+    *,
+    cache_dir: str = LONG_GATE_CACHE_DIR_REL,
+) -> Tuple[str, str]:
     safe_entry_id = _safe_entry_id(entry_id)
-    stdout_log_path = os.path.join(LONG_GATE_LOGS_DIR_REL, f"{safe_entry_id}.stdout.log").replace("\\", "/")
-    stderr_log_path = os.path.join(LONG_GATE_LOGS_DIR_REL, f"{safe_entry_id}.stderr.log").replace("\\", "/")
+    stdout_log_path = _cache_child_rel(
+        cache_dir,
+        os.path.join(LONG_GATE_LOGS_DIR_NAME, f"{safe_entry_id}.stdout.log"),
+    )
+    stderr_log_path = _cache_child_rel(
+        cache_dir,
+        os.path.join(LONG_GATE_LOGS_DIR_NAME, f"{safe_entry_id}.stderr.log"),
+    )
     return stdout_log_path, stderr_log_path
 
 
@@ -483,11 +564,17 @@ def write_success(
     output_files: Sequence[str],
     *,
     repo_root: Optional[str] = None,
+    cache_dir: Optional[str] = None,
 ) -> None:
     root = _repo_root(repo_root)
+    resolved_cache_dir = resolve_cache_dir(root, cache_dir)
     _assert_success_command_result(command_result)
     entry_id = _safe_entry_id(str(entry.get("entry_id") or ""))
-    stdout_log_path, stderr_log_path = _log_paths_for_result(entry_id, command_result)
+    stdout_log_path, stderr_log_path = _log_paths_for_result(
+        entry_id,
+        command_result,
+        cache_dir=resolved_cache_dir,
+    )
     _write_text_if_needed(root, stdout_log_path, str(command_result.get("stdout") or ""))
     _write_text_if_needed(root, stderr_log_path, str(command_result.get("stderr") or ""))
     output_file_rows = _hash_output_files(root, output_files)
@@ -513,7 +600,7 @@ def write_success(
         "interrupted": bool(command_result.get("interrupted")),
         "partial_write": bool(command_result.get("partial_write")),
     }
-    rel_path = _success_rel_path(entry_id)
+    rel_path = _success_rel_path(entry_id, cache_dir=resolved_cache_dir)
     abs_path = _abs_from_rel(root, rel_path)
     os.makedirs(os.path.dirname(abs_path), exist_ok=True)
     with open(abs_path, "w", encoding="utf-8") as handle:
@@ -526,8 +613,10 @@ def write_failure(
     command_result: Mapping[str, Any],
     *,
     repo_root: Optional[str] = None,
+    cache_dir: Optional[str] = None,
 ) -> None:
     root = _repo_root(repo_root)
+    resolved_cache_dir = resolve_cache_dir(root, cache_dir)
     entry_id = _safe_entry_id(str(entry.get("entry_id") or ""))
     payload = {
         "schema_version": LONG_GATE_SCHEMA_VERSION,
@@ -542,7 +631,7 @@ def write_failure(
         "returncode": int(command_result.get("returncode") or 0),
         "result_hash": stable_json_hash(dict(command_result)),
     }
-    rel_path = _failure_rel_path(entry_id)
+    rel_path = _failure_rel_path(entry_id, cache_dir=resolved_cache_dir)
     abs_path = _abs_from_rel(root, rel_path)
     os.makedirs(os.path.dirname(abs_path), exist_ok=True)
     with open(abs_path, "w", encoding="utf-8") as handle:

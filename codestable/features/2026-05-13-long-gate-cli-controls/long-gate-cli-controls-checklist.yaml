@@ -1,0 +1,54 @@
+feature: 2026-05-13-long-gate-cli-controls
+created: 2026-05-13
+
+steps:
+  - action: "编排骨架：创建 feature 设计/checklist，并把 roadmap item 绑定到本 feature"
+    exit_signal: "CodeStable feature 目录存在，roadmap item 指向 2026-05-13-long-gate-cli-controls"
+    status: done
+  - action: "cache 目录：让 long_gate_cache 读写 success cache 时支持安全 cache_dir"
+    exit_signal: "自定义目录在 repo 内且位于 evidence/QualityGate/long_gate 下时可读写，越界目录会失败"
+    status: done
+  - action: "runner 参数：新增 cache-dir、force entry、force all 参数并接入决策准备"
+    exit_signal: "explain 和正式运行都能看到参数影响后的决策"
+    status: done
+  - action: "force 行为：force 只让 enabled entry 重跑，不改变 command plan 和 planned entry 状态"
+    exit_signal: "planned entry 仍为 planned_only，pytest_collect_all 可被强制真实执行并刷新成功缓存"
+    status: done
+  - action: "测试覆盖：新增 CLI controls 专项测试，并补足 required suite 入口"
+    exit_signal: "tests/test_long_gate_cli_controls.py 覆盖 cache-dir、force、explain、planned 守护"
+    status: done
+  - action: "文档与验收：回写 README/roadmap/items/acceptance"
+    exit_signal: "NEXT-2 标为 done，验收报告记录验证命令和未启用 planned entry"
+    status: done
+
+checks:
+  - item: "cache dir 安全目录可读写并进入 summary"
+    source: 验收场景
+    status: passed
+  - item: "cache dir 指向 repo 外或默认 long_gate 外会失败"
+    source: 验收场景
+    status: passed
+  - item: "force 指定 pytest_collect_all 时不复用旧 success cache"
+    source: 验收场景
+    status: passed
+  - item: "force 后真实执行成功仍只让 reuse_allowed entry 写 success cache"
+    source: 验收场景
+    status: passed
+  - item: "force all 不启用 planned entry"
+    source: 范围守护
+    status: passed
+  - item: "force planned entry 仍保持 planned_only"
+    source: 范围守护
+    status: passed
+  - item: "force 不改变真实 command plan"
+    source: 验收场景
+    status: passed
+  - item: "explain 打印 cache-dir/force 后决策但不写 proof"
+    source: 验收场景
+    status: passed
+  - item: "损坏或不完整旧 cache 会重新执行"
+    source: 安全守护
+    status: passed
+  - item: "除 pytest_collect_all 外其它 planned entry 未启用"
+    source: 明确不做
+    status: passed

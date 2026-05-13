@@ -106,21 +106,26 @@ items:
     title: NEXT-2 long gate cache 控制参数
     description: "补齐 --long-gate-cache-dir PATH、--long-gate-force-rerun ENTRY_ID、--long-gate-force-rerun-all，并锁定参数优先级和路径安全策略。"
     depends_on: [long-gate-summary-output]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-13-long-gate-cli-controls
     minimal_loop: false
     primary_paths:
       - scripts/run_quality_gate.py
       - tools/long_gate_cache.py
-      - tools/long_gate_manifest.py
-      - tools/git_hook_checks.py
-      - .gitignore
+      - tools/test_registry.py
       - README.md
       - "开发文档/README.md"
-      - tests/test_long_gate_cli_options.py
+      - tests/test_long_gate_cli_controls.py
+      - tests/test_long_gate_cache.py
+      - tests/test_run_quality_gate.py
     exit_checks:
-      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_long_gate_cli_options.py tests/test_run_quality_gate.py
-    notes: "优先级：no-cache 最高，失败续跑仍优先于 success cache，explain 不执行不写，force all/force entry 只控制 long gate success cache；自定义目录第一版限制在 repo root 内且建议落在 evidence/QualityGate/long_gate/ 下。"
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_long_gate_cli_controls.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_long_gate_cache.py tests/test_long_gate_manifest.py tests/test_long_gate_summary_output.py tests/test_run_quality_gate.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_long_gate_cli_controls.py tests/test_run_quality_gate.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check scripts/run_quality_gate.py tools/long_gate_cache.py tools/long_gate_manifest.py tools/long_gate_fingerprint.py tools/long_gate_summary.py tools/test_registry.py tests/test_long_gate_cli_controls.py tests/test_long_gate_cache.py tests/test_long_gate_manifest.py tests/test_long_gate_summary_output.py tests/test_run_quality_gate.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright scripts/run_quality_gate.py tools/long_gate_cache.py tools/long_gate_manifest.py tools/long_gate_fingerprint.py tools/long_gate_summary.py tools/test_registry.py tests/test_long_gate_cli_controls.py tests/test_long_gate_cache.py tests/test_long_gate_manifest.py tests/test_long_gate_summary_output.py tests/test_run_quality_gate.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --long-gate-cache-explain --long-gate-cache-dir evidence/QualityGate/long_gate/manual --long-gate-force-rerun pytest_collect_all
+    notes: "已完成：新增 cache-dir、force entry、force all 三个 CLI 控制参数；自定义 success cache 目录必须在 evidence/QualityGate/long_gate/ 下；读取旧 success cache 时会校验日志仍属于当前 cache dir；force 只影响 enabled entry 是否复用旧 success cache，不改变 command plan，不启用 planned entry；显式 force planned entry 只记录忽略原因。"
 
   - slug: long-gate-cache-safety-hardening
     title: NEXT-3 共用缓存安全和证据链加固

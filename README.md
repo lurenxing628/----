@@ -83,6 +83,7 @@ full-test-debt proof 的意思是：当前没有未登记的 full pytest 失败�
 - `.venv\Scripts\python -m pytest tests/regression -q` 用于专项回归；`.venv\Scripts\python -m pytest tests -q` 是直接执行全量测试。
 - 上面这些常用定向命令只适合定位问题，不能当成最终 clean proof。最终 clean proof 需要在干净工作区跑完整质量门禁，并且门禁结束后工作区仍然干净。
 - 质量门禁里的 full pytest 收口检查由 `.venv\Scripts\python tools/check_full_test_debt.py` 完成，它会对照治理台账确认没有新的未登记失败。
+- 长耗时门禁缓存需要显式传 `.venv\Scripts\python scripts/run_quality_gate.py --long-gate-cache` 才会尝试复用；当前真正允许复用的只有测试收集 `pytest_collect_all`。`--long-gate-cache-explain` 只打印“会不会复用”的判断，不执行门禁，也不能当作通过证明。需要换缓存目录时用 `--long-gate-cache-dir PATH`，目录必须在 `evidence/QualityGate/long_gate/` 下面；需要强制刷新时用 `--long-gate-force-rerun ENTRY_ID` 或 `--long-gate-force-rerun-all`，这些参数只会影响已启用的缓存项，不会把 planned 项变成可复用。
 - `requirements.txt` 是程序运行依赖，`requirements-dev.txt` 是本地检查和托管门禁依赖；新环境两份都要装。
 - `ruff` 版本口径为 `>=0.15,<0.16`。
 - `pyright` 版本固定为 `==1.1.406`。

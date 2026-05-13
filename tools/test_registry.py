@@ -118,6 +118,7 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/test_check_full_test_debt.py",
     "tests/test_full_test_debt_registry_contract.py",
     "tests/test_git_hook_checks.py",
+    "tests/test_long_gate_cli_controls.py",
     "tests/test_long_gate_summary_output.py",
     "tests/test_sync_debt_ledger.py",
     "tests/test_ui_mode.py",

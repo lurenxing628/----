@@ -22,7 +22,7 @@ related_architecture: [codestable/architecture/ARCHITECTURE.md]
 | CodeStable 路线和 feature 文档 | 已建立 `codestable/roadmap/quality-gate-long-cache/` 和 PR-0 到 PR-3 对应 feature 文档。 |
 | 基础模块 | 已有 `tools/long_gate_manifest.py`、`tools/long_gate_fingerprint.py`、`tools/long_gate_cache.py`、`tools/long_gate_collect.py`。 |
 | 已启用成功缓存 | 只有 `pytest_collect_all`，对应 `python -m pytest --collect-only -q tests`。 |
-| runner 参数 | 已有 `--long-gate-cache`、`--no-long-gate-cache`、`--long-gate-cache-explain`。 |
+| runner 参数 | 已有 `--long-gate-cache`、`--no-long-gate-cache`、`--long-gate-cache-explain`、`--long-gate-cache-dir`、`--long-gate-force-rerun`、`--long-gate-force-rerun-all`。 |
 | collect 输出 | collect-only 成功后可写 `evidence/QualityGate/collect_nodeids.json`。 |
 | receipt 字段 | 已有 `execution_mode`、`reused_from`、耗时字段、`timed_out`、`interrupted`、`partial_write`。 |
 | 缓存安全底线 | 已校验 entry、command、fingerprint、log、output、路径逃逸和损坏 JSON；后续只能继续加固，不能放松。 |
@@ -46,11 +46,14 @@ NEXT-1 已完成并可以继续沿用：
 - 开头完整决策表和结束统一汇总。
 - 失败时统一打印 FAILED entry、copyable command、pytest nodeid、receipt、stdout/stderr tail。
 
+NEXT-2 已完成并可以继续沿用：
+
+- 自定义 success cache 目录，但目录必须留在 `evidence/QualityGate/long_gate/` 本身或它的子目录下。
+- 可强制指定 enabled entry 重跑，也可强制所有 enabled entry 重跑。
+- force 只影响 success cache 复用决策，不改变真实 command plan，也不启用 planned entry。
+
 还没有完整落地的范围：
 
-- `--long-gate-cache-dir PATH`。
-- `--long-gate-force-rerun ENTRY_ID`。
-- `--long-gate-force-rerun-all`。
 - full-test-debt 整项复用和 nodeid 级增量复用。
 - startup / required 从真实 command plan 动态提取后缓存。
 - architecture fitness 文件级扫描缓存。
@@ -215,7 +218,7 @@ evidence/QualityGate/long_gate/summary.md
 
 ### 4.4 CLI 参数优先级
 
-后续补齐这些参数：
+这些参数已经落地：
 
 ```text
 --long-gate-cache-dir PATH
@@ -228,8 +231,8 @@ evidence/QualityGate/long_gate/summary.md
 1. `--no-long-gate-cache`：不读、不写 long gate success cache。
 2. 现有失败续跑逻辑优先于 long gate success cache。
 3. `--long-gate-cache-explain`：只展示决策，不执行、不写 success cache。
-4. `--long-gate-force-rerun-all`：所有可缓存 entry 都强制 run，成功后可刷新 success cache。
-5. `--long-gate-force-rerun ENTRY_ID`：指定 entry 强制 run，成功后可刷新 success cache。
+4. `--long-gate-force-rerun-all`：所有已启用 success cache 的 entry 都强制 run，成功后可刷新 success cache。
+5. `--long-gate-force-rerun ENTRY_ID`：指定已启用 success cache 的 entry 强制 run，成功后可刷新 success cache；如果指定的是 planned entry，只记录 force 被忽略，不启用缓存。
 6. 正常 `decide_reuse()`。
 
 自定义 cache dir 第一版安全规则：
@@ -238,7 +241,7 @@ evidence/QualityGate/long_gate/summary.md
 - PATH 可以是相对路径或绝对路径。
 - 解析后必须在 repo root 内。
 - 不能通过 symlink 指到 repo 外。
-- 建议第一版必须位于 `evidence/QualityGate/long_gate/` 下面。
+- 第一版必须位于 `evidence/QualityGate/long_gate/` 本身或它的子目录下面。
 - 不满足就直接报错，不偷偷降级到默认目录。
 
 ### 4.5 专项输出文件协议
@@ -312,6 +315,8 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --long-ga
 
 ### NEXT-2：补齐 CLI 控制参数
 
+状态：done。对应 feature：`2026-05-13-long-gate-cli-controls`。
+
 目标：补齐 cache dir 和强制重跑控制。
 
 需要修改：
@@ -326,7 +331,7 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --long-ga
 
 建议新增：
 
-- `tests/test_long_gate_cli_options.py`
+- `tests/test_long_gate_cli_controls.py`
 - `codestable/features/2026-05-13-long-gate-cli-controls/`
 
 新增参数：
@@ -349,8 +354,14 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --long-ga
 验证命令：
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_long_gate_cli_options.py tests/test_run_quality_gate.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_long_gate_cli_controls.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_long_gate_cache.py tests/test_long_gate_manifest.py tests/test_long_gate_summary_output.py tests/test_run_quality_gate.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check scripts/run_quality_gate.py tools/long_gate_cache.py tools/long_gate_manifest.py tools/long_gate_fingerprint.py tools/long_gate_summary.py tools/test_registry.py tests/test_long_gate_cli_controls.py tests/test_long_gate_cache.py tests/test_long_gate_manifest.py tests/test_long_gate_summary_output.py tests/test_run_quality_gate.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright scripts/run_quality_gate.py tools/long_gate_cache.py tools/long_gate_manifest.py tools/long_gate_fingerprint.py tools/long_gate_summary.py tools/test_registry.py tests/test_long_gate_cli_controls.py tests/test_long_gate_cache.py tests/test_long_gate_manifest.py tests/test_long_gate_summary_output.py tests/test_run_quality_gate.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --long-gate-cache-explain --long-gate-cache-dir evidence/QualityGate/long_gate/manual --long-gate-force-rerun pytest_collect_all
 ```
+
+完成说明：已新增 cache-dir 和 force CLI 控制；自定义目录必须留在默认 long gate 目录树内，非法路径会直接失败；读取旧 success cache 时会确认日志仍属于当前 cache dir，仓库根路径走 symlink 时也会写成规范的仓库内相对路径；force entry / force all 只让 enabled entry 放弃旧 success cache 并真实执行，成功后仍按原有干净工作区规则刷新 success cache。planned entry 即使被显式 force，也只记录为 planned_only，不会写 success cache。`tests/test_long_gate_cli_controls.py` 已纳入正式 quality gate 必跑集合。
 
 回滚方式：保留参数解析，但临时禁用自定义目录，继续使用默认目录。
 
@@ -901,7 +912,7 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require
 3. `collect-only-cache-output`：done，已生成 collect nodeid 输出。
 4. `quality-gate-runner-collect-cache`：done，已接入 collect-only 成功复用。
 5. `long-gate-summary-output`：done，已补统一 summary 和失败提示。
-6. `long-gate-cli-controls`：planned，补 cache dir 和 force rerun 参数。
+6. `long-gate-cli-controls`：done，已补 cache dir 和 force rerun 参数。
 7. `long-gate-cache-safety-hardening`：planned，继续加固共用安全规则。
 8. `full-test-debt-success-cache`：planned，做 full-test-debt 整项复用。
 9. `full-test-debt-nodeid-cache`：planned，做 full-test-debt nodeid 增量。
@@ -936,7 +947,7 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require
 | 测试文件 | 覆盖重点 |
 |---|---|
 | `tests/test_long_gate_summary_output.py` | explain、summary.json、summary.md、失败输出、tail、counts、force reason、dirty 状态。 |
-| `tests/test_long_gate_cli_options.py` | cache dir、force rerun、force all、no cache、路径逃逸、symlink。 |
+| `tests/test_long_gate_cli_controls.py` | cache dir、force rerun、force all、no cache、路径逃逸、planned entry 守护。 |
 | `tests/test_long_gate_full_test_debt_cache.py` | full-test-debt 整项复用、输出文件、collect nodeid、台账、源码、collector、node cache。 |
 | `tests/test_long_gate_startup_regression_cache.py` | startup 动态 args、环境变量、bootstrap/template/static/app/config/schema、输出文件。 |
 | `tests/test_long_gate_required_regression_cache.py` | required 动态 args、测试文件、被测源码、pytest 配置、依赖。 |
@@ -981,3 +992,4 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require
 - 2026-05-12：按对抗审核结果补强 PR-0 到 PR-3：long gate 工具纳入 `QUALITY_GATE_TOOL_PATHS` 和 gate source proof，指纹补 runtime facts 和 schema hash，缓存路径禁止逃出仓库，未知 pytest 命令不再按位置误分类，失败续跑 receipt 明确标 `resumed_success_prefix`，dirty 快速反馈不写 success cache。
 - 2026-05-13：按用户提供的新后续实施计划更新 roadmap：把 summary、CLI 控制、安全加固、full-test-debt 整项和增量、startup、required、architecture、fast precheck、formal static、debt ledger、quickref、最终文档证明拆成更细的 NEXT 阶段；明确当前只有 collect-only 已启用。
 - 2026-05-13：完成 `long-gate-summary-output`，新增 `tools/long_gate_summary.py`，正式 long gate cache 运行写 `summary.json` / `summary.md`，失败时输出 copyable command/nodeid、receipt 和 stdout/stderr tail；planned long entry 真实失败时也写 failure 证据；summary 专项测试已纳入正式 quality gate 必跑集合；explain 仍只打印不写 proof，未启用任何新的 planned entry。
+- 2026-05-13：完成 `long-gate-cli-controls`，新增 `--long-gate-cache-dir`、`--long-gate-force-rerun`、`--long-gate-force-rerun-all`；自定义 success cache 目录被限制在 `evidence/QualityGate/long_gate/` 下；force 只影响 enabled entry 的复用决策，不改变 command plan，不启用任何新的 planned entry。

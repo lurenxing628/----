@@ -15,13 +15,14 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from json import JSONDecodeError
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, cast
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple, cast
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
 from tools.long_gate_cache import evaluate_reuse  # noqa: E402
+from tools.long_gate_cache import resolve_cache_dir as resolve_long_gate_cache_dir
 from tools.long_gate_cache import write_success as write_long_gate_success
 from tools.long_gate_collect import (  # noqa: E402
     COLLECT_NODEIDS_REL,
@@ -1461,6 +1462,22 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     parser.add_argument("--long-gate-cache", action="store_true", help="reuse eligible long-gate success cache entries")
     parser.add_argument("--no-long-gate-cache", action="store_true", help="disable long-gate success cache reuse")
     parser.add_argument(
+        "--long-gate-cache-dir",
+        help="success cache directory under evidence/QualityGate/long_gate",
+    )
+    parser.add_argument(
+        "--long-gate-force-rerun",
+        action="append",
+        default=[],
+        metavar="ENTRY_ID",
+        help="force one enabled long-gate cache entry to execute instead of reusing success cache",
+    )
+    parser.add_argument(
+        "--long-gate-force-rerun-all",
+        action="store_true",
+        help="force all enabled long-gate cache entries to execute instead of reusing success cache",
+    )
+    parser.add_argument(
         "--long-gate-cache-explain",
         action="store_true",
         help="print long-gate cache decisions without executing quality-gate commands",
@@ -1479,12 +1496,21 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
 
 
 def _planned_long_gate_decision(entry: Dict[str, Any]) -> Dict[str, Any]:
+    return _planned_long_gate_decision_forced(entry, force_requested=False)
+
+
+def _planned_long_gate_decision_forced(entry: Dict[str, Any], *, force_requested: bool) -> Dict[str, Any]:
+    reason = "long gate cache for this entry is not enabled yet"
+    invalidated_by: List[str] = []
+    if force_requested:
+        reason = f"{reason}; force rerun ignored because planned entries are not enabled"
+        invalidated_by.append("force rerun ignored for planned entry")
     return {
         "entry_id": str(entry.get("entry_id") or ""),
         "decision": "planned_only",
         "reuse_allowed": False,
-        "reason": "long gate cache for this entry is not enabled yet",
-        "invalidated_by": [],
+        "reason": reason,
+        "invalidated_by": invalidated_by,
         "previous_completed_at": "",
         "previous_result_path": "",
         "current_fingerprint_hash": "",
@@ -1504,28 +1530,77 @@ def _disabled_long_gate_decision(entry: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _force_long_gate_decision(entry: Dict[str, Any], decision: Dict[str, Any], *, force_reason: str) -> Dict[str, Any]:
+    invalidated_by = list(decision.get("invalidated_by") or [])
+    if force_reason not in invalidated_by:
+        invalidated_by.append(force_reason)
+    return {
+        "entry_id": str(entry.get("entry_id") or decision.get("entry_id") or ""),
+        "decision": "run",
+        "reuse_allowed": False,
+        "reason": force_reason,
+        "invalidated_by": invalidated_by,
+        "previous_completed_at": str(decision.get("previous_completed_at") or ""),
+        "previous_result_path": str(decision.get("previous_result_path") or ""),
+        "current_fingerprint_hash": str(decision.get("current_fingerprint_hash") or ""),
+    }
+
+
 def _prepare_long_gate_cache_decisions(
     command_plan: Sequence[Dict[str, Any]],
     *,
     cache_enabled: bool,
+    cache_dir: str,
+    force_rerun_entry_ids: Optional[Sequence[str]] = None,
+    force_rerun_all: bool = False,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]:
+    resolved_cache_dir = resolve_long_gate_cache_dir(REPO_ROOT, cache_dir)
+    forced_entry_ids: Set[str] = {
+        str(entry_id or "").strip() for entry_id in list(force_rerun_entry_ids or []) if str(entry_id or "").strip()
+    }
     manifest = build_manifest_from_quality_gate_plan(command_plan, repo_root=REPO_ROOT)
+    known_long_gate_entry_ids = {
+        str(entry.get("entry_id") or "")
+        for entry in list(manifest.get("entries") or [])
+        if bool(entry.get("long_gate_candidate")) or bool(entry.get("reuse_allowed"))
+    }
+    unknown_forced = sorted(forced_entry_ids - known_long_gate_entry_ids)
+    if unknown_forced:
+        raise QualityGateError(
+            "--long-gate-force-rerun 指定了未知的 long gate entry_id: " + ", ".join(unknown_forced)
+        )
     summary_entries: List[Dict[str, Any]] = []
     runtime_entries: Dict[str, Dict[str, Any]] = {}
     for index, raw_entry in enumerate(list(manifest.get("entries") or []), start=1):
         entry = dict(raw_entry)
         if not bool(entry.get("long_gate_candidate")) and not bool(entry.get("reuse_allowed")):
             continue
+        entry_id = str(entry.get("entry_id") or "")
+        force_requested = entry_id in forced_entry_ids
         fingerprint: Optional[Dict[str, Any]] = None
         evaluation: Optional[Dict[str, Any]] = None
         if not cache_enabled:
             decision = _disabled_long_gate_decision(entry)
         elif bool(entry.get("reuse_allowed")):
             fingerprint = _strict_long_gate_fingerprint(entry)
-            evaluation = dict(evaluate_reuse(entry, fingerprint, repo_root=REPO_ROOT))
+            evaluation = dict(evaluate_reuse(entry, fingerprint, repo_root=REPO_ROOT, cache_dir=resolved_cache_dir))
             decision = dict(evaluation["decision"])
+            if force_rerun_all:
+                decision = _force_long_gate_decision(
+                    entry,
+                    decision,
+                    force_reason="forced by --long-gate-force-rerun-all",
+                )
+                evaluation = {}
+            elif force_requested:
+                decision = _force_long_gate_decision(
+                    entry,
+                    decision,
+                    force_reason=f"forced by --long-gate-force-rerun {entry_id}",
+                )
+                evaluation = {}
         else:
-            decision = _planned_long_gate_decision(entry)
+            decision = _planned_long_gate_decision_forced(entry, force_requested=force_requested)
         summary_entry = build_summary_entry(index=index, entry=entry, decision=decision)
         summary_entries.append(summary_entry)
         if cache_enabled:
@@ -1540,13 +1615,18 @@ def _prepare_long_gate_cache_decisions(
 
 
 def _collect_long_gate_cache_decisions(command_plan: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    summary_entries, _runtime_entries = _prepare_long_gate_cache_decisions(command_plan, cache_enabled=True)
+    summary_entries, _runtime_entries = _prepare_long_gate_cache_decisions(
+        command_plan,
+        cache_enabled=True,
+        cache_dir="",
+    )
     return summary_entries
 
 
-def _print_long_gate_cache_decisions(entries: Sequence[Dict[str, Any]]) -> None:
+def _print_long_gate_cache_decisions(entries: Sequence[Dict[str, Any]], *, cache_dir: str) -> None:
     print("Long gate cache decisions", flush=True)
     print("note: explain mode prints decisions only; it is not a quality gate proof", flush=True)
+    print(f"cache_dir: {cache_dir}", flush=True)
     if not entries:
         print("- no eligible long-gate entries", flush=True)
         return
@@ -1589,6 +1669,7 @@ def _write_and_print_long_gate_summary(
     cache_enabled: bool,
     entries: Sequence[Dict[str, Any]],
     failure: Optional[Dict[str, Any]],
+    cache_dir: str,
 ) -> Dict[str, Any]:
     summary = build_long_gate_summary(
         run_id=run_id,
@@ -1599,13 +1680,14 @@ def _write_and_print_long_gate_summary(
         mode="run",
         entries=entries,
         failure=failure,
+        cache_dir=cache_dir,
     )
     summary_paths = write_long_gate_summary(summary, REPO_ROOT)
     _print_long_gate_summary(summary, summary_paths)
     return summary
 
 
-def _write_pending_long_gate_successes(pending_successes: Sequence[Dict[str, Any]]) -> None:
+def _write_pending_long_gate_successes(pending_successes: Sequence[Dict[str, Any]], *, cache_dir: str) -> None:
     for pending in list(pending_successes or []):
         write_long_gate_success(
             dict(pending.get("entry") or {}),
@@ -1613,6 +1695,7 @@ def _write_pending_long_gate_successes(pending_successes: Sequence[Dict[str, Any
             dict(pending.get("command_result") or {}),
             [str(path) for path in list(pending.get("output_files") or [])],
             repo_root=REPO_ROOT,
+            cache_dir=cache_dir,
         )
 
 
@@ -1678,12 +1761,21 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         allow_dirty_worktree=bool(args.allow_dirty_worktree),
     )
     long_gate_cache_enabled = bool((args.long_gate_cache or args.long_gate_cache_explain) and not args.no_long_gate_cache)
+    resolved_long_gate_cache_dir = "evidence/QualityGate/long_gate"
+    if long_gate_cache_enabled:
+        try:
+            resolved_long_gate_cache_dir = resolve_long_gate_cache_dir(REPO_ROOT, args.long_gate_cache_dir)
+        except ValueError as exc:
+            raise QualityGateError(str(exc)) from exc
     if bool(args.long_gate_cache_explain):
         long_gate_summary_entries, _long_gate_runtime_entries = _prepare_long_gate_cache_decisions(
             command_plan,
             cache_enabled=True,
+            cache_dir=resolved_long_gate_cache_dir,
+            force_rerun_entry_ids=list(args.long_gate_force_rerun or []),
+            force_rerun_all=bool(args.long_gate_force_rerun_all),
         )
-        _print_long_gate_cache_decisions(long_gate_summary_entries)
+        _print_long_gate_cache_decisions(long_gate_summary_entries, cache_dir=resolved_long_gate_cache_dir)
         return 0
     started_at = datetime.now().isoformat(timespec="seconds")
     head_sha = _git_head_sha()
@@ -1710,9 +1802,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     long_gate_summary_entries, long_gate_runtime_entries = _prepare_long_gate_cache_decisions(
         command_plan,
         cache_enabled=effective_long_gate_cache_enabled,
+        cache_dir=resolved_long_gate_cache_dir,
+        force_rerun_entry_ids=list(args.long_gate_force_rerun or []) if effective_long_gate_cache_enabled else [],
+        force_rerun_all=bool(args.long_gate_force_rerun_all and effective_long_gate_cache_enabled),
     )
     if long_gate_cache_enabled:
-        _print_long_gate_cache_decisions(long_gate_summary_entries)
+        _print_long_gate_cache_decisions(long_gate_summary_entries, cache_dir=resolved_long_gate_cache_dir)
     run_id = f"{head_sha}:{started_at}"
     runtime_snapshot = _runtime_state_snapshot()
     commands: List[Dict[str, Any]] = []
@@ -1818,8 +1913,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 cache_enabled=effective_long_gate_cache_enabled,
                 entries=long_gate_summary_entries,
                 failure=long_gate_failure or None,
+                cache_dir=resolved_long_gate_cache_dir,
             )
-            _write_pending_long_gate_successes(pending_long_gate_successes)
+            _write_pending_long_gate_successes(pending_long_gate_successes, cache_dir=resolved_long_gate_cache_dir)
 
         success_by_clean_contract = {
             True: ("passed", "质量门禁通过", 0),
@@ -1918,6 +2014,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     cache_enabled=effective_long_gate_cache_enabled,
                     entries=long_gate_summary_entries,
                     failure=long_gate_failure or None,
+                    cache_dir=resolved_long_gate_cache_dir,
                 )
             except Exception as summary_write_exc:
                 print(f"ERROR: 无法写入 long gate summary：{summary_write_exc}", file=sys.stderr, flush=True)

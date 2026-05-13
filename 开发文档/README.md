@@ -58,6 +58,8 @@ py -3.8 -m venv .venv
 
 full-test-debt proof 证明当前没有未登记的 full pytest 失败，并且已登记测试债务仍受台账约束；它不代表历史测试债务已经全部修完。
 
+long gate cache 是给长耗时门禁准备的本地成功缓存，需要显式传入 `--long-gate-cache` 才会尝试复用；当前真正启用的只有 `pytest_collect_all`，也就是 `python -m pytest --collect-only -q tests` 这一项。`--long-gate-cache-explain` 只打印本次会跑、会复用、还是仍处于 planned 的判断，不执行命令，不写 summary，也不能当作 clean proof。需要把成功缓存放到单独目录时，传 `--long-gate-cache-dir PATH`，目录必须在 `evidence/QualityGate/long_gate/` 本身或它的子目录下。需要强制刷新缓存时，传 `--long-gate-force-rerun ENTRY_ID` 或 `--long-gate-force-rerun-all`；这些参数只影响已经启用的缓存项，不会启用 `full_test_debt`、ruff、pyright 等 planned 项。
+
 ### 治理台账写入口
 
 ```powershell

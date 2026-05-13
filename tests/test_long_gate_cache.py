@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
 import pytest
 
-from tools.long_gate_cache import decide_reuse, evaluate_reuse, write_success
+from tools.long_gate_cache import decide_reuse, evaluate_reuse, resolve_cache_dir, write_success
 from tools.long_gate_fingerprint import (
     LongGateFingerprintError,
     fingerprint_command,
@@ -61,7 +62,7 @@ def _output_file(repo_root: Path) -> Path:
     return output
 
 
-def _write_reusable_success(repo_root: Path, *, entry=None, fingerprint=None):
+def _write_reusable_success(repo_root: Path, *, entry=None, fingerprint=None, cache_dir=None):
     used_entry = entry or _entry()
     used_fingerprint = fingerprint or _fingerprint()
     output = _output_file(repo_root)
@@ -71,20 +72,21 @@ def _write_reusable_success(repo_root: Path, *, entry=None, fingerprint=None):
         {"stdout": "ok\n", "stderr": "", "returncode": 0, "duration_s": 1.25},
         [str(output)],
         repo_root=str(repo_root),
+        cache_dir=cache_dir,
     )
     return used_entry, used_fingerprint, output
 
 
-def _success_path(repo_root: Path) -> Path:
-    return repo_root / "evidence" / "QualityGate" / "long_gate" / "results" / "example_gate.success.json"
+def _success_path(repo_root: Path, *, cache_dir: str = "evidence/QualityGate/long_gate") -> Path:
+    return repo_root / cache_dir / "results" / "example_gate.success.json"
 
 
-def _load_success(repo_root: Path) -> dict:
-    return json.loads(_success_path(repo_root).read_text(encoding="utf-8"))
+def _load_success(repo_root: Path, *, cache_dir: str = "evidence/QualityGate/long_gate") -> dict:
+    return json.loads(_success_path(repo_root, cache_dir=cache_dir).read_text(encoding="utf-8"))
 
 
-def _store_success(repo_root: Path, payload: dict) -> None:
-    _success_path(repo_root).write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+def _store_success(repo_root: Path, payload: dict, *, cache_dir: str = "evidence/QualityGate/long_gate") -> None:
+    _success_path(repo_root, cache_dir=cache_dir).write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
 
 def test_fingerprint_files_is_stable_and_changes_for_file_add_modify_delete(tmp_path):
@@ -298,6 +300,18 @@ def test_corrupt_cache_json_is_not_reused(tmp_path):
     assert "cache unreadable/corrupt" in decision["reason"]
 
 
+def test_non_utf8_cache_json_is_not_reused(tmp_path):
+    entry = _entry()
+    path = _success_path(tmp_path)
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b"\xff\xfe\x00")
+
+    decision = decide_reuse(entry, _fingerprint(), repo_root=str(tmp_path))
+
+    assert decision["decision"] == "run"
+    assert "cache unreadable/corrupt" in decision["reason"]
+
+
 def test_cache_missing_required_field_is_not_reused(tmp_path):
     entry, fingerprint, _output = _write_reusable_success(tmp_path)
     payload = _load_success(tmp_path)
@@ -354,6 +368,43 @@ def test_stdout_log_hash_mismatch_is_not_reused(tmp_path):
 
     assert decision["decision"] == "run"
     assert decision["reason"] == "previous logs missing or hash mismatch"
+
+
+def test_custom_cache_dir_rejects_success_logs_from_other_cache_dir(tmp_path):
+    cache_dir = "evidence/QualityGate/long_gate/manual"
+    entry, fingerprint, _output = _write_reusable_success(tmp_path, cache_dir=cache_dir)
+    payload = _load_success(tmp_path, cache_dir=cache_dir)
+    default_stdout = tmp_path / "evidence" / "QualityGate" / "long_gate" / "logs" / "example_gate.stdout.log"
+    default_stdout.parent.mkdir(parents=True, exist_ok=True)
+    default_stdout.write_text("ok\n", encoding="utf-8")
+    payload["stdout_log_path"] = "evidence/QualityGate/long_gate/logs/example_gate.stdout.log"
+    _store_success(tmp_path, payload, cache_dir=cache_dir)
+
+    evaluation = evaluate_reuse(entry, fingerprint, repo_root=str(tmp_path), cache_dir=cache_dir)
+
+    assert evaluation["decision"]["decision"] == "run"
+    assert "outside current cache logs dir" in evaluation["decision"]["reason"]
+    assert evaluation["validated_success"] is None
+
+
+def test_symlink_repo_root_keeps_cache_paths_repo_relative(tmp_path):
+    real_repo = tmp_path / "real-repo"
+    link_repo = tmp_path / "link-repo"
+    real_repo.mkdir()
+    try:
+        os.symlink(real_repo, link_repo, target_is_directory=True)
+    except (NotImplementedError, OSError) as exc:
+        pytest.skip(f"symlink is unavailable: {exc}")
+    cache_dir = "evidence/QualityGate/long_gate/manual"
+
+    assert resolve_cache_dir(str(link_repo), cache_dir) == cache_dir
+    _write_reusable_success(link_repo, cache_dir=cache_dir)
+
+    payload = json.loads(
+        (real_repo / cache_dir / "results" / "example_gate.success.json").read_text(encoding="utf-8")
+    )
+    assert payload["stdout_log_path"] == f"{cache_dir}/logs/example_gate.stdout.log"
+    assert payload["stderr_log_path"] == f"{cache_dir}/logs/example_gate.stderr.log"
 
 
 def test_missing_output_file_is_not_reused(tmp_path):

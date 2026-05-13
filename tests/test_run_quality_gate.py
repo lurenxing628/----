@@ -650,6 +650,7 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
     assert "tests/regression_schedule_config_snapshot_optional_guard.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_schedule_summary_freeze_state_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/test_git_hook_checks.py" in module.REQUIRED_TEST_ARGS
+    assert "tests/test_long_gate_cli_controls.py" in module.REQUIRED_TEST_ARGS
     assert "tests/test_long_gate_summary_output.py" in module.REQUIRED_TEST_ARGS
     assert "tests/test_sync_debt_ledger.py" in module.REQUIRED_TEST_ARGS
     assert "tests/test_schedule_template_lookup_contract.py" in module.REQUIRED_TEST_ARGS
@@ -1163,7 +1164,7 @@ def test_long_gate_cache_explain_uses_strict_fingerprint(monkeypatch, tmp_path):
     monkeypatch.setattr(
         module,
         "evaluate_reuse",
-        lambda entry, fingerprint, repo_root=None: {
+        lambda entry, fingerprint, repo_root=None, cache_dir=None: {
             "decision": {
                 "entry_id": "pytest_collect_all",
                 "decision": "run",
