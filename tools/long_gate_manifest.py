@@ -59,6 +59,7 @@ _LONG_ENTRY_TYPES = {
 _CACHE_ENABLED_ENTRY_TYPES = {
     ENTRY_PYTEST_COLLECT_ALL,
     ENTRY_FULL_TEST_DEBT,
+    ENTRY_STARTUP_RUNTIME_REGRESSIONS,
 }
 
 
@@ -223,6 +224,106 @@ def _scopes_for_entry(entry_type: str) -> Tuple[List[str], List[str], List[str],
         input_scopes = list(quality_gate_shared.iter_quality_gate_required_tests())
     elif entry_type == ENTRY_STARTUP_RUNTIME_REGRESSIONS:
         input_scopes = list(iter_startup_regressions())
+        input_scopes.extend(
+            [
+                "tests/conftest.py",
+                "tests/main_style_regression_runner.py",
+                "tests/runtime_cleanup_helper.py",
+                "app.py",
+                "app_new_ui.py",
+                "config.py",
+                "schema.sql",
+                "web/bootstrap/**/*.py",
+                "web/error_boundary.py",
+                "web/error_handlers.py",
+                "web/manual_src_security.py",
+                "web/render_bridge.py",
+                "web/routes/**/*.py",
+                "web/ui_mode.py",
+                "web/ui_mode_request.py",
+                "web/ui_mode_store.py",
+                "web/viewmodels/**/*.py",
+                "core/**/*.py",
+                "data/**/*.py",
+                "plugins/**/*.py",
+                "templates/**/*.html",
+                "web_new_test/templates/**/*.html",
+                "static/**/*",
+                "web_new_test/static/**/*",
+                "templates_excel/**/*",
+                "assets/启动_排产系统_Chrome.bat",
+                "build_win7*.bat",
+                "installer/aps_win7*.iss",
+                ".limcode/skills/aps-package-win7/scripts/package_win7.ps1",
+            ]
+        )
+        config_scopes = [
+            "pytest.ini",
+            "pyproject.toml",
+            "setup.cfg",
+            "tox.ini",
+            "tools/test_registry.py",
+            "tools/quality_gate_shared.py",
+            "tools/quality_gate_support.py",
+        ]
+        tool_scopes = [
+            "scripts/run_quality_gate.py",
+            "tools/long_gate_cache.py",
+            "tools/long_gate_collect.py",
+            "tools/long_gate_fingerprint.py",
+            "tools/long_gate_full_test_debt.py",
+            "tools/long_gate_manifest.py",
+            "tools/long_gate_paths.py",
+            "tools/long_gate_schema.py",
+            "tools/long_gate_summary.py",
+            "tools/test_registry.py",
+            "tools/quality_gate_shared.py",
+            "tools/quality_gate_support.py",
+        ]
+        dependency_scopes.extend(
+            [
+                "requirements*.txt",
+                "requirements-dev*.txt",
+                "poetry.lock",
+                "uv.lock",
+                "Pipfile.lock",
+            ]
+        )
+        env_keys.extend(
+            [
+                "python_executable_realpath",
+                "python_version",
+                "pytest_version",
+                "pytest_plugin_distribution_versions",
+                "platform",
+                "APS_ENV",
+                "APS_DB_PATH",
+                "APS_LOG_DIR",
+                "APS_BACKUP_DIR",
+                "APS_EXCEL_TEMPLATE_DIR",
+                "APS_CHROME_PATH",
+                "APS_HOST",
+                "APS_PORT",
+                "APS_SHARED_DATA_ROOT",
+                "APS_STATIC_VERSION",
+                "SECRET_KEY",
+                "LOCALAPPDATA",
+                "USERNAME",
+                "USERDOMAIN",
+                "COMPUTERNAME",
+                "ProgramData",
+                "PYTHONPATH",
+                "PYTHONUTF8",
+                "PYTHONIOENCODING",
+                "PYTEST_ADDOPTS",
+                "PYTEST_DISABLE_PLUGIN_AUTOLOAD",
+                "PYTEST_PLUGINS",
+                "WERKZEUG_RUN_MAIN",
+            ]
+        )
+        output_files = [
+            quality_gate_shared.QUALITY_GATE_STARTUP_RUNTIME_REGRESSIONS_REL.replace("\\", "/"),
+        ]
     elif entry_type == ENTRY_QUICKREF_VS_ROUTES:
         output_files = ["evidence/Conformance/quickref_vs_routes.md"]
     elif entry_type == ENTRY_FULL_TEST_DEBT:

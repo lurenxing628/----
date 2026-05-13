@@ -196,14 +196,14 @@ items:
       - tests/test_long_gate_full_test_debt_cache.py
     exit_checks:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_long_gate_full_test_debt_cache.py
-    notes: "已完成 nodeid 级增量：整项 success cache 仍优先；只有普通 tests/**/*.py 变化且 nodeids_by_file 映射可信时才重跑相关 nodeid，再合并回完整 current payload 并重新走台账校验；只改技术债务台账时走 ledger-only；源码、conftest、pytest 配置、依赖、工具、模板、静态资源、Excel 模板、安装脚本或坏 node cache 都整体回退。NEXT-6 仍 planned。"
+    notes: "已完成 nodeid 级增量：整项 success cache 仍优先；只有普通 tests/**/*.py 变化且 nodeids_by_file 映射可信时才重跑相关 nodeid，再合并回完整 current payload 并重新走台账校验；只改技术债务台账时走 ledger-only；源码、conftest、pytest 配置、依赖、工具、模板、静态资源、Excel 模板、安装脚本或坏 node cache 都整体回退。NEXT-6 已在后续条目完成。"
 
   - slug: startup-runtime-regression-cache
     title: NEXT-6 startup runtime regressions 整组复用
     description: "从真实 command plan 定位 startup_runtime_regressions，记录动态 args、runtime/bootstrap/template/static/app/config/schema 和关键环境变量指纹。"
     depends_on: [full-test-debt-nodeid-cache]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-13-startup-runtime-regression-cache
     minimal_loop: false
     primary_paths:
       - tools/long_gate_manifest.py
@@ -215,7 +215,7 @@ items:
     exit_checks:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_long_gate_startup_regression_cache.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --long-gate-cache-explain
-    notes: "必须覆盖 APS_ENV、APS_DB_PATH、APS_LOG_DIR、APS_BACKUP_DIR、APS_EXCEL_TEMPLATE_DIR、APS_CHROME_PATH、PYTHONPATH、PYTHONUTF8、PYTHONIOENCODING；无关 markdown 变化不能误伤。"
+    notes: "已完成 startup 整组成功复用：命令从真实 command plan 定位，proof 写入 evidence/QualityGate/startup_runtime_regressions.json，缓存命中前校验 command/fingerprint/stdout-stderr 长期日志/output proof hash；坏 proof、坏日志、输入或环境变化都会整组重跑。required 和后续 planned entry 仍未启用。"
 
   - slug: required-regression-cache
     title: NEXT-7 required regressions 整组复用

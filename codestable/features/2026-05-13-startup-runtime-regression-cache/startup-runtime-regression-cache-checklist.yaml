@@ -1,0 +1,54 @@
+feature: 2026-05-13-startup-runtime-regression-cache
+created: 2026-05-13
+
+steps:
+  - action: "设计与状态：创建 NEXT-6 feature 文档，并把 roadmap item 绑定到本 feature"
+    exit_signal: "feature 目录、design、checklist 存在，items.yaml 中 NEXT-6 为 in-progress"
+    status: done
+  - action: "manifest 边界：启用 startup 整组复用，补齐 startup 专属 scope/env/output"
+    exit_signal: "enabled 只新增 startup；required 和其它 planned entry 仍 planned；无关 markdown 不进入 startup 指纹"
+    status: done
+  - action: "runner proof：成功执行 startup 后写 startup_runtime_regressions.json 并交给通用 success cache"
+    exit_signal: "startup proof 包含 schema、命令身份、fingerprint、日志 hash、returncode、测试数量、head/run 信息"
+    status: done
+  - action: "测试覆盖：新增 startup 专项测试，覆盖动态 args、scope/env、坏 proof、日志 hash、force/no-cache/explain"
+    exit_signal: "tests/test_long_gate_startup_regression_cache.py 覆盖假绿风险和范围守护"
+    status: done
+  - action: "回归验证：跑 startup 专项、long gate 相关测试、explain、ruff、pyright、yaml、diff check"
+    exit_signal: "窄验证和静态检查通过，explain 显示 startup enabled 且 required planned"
+    status: done
+  - action: "验收回写：写 acceptance 并同步 roadmap/items"
+    exit_signal: "NEXT-6 标为 done，NEXT-7 和后续仍 planned，验收报告记录验证命令和 clean proof 状态"
+    status: done
+
+checks:
+  - item: "startup entry 从真实 command plan 定位，args 不复制硬编码清单"
+    source: 动态命令身份
+    status: done
+  - item: "enabled 只新增 startup，不启用 required 或其它 planned entry"
+    source: 范围守护
+    status: done
+  - item: "startup proof 缺失、损坏、schema 不匹配、输出 hash 不一致时整组重跑"
+    source: 证据完整性
+    status: done
+  - item: "stdout/stderr 日志缺失或 hash 不一致时整组重跑"
+    source: 日志完整性
+    status: done
+  - item: "startup 测试、bootstrap、app、config、schema、模板、静态资源变化时整组重跑"
+    source: 输入范围
+    status: done
+  - item: "pytest 配置、依赖、runner/cache/schema/fingerprint/manifest/test registry 工具变化时整组重跑"
+    source: 工具与依赖范围
+    status: done
+  - item: "用户指定 APS/Python/pytest 环境变量变化时整组重跑"
+    source: 环境指纹
+    status: done
+  - item: "无关普通 markdown 变化不能误伤 startup"
+    source: 指纹收窄
+    status: done
+  - item: "explain 不写 proof，no-cache 不读写 startup cache，force 触发整组重跑"
+    source: CLI 守护
+    status: done
+  - item: "full-test-debt 整项复用、nodeid 增量、ledger-only 回归仍通过"
+    source: NEXT-5 回归
+    status: done

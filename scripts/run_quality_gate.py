@@ -45,8 +45,10 @@ from tools.long_gate_full_test_debt import (
 from tools.long_gate_manifest import (  # noqa: E402
     ENTRY_FULL_TEST_DEBT,
     ENTRY_PYTEST_COLLECT_ALL,
+    ENTRY_STARTUP_RUNTIME_REGRESSIONS,
     build_manifest_from_quality_gate_plan,
 )
+from tools.long_gate_schema import stable_json_hash  # noqa: E402
 from tools.long_gate_summary import (  # noqa: E402
     build_long_gate_summary,
     build_summary_entry,
@@ -63,6 +65,7 @@ from tools.quality_gate_support import (  # noqa: E402
     QUALITY_GATE_RECEIPTS_DIR_REL,
     QUALITY_GATE_SELFTEST_PATH,
     QUALITY_GATE_STARTUP_REGRESSION_ARGS,
+    QUALITY_GATE_STARTUP_RUNTIME_REGRESSIONS_REL,
     QUALITY_GATE_TOOL_PATHS,
     QualityGateError,
     apply_quality_gate_manifest_proof_fields,
@@ -83,6 +86,7 @@ GUARD_TEST_ARGS = list(REQUIRED_TEST_ARGS)
 PYRIGHT_REQUIRED_VERSION = (1, 1, 406)
 PYRIGHT_GATE_CONFIG = QUALITY_GATE_PYRIGHT_GATE_CONFIG
 QUALITY_GATE_SELFTEST = QUALITY_GATE_SELFTEST_PATH
+STARTUP_RUNTIME_REGRESSIONS_PROOF_SCHEMA_VERSION = 1
 GENERATED_CLEAN_WORKTREE_EXCLUDED_PATHS = [
     QUALITY_GATE_MANIFEST_REL.replace("\\", "/"),
     QUALITY_GATE_RECEIPTS_DIR_REL.replace("\\", "/") + "/",
@@ -91,6 +95,7 @@ GENERATED_CLEAN_WORKTREE_EXCLUDED_PATHS = [
     QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL.replace("\\", "/"),
     QUALITY_GATE_FULL_TEST_DEBT_SUMMARY_REL.replace("\\", "/"),
     QUALITY_GATE_FULL_TEST_DEBT_NODE_CACHE_REL.replace("\\", "/"),
+    QUALITY_GATE_STARTUP_RUNTIME_REGRESSIONS_REL.replace("\\", "/"),
 ]
 HIGH_RISK_UNTRACKED_SOURCE_PREFIXES = ("core/", "web/", "data/", "tools/", "scripts/")
 HIGH_RISK_UNTRACKED_SOURCE_SUFFIXES = (".py", ".js", ".ts", ".html", ".css", ".sql")
@@ -1119,6 +1124,10 @@ def _run_quality_gate_command_plan(
                     long_gate_entry,
                     result,
                     cache_dir=long_gate_cache_dir,
+                    run_id=run_id,
+                    command_index=command_index,
+                    command_plan=command_plan,
+                    fingerprint=dict(long_gate_fingerprint or {}),
                 )
                 long_gate_fingerprint = _fingerprint_for_success_cache(
                     long_gate_entry,
@@ -1384,11 +1393,88 @@ def _long_gate_declared_output_paths(entry: Dict[str, Any]) -> List[str]:
     return list(dict.fromkeys(str(path).replace("\\", "/") for path in list(entry.get("output_result_files") or [])))
 
 
+def _startup_runtime_regression_log_row(result: Dict[str, Any], *, stream: str, rel_path: str) -> Dict[str, Any]:
+    text = str(result.get(stream) or "")
+    encoded = text.encode("utf-8")
+    return {
+        "path": str(rel_path or "").replace("\\", "/"),
+        "sha256": hashlib.sha256(encoded).hexdigest(),
+        "bytes": len(encoded),
+    }
+
+
+def _write_startup_runtime_regressions_proof(
+    entry: Dict[str, Any],
+    result: Dict[str, Any],
+    *,
+    run_id: str,
+    command_index: int,
+    command_plan: Sequence[Dict[str, Any]],
+    fingerprint: Dict[str, Any],
+    cache_dir: str,
+) -> str:
+    rel_path = QUALITY_GATE_STARTUP_RUNTIME_REGRESSIONS_REL.replace("\\", "/")
+    abs_path = os.path.join(REPO_ROOT, rel_path.replace("/", os.sep))
+    args = [str(arg) for arg in list(entry.get("args") or [])]
+    startup_target_paths = list(args[4:]) if args[:4] == ["python", "-m", "pytest", "-q"] else []
+    cache_root = str(cache_dir or "evidence/QualityGate/long_gate").replace("\\", "/")
+    safe_entry_id = ENTRY_STARTUP_RUNTIME_REGRESSIONS.replace("\\", "_").replace("/", "_")
+    stdout_log_path = f"{cache_root}/logs/{safe_entry_id}.stdout.log"
+    stderr_log_path = f"{cache_root}/logs/{safe_entry_id}.stderr.log"
+    stdout_log_row = _startup_runtime_regression_log_row(result, stream="stdout", rel_path=stdout_log_path)
+    stderr_log_row = _startup_runtime_regression_log_row(result, stream="stderr", rel_path=stderr_log_path)
+    payload = {
+        "schema_version": STARTUP_RUNTIME_REGRESSIONS_PROOF_SCHEMA_VERSION,
+        "status": "passed",
+        "entry_id": str(entry.get("entry_id") or ""),
+        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "head_sha": _git_head_sha(),
+        "run_id": str(run_id or ""),
+        "quality_gate_plan_hash": hash_quality_gate_commands(command_plan),
+        "command_index": int(command_index),
+        "display": str(entry.get("display") or ""),
+        "args": args,
+        "command_hash": str(entry.get("command_hash") or ""),
+        "capture_output": bool(entry.get("capture_output")),
+        "output_policy": str(entry.get("output_policy") or ""),
+        "startup_target_count": len(startup_target_paths),
+        "test_count": len(startup_target_paths),
+        "startup_target_paths": startup_target_paths,
+        "startup_target_hash": stable_json_hash(startup_target_paths),
+        "fingerprint_schema_version": int(entry.get("fingerprint_schema_version") or 0),
+        "fingerprint_hash": str(fingerprint.get("hash") or ""),
+        "returncode": int(result.get("returncode") or 0),
+        "pytest_exit_code": int(result.get("returncode") or 0),
+        "execution_mode": str(result.get("execution_mode") or "executed"),
+        "duration_s": float(result.get("duration_s") or 0.0),
+        "stdout_log_path": stdout_log_path,
+        "stderr_log_path": stderr_log_path,
+        "stdout_sha256": str(stdout_log_row["sha256"]),
+        "stderr_sha256": str(stderr_log_row["sha256"]),
+        "timed_out": bool(result.get("timed_out")),
+        "interrupted": bool(result.get("interrupted")),
+        "partial_write": bool(result.get("partial_write")),
+        "logs": {
+            "stdout": stdout_log_row,
+            "stderr": stderr_log_row,
+        },
+    }
+    os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+    with open(abs_path, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
+        handle.write("\n")
+    return rel_path
+
+
 def _prepare_long_gate_success_output_files(
     entry: Dict[str, Any],
     result: Dict[str, Any],
     *,
     cache_dir: str = "evidence/QualityGate/long_gate",
+    run_id: str = "",
+    command_index: int = 0,
+    command_plan: Sequence[Dict[str, Any]] = (),
+    fingerprint: Optional[Dict[str, Any]] = None,
 ) -> List[str]:
     entry_id = str(entry.get("entry_id") or "")
     if entry_id == ENTRY_PYTEST_COLLECT_ALL:
@@ -1407,6 +1493,18 @@ def _prepare_long_gate_success_output_files(
             result=result,
             cache_dir=cache_dir,
         )
+    if entry_id == ENTRY_STARTUP_RUNTIME_REGRESSIONS:
+        return [
+            _write_startup_runtime_regressions_proof(
+                entry,
+                result,
+                run_id=run_id,
+                command_index=command_index,
+                command_plan=command_plan,
+                fingerprint=dict(fingerprint or {}),
+                cache_dir=cache_dir,
+            )
+        ]
     return _long_gate_declared_output_paths(entry)
 
 

@@ -85,6 +85,7 @@ evidence/QualityGate/collect_nodeids.json
 evidence/QualityGate/current_full_test_debt.json
 evidence/QualityGate/full_test_debt_summary.json
 evidence/QualityGate/full_test_debt_node_cache.json
+evidence/QualityGate/startup_runtime_regressions.json
 tmp_binding_probe/
 
 # Raw test/benchmark console output (binary encoding, only keep formatted reports)
