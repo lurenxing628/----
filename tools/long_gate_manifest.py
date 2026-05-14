@@ -21,6 +21,7 @@ from tools.long_gate_schema import (
     LONG_GATE_MANIFEST_SCHEMA_VERSION,
 )
 from tools.test_registry import (
+    iter_required_regression_common_scope_policy,
     iter_required_regression_groups,
     iter_startup_regressions,
     validate_required_regression_group_coverage,
@@ -105,6 +106,36 @@ def _list_equal(left: Sequence[str], right: Sequence[str]) -> bool:
 
 def _dedupe(items: Sequence[str]) -> List[str]:
     return list(dict.fromkeys(str(item) for item in list(items or []) if str(item)))
+
+
+def _scope_policy_hash(payload: Mapping[str, Any]) -> str:
+    return _stable_json_hash(payload)
+
+
+def _required_regression_scope_policy() -> Dict[str, Any]:
+    common = iter_required_regression_common_scope_policy()
+    groups = []
+    for group in iter_required_regression_groups():
+        groups.append(
+            {
+                "group_id": str(group.get("group_id") or ""),
+                "input_file_scopes": list(group.get("input_file_scopes") or []),
+                "config_file_scopes": list(group.get("config_file_scopes") or []),
+                "tool_file_scopes": list(group.get("tool_file_scopes") or []),
+                "dependency_file_scopes": list(group.get("dependency_file_scopes") or []),
+                "env_keys": list(group.get("env_keys") or []),
+            }
+        )
+    payload = {
+        "common_input_file_scopes": list(common.get("input_file_scopes") or []),
+        "common_config_file_scopes": list(common.get("config_file_scopes") or []),
+        "common_tool_file_scopes": list(common.get("tool_file_scopes") or []),
+        "common_dependency_file_scopes": list(common.get("dependency_file_scopes") or []),
+        "common_env_keys": list(common.get("env_keys") or []),
+        "groups": groups,
+    }
+    payload["scope_policy_hash"] = _scope_policy_hash(payload)
+    return payload
 
 
 def classify_quality_gate_command(command: Mapping[str, Any]) -> str:
@@ -231,91 +262,23 @@ def _scopes_for_entry(
         output_files = ["evidence/QualityGate/collect_nodeids.json"]
     elif entry_type == ENTRY_REQUIRED_REGRESSIONS:
         required_targets = _pytest_q_targets(_normalize_command(command or {}).get("args") or []) or []
+        common_scope_policy = iter_required_regression_common_scope_policy()
+        group_rows = iter_required_regression_groups()
         input_scopes = list(required_targets)
-        input_scopes.extend(
-            [
-                "tests/conftest.py",
-                "tests/main_style_regression_runner.py",
-                "tests/runtime_cleanup_helper.py",
-                "core/**/*.py",
-                "web/**/*.py",
-                "data/**/*.py",
-                "plugins/**/*.py",
-                "app.py",
-                "app_new_ui.py",
-                "config.py",
-                "schema.sql",
-                "templates/**/*.html",
-                "web_new_test/templates/**/*.html",
-                "static/**/*",
-                "web_new_test/static/**/*",
-                "templates_excel/**/*",
-                "docs/frontend_manual_audit_and_rewrite_blueprint.md",
-                "docs/*manual*.md",
-                "static/docs/**/*.md",
-                "web_new_test/static/docs/**/*.md",
-                ".limcode/skills/aps-full-selftest/scripts/run_full_selftest.py",
-                ".limcode/plans/core目录系统性修复/05_后续结构债治理与文档同步.plan.md",
-                "evidence/README.md",
-                "evidence/current/README.md",
-                "audit/**/README.md",
-                "开发文档/开发文档.md",
-                "开发文档/阶段留痕与验收记录.md",
-                "开发文档/技术债务治理台账.md",
-            ]
-        )
-        config_scopes = [
-            ".pre-commit-config.yaml",
-            ".github/workflows/quality.yml",
-            "pytest.ini",
-            "pyproject.toml",
-            "setup.cfg",
-            "tox.ini",
-            "tools/test_registry.py",
-            "tools/quality_gate_shared.py",
-            "tools/quality_gate_support.py",
-        ]
-        tool_scopes = list(quality_gate_shared.QUALITY_GATE_TOOL_PATHS)
-        dependency_scopes.extend(
-            [
-                "requirements*.txt",
-                "requirements-dev*.txt",
-                "poetry.lock",
-                "uv.lock",
-                "Pipfile.lock",
-            ]
-        )
-        env_keys.extend(
-            [
-                "python_executable_realpath",
-                "python_version",
-                "pytest_version",
-                "pytest_plugin_distribution_versions",
-                "platform",
-                "chrome_executable_resolution",
-                "node_executable_realpath",
-                "node_version",
-                "APS_ENV",
-                "APS_DB_PATH",
-                "APS_LOG_DIR",
-                "APS_BACKUP_DIR",
-                "APS_EXCEL_TEMPLATE_DIR",
-                "APS_CHROME_PATH",
-                "APS_STATIC_VERSION",
-                "SECRET_KEY",
-                "CI",
-                "PATH",
-                "PYTHONPATH",
-                "PYTHONUTF8",
-                "PYTHONIOENCODING",
-                "PYTEST_ADDOPTS",
-                "PYTEST_DISABLE_PLUGIN_AUTOLOAD",
-                "PYTEST_PLUGINS",
-            ]
-        )
-        output_files = [
-            quality_gate_shared.QUALITY_GATE_REQUIRED_REGRESSIONS_REL.replace("\\", "/"),
-        ]
+        input_scopes.extend(common_scope_policy.get("input_file_scopes") or [])
+        config_scopes = list(common_scope_policy.get("config_file_scopes") or [])
+        tool_scopes = list(common_scope_policy.get("tool_file_scopes") or [])
+        dependency_scopes = list(common_scope_policy.get("dependency_file_scopes") or [])
+        env_keys = list(common_scope_policy.get("env_keys") or [])
+        for group in group_rows:
+            input_scopes.extend(str(path) for path in list(group.get("input_file_scopes") or []))
+            config_scopes.extend(str(path) for path in list(group.get("config_file_scopes") or []))
+            tool_scopes.extend(str(path) for path in list(group.get("tool_file_scopes") or []))
+            dependency_scopes.extend(str(path) for path in list(group.get("dependency_file_scopes") or []))
+            env_keys.extend(str(key) for key in list(group.get("env_keys") or []))
+        output_files.append(quality_gate_shared.QUALITY_GATE_REQUIRED_REGRESSIONS_REL.replace("\\", "/"))
+        for group in group_rows:
+            output_files.append(_required_group_proof_path(str(group.get("group_id") or "")))
     elif entry_type == ENTRY_STARTUP_RUNTIME_REGRESSIONS:
         input_scopes = list(iter_startup_regressions())
         input_scopes.extend(
@@ -537,19 +500,50 @@ def _required_group_coverage_or_raise(required_targets: Sequence[str]) -> Dict[s
     return coverage
 
 
-def _required_group_input_scopes(parent_entry: Mapping[str, Any], target_paths: Sequence[str]) -> List[str]:
-    parent_targets = set(str(path) for path in list(parent_entry.get("args") or [])[4:])
-    inherited = [
-        str(path)
-        for path in list(parent_entry.get("input_file_scopes") or [])
-        if str(path) and str(path) not in parent_targets
-    ]
-    return _dedupe([str(path) for path in list(target_paths or [])] + inherited)
+def _required_group_scope_policy(group: Mapping[str, Any]) -> Dict[str, Any]:
+    common = iter_required_regression_common_scope_policy()
+    group_policy = {
+        "common_input_file_scopes": list(common.get("input_file_scopes") or []),
+        "common_config_file_scopes": list(common.get("config_file_scopes") or []),
+        "common_tool_file_scopes": list(common.get("tool_file_scopes") or []),
+        "common_dependency_file_scopes": list(common.get("dependency_file_scopes") or []),
+        "common_env_keys": list(common.get("env_keys") or []),
+        "group_input_file_scopes": list(group.get("input_file_scopes") or []),
+        "group_config_file_scopes": list(group.get("config_file_scopes") or []),
+        "group_tool_file_scopes": list(group.get("tool_file_scopes") or []),
+        "group_dependency_file_scopes": list(group.get("dependency_file_scopes") or []),
+        "group_env_keys": list(group.get("env_keys") or []),
+    }
+    group_policy["scope_policy_hash"] = _scope_policy_hash(group_policy)
+    return group_policy
+
+
+def _required_group_effective_scopes(
+    group: Mapping[str, Any],
+    target_paths: Sequence[str],
+) -> Tuple[List[str], List[str], List[str], List[str], List[str], Dict[str, Any]]:
+    policy = _required_group_scope_policy(group)
+    input_scopes = _dedupe(
+        [str(path) for path in list(target_paths or [])]
+        + list(policy.get("common_input_file_scopes") or [])
+        + list(policy.get("group_input_file_scopes") or [])
+    )
+    config_scopes = _dedupe(
+        list(policy.get("common_config_file_scopes") or []) + list(policy.get("group_config_file_scopes") or [])
+    )
+    tool_scopes = _dedupe(
+        list(policy.get("common_tool_file_scopes") or []) + list(policy.get("group_tool_file_scopes") or [])
+    )
+    dependency_scopes = _dedupe(
+        list(policy.get("common_dependency_file_scopes") or [])
+        + list(policy.get("group_dependency_file_scopes") or [])
+    )
+    env_keys = _dedupe(list(policy.get("common_env_keys") or []) + list(policy.get("group_env_keys") or []))
+    return input_scopes, config_scopes, tool_scopes, dependency_scopes, env_keys, policy
 
 
 def _build_required_group_entries(parent_entry: Mapping[str, Any]) -> List[Dict[str, Any]]:
-    parent = dict(parent_entry)
-    required_targets = _pytest_q_targets(parent.get("args") or []) or []
+    required_targets = _pytest_q_targets(parent_entry.get("args") or []) or []
     _required_group_coverage_or_raise(required_targets)
     groups: List[Dict[str, Any]] = []
     for index, group in enumerate(iter_required_regression_groups(), start=1):
@@ -558,6 +552,14 @@ def _build_required_group_entries(parent_entry: Mapping[str, Any]) -> List[Dict[
         command = _required_group_command(target_paths)
         normalized = _normalize_command(command)
         entry_id = f"{ENTRY_REQUIRED_REGRESSIONS}.{group_id}"
+        (
+            input_file_scopes,
+            config_file_scopes,
+            tool_file_scopes,
+            dependency_file_scopes,
+            env_keys,
+            scope_policy,
+        ) = _required_group_effective_scopes(group, target_paths)
         groups.append(
             {
                 "schema_version": LONG_GATE_SCHEMA_VERSION,
@@ -575,11 +577,22 @@ def _build_required_group_entries(parent_entry: Mapping[str, Any]) -> List[Dict[
                 "capture_output": bool(normalized["capture_output"]),
                 "output_policy": normalized["output_policy"],
                 "command_hash": _stable_json_hash(normalized),
-                "input_file_scopes": _required_group_input_scopes(parent, target_paths),
-                "config_file_scopes": list(parent.get("config_file_scopes") or []),
-                "tool_file_scopes": list(parent.get("tool_file_scopes") or []),
-                "dependency_file_scopes": list(parent.get("dependency_file_scopes") or []),
-                "env_keys": list(parent.get("env_keys") or []),
+                "input_file_scopes": input_file_scopes,
+                "config_file_scopes": config_file_scopes,
+                "tool_file_scopes": tool_file_scopes,
+                "dependency_file_scopes": dependency_file_scopes,
+                "env_keys": env_keys,
+                "common_input_file_scopes": list(scope_policy.get("common_input_file_scopes") or []),
+                "common_config_file_scopes": list(scope_policy.get("common_config_file_scopes") or []),
+                "common_tool_file_scopes": list(scope_policy.get("common_tool_file_scopes") or []),
+                "common_dependency_file_scopes": list(scope_policy.get("common_dependency_file_scopes") or []),
+                "common_env_keys": list(scope_policy.get("common_env_keys") or []),
+                "group_input_file_scopes": list(scope_policy.get("group_input_file_scopes") or []),
+                "group_config_file_scopes": list(scope_policy.get("group_config_file_scopes") or []),
+                "group_tool_file_scopes": list(scope_policy.get("group_tool_file_scopes") or []),
+                "group_dependency_file_scopes": list(scope_policy.get("group_dependency_file_scopes") or []),
+                "group_env_keys": list(scope_policy.get("group_env_keys") or []),
+                "scope_policy_hash": str(scope_policy.get("scope_policy_hash") or ""),
                 "output_result_files": [_required_group_proof_path(group_id)],
                 "target_paths": target_paths,
                 "target_count": len(target_paths),
@@ -634,6 +647,7 @@ def _build_entry(command: Mapping[str, Any], index: int, *, entry_type: Optional
     if resolved_entry_type == ENTRY_REQUIRED_REGRESSIONS:
         required_targets = _pytest_q_targets(normalized.get("args") or []) or []
         entry["required_regression_group_coverage"] = _required_group_coverage_or_raise(required_targets)
+        entry["required_regression_group_scope_policy"] = _required_regression_scope_policy()
         entry["groups"] = _build_required_group_entries(entry)
     return entry
 

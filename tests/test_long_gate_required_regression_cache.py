@@ -27,6 +27,7 @@ from tests.long_gate_cache_helpers import (
     _write_file,
 )
 from tools import quality_gate_shared
+from tools.long_gate_fingerprint import fingerprint_entry
 from tools.long_gate_manifest import (
     ENTRY_REQUIRED_REGRESSIONS,
     ENTRY_STARTUP_RUNTIME_REGRESSIONS,
@@ -53,6 +54,32 @@ def _required_group_proof_paths(command_plan: Sequence[dict], repo_root: Path) -
     for group in _required_group_entries(command_plan, repo_root):
         paths.extend(repo_root / str(path) for path in list(group.get("output_result_files") or []))
     return paths
+
+
+def _assert_required_group_scope_rows_match_manifest(
+    rows: Sequence[dict],
+    groups: Sequence[dict],
+    repo_root=None,
+) -> None:
+    rows_by_group = {row["group_id"]: row for row in rows}
+    assert set(rows_by_group) == {group["group_id"] for group in groups}
+    for group in groups:
+        row = rows_by_group[group["group_id"]]
+        assert row["target_paths"] == group["target_paths"]
+        assert row["scope_policy_hash"] == group["scope_policy_hash"]
+        assert row["input_file_scopes"] == group["input_file_scopes"]
+        assert row["config_file_scopes"] == group["config_file_scopes"]
+        assert row["tool_file_scopes"] == group["tool_file_scopes"]
+        assert row["dependency_file_scopes"] == group["dependency_file_scopes"]
+        assert row["env_keys"] == group["env_keys"]
+        assert row["proof_path"]
+        assert row["proof_sha256"]
+        if repo_root is not None:
+            expected_proof_path = str(group["output_result_files"][0])
+            assert row["proof_path"] == expected_proof_path
+            proof_path = repo_root / expected_proof_path
+            assert proof_path.exists()
+            assert row["proof_sha256"] == hashlib.sha256(proof_path.read_bytes()).hexdigest()
 
 
 def test_required_entry_comes_from_real_command_plan_and_enables_only_next7(tmp_path):
@@ -99,6 +126,12 @@ def test_required_classification_does_not_depend_on_command_position(tmp_path):
 
 def test_required_scope_tracks_real_inputs_without_unrelated_markdown(tmp_path):
     required = _entry_by_id(_manifest_for(_real_quality_gate_plan(), tmp_path), ENTRY_REQUIRED_REGRESSIONS)
+    scheduler_config = next(group for group in required["groups"] if group["group_id"] == "scheduler_config")
+    quality_gate = next(group for group in required["groups"] if group["group_id"] == "quality_gate")
+    analysis = next(
+        group for group in required["groups"] if group["group_id"] == "scheduler_analysis_gantt_reports_week_plan"
+    )
+    ui_layout = next(group for group in required["groups"] if group["group_id"] == "ui_layout_presenters_system")
     all_scopes = (
         required["input_file_scopes"]
         + required["config_file_scopes"]
@@ -108,7 +141,10 @@ def test_required_scope_tracks_real_inputs_without_unrelated_markdown(tmp_path):
 
     for path in [
         "core/**/*.py",
-        "web/**/*.py",
+        "web/routes/domains/scheduler/scheduler_config*.py",
+        "web/bootstrap/*.py",
+        "web/bootstrap/**/*.py",
+        "web/routes/system_*.py",
         "data/**/*.py",
         "plugins/**/*.py",
         "app.py",
@@ -122,7 +158,7 @@ def test_required_scope_tracks_real_inputs_without_unrelated_markdown(tmp_path):
         "templates_excel/**/*",
         "static/docs/**/*.md",
         "web_new_test/static/docs/**/*.md",
-        "docs/frontend_manual_audit_and_rewrite_blueprint.md",
+        "docs/**/*.md",
         ".limcode/skills/aps-full-selftest/scripts/run_full_selftest.py",
         ".limcode/plans/core目录系统性修复/05_后续结构债治理与文档同步.plan.md",
         "evidence/README.md",
@@ -134,9 +170,11 @@ def test_required_scope_tracks_real_inputs_without_unrelated_markdown(tmp_path):
         "tools/long_gate_manifest.py",
         "tools/long_gate_fingerprint.py",
         "scripts/run_quality_gate.py",
+        "tests/long_gate_cache_helpers.py",
     ]:
         assert path in all_scopes
-    assert set(quality_gate_shared.QUALITY_GATE_TOOL_PATHS) <= set(all_scopes)
+    assert "tools/quality_gate_*.py" in all_scopes
+    assert "tools/long_gate_*.py" in all_scopes
     for env_key in [
         "python_executable_realpath",
         "python_version",
@@ -156,10 +194,18 @@ def test_required_scope_tracks_real_inputs_without_unrelated_markdown(tmp_path):
         "PATH",
     ]:
         assert env_key in required["env_keys"]
-    assert "docs/**/*.md" not in required["input_file_scopes"]
+    assert "web/routes/domains/scheduler/scheduler_config*.py" in scheduler_config["group_input_file_scopes"]
+    assert "tools/long_gate_*.py" in quality_gate["group_tool_file_scopes"]
+    assert "tests/long_gate_cache_helpers.py" in quality_gate["group_input_file_scopes"]
+    assert {"node_executable_realpath", "node_version", "PATH"} <= set(analysis["group_env_keys"])
+    assert "CI" in ui_layout["group_env_keys"]
+    assert required["required_regression_group_scope_policy"]["scope_policy_hash"]
     assert "audit/**/*.md" not in required["input_file_scopes"]
     assert "开发文档/**/*.md" not in required["input_file_scopes"]
-    assert required["output_result_files"] == ["evidence/QualityGate/required_regressions.json"]
+    assert required["output_result_files"] == [
+        "evidence/QualityGate/required_regressions.json",
+        *[group["output_result_files"][0] for group in required["groups"]],
+    ]
 
 
 def test_required_success_writes_proof_and_reuses_next_run(monkeypatch, tmp_path):
@@ -173,6 +219,7 @@ def test_required_success_writes_proof_and_reuses_next_run(monkeypatch, tmp_path
     first_calls = _run_gate_with_fake_commands(module, monkeypatch, repo_root, command_plan, ["--long-gate-cache"])
     proof = json.loads(_proof_path_for_entry(repo_root, ENTRY_REQUIRED_REGRESSIONS).read_text(encoding="utf-8"))
     success_cache = json.loads(_success_path(repo_root, ENTRY_REQUIRED_REGRESSIONS).read_text(encoding="utf-8"))
+    first_summary = _load_summary(repo_root)
     manifest = _manifest_for(command_plan, repo_root)
     required_entry = _entry_by_id(manifest, ENTRY_REQUIRED_REGRESSIONS)
     required_index = next(
@@ -202,9 +249,48 @@ def test_required_success_writes_proof_and_reuses_next_run(monkeypatch, tmp_path
     assert proof["required_target_paths"] == required_entry["args"][4:]
     assert proof["coverage"] == {"missing": [], "duplicates": [], "unknown": []}
     assert proof["group_count"] == 8
+    assert proof["group_scope_policy"]["common_input_file_scopes"] == [
+        "tests/conftest.py",
+        "conftest.py",
+        "tests/main_style_regression_runner.py",
+        "tests/runtime_cleanup_helper.py",
+    ]
+    assert proof["group_scope_policy"]["scope_policy_hash"]
     assert {group["group_id"] for group in proof["groups"]} == {
         group["group_id"] for group in required_entry["groups"]
     }
+    proof_rows_by_group = {row["group_id"]: row for row in proof["groups"]}
+    first_summary_rows = _summary_entry(first_summary, ENTRY_REQUIRED_REGRESSIONS)["required_regressions_groups"]
+    summary_rows_by_group = {row["group_id"]: row for row in first_summary_rows}
+    _assert_required_group_scope_rows_match_manifest(proof["groups"], required_entry["groups"], repo_root)
+    _assert_required_group_scope_rows_match_manifest(first_summary_rows, required_entry["groups"], repo_root)
+    for group in required_entry["groups"]:
+        row = proof_rows_by_group[group["group_id"]]
+        assert row["target_paths"] == group["target_paths"]
+        assert row["scope_policy_hash"] == group["scope_policy_hash"]
+        assert row["input_file_scopes"] == group["input_file_scopes"]
+        assert row["config_file_scopes"] == group["config_file_scopes"]
+        assert row["tool_file_scopes"] == group["tool_file_scopes"]
+        assert row["dependency_file_scopes"] == group["dependency_file_scopes"]
+        assert row["env_keys"] == group["env_keys"]
+        summary_row = summary_rows_by_group[group["group_id"]]
+        assert summary_row["target_paths"] == group["target_paths"]
+        assert summary_row["scope_policy_hash"] == group["scope_policy_hash"]
+        assert summary_row["input_file_scopes"] == group["input_file_scopes"]
+        assert summary_row["config_file_scopes"] == group["config_file_scopes"]
+        assert summary_row["tool_file_scopes"] == group["tool_file_scopes"]
+        assert summary_row["dependency_file_scopes"] == group["dependency_file_scopes"]
+        assert summary_row["env_keys"] == group["env_keys"]
+        group_proof = json.loads((repo_root / group["output_result_files"][0]).read_text(encoding="utf-8"))
+        assert group_proof["schema_version"] == module.REQUIRED_REGRESSIONS_GROUP_PROOF_SCHEMA_VERSION
+        assert group_proof["target_paths"] == group["target_paths"]
+        assert group_proof["scope_policy_hash"] == group["scope_policy_hash"]
+        assert group_proof["scope_policy"]["group_input_file_scopes"] == group["group_input_file_scopes"]
+        assert group_proof["scope_policy"]["group_tool_file_scopes"] == group["group_tool_file_scopes"]
+        assert group_proof["config_file_scopes"] == group["config_file_scopes"]
+        assert group_proof["tool_file_scopes"] == group["tool_file_scopes"]
+        assert group_proof["dependency_file_scopes"] == group["dependency_file_scopes"]
+        assert group_proof["env_keys"] == group["env_keys"]
     assert proof["stdout_log_path"] == "evidence/QualityGate/long_gate/logs/required_regressions.stdout.log"
     assert proof["stderr_log_path"] == "evidence/QualityGate/long_gate/logs/required_regressions.stderr.log"
     stdout_log = repo_root / proof["logs"]["stdout"]["path"]
@@ -227,7 +313,46 @@ def test_required_success_writes_proof_and_reuses_next_run(monkeypatch, tmp_path
     assert required_display not in second_calls
     assert not (set(group_displays) & set(second_calls))
     assert _summary_entry(summary, ENTRY_REQUIRED_REGRESSIONS)["execution_mode"] == "reused_success_cache"
-    assert _summary_entry(summary, ENTRY_REQUIRED_REGRESSIONS)["required_regressions_groups"]
+    reused_rows = _summary_entry(summary, ENTRY_REQUIRED_REGRESSIONS)["required_regressions_groups"]
+    assert {row["execution_mode"] for row in reused_rows} == {"covered_by_parent_reuse"}
+    for row in reused_rows:
+        group = next(group for group in required_entry["groups"] if group["group_id"] == row["group_id"])
+        assert row["scope_policy_hash"] == group["scope_policy_hash"]
+        assert row["proof_path"] == group["output_result_files"][0]
+        assert row["proof_sha256"] == hashlib.sha256((repo_root / row["proof_path"]).read_bytes()).hexdigest()
+        assert row["input_file_scopes"] == group["input_file_scopes"]
+
+
+def test_required_parent_cache_without_group_proofs_rebuilds_parent(monkeypatch, tmp_path):
+    ctx = _prepare_gate_run_context(monkeypatch, tmp_path)
+    module = ctx.module
+    repo_root = ctx.repo_root
+    command_plan = ctx.command_plan
+    group_displays = set(_required_group_displays(command_plan, repo_root))
+    _seed_required_success(module, monkeypatch, repo_root, command_plan)
+    success_path = _success_path(repo_root, ENTRY_REQUIRED_REGRESSIONS)
+    success_cache = json.loads(success_path.read_text(encoding="utf-8"))
+    success_cache["output_files"] = [
+        row
+        for row in success_cache["output_files"]
+        if str(row.get("path") or "") == "evidence/QualityGate/required_regressions.json"
+    ]
+    success_path.write_text(json.dumps(success_cache, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    calls = _run_gate_with_fake_commands(module, monkeypatch, repo_root, command_plan, ["--long-gate-cache"])
+    summary_entry = _summary_entry(_load_summary(repo_root), ENTRY_REQUIRED_REGRESSIONS)
+    refreshed_cache = json.loads(success_path.read_text(encoding="utf-8"))
+
+    assert not (group_displays & set(calls))
+    assert summary_entry["execution_mode"] == "grouped"
+    assert {row["execution_mode"] for row in summary_entry["required_regressions_groups"]} == {"reused_success_cache"}
+    assert {str(row["path"]) for row in refreshed_cache["output_files"]} >= {
+        "evidence/QualityGate/required_regressions.json",
+        *[
+            str(path.relative_to(repo_root)).replace("\\", "/")
+            for path in _required_group_proof_paths(command_plan, repo_root)
+        ],
+    }
 
 
 @pytest.mark.parametrize(
@@ -322,6 +447,128 @@ def test_required_single_group_input_change_only_reruns_that_group(monkeypatch, 
     } == {"reused_success_cache"}
 
 
+def test_required_group_specific_business_scope_change_only_reruns_that_group(monkeypatch, tmp_path):
+    ctx = _prepare_gate_run_context(monkeypatch, tmp_path)
+    module = ctx.module
+    repo_root = ctx.repo_root
+    command_plan = ctx.command_plan
+    groups = _required_group_entries(command_plan, repo_root)
+    changed_group = next(group for group in groups if group["group_id"] == "scheduler_config")
+    _seed_required_or_startup_success_cache(module, repo_root, command_plan, ENTRY_REQUIRED_REGRESSIONS)
+
+    _write_file(
+        repo_root,
+        "web/routes/domains/scheduler/scheduler_config_feedback.py",
+        "CONFIG_SCOPE_MARKER = True\n",
+    )
+    calls = _run_gate_with_fake_commands(module, monkeypatch, repo_root, command_plan, ["--long-gate-cache"])
+    summary_entry = _summary_entry(_load_summary(repo_root), ENTRY_REQUIRED_REGRESSIONS)
+    group_modes = {row["group_id"]: row["execution_mode"] for row in summary_entry["required_regressions_groups"]}
+
+    assert changed_group["display"] in calls
+    assert set(_required_group_displays(command_plan, repo_root)) & set(calls) == {changed_group["display"]}
+    assert summary_entry["execution_mode"] == "grouped"
+    assert group_modes["scheduler_config"] == "executed"
+    assert {
+        mode for group_id, mode in group_modes.items() if group_id != "scheduler_config"
+    } == {"reused_success_cache"}
+
+
+@pytest.mark.parametrize(
+    "changed_path",
+    [
+        ".github/workflows/quality.yml",
+        "tools/check_full_test_debt.py",
+    ],
+)
+def test_required_group_owned_config_and_tool_scope_change_only_reruns_that_group(
+    monkeypatch,
+    tmp_path,
+    changed_path,
+):
+    ctx = _prepare_gate_run_context(monkeypatch, tmp_path)
+    module = ctx.module
+    repo_root = ctx.repo_root
+    command_plan = ctx.command_plan
+    groups = _required_group_entries(command_plan, repo_root)
+    quality_gate = next(group for group in groups if group["group_id"] == "quality_gate")
+    _seed_required_or_startup_success_cache(module, repo_root, command_plan, ENTRY_REQUIRED_REGRESSIONS)
+
+    _write_file(repo_root, changed_path, "QUALITY_GATE_SCOPE_MARKER = True\n")
+    calls = _run_gate_with_fake_commands(module, monkeypatch, repo_root, command_plan, ["--long-gate-cache"])
+    summary_entry = _summary_entry(_load_summary(repo_root), ENTRY_REQUIRED_REGRESSIONS)
+    group_modes = {row["group_id"]: row["execution_mode"] for row in summary_entry["required_regressions_groups"]}
+
+    assert quality_gate["display"] in calls
+    assert set(_required_group_displays(command_plan, repo_root)) & set(calls) == {quality_gate["display"]}
+    assert summary_entry["execution_mode"] == "grouped"
+    assert group_modes["quality_gate"] == "executed"
+    assert {mode for group_id, mode in group_modes.items() if group_id != "quality_gate"} == {
+        "reused_success_cache"
+    }
+    proof = json.loads(_proof_path_for_entry(repo_root, ENTRY_REQUIRED_REGRESSIONS).read_text(encoding="utf-8"))
+    _assert_required_group_scope_rows_match_manifest(proof["groups"], groups, repo_root)
+    _assert_required_group_scope_rows_match_manifest(summary_entry["required_regressions_groups"], groups, repo_root)
+    assert {
+        row["group_id"]: row["execution_mode"] for row in proof["groups"]
+    } == group_modes
+    success_cache = json.loads(_success_path(repo_root, ENTRY_REQUIRED_REGRESSIONS).read_text(encoding="utf-8"))
+    assert {str(row["path"]) for row in success_cache["output_files"]} >= {
+        "evidence/QualityGate/required_regressions.json",
+        *[
+            str(path.relative_to(repo_root)).replace("\\", "/")
+            for path in _required_group_proof_paths(command_plan, repo_root)
+        ],
+    }
+
+
+def test_required_common_scope_change_reruns_all_groups(monkeypatch, tmp_path):
+    ctx = _prepare_gate_run_context(monkeypatch, tmp_path)
+    module = ctx.module
+    repo_root = ctx.repo_root
+    command_plan = ctx.command_plan
+    group_displays = _required_group_displays(command_plan, repo_root)
+    _seed_required_or_startup_success_cache(module, repo_root, command_plan, ENTRY_REQUIRED_REGRESSIONS)
+
+    _write_file(repo_root, "tools/test_registry.py", "COMMON_SCOPE_MARKER = True\n")
+    calls = _run_gate_with_fake_commands(module, monkeypatch, repo_root, command_plan, ["--long-gate-cache"])
+    summary_entry = _summary_entry(_load_summary(repo_root), ENTRY_REQUIRED_REGRESSIONS)
+
+    assert set(group_displays) <= set(calls)
+    assert summary_entry["execution_mode"] == "grouped"
+    assert {row["execution_mode"] for row in summary_entry["required_regressions_groups"]} == {"executed"}
+
+
+def test_required_group_specific_scope_not_leaked_to_other_group_fingerprints(tmp_path):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    command_plan = _real_quality_gate_plan()
+    manifest = _manifest_for(command_plan, repo_root)
+    required_entry = _entry_by_id(manifest, ENTRY_REQUIRED_REGRESSIONS)
+    scheduler_config = next(group for group in required_entry["groups"] if group["group_id"] == "scheduler_config")
+    analysis = next(
+        group
+        for group in required_entry["groups"]
+        if group["group_id"] == "scheduler_analysis_gantt_reports_week_plan"
+    )
+
+    before_parent = fingerprint_entry(required_entry, str(repo_root))
+    before_config = fingerprint_entry(scheduler_config, str(repo_root))
+    before_analysis = fingerprint_entry(analysis, str(repo_root))
+    _write_file(
+        repo_root,
+        "web/routes/domains/scheduler/scheduler_config_feedback.py",
+        "CONFIG_SCOPE_MARKER = True\n",
+    )
+    after_parent = fingerprint_entry(required_entry, str(repo_root))
+    after_config = fingerprint_entry(scheduler_config, str(repo_root))
+    after_analysis = fingerprint_entry(analysis, str(repo_root))
+
+    assert before_parent["hash"] != after_parent["hash"]
+    assert before_config["hash"] != after_config["hash"]
+    assert before_analysis["hash"] == after_analysis["hash"]
+
+
 def test_required_group_proof_tamper_reruns_only_that_group(monkeypatch, tmp_path):
     ctx = _prepare_gate_run_context(monkeypatch, tmp_path)
     module = ctx.module
@@ -388,10 +635,13 @@ def test_required_group_proof_tamper_reruns_only_that_group(monkeypatch, tmp_pat
         "tools/quality_gate_operations.py",
         "tools/quality_gate_scan.py",
         "tools/test_debt_registry.py",
+        "tests/long_gate_cache_helpers.py",
         "pyproject.toml",
         "requirements.txt",
         "core/services/example.py",
-        "web/routes/example.py",
+        "web/routes/domains/scheduler/scheduler_config.py",
+        "core/services/scheduler/config/config_field_spec.py",
+        "web/bootstrap/request_services.py",
         "data/repositories/example.py",
         "plugins/example.py",
         "app.py",
@@ -497,14 +747,24 @@ def test_required_invalidation_keeps_startup_success_cache_reuse(monkeypatch, tm
     command_plan = ctx.command_plan
     monkeypatch.delenv("CI", raising=False)
     startup_display = _entry_display(command_plan, repo_root, ENTRY_STARTUP_RUNTIME_REGRESSIONS)
-    group_displays = _required_group_displays(command_plan, repo_root)
+    quality_gate_display = next(
+        group["display"] for group in _required_group_entries(command_plan, repo_root) if group["group_id"] == "quality_gate"
+    )
+    ui_layout_display = next(
+        group["display"]
+        for group in _required_group_entries(command_plan, repo_root)
+        if group["group_id"] == "ui_layout_presenters_system"
+    )
     _seed_required_success(module, monkeypatch, repo_root, command_plan)
 
     monkeypatch.setenv("CI", "next7-required-only")
     calls = _run_gate_with_fake_commands(module, monkeypatch, repo_root, command_plan, ["--long-gate-cache"])
     summary = _load_summary(repo_root)
 
-    assert set(group_displays) <= set(calls)
+    assert set(_required_group_displays(command_plan, repo_root)) & set(calls) == {
+        quality_gate_display,
+        ui_layout_display,
+    }
     assert startup_display not in calls
     assert _summary_entry(summary, ENTRY_REQUIRED_REGRESSIONS)["execution_mode"] == "grouped"
     assert _summary_entry(summary, ENTRY_STARTUP_RUNTIME_REGRESSIONS)["execution_mode"] == "reused_success_cache"
@@ -545,11 +805,13 @@ def test_explain_does_not_write_required_proof(monkeypatch, tmp_path, capsys):
     ctx = _prepare_gate_run_context(monkeypatch, tmp_path)
     module = ctx.module
     repo_root = ctx.repo_root
+    command_plan = ctx.command_plan
 
     assert module.main(["--long-gate-cache-explain"]) == 0
 
     assert "required_regressions" in capsys.readouterr().out
     assert not _proof_path_for_entry(repo_root, ENTRY_REQUIRED_REGRESSIONS).exists()
+    assert not any(path.exists() for path in _required_group_proof_paths(command_plan, repo_root))
 
 
 def test_no_cache_ignores_existing_required_cache_and_does_not_write_proof(monkeypatch, tmp_path):

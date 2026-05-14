@@ -89,7 +89,8 @@ PYRIGHT_REQUIRED_VERSION = (1, 1, 406)
 PYRIGHT_GATE_CONFIG = QUALITY_GATE_PYRIGHT_GATE_CONFIG
 QUALITY_GATE_SELFTEST = QUALITY_GATE_SELFTEST_PATH
 STARTUP_RUNTIME_REGRESSIONS_PROOF_SCHEMA_VERSION = 1
-REQUIRED_REGRESSIONS_PROOF_SCHEMA_VERSION = 2
+REQUIRED_REGRESSIONS_PROOF_SCHEMA_VERSION = 3
+REQUIRED_REGRESSIONS_GROUP_PROOF_SCHEMA_VERSION = 2
 GENERATED_CLEAN_WORKTREE_EXCLUDED_PATHS = [
     QUALITY_GATE_MANIFEST_REL.replace("\\", "/"),
     QUALITY_GATE_RECEIPTS_DIR_REL.replace("\\", "/") + "/",
@@ -1623,6 +1624,31 @@ def _required_group_proof_path(group_entry: Mapping[str, Any]) -> str:
     return output_paths[0]
 
 
+def _required_group_scope_payload(group_entry: Mapping[str, Any]) -> Dict[str, Any]:
+    return {
+        "scope_policy_hash": str(group_entry.get("scope_policy_hash") or ""),
+        "common_input_file_scopes": [str(path) for path in list(group_entry.get("common_input_file_scopes") or [])],
+        "common_config_file_scopes": [str(path) for path in list(group_entry.get("common_config_file_scopes") or [])],
+        "common_tool_file_scopes": [str(path) for path in list(group_entry.get("common_tool_file_scopes") or [])],
+        "common_dependency_file_scopes": [
+            str(path) for path in list(group_entry.get("common_dependency_file_scopes") or [])
+        ],
+        "common_env_keys": [str(key) for key in list(group_entry.get("common_env_keys") or [])],
+        "group_input_file_scopes": [str(path) for path in list(group_entry.get("group_input_file_scopes") or [])],
+        "group_config_file_scopes": [str(path) for path in list(group_entry.get("group_config_file_scopes") or [])],
+        "group_tool_file_scopes": [str(path) for path in list(group_entry.get("group_tool_file_scopes") or [])],
+        "group_dependency_file_scopes": [
+            str(path) for path in list(group_entry.get("group_dependency_file_scopes") or [])
+        ],
+        "group_env_keys": [str(key) for key in list(group_entry.get("group_env_keys") or [])],
+        "input_file_scopes": [str(path) for path in list(group_entry.get("input_file_scopes") or [])],
+        "config_file_scopes": [str(path) for path in list(group_entry.get("config_file_scopes") or [])],
+        "tool_file_scopes": [str(path) for path in list(group_entry.get("tool_file_scopes") or [])],
+        "dependency_file_scopes": [str(path) for path in list(group_entry.get("dependency_file_scopes") or [])],
+        "env_keys": [str(key) for key in list(group_entry.get("env_keys") or [])],
+    }
+
+
 def _write_required_regression_group_proof(
     group_entry: Dict[str, Any],
     result: Dict[str, Any],
@@ -1645,8 +1671,9 @@ def _write_required_regression_group_proof(
     stdout_log_row = _long_gate_success_log_row(result, stream="stdout", rel_path=stdout_log_path)
     stderr_log_row = _long_gate_success_log_row(result, stream="stderr", rel_path=stderr_log_path)
     target_paths = [str(path) for path in list(group_entry.get("target_paths") or [])]
+    scope_payload = _required_group_scope_payload(group_entry)
     payload = {
-        "schema_version": 1,
+        "schema_version": REQUIRED_REGRESSIONS_GROUP_PROOF_SCHEMA_VERSION,
         "status": "passed",
         "entry_id": entry_id,
         "parent_entry_id": ENTRY_REQUIRED_REGRESSIONS,
@@ -1672,6 +1699,13 @@ def _write_required_regression_group_proof(
         "target_count": len(target_paths),
         "target_paths": target_paths,
         "target_hash": stable_json_hash(target_paths),
+        "scope_policy_hash": str(scope_payload["scope_policy_hash"]),
+        "scope_policy": scope_payload,
+        "input_file_scopes": list(scope_payload["input_file_scopes"]),
+        "config_file_scopes": list(scope_payload["config_file_scopes"]),
+        "tool_file_scopes": list(scope_payload["tool_file_scopes"]),
+        "dependency_file_scopes": list(scope_payload["dependency_file_scopes"]),
+        "env_keys": list(scope_payload["env_keys"]),
         "stdout_log_path": stdout_log_path,
         "stderr_log_path": stderr_log_path,
         "stdout_sha256": str(stdout_log_row["sha256"]),
@@ -1706,6 +1740,7 @@ def _required_group_summary_row(
     execution_mode = str((result or {}).get("execution_mode") or "")
     if not execution_mode and str(decision.get("decision") or "") == "reuse":
         execution_mode = "reused_success_cache"
+    scope_payload = _required_group_scope_payload(group_entry)
     return {
         "group_id": group_id,
         "entry_id": str(group_entry.get("entry_id") or ""),
@@ -1717,6 +1752,12 @@ def _required_group_summary_row(
         "display": str(group_entry.get("display") or ""),
         "args": [str(arg) for arg in list(group_entry.get("args") or [])],
         "command_hash": str(group_entry.get("command_hash") or ""),
+        "scope_policy_hash": str(scope_payload["scope_policy_hash"]),
+        "input_file_scopes": list(scope_payload["input_file_scopes"]),
+        "config_file_scopes": list(scope_payload["config_file_scopes"]),
+        "tool_file_scopes": list(scope_payload["tool_file_scopes"]),
+        "dependency_file_scopes": list(scope_payload["dependency_file_scopes"]),
+        "env_keys": list(scope_payload["env_keys"]),
         "proof_path": str(proof_path or ""),
         "proof_sha256": str(proof_sha256 or ""),
         "success_cache_path": _long_gate_success_result_rel_path(
@@ -1755,6 +1796,7 @@ def _write_required_regressions_grouped_proof(
     args = [str(arg) for arg in list(entry.get("args") or [])]
     required_target_paths = list(args[4:]) if args[:4] == ["python", "-m", "pytest", "-q"] else []
     coverage = _required_regression_group_coverage(entry)
+    group_scope_policy = dict(entry.get("required_regression_group_scope_policy") or {})
     group_rows = [dict(row) for row in list(result.get("required_regressions_groups") or [])]
     if len(group_rows) != int(coverage.get("group_count") or 0):
         raise QualityGateError("required_regressions group proof 缺少 group 行，不能写入父 proof")
@@ -1766,6 +1808,12 @@ def _write_required_regressions_grouped_proof(
     proof_paths = [rel_path]
     for row in group_rows:
         proof_path = str(row.get("proof_path") or "")
+        proof_sha256 = str(row.get("proof_sha256") or "")
+        if not proof_path or not proof_sha256:
+            raise QualityGateError("required_regressions group proof 缺少 proof 路径或哈希，不能写入父 proof")
+        actual_sha256 = _proof_sha256_or_empty(proof_path)
+        if actual_sha256 != proof_sha256:
+            raise QualityGateError("required_regressions group proof 文件哈希与 group 行不一致，不能写入父 proof")
         if proof_path and proof_path not in proof_paths:
             proof_paths.append(proof_path)
     cache_root = str(cache_dir or "evidence/QualityGate/long_gate").replace("\\", "/")
@@ -1805,6 +1853,7 @@ def _write_required_regressions_grouped_proof(
             "duplicates": list(coverage.get("duplicates") or []),
             "unknown": list(coverage.get("unknown") or []),
         },
+        "group_scope_policy": group_scope_policy,
         "groups": group_rows,
         "stdout_log_path": stdout_log_path,
         "stderr_log_path": stderr_log_path,

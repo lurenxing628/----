@@ -186,6 +186,23 @@ def test_fingerprint_entry_combines_command_files_and_environment(tmp_path, monk
     assert changed["hash"] != first["hash"]
 
 
+def test_fingerprint_entry_keeps_entry_specific_file_scopes_independent(tmp_path):
+    config_file = tmp_path / "web" / "routes" / "domains" / "scheduler" / "scheduler_config.py"
+    config_file.parent.mkdir(parents=True)
+    config_file.write_text("CONFIG_MARKER = 1\n", encoding="utf-8")
+    config_entry = _entry(["web/routes/domains/scheduler/scheduler_config*.py"])
+    analysis_entry = _entry(["web/routes/domains/scheduler/scheduler_analysis.py"])
+
+    before_config = fingerprint_entry(config_entry, str(tmp_path))
+    before_analysis = fingerprint_entry(analysis_entry, str(tmp_path))
+    config_file.write_text("CONFIG_MARKER = 2\n", encoding="utf-8")
+    after_config = fingerprint_entry(config_entry, str(tmp_path))
+    after_analysis = fingerprint_entry(analysis_entry, str(tmp_path))
+
+    assert after_config["hash"] != before_config["hash"]
+    assert after_analysis["hash"] == before_analysis["hash"]
+
+
 def test_fingerprint_entry_changes_when_runtime_facts_change(tmp_path, monkeypatch):
     source = tmp_path / "tools" / "example.py"
     source.parent.mkdir()
