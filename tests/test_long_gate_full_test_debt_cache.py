@@ -11,6 +11,7 @@ from typing import Sequence
 
 import pytest
 
+from tools import long_gate_full_test_debt as full_debt_mod
 from tools.long_gate_cache import decide_reuse, write_success
 from tools.long_gate_collect import build_collect_nodeids_payload, write_collect_nodeids
 from tools.long_gate_fingerprint import fingerprint_entry
@@ -18,6 +19,7 @@ from tools.long_gate_full_test_debt import (
     NODE_CACHE_REL,
     _classify_incremental_plan,
     _load_node_cache,
+    _merge_payload,
     _source_may_import_changed_test_module,
     _validated_previous_success,
     write_full_test_debt_node_cache_after_success,
@@ -140,6 +142,67 @@ def _summary_payload(token: str = "ok") -> dict:
         "unexpected_failure_count": 0,
         "active_xfail_entries": [],
         "token": token,
+    }
+
+
+def _passed_report(nodeid: str) -> dict:
+    return {
+        "nodeid": nodeid,
+        "when": "call",
+        "outcome": "passed",
+        "longrepr": "",
+        "xfail_marker_present": False,
+        "xfail_marker_reason": "",
+        "xfail_marker_strict": False,
+        "xfail_marker_run": True,
+        "wasxfail_reason": "",
+        "strict_xpass": False,
+    }
+
+
+def _failed_report(nodeid: str) -> dict:
+    report = _passed_report(nodeid)
+    report["outcome"] = "failed"
+    report["longrepr"] = "AssertionError: selected nodeid failed"
+    return report
+
+
+def _current_payload_for_nodeids(nodeids: Sequence[str]) -> dict:
+    reports = [_passed_report(str(nodeid)) for nodeid in nodeids]
+    return {
+        "schema_version": 2,
+        "baseline_kind": "after_main_style_isolation",
+        "importable": False,
+        "importable_blockers": [],
+        "generated_at": "2026-05-13T00:00:00+08:00",
+        "head_sha": "deadbeef",
+        "collector_argv": ["--baseline-kind", "after_main_style_isolation", "--", "tests"],
+        "git_status_short_before": [],
+        "worktree_clean_before": True,
+        "python_executable": sys.executable,
+        "python_version": sys.version.splitlines()[0],
+        "pytest_version": "8.3.5",
+        "pytest_args": ["tests", "-q", "--tb=short", "-ra", "-p", "no:cacheprovider"],
+        "exitstatus": 0,
+        "collected_nodeids": list(nodeids),
+        "collection_errors": [],
+        "reports": reports,
+        "summary": {
+            "collected_count": len(list(nodeids)),
+            "failed_nodeid_count": 0,
+            "collection_error_count": 0,
+            "outcome_counts": {"passed": len(reports)},
+            "classification_counts": {
+                "candidate_test_debt": 0,
+                "main_style_isolation_candidate": 0,
+                "required_or_quality_gate_self_failure": 0,
+            },
+        },
+        "classifications": {
+            "candidate_test_debt": [],
+            "main_style_isolation_candidate": [],
+            "required_or_quality_gate_self_failure": [],
+        },
     }
 
 
@@ -433,6 +496,55 @@ def test_nodeid_incremental_plan_selects_changed_test_file_nodeids(tmp_path):
     assert plan["mode"] == "nodeid_incremental"
     assert plan["changed_test_files"] == ["tests/test_a.py"]
     assert plan["selected_nodeids"] == ["tests/test_a.py::test_a", "tests/test_a.py::test_b"]
+    assert plan["safety_checks"] == {
+        "collect_nodeids_valid": True,
+        "node_cache_valid": True,
+        "unchanged_test_hashes_valid": True,
+        "unchanged_nodeid_mapping_valid": True,
+        "changed_test_imported_elsewhere": False,
+        "registered_debt_nodeid_in_changed_files": False,
+    }
+
+
+def test_nodeid_incremental_plan_accepts_top_level_regression_test_file(tmp_path):
+    _write_file(tmp_path, "tests/regression_sample_contract.py", "before\n")
+    _write_file(tmp_path, "tests/test_b.py", "same\n")
+    previous = _fingerprint_from_file_hashes(
+        {
+            "tests/regression_sample_contract.py": "old-regression",
+            "tests/test_b.py": hashlib.sha256(b"same\n").hexdigest(),
+            "evidence/QualityGate/collect_nodeids.json": "old-collect",
+        }
+    )
+    current = _fingerprint_from_file_hashes(
+        {
+            "tests/regression_sample_contract.py": "new-regression",
+            "tests/test_b.py": hashlib.sha256(b"same\n").hexdigest(),
+            "evidence/QualityGate/collect_nodeids.json": "new-collect",
+        }
+    )
+    snapshot = build_collect_nodeids_payload(
+        "tests/regression_sample_contract.py::test_regression_sample\ntests/test_b.py::test_b\n",
+        pytest_version="pytest 8.3.5",
+    )
+
+    plan, error = _classify_incremental_plan(
+        repo_root=str(tmp_path),
+        previous_fingerprint=previous,
+        current_fingerprint=current,
+        collect_snapshot=snapshot,
+        node_cache={
+            "collect_nodeids": snapshot,
+            "test_file_hashes": {"tests/test_b.py": hashlib.sha256(b"same\n").hexdigest()},
+        },
+        ledger=_empty_test_debt_ledger(),
+    )
+
+    assert error == ""
+    assert plan is not None
+    assert plan["mode"] == "nodeid_incremental"
+    assert plan["changed_test_files"] == ["tests/regression_sample_contract.py"]
+    assert plan["selected_nodeids"] == ["tests/regression_sample_contract.py::test_regression_sample"]
 
 
 def test_nodeid_incremental_plan_selects_multiple_changed_test_files(tmp_path):
@@ -1010,6 +1122,11 @@ def test_changed_test_import_text_prefilter_keeps_safe_import_spelling() -> None
     [
         "tests/conftest.py",
         "tests/helpers.py",
+        "tests/test_sample_helpers.py",
+        "tests/regression_cache_helpers.py",
+        "tests/long_gate_cache_helpers.py",
+        "tests/excel_preview_confirm_helpers.py",
+        "tests/runtime_cleanup_helper.py",
         "tests/some_dir/test_helper.py",
         "tests/regression/regression_collection_contract.py",
         "conftest.py",
@@ -1018,7 +1135,10 @@ def test_changed_test_import_text_prefilter_keeps_safe_import_spelling() -> None
         "data/repository.py",
         "plugins/demo.py",
         "pyproject.toml",
+        "templates/scheduler/gantt.html",
+        "static/js/config_manual.js",
         "tools/check_full_test_debt.py",
+        "scripts/run_quality_gate.py",
     ],
 )
 def test_nodeid_incremental_plan_falls_back_for_unsafe_paths(tmp_path, changed_path):
@@ -1193,6 +1313,210 @@ def test_node_cache_uses_persistent_success_logs_after_run_log_cleanup(tmp_path)
     assert error == ""
     assert loaded is not None
     assert loaded["stdout_log_path"] == "evidence/QualityGate/long_gate/logs/full_test_debt.stdout.log"
+
+
+def test_merge_payload_records_incremental_proof_and_keeps_formal_args(tmp_path):
+    old_payload = _current_payload_for_nodeids(
+        ["tests/test_a.py::test_a", "tests/test_b.py::test_b"]
+    )
+    incremental_payload = {
+        "exitstatus": 0,
+        "reports": [_passed_report("tests/test_a.py::test_a")],
+        "collection_errors": [],
+    }
+    collect_snapshot = build_collect_nodeids_payload(
+        "tests/test_a.py::test_a\ntests/test_b.py::test_b\n",
+        pytest_version="pytest 8.3.5",
+    )
+
+    merged = _merge_payload(
+        repo_root=str(tmp_path),
+        old_payload=old_payload,
+        incremental_payload=incremental_payload,
+        collect_snapshot=collect_snapshot,
+        node_cache={"payload_hash": "sha256:node-cache"},
+        changed_test_files=["tests/test_a.py"],
+        selected_nodeids=["tests/test_a.py::test_a"],
+        pytest_args=["tests/test_a.py::test_a", "-q", "--tb=short", "-ra", "-p", "no:cacheprovider"],
+    )
+
+    assert merged["pytest_args"] == ["tests", "-q", "--tb=short", "-ra", "-p", "no:cacheprovider"]
+    assert merged["collected_nodeids"] == ["tests/test_a.py::test_a", "tests/test_b.py::test_b"]
+    assert [report["nodeid"] for report in merged["reports"]] == [
+        "tests/test_a.py::test_a",
+        "tests/test_b.py::test_b",
+    ]
+    assert merged["incremental_proof"] == {
+        "mode": "nodeid_incremental",
+        "selected_nodeids": ["tests/test_a.py::test_a"],
+        "changed_test_files": ["tests/test_a.py"],
+        "previous_payload_hash": f"sha256:{stable_json_hash(old_payload)}",
+        "node_cache_hash": "sha256:node-cache",
+        "collect_nodeids_hash": collect_snapshot["nodeid_hash"],
+        "merge_policy": "replace_reports_for_changed_test_files",
+    }
+
+
+def test_special_nodeid_incremental_failure_is_checked_against_merged_payload(monkeypatch, tmp_path):
+    collect_snapshot = build_collect_nodeids_payload(
+        "tests/test_a.py::test_a\ntests/test_b.py::test_b\n",
+        pytest_version="pytest 8.3.5",
+    )
+    old_payload = _current_payload_for_nodeids(
+        ["tests/test_a.py::test_a", "tests/test_b.py::test_b"]
+    )
+    node_cache = {
+        "current_payload": old_payload,
+        "payload_hash": "sha256:node-cache",
+    }
+    stale_current = tmp_path / "evidence" / "QualityGate" / "current_full_test_debt.json"
+    stale_summary = tmp_path / "evidence" / "QualityGate" / "full_test_debt_summary.json"
+    stale_node_cache = tmp_path / NODE_CACHE_REL
+    stale_current.parent.mkdir(parents=True, exist_ok=True)
+    stale_current.write_text("stale-current\n", encoding="utf-8")
+    stale_summary.write_text("stale-summary\n", encoding="utf-8")
+    stale_node_cache.write_text("stale-node-cache\n", encoding="utf-8")
+    plan = {
+        "mode": "nodeid_incremental",
+        "changed_paths": ["tests/test_a.py"],
+        "changed_test_files": ["tests/test_a.py"],
+        "selected_nodeids": ["tests/test_a.py::test_a"],
+    }
+    seen_payloads = []
+
+    monkeypatch.setattr(
+        full_debt_mod,
+        "_validated_previous_success",
+        lambda **_kwargs: (
+            {
+                "status": "passed",
+                "returncode": 0,
+                "fingerprint": {"hash": "sha256:previous"},
+                "fingerprint_hash": "sha256:previous",
+            },
+            "",
+        ),
+    )
+    monkeypatch.setattr(full_debt_mod, "_load_node_cache", lambda *_args, **_kwargs: (node_cache, ""))
+    monkeypatch.setattr(full_debt_mod, "_load_collect_snapshot", lambda *_args, **_kwargs: (collect_snapshot, ""))
+    monkeypatch.setattr(full_debt_mod, "_load_ledger_for_repo", lambda *_args, **_kwargs: _empty_test_debt_ledger())
+    monkeypatch.setattr(full_debt_mod, "_classify_incremental_plan", lambda **_kwargs: (plan, ""))
+    monkeypatch.setattr(
+        full_debt_mod,
+        "_run_incremental_collector",
+        lambda *_args, **_kwargs: {
+            "stdout": "selected failed\n",
+            "stderr": "",
+            "returncode": 1,
+            "payload": {
+                "exitstatus": 1,
+                "reports": [_failed_report("tests/test_a.py::test_a")],
+                "collection_errors": [],
+            },
+            "pytest_args": ["tests/test_a.py::test_a", "-q", "--tb=short", "-ra", "-p", "no:cacheprovider"],
+            "collector_contract_error": False,
+        },
+    )
+
+    def fake_run_check_from_existing_payload(payload, *, ledger=None, require_clean_worktree_proof=True):
+        seen_payloads.append(dict(payload))
+        raise full_debt_mod.QualityGateError("checker rejected merged payload")
+
+    monkeypatch.setattr(
+        full_debt_mod.check_full_test_debt,
+        "run_check_from_existing_payload",
+        fake_run_check_from_existing_payload,
+    )
+
+    result = full_debt_mod.try_run_special_full_test_debt_mode(
+        repo_root=str(tmp_path),
+        entry={"entry_id": "full_test_debt"},
+        current_fingerprint={"hash": "sha256:current"},
+        decision={
+            "decision": "run",
+            "reason": "input fingerprint changed",
+            "previous_result_path": "evidence/QualityGate/long_gate/results/full_test_debt.success.json",
+        },
+        evaluation={},
+        cache_dir="evidence/QualityGate/long_gate",
+    )
+
+    assert seen_payloads
+    assert seen_payloads[0]["incremental_proof"]["selected_nodeids"] == ["tests/test_a.py::test_a"]
+    assert seen_payloads[0]["pytest_args"] == ["tests", "-q", "--tb=short", "-ra", "-p", "no:cacheprovider"]
+    assert seen_payloads[0]["exitstatus"] == 1
+    assert seen_payloads[0]["summary"]["failed_nodeid_count"] == 1
+    assert seen_payloads[0]["summary"]["classification_counts"]["candidate_test_debt"] == 1
+    assert seen_payloads[0]["classifications"]["candidate_test_debt"] == ["tests/test_a.py::test_a"]
+    reports_by_nodeid = {report["nodeid"]: report for report in seen_payloads[0]["reports"]}
+    assert reports_by_nodeid["tests/test_a.py::test_a"]["outcome"] == "failed"
+    assert reports_by_nodeid["tests/test_b.py::test_b"]["outcome"] == "passed"
+    assert result is not None
+    assert result["returncode"] == 2
+    assert result["execution_mode"] == "nodeid_incremental"
+    assert "checker rejected merged payload" in result["stderr"]
+    assert stale_current.read_text(encoding="utf-8") == "stale-current\n"
+    assert stale_summary.read_text(encoding="utf-8") == "stale-summary\n"
+    assert stale_node_cache.read_text(encoding="utf-8") == "stale-node-cache\n"
+
+
+def test_special_nodeid_incremental_success_writes_merged_outputs(monkeypatch, tmp_path):
+    entry, _old_fingerprint = _seed_success(tmp_path)
+    success = _load_success(tmp_path)
+    _write_file(tmp_path, "tests/test_a.py", "def test_a():\n    assert 1 == 1\n# changed\n")
+    current_fingerprint = fingerprint_entry(entry, str(tmp_path))
+
+    monkeypatch.setattr(full_debt_mod, "_load_ledger_for_repo", lambda *_args, **_kwargs: _empty_test_debt_ledger())
+    monkeypatch.setattr(full_debt_mod, "_git_status", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(full_debt_mod, "_git_head", lambda *_args, **_kwargs: "deadbeef")
+    monkeypatch.setattr(
+        full_debt_mod.check_full_test_debt,
+        "run_check_from_existing_payload",
+        lambda *_args, **_kwargs: _summary_payload("incremental"),
+    )
+    monkeypatch.setattr(
+        full_debt_mod,
+        "_run_incremental_collector",
+        lambda *_args, **_kwargs: {
+            "stdout": "selected passed\n",
+            "stderr": "",
+            "returncode": 0,
+            "payload": {
+                "exitstatus": 0,
+                "reports": [_passed_report("tests/test_a.py::test_a")],
+                "collection_errors": [],
+            },
+            "pytest_args": ["tests/test_a.py::test_a", "-q", "--tb=short", "-ra", "-p", "no:cacheprovider"],
+            "collector_contract_error": False,
+        },
+    )
+
+    result = full_debt_mod.try_run_special_full_test_debt_mode(
+        repo_root=str(tmp_path),
+        entry=entry,
+        current_fingerprint=current_fingerprint,
+        decision={
+            "decision": "run",
+            "reason": "input fingerprint changed",
+            "previous_result_path": "evidence/QualityGate/long_gate/results/full_test_debt.success.json",
+        },
+        evaluation={"validated_success": success},
+        cache_dir="evidence/QualityGate/long_gate",
+    )
+
+    assert result is not None
+    assert result["returncode"] == 0
+    assert result["execution_mode"] == "nodeid_incremental"
+    assert result["reused_from"]["changed_test_files"] == ["tests/test_a.py"]
+    assert result["reused_from"]["selected_nodeids"] == ["tests/test_a.py::test_a"]
+    current_payload = json.loads(
+        (tmp_path / "evidence" / "QualityGate" / "current_full_test_debt.json").read_text(encoding="utf-8")
+    )
+    assert current_payload["incremental_proof"]["mode"] == "nodeid_incremental"
+    assert current_payload["incremental_proof"]["merge_policy"] == "replace_reports_for_changed_test_files"
+    assert current_payload["pytest_args"] == ["tests", "-q", "--tb=short", "-ra", "-p", "no:cacheprovider"]
+    assert (tmp_path / "evidence" / "QualityGate" / "full_test_debt_summary.json").exists()
+    assert (tmp_path / NODE_CACHE_REL).exists()
 
 
 def test_runner_writes_and_reuses_full_test_debt_success_cache(monkeypatch, tmp_path, capsys):
@@ -1392,6 +1716,7 @@ def test_collect_nodeids_nodeid_hash_change_invalidates_full_test_debt(tmp_path)
     [
         "evidence/QualityGate/current_full_test_debt.json",
         "evidence/QualityGate/full_test_debt_summary.json",
+        NODE_CACHE_REL,
     ],
 )
 def test_full_test_debt_output_missing_or_hash_mismatch_is_not_reused(tmp_path, rel_path):

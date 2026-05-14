@@ -254,6 +254,8 @@ def _is_regular_test_file(path: str) -> bool:
         return False
     if not normalized.startswith("tests/") or normalized.count("/") != 1 or not normalized.endswith(".py"):
         return False
+    if name.endswith("_helpers.py"):
+        return False
     return name.startswith("test_") or name.startswith("regression_")
 
 
@@ -459,6 +461,14 @@ def _classify_incremental_plan(
             "changed_paths": changed_paths,
             "selected_nodeids": [],
             "changed_test_files": [],
+            "safety_checks": {
+                "collect_nodeids_valid": True,
+                "node_cache_valid": True,
+                "unchanged_test_hashes_valid": True,
+                "unchanged_nodeid_mapping_valid": True,
+                "changed_test_imported_elsewhere": False,
+                "registered_debt_nodeid_in_changed_files": False,
+            },
         }, ""
 
     selected: List[str] = []
@@ -497,6 +507,14 @@ def _classify_incremental_plan(
         "changed_paths": changed_paths,
         "changed_test_files": changed_test_files,
         "selected_nodeids": list(dict.fromkeys(selected)),
+        "safety_checks": {
+            "collect_nodeids_valid": True,
+            "node_cache_valid": True,
+            "unchanged_test_hashes_valid": True,
+            "unchanged_nodeid_mapping_valid": True,
+            "changed_test_imported_elsewhere": False,
+            "registered_debt_nodeid_in_changed_files": False,
+        },
     }, ""
 
 
@@ -809,6 +827,7 @@ def _run_incremental_collector(repo_root: str, nodeids: Sequence[str]) -> Dict[s
             "returncode": 2,
             "payload": None,
             "pytest_args": pytest_args,
+            "collector_contract_error": True,
         }
     if int(proc.returncode) != payload_exitstatus:
         return {
@@ -818,6 +837,7 @@ def _run_incremental_collector(repo_root: str, nodeids: Sequence[str]) -> Dict[s
             "returncode": 2,
             "payload": payload,
             "pytest_args": pytest_args,
+            "collector_contract_error": True,
         }
     if int(proc.returncode) != 0:
         return {
@@ -826,6 +846,7 @@ def _run_incremental_collector(repo_root: str, nodeids: Sequence[str]) -> Dict[s
             "returncode": int(proc.returncode),
             "payload": payload,
             "pytest_args": pytest_args,
+            "collector_contract_error": False,
         }
     return {
         "stdout": str(proc.stdout or ""),
@@ -833,6 +854,7 @@ def _run_incremental_collector(repo_root: str, nodeids: Sequence[str]) -> Dict[s
         "returncode": 0,
         "payload": payload,
         "pytest_args": pytest_args,
+        "collector_contract_error": False,
     }
 
 
@@ -842,6 +864,7 @@ def _merge_payload(
     old_payload: Mapping[str, Any],
     incremental_payload: Mapping[str, Any],
     collect_snapshot: Mapping[str, Any],
+    node_cache: Mapping[str, Any],
     changed_test_files: Sequence[str],
     selected_nodeids: Sequence[str],
     pytest_args: Sequence[str],
@@ -873,6 +896,8 @@ def _merge_payload(
         if isinstance(error, dict)
     )
     nodeids = [str(item) for item in list(collect_snapshot.get("nodeids") or [])]
+    reports = collect_full_test_debt._sort_reports(reports, nodeids)  # noqa: SLF001
+    collection_errors = sorted(collection_errors, key=lambda item: str(item.get("nodeid") or ""))
     baseline_kind = str(old_payload.get("baseline_kind") or "after_main_style_isolation")
     classifications = collect_full_test_debt._classify_failures(  # noqa: SLF001
         reports,
@@ -882,6 +907,7 @@ def _merge_payload(
     )
     summary = collect_full_test_debt._summarize(nodeids, reports, collection_errors, classifications)  # noqa: SLF001
     payload = dict(old_payload)
+    git_status_short_before = _git_status(repo_root)
     payload.update(
         {
             "generated_at": _now_iso(),
@@ -894,8 +920,8 @@ def _merge_payload(
                 "--",
                 *list(pytest_args),
             ],
-            "git_status_short_before": _git_status(repo_root),
-            "worktree_clean_before": _git_status(repo_root) == [],
+            "git_status_short_before": git_status_short_before,
+            "worktree_clean_before": git_status_short_before == [],
             "pytest_args": list(FORMAL_FULL_TEST_PYTEST_ARGS),
             "exitstatus": int(incremental_payload.get("exitstatus") or 0),
             "collected_nodeids": nodeids,
@@ -903,6 +929,15 @@ def _merge_payload(
             "reports": reports,
             "summary": summary,
             "classifications": classifications,
+            "incremental_proof": {
+                "mode": "nodeid_incremental",
+                "selected_nodeids": list(selected_nodeids),
+                "changed_test_files": list(changed_test_files),
+                "previous_payload_hash": f"sha256:{stable_json_hash(dict(old_payload))}",
+                "node_cache_hash": str(node_cache.get("payload_hash") or ""),
+                "collect_nodeids_hash": str(collect_snapshot.get("nodeid_hash") or ""),
+                "merge_policy": "replace_reports_for_changed_test_files",
+            },
             "incremental_source": {
                 "mode": "nodeid_incremental",
                 "changed_test_files": list(changed_test_files),
@@ -1029,7 +1064,7 @@ def try_run_special_full_test_debt_mode(
     if not selected_nodeids:
         return None
     collector_result = _run_incremental_collector(repo_root, selected_nodeids)
-    if int(collector_result["returncode"]) != 0:
+    if bool(collector_result.get("collector_contract_error")):
         return {
             "stdout": str(collector_result.get("stdout") or ""),
             "stderr": str(collector_result.get("stderr") or ""),
@@ -1045,6 +1080,7 @@ def try_run_special_full_test_debt_mode(
         old_payload=dict(node_cache["current_payload"]),
         incremental_payload=incremental_payload,
         collect_snapshot=collect_snapshot,
+        node_cache=node_cache,
         changed_test_files=[str(item) for item in list(plan.get("changed_test_files") or [])],
         selected_nodeids=selected_nodeids,
         pytest_args=list(collector_result.get("pytest_args") or []),
@@ -1200,6 +1236,7 @@ def explain_special_full_test_debt_plan(
         "changed_paths": list(plan.get("changed_paths") or []),
         "changed_test_files": list(plan.get("changed_test_files") or []),
         "selected_nodeids": list(plan.get("selected_nodeids") or []),
+        "safety_checks": dict(plan.get("safety_checks") or {}),
         **_special_explain_diagnostics(
             repo_root=repo_root,
             decision=decision,
