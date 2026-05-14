@@ -480,6 +480,26 @@ def test_extract_copyable_failure_quotes_pytest_nodeids_and_ignores_non_pytest_o
     assert non_pytest_failure["copyable_command"] == "python tools/check_full_test_debt.py"
 
 
+def test_extract_copyable_failure_ignores_legacy_required_group_payload():
+    failure = extract_copyable_failure(
+        entry_id="required_regressions",
+        display="python -m pytest -q tests/test_parent.py::test_parent",
+        result={
+            "stdout": "FAILED tests/test_parent.py::test_parent",
+            "stderr": "",
+            "returncode": 1,
+            "required_regressions_failed_group": {
+                "display": "python -m pytest -q tests/test_old_group.py::test_old_group",
+            },
+        },
+        receipt_path="evidence/QualityGate/receipts/required.json",
+    )
+
+    assert "required_regressions_failed_group" not in failure
+    assert failure["copyable_nodeids"] == ["tests/test_parent.py::test_parent"]
+    assert failure["copyable_command"] == "python -m pytest -q tests/test_parent.py::test_parent"
+
+
 def test_interrupted_and_partial_write_flags_are_preserved():
     entry = {"entry_id": "pytest_collect_all", "entry_type": "pytest_collect_all", "cache_status": "enabled"}
     decision = {"entry_id": "pytest_collect_all", "decision": "run", "reason": "manual", "invalidated_by": []}

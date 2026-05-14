@@ -1960,6 +1960,58 @@ def test_special_ledger_only_success_writes_current_payload_and_node_cache(monke
     assert node_cache["current_payload"] == current_payload
 
 
+def test_special_ledger_only_checker_failure_does_not_fallback_or_write_outputs(monkeypatch, tmp_path):
+    entry, _old_fingerprint = _seed_success(tmp_path)
+    success = _load_success(tmp_path)
+    _write_ledger_file(tmp_path)
+    current_fingerprint = fingerprint_entry(entry, str(tmp_path))
+    stale_current = tmp_path / "evidence" / "QualityGate" / "current_full_test_debt.json"
+    stale_summary = tmp_path / "evidence" / "QualityGate" / "full_test_debt_summary.json"
+    node_cache_path = tmp_path / NODE_CACHE_REL
+    stale_current.write_text("stale-current\n", encoding="utf-8")
+    stale_summary.write_text("stale-summary\n", encoding="utf-8")
+    node_cache_before = node_cache_path.read_text(encoding="utf-8")
+    seen_payloads = []
+
+    monkeypatch.setattr(full_debt_mod, "_load_ledger_for_repo", lambda *_args, **_kwargs: _empty_test_debt_ledger())
+    monkeypatch.setattr(full_debt_mod, "_git_status", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(full_debt_mod, "_git_head", lambda *_args, **_kwargs: "new-head")
+
+    def fake_run_check_from_existing_payload(payload, *, ledger=None, require_clean_worktree_proof=True):
+        seen_payloads.append(dict(payload))
+        raise full_debt_mod.QualityGateError("checker rejected ledger-only payload")
+
+    monkeypatch.setattr(
+        full_debt_mod.check_full_test_debt,
+        "run_check_from_existing_payload",
+        fake_run_check_from_existing_payload,
+    )
+
+    result = full_debt_mod.try_run_special_full_test_debt_mode(
+        repo_root=str(tmp_path),
+        entry=entry,
+        current_fingerprint=current_fingerprint,
+        decision={
+            "decision": "run",
+            "reason": "input fingerprint changed",
+            "previous_result_path": "evidence/QualityGate/long_gate/results/full_test_debt.success.json",
+        },
+        evaluation={"validated_success": success},
+        cache_dir="evidence/QualityGate/long_gate",
+    )
+
+    assert seen_payloads
+    assert seen_payloads[0]["incremental_proof"]["mode"] == "ledger_only"
+    assert seen_payloads[0]["head_sha"] == "new-head"
+    assert result is not None
+    assert result["returncode"] == 2
+    assert result["execution_mode"] == "ledger_only"
+    assert "checker rejected ledger-only payload" in result["stderr"]
+    assert stale_current.read_text(encoding="utf-8") == "stale-current\n"
+    assert stale_summary.read_text(encoding="utf-8") == "stale-summary\n"
+    assert node_cache_path.read_text(encoding="utf-8") == node_cache_before
+
+
 def test_special_nodeid_incremental_failure_is_checked_against_merged_payload(monkeypatch, tmp_path):
     collect_snapshot = build_collect_nodeids_payload(
         "tests/test_a.py::test_a\ntests/test_b.py::test_b\n",
@@ -2910,6 +2962,57 @@ def test_runner_fails_when_nodeid_incremental_fails(monkeypatch, tmp_path):
     full_debt = _summary_entry(_load_summary(repo_root), "full_test_debt")
     assert full_debt["failed"] is True
     assert full_debt["execution_mode"] == "nodeid_incremental"
+    assert "python tools/check_full_test_debt.py" not in calls
+
+
+def test_runner_fails_when_ledger_only_checker_fails_without_full_fallback(monkeypatch, tmp_path):
+    module = _import_run_quality_gate()
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    command_plan = _quality_gate_plan()
+    _patch_gate_environment(monkeypatch, module, repo_root, statuses=[[], [], [], [], [], []])
+    monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
+    calls: list[str] = []
+    monkeypatch.setattr(module, "_run_command", _fake_successful_command(module, repo_root, calls))
+
+    assert module.main(["--long-gate-cache"]) == 0
+    _write_ledger_file(repo_root)
+    calls.clear()
+
+    def fake_special(**kwargs):
+        return {
+            "stdout": "",
+            "stderr": "ledger-only checker rejected payload\n",
+            "returncode": 2,
+            "execution_mode": "ledger_only",
+            "reused_from": {
+                "node_cache_path": NODE_CACHE_REL,
+                "previous_result_path": kwargs["decision"].get("previous_result_path") or "",
+                "fingerprint_hash": kwargs["decision"].get("current_fingerprint_hash") or "sha256:previous",
+            },
+        }
+
+    def fake_run_command(display, args, capture_output=False):
+        calls.append(display)
+        if display == "python -m pytest --collect-only -q tests":
+            return {"stdout": "tests/test_a.py::test_a\n", "stderr": "", "returncode": 0}
+        if display == "python tools/check_full_test_debt.py":
+            raise AssertionError("whole full_test_debt command must not hide ledger-only failure")
+        if display == "python -m ruff --version":
+            return {"stdout": "ruff 0.15.4", "stderr": "", "returncode": 0}
+        if display == "python -m pyright --version":
+            return {"stdout": "pyright 1.1.406", "stderr": "", "returncode": 0}
+        return {"stdout": "", "stderr": "", "returncode": 0}
+
+    monkeypatch.setattr(module, "try_run_special_full_test_debt_mode", fake_special)
+    monkeypatch.setattr(module, "_run_command", fake_run_command)
+
+    with pytest.raises(module.QualityGateError):
+        module.main(["--long-gate-cache"])
+
+    full_debt = _summary_entry(_load_summary(repo_root), "full_test_debt")
+    assert full_debt["failed"] is True
+    assert full_debt["execution_mode"] == "ledger_only"
     assert "python tools/check_full_test_debt.py" not in calls
 
 

@@ -67,23 +67,11 @@ def extract_copyable_failure(
         nodeids = _pytest_nodeids_from_text("\n".join([copyable_command, stdout, stderr]))
     if nodeids:
         copyable_command = "python -m pytest -q " + " ".join(shlex.quote(nodeid) for nodeid in nodeids)
-    failed_group = result.get("required_regressions_failed_group")
-    failed_group_payload: Dict[str, Any] = {}
-    if isinstance(failed_group, Mapping):
-        failed_group_payload = dict(failed_group)
-        group_display = _command_text_from_display(str(failed_group.get("display") or ""))
-        if group_display:
-            copyable_command = group_display
-            group_nodeids = _pytest_nodeids_from_text("\n".join([group_display, stdout, stderr]))
-            if group_nodeids:
-                copyable_command = "python -m pytest -q " + " ".join(shlex.quote(nodeid) for nodeid in group_nodeids)
-                nodeids = group_nodeids
     return {
         "entry_id": str(entry_id or ""),
         "display": _command_text_from_display(display),
         "copyable_command": copyable_command,
         "copyable_nodeids": nodeids,
-        "required_regressions_failed_group": failed_group_payload,
         "receipt_path": str(receipt_path or ""),
         "stdout_log_path": str(result.get("stdout_log_path") or ""),
         "stderr_log_path": str(result.get("stderr_log_path") or ""),

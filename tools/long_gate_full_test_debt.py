@@ -1280,8 +1280,14 @@ def try_run_special_full_test_debt_mode(
                 ledger=ledger,
                 require_clean_worktree_proof=True,
             )
-        except QualityGateError:
-            return None
+        except QualityGateError as exc:
+            return {
+                "stdout": "",
+                "stderr": f"[long-gate-full-test-debt] ledger-only 校验失败\nERROR: {exc}\n",
+                "returncode": 2,
+                "execution_mode": "ledger_only",
+                "reused_from": reused_from,
+            }
         metadata = {"execution_mode": "ledger_only", "changed_paths": list(plan["changed_paths"])}
         result: Dict[str, Any] = {
             "stdout": _summary_stdout(summary, metadata),
