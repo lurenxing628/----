@@ -13,13 +13,15 @@ from tests.long_gate_cache_helpers import (
     _entry_display,
     _fake_successful_command,
     _fingerprint_for,
-    _import_run_quality_gate,
     _load_summary,
     _manifest_for,
-    _patch_gate_environment,
+    _prepare_gate_run_context,
+    _proof_path_for_entry,
     _real_quality_gate_plan,
     _reuse_decision_for,
     _run_gate_with_fake_commands,
+    _seed_required_or_startup_success_cache,
+    _success_log_path_for_entry,
     _success_path,
     _summary_entry,
     _write_file,
@@ -31,23 +33,10 @@ from tools.long_gate_manifest import (
 )
 
 
-def _required_proof_path(repo_root: Path) -> Path:
-    return repo_root / "evidence" / "QualityGate" / "required_regressions.json"
-
-
-def _startup_proof_path(repo_root: Path) -> Path:
-    return repo_root / "evidence" / "QualityGate" / "startup_runtime_regressions.json"
-
-
 def _seed_required_success(module, monkeypatch, repo_root: Path, command_plan: Sequence[dict]) -> None:
     _run_gate_with_fake_commands(module, monkeypatch, repo_root, command_plan, ["--long-gate-cache"])
-    assert _required_proof_path(repo_root).exists()
+    assert _proof_path_for_entry(repo_root, ENTRY_REQUIRED_REGRESSIONS).exists()
     assert _success_path(repo_root, ENTRY_REQUIRED_REGRESSIONS).exists()
-
-
-def _success_log_path(repo_root: Path, stream: str) -> Path:
-    success = json.loads(_success_path(repo_root, ENTRY_REQUIRED_REGRESSIONS).read_text(encoding="utf-8"))
-    return repo_root / str(success[f"{stream}_log_path"]).replace("/", "/")
 
 
 def test_required_entry_comes_from_real_command_plan_and_enables_only_next7(tmp_path):
@@ -158,16 +147,14 @@ def test_required_scope_tracks_real_inputs_without_unrelated_markdown(tmp_path):
 
 
 def test_required_success_writes_proof_and_reuses_next_run(monkeypatch, tmp_path):
-    module = _import_run_quality_gate()
-    repo_root = tmp_path / "repo"
-    repo_root.mkdir()
-    command_plan = _real_quality_gate_plan()
-    _patch_gate_environment(monkeypatch, module, repo_root)
-    monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
+    ctx = _prepare_gate_run_context(monkeypatch, tmp_path)
+    module = ctx.module
+    repo_root = ctx.repo_root
+    command_plan = ctx.command_plan
     required_display = _entry_display(command_plan, repo_root, ENTRY_REQUIRED_REGRESSIONS)
 
     first_calls = _run_gate_with_fake_commands(module, monkeypatch, repo_root, command_plan, ["--long-gate-cache"])
-    proof = json.loads(_required_proof_path(repo_root).read_text(encoding="utf-8"))
+    proof = json.loads(_proof_path_for_entry(repo_root, ENTRY_REQUIRED_REGRESSIONS).read_text(encoding="utf-8"))
     success_cache = json.loads(_success_path(repo_root, ENTRY_REQUIRED_REGRESSIONS).read_text(encoding="utf-8"))
     manifest = _manifest_for(command_plan, repo_root)
     required_entry = _entry_by_id(manifest, ENTRY_REQUIRED_REGRESSIONS)
@@ -213,18 +200,24 @@ def test_required_success_writes_proof_and_reuses_next_run(monkeypatch, tmp_path
 @pytest.mark.parametrize(
     "mutate",
     [
-        lambda repo_root: _success_log_path(repo_root, "stdout").write_text("changed stdout\n", encoding="utf-8"),
+        lambda repo_root: _success_log_path_for_entry(repo_root, ENTRY_REQUIRED_REGRESSIONS, "stdout").write_text(
+            "changed stdout\n",
+            encoding="utf-8",
+        ),
     ],
 )
 def test_required_bad_stdout_log_forces_group_rerun(monkeypatch, tmp_path, mutate):
-    module = _import_run_quality_gate()
-    repo_root = tmp_path / "repo"
-    repo_root.mkdir()
-    command_plan = _real_quality_gate_plan()
-    _patch_gate_environment(monkeypatch, module, repo_root)
-    monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
+    ctx = _prepare_gate_run_context(monkeypatch, tmp_path)
+    module = ctx.module
+    repo_root = ctx.repo_root
+    command_plan = ctx.command_plan
     required_display = _entry_display(command_plan, repo_root, ENTRY_REQUIRED_REGRESSIONS)
-    _seed_required_success(module, monkeypatch, repo_root, command_plan)
+    _seed_required_or_startup_success_cache(
+        module,
+        repo_root,
+        command_plan,
+        ENTRY_REQUIRED_REGRESSIONS,
+    )
 
     mutate(repo_root)
     calls = _run_gate_with_fake_commands(module, monkeypatch, repo_root, command_plan, ["--long-gate-cache"])
@@ -236,18 +229,24 @@ def test_required_bad_stdout_log_forces_group_rerun(monkeypatch, tmp_path, mutat
 @pytest.mark.parametrize(
     "mutate",
     [
-        lambda repo_root: _required_proof_path(repo_root).unlink(),
-        lambda repo_root: _required_proof_path(repo_root).write_text("{bad json", encoding="utf-8"),
+        lambda repo_root: _proof_path_for_entry(repo_root, ENTRY_REQUIRED_REGRESSIONS).unlink(),
+        lambda repo_root: _proof_path_for_entry(repo_root, ENTRY_REQUIRED_REGRESSIONS).write_text(
+            "{bad json",
+            encoding="utf-8",
+        ),
     ],
 )
 def test_required_bad_proof_file_invalidates_success_cache_without_runner(monkeypatch, tmp_path, mutate):
-    module = _import_run_quality_gate()
-    repo_root = tmp_path / "repo"
-    repo_root.mkdir()
-    command_plan = _real_quality_gate_plan()
-    _patch_gate_environment(monkeypatch, module, repo_root)
-    monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
-    _seed_required_success(module, monkeypatch, repo_root, command_plan)
+    ctx = _prepare_gate_run_context(monkeypatch, tmp_path)
+    module = ctx.module
+    repo_root = ctx.repo_root
+    command_plan = ctx.command_plan
+    _seed_required_or_startup_success_cache(
+        module,
+        repo_root,
+        command_plan,
+        ENTRY_REQUIRED_REGRESSIONS,
+    )
     success_cache = json.loads(_success_path(repo_root, ENTRY_REQUIRED_REGRESSIONS).read_text(encoding="utf-8"))
     assert "evidence/QualityGate/required_regressions.json" in {
         str(row["path"]) for row in success_cache["output_files"]
@@ -366,14 +365,17 @@ def test_required_environment_changes_update_fingerprint(monkeypatch, tmp_path, 
 
 
 def test_unrelated_markdown_change_does_not_invalidate_required(monkeypatch, tmp_path):
-    module = _import_run_quality_gate()
-    repo_root = tmp_path / "repo"
-    repo_root.mkdir()
-    command_plan = _real_quality_gate_plan()
-    _patch_gate_environment(monkeypatch, module, repo_root)
-    monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
+    ctx = _prepare_gate_run_context(monkeypatch, tmp_path)
+    module = ctx.module
+    repo_root = ctx.repo_root
+    command_plan = ctx.command_plan
     required_display = _entry_display(command_plan, repo_root, ENTRY_REQUIRED_REGRESSIONS)
-    _seed_required_success(module, monkeypatch, repo_root, command_plan)
+    _seed_required_or_startup_success_cache(
+        module,
+        repo_root,
+        command_plan,
+        ENTRY_REQUIRED_REGRESSIONS,
+    )
 
     _write_file(repo_root, "notes/unrelated.md", "# unrelated\n")
     calls = _run_gate_with_fake_commands(module, monkeypatch, repo_root, command_plan, ["--long-gate-cache"])
@@ -385,13 +387,11 @@ def test_unrelated_markdown_change_does_not_invalidate_required(monkeypatch, tmp
 
 
 def test_required_invalidation_keeps_startup_success_cache_reuse(monkeypatch, tmp_path):
-    module = _import_run_quality_gate()
-    repo_root = tmp_path / "repo"
-    repo_root.mkdir()
-    command_plan = _real_quality_gate_plan()
+    ctx = _prepare_gate_run_context(monkeypatch, tmp_path)
+    module = ctx.module
+    repo_root = ctx.repo_root
+    command_plan = ctx.command_plan
     monkeypatch.delenv("CI", raising=False)
-    _patch_gate_environment(monkeypatch, module, repo_root)
-    monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
     required_display = _entry_display(command_plan, repo_root, ENTRY_REQUIRED_REGRESSIONS)
     startup_display = _entry_display(command_plan, repo_root, ENTRY_STARTUP_RUNTIME_REGRESSIONS)
     _seed_required_success(module, monkeypatch, repo_root, command_plan)
@@ -407,13 +407,11 @@ def test_required_invalidation_keeps_startup_success_cache_reuse(monkeypatch, tm
 
 
 def test_required_failure_does_not_refresh_success_cache_or_run_later_startup(monkeypatch, tmp_path):
-    module = _import_run_quality_gate()
-    repo_root = tmp_path / "repo"
-    repo_root.mkdir()
-    command_plan = _real_quality_gate_plan()
+    ctx = _prepare_gate_run_context(monkeypatch, tmp_path)
+    module = ctx.module
+    repo_root = ctx.repo_root
+    command_plan = ctx.command_plan
     monkeypatch.delenv("CI", raising=False)
-    _patch_gate_environment(monkeypatch, module, repo_root)
-    monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
     required_display = _entry_display(command_plan, repo_root, ENTRY_REQUIRED_REGRESSIONS)
     startup_display = _entry_display(command_plan, repo_root, ENTRY_STARTUP_RUNTIME_REGRESSIONS)
     _seed_required_success(module, monkeypatch, repo_root, command_plan)
@@ -440,43 +438,41 @@ def test_required_failure_does_not_refresh_success_cache_or_run_later_startup(mo
 
 
 def test_explain_does_not_write_required_proof(monkeypatch, tmp_path, capsys):
-    module = _import_run_quality_gate()
-    repo_root = tmp_path / "repo"
-    repo_root.mkdir()
-    command_plan = _real_quality_gate_plan()
-    _patch_gate_environment(monkeypatch, module, repo_root)
-    monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
+    ctx = _prepare_gate_run_context(monkeypatch, tmp_path)
+    module = ctx.module
+    repo_root = ctx.repo_root
 
     assert module.main(["--long-gate-cache-explain"]) == 0
 
     assert "required_regressions" in capsys.readouterr().out
-    assert not _required_proof_path(repo_root).exists()
+    assert not _proof_path_for_entry(repo_root, ENTRY_REQUIRED_REGRESSIONS).exists()
 
 
 def test_no_cache_ignores_existing_required_cache_and_does_not_write_proof(monkeypatch, tmp_path):
-    module = _import_run_quality_gate()
-    repo_root = tmp_path / "repo"
-    repo_root.mkdir()
-    command_plan = _real_quality_gate_plan()
-    _patch_gate_environment(monkeypatch, module, repo_root)
-    monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
+    ctx = _prepare_gate_run_context(monkeypatch, tmp_path)
+    module = ctx.module
+    repo_root = ctx.repo_root
+    command_plan = ctx.command_plan
     required_display = _entry_display(command_plan, repo_root, ENTRY_REQUIRED_REGRESSIONS)
-    _seed_required_success(module, monkeypatch, repo_root, command_plan)
-    _required_proof_path(repo_root).unlink()
+    _seed_required_or_startup_success_cache(
+        module,
+        repo_root,
+        command_plan,
+        ENTRY_REQUIRED_REGRESSIONS,
+    )
+    _proof_path_for_entry(repo_root, ENTRY_REQUIRED_REGRESSIONS).unlink()
 
     calls = _run_gate_with_fake_commands(module, monkeypatch, repo_root, command_plan, ["--no-long-gate-cache"])
 
     assert required_display in calls
-    assert not _required_proof_path(repo_root).exists()
+    assert not _proof_path_for_entry(repo_root, ENTRY_REQUIRED_REGRESSIONS).exists()
 
 
 def test_force_rerun_required_executes_group_instead_of_reusing(monkeypatch, tmp_path):
-    module = _import_run_quality_gate()
-    repo_root = tmp_path / "repo"
-    repo_root.mkdir()
-    command_plan = _real_quality_gate_plan()
-    _patch_gate_environment(monkeypatch, module, repo_root)
-    monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
+    ctx = _prepare_gate_run_context(monkeypatch, tmp_path)
+    module = ctx.module
+    repo_root = ctx.repo_root
+    command_plan = ctx.command_plan
     required_display = _entry_display(command_plan, repo_root, ENTRY_REQUIRED_REGRESSIONS)
     startup_display = _entry_display(command_plan, repo_root, ENTRY_STARTUP_RUNTIME_REGRESSIONS)
     _seed_required_success(module, monkeypatch, repo_root, command_plan)
@@ -497,12 +493,10 @@ def test_force_rerun_required_executes_group_instead_of_reusing(monkeypatch, tmp
 
 
 def test_force_rerun_all_executes_required_and_keeps_later_entries_planned(monkeypatch, tmp_path):
-    module = _import_run_quality_gate()
-    repo_root = tmp_path / "repo"
-    repo_root.mkdir()
-    command_plan = _real_quality_gate_plan()
-    _patch_gate_environment(monkeypatch, module, repo_root)
-    monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
+    ctx = _prepare_gate_run_context(monkeypatch, tmp_path)
+    module = ctx.module
+    repo_root = ctx.repo_root
+    command_plan = ctx.command_plan
     required_display = _entry_display(command_plan, repo_root, ENTRY_REQUIRED_REGRESSIONS)
     startup_display = _entry_display(command_plan, repo_root, ENTRY_STARTUP_RUNTIME_REGRESSIONS)
     _seed_required_success(module, monkeypatch, repo_root, command_plan)

@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+import hashlib
 import importlib
 import json
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Sequence
+from typing import Any, Callable, Mapping, Optional, Sequence
 
 from tools import quality_gate_shared
-from tools.long_gate_cache import evaluate_reuse
+from tools.long_gate_cache import evaluate_reuse, write_success
 from tools.long_gate_fingerprint import fingerprint_entry
 from tools.long_gate_manifest import (
     ENTRY_REQUIRED_REGRESSIONS,
@@ -110,6 +112,42 @@ def _patch_gate_environment(monkeypatch, module, repo_root: Path, *, statuses: S
     monkeypatch.setattr(module, "_run_git_bytes", lambda _args: b"")
     monkeypatch.setattr(module, "_runtime_state_snapshot", lambda: {"runtime_state": "absent"})
     monkeypatch.setattr(module, "pytest_distribution_version", lambda strict=False: "pytest 8.3.5")
+
+
+@dataclass(frozen=True)
+class GateRunContext:
+    module: Any
+    repo_root: Path
+    command_plan: Sequence[dict]
+
+
+def _prepare_gate_run_context(
+    monkeypatch,
+    tmp_path: Path,
+    *,
+    command_plan: Optional[Sequence[dict]] = None,
+    statuses: Sequence[Sequence[str]] = (),
+) -> GateRunContext:
+    module = _import_run_quality_gate()
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    resolved_plan = list(command_plan) if command_plan is not None else _real_quality_gate_plan()
+    _patch_gate_environment(monkeypatch, module, repo_root, statuses=statuses)
+    monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(resolved_plan))
+    return GateRunContext(module=module, repo_root=repo_root, command_plan=resolved_plan)
+
+
+def _proof_path_for_entry(repo_root: Path, entry_id: str) -> Path:
+    if entry_id == ENTRY_REQUIRED_REGRESSIONS:
+        return repo_root / "evidence" / "QualityGate" / "required_regressions.json"
+    if entry_id == ENTRY_STARTUP_RUNTIME_REGRESSIONS:
+        return repo_root / "evidence" / "QualityGate" / "startup_runtime_regressions.json"
+    raise AssertionError(f"unsupported proof entry_id: {entry_id}")
+
+
+def _success_log_path_for_entry(repo_root: Path, entry_id: str, stream: str) -> Path:
+    success = json.loads(_success_path(repo_root, entry_id).read_text(encoding="utf-8"))
+    return repo_root / str(success[f"{stream}_log_path"]).replace("/", "/")
 
 
 def _summary_payload(token: str = "ok") -> dict:
@@ -220,6 +258,100 @@ def _fake_successful_command(
         return {"stdout": "", "stderr": "", "returncode": 0}
 
     return fake_run_command
+
+
+def _seed_required_or_startup_success_cache(
+    module,
+    repo_root: Path,
+    command_plan: Sequence[dict],
+    entry_id: str,
+    *,
+    stdout_text: str = "",
+    stderr_text: str = "",
+    proof_payload_overrides: Optional[Mapping[str, Any]] = None,
+) -> None:
+    if entry_id not in {
+        ENTRY_REQUIRED_REGRESSIONS,
+        ENTRY_STARTUP_RUNTIME_REGRESSIONS,
+    }:
+        raise AssertionError(f"unsupported proof entry_id: {entry_id}")
+
+    manifest = _manifest_for(command_plan, repo_root)
+    entry = _entry_by_id(manifest, entry_id)
+    fingerprint = fingerprint_entry(entry, str(repo_root))
+    command_index = next(
+        index for index, row in enumerate(manifest["entries"], start=1) if row["entry_id"] == entry_id
+    )
+
+    if not stdout_text:
+        if entry_id == ENTRY_REQUIRED_REGRESSIONS:
+            stdout_text = "127 files passed in 2.34s\n"
+        else:
+            stdout_text = "16 passed in 1.23s\n"
+
+    proof_path = _proof_path_for_entry(repo_root, entry_id)
+    proof_path.parent.mkdir(parents=True, exist_ok=True)
+    stdout_rel = f"evidence/QualityGate/long_gate/logs/{entry_id}.stdout.log"
+    stderr_rel = f"evidence/QualityGate/long_gate/logs/{entry_id}.stderr.log"
+    stdout_sha = hashlib.sha256(stdout_text.encode("utf-8")).hexdigest()
+    stderr_sha = hashlib.sha256(stderr_text.encode("utf-8")).hexdigest()
+
+    schema_version = (
+        module.REQUIRED_REGRESSIONS_PROOF_SCHEMA_VERSION
+        if entry_id == ENTRY_REQUIRED_REGRESSIONS
+        else module.STARTUP_RUNTIME_REGRESSIONS_PROOF_SCHEMA_VERSION
+    )
+    proof_payload = {
+        "schema_version": schema_version,
+        "status": "passed",
+        "entry_id": entry_id,
+        "quality_gate_plan_hash": quality_gate_shared.hash_quality_gate_commands(command_plan),
+        "command_index": command_index,
+        "display": entry["display"],
+        "args": entry["args"],
+        "command_hash": entry["command_hash"],
+        "fingerprint_schema_version": entry["fingerprint_schema_version"],
+        "fingerprint_hash": fingerprint["hash"],
+        "returncode": 0,
+        "pytest_exit_code": 0,
+        "execution_mode": "executed",
+        "test_count": len(entry["args"][4:]),
+        "stdout_log_path": stdout_rel,
+        "stderr_log_path": stderr_rel,
+        "logs": {
+            "stdout": {"path": stdout_rel, "sha256": stdout_sha},
+            "stderr": {"path": stderr_rel, "sha256": stderr_sha},
+        },
+        "stdout_sha256": stdout_sha,
+        "stderr_sha256": stderr_sha,
+    }
+    if entry_id == ENTRY_REQUIRED_REGRESSIONS:
+        proof_payload["required_target_count"] = len(entry["args"][4:])
+        proof_payload["required_target_paths"] = entry["args"][4:]
+    if entry_id == ENTRY_STARTUP_RUNTIME_REGRESSIONS:
+        proof_payload["startup_target_count"] = len(entry["args"][4:])
+        proof_payload["startup_target_paths"] = entry["args"][4:]
+    if proof_payload_overrides:
+        proof_payload.update(dict(proof_payload_overrides))
+
+    with open(proof_path, "w", encoding="utf-8") as handle:
+        json.dump(proof_payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
+        handle.write("\n")
+
+    write_success(
+        entry,
+        fingerprint,
+        {
+            "stdout": stdout_text,
+            "stderr": stderr_text,
+            "returncode": 0,
+            "duration_s": 3.0,
+        },
+        [str(proof_path)],
+        repo_root=str(repo_root),
+    )
+    assert proof_path.exists()
+    assert _success_path(repo_root, entry_id).exists()
 
 
 def _run_gate_with_fake_commands(
