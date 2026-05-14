@@ -896,6 +896,12 @@ def test_main_writes_quality_gate_manifest_with_git_and_collection_proof(monkeyp
         assert receipt_payload["stderr_log_path"].startswith("evidence/QualityGate/logs/")
         assert (repo_root / receipt_payload["stdout_log_path"]).exists()
         assert (repo_root / receipt_payload["stderr_log_path"]).exists()
+        assert receipt_payload["execution_mode"] == "executed"
+        assert receipt_payload["reused_from"] == {}
+        assert receipt_payload["started_at"]
+        assert receipt_payload["ended_at"]
+        assert receipt_payload["duration_s"] >= 0
+        assert receipt_payload["duration_kind"] == "executed"
     assert "scripts/run_quality_gate.py" in {item["path"] for item in manifest["gate_sources"]}
     assert "tools/quality_gate_entries.py" in {item["path"] for item in manifest["gate_sources"]}
     assert "tools/quality_gate_ledger.py" in {item["path"] for item in manifest["gate_sources"]}
@@ -1205,6 +1211,7 @@ def test_main_long_gate_cache_reuses_collect_only_success(monkeypatch, tmp_path,
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     command_plan = _small_quality_gate_plan()
+    original_plan_hash = module.hash_quality_gate_commands(command_plan)
     _patch_basic_gate_environment(monkeypatch, module, repo_root, statuses=[[], [], [], []])
     monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
 
@@ -1270,8 +1277,14 @@ def test_main_long_gate_cache_reuses_collect_only_success(monkeypatch, tmp_path,
     assert "- pytest_collect_all: REUSE" in output
     assert "[long-gate-reuse]" in output
     manifest = _load_manifest(module, repo_root)
+    assert manifest["planned_commands_hash"] == original_plan_hash
+    assert manifest["commands_hash"] == original_plan_hash
+    assert [str(command["display"]) for command in manifest["commands"]] == [
+        str(command["display"]) for command in command_plan
+    ]
     receipt_payload = _load_receipt_payload(module, repo_root, manifest, 0)
     assert receipt_payload["execution_mode"] == "reused_success_cache"
+    assert receipt_payload["reused_from"]["result_path"].endswith("pytest_collect_all.success.json")
     assert receipt_payload["reused_from"]["fingerprint_hash"]
     assert receipt_payload["duration_kind"] == "reuse_overhead"
     assert receipt_payload["original_duration_s"] >= 0

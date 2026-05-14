@@ -158,6 +158,7 @@ def build_summary_entry(
         "current_fingerprint_hash": str(decision.get("current_fingerprint_hash") or ""),
         "previous_result_path": str(decision.get("previous_result_path") or ""),
         "duration_s": _duration_value(result, "duration_s"),
+        "duration_kind": str((result or {}).get("duration_kind") or "").strip(),
         "original_duration_s": _duration_value(result, "original_duration_s"),
         "timed_out": _bool_value(result, "timed_out"),
         "interrupted": _bool_value(result, "interrupted"),
@@ -194,6 +195,56 @@ def _count_entries(entries: Sequence[Mapping[str, Any]]) -> Dict[str, int]:
     return counts
 
 
+def _entry_duration(entry: Mapping[str, Any], key: str = "duration_s") -> float:
+    try:
+        return float(entry.get(key) or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _build_duration_summary(entries: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
+    executed_modes = {"executed", "nodeid_incremental", "ledger_only"}
+    total_s = sum(_entry_duration(entry) for entry in entries)
+    executed_total_s = sum(
+        _entry_duration(entry) for entry in entries if str(entry.get("execution_mode") or "") in executed_modes
+    )
+    reuse_overhead_total_s = sum(
+        _entry_duration(entry)
+        for entry in entries
+        if str(entry.get("duration_kind") or "") == "reuse_overhead"
+        or str(entry.get("execution_mode") or "") == "reused_success_cache"
+    )
+    ranked_entries = sorted(
+        [
+            entry
+            for entry in entries
+            if _entry_duration(entry) > 0.0 or _entry_duration(entry, "original_duration_s") > 0.0
+        ],
+        key=lambda entry: _entry_duration(entry),
+        reverse=True,
+    )
+    top_entries = []
+    for rank, entry in enumerate(ranked_entries[:10], start=1):
+        top_entries.append(
+            {
+                "rank": rank,
+                "entry_id": str(entry.get("entry_id") or ""),
+                "display": str(entry.get("display") or ""),
+                "execution_mode": str(entry.get("execution_mode") or ""),
+                "duration_s": _entry_duration(entry),
+                "duration_kind": str(entry.get("duration_kind") or ""),
+                "original_duration_s": _entry_duration(entry, "original_duration_s"),
+                "reason": str(entry.get("reason") or ""),
+            }
+        )
+    return {
+        "total_s": total_s,
+        "executed_total_s": executed_total_s,
+        "reuse_overhead_total_s": reuse_overhead_total_s,
+        "top_entries": top_entries,
+    }
+
+
 def build_long_gate_summary(
     *,
     run_id: str,
@@ -218,13 +269,29 @@ def build_long_gate_summary(
         "cache_dir": str(cache_dir or LONG_GATE_CACHE_DIR_REL).replace("\\", "/"),
         "mode": str(mode or "run"),
         "counts": _count_entries(normalized_entries),
+        "duration": _build_duration_summary(normalized_entries),
         "entries": normalized_entries,
         "failure": dict(failure) if failure is not None else None,
     }
 
 
+def _format_seconds(value: Any) -> str:
+    try:
+        return f"{float(value):.3f}"
+    except (TypeError, ValueError):
+        return "unknown"
+
+
+def _format_original_duration(entry: Mapping[str, Any]) -> str:
+    original = _entry_duration(entry, "original_duration_s")
+    if original <= 0.0 and str(entry.get("execution_mode") or "") == "reused_success_cache":
+        return "unknown"
+    return _format_seconds(original)
+
+
 def render_summary_markdown(summary: Mapping[str, Any]) -> str:
     counts = dict(summary.get("counts") or {})
+    duration = dict(summary.get("duration") or {})
     lines = [
         "# Long gate summary",
         "",
@@ -239,6 +306,32 @@ def render_summary_markdown(summary: Mapping[str, Any]) -> str:
     ]
     for key in ("executed", "reused", "failed", "planned_only", "disabled"):
         lines.append(f"- {key}: {int(counts.get(key) or 0)}")
+    lines.extend(
+        [
+            "",
+            "## Duration",
+            "",
+            f"- total_s: {_format_seconds(duration.get('total_s') or 0.0)}",
+            f"- executed_total_s: {_format_seconds(duration.get('executed_total_s') or 0.0)}",
+            f"- reuse_overhead_total_s: {_format_seconds(duration.get('reuse_overhead_total_s') or 0.0)}",
+            "",
+            "## Slow entries",
+            "",
+            "| rank | entry | execution | duration_s | original_duration_s | reason |",
+            "|---|---|---|---|---|---|",
+        ]
+    )
+    for entry in list(duration.get("top_entries") or []):
+        lines.append(
+            "| {rank} | {entry_id} | {execution_mode} | {duration_s} | {original_duration_s} | {reason} |".format(
+                rank=entry.get("rank") or "",
+                entry_id=str(entry.get("entry_id") or "").replace("|", "\\|"),
+                execution_mode=str(entry.get("execution_mode") or "").replace("|", "\\|"),
+                duration_s=_format_seconds(entry.get("duration_s") or 0.0),
+                original_duration_s=_format_original_duration(entry),
+                reason=str(entry.get("reason") or "").replace("|", "\\|"),
+            )
+        )
     lines.extend(
         [
             "",
@@ -290,6 +383,12 @@ def render_summary_markdown(summary: Mapping[str, Any]) -> str:
                 "```",
             ]
         )
+    lines.extend(
+        [
+            "",
+            "For local profiling, run the exact final proof command and inspect evidence/QualityGate/long_gate/summary.json.",
+        ]
+    )
     lines.append("")
     return "\n".join(lines)
 

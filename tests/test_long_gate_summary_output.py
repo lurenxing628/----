@@ -195,11 +195,17 @@ def test_successful_run_writes_json_md_counts_and_reasons(monkeypatch, tmp_path)
     assert summary["cache_enabled"] is True
     assert summary["cache_dir"] == "evidence/QualityGate/long_gate"
     assert summary["counts"] == {"executed": 1, "reused": 0, "failed": 0, "planned_only": 1, "disabled": 0}
+    assert summary["duration"]["total_s"] > 0.0
+    assert summary["duration"]["executed_total_s"] > 0.0
+    assert summary["duration"]["reuse_overhead_total_s"] == 0.0
+    assert summary["duration"]["top_entries"][0]["entry_id"] == "pytest_collect_all"
     for entry in summary["entries"]:
         assert entry["reason"]
         assert isinstance(entry["invalidated_by"], list)
     collect = _entry_by_id(summary, "pytest_collect_all")
     assert collect["execution_mode"] == "executed"
+    assert collect["duration_kind"] == "executed"
+    assert collect["duration_s"] > 0.0
     assert collect["returncode"] == 0
     assert collect["receipt_path"].startswith("evidence/QualityGate/receipts/")
     assert collect["stdout_log_path"].startswith("evidence/QualityGate/logs/")
@@ -208,6 +214,10 @@ def test_successful_run_writes_json_md_counts_and_reasons(monkeypatch, tmp_path)
     planned = _entry_by_id(summary, "ruff_check_full")
     assert planned["decision"] == "planned_only"
     assert planned["execution_mode"] == "planned_only"
+    markdown = _summary_md_path(repo_root).read_text(encoding="utf-8")
+    assert "## Duration" in markdown
+    assert "## Slow entries" in markdown
+    assert "For local profiling, run the exact final proof command" in markdown
 
 
 def test_reused_collect_only_is_recorded_as_reused_success_cache(monkeypatch, tmp_path):
@@ -235,7 +245,12 @@ def test_reused_collect_only_is_recorded_as_reused_success_cache(monkeypatch, tm
     assert "python -m pytest --collect-only -q tests" not in calls
     assert collect["decision"] == "reuse"
     assert collect["execution_mode"] == "reused_success_cache"
+    assert collect["duration_kind"] == "reuse_overhead"
+    assert collect["duration_s"] > 0.0
+    assert collect["original_duration_s"] == 8.0
     assert collect["previous_result_path"].endswith("pytest_collect_all.success.json")
+    assert summary["duration"]["reuse_overhead_total_s"] > 0.0
+    assert summary["duration"]["top_entries"][0]["original_duration_s"] == 8.0
     assert summary["counts"]["reused"] == 1
 
 
@@ -506,3 +521,63 @@ def test_summary_counts_incremental_modes_as_executed():
     )
 
     assert summary["counts"]["executed"] == 2
+
+
+def test_summary_duration_keeps_counts_and_ranks_slow_entries():
+    executed = build_summary_entry(
+        index=1,
+        entry={"entry_id": "full_test_debt", "entry_type": "full_test_debt", "cache_status": "enabled"},
+        decision={"entry_id": "full_test_debt", "decision": "run", "reason": "input fingerprint changed"},
+        result={
+            "stdout": "",
+            "stderr": "",
+            "returncode": 0,
+            "execution_mode": "executed",
+            "duration_s": 201.25,
+            "duration_kind": "executed",
+        },
+        receipt_path="evidence/QualityGate/receipts/full.json",
+    )
+    reused = build_summary_entry(
+        index=2,
+        entry={"entry_id": "required_regressions", "entry_type": "required_regressions", "cache_status": "enabled"},
+        decision={"entry_id": "required_regressions", "decision": "reuse", "reason": "success cache reusable"},
+        result={
+            "stdout": "",
+            "stderr": "",
+            "returncode": 0,
+            "execution_mode": "reused_success_cache",
+            "duration_s": 0.12,
+            "duration_kind": "reuse_overhead",
+            "original_duration_s": 98.34,
+        },
+        receipt_path="evidence/QualityGate/receipts/required.json",
+    )
+    planned = build_summary_entry(
+        index=3,
+        entry={"entry_id": "ruff_check_full", "entry_type": "ruff", "cache_status": "planned"},
+        decision={"entry_id": "ruff_check_full", "decision": "planned_only", "reason": "not cache-enabled"},
+    )
+
+    summary = build_long_gate_summary(
+        run_id="run",
+        repo_root=_repo_root(),
+        head_sha="head",
+        worktree_clean=True,
+        cache_enabled=True,
+        mode="run",
+        entries=[executed, reused, planned],
+    )
+    markdown = render_summary_markdown(summary)
+
+    assert summary["counts"] == {"executed": 1, "reused": 1, "failed": 0, "planned_only": 1, "disabled": 0}
+    assert summary["duration"]["total_s"] == pytest.approx(201.37)
+    assert summary["duration"]["executed_total_s"] == pytest.approx(201.25)
+    assert summary["duration"]["reuse_overhead_total_s"] == pytest.approx(0.12)
+    assert [row["entry_id"] for row in summary["duration"]["top_entries"]] == [
+        "full_test_debt",
+        "required_regressions",
+    ]
+    assert "## Duration" in markdown
+    assert "## Slow entries" in markdown
+    assert "| 2 | required_regressions | reused_success_cache | 0.120 | 98.340 | success cache reusable |" in markdown

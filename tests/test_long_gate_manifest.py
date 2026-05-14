@@ -289,6 +289,29 @@ def test_local_receipts_report_reuse_overhead_and_original_duration(tmp_path):
     assert "original=8.500s" in line
 
 
+def test_local_receipts_without_duration_display_duration_unknown(tmp_path):
+    receipts_dir = tmp_path / "evidence" / "QualityGate" / "receipts"
+    receipts_dir.mkdir(parents=True)
+    receipt_path = receipts_dir / "missing_duration.json"
+    receipt_path.write_text(
+        json.dumps(
+            {
+                "display": "python -m pytest --collect-only -q tests",
+                "command_index": 1,
+                "returncode": 0,
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    receipts = manifest_mod.load_local_quality_gate_receipts(str(tmp_path))
+    line = manifest_mod._format_receipt_line(receipts[0])
+
+    assert receipts[0]["duration_unknown"] is True
+    assert "duration_unknown" in line
+
+
 def test_unrecognized_pytest_command_is_not_positionally_classified_as_required_or_startup():
     plan = [
         {

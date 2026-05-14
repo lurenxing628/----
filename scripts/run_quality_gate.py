@@ -700,6 +700,7 @@ def _mark_command_timing(result: Dict[str, Any], *, started_at: str, start_monot
     result["started_at"] = started_at
     result["ended_at"] = datetime.now().isoformat(timespec="seconds")
     result["duration_s"] = duration_s
+    result.setdefault("duration_kind", "executed")
     result.setdefault("timed_out", False)
     result.setdefault("interrupted", False)
     result.setdefault("partial_write", False)
