@@ -160,15 +160,6 @@ def build_summary_entry(
         "invalidated_by": invalidated_by,
         "fingerprint_diff": [dict(item) for item in list(decision.get("fingerprint_diff") or [])],
         "full_test_debt_incremental": dict(decision.get("full_test_debt_incremental") or {}),
-        "required_regressions_groups": [
-            dict(item)
-            for item in list(
-                (result or {}).get("required_regressions_groups")
-                or decision.get("required_regressions_groups")
-                or []
-            )
-            if isinstance(item, Mapping)
-        ],
         "execution_mode": resolved_execution_mode,
         "returncode": returncode,
         "failed": failed_value,
@@ -207,7 +198,7 @@ def _count_entries(entries: Sequence[Mapping[str, Any]]) -> Dict[str, int]:
         decision = str(entry.get("decision") or "")
         if execution_mode == "reused_success_cache" or decision == "reuse":
             counts["reused"] += 1
-        elif execution_mode in {"executed", "nodeid_incremental", "ledger_only", "grouped"}:
+        elif execution_mode in {"executed", "nodeid_incremental", "ledger_only"}:
             counts["executed"] += 1
         elif decision == "planned_only" or execution_mode == "planned_only":
             counts["planned_only"] += 1
@@ -224,7 +215,7 @@ def _entry_duration(entry: Mapping[str, Any], key: str = "duration_s") -> float:
 
 
 def _build_duration_summary(entries: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
-    executed_modes = {"executed", "nodeid_incremental", "ledger_only", "grouped"}
+    executed_modes = {"executed", "nodeid_incremental", "ledger_only"}
     total_s = sum(_entry_duration(entry) for entry in entries)
     executed_total_s = sum(
         _entry_duration(entry) for entry in entries if str(entry.get("execution_mode") or "") in executed_modes
@@ -376,35 +367,6 @@ def render_summary_markdown(summary: Mapping[str, Any]) -> str:
                 receipt_path=entry.get("receipt_path") or "",
             )
         )
-    required_group_rows: List[Dict[str, Any]] = []
-    for entry in list(summary.get("entries") or []):
-        if not isinstance(entry, Mapping):
-            continue
-        for row in list(entry.get("required_regressions_groups") or []):
-            if isinstance(row, Mapping):
-                required_group_rows.append(dict(row))
-    if required_group_rows:
-        lines.extend(
-            [
-                "",
-                "## Required regression groups",
-                "",
-                "| group | decision | execution | targets | duration | original | proof |",
-                "|---|---|---|---|---|---|---|",
-            ]
-        )
-        for row in required_group_rows:
-            lines.append(
-                "| {group} | {decision} | {execution} | {targets} | {duration} | {original} | {proof} |".format(
-                    group=str(row.get("group_id") or "").replace("|", "\\|"),
-                    decision=str(row.get("decision") or "").replace("|", "\\|"),
-                    execution=str(row.get("execution_mode") or "").replace("|", "\\|"),
-                    targets=int(row.get("target_count") or 0),
-                    duration=_format_seconds(row.get("duration_s") or 0.0),
-                    original=_format_seconds(row.get("original_duration_s") or 0.0),
-                    proof=str(row.get("proof_path") or "").replace("|", "\\|"),
-                )
-            )
     incremental_entries = [
         entry
         for entry in list(summary.get("entries") or [])

@@ -39,10 +39,12 @@ def _seed_startup_success(module, monkeypatch, repo_root: Path, command_plan: Se
     assert _success_path(repo_root, ENTRY_STARTUP_RUNTIME_REGRESSIONS).exists()
 
 
-def _required_group_displays(command_plan: Sequence[dict], repo_root: Path) -> list[str]:
-    manifest = _manifest_for(command_plan, repo_root)
-    required = _entry_by_id(manifest, ENTRY_REQUIRED_REGRESSIONS)
-    return [str(group["display"]) for group in list(required.get("groups") or [])]
+def _call_displays(calls: Sequence[dict]) -> list[str]:
+    return [str(call["display"]) for call in calls]
+
+
+def _call_by_display(calls: Sequence[dict], display: str) -> dict:
+    return next(call for call in calls if str(call["display"]) == display)
 
 
 def test_startup_entry_comes_from_real_command_plan_and_enables_only_next6(tmp_path):
@@ -124,7 +126,12 @@ def test_startup_success_writes_proof_and_reuses_next_run(monkeypatch, tmp_path)
         if entry["entry_id"] == ENTRY_STARTUP_RUNTIME_REGRESSIONS
     )
 
-    assert startup_display in first_calls
+    startup_call = _call_by_display(first_calls, startup_display)
+    first_displays = _call_displays(first_calls)
+    assert startup_display in first_displays
+    assert startup_call["args"] == [str(arg) for arg in module._resolve_command_args(startup_entry)]
+    assert startup_call["args"][-len(startup_entry["args"][4:]) :] == startup_entry["args"][4:]
+    assert startup_call["capture_output"] == bool(startup_entry["capture_output"])
     assert proof["schema_version"] == module.STARTUP_RUNTIME_REGRESSIONS_PROOF_SCHEMA_VERSION
     assert proof["status"] == "passed"
     assert proof["entry_id"] == ENTRY_STARTUP_RUNTIME_REGRESSIONS
@@ -161,8 +168,9 @@ def test_startup_success_writes_proof_and_reuses_next_run(monkeypatch, tmp_path)
     second_calls = _run_gate_with_fake_commands(module, monkeypatch, repo_root, command_plan, ["--long-gate-cache"])
     summary = _load_summary(repo_root)
 
-    assert startup_display not in second_calls
-    assert required_display not in second_calls
+    second_displays = _call_displays(second_calls)
+    assert startup_display not in second_displays
+    assert required_display not in second_displays
     assert _summary_entry(summary, ENTRY_STARTUP_RUNTIME_REGRESSIONS)["execution_mode"] == "reused_success_cache"
     assert _summary_entry(summary, ENTRY_REQUIRED_REGRESSIONS)["execution_mode"] == "reused_success_cache"
     assert _success_path(repo_root, ENTRY_REQUIRED_REGRESSIONS).exists()
@@ -178,7 +186,7 @@ def test_startup_success_writes_proof_and_reuses_next_run(monkeypatch, tmp_path)
         ).write_text("changed stdout\n", encoding="utf-8"),
     ],
 )
-def test_startup_bad_stdout_log_forces_group_rerun(monkeypatch, tmp_path, mutate):
+def test_startup_bad_stdout_log_forces_parent_rerun(monkeypatch, tmp_path, mutate):
     ctx = _prepare_gate_run_context(monkeypatch, tmp_path)
     module = ctx.module
     repo_root = ctx.repo_root
@@ -194,7 +202,7 @@ def test_startup_bad_stdout_log_forces_group_rerun(monkeypatch, tmp_path, mutate
     mutate(repo_root)
     calls = _run_gate_with_fake_commands(module, monkeypatch, repo_root, command_plan, ["--long-gate-cache"])
 
-    assert startup_display in calls
+    assert startup_display in [str(call["display"]) for call in calls]
     assert _summary_entry(_load_summary(repo_root), ENTRY_STARTUP_RUNTIME_REGRESSIONS)["execution_mode"] == "executed"
 
 
@@ -308,7 +316,7 @@ def test_unrelated_markdown_change_does_not_invalidate_startup(monkeypatch, tmp_
     _write_file(repo_root, "notes/unrelated.md", "# unrelated\n")
     calls = _run_gate_with_fake_commands(module, monkeypatch, repo_root, command_plan, ["--long-gate-cache"])
 
-    assert startup_display not in calls
+    assert startup_display not in [str(call["display"]) for call in calls]
     assert _summary_entry(_load_summary(repo_root), ENTRY_STARTUP_RUNTIME_REGRESSIONS)["execution_mode"] == (
         "reused_success_cache"
     )
@@ -327,8 +335,9 @@ def test_startup_invalidation_keeps_full_test_debt_success_cache_reuse(monkeypat
     calls = _run_gate_with_fake_commands(module, monkeypatch, repo_root, command_plan, ["--long-gate-cache"])
     summary = _load_summary(repo_root)
 
-    assert "python tools/check_full_test_debt.py" not in calls
-    assert startup_display in calls
+    displays = [str(call["display"]) for call in calls]
+    assert "python tools/check_full_test_debt.py" not in displays
+    assert startup_display in displays
     assert _summary_entry(summary, "full_test_debt")["execution_mode"] == "reused_success_cache"
     assert _summary_entry(summary, ENTRY_STARTUP_RUNTIME_REGRESSIONS)["execution_mode"] == "executed"
     assert _success_path(repo_root, "full_test_debt").exists()
@@ -364,11 +373,11 @@ def test_no_cache_ignores_existing_startup_cache_and_does_not_write_proof(monkey
 
     calls = _run_gate_with_fake_commands(module, monkeypatch, repo_root, command_plan, ["--no-long-gate-cache"])
 
-    assert startup_display in calls
+    assert startup_display in [str(call["display"]) for call in calls]
     assert not _proof_path_for_entry(repo_root, ENTRY_STARTUP_RUNTIME_REGRESSIONS).exists()
 
 
-def test_force_rerun_startup_executes_group_instead_of_reusing(monkeypatch, tmp_path):
+def test_force_rerun_startup_executes_parent_instead_of_reusing(monkeypatch, tmp_path):
     ctx = _prepare_gate_run_context(monkeypatch, tmp_path)
     module = ctx.module
     repo_root = ctx.repo_root
@@ -385,7 +394,7 @@ def test_force_rerun_startup_executes_group_instead_of_reusing(monkeypatch, tmp_
     )
     startup_summary = _summary_entry(_load_summary(repo_root), ENTRY_STARTUP_RUNTIME_REGRESSIONS)
 
-    assert startup_display in calls
+    assert startup_display in [str(call["display"]) for call in calls]
     assert startup_summary["execution_mode"] == "executed"
     assert startup_summary["reason"] == (
         "forced by --long-gate-force-rerun startup_runtime_regressions"
@@ -398,7 +407,7 @@ def test_force_rerun_all_executes_startup_and_required(monkeypatch, tmp_path):
     repo_root = ctx.repo_root
     command_plan = ctx.command_plan
     startup_display = _entry_display(command_plan, repo_root, ENTRY_STARTUP_RUNTIME_REGRESSIONS)
-    group_displays = _required_group_displays(command_plan, repo_root)
+    required_display = _entry_display(command_plan, repo_root, ENTRY_REQUIRED_REGRESSIONS)
     _seed_startup_success(module, monkeypatch, repo_root, command_plan)
 
     calls = _run_gate_with_fake_commands(
@@ -410,10 +419,11 @@ def test_force_rerun_all_executes_startup_and_required(monkeypatch, tmp_path):
     )
     summary = _load_summary(repo_root)
 
-    assert "python -m pytest --collect-only -q tests" in calls
-    assert "python tools/check_full_test_debt.py" in calls
-    assert set(group_displays) <= set(calls)
-    assert startup_display in calls
+    displays = [str(call["display"]) for call in calls]
+    assert "python -m pytest --collect-only -q tests" in displays
+    assert "python tools/check_full_test_debt.py" in displays
+    assert required_display in displays
+    assert startup_display in displays
     assert _summary_entry(summary, ENTRY_REQUIRED_REGRESSIONS)["reason"] == "forced by --long-gate-force-rerun-all"
     assert _summary_entry(summary, ENTRY_STARTUP_RUNTIME_REGRESSIONS)["reason"] == (
         "forced by --long-gate-force-rerun-all"

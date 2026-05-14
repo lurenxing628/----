@@ -90,7 +90,6 @@ PYRIGHT_GATE_CONFIG = QUALITY_GATE_PYRIGHT_GATE_CONFIG
 QUALITY_GATE_SELFTEST = QUALITY_GATE_SELFTEST_PATH
 STARTUP_RUNTIME_REGRESSIONS_PROOF_SCHEMA_VERSION = 1
 REQUIRED_REGRESSIONS_PROOF_SCHEMA_VERSION = 3
-REQUIRED_REGRESSIONS_GROUP_PROOF_SCHEMA_VERSION = 2
 GENERATED_CLEAN_WORKTREE_EXCLUDED_PATHS = [
     QUALITY_GATE_MANIFEST_REL.replace("\\", "/"),
     QUALITY_GATE_RECEIPTS_DIR_REL.replace("\\", "/") + "/",
@@ -101,7 +100,6 @@ GENERATED_CLEAN_WORKTREE_EXCLUDED_PATHS = [
     QUALITY_GATE_FULL_TEST_DEBT_NODE_CACHE_REL.replace("\\", "/"),
     QUALITY_GATE_STARTUP_RUNTIME_REGRESSIONS_REL.replace("\\", "/"),
     QUALITY_GATE_REQUIRED_REGRESSIONS_REL.replace("\\", "/"),
-    "evidence/QualityGate/required_regressions/groups/",
 ]
 HIGH_RISK_UNTRACKED_SOURCE_PREFIXES = ("core/", "web/", "data/", "tools/", "scripts/")
 HIGH_RISK_UNTRACKED_SOURCE_SUFFIXES = (".py", ".js", ".ts", ".html", ".css", ".sql")
@@ -1036,22 +1034,6 @@ def _run_quality_gate_command_plan(
                 evaluation=dict(long_gate_runtime_entry.get("evaluation") or {}),
                 cache_dir=long_gate_cache_dir,
             )
-        if (
-            raw_result is None
-            and long_gate_runtime_entry is not None
-            and str(long_gate_entry.get("entry_id") or "") == ENTRY_REQUIRED_REGRESSIONS
-            and bool(long_gate_cache_write_success)
-            and str(decision_for_special.get("decision") or "") == "run"
-        ):
-            raw_result = _run_required_regressions_grouped(
-                long_gate_entry,
-                parent_fingerprint=dict(long_gate_fingerprint or {}),
-                parent_decision=decision_for_special,
-                cache_dir=long_gate_cache_dir,
-                run_id=run_id,
-                command_index=command_index,
-                command_plan=command_plan,
-            )
         if raw_result is None:
             raw_result = _run_command(
                 display,
@@ -1064,14 +1046,6 @@ def _run_quality_gate_command_plan(
             result["execution_mode"] = str(raw_result.get("execution_mode") or "executed")
             if isinstance(raw_result.get("reused_from"), dict):
                 result["reused_from"] = dict(raw_result.get("reused_from") or {})
-            for field_name in (
-                "required_regressions_groups",
-                "required_regressions_failed_group",
-                "required_regressions_group_successes",
-                "required_regressions_output_files",
-            ):
-                if field_name in raw_result:
-                    result[field_name] = raw_result[field_name]
         else:
             result["execution_mode"] = "executed"
         elapsed = _mark_command_timing(result, started_at=command_started_at, start_monotonic=start_monotonic)
@@ -1172,9 +1146,6 @@ def _run_quality_gate_command_plan(
                 cache_result.pop("stdout_log_path", None)
                 cache_result.pop("stderr_log_path", None)
                 if pending_long_gate_successes is not None:
-                    for group_pending in list(result.get("required_regressions_group_successes") or []):
-                        if isinstance(group_pending, dict):
-                            pending_long_gate_successes.append(dict(group_pending))
                     pending_long_gate_successes.append(
                         {
                             "entry": dict(long_gate_entry),
@@ -1563,453 +1534,10 @@ def _write_required_regressions_proof(
     return rel_path
 
 
-def _safe_long_gate_entry_id(entry_id: str) -> str:
-    return str(entry_id or "").replace("\\", "_").replace("/", "_").strip() or "unknown"
-
-
 def _long_gate_success_result_rel_path(entry_id: str, *, cache_dir: str) -> str:
     cache_root = str(cache_dir or "evidence/QualityGate/long_gate").replace("\\", "/")
-    return f"{cache_root}/results/{_safe_long_gate_entry_id(entry_id)}.success.json"
-
-
-def _required_regression_group_entries(parent_entry: Mapping[str, Any]) -> List[Dict[str, Any]]:
-    return [dict(group) for group in list(parent_entry.get("groups") or []) if isinstance(group, dict)]
-
-
-def _required_regression_group_coverage(parent_entry: Mapping[str, Any]) -> Dict[str, Any]:
-    coverage = dict(parent_entry.get("required_regression_group_coverage") or {})
-    if coverage.get("missing") or coverage.get("duplicates") or coverage.get("unknown"):
-        raise QualityGateError("required_regressions group 覆盖不完整，不能启用分组缓存")
-    required_target_count = int(coverage.get("required_target_count") or 0)
-    group_target_count = int(coverage.get("group_target_count") or 0)
-    if required_target_count <= 0 or required_target_count != group_target_count:
-        raise QualityGateError("required_regressions group 覆盖计数不一致，不能启用分组缓存")
-    return coverage
-
-
-def _forced_group_reason(parent_decision: Mapping[str, Any]) -> str:
-    reason = str(parent_decision.get("reason") or "")
-    if reason.startswith("forced by --long-gate-force-rerun"):
-        return reason
-    for item in list(parent_decision.get("invalidated_by") or []):
-        text = str(item or "")
-        if text.startswith("forced by --long-gate-force-rerun"):
-            return text
-    return ""
-
-
-def _evaluate_required_group_reuse(
-    group_entry: Dict[str, Any],
-    *,
-    cache_dir: str,
-    forced_reason: str = "",
-) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
-    fingerprint = _strict_long_gate_fingerprint(group_entry)
-    evaluation = dict(evaluate_reuse(group_entry, fingerprint, repo_root=REPO_ROOT, cache_dir=cache_dir))
-    decision = dict(evaluation.get("decision") or {})
-    if forced_reason:
-        decision = _force_long_gate_decision(
-            group_entry,
-            decision,
-            force_reason=forced_reason,
-        )
-        evaluation = {}
-    return fingerprint, evaluation, decision
-
-
-def _required_group_proof_path(group_entry: Mapping[str, Any]) -> str:
-    output_paths = [str(path).replace("\\", "/") for path in list(group_entry.get("output_result_files") or [])]
-    if not output_paths:
-        raise QualityGateError("required_regressions group 缺少 proof 输出路径")
-    return output_paths[0]
-
-
-def _required_group_scope_payload(group_entry: Mapping[str, Any]) -> Dict[str, Any]:
-    return {
-        "scope_policy_hash": str(group_entry.get("scope_policy_hash") or ""),
-        "common_input_file_scopes": [str(path) for path in list(group_entry.get("common_input_file_scopes") or [])],
-        "common_config_file_scopes": [str(path) for path in list(group_entry.get("common_config_file_scopes") or [])],
-        "common_tool_file_scopes": [str(path) for path in list(group_entry.get("common_tool_file_scopes") or [])],
-        "common_dependency_file_scopes": [
-            str(path) for path in list(group_entry.get("common_dependency_file_scopes") or [])
-        ],
-        "common_env_keys": [str(key) for key in list(group_entry.get("common_env_keys") or [])],
-        "group_input_file_scopes": [str(path) for path in list(group_entry.get("group_input_file_scopes") or [])],
-        "group_config_file_scopes": [str(path) for path in list(group_entry.get("group_config_file_scopes") or [])],
-        "group_tool_file_scopes": [str(path) for path in list(group_entry.get("group_tool_file_scopes") or [])],
-        "group_dependency_file_scopes": [
-            str(path) for path in list(group_entry.get("group_dependency_file_scopes") or [])
-        ],
-        "group_env_keys": [str(key) for key in list(group_entry.get("group_env_keys") or [])],
-        "input_file_scopes": [str(path) for path in list(group_entry.get("input_file_scopes") or [])],
-        "config_file_scopes": [str(path) for path in list(group_entry.get("config_file_scopes") or [])],
-        "tool_file_scopes": [str(path) for path in list(group_entry.get("tool_file_scopes") or [])],
-        "dependency_file_scopes": [str(path) for path in list(group_entry.get("dependency_file_scopes") or [])],
-        "env_keys": [str(key) for key in list(group_entry.get("env_keys") or [])],
-    }
-
-
-def _write_required_regression_group_proof(
-    group_entry: Dict[str, Any],
-    result: Dict[str, Any],
-    *,
-    run_id: str,
-    command_index: int,
-    command_plan: Sequence[Dict[str, Any]],
-    fingerprint: Dict[str, Any],
-    cache_dir: str,
-    coverage: Mapping[str, Any],
-) -> str:
-    rel_path = _required_group_proof_path(group_entry)
-    abs_path = os.path.join(REPO_ROOT, rel_path.replace("/", os.sep))
-    entry_id = str(group_entry.get("entry_id") or "")
-    group_id = str(group_entry.get("group_id") or "")
-    cache_root = str(cache_dir or "evidence/QualityGate/long_gate").replace("\\", "/")
-    safe_entry_id = _safe_long_gate_entry_id(entry_id)
-    stdout_log_path = f"{cache_root}/logs/{safe_entry_id}.stdout.log"
-    stderr_log_path = f"{cache_root}/logs/{safe_entry_id}.stderr.log"
-    stdout_log_row = _long_gate_success_log_row(result, stream="stdout", rel_path=stdout_log_path)
-    stderr_log_row = _long_gate_success_log_row(result, stream="stderr", rel_path=stderr_log_path)
-    target_paths = [str(path) for path in list(group_entry.get("target_paths") or [])]
-    scope_payload = _required_group_scope_payload(group_entry)
-    payload = {
-        "schema_version": REQUIRED_REGRESSIONS_GROUP_PROOF_SCHEMA_VERSION,
-        "status": "passed",
-        "entry_id": entry_id,
-        "parent_entry_id": ENTRY_REQUIRED_REGRESSIONS,
-        "group_id": group_id,
-        "generated_at": datetime.now().isoformat(timespec="seconds"),
-        "head_sha": _git_head_sha(),
-        "run_id": str(run_id or ""),
-        "quality_gate_plan_hash": hash_quality_gate_commands(command_plan),
-        "required_registry_hash": str(coverage.get("required_registry_hash") or ""),
-        "group_registry_hash": str(coverage.get("group_registry_hash") or ""),
-        "command_index": int(command_index),
-        "group_index": int(group_entry.get("group_index") or 0),
-        "display": str(group_entry.get("display") or ""),
-        "args": [str(arg) for arg in list(group_entry.get("args") or [])],
-        "command_hash": str(group_entry.get("command_hash") or ""),
-        "capture_output": bool(group_entry.get("capture_output")),
-        "output_policy": str(group_entry.get("output_policy") or ""),
-        "fingerprint_schema_version": int(group_entry.get("fingerprint_schema_version") or 0),
-        "fingerprint_hash": str(fingerprint.get("hash") or ""),
-        "returncode": int(result.get("returncode") or 0),
-        "pytest_exit_code": int(result.get("returncode") or 0),
-        "execution_mode": str(result.get("execution_mode") or "executed"),
-        "target_count": len(target_paths),
-        "target_paths": target_paths,
-        "target_hash": stable_json_hash(target_paths),
-        "scope_policy_hash": str(scope_payload["scope_policy_hash"]),
-        "scope_policy": scope_payload,
-        "input_file_scopes": list(scope_payload["input_file_scopes"]),
-        "config_file_scopes": list(scope_payload["config_file_scopes"]),
-        "tool_file_scopes": list(scope_payload["tool_file_scopes"]),
-        "dependency_file_scopes": list(scope_payload["dependency_file_scopes"]),
-        "env_keys": list(scope_payload["env_keys"]),
-        "stdout_log_path": stdout_log_path,
-        "stderr_log_path": stderr_log_path,
-        "stdout_sha256": str(stdout_log_row["sha256"]),
-        "stderr_sha256": str(stderr_log_row["sha256"]),
-        "duration_s": float(result.get("duration_s") or 0.0),
-        "timed_out": bool(result.get("timed_out")),
-        "interrupted": bool(result.get("interrupted")),
-        "partial_write": bool(result.get("partial_write")),
-        "logs": {
-            "stdout": stdout_log_row,
-            "stderr": stderr_log_row,
-        },
-    }
-    os.makedirs(os.path.dirname(abs_path), exist_ok=True)
-    with open(abs_path, "w", encoding="utf-8") as handle:
-        json.dump(payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
-        handle.write("\n")
-    return rel_path
-
-
-def _required_group_summary_row(
-    group_entry: Dict[str, Any],
-    *,
-    decision: Mapping[str, Any],
-    fingerprint: Mapping[str, Any],
-    result: Optional[Mapping[str, Any]] = None,
-    proof_path: str = "",
-    proof_sha256: str = "",
-    cache_dir: str,
-) -> Dict[str, Any]:
-    group_id = str(group_entry.get("group_id") or "")
-    execution_mode = str((result or {}).get("execution_mode") or "")
-    if not execution_mode and str(decision.get("decision") or "") == "reuse":
-        execution_mode = "reused_success_cache"
-    scope_payload = _required_group_scope_payload(group_entry)
-    return {
-        "group_id": group_id,
-        "entry_id": str(group_entry.get("entry_id") or ""),
-        "decision": str(decision.get("decision") or ""),
-        "reason": str(decision.get("reason") or ""),
-        "execution_mode": execution_mode,
-        "target_count": int(group_entry.get("target_count") or 0),
-        "target_paths": [str(path) for path in list(group_entry.get("target_paths") or [])],
-        "display": str(group_entry.get("display") or ""),
-        "args": [str(arg) for arg in list(group_entry.get("args") or [])],
-        "command_hash": str(group_entry.get("command_hash") or ""),
-        "scope_policy_hash": str(scope_payload["scope_policy_hash"]),
-        "input_file_scopes": list(scope_payload["input_file_scopes"]),
-        "config_file_scopes": list(scope_payload["config_file_scopes"]),
-        "tool_file_scopes": list(scope_payload["tool_file_scopes"]),
-        "dependency_file_scopes": list(scope_payload["dependency_file_scopes"]),
-        "env_keys": list(scope_payload["env_keys"]),
-        "proof_path": str(proof_path or ""),
-        "proof_sha256": str(proof_sha256 or ""),
-        "success_cache_path": _long_gate_success_result_rel_path(
-            str(group_entry.get("entry_id") or ""),
-            cache_dir=cache_dir,
-        ),
-        "previous_result_path": str(decision.get("previous_result_path") or ""),
-        "fingerprint_hash": str(fingerprint.get("hash") or ""),
-        "current_fingerprint_hash": str(decision.get("current_fingerprint_hash") or fingerprint.get("hash") or ""),
-        "returncode": int((result or {}).get("returncode") or 0),
-        "duration_s": float((result or {}).get("duration_s") or 0.0),
-        "duration_kind": str((result or {}).get("duration_kind") or ""),
-        "original_duration_s": float((result or {}).get("original_duration_s") or 0.0),
-    }
-
-
-def _proof_sha256_or_empty(rel_path: str) -> str:
-    abs_path = os.path.join(REPO_ROOT, str(rel_path or "").replace("\\", "/").replace("/", os.sep))
-    if not os.path.isfile(abs_path):
-        return ""
-    return _sha256_file(abs_path)
-
-
-def _write_required_regressions_grouped_proof(
-    entry: Dict[str, Any],
-    result: Dict[str, Any],
-    *,
-    run_id: str,
-    command_index: int,
-    command_plan: Sequence[Dict[str, Any]],
-    fingerprint: Dict[str, Any],
-    cache_dir: str,
-) -> List[str]:
-    rel_path = QUALITY_GATE_REQUIRED_REGRESSIONS_REL.replace("\\", "/")
-    abs_path = os.path.join(REPO_ROOT, rel_path.replace("/", os.sep))
-    args = [str(arg) for arg in list(entry.get("args") or [])]
-    required_target_paths = list(args[4:]) if args[:4] == ["python", "-m", "pytest", "-q"] else []
-    coverage = _required_regression_group_coverage(entry)
-    group_scope_policy = dict(entry.get("required_regression_group_scope_policy") or {})
-    group_rows = [dict(row) for row in list(result.get("required_regressions_groups") or [])]
-    if len(group_rows) != int(coverage.get("group_count") or 0):
-        raise QualityGateError("required_regressions group proof 缺少 group 行，不能写入父 proof")
-    grouped_targets: List[str] = []
-    for row in group_rows:
-        grouped_targets.extend(str(path) for path in list(row.get("target_paths") or []))
-    if sorted(grouped_targets) != sorted(required_target_paths) or len(grouped_targets) != len(required_target_paths):
-        raise QualityGateError("required_regressions group proof 覆盖的测试目标与 required registry 不一致")
-    proof_paths = [rel_path]
-    for row in group_rows:
-        proof_path = str(row.get("proof_path") or "")
-        proof_sha256 = str(row.get("proof_sha256") or "")
-        if not proof_path or not proof_sha256:
-            raise QualityGateError("required_regressions group proof 缺少 proof 路径或哈希，不能写入父 proof")
-        actual_sha256 = _proof_sha256_or_empty(proof_path)
-        if actual_sha256 != proof_sha256:
-            raise QualityGateError("required_regressions group proof 文件哈希与 group 行不一致，不能写入父 proof")
-        if proof_path and proof_path not in proof_paths:
-            proof_paths.append(proof_path)
-    cache_root = str(cache_dir or "evidence/QualityGate/long_gate").replace("\\", "/")
-    safe_entry_id = _safe_long_gate_entry_id(ENTRY_REQUIRED_REGRESSIONS)
-    stdout_log_path = f"{cache_root}/logs/{safe_entry_id}.stdout.log"
-    stderr_log_path = f"{cache_root}/logs/{safe_entry_id}.stderr.log"
-    stdout_log_row = _long_gate_success_log_row(result, stream="stdout", rel_path=stdout_log_path)
-    stderr_log_row = _long_gate_success_log_row(result, stream="stderr", rel_path=stderr_log_path)
-    payload = {
-        "schema_version": REQUIRED_REGRESSIONS_PROOF_SCHEMA_VERSION,
-        "status": "passed",
-        "entry_id": str(entry.get("entry_id") or ""),
-        "generated_at": datetime.now().isoformat(timespec="seconds"),
-        "head_sha": _git_head_sha(),
-        "run_id": str(run_id or ""),
-        "quality_gate_plan_hash": hash_quality_gate_commands(command_plan),
-        "command_index": int(command_index),
-        "display": str(entry.get("display") or ""),
-        "args": args,
-        "command_hash": str(entry.get("command_hash") or ""),
-        "capture_output": bool(entry.get("capture_output")),
-        "output_policy": str(entry.get("output_policy") or ""),
-        "fingerprint_schema_version": int(entry.get("fingerprint_schema_version") or 0),
-        "fingerprint_hash": str(fingerprint.get("hash") or ""),
-        "returncode": int(result.get("returncode") or 0),
-        "pytest_exit_code": int(result.get("returncode") or 0),
-        "execution_mode": "grouped",
-        "required_target_count": len(required_target_paths),
-        "test_count": len(required_target_paths),
-        "required_target_paths": required_target_paths,
-        "required_target_hash": stable_json_hash(required_target_paths),
-        "group_count": len(group_rows),
-        "required_registry_hash": str(coverage.get("required_registry_hash") or ""),
-        "group_registry_hash": str(coverage.get("group_registry_hash") or ""),
-        "coverage": {
-            "missing": list(coverage.get("missing") or []),
-            "duplicates": list(coverage.get("duplicates") or []),
-            "unknown": list(coverage.get("unknown") or []),
-        },
-        "group_scope_policy": group_scope_policy,
-        "groups": group_rows,
-        "stdout_log_path": stdout_log_path,
-        "stderr_log_path": stderr_log_path,
-        "stdout_sha256": str(stdout_log_row["sha256"]),
-        "stderr_sha256": str(stderr_log_row["sha256"]),
-        "duration_s": float(result.get("duration_s") or 0.0),
-        "timed_out": bool(result.get("timed_out")),
-        "interrupted": bool(result.get("interrupted")),
-        "partial_write": bool(result.get("partial_write")),
-        "logs": {
-            "stdout": stdout_log_row,
-            "stderr": stderr_log_row,
-        },
-    }
-    os.makedirs(os.path.dirname(abs_path), exist_ok=True)
-    with open(abs_path, "w", encoding="utf-8") as handle:
-        json.dump(payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
-        handle.write("\n")
-    result["required_regressions_output_files"] = proof_paths
-    return proof_paths
-
-
-def _run_required_regressions_grouped(
-    parent_entry: Dict[str, Any],
-    *,
-    parent_fingerprint: Dict[str, Any],
-    parent_decision: Dict[str, Any],
-    cache_dir: str,
-    run_id: str,
-    command_index: int,
-    command_plan: Sequence[Dict[str, Any]],
-) -> Dict[str, Any]:
-    del parent_fingerprint
-    coverage = _required_regression_group_coverage(parent_entry)
-    group_entries = _required_regression_group_entries(parent_entry)
-    if not group_entries:
-        raise QualityGateError("required_regressions 没有可执行的 group")
-    forced_reason = _forced_group_reason(parent_decision)
-    stdout_parts: List[str] = []
-    stderr_parts: List[str] = []
-    group_rows: List[Dict[str, Any]] = []
-    group_pending_successes: List[Dict[str, Any]] = []
-    for group_entry in group_entries:
-        group_id = str(group_entry.get("group_id") or "")
-        print(f"==> required_regressions group 开始：{group_id}", flush=True)
-        fingerprint, evaluation, decision = _evaluate_required_group_reuse(
-            group_entry,
-            cache_dir=cache_dir,
-            forced_reason=forced_reason,
-        )
-        if str(decision.get("decision") or "") == "reuse":
-            previous = evaluation.get("validated_success") if isinstance(evaluation, dict) else None
-            if not isinstance(previous, dict):
-                raise QualityGateError("required_regressions group 可复用但缺少已验证 success cache")
-            started_at = datetime.now().isoformat(timespec="seconds")
-            start_monotonic = time.monotonic()
-            group_result = {
-                "stdout": str(evaluation.get("stdout") or ""),
-                "stderr": str(evaluation.get("stderr") or ""),
-                "returncode": int(previous.get("returncode") or 0),
-                "execution_mode": "reused_success_cache",
-                "duration_kind": "reuse_overhead",
-                "original_duration_s": float(previous.get("duration_s") or 0.0),
-                "reused_from": {
-                    "result_path": str(decision.get("previous_result_path") or ""),
-                    "completed_at": str(previous.get("completed_at") or ""),
-                    "fingerprint_hash": str(previous.get("fingerprint_hash") or ""),
-                    "duration_s": float(previous.get("duration_s") or 0.0),
-                },
-            }
-            _mark_command_timing(group_result, started_at=started_at, start_monotonic=start_monotonic)
-            group_result["duration_kind"] = "reuse_overhead"
-            proof_path = _required_group_proof_path(group_entry)
-            proof_sha256 = _proof_sha256_or_empty(proof_path)
-            row = _required_group_summary_row(
-                group_entry,
-                decision=decision,
-                fingerprint=fingerprint,
-                result=group_result,
-                proof_path=proof_path,
-                proof_sha256=proof_sha256,
-                cache_dir=cache_dir,
-            )
-            group_rows.append(row)
-            stdout_parts.append(f"[required_regressions:{group_id}] reused_success_cache\n{group_result['stdout']}")
-            stderr_parts.append(str(group_result.get("stderr") or ""))
-            print(f"==> required_regressions group 复用成功：{group_id}", flush=True)
-            continue
-
-        started_at = datetime.now().isoformat(timespec="seconds")
-        start_monotonic = time.monotonic()
-        raw_result = _run_command(
-            str(group_entry.get("display") or ""),
-            _resolve_command_args(group_entry),
-            capture_output=bool(group_entry.get("capture_output")),
-        )
-        group_result = _coerce_command_result(raw_result)
-        group_result["execution_mode"] = "executed"
-        _mark_command_timing(group_result, started_at=started_at, start_monotonic=start_monotonic)
-        stdout_parts.append(f"[required_regressions:{group_id}] executed\n{group_result['stdout']}")
-        stderr_parts.append(str(group_result.get("stderr") or ""))
-        returncode = int(group_result.get("returncode") or 0)
-        proof_path = ""
-        proof_sha256 = ""
-        if returncode == 0:
-            proof_path = _write_required_regression_group_proof(
-                group_entry,
-                group_result,
-                run_id=run_id,
-                command_index=command_index,
-                command_plan=command_plan,
-                fingerprint=fingerprint,
-                cache_dir=cache_dir,
-                coverage=coverage,
-            )
-            proof_sha256 = _proof_sha256_or_empty(proof_path)
-            cache_group_result = dict(group_result)
-            cache_group_result.pop("stdout_log_path", None)
-            cache_group_result.pop("stderr_log_path", None)
-            group_pending_successes.append(
-                {
-                    "entry": dict(group_entry),
-                    "fingerprint": dict(fingerprint),
-                    "command_result": cache_group_result,
-                    "output_files": _abs_output_paths([proof_path]),
-                }
-            )
-        row = _required_group_summary_row(
-            group_entry,
-            decision=decision,
-            fingerprint=fingerprint,
-            result=group_result,
-            proof_path=proof_path,
-            proof_sha256=proof_sha256,
-            cache_dir=cache_dir,
-        )
-        group_rows.append(row)
-        if returncode != 0:
-            print(f"==> required_regressions group 失败：{group_id}", flush=True)
-            return {
-                "stdout": "\n".join(stdout_parts),
-                "stderr": "\n".join(stderr_parts),
-                "returncode": returncode,
-                "execution_mode": "grouped",
-                "required_regressions_groups": group_rows,
-                "required_regressions_failed_group": row,
-            }
-        print(f"==> required_regressions group 通过：{group_id}", flush=True)
-    return {
-        "stdout": "\n".join(stdout_parts),
-        "stderr": "\n".join(stderr_parts),
-        "returncode": 0,
-        "execution_mode": "grouped",
-        "required_regressions_groups": group_rows,
-        "required_regressions_group_successes": group_pending_successes,
-    }
+    safe_entry_id = str(entry_id or "").replace("\\", "_").replace("/", "_").strip() or "unknown"
+    return f"{cache_root}/results/{safe_entry_id}.success.json"
 
 
 def _prepare_long_gate_success_output_files(
@@ -2052,16 +1580,6 @@ def _prepare_long_gate_success_output_files(
             )
         ]
     if entry_id == ENTRY_REQUIRED_REGRESSIONS:
-        if str(result.get("execution_mode") or "") == "grouped":
-            return _write_required_regressions_grouped_proof(
-                entry,
-                result,
-                run_id=run_id,
-                command_index=command_index,
-                command_plan=command_plan,
-                fingerprint=dict(fingerprint or {}),
-                cache_dir=cache_dir,
-            )
         return [
             _write_required_regressions_proof(
                 entry,
@@ -2404,71 +1922,6 @@ def _refresh_full_test_debt_reuse_decision(runtime_entry: Dict[str, Any], *, cac
                 os.remove(abs_path)
 
 
-def _annotate_required_group_decisions(
-    entry: Dict[str, Any],
-    decision: Dict[str, Any],
-    *,
-    cache_dir: str,
-) -> Dict[str, Any]:
-    if str(entry.get("entry_id") or "") != ENTRY_REQUIRED_REGRESSIONS:
-        return decision
-    groups = _required_regression_group_entries(entry)
-    if not groups:
-        return decision
-    rows: List[Dict[str, Any]] = []
-    if str(decision.get("decision") or "") == "reuse":
-        for group_entry in groups:
-            rows.append(
-                _required_group_summary_row(
-                    group_entry,
-                    decision={
-                        "decision": "reuse",
-                        "reason": "parent required_regressions success cache reused; group cache not consulted",
-                        "previous_result_path": str(decision.get("previous_result_path") or ""),
-                        "current_fingerprint_hash": str(decision.get("current_fingerprint_hash") or ""),
-                    },
-                    fingerprint={"hash": ""},
-                    result={
-                        "returncode": 0,
-                        "execution_mode": "covered_by_parent_reuse",
-                    },
-                    proof_path=_required_group_proof_path(group_entry),
-                    proof_sha256=_proof_sha256_or_empty(_required_group_proof_path(group_entry)),
-                    cache_dir=cache_dir,
-                )
-            )
-        return {**decision, "required_regressions_groups": rows}
-    if str(decision.get("decision") or "") != "run":
-        return decision
-    forced_reason = _forced_group_reason(decision)
-    for group_entry in groups:
-        fingerprint, _evaluation, group_decision = _evaluate_required_group_reuse(
-            group_entry,
-            cache_dir=cache_dir,
-            forced_reason=forced_reason,
-        )
-        proof_path = _required_group_proof_path(group_entry)
-        rows.append(
-            _required_group_summary_row(
-                group_entry,
-                decision=group_decision,
-                fingerprint=fingerprint,
-                result={
-                    "returncode": 0,
-                    "execution_mode": "reused_success_cache"
-                    if str(group_decision.get("decision") or "") == "reuse"
-                    else "planned_run",
-                },
-                proof_path=proof_path if str(group_decision.get("decision") or "") == "reuse" else "",
-                proof_sha256=_proof_sha256_or_empty(proof_path)
-                if str(group_decision.get("decision") or "") == "reuse"
-                else "",
-                cache_dir=cache_dir,
-            )
-        )
-    return {**decision, "required_regressions_groups": rows}
-
-
 def _full_test_debt_decision_can_refresh(decision: Dict[str, Any]) -> bool:
     decision_kind = str(decision.get("decision") or "")
     if decision_kind == "reuse":
@@ -2549,12 +2002,6 @@ def _prepare_long_gate_cache_decisions(
                     fingerprint=fingerprint,
                     evaluation=evaluation,
                 )
-            if entry_id == ENTRY_REQUIRED_REGRESSIONS:
-                decision = _annotate_required_group_decisions(
-                    entry,
-                    decision,
-                    cache_dir=resolved_cache_dir,
-                )
         else:
             decision = _planned_long_gate_decision_forced(entry, force_requested=force_requested)
         summary_entry = build_summary_entry(index=index, entry=entry, decision=decision)
@@ -2609,19 +2056,6 @@ def _print_long_gate_cache_decisions(entries: Sequence[Dict[str, Any]], *, cache
                 print(f"    - {item}", flush=True)
             if len(invalidated_by) > 10:
                 print(f"    - ... {len(invalidated_by) - 10} more", flush=True)
-        group_rows = [dict(row) for row in list(entry.get("required_regressions_groups") or []) if isinstance(row, dict)]
-        if group_rows:
-            print("  required_regressions_groups:", flush=True)
-            for row in group_rows:
-                print(
-                    "    - {group}: {decision} ({reason}) targets={targets}".format(
-                        group=row.get("group_id") or "",
-                        decision=row.get("decision") or "",
-                        reason=row.get("reason") or "",
-                        targets=row.get("target_count") or 0,
-                    ),
-                    flush=True,
-                )
         _print_fingerprint_diff(entry)
         _print_full_test_debt_incremental_diagnostics(entry)
 

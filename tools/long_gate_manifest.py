@@ -24,7 +24,6 @@ from tools.test_registry import (
     iter_required_regression_common_scope_policy,
     iter_required_regression_groups,
     iter_startup_regressions,
-    validate_required_regression_group_coverage,
 )
 
 LONG_GATE_SCHEMA_VERSION = LONG_GATE_MANIFEST_SCHEMA_VERSION
@@ -36,7 +35,6 @@ ENTRY_PYRIGHT_GATE_FULL = "pyright_gate_full"
 ENTRY_PYRIGHT_TOOLS_FULL = "pyright_tools_full"
 ENTRY_ARCHITECTURE_FITNESS = "architecture_fitness"
 ENTRY_REQUIRED_REGRESSIONS = "required_regressions"
-ENTRY_REQUIRED_REGRESSIONS_GROUP = "required_regressions_group"
 ENTRY_DEBT_LEDGER_SYNC = "debt_ledger_sync"
 ENTRY_STARTUP_RUNTIME_REGRESSIONS = "startup_runtime_regressions"
 ENTRY_QUICKREF_VS_ROUTES = "quickref_vs_routes"
@@ -106,36 +104,6 @@ def _list_equal(left: Sequence[str], right: Sequence[str]) -> bool:
 
 def _dedupe(items: Sequence[str]) -> List[str]:
     return list(dict.fromkeys(str(item) for item in list(items or []) if str(item)))
-
-
-def _scope_policy_hash(payload: Mapping[str, Any]) -> str:
-    return _stable_json_hash(payload)
-
-
-def _required_regression_scope_policy() -> Dict[str, Any]:
-    common = iter_required_regression_common_scope_policy()
-    groups = []
-    for group in iter_required_regression_groups():
-        groups.append(
-            {
-                "group_id": str(group.get("group_id") or ""),
-                "input_file_scopes": list(group.get("input_file_scopes") or []),
-                "config_file_scopes": list(group.get("config_file_scopes") or []),
-                "tool_file_scopes": list(group.get("tool_file_scopes") or []),
-                "dependency_file_scopes": list(group.get("dependency_file_scopes") or []),
-                "env_keys": list(group.get("env_keys") or []),
-            }
-        )
-    payload = {
-        "common_input_file_scopes": list(common.get("input_file_scopes") or []),
-        "common_config_file_scopes": list(common.get("config_file_scopes") or []),
-        "common_tool_file_scopes": list(common.get("tool_file_scopes") or []),
-        "common_dependency_file_scopes": list(common.get("dependency_file_scopes") or []),
-        "common_env_keys": list(common.get("env_keys") or []),
-        "groups": groups,
-    }
-    payload["scope_policy_hash"] = _scope_policy_hash(payload)
-    return payload
 
 
 def classify_quality_gate_command(command: Mapping[str, Any]) -> str:
@@ -277,8 +245,6 @@ def _scopes_for_entry(
             dependency_scopes.extend(str(path) for path in list(group.get("dependency_file_scopes") or []))
             env_keys.extend(str(key) for key in list(group.get("env_keys") or []))
         output_files.append(quality_gate_shared.QUALITY_GATE_REQUIRED_REGRESSIONS_REL.replace("\\", "/"))
-        for group in group_rows:
-            output_files.append(_required_group_proof_path(str(group.get("group_id") or "")))
     elif entry_type == ENTRY_STARTUP_RUNTIME_REGRESSIONS:
         input_scopes = list(iter_startup_regressions())
         input_scopes.extend(
@@ -479,135 +445,6 @@ def _scopes_for_entry(
     )
 
 
-def _required_group_proof_path(group_id: str) -> str:
-    return f"evidence/QualityGate/required_regressions/groups/{str(group_id or '').strip()}.json"
-
-
-def _required_group_command(target_paths: Sequence[str]) -> Dict[str, Any]:
-    args = ["python", "-m", "pytest", "-q"] + [str(path) for path in list(target_paths or [])]
-    return {
-        "display": " ".join(args),
-        "args": args,
-        "capture_output": False,
-        "output_policy": "normalized",
-    }
-
-
-def _required_group_coverage_or_raise(required_targets: Sequence[str]) -> Dict[str, Any]:
-    coverage = validate_required_regression_group_coverage(required_targets)
-    if coverage["missing"] or coverage["duplicates"] or coverage["unknown"]:
-        raise ValueError("required regression group coverage is invalid: " + json.dumps(coverage, ensure_ascii=False, sort_keys=True))
-    return coverage
-
-
-def _required_group_scope_policy(group: Mapping[str, Any]) -> Dict[str, Any]:
-    common = iter_required_regression_common_scope_policy()
-    group_policy = {
-        "common_input_file_scopes": list(common.get("input_file_scopes") or []),
-        "common_config_file_scopes": list(common.get("config_file_scopes") or []),
-        "common_tool_file_scopes": list(common.get("tool_file_scopes") or []),
-        "common_dependency_file_scopes": list(common.get("dependency_file_scopes") or []),
-        "common_env_keys": list(common.get("env_keys") or []),
-        "group_input_file_scopes": list(group.get("input_file_scopes") or []),
-        "group_config_file_scopes": list(group.get("config_file_scopes") or []),
-        "group_tool_file_scopes": list(group.get("tool_file_scopes") or []),
-        "group_dependency_file_scopes": list(group.get("dependency_file_scopes") or []),
-        "group_env_keys": list(group.get("env_keys") or []),
-    }
-    group_policy["scope_policy_hash"] = _scope_policy_hash(group_policy)
-    return group_policy
-
-
-def _required_group_effective_scopes(
-    group: Mapping[str, Any],
-    target_paths: Sequence[str],
-) -> Tuple[List[str], List[str], List[str], List[str], List[str], Dict[str, Any]]:
-    policy = _required_group_scope_policy(group)
-    input_scopes = _dedupe(
-        [str(path) for path in list(target_paths or [])]
-        + list(policy.get("common_input_file_scopes") or [])
-        + list(policy.get("group_input_file_scopes") or [])
-    )
-    config_scopes = _dedupe(
-        list(policy.get("common_config_file_scopes") or []) + list(policy.get("group_config_file_scopes") or [])
-    )
-    tool_scopes = _dedupe(
-        list(policy.get("common_tool_file_scopes") or []) + list(policy.get("group_tool_file_scopes") or [])
-    )
-    dependency_scopes = _dedupe(
-        list(policy.get("common_dependency_file_scopes") or [])
-        + list(policy.get("group_dependency_file_scopes") or [])
-    )
-    env_keys = _dedupe(list(policy.get("common_env_keys") or []) + list(policy.get("group_env_keys") or []))
-    return input_scopes, config_scopes, tool_scopes, dependency_scopes, env_keys, policy
-
-
-def _build_required_group_entries(parent_entry: Mapping[str, Any]) -> List[Dict[str, Any]]:
-    required_targets = _pytest_q_targets(parent_entry.get("args") or []) or []
-    _required_group_coverage_or_raise(required_targets)
-    groups: List[Dict[str, Any]] = []
-    for index, group in enumerate(iter_required_regression_groups(), start=1):
-        group_id = str(group.get("group_id") or "")
-        target_paths = [str(path) for path in list(group.get("target_paths") or [])]
-        command = _required_group_command(target_paths)
-        normalized = _normalize_command(command)
-        entry_id = f"{ENTRY_REQUIRED_REGRESSIONS}.{group_id}"
-        (
-            input_file_scopes,
-            config_file_scopes,
-            tool_file_scopes,
-            dependency_file_scopes,
-            env_keys,
-            scope_policy,
-        ) = _required_group_effective_scopes(group, target_paths)
-        groups.append(
-            {
-                "schema_version": LONG_GATE_SCHEMA_VERSION,
-                "cache_schema_version": LONG_GATE_CACHE_SCHEMA_VERSION,
-                "fingerprint_schema_version": LONG_GATE_FINGERPRINT_SCHEMA_VERSION,
-                "entry_id": entry_id,
-                "entry_type": ENTRY_REQUIRED_REGRESSIONS_GROUP,
-                "parent_entry_id": ENTRY_REQUIRED_REGRESSIONS,
-                "group_id": group_id,
-                "group_index": index,
-                "label": str(group.get("label") or group_id),
-                "command_name": normalized["display"],
-                "display": normalized["display"],
-                "args": list(normalized["args"]),
-                "capture_output": bool(normalized["capture_output"]),
-                "output_policy": normalized["output_policy"],
-                "command_hash": _stable_json_hash(normalized),
-                "input_file_scopes": input_file_scopes,
-                "config_file_scopes": config_file_scopes,
-                "tool_file_scopes": tool_file_scopes,
-                "dependency_file_scopes": dependency_file_scopes,
-                "env_keys": env_keys,
-                "common_input_file_scopes": list(scope_policy.get("common_input_file_scopes") or []),
-                "common_config_file_scopes": list(scope_policy.get("common_config_file_scopes") or []),
-                "common_tool_file_scopes": list(scope_policy.get("common_tool_file_scopes") or []),
-                "common_dependency_file_scopes": list(scope_policy.get("common_dependency_file_scopes") or []),
-                "common_env_keys": list(scope_policy.get("common_env_keys") or []),
-                "group_input_file_scopes": list(scope_policy.get("group_input_file_scopes") or []),
-                "group_config_file_scopes": list(scope_policy.get("group_config_file_scopes") or []),
-                "group_tool_file_scopes": list(scope_policy.get("group_tool_file_scopes") or []),
-                "group_dependency_file_scopes": list(scope_policy.get("group_dependency_file_scopes") or []),
-                "group_env_keys": list(scope_policy.get("group_env_keys") or []),
-                "scope_policy_hash": str(scope_policy.get("scope_policy_hash") or ""),
-                "output_result_files": [_required_group_proof_path(group_id)],
-                "target_paths": target_paths,
-                "target_count": len(target_paths),
-                "long_gate_candidate": False,
-                "cache_status": "enabled",
-                "reuse_allowed": True,
-                "force_invalidate_on": [],
-                "fingerprint": None,
-                "previous_success": None,
-                "last_success_fingerprint": None,
-            }
-        )
-    return groups
-
-
 def _build_entry(command: Mapping[str, Any], index: int, *, entry_type: Optional[str] = None) -> Dict[str, Any]:
     normalized = _normalize_command(command)
     resolved_entry_type = entry_type or classify_quality_gate_command(normalized)
@@ -644,11 +481,6 @@ def _build_entry(command: Mapping[str, Any], index: int, *, entry_type: Optional
         "previous_success": None,
         "last_success_fingerprint": None,
     }
-    if resolved_entry_type == ENTRY_REQUIRED_REGRESSIONS:
-        required_targets = _pytest_q_targets(normalized.get("args") or []) or []
-        entry["required_regression_group_coverage"] = _required_group_coverage_or_raise(required_targets)
-        entry["required_regression_group_scope_policy"] = _required_regression_scope_policy()
-        entry["groups"] = _build_required_group_entries(entry)
     return entry
 
 

@@ -254,7 +254,7 @@ def test_reused_collect_only_is_recorded_as_reused_success_cache(monkeypatch, tm
     assert summary["counts"]["reused"] == 1
 
 
-def test_required_regression_groups_are_recorded_in_json_and_markdown():
+def test_required_regressions_summary_stays_parent_only():
     entry = {
         "entry_id": "required_regressions",
         "entry_type": "required_regressions",
@@ -270,28 +270,8 @@ def test_required_regression_groups_are_recorded_in_json_and_markdown():
         "stdout": "",
         "stderr": "",
         "returncode": 0,
-        "execution_mode": "grouped",
+        "execution_mode": "executed",
         "duration_s": 3.5,
-        "required_regressions_groups": [
-            {
-                "group_id": "quality_gate",
-                "decision": "run",
-                "execution_mode": "executed",
-                "target_count": 1,
-                "duration_s": 1.25,
-                "original_duration_s": 0.0,
-                "proof_path": "evidence/QualityGate/required_regressions/groups/quality_gate.json",
-            },
-            {
-                "group_id": "scheduler_config",
-                "decision": "reuse",
-                "execution_mode": "reused_success_cache",
-                "target_count": 2,
-                "duration_s": 0.05,
-                "original_duration_s": 9.5,
-                "proof_path": "evidence/QualityGate/required_regressions/groups/scheduler_config.json",
-            },
-        ],
     }
 
     summary = build_long_gate_summary(
@@ -315,10 +295,9 @@ def test_required_regression_groups_are_recorded_in_json_and_markdown():
 
     required = _entry_by_id(summary, "required_regressions")
     assert summary["counts"]["executed"] == 1
-    assert required["execution_mode"] == "grouped"
-    assert required["required_regressions_groups"][1]["original_duration_s"] == 9.5
-    assert "## Required regression groups" in markdown
-    assert "| scheduler_config | reuse | reused_success_cache | 2 | 0.050 | 9.500 |" in markdown
+    assert required["execution_mode"] == "executed"
+    assert "required_regressions_groups" not in required
+    assert "## Required regression groups" not in markdown
 
 
 def test_failed_collect_records_failure_and_prints_copyable_command(monkeypatch, tmp_path, capsys):

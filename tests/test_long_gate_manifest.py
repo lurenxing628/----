@@ -172,83 +172,6 @@ def test_required_parent_entry_still_matches_real_command_plan():
     assert required_entry["args"][4:] == iter_required_tests()
 
 
-def test_required_group_entries_have_stable_ids():
-    command_plan = quality_gate_shared.build_quality_gate_command_plan()
-    manifest = manifest_mod.build_manifest_from_quality_gate_plan(command_plan, repo_root=quality_gate_shared.REPO_ROOT)
-    required_entry = _entry_by_id(manifest, "required_regressions")
-
-    assert [group["entry_id"] for group in required_entry["groups"]] == [
-        "required_regressions.quality_gate",
-        "required_regressions.scheduler_config",
-        "required_regressions.scheduler_run_core",
-        "required_regressions.scheduler_analysis_gantt_reports_week_plan",
-        "required_regressions.scheduler_batches_material_resource",
-        "required_regressions.request_services_runtime_error_boundary",
-        "required_regressions.frontend_manual_excel",
-        "required_regressions.ui_layout_presenters_system",
-    ]
-    assert required_entry["groups"][0]["output_result_files"] == [
-        "evidence/QualityGate/required_regressions/groups/quality_gate.json"
-    ]
-
-
-def test_required_group_scope_policy_is_recorded():
-    command_plan = quality_gate_shared.build_quality_gate_command_plan()
-    manifest = manifest_mod.build_manifest_from_quality_gate_plan(command_plan, repo_root=quality_gate_shared.REPO_ROOT)
-    required_entry = _entry_by_id(manifest, "required_regressions")
-    quality_gate = next(group for group in required_entry["groups"] if group["group_id"] == "quality_gate")
-    scheduler_config = next(group for group in required_entry["groups"] if group["group_id"] == "scheduler_config")
-    analysis = next(
-        group
-        for group in required_entry["groups"]
-        if group["group_id"] == "scheduler_analysis_gantt_reports_week_plan"
-    )
-    ui_layout = next(group for group in required_entry["groups"] if group["group_id"] == "ui_layout_presenters_system")
-
-    assert required_entry["required_regression_group_scope_policy"]["common_input_file_scopes"] == [
-        "tests/conftest.py",
-        "conftest.py",
-        "tests/main_style_regression_runner.py",
-        "tests/runtime_cleanup_helper.py",
-    ]
-    assert required_entry["required_regression_group_scope_policy"]["scope_policy_hash"]
-    assert scheduler_config["scope_policy_hash"]
-    assert scheduler_config["common_config_file_scopes"] == [
-        "pytest.ini",
-        "pyproject.toml",
-        "setup.cfg",
-        "tox.ini",
-        "tools/test_registry.py",
-        "tools/quality_gate_shared.py",
-        "tools/quality_gate_support.py",
-        "scripts/run_quality_gate.py",
-    ]
-    assert set(scheduler_config["target_paths"]) <= set(scheduler_config["input_file_scopes"])
-    assert "tests/long_gate_cache_helpers.py" in quality_gate["group_input_file_scopes"]
-    assert "web/routes/domains/scheduler/scheduler_config*.py" in scheduler_config["group_input_file_scopes"]
-    assert "web/routes/domains/scheduler/scheduler_config*.py" not in analysis["group_input_file_scopes"]
-    assert {"node_executable_realpath", "node_version", "PATH"} <= set(analysis["group_env_keys"])
-    assert "CI" in ui_layout["group_env_keys"]
-    assert "tools/test_registry.py" in scheduler_config["config_file_scopes"]
-    assert "tools/test_registry.py" in analysis["config_file_scopes"]
-
-
-def test_required_group_scopes_do_not_include_other_group_test_targets():
-    command_plan = quality_gate_shared.build_quality_gate_command_plan()
-    manifest = manifest_mod.build_manifest_from_quality_gate_plan(command_plan, repo_root=quality_gate_shared.REPO_ROOT)
-    required_entry = _entry_by_id(manifest, "required_regressions")
-    groups = [dict(group) for group in required_entry["groups"]]
-
-    for group in groups:
-        other_targets = {
-            str(target)
-            for other in groups
-            if other["group_id"] != group["group_id"]
-            for target in list(other.get("target_paths") or [])
-        }
-        assert not (set(group["input_file_scopes"]) & other_targets)
-
-
 def test_required_parent_scope_includes_group_specific_scope_union():
     command_plan = quality_gate_shared.build_quality_gate_command_plan()
     manifest = manifest_mod.build_manifest_from_quality_gate_plan(command_plan, repo_root=quality_gate_shared.REPO_ROOT)
@@ -257,43 +180,36 @@ def test_required_parent_scope_includes_group_specific_scope_union():
     assert "web/routes/domains/scheduler/scheduler_config*.py" in required_entry["input_file_scopes"]
     assert "tools/long_gate_cache.py" in required_entry["tool_file_scopes"]
     assert "node_version" in required_entry["env_keys"]
+    assert ".gitignore" in required_entry["config_file_scopes"]
+    assert required_entry["output_result_files"] == ["evidence/QualityGate/required_regressions.json"]
 
 
-def test_required_group_specific_scope_not_leaked_to_other_group_fingerprints(tmp_path):
+def test_required_parent_fingerprint_tracks_group_specific_scope_union(tmp_path):
     command_plan = quality_gate_shared.build_quality_gate_command_plan()
     manifest = manifest_mod.build_manifest_from_quality_gate_plan(command_plan, repo_root=str(tmp_path))
     required_entry = _entry_by_id(manifest, "required_regressions")
-    scheduler_config = next(group for group in required_entry["groups"] if group["group_id"] == "scheduler_config")
-    analysis = next(
-        group
-        for group in required_entry["groups"]
-        if group["group_id"] == "scheduler_analysis_gantt_reports_week_plan"
-    )
 
     before_parent = fingerprint_entry(required_entry, str(tmp_path))
-    before_config = fingerprint_entry(scheduler_config, str(tmp_path))
-    before_analysis = fingerprint_entry(analysis, str(tmp_path))
     changed = tmp_path / "web" / "routes" / "domains" / "scheduler" / "scheduler_config_feedback.py"
     changed.parent.mkdir(parents=True)
     changed.write_text("CONFIG_MARKER = True\n", encoding="utf-8")
     after_parent = fingerprint_entry(required_entry, str(tmp_path))
-    after_config = fingerprint_entry(scheduler_config, str(tmp_path))
-    after_analysis = fingerprint_entry(analysis, str(tmp_path))
 
     assert before_parent["hash"] != after_parent["hash"]
-    assert before_config["hash"] != after_config["hash"]
-    assert before_analysis["hash"] == after_analysis["hash"]
 
 
-def test_required_groups_are_not_top_level_commands():
+def test_required_groups_do_not_enter_formal_manifest_contract():
     command_plan = quality_gate_shared.build_quality_gate_command_plan()
     manifest = manifest_mod.build_manifest_from_quality_gate_plan(command_plan, repo_root=quality_gate_shared.REPO_ROOT)
     entry_ids = [entry["entry_id"] for entry in manifest["entries"]]
+    required = _entry_by_id(manifest, "required_regressions")
 
     assert len(manifest["entries"]) == len(command_plan)
     assert "required_regressions" in entry_ids
     assert all(not entry_id.startswith("required_regressions.") for entry_id in entry_ids)
-    assert _entry_by_id(manifest, "required_regressions")["groups"]
+    assert "groups" not in required
+    assert "required_regression_group_coverage" not in required
+    assert "required_regression_group_scope_policy" not in required
 
 
 def test_collect_full_test_debt_required_and_startup_entries_are_currently_reuse_enabled():
@@ -328,9 +244,7 @@ def test_collect_full_test_debt_required_and_startup_entries_are_currently_reuse
     assert "templates/**/*.html" in required["input_file_scopes"]
     assert "templates_excel/**/*" in required["input_file_scopes"]
     assert "evidence/QualityGate/required_regressions.json" in required["output_result_files"]
-    assert {
-        group["output_result_files"][0] for group in required["groups"]
-    } <= set(required["output_result_files"])
+    assert required["output_result_files"] == ["evidence/QualityGate/required_regressions.json"]
     assert "templates/**/*.html" in full_test_debt["input_file_scopes"]
     assert "templates_excel/**/*" in full_test_debt["input_file_scopes"]
     assert "static/**/*" in full_test_debt["input_file_scopes"]

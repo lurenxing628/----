@@ -1136,6 +1136,51 @@ def _merge_payload(
     return payload
 
 
+def _build_ledger_only_payload(
+    *,
+    repo_root: str,
+    old_payload: Mapping[str, Any],
+    node_cache: Mapping[str, Any],
+    current_fingerprint: Mapping[str, Any],
+    ledger: Mapping[str, Any],
+    plan: Mapping[str, Any],
+) -> Dict[str, Any]:
+    del ledger
+    payload = dict(old_payload)
+    git_status_short_before = _git_status(repo_root)
+    previous_fingerprint = node_cache.get("fingerprint") if isinstance(node_cache.get("fingerprint"), dict) else {}
+    ledger_abs = _abs_path(repo_root, LEDGER_REL)
+    ledger_sha256 = _sha256_file(ledger_abs) if os.path.isfile(ledger_abs) else ""
+    payload.update(
+        {
+            "generated_at": _now_iso(),
+            "head_sha": _git_head(repo_root),
+            "git_status_short_before": git_status_short_before,
+            "worktree_clean_before": git_status_short_before == [],
+            "pytest_args": list(FORMAL_FULL_TEST_PYTEST_ARGS),
+            "incremental_proof": {
+                "mode": "ledger_only",
+                "changed_paths": [str(path) for path in list(plan.get("changed_paths") or [])],
+                "previous_payload_hash": f"sha256:{stable_json_hash(dict(old_payload))}",
+                "previous_head_sha": str(old_payload.get("head_sha") or ""),
+                "previous_generated_at": str(old_payload.get("generated_at") or ""),
+                "node_cache_hash": str(node_cache.get("payload_hash") or ""),
+                "previous_fingerprint_hash": str(
+                    node_cache.get("fingerprint_hash") or dict(previous_fingerprint).get("hash") or ""
+                ),
+                "current_fingerprint_hash": str(current_fingerprint.get("hash") or ""),
+                "ledger_sha256": ledger_sha256,
+                "merge_policy": "reuse_previous_test_observations_with_current_ledger",
+            },
+            "incremental_source": {
+                "mode": "ledger_only",
+                "changed_paths": [str(path) for path in list(plan.get("changed_paths") or [])],
+            },
+        }
+    )
+    return payload
+
+
 def _summary_stdout(summary: Mapping[str, Any], metadata: Mapping[str, Any]) -> str:
     payload = dict(summary)
     payload["long_gate_full_test_debt"] = dict(metadata)
@@ -1221,9 +1266,17 @@ def try_run_special_full_test_debt_mode(
 
     if plan["mode"] == "ledger_only":
         old_payload = dict(node_cache["current_payload"])
+        ledger_payload = _build_ledger_only_payload(
+            repo_root=repo_root,
+            old_payload=old_payload,
+            node_cache=node_cache,
+            current_fingerprint=current_fingerprint,
+            ledger=ledger,
+            plan=plan,
+        )
         try:
             summary = check_full_test_debt.run_check_from_existing_payload(
-                old_payload,
+                ledger_payload,
                 ledger=ledger,
                 require_clean_worktree_proof=True,
             )
@@ -1243,7 +1296,7 @@ def try_run_special_full_test_debt_mode(
             fingerprint=current_fingerprint,
             result=result,
             cache_dir=cache_dir,
-            current_payload=old_payload,
+            current_payload=ledger_payload,
             summary=summary,
         )
         return result

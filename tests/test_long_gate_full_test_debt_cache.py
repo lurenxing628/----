@@ -7,7 +7,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Sequence
+from typing import Optional, Sequence
 
 import pytest
 
@@ -17,6 +17,7 @@ from tools.long_gate_collect import build_collect_nodeids_payload, write_collect
 from tools.long_gate_fingerprint import fingerprint_entry
 from tools.long_gate_full_test_debt import (
     NODE_CACHE_REL,
+    _build_ledger_only_payload,
     _classify_incremental_plan,
     _load_node_cache,
     _merge_payload,
@@ -26,6 +27,7 @@ from tools.long_gate_full_test_debt import (
 )
 from tools.long_gate_manifest import build_manifest_from_quality_gate_plan
 from tools.long_gate_schema import stable_json_hash
+from tools.quality_gate_shared import LEDGER_BEGIN, LEDGER_END
 from tools.test_registry import iter_test_only_helper_impacts
 from tools.test_registry import test_only_helper_impacts_for_path as helper_impacts_for_path
 
@@ -385,6 +387,28 @@ def _collect_snapshot_for_mapping(nodeids_by_file: dict) -> dict:
 
 def _empty_test_debt_ledger() -> dict:
     return {"test_debt": {"entries": []}}
+
+
+def _write_ledger_file(repo_root: Path, ledger: Optional[dict] = None) -> Path:
+    payload = ledger if ledger is not None else _empty_test_debt_ledger()
+    path = repo_root / "开发文档" / "技术债务治理台账.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "\n".join(
+            [
+                "# 技术债务治理台账",
+                "",
+                LEDGER_BEGIN,
+                "```json",
+                json.dumps(payload, ensure_ascii=False, sort_keys=True),
+                "```",
+                LEDGER_END,
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return path
 
 
 def _fake_successful_command(module, repo_root: Path, calls: list[str]):
@@ -1829,6 +1853,111 @@ def test_merge_payload_records_incremental_proof_and_keeps_formal_args(tmp_path)
         "collect_nodeids_hash": collect_snapshot["nodeid_hash"],
         "merge_policy": "replace_reports_for_changed_test_files",
     }
+
+
+def test_build_ledger_only_payload_records_current_proof_metadata(monkeypatch, tmp_path):
+    old_payload = _current_payload_for_nodeids(["tests/test_a.py::test_a"])
+    old_payload["generated_at"] = "old-time"
+    old_payload["head_sha"] = "old-head"
+    ledger_path = _write_ledger_file(tmp_path)
+    current_fingerprint = {"hash": "sha256:current"}
+
+    monkeypatch.setattr(full_debt_mod, "_git_head", lambda *_args, **_kwargs: "new-head")
+    monkeypatch.setattr(full_debt_mod, "_git_status", lambda *_args, **_kwargs: [])
+
+    payload = _build_ledger_only_payload(
+        repo_root=str(tmp_path),
+        old_payload=old_payload,
+        node_cache={
+            "payload_hash": "sha256:node-cache",
+            "fingerprint_hash": "sha256:previous",
+            "fingerprint": {"hash": "sha256:previous"},
+        },
+        current_fingerprint=current_fingerprint,
+        ledger=_empty_test_debt_ledger(),
+        plan={"mode": "ledger_only", "changed_paths": ["开发文档/技术债务治理台账.md"]},
+    )
+
+    assert payload["head_sha"] == "new-head"
+    assert payload["generated_at"] != "old-time"
+    assert payload["git_status_short_before"] == []
+    assert payload["worktree_clean_before"] is True
+    assert payload["pytest_args"] == ["tests", "-q", "--tb=short", "-ra", "-p", "no:cacheprovider"]
+    assert payload["collected_nodeids"] == old_payload["collected_nodeids"]
+    assert payload["reports"] == old_payload["reports"]
+    assert payload["collection_errors"] == old_payload["collection_errors"]
+    assert payload["classifications"] == old_payload["classifications"]
+    assert payload["incremental_proof"] == {
+        "mode": "ledger_only",
+        "changed_paths": ["开发文档/技术债务治理台账.md"],
+        "previous_payload_hash": f"sha256:{stable_json_hash(old_payload)}",
+        "previous_head_sha": "old-head",
+        "previous_generated_at": "old-time",
+        "node_cache_hash": "sha256:node-cache",
+        "previous_fingerprint_hash": "sha256:previous",
+        "current_fingerprint_hash": "sha256:current",
+        "ledger_sha256": hashlib.sha256(ledger_path.read_bytes()).hexdigest(),
+        "merge_policy": "reuse_previous_test_observations_with_current_ledger",
+    }
+    assert payload["incremental_source"] == {
+        "mode": "ledger_only",
+        "changed_paths": ["开发文档/技术债务治理台账.md"],
+    }
+
+
+def test_special_ledger_only_success_writes_current_payload_and_node_cache(monkeypatch, tmp_path):
+    entry, _old_fingerprint = _seed_success(tmp_path)
+    success = _load_success(tmp_path)
+    ledger_path = _write_ledger_file(tmp_path)
+    current_fingerprint = fingerprint_entry(entry, str(tmp_path))
+    seen_payloads = []
+
+    monkeypatch.setattr(full_debt_mod, "_load_ledger_for_repo", lambda *_args, **_kwargs: _empty_test_debt_ledger())
+    monkeypatch.setattr(full_debt_mod, "_git_status", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(full_debt_mod, "_git_head", lambda *_args, **_kwargs: "new-head")
+
+    def fake_run_check_from_existing_payload(payload, *, ledger=None, require_clean_worktree_proof=True):
+        seen_payloads.append(dict(payload))
+        return _summary_payload("ledger-only")
+
+    monkeypatch.setattr(
+        full_debt_mod.check_full_test_debt,
+        "run_check_from_existing_payload",
+        fake_run_check_from_existing_payload,
+    )
+
+    result = full_debt_mod.try_run_special_full_test_debt_mode(
+        repo_root=str(tmp_path),
+        entry=entry,
+        current_fingerprint=current_fingerprint,
+        decision={
+            "decision": "run",
+            "reason": "input fingerprint changed",
+            "previous_result_path": "evidence/QualityGate/long_gate/results/full_test_debt.success.json",
+        },
+        evaluation={"validated_success": success},
+        cache_dir="evidence/QualityGate/long_gate",
+    )
+
+    assert result is not None
+    assert result["returncode"] == 0
+    assert result["execution_mode"] == "ledger_only"
+    assert seen_payloads
+    assert seen_payloads[0]["incremental_proof"]["mode"] == "ledger_only"
+    assert seen_payloads[0]["head_sha"] == "new-head"
+    current_payload = json.loads(
+        (tmp_path / "evidence" / "QualityGate" / "current_full_test_debt.json").read_text(encoding="utf-8")
+    )
+    node_cache = json.loads((tmp_path / NODE_CACHE_REL).read_text(encoding="utf-8"))
+    assert current_payload["head_sha"] == "new-head"
+    assert current_payload["incremental_proof"]["mode"] == "ledger_only"
+    assert current_payload["incremental_proof"]["previous_payload_hash"]
+    assert current_payload["incremental_proof"]["current_fingerprint_hash"] == current_fingerprint["hash"]
+    assert current_payload["incremental_proof"]["ledger_sha256"] == hashlib.sha256(ledger_path.read_bytes()).hexdigest()
+    assert node_cache["execution_mode"] == "ledger_only"
+    assert node_cache["ledger_sha256"] == hashlib.sha256(ledger_path.read_bytes()).hexdigest()
+    assert node_cache["current_payload_hash"] == f"sha256:{stable_json_hash(current_payload)}"
+    assert node_cache["current_payload"] == current_payload
 
 
 def test_special_nodeid_incremental_failure_is_checked_against_merged_payload(monkeypatch, tmp_path):

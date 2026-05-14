@@ -183,6 +183,7 @@ REQUIRED_REGRESSION_COMMON_SCOPES = {
         "pyproject.toml",
         "setup.cfg",
         "tox.ini",
+        ".gitignore",
         "tools/test_registry.py",
         "tools/quality_gate_shared.py",
         "tools/quality_gate_support.py",
