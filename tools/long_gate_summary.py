@@ -355,6 +355,29 @@ def render_summary_markdown(summary: Mapping[str, Any]) -> str:
                 receipt_path=entry.get("receipt_path") or "",
             )
         )
+    incremental_entries = [
+        entry
+        for entry in list(summary.get("entries") or [])
+        if isinstance(entry, Mapping) and isinstance(entry.get("full_test_debt_incremental"), Mapping)
+    ]
+    incremental_entries = [entry for entry in incremental_entries if dict(entry.get("full_test_debt_incremental") or {})]
+    if incremental_entries:
+        lines.extend(["", "## Full-test-debt incremental", ""])
+        for entry in incremental_entries:
+            plan = dict(entry.get("full_test_debt_incremental") or {})
+            lines.append(f"- entry: {entry.get('entry_id') or ''}")
+            lines.append(f"  - available: {bool(plan.get('available'))}")
+            lines.append(f"  - mode: {plan.get('mode') or ''}")
+            lines.append(f"  - fallback_reason: {plan.get('fallback_reason') or plan.get('reason') or ''}")
+            for key in (
+                "changed_helpers",
+                "declared_helper_impacts",
+                "actual_importing_test_files",
+                "affected_test_files",
+                "selected_nodeids",
+            ):
+                if key in plan:
+                    lines.append(f"  - {key}: {json.dumps(plan.get(key), ensure_ascii=False, sort_keys=True)}")
     failure = summary.get("failure")
     if isinstance(failure, Mapping):
         lines.extend(

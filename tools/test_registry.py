@@ -4,7 +4,7 @@ import hashlib
 import json
 import os
 import subprocess
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
@@ -160,6 +160,68 @@ QUALITY_GATE_GUARD_TESTS = (
 
 QUALITY_GATE_REQUIRED_TESTS = (QUALITY_GATE_SELFTEST_PATH, *QUALITY_GATE_GUARD_TESTS)
 
+TEST_ONLY_HELPER_IMPACT = {
+    "tests/long_gate_cache_helpers.py": (
+        "tests/test_long_gate_required_regression_cache.py",
+        "tests/test_long_gate_startup_regression_cache.py",
+    ),
+}
+
+
+def _normalize_registry_path(path: str) -> str:
+    return str(path or "").strip().replace("\\", "/")
+
+
+def _is_top_level_test_only_helper_path(path: str) -> bool:
+    normalized = _normalize_registry_path(path)
+    name = os.path.basename(normalized)
+    return (
+        normalized.startswith("tests/")
+        and normalized.count("/") == 1
+        and normalized.endswith(".py")
+        and name.endswith("_helpers.py")
+        and name != "conftest.py"
+    )
+
+
+def _is_regular_helper_impact_target(path: str) -> bool:
+    normalized = _normalize_registry_path(path)
+    name = os.path.basename(normalized)
+    if normalized == "conftest.py" or normalized.endswith("/conftest.py"):
+        return False
+    if not normalized.startswith("tests/") or normalized.count("/") != 1 or not normalized.endswith(".py"):
+        return False
+    if name.endswith("_helpers.py"):
+        return False
+    return name.startswith("test_") or name.startswith("regression_")
+
+
+def iter_test_only_helper_impacts(
+    helper_impacts: Optional[Mapping[str, Sequence[str]]] = None,
+) -> Dict[str, List[str]]:
+    impacts = helper_impacts if helper_impacts is not None else TEST_ONLY_HELPER_IMPACT
+    rows: Dict[str, List[str]] = {}
+    for helper_path, target_paths in sorted(impacts.items()):
+        helper = _normalize_registry_path(helper_path)
+        if not _is_top_level_test_only_helper_path(helper):
+            raise ValueError("test-only helper impact helper must be top-level tests/*_helpers.py: " + helper)
+        targets = normalize_test_paths(list(target_paths or []))
+        if not targets:
+            raise ValueError("test-only helper impact targets are empty: " + helper)
+        for target in targets:
+            if not _is_regular_helper_impact_target(target):
+                raise ValueError("test-only helper impact target must be a top-level test file: " + target)
+        rows[helper] = targets
+    return rows
+
+
+def test_only_helper_impacts_for_path(
+    path: str,
+    helper_impacts: Optional[Mapping[str, Sequence[str]]] = None,
+) -> List[str]:
+    normalized = _normalize_registry_path(path)
+    return list(iter_test_only_helper_impacts(helper_impacts).get(normalized) or [])
+
 
 def normalize_test_paths(paths: Sequence[str]) -> List[str]:
     out: List[str] = []
@@ -268,13 +330,16 @@ __all__ = [
     "QUALITY_GATE_REQUIRED_TESTS",
     "QUALITY_GATE_SELFTEST_PATH",
     "QUALITY_GATE_STARTUP_REGRESSION_ARGS",
+    "TEST_ONLY_HELPER_IMPACT",
     "build_test_path_status",
     "hash_required_tests_registry",
     "hash_test_registry",
     "iter_non_regression_guard_tests",
     "iter_required_tests",
     "iter_startup_regressions",
+    "iter_test_only_helper_impacts",
     "normalize_test_paths",
     "required_test_nodeid_matches",
     "stable_registry_hash",
+    "test_only_helper_impacts_for_path",
 ]

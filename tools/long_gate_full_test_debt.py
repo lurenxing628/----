@@ -29,6 +29,7 @@ from tools.quality_gate_shared import (
     iter_quality_gate_required_tests,
 )
 from tools.test_debt_registry import validate_current_candidate_payload
+from tools.test_registry import iter_test_only_helper_impacts
 
 NODE_CACHE_REL = QUALITY_GATE_FULL_TEST_DEBT_NODE_CACHE_REL.replace("\\", "/")
 LEDGER_REL = os.path.relpath(LEDGER_PATH, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))).replace(
@@ -259,6 +260,18 @@ def _is_regular_test_file(path: str) -> bool:
     return name.startswith("test_") or name.startswith("regression_")
 
 
+def _is_top_level_test_helper_file(path: str) -> bool:
+    normalized = str(path or "").replace("\\", "/")
+    name = os.path.basename(normalized)
+    return (
+        normalized.startswith("tests/")
+        and normalized.count("/") == 1
+        and normalized.endswith(".py")
+        and name.endswith("_helpers.py")
+        and name != "conftest.py"
+    )
+
+
 def _module_names_for_test_path(path: str) -> Set[str]:
     normalized = str(path or "").replace("\\", "/")
     if not normalized.startswith("tests/") or not normalized.endswith(".py"):
@@ -269,6 +282,14 @@ def _module_names_for_test_path(path: str) -> Set[str]:
     if module.startswith("tests."):
         names.add(module[len("tests.") :])
     return {name for name in names if name}
+
+
+def _module_names_for_test_helper_path(path: str) -> Set[str]:
+    normalized = str(path or "").replace("\\", "/")
+    if not _is_top_level_test_helper_file(normalized):
+        return set()
+    stem = os.path.splitext(os.path.basename(normalized))[0]
+    return {stem, f"tests.{stem}"}
 
 
 def _dynamic_import_aliases(tree: ast.AST) -> Tuple[Set[str], Set[str]]:
@@ -375,6 +396,120 @@ def _import_matches_changed_test_module(
     return False
 
 
+def _call_is_dynamic_import(
+    node: ast.Call,
+    *,
+    importlib_module_names: Set[str],
+    import_module_function_names: Set[str],
+) -> bool:
+    func = node.func
+    if isinstance(func, ast.Name) and func.id == "__import__":
+        return True
+    if isinstance(func, ast.Name) and func.id in import_module_function_names:
+        return True
+    return (
+        isinstance(func, ast.Attribute)
+        and func.attr == "import_module"
+        and isinstance(func.value, ast.Name)
+        and func.value.id in importlib_module_names
+    )
+
+
+def _source_may_reference_helper_module(source: str, helper_modules: Set[str]) -> bool:
+    helper_tokens = set(helper_modules)
+    helper_tokens.update(name.rsplit(".", 1)[-1] for name in helper_modules)
+    if any(token and token in source for token in helper_tokens):
+        return True
+    for stem in {name.rsplit(".", 1)[-1] for name in helper_modules}:
+        parts = [part for part in stem.split("_") if part and part != "helpers"]
+        if len(parts) >= 2 and all(part in source for part in parts):
+            return True
+    return False
+
+
+def _dynamic_import_may_reference_helper(node: ast.Call, helper_modules: Set[str], source: str) -> bool:
+    if not node.args:
+        return _source_may_reference_helper_module(source, helper_modules)
+    module_values, module_is_constant = _constant_texts(node.args[0])
+    if not module_is_constant:
+        return _source_may_reference_helper_module(source, helper_modules)
+    if any(value in helper_modules for value in module_values):
+        return True
+    fromlist_node: Optional[ast.AST] = None
+    if len(node.args) >= 4:
+        fromlist_node = node.args[3]
+    for keyword in node.keywords:
+        if keyword.arg == "fromlist":
+            fromlist_node = keyword.value
+            break
+    if fromlist_node is None:
+        return False
+    fromlist_values, fromlist_is_constant = _constant_texts(fromlist_node)
+    if not fromlist_is_constant:
+        return any(value == "tests" for value in module_values) and _source_may_reference_helper_module(
+            source,
+            helper_modules,
+        )
+    for module_value in module_values:
+        for fromlist_value in fromlist_values:
+            candidate = f"{module_value}.{fromlist_value}".strip(".")
+            if candidate in helper_modules or fromlist_value in helper_modules:
+                return True
+    return False
+
+
+def _static_import_references_helper(node: ast.AST, helper_modules: Set[str]) -> bool:
+    helper_stems = {name.rsplit(".", 1)[-1] for name in helper_modules}
+    if isinstance(node, ast.Import):
+        return any(str(alias.name or "") in helper_modules for alias in node.names)
+    if isinstance(node, ast.ImportFrom):
+        module = str(node.module or "")
+        if module in helper_modules:
+            return True
+        if module == "tests":
+            return any(str(alias.name or "") in helper_stems for alias in node.names)
+        if node.level > 0:
+            if module in helper_stems:
+                return True
+            if not module:
+                return any(str(alias.name or "") in helper_stems for alias in node.names)
+    return False
+
+
+def _test_files_importing_helper(repo_root: str, helper_path: str) -> Tuple[List[str], str]:
+    normalized_helper = str(helper_path or "").replace("\\", "/")
+    helper_modules = _module_names_for_test_helper_path(normalized_helper)
+    if not helper_modules:
+        return [], f"test helper is not a top-level tests/*_helpers.py file: {normalized_helper}"
+    importers: List[str] = []
+    pattern = os.path.join(_repo_root(repo_root), "tests", "**", "*.py")
+    for abs_path in sorted(glob.glob(pattern, recursive=True)):
+        rel_path = os.path.relpath(abs_path, _repo_root(repo_root)).replace("\\", "/")
+        if rel_path == normalized_helper:
+            continue
+        try:
+            with open(abs_path, encoding="utf-8") as handle:
+                source = handle.read()
+            tree = ast.parse(source, filename=rel_path)
+        except (OSError, UnicodeDecodeError, SyntaxError):
+            return [], f"cannot safely inspect test helper imports: {rel_path}"
+        importlib_module_names, import_module_function_names = _dynamic_import_aliases(tree)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and _call_is_dynamic_import(
+                node,
+                importlib_module_names=importlib_module_names,
+                import_module_function_names=import_module_function_names,
+            ):
+                if _dynamic_import_may_reference_helper(node, helper_modules, source):
+                    return [], f"dynamic test helper import cannot be proven safe: {rel_path}"
+            if _static_import_references_helper(node, helper_modules):
+                if _is_top_level_test_helper_file(rel_path):
+                    return [], f"test helper is imported by another helper: {rel_path}"
+                importers.append(rel_path)
+                break
+    return list(dict.fromkeys(importers)), ""
+
+
 def _source_may_import_changed_test_module(source: str, changed_modules: Set[str]) -> bool:
     if "import_module" in source or "__import__" in source:
         return True
@@ -438,8 +573,23 @@ def _classify_incremental_plan(
     ledger_only = changed_paths == [LEDGER_REL]
     if not meaningful_paths and not ledger_only:
         return None, "only collect_nodeids changed"
-    if not ledger_only and any(not _is_regular_test_file(path) for path in meaningful_paths):
-        return None, "changed paths are outside safe test-file-only scope: " + ", ".join(changed_paths)
+    try:
+        helper_impacts = iter_test_only_helper_impacts()
+    except ValueError as exc:
+        return None, str(exc)
+    changed_regular_test_files: List[str] = []
+    changed_helpers: List[str] = []
+    if not ledger_only:
+        for path in meaningful_paths:
+            if _is_regular_test_file(path):
+                changed_regular_test_files.append(path)
+                continue
+            if _is_top_level_test_helper_file(path):
+                if path not in helper_impacts:
+                    return None, f"test helper is not declared: {path}"
+                changed_helpers.append(path)
+                continue
+            return None, "changed paths are outside safe test-file-only scope: " + ", ".join(changed_paths)
 
     nodeids_by_file = collect_snapshot.get("nodeids_by_file")
     if not isinstance(nodeids_by_file, dict):
@@ -471,23 +621,47 @@ def _classify_incremental_plan(
             },
         }, ""
 
+    declared_helper_impacts: Dict[str, List[str]] = {}
+    actual_importing_test_files: List[str] = []
+    for helper_path in changed_helpers:
+        declared = list(helper_impacts.get(helper_path) or [])
+        actual, import_error = _test_files_importing_helper(repo_root, helper_path)
+        if import_error:
+            return None, import_error
+        actual_set = set(actual)
+        declared_set = set(declared)
+        extra = sorted(actual_set - declared_set)
+        if extra:
+            return None, f"test helper has undeclared importer: {helper_path} -> {extra[0]}"
+        declared_helper_impacts[helper_path] = declared
+        actual_importing_test_files.extend(actual)
+
+    affected_test_files = list(changed_regular_test_files)
+    for helper_path in changed_helpers:
+        affected_test_files.extend(declared_helper_impacts.get(helper_path) or [])
+    affected_test_files.extend(actual_importing_test_files)
+    affected_test_files = list(dict.fromkeys(affected_test_files))
+
     selected: List[str] = []
-    changed_test_files: List[str] = []
     ledger_nodeids = _ledger_test_debt_nodeids(ledger)
-    for path in meaningful_paths:
+    helper_affected_files = set(affected_test_files) - set(changed_regular_test_files)
+    for path in affected_test_files:
         mapped = nodeids_by_file.get(path)
         if not isinstance(mapped, list) or not mapped or any(not isinstance(item, str) for item in mapped):
+            if path in helper_affected_files:
+                return None, f"helper impact target has no trusted nodeid mapping: {path}"
             return None, f"changed test file has no trusted nodeid mapping: {path}"
         if any(str(item) in ledger_nodeids for item in mapped):
+            if path in helper_affected_files:
+                return None, f"helper impact target contains registered full-test-debt nodeid: {path}"
             return None, f"changed test file contains registered full-test-debt nodeid: {path}"
         selected.extend(str(item) for item in mapped)
-        changed_test_files.append(path)
 
-    import_error = _changed_test_imported_elsewhere(repo_root, changed_test_files)
+    import_error = _changed_test_imported_elsewhere(repo_root, affected_test_files)
     if import_error:
         return None, import_error
 
-    changed_file_set = set(changed_test_files)
+    changed_file_set = set(affected_test_files)
     for path in sorted(set(str(item) for item in nodeids_by_file) | set(str(item) for item in cached_by_file)):
         if path in changed_file_set:
             continue
@@ -497,7 +671,7 @@ def _classify_incremental_plan(
     hash_error = _validate_node_cache_test_file_hashes(
         repo_root,
         test_hashes,
-        allowed_changed_files=changed_test_files,
+        allowed_changed_files=affected_test_files,
     )
     if hash_error:
         return None, hash_error
@@ -505,7 +679,11 @@ def _classify_incremental_plan(
     return {
         "mode": "nodeid_incremental",
         "changed_paths": changed_paths,
-        "changed_test_files": changed_test_files,
+        "changed_test_files": affected_test_files,
+        "changed_helpers": changed_helpers,
+        "declared_helper_impacts": declared_helper_impacts,
+        "actual_importing_test_files": list(dict.fromkeys(actual_importing_test_files)),
+        "affected_test_files": affected_test_files,
         "selected_nodeids": list(dict.fromkeys(selected)),
         "safety_checks": {
             "collect_nodeids_valid": True,
@@ -514,6 +692,8 @@ def _classify_incremental_plan(
             "unchanged_nodeid_mapping_valid": True,
             "changed_test_imported_elsewhere": False,
             "registered_debt_nodeid_in_changed_files": False,
+            "declared_helper_impacts_valid": True,
+            "actual_helper_imports_within_declared_impacts": True,
         },
     }, ""
 
@@ -868,8 +1048,10 @@ def _merge_payload(
     changed_test_files: Sequence[str],
     selected_nodeids: Sequence[str],
     pytest_args: Sequence[str],
+    incremental_plan: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, Any]:
     changed_files = {str(path) for path in changed_test_files}
+    plan = incremental_plan if isinstance(incremental_plan, Mapping) else {}
 
     def keep_report(report: Mapping[str, Any]) -> bool:
         return _nodeid_file(str(report.get("nodeid") or "")) not in changed_files
@@ -933,6 +1115,10 @@ def _merge_payload(
                 "mode": "nodeid_incremental",
                 "selected_nodeids": list(selected_nodeids),
                 "changed_test_files": list(changed_test_files),
+                "changed_helpers": list(plan.get("changed_helpers") or []),
+                "declared_helper_impacts": dict(plan.get("declared_helper_impacts") or {}),
+                "actual_importing_test_files": list(plan.get("actual_importing_test_files") or []),
+                "affected_test_files": list(plan.get("affected_test_files") or changed_test_files),
                 "previous_payload_hash": f"sha256:{stable_json_hash(dict(old_payload))}",
                 "node_cache_hash": str(node_cache.get("payload_hash") or ""),
                 "collect_nodeids_hash": str(collect_snapshot.get("nodeid_hash") or ""),
@@ -941,6 +1127,8 @@ def _merge_payload(
             "incremental_source": {
                 "mode": "nodeid_incremental",
                 "changed_test_files": list(changed_test_files),
+                "changed_helpers": list(plan.get("changed_helpers") or []),
+                "affected_test_files": list(plan.get("affected_test_files") or changed_test_files),
                 "selected_nodeids": list(selected_nodeids),
             },
         }
@@ -1084,6 +1272,7 @@ def try_run_special_full_test_debt_mode(
         changed_test_files=[str(item) for item in list(plan.get("changed_test_files") or [])],
         selected_nodeids=selected_nodeids,
         pytest_args=list(collector_result.get("pytest_args") or []),
+        incremental_plan=plan,
     )
     try:
         summary = check_full_test_debt.run_check_from_existing_payload(
@@ -1102,6 +1291,10 @@ def try_run_special_full_test_debt_mode(
     metadata = {
         "execution_mode": "nodeid_incremental",
         "changed_test_files": list(plan.get("changed_test_files") or []),
+        "changed_helpers": list(plan.get("changed_helpers") or []),
+        "declared_helper_impacts": dict(plan.get("declared_helper_impacts") or {}),
+        "actual_importing_test_files": list(plan.get("actual_importing_test_files") or []),
+        "affected_test_files": list(plan.get("affected_test_files") or []),
         "selected_nodeids": selected_nodeids,
     }
     result = {
@@ -1112,6 +1305,10 @@ def try_run_special_full_test_debt_mode(
         "reused_from": {
             **reused_from,
             "changed_test_files": list(plan.get("changed_test_files") or []),
+            "changed_helpers": list(plan.get("changed_helpers") or []),
+            "declared_helper_impacts": dict(plan.get("declared_helper_impacts") or {}),
+            "actual_importing_test_files": list(plan.get("actual_importing_test_files") or []),
+            "affected_test_files": list(plan.get("affected_test_files") or []),
             "selected_nodeids": selected_nodeids,
         },
     }
@@ -1235,6 +1432,10 @@ def explain_special_full_test_debt_plan(
         "mode": str(plan.get("mode") or ""),
         "changed_paths": list(plan.get("changed_paths") or []),
         "changed_test_files": list(plan.get("changed_test_files") or []),
+        "changed_helpers": list(plan.get("changed_helpers") or []),
+        "declared_helper_impacts": dict(plan.get("declared_helper_impacts") or {}),
+        "actual_importing_test_files": list(plan.get("actual_importing_test_files") or []),
+        "affected_test_files": list(plan.get("affected_test_files") or []),
         "selected_nodeids": list(plan.get("selected_nodeids") or []),
         "safety_checks": dict(plan.get("safety_checks") or {}),
         **_special_explain_diagnostics(

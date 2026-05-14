@@ -26,6 +26,8 @@ from tools.long_gate_full_test_debt import (
 )
 from tools.long_gate_manifest import build_manifest_from_quality_gate_plan
 from tools.long_gate_schema import stable_json_hash
+from tools.test_registry import iter_test_only_helper_impacts
+from tools.test_registry import test_only_helper_impacts_for_path as helper_impacts_for_path
 
 
 def _repo_root() -> str:
@@ -367,6 +369,20 @@ def _collect_snapshot_for_tests() -> dict:
     }
 
 
+def _collect_snapshot_for_mapping(nodeids_by_file: dict) -> dict:
+    nodeids = []
+    for path in sorted(nodeids_by_file):
+        nodeids.extend(str(item) for item in list(nodeids_by_file[path]))
+    return {
+        "schema_version": 1,
+        "status": "passed",
+        "nodeids": nodeids,
+        "nodeid_count": len(nodeids),
+        "nodeid_hash": stable_json_hash(nodeids),
+        "nodeids_by_file": {str(path): list(values) for path, values in nodeids_by_file.items()},
+    }
+
+
 def _empty_test_debt_ledger() -> dict:
     return {"test_debt": {"entries": []}}
 
@@ -503,6 +519,8 @@ def test_nodeid_incremental_plan_selects_changed_test_file_nodeids(tmp_path):
         "unchanged_nodeid_mapping_valid": True,
         "changed_test_imported_elsewhere": False,
         "registered_debt_nodeid_in_changed_files": False,
+        "declared_helper_impacts_valid": True,
+        "actual_helper_imports_within_declared_impacts": True,
     }
 
 
@@ -545,6 +563,456 @@ def test_nodeid_incremental_plan_accepts_top_level_regression_test_file(tmp_path
     assert plan["mode"] == "nodeid_incremental"
     assert plan["changed_test_files"] == ["tests/regression_sample_contract.py"]
     assert plan["selected_nodeids"] == ["tests/regression_sample_contract.py::test_regression_sample"]
+
+
+def test_test_only_helper_impact_registry_is_normalized_and_defensive() -> None:
+    impacts = iter_test_only_helper_impacts()
+
+    assert impacts["tests/long_gate_cache_helpers.py"] == [
+        "tests/test_long_gate_required_regression_cache.py",
+        "tests/test_long_gate_startup_regression_cache.py",
+    ]
+    assert helper_impacts_for_path("tests\\long_gate_cache_helpers.py") == [
+        "tests/test_long_gate_required_regression_cache.py",
+        "tests/test_long_gate_startup_regression_cache.py",
+    ]
+    assert helper_impacts_for_path("tests/unknown_helpers.py") == []
+
+    returned = helper_impacts_for_path("tests/long_gate_cache_helpers.py")
+    returned.append("tests/test_extra.py")
+    assert helper_impacts_for_path("tests/long_gate_cache_helpers.py") == [
+        "tests/test_long_gate_required_regression_cache.py",
+        "tests/test_long_gate_startup_regression_cache.py",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("helper_impacts", "message"),
+    [
+        ({"tests/not_a_helper.py": ("tests/test_a.py",)}, r"tests/\*_helpers\.py"),
+        ({"tests/other_helpers.py": ()}, "targets are empty"),
+        ({"tests/other_helpers.py": ("tests/target_helpers.py",)}, "target must be a top-level test file"),
+        ({"tests/other_helpers.py": ("tests/conftest.py",)}, "target must be a top-level test file"),
+        ({"tests/other_helpers.py": ("tests/sub/test_target.py",)}, "target must be a top-level test file"),
+        ({"tests/other_helpers.py": ("tests/smoke_target.py",)}, "target must be a top-level test file"),
+        ({"tests/other_helpers.py": ("tests/target_test.py",)}, "target must be a top-level test file"),
+    ],
+)
+def test_test_only_helper_impact_registry_rejects_unsafe_rows(helper_impacts, message) -> None:
+    with pytest.raises(ValueError, match=message):
+        iter_test_only_helper_impacts(helper_impacts)
+
+
+def test_declared_helper_change_uses_nodeid_incremental(tmp_path):
+    helper_text = "def helper():\n    return 1\n"
+    required_text = "from tests.long_gate_cache_helpers import helper\n"
+    startup_text = "from tests.long_gate_cache_helpers import helper\n"
+    _write_file(tmp_path, "tests/long_gate_cache_helpers.py", helper_text)
+    _write_file(tmp_path, "tests/test_long_gate_required_regression_cache.py", required_text)
+    _write_file(tmp_path, "tests/test_long_gate_startup_regression_cache.py", startup_text)
+    previous = _fingerprint_from_file_hashes(
+        {
+            "tests/long_gate_cache_helpers.py": "old-helper",
+            "tests/test_long_gate_required_regression_cache.py": hashlib.sha256(required_text.encode("utf-8")).hexdigest(),
+            "tests/test_long_gate_startup_regression_cache.py": hashlib.sha256(startup_text.encode("utf-8")).hexdigest(),
+            "evidence/QualityGate/collect_nodeids.json": "old-collect",
+        }
+    )
+    current = _fingerprint_from_file_hashes(
+        {
+            "tests/long_gate_cache_helpers.py": "new-helper",
+            "tests/test_long_gate_required_regression_cache.py": hashlib.sha256(required_text.encode("utf-8")).hexdigest(),
+            "tests/test_long_gate_startup_regression_cache.py": hashlib.sha256(startup_text.encode("utf-8")).hexdigest(),
+            "evidence/QualityGate/collect_nodeids.json": "new-collect",
+        }
+    )
+    snapshot = _collect_snapshot_for_mapping(
+        {
+            "tests/test_long_gate_required_regression_cache.py": [
+                "tests/test_long_gate_required_regression_cache.py::test_required"
+            ],
+            "tests/test_long_gate_startup_regression_cache.py": [
+                "tests/test_long_gate_startup_regression_cache.py::test_startup"
+            ],
+        }
+    )
+
+    plan, error = _classify_incremental_plan(
+        repo_root=str(tmp_path),
+        previous_fingerprint=previous,
+        current_fingerprint=current,
+        collect_snapshot=snapshot,
+        node_cache={
+            "collect_nodeids": snapshot,
+            "test_file_hashes": {
+                "tests/test_long_gate_required_regression_cache.py": hashlib.sha256(
+                    required_text.encode("utf-8")
+                ).hexdigest(),
+                "tests/test_long_gate_startup_regression_cache.py": hashlib.sha256(
+                    startup_text.encode("utf-8")
+                ).hexdigest(),
+            },
+        },
+        ledger=_empty_test_debt_ledger(),
+    )
+
+    assert error == ""
+    assert plan is not None
+    assert plan["mode"] == "nodeid_incremental"
+    assert plan["changed_helpers"] == ["tests/long_gate_cache_helpers.py"]
+    assert plan["declared_helper_impacts"] == {
+        "tests/long_gate_cache_helpers.py": [
+            "tests/test_long_gate_required_regression_cache.py",
+            "tests/test_long_gate_startup_regression_cache.py",
+        ]
+    }
+    assert plan["actual_importing_test_files"] == [
+        "tests/test_long_gate_required_regression_cache.py",
+        "tests/test_long_gate_startup_regression_cache.py",
+    ]
+    assert plan["affected_test_files"] == [
+        "tests/test_long_gate_required_regression_cache.py",
+        "tests/test_long_gate_startup_regression_cache.py",
+    ]
+    assert plan["changed_test_files"] == plan["affected_test_files"]
+    assert plan["selected_nodeids"] == [
+        "tests/test_long_gate_required_regression_cache.py::test_required",
+        "tests/test_long_gate_startup_regression_cache.py::test_startup",
+    ]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from tests.long_gate_cache_helpers import helper\n",
+        "from long_gate_cache_helpers import helper\n",
+        "import tests.long_gate_cache_helpers as helpers\n",
+        "import long_gate_cache_helpers as helpers\n",
+        "from tests import long_gate_cache_helpers\n",
+        "from .long_gate_cache_helpers import helper\n",
+        "from . import long_gate_cache_helpers\n",
+    ],
+)
+def test_test_files_importing_helper_detects_static_import_forms(tmp_path, source):
+    _write_file(tmp_path, "tests/long_gate_cache_helpers.py", "def helper():\n    return 1\n")
+    _write_file(tmp_path, "tests/test_importer.py", source)
+
+    importers, error = full_debt_mod._test_files_importing_helper(  # noqa: SLF001
+        str(tmp_path),
+        "tests/long_gate_cache_helpers.py",
+    )
+
+    assert error == ""
+    assert importers == ["tests/test_importer.py"]
+
+
+def test_declared_helper_extra_importer_fallback(tmp_path):
+    helper_text = "def helper():\n    return 1\n"
+    required_text = "from tests.long_gate_cache_helpers import helper\n"
+    startup_text = "from tests.long_gate_cache_helpers import helper\n"
+    extra_text = "from tests.long_gate_cache_helpers import helper\n"
+    _write_file(tmp_path, "tests/long_gate_cache_helpers.py", helper_text)
+    _write_file(tmp_path, "tests/test_long_gate_required_regression_cache.py", required_text)
+    _write_file(tmp_path, "tests/test_long_gate_startup_regression_cache.py", startup_text)
+    _write_file(tmp_path, "tests/test_extra_importer.py", extra_text)
+    previous = _fingerprint_from_file_hashes({"tests/long_gate_cache_helpers.py": "old-helper"})
+    current = _fingerprint_from_file_hashes({"tests/long_gate_cache_helpers.py": "new-helper"})
+    snapshot = _collect_snapshot_for_mapping(
+        {
+            "tests/test_long_gate_required_regression_cache.py": [
+                "tests/test_long_gate_required_regression_cache.py::test_required"
+            ],
+            "tests/test_long_gate_startup_regression_cache.py": [
+                "tests/test_long_gate_startup_regression_cache.py::test_startup"
+            ],
+            "tests/test_extra_importer.py": ["tests/test_extra_importer.py::test_extra"],
+        }
+    )
+
+    plan, error = _classify_incremental_plan(
+        repo_root=str(tmp_path),
+        previous_fingerprint=previous,
+        current_fingerprint=current,
+        collect_snapshot=snapshot,
+        node_cache={"collect_nodeids": snapshot, "test_file_hashes": {}},
+        ledger=_empty_test_debt_ledger(),
+    )
+
+    assert plan is None
+    assert error == "test helper has undeclared importer: tests/long_gate_cache_helpers.py -> tests/test_extra_importer.py"
+
+
+def test_declared_helper_dynamic_import_fallback(tmp_path):
+    helper_text = "def helper():\n    return 1\n"
+    dynamic_text = 'import importlib\nhelper = importlib.import_module("tests.long_gate_cache_helpers").helper\n'
+    startup_text = "from tests.long_gate_cache_helpers import helper\n"
+    _write_file(tmp_path, "tests/long_gate_cache_helpers.py", helper_text)
+    _write_file(tmp_path, "tests/test_long_gate_required_regression_cache.py", dynamic_text)
+    _write_file(tmp_path, "tests/test_long_gate_startup_regression_cache.py", startup_text)
+    previous = _fingerprint_from_file_hashes({"tests/long_gate_cache_helpers.py": "old-helper"})
+    current = _fingerprint_from_file_hashes({"tests/long_gate_cache_helpers.py": "new-helper"})
+    snapshot = _collect_snapshot_for_mapping(
+        {
+            "tests/test_long_gate_required_regression_cache.py": [
+                "tests/test_long_gate_required_regression_cache.py::test_required"
+            ],
+            "tests/test_long_gate_startup_regression_cache.py": [
+                "tests/test_long_gate_startup_regression_cache.py::test_startup"
+            ],
+        }
+    )
+
+    plan, error = _classify_incremental_plan(
+        repo_root=str(tmp_path),
+        previous_fingerprint=previous,
+        current_fingerprint=current,
+        collect_snapshot=snapshot,
+        node_cache={"collect_nodeids": snapshot, "test_file_hashes": {}},
+        ledger=_empty_test_debt_ledger(),
+    )
+
+    assert plan is None
+    assert error == "dynamic test helper import cannot be proven safe: tests/test_long_gate_required_regression_cache.py"
+
+
+@pytest.mark.parametrize(
+    "dynamic_text",
+    [
+        'import importlib\ntarget = "tests.long_gate_cache_helpers"\nhelper = importlib.import_module(target).helper\n',
+        'import importlib\ntarget = "tests." + "long_gate_" + "cache_helpers"\nhelper = importlib.import_module(target).helper\n',
+        'target = "long_gate_" + "cache_helpers"\nhelper = __import__("tests", globals(), locals(), [target]).long_gate_cache_helpers.helper\n',
+    ],
+)
+def test_declared_helper_dynamic_import_via_variable_fallback(tmp_path, dynamic_text):
+    helper_text = "def helper():\n    return 1\n"
+    startup_text = "from tests.long_gate_cache_helpers import helper\n"
+    _write_file(tmp_path, "tests/long_gate_cache_helpers.py", helper_text)
+    _write_file(tmp_path, "tests/test_long_gate_required_regression_cache.py", dynamic_text)
+    _write_file(tmp_path, "tests/test_long_gate_startup_regression_cache.py", startup_text)
+    previous = _fingerprint_from_file_hashes({"tests/long_gate_cache_helpers.py": "old-helper"})
+    current = _fingerprint_from_file_hashes({"tests/long_gate_cache_helpers.py": "new-helper"})
+    snapshot = _collect_snapshot_for_mapping(
+        {
+            "tests/test_long_gate_required_regression_cache.py": [
+                "tests/test_long_gate_required_regression_cache.py::test_required"
+            ],
+            "tests/test_long_gate_startup_regression_cache.py": [
+                "tests/test_long_gate_startup_regression_cache.py::test_startup"
+            ],
+        }
+    )
+
+    plan, error = _classify_incremental_plan(
+        repo_root=str(tmp_path),
+        previous_fingerprint=previous,
+        current_fingerprint=current,
+        collect_snapshot=snapshot,
+        node_cache={"collect_nodeids": snapshot, "test_file_hashes": {}},
+        ledger=_empty_test_debt_ledger(),
+    )
+
+    assert plan is None
+    assert error == "dynamic test helper import cannot be proven safe: tests/test_long_gate_required_regression_cache.py"
+
+
+def test_declared_helper_ignores_unrelated_dynamic_import(tmp_path):
+    helper_text = "def helper():\n    return 1\n"
+    required_text = "from tests.long_gate_cache_helpers import helper\nimport importlib\napp_mod = importlib.import_module('app')\n"
+    startup_text = "from tests.long_gate_cache_helpers import helper\n"
+    _write_file(tmp_path, "tests/long_gate_cache_helpers.py", helper_text)
+    _write_file(tmp_path, "tests/test_long_gate_required_regression_cache.py", required_text)
+    _write_file(tmp_path, "tests/test_long_gate_startup_regression_cache.py", startup_text)
+    previous = _fingerprint_from_file_hashes({"tests/long_gate_cache_helpers.py": "old-helper"})
+    current = _fingerprint_from_file_hashes({"tests/long_gate_cache_helpers.py": "new-helper"})
+    snapshot = _collect_snapshot_for_mapping(
+        {
+            "tests/test_long_gate_required_regression_cache.py": [
+                "tests/test_long_gate_required_regression_cache.py::test_required"
+            ],
+            "tests/test_long_gate_startup_regression_cache.py": [
+                "tests/test_long_gate_startup_regression_cache.py::test_startup"
+            ],
+        }
+    )
+
+    plan, error = _classify_incremental_plan(
+        repo_root=str(tmp_path),
+        previous_fingerprint=previous,
+        current_fingerprint=current,
+        collect_snapshot=snapshot,
+        node_cache={"collect_nodeids": snapshot, "test_file_hashes": {}},
+        ledger=_empty_test_debt_ledger(),
+    )
+
+    assert error == ""
+    assert plan is not None
+    assert plan["changed_helpers"] == ["tests/long_gate_cache_helpers.py"]
+
+
+def test_declared_helper_imported_by_another_helper_fallback(tmp_path):
+    _write_file(tmp_path, "tests/long_gate_cache_helpers.py", "def helper():\n    return 1\n")
+    _write_file(tmp_path, "tests/other_helpers.py", "from tests.long_gate_cache_helpers import helper\n")
+
+    importers, error = full_debt_mod._test_files_importing_helper(  # noqa: SLF001
+        str(tmp_path),
+        "tests/long_gate_cache_helpers.py",
+    )
+
+    assert importers == []
+    assert error == "test helper is imported by another helper: tests/other_helpers.py"
+
+
+def test_declared_helper_impacted_file_missing_collect_mapping_fallback(tmp_path):
+    helper_text = "def helper():\n    return 1\n"
+    required_text = "from tests.long_gate_cache_helpers import helper\n"
+    startup_text = "from tests.long_gate_cache_helpers import helper\n"
+    _write_file(tmp_path, "tests/long_gate_cache_helpers.py", helper_text)
+    _write_file(tmp_path, "tests/test_long_gate_required_regression_cache.py", required_text)
+    _write_file(tmp_path, "tests/test_long_gate_startup_regression_cache.py", startup_text)
+    previous = _fingerprint_from_file_hashes({"tests/long_gate_cache_helpers.py": "old-helper"})
+    current = _fingerprint_from_file_hashes({"tests/long_gate_cache_helpers.py": "new-helper"})
+    snapshot = _collect_snapshot_for_mapping(
+        {
+            "tests/test_long_gate_required_regression_cache.py": [
+                "tests/test_long_gate_required_regression_cache.py::test_required"
+            ],
+        }
+    )
+
+    plan, error = _classify_incremental_plan(
+        repo_root=str(tmp_path),
+        previous_fingerprint=previous,
+        current_fingerprint=current,
+        collect_snapshot=snapshot,
+        node_cache={"collect_nodeids": snapshot, "test_file_hashes": {}},
+        ledger=_empty_test_debt_ledger(),
+    )
+
+    assert plan is None
+    assert error == "helper impact target has no trusted nodeid mapping: tests/test_long_gate_startup_regression_cache.py"
+
+
+def test_declared_helper_impacted_file_with_registered_debt_fallback(tmp_path):
+    helper_text = "def helper():\n    return 1\n"
+    required_text = "from tests.long_gate_cache_helpers import helper\n"
+    startup_text = "from tests.long_gate_cache_helpers import helper\n"
+    _write_file(tmp_path, "tests/long_gate_cache_helpers.py", helper_text)
+    _write_file(tmp_path, "tests/test_long_gate_required_regression_cache.py", required_text)
+    _write_file(tmp_path, "tests/test_long_gate_startup_regression_cache.py", startup_text)
+    previous = _fingerprint_from_file_hashes({"tests/long_gate_cache_helpers.py": "old-helper"})
+    current = _fingerprint_from_file_hashes({"tests/long_gate_cache_helpers.py": "new-helper"})
+    snapshot = _collect_snapshot_for_mapping(
+        {
+            "tests/test_long_gate_required_regression_cache.py": [
+                "tests/test_long_gate_required_regression_cache.py::test_required"
+            ],
+            "tests/test_long_gate_startup_regression_cache.py": [
+                "tests/test_long_gate_startup_regression_cache.py::test_startup"
+            ],
+        }
+    )
+
+    plan, error = _classify_incremental_plan(
+        repo_root=str(tmp_path),
+        previous_fingerprint=previous,
+        current_fingerprint=current,
+        collect_snapshot=snapshot,
+        node_cache={"collect_nodeids": snapshot, "test_file_hashes": {}},
+        ledger={
+            "test_debt": {
+                "entries": [
+                    {"nodeid": "tests/test_long_gate_startup_regression_cache.py::test_startup"}
+                ]
+            }
+        },
+    )
+
+    assert plan is None
+    assert error == "helper impact target contains registered full-test-debt nodeid: tests/test_long_gate_startup_regression_cache.py"
+
+
+def test_helper_plus_regular_test_file_incremental_union(tmp_path):
+    helper_text = "def helper():\n    return 1\n"
+    required_text = "from tests.long_gate_cache_helpers import helper\n"
+    startup_text = "from tests.long_gate_cache_helpers import helper\n"
+    regular_text = "def test_regular():\n    assert True\n"
+    _write_file(tmp_path, "tests/long_gate_cache_helpers.py", helper_text)
+    _write_file(tmp_path, "tests/test_long_gate_required_regression_cache.py", required_text)
+    _write_file(tmp_path, "tests/test_long_gate_startup_regression_cache.py", startup_text)
+    _write_file(tmp_path, "tests/test_regular_change.py", regular_text)
+    previous = _fingerprint_from_file_hashes(
+        {
+            "tests/long_gate_cache_helpers.py": "old-helper",
+            "tests/test_regular_change.py": "old-regular",
+        }
+    )
+    current = _fingerprint_from_file_hashes(
+        {
+            "tests/long_gate_cache_helpers.py": "new-helper",
+            "tests/test_regular_change.py": "new-regular",
+        }
+    )
+    snapshot = _collect_snapshot_for_mapping(
+        {
+            "tests/test_long_gate_required_regression_cache.py": [
+                "tests/test_long_gate_required_regression_cache.py::test_required"
+            ],
+            "tests/test_long_gate_startup_regression_cache.py": [
+                "tests/test_long_gate_startup_regression_cache.py::test_startup"
+            ],
+            "tests/test_regular_change.py": ["tests/test_regular_change.py::test_regular"],
+        }
+    )
+
+    plan, error = _classify_incremental_plan(
+        repo_root=str(tmp_path),
+        previous_fingerprint=previous,
+        current_fingerprint=current,
+        collect_snapshot=snapshot,
+        node_cache={"collect_nodeids": snapshot, "test_file_hashes": {}},
+        ledger=_empty_test_debt_ledger(),
+    )
+
+    assert error == ""
+    assert plan is not None
+    assert plan["changed_helpers"] == ["tests/long_gate_cache_helpers.py"]
+    assert plan["changed_test_files"] == [
+        "tests/test_regular_change.py",
+        "tests/test_long_gate_required_regression_cache.py",
+        "tests/test_long_gate_startup_regression_cache.py",
+    ]
+    assert plan["selected_nodeids"] == [
+        "tests/test_regular_change.py::test_regular",
+        "tests/test_long_gate_required_regression_cache.py::test_required",
+        "tests/test_long_gate_startup_regression_cache.py::test_startup",
+    ]
+
+
+def test_helper_plus_tools_change_fallback(tmp_path):
+    previous = _fingerprint_from_file_hashes(
+        {
+            "tests/long_gate_cache_helpers.py": "old-helper",
+            "tools/check_full_test_debt.py": "old-tool",
+        }
+    )
+    current = _fingerprint_from_file_hashes(
+        {
+            "tests/long_gate_cache_helpers.py": "new-helper",
+            "tools/check_full_test_debt.py": "new-tool",
+        }
+    )
+
+    plan, error = _classify_incremental_plan(
+        repo_root=str(tmp_path),
+        previous_fingerprint=previous,
+        current_fingerprint=current,
+        collect_snapshot=_collect_snapshot_for_tests(),
+        node_cache={"collect_nodeids": _collect_snapshot_for_tests(), "test_file_hashes": {}},
+        ledger=_empty_test_debt_ledger(),
+    )
+
+    assert plan is None
+    assert "outside safe test-file-only scope" in error
 
 
 def test_nodeid_incremental_plan_selects_multiple_changed_test_files(tmp_path):
@@ -1118,30 +1586,32 @@ def test_changed_test_import_text_prefilter_keeps_safe_import_spelling() -> None
 
 
 @pytest.mark.parametrize(
-    "changed_path",
+    ("changed_path", "expected_error"),
     [
-        "tests/conftest.py",
-        "tests/helpers.py",
-        "tests/test_sample_helpers.py",
-        "tests/regression_cache_helpers.py",
-        "tests/long_gate_cache_helpers.py",
-        "tests/excel_preview_confirm_helpers.py",
-        "tests/runtime_cleanup_helper.py",
-        "tests/some_dir/test_helper.py",
-        "tests/regression/regression_collection_contract.py",
-        "conftest.py",
-        "core/service.py",
-        "web/view.py",
-        "data/repository.py",
-        "plugins/demo.py",
-        "pyproject.toml",
-        "templates/scheduler/gantt.html",
-        "static/js/config_manual.js",
-        "tools/check_full_test_debt.py",
-        "scripts/run_quality_gate.py",
+        ("tests/conftest.py", "outside safe test-file-only scope"),
+        ("tests/helpers.py", "outside safe test-file-only scope"),
+        ("tests/test_sample_helpers.py", "test helper is not declared"),
+        ("tests/regression_cache_helpers.py", "test helper is not declared"),
+        ("tests/excel_preview_confirm_helpers.py", "test helper is not declared"),
+        ("tests/runtime_cleanup_helper.py", "outside safe test-file-only scope"),
+        ("tests/some_dir/test_helper.py", "outside safe test-file-only scope"),
+        ("tests/regression/regression_collection_contract.py", "outside safe test-file-only scope"),
+        ("conftest.py", "outside safe test-file-only scope"),
+        ("core/service.py", "outside safe test-file-only scope"),
+        ("web/view.py", "outside safe test-file-only scope"),
+        ("data/repository.py", "outside safe test-file-only scope"),
+        ("plugins/demo.py", "outside safe test-file-only scope"),
+        ("pyproject.toml", "outside safe test-file-only scope"),
+        ("app.py", "outside safe test-file-only scope"),
+        ("config.py", "outside safe test-file-only scope"),
+        ("schema.sql", "outside safe test-file-only scope"),
+        ("templates/scheduler/gantt.html", "outside safe test-file-only scope"),
+        ("static/js/config_manual.js", "outside safe test-file-only scope"),
+        ("tools/check_full_test_debt.py", "outside safe test-file-only scope"),
+        ("scripts/run_quality_gate.py", "outside safe test-file-only scope"),
     ],
 )
-def test_nodeid_incremental_plan_falls_back_for_unsafe_paths(tmp_path, changed_path):
+def test_nodeid_incremental_plan_falls_back_for_unsafe_paths(tmp_path, changed_path, expected_error):
     previous = _fingerprint_from_file_hashes({changed_path: "old"})
     current = _fingerprint_from_file_hashes({changed_path: "new"})
 
@@ -1155,7 +1625,7 @@ def test_nodeid_incremental_plan_falls_back_for_unsafe_paths(tmp_path, changed_p
     )
 
     assert plan is None
-    assert "outside safe test-file-only scope" in error
+    assert expected_error in error
 
 
 def test_ledger_only_plan_reuses_payload_without_nodeids(tmp_path):
@@ -1350,6 +1820,10 @@ def test_merge_payload_records_incremental_proof_and_keeps_formal_args(tmp_path)
         "mode": "nodeid_incremental",
         "selected_nodeids": ["tests/test_a.py::test_a"],
         "changed_test_files": ["tests/test_a.py"],
+        "changed_helpers": [],
+        "declared_helper_impacts": {},
+        "actual_importing_test_files": [],
+        "affected_test_files": ["tests/test_a.py"],
         "previous_payload_hash": f"sha256:{stable_json_hash(old_payload)}",
         "node_cache_hash": "sha256:node-cache",
         "collect_nodeids_hash": collect_snapshot["nodeid_hash"],
@@ -1517,6 +1991,246 @@ def test_special_nodeid_incremental_success_writes_merged_outputs(monkeypatch, t
     assert current_payload["pytest_args"] == ["tests", "-q", "--tb=short", "-ra", "-p", "no:cacheprovider"]
     assert (tmp_path / "evidence" / "QualityGate" / "full_test_debt_summary.json").exists()
     assert (tmp_path / NODE_CACHE_REL).exists()
+
+
+def test_special_nodeid_incremental_success_records_helper_dependency_proof(monkeypatch, tmp_path):
+    selected = [
+        "tests/test_long_gate_required_regression_cache.py::test_required",
+        "tests/test_long_gate_startup_regression_cache.py::test_startup",
+    ]
+    all_nodeids = [*selected, "tests/test_unaffected.py::test_unaffected"]
+    collect_snapshot = _collect_snapshot_for_mapping(
+        {
+            "tests/test_long_gate_required_regression_cache.py": [selected[0]],
+            "tests/test_long_gate_startup_regression_cache.py": [selected[1]],
+            "tests/test_unaffected.py": ["tests/test_unaffected.py::test_unaffected"],
+        }
+    )
+    old_payload = _current_payload_for_nodeids(all_nodeids)
+    node_cache = {
+        "current_payload": old_payload,
+        "payload_hash": "sha256:node-cache",
+    }
+    plan = {
+        "mode": "nodeid_incremental",
+        "changed_paths": ["tests/long_gate_cache_helpers.py"],
+        "changed_test_files": [
+            "tests/test_long_gate_required_regression_cache.py",
+            "tests/test_long_gate_startup_regression_cache.py",
+        ],
+        "changed_helpers": ["tests/long_gate_cache_helpers.py"],
+        "declared_helper_impacts": {
+            "tests/long_gate_cache_helpers.py": [
+                "tests/test_long_gate_required_regression_cache.py",
+                "tests/test_long_gate_startup_regression_cache.py",
+            ]
+        },
+        "actual_importing_test_files": [
+            "tests/test_long_gate_required_regression_cache.py",
+            "tests/test_long_gate_startup_regression_cache.py",
+        ],
+        "affected_test_files": [
+            "tests/test_long_gate_required_regression_cache.py",
+            "tests/test_long_gate_startup_regression_cache.py",
+        ],
+        "selected_nodeids": selected,
+    }
+    seen_payloads = []
+
+    monkeypatch.setattr(
+        full_debt_mod,
+        "_validated_previous_success",
+        lambda **_kwargs: (
+            {
+                "status": "passed",
+                "returncode": 0,
+                "fingerprint": {"hash": "sha256:previous"},
+                "fingerprint_hash": "sha256:previous",
+            },
+            "",
+        ),
+    )
+    monkeypatch.setattr(full_debt_mod, "_load_node_cache", lambda *_args, **_kwargs: (node_cache, ""))
+    monkeypatch.setattr(full_debt_mod, "_load_collect_snapshot", lambda *_args, **_kwargs: (collect_snapshot, ""))
+    monkeypatch.setattr(full_debt_mod, "_load_ledger_for_repo", lambda *_args, **_kwargs: _empty_test_debt_ledger())
+    monkeypatch.setattr(full_debt_mod, "_classify_incremental_plan", lambda **_kwargs: (plan, ""))
+    monkeypatch.setattr(full_debt_mod, "_git_status", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(full_debt_mod, "_git_head", lambda *_args, **_kwargs: "deadbeef")
+    monkeypatch.setattr(
+        full_debt_mod,
+        "_run_incremental_collector",
+        lambda *_args, **_kwargs: {
+            "stdout": "selected passed\n",
+            "stderr": "",
+            "returncode": 0,
+            "payload": {
+                "exitstatus": 0,
+                "reports": [_passed_report(nodeid) for nodeid in selected],
+                "collection_errors": [],
+            },
+            "pytest_args": [*selected, "-q", "--tb=short", "-ra", "-p", "no:cacheprovider"],
+            "collector_contract_error": False,
+        },
+    )
+
+    def fake_run_check_from_existing_payload(payload, *, ledger=None, require_clean_worktree_proof=True):
+        seen_payloads.append(dict(payload))
+        return _summary_payload("helper-incremental")
+
+    monkeypatch.setattr(
+        full_debt_mod.check_full_test_debt,
+        "run_check_from_existing_payload",
+        fake_run_check_from_existing_payload,
+    )
+
+    result = full_debt_mod.try_run_special_full_test_debt_mode(
+        repo_root=str(tmp_path),
+        entry={"entry_id": "full_test_debt"},
+        current_fingerprint={"hash": "sha256:current"},
+        decision={
+            "decision": "run",
+            "reason": "input fingerprint changed",
+            "previous_result_path": "evidence/QualityGate/long_gate/results/full_test_debt.success.json",
+        },
+        evaluation={},
+        cache_dir="evidence/QualityGate/long_gate",
+    )
+
+    assert result is not None
+    assert result["returncode"] == 0
+    assert result["reused_from"]["changed_helpers"] == ["tests/long_gate_cache_helpers.py"]
+    assert result["reused_from"]["affected_test_files"] == [
+        "tests/test_long_gate_required_regression_cache.py",
+        "tests/test_long_gate_startup_regression_cache.py",
+    ]
+    assert seen_payloads[0]["incremental_proof"]["changed_helpers"] == ["tests/long_gate_cache_helpers.py"]
+    assert seen_payloads[0]["incremental_proof"]["declared_helper_impacts"] == plan["declared_helper_impacts"]
+    assert seen_payloads[0]["incremental_proof"]["actual_importing_test_files"] == plan[
+        "actual_importing_test_files"
+    ]
+    current_payload = json.loads(
+        (tmp_path / "evidence" / "QualityGate" / "current_full_test_debt.json").read_text(encoding="utf-8")
+    )
+    assert current_payload["incremental_proof"]["affected_test_files"] == [
+        "tests/test_long_gate_required_regression_cache.py",
+        "tests/test_long_gate_startup_regression_cache.py",
+    ]
+    assert (tmp_path / NODE_CACHE_REL).exists()
+
+
+def test_helper_incremental_still_rejects_selected_failure(monkeypatch, tmp_path):
+    selected = [
+        "tests/test_long_gate_required_regression_cache.py::test_required",
+        "tests/test_long_gate_startup_regression_cache.py::test_startup",
+    ]
+    collect_snapshot = _collect_snapshot_for_mapping(
+        {
+            "tests/test_long_gate_required_regression_cache.py": [selected[0]],
+            "tests/test_long_gate_startup_regression_cache.py": [selected[1]],
+        }
+    )
+    old_payload = _current_payload_for_nodeids(selected)
+    node_cache = {
+        "current_payload": old_payload,
+        "payload_hash": "sha256:node-cache",
+    }
+    plan = {
+        "mode": "nodeid_incremental",
+        "changed_paths": ["tests/long_gate_cache_helpers.py"],
+        "changed_test_files": [
+            "tests/test_long_gate_required_regression_cache.py",
+            "tests/test_long_gate_startup_regression_cache.py",
+        ],
+        "changed_helpers": ["tests/long_gate_cache_helpers.py"],
+        "declared_helper_impacts": {
+            "tests/long_gate_cache_helpers.py": [
+                "tests/test_long_gate_required_regression_cache.py",
+                "tests/test_long_gate_startup_regression_cache.py",
+            ]
+        },
+        "actual_importing_test_files": [
+            "tests/test_long_gate_required_regression_cache.py",
+            "tests/test_long_gate_startup_regression_cache.py",
+        ],
+        "affected_test_files": [
+            "tests/test_long_gate_required_regression_cache.py",
+            "tests/test_long_gate_startup_regression_cache.py",
+        ],
+        "selected_nodeids": selected,
+    }
+    stale_current = tmp_path / "evidence" / "QualityGate" / "current_full_test_debt.json"
+    stale_summary = tmp_path / "evidence" / "QualityGate" / "full_test_debt_summary.json"
+    stale_node_cache = tmp_path / NODE_CACHE_REL
+    stale_current.parent.mkdir(parents=True, exist_ok=True)
+    stale_current.write_text("stale-current\n", encoding="utf-8")
+    stale_summary.write_text("stale-summary\n", encoding="utf-8")
+    stale_node_cache.write_text("stale-node-cache\n", encoding="utf-8")
+    seen_payloads = []
+
+    monkeypatch.setattr(
+        full_debt_mod,
+        "_validated_previous_success",
+        lambda **_kwargs: (
+            {
+                "status": "passed",
+                "returncode": 0,
+                "fingerprint": {"hash": "sha256:previous"},
+                "fingerprint_hash": "sha256:previous",
+            },
+            "",
+        ),
+    )
+    monkeypatch.setattr(full_debt_mod, "_load_node_cache", lambda *_args, **_kwargs: (node_cache, ""))
+    monkeypatch.setattr(full_debt_mod, "_load_collect_snapshot", lambda *_args, **_kwargs: (collect_snapshot, ""))
+    monkeypatch.setattr(full_debt_mod, "_load_ledger_for_repo", lambda *_args, **_kwargs: _empty_test_debt_ledger())
+    monkeypatch.setattr(full_debt_mod, "_classify_incremental_plan", lambda **_kwargs: (plan, ""))
+    monkeypatch.setattr(
+        full_debt_mod,
+        "_run_incremental_collector",
+        lambda *_args, **_kwargs: {
+            "stdout": "selected failed\n",
+            "stderr": "",
+            "returncode": 1,
+            "payload": {
+                "exitstatus": 1,
+                "reports": [_failed_report(selected[0]), _passed_report(selected[1])],
+                "collection_errors": [],
+            },
+            "pytest_args": [*selected, "-q", "--tb=short", "-ra", "-p", "no:cacheprovider"],
+            "collector_contract_error": False,
+        },
+    )
+
+    def fake_run_check_from_existing_payload(payload, *, ledger=None, require_clean_worktree_proof=True):
+        seen_payloads.append(dict(payload))
+        raise full_debt_mod.QualityGateError("checker rejected helper merged payload")
+
+    monkeypatch.setattr(
+        full_debt_mod.check_full_test_debt,
+        "run_check_from_existing_payload",
+        fake_run_check_from_existing_payload,
+    )
+
+    result = full_debt_mod.try_run_special_full_test_debt_mode(
+        repo_root=str(tmp_path),
+        entry={"entry_id": "full_test_debt"},
+        current_fingerprint={"hash": "sha256:current"},
+        decision={
+            "decision": "run",
+            "reason": "input fingerprint changed",
+            "previous_result_path": "evidence/QualityGate/long_gate/results/full_test_debt.success.json",
+        },
+        evaluation={},
+        cache_dir="evidence/QualityGate/long_gate",
+    )
+
+    assert result is not None
+    assert result["returncode"] == 2
+    assert "checker rejected helper merged payload" in result["stderr"]
+    assert seen_payloads[0]["incremental_proof"]["changed_helpers"] == ["tests/long_gate_cache_helpers.py"]
+    assert stale_current.read_text(encoding="utf-8") == "stale-current\n"
+    assert stale_summary.read_text(encoding="utf-8") == "stale-summary\n"
+    assert stale_node_cache.read_text(encoding="utf-8") == "stale-node-cache\n"
 
 
 def test_runner_writes_and_reuses_full_test_debt_success_cache(monkeypatch, tmp_path, capsys):

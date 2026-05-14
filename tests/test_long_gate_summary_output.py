@@ -581,3 +581,56 @@ def test_summary_duration_keeps_counts_and_ranks_slow_entries():
     assert "## Duration" in markdown
     assert "## Slow entries" in markdown
     assert "| 2 | required_regressions | reused_success_cache | 0.120 | 98.340 | success cache reusable |" in markdown
+
+
+def test_summary_markdown_displays_full_test_debt_helper_incremental_details():
+    helper_plan = {
+        "available": True,
+        "mode": "nodeid_incremental",
+        "changed_helpers": ["tests/long_gate_cache_helpers.py"],
+        "declared_helper_impacts": {
+            "tests/long_gate_cache_helpers.py": [
+                "tests/test_long_gate_required_regression_cache.py",
+                "tests/test_long_gate_startup_regression_cache.py",
+            ]
+        },
+        "actual_importing_test_files": [
+            "tests/test_long_gate_required_regression_cache.py",
+            "tests/test_long_gate_startup_regression_cache.py",
+        ],
+        "affected_test_files": [
+            "tests/test_long_gate_required_regression_cache.py",
+            "tests/test_long_gate_startup_regression_cache.py",
+        ],
+        "selected_nodeids": ["tests/test_long_gate_required_regression_cache.py::test_required"],
+    }
+    entry = build_summary_entry(
+        index=1,
+        entry={"entry_id": "full_test_debt", "entry_type": "full_test_debt", "cache_status": "enabled"},
+        decision={
+            "entry_id": "full_test_debt",
+            "decision": "run",
+            "reason": "input fingerprint changed",
+            "full_test_debt_incremental": helper_plan,
+        },
+        result={"returncode": 0, "execution_mode": "nodeid_incremental", "duration_s": 1.0},
+    )
+
+    summary = build_long_gate_summary(
+        run_id="run",
+        repo_root=_repo_root(),
+        head_sha="head",
+        worktree_clean=True,
+        cache_enabled=True,
+        mode="run",
+        entries=[entry],
+    )
+    markdown = render_summary_markdown(summary)
+
+    assert summary["entries"][0]["full_test_debt_incremental"] == helper_plan
+    assert "## Full-test-debt incremental" in markdown
+    assert "changed_helpers" in markdown
+    assert "tests/long_gate_cache_helpers.py" in markdown
+    assert "declared_helper_impacts" in markdown
+    assert "actual_importing_test_files" in markdown
+    assert "affected_test_files" in markdown

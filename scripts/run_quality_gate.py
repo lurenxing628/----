@@ -2105,6 +2105,14 @@ def _print_full_test_debt_incremental_diagnostics(entry: Mapping[str, Any]) -> N
                 print(f"      - {nodeid}", flush=True)
             if len(selected) > 10:
                 print(f"      - ... {len(selected) - 10} more", flush=True)
+        for key in (
+            "changed_helpers",
+            "declared_helper_impacts",
+            "actual_importing_test_files",
+            "affected_test_files",
+        ):
+            if key in plan:
+                print(f"    {key}: {json.dumps(plan.get(key), ensure_ascii=False, sort_keys=True)}", flush=True)
 
 
 def _quality_gate_rel_exists(rel_path: str) -> bool:
