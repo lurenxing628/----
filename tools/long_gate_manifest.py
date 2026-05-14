@@ -20,7 +20,11 @@ from tools.long_gate_schema import (
     LONG_GATE_FINGERPRINT_SCHEMA_VERSION,
     LONG_GATE_MANIFEST_SCHEMA_VERSION,
 )
-from tools.test_registry import iter_startup_regressions
+from tools.test_registry import (
+    iter_required_regression_groups,
+    iter_startup_regressions,
+    validate_required_regression_group_coverage,
+)
 
 LONG_GATE_SCHEMA_VERSION = LONG_GATE_MANIFEST_SCHEMA_VERSION
 
@@ -31,6 +35,7 @@ ENTRY_PYRIGHT_GATE_FULL = "pyright_gate_full"
 ENTRY_PYRIGHT_TOOLS_FULL = "pyright_tools_full"
 ENTRY_ARCHITECTURE_FITNESS = "architecture_fitness"
 ENTRY_REQUIRED_REGRESSIONS = "required_regressions"
+ENTRY_REQUIRED_REGRESSIONS_GROUP = "required_regressions_group"
 ENTRY_DEBT_LEDGER_SYNC = "debt_ledger_sync"
 ENTRY_STARTUP_RUNTIME_REGRESSIONS = "startup_runtime_regressions"
 ENTRY_QUICKREF_VS_ROUTES = "quickref_vs_routes"
@@ -511,6 +516,85 @@ def _scopes_for_entry(
     )
 
 
+def _required_group_proof_path(group_id: str) -> str:
+    return f"evidence/QualityGate/required_regressions/groups/{str(group_id or '').strip()}.json"
+
+
+def _required_group_command(target_paths: Sequence[str]) -> Dict[str, Any]:
+    args = ["python", "-m", "pytest", "-q"] + [str(path) for path in list(target_paths or [])]
+    return {
+        "display": " ".join(args),
+        "args": args,
+        "capture_output": False,
+        "output_policy": "normalized",
+    }
+
+
+def _required_group_coverage_or_raise(required_targets: Sequence[str]) -> Dict[str, Any]:
+    coverage = validate_required_regression_group_coverage(required_targets)
+    if coverage["missing"] or coverage["duplicates"] or coverage["unknown"]:
+        raise ValueError("required regression group coverage is invalid: " + json.dumps(coverage, ensure_ascii=False, sort_keys=True))
+    return coverage
+
+
+def _required_group_input_scopes(parent_entry: Mapping[str, Any], target_paths: Sequence[str]) -> List[str]:
+    parent_targets = set(str(path) for path in list(parent_entry.get("args") or [])[4:])
+    inherited = [
+        str(path)
+        for path in list(parent_entry.get("input_file_scopes") or [])
+        if str(path) and str(path) not in parent_targets
+    ]
+    return _dedupe([str(path) for path in list(target_paths or [])] + inherited)
+
+
+def _build_required_group_entries(parent_entry: Mapping[str, Any]) -> List[Dict[str, Any]]:
+    parent = dict(parent_entry)
+    required_targets = _pytest_q_targets(parent.get("args") or []) or []
+    _required_group_coverage_or_raise(required_targets)
+    groups: List[Dict[str, Any]] = []
+    for index, group in enumerate(iter_required_regression_groups(), start=1):
+        group_id = str(group.get("group_id") or "")
+        target_paths = [str(path) for path in list(group.get("target_paths") or [])]
+        command = _required_group_command(target_paths)
+        normalized = _normalize_command(command)
+        entry_id = f"{ENTRY_REQUIRED_REGRESSIONS}.{group_id}"
+        groups.append(
+            {
+                "schema_version": LONG_GATE_SCHEMA_VERSION,
+                "cache_schema_version": LONG_GATE_CACHE_SCHEMA_VERSION,
+                "fingerprint_schema_version": LONG_GATE_FINGERPRINT_SCHEMA_VERSION,
+                "entry_id": entry_id,
+                "entry_type": ENTRY_REQUIRED_REGRESSIONS_GROUP,
+                "parent_entry_id": ENTRY_REQUIRED_REGRESSIONS,
+                "group_id": group_id,
+                "group_index": index,
+                "label": str(group.get("label") or group_id),
+                "command_name": normalized["display"],
+                "display": normalized["display"],
+                "args": list(normalized["args"]),
+                "capture_output": bool(normalized["capture_output"]),
+                "output_policy": normalized["output_policy"],
+                "command_hash": _stable_json_hash(normalized),
+                "input_file_scopes": _required_group_input_scopes(parent, target_paths),
+                "config_file_scopes": list(parent.get("config_file_scopes") or []),
+                "tool_file_scopes": list(parent.get("tool_file_scopes") or []),
+                "dependency_file_scopes": list(parent.get("dependency_file_scopes") or []),
+                "env_keys": list(parent.get("env_keys") or []),
+                "output_result_files": [_required_group_proof_path(group_id)],
+                "target_paths": target_paths,
+                "target_count": len(target_paths),
+                "long_gate_candidate": False,
+                "cache_status": "enabled",
+                "reuse_allowed": True,
+                "force_invalidate_on": [],
+                "fingerprint": None,
+                "previous_success": None,
+                "last_success_fingerprint": None,
+            }
+        )
+    return groups
+
+
 def _build_entry(command: Mapping[str, Any], index: int, *, entry_type: Optional[str] = None) -> Dict[str, Any]:
     normalized = _normalize_command(command)
     resolved_entry_type = entry_type or classify_quality_gate_command(normalized)
@@ -521,7 +605,7 @@ def _build_entry(command: Mapping[str, Any], index: int, *, entry_type: Optional
     command_hash = _stable_json_hash(normalized)
     long_gate_candidate = resolved_entry_type in _LONG_ENTRY_TYPES
     reuse_allowed = resolved_entry_type in _CACHE_ENABLED_ENTRY_TYPES
-    return {
+    entry = {
         "schema_version": LONG_GATE_SCHEMA_VERSION,
         "cache_schema_version": LONG_GATE_CACHE_SCHEMA_VERSION,
         "fingerprint_schema_version": LONG_GATE_FINGERPRINT_SCHEMA_VERSION,
@@ -547,6 +631,11 @@ def _build_entry(command: Mapping[str, Any], index: int, *, entry_type: Optional
         "previous_success": None,
         "last_success_fingerprint": None,
     }
+    if resolved_entry_type == ENTRY_REQUIRED_REGRESSIONS:
+        required_targets = _pytest_q_targets(normalized.get("args") or []) or []
+        entry["required_regression_group_coverage"] = _required_group_coverage_or_raise(required_targets)
+        entry["groups"] = _build_required_group_entries(entry)
+    return entry
 
 
 def _git_head_sha(repo_root: str) -> str:

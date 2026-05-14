@@ -39,6 +39,12 @@ def _seed_startup_success(module, monkeypatch, repo_root: Path, command_plan: Se
     assert _success_path(repo_root, ENTRY_STARTUP_RUNTIME_REGRESSIONS).exists()
 
 
+def _required_group_displays(command_plan: Sequence[dict], repo_root: Path) -> list[str]:
+    manifest = _manifest_for(command_plan, repo_root)
+    required = _entry_by_id(manifest, ENTRY_REQUIRED_REGRESSIONS)
+    return [str(group["display"]) for group in list(required.get("groups") or [])]
+
+
 def test_startup_entry_comes_from_real_command_plan_and_enables_only_next6(tmp_path):
     command_plan = _real_quality_gate_plan()
     manifest = _manifest_for(command_plan, tmp_path)
@@ -392,7 +398,7 @@ def test_force_rerun_all_executes_startup_and_required(monkeypatch, tmp_path):
     repo_root = ctx.repo_root
     command_plan = ctx.command_plan
     startup_display = _entry_display(command_plan, repo_root, ENTRY_STARTUP_RUNTIME_REGRESSIONS)
-    required_display = _entry_display(command_plan, repo_root, ENTRY_REQUIRED_REGRESSIONS)
+    group_displays = _required_group_displays(command_plan, repo_root)
     _seed_startup_success(module, monkeypatch, repo_root, command_plan)
 
     calls = _run_gate_with_fake_commands(
@@ -406,7 +412,7 @@ def test_force_rerun_all_executes_startup_and_required(monkeypatch, tmp_path):
 
     assert "python -m pytest --collect-only -q tests" in calls
     assert "python tools/check_full_test_debt.py" in calls
-    assert required_display in calls
+    assert set(group_displays) <= set(calls)
     assert startup_display in calls
     assert _summary_entry(summary, ENTRY_REQUIRED_REGRESSIONS)["reason"] == "forced by --long-gate-force-rerun-all"
     assert _summary_entry(summary, ENTRY_STARTUP_RUNTIME_REGRESSIONS)["reason"] == (

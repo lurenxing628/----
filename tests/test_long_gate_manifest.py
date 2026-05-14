@@ -11,7 +11,11 @@ from tools.long_gate_schema import (
     LONG_GATE_FINGERPRINT_SCHEMA_VERSION,
     LONG_GATE_MANIFEST_SCHEMA_VERSION,
 )
-from tools.test_registry import iter_startup_regressions
+from tools.test_registry import (
+    iter_required_tests,
+    iter_startup_regressions,
+    validate_required_regression_group_coverage,
+)
 
 
 def _entry_by_id(manifest, entry_id):
@@ -94,6 +98,108 @@ def test_required_and_startup_regression_args_come_from_dynamic_plan():
 
     assert required_entry["args"][4:] == quality_gate_shared.iter_quality_gate_required_tests()
     assert startup_entry["args"][4:] == iter_startup_regressions()
+
+
+def test_required_groups_cover_required_registry():
+    coverage = validate_required_regression_group_coverage(iter_required_tests())
+
+    assert coverage["missing"] == []
+    assert coverage["duplicates"] == []
+    assert coverage["unknown"] == []
+    assert coverage["required_target_count"] == len(iter_required_tests())
+    assert coverage["group_target_count"] == len(iter_required_tests())
+    assert coverage["group_count"] == 8
+    assert coverage["required_registry_hash"]
+    assert coverage["group_registry_hash"]
+
+
+def test_required_group_registry_reports_missing_target():
+    required = iter_required_tests()
+    groups = [
+        {
+            "group_id": "almost_all",
+            "target_paths": required[1:],
+        }
+    ]
+
+    coverage = validate_required_regression_group_coverage(required, groups)
+
+    assert coverage["missing"] == [required[0]]
+
+
+def test_required_group_registry_reports_duplicate_target():
+    required = iter_required_tests()
+    groups = [
+        {
+            "group_id": "first",
+            "target_paths": [required[0]],
+        },
+        {
+            "group_id": "second",
+            "target_paths": [required[0], *required[1:]],
+        },
+    ]
+
+    coverage = validate_required_regression_group_coverage(required, groups)
+
+    assert coverage["duplicates"] == [{"path": required[0], "groups": ["first", "second"]}]
+
+
+def test_required_group_registry_reports_unknown_target():
+    required = iter_required_tests()
+    unknown = "tests/test_not_in_required_registry.py"
+    groups = [
+        {
+            "group_id": "with_extra",
+            "target_paths": [*required, unknown],
+        }
+    ]
+
+    coverage = validate_required_regression_group_coverage(required, groups)
+
+    assert coverage["unknown"] == [unknown]
+
+
+def test_required_parent_entry_still_matches_real_command_plan():
+    command_plan = quality_gate_shared.build_quality_gate_command_plan()
+    manifest = manifest_mod.build_manifest_from_quality_gate_plan(command_plan, repo_root=quality_gate_shared.REPO_ROOT)
+    required_entry = _entry_by_id(manifest, "required_regressions")
+    command_by_display = {command["display"]: command for command in command_plan}
+
+    assert required_entry["display"] in command_by_display
+    assert required_entry["args"] == command_by_display[required_entry["display"]]["args"]
+    assert required_entry["args"][4:] == iter_required_tests()
+
+
+def test_required_group_entries_have_stable_ids():
+    command_plan = quality_gate_shared.build_quality_gate_command_plan()
+    manifest = manifest_mod.build_manifest_from_quality_gate_plan(command_plan, repo_root=quality_gate_shared.REPO_ROOT)
+    required_entry = _entry_by_id(manifest, "required_regressions")
+
+    assert [group["entry_id"] for group in required_entry["groups"]] == [
+        "required_regressions.quality_gate",
+        "required_regressions.scheduler_config",
+        "required_regressions.scheduler_run_core",
+        "required_regressions.scheduler_analysis_gantt_reports_week_plan",
+        "required_regressions.scheduler_batches_material_resource",
+        "required_regressions.request_services_runtime_error_boundary",
+        "required_regressions.frontend_manual_excel",
+        "required_regressions.ui_layout_presenters_system",
+    ]
+    assert required_entry["groups"][0]["output_result_files"] == [
+        "evidence/QualityGate/required_regressions/groups/quality_gate.json"
+    ]
+
+
+def test_required_groups_are_not_top_level_commands():
+    command_plan = quality_gate_shared.build_quality_gate_command_plan()
+    manifest = manifest_mod.build_manifest_from_quality_gate_plan(command_plan, repo_root=quality_gate_shared.REPO_ROOT)
+    entry_ids = [entry["entry_id"] for entry in manifest["entries"]]
+
+    assert len(manifest["entries"]) == len(command_plan)
+    assert "required_regressions" in entry_ids
+    assert all(not entry_id.startswith("required_regressions.") for entry_id in entry_ids)
+    assert _entry_by_id(manifest, "required_regressions")["groups"]
 
 
 def test_collect_full_test_debt_required_and_startup_entries_are_currently_reuse_enabled():

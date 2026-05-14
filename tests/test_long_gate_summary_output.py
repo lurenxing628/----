@@ -254,6 +254,73 @@ def test_reused_collect_only_is_recorded_as_reused_success_cache(monkeypatch, tm
     assert summary["counts"]["reused"] == 1
 
 
+def test_required_regression_groups_are_recorded_in_json_and_markdown():
+    entry = {
+        "entry_id": "required_regressions",
+        "entry_type": "required_regressions",
+        "display": "python -m pytest -q tests/test_a.py tests/test_b.py",
+        "cache_status": "enabled",
+    }
+    decision = {
+        "entry_id": "required_regressions",
+        "decision": "run",
+        "reason": "input fingerprint changed",
+    }
+    result = {
+        "stdout": "",
+        "stderr": "",
+        "returncode": 0,
+        "execution_mode": "grouped",
+        "duration_s": 3.5,
+        "required_regressions_groups": [
+            {
+                "group_id": "quality_gate",
+                "decision": "run",
+                "execution_mode": "executed",
+                "target_count": 1,
+                "duration_s": 1.25,
+                "original_duration_s": 0.0,
+                "proof_path": "evidence/QualityGate/required_regressions/groups/quality_gate.json",
+            },
+            {
+                "group_id": "scheduler_config",
+                "decision": "reuse",
+                "execution_mode": "reused_success_cache",
+                "target_count": 2,
+                "duration_s": 0.05,
+                "original_duration_s": 9.5,
+                "proof_path": "evidence/QualityGate/required_regressions/groups/scheduler_config.json",
+            },
+        ],
+    }
+
+    summary = build_long_gate_summary(
+        run_id="run",
+        repo_root="/repo",
+        head_sha="deadbeef",
+        worktree_clean=True,
+        cache_enabled=True,
+        mode="run",
+        entries=[
+            build_summary_entry(
+                index=1,
+                entry=entry,
+                decision=decision,
+                result=result,
+                receipt_path="evidence/QualityGate/receipts/required.json",
+            )
+        ],
+    )
+    markdown = render_summary_markdown(summary)
+
+    required = _entry_by_id(summary, "required_regressions")
+    assert summary["counts"]["executed"] == 1
+    assert required["execution_mode"] == "grouped"
+    assert required["required_regressions_groups"][1]["original_duration_s"] == 9.5
+    assert "## Required regression groups" in markdown
+    assert "| scheduler_config | reuse | reused_success_cache | 2 | 0.050 | 9.500 |" in markdown
+
+
 def test_failed_collect_records_failure_and_prints_copyable_command(monkeypatch, tmp_path, capsys):
     module = _import_run_quality_gate()
     repo_root = tmp_path / "repo"

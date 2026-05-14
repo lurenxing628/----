@@ -758,6 +758,7 @@ def test_main_rebuilds_ignored_receipts_without_dirtying_clean_worktree(monkeypa
         "evidence/QualityGate/full_test_debt_node_cache.json",
         "evidence/QualityGate/startup_runtime_regressions.json",
         "evidence/QualityGate/required_regressions.json",
+        "evidence/QualityGate/required_regressions/groups/",
     ]
     assert len(manifest["command_receipts"]) == len(manifest["commands"])
 

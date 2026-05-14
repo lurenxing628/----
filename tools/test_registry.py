@@ -167,6 +167,184 @@ TEST_ONLY_HELPER_IMPACT = {
     ),
 }
 
+REQUIRED_REGRESSION_GROUPS = (
+    {
+        "group_id": "quality_gate",
+        "label": "Quality gate and long gate contracts",
+        "target_paths": (
+            "tests/test_run_quality_gate.py",
+            "tests/test_sp05_path_topology_contract.py",
+            "tests/test_evidence_audit_entrypoints.py",
+            "tests/regression_sp06_no_duplicate_defs.py",
+            "tests/regression_quality_gate_scan_contract.py",
+            "tests/test_run_full_selftest_report_metadata.py",
+            "tests/test_check_full_test_debt.py",
+            "tests/test_full_test_debt_registry_contract.py",
+            "tests/test_git_hook_checks.py",
+            "tests/test_long_gate_cli_controls.py",
+            "tests/test_long_gate_summary_output.py",
+            "tests/test_sync_debt_ledger.py",
+        ),
+    },
+    {
+        "group_id": "scheduler_config",
+        "label": "Scheduler config contracts",
+        "target_paths": (
+            "tests/regression_config_field_metadata_shape.py",
+            "tests/regression_scheduler_config_route_contract.py",
+            "tests/regression_config_field_spec_contract.py",
+            "tests/regression_scheduler_config_manual_url_normalization.py",
+            "tests/regression_config_service_active_preset_custom_sync.py",
+            "tests/regression_config_snapshot_strict_numeric.py",
+            "tests/regression_config_snapshot_projection_sync.py",
+            "tests/regression_config_service_component_contract.py",
+            "tests/regression_config_service_relaxed_missing_visibility.py",
+            "tests/regression_apply_preset_adjusted_marks_custom.py",
+            "tests/test_holiday_default_efficiency_read_guard.py",
+            "tests/regression_config_manual_markdown.py",
+            "tests/regression_scheduler_config_layout_contract.py",
+        ),
+    },
+    {
+        "group_id": "scheduler_run_core",
+        "label": "Scheduler run core contracts",
+        "target_paths": (
+            "tests/test_schedule_input_builder_strict_hours_and_ext_days.py",
+            "tests/regression_scheduler_wrapper_import_order_contract.py",
+            "tests/test_scheduler_route_registration_contract.py",
+            "tests/test_scheduler_routes_still_registered_by_factory.py",
+            "tests/test_history_summary_parser.py",
+            "tests/test_phase6_no_result_summary_route_parser.py",
+            "tests/regression_scheduler_bp_result_summary_guard.py",
+            "tests/test_version_resolution_contract.py",
+            "tests/test_phase6_no_route_version_parser.py",
+            "tests/regression_schedule_orchestrator_contract.py",
+            "tests/test_schedule_summary_observability.py",
+            "tests/test_schedule_params_direct_call_contract.py",
+            "tests/regression_scheduler_objective_labels.py",
+            "tests/regression_objective_projection_contract.py",
+            "tests/regression_sp05_followup_contracts.py",
+            "tests/regression_scheduler_user_visible_messages.py",
+            "tests/regression_route_version_normalizers_contract.py",
+            "tests/regression_optimizer_seed_results_contract.py",
+            "tests/regression_optimizer_seed_boundary_contract.py",
+            "tests/regression_optimizer_runtime_seam_contract.py",
+            "tests/regression_optimizer_outcome_type_contract.py",
+            "tests/regression_optimizer_public_summary_projection_contract.py",
+            "tests/regression_schedule_input_collector_contract.py",
+            "tests/regression_schedule_params_read_failure_visible.py",
+            "tests/regression_schedule_service_strict_snapshot_guard.py",
+            "tests/regression_schedule_config_snapshot_optional_guard.py",
+            "tests/regression_schedule_service_facade_delegation.py",
+            "tests/regression_schedule_persistence_reject_empty_actionable_schedule.py",
+            "tests/regression_schedule_persistence_reschedulable_contract.py",
+            "tests/regression_schedule_optimizer_cfg_snapshot_contract.py",
+            "tests/regression_schedule_summary_cfg_snapshot_contract.py",
+            "tests/regression_schedule_summary_algo_warnings_union.py",
+            "tests/regression_schedule_summary_invalid_due_and_unscheduled_counts.py",
+            "tests/regression_schedule_summary_freeze_state_contract.py",
+            "tests/regression_schedule_summary_overdue_warning_append_fallback.py",
+            "tests/regression_schedule_summary_v11_contract.py",
+            "tests/regression_schedule_summary_size_guard_large_lists.py",
+            "tests/regression_schedule_summary_merge_context_degraded_code.py",
+            "tests/regression_schedule_summary_input_fallback_contract.py",
+            "tests/regression_scheduler_run_surfaces_resource_pool_warning.py",
+            "tests/test_scheduler_run_view_result_contract.py",
+            "tests/test_schedule_template_lookup_contract.py",
+            "tests/regression_scheduler_run_entry_layout_contract.py",
+            "tests/regression_scheduler_ui_range_feedback_contract.py",
+            "tests/regression_scheduler_route_enforce_ready_tristate.py",
+        ),
+    },
+    {
+        "group_id": "scheduler_analysis_gantt_reports_week_plan",
+        "label": "Scheduler analysis, gantt, reports, and week plan contracts",
+        "target_paths": (
+            "tests/regression_scheduler_analysis_route_contract.py",
+            "tests/regression_scheduler_analysis_observability.py",
+            "tests/regression_analysis_page_version_default_latest.py",
+            "tests/regression_scheduler_analysis_vm_legacy_summary_bridge.py",
+            "tests/regression_scheduler_week_plan_summary_observability.py",
+            "tests/regression_week_plan_bad_time_rows_surface_degraded.py",
+            "tests/regression_gantt_page_version_default_latest.py",
+            "tests/regression_gantt_default_version_span.py",
+            "tests/regression_reports_page_version_default_latest.py",
+            "tests/regression_reports_export_version_default_latest.py",
+            "tests/regression_week_plan_filename_uses_normalized_version.py",
+            "tests/regression_gantt_calendar_load_failed_degraded.py",
+            "tests/regression_gantt_bad_time_rows_surface_degraded.py",
+            "tests/regression_gantt_contract_snapshot.py",
+            "tests/regression_gantt_critical_chain_unavailable.py",
+            "tests/regression_gantt_critical_outline_sync.py",
+            "tests/regression_calendar_layout_contract.py",
+            "tests/regression_gantt_layout_contract.py",
+        ),
+    },
+    {
+        "group_id": "scheduler_batches_material_resource",
+        "label": "Scheduler batches, material, and resource contracts",
+        "target_paths": (
+            "tests/regression_scheduler_batches_degraded_visibility.py",
+            "tests/regression_scheduler_batch_template_warning_surface.py",
+            "tests/test_scheduler_batches_page_viewmodel.py",
+            "tests/regression_scheduler_resource_dispatch_invalid_query_cleanup.py",
+            "tests/regression_resource_dispatch_bad_time_rows_surface_degraded.py",
+            "tests/regression_resource_dispatch_export_surfaces_degraded.py",
+            "tests/regression_scheduler_excel_batches_preview_baseline_precision.py",
+            "tests/regression_material_batch_info_layout_contract.py",
+            "tests/regression_scheduler_batches_presenter_contract.py",
+        ),
+    },
+    {
+        "group_id": "request_services_runtime_error_boundary",
+        "label": "Request services, runtime, and error boundary contracts",
+        "target_paths": (
+            "tests/regression_request_services_contract.py",
+            "tests/regression_request_services_lazy_construction.py",
+            "tests/regression_request_services_failure_propagation.py",
+            "tests/regression_factory_request_lifecycle_observability.py",
+            "tests/regression_maintenance_window_mutex.py",
+            "tests/regression_error_field_label_source.py",
+            "tests/test_ui_mode.py",
+            "tests/regression_safe_next_url_hardening.py",
+            "tests/regression_safe_next_url_observability.py",
+            "tests/regression_error_boundary_contract.py",
+        ),
+    },
+    {
+        "group_id": "frontend_manual_excel",
+        "label": "Frontend manual and Excel contracts",
+        "target_paths": (
+            "tests/test_excel_import_hardening.py",
+            "tests/test_excel_utils_compare_digest_guard.py",
+            "tests/regression_excel_hidden_payload_contract.py",
+            "tests/regression_frontend_manual_blueprint_contract.py",
+            "tests/regression_frontend_ui_language_polish.py",
+            "tests/regression_manual_entry_scope.py",
+            "tests/regression_page_manual_registry.py",
+            "tests/regression_excel_template_contracts.py",
+            "tests/regression_mirror_template_sync.py",
+        ),
+    },
+    {
+        "group_id": "ui_layout_presenters_system",
+        "label": "UI layout, presenters, and system contracts",
+        "target_paths": (
+            "tests/regression_system_history_route_contract.py",
+            "tests/regression_action_card_button_layout_contract.py",
+            "tests/regression_system_logs_layout_contract.py",
+            "tests/regression_system_logs_presenter_contract.py",
+            "tests/regression_form_run_option_checkbox_layout_contract.py",
+            "tests/regression_stable_form_layout_allowlist.py",
+            "tests/regression_ui_contract_table_overflow_guard.py",
+            "tests/regression_ui_contract_component_tokens.py",
+            "tests/regression_ui_presenters_contract.py",
+            "tests/regression_system_backup_presenter_contract.py",
+            "tests/regression_ui_browser_geometry_smoke.py",
+        ),
+    },
+)
+
 
 def _normalize_registry_path(path: str) -> str:
     return str(path or "").strip().replace("\\", "/")
@@ -298,6 +476,78 @@ def hash_required_tests_registry(required_tests: Sequence[str]) -> str:
     return stable_registry_hash(iter_required_tests(required_tests))
 
 
+def iter_required_regression_groups(
+    groups: Optional[Sequence[Mapping[str, Any]]] = None,
+) -> List[Dict[str, Any]]:
+    source = REQUIRED_REGRESSION_GROUPS if groups is None else groups
+    rows: List[Dict[str, Any]] = []
+    seen_group_ids = set()
+    for raw_group in list(source or []):
+        group_id = str(raw_group.get("group_id") or "").strip()
+        if not group_id:
+            raise ValueError("required regression group_id is empty")
+        if group_id in seen_group_ids:
+            raise ValueError("required regression group_id is duplicated: " + group_id)
+        seen_group_ids.add(group_id)
+        target_paths = normalize_test_paths(list(raw_group.get("target_paths") or []))
+        if not target_paths:
+            raise ValueError("required regression group targets are empty: " + group_id)
+        rows.append(
+            {
+                "group_id": group_id,
+                "label": str(raw_group.get("label") or group_id).strip() or group_id,
+                "target_paths": target_paths,
+            }
+        )
+    return rows
+
+
+def hash_required_regression_groups(
+    groups: Optional[Sequence[Mapping[str, Any]]] = None,
+) -> str:
+    return stable_registry_hash(iter_required_regression_groups(groups))
+
+
+def validate_required_regression_group_coverage(
+    required_tests: Sequence[str],
+    groups: Optional[Sequence[Mapping[str, Any]]] = None,
+) -> Dict[str, Any]:
+    required_paths = iter_required_tests(required_tests)
+    required_set = set(required_paths)
+    group_rows = iter_required_regression_groups(groups)
+    flat_targets: List[str] = []
+    target_to_groups: Dict[str, List[str]] = {}
+    for group in group_rows:
+        group_id = str(group.get("group_id") or "")
+        for target in list(group.get("target_paths") or []):
+            normalized = _normalize_registry_path(str(target))
+            flat_targets.append(normalized)
+            target_to_groups.setdefault(normalized, []).append(group_id)
+
+    duplicates = []
+    for target, owning_groups in sorted(target_to_groups.items()):
+        if len(owning_groups) > 1 or flat_targets.count(target) > 1:
+            duplicates.append(
+                {
+                    "path": target,
+                    "groups": list(owning_groups),
+                }
+            )
+
+    missing = [path for path in required_paths if path not in target_to_groups]
+    unknown = [path for path in flat_targets if path not in required_set]
+    return {
+        "missing": missing,
+        "duplicates": duplicates,
+        "unknown": sorted(dict.fromkeys(unknown)),
+        "required_target_count": len(required_paths),
+        "group_target_count": len(flat_targets),
+        "group_count": len(group_rows),
+        "required_registry_hash": hash_required_tests_registry(required_paths),
+        "group_registry_hash": hash_required_regression_groups(group_rows),
+    }
+
+
 def hash_test_registry(
     *,
     required_tests: Optional[Sequence[str]] = None,
@@ -330,11 +580,14 @@ __all__ = [
     "QUALITY_GATE_REQUIRED_TESTS",
     "QUALITY_GATE_SELFTEST_PATH",
     "QUALITY_GATE_STARTUP_REGRESSION_ARGS",
+    "REQUIRED_REGRESSION_GROUPS",
     "TEST_ONLY_HELPER_IMPACT",
     "build_test_path_status",
+    "hash_required_regression_groups",
     "hash_required_tests_registry",
     "hash_test_registry",
     "iter_non_regression_guard_tests",
+    "iter_required_regression_groups",
     "iter_required_tests",
     "iter_startup_regressions",
     "iter_test_only_helper_impacts",
@@ -342,4 +595,5 @@ __all__ = [
     "required_test_nodeid_matches",
     "stable_registry_hash",
     "test_only_helper_impacts_for_path",
+    "validate_required_regression_group_coverage",
 ]

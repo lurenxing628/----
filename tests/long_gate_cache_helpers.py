@@ -222,7 +222,11 @@ def _fake_successful_command(
     *,
     fail_entry_ids: Sequence[str] = (),
 ) -> Callable[..., dict]:
-    required_display = _entry_display(command_plan, repo_root, ENTRY_REQUIRED_REGRESSIONS)
+    manifest = _manifest_for(command_plan, repo_root)
+    required_entry = _entry_by_id(manifest, ENTRY_REQUIRED_REGRESSIONS)
+    required_display = str(required_entry["display"])
+    required_group_entries = [dict(group) for group in list(required_entry.get("groups") or [])]
+    required_group_display_to_entry = {str(group["display"]): group for group in required_group_entries}
     startup_display = _entry_display(command_plan, repo_root, ENTRY_STARTUP_RUNTIME_REGRESSIONS)
     fail_ids = set(fail_entry_ids)
     full_debt_runs = {"count": 0}
@@ -251,6 +255,14 @@ def _fake_successful_command(
             if ENTRY_REQUIRED_REGRESSIONS in fail_ids:
                 return {"stdout": "required failed\n", "stderr": "boom\n", "returncode": 1}
             return {"stdout": "127 files passed in 2.34s\n", "stderr": "", "returncode": 0}
+        if display in required_group_display_to_entry:
+            group_entry = required_group_display_to_entry[display]
+            group_entry_id = str(group_entry.get("entry_id") or "")
+            group_id = str(group_entry.get("group_id") or "")
+            if ENTRY_REQUIRED_REGRESSIONS in fail_ids or group_entry_id in fail_ids or group_id in fail_ids:
+                return {"stdout": f"{group_id} failed\n", "stderr": "boom\n", "returncode": 1}
+            target_count = len(list(group_entry.get("target_paths") or []))
+            return {"stdout": f"{target_count} files passed in 0.12s\n", "stderr": "", "returncode": 0}
         if display == startup_display:
             if ENTRY_STARTUP_RUNTIME_REGRESSIONS in fail_ids:
                 return {"stdout": "startup failed\n", "stderr": "boom\n", "returncode": 1}
@@ -288,6 +300,87 @@ def _seed_required_or_startup_success_cache(
             stdout_text = "127 files passed in 2.34s\n"
         else:
             stdout_text = "16 passed in 1.23s\n"
+
+    if entry_id == ENTRY_REQUIRED_REGRESSIONS:
+        group_rows = []
+        coverage = dict(entry.get("required_regression_group_coverage") or {})
+        for group_entry in list(entry.get("groups") or []):
+            group = dict(group_entry)
+            group_stdout = f"{len(group.get('target_paths') or [])} files passed in 0.12s\n"
+            group_result = {
+                "stdout": group_stdout,
+                "stderr": "",
+                "returncode": 0,
+                "execution_mode": "executed",
+                "duration_s": 0.12,
+            }
+            group_fingerprint = fingerprint_entry(group, str(repo_root))
+            group_proof_rel = module._write_required_regression_group_proof(
+                group,
+                group_result,
+                run_id="seed",
+                command_index=command_index,
+                command_plan=command_plan,
+                fingerprint=group_fingerprint,
+                cache_dir="evidence/QualityGate/long_gate",
+                coverage=coverage,
+            )
+            group_rows.append(
+                module._required_group_summary_row(
+                    group,
+                    decision={
+                        "decision": "run",
+                        "reason": "seeded required group success cache",
+                        "current_fingerprint_hash": group_fingerprint["hash"],
+                    },
+                    fingerprint=group_fingerprint,
+                    result=group_result,
+                    proof_path=group_proof_rel,
+                    proof_sha256=hashlib.sha256((repo_root / group_proof_rel).read_bytes()).hexdigest(),
+                    cache_dir="evidence/QualityGate/long_gate",
+                )
+            )
+            write_success(
+                group,
+                group_fingerprint,
+                group_result,
+                [str(repo_root / group_proof_rel)],
+                repo_root=str(repo_root),
+            )
+
+        parent_result = {
+            "stdout": stdout_text,
+            "stderr": stderr_text,
+            "returncode": 0,
+            "execution_mode": "grouped",
+            "duration_s": 3.0,
+            "required_regressions_groups": group_rows,
+        }
+        parent_output_files = module._write_required_regressions_grouped_proof(
+            entry,
+            parent_result,
+            run_id="seed",
+            command_index=command_index,
+            command_plan=command_plan,
+            fingerprint=fingerprint,
+            cache_dir="evidence/QualityGate/long_gate",
+        )
+        if proof_payload_overrides:
+            proof_payload = json.loads(_proof_path_for_entry(repo_root, entry_id).read_text(encoding="utf-8"))
+            proof_payload.update(dict(proof_payload_overrides))
+            with open(_proof_path_for_entry(repo_root, entry_id), "w", encoding="utf-8") as handle:
+                json.dump(proof_payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
+                handle.write("\n")
+        write_success(
+            entry,
+            fingerprint,
+            parent_result,
+            [str(repo_root / path) for path in parent_output_files],
+            repo_root=str(repo_root),
+        )
+        assert _proof_path_for_entry(repo_root, entry_id).exists()
+        assert _success_path(repo_root, entry_id).exists()
+        return
 
     proof_path = _proof_path_for_entry(repo_root, entry_id)
     proof_path.parent.mkdir(parents=True, exist_ok=True)
