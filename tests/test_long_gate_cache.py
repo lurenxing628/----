@@ -11,6 +11,7 @@ import pytest
 from tools.long_gate_cache import decide_reuse, evaluate_reuse, resolve_cache_dir, write_success
 from tools.long_gate_fingerprint import (
     LongGateFingerprintError,
+    diff_fingerprint_components,
     fingerprint_command,
     fingerprint_entry,
     fingerprint_files,
@@ -949,3 +950,56 @@ def test_fingerprint_change_reports_invalidated_files(tmp_path):
     assert decision["decision"] == "run"
     assert decision["reason"] == "input fingerprint changed"
     assert "added input file: tests/test_new.py" in decision["invalidated_by"]
+    assert decision["fingerprint_diff"][0]["component"] == "files"
+    assert decision["fingerprint_diff"][0]["path"] == "tests/test_new.py"
+
+
+def test_fingerprint_component_diff_explains_non_file_changes():
+    previous = {
+        "schema_version": 1,
+        "hash": "old",
+        "components": {
+            "command_hash": "old-command",
+            "files": {"files": []},
+            "environment": {"values": {"PYTHONUTF8": "1"}, "hash": "old-env"},
+            "collect_nodeids": {"nodeid_hash": "old-nodeids", "nodeid_count": 1},
+            "output_result_files": {"paths": ["old.json"], "hash": "old-outputs"},
+        },
+    }
+    current = {
+        "schema_version": 1,
+        "hash": "new",
+        "components": {
+            "command_hash": "new-command",
+            "files": {"files": []},
+            "environment": {"values": {"PYTHONUTF8": None}, "hash": "new-env"},
+            "collect_nodeids": {"nodeid_hash": "new-nodeids", "nodeid_count": 2},
+            "output_result_files": {"paths": ["old.json", "new.json"], "hash": "new-outputs"},
+        },
+    }
+
+    diff = diff_fingerprint_components(previous, current)
+    changes = list(diff["components"])
+
+    assert diff["changed"] is True
+    assert {"component": "command_hash", "reason": "command hash changed", "previous": "old-command", "current": "new-command"} in changes
+    assert any(
+        change.get("component") == "environment"
+        and change.get("key") == "PYTHONUTF8"
+        and change.get("previous") == "1"
+        and change.get("current") is None
+        for change in changes
+    )
+    assert any(
+        change.get("component") == "collect_nodeids"
+        and change.get("field") == "nodeid_hash"
+        and change.get("previous") == "old-nodeids"
+        and change.get("current") == "new-nodeids"
+        for change in changes
+    )
+    assert any(
+        change.get("component") == "output_result_files"
+        and change.get("reason") == "added output result file"
+        and change.get("path") == "new.json"
+        for change in changes
+    )

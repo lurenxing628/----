@@ -99,119 +99,68 @@ def _query_dict(location: str):
     return parse_qs(parsed.query)
 
 
-def test_resource_dispatch_invalid_date_redirects_to_clean_url(tmp_path, monkeypatch) -> None:
+def test_resource_dispatch_invalid_queries_redirect_to_clean_url(tmp_path, monkeypatch) -> None:
     client = _build_client(tmp_path, monkeypatch)
 
-    resp = client.get(
-        "/scheduler/resource-dispatch?scope_type=operator&operator_id=OP001&period_preset=week&query_date=bad&version=1"
-    )
+    cases = [
+        (
+            "invalid_date",
+            "/scheduler/resource-dispatch?scope_type=operator&operator_id=OP001&period_preset=week&query_date=bad&version=1",
+            {"scope_type": ["operator"], "operator_id": ["OP001"], "version": ["1"]},
+            {"period_preset", "query_date"},
+        ),
+        (
+            "invalid_scope",
+            "/scheduler/resource-dispatch?scope_type=operator&operator_id=OP404&period_preset=week&query_date=2026-03-02&version=1",
+            {"scope_type": ["operator"], "period_preset": ["week"], "query_date": ["2026-03-02"], "version": ["1"]},
+            {"operator_id", "scope_id"},
+        ),
+        (
+            "invalid_scope_type",
+            "/scheduler/resource-dispatch?scope_type=bad&operator_id=OP001&period_preset=week&query_date=2026-03-02&version=1",
+            {"period_preset": ["week"], "query_date": ["2026-03-02"], "version": ["1"]},
+            {"scope_type", "operator_id", "scope_id"},
+        ),
+        (
+            "invalid_team_axis",
+            "/scheduler/resource-dispatch?scope_type=team&team_id=TEAM-01&team_axis=bad&period_preset=week&query_date=2026-03-02&version=1",
+            {
+                "scope_type": ["team"],
+                "team_id": ["TEAM-01"],
+                "period_preset": ["week"],
+                "query_date": ["2026-03-02"],
+                "version": ["1"],
+            },
+            {"team_axis"},
+        ),
+        (
+            "invalid_period_preset",
+            "/scheduler/resource-dispatch?scope_type=operator&operator_id=OP001&period_preset=bad&query_date=2026-03-02&version=1",
+            {"scope_type": ["operator"], "operator_id": ["OP001"], "version": ["1"]},
+            {"period_preset", "query_date"},
+        ),
+        (
+            "invalid_version",
+            "/scheduler/resource-dispatch?scope_type=operator&operator_id=OP001&period_preset=week&query_date=2026-03-02&version=bad",
+            {"scope_type": ["operator"], "operator_id": ["OP001"], "period_preset": ["week"], "query_date": ["2026-03-02"]},
+            {"version"},
+        ),
+        (
+            "zero_version",
+            "/scheduler/resource-dispatch?scope_type=operator&operator_id=OP001&period_preset=week&query_date=2026-03-02&version=0",
+            {"scope_type": ["operator"], "operator_id": ["OP001"], "period_preset": ["week"], "query_date": ["2026-03-02"]},
+            {"version"},
+        ),
+    ]
 
-    assert resp.status_code == 302
-    params = _query_dict(resp.headers["Location"])
-    assert params.get("scope_type") == ["operator"]
-    assert params.get("operator_id") == ["OP001"]
-    assert params.get("version") == ["1"]
-    assert "period_preset" not in params
-    assert "query_date" not in params
-
-
-def test_resource_dispatch_invalid_scope_redirects_to_clean_url(tmp_path, monkeypatch) -> None:
-    client = _build_client(tmp_path, monkeypatch)
-
-    resp = client.get(
-        "/scheduler/resource-dispatch?scope_type=operator&operator_id=OP404&period_preset=week&query_date=2026-03-02&version=1"
-    )
-
-    assert resp.status_code == 302
-    params = _query_dict(resp.headers["Location"])
-    assert params.get("scope_type") == ["operator"]
-    assert params.get("period_preset") == ["week"]
-    assert params.get("query_date") == ["2026-03-02"]
-    assert params.get("version") == ["1"]
-    assert "operator_id" not in params
-    assert "scope_id" not in params
-
-
-def test_resource_dispatch_invalid_scope_type_redirects_to_clean_url(tmp_path, monkeypatch) -> None:
-    client = _build_client(tmp_path, monkeypatch)
-
-    resp = client.get(
-        "/scheduler/resource-dispatch?scope_type=bad&operator_id=OP001&period_preset=week&query_date=2026-03-02&version=1"
-    )
-
-    assert resp.status_code == 302
-    params = _query_dict(resp.headers["Location"])
-    assert params.get("period_preset") == ["week"]
-    assert params.get("query_date") == ["2026-03-02"]
-    assert params.get("version") == ["1"]
-    assert "scope_type" not in params
-    assert "operator_id" not in params
-    assert "scope_id" not in params
-
-
-def test_resource_dispatch_invalid_team_axis_redirects_to_clean_url(tmp_path, monkeypatch) -> None:
-    client = _build_client(tmp_path, monkeypatch)
-
-    resp = client.get(
-        "/scheduler/resource-dispatch?scope_type=team&team_id=TEAM-01&team_axis=bad&period_preset=week&query_date=2026-03-02&version=1"
-    )
-
-    assert resp.status_code == 302
-    params = _query_dict(resp.headers["Location"])
-    assert params.get("scope_type") == ["team"]
-    assert params.get("team_id") == ["TEAM-01"]
-    assert params.get("period_preset") == ["week"]
-    assert params.get("query_date") == ["2026-03-02"]
-    assert params.get("version") == ["1"]
-    assert "team_axis" not in params
-
-
-def test_resource_dispatch_invalid_period_preset_redirects_to_clean_url(tmp_path, monkeypatch) -> None:
-    client = _build_client(tmp_path, monkeypatch)
-
-    resp = client.get(
-        "/scheduler/resource-dispatch?scope_type=operator&operator_id=OP001&period_preset=bad&query_date=2026-03-02&version=1"
-    )
-
-    assert resp.status_code == 302
-    params = _query_dict(resp.headers["Location"])
-    assert params.get("scope_type") == ["operator"]
-    assert params.get("operator_id") == ["OP001"]
-    assert params.get("version") == ["1"]
-    assert "period_preset" not in params
-    assert "query_date" not in params
-
-
-def test_resource_dispatch_invalid_version_redirects_to_clean_url(tmp_path, monkeypatch) -> None:
-    client = _build_client(tmp_path, monkeypatch)
-
-    resp = client.get(
-        "/scheduler/resource-dispatch?scope_type=operator&operator_id=OP001&period_preset=week&query_date=2026-03-02&version=bad"
-    )
-
-    assert resp.status_code == 302
-    params = _query_dict(resp.headers["Location"])
-    assert params.get("scope_type") == ["operator"]
-    assert params.get("operator_id") == ["OP001"]
-    assert params.get("period_preset") == ["week"]
-    assert params.get("query_date") == ["2026-03-02"]
-    assert "version" not in params
-
-
-def test_resource_dispatch_zero_version_redirects_to_clean_url(tmp_path, monkeypatch) -> None:
-    client = _build_client(tmp_path, monkeypatch)
-
-    resp = client.get(
-        "/scheduler/resource-dispatch?scope_type=operator&operator_id=OP001&period_preset=week&query_date=2026-03-02&version=0"
-    )
-
-    assert resp.status_code == 302
-    params = _query_dict(resp.headers["Location"])
-    assert params.get("scope_type") == ["operator"]
-    assert params.get("operator_id") == ["OP001"]
-    assert params.get("period_preset") == ["week"]
-    assert params.get("query_date") == ["2026-03-02"]
-    assert "version" not in params
+    for case_name, url, expected_params, missing_keys in cases:
+        resp = client.get(url)
+        assert resp.status_code == 302, case_name
+        params = _query_dict(resp.headers["Location"])
+        for key, expected_value in expected_params.items():
+            assert params.get(key) == expected_value, case_name
+        for key in missing_keys:
+            assert key not in params, case_name
 
 
 def test_resource_dispatch_missing_history_version_fails_closed_without_query_cleanup(tmp_path, monkeypatch) -> None:

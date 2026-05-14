@@ -76,6 +76,7 @@ QUALITY_GATE_PROOF_SCOPE = {
 }
 QUALITY_GATE_PROOF_SCHEMA_VERSION = 2
 QUALITY_GATE_TOOL_PATHS = [
+    "scripts/run_daily_quality_gate.py",
     "scripts/run_quality_gate.py",
     "scripts/sync_debt_ledger.py",
     "tools/git_hook_checks.py",

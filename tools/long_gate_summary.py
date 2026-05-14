@@ -146,6 +146,8 @@ def build_summary_entry(
         "decision": str(decision.get("decision") or ""),
         "reason": str(decision.get("reason") or ""),
         "invalidated_by": invalidated_by,
+        "fingerprint_diff": [dict(item) for item in list(decision.get("fingerprint_diff") or [])],
+        "full_test_debt_incremental": dict(decision.get("full_test_debt_incremental") or {}),
         "execution_mode": resolved_execution_mode,
         "returncode": returncode,
         "failed": failed_value,

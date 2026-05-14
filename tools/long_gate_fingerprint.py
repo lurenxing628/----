@@ -472,25 +472,205 @@ def _files_by_path(fingerprint: Mapping[str, Any]) -> Dict[str, Mapping[str, Any
     return {str(row.get("path") or ""): row for row in list(files or []) if isinstance(row, dict)}
 
 
-def diff_fingerprints(previous: Mapping[str, Any], current: Mapping[str, Any]) -> Dict[str, Any]:
-    reasons: List[str] = []
+def _compact_diff_value(value: Any) -> Any:
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    return {"summary_hash": stable_json_hash(value)}
+
+
+def _file_diff_summary(row: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
+    if row is None:
+        return {}
+    return {
+        "exists": bool(row.get("exists")),
+        "kind": str(row.get("kind") or ""),
+        "sha256": str(row.get("sha256") or ""),
+    }
+
+
+def _component_payload(fingerprint: Mapping[str, Any], component: str) -> Any:
+    components = fingerprint.get("components") if isinstance(fingerprint.get("components"), dict) else {}
+    return components.get(component) if isinstance(components, dict) else None
+
+
+def diff_fingerprint_components(previous: Mapping[str, Any], current: Mapping[str, Any]) -> Dict[str, Any]:
+    changes: List[Dict[str, Any]] = []
     if previous.get("schema_version") != current.get("schema_version"):
-        reasons.append("fingerprint schema changed")
-    if previous.get("hash") == current.get("hash") and not reasons:
-        return {"changed": False, "reasons": []}
+        changes.append(
+            {
+                "component": "schema_version",
+                "reason": "fingerprint schema changed",
+                "previous": _compact_diff_value(previous.get("schema_version")),
+                "current": _compact_diff_value(current.get("schema_version")),
+            }
+        )
+
+    previous_components = previous.get("components") if isinstance(previous.get("components"), dict) else {}
+    current_components = current.get("components") if isinstance(current.get("components"), dict) else {}
+
+    if previous_components.get("command_hash") != current_components.get("command_hash"):
+        changes.append(
+            {
+                "component": "command_hash",
+                "reason": "command hash changed",
+                "previous": _compact_diff_value(previous_components.get("command_hash")),
+                "current": _compact_diff_value(current_components.get("command_hash")),
+            }
+        )
 
     previous_files = _files_by_path(previous)
     current_files = _files_by_path(current)
     for path in sorted(set(current_files) - set(previous_files)):
-        reasons.append(f"added input file: {path}")
+        changes.append(
+            {
+                "component": "files",
+                "reason": "added input file",
+                "path": path,
+                "current": _file_diff_summary(current_files.get(path)),
+            }
+        )
     for path in sorted(set(previous_files) - set(current_files)):
-        reasons.append(f"removed input file: {path}")
+        changes.append(
+            {
+                "component": "files",
+                "reason": "removed input file",
+                "path": path,
+                "previous": _file_diff_summary(previous_files.get(path)),
+            }
+        )
     for path in sorted(set(previous_files) & set(current_files)):
         before = previous_files[path]
         after = current_files[path]
-        if before.get("sha256") != after.get("sha256") or before.get("exists") != after.get("exists"):
-            reasons.append(f"modified input file: {path}")
+        if (
+            before.get("sha256") != after.get("sha256")
+            or before.get("exists") != after.get("exists")
+            or before.get("kind") != after.get("kind")
+        ):
+            changes.append(
+                {
+                    "component": "files",
+                    "reason": "modified input file",
+                    "path": path,
+                    "previous": _file_diff_summary(before),
+                    "current": _file_diff_summary(after),
+                }
+            )
+
+    previous_environment = _component_payload(previous, "environment")
+    current_environment = _component_payload(current, "environment")
+    previous_values = previous_environment.get("values") if isinstance(previous_environment, dict) else {}
+    current_values = current_environment.get("values") if isinstance(current_environment, dict) else {}
+    if not isinstance(previous_values, dict):
+        previous_values = {}
+    if not isinstance(current_values, dict):
+        current_values = {}
+    for key in sorted(set(previous_values) | set(current_values)):
+        if previous_values.get(key) != current_values.get(key):
+            changes.append(
+                {
+                    "component": "environment",
+                    "reason": "environment value changed",
+                    "key": str(key),
+                    "previous": _compact_diff_value(previous_values.get(key)),
+                    "current": _compact_diff_value(current_values.get(key)),
+                }
+            )
+    if (
+        isinstance(previous_environment, dict)
+        and isinstance(current_environment, dict)
+        and previous_environment.get("hash") != current_environment.get("hash")
+        and not any(change.get("component") == "environment" for change in changes)
+    ):
+        changes.append(
+            {
+                "component": "environment",
+                "reason": "environment hash changed",
+                "previous": _compact_diff_value(previous_environment.get("hash")),
+                "current": _compact_diff_value(current_environment.get("hash")),
+            }
+        )
+
+    previous_collect = _component_payload(previous, "collect_nodeids")
+    current_collect = _component_payload(current, "collect_nodeids")
+    if isinstance(previous_collect, dict) or isinstance(current_collect, dict):
+        previous_collect_map = previous_collect if isinstance(previous_collect, dict) else {}
+        current_collect_map = current_collect if isinstance(current_collect, dict) else {}
+        for field in ("exists", "validated", "schema_version", "status", "nodeid_hash", "nodeid_count", "error"):
+            if previous_collect_map.get(field) != current_collect_map.get(field):
+                changes.append(
+                    {
+                        "component": "collect_nodeids",
+                        "reason": "collect nodeids field changed",
+                        "field": field,
+                        "previous": _compact_diff_value(previous_collect_map.get(field)),
+                        "current": _compact_diff_value(current_collect_map.get(field)),
+                    }
+                )
+
+    previous_outputs = _component_payload(previous, "output_result_files")
+    current_outputs = _component_payload(current, "output_result_files")
+    previous_paths = previous_outputs.get("paths") if isinstance(previous_outputs, dict) else []
+    current_paths = current_outputs.get("paths") if isinstance(current_outputs, dict) else []
+    if not isinstance(previous_paths, list):
+        previous_paths = []
+    if not isinstance(current_paths, list):
+        current_paths = []
+    for path in sorted(set(str(item) for item in current_paths) - set(str(item) for item in previous_paths)):
+        changes.append({"component": "output_result_files", "reason": "added output result file", "path": path})
+    for path in sorted(set(str(item) for item in previous_paths) - set(str(item) for item in current_paths)):
+        changes.append({"component": "output_result_files", "reason": "removed output result file", "path": path})
+    if (
+        isinstance(previous_outputs, dict)
+        and isinstance(current_outputs, dict)
+        and previous_outputs.get("hash") != current_outputs.get("hash")
+        and not any(change.get("component") == "output_result_files" for change in changes)
+    ):
+        changes.append(
+            {
+                "component": "output_result_files",
+                "reason": "output result files hash changed",
+                "previous": _compact_diff_value(previous_outputs.get("hash")),
+                "current": _compact_diff_value(current_outputs.get("hash")),
+            }
+        )
+
+    known_components = {"command_hash", "files", "environment", "collect_nodeids", "output_result_files"}
+    for component in sorted((set(previous_components) | set(current_components)) - known_components):
+        if stable_json_hash(previous_components.get(component)) != stable_json_hash(current_components.get(component)):
+            changes.append(
+                {
+                    "component": str(component),
+                    "reason": "fingerprint component changed",
+                    "previous": _compact_diff_value(previous_components.get(component)),
+                    "current": _compact_diff_value(current_components.get(component)),
+                }
+            )
+
+    if previous.get("hash") != current.get("hash") and not changes:
+        changes.append({"component": "fingerprint", "reason": "input fingerprint changed"})
+    return {"changed": bool(changes), "components": changes}
+
+
+def diff_fingerprints(previous: Mapping[str, Any], current: Mapping[str, Any]) -> Dict[str, Any]:
+    if previous.get("hash") == current.get("hash"):
+        return {"changed": False, "reasons": []}
+
+    diff = diff_fingerprint_components(previous, current)
+    reasons: List[str] = []
+    for change in list(diff.get("components") or []):
+        component = str(change.get("component") or "")
+        reason = str(change.get("reason") or "input fingerprint changed")
+        if component == "files" and change.get("path"):
+            reasons.append(f"{reason}: {change.get('path')}")
+        elif component == "environment" and change.get("key"):
+            reasons.append(f"environment changed: {change.get('key')}")
+        elif component == "collect_nodeids" and change.get("field"):
+            reasons.append(f"collect_nodeids changed: {change.get('field')}")
+        elif component == "output_result_files" and change.get("path"):
+            reasons.append(f"{reason}: {change.get('path')}")
+        else:
+            reasons.append(reason)
 
     if not reasons:
         reasons.append("input fingerprint changed")
-    return {"changed": True, "reasons": reasons}
+    return {"changed": True, "reasons": reasons, "components": list(diff.get("components") or [])}

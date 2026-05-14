@@ -149,24 +149,38 @@ def check_commit_msg(args: argparse.Namespace) -> int:
     return 0
 
 
+def _quality_gate_env() -> dict:
+    env = os.environ.copy()
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    env["PYTHONUTF8"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
+    env.pop("APS_SKIP_QUALITY_GATE", None)
+    return env
+
+
 def run_quality_gate(_args: argparse.Namespace) -> int:
     try:
         executable = _project_python_executable()
     except RuntimeError as exc:
         print(str(exc), file=sys.stderr)
         return 1
-    env = os.environ.copy()
-    env["PYTHONDONTWRITEBYTECODE"] = "1"
-    env["PYTHONUTF8"] = "1"
-    env["PYTHONIOENCODING"] = "utf-8"
-    env.pop("APS_SKIP_QUALITY_GATE", None)
+    command = [executable, "scripts/run_daily_quality_gate.py"]
+    return subprocess.call(command, cwd=str(REPO_ROOT), env=_quality_gate_env())
+
+
+def run_final_quality_gate(_args: argparse.Namespace) -> int:
+    try:
+        executable = _project_python_executable()
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
     command = [
         executable,
         "scripts/run_quality_gate.py",
         "--require-clean-worktree",
         "--long-gate-cache",
     ]
-    return subprocess.call(command, cwd=str(REPO_ROOT), env=env)
+    return subprocess.call(command, cwd=str(REPO_ROOT), env=_quality_gate_env())
 
 
 def run_ruff(_args: argparse.Namespace) -> int:
@@ -222,6 +236,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     quality_gate = subparsers.add_parser("run-quality-gate")
     quality_gate.set_defaults(func=run_quality_gate)
+
+    final_quality_gate = subparsers.add_parser("run-final-quality-gate")
+    final_quality_gate.set_defaults(func=run_final_quality_gate)
 
     ruff = subparsers.add_parser("run-ruff")
     ruff.set_defaults(func=run_ruff)

@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import importlib
 import json
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Optional, Tuple
 
 import pytest
 
@@ -18,6 +20,36 @@ from web.viewmodels.scheduler_batches_page import (
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
+
+_SCHEMA_TEMPLATE_DIR: Optional[tempfile.TemporaryDirectory] = None
+_SCHEMA_TEMPLATE_DB: Optional[Path] = None
+_SCHEMA_TEMPLATE_SIGNATURE: Optional[Tuple[int, int]] = None
+
+
+def _schema_signature() -> Tuple[int, int]:
+    stat = SCHEMA_PATH.stat()
+    return (int(stat.st_mtime_ns), int(stat.st_size))
+
+
+def _copy_schema_template(test_db: Path) -> None:
+    global _SCHEMA_TEMPLATE_DB
+    global _SCHEMA_TEMPLATE_DIR
+    global _SCHEMA_TEMPLATE_SIGNATURE
+
+    signature = _schema_signature()
+    if (
+        _SCHEMA_TEMPLATE_DB is None
+        or _SCHEMA_TEMPLATE_SIGNATURE != signature
+        or not _SCHEMA_TEMPLATE_DB.exists()
+    ):
+        if _SCHEMA_TEMPLATE_DIR is not None:
+            _SCHEMA_TEMPLATE_DIR.cleanup()
+        _SCHEMA_TEMPLATE_DIR = tempfile.TemporaryDirectory(prefix="aps_scheduler_batches_schema_")
+        _SCHEMA_TEMPLATE_DB = Path(_SCHEMA_TEMPLATE_DIR.name) / "aps_schema_template.db"
+        ensure_schema(str(_SCHEMA_TEMPLATE_DB), logger=None, schema_path=str(SCHEMA_PATH), backup_dir=None)
+        _SCHEMA_TEMPLATE_SIGNATURE = signature
+
+    shutil.copyfile(str(_SCHEMA_TEMPLATE_DB), str(test_db))
 
 
 def _build_app(tmp_path, monkeypatch):
@@ -44,7 +76,7 @@ def _build_app(tmp_path, monkeypatch):
         if name.startswith("web.routes.scheduler") or name.startswith("web.routes.domains.scheduler"):
             sys.modules.pop(name, None)
 
-    ensure_schema(str(test_db), logger=None, schema_path=str(SCHEMA_PATH), backup_dir=None)
+    _copy_schema_template(test_db)
     app_mod = importlib.import_module("app")
     return app_mod.create_app(), str(test_db)
 

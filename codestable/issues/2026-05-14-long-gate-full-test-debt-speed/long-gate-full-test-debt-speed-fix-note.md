@@ -60,3 +60,17 @@ tags:
 - `tools/check_full_test_debt.py` 仍然会真正跑完整 full pytest，这是它作为 full-test-debt proof 的核心职责，本次没有也不应该跳过。
 - 这次聚焦修掉测试里的真实等待和重复 fake gate 初始化；剩余 0.8 秒级 runner 测试主要是必须保留的端到端代表场景，后续如继续提速，应优先考虑把 bad proof/log 的枚举补成更细的 `evaluate_reuse()` 级单测。
 - 当前记录里的 full-test-debt 验证不是 clean-worktree proof，因为验证时工作区包含本次修改。最终 clean proof 仍需要在提交或清空工作区后跑完整 `scripts/run_quality_gate.py --require-clean-worktree`。
+
+## 7. 2026-05-14 继续修复
+
+- 修复 full-test-debt special incremental 的 success cache 误判：`returncode=0` 现在会被当成真正成功，不再因为 `0` 在 Python 里是假值而被误判成非零。
+- `--long-gate-cache-explain` 现在会展示 fingerprint 变更组件，以及 full_test_debt special fallback 的前置证据路径、上一份 success returncode、node cache 路径和 nodeid 数量。
+- full-test-debt node cache 新增只读诊断字段：`result_returncode`、`collected_nodeid_count`、`collect_nodeids_by_file_count`。旧 node cache 缺这些字段不直接失败，可信校验仍以 success cache `output_files` hash、payload hash、summary hash 和日志 hash 为准。
+- 新增 `scripts/run_daily_quality_gate.py` 作为日常快门禁；pre-push 现在走日常快门禁，不再把完整 clean gate 挂到每次 push 上。最终完整门禁入口仍是 `scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`。
+- required/startup 两个 long gate cache 自测文件把坏 proof/log 的 runner 级枚举从 7 类缩成 3 个代表：proof 缺失、proof 损坏、stdout log hash 不匹配。
+- startup host/portfile 回归保留 `app.py` 与 `app_new_ui.py` 真实启动，但真实子进程 host case 从 4 个缩到 2 个；完整 host 解析规则改由 `tests/test_startup_host_resolution_contract.py` 的纯函数测试覆盖。
+- 真浏览器 geometry smoke 去掉了重复的每宽度 HTTP 预请求，改为每个页面只预请求一次；真实 Chrome/CDP 的 10 个页面 × 2 个宽度检查仍保留。
+- scheduler batches 页面测试新增进程内 schema 模板库：第一次按真实 `schema.sql` 建空库，后续每个测试复制空库再插入自己的数据，不共享测试数据、不绕过 schema 契约。
+- 继续优化时又收了三处高性价比慢点：真浏览器 geometry smoke 改成每个页面只开一个 Chrome 标签、导航一次后切两个宽度检查；资源派工非法查询清理测试把 7 个只读重定向场景合成一个 client 场景；full-test-debt registry contract 把多次 `git ls-files` 子进程改成一次读取 tracked 文件集合。
+- `tools/quality_gate_scan.py` 给 AST 解析加了进程内缓存，缓存键包含源码内容，避免测试 monkeypatch 出来的同名假文件串数据；该改动只小幅降低 architecture 文件总耗时，repository bundle drift 单点仍是后续优化对象。
+- 阶段性耗时记录写入 `reports/quality_gate_performance_before_after.md`。本轮测速显示 long gate cache 三个自测文件为 `199 passed in 34.24s`，startup host/portfile 相关测试为 `10 passed in 6.01s`，browser geometry smoke 为 `2 passed in 9.53s`，scheduler resource dispatch 为 `13 passed in 3.66s`，full-test-debt registry contract 为 `37 passed in 5.86s`，scheduler batches 为 `28 passed in 12.05s`。受影响慢测试组合为 `128 passed in 47.69s`，日常快门禁为 `real 2.35s`。

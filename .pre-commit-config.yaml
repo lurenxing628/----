@@ -3,7 +3,7 @@ repos:
   # 说明：
   # - 使用本地 system hook，避免远端 hook 联网安装失败阻断提交
   # - 请先用项目 .venv 里的 Python 安装 requirements.txt 和 requirements-dev.txt，再执行 pre_commit install，避免系统 Python 与项目 Python 不一致
-  # - pre-commit 阶段管格式和本地运行产物，commit-msg 阶段管提交标题，pre-push 阶段跑完整质量门禁并要求干净工作区
+  # - pre-commit 阶段管格式和本地运行产物，commit-msg 阶段管提交标题，pre-push 阶段跑日常快门禁
   - repo: local
     hooks:
       - id: ruff
@@ -26,7 +26,7 @@ repos:
         language: system
         stages: [commit-msg]
       - id: aps-quality-gate
-        name: APS quality gate before push
+        name: APS daily fast gate before push
         entry: python tools/git_hook_checks.py run-quality-gate
         language: system
         pass_filenames: false

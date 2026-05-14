@@ -18,6 +18,7 @@ from tools.long_gate_full_test_debt import (
     NODE_CACHE_REL,
     _classify_incremental_plan,
     _load_node_cache,
+    _validated_previous_success,
     write_full_test_debt_node_cache_after_success,
 )
 from tools.long_gate_manifest import build_manifest_from_quality_gate_plan
@@ -339,6 +340,61 @@ def test_manifest_enables_only_collect_and_full_test_debt():
     assert enabled == ["pytest_collect_all", "full_test_debt"]
     assert "ruff_check_full" in planned
     assert "full_test_debt_node_cache" in json.dumps(manifest, ensure_ascii=False)
+
+
+def test_validated_previous_success_accepts_zero_returncode(tmp_path):
+    _seed_success(tmp_path)
+
+    previous, error = _validated_previous_success(
+        repo_root=str(tmp_path),
+        decision={"previous_result_path": "evidence/QualityGate/long_gate/results/full_test_debt.success.json"},
+        evaluation={},
+    )
+
+    assert error == ""
+    assert previous is not None
+    assert previous["returncode"] == 0
+
+
+@pytest.mark.parametrize(
+    ("value", "expected_error"),
+    [
+        (None, "previous success cache returncode is invalid"),
+        (False, "previous success cache returncode is invalid"),
+        ("0", "previous success cache returncode is invalid"),
+        (1, "previous success cache returncode is not zero"),
+    ],
+)
+def test_validated_previous_success_rejects_invalid_or_nonzero_returncode(tmp_path, value, expected_error):
+    _seed_success(tmp_path)
+    success = _load_success(tmp_path)
+    if value is None:
+        success.pop("returncode", None)
+    else:
+        success["returncode"] = value
+    _success_path(tmp_path).write_text(json.dumps(success, ensure_ascii=False, sort_keys=True), encoding="utf-8")
+
+    previous, error = _validated_previous_success(
+        repo_root=str(tmp_path),
+        decision={"previous_result_path": "evidence/QualityGate/long_gate/results/full_test_debt.success.json"},
+        evaluation={},
+    )
+
+    assert previous is None
+    assert error == expected_error
+
+
+def test_node_cache_records_readable_diagnostic_fields(tmp_path):
+    entry, fingerprint = _seed_success(tmp_path)
+    cache_path = tmp_path / NODE_CACHE_REL
+    payload = json.loads(cache_path.read_text(encoding="utf-8"))
+
+    assert entry["entry_id"] == "full_test_debt"
+    assert payload["result_returncode"] == 0
+    assert payload["execution_mode"] == "executed"
+    assert payload["collected_nodeid_count"] == 1
+    assert payload["collect_nodeids_by_file_count"] == 1
+    assert payload["fingerprint_hash"] == fingerprint["hash"]
 
 
 def test_nodeid_incremental_plan_selects_changed_test_file_nodeids(tmp_path):
@@ -1005,6 +1061,40 @@ def test_explain_full_test_debt_reports_direct_check_outputs_do_not_warm_cache(m
     assert "tools/check_full_test_debt.py writes current/summary proof" in output
     assert "scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache" in output
     assert not _success_path(repo_root).exists()
+
+
+def test_explain_full_test_debt_reports_special_fallback_diagnostics(monkeypatch, tmp_path, capsys):
+    module = _import_run_quality_gate()
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    command_plan = _quality_gate_plan()
+    _patch_gate_environment(monkeypatch, module, repo_root, statuses=[[], [], [], []])
+    monkeypatch.setattr(module, "REPO_ROOT", str(repo_root))
+    monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
+    calls: list[str] = []
+    monkeypatch.setattr(module, "_run_command", _fake_successful_command(module, repo_root, calls))
+    assert module.main(["--long-gate-cache"]) == 0
+
+    _write_file(repo_root, "tests/test_a.py", "def test_a():\n    assert True\n# changed\n")
+    capsys.readouterr()
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("explain must not execute commands")
+
+    monkeypatch.setattr(module, "_run_command", fail_if_called)
+
+    assert module.main(["--long-gate-cache-explain"]) == 0
+
+    output = capsys.readouterr().out
+    assert "- full_test_debt: RUN" in output
+    assert "fingerprint_changed_components:" in output
+    assert "files: added input file path=tests/test_a.py" in output
+    assert "full_test_debt_incremental:" in output
+    assert "previous_success_path: evidence/QualityGate/long_gate/results/full_test_debt.success.json" in output
+    assert "previous_success_returncode: 0" in output
+    assert f"node_cache_path: {NODE_CACHE_REL}" in output
+    assert "node_cache_collect_nodeid_count: 1" in output
+    assert "fallback_reason:" in output
 
 
 def test_force_rerun_full_test_debt_refreshes_only_that_enabled_entry(monkeypatch, tmp_path):

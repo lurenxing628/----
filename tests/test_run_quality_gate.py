@@ -301,6 +301,7 @@ def test_main_runs_guard_preflight_before_static_and_startup_checks(monkeypatch,
     assert "python -m pyright --version" in displays
     assert "python -m pyright -p pyrightconfig.gate.json" in displays
     assert tool_pyright_display in displays
+    assert "scripts/run_daily_quality_gate.py" in module.QUALITY_GATE_TOOL_PATHS
     assert "tools/quality_gate_entries.py" in module.QUALITY_GATE_TOOL_PATHS
     assert "tools/quality_gate_ledger.py" in module.QUALITY_GATE_TOOL_PATHS
     assert "tools/quality_gate_scan.py" in module.QUALITY_GATE_TOOL_PATHS
@@ -421,6 +422,7 @@ def test_full_test_debt_proof_is_in_shared_quality_gate_plan() -> None:
     assert command_python_targets <= source_paths
     for rel_path in [
         ".pre-commit-config.yaml",
+        "scripts/run_daily_quality_gate.py",
         "tools/check_full_test_debt.py",
         "tools/collect_full_test_debt.py",
         "tools/git_hook_checks.py",
@@ -446,6 +448,7 @@ def test_full_test_debt_proof_is_in_shared_quality_gate_plan() -> None:
 
     tool_paths = set(shared.QUALITY_GATE_TOOL_PATHS)
     for rel_path in [
+        "scripts/run_daily_quality_gate.py",
         "tools/check_full_test_debt.py",
         "tools/collect_full_test_debt.py",
         "tools/git_hook_checks.py",

@@ -1248,15 +1248,18 @@ def test_quality_gate_required_startup_and_full_debt_share_registry() -> None:
     assert required_paths.isdisjoint(startup_paths)
     assert required_paths.isdisjoint(active_xfail_paths)
 
+    tracked = subprocess.run(
+        ["git", "ls-files", "-z"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+    assert tracked.returncode == 0
+    tracked_paths = {item for item in tracked.stdout.split("\0") if item}
+
     for rel_path in [*required_tests, *startup_regressions]:
         assert (REPO_ROOT / rel_path).exists(), rel_path
-        tracked = subprocess.run(
-            ["git", "ls-files", "--error-unmatch", rel_path],
-            cwd=REPO_ROOT,
-            capture_output=True,
-            text=True,
-        )
-        assert tracked.returncode == 0, rel_path
+        assert rel_path in tracked_paths, rel_path
 
     first_hash = hash_test_debt_registry(load_ledger(required=True))
     second_hash = hash_test_debt_registry(load_ledger(required=True))

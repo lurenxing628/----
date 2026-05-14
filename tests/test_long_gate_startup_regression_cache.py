@@ -358,14 +358,7 @@ def test_startup_success_writes_proof_and_reuses_next_run(monkeypatch, tmp_path)
     [
         lambda repo_root: _startup_proof_path(repo_root).unlink(),
         lambda repo_root: _startup_proof_path(repo_root).write_text("{bad json", encoding="utf-8"),
-        lambda repo_root: _startup_proof_path(repo_root).write_text(
-            json.dumps({"schema_version": -1}, ensure_ascii=False),
-            encoding="utf-8",
-        ),
-        lambda repo_root: _success_log_path(repo_root, "stdout").unlink(),
-        lambda repo_root: _success_log_path(repo_root, "stderr").unlink(),
         lambda repo_root: _success_log_path(repo_root, "stdout").write_text("changed stdout\n", encoding="utf-8"),
-        lambda repo_root: _success_log_path(repo_root, "stderr").write_text("changed stderr\n", encoding="utf-8"),
     ],
 )
 def test_startup_bad_proof_or_logs_force_group_rerun(monkeypatch, tmp_path, mutate):

@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from json import JSONDecodeError
-from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple, cast
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple, cast
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:
@@ -1881,7 +1881,11 @@ def _annotate_full_test_debt_incremental_decision(
         note = "full_test_debt nodeid incremental fallback: " + str(node_plan.get("reason") or "")
     if note not in invalidated_by:
         invalidated_by.append(note)
-    return {**decision, "invalidated_by": invalidated_by}
+    return {
+        **decision,
+        "invalidated_by": invalidated_by,
+        "full_test_debt_incremental": dict(node_plan),
+    }
 
 
 def _refresh_full_test_debt_reuse_decision(runtime_entry: Dict[str, Any], *, cache_dir: str) -> None:
@@ -2045,6 +2049,61 @@ def _print_long_gate_cache_decisions(entries: Sequence[Dict[str, Any]], *, cache
                 print(f"    - {item}", flush=True)
             if len(invalidated_by) > 10:
                 print(f"    - ... {len(invalidated_by) - 10} more", flush=True)
+        _print_fingerprint_diff(entry)
+        _print_full_test_debt_incremental_diagnostics(entry)
+
+
+def _format_fingerprint_component(change: Mapping[str, Any]) -> str:
+    component = str(change.get("component") or "fingerprint")
+    reason = str(change.get("reason") or "input fingerprint changed")
+    details: List[str] = []
+    for key in ("path", "key", "field"):
+        if change.get(key):
+            details.append(f"{key}={change.get(key)}")
+    if not details:
+        for key in ("previous", "current"):
+            if key in change:
+                details.append(f"{key}={change.get(key)!r}")
+    suffix = " " + " ".join(details) if details else ""
+    return f"{component}: {reason}{suffix}"
+
+
+def _print_fingerprint_diff(entry: Mapping[str, Any]) -> None:
+    changes = [dict(item) for item in list(entry.get("fingerprint_diff") or []) if isinstance(item, dict)]
+    if not changes:
+        return
+    print("  fingerprint_changed_components:", flush=True)
+    for change in changes[:20]:
+        print(f"    - {_format_fingerprint_component(change)}", flush=True)
+    if len(changes) > 20:
+        print(f"    - ... {len(changes) - 20} more", flush=True)
+
+
+def _print_full_test_debt_incremental_diagnostics(entry: Mapping[str, Any]) -> None:
+    plan = entry.get("full_test_debt_incremental")
+    if not isinstance(plan, dict) or not plan:
+        return
+    print("  full_test_debt_incremental:", flush=True)
+    for key in (
+        "previous_success_path",
+        "previous_success_returncode",
+        "node_cache_path",
+        "node_cache_schema_version",
+        "node_cache_collect_nodeid_count",
+        "node_cache_collect_nodeids_by_file_count",
+        "fallback_reason",
+    ):
+        if key in plan:
+            print(f"    {key}: {plan.get(key)}", flush=True)
+    if bool(plan.get("available")):
+        print(f"    mode: {plan.get('mode')}", flush=True)
+        selected = [str(item) for item in list(plan.get("selected_nodeids") or [])]
+        if selected:
+            print("    selected_nodeids:", flush=True)
+            for nodeid in selected[:10]:
+                print(f"      - {nodeid}", flush=True)
+            if len(selected) > 10:
+                print(f"      - ... {len(selected) - 10} more", flush=True)
 
 
 def _quality_gate_rel_exists(rel_path: str) -> bool:

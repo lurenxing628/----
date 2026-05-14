@@ -7,6 +7,7 @@ import importlib.util
 import json
 import re
 from collections import defaultdict
+from functools import lru_cache
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple, cast
 
 from .quality_gate_ledger import entry_sort_key
@@ -32,8 +33,8 @@ from .quality_gate_shared import (
 )
 
 
-def _ast_tree_for_file(rel_path: str) -> ast.AST:
-    source = read_text_file(rel_path)
+@lru_cache(maxsize=512)
+def _ast_tree_for_source(rel_path: str, source: str) -> ast.AST:
     try:
         tree = ast.parse(source, filename=rel_path)
     except SyntaxError as exc:
@@ -42,6 +43,10 @@ def _ast_tree_for_file(rel_path: str) -> ast.AST:
         for child in ast.iter_child_nodes(node):
             child._ast_parent = node  # type: ignore[attr-defined]
     return tree
+
+
+def _ast_tree_for_file(rel_path: str) -> ast.AST:
+    return _ast_tree_for_source(rel_path, read_text_file(rel_path))
 
 
 def _find_enclosing_symbol(node: ast.AST) -> str:
@@ -709,8 +714,9 @@ def scan_repository_bundle_drift_entries(paths: Optional[Sequence[str]] = None) 
         paths = collect_globbed_files(REPOSITORY_BUNDLE_DRIFT_SCOPE_PATTERNS)
     entries = []
     for rel_path in sorted(set([str(path).replace("\\", "/") for path in paths])):
-        tree = _ast_tree_for_file(rel_path)
-        source_lines = read_text_file(rel_path).splitlines()
+        source = read_text_file(rel_path)
+        tree = _ast_tree_for_source(rel_path, source)
+        source_lines = source.splitlines()
         scoped_aliases = _collect_scoped_aliases(tree, _resolve_repository_bundle_alias)
         for node in ast.walk(tree):
             scope_aliases = scoped_aliases.get(_scope_key(node), scoped_aliases.get("<module>", {}))

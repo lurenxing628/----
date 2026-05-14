@@ -444,7 +444,10 @@ def _validated_previous_success(
         return None, "previous success cache is missing"
     if str(previous.get("status") or "") != "passed":
         return None, "previous success cache is not passed"
-    if int(previous.get("returncode") or 1) != 0:
+    returncode = previous.get("returncode")
+    if not isinstance(returncode, int) or isinstance(returncode, bool):
+        return None, "previous success cache returncode is invalid"
+    if returncode != 0:
         return None, "previous success cache returncode is not zero"
     if any(bool(previous.get(field)) for field in ("timed_out", "interrupted", "partial_write")):
         return None, "previous success cache is incomplete"
@@ -543,6 +546,78 @@ def _load_node_cache(repo_root: str, previous_success: Mapping[str, Any]) -> Tup
     return payload, ""
 
 
+def _read_previous_success_for_diagnostics(
+    *,
+    repo_root: str,
+    decision: Mapping[str, Any],
+    evaluation: Mapping[str, Any],
+) -> Tuple[Optional[Dict[str, Any]], str]:
+    previous = evaluation.get("validated_success") if isinstance(evaluation.get("validated_success"), dict) else None
+    result_path = str(decision.get("previous_result_path") or "").replace("\\", "/")
+    if previous is None and result_path:
+        previous, _error = _read_json_object(repo_root, result_path)
+    return dict(previous) if isinstance(previous, dict) else None, result_path
+
+
+def _node_cache_diagnostics(repo_root: str, node_cache: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
+    payload: Optional[Mapping[str, Any]] = node_cache
+    error = ""
+    if payload is None:
+        loaded, error = _read_json_object(repo_root, NODE_CACHE_REL)
+        payload = loaded
+    diagnostics: Dict[str, Any] = {
+        "node_cache_path": NODE_CACHE_REL,
+        "node_cache_schema_version": None,
+        "node_cache_collect_nodeid_count": "missing legacy diagnostic field",
+        "node_cache_collect_nodeids_by_file_count": "missing legacy diagnostic field",
+    }
+    if error:
+        diagnostics["node_cache_error"] = error
+        return diagnostics
+    if not isinstance(payload, Mapping):
+        diagnostics["node_cache_error"] = "node cache is missing"
+        return diagnostics
+    diagnostics["node_cache_schema_version"] = payload.get("schema_version")
+    count = payload.get("collected_nodeid_count")
+    by_file_count = payload.get("collect_nodeids_by_file_count")
+    collect_snapshot = payload.get("collect_nodeids") if isinstance(payload.get("collect_nodeids"), dict) else {}
+    if isinstance(count, int) and not isinstance(count, bool):
+        diagnostics["node_cache_collect_nodeid_count"] = int(count)
+    elif isinstance(collect_snapshot.get("nodeid_count"), int) and not isinstance(collect_snapshot.get("nodeid_count"), bool):
+        diagnostics["node_cache_collect_nodeid_count"] = int(collect_snapshot.get("nodeid_count"))
+    if isinstance(by_file_count, int) and not isinstance(by_file_count, bool):
+        diagnostics["node_cache_collect_nodeids_by_file_count"] = int(by_file_count)
+    elif isinstance(collect_snapshot.get("nodeids_by_file"), dict):
+        diagnostics["node_cache_collect_nodeids_by_file_count"] = len(dict(collect_snapshot.get("nodeids_by_file") or {}))
+    return diagnostics
+
+
+def _special_explain_diagnostics(
+    *,
+    repo_root: str,
+    decision: Mapping[str, Any],
+    evaluation: Mapping[str, Any],
+    fallback_reason: str,
+    previous_success: Optional[Mapping[str, Any]] = None,
+    node_cache: Optional[Mapping[str, Any]] = None,
+) -> Dict[str, Any]:
+    raw_previous, previous_path = _read_previous_success_for_diagnostics(
+        repo_root=repo_root,
+        decision=decision,
+        evaluation=evaluation,
+    )
+    previous_for_display = previous_success if isinstance(previous_success, Mapping) else raw_previous
+    diagnostics = {
+        "previous_success_path": previous_path,
+        "previous_success_returncode": previous_for_display.get("returncode")
+        if isinstance(previous_for_display, Mapping)
+        else None,
+        "fallback_reason": str(fallback_reason or ""),
+    }
+    diagnostics.update(_node_cache_diagnostics(repo_root, node_cache=node_cache))
+    return diagnostics
+
+
 def _test_file_hashes(repo_root: str, nodeids_by_file: Mapping[str, Any]) -> Dict[str, str]:
     rows: Dict[str, str] = {}
     for path in sorted(str(item) for item in nodeids_by_file):
@@ -590,7 +665,12 @@ def write_full_test_debt_node_cache_after_success(
         else "",
         "head_sha": _git_head(repo_root),
         "execution_mode": str(result.get("execution_mode") or "executed"),
+        "result_returncode": int(result.get("returncode"))
+        if isinstance(result.get("returncode"), int) and not isinstance(result.get("returncode"), bool)
+        else None,
         "collect_nodeids": collect_snapshot,
+        "collected_nodeid_count": int(collect_snapshot.get("nodeid_count") or 0),
+        "collect_nodeids_by_file_count": len(dict(collect_snapshot.get("nodeids_by_file") or {})),
         "collect_nodeid_hash": str(collect_snapshot.get("nodeid_hash") or ""),
         "test_file_hashes": _test_file_hashes(repo_root, collect_snapshot.get("nodeids_by_file", {})),
         "current_payload": current_payload,
@@ -802,7 +882,10 @@ def try_run_special_full_test_debt_mode(
     collect_snapshot, collect_error = _load_collect_snapshot(repo_root)
     if collect_error or collect_snapshot is None:
         return None
-    ledger = _load_ledger_for_repo(repo_root)
+    try:
+        ledger = _load_ledger_for_repo(repo_root)
+    except QualityGateError:
+        return None
     plan, plan_error = _classify_incremental_plan(
         repo_root=repo_root,
         previous_fingerprint=previous_fingerprint,
@@ -935,20 +1018,69 @@ def explain_special_full_test_debt_plan(
         evaluation=evaluation,
     )
     if previous_error or previous_success is None:
-        return {"available": False, "mode": "", "reason": previous_error or "previous success cache is missing"}
+        reason = previous_error or "previous success cache is missing"
+        return {
+            "available": False,
+            "mode": "",
+            "reason": reason,
+            **_special_explain_diagnostics(
+                repo_root=repo_root,
+                decision=decision,
+                evaluation=evaluation,
+                fallback_reason=reason,
+            ),
+        }
     previous_fingerprint = (
         previous_success.get("fingerprint") if isinstance(previous_success.get("fingerprint"), dict) else {}
     )
     node_cache, node_cache_error = _load_node_cache(repo_root, previous_success)
     if node_cache_error or node_cache is None:
-        return {"available": False, "mode": "", "reason": node_cache_error or "node cache is invalid"}
+        reason = node_cache_error or "node cache is invalid"
+        return {
+            "available": False,
+            "mode": "",
+            "reason": reason,
+            **_special_explain_diagnostics(
+                repo_root=repo_root,
+                decision=decision,
+                evaluation=evaluation,
+                fallback_reason=reason,
+                previous_success=previous_success,
+            ),
+        }
     collect_snapshot, collect_error = _load_collect_snapshot(repo_root)
     if collect_error or collect_snapshot is None:
-        return {"available": False, "mode": "", "reason": collect_error or "collect_nodeids is invalid"}
+        reason = collect_error or "collect_nodeids is invalid"
+        return {
+            "available": False,
+            "mode": "",
+            "reason": reason,
+            **_special_explain_diagnostics(
+                repo_root=repo_root,
+                decision=decision,
+                evaluation=evaluation,
+                fallback_reason=reason,
+                previous_success=previous_success,
+                node_cache=node_cache,
+            ),
+        }
     try:
         ledger = _load_ledger_for_repo(repo_root)
     except QualityGateError as exc:
-        return {"available": False, "mode": "", "reason": str(exc)}
+        reason = str(exc)
+        return {
+            "available": False,
+            "mode": "",
+            "reason": reason,
+            **_special_explain_diagnostics(
+                repo_root=repo_root,
+                decision=decision,
+                evaluation=evaluation,
+                fallback_reason=reason,
+                previous_success=previous_success,
+                node_cache=node_cache,
+            ),
+        }
     plan, plan_error = _classify_incremental_plan(
         repo_root=repo_root,
         previous_fingerprint=previous_fingerprint,
@@ -958,11 +1090,32 @@ def explain_special_full_test_debt_plan(
         ledger=ledger,
     )
     if plan_error or plan is None:
-        return {"available": False, "mode": "", "reason": plan_error or "no incremental plan"}
+        reason = plan_error or "no incremental plan"
+        return {
+            "available": False,
+            "mode": "",
+            "reason": reason,
+            **_special_explain_diagnostics(
+                repo_root=repo_root,
+                decision=decision,
+                evaluation=evaluation,
+                fallback_reason=reason,
+                previous_success=previous_success,
+                node_cache=node_cache,
+            ),
+        }
     return {
         "available": True,
         "mode": str(plan.get("mode") or ""),
         "changed_paths": list(plan.get("changed_paths") or []),
         "changed_test_files": list(plan.get("changed_test_files") or []),
         "selected_nodeids": list(plan.get("selected_nodeids") or []),
+        **_special_explain_diagnostics(
+            repo_root=repo_root,
+            decision=decision,
+            evaluation=evaluation,
+            fallback_reason="",
+            previous_success=previous_success,
+            node_cache=node_cache,
+        ),
     }

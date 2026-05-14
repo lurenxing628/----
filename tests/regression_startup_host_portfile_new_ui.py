@@ -5,6 +5,7 @@
 1) APS_HOST 设为 hostname/IPv6/非法值时，不应导致 app_new_ui.py 启动崩溃（应回退到 127.0.0.1）。
 2) 端口文件契约：无论 APS_LOG_DIR 指向哪里，都应写入 <repo_root>/logs/aps_port.txt（仅数字+换行）。
 3) Host 文件契约：无论 APS_LOG_DIR 指向哪里，都应写入 <repo_root>/logs/aps_host.txt（一行 host + 换行）。
+4) 真实子进程只跑代表性 host；完整 host 解析矩阵由纯函数测试覆盖。
 """
 
 from __future__ import annotations
@@ -21,6 +22,8 @@ from pathlib import Path
 from typing import Dict
 
 from tests.runtime_cleanup_helper import assert_repo_runtime_stopped, cleanup_runtime_process, clear_repo_runtime_state
+
+POLL_INTERVAL_S = 0.1
 
 
 def find_repo_root() -> str:
@@ -73,7 +76,7 @@ def _wait_for_port_file(path: str, p: subprocess.Popen, timeout_s: float = 12.0)
                 return _read_port_file(path)
             except Exception:
                 pass
-        time.sleep(0.2)
+        time.sleep(POLL_INTERVAL_S)
     raise TimeoutError(f"超时：未生成端口文件：{path}")
 
 
@@ -89,7 +92,7 @@ def _wait_for_host_file(path: str, p: subprocess.Popen, timeout_s: float = 12.0)
                     return host
             except Exception:
                 pass
-        time.sleep(0.2)
+        time.sleep(POLL_INTERVAL_S)
     raise TimeoutError(f"超时：未生成 host 文件：{path}")
 
 
@@ -105,7 +108,7 @@ def _wait_for_db_file(path: str, p: subprocess.Popen, timeout_s: float = 12.0) -
                     return db_path
             except Exception:
                 pass
-        time.sleep(0.2)
+        time.sleep(POLL_INTERVAL_S)
     raise TimeoutError(f"超时：未生成 db_path 文件：{path}")
 
 
@@ -125,7 +128,7 @@ def _wait_for_runtime_contract(
             try:
                 payload = _read_runtime_contract(path)
             except Exception:
-                time.sleep(0.2)
+                time.sleep(POLL_INTERVAL_S)
                 continue
             try:
                 pid = int(payload.get("pid") or 0)
@@ -141,7 +144,7 @@ def _wait_for_runtime_contract(
                 and str(payload.get("ui_mode") or "").strip() == expected_ui_mode
             ):
                 return payload
-        time.sleep(0.2)
+        time.sleep(POLL_INTERVAL_S)
     raise TimeoutError(f"超时：未等到当前子进程写入运行时契约：{path}")
 
 
@@ -152,7 +155,7 @@ def _wait_port_open(host: str, port: int, p: subprocess.Popen, timeout_s: float 
             raise RuntimeError(f"进程提前退出（exit_code={p.returncode}），端口未就绪：{host}:{port}")
         if _is_port_open(host, port):
             return
-        time.sleep(0.2)
+        time.sleep(POLL_INTERVAL_S)
     raise TimeoutError(f"超时：端口未就绪：{host}:{port}")
 
 
@@ -174,7 +177,7 @@ def _assert_health(host: str, port: int, p: subprocess.Popen, timeout_s: float =
                 return
         except Exception:
             pass
-        time.sleep(0.2)
+        time.sleep(POLL_INTERVAL_S)
     raise TimeoutError(f"超时：健康检查未就绪：{url}")
 
 
@@ -266,9 +269,7 @@ def main() -> None:
     repo_root = find_repo_root()
     cases = [
         "localhost",
-        "::1",
         "not_a_host",
-        "192.0.2.123",
     ]
     for h in cases:
         _run_case(repo_root, h)

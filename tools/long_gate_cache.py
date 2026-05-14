@@ -122,11 +122,12 @@ def _decision(
     reason: str,
     *,
     invalidated_by: Optional[Sequence[str]] = None,
+    fingerprint_diff: Optional[Sequence[Mapping[str, Any]]] = None,
     previous_completed_at: Optional[str] = None,
     previous_result_path: Optional[str] = None,
     current_fingerprint_hash: str = "",
 ) -> Dict[str, Any]:
-    return {
+    payload = {
         "entry_id": entry_id,
         "decision": decision,
         "reuse_allowed": decision == "reuse",
@@ -136,6 +137,9 @@ def _decision(
         "previous_result_path": previous_result_path,
         "current_fingerprint_hash": current_fingerprint_hash,
     }
+    if fingerprint_diff is not None:
+        payload["fingerprint_diff"] = [dict(item) for item in list(fingerprint_diff or [])]
+    return payload
 
 
 def _missing_field(payload: Mapping[str, Any], field: str) -> Optional[str]:
@@ -589,12 +593,14 @@ def evaluate_reuse(
             )
         )
     if previous_fingerprint.get("schema_version") != current_fingerprint.get("schema_version"):
+        diff = diff_fingerprints(previous_fingerprint, current_fingerprint)
         return _reuse_evaluation(
             _decision(
                 entry_id,
                 "run",
                 "input fingerprint changed",
                 invalidated_by=["fingerprint schema changed"],
+                fingerprint_diff=list(diff.get("components") or []),
                 previous_completed_at=str(previous.get("completed_at") or ""),
                 previous_result_path=result_rel,
                 current_fingerprint_hash=current_hash,
@@ -617,6 +623,7 @@ def evaluate_reuse(
                 "run",
                 "input fingerprint changed",
                 invalidated_by=reasons,
+                fingerprint_diff=list(diff.get("components") or []),
                 previous_completed_at=str(previous.get("completed_at") or ""),
                 previous_result_path=result_rel,
                 current_fingerprint_hash=current_hash,

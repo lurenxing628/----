@@ -43,7 +43,7 @@ def test_project_python_executable_requires_project_venv(monkeypatch, tmp_path: 
         raise AssertionError("missing project .venv must fail instead of using system Python")
 
 
-def test_run_quality_gate_command_uses_project_python_and_utf8_env(monkeypatch, tmp_path: Path) -> None:
+def test_run_quality_gate_command_uses_daily_gate_and_utf8_env(monkeypatch, tmp_path: Path) -> None:
     calls = []
     project_python = str(tmp_path / ".venv" / "bin" / "python")
     monkeypatch.setenv("APS_SKIP_QUALITY_GATE", "1")
@@ -62,6 +62,39 @@ def test_run_quality_gate_command_uses_project_python_and_utf8_env(monkeypatch, 
     assert git_hook_checks.main(["run-quality-gate"]) == 7
 
     command, cwd, env = calls[0]
+    assert command == [project_python, "scripts/run_daily_quality_gate.py"]
+    assert "--require-clean-worktree" not in command
+    assert "--long-gate-force-rerun" not in command
+    assert "--long-gate-force-rerun-all" not in command
+    assert "--long-gate-cache-explain" not in command
+    assert "--no-long-gate-cache" not in command
+    assert "--allow-dirty-worktree" not in command
+    assert cwd == str(tmp_path)
+    assert "APS_SKIP_QUALITY_GATE" not in env
+    assert env["PYTHONDONTWRITEBYTECODE"] == "1"
+    assert env["PYTHONUTF8"] == "1"
+    assert env["PYTHONIOENCODING"] == "utf-8"
+
+
+def test_run_final_quality_gate_command_uses_project_python_and_utf8_env(monkeypatch, tmp_path: Path) -> None:
+    calls = []
+    project_python = str(tmp_path / ".venv" / "bin" / "python")
+    monkeypatch.setenv("APS_SKIP_QUALITY_GATE", "1")
+    monkeypatch.setenv("PYTHONDONTWRITEBYTECODE", "0")
+    monkeypatch.setenv("PYTHONUTF8", "0")
+    monkeypatch.setenv("PYTHONIOENCODING", "gbk")
+    monkeypatch.setattr(git_hook_checks, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(git_hook_checks, "_project_python_executable", lambda: project_python)
+
+    def fake_call(command, *, cwd, env):
+        calls.append((list(command), str(cwd), dict(env)))
+        return 7
+
+    monkeypatch.setattr(subprocess, "call", fake_call)
+
+    assert git_hook_checks.main(["run-final-quality-gate"]) == 7
+
+    command, cwd, env = calls[0]
     assert command == [
         project_python,
         "scripts/run_quality_gate.py",
@@ -69,8 +102,6 @@ def test_run_quality_gate_command_uses_project_python_and_utf8_env(monkeypatch, 
         "--long-gate-cache",
     ]
     assert command.count("--require-clean-worktree") == 1
-    assert "--long-gate-force-rerun" not in command
-    assert "--long-gate-force-rerun-all" not in command
     assert "--long-gate-cache-explain" not in command
     assert "--no-long-gate-cache" not in command
     assert "--allow-dirty-worktree" not in command
@@ -187,7 +218,7 @@ def test_pre_commit_config_wires_quality_gate_and_ruff_hooks() -> None:
     assert hooks["block-local-artifacts"]["pass_filenames"] is False
     assert hooks["block-local-artifacts"]["always_run"] is True
     assert hooks["readable-commit-message"]["stages"] == ["commit-msg"]
-    assert hooks["aps-quality-gate"]["name"] == "APS quality gate before push"
+    assert hooks["aps-quality-gate"]["name"] == "APS daily fast gate before push"
     assert hooks["aps-quality-gate"]["entry"] == "python tools/git_hook_checks.py run-quality-gate"
     assert hooks["aps-quality-gate"]["language"] == "system"
     assert hooks["aps-quality-gate"]["stages"] == ["pre-push"]

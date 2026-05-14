@@ -405,25 +405,35 @@ def _run_chrome_geometry_probe(*, chrome_path: str, node_path: str, base_url: st
               return await response.json();
             }
 
-            async function inspectPage(port, url, width, expected) {
-              const httpResponse = await fetch(url, { redirect: "manual" });
-              const httpStatus = httpResponse.status;
+            async function inspectPage(port, url, expected, httpStatus) {
               const page = await newPage(port);
               const client = new CdpClient(page.webSocketDebuggerUrl);
               await client.open();
               active.push(client);
               await client.send("Page.enable");
               await client.send("Runtime.enable");
-              await client.send("Emulation.setDeviceMetricsOverride", {
-                width,
-                height: 900,
-                deviceScaleFactor: 1,
-                mobile: false,
-              });
-              const loaded = client.waitEvent("Page.loadEventFired");
-              await client.send("Page.navigate", { url });
-              await loaded;
-              const expression = `
+              const results = [];
+              let pageLoaded = false;
+              for (const width of [1024, 768]) {
+                await client.send("Emulation.setDeviceMetricsOverride", {
+                  width,
+                  height: 900,
+                  deviceScaleFactor: 1,
+                  mobile: false,
+                });
+                if (!pageLoaded) {
+                  const loaded = client.waitEvent("Page.loadEventFired");
+                  await client.send("Page.navigate", { url });
+                  await loaded;
+                  pageLoaded = true;
+                } else {
+                  await client.send("Runtime.evaluate", {
+                    expression: "new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))",
+                    awaitPromise: true,
+                    returnByValue: true,
+                  });
+                }
+                const expression = `
                 (() => {
                   const maxScrollWidth = Math.max(
                     document.body ? document.body.scrollWidth : 0,
@@ -601,32 +611,35 @@ def _run_chrome_geometry_probe(*, chrome_path: str, node_path: str, base_url: st
                   });
                 })()
               `;
-              await client.send("Runtime.evaluate", {
-                expression: `window.__APS_EXPECTED_SIGNALS__ = ${JSON.stringify(expected || {})};`,
-                returnByValue: true,
-              });
-              const evaluated = await client.send("Runtime.evaluate", {
-                expression,
-                returnByValue: true,
-                awaitPromise: true,
-              });
-              if (evaluated.exceptionDetails) {
-                throw new Error(`页面检查脚本执行失败：${JSON.stringify(evaluated.exceptionDetails)}`);
-              }
-              if (!evaluated.result || typeof evaluated.result.value !== "string") {
-                throw new Error(`页面检查脚本没有返回 JSON 字符串：${JSON.stringify(evaluated.result || {})}`);
+                await client.send("Runtime.evaluate", {
+                  expression: `window.__APS_EXPECTED_SIGNALS__ = ${JSON.stringify(expected || {})};`,
+                  returnByValue: true,
+                });
+                const evaluated = await client.send("Runtime.evaluate", {
+                  expression,
+                  returnByValue: true,
+                  awaitPromise: true,
+                });
+                if (evaluated.exceptionDetails) {
+                  throw new Error(`页面检查脚本执行失败：${JSON.stringify(evaluated.exceptionDetails)}`);
+                }
+                if (!evaluated.result || typeof evaluated.result.value !== "string") {
+                  throw new Error(`页面检查脚本没有返回 JSON 字符串：${JSON.stringify(evaluated.result || {})}`);
+                }
+                results.push(JSON.parse(evaluated.result.value));
               }
               client.close();
-              return JSON.parse(evaluated.result.value);
+              return results;
             }
 
             try {
               const port = await readDebugPort();
               const results = [];
               for (const pagePath of paths) {
-                for (const width of [1024, 768]) {
-                  results.push(await inspectPage(port, `${baseUrl}${pagePath}`, width, expectedByPath[pagePath] || {}));
-                }
+                const url = `${baseUrl}${pagePath}`;
+                const httpResponse = await fetch(url, { redirect: "manual" });
+                const httpStatus = httpResponse.status;
+                results.push(...await inspectPage(port, url, expectedByPath[pagePath] || {}, httpStatus));
               }
               console.log(JSON.stringify(results));
               for (const client of active) client.close();
