@@ -252,7 +252,7 @@ def _is_regular_test_file(path: str) -> bool:
     name = os.path.basename(normalized)
     if normalized == "conftest.py" or normalized.endswith("/conftest.py"):
         return False
-    if not normalized.startswith("tests/") or not normalized.endswith(".py"):
+    if not normalized.startswith("tests/") or normalized.count("/") != 1 or not normalized.endswith(".py"):
         return False
     return name.startswith("test_") or name.startswith("regression_")
 
@@ -269,7 +269,74 @@ def _module_names_for_test_path(path: str) -> Set[str]:
     return {name for name in names if name}
 
 
-def _import_matches_changed_test_module(node: ast.AST, changed_modules: Set[str]) -> bool:
+def _dynamic_import_aliases(tree: ast.AST) -> Tuple[Set[str], Set[str]]:
+    importlib_module_names = {"importlib"}
+    import_module_function_names = {"import_module"}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if str(alias.name or "") == "importlib":
+                    importlib_module_names.add(str(alias.asname or alias.name))
+        elif isinstance(node, ast.ImportFrom) and str(node.module or "") == "importlib":
+            for alias in node.names:
+                if str(alias.name or "") == "import_module":
+                    import_module_function_names.add(str(alias.asname or alias.name))
+    return importlib_module_names, import_module_function_names
+
+
+def _constant_texts(node: ast.AST) -> Tuple[Set[str], bool]:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return {str(node.value)}, True
+    if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+        values: Set[str] = set()
+        for item in node.elts:
+            item_values, safe = _constant_texts(item)
+            if not safe:
+                return set(), False
+            values.update(item_values)
+        return values, True
+    return set(), False
+
+
+def _dunder_import_matches_changed_test_module(node: ast.Call, changed_modules: Set[str]) -> bool:
+    if not node.args:
+        return True
+    first_arg = node.args[0]
+    module_values, module_is_constant = _constant_texts(first_arg)
+    if not module_is_constant:
+        return True
+    if any(value in changed_modules for value in module_values):
+        return True
+    fromlist_node: Optional[ast.AST] = None
+    if len(node.args) >= 4:
+        fromlist_node = node.args[3]
+    for keyword in node.keywords:
+        if keyword.arg == "fromlist":
+            fromlist_node = keyword.value
+            break
+    if fromlist_node is None:
+        return False
+    fromlist_values, fromlist_is_constant = _constant_texts(fromlist_node)
+    if not fromlist_is_constant:
+        return any(
+            value == "tests" or any(changed.startswith(value + ".") for changed in changed_modules)
+            for value in module_values
+        )
+    for module_value in module_values:
+        for fromlist_value in fromlist_values:
+            candidate = f"{module_value}.{fromlist_value}".strip(".")
+            if candidate in changed_modules or fromlist_value in changed_modules:
+                return True
+    return False
+
+
+def _import_matches_changed_test_module(
+    node: ast.AST,
+    changed_modules: Set[str],
+    *,
+    importlib_module_names: Set[str],
+    import_module_function_names: Set[str],
+) -> bool:
     if isinstance(node, ast.Import):
         for alias in node.names:
             imported = str(alias.name or "")
@@ -289,11 +356,14 @@ def _import_matches_changed_test_module(node: ast.AST, changed_modules: Set[str]
             isinstance(func, ast.Attribute)
             and func.attr == "import_module"
             and isinstance(func.value, ast.Name)
-            and func.value.id == "importlib"
+            and func.value.id in importlib_module_names
         )
+        is_named_import_module = isinstance(func, ast.Name) and func.id in import_module_function_names
         is_dunder_import = isinstance(func, ast.Name) and func.id == "__import__"
-        if not (is_import_module or is_dunder_import):
+        if not (is_import_module or is_named_import_module or is_dunder_import):
             return False
+        if is_dunder_import:
+            return _dunder_import_matches_changed_test_module(node, changed_modules)
         if not node.args:
             return True
         first_arg = node.args[0]
@@ -301,6 +371,17 @@ def _import_matches_changed_test_module(node: ast.AST, changed_modules: Set[str]
             return str(first_arg.value) in changed_modules
         return True
     return False
+
+
+def _source_may_import_changed_test_module(source: str, changed_modules: Set[str]) -> bool:
+    if "import_module" in source or "__import__" in source:
+        return True
+    tokens: Set[str] = set()
+    for module in changed_modules:
+        if module:
+            tokens.add(module)
+            tokens.add(module.rsplit(".", 1)[-1])
+    return any(token in source for token in tokens)
 
 
 def _changed_test_imported_elsewhere(repo_root: str, changed_test_files: Sequence[str]) -> str:
@@ -317,11 +398,20 @@ def _changed_test_imported_elsewhere(repo_root: str, changed_test_files: Sequenc
             continue
         try:
             with open(abs_path, encoding="utf-8") as handle:
-                tree = ast.parse(handle.read(), filename=rel_path)
+                source = handle.read()
+            if not _source_may_import_changed_test_module(source, changed_modules):
+                continue
+            tree = ast.parse(source, filename=rel_path)
         except (OSError, UnicodeDecodeError, SyntaxError):
             return f"cannot safely inspect test imports: {rel_path}"
+        importlib_module_names, import_module_function_names = _dynamic_import_aliases(tree)
         for node in ast.walk(tree):
-            if _import_matches_changed_test_module(node, changed_modules):
+            if _import_matches_changed_test_module(
+                node,
+                changed_modules,
+                importlib_module_names=importlib_module_names,
+                import_module_function_names=import_module_function_names,
+            ):
                 return f"changed test file is imported by another test file: {rel_path}"
     return ""
 

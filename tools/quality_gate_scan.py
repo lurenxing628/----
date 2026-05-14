@@ -7,6 +7,7 @@ import importlib.util
 import json
 import re
 from collections import defaultdict
+from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple, cast
 
@@ -45,7 +46,71 @@ def _ast_tree_for_source(rel_path: str, source: str) -> ast.AST:
     return tree
 
 
-def _ast_tree_for_file(rel_path: str) -> ast.AST:
+def _normalized_scan_path(path: str) -> str:
+    return str(path).replace("\\", "/")
+
+
+@dataclass
+class ScanFile:
+    rel_path: str
+    source: str
+    source_lines: Optional[List[str]] = None
+    tree: Optional[ast.AST] = None
+
+
+class ScanContext:
+    """One immutable source snapshot for a single scan pass."""
+
+    def __init__(
+        self,
+        *,
+        read_text: Optional[Callable[[str], str]] = None,
+        collect_globbed: Optional[Callable[[Sequence[str]], List[str]]] = None,
+    ) -> None:
+        self._read_text = read_text if read_text is not None else read_text_file
+        self._collect_globbed = collect_globbed if collect_globbed is not None else collect_globbed_files
+        self.files_by_path: Dict[str, ScanFile] = {}
+
+    def normalize_path(self, path: str) -> str:
+        return _normalized_scan_path(path)
+
+    def file(self, path: str) -> ScanFile:
+        rel_path = self.normalize_path(path)
+        cached = self.files_by_path.get(rel_path)
+        if cached is None:
+            cached = ScanFile(rel_path=rel_path, source=self._read_text(rel_path))
+            self.files_by_path[rel_path] = cached
+        return cached
+
+    def read_text(self, path: str) -> str:
+        return self.file(path).source
+
+    def source_lines(self, path: str) -> List[str]:
+        scan_file = self.file(path)
+        if scan_file.source_lines is None:
+            scan_file.source_lines = scan_file.source.splitlines()
+        return scan_file.source_lines
+
+    def ast_tree(self, path: str) -> ast.AST:
+        scan_file = self.file(path)
+        if scan_file.tree is None:
+            scan_file.tree = _ast_tree_for_source(scan_file.rel_path, scan_file.source)
+        return scan_file.tree
+
+    def collect_globbed_files(self, patterns: Sequence[str]) -> List[str]:
+        return sorted(set(_normalized_scan_path(path) for path in self._collect_globbed(patterns)))
+
+
+def build_scan_context(paths: Optional[Sequence[str]] = None) -> ScanContext:
+    context = ScanContext()
+    for path in paths or ():
+        context.file(str(path))
+    return context
+
+
+def _ast_tree_for_file(rel_path: str, *, context: Optional[ScanContext] = None) -> ast.AST:
+    if context is not None:
+        return context.ast_tree(rel_path)
     return _ast_tree_for_source(rel_path, read_text_file(rel_path))
 
 
@@ -341,10 +406,11 @@ def ui_mode_scope_tag(symbol: str, path: str = "web/ui_mode.py") -> str:
     return "render_bridge"
 
 
-def scan_silent_fallback_entries(paths: Sequence[str]) -> List[Dict[str, Any]]:
+def scan_silent_fallback_entries(paths: Sequence[str], context: Optional[ScanContext] = None) -> List[Dict[str, Any]]:
+    scan_context = context or ScanContext()
     entries = []
-    for rel_path in sorted(set([str(path).replace("\\", "/") for path in paths])):
-        tree = _ast_tree_for_file(rel_path)
+    for rel_path in sorted(set([_normalized_scan_path(str(path)) for path in paths])):
+        tree = _ast_tree_for_file(rel_path, context=scan_context)
         handlers = []
         for node in ast.walk(tree):
             if not isinstance(node, ast.Try):
@@ -584,13 +650,17 @@ def _resolve_request_service_alias(value: Any, aliases: Dict[str, str]) -> Optio
     return None
 
 
-def scan_request_service_direct_assembly_entries(paths: Optional[Sequence[str]] = None) -> List[Dict[str, Any]]:
+def scan_request_service_direct_assembly_entries(
+    paths: Optional[Sequence[str]] = None,
+    context: Optional[ScanContext] = None,
+) -> List[Dict[str, Any]]:
+    scan_context = context or ScanContext()
     if paths is None:
-        paths = collect_globbed_files(REQUEST_SERVICE_SCAN_SCOPE_PATTERNS)
+        paths = scan_context.collect_globbed_files(REQUEST_SERVICE_SCAN_SCOPE_PATTERNS)
     entries = []
-    for rel_path in sorted(set([str(path).replace("\\", "/") for path in paths])):
-        tree = _ast_tree_for_file(rel_path)
-        source_lines = read_text_file(rel_path).splitlines()
+    for rel_path in sorted(set([_normalized_scan_path(str(path)) for path in paths])):
+        tree = _ast_tree_for_file(rel_path, context=scan_context)
+        source_lines = scan_context.source_lines(rel_path)
         scoped_aliases = _collect_scoped_aliases(tree, _resolve_request_service_alias)
         scoped_conn_aliases = _collect_scoped_aliases(tree, _resolve_request_conn_alias)
         for node in ast.walk(tree):
@@ -709,14 +779,20 @@ def _alias_resolved_chain(node: ast.Attribute, aliases: Dict[str, str]) -> Optio
     return source + "." + remainder
 
 
-def scan_repository_bundle_drift_entries(paths: Optional[Sequence[str]] = None) -> List[Dict[str, Any]]:
+def scan_repository_bundle_drift_entries(
+    paths: Optional[Sequence[str]] = None,
+    context: Optional[ScanContext] = None,
+) -> List[Dict[str, Any]]:
+    scan_context = context or ScanContext()
     if paths is None:
-        paths = collect_globbed_files(REPOSITORY_BUNDLE_DRIFT_SCOPE_PATTERNS)
+        paths = scan_context.collect_globbed_files(REPOSITORY_BUNDLE_DRIFT_SCOPE_PATTERNS)
     entries = []
-    for rel_path in sorted(set([str(path).replace("\\", "/") for path in paths])):
-        source = read_text_file(rel_path)
-        tree = _ast_tree_for_source(rel_path, source)
-        source_lines = source.splitlines()
+    for rel_path in sorted(set([_normalized_scan_path(str(path)) for path in paths])):
+        source = scan_context.read_text(rel_path)
+        if "_repos" not in source and ".repos" not in source and "repos" not in source:
+            continue
+        tree = _ast_tree_for_file(rel_path, context=scan_context)
+        source_lines = scan_context.source_lines(rel_path)
         scoped_aliases = _collect_scoped_aliases(tree, _resolve_repository_bundle_alias)
         for node in ast.walk(tree):
             scope_aliases = scoped_aliases.get(_scope_key(node), scoped_aliases.get("<module>", {}))
@@ -751,7 +827,11 @@ def scan_repository_bundle_drift_entries(paths: Optional[Sequence[str]] = None) 
     return sorted(entries, key=entry_sort_key)
 
 
-def complexity_scan_map(paths: Sequence[str], include_all: bool = False) -> Dict[str, Dict[str, Any]]:
+def complexity_scan_map(
+    paths: Sequence[str],
+    include_all: bool = False,
+    context: Optional[ScanContext] = None,
+) -> Dict[str, Dict[str, Any]]:
     if importlib.util.find_spec("radon") is None:
         raise QualityGateError("缺少 radon，无法执行复杂度扫描")
     try:
@@ -762,8 +842,9 @@ def complexity_scan_map(paths: Sequence[str], include_all: bool = False) -> Dict
     if not callable(cc_visit):
         raise QualityGateError("radon.complexity.cc_visit 不可用")
     results = {}
-    for rel_path in sorted(set([str(path).replace("\\", "/") for path in paths])):
-        source = read_text_file(rel_path)
+    scan_context = context or ScanContext()
+    for rel_path in sorted(set([_normalized_scan_path(str(path)) for path in paths])):
+        source = scan_context.read_text(rel_path)
         try:
             blocks = cast(Iterable[Any], cc_visit(source))
         except SyntaxError as exc:
@@ -787,20 +868,24 @@ def complexity_scan_map(paths: Sequence[str], include_all: bool = False) -> Dict
     return results
 
 
-def scan_complexity_entries(paths: Sequence[str]) -> List[Dict[str, Any]]:
-    return [results for _, results in sorted(complexity_scan_map(paths).items())]
+def scan_complexity_entries(paths: Sequence[str], context: Optional[ScanContext] = None) -> List[Dict[str, Any]]:
+    return [results for _, results in sorted(complexity_scan_map(paths, context=context).items())]
 
 
-def scan_oversize_entries(paths: Sequence[str]) -> List[Dict[str, Any]]:
+def scan_oversize_entries(paths: Sequence[str], context: Optional[ScanContext] = None) -> List[Dict[str, Any]]:
+    scan_context = context or ScanContext()
     entries = []
-    for rel_path in sorted(set([str(path).replace("\\", "/") for path in paths])):
-        line_count = len(read_text_file(rel_path).splitlines())
+    for rel_path in sorted(set([_normalized_scan_path(str(path)) for path in paths])):
+        line_count = len(scan_context.source_lines(rel_path))
         if line_count > FILE_SIZE_LIMIT:
             entries.append({"path": rel_path, "current_value": line_count, "limit": FILE_SIZE_LIMIT})
     return entries
 
 
 __all__ = [
+    "ScanContext",
+    "ScanFile",
+    "build_scan_context",
     "classify_silent_fallback",
     "scan_complexity_entries",
     "scan_oversize_entries",

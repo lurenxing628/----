@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import copy
 import importlib
+import io
+import json
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -544,6 +546,38 @@ def test_check_full_test_debt_bad_collector_json_includes_stdout_stderr_summary(
     assert "collector stdout 不是 JSON" in message
     assert "not json" in message
     assert "pytest import failed" in message
+
+
+def test_collect_current_payload_uses_sharded_env(monkeypatch) -> None:
+    checker = _import_checker()
+    payload = _payload(
+        collected_nodeids=["tests/test_sample.py::test_ok"],
+        reports=[_report("tests/test_sample.py::test_ok", outcome="passed")],
+    )
+    calls: Dict[str, Any] = {}
+
+    class FakeProcess:
+        def __init__(self, command, **kwargs) -> None:
+            calls["command"] = command
+            calls["kwargs"] = kwargs
+            self.stdout = io.StringIO(json.dumps(payload, ensure_ascii=False))
+            self.stderr = io.StringIO("")
+
+        def wait(self) -> int:
+            return 0
+
+    monkeypatch.setenv("APS_FULL_TEST_DEBT_SHARDED", "1")
+    monkeypatch.setenv("APS_FULL_TEST_DEBT_SHARD_COUNT", "4")
+    monkeypatch.setattr(checker.subprocess, "Popen", FakeProcess)
+
+    result = checker.collect_current_payload()
+
+    assert result == payload
+    command = calls["command"]
+    assert "--sharded" in command
+    assert "--shard-count" in command
+    assert "4" in command
+    assert command[-len(checker.FORMAL_FULL_TEST_PYTEST_ARGS) :] == checker.FORMAL_FULL_TEST_PYTEST_ARGS
 
 
 def test_check_full_test_debt_collection_errors_list_entries() -> None:

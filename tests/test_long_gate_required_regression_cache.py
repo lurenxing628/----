@@ -12,6 +12,7 @@ from typing import Callable, Sequence
 import pytest
 
 from tools import quality_gate_shared
+from tools.long_gate_cache import evaluate_reuse
 from tools.long_gate_fingerprint import fingerprint_entry
 from tools.long_gate_manifest import (
     ENTRY_REQUIRED_REGRESSIONS,
@@ -53,6 +54,12 @@ def _entry_display(command_plan: Sequence[dict], repo_root: Path, entry_id: str)
 
 def _fingerprint_for(command_plan: Sequence[dict], repo_root: Path, entry_id: str) -> dict:
     return fingerprint_entry(_entry_by_id(_manifest_for(command_plan, repo_root), entry_id), str(repo_root))
+
+
+def _reuse_decision_for(command_plan: Sequence[dict], repo_root: Path, entry_id: str) -> dict:
+    entry = _entry_by_id(_manifest_for(command_plan, repo_root), entry_id)
+    fingerprint = fingerprint_entry(entry, str(repo_root))
+    return evaluate_reuse(entry, fingerprint, repo_root=str(repo_root))["decision"]
 
 
 def _required_proof_path(repo_root: Path) -> Path:
@@ -418,12 +425,10 @@ def test_required_success_writes_proof_and_reuses_next_run(monkeypatch, tmp_path
 @pytest.mark.parametrize(
     "mutate",
     [
-        lambda repo_root: _required_proof_path(repo_root).unlink(),
-        lambda repo_root: _required_proof_path(repo_root).write_text("{bad json", encoding="utf-8"),
         lambda repo_root: _success_log_path(repo_root, "stdout").write_text("changed stdout\n", encoding="utf-8"),
     ],
 )
-def test_required_bad_proof_or_logs_force_group_rerun(monkeypatch, tmp_path, mutate):
+def test_required_bad_stdout_log_forces_group_rerun(monkeypatch, tmp_path, mutate):
     module = _import_run_quality_gate()
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
@@ -438,6 +443,33 @@ def test_required_bad_proof_or_logs_force_group_rerun(monkeypatch, tmp_path, mut
 
     assert required_display in calls
     assert _summary_entry(_load_summary(repo_root), ENTRY_REQUIRED_REGRESSIONS)["execution_mode"] == "executed"
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda repo_root: _required_proof_path(repo_root).unlink(),
+        lambda repo_root: _required_proof_path(repo_root).write_text("{bad json", encoding="utf-8"),
+    ],
+)
+def test_required_bad_proof_file_invalidates_success_cache_without_runner(monkeypatch, tmp_path, mutate):
+    module = _import_run_quality_gate()
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    command_plan = _real_quality_gate_plan()
+    _patch_gate_environment(monkeypatch, module, repo_root)
+    monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
+    _seed_required_success(module, monkeypatch, repo_root, command_plan)
+    success_cache = json.loads(_success_path(repo_root, ENTRY_REQUIRED_REGRESSIONS).read_text(encoding="utf-8"))
+    assert "evidence/QualityGate/required_regressions.json" in {
+        str(row["path"]) for row in success_cache["output_files"]
+    }
+
+    mutate(repo_root)
+    decision = _reuse_decision_for(command_plan, repo_root, ENTRY_REQUIRED_REGRESSIONS)
+
+    assert decision["decision"] == "run"
+    assert decision["reason"] == "previous output files missing or hash mismatch"
 
 
 @pytest.mark.parametrize(

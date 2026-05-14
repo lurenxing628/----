@@ -14,8 +14,10 @@ import pytest
 from core.infrastructure.database import ensure_schema, get_connection
 from core.services.scheduler.config_service import ConfigService
 from web.viewmodels.scheduler_batches_page import (
+    ScheduleHistoryDisplayValueError,
     build_batch_rows,
     build_batches_filter_state,
+    build_latest_schedule_history_panel_state,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -162,6 +164,48 @@ def _assert_checkbox_before_hidden(body: str, *, field_name: str, checkbox_id: s
     assert checkbox_index < hidden_index
 
 
+def _batch_obj(
+    *,
+    batch_id: str,
+    ready_status: str = "yes",
+    status: str = "pending",
+    priority: str = "normal",
+) -> SimpleNamespace:
+    payload = {
+        "batch_id": batch_id,
+        "part_no": f"P-{batch_id}",
+        "quantity": 1,
+        "due_date": "2026-05-01",
+        "priority": priority,
+        "ready_status": ready_status,
+        "status": status,
+    }
+    return SimpleNamespace(**payload, to_dict=lambda: dict(payload))
+
+
+def _latest_history(*, version: int = 1, strategy: str = "priority_first") -> dict:
+    return {
+        "version": version,
+        "strategy": strategy,
+        "result_status": "success",
+        "schedule_time": "2026-05-05 10:00:00",
+    }
+
+
+def _valid_metrics() -> dict:
+    return {
+        "total_tardiness_hours": 0,
+        "weighted_tardiness_hours": 0,
+        "makespan_hours": 0,
+        "changeover_count": 0,
+        "machine_util_avg": 0,
+    }
+
+
+def _auto_assign_state(value: Any) -> dict:
+    return {"value": str(value or ""), "label": str(value or "-"), "description": ""}
+
+
 def test_batches_filter_state_preserves_default_and_empty_status_contract() -> None:
     default_state = build_batches_filter_state(has_status_arg=False, raw_status=None, raw_only_ready=None)
     empty_state = build_batches_filter_state(has_status_arg=True, raw_status="", raw_only_ready="partial")
@@ -174,60 +218,48 @@ def test_batches_filter_state_preserves_default_and_empty_status_contract() -> N
     assert empty_state.only_ready == "partial"
 
 
-def test_batch_rows_filter_ready_and_add_public_labels() -> None:
+@pytest.mark.parametrize(
+    ("only_ready", "expected_batch", "expected_label"),
+    (
+        ("yes", "B002", "齐套"),
+        ("partial", "B001", "部分齐套"),
+        ("no", "B003", "未齐套"),
+    ),
+)
+def test_batch_rows_filter_ready_and_add_public_labels(
+    only_ready: str,
+    expected_batch: str,
+    expected_label: str,
+) -> None:
     batches = [
-        SimpleNamespace(
+        _batch_obj(
             batch_id="B001",
-            part_no="P001",
-            quantity=1,
-            due_date="2026-05-01",
             priority="urgent",
             ready_status="partial",
-            status="pending",
-            to_dict=lambda: {
-                "batch_id": "B001",
-                "part_no": "P001",
-                "quantity": 1,
-                "due_date": "2026-05-01",
-                "priority": "urgent",
-                "ready_status": "partial",
-                "status": "pending",
-            },
         ),
-        SimpleNamespace(
+        _batch_obj(
             batch_id="B002",
-            part_no="P002",
-            quantity=1,
-            due_date="2026-05-02",
-            priority="normal",
             ready_status="yes",
-            status="pending",
-            to_dict=lambda: {
-                "batch_id": "B002",
-                "part_no": "P002",
-                "quantity": 1,
-                "due_date": "2026-05-02",
-                "priority": "normal",
-                "ready_status": "yes",
-                "status": "pending",
-            },
+        ),
+        _batch_obj(
+            batch_id="B003",
+            ready_status="no",
         ),
     ]
 
     rows = build_batch_rows(
         batches,
-        only_ready="partial",
+        only_ready=only_ready,
         priority_label=lambda value: {"urgent": "急件", "normal": "普通"}.get(value, "-"),
-        ready_label=lambda value: {"partial": "部分齐套", "yes": "齐套"}.get(value, "-"),
+        ready_label=lambda value: {"partial": "部分齐套", "yes": "齐套", "no": "未齐套"}.get(value, "-"),
         batch_status_label=lambda value: {"pending": "待排"}.get(value, "-"),
     )
 
-    assert [row["batch_id"] for row in rows] == ["B001"]
+    assert [row["batch_id"] for row in rows] == [expected_batch]
     assert "priority_zh" not in rows[0]
     assert "ready_status_zh" not in rows[0]
     assert "status_zh" not in rows[0]
-    assert rows[0]["priority_label"] == "急件"
-    assert rows[0]["ready_status_label"] == "部分齐套"
+    assert rows[0]["ready_status_label"] == expected_label
     assert rows[0]["status_label"] == "待排"
 
 
@@ -425,10 +457,11 @@ def test_batches_page_latest_summary_parse_failed_renders_history_and_warning(tm
 
 
 @pytest.mark.parametrize(
-    ("strategy", "mode", "raw_value"),
+    ("strategy", "mode", "metric_overrides", "raw_value"),
     (
-        ("future_strategy", "improve", "future_strategy"),
-        ("priority_first", "future_mode", "future_mode"),
+        ("future_strategy", "improve", {}, "future_strategy"),
+        ("priority_first", "future_mode", {}, "future_mode"),
+        ("priority_first", "improve", {"machine_util_avg": "abc"}, "abc"),
     ),
 )
 def test_batches_page_degrades_unknown_latest_history_display_value(
@@ -436,10 +469,12 @@ def test_batches_page_degrades_unknown_latest_history_display_value(
     monkeypatch,
     strategy: str,
     mode: str,
+    metric_overrides: dict,
     raw_value: str,
 ) -> None:
     app, db_path = _build_app(tmp_path, monkeypatch)
     _insert_batch(db_path, batch_id="B-PENDING", status="pending")
+    metrics = {**_valid_metrics(), **metric_overrides}
     _insert_history(
         db_path,
         version=9,
@@ -448,13 +483,7 @@ def test_batches_page_degrades_unknown_latest_history_display_value(
             "algo": {
                 "mode": mode,
                 "objective": "min_overdue",
-                "metrics": {
-                    "total_tardiness_hours": 0,
-                    "weighted_tardiness_hours": 0,
-                    "makespan_hours": 0,
-                    "changeover_count": 0,
-                    "machine_util_avg": 0,
-                },
+                "metrics": metrics,
             },
             "warnings": [],
             "errors": [],
@@ -475,156 +504,114 @@ def test_batches_page_degrades_unknown_latest_history_display_value(
 
 
 @pytest.mark.parametrize(
-    ("strategy", "mode", "metrics"),
+    ("latest_history", "latest_summary", "message"),
     (
         (
-            "",
-            "improve",
-            {
-                "total_tardiness_hours": 0,
-                "weighted_tardiness_hours": 0,
-                "makespan_hours": 0,
-                "changeover_count": 0,
-                "machine_util_avg": 0,
-            },
+            _latest_history(strategy="future_strategy"),
+            None,
+            "未知排产策略：future_strategy",
         ),
         (
-            "priority_first",
-            "",
-            {
-                "total_tardiness_hours": 0,
-                "weighted_tardiness_hours": 0,
-                "makespan_hours": 0,
-                "changeover_count": 0,
-                "machine_util_avg": 0,
-            },
-        ),
-        (
-            "priority_first",
-            "improve",
-            {
-                "total_tardiness_hours": 0,
-                "weighted_tardiness_hours": 0,
-                "makespan_hours": 0,
-                "changeover_count": 0,
-                "machine_util_avg": "abc",
-            },
+            _latest_history(),
+            {"algo": {"mode": "future_mode", "objective": "min_overdue", "metrics": _valid_metrics()}},
+            "未知排产模式：future_mode",
         ),
     ),
 )
-def test_batches_page_degrades_incomplete_latest_history_display_value(
-    tmp_path,
-    monkeypatch,
-    strategy: str,
-    mode: str,
-    metrics: dict,
+def test_latest_history_panel_rejects_unknown_display_values(
+    latest_history: dict,
+    latest_summary: Optional[dict],
+    message: str,
 ) -> None:
-    app, db_path = _build_app(tmp_path, monkeypatch)
-    _insert_batch(db_path, batch_id="B-PENDING", status="pending")
-    _insert_history(
-        db_path,
-        version=10,
-        strategy=strategy,
-        result_summary={
-            "algo": {
-                "mode": mode,
-                "objective": "min_overdue",
-                "metrics": metrics,
-            },
-            "warnings": [],
-            "errors": [],
-        },
-    )
-
-    response = app.test_client().get("/scheduler/")
-    body = response.get_data(as_text=True)
-
-    assert response.status_code == 200
-    assert "最近一次排产历史摘要不完整，请到系统管理里的排产历史查看这次排产的提醒摘要。" in body
-    assert 'aps-latest-schedule-value">v10' in body
-    assert "B-PENDING" in body
-    assert "jsRunScheduleForm" in body
-    assert "jsSelectedCount" in body
-    assert "batchesTable" in body
-    assert 'aps-latest-schedule-label">排产方式' not in body
-    assert "abc" not in body
+    with pytest.raises(ScheduleHistoryDisplayValueError, match=message):
+        build_latest_schedule_history_panel_state(
+            latest_history=latest_history,
+            latest_summary=latest_summary,
+            latest_summary_parse_state={"parse_failed": False},
+            auto_assign_persist_display_builder=_auto_assign_state,
+        )
 
 
 @pytest.mark.parametrize(
-    "result_summary",
+    ("latest_history", "latest_summary", "message"),
     (
-        {},
-        {"algo": []},
+        (
+            _latest_history(strategy=""),
+            None,
+            "排产历史缺少排产策略",
+        ),
+        (
+            _latest_history(),
+            {"algo": {"mode": "", "objective": "min_overdue", "metrics": _valid_metrics()}},
+            "排产历史摘要缺少排产模式",
+        ),
+        (
+            _latest_history(),
+            {
+                "algo": {
+                    "mode": "improve",
+                    "objective": "min_overdue",
+                    "metrics": {**_valid_metrics(), "machine_util_avg": "abc"},
+                }
+            },
+            "排产历史摘要 metrics 字段不是数字：machine_util_avg",
+        ),
     ),
 )
-def test_batches_page_degrades_latest_history_missing_algo(
-    tmp_path,
-    monkeypatch,
-    result_summary: dict,
+def test_latest_history_panel_rejects_incomplete_display_values(
+    latest_history: dict,
+    latest_summary: Optional[dict],
+    message: str,
 ) -> None:
-    app, db_path = _build_app(tmp_path, monkeypatch)
-    _insert_batch(db_path, batch_id="B-PENDING", status="pending")
-    _insert_history(
-        db_path,
-        version=11,
-        strategy="priority_first",
-        result_summary=result_summary,
-    )
-
-    response = app.test_client().get("/scheduler/")
-    body = response.get_data(as_text=True)
-
-    assert response.status_code == 200
-    assert "最近一次排产历史摘要不完整，请到系统管理里的排产历史查看这次排产的提醒摘要。" in body
-    assert 'aps-latest-schedule-value">v11' in body
-    assert "B-PENDING" in body
-    assert "jsRunScheduleForm" in body
-    assert "batchesTable" in body
-    assert 'aps-latest-schedule-label">排产方式' not in body
+    with pytest.raises(ScheduleHistoryDisplayValueError, match=message):
+        build_latest_schedule_history_panel_state(
+            latest_history=latest_history,
+            latest_summary=latest_summary,
+            latest_summary_parse_state={"parse_failed": False},
+            auto_assign_persist_display_builder=_auto_assign_state,
+        )
 
 
 @pytest.mark.parametrize(
-    "metrics_value",
+    ("latest_summary", "message"),
     (
-        None,
-        [],
-        "bad",
+        ({}, "排产历史摘要缺少 algo"),
+        ({"algo": []}, "排产历史摘要 algo 字段不是对象"),
     ),
 )
-def test_batches_page_degrades_latest_history_missing_or_invalid_metrics(
-    tmp_path,
-    monkeypatch,
-    metrics_value,
-) -> None:
-    app, db_path = _build_app(tmp_path, monkeypatch)
-    _insert_batch(db_path, batch_id="B-PENDING", status="pending")
+def test_latest_history_panel_rejects_missing_or_invalid_algo(latest_summary: dict, message: str) -> None:
+    with pytest.raises(ScheduleHistoryDisplayValueError, match=message):
+        build_latest_schedule_history_panel_state(
+            latest_history=_latest_history(),
+            latest_summary=latest_summary,
+            latest_summary_parse_state={"parse_failed": False},
+            auto_assign_persist_display_builder=_auto_assign_state,
+        )
+
+
+@pytest.mark.parametrize(
+    ("metrics_value", "message"),
+    (
+        (None, "排产历史摘要 algo 缺少 metrics"),
+        ([], "排产历史摘要 algo.metrics 字段不是对象"),
+        ("bad", "排产历史摘要 algo.metrics 字段不是对象"),
+    ),
+)
+def test_latest_history_panel_rejects_missing_or_invalid_metrics(metrics_value: Any, message: str) -> None:
     algo = {
         "mode": "improve",
         "objective": "min_overdue",
     }
     if metrics_value is not None:
         algo["metrics"] = metrics_value
-    _insert_history(
-        db_path,
-        version=12,
-        strategy="priority_first",
-        result_summary={
-            "algo": algo,
-            "warnings": [],
-            "errors": [],
-        },
-    )
 
-    response = app.test_client().get("/scheduler/")
-    body = response.get_data(as_text=True)
-
-    assert response.status_code == 200
-    assert "最近一次排产历史摘要不完整，请到系统管理里的排产历史查看这次排产的提醒摘要。" in body
-    assert 'aps-latest-schedule-value">v12' in body
-    assert "B-PENDING" in body
-    assert "jsRunScheduleForm" in body
-    assert "batchesTable" in body
-    assert "设备利用率" not in body
+    with pytest.raises(ScheduleHistoryDisplayValueError, match=message):
+        build_latest_schedule_history_panel_state(
+            latest_history=_latest_history(),
+            latest_summary={"algo": algo, "warnings": [], "errors": []},
+            latest_summary_parse_state={"parse_failed": False},
+            auto_assign_persist_display_builder=_auto_assign_state,
+        )
 
 
 def test_batches_page_latest_algo_config_snapshot_renders_public_snapshot_state(tmp_path, monkeypatch) -> None:

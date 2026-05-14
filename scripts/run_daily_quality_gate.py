@@ -21,6 +21,7 @@ FOCUSED_PYTEST_NODEIDS: Tuple[str, ...] = (
     "tests/test_long_gate_startup_regression_cache.py::test_startup_entry_comes_from_real_command_plan_and_enables_only_next6",
     "tests/test_scheduler_batches_page_viewmodel.py::test_batches_filter_state_preserves_default_and_empty_status_contract",
     "tests/test_scheduler_batches_page_viewmodel.py::test_batch_rows_filter_ready_and_add_public_labels",
+    "tests/test_ui_geometry_html_contract.py::test_ui_smoke_pages_render_expected_html_contract",
     "tests/test_architecture_fitness.py::test_viewmodels_do_not_import_flask_or_services_or_repositories_or_routes",
 )
 

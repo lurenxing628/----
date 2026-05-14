@@ -452,7 +452,25 @@ def build_full_test_debt_summary(
 
 
 def collect_current_payload() -> Dict[str, Any]:
-    _progress(f"开始收集 full pytest 结果：{COLLECTOR_DISPLAY}")
+    collector_args = list(COLLECTOR_ARGS)
+    collector_display = COLLECTOR_DISPLAY
+    if os.environ.get("APS_FULL_TEST_DEBT_SHARDED") == "1":
+        shard_count = os.environ.get("APS_FULL_TEST_DEBT_SHARD_COUNT") or "3"
+        collector_args = [
+            "tools/collect_full_test_debt.py",
+            "--baseline-kind",
+            "after_main_style_isolation",
+            "--sharded",
+            "--shard-count",
+            shard_count,
+            "--",
+            *FORMAL_FULL_TEST_PYTEST_ARGS,
+        ]
+        collector_display = (
+            "python tools/collect_full_test_debt.py --baseline-kind after_main_style_isolation "
+            f"--sharded --shard-count {shard_count} -- tests -q --tb=short -ra -p no:cacheprovider"
+        )
+    _progress(f"开始收集 full pytest 结果：{collector_display}")
     stderr_chunks: List[str] = []
 
     def pump_stderr(stream) -> None:
@@ -464,7 +482,7 @@ def collect_current_payload() -> Dict[str, Any]:
             stream.close()
 
     process = subprocess.Popen(
-        [sys.executable, *COLLECTOR_ARGS],
+        [sys.executable, *collector_args],
         cwd=REPO_ROOT,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

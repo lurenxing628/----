@@ -11,6 +11,139 @@ def _patch_sources(monkeypatch, source_map):
     monkeypatch.setattr(scan_mod, "read_text_file", lambda rel_path: source_map[str(rel_path)])
 
 
+def test_scan_context_reuses_source_lines_and_ast(monkeypatch) -> None:
+    rel_path = "tmp/context_sample.py"
+    reads = []
+    monkeypatch.setattr(
+        scan_mod,
+        "read_text_file",
+        lambda path: reads.append(str(path)) or "def f():\n    return 1\n",
+    )
+
+    context = scan_mod.ScanContext()
+
+    assert context.read_text(rel_path) == "def f():\n    return 1\n"
+    assert context.source_lines(rel_path) == ["def f():", "    return 1"]
+    assert context.read_text(rel_path) == "def f():\n    return 1\n"
+    assert context.ast_tree(rel_path) is context.ast_tree(rel_path)
+    assert reads == [rel_path]
+
+
+def test_scan_context_is_single_snapshot_for_one_scan_pass() -> None:
+    rel_path = "tmp/context_snapshot_sample.py"
+    sources = iter(
+        (
+            "def f():\n    return 1\n",
+            "def f():\n    return 2\n",
+        )
+    )
+    context = scan_mod.ScanContext(read_text=lambda _path: next(sources))
+
+    assert context.read_text(rel_path) == "def f():\n    return 1\n"
+    assert context.read_text(rel_path) == "def f():\n    return 1\n"
+    assert scan_mod.ScanContext(read_text=lambda _path: "def f():\n    return 2\n").read_text(rel_path) == (
+        "def f():\n    return 2\n"
+    )
+
+
+def test_request_service_scan_reads_each_source_once(monkeypatch) -> None:
+    rel_path = "tmp/request_gate_single_read_sample.py"
+    source = dedent(
+        """
+        from somewhere import BatchService
+
+        def build():
+            BatchService(g.db, logger=None)
+        """
+    ).strip()
+    reads = []
+    monkeypatch.setattr(scan_mod, "read_text_file", lambda path: reads.append(str(path)) or source)
+
+    entries = scan_mod.scan_request_service_direct_assembly_entries([rel_path])
+
+    assert [(entry["rule"], entry["target"], entry["line"]) for entry in entries] == [
+        ("service_or_repository_g_db", "BatchService", 4)
+    ]
+    assert reads == [rel_path]
+
+
+def test_scan_context_can_be_shared_across_scanners_without_rereading(monkeypatch) -> None:
+    rel_path = "tmp/shared_context_scan_sample.py"
+    source = dedent(
+        """
+        from somewhere import BatchService
+
+        class Demo:
+            def bad(self):
+                return self.repos.batch_repo
+
+        def build():
+            BatchService(g.db, logger=None)
+        """
+    ).strip()
+    reads = []
+    monkeypatch.setattr(scan_mod, "read_text_file", lambda path: reads.append(str(path)) or source)
+    context = scan_mod.ScanContext()
+
+    request_entries = scan_mod.scan_request_service_direct_assembly_entries([rel_path], context=context)
+    repository_entries = scan_mod.scan_repository_bundle_drift_entries([rel_path], context=context)
+
+    assert [(entry["rule"], entry["target"]) for entry in request_entries] == [
+        ("service_or_repository_g_db", "BatchService")
+    ]
+    assert any(entry["chain"] == "self.repos.batch_repo" for entry in repository_entries)
+    assert reads == [rel_path]
+
+
+def test_repository_bundle_scan_skips_ast_when_source_has_no_repos_token(monkeypatch) -> None:
+    rel_path = "tmp/repository_bundle_unrelated.py"
+    _patch_sources(
+        monkeypatch,
+        {
+            rel_path: dedent(
+                """
+                def build():
+                    return "普通文件"
+                """
+            ).strip(),
+        },
+    )
+
+    def _fail_ast_parse(_rel_path, _source):
+        raise AssertionError("unrelated repository bundle files should not parse AST")
+
+    monkeypatch.setattr(scan_mod, "_ast_tree_for_source", _fail_ast_parse)
+
+    assert scan_mod.scan_repository_bundle_drift_entries([rel_path]) == []
+
+
+def test_repository_bundle_scan_keeps_public_repos_chain_and_alias(monkeypatch) -> None:
+    rel_path = "tmp/repository_public_repos_sample.py"
+    _patch_sources(
+        monkeypatch,
+        {
+            rel_path: dedent(
+                """
+                class Demo:
+                    def bad(self):
+                        bundle = self.repos
+                        return bundle.batch_repo
+
+                    def also_bad(self):
+                        return self.repos.machine_repo
+                """
+            ).strip(),
+        },
+    )
+
+    entries = scan_mod.scan_repository_bundle_drift_entries([rel_path])
+
+    assert {entry["line"] for entry in entries} == {3, 4, 7}
+    assert any(entry["chain"] == "self.repos" and entry["line"] == 3 for entry in entries)
+    assert any(entry["resolved_chain"] == "self.repos.batch_repo" for entry in entries)
+    assert any(entry["chain"] == "self.repos.machine_repo" for entry in entries)
+
+
 def test_request_service_scan_flags_keyword_conn_and_alias_calls(monkeypatch) -> None:
     rel_path = "tmp/request_gate_sample.py"
     _patch_sources(

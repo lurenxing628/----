@@ -18,6 +18,7 @@ from tools.long_gate_full_test_debt import (
     NODE_CACHE_REL,
     _classify_incremental_plan,
     _load_node_cache,
+    _source_may_import_changed_test_module,
     _validated_previous_success,
     write_full_test_debt_node_cache_after_success,
 )
@@ -434,6 +435,94 @@ def test_nodeid_incremental_plan_selects_changed_test_file_nodeids(tmp_path):
     assert plan["selected_nodeids"] == ["tests/test_a.py::test_a", "tests/test_a.py::test_b"]
 
 
+def test_nodeid_incremental_plan_selects_multiple_changed_test_files(tmp_path):
+    _write_file(tmp_path, "tests/test_a.py", "before-a\n")
+    _write_file(tmp_path, "tests/test_b.py", "before-b\n")
+    _write_file(tmp_path, "tests/test_c.py", "same-c\n")
+    previous = _fingerprint_from_file_hashes(
+        {
+            "tests/test_a.py": "old-a",
+            "tests/test_b.py": "old-b",
+            "tests/test_c.py": hashlib.sha256(b"same-c\n").hexdigest(),
+            "evidence/QualityGate/collect_nodeids.json": "old-collect",
+        }
+    )
+    current = _fingerprint_from_file_hashes(
+        {
+            "tests/test_a.py": "new-a",
+            "tests/test_b.py": "new-b",
+            "tests/test_c.py": hashlib.sha256(b"same-c\n").hexdigest(),
+            "evidence/QualityGate/collect_nodeids.json": "new-collect",
+        }
+    )
+
+    plan, error = _classify_incremental_plan(
+        repo_root=str(tmp_path),
+        previous_fingerprint=previous,
+        current_fingerprint=current,
+        collect_snapshot=_collect_snapshot_for_tests(),
+        node_cache={
+            "collect_nodeids": _collect_snapshot_for_tests(),
+            "test_file_hashes": {"tests/test_c.py": hashlib.sha256(b"same-c\n").hexdigest()},
+        },
+        ledger=_empty_test_debt_ledger(),
+    )
+
+    assert error == ""
+    assert plan is not None
+    assert plan["mode"] == "nodeid_incremental"
+    assert plan["changed_test_files"] == ["tests/test_a.py", "tests/test_b.py"]
+    assert plan["selected_nodeids"] == [
+        "tests/test_a.py::test_a",
+        "tests/test_a.py::test_b",
+        "tests/test_b.py::test_b",
+    ]
+
+
+def test_nodeid_incremental_plan_selects_new_regular_test_file_with_collect_mapping(tmp_path):
+    _write_file(tmp_path, "tests/test_new.py", "def test_new():\n    assert True\n")
+    _write_file(tmp_path, "tests/test_existing.py", "same\n")
+    previous = _fingerprint_from_file_hashes(
+        {
+            "tests/test_new.py": "",
+            "tests/test_existing.py": hashlib.sha256(b"same\n").hexdigest(),
+            "evidence/QualityGate/collect_nodeids.json": "old-collect",
+        }
+    )
+    current = _fingerprint_from_file_hashes(
+        {
+            "tests/test_new.py": "new-file",
+            "tests/test_existing.py": hashlib.sha256(b"same\n").hexdigest(),
+            "evidence/QualityGate/collect_nodeids.json": "new-collect",
+        }
+    )
+    snapshot = build_collect_nodeids_payload(
+        "tests/test_new.py::test_new\ntests/test_existing.py::test_existing\n",
+        pytest_version="pytest 8.3.5",
+    )
+
+    plan, error = _classify_incremental_plan(
+        repo_root=str(tmp_path),
+        previous_fingerprint=previous,
+        current_fingerprint=current,
+        collect_snapshot=snapshot,
+        node_cache={
+            "collect_nodeids": build_collect_nodeids_payload(
+                "tests/test_existing.py::test_existing\n",
+                pytest_version="pytest 8.3.5",
+            ),
+            "test_file_hashes": {"tests/test_existing.py": hashlib.sha256(b"same\n").hexdigest()},
+        },
+        ledger=_empty_test_debt_ledger(),
+    )
+
+    assert error == ""
+    assert plan is not None
+    assert plan["mode"] == "nodeid_incremental"
+    assert plan["changed_test_files"] == ["tests/test_new.py"]
+    assert plan["selected_nodeids"] == ["tests/test_new.py::test_new"]
+
+
 def test_nodeid_incremental_plan_falls_back_when_non_file_fingerprint_changes(tmp_path):
     _write_file(tmp_path, "tests/test_a.py", "before\n")
     previous = _fingerprint_from_file_hashes({"tests/test_a.py": "old-a"})
@@ -540,6 +629,170 @@ def test_nodeid_incremental_plan_falls_back_when_changed_test_is_dynamically_imp
     assert error == "changed test file is imported by another test file: tests/test_uses_shared.py"
 
 
+def test_nodeid_incremental_plan_falls_back_when_dynamic_import_is_built_from_strings(tmp_path):
+    _write_file(tmp_path, "tests/test_shared.py", "def helper():\n    return 1\n")
+    dynamic_text = 'import importlib\ntarget = "tests." + "test_" + "shared"\nhelper = importlib.import_module(target).helper\n'
+    _write_file(tmp_path, "tests/test_uses_shared.py", dynamic_text)
+    previous = _fingerprint_from_file_hashes(
+        {
+            "tests/test_shared.py": "old-shared",
+            "tests/test_uses_shared.py": hashlib.sha256(dynamic_text.encode("utf-8")).hexdigest(),
+            "evidence/QualityGate/collect_nodeids.json": "old-collect",
+        }
+    )
+    current = _fingerprint_from_file_hashes(
+        {
+            "tests/test_shared.py": "new-shared",
+            "tests/test_uses_shared.py": hashlib.sha256(dynamic_text.encode("utf-8")).hexdigest(),
+            "evidence/QualityGate/collect_nodeids.json": "new-collect",
+        }
+    )
+    snapshot = build_collect_nodeids_payload(
+        "tests/test_shared.py::test_shared\ntests/test_uses_shared.py::test_uses_shared\n",
+        pytest_version="pytest 8.3.5",
+    )
+
+    plan, error = _classify_incremental_plan(
+        repo_root=str(tmp_path),
+        previous_fingerprint=previous,
+        current_fingerprint=current,
+        collect_snapshot=snapshot,
+        node_cache={
+            "collect_nodeids": snapshot,
+            "test_file_hashes": {
+                "tests/test_uses_shared.py": hashlib.sha256(dynamic_text.encode("utf-8")).hexdigest(),
+            },
+        },
+        ledger=_empty_test_debt_ledger(),
+    )
+
+    assert plan is None
+    assert error == "changed test file is imported by another test file: tests/test_uses_shared.py"
+
+
+def test_nodeid_incremental_plan_falls_back_when_import_module_alias_is_dynamic(tmp_path):
+    _write_file(tmp_path, "tests/test_shared.py", "def helper():\n    return 1\n")
+    dynamic_text = 'from importlib import import_module\ntarget = "tests." + "test_" + "shared"\nhelper = import_module(target).helper\n'
+    _write_file(tmp_path, "tests/test_uses_shared.py", dynamic_text)
+    previous = _fingerprint_from_file_hashes(
+        {
+            "tests/test_shared.py": "old-shared",
+            "tests/test_uses_shared.py": hashlib.sha256(dynamic_text.encode("utf-8")).hexdigest(),
+            "evidence/QualityGate/collect_nodeids.json": "old-collect",
+        }
+    )
+    current = _fingerprint_from_file_hashes(
+        {
+            "tests/test_shared.py": "new-shared",
+            "tests/test_uses_shared.py": hashlib.sha256(dynamic_text.encode("utf-8")).hexdigest(),
+            "evidence/QualityGate/collect_nodeids.json": "new-collect",
+        }
+    )
+    snapshot = build_collect_nodeids_payload(
+        "tests/test_shared.py::test_shared\ntests/test_uses_shared.py::test_uses_shared\n",
+        pytest_version="pytest 8.3.5",
+    )
+
+    plan, error = _classify_incremental_plan(
+        repo_root=str(tmp_path),
+        previous_fingerprint=previous,
+        current_fingerprint=current,
+        collect_snapshot=snapshot,
+        node_cache={
+            "collect_nodeids": snapshot,
+            "test_file_hashes": {
+                "tests/test_uses_shared.py": hashlib.sha256(dynamic_text.encode("utf-8")).hexdigest(),
+            },
+        },
+        ledger=_empty_test_debt_ledger(),
+    )
+
+    assert plan is None
+    assert error == "changed test file is imported by another test file: tests/test_uses_shared.py"
+
+
+def test_nodeid_incremental_plan_falls_back_when_import_module_renamed_alias_is_dynamic(tmp_path):
+    _write_file(tmp_path, "tests/test_shared.py", "def helper():\n    return 1\n")
+    dynamic_text = 'from importlib import import_module as load\ntarget = "tests." + "test_" + "shared"\nhelper = load(target).helper\n'
+    _write_file(tmp_path, "tests/test_uses_shared.py", dynamic_text)
+    previous = _fingerprint_from_file_hashes(
+        {
+            "tests/test_shared.py": "old-shared",
+            "tests/test_uses_shared.py": hashlib.sha256(dynamic_text.encode("utf-8")).hexdigest(),
+            "evidence/QualityGate/collect_nodeids.json": "old-collect",
+        }
+    )
+    current = _fingerprint_from_file_hashes(
+        {
+            "tests/test_shared.py": "new-shared",
+            "tests/test_uses_shared.py": hashlib.sha256(dynamic_text.encode("utf-8")).hexdigest(),
+            "evidence/QualityGate/collect_nodeids.json": "new-collect",
+        }
+    )
+    snapshot = build_collect_nodeids_payload(
+        "tests/test_shared.py::test_shared\ntests/test_uses_shared.py::test_uses_shared\n",
+        pytest_version="pytest 8.3.5",
+    )
+
+    plan, error = _classify_incremental_plan(
+        repo_root=str(tmp_path),
+        previous_fingerprint=previous,
+        current_fingerprint=current,
+        collect_snapshot=snapshot,
+        node_cache={
+            "collect_nodeids": snapshot,
+            "test_file_hashes": {
+                "tests/test_uses_shared.py": hashlib.sha256(dynamic_text.encode("utf-8")).hexdigest(),
+            },
+        },
+        ledger=_empty_test_debt_ledger(),
+    )
+
+    assert plan is None
+    assert error == "changed test file is imported by another test file: tests/test_uses_shared.py"
+
+
+def test_nodeid_incremental_plan_falls_back_when_importlib_module_alias_is_dynamic(tmp_path):
+    _write_file(tmp_path, "tests/test_shared.py", "def helper():\n    return 1\n")
+    dynamic_text = 'import importlib as il\ntarget = "tests." + "test_" + "shared"\nhelper = il.import_module(target).helper\n'
+    _write_file(tmp_path, "tests/test_uses_shared.py", dynamic_text)
+    previous = _fingerprint_from_file_hashes(
+        {
+            "tests/test_shared.py": "old-shared",
+            "tests/test_uses_shared.py": hashlib.sha256(dynamic_text.encode("utf-8")).hexdigest(),
+            "evidence/QualityGate/collect_nodeids.json": "old-collect",
+        }
+    )
+    current = _fingerprint_from_file_hashes(
+        {
+            "tests/test_shared.py": "new-shared",
+            "tests/test_uses_shared.py": hashlib.sha256(dynamic_text.encode("utf-8")).hexdigest(),
+            "evidence/QualityGate/collect_nodeids.json": "new-collect",
+        }
+    )
+    snapshot = build_collect_nodeids_payload(
+        "tests/test_shared.py::test_shared\ntests/test_uses_shared.py::test_uses_shared\n",
+        pytest_version="pytest 8.3.5",
+    )
+
+    plan, error = _classify_incremental_plan(
+        repo_root=str(tmp_path),
+        previous_fingerprint=previous,
+        current_fingerprint=current,
+        collect_snapshot=snapshot,
+        node_cache={
+            "collect_nodeids": snapshot,
+            "test_file_hashes": {
+                "tests/test_uses_shared.py": hashlib.sha256(dynamic_text.encode("utf-8")).hexdigest(),
+            },
+        },
+        ledger=_empty_test_debt_ledger(),
+    )
+
+    assert plan is None
+    assert error == "changed test file is imported by another test file: tests/test_uses_shared.py"
+
+
 def test_nodeid_incremental_plan_falls_back_when_changed_test_is_dunder_imported(tmp_path):
     _write_file(tmp_path, "tests/test_shared.py", "def helper():\n    return 1\n")
     dynamic_text = "helper = __import__('tests.test_shared', fromlist=['helper']).helper\n"
@@ -581,10 +834,113 @@ def test_nodeid_incremental_plan_falls_back_when_changed_test_is_dunder_imported
     assert error == "changed test file is imported by another test file: tests/test_uses_shared.py"
 
 
+def test_nodeid_incremental_plan_falls_back_when_dunder_import_uses_fromlist(tmp_path):
+    _write_file(tmp_path, "tests/test_shared.py", "def helper():\n    return 1\n")
+    dynamic_text = "helper = __import__('tests', fromlist=['test_shared']).test_shared.helper\n"
+    _write_file(tmp_path, "tests/test_uses_shared.py", dynamic_text)
+    previous = _fingerprint_from_file_hashes(
+        {
+            "tests/test_shared.py": "old-shared",
+            "tests/test_uses_shared.py": hashlib.sha256(dynamic_text.encode("utf-8")).hexdigest(),
+            "evidence/QualityGate/collect_nodeids.json": "old-collect",
+        }
+    )
+    current = _fingerprint_from_file_hashes(
+        {
+            "tests/test_shared.py": "new-shared",
+            "tests/test_uses_shared.py": hashlib.sha256(dynamic_text.encode("utf-8")).hexdigest(),
+            "evidence/QualityGate/collect_nodeids.json": "new-collect",
+        }
+    )
+    snapshot = build_collect_nodeids_payload(
+        "tests/test_shared.py::test_shared\ntests/test_uses_shared.py::test_uses_shared\n",
+        pytest_version="pytest 8.3.5",
+    )
+
+    plan, error = _classify_incremental_plan(
+        repo_root=str(tmp_path),
+        previous_fingerprint=previous,
+        current_fingerprint=current,
+        collect_snapshot=snapshot,
+        node_cache={
+            "collect_nodeids": snapshot,
+            "test_file_hashes": {
+                "tests/test_uses_shared.py": hashlib.sha256(dynamic_text.encode("utf-8")).hexdigest(),
+            },
+        },
+        ledger=_empty_test_debt_ledger(),
+    )
+
+    assert plan is None
+    assert error == "changed test file is imported by another test file: tests/test_uses_shared.py"
+
+
+def test_nodeid_incremental_plan_falls_back_when_dunder_import_uses_dynamic_fromlist(tmp_path):
+    _write_file(tmp_path, "tests/test_shared.py", "def helper():\n    return 1\n")
+    dynamic_text = "target = 'test_' + 'shared'\nhelper = __import__('tests', globals(), locals(), [target]).test_shared.helper\n"
+    _write_file(tmp_path, "tests/test_uses_shared.py", dynamic_text)
+    previous = _fingerprint_from_file_hashes(
+        {
+            "tests/test_shared.py": "old-shared",
+            "tests/test_uses_shared.py": hashlib.sha256(dynamic_text.encode("utf-8")).hexdigest(),
+            "evidence/QualityGate/collect_nodeids.json": "old-collect",
+        }
+    )
+    current = _fingerprint_from_file_hashes(
+        {
+            "tests/test_shared.py": "new-shared",
+            "tests/test_uses_shared.py": hashlib.sha256(dynamic_text.encode("utf-8")).hexdigest(),
+            "evidence/QualityGate/collect_nodeids.json": "new-collect",
+        }
+    )
+    snapshot = build_collect_nodeids_payload(
+        "tests/test_shared.py::test_shared\ntests/test_uses_shared.py::test_uses_shared\n",
+        pytest_version="pytest 8.3.5",
+    )
+
+    plan, error = _classify_incremental_plan(
+        repo_root=str(tmp_path),
+        previous_fingerprint=previous,
+        current_fingerprint=current,
+        collect_snapshot=snapshot,
+        node_cache={
+            "collect_nodeids": snapshot,
+            "test_file_hashes": {
+                "tests/test_uses_shared.py": hashlib.sha256(dynamic_text.encode("utf-8")).hexdigest(),
+            },
+        },
+        ledger=_empty_test_debt_ledger(),
+    )
+
+    assert plan is None
+    assert error == "changed test file is imported by another test file: tests/test_uses_shared.py"
+
+
+def test_changed_test_import_text_prefilter_keeps_safe_import_spelling() -> None:
+    changed_modules = {"tests.test_shared", "test_shared"}
+
+    assert _source_may_import_changed_test_module("from tests.test_shared import helper\n", changed_modules)
+    assert _source_may_import_changed_test_module("from tests import test_shared\n", changed_modules)
+    assert _source_may_import_changed_test_module(
+        "importlib.import_module('tests.test_shared')\n",
+        changed_modules,
+    )
+    assert _source_may_import_changed_test_module('target = "tests." + "test_" + "shared"\nimportlib.import_module(target)\n', changed_modules)
+    assert _source_may_import_changed_test_module(
+        'from importlib import import_module\ntarget = "tests." + "test_" + "shared"\nimport_module(target)\n',
+        changed_modules,
+    )
+    assert _source_may_import_changed_test_module("__import__('tests.test_shared')\n", changed_modules)
+    assert not _source_may_import_changed_test_module("def test_unrelated():\n    assert True\n", changed_modules)
+
+
 @pytest.mark.parametrize(
     "changed_path",
     [
         "tests/conftest.py",
+        "tests/helpers.py",
+        "tests/some_dir/test_helper.py",
+        "tests/regression/regression_collection_contract.py",
         "conftest.py",
         "core/service.py",
         "web/view.py",

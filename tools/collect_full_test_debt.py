@@ -11,7 +11,7 @@ import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Generator, Iterable, List, Optional, Sequence, Set
+from typing import Any, Dict, Generator, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
 import pytest
 
@@ -29,6 +29,7 @@ XFAIL_SIGNAL_REPORT_KEYS = (
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from tools.full_test_debt_shards import split_nodeids  # noqa: E402
 from tools.quality_gate_shared import (  # noqa: E402
     FORMAL_FULL_TEST_PYTEST_ARGS,
     QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL,
@@ -37,6 +38,7 @@ from tools.quality_gate_shared import (  # noqa: E402
 )
 
 CURRENT_PAYLOAD_REL = QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL.replace("\\", "/")
+FORMAL_FULL_TEST_PYTEST_OPTIONS = ["-q", "--tb=short", "-ra", "-p", "no:cacheprovider"]
 
 
 def _progress(message: str) -> None:
@@ -439,6 +441,10 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     parser.add_argument("--current-payload-path", default=CURRENT_PAYLOAD_REL)
     parser.add_argument("--no-current-payload", action="store_true")
     parser.add_argument("--repo-root", default=str(Path.cwd()))
+    parser.add_argument("--sharded", action="store_true")
+    parser.add_argument("--shard-count", type=int, default=3)
+    parser.add_argument("--worker-payload")
+    parser.add_argument("--worker-nodeids-file")
     parsed = parser.parse_args(own_args)
     try:
         parsed.repo_root = _resolve_repo_root(str(parsed.repo_root))
@@ -466,9 +472,275 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     if parsed.importable_debt_baseline and pytest_args != FORMAL_FULL_TEST_PYTEST_ARGS:
         _remove_existing_file(baseline_path)
         parser.error("--importable-debt-baseline 必须使用正式 full pytest 参数：" + " ".join(FORMAL_FULL_TEST_PYTEST_ARGS))
+    if parsed.sharded and pytest_args != FORMAL_FULL_TEST_PYTEST_ARGS:
+        parser.error("--sharded 目前只支持正式 full pytest 参数：" + " ".join(FORMAL_FULL_TEST_PYTEST_ARGS))
+    if int(parsed.shard_count) < 1:
+        parser.error("--shard-count 必须大于等于 1")
+    if bool(parsed.worker_payload) != bool(parsed.worker_nodeids_file):
+        parser.error("--worker-payload 和 --worker-nodeids-file 必须一起提供")
     parsed.pytest_args = pytest_args
     parsed.collector_argv = raw_args
     return parsed
+
+
+def _write_worker_payload(path: Path, payload: Dict[str, Any]) -> None:
+    _write_json_atomically(path, payload)
+
+
+def _read_nodeids_file(path: Path) -> List[str]:
+    with open(path, encoding="utf-8") as handle:
+        return [line.strip() for line in handle.read().splitlines() if line.strip()]
+
+
+def _run_pytest_collect(pytest_args: Sequence[str]) -> Tuple[FullTestDebtCollector, int]:
+    collector = FullTestDebtCollector()
+    pytest_stdout = io.StringIO()
+    pytest_stderr = io.StringIO()
+    with contextlib.redirect_stderr(pytest_stderr):
+        with contextlib.redirect_stdout(pytest_stdout):
+            exitstatus = int(pytest.main(list(pytest_args), plugins=[collector]))
+        if collector.exitstatus is not None:
+            exitstatus = int(collector.exitstatus)
+    return collector, exitstatus
+
+
+def _run_worker_mode(args: argparse.Namespace) -> int:
+    nodeids = _read_nodeids_file(Path(str(args.worker_nodeids_file)))
+    collector, exitstatus = _run_pytest_collect([*nodeids, *FORMAL_FULL_TEST_PYTEST_OPTIONS])
+    _write_worker_payload(
+        Path(str(args.worker_payload)),
+        {
+            "schema_version": 1,
+            "exitstatus": int(exitstatus),
+            "collected_nodeids": list(collector.collected_nodeids),
+            "collection_errors": list(collector.collection_errors),
+            "reports": list(collector.reports),
+        },
+    )
+    return int(exitstatus)
+
+
+def _write_nodeids_file(path: Path, nodeids: Sequence[str]) -> None:
+    path.write_text("\n".join(str(item) for item in nodeids) + ("\n" if nodeids else ""), encoding="utf-8")
+
+
+def _worker_payload_path(work_dir: Path, label: str) -> Path:
+    return work_dir / f"{label}.json"
+
+
+def _worker_nodeids_path(work_dir: Path, label: str) -> Path:
+    return work_dir / f"{label}.nodeids"
+
+
+def _run_worker_subprocess(
+    *,
+    repo_root: Path,
+    work_dir: Path,
+    label: str,
+    nodeids: Sequence[str],
+    baseline_kind: str,
+) -> Dict[str, Any]:
+    payload_path = _worker_payload_path(work_dir, label)
+    nodeids_path = _worker_nodeids_path(work_dir, label)
+    _write_nodeids_file(nodeids_path, nodeids)
+    command = [
+        sys.executable,
+        str(Path(__file__).resolve()),
+        "--baseline-kind",
+        baseline_kind,
+        "--repo-root",
+        str(repo_root),
+        "--worker-payload",
+        str(payload_path),
+        "--worker-nodeids-file",
+        str(nodeids_path),
+        "--",
+        *FORMAL_FULL_TEST_PYTEST_ARGS,
+    ]
+    completed = subprocess.run(
+        command,
+        cwd=str(repo_root),
+        text=True,
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    if not payload_path.exists():
+        return {
+            "schema_version": 1,
+            "exitstatus": int(completed.returncode),
+            "collected_nodeids": [],
+            "collection_errors": [
+                {
+                    "nodeid": label,
+                    "outcome": "failed",
+                    "longrepr": str(completed.stderr or completed.stdout or "worker did not write payload"),
+                }
+            ],
+            "reports": [],
+        }
+    with open(payload_path, encoding="utf-8") as handle:
+        payload = json.load(handle)
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"worker payload must be an object: {payload_path}")
+    if int(completed.returncode) != int(payload.get("exitstatus") or 0):
+        payload["exitstatus"] = int(completed.returncode)
+    return payload
+
+
+def _merge_exitstatus(collect_exitstatus: int, worker_payloads: Sequence[Mapping[str, Any]]) -> int:
+    if int(collect_exitstatus) != 0:
+        return int(collect_exitstatus)
+    worker_exitstatuses = [int(payload.get("exitstatus") or 0) for payload in worker_payloads]
+    if any(status == 1 for status in worker_exitstatuses):
+        return 1
+    for status in worker_exitstatuses:
+        if status != 0:
+            return status
+    return 0
+
+
+def _sort_reports(reports: Sequence[Dict[str, Any]], collected_nodeids: Sequence[str]) -> List[Dict[str, Any]]:
+    nodeid_order = {str(nodeid): index for index, nodeid in enumerate(collected_nodeids)}
+    when_order = {"setup": 0, "call": 1, "teardown": 2}
+    indexed = list(enumerate(reports))
+    indexed.sort(
+        key=lambda item: (
+            nodeid_order.get(str(item[1].get("nodeid") or ""), len(nodeid_order)),
+            when_order.get(str(item[1].get("when") or ""), 99),
+            item[0],
+        )
+    )
+    return [dict(report) for _, report in indexed]
+
+
+def _worker_payload_errors(payload: Mapping[str, Any], collected_nodeids: Sequence[str]) -> List[Dict[str, Any]]:
+    collected = {str(nodeid) for nodeid in collected_nodeids}
+    errors: List[Dict[str, Any]] = []
+    for report in list(payload.get("reports") or []):
+        if not isinstance(report, dict):
+            continue
+        nodeid = str(report.get("nodeid") or "")
+        if nodeid and nodeid not in collected:
+            errors.append(
+                {
+                    "nodeid": nodeid,
+                    "outcome": "failed",
+                    "longrepr": "worker report nodeid is outside collect-only nodeids",
+                }
+            )
+    return errors
+
+
+def _run_sharded_pytest(args: argparse.Namespace, *, cwd: Path) -> Tuple[FullTestDebtCollector, int]:
+    collect_args = ["--collect-only", *FORMAL_FULL_TEST_PYTEST_ARGS]
+    _progress("sharded 模式：先 collect-only 建立完整 nodeid 清单")
+    collect_collector, collect_exitstatus = _run_pytest_collect(collect_args)
+    collector = FullTestDebtCollector()
+    collector.collected_nodeids = list(collect_collector.collected_nodeids)
+    collector.collection_errors = list(collect_collector.collection_errors)
+    if int(collect_exitstatus) != 0:
+        collector.exitstatus = int(collect_exitstatus)
+        return collector, int(collect_exitstatus)
+
+    serial_nodeids, parallel_shards = split_nodeids(collector.collected_nodeids, int(args.shard_count))
+    worker_payloads: List[Dict[str, Any]] = []
+    worker_output_errors: List[Dict[str, Any]] = []
+    with tempfile.TemporaryDirectory(prefix="aps_full_test_debt_shards_") as tmp_dir:
+        work_dir = Path(tmp_dir)
+        if serial_nodeids:
+            _progress(f"sharded 模式：串行分片 {len(serial_nodeids)} 个 nodeid")
+            worker_payloads.append(
+                _run_worker_subprocess(
+                    repo_root=cwd,
+                    work_dir=work_dir,
+                    label="serial",
+                    nodeids=serial_nodeids,
+                    baseline_kind=str(args.baseline_kind),
+                )
+            )
+        processes = []
+        for index, shard_nodeids in enumerate(parallel_shards, start=1):
+            if not shard_nodeids:
+                continue
+            label = f"parallel-{index}"
+            payload_path = _worker_payload_path(work_dir, label)
+            nodeids_path = _worker_nodeids_path(work_dir, label)
+            _write_nodeids_file(nodeids_path, shard_nodeids)
+            command = [
+                sys.executable,
+                str(Path(__file__).resolve()),
+                "--baseline-kind",
+                str(args.baseline_kind),
+                "--repo-root",
+                str(cwd),
+                "--worker-payload",
+                str(payload_path),
+                "--worker-nodeids-file",
+                str(nodeids_path),
+                "--",
+                *FORMAL_FULL_TEST_PYTEST_ARGS,
+            ]
+            _progress(f"sharded 模式：启动并行分片 {index}，{len(shard_nodeids)} 个 nodeid")
+            processes.append(
+                (
+                    label,
+                    payload_path,
+                    subprocess.Popen(
+                        command,
+                        cwd=str(cwd),
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        encoding="utf-8",
+                        errors="replace",
+                    ),
+                )
+            )
+        for label, payload_path, process in processes:
+            stdout, stderr = process.communicate()
+            returncode = int(process.returncode or 0)
+            if stdout or stderr:
+                worker_output_errors.append(
+                    {
+                        "nodeid": label,
+                        "outcome": "failed",
+                        "longrepr": str(stderr or stdout),
+                    }
+                )
+            if payload_path.exists():
+                with open(payload_path, encoding="utf-8") as handle:
+                    payload = json.load(handle)
+                if isinstance(payload, dict):
+                    if returncode != int(payload.get("exitstatus") or 0):
+                        payload["exitstatus"] = returncode
+                    worker_payloads.append(payload)
+                    continue
+            worker_payloads.append(
+                {
+                    "schema_version": 1,
+                    "exitstatus": returncode,
+                    "collected_nodeids": [],
+                    "collection_errors": [
+                        {"nodeid": label, "outcome": "failed", "longrepr": "worker did not write payload"}
+                    ],
+                    "reports": [],
+                }
+            )
+
+    reports: List[Dict[str, Any]] = []
+    collection_errors = [*list(collector.collection_errors), *worker_output_errors]
+    for payload in worker_payloads:
+        reports.extend(dict(report) for report in list(payload.get("reports") or []) if isinstance(report, dict))
+        collection_errors.extend(_worker_payload_errors(payload, collector.collected_nodeids))
+        collection_errors.extend(
+            dict(error) for error in list(payload.get("collection_errors") or []) if isinstance(error, dict)
+        )
+    collector.reports = _sort_reports(reports, collector.collected_nodeids)
+    collector.collection_errors = sorted(collection_errors, key=lambda item: str(item.get("nodeid") or ""))
+    collector.exitstatus = _merge_exitstatus(collect_exitstatus, worker_payloads)
+    return collector, int(collector.exitstatus)
 
 
 def _importable_baseline_blockers(payload: Dict[str, Any]) -> List[str]:
@@ -591,6 +863,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     cwd = Path(str(args.repo_root)).resolve()
     os.chdir(cwd)
+    if args.worker_payload:
+        return _run_worker_mode(args)
     current_payload_path = Path(str(args.current_payload_path))
     baseline_path = Path(str(args.write_baseline)) if args.write_baseline else None
     target_status_path = _relative_to_cwd(baseline_path, cwd) if baseline_path is not None else ""
@@ -625,19 +899,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         _progress(f"已写入 current payload：{current_status_path}")
 
     logging.raiseExceptions = False
-    collector = FullTestDebtCollector()
-    pytest_stdout = io.StringIO()
-    pytest_stderr = io.StringIO()
     generated_at = _now_iso()
     head_sha = _git_head_sha(cwd)
     required_paths = iter_quality_gate_required_tests()
 
-    _progress("开始执行 pytest 并收集 full-test-debt 结果")
-    with contextlib.redirect_stderr(pytest_stderr):
-        with contextlib.redirect_stdout(pytest_stdout):
-            exitstatus = int(pytest.main(list(args.pytest_args), plugins=[collector]))
-        if collector.exitstatus is not None:
-            exitstatus = int(collector.exitstatus)
+    if args.sharded:
+        _progress(f"开始执行 sharded pytest 并收集 full-test-debt 结果：shard_count={int(args.shard_count)}")
+        collector, exitstatus = _run_sharded_pytest(args, cwd=cwd)
+    else:
+        _progress("开始执行 pytest 并收集 full-test-debt 结果")
+        collector, exitstatus = _run_pytest_collect(list(args.pytest_args))
 
     _progress(f"pytest 执行完成：exitstatus={exitstatus}；开始分类失败与构建 payload")
     payload = _build_payload(
