@@ -248,7 +248,7 @@ def _build_app(tmp_path, monkeypatch):
 
     import app as app_mod
 
-    app = app_mod.create_app()
+    app = app_mod.app
     app.config["PLUGIN_STATUS"] = {
         "loaded_at": "2026-05-06 09:00:00",
         "config_source": "default_due_to_config_read_failed",

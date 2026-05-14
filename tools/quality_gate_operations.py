@@ -19,6 +19,7 @@ from .quality_gate_ledger import (
     validate_ledger,
 )
 from .quality_gate_scan import (
+    ScanContext,
     complexity_scan_map,
     scan_complexity_entries,
     scan_oversize_entries,
@@ -691,8 +692,9 @@ def architecture_silent_scan_entries() -> List[Dict[str, Any]]:
     旧 `tests/test_architecture_fitness.py` 计数器迁移而来的遗留静默吞异常命中，
     不据此把 `silent_default_fallback` / `observable_degrade` 扩展为全仓新增门禁。
     """
+    context = ScanContext()
     entries = []
-    for entry in scan_silent_fallback_entries(collect_quality_rule_files()):
+    for entry in scan_silent_fallback_entries(collect_quality_rule_files(), context=context):
         if is_startup_scope_path(str(entry.get("path"))):
             entries.append(entry)
             continue
@@ -705,11 +707,16 @@ def architecture_silent_scan_entries() -> List[Dict[str, Any]]:
 
 
 def architecture_oversize_scan_map() -> Dict[str, Dict[str, Any]]:
-    return {str(entry.get("path")): entry for entry in scan_oversize_entries(collect_quality_rule_files())}
+    context = ScanContext()
+    return {
+        str(entry.get("path")): entry
+        for entry in scan_oversize_entries(collect_quality_rule_files(), context=context)
+    }
 
 
 def architecture_complexity_scan_map() -> Dict[str, Dict[str, Any]]:
-    return complexity_scan_map(collect_quality_rule_files())
+    context = ScanContext()
+    return complexity_scan_map(collect_quality_rule_files(), context=context)
 
 
 def architecture_request_service_direct_assembly_entries() -> List[Dict[str, Any]]:
@@ -718,7 +725,11 @@ def architecture_request_service_direct_assembly_entries() -> List[Dict[str, Any
         str(path): set(str(symbol) for symbol in symbols)
         for path, symbols in REQUEST_SERVICE_TARGET_SYMBOLS.items()
     }
-    entries = scan_request_service_direct_assembly_entries(collect_globbed_files(REQUEST_SERVICE_SCAN_SCOPE_PATTERNS))
+    context = ScanContext()
+    entries = scan_request_service_direct_assembly_entries(
+        collect_globbed_files(REQUEST_SERVICE_SCAN_SCOPE_PATTERNS),
+        context=context,
+    )
     return [
         entry
         for entry in entries
@@ -734,4 +745,8 @@ def architecture_request_service_direct_assembly_entries() -> List[Dict[str, Any
 
 
 def architecture_repository_bundle_drift_entries() -> List[Dict[str, Any]]:
-    return scan_repository_bundle_drift_entries(collect_globbed_files(REPOSITORY_BUNDLE_DRIFT_SCOPE_PATTERNS))
+    context = ScanContext()
+    return scan_repository_bundle_drift_entries(
+        collect_globbed_files(REPOSITORY_BUNDLE_DRIFT_SCOPE_PATTERNS),
+        context=context,
+    )
