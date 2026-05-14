@@ -479,6 +479,77 @@ def test_nodeid_incremental_plan_selects_multiple_changed_test_files(tmp_path):
     ]
 
 
+def test_nodeid_incremental_plan_falls_back_for_registered_debt_nodeid(tmp_path):
+    _write_file(tmp_path, "tests/test_a.py", "before\n")
+    _write_file(tmp_path, "tests/test_b.py", "same\n")
+    previous = _fingerprint_from_file_hashes(
+        {
+            "tests/test_a.py": "old-a",
+            "tests/test_b.py": hashlib.sha256(b"same\n").hexdigest(),
+            "evidence/QualityGate/collect_nodeids.json": "old-collect",
+        }
+    )
+    current = _fingerprint_from_file_hashes(
+        {
+            "tests/test_a.py": "new-a",
+            "tests/test_b.py": hashlib.sha256(b"same\n").hexdigest(),
+            "evidence/QualityGate/collect_nodeids.json": "new-collect",
+        }
+    )
+
+    plan, error = _classify_incremental_plan(
+        repo_root=str(tmp_path),
+        previous_fingerprint=previous,
+        current_fingerprint=current,
+        collect_snapshot=_collect_snapshot_for_tests(),
+        node_cache={
+            "collect_nodeids": _collect_snapshot_for_tests(),
+            "test_file_hashes": {"tests/test_b.py": hashlib.sha256(b"same\n").hexdigest()},
+        },
+        ledger={"test_debt": {"entries": [{"nodeid": "tests/test_a.py::test_a"}]}},
+    )
+
+    assert plan is None
+    assert error == "changed test file contains registered full-test-debt nodeid: tests/test_a.py"
+
+
+def test_nodeid_incremental_plan_falls_back_when_any_changed_file_has_registered_debt_nodeid(tmp_path):
+    _write_file(tmp_path, "tests/test_a.py", "before-a\n")
+    _write_file(tmp_path, "tests/test_b.py", "before-b\n")
+    _write_file(tmp_path, "tests/test_c.py", "same-c\n")
+    previous = _fingerprint_from_file_hashes(
+        {
+            "tests/test_a.py": "old-a",
+            "tests/test_b.py": "old-b",
+            "tests/test_c.py": hashlib.sha256(b"same-c\n").hexdigest(),
+            "evidence/QualityGate/collect_nodeids.json": "old-collect",
+        }
+    )
+    current = _fingerprint_from_file_hashes(
+        {
+            "tests/test_a.py": "new-a",
+            "tests/test_b.py": "new-b",
+            "tests/test_c.py": hashlib.sha256(b"same-c\n").hexdigest(),
+            "evidence/QualityGate/collect_nodeids.json": "new-collect",
+        }
+    )
+
+    plan, error = _classify_incremental_plan(
+        repo_root=str(tmp_path),
+        previous_fingerprint=previous,
+        current_fingerprint=current,
+        collect_snapshot=_collect_snapshot_for_tests(),
+        node_cache={
+            "collect_nodeids": _collect_snapshot_for_tests(),
+            "test_file_hashes": {"tests/test_c.py": hashlib.sha256(b"same-c\n").hexdigest()},
+        },
+        ledger={"test_debt": {"entries": [{"nodeid": "tests/test_b.py::test_b"}]}},
+    )
+
+    assert plan is None
+    assert error == "changed test file contains registered full-test-debt nodeid: tests/test_b.py"
+
+
 def test_nodeid_incremental_plan_selects_new_regular_test_file_with_collect_mapping(tmp_path):
     _write_file(tmp_path, "tests/test_new.py", "def test_new():\n    assert True\n")
     _write_file(tmp_path, "tests/test_existing.py", "same\n")

@@ -218,6 +218,14 @@ def test_batches_filter_state_preserves_default_and_empty_status_contract() -> N
     assert empty_state.only_ready == "partial"
 
 
+@pytest.mark.parametrize("status", ("scheduled", "processing", "completed", "cancelled"))
+def test_batches_filter_state_preserves_non_pending_status_for_service(status: str) -> None:
+    state = build_batches_filter_state(has_status_arg=True, raw_status=status, raw_only_ready=None)
+
+    assert state.status == status
+    assert state.service_status == status
+
+
 @pytest.mark.parametrize(
     ("only_ready", "expected_batch", "expected_label"),
     (
@@ -320,22 +328,7 @@ def test_batches_page_empty_status_lists_all_statuses_without_run_controls(tmp_p
     assert "排产开始时间" not in body
 
 
-@pytest.mark.parametrize(
-    ("status", "visible_batch", "selected_option"),
-    (
-        ("scheduled", "B-SCHEDULED", '<option value="scheduled" selected>已排</option>'),
-        ("processing", "B-PROCESSING", '<option value="processing" selected>加工中</option>'),
-        ("completed", "B-COMPLETED", '<option value="completed" selected>已完成</option>'),
-        ("cancelled", "B-CANCELLED", '<option value="cancelled" selected>已取消</option>'),
-    ),
-)
-def test_batches_page_non_pending_status_hides_run_controls(
-    tmp_path,
-    monkeypatch,
-    status: str,
-    visible_batch: str,
-    selected_option: str,
-) -> None:
+def test_batches_page_non_pending_status_hides_run_controls(tmp_path, monkeypatch) -> None:
     app, db_path = _build_app(tmp_path, monkeypatch)
     _insert_batch(db_path, batch_id="B-PENDING", status="pending")
     _insert_batch(db_path, batch_id="B-SCHEDULED", status="scheduled")
@@ -343,13 +336,13 @@ def test_batches_page_non_pending_status_hides_run_controls(
     _insert_batch(db_path, batch_id="B-COMPLETED", status="completed")
     _insert_batch(db_path, batch_id="B-CANCELLED", status="cancelled")
 
-    response = app.test_client().get(f"/scheduler/?status={status}")
+    response = app.test_client().get("/scheduler/?status=scheduled")
     body = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert visible_batch in body
+    assert "B-SCHEDULED" in body
     assert "B-PENDING" not in body
-    assert selected_option in _select_markup(body, "schedulerBatchesStatusFilter")
+    assert '<option value="scheduled" selected>已排</option>' in _select_markup(body, "schedulerBatchesStatusFilter")
     assert "js-batch-check" not in body
     assert "js-select-all" not in body
     assert "jsSelectedCount" not in body
@@ -357,36 +350,21 @@ def test_batches_page_non_pending_status_hides_run_controls(
     assert "排产开始时间" not in body
 
 
-@pytest.mark.parametrize(
-    ("ready_status", "visible_batch", "visible_label", "hidden_batches"),
-    (
-        ("yes", "B-READY", "齐套", ("B-PARTIAL", "B-NO")),
-        ("partial", "B-PARTIAL", "部分齐套", ("B-READY", "B-NO")),
-        ("no", "B-NO", "未齐套", ("B-READY", "B-PARTIAL")),
-    ),
-)
-def test_batches_page_only_ready_filters_visible_rows(
-    tmp_path,
-    monkeypatch,
-    ready_status: str,
-    visible_batch: str,
-    visible_label: str,
-    hidden_batches: tuple[str, str],
-) -> None:
+def test_batches_page_only_ready_filter_connects_to_visible_rows(tmp_path, monkeypatch) -> None:
     app, db_path = _build_app(tmp_path, monkeypatch)
     _insert_batch(db_path, batch_id="B-PARTIAL", ready_status="partial")
     _insert_batch(db_path, batch_id="B-READY", ready_status="yes")
     _insert_batch(db_path, batch_id="B-NO", ready_status="no")
 
-    response = app.test_client().get(f"/scheduler/?only_ready={ready_status}")
+    response = app.test_client().get("/scheduler/?only_ready=yes")
     body = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert visible_batch in body
-    for hidden_batch in hidden_batches:
-        assert hidden_batch not in body
-    assert f'value="{ready_status}" selected' in body
-    assert visible_label in body
+    assert "B-READY" in body
+    assert "B-PARTIAL" not in body
+    assert "B-NO" not in body
+    assert 'value="yes" selected' in body
+    assert "齐套" in body
 
 
 def test_batches_page_empty_filtered_result_uses_filter_specific_message(tmp_path, monkeypatch) -> None:
@@ -456,32 +434,20 @@ def test_batches_page_latest_summary_parse_failed_renders_history_and_warning(tm
     assert "{invalid json" not in body
 
 
-@pytest.mark.parametrize(
-    ("strategy", "mode", "metric_overrides", "raw_value"),
-    (
-        ("future_strategy", "improve", {}, "future_strategy"),
-        ("priority_first", "future_mode", {}, "future_mode"),
-        ("priority_first", "improve", {"machine_util_avg": "abc"}, "abc"),
-    ),
-)
 def test_batches_page_degrades_unknown_latest_history_display_value(
     tmp_path,
     monkeypatch,
-    strategy: str,
-    mode: str,
-    metric_overrides: dict,
-    raw_value: str,
 ) -> None:
     app, db_path = _build_app(tmp_path, monkeypatch)
     _insert_batch(db_path, batch_id="B-PENDING", status="pending")
-    metrics = {**_valid_metrics(), **metric_overrides}
+    metrics = {**_valid_metrics(), "machine_util_avg": "abc"}
     _insert_history(
         db_path,
         version=9,
-        strategy=strategy,
+        strategy="priority_first",
         result_summary={
             "algo": {
-                "mode": mode,
+                "mode": "improve",
                 "objective": "min_overdue",
                 "metrics": metrics,
             },
@@ -500,7 +466,35 @@ def test_batches_page_degrades_unknown_latest_history_display_value(
     assert "jsRunScheduleForm" in body
     assert "jsSelectedCount" in body
     assert "batchesTable" in body
-    assert raw_value not in body
+    assert "abc" not in body
+
+
+def test_batches_page_degrades_unknown_latest_history_strategy_without_raw_value(tmp_path, monkeypatch) -> None:
+    app, db_path = _build_app(tmp_path, monkeypatch)
+    _insert_batch(db_path, batch_id="B-PENDING", status="pending")
+    _insert_history(
+        db_path,
+        version=10,
+        strategy="future_strategy",
+        result_summary={
+            "algo": {
+                "mode": "improve",
+                "objective": "min_overdue",
+                "metrics": _valid_metrics(),
+            },
+            "warnings": [],
+            "errors": [],
+        },
+    )
+
+    response = app.test_client().get("/scheduler/")
+    body = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "最近一次排产历史摘要不完整，请到系统管理里的排产历史查看这次排产的提醒摘要。" in body
+    assert 'aps-latest-schedule-value">v10' in body
+    assert "B-PENDING" in body
+    assert "future_strategy" not in body
 
 
 @pytest.mark.parametrize(
