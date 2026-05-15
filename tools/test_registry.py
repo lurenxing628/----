@@ -701,7 +701,9 @@ REQUIRED_REGRESSION_GROUPS = (
             "chrome_headless_preflight",
             "node_executable_realpath",
             "node_version",
+            "node_browser_runtime_capability",
             "PATH",
+            "NODE_OPTIONS",
         ),
     },
 )

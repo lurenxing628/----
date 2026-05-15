@@ -8,7 +8,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
 import pytest
 
@@ -64,7 +64,7 @@ def _collect_command() -> dict:
     }
 
 
-def _quality_gate_plan(*, include_planned: bool = False) -> list[dict]:
+def _quality_gate_plan(*, include_planned: bool = False) -> List[Dict[str, Any]]:
     plan = [_collect_command(), _full_debt_command()]
     if include_planned:
         plan.append(
@@ -135,6 +135,11 @@ def _patch_gate_environment(monkeypatch, module, repo_root: Path, *, statuses: S
     )
     monkeypatch.setattr(fingerprint_mod, "_node_executable_realpath", lambda environment=None: "/stable/node")
     monkeypatch.setattr(fingerprint_mod, "_node_version", lambda strict=False, environment=None: "v24.0.0")
+    monkeypatch.setattr(
+        fingerprint_mod,
+        "_node_browser_runtime_capability",
+        lambda strict=False, environment=None: "stable-node-browser-runtime-capability",
+    )
 
 
 def _entry(repo_root: Path) -> dict:
@@ -234,7 +239,7 @@ def _current_payload_for_nodeids(nodeids: Sequence[str]) -> dict:
     }
 
 
-def _write_full_outputs(repo_root: Path, token: str = "ok") -> list[str]:
+def _write_full_outputs(repo_root: Path, token: str = "ok") -> List[str]:
     current = repo_root / "evidence" / "QualityGate" / "current_full_test_debt.json"
     summary = repo_root / "evidence" / "QualityGate" / "full_test_debt_summary.json"
     current.parent.mkdir(parents=True, exist_ok=True)
@@ -356,7 +361,7 @@ def _summary_entry(summary: dict, entry_id: str) -> dict:
     raise AssertionError(f"missing summary entry: {entry_id}")
 
 
-def _fingerprint_from_file_hashes(file_hashes: dict[str, str]) -> dict:
+def _fingerprint_from_file_hashes(file_hashes: Dict[str, str]) -> dict:
     rows = [
         {
             "path": path,
@@ -435,7 +440,7 @@ def _write_ledger_file(repo_root: Path, ledger: Optional[dict] = None) -> Path:
     return path
 
 
-def _fake_successful_command(module, repo_root: Path, calls: list[str]):
+def _fake_successful_command(module, repo_root: Path, calls: List[str]):
     full_debt_run_count = {"value": 0}
 
     def fake_run_command(display, args, capture_output=False, env_overlay=None):
@@ -2454,7 +2459,7 @@ def test_runner_writes_and_reuses_full_test_debt_success_cache(monkeypatch, tmp_
     command_plan = _quality_gate_plan()
     _patch_gate_environment(monkeypatch, module, repo_root, statuses=[[], [], [], []])
     monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
-    calls: list[str] = []
+    calls: List[str] = []
     monkeypatch.setattr(module, "_run_command", _fake_successful_command(module, repo_root, calls))
 
     assert module.main(["--long-gate-cache"]) == 0
@@ -2751,7 +2756,7 @@ def test_explain_full_test_debt_reports_special_fallback_diagnostics(monkeypatch
     _patch_gate_environment(monkeypatch, module, repo_root, statuses=[[], [], [], []])
     monkeypatch.setattr(module, "REPO_ROOT", str(repo_root))
     monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
-    calls: list[str] = []
+    calls: List[str] = []
     monkeypatch.setattr(module, "_run_command", _fake_successful_command(module, repo_root, calls))
     assert module.main(["--long-gate-cache"]) == 0
 
@@ -2784,7 +2789,7 @@ def test_force_rerun_full_test_debt_refreshes_only_that_enabled_entry(monkeypatc
     command_plan = _quality_gate_plan(include_planned=True)
     _patch_gate_environment(monkeypatch, module, repo_root, statuses=[[], [], [], []])
     monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
-    calls: list[str] = []
+    calls: List[str] = []
     monkeypatch.setattr(module, "_run_command", _fake_successful_command(module, repo_root, calls))
     assert module.main(["--long-gate-cache"]) == 0
     first_success = _load_success(repo_root)
@@ -2821,7 +2826,7 @@ def test_force_rerun_all_refreshes_full_test_debt_and_keeps_planned_entries(monk
     command_plan = _quality_gate_plan(include_planned=True)
     _patch_gate_environment(monkeypatch, module, repo_root, statuses=[[], [], [], []])
     monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
-    calls: list[str] = []
+    calls: List[str] = []
     monkeypatch.setattr(module, "_run_command", _fake_successful_command(module, repo_root, calls))
     assert module.main(["--long-gate-cache"]) == 0
     first_success = _load_success(repo_root)
@@ -2857,7 +2862,7 @@ def test_full_test_debt_rechecks_collect_hash_after_collect_rerun(monkeypatch, t
     command_plan = _quality_gate_plan()
     _patch_gate_environment(monkeypatch, module, repo_root, statuses=[[], [], [], []])
     monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
-    calls: list[str] = []
+    calls: List[str] = []
     collect_stdout = {"text": "tests/test_a.py::test_a\n"}
 
     def fake_run_command(display, args, capture_output=False, env_overlay=None):
@@ -2898,13 +2903,13 @@ def test_runner_records_nodeid_incremental_mode_without_running_whole_entry(monk
     command_plan = _quality_gate_plan()
     _patch_gate_environment(monkeypatch, module, repo_root, statuses=[[], [], [], [], [], []])
     monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
-    calls: list[str] = []
+    calls: List[str] = []
     monkeypatch.setattr(module, "_run_command", _fake_successful_command(module, repo_root, calls))
 
     assert module.main(["--long-gate-cache"]) == 0
     _write_file(repo_root, "tests/test_a.py", "def test_a():\n    assert 1 == 1\n# changed\n")
     calls.clear()
-    special_calls: list[dict] = []
+    special_calls: List[Dict[str, Any]] = []
 
     def fake_special(**kwargs):
         special_calls.append(dict(kwargs.get("decision") or {}))
@@ -2954,7 +2959,7 @@ def test_runner_fails_when_nodeid_incremental_fails(monkeypatch, tmp_path):
     command_plan = _quality_gate_plan()
     _patch_gate_environment(monkeypatch, module, repo_root, statuses=[[], [], [], [], [], []])
     monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
-    calls: list[str] = []
+    calls: List[str] = []
     monkeypatch.setattr(module, "_run_command", _fake_successful_command(module, repo_root, calls))
 
     assert module.main(["--long-gate-cache"]) == 0
@@ -3005,7 +3010,7 @@ def test_runner_fails_when_ledger_only_checker_fails_without_full_fallback(monke
     command_plan = _quality_gate_plan()
     _patch_gate_environment(monkeypatch, module, repo_root, statuses=[[], [], [], [], [], []])
     monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
-    calls: list[str] = []
+    calls: List[str] = []
     monkeypatch.setattr(module, "_run_command", _fake_successful_command(module, repo_root, calls))
 
     assert module.main(["--long-gate-cache"]) == 0
@@ -3061,7 +3066,7 @@ def test_no_long_gate_cache_does_not_call_nodeid_incremental(monkeypatch, tmp_pa
         "try_run_special_full_test_debt_mode",
         lambda **_kwargs: (_ for _ in ()).throw(AssertionError("--no-long-gate-cache must not call nodeid mode")),
     )
-    calls: list[str] = []
+    calls: List[str] = []
     monkeypatch.setattr(module, "_run_command", _fake_successful_command(module, repo_root, calls))
 
     assert module.main(["--no-long-gate-cache"]) == 0
@@ -3107,7 +3112,7 @@ def test_full_test_debt_can_reuse_after_collect_repairs_missing_nodeids(monkeypa
         repo_root=str(repo_root),
     )
     (repo_root / "evidence" / "QualityGate" / "collect_nodeids.json").unlink()
-    calls: list[str] = []
+    calls: List[str] = []
 
     def fake_run_command(display, args, capture_output=False, env_overlay=None):
         calls.append(display)

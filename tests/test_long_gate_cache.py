@@ -229,12 +229,24 @@ def test_fingerprint_entry_uses_env_overlay_for_chrome_resolution(tmp_path, monk
 def test_fingerprint_entry_uses_env_overlay_path_for_node(tmp_path, monkeypatch):
     node = tmp_path / ("node.cmd" if os.name == "nt" else "node")
     if os.name == "nt":
-        node.write_text("@echo off\r\necho v99.0.0-overlay\r\n", encoding="utf-8")
+        node.write_text(
+            "@echo off\r\n"
+            "if \"%1\"==\"--version\" echo v99.0.0-overlay& exit /b 0\r\n"
+            "if \"%1\"==\"-e\" echo capability-overlay& exit /b 0\r\n"
+            "exit /b 2\r\n",
+            encoding="utf-8",
+        )
     else:
-        node.write_text("#!/bin/sh\necho v99.0.0-overlay\n", encoding="utf-8")
+        node.write_text(
+            "#!/bin/sh\n"
+            "if [ \"$1\" = \"--version\" ]; then echo v99.0.0-overlay; exit 0; fi\n"
+            "if [ \"$1\" = \"-e\" ]; then echo capability-overlay; exit 0; fi\n"
+            "exit 2\n",
+            encoding="utf-8",
+        )
         node.chmod(0o755)
     entry = _entry([])
-    entry["env_keys"] = ["PATH", "node_executable_realpath", "node_version"]
+    entry["env_keys"] = ["PATH", "node_executable_realpath", "node_version", "node_browser_runtime_capability"]
     entry["env_overlay"] = {"PATH": str(tmp_path)}
     entry["command_hash"] = fingerprint_command(entry)
 
@@ -244,6 +256,7 @@ def test_fingerprint_entry_uses_env_overlay_path_for_node(tmp_path, monkeypatch)
     assert values["PATH"] == str(tmp_path)
     assert values["node_executable_realpath"] == os.path.realpath(str(node))
     assert values["node_version"] == "v99.0.0-overlay"
+    assert str(values["node_browser_runtime_capability"]).startswith("passed:")
 
 
 def test_fingerprint_entry_keeps_entry_specific_file_scopes_independent(tmp_path):

@@ -180,6 +180,8 @@ def test_required_parent_scope_includes_group_specific_scope_union():
     assert "web/routes/domains/scheduler/scheduler_config*.py" in required_entry["input_file_scopes"]
     assert "tools/long_gate_cache.py" in required_entry["tool_file_scopes"]
     assert "node_version" in required_entry["env_keys"]
+    assert "node_browser_runtime_capability" in required_entry["env_keys"]
+    assert "NODE_OPTIONS" in required_entry["env_keys"]
     assert "APS_BROWSER_SMOKE_REQUIRED" in required_entry["env_keys"]
     assert "chrome_version" in required_entry["env_keys"]
     assert "chrome_executable_identity" in required_entry["env_keys"]
@@ -269,8 +271,10 @@ def test_collect_full_test_debt_required_and_startup_entries_are_currently_reuse
         "chrome_headless_preflight",
         "node_executable_realpath",
         "node_version",
+        "node_browser_runtime_capability",
         "PATH",
         "CI",
+        "NODE_OPTIONS",
     ]:
         assert env_key in full_test_debt["env_keys"]
     assert full_test_debt["output_result_files"] == [

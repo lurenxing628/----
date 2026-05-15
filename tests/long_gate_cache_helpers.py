@@ -135,6 +135,11 @@ def _patch_gate_environment(monkeypatch, module, repo_root: Path, *, statuses: S
     )
     monkeypatch.setattr(fingerprint_mod, "_node_executable_realpath", lambda environment=None: "/stable/node")
     monkeypatch.setattr(fingerprint_mod, "_node_version", lambda strict=False, environment=None: "v24.0.0")
+    monkeypatch.setattr(
+        fingerprint_mod,
+        "_node_browser_runtime_capability",
+        lambda strict=False, environment=None: "stable-node-browser-runtime-capability",
+    )
 
 
 @dataclass(frozen=True)

@@ -114,6 +114,14 @@ def test_run_chrome_probe_spawn_error_reports_kind(tmp_path: Path) -> None:
     node = smoke._resolve_node_with_browser_runtime()
     if node.failure_kind:
         pytest.skip(node.message)
+    chrome_info = smoke.ChromeRuntimeInfo(
+        chrome_path=str(tmp_path / "missing-chrome"),
+        chrome_source="APS_CHROME_PATH",
+        chrome_version_stdout="Fake Chrome 120",
+        chrome_version_returncode=0,
+        exists=True,
+        explicit_config=True,
+    )
 
     with pytest.raises(AssertionError) as exc_info:
         smoke._run_chrome_geometry_probe(
@@ -121,6 +129,13 @@ def test_run_chrome_probe_spawn_error_reports_kind(tmp_path: Path) -> None:
             node_path=node.node_path,
             base_url="http://127.0.0.1:9",
             tmp_path=tmp_path,
+            chrome_info=chrome_info,
+            node_info=node,
         )
 
-    assert "chrome_spawn_failed" in str(exc_info.value)
+    message = str(exc_info.value)
+    assert "chrome_spawn_failed" in message
+    assert "runtime_context" in message
+    assert "APS_CHROME_PATH" in message
+    assert "Fake Chrome 120" in message
+    assert node.node_realpath in message

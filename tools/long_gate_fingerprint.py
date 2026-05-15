@@ -593,6 +593,49 @@ def _node_version(*, strict: bool = False, environment: Optional[Mapping[str, st
     return str(completed.stdout or "").strip()
 
 
+def _node_browser_runtime_capability(*, strict: bool = False, environment: Optional[Mapping[str, str]] = None) -> str:
+    env = _effective_environment(environment)
+    node = shutil.which("node", path=env.get("PATH"))
+    if not node:
+        return "__missing_node__"
+    capability_script = (
+        "const missing = [];"
+        "if (typeof fetch !== 'function') missing.push('fetch');"
+        "if (typeof WebSocket !== 'function') missing.push('WebSocket');"
+        "if (missing.length) { console.error('missing ' + missing.join(',')); process.exit(1); }"
+        "console.log('fetch/WebSocket available');"
+    )
+    try:
+        completed = subprocess.run(
+            [node, "-e", capability_script],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=5,
+            env=dict(env),
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        if strict:
+            raise LongGateFingerprintError(
+                f"node browser runtime capability is required for long gate fingerprint: {exc}"
+            ) from exc
+        return "__node_browser_runtime_capability_unavailable__"
+    payload = {
+        "returncode": int(completed.returncode),
+        "stdout": str(completed.stdout or "").strip(),
+        "stderr": str(completed.stderr or "").strip(),
+    }
+    if int(completed.returncode) != 0:
+        if strict:
+            raise LongGateFingerprintError(
+                "node browser runtime capability is required for long gate fingerprint: "
+                + json.dumps(payload, ensure_ascii=False, sort_keys=True)
+            )
+        return "__node_browser_runtime_capability_failed__:" + stable_json_hash(payload)
+    return "passed:" + stable_json_hash(payload)
+
+
 def _pytest_plugin_distribution_versions(*, strict: bool = False) -> str:
     try:
         entry_points = importlib.metadata.entry_points()
@@ -648,6 +691,8 @@ def _runtime_fingerprint_value(
         return _node_executable_realpath(environment=environment)
     if key == "node_version":
         return _node_version(strict=strict, environment=environment)
+    if key == "node_browser_runtime_capability":
+        return _node_browser_runtime_capability(strict=strict, environment=environment)
     source = environment if environment is not None else os.environ
     return source.get(str(key))
 

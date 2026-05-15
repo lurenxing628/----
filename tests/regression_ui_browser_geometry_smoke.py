@@ -136,6 +136,42 @@ def _format_browser_env_failure(
     return json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True)
 
 
+def _browser_runtime_context(
+    *,
+    chrome: Optional[ChromeRuntimeInfo] = None,
+    node: Optional[NodeRuntimeInfo] = None,
+) -> Dict[str, Any]:
+    required, required_source = _browser_smoke_required()
+    payload: Dict[str, Any] = {
+        "required": required,
+        "required_source": required_source,
+        "APS_BROWSER_SMOKE_REQUIRED": os.environ.get("APS_BROWSER_SMOKE_REQUIRED"),
+        "CI": os.environ.get("CI"),
+        "APS_CHROME_PATH": os.environ.get("APS_CHROME_PATH"),
+        "PATH_excerpt": _path_excerpt(),
+    }
+    if chrome is not None:
+        payload["chrome"] = {
+            "chrome_path": chrome.chrome_path,
+            "chrome_source": chrome.chrome_source,
+            "version_returncode": chrome.chrome_version_returncode,
+            "version_stdout": chrome.chrome_version_stdout,
+            "version_stderr": chrome.chrome_version_stderr,
+        }
+    if node is not None:
+        payload["node"] = {
+            "node_path": node.node_path,
+            "node_realpath": node.node_realpath,
+            "version_returncode": node.node_version_returncode,
+            "version_stdout": node.node_version_stdout,
+            "version_stderr": node.node_version_stderr,
+            "capability_returncode": node.node_capability_returncode,
+            "capability_stdout": node.node_capability_stdout,
+            "capability_stderr": node.node_capability_stderr,
+        }
+    return payload
+
+
 def _fail_or_skip_env(failure_kind: str, message: str, *, chrome: Optional[ChromeRuntimeInfo] = None, node: Optional[NodeRuntimeInfo] = None) -> None:
     required, required_source = _browser_smoke_required()
     formatted = _format_browser_env_failure(
@@ -495,7 +531,7 @@ def _build_app(tmp_path, monkeypatch):
                 "ui-smoke-plugin",
                 "{bad json",
                 "PLUGIN_LOAD_FAILED",
-                "插件加载失败，请查看系统日志。",
+                "历史日志里保留 Traceback / Werkzeug / Internal Server Error 字样，用于确认正常应用页面不会被误判成错误页。",
             ),
         )
         conn.commit()
@@ -544,11 +580,13 @@ def _serve_app(app):
 
 
 def _shutdown_served_app(served: ServedApp) -> None:
-    served.server.shutdown()
-    served.thread.join(timeout=5)
-    if served.thread.is_alive():
-        print("WARNING: Flask test server thread did not stop within 5 seconds", file=sys.stderr, flush=True)
-    served.server.server_close()
+    try:
+        served.server.shutdown()
+        served.thread.join(timeout=5)
+        if served.thread.is_alive():
+            print("WARNING: Flask test server thread did not stop within 5 seconds", file=sys.stderr, flush=True)
+    finally:
+        served.server.server_close()
 
 
 def _kill_process_tree(process: subprocess.Popen) -> None:
@@ -578,7 +616,15 @@ def _kill_process_tree(process: subprocess.Popen) -> None:
             pass
 
 
-def _run_chrome_geometry_probe(*, chrome_path: str, node_path: str, base_url: str, tmp_path: Path) -> List[Dict[str, Any]]:
+def _run_chrome_geometry_probe(
+    *,
+    chrome_path: str,
+    node_path: str,
+    base_url: str,
+    tmp_path: Path,
+    chrome_info: Optional[ChromeRuntimeInfo] = None,
+    node_info: Optional[NodeRuntimeInfo] = None,
+) -> List[Dict[str, Any]]:
     script = tmp_path / "ui_geometry_probe.mjs"
     script.write_text(
         textwrap.dedent(
@@ -593,6 +639,7 @@ def _run_chrome_geometry_probe(*, chrome_path: str, node_path: str, base_url: st
             const expectedByPath = JSON.parse(process.argv[5]);
             const errorPageKeywords = JSON.parse(process.argv[6]);
             const profileBaseDir = process.argv[7];
+            const runtimeContext = JSON.parse(process.argv[8] || "{}");
             await fs.mkdir(profileBaseDir, { recursive: true });
             const userDataDir = await fs.mkdtemp(path.join(profileBaseDir, "aps-ui-chrome-"));
             const chromeArgs = [
@@ -655,6 +702,7 @@ def _run_chrome_geometry_probe(*, chrome_path: str, node_path: str, base_url: st
                 userDataDir,
                 nodeVersion: process.version,
                 baseUrl,
+                runtime_context: runtimeContext,
                 ...details,
               };
             }
@@ -1113,15 +1161,18 @@ def _run_chrome_geometry_probe(*, chrome_path: str, node_path: str, base_url: st
                     }).length;
                   const logsTable = document.querySelector('#systemLogsTable');
                   const bodyText = document.body ? document.body.innerText || "" : "";
+                  const titleText = document.title || "";
                   const hasAppShell = Boolean(document.querySelector('meta[name="aps-ui-template-env"]'))
                     && Boolean(document.querySelector('header nav, header.top-header, nav.sidebar-nav'))
                     && Boolean(document.getElementById('apsThemeToggle'));
-                  function bodyIncludesKeyword(keyword) {
-                    return bodyText.toLowerCase().includes(String(keyword || "").toLowerCase());
+                  function includesKeyword(value, keyword) {
+                    return String(value || "").toLowerCase().includes(String(keyword || "").toLowerCase());
                   }
                   const errorKeywords = window.__APS_ERROR_PAGE_KEYWORDS__ || [];
-                  const matchedErrorKeyword = errorKeywords.find((keyword) => bodyIncludesKeyword(keyword)) || "";
-                  const pageLooksError = Boolean(matchedErrorKeyword);
+                  const matchedTitleErrorKeyword = errorKeywords.find((keyword) => includesKeyword(titleText, keyword)) || "";
+                  const matchedBodyErrorKeyword = errorKeywords.find((keyword) => includesKeyword(bodyText, keyword)) || "";
+                  const matchedErrorKeyword = matchedTitleErrorKeyword || (!hasAppShell ? matchedBodyErrorKeyword : "");
+                  const pageLooksError = ${httpStatus} >= 500 || Boolean(matchedErrorKeyword);
                   const expectedTexts = window.__APS_EXPECTED_SIGNALS__?.texts || [];
                   const expectedIds = window.__APS_EXPECTED_SIGNALS__?.ids || [];
                   const expectedPath = window.__APS_EXPECTED_SIGNALS__?.path || "";
@@ -1382,6 +1433,7 @@ def _run_chrome_geometry_probe(*, chrome_path: str, node_path: str, base_url: st
     )
     profile_base = tmp_path / "chrome-profiles"
     profile_base.mkdir(parents=True, exist_ok=True)
+    runtime_context = _browser_runtime_context(chrome=chrome_info, node=node_info)
     command = [
         node_path,
         str(script),
@@ -1391,6 +1443,7 @@ def _run_chrome_geometry_probe(*, chrome_path: str, node_path: str, base_url: st
         json.dumps(EXPECTED_PAGE_SIGNALS, ensure_ascii=False),
         json.dumps(ERROR_PAGE_KEYWORDS, ensure_ascii=False),
         str(profile_base),
+        json.dumps(runtime_context, ensure_ascii=False),
     ]
     popen_kwargs: Dict[str, Any] = {}
     if os.name != "nt":
@@ -1430,6 +1483,7 @@ def _run_chrome_geometry_probe(*, chrome_path: str, node_path: str, base_url: st
                     "timeout_seconds": 90,
                     "stdout_tail": _tail_text(stdout, 4096),
                     "stderr_tail": _tail_text(stderr, 4096),
+                    "runtime_context": runtime_context,
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -1471,6 +1525,8 @@ def test_ui_pages_do_not_create_body_level_overflow_in_real_browser(tmp_path, mo
             node_path=node.node_path,
             base_url=served.base_url,
             tmp_path=tmp_path,
+            chrome_info=chrome,
+            node_info=node,
         )
     finally:
         _shutdown_served_app(served)

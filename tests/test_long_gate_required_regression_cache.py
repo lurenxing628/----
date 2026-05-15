@@ -165,7 +165,9 @@ def test_required_scope_tracks_real_inputs_without_unrelated_markdown(tmp_path):
         "chrome_headless_preflight",
         "node_executable_realpath",
         "node_version",
+        "node_browser_runtime_capability",
         "PATH",
+        "NODE_OPTIONS",
         "CI",
     ]:
         assert env_key in required["env_keys"]
