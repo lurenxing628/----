@@ -7,6 +7,43 @@ import tools.quality_gate_scan as scan_mod
 import tools.quality_gate_shared as shared_mod
 
 
+def _architecture_fact(
+    path,
+    *,
+    line_count=0,
+    silent_entries=None,
+    complexity_entries=None,
+    request_entries=None,
+    repository_entries=None,
+):
+    return {
+        "schema_version": 1,
+        "path": path,
+        "fact_kinds": ["silent", "complexity", "request", "repository"],
+        "line_count": line_count,
+        "silent_fallback_handlers_without_global_id": [
+            {key: value for key, value in dict(entry).items() if key != "id"}
+            for entry in list(silent_entries or [])
+            if str(entry.get("path")) == path
+        ],
+        "complexity_blocks_all": [
+            dict(entry)
+            for entry in list(complexity_entries or [])
+            if str(entry.get("path")) == path
+        ],
+        "request_service_direct_assembly_entries": [
+            dict(entry)
+            for entry in list(request_entries or [])
+            if str(entry.get("path")) == path
+        ],
+        "repository_bundle_drift_entries": [
+            dict(entry)
+            for entry in list(repository_entries or [])
+            if str(entry.get("path")) == path
+        ],
+    }
+
+
 def _patch_sources(monkeypatch, source_map):
     monkeypatch.setattr(scan_mod, "read_text_file", lambda rel_path: source_map[str(rel_path)])
 
@@ -349,35 +386,30 @@ def test_request_service_architecture_filter_does_not_hide_registered_helper_deb
         raising=False,
     )
     monkeypatch.setattr(ops_mod, "collect_globbed_files", lambda _patterns: [rel_path])
-    received_contexts = []
     received_paths = []
 
-    def _fake_scan_request_service_direct_assembly_entries(_paths, context=None):
-        received_contexts.append(context)
-        received_paths.append(list(_paths))
-        return [
-            {"path": rel_path, "symbol": "preview", "line": 10, "rule": "g_db_first_arg_helper", "target": "helper_builder", "excerpt": "a"},
-            {"path": rel_path, "symbol": "confirm", "line": 20, "rule": "g_db_first_arg_helper", "target": "helper_builder", "excerpt": "b"},
-            {"path": rel_path, "symbol": "confirm", "line": 21, "rule": "g_db_first_arg_helper", "target": "helper_builder", "excerpt": "c"},
-            {"path": rel_path, "symbol": "confirm", "line": 30, "rule": "service_or_repository_g_db", "target": "BatchService", "excerpt": "d"},
-        ]
+    request_entries = [
+        {"path": rel_path, "symbol": "preview", "line": 10, "rule": "g_db_first_arg_helper", "target": "helper_builder", "excerpt": "a"},
+        {"path": rel_path, "symbol": "confirm", "line": 20, "rule": "g_db_first_arg_helper", "target": "helper_builder", "excerpt": "b"},
+        {"path": rel_path, "symbol": "confirm", "line": 21, "rule": "g_db_first_arg_helper", "target": "helper_builder", "excerpt": "c"},
+        {"path": rel_path, "symbol": "confirm", "line": 30, "rule": "service_or_repository_g_db", "target": "BatchService", "excerpt": "d"},
+    ]
 
-    monkeypatch.setattr(
-        ops_mod,
-        "scan_request_service_direct_assembly_entries",
-        _fake_scan_request_service_direct_assembly_entries,
-    )
+    def _fake_scan_files(_paths, cache_path=None, force=False, context=None, fact_kinds=None):
+        del cache_path, force, context, fact_kinds
+        received_paths.append(list(_paths))
+        return [_architecture_fact(str(path), request_entries=request_entries) for path in _paths]
+
+    monkeypatch.setattr(ops_mod, "scan_files_with_cache", _fake_scan_files)
 
     entries = ops_mod.architecture_request_service_direct_assembly_entries()
 
     assert [(entry["symbol"], entry["line"], entry["rule"], entry["target"]) for entry in entries] == [
-        ("preview", 10, "g_db_first_arg_helper", "helper_builder"),
         ("confirm", 20, "g_db_first_arg_helper", "helper_builder"),
         ("confirm", 21, "g_db_first_arg_helper", "helper_builder"),
         ("confirm", 30, "service_or_repository_g_db", "BatchService"),
+        ("preview", 10, "g_db_first_arg_helper", "helper_builder"),
     ]
-    assert len(received_contexts) == 1
-    assert isinstance(received_contexts[0], scan_mod.ScanContext)
     assert received_paths == [[rel_path]]
 
 
@@ -507,44 +539,39 @@ def test_request_service_architecture_filter_tracks_nested_open_db_in_custom_tes
     monkeypatch.setattr(ops_mod, "REQUEST_SERVICE_TARGET_SYMBOLS", {rel_path: ["_create_test_app", "_open_db"]})
     monkeypatch.setattr(ops_mod, "REQUEST_SERVICE_TARGET_ALLOWED_HELPERS", [], raising=False)
     monkeypatch.setattr(ops_mod, "collect_globbed_files", lambda _patterns: [rel_path])
-    received_contexts = []
     received_paths = []
 
-    def _fake_scan_request_service_direct_assembly_entries(_paths, context=None):
-        received_contexts.append(context)
-        received_paths.append(list(_paths))
-        return [
-            {
-                "path": rel_path,
-                "symbol": "_open_db",
-                "line": 230,
-                "rule": "service_or_repository_g_db",
-                "target": "BatchService",
-                "excerpt": "open",
-            },
-            {
-                "path": rel_path,
-                "symbol": "_close_db",
-                "line": 245,
-                "rule": "service_or_repository_g_db",
-                "target": "BatchService",
-                "excerpt": "close",
-            },
-        ]
+    request_entries = [
+        {
+            "path": rel_path,
+            "symbol": "_open_db",
+            "line": 230,
+            "rule": "service_or_repository_g_db",
+            "target": "BatchService",
+            "excerpt": "open",
+        },
+        {
+            "path": rel_path,
+            "symbol": "_close_db",
+            "line": 245,
+            "rule": "service_or_repository_g_db",
+            "target": "BatchService",
+            "excerpt": "close",
+        },
+    ]
 
-    monkeypatch.setattr(
-        ops_mod,
-        "scan_request_service_direct_assembly_entries",
-        _fake_scan_request_service_direct_assembly_entries,
-    )
+    def _fake_scan_files(_paths, cache_path=None, force=False, context=None, fact_kinds=None):
+        del cache_path, force, context, fact_kinds
+        received_paths.append(list(_paths))
+        return [_architecture_fact(str(path), request_entries=request_entries) for path in _paths]
+
+    monkeypatch.setattr(ops_mod, "scan_files_with_cache", _fake_scan_files)
 
     entries = ops_mod.architecture_request_service_direct_assembly_entries()
 
     assert [(entry["symbol"], entry["line"], entry["target"]) for entry in entries] == [
         ("_open_db", 230, "BatchService"),
     ]
-    assert len(received_contexts) == 1
-    assert isinstance(received_contexts[0], scan_mod.ScanContext)
     assert received_paths == [[rel_path]]
 
 
@@ -562,34 +589,38 @@ def test_architecture_scan_wrappers_pass_context_and_original_paths(monkeypatch)
     monkeypatch.setattr(ops_mod, "collect_globbed_files", _fake_collect_globbed_files)
     monkeypatch.setattr(ops_mod, "is_startup_scope_path", lambda _path: True)
 
-    def _fake_scan_silent(paths, context=None):
-        calls.append(("silent", list(paths), isinstance(context, scan_mod.ScanContext)))
+    silent_entries = [
+        {
+            "path": "web/routes/demo.py",
+            "symbol": "route",
+            "handler_fingerprint": "abc",
+            "except_ordinal": 1,
+        }
+    ]
+    complexity_entries = [
+        {
+            "path": "web/routes/demo.py",
+            "symbol": "route",
+            "current_value": shared_mod.COMPLEXITY_THRESHOLD + 1,
+        }
+    ]
+    repository_entries = [{"path": "web/routes/demo.py", "symbol": "route", "chain": "self.repos.batch_repo"}]
+
+    def _fake_scan_files(paths, cache_path=None, force=False, context=None, fact_kinds=None):
+        del cache_path, force, context
+        calls.append(("scan_files_with_cache", list(paths), tuple(fact_kinds or ())))
         return [
-            {
-                "path": "web/routes/demo.py",
-                "symbol": "route",
-                "handler_fingerprint": "abc",
-                "except_ordinal": 1,
-                "id": "silent:web-routes-demo-py-route",
-            }
+            _architecture_fact(
+                str(path),
+                line_count=shared_mod.FILE_SIZE_LIMIT + 1 if str(path) == "web/routes/demo.py" else 0,
+                silent_entries=silent_entries,
+                complexity_entries=complexity_entries,
+                repository_entries=repository_entries,
+            )
+            for path in paths
         ]
 
-    def _fake_scan_oversize(paths, context=None):
-        calls.append(("oversize", list(paths), isinstance(context, scan_mod.ScanContext)))
-        return [{"path": "web/routes/demo.py", "current_value": 1000, "limit": 900}]
-
-    def _fake_complexity_scan_map(paths, include_all=False, context=None):
-        calls.append(("complexity", list(paths), include_all, isinstance(context, scan_mod.ScanContext)))
-        return {"web/routes/demo.py:route": {"path": "web/routes/demo.py", "symbol": "route"}}
-
-    def _fake_scan_repository_bundle(paths, context=None):
-        calls.append(("repository_bundle", list(paths), isinstance(context, scan_mod.ScanContext)))
-        return [{"path": "web/routes/demo.py", "symbol": "route", "chain": "self.repos.batch_repo"}]
-
-    monkeypatch.setattr(ops_mod, "scan_silent_fallback_entries", _fake_scan_silent)
-    monkeypatch.setattr(ops_mod, "scan_oversize_entries", _fake_scan_oversize)
-    monkeypatch.setattr(ops_mod, "complexity_scan_map", _fake_complexity_scan_map)
-    monkeypatch.setattr(ops_mod, "scan_repository_bundle_drift_entries", _fake_scan_repository_bundle)
+    monkeypatch.setattr(ops_mod, "scan_files_with_cache", _fake_scan_files)
 
     assert [entry["path"] for entry in ops_mod.architecture_silent_scan_entries()] == ["web/routes/demo.py"]
     assert set(ops_mod.architecture_oversize_scan_map()) == {"web/routes/demo.py"}
@@ -598,26 +629,35 @@ def test_architecture_scan_wrappers_pass_context_and_original_paths(monkeypatch)
         "web/routes/demo.py"
     ]
 
-    assert ("silent", quality_paths, True) in calls
-    assert ("oversize", quality_paths, True) in calls
-    assert ("complexity", quality_paths, False, True) in calls
+    normalized_quality_paths = sorted(quality_paths)
+    assert ("scan_files_with_cache", normalized_quality_paths, ("silent",)) in calls
+    assert ("scan_files_with_cache", normalized_quality_paths, ()) in calls
+    assert ("scan_files_with_cache", normalized_quality_paths, ("complexity",)) in calls
     assert ("collect_globbed_files", list(shared_mod.REPOSITORY_BUNDLE_DRIFT_SCOPE_PATTERNS)) in calls
-    assert ("repository_bundle", drift_paths, True) in calls
+    assert ("scan_files_with_cache", drift_paths, ("repository",)) in calls
 
 
 def test_architecture_scan_wrapper_uses_fresh_context_per_call(monkeypatch) -> None:
-    contexts = []
+    calls = []
 
     monkeypatch.setattr(ops_mod, "collect_quality_rule_files", lambda: ["web/routes/demo.py"])
 
-    def _fake_scan_oversize(paths, context=None):
-        contexts.append(context)
-        return [{"path": list(paths)[0], "current_value": 1000, "limit": 900}]
+    def _fake_scan_files(paths, cache_path=None, force=False, context=None, fact_kinds=None):
+        del cache_path, force, context
+        calls.append((list(paths), tuple(fact_kinds or ())))
+        return [
+            _architecture_fact(
+                str(path),
+                line_count=shared_mod.FILE_SIZE_LIMIT + 1,
+            )
+            for path in paths
+        ]
 
-    monkeypatch.setattr(ops_mod, "scan_oversize_entries", _fake_scan_oversize)
+    monkeypatch.setattr(ops_mod, "scan_files_with_cache", _fake_scan_files)
 
     assert set(ops_mod.architecture_oversize_scan_map()) == {"web/routes/demo.py"}
     assert set(ops_mod.architecture_oversize_scan_map()) == {"web/routes/demo.py"}
-    assert len(contexts) == 2
-    assert all(isinstance(context, scan_mod.ScanContext) for context in contexts)
-    assert contexts[0] is not contexts[1]
+    assert calls == [
+        (["web/routes/demo.py"], ()),
+        (["web/routes/demo.py"], ()),
+    ]

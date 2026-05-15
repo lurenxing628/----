@@ -13,7 +13,7 @@ related_architecture: [codestable/architecture/ARCHITECTURE.md]
 
 ## 1. 当前状态确认
 
-这份 roadmap 现在只记录后续路线，不代表所有慢门禁都已经缓存。当前已经完成 NEXT-1 到 NEXT-7.5；`full_test_debt` 先支持整项成功复用，现在又补了安全的 nodeid 级增量和台账-only 路径；`startup_runtime_regressions` 和 `required_regressions` 已支持整组成功复用。当前 enabled long gate entry 是 `pytest_collect_all`、`full_test_debt`、`startup_runtime_regressions` 和 `required_regressions`。其它 ruff、pyright、architecture、debt ledger、quickref 仍保持 planned。
+这份 roadmap 现在只记录后续路线，不代表所有慢门禁都已经缓存。当前已经完成 NEXT-1 到 NEXT-8；`full_test_debt` 先支持整项成功复用，现在又补了安全的 nodeid 级增量和台账-only 路径；`startup_runtime_regressions` 和 `required_regressions` 已支持整组成功复用；NEXT-8 `architecture-scan-file-cache` 已完成文件级扫描事实缓存，但它只缓存单文件事实，不启用 `architecture_fitness` 整项成功复用。当前 enabled long gate entry 仍是 `pytest_collect_all`、`full_test_debt`、`startup_runtime_regressions` 和 `required_regressions`。其它 ruff、pyright、debt ledger、quickref 仍保持 planned。
 
 `pre-push-long-gate-cache` 是历史完成项：完成当时把本地 pre-push hook 接到了完整 clean gate + long gate cache。后续为了避免日常 push 每次都被完整 full-test-debt 拖住，pre-push 已改为运行 `scripts/run_daily_quality_gate.py`。当前最终完整门禁仍由 `scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache` 承担，也可以通过 `tools/git_hook_checks.py run-final-quality-gate` 手动触发；这不启用 NEXT-8 或后续 planned entry。
 
@@ -28,7 +28,7 @@ related_architecture: [codestable/architecture/ARCHITECTURE.md]
 | collect 输出 | collect-only 成功后可写 `evidence/QualityGate/collect_nodeids.json`。 |
 | receipt 字段 | 已有 `execution_mode`、`reused_from`、耗时字段、`timed_out`、`interrupted`、`partial_write`。 |
 | 缓存安全底线 | 已校验 entry、command、fingerprint、log、output、路径逃逸、损坏 JSON、cache/fingerprint schema、runner/tooling hash 和 repo identity；后续只能继续加固，不能放松。 |
-| 防提交保护 | `evidence/QualityGate/long_gate/`、`evidence/QualityGate/collect_nodeids.json` 和 `evidence/QualityGate/required_regressions.json` 已被 `.gitignore` 和本地 hook 保护；`evidence/QualityGate/startup_runtime_regressions.json` 已被 `.gitignore` 保护，本地 hook 单项拦截留给后续运行产物治理。 |
+| 防提交保护 | `evidence/QualityGate/long_gate/`、`evidence/QualityGate/collect_nodeids.json`、`evidence/QualityGate/required_regressions.json` 和 `evidence/QualityGate/architecture_scan_cache.json` 已被 `.gitignore` 和本地 hook 保护；`evidence/QualityGate/startup_runtime_regressions.json` 已被 `.gitignore` 保护，本地 hook 单项拦截留给后续运行产物治理。 |
 
 目前只是候选，不能说已经启用成功复用：
 
@@ -661,6 +661,8 @@ proof 字段：required 成功执行后写 `evidence/QualityGate/required_regres
 
 ### NEXT-8：architecture fitness 文件级扫描缓存
 
+状态：done。已完成 `2026-05-15-architecture-scan-file-cache`。
+
 目标：让 architecture fitness 的 AST 扫描按文件复用；跨文件规则仍每次重新聚合。
 
 需要修改：
@@ -671,11 +673,11 @@ proof 字段：required 成功执行后写 `evidence/QualityGate/required_regres
 - `tools/long_gate_manifest.py`
 - `tools/long_gate_fingerprint.py`
 
-建议新增：
+实际新增：
 
-- `tools/architecture_scan_cache.py` 或 `tools/quality_gate_scan_cache.py`
+- `tools/architecture_scan_cache.py`
 - `tests/test_architecture_scan_cache.py`
-- `codestable/features/2026-05-13-architecture-scan-file-cache/`
+- `codestable/features/2026-05-15-architecture-scan-file-cache/`
 
 需要拆出的函数：
 
@@ -684,6 +686,12 @@ scan_single_file_architecture(rel_path)
 scan_files_with_cache(paths, rule_context)
 aggregate_architecture_scan(file_results)
 ```
+
+实际落地名：
+
+- `scan_single_file_architecture_fact(rel_path, context=None, fact_kinds=None)`
+- `scan_files_with_cache(paths, cache_path=None, force=False, context=None, fact_kinds=None)`
+- `aggregate_architecture_scan(file_facts, mode="architecture", include_all_complexity=False)`
 
 输出：
 
@@ -705,6 +713,15 @@ aggregate_architecture_scan(file_results)
 - 文件新增/删除。
 - cache JSON 损坏。
 - 单文件 cache 缺字段。
+
+完成边界：
+
+- 只缓存单文件 AST/source 派生事实，不缓存最终 pass/fail。
+- `architecture_fitness` 仍是 planned long gate success cache entry，未加入 enabled 列表。
+- ledger allowlist、new/stale/mismatch、accepted risks、fixed 条目拒绝仍每次重新 aggregate 和比对。
+- `generated_at` 只作记录；缺失会判坏重扫，值变化不参与复用判断。
+- `evidence/QualityGate/architecture_scan_cache.json` 是运行产物，已被 `.gitignore` 和本地 hook 拦截。
+- 本次 `scripts/run_quality_gate.py --long-gate-cache-explain` 只用于确认 planned/enabled 决策，不是 clean proof。
 
 回滚方式：architecture fitness 继续全量扫描，不启用 file cache。
 
@@ -951,7 +968,7 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require
 10. `startup-runtime-regression-cache`：done，已完成 startup 整组复用。
 11. `required-regression-cache`：done，已完成 required 整组复用。
 12. `pre-push-long-gate-cache`：done，历史上曾让 pre-push 正式质量门禁接入已有 enabled long gate cache；当前 pre-push 已由后续日常快门禁替代，最终完整门禁仍可手动运行。
-13. `architecture-scan-file-cache`：planned，做 architecture 文件级扫描缓存。
+13. `architecture-scan-file-cache`：done，已完成 architecture 文件级扫描事实缓存；`architecture_fitness` 整项 success cache 仍未启用。
 14. `fast-static-precheck`：planned，做快速静态预检。
 15. `static-formal-cache`：planned，做 ruff/pyright 正式全量缓存。
 16. `debt-ledger-sync-cache`：planned，做债务台账同步缓存。
@@ -1033,3 +1050,4 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require
 - 2026-05-13：完成 `required-regression-cache`，只新增启用 `required_regressions`；required 命令和 target 从真实 command plan entry 动态定位，不复制 `QUALITY_GATE_REQUIRED_TESTS`；proof 写入 `evidence/QualityGate/required_regressions.json`，绑定 command/fingerprint/returncode/target/HEAD/长期日志路径和 hash；坏 proof、坏日志、required 测试、被测源码、模板、静态资源、Excel 模板、真实读取的文档、`.limcode` 脚本、门禁工具、pytest 配置、依赖或关键环境变化都会整组重跑；NEXT-8 和后续条目仍保持 planned。
 - 2026-05-13：完成 `pre-push-long-gate-cache`，只让本地 pre-push 正式质量门禁在保留 `--require-clean-worktree` 的同时传入 `--long-gate-cache`；不启用 NEXT-8 到 NEXT-13，不做 hook 级整体缓存，不做 pre-commit 快速化；收尾完整 clean-worktree quality gate 已通过。
 - 2026-05-15：同步 2026-05-14 之后的实际口径：pre-push 当前默认运行 `scripts/run_daily_quality_gate.py`，只作为日常快门禁；最终完整门禁和 CI 仍运行 `scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`。本次只是文档口径收口，不改变代码行为，不代表启用 NEXT-8 到 NEXT-13。
+- 2026-05-15：完成 `architecture-scan-file-cache`。新增 architecture 单文件扫描事实缓存，缓存只保存单文件 fact，不保存 architecture fitness pass/fail，也不启用 `architecture_fitness.success.json`；坏 JSON、缺字段、未知 fact_kinds、明细缺字段、file sha、scanner/schema/Python/radon 变化都会重扫；最终判断仍每次 aggregate。`--long-gate-cache-explain` 已确认 `architecture_fitness` 仍 planned，但 explain 不是 clean proof。

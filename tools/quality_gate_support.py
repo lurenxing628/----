@@ -38,6 +38,7 @@ from .quality_gate_operations import (
     architecture_request_service_direct_assembly_entries,
     architecture_silent_allowlist_map,
     architecture_silent_scan_entries,
+    architecture_validate_startup_samples,
     delete_risk,
     refresh_auto_fields,
     refresh_migrate_inline_facts,

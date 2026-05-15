@@ -406,7 +406,9 @@ def ui_mode_scope_tag(symbol: str, path: str = "web/ui_mode.py") -> str:
     return "render_bridge"
 
 
-def scan_silent_fallback_entries(paths: Sequence[str], context: Optional[ScanContext] = None) -> List[Dict[str, Any]]:
+def scan_silent_fallback_fact_entries(paths: Sequence[str], context: Optional[ScanContext] = None) -> List[Dict[str, Any]]:
+    """返回静默回退单文件扫描事实，不分配最终台账 id。"""
+
     scan_context = context or ScanContext()
     entries = []
     for rel_path in sorted(set([_normalized_scan_path(str(path)) for path in paths])):
@@ -444,6 +446,11 @@ def scan_silent_fallback_entries(paths: Sequence[str], context: Optional[ScanCon
             if rel_path in UI_MODE_STARTUP_GUARD_PATHS or rel_path in UI_MODE_RENDER_BRIDGE_PATHS:
                 entry["scope_tag"] = ui_mode_scope_tag(symbol, rel_path)
             entries.append(entry)
+    return sorted(entries, key=entry_sort_key)
+
+
+def scan_silent_fallback_entries(paths: Sequence[str], context: Optional[ScanContext] = None) -> List[Dict[str, Any]]:
+    entries = scan_silent_fallback_fact_entries(paths, context=context)
     _assign_silent_entry_ids(entries)
     return sorted(entries, key=entry_sort_key)
 
@@ -889,6 +896,7 @@ __all__ = [
     "classify_silent_fallback",
     "scan_complexity_entries",
     "scan_oversize_entries",
+    "scan_silent_fallback_fact_entries",
     "scan_silent_fallback_entries",
     "scan_request_service_direct_assembly_entries",
     "scan_repository_bundle_drift_entries",

@@ -99,6 +99,7 @@ GENERATED_CLEAN_WORKTREE_EXCLUDED_PATHS = [
     QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL.replace("\\", "/"),
     QUALITY_GATE_FULL_TEST_DEBT_SUMMARY_REL.replace("\\", "/"),
     QUALITY_GATE_FULL_TEST_DEBT_NODE_CACHE_REL.replace("\\", "/"),
+    "evidence/QualityGate/architecture_scan_cache.json",
     QUALITY_GATE_STARTUP_RUNTIME_REGRESSIONS_REL.replace("\\", "/"),
     QUALITY_GATE_REQUIRED_REGRESSIONS_REL.replace("\\", "/"),
 ]

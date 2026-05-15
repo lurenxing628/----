@@ -28,10 +28,10 @@ from tools.quality_gate_support import (
     architecture_request_service_direct_assembly_entries,
     architecture_silent_allowlist_map,
     architecture_silent_scan_entries,
+    architecture_validate_startup_samples,
     load_ledger,
     scan_complexity_entries,
     scan_oversize_entries,
-    validate_startup_samples,
 )
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -543,7 +543,7 @@ def test_no_silent_exception_swallow():
 def test_startup_silent_fallback_samples():
     """启动链样本点必须持续命中既定分类与 scope。"""
 
-    validate_startup_samples()
+    architecture_validate_startup_samples()
 
 
 def test_request_service_target_files_no_direct_assembly():

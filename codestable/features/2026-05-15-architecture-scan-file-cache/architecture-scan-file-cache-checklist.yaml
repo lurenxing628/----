@@ -1,0 +1,54 @@
+feature: 2026-05-15-architecture-scan-file-cache
+created: 2026-05-15
+
+steps:
+  - action: "设计与状态：创建 NEXT-8 feature 文档，并把 roadmap item 绑定到本 feature"
+    exit_signal: "feature 目录、design、checklist 存在，items.yaml 中 architecture-scan-file-cache 为 in-progress"
+    status: done
+  - action: "cache 基础：新增 architecture scan fact cache schema、metadata、单文件 fact 和 aggregate"
+    exit_signal: "cache 只存单文件 fact；metadata 覆盖 scanner/schema/Python/radon；generated_at 不参与复用判断"
+    status: done
+  - action: "scanner 拆分：从 quality_gate_scan.py 拆出 silent fallback 无 ID fact 提取，旧 public 行为保持"
+    exit_signal: "scan_silent_fallback_entries 仍返回带 id 的稳定排序结果；fact payload 不含最终 id"
+    status: done
+  - action: "operations 接入：五个 architecture wrapper 从 cached facts aggregate，startup sample 走 cached entries"
+    exit_signal: "ledger、allowlist、accepted risks、fixed、新增/陈旧/不一致判断仍每次重新执行"
+    status: done
+  - action: "产物保护：忽略并拦截 architecture_scan_cache.json"
+    exit_signal: ".gitignore 和 git_hook_checks 覆盖 evidence/QualityGate/architecture_scan_cache.json"
+    status: done
+  - action: "测试与验证：补齐 cache 合同测试、fitness/long gate/hook 回归、ruff、pyright、yaml 和 diff check"
+    exit_signal: "最低验证命令通过；architecture_fitness 仍 planned 且未写 success cache"
+    status: done
+  - action: "验收回写：写 acceptance，并把 roadmap item 标 done"
+    exit_signal: "acceptance 记录对抗审查和验证结果，items.yaml 中 NEXT-8 为 done"
+    status: done
+
+checks:
+  - item: "只缓存单文件 AST/source 派生事实，不缓存最终 pass/fail"
+    source: 范围守护
+    status: passed
+  - item: "不写 architecture_fitness.success.json，不把 architecture_fitness 加进 enabled success cache"
+    source: long gate 守护
+    status: passed
+  - item: "文件新增、删除、内容变化都会让 aggregate 看到正确结果"
+    source: 文件集合
+    status: passed
+  - item: "cache 损坏、缺字段、file sha mismatch、scanner/schema/Python/radon 变化都会重扫"
+    source: 失效口径
+    status: passed
+  - item: "ledger allowlist 变化不重扫 AST，但每次重新 aggregate 和比对"
+    source: 台账边界
+    status: passed
+  - item: "silent fallback ID 仍由 aggregate 统一分配并保持稳定"
+    source: 身份稳定
+    status: passed
+  - item: "startup sample 校验使用 cached architecture silent entries，不绕开 NEXT-8 cache"
+    source: 样本接入
+    status: passed
+  - item: "architecture scan cache 运行产物被 ignore 和 hook 拦截"
+    source: 提交边界
+    status: passed
+  - item: "daily fast gate 和 explain 没被写成 clean proof"
+    source: 文档口径
+    status: passed

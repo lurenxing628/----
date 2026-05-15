@@ -1,6 +1,6 @@
 roadmap: quality-gate-long-cache
 created: 2026-05-12
-last_reviewed: 2026-05-13
+last_reviewed: 2026-05-15
 
 items:
   - slug: long-gate-manifest-probe
@@ -260,14 +260,14 @@ items:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python codestable/tools/validate-yaml.py --file codestable/features/2026-05-13-pre-push-long-gate-cache/pre-push-long-gate-cache-checklist.yaml
       - git diff --check
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
-    notes: "已完成的历史阶段：当时只给 pre-push 正式质量门禁增加 --long-gate-cache，保留 --require-clean-worktree，不加 force/explain，不启用 architecture、ruff、pyright、debt ledger 或 quickref。2026-05-14 后续修复已把 pre-push 默认入口改为 scripts/run_daily_quality_gate.py；daily fast gate 不是 clean proof，最终完整门禁仍需运行 scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache。NEXT-8 到 NEXT-13 仍保持 planned / feature: null。"
+    notes: "已完成的历史阶段：当时只给 pre-push 正式质量门禁增加 --long-gate-cache，保留 --require-clean-worktree，不加 force/explain，不启用 architecture、ruff、pyright、debt ledger 或 quickref。2026-05-14 后续修复已把 pre-push 默认入口改为 scripts/run_daily_quality_gate.py；daily fast gate 不是 clean proof，最终完整门禁仍需运行 scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache。当前 NEXT-8 已进入 feature 实现；NEXT-9 到 NEXT-13 仍保持 planned / feature: null，architecture_fitness 这个 long gate success cache entry 仍未启用。"
 
   - slug: architecture-scan-file-cache
     title: NEXT-8 架构体检文件级扫描缓存
     description: "拆出 scan_single_file_architecture、scan_files_with_cache、aggregate_architecture_scan；未变化文件复用 AST 派生事实，跨文件规则每次重新聚合。"
     depends_on: [pre-push-long-gate-cache]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-15-architecture-scan-file-cache
     minimal_loop: false
     primary_paths:
       - tools/quality_gate_scan.py
@@ -277,7 +277,7 @@ items:
       - scripts/run_quality_gate.py
     exit_checks:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_architecture_scan_cache.py tests/test_architecture_fitness.py
-    notes: "ledger allowlist 变化不重扫 AST，但 aggregate 必须重算；scanner 代码或 scan schema 变化全部重扫；单文件 cache 只保存可按文件得到的事实，不保存跨文件最终结论。"
+    notes: "已完成 NEXT-8 文件级扫描事实缓存：ledger allowlist 变化不重扫 AST，但 aggregate、allowlist/new/stale/mismatch/fixed/accepted_risks 判断每次重算；scanner 代码、scan schema、Python、radon、文件 sha、坏 JSON、缺字段、未知 fact_kinds、明细缺字段都会重扫；单文件 cache 只保存可按文件得到的事实，不保存跨文件最终结论，也不启用 architecture_fitness success cache。"
 
   - slug: fast-static-precheck
     title: NEXT-9 快速静态预检

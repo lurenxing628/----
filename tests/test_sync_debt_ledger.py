@@ -10,6 +10,72 @@ from pathlib import Path
 import pytest
 
 
+def _architecture_scan_fact(path, *, line_count=0, silent_entries=None, complexity_entries=None):
+    from tools import architecture_scan_cache
+
+    return {
+        "schema_version": architecture_scan_cache.ARCHITECTURE_SCAN_FACT_SCHEMA_VERSION,
+        "path": path,
+        "fact_kinds": ["silent", "complexity"],
+        "line_count": line_count,
+        "silent_fallback_handlers_without_global_id": [
+            {key: value for key, value in dict(entry).items() if key != "id"}
+            for entry in list(silent_entries or [])
+            if str(entry.get("path")) == path
+        ],
+        "complexity_blocks_all": [
+            dict(entry)
+            for entry in list(complexity_entries or [])
+            if str(entry.get("path")) == path
+        ],
+        "request_service_direct_assembly_entries": [],
+        "repository_bundle_drift_entries": [],
+    }
+
+
+def _patch_architecture_scan_cache(
+    monkeypatch,
+    target_globals,
+    *,
+    silent_entries=None,
+    complexity_entries=None,
+    line_counts=None,
+    startup_summary=None,
+):
+    lines = {str(path): int(value) for path, value in dict(line_counts or {}).items()}
+    complexity_rows = [dict(entry) for entry in list(complexity_entries or [])]
+    silent_rows = [dict(entry) for entry in list(silent_entries or [])]
+
+    def fake_scan_files(paths, cache_path=None, force=False, context=None, fact_kinds=None):
+        del cache_path, force, context, fact_kinds
+        return [
+            _architecture_scan_fact(
+                str(path),
+                line_count=lines.get(str(path), 0),
+                silent_entries=silent_rows,
+                complexity_entries=complexity_rows,
+            )
+            for path in paths
+        ]
+
+    monkeypatch.setitem(target_globals, "scan_files_with_cache", fake_scan_files)
+    if startup_summary is not None:
+        monkeypatch.setitem(target_globals, "_direct_validate_startup_samples", lambda _entries=None: startup_summary)
+
+
+def _computed_silent_id(entry):
+    from tools import architecture_scan_cache
+
+    return architecture_scan_cache.aggregate_architecture_scan(
+        [
+            _architecture_scan_fact(
+                str(entry.get("path")),
+                silent_entries=[entry],
+            )
+        ]
+    )["silent_fallback_entries"][0]["id"]
+
+
 def _repo_root() -> str:
     return str(Path(__file__).resolve().parents[1])
 
@@ -364,7 +430,7 @@ def test_refresh_auto_fields_rejects_silent_entry_when_except_ordinal_drifted(mo
     }
 
     refresh_globals = module.refresh_auto_fields.__globals__
-    monkeypatch.setitem(refresh_globals, "scan_silent_fallback_entries", lambda _paths: [scan_entry])
+    _patch_architecture_scan_cache(monkeypatch, refresh_globals, silent_entries=[scan_entry])
     monkeypatch.setitem(
         refresh_globals,
         "build_silent_entry",
@@ -432,21 +498,20 @@ def test_refresh_auto_fields_realigns_silent_entry_when_handler_fingerprint_chan
         "fallback_kind": "observable_degrade",
     }
     refresh_globals = module.refresh_auto_fields.__globals__
-    monkeypatch.setitem(refresh_globals, "scan_silent_fallback_entries", lambda _paths: [scan_entry])
+    _patch_architecture_scan_cache(monkeypatch, refresh_globals, silent_entries=[scan_entry])
     monkeypatch.setitem(refresh_globals, "finalize_ledger_update", lambda current: current)
 
     refreshed = module.refresh_auto_fields(ledger)
     entry = refreshed["silent_fallback"]["entries"][0]
+    expected_id = _computed_silent_id(scan_entry)
 
-    assert entry["id"] == "fallback:web-bootstrap-launcher-contracts-read_runtime_contract-new"
+    assert entry["id"] == expected_id
     assert entry["handler_fingerprint"] == "sha1:new-fingerprint"
     assert entry["fallback_kind"] == "observable_degrade"
     assert entry["owner"] == "SP03"
     assert entry["realigned_from"] == "fallback:web-bootstrap-launcher-contracts-read_runtime_contract-old"
     assert "kind silent_default_fallback->observable_degrade" in entry["realignment_reason"]
-    assert refreshed["accepted_risks"][0]["entry_ids"] == [
-        "fallback:web-bootstrap-launcher-contracts-read_runtime_contract-new"
-    ]
+    assert refreshed["accepted_risks"][0]["entry_ids"] == [expected_id]
 
 
 def test_refresh_auto_fields_rejects_silent_entries_when_earlier_handler_left_scan(monkeypatch):
@@ -532,7 +597,7 @@ def test_refresh_auto_fields_rejects_silent_entries_when_earlier_handler_left_sc
     ]
 
     refresh_globals = module.refresh_auto_fields.__globals__
-    monkeypatch.setitem(refresh_globals, "scan_silent_fallback_entries", lambda _paths: scan_entries)
+    _patch_architecture_scan_cache(monkeypatch, refresh_globals, silent_entries=scan_entries)
     monkeypatch.setitem(refresh_globals, "finalize_ledger_update", lambda current: current)
 
     with pytest.raises(module.QualityGateError, match="except ordinal changed|handler_context_hash changed"):
@@ -591,15 +656,16 @@ def test_refresh_auto_fields_realigns_silent_entries_when_symbol_was_split_for_s
     }
 
     refresh_globals = module.refresh_auto_fields.__globals__
-    monkeypatch.setitem(refresh_globals, "scan_silent_fallback_entries", lambda _paths: [scan_entry])
+    _patch_architecture_scan_cache(monkeypatch, refresh_globals, silent_entries=[scan_entry])
     monkeypatch.setitem(refresh_globals, "finalize_ledger_update", lambda current: current)
 
     refreshed = module.refresh_auto_fields(ledger)
+    expected_id = _computed_silent_id(scan_entry)
 
-    assert refreshed["silent_fallback"]["entries"][0]["id"] == "fallback:pid-state-new"
+    assert refreshed["silent_fallback"]["entries"][0]["id"] == expected_id
     assert refreshed["silent_fallback"]["entries"][0]["symbol"] == "_pid_state"
     assert refreshed["silent_fallback"]["entries"][0]["realigned_from"] == "fallback:pid-exists-old"
-    assert refreshed["accepted_risks"][0]["entry_ids"] == ["fallback:pid-state-new"]
+    assert refreshed["accepted_risks"][0]["entry_ids"] == [expected_id]
 
 
 def test_refresh_auto_fields_rejects_silent_realign_when_context_hash_changed(monkeypatch):
@@ -644,7 +710,7 @@ def test_refresh_auto_fields_rejects_silent_realign_when_context_hash_changed(mo
     }
 
     refresh_globals = module.refresh_auto_fields.__globals__
-    monkeypatch.setitem(refresh_globals, "scan_silent_fallback_entries", lambda _paths: [scan_entry])
+    _patch_architecture_scan_cache(monkeypatch, refresh_globals, silent_entries=[scan_entry])
     monkeypatch.setitem(refresh_globals, "finalize_ledger_update", lambda current: current)
 
     with pytest.raises(module.QualityGateError, match="handler_context_hash changed"):
@@ -703,7 +769,7 @@ def test_refresh_auto_fields_rejects_same_id_when_context_hash_changed(monkeypat
     }
 
     refresh_globals = module.refresh_auto_fields.__globals__
-    monkeypatch.setitem(refresh_globals, "scan_silent_fallback_entries", lambda _paths: [scan_entry])
+    _patch_architecture_scan_cache(monkeypatch, refresh_globals, silent_entries=[scan_entry])
     monkeypatch.setitem(refresh_globals, "finalize_ledger_update", lambda current: current)
 
     with pytest.raises(module.QualityGateError, match="handler_context_hash changed"):
@@ -752,7 +818,7 @@ def test_refresh_auto_fields_rejects_silent_kind_regression(monkeypatch):
     }
 
     refresh_globals = module.refresh_auto_fields.__globals__
-    monkeypatch.setitem(refresh_globals, "scan_silent_fallback_entries", lambda _paths: [scan_entry])
+    _patch_architecture_scan_cache(monkeypatch, refresh_globals, silent_entries=[scan_entry])
     monkeypatch.setitem(refresh_globals, "finalize_ledger_update", lambda current: current)
 
     with pytest.raises(module.QualityGateError, match="fallback kind transition"):
@@ -801,13 +867,13 @@ def test_refresh_auto_fields_allows_legacy_non_startup_cleanup_reclassify(monkey
     }
 
     refresh_globals = module.refresh_auto_fields.__globals__
-    monkeypatch.setitem(refresh_globals, "scan_silent_fallback_entries", lambda _paths: [scan_entry])
+    _patch_architecture_scan_cache(monkeypatch, refresh_globals, silent_entries=[scan_entry])
     monkeypatch.setitem(refresh_globals, "finalize_ledger_update", lambda current: current)
 
     refreshed = module.refresh_auto_fields(ledger)
 
     entry = refreshed["silent_fallback"]["entries"][0]
-    assert entry["id"] == "fallback:legacy-backup-cleanup-new"
+    assert entry["id"] == _computed_silent_id(scan_entry)
     assert entry["realigned_from"] == "fallback:legacy-backup-cleanup"
     assert "legacy architecture silent entry reclassified" in entry["realignment_reason"]
 
@@ -854,7 +920,7 @@ def test_refresh_auto_fields_rejects_startup_cleanup_reclassify(monkeypatch):
     }
 
     refresh_globals = module.refresh_auto_fields.__globals__
-    monkeypatch.setitem(refresh_globals, "scan_silent_fallback_entries", lambda _paths: [scan_entry])
+    _patch_architecture_scan_cache(monkeypatch, refresh_globals, silent_entries=[scan_entry])
     monkeypatch.setitem(refresh_globals, "finalize_ledger_update", lambda current: current)
 
     with pytest.raises(module.QualityGateError, match="fallback kind transition"):
@@ -931,13 +997,14 @@ def test_refresh_auto_fields_prunes_resolved_silent_entry_and_risk_reference(mon
     }
 
     refresh_globals = module.refresh_auto_fields.__globals__
-    monkeypatch.setitem(refresh_globals, "scan_silent_fallback_entries", lambda _paths: [scan_entry])
+    _patch_architecture_scan_cache(monkeypatch, refresh_globals, silent_entries=[scan_entry])
     monkeypatch.setitem(refresh_globals, "finalize_ledger_update", lambda current: current)
 
     refreshed = module.refresh_auto_fields(ledger)
+    expected_id = _computed_silent_id(scan_entry)
 
-    assert [entry["id"] for entry in refreshed["silent_fallback"]["entries"]] == ["fallback:still-open-new"]
-    assert refreshed["accepted_risks"][0]["entry_ids"] == ["fallback:still-open-new"]
+    assert [entry["id"] for entry in refreshed["silent_fallback"]["entries"]] == [expected_id]
+    assert refreshed["accepted_risks"][0]["entry_ids"] == [expected_id]
 
 
 def test_refresh_auto_fields_prunes_fixed_silent_entry_when_scan_no_longer_matches(monkeypatch):
@@ -971,7 +1038,7 @@ def test_refresh_auto_fields_prunes_fixed_silent_entry_when_scan_no_longer_match
         "accepted_risks": [],
     }
     refresh_globals = module.refresh_auto_fields.__globals__
-    monkeypatch.setitem(refresh_globals, "scan_silent_fallback_entries", lambda _paths: [])
+    _patch_architecture_scan_cache(monkeypatch, refresh_globals, silent_entries=[])
     monkeypatch.setitem(refresh_globals, "finalize_ledger_update", lambda current: current)
 
     refreshed = module.refresh_auto_fields(ledger)
@@ -1023,7 +1090,7 @@ def test_refresh_auto_fields_rejects_fixed_silent_entry_still_in_scan(monkeypatc
     }
 
     refresh_globals = module.refresh_auto_fields.__globals__
-    monkeypatch.setitem(refresh_globals, "scan_silent_fallback_entries", lambda _paths: [scan_entry])
+    _patch_architecture_scan_cache(monkeypatch, refresh_globals, silent_entries=[scan_entry])
 
     with pytest.raises(module.QualityGateError, match="不能标记为 fixed"):
         module.refresh_auto_fields(ledger)
@@ -1075,8 +1142,12 @@ def test_check_rejects_fixed_silent_entry_still_in_scan(monkeypatch):
 
     check_globals = module.validate_ledger_against_current_scan.__globals__
     monkeypatch.setitem(check_globals, "validate_ledger", lambda _ledger: None)
-    monkeypatch.setitem(check_globals, "validate_startup_samples", lambda: {"matched": 0})
-    monkeypatch.setitem(check_globals, "scan_silent_fallback_entries", lambda _paths: [scan_entry])
+    _patch_architecture_scan_cache(
+        monkeypatch,
+        check_globals,
+        silent_entries=[scan_entry],
+        startup_summary={"matched": 0},
+    )
 
     with pytest.raises(module.QualityGateError, match="不能标记为 fixed"):
         module.validate_ledger_against_current_scan(ledger)
@@ -1127,11 +1198,13 @@ def test_scan_startup_baseline_rejects_fixed_silent_entry_still_in_scan(monkeypa
     }
 
     refresh_globals = module.refresh_scan_startup_baseline.__globals__
-    monkeypatch.setitem(refresh_globals, "validate_startup_samples", lambda: {"matched": 0})
     monkeypatch.setitem(refresh_globals, "collect_startup_scope_files", lambda: ["web/bootstrap/launcher_stop.py"])
-    monkeypatch.setitem(refresh_globals, "scan_oversize_entries", lambda _paths: [])
-    monkeypatch.setitem(refresh_globals, "scan_complexity_entries", lambda _paths: [])
-    monkeypatch.setitem(refresh_globals, "scan_silent_fallback_entries", lambda _paths: [scan_entry])
+    _patch_architecture_scan_cache(
+        monkeypatch,
+        refresh_globals,
+        silent_entries=[scan_entry],
+        startup_summary={"matched": 0},
+    )
 
     with pytest.raises(module.QualityGateError, match="不能标记为 fixed"):
         module.refresh_scan_startup_baseline(ledger)
@@ -1183,8 +1256,12 @@ def test_validate_ledger_rejects_silent_fallback_line_drift(monkeypatch):
 
     check_globals = module.validate_ledger_against_current_scan.__globals__
     monkeypatch.setitem(check_globals, "validate_ledger", lambda _ledger: None)
-    monkeypatch.setitem(check_globals, "validate_startup_samples", lambda: {"matched": 0})
-    monkeypatch.setitem(check_globals, "scan_silent_fallback_entries", lambda _paths: [scan_entry])
+    _patch_architecture_scan_cache(
+        monkeypatch,
+        check_globals,
+        silent_entries=[scan_entry],
+        startup_summary={"matched": 0},
+    )
 
     with pytest.raises(module.QualityGateError, match="line_start"):
         module.validate_ledger_against_current_scan(ledger)
@@ -1245,7 +1322,7 @@ def test_migrate_inline_facts_rejects_fixed_silent_entry_still_in_scan(monkeypat
             }
         },
     )
-    monkeypatch.setitem(refresh_globals, "scan_silent_fallback_entries", lambda _paths: [scan_entry])
+    _patch_architecture_scan_cache(monkeypatch, refresh_globals, silent_entries=[scan_entry])
 
     with pytest.raises(module.QualityGateError, match="不能标记为 fixed"):
         module.refresh_migrate_inline_facts(ledger)
@@ -1274,21 +1351,20 @@ def test_refresh_auto_fields_prunes_resolved_complexity_entry(monkeypatch):
         "accepted_risks": [],
     }
 
-    def fake_complexity_scan_map(_paths, include_all=False):
-        if include_all:
-            return {
-                "web/bootstrap/plugins.py:_status_degradation_collector": {
-                    "path": "web/bootstrap/plugins.py",
-                    "symbol": "_status_degradation_collector",
-                    "current_value": 12,
-                    "threshold": 15,
-                }
-            }
-        return {}
-
     refresh_globals = module.refresh_auto_fields.__globals__
-    monkeypatch.setitem(refresh_globals, "complexity_scan_map", fake_complexity_scan_map)
-    monkeypatch.setitem(refresh_globals, "scan_silent_fallback_entries", lambda _paths: [])
+    _patch_architecture_scan_cache(
+        monkeypatch,
+        refresh_globals,
+        complexity_entries=[
+            {
+                "path": "web/bootstrap/plugins.py",
+                "symbol": "_status_degradation_collector",
+                "current_value": 12,
+                "threshold": 15,
+            }
+        ],
+        silent_entries=[],
+    )
     monkeypatch.setitem(refresh_globals, "finalize_ledger_update", lambda current: current)
 
     refreshed = module.refresh_auto_fields(ledger)
@@ -1318,7 +1394,7 @@ def test_refresh_auto_fields_rejects_fixed_oversize_entry_still_over_limit(monke
         "accepted_risks": [],
     }
     refresh_globals = module.refresh_auto_fields.__globals__
-    monkeypatch.setitem(refresh_globals, "read_text_file", lambda _path: "\n".join(["x"] * 501))
+    _patch_architecture_scan_cache(monkeypatch, refresh_globals, line_counts={"sample_large.py": 501})
 
     with pytest.raises(module.QualityGateError, match="不能标记为 fixed"):
         module.refresh_auto_fields(ledger)
@@ -1348,11 +1424,13 @@ def test_check_rejects_fixed_complexity_entry_still_over_threshold(monkeypatch):
 
     check_globals = module.validate_ledger_against_current_scan.__globals__
     monkeypatch.setitem(check_globals, "validate_ledger", lambda _ledger: None)
-    monkeypatch.setitem(check_globals, "validate_startup_samples", lambda: {"matched": 0})
-    monkeypatch.setitem(
+    _patch_architecture_scan_cache(
+        monkeypatch,
         check_globals,
-        "complexity_scan_map",
-        lambda _paths: {"sample.py:too_complex": {"path": "sample.py", "symbol": "too_complex", "current_value": 16}},
+        complexity_entries=[
+            {"path": "sample.py", "symbol": "too_complex", "current_value": 16},
+        ],
+        startup_summary={"matched": 0},
     )
 
     with pytest.raises(module.QualityGateError, match="不能标记为 fixed"):
@@ -1381,7 +1459,7 @@ def test_set_entry_fields_rejects_fixed_oversize_entry_still_over_limit(monkeypa
         "accepted_risks": [],
     }
     set_globals = module.set_entry_fields.__globals__
-    monkeypatch.setitem(set_globals, "read_text_file", lambda _path: "\n".join(["x"] * 501))
+    _patch_architecture_scan_cache(monkeypatch, set_globals, line_counts={"sample_large.py": 501})
 
     with pytest.raises(module.QualityGateError, match="不能标记为 fixed"):
         module.set_entry_fields(ledger, "oversize:sample-large", {"status": "fixed"})
@@ -1431,7 +1509,7 @@ def test_set_entry_fields_rejects_fixed_silent_entry_still_in_scan(monkeypatch):
         "scope_tag": "startup_guard",
     }
     set_globals = module.set_entry_fields.__globals__
-    monkeypatch.setitem(set_globals, "scan_silent_fallback_entries", lambda _paths: [scan_entry])
+    _patch_architecture_scan_cache(monkeypatch, set_globals, silent_entries=[scan_entry])
 
     with pytest.raises(module.QualityGateError, match="不能标记为 fixed"):
         module.set_entry_fields(ledger, "fallback:fixed-startup", {"status": "fixed"})
@@ -1477,7 +1555,7 @@ def test_refresh_auto_fields_rejects_auto_emptying_accepted_risk(monkeypatch):
         ],
     }
     refresh_globals = module.refresh_auto_fields.__globals__
-    monkeypatch.setitem(refresh_globals, "scan_silent_fallback_entries", lambda _paths: [])
+    _patch_architecture_scan_cache(monkeypatch, refresh_globals, silent_entries=[])
     monkeypatch.setitem(refresh_globals, "finalize_ledger_update", lambda current: current)
 
     with pytest.raises(module.QualityGateError, match="显式 delete-risk"):
@@ -1525,11 +1603,13 @@ def test_scan_startup_baseline_rejects_auto_emptying_accepted_risk(monkeypatch):
         ],
     }
     refresh_globals = module.refresh_scan_startup_baseline.__globals__
-    monkeypatch.setitem(refresh_globals, "validate_startup_samples", lambda: {"matched": 0})
     monkeypatch.setitem(refresh_globals, "collect_startup_scope_files", lambda: ["web/bootstrap/launcher_stop.py"])
-    monkeypatch.setitem(refresh_globals, "scan_oversize_entries", lambda _paths: [])
-    monkeypatch.setitem(refresh_globals, "scan_complexity_entries", lambda _paths: [])
-    monkeypatch.setitem(refresh_globals, "scan_silent_fallback_entries", lambda _paths: [])
+    _patch_architecture_scan_cache(
+        monkeypatch,
+        refresh_globals,
+        silent_entries=[],
+        startup_summary={"matched": 0},
+    )
 
     with pytest.raises(module.QualityGateError, match="显式 delete-risk"):
         module.refresh_scan_startup_baseline(ledger)

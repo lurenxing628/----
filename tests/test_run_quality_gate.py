@@ -302,6 +302,7 @@ def test_main_runs_guard_preflight_before_static_and_startup_checks(monkeypatch,
     assert "python -m pyright -p pyrightconfig.gate.json" in displays
     assert tool_pyright_display in displays
     assert "scripts/run_daily_quality_gate.py" in module.QUALITY_GATE_TOOL_PATHS
+    assert "tools/architecture_scan_cache.py" in module.QUALITY_GATE_TOOL_PATHS
     assert "tools/quality_gate_entries.py" in module.QUALITY_GATE_TOOL_PATHS
     assert "tools/quality_gate_ledger.py" in module.QUALITY_GATE_TOOL_PATHS
     assert "tools/quality_gate_scan.py" in module.QUALITY_GATE_TOOL_PATHS
@@ -806,6 +807,7 @@ def test_main_rebuilds_ignored_receipts_without_dirtying_clean_worktree(monkeypa
         "evidence/QualityGate/current_full_test_debt.json",
         "evidence/QualityGate/full_test_debt_summary.json",
         "evidence/QualityGate/full_test_debt_node_cache.json",
+        "evidence/QualityGate/architecture_scan_cache.json",
         "evidence/QualityGate/startup_runtime_regressions.json",
         "evidence/QualityGate/required_regressions.json",
     ]

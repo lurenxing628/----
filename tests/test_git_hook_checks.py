@@ -125,6 +125,7 @@ def test_blocked_paths_include_long_gate_runtime_artifacts() -> None:
         [
             "evidence/QualityGate/long_gate/results/pytest_collect_all.success.json",
             "evidence/QualityGate/collect_nodeids.json",
+            "evidence/QualityGate/architecture_scan_cache.json",
             "evidence/QualityGate/required_regressions.json",
         ]
     ) == [
@@ -135,6 +136,10 @@ def test_blocked_paths_include_long_gate_runtime_artifacts() -> None:
         (
             "evidence/QualityGate/collect_nodeids.json",
             "pytest collect nodeid 快照是运行产物，应由当前门禁重新生成",
+        ),
+        (
+            "evidence/QualityGate/architecture_scan_cache.json",
+            "architecture scan 文件级缓存是运行产物，应由当前门禁重新生成",
         ),
         (
             "evidence/QualityGate/required_regressions.json",

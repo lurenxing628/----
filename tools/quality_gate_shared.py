@@ -88,6 +88,7 @@ QUALITY_GATE_TOOL_PATHS = [
     "tools/git_hook_checks.py",
     "tools/check_full_test_debt.py",
     "tools/collect_full_test_debt.py",
+    "tools/architecture_scan_cache.py",
     "tools/long_gate_full_test_debt.py",
     "tools/long_gate_cache.py",
     "tools/long_gate_collect.py",

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, cast
 
+from .architecture_scan_cache import aggregate_architecture_scan, scan_files_with_cache
 from .quality_gate_entries import (
     build_complexity_entry,
     build_default_note,
@@ -19,14 +20,7 @@ from .quality_gate_ledger import (
     validate_ledger,
 )
 from .quality_gate_scan import (
-    ScanContext,
-    complexity_scan_map,
-    scan_complexity_entries,
-    scan_oversize_entries,
-    scan_repository_bundle_drift_entries,
-    scan_request_service_direct_assembly_entries,
-    scan_silent_fallback_entries,
-    validate_startup_samples,
+    validate_startup_samples as _direct_validate_startup_samples,
 )
 from .quality_gate_shared import (
     COMPLEXITY_THRESHOLD,
@@ -43,7 +37,6 @@ from .quality_gate_shared import (
     collect_startup_scope_files,
     is_startup_scope_path,
     now_shanghai_iso,
-    read_text_file,
     slugify,
 )
 
@@ -89,15 +82,19 @@ def refresh_migrate_inline_facts(ledger: Optional[Dict[str, Any]] = None) -> Dic
     complexity_existing = cast(List[Dict[str, Any]], ledger.get("complexity_allowlist") or [])
     silent_existing = cast(Dict[str, Any], ledger.get("silent_fallback") or {}).get("entries") or []
 
+    line_counts = _cached_file_line_counts(sorted(set(str(item) for item in oversize_paths)))
     new_oversize_entries = []
     for path in sorted(set([str(item) for item in oversize_paths])):
-        current_value = len(read_text_file(path).splitlines())
+        current_value = line_counts[path]
         existing = find_existing_by_id(oversize_existing, f"oversize:{slugify(path)}")
         if existing is not None:
             _reject_fixed_oversize_entry_if_current(existing, current_value)
         new_oversize_entries.append(build_oversize_entry(path, current_value, existing=existing))
 
-    complexity_scan = complexity_scan_map(sorted({str(item).split(":", 1)[0] for item in complexity_keys}), include_all=True)
+    complexity_scan = _cached_complexity_scan_map(
+        sorted({str(item).split(":", 1)[0] for item in complexity_keys}),
+        include_all=True,
+    )
     new_complexity_entries = []
     for key in sorted(set([str(item) for item in complexity_keys])):
         if key not in complexity_scan:
@@ -116,7 +113,7 @@ def refresh_migrate_inline_facts(ledger: Optional[Dict[str, Any]] = None) -> Dic
         )
 
     silent_scan_paths = sorted({str(key).split(":", 1)[0] for key in silent_counter})
-    silent_scan_entries = scan_silent_fallback_entries(silent_scan_paths)
+    silent_scan_entries = _cached_silent_scan_entries(silent_scan_paths)
     _reject_fixed_silent_entries_still_in_scan(silent_existing, silent_scan_entries)
     new_silent_entries = []
     for key, expected_count in sorted(silent_counter.items()):
@@ -162,15 +159,17 @@ def refresh_migrate_inline_facts(ledger: Optional[Dict[str, Any]] = None) -> Dic
 def refresh_scan_startup_baseline(ledger: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     if ledger is None:
         ledger = load_ledger(required=False)
-    validate_startup_samples()
     startup_files = collect_startup_scope_files()
     oversize_existing = cast(List[Dict[str, Any]], ledger.get("oversize_allowlist") or [])
     complexity_existing = cast(List[Dict[str, Any]], ledger.get("complexity_allowlist") or [])
     silent_existing = cast(Dict[str, Any], ledger.get("silent_fallback") or {}).get("entries") or []
 
     startup_path_set = set(startup_files)
+    startup_silent_scan_entries = _cached_silent_scan_entries(startup_files)
+    _validate_startup_samples_from_entries(startup_silent_scan_entries)
+
     startup_oversize = []
-    for item in scan_oversize_entries(startup_files):
+    for item in _cached_oversize_entries(startup_files):
         existing = find_existing_by_id(oversize_existing, "oversize:{}".format(slugify(item["path"])))
         if existing is not None:
             _reject_fixed_oversize_entry_if_current(existing, int(item["current_value"]))
@@ -179,7 +178,7 @@ def refresh_scan_startup_baseline(ledger: Optional[Dict[str, Any]] = None) -> Di
         startup_oversize.append(entry)
 
     startup_complexity = []
-    for item in scan_complexity_entries(startup_files):
+    for item in _cached_complexity_entries(startup_files):
         existing = find_existing_by_id(
             complexity_existing,
             "complexity:{}-{}".format(slugify(item["path"]), slugify(item["symbol"])),
@@ -190,7 +189,6 @@ def refresh_scan_startup_baseline(ledger: Optional[Dict[str, Any]] = None) -> Di
         entry.setdefault("notes", "启动链基线冻结，后续治理批次再处理")
         startup_complexity.append(entry)
 
-    startup_silent_scan_entries = scan_silent_fallback_entries(startup_files)
     _reject_fixed_silent_entries_still_in_scan(silent_existing, startup_silent_scan_entries)
     startup_silent = []
     for item in startup_silent_scan_entries:
@@ -417,14 +415,20 @@ def _reject_fixed_complexity_entry_if_current(entry: Dict[str, Any], current_val
 
 
 def _reject_fixed_tracked_entries_still_current(ledger: Dict[str, Any]) -> None:
-    for entry in cast(List[Dict[str, Any]], ledger.get("oversize_allowlist") or []):
+    fixed_oversize_entries = [
+        entry
+        for entry in cast(List[Dict[str, Any]], ledger.get("oversize_allowlist") or [])
+        if str(entry.get("status") or "open") == "fixed"
+    ]
+    line_counts = _cached_file_line_counts([str(entry.get("path")) for entry in fixed_oversize_entries])
+    for entry in fixed_oversize_entries:
         if str(entry.get("status") or "open") != "fixed":
             continue
-        current_value = len(read_text_file(str(entry.get("path"))).splitlines())
+        current_value = line_counts[str(entry.get("path"))]
         _reject_fixed_oversize_entry_if_current(entry, current_value)
     complexity_entries = cast(List[Dict[str, Any]], ledger.get("complexity_allowlist") or [])
     if complexity_entries:
-        complexity_scan = complexity_scan_map(sorted({str(entry.get("path")) for entry in complexity_entries}))
+        complexity_scan = _cached_complexity_scan_map(sorted({str(entry.get("path")) for entry in complexity_entries}))
         for entry in complexity_entries:
             if str(entry.get("status") or "open") != "fixed":
                 continue
@@ -439,7 +443,7 @@ def _reject_fixed_tracked_entries_still_current(ledger: Dict[str, Any]) -> None:
     if fixed_silent_paths:
         _reject_fixed_silent_entries_still_in_scan(
             cast(List[Dict[str, Any]], silent_entries),
-            scan_silent_fallback_entries(fixed_silent_paths),
+            _cached_silent_scan_entries(fixed_silent_paths),
         )
 
 
@@ -455,10 +459,11 @@ def refresh_auto_fields(ledger: Optional[Dict[str, Any]] = None) -> Dict[str, An
         for entry_id in list(risk.get("entry_ids") or [])
     }
 
+    line_counts = _cached_file_line_counts([str(entry.get("path")) for entry in oversize_entries])
     refreshed_oversize = []
     for entry in oversize_entries:
         path = str(entry.get("path"))
-        current_value = len(read_text_file(path).splitlines())
+        current_value = line_counts[path]
         _reject_fixed_oversize_entry_if_current(entry, current_value)
         if current_value <= FILE_SIZE_LIMIT:
             if str(entry.get("id")) in accepted_entry_ids:
@@ -467,8 +472,8 @@ def refresh_auto_fields(ledger: Optional[Dict[str, Any]] = None) -> Dict[str, An
         refreshed_oversize.append(build_oversize_entry(path, current_value, existing=entry))
 
     complexity_paths = sorted({str(entry.get("path")) for entry in complexity_entries})
-    complexity_scan = complexity_scan_map(complexity_paths)
-    complexity_scan_all = complexity_scan_map(complexity_paths, include_all=True)
+    complexity_scan = _cached_complexity_scan_map(complexity_paths)
+    complexity_scan_all = _cached_complexity_scan_map(complexity_paths, include_all=True)
     refreshed_complexity = []
     for entry in complexity_entries:
         key = "{}:{}".format(entry.get("path"), entry.get("symbol"))
@@ -486,7 +491,7 @@ def refresh_auto_fields(ledger: Optional[Dict[str, Any]] = None) -> Dict[str, An
         )
 
     silent_paths = sorted({str(entry.get("path")) for entry in silent_entries} | set(UI_MODE_STARTUP_SCOPE_PATHS))
-    silent_scan_entries = scan_silent_fallback_entries(silent_paths)
+    silent_scan_entries = _cached_silent_scan_entries(silent_paths)
     silent_scan = _silent_scan_index(silent_scan_entries)
     silent_group_alignment = _silent_group_alignment(silent_entries, silent_scan_entries)
     _reject_fixed_silent_entries_still_in_scan(silent_entries, silent_scan_entries)
@@ -621,20 +626,21 @@ def delete_risk(ledger: Dict[str, Any], risk_id: str) -> Dict[str, Any]:
 
 def validate_ledger_against_current_scan(ledger: Dict[str, Any]) -> Dict[str, Any]:
     validate_ledger(ledger)
-    sample_summary = validate_startup_samples()
+    sample_summary = architecture_validate_startup_samples()
 
     oversize_paths = [str(entry.get("path")) for entry in cast(List[Dict[str, Any]], ledger.get("oversize_allowlist") or [])]
     complexity_paths = [str(entry.get("path")) for entry in cast(List[Dict[str, Any]], ledger.get("complexity_allowlist") or [])]
     silent_paths = [str(entry.get("path")) for entry in cast(Dict[str, Any], ledger.get("silent_fallback") or {}).get("entries") or []]
 
     if oversize_paths:
+        line_counts = _cached_file_line_counts(oversize_paths)
         for entry in cast(List[Dict[str, Any]], ledger.get("oversize_allowlist") or []):
-            current_value = len(read_text_file(str(entry.get("path"))).splitlines())
+            current_value = line_counts[str(entry.get("path"))]
             _reject_fixed_oversize_entry_if_current(entry, current_value)
             if current_value != int(entry.get("current_value") or 0):
                 raise QualityGateError("oversize 条目 current_value 与当前扫描不一致：{}".format(entry.get("id")))
     if complexity_paths:
-        complexity_scan = complexity_scan_map(complexity_paths)
+        complexity_scan = _cached_complexity_scan_map(complexity_paths)
         for entry in cast(List[Dict[str, Any]], ledger.get("complexity_allowlist") or []):
             key = "{}:{}".format(entry.get("path"), entry.get("symbol"))
             if key not in complexity_scan:
@@ -643,7 +649,7 @@ def validate_ledger_against_current_scan(ledger: Dict[str, Any]) -> Dict[str, An
             if int(complexity_scan[key]["current_value"]) != int(entry.get("current_value") or 0):
                 raise QualityGateError("复杂度条目 current_value 与当前扫描不一致：{}".format(entry.get("id")))
     if silent_paths:
-        silent_scan_entries = scan_silent_fallback_entries(silent_paths)
+        silent_scan_entries = _cached_silent_scan_entries(silent_paths)
         _reject_fixed_silent_entries_still_in_scan(
             cast(List[Dict[str, Any]], cast(Dict[str, Any], ledger.get("silent_fallback") or {}).get("entries") or []),
             silent_scan_entries,
@@ -685,6 +691,74 @@ def architecture_silent_allowlist_map(ledger: Dict[str, Any]) -> Dict[str, Dict[
     }
 
 
+def _cached_architecture_aggregate(
+    paths: Sequence[str],
+    fact_kinds: Sequence[str],
+    include_all_complexity: bool = False,
+) -> Dict[str, Any]:
+    scan_paths = _unique_scan_paths(paths)
+    if not scan_paths:
+        return aggregate_architecture_scan([], include_all_complexity=include_all_complexity)
+    return aggregate_architecture_scan(
+        scan_files_with_cache(scan_paths, fact_kinds=fact_kinds),
+        include_all_complexity=include_all_complexity,
+    )
+
+
+def _cached_file_line_counts(paths: Sequence[str]) -> Dict[str, int]:
+    scan_paths = _unique_scan_paths(paths)
+    if not scan_paths:
+        return {}
+    return {
+        str(fact.get("path")): int(fact.get("line_count") or 0)
+        for fact in scan_files_with_cache(scan_paths, fact_kinds=())
+    }
+
+
+def _cached_oversize_entries(paths: Sequence[str]) -> List[Dict[str, Any]]:
+    scan_paths = _unique_scan_paths(paths)
+    if not scan_paths:
+        return []
+    aggregate = _cached_architecture_aggregate(scan_paths, ())
+    return cast(List[Dict[str, Any]], aggregate.get("oversize_entries") or [])
+
+
+def _cached_complexity_scan_map(paths: Sequence[str], include_all: bool = False) -> Dict[str, Dict[str, Any]]:
+    scan_paths = _unique_scan_paths(paths)
+    if not scan_paths:
+        return {}
+    aggregate = _cached_architecture_aggregate(
+        scan_paths,
+        ("complexity",),
+        include_all_complexity=include_all,
+    )
+    return {str(key): dict(entry) for key, entry in dict(aggregate.get("complexity_map") or {}).items()}
+
+
+def _cached_complexity_entries(paths: Sequence[str]) -> List[Dict[str, Any]]:
+    scan_paths = _unique_scan_paths(paths)
+    if not scan_paths:
+        return []
+    aggregate = _cached_architecture_aggregate(scan_paths, ("complexity",))
+    return cast(List[Dict[str, Any]], aggregate.get("complexity_entries") or [])
+
+
+def _cached_silent_scan_entries(paths: Sequence[str]) -> List[Dict[str, Any]]:
+    scan_paths = _unique_scan_paths(paths)
+    if not scan_paths:
+        return []
+    aggregate = _cached_architecture_aggregate(scan_paths, ("silent",))
+    return cast(List[Dict[str, Any]], aggregate.get("silent_fallback_entries") or [])
+
+
+def _validate_startup_samples_from_entries(entries: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+    return _direct_validate_startup_samples(entries)
+
+
+def _unique_scan_paths(paths: Sequence[str]) -> List[str]:
+    return sorted(set(str(path) for path in paths))
+
+
 def architecture_silent_scan_entries() -> List[Dict[str, Any]]:
     """返回当前架构门禁真正比较的静默回退条目。
 
@@ -692,9 +766,9 @@ def architecture_silent_scan_entries() -> List[Dict[str, Any]]:
     旧 `tests/test_architecture_fitness.py` 计数器迁移而来的遗留静默吞异常命中，
     不据此把 `silent_default_fallback` / `observable_degrade` 扩展为全仓新增门禁。
     """
-    context = ScanContext()
     entries = []
-    for entry in scan_silent_fallback_entries(collect_quality_rule_files(), context=context):
+    aggregate = _cached_architecture_aggregate(collect_quality_rule_files(), ("silent",))
+    for entry in list(aggregate.get("silent_fallback_entries") or []):
         if is_startup_scope_path(str(entry.get("path"))):
             entries.append(entry)
             continue
@@ -706,17 +780,18 @@ def architecture_silent_scan_entries() -> List[Dict[str, Any]]:
     return sorted(entries, key=entry_sort_key)
 
 
+def architecture_validate_startup_samples() -> Dict[str, Any]:
+    return _validate_startup_samples_from_entries(_cached_silent_scan_entries(collect_startup_scope_files()))
+
+
 def architecture_oversize_scan_map() -> Dict[str, Dict[str, Any]]:
-    context = ScanContext()
-    return {
-        str(entry.get("path")): entry
-        for entry in scan_oversize_entries(collect_quality_rule_files(), context=context)
-    }
+    aggregate = _cached_architecture_aggregate(collect_quality_rule_files(), ())
+    return {str(path): dict(entry) for path, entry in dict(aggregate.get("oversize_map") or {}).items()}
 
 
 def architecture_complexity_scan_map() -> Dict[str, Dict[str, Any]]:
-    context = ScanContext()
-    return complexity_scan_map(collect_quality_rule_files(), context=context)
+    aggregate = _cached_architecture_aggregate(collect_quality_rule_files(), ("complexity",))
+    return {str(key): dict(entry) for key, entry in dict(aggregate.get("complexity_map") or {}).items()}
 
 
 def architecture_request_service_direct_assembly_entries() -> List[Dict[str, Any]]:
@@ -725,11 +800,8 @@ def architecture_request_service_direct_assembly_entries() -> List[Dict[str, Any
         str(path): set(str(symbol) for symbol in symbols)
         for path, symbols in REQUEST_SERVICE_TARGET_SYMBOLS.items()
     }
-    context = ScanContext()
-    entries = scan_request_service_direct_assembly_entries(
-        collect_globbed_files(REQUEST_SERVICE_SCAN_SCOPE_PATTERNS),
-        context=context,
-    )
+    aggregate = _cached_architecture_aggregate(collect_globbed_files(REQUEST_SERVICE_SCAN_SCOPE_PATTERNS), ("request",))
+    entries = cast(List[Dict[str, Any]], aggregate.get("request_service_direct_assembly_entries") or [])
     return [
         entry
         for entry in entries
@@ -745,8 +817,5 @@ def architecture_request_service_direct_assembly_entries() -> List[Dict[str, Any
 
 
 def architecture_repository_bundle_drift_entries() -> List[Dict[str, Any]]:
-    context = ScanContext()
-    return scan_repository_bundle_drift_entries(
-        collect_globbed_files(REPOSITORY_BUNDLE_DRIFT_SCOPE_PATTERNS),
-        context=context,
-    )
+    aggregate = _cached_architecture_aggregate(collect_globbed_files(REPOSITORY_BUNDLE_DRIFT_SCOPE_PATTERNS), ("repository",))
+    return cast(List[Dict[str, Any]], aggregate.get("repository_bundle_drift_entries") or [])
