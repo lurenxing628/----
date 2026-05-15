@@ -1,0 +1,45 @@
+issue: chrome-headless-preflight-final-proof-blocker
+created: 2026-05-15
+
+steps:
+  - action: "CodeStable scaffold：记录 NEXT-11.5 blocker 的现象、根因和修复方案"
+    exit_signal: "issue report、analysis、checklist 落盘；NEXT-12 planned 状态不变"
+    status: done
+  - action: "Chrome preflight diagnostics：失败时输出可定位字段，但失败仍然是失败"
+    exit_signal: "fake Chrome 失败单测覆盖 stderr/stdout、launch args、profile、DevToolsActivePort、Chrome path/version 等诊断字段"
+    status: done
+  - action: "Runner cache unavailable：strict fingerprint error 禁止读写 cache，但 final gate 可执行真实命令"
+    exit_signal: "explain 显示 cache unavailable；final 执行真实 command；不调用 evaluate_reuse；不写 success cache；不走 full_test_debt 特殊增量"
+    status: done
+  - action: "Cache 底层硬保护：write_success 拒绝空 fingerprint"
+    exit_signal: "write_success(..., fingerprint={}) 直接报错且不落盘 success cache"
+    status: done
+  - action: "验证与 fix-note：跑 focused 测试、ruff/pyright/diff 检查，说明是否拿到 clean proof"
+    exit_signal: "fix-note 记录改动、验证、entry 状态和 clean proof 口径"
+    status: done
+
+checks:
+  - item: "debt_ledger_sync 保持 enabled，不回滚 NEXT-11"
+    source: enabled 边界
+    status: done
+  - item: "architecture_fitness 和 quickref_vs_routes 仍 planned"
+    source: planned 边界
+    status: done
+  - item: "Chrome preflight 失败不返回普通 hash"
+    source: false reuse
+    status: done
+  - item: "fingerprint error 不进入 evaluate_reuse"
+    source: runner
+    status: done
+  - item: "fingerprint error 不读旧 success cache、不写新 success cache"
+    source: cache
+    status: done
+  - item: "fingerprint error 不触发 full_test_debt special incremental"
+    source: full_test_debt
+    status: done
+  - item: "daily gate / pre-push 默认语义不变"
+    source: hook 边界
+    status: done
+  - item: "explain、cache hit、daily gate、debt proof 都不冒充 clean-worktree final proof"
+    source: proof 口径
+    status: done

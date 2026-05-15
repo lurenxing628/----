@@ -25,7 +25,9 @@ _RUNTIME_FINGERPRINT_CACHE: Dict[str, str] = {}
 
 
 class LongGateFingerprintError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, details: Optional[Mapping[str, Any]] = None) -> None:
+        super().__init__(message)
+        self.details = dict(details or {})
 
 
 def _collect_nodeids_by_file(nodeids: Sequence[str]) -> Dict[str, List[str]]:
@@ -444,6 +446,204 @@ def _chrome_executable_identity(*, strict: bool = False, environment: Optional[M
     return stable_json_hash(payload)
 
 
+_CHROME_PREFLIGHT_SCHEMA_VERSION = 2
+_CHROME_PREFLIGHT_TAIL_CHARS = 4096
+
+
+def _tail_text(value: Any, *, limit: int = _CHROME_PREFLIGHT_TAIL_CHARS) -> str:
+    text = str(value or "")
+    if len(text) <= limit:
+        return text
+    return text[-limit:]
+
+
+def _path_excerpt(value: Any, *, max_items: int = 8) -> str:
+    parts = [part for part in str(value or "").split(os.pathsep) if part]
+    if len(parts) <= max_items:
+        return os.pathsep.join(parts)
+    return os.pathsep.join([*parts[:max_items], "..."])
+
+
+def _directory_writable(path: str) -> bool:
+    if not os.path.isdir(path):
+        return False
+    probe_path = os.path.join(path, ".aps-long-gate-write-probe")
+    try:
+        with open(probe_path, "w", encoding="utf-8") as handle:
+            handle.write("ok")
+        os.remove(probe_path)
+        return True
+    except OSError:
+        try:
+            if os.path.exists(probe_path):
+                os.remove(probe_path)
+        except OSError:
+            pass
+        return False
+
+
+def _read_file_excerpt(path: str, *, limit: int = _CHROME_PREFLIGHT_TAIL_CHARS) -> str:
+    try:
+        with open(path, encoding="utf-8", errors="replace") as handle:
+            return _tail_text(handle.read(), limit=limit)
+    except OSError:
+        return ""
+
+
+def _chrome_preflight_launch_config() -> Dict[str, Any]:
+    return {
+        "schema_version": _CHROME_PREFLIGHT_SCHEMA_VERSION,
+        "headless_mode": "new",
+        "remote_debugging_mode": "port=0",
+        "launch_flags": [
+            "--headless=new",
+            "--remote-debugging-port=0",
+            "--user-data-dir=<temp-profile>",
+            "--disable-gpu",
+            "--disable-dev-shm-usage",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "about:blank",
+        ],
+    }
+
+
+def _chrome_preflight_args(chrome_path: str, profile_dir: str) -> List[str]:
+    return [
+        chrome_path,
+        "--headless=new",
+        "--remote-debugging-port=0",
+        "--user-data-dir=" + profile_dir,
+        "--disable-gpu",
+        "--disable-dev-shm-usage",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "about:blank",
+    ]
+
+
+def _sanitize_chrome_launch_args(args: Sequence[str], *, chrome_path: str, profile_dir: str) -> List[str]:
+    sanitized: List[str] = []
+    for index, raw_arg in enumerate(list(args or [])):
+        arg = str(raw_arg)
+        if index == 0 and arg == chrome_path:
+            sanitized.append("<chrome_path>")
+            continue
+        if arg == "--user-data-dir=" + profile_dir:
+            sanitized.append("--user-data-dir=<temp-profile>")
+            continue
+        sanitized.append(arg)
+    return sanitized
+
+
+def _chrome_version_diagnostic(chrome_path: str, env: Mapping[str, str]) -> Dict[str, Any]:
+    try:
+        completed = subprocess.run(
+            [chrome_path, "--version"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+            env=dict(env),
+        )
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "chrome_version_stdout": _tail_text(getattr(exc, "stdout", "") or ""),
+            "chrome_version_stderr_tail": _tail_text(getattr(exc, "stderr", "") or "timeout"),
+            "chrome_version_returncode": None,
+        }
+    except OSError as exc:
+        return {
+            "chrome_version_stdout": "",
+            "chrome_version_stderr_tail": _tail_text(str(exc)),
+            "chrome_version_returncode": None,
+        }
+    return {
+        "chrome_version_stdout": str(completed.stdout or "").strip(),
+        "chrome_version_stderr_tail": _tail_text(completed.stderr),
+        "chrome_version_returncode": int(completed.returncode),
+    }
+
+
+def _communicated_process_tails(process: subprocess.Popen) -> Tuple[str, str]:
+    if process.poll() is None:
+        return "", ""
+    try:
+        stdout, stderr = process.communicate(timeout=1)
+    except Exception:
+        return "", ""
+    return _tail_text(stdout), _tail_text(stderr)
+
+
+def _chrome_preflight_cache_key(
+    *,
+    identity: str,
+    version: str,
+    env: Mapping[str, str],
+) -> str:
+    payload = {
+        "identity": identity,
+        "version": version,
+        "launch_config": _chrome_preflight_launch_config(),
+        "ci": str(env.get("CI") or ""),
+        "path": str(env.get("PATH") or ""),
+        "temp": str(env.get("TEMP") or ""),
+        "tmp": str(env.get("TMP") or ""),
+        "tmpdir": str(env.get("TMPDIR") or ""),
+    }
+    return "chrome_headless_preflight:" + stable_json_hash(payload)
+
+
+def _chrome_preflight_failure_payload(
+    *,
+    failure_kind: str,
+    process: subprocess.Popen,
+    resolution: Mapping[str, Any],
+    env: Mapping[str, str],
+    profile_dir: str,
+    active_port: str,
+    active_port_content: str,
+    active_port_exists: bool,
+    args: Sequence[str],
+    stdout_tail: str,
+    stderr_tail: str,
+    waited_ms: int,
+) -> Dict[str, Any]:
+    chrome_path = str(resolution.get("path") or "")
+    payload = {
+        "status": "failed",
+        "runtime_key": "chrome_headless_preflight",
+        "failure_kind": str(failure_kind or "unknown"),
+        "chrome_exit_code": process.poll(),
+        "chrome_source": str(resolution.get("source") or ""),
+        "chrome_path": chrome_path,
+        "chrome_realpath": str(resolution.get("realpath") or ""),
+        "chrome_exists": bool(resolution.get("exists")),
+        "launch_args_sanitized": _sanitize_chrome_launch_args(args, chrome_path=chrome_path, profile_dir=profile_dir),
+        "headless_mode": "new",
+        "remote_debugging_mode": "port=0",
+        "profile_dir_created": os.path.isdir(profile_dir),
+        "profile_dir_writable": _directory_writable(profile_dir),
+        "active_port_path": active_port,
+        "active_port_exists": bool(active_port_exists),
+        "active_port_content_excerpt": _tail_text(active_port_content),
+        "waited_ms": int(waited_ms),
+        "stdout_tail": _tail_text(stdout_tail),
+        "stderr_tail": _tail_text(stderr_tail),
+        "stderr_tail_hash": stable_json_hash(_tail_text(stderr_tail)),
+        "platform": platform.platform(),
+        "os_name": os.name,
+        "python_version": sys.version.splitlines()[0].strip(),
+        "tempdir_root": tempfile.gettempdir(),
+        "APS_CHROME_PATH_present": bool(env.get("APS_CHROME_PATH")),
+        "CI": str(env.get("CI") or ""),
+        "PATH_excerpt": _path_excerpt(env.get("PATH")),
+    }
+    payload.update(_chrome_version_diagnostic(chrome_path, env))
+    return payload
+
+
 def _kill_process_tree(process: subprocess.Popen) -> None:
     if process.poll() is not None:
         return
@@ -501,21 +701,13 @@ def _chrome_headless_preflight(*, strict: bool = False, environment: Optional[Ma
     env = _effective_environment(environment)
     resolution = _chrome_resolution_payload(strict=True, environment=environment)
     chrome_path = str(resolution["path"])
-    cache_key = "chrome_headless_preflight:" + _chrome_executable_identity(strict=False, environment=environment)
+    chrome_identity = _chrome_executable_identity(strict=False, environment=environment)
+    chrome_version = _chrome_version(strict=False, environment=environment)
+    cache_key = _chrome_preflight_cache_key(identity=chrome_identity, version=chrome_version, env=env)
     if cache_key in _RUNTIME_FINGERPRINT_CACHE:
         return _RUNTIME_FINGERPRINT_CACHE[cache_key]
     profile_dir = tempfile.mkdtemp(prefix="aps-long-gate-chrome-")
-    args = [
-        chrome_path,
-        "--headless=new",
-        "--remote-debugging-port=0",
-        "--user-data-dir=" + profile_dir,
-        "--disable-gpu",
-        "--disable-dev-shm-usage",
-        "--no-first-run",
-        "--no-default-browser-check",
-        "about:blank",
-    ]
+    args = _chrome_preflight_args(chrome_path, profile_dir)
     popen_kwargs: Dict[str, Any] = {}
     if os.name != "nt":
         popen_kwargs["start_new_session"] = True
@@ -530,19 +722,22 @@ def _chrome_headless_preflight(*, strict: bool = False, environment: Optional[Ma
         **popen_kwargs,
     )
     failure_kind = ""
+    stdout_tail = ""
     stderr_tail = ""
+    started = time.monotonic()
     try:
         active_port = os.path.join(profile_dir, "DevToolsActivePort")
         port_text = ""
+        active_port_content = ""
         deadline = time.time() + 10
         while time.time() < deadline:
             if process.poll() is not None:
                 failure_kind = "chrome_exited_before_devtools"
                 break
             if os.path.isfile(active_port):
-                with open(active_port, encoding="utf-8", errors="replace") as handle:
-                    lines = handle.read().splitlines() if handle.readable() else []
-                    port_text = lines[0].strip() if lines else ""
+                active_port_content = _read_file_excerpt(active_port)
+                lines = active_port_content.splitlines()
+                port_text = lines[0].strip() if lines else ""
                 break
             time.sleep(0.1)
         if not port_text and not failure_kind:
@@ -567,24 +762,31 @@ def _chrome_headless_preflight(*, strict: bool = False, environment: Optional[Ma
             if not failure_kind and "webSocketDebuggerUrl" not in body and "Browser" not in body:
                 failure_kind = "chrome_devtools_version_unreachable"
         if failure_kind:
-            try:
-                _stdout, stderr = process.communicate(timeout=1)
-                stderr_tail = str(stderr or "")[-4096:]
-            except Exception:
-                stderr_tail = ""
-            payload = {
-                "status": "failed",
-                "failure_kind": failure_kind,
-                "chrome_exit_code": process.poll(),
-                "version": _chrome_version(strict=False, environment=environment),
-                "stderr_tail_hash": stable_json_hash(stderr_tail),
-            }
-            raise LongGateFingerprintError("Chrome headless preflight failed: " + json.dumps(payload, sort_keys=True))
+            stdout_tail, stderr_tail = _communicated_process_tails(process)
+            payload = _chrome_preflight_failure_payload(
+                failure_kind=failure_kind,
+                process=process,
+                resolution=resolution,
+                env=env,
+                profile_dir=profile_dir,
+                active_port=active_port,
+                active_port_content=active_port_content or _read_file_excerpt(active_port),
+                active_port_exists=os.path.isfile(active_port),
+                args=args,
+                stdout_tail=stdout_tail,
+                stderr_tail=stderr_tail,
+                waited_ms=int((time.monotonic() - started) * 1000),
+            )
+            raise LongGateFingerprintError(
+                "Chrome headless preflight failed: " + json.dumps(payload, ensure_ascii=False, sort_keys=True),
+                details=payload,
+            )
         result_hash = stable_json_hash(
             {
                 "status": "passed",
-                "version": _chrome_version(strict=False, environment=environment),
-                "chrome": _chrome_executable_identity(strict=False, environment=environment),
+                "version": chrome_version,
+                "chrome": chrome_identity,
+                "preflight": _chrome_preflight_launch_config(),
             }
         )
         _RUNTIME_FINGERPRINT_CACHE[cache_key] = result_hash

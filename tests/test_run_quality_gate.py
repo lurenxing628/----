@@ -1575,6 +1575,104 @@ def test_long_gate_cache_explain_uses_strict_fingerprint(monkeypatch, tmp_path):
     assert calls == [True]
 
 
+def test_long_gate_cache_explain_marks_fingerprint_error_cache_unavailable(monkeypatch, tmp_path, capsys):
+    module = _import_run_quality_gate()
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    monkeypatch.setattr(module, "REPO_ROOT", str(repo_root))
+    monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: _small_quality_gate_plan())
+
+    def fail_fingerprint(entry, repo_root_arg, *, strict=False):
+        del entry, repo_root_arg
+        assert strict is True
+        raise module.LongGateFingerprintError(
+            "Chrome headless preflight failed",
+            details={
+                "runtime_key": "chrome_headless_preflight",
+                "failure_kind": "chrome_exited_before_devtools",
+                "chrome_path": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+                "chrome_source": "APS_CHROME_PATH",
+                "chrome_exit_code": 7,
+                "stderr_tail": "profile permission denied",
+            },
+        )
+
+    monkeypatch.setattr(module, "fingerprint_entry", fail_fingerprint)
+    monkeypatch.setattr(
+        module,
+        "evaluate_reuse",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("reuse must not be evaluated")),
+    )
+
+    assert module.main(["--long-gate-cache-explain"]) == 0
+
+    output = capsys.readouterr().out
+    assert "- pytest_collect_all: RUN" in output
+    assert "cache: cache_unavailable" in output
+    assert "runtime_key: chrome_headless_preflight" in output
+    assert "failure_kind: chrome_exited_before_devtools" in output
+    assert "cache unavailable for this entry" in output
+    assert "profile permission denied" in output
+
+
+def test_final_gate_fingerprint_error_runs_command_without_success_cache(monkeypatch, tmp_path, capsys):
+    module = _import_run_quality_gate()
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _patch_basic_gate_environment(monkeypatch, module, repo_root, statuses=[[], []])
+    monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: _small_quality_gate_plan())
+
+    def fail_fingerprint(entry, repo_root_arg, *, strict=False):
+        del entry, repo_root_arg
+        assert strict is True
+        raise module.LongGateFingerprintError(
+            "Chrome headless preflight failed",
+            details={
+                "runtime_key": "chrome_headless_preflight",
+                "failure_kind": "chrome_exited_before_devtools",
+            },
+        )
+
+    calls = []
+
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
+        del args, capture_output, env_overlay
+        calls.append(display)
+        return _successful_result_for_display(display)
+
+    monkeypatch.setattr(module, "fingerprint_entry", fail_fingerprint)
+    monkeypatch.setattr(
+        module,
+        "evaluate_reuse",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("reuse must not be evaluated")),
+    )
+    monkeypatch.setattr(
+        module,
+        "write_long_gate_success",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("success cache must not be written")),
+    )
+    monkeypatch.setattr(module, "_run_command", fake_run_command)
+
+    assert module.main(["--require-clean-worktree", "--long-gate-cache"]) == 0
+
+    output = capsys.readouterr().out
+    assert "strict fingerprint 失败，该 entry 当前 cache unavailable" in output
+    assert calls == [
+        "python -m pytest --collect-only -q tests",
+        "python -m ruff --version",
+        "python -m pyright --version",
+        "python tools/failing_command.py",
+    ]
+    summary = _load_long_gate_summary(module, repo_root)
+    collect = next(entry for entry in summary["entries"] if entry["entry_id"] == module.ENTRY_PYTEST_COLLECT_ALL)
+    assert collect["cache_status"] == "cache_unavailable"
+    assert collect["decision"] == "run"
+    assert collect["cache_unavailable"] is True
+    assert collect["fingerprint_error"]["runtime_key"] == "chrome_headless_preflight"
+    assert collect["execution_mode"] == "executed"
+    assert not (repo_root / "evidence" / "QualityGate" / "long_gate" / "results").exists()
+
+
 def test_main_long_gate_cache_reuses_collect_only_success(monkeypatch, tmp_path, capsys):
     module = _import_run_quality_gate()
     repo_root = tmp_path / "repo"

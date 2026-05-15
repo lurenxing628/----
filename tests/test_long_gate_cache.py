@@ -1243,6 +1243,31 @@ def test_write_success_rejects_nonzero_returncode(tmp_path):
 
 
 @pytest.mark.parametrize(
+    "fingerprint, error",
+    [
+        ({}, "requires fingerprint hash"),
+        ({"hash": ""}, "requires fingerprint hash"),
+        ({"hash": "not-prefixed", "schema_version": 1, "components": {}}, "requires sha256 fingerprint hash"),
+        ({"hash": "sha256:test", "components": {}}, "requires fingerprint schema_version"),
+        ({"hash": "sha256:test", "schema_version": 1}, "requires fingerprint components"),
+    ],
+)
+def test_write_success_rejects_missing_or_invalid_fingerprint(tmp_path, fingerprint, error):
+    entry = _entry()
+    output = _output_file(tmp_path)
+
+    with pytest.raises(ValueError, match=error):
+        write_success(
+            entry,
+            fingerprint,
+            {"stdout": "ok", "stderr": "", "returncode": 0},
+            [str(output)],
+            repo_root=str(tmp_path),
+        )
+    assert not _success_path(tmp_path).exists()
+
+
+@pytest.mark.parametrize(
     "command_result, error",
     [
         ({"stdout": "ok", "stderr": "", "returncode": False}, "requires numeric returncode"),

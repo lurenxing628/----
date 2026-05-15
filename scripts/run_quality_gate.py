@@ -1254,7 +1254,14 @@ def _run_quality_gate_command_plan(
             )
         output_file_paths: List[str] = []
         if long_gate_runtime_entry is not None and _should_prepare_long_gate_output_files(long_gate_entry):
-            if not bool(long_gate_cache_write_success):
+            current_decision = dict(long_gate_runtime_entry.get("decision") or {})
+            if _decision_cache_unavailable(current_decision):
+                print(
+                    f"==> 第 {command_index}/{total} 步：跳过 long-gate success cache 写入，"
+                    "因为 strict fingerprint 失败，该 entry 当前 cache unavailable",
+                    flush=True,
+                )
+            elif not bool(long_gate_cache_write_success):
                 print(
                     f"==> 第 {command_index}/{total} 步：跳过 long-gate success cache 写入，"
                     "因为本次不是干净工作区的完整成功证明",
@@ -2212,6 +2219,55 @@ def _disabled_long_gate_decision(entry: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _unwrap_fingerprint_error(error: BaseException) -> Optional[LongGateFingerprintError]:
+    if isinstance(error, LongGateFingerprintError):
+        return error
+    cause = getattr(error, "__cause__", None)
+    if isinstance(cause, LongGateFingerprintError):
+        return cause
+    return None
+
+
+def _fingerprint_error_details(error: LongGateFingerprintError) -> Dict[str, Any]:
+    details = getattr(error, "details", {})
+    if isinstance(details, Mapping):
+        return dict(details)
+    return {}
+
+
+def _fingerprint_error_long_gate_decision(entry: Dict[str, Any], error: LongGateFingerprintError) -> Dict[str, Any]:
+    details = _fingerprint_error_details(error)
+    runtime_key = str(details.get("runtime_key") or "")
+    failure_kind = str(details.get("failure_kind") or "")
+    invalidated_by = ["strict fingerprint failed"]
+    if runtime_key:
+        invalidated_by.append("runtime_key=" + runtime_key)
+    if failure_kind:
+        invalidated_by.append("failure_kind=" + failure_kind)
+    fingerprint_error = {
+        "message": str(error),
+        "runtime_key": runtime_key,
+        "failure_kind": failure_kind,
+        "details": details,
+    }
+    return {
+        "entry_id": str(entry.get("entry_id") or ""),
+        "decision": "run",
+        "reuse_allowed": False,
+        "reason": "strict fingerprint failed; cache unavailable; executing command without read/write cache",
+        "invalidated_by": invalidated_by,
+        "previous_completed_at": "",
+        "previous_result_path": "",
+        "current_fingerprint_hash": "",
+        "cache_unavailable": True,
+        "fingerprint_error": fingerprint_error,
+    }
+
+
+def _decision_cache_unavailable(decision: Mapping[str, Any]) -> bool:
+    return bool(decision.get("cache_unavailable")) or bool(decision.get("fingerprint_error"))
+
+
 def _force_long_gate_decision(entry: Dict[str, Any], decision: Dict[str, Any], *, force_reason: str) -> Dict[str, Any]:
     invalidated_by = list(decision.get("invalidated_by") or [])
     if force_reason not in invalidated_by:
@@ -2292,6 +2348,8 @@ def _refresh_full_test_debt_reuse_decision(runtime_entry: Dict[str, Any], *, cac
 
 
 def _full_test_debt_decision_can_refresh(decision: Dict[str, Any]) -> bool:
+    if _decision_cache_unavailable(decision):
+        return False
     decision_kind = str(decision.get("decision") or "")
     if decision_kind == "reuse":
         return True
@@ -2342,35 +2400,44 @@ def _prepare_long_gate_cache_decisions(
         if not cache_enabled:
             decision = _disabled_long_gate_decision(entry)
         elif bool(entry.get("reuse_allowed")):
-            fingerprint = _strict_long_gate_fingerprint(entry)
-            evaluation = dict(evaluate_reuse(entry, fingerprint, repo_root=REPO_ROOT, cache_dir=resolved_cache_dir))
-            decision = dict(evaluation["decision"])
-            if force_rerun_all:
-                decision = _force_long_gate_decision(
-                    entry,
-                    decision,
-                    force_reason="forced by --long-gate-force-rerun-all",
-                )
+            try:
+                fingerprint = _strict_long_gate_fingerprint(entry)
+            except (LongGateFingerprintError, QualityGateError) as exc:
+                fingerprint_error = _unwrap_fingerprint_error(exc)
+                if fingerprint_error is None:
+                    raise
+                decision = _fingerprint_error_long_gate_decision(entry, fingerprint_error)
                 evaluation = {}
-            elif force_requested:
-                decision = _force_long_gate_decision(
-                    entry,
-                    decision,
-                    force_reason=f"forced by --long-gate-force-rerun {entry_id}",
-                )
-                evaluation = {}
-            if (
-                entry_id == ENTRY_FULL_TEST_DEBT
-                and str(decision.get("decision") or "") == "run"
-                and str(decision.get("reason") or "") == "input fingerprint changed"
-                and isinstance(evaluation, dict)
-                and fingerprint is not None
-            ):
-                decision = _annotate_full_test_debt_incremental_decision(
-                    decision,
-                    fingerprint=fingerprint,
-                    evaluation=evaluation,
-                )
+                entry["cache_status"] = "cache_unavailable"
+            else:
+                evaluation = dict(evaluate_reuse(entry, fingerprint, repo_root=REPO_ROOT, cache_dir=resolved_cache_dir))
+                decision = dict(evaluation["decision"])
+                if force_rerun_all:
+                    decision = _force_long_gate_decision(
+                        entry,
+                        decision,
+                        force_reason="forced by --long-gate-force-rerun-all",
+                    )
+                    evaluation = {}
+                elif force_requested:
+                    decision = _force_long_gate_decision(
+                        entry,
+                        decision,
+                        force_reason=f"forced by --long-gate-force-rerun {entry_id}",
+                    )
+                    evaluation = {}
+                if (
+                    entry_id == ENTRY_FULL_TEST_DEBT
+                    and str(decision.get("decision") or "") == "run"
+                    and str(decision.get("reason") or "") == "input fingerprint changed"
+                    and isinstance(evaluation, dict)
+                    and fingerprint is not None
+                ):
+                    decision = _annotate_full_test_debt_incremental_decision(
+                        decision,
+                        fingerprint=fingerprint,
+                        evaluation=evaluation,
+                    )
         else:
             decision = _planned_long_gate_decision_forced(entry, force_requested=force_requested)
         summary_entry = build_summary_entry(index=index, entry=entry, decision=decision)
@@ -2413,6 +2480,20 @@ def _print_long_gate_cache_decisions(entries: Sequence[Dict[str, Any]], *, cache
         print(f"- {entry.get('entry_id')}: {status}", flush=True)
         print(f"  cache: {entry.get('cache_status')}", flush=True)
         print(f"  reason: {entry.get('reason')}", flush=True)
+        fingerprint_error = entry.get("fingerprint_error")
+        if isinstance(fingerprint_error, Mapping) and fingerprint_error:
+            runtime_key = str(fingerprint_error.get("runtime_key") or "")
+            failure_kind = str(fingerprint_error.get("failure_kind") or "")
+            if runtime_key:
+                print(f"  runtime_key: {runtime_key}", flush=True)
+            if failure_kind:
+                print(f"  failure_kind: {failure_kind}", flush=True)
+            print("  note: cache unavailable for this entry; old success cache will not be reused", flush=True)
+            details = fingerprint_error.get("details")
+            if isinstance(details, Mapping):
+                for key in ("chrome_path", "chrome_source", "chrome_exit_code", "stderr_tail"):
+                    if key in details and str(details.get(key) or ""):
+                        print(f"  {key}: {details.get(key)}", flush=True)
         if entry.get("previous_result_path"):
             print(f"  previous_result: {entry.get('previous_result_path')}", flush=True)
         if entry.get("current_fingerprint_hash"):

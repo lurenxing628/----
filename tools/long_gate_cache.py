@@ -739,6 +739,19 @@ def _assert_success_command_result(command_result: Mapping[str, Any]) -> None:
             raise ValueError(f"long gate success cache requires {field} == False")
 
 
+def _assert_success_fingerprint(fingerprint: Mapping[str, Any]) -> None:
+    fingerprint_hash = str(fingerprint.get("hash") or "").strip()
+    if not fingerprint_hash:
+        raise ValueError("long gate success cache requires fingerprint hash")
+    if not fingerprint_hash.startswith("sha256:"):
+        raise ValueError("long gate success cache requires sha256 fingerprint hash")
+    if "schema_version" not in fingerprint:
+        raise ValueError("long gate success cache requires fingerprint schema_version")
+    components = fingerprint.get("components")
+    if not isinstance(components, Mapping):
+        raise ValueError("long gate success cache requires fingerprint components")
+
+
 def write_success(
     entry: Mapping[str, Any],
     fingerprint: Mapping[str, Any],
@@ -751,6 +764,7 @@ def write_success(
     root = _repo_root(repo_root)
     resolved_cache_dir = resolve_cache_dir(root, cache_dir)
     _assert_success_command_result(command_result)
+    _assert_success_fingerprint(fingerprint)
     entry_id = _safe_entry_id(str(entry.get("entry_id") or ""))
     collect_nodeids_reason = _fingerprint_invalid_collect_nodeids_reason(fingerprint)
     if collect_nodeids_reason:

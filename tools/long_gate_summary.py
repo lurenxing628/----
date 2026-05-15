@@ -150,6 +150,8 @@ def build_summary_entry(
         "decision": str(decision.get("decision") or ""),
         "reason": str(decision.get("reason") or ""),
         "invalidated_by": invalidated_by,
+        "cache_unavailable": bool(decision.get("cache_unavailable")),
+        "fingerprint_error": dict(decision.get("fingerprint_error") or {}),
         "fingerprint_diff": [dict(item) for item in list(decision.get("fingerprint_diff") or [])],
         "full_test_debt_incremental": dict(decision.get("full_test_debt_incremental") or {}),
         "execution_mode": resolved_execution_mode,

@@ -622,10 +622,12 @@ def test_test_only_helper_impact_registry_is_normalized_and_defensive() -> None:
     impacts = iter_test_only_helper_impacts()
 
     assert impacts["tests/long_gate_cache_helpers.py"] == [
+        "tests/test_long_gate_debt_ledger_cache.py",
         "tests/test_long_gate_required_regression_cache.py",
         "tests/test_long_gate_startup_regression_cache.py",
     ]
     assert helper_impacts_for_path("tests\\long_gate_cache_helpers.py") == [
+        "tests/test_long_gate_debt_ledger_cache.py",
         "tests/test_long_gate_required_regression_cache.py",
         "tests/test_long_gate_startup_regression_cache.py",
     ]
@@ -634,6 +636,7 @@ def test_test_only_helper_impact_registry_is_normalized_and_defensive() -> None:
     returned = helper_impacts_for_path("tests/long_gate_cache_helpers.py")
     returned.append("tests/test_extra.py")
     assert helper_impacts_for_path("tests/long_gate_cache_helpers.py") == [
+        "tests/test_long_gate_debt_ledger_cache.py",
         "tests/test_long_gate_required_regression_cache.py",
         "tests/test_long_gate_startup_regression_cache.py",
     ]
@@ -658,14 +661,17 @@ def test_test_only_helper_impact_registry_rejects_unsafe_rows(helper_impacts, me
 
 def test_declared_helper_change_uses_nodeid_incremental(tmp_path):
     helper_text = "def helper():\n    return 1\n"
+    debt_text = "from tests.long_gate_cache_helpers import helper\n"
     required_text = "from tests.long_gate_cache_helpers import helper\n"
     startup_text = "from tests.long_gate_cache_helpers import helper\n"
     _write_file(tmp_path, "tests/long_gate_cache_helpers.py", helper_text)
+    _write_file(tmp_path, "tests/test_long_gate_debt_ledger_cache.py", debt_text)
     _write_file(tmp_path, "tests/test_long_gate_required_regression_cache.py", required_text)
     _write_file(tmp_path, "tests/test_long_gate_startup_regression_cache.py", startup_text)
     previous = _fingerprint_from_file_hashes(
         {
             "tests/long_gate_cache_helpers.py": "old-helper",
+            "tests/test_long_gate_debt_ledger_cache.py": hashlib.sha256(debt_text.encode("utf-8")).hexdigest(),
             "tests/test_long_gate_required_regression_cache.py": hashlib.sha256(required_text.encode("utf-8")).hexdigest(),
             "tests/test_long_gate_startup_regression_cache.py": hashlib.sha256(startup_text.encode("utf-8")).hexdigest(),
             "evidence/QualityGate/collect_nodeids.json": "old-collect",
@@ -674,6 +680,7 @@ def test_declared_helper_change_uses_nodeid_incremental(tmp_path):
     current = _fingerprint_from_file_hashes(
         {
             "tests/long_gate_cache_helpers.py": "new-helper",
+            "tests/test_long_gate_debt_ledger_cache.py": hashlib.sha256(debt_text.encode("utf-8")).hexdigest(),
             "tests/test_long_gate_required_regression_cache.py": hashlib.sha256(required_text.encode("utf-8")).hexdigest(),
             "tests/test_long_gate_startup_regression_cache.py": hashlib.sha256(startup_text.encode("utf-8")).hexdigest(),
             "evidence/QualityGate/collect_nodeids.json": "new-collect",
@@ -681,6 +688,9 @@ def test_declared_helper_change_uses_nodeid_incremental(tmp_path):
     )
     snapshot = _collect_snapshot_for_mapping(
         {
+            "tests/test_long_gate_debt_ledger_cache.py": [
+                "tests/test_long_gate_debt_ledger_cache.py::test_debt"
+            ],
             "tests/test_long_gate_required_regression_cache.py": [
                 "tests/test_long_gate_required_regression_cache.py::test_required"
             ],
@@ -698,6 +708,9 @@ def test_declared_helper_change_uses_nodeid_incremental(tmp_path):
         node_cache={
             "collect_nodeids": snapshot,
             "test_file_hashes": {
+                "tests/test_long_gate_debt_ledger_cache.py": hashlib.sha256(
+                    debt_text.encode("utf-8")
+                ).hexdigest(),
                 "tests/test_long_gate_required_regression_cache.py": hashlib.sha256(
                     required_text.encode("utf-8")
                 ).hexdigest(),
@@ -715,20 +728,24 @@ def test_declared_helper_change_uses_nodeid_incremental(tmp_path):
     assert plan["changed_helpers"] == ["tests/long_gate_cache_helpers.py"]
     assert plan["declared_helper_impacts"] == {
         "tests/long_gate_cache_helpers.py": [
+            "tests/test_long_gate_debt_ledger_cache.py",
             "tests/test_long_gate_required_regression_cache.py",
             "tests/test_long_gate_startup_regression_cache.py",
         ]
     }
     assert plan["actual_importing_test_files"] == [
+        "tests/test_long_gate_debt_ledger_cache.py",
         "tests/test_long_gate_required_regression_cache.py",
         "tests/test_long_gate_startup_regression_cache.py",
     ]
     assert plan["affected_test_files"] == [
+        "tests/test_long_gate_debt_ledger_cache.py",
         "tests/test_long_gate_required_regression_cache.py",
         "tests/test_long_gate_startup_regression_cache.py",
     ]
     assert plan["changed_test_files"] == plan["affected_test_files"]
     assert plan["selected_nodeids"] == [
+        "tests/test_long_gate_debt_ledger_cache.py::test_debt",
         "tests/test_long_gate_required_regression_cache.py::test_required",
         "tests/test_long_gate_startup_regression_cache.py::test_startup",
     ]
@@ -870,15 +887,20 @@ def test_declared_helper_dynamic_import_via_variable_fallback(tmp_path, dynamic_
 
 def test_declared_helper_ignores_unrelated_dynamic_import(tmp_path):
     helper_text = "def helper():\n    return 1\n"
+    debt_text = "from tests.long_gate_cache_helpers import helper\n"
     required_text = "from tests.long_gate_cache_helpers import helper\nimport importlib\napp_mod = importlib.import_module('app')\n"
     startup_text = "from tests.long_gate_cache_helpers import helper\n"
     _write_file(tmp_path, "tests/long_gate_cache_helpers.py", helper_text)
+    _write_file(tmp_path, "tests/test_long_gate_debt_ledger_cache.py", debt_text)
     _write_file(tmp_path, "tests/test_long_gate_required_regression_cache.py", required_text)
     _write_file(tmp_path, "tests/test_long_gate_startup_regression_cache.py", startup_text)
     previous = _fingerprint_from_file_hashes({"tests/long_gate_cache_helpers.py": "old-helper"})
     current = _fingerprint_from_file_hashes({"tests/long_gate_cache_helpers.py": "new-helper"})
     snapshot = _collect_snapshot_for_mapping(
         {
+            "tests/test_long_gate_debt_ledger_cache.py": [
+                "tests/test_long_gate_debt_ledger_cache.py::test_debt"
+            ],
             "tests/test_long_gate_required_regression_cache.py": [
                 "tests/test_long_gate_required_regression_cache.py::test_required"
             ],
@@ -917,15 +939,20 @@ def test_declared_helper_imported_by_another_helper_fallback(tmp_path):
 
 def test_declared_helper_impacted_file_missing_collect_mapping_fallback(tmp_path):
     helper_text = "def helper():\n    return 1\n"
+    debt_text = "from tests.long_gate_cache_helpers import helper\n"
     required_text = "from tests.long_gate_cache_helpers import helper\n"
     startup_text = "from tests.long_gate_cache_helpers import helper\n"
     _write_file(tmp_path, "tests/long_gate_cache_helpers.py", helper_text)
+    _write_file(tmp_path, "tests/test_long_gate_debt_ledger_cache.py", debt_text)
     _write_file(tmp_path, "tests/test_long_gate_required_regression_cache.py", required_text)
     _write_file(tmp_path, "tests/test_long_gate_startup_regression_cache.py", startup_text)
     previous = _fingerprint_from_file_hashes({"tests/long_gate_cache_helpers.py": "old-helper"})
     current = _fingerprint_from_file_hashes({"tests/long_gate_cache_helpers.py": "new-helper"})
     snapshot = _collect_snapshot_for_mapping(
         {
+            "tests/test_long_gate_debt_ledger_cache.py": [
+                "tests/test_long_gate_debt_ledger_cache.py::test_debt"
+            ],
             "tests/test_long_gate_required_regression_cache.py": [
                 "tests/test_long_gate_required_regression_cache.py::test_required"
             ],
@@ -947,15 +974,20 @@ def test_declared_helper_impacted_file_missing_collect_mapping_fallback(tmp_path
 
 def test_declared_helper_impacted_file_with_registered_debt_fallback(tmp_path):
     helper_text = "def helper():\n    return 1\n"
+    debt_text = "from tests.long_gate_cache_helpers import helper\n"
     required_text = "from tests.long_gate_cache_helpers import helper\n"
     startup_text = "from tests.long_gate_cache_helpers import helper\n"
     _write_file(tmp_path, "tests/long_gate_cache_helpers.py", helper_text)
+    _write_file(tmp_path, "tests/test_long_gate_debt_ledger_cache.py", debt_text)
     _write_file(tmp_path, "tests/test_long_gate_required_regression_cache.py", required_text)
     _write_file(tmp_path, "tests/test_long_gate_startup_regression_cache.py", startup_text)
     previous = _fingerprint_from_file_hashes({"tests/long_gate_cache_helpers.py": "old-helper"})
     current = _fingerprint_from_file_hashes({"tests/long_gate_cache_helpers.py": "new-helper"})
     snapshot = _collect_snapshot_for_mapping(
         {
+            "tests/test_long_gate_debt_ledger_cache.py": [
+                "tests/test_long_gate_debt_ledger_cache.py::test_debt"
+            ],
             "tests/test_long_gate_required_regression_cache.py": [
                 "tests/test_long_gate_required_regression_cache.py::test_required"
             ],
@@ -986,27 +1018,34 @@ def test_declared_helper_impacted_file_with_registered_debt_fallback(tmp_path):
 
 def test_helper_plus_regular_test_file_incremental_union(tmp_path):
     helper_text = "def helper():\n    return 1\n"
+    debt_text = "from tests.long_gate_cache_helpers import helper\n"
     required_text = "from tests.long_gate_cache_helpers import helper\n"
     startup_text = "from tests.long_gate_cache_helpers import helper\n"
     regular_text = "def test_regular():\n    assert True\n"
     _write_file(tmp_path, "tests/long_gate_cache_helpers.py", helper_text)
+    _write_file(tmp_path, "tests/test_long_gate_debt_ledger_cache.py", debt_text)
     _write_file(tmp_path, "tests/test_long_gate_required_regression_cache.py", required_text)
     _write_file(tmp_path, "tests/test_long_gate_startup_regression_cache.py", startup_text)
     _write_file(tmp_path, "tests/test_regular_change.py", regular_text)
     previous = _fingerprint_from_file_hashes(
         {
             "tests/long_gate_cache_helpers.py": "old-helper",
+            "tests/test_long_gate_debt_ledger_cache.py": hashlib.sha256(debt_text.encode("utf-8")).hexdigest(),
             "tests/test_regular_change.py": "old-regular",
         }
     )
     current = _fingerprint_from_file_hashes(
         {
             "tests/long_gate_cache_helpers.py": "new-helper",
+            "tests/test_long_gate_debt_ledger_cache.py": hashlib.sha256(debt_text.encode("utf-8")).hexdigest(),
             "tests/test_regular_change.py": "new-regular",
         }
     )
     snapshot = _collect_snapshot_for_mapping(
         {
+            "tests/test_long_gate_debt_ledger_cache.py": [
+                "tests/test_long_gate_debt_ledger_cache.py::test_debt"
+            ],
             "tests/test_long_gate_required_regression_cache.py": [
                 "tests/test_long_gate_required_regression_cache.py::test_required"
             ],
@@ -1031,11 +1070,13 @@ def test_helper_plus_regular_test_file_incremental_union(tmp_path):
     assert plan["changed_helpers"] == ["tests/long_gate_cache_helpers.py"]
     assert plan["changed_test_files"] == [
         "tests/test_regular_change.py",
+        "tests/test_long_gate_debt_ledger_cache.py",
         "tests/test_long_gate_required_regression_cache.py",
         "tests/test_long_gate_startup_regression_cache.py",
     ]
     assert plan["selected_nodeids"] == [
         "tests/test_regular_change.py::test_regular",
+        "tests/test_long_gate_debt_ledger_cache.py::test_debt",
         "tests/test_long_gate_required_regression_cache.py::test_required",
         "tests/test_long_gate_startup_regression_cache.py::test_startup",
     ]
