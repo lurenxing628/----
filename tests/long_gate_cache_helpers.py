@@ -7,8 +7,9 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Mapping, Optional, Sequence
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
 
+from tools import long_gate_fingerprint as fingerprint_mod
 from tools import quality_gate_shared
 from tools.long_gate_cache import evaluate_reuse, write_success
 from tools.long_gate_fingerprint import fingerprint_entry
@@ -31,32 +32,32 @@ def _import_run_quality_gate():
     return importlib.import_module("scripts.run_quality_gate")
 
 
-def _real_quality_gate_plan() -> list[dict]:
+def _real_quality_gate_plan() -> List[Dict[str, Any]]:
     return list(quality_gate_shared.build_quality_gate_command_plan())
 
 
-def _manifest_for(command_plan: Sequence[dict], repo_root: Path) -> dict:
+def _manifest_for(command_plan: Sequence[Dict[str, Any]], repo_root: Path) -> Dict[str, Any]:
     return build_manifest_from_quality_gate_plan(command_plan, repo_root=str(repo_root))
 
 
-def _entry_by_id(manifest: dict, entry_id: str) -> dict:
+def _entry_by_id(manifest: Dict[str, Any], entry_id: str) -> Dict[str, Any]:
     for entry in manifest["entries"]:
         if entry["entry_id"] == entry_id:
             return entry
     raise AssertionError(f"missing entry_id: {entry_id}")
 
 
-def _entry_display(command_plan: Sequence[dict], repo_root: Path, entry_id: str) -> str:
+def _entry_display(command_plan: Sequence[Dict[str, Any]], repo_root: Path, entry_id: str) -> str:
     return str(_entry_by_id(_manifest_for(command_plan, repo_root), entry_id)["display"])
 
 
-def _fingerprint_for(command_plan: Sequence[dict], repo_root: Path, entry_id: str) -> dict:
+def _fingerprint_for(command_plan: Sequence[Dict[str, Any]], repo_root: Path, entry_id: str) -> Dict[str, Any]:
     return fingerprint_entry(_entry_by_id(_manifest_for(command_plan, repo_root), entry_id), str(repo_root))
 
 
-def _reuse_decision_for(command_plan: Sequence[dict], repo_root: Path, entry_id: str) -> dict:
+def _reuse_decision_for(command_plan: Sequence[Dict[str, Any]], repo_root: Path, entry_id: str) -> Dict[str, Any]:
     entry = _entry_by_id(_manifest_for(command_plan, repo_root), entry_id)
-    fingerprint = fingerprint_entry(entry, str(repo_root))
+    fingerprint = fingerprint_entry(entry, str(repo_root), strict=True)
     return evaluate_reuse(entry, fingerprint, repo_root=str(repo_root))["decision"]
 
 
@@ -68,11 +69,11 @@ def _summary_path(repo_root: Path) -> Path:
     return repo_root / "evidence" / "QualityGate" / "long_gate" / "summary.json"
 
 
-def _load_summary(repo_root: Path) -> dict:
+def _load_summary(repo_root: Path) -> Dict[str, Any]:
     return json.loads(_summary_path(repo_root).read_text(encoding="utf-8"))
 
 
-def _summary_entry(summary: dict, entry_id: str) -> dict:
+def _summary_entry(summary: Dict[str, Any], entry_id: str) -> Dict[str, Any]:
     for entry in summary["entries"]:
         if entry["entry_id"] == entry_id:
             return entry
@@ -91,7 +92,7 @@ def _patch_gate_environment(monkeypatch, module, repo_root: Path, *, statuses: S
         subprocess.run(["git", "init", "-q"], cwd=repo_root, check=True)
     status_rows = [list(item) for item in list(statuses or [[] for _ in range(30)])]
 
-    def next_status() -> list[str]:
+    def next_status() -> List[str]:
         if status_rows:
             return status_rows.pop(0)
         return []
@@ -112,20 +113,42 @@ def _patch_gate_environment(monkeypatch, module, repo_root: Path, *, statuses: S
     monkeypatch.setattr(module, "_run_git_bytes", lambda _args: b"")
     monkeypatch.setattr(module, "_runtime_state_snapshot", lambda: {"runtime_state": "absent"})
     monkeypatch.setattr(module, "pytest_distribution_version", lambda strict=False: "pytest 8.3.5")
+    monkeypatch.setattr(
+        fingerprint_mod,
+        "_chrome_executable_resolution",
+        lambda strict=False, environment=None: "/stable/chrome",
+    )
+    monkeypatch.setattr(
+        fingerprint_mod,
+        "_chrome_version",
+        lambda strict=False, environment=None: "Stable Chrome 120.0.0.0",
+    )
+    monkeypatch.setattr(
+        fingerprint_mod,
+        "_chrome_executable_identity",
+        lambda strict=False, environment=None: "stable-chrome-identity",
+    )
+    monkeypatch.setattr(
+        fingerprint_mod,
+        "_chrome_headless_preflight",
+        lambda strict=False, environment=None: "stable-headless-preflight",
+    )
+    monkeypatch.setattr(fingerprint_mod, "_node_executable_realpath", lambda environment=None: "/stable/node")
+    monkeypatch.setattr(fingerprint_mod, "_node_version", lambda strict=False, environment=None: "v24.0.0")
 
 
 @dataclass(frozen=True)
 class GateRunContext:
     module: Any
     repo_root: Path
-    command_plan: Sequence[dict]
+    command_plan: Sequence[Dict[str, Any]]
 
 
 def _prepare_gate_run_context(
     monkeypatch,
     tmp_path: Path,
     *,
-    command_plan: Optional[Sequence[dict]] = None,
+    command_plan: Optional[Sequence[Dict[str, Any]]] = None,
     statuses: Sequence[Sequence[str]] = (),
 ) -> GateRunContext:
     module = _import_run_quality_gate()
@@ -150,7 +173,7 @@ def _success_log_path_for_entry(repo_root: Path, entry_id: str, stream: str) -> 
     return repo_root / str(success[f"{stream}_log_path"]).replace("/", "/")
 
 
-def _summary_payload(token: str = "ok") -> dict:
+def _summary_payload(token: str = "ok") -> Dict[str, Any]:
     return {
         "schema_version": 1,
         "status": "passed",
@@ -216,9 +239,9 @@ def _write_full_test_debt_outputs(repo_root: Path, token: str = "ok") -> None:
 
 
 def _fake_successful_command(
-    command_plan: Sequence[dict],
+    command_plan: Sequence[Dict[str, Any]],
     repo_root: Path,
-    calls: list[dict],
+    calls: List[Dict[str, Any]],
     *,
     fail_entry_ids: Sequence[str] = (),
 ) -> Callable[..., dict]:
@@ -229,12 +252,13 @@ def _fake_successful_command(
     fail_ids = set(fail_entry_ids)
     full_debt_runs = {"count": 0}
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         calls.append(
             {
                 "display": str(display),
                 "args": [str(arg) for arg in list(args or [])],
                 "capture_output": bool(capture_output),
+                "env_overlay": dict(env_overlay or {}),
             }
         )
         if display == "python -m pytest --collect-only -q tests":
@@ -271,7 +295,7 @@ def _fake_successful_command(
 def _seed_required_or_startup_success_cache(
     module,
     repo_root: Path,
-    command_plan: Sequence[dict],
+    command_plan: Sequence[Dict[str, Any]],
     entry_id: str,
     *,
     stdout_text: str = "",
@@ -286,7 +310,7 @@ def _seed_required_or_startup_success_cache(
 
     manifest = _manifest_for(command_plan, repo_root)
     entry = _entry_by_id(manifest, entry_id)
-    fingerprint = fingerprint_entry(entry, str(repo_root))
+    fingerprint = fingerprint_entry(entry, str(repo_root), strict=True)
     command_index = next(
         index for index, row in enumerate(manifest["entries"], start=1) if row["entry_id"] == entry_id
     )
@@ -366,12 +390,12 @@ def _run_gate_with_fake_commands(
     module,
     monkeypatch,
     repo_root: Path,
-    command_plan: Sequence[dict],
+    command_plan: Sequence[Dict[str, Any]],
     args: Sequence[str],
     *,
     fail_entry_ids: Sequence[str] = (),
-) -> list[dict]:
-    calls: list[dict] = []
+) -> List[Dict[str, Any]]:
+    calls: List[Dict[str, Any]] = []
     monkeypatch.setattr(
         module,
         "_run_command",

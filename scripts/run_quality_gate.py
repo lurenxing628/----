@@ -21,6 +21,7 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
+from tools import quality_gate_shared  # noqa: E402
 from tools.long_gate_cache import evaluate_reuse  # noqa: E402
 from tools.long_gate_cache import resolve_cache_dir as resolve_long_gate_cache_dir
 from tools.long_gate_cache import write_success as write_long_gate_success
@@ -143,7 +144,12 @@ def _coerce_runtime_probe_state(value: Any) -> RuntimeProbeState:
     raise QualityGateError(f"未知运行时探针状态：{value}")
 
 
-def _run_command(_display: str, args: Sequence[str], capture_output: bool = False) -> Dict[str, Any]:
+def _run_command(
+    _display: str,
+    args: Sequence[str],
+    capture_output: bool = False,
+    env_overlay: Optional[Mapping[str, str]] = None,
+) -> Dict[str, Any]:
     stdout_chunks: List[str] = []
     stderr_chunks: List[str] = []
 
@@ -156,9 +162,14 @@ def _run_command(_display: str, args: Sequence[str], capture_output: bool = Fals
         finally:
             stream.close()
 
+    env = os.environ.copy()
+    if env_overlay:
+        env.update({str(key): str(value) for key, value in dict(env_overlay).items()})
+
     process = subprocess.Popen(
         list(args),
         cwd=REPO_ROOT,
+        env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -203,6 +214,21 @@ def _run_command(_display: str, args: Sequence[str], capture_output: bool = Fals
         "stderr": stderr,
         "returncode": int(returncode),
     }
+
+
+def _run_command_with_env_overlay(
+    display: str,
+    args: Sequence[str],
+    *,
+    capture_output: bool,
+    env_overlay: Mapping[str, str],
+) -> Dict[str, Any]:
+    return _run_command(
+        display,
+        args,
+        capture_output=capture_output,
+        env_overlay=env_overlay,
+    )
 
 
 def _coerce_command_result(result: Any) -> Dict[str, Any]:
@@ -308,6 +334,7 @@ def _command_identity(command: Dict[str, Any]) -> Dict[str, Any]:
         "args": [str(arg) for arg in list(command.get("args") or [])],
         "capture_output": bool(command.get("capture_output")),
         "output_policy": str(command.get("output_policy") or "normalized").strip() or "normalized",
+        "env_overlay": quality_gate_shared._normalize_env_overlay(command.get("env_overlay")),
     }
 
 
@@ -502,6 +529,7 @@ def _load_resume_receipt_payload(
         "args",
         "capture_output",
         "output_policy",
+        "env_overlay",
         "stdout_log_path",
         "stderr_log_path",
     )
@@ -1033,12 +1061,14 @@ def _run_quality_gate_command_plan(
                 decision=decision_for_special,
                 evaluation=dict(long_gate_runtime_entry.get("evaluation") or {}),
                 cache_dir=long_gate_cache_dir,
+                env_overlay=quality_gate_shared._normalize_env_overlay(command.get("env_overlay")),
             )
         if raw_result is None:
-            raw_result = _run_command(
+            raw_result = _run_command_with_env_overlay(
                 display,
                 _resolve_command_args(command),
                 capture_output=bool(command.get("capture_output")),
+                env_overlay=quality_gate_shared._normalize_env_overlay(command.get("env_overlay")),
             )
         result = _coerce_command_result(raw_result)
         result.update(_write_command_output_logs(index=command_index, display=display, result=result))

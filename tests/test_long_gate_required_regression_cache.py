@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Sequence
+from typing import Dict, List, Sequence
 
 import pytest
 
@@ -25,6 +25,7 @@ from tests.long_gate_cache_helpers import (
     _summary_entry,
     _write_file,
 )
+from tools import long_gate_fingerprint as fingerprint_mod
 from tools import quality_gate_shared
 from tools.long_gate_fingerprint import fingerprint_entry
 from tools.long_gate_manifest import (
@@ -34,18 +35,18 @@ from tools.long_gate_manifest import (
 from tools.test_registry import iter_required_tests
 
 
-def _call_displays(calls: Sequence[dict]) -> list[str]:
+def _call_displays(calls: Sequence[Dict[str, object]]) -> List[str]:
     return [str(call["display"]) for call in calls]
 
 
-def _call_by_display(calls: Sequence[dict], display: str) -> dict:
+def _call_by_display(calls: Sequence[Dict[str, object]], display: str) -> Dict[str, object]:
     for call in calls:
         if str(call["display"]) == display:
             return dict(call)
     raise AssertionError(f"missing call: {display}")
 
 
-def _seed_required_success(module, monkeypatch, repo_root: Path, command_plan: Sequence[dict]) -> None:
+def _seed_required_success(module, monkeypatch, repo_root: Path, command_plan: Sequence[Dict[str, object]]) -> None:
     _run_gate_with_fake_commands(module, monkeypatch, repo_root, command_plan, ["--long-gate-cache"])
     assert _proof_path_for_entry(repo_root, ENTRY_REQUIRED_REGRESSIONS).exists()
     assert _success_path(repo_root, ENTRY_REQUIRED_REGRESSIONS).exists()
@@ -139,6 +140,7 @@ def test_required_scope_tracks_real_inputs_without_unrelated_markdown(tmp_path):
         "tools/long_gate_fingerprint.py",
         "scripts/run_quality_gate.py",
         "tests/long_gate_cache_helpers.py",
+        "tests/ui_geometry_contract_data.py",
     ]:
         assert path in all_scopes
     assert "tools/quality_gate_*.py" in all_scopes
@@ -156,7 +158,11 @@ def test_required_scope_tracks_real_inputs_without_unrelated_markdown(tmp_path):
         "PYTEST_DISABLE_PLUGIN_AUTOLOAD",
         "PYTEST_PLUGINS",
         "APS_CHROME_PATH",
+        "APS_BROWSER_SMOKE_REQUIRED",
         "chrome_executable_resolution",
+        "chrome_version",
+        "chrome_executable_identity",
+        "chrome_headless_preflight",
         "node_executable_realpath",
         "node_version",
         "PATH",
@@ -286,6 +292,7 @@ def test_required_tampered_parent_cache_reruns_parent(monkeypatch, tmp_path, mut
         "tools/quality_gate_scan.py",
         "tools/test_debt_registry.py",
         "tests/long_gate_cache_helpers.py",
+        "tests/ui_geometry_contract_data.py",
         ".gitignore",
         "pyproject.toml",
         "requirements.txt",
@@ -354,6 +361,8 @@ def test_required_environment_changes_update_fingerprint(monkeypatch, tmp_path, 
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     command_plan = _real_quality_gate_plan()
+    required_entry = _entry_by_id(_manifest_for(command_plan, repo_root), ENTRY_REQUIRED_REGRESSIONS)
+    env_overlay = dict(required_entry.get("env_overlay") or {})
     if env_key != "PATH":
         monkeypatch.delenv(env_key, raising=False)
     before = _fingerprint_for(command_plan, repo_root, ENTRY_REQUIRED_REGRESSIONS)
@@ -365,8 +374,31 @@ def test_required_environment_changes_update_fingerprint(monkeypatch, tmp_path, 
         monkeypatch.setenv(env_key, f"next7-{env_key.lower()}")
     after = _fingerprint_for(command_plan, repo_root, ENTRY_REQUIRED_REGRESSIONS)
 
+    if env_key in env_overlay:
+        assert before["hash"] == after["hash"]
+        assert after["components"]["environment"]["values"][env_key] == env_overlay[env_key]
+        return
+
     assert before["hash"] != after["hash"]
     assert after["components"]["environment"]["values"][env_key] == os.environ.get(env_key)
+
+
+@pytest.mark.parametrize("entry_id", [ENTRY_REQUIRED_REGRESSIONS, "full_test_debt"])
+def test_browser_runtime_fingerprint_changes_update_cache_key(monkeypatch, tmp_path, entry_id):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    command_plan = _real_quality_gate_plan()
+    monkeypatch.setattr(fingerprint_mod, "_chrome_version", lambda strict=False, environment=None: "Chrome 1")
+    monkeypatch.setattr(fingerprint_mod, "_chrome_executable_identity", lambda strict=False, environment=None: "identity-1")
+    monkeypatch.setattr(fingerprint_mod, "_chrome_headless_preflight", lambda strict=False, environment=None: "preflight-1")
+    before = _fingerprint_for(command_plan, repo_root, entry_id)
+
+    monkeypatch.setattr(fingerprint_mod, "_chrome_version", lambda strict=False, environment=None: "Chrome 2")
+    monkeypatch.setattr(fingerprint_mod, "_chrome_executable_identity", lambda strict=False, environment=None: "identity-2")
+    monkeypatch.setattr(fingerprint_mod, "_chrome_headless_preflight", lambda strict=False, environment=None: "preflight-2")
+    after = _fingerprint_for(command_plan, repo_root, entry_id)
+
+    assert before["hash"] != after["hash"]
 
 
 def test_required_gitignore_change_reruns_parent(monkeypatch, tmp_path):
@@ -438,7 +470,7 @@ def test_required_failure_does_not_refresh_success_cache_or_run_later_startup(mo
     startup_display = _entry_display(command_plan, repo_root, ENTRY_STARTUP_RUNTIME_REGRESSIONS)
     _seed_required_success(module, monkeypatch, repo_root, command_plan)
     previous_success = _success_path(repo_root, ENTRY_REQUIRED_REGRESSIONS).read_text(encoding="utf-8")
-    calls: list[dict] = []
+    calls: List[Dict[str, object]] = []
     monkeypatch.setattr(
         module,
         "_run_command",

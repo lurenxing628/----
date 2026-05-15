@@ -159,6 +159,8 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/regression_ui_presenters_contract.py",
     "tests/regression_system_backup_presenter_contract.py",
     "tests/regression_scheduler_batches_presenter_contract.py",
+    "tests/test_ui_browser_geometry_env.py",
+    "tests/test_ui_geometry_html_contract.py",
     "tests/regression_ui_browser_geometry_smoke.py",
 )
 
@@ -653,9 +655,12 @@ REQUIRED_REGRESSION_GROUPS = (
             "tests/regression_ui_contract_component_tokens.py",
             "tests/regression_ui_presenters_contract.py",
             "tests/regression_system_backup_presenter_contract.py",
+            "tests/test_ui_browser_geometry_env.py",
+            "tests/test_ui_geometry_html_contract.py",
             "tests/regression_ui_browser_geometry_smoke.py",
         ),
         "input_file_scopes": (
+            "tests/ui_geometry_contract_data.py",
             "templates/**/*.html",
             "web_new_test/templates/**/*.html",
             "static/**/*",
@@ -686,10 +691,14 @@ REQUIRED_REGRESSION_GROUPS = (
             "schema.sql",
         ),
         "env_keys": (
+            "APS_BROWSER_SMOKE_REQUIRED",
             "APS_CHROME_PATH",
             "APS_STATIC_VERSION",
             "CI",
             "chrome_executable_resolution",
+            "chrome_version",
+            "chrome_executable_identity",
+            "chrome_headless_preflight",
             "node_executable_realpath",
             "node_version",
             "PATH",

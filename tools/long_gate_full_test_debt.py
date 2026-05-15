@@ -975,7 +975,12 @@ def write_full_test_debt_node_cache_after_success(
     return NODE_CACHE_REL
 
 
-def _run_incremental_collector(repo_root: str, nodeids: Sequence[str]) -> Dict[str, Any]:
+def _run_incremental_collector(
+    repo_root: str,
+    nodeids: Sequence[str],
+    *,
+    env_overlay: Optional[Mapping[str, str]] = None,
+) -> Dict[str, Any]:
     pytest_args = [*list(nodeids), "-q", "--tb=short", "-ra", "-p", "no:cacheprovider"]
     args = [
         sys.executable,
@@ -988,9 +993,13 @@ def _run_incremental_collector(repo_root: str, nodeids: Sequence[str]) -> Dict[s
         "--",
         *pytest_args,
     ]
+    env = os.environ.copy()
+    if env_overlay:
+        env.update({str(key): str(value) for key, value in dict(env_overlay).items()})
     proc = subprocess.run(
         args,
         cwd=_repo_root(repo_root),
+        env=env,
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -1036,6 +1045,24 @@ def _run_incremental_collector(repo_root: str, nodeids: Sequence[str]) -> Dict[s
         "pytest_args": pytest_args,
         "collector_contract_error": False,
     }
+
+
+def _call_with_env_overlay(callback, *, env_overlay: Optional[Mapping[str, str]] = None):
+    if not env_overlay:
+        return callback()
+    old_values: Dict[str, Optional[str]] = {}
+    for key, value in dict(env_overlay).items():
+        key_text = str(key)
+        old_values[key_text] = os.environ.get(key_text)
+        os.environ[key_text] = str(value)
+    try:
+        return callback()
+    finally:
+        for key, old_value in old_values.items():
+            if old_value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = old_value
 
 
 def _merge_payload(
@@ -1216,6 +1243,7 @@ def try_run_special_full_test_debt_mode(
     decision: Mapping[str, Any],
     evaluation: Mapping[str, Any],
     cache_dir: str,
+    env_overlay: Optional[Mapping[str, str]] = None,
 ) -> Optional[Dict[str, Any]]:
     if str(entry.get("entry_id") or "") != "full_test_debt":
         return None
@@ -1275,10 +1303,13 @@ def try_run_special_full_test_debt_mode(
             plan=plan,
         )
         try:
-            summary = check_full_test_debt.run_check_from_existing_payload(
-                ledger_payload,
-                ledger=ledger,
-                require_clean_worktree_proof=True,
+            summary = _call_with_env_overlay(
+                lambda: check_full_test_debt.run_check_from_existing_payload(
+                    ledger_payload,
+                    ledger=ledger,
+                    require_clean_worktree_proof=True,
+                ),
+                env_overlay=env_overlay,
             )
         except QualityGateError as exc:
             return {
@@ -1310,7 +1341,7 @@ def try_run_special_full_test_debt_mode(
     selected_nodeids = [str(item) for item in list(plan.get("selected_nodeids") or [])]
     if not selected_nodeids:
         return None
-    collector_result = _run_incremental_collector(repo_root, selected_nodeids)
+    collector_result = _run_incremental_collector(repo_root, selected_nodeids, env_overlay=env_overlay)
     if bool(collector_result.get("collector_contract_error")):
         return {
             "stdout": str(collector_result.get("stdout") or ""),
@@ -1334,10 +1365,13 @@ def try_run_special_full_test_debt_mode(
         incremental_plan=plan,
     )
     try:
-        summary = check_full_test_debt.run_check_from_existing_payload(
-            merged_payload,
-            ledger=ledger,
-            require_clean_worktree_proof=True,
+        summary = _call_with_env_overlay(
+            lambda: check_full_test_debt.run_check_from_existing_payload(
+                merged_payload,
+                ledger=ledger,
+                require_clean_worktree_proof=True,
+            ),
+            env_overlay=env_overlay,
         )
     except QualityGateError as exc:
         return {

@@ -277,7 +277,7 @@ def test_main_runs_guard_preflight_before_static_and_startup_checks(monkeypatch,
     monkeypatch.setattr(module, "_assert_no_active_runtime", lambda: None)
     monkeypatch.setattr(module, "_assert_guard_tests_ready", lambda: calls.append(("guard_preflight", [], False)))
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         calls.append((display, list(args), bool(capture_output)))
         if display == "python -m ruff --version":
             return "ruff 0.15.4"
@@ -371,7 +371,7 @@ def test_main_executes_every_shared_command_when_plan_inserts_preflight(monkeypa
     monkeypatch.setattr(module, "_git_status_lines", lambda: next(git_status_calls))
     monkeypatch.setattr(module, "_runtime_state_snapshot", lambda: {"runtime_state": "absent"})
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         calls.append((display, list(args), bool(capture_output)))
         if display == "python -m ruff --version":
             return "ruff 0.15.4"
@@ -556,7 +556,7 @@ def test_main_fails_when_required_command_proof_is_missing(monkeypatch, tmp_path
     monkeypatch.setattr(module, "_git_status_lines", lambda: next(git_status_calls))
     monkeypatch.setattr(module, "_runtime_state_snapshot", lambda: {"runtime_state": "absent"})
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         if display == "python -m ruff --version":
             return "ruff 0.15.4"
         if display == "python -m pyright --version":
@@ -625,6 +625,8 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
     assert "tests/regression_ui_presenters_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_system_backup_presenter_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_scheduler_batches_presenter_contract.py" in module.REQUIRED_TEST_ARGS
+    assert "tests/test_ui_browser_geometry_env.py" in module.REQUIRED_TEST_ARGS
+    assert "tests/test_ui_geometry_html_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_system_logs_layout_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_system_logs_presenter_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_form_run_option_checkbox_layout_contract.py" in module.REQUIRED_TEST_ARGS
@@ -675,6 +677,47 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
     assert displays.index("python scripts/sync_debt_ledger.py check") < displays.index(startup_display)
 
 
+def test_browser_required_env_overlay_is_in_shared_quality_gate_plan() -> None:
+    shared = _shared_quality_registry()
+    command_plan = shared.build_quality_gate_command_plan()
+    displays = [str(command["display"]) for command in command_plan]
+    full_debt = command_plan[displays.index("python tools/check_full_test_debt.py")]
+    required_display = "python -m pytest -q " + " ".join(shared.iter_quality_gate_required_tests())
+    required = command_plan[displays.index(required_display)]
+
+    for command in (full_debt, required):
+        assert command["env_overlay"]["APS_BROWSER_SMOKE_REQUIRED"] == "1"
+        assert command["env_overlay"]["PYTHONDONTWRITEBYTECODE"] == "1"
+        assert command["env_overlay"]["PYTHONUTF8"] == "1"
+        assert command["env_overlay"]["PYTHONIOENCODING"] == "utf-8"
+
+    changed_required = dict(required)
+    changed_required["env_overlay"] = dict(required["env_overlay"], APS_BROWSER_SMOKE_REQUIRED="0")
+    assert shared.hash_quality_gate_commands([required]) != shared.hash_quality_gate_commands([changed_required])
+
+
+def test_run_quality_gate_passes_env_overlay_to_required_commands(monkeypatch, tmp_path):
+    module = _import_run_quality_gate()
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _patch_basic_gate_environment(monkeypatch, module, repo_root, statuses=[[], []])
+
+    seen_env = {}
+
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
+        seen_env[str(display)] = dict(env_overlay or {})
+        return _successful_result_for_display(str(display))
+
+    monkeypatch.setattr(module, "_run_command", fake_run_command)
+
+    assert module.main([]) == 0
+
+    required_display = "python -m pytest -q " + " ".join(module.REQUIRED_TEST_ARGS)
+    assert seen_env["python tools/check_full_test_debt.py"]["APS_BROWSER_SMOKE_REQUIRED"] == "1"
+    assert seen_env[required_display]["APS_BROWSER_SMOKE_REQUIRED"] == "1"
+    assert seen_env["python -m ruff --version"] == {}
+
+
 def test_quality_workflow_uploads_quality_gate_manifest_artifact():
     workflow = Path(_repo_root()) / ".github" / "workflows" / "quality.yml"
     content = workflow.read_text(encoding="utf-8")
@@ -682,13 +725,20 @@ def test_quality_workflow_uploads_quality_gate_manifest_artifact():
     assert "actions/upload-artifact" in content
     assert "evidence/QualityGate/" in content
     assert "--require-clean-worktree" in content
+    assert "--long-gate-cache" in content
     quality_gate_job = re.search(r"(?ms)^  quality-gate:\n(?P<body>.*?)(?=^  [A-Za-z0-9_-]+:|\Z)", content)
     assert quality_gate_job is not None
     assert re.search(r"(?m)^    env:\s*$", quality_gate_job.group("body"))
+    assert re.search(r"(?m)^      PYTHONDONTWRITEBYTECODE:\s*['\"]?1['\"]?\s*$", quality_gate_job.group("body"))
     assert re.search(r"(?m)^      PYTHONUTF8:\s*['\"]?1['\"]?\s*$", quality_gate_job.group("body"))
     assert re.search(r"(?m)^      PYTHONIOENCODING:\s*['\"]?utf-8['\"]?\s*$", quality_gate_job.group("body"))
     assert re.search(r"(?m)^      APS_CHROME_PATH:\s*C:\\Program Files\\Google\\Chrome\\Application\\chrome\.exe\s*$", quality_gate_job.group("body"))
     assert "安装 Node.js 24" in quality_gate_job.group("body")
+    chrome_check_index = quality_gate_job.group("body").index("Test-Path $env:APS_CHROME_PATH")
+    chrome_version_index = quality_gate_job.group("body").index("& $env:APS_CHROME_PATH --version")
+    gate_run = "run: python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache"
+    gate_run_index = quality_gate_job.group("body").index(gate_run)
+    assert chrome_check_index < chrome_version_index < gate_run_index
     assert "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4" in quality_gate_job.group("body")
     assert "node-version: '24'" in quality_gate_job.group("body")
     assert "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4" in quality_gate_job.group("body")
@@ -719,7 +769,7 @@ def test_main_rebuilds_ignored_receipts_without_dirtying_clean_worktree(monkeypa
     monkeypatch.setattr(module, "_assert_guard_tests_ready", lambda: None)
     monkeypatch.setattr(module, "_runtime_state_snapshot", lambda: {"runtime_state": "absent"})
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         if display == "python -m ruff --version":
             return "ruff 0.15.4"
         if display == "python -m pyright --version":
@@ -840,7 +890,7 @@ def test_main_writes_quality_gate_manifest_with_git_and_collection_proof(monkeyp
         },
     )
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         if display == "python -m ruff --version":
             return "ruff 0.15.4"
         if display == "python -m pyright --version":
@@ -977,7 +1027,7 @@ def test_main_allow_dirty_worktree_marks_manifest_unbound(monkeypatch, tmp_path,
 
     calls = []
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         calls.append((display, list(args), bool(capture_output)))
         if display == "python -m ruff --version":
             return "ruff 0.15.4"
@@ -1031,7 +1081,7 @@ def test_main_writes_running_then_passed_manifest(monkeypatch, tmp_path):
     monkeypatch.setattr(module, "_git_status_lines", lambda: next(git_status_calls))
     monkeypatch.setattr(module, "_runtime_state_snapshot", lambda: {"runtime_state": "absent"})
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         if display == "python -m ruff --version":
             return "ruff 0.15.4"
         if display == "python -m pyright --version":
@@ -1067,7 +1117,7 @@ def test_main_updates_manifest_to_failed_on_command_error(monkeypatch, tmp_path)
     monkeypatch.setattr(module, "_git_status_lines", lambda: next(git_status_calls))
     monkeypatch.setattr(module, "_runtime_state_snapshot", lambda: {"runtime_state": "absent"})
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         if display == "python -m ruff --version":
             return "ruff 0.15.4"
         if display == "python -m pyright --version":
@@ -1103,7 +1153,7 @@ def test_main_allow_dirty_resumes_from_previous_failed_command(monkeypatch, tmp_
     calls = []
     monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         calls.append(display)
         return {"stdout": "", "stderr": "", "returncode": 0}
 
@@ -1217,7 +1267,7 @@ def test_main_long_gate_cache_reuses_collect_only_success(monkeypatch, tmp_path,
 
     calls = []
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         calls.append(display)
         if display == "python -m ruff --version":
             return {"stdout": "ruff 0.15.4", "stderr": "", "returncode": 0}
@@ -1317,7 +1367,7 @@ def test_long_gate_reuse_uses_validated_payload_without_second_cache_read(monkey
     monkeypatch.setattr(module, "load_previous_success", forbidden_load_previous_success, raising=False)
     calls = []
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         calls.append(display)
         if display == "python -m pytest --collect-only -q tests":
             raise AssertionError("collect-only command should be reused")
@@ -1342,7 +1392,7 @@ def test_main_long_gate_cache_reruns_collect_when_input_changes(monkeypatch, tmp
 
     calls = []
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         calls.append(display)
         if display == "python -m ruff --version":
             return {"stdout": "ruff 0.15.4", "stderr": "", "returncode": 0}
@@ -1378,7 +1428,7 @@ def test_dirty_long_gate_cache_does_not_write_success_cache(monkeypatch, tmp_pat
     _patch_basic_gate_environment(monkeypatch, module, repo_root, statuses=[[" M app.py"], [" M app.py"]])
     monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         if display == "python -m ruff --version":
             return {"stdout": "ruff 0.15.4", "stderr": "", "returncode": 0}
         if display == "python -m pyright --version":
@@ -1418,7 +1468,7 @@ def test_resume_success_prefix_wins_before_long_gate_cache(monkeypatch, tmp_path
 
     calls = []
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         calls.append(display)
         return {"stdout": "", "stderr": "", "returncode": 0}
 
@@ -1461,7 +1511,7 @@ def test_main_does_not_resume_when_previous_manifest_head_sha_differs(monkeypatc
 
     calls = []
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         calls.append(display)
         return _successful_result_for_display(display, "test_resume_head_mismatch")
 
@@ -1495,7 +1545,7 @@ def test_main_does_not_resume_when_previous_python_executable_differs(monkeypatc
 
     calls = []
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         calls.append(display)
         return _successful_result_for_display(display, "test_resume_python_mismatch")
 
@@ -1520,7 +1570,7 @@ def test_main_records_failed_manifest_when_run_output_cleanup_fails(monkeypatch,
     monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
     calls = []
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         calls.append(display)
         return _successful_result_for_display(display, "test_cleanup_failure")
 
@@ -1561,7 +1611,7 @@ def test_main_does_not_resume_when_dirty_worktree_content_differs(monkeypatch, t
 
     calls = []
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         calls.append(display)
         return _successful_result_for_display(display, "test_resume_dirty_fingerprint_mismatch")
 
@@ -1599,7 +1649,7 @@ def test_main_does_not_resume_when_untracked_file_content_differs(monkeypatch, t
 
     calls = []
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         calls.append(display)
         return _successful_result_for_display(display, "test_resume_untracked_fingerprint_mismatch")
 
@@ -1644,7 +1694,7 @@ def test_main_does_not_resume_when_staged_worktree_content_differs(monkeypatch, 
 
     calls = []
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         calls.append(display)
         return _successful_result_for_display(display, "test_resume_staged_fingerprint_mismatch")
 
@@ -1689,7 +1739,7 @@ def test_main_does_not_resume_when_real_dirty_content_changes(monkeypatch, tmp_p
 
     calls = []
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         calls.append(display)
         return _successful_result_for_display(display, "test_real_dirty_content_changed")
 
@@ -1864,7 +1914,7 @@ def test_main_no_resume_forces_full_rerun(monkeypatch, tmp_path, capsys):
 
     calls = []
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         calls.append(display)
         return _successful_result_for_display(display, "test_no_resume")
 
@@ -1906,7 +1956,7 @@ def test_main_does_not_resume_when_previous_receipt_invalid(monkeypatch, tmp_pat
 
     calls = []
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         calls.append(display)
         return _successful_result_for_display(display, f"test_invalid_receipt_{break_kind}")
 
@@ -1938,7 +1988,7 @@ def test_main_does_not_resume_when_full_command_plan_changes_after_failure(monke
 
     calls = []
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         calls.append(display)
         return _successful_result_for_display(display, "test_changed_plan")
 
@@ -1961,7 +2011,7 @@ def test_main_never_skips_previous_failed_command(monkeypatch, tmp_path):
 
     calls = []
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         calls.append(display)
         return _successful_result_for_display(display, "test_never_skip_failed")
 
@@ -1981,7 +2031,7 @@ def test_command_failure_prints_step_receipt_logs_and_last_80_lines(monkeypatch,
     _patch_basic_gate_environment(monkeypatch, module, repo_root, statuses=[[], []])
     monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         if display == "python -m pytest --collect-only -q tests":
             return _successful_result_for_display(display, "test_failure_tail")
         if display == "python -m ruff --version":
@@ -2014,7 +2064,7 @@ def test_main_preserves_failed_manifest_when_worktree_fingerprint_fails_after_co
     _patch_basic_gate_environment(monkeypatch, module, repo_root, statuses=[[], [" M app.py"]])
     monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         if display == "python -m pytest --collect-only -q tests":
             return _successful_result_for_display(display, "test_failed_manifest_when_fingerprint_fails")
         return {"stdout": "", "stderr": "ruff exploded", "returncode": 1}
@@ -2040,7 +2090,7 @@ def test_main_preserves_original_failure_when_failed_manifest_proof_fails(monkey
     _patch_basic_gate_environment(monkeypatch, module, repo_root, statuses=[[], []])
     monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         if display == "python -m pytest --collect-only -q tests":
             return _successful_result_for_display(display, "test_failed_manifest_proof_fails")
         return {"stdout": "", "stderr": "ruff exploded", "returncode": 1}
@@ -2083,7 +2133,7 @@ def test_main_preserves_original_failure_when_git_status_after_raises_oserror(mo
             raise value
         return value
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         if display == "python -m pytest --collect-only -q tests":
             return _successful_result_for_display(display, "test_git_status_after_oserror")
         return {"stdout": "", "stderr": "ruff exploded", "returncode": 1}
@@ -2120,7 +2170,7 @@ def test_resume_rechecks_dirty_fingerprint_after_decision_before_skip(monkeypatc
     monkeypatch.setattr(module, "_dirty_worktree_fingerprint", fake_dirty_fingerprint)
     calls = []
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         calls.append(display)
         return _successful_result_for_display(display, "test_resume_recheck")
 
@@ -2150,7 +2200,7 @@ def test_main_rejects_dirty_worktree_by_default(monkeypatch, tmp_path):
     monkeypatch.setattr(module, "_git_status_lines", lambda: [" M scripts/run_quality_gate.py"])
     monkeypatch.setattr(module, "_run_git_bytes", lambda _args: b"dirty-diff")
     monkeypatch.setattr(module, "_runtime_state_snapshot", lambda: {"runtime_state": "absent"})
-    monkeypatch.setattr(module, "_run_command", lambda display, args, capture_output=False: "")
+    monkeypatch.setattr(module, "_run_command", lambda display, args, capture_output=False, env_overlay=None: "")
 
     with pytest.raises(module.QualityGateError) as exc_info:
         module.main([])
@@ -2176,7 +2226,7 @@ def test_main_rejects_dirty_worktree_when_require_clean_worktree(monkeypatch, tm
     monkeypatch.setattr(module, "_git_status_lines", lambda: [" M scripts/run_quality_gate.py"])
     monkeypatch.setattr(module, "_run_git_bytes", lambda _args: b"dirty-diff")
     monkeypatch.setattr(module, "_runtime_state_snapshot", lambda: {"runtime_state": "absent"})
-    monkeypatch.setattr(module, "_run_command", lambda display, args, capture_output=False: "")
+    monkeypatch.setattr(module, "_run_command", lambda display, args, capture_output=False, env_overlay=None: "")
 
     with pytest.raises(module.QualityGateError) as exc_info:
         module.main(["--require-clean-worktree"])
@@ -2219,7 +2269,7 @@ def test_main_dirty_worktree_message_names_untracked_source(monkeypatch, tmp_pat
     )
     monkeypatch.setattr(module, "_run_git_bytes", lambda _args: b"")
     monkeypatch.setattr(module, "_runtime_state_snapshot", lambda: {"runtime_state": "absent"})
-    monkeypatch.setattr(module, "_run_command", lambda display, args, capture_output=False: "")
+    monkeypatch.setattr(module, "_run_command", lambda display, args, capture_output=False, env_overlay=None: "")
 
     with pytest.raises(module.QualityGateError) as exc_info:
         module.main(["--require-clean-worktree"])
@@ -2246,7 +2296,7 @@ def test_main_fails_when_tracked_status_changes_during_gate(monkeypatch, tmp_pat
     monkeypatch.setattr(module, "_run_git_bytes", lambda _args: b"dirty-diff")
     monkeypatch.setattr(module, "_runtime_state_snapshot", lambda: {"runtime_state": "absent"})
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         if display == "python -m ruff --version":
             return "ruff 0.15.4"
         if display == "python -m pyright --version":

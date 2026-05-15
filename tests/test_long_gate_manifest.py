@@ -180,6 +180,11 @@ def test_required_parent_scope_includes_group_specific_scope_union():
     assert "web/routes/domains/scheduler/scheduler_config*.py" in required_entry["input_file_scopes"]
     assert "tools/long_gate_cache.py" in required_entry["tool_file_scopes"]
     assert "node_version" in required_entry["env_keys"]
+    assert "APS_BROWSER_SMOKE_REQUIRED" in required_entry["env_keys"]
+    assert "chrome_version" in required_entry["env_keys"]
+    assert "chrome_executable_identity" in required_entry["env_keys"]
+    assert "chrome_headless_preflight" in required_entry["env_keys"]
+    assert "tests/ui_geometry_contract_data.py" in required_entry["input_file_scopes"]
     assert ".gitignore" in required_entry["config_file_scopes"]
     assert required_entry["output_result_files"] == ["evidence/QualityGate/required_regressions.json"]
 
@@ -255,6 +260,19 @@ def test_collect_full_test_debt_required_and_startup_entries_are_currently_reuse
     assert ".limcode/plans/**/*" in full_test_debt["input_file_scopes"]
     assert "开发文档/**/*.md" in full_test_debt["input_file_scopes"]
     assert "validate_dist_exe.py" in full_test_debt["input_file_scopes"]
+    for env_key in [
+        "APS_BROWSER_SMOKE_REQUIRED",
+        "APS_CHROME_PATH",
+        "chrome_executable_resolution",
+        "chrome_version",
+        "chrome_executable_identity",
+        "chrome_headless_preflight",
+        "node_executable_realpath",
+        "node_version",
+        "PATH",
+        "CI",
+    ]:
+        assert env_key in full_test_debt["env_keys"]
     assert full_test_debt["output_result_files"] == [
         "evidence/QualityGate/current_full_test_debt.json",
         "evidence/QualityGate/full_test_debt_summary.json",

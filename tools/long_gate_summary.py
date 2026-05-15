@@ -142,6 +142,7 @@ def build_summary_entry(
         "entry_id": str(entry.get("entry_id") or decision.get("entry_id") or ""),
         "entry_type": str(entry.get("entry_type") or ""),
         "display": str(entry.get("display") or ""),
+        "env_overlay_keys": [str(key) for key in list(entry.get("env_overlay_keys") or [])],
         "cache_status": str(entry.get("cache_status") or ""),
         "decision": str(decision.get("decision") or ""),
         "reason": str(decision.get("reason") or ""),
@@ -337,19 +338,20 @@ def render_summary_markdown(summary: Mapping[str, Any]) -> str:
             "",
             "## Entries",
             "",
-            "| # | entry | decision | cache | execution | reason | invalidated_by | receipt |",
-            "|---|---|---|---|---|---|---|---|",
+            "| # | entry | decision | cache | execution | env_overlay_keys | reason | invalidated_by | receipt |",
+            "|---|---|---|---|---|---|---|---|---|",
         ]
     )
     for entry in list(summary.get("entries") or []):
         invalidated_by = "; ".join(str(item) for item in list(entry.get("invalidated_by") or []))
         lines.append(
-            "| {index} | {entry_id} | {decision} | {cache_status} | {execution_mode} | {reason} | {invalidated_by} | {receipt_path} |".format(
+            "| {index} | {entry_id} | {decision} | {cache_status} | {execution_mode} | {env_overlay_keys} | {reason} | {invalidated_by} | {receipt_path} |".format(
                 index=entry.get("index") or "",
                 entry_id=entry.get("entry_id") or "",
                 decision=entry.get("decision") or "",
                 cache_status=entry.get("cache_status") or "",
                 execution_mode=entry.get("execution_mode") or "",
+                env_overlay_keys=", ".join(str(key) for key in list(entry.get("env_overlay_keys") or [])).replace("|", "\\|"),
                 reason=str(entry.get("reason") or "").replace("|", "\\|"),
                 invalidated_by=invalidated_by.replace("|", "\\|"),
                 receipt_path=entry.get("receipt_path") or "",

@@ -184,7 +184,7 @@ def test_successful_run_writes_json_md_counts_and_reasons(monkeypatch, tmp_path)
     repo_root.mkdir()
     _patch_gate_environment(monkeypatch, module, repo_root, statuses=[[], []])
     monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: _small_plan())
-    monkeypatch.setattr(module, "_run_command", lambda display, args, capture_output=False: _successful_result(display))
+    monkeypatch.setattr(module, "_run_command", lambda display, args, capture_output=False, env_overlay=None: _successful_result(display))
 
     assert module.main(["--long-gate-cache"]) == 0
 
@@ -230,7 +230,7 @@ def test_reused_collect_only_is_recorded_as_reused_success_cache(monkeypatch, tm
     _seed_collect_success(module, command_plan, repo_root)
     calls = []
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         calls.append(display)
         if display == "python -m pytest --collect-only -q tests":
             raise AssertionError("collect-only should be reused")
@@ -307,7 +307,7 @@ def test_failed_collect_records_failure_and_prints_copyable_command(monkeypatch,
     _patch_gate_environment(monkeypatch, module, repo_root, statuses=[[], []])
     monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: _small_plan(include_planned=False))
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         if display == "python -m pytest --collect-only -q tests":
             stdout = "FAILED tests/test_long_gate_summary_output.py::test_bad - nope\n"
             return {"stdout": stdout, "stderr": "collect failed\n", "returncode": 1}
@@ -342,7 +342,7 @@ def test_planned_long_entry_failure_records_summary_failure(monkeypatch, tmp_pat
     _patch_gate_environment(monkeypatch, module, repo_root, statuses=[[], []])
     monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: _small_plan(include_planned=True))
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         if display == "python -m ruff check":
             return {
                 "stdout": "unexpected failure: tests/test_long_gate_summary_output.py::test_debt\n",
@@ -374,7 +374,7 @@ def test_dirty_worktree_summary_is_unbound_and_does_not_write_success_cache(monk
     repo_root.mkdir()
     _patch_gate_environment(monkeypatch, module, repo_root, statuses=[[" M app.py"], [" M app.py"]])
     monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: _small_plan(include_planned=False))
-    monkeypatch.setattr(module, "_run_command", lambda display, args, capture_output=False: _successful_result(display))
+    monkeypatch.setattr(module, "_run_command", lambda display, args, capture_output=False, env_overlay=None: _successful_result(display))
 
     assert module.main(["--allow-dirty-worktree", "--long-gate-cache"]) == 2
 
@@ -390,7 +390,7 @@ def test_summary_write_failure_prevents_success_cache(monkeypatch, tmp_path):
     repo_root.mkdir()
     _patch_gate_environment(monkeypatch, module, repo_root, statuses=[[], []])
     monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: _small_plan(include_planned=False))
-    monkeypatch.setattr(module, "_run_command", lambda display, args, capture_output=False: _successful_result(display))
+    monkeypatch.setattr(module, "_run_command", lambda display, args, capture_output=False, env_overlay=None: _successful_result(display))
 
     def boom_write_summary(*_args, **_kwargs):
         raise OSError("summary disk full")

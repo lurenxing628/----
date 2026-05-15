@@ -8,14 +8,19 @@ import json
 import os
 import platform
 import shutil
+import signal
 import stat
 import subprocess
 import sys
+import tempfile
+import time
+import urllib.request
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
 from tools.long_gate_schema import LONG_GATE_FINGERPRINT_SCHEMA_VERSION, stable_json_hash
 
 _EXPECTED_COLLECT_NODEIDS_SCHEMA_VERSION = 1
+_RUNTIME_FINGERPRINT_CACHE: Dict[str, str] = {}
 
 
 class LongGateFingerprintError(RuntimeError):
@@ -259,8 +264,21 @@ def fingerprint_command(command: Mapping[str, Any]) -> str:
         "args": [str(arg) for arg in list(command.get("args") or [])],
         "capture_output": bool(command.get("capture_output")),
         "output_policy": str(command.get("output_policy") or "exact").strip().lower(),
+        "env_overlay": _normalize_env_overlay(command.get("env_overlay")),
     }
     return stable_json_hash(normalized)
+
+
+def _normalize_env_overlay(value: Any) -> Dict[str, str]:
+    if not isinstance(value, dict):
+        return {}
+    normalized: Dict[str, str] = {}
+    for key in sorted(value):
+        key_text = str(key or "").strip()
+        if not key_text:
+            continue
+        normalized[key_text] = str(value.get(key) or "")
+    return normalized
 
 
 def _pytest_version(*, strict: bool = False) -> str:
@@ -276,30 +294,281 @@ def pytest_distribution_version(*, strict: bool = False) -> str:
     return _pytest_version(strict=strict)
 
 
-def _chrome_executable_resolution() -> str:
-    candidates = (
-        os.environ.get("APS_CHROME_PATH"),
-        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-        "/Applications/Chromium.app/Contents/MacOS/Chromium",
-        shutil.which("google-chrome"),
-        shutil.which("chromium"),
-        shutil.which("chromium-browser"),
+def _effective_environment(environment: Optional[Mapping[str, str]] = None) -> Mapping[str, str]:
+    return environment if environment is not None else os.environ
+
+
+def _chrome_default_candidates(environment: Optional[Mapping[str, str]] = None) -> Tuple[Tuple[str, Optional[str]], ...]:
+    env = _effective_environment(environment)
+    path_value = env.get("PATH")
+    return (
+        ("macos_google_chrome", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
+        ("macos_chromium", "/Applications/Chromium.app/Contents/MacOS/Chromium"),
+        ("PATH:google-chrome", shutil.which("google-chrome", path=path_value)),
+        ("PATH:chromium", shutil.which("chromium", path=path_value)),
+        ("PATH:chromium-browser", shutil.which("chromium-browser", path=path_value)),
     )
-    for candidate in candidates:
+
+
+def _chrome_resolution_payload(
+    *,
+    strict: bool = False,
+    environment: Optional[Mapping[str, str]] = None,
+) -> Dict[str, Any]:
+    env = _effective_environment(environment)
+    explicit = env.get("APS_CHROME_PATH")
+    if explicit is not None:
+        raw_path = explicit.strip()
+        if not raw_path:
+            if strict:
+                raise LongGateFingerprintError("APS_CHROME_PATH is set but empty")
+            return {
+                "status": "bad_aps_chrome_path",
+                "source": "APS_CHROME_PATH",
+                "path": raw_path,
+                "realpath": "",
+                "exists": False,
+                "reason": "empty",
+            }
+        if not os.path.exists(raw_path):
+            if strict:
+                raise LongGateFingerprintError(f"APS_CHROME_PATH does not exist: {raw_path}")
+            return {
+                "status": "bad_aps_chrome_path",
+                "source": "APS_CHROME_PATH",
+                "path": raw_path,
+                "realpath": os.path.realpath(raw_path),
+                "exists": False,
+                "reason": "missing",
+            }
+        return {
+            "status": "found",
+            "source": "APS_CHROME_PATH",
+            "path": raw_path,
+            "realpath": os.path.realpath(raw_path),
+            "exists": True,
+            "reason": "",
+        }
+
+    for source, candidate in _chrome_default_candidates(environment):
         if candidate and os.path.exists(str(candidate)):
-            return os.path.realpath(str(candidate))
+            return {
+                "status": "found",
+                "source": source,
+                "path": str(candidate),
+                "realpath": os.path.realpath(str(candidate)),
+                "exists": True,
+                "reason": "",
+            }
+    if strict:
+        raise LongGateFingerprintError("Chrome/Chromium executable is required for long gate fingerprint")
+    return {
+        "status": "missing",
+        "source": "auto",
+        "path": "",
+        "realpath": "",
+        "exists": False,
+        "reason": "missing",
+    }
+
+
+def _chrome_executable_resolution(*, strict: bool = False, environment: Optional[Mapping[str, str]] = None) -> str:
+    payload = _chrome_resolution_payload(strict=strict, environment=environment)
+    if payload["status"] == "found":
+        return str(payload["realpath"])
+    if payload["status"] == "bad_aps_chrome_path":
+        return "__bad_aps_chrome_path__:" + str(payload.get("reason") or "invalid") + ":" + str(payload.get("path") or "")
     return "__missing_chrome_or_chromium__"
 
 
-def _node_executable_realpath() -> str:
-    node = shutil.which("node")
+def _chrome_version(*, strict: bool = False, environment: Optional[Mapping[str, str]] = None) -> str:
+    env = _effective_environment(environment)
+    resolution = _chrome_resolution_payload(strict=strict, environment=environment)
+    if resolution["status"] != "found":
+        return _chrome_executable_resolution(strict=False, environment=environment)
+    chrome_path = str(resolution["path"])
+    try:
+        completed = subprocess.run(
+            [chrome_path, "--version"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+            env=dict(env),
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        if strict:
+            raise LongGateFingerprintError(f"Chrome --version is required for long gate fingerprint: {exc}") from exc
+        return "__chrome_version_unavailable__"
+    if int(completed.returncode) != 0:
+        detail = str(completed.stderr or completed.stdout or "").strip() or f"returncode={completed.returncode}"
+        if strict:
+            raise LongGateFingerprintError(f"Chrome --version failed for long gate fingerprint: {detail}")
+        return "__chrome_version_failed__:" + detail
+    return str(completed.stdout or "").strip()
+
+
+def _chrome_executable_identity(*, strict: bool = False, environment: Optional[Mapping[str, str]] = None) -> str:
+    resolution = _chrome_resolution_payload(strict=strict, environment=environment)
+    if resolution["status"] != "found":
+        return stable_json_hash(resolution)
+    realpath = str(resolution["realpath"])
+    try:
+        stat_result = os.stat(realpath)
+    except OSError as exc:
+        if strict:
+            raise LongGateFingerprintError(f"Chrome executable identity is required: {exc}") from exc
+        payload = dict(resolution)
+        payload.update({"stat_error": str(exc), "size": 0, "mtime_ns": 0})
+        return stable_json_hash(payload)
+    payload = dict(resolution)
+    payload.update(
+        {
+            "size": int(stat_result.st_size),
+            "mtime_ns": int(getattr(stat_result, "st_mtime_ns", int(stat_result.st_mtime * 1000000000))),
+        }
+    )
+    return stable_json_hash(payload)
+
+
+def _kill_process_tree(process: subprocess.Popen) -> None:
+    if process.poll() is not None:
+        return
+    if os.name == "nt":
+        try:
+            subprocess.run(
+                ["taskkill", "/T", "/F", "/PID", str(process.pid)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+                timeout=5,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            try:
+                process.kill()
+            except Exception:
+                pass
+        return
+    try:
+        os.killpg(os.getpgid(process.pid), signal.SIGKILL)  # type: ignore[name-defined]
+    except Exception:
+        try:
+            process.kill()
+        except Exception:
+            pass
+
+
+def _chrome_headless_preflight(*, strict: bool = False, environment: Optional[Mapping[str, str]] = None) -> str:
+    if not strict:
+        return "__chrome_headless_preflight_not_run_non_strict__"
+    env = _effective_environment(environment)
+    resolution = _chrome_resolution_payload(strict=True, environment=environment)
+    chrome_path = str(resolution["path"])
+    cache_key = "chrome_headless_preflight:" + _chrome_executable_identity(strict=False, environment=environment)
+    if cache_key in _RUNTIME_FINGERPRINT_CACHE:
+        return _RUNTIME_FINGERPRINT_CACHE[cache_key]
+    profile_dir = tempfile.mkdtemp(prefix="aps-long-gate-chrome-")
+    args = [
+        chrome_path,
+        "--headless=new",
+        "--remote-debugging-port=0",
+        "--user-data-dir=" + profile_dir,
+        "--disable-gpu",
+        "--disable-dev-shm-usage",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "about:blank",
+    ]
+    popen_kwargs: Dict[str, Any] = {}
+    if os.name != "nt":
+        popen_kwargs["start_new_session"] = True
+    process = subprocess.Popen(
+        args,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=dict(env),
+        **popen_kwargs,
+    )
+    failure_kind = ""
+    stderr_tail = ""
+    try:
+        active_port = os.path.join(profile_dir, "DevToolsActivePort")
+        port_text = ""
+        deadline = time.time() + 10
+        while time.time() < deadline:
+            if process.poll() is not None:
+                failure_kind = "chrome_exited_before_devtools"
+                break
+            if os.path.isfile(active_port):
+                with open(active_port, encoding="utf-8", errors="replace") as handle:
+                    lines = handle.read().splitlines() if handle.readable() else []
+                    port_text = lines[0].strip() if lines else ""
+                break
+            time.sleep(0.1)
+        if not port_text and not failure_kind:
+            failure_kind = "chrome_devtools_port_timeout"
+        try:
+            port = int(port_text)
+        except ValueError:
+            port = 0
+        if not failure_kind and not (1 <= port <= 65535):
+            failure_kind = "chrome_devtools_port_invalid"
+        if not failure_kind:
+            try:
+                with urllib.request.urlopen(f"http://127.0.0.1:{port}/json/version", timeout=5) as response:
+                    body = response.read(4096).decode("utf-8", errors="replace")
+                    status = int(getattr(response, "status", response.getcode()))
+            except Exception as exc:
+                failure_kind = "chrome_devtools_version_unreachable"
+                body = str(exc)
+                status = 0
+            if not failure_kind and status != 200:
+                failure_kind = "chrome_devtools_version_unreachable"
+            if not failure_kind and "webSocketDebuggerUrl" not in body and "Browser" not in body:
+                failure_kind = "chrome_devtools_version_unreachable"
+        if failure_kind:
+            try:
+                _stdout, stderr = process.communicate(timeout=1)
+                stderr_tail = str(stderr or "")[-4096:]
+            except Exception:
+                stderr_tail = ""
+            payload = {
+                "status": "failed",
+                "failure_kind": failure_kind,
+                "chrome_exit_code": process.poll(),
+                "version": _chrome_version(strict=False, environment=environment),
+                "stderr_tail_hash": stable_json_hash(stderr_tail),
+            }
+            raise LongGateFingerprintError("Chrome headless preflight failed: " + json.dumps(payload, sort_keys=True))
+        result_hash = stable_json_hash(
+            {
+                "status": "passed",
+                "version": _chrome_version(strict=False, environment=environment),
+                "chrome": _chrome_executable_identity(strict=False, environment=environment),
+            }
+        )
+        _RUNTIME_FINGERPRINT_CACHE[cache_key] = result_hash
+        return result_hash
+    finally:
+        _kill_process_tree(process)
+        shutil.rmtree(profile_dir, ignore_errors=True)
+
+
+def _node_executable_realpath(environment: Optional[Mapping[str, str]] = None) -> str:
+    env = _effective_environment(environment)
+    node = shutil.which("node", path=env.get("PATH"))
     if not node:
         return "__missing_node__"
     return os.path.realpath(node)
 
 
-def _node_version(*, strict: bool = False) -> str:
-    node = shutil.which("node")
+def _node_version(*, strict: bool = False, environment: Optional[Mapping[str, str]] = None) -> str:
+    env = _effective_environment(environment)
+    node = shutil.which("node", path=env.get("PATH"))
     if not node:
         return "__missing_node__"
     try:
@@ -310,6 +579,7 @@ def _node_version(*, strict: bool = False) -> str:
             encoding="utf-8",
             errors="replace",
             timeout=5,
+            env=dict(env),
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         if strict:
@@ -350,7 +620,12 @@ def _pytest_plugin_distribution_versions(*, strict: bool = False) -> str:
         return "__pytest_plugin_distribution_versions_unavailable__"
 
 
-def _runtime_fingerprint_value(key: str, *, strict: bool = False) -> Optional[str]:
+def _runtime_fingerprint_value(
+    key: str,
+    *,
+    strict: bool = False,
+    environment: Optional[Mapping[str, str]] = None,
+) -> Optional[str]:
     if key == "python_executable_realpath":
         return os.path.realpath(sys.executable)
     if key == "python_version":
@@ -362,16 +637,31 @@ def _runtime_fingerprint_value(key: str, *, strict: bool = False) -> Optional[st
     if key == "platform":
         return platform.platform()
     if key == "chrome_executable_resolution":
-        return _chrome_executable_resolution()
+        return _chrome_executable_resolution(strict=strict, environment=environment)
+    if key == "chrome_version":
+        return _chrome_version(strict=strict, environment=environment)
+    if key == "chrome_executable_identity":
+        return _chrome_executable_identity(strict=strict, environment=environment)
+    if key == "chrome_headless_preflight":
+        return _chrome_headless_preflight(strict=strict, environment=environment)
     if key == "node_executable_realpath":
-        return _node_executable_realpath()
+        return _node_executable_realpath(environment=environment)
     if key == "node_version":
-        return _node_version(strict=strict)
-    return os.environ.get(str(key))
+        return _node_version(strict=strict, environment=environment)
+    source = environment if environment is not None else os.environ
+    return source.get(str(key))
 
 
-def fingerprint_environment(keys: Sequence[str], *, strict: bool = False) -> Dict[str, Any]:
-    values = {str(key): _runtime_fingerprint_value(str(key), strict=strict) for key in list(keys or [])}
+def fingerprint_environment(
+    keys: Sequence[str],
+    *,
+    strict: bool = False,
+    environment: Optional[Mapping[str, str]] = None,
+) -> Dict[str, Any]:
+    values = {
+        str(key): _runtime_fingerprint_value(str(key), strict=strict, environment=environment)
+        for key in list(keys or [])
+    }
     return {
         "keys": [str(key) for key in list(keys or [])],
         "values": values,
@@ -439,17 +729,21 @@ def _collect_nodeids_component(repo_root: str) -> Dict[str, Any]:
 
 
 def fingerprint_entry(entry: Mapping[str, Any], repo_root: str, *, strict: bool = False) -> Dict[str, Any]:
+    env_overlay = _normalize_env_overlay(entry.get("env_overlay"))
+    effective_environment = {str(key): str(value) for key, value in os.environ.items()}
+    effective_environment.update(env_overlay)
     command_payload = {
         "display": entry.get("display"),
         "args": entry.get("args"),
         "capture_output": entry.get("capture_output"),
         "output_policy": entry.get("output_policy"),
+        "env_overlay": env_overlay,
     }
     env_keys = [str(key) for key in list(entry.get("env_keys") or [])]
     components = {
         "command_hash": fingerprint_command(command_payload),
         "files": fingerprint_files(_entry_file_scopes(entry), repo_root, strict=strict),
-        "environment": fingerprint_environment(env_keys, strict=strict),
+        "environment": fingerprint_environment(env_keys, strict=strict, environment=effective_environment),
         "output_result_files": {
             "paths": _entry_output_result_files(entry),
             "hash": stable_json_hash(_entry_output_result_files(entry)),

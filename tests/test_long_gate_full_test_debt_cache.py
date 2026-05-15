@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import importlib
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -11,6 +12,7 @@ from typing import Optional, Sequence
 
 import pytest
 
+from tools import long_gate_fingerprint as fingerprint_mod
 from tools import long_gate_full_test_debt as full_debt_mod
 from tools.long_gate_cache import decide_reuse, write_success
 from tools.long_gate_collect import build_collect_nodeids_payload, write_collect_nodeids
@@ -111,6 +113,28 @@ def _patch_gate_environment(monkeypatch, module, repo_root: Path, *, statuses: S
     monkeypatch.setattr(module, "_git_status_lines", lambda: next(status_iter))
     monkeypatch.setattr(module, "_run_git_bytes", lambda _args: b"")
     monkeypatch.setattr(module, "_runtime_state_snapshot", lambda: {"runtime_state": "absent"})
+    monkeypatch.setattr(
+        fingerprint_mod,
+        "_chrome_executable_resolution",
+        lambda strict=False, environment=None: "/stable/chrome",
+    )
+    monkeypatch.setattr(
+        fingerprint_mod,
+        "_chrome_version",
+        lambda strict=False, environment=None: "Stable Chrome 120.0.0.0",
+    )
+    monkeypatch.setattr(
+        fingerprint_mod,
+        "_chrome_executable_identity",
+        lambda strict=False, environment=None: "stable-chrome-identity",
+    )
+    monkeypatch.setattr(
+        fingerprint_mod,
+        "_chrome_headless_preflight",
+        lambda strict=False, environment=None: "stable-headless-preflight",
+    )
+    monkeypatch.setattr(fingerprint_mod, "_node_executable_realpath", lambda environment=None: "/stable/node")
+    monkeypatch.setattr(fingerprint_mod, "_node_version", lambda strict=False, environment=None: "v24.0.0")
 
 
 def _entry(repo_root: Path) -> dict:
@@ -414,7 +438,7 @@ def _write_ledger_file(repo_root: Path, ledger: Optional[dict] = None) -> Path:
 def _fake_successful_command(module, repo_root: Path, calls: list[str]):
     full_debt_run_count = {"value": 0}
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         calls.append(display)
         if display == "python -m pytest --collect-only -q tests":
             return {"stdout": "tests/test_a.py::test_a\n", "stderr": "", "returncode": 0}
@@ -2120,19 +2144,24 @@ def test_special_nodeid_incremental_success_writes_merged_outputs(monkeypatch, t
     success = _load_success(tmp_path)
     _write_file(tmp_path, "tests/test_a.py", "def test_a():\n    assert 1 == 1\n# changed\n")
     current_fingerprint = fingerprint_entry(entry, str(tmp_path))
+    seen_env_overlays = []
+    seen_check_env = []
 
     monkeypatch.setattr(full_debt_mod, "_load_ledger_for_repo", lambda *_args, **_kwargs: _empty_test_debt_ledger())
     monkeypatch.setattr(full_debt_mod, "_git_status", lambda *_args, **_kwargs: [])
     monkeypatch.setattr(full_debt_mod, "_git_head", lambda *_args, **_kwargs: "deadbeef")
+    def fake_run_check_from_existing_payload(*_args, **_kwargs):
+        seen_check_env.append(os.environ.get("APS_BROWSER_SMOKE_REQUIRED"))
+        return _summary_payload("incremental")
+
     monkeypatch.setattr(
         full_debt_mod.check_full_test_debt,
         "run_check_from_existing_payload",
-        lambda *_args, **_kwargs: _summary_payload("incremental"),
+        fake_run_check_from_existing_payload,
     )
-    monkeypatch.setattr(
-        full_debt_mod,
-        "_run_incremental_collector",
-        lambda *_args, **_kwargs: {
+    def fake_run_incremental_collector(*_args, **kwargs):
+        seen_env_overlays.append(dict(kwargs.get("env_overlay") or {}))
+        return {
             "stdout": "selected passed\n",
             "stderr": "",
             "returncode": 0,
@@ -2143,8 +2172,9 @@ def test_special_nodeid_incremental_success_writes_merged_outputs(monkeypatch, t
             },
             "pytest_args": ["tests/test_a.py::test_a", "-q", "--tb=short", "-ra", "-p", "no:cacheprovider"],
             "collector_contract_error": False,
-        },
-    )
+        }
+
+    monkeypatch.setattr(full_debt_mod, "_run_incremental_collector", fake_run_incremental_collector)
 
     result = full_debt_mod.try_run_special_full_test_debt_mode(
         repo_root=str(tmp_path),
@@ -2157,9 +2187,12 @@ def test_special_nodeid_incremental_success_writes_merged_outputs(monkeypatch, t
         },
         evaluation={"validated_success": success},
         cache_dir="evidence/QualityGate/long_gate",
+        env_overlay={"APS_BROWSER_SMOKE_REQUIRED": "1"},
     )
 
     assert result is not None
+    assert seen_env_overlays == [{"APS_BROWSER_SMOKE_REQUIRED": "1"}]
+    assert seen_check_env == ["1"]
     assert result["returncode"] == 0
     assert result["execution_mode"] == "nodeid_incremental"
     assert result["reused_from"]["changed_test_files"] == ["tests/test_a.py"]
@@ -2827,7 +2860,7 @@ def test_full_test_debt_rechecks_collect_hash_after_collect_rerun(monkeypatch, t
     calls: list[str] = []
     collect_stdout = {"text": "tests/test_a.py::test_a\n"}
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         calls.append(display)
         if display == "python -m pytest --collect-only -q tests":
             return {"stdout": collect_stdout["text"], "stderr": "", "returncode": 0}
@@ -2888,7 +2921,7 @@ def test_runner_records_nodeid_incremental_mode_without_running_whole_entry(monk
             },
         }
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         calls.append(display)
         if display == "python -m pytest --collect-only -q tests":
             return {"stdout": "tests/test_a.py::test_a\n", "stderr": "", "returncode": 0}
@@ -2941,7 +2974,7 @@ def test_runner_fails_when_nodeid_incremental_fails(monkeypatch, tmp_path):
             },
         }
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         calls.append(display)
         if display == "python -m pytest --collect-only -q tests":
             return {"stdout": "tests/test_a.py::test_a\n", "stderr": "", "returncode": 0}
@@ -2992,7 +3025,7 @@ def test_runner_fails_when_ledger_only_checker_fails_without_full_fallback(monke
             },
         }
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         calls.append(display)
         if display == "python -m pytest --collect-only -q tests":
             return {"stdout": "tests/test_a.py::test_a\n", "stderr": "", "returncode": 0}
@@ -3059,7 +3092,7 @@ def test_full_test_debt_can_reuse_after_collect_repairs_missing_nodeids(monkeypa
     )
     outputs = _write_full_outputs(repo_root, token="seed")
     entry = _entry(repo_root)
-    fingerprint = fingerprint_entry(entry, str(repo_root))
+    fingerprint = fingerprint_entry(entry, str(repo_root), strict=True)
     outputs.append(str(repo_root / _write_node_cache_output(repo_root, entry, fingerprint, "seed")))
     write_success(
         entry,
@@ -3076,7 +3109,7 @@ def test_full_test_debt_can_reuse_after_collect_repairs_missing_nodeids(monkeypa
     (repo_root / "evidence" / "QualityGate" / "collect_nodeids.json").unlink()
     calls: list[str] = []
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         calls.append(display)
         if display == "python -m pytest --collect-only -q tests":
             return {"stdout": collect_stdout, "stderr": "", "returncode": 0}

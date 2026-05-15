@@ -69,6 +69,12 @@ QUALITY_GATE_REQUIRED_REGRESSIONS_REL = os.path.join(
     "required_regressions.json",
 )
 FORMAL_FULL_TEST_PYTEST_ARGS = ["tests", "-q", "--tb=short", "-ra", "-p", "no:cacheprovider"]
+REQUIRED_BROWSER_ENV_OVERLAY = {
+    "APS_BROWSER_SMOKE_REQUIRED": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONUTF8": "1",
+    "PYTHONIOENCODING": "utf-8",
+}
 QUALITY_GATE_PYRIGHT_GATE_CONFIG = "pyrightconfig.gate.json"
 QUALITY_GATE_PROOF_SCOPE = {
     "claim": "required_registry_bound_to_clean_worktree",
@@ -414,14 +420,28 @@ def _normalize_command_rows(commands: Sequence[Dict[str, Any]]) -> List[Dict[str
         output_policy = str(row.get("output_policy") or "exact").strip().lower()
         if output_policy not in {"exact", "normalized"}:
             output_policy = "exact"
+        env_overlay = _normalize_env_overlay(row.get("env_overlay"))
         normalized.append(
             {
                 "display": str(row.get("display") or "").strip(),
                 "args": args,
                 "capture_output": bool(row.get("capture_output")),
                 "output_policy": output_policy,
+                "env_overlay": env_overlay,
             }
         )
+    return normalized
+
+
+def _normalize_env_overlay(value: Any) -> Dict[str, str]:
+    if not isinstance(value, dict):
+        return {}
+    normalized: Dict[str, str] = {}
+    for key in sorted(value):
+        key_text = str(key or "").strip()
+        if not key_text:
+            continue
+        normalized[key_text] = str(value.get(key) or "")
     return normalized
 
 
@@ -478,6 +498,7 @@ def _normalize_command_receipt_payload(payload: Dict[str, Any]) -> Dict[str, Any
         "args": [str(arg) for arg in list(payload.get("args") or [])],
         "capture_output": bool(payload.get("capture_output")),
         "output_policy": str(payload.get("output_policy") or "").strip().lower(),
+        "env_overlay": _normalize_env_overlay(payload.get("env_overlay")),
         "returncode": int(payload.get("returncode") or 0),
         "stdout_sha256": str(payload.get("stdout_sha256") or "").strip(),
         "stderr_sha256": str(payload.get("stderr_sha256") or "").strip(),
@@ -579,9 +600,12 @@ def replay_quality_gate_command_plan(
 ) -> Optional[str]:
     for index, command in enumerate(_normalize_command_rows(commands), start=1):
         display = str(command.get("display") or "").strip()
+        env = os.environ.copy()
+        env.update(_normalize_env_overlay(command.get("env_overlay")))
         proc = subprocess.run(
             _resolve_quality_gate_command_args(command),
             cwd=os.fspath(repo_root),
+            env=env,
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -600,6 +624,11 @@ def replay_quality_gate_command_plan(
             except Exception:
                 return "UNBOUND: quality gate command receipt unreadable during replay"
             receipt = _normalize_command_receipt_payload(receipt_payload if isinstance(receipt_payload, dict) else {})
+            if str(receipt.get("command_hash") or "").strip() != _stable_json_hash(command):
+                return f"UNBOUND: quality gate command receipt command_hash mismatch during replay: {display}"
+            command_field_error = _verify_receipt_command_fields(receipt, command, command)
+            if command_field_error:
+                return command_field_error + " during replay"
             stdout_log_rel = str(receipt.get("stdout_log_path") or "").replace("\\", "/")
             stderr_log_rel = str(receipt.get("stderr_log_path") or "").replace("\\", "/")
             for log_rel in (stdout_log_rel, stderr_log_rel):
@@ -655,6 +684,7 @@ def build_quality_gate_command_plan() -> List[Dict[str, Any]]:
             "args": ["python", "tools/check_full_test_debt.py"],
             "capture_output": True,
             "output_policy": "exact",
+            "env_overlay": dict(REQUIRED_BROWSER_ENV_OVERLAY),
         },
         {
             "display": "python -m ruff --version",
@@ -703,6 +733,7 @@ def build_quality_gate_command_plan() -> List[Dict[str, Any]]:
             "args": ["python", "-m", "pytest", "-q"] + list(required_tests),
             "capture_output": False,
             "output_policy": "normalized",
+            "env_overlay": dict(REQUIRED_BROWSER_ENV_OVERLAY),
         },
         {
             "display": "python scripts/sync_debt_ledger.py check",
@@ -755,6 +786,7 @@ def build_quality_gate_command_receipt(
             "args": list(normalized_command["args"]),
             "capture_output": bool(normalized_command["capture_output"]),
             "output_policy": output_policy,
+            "env_overlay": dict(normalized_command.get("env_overlay") or {}),
             "returncode": int(returncode),
             "stdout_sha256": _hash_command_output(str(stdout or ""), policy=output_policy),
             "stderr_sha256": _hash_command_output(str(stderr or ""), policy=output_policy),
@@ -960,6 +992,7 @@ def _verify_receipt_command_fields(receipt: Dict[str, Any], command: Dict[str, A
         ("args", [str(arg) for arg in list(command.get("args") or [])]),
         ("capture_output", bool(command.get("capture_output"))),
         ("output_policy", _command_output_policy(normalized_command)),
+        ("env_overlay", _normalize_env_overlay(command.get("env_overlay"))),
     )
     for key, expected_value in expected_values:
         if receipt[key] != expected_value:
@@ -1158,7 +1191,7 @@ def _verify_manifest_static_proof(manifest: Dict[str, Any]) -> tuple[Optional[st
         return "UNBOUND: quality gate required_tests_hash mismatch", [], []
 
     commands = _normalize_command_rows(manifest.get("commands") or [])
-    expected_commands = build_quality_gate_command_plan()
+    expected_commands = _normalize_command_rows(build_quality_gate_command_plan())
     if commands != expected_commands:
         return "UNBOUND: quality gate commands mismatch", [], []
     if str(manifest.get("commands_hash") or "") != hash_quality_gate_commands(commands):

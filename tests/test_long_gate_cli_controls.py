@@ -160,7 +160,7 @@ def test_custom_cache_dir_reads_writes_success_cache_and_summary(monkeypatch, tm
     _seed_collect_success(module, command_plan, repo_root)
     calls = []
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         calls.append(display)
         return _successful_result(display)
 
@@ -217,7 +217,7 @@ def test_force_rerun_entry_executes_instead_of_reusing_and_refreshes_cache(monke
     _seed_collect_success(module, command_plan, repo_root)
     calls = []
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         calls.append(display)
         return _successful_result(display)
 
@@ -251,7 +251,7 @@ def test_force_all_only_invalidates_enabled_entries_and_keeps_planned_entries(mo
     _seed_collect_success(module, command_plan, repo_root)
     calls = []
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         calls.append(display)
         return _successful_result(display)
 
@@ -278,7 +278,7 @@ def test_force_planned_entry_is_reported_but_does_not_enable_cache(monkeypatch, 
     monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: _small_plan(include_planned=True))
     calls = []
 
-    def fake_run_command(display, args, capture_output=False):
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
         calls.append(display)
         return _successful_result(display)
 

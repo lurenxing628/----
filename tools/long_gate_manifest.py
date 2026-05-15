@@ -86,6 +86,7 @@ def _normalize_command(command: Mapping[str, Any]) -> Dict[str, Any]:
         "args": _normalize_args(command.get("args") or []),
         "capture_output": bool(command.get("capture_output")),
         "output_policy": policy,
+        "env_overlay": quality_gate_shared._normalize_env_overlay(command.get("env_overlay")),
     }
 
 
@@ -421,6 +422,16 @@ def _scopes_for_entry(
                 "pytest_version",
                 "pytest_plugin_distribution_versions",
                 "platform",
+                "APS_BROWSER_SMOKE_REQUIRED",
+                "APS_CHROME_PATH",
+                "chrome_executable_resolution",
+                "chrome_version",
+                "chrome_executable_identity",
+                "chrome_headless_preflight",
+                "node_executable_realpath",
+                "node_version",
+                "PATH",
+                "CI",
                 "PYTHONPATH",
                 "PYTHONUTF8",
                 "PYTHONIOENCODING",
@@ -466,6 +477,8 @@ def _build_entry(command: Mapping[str, Any], index: int, *, entry_type: Optional
         "args": list(normalized["args"]),
         "capture_output": bool(normalized["capture_output"]),
         "output_policy": normalized["output_policy"],
+        "env_overlay": dict(normalized.get("env_overlay") or {}),
+        "env_overlay_keys": sorted((normalized.get("env_overlay") or {}).keys()),
         "command_hash": command_hash,
         "input_file_scopes": input_scopes,
         "config_file_scopes": config_scopes,
