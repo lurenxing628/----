@@ -180,6 +180,8 @@ def main() -> int:
     module_name = ""
     with tempfile.TemporaryDirectory(prefix="aps_quickref_check_") as root:
         previous_env = _set_isolated_runtime_env(root)
+        previous_logging_disable = logging.root.manager.disable
+        logging.disable(logging.CRITICAL)
         try:
             if repo_root not in sys.path:
                 sys.path.insert(0, repo_root)
@@ -188,6 +190,7 @@ def main() -> int:
 
             rule_set = _collect_app_routes(app)
         finally:
+            logging.disable(previous_logging_disable)
             if module_name:
                 sys.modules.pop(module_name, None)
             if added_repo_root:
@@ -212,7 +215,7 @@ def main() -> int:
     out_path = Path(repo_root) / "evidence" / "Conformance" / "quickref_vs_routes.md"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(report, encoding="utf-8")
-    print(str(out_path))
+    print(out_path.relative_to(repo_root).as_posix())
     if missing_in_code or undocumented_in_doc:
         print("ERROR: 系统速查表与实现存在差异，请先同步文档与路由。")
         return 1

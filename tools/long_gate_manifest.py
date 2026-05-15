@@ -69,6 +69,7 @@ _CACHE_ENABLED_ENTRY_TYPES = {
     ENTRY_REQUIRED_REGRESSIONS,
     ENTRY_DEBT_LEDGER_SYNC,
     ENTRY_STARTUP_RUNTIME_REGRESSIONS,
+    ENTRY_QUICKREF_VS_ROUTES,
 }
 
 
@@ -543,6 +544,72 @@ def _scopes_for_entry(
             quality_gate_shared.QUALITY_GATE_STARTUP_RUNTIME_REGRESSIONS_REL.replace("\\", "/"),
         ]
     elif entry_type == ENTRY_QUICKREF_VS_ROUTES:
+        input_scopes.extend(
+            [
+                "开发文档/系统速查表.md",
+                "app.py",
+                "app_new_ui.py",
+                "config.py",
+                "schema.sql",
+                "core/**/*.py",
+                "data/**/*.py",
+                "plugins/**/*.py",
+                "web/**/*.py",
+                "templates/**/*.html",
+                "web_new_test/templates/**/*.html",
+                "static/**/*",
+                "web_new_test/static/**/*",
+            ]
+        )
+        config_scopes.extend(
+            [
+                "pytest.ini",
+                "pyproject.toml",
+                "setup.cfg",
+                "tox.ini",
+                ".pre-commit-config.yaml",
+                ".gitignore",
+                "tools/quality_gate_shared.py",
+                "tools/quality_gate_support.py",
+                "tools/long_gate_manifest.py",
+                "tools/long_gate_fingerprint.py",
+                "tools/long_gate_cache.py",
+                "tools/long_gate_schema.py",
+                "scripts/run_quality_gate.py",
+            ]
+        )
+        tool_scopes.extend(
+            [
+                "tests/check_quickref_vs_routes.py",
+                "tests/test_check_quickref_vs_routes.py",
+                "tests/test_long_gate_quickref_cache.py",
+            ]
+        )
+        dependency_scopes.extend(
+            [
+                "requirements*.txt",
+                "requirements-dev*.txt",
+                "poetry.lock",
+                "uv.lock",
+                "Pipfile.lock",
+            ]
+        )
+        env_keys.extend(
+            [
+                "python_executable_realpath",
+                "python_version",
+                "platform",
+                "APS_ENV",
+                "APS_DB_PATH",
+                "APS_LOG_DIR",
+                "APS_BACKUP_DIR",
+                "APS_EXCEL_TEMPLATE_DIR",
+                "PYTHONPATH",
+                "PYTHONDONTWRITEBYTECODE",
+                "PYTHONUTF8",
+                "PYTHONIOENCODING",
+            ]
+        )
         output_files = ["evidence/Conformance/quickref_vs_routes.md"]
     elif entry_type == ENTRY_DEBT_LEDGER_SYNC:
         input_scopes.extend(

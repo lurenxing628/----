@@ -674,6 +674,7 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
     assert "tests/regression_schedule_summary_freeze_state_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/test_git_hook_checks.py" in module.REQUIRED_TEST_ARGS
     assert "tests/test_long_gate_cli_controls.py" in module.REQUIRED_TEST_ARGS
+    assert "tests/test_long_gate_quickref_cache.py" in module.REQUIRED_TEST_ARGS
     assert "tests/test_long_gate_summary_output.py" in module.REQUIRED_TEST_ARGS
     assert "tests/test_sync_debt_ledger.py" in module.REQUIRED_TEST_ARGS
     assert "tests/test_schedule_template_lookup_contract.py" in module.REQUIRED_TEST_ARGS
@@ -826,6 +827,7 @@ def test_main_rebuilds_ignored_receipts_without_dirtying_clean_worktree(monkeypa
         "evidence/QualityGate/ruff_check_full.json",
         "evidence/QualityGate/pyright_gate_full.json",
         "evidence/QualityGate/pyright_tools_full.json",
+        "evidence/Conformance/quickref_vs_routes.md",
     ]
     assert len(manifest["command_receipts"]) == len(manifest["commands"])
 

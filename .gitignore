@@ -93,6 +93,7 @@ evidence/QualityGate/ruff_check_full.json
 evidence/QualityGate/pyright_gate_full.json
 evidence/QualityGate/pyright_tools_full.json
 evidence/QualityGate/required_regressions/
+evidence/Conformance/quickref_vs_routes.md
 tmp_binding_probe/
 
 # Raw test/benchmark console output (binary encoding, only keep formatted reports)

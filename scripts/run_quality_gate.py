@@ -120,6 +120,7 @@ GENERATED_CLEAN_WORKTREE_EXCLUDED_PATHS = [
     QUALITY_GATE_RUFF_CHECK_FULL_REL.replace("\\", "/"),
     QUALITY_GATE_PYRIGHT_GATE_FULL_REL.replace("\\", "/"),
     QUALITY_GATE_PYRIGHT_TOOLS_FULL_REL.replace("\\", "/"),
+    "evidence/Conformance/quickref_vs_routes.md",
 ]
 HIGH_RISK_UNTRACKED_SOURCE_PREFIXES = ("core/", "web/", "data/", "tools/", "scripts/")
 HIGH_RISK_UNTRACKED_SOURCE_SUFFIXES = (".py", ".js", ".ts", ".html", ".css", ".sql")

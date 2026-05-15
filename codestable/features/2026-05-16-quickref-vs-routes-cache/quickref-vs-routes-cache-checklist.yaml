@@ -1,0 +1,51 @@
+feature: 2026-05-16-quickref-vs-routes-cache
+created: 2026-05-16
+
+steps:
+  - action: "CodeStable scaffold：创建 NEXT-12 feature 文档和 checklist，绑定 roadmap item"
+    exit_signal: "feature 目录、design、checklist 存在；items.yaml 中 quickref-vs-routes-cache 为 in-progress"
+    status: done
+  - action: "quickref 合同加固：stdout 改成仓库相对路径，避免本机绝对路径进入长期日志"
+    exit_signal: "quickref main 测试锁住 stdout 只输出相对 report path 和 OK / ERROR"
+    status: done
+  - action: "manifest / fingerprint：补齐 quickref scopes 并只启用 quickref_vs_routes"
+    exit_signal: "文档、路由、app/bootstrap、模板、静态资源、配置、依赖、环境和输出 path 变化都会影响 fingerprint；architecture_fitness 仍 planned"
+    status: done
+  - action: "artifact hygiene：保护 quickref report，不改变 daily/pre-push/CI final 语义"
+    exit_signal: "quickref report 被 ignore、hook block 和 clean generated path 说明保护；daily/pre-push/final 命令语义不变"
+    status: done
+  - action: "acceptance / roadmap：写验收报告并按真实完成范围回写 roadmap"
+    exit_signal: "acceptance 记录完成范围、未做事项、验证结果和 proof 口径；items.yaml 和 roadmap 主文档状态一致"
+    status: done
+
+checks:
+  - item: "quickref_vs_routes 继续来自真实 command plan，命令身份不变"
+    source: manifest 边界
+    status: passed
+  - item: "enabled 列表只新增 quickref_vs_routes"
+    source: enabled 边界
+    status: passed
+  - item: "architecture_fitness 仍 planned，debt_ledger_sync 仍 enabled"
+    source: 禁止越界
+    status: passed
+  - item: "系统速查表、路由、app/bootstrap、模板、静态资源、配置、依赖和环境变化会导致重跑"
+    source: fingerprint
+    status: passed
+  - item: "quickref report 缺失或 hash mismatch 会导致重跑"
+    source: output proof
+    status: passed
+  - item: "quickref stdout 不泄漏本机绝对路径"
+    source: quickref 合同
+    status: passed
+  - item: "quickref report 不混入提交"
+    source: artifact hygiene
+    status: passed
+  - item: "daily gate、pre-push 和 CI final 语义不变"
+    source: hook / CI 边界
+    status: passed
+  - item: "explain、cache hit、quickref report 都不冒充 clean-worktree final proof"
+    source: proof 口径
+    status: passed
+  - item: "Python 3.8 / Win7 兼容，不使用 shell=True 和新类型语法"
+    source: 兼容性
+    status: passed

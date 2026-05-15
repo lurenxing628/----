@@ -166,6 +166,7 @@ def test_blocked_paths_include_long_gate_runtime_artifacts() -> None:
             "evidence/QualityGate/ruff_check_full.json",
             "evidence/QualityGate/pyright_gate_full.json",
             "evidence/QualityGate/pyright_tools_full.json",
+            "evidence/Conformance/quickref_vs_routes.md",
         ]
     ) == [
         (
@@ -207,6 +208,10 @@ def test_blocked_paths_include_long_gate_runtime_artifacts() -> None:
         (
             "evidence/QualityGate/pyright_tools_full.json",
             "pyright tools proof 是运行产物，应由当前门禁重新生成",
+        ),
+        (
+            "evidence/Conformance/quickref_vs_routes.md",
+            "quickref/routes 对账报告是运行产物，应由当前门禁重新生成",
         ),
     ]
 

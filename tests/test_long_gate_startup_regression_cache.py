@@ -65,6 +65,7 @@ def test_startup_entry_comes_from_real_command_plan_and_enables_only_current_cac
         "required_regressions",
         "debt_ledger_sync",
         "startup_runtime_regressions",
+        "quickref_vs_routes",
     ]
     assert _entry_by_id(manifest, ENTRY_REQUIRED_REGRESSIONS)["cache_status"] == "enabled"
 

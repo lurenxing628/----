@@ -15,6 +15,7 @@ from tools.long_gate_cache import evaluate_reuse, write_success
 from tools.long_gate_fingerprint import fingerprint_entry
 from tools.long_gate_manifest import (
     ENTRY_DEBT_LEDGER_SYNC,
+    ENTRY_QUICKREF_VS_ROUTES,
     ENTRY_REQUIRED_REGRESSIONS,
     ENTRY_STARTUP_RUNTIME_REGRESSIONS,
     build_manifest_from_quality_gate_plan,
@@ -247,6 +248,18 @@ def _write_full_test_debt_outputs(repo_root: Path, token: str = "ok") -> None:
     summary.write_text(json.dumps(_summary_payload(token), ensure_ascii=False, sort_keys=True), encoding="utf-8")
 
 
+def _write_quickref_report(repo_root: Path) -> Path:
+    report = repo_root / "evidence" / "Conformance" / "quickref_vs_routes.md"
+    report.parent.mkdir(parents=True, exist_ok=True)
+    report.write_text(
+        "# 系统速查表与真实路由对账\n\n"
+        "状态：通过\n\n"
+        "文档中的路由和 Flask 实际注册路由一致。\n",
+        encoding="utf-8",
+    )
+    return report
+
+
 def _fake_successful_command(
     command_plan: Sequence[Dict[str, Any]],
     repo_root: Path,
@@ -259,6 +272,7 @@ def _fake_successful_command(
     required_display = str(required_entry["display"])
     debt_display = str(_entry_by_id(manifest, ENTRY_DEBT_LEDGER_SYNC)["display"])
     startup_display = _entry_display(command_plan, repo_root, ENTRY_STARTUP_RUNTIME_REGRESSIONS)
+    quickref_display = _entry_display(command_plan, repo_root, ENTRY_QUICKREF_VS_ROUTES)
     fail_ids = set(fail_entry_ids)
     full_debt_runs = {"count": 0}
 
@@ -317,6 +331,15 @@ def _fake_successful_command(
             if ENTRY_STARTUP_RUNTIME_REGRESSIONS in fail_ids:
                 return {"stdout": "startup failed\n", "stderr": "boom\n", "returncode": 1}
             return {"stdout": "16 passed in 1.23s\n", "stderr": "", "returncode": 0}
+        if display == quickref_display:
+            if ENTRY_QUICKREF_VS_ROUTES in fail_ids:
+                return {"stdout": "quickref failed\n", "stderr": "boom\n", "returncode": 1}
+            _write_quickref_report(repo_root)
+            return {
+                "stdout": "evidence/Conformance/quickref_vs_routes.md\nOK\n",
+                "stderr": "",
+                "returncode": 0,
+            }
         return {"stdout": "", "stderr": "", "returncode": 0}
 
     return fake_run_command

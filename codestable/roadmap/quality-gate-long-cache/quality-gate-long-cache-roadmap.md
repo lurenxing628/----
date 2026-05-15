@@ -3,7 +3,7 @@ doc_type: roadmap
 slug: quality-gate-long-cache
 status: active
 created: 2026-05-12
-last_reviewed: 2026-05-15
+last_reviewed: 2026-05-16
 tags: [quality-gate, cache, full-test-debt, pyright, ruff]
 related_requirements: []
 related_architecture: [codestable/architecture/ARCHITECTURE.md]
@@ -13,9 +13,9 @@ related_architecture: [codestable/architecture/ARCHITECTURE.md]
 
 ## 1. 当前状态确认
 
-这份 roadmap 现在只记录后续路线，不代表所有慢门禁都已经缓存。当前已经完成 NEXT-1 到 NEXT-11；`static-formal-cache` 已完成正式 ruff / pyright 静态门禁 success cache，`debt-ledger-sync-cache` 已完成债务台账同步检查 success cache。`full_test_debt` 先支持整项成功复用，现在又补了安全的 nodeid 级增量和台账-only 路径；`startup_runtime_regressions` 和 `required_regressions` 已支持整组成功复用；NEXT-8 `architecture-scan-file-cache` 已完成文件级扫描事实缓存，但它只缓存单文件事实，不启用 `architecture_fitness` 整项成功复用；NEXT-9 `fast-static-precheck` 已完成局部 ruff 快速预检，pyright 默认跳过并明确不代表正式 pyright gate。当前 enabled long gate entry 是 `pytest_collect_all`、`full_test_debt`、`ruff_check_full`、`pyright_gate_full`、`pyright_tools_full`、`startup_runtime_regressions`、`required_regressions` 和 `debt_ledger_sync`。`architecture_fitness`、`quickref_vs_routes` 仍保持 planned。
+这份 roadmap 现在只记录后续路线，不代表所有慢门禁都已经缓存。当前已经完成 NEXT-1 到 NEXT-12；`static-formal-cache` 已完成正式 ruff / pyright 静态门禁 success cache，`debt-ledger-sync-cache` 已完成债务台账同步检查 success cache，`quickref-vs-routes-cache` 已完成系统速查表与真实路由对账检查 success cache。`full_test_debt` 先支持整项成功复用，现在又补了安全的 nodeid 级增量和台账-only 路径；`startup_runtime_regressions` 和 `required_regressions` 已支持整组成功复用；NEXT-8 `architecture-scan-file-cache` 已完成文件级扫描事实缓存，但它只缓存单文件事实，不启用 `architecture_fitness` 整项成功复用；NEXT-9 `fast-static-precheck` 已完成局部 ruff 快速预检，pyright 默认跳过并明确不代表正式 pyright gate。当前 enabled long gate entry 是 `pytest_collect_all`、`full_test_debt`、`ruff_check_full`、`pyright_gate_full`、`pyright_tools_full`、`startup_runtime_regressions`、`required_regressions`、`debt_ledger_sync` 和 `quickref_vs_routes`。`architecture_fitness` 仍保持 planned。
 
-`pre-push-long-gate-cache` 是历史完成项：完成当时把本地 pre-push hook 接到了完整 clean gate + long gate cache。后续为了避免日常 push 每次都被完整 full-test-debt 拖住，pre-push 已改为运行 `scripts/run_daily_quality_gate.py`。当前最终完整门禁仍由 `scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache` 承担，也可以通过 `tools/git_hook_checks.py run-final-quality-gate` 手动触发；这不会额外启用仍处于 planned 的 `architecture_fitness` 或 `quickref_vs_routes`。
+`pre-push-long-gate-cache` 是历史完成项：完成当时把本地 pre-push hook 接到了完整 clean gate + long gate cache。后续为了避免日常 push 每次都被完整 full-test-debt 拖住，pre-push 已改为运行 `scripts/run_daily_quality_gate.py`。当前最终完整门禁仍由 `scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache` 承担，也可以通过 `tools/git_hook_checks.py run-final-quality-gate` 手动触发；这不会额外启用仍处于 planned 的 `architecture_fitness`。
 
 已经完成并可以继续沿用：
 
@@ -23,17 +23,16 @@ related_architecture: [codestable/architecture/ARCHITECTURE.md]
 |---|---|
 | CodeStable 路线和 feature 文档 | 已建立 `codestable/roadmap/quality-gate-long-cache/` 和 PR-0 到 PR-3 对应 feature 文档。 |
 | 基础模块 | 已有 `tools/long_gate_manifest.py`、`tools/long_gate_fingerprint.py`、`tools/long_gate_cache.py`、`tools/long_gate_collect.py`。 |
-| 已启用成功缓存 | `pytest_collect_all`、`full_test_debt`、`ruff_check_full`、`pyright_gate_full`、`pyright_tools_full`、`startup_runtime_regressions`、`required_regressions` 和 `debt_ledger_sync`。分别对应 collect-only、`python tools/check_full_test_debt.py`、正式 `python -m ruff check`、正式 `python -m pyright -p pyrightconfig.gate.json`、正式 `python -m pyright -p pyrightconfig.tools.json`、真实 command plan 里的 startup pytest 整组命令、真实 command plan 里的 required pytest 整组命令、以及 `python scripts/sync_debt_ledger.py check`。 |
+| 已启用成功缓存 | `pytest_collect_all`、`full_test_debt`、`ruff_check_full`、`pyright_gate_full`、`pyright_tools_full`、`startup_runtime_regressions`、`required_regressions`、`debt_ledger_sync` 和 `quickref_vs_routes`。分别对应 collect-only、`python tools/check_full_test_debt.py`、正式 `python -m ruff check`、正式 `python -m pyright -p pyrightconfig.gate.json`、正式 `python -m pyright -p pyrightconfig.tools.json`、真实 command plan 里的 startup pytest 整组命令、真实 command plan 里的 required pytest 整组命令、`python scripts/sync_debt_ledger.py check`，以及 `python tests/check_quickref_vs_routes.py`。 |
 | runner 参数 | 已有 `--long-gate-cache`、`--no-long-gate-cache`、`--long-gate-cache-explain`、`--long-gate-cache-dir`、`--long-gate-force-rerun`、`--long-gate-force-rerun-all`。 |
 | collect 输出 | collect-only 成功后可写 `evidence/QualityGate/collect_nodeids.json`。 |
 | receipt 字段 | 已有 `execution_mode`、`reused_from`、耗时字段、`timed_out`、`interrupted`、`partial_write`。 |
 | 缓存安全底线 | 已校验 entry、command、fingerprint、log、output、路径逃逸、损坏 JSON、cache/fingerprint schema、runner/tooling hash 和 repo identity；后续只能继续加固，不能放松。 |
-| 防提交保护 | `evidence/QualityGate/long_gate/`、`evidence/QualityGate/collect_nodeids.json`、`evidence/QualityGate/current_full_test_debt.json`、`evidence/QualityGate/full_test_debt_summary.json`、`evidence/QualityGate/full_test_debt_node_cache.json`、`evidence/QualityGate/startup_runtime_regressions.json`、`evidence/QualityGate/required_regressions.json`、`evidence/QualityGate/architecture_scan_cache.json`、`evidence/QualityGate/ruff_check_full.json`、`evidence/QualityGate/pyright_gate_full.json`、`evidence/QualityGate/pyright_tools_full.json` 和 `evidence/QualityGate/debt_ledger_sync.json` 已被 `.gitignore` 或本地 hook 保护，运行产物不能混入提交。 |
+| 防提交保护 | `evidence/QualityGate/long_gate/`、`evidence/QualityGate/collect_nodeids.json`、`evidence/QualityGate/current_full_test_debt.json`、`evidence/QualityGate/full_test_debt_summary.json`、`evidence/QualityGate/full_test_debt_node_cache.json`、`evidence/QualityGate/startup_runtime_regressions.json`、`evidence/QualityGate/required_regressions.json`、`evidence/QualityGate/architecture_scan_cache.json`、`evidence/QualityGate/ruff_check_full.json`、`evidence/QualityGate/pyright_gate_full.json`、`evidence/QualityGate/pyright_tools_full.json`、`evidence/QualityGate/debt_ledger_sync.json` 和 `evidence/Conformance/quickref_vs_routes.md` 已被 `.gitignore` 或本地 hook 保护，运行产物不能混入提交。 |
 
 目前只是候选，不能说已经启用成功复用：
 
 - `architecture_fitness`
-- `quickref_vs_routes`
 
 NEXT-1 已完成并可以继续沿用：
 
@@ -49,8 +48,7 @@ NEXT-2 已完成并可以继续沿用：
 
 还没有完整落地的范围：
 
-- quickref vs routes 缓存。
-- 后续完整文档和测试覆盖。
+- 后续完整文档和最终 clean proof 收口。
 
 ## 2. 总体原则
 
@@ -816,7 +814,7 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --fast-pr
 
 目标：为 `python scripts/sync_debt_ledger.py check` 做整项成功复用，并在 architecture scan cache 完成后复用同一套文件级扫描事实。
 
-状态：已完成。当前只新增启用 `debt_ledger_sync` success cache，`architecture_fitness` 和 `quickref_vs_routes` 仍 planned。
+状态：已完成。NEXT-11 当时只新增启用 `debt_ledger_sync` success cache，`architecture_fitness` 和 `quickref_vs_routes` 在 NEXT-11 完成时仍 planned；其中 `quickref_vs_routes` 已在后续 NEXT-12 启用。
 
 本阶段已修改：
 
@@ -874,6 +872,8 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --fast-pr
 
 ### NEXT-12：quickref vs routes 缓存
 
+状态：done。对应 feature：`2026-05-16-quickref-vs-routes-cache`。
+
 目标：为 `python tests/check_quickref_vs_routes.py` 做整项成功复用。
 
 需要修改：
@@ -886,7 +886,7 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --fast-pr
 建议新增：
 
 - `tests/test_long_gate_quickref_cache.py`
-- `codestable/features/2026-05-13-quickref-vs-routes-cache/`
+- `codestable/features/2026-05-16-quickref-vs-routes-cache/`
 
 输入范围：
 
@@ -916,6 +916,8 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --fast-pr
 - route 新增但速查表没变时必须执行。
 
 回滚方式：把 `ENTRY_QUICKREF_VS_ROUTES` 移回 planned。
+
+完成说明：已为 `quickref_vs_routes` 增加整项成功复用。命令仍来自真实 `build_quality_gate_command_plan()`，身份是 `python tests/check_quickref_vs_routes.py`。success cache 绑定系统速查表、app/bootstrap/routes/web 代码、模板、静态资源、配置、依赖、Python/env、声明输出 path、`evidence/Conformance/quickref_vs_routes.md` hash 和 stdout/stderr long-gate 日志。quickref stdout 已改为仓库相对路径，并在路由扫描期间静音 app 启动日志，避免本机路径、临时目录和时间戳进入稳定输出。`evidence/Conformance/quickref_vs_routes.md` 是运行产物，已被 `.gitignore`、`tools/git_hook_checks.py` 和 clean-worktree generated path 说明保护。本阶段没有启用 `architecture_fitness`，没有改变 daily/pre-push/CI final 语义，也未运行 clean-worktree final quality gate，不能把本次验证说成最终 clean proof。
 
 ### NEXT-13：文档、最终收口和干净证明
 
@@ -995,7 +997,7 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require
 14. `fast-static-precheck`：done，已完成快速静态预检。
 15. `static-formal-cache`：done，已完成 ruff/pyright 正式全量缓存；`pyright_tools_full` 已改用 `pyrightconfig.tools.json`，并用 include 对账 + `filesAnalyzed` 自检防止缓存只找到 2 个 source files 的结果。
 16. `debt-ledger-sync-cache`：done，已完成 `debt_ledger_sync` 整项 success cache；manifest entry `debt_ledger_sync` 已 enabled，proof 写入 `evidence/QualityGate/debt_ledger_sync.json`。
-17. `quickref-vs-routes-cache`：planned，做 quickref vs routes 缓存。
+17. `quickref-vs-routes-cache`：done，已完成 `quickref_vs_routes` 整项 success cache；manifest entry `quickref_vs_routes` 已 enabled，报告写入 `evidence/Conformance/quickref_vs_routes.md`。
 18. `long-gate-docs-final-proof`：planned，做文档、状态回写和最终干净证明。
 
 ## 7. 推荐提交颗粒度
@@ -1045,7 +1047,7 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require
 6. 不要为了提高命中率加宽松兜底。证据不完整就重新执行。
 7. symlink 策略继续保守。仓库外目标不读取内容，直接失效或拒绝。
 8. 自定义 cache dir 只能在 repo root 内，并且最好限制在已被忽略的 evidence 子目录下。
-9. CI 当前执行完整质量门禁时已经显式传入 `--long-gate-cache`；当前 enabled entry 是 `pytest_collect_all`、`full_test_debt`、`ruff_check_full`、`pyright_gate_full`、`pyright_tools_full`、`startup_runtime_regressions`、`required_regressions`、`debt_ledger_sync`，planned entry 不会因此复用。后续任何新 entry 进入 enabled，都必须单独评估 CI 下复用证据是否可靠。
+9. CI 当前执行完整质量门禁时已经显式传入 `--long-gate-cache`；当前 enabled entry 是 `pytest_collect_all`、`full_test_debt`、`ruff_check_full`、`pyright_gate_full`、`pyright_tools_full`、`startup_runtime_regressions`、`required_regressions`、`debt_ledger_sync`、`quickref_vs_routes`，planned entry 不会因此复用。后续任何新 entry 进入 enabled，都必须单独评估 CI 下复用证据是否可靠。
 10. 每个 PR 的最终说明都要写清楚：本 PR 新启用了哪些 entry，哪些仍然只是候选。
 
 ## 10. 观察项
@@ -1076,3 +1078,4 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require
 - 2026-05-15：完成 `architecture-scan-file-cache`。新增 architecture 单文件扫描事实缓存，缓存只保存单文件 fact，不保存 architecture fitness pass/fail，也不启用 `architecture_fitness.success.json`；坏 JSON、缺字段、未知 fact_kinds、明细缺字段、file sha、scanner/schema/Python/radon 变化都会重扫；最终判断仍每次 aggregate。`--long-gate-cache-explain` 已确认 `architecture_fitness` 仍 planned，但 explain 不是 clean proof。
 - 2026-05-15：完成 `static-formal-cache`。已启用 `ruff_check_full`、`pyright_gate_full` 和 `pyright_tools_full` 的正式 success cache；三条 static entry 都绑定专属输入边界、配置、依赖、工具版本、Python 环境、声明输出 proof JSON 和 long-gate 日志；`pyright_tools_full` 原命令只找到 2 个 source files 的阻塞已通过 `pyrightconfig.tools.json`、include 对账和 `filesAnalyzed` 自检处理，不能把空覆盖结果缓存成成功。本次未运行 clean-worktree final quality gate，不能把本次验证说成最终 clean proof。
 - 2026-05-15：完成 `debt-ledger-sync-cache`。只新增启用 `debt_ledger_sync`，不启用 `architecture_fitness` 或 `quickref_vs_routes`；proof 写入 `evidence/QualityGate/debt_ledger_sync.json`，绑定命令、fingerprint、台账 counts、architecture scan metadata、stdout/stderr 日志和声明输出 hash；台账、roadmap/feature、sync 脚本、扫描 helper、源码、配置、依赖、Python/env、architecture scan metadata 或 proof/log 变化都会重跑；`architecture_scan_cache.json` 本身不进 fingerprint；本次未运行 clean-worktree final quality gate，不能把本次验证说成最终 clean proof。
+- 2026-05-16：完成 `quickref-vs-routes-cache`。只新增启用 `quickref_vs_routes`，不启用 `architecture_fitness`；报告写入 `evidence/Conformance/quickref_vs_routes.md`，绑定命令、fingerprint、系统速查表、app/bootstrap/routes/web 代码、模板、静态资源、配置、依赖、Python/env、stdout/stderr 日志和声明输出 hash；quickref stdout 改为仓库相对路径并静音 app 启动日志；本次未运行 clean-worktree final quality gate，不能把本次验证说成最终 clean proof。

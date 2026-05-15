@@ -75,12 +75,10 @@ def test_required_entry_comes_from_real_command_plan_and_enables_only_current_ca
         "required_regressions",
         "debt_ledger_sync",
         "startup_runtime_regressions",
-    ]
-    for entry_id in [
-        "architecture_fitness",
         "quickref_vs_routes",
-    ]:
-        assert _entry_by_id(manifest, entry_id)["cache_status"] == "planned"
+    ]
+    assert _entry_by_id(manifest, "architecture_fitness")["cache_status"] == "planned"
+    assert _entry_by_id(manifest, "quickref_vs_routes")["cache_status"] == "enabled"
 
 
 def test_required_classification_does_not_depend_on_command_position(tmp_path):
@@ -587,9 +585,12 @@ def test_force_rerun_all_executes_required_and_keeps_later_entries_planned(monke
     assert debt_summary["cache_status"] == "enabled"
     assert debt_summary["reason"] == "forced by --long-gate-force-rerun-all"
     assert _success_path(repo_root, ENTRY_DEBT_LEDGER_SYNC).exists()
-    for entry_id in ["architecture_fitness", "quickref_vs_routes"]:
-        assert _summary_entry(summary, entry_id)["cache_status"] == "planned"
-        assert not _success_path(repo_root, entry_id).exists()
+    assert _summary_entry(summary, "architecture_fitness")["cache_status"] == "planned"
+    assert not _success_path(repo_root, "architecture_fitness").exists()
+    quickref_summary = _summary_entry(summary, "quickref_vs_routes")
+    assert quickref_summary["cache_status"] == "enabled"
+    assert quickref_summary["reason"] == "forced by --long-gate-force-rerun-all"
+    assert _success_path(repo_root, "quickref_vs_routes").exists()
 
 
 def test_required_parent_scope_includes_group_registry_scope_union(tmp_path):

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import importlib.util
+import logging
 import sys
 from pathlib import Path
+
+from flask import Flask
 
 
 def _repo_root() -> Path:
@@ -65,3 +68,31 @@ def test_extract_doc_endpoints_and_diff_missing_extra_method_mismatch():
     assert ("POST", "/system/logs/delete") in missing
     assert ("GET", "/system/logs/delete") in extra
     assert ("POST", "/reports/overdue/export") in extra
+
+
+def test_main_prints_repo_relative_report_path(monkeypatch, tmp_path, capsys):
+    module = _import_check_quickref_vs_routes()
+    repo_root = tmp_path
+    doc_dir = repo_root / "开发文档"
+    doc_dir.mkdir()
+    (repo_root / "app.py").write_text("app = None\n", encoding="utf-8")
+    (repo_root / "schema.sql").write_text("-- schema\n", encoding="utf-8")
+    (doc_dir / "系统速查表.md").write_text("- `GET /health`：健康检查\n", encoding="utf-8")
+    app = Flask("quickref-test")
+
+    @app.route("/health")
+    def health():
+        return "ok"
+
+    def load_app_with_noisy_startup(_repo_root):
+        logging.warning("noisy startup path /tmp/aps_quickref_check_random/logs/aps_secret_key.txt")
+        return app, "quickref_test_app"
+
+    monkeypatch.setattr(module, "find_repo_root", lambda: str(repo_root))
+    monkeypatch.setattr(module, "_load_app_for_scan", load_app_with_noisy_startup)
+
+    assert module.main() == 0
+
+    captured = capsys.readouterr()
+    assert captured.out.splitlines() == ["evidence/Conformance/quickref_vs_routes.md", "OK"]
+    assert captured.err == ""

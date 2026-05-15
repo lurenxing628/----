@@ -220,7 +220,7 @@ def test_required_groups_do_not_enter_formal_manifest_contract():
     assert "required_regression_group_scope_policy" not in required
 
 
-def test_collect_full_test_debt_static_gate_required_and_startup_entries_are_currently_reuse_enabled():
+def test_collect_full_test_debt_static_gate_required_startup_and_quickref_entries_are_reuse_enabled():
     command_plan = quality_gate_shared.build_quality_gate_command_plan()
     manifest = manifest_mod.build_manifest_from_quality_gate_plan(command_plan, repo_root=quality_gate_shared.REPO_ROOT)
 
@@ -237,6 +237,7 @@ def test_collect_full_test_debt_static_gate_required_and_startup_entries_are_cur
     debt_ledger = _entry_by_id(manifest, "debt_ledger_sync")
     required = _entry_by_id(manifest, "required_regressions")
     startup = _entry_by_id(manifest, "startup_runtime_regressions")
+    quickref = _entry_by_id(manifest, "quickref_vs_routes")
 
     assert enabled == [
         "pytest_collect_all",
@@ -247,10 +248,10 @@ def test_collect_full_test_debt_static_gate_required_and_startup_entries_are_cur
         "required_regressions",
         "debt_ledger_sync",
         "startup_runtime_regressions",
+        "quickref_vs_routes",
     ]
     forbidden_planned = [
         "architecture_fitness",
-        "quickref_vs_routes",
     ]
     for entry_id in forbidden_planned:
         entry = _entry_by_id(manifest, entry_id)
@@ -410,6 +411,29 @@ def test_collect_full_test_debt_static_gate_required_and_startup_entries_are_cur
     assert "PYTHONPATH" in startup["env_keys"]
     assert "PYTHONUTF8" in startup["env_keys"]
     assert "PYTHONIOENCODING" in startup["env_keys"]
+    assert quickref["cache_status"] == "enabled"
+    assert quickref["reuse_allowed"] is True
+    assert quickref["output_result_files"] == ["evidence/Conformance/quickref_vs_routes.md"]
+    for scope in [
+        "开发文档/系统速查表.md",
+        "app.py",
+        "web/**/*.py",
+        "templates/**/*.html",
+        "static/**/*",
+        "config.py",
+        "schema.sql",
+    ]:
+        assert scope in quickref["input_file_scopes"]
+    for scope in [
+        "tests/check_quickref_vs_routes.py",
+        "tests/test_check_quickref_vs_routes.py",
+        "tests/test_long_gate_quickref_cache.py",
+    ]:
+        assert scope in quickref["tool_file_scopes"]
+    assert "requirements*.txt" in quickref["dependency_file_scopes"]
+    assert "python_executable_realpath" in quickref["env_keys"]
+    assert "PYTHONUTF8" in quickref["env_keys"]
+    assert "PYTHONIOENCODING" in quickref["env_keys"]
 
 
 def test_pyright_tools_entry_tracks_quality_gate_tool_paths():
