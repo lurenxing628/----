@@ -11,7 +11,7 @@ import textwrap
 import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 import pytest
 from werkzeug.serving import make_server
@@ -614,6 +614,30 @@ def _kill_process_tree(process: subprocess.Popen) -> None:
             process.kill()
         except Exception:
             pass
+
+
+def _terminate_process_tree(process: subprocess.Popen, *, timeout: float = 5.0) -> None:
+    if process.poll() is not None:
+        return
+    if os.name == "nt":
+        try:
+            process.terminate()
+            process.wait(timeout=timeout)
+            return
+        except (OSError, subprocess.TimeoutExpired):
+            _kill_process_tree(process)
+            return
+    try:
+        os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+    except Exception:
+        try:
+            process.terminate()
+        except Exception:
+            pass
+    try:
+        process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _kill_process_tree(process)
 
 
 def _run_chrome_geometry_probe(
@@ -1416,8 +1440,11 @@ def _run_chrome_geometry_probe(
               process.exitCode = 1;
             } finally {
               for (const client of active) client.close();
-              try { chrome.kill("SIGKILL"); } catch {}
+              try { chrome.kill("SIGTERM"); } catch {}
               const chromeExitWait = await waitForChromeExit(3000);
+              if (!chromeExitWait.exited) {
+                try { chrome.kill("SIGKILL"); } catch {}
+              }
               try { await fs.rm(userDataDir, { recursive: true, force: true }); } catch (error) {
                 console.error(JSON.stringify({
                   warning_kind: "chrome_profile_cleanup_warning",
@@ -1463,7 +1490,7 @@ def _run_chrome_geometry_probe(
     try:
         stdout, stderr = process.communicate(timeout=90)
     except subprocess.TimeoutExpired:
-        _kill_process_tree(process)
+        _terminate_process_tree(process)
         try:
             stdout, stderr = process.communicate(timeout=5)
         except subprocess.TimeoutExpired as exc:
@@ -1590,6 +1617,9 @@ def test_ui_pages_do_not_create_body_level_overflow_in_real_browser(tmp_path, mo
 
 
 def test_ui_browser_geometry_smoke_covers_scheduler_run_page() -> None:
+    backup_signals = EXPECTED_PAGE_SIGNALS["/system/backup"]
+    logs_signals = EXPECTED_PAGE_SIGNALS["/system/logs"]
+    history_version_signals = EXPECTED_PAGE_SIGNALS["/system/history?version=2"]
     assert "/scheduler/?status=pending" in SMOKE_PATHS
     assert "/scheduler/batches?status=pending" not in SMOKE_PATHS
     assert "/system/history" in SMOKE_PATHS
@@ -1599,10 +1629,10 @@ def test_ui_browser_geometry_smoke_covers_scheduler_run_page() -> None:
         "runEnforceReady",
         "runStrictMode",
     ]
-    assert "pluginStatusTable" in EXPECTED_PAGE_SIGNALS["/system/backup"]["ids"]
-    assert "启动问题" in EXPECTED_PAGE_SIGNALS["/system/backup"]["diagnostic_texts"]
-    assert "详情格式异常" in EXPECTED_PAGE_SIGNALS["/system/logs"]["diagnostic_texts"]
-    assert "当前版本的排产摘要读取失败" in EXPECTED_PAGE_SIGNALS["/system/history?version=2"]["diagnostic_texts"]
+    assert "pluginStatusTable" in cast(List[str], backup_signals["ids"])
+    assert "启动问题" in cast(List[str], backup_signals["diagnostic_texts"])
+    assert "详情格式异常" in cast(List[str], logs_signals["diagnostic_texts"])
+    assert "当前版本的排产摘要读取失败" in cast(List[str], history_version_signals["diagnostic_texts"])
     assert EXPECTED_PAGE_SIGNALS["/system/history"]["ids"] == ["systemHistoryTable"]
     script_source = Path(__file__).read_text(encoding="utf-8")
     assert '"/scheduler/": ["runEnforceReady", "runStrictMode"]' in script_source

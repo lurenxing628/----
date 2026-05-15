@@ -459,6 +459,30 @@ def _kill_process_tree(process: subprocess.Popen) -> None:
             pass
 
 
+def _terminate_process_tree(process: subprocess.Popen, *, timeout: float = 5.0) -> None:
+    if process.poll() is not None:
+        return
+    if os.name == "nt":
+        try:
+            process.terminate()
+            process.wait(timeout=timeout)
+            return
+        except (OSError, subprocess.TimeoutExpired):
+            _kill_process_tree(process)
+            return
+    try:
+        os.killpg(os.getpgid(process.pid), signal.SIGTERM)  # type: ignore[name-defined]
+    except Exception:
+        try:
+            process.terminate()
+        except Exception:
+            pass
+    try:
+        process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _kill_process_tree(process)
+
+
 def _chrome_headless_preflight(*, strict: bool = False, environment: Optional[Mapping[str, str]] = None) -> str:
     if not strict:
         return "__chrome_headless_preflight_not_run_non_strict__"
@@ -554,7 +578,7 @@ def _chrome_headless_preflight(*, strict: bool = False, environment: Optional[Ma
         _RUNTIME_FINGERPRINT_CACHE[cache_key] = result_hash
         return result_hash
     finally:
-        _kill_process_tree(process)
+        _terminate_process_tree(process)
         shutil.rmtree(profile_dir, ignore_errors=True)
 
 
