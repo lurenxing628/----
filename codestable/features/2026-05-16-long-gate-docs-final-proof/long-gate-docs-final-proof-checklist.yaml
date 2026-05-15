@@ -1,0 +1,51 @@
+feature: 2026-05-16-long-gate-docs-final-proof
+created: 2026-05-16
+
+steps:
+  - action: "CodeStable 启动：创建 NEXT-13 feature 文档和 checklist，绑定 roadmap item"
+    exit_signal: "feature 目录、design、checklist 存在；items.yaml 中 long-gate-docs-final-proof 为 in-progress，并填入本 feature"
+    status: done
+  - action: "文档口径收口：统一 README、开发文档和 roadmap 的 enabled/planned 与 final proof 说明"
+    exit_signal: "文档文本中的 enabled/planned、quickref 状态和 final proof 命令已统一；仍待 proof hygiene 与验证 checks 确认"
+    status: done
+  - action: "artifact / proof hygiene：确认文档不会诱导提交运行产物或把局部证据当 final proof"
+    exit_signal: "文档明确已登记 QualityGate 运行产物、quickref report、receipts/logs/summary/success cache 不能提交；hook 检查已登记路径通过，新的 evidence/QualityGate 运行产物也没有混入提交"
+    status: done
+  - action: "局部验证：运行 YAML、相关 pytest、ruff 和 pyright，并把结果标成局部验证"
+    exit_signal: "YAML 校验、相关 pytest、ruff、pyright 完成；acceptance 明确这些不是 final clean proof"
+    status: done
+  - action: "验收和 final proof：写 acceptance，明确 final gate 必须绑定本提交后的 clean worktree 结果"
+    exit_signal: "acceptance 不把未运行的 final gate 写成已通过；最终交付说明必须记录本提交后的 final gate 结果和 git status --short"
+    status: done
+
+checks:
+  - item: "NEXT-13 遵守 planned -> in-progress -> done 状态机"
+    source: CodeStable 状态
+    status: passed
+  - item: "README、开发文档和 roadmap 的 enabled entry 列表与 manifest/test 一致"
+    source: 文档口径
+    status: passed
+  - item: "quickref_vs_routes 不再残留在 planned 列表"
+    source: roadmap 口径
+    status: passed
+  - item: "architecture_fitness 仍 planned，没有启用 success cache"
+    source: 禁止越界
+    status: passed
+  - item: "daily gate、pre-push fast gate、fast-precheck 没被写成 final proof"
+    source: hook / daily 边界
+    status: passed
+  - item: "explain、cache hit、summary counts、局部 pytest、ruff、pyright 没被写成 final proof"
+    source: proof 口径
+    status: passed
+  - item: "final proof 命令明确带 --require-clean-worktree --long-gate-cache，或使用 run-final-quality-gate"
+    source: final proof 口径
+    status: passed
+  - item: "已登记运行产物不能提交的范围写清楚，新产生的 evidence/QualityGate 运行产物也没有混入提交，并通过 artifact 检查"
+    source: artifact hygiene
+    status: passed
+  - item: "YAML、局部测试、ruff、pyright 已运行并记录为局部验证"
+    source: 局部验证
+    status: passed
+  - item: "acceptance / items / roadmap 不把未运行的 final gate 写成已经通过；最终交付说明必须记录本提交后的 final gate 和 git status"
+    source: 验收边界
+    status: passed

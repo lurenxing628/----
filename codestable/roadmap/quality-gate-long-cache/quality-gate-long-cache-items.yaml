@@ -1,6 +1,6 @@
 roadmap: quality-gate-long-cache
 created: 2026-05-12
-last_reviewed: 2026-05-15
+last_reviewed: 2026-05-16
 
 items:
   - slug: long-gate-manifest-probe
@@ -378,10 +378,10 @@ items:
 
   - slug: long-gate-docs-final-proof
     title: NEXT-13 文档、状态回写和最终干净证明
-    description: "补齐 README、开发文档、CodeStable 状态、所有 feature acceptance 和最终验收命令，明确 explain 不是 proof、cache 命中不是跳过安全校验。"
+    description: "补齐 README、开发文档、CodeStable 状态、本阶段 acceptance 和最终验收命令，明确 explain 不是 proof、cache 命中不是跳过安全校验。"
     depends_on: [quickref-vs-routes-cache]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-16-long-gate-docs-final-proof
     minimal_loop: false
     primary_paths:
       - README.md
@@ -393,5 +393,6 @@ items:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_long_gate_cache.py tests/test_long_gate_manifest.py tests/test_run_quality_gate.py tests/test_architecture_fitness.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright -p pyrightconfig.gate.json
-      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
-    notes: "如果没有跑完整 clean-worktree full proof，最终说明必须写明不能宣称已通过完整 clean-worktree quality gate。"
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright -p pyrightconfig.tools.json
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache
+    notes: "已完成 NEXT-13：README、开发文档、roadmap、items 和本阶段 acceptance 已统一 proof 口径；enabled entry 为 pytest_collect_all、full_test_debt、ruff_check_full、pyright_gate_full、pyright_tools_full、required_regressions、debt_ledger_sync、startup_runtime_regressions、quickref_vs_routes；architecture_fitness 仍 planned；explain/cache hit/summary counts/daily/pre-push/局部 pytest/ruff/pyright 都不能当 final proof；最终说明必须记录 clean-worktree full proof 命令和 git status --short。"

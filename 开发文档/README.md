@@ -50,10 +50,12 @@ py -3.8 -m venv .venv
 .venv\Scripts\python scripts/run_quality_gate.py
 ```
 
-干净工作区或托管环境使用：
+这只是普通完整门禁入口，不强制检查工作区是否干净，不能当最终 clean proof。
+
+最终收口或托管环境使用：
 
 ```powershell
-.venv\Scripts\python scripts/run_quality_gate.py --require-clean-worktree
+.venv\Scripts\python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache
 ```
 
 如果已经激活 `.venv`，也可以把上面的 `.venv\Scripts\python` 简写成 `python`。
@@ -68,11 +70,11 @@ py -3.8 -m venv .venv
 
 full-test-debt proof 证明当前没有未登记的 full pytest 失败，并且已登记测试债务仍受台账约束；它不代表历史测试债务已经全部修完。
 
-long gate cache 是给长耗时完整门禁准备的本地成功缓存，需要显式传入 `--long-gate-cache` 才会尝试复用。当前 enabled long gate entry 是 `pytest_collect_all`、`full_test_debt`、`startup_runtime_regressions` 和 `required_regressions`。`architecture_fitness`、`ruff_check_full`、`pyright_gate_full`、`pyright_tools_full`、`debt_ledger_sync`、`quickref_vs_routes` 仍是 planned，不会因为 cache 打开而复用。
+long gate cache 是给长耗时完整门禁准备的本地成功缓存，需要显式传入 `--long-gate-cache` 才会尝试复用。当前 enabled long gate entry 是 `pytest_collect_all`、`full_test_debt`、`ruff_check_full`、`pyright_gate_full`、`pyright_tools_full`、`required_regressions`、`debt_ledger_sync`、`startup_runtime_regressions` 和 `quickref_vs_routes`。当前仍 planned 的 long gate entry 只有 `architecture_fitness`。
 
 单独运行 `.venv\Scripts\python tools/check_full_test_debt.py` 只会写本次 full-test-debt 的 current/summary 证明，不会写 `evidence/QualityGate/long_gate/results/full_test_debt.success.json`。如果想预热最终完整门禁会用到的缓存，需要跑完整门禁链：`.venv\Scripts\python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`。
 
-long gate cache 不是跳过正式门禁。命中前会校验 command、fingerprint、stdout/stderr 日志、输出 proof、schema、runner/tooling hash 和 repo identity；坏证据、缺 proof、日志缺失、输出缺失或 hash 不一致都会自动重跑。`--long-gate-cache-explain` 只打印本次会跑、会复用、还是仍处于 planned 的判断，不执行命令，不写 proof，也不能当作 clean proof。未登记的新失败仍然必须失败，已登记测试债务仍然必须被台账管住；CI 和最终 clean gate 的要求不降低。维护者要手动完整重跑时，可以直接运行不带 `--long-gate-cache` 的 clean gate，或显式使用 `--no-long-gate-cache`。
+long gate cache 不是跳过正式门禁。命中前会校验 command、fingerprint、stdout/stderr 日志、输出 proof、schema、runner/tooling hash 和 repo identity；坏证据、缺 proof、日志缺失、输出缺失或 hash 不一致都会自动重跑。`--long-gate-cache-explain` 只打印本次会跑、会复用、还是仍处于 planned 的判断，不执行命令，不写 proof，也不能当作 clean proof。summary counts 只是执行、复用、失败、planned、disabled 的汇总，也不能当作 clean proof。未登记的新失败仍然必须失败，已登记测试债务仍然必须被台账管住；CI 和最终 clean gate 的要求不降低。维护者要手动完整重跑时，可以直接运行不带 `--long-gate-cache` 的 clean gate，或显式使用 `--no-long-gate-cache`。这种做法只适合强制全量重跑或排查缓存问题；对外收口、PR 和 CI 的最终证明仍按 `--require-clean-worktree --long-gate-cache` 或 `tools\git_hook_checks.py run-final-quality-gate` 口径写。
 
 快速静态预检入口是 `.venv\Scripts\python scripts\run_quality_gate.py --fast-precheck`。它只检查本次改动相关的 Python 文件，默认纳入 staged、unstaged、untracked 三类本地改动，并只跑局部 ruff；pyright 默认跳过，因为局部 pyright 不能代表正式 `pyright_gate_full` 或 `pyright_tools_full`。这只是提前提醒，不能当作完整质量门禁、clean proof 或 long gate proof。
 
@@ -135,6 +137,7 @@ long gate cache 不是跳过正式门禁。命中前会校验 command、fingerpr
 ```powershell
 .venv\Scripts\python -m pyright --version
 .venv\Scripts\python -m pyright -p pyrightconfig.gate.json
+.venv\Scripts\python -m pyright -p pyrightconfig.tools.json
 .venv\Scripts\python -m pyright -p pyrightconfig.json
 ```
 
@@ -145,6 +148,7 @@ long gate cache 不是跳过正式门禁。命中前会校验 command、fingerpr
 - `pyright` 不在提交前单独快跑，它由 `scripts/run_quality_gate.py` 和 CI 阻断。
 - `scripts/run_quality_gate.py` 固定顺序已包含：测试收集、`python tools/check_full_test_debt.py`、`ruff` 版本检查、`pyright` 版本检查、`radon` 导入检查、`ruff check`、主链 `pyright`、工具脚本 `pyright`、架构适应度、必需回归、治理台账检查、启动链专项回归与速查表核对。
 - `pyrightconfig.gate.json` 只覆盖 `app.py`、`app_new_ui.py`、`config.py`、`core/`、`data/`、`web/` 主链，是主链 gate 的类型检查口径。
+- `pyrightconfig.tools.json` 覆盖门禁和维护脚本，是 `pyright_tools_full` 的正式工具脚本门禁口径。
 - `pyrightconfig.json` 保留为全仓类型债务盘点入口，包含 `tests/` 等更宽范围，不直接作为本轮硬门禁。
-- 上面这些 Pyright 命令只适合定位问题，不能当成最终 clean proof。最终 clean proof 需要在干净工作区跑完整质量门禁，并且门禁结束后工作区仍然干净。
-- 本地 hook 会拦截不该提交的运行产物，例如 `.DS_Store`、`.iris/`、`.playwright-mcp/`、`.limcode_*`、`launcher.log`、任意子目录里的 `launcher.log`、`logs/aps_host.txt`、`logs/aps_port.txt`、`logs/aps_db_path.txt`、`logs/aps_runtime.json`、`logs/aps_runtime.lock`、`logs/aps_secret_key.txt`、`evidence/QualityGate/quality_gate_manifest.json`、`evidence/QualityGate/current_full_test_debt.json`、`evidence/QualityGate/receipts/`、`evidence/QualityGate/logs/`、`evidence/QualityGate/long_gate/`、`evidence/QualityGate/collect_nodeids.json`、`evidence/FullSelfTest/pytest_tests_output.txt` 和 `aps_test.db*`。
+- 上面这些 Pyright 命令只适合定位问题，不能当成最终 clean proof。最终 clean proof 需要在干净工作区跑 `.venv\Scripts\python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`，并且门禁结束后 `git status --short` 仍然没有输出。
+- 本地 hook 会拦截已登记的不该提交的运行产物，例如 `.DS_Store`、`.iris/`、`.playwright-mcp/`、`.limcode_*`、`launcher.log`、任意子目录里的 `launcher.log`、`logs/aps_host.txt`、`logs/aps_port.txt`、`logs/aps_db_path.txt`、`logs/aps_runtime.json`、`logs/aps_runtime.lock`、`logs/aps_secret_key.txt`、`evidence/QualityGate/quality_gate_manifest.json`、`evidence/QualityGate/current_full_test_debt.json`、`evidence/QualityGate/full_test_debt_summary.json`、`evidence/QualityGate/full_test_debt_node_cache.json`、`evidence/QualityGate/architecture_scan_cache.json`、`evidence/QualityGate/startup_runtime_regressions.json`、`evidence/QualityGate/required_regressions.json`、`evidence/QualityGate/debt_ledger_sync.json`、`evidence/QualityGate/ruff_check_full.json`、`evidence/QualityGate/pyright_gate_full.json`、`evidence/QualityGate/pyright_tools_full.json`、`evidence/QualityGate/receipts/`、`evidence/QualityGate/logs/`、`evidence/QualityGate/long_gate/`、`evidence/QualityGate/collect_nodeids.json`、`evidence/Conformance/quickref_vs_routes.md`、`evidence/FullSelfTest/pytest_tests_output.txt` 和 `aps_test.db*`。如果门禁生成了新的 `evidence/QualityGate/` 运行产物，也不要把它混进提交。
