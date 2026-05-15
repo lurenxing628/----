@@ -1801,6 +1801,11 @@ def _parse_args_legacy(argv: Optional[Sequence[str]]) -> argparse.Namespace:
 
 def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="APS quality gate")
+    parser.add_argument(
+        "--fast-precheck",
+        action="store_true",
+        help="run fast static precheck only; this is not a full quality gate proof",
+    )
     parser.add_argument("--require-clean-worktree", action="store_true", help="require a clean worktree")
     parser.add_argument("--allow-dirty-worktree", action="store_true", help="allow a dirty worktree but mark the run unbound")
     parser.add_argument("--long-gate-cache", action="store_true", help="reuse eligible long-gate success cache entries")
@@ -1836,6 +1841,28 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
         parser.error("--require-clean-worktree and --allow-dirty-worktree are mutually exclusive")
     if (parsed.long_gate_cache or parsed.long_gate_cache_explain) and parsed.no_long_gate_cache:
         parser.error("--long-gate-cache/--long-gate-cache-explain and --no-long-gate-cache are mutually exclusive")
+    if parsed.fast_precheck:
+        incompatible = []
+        if parsed.require_clean_worktree:
+            incompatible.append("--require-clean-worktree")
+        if parsed.allow_dirty_worktree:
+            incompatible.append("--allow-dirty-worktree")
+        if parsed.long_gate_cache:
+            incompatible.append("--long-gate-cache")
+        if parsed.no_long_gate_cache:
+            incompatible.append("--no-long-gate-cache")
+        if parsed.long_gate_cache_dir:
+            incompatible.append("--long-gate-cache-dir")
+        if parsed.long_gate_force_rerun:
+            incompatible.append("--long-gate-force-rerun")
+        if parsed.long_gate_force_rerun_all:
+            incompatible.append("--long-gate-force-rerun-all")
+        if parsed.long_gate_cache_explain:
+            incompatible.append("--long-gate-cache-explain")
+        if parsed.no_resume:
+            incompatible.append("--no-resume")
+        if incompatible:
+            parser.error("--fast-precheck cannot be combined with " + ", ".join(incompatible))
     return parsed
 
 
@@ -2291,6 +2318,10 @@ def _refresh_summary_entry(
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = _parse_args(argv)
+    if bool(args.fast_precheck):
+        from tools import fast_static_precheck
+
+        return int(fast_static_precheck.main([]))
     command_plan = _command_plan_for_worktree_mode(
         build_quality_gate_command_plan(),
         allow_dirty_worktree=bool(args.allow_dirty_worktree),

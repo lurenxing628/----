@@ -74,6 +74,8 @@ long gate cache 是给长耗时完整门禁准备的本地成功缓存，需要�
 
 long gate cache 不是跳过正式门禁。命中前会校验 command、fingerprint、stdout/stderr 日志、输出 proof、schema、runner/tooling hash 和 repo identity；坏证据、缺 proof、日志缺失、输出缺失或 hash 不一致都会自动重跑。`--long-gate-cache-explain` 只打印本次会跑、会复用、还是仍处于 planned 的判断，不执行命令，不写 proof，也不能当作 clean proof。未登记的新失败仍然必须失败，已登记测试债务仍然必须被台账管住；CI 和最终 clean gate 的要求不降低。维护者要手动完整重跑时，可以直接运行不带 `--long-gate-cache` 的 clean gate，或显式使用 `--no-long-gate-cache`。
 
+快速静态预检入口是 `.venv\Scripts\python scripts\run_quality_gate.py --fast-precheck`。它只检查本次改动相关的 Python 文件，默认纳入 staged、unstaged、untracked 三类本地改动，并只跑局部 ruff；pyright 默认跳过，因为局部 pyright 不能代表正式 `pyright_gate_full` 或 `pyright_tools_full`。这只是提前提醒，不能当作完整质量门禁、clean proof 或 long gate proof。
+
 ### 治理台账写入口
 
 ```powershell
@@ -138,6 +140,7 @@ long gate cache 不是跳过正式门禁。命中前会校验 command、fingerpr
 
 - `pyright` 版本口径固定为 `==1.1.406`，以 `requirements-dev.txt` 为准。
 - `.pre-commit-config.yaml` 安装后会管三件事：提交前跑 `ruff` 和本地临时文件拦截，提交说明阶段拦截过于含糊的标题，推送前快门禁会通过 `tools/git_hook_checks.py run-quality-gate` 使用项目 `.venv` Python 调用 `scripts/run_daily_quality_gate.py`。如果要手动跑最终完整门禁，可以用 `.venv\Scripts\python tools\git_hook_checks.py run-final-quality-gate`，它仍会调用 `scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`。
+- 手动快速静态预检可以用 `.venv\Scripts\python tools\git_hook_checks.py run-fast-static-precheck`。它不会改变 `run-quality-gate` 的 daily fast gate 语义，也不会改变 `run-final-quality-gate` 的完整 clean gate 语义。
 - 推送前快门禁必须使用项目 `.venv` 里的 Python；如果项目 `.venv` 不存在，会直接失败，不会偷偷换成系统 Python，并且会强制使用 UTF-8 环境。本地 hook 不是可选检查，正常提交流程不要绕过它，绕过后不能当作已经通过本地提交检查。
 - `pyright` 不在提交前单独快跑，它由 `scripts/run_quality_gate.py` 和 CI 阻断。
 - `scripts/run_quality_gate.py` 固定顺序已包含：测试收集、`python tools/check_full_test_debt.py`、`ruff` 版本检查、`pyright` 版本检查、`radon` 导入检查、`ruff check`、主链 `pyright`、工具脚本 `pyright`、架构适应度、必需回归、治理台账检查、启动链专项回归与速查表核对。

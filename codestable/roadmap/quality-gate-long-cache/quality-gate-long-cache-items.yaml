@@ -283,8 +283,8 @@ items:
     title: NEXT-9 快速静态预检
     description: "新增 tools/fast_static_precheck.py 和 run_quality_gate.py --fast-precheck，只检查本次改动的 Python 文件，并明确不能替代正式全量门禁。"
     depends_on: [architecture-scan-file-cache]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-15-fast-static-precheck
     minimal_loop: false
     primary_paths:
       - tools/fast_static_precheck.py
@@ -295,7 +295,9 @@ items:
       - tests/test_fast_static_precheck.py
     exit_checks:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_fast_static_precheck.py
-    notes: "staged/unstaged/untracked Python 文件都纳入；非 Python 改动 skip；ruff/pyright 失败时 precheck 失败；precheck 不写 long gate success cache。"
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_run_quality_gate.py tests/test_git_hook_checks.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_long_gate_manifest.py
+    notes: "已完成 NEXT-9 快速静态预检：staged/unstaged/untracked Python 文件默认纳入，非 Python、删除、不存在、目录和运行产物路径 skip；局部 ruff 失败时 precheck 失败；pyright 默认跳过并说明不是 pyright_gate_full / pyright_tools_full；run_quality_gate.py --fast-precheck 早退，不写 manifest、receipt、summary 或 long gate success cache。"
 
   - slug: static-formal-cache
     title: NEXT-10 ruff/pyright 正式全量缓存

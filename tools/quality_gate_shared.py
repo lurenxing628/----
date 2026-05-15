@@ -85,6 +85,7 @@ QUALITY_GATE_TOOL_PATHS = [
     "scripts/run_daily_quality_gate.py",
     "scripts/run_quality_gate.py",
     "scripts/sync_debt_ledger.py",
+    "tools/fast_static_precheck.py",
     "tools/git_hook_checks.py",
     "tools/check_full_test_debt.py",
     "tools/collect_full_test_debt.py",

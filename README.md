@@ -86,6 +86,7 @@ full-test-debt proof 的意思是：当前没有未登记的 full pytest 失败�
 .venv\Scripts\python -m pytest --collect-only tests -q
 .venv\Scripts\python -m pytest tests/regression -q
 .venv\Scripts\python -m pytest tests -q
+.venv\Scripts\python scripts\run_quality_gate.py --fast-precheck
 .venv\Scripts\python -m pyright --version
 .venv\Scripts\python -m pyright -p pyrightconfig.gate.json
 .venv\Scripts\python -m pyright -p pyrightconfig.json
@@ -95,6 +96,7 @@ full-test-debt proof 的意思是：当前没有未登记的 full pytest 失败�
 
 - `.venv\Scripts\python -m pytest --collect-only tests -q` 只列出测试，不执行 full pytest。
 - `.venv\Scripts\python -m pytest tests/regression -q` 用于专项回归；`.venv\Scripts\python -m pytest tests -q` 是直接执行全量测试。
+- `.venv\Scripts\python scripts\run_quality_gate.py --fast-precheck` 只对本次改动相关的 Python 文件跑局部 ruff，用来提前提醒明显问题。它不是 `ruff_check_full`，也不是 `pyright_gate_full` / `pyright_tools_full`，不能当成完整质量门禁、clean proof 或 long gate proof。
 - 上面这些常用定向命令只适合定位问题，不能当成最终 clean proof。最终 clean proof 需要在干净工作区跑完整质量门禁，并且门禁结束后工作区仍然干净。
 - 质量门禁里的 full pytest 收口检查由 `.venv\Scripts\python tools/check_full_test_debt.py` 完成，它会对照治理台账确认没有新的未登记失败。
 - 单独运行 `.venv\Scripts\python tools/check_full_test_debt.py` 只会生成本次 full-test-debt 的 current/summary 证明，不会写 long gate success cache。也就是说，它能帮你定位 full-test-debt 本身是否通过，但不会让下一次完整门禁自动复用 long gate 缓存。
@@ -107,6 +109,7 @@ full-test-debt proof 的意思是：当前没有未登记的 full pytest 失败�
 - `ruff` 版本口径为 `>=0.15,<0.16`。
 - `pyright` 版本固定为 `==1.1.406`。
 - `.pre-commit-config.yaml` 安装后会管三件事：提交前跑 `ruff` 和本地临时文件拦截，提交说明阶段拦截过于含糊的标题，推送前 hook 会通过项目 `.venv` Python 运行 `scripts/run_daily_quality_gate.py`。如果要在本地手动跑最终完整门禁，可以用 `.venv\Scripts\python tools\git_hook_checks.py run-final-quality-gate`，它仍会调用 `scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`。
+- 如果只想手动提前检查当前改动的 Python 文件，可以用 `.venv\Scripts\python tools\git_hook_checks.py run-fast-static-precheck`。它不会替代 pre-push daily gate，也不会写 long gate success cache。
 - 推送前快门禁必须使用项目 `.venv` 里的 Python；如果项目 `.venv` 不存在，会直接失败，不会偷偷换成系统 Python，并且会强制使用 UTF-8 环境。本地 hook 不是可选检查，正常提交流程不要绕过它。CI/托管环境会重跑完整质量门禁，不过提交标题检查和“暂存区有没有混入本地运行产物”主要靠本地 hook，绕过后不能当作已经通过本地提交检查。
 - `pyright` 不在提交前单独快跑，它由 `scripts/run_quality_gate.py` 与 CI 作为硬门禁运行。
 - `pyrightconfig.gate.json` 覆盖主链：`app.py`、`app_new_ui.py`、`config.py`、`core/`、`data/`、`web/`。

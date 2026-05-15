@@ -235,7 +235,19 @@ def test_collect_full_test_debt_required_and_startup_entries_are_currently_reuse
     startup = _entry_by_id(manifest, "startup_runtime_regressions")
 
     assert enabled == ["pytest_collect_all", "full_test_debt", "required_regressions", "startup_runtime_regressions"]
-    assert "ruff_check_full" in planned_candidates
+    forbidden_planned = [
+        "architecture_fitness",
+        "ruff_check_full",
+        "pyright_gate_full",
+        "pyright_tools_full",
+        "debt_ledger_sync",
+        "quickref_vs_routes",
+    ]
+    for entry_id in forbidden_planned:
+        entry = _entry_by_id(manifest, entry_id)
+        assert entry_id in planned_candidates
+        assert entry["cache_status"] == "planned"
+        assert entry["reuse_allowed"] is False
     assert "codestable/tools/**/*.py" in full_test_debt["config_file_scopes"]
     assert full_test_debt["cache_status"] == "enabled"
     assert "evidence/QualityGate/collect_nodeids.json" in full_test_debt["input_file_scopes"]

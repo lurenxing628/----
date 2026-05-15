@@ -13,7 +13,7 @@ related_architecture: [codestable/architecture/ARCHITECTURE.md]
 
 ## 1. 当前状态确认
 
-这份 roadmap 现在只记录后续路线，不代表所有慢门禁都已经缓存。当前已经完成 NEXT-1 到 NEXT-8；`full_test_debt` 先支持整项成功复用，现在又补了安全的 nodeid 级增量和台账-only 路径；`startup_runtime_regressions` 和 `required_regressions` 已支持整组成功复用；NEXT-8 `architecture-scan-file-cache` 已完成文件级扫描事实缓存，但它只缓存单文件事实，不启用 `architecture_fitness` 整项成功复用。当前 enabled long gate entry 仍是 `pytest_collect_all`、`full_test_debt`、`startup_runtime_regressions` 和 `required_regressions`。其它 ruff、pyright、debt ledger、quickref 仍保持 planned。
+这份 roadmap 现在只记录后续路线，不代表所有慢门禁都已经缓存。当前已经完成 NEXT-1 到 NEXT-9；`full_test_debt` 先支持整项成功复用，现在又补了安全的 nodeid 级增量和台账-only 路径；`startup_runtime_regressions` 和 `required_regressions` 已支持整组成功复用；NEXT-8 `architecture-scan-file-cache` 已完成文件级扫描事实缓存，但它只缓存单文件事实，不启用 `architecture_fitness` 整项成功复用；NEXT-9 `fast-static-precheck` 已完成局部 ruff 快速预检，pyright 默认跳过并明确不代表正式 pyright gate。当前 enabled long gate entry 仍是 `pytest_collect_all`、`full_test_debt`、`startup_runtime_regressions` 和 `required_regressions`。其它 ruff、pyright、debt ledger、quickref 仍保持 planned；NEXT-9 不启用任何新的 long gate success cache entry。
 
 `pre-push-long-gate-cache` 是历史完成项：完成当时把本地 pre-push hook 接到了完整 clean gate + long gate cache。后续为了避免日常 push 每次都被完整 full-test-debt 拖住，pre-push 已改为运行 `scripts/run_daily_quality_gate.py`。当前最终完整门禁仍由 `scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache` 承担，也可以通过 `tools/git_hook_checks.py run-final-quality-gate` 手动触发；这不启用 NEXT-8 或后续 planned entry。
 
@@ -53,8 +53,7 @@ NEXT-2 已完成并可以继续沿用：
 
 还没有完整落地的范围：
 
-- architecture fitness 文件级扫描缓存。
-- ruff / pyright 快速预检和正式全量缓存。
+- ruff / pyright 正式全量缓存。
 - debt ledger sync 缓存。
 - quickref vs routes 缓存。
 - 后续完整文档和测试覆盖。
@@ -727,6 +726,8 @@ aggregate_architecture_scan(file_results)
 
 ### NEXT-9：快速静态预检
 
+状态：done。对应 feature：`2026-05-15-fast-static-precheck`。
+
 目标：新增快速预检，只检查本次改动的 Python 文件。它是提前提醒，不替代正式全量门禁。
 
 需要修改：
@@ -740,7 +741,7 @@ aggregate_architecture_scan(file_results)
 
 - `tools/fast_static_precheck.py`
 - `tests/test_fast_static_precheck.py`
-- `codestable/features/2026-05-13-fast-static-precheck/`
+- `codestable/features/2026-05-15-fast-static-precheck/`
 
 命令形式建议两个都支持：
 
@@ -752,14 +753,17 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --fast-pr
 测试重点：
 
 - staged/unstaged/untracked Python 文件会被纳入。
-- 非 Python 改动不触发 ruff/pyright。
-- 删除的 Python 文件不传给工具。
+- 非 Python 改动不触发 ruff。
+- 删除的 Python 文件不传给 ruff。
 - 文件名带空格时命令参数正确。
-- ruff 或 pyright 失败时 precheck 失败。
+- 局部 ruff 失败时 precheck 失败。
+- pyright 默认跳过，并输出“不是 pyright_gate_full / pyright_tools_full”。
 - 输出明确“不能替代正式全量门禁”。
 - 不写 long gate success cache。
 
 回滚方式：移除 runner 参数，必要时保留独立脚本。
+
+完成说明：已新增 `tools/fast_static_precheck.py`，默认收集 staged、unstaged、untracked 的 `.py` 文件，跳过非 Python、删除、不存在、目录、运行产物和 ruff exclude 类路径；路径使用 NUL 分隔和 list args，不拼 shell 字符串。`scripts/run_quality_gate.py --fast-precheck` 会在完整 command plan 前早退，不写 manifest、receipt、summary 或 long gate success cache；`tools/git_hook_checks.py run-fast-static-precheck` 是独立手动入口，不改变 daily gate 和 final clean gate。pyright 默认跳过，并在输出中说明不是 `pyright_gate_full` / `pyright_tools_full`。本阶段不启用任何新的 long gate success cache entry。
 
 ### NEXT-10：ruff / pyright 正式全量缓存
 
@@ -969,7 +973,7 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require
 11. `required-regression-cache`：done，已完成 required 整组复用。
 12. `pre-push-long-gate-cache`：done，历史上曾让 pre-push 正式质量门禁接入已有 enabled long gate cache；当前 pre-push 已由后续日常快门禁替代，最终完整门禁仍可手动运行。
 13. `architecture-scan-file-cache`：done，已完成 architecture 文件级扫描事实缓存；`architecture_fitness` 整项 success cache 仍未启用。
-14. `fast-static-precheck`：planned，做快速静态预检。
+14. `fast-static-precheck`：done，已完成快速静态预检。
 15. `static-formal-cache`：planned，做 ruff/pyright 正式全量缓存。
 16. `debt-ledger-sync-cache`：planned，做债务台账同步缓存。
 17. `quickref-vs-routes-cache`：planned，做 quickref vs routes 缓存。
@@ -1002,7 +1006,7 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require
 | `tests/test_long_gate_startup_regression_cache.py` | startup 动态 args、环境变量、bootstrap/template/static/app/config/schema、输出文件。 |
 | `tests/test_long_gate_required_regression_cache.py` | required 动态 args、测试文件、被测源码、模板、静态资源、Excel 模板、真实读取的文档和 `.limcode` 脚本、pytest 配置、依赖、环境变量、坏 proof、坏日志、force/no-cache/explain。 |
 | `tests/test_architecture_scan_cache.py` | 单文件扫描复用、单文件变更、ledger allowlist、scanner hash、跨文件聚合。 |
-| `tests/test_fast_static_precheck.py` | staged/unstaged/untracked Python 文件、无 Python 文件 skip、ruff/pyright 失败、不能替代正式门禁。 |
+| `tests/test_fast_static_precheck.py` | staged/unstaged/untracked Python 文件、无 Python 文件 skip、ruff 失败、pyright skip 文案、不能替代正式门禁。 |
 | `tests/test_long_gate_static_cache.py` | ruff/pyright formal cache、工具版本、配置、依赖、`QUALITY_GATE_TOOL_PATHS`。 |
 | `tests/test_long_gate_debt_ledger_cache.py` | 台账、sync 脚本、scanner、core/web/data/tests、共享 scan cache。 |
 | `tests/test_long_gate_quickref_cache.py` | 速查表、路由、模板、静态资源、输出 md、环境变量。 |

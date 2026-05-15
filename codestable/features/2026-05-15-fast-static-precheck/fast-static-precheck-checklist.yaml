@@ -1,0 +1,54 @@
+feature: 2026-05-15-fast-static-precheck
+created: 2026-05-15
+
+steps:
+  - action: "设计与状态：创建 NEXT-9 feature 文档，并把 roadmap item 绑定到本 feature"
+    exit_signal: "feature 目录、design、checklist 存在，items.yaml 中 fast-static-precheck 为 in-progress"
+    status: done
+  - action: "核心模块：实现本次改动 Python 文件收集、过滤、局部 ruff 和 pyright skip 文案"
+    exit_signal: "staged/unstaged/untracked 默认纳入；无目标文件返回 0；ruff 命令使用 list args；pyright 默认跳过且说明原因"
+    status: done
+  - action: "入口接入：新增 run_quality_gate.py --fast-precheck 和 hook 独立子命令"
+    exit_signal: "fast-precheck 早退，不进入完整 command plan；hook 新命令不改变 daily/final 旧语义"
+    status: done
+  - action: "测试覆盖：补 fast precheck、run_quality_gate、git_hook_checks 和 planned entry 守护测试"
+    exit_signal: "新增/修改测试覆盖文件收集、ruff 失败、pyright skip、入口早退、参数互斥和 forbidden planned entries"
+    status: done
+  - action: "验证与对抗审查：跑最小验证，用 Agent 复审并修完阻塞"
+    exit_signal: "验证命令记录真实结果；对抗审查无阻塞；acceptance 写明 proof 口径"
+    status: done
+  - action: "验收回写：写 acceptance，并把 roadmap item 标 done"
+    exit_signal: "acceptance 记录完成范围、未做事项、对抗审查和验证结果；items.yaml 中 NEXT-9 为 done"
+    status: done
+
+checks:
+  - item: "只检查本次改动相关 Python 文件，不检查全仓"
+    source: 范围守护
+    status: passed
+  - item: "staged / unstaged / untracked 默认口径清楚，base-ref 模式不混淆本地改动"
+    source: 文件来源
+    status: passed
+  - item: "删除文件、非 Python 文件、不存在文件和 skip 路径不会误传给 ruff"
+    source: 过滤规则
+    status: passed
+  - item: "无目标 Python 文件时返回 0，不调用 ruff，不误报"
+    source: 空目标行为
+    status: passed
+  - item: "ruff 局部结果不冒充 ruff_check_full"
+    source: 静态工具边界
+    status: passed
+  - item: "pyright 默认跳过或局部说明不冒充 pyright_gate_full / pyright_tools_full"
+    source: 静态工具边界
+    status: passed
+  - item: "run_quality_gate.py --fast-precheck 早退，不写 manifest、receipt、summary 或 success cache"
+    source: runner 边界
+    status: passed
+  - item: "daily fast gate 不被改成 clean proof，hook daily/final 旧语义不变"
+    source: hook 边界
+    status: passed
+  - item: "long gate planned entries 不被启用"
+    source: long gate 守护
+    status: passed
+  - item: "Python 3.8 / Win7 兼容，不使用 shell=True 和新类型语法"
+    source: 兼容性
+    status: passed

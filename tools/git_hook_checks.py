@@ -184,6 +184,16 @@ def run_final_quality_gate(_args: argparse.Namespace) -> int:
     return subprocess.call(command, cwd=str(REPO_ROOT), env=_quality_gate_env())
 
 
+def run_fast_static_precheck(_args: argparse.Namespace) -> int:
+    try:
+        executable = _project_python_executable()
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    command = [executable, "scripts/run_quality_gate.py", "--fast-precheck"]
+    return subprocess.call(command, cwd=str(REPO_ROOT), env=_quality_gate_env())
+
+
 def run_ruff(_args: argparse.Namespace) -> int:
     try:
         executable = _project_python_executable()
@@ -240,6 +250,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     final_quality_gate = subparsers.add_parser("run-final-quality-gate")
     final_quality_gate.set_defaults(func=run_final_quality_gate)
+
+    fast_precheck = subparsers.add_parser("run-fast-static-precheck")
+    fast_precheck.set_defaults(func=run_fast_static_precheck)
 
     ruff = subparsers.add_parser("run-ruff")
     ruff.set_defaults(func=run_ruff)

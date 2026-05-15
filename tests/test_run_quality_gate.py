@@ -302,6 +302,7 @@ def test_main_runs_guard_preflight_before_static_and_startup_checks(monkeypatch,
     assert "python -m pyright -p pyrightconfig.gate.json" in displays
     assert tool_pyright_display in displays
     assert "scripts/run_daily_quality_gate.py" in module.QUALITY_GATE_TOOL_PATHS
+    assert "tools/fast_static_precheck.py" in module.QUALITY_GATE_TOOL_PATHS
     assert "tools/architecture_scan_cache.py" in module.QUALITY_GATE_TOOL_PATHS
     assert "tools/quality_gate_entries.py" in module.QUALITY_GATE_TOOL_PATHS
     assert "tools/quality_gate_ledger.py" in module.QUALITY_GATE_TOOL_PATHS
@@ -424,6 +425,7 @@ def test_full_test_debt_proof_is_in_shared_quality_gate_plan() -> None:
     for rel_path in [
         ".pre-commit-config.yaml",
         "scripts/run_daily_quality_gate.py",
+        "tools/fast_static_precheck.py",
         "tools/check_full_test_debt.py",
         "tools/collect_full_test_debt.py",
         "tools/git_hook_checks.py",
@@ -450,6 +452,7 @@ def test_full_test_debt_proof_is_in_shared_quality_gate_plan() -> None:
     tool_paths = set(shared.QUALITY_GATE_TOOL_PATHS)
     for rel_path in [
         "scripts/run_daily_quality_gate.py",
+        "tools/fast_static_precheck.py",
         "tools/check_full_test_debt.py",
         "tools/collect_full_test_debt.py",
         "tools/git_hook_checks.py",
@@ -1215,6 +1218,64 @@ def test_long_gate_cache_explain_and_no_cache_are_mutually_exclusive():
 
     with pytest.raises(SystemExit):
         module._parse_args(["--long-gate-cache-explain", "--no-long-gate-cache"])
+
+
+def test_main_fast_precheck_returns_before_full_quality_gate_plan(monkeypatch):
+    module = _import_run_quality_gate()
+    from tools import fast_static_precheck
+
+    calls = []
+    monkeypatch.setattr(fast_static_precheck, "main", lambda argv: calls.append(list(argv)) or 7)
+    monkeypatch.setattr(
+        module,
+        "build_quality_gate_command_plan",
+        lambda: (_ for _ in ()).throw(AssertionError("full quality gate plan should not be built")),
+    )
+    monkeypatch.setattr(
+        module,
+        "write_long_gate_success",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("success cache should not be written")),
+    )
+    monkeypatch.setattr(
+        module,
+        "_write_quality_gate_manifest",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("manifest should not be written")),
+    )
+    monkeypatch.setattr(
+        module,
+        "_write_command_receipt",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("receipt should not be written")),
+    )
+    monkeypatch.setattr(
+        module,
+        "_write_and_print_long_gate_summary",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("long gate summary should not be written")),
+    )
+
+    assert module.main(["--fast-precheck"]) == 7
+
+    assert calls == [[]]
+
+
+@pytest.mark.parametrize(
+    "extra_args",
+    [
+        ["--require-clean-worktree"],
+        ["--allow-dirty-worktree"],
+        ["--long-gate-cache"],
+        ["--no-long-gate-cache"],
+        ["--long-gate-cache-dir", "evidence/QualityGate/long_gate/manual"],
+        ["--long-gate-force-rerun", "pytest_collect_all"],
+        ["--long-gate-force-rerun-all"],
+        ["--long-gate-cache-explain"],
+        ["--no-resume"],
+    ],
+)
+def test_fast_precheck_rejects_full_gate_and_long_gate_arguments(extra_args):
+    module = _import_run_quality_gate()
+
+    with pytest.raises(SystemExit):
+        module._parse_args(["--fast-precheck", *extra_args])
 
 
 def test_long_gate_cache_explain_uses_strict_fingerprint(monkeypatch, tmp_path):

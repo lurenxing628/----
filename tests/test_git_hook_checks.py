@@ -112,6 +112,39 @@ def test_run_final_quality_gate_command_uses_project_python_and_utf8_env(monkeyp
     assert env["PYTHONIOENCODING"] == "utf-8"
 
 
+def test_run_fast_static_precheck_uses_project_python_and_does_not_change_daily_or_final(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    calls = []
+    project_python = str(tmp_path / ".venv" / "bin" / "python")
+    monkeypatch.setenv("APS_SKIP_QUALITY_GATE", "1")
+    monkeypatch.setenv("PYTHONDONTWRITEBYTECODE", "0")
+    monkeypatch.setenv("PYTHONUTF8", "0")
+    monkeypatch.setenv("PYTHONIOENCODING", "gbk")
+    monkeypatch.setattr(git_hook_checks, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(git_hook_checks, "_project_python_executable", lambda: project_python)
+
+    def fake_call(command, *, cwd, env):
+        calls.append((list(command), str(cwd), dict(env)))
+        return 9
+
+    monkeypatch.setattr(subprocess, "call", fake_call)
+
+    assert git_hook_checks.main(["run-fast-static-precheck"]) == 9
+
+    command, cwd, env = calls[0]
+    assert command == [project_python, "scripts/run_quality_gate.py", "--fast-precheck"]
+    assert "--require-clean-worktree" not in command
+    assert "--long-gate-cache" not in command
+    assert "--long-gate-cache-explain" not in command
+    assert cwd == str(tmp_path)
+    assert "APS_SKIP_QUALITY_GATE" not in env
+    assert env["PYTHONDONTWRITEBYTECODE"] == "1"
+    assert env["PYTHONUTF8"] == "1"
+    assert env["PYTHONIOENCODING"] == "utf-8"
+
+
 def test_blocked_paths_include_launcher_log() -> None:
     assert git_hook_checks._blocked_paths(["logs/launcher.log", "tmp/prelaunch/launcher.log", "launcher.log"]) == [
         ("logs/launcher.log", "APS 本地启动日志可能包含本机路径或错误明细，不能提交"),
