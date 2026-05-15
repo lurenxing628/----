@@ -17,6 +17,7 @@ import time
 import urllib.request
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple, cast
 
+from tools import architecture_scan_cache
 from tools.long_gate_schema import LONG_GATE_FINGERPRINT_SCHEMA_VERSION, stable_json_hash
 
 _EXPECTED_COLLECT_NODEIDS_SCHEMA_VERSION = 1
@@ -704,6 +705,7 @@ def _runtime_fingerprint_value(
     *,
     strict: bool = False,
     environment: Optional[Mapping[str, str]] = None,
+    repo_root: Optional[str] = None,
 ) -> Optional[str]:
     if key == "python_executable_realpath":
         return os.path.realpath(sys.executable)
@@ -733,6 +735,8 @@ def _runtime_fingerprint_value(
         return _node_version(strict=strict, environment=environment)
     if key == "node_browser_runtime_capability":
         return _node_browser_runtime_capability(strict=strict, environment=environment)
+    if key == "architecture_scan_cache_metadata":
+        return "sha256:" + stable_json_hash(architecture_scan_cache.architecture_scan_cache_metadata(repo_root))
     source = environment if environment is not None else os.environ
     return source.get(str(key))
 
@@ -742,9 +746,15 @@ def fingerprint_environment(
     *,
     strict: bool = False,
     environment: Optional[Mapping[str, str]] = None,
+    repo_root: Optional[str] = None,
 ) -> Dict[str, Any]:
     values = {
-        str(key): _runtime_fingerprint_value(str(key), strict=strict, environment=environment)
+        str(key): _runtime_fingerprint_value(
+            str(key),
+            strict=strict,
+            environment=environment,
+            repo_root=repo_root,
+        )
         for key in list(keys or [])
     }
     return {
@@ -828,7 +838,12 @@ def fingerprint_entry(entry: Mapping[str, Any], repo_root: str, *, strict: bool 
     components = {
         "command_hash": fingerprint_command(command_payload),
         "files": fingerprint_files(_entry_file_scopes(entry), repo_root, strict=strict),
-        "environment": fingerprint_environment(env_keys, strict=strict, environment=effective_environment),
+        "environment": fingerprint_environment(
+            env_keys,
+            strict=strict,
+            environment=effective_environment,
+            repo_root=repo_root,
+        ),
         "output_result_files": {
             "paths": _entry_output_result_files(entry),
             "hash": stable_json_hash(_entry_output_result_files(entry)),

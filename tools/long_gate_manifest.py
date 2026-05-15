@@ -67,6 +67,7 @@ _CACHE_ENABLED_ENTRY_TYPES = {
     ENTRY_PYRIGHT_GATE_FULL,
     ENTRY_PYRIGHT_TOOLS_FULL,
     ENTRY_REQUIRED_REGRESSIONS,
+    ENTRY_DEBT_LEDGER_SYNC,
     ENTRY_STARTUP_RUNTIME_REGRESSIONS,
 }
 
@@ -543,6 +544,104 @@ def _scopes_for_entry(
         ]
     elif entry_type == ENTRY_QUICKREF_VS_ROUTES:
         output_files = ["evidence/Conformance/quickref_vs_routes.md"]
+    elif entry_type == ENTRY_DEBT_LEDGER_SYNC:
+        input_scopes.extend(
+            [
+                "开发文档/技术债务治理台账.md",
+                "codestable/roadmap/**/*.md",
+                "codestable/roadmap/**/*.yaml",
+                "codestable/features/**/*.md",
+                "codestable/features/**/*.yaml",
+                "app.py",
+                "app_new_ui.py",
+                "config.py",
+                "schema.sql",
+                "core/**/*.py",
+                "data/**/*.py",
+                "web/**/*.py",
+                "plugins/**/*.py",
+                "desktop/**/*.py",
+                "scripts/**/*.py",
+                "tools/**/*.py",
+                "tests/**/*.py",
+                "templates/**/*.html",
+                "web_new_test/templates/**/*.html",
+                "templates_excel/**/*",
+                "static/**/*",
+                "web_new_test/static/**/*",
+                "docs/**/*.md",
+                "audit/**/*.md",
+                "开发文档/**/*.md",
+            ]
+        )
+        config_scopes.extend(
+            [
+                "pyproject.toml",
+                "setup.cfg",
+                "pytest.ini",
+                "tox.ini",
+                ".pre-commit-config.yaml",
+                ".gitignore",
+                ".github/workflows/quality.yml",
+                quality_gate_shared.QUALITY_GATE_PYRIGHT_GATE_CONFIG,
+                quality_gate_shared.QUALITY_GATE_PYRIGHT_TOOLS_CONFIG,
+                "pyrightconfig.json",
+                "codestable/roadmap/quality-gate-long-cache/quality-gate-long-cache-roadmap.md",
+                "codestable/roadmap/quality-gate-long-cache/quality-gate-long-cache-items.yaml",
+            ]
+        )
+        tool_scopes.extend(
+            [
+                "scripts/sync_debt_ledger.py",
+                "tools/quality_gate_ledger.py",
+                "tools/quality_gate_operations.py",
+                "tools/quality_gate_scan.py",
+                "tools/quality_gate_entries.py",
+                "tools/quality_gate_shared.py",
+                "tools/quality_gate_support.py",
+                "tools/architecture_scan_cache.py",
+                "tools/test_debt_registry.py",
+                "tools/test_registry.py",
+                "tools/long_gate_manifest.py",
+                "tools/long_gate_fingerprint.py",
+                "tools/long_gate_cache.py",
+                "tools/long_gate_schema.py",
+                "tools/long_gate_paths.py",
+                "tools/long_gate_summary.py",
+                "scripts/run_quality_gate.py",
+            ]
+        )
+        dependency_scopes.extend(
+            [
+                "requirements*.txt",
+                "requirements-dev*.txt",
+                "poetry.lock",
+                "uv.lock",
+                "Pipfile.lock",
+                "package.json",
+                "package-lock.json",
+            ]
+        )
+        env_keys.extend(
+            [
+                "python_executable_realpath",
+                "python_version",
+                "platform",
+                "architecture_scan_cache_metadata",
+                "PATH",
+                "VIRTUAL_ENV",
+                "PYTHONHOME",
+                "PYTHONPATH",
+                "PYTHONDONTWRITEBYTECODE",
+                "PYTHONUTF8",
+                "PYTHONIOENCODING",
+                "LANG",
+                "LC_ALL",
+                "LC_CTYPE",
+                "CI",
+            ]
+        )
+        output_files.append(quality_gate_shared.QUALITY_GATE_DEBT_LEDGER_SYNC_REL.replace("\\", "/"))
     elif entry_type == ENTRY_FULL_TEST_DEBT:
         input_scopes.extend(
             [

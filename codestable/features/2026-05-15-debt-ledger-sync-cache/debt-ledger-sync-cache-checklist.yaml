@@ -1,0 +1,54 @@
+feature: 2026-05-15-debt-ledger-sync-cache
+created: 2026-05-15
+
+steps:
+  - action: "CodeStable scaffold：创建 NEXT-11 feature 文档和 checklist，绑定 roadmap item"
+    exit_signal: "feature 目录、design、checklist 存在；阶段 1 当时 items.yaml 中 debt-ledger-sync-cache 为 in-progress；本阶段 subagent 对抗审查无阻塞"
+    status: done
+  - action: "proof path 与 artifact hygiene：声明 debt_ledger_sync proof JSON，加入 ignore/hook/clean excluded path，但不启用 entry"
+    exit_signal: "proof path 已声明；运行产物不会污染 clean proof 或 staged commit；manifest enabled 列表不变；本阶段 subagent 对抗审查无阻塞"
+    status: done
+  - action: "manifest / fingerprint：补齐 debt_ledger_sync scopes、env keys、architecture scan metadata 指纹和测试"
+    exit_signal: "ledger、roadmap、helper、scan source、config、dependency、environment、architecture metadata 和 output path 变化都会影响 fingerprint；architecture_scan_cache.json 本身不造成抖动；本阶段 subagent 对抗审查无阻塞"
+    status: done
+  - action: "proof writer：runner 在 debt_ledger_sync 成功后写 success proof JSON，仍不启用 entry"
+    exit_signal: "proof JSON 字段完整，缺失/篡改会导致重跑；explain/dirty/resume 不写新的 success cache；本阶段 subagent 对抗审查无阻塞"
+    status: done
+  - action: "enable：只启用 debt_ledger_sync long gate success cache"
+    exit_signal: "enabled 列表只比 NEXT-10 多 debt_ledger_sync；architecture_fitness 和 quickref_vs_routes 仍 planned；本阶段 subagent 对抗审查无阻塞"
+    status: done
+  - action: "acceptance / roadmap：写验收报告并按真实完成范围回写 roadmap"
+    exit_signal: "acceptance 记录完成范围、未做事项、对抗审查、验证结果和 proof 口径；items.yaml 和 roadmap 主文档状态一致；本阶段 subagent 对抗审查无阻塞"
+    status: done
+
+checks:
+  - item: "debt_ledger_sync 继续来自真实 command plan，命令身份不变"
+    source: manifest 边界
+    status: done
+  - item: "启用前保持 planned，启用后只新增 debt_ledger_sync"
+    source: enabled 边界
+    status: done
+  - item: "architecture_fitness 和 quickref_vs_routes 不启用"
+    source: 禁止越界
+    status: done
+  - item: "debt_ledger_sync proof JSON 只证明单条 entry，不冒充 clean-worktree final proof"
+    source: proof 口径
+    status: done
+  - item: "debt_ledger_sync proof JSON 不会混入提交"
+    source: artifact hygiene
+    status: done
+  - item: "台账、roadmap、helper、扫描源码、配置、依赖、环境和 architecture scan metadata 变化都会导致重跑"
+    source: fingerprint
+    status: done
+  - item: "architecture_scan_cache.json 作为运行产物，不让生成时间造成 fingerprint 抖动"
+    source: architecture cache 边界
+    status: done
+  - item: "scripts/sync_debt_ledger.py check 仍只校验，不直接写 proof 或刷新台账"
+    source: 命令语义
+    status: done
+  - item: "daily gate 和 pre-push 默认语义不变"
+    source: hook 边界
+    status: done
+  - item: "Python 3.8 / Win7 兼容，不使用 shell=True 和新类型语法"
+    source: 兼容性
+    status: done

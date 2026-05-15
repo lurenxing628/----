@@ -22,6 +22,7 @@ if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
 from tools import quality_gate_shared  # noqa: E402
+from tools.architecture_scan_cache import architecture_scan_cache_metadata  # noqa: E402
 from tools.long_gate_cache import evaluate_reuse  # noqa: E402
 from tools.long_gate_cache import resolve_cache_dir as resolve_long_gate_cache_dir
 from tools.long_gate_cache import write_success as write_long_gate_success
@@ -44,6 +45,7 @@ from tools.long_gate_full_test_debt import (
     write_full_test_debt_node_cache_after_success,
 )
 from tools.long_gate_manifest import (  # noqa: E402
+    ENTRY_DEBT_LEDGER_SYNC,
     ENTRY_FULL_TEST_DEBT,
     ENTRY_PYRIGHT_GATE_FULL,
     ENTRY_PYRIGHT_TOOLS_FULL,
@@ -61,7 +63,9 @@ from tools.long_gate_summary import (  # noqa: E402
     write_long_gate_summary,
 )
 from tools.quality_gate_support import (  # noqa: E402
+    LEDGER_PATH,
     QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL,
+    QUALITY_GATE_DEBT_LEDGER_SYNC_REL,
     QUALITY_GATE_FULL_TEST_DEBT_NODE_CACHE_REL,
     QUALITY_GATE_FULL_TEST_DEBT_SUMMARY_REL,
     QUALITY_GATE_LOGS_DIR_REL,
@@ -100,6 +104,7 @@ QUALITY_GATE_SELFTEST = QUALITY_GATE_SELFTEST_PATH
 STARTUP_RUNTIME_REGRESSIONS_PROOF_SCHEMA_VERSION = 1
 REQUIRED_REGRESSIONS_PROOF_SCHEMA_VERSION = 3
 STATIC_CHECK_PROOF_SCHEMA_VERSION = 1
+DEBT_LEDGER_SYNC_PROOF_SCHEMA_VERSION = 1
 GENERATED_CLEAN_WORKTREE_EXCLUDED_PATHS = [
     QUALITY_GATE_MANIFEST_REL.replace("\\", "/"),
     QUALITY_GATE_RECEIPTS_DIR_REL.replace("\\", "/") + "/",
@@ -111,6 +116,7 @@ GENERATED_CLEAN_WORKTREE_EXCLUDED_PATHS = [
     "evidence/QualityGate/architecture_scan_cache.json",
     QUALITY_GATE_STARTUP_RUNTIME_REGRESSIONS_REL.replace("\\", "/"),
     QUALITY_GATE_REQUIRED_REGRESSIONS_REL.replace("\\", "/"),
+    QUALITY_GATE_DEBT_LEDGER_SYNC_REL.replace("\\", "/"),
     QUALITY_GATE_RUFF_CHECK_FULL_REL.replace("\\", "/"),
     QUALITY_GATE_PYRIGHT_GATE_FULL_REL.replace("\\", "/"),
     QUALITY_GATE_PYRIGHT_TOOLS_FULL_REL.replace("\\", "/"),
@@ -992,6 +998,11 @@ def _handle_pyright_tools_quality_gate_command(display: str, result: Dict[str, A
     return {}
 
 
+def _should_prepare_long_gate_output_files(entry: Mapping[str, Any]) -> bool:
+    entry_id = str(entry.get("entry_id") or "")
+    return bool(entry.get("reuse_allowed")) or entry_id == ENTRY_DEBT_LEDGER_SYNC
+
+
 def _run_quality_gate_command_plan(
     command_plan: Sequence[Dict[str, Any]],
     *,
@@ -1242,7 +1253,7 @@ def _run_quality_gate_command_plan(
                 detail=str(exc),
             )
         output_file_paths: List[str] = []
-        if long_gate_runtime_entry is not None and bool(long_gate_entry.get("reuse_allowed")):
+        if long_gate_runtime_entry is not None and _should_prepare_long_gate_output_files(long_gate_entry):
             if not bool(long_gate_cache_write_success):
                 print(
                     f"==> 第 {command_index}/{total} 步：跳过 long-gate success cache 写入，"
@@ -1250,6 +1261,8 @@ def _run_quality_gate_command_plan(
                     flush=True,
                 )
             else:
+                if not long_gate_fingerprint:
+                    long_gate_fingerprint = _strict_long_gate_fingerprint(long_gate_entry)
                 output_file_paths = _prepare_long_gate_success_output_files(
                     long_gate_entry,
                     result,
@@ -1259,26 +1272,27 @@ def _run_quality_gate_command_plan(
                     command_plan=command_plan,
                     fingerprint=dict(long_gate_fingerprint or {}),
                 )
-                long_gate_fingerprint = _fingerprint_for_success_cache(
-                    long_gate_entry,
-                    dict(long_gate_fingerprint or {}),
-                )
-                long_gate_runtime_entry["fingerprint"] = dict(long_gate_fingerprint)
-                decision_for_summary = long_gate_runtime_entry.get("decision")
-                if isinstance(decision_for_summary, dict):
-                    decision_for_summary["current_fingerprint_hash"] = str(long_gate_fingerprint.get("hash") or "")
-                cache_result = dict(result)
-                cache_result.pop("stdout_log_path", None)
-                cache_result.pop("stderr_log_path", None)
-                if pending_long_gate_successes is not None:
-                    pending_long_gate_successes.append(
-                        {
-                            "entry": dict(long_gate_entry),
-                            "fingerprint": dict(long_gate_fingerprint),
-                            "command_result": cache_result,
-                            "output_files": _abs_output_paths(output_file_paths),
-                        }
+                if bool(long_gate_entry.get("reuse_allowed")):
+                    long_gate_fingerprint = _fingerprint_for_success_cache(
+                        long_gate_entry,
+                        dict(long_gate_fingerprint or {}),
                     )
+                    long_gate_runtime_entry["fingerprint"] = dict(long_gate_fingerprint)
+                    decision_for_summary = long_gate_runtime_entry.get("decision")
+                    if isinstance(decision_for_summary, dict):
+                        decision_for_summary["current_fingerprint_hash"] = str(long_gate_fingerprint.get("hash") or "")
+                    cache_result = dict(result)
+                    cache_result.pop("stdout_log_path", None)
+                    cache_result.pop("stderr_log_path", None)
+                    if pending_long_gate_successes is not None:
+                        pending_long_gate_successes.append(
+                            {
+                                "entry": dict(long_gate_entry),
+                                "fingerprint": dict(long_gate_fingerprint),
+                                "command_result": cache_result,
+                                "output_files": _abs_output_paths(output_file_paths),
+                            }
+                        )
             _refresh_summary_entry(
                 long_gate_runtime_entry,
                 result=result,
@@ -1661,6 +1675,96 @@ def _write_required_regressions_proof(
     return rel_path
 
 
+def _parse_debt_ledger_check_stdout(stdout: str) -> Dict[str, Any]:
+    marker = "治理台账校验通过"
+    text = str(stdout or "")
+    marker_index = text.find(marker)
+    if marker_index < 0:
+        raise QualityGateError("debt_ledger_sync stdout 缺少通过标题")
+    json_text = text[marker_index + len(marker) :].strip()
+    if not json_text:
+        raise QualityGateError("debt_ledger_sync stdout 缺少 summary JSON")
+    try:
+        payload = json.loads(json_text)
+    except json.JSONDecodeError as exc:
+        raise QualityGateError("debt_ledger_sync stdout summary JSON 无法解析") from exc
+    if not isinstance(payload, dict):
+        raise QualityGateError("debt_ledger_sync stdout summary JSON 必须是 object")
+    return dict(payload)
+
+
+def _write_debt_ledger_sync_proof(
+    entry: Dict[str, Any],
+    result: Dict[str, Any],
+    *,
+    run_id: str,
+    command_index: int,
+    command_plan: Sequence[Dict[str, Any]],
+    fingerprint: Dict[str, Any],
+    cache_dir: str,
+) -> str:
+    rel_path = QUALITY_GATE_DEBT_LEDGER_SYNC_REL.replace("\\", "/")
+    abs_path = os.path.join(REPO_ROOT, rel_path.replace("/", os.sep))
+    args = [str(arg) for arg in list(entry.get("args") or [])]
+    summary = _parse_debt_ledger_check_stdout(str(result.get("stdout") or ""))
+    cache_root = str(cache_dir or "evidence/QualityGate/long_gate").replace("\\", "/")
+    safe_entry_id = ENTRY_DEBT_LEDGER_SYNC.replace("\\", "_").replace("/", "_")
+    stdout_log_path = f"{cache_root}/logs/{safe_entry_id}.stdout.log"
+    stderr_log_path = f"{cache_root}/logs/{safe_entry_id}.stderr.log"
+    stdout_log_row = _long_gate_success_log_row(result, stream="stdout", rel_path=stdout_log_path)
+    stderr_log_row = _long_gate_success_log_row(result, stream="stderr", rel_path=stderr_log_path)
+    ledger_counts = {
+        "oversize_count": int(summary.get("oversize_count") or 0),
+        "complexity_count": int(summary.get("complexity_count") or 0),
+        "silent_fallback_count": int(summary.get("silent_fallback_count") or 0),
+        "test_debt_count": int(summary.get("test_debt_count") or 0),
+        "accepted_risk_count": int(summary.get("accepted_risk_count") or 0),
+    }
+    payload = {
+        "schema_version": DEBT_LEDGER_SYNC_PROOF_SCHEMA_VERSION,
+        "status": "passed",
+        "entry_id": str(entry.get("entry_id") or ""),
+        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "head_sha": _git_head_sha(),
+        "run_id": str(run_id or ""),
+        "quality_gate_plan_hash": hash_quality_gate_commands(command_plan),
+        "command_index": int(command_index),
+        "display": str(entry.get("display") or ""),
+        "args": args,
+        "command_hash": str(entry.get("command_hash") or ""),
+        "capture_output": bool(entry.get("capture_output")),
+        "output_policy": str(entry.get("output_policy") or ""),
+        "fingerprint_schema_version": int(entry.get("fingerprint_schema_version") or 0),
+        "fingerprint_hash": str(fingerprint.get("hash") or ""),
+        "returncode": int(result.get("returncode") or 0),
+        "execution_mode": str(result.get("execution_mode") or "executed"),
+        "duration_s": float(result.get("duration_s") or 0.0),
+        "stdout_log_path": stdout_log_path,
+        "stderr_log_path": stderr_log_path,
+        "stdout_sha256": str(stdout_log_row["sha256"]),
+        "stderr_sha256": str(stderr_log_row["sha256"]),
+        "timed_out": bool(result.get("timed_out")),
+        "interrupted": bool(result.get("interrupted")),
+        "partial_write": bool(result.get("partial_write")),
+        "ledger_path": os.path.relpath(LEDGER_PATH, REPO_ROOT).replace("\\", "/"),
+        "ledger_schema_version": int(summary.get("schema_version") or 0),
+        "ledger_checked_at": str(summary.get("checked_at") or ""),
+        "ledger_counts": ledger_counts,
+        "samples_hash": stable_json_hash(summary.get("samples") or {}),
+        "architecture_scan_cache": architecture_scan_cache_metadata(REPO_ROOT),
+        "does_not_claim": "clean_worktree_proof",
+        "logs": {
+            "stdout": stdout_log_row,
+            "stderr": stderr_log_row,
+        },
+    }
+    os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+    with open(abs_path, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
+        handle.write("\n")
+    return rel_path
+
+
 def _static_check_proof_rel_path(entry_id: str) -> str:
     if entry_id == ENTRY_RUFF_CHECK_FULL:
         return QUALITY_GATE_RUFF_CHECK_FULL_REL.replace("\\", "/")
@@ -1796,6 +1900,18 @@ def _prepare_long_gate_success_output_files(
     if entry_id == ENTRY_REQUIRED_REGRESSIONS:
         return [
             _write_required_regressions_proof(
+                entry,
+                result,
+                run_id=run_id,
+                command_index=command_index,
+                command_plan=command_plan,
+                fingerprint=dict(fingerprint or {}),
+                cache_dir=cache_dir,
+            )
+        ]
+    if entry_id == ENTRY_DEBT_LEDGER_SYNC:
+        return [
+            _write_debt_ledger_sync_proof(
                 entry,
                 result,
                 run_id=run_id,

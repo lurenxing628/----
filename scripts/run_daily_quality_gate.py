@@ -17,8 +17,8 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 FOCUSED_PYTEST_NODEIDS: Tuple[str, ...] = (
     "tests/test_long_gate_full_test_debt_cache.py::test_validated_previous_success_accepts_zero_returncode",
     "tests/test_long_gate_full_test_debt_cache.py::test_nodeid_incremental_plan_selects_changed_test_file_nodeids",
-    "tests/test_long_gate_required_regression_cache.py::test_required_entry_comes_from_real_command_plan_and_enables_only_next7",
-    "tests/test_long_gate_startup_regression_cache.py::test_startup_entry_comes_from_real_command_plan_and_enables_only_next6",
+    "tests/test_long_gate_required_regression_cache.py::test_required_entry_comes_from_real_command_plan_and_enables_only_current_cache_entries",
+    "tests/test_long_gate_startup_regression_cache.py::test_startup_entry_comes_from_real_command_plan_and_enables_only_current_cache_entries",
     "tests/test_scheduler_batches_page_viewmodel.py::test_batches_filter_state_preserves_default_and_empty_status_contract",
     "tests/test_scheduler_batches_page_viewmodel.py::test_batch_rows_filter_ready_and_add_public_labels",
     "tests/test_ui_geometry_html_contract.py::test_ui_smoke_pages_render_expected_html_contract",

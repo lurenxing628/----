@@ -14,6 +14,7 @@ from tools import quality_gate_shared
 from tools.long_gate_cache import evaluate_reuse, write_success
 from tools.long_gate_fingerprint import fingerprint_entry
 from tools.long_gate_manifest import (
+    ENTRY_DEBT_LEDGER_SYNC,
     ENTRY_REQUIRED_REGRESSIONS,
     ENTRY_STARTUP_RUNTIME_REGRESSIONS,
     build_manifest_from_quality_gate_plan,
@@ -167,6 +168,8 @@ def _prepare_gate_run_context(
 
 
 def _proof_path_for_entry(repo_root: Path, entry_id: str) -> Path:
+    if entry_id == ENTRY_DEBT_LEDGER_SYNC:
+        return repo_root / "evidence" / "QualityGate" / "debt_ledger_sync.json"
     if entry_id == ENTRY_REQUIRED_REGRESSIONS:
         return repo_root / "evidence" / "QualityGate" / "required_regressions.json"
     if entry_id == ENTRY_STARTUP_RUNTIME_REGRESSIONS:
@@ -254,6 +257,7 @@ def _fake_successful_command(
     manifest = _manifest_for(command_plan, repo_root)
     required_entry = _entry_by_id(manifest, ENTRY_REQUIRED_REGRESSIONS)
     required_display = str(required_entry["display"])
+    debt_display = str(_entry_by_id(manifest, ENTRY_DEBT_LEDGER_SYNC)["display"])
     startup_display = _entry_display(command_plan, repo_root, ENTRY_STARTUP_RUNTIME_REGRESSIONS)
     fail_ids = set(fail_entry_ids)
     full_debt_runs = {"count": 0}
@@ -289,6 +293,26 @@ def _fake_successful_command(
             if ENTRY_REQUIRED_REGRESSIONS in fail_ids:
                 return {"stdout": "required failed\n", "stderr": "boom\n", "returncode": 1}
             return {"stdout": "127 files passed in 2.34s\n", "stderr": "", "returncode": 0}
+        if display == debt_display:
+            if ENTRY_DEBT_LEDGER_SYNC in fail_ids:
+                return {"stdout": "debt ledger failed\n", "stderr": "boom\n", "returncode": 1}
+            return {
+                "stdout": (
+                    "治理台账校验通过\n"
+                    "{\n"
+                    '  "accepted_risk_count": 0,\n'
+                    '  "checked_at": "2026-05-15T12:00:00+08:00",\n'
+                    '  "complexity_count": 0,\n'
+                    '  "oversize_count": 0,\n'
+                    '  "samples": {"sample_count": 0},\n'
+                    '  "schema_version": 2,\n'
+                    '  "silent_fallback_count": 0,\n'
+                    '  "test_debt_count": 0\n'
+                    "}\n"
+                ),
+                "stderr": "",
+                "returncode": 0,
+            }
         if display == startup_display:
             if ENTRY_STARTUP_RUNTIME_REGRESSIONS in fail_ids:
                 return {"stdout": "startup failed\n", "stderr": "boom\n", "returncode": 1}

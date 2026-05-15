@@ -68,6 +68,11 @@ QUALITY_GATE_REQUIRED_REGRESSIONS_REL = os.path.join(
     "QualityGate",
     "required_regressions.json",
 )
+QUALITY_GATE_DEBT_LEDGER_SYNC_REL = os.path.join(
+    "evidence",
+    "QualityGate",
+    "debt_ledger_sync.json",
+)
 QUALITY_GATE_RUFF_CHECK_FULL_REL = os.path.join(
     "evidence",
     "QualityGate",

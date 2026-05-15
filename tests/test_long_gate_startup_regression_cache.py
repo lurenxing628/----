@@ -47,7 +47,7 @@ def _call_by_display(calls: Sequence[dict], display: str) -> dict:
     return next(call for call in calls if str(call["display"]) == display)
 
 
-def test_startup_entry_comes_from_real_command_plan_and_enables_only_next6(tmp_path):
+def test_startup_entry_comes_from_real_command_plan_and_enables_only_current_cache_entries(tmp_path):
     command_plan = _real_quality_gate_plan()
     manifest = _manifest_for(command_plan, tmp_path)
     startup_entry = _entry_by_id(manifest, ENTRY_STARTUP_RUNTIME_REGRESSIONS)
@@ -63,6 +63,7 @@ def test_startup_entry_comes_from_real_command_plan_and_enables_only_next6(tmp_p
         "pyright_gate_full",
         "pyright_tools_full",
         "required_regressions",
+        "debt_ledger_sync",
         "startup_runtime_regressions",
     ]
     assert _entry_by_id(manifest, ENTRY_REQUIRED_REGRESSIONS)["cache_status"] == "enabled"

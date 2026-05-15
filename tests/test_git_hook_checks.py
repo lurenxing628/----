@@ -162,6 +162,7 @@ def test_blocked_paths_include_long_gate_runtime_artifacts() -> None:
             "evidence/QualityGate/full_test_debt_summary.json",
             "evidence/QualityGate/startup_runtime_regressions.json",
             "evidence/QualityGate/required_regressions.json",
+            "evidence/QualityGate/debt_ledger_sync.json",
             "evidence/QualityGate/ruff_check_full.json",
             "evidence/QualityGate/pyright_gate_full.json",
             "evidence/QualityGate/pyright_tools_full.json",
@@ -190,6 +191,10 @@ def test_blocked_paths_include_long_gate_runtime_artifacts() -> None:
         (
             "evidence/QualityGate/required_regressions.json",
             "required regressions proof 是运行产物，应由当前门禁重新生成",
+        ),
+        (
+            "evidence/QualityGate/debt_ledger_sync.json",
+            "debt ledger sync proof 是运行产物，应由当前门禁重新生成",
         ),
         (
             "evidence/QualityGate/ruff_check_full.json",

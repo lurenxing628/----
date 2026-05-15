@@ -403,6 +403,7 @@ def test_architecture_fitness_stays_planned_and_artifact_is_blocked() -> None:
         "pyright_gate_full",
         "pyright_tools_full",
         "required_regressions",
+        "debt_ledger_sync",
         "startup_runtime_regressions",
     ]
     assert git_hook_checks._blocked_paths(["evidence/QualityGate/long_gate/results/architecture_fitness.success.json"]) == [

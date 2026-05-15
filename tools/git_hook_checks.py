@@ -33,6 +33,7 @@ BLOCKED_PATH_RULES: Tuple[Tuple[str, str], ...] = (
     ("evidence/QualityGate/architecture_scan_cache.json", "architecture scan 文件级缓存是运行产物，应由当前门禁重新生成"),
     ("evidence/QualityGate/startup_runtime_regressions.json", "startup regressions proof 是运行产物，应由当前门禁重新生成"),
     ("evidence/QualityGate/required_regressions.json", "required regressions proof 是运行产物，应由当前门禁重新生成"),
+    ("evidence/QualityGate/debt_ledger_sync.json", "debt ledger sync proof 是运行产物，应由当前门禁重新生成"),
     ("evidence/QualityGate/ruff_check_full.json", "ruff full proof 是运行产物，应由当前门禁重新生成"),
     ("evidence/QualityGate/pyright_gate_full.json", "pyright gate proof 是运行产物，应由当前门禁重新生成"),
     ("evidence/QualityGate/pyright_tools_full.json", "pyright tools proof 是运行产物，应由当前门禁重新生成"),

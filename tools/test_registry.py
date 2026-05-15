@@ -122,6 +122,7 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/test_git_hook_checks.py",
     "tests/test_long_gate_cache.py",
     "tests/test_long_gate_cli_controls.py",
+    "tests/test_long_gate_debt_ledger_cache.py",
     "tests/test_long_gate_fingerprint.py",
     "tests/test_long_gate_manifest.py",
     "tests/test_long_gate_required_regression_cache.py",
@@ -170,6 +171,7 @@ QUALITY_GATE_REQUIRED_TESTS = (QUALITY_GATE_SELFTEST_PATH, *QUALITY_GATE_GUARD_T
 
 TEST_ONLY_HELPER_IMPACT = {
     "tests/long_gate_cache_helpers.py": (
+        "tests/test_long_gate_debt_ledger_cache.py",
         "tests/test_long_gate_required_regression_cache.py",
         "tests/test_long_gate_startup_regression_cache.py",
     ),
@@ -247,6 +249,7 @@ REQUIRED_REGRESSION_GROUPS = (
             "tests/test_git_hook_checks.py",
             "tests/test_long_gate_cache.py",
             "tests/test_long_gate_cli_controls.py",
+            "tests/test_long_gate_debt_ledger_cache.py",
             "tests/test_long_gate_fingerprint.py",
             "tests/test_long_gate_manifest.py",
             "tests/test_long_gate_required_regression_cache.py",

@@ -234,6 +234,7 @@ def test_collect_full_test_debt_static_gate_required_and_startup_entries_are_cur
     full_test_debt = _entry_by_id(manifest, "full_test_debt")
     ruff = _entry_by_id(manifest, "ruff_check_full")
     pyright_gate = _entry_by_id(manifest, "pyright_gate_full")
+    debt_ledger = _entry_by_id(manifest, "debt_ledger_sync")
     required = _entry_by_id(manifest, "required_regressions")
     startup = _entry_by_id(manifest, "startup_runtime_regressions")
 
@@ -244,11 +245,11 @@ def test_collect_full_test_debt_static_gate_required_and_startup_entries_are_cur
         "pyright_gate_full",
         "pyright_tools_full",
         "required_regressions",
+        "debt_ledger_sync",
         "startup_runtime_regressions",
     ]
     forbidden_planned = [
         "architecture_fitness",
-        "debt_ledger_sync",
         "quickref_vs_routes",
     ]
     for entry_id in forbidden_planned:
@@ -256,6 +257,9 @@ def test_collect_full_test_debt_static_gate_required_and_startup_entries_are_cur
         assert entry_id in planned_candidates
         assert entry["cache_status"] == "planned"
         assert entry["reuse_allowed"] is False
+    assert debt_ledger["cache_status"] == "enabled"
+    assert debt_ledger["reuse_allowed"] is True
+    assert debt_ledger["output_result_files"] == ["evidence/QualityGate/debt_ledger_sync.json"]
     static_output_paths = {
         "ruff_check_full": quality_gate_shared.QUALITY_GATE_RUFF_CHECK_FULL_REL.replace("\\", "/"),
         "pyright_gate_full": quality_gate_shared.QUALITY_GATE_PYRIGHT_GATE_FULL_REL.replace("\\", "/"),

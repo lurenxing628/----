@@ -29,6 +29,7 @@ from tools import long_gate_fingerprint as fingerprint_mod
 from tools import quality_gate_shared
 from tools.long_gate_fingerprint import fingerprint_entry
 from tools.long_gate_manifest import (
+    ENTRY_DEBT_LEDGER_SYNC,
     ENTRY_REQUIRED_REGRESSIONS,
     ENTRY_STARTUP_RUNTIME_REGRESSIONS,
 )
@@ -52,7 +53,7 @@ def _seed_required_success(module, monkeypatch, repo_root: Path, command_plan: S
     assert _success_path(repo_root, ENTRY_REQUIRED_REGRESSIONS).exists()
 
 
-def test_required_entry_comes_from_real_command_plan_and_enables_only_next7(tmp_path):
+def test_required_entry_comes_from_real_command_plan_and_enables_only_current_cache_entries(tmp_path):
     command_plan = _real_quality_gate_plan()
     manifest = _manifest_for(command_plan, tmp_path)
     required_entry = _entry_by_id(manifest, ENTRY_REQUIRED_REGRESSIONS)
@@ -72,11 +73,11 @@ def test_required_entry_comes_from_real_command_plan_and_enables_only_next7(tmp_
         "pyright_gate_full",
         "pyright_tools_full",
         "required_regressions",
+        "debt_ledger_sync",
         "startup_runtime_regressions",
     ]
     for entry_id in [
         "architecture_fitness",
-        "debt_ledger_sync",
         "quickref_vs_routes",
     ]:
         assert _entry_by_id(manifest, entry_id)["cache_status"] == "planned"
@@ -582,7 +583,11 @@ def test_force_rerun_all_executes_required_and_keeps_later_entries_planned(monke
     for entry_id in ["ruff_check_full", "pyright_gate_full", "pyright_tools_full"]:
         assert _summary_entry(summary, entry_id)["cache_status"] == "enabled"
         assert _success_path(repo_root, entry_id).exists()
-    for entry_id in ["architecture_fitness", "debt_ledger_sync", "quickref_vs_routes"]:
+    debt_summary = _summary_entry(summary, ENTRY_DEBT_LEDGER_SYNC)
+    assert debt_summary["cache_status"] == "enabled"
+    assert debt_summary["reason"] == "forced by --long-gate-force-rerun-all"
+    assert _success_path(repo_root, ENTRY_DEBT_LEDGER_SYNC).exists()
+    for entry_id in ["architecture_fitness", "quickref_vs_routes"]:
         assert _summary_entry(summary, entry_id)["cache_status"] == "planned"
         assert not _success_path(repo_root, entry_id).exists()
 
