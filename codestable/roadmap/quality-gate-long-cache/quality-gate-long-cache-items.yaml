@@ -239,7 +239,7 @@ items:
 
   - slug: pre-push-long-gate-cache
     title: NEXT-7.5 pre-push 接入已有 long gate cache
-    description: "让本地 pre-push hook 在保留 --require-clean-worktree 的同时显式传入 --long-gate-cache，只复用已经 enabled 且证据可信的 long gate entry。"
+    description: "历史完成项：完成当时让本地 pre-push hook 在保留 --require-clean-worktree 的同时显式传入 --long-gate-cache；后续 pre-push 已改为 daily fast gate，最终完整门禁仍由 run-final-quality-gate 或 scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache 承担。"
     depends_on: [required-regression-cache]
     status: done
     feature: 2026-05-13-pre-push-long-gate-cache
@@ -260,7 +260,7 @@ items:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python codestable/tools/validate-yaml.py --file codestable/features/2026-05-13-pre-push-long-gate-cache/pre-push-long-gate-cache-checklist.yaml
       - git diff --check
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
-    notes: "已完成：只给 pre-push 正式质量门禁增加 --long-gate-cache；保留 --require-clean-worktree；不加 force/explain；不启用 architecture、ruff、pyright、debt ledger 或 quickref。最终 clean-worktree proof 已在收尾阶段运行通过；后续任何 amend 都必须重跑。"
+    notes: "已完成的历史阶段：当时只给 pre-push 正式质量门禁增加 --long-gate-cache，保留 --require-clean-worktree，不加 force/explain，不启用 architecture、ruff、pyright、debt ledger 或 quickref。2026-05-14 后续修复已把 pre-push 默认入口改为 scripts/run_daily_quality_gate.py；daily fast gate 不是 clean proof，最终完整门禁仍需运行 scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache。NEXT-8 到 NEXT-13 仍保持 planned / feature: null。"
 
   - slug: architecture-scan-file-cache
     title: NEXT-8 架构体检文件级扫描缓存

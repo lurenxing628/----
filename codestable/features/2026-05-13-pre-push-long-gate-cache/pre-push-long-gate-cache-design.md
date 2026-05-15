@@ -11,6 +11,8 @@ tags: [quality-gate, cache, pre-push, hook]
 
 # pre-push-long-gate-cache 设计方案
 
+> 2026-05-15 后续说明：本文记录的是 2026-05-13 的历史设计。当时的目标是让 pre-push 直接跑完整 clean gate 并接入 long gate cache。2026-05-14 之后，pre-push 默认入口已经改成 `scripts/run_daily_quality_gate.py`，最终完整门禁改由 `tools/git_hook_checks.py run-final-quality-gate` 或 `scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache` 手动触发。这个历史设计不代表当前 pre-push 真实入口。
+
 ## 0. 术语
 
 - pre-push hook：本地执行 `git push` 前自动跑的检查。
@@ -23,7 +25,7 @@ tags: [quality-gate, cache, pre-push, hook]
 ## 1. 背景
 
 - NEXT-5/6/7 已完成，`full_test_debt`、`startup_runtime_regressions` 和 `required_regressions` 已经接入安全成功缓存。
-- 当前 pre-push 仍只运行 `scripts/run_quality_gate.py --require-clean-worktree`，还没有显式传入 `--long-gate-cache`。
+- 2026-05-13 设计时，pre-push 仍只运行 `scripts/run_quality_gate.py --require-clean-worktree`，还没有显式传入 `--long-gate-cache`。
 - 本任务只把 pre-push 接到已有 cache 入口，不改 long gate cache 的判断逻辑，也不扩大 enabled 范围。
 
 ## 2. 目标
@@ -52,9 +54,9 @@ tags: [quality-gate, cache, pre-push, hook]
 
 ## 5. 验收场景
 
-- S1 pre-push command 包含 `--require-clean-worktree`。
-- S2 pre-push command 包含 `--long-gate-cache`。
-- S3 pre-push command 不包含 force/explain/no-cache。
+- S1 2026-05-13 验收时的 pre-push command 包含 `--require-clean-worktree`。
+- S2 2026-05-13 验收时的 pre-push command 包含 `--long-gate-cache`。
+- S3 2026-05-13 验收时的 pre-push command 不包含 force/explain/no-cache。
 - S4 hook 仍使用项目 `.venv` Python。
 - S5 hook 仍设置 UTF-8 环境并移除 `APS_SKIP_QUALITY_GATE`。
 - S6 planned entry 不会变 enabled。

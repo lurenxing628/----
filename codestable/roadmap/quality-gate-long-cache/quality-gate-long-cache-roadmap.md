@@ -3,7 +3,7 @@ doc_type: roadmap
 slug: quality-gate-long-cache
 status: active
 created: 2026-05-12
-last_reviewed: 2026-05-13
+last_reviewed: 2026-05-15
 tags: [quality-gate, cache, full-test-debt, pyright, ruff]
 related_requirements: []
 related_architecture: [codestable/architecture/ARCHITECTURE.md]
@@ -13,9 +13,9 @@ related_architecture: [codestable/architecture/ARCHITECTURE.md]
 
 ## 1. 当前状态确认
 
-这份 roadmap 现在只记录后续路线，不代表所有慢门禁都已经缓存。当前已经完成 NEXT-1 到 NEXT-7；`full_test_debt` 先支持整项成功复用，现在又补了安全的 nodeid 级增量和台账-only 路径；`startup_runtime_regressions` 和 `required_regressions` 已支持整组成功复用。当前 enabled long gate entry 是 `pytest_collect_all`、`full_test_debt`、`startup_runtime_regressions` 和 `required_regressions`。其它 ruff、pyright、architecture、debt ledger、quickref 仍保持 planned。
+这份 roadmap 现在只记录后续路线，不代表所有慢门禁都已经缓存。当前已经完成 NEXT-1 到 NEXT-7.5；`full_test_debt` 先支持整项成功复用，现在又补了安全的 nodeid 级增量和台账-only 路径；`startup_runtime_regressions` 和 `required_regressions` 已支持整组成功复用。当前 enabled long gate entry 是 `pytest_collect_all`、`full_test_debt`、`startup_runtime_regressions` 和 `required_regressions`。其它 ruff、pyright、architecture、debt ledger、quickref 仍保持 planned。
 
-`pre-push-long-gate-cache` 插队后，本地 pre-push hook 会在保留 `--require-clean-worktree` 的同时传入 `--long-gate-cache`；这不启用 NEXT-8 或后续 planned entry。
+`pre-push-long-gate-cache` 是历史完成项：完成当时把本地 pre-push hook 接到了完整 clean gate + long gate cache。后续为了避免日常 push 每次都被完整 full-test-debt 拖住，pre-push 已改为运行 `scripts/run_daily_quality_gate.py`。当前最终完整门禁仍由 `scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache` 承担，也可以通过 `tools/git_hook_checks.py run-final-quality-gate` 手动触发；这不启用 NEXT-8 或后续 planned entry。
 
 已经完成并可以继续沿用：
 
@@ -624,20 +624,23 @@ proof 字段：required 成功执行后写 `evidence/QualityGate/required_regres
 
 状态：done。对应 feature：`2026-05-13-pre-push-long-gate-cache`。
 
-目标：让本地 pre-push hook 调用 `scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`。pre-push 仍是正式质量门禁，仍要求干净工作区；只是允许已经 enabled、证据可信的 long gate entry 复用上次成功结果。
+历史目标：让本地 pre-push hook 调用 `scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`。完成当时，pre-push 仍是正式质量门禁，仍要求干净工作区；只是允许已经 enabled、证据可信的 long gate entry 复用上次成功结果。
+
+当前口径：这个目标已经被 2026-05-14 的日常快门禁调整覆盖。现在 pre-push 默认调用 `scripts/run_daily_quality_gate.py`，只挡暂存区运行产物、pytest 收集失败、ruff 失败和一组重点 pytest 失败；它不声明 full-test-debt proof，也不声明 clean-worktree proof。最终完整门禁和 CI 仍运行 `scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`，并且只允许已经 enabled 且证据可信的 entry 复用。
 
 明确不做：
 
 - 不启用 NEXT-8 到 NEXT-13。
 - 不做 hook 级整体缓存。
-- 不做 pre-commit 快速化。
+- 不把日常快门禁当作最终 clean proof。
 - 不加 force/explain。
 - 不降低 CI 或最终 clean gate 要求。
 
 验证重点：
 
-- hook command 同时包含 `--require-clean-worktree` 和 `--long-gate-cache`。
-- hook command 不包含 force/explain/no-cache。
+- 历史验收证明当时 hook command 同时包含 `--require-clean-worktree` 和 `--long-gate-cache`。
+- 当前 pre-push 真实入口是 `tools/git_hook_checks.py run-quality-gate`，它调用 `scripts/run_daily_quality_gate.py`。
+- 手动最终完整门禁入口是 `tools/git_hook_checks.py run-final-quality-gate`，它调用 `scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`。
 - planned entry 仍 planned。
 - README 和开发文档 long gate enabled 口径同步。
 
@@ -654,7 +657,7 @@ proof 字段：required 成功执行后写 `evidence/QualityGate/required_regres
 - `git diff --check`
 - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree`
 
-最终 clean-worktree proof 已在收尾阶段运行通过；后续任何 amend 都必须重新运行 `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree` 绑定最终 HEAD。
+最终 clean-worktree proof 在 NEXT-7.5 收尾阶段运行通过；后续提交已经改变 pre-push 入口，因此这条 proof 只代表当时 HEAD，不代表当前 HEAD 的最终 clean proof。当前 HEAD 若要声明完整 clean-worktree proof，仍必须重新运行 `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree` 或等价的 final gate。
 
 ### NEXT-8：architecture fitness 文件级扫描缓存
 
@@ -947,7 +950,7 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require
 9. `full-test-debt-nodeid-cache`：done，已完成 full-test-debt nodeid 增量和台账-only 路径。
 10. `startup-runtime-regression-cache`：done，已完成 startup 整组复用。
 11. `required-regression-cache`：done，已完成 required 整组复用。
-12. `pre-push-long-gate-cache`：done，已让 pre-push 正式质量门禁接入已有 enabled long gate cache。
+12. `pre-push-long-gate-cache`：done，历史上曾让 pre-push 正式质量门禁接入已有 enabled long gate cache；当前 pre-push 已由后续日常快门禁替代，最终完整门禁仍可手动运行。
 13. `architecture-scan-file-cache`：planned，做 architecture 文件级扫描缓存。
 14. `fast-static-precheck`：planned，做快速静态预检。
 15. `static-formal-cache`：planned，做 ruff/pyright 正式全量缓存。
@@ -1002,7 +1005,7 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require
 6. 不要为了提高命中率加宽松兜底。证据不完整就重新执行。
 7. symlink 策略继续保守。仓库外目标不读取内容，直接失效或拒绝。
 8. 自定义 cache dir 只能在 repo root 内，并且最好限制在已被忽略的 evidence 子目录下。
-9. CI 默认启用要等本地和 PR 验证稳定后再决定；第一阶段更适合本地显式 `--long-gate-cache`。
+9. CI 当前执行完整质量门禁时已经显式传入 `--long-gate-cache`；由于 enabled entry 仍只有 `pytest_collect_all`、`full_test_debt`、`startup_runtime_regressions`、`required_regressions`，planned entry 不会因此复用。后续任何新 entry 进入 enabled，都必须单独评估 CI 下复用证据是否可靠。
 10. 每个 PR 的最终说明都要写清楚：本 PR 新启用了哪些 entry，哪些仍然只是候选。
 
 ## 10. 观察项
@@ -1029,3 +1032,4 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require
 - 2026-05-13：完成 `startup-runtime-regression-cache`，只新增启用 `startup_runtime_regressions`；startup 命令从真实 command plan 动态定位，不复制测试清单；proof 写入 `evidence/QualityGate/startup_runtime_regressions.json`，绑定 command/fingerprint/returncode/测试数量/HEAD/长期日志路径和 hash；坏 proof、坏日志、输入或环境变化都会整组重跑；该阶段完成时 required 和 NEXT-7 之后条目仍保持 planned。
 - 2026-05-13：完成 `required-regression-cache`，只新增启用 `required_regressions`；required 命令和 target 从真实 command plan entry 动态定位，不复制 `QUALITY_GATE_REQUIRED_TESTS`；proof 写入 `evidence/QualityGate/required_regressions.json`，绑定 command/fingerprint/returncode/target/HEAD/长期日志路径和 hash；坏 proof、坏日志、required 测试、被测源码、模板、静态资源、Excel 模板、真实读取的文档、`.limcode` 脚本、门禁工具、pytest 配置、依赖或关键环境变化都会整组重跑；NEXT-8 和后续条目仍保持 planned。
 - 2026-05-13：完成 `pre-push-long-gate-cache`，只让本地 pre-push 正式质量门禁在保留 `--require-clean-worktree` 的同时传入 `--long-gate-cache`；不启用 NEXT-8 到 NEXT-13，不做 hook 级整体缓存，不做 pre-commit 快速化；收尾完整 clean-worktree quality gate 已通过。
+- 2026-05-15：同步 2026-05-14 之后的实际口径：pre-push 当前默认运行 `scripts/run_daily_quality_gate.py`，只作为日常快门禁；最终完整门禁和 CI 仍运行 `scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`。本次只是文档口径收口，不改变代码行为，不代表启用 NEXT-8 到 NEXT-13。

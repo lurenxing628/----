@@ -13,8 +13,10 @@ tags: [quality-gate, cache, pre-push, hook]
 
 ## 1. 验收结论
 
-- pre-push hook 现在通过 `tools/git_hook_checks.py` 调用 `scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`。
-- 保留 `--require-clean-worktree`。
+> 2026-05-15 后续说明：下面的验收结论只代表 2026-05-13 这个 feature 完成时的历史事实。后续 2026-05-14 的耗时修复已经把 pre-push 默认入口改成 `scripts/run_daily_quality_gate.py`。当前 pre-push 只是日常快门禁，不声明 full-test-debt proof，也不声明 clean-worktree proof；最终完整门禁仍通过 `tools/git_hook_checks.py run-final-quality-gate` 或 `scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache` 运行。
+
+- 2026-05-13 验收时，pre-push hook 通过 `tools/git_hook_checks.py` 调用 `scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`。
+- 2026-05-13 验收时保留 `--require-clean-worktree`。
 - 没有加入 force/explain/no-cache。
 - 没有启用 NEXT-8 到 NEXT-13。
 
@@ -72,3 +74,4 @@ planned:
 
 - 如果 pre-push 接入 cache 后出问题，移除 `tools/git_hook_checks.py` command 中的 `--long-gate-cache` 即可。
 - 不需要回滚 NEXT-5/6/7 的 long gate cache 能力。
+- 当前 pre-push 已经被后续 daily fast gate 入口替代；这份验收记录不能当作当前 HEAD 的 clean-worktree proof，也不能证明当前 pre-push 仍直接跑完整 clean gate。
