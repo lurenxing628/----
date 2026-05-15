@@ -243,7 +243,7 @@ items:
     depends_on: [required-regression-cache]
     status: done
     feature: 2026-05-13-pre-push-long-gate-cache
-    minimal_loop: true
+    minimal_loop: false
     primary_paths:
       - tools/git_hook_checks.py
       - tests/test_git_hook_checks.py
@@ -303,20 +303,25 @@ items:
     title: NEXT-10 ruff/pyright 正式全量缓存
     description: "为 formal ruff check、pyright gate config、pyright tool paths 做 success cache；任意相关 Python 文件、配置、依赖、工具版本变化时失效。"
     depends_on: [fast-static-precheck]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-15-static-formal-cache
     minimal_loop: false
     primary_paths:
       - tools/long_gate_manifest.py
       - tools/long_gate_fingerprint.py
       - tools/quality_gate_shared.py
       - scripts/run_quality_gate.py
-      - tests/test_long_gate_static_cache.py
+      - pyrightconfig.tools.json
+      - tests/test_long_gate_manifest.py
+      - tests/test_long_gate_cache.py
+      - tests/test_run_quality_gate.py
+      - tests/test_git_hook_checks.py
     exit_checks:
-      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_long_gate_static_cache.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_long_gate_manifest.py tests/test_long_gate_cache.py tests/test_run_quality_gate.py tests/test_git_hook_checks.py tests/test_long_gate_cli_controls.py tests/test_long_gate_summary_output.py tests/test_long_gate_required_regression_cache.py tests/test_long_gate_startup_regression_cache.py tests/test_long_gate_full_test_debt_cache.py tests/test_architecture_scan_cache.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright -p pyrightconfig.gate.json
-    notes: "不要一笔提交同时启用三个静态 entry；先 ruff，再 pyright gate，再 pyright tools；pyright 指纹必须包含 PYTHONPATH、Python version、pyright version 和依赖文件。"
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright -p pyrightconfig.tools.json
+    notes: "已完成 NEXT-10：按阶段启用 ruff_check_full、pyright_gate_full、pyright_tools_full；三条 static entry 都有专属输入边界、工具版本/Python 环境/依赖/config 指纹、static proof JSON 和 artifact hygiene。pyright tools 已改为 pyrightconfig.tools.json，并用 include 对账 + filesAnalyzed 自检防止缓存空覆盖结果。"
 
   - slug: debt-ledger-sync-cache
     title: NEXT-11 债务台账同步检查缓存
@@ -369,7 +374,7 @@ items:
       - codestable/roadmap/quality-gate-long-cache/quality-gate-long-cache-roadmap.md
       - codestable/roadmap/quality-gate-long-cache/quality-gate-long-cache-items.yaml
     exit_checks:
-      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_long_gate_full_test_debt_cache.py tests/test_long_gate_startup_regression_cache.py tests/test_long_gate_required_regression_cache.py tests/test_architecture_scan_cache.py tests/test_fast_static_precheck.py tests/test_long_gate_static_cache.py tests/test_long_gate_debt_ledger_cache.py tests/test_long_gate_quickref_cache.py tests/test_long_gate_summary_output.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_long_gate_full_test_debt_cache.py tests/test_long_gate_startup_regression_cache.py tests/test_long_gate_required_regression_cache.py tests/test_architecture_scan_cache.py tests/test_fast_static_precheck.py tests/test_long_gate_manifest.py tests/test_long_gate_cache.py tests/test_run_quality_gate.py tests/test_git_hook_checks.py tests/test_long_gate_debt_ledger_cache.py tests/test_long_gate_quickref_cache.py tests/test_long_gate_summary_output.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_long_gate_cache.py tests/test_long_gate_manifest.py tests/test_run_quality_gate.py tests/test_architecture_fitness.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright -p pyrightconfig.gate.json

@@ -4,7 +4,7 @@ import hashlib
 import json
 import os
 from datetime import datetime
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, TypedDict
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, TypedDict, cast
 
 from tools.long_gate_fingerprint import diff_fingerprints, stable_json_hash
 from tools.long_gate_paths import (
@@ -565,7 +565,8 @@ def evaluate_reuse(
         return _reuse_evaluation(
             _decision(entry_id, "run", "previous result was partially written", current_fingerprint_hash=current_hash)
         )
-    previous_fingerprint = previous.get("fingerprint") if isinstance(previous.get("fingerprint"), dict) else {}
+    previous_fingerprint_obj = previous.get("fingerprint")
+    previous_fingerprint = cast(Mapping[str, Any], previous_fingerprint_obj if isinstance(previous_fingerprint_obj, dict) else {})
     untrusted_path_reason = _fingerprint_untrusted_path_reason(current_fingerprint) or _fingerprint_untrusted_path_reason(
         previous_fingerprint
     )
@@ -775,7 +776,7 @@ def write_success(
         "command_hash": str(entry.get("command_hash") or ""),
         "fingerprint_hash": str(fingerprint.get("hash") or ""),
         "fingerprint": dict(fingerprint),
-        "returncode": int(command_result.get("returncode")),
+        "returncode": int(command_result.get("returncode") or 0),
         "stdout_sha256": _sha256_bytes(_abs_from_rel(root, stdout_log_path)),
         "stderr_sha256": _sha256_bytes(_abs_from_rel(root, stderr_log_path)),
         "stdout_log_path": stdout_log_path,

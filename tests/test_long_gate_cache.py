@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from tools import long_gate_fingerprint as fingerprint_mod
+from tools import quality_gate_shared
 from tools.long_gate_cache import decide_reuse, evaluate_reuse, resolve_cache_dir, write_success
 from tools.long_gate_fingerprint import (
     LongGateFingerprintError,
@@ -18,6 +19,7 @@ from tools.long_gate_fingerprint import (
     fingerprint_entry,
     fingerprint_files,
 )
+from tools.long_gate_manifest import build_manifest_from_quality_gate_plan
 from tools.long_gate_schema import (
     LONG_GATE_CACHE_SCHEMA_VERSION,
     LONG_GATE_FINGERPRINT_SCHEMA_VERSION,
@@ -97,6 +99,17 @@ def _load_success(repo_root: Path, *, cache_dir: str = "evidence/QualityGate/lon
 
 def _store_success(repo_root: Path, payload: dict, *, cache_dir: str = "evidence/QualityGate/long_gate") -> None:
     _success_path(repo_root, cache_dir=cache_dir).write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+
+def _long_gate_entry(entry_id: str, repo_root: Path) -> dict:
+    manifest = build_manifest_from_quality_gate_plan(
+        quality_gate_shared.build_quality_gate_command_plan(),
+        repo_root=str(repo_root),
+    )
+    for entry in manifest["entries"]:
+        if entry["entry_id"] == entry_id:
+            return entry
+    raise AssertionError(f"missing entry_id: {entry_id}")
 
 
 def test_fingerprint_files_is_stable_and_changes_for_file_add_modify_delete(tmp_path):
@@ -345,6 +358,228 @@ def test_fingerprint_entry_changes_when_output_result_files_change(tmp_path):
     changed = fingerprint_entry(changed_entry, str(tmp_path))
 
     assert changed["hash"] != first["hash"]
+
+
+@pytest.mark.parametrize(
+    "changed_path",
+    [
+        "app.py",
+        "core/services/example.py",
+        "data/repositories/example.py",
+        "desktop/gantt/example.py",
+        "web/routes/example.py",
+        "plugins/example.py",
+        "scripts/example.py",
+        "tools/example.py",
+        "tests/test_example.py",
+        "codestable/tools/example.py",
+        "audit/example.py",
+        "pyproject.toml",
+        "ruff.toml",
+        ".ruff.toml",
+        "setup.cfg",
+        ".pre-commit-config.yaml",
+        ".gitignore",
+        "requirements-dev.txt",
+        "requirements.txt",
+    ],
+)
+def test_ruff_check_full_fingerprint_tracks_python_config_and_dependencies(tmp_path, changed_path):
+    entry = _long_gate_entry("ruff_check_full", tmp_path)
+
+    before = fingerprint_entry(entry, str(tmp_path))
+    path = tmp_path / changed_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("MARKER = 1\n", encoding="utf-8")
+    after = fingerprint_entry(entry, str(tmp_path))
+
+    assert after["hash"] != before["hash"]
+
+
+def test_ruff_check_full_fingerprint_tracks_ruff_version(tmp_path, monkeypatch):
+    entry = _long_gate_entry("ruff_check_full", tmp_path)
+    monkeypatch.setattr(fingerprint_mod, "_distribution_version", lambda distribution, strict=False: "ruff-1")
+    before = fingerprint_entry(entry, str(tmp_path))
+
+    monkeypatch.setattr(fingerprint_mod, "_distribution_version", lambda distribution, strict=False: "ruff-2")
+    after = fingerprint_entry(entry, str(tmp_path))
+
+    assert before["components"]["environment"]["values"]["ruff_version"] == "ruff-1"
+    assert after["components"]["environment"]["values"]["ruff_version"] == "ruff-2"
+    assert after["hash"] != before["hash"]
+
+
+def test_ruff_check_full_fingerprint_tracks_declared_output_path(tmp_path):
+    entry = _long_gate_entry("ruff_check_full", tmp_path)
+    before = fingerprint_entry(entry, str(tmp_path))
+    changed_entry = dict(entry)
+    changed_entry["output_result_files"] = ["evidence/QualityGate/ruff_check_full_v2.json"]
+
+    after = fingerprint_entry(changed_entry, str(tmp_path))
+
+    assert after["hash"] != before["hash"]
+
+
+@pytest.mark.parametrize(
+    "changed_path",
+    [
+        "app.py",
+        "app.pyi",
+        "app_new_ui.py",
+        "app_new_ui.pyi",
+        "config.py",
+        "config.pyi",
+        "core/services/example.py",
+        "data/repositories/example.py",
+        "web/routes/example.py",
+        "core/services/example.pyi",
+        "data/repositories/example.pyi",
+        "web/routes/example.pyi",
+        "typings/example.pyi",
+        "py.typed",
+        "core/py.typed",
+        "pyrightconfig.gate.json",
+        "pyrightconfig.json",
+        "pyproject.toml",
+        "setup.cfg",
+        "requirements-dev.txt",
+        "requirements.txt",
+    ],
+)
+def test_pyright_gate_full_fingerprint_tracks_gate_inputs_config_and_dependencies(tmp_path, changed_path):
+    entry = _long_gate_entry("pyright_gate_full", tmp_path)
+
+    before = fingerprint_entry(entry, str(tmp_path))
+    path = tmp_path / changed_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("MARKER = 1\n", encoding="utf-8")
+    after = fingerprint_entry(entry, str(tmp_path))
+
+    assert after["hash"] != before["hash"]
+
+
+def test_pyright_gate_full_fingerprint_follows_gate_config_include(tmp_path):
+    config = tmp_path / "pyrightconfig.gate.json"
+    config.write_text(
+        json.dumps({"include": ["service"], "pythonVersion": "3.8"}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    entry = _long_gate_entry("pyright_gate_full", tmp_path)
+
+    assert "service/**/*.py" in entry["input_file_scopes"]
+    assert "service/**/*.pyi" in entry["input_file_scopes"]
+    before = fingerprint_entry(entry, str(tmp_path))
+    service_file = tmp_path / "service" / "example.py"
+    service_file.parent.mkdir(parents=True)
+    service_file.write_text("VALUE = 1\n", encoding="utf-8")
+    after = fingerprint_entry(entry, str(tmp_path))
+
+    assert after["hash"] != before["hash"]
+
+
+@pytest.mark.parametrize("env_key", ["PYTHONPATH", "PYTHONUTF8", "PYTHONIOENCODING"])
+def test_pyright_gate_full_fingerprint_tracks_environment(tmp_path, monkeypatch, env_key):
+    entry = _long_gate_entry("pyright_gate_full", tmp_path)
+    monkeypatch.setenv(env_key, "before")
+    before = fingerprint_entry(entry, str(tmp_path))
+
+    monkeypatch.setenv(env_key, "after")
+    after = fingerprint_entry(entry, str(tmp_path))
+
+    assert after["hash"] != before["hash"]
+
+
+def test_pyright_gate_full_fingerprint_tracks_pyright_version(tmp_path, monkeypatch):
+    entry = _long_gate_entry("pyright_gate_full", tmp_path)
+    monkeypatch.setattr(fingerprint_mod, "_distribution_version", lambda distribution, strict=False: "pyright-1")
+    before = fingerprint_entry(entry, str(tmp_path))
+
+    monkeypatch.setattr(fingerprint_mod, "_distribution_version", lambda distribution, strict=False: "pyright-2")
+    after = fingerprint_entry(entry, str(tmp_path))
+
+    assert before["components"]["environment"]["values"]["pyright_version"] == "pyright-1"
+    assert after["components"]["environment"]["values"]["pyright_version"] == "pyright-2"
+    assert after["hash"] != before["hash"]
+
+
+def test_pyright_gate_full_fingerprint_tracks_declared_output_path(tmp_path):
+    entry = _long_gate_entry("pyright_gate_full", tmp_path)
+    before = fingerprint_entry(entry, str(tmp_path))
+    changed_entry = dict(entry)
+    changed_entry["output_result_files"] = ["evidence/QualityGate/pyright_gate_full_v2.json"]
+
+    after = fingerprint_entry(changed_entry, str(tmp_path))
+
+    assert after["hash"] != before["hash"]
+
+
+@pytest.mark.parametrize(
+    "changed_path",
+    [
+        "scripts/run_quality_gate.py",
+        "tools/long_gate_manifest.py",
+        "tests/conftest.py",
+        "tools/__init__.py",
+        "tools/full_test_debt_shards.py",
+        "web/bootstrap/launcher.py",
+        "core/infrastructure/logging.py",
+        "core/infrastructure/transaction.py",
+        "typings/tools.pyi",
+        "py.typed",
+        "pyrightconfig.tools.json",
+        "pyrightconfig.gate.json",
+        "pyrightconfig.json",
+        "pyproject.toml",
+        "setup.cfg",
+        "requirements-dev.txt",
+        "requirements.txt",
+    ],
+)
+def test_pyright_tools_full_fingerprint_tracks_tools_inputs_config_and_dependencies(tmp_path, changed_path):
+    entry = _long_gate_entry("pyright_tools_full", tmp_path)
+
+    before = fingerprint_entry(entry, str(tmp_path))
+    path = tmp_path / changed_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("MARKER = 1\n", encoding="utf-8")
+    after = fingerprint_entry(entry, str(tmp_path))
+
+    assert after["hash"] != before["hash"]
+
+
+@pytest.mark.parametrize("env_key", ["PYTHONPATH", "PYTHONUTF8", "PYTHONIOENCODING"])
+def test_pyright_tools_full_fingerprint_tracks_environment(tmp_path, monkeypatch, env_key):
+    entry = _long_gate_entry("pyright_tools_full", tmp_path)
+    monkeypatch.setenv(env_key, "before")
+    before = fingerprint_entry(entry, str(tmp_path))
+
+    monkeypatch.setenv(env_key, "after")
+    after = fingerprint_entry(entry, str(tmp_path))
+
+    assert after["hash"] != before["hash"]
+
+def test_pyright_tools_full_fingerprint_tracks_pyright_version(tmp_path, monkeypatch):
+    entry = _long_gate_entry("pyright_tools_full", tmp_path)
+    monkeypatch.setattr(fingerprint_mod, "_distribution_version", lambda distribution, strict=False: "pyright-1")
+    before = fingerprint_entry(entry, str(tmp_path))
+
+    monkeypatch.setattr(fingerprint_mod, "_distribution_version", lambda distribution, strict=False: "pyright-2")
+    after = fingerprint_entry(entry, str(tmp_path))
+
+    assert before["components"]["environment"]["values"]["pyright_version"] == "pyright-1"
+    assert after["components"]["environment"]["values"]["pyright_version"] == "pyright-2"
+    assert after["hash"] != before["hash"]
+
+
+def test_pyright_tools_full_fingerprint_tracks_declared_output_path(tmp_path):
+    entry = _long_gate_entry("pyright_tools_full", tmp_path)
+    before = fingerprint_entry(entry, str(tmp_path))
+    changed_entry = dict(entry)
+    changed_entry["output_result_files"] = ["evidence/QualityGate/pyright_tools_full_v2.json"]
+
+    after = fingerprint_entry(changed_entry, str(tmp_path))
+
+    assert after["hash"] != before["hash"]
 
 
 def test_fingerprint_files_marks_outside_repo_scope_without_reading_it(tmp_path):

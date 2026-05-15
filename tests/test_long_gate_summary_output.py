@@ -170,9 +170,8 @@ def test_explain_mode_prints_full_decision_table_and_writes_no_proof(monkeypatch
     output = capsys.readouterr().out
     assert "Long gate cache decisions" in output
     assert "pytest_collect_all: RUN" in output
-    assert "ruff_check_full: PLANNED_ONLY" in output
+    assert "ruff_check_full: RUN" in output
     assert "cache: enabled" in output
-    assert "cache: planned" in output
     assert "explain mode prints decisions only; it is not a quality gate proof" in output
     assert not _summary_path(repo_root).exists()
     assert not _success_cache_path(repo_root).exists()
@@ -194,7 +193,7 @@ def test_successful_run_writes_json_md_counts_and_reasons(monkeypatch, tmp_path)
     assert summary["mode"] == "run"
     assert summary["cache_enabled"] is True
     assert summary["cache_dir"] == "evidence/QualityGate/long_gate"
-    assert summary["counts"] == {"executed": 1, "reused": 0, "failed": 0, "planned_only": 1, "disabled": 0}
+    assert summary["counts"] == {"executed": 2, "reused": 0, "failed": 0, "planned_only": 0, "disabled": 0}
     assert summary["duration"]["total_s"] > 0.0
     assert summary["duration"]["executed_total_s"] > 0.0
     assert summary["duration"]["reuse_overhead_total_s"] == 0.0
@@ -211,9 +210,11 @@ def test_successful_run_writes_json_md_counts_and_reasons(monkeypatch, tmp_path)
     assert collect["stdout_log_path"].startswith("evidence/QualityGate/logs/")
     assert collect["stderr_log_path"].startswith("evidence/QualityGate/logs/")
     assert collect["output_files"][0]["path"] == "evidence/QualityGate/collect_nodeids.json"
-    planned = _entry_by_id(summary, "ruff_check_full")
-    assert planned["decision"] == "planned_only"
-    assert planned["execution_mode"] == "planned_only"
+    ruff = _entry_by_id(summary, "ruff_check_full")
+    assert ruff["decision"] == "run"
+    assert ruff["cache_status"] == "enabled"
+    assert ruff["execution_mode"] == "executed"
+    assert ruff["output_files"][0]["path"] == "evidence/QualityGate/ruff_check_full.json"
     markdown = _summary_md_path(repo_root).read_text(encoding="utf-8")
     assert "## Duration" in markdown
     assert "## Slow entries" in markdown
@@ -335,7 +336,7 @@ def test_failed_collect_records_failure_and_prints_copyable_command(monkeypatch,
     assert "python -m pytest -q tests/test_long_gate_summary_output.py::test_bad" in combined
 
 
-def test_planned_long_entry_failure_records_summary_failure(monkeypatch, tmp_path):
+def test_enabled_static_entry_failure_records_summary_failure(monkeypatch, tmp_path):
     module = _import_run_quality_gate()
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
@@ -358,14 +359,14 @@ def test_planned_long_entry_failure_records_summary_failure(monkeypatch, tmp_pat
 
     summary = _load_summary(repo_root)
     failure = summary["failure"]
-    full_debt = _entry_by_id(summary, "ruff_check_full")
+    ruff = _entry_by_id(summary, "ruff_check_full")
     assert summary["counts"]["failed"] == 1
     assert failure["entry_id"] == "ruff_check_full"
     assert failure["copyable_command"] == "python -m ruff check"
     assert failure["copyable_nodeids"] == []
     assert "full debt failed" in failure["stderr_tail"]
-    assert full_debt["decision"] == "planned_only"
-    assert full_debt["failed"] is True
+    assert ruff["decision"] == "run"
+    assert ruff["failed"] is True
 
 
 def test_dirty_worktree_summary_is_unbound_and_does_not_write_success_cache(monkeypatch, tmp_path):

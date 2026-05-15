@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 
@@ -219,7 +220,7 @@ def test_required_groups_do_not_enter_formal_manifest_contract():
     assert "required_regression_group_scope_policy" not in required
 
 
-def test_collect_full_test_debt_required_and_startup_entries_are_currently_reuse_enabled():
+def test_collect_full_test_debt_static_gate_required_and_startup_entries_are_currently_reuse_enabled():
     command_plan = quality_gate_shared.build_quality_gate_command_plan()
     manifest = manifest_mod.build_manifest_from_quality_gate_plan(command_plan, repo_root=quality_gate_shared.REPO_ROOT)
 
@@ -231,15 +232,22 @@ def test_collect_full_test_debt_required_and_startup_entries_are_currently_reuse
     ]
 
     full_test_debt = _entry_by_id(manifest, "full_test_debt")
+    ruff = _entry_by_id(manifest, "ruff_check_full")
+    pyright_gate = _entry_by_id(manifest, "pyright_gate_full")
     required = _entry_by_id(manifest, "required_regressions")
     startup = _entry_by_id(manifest, "startup_runtime_regressions")
 
-    assert enabled == ["pytest_collect_all", "full_test_debt", "required_regressions", "startup_runtime_regressions"]
-    forbidden_planned = [
-        "architecture_fitness",
+    assert enabled == [
+        "pytest_collect_all",
+        "full_test_debt",
         "ruff_check_full",
         "pyright_gate_full",
         "pyright_tools_full",
+        "required_regressions",
+        "startup_runtime_regressions",
+    ]
+    forbidden_planned = [
+        "architecture_fitness",
         "debt_ledger_sync",
         "quickref_vs_routes",
     ]
@@ -248,6 +256,91 @@ def test_collect_full_test_debt_required_and_startup_entries_are_currently_reuse
         assert entry_id in planned_candidates
         assert entry["cache_status"] == "planned"
         assert entry["reuse_allowed"] is False
+    static_output_paths = {
+        "ruff_check_full": quality_gate_shared.QUALITY_GATE_RUFF_CHECK_FULL_REL.replace("\\", "/"),
+        "pyright_gate_full": quality_gate_shared.QUALITY_GATE_PYRIGHT_GATE_FULL_REL.replace("\\", "/"),
+        "pyright_tools_full": quality_gate_shared.QUALITY_GATE_PYRIGHT_TOOLS_FULL_REL.replace("\\", "/"),
+    }
+    for entry_id, output_path in static_output_paths.items():
+        assert _entry_by_id(manifest, entry_id)["output_result_files"] == [output_path]
+    assert ruff["cache_status"] == "enabled"
+    assert ruff["reuse_allowed"] is True
+    for scope in [
+        "*.py",
+        "core/**/*.py",
+        "data/**/*.py",
+        "desktop/**/*.py",
+        "web/**/*.py",
+        "plugins/**/*.py",
+        "scripts/**/*.py",
+        "tools/**/*.py",
+        "tests/**/*.py",
+        "codestable/tools/**/*.py",
+        "audit/**/*.py",
+    ]:
+        assert scope in ruff["input_file_scopes"]
+    for scope in ["pyproject.toml", "ruff.toml", ".ruff.toml", "setup.cfg", ".pre-commit-config.yaml", ".gitignore"]:
+        assert scope in ruff["config_file_scopes"]
+    assert "requirements*.txt" in ruff["dependency_file_scopes"]
+    assert "requirements-dev*.txt" in ruff["dependency_file_scopes"]
+    assert "ruff_version" in ruff["env_keys"]
+    assert "python_version" in ruff["env_keys"]
+    assert ruff["output_result_files"] == ["evidence/QualityGate/ruff_check_full.json"]
+    assert pyright_gate["cache_status"] == "enabled"
+    assert pyright_gate["reuse_allowed"] is True
+    for scope in [
+        "app.py",
+        "app.pyi",
+        "app_new_ui.py",
+        "app_new_ui.pyi",
+        "config.py",
+        "config.pyi",
+        "core/**/*.py",
+        "data/**/*.py",
+        "web/**/*.py",
+        "core/**/*.pyi",
+        "data/**/*.pyi",
+        "web/**/*.pyi",
+    ]:
+        assert scope in pyright_gate["input_file_scopes"]
+    assert "tools/**/*.py" not in pyright_gate["input_file_scopes"]
+    assert "scripts/**/*.py" not in pyright_gate["input_file_scopes"]
+    assert "tests/**/*.py" not in pyright_gate["input_file_scopes"]
+    for scope in ["pyrightconfig.gate.json", "pyrightconfig.json", "pyproject.toml", "setup.cfg"]:
+        assert scope in pyright_gate["config_file_scopes"]
+    assert "requirements*.txt" in pyright_gate["dependency_file_scopes"]
+    assert "requirements-dev*.txt" in pyright_gate["dependency_file_scopes"]
+    assert "pyright_version" in pyright_gate["env_keys"]
+    assert "PYTHONPATH" in pyright_gate["env_keys"]
+    assert pyright_gate["output_result_files"] == ["evidence/QualityGate/pyright_gate_full.json"]
+    pyright_tools = _entry_by_id(manifest, "pyright_tools_full")
+    assert pyright_tools["cache_status"] == "enabled"
+    assert pyright_tools["reuse_allowed"] is True
+    assert pyright_tools["args"] == ["python", "-m", "pyright", "-p", quality_gate_shared.QUALITY_GATE_PYRIGHT_TOOLS_CONFIG]
+    assert pyright_tools["input_file_scopes"][: len(quality_gate_shared.QUALITY_GATE_TOOL_PATHS)] == (
+        quality_gate_shared.QUALITY_GATE_TOOL_PATHS
+    )
+    for scope in [
+        "tools/__init__.py",
+        "tools/full_test_debt_shards.py",
+        "web/bootstrap/**/*.py",
+        "core/infrastructure/logging.py",
+        "core/infrastructure/transaction.py",
+    ]:
+        assert scope in pyright_tools["input_file_scopes"]
+    for scope in [
+        "pyrightconfig.tools.json",
+        "pyrightconfig.gate.json",
+        "pyrightconfig.json",
+        "pyproject.toml",
+        "setup.cfg",
+    ]:
+        assert scope in pyright_tools["config_file_scopes"]
+    assert "requirements*.txt" in pyright_tools["dependency_file_scopes"]
+    assert "requirements-dev*.txt" in pyright_tools["dependency_file_scopes"]
+    assert "pyright_version" in pyright_tools["env_keys"]
+    assert "PYTHONPATH" in pyright_tools["env_keys"]
+    assert pyright_tools["output_result_files"] == ["evidence/QualityGate/pyright_tools_full.json"]
     assert "codestable/tools/**/*.py" in full_test_debt["config_file_scopes"]
     assert full_test_debt["cache_status"] == "enabled"
     assert "evidence/QualityGate/collect_nodeids.json" in full_test_debt["input_file_scopes"]
@@ -321,8 +414,21 @@ def test_pyright_tools_entry_tracks_quality_gate_tool_paths():
 
     pyright_tools = _entry_by_id(manifest, "pyright_tools_full")
 
-    assert pyright_tools["input_file_scopes"] == quality_gate_shared.QUALITY_GATE_TOOL_PATHS
+    assert pyright_tools["input_file_scopes"][: len(quality_gate_shared.QUALITY_GATE_TOOL_PATHS)] == (
+        quality_gate_shared.QUALITY_GATE_TOOL_PATHS
+    )
     assert set(quality_gate_shared.QUALITY_GATE_TOOL_PATHS) <= set(pyright_tools["tool_file_scopes"])
+
+
+def test_pyright_tools_config_include_matches_quality_gate_tool_paths():
+    config_path = os.path.join(
+        quality_gate_shared.REPO_ROOT,
+        quality_gate_shared.QUALITY_GATE_PYRIGHT_TOOLS_CONFIG,
+    )
+    with open(config_path, encoding="utf-8") as handle:
+        payload = json.load(handle)
+
+    assert payload["include"] == list(quality_gate_shared.QUALITY_GATE_TOOL_PATHS)
 
 
 def test_include_local_receipts_reports_missing_history(tmp_path, capsys):

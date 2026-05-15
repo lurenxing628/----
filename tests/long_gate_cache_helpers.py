@@ -112,6 +112,7 @@ def _patch_gate_environment(monkeypatch, module, repo_root: Path, *, statuses: S
     monkeypatch.setattr(module, "_git_status_lines", next_status)
     monkeypatch.setattr(module, "_run_git_bytes", lambda _args: b"")
     monkeypatch.setattr(module, "_runtime_state_snapshot", lambda: {"runtime_state": "absent"})
+    monkeypatch.setattr(module, "_assert_pyright_tools_coverage", lambda: None)
     monkeypatch.setattr(module, "pytest_distribution_version", lambda strict=False: "pytest 8.3.5")
     monkeypatch.setattr(
         fingerprint_mod,

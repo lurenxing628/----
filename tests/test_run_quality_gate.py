@@ -6,6 +6,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Optional
 
 import pytest
@@ -53,6 +54,7 @@ def _patch_basic_gate_environment(monkeypatch, module, repo_root: Path, *, statu
     monkeypatch.setattr(module, "_git_status_lines", lambda: next(status_iter))
     monkeypatch.setattr(module, "_run_git_bytes", lambda _args: b"")
     monkeypatch.setattr(module, "_runtime_state_snapshot", lambda: {"runtime_state": "absent"})
+    monkeypatch.setattr(module, "_assert_pyright_tools_coverage", lambda: None)
 
 
 def _successful_result_for_display(display: str, nodeid_suffix: str = "test_quality_gate") -> dict:
@@ -291,16 +293,20 @@ def test_main_runs_guard_preflight_before_static_and_startup_checks(monkeypatch,
     monkeypatch.setattr(module, "_git_head_sha", lambda: "abc123")
     monkeypatch.setattr(module, "_git_status_lines", lambda: [])
     monkeypatch.setattr(module, "_runtime_state_snapshot", lambda: {"runtime_state": "absent"})
+    monkeypatch.setattr(module, "_assert_pyright_tools_coverage", lambda: None)
     monkeypatch.setattr(module, "_write_quality_gate_manifest", lambda manifest: None)
 
     assert module.main([]) == 0
 
     displays = [display for display, _args, _capture_output in calls]
-    tool_pyright_display = "python -m pyright " + " ".join(module.QUALITY_GATE_TOOL_PATHS)
+    tool_pyright_display = f"python -m pyright -p {module.PYRIGHT_TOOLS_CONFIG}"
     assert "python -m pytest --collect-only -q tests" in displays
     assert "python -m pyright --version" in displays
     assert "python -m pyright -p pyrightconfig.gate.json" in displays
     assert tool_pyright_display in displays
+    tool_pyright_call = next((row for row in calls if row[0] == tool_pyright_display), None)
+    assert tool_pyright_call is not None
+    assert tool_pyright_call[1][1:] == ["-m", "pyright", "-p", module.PYRIGHT_TOOLS_CONFIG]
     assert "scripts/run_daily_quality_gate.py" in module.QUALITY_GATE_TOOL_PATHS
     assert "tools/fast_static_precheck.py" in module.QUALITY_GATE_TOOL_PATHS
     assert "tools/architecture_scan_cache.py" in module.QUALITY_GATE_TOOL_PATHS
@@ -372,6 +378,7 @@ def test_main_executes_every_shared_command_when_plan_inserts_preflight(monkeypa
     git_status_calls = iter([[], []])
     monkeypatch.setattr(module, "_git_status_lines", lambda: next(git_status_calls))
     monkeypatch.setattr(module, "_runtime_state_snapshot", lambda: {"runtime_state": "absent"})
+    monkeypatch.setattr(module, "_assert_pyright_tools_coverage", lambda: None)
 
     def fake_run_command(display, args, capture_output=False, env_overlay=None):
         calls.append((display, list(args), bool(capture_output)))
@@ -559,6 +566,7 @@ def test_main_fails_when_required_command_proof_is_missing(monkeypatch, tmp_path
     git_status_calls = iter([[], []])
     monkeypatch.setattr(module, "_git_status_lines", lambda: next(git_status_calls))
     monkeypatch.setattr(module, "_runtime_state_snapshot", lambda: {"runtime_state": "absent"})
+    monkeypatch.setattr(module, "_assert_pyright_tools_coverage", lambda: None)
 
     def fake_run_command(display, args, capture_output=False, env_overlay=None):
         if display == "python -m ruff --version":
@@ -772,6 +780,7 @@ def test_main_rebuilds_ignored_receipts_without_dirtying_clean_worktree(monkeypa
     monkeypatch.setattr(module, "_assert_no_active_runtime", lambda: None)
     monkeypatch.setattr(module, "_assert_guard_tests_ready", lambda: None)
     monkeypatch.setattr(module, "_runtime_state_snapshot", lambda: {"runtime_state": "absent"})
+    monkeypatch.setattr(module, "_assert_pyright_tools_coverage", lambda: None)
 
     def fake_run_command(display, args, capture_output=False, env_overlay=None):
         if display == "python -m ruff --version":
@@ -813,8 +822,251 @@ def test_main_rebuilds_ignored_receipts_without_dirtying_clean_worktree(monkeypa
         "evidence/QualityGate/architecture_scan_cache.json",
         "evidence/QualityGate/startup_runtime_regressions.json",
         "evidence/QualityGate/required_regressions.json",
+        "evidence/QualityGate/ruff_check_full.json",
+        "evidence/QualityGate/pyright_gate_full.json",
+        "evidence/QualityGate/pyright_tools_full.json",
     ]
     assert len(manifest["command_receipts"]) == len(manifest["commands"])
+
+
+@pytest.mark.parametrize(
+    ("entry_id", "display", "args", "proof_rel"),
+    [
+        (
+            "ruff_check_full",
+            "python -m ruff check",
+            ["python", "-m", "ruff", "check"],
+            "evidence/QualityGate/ruff_check_full.json",
+        ),
+        (
+            "pyright_gate_full",
+            "python -m pyright -p pyrightconfig.gate.json",
+            ["python", "-m", "pyright", "-p", "pyrightconfig.gate.json"],
+            "evidence/QualityGate/pyright_gate_full.json",
+        ),
+        (
+            "pyright_tools_full",
+            "python -m pyright -p pyrightconfig.tools.json",
+            ["python", "-m", "pyright", "-p", "pyrightconfig.tools.json"],
+            "evidence/QualityGate/pyright_tools_full.json",
+        ),
+    ],
+)
+def test_prepare_long_gate_success_output_files_writes_static_proof(monkeypatch, tmp_path, entry_id, display, args, proof_rel):
+    module = _import_run_quality_gate()
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    monkeypatch.setattr(module, "REPO_ROOT", str(repo_root))
+    monkeypatch.setattr(module, "_git_head_sha", lambda: "deadbeef")
+    entry = {
+        "entry_id": entry_id,
+        "display": display,
+        "args": args,
+        "command_hash": "command-hash",
+        "capture_output": False,
+        "output_policy": "normalized",
+        "fingerprint_schema_version": 1,
+    }
+    result = {
+        "stdout": "ok\n",
+        "stderr": "",
+        "returncode": 0,
+        "execution_mode": "executed",
+        "duration_s": 1.25,
+    }
+    command_plan = [
+        {
+            "display": display,
+            "args": args,
+            "capture_output": False,
+            "output_policy": "normalized",
+        }
+    ]
+
+    output_files = module._prepare_long_gate_success_output_files(
+        entry,
+        result,
+        cache_dir="evidence/QualityGate/long_gate",
+        run_id="run-static",
+        command_index=4,
+        command_plan=command_plan,
+        fingerprint={"hash": "fingerprint-hash"},
+    )
+
+    assert output_files == [proof_rel]
+    proof = module.json.loads((repo_root / proof_rel).read_text(encoding="utf-8"))
+    assert proof["status"] == "passed"
+    assert proof["entry_id"] == entry_id
+    assert proof["head_sha"] == "deadbeef"
+    assert proof["run_id"] == "run-static"
+    assert proof["fingerprint_hash"] == "fingerprint-hash"
+    assert proof["command_hash"] == "command-hash"
+    assert proof["returncode"] == 0
+    assert proof["does_not_claim"] == "clean_worktree_proof"
+    assert proof["stdout_log_path"] == f"evidence/QualityGate/long_gate/logs/{entry_id}.stdout.log"
+    assert proof["stderr_log_path"] == f"evidence/QualityGate/long_gate/logs/{entry_id}.stderr.log"
+    assert proof["logs"]["stdout"]["sha256"] == proof["stdout_sha256"]
+    assert proof["logs"]["stderr"]["sha256"] == proof["stderr_sha256"]
+    if entry_id == "pyright_gate_full":
+        assert proof["config_path"] == "pyrightconfig.gate.json"
+    if entry_id == "pyright_tools_full":
+        assert proof["config_path"] == "pyrightconfig.tools.json"
+        assert proof["tool_paths"] == list(_shared_quality_registry().QUALITY_GATE_TOOL_PATHS)
+        assert proof["tool_path_count"] == len(_shared_quality_registry().QUALITY_GATE_TOOL_PATHS)
+        assert proof["tool_paths_hash"] == module.stable_json_hash(list(_shared_quality_registry().QUALITY_GATE_TOOL_PATHS))
+
+
+def test_pyright_tools_coverage_requires_all_tool_paths(monkeypatch, tmp_path):
+    module = _import_run_quality_gate()
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    (repo_root / module.PYRIGHT_TOOLS_CONFIG).write_text(
+        module.json.dumps({"include": module.QUALITY_GATE_TOOL_PATHS}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(module, "REPO_ROOT", str(repo_root))
+    seen = {}
+
+    def fake_run(args, **kwargs):
+        seen["args"] = list(args)
+        seen["cwd"] = kwargs.get("cwd")
+        return SimpleNamespace(
+            returncode=0,
+            stdout=module.json.dumps(
+                {
+                    "summary": {
+                        "filesAnalyzed": len(module.QUALITY_GATE_TOOL_PATHS),
+                        "errorCount": 0,
+                        "warningCount": 0,
+                    }
+                }
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+
+    module._assert_pyright_tools_coverage()
+
+    assert seen["cwd"] == str(repo_root)
+    assert seen["args"][-3:] == ["-p", module.PYRIGHT_TOOLS_CONFIG, "--outputjson"]
+
+
+def test_pyright_tools_coverage_rejects_empty_coverage(monkeypatch, tmp_path):
+    module = _import_run_quality_gate()
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    (repo_root / module.PYRIGHT_TOOLS_CONFIG).write_text(
+        module.json.dumps({"include": module.QUALITY_GATE_TOOL_PATHS}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(module, "REPO_ROOT", str(repo_root))
+
+    def fake_run(_args, **_kwargs):
+        return SimpleNamespace(
+            returncode=0,
+            stdout=module.json.dumps({"summary": {"filesAnalyzed": 2, "errorCount": 0, "warningCount": 0}}),
+            stderr="",
+        )
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+
+    with pytest.raises(module.QualityGateError, match="pyright tools 覆盖不足"):
+        module._assert_pyright_tools_coverage()
+
+
+def test_pyright_tools_coverage_rejects_config_that_does_not_match_tool_paths(monkeypatch, tmp_path):
+    module = _import_run_quality_gate()
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    (repo_root / module.PYRIGHT_TOOLS_CONFIG).write_text(
+        module.json.dumps({"include": ["tools/long_gate_manifest.py"]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(module, "REPO_ROOT", str(repo_root))
+
+    def fake_run(_args, **_kwargs):
+        raise AssertionError("pyright should not run when config include is stale")
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+
+    with pytest.raises(module.QualityGateError, match="include 与 QUALITY_GATE_TOOL_PATHS 不一致"):
+        module._assert_pyright_tools_coverage()
+
+
+@pytest.mark.parametrize(
+    ("entry_id", "display", "args", "proof_rel"),
+    [
+        (
+            "ruff_check_full",
+            "python -m ruff check",
+            ["python", "-m", "ruff", "check"],
+            "evidence/QualityGate/ruff_check_full.json",
+        ),
+        (
+            "pyright_tools_full",
+            "python -m pyright -p pyrightconfig.tools.json",
+            ["python", "-m", "pyright", "-p", "pyrightconfig.tools.json"],
+            "evidence/QualityGate/pyright_tools_full.json",
+        ),
+    ],
+)
+def test_run_quality_gate_command_plan_prepares_enabled_static_proof_before_pending_success(
+    monkeypatch, tmp_path, entry_id, display, args, proof_rel
+):
+    module = _import_run_quality_gate()
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    monkeypatch.setattr(module, "REPO_ROOT", str(repo_root))
+    monkeypatch.setattr(module, "_git_head_sha", lambda: "deadbeef")
+    command = {
+        "display": display,
+        "args": args,
+        "capture_output": False,
+        "output_policy": "normalized",
+    }
+    manifest = module.build_manifest_from_quality_gate_plan([command], repo_root=str(repo_root))
+    entry = next(item for item in manifest["entries"] if item["entry_id"] == entry_id)
+    entry = dict(entry)
+    entry["reuse_allowed"] = True
+    entry["cache_status"] = "enabled"
+    pending_successes = []
+    runtime_entries = {
+        display: {
+            "entry": entry,
+            "fingerprint": {"hash": "fingerprint-hash"},
+            "evaluation": {},
+            "decision": {"decision": "run", "reason": "no previous success cache"},
+            "summary_entry": {},
+        }
+    }
+    monkeypatch.setattr(
+        module,
+        "_run_command_with_env_overlay",
+        lambda *args, **kwargs: {"stdout": "static ok\n", "stderr": "", "returncode": 0},
+    )
+    monkeypatch.setattr(module, "_assert_pyright_tools_coverage", lambda: None)
+
+    module._run_quality_gate_command_plan(
+        [command],
+        run_id="run-static",
+        commands=[],
+        command_receipts=[],
+        parsed_command_results={},
+        long_gate_cache=True,
+        long_gate_cache_write_success=True,
+        long_gate_cache_dir="evidence/QualityGate/long_gate",
+        long_gate_runtime_entries=runtime_entries,
+        long_gate_failure={},
+        pending_long_gate_successes=pending_successes,
+    )
+
+    proof_path = repo_root / proof_rel
+    assert proof_path.is_file()
+    proof = module.json.loads(proof_path.read_text(encoding="utf-8"))
+    assert proof["entry_id"] == entry_id
+    assert proof["does_not_claim"] == "clean_worktree_proof"
+    assert pending_successes[0]["output_files"] == [str(proof_path)]
 
 
 def test_git_status_lines_expands_untracked_dir_and_keeps_readable_paths(monkeypatch, tmp_path):
@@ -886,6 +1138,7 @@ def test_main_writes_quality_gate_manifest_with_git_and_collection_proof(monkeyp
     git_status_calls = iter([[], []])
     monkeypatch.setattr(module, "_git_status_lines", lambda: next(git_status_calls))
     monkeypatch.setattr(module, "_runtime_state_snapshot", lambda: {"runtime_state": "absent"})
+    monkeypatch.setattr(module, "_assert_pyright_tools_coverage", lambda: None)
     monkeypatch.setattr(
         module,
         "_repo_identity",
@@ -1029,6 +1282,7 @@ def test_main_allow_dirty_worktree_marks_manifest_unbound(monkeypatch, tmp_path,
     monkeypatch.setattr(module, "_git_status_lines", lambda: next(git_status_calls))
     monkeypatch.setattr(module, "_run_git_bytes", lambda _args: b"dirty-diff")
     monkeypatch.setattr(module, "_runtime_state_snapshot", lambda: {"runtime_state": "absent"})
+    monkeypatch.setattr(module, "_assert_pyright_tools_coverage", lambda: None)
 
     calls = []
 
@@ -1085,6 +1339,7 @@ def test_main_writes_running_then_passed_manifest(monkeypatch, tmp_path):
     git_status_calls = iter([[], []])
     monkeypatch.setattr(module, "_git_status_lines", lambda: next(git_status_calls))
     monkeypatch.setattr(module, "_runtime_state_snapshot", lambda: {"runtime_state": "absent"})
+    monkeypatch.setattr(module, "_assert_pyright_tools_coverage", lambda: None)
 
     def fake_run_command(display, args, capture_output=False, env_overlay=None):
         if display == "python -m ruff --version":
@@ -2263,6 +2518,7 @@ def test_main_rejects_dirty_worktree_by_default(monkeypatch, tmp_path):
     monkeypatch.setattr(module, "_git_status_lines", lambda: [" M scripts/run_quality_gate.py"])
     monkeypatch.setattr(module, "_run_git_bytes", lambda _args: b"dirty-diff")
     monkeypatch.setattr(module, "_runtime_state_snapshot", lambda: {"runtime_state": "absent"})
+    monkeypatch.setattr(module, "_assert_pyright_tools_coverage", lambda: None)
     monkeypatch.setattr(module, "_run_command", lambda display, args, capture_output=False, env_overlay=None: "")
 
     with pytest.raises(module.QualityGateError) as exc_info:
@@ -2358,6 +2614,7 @@ def test_main_fails_when_tracked_status_changes_during_gate(monkeypatch, tmp_pat
     monkeypatch.setattr(module, "_git_status_lines", lambda: next(git_status_calls))
     monkeypatch.setattr(module, "_run_git_bytes", lambda _args: b"dirty-diff")
     monkeypatch.setattr(module, "_runtime_state_snapshot", lambda: {"runtime_state": "absent"})
+    monkeypatch.setattr(module, "_assert_pyright_tools_coverage", lambda: None)
 
     def fake_run_command(display, args, capture_output=False, env_overlay=None):
         if display == "python -m ruff --version":

@@ -68,13 +68,13 @@ def test_required_entry_comes_from_real_command_plan_and_enables_only_next7(tmp_
     assert enabled == [
         "pytest_collect_all",
         "full_test_debt",
+        "ruff_check_full",
+        "pyright_gate_full",
+        "pyright_tools_full",
         "required_regressions",
         "startup_runtime_regressions",
     ]
     for entry_id in [
-        "ruff_check_full",
-        "pyright_gate_full",
-        "pyright_tools_full",
         "architecture_fitness",
         "debt_ledger_sync",
         "quickref_vs_routes",
@@ -579,14 +579,10 @@ def test_force_rerun_all_executes_required_and_keeps_later_entries_planned(monke
     assert _summary_entry(summary, ENTRY_STARTUP_RUNTIME_REGRESSIONS)["reason"] == (
         "forced by --long-gate-force-rerun-all"
     )
-    for entry_id in [
-        "ruff_check_full",
-        "pyright_gate_full",
-        "pyright_tools_full",
-        "architecture_fitness",
-        "debt_ledger_sync",
-        "quickref_vs_routes",
-    ]:
+    for entry_id in ["ruff_check_full", "pyright_gate_full", "pyright_tools_full"]:
+        assert _summary_entry(summary, entry_id)["cache_status"] == "enabled"
+        assert _success_path(repo_root, entry_id).exists()
+    for entry_id in ["architecture_fitness", "debt_ledger_sync", "quickref_vs_routes"]:
         assert _summary_entry(summary, entry_id)["cache_status"] == "planned"
         assert not _success_path(repo_root, entry_id).exists()
 

@@ -9,7 +9,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Union, cast
 
 from tools.test_registry import (
     QUALITY_GATE_GUARD_TESTS,
@@ -68,6 +68,21 @@ QUALITY_GATE_REQUIRED_REGRESSIONS_REL = os.path.join(
     "QualityGate",
     "required_regressions.json",
 )
+QUALITY_GATE_RUFF_CHECK_FULL_REL = os.path.join(
+    "evidence",
+    "QualityGate",
+    "ruff_check_full.json",
+)
+QUALITY_GATE_PYRIGHT_GATE_FULL_REL = os.path.join(
+    "evidence",
+    "QualityGate",
+    "pyright_gate_full.json",
+)
+QUALITY_GATE_PYRIGHT_TOOLS_FULL_REL = os.path.join(
+    "evidence",
+    "QualityGate",
+    "pyright_tools_full.json",
+)
 FORMAL_FULL_TEST_PYTEST_ARGS = ["tests", "-q", "--tb=short", "-ra", "-p", "no:cacheprovider"]
 REQUIRED_BROWSER_ENV_OVERLAY = {
     "APS_BROWSER_SMOKE_REQUIRED": "1",
@@ -76,6 +91,7 @@ REQUIRED_BROWSER_ENV_OVERLAY = {
     "PYTHONIOENCODING": "utf-8",
 }
 QUALITY_GATE_PYRIGHT_GATE_CONFIG = "pyrightconfig.gate.json"
+QUALITY_GATE_PYRIGHT_TOOLS_CONFIG = "pyrightconfig.tools.json"
 QUALITY_GATE_PROOF_SCOPE = {
     "claim": "required_registry_bound_to_clean_worktree",
     "does_not_claim": "risk_coverage_complete",
@@ -118,6 +134,7 @@ QUALITY_GATE_SOURCE_FILES = tuple(
             "pyproject.toml",
             "开发文档/技术债务治理台账.md",
             QUALITY_GATE_PYRIGHT_GATE_CONFIG,
+            QUALITY_GATE_PYRIGHT_TOOLS_CONFIG,
             *QUALITY_GATE_TOOL_PATHS,
             "tests/test_architecture_fitness.py",
             *QUALITY_GATE_REQUIRED_TESTS,
@@ -491,6 +508,8 @@ def _normalize_collection_proof(collection_proof: Dict[str, Any]) -> Dict[str, A
 
 
 def _normalize_command_receipt_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    reused_from_obj = payload.get("reused_from")
+    reused_from = dict(cast(Mapping[str, Any], reused_from_obj)) if isinstance(reused_from_obj, dict) else {}
     return {
         "schema_version": int(payload.get("schema_version") or 0),
         "run_id": str(payload.get("run_id") or "").strip(),
@@ -507,7 +526,7 @@ def _normalize_command_receipt_payload(payload: Dict[str, Any]) -> Dict[str, Any
         "stdout_log_path": str(payload.get("stdout_log_path") or "").replace("\\", "/"),
         "stderr_log_path": str(payload.get("stderr_log_path") or "").replace("\\", "/"),
         "execution_mode": str(payload.get("execution_mode") or "").strip(),
-        "reused_from": dict(payload.get("reused_from") if isinstance(payload.get("reused_from"), dict) else {}),
+        "reused_from": reused_from,
         "timed_out": payload.get("timed_out"),
         "interrupted": payload.get("interrupted"),
         "partial_write": payload.get("partial_write"),
@@ -719,8 +738,8 @@ def build_quality_gate_command_plan() -> List[Dict[str, Any]]:
             "output_policy": "normalized",
         },
         {
-            "display": "python -m pyright " + " ".join(QUALITY_GATE_TOOL_PATHS),
-            "args": ["python", "-m", "pyright"] + list(QUALITY_GATE_TOOL_PATHS),
+            "display": f"python -m pyright -p {QUALITY_GATE_PYRIGHT_TOOLS_CONFIG}",
+            "args": ["python", "-m", "pyright", "-p", QUALITY_GATE_PYRIGHT_TOOLS_CONFIG],
             "capture_output": False,
             "output_policy": "normalized",
         },
@@ -1044,7 +1063,8 @@ def _verify_receipt_execution_fields(receipt: Dict[str, Any]) -> Optional[str]:
             return f"UNBOUND: quality gate command receipt {field_name} mismatch"
     if any(bool(receipt.get(field_name)) for field_name in ("timed_out", "interrupted", "partial_write")):
         return "UNBOUND: quality gate command receipt incomplete execution"
-    reused_from = receipt.get("reused_from") if isinstance(receipt.get("reused_from"), dict) else {}
+    reused_from_obj = receipt.get("reused_from")
+    reused_from = cast(Mapping[str, Any], reused_from_obj if isinstance(reused_from_obj, dict) else {})
     if execution_mode == "reused_success_cache":
         if not str(reused_from.get("result_path") or "").strip():
             return "UNBOUND: quality gate command receipt reused_from result_path missing"

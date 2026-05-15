@@ -9,7 +9,7 @@ import subprocess
 import sys
 import tempfile
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple, cast
 
 from tools import check_full_test_debt, collect_full_test_debt
 from tools.long_gate_collect import COLLECT_NODEIDS_REL, load_collect_nodeids
@@ -234,8 +234,16 @@ def _changed_paths_from_fingerprints(previous: Mapping[str, Any], current: Mappi
 def _non_file_fingerprint_change_reason(previous: Mapping[str, Any], current: Mapping[str, Any]) -> str:
     if previous.get("schema_version") != current.get("schema_version"):
         return "fingerprint schema changed"
-    previous_components = previous.get("components") if isinstance(previous.get("components"), dict) else {}
-    current_components = current.get("components") if isinstance(current.get("components"), dict) else {}
+    previous_components_obj = previous.get("components")
+    current_components_obj = current.get("components")
+    previous_components = cast(
+        Mapping[str, Any],
+        previous_components_obj if isinstance(previous_components_obj, dict) else {},
+    )
+    current_components = cast(
+        Mapping[str, Any],
+        current_components_obj if isinstance(current_components_obj, dict) else {},
+    )
     previous_checked = {key: value for key, value in previous_components.items() if key not in {"files", "collect_nodeids"}}
     current_checked = {key: value for key, value in current_components.items() if key not in {"files", "collect_nodeids"}}
     if stable_json_hash(previous_checked) == stable_json_hash(current_checked):
@@ -805,12 +813,15 @@ def _load_node_cache(repo_root: str, previous_success: Mapping[str, Any]) -> Tup
     if not isinstance(current_payload, dict) or not isinstance(summary, dict):
         return None, "node cache current payload or summary is invalid"
     collect_snapshot, collect_error = _validate_collect_payload(payload.get("collect_nodeids", {}))
-    if collect_error:
+    if collect_error or collect_snapshot is None:
         return None, f"node cache collect_nodeids is invalid: {collect_error}"
     test_hashes = payload.get("test_file_hashes")
     if not isinstance(test_hashes, dict) or any(not isinstance(key, str) for key in test_hashes):
         return None, "node cache test_file_hashes is invalid"
-    collect_files = set(str(path) for path in dict(collect_snapshot.get("nodeids_by_file") or {}))
+    collect_nodeids_by_file = collect_snapshot.get("nodeids_by_file")
+    collect_files = set(
+        str(path) for path in dict(collect_nodeids_by_file if isinstance(collect_nodeids_by_file, dict) else {})
+    )
     cached_hash_files = set(str(path) for path in test_hashes)
     if cached_hash_files != collect_files:
         return None, "node cache test_file_hashes does not cover collect_nodeids files"
@@ -868,15 +879,22 @@ def _node_cache_diagnostics(repo_root: str, node_cache: Optional[Mapping[str, An
     diagnostics["node_cache_schema_version"] = payload.get("schema_version")
     count = payload.get("collected_nodeid_count")
     by_file_count = payload.get("collect_nodeids_by_file_count")
-    collect_snapshot = payload.get("collect_nodeids") if isinstance(payload.get("collect_nodeids"), dict) else {}
+    collect_snapshot_obj = payload.get("collect_nodeids")
+    collect_snapshot = cast(
+        Mapping[str, Any],
+        collect_snapshot_obj if isinstance(collect_snapshot_obj, dict) else {},
+    )
     if isinstance(count, int) and not isinstance(count, bool):
         diagnostics["node_cache_collect_nodeid_count"] = int(count)
     elif isinstance(collect_snapshot.get("nodeid_count"), int) and not isinstance(collect_snapshot.get("nodeid_count"), bool):
-        diagnostics["node_cache_collect_nodeid_count"] = int(collect_snapshot.get("nodeid_count"))
+        diagnostics["node_cache_collect_nodeid_count"] = int(collect_snapshot.get("nodeid_count") or 0)
     if isinstance(by_file_count, int) and not isinstance(by_file_count, bool):
         diagnostics["node_cache_collect_nodeids_by_file_count"] = int(by_file_count)
     elif isinstance(collect_snapshot.get("nodeids_by_file"), dict):
-        diagnostics["node_cache_collect_nodeids_by_file_count"] = len(dict(collect_snapshot.get("nodeids_by_file") or {}))
+        nodeids_by_file = collect_snapshot.get("nodeids_by_file")
+        diagnostics["node_cache_collect_nodeids_by_file_count"] = len(
+            dict(nodeids_by_file if isinstance(nodeids_by_file, dict) else {})
+        )
     return diagnostics
 
 
@@ -930,9 +948,16 @@ def write_full_test_debt_node_cache_after_success(
     if current_error or summary_error:
         raise QualityGateError("无法写入 node cache：" + (current_error or summary_error))
     assert collect_snapshot is not None and current_payload is not None and summary is not None
+    collect_snapshot = cast(Mapping[str, Any], collect_snapshot)
     cache_root = str(cache_dir or "evidence/QualityGate/long_gate").replace("\\", "/")
     success_stdout_log_path = f"{cache_root}/logs/full_test_debt.stdout.log"
     success_stderr_log_path = f"{cache_root}/logs/full_test_debt.stderr.log"
+    result_returncode = result.get("returncode")
+    collect_nodeids_by_file = collect_snapshot.get("nodeids_by_file")
+    collect_nodeids_by_file_map = cast(
+        Mapping[str, Any],
+        collect_nodeids_by_file if isinstance(collect_nodeids_by_file, dict) else {},
+    )
     payload: Dict[str, Any] = {
         "schema_version": FULL_TEST_DEBT_NODE_CACHE_SCHEMA_VERSION,
         "generated_at": _now_iso(),
@@ -953,14 +978,17 @@ def write_full_test_debt_node_cache_after_success(
         else "",
         "head_sha": _git_head(repo_root),
         "execution_mode": str(result.get("execution_mode") or "executed"),
-        "result_returncode": int(result.get("returncode"))
-        if isinstance(result.get("returncode"), int) and not isinstance(result.get("returncode"), bool)
+        "result_returncode": int(result_returncode)
+        if isinstance(result_returncode, int) and not isinstance(result_returncode, bool)
         else None,
         "collect_nodeids": collect_snapshot,
         "collected_nodeid_count": int(collect_snapshot.get("nodeid_count") or 0),
-        "collect_nodeids_by_file_count": len(dict(collect_snapshot.get("nodeids_by_file") or {})),
+        "collect_nodeids_by_file_count": len(dict(collect_nodeids_by_file_map)),
         "collect_nodeid_hash": str(collect_snapshot.get("nodeid_hash") or ""),
-        "test_file_hashes": _test_file_hashes(repo_root, collect_snapshot.get("nodeids_by_file", {})),
+        "test_file_hashes": _test_file_hashes(
+            repo_root,
+            collect_nodeids_by_file_map,
+        ),
         "current_payload": current_payload,
         "current_payload_hash": f"sha256:{stable_json_hash(current_payload)}",
         "summary": summary,
@@ -1175,7 +1203,11 @@ def _build_ledger_only_payload(
     del ledger
     payload = dict(old_payload)
     git_status_short_before = _git_status(repo_root)
-    previous_fingerprint = node_cache.get("fingerprint") if isinstance(node_cache.get("fingerprint"), dict) else {}
+    previous_fingerprint_obj = node_cache.get("fingerprint")
+    previous_fingerprint = cast(
+        Mapping[str, Any],
+        previous_fingerprint_obj if isinstance(previous_fingerprint_obj, dict) else {},
+    )
     ledger_abs = _abs_path(repo_root, LEDGER_REL)
     ledger_sha256 = _sha256_file(ledger_abs) if os.path.isfile(ledger_abs) else ""
     payload.update(
@@ -1259,8 +1291,10 @@ def try_run_special_full_test_debt_mode(
     )
     if previous_error or previous_success is None:
         return None
-    previous_fingerprint = (
-        previous_success.get("fingerprint") if isinstance(previous_success.get("fingerprint"), dict) else {}
+    previous_fingerprint_obj = previous_success.get("fingerprint")
+    previous_fingerprint = cast(
+        Mapping[str, Any],
+        previous_fingerprint_obj if isinstance(previous_fingerprint_obj, dict) else {},
     )
     node_cache, node_cache_error = _load_node_cache(repo_root, previous_success)
     if node_cache_error or node_cache is None:
@@ -1446,8 +1480,10 @@ def explain_special_full_test_debt_plan(
                 fallback_reason=reason,
             ),
         }
-    previous_fingerprint = (
-        previous_success.get("fingerprint") if isinstance(previous_success.get("fingerprint"), dict) else {}
+    previous_fingerprint_obj = previous_success.get("fingerprint")
+    previous_fingerprint = cast(
+        Mapping[str, Any],
+        previous_fingerprint_obj if isinstance(previous_fingerprint_obj, dict) else {},
     )
     node_cache, node_cache_error = _load_node_cache(repo_root, previous_success)
     if node_cache_error or node_cache is None:

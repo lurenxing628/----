@@ -1,0 +1,57 @@
+{
+  "include": [
+    "scripts/run_daily_quality_gate.py",
+    "scripts/run_quality_gate.py",
+    "scripts/sync_debt_ledger.py",
+    "tools/fast_static_precheck.py",
+    "tools/git_hook_checks.py",
+    "tools/check_full_test_debt.py",
+    "tools/collect_full_test_debt.py",
+    "tools/architecture_scan_cache.py",
+    "tools/long_gate_full_test_debt.py",
+    "tools/long_gate_cache.py",
+    "tools/long_gate_collect.py",
+    "tools/long_gate_fingerprint.py",
+    "tools/long_gate_manifest.py",
+    "tools/long_gate_paths.py",
+    "tools/long_gate_schema.py",
+    "tools/long_gate_summary.py",
+    "tools/quality_gate_entries.py",
+    "tools/quality_gate_ledger.py",
+    "tools/quality_gate_operations.py",
+    "tools/quality_gate_scan.py",
+    "tools/quality_gate_shared.py",
+    "tools/quality_gate_support.py",
+    "tools/test_debt_registry.py",
+    "tools/test_registry.py",
+    "tests/conftest.py",
+    "tests/main_style_regression_runner.py"
+  ],
+  "exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    "**/.*",
+    ".git",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".venv",
+    "assets",
+    "build",
+    "dist",
+    "evidence",
+    "installer",
+    "logs"
+  ],
+  "pythonVersion": "3.8",
+  "typeCheckingMode": "basic",
+  "venvPath": ".",
+  "venv": ".venv",
+  "executionEnvironments": [
+    {
+      "root": ".",
+      "extraPaths": [
+        "."
+      ]
+    }
+  ]
+}

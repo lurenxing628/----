@@ -83,8 +83,11 @@ def extract_copyable_failure(
 def _result_returncode(result: Optional[Mapping[str, Any]]) -> Optional[int]:
     if result is None or "returncode" not in result:
         return None
+    value = result.get("returncode")
+    if value is None:
+        return None
     try:
-        return int(result.get("returncode"))
+        return int(value)
     except (TypeError, ValueError):
         return None
 

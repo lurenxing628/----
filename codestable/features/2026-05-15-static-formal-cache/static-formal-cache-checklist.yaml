@@ -1,0 +1,57 @@
+feature: 2026-05-15-static-formal-cache
+created: 2026-05-15
+
+steps:
+  - action: "设计与状态：创建 NEXT-10 feature 文档，并把 roadmap item 绑定到本 feature"
+    exit_signal: "feature 目录、design、checklist 存在，items.yaml 中 static-formal-cache 为 in-progress；本阶段 subagent 对抗审查无阻塞"
+    status: done
+  - action: "static proof 与 artifact hygiene：补三个 static proof JSON 合同、ignore/hook/clean excluded path 和测试，但不启用 entry"
+    exit_signal: "三个 proof path 已声明；runner 可准备 static proof；运行产物不会污染 clean proof 或 staged commit；manifest enabled 列表不变；本阶段 subagent 对抗审查无阻塞"
+    status: done
+  - action: "ruff cache：补 ruff scopes、ruff_version 指纹、proof/test，并只启用 ruff_check_full"
+    exit_signal: "ruff_check_full enabled；两个 pyright static entry 仍 planned；ruff 输入、配置、依赖、版本和 proof 缺失都会导致重跑；本阶段 subagent 对抗审查无阻塞"
+    status: done
+  - action: "pyright gate cache：补 gate scopes、pyright_version 指纹、proof/test，并只启用 pyright_gate_full"
+    exit_signal: "pyright_gate_full enabled；pyright_tools_full 仍 planned；gate config、依赖、版本、PYTHONPATH 和 proof 缺失都会导致重跑；本阶段 subagent 对抗审查无阻塞"
+    status: done
+  - action: "pyright tools 阻塞处理：新增 tools 专用 pyright config，修真实覆盖问题，禁止缓存空覆盖结果"
+    exit_signal: "pyright_tools_full enabled；真实命令覆盖 QUALITY_GATE_TOOL_PATHS；coverage 自检、tools config、import closure、依赖、版本和 proof 缺失都会导致重跑；本阶段 subagent 对抗审查无阻塞"
+    status: done
+  - action: "验证与对抗审查：每阶段跑最小验证，并用 subagent 对抗审查循环到无阻塞"
+    exit_signal: "阶段审查记录显示本阶段 subagent 对抗审查无阻塞；发现的 blocker 已修复并复审通过"
+    status: done
+  - action: "验收回写：写 acceptance，并按真实完成范围回写 roadmap"
+    exit_signal: "acceptance 记录完成范围、未做事项、对抗审查、验证结果和 proof 口径；items.yaml 状态与真实完成范围一致；本阶段 subagent 对抗审查无阻塞"
+    status: done
+
+checks:
+  - item: "NEXT-9 fast precheck 不冒充正式 ruff/pyright gate"
+    source: 范围守护
+    status: passed
+  - item: "static proof JSON 只证明单条 entry 输出完整，不冒充 clean-worktree final proof"
+    source: proof 口径
+    status: passed
+  - item: "三个 static proof JSON 不会混入提交"
+    source: artifact hygiene
+    status: passed
+  - item: "ruff_check_full 只在 scopes、版本、proof 和测试完成后启用"
+    source: ruff entry
+    status: passed
+  - item: "pyright_gate_full 只在 gate scopes、版本、proof 和测试完成后启用"
+    source: pyright gate entry
+    status: passed
+  - item: "pyright_tools_full 不能缓存只找到 2 个 source files 的结果"
+    source: pyright tools blocker
+    status: passed
+  - item: "architecture_fitness、debt_ledger_sync、quickref_vs_routes 仍保持 planned"
+    source: 禁止越界
+    status: passed
+  - item: "daily gate 和 pre-push 默认语义不变"
+    source: hook 边界
+    status: passed
+  - item: "每阶段对抗审查发现的阻塞都已修复并复审"
+    source: 审查闭环
+    status: passed
+  - item: "Python 3.8 / Win7 兼容，不使用 shell=True 和新类型语法"
+    source: 兼容性
+    status: passed

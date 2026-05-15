@@ -159,7 +159,12 @@ def test_blocked_paths_include_long_gate_runtime_artifacts() -> None:
             "evidence/QualityGate/long_gate/results/pytest_collect_all.success.json",
             "evidence/QualityGate/collect_nodeids.json",
             "evidence/QualityGate/architecture_scan_cache.json",
+            "evidence/QualityGate/full_test_debt_summary.json",
+            "evidence/QualityGate/startup_runtime_regressions.json",
             "evidence/QualityGate/required_regressions.json",
+            "evidence/QualityGate/ruff_check_full.json",
+            "evidence/QualityGate/pyright_gate_full.json",
+            "evidence/QualityGate/pyright_tools_full.json",
         ]
     ) == [
         (
@@ -175,8 +180,28 @@ def test_blocked_paths_include_long_gate_runtime_artifacts() -> None:
             "architecture scan 文件级缓存是运行产物，应由当前门禁重新生成",
         ),
         (
+            "evidence/QualityGate/full_test_debt_summary.json",
+            "full-test-debt summary 是运行产物，应由当前门禁重新生成",
+        ),
+        (
+            "evidence/QualityGate/startup_runtime_regressions.json",
+            "startup regressions proof 是运行产物，应由当前门禁重新生成",
+        ),
+        (
             "evidence/QualityGate/required_regressions.json",
             "required regressions proof 是运行产物，应由当前门禁重新生成",
+        ),
+        (
+            "evidence/QualityGate/ruff_check_full.json",
+            "ruff full proof 是运行产物，应由当前门禁重新生成",
+        ),
+        (
+            "evidence/QualityGate/pyright_gate_full.json",
+            "pyright gate proof 是运行产物，应由当前门禁重新生成",
+        ),
+        (
+            "evidence/QualityGate/pyright_tools_full.json",
+            "pyright tools proof 是运行产物，应由当前门禁重新生成",
         ),
     ]
 

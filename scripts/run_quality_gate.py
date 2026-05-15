@@ -45,8 +45,11 @@ from tools.long_gate_full_test_debt import (
 )
 from tools.long_gate_manifest import (  # noqa: E402
     ENTRY_FULL_TEST_DEBT,
+    ENTRY_PYRIGHT_GATE_FULL,
+    ENTRY_PYRIGHT_TOOLS_FULL,
     ENTRY_PYTEST_COLLECT_ALL,
     ENTRY_REQUIRED_REGRESSIONS,
+    ENTRY_RUFF_CHECK_FULL,
     ENTRY_STARTUP_RUNTIME_REGRESSIONS,
     build_manifest_from_quality_gate_plan,
 )
@@ -64,8 +67,12 @@ from tools.quality_gate_support import (  # noqa: E402
     QUALITY_GATE_LOGS_DIR_REL,
     QUALITY_GATE_MANIFEST_REL,
     QUALITY_GATE_PYRIGHT_GATE_CONFIG,
+    QUALITY_GATE_PYRIGHT_GATE_FULL_REL,
+    QUALITY_GATE_PYRIGHT_TOOLS_CONFIG,
+    QUALITY_GATE_PYRIGHT_TOOLS_FULL_REL,
     QUALITY_GATE_RECEIPTS_DIR_REL,
     QUALITY_GATE_REQUIRED_REGRESSIONS_REL,
+    QUALITY_GATE_RUFF_CHECK_FULL_REL,
     QUALITY_GATE_SELFTEST_PATH,
     QUALITY_GATE_STARTUP_REGRESSION_ARGS,
     QUALITY_GATE_STARTUP_RUNTIME_REGRESSIONS_REL,
@@ -88,9 +95,11 @@ GUARD_TEST_ARGS = list(REQUIRED_TEST_ARGS)
 
 PYRIGHT_REQUIRED_VERSION = (1, 1, 406)
 PYRIGHT_GATE_CONFIG = QUALITY_GATE_PYRIGHT_GATE_CONFIG
+PYRIGHT_TOOLS_CONFIG = QUALITY_GATE_PYRIGHT_TOOLS_CONFIG
 QUALITY_GATE_SELFTEST = QUALITY_GATE_SELFTEST_PATH
 STARTUP_RUNTIME_REGRESSIONS_PROOF_SCHEMA_VERSION = 1
 REQUIRED_REGRESSIONS_PROOF_SCHEMA_VERSION = 3
+STATIC_CHECK_PROOF_SCHEMA_VERSION = 1
 GENERATED_CLEAN_WORKTREE_EXCLUDED_PATHS = [
     QUALITY_GATE_MANIFEST_REL.replace("\\", "/"),
     QUALITY_GATE_RECEIPTS_DIR_REL.replace("\\", "/") + "/",
@@ -102,6 +111,9 @@ GENERATED_CLEAN_WORKTREE_EXCLUDED_PATHS = [
     "evidence/QualityGate/architecture_scan_cache.json",
     QUALITY_GATE_STARTUP_RUNTIME_REGRESSIONS_REL.replace("\\", "/"),
     QUALITY_GATE_REQUIRED_REGRESSIONS_REL.replace("\\", "/"),
+    QUALITY_GATE_RUFF_CHECK_FULL_REL.replace("\\", "/"),
+    QUALITY_GATE_PYRIGHT_GATE_FULL_REL.replace("\\", "/"),
+    QUALITY_GATE_PYRIGHT_TOOLS_FULL_REL.replace("\\", "/"),
 ]
 HIGH_RISK_UNTRACKED_SOURCE_PREFIXES = ("core/", "web/", "data/", "tools/", "scripts/")
 HIGH_RISK_UNTRACKED_SOURCE_SUFFIXES = (".py", ".js", ".ts", ".html", ".css", ".sql")
@@ -899,6 +911,87 @@ def _handle_pyright_version_quality_gate_command(_display: str, result: Dict[str
     return {"pyright_version_output": _assert_pyright_version(result)}
 
 
+def _parse_pyright_json_summary(stdout: str) -> Dict[str, Any]:
+    try:
+        payload = json.loads(str(stdout or "{}"))
+    except json.JSONDecodeError as exc:
+        raise QualityGateError("无法解析 pyright JSON 输出") from exc
+    summary = payload.get("summary") if isinstance(payload, dict) else None
+    if not isinstance(summary, dict):
+        raise QualityGateError("pyright JSON 输出缺少 summary")
+    return summary
+
+
+def _load_pyright_tools_config_include() -> List[str]:
+    config_path = os.path.join(REPO_ROOT, PYRIGHT_TOOLS_CONFIG.replace("/", os.sep))
+    try:
+        with open(config_path, encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise QualityGateError(f"无法读取 pyright tools 配置：{PYRIGHT_TOOLS_CONFIG}") from exc
+    if not isinstance(payload, dict):
+        raise QualityGateError(f"pyright tools 配置格式不正确：{PYRIGHT_TOOLS_CONFIG}")
+    include = payload.get("include")
+    if not isinstance(include, list):
+        raise QualityGateError(f"pyright tools 配置缺少 include：{PYRIGHT_TOOLS_CONFIG}")
+    return [str(item).replace("\\", "/").strip() for item in include if str(item).strip()]
+
+
+def _assert_pyright_tools_config_matches_tool_paths() -> None:
+    configured = _load_pyright_tools_config_include()
+    expected = [str(path).replace("\\", "/").strip() for path in QUALITY_GATE_TOOL_PATHS]
+    if configured == expected:
+        return
+    configured_set = set(configured)
+    expected_set = set(expected)
+    missing = [path for path in expected if path not in configured_set]
+    extra = [path for path in configured if path not in expected_set]
+    raise QualityGateError(
+        "pyright tools 配置 include 与 QUALITY_GATE_TOOL_PATHS 不一致："
+        f"missing={missing[:5]} extra={extra[:5]}"
+    )
+
+
+def _assert_pyright_tools_coverage() -> None:
+    _assert_pyright_tools_config_matches_tool_paths()
+    args = [
+        sys.executable,
+        "-m",
+        "pyright",
+        "-p",
+        PYRIGHT_TOOLS_CONFIG,
+        "--outputjson",
+    ]
+    completed = subprocess.run(
+        args,
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=120,
+    )
+    summary = _parse_pyright_json_summary(str(completed.stdout or ""))
+    files_analyzed = summary.get("filesAnalyzed")
+    expected_count = len(QUALITY_GATE_TOOL_PATHS)
+    if not isinstance(files_analyzed, int) or isinstance(files_analyzed, bool) or int(files_analyzed) < expected_count:
+        raise QualityGateError(
+            f"pyright tools 覆盖不足：预期至少分析 {expected_count} 个工具路径，实际 filesAnalyzed={files_analyzed}"
+        )
+    if int(completed.returncode) != 0:
+        detail = str(completed.stdout or "").strip()
+        stderr = str(completed.stderr or "").strip()
+        if stderr:
+            detail += "\n" + stderr
+        raise QualityGateError("pyright tools 覆盖自检失败：" + detail)
+
+
+def _handle_pyright_tools_quality_gate_command(display: str, result: Dict[str, Any]) -> Dict[str, Any]:
+    _assert_command_succeeded(display, result)
+    _assert_pyright_tools_coverage()
+    return {}
+
+
 def _run_quality_gate_command_plan(
     command_plan: Sequence[Dict[str, Any]],
     *,
@@ -922,6 +1015,7 @@ def _run_quality_gate_command_plan(
             "python -m pytest --collect-only -q tests": _handle_collect_quality_gate_command,
             "python -m ruff --version": _handle_ruff_version_quality_gate_command,
             "python -m pyright --version": _handle_pyright_version_quality_gate_command,
+            f"python -m pyright -p {PYRIGHT_TOOLS_CONFIG}": _handle_pyright_tools_quality_gate_command,
         }
     )
     total = len(command_plan)
@@ -1490,6 +1584,7 @@ def _write_startup_runtime_regressions_proof(
         "timed_out": bool(result.get("timed_out")),
         "interrupted": bool(result.get("interrupted")),
         "partial_write": bool(result.get("partial_write")),
+        "does_not_claim": "clean_worktree_proof",
         "logs": {
             "stdout": stdout_log_row,
             "stderr": stderr_log_row,
@@ -1553,6 +1648,94 @@ def _write_required_regressions_proof(
         "timed_out": bool(result.get("timed_out")),
         "interrupted": bool(result.get("interrupted")),
         "partial_write": bool(result.get("partial_write")),
+        "does_not_claim": "clean_worktree_proof",
+        "logs": {
+            "stdout": stdout_log_row,
+            "stderr": stderr_log_row,
+        },
+    }
+    os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+    with open(abs_path, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
+        handle.write("\n")
+    return rel_path
+
+
+def _static_check_proof_rel_path(entry_id: str) -> str:
+    if entry_id == ENTRY_RUFF_CHECK_FULL:
+        return QUALITY_GATE_RUFF_CHECK_FULL_REL.replace("\\", "/")
+    if entry_id == ENTRY_PYRIGHT_GATE_FULL:
+        return QUALITY_GATE_PYRIGHT_GATE_FULL_REL.replace("\\", "/")
+    if entry_id == ENTRY_PYRIGHT_TOOLS_FULL:
+        return QUALITY_GATE_PYRIGHT_TOOLS_FULL_REL.replace("\\", "/")
+    raise QualityGateError(f"未知 static long-gate entry：{entry_id}")
+
+
+def _option_value(args: Sequence[str], option: str) -> str:
+    try:
+        index = list(args).index(option)
+    except ValueError:
+        return ""
+    if index + 1 >= len(args):
+        return ""
+    return str(args[index + 1])
+
+
+def _write_static_check_proof(
+    entry: Dict[str, Any],
+    result: Dict[str, Any],
+    *,
+    run_id: str,
+    command_index: int,
+    command_plan: Sequence[Dict[str, Any]],
+    fingerprint: Dict[str, Any],
+    cache_dir: str,
+) -> str:
+    entry_id = str(entry.get("entry_id") or "")
+    rel_path = _static_check_proof_rel_path(entry_id)
+    abs_path = os.path.join(REPO_ROOT, rel_path.replace("/", os.sep))
+    args = [str(arg) for arg in list(entry.get("args") or [])]
+    cache_root = str(cache_dir or "evidence/QualityGate/long_gate").replace("\\", "/")
+    safe_entry_id = entry_id.replace("\\", "_").replace("/", "_").strip() or "unknown"
+    stdout_log_path = f"{cache_root}/logs/{safe_entry_id}.stdout.log"
+    stderr_log_path = f"{cache_root}/logs/{safe_entry_id}.stderr.log"
+    stdout_log_row = _long_gate_success_log_row(result, stream="stdout", rel_path=stdout_log_path)
+    stderr_log_row = _long_gate_success_log_row(result, stream="stderr", rel_path=stderr_log_path)
+    if entry_id == ENTRY_PYRIGHT_TOOLS_FULL:
+        tool_paths = list(QUALITY_GATE_TOOL_PATHS)
+    else:
+        tool_paths = [path for path in QUALITY_GATE_TOOL_PATHS if path in args]
+    payload = {
+        "schema_version": STATIC_CHECK_PROOF_SCHEMA_VERSION,
+        "status": "passed",
+        "entry_id": entry_id,
+        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "head_sha": _git_head_sha(),
+        "run_id": str(run_id or ""),
+        "quality_gate_plan_hash": hash_quality_gate_commands(command_plan),
+        "command_index": int(command_index),
+        "display": str(entry.get("display") or ""),
+        "args": args,
+        "command_hash": str(entry.get("command_hash") or ""),
+        "capture_output": bool(entry.get("capture_output")),
+        "output_policy": str(entry.get("output_policy") or ""),
+        "config_path": _option_value(args, "-p"),
+        "tool_path_count": len(tool_paths),
+        "tool_paths": tool_paths,
+        "tool_paths_hash": stable_json_hash(tool_paths),
+        "fingerprint_schema_version": int(entry.get("fingerprint_schema_version") or 0),
+        "fingerprint_hash": str(fingerprint.get("hash") or ""),
+        "returncode": int(result.get("returncode") or 0),
+        "execution_mode": str(result.get("execution_mode") or "executed"),
+        "duration_s": float(result.get("duration_s") or 0.0),
+        "stdout_log_path": stdout_log_path,
+        "stderr_log_path": stderr_log_path,
+        "stdout_sha256": str(stdout_log_row["sha256"]),
+        "stderr_sha256": str(stderr_log_row["sha256"]),
+        "timed_out": bool(result.get("timed_out")),
+        "interrupted": bool(result.get("interrupted")),
+        "partial_write": bool(result.get("partial_write")),
+        "does_not_claim": "clean_worktree_proof",
         "logs": {
             "stdout": stdout_log_row,
             "stderr": stderr_log_row,
@@ -1613,6 +1796,18 @@ def _prepare_long_gate_success_output_files(
     if entry_id == ENTRY_REQUIRED_REGRESSIONS:
         return [
             _write_required_regressions_proof(
+                entry,
+                result,
+                run_id=run_id,
+                command_index=command_index,
+                command_plan=command_plan,
+                fingerprint=dict(fingerprint or {}),
+                cache_dir=cache_dir,
+            )
+        ]
+    if entry_id in {ENTRY_RUFF_CHECK_FULL, ENTRY_PYRIGHT_GATE_FULL, ENTRY_PYRIGHT_TOOLS_FULL}:
+        return [
+            _write_static_check_proof(
                 entry,
                 result,
                 run_id=run_id,
@@ -1961,10 +2156,10 @@ def _refresh_full_test_debt_reuse_decision(runtime_entry: Dict[str, Any], *, cac
     if not _full_test_debt_decision_can_refresh(current_decision):
         return
     fingerprint = _strict_long_gate_fingerprint(entry)
-    evaluation = dict(evaluate_reuse(entry, fingerprint, repo_root=REPO_ROOT, cache_dir=cache_dir))
+    evaluation = evaluate_reuse(entry, fingerprint, repo_root=REPO_ROOT, cache_dir=cache_dir)
     runtime_entry["fingerprint"] = dict(fingerprint)
     runtime_entry["evaluation"] = dict(evaluation)
-    refreshed_decision = dict(evaluation["decision"])
+    refreshed_decision = dict(cast(Mapping[str, Any], evaluation["decision"]))
     refreshed_decision = _annotate_full_test_debt_incremental_decision(
         refreshed_decision,
         fingerprint=fingerprint,

@@ -7,7 +7,7 @@ import importlib.metadata
 import json
 import os
 import sys
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, cast
 
 from .long_gate_schema import stable_json_hash, version_hash_for_paths
 from .quality_gate_ledger import entry_sort_key
@@ -104,7 +104,11 @@ def _radon_behavior_marker() -> str:
         if not callable(cc_visit):
             raise RuntimeError("radon.complexity.cc_visit unavailable")
         rows = []
-        for block in cc_visit("def sample(value):\n    if value:\n        return 1\n    return 0\n"):
+        blocks = cast(
+            Sequence[Any],
+            cc_visit("def sample(value):\n    if value:\n        return 1\n    return 0\n"),
+        )
+        for block in blocks:
             rows.append(
                 {
                     "name": str(getattr(block, "name", "") or ""),
@@ -360,6 +364,7 @@ def scan_files_with_cache(
         cached_row = cached_files.get(rel_path)
         if (
             not force
+            and isinstance(cached_row, dict)
             and _cached_row_is_valid(cached_row, rel_path, requested_kinds)
             and str(cached_row.get("file_sha256") or "") == file_sha256
         ):

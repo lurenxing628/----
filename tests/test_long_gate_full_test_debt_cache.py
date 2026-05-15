@@ -113,6 +113,7 @@ def _patch_gate_environment(monkeypatch, module, repo_root: Path, *, statuses: S
     monkeypatch.setattr(module, "_git_status_lines", lambda: next(status_iter))
     monkeypatch.setattr(module, "_run_git_bytes", lambda _args: b"")
     monkeypatch.setattr(module, "_runtime_state_snapshot", lambda: {"runtime_state": "absent"})
+    monkeypatch.setattr(module, "_assert_pyright_tools_coverage", lambda: None)
     monkeypatch.setattr(
         fingerprint_mod,
         "_chrome_executable_resolution",
@@ -464,14 +465,13 @@ def _fake_successful_command(module, repo_root: Path, calls: List[str]):
     return fake_run_command
 
 
-def test_manifest_enables_only_collect_and_full_test_debt():
+def test_manifest_enables_collect_full_test_debt_and_static_entries():
     manifest = build_manifest_from_quality_gate_plan(_quality_gate_plan(include_planned=True), repo_root=_repo_root())
 
     enabled = [entry["entry_id"] for entry in manifest["entries"] if entry["reuse_allowed"]]
-    planned = [entry["entry_id"] for entry in manifest["entries"] if entry["cache_status"] == "planned"]
 
-    assert enabled == ["pytest_collect_all", "full_test_debt"]
-    assert "ruff_check_full" in planned
+    assert enabled == ["pytest_collect_all", "full_test_debt", "ruff_check_full"]
+    assert "pyright_tools_full" not in enabled
     assert "full_test_debt_node_cache" in json.dumps(manifest, ensure_ascii=False)
 
 
@@ -2806,20 +2806,22 @@ def test_force_rerun_full_test_debt_refreshes_only_that_enabled_entry(monkeypatc
     summary = _load_summary(repo_root)
     collect = _summary_entry(summary, "pytest_collect_all")
     full_debt = _summary_entry(summary, "full_test_debt")
-    planned = _summary_entry(summary, "ruff_check_full")
+    ruff = _summary_entry(summary, "ruff_check_full")
     assert "python -m pytest --collect-only -q tests" not in calls
     assert "python tools/check_full_test_debt.py" in calls
+    assert "python -m ruff check" not in calls
     assert collect["execution_mode"] == "reused_success_cache"
     assert full_debt["execution_mode"] == "executed"
     assert full_debt["reason"] == "forced by --long-gate-force-rerun full_test_debt"
     assert [row["sha256"] for row in _load_success(repo_root)["output_files"]] != first_output_hashes
-    assert planned["decision"] == "planned_only"
-    assert planned["cache_status"] == "planned"
-    assert not _success_path(repo_root, "ruff_check_full").exists()
+    assert ruff["decision"] == "reuse"
+    assert ruff["cache_status"] == "enabled"
+    assert ruff["execution_mode"] == "reused_success_cache"
+    assert _success_path(repo_root, "ruff_check_full").exists()
     assert (repo_root / "evidence" / "QualityGate" / "full_test_debt_node_cache.json").exists()
 
 
-def test_force_rerun_all_refreshes_full_test_debt_and_keeps_planned_entries(monkeypatch, tmp_path):
+def test_force_rerun_all_refreshes_full_test_debt_and_static_entries(monkeypatch, tmp_path):
     module = _import_run_quality_gate()
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
@@ -2843,16 +2845,19 @@ def test_force_rerun_all_refreshes_full_test_debt_and_keeps_planned_entries(monk
     summary = _load_summary(repo_root)
     collect = _summary_entry(summary, "pytest_collect_all")
     full_debt = _summary_entry(summary, "full_test_debt")
-    planned = _summary_entry(summary, "ruff_check_full")
+    ruff = _summary_entry(summary, "ruff_check_full")
     assert "python -m pytest --collect-only -q tests" in calls
     assert "python tools/check_full_test_debt.py" in calls
+    assert "python -m ruff check" in calls
     assert collect["reason"] == "forced by --long-gate-force-rerun-all"
     assert full_debt["reason"] == "forced by --long-gate-force-rerun-all"
     assert full_debt["execution_mode"] == "executed"
     assert [row["sha256"] for row in _load_success(repo_root)["output_files"]] != first_output_hashes
-    assert planned["decision"] == "planned_only"
-    assert planned["cache_status"] == "planned"
-    assert not _success_path(repo_root, "ruff_check_full").exists()
+    assert ruff["decision"] == "run"
+    assert ruff["cache_status"] == "enabled"
+    assert ruff["reason"] == "forced by --long-gate-force-rerun-all"
+    assert ruff["execution_mode"] == "executed"
+    assert _success_path(repo_root, "ruff_check_full").exists()
 
 
 def test_full_test_debt_rechecks_collect_hash_after_collect_rerun(monkeypatch, tmp_path):

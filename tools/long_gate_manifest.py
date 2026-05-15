@@ -63,6 +63,9 @@ _LONG_ENTRY_TYPES = {
 _CACHE_ENABLED_ENTRY_TYPES = {
     ENTRY_PYTEST_COLLECT_ALL,
     ENTRY_FULL_TEST_DEBT,
+    ENTRY_RUFF_CHECK_FULL,
+    ENTRY_PYRIGHT_GATE_FULL,
+    ENTRY_PYRIGHT_TOOLS_FULL,
     ENTRY_REQUIRED_REGRESSIONS,
     ENTRY_STARTUP_RUNTIME_REGRESSIONS,
 }
@@ -122,6 +125,8 @@ def classify_quality_gate_command(command: Mapping[str, Any]) -> str:
         return ENTRY_RUFF_CHECK_FULL
     if _list_equal(args[:5], ["python", "-m", "pyright", "-p", quality_gate_shared.QUALITY_GATE_PYRIGHT_GATE_CONFIG]):
         return ENTRY_PYRIGHT_GATE_FULL
+    if _list_equal(args[:5], ["python", "-m", "pyright", "-p", quality_gate_shared.QUALITY_GATE_PYRIGHT_TOOLS_CONFIG]):
+        return ENTRY_PYRIGHT_TOOLS_FULL
     if _list_equal(args[:3], ["python", "-m", "pyright"]) and any(
         path in args for path in quality_gate_shared.QUALITY_GATE_TOOL_PATHS
     ):
@@ -157,9 +162,78 @@ def _entry_id_for_command(entry_type: str, command: Mapping[str, Any], index: in
     return entry_type
 
 
+_DEFAULT_PYRIGHT_GATE_INCLUDES = ("app.py", "app_new_ui.py", "config.py", "core", "data", "web")
+
+
+def _load_pyright_config(repo_root: Optional[str], config_path: str) -> Dict[str, Any]:
+    root = os.path.abspath(repo_root or quality_gate_shared.REPO_ROOT)
+    abs_path = os.path.join(root, str(config_path).replace("\\", "/").replace("/", os.sep))
+    try:
+        with open(abs_path, encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return {}
+    if isinstance(payload, dict):
+        return dict(payload)
+    return {}
+
+
+def _string_list(value: Any) -> List[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).replace("\\", "/").strip() for item in value if str(item).strip()]
+
+
+def _pyright_path_scopes(path: str) -> List[str]:
+    normalized = str(path or "").replace("\\", "/").strip().strip("/")
+    if not normalized:
+        return []
+    if any(char in normalized for char in "*?["):
+        return [normalized]
+    if normalized in {".", "./"}:
+        return []
+    if normalized.endswith(".py"):
+        return [normalized, normalized[:-3] + ".pyi"]
+    if normalized.endswith(".pyi"):
+        return [normalized]
+    return [f"{normalized}/**/*.py", f"{normalized}/**/*.pyi", f"{normalized}/**/py.typed"]
+
+
+def _pyright_extra_path_scopes(config: Mapping[str, Any]) -> List[str]:
+    extras: List[str] = []
+    extras.extend(_string_list(config.get("extraPaths")))
+    for environment in list(config.get("executionEnvironments") or []):
+        if isinstance(environment, dict):
+            extras.extend(_string_list(environment.get("extraPaths")))
+    scopes: List[str] = []
+    for extra in extras:
+        normalized = str(extra).replace("\\", "/").strip().strip("/")
+        if not normalized or normalized in {".", "./"}:
+            continue
+        if normalized.startswith(".venv") or "/site-packages" in normalized:
+            continue
+        scopes.extend(_pyright_path_scopes(normalized))
+    return scopes
+
+
+def _pyright_gate_input_scopes(repo_root: Optional[str]) -> List[str]:
+    config = _load_pyright_config(repo_root, quality_gate_shared.QUALITY_GATE_PYRIGHT_GATE_CONFIG)
+    includes = _string_list(config.get("include")) or list(_DEFAULT_PYRIGHT_GATE_INCLUDES)
+    scopes: List[str] = []
+    for include in includes:
+        scopes.extend(_pyright_path_scopes(include))
+    stub_path = str(config.get("stubPath") or "typings").replace("\\", "/").strip().strip("/")
+    if stub_path:
+        scopes.append(f"{stub_path}/**/*.pyi")
+    scopes.append("py.typed")
+    scopes.extend(_pyright_extra_path_scopes(config))
+    return _dedupe(scopes)
+
+
 def _scopes_for_entry(
     entry_type: str,
     command: Optional[Mapping[str, Any]] = None,
+    repo_root: Optional[str] = None,
 ) -> Tuple[List[str], List[str], List[str], List[str], List[str], List[str]]:
     input_scopes: List[str] = []
     config_scopes: List[str] = []
@@ -172,8 +246,127 @@ def _scopes_for_entry(
         tool_scopes = list(quality_gate_shared.QUALITY_GATE_TOOL_PATHS)
         config_scopes = list(quality_gate_shared.QUALITY_GATE_SOURCE_FILES)
 
-    if entry_type == ENTRY_PYRIGHT_TOOLS_FULL:
+    if entry_type == ENTRY_RUFF_CHECK_FULL:
+        input_scopes.extend(
+            [
+                "*.py",
+                "audit/**/*.py",
+                "codestable/tools/**/*.py",
+                "core/**/*.py",
+                "data/**/*.py",
+                "desktop/**/*.py",
+                "plugins/**/*.py",
+                "scripts/**/*.py",
+                "tests/**/*.py",
+                "tools/**/*.py",
+                "web/**/*.py",
+            ]
+        )
+        config_scopes.extend(
+            [
+                "pyproject.toml",
+                "ruff.toml",
+                ".ruff.toml",
+                "setup.cfg",
+                ".pre-commit-config.yaml",
+                ".gitignore",
+            ]
+        )
+        dependency_scopes.extend(
+            [
+                "requirements*.txt",
+                "requirements-dev*.txt",
+                "poetry.lock",
+                "uv.lock",
+                "Pipfile.lock",
+            ]
+        )
+        env_keys.extend(
+            [
+                "python_executable_realpath",
+                "python_version",
+                "ruff_version",
+                "platform",
+                "PYTHONPATH",
+                "PYTHONUTF8",
+                "PYTHONIOENCODING",
+            ]
+        )
+        output_files.append(quality_gate_shared.QUALITY_GATE_RUFF_CHECK_FULL_REL.replace("\\", "/"))
+    elif entry_type == ENTRY_PYRIGHT_GATE_FULL:
+        input_scopes.extend(_pyright_gate_input_scopes(repo_root))
+        config_scopes.extend(
+            [
+                quality_gate_shared.QUALITY_GATE_PYRIGHT_GATE_CONFIG,
+                "pyrightconfig.json",
+                "pyproject.toml",
+                "setup.cfg",
+            ]
+        )
+        dependency_scopes.extend(
+            [
+                "requirements*.txt",
+                "requirements-dev*.txt",
+                "poetry.lock",
+                "uv.lock",
+                "Pipfile.lock",
+            ]
+        )
+        env_keys.extend(
+            [
+                "python_executable_realpath",
+                "python_version",
+                "pyright_version",
+                "platform",
+                "PYTHONPATH",
+                "PYTHONUTF8",
+                "PYTHONIOENCODING",
+            ]
+        )
+        output_files.append(quality_gate_shared.QUALITY_GATE_PYRIGHT_GATE_FULL_REL.replace("\\", "/"))
+    elif entry_type == ENTRY_PYRIGHT_TOOLS_FULL:
         input_scopes = list(quality_gate_shared.QUALITY_GATE_TOOL_PATHS)
+        input_scopes.extend(
+            [
+                "tools/__init__.py",
+                "tools/full_test_debt_shards.py",
+                "web/bootstrap/**/*.py",
+                "core/infrastructure/logging.py",
+                "core/infrastructure/transaction.py",
+                "typings/**/*.pyi",
+                "py.typed",
+            ]
+        )
+        config_scopes.extend(
+            [
+                quality_gate_shared.QUALITY_GATE_PYRIGHT_TOOLS_CONFIG,
+                quality_gate_shared.QUALITY_GATE_PYRIGHT_GATE_CONFIG,
+                "pyrightconfig.json",
+                "pyproject.toml",
+                "setup.cfg",
+            ]
+        )
+        dependency_scopes.extend(
+            [
+                "requirements*.txt",
+                "requirements-dev*.txt",
+                "poetry.lock",
+                "uv.lock",
+                "Pipfile.lock",
+            ]
+        )
+        env_keys.extend(
+            [
+                "python_executable_realpath",
+                "python_version",
+                "pyright_version",
+                "platform",
+                "PYTHONPATH",
+                "PYTHONUTF8",
+                "PYTHONIOENCODING",
+            ]
+        )
+        output_files.append(quality_gate_shared.QUALITY_GATE_PYRIGHT_TOOLS_FULL_REL.replace("\\", "/"))
     elif entry_type == ENTRY_PYTEST_COLLECT_ALL:
         input_scopes.extend(
             [
@@ -458,12 +651,19 @@ def _scopes_for_entry(
     )
 
 
-def _build_entry(command: Mapping[str, Any], index: int, *, entry_type: Optional[str] = None) -> Dict[str, Any]:
+def _build_entry(
+    command: Mapping[str, Any],
+    index: int,
+    *,
+    entry_type: Optional[str] = None,
+    repo_root: Optional[str] = None,
+) -> Dict[str, Any]:
     normalized = _normalize_command(command)
     resolved_entry_type = entry_type or classify_quality_gate_command(normalized)
     input_scopes, config_scopes, tool_scopes, dependency_scopes, env_keys, output_files = _scopes_for_entry(
         resolved_entry_type,
         normalized,
+        repo_root=repo_root,
     )
     command_hash = _stable_json_hash(normalized)
     long_gate_candidate = resolved_entry_type in _LONG_ENTRY_TYPES
@@ -522,6 +722,7 @@ def build_manifest_from_quality_gate_plan(
     receipts: Optional[Sequence[Mapping[str, Any]]] = None,
     repo_root: Optional[str] = None,
 ) -> Dict[str, Any]:
+    root = os.path.abspath(repo_root or quality_gate_shared.REPO_ROOT)
     commands = [_normalize_command(command) for command in list(command_plan or [])]
     debt_sync_index = None
     for index, command in enumerate(commands, start=1):
@@ -531,8 +732,8 @@ def build_manifest_from_quality_gate_plan(
     manifest = {
         "schema_version": LONG_GATE_SCHEMA_VERSION,
         "generated_at": datetime.now().isoformat(timespec="seconds"),
-        "repo_root": os.path.abspath(repo_root or quality_gate_shared.REPO_ROOT),
-        "head_sha": _git_head_sha(os.path.abspath(repo_root or quality_gate_shared.REPO_ROOT)),
+        "repo_root": root,
+        "head_sha": _git_head_sha(root),
         "quality_gate_plan_hash": quality_gate_shared.hash_quality_gate_commands(commands),
         "entries": [
             _build_entry(
@@ -543,6 +744,7 @@ def build_manifest_from_quality_gate_plan(
                     index=index,
                     debt_sync_index=debt_sync_index,
                 ),
+                repo_root=root,
             )
             for index, command in enumerate(commands, start=1)
         ],

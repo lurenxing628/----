@@ -78,6 +78,7 @@ def _patch_gate_environment(monkeypatch, module, repo_root: Path, *, statuses: S
     monkeypatch.setattr(module, "_git_status_lines", lambda: next(status_iter))
     monkeypatch.setattr(module, "_run_git_bytes", lambda _args: b"")
     monkeypatch.setattr(module, "_runtime_state_snapshot", lambda: {"runtime_state": "absent"})
+    monkeypatch.setattr(module, "_assert_pyright_tools_coverage", lambda: None)
 
 
 def _successful_result(display: str) -> dict:
@@ -261,13 +262,14 @@ def test_force_all_only_invalidates_enabled_entries_and_keeps_planned_entries(mo
 
     summary = _load_summary(repo_root)
     collect = _entry_by_id(summary, "pytest_collect_all")
-    planned = _entry_by_id(summary, "ruff_check_full")
+    ruff = _entry_by_id(summary, "ruff_check_full")
     assert "python -m pytest --collect-only -q tests" in calls
+    assert "python -m ruff check" in calls
     assert collect["reason"] == "forced by --long-gate-force-rerun-all"
-    assert planned["cache_status"] == "planned"
-    assert planned["decision"] == "planned_only"
-    assert planned["execution_mode"] == "planned_only"
-    assert not _success_cache_path(repo_root, cache_dir="evidence/QualityGate/long_gate", entry_id="ruff_check_full").exists()
+    assert ruff["cache_status"] == "enabled"
+    assert ruff["decision"] == "run"
+    assert ruff["execution_mode"] == "executed"
+    assert _success_cache_path(repo_root, cache_dir="evidence/QualityGate/long_gate", entry_id="ruff_check_full").exists()
 
 
 def test_force_planned_entry_is_reported_but_does_not_enable_cache(monkeypatch, tmp_path):
@@ -275,7 +277,14 @@ def test_force_planned_entry_is_reported_but_does_not_enable_cache(monkeypatch, 
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     _patch_gate_environment(monkeypatch, module, repo_root, statuses=[[], []])
-    monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: _small_plan(include_planned=True))
+    planned_command = {
+        "display": "python -m pytest -q tests/test_architecture_fitness.py",
+        "args": ["python", "-m", "pytest", "-q", "tests/test_architecture_fitness.py"],
+        "capture_output": False,
+        "output_policy": "normalized",
+    }
+    command_plan = [*_small_plan(include_planned=True), planned_command]
+    monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
     calls = []
 
     def fake_run_command(display, args, capture_output=False, env_overlay=None):
@@ -284,15 +293,15 @@ def test_force_planned_entry_is_reported_but_does_not_enable_cache(monkeypatch, 
 
     monkeypatch.setattr(module, "_run_command", fake_run_command)
 
-    assert module.main(["--long-gate-cache", "--long-gate-force-rerun", "ruff_check_full"]) == 0
+    assert module.main(["--long-gate-cache", "--long-gate-force-rerun", "architecture_fitness"]) == 0
 
-    planned = _entry_by_id(_load_summary(repo_root), "ruff_check_full")
-    assert "python -m ruff check" in calls
+    planned = _entry_by_id(_load_summary(repo_root), "architecture_fitness")
+    assert "python -m pytest -q tests/test_architecture_fitness.py" in calls
     assert planned["cache_status"] == "planned"
     assert planned["decision"] == "planned_only"
     assert planned["reason"].endswith("force rerun ignored because planned entries are not enabled")
     assert planned["invalidated_by"] == ["force rerun ignored for planned entry"]
-    assert not _success_cache_path(repo_root, cache_dir="evidence/QualityGate/long_gate", entry_id="ruff_check_full").exists()
+    assert not _success_cache_path(repo_root, cache_dir="evidence/QualityGate/long_gate", entry_id="architecture_fitness").exists()
 
 
 def test_explain_prints_cache_dir_and_force_decision_without_writing_proof(monkeypatch, tmp_path, capsys):
@@ -327,7 +336,7 @@ def test_explain_prints_cache_dir_and_force_decision_without_writing_proof(monke
     assert f"cache_dir: {cache_dir}" in output
     assert "- pytest_collect_all: RUN" in output
     assert "forced by --long-gate-force-rerun pytest_collect_all" in output
-    assert "- ruff_check_full: PLANNED_ONLY" in output
+    assert "- ruff_check_full: RUN" in output
     assert not _summary_path(repo_root).exists()
     assert not _manifest_path(repo_root).exists()
     assert not (repo_root / "evidence" / "QualityGate" / "receipts").exists()

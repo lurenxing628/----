@@ -15,7 +15,7 @@ import sys
 import tempfile
 import time
 import urllib.request
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple, cast
 
 from tools.long_gate_schema import LONG_GATE_FINGERPRINT_SCHEMA_VERSION, stable_json_hash
 
@@ -292,6 +292,17 @@ def _pytest_version(*, strict: bool = False) -> str:
 
 def pytest_distribution_version(*, strict: bool = False) -> str:
     return _pytest_version(strict=strict)
+
+
+def _distribution_version(distribution: str, *, strict: bool = False) -> str:
+    try:
+        return importlib.metadata.version(distribution)
+    except importlib.metadata.PackageNotFoundError as exc:
+        if strict:
+            raise LongGateFingerprintError(
+                f"{distribution} distribution is required for long gate fingerprint"
+            ) from exc
+        return "__missing_" + str(distribution).replace("-", "_") + "_distribution__"
 
 
 def _effective_environment(environment: Optional[Mapping[str, str]] = None) -> Mapping[str, str]:
@@ -663,12 +674,13 @@ def _node_browser_runtime_capability(*, strict: bool = False, environment: Optio
 def _pytest_plugin_distribution_versions(*, strict: bool = False) -> str:
     try:
         entry_points = importlib.metadata.entry_points()
-        if hasattr(entry_points, "select"):
-            pytest_plugins = entry_points.select(group="pytest11")
+        select = getattr(entry_points, "select", None)
+        if callable(select):
+            pytest_plugins = select(group="pytest11")
         else:  # pragma: no cover - Python 3.8 compatibility path
             pytest_plugins = entry_points.get("pytest11", [])
         rows = []
-        for item in pytest_plugins:
+        for item in cast(Iterable[Any], pytest_plugins):
             distribution = getattr(item, "dist", None)
             dist_name = str(getattr(distribution, "metadata", {}).get("Name", "") or getattr(item, "module", "") or "")
             dist_version = str(getattr(distribution, "version", "") or "")
@@ -701,6 +713,10 @@ def _runtime_fingerprint_value(
         return _pytest_version(strict=strict)
     if key == "pytest_plugin_distribution_versions":
         return _pytest_plugin_distribution_versions(strict=strict)
+    if key == "ruff_version":
+        return _distribution_version("ruff", strict=strict)
+    if key == "pyright_version":
+        return _distribution_version("pyright", strict=strict)
     if key == "platform":
         return platform.platform()
     if key == "chrome_executable_resolution":
@@ -868,8 +884,16 @@ def diff_fingerprint_components(previous: Mapping[str, Any], current: Mapping[st
             }
         )
 
-    previous_components = previous.get("components") if isinstance(previous.get("components"), dict) else {}
-    current_components = current.get("components") if isinstance(current.get("components"), dict) else {}
+    previous_components_obj = previous.get("components")
+    current_components_obj = current.get("components")
+    previous_components = cast(
+        Mapping[str, Any],
+        previous_components_obj if isinstance(previous_components_obj, dict) else {},
+    )
+    current_components = cast(
+        Mapping[str, Any],
+        current_components_obj if isinstance(current_components_obj, dict) else {},
+    )
 
     if previous_components.get("command_hash") != current_components.get("command_hash"):
         changes.append(

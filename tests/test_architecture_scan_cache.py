@@ -396,7 +396,15 @@ def test_architecture_fitness_stays_planned_and_artifact_is_blocked() -> None:
     assert entries["architecture_fitness"]["cache_status"] == "planned"
     assert entries["architecture_fitness"]["reuse_allowed"] is False
     enabled = [entry["entry_id"] for entry in manifest["entries"] if entry["reuse_allowed"]]
-    assert enabled == ["pytest_collect_all", "full_test_debt", "required_regressions", "startup_runtime_regressions"]
+    assert enabled == [
+        "pytest_collect_all",
+        "full_test_debt",
+        "ruff_check_full",
+        "pyright_gate_full",
+        "pyright_tools_full",
+        "required_regressions",
+        "startup_runtime_regressions",
+    ]
     assert git_hook_checks._blocked_paths(["evidence/QualityGate/long_gate/results/architecture_fitness.success.json"]) == [
         (
             "evidence/QualityGate/long_gate/results/architecture_fitness.success.json",
