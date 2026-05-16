@@ -58,7 +58,7 @@ py -3.8 -m venv .venv
 .venv\Scripts\python scripts/run_daily_quality_gate.py
 ```
 
-它会做四件事：拦截暂存区里的本地运行产物、确认 pytest 能收集测试、跑 `ruff check`、再跑一小组和门禁缓存及排产批次页面有关的重点测试。
+它会先看本次到底改了哪些文件：只改 README、开发文档或 CodeStable 记录时，不跑 required pytest，只做本地运行产物拦截、pytest 收集检查和一小组重点冒烟测试；改了 Python 文件时，只对这些还存在的 Python 文件跑 `ruff check`；改了公共配置、门禁工具配置，或脚本判断不出改动范围时，才退回全仓 `ruff check` 和更保守的 required pytest。
 
 请注意：这条命令只用来尽快挡住明显问题，**不是最终 clean proof**。它不声明 full-test-debt proof，也不声明干净工作区证明。`.pre-commit-config.yaml` 的 pre-push hook 现在默认调用这条快门禁，所以日常推送不会每次都被完整 full-test-debt 执行拖住。
 
@@ -105,7 +105,7 @@ full-test-debt proof 的意思是：当前没有未登记的 full pytest 失败�
 - 单独运行 `.venv\Scripts\python tools/check_full_test_debt.py` 只会生成本次 full-test-debt 的 current/summary 证明，不会写 long gate success cache。也就是说，它能帮你定位 full-test-debt 本身是否通过，但不会让下一次完整门禁自动复用 long gate 缓存。
 - 长耗时门禁缓存需要显式传 `.venv\Scripts\python scripts/run_quality_gate.py --long-gate-cache` 才会尝试复用。当前 enabled long gate entry 是 `pytest_collect_all`、`full_test_debt`、`ruff_check_full`、`pyright_gate_full`、`pyright_tools_full`、`required_regressions`、`debt_ledger_sync`、`startup_runtime_regressions` 和 `quickref_vs_routes`；当前仍 planned 的 long gate entry 只有 `architecture_fitness`。
 - 要预热最终完整门禁会用到的 long gate 缓存，请跑完整门禁链：`.venv\Scripts\python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`。这条命令成功后，才会留下 long gate success cache。
-- CI 里也会复用 long gate cache：GitHub Actions 在完整门禁前恢复缓存，完整门禁成功后再保存缓存。保存范围只包含已被忽略、下次复用会用到的 `evidence/QualityGate/` 运行产物，例如 `evidence/QualityGate/long_gate/` 和几份 long gate proof JSON，不包含已跟踪的 `evidence/Conformance/quickref_vs_routes.md`。来自 fork 的 pull request 只允许读取已有缓存，不会把自己的运行产物保存回主仓库缓存。
+- CI 里也会复用 long gate cache：GitHub Actions 在完整门禁前恢复缓存，完整门禁成功后再保存缓存。缓存 key 的前缀会带上系统、Python 3.8、`requirements.txt` / `requirements-dev.txt` 依赖 hash，以及 workflow、门禁脚本、`tools/**/*.py`、pyright 配置等 tooling hash；保存 key 还会带上本次 `github.sha`，避免不同提交写到同一个精确 key。保存范围只包含已被忽略、下次复用会用到的 `evidence/QualityGate/` 运行产物，例如 `evidence/QualityGate/long_gate/` 和几份 long gate proof JSON，不包含已跟踪的 `evidence/Conformance/quickref_vs_routes.md`。来自 fork 的 pull request 只允许读取已有缓存，不会把自己的运行产物保存回主仓库缓存。
 - long gate cache 不是跳过正式门禁。命中前会校验 command、fingerprint、stdout/stderr 日志、输出 proof、schema、runner/tooling hash 和 repo identity；证据缺失、损坏或 hash 不一致都会自动重跑。未登记的新失败仍然必须失败，已登记测试债务仍然必须被台账管住。
 - `--long-gate-cache-explain` 只打印“会不会复用”的判断，不执行门禁，也不能当作通过证明。summary counts 只告诉你本轮执行、复用、失败、planned、disabled 各有多少条，也不是通过证明。CI 日志里看到 cache hit，也只能说明旧运行产物被拿回来参与校验，不能当成这次门禁已经通过。
 - CI 和最终 clean gate 的要求不降低。最终 clean proof 仍要在干净工作区跑 `.venv\Scripts\python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`，并且门禁结束后 `git status --short` 仍然没有输出。

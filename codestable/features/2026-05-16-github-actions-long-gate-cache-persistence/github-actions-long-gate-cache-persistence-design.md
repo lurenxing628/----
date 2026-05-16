@@ -84,7 +84,9 @@ evidence/QualityGate/pyright_tools_full.json
 
 ### 2.3 key 策略
 
-cache key 用 `quality-long-gate-${{ runner.os }}-py38-${{ github.run_id }}-${{ github.run_attempt }}`，每次成功运行保存一个新缓存。restore 用 `quality-long-gate-${{ runner.os }}-py38-` 前缀找最近一次可用缓存。
+cache key 的可恢复前缀用 `quality-long-gate-${{ runner.os }}-py38-deps-${{ hashFiles(...) }}-tooling-${{ hashFiles(...) }}-`。`deps` 部分绑定 `requirements.txt` 和 `requirements-dev.txt`，`tooling` 部分绑定 workflow、pre-commit 配置、门禁脚本、`tools/**/*.py` 和 pyright 配置。这样系统、Python、依赖或门禁工具变化后，不会继续用旧前缀命中。
+
+save 的精确 key 在这个前缀后继续加 `sha-${{ github.sha }}-run-${{ github.run_id }}-${{ github.run_attempt }}`。这样同一个前缀下可以恢复最近成功缓存，但每次保存仍按具体提交和运行编号落到独立 key。
 
 这不会降低安全性，因为 long gate 自己还会重新校验 command、fingerprint、stdout/stderr 日志、输出 proof、schema、runner/tooling hash 和 repo identity。旧缓存拿回来后，如果任何证据不匹配，会自动重跑。
 
@@ -96,8 +98,9 @@ cache key 用 `quality-long-gate-${{ runner.os }}-py38-${{ github.run_id }}-${{ 
 - S4：fork PR 不 save。
 - S5：CI 命令仍是 `python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`。
 - S6：缓存路径只包含已忽略的 long gate 运行产物，不包含 `evidence/Conformance/quickref_vs_routes.md`。
-- S7：README、开发文档、roadmap/items 明确 CI cache hit 不是 proof。
-- S8：没有修改 Python 运行代码。
+- S7：restore 前缀包含 OS、Python 3.8、依赖 hash 和 tooling hash；save key 包含 `github.sha`。
+- S8：README、开发文档、roadmap/items 明确 CI cache hit 不是 proof。
+- S9：workflow 合同测试会解析 YAML，锁住 key、路径、fork save 条件和 CI 命令。
 
 ## 4. 回滚方式
 

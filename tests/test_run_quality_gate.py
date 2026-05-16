@@ -1229,6 +1229,7 @@ def test_main_writes_quality_gate_manifest_with_git_and_collection_proof(monkeyp
     assert ".github/workflows/quality.yml" in {item["path"] for item in manifest["gate_sources"]}
     assert "pyproject.toml" in {item["path"] for item in manifest["gate_sources"]}
     assert manifest["collection_proof"]["default_collect_nodeids"]
+    assert manifest["collection_proof"]["collected_count"] == 3
     quality_gate_entry = next(
         item for item in manifest["collection_proof"]["key_tests"] if item["path"] == "tests/test_run_quality_gate.py"
     )
@@ -1239,6 +1240,42 @@ def test_main_writes_quality_gate_manifest_with_git_and_collection_proof(monkeyp
         if item["path"] == "tests/regression_system_history_route_contract.py"
     )
     assert regression_entry["execution_mode"] == "default_collect"
+
+
+def test_collect_only_success_prints_count_without_nodeids(capsys):
+    module = _import_run_quality_gate()
+
+    result = module._run_command(
+        module.PYTEST_COLLECT_ALL_DISPLAY,
+        [sys.executable, "-c", "print('tests/test_sample.py::test_a')"],
+        capture_output=True,
+    )
+
+    captured = capsys.readouterr()
+    assert result["returncode"] == 0
+    assert result["stdout"] == "tests/test_sample.py::test_a\n"
+    assert captured.out.strip() == "collected_count=1"
+    assert "tests/test_sample.py::test_a" not in captured.out
+
+
+def test_collect_only_handler_rejects_empty_stdout() -> None:
+    module = _import_run_quality_gate()
+
+    with pytest.raises(module.QualityGateError, match="没有任何 test nodeid"):
+        module._handle_collect_quality_gate_command(
+            module.PYTEST_COLLECT_ALL_DISPLAY,
+            {"stdout": "", "stderr": "", "returncode": 0},
+        )
+
+
+def test_collect_only_handler_rejects_summary_without_nodeids() -> None:
+    module = _import_run_quality_gate()
+
+    with pytest.raises(module.QualityGateError, match="没有任何 test nodeid"):
+        module._handle_collect_quality_gate_command(
+            module.PYTEST_COLLECT_ALL_DISPLAY,
+            {"stdout": "2592 tests collected in 0.67s\n", "stderr": "", "returncode": 0},
+        )
 
 
 def test_guard_collect_only_keeps_analysis_and_history_in_default_collect() -> None:
@@ -2472,6 +2509,37 @@ def test_command_failure_prints_step_receipt_logs_and_last_80_lines(monkeypatch,
     assert "evidence/QualityGate/logs/" in combined
     assert "err line 100" in combined
     assert "err line 1" not in combined.splitlines()
+
+
+def test_collect_only_failure_prints_stdout_and_stderr_tail(monkeypatch, tmp_path, capsys):
+    module = _import_run_quality_gate()
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    command_plan = _small_quality_gate_plan()[:1]
+    _patch_basic_gate_environment(monkeypatch, module, repo_root, statuses=[[], []])
+    monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
+
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
+        assert display == "python -m pytest --collect-only -q tests"
+        stdout = "\n".join(f"out line {index}" for index in range(1, 101))
+        stderr = "\n".join(f"err line {index}" for index in range(1, 101))
+        return {"stdout": stdout, "stderr": stderr, "returncode": 1}
+
+    monkeypatch.setattr(module, "_run_command", fake_run_command)
+
+    with pytest.raises(module.QualityGateError) as exc_info:
+        module.main(["--require-clean-worktree"])
+
+    captured = capsys.readouterr()
+    message = str(exc_info.value)
+    combined = captured.out + captured.err + message
+    combined_lines = set(combined.splitlines())
+    assert "第 1/1 步失败" in combined
+    assert "python -m pytest --collect-only -q tests" in combined
+    assert "out line 100" in combined_lines
+    assert "err line 100" in combined_lines
+    assert "out line 1" not in combined_lines
+    assert "err line 1" not in combined_lines
 
 
 def test_main_preserves_failed_manifest_when_worktree_fingerprint_fails_after_command_error(monkeypatch, tmp_path):

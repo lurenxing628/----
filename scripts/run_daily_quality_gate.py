@@ -51,6 +51,28 @@ class ImpactPlan(NamedTuple):
     reason: str
 
 
+class RuffPlan(NamedTuple):
+    target_paths: List[str]
+    all_files: bool
+    reason: str
+
+
+_DOC_ONLY_EXTENSIONS: Tuple[str, ...] = (".md", ".rst", ".txt", ".adoc")
+_CODESTABLE_CONTENT_EXTENSIONS: Tuple[str, ...] = (".md", ".yaml", ".yml", ".json", ".txt", ".rst")
+_DOC_ONLY_PREFIXES: Tuple[str, ...] = ("docs/", "开发文档/", "audit/")
+_DOC_ONLY_EXCLUDED_PATHS = {
+    "开发文档/技术债务治理台账.md",
+    "开发文档/阶段留痕与验收记录.md",
+}
+_RUFF_CONFIG_PATTERNS: Tuple[str, ...] = (
+    "pyproject.toml",
+    "ruff.toml",
+    ".ruff.toml",
+    "setup.cfg",
+    "tox.ini",
+)
+
+
 def _gate_env() -> Dict[str, str]:
     env = os.environ.copy()
     env["PYTHONDONTWRITEBYTECODE"] = "1"
@@ -167,6 +189,17 @@ def _common_scope_patterns(common_policy: Dict[str, List[str]]) -> List[str]:
     return patterns
 
 
+def _common_static_scope_patterns(common_policy: Dict[str, List[str]]) -> List[str]:
+    patterns: List[str] = list(_RUFF_CONFIG_PATTERNS)
+    for key in (
+        "config_file_scopes",
+        "tool_file_scopes",
+        "dependency_file_scopes",
+    ):
+        patterns.extend(common_policy.get(key) or [])
+    return patterns
+
+
 def _group_scope_patterns(group: Dict[str, object]) -> List[str]:
     patterns: List[str] = []
     for key in (
@@ -191,6 +224,28 @@ def _all_group_targets(groups: Sequence[Dict[str, object]]) -> List[str]:
     return _dedupe_paths(targets)
 
 
+def _is_readme_path(path: str) -> bool:
+    return _normalize_path(path).rsplit("/", 1)[-1].lower() == "readme.md"
+
+
+def _is_docs_only_path(path: str) -> bool:
+    normalized = _normalize_path(path)
+    lowered = normalized.lower()
+    if normalized in _DOC_ONLY_EXCLUDED_PATHS:
+        return False
+    if _is_readme_path(normalized):
+        return True
+    if normalized.startswith("codestable/") and not normalized.startswith("codestable/tools/"):
+        return lowered.endswith(_CODESTABLE_CONTENT_EXTENSIONS)
+    if normalized.startswith(_DOC_ONLY_PREFIXES):
+        return lowered.endswith(_DOC_ONLY_EXTENSIONS)
+    return False
+
+
+def _is_docs_only_change(changed: ChangedPathSet) -> bool:
+    return changed.scope_known and bool(changed.paths) and all(_is_docs_only_path(path) for path in changed.paths)
+
+
 def _build_impact_plan(changed: ChangedPathSet) -> ImpactPlan:
     groups = iter_required_regression_groups()
     common_policy = iter_required_regression_common_scope_policy()
@@ -202,10 +257,15 @@ def _build_impact_plan(changed: ChangedPathSet) -> ImpactPlan:
     if not changed.paths:
         return ImpactPlan([], [], False, "no changed paths detected")
 
+    if _is_docs_only_change(changed):
+        return ImpactPlan([], [], False, "documentation-only changed paths")
+
     selected_group_ids: List[str] = []
     selected_targets: List[str] = []
     common_patterns = _common_scope_patterns(common_policy)
     for path in changed.paths:
+        if _is_docs_only_path(path):
+            continue
         if _path_matches_any(path, common_patterns):
             return ImpactPlan(
                 all_targets,
@@ -237,17 +297,53 @@ def _build_impact_plan(changed: ChangedPathSet) -> ImpactPlan:
     return ImpactPlan(_dedupe_paths(selected_targets), selected_group_ids, False, "matched changed paths")
 
 
-def _commands(required_targets: Sequence[str]) -> List[Tuple[str, List[str]]]:
+def _existing_python_paths(paths: Sequence[str]) -> List[str]:
+    existing_paths: List[str] = []
+    for path in _dedupe_paths(paths):
+        if not path.endswith(".py"):
+            continue
+        absolute_path = os.path.join(REPO_ROOT, path)
+        if os.path.isfile(absolute_path):
+            existing_paths.append(path)
+    return existing_paths
+
+
+def _build_ruff_plan(changed: ChangedPathSet, impact_plan: ImpactPlan) -> RuffPlan:
+    common_policy = iter_required_regression_common_scope_policy()
+
+    if not changed.scope_known:
+        return RuffPlan([], True, changed.reason)
+
+    if impact_plan.all_required_groups:
+        return RuffPlan([], True, impact_plan.reason)
+
+    for path in changed.paths:
+        if _path_matches_any(path, _common_static_scope_patterns(common_policy)):
+            return RuffPlan([], True, "common static quality scope changed: " + path)
+
+    target_paths = _existing_python_paths(changed.paths)
+    if target_paths:
+        return RuffPlan(target_paths, False, "changed Python files")
+    return RuffPlan([], False, "no changed Python files")
+
+
+def _commands(required_targets: Sequence[str], ruff_plan: RuffPlan) -> List[Tuple[str, List[str]]]:
     commands = [
         (
             "block staged runtime artifacts",
             [sys.executable, "tools/git_hook_checks.py", "check-staged-artifacts"],
-        ),
-        (
-            "ruff check",
-            [sys.executable, "-m", "ruff", "check"],
-        ),
+        )
     ]
+    if ruff_plan.all_files:
+        commands.append(("ruff check full", [sys.executable, "-m", "ruff", "check"]))
+    elif ruff_plan.target_paths:
+        commands.append(
+            (
+                "ruff check changed files",
+                [sys.executable, "-m", "ruff", "check", "--force-exclude", "--", *ruff_plan.target_paths],
+            )
+        )
+
     normalized_targets = _dedupe_paths(required_targets)
     if normalized_targets:
         commands.append(
@@ -336,6 +432,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     env = _gate_env()
     changed = _changed_paths()
     impact_plan = _build_impact_plan(changed)
+    ruff_plan = _build_ruff_plan(changed, impact_plan)
     if impact_plan.target_paths:
         mode = "all required groups" if impact_plan.all_required_groups else "matched required groups"
         print(
@@ -346,12 +443,22 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         )
     else:
         print("[daily-fast-gate] impact pytest: skipped; reason=" + impact_plan.reason, flush=True)
+    if ruff_plan.all_files:
+        print("[daily-fast-gate] ruff: full; reason=" + ruff_plan.reason, flush=True)
+    elif ruff_plan.target_paths:
+        print(
+            f"[daily-fast-gate] ruff: changed files; targets={len(ruff_plan.target_paths)}; "
+            f"reason={ruff_plan.reason}",
+            flush=True,
+        )
+    else:
+        print("[daily-fast-gate] ruff: skipped; reason=" + ruff_plan.reason, flush=True)
 
     collect_returncode = _run_collect_only(env)
     if collect_returncode != 0:
         return collect_returncode
 
-    commands = _commands(impact_plan.target_paths)
+    commands = _commands(impact_plan.target_paths, ruff_plan)
     for index, (label, command) in enumerate(commands, start=1):
         print(f"[daily-fast-gate] {index}/{len(commands)} {label}", flush=True)
         returncode = subprocess.call(command, cwd=REPO_ROOT, env=env)

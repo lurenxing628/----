@@ -40,7 +40,7 @@ py -3.8 -m venv .venv
 .venv\Scripts\python scripts/run_daily_quality_gate.py
 ```
 
-这条命令是给日常开发用的快速检查。它会拦截暂存区里的本地运行产物、确认 pytest 能收集测试、跑 `ruff check`，再跑一小组最容易影响门禁缓存和排产批次页面的重点测试。
+这条命令是给日常开发用的快速检查。它会先看本次到底改了哪些文件：只改 README、开发文档或 CodeStable 记录时，不跑 required pytest，只做本地运行产物拦截、pytest 收集检查和一小组重点冒烟测试；改了 Python 文件时，只对这些还存在的 Python 文件跑 `ruff check`；改了公共配置、门禁工具配置，或脚本判断不出改动范围时，才退回全仓 `ruff check` 和更保守的 required pytest。
 
 它不是最终 clean proof：不声明 full-test-debt proof，不声明干净工作区证明，也不代表 CI 或收口门禁已经通过。`.pre-commit-config.yaml` 的 pre-push hook 现在默认跑这条快门禁，目的是先挡明显问题，不再让每次日常 push 都完整执行 full-test-debt。
 
@@ -74,7 +74,7 @@ long gate cache 是给长耗时完整门禁准备的本地成功缓存，需要�
 
 单独运行 `.venv\Scripts\python tools/check_full_test_debt.py` 只会写本次 full-test-debt 的 current/summary 证明，不会写 `evidence/QualityGate/long_gate/results/full_test_debt.success.json`。如果想预热最终完整门禁会用到的缓存，需要跑完整门禁链：`.venv\Scripts\python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`。
 
-CI 里的 long gate cache 只负责把上一次完整门禁成功后留下的已忽略运行产物带到下一次运行。GitHub Actions 会在完整门禁前 restore，在完整门禁成功后 save；保存范围只包含 `evidence/QualityGate/long_gate/`、collect/full-test-debt/static/required/startup/debt ledger 等 long gate proof 运行产物，不包含已跟踪的 `evidence/Conformance/quickref_vs_routes.md`。fork pull request 可以读取已有缓存帮助判断，但不会把 fork 里的运行产物保存回主仓库缓存。
+CI 里的 long gate cache 只负责把上一次完整门禁成功后留下的已忽略运行产物带到下一次运行。GitHub Actions 会在完整门禁前 restore，在完整门禁成功后 save；缓存 key 的可恢复前缀会带上系统、Python 3.8、`requirements.txt` / `requirements-dev.txt` 依赖 hash，以及 workflow、门禁脚本、`tools/**/*.py`、pyright 配置等 tooling hash；保存 key 还会带上本次 `github.sha`，避免不同提交写到同一个精确 key。保存范围只包含 `evidence/QualityGate/long_gate/`、collect/full-test-debt/static/required/startup/debt ledger 等 long gate proof 运行产物，不包含已跟踪的 `evidence/Conformance/quickref_vs_routes.md`。fork pull request 可以读取已有缓存帮助判断，但不会把 fork 里的运行产物保存回主仓库缓存。
 
 long gate cache 不是跳过正式门禁。命中前会校验 command、fingerprint、stdout/stderr 日志、输出 proof、schema、runner/tooling hash 和 repo identity；坏证据、缺 proof、日志缺失、输出缺失或 hash 不一致都会自动重跑。`--long-gate-cache-explain` 只打印本次会跑、会复用、还是仍处于 planned 的判断，不执行命令，不写 proof，也不能当作 clean proof。summary counts 只是执行、复用、失败、planned、disabled 的汇总，也不能当作 clean proof。CI 里看到 actions/cache 的 cache hit，也只代表旧运行产物被取回来了，不代表本次 `scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache` 已经通过。未登记的新失败仍然必须失败，已登记测试债务仍然必须被台账管住；CI 和最终 clean gate 的要求不降低。维护者要手动完整重跑时，可以直接运行不带 `--long-gate-cache` 的 clean gate，或显式使用 `--no-long-gate-cache`。这种做法只适合强制全量重跑或排查缓存问题；对外收口、PR 和 CI 的最终证明仍按 `--require-clean-worktree --long-gate-cache` 或 `tools\git_hook_checks.py run-final-quality-gate` 口径写。
 

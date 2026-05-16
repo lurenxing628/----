@@ -102,6 +102,7 @@ PYRIGHT_REQUIRED_VERSION = (1, 1, 406)
 PYRIGHT_GATE_CONFIG = QUALITY_GATE_PYRIGHT_GATE_CONFIG
 PYRIGHT_TOOLS_CONFIG = QUALITY_GATE_PYRIGHT_TOOLS_CONFIG
 QUALITY_GATE_SELFTEST = QUALITY_GATE_SELFTEST_PATH
+PYTEST_COLLECT_ALL_DISPLAY = "python -m pytest --collect-only -q tests"
 STARTUP_RUNTIME_REGRESSIONS_PROOF_SCHEMA_VERSION = 1
 REQUIRED_REGRESSIONS_PROOF_SCHEMA_VERSION = 4
 STATIC_CHECK_PROOF_SCHEMA_VERSION = 1
@@ -224,7 +225,10 @@ def _run_command(
     stdout = "".join(stdout_chunks)
     stderr = "".join(stderr_chunks)
     if capture_output:
-        if stdout:
+        if _display == PYTEST_COLLECT_ALL_DISPLAY:
+            if returncode == 0:
+                print(_format_collect_only_success(stdout), flush=True)
+        elif stdout:
             print(stdout.rstrip(), flush=True)
     elif returncode != 0:
         if stdout and not stdout.endswith("\n"):
@@ -278,6 +282,17 @@ def _coerce_command_result(result: Any) -> Dict[str, Any]:
 def _assert_command_succeeded(display: str, result: Dict[str, Any]) -> None:
     if int(result.get("returncode") or 0) != 0:
         raise QualityGateError(f"命令失败：{display}")
+
+
+def _format_collect_only_success(stdout: str) -> str:
+    return f"collected_count={len(_parse_collect_nodeids(stdout))}"
+
+
+def _collect_nodeids_or_raise(stdout: str) -> List[str]:
+    nodeids = _parse_collect_nodeids(stdout)
+    if not nodeids:
+        raise QualityGateError("pytest collect-only 输出没有任何 test nodeid，不能生成 collection proof")
+    return nodeids
 
 
 def _tail_lines(text: str, limit: int = 80) -> str:
@@ -907,9 +922,9 @@ def _handle_checked_quality_gate_command(display: str, result: Dict[str, Any]) -
 
 
 def _handle_collect_quality_gate_command(_display: str, result: Dict[str, Any]) -> Dict[str, Any]:
-    _assert_command_succeeded("python -m pytest --collect-only -q tests", result)
+    _assert_command_succeeded(PYTEST_COLLECT_ALL_DISPLAY, result)
     collect_output = str(result.get("stdout") or "").strip()
-    return {"collection_proof": _build_collection_proof(_parse_collect_nodeids(collect_output))}
+    return {"collection_proof": _build_collection_proof(_collect_nodeids_or_raise(collect_output))}
 
 
 def _handle_ruff_version_quality_gate_command(_display: str, result: Dict[str, Any]) -> Dict[str, Any]:
@@ -1026,7 +1041,7 @@ def _run_quality_gate_command_plan(
     }
     command_result_handlers.update(
         {
-            "python -m pytest --collect-only -q tests": _handle_collect_quality_gate_command,
+            PYTEST_COLLECT_ALL_DISPLAY: _handle_collect_quality_gate_command,
             "python -m ruff --version": _handle_ruff_version_quality_gate_command,
             "python -m pyright --version": _handle_pyright_version_quality_gate_command,
             f"python -m pyright -p {PYRIGHT_TOOLS_CONFIG}": _handle_pyright_tools_quality_gate_command,
@@ -1314,7 +1329,7 @@ def _run_quality_gate_command_plan(
 
 def _require_quality_gate_command_proofs(parsed_command_results: Dict[str, Any]) -> None:
     required_proofs = {
-        "python -m pytest --collect-only -q tests": parsed_command_results.get("collection_proof"),
+        PYTEST_COLLECT_ALL_DISPLAY: parsed_command_results.get("collection_proof"),
         "python -m ruff --version": parsed_command_results.get("ruff_version_output"),
         "python -m pyright --version": parsed_command_results.get("pyright_version_output"),
     }

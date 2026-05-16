@@ -408,11 +408,13 @@ items:
       - .github/workflows/quality.yml
       - README.md
       - "开发文档/README.md"
+      - tests/test_quality_workflow_cache.py
       - codestable/roadmap/quality-gate-long-cache/quality-gate-long-cache-roadmap.md
       - codestable/roadmap/quality-gate-long-cache/quality-gate-long-cache-items.yaml
     exit_checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_quality_workflow_cache.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python codestable/tools/validate-yaml.py --file codestable/roadmap/quality-gate-long-cache/quality-gate-long-cache-items.yaml
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python codestable/tools/validate-yaml.py --file codestable/features/2026-05-16-github-actions-long-gate-cache-persistence/github-actions-long-gate-cache-persistence-checklist.yaml
       - ruby -e 'require "yaml"; YAML.load_file(".github/workflows/quality.yml"); puts "workflow yaml ok"'
       - git diff --check
-    notes: "已完成 P6：workflow 使用 pinned actions/cache restore/save；restore 位于统一质量门禁前，save 位于统一质量门禁成功后；fork PR 只 restore 不 save；CI 命令仍是 python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache；缓存路径只包含 evidence/QualityGate/long_gate/ 和 long gate 复用需要的已忽略 proof/collect/cache JSON，不包含已跟踪的 evidence/Conformance/quickref_vs_routes.md；文档已补充 cache hit 不是 proof。"
+    notes: "已完成 P6 并补强 key 合同：workflow 使用 pinned actions/cache restore/save；restore 位于统一质量门禁前，save 位于统一质量门禁成功后；restore/save key 前缀绑定 runner.os、py38、requirements 依赖 hash 和 workflow/门禁脚本/tools/pyright 配置 tooling hash；save key 额外绑定 github.sha、run_id、run_attempt；fork PR 只 restore 不 save；CI 命令仍是 python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache；缓存路径只包含 evidence/QualityGate/long_gate/ 和 long gate 复用需要的已忽略 proof/collect/cache JSON，不包含已跟踪的 evidence/Conformance/quickref_vs_routes.md；tests/test_quality_workflow_cache.py 已锁住 key、fork 条件、命令和路径；文档已补充 cache hit 不是 proof。"

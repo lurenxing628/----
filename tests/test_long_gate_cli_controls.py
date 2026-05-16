@@ -170,14 +170,18 @@ def test_custom_cache_dir_reads_writes_success_cache_and_summary(monkeypatch, tm
     assert module.main(["--long-gate-cache", "--long-gate-cache-dir", cache_dir]) == 0
 
     summary = _load_summary(repo_root)
+    manifest = _load_manifest(repo_root)
     collect = _entry_by_id(summary, "pytest_collect_all")
     assert summary["cache_dir"] == cache_dir
     assert collect["execution_mode"] == "executed"
     assert "python -m pytest --collect-only -q tests" in calls
+    assert manifest["collection_proof"]["collected_count"] == 1
     success_cache_path = _success_cache_path(repo_root, cache_dir=cache_dir)
     default_success_cache_path = _success_cache_path(repo_root, cache_dir="evidence/QualityGate/long_gate")
     assert success_cache_path.exists()
     success_cache = json.loads(success_cache_path.read_text(encoding="utf-8"))
+    success_stdout = (repo_root / success_cache["stdout_log_path"]).read_text(encoding="utf-8")
+    assert "tests/test_long_gate_cli_controls.py::test_collect" in success_stdout
     assert success_cache["stdout_log_path"].startswith(cache_dir + "/logs/")
     assert default_success_cache_path.exists()
     assert success_cache_path != default_success_cache_path

@@ -61,9 +61,9 @@ jobs:
             evidence/QualityGate/ruff_check_full.json
             evidence/QualityGate/pyright_gate_full.json
             evidence/QualityGate/pyright_tools_full.json
-          key: quality-long-gate-${{ runner.os }}-py38-${{ github.run_id }}-${{ github.run_attempt }}
+          key: quality-long-gate-${{ runner.os }}-py38-deps-${{ hashFiles('requirements.txt', 'requirements-dev.txt') }}-tooling-${{ hashFiles('.github/workflows/quality.yml', '.pre-commit-config.yaml', 'scripts/run_quality_gate.py', 'scripts/run_daily_quality_gate.py', 'tools/**/*.py', 'pyrightconfig.gate.json', 'pyrightconfig.tools.json') }}-sha-${{ github.sha }}-run-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            quality-long-gate-${{ runner.os }}-py38-
+            quality-long-gate-${{ runner.os }}-py38-deps-${{ hashFiles('requirements.txt', 'requirements-dev.txt') }}-tooling-${{ hashFiles('.github/workflows/quality.yml', '.pre-commit-config.yaml', 'scripts/run_quality_gate.py', 'scripts/run_daily_quality_gate.py', 'tools/**/*.py', 'pyrightconfig.gate.json', 'pyrightconfig.tools.json') }}-
 
       - name: 执行统一质量门禁
         run: python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache
@@ -86,7 +86,7 @@ jobs:
             evidence/QualityGate/ruff_check_full.json
             evidence/QualityGate/pyright_gate_full.json
             evidence/QualityGate/pyright_tools_full.json
-          key: quality-long-gate-${{ runner.os }}-py38-${{ github.run_id }}-${{ github.run_attempt }}
+          key: quality-long-gate-${{ runner.os }}-py38-deps-${{ hashFiles('requirements.txt', 'requirements-dev.txt') }}-tooling-${{ hashFiles('.github/workflows/quality.yml', '.pre-commit-config.yaml', 'scripts/run_quality_gate.py', 'scripts/run_daily_quality_gate.py', 'tools/**/*.py', 'pyrightconfig.gate.json', 'pyrightconfig.tools.json') }}-sha-${{ github.sha }}-run-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: 上传 quality gate evidence
         if: always()

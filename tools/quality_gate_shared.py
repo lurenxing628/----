@@ -111,6 +111,7 @@ QUALITY_GATE_TOOL_PATHS = [
     "tools/git_hook_checks.py",
     "tools/check_full_test_debt.py",
     "tools/collect_full_test_debt.py",
+    "tools/benchmark_full_test_debt_shards.py",
     "tools/verify_required_regressions_from_full_test_debt.py",
     "tools/architecture_scan_cache.py",
     "tools/long_gate_full_test_debt.py",
@@ -507,6 +508,7 @@ def _normalize_collection_proof(collection_proof: Dict[str, Any]) -> Dict[str, A
         )
     key_tests.sort(key=lambda item: item["path"])
     return {
+        "collected_count": len(default_collect_nodeids),
         "default_collect_nodeids": default_collect_nodeids,
         "key_tests": key_tests,
     }

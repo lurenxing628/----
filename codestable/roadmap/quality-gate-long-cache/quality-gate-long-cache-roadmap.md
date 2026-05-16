@@ -13,7 +13,7 @@ related_architecture: [codestable/architecture/ARCHITECTURE.md]
 
 ## 1. 当前状态确认
 
-这份 roadmap 已完成 NEXT-1 到 NEXT-13 和 P6 的既定收口；它记录的是本轮 long gate cache 路线的历史和最终口径，不代表所有慢门禁都已经缓存。`static-formal-cache` 已完成正式 ruff / pyright 静态门禁 success cache，`debt-ledger-sync-cache` 已完成债务台账同步检查 success cache，`quickref-vs-routes-cache` 已完成系统速查表与真实路由对账检查 success cache，NEXT-13 已完成文档、状态回写和最终 clean proof 收口，P6 已让 GitHub Actions 在完整门禁前恢复 long gate 运行产物缓存、在完整门禁成功后保存缓存。`full_test_debt` 先支持整项成功复用，现在又补了安全的 nodeid 级增量和台账-only 路径；`startup_runtime_regressions` 和 `required_regressions` 已支持整组成功复用；NEXT-8 `architecture-scan-file-cache` 已完成文件级扫描事实缓存，但它只缓存单文件事实，不启用 `architecture_fitness` 整项成功复用；NEXT-9 `fast-static-precheck` 已完成局部 ruff 快速预检，pyright 默认跳过并明确不代表正式 pyright gate。当前 enabled long gate entry 是 `pytest_collect_all`、`full_test_debt`、`ruff_check_full`、`pyright_gate_full`、`pyright_tools_full`、`required_regressions`、`debt_ledger_sync`、`startup_runtime_regressions` 和 `quickref_vs_routes`。`architecture_fitness` 仍保持 planned；如果后续要启用它，应另起新的 feature / roadmap。
+这份 roadmap 已完成 NEXT-1 到 NEXT-13 和 P6 的既定收口；它记录的是本轮 long gate cache 路线的历史和最终口径，不代表所有慢门禁都已经缓存。`static-formal-cache` 已完成正式 ruff / pyright 静态门禁 success cache，`debt-ledger-sync-cache` 已完成债务台账同步检查 success cache，`quickref-vs-routes-cache` 已完成系统速查表与真实路由对账检查 success cache，NEXT-13 已完成文档、状态回写和最终 clean proof 收口，P6 已让 GitHub Actions 在完整门禁前恢复 long gate 运行产物缓存、在完整门禁成功后保存缓存，并已把 cache key 收紧到 OS、Python 3.8、依赖 hash、tooling hash 和具体 `github.sha`。`full_test_debt` 先支持整项成功复用，现在又补了安全的 nodeid 级增量和台账-only 路径；`startup_runtime_regressions` 和 `required_regressions` 已支持整组成功复用；NEXT-8 `architecture-scan-file-cache` 已完成文件级扫描事实缓存，但它只缓存单文件事实，不启用 `architecture_fitness` 整项成功复用；NEXT-9 `fast-static-precheck` 已完成局部 ruff 快速预检，pyright 默认跳过并明确不代表正式 pyright gate。当前 enabled long gate entry 是 `pytest_collect_all`、`full_test_debt`、`ruff_check_full`、`pyright_gate_full`、`pyright_tools_full`、`required_regressions`、`debt_ledger_sync`、`startup_runtime_regressions` 和 `quickref_vs_routes`。`architecture_fitness` 仍保持 planned；如果后续要启用它，应另起新的 feature / roadmap。
 
 `pre-push-long-gate-cache` 是历史完成项：完成当时把本地 pre-push hook 接到了完整 clean gate + long gate cache。后续为了避免日常 push 每次都被完整 full-test-debt 拖住，pre-push 已改为运行 `scripts/run_daily_quality_gate.py`。当前最终完整门禁仍由 `scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache` 承担，也可以通过 `tools/git_hook_checks.py run-final-quality-gate` 手动触发；这不会额外启用仍处于 planned 的 `architecture_fitness`。
 
@@ -29,7 +29,7 @@ related_architecture: [codestable/architecture/ARCHITECTURE.md]
 | receipt 字段 | 已有 `execution_mode`、`reused_from`、耗时字段、`timed_out`、`interrupted`、`partial_write`。 |
 | 缓存安全底线 | 已校验 entry、command、fingerprint、log、output、路径逃逸、损坏 JSON、cache/fingerprint schema、runner/tooling hash 和 repo identity；后续只能继续加固，不能放松。 |
 | 防提交保护 | `evidence/QualityGate/long_gate/`、`evidence/QualityGate/collect_nodeids.json`、`evidence/QualityGate/current_full_test_debt.json`、`evidence/QualityGate/full_test_debt_summary.json`、`evidence/QualityGate/full_test_debt_node_cache.json`、`evidence/QualityGate/startup_runtime_regressions.json`、`evidence/QualityGate/required_regressions.json`、`evidence/QualityGate/architecture_scan_cache.json`、`evidence/QualityGate/ruff_check_full.json`、`evidence/QualityGate/pyright_gate_full.json`、`evidence/QualityGate/pyright_tools_full.json`、`evidence/QualityGate/debt_ledger_sync.json` 和 `evidence/Conformance/quickref_vs_routes.md` 已被 `.gitignore` 或本地 hook 保护，运行产物不能混入提交。 |
-| CI 缓存持久化 | `.github/workflows/quality.yml` 使用 pinned `actions/cache/restore` / `actions/cache/save`；restore 在完整门禁前，save 只在完整门禁成功后执行，fork PR 不 save。缓存只覆盖已忽略的 long gate 运行产物，不包含已跟踪的 `evidence/Conformance/quickref_vs_routes.md`。 |
+| CI 缓存持久化 | `.github/workflows/quality.yml` 使用 pinned `actions/cache/restore` / `actions/cache/save`；restore 在完整门禁前，save 只在完整门禁成功后执行，fork PR 不 save。key 前缀绑定 OS、Python 3.8、依赖 hash 和 tooling hash，save key 额外绑定 `github.sha`。缓存只覆盖已忽略的 long gate 运行产物，不包含已跟踪的 `evidence/Conformance/quickref_vs_routes.md`。 |
 
 目前只是候选，不能说已经启用成功复用：
 
@@ -1012,7 +1012,7 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require
 16. `debt-ledger-sync-cache`：done，已完成 `debt_ledger_sync` 整项 success cache；manifest entry `debt_ledger_sync` 已 enabled，proof 写入 `evidence/QualityGate/debt_ledger_sync.json`。
 17. `quickref-vs-routes-cache`：done，已完成 `quickref_vs_routes` 整项 success cache；manifest entry `quickref_vs_routes` 已 enabled，报告写入 `evidence/Conformance/quickref_vs_routes.md`。
 18. `long-gate-docs-final-proof`：done，已完成文档、状态回写和最终干净证明。
-19. `github-actions-long-gate-cache-persistence`：done，已完成 GitHub Actions long gate cache restore/save 持久化，fork PR 不保存缓存，CI 命令仍是 `scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`。
+19. `github-actions-long-gate-cache-persistence`：done，已完成 GitHub Actions long gate cache restore/save 持久化，restore/save key 前缀绑定 OS/Python/依赖/tooling，save key 绑定 `github.sha`，fork PR 不保存缓存，CI 命令仍是 `scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`。
 
 ## 7. 推荐提交颗粒度
 
@@ -1062,7 +1062,7 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require
 7. symlink 策略继续保守。仓库外目标不读取内容，直接失效或拒绝。
 8. 自定义 cache dir 只能在 repo root 内，并且最好限制在已被忽略的 evidence 子目录下。
 9. CI 当前执行完整质量门禁时已经显式传入 `--long-gate-cache`；当前 enabled entry 是 `pytest_collect_all`、`full_test_debt`、`ruff_check_full`、`pyright_gate_full`、`pyright_tools_full`、`required_regressions`、`debt_ledger_sync`、`startup_runtime_regressions`、`quickref_vs_routes`，planned entry 不会因此复用。后续任何新 entry 进入 enabled，都必须单独评估 CI 下复用证据是否可靠。
-10. CI cache hit 不是 proof。它只是恢复旧运行产物，真正的 proof 仍然是 `scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache` 通过。
+10. CI cache hit 不是 proof。它只是按 OS/Python/依赖/tooling 前缀恢复旧运行产物，真正的 proof 仍然是 `scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache` 通过。
 11. 每个 PR 的最终说明都要写清楚：本 PR 新启用了哪些 entry，哪些仍然只是候选。
 
 ## 10. 观察项
@@ -1094,4 +1094,4 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require
 - 2026-05-15：完成 `static-formal-cache`。已启用 `ruff_check_full`、`pyright_gate_full` 和 `pyright_tools_full` 的正式 success cache；三条 static entry 都绑定专属输入边界、配置、依赖、工具版本、Python 环境、声明输出 proof JSON 和 long-gate 日志；`pyright_tools_full` 原命令只找到 2 个 source files 的阻塞已通过 `pyrightconfig.tools.json`、include 对账和 `filesAnalyzed` 自检处理，不能把空覆盖结果缓存成成功。本次未运行 clean-worktree final quality gate，不能把本次验证说成最终 clean proof。
 - 2026-05-15：完成 `debt-ledger-sync-cache`。只新增启用 `debt_ledger_sync`，不启用 `architecture_fitness` 或 `quickref_vs_routes`；proof 写入 `evidence/QualityGate/debt_ledger_sync.json`，绑定命令、fingerprint、台账 counts、architecture scan metadata、stdout/stderr 日志和声明输出 hash；台账、roadmap/feature、sync 脚本、扫描 helper、源码、配置、依赖、Python/env、architecture scan metadata 或 proof/log 变化都会重跑；`architecture_scan_cache.json` 本身不进 fingerprint；本次未运行 clean-worktree final quality gate，不能把本次验证说成最终 clean proof。
 - 2026-05-16：完成 `quickref-vs-routes-cache`。只新增启用 `quickref_vs_routes`，不启用 `architecture_fitness`；报告写入 `evidence/Conformance/quickref_vs_routes.md`，绑定命令、fingerprint、系统速查表、app/bootstrap/routes/web 代码、模板、静态资源、配置、依赖、Python/env、stdout/stderr 日志和声明输出 hash；quickref stdout 改为仓库相对路径并静音 app 启动日志；本次未运行 clean-worktree final quality gate，不能把本次验证说成最终 clean proof。
-- 2026-05-16：完成 `github-actions-long-gate-cache-persistence`。`.github/workflows/quality.yml` 使用 pinned `actions/cache/restore` / `actions/cache/save` 持久化 long gate 运行产物；restore 在完整门禁前，save 在完整门禁成功后；fork PR 不 save；缓存只包含已忽略的 `evidence/QualityGate/` long gate 运行产物，不包含已跟踪的 `evidence/Conformance/quickref_vs_routes.md`；CI 命令仍是 `python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`，cache hit 不是 proof。
+- 2026-05-16：完成 `github-actions-long-gate-cache-persistence` 并补强 key 合同。`.github/workflows/quality.yml` 使用 pinned `actions/cache/restore` / `actions/cache/save` 持久化 long gate 运行产物；restore 在完整门禁前，save 在完整门禁成功后；restore/save key 前缀绑定 OS、Python 3.8、依赖 hash 和 tooling hash；save key 额外绑定 `github.sha`、run id 和 run attempt；fork PR 不 save；缓存只包含已忽略的 `evidence/QualityGate/` long gate 运行产物，不包含已跟踪的 `evidence/Conformance/quickref_vs_routes.md`；CI 命令仍是 `python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`，cache hit 不是 proof；`tests/test_quality_workflow_cache.py` 已解析 workflow YAML 锁住这些合同。

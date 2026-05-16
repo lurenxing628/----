@@ -11,11 +11,14 @@ steps:
   - action: "限制 fork PR：外部 fork pull request 不保存缓存"
     exit_signal: "save step 的 if 条件排除 fork PR"
     status: done
+  - action: "收紧 cache key：restore 前缀绑定 OS/Python/依赖/tooling，save key 绑定 github.sha"
+    exit_signal: "workflow key 前缀包含 runner.os、py38、requirements hash 和 tooling hash；save/restore 精确 key 包含 github.sha"
+    status: done
   - action: "文档回写：README、开发文档、roadmap/items 说明 CI cache hit 不是 proof"
     exit_signal: "文档说明 restore/save 目的、缓存范围、fork PR 行为和 proof 边界"
     status: done
-  - action: "局部验证：校验 YAML、workflow YAML 和 diff whitespace"
-    exit_signal: "items/checklist YAML 校验、workflow YAML parse 和 git diff --check 完成"
+  - action: "局部验证：补 workflow 合同测试，校验 YAML 和 diff whitespace"
+    exit_signal: "workflow 合同测试、items/checklist YAML 校验、workflow YAML parse 和 git diff --check 完成"
     status: done
 
 checks:
@@ -30,6 +33,9 @@ checks:
     status: passed
   - item: "fork PR 不 save"
     source: .github/workflows/quality.yml
+    status: passed
+  - item: "restore 前缀包含 OS/Python/依赖/tooling，save key 包含 github.sha"
+    source: tests/test_quality_workflow_cache.py
     status: passed
   - item: "CI 命令仍带 --require-clean-worktree --long-gate-cache"
     source: .github/workflows/quality.yml

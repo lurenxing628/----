@@ -15,10 +15,12 @@ accepted_at: 2026-05-16
 - restore 在 `python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache` 之前。
 - save 在完整质量门禁之后，且只在前面步骤成功时执行。
 - fork PR 不保存缓存：`pull_request` 事件里只有 head repo 和当前 repo 相同时才 save。
+- restore key 的可恢复前缀已经纳入 OS、Python 3.8、依赖 hash 和 tooling hash；save key 已额外绑定 `github.sha`、`github.run_id` 和 `github.run_attempt`。
 - CI 正式门禁命令没有变化，仍是 `python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`。
 - 缓存路径只包含已忽略的 `evidence/QualityGate/` long gate 运行产物。
 - 缓存路径没有包含已跟踪的 `evidence/Conformance/quickref_vs_routes.md`。
 - README、开发文档、roadmap 和 items 已写清楚：CI cache hit 不是 proof。
+- 新增 `tests/test_quality_workflow_cache.py` 解析 workflow YAML，锁住 key 前缀、save SHA、fork save 条件、CI 命令和 cache path。
 
 ## 2. 明确未做
 
@@ -42,6 +44,7 @@ accepted_at: 2026-05-16
 
 - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python codestable/tools/validate-yaml.py --file codestable/roadmap/quality-gate-long-cache/quality-gate-long-cache-items.yaml`：通过。
 - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python codestable/tools/validate-yaml.py --file codestable/features/2026-05-16-github-actions-long-gate-cache-persistence/github-actions-long-gate-cache-persistence-checklist.yaml`：通过。
+- `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_quality_workflow_cache.py`：通过。
 - `ruby -e 'require "yaml"; YAML.load_file(".github/workflows/quality.yml"); puts "workflow yaml ok"'`：通过。
 - `git diff --check`：通过。
 
