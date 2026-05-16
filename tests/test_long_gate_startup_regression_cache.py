@@ -27,6 +27,7 @@ from tests.long_gate_cache_helpers import (
 )
 from tools import quality_gate_shared
 from tools.long_gate_manifest import (
+    ENTRY_FULL_TEST_DEBT,
     ENTRY_REQUIRED_REGRESSIONS,
     ENTRY_STARTUP_RUNTIME_REGRESSIONS,
 )
@@ -338,6 +339,7 @@ def test_startup_invalidation_keeps_full_test_debt_success_cache_reuse(monkeypat
     repo_root = ctx.repo_root
     command_plan = ctx.command_plan
     monkeypatch.delenv("APS_ENV", raising=False)
+    full_debt_display = _entry_display(command_plan, repo_root, ENTRY_FULL_TEST_DEBT)
     startup_display = _entry_display(command_plan, repo_root, ENTRY_STARTUP_RUNTIME_REGRESSIONS)
     _seed_startup_success(module, monkeypatch, repo_root, command_plan)
 
@@ -346,7 +348,7 @@ def test_startup_invalidation_keeps_full_test_debt_success_cache_reuse(monkeypat
     summary = _load_summary(repo_root)
 
     displays = [str(call["display"]) for call in calls]
-    assert "python tools/check_full_test_debt.py" not in displays
+    assert full_debt_display not in displays
     assert startup_display in displays
     assert _summary_entry(summary, "full_test_debt")["execution_mode"] == "reused_success_cache"
     assert _summary_entry(summary, ENTRY_STARTUP_RUNTIME_REGRESSIONS)["execution_mode"] == "executed"
@@ -416,6 +418,7 @@ def test_force_rerun_all_executes_startup_and_required(monkeypatch, tmp_path):
     module = ctx.module
     repo_root = ctx.repo_root
     command_plan = ctx.command_plan
+    full_debt_display = _entry_display(command_plan, repo_root, ENTRY_FULL_TEST_DEBT)
     startup_display = _entry_display(command_plan, repo_root, ENTRY_STARTUP_RUNTIME_REGRESSIONS)
     required_display = _entry_display(command_plan, repo_root, ENTRY_REQUIRED_REGRESSIONS)
     _seed_startup_success(module, monkeypatch, repo_root, command_plan)
@@ -431,7 +434,7 @@ def test_force_rerun_all_executes_startup_and_required(monkeypatch, tmp_path):
 
     displays = [str(call["display"]) for call in calls]
     assert "python -m pytest --collect-only -q tests" in displays
-    assert "python tools/check_full_test_debt.py" in displays
+    assert full_debt_display in displays
     assert required_display in displays
     assert startup_display in displays
     assert _summary_entry(summary, ENTRY_REQUIRED_REGRESSIONS)["reason"] == "forced by --long-gate-force-rerun-all"

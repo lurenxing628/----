@@ -240,7 +240,7 @@ def test_quality_gate_binding_status_replays_full_test_debt_proof_command(monkey
 
     assert ok is True
     assert note == "BOUND"
-    assert "python tools/check_full_test_debt.py" in replayed[0]
+    assert any(display.startswith("python tools/check_full_test_debt.py") for display in replayed[0])
 
 
 def test_quality_gate_binding_status_rejects_missing_full_test_debt_receipt(monkeypatch, tmp_path) -> None:
@@ -255,7 +255,10 @@ def test_quality_gate_binding_status_rejects_missing_full_test_debt_receipt(monk
         command["display"]: receipt
         for command, receipt in zip(manifest["commands"], manifest["command_receipts"])
     }
-    receipt_path = repo_root / display_to_receipt["python tools/check_full_test_debt.py"]["path"]
+    full_debt_display = next(
+        display for display in display_to_receipt if display.startswith("python tools/check_full_test_debt.py")
+    )
+    receipt_path = repo_root / display_to_receipt[full_debt_display]["path"]
     receipt_path.unlink()
 
     ok, note, _manifest_rel = module._quality_gate_binding_status(repo_root, "deadbeef", [])
@@ -279,7 +282,10 @@ def test_quality_gate_binding_status_rejects_tampered_full_test_debt_receipt_has
         command["display"]: receipt
         for command, receipt in zip(manifest["commands"], manifest["command_receipts"])
     }
-    receipt_path = repo_root / display_to_receipt["python tools/check_full_test_debt.py"]["path"]
+    full_debt_display = next(
+        display for display in display_to_receipt if display.startswith("python tools/check_full_test_debt.py")
+    )
+    receipt_path = repo_root / display_to_receipt[full_debt_display]["path"]
     receipt_payload = json.loads(receipt_path.read_text(encoding="utf-8"))
     receipt_payload["stdout_sha256"] = "0" * 64
     receipt_path.write_text(json.dumps(receipt_payload, ensure_ascii=False), encoding="utf-8")

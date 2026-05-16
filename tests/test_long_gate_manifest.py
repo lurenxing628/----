@@ -98,7 +98,9 @@ def test_required_and_startup_regression_args_come_from_dynamic_plan():
     required_entry = _entry_by_id(manifest, "required_regressions")
     startup_entry = _entry_by_id(manifest, "startup_runtime_regressions")
 
-    assert required_entry["args"][4:] == quality_gate_shared.iter_quality_gate_required_tests()
+    assert required_entry["args"] == ["python", "tools/verify_required_regressions_from_full_test_debt.py"]
+    for required_path in quality_gate_shared.iter_quality_gate_required_tests():
+        assert required_path in required_entry["input_file_scopes"]
     assert startup_entry["args"][4:] == iter_startup_regressions()
 
 
@@ -170,7 +172,8 @@ def test_required_parent_entry_still_matches_real_command_plan():
 
     assert required_entry["display"] in command_by_display
     assert required_entry["args"] == command_by_display[required_entry["display"]]["args"]
-    assert required_entry["args"][4:] == iter_required_tests()
+    for required_path in iter_required_tests():
+        assert required_path in required_entry["input_file_scopes"]
 
 
 def test_required_parent_scope_includes_group_specific_scope_union():
@@ -358,7 +361,8 @@ def test_collect_full_test_debt_static_gate_required_startup_and_quickref_entrie
     assert "installer/**/*" in full_test_debt["input_file_scopes"]
     assert "build_win7*.bat" in full_test_debt["input_file_scopes"]
     assert required["cache_status"] == "enabled"
-    assert required["input_file_scopes"][: len(required["args"][4:])] == required["args"][4:]
+    for required_path in iter_required_tests():
+        assert required_path in required["input_file_scopes"]
     assert "core/**/*.py" in required["input_file_scopes"]
     assert "templates/**/*.html" in required["input_file_scopes"]
     assert "templates_excel/**/*" in required["input_file_scopes"]

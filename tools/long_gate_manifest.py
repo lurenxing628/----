@@ -119,8 +119,10 @@ def classify_quality_gate_command(command: Mapping[str, Any]) -> str:
 
     if display == "python -m pytest --collect-only -q tests":
         return ENTRY_PYTEST_COLLECT_ALL
-    if display == "python tools/check_full_test_debt.py":
+    if _list_equal(args[:2], ["python", "tools/check_full_test_debt.py"]):
         return ENTRY_FULL_TEST_DEBT
+    if _list_equal(args[:2], ["python", "tools/verify_required_regressions_from_full_test_debt.py"]):
+        return ENTRY_REQUIRED_REGRESSIONS
     if display in _VERSION_PROBE_ENTRY_IDS:
         return ENTRY_VERSION_OR_ENV_PROBE
     if display == "python -m ruff check":
@@ -425,7 +427,9 @@ def _scopes_for_entry(
         )
         output_files = ["evidence/QualityGate/collect_nodeids.json"]
     elif entry_type == ENTRY_REQUIRED_REGRESSIONS:
-        required_targets = _pytest_q_targets(_normalize_command(command or {}).get("args") or []) or []
+        required_targets = _pytest_q_targets(_normalize_command(command or {}).get("args") or [])
+        if required_targets is None:
+            required_targets = quality_gate_shared.iter_quality_gate_required_tests()
         common_scope_policy = iter_required_regression_common_scope_policy()
         group_rows = iter_required_regression_groups()
         input_scopes = list(required_targets)

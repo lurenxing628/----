@@ -20,6 +20,7 @@ from tools.long_gate_manifest import (
     ENTRY_STARTUP_RUNTIME_REGRESSIONS,
     build_manifest_from_quality_gate_plan,
 )
+from tools.long_gate_schema import stable_json_hash
 
 
 def _repo_root() -> str:
@@ -262,6 +263,66 @@ def _write_quickref_report(repo_root: Path) -> Path:
     return report
 
 
+def _write_required_verifier_proof(repo_root: Path, *, stdout_text: str, command_plan: Sequence[Dict[str, Any]]) -> None:
+    manifest = _manifest_for(command_plan, repo_root)
+    entry = _entry_by_id(manifest, ENTRY_REQUIRED_REGRESSIONS)
+    command_index = next(
+        index for index, row in enumerate(manifest["entries"], start=1) if row["entry_id"] == ENTRY_REQUIRED_REGRESSIONS
+    )
+    required_targets = quality_gate_shared.iter_quality_gate_required_tests()
+    required_nodeids = [f"{path}::test_cached_required" for path in required_targets]
+    stdout_rel = "evidence/QualityGate/long_gate/logs/required_regressions.stdout.log"
+    stderr_rel = "evidence/QualityGate/long_gate/logs/required_regressions.stderr.log"
+    proof = {
+        "schema_version": 3,
+        "status": "passed",
+        "entry_id": ENTRY_REQUIRED_REGRESSIONS,
+        "head_sha": "deadbeef",
+        "run_id": "",
+        "quality_gate_plan_hash": quality_gate_shared.hash_quality_gate_commands(command_plan),
+        "command_index": command_index,
+        "display": entry["display"],
+        "args": entry["args"],
+        "command_hash": entry["command_hash"],
+        "capture_output": bool(entry.get("capture_output")),
+        "output_policy": str(entry.get("output_policy") or ""),
+        "required_target_count": len(required_targets),
+        "test_count": len(required_targets),
+        "required_target_paths": required_targets,
+        "required_target_hash": stable_json_hash(required_targets),
+        "verified_required_nodeid_count": len(required_nodeids),
+        "verified_required_nodeids_hash": stable_json_hash(required_nodeids),
+        "required_nodeid_count_by_path": {path: 1 for path in required_targets},
+        "source_payload_path": "evidence/QualityGate/current_full_test_debt.json",
+        "source_payload_head_sha": "deadbeef",
+        "source_payload_generated_at": "2026-05-13T00:00:00+08:00",
+        "source_payload_collected_count": len(required_nodeids),
+        "source_payload_report_count": len(required_nodeids),
+        "verification_method": "full_test_debt_payload_required_coverage",
+        "fingerprint_schema_version": entry["fingerprint_schema_version"],
+        "fingerprint_hash": fingerprint_entry(entry, str(repo_root), strict=True)["hash"],
+        "returncode": 0,
+        "pytest_exit_code": 0,
+        "execution_mode": "verified_from_full_test_debt",
+        "duration_s": 0.0,
+        "stdout_log_path": stdout_rel,
+        "stderr_log_path": stderr_rel,
+        "stdout_sha256": hashlib.sha256(stdout_text.encode("utf-8")).hexdigest(),
+        "stderr_sha256": hashlib.sha256(b"").hexdigest(),
+        "timed_out": False,
+        "interrupted": False,
+        "partial_write": False,
+        "does_not_claim": "clean_worktree_proof",
+        "logs": {
+            "stdout": {"path": stdout_rel, "sha256": hashlib.sha256(stdout_text.encode("utf-8")).hexdigest()},
+            "stderr": {"path": stderr_rel, "sha256": hashlib.sha256(b"").hexdigest()},
+        },
+    }
+    proof_path = _proof_path_for_entry(repo_root, ENTRY_REQUIRED_REGRESSIONS)
+    proof_path.parent.mkdir(parents=True, exist_ok=True)
+    proof_path.write_text(json.dumps(proof, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
 def _fake_successful_command(
     command_plan: Sequence[Dict[str, Any]],
     repo_root: Path,
@@ -293,7 +354,7 @@ def _fake_successful_command(
                 "stderr": "",
                 "returncode": 0,
             }
-        if display == "python tools/check_full_test_debt.py":
+        if str(display).startswith("python tools/check_full_test_debt.py"):
             full_debt_runs["count"] += 1
             _write_full_test_debt_outputs(repo_root, token=f"run-{full_debt_runs['count']}")
             return {
@@ -308,7 +369,9 @@ def _fake_successful_command(
         if display == required_display:
             if ENTRY_REQUIRED_REGRESSIONS in fail_ids:
                 return {"stdout": "required failed\n", "stderr": "boom\n", "returncode": 1}
-            return {"stdout": "127 files passed in 2.34s\n", "stderr": "", "returncode": 0}
+            stdout_text = "required_regressions verified targets=101 nodeids=899 output=evidence/QualityGate/required_regressions.json\n"
+            _write_required_verifier_proof(repo_root, stdout_text=stdout_text, command_plan=command_plan)
+            return {"stdout": stdout_text, "stderr": "", "returncode": 0}
         if display == debt_display:
             if ENTRY_DEBT_LEDGER_SYNC in fail_ids:
                 return {"stdout": "debt ledger failed\n", "stderr": "boom\n", "returncode": 1}
@@ -413,8 +476,21 @@ def _seed_required_or_startup_success_cache(
         "stderr_sha256": stderr_sha,
     }
     if entry_id == ENTRY_REQUIRED_REGRESSIONS:
-        proof_payload["required_target_count"] = len(entry["args"][4:])
-        proof_payload["required_target_paths"] = entry["args"][4:]
+        required_targets = quality_gate_shared.iter_quality_gate_required_tests()
+        required_nodeids = [f"{path}::test_cached_required" for path in required_targets]
+        proof_payload["test_count"] = len(required_targets)
+        proof_payload["required_target_count"] = len(required_targets)
+        proof_payload["required_target_paths"] = required_targets
+        proof_payload["required_target_hash"] = stable_json_hash(required_targets)
+        proof_payload["verification_method"] = "full_test_debt_payload_required_coverage"
+        proof_payload["verified_required_nodeid_count"] = len(required_nodeids)
+        proof_payload["verified_required_nodeids_hash"] = stable_json_hash(required_nodeids)
+        proof_payload["required_nodeid_count_by_path"] = {path: 1 for path in required_targets}
+        proof_payload["source_payload_path"] = "evidence/QualityGate/current_full_test_debt.json"
+        proof_payload["source_payload_head_sha"] = "deadbeef"
+        proof_payload["source_payload_generated_at"] = "2026-05-13T00:00:00+08:00"
+        proof_payload["source_payload_collected_count"] = len(required_nodeids)
+        proof_payload["source_payload_report_count"] = len(required_nodeids)
     if entry_id == ENTRY_STARTUP_RUNTIME_REGRESSIONS:
         proof_payload["startup_target_count"] = len(entry["args"][4:])
         proof_payload["startup_target_paths"] = entry["args"][4:]

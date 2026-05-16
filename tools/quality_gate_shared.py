@@ -110,6 +110,7 @@ QUALITY_GATE_TOOL_PATHS = [
     "tools/git_hook_checks.py",
     "tools/check_full_test_debt.py",
     "tools/collect_full_test_debt.py",
+    "tools/verify_required_regressions_from_full_test_debt.py",
     "tools/architecture_scan_cache.py",
     "tools/long_gate_full_test_debt.py",
     "tools/long_gate_cache.py",
@@ -694,7 +695,6 @@ def iter_non_regression_guard_tests() -> List[str]:
 
 
 def build_quality_gate_command_plan() -> List[Dict[str, Any]]:
-    required_tests = iter_quality_gate_required_tests()
     startup_regressions = _registry_startup_regressions()
     return [
         {
@@ -704,8 +704,8 @@ def build_quality_gate_command_plan() -> List[Dict[str, Any]]:
             "output_policy": "normalized",
         },
         {
-            "display": "python tools/check_full_test_debt.py",
-            "args": ["python", "tools/check_full_test_debt.py"],
+            "display": "python tools/check_full_test_debt.py --sharded --shard-count 3",
+            "args": ["python", "tools/check_full_test_debt.py", "--sharded", "--shard-count", "3"],
             "capture_output": True,
             "output_policy": "exact",
             "env_overlay": dict(REQUIRED_BROWSER_ENV_OVERLAY),
@@ -753,9 +753,9 @@ def build_quality_gate_command_plan() -> List[Dict[str, Any]]:
             "output_policy": "normalized",
         },
         {
-            "display": "python -m pytest -q " + " ".join(required_tests),
-            "args": ["python", "-m", "pytest", "-q"] + list(required_tests),
-            "capture_output": False,
+            "display": "python tools/verify_required_regressions_from_full_test_debt.py",
+            "args": ["python", "tools/verify_required_regressions_from_full_test_debt.py"],
+            "capture_output": True,
             "output_policy": "normalized",
             "env_overlay": dict(REQUIRED_BROWSER_ENV_OVERLAY),
         },

@@ -451,24 +451,40 @@ def build_full_test_debt_summary(
     }
 
 
-def collect_current_payload() -> Dict[str, Any]:
+def _resolve_shard_options(
+    *,
+    sharded: Optional[bool] = None,
+    shard_count: Optional[int] = None,
+) -> Tuple[bool, str]:
+    resolved_sharded = os.environ.get("APS_FULL_TEST_DEBT_SHARDED") == "1" if sharded is None else bool(sharded)
+    resolved_shard_count = (
+        str(shard_count) if shard_count is not None else os.environ.get("APS_FULL_TEST_DEBT_SHARD_COUNT") or "3"
+    )
+    return resolved_sharded, resolved_shard_count
+
+
+def collect_current_payload(
+    *,
+    sharded: Optional[bool] = None,
+    shard_count: Optional[int] = None,
+) -> Dict[str, Any]:
     collector_args = list(COLLECTOR_ARGS)
     collector_display = COLLECTOR_DISPLAY
-    if os.environ.get("APS_FULL_TEST_DEBT_SHARDED") == "1":
-        shard_count = os.environ.get("APS_FULL_TEST_DEBT_SHARD_COUNT") or "3"
+    resolved_sharded, resolved_shard_count = _resolve_shard_options(sharded=sharded, shard_count=shard_count)
+    if resolved_sharded:
         collector_args = [
             "tools/collect_full_test_debt.py",
             "--baseline-kind",
             "after_main_style_isolation",
             "--sharded",
             "--shard-count",
-            shard_count,
+            resolved_shard_count,
             "--",
             *FORMAL_FULL_TEST_PYTEST_ARGS,
         ]
         collector_display = (
             "python tools/collect_full_test_debt.py --baseline-kind after_main_style_isolation "
-            f"--sharded --shard-count {shard_count} -- tests -q --tb=short -ra -p no:cacheprovider"
+            f"--sharded --shard-count {resolved_shard_count} -- tests -q --tb=short -ra -p no:cacheprovider"
         )
     _progress(f"开始收集 full pytest 结果：{collector_display}")
     stderr_chunks: List[str] = []
@@ -516,11 +532,16 @@ def collect_current_payload() -> Dict[str, Any]:
     return payload
 
 
-def run_check(*, require_clean_worktree_proof: bool = True) -> Dict[str, Any]:
+def run_check(
+    *,
+    require_clean_worktree_proof: bool = True,
+    sharded: Optional[bool] = None,
+    shard_count: Optional[int] = None,
+) -> Dict[str, Any]:
     _progress("开始加载治理台账")
     ledger = load_ledger(required=True)
     _progress("治理台账已加载")
-    payload = collect_current_payload()
+    payload = collect_current_payload(sharded=sharded, shard_count=shard_count)
     summary = build_full_test_debt_summary(
         payload,
         ledger=ledger,
@@ -586,13 +607,30 @@ def _parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         action="store_true",
         help="仅供 run_quality_gate.py --allow-dirty-worktree 诊断跑使用；不声明 clean worktree proof",
     )
+    parser.add_argument(
+        "--sharded",
+        action="store_const",
+        const=True,
+        default=None,
+        help="正式 full pytest 收集改用分片模式；未传时仍兼容 APS_FULL_TEST_DEBT_SHARDED",
+    )
+    parser.add_argument(
+        "--shard-count",
+        type=int,
+        default=None,
+        help="分片总数；未传时仍兼容 APS_FULL_TEST_DEBT_SHARD_COUNT，默认 3",
+    )
     return parser.parse_args(list(argv) if argv is not None else None)
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = _parse_args(argv)
     try:
-        summary = run_check(require_clean_worktree_proof=not bool(args.allow_dirty_worktree_proof))
+        summary = run_check(
+            require_clean_worktree_proof=not bool(args.allow_dirty_worktree_proof),
+            sharded=args.sharded,
+            shard_count=args.shard_count,
+        )
     except QualityGateError as exc:
         print(f"ERROR: {exc}", file=sys.stderr, flush=True)
         return 2

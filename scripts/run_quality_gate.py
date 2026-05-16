@@ -1555,6 +1555,34 @@ def _long_gate_success_log_row(result: Dict[str, Any], *, stream: str, rel_path:
     }
 
 
+def _is_required_regressions_verifier_args(args: Sequence[str]) -> bool:
+    return list(args)[:2] == ["python", "tools/verify_required_regressions_from_full_test_debt.py"]
+
+
+def _load_required_regressions_verifier_proof(abs_path: str) -> Optional[Dict[str, Any]]:
+    loaded = _load_json_file(abs_path)
+    if loaded.payload is None:
+        if loaded.error == "文件不存在":
+            return None
+        raise QualityGateError(f"required regressions verifier 证明不可用：{loaded.error}")
+
+    payload = dict(loaded.payload)
+    if str(payload.get("verification_method") or "") != "full_test_debt_payload_required_coverage":
+        raise QualityGateError("required regressions verifier 证明缺少 full-test-debt 覆盖校验口径")
+    required_fields = (
+        "verified_required_nodeid_count",
+        "verified_required_nodeids_hash",
+        "required_nodeid_count_by_path",
+        "source_payload_path",
+        "source_payload_collected_count",
+        "source_payload_report_count",
+    )
+    missing = [field for field in required_fields if field not in payload]
+    if missing:
+        raise QualityGateError("required regressions verifier 证明缺少字段：" + ", ".join(missing))
+    return payload
+
+
 def _write_startup_runtime_regressions_proof(
     entry: Dict[str, Any],
     result: Dict[str, Any],
@@ -1632,7 +1660,12 @@ def _write_required_regressions_proof(
     rel_path = QUALITY_GATE_REQUIRED_REGRESSIONS_REL.replace("\\", "/")
     abs_path = os.path.join(REPO_ROOT, rel_path.replace("/", os.sep))
     args = [str(arg) for arg in list(entry.get("args") or [])]
-    required_target_paths = list(args[4:]) if args[:4] == ["python", "-m", "pytest", "-q"] else []
+    required_target_paths = (
+        list(args[4:])
+        if args[:4] == ["python", "-m", "pytest", "-q"]
+        else list(iter_quality_gate_required_tests())
+    )
+    uses_full_test_debt_verifier = _is_required_regressions_verifier_args(args)
     cache_root = str(cache_dir or "evidence/QualityGate/long_gate").replace("\\", "/")
     safe_entry_id = ENTRY_REQUIRED_REGRESSIONS.replace("\\", "_").replace("/", "_")
     stdout_log_path = f"{cache_root}/logs/{safe_entry_id}.stdout.log"
@@ -1661,6 +1694,12 @@ def _write_required_regressions_proof(
         "fingerprint_hash": str(fingerprint.get("hash") or ""),
         "returncode": int(result.get("returncode") or 0),
         "pytest_exit_code": int(result.get("returncode") or 0),
+        "verification_exit_code": int(result.get("returncode") or 0),
+        "verification_method": (
+            "full_test_debt_payload_required_coverage"
+            if uses_full_test_debt_verifier
+            else "direct_pytest_required_targets"
+        ),
         "execution_mode": str(result.get("execution_mode") or "executed"),
         "duration_s": float(result.get("duration_s") or 0.0),
         "stdout_log_path": stdout_log_path,
@@ -1676,6 +1715,12 @@ def _write_required_regressions_proof(
             "stderr": stderr_log_row,
         },
     }
+    if uses_full_test_debt_verifier:
+        verifier_payload = _load_required_regressions_verifier_proof(abs_path)
+        if verifier_payload is not None:
+            merged_payload = dict(verifier_payload)
+            merged_payload.update(payload)
+            payload = merged_payload
     os.makedirs(os.path.dirname(abs_path), exist_ok=True)
     with open(abs_path, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
@@ -1995,6 +2040,17 @@ def _resolve_command_args(command: Dict[str, Any]) -> List[str]:
     return args
 
 
+def _runtime_entry_by_entry_id(
+    runtime_entries: Mapping[str, Dict[str, Any]],
+    entry_id: str,
+) -> Dict[str, Any]:
+    for runtime_entry in runtime_entries.values():
+        entry = dict((runtime_entry or {}).get("entry") or {})
+        if str(entry.get("entry_id") or "") == str(entry_id):
+            return dict(runtime_entry or {})
+    return {}
+
+
 def _command_plan_for_worktree_mode(
     command_plan: Sequence[Dict[str, Any]],
     *,
@@ -2007,10 +2063,10 @@ def _command_plan_for_worktree_mode(
     out: List[Dict[str, Any]] = []
     for command in command_plan:
         args = [str(arg) for arg in list(command.get("args") or [])]
-        if args == ["python", checker_path]:
+        if args[:2] == ["python", checker_path]:
             updated = dict(command)
             updated["display"] = f"{str(command.get('display') or '').strip()} --allow-dirty-worktree-proof"
-            updated["args"] = [*args, "--allow-dirty-worktree-proof"]
+            updated["args"] = [*args[:2], "--allow-dirty-worktree-proof", *args[2:]]
             out.append(updated)
             continue
         out.append(dict(command))
@@ -2779,7 +2835,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     pending_long_gate_successes: List[Dict[str, Any]] = []
     failure_kind: Optional[str] = None
     git_status_short_after: Optional[List[str]] = None
-    full_test_debt_runtime_entry = long_gate_runtime_entries.get("python tools/check_full_test_debt.py", {})
+    full_test_debt_runtime_entry = _runtime_entry_by_entry_id(long_gate_runtime_entries, ENTRY_FULL_TEST_DEBT)
     preserve_full_test_debt_outputs = _should_preserve_full_test_debt_outputs(
         full_test_debt_runtime_entry,
         cache_enabled=effective_long_gate_cache_enabled,

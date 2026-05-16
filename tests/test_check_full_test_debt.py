@@ -372,31 +372,80 @@ def test_check_full_test_debt_formal_check_requires_clean_worktree_proof() -> No
 
 def test_check_full_test_debt_dirty_cli_disables_only_clean_worktree_claim(monkeypatch, capsys) -> None:
     checker = _import_checker()
-    calls: List[bool] = []
+    calls: List[Dict[str, Any]] = []
 
-    def fake_run_check(*, require_clean_worktree_proof: bool = True):
-        calls.append(require_clean_worktree_proof)
+    def fake_run_check(
+        *,
+        require_clean_worktree_proof: bool = True,
+        sharded: Optional[bool] = None,
+        shard_count: Optional[int] = None,
+    ):
+        calls.append(
+            {
+                "require_clean_worktree_proof": require_clean_worktree_proof,
+                "sharded": sharded,
+                "shard_count": shard_count,
+            }
+        )
         return {"schema_version": 1, "status": "passed"}
 
     monkeypatch.setattr(checker, "run_check", fake_run_check)
 
     assert checker.main(["--allow-dirty-worktree-proof"]) == 0
-    assert calls == [False]
+    assert calls == [{"require_clean_worktree_proof": False, "sharded": None, "shard_count": None}]
     assert '"status": "passed"' in capsys.readouterr().out
 
 
 def test_check_full_test_debt_default_cli_requires_clean_worktree_claim(monkeypatch) -> None:
     checker = _import_checker()
-    calls: List[bool] = []
+    calls: List[Dict[str, Any]] = []
 
-    def fake_run_check(*, require_clean_worktree_proof: bool = True):
-        calls.append(require_clean_worktree_proof)
+    def fake_run_check(
+        *,
+        require_clean_worktree_proof: bool = True,
+        sharded: Optional[bool] = None,
+        shard_count: Optional[int] = None,
+    ):
+        calls.append(
+            {
+                "require_clean_worktree_proof": require_clean_worktree_proof,
+                "sharded": sharded,
+                "shard_count": shard_count,
+            }
+        )
         return {"schema_version": 1, "status": "passed"}
 
     monkeypatch.setattr(checker, "run_check", fake_run_check)
 
     assert checker.main([]) == 0
-    assert calls == [True]
+    assert calls == [{"require_clean_worktree_proof": True, "sharded": None, "shard_count": None}]
+
+
+def test_check_full_test_debt_cli_passes_explicit_shard_options(monkeypatch) -> None:
+    checker = _import_checker()
+    calls: List[Dict[str, Any]] = []
+
+    def fake_run_check(
+        *,
+        require_clean_worktree_proof: bool = True,
+        sharded: Optional[bool] = None,
+        shard_count: Optional[int] = None,
+    ):
+        calls.append(
+            {
+                "require_clean_worktree_proof": require_clean_worktree_proof,
+                "sharded": sharded,
+                "shard_count": shard_count,
+            }
+        )
+        return {"schema_version": 1, "status": "passed"}
+
+    monkeypatch.setenv("APS_FULL_TEST_DEBT_SHARDED", "1")
+    monkeypatch.setenv("APS_FULL_TEST_DEBT_SHARD_COUNT", "4")
+    monkeypatch.setattr(checker, "run_check", fake_run_check)
+
+    assert checker.main(["--sharded", "--shard-count", "7"]) == 0
+    assert calls == [{"require_clean_worktree_proof": True, "sharded": True, "shard_count": 7}]
 
 
 @pytest.mark.parametrize(
@@ -446,24 +495,15 @@ def test_check_full_test_debt_rejects_invalid_fixed_proof(
         checker.build_full_test_debt_summary(payload, ledger=_ledger(entry, max_registered_xfail=0))
 
 
-def test_check_full_test_debt_rejects_ratchet_overflow() -> None:
+@pytest.mark.parametrize("max_registered_xfail", [0, 2])
+def test_check_full_test_debt_rejects_ratchet_mismatch(max_registered_xfail: int) -> None:
     checker = _import_checker()
     nodeid = KNOWN_DEBT_NODEID
     entry = _entry(nodeid)
     payload = _payload(collected_nodeids=[nodeid], reports=[_report(nodeid)])
 
     with pytest.raises(checker.QualityGateError, match="max_registered_xfail"):
-        checker.build_full_test_debt_summary(payload, ledger=_ledger(entry, max_registered_xfail=0))
-
-
-def test_check_full_test_debt_rejects_ratchet_slack() -> None:
-    checker = _import_checker()
-    nodeid = KNOWN_DEBT_NODEID
-    entry = _entry(nodeid)
-    payload = _payload(collected_nodeids=[nodeid], reports=[_report(nodeid)])
-
-    with pytest.raises(checker.QualityGateError, match="max_registered_xfail"):
-        checker.build_full_test_debt_summary(payload, ledger=_ledger(entry, max_registered_xfail=2))
+        checker.build_full_test_debt_summary(payload, ledger=_ledger(entry, max_registered_xfail=max_registered_xfail))
 
 
 def test_check_full_test_debt_rejects_unregistered_xfail_report() -> None:
@@ -578,6 +618,68 @@ def test_collect_current_payload_uses_sharded_env(monkeypatch) -> None:
     assert "--shard-count" in command
     assert "4" in command
     assert command[-len(checker.FORMAL_FULL_TEST_PYTEST_ARGS) :] == checker.FORMAL_FULL_TEST_PYTEST_ARGS
+
+
+def test_collect_current_payload_explicit_shard_count_overrides_env(monkeypatch) -> None:
+    checker = _import_checker()
+    payload = _payload(
+        collected_nodeids=["tests/test_sample.py::test_ok"],
+        reports=[_report("tests/test_sample.py::test_ok", outcome="passed")],
+    )
+    calls: Dict[str, Any] = {}
+
+    class FakeProcess:
+        def __init__(self, command, **kwargs) -> None:
+            calls["command"] = command
+            calls["kwargs"] = kwargs
+            self.stdout = io.StringIO(json.dumps(payload, ensure_ascii=False))
+            self.stderr = io.StringIO("")
+
+        def wait(self) -> int:
+            return 0
+
+    monkeypatch.setenv("APS_FULL_TEST_DEBT_SHARDED", "1")
+    monkeypatch.setenv("APS_FULL_TEST_DEBT_SHARD_COUNT", "4")
+    monkeypatch.setattr(checker.subprocess, "Popen", FakeProcess)
+
+    result = checker.collect_current_payload(sharded=True, shard_count=6)
+
+    assert result == payload
+    command = calls["command"]
+    assert "--sharded" in command
+    assert "--shard-count" in command
+    shard_count_index = command.index("--shard-count") + 1
+    assert command[shard_count_index] == "6"
+
+
+def test_collect_current_payload_explicit_sharded_false_overrides_env(monkeypatch) -> None:
+    checker = _import_checker()
+    payload = _payload(
+        collected_nodeids=["tests/test_sample.py::test_ok"],
+        reports=[_report("tests/test_sample.py::test_ok", outcome="passed")],
+    )
+    calls: Dict[str, Any] = {}
+
+    class FakeProcess:
+        def __init__(self, command, **kwargs) -> None:
+            calls["command"] = command
+            calls["kwargs"] = kwargs
+            self.stdout = io.StringIO(json.dumps(payload, ensure_ascii=False))
+            self.stderr = io.StringIO("")
+
+        def wait(self) -> int:
+            return 0
+
+    monkeypatch.setenv("APS_FULL_TEST_DEBT_SHARDED", "1")
+    monkeypatch.setenv("APS_FULL_TEST_DEBT_SHARD_COUNT", "4")
+    monkeypatch.setattr(checker.subprocess, "Popen", FakeProcess)
+
+    result = checker.collect_current_payload(sharded=False, shard_count=6)
+
+    assert result == payload
+    command = calls["command"]
+    assert "--sharded" not in command
+    assert "--shard-count" not in command
 
 
 def test_check_full_test_debt_collection_errors_list_entries() -> None:

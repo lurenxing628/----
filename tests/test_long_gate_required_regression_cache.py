@@ -30,6 +30,7 @@ from tools import quality_gate_shared
 from tools.long_gate_fingerprint import fingerprint_entry
 from tools.long_gate_manifest import (
     ENTRY_DEBT_LEDGER_SYNC,
+    ENTRY_FULL_TEST_DEBT,
     ENTRY_REQUIRED_REGRESSIONS,
     ENTRY_STARTUP_RUNTIME_REGRESSIONS,
 )
@@ -59,9 +60,10 @@ def test_required_entry_comes_from_real_command_plan_and_enables_only_current_ca
     required_entry = _entry_by_id(manifest, ENTRY_REQUIRED_REGRESSIONS)
     required_command = next(command for command in command_plan if command["display"] == required_entry["display"])
     enabled = [entry["entry_id"] for entry in manifest["entries"] if entry["reuse_allowed"]]
+    required_targets = iter_required_tests()
 
     assert required_entry["args"] == [str(arg) for arg in required_command["args"]]
-    assert required_entry["input_file_scopes"][: len(required_entry["args"][4:])] == required_entry["args"][4:]
+    assert required_entry["input_file_scopes"][: len(required_targets)] == required_targets
     assert required_entry["output_result_files"] == ["evidence/QualityGate/required_regressions.json"]
     assert "groups" not in required_entry
     assert "required_regression_group_coverage" not in required_entry
@@ -182,6 +184,7 @@ def test_required_success_writes_parent_proof_and_reuses_next_run(monkeypatch, t
     repo_root = ctx.repo_root
     command_plan = ctx.command_plan
     required_display = _entry_display(command_plan, repo_root, ENTRY_REQUIRED_REGRESSIONS)
+    full_debt_display = _entry_display(command_plan, repo_root, ENTRY_FULL_TEST_DEBT)
 
     first_calls = _run_gate_with_fake_commands(module, monkeypatch, repo_root, command_plan, ["--long-gate-cache"])
     first_displays = _call_displays(first_calls)
@@ -198,12 +201,12 @@ def test_required_success_writes_parent_proof_and_reuses_next_run(monkeypatch, t
 
     assert required_display in first_displays
     collect_call = _call_by_display(first_calls, "python -m pytest --collect-only -q tests")
-    full_debt_call = _call_by_display(first_calls, "python tools/check_full_test_debt.py")
+    full_debt_call = _call_by_display(first_calls, full_debt_display)
     required_call = _call_by_display(first_calls, required_display)
+    required_targets = iter_required_tests()
     assert collect_call["capture_output"] is True
     assert full_debt_call["capture_output"] is True
     assert required_call["args"] == [str(arg) for arg in module._resolve_command_args(required_entry)]
-    assert required_call["args"][-len(required_entry["args"][4:]) :] == required_entry["args"][4:]
     assert required_call["capture_output"] == bool(required_entry["capture_output"])
     assert proof["schema_version"] == module.REQUIRED_REGRESSIONS_PROOF_SCHEMA_VERSION
     assert proof["status"] == "passed"
@@ -217,10 +220,18 @@ def test_required_success_writes_parent_proof_and_reuses_next_run(monkeypatch, t
     assert proof["fingerprint_hash"] == success_cache["fingerprint_hash"]
     assert proof["returncode"] == 0
     assert proof["pytest_exit_code"] == 0
+    assert proof["verification_exit_code"] == 0
+    assert proof["verification_method"] == "full_test_debt_payload_required_coverage"
     assert proof["execution_mode"] == "executed"
-    assert proof["test_count"] == len(required_entry["args"][4:])
-    assert proof["required_target_count"] == len(required_entry["args"][4:])
-    assert proof["required_target_paths"] == required_entry["args"][4:]
+    assert proof["test_count"] == len(required_targets)
+    assert proof["required_target_count"] == len(required_targets)
+    assert proof["required_target_paths"] == required_targets
+    assert proof["verified_required_nodeid_count"] == len(required_targets)
+    assert proof["verified_required_nodeids_hash"]
+    assert proof["required_nodeid_count_by_path"] == {path: 1 for path in required_targets}
+    assert proof["source_payload_path"] == "evidence/QualityGate/current_full_test_debt.json"
+    assert proof["source_payload_collected_count"] == len(required_targets)
+    assert proof["source_payload_report_count"] == len(required_targets)
     assert "groups" not in proof
     assert proof["stdout_log_path"] == "evidence/QualityGate/long_gate/logs/required_regressions.stdout.log"
     assert proof["stderr_log_path"] == "evidence/QualityGate/long_gate/logs/required_regressions.stderr.log"
@@ -278,6 +289,7 @@ def test_required_tampered_parent_cache_reruns_parent(monkeypatch, tmp_path, mut
         "tools/quality_gate_support.py",
         "tools/check_full_test_debt.py",
         "tools/collect_full_test_debt.py",
+        "tools/verify_required_regressions_from_full_test_debt.py",
         "tools/git_hook_checks.py",
         "scripts/run_quality_gate.py",
         "tools/long_gate_cache.py",
@@ -513,7 +525,7 @@ def test_explain_does_not_write_required_proof(monkeypatch, tmp_path, capsys):
     assert not _proof_path_for_entry(repo_root, ENTRY_REQUIRED_REGRESSIONS).exists()
 
 
-def test_no_cache_ignores_existing_required_cache_and_does_not_write_proof(monkeypatch, tmp_path):
+def test_no_cache_ignores_existing_required_cache_and_keeps_verifier_proof(monkeypatch, tmp_path):
     ctx = _prepare_gate_run_context(monkeypatch, tmp_path)
     module = ctx.module
     repo_root = ctx.repo_root
@@ -530,7 +542,11 @@ def test_no_cache_ignores_existing_required_cache_and_does_not_write_proof(monke
     calls = _run_gate_with_fake_commands(module, monkeypatch, repo_root, command_plan, ["--no-long-gate-cache"])
 
     assert required_display in _call_displays(calls)
-    assert not _proof_path_for_entry(repo_root, ENTRY_REQUIRED_REGRESSIONS).exists()
+    proof_path = _proof_path_for_entry(repo_root, ENTRY_REQUIRED_REGRESSIONS)
+    assert proof_path.exists()
+    proof = json.loads(proof_path.read_text(encoding="utf-8"))
+    assert proof["verification_method"] == "full_test_debt_payload_required_coverage"
+    assert proof["verified_required_nodeid_count"] > 0
 
 
 def test_force_rerun_required_executes_parent_instead_of_reusing(monkeypatch, tmp_path):
@@ -563,6 +579,7 @@ def test_force_rerun_all_executes_required_and_keeps_later_entries_planned(monke
     module = ctx.module
     repo_root = ctx.repo_root
     command_plan = ctx.command_plan
+    full_debt_display = _entry_display(command_plan, repo_root, ENTRY_FULL_TEST_DEBT)
     startup_display = _entry_display(command_plan, repo_root, ENTRY_STARTUP_RUNTIME_REGRESSIONS)
     required_display = _entry_display(command_plan, repo_root, ENTRY_REQUIRED_REGRESSIONS)
     _seed_required_success(module, monkeypatch, repo_root, command_plan)
@@ -578,7 +595,7 @@ def test_force_rerun_all_executes_required_and_keeps_later_entries_planned(monke
     displays = _call_displays(calls)
 
     assert "python -m pytest --collect-only -q tests" in displays
-    assert "python tools/check_full_test_debt.py" in displays
+    assert full_debt_display in displays
     assert required_display in displays
     assert startup_display in displays
     assert _summary_entry(summary, ENTRY_REQUIRED_REGRESSIONS)["reason"] == "forced by --long-gate-force-rerun-all"
@@ -626,5 +643,6 @@ def test_required_parent_entry_still_matches_real_command_plan():
 
     assert required_entry["display"] in command_by_display
     assert required_entry["args"] == command_by_display[required_entry["display"]]["args"]
-    assert required_entry["args"][4:] == iter_required_tests()
+    required_targets = iter_required_tests()
+    assert required_entry["input_file_scopes"][: len(required_targets)] == required_targets
     assert required_entry["output_result_files"] == ["evidence/QualityGate/required_regressions.json"]

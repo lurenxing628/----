@@ -325,7 +325,8 @@ def test_main_runs_guard_preflight_before_static_and_startup_checks(monkeypatch,
     assert "tools/long_gate_schema.py" in module.QUALITY_GATE_TOOL_PATHS
     assert "tools/long_gate_summary.py" in module.QUALITY_GATE_TOOL_PATHS
     assert "scripts/sync_debt_ledger.py" in module.QUALITY_GATE_TOOL_PATHS
-    assert "python -m pytest -q " + " ".join(module.REQUIRED_TEST_ARGS) in displays
+    required_display = "python tools/verify_required_regressions_from_full_test_debt.py"
+    assert required_display in displays
     assert "python scripts/sync_debt_ledger.py check" in displays
     assert displays.index("guard_preflight") < displays.index("python -m pytest --collect-only -q tests")
     assert displays.index("python -m pytest --collect-only -q tests") < displays.index("python -m ruff --version")
@@ -343,11 +344,11 @@ def test_main_runs_guard_preflight_before_static_and_startup_checks(monkeypatch,
     assert displays.index("python -m pytest -q tests/test_architecture_fitness.py") < displays.index(
         "python scripts/sync_debt_ledger.py check"
     )
-    assert displays.index("python -m pytest -q " + " ".join(module.REQUIRED_TEST_ARGS)) < displays.index(
+    assert displays.index(required_display) < displays.index(
         "python scripts/sync_debt_ledger.py check"
     )
-    assert displays.index("guard_preflight") < displays.index("python -m pytest -q " + " ".join(module.REQUIRED_TEST_ARGS))
-    assert displays.index("python -m pytest -q " + " ".join(module.REQUIRED_TEST_ARGS)) < displays.index(
+    assert displays.index("guard_preflight") < displays.index(required_display)
+    assert displays.index(required_display) < displays.index(
         "python scripts/sync_debt_ledger.py check"
     )
     assert displays.index("python scripts/sync_debt_ledger.py check") < displays.index(
@@ -412,12 +413,12 @@ def test_full_test_debt_proof_is_in_shared_quality_gate_plan() -> None:
 
     command_plan = shared.build_quality_gate_command_plan()
     displays = [str(command["display"]) for command in command_plan]
-    full_debt_display = "python tools/check_full_test_debt.py"
+    full_debt_display = "python tools/check_full_test_debt.py --sharded --shard-count 3"
     full_debt_command = command_plan[displays.index(full_debt_display)]
 
     assert displays.index("python -m pytest --collect-only -q tests") < displays.index(full_debt_display)
     assert displays.index(full_debt_display) < displays.index("python -m ruff --version")
-    assert full_debt_command["args"] == ["python", "tools/check_full_test_debt.py"]
+    assert full_debt_command["args"] == ["python", "tools/check_full_test_debt.py", "--sharded", "--shard-count", "3"]
     assert full_debt_command["capture_output"] is True
     assert full_debt_command["output_policy"] == "exact"
 
@@ -435,6 +436,7 @@ def test_full_test_debt_proof_is_in_shared_quality_gate_plan() -> None:
         "tools/fast_static_precheck.py",
         "tools/check_full_test_debt.py",
         "tools/collect_full_test_debt.py",
+        "tools/verify_required_regressions_from_full_test_debt.py",
         "tools/git_hook_checks.py",
         "tools/test_debt_registry.py",
         "tools/test_registry.py",
@@ -462,6 +464,7 @@ def test_full_test_debt_proof_is_in_shared_quality_gate_plan() -> None:
         "tools/fast_static_precheck.py",
         "tools/check_full_test_debt.py",
         "tools/collect_full_test_debt.py",
+        "tools/verify_required_regressions_from_full_test_debt.py",
         "tools/git_hook_checks.py",
         "tools/test_debt_registry.py",
         "tools/test_registry.py",
@@ -611,12 +614,10 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
         "tests/regression_scheduler_resource_dispatch_invalid_query_cleanup.py",
         "tests/regression_schedule_summary_input_fallback_contract.py",
         "tests/regression_error_boundary_contract.py",
-        "tests/regression_excel_template_contracts.py",
         "tests/regression_route_version_normalizers_contract.py",
         "tests/regression_gantt_page_version_default_latest.py",
         "tests/regression_gantt_default_version_span.py",
         "tests/regression_reports_page_version_default_latest.py",
-        "tests/regression_reports_export_version_default_latest.py",
         "tests/regression_gantt_calendar_load_failed_degraded.py",
         "tests/regression_gantt_bad_time_rows_surface_degraded.py",
         "tests/regression_gantt_contract_snapshot.py",
@@ -639,10 +640,6 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
         "tests/regression_scheduler_excel_batches_preview_baseline_precision.py",
         "tests/test_check_full_test_debt.py",
         "tests/test_full_test_debt_registry_contract.py",
-        "tests/regression_config_manual_markdown.py",
-        "tests/regression_frontend_ui_language_polish.py",
-        "tests/regression_manual_entry_scope.py",
-        "tests/regression_page_manual_registry.py",
         "tests/regression_request_services_contract.py",
         "tests/regression_request_services_lazy_construction.py",
         "tests/regression_request_services_failure_propagation.py",
@@ -669,12 +666,18 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
         "tests/test_sync_debt_ledger.py",
         "tests/test_scheduler_batches_page_viewmodel.py",
         "tests/regression_frontend_manual_blueprint_contract.py",
+        "tests/regression_config_manual_markdown.py",
+        "tests/regression_frontend_ui_language_polish.py",
+        "tests/regression_manual_entry_scope.py",
+        "tests/regression_page_manual_registry.py",
+        "tests/regression_excel_template_contracts.py",
+        "tests/regression_reports_export_version_default_latest.py",
     ):
         assert lower_frequency_path not in module.REQUIRED_TEST_ARGS
 
     command_plan = shared.build_quality_gate_command_plan()
     displays = [str(command["display"]) for command in command_plan]
-    required_display = "python -m pytest -q " + " ".join(required_from_registry)
+    required_display = "python tools/verify_required_regressions_from_full_test_debt.py"
     startup_display = "python -m pytest -q " + " ".join(startup_from_registry)
     assert required_display in displays
     assert startup_display in displays
@@ -686,8 +689,8 @@ def test_browser_required_env_overlay_is_in_shared_quality_gate_plan() -> None:
     shared = _shared_quality_registry()
     command_plan = shared.build_quality_gate_command_plan()
     displays = [str(command["display"]) for command in command_plan]
-    full_debt = command_plan[displays.index("python tools/check_full_test_debt.py")]
-    required_display = "python -m pytest -q " + " ".join(shared.iter_quality_gate_required_tests())
+    full_debt = command_plan[displays.index("python tools/check_full_test_debt.py --sharded --shard-count 3")]
+    required_display = "python tools/verify_required_regressions_from_full_test_debt.py"
     required = command_plan[displays.index(required_display)]
 
     for command in (full_debt, required):
@@ -717,8 +720,9 @@ def test_run_quality_gate_passes_env_overlay_to_required_commands(monkeypatch, t
 
     assert module.main([]) == 0
 
-    required_display = "python -m pytest -q " + " ".join(module.REQUIRED_TEST_ARGS)
-    assert seen_env["python tools/check_full_test_debt.py"]["APS_BROWSER_SMOKE_REQUIRED"] == "1"
+    full_debt_display = "python tools/check_full_test_debt.py --sharded --shard-count 3"
+    required_display = "python tools/verify_required_regressions_from_full_test_debt.py"
+    assert seen_env[full_debt_display]["APS_BROWSER_SMOKE_REQUIRED"] == "1"
     assert seen_env[required_display]["APS_BROWSER_SMOKE_REQUIRED"] == "1"
     assert seen_env["python -m ruff --version"] == {}
 
@@ -1299,7 +1303,7 @@ def test_main_allow_dirty_worktree_marks_manifest_unbound(monkeypatch, tmp_path,
     assert "质量门禁通过" not in output
     full_debt_call = next(call for call in calls if call[0].startswith("python tools/check_full_test_debt.py"))
     assert full_debt_call[0].endswith(" --allow-dirty-worktree-proof")
-    assert full_debt_call[1][-1] == "--allow-dirty-worktree-proof"
+    assert "--allow-dirty-worktree-proof" in full_debt_call[1]
 
     manifest_path = repo_root / "evidence" / "QualityGate" / "quality_gate_manifest.json"
     manifest = module.json.loads(manifest_path.read_text(encoding="utf-8"))
