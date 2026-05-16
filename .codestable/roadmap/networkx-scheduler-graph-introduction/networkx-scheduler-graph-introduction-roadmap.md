@@ -3,7 +3,7 @@ doc_type: roadmap
 slug: networkx-scheduler-graph-introduction
 status: active
 created: 2026-05-08
-last_reviewed: 2026-05-08
+last_reviewed: 2026-05-16
 tags: [scheduler, graph, networkx, win7, python38]
 related_requirements: []
 related_architecture: [.codestable/architecture/ARCHITECTURE.md]
@@ -275,7 +275,7 @@ time_cost_ms
 | 阶段 | 目标 | 是否改变排产结果 | 风险 |
 | -: | --- | ---: | -: |
 | 0 | 建分支、记录基线、落 ADR 和依赖决策 | 否 | 很低 |
-| 1 | 加可选依赖文件和离线 wheel 流程 | 否 | 很低 |
+| 1 | 加可选依赖文件、安装验证和离线 wheel 流程 | 否 | 很低 |
 | 2 | 加配置开关和迁移，默认 off | 否 | 低 |
 | 3 | 建目录和 NetworkX 懒加载层 | 否 | 低 |
 | 4 | 定义图输入数据结构和节点 ID 规范 | 否 | 低 |
@@ -289,168 +289,398 @@ time_cost_ms
 | 12 | 资源匹配 report-only 分析 | 部分 | 中 |
 | 13 | 打包、离线、回归、验收、归档 | 否/可控 | 中 |
 
-## 阶段 0：建分支、记录基线、落 ADR
+## 阶段 0：建分支、记录 before_networkx 基线、落 ADR
 
-### 0.1 新建分支
+阶段 0 只做“引入前”的决策和证据留痕，不安装 NetworkX，不新增图分析代码，也不改变任何排产业务逻辑。
 
-```bat
-git checkout -b feature/networkx-scheduler-graph
+### 0.0 阶段目标
+
+```text
+1. 建立独立分支，保护当前主线。
+2. 记录未引入 NetworkX 前的 Git、Python、pip freeze、关键配置和核心文件 hash。
+3. 用 3 组代表性排产案例保存可对比 JSON。
+4. 落地 ADR-0012，明确 NetworkX 只作为内部图分析引擎、版本锁定、Win7/Python 3.8 边界和非目标。
+5. 不修改 requirements.txt。
+6. 不把 networkx 安装进当前项目 venv；如需兼容探针，只允许隔离临时 venv。
 ```
 
-如果按本仓库 Codex 分支习惯，也可以使用：
+### 0.1 工作树保护与分支
+
+先检查当前工作树：
 
 ```bash
-git checkout -b codex/networkx-scheduler-graph
+git status --short --branch
+```
+
+验收规则：
+
+```text
+1. 如果工作树干净，可以直接建分支。
+2. 如果有无关改动，不要 stash、不要 reset、不要删除。
+3. 先记录当前状态，并让负责人确认是否继续。
+```
+
+保存状态证据：
+
+```bash
+mkdir -p evidence/scheduler_baseline
+git status --short --branch > evidence/scheduler_baseline/00_git_status_before_networkx.txt
+git rev-parse HEAD > evidence/scheduler_baseline/00_git_commit_before_networkx.txt
+```
+
+建分支：
+
+```bash
+git switch -c feature/networkx-scheduler-graph
+# 或旧 Git：git checkout -b feature/networkx-scheduler-graph
 ```
 
 验收：
 
 ```text
 当前分支不是 main。
-git status --short --branch 能看到新分支名。
+git status --short --branch 能看到 feature/networkx-scheduler-graph 或 codex/networkx-scheduler-graph。
 工作树里已有的无关改动不被误删、不被重置。
 ```
 
-### 0.2 记录当前依赖状态
+### 0.2 Python、pip freeze 与文件 hash 基线
 
-执行：
+必须在安装 NetworkX 之前执行：
 
-```bat
-python --version
+```bash
+python --version | tee evidence/scheduler_baseline/01_python_version_before_networkx.txt
+python -c "import sys; print(sys.version)" > evidence/scheduler_baseline/01_python_full_version_before_networkx.txt
 python -m pip freeze > evidence/baseline_pip_freeze_before_networkx.txt
+cp evidence/baseline_pip_freeze_before_networkx.txt evidence/scheduler_baseline/02_pip_freeze_before_networkx.txt
+```
+
+如果当前命令行默认 Python 不是项目/打包口径 Python 3.8.x，必须优先使用项目 venv 或打包机 Python 再生成正式基线；默认 Python 版本可以另存为辅助证据，但不能冒充 Win7/Python 3.8 基线。
+
+检查当前环境是否已含 NetworkX 或重依赖：
+
+```bash
+grep -i "networkx" evidence/baseline_pip_freeze_before_networkx.txt || true
+grep -Ei "numpy|scipy|matplotlib|pandas" evidence/baseline_pip_freeze_before_networkx.txt || true
+python - <<'PY'
+try:
+    import networkx  # noqa
+except Exception:
+    print("OK: current env has no networkx")
+else:
+    print("WARN: current env already has networkx; phase0 baseline must record this explicitly")
+PY
+```
+
+记录关键文件 hash：
+
+```bash
+python - <<'PY'
+import hashlib
+from pathlib import Path
+
+paths = [
+    "requirements.txt",
+    "requirements-dev.txt",
+    "pyproject.toml",
+    "schema.sql",
+]
+
+out = []
+for item in paths:
+    p = Path(item)
+    if not p.exists():
+        out.append(f"{item}	MISSING")
+        continue
+    out.append(f"{item}	sha256={hashlib.sha256(p.read_bytes()).hexdigest()}")
+
+Path("evidence/scheduler_baseline/03_core_file_hashes_before_networkx.txt").write_text(
+    "
+".join(out) + "
+",
+    encoding="utf-8",
+)
+PY
 ```
 
 验收：
 
 ```text
-python --version 显示 3.8.10 或当前打包机约定的 Python 3.8.x。
-evidence/baseline_pip_freeze_before_networkx.txt 已生成。
+evidence/baseline_pip_freeze_before_networkx.txt 存在。
+evidence/scheduler_baseline/02_pip_freeze_before_networkx.txt 存在。
+evidence/scheduler_baseline/03_core_file_hashes_before_networkx.txt 存在。
+requirements.txt 的 hash 在阶段 0 后不应变化。
+纯净基线中不应出现 networkx；如果开发机已有 networkx，必须在 README 中标注该 freeze 不是纯净打包环境证据。
 ```
 
-### 0.3 记录现有排产基线
+### 0.3 阶段 0 禁止事项
 
-找 3 组已有典型数据：
+阶段 0 明确不做：
 
 ```text
-case_001_normal：普通排产
-case_002_urgent：急件插单
-case_003_external：含外部工序
+[ ] 不安装 networkx 到当前项目 venv
+[ ] 不新增 requirements-optimizer-lite-win7.txt
+[ ] 不修改 requirements.txt
+[ ] 不新增 core/services/scheduler/graph/
+[ ] 不改 schedule_orchestrator.py
+[ ] 不改 schedule_optimizer.py
+[ ] 不改 schedule_persistence.py
+[ ] 不新增迁移
+[ ] 不新增配置字段
+[ ] 不改页面
+[ ] 不跑 PyInstaller 打包
 ```
 
-分别执行一次排产，保存：
+原因：阶段 0 是 before_networkx 证据采集阶段。如果先安装依赖或改排产代码，后续就无法证明 report 模式没有改变原排产结果。
+
+例外：如果负责人坚持阶段 0 就做 NetworkX 兼容探针，必须使用临时隔离 venv，不能污染当前项目 venv：
+
+```bash
+python -m venv /tmp/aps_nx_probe_py38
+/tmp/aps_nx_probe_py38/bin/python -m pip install "networkx==3.1"
+/tmp/aps_nx_probe_py38/bin/python -c "import networkx as nx; print(nx.__version__); assert nx.__version__ == '3.1'"
+rm -rf /tmp/aps_nx_probe_py38
+```
+
+### 0.4 三组排产基线
+
+基线原则：
 
 ```text
-evidence/scheduler_baseline/case_001_result.json
-evidence/scheduler_baseline/case_002_result.json
-evidence/scheduler_baseline/case_003_result.json
+1. 每组使用固定 batch_ids。
+2. 每组使用固定 start_dt。
+3. 每组使用固定排产配置。
+4. 避免使用 improve 随机搜索模式作为精确对比基线。
+5. 禁用 freeze_window，除非该案例专门用于冻结窗口。
+6. 使用复制库或临时库，不要直接污染生产库。
+7. simulate=True 也会写 Schedule / ScheduleHistory / OperationLogs，因此仍然会改变 DB；必须使用复制库。
 ```
 
-保存内容至少包含：
+推荐三组：
+
+```text
+case_001_normal：普通内部排产。至少 1~2 个 ready=yes 的普通批次，工序均为 internal，machine_id/operator_id 已明确，不依赖 auto_assign。
+case_002_urgent：急件/优先级案例。至少 2 个批次，一个 urgent/critical，一个 normal，资源有竞争，freeze_window=no。
+case_003_external：含外协案例。至少 1 个含 external 工序的批次，内部前后工序资源明确，记录 ext_group 事实。
+```
+
+推荐输出：
+
+```text
+evidence/scheduler_baseline/case_001_normal_result.json
+evidence/scheduler_baseline/case_002_urgent_result.json
+evidence/scheduler_baseline/case_003_external_result.json
+```
+
+每个 JSON 至少包含：
+
+```json
+{
+  "baseline_schema_version": "networkx_phase0_scheduler_baseline.v1",
+  "case_id": "case_001_normal",
+  "created_at": "2026-05-16T...",
+  "repo": {
+    "branch": "feature/networkx-scheduler-graph",
+    "commit": "...",
+    "dirty_status": "..."
+  },
+  "python": {
+    "version": "3.8.x"
+  },
+  "run_input": {
+    "batch_ids": ["B001", "B002"],
+    "start_dt": "2026-02-02 08:00:00",
+    "simulate": true,
+    "created_by": "networkx_phase0"
+  },
+  "config": {
+    "algo_mode": "greedy",
+    "strategy": "due_date_first",
+    "dispatch_mode": "batch_order",
+    "dispatch_rule": "slack",
+    "auto_assign_enabled": "no",
+    "freeze_window": "no"
+  },
+  "run_return": {},
+  "schedule_rows": [],
+  "history": {
+    "version": 1,
+    "strategy": "due_date_first",
+    "result_status": "success",
+    "result_summary_core": {}
+  },
+  "operation_log": {
+    "action": "simulate",
+    "target_id": "1",
+    "detail_core": {}
+  },
+  "future_compare_ignore": [
+    "repo.dirty_status",
+    "run_return.version",
+    "schedule_rows[].version",
+    "history.version",
+    "history.result_summary_core.time_cost_ms",
+    "operation_log.id",
+    "operation_log.detail_core.time_cost_ms",
+    "history.result_summary_core.algo.graph_analysis",
+    "history.result_summary_core.diagnostics.graph_analysis"
+  ]
+}
+```
+
+后续 report 模式必须严格比较：
 
 ```text
 op_id
 batch_id
 op_code
 seq
+source
 machine_id
 operator_id
+supplier_id
 start_time
 end_time
-source
+lock_status
+```
+
+不比较：
+
+```text
 version
+time_cost_ms
+ScheduleHistory.id
+OperationLogs.id
+新增 graph_analysis 字段
 ```
 
-验收：
+### 0.5 阶段 0 可新增的只读/留痕工具
+
+允许新增：
 
 ```text
-后续 report 模式下，排产结果必须和这 3 份基线完全一致。
-对比时先比核心排程行，不要比 result_summary 里新增的 graph_analysis 字段。
+tools/capture_networkx_phase0_baseline.py
 ```
 
-### 0.4 新增 ADR
-
-原始方案里建议新增：
+它只用于基线采集，不接触业务主链，不 import NetworkX，不新增图分析模块。职责：
 
 ```text
-开发文档/ADR/0004-networkx-工序图分析引擎.md
+1. 按环境变量读取复制库路径、case 参数和配置。
+2. 在复制库上设置确定性配置：algo_mode=greedy、freeze_window=no、指定 strategy/dispatch/auto_assign。
+3. 调用 ScheduleService.run_schedule(simulate=True)。
+4. 查询本次 version 的 Schedule / ScheduleHistory / OperationLogs。
+5. 输出 case_xxx_result.json。
 ```
 
-但当前仓库已经有：
+### 0.6 基线目录结构
+
+阶段 0 完成后建议得到：
 
 ```text
-开发文档/ADR/0004-frappe-gantt-本地化.md
-开发文档/ADR/0011-efficiency-整数时间轴映射.md
+evidence/
+├── baseline_pip_freeze_before_networkx.txt
+└── scheduler_baseline/
+    ├── 00_git_status_before_networkx.txt
+    ├── 00_git_commit_before_networkx.txt
+    ├── 01_python_version_before_networkx.txt
+    ├── 01_python_full_version_before_networkx.txt
+    ├── 02_pip_freeze_before_networkx.txt
+    ├── 03_core_file_hashes_before_networkx.txt
+    ├── README.md
+    ├── case_001_normal_result.json
+    ├── case_002_urgent_result.json
+    └── case_003_external_result.json
 ```
 
-所以必须改成：
+`README.md` 必须写明捕获时间、目的、对比规则、三组案例和环境告警：如果当前开发环境已装 NetworkX 或 Python 不是 3.8.x，必须显式标注。
+
+### 0.7 ADR-0012
+
+新增文件：
 
 ```text
 开发文档/ADR/0012-networkx-排产依赖图建模.md
 ```
 
-建议内容：
+ADR 必须明确：
 
-```md
-# ADR-0012: NetworkX 用于排产依赖图建模
-
-- **状态**：已采纳
-- **日期**：2026-05-08
-- **版本锁定**：networkx==3.1
-- **环境约束**：Windows 7 x64 + Python 3.8.10
-
-## 背景
-
-当前 APS 排产算法已经能按批次工序顺序、设备、人员、外协、冻结窗口和资源池执行排产。后续需要更清楚地分析工序之间的前后依赖、环、关键路径和影响范围。
-
-## 决策
-
-引入 NetworkX 作为排产工序依赖图的内部分析引擎，版本锁定为 networkx==3.1。
-
-## 引入目的
-
-- 工序依赖图建模
-- 环检测
-- 拓扑排序
-- 关键路径分析
-- 工序影响范围分析
-- ready 队列生成
-- 后续可选资源匹配分析
-
-## 非目标
-
-- 不替代现有贪心排产算法
-- 不引入 OR-Tools 作为本次图分析方案
-- 不引入 NumPy/SciPy/Matplotlib
-- 不安装 networkx[default]
-- 不在业务接口、数据库、Excel 导出中暴露 nx.Graph / nx.DiGraph
-- 不使用 NetworkX drawing / layout 功能
-
-## 架构边界
-
-- NetworkX 仅限 core/services/scheduler/graph/ 内部使用
-- 对外只返回 dataclass、dict、List[Dict]、JSON 可序列化结构
-- graph_analysis=off 时，不要求环境安装 NetworkX
-- graph_analysis=report/on 时，才检查 NetworkX 是否存在且版本为 3.1
-
-## 接入策略
-
-- 第一阶段：report 模式，只分析和记录，不改变排产结果
-- 第二阶段：on 模式，ready 队列参与排产
-- 第三阶段：关键路径和影响范围进入评分函数
+```text
+- 状态：已采纳
+- 版本锁定：networkx==3.1
+- NetworkX 3.1 是最后一个支持 Python 3.8 的 NetworkX 版本
+- Windows 7 x64 + Python 3.8.x 环境约束
+- NetworkX 只作为 core/services/scheduler/graph/ 内部图分析引擎
+- 第一阶段 report 模式只写摘要，不改变排产结果
+- graph_analysis_mode=off 时不要求安装 NetworkX
+- 不安装 networkx[default] / networkx[all]
+- 不引入 NumPy、SciPy、Pandas、Matplotlib、pydot、pygraphviz
+- 不暴露 nx.Graph / nx.DiGraph 到 Controller、页面、数据库、Excel 导出层
+- result_summary["algo"]["graph_analysis"] 只放用户可见小摘要
+- result_summary["diagnostics"]["graph_analysis"] 只放采样诊断
+- OperationLogs 只写小摘要，不写完整 nodes/edges
 ```
 
 验收：
 
-```text
-ADR 文件存在。
-ADR 编号是 0012，不覆盖已有 0004。
-ADR 明确写 networkx==3.1。
-ADR 明确写不安装 networkx[default]。
-ADR 明确写不暴露 nx.DiGraph。
-ADR 明确写 graph_analysis=off 时不要求安装 NetworkX。
+```bash
+test -f "开发文档/ADR/0012-networkx-排产依赖图建模.md"
+grep -q "networkx==3.1" "开发文档/ADR/0012-networkx-排产依赖图建模.md"
+grep -q "networkx\[default\]" "开发文档/ADR/0012-networkx-排产依赖图建模.md"
+grep -q "不暴露" "开发文档/ADR/0012-networkx-排产依赖图建模.md"
+grep -q "graph_analysis_mode=off" "开发文档/ADR/0012-networkx-排产依赖图建模.md"
 ```
 
-## 阶段 1：依赖导入，但先不改主 requirements
+### 0.8 阶段 0 自检与 Definition of Done
+
+```text
+[ ] 当前分支不是 main
+[ ] git status 已在 evidence/scheduler_baseline/00_git_status_before_networkx.txt 留痕
+[ ] 当前 commit 已在 evidence/scheduler_baseline/00_git_commit_before_networkx.txt 留痕
+[ ] Python 版本已记录，且正式基线使用 Python 3.8.x 或明确标注开发机差异
+[ ] pip freeze 已在安装 NetworkX 前记录
+[ ] requirements.txt 未修改
+[ ] 未新增 NetworkX 到主运行依赖
+[ ] 三组排产基线 JSON 已生成并可 json.loads
+[ ] 三组基线均包含 schedule_rows
+[ ] 基线 comparison ignore 规则已写清
+[ ] ADR-0012 已创建
+[ ] ADR 明确 networkx==3.1
+[ ] ADR 明确不安装 networkx[default]
+[ ] ADR 明确不暴露 nx.DiGraph
+[ ] ADR 明确 graph_analysis_mode=off 时不要求安装 NetworkX
+[ ] ADR 明确 report 模式不改变排产结果
+[ ] ADR 明确 OperationLogs 只写小摘要
+[ ] 未改排产主链代码
+[ ] 未新增 graph 模块
+[ ] 未新增迁移
+```
+
+变更范围理想情况下只应出现：
+
+```text
+开发文档/ADR/0012-networkx-排产依赖图建模.md
+evidence/baseline_pip_freeze_before_networkx.txt
+evidence/scheduler_baseline/...
+```
+
+如果决定新增基线捕获工具，则额外允许：
+
+```text
+tools/capture_networkx_phase0_baseline.py
+```
+
+不应出现：
+
+```text
+requirements.txt
+requirements-optimizer-lite-win7.txt
+core/services/scheduler/run/schedule_orchestrator.py
+core/services/scheduler/run/schedule_optimizer.py
+core/services/scheduler/run/schedule_persistence.py
+core/services/scheduler/graph/
+schema.sql
+```
+
+## 阶段 1：依赖导入与安装验证，但先不改主 requirements
 
 ### 1.1 新增可选依赖文件
 
@@ -485,9 +715,25 @@ requirements.txt
 
 ### 1.2 本机安装验证
 
-```bat
+阶段 1 才允许做 NetworkX 安装验证。执行前必须确认阶段 0 的 `baseline_pip_freeze_before_networkx.txt` 和三组排产 JSON 已经落盘。
+
+推荐先使用隔离临时 venv 验证，避免污染当前项目 venv：
+
+```bash
+python -m venv /tmp/aps_nx_probe_py38
+/tmp/aps_nx_probe_py38/bin/python -m pip install -r requirements-optimizer-lite-win7.txt
+/tmp/aps_nx_probe_py38/bin/python -c "import networkx as nx; print(nx.__version__); assert nx.__version__ == '3.1'"
+/tmp/aps_nx_probe_py38/bin/python -m pip check
+rm -rf /tmp/aps_nx_probe_py38
+```
+
+如需在项目 venv 安装，必须另存 after_networkx 的 pip freeze，不能覆盖 before_networkx 基线：
+
+```bash
 python -m pip install -r requirements-optimizer-lite-win7.txt
 python -c "import networkx as nx; print(nx.__version__); assert nx.__version__ == '3.1'"
+python -m pip check
+python -m pip freeze > evidence/baseline_pip_freeze_after_networkx.txt
 ```
 
 验收：
@@ -497,6 +743,7 @@ python -c "import networkx as nx; print(nx.__version__); assert nx.__version__ =
 无 ImportError。
 无 DLL load failed。
 python -m pip check 通过。
+baseline_pip_freeze_before_networkx.txt 未被覆盖。
 ```
 
 NetworkX 不是 OR-Tools 那类 C++ 求解器绑定；它是用于创建、操作和研究复杂网络结构的 Python 包。`networkx==3.1` 支持 Python 3.8，并且是最后一个支持 Python 3.8 的版本，所以它比直接上 OR-Tools 更适合先做轻量图分析试点。
@@ -2963,21 +3210,22 @@ if graph_mode in ("report", "on"):
 建议每个小阶段一个 commit，方便回滚。
 
 ```text
-commit 1: add networkx graph roadmap and ADR
-commit 2: add optional networkx requirements and wheel docs
-commit 3: add graph config fields default off
-commit 4: add graph module skeleton and lazy networkx loader
-commit 5: add graph dataclasses and id policy
-commit 6: add input adapter and precedence graph builder
-commit 7: add validators and topology metrics
-commit 8: add critical path and impact metrics
-commit 9: add graph exporter and analysis service
-commit 10: add report-mode scheduler integration
-commit 11: add debug export and performance evidence
-commit 12: add ready queue integration behind feature flag
-commit 13: add critical-path scoring behind feature flag
-commit 14: add resource matching report-only analysis
-commit 15: add packaging and Win7 evidence
+commit 1: record before_networkx branch, dependency and scheduler baselines
+commit 2: add ADR-0012 and update roadmap/items for phase 0 boundary
+commit 3: add optional networkx requirements and isolated install/wheel docs
+commit 4: add graph config fields default off
+commit 5: add graph module skeleton and lazy networkx loader
+commit 6: add graph dataclasses and id policy
+commit 7: add input adapter and precedence graph builder
+commit 8: add validators and topology metrics
+commit 9: add critical path and impact metrics
+commit 10: add graph exporter and analysis service
+commit 11: add report-mode scheduler integration
+commit 12: add debug export and performance evidence
+commit 13: add ready queue integration behind feature flag
+commit 14: add critical-path scoring behind feature flag
+commit 15: add resource matching report-only analysis
+commit 16: add packaging and Win7 evidence
 ```
 
 每个 commit 后执行：
@@ -3171,6 +3419,8 @@ Chrome109 启动链失败。
 
 如果只想先做一个最小可用版本，建议只做下面这些文件：
 
+阶段 0 最小闭环只包含 ADR、before_networkx 证据和基线捕获工具；下面列表从阶段 1/后续 report 模式开始。
+
 ```text
 requirements-optimizer-lite-win7.txt
 开发文档/ADR/0012-networkx-排产依赖图建模.md
@@ -3212,7 +3462,8 @@ Matplotlib
 ## 第一版完成后的验收清单
 
 ```text
-[ ] requirements-optimizer-lite-win7.txt 存在，内容为 networkx==3.1
+[ ] 阶段 0 已生成 before_networkx pip freeze 和三组排产基线 JSON
+[ ] 阶段 1 起 requirements-optimizer-lite-win7.txt 存在，内容为 networkx==3.1
 [ ] 主 requirements.txt 暂时未改变
 [ ] 未使用 networkx[default]
 [ ] 未引入 numpy/scipy/matplotlib

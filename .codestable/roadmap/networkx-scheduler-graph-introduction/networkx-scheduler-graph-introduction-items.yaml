@@ -1,36 +1,47 @@
 roadmap: networkx-scheduler-graph-introduction
 created: 2026-05-08
-last_reviewed: 2026-05-08
+last_reviewed: 2026-05-16
 
 items:
   - slug: networkx-compatibility-decision
-    title: PR-0 NetworkX 兼容性、基线和 ADR
-    description: "确认 NetworkX 3.1 与 Python 3.8、Win7 离线交付、当前轻量依赖口径兼容；记录 pip freeze、三组排产基线，并落 ADR-0012。"
+    title: PR-0 NetworkX 引入前基线和 ADR
+    description: "只做 before_networkx 决策与证据留痕：建独立分支，记录 Git/Python/pip freeze/hash，采集三组排产基线 JSON，并落 ADR-0012；不安装 NetworkX、不新增可选依赖文件、不改排产业务逻辑。"
     status: planned
     feature: null
     minimal_loop: true
     depends_on: []
     primary_paths:
-      - requirements.txt
-      - requirements-optimizer-lite-win7.txt
       - 开发文档/ADR/0012-networkx-排产依赖图建模.md
       - evidence/baseline_pip_freeze_before_networkx.txt
       - evidence/scheduler_baseline/
+      - tools/capture_networkx_phase0_baseline.py
+    forbidden_paths:
+      - requirements.txt
+      - requirements-optimizer-lite-win7.txt
+      - core/services/scheduler/run/schedule_orchestrator.py
+      - core/services/scheduler/run/schedule_optimizer.py
+      - core/services/scheduler/run/schedule_persistence.py
+      - core/services/scheduler/graph/
+      - schema.sql
     exit_checks:
       - python --version
-      - python -m pip freeze > evidence/baseline_pip_freeze_before_networkx.txt
-      - python -m pip install -r requirements-optimizer-lite-win7.txt
-      - python -c "import networkx as nx; print(nx.__version__); assert nx.__version__ == '3.1'"
-    notes: "本项只确认依赖和决策边界，不改排产业务逻辑；ADR 编号必须用 0012，不能覆盖已有 0004。"
+      - test -f evidence/baseline_pip_freeze_before_networkx.txt
+      - test -f evidence/scheduler_baseline/case_001_normal_result.json
+      - test -f evidence/scheduler_baseline/case_002_urgent_result.json
+      - test -f evidence/scheduler_baseline/case_003_external_result.json
+      - test -f "开发文档/ADR/0012-networkx-排产依赖图建模.md"
+      - grep -q "networkx==3.1" "开发文档/ADR/0012-networkx-排产依赖图建模.md"
+    notes: "阶段 0 是引入前基线，不得把 networkx 安装进当前项目 venv；如负责人坚持兼容探针，只能用隔离临时 venv，且不能覆盖 before_networkx 的 pip freeze。"
 
   - slug: scheduler-graph-config-default-off
-    title: PR-1 图分析配置默认关闭
-    description: "新增 graph_analysis_mode 等配置字段和旧库迁移，默认 off，确保未安装 NetworkX 时系统仍能启动和排产。"
+    title: PR-1 可选依赖验证与图分析配置默认关闭
+    description: "先新增 requirements-optimizer-lite-win7.txt 并在阶段 0 基线之后验证 networkx==3.1（优先隔离 venv，必要时记录 after_networkx freeze），再新增 graph_analysis_mode 等配置字段和旧库迁移，默认 off，确保未安装 NetworkX 时系统仍能启动和排产。"
     status: planned
     feature: null
     minimal_loop: false
     depends_on: [networkx-compatibility-decision]
     primary_paths:
+      - requirements-optimizer-lite-win7.txt
       - core/services/scheduler/config/config_field_spec.py
       - core/services/scheduler/config/config_snapshot.py
       - core/services/scheduler/config/config_constants.py
@@ -40,10 +51,15 @@ items:
       - web/routes/domains/scheduler/scheduler_config_display_state.py
       - core/infrastructure/migrations/
       - schema.sql
+      - evidence/baseline_pip_freeze_after_networkx.txt
     exit_checks:
+      - test -f evidence/baseline_pip_freeze_before_networkx.txt
+      - python -m venv /tmp/aps_nx_probe_py38
+      - /tmp/aps_nx_probe_py38/bin/python -m pip install -r requirements-optimizer-lite-win7.txt
+      - /tmp/aps_nx_probe_py38/bin/python -c "import networkx as nx; print(nx.__version__); assert nx.__version__ == '3.1'"
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_config_snapshot_projection_sync.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_graph_config_contract.py
-    notes: "配置字段走现有 snapshot 链路；默认 off 不要求 import networkx。"
+    notes: "安装验证从阶段 0 移到阶段 1；不得覆盖 before_networkx pip freeze。配置字段走现有 snapshot 链路；默认 off 不要求 import networkx。"
 
   - slug: scheduler-graph-core-module
     title: PR-2 图分析核心模块
