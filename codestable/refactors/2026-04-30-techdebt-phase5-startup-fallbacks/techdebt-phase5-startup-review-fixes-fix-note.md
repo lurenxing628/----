@@ -210,6 +210,8 @@ tags: [techdebt, startup, fallback, win7]
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest tests -q -k "database or migration or schema or backup" -p no:cacheprovider`：`35 passed, 876 deselected`。
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest tests -q -k "transaction or savepoint or operation_logger" -p no:cacheprovider`：`6 passed, 905 deselected`。
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest tests/regression_migration_failfast_no_backup_storm.py tests/regression_migration_outcome_partial_no_upgrade.py tests/regression_migration_outcome_skip_no_upgrade.py tests/regression_maintenance_window_mutex.py -q -p no:cacheprovider`：`4 passed`。
+    说明：这是当时提交对应的历史验证命令；`tests/regression_migration_outcome_partial_no_upgrade.py` 已在后续测试清理中由 `tests/regression_migration_failfast_no_backup_storm.py` 承接，当前复跑不要直接照抄这条旧命令。
+    当前替代复跑命令：`PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest tests/regression_migration_failfast_no_backup_storm.py tests/regression_migration_outcome_skip_no_upgrade.py tests/regression_maintenance_window_mutex.py -q -p no:cacheprovider`。
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright -p pyrightconfig.gate.json`：`0 errors`，仍有 6 个既有 scheduler `__all__` warning。
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py`：通过，`active_xfail_count=0`，`collected_count=911`。
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields && PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check`：通过，`complexity_count=18`，`silent_fallback_count=120`，`accepted_risk_count=4`。

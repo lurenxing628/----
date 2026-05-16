@@ -145,8 +145,6 @@ QUALITY_GATE_SOURCE_FILES = tuple(
             *QUALITY_GATE_REQUIRED_TESTS,
             *QUALITY_GATE_STARTUP_REGRESSION_ARGS,
             "tests/check_quickref_vs_routes.py",
-            "tests/test_check_full_test_debt.py",
-            "tests/test_full_test_debt_registry_contract.py",
         )
     )
 )

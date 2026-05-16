@@ -14,7 +14,7 @@
 完整通过只以干净工作区命令为准：
 
 ```bash
-python scripts/run_quality_gate.py --require-clean-worktree
+python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache
 ```
 
 辅助证明：

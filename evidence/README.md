@@ -13,7 +13,7 @@
 
 判断当前分支是否通过，只看这些入口：
 
-1. `python scripts/run_quality_gate.py --require-clean-worktree`
+1. `python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`
 2. `python tools/check_full_test_debt.py`
 3. `python scripts/sync_debt_ledger.py check`
 4. `evidence/current/README.md`

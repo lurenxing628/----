@@ -1,5 +1,13 @@
+"""
+冒烟测试：报表、物料和周计划页面基础可用性。
+
+旧的 smoke_* 脚本不会被 pytest 默认收集；这个 regression_* 文件保留同等保护，
+并让全量 pytest 能自动覆盖这条入口。
+"""
+
 from __future__ import annotations
 
+import importlib
 import os
 import sys
 import tempfile
@@ -43,8 +51,6 @@ def main() -> None:
 
     ensure_schema(test_db, logger=None, schema_path=os.path.join(repo_root, "schema.sql"))
 
-    import importlib
-
     app_mod = importlib.import_module("app")
     app = app_mod.create_app()
     client = app.test_client()
@@ -53,17 +59,9 @@ def main() -> None:
     _assert_status(client.get("/reports/overdue"), "GET /reports/overdue")
     _assert_status(client.get("/reports/utilization"), "GET /reports/utilization")
     _assert_status(client.get("/reports/downtime"), "GET /reports/downtime")
-
     _assert_status(client.get("/material/materials"), "GET /material/materials")
     _assert_status(client.get("/material/batches"), "GET /material/batches")
-
     _assert_status(client.get("/scheduler/week-plan"), "GET /scheduler/week-plan")
-
-    print("OK")
-
-
-def test_smoke_reports_material_weekplan_pages() -> None:
-    main()
 
 
 if __name__ == "__main__":

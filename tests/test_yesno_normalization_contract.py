@@ -46,7 +46,14 @@ def test_excel_and_route_yesno_is_narrow_default_yes_unknown_passthrough() -> No
         assert fn(None) == YesNo.YES.value
         assert fn("") == YesNo.YES.value
         assert fn("Yes") == YesNo.YES.value
+        assert fn("YES") == YesNo.YES.value
+        assert fn("  yes  ") == YesNo.YES.value
+        assert fn("  Yes  ") == YesNo.YES.value
+        assert fn("No") == YesNo.NO.value
+        assert fn("no") == YesNo.NO.value
         assert fn("NO") == YesNo.NO.value
+        assert fn("  n  ") == YesNo.NO.value
+        assert fn("  N  ") == YesNo.NO.value
         assert fn("是") == YesNo.YES.value
         assert fn("否") == YesNo.NO.value
 
@@ -58,6 +65,7 @@ def test_excel_and_route_yesno_is_narrow_default_yes_unknown_passthrough() -> No
         assert fn("on") == "on"
 
         # unknown：保持原样（strip 后）
+        assert fn("maybe") == "maybe"
         assert fn("  Maybe  ") == "Maybe"
 
 

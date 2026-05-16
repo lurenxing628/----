@@ -142,3 +142,4 @@ audit/**/_tmp_review/
 
 # Codex 本地工具配置与 hook 脚本（本机工作区产物，不纳入版本控制）
 .codex/
+reports/quality_gate_long_cache_13_rounds_speedup.html

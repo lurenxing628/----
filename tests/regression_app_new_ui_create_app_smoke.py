@@ -1,10 +1,8 @@
 """
-冒烟测试：app_new_ui create_app 基础可用性
+冒烟测试：app_new_ui create_app 基础可用性。
 
-验证点：
-1) from app_new_ui import create_app 可用，且 create_app() 返回 Flask app。
-2) 保留导入副作用契约：模块级 app = create_app() 可访问。
-3) 基础端点可用（/ 与 /excel-demo/）。
+旧的 smoke_* 脚本不会被 pytest 默认收集；这个 regression_* 文件保留同等保护，
+并让全量 pytest 能自动覆盖这条入口。
 """
 
 from __future__ import annotations
@@ -30,7 +28,6 @@ def _prepare_env(tmpdir: str) -> None:
     os.environ["APS_LOG_DIR"] = str(Path(tmpdir) / "logs")
     os.environ["APS_BACKUP_DIR"] = str(Path(tmpdir) / "backups")
     os.environ["APS_EXCEL_TEMPLATE_DIR"] = str(Path(tmpdir) / "templates_excel")
-    # 该冒烟不验证密钥生成策略，仅保证 create_app 可执行
     os.environ["SECRET_KEY"] = "aps-smoke-app-new-ui-key"
 
 
@@ -42,7 +39,6 @@ def main() -> None:
     tmpdir = tempfile.mkdtemp(prefix="aps_smoke_new_ui_")
     _prepare_env(tmpdir)
 
-    # 保证每次基于当前环境重新导入
     sys.modules.pop("app_new_ui", None)
     mod = importlib.import_module("app_new_ui")
 
@@ -62,8 +58,6 @@ def main() -> None:
     r2 = client.get("/excel-demo/")
     if r2.status_code != 200:
         raise RuntimeError(f"GET /excel-demo/ 返回非 200：{r2.status_code}")
-
-    print("OK")
 
 
 if __name__ == "__main__":

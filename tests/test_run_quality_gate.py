@@ -605,80 +605,72 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
     assert len(module.REQUIRED_TEST_ARGS) == len(set(module.REQUIRED_TEST_ARGS))
     assert "tests/regression_entrypoint_meta_failure_visible.py" in module.STARTUP_REGRESSION_ARGS
     assert "tests/test_launcher_observability.py" in module.STARTUP_REGRESSION_ARGS
-    assert "tests/regression_scheduler_analysis_observability.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_system_history_route_contract.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_scheduler_resource_dispatch_invalid_query_cleanup.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_schedule_summary_input_fallback_contract.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_error_boundary_contract.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_excel_template_contracts.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_gantt_critical_outline_sync.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_route_version_normalizers_contract.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_gantt_page_version_default_latest.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_gantt_default_version_span.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_reports_page_version_default_latest.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_reports_export_version_default_latest.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_week_plan_bad_time_rows_surface_degraded.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_gantt_calendar_load_failed_degraded.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_gantt_bad_time_rows_surface_degraded.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_gantt_contract_snapshot.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_gantt_critical_chain_unavailable.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_quality_gate_scan_contract.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_scheduler_run_entry_layout_contract.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/test_scheduler_batches_page_viewmodel.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_scheduler_batch_template_warning_surface.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/test_scheduler_run_view_result_contract.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_resource_dispatch_bad_time_rows_surface_degraded.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_resource_dispatch_export_surfaces_degraded.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_action_card_button_layout_contract.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_mirror_template_sync.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_stable_form_layout_allowlist.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_ui_contract_table_overflow_guard.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_ui_contract_component_tokens.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_ui_presenters_contract.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_system_backup_presenter_contract.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_scheduler_batches_presenter_contract.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/test_ui_browser_geometry_env.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/test_ui_geometry_html_contract.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_system_logs_layout_contract.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_system_logs_presenter_contract.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_form_run_option_checkbox_layout_contract.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_scheduler_ui_range_feedback_contract.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_scheduler_route_enforce_ready_tristate.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/test_holiday_default_efficiency_read_guard.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/test_excel_import_hardening.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/test_excel_utils_compare_digest_guard.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_excel_hidden_payload_contract.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_scheduler_excel_batches_preview_baseline_precision.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/test_check_full_test_debt.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/test_full_test_debt_registry_contract.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_config_manual_markdown.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_frontend_manual_blueprint_contract.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_frontend_ui_language_polish.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_manual_entry_scope.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_page_manual_registry.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_excel_template_contracts.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_ui_browser_geometry_smoke.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_gantt_layout_contract.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_request_services_contract.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_request_services_lazy_construction.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_request_services_failure_propagation.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_factory_request_lifecycle_observability.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_maintenance_window_mutex.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_optimizer_outcome_type_contract.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_optimizer_public_summary_projection_contract.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_optimizer_runtime_seam_contract.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_optimizer_seed_boundary_contract.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_schedule_summary_invalid_due_and_unscheduled_counts.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_schedule_summary_overdue_warning_append_fallback.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_schedule_config_snapshot_optional_guard.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_schedule_summary_freeze_state_contract.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/test_git_hook_checks.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/test_long_gate_cli_controls.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/test_long_gate_quickref_cache.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/test_long_gate_summary_output.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/test_sync_debt_ledger.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/test_schedule_template_lookup_contract.py" in module.REQUIRED_TEST_ARGS
-    assert "tests/regression_schedule_summary_size_guard_large_lists.py" in module.REQUIRED_TEST_ARGS
+    for high_value_path in (
+        "tests/regression_scheduler_analysis_observability.py",
+        "tests/regression_system_history_route_contract.py",
+        "tests/regression_scheduler_resource_dispatch_invalid_query_cleanup.py",
+        "tests/regression_schedule_summary_input_fallback_contract.py",
+        "tests/regression_error_boundary_contract.py",
+        "tests/regression_excel_template_contracts.py",
+        "tests/regression_route_version_normalizers_contract.py",
+        "tests/regression_gantt_page_version_default_latest.py",
+        "tests/regression_gantt_default_version_span.py",
+        "tests/regression_reports_page_version_default_latest.py",
+        "tests/regression_reports_export_version_default_latest.py",
+        "tests/regression_gantt_calendar_load_failed_degraded.py",
+        "tests/regression_gantt_bad_time_rows_surface_degraded.py",
+        "tests/regression_gantt_contract_snapshot.py",
+        "tests/regression_gantt_critical_chain_unavailable.py",
+        "tests/regression_quality_gate_scan_contract.py",
+        "tests/regression_scheduler_batch_template_warning_surface.py",
+        "tests/test_scheduler_run_view_result_contract.py",
+        "tests/regression_resource_dispatch_bad_time_rows_surface_degraded.py",
+        "tests/regression_resource_dispatch_export_surfaces_degraded.py",
+        "tests/regression_mirror_template_sync.py",
+        "tests/test_ui_browser_geometry_env.py",
+        "tests/test_ui_geometry_html_contract.py",
+        "tests/regression_scheduler_ui_range_feedback_contract.py",
+        "tests/regression_scheduler_route_enforce_ready_tristate.py",
+        "tests/test_run_full_selftest_report_metadata.py",
+        "tests/test_holiday_default_efficiency_read_guard.py",
+        "tests/test_excel_import_hardening.py",
+        "tests/test_excel_utils_compare_digest_guard.py",
+        "tests/regression_excel_hidden_payload_contract.py",
+        "tests/regression_scheduler_excel_batches_preview_baseline_precision.py",
+        "tests/test_check_full_test_debt.py",
+        "tests/test_full_test_debt_registry_contract.py",
+        "tests/regression_config_manual_markdown.py",
+        "tests/regression_frontend_ui_language_polish.py",
+        "tests/regression_manual_entry_scope.py",
+        "tests/regression_page_manual_registry.py",
+        "tests/regression_request_services_contract.py",
+        "tests/regression_request_services_lazy_construction.py",
+        "tests/regression_request_services_failure_propagation.py",
+        "tests/regression_factory_request_lifecycle_observability.py",
+        "tests/regression_maintenance_window_mutex.py",
+        "tests/regression_optimizer_outcome_type_contract.py",
+        "tests/regression_optimizer_public_summary_projection_contract.py",
+        "tests/regression_optimizer_runtime_seam_contract.py",
+        "tests/regression_optimizer_seed_boundary_contract.py",
+        "tests/regression_schedule_summary_invalid_due_and_unscheduled_counts.py",
+        "tests/regression_schedule_summary_overdue_warning_append_fallback.py",
+        "tests/regression_schedule_config_snapshot_optional_guard.py",
+        "tests/regression_schedule_summary_freeze_state_contract.py",
+        "tests/test_git_hook_checks.py",
+        "tests/test_long_gate_cli_controls.py",
+        "tests/test_schedule_template_lookup_contract.py",
+    ):
+        assert high_value_path in module.REQUIRED_TEST_ARGS
+
+    for lower_frequency_path in (
+        "tests/regression_gantt_critical_outline_sync.py",
+        "tests/regression_ui_browser_geometry_smoke.py",
+        "tests/test_long_gate_required_regression_cache.py",
+        "tests/test_sync_debt_ledger.py",
+        "tests/test_scheduler_batches_page_viewmodel.py",
+        "tests/regression_frontend_manual_blueprint_contract.py",
+    ):
+        assert lower_frequency_path not in module.REQUIRED_TEST_ARGS
 
     command_plan = shared.build_quality_gate_command_plan()
     displays = [str(command["display"]) for command in command_plan]

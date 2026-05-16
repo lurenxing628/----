@@ -14,7 +14,6 @@ import importlib
 import json
 import os
 import sys
-import tempfile
 from pathlib import Path
 
 
@@ -24,11 +23,6 @@ def find_repo_root() -> str:
     if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
         return repo_root
     raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def _assert(condition: bool, message: str) -> None:
-    if not condition:
-        raise RuntimeError(message)
 
 
 def _load_launcher():
@@ -210,15 +204,9 @@ def test_delete_runtime_contract_files_wrapper_keeps_legacy_no_raise(monkeypatch
     launcher.delete_runtime_contract_files(str(runtime_dir))
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-
-    sys.modules.pop("web.bootstrap.launcher", None)
-    launcher = importlib.import_module("web.bootstrap.launcher")
-
-    runtime_dir = Path(tempfile.mkdtemp(prefix="aps_runtime_contract_"))
+def test_write_runtime_contract_file_writes_mirrors_and_cleanup(tmp_path: Path) -> None:
+    launcher = _load_launcher()
+    runtime_dir = tmp_path / "runtime"
     db_path = runtime_dir / "db" / "aps.db"
     db_path.parent.mkdir(parents=True, exist_ok=True)
     db_path.write_text("", encoding="utf-8")
@@ -250,44 +238,30 @@ def main() -> None:
     )
 
     contract = launcher.read_runtime_contract(str(runtime_dir))
-    _assert(contract is not None, "运行时契约应可被读取")
-    _assert(int(contract.get("contract_version") or 0) == 1, "contract_version 不正确")
-    _assert(int(contract.get("pid") or 0) > 0, "pid 不正确")
-    _assert(str(contract.get("host") or "") == "127.0.0.1", "host 未被规范到 127.0.0.1")
-    _assert(int(contract.get("port") or 0) == 5728, "port 不正确")
-    _assert(str(contract.get("shutdown_token") or "") == "runtime-contract-token", "shutdown_token 不正确")
-    _assert(
-        str(contract.get("db_path") or "") == os.path.normcase(os.path.abspath(str(db_path))),
-        "db_path 未被正确规范化",
-    )
+    assert contract is not None
+    assert int(contract.get("contract_version") or 0) == 1
+    assert int(contract.get("pid") or 0) > 0
+    assert str(contract.get("host") or "") == "127.0.0.1"
+    assert int(contract.get("port") or 0) == 5728
+    assert str(contract.get("shutdown_token") or "") == "runtime-contract-token"
+    assert str(contract.get("db_path") or "") == os.path.normcase(os.path.abspath(str(db_path)))
     data_dirs = contract.get("data_dirs") or {}
-    _assert(str(data_dirs.get("log_dir") or "") == os.path.abspath(str(mirror_log_dir)), "log_dir 不正确")
-    _assert(str(data_dirs.get("backup_dir") or "") == os.path.abspath(str(backup_dir)), "backup_dir 不正确")
-    _assert(
-        str(data_dirs.get("excel_template_dir") or "") == os.path.abspath(str(excel_template_dir)),
-        "excel_template_dir 不正确",
-    )
-    _assert(
-        str(contract.get("chrome_profile_dir") or "") == os.path.abspath(str(chrome_profile_dir)),
-        "chrome_profile_dir 不正确",
-    )
-    _assert((runtime_log_dir / "aps_host.txt").exists(), "runtime_dir/logs 应存在 aps_host.txt")
-    _assert((runtime_log_dir / "aps_port.txt").exists(), "runtime_dir/logs 应存在 aps_port.txt")
-    _assert((runtime_log_dir / "aps_db_path.txt").exists(), "runtime_dir/logs 应存在 aps_db_path.txt")
-    _assert((mirror_log_dir / "aps_host.txt").exists(), "镜像目录应存在 aps_host.txt")
-    _assert((mirror_log_dir / "aps_port.txt").exists(), "镜像目录应存在 aps_port.txt")
-    _assert((mirror_log_dir / "aps_db_path.txt").exists(), "镜像目录应存在 aps_db_path.txt")
+    assert str(data_dirs.get("log_dir") or "") == os.path.abspath(str(mirror_log_dir))
+    assert str(data_dirs.get("backup_dir") or "") == os.path.abspath(str(backup_dir))
+    assert str(data_dirs.get("excel_template_dir") or "") == os.path.abspath(str(excel_template_dir))
+    assert str(contract.get("chrome_profile_dir") or "") == os.path.abspath(str(chrome_profile_dir))
+    assert (runtime_log_dir / "aps_host.txt").exists()
+    assert (runtime_log_dir / "aps_port.txt").exists()
+    assert (runtime_log_dir / "aps_db_path.txt").exists()
+    assert (mirror_log_dir / "aps_host.txt").exists()
+    assert (mirror_log_dir / "aps_port.txt").exists()
+    assert (mirror_log_dir / "aps_db_path.txt").exists()
 
     launcher.delete_runtime_contract_files(str(runtime_dir))
-    _assert(not (runtime_log_dir / "aps_host.txt").exists(), "清理后不应残留 runtime_dir/logs/aps_host.txt")
-    _assert(not (runtime_log_dir / "aps_port.txt").exists(), "清理后不应残留 runtime_dir/logs/aps_port.txt")
-    _assert(not (runtime_log_dir / "aps_db_path.txt").exists(), "清理后不应残留 runtime_dir/logs/aps_db_path.txt")
-    _assert(not (runtime_log_dir / "aps_runtime.json").exists(), "清理后不应残留 runtime_dir/logs/aps_runtime.json")
-    _assert(not (mirror_log_dir / "aps_host.txt").exists(), "清理后不应残留镜像 aps_host.txt")
-    _assert(not (mirror_log_dir / "aps_port.txt").exists(), "清理后不应残留镜像 aps_port.txt")
-    _assert(not (mirror_log_dir / "aps_db_path.txt").exists(), "清理后不应残留镜像 aps_db_path.txt")
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()
+    assert not (runtime_log_dir / "aps_host.txt").exists()
+    assert not (runtime_log_dir / "aps_port.txt").exists()
+    assert not (runtime_log_dir / "aps_db_path.txt").exists()
+    assert not (runtime_log_dir / "aps_runtime.json").exists()
+    assert not (mirror_log_dir / "aps_host.txt").exists()
+    assert not (mirror_log_dir / "aps_port.txt").exists()
+    assert not (mirror_log_dir / "aps_db_path.txt").exists()

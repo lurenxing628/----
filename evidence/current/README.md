@@ -4,7 +4,7 @@
 
 ## 当前有效证明
 
-- 阶段六完成后，以最近一次 `python scripts/run_quality_gate.py --require-clean-worktree` 的输出为完整质量证明。
+- 阶段六完成后，以最近一次 `python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache` 的输出为完整质量证明。
 - full-test-debt 状态以 `python tools/check_full_test_debt.py` 为准。
 - 技术债治理台账以 `python scripts/sync_debt_ledger.py check` 为准。
 

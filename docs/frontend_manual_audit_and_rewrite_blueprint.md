@@ -264,7 +264,7 @@ git diff --check
 如果要做最终提交并证明全仓质量，再在工作区干净后执行：
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache
 ```
 
 当前如果工作区存在无关未提交内容，不能把 `--require-clean-worktree` 的失败说成本文档改坏了。
