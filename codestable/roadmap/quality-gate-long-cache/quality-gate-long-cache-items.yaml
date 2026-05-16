@@ -396,3 +396,23 @@ items:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright -p pyrightconfig.tools.json
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache
     notes: "已完成 NEXT-13：README、开发文档、roadmap、items 和本阶段 acceptance 已统一 proof 口径；enabled entry 为 pytest_collect_all、full_test_debt、ruff_check_full、pyright_gate_full、pyright_tools_full、required_regressions、debt_ledger_sync、startup_runtime_regressions、quickref_vs_routes；architecture_fitness 仍 planned；explain/cache hit/summary counts/daily/pre-push/局部 pytest/ruff/pyright 都不能当 final proof；最终说明必须记录 clean-worktree full proof 命令和 git status --short。"
+
+  - slug: github-actions-long-gate-cache-persistence
+    title: P6 CI long-gate cache persistence
+    description: "让 GitHub Actions 在完整质量门禁前 restore long gate 运行产物缓存，在完整门禁成功后 save；只缓存已忽略的 long gate 运行产物，不缓存已跟踪的 quickref 对账报告；fork PR 不 save。"
+    depends_on: [long-gate-docs-final-proof]
+    status: done
+    feature: 2026-05-16-github-actions-long-gate-cache-persistence
+    minimal_loop: false
+    primary_paths:
+      - .github/workflows/quality.yml
+      - README.md
+      - "开发文档/README.md"
+      - codestable/roadmap/quality-gate-long-cache/quality-gate-long-cache-roadmap.md
+      - codestable/roadmap/quality-gate-long-cache/quality-gate-long-cache-items.yaml
+    exit_checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python codestable/tools/validate-yaml.py --file codestable/roadmap/quality-gate-long-cache/quality-gate-long-cache-items.yaml
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python codestable/tools/validate-yaml.py --file codestable/features/2026-05-16-github-actions-long-gate-cache-persistence/github-actions-long-gate-cache-persistence-checklist.yaml
+      - ruby -e 'require "yaml"; YAML.load_file(".github/workflows/quality.yml"); puts "workflow yaml ok"'
+      - git diff --check
+    notes: "已完成 P6：workflow 使用 pinned actions/cache restore/save；restore 位于统一质量门禁前，save 位于统一质量门禁成功后；fork PR 只 restore 不 save；CI 命令仍是 python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache；缓存路径只包含 evidence/QualityGate/long_gate/ 和 long gate 复用需要的已忽略 proof/collect/cache JSON，不包含已跟踪的 evidence/Conformance/quickref_vs_routes.md；文档已补充 cache hit 不是 proof。"

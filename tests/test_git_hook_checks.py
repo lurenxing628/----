@@ -6,7 +6,17 @@ from pathlib import Path
 
 from pre_commit.clientlib import load_config
 
-from tools import git_hook_checks
+from tools import git_hook_cache, git_hook_checks
+
+
+def _git(repo_root: Path, *args: str) -> None:
+    subprocess.run(["git", *args], cwd=repo_root, check=True)
+
+
+def _init_repo(repo_root: Path) -> None:
+    _git(repo_root, "init", "-q")
+    _git(repo_root, "config", "user.email", "test@example.invalid")
+    _git(repo_root, "config", "user.name", "Test User")
 
 
 def test_project_python_executable_prefers_windows_venv(monkeypatch, tmp_path: Path) -> None:
@@ -52,6 +62,16 @@ def test_run_quality_gate_command_uses_daily_gate_and_utf8_env(monkeypatch, tmp_
     monkeypatch.setenv("PYTHONIOENCODING", "gbk")
     monkeypatch.setattr(git_hook_checks, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(git_hook_checks, "_project_python_executable", lambda: project_python)
+    monkeypatch.setattr(
+        git_hook_checks.git_hook_cache,
+        "pre_push_daily_cache_hit",
+        lambda executable, remote_name="", remote_ref="": False,
+    )
+    monkeypatch.setattr(
+        git_hook_checks.git_hook_cache,
+        "write_pre_push_daily_cache",
+        lambda executable, remote_name="", remote_ref="": None,
+    )
 
     def fake_call(command, *, cwd, env):
         calls.append((list(command), str(cwd), dict(env)))
@@ -216,25 +236,197 @@ def test_blocked_paths_include_long_gate_runtime_artifacts() -> None:
     ]
 
 
-def test_run_ruff_command_uses_project_python(monkeypatch, tmp_path: Path) -> None:
+def test_run_ruff_uses_staged_only_cache_helper(monkeypatch, tmp_path: Path) -> None:
     calls = []
     project_python = str(tmp_path / ".venv" / "bin" / "python")
     monkeypatch.setattr(git_hook_checks, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(git_hook_checks, "_project_python_executable", lambda: project_python)
 
-    def fake_call(command, *, cwd):
-        calls.append((list(command), str(cwd)))
+    def fake_staged_ruff(executable: str) -> int:
+        calls.append(executable)
         return 3
 
-    monkeypatch.setattr(subprocess, "call", fake_call)
+    monkeypatch.setattr(git_hook_checks.git_hook_cache, "run_staged_ruff", fake_staged_ruff)
 
     assert git_hook_checks.main(["run-ruff"]) == 3
 
+    assert calls == [project_python]
+
+
+def test_staged_ruff_exports_index_content_and_reuses_pass_cache(monkeypatch, tmp_path: Path) -> None:
+    _init_repo(tmp_path)
+    target = tmp_path / "pkg" / "module.py"
+    target.parent.mkdir()
+    target.write_text("STAGED = 1\n", encoding="utf-8")
+    _git(tmp_path, "add", "pkg/module.py")
+    target.write_text("UNSTAGED = 2\n", encoding="utf-8")
+
+    monkeypatch.setattr(git_hook_cache, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(git_hook_cache, "_python_identity", lambda executable: {"executable_realpath": executable, "version": "3.8"})
+    monkeypatch.setattr(git_hook_cache, "_tool_version", lambda executable, module: "ruff 0.0.0")
+    calls = []
+
+    def fake_call(command, *, cwd, env):
+        calls.append((list(command), Path(cwd), dict(env)))
+        assert (Path(cwd) / "pkg" / "module.py").read_text(encoding="utf-8") == "STAGED = 1\n"
+        return 0
+
+    monkeypatch.setattr(subprocess, "call", fake_call)
+
+    assert git_hook_cache.run_staged_ruff(sys.executable) == 0
+    assert git_hook_cache.run_staged_ruff(sys.executable) == 0
+
+    assert len(calls) == 1
+    assert calls[0][0][-1] == "pkg/module.py"
+    assert calls[0][2]["PYTHONUTF8"] == "1"
+
+
+def test_staged_ruff_cache_invalidates_when_staged_tree_changes(monkeypatch, tmp_path: Path) -> None:
+    _init_repo(tmp_path)
+    target = tmp_path / "module.py"
+    target.write_text("VALUE = 1\n", encoding="utf-8")
+    _git(tmp_path, "add", "module.py")
+
+    monkeypatch.setattr(git_hook_cache, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(git_hook_cache, "_python_identity", lambda executable: {"executable_realpath": executable, "version": "3.8"})
+    monkeypatch.setattr(git_hook_cache, "_tool_version", lambda executable, module: "ruff 0.0.0")
+    calls = []
+
+    def fake_call(command, *, cwd, env):
+        calls.append(list(command))
+        return 0
+
+    monkeypatch.setattr(subprocess, "call", fake_call)
+
+    assert git_hook_cache.run_staged_ruff(sys.executable) == 0
+    target.write_text("VALUE = 2\n", encoding="utf-8")
+    _git(tmp_path, "add", "module.py")
+    assert git_hook_cache.run_staged_ruff(sys.executable) == 0
+
+    assert len(calls) == 2
+
+
+def test_staged_ruff_no_python_files_skips_subprocess(monkeypatch, tmp_path: Path) -> None:
+    _init_repo(tmp_path)
+    notes = tmp_path / "README.md"
+    notes.write_text("docs\n", encoding="utf-8")
+    _git(tmp_path, "add", "README.md")
+    monkeypatch.setattr(git_hook_cache, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(
+        subprocess,
+        "call",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("ruff should not run")),
+    )
+
+    assert git_hook_cache.run_staged_ruff(sys.executable) == 0
+
+
+def test_pre_push_daily_gate_reuses_same_head_tree_cache(monkeypatch, tmp_path: Path) -> None:
+    calls = []
+    project_python = str(tmp_path / ".venv" / "bin" / "python")
+    monkeypatch.setattr(git_hook_checks, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(git_hook_checks, "_project_python_executable", lambda: project_python)
+    monkeypatch.setattr(
+        git_hook_checks.git_hook_cache,
+        "pre_push_daily_cache_hit",
+        lambda executable, remote_name="", remote_ref="": True,
+    )
+    monkeypatch.setattr(git_hook_checks.git_hook_cache, "write_pre_push_daily_cache", lambda *_args, **_kwargs: calls.append("write"))
+    monkeypatch.setattr(subprocess, "call", lambda *_args, **_kwargs: calls.append("call") or 0)
+
+    assert git_hook_checks.main(["run-quality-gate", "origin", "https://example.invalid/repo.git"]) == 0
+
+    assert calls == []
+
+
+def test_pre_push_daily_gate_writes_cache_only_after_success(monkeypatch, tmp_path: Path) -> None:
+    calls = []
+    project_python = str(tmp_path / ".venv" / "bin" / "python")
+    monkeypatch.setattr(git_hook_checks, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(git_hook_checks, "_project_python_executable", lambda: project_python)
+    monkeypatch.setattr(
+        git_hook_checks.git_hook_cache,
+        "pre_push_daily_cache_hit",
+        lambda executable, remote_name="", remote_ref="": False,
+    )
+    monkeypatch.setattr(
+        git_hook_checks.git_hook_cache,
+        "write_pre_push_daily_cache",
+        lambda executable, remote_name="", remote_ref="": calls.append(("write", remote_name)),
+    )
+
+    def fake_call(command, *, cwd, env):
+        calls.append(("call", list(command), env["PYTHONUTF8"]))
+        return 0
+
+    monkeypatch.setattr(subprocess, "call", fake_call)
+
+    assert git_hook_checks.main(["run-quality-gate", "origin"]) == 0
+
+    assert calls == [
+        ("call", [project_python, "scripts/run_daily_quality_gate.py"], "1"),
+        ("write", "origin"),
+    ]
+
+
+def test_pre_push_daily_gate_failure_does_not_write_cache(monkeypatch, tmp_path: Path) -> None:
+    calls = []
+    project_python = str(tmp_path / ".venv" / "bin" / "python")
+    monkeypatch.setattr(git_hook_checks, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(git_hook_checks, "_project_python_executable", lambda: project_python)
+    monkeypatch.setattr(
+        git_hook_checks.git_hook_cache,
+        "pre_push_daily_cache_hit",
+        lambda executable, remote_name="", remote_ref="": False,
+    )
+    monkeypatch.setattr(git_hook_checks.git_hook_cache, "write_pre_push_daily_cache", lambda *_args, **_kwargs: calls.append("write"))
+    monkeypatch.setattr(subprocess, "call", lambda *_args, **_kwargs: 8)
+
+    assert git_hook_checks.main(["run-quality-gate"]) == 8
+
+    assert calls == []
+
+
+def test_run_final_quality_gate_if_needed_uses_exact_head_cache(monkeypatch, tmp_path: Path) -> None:
+    calls = []
+    project_python = str(tmp_path / ".venv" / "bin" / "python")
+    monkeypatch.setattr(git_hook_checks, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(git_hook_checks, "_project_python_executable", lambda: project_python)
+    monkeypatch.setattr(git_hook_checks.git_hook_cache, "final_gate_cache_hit", lambda executable: True)
+    monkeypatch.setattr(subprocess, "call", lambda *_args, **_kwargs: calls.append("call") or 0)
+
+    assert git_hook_checks.main(["run-final-quality-gate-if-needed"]) == 0
+
+    assert calls == []
+
+
+def test_run_final_quality_gate_if_needed_writes_cache_after_success(monkeypatch, tmp_path: Path) -> None:
+    calls = []
+    project_python = str(tmp_path / ".venv" / "bin" / "python")
+    monkeypatch.setattr(git_hook_checks, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(git_hook_checks, "_project_python_executable", lambda: project_python)
+    monkeypatch.setattr(git_hook_checks.git_hook_cache, "final_gate_cache_hit", lambda executable: False)
+    monkeypatch.setattr(git_hook_checks.git_hook_cache, "write_final_gate_cache", lambda executable: calls.append(("write", executable)))
+
+    def fake_call(command, *, cwd, env):
+        calls.append(("call", list(command)))
+        return 0
+
+    monkeypatch.setattr(subprocess, "call", fake_call)
+
+    assert git_hook_checks.main(["run-final-quality-gate-if-needed"]) == 0
+
     assert calls == [
         (
-            [project_python, "-m", "ruff", "check"],
-            str(tmp_path),
-        )
+            "call",
+            [
+                project_python,
+                "scripts/run_quality_gate.py",
+                "--require-clean-worktree",
+                "--long-gate-cache",
+            ],
+        ),
+        ("write", project_python),
     ]
 
 

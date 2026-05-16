@@ -29,7 +29,7 @@ from tools.quality_gate_shared import (
     iter_quality_gate_required_tests,
 )
 from tools.test_debt_registry import validate_current_candidate_payload
-from tools.test_registry import iter_test_only_helper_impacts
+from tools.test_registry import TEST_ONLY_HELPER_IMPACT
 
 NODE_CACHE_REL = QUALITY_GATE_FULL_TEST_DEBT_NODE_CACHE_REL.replace("\\", "/")
 LEDGER_REL = os.path.relpath(LEDGER_PATH, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))).replace(
@@ -256,32 +256,60 @@ def _non_file_fingerprint_change_reason(previous: Mapping[str, Any], current: Ma
     return "non-file fingerprint changed: " + ", ".join(changed_keys or ["unknown"])
 
 
+def _normalize_rel_path(path: str) -> str:
+    return str(path or "").strip().replace("\\", "/")
+
+
 def _is_regular_test_file(path: str) -> bool:
-    normalized = str(path or "").replace("\\", "/")
+    normalized = _normalize_rel_path(path)
     name = os.path.basename(normalized)
     if normalized == "conftest.py" or normalized.endswith("/conftest.py"):
         return False
-    if not normalized.startswith("tests/") or normalized.count("/") != 1 or not normalized.endswith(".py"):
+    if not normalized.startswith("tests/") or not normalized.endswith(".py"):
         return False
     if name.endswith("_helpers.py"):
         return False
     return name.startswith("test_") or name.startswith("regression_")
 
 
-def _is_top_level_test_helper_file(path: str) -> bool:
-    normalized = str(path or "").replace("\\", "/")
+def _is_test_helper_file(path: str) -> bool:
+    normalized = _normalize_rel_path(path)
     name = os.path.basename(normalized)
     return (
         normalized.startswith("tests/")
-        and normalized.count("/") == 1
         and normalized.endswith(".py")
         and name.endswith("_helpers.py")
         and name != "conftest.py"
     )
 
 
+def _iter_test_only_helper_impacts(
+    helper_impacts: Optional[Mapping[str, Sequence[str]]] = None,
+) -> Dict[str, List[str]]:
+    impacts = helper_impacts if helper_impacts is not None else TEST_ONLY_HELPER_IMPACT
+    rows: Dict[str, List[str]] = {}
+    for helper_path, target_paths in sorted(impacts.items()):
+        helper = _normalize_rel_path(helper_path)
+        if not _is_test_helper_file(helper):
+            raise ValueError("test-only helper impact helper must be tests/**/*_helpers.py: " + helper)
+        targets: List[str] = []
+        seen: Set[str] = set()
+        for target_path in list(target_paths or []):
+            target = _normalize_rel_path(str(target_path))
+            if not target or target in seen:
+                continue
+            if not _is_regular_test_file(target):
+                raise ValueError("test-only helper impact target must be tests/**/test_*.py or regression_*.py: " + target)
+            seen.add(target)
+            targets.append(target)
+        if not targets:
+            raise ValueError("test-only helper impact targets are empty: " + helper)
+        rows[helper] = targets
+    return rows
+
+
 def _module_names_for_test_path(path: str) -> Set[str]:
-    normalized = str(path or "").replace("\\", "/")
+    normalized = _normalize_rel_path(path)
     if not normalized.startswith("tests/") or not normalized.endswith(".py"):
         return set()
     module = normalized[:-3].replace("/", ".")
@@ -293,11 +321,15 @@ def _module_names_for_test_path(path: str) -> Set[str]:
 
 
 def _module_names_for_test_helper_path(path: str) -> Set[str]:
-    normalized = str(path or "").replace("\\", "/")
-    if not _is_top_level_test_helper_file(normalized):
+    normalized = _normalize_rel_path(path)
+    if not _is_test_helper_file(normalized):
         return set()
+    module = normalized[:-3].replace("/", ".")
     stem = os.path.splitext(os.path.basename(normalized))[0]
-    return {stem, f"tests.{stem}"}
+    names = {module, stem}
+    if module.startswith("tests."):
+        names.add(module[len("tests.") :])
+    return {name for name in names if name}
 
 
 def _dynamic_import_aliases(tree: ast.AST) -> Tuple[Set[str], Set[str]]:
@@ -468,12 +500,15 @@ def _dynamic_import_may_reference_helper(node: ast.Call, helper_modules: Set[str
 
 def _static_import_references_helper(node: ast.AST, helper_modules: Set[str]) -> bool:
     helper_stems = {name.rsplit(".", 1)[-1] for name in helper_modules}
+    helper_parent_modules = {name.rsplit(".", 1)[0] for name in helper_modules if "." in name}
     if isinstance(node, ast.Import):
         return any(str(alias.name or "") in helper_modules for alias in node.names)
     if isinstance(node, ast.ImportFrom):
         module = str(node.module or "")
         if module in helper_modules:
             return True
+        if module in helper_parent_modules:
+            return any(str(alias.name or "") in helper_stems for alias in node.names)
         if module == "tests":
             return any(str(alias.name or "") in helper_stems for alias in node.names)
         if node.level > 0:
@@ -485,10 +520,10 @@ def _static_import_references_helper(node: ast.AST, helper_modules: Set[str]) ->
 
 
 def _test_files_importing_helper(repo_root: str, helper_path: str) -> Tuple[List[str], str]:
-    normalized_helper = str(helper_path or "").replace("\\", "/")
+    normalized_helper = _normalize_rel_path(helper_path)
     helper_modules = _module_names_for_test_helper_path(normalized_helper)
     if not helper_modules:
-        return [], f"test helper is not a top-level tests/*_helpers.py file: {normalized_helper}"
+        return [], f"test helper is not a tests/**/*_helpers.py file: {normalized_helper}"
     importers: List[str] = []
     pattern = os.path.join(_repo_root(repo_root), "tests", "**", "*.py")
     for abs_path in sorted(glob.glob(pattern, recursive=True)):
@@ -511,7 +546,7 @@ def _test_files_importing_helper(repo_root: str, helper_path: str) -> Tuple[List
                 if _dynamic_import_may_reference_helper(node, helper_modules, source):
                     return [], f"dynamic test helper import cannot be proven safe: {rel_path}"
             if _static_import_references_helper(node, helper_modules):
-                if _is_top_level_test_helper_file(rel_path):
+                if _is_test_helper_file(rel_path):
                     return [], f"test helper is imported by another helper: {rel_path}"
                 importers.append(rel_path)
                 break
@@ -561,6 +596,93 @@ def _changed_test_imported_elsewhere(repo_root: str, changed_test_files: Sequenc
     return ""
 
 
+def _changed_path_kind(path: str) -> str:
+    normalized = _normalize_rel_path(path)
+    if normalized == LEDGER_REL:
+        return "ledger"
+    if normalized == COLLECT_REL:
+        return "collect_nodeids"
+    if _is_regular_test_file(normalized):
+        return "regular_test"
+    if _is_test_helper_file(normalized):
+        return "test_helper"
+    if (
+        normalized.startswith("templates/")
+        or normalized.startswith("web_new_test/templates/")
+        or normalized.startswith("templates_excel/")
+    ):
+        return "template"
+    if normalized.startswith("static/") or normalized.startswith("web_new_test/static/"):
+        return "static_asset"
+    if (
+        normalized.startswith("core/")
+        or normalized.startswith("web/")
+        or normalized.startswith("data/")
+        or normalized.startswith("plugins/")
+        or normalized in {"app.py", "config.py", "schema.sql"}
+    ):
+        return "source"
+    if normalized.startswith("tools/") or normalized.startswith("scripts/") or normalized.startswith(".github/"):
+        return "tooling"
+    if normalized.endswith((".toml", ".ini", ".cfg", ".txt", ".md", ".yml", ".yaml")):
+        return "config_or_doc"
+    return "other"
+
+
+def _changed_files_classification(changed_paths: Sequence[str]) -> Dict[str, List[str]]:
+    rows: Dict[str, List[str]] = {}
+    for path in [_normalize_rel_path(str(item)) for item in list(changed_paths or [])]:
+        rows.setdefault(_changed_path_kind(path), []).append(path)
+    return {kind: sorted(paths) for kind, paths in sorted(rows.items())}
+
+
+def _ledger_change_kind(changed_paths: Sequence[str]) -> str:
+    normalized = [_normalize_rel_path(str(item)) for item in list(changed_paths or [])]
+    if normalized == [LEDGER_REL]:
+        return "ledger_only"
+    if LEDGER_REL in normalized:
+        return "ledger_with_other_changes"
+    return "none"
+
+
+def _safe_scope_kind(changed_paths: Sequence[str], *, mode: Optional[str] = None) -> str:
+    normalized = [_normalize_rel_path(str(item)) for item in list(changed_paths or [])]
+    if mode:
+        return str(mode)
+    meaningful = [path for path in normalized if path != COLLECT_REL]
+    if not meaningful:
+        return "collect_nodeids_only"
+    if normalized == [LEDGER_REL]:
+        return "ledger_only"
+    kinds = {_changed_path_kind(path) for path in meaningful}
+    if kinds and kinds <= {"regular_test", "test_helper"}:
+        return "test_file_incremental"
+    if kinds & {"source", "template", "static_asset"}:
+        return "source_or_template_full_run"
+    return "unsafe_full_run"
+
+
+def _changed_scope_diagnostics(changed_paths: Sequence[str], *, mode: Optional[str] = None) -> Dict[str, Any]:
+    normalized = [_normalize_rel_path(str(item)) for item in list(changed_paths or [])]
+    return {
+        "safe_scope_kind": _safe_scope_kind(normalized, mode=mode),
+        "changed_files_classification": _changed_files_classification(normalized),
+        "ledger_change_kind": _ledger_change_kind(normalized),
+    }
+
+
+def _fingerprint_change_diagnostics(
+    previous_fingerprint: Mapping[str, Any],
+    current_fingerprint: Mapping[str, Any],
+    *,
+    mode: Optional[str] = None,
+) -> Dict[str, Any]:
+    return _changed_scope_diagnostics(
+        _changed_paths_from_fingerprints(previous_fingerprint, current_fingerprint),
+        mode=mode,
+    )
+
+
 def _classify_incremental_plan(
     *,
     repo_root: str,
@@ -579,10 +701,14 @@ def _classify_incremental_plan(
 
     meaningful_paths = [path for path in changed_paths if path != COLLECT_REL]
     ledger_only = changed_paths == [LEDGER_REL]
+    scope_diagnostics = _changed_scope_diagnostics(
+        changed_paths,
+        mode="ledger_only" if ledger_only else None,
+    )
     if not meaningful_paths and not ledger_only:
         return None, "only collect_nodeids changed"
     try:
-        helper_impacts = iter_test_only_helper_impacts()
+        helper_impacts = _iter_test_only_helper_impacts()
     except ValueError as exc:
         return None, str(exc)
     changed_regular_test_files: List[str] = []
@@ -592,7 +718,7 @@ def _classify_incremental_plan(
             if _is_regular_test_file(path):
                 changed_regular_test_files.append(path)
                 continue
-            if _is_top_level_test_helper_file(path):
+            if _is_test_helper_file(path):
                 if path not in helper_impacts:
                     return None, f"test helper is not declared: {path}"
                 changed_helpers.append(path)
@@ -617,6 +743,7 @@ def _classify_incremental_plan(
         return {
             "mode": "ledger_only",
             "changed_paths": changed_paths,
+            **scope_diagnostics,
             "selected_nodeids": [],
             "changed_test_files": [],
             "safety_checks": {
@@ -687,6 +814,7 @@ def _classify_incremental_plan(
     return {
         "mode": "nodeid_incremental",
         "changed_paths": changed_paths,
+        **_changed_scope_diagnostics(changed_paths, mode="test_file_incremental"),
         "changed_test_files": affected_test_files,
         "changed_helpers": changed_helpers,
         "declared_helper_impacts": declared_helper_impacts,
@@ -1168,6 +1296,9 @@ def _merge_payload(
             "classifications": classifications,
             "incremental_proof": {
                 "mode": "nodeid_incremental",
+                "safe_scope_kind": str(plan.get("safe_scope_kind") or "test_file_incremental"),
+                "changed_files_classification": dict(plan.get("changed_files_classification") or {}),
+                "ledger_change_kind": str(plan.get("ledger_change_kind") or "none"),
                 "selected_nodeids": list(selected_nodeids),
                 "changed_test_files": list(changed_test_files),
                 "changed_helpers": list(plan.get("changed_helpers") or []),
@@ -1181,6 +1312,9 @@ def _merge_payload(
             },
             "incremental_source": {
                 "mode": "nodeid_incremental",
+                "safe_scope_kind": str(plan.get("safe_scope_kind") or "test_file_incremental"),
+                "changed_files_classification": dict(plan.get("changed_files_classification") or {}),
+                "ledger_change_kind": str(plan.get("ledger_change_kind") or "none"),
                 "changed_test_files": list(changed_test_files),
                 "changed_helpers": list(plan.get("changed_helpers") or []),
                 "affected_test_files": list(plan.get("affected_test_files") or changed_test_files),
@@ -1219,6 +1353,9 @@ def _build_ledger_only_payload(
             "pytest_args": list(FORMAL_FULL_TEST_PYTEST_ARGS),
             "incremental_proof": {
                 "mode": "ledger_only",
+                "safe_scope_kind": str(plan.get("safe_scope_kind") or "ledger_only"),
+                "changed_files_classification": dict(plan.get("changed_files_classification") or {}),
+                "ledger_change_kind": str(plan.get("ledger_change_kind") or "ledger_only"),
                 "changed_paths": [str(path) for path in list(plan.get("changed_paths") or [])],
                 "previous_payload_hash": f"sha256:{stable_json_hash(dict(old_payload))}",
                 "previous_head_sha": str(old_payload.get("head_sha") or ""),
@@ -1233,6 +1370,9 @@ def _build_ledger_only_payload(
             },
             "incremental_source": {
                 "mode": "ledger_only",
+                "safe_scope_kind": str(plan.get("safe_scope_kind") or "ledger_only"),
+                "changed_files_classification": dict(plan.get("changed_files_classification") or {}),
+                "ledger_change_kind": str(plan.get("ledger_change_kind") or "ledger_only"),
                 "changed_paths": [str(path) for path in list(plan.get("changed_paths") or [])],
             },
         }
@@ -1324,6 +1464,9 @@ def try_run_special_full_test_debt_mode(
         "fingerprint_hash": str(previous_success.get("fingerprint_hash") or ""),
         "current_fingerprint_hash": str(current_fingerprint.get("hash") or ""),
         "changed_paths": list(plan.get("changed_paths") or []),
+        "safe_scope_kind": str(plan.get("safe_scope_kind") or ""),
+        "changed_files_classification": dict(plan.get("changed_files_classification") or {}),
+        "ledger_change_kind": str(plan.get("ledger_change_kind") or ""),
     }
 
     if plan["mode"] == "ledger_only":
@@ -1353,7 +1496,13 @@ def try_run_special_full_test_debt_mode(
                 "execution_mode": "ledger_only",
                 "reused_from": reused_from,
             }
-        metadata = {"execution_mode": "ledger_only", "changed_paths": list(plan["changed_paths"])}
+        metadata = {
+            "execution_mode": "ledger_only",
+            "changed_paths": list(plan["changed_paths"]),
+            "safe_scope_kind": str(plan.get("safe_scope_kind") or "ledger_only"),
+            "changed_files_classification": dict(plan.get("changed_files_classification") or {}),
+            "ledger_change_kind": str(plan.get("ledger_change_kind") or "ledger_only"),
+        }
         result: Dict[str, Any] = {
             "stdout": _summary_stdout(summary, metadata),
             "stderr": "[long-gate-full-test-debt] ledger-only 校验通过\n",
@@ -1417,6 +1566,9 @@ def try_run_special_full_test_debt_mode(
         }
     metadata = {
         "execution_mode": "nodeid_incremental",
+        "safe_scope_kind": str(plan.get("safe_scope_kind") or "test_file_incremental"),
+        "changed_files_classification": dict(plan.get("changed_files_classification") or {}),
+        "ledger_change_kind": str(plan.get("ledger_change_kind") or "none"),
         "changed_test_files": list(plan.get("changed_test_files") or []),
         "changed_helpers": list(plan.get("changed_helpers") or []),
         "declared_helper_impacts": dict(plan.get("declared_helper_impacts") or {}),
@@ -1547,6 +1699,7 @@ def explain_special_full_test_debt_plan(
             "available": False,
             "mode": "",
             "reason": reason,
+            **_fingerprint_change_diagnostics(previous_fingerprint, current_fingerprint),
             **_special_explain_diagnostics(
                 repo_root=repo_root,
                 decision=decision,
@@ -1559,6 +1712,9 @@ def explain_special_full_test_debt_plan(
     return {
         "available": True,
         "mode": str(plan.get("mode") or ""),
+        "safe_scope_kind": str(plan.get("safe_scope_kind") or ""),
+        "changed_files_classification": dict(plan.get("changed_files_classification") or {}),
+        "ledger_change_kind": str(plan.get("ledger_change_kind") or ""),
         "changed_paths": list(plan.get("changed_paths") or []),
         "changed_test_files": list(plan.get("changed_test_files") or []),
         "changed_helpers": list(plan.get("changed_helpers") or []),

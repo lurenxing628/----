@@ -105,8 +105,9 @@ full-test-debt proof 的意思是：当前没有未登记的 full pytest 失败�
 - 单独运行 `.venv\Scripts\python tools/check_full_test_debt.py` 只会生成本次 full-test-debt 的 current/summary 证明，不会写 long gate success cache。也就是说，它能帮你定位 full-test-debt 本身是否通过，但不会让下一次完整门禁自动复用 long gate 缓存。
 - 长耗时门禁缓存需要显式传 `.venv\Scripts\python scripts/run_quality_gate.py --long-gate-cache` 才会尝试复用。当前 enabled long gate entry 是 `pytest_collect_all`、`full_test_debt`、`ruff_check_full`、`pyright_gate_full`、`pyright_tools_full`、`required_regressions`、`debt_ledger_sync`、`startup_runtime_regressions` 和 `quickref_vs_routes`；当前仍 planned 的 long gate entry 只有 `architecture_fitness`。
 - 要预热最终完整门禁会用到的 long gate 缓存，请跑完整门禁链：`.venv\Scripts\python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`。这条命令成功后，才会留下 long gate success cache。
+- CI 里也会复用 long gate cache：GitHub Actions 在完整门禁前恢复缓存，完整门禁成功后再保存缓存。保存范围只包含已被忽略、下次复用会用到的 `evidence/QualityGate/` 运行产物，例如 `evidence/QualityGate/long_gate/` 和几份 long gate proof JSON，不包含已跟踪的 `evidence/Conformance/quickref_vs_routes.md`。来自 fork 的 pull request 只允许读取已有缓存，不会把自己的运行产物保存回主仓库缓存。
 - long gate cache 不是跳过正式门禁。命中前会校验 command、fingerprint、stdout/stderr 日志、输出 proof、schema、runner/tooling hash 和 repo identity；证据缺失、损坏或 hash 不一致都会自动重跑。未登记的新失败仍然必须失败，已登记测试债务仍然必须被台账管住。
-- `--long-gate-cache-explain` 只打印“会不会复用”的判断，不执行门禁，也不能当作通过证明。summary counts 只告诉你本轮执行、复用、失败、planned、disabled 各有多少条，也不是通过证明。
+- `--long-gate-cache-explain` 只打印“会不会复用”的判断，不执行门禁，也不能当作通过证明。summary counts 只告诉你本轮执行、复用、失败、planned、disabled 各有多少条，也不是通过证明。CI 日志里看到 cache hit，也只能说明旧运行产物被拿回来参与校验，不能当成这次门禁已经通过。
 - CI 和最终 clean gate 的要求不降低。最终 clean proof 仍要在干净工作区跑 `.venv\Scripts\python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`，并且门禁结束后 `git status --short` 仍然没有输出。
 - 去掉 `--long-gate-cache` 或加 `--no-long-gate-cache` 只适合维护者强制全量重跑或排查缓存问题；对外收口、PR 和 CI 的最终证明仍按 `--require-clean-worktree --long-gate-cache` 或 `tools\git_hook_checks.py run-final-quality-gate` 口径写。
 - `requirements.txt` 是程序运行依赖，`requirements-dev.txt` 是本地检查和托管门禁依赖；新环境两份都要装。

@@ -22,6 +22,7 @@ if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
 from tools import quality_gate_shared  # noqa: E402
+from tools import verify_required_regressions_from_full_test_debt as required_regressions_verifier  # noqa: E402
 from tools.architecture_scan_cache import architecture_scan_cache_metadata  # noqa: E402
 from tools.long_gate_cache import evaluate_reuse  # noqa: E402
 from tools.long_gate_cache import resolve_cache_dir as resolve_long_gate_cache_dir
@@ -102,7 +103,7 @@ PYRIGHT_GATE_CONFIG = QUALITY_GATE_PYRIGHT_GATE_CONFIG
 PYRIGHT_TOOLS_CONFIG = QUALITY_GATE_PYRIGHT_TOOLS_CONFIG
 QUALITY_GATE_SELFTEST = QUALITY_GATE_SELFTEST_PATH
 STARTUP_RUNTIME_REGRESSIONS_PROOF_SCHEMA_VERSION = 1
-REQUIRED_REGRESSIONS_PROOF_SCHEMA_VERSION = 3
+REQUIRED_REGRESSIONS_PROOF_SCHEMA_VERSION = 4
 STATIC_CHECK_PROOF_SCHEMA_VERSION = 1
 DEBT_LEDGER_SYNC_PROOF_SCHEMA_VERSION = 1
 GENERATED_CLEAN_WORKTREE_EXCLUDED_PATHS = [
@@ -116,6 +117,7 @@ GENERATED_CLEAN_WORKTREE_EXCLUDED_PATHS = [
     "evidence/QualityGate/architecture_scan_cache.json",
     QUALITY_GATE_STARTUP_RUNTIME_REGRESSIONS_REL.replace("\\", "/"),
     QUALITY_GATE_REQUIRED_REGRESSIONS_REL.replace("\\", "/"),
+    "evidence/QualityGate/required_regressions/",
     QUALITY_GATE_DEBT_LEDGER_SYNC_REL.replace("\\", "/"),
     QUALITY_GATE_RUFF_CHECK_FULL_REL.replace("\\", "/"),
     QUALITY_GATE_PYRIGHT_GATE_FULL_REL.replace("\\", "/"),
@@ -1567,12 +1569,20 @@ def _load_required_regressions_verifier_proof(abs_path: str) -> Optional[Dict[st
         raise QualityGateError(f"required regressions verifier 证明不可用：{loaded.error}")
 
     payload = dict(loaded.payload)
+    if int(payload.get("schema_version") or 0) != REQUIRED_REGRESSIONS_PROOF_SCHEMA_VERSION:
+        raise QualityGateError(
+            "required regressions verifier 证明 schema_version 不是 "
+            f"{REQUIRED_REGRESSIONS_PROOF_SCHEMA_VERSION}"
+        )
     if str(payload.get("verification_method") or "") != "full_test_debt_payload_required_coverage":
         raise QualityGateError("required regressions verifier 证明缺少 full-test-debt 覆盖校验口径")
     required_fields = (
         "verified_required_nodeid_count",
         "verified_required_nodeids_hash",
         "required_nodeid_count_by_path",
+        "group_count",
+        "groups",
+        "required_regression_group_coverage",
         "source_payload_path",
         "source_payload_collected_count",
         "source_payload_report_count",
@@ -1656,7 +1666,7 @@ def _write_required_regressions_proof(
     command_plan: Sequence[Dict[str, Any]],
     fingerprint: Dict[str, Any],
     cache_dir: str,
-) -> str:
+) -> List[str]:
     rel_path = QUALITY_GATE_REQUIRED_REGRESSIONS_REL.replace("\\", "/")
     abs_path = os.path.join(REPO_ROOT, rel_path.replace("/", os.sep))
     args = [str(arg) for arg in list(entry.get("args") or [])]
@@ -1721,11 +1731,22 @@ def _write_required_regressions_proof(
             merged_payload = dict(verifier_payload)
             merged_payload.update(payload)
             payload = merged_payload
+    if uses_full_test_debt_verifier:
+        payload = required_regressions_verifier.write_required_regressions_proof_bundle(
+            abs_path,
+            payload,
+            repo_root=REPO_ROOT,
+        )
+        child_paths = [
+            str(path).replace("\\", "/")
+            for path in list(payload.get("group_child_proof_paths") or [])
+        ]
+        return [rel_path, *child_paths]
     os.makedirs(os.path.dirname(abs_path), exist_ok=True)
     with open(abs_path, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
         handle.write("\n")
-    return rel_path
+    return [rel_path]
 
 
 def _parse_debt_ledger_check_stdout(stdout: str) -> Dict[str, Any]:
@@ -1951,17 +1972,15 @@ def _prepare_long_gate_success_output_files(
             )
         ]
     if entry_id == ENTRY_REQUIRED_REGRESSIONS:
-        return [
-            _write_required_regressions_proof(
-                entry,
-                result,
-                run_id=run_id,
-                command_index=command_index,
-                command_plan=command_plan,
-                fingerprint=dict(fingerprint or {}),
-                cache_dir=cache_dir,
-            )
-        ]
+        return _write_required_regressions_proof(
+            entry,
+            result,
+            run_id=run_id,
+            command_index=command_index,
+            command_plan=command_plan,
+            fingerprint=dict(fingerprint or {}),
+            cache_dir=cache_dir,
+        )
     if entry_id == ENTRY_DEBT_LEDGER_SYNC:
         return [
             _write_debt_ledger_sync_proof(

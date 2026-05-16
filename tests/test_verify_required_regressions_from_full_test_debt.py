@@ -82,12 +82,42 @@ def test_main_writes_required_regressions_proof_from_full_test_debt(monkeypatch,
         encoding="utf-8",
     )
     monkeypatch.setattr(verifier.quality_gate_shared, "iter_quality_gate_required_tests", lambda: list(required))
+    monkeypatch.setattr(
+        verifier.quality_gate_support,
+        "iter_required_regression_groups",
+        lambda groups=None: [
+            {
+                "group_id": "quality_gate",
+                "label": "Quality gate",
+                "target_paths": [required[0]],
+                "input_file_scopes": [],
+                "config_file_scopes": [],
+                "tool_file_scopes": [],
+                "dependency_file_scopes": [],
+                "env_keys": [],
+            },
+            {
+                "group_id": "scheduler",
+                "label": "Scheduler",
+                "target_paths": [required[1]],
+                "input_file_scopes": [],
+                "config_file_scopes": [],
+                "tool_file_scopes": [],
+                "dependency_file_scopes": [],
+                "env_keys": [],
+            },
+        ],
+    )
 
     assert verifier.main(["--payload", str(payload_path), "--output", str(output_path), "--run-id", "run-1"]) == 0
 
     stdout = capsys.readouterr().out
     proof = json.loads(output_path.read_text(encoding="utf-8"))
+    child_dir = output_path.parent / output_path.stem
+    quality_gate_child = json.loads((child_dir / "quality_gate.json").read_text(encoding="utf-8"))
+    scheduler_child = json.loads((child_dir / "scheduler.json").read_text(encoding="utf-8"))
     assert stdout == "required_regressions verified targets=2 nodeids=2 output=" + str(output_path) + "\n"
+    assert proof["schema_version"] == 4
     assert proof["status"] == "passed"
     assert proof["entry_id"] == "required_regressions"
     assert proof["run_id"] == "run-1"
@@ -95,6 +125,19 @@ def test_main_writes_required_regressions_proof_from_full_test_debt(monkeypatch,
     assert proof["verified_required_nodeid_count"] == 2
     assert proof["source_payload_path"] == str(payload_path)
     assert proof["execution_mode"] == "verified_from_full_test_debt"
+    assert proof["group_count"] == 2
+    assert proof["group_child_proof_count"] == 2
+    assert [group["group_id"] for group in proof["groups"]] == ["quality_gate", "scheduler"]
+    assert {group["child_proof_path"] for group in proof["groups"]} == {
+        str(child_dir / "quality_gate.json"),
+        str(child_dir / "scheduler.json"),
+    }
+    assert quality_gate_child["parent_schema_version"] == 4
+    assert quality_gate_child["group_id"] == "quality_gate"
+    assert quality_gate_child["required_target_paths"] == [required[0]]
+    assert quality_gate_child["verified_required_nodeids"] == ["tests/test_required_a.py::test_a"]
+    assert scheduler_child["group_id"] == "scheduler"
+    assert scheduler_child["verified_required_nodeids"] == ["tests/regression_required_b.py::regression_b"]
 
 
 def test_verify_rejects_missing_required_file() -> None:

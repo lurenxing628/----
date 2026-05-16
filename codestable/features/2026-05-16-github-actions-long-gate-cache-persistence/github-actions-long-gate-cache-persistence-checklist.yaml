@@ -1,0 +1,45 @@
+feature: 2026-05-16-github-actions-long-gate-cache-persistence
+created: 2026-05-16
+
+steps:
+  - action: "确认缓存边界：只缓存 long gate 复用需要的已忽略运行产物，不覆盖 tracked quickref 报告"
+    exit_signal: "缓存路径只列 evidence/QualityGate 下的 long gate 运行产物；不包含 evidence/Conformance/quickref_vs_routes.md"
+    status: done
+  - action: "修改 GitHub Actions：增加 pinned restore/save，restore 在门禁前，save 在成功后"
+    exit_signal: "quality.yml 中 actions/cache/restore 和 actions/cache/save 都 pinned 到同一 commit；CI 命令未变化"
+    status: done
+  - action: "限制 fork PR：外部 fork pull request 不保存缓存"
+    exit_signal: "save step 的 if 条件排除 fork PR"
+    status: done
+  - action: "文档回写：README、开发文档、roadmap/items 说明 CI cache hit 不是 proof"
+    exit_signal: "文档说明 restore/save 目的、缓存范围、fork PR 行为和 proof 边界"
+    status: done
+  - action: "局部验证：校验 YAML、workflow YAML 和 diff whitespace"
+    exit_signal: "items/checklist YAML 校验、workflow YAML parse 和 git diff --check 完成"
+    status: done
+
+checks:
+  - item: "workflow 使用 pinned actions/cache restore/save"
+    source: .github/workflows/quality.yml
+    status: passed
+  - item: "restore 在 run_quality_gate.py 之前"
+    source: .github/workflows/quality.yml
+    status: passed
+  - item: "save 在 run_quality_gate.py 成功之后"
+    source: .github/workflows/quality.yml
+    status: passed
+  - item: "fork PR 不 save"
+    source: .github/workflows/quality.yml
+    status: passed
+  - item: "CI 命令仍带 --require-clean-worktree --long-gate-cache"
+    source: .github/workflows/quality.yml
+    status: passed
+  - item: "缓存路径不包含 evidence/Conformance/quickref_vs_routes.md"
+    source: .github/workflows/quality.yml
+    status: passed
+  - item: "README、开发文档和 roadmap 都说明 cache hit 不是 proof"
+    source: 文档口径
+    status: passed
+  - item: "未修改 Python 运行代码"
+    source: git diff
+    status: passed

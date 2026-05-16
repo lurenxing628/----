@@ -632,6 +632,71 @@ def test_nodeid_incremental_plan_accepts_top_level_regression_test_file(tmp_path
     assert plan["selected_nodeids"] == ["tests/regression_sample_contract.py::test_regression_sample"]
 
 
+def test_nodeid_incremental_plan_accepts_nested_test_and_regression_files(tmp_path):
+    _write_file(tmp_path, "tests/scheduler/test_nested_contract.py", "before\n")
+    _write_file(tmp_path, "tests/scheduler/regression_nested_contract.py", "before\n")
+    _write_file(tmp_path, "tests/test_b.py", "same\n")
+    previous = _fingerprint_from_file_hashes(
+        {
+            "tests/scheduler/test_nested_contract.py": "old-test",
+            "tests/scheduler/regression_nested_contract.py": "old-regression",
+            "tests/test_b.py": hashlib.sha256(b"same\n").hexdigest(),
+            "evidence/QualityGate/collect_nodeids.json": "old-collect",
+        }
+    )
+    current = _fingerprint_from_file_hashes(
+        {
+            "tests/scheduler/test_nested_contract.py": "new-test",
+            "tests/scheduler/regression_nested_contract.py": "new-regression",
+            "tests/test_b.py": hashlib.sha256(b"same\n").hexdigest(),
+            "evidence/QualityGate/collect_nodeids.json": "new-collect",
+        }
+    )
+    snapshot = _collect_snapshot_for_mapping(
+        {
+            "tests/scheduler/regression_nested_contract.py": [
+                "tests/scheduler/regression_nested_contract.py::test_regression_nested"
+            ],
+            "tests/scheduler/test_nested_contract.py": [
+                "tests/scheduler/test_nested_contract.py::test_nested"
+            ],
+            "tests/test_b.py": ["tests/test_b.py::test_b"],
+        }
+    )
+
+    plan, error = _classify_incremental_plan(
+        repo_root=str(tmp_path),
+        previous_fingerprint=previous,
+        current_fingerprint=current,
+        collect_snapshot=snapshot,
+        node_cache={
+            "collect_nodeids": snapshot,
+            "test_file_hashes": {"tests/test_b.py": hashlib.sha256(b"same\n").hexdigest()},
+        },
+        ledger=_empty_test_debt_ledger(),
+    )
+
+    assert error == ""
+    assert plan is not None
+    assert plan["mode"] == "nodeid_incremental"
+    assert plan["safe_scope_kind"] == "test_file_incremental"
+    assert plan["changed_files_classification"] == {
+        "collect_nodeids": ["evidence/QualityGate/collect_nodeids.json"],
+        "regular_test": [
+            "tests/scheduler/regression_nested_contract.py",
+            "tests/scheduler/test_nested_contract.py",
+        ],
+    }
+    assert plan["changed_test_files"] == [
+        "tests/scheduler/regression_nested_contract.py",
+        "tests/scheduler/test_nested_contract.py",
+    ]
+    assert plan["selected_nodeids"] == [
+        "tests/scheduler/regression_nested_contract.py::test_regression_nested",
+        "tests/scheduler/test_nested_contract.py::test_nested",
+    ]
+
+
 def test_test_only_helper_impact_registry_is_normalized_and_defensive() -> None:
     impacts = iter_test_only_helper_impacts()
 
@@ -671,6 +736,31 @@ def test_test_only_helper_impact_registry_is_normalized_and_defensive() -> None:
 def test_test_only_helper_impact_registry_rejects_unsafe_rows(helper_impacts, message) -> None:
     with pytest.raises(ValueError, match=message):
         iter_test_only_helper_impacts(helper_impacts)
+
+
+def test_long_gate_helper_impact_registry_accepts_subdirectory_helpers() -> None:
+    impacts = full_debt_mod._iter_test_only_helper_impacts(  # noqa: SLF001
+        {
+            "tests/support/cache_helpers.py": (
+                "tests/support/test_cache_contract.py",
+                "tests/support/regression_cache_contract.py",
+            )
+        }
+    )
+
+    assert impacts == {
+        "tests/support/cache_helpers.py": [
+            "tests/support/test_cache_contract.py",
+            "tests/support/regression_cache_contract.py",
+        ]
+    }
+
+
+def test_long_gate_helper_impact_registry_rejects_subdirectory_non_tests() -> None:
+    with pytest.raises(ValueError, match=r"tests/\*\*/test_\*\.py or regression_\*\.py"):
+        full_debt_mod._iter_test_only_helper_impacts(  # noqa: SLF001
+            {"tests/support/cache_helpers.py": ("tests/support/cache_contract.py",)}
+        )
 
 
 def test_declared_helper_change_uses_nodeid_incremental(tmp_path):
@@ -762,6 +852,82 @@ def test_declared_helper_change_uses_nodeid_incremental(tmp_path):
         "tests/test_long_gate_debt_ledger_cache.py::test_debt",
         "tests/test_long_gate_required_regression_cache.py::test_required",
         "tests/test_long_gate_startup_regression_cache.py::test_startup",
+    ]
+
+
+def test_declared_subdirectory_helper_change_uses_nodeid_incremental(monkeypatch, tmp_path):
+    helper_text = "def helper():\n    return 1\n"
+    test_text = "from tests.support.cache_helpers import helper\n"
+    regression_text = "from tests.support import cache_helpers\n"
+    _write_file(tmp_path, "tests/support/cache_helpers.py", helper_text)
+    _write_file(tmp_path, "tests/support/test_cache_contract.py", test_text)
+    _write_file(tmp_path, "tests/support/regression_cache_contract.py", regression_text)
+    monkeypatch.setattr(
+        full_debt_mod,
+        "TEST_ONLY_HELPER_IMPACT",
+        {
+            "tests/support/cache_helpers.py": (
+                "tests/support/regression_cache_contract.py",
+                "tests/support/test_cache_contract.py",
+            )
+        },
+    )
+    previous = _fingerprint_from_file_hashes(
+        {
+            "tests/support/cache_helpers.py": "old-helper",
+            "tests/support/regression_cache_contract.py": hashlib.sha256(
+                regression_text.encode("utf-8")
+            ).hexdigest(),
+            "tests/support/test_cache_contract.py": hashlib.sha256(test_text.encode("utf-8")).hexdigest(),
+        }
+    )
+    current = _fingerprint_from_file_hashes(
+        {
+            "tests/support/cache_helpers.py": "new-helper",
+            "tests/support/regression_cache_contract.py": hashlib.sha256(
+                regression_text.encode("utf-8")
+            ).hexdigest(),
+            "tests/support/test_cache_contract.py": hashlib.sha256(test_text.encode("utf-8")).hexdigest(),
+        }
+    )
+    snapshot = _collect_snapshot_for_mapping(
+        {
+            "tests/support/regression_cache_contract.py": [
+                "tests/support/regression_cache_contract.py::test_regression_cache"
+            ],
+            "tests/support/test_cache_contract.py": [
+                "tests/support/test_cache_contract.py::test_cache"
+            ],
+        }
+    )
+
+    plan, error = _classify_incremental_plan(
+        repo_root=str(tmp_path),
+        previous_fingerprint=previous,
+        current_fingerprint=current,
+        collect_snapshot=snapshot,
+        node_cache={"collect_nodeids": snapshot, "test_file_hashes": {}},
+        ledger=_empty_test_debt_ledger(),
+    )
+
+    assert error == ""
+    assert plan is not None
+    assert plan["safe_scope_kind"] == "test_file_incremental"
+    assert plan["changed_files_classification"] == {"test_helper": ["tests/support/cache_helpers.py"]}
+    assert plan["changed_helpers"] == ["tests/support/cache_helpers.py"]
+    assert plan["declared_helper_impacts"] == {
+        "tests/support/cache_helpers.py": [
+            "tests/support/regression_cache_contract.py",
+            "tests/support/test_cache_contract.py",
+        ]
+    }
+    assert plan["actual_importing_test_files"] == [
+        "tests/support/regression_cache_contract.py",
+        "tests/support/test_cache_contract.py",
+    ]
+    assert plan["selected_nodeids"] == [
+        "tests/support/regression_cache_contract.py::test_regression_cache",
+        "tests/support/test_cache_contract.py::test_cache",
     ]
 
 
@@ -1702,8 +1868,8 @@ def test_changed_test_import_text_prefilter_keeps_safe_import_spelling() -> None
         ("tests/regression_cache_helpers.py", "test helper is not declared"),
         ("tests/excel_preview_confirm_helpers.py", "test helper is not declared"),
         ("tests/runtime_cleanup_helper.py", "outside safe test-file-only scope"),
-        ("tests/some_dir/test_helper.py", "outside safe test-file-only scope"),
-        ("tests/regression/regression_collection_contract.py", "outside safe test-file-only scope"),
+        ("tests/some_dir/helper.py", "outside safe test-file-only scope"),
+        ("tests/regression/collection_contract.py", "outside safe test-file-only scope"),
         ("conftest.py", "outside safe test-file-only scope"),
         ("core/service.py", "outside safe test-file-only scope"),
         ("web/view.py", "outside safe test-file-only scope"),
@@ -1736,6 +1902,32 @@ def test_nodeid_incremental_plan_falls_back_for_unsafe_paths(tmp_path, changed_p
     assert expected_error in error
 
 
+def test_source_and_template_changes_are_diagnostic_full_run_scope() -> None:
+    previous = _fingerprint_from_file_hashes(
+        {
+            "core/service.py": "old-source",
+            "templates/scheduler/gantt.html": "old-template",
+        }
+    )
+    current = _fingerprint_from_file_hashes(
+        {
+            "core/service.py": "new-source",
+            "templates/scheduler/gantt.html": "new-template",
+        }
+    )
+
+    diagnostics = full_debt_mod._fingerprint_change_diagnostics(previous, current)  # noqa: SLF001
+
+    assert diagnostics == {
+        "safe_scope_kind": "source_or_template_full_run",
+        "changed_files_classification": {
+            "source": ["core/service.py"],
+            "template": ["templates/scheduler/gantt.html"],
+        },
+        "ledger_change_kind": "none",
+    }
+
+
 def test_ledger_only_plan_reuses_payload_without_nodeids(tmp_path):
     _write_file(tmp_path, "tests/test_a.py", "same\n")
     previous = _fingerprint_from_file_hashes({"开发文档/技术债务治理台账.md": "old"})
@@ -1757,6 +1949,9 @@ def test_ledger_only_plan_reuses_payload_without_nodeids(tmp_path):
     assert error == ""
     assert plan is not None
     assert plan["mode"] == "ledger_only"
+    assert plan["safe_scope_kind"] == "ledger_only"
+    assert plan["changed_files_classification"] == {"ledger": ["开发文档/技术债务治理台账.md"]}
+    assert plan["ledger_change_kind"] == "ledger_only"
 
 
 def test_ledger_only_plan_rejects_bad_test_file_hashes(tmp_path):
@@ -1926,6 +2121,9 @@ def test_merge_payload_records_incremental_proof_and_keeps_formal_args(tmp_path)
     ]
     assert merged["incremental_proof"] == {
         "mode": "nodeid_incremental",
+        "safe_scope_kind": "test_file_incremental",
+        "changed_files_classification": {},
+        "ledger_change_kind": "none",
         "selected_nodeids": ["tests/test_a.py::test_a"],
         "changed_test_files": ["tests/test_a.py"],
         "changed_helpers": [],
@@ -1973,6 +2171,9 @@ def test_build_ledger_only_payload_records_current_proof_metadata(monkeypatch, t
     assert payload["classifications"] == old_payload["classifications"]
     assert payload["incremental_proof"] == {
         "mode": "ledger_only",
+        "safe_scope_kind": "ledger_only",
+        "changed_files_classification": {},
+        "ledger_change_kind": "ledger_only",
         "changed_paths": ["开发文档/技术债务治理台账.md"],
         "previous_payload_hash": f"sha256:{stable_json_hash(old_payload)}",
         "previous_head_sha": "old-head",
@@ -1985,6 +2186,9 @@ def test_build_ledger_only_payload_records_current_proof_metadata(monkeypatch, t
     }
     assert payload["incremental_source"] == {
         "mode": "ledger_only",
+        "safe_scope_kind": "ledger_only",
+        "changed_files_classification": {},
+        "ledger_change_kind": "ledger_only",
         "changed_paths": ["开发文档/技术债务治理台账.md"],
     }
 

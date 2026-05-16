@@ -10,7 +10,8 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
 
 from tools import long_gate_fingerprint as fingerprint_mod
-from tools import quality_gate_shared
+from tools import quality_gate_shared, quality_gate_support
+from tools import verify_required_regressions_from_full_test_debt as required_verifier
 from tools.long_gate_cache import evaluate_reuse, write_success
 from tools.long_gate_fingerprint import fingerprint_entry
 from tools.long_gate_manifest import (
@@ -263,6 +264,38 @@ def _write_quickref_report(repo_root: Path) -> Path:
     return report
 
 
+def _required_group_summaries(parent_output_rel: str, required_targets: Sequence[str]) -> List[Dict[str, Any]]:
+    nodeids_by_path = {path: [f"{path}::test_cached_required"] for path in required_targets}
+    rows: List[Dict[str, Any]] = []
+    for group in quality_gate_support.iter_required_regression_groups():
+        target_paths = [str(path) for path in list(group.get("target_paths") or [])]
+        nodeids = [
+            nodeid
+            for target_path in target_paths
+            for nodeid in list(nodeids_by_path.get(target_path) or [])
+        ]
+        group_id = str(group.get("group_id") or "")
+        child_rel = f"{Path(parent_output_rel).with_suffix('').as_posix()}/{group_id}.json"
+        if parent_output_rel == "evidence/QualityGate/required_regressions.json":
+            child_rel = f"evidence/QualityGate/required_regressions/{group_id}.json"
+        rows.append(
+            {
+                "group_id": group_id,
+                "label": str(group.get("label") or group_id),
+                "required_target_paths": target_paths,
+                "required_target_count": len(target_paths),
+                "required_target_hash": stable_json_hash(target_paths),
+                "verified_required_nodeids": nodeids,
+                "verified_required_nodeid_count": len(nodeids),
+                "verified_required_nodeids_hash": stable_json_hash(nodeids),
+                "required_nodeid_count_by_path": {path: 1 for path in target_paths},
+                "child_proof_path": child_rel,
+                "child_proof_schema_version": required_verifier.REQUIRED_REGRESSION_GROUP_PROOF_SCHEMA_VERSION,
+            }
+        )
+    return rows
+
+
 def _write_required_verifier_proof(repo_root: Path, *, stdout_text: str, command_plan: Sequence[Dict[str, Any]]) -> None:
     manifest = _manifest_for(command_plan, repo_root)
     entry = _entry_by_id(manifest, ENTRY_REQUIRED_REGRESSIONS)
@@ -273,8 +306,9 @@ def _write_required_verifier_proof(repo_root: Path, *, stdout_text: str, command
     required_nodeids = [f"{path}::test_cached_required" for path in required_targets]
     stdout_rel = "evidence/QualityGate/long_gate/logs/required_regressions.stdout.log"
     stderr_rel = "evidence/QualityGate/long_gate/logs/required_regressions.stderr.log"
+    group_coverage = quality_gate_support.validate_required_regression_group_coverage(required_targets)
     proof = {
-        "schema_version": 3,
+        "schema_version": required_verifier.REQUIRED_REGRESSIONS_PROOF_SCHEMA_VERSION,
         "status": "passed",
         "entry_id": ENTRY_REQUIRED_REGRESSIONS,
         "head_sha": "deadbeef",
@@ -293,6 +327,12 @@ def _write_required_verifier_proof(repo_root: Path, *, stdout_text: str, command
         "verified_required_nodeid_count": len(required_nodeids),
         "verified_required_nodeids_hash": stable_json_hash(required_nodeids),
         "required_nodeid_count_by_path": {path: 1 for path in required_targets},
+        "group_count": len(quality_gate_support.iter_required_regression_groups()),
+        "groups": _required_group_summaries(
+            "evidence/QualityGate/required_regressions.json",
+            required_targets,
+        ),
+        "required_regression_group_coverage": group_coverage,
         "source_payload_path": "evidence/QualityGate/current_full_test_debt.json",
         "source_payload_head_sha": "deadbeef",
         "source_payload_generated_at": "2026-05-13T00:00:00+08:00",
@@ -320,7 +360,7 @@ def _write_required_verifier_proof(repo_root: Path, *, stdout_text: str, command
     }
     proof_path = _proof_path_for_entry(repo_root, ENTRY_REQUIRED_REGRESSIONS)
     proof_path.parent.mkdir(parents=True, exist_ok=True)
-    proof_path.write_text(json.dumps(proof, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    required_verifier.write_required_regressions_proof_bundle(str(proof_path), proof, repo_root=str(repo_root))
 
 
 def _fake_successful_command(
@@ -478,6 +518,7 @@ def _seed_required_or_startup_success_cache(
     if entry_id == ENTRY_REQUIRED_REGRESSIONS:
         required_targets = quality_gate_shared.iter_quality_gate_required_tests()
         required_nodeids = [f"{path}::test_cached_required" for path in required_targets]
+        group_coverage = quality_gate_support.validate_required_regression_group_coverage(required_targets)
         proof_payload["test_count"] = len(required_targets)
         proof_payload["required_target_count"] = len(required_targets)
         proof_payload["required_target_paths"] = required_targets
@@ -491,15 +532,34 @@ def _seed_required_or_startup_success_cache(
         proof_payload["source_payload_generated_at"] = "2026-05-13T00:00:00+08:00"
         proof_payload["source_payload_collected_count"] = len(required_nodeids)
         proof_payload["source_payload_report_count"] = len(required_nodeids)
+        proof_payload["group_count"] = len(quality_gate_support.iter_required_regression_groups())
+        proof_payload["groups"] = _required_group_summaries(
+            "evidence/QualityGate/required_regressions.json",
+            required_targets,
+        )
+        proof_payload["required_regression_group_coverage"] = group_coverage
     if entry_id == ENTRY_STARTUP_RUNTIME_REGRESSIONS:
         proof_payload["startup_target_count"] = len(entry["args"][4:])
         proof_payload["startup_target_paths"] = entry["args"][4:]
     if proof_payload_overrides:
         proof_payload.update(dict(proof_payload_overrides))
 
-    with open(proof_path, "w", encoding="utf-8") as handle:
-        json.dump(proof_payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
-        handle.write("\n")
+    if entry_id == ENTRY_REQUIRED_REGRESSIONS:
+        proof_payload = required_verifier.write_required_regressions_proof_bundle(
+            str(proof_path),
+            proof_payload,
+            repo_root=str(repo_root),
+        )
+    else:
+        with open(proof_path, "w", encoding="utf-8") as handle:
+            json.dump(proof_payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
+            handle.write("\n")
+    output_paths = [str(proof_path)]
+    if entry_id == ENTRY_REQUIRED_REGRESSIONS:
+        output_paths.extend(
+            str(repo_root / str(path).replace("\\", "/"))
+            for path in list(proof_payload.get("group_child_proof_paths") or [])
+        )
 
     write_success(
         entry,
@@ -510,7 +570,7 @@ def _seed_required_or_startup_success_cache(
             "returncode": 0,
             "duration_s": 3.0,
         },
-        [str(proof_path)],
+        output_paths,
         repo_root=str(repo_root),
     )
     assert proof_path.exists()

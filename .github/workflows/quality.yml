@@ -44,8 +44,49 @@ jobs:
           }
           & $env:APS_CHROME_PATH --version
 
+      - name: 恢复 long gate cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            evidence/QualityGate/long_gate/
+            evidence/QualityGate/collect_nodeids.json
+            evidence/QualityGate/current_full_test_debt.json
+            evidence/QualityGate/full_test_debt_summary.json
+            evidence/QualityGate/full_test_debt_node_cache.json
+            evidence/QualityGate/architecture_scan_cache.json
+            evidence/QualityGate/startup_runtime_regressions.json
+            evidence/QualityGate/required_regressions.json
+            evidence/QualityGate/required_regressions/
+            evidence/QualityGate/debt_ledger_sync.json
+            evidence/QualityGate/ruff_check_full.json
+            evidence/QualityGate/pyright_gate_full.json
+            evidence/QualityGate/pyright_tools_full.json
+          key: quality-long-gate-${{ runner.os }}-py38-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            quality-long-gate-${{ runner.os }}-py38-
+
       - name: 执行统一质量门禁
         run: python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache
+
+      - name: 保存 long gate cache
+        if: ${{ success() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            evidence/QualityGate/long_gate/
+            evidence/QualityGate/collect_nodeids.json
+            evidence/QualityGate/current_full_test_debt.json
+            evidence/QualityGate/full_test_debt_summary.json
+            evidence/QualityGate/full_test_debt_node_cache.json
+            evidence/QualityGate/architecture_scan_cache.json
+            evidence/QualityGate/startup_runtime_regressions.json
+            evidence/QualityGate/required_regressions.json
+            evidence/QualityGate/required_regressions/
+            evidence/QualityGate/debt_ledger_sync.json
+            evidence/QualityGate/ruff_check_full.json
+            evidence/QualityGate/pyright_gate_full.json
+            evidence/QualityGate/pyright_tools_full.json
+          key: quality-long-gate-${{ runner.os }}-py38-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: 上传 quality gate evidence
         if: always()

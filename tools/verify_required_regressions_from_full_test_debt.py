@@ -14,13 +14,15 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
-from tools import quality_gate_shared  # noqa: E402
+from tools import quality_gate_shared, quality_gate_support  # noqa: E402
 from tools.long_gate_manifest import ENTRY_REQUIRED_REGRESSIONS  # noqa: E402
 from tools.long_gate_schema import stable_json_hash  # noqa: E402
 
 CURRENT_FULL_TEST_DEBT_REL = quality_gate_shared.QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL.replace("\\", "/")
 REQUIRED_REGRESSIONS_REL = quality_gate_shared.QUALITY_GATE_REQUIRED_REGRESSIONS_REL.replace("\\", "/")
-REQUIRED_REGRESSIONS_PROOF_SCHEMA_VERSION = 3
+REQUIRED_REGRESSIONS_GROUP_DIR_REL = "evidence/QualityGate/required_regressions"
+REQUIRED_REGRESSIONS_PROOF_SCHEMA_VERSION = 4
+REQUIRED_REGRESSION_GROUP_PROOF_SCHEMA_VERSION = 1
 BLOCKING_CLASSIFICATION_KEYS = (
     "required_or_quality_gate_self_failure",
     "main_style_isolation_candidate",
@@ -49,6 +51,24 @@ def _abs_repo_path(path: str) -> str:
     if os.path.isabs(normalized):
         return normalized
     return os.path.join(REPO_ROOT, normalized.replace("/", os.sep))
+
+
+def _repo_rel_path_for_root(path: str, repo_root: str) -> str:
+    normalized = str(path or "").replace("\\", "/")
+    if os.path.isabs(normalized):
+        real_path = os.path.realpath(normalized)
+        real_root = os.path.realpath(repo_root)
+        if real_path == real_root or real_path.startswith(real_root + os.sep):
+            return os.path.relpath(real_path, real_root).replace("\\", "/")
+        return normalized
+    return normalized
+
+
+def _abs_repo_path_for_root(path: str, repo_root: str) -> str:
+    normalized = str(path or "").replace("\\", "/")
+    if os.path.isabs(normalized):
+        return normalized
+    return os.path.join(repo_root, normalized.replace("/", os.sep))
 
 
 def _load_json_object(path: str) -> Dict[str, Any]:
@@ -123,8 +143,10 @@ def verify_required_regressions_from_payload(
     payload: Mapping[str, Any],
     *,
     required_tests: Optional[Sequence[str]] = None,
+    required_groups: Optional[Sequence[Mapping[str, Any]]] = None,
 ) -> Dict[str, Any]:
     _validate_clean_full_test_debt_payload(payload)
+    required_tests_were_explicit = required_tests is not None
     required_paths = [
         str(path).replace("\\", "/")
         for path in list(required_tests if required_tests is not None else quality_gate_shared.iter_quality_gate_required_tests())
@@ -180,10 +202,45 @@ def verify_required_regressions_from_payload(
     if xfail_reports:
         raise RequiredRegressionProofError("required nodeid 存在 xfail 信号：" + ", ".join(xfail_reports[:20]))
 
+    group_rows, group_coverage = _group_rows_for_required_paths(
+        required_paths,
+        required_tests_were_explicit=required_tests_were_explicit,
+        required_groups=required_groups,
+    )
+    groups: List[Dict[str, Any]] = []
+    for group in group_rows:
+        group_id = str(group.get("group_id") or "")
+        target_paths = [str(path).replace("\\", "/") for path in list(group.get("target_paths") or [])]
+        group_nodeids = sorted(
+            {
+                nodeid
+                for target_path in target_paths
+                for nodeid in list(nodeids_by_path.get(target_path) or [])
+            }
+        )
+        groups.append(
+            {
+                "group_id": group_id,
+                "label": str(group.get("label") or group_id),
+                "required_target_paths": target_paths,
+                "required_target_count": len(target_paths),
+                "required_target_hash": stable_json_hash(target_paths),
+                "verified_required_nodeids": group_nodeids,
+                "verified_required_nodeid_count": len(group_nodeids),
+                "verified_required_nodeids_hash": stable_json_hash(group_nodeids),
+                "required_nodeid_count_by_path": {
+                    path: len(nodeids_by_path[path])
+                    for path in target_paths
+                },
+            }
+        )
+
     return {
         "required_target_paths": required_paths,
         "required_nodeids": required_nodeids,
         "required_nodeid_count_by_path": {path: len(nodeids_by_path[path]) for path in required_paths},
+        "groups": groups,
+        "group_coverage": group_coverage,
         "collected_count": len(collected_nodeids),
         "report_count": len(reports),
     }
@@ -207,6 +264,14 @@ def _sha256_text(text: str) -> str:
     return hashlib.sha256(str(text or "").encode("utf-8")).hexdigest()
 
 
+def _sha256_file(path: str) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _parse_args_json(value: str) -> List[str]:
     if not str(value or "").strip():
         return []
@@ -214,6 +279,66 @@ def _parse_args_json(value: str) -> List[str]:
     if not isinstance(parsed, list):
         raise argparse.ArgumentTypeError("--args-json 必须是 JSON 列表")
     return [str(item) for item in parsed]
+
+
+def _safe_group_id(group_id: str) -> str:
+    normalized = str(group_id or "").strip()
+    if not normalized:
+        raise RequiredRegressionProofError("required regression group_id 为空")
+    if normalized in {".", ".."} or "/" in normalized or "\\" in normalized:
+        raise RequiredRegressionProofError(f"required regression group_id 不能作为文件名：{normalized}")
+    return normalized
+
+
+def _group_proof_path_for_parent(parent_output_rel: str, group_id: str) -> str:
+    safe_group_id = _safe_group_id(group_id)
+    normalized_parent = str(parent_output_rel or "").replace("\\", "/")
+    if normalized_parent == REQUIRED_REGRESSIONS_REL:
+        return f"{REQUIRED_REGRESSIONS_GROUP_DIR_REL}/{safe_group_id}.json"
+    parent_dir = os.path.dirname(normalized_parent)
+    parent_stem = os.path.splitext(os.path.basename(normalized_parent))[0] or "required_regressions"
+    if parent_dir:
+        return f"{parent_dir}/{parent_stem}/{safe_group_id}.json"
+    return f"{parent_stem}/{safe_group_id}.json"
+
+
+def _group_rows_for_required_paths(
+    required_paths: Sequence[str],
+    *,
+    required_tests_were_explicit: bool,
+    required_groups: Optional[Sequence[Mapping[str, Any]]] = None,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    if required_groups is None and required_tests_were_explicit:
+        group_rows = [
+            {
+                "group_id": "custom_required_regressions",
+                "label": "Custom required regressions",
+                "target_paths": list(required_paths),
+                "input_file_scopes": [],
+                "config_file_scopes": [],
+                "tool_file_scopes": [],
+                "dependency_file_scopes": [],
+                "env_keys": [],
+            }
+        ]
+    else:
+        group_rows = quality_gate_support.iter_required_regression_groups(required_groups)
+
+    coverage = quality_gate_support.validate_required_regression_group_coverage(
+        required_paths,
+        groups=group_rows,
+    )
+    problems: List[str] = []
+    if coverage.get("missing"):
+        problems.append("missing=" + ", ".join(str(path) for path in list(coverage.get("missing") or [])))
+    if coverage.get("unknown"):
+        problems.append("unknown=" + ", ".join(str(path) for path in list(coverage.get("unknown") or [])))
+    if coverage.get("duplicates"):
+        duplicate_paths = [str(row.get("path") or "") for row in list(coverage.get("duplicates") or []) if isinstance(row, dict)]
+        problems.append("duplicates=" + ", ".join(duplicate_paths))
+    if problems:
+        raise RequiredRegressionProofError("required regression group 覆盖不完整：" + "; ".join(problems))
+    return group_rows, coverage
 
 
 def _default_command_plan_entry() -> Tuple[int, Dict[str, Any], List[Dict[str, Any]]]:
@@ -264,6 +389,16 @@ def _build_proof_payload(
     stderr_sha256 = str(args.stderr_sha256 or _sha256_text(""))
     required_target_paths = list(verification["required_target_paths"])
     required_nodeids = list(verification["required_nodeids"])
+    parent_output_rel = _repo_rel_path(str(args.output or REQUIRED_REGRESSIONS_REL))
+    groups = []
+    for group in list(verification.get("groups") or []):
+        if not isinstance(group, Mapping):
+            continue
+        group_id = str(group.get("group_id") or "")
+        group_row = dict(group)
+        group_row["child_proof_path"] = _group_proof_path_for_parent(parent_output_rel, group_id)
+        group_row["child_proof_schema_version"] = REQUIRED_REGRESSION_GROUP_PROOF_SCHEMA_VERSION
+        groups.append(group_row)
     return {
         "schema_version": REQUIRED_REGRESSIONS_PROOF_SCHEMA_VERSION,
         "status": "passed",
@@ -285,6 +420,9 @@ def _build_proof_payload(
         "verified_required_nodeid_count": len(required_nodeids),
         "verified_required_nodeids_hash": stable_json_hash(required_nodeids),
         "required_nodeid_count_by_path": dict(verification["required_nodeid_count_by_path"]),
+        "group_count": len(groups),
+        "groups": groups,
+        "required_regression_group_coverage": dict(verification["group_coverage"]),
         "source_payload_path": source_payload_rel,
         "source_payload_head_sha": str(source_payload.get("head_sha") or ""),
         "source_payload_generated_at": str(source_payload.get("generated_at") or ""),
@@ -327,6 +465,99 @@ def _write_json(path: str, payload: Mapping[str, Any]) -> None:
         json.dump(dict(payload), handle, ensure_ascii=False, indent=2, sort_keys=True)
         handle.write("\n")
     os.replace(temp_path, path)
+
+
+def _build_group_proof_payload(parent_payload: Mapping[str, Any], group: Mapping[str, Any]) -> Dict[str, Any]:
+    copied_fields = (
+        "entry_id",
+        "generated_at",
+        "head_sha",
+        "run_id",
+        "quality_gate_plan_hash",
+        "command_index",
+        "display",
+        "args",
+        "command_hash",
+        "capture_output",
+        "output_policy",
+        "source_payload_path",
+        "source_payload_head_sha",
+        "source_payload_generated_at",
+        "source_payload_collected_count",
+        "source_payload_report_count",
+        "verification_method",
+        "fingerprint_schema_version",
+        "fingerprint_hash",
+        "returncode",
+        "pytest_exit_code",
+        "verification_exit_code",
+        "execution_mode",
+        "duration_s",
+        "stdout_log_path",
+        "stderr_log_path",
+        "stdout_sha256",
+        "stderr_sha256",
+        "timed_out",
+        "interrupted",
+        "partial_write",
+        "does_not_claim",
+        "logs",
+    )
+    payload: Dict[str, Any] = {
+        "schema_version": REQUIRED_REGRESSION_GROUP_PROOF_SCHEMA_VERSION,
+        "parent_schema_version": REQUIRED_REGRESSIONS_PROOF_SCHEMA_VERSION,
+        "status": "passed",
+        "group_id": str(group.get("group_id") or ""),
+        "label": str(group.get("label") or group.get("group_id") or ""),
+        "parent_proof_path": _repo_rel_path(str(parent_payload.get("parent_proof_path") or REQUIRED_REGRESSIONS_REL)),
+        "required_target_count": int(group.get("required_target_count") or 0),
+        "required_target_paths": list(group.get("required_target_paths") or []),
+        "required_target_hash": str(group.get("required_target_hash") or ""),
+        "verified_required_nodeid_count": int(group.get("verified_required_nodeid_count") or 0),
+        "verified_required_nodeids": list(group.get("verified_required_nodeids") or []),
+        "verified_required_nodeids_hash": str(group.get("verified_required_nodeids_hash") or ""),
+        "required_nodeid_count_by_path": dict(group.get("required_nodeid_count_by_path") or {}),
+    }
+    for field in copied_fields:
+        if field in parent_payload:
+            payload[field] = parent_payload[field]
+    return payload
+
+
+def write_required_regressions_proof_bundle(
+    output_path: str,
+    parent_payload: Mapping[str, Any],
+    *,
+    repo_root: Optional[str] = None,
+) -> Dict[str, Any]:
+    root = os.path.abspath(repo_root or REPO_ROOT)
+    parent = dict(parent_payload)
+    parent_output_rel = _repo_rel_path_for_root(output_path, root)
+    parent["schema_version"] = REQUIRED_REGRESSIONS_PROOF_SCHEMA_VERSION
+    parent["parent_proof_path"] = parent_output_rel
+    updated_groups: List[Dict[str, Any]] = []
+    child_paths: List[str] = []
+    for raw_group in list(parent.get("groups") or []):
+        if not isinstance(raw_group, Mapping):
+            raise RequiredRegressionProofError("groups 每一项都必须是对象")
+        group = dict(raw_group)
+        child_rel = str(group.get("child_proof_path") or "").replace("\\", "/")
+        if not child_rel:
+            child_rel = _group_proof_path_for_parent(parent_output_rel, str(group.get("group_id") or ""))
+        group["child_proof_path"] = child_rel
+        group["child_proof_schema_version"] = REQUIRED_REGRESSION_GROUP_PROOF_SCHEMA_VERSION
+        child_payload = _build_group_proof_payload(parent, group)
+        child_abs = _abs_repo_path_for_root(child_rel, root)
+        _write_json(child_abs, child_payload)
+        group["child_proof_sha256"] = _sha256_file(child_abs)
+        updated_groups.append(group)
+        child_paths.append(_repo_rel_path_for_root(child_rel, root))
+    parent["groups"] = updated_groups
+    parent["group_count"] = len(updated_groups)
+    parent["group_child_proof_count"] = len(child_paths)
+    parent["group_child_proof_paths"] = child_paths
+    _write_json(output_path, parent)
+    return parent
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -377,7 +608,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             output_line=output_line,
             args=args,
         )
-        _write_json(output_path, proof)
+        write_required_regressions_proof_bundle(output_path, proof)
     except (OSError, ValueError, RequiredRegressionProofError) as exc:
         print(f"required_regressions verification failed: {exc}", file=sys.stderr, flush=True)
         return 1

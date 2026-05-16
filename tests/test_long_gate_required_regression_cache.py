@@ -232,12 +232,24 @@ def test_required_success_writes_parent_proof_and_reuses_next_run(monkeypatch, t
     assert proof["source_payload_path"] == "evidence/QualityGate/current_full_test_debt.json"
     assert proof["source_payload_collected_count"] == len(required_targets)
     assert proof["source_payload_report_count"] == len(required_targets)
-    assert "groups" not in proof
+    assert proof["schema_version"] == 4
+    assert proof["group_count"] == len(proof["groups"])
+    assert proof["group_child_proof_count"] == len(proof["groups"])
+    assert proof["required_regression_group_coverage"]["missing"] == []
+    assert proof["required_regression_group_coverage"]["unknown"] == []
+    assert proof["required_regression_group_coverage"]["duplicates"] == []
+    for group in proof["groups"]:
+        child_path = repo_root / str(group["child_proof_path"]).replace("\\", "/")
+        child = json.loads(child_path.read_text(encoding="utf-8"))
+        assert child["parent_schema_version"] == 4
+        assert child["group_id"] == group["group_id"]
+        assert child["required_target_paths"] == group["required_target_paths"]
+        assert child["verified_required_nodeids"] == group["verified_required_nodeids"]
     assert proof["stdout_log_path"] == "evidence/QualityGate/long_gate/logs/required_regressions.stdout.log"
     assert proof["stderr_log_path"] == "evidence/QualityGate/long_gate/logs/required_regressions.stderr.log"
-    assert {str(row["path"]) for row in success_cache["output_files"]} == {
-        "evidence/QualityGate/required_regressions.json"
-    }
+    output_file_paths = {str(row["path"]) for row in success_cache["output_files"]}
+    assert "evidence/QualityGate/required_regressions.json" in output_file_paths
+    assert set(proof["group_child_proof_paths"]).issubset(output_file_paths)
     assert _summary_entry(first_summary, ENTRY_REQUIRED_REGRESSIONS)["execution_mode"] == "executed"
     assert "required_regressions_groups" not in _summary_entry(first_summary, ENTRY_REQUIRED_REGRESSIONS)
 
@@ -258,6 +270,10 @@ def test_required_success_writes_parent_proof_and_reuses_next_run(monkeypatch, t
         ),
         lambda repo_root: _proof_path_for_entry(repo_root, ENTRY_REQUIRED_REGRESSIONS).write_text(
             "{bad json",
+            encoding="utf-8",
+        ),
+        lambda repo_root: next((repo_root / "evidence" / "QualityGate" / "required_regressions").glob("*.json")).write_text(
+            "{bad child json",
             encoding="utf-8",
         ),
     ],

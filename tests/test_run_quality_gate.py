@@ -434,6 +434,7 @@ def test_full_test_debt_proof_is_in_shared_quality_gate_plan() -> None:
         ".pre-commit-config.yaml",
         "scripts/run_daily_quality_gate.py",
         "tools/fast_static_precheck.py",
+        "tools/git_hook_cache.py",
         "tools/check_full_test_debt.py",
         "tools/collect_full_test_debt.py",
         "tools/verify_required_regressions_from_full_test_debt.py",
@@ -462,6 +463,7 @@ def test_full_test_debt_proof_is_in_shared_quality_gate_plan() -> None:
     for rel_path in [
         "scripts/run_daily_quality_gate.py",
         "tools/fast_static_precheck.py",
+        "tools/git_hook_cache.py",
         "tools/check_full_test_debt.py",
         "tools/collect_full_test_debt.py",
         "tools/verify_required_regressions_from_full_test_debt.py",
@@ -819,6 +821,7 @@ def test_main_rebuilds_ignored_receipts_without_dirtying_clean_worktree(monkeypa
         "evidence/QualityGate/architecture_scan_cache.json",
         "evidence/QualityGate/startup_runtime_regressions.json",
         "evidence/QualityGate/required_regressions.json",
+        "evidence/QualityGate/required_regressions/",
         "evidence/QualityGate/debt_ledger_sync.json",
         "evidence/QualityGate/ruff_check_full.json",
         "evidence/QualityGate/pyright_gate_full.json",

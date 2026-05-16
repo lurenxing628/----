@@ -10,6 +10,11 @@ import sys
 from pathlib import Path
 from typing import Iterable, List, Optional, Sequence, Tuple
 
+try:
+    from tools import git_hook_cache
+except ImportError:  # pragma: no cover - direct script execution path
+    import git_hook_cache  # type: ignore[no-redef]
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 BLOCKED_PATH_RULES: Tuple[Tuple[str, str], ...] = (
@@ -33,6 +38,7 @@ BLOCKED_PATH_RULES: Tuple[Tuple[str, str], ...] = (
     ("evidence/QualityGate/architecture_scan_cache.json", "architecture scan 文件级缓存是运行产物，应由当前门禁重新生成"),
     ("evidence/QualityGate/startup_runtime_regressions.json", "startup regressions proof 是运行产物，应由当前门禁重新生成"),
     ("evidence/QualityGate/required_regressions.json", "required regressions proof 是运行产物，应由当前门禁重新生成"),
+    ("evidence/QualityGate/required_regressions/", "required regressions 分组 proof 是运行产物，应由当前门禁重新生成"),
     ("evidence/QualityGate/debt_ledger_sync.json", "debt ledger sync proof 是运行产物，应由当前门禁重新生成"),
     ("evidence/QualityGate/ruff_check_full.json", "ruff full proof 是运行产物，应由当前门禁重新生成"),
     ("evidence/QualityGate/pyright_gate_full.json", "pyright gate proof 是运行产物，应由当前门禁重新生成"),
@@ -166,14 +172,32 @@ def _quality_gate_env() -> dict:
     return env
 
 
-def run_quality_gate(_args: argparse.Namespace) -> int:
+def run_quality_gate(args: argparse.Namespace) -> int:
     try:
         executable = _project_python_executable()
     except RuntimeError as exc:
         print(str(exc), file=sys.stderr)
         return 1
+    remote_name = str(getattr(args, "remote_name", "") or "")
+    remote_ref = str(getattr(args, "remote_ref", "") or "")
+    try:
+        if git_hook_cache.pre_push_daily_cache_hit(executable, remote_name=remote_name, remote_ref=remote_ref):
+            print(
+                "[git-hook-cache] pre-push daily gate: reuse passed cache for unchanged HEAD/tree",
+                flush=True,
+            )
+            return 0
+    except git_hook_cache.HookCacheError as exc:
+        print(f"[git-hook-cache] pre-push daily gate cache unavailable: {exc}", flush=True)
+
     command = [executable, "scripts/run_daily_quality_gate.py"]
-    return subprocess.call(command, cwd=str(REPO_ROOT), env=_quality_gate_env())
+    returncode = subprocess.call(command, cwd=str(REPO_ROOT), env=_quality_gate_env())
+    if int(returncode) == 0:
+        try:
+            git_hook_cache.write_pre_push_daily_cache(executable, remote_name=remote_name, remote_ref=remote_ref)
+        except git_hook_cache.HookCacheError as exc:
+            print(f"[git-hook-cache] pre-push daily gate cache write skipped: {exc}", flush=True)
+    return int(returncode)
 
 
 def run_final_quality_gate(_args: argparse.Namespace) -> int:
@@ -189,6 +213,31 @@ def run_final_quality_gate(_args: argparse.Namespace) -> int:
         "--long-gate-cache",
     ]
     return subprocess.call(command, cwd=str(REPO_ROOT), env=_quality_gate_env())
+
+
+def run_final_quality_gate_if_needed(_args: argparse.Namespace) -> int:
+    try:
+        executable = _project_python_executable()
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    try:
+        if git_hook_cache.final_gate_cache_hit(executable):
+            print(
+                "[git-hook-cache] final gate: same clean HEAD already has local final proof cache",
+                flush=True,
+            )
+            return 0
+    except git_hook_cache.HookCacheError as exc:
+        print(f"[git-hook-cache] final gate cache unavailable: {exc}", flush=True)
+
+    returncode = run_final_quality_gate(_args)
+    if int(returncode) == 0:
+        try:
+            git_hook_cache.write_final_gate_cache(executable)
+        except git_hook_cache.HookCacheError as exc:
+            print(f"[git-hook-cache] final gate cache write skipped: {exc}", flush=True)
+    return int(returncode)
 
 
 def run_fast_static_precheck(_args: argparse.Namespace) -> int:
@@ -207,8 +256,11 @@ def run_ruff(_args: argparse.Namespace) -> int:
     except RuntimeError as exc:
         print(str(exc), file=sys.stderr)
         return 1
-    command = [executable, "-m", "ruff", "check"]
-    return subprocess.call(command, cwd=str(REPO_ROOT))
+    try:
+        return git_hook_cache.run_staged_ruff(executable)
+    except git_hook_cache.HookCacheError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
 
 
 def _same_executable_path(left: str, right: str) -> bool:
@@ -253,10 +305,16 @@ def build_parser() -> argparse.ArgumentParser:
     commit_msg.set_defaults(func=check_commit_msg)
 
     quality_gate = subparsers.add_parser("run-quality-gate")
+    quality_gate.add_argument("remote_name", nargs="?", default="")
+    quality_gate.add_argument("remote_url", nargs="?", default="")
+    quality_gate.add_argument("--remote-ref", default="")
     quality_gate.set_defaults(func=run_quality_gate)
 
     final_quality_gate = subparsers.add_parser("run-final-quality-gate")
     final_quality_gate.set_defaults(func=run_final_quality_gate)
+
+    final_quality_gate_if_needed = subparsers.add_parser("run-final-quality-gate-if-needed")
+    final_quality_gate_if_needed.set_defaults(func=run_final_quality_gate_if_needed)
 
     fast_precheck = subparsers.add_parser("run-fast-static-precheck")
     fast_precheck.set_defaults(func=run_fast_static_precheck)

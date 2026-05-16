@@ -146,3 +146,7 @@ from .test_debt_registry import (
     iter_startup_regressions,
     load_test_debt_registry,
 )
+from .test_registry import (
+    iter_required_regression_groups,
+    validate_required_regression_group_coverage,
+)
