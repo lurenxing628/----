@@ -65,6 +65,7 @@ tmp_round*_check/
 
 # Local editor/agent artifacts
 .cursor/
+# LimCode 本地工作区产物，包括 progress.md 这种会话进度账本，不纳入版本控制
 .limcode/
 
 # Runtime scratch
