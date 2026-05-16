@@ -617,7 +617,7 @@ def test_main_does_not_reexec_when_tests_pass_explicit_argv(monkeypatch, tmp_pat
     monkeypatch.setattr(git_hook_checks, "_project_python_executable", lambda: project_python)
     monkeypatch.setattr(git_hook_checks.sys, "executable", str(tmp_path / "system-python"))
     monkeypatch.setattr(git_hook_checks.os, "execv", lambda *_args: (_ for _ in ()).throw(AssertionError("unexpected execv")))
-    monkeypatch.setattr(subprocess, "call", lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(git_hook_checks.git_hook_cache, "run_staged_ruff", lambda executable: 0)
 
     assert git_hook_checks.main(["run-ruff"]) == 0
 

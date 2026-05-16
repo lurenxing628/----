@@ -10,9 +10,10 @@
 2. 系统速查表：`./系统速查表.md`
 3. 面板与接口清单：`./面板与接口清单.md`
 4. AI 协作约定与默认工作流：`../AGENTS.md`
-5. CodeStable 工作流总览：`../codestable/reference/system-overview.md`
-6. 决策记录目录：`./ADR/`
-7. V1.2 方案目录：`./V1.2/`
+5. CodeStable 启动注意事项：`../.codestable/attention.md`
+6. CodeStable 工作流总览：`../.codestable/reference/system-overview.md`
+7. 决策记录目录：`./ADR/`
+8. V1.2 方案目录：`./V1.2/`
 
 ## 开发基线
 

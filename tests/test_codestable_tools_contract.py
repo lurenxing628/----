@@ -7,8 +7,8 @@ import textwrap
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SEARCH_TOOL = REPO_ROOT / "codestable" / "tools" / "search-yaml.py"
-VALIDATE_TOOL = REPO_ROOT / "codestable" / "tools" / "validate-yaml.py"
+SEARCH_TOOL = REPO_ROOT / ".codestable" / "tools" / "search-yaml.py"
+VALIDATE_TOOL = REPO_ROOT / ".codestable" / "tools" / "validate-yaml.py"
 
 
 def _run_tool(script: Path, *args: str, env: dict | None = None) -> subprocess.CompletedProcess:

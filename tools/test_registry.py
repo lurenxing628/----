@@ -238,7 +238,7 @@ REQUIRED_REGRESSION_GROUPS = (
             "tools/test_registry.py",
             "tools/quality_gate_*.py",
             "tools/long_gate_*.py",
-            "codestable/tools/**/*.py",
+            ".codestable/tools/**/*.py",
             "tests/long_gate_cache_helpers.py",
             "开发文档/技术债务治理台账.md",
             "evidence/README.md",

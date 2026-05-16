@@ -285,7 +285,7 @@ def test_collect_full_test_debt_static_gate_required_startup_and_quickref_entrie
         "scripts/**/*.py",
         "tools/**/*.py",
         "tests/**/*.py",
-        "codestable/tools/**/*.py",
+        ".codestable/tools/**/*.py",
         "audit/**/*.py",
     ]:
         assert scope in ruff["input_file_scopes"]
@@ -351,7 +351,7 @@ def test_collect_full_test_debt_static_gate_required_startup_and_quickref_entrie
     assert "pyright_version" in pyright_tools["env_keys"]
     assert "PYTHONPATH" in pyright_tools["env_keys"]
     assert pyright_tools["output_result_files"] == ["evidence/QualityGate/pyright_tools_full.json"]
-    assert "codestable/tools/**/*.py" in full_test_debt["config_file_scopes"]
+    assert ".codestable/tools/**/*.py" in full_test_debt["config_file_scopes"]
     assert full_test_debt["cache_status"] == "enabled"
     assert "evidence/QualityGate/collect_nodeids.json" in full_test_debt["input_file_scopes"]
     assert "scripts/**/*.py" in full_test_debt["input_file_scopes"]

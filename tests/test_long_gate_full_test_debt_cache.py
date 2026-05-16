@@ -2778,7 +2778,7 @@ def test_runner_writes_and_reuses_full_test_debt_success_cache(monkeypatch, tmp_
         "tools/check_full_test_debt.py",
         "tools/collect_full_test_debt.py",
         "tools/test_debt_registry.py",
-        "codestable/tools/validate-yaml.py",
+        ".codestable/tools/validate-yaml.py",
     ],
 )
 def test_full_test_debt_cache_invalidates_when_declared_input_changes(tmp_path, rel_path):

@@ -15,6 +15,7 @@
 - 仓库接入 / 刷新 CodeStable 骨架 → `cs-onboard`
 - 新功能 / 新能力 → `cs-feat`
 - 想法模糊、需要先聊清楚 → `cs-brainstorm`
+- 系统审计、主动扫描隐患 → `cs-audit`
 - 大需求拆解 / 分阶段路线 → `cs-roadmap`
 - BUG / 异常 / 文档错误 → `cs-issue`
 - 行为不变的重构 / 代码优化 → `cs-refactor`
@@ -29,11 +30,11 @@
 
 本文件是会话起步的首要兜底入口。
 
-在任何回复、澄清问题、搜索、改文件、跑命令之前，先确认本仓库是否已有 `codestable/`：
+在任何回复、澄清问题、搜索、改文件、跑命令之前，先确认本仓库是否已有 `.codestable/`：
 
-- 如果已有 `codestable/`，优先读取 `codestable/reference/system-overview.md`，再按用户诉求选择对应的 `cs-*` 技能。
+- 如果已有 `.codestable/`，先读取 `.codestable/attention.md`，再读取 `.codestable/reference/system-overview.md`，然后按用户诉求选择对应的 `cs-*` 技能。
 - 如果当前宿主没有自动注册 `cs-*` 技能入口，就直接读取已安装技能文件：`~/.codex/skills/<技能名>/SKILL.md`；如果这里没有，再查 `~/.agents/skills/<技能名>/SKILL.md`。
-- 如果没有 `codestable/`，先走 `cs-onboard`。
+- 如果没有 `.codestable/`，先走 `cs-onboard`。
 
 不要再默认读取 `.limcode/skills/using-superpowers/SKILL.md`。只有下面这些情况才回看它：
 
@@ -45,7 +46,7 @@
 
 当前项目中，事实源分成新旧两层：
 
-- `codestable/`：新的默认工作流事实源。后续需求、架构、功能、问题、重构、知识沉淀优先落在这里。
+- `.codestable/`：新的默认工作流事实源。后续需求、架构、功能、问题、重构、知识沉淀优先落在这里。
 - `.limcode/`：旧工作流归档和 APS 专项资产库。里面的历史 plan、review、design、APS 专项技能、子代理说明仍有参考价值，但不再抢默认入口。
 
 `.cursor/` 仅作为旧宿主兼容层保留，不再作为首选事实源。
@@ -54,13 +55,15 @@
 
 默认落盘位置按 CodeStable 目录执行：
 
-- 需求现状：`codestable/requirements/`
-- 架构现状：`codestable/architecture/`
-- 大需求规划：`codestable/roadmap/`
-- 新功能流程：`codestable/features/`
-- 问题修复流程：`codestable/issues/`
-- 重构流程：`codestable/refactors/`
-- 知识沉淀：`codestable/compound/`
+- 需求现状：`.codestable/requirements/`
+- 架构现状：`.codestable/architecture/`
+- 大需求规划：`.codestable/roadmap/`
+- 新功能流程：`.codestable/features/`
+- 问题修复流程：`.codestable/issues/`
+- 重构流程：`.codestable/refactors/`
+- 审计报告：`.codestable/audits/`
+- 开放脑暴：`.codestable/brainstorms/`
+- 知识沉淀：`.codestable/compound/`
 
 只有在续作旧任务或用户明确要求时，才继续写入 `.limcode/design/`、`.limcode/plans/`、`.limcode/review/`。
 

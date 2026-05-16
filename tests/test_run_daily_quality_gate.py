@@ -234,7 +234,7 @@ def test_codestable_only_changes_skip_required_pytest(monkeypatch) -> None:
             {
                 "group_id": "quality_gate",
                 "target_paths": ["tests/test_run_quality_gate.py"],
-                "input_file_scopes": ["codestable/**/*.yaml"],
+                "input_file_scopes": [".codestable/**/*.yaml"],
                 "config_file_scopes": [],
                 "tool_file_scopes": [],
                 "dependency_file_scopes": [],
@@ -243,7 +243,7 @@ def test_codestable_only_changes_skip_required_pytest(monkeypatch) -> None:
     )
 
     plan = daily_gate._build_impact_plan(
-        daily_gate.ChangedPathSet(["codestable/roadmap/demo/items.yaml"], True, "")
+        daily_gate.ChangedPathSet([".codestable/roadmap/demo/items.yaml"], True, "")
     )
 
     assert plan.all_required_groups is False

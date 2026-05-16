@@ -55,8 +55,8 @@ def test_debt_ledger_sync_manifest_tracks_required_scopes() -> None:
 
     for scope in [
         "开发文档/技术债务治理台账.md",
-        "codestable/roadmap/**/*.md",
-        "codestable/features/**/*.yaml",
+        ".codestable/roadmap/**/*.md",
+        ".codestable/features/**/*.yaml",
         "core/**/*.py",
         "web/**/*.py",
         "data/**/*.py",

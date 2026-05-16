@@ -255,7 +255,7 @@ def _scopes_for_entry(
             [
                 "*.py",
                 "audit/**/*.py",
-                "codestable/tools/**/*.py",
+                ".codestable/tools/**/*.py",
                 "core/**/*.py",
                 "data/**/*.py",
                 "desktop/**/*.py",
@@ -618,10 +618,10 @@ def _scopes_for_entry(
         input_scopes.extend(
             [
                 "开发文档/技术债务治理台账.md",
-                "codestable/roadmap/**/*.md",
-                "codestable/roadmap/**/*.yaml",
-                "codestable/features/**/*.md",
-                "codestable/features/**/*.yaml",
+                ".codestable/roadmap/**/*.md",
+                ".codestable/roadmap/**/*.yaml",
+                ".codestable/features/**/*.md",
+                ".codestable/features/**/*.yaml",
                 "app.py",
                 "app_new_ui.py",
                 "config.py",
@@ -656,8 +656,8 @@ def _scopes_for_entry(
                 quality_gate_shared.QUALITY_GATE_PYRIGHT_GATE_CONFIG,
                 quality_gate_shared.QUALITY_GATE_PYRIGHT_TOOLS_CONFIG,
                 "pyrightconfig.json",
-                "codestable/roadmap/quality-gate-long-cache/quality-gate-long-cache-roadmap.md",
-                "codestable/roadmap/quality-gate-long-cache/quality-gate-long-cache-items.yaml",
+                ".codestable/roadmap/quality-gate-long-cache/quality-gate-long-cache-roadmap.md",
+                ".codestable/roadmap/quality-gate-long-cache/quality-gate-long-cache-items.yaml",
             ]
         )
         tool_scopes.extend(
@@ -763,7 +763,7 @@ def _scopes_for_entry(
                 "tools/test_debt_registry.py",
                 "tools/quality_gate_shared.py",
                 "tools/quality_gate_support.py",
-                "codestable/tools/**/*.py",
+                ".codestable/tools/**/*.py",
                 "scripts/run_quality_gate.py",
             ]
         )

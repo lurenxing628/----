@@ -83,7 +83,10 @@ def _gate_env() -> Dict[str, str]:
 
 
 def _normalize_path(path: str) -> str:
-    return str(path or "").strip().replace("\\", "/").lstrip("./")
+    normalized = str(path or "").strip().replace("\\", "/")
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
+    return normalized
 
 
 def _dedupe_paths(paths: Sequence[str]) -> List[str]:
@@ -235,7 +238,7 @@ def _is_docs_only_path(path: str) -> bool:
         return False
     if _is_readme_path(normalized):
         return True
-    if normalized.startswith("codestable/") and not normalized.startswith("codestable/tools/"):
+    if normalized.startswith(".codestable/") and not normalized.startswith(".codestable/tools/"):
         return lowered.endswith(_CODESTABLE_CONTENT_EXTENSIONS)
     if normalized.startswith(_DOC_ONLY_PREFIXES):
         return lowered.endswith(_DOC_ONLY_EXTENSIONS)
