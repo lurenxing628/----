@@ -40,6 +40,11 @@ def _default_snapshot_kwargs():
         "objective": "min_overdue",
         "freeze_window_enabled": "no",
         "freeze_window_days": 0,
+        "graph_analysis_mode": "off",
+        "graph_block_on_cycle": "no",
+        "graph_critical_weight": 500,
+        "graph_impact_weight": 10,
+        "graph_debug_export": "no",
     }
 
 
@@ -77,6 +82,8 @@ def main() -> None:
             "ortools_time_limit_seconds": "0",
             "time_budget_seconds": "0",
             "freeze_window_days": "-3",
+            "graph_critical_weight": "-3",
+            "graph_impact_weight": "bad",
         },
         strict_mode=False,
     )
@@ -85,6 +92,8 @@ def main() -> None:
     assert relaxed.ortools_time_limit_seconds == 1, "非 strict 下 time limit 应保持最小值钳制"
     assert relaxed.time_budget_seconds == 1, "非 strict 下 time budget 应保持最小值钳制"
     assert relaxed.freeze_window_days == 0, "非 strict 下 freeze_window_days 应保持最小值钳制"
+    assert relaxed.graph_critical_weight == 0, "非 strict 下 graph_critical_weight 应保持最小值钳制"
+    assert relaxed.graph_impact_weight == defaults["graph_impact_weight"], "非 strict 下非法图影响权重应回退默认"
 
     _expect_validation(
         "strict.sort_strategy.missing",
@@ -125,6 +134,20 @@ def main() -> None:
         "freeze_window_days",
         message_contains="锁定天数",
         forbidden_message_text="freeze_window_days",
+    )
+    _expect_validation(
+        "strict.graph_critical_weight",
+        lambda: _build({**defaults, "graph_critical_weight": "-1"}, strict_mode=True),
+        "graph_critical_weight",
+        message_contains="关键路径权重",
+        forbidden_message_text="graph_critical_weight",
+    )
+    _expect_validation(
+        "strict.graph_impact_weight",
+        lambda: _build({**defaults, "graph_impact_weight": "abc"}, strict_mode=True),
+        "graph_impact_weight",
+        message_contains="后续影响权重",
+        forbidden_message_text="graph_impact_weight",
     )
     _expect_validation(
         "strict.sort_strategy.blank",

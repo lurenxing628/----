@@ -102,6 +102,36 @@ _FIELD_SPECS: Tuple[RuntimeConfigFieldSpec, ...] = (
         choices=_YES_NO_CHOICES,
     ),
     RuntimeConfigFieldSpec(key="freeze_window_days", field_type="int", default=0, min_value=0),
+    RuntimeConfigFieldSpec(
+        key="graph_analysis_mode",
+        field_type="enum",
+        default="off",
+        choices=("off", "report", "on"),
+    ),
+    RuntimeConfigFieldSpec(
+        key="graph_block_on_cycle",
+        field_type="yes_no",
+        default="no",
+        choices=_YES_NO_CHOICES,
+    ),
+    RuntimeConfigFieldSpec(
+        key="graph_critical_weight",
+        field_type="int",
+        default=500,
+        min_value=0,
+    ),
+    RuntimeConfigFieldSpec(
+        key="graph_impact_weight",
+        field_type="int",
+        default=10,
+        min_value=0,
+    ),
+    RuntimeConfigFieldSpec(
+        key="graph_debug_export",
+        field_type="yes_no",
+        default="no",
+        choices=_YES_NO_CHOICES,
+    ),
 )
 _FIELD_SPEC_BY_KEY: Dict[str, RuntimeConfigFieldSpec] = {spec.key: spec for spec in _FIELD_SPECS}
 

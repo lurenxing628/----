@@ -49,6 +49,8 @@ def test_scheduler_config_setting_switches_use_compact_toggle_controls() -> None
         "enforce_ready_default",
         "auto_assign_enabled",
         "ortools_enabled",
+        "graph_block_on_cycle",
+        "graph_debug_export",
     )
     for rel_path in ("templates/scheduler/config.html", "web_new_test/templates/scheduler/config.html"):
         source = _read(rel_path)

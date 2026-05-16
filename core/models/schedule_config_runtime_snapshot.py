@@ -23,6 +23,11 @@ class ScheduleConfigSnapshot:
     objective: str
     freeze_window_enabled: str
     freeze_window_days: int
+    graph_analysis_mode: str
+    graph_block_on_cycle: str
+    graph_critical_weight: int
+    graph_impact_weight: int
+    graph_debug_export: str
     auto_assign_persist: str = "yes"
     degradation_events: Tuple[Dict[str, Any], ...] = field(default_factory=tuple, repr=False)
     degradation_counters: Dict[str, int] = field(default_factory=dict, repr=False)
@@ -47,6 +52,11 @@ class ScheduleConfigSnapshot:
             "objective": self.objective,
             "freeze_window_enabled": self.freeze_window_enabled,
             "freeze_window_days": int(self.freeze_window_days),
+            "graph_analysis_mode": self.graph_analysis_mode,
+            "graph_block_on_cycle": self.graph_block_on_cycle,
+            "graph_critical_weight": int(self.graph_critical_weight),
+            "graph_impact_weight": int(self.graph_impact_weight),
+            "graph_debug_export": self.graph_debug_export,
         }
 
 

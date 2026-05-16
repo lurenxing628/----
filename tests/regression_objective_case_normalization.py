@@ -87,6 +87,11 @@ def main() -> None:
         objective="min_overdue",
         freeze_window_enabled="no",
         freeze_window_days=0,
+        graph_analysis_mode="off",
+        graph_block_on_cycle="no",
+        graph_critical_weight=500,
+        graph_impact_weight=10,
+        graph_debug_export="no",
     )
     normalized = normalize_preset_snapshot(
         {
@@ -149,6 +154,11 @@ def main() -> None:
         "objective": "min_overdue",
         "freeze_window_enabled": "no",
         "freeze_window_days": 0,
+        "graph_analysis_mode": "off",
+        "graph_block_on_cycle": "no",
+        "graph_critical_weight": 500,
+        "graph_impact_weight": 10,
+        "graph_debug_export": "no",
     }
     dirty_repo = FakeRepo(
         {

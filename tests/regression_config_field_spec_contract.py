@@ -52,9 +52,21 @@ def test_config_field_spec_registry_contract() -> None:
     assert "freeze_window_days" in fields
     assert "auto_assign_persist" in fields
     objective_spec = next(spec for spec in list_config_fields() if spec.key == "objective")
+    assert "graph_analysis_mode" in fields
+    assert "graph_block_on_cycle" in fields
+    assert "graph_critical_weight" in fields
+    assert "graph_impact_weight" in fields
+    assert "graph_debug_export" in fields
     assert not hasattr(objective_spec, "policy")
 
     assert default_for("auto_assign_persist") == "yes"
+    assert default_for("graph_analysis_mode") == "off"
+    assert choices_for("graph_analysis_mode") == ("off", "report", "on")
+    assert choice_label_map_for("graph_analysis_mode")["report"]
+    assert default_for("graph_block_on_cycle") == "no"
+    assert default_for("graph_critical_weight") == 500
+    assert default_for("graph_impact_weight") == 10
+    assert default_for("graph_debug_export") == "no"
     assert choices_for("objective") == (
         "min_overdue",
         "min_tardiness",
@@ -75,6 +87,11 @@ def test_config_field_spec_registry_contract() -> None:
             "dispatch_rule",
             "freeze_window_enabled",
             "freeze_window_days",
+            "graph_analysis_mode",
+            "graph_block_on_cycle",
+            "graph_critical_weight",
+            "graph_impact_weight",
+            "graph_debug_export",
         ]
     )
     assert isinstance(metadata, dict)
@@ -85,6 +102,11 @@ def test_config_field_spec_registry_contract() -> None:
         "dispatch_rule",
         "freeze_window_enabled",
         "freeze_window_days",
+        "graph_analysis_mode",
+        "graph_block_on_cycle",
+        "graph_critical_weight",
+        "graph_impact_weight",
+        "graph_debug_export",
     ]
     assert set(metadata.keys()) == {
         "algo_mode",
@@ -93,6 +115,11 @@ def test_config_field_spec_registry_contract() -> None:
         "dispatch_rule",
         "freeze_window_enabled",
         "freeze_window_days",
+        "graph_analysis_mode",
+        "graph_block_on_cycle",
+        "graph_critical_weight",
+        "graph_impact_weight",
+        "graph_debug_export",
     }
     assert metadata["objective"].choices[0]["value"] == "min_overdue"
     assert metadata["objective"].choices[0]["label"] == "最少超期"
@@ -104,6 +131,11 @@ def test_config_field_spec_registry_contract() -> None:
     assert metadata["freeze_window_enabled"].label == "锁定近期排程"
     assert metadata["freeze_window_enabled"].hint
     assert metadata["freeze_window_days"].unit == "天"
+    assert metadata["graph_analysis_mode"].choices[0]["value"] == "off"
+    assert metadata["graph_analysis_mode"].choices[1]["value"] == "report"
+    assert metadata["graph_analysis_mode"].choices[2]["value"] == "on"
+    assert metadata["graph_critical_weight"].label == "关键路径权重"
+    assert metadata["graph_debug_export"].hint
 
 
 def test_config_service_exposes_same_page_metadata_shape() -> None:
@@ -117,6 +149,11 @@ def test_config_service_exposes_same_page_metadata_shape() -> None:
             "dispatch_rule",
             "freeze_window_enabled",
             "freeze_window_days",
+            "graph_analysis_mode",
+            "graph_block_on_cycle",
+            "graph_critical_weight",
+            "graph_impact_weight",
+            "graph_debug_export",
         ],
     )
 
@@ -124,6 +161,8 @@ def test_config_service_exposes_same_page_metadata_shape() -> None:
     assert metadata["algo_mode"].label
     assert metadata["objective"].choices[0]["value"] == "min_overdue"
     assert metadata["objective"].choices[0]["label"] == "最少超期"
+    assert metadata["graph_analysis_mode"].choices[1]["value"] == "report"
+    assert metadata["graph_block_on_cycle"].label == "遇到循环依赖时停止排产"
 
 
 def test_config_service_snapshot_includes_hidden_field_and_get_stays_single_arg(config_service: ConfigService) -> None:
@@ -132,6 +171,11 @@ def test_config_service_snapshot_includes_hidden_field_and_get_stays_single_arg(
     snap = config_service.get_snapshot()
     assert snap.auto_assign_persist == "yes"
     assert snap.to_dict()["auto_assign_persist"] == "yes"
+    assert snap.graph_analysis_mode == "off"
+    assert snap.graph_block_on_cycle == "no"
+    assert snap.graph_critical_weight == 500
+    assert snap.graph_impact_weight == 10
+    assert snap.graph_debug_export == "no"
     assert config_service.get("objective") == "min_overdue"
     with pytest.raises(TypeError):
         config_service.get("objective", "fallback")
@@ -156,6 +200,11 @@ def test_schedule_config_snapshot_hidden_field_defaults_to_yes() -> None:
         objective="min_overdue",
         freeze_window_enabled="no",
         freeze_window_days=0,
+        graph_analysis_mode="off",
+        graph_block_on_cycle="no",
+        graph_critical_weight=500,
+        graph_impact_weight=10,
+        graph_debug_export="no",
     )
 
     assert snap.auto_assign_persist == "yes"
@@ -195,6 +244,11 @@ def test_config_helpers_reject_removed_valid_override_kwargs() -> None:
         objective="min_overdue",
         freeze_window_enabled="no",
         freeze_window_days=0,
+        graph_analysis_mode="off",
+        graph_block_on_cycle="no",
+        graph_critical_weight=500,
+        graph_impact_weight=10,
+        graph_debug_export="no",
     )
 
     with pytest.raises(TypeError):

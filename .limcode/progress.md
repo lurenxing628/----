@@ -1,6 +1,6 @@
 # 项目进度
 - Project: APS Test
-- Updated At: 2026-05-08T10:23:52.598Z
+- Updated At: 2026-05-16T18:05:59.910Z
 - Status: active
 - Phase: implementation
 
@@ -17,6 +17,7 @@
 ## 关联文档
 
 <!-- LIMCODE_PROGRESS_ARTIFACTS_START -->
+- 设计：`.limcode/design/networkx-phase1-optional-dependency-validation.md`
 - 审查：`.limcode/review/win7_launcher_runtime_fix_review.md`
 <!-- LIMCODE_PROGRESS_ARTIFACTS_END -->
 
@@ -63,6 +64,7 @@
 - 2026-05-08T10:21:41.634Z | artifact_changed | review | 同步审查里程碑：review-runtime-paths-installers
 - 2026-05-08T10:23:37.150Z | artifact_changed | review | 同步审查里程碑：review-regression-tests
 - 2026-05-08T10:23:52.598Z | artifact_changed | review | 同步审查结论：.limcode/review/win7_launcher_runtime_fix_review.md
+- 2026-05-16T18:05:59.910Z | artifact_changed | design | 同步设计文档：.limcode/design/networkx-phase1-optional-dependency-validation.md
 <!-- LIMCODE_PROGRESS_LOG_END -->
 
 <!-- LIMCODE_PROGRESS_METADATA_START -->
@@ -72,7 +74,7 @@
   "projectId": "aps-test",
   "projectName": "APS Test",
   "createdAt": "2026-04-07T06:34:24.925Z",
-  "updatedAt": "2026-05-08T10:23:52.598Z",
+  "updatedAt": "2026-05-16T18:05:59.910Z",
   "status": "active",
   "phase": "implementation",
   "currentFocus": "把复审指出的“页面说明会误导填表”和“证据文件仍是旧红灯”的问题收掉，再绑定最终干净质量门禁。",
@@ -80,6 +82,7 @@
   "currentBlocker": "无已知代码阻塞。本进度文件不是机器证明，最终 clean gate 以 scripts/run_quality_gate.py --require-clean-worktree 和忽略目录中的 evidence/QualityGate/quality_gate_manifest.json 为准。",
   "nextAction": "重新打包安装器，然后在 Win7 环境安装验证冷启动、复用已有后台和诊断快捷方式。",
   "activeArtifacts": {
+    "design": ".limcode/design/networkx-phase1-optional-dependency-validation.md",
     "review": ".limcode/review/win7_launcher_runtime_fix_review.md"
   },
   "todos": [
@@ -225,6 +228,12 @@
       "type": "artifact_changed",
       "refId": "review",
       "message": "同步审查结论：.limcode/review/win7_launcher_runtime_fix_review.md"
+    },
+    {
+      "at": "2026-05-16T18:05:59.910Z",
+      "type": "artifact_changed",
+      "refId": "design",
+      "message": "同步设计文档：.limcode/design/networkx-phase1-optional-dependency-validation.md"
     }
   ],
   "stats": {
@@ -238,8 +247,8 @@
   },
   "render": {
     "rendererVersion": 1,
-    "generatedAt": "2026-05-08T10:23:52.598Z",
-    "bodyHash": "sha256:3a17db359ec801fa578323d213e6fa71e716195b0f98e256eb8686f746349961"
+    "generatedAt": "2026-05-16T18:05:59.910Z",
+    "bodyHash": "sha256:e0bc74c0d880a066b94bcf9aa9219900e1904b986d7236886b5278015eb08f01"
   }
 }
 <!-- LIMCODE_PROGRESS_METADATA_END -->

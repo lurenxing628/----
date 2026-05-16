@@ -23,6 +23,11 @@ SCHEDULER_VISIBLE_CONFIG_FIELDS: Tuple[str, ...] = (
     "time_budget_seconds",
     "freeze_window_enabled",
     "freeze_window_days",
+    "graph_analysis_mode",
+    "graph_block_on_cycle",
+    "graph_critical_weight",
+    "graph_impact_weight",
+    "graph_debug_export",
 )
 
 
@@ -183,6 +188,23 @@ def build_scheduler_config_toggles(cfg: Any, *, config_field_metadata: Dict[str,
             title=_config_field_label(config_field_metadata, "ortools_enabled"),
             desc=ortools_desc,
             checked_attr=checked_attr(str(getattr(cfg, "ortools_enabled", "")).strip() == "yes"),
+        ),
+        "graph_block_on_cycle": UiToggleRow(
+            id="graphBlockOnCycle",
+            name="graph_block_on_cycle",
+            title=_config_field_label(config_field_metadata, "graph_block_on_cycle"),
+            desc=_config_field_hint(
+                config_field_metadata,
+                "graph_block_on_cycle",
+            ),
+            checked_attr=checked_attr(str(getattr(cfg, "graph_block_on_cycle", "")).strip() == "yes"),
+        ),
+        "graph_debug_export": UiToggleRow(
+            id="graphDebugExport",
+            name="graph_debug_export",
+            title=_config_field_label(config_field_metadata, "graph_debug_export"),
+            desc=_config_field_hint(config_field_metadata, "graph_debug_export"),
+            checked_attr=checked_attr(str(getattr(cfg, "graph_debug_export", "")).strip() == "yes"),
         ),
     }
 

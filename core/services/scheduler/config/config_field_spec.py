@@ -296,6 +296,85 @@ _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
             unit="天",
         ),
     ),
+    ConfigFieldSpec(
+        key="graph_analysis_mode",
+        field_type="enum",
+        default="off",
+        label="工序图分析",
+        description="NetworkX 工序依赖图分析模式：关闭 / 只生成报告 / 参与排产",
+        choices=("off", "report", "on"),
+        choice_labels={
+            "off": "关闭",
+            "report": "只生成分析报告，不改变排产结果",
+            "on": "参与排产（试验）",
+        },
+        page_metadata=ConfigFieldPageMetadata(
+            key="graph_analysis_mode",
+            label="工序图分析",
+            hint="默认关闭。阶段 2 只保存配置，不执行图分析；report/on 将在后续阶段生效。",
+            choices=_choice_pairs(
+                {
+                    "off": "关闭",
+                    "report": "只生成分析报告，不改变排产结果",
+                    "on": "参与排产（试验）",
+                }
+            ),
+        ),
+    ),
+    ConfigFieldSpec(
+        key="graph_block_on_cycle",
+        field_type="yes_no",
+        default="no",
+        label="图分析遇到环时阻止排产",
+        description="工序图分析发现循环依赖时是否阻止排产；默认不阻止",
+        choices=_YES_NO_CHOICES,
+        choice_labels=_YES_NO_LABELS,
+        page_metadata=ConfigFieldPageMetadata(
+            key="graph_block_on_cycle",
+            label="遇到循环依赖时停止排产",
+            hint="默认关闭。阶段 2 只保存配置；report 模式只提示，on 模式后续才会按该开关处理。",
+        ),
+    ),
+    ConfigFieldSpec(
+        key="graph_critical_weight",
+        field_type="int",
+        default=500,
+        label="关键路径权重",
+        description="图分析参与排产时，关键路径工序的加分权重",
+        min_value=0,
+        page_metadata=ConfigFieldPageMetadata(
+            key="graph_critical_weight",
+            label="关键路径权重",
+            hint="阶段 2 仅保存配置；后续 on 模式评分时使用。建议先保持默认。",
+        ),
+    ),
+    ConfigFieldSpec(
+        key="graph_impact_weight",
+        field_type="int",
+        default=10,
+        label="后续影响权重",
+        description="图分析参与排产时，后续影响范围的加分权重",
+        min_value=0,
+        page_metadata=ConfigFieldPageMetadata(
+            key="graph_impact_weight",
+            label="后续影响权重",
+            hint="阶段 2 仅保存配置；后续 on 模式评分时使用。建议先保持默认。",
+        ),
+    ),
+    ConfigFieldSpec(
+        key="graph_debug_export",
+        field_type="yes_no",
+        default="no",
+        label="导出图分析调试文件",
+        description="是否导出工序图分析 JSON 调试文件",
+        choices=_YES_NO_CHOICES,
+        choice_labels=_YES_NO_LABELS,
+        page_metadata=ConfigFieldPageMetadata(
+            key="graph_debug_export",
+            label="导出图分析调试文件",
+            hint="默认关闭。阶段 2 只保存配置；后续 graph_debug_export=yes 时才写 logs/schedule_graph/。",
+        ),
+    ),
 )
 
 _FIELD_SPEC_BY_KEY: Dict[str, ConfigFieldSpec] = {spec.key: spec for spec in _FIELD_SPECS}

@@ -51,6 +51,11 @@ DEFAULT_TIME_BUDGET_SECONDS = int(default_for("time_budget_seconds"))
 DEFAULT_OBJECTIVE = str(default_for("objective"))
 DEFAULT_FREEZE_WINDOW_ENABLED = str(default_for("freeze_window_enabled"))
 DEFAULT_FREEZE_WINDOW_DAYS = int(default_for("freeze_window_days"))
+DEFAULT_GRAPH_ANALYSIS_MODE = str(default_for("graph_analysis_mode"))
+DEFAULT_GRAPH_BLOCK_ON_CYCLE = str(default_for("graph_block_on_cycle"))
+DEFAULT_GRAPH_CRITICAL_WEIGHT = int(default_for("graph_critical_weight"))
+DEFAULT_GRAPH_IMPACT_WEIGHT = int(default_for("graph_impact_weight"))
+DEFAULT_GRAPH_DEBUG_EXPORT = str(default_for("graph_debug_export"))
 
 VALID_STRATEGIES = choices_for("sort_strategy")
 VALID_ALGO_MODES = choices_for("algo_mode")
@@ -74,6 +79,11 @@ CONFIG_PAGE_FIELDS: Tuple[str, ...] = (
     "time_budget_seconds",
     "freeze_window_enabled",
     "freeze_window_days",
+    "graph_analysis_mode",
+    "graph_block_on_cycle",
+    "graph_critical_weight",
+    "graph_impact_weight",
+    "graph_debug_export",
 )
 CONFIG_PAGE_WRITE_FIELDS: Tuple[str, ...] = CONFIG_PAGE_FIELDS + (
     "priority_weight",
@@ -117,6 +127,11 @@ __all__ = [
     "CONFIG_PAGE_HIDDEN_REPAIR_FIELDS",
     "CONFIG_PAGE_VISIBLE_CHANGE_FIELDS",
     "CONFIG_PAGE_WRITE_FIELDS",
+    "DEFAULT_GRAPH_ANALYSIS_MODE",
+    "DEFAULT_GRAPH_BLOCK_ON_CYCLE",
+    "DEFAULT_GRAPH_CRITICAL_WEIGHT",
+    "DEFAULT_GRAPH_DEBUG_EXPORT",
+    "DEFAULT_GRAPH_IMPACT_WEIGHT",
     "HOLIDAY_DEFAULT_EFFICIENCY_PAGE_WARNING_TEMPLATE",
     "PRESET_PREFIX",
 ]
