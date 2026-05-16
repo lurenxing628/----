@@ -134,6 +134,8 @@ def _patch_gate_environment(monkeypatch, module, repo_root: Path, *, statuses: S
         "_chrome_headless_preflight",
         lambda strict=False, environment=None: "stable-headless-preflight",
     )
+    monkeypatch.setattr(fingerprint_mod, "_git_executable_realpath", lambda environment=None: "/stable/git")
+    monkeypatch.setattr(fingerprint_mod, "_git_version", lambda strict=False, environment=None: "git version 2.50.0")
     monkeypatch.setattr(fingerprint_mod, "_node_executable_realpath", lambda environment=None: "/stable/node")
     monkeypatch.setattr(fingerprint_mod, "_node_version", lambda strict=False, environment=None: "v24.0.0")
     monkeypatch.setattr(
@@ -515,6 +517,18 @@ def test_validated_previous_success_rejects_invalid_or_nonzero_returncode(tmp_pa
 
     assert previous is None
     assert error == expected_error
+
+
+def test_full_test_debt_fingerprint_ignores_irrelevant_path_append(monkeypatch, tmp_path):
+    entry = _entry(tmp_path)
+    before = fingerprint_entry(entry, str(tmp_path))
+
+    current_path = os.environ.get("PATH", "")
+    monkeypatch.setenv("PATH", f"{current_path}{os.pathsep}/tmp/next7-transient-path")
+    after = fingerprint_entry(entry, str(tmp_path))
+
+    assert before["hash"] == after["hash"]
+
 
 
 def test_node_cache_records_readable_diagnostic_fields(tmp_path):

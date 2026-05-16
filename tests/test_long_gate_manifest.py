@@ -183,6 +183,8 @@ def test_required_parent_scope_includes_group_specific_scope_union():
     assert "node_version" in required_entry["env_keys"]
     assert "node_browser_runtime_capability" in required_entry["env_keys"]
     assert "NODE_OPTIONS" in required_entry["env_keys"]
+    assert "git_executable_realpath" in required_entry["env_keys"]
+    assert "git_version" in required_entry["env_keys"]
     assert "APS_BROWSER_SMOKE_REQUIRED" in required_entry["env_keys"]
     assert "chrome_version" in required_entry["env_keys"]
     assert "chrome_executable_identity" in required_entry["env_keys"]
@@ -375,6 +377,8 @@ def test_collect_full_test_debt_static_gate_required_startup_and_quickref_entrie
     for env_key in [
         "APS_BROWSER_SMOKE_REQUIRED",
         "APS_CHROME_PATH",
+        "git_executable_realpath",
+        "git_version",
         "chrome_executable_resolution",
         "chrome_version",
         "chrome_executable_identity",
@@ -382,7 +386,6 @@ def test_collect_full_test_debt_static_gate_required_startup_and_quickref_entrie
         "node_executable_realpath",
         "node_version",
         "node_browser_runtime_capability",
-        "PATH",
         "CI",
         "NODE_OPTIONS",
     ]:

@@ -796,6 +796,41 @@ def _chrome_headless_preflight(*, strict: bool = False, environment: Optional[Ma
         shutil.rmtree(profile_dir, ignore_errors=True)
 
 
+def _git_executable_realpath(environment: Optional[Mapping[str, str]] = None) -> str:
+    env = _effective_environment(environment)
+    git = shutil.which("git", path=env.get("PATH"))
+    if not git:
+        return "__missing_git__"
+    return os.path.realpath(git)
+
+
+def _git_version(*, strict: bool = False, environment: Optional[Mapping[str, str]] = None) -> str:
+    env = _effective_environment(environment)
+    git = shutil.which("git", path=env.get("PATH"))
+    if not git:
+        return "__missing_git__"
+    try:
+        completed = subprocess.run(
+            [git, "--version"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=5,
+            env=dict(env),
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        if strict:
+            raise LongGateFingerprintError(f"git version is required for long gate fingerprint: {exc}") from exc
+        return "__git_version_unavailable__"
+    if int(completed.returncode) != 0:
+        if strict:
+            detail = str(completed.stderr or completed.stdout or "").strip() or f"returncode={completed.returncode}"
+            raise LongGateFingerprintError(f"git version is required for long gate fingerprint: {detail}")
+        return "__git_version_unavailable__"
+    return str(completed.stdout or "").strip()
+
+
 def _node_executable_realpath(environment: Optional[Mapping[str, str]] = None) -> str:
     env = _effective_environment(environment)
     node = shutil.which("node", path=env.get("PATH"))
@@ -933,6 +968,10 @@ def _runtime_fingerprint_value(
         return _chrome_headless_preflight(strict=strict, environment=environment)
     if key == "node_executable_realpath":
         return _node_executable_realpath(environment=environment)
+    if key == "git_executable_realpath":
+        return _git_executable_realpath(environment=environment)
+    if key == "git_version":
+        return _git_version(strict=strict, environment=environment)
     if key == "node_version":
         return _node_version(strict=strict, environment=environment)
     if key == "node_browser_runtime_capability":

@@ -156,6 +156,8 @@ def test_required_scope_tracks_real_inputs_without_unrelated_markdown(tmp_path):
         "PYTEST_ADDOPTS",
         "PYTEST_DISABLE_PLUGIN_AUTOLOAD",
         "PYTEST_PLUGINS",
+        "git_executable_realpath",
+        "git_version",
         "APS_CHROME_PATH",
         "APS_BROWSER_SMOKE_REQUIRED",
         "chrome_executable_resolution",
@@ -165,7 +167,6 @@ def test_required_scope_tracks_real_inputs_without_unrelated_markdown(tmp_path):
         "node_executable_realpath",
         "node_version",
         "node_browser_runtime_capability",
-        "PATH",
         "NODE_OPTIONS",
         "CI",
     ]:
@@ -349,7 +350,6 @@ def test_required_tracked_scope_changes_update_fingerprint(tmp_path, changed_pat
         "APS_STATIC_VERSION",
         "SECRET_KEY",
         "CI",
-        "PATH",
         "PYTHONPATH",
         "PYTHONUTF8",
         "PYTHONIOENCODING",
@@ -364,15 +364,9 @@ def test_required_environment_changes_update_fingerprint(monkeypatch, tmp_path, 
     command_plan = _real_quality_gate_plan()
     required_entry = _entry_by_id(_manifest_for(command_plan, repo_root), ENTRY_REQUIRED_REGRESSIONS)
     env_overlay = dict(required_entry.get("env_overlay") or {})
-    if env_key != "PATH":
-        monkeypatch.delenv(env_key, raising=False)
+    monkeypatch.delenv(env_key, raising=False)
     before = _fingerprint_for(command_plan, repo_root, ENTRY_REQUIRED_REGRESSIONS)
-
-    if env_key == "PATH":
-        current_path = os.environ.get("PATH", "")
-        monkeypatch.setenv(env_key, f"{current_path}{os.pathsep}/tmp/next7-path")
-    else:
-        monkeypatch.setenv(env_key, f"next7-{env_key.lower()}")
+    monkeypatch.setenv(env_key, f"next7-{env_key.lower()}")
     after = _fingerprint_for(command_plan, repo_root, ENTRY_REQUIRED_REGRESSIONS)
 
     if env_key in env_overlay:
@@ -382,6 +376,19 @@ def test_required_environment_changes_update_fingerprint(monkeypatch, tmp_path, 
 
     assert before["hash"] != after["hash"]
     assert after["components"]["environment"]["values"][env_key] == os.environ.get(env_key)
+
+
+def test_required_fingerprint_ignores_irrelevant_path_append(monkeypatch, tmp_path):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    command_plan = _real_quality_gate_plan()
+    before = _fingerprint_for(command_plan, repo_root, ENTRY_REQUIRED_REGRESSIONS)
+
+    current_path = os.environ.get("PATH", "")
+    monkeypatch.setenv("PATH", f"{current_path}{os.pathsep}/tmp/next7-transient-path")
+    after = _fingerprint_for(command_plan, repo_root, ENTRY_REQUIRED_REGRESSIONS)
+
+    assert before["hash"] == after["hash"]
 
 
 @pytest.mark.parametrize("entry_id", [ENTRY_REQUIRED_REGRESSIONS, "full_test_debt"])
