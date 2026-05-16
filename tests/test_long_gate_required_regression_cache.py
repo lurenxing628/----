@@ -272,6 +272,7 @@ def test_required_success_writes_parent_proof_and_reuses_next_run(monkeypatch, t
             "{bad json",
             encoding="utf-8",
         ),
+        lambda repo_root: next((repo_root / "evidence" / "QualityGate" / "required_regressions").glob("*.json")).unlink(),
         lambda repo_root: next((repo_root / "evidence" / "QualityGate" / "required_regressions").glob("*.json")).write_text(
             "{bad child json",
             encoding="utf-8",
@@ -293,6 +294,64 @@ def test_required_tampered_parent_cache_reruns_parent(monkeypatch, tmp_path, mut
     assert required_display in _call_displays(calls)
     assert summary_entry["execution_mode"] == "executed"
     assert "required_regressions_groups" not in summary_entry
+
+
+def test_required_success_cache_without_declared_child_proofs_reruns_parent(monkeypatch, tmp_path):
+    ctx = _prepare_gate_run_context(monkeypatch, tmp_path)
+    module = ctx.module
+    repo_root = ctx.repo_root
+    command_plan = ctx.command_plan
+    required_display = _entry_display(command_plan, repo_root, ENTRY_REQUIRED_REGRESSIONS)
+    _seed_required_success(module, monkeypatch, repo_root, command_plan)
+    success_path = _success_path(repo_root, ENTRY_REQUIRED_REGRESSIONS)
+    success_payload = json.loads(success_path.read_text(encoding="utf-8"))
+    success_payload["output_files"] = [
+        row
+        for row in list(success_payload.get("output_files") or [])
+        if str(row.get("path") or "") == "evidence/QualityGate/required_regressions.json"
+    ]
+    success_path.write_text(json.dumps(success_payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+
+    calls = _run_gate_with_fake_commands(module, monkeypatch, repo_root, command_plan, ["--long-gate-cache"])
+    summary_entry = _summary_entry(_load_summary(repo_root), ENTRY_REQUIRED_REGRESSIONS)
+
+    assert required_display in _call_displays(calls)
+    assert summary_entry["execution_mode"] == "executed"
+
+
+def test_required_verifier_missing_proof_fails_closed(monkeypatch, tmp_path):
+    ctx = _prepare_gate_run_context(monkeypatch, tmp_path)
+    module = ctx.module
+    repo_root = ctx.repo_root
+    command_plan = ctx.command_plan
+    required_display = _entry_display(command_plan, repo_root, ENTRY_REQUIRED_REGRESSIONS)
+    calls: List[Dict[str, object]] = []
+    base_fake = _fake_successful_command(command_plan, repo_root, calls)
+
+    def fake_run_command(display, args, capture_output=False, env_overlay=None):
+        if display == required_display:
+            calls.append(
+                {
+                    "display": str(display),
+                    "args": [str(arg) for arg in list(args or [])],
+                    "capture_output": bool(capture_output),
+                    "env_overlay": dict(env_overlay or {}),
+                }
+            )
+            return {
+                "stdout": "required verifier reported success but did not write proof\n",
+                "stderr": "",
+                "returncode": 0,
+            }
+        return base_fake(display, args, capture_output=capture_output, env_overlay=env_overlay)
+
+    monkeypatch.setattr(module, "_run_command", fake_run_command)
+
+    with pytest.raises(module.QualityGateError, match="required regressions verifier 证明不可用"):
+        module.main(["--long-gate-cache"])
+
+    assert required_display in _call_displays(calls)
+    assert not _success_path(repo_root, ENTRY_REQUIRED_REGRESSIONS).exists()
 
 
 @pytest.mark.parametrize(

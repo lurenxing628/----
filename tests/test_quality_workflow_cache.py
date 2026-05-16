@@ -21,6 +21,10 @@ def _quality_steps() -> List[Dict[str, Any]]:
     return list(workflow["jobs"]["quality-gate"]["steps"])
 
 
+def _workflow() -> Dict[str, Any]:
+    return dict(yaml.load(WORKFLOW_PATH.read_text(encoding="utf-8"), Loader=yaml.BaseLoader))
+
+
 def _step_by_name(steps: List[Dict[str, Any]], name: str) -> Dict[str, Any]:
     return next(step for step in steps if step.get("name") == name)
 
@@ -61,11 +65,25 @@ def test_quality_workflow_long_gate_cache_only_saves_trusted_runtime_outputs() -
 
     assert restore_index < run_index < save_index
     assert run_step["run"] == QUALITY_GATE_COMMAND
-    assert "success()" in str(save_step["if"])
-    assert "github.event.pull_request.head.repo.full_name == github.repository" in str(save_step["if"])
+    assert (
+        str(save_step["if"])
+        == "${{ success() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}"
+    )
+    assert str(restore_step["uses"]) == "actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830"
+    assert str(save_step["uses"]) == "actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830"
 
     restore_paths = _cache_paths(restore_step)
     save_paths = _cache_paths(save_step)
     assert save_paths == restore_paths
     assert "evidence/Conformance/quickref_vs_routes.md" not in save_paths
+    assert "evidence/QualityGate/quickref_vs_routes.md" in save_paths
     assert all(path.startswith("evidence/QualityGate/") for path in save_paths)
+
+
+def test_quality_workflow_cache_runs_on_push_pr_and_manual_only() -> None:
+    workflow = _workflow()
+    triggers = dict(workflow["on"])
+
+    assert sorted(triggers) == ["pull_request", "push", "workflow_dispatch"]
+    assert triggers["push"]["branches"] == ["main"]
+    assert "branches" not in triggers["pull_request"]

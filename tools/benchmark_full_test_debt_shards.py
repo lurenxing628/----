@@ -132,7 +132,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--run", action="store_true", help="alias for --mode run")
     parser.add_argument("--allow-dirty-worktree-proof", action="store_true")
     parser.add_argument("--write-json", default="", help="optional output JSON path")
-    args = parser.parse_args(list(argv or []))
+    args = parser.parse_args(argv)
 
     payload_path = Path(str(args.payload))
     if not payload_path.is_absolute():

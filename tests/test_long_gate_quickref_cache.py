@@ -33,7 +33,7 @@ def _write(repo_root: Path, rel_path: str, text: str = "MARKER = 1\n") -> Path:
 
 
 def _write_quickref_report(repo_root: Path, text: str = "# quickref\n\nOK\n") -> Path:
-    return _write(repo_root, "evidence/Conformance/quickref_vs_routes.md", text)
+    return _write(repo_root, "evidence/QualityGate/quickref_vs_routes.md", text)
 
 
 def test_quickref_vs_routes_is_enabled_and_declares_output_file(tmp_path):
@@ -41,7 +41,7 @@ def test_quickref_vs_routes_is_enabled_and_declares_output_file(tmp_path):
 
     assert entry["cache_status"] == "enabled"
     assert entry["reuse_allowed"] is True
-    assert entry["output_result_files"] == ["evidence/Conformance/quickref_vs_routes.md"]
+    assert entry["output_result_files"] == ["evidence/QualityGate/quickref_vs_routes.md"]
 
 
 @pytest.mark.parametrize(
@@ -93,7 +93,7 @@ def test_quickref_reuse_requires_report_file_to_exist_and_match_hash(tmp_path):
         entry,
         fingerprint,
         {
-            "stdout": "evidence/Conformance/quickref_vs_routes.md\nOK\n",
+            "stdout": "evidence/QualityGate/quickref_vs_routes.md\nOK\n",
             "stderr": "",
             "returncode": 0,
             "duration_s": 1.0,

@@ -12,6 +12,8 @@ from typing import Dict, Iterable, List, Optional, Set, Tuple, cast
 
 from flask import Flask
 
+QUICKREF_VS_ROUTES_REPORT_REL = "evidence/QualityGate/quickref_vs_routes.md"
+
 
 def find_repo_root() -> str:
     here = os.path.dirname(os.path.abspath(__file__))
@@ -212,7 +214,7 @@ def main() -> int:
         undocumented_in_doc=undocumented_in_doc,
     )
 
-    out_path = Path(repo_root) / "evidence" / "Conformance" / "quickref_vs_routes.md"
+    out_path = Path(repo_root) / QUICKREF_VS_ROUTES_REPORT_REL
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(report, encoding="utf-8")
     print(out_path.relative_to(repo_root).as_posix())

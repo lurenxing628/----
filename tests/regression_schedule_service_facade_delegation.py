@@ -1,8 +1,65 @@
+import inspect
 import os
 import sqlite3
 import sys
 from datetime import datetime
 from types import SimpleNamespace
+from typing import List, Optional, get_type_hints
+
+from data.repositories.schedule_repo import ScheduleRepository
+from data.repositories.schedule_rows import (
+    ScheduleDetailRow,
+    ScheduleDispatchRow,
+    ScheduleSeedRow,
+    ScheduleTimeSpanRow,
+)
+
+
+def test_schedule_service_constructor_keeps_public_signature_contract() -> None:
+    from core.services.scheduler.schedule_service import ScheduleService
+
+    signature = inspect.signature(ScheduleService.__init__)
+    params = list(signature.parameters.values())
+
+    assert [param.name for param in params] == ["self", "conn", "logger", "op_logger"]
+    assert params[1].default is inspect.Signature.empty
+    assert params[2].default is None
+    assert params[3].default is None
+
+
+def test_schedule_repository_dict_rows_have_named_return_contracts() -> None:
+    assert get_type_hints(ScheduleRepository.get_version_time_span)["return"] == Optional[ScheduleTimeSpanRow]
+    assert (
+        get_type_hints(ScheduleRepository.list_version_rows_by_op_ids_start_range)["return"]
+        == List[ScheduleSeedRow]
+    )
+    assert get_type_hints(ScheduleRepository.list_overlapping_with_details)["return"] == List[ScheduleDetailRow]
+    assert get_type_hints(ScheduleRepository.list_by_version_with_details)["return"] == List[ScheduleDetailRow]
+    assert (
+        get_type_hints(ScheduleRepository.list_dispatch_rows_with_resource_context)["return"]
+        == List[ScheduleDispatchRow]
+    )
+
+
+def test_schedule_service_repository_bundle_aliases_stay_in_sync() -> None:
+    from core.services.scheduler.schedule_service import ScheduleService
+
+    service = ScheduleService(object(), logger=None, op_logger=None)
+    repos = getattr(service, "_repos")
+
+    for attr in (
+        "batch_repo",
+        "op_repo",
+        "part_op_repo",
+        "group_repo",
+        "machine_repo",
+        "operator_repo",
+        "operator_machine_repo",
+        "supplier_repo",
+        "schedule_repo",
+        "history_repo",
+    ):
+        assert getattr(service, attr) is getattr(repos, attr)
 
 
 def find_repo_root() -> str:

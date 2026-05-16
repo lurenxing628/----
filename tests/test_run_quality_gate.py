@@ -320,6 +320,7 @@ def test_main_runs_guard_preflight_before_static_and_startup_checks(monkeypatch,
     assert "tools/long_gate_cache.py" in module.QUALITY_GATE_TOOL_PATHS
     assert "tools/long_gate_collect.py" in module.QUALITY_GATE_TOOL_PATHS
     assert "tools/long_gate_fingerprint.py" in module.QUALITY_GATE_TOOL_PATHS
+    assert "tools/full_test_debt_shards.py" in module.QUALITY_GATE_TOOL_PATHS
     assert "tools/long_gate_manifest.py" in module.QUALITY_GATE_TOOL_PATHS
     assert "tools/long_gate_paths.py" in module.QUALITY_GATE_TOOL_PATHS
     assert "tools/long_gate_schema.py" in module.QUALITY_GATE_TOOL_PATHS
@@ -657,6 +658,7 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
         "tests/regression_schedule_summary_freeze_state_contract.py",
         "tests/test_git_hook_checks.py",
         "tests/test_long_gate_cli_controls.py",
+        "tests/test_long_gate_quickref_cache.py",
         "tests/test_schedule_template_lookup_contract.py",
     ):
         assert high_value_path in module.REQUIRED_TEST_ARGS
@@ -826,7 +828,7 @@ def test_main_rebuilds_ignored_receipts_without_dirtying_clean_worktree(monkeypa
         "evidence/QualityGate/ruff_check_full.json",
         "evidence/QualityGate/pyright_gate_full.json",
         "evidence/QualityGate/pyright_tools_full.json",
-        "evidence/Conformance/quickref_vs_routes.md",
+        "evidence/QualityGate/quickref_vs_routes.md",
     ]
     assert len(manifest["command_receipts"]) == len(manifest["commands"])
 
@@ -994,6 +996,27 @@ def test_pyright_tools_coverage_rejects_config_that_does_not_match_tool_paths(mo
 
     with pytest.raises(module.QualityGateError, match="include 与 QUALITY_GATE_TOOL_PATHS 不一致"):
         module._assert_pyright_tools_coverage()
+
+
+def test_pyright_tools_reused_cache_validates_config_without_rerunning_pyright(monkeypatch, tmp_path):
+    module = _import_run_quality_gate()
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    (repo_root / module.PYRIGHT_TOOLS_CONFIG).write_text(
+        module.json.dumps({"include": module.QUALITY_GATE_TOOL_PATHS}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(module, "REPO_ROOT", str(repo_root))
+    monkeypatch.setattr(
+        module,
+        "_assert_pyright_tools_coverage",
+        lambda: (_ for _ in ()).throw(AssertionError("reused cache should not rerun pyright coverage")),
+    )
+
+    assert module._handle_pyright_tools_quality_gate_command(
+        f"python -m pyright -p {module.PYRIGHT_TOOLS_CONFIG}",
+        {"stdout": "", "stderr": "", "returncode": 0, "execution_mode": "reused_success_cache"},
+    ) == {}
 
 
 @pytest.mark.parametrize(
@@ -2045,6 +2068,61 @@ def test_main_records_failed_manifest_when_run_output_cleanup_fails(monkeypatch,
     assert manifest["failure_message"] == "locked"
     assert manifest["commands"] == []
     assert manifest["resume"]["proof_status"] == "failed"
+
+
+def test_clear_stale_long_gate_output_files_keeps_reused_outputs_and_removes_run_outputs(monkeypatch, tmp_path):
+    module = _import_run_quality_gate()
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    monkeypatch.setattr(module, "REPO_ROOT", str(repo_root))
+    run_output = repo_root / "evidence" / "QualityGate" / "quickref_vs_routes.md"
+    reuse_output = repo_root / "evidence" / "QualityGate" / "debt_ledger_sync.json"
+    required_parent = repo_root / "evidence" / "QualityGate" / "required_regressions.json"
+    required_child = repo_root / "evidence" / "QualityGate" / "required_regressions" / "core.json"
+    full_debt_output = repo_root / "evidence" / "QualityGate" / "current_full_test_debt.json"
+    for path in (run_output, reuse_output, required_parent, required_child, full_debt_output):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("stale\n", encoding="utf-8")
+
+    module._clear_stale_long_gate_output_files(
+        {
+            "quickref": {
+                "entry": {
+                    "entry_id": "quickref_vs_routes",
+                    "output_result_files": ["evidence/QualityGate/quickref_vs_routes.md"],
+                },
+                "decision": {"decision": "run"},
+            },
+            "required": {
+                "entry": {
+                    "entry_id": "required_regressions",
+                    "output_result_files": ["evidence/QualityGate/required_regressions.json"],
+                },
+                "decision": {"decision": "run"},
+            },
+            "debt": {
+                "entry": {
+                    "entry_id": "debt_ledger_sync",
+                    "output_result_files": ["evidence/QualityGate/debt_ledger_sync.json"],
+                },
+                "decision": {"decision": "reuse"},
+            },
+            "full": {
+                "entry": {
+                    "entry_id": "full_test_debt",
+                    "output_result_files": ["evidence/QualityGate/current_full_test_debt.json"],
+                },
+                "decision": {"decision": "run"},
+            },
+        },
+        preserve_full_test_debt_outputs=True,
+    )
+
+    assert not run_output.exists()
+    assert not required_parent.exists()
+    assert not required_child.exists()
+    assert reuse_output.exists()
+    assert full_debt_output.exists()
 
 
 def test_main_does_not_resume_when_dirty_worktree_content_differs(monkeypatch, tmp_path, capsys):

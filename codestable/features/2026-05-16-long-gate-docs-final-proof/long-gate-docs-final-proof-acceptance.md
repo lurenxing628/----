@@ -38,7 +38,7 @@ accepted_at: 2026-05-16
 - 没有引入外部前端资源。
 - 没有新增 `shell=True`。
 - 没有提交 `evidence/QualityGate/**` 运行产物。
-- 没有提交 `evidence/Conformance/quickref_vs_routes.md` 的本次生成差异。
+- 没有提交 `evidence/QualityGate/quickref_vs_routes.md` 的本次生成差异；历史 tracked `evidence/Conformance/quickref_vs_routes.md` 不再作为 long gate 运行输出。
 
 ## 3. Proof 口径核对
 
@@ -65,7 +65,7 @@ accepted_at: 2026-05-16
 ## 5. 运行产物检查
 
 - `evidence/QualityGate/` 下有本机 ignored 运行产物残留，它们不是本次未提交 diff。
-- `evidence/Conformance/quickref_vs_routes.md` 是历史已跟踪文件；本次 diff 没有新增或修改它。
+- `evidence/Conformance/quickref_vs_routes.md` 是历史已跟踪文件；本次 diff 没有新增或修改它。当前 quickref 运行报告写到已忽略的 `evidence/QualityGate/quickref_vs_routes.md`。
 - README、开发文档和 NEXT-13 design 已明确：hook 只拦已登记路径，不会自动通配保护整个 `evidence/QualityGate/`；新产生的 QualityGate 运行产物仍不能进入提交。
 - 提交前必须重新运行 `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/git_hook_checks.py check-staged-artifacts`，确认暂存区没有已登记运行产物。
 

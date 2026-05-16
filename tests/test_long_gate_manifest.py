@@ -420,7 +420,7 @@ def test_collect_full_test_debt_static_gate_required_startup_and_quickref_entrie
     assert "PYTHONIOENCODING" in startup["env_keys"]
     assert quickref["cache_status"] == "enabled"
     assert quickref["reuse_allowed"] is True
-    assert quickref["output_result_files"] == ["evidence/Conformance/quickref_vs_routes.md"]
+    assert quickref["output_result_files"] == ["evidence/QualityGate/quickref_vs_routes.md"]
     for scope in [
         "开发文档/系统速查表.md",
         "app.py",

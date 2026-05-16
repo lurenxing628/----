@@ -94,5 +94,5 @@ def test_main_prints_repo_relative_report_path(monkeypatch, tmp_path, capsys):
     assert module.main() == 0
 
     captured = capsys.readouterr()
-    assert captured.out.splitlines() == ["evidence/Conformance/quickref_vs_routes.md", "OK"]
+    assert captured.out.splitlines() == ["evidence/QualityGate/quickref_vs_routes.md", "OK"]
     assert captured.err == ""

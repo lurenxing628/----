@@ -8,7 +8,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Iterable, List, Optional, Sequence, Tuple
+from typing import Iterable, List, Optional, Sequence, TextIO, Tuple
 
 try:
     from tools import git_hook_cache
@@ -43,7 +43,7 @@ BLOCKED_PATH_RULES: Tuple[Tuple[str, str], ...] = (
     ("evidence/QualityGate/ruff_check_full.json", "ruff full proof 是运行产物，应由当前门禁重新生成"),
     ("evidence/QualityGate/pyright_gate_full.json", "pyright gate proof 是运行产物，应由当前门禁重新生成"),
     ("evidence/QualityGate/pyright_tools_full.json", "pyright tools proof 是运行产物，应由当前门禁重新生成"),
-    ("evidence/Conformance/quickref_vs_routes.md", "quickref/routes 对账报告是运行产物，应由当前门禁重新生成"),
+    ("evidence/QualityGate/quickref_vs_routes.md", "quickref/routes 对账报告是运行产物，应由当前门禁重新生成"),
     ("evidence/QualityGate/receipts/", "质量门禁 receipts 是运行产物，应由当前门禁重新生成"),
     ("evidence/QualityGate/logs/", "质量门禁日志是运行产物，不应该混进普通提交"),
     ("evidence/QualityGate/long_gate/", "长耗时门禁缓存是本地运行产物，不应该混进普通提交"),
@@ -92,7 +92,7 @@ def _staged_paths() -> List[str]:
 
 
 def _normalize_path(path: str) -> str:
-    return path.replace("\\", "/").lstrip("./")
+    return git_hook_cache.normalize_repo_path(path)
 
 
 def _path_matches_rule(path: str, pattern: str) -> bool:
@@ -111,6 +111,8 @@ def _blocked_paths(paths: Iterable[str]) -> List[Tuple[str, str]]:
     blocked: List[Tuple[str, str]] = []
     for raw_path in paths:
         path = _normalize_path(raw_path)
+        if not path:
+            continue
         for pattern, reason in BLOCKED_PATH_RULES:
             if _path_matches_rule(path, pattern):
                 blocked.append((path, reason))
@@ -172,6 +174,26 @@ def _quality_gate_env() -> dict:
     return env
 
 
+def _remote_refs_from_stdin(stream: Optional[TextIO] = None) -> List[str]:
+    source: TextIO = stream if stream is not None else sys.stdin
+    try:
+        is_tty = bool(getattr(source, "isatty", lambda: True)())
+    except Exception:
+        is_tty = True
+    if is_tty:
+        return []
+    try:
+        text = str(source.read() or "")
+    except (AttributeError, OSError, ValueError):
+        return []
+    refs: List[str] = []
+    for raw_line in text.splitlines():
+        parts = raw_line.split()
+        if len(parts) >= 3 and parts[2]:
+            refs.append(parts[2])
+    return sorted(dict.fromkeys(refs))
+
+
 def run_quality_gate(args: argparse.Namespace) -> int:
     try:
         executable = _project_python_executable()
@@ -180,6 +202,8 @@ def run_quality_gate(args: argparse.Namespace) -> int:
         return 1
     remote_name = str(getattr(args, "remote_name", "") or "")
     remote_ref = str(getattr(args, "remote_ref", "") or "")
+    if not remote_ref:
+        remote_ref = ",".join(_remote_refs_from_stdin())
     try:
         if git_hook_cache.pre_push_daily_cache_hit(executable, remote_name=remote_name, remote_ref=remote_ref):
             print(

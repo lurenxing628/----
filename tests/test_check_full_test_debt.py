@@ -682,6 +682,33 @@ def test_collect_current_payload_explicit_sharded_false_overrides_env(monkeypatc
     assert "--shard-count" not in command
 
 
+def test_collect_current_payload_rejects_returncode_payload_exitstatus_mismatch(monkeypatch) -> None:
+    checker = _import_checker()
+    payload = _payload(
+        collected_nodeids=["tests/test_sample.py::test_ok"],
+        reports=[_report("tests/test_sample.py::test_ok", outcome="passed")],
+        exitstatus=0,
+    )
+
+    class FakeProcess:
+        def __init__(self, command, **kwargs) -> None:
+            self.stdout = io.StringIO(json.dumps(payload, ensure_ascii=False))
+            self.stderr = io.StringIO("collector crashed after JSON\n")
+
+        def wait(self) -> int:
+            return 2
+
+    monkeypatch.setattr(checker.subprocess, "Popen", FakeProcess)
+
+    with pytest.raises(checker.QualityGateError) as exc_info:
+        checker.collect_current_payload()
+
+    message = str(exc_info.value)
+    assert "collector returncode 与 payload.exitstatus 不一致" in message
+    assert "returncode=2 exitstatus=0" in message
+    assert "collector crashed after JSON" in message
+
+
 def test_check_full_test_debt_collection_errors_list_entries() -> None:
     checker = _import_checker()
     nodeid = "tests/test_bad_import.py"

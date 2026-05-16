@@ -18,7 +18,7 @@ tags: [quality-gate, cache, docs, proof]
 - planned entry：已经识别为候选，但还不能复用 success cache 的 entry。当前只剩 `architecture_fitness`。
 - clean-worktree final proof：在干净工作区运行 `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache` 并完整成功收尾，然后 `git status --short` 仍没有输出。
 - 局部验证：单独 pytest、ruff、pyright、YAML 校验、artifact hook 检查等定位型验证。它们有价值，但不能冒充 clean-worktree final proof。
-- 运行产物：门禁运行期间生成的本地证据文件，例如 `evidence/QualityGate/**` 和 `evidence/Conformance/quickref_vs_routes.md`。这些文件不能提交。
+- 运行产物：门禁运行期间生成的本地证据文件，例如 `evidence/QualityGate/**`，其中包括 `evidence/QualityGate/quickref_vs_routes.md`。这些文件不能提交。历史 tracked `evidence/Conformance/quickref_vs_routes.md` 不再作为 long gate 运行输出。
 
 ## 1. 决策与约束
 
@@ -33,7 +33,7 @@ tags: [quality-gate, cache, docs, proof]
 - roadmap 里不再残留 `quickref_vs_routes` 同时 enabled / planned 的矛盾。
 - 文档明确：`--long-gate-cache-explain`、cache hit、summary counts、daily gate、pre-push fast gate、单独 pytest、ruff、pyright 都不是 clean-worktree final proof。
 - 文档明确：最终 clean proof 必须运行带 `--require-clean-worktree --long-gate-cache` 的完整门禁，并记录 `git status --short`。
-- 文档明确：运行产物不能提交，尤其是 `evidence/QualityGate/**` 和 `evidence/Conformance/quickref_vs_routes.md`。
+- 文档明确：运行产物不能提交，尤其是 `evidence/QualityGate/**` 和 `evidence/QualityGate/quickref_vs_routes.md`。
 - acceptance 不把提交后才运行的 final gate 写成历史事实；本阶段最终交付必须绑定提交后的 final gate 结果和 `git status --short`。
 
 明确不做：
@@ -44,7 +44,7 @@ tags: [quality-gate, cache, docs, proof]
 - 不修改 APS 排产、导入、保存等业务逻辑。
 - 不升级依赖，不引入外部前端资源。
 - 不使用 Python 3.9+ 类型语法，不使用 `shell=True`。
-- 不提交或计划提交 `evidence/QualityGate/**`、`evidence/Conformance/quickref_vs_routes.md`、receipts、logs、summary 或 success cache。
+- 不提交或计划提交 `evidence/QualityGate/**`、`evidence/QualityGate/quickref_vs_routes.md`、receipts、logs、summary 或 success cache。
 
 复杂度档位：文档和证明收口。风险不在“代码难写”，而在把局部验证、历史验收或远端事实误说成了本机最终 proof，所以本阶段的重点是口径统一和证据干净。
 

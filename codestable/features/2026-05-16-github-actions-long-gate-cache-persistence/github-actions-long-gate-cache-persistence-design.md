@@ -16,7 +16,7 @@ tags: [quality-gate, ci, cache, github-actions]
 - long gate cache：完整质量门禁里给长耗时检查准备的成功缓存。它不是跳过门禁，而是先把旧成功结果拿回来，再由门禁重新核对命令、输入指纹、日志和输出文件。
 - CI cache persistence：GitHub Actions 跨运行保存一小段本地运行产物。没有这一步，CI 每次都是新机器，上一轮 long gate success cache 不会留下来。
 - proof：真正能说明本次通过的是 `python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache` 成功结束。cache hit 本身不是 proof。
-- fork PR：来自别人 fork 的 pull request。它可以读取主仓库已有缓存帮助判断，但不能把自己的运行产物写回主仓库缓存。
+- pull request：PR 可以读取主仓库已有缓存帮助判断，但不能把自己的运行产物写回主仓库缓存；当前只有 `push` 和手动 `workflow_dispatch` 会在门禁成功后保存缓存。
 
 ## 1. 需求摘要
 
@@ -27,10 +27,10 @@ tags: [quality-gate, ci, cache, github-actions]
 - workflow 使用 pinned `actions/cache/restore` 和 pinned `actions/cache/save`。
 - restore 放在完整质量门禁之前。
 - save 放在完整质量门禁之后，并且只在完整质量门禁成功后执行。
-- fork PR 不 save。
+- pull request 不 save。
 - CI 正式门禁命令保持 `python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`。
-- 缓存路径只包含已被忽略、long gate 复用需要的 `evidence/QualityGate/` 运行产物。
-- 不缓存已跟踪的 `evidence/Conformance/quickref_vs_routes.md`。
+- 缓存路径只包含已被忽略、long gate 复用需要的 `evidence/QualityGate/` 运行产物，其中包括 `evidence/QualityGate/quickref_vs_routes.md`。
+- 不缓存已跟踪的历史文件 `evidence/Conformance/quickref_vs_routes.md`。
 - README、开发文档和 roadmap/items 说明：CI cache hit 不是 proof。
 
 明确不做：
@@ -39,7 +39,7 @@ tags: [quality-gate, ci, cache, github-actions]
 - 不改变 long gate enabled/planned entry。
 - 不启用 `architecture_fitness` success cache。
 - 不改变质量门禁命令。
-- 不把 `evidence/Conformance/quickref_vs_routes.md` 放进 Actions cache。
+- 不把历史 tracked `evidence/Conformance/quickref_vs_routes.md` 放进 Actions cache。
 - 不提交任何 `evidence/QualityGate/` 运行产物。
 
 ## 2. 设计方案
@@ -55,7 +55,7 @@ install dependencies
 validate chrome path
 restore long gate cache
 run python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache
-save long gate cache when the gate succeeded and this is not a fork PR
+save long gate cache when the gate succeeded and the event is push or workflow_dispatch
 upload evidence artifact
 ```
 
@@ -78,9 +78,10 @@ evidence/QualityGate/debt_ledger_sync.json
 evidence/QualityGate/ruff_check_full.json
 evidence/QualityGate/pyright_gate_full.json
 evidence/QualityGate/pyright_tools_full.json
+evidence/QualityGate/quickref_vs_routes.md
 ```
 
-不放 `evidence/Conformance/quickref_vs_routes.md`。这个文件当前是已跟踪文件，应由 checkout 得到，不能让 Actions cache 覆盖它。
+不放 `evidence/Conformance/quickref_vs_routes.md`。这个文件当前是已跟踪历史文件，应由 checkout 得到，不能让 Actions cache 覆盖它。
 
 ### 2.3 key 策略
 
@@ -95,9 +96,9 @@ save 的精确 key 在这个前缀后继续加 `sha-${{ github.sha }}-run-${{ gi
 - S1：`.github/workflows/quality.yml` 有 pinned restore/save。
 - S2：restore 在统一质量门禁前。
 - S3：save 在统一质量门禁后，并且只在 success 后执行。
-- S4：fork PR 不 save。
+- S4：pull request 不 save，只有 `push` / `workflow_dispatch` save。
 - S5：CI 命令仍是 `python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`。
-- S6：缓存路径只包含已忽略的 long gate 运行产物，不包含 `evidence/Conformance/quickref_vs_routes.md`。
+- S6：缓存路径只包含已忽略的 long gate 运行产物，包含 `evidence/QualityGate/quickref_vs_routes.md`，不包含历史 tracked `evidence/Conformance/quickref_vs_routes.md`。
 - S7：restore 前缀包含 OS、Python 3.8、依赖 hash 和 tooling hash；save key 包含 `github.sha`。
 - S8：README、开发文档、roadmap/items 明确 CI cache hit 不是 proof。
 - S9：workflow 合同测试会解析 YAML，锁住 key、路径、fork save 条件和 CI 命令。

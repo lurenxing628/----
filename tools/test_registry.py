@@ -118,6 +118,7 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/test_benchmark_full_test_debt_shards.py",
     "tests/test_quality_workflow_cache.py",
     "tests/test_long_gate_cli_controls.py",
+    "tests/test_long_gate_quickref_cache.py",
     "tests/test_ui_mode.py",
     "tests/regression_safe_next_url_hardening.py",
     "tests/regression_safe_next_url_observability.py",
@@ -220,6 +221,7 @@ REQUIRED_REGRESSION_GROUPS = (
             "tests/test_benchmark_full_test_debt_shards.py",
             "tests/test_quality_workflow_cache.py",
             "tests/test_long_gate_cli_controls.py",
+            "tests/test_long_gate_quickref_cache.py",
         ),
         "input_file_scopes": (
             ".github/workflows/quality.yml",

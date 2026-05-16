@@ -41,3 +41,40 @@ def test_parse_counts_dedupes_and_rejects_empty() -> None:
         assert "at least one" in str(exc)
     else:  # pragma: no cover
         raise AssertionError("empty count list should fail")
+
+
+def test_main_honors_argv_mode_run_and_shard_counts(monkeypatch, tmp_path: Path, capsys) -> None:
+    payload_path = tmp_path / "current_full_test_debt.json"
+    payload_path.write_text(
+        json.dumps({"collected_nodeids": ["tests/test_alpha.py::test_a", "tests/test_beta.py::test_b"]}),
+        encoding="utf-8",
+    )
+    calls = []
+
+    def fake_run_shard_count(shard_count: int, *, allow_dirty_worktree_proof: bool = False):
+        calls.append((shard_count, allow_dirty_worktree_proof))
+        return {
+            "shard_count": shard_count,
+            "duration_s": 0.0,
+            "returncode": 0,
+            "command": ["fake", str(shard_count)],
+        }
+
+    monkeypatch.setattr(benchmark, "_run_shard_count", fake_run_shard_count)
+
+    assert benchmark.main(
+        [
+            "--payload",
+            str(payload_path),
+            "--mode",
+            "run",
+            "--shard-counts",
+            "2,5",
+            "--allow-dirty-worktree-proof",
+        ]
+    ) == 0
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["mode"] == "run"
+    assert [row["shard_count"] for row in output["runs"]] == [2, 5]
+    assert calls == [(2, True), (5, True)]

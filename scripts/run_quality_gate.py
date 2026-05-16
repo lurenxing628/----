@@ -75,6 +75,7 @@ from tools.quality_gate_support import (  # noqa: E402
     QUALITY_GATE_PYRIGHT_GATE_FULL_REL,
     QUALITY_GATE_PYRIGHT_TOOLS_CONFIG,
     QUALITY_GATE_PYRIGHT_TOOLS_FULL_REL,
+    QUALITY_GATE_QUICKREF_VS_ROUTES_REL,
     QUALITY_GATE_RECEIPTS_DIR_REL,
     QUALITY_GATE_REQUIRED_REGRESSIONS_REL,
     QUALITY_GATE_RUFF_CHECK_FULL_REL,
@@ -123,7 +124,7 @@ GENERATED_CLEAN_WORKTREE_EXCLUDED_PATHS = [
     QUALITY_GATE_RUFF_CHECK_FULL_REL.replace("\\", "/"),
     QUALITY_GATE_PYRIGHT_GATE_FULL_REL.replace("\\", "/"),
     QUALITY_GATE_PYRIGHT_TOOLS_FULL_REL.replace("\\", "/"),
-    "evidence/Conformance/quickref_vs_routes.md",
+    QUALITY_GATE_QUICKREF_VS_ROUTES_REL.replace("\\", "/"),
 ]
 HIGH_RISK_UNTRACKED_SOURCE_PREFIXES = ("core/", "web/", "data/", "tools/", "scripts/")
 HIGH_RISK_UNTRACKED_SOURCE_SUFFIXES = (".py", ".js", ".ts", ".html", ".css", ".sql")
@@ -811,6 +812,36 @@ def _remove_quality_gate_manifest() -> None:
         os.remove(manifest_path)
 
 
+def _remove_quality_gate_run_output_path(rel_path: str) -> None:
+    normalized = str(rel_path or "").replace("\\", "/").strip()
+    if not normalized:
+        return
+    abs_path = os.path.join(REPO_ROOT, normalized.replace("/", os.sep))
+    if os.path.isdir(abs_path):
+        shutil.rmtree(abs_path)
+    elif os.path.isfile(abs_path):
+        os.remove(abs_path)
+
+
+def _clear_stale_long_gate_output_files(
+    runtime_entries: Mapping[str, Dict[str, Any]],
+    *,
+    preserve_full_test_debt_outputs: bool,
+) -> None:
+    for runtime_entry in list(runtime_entries.values()):
+        entry = dict((runtime_entry or {}).get("entry") or {})
+        decision = dict((runtime_entry or {}).get("decision") or {})
+        entry_id = str(entry.get("entry_id") or "")
+        if str(decision.get("decision") or "") == "reuse":
+            continue
+        if entry_id == ENTRY_FULL_TEST_DEBT and preserve_full_test_debt_outputs:
+            continue
+        for rel_path in list(entry.get("output_result_files") or []):
+            _remove_quality_gate_run_output_path(str(rel_path))
+        if entry_id == ENTRY_REQUIRED_REGRESSIONS:
+            _remove_quality_gate_run_output_path("evidence/QualityGate/required_regressions")
+
+
 def _clear_quality_gate_receipts() -> None:
     _clear_quality_gate_run_outputs()
 
@@ -1012,7 +1043,10 @@ def _assert_pyright_tools_coverage() -> None:
 
 def _handle_pyright_tools_quality_gate_command(display: str, result: Dict[str, Any]) -> Dict[str, Any]:
     _assert_command_succeeded(display, result)
-    _assert_pyright_tools_coverage()
+    if str(result.get("execution_mode") or "") == "reused_success_cache":
+        _assert_pyright_tools_config_matches_tool_paths()
+    else:
+        _assert_pyright_tools_coverage()
     return {}
 
 
@@ -1576,11 +1610,9 @@ def _is_required_regressions_verifier_args(args: Sequence[str]) -> bool:
     return list(args)[:2] == ["python", "tools/verify_required_regressions_from_full_test_debt.py"]
 
 
-def _load_required_regressions_verifier_proof(abs_path: str) -> Optional[Dict[str, Any]]:
+def _load_required_regressions_verifier_proof(abs_path: str) -> Dict[str, Any]:
     loaded = _load_json_file(abs_path)
     if loaded.payload is None:
-        if loaded.error == "文件不存在":
-            return None
         raise QualityGateError(f"required regressions verifier 证明不可用：{loaded.error}")
 
     payload = dict(loaded.payload)
@@ -1605,6 +1637,11 @@ def _load_required_regressions_verifier_proof(abs_path: str) -> Optional[Dict[st
     missing = [field for field in required_fields if field not in payload]
     if missing:
         raise QualityGateError("required regressions verifier 证明缺少字段：" + ", ".join(missing))
+    groups = payload.get("groups")
+    if not isinstance(groups, list) or not groups:
+        raise QualityGateError("required regressions verifier 证明缺少分组 child proof 输入")
+    if int(payload.get("group_count") or 0) != len(groups):
+        raise QualityGateError("required regressions verifier 证明 group_count 与 groups 不一致")
     return payload
 
 
@@ -1628,6 +1665,8 @@ def _write_startup_runtime_regressions_proof(
     stderr_log_path = f"{cache_root}/logs/{safe_entry_id}.stderr.log"
     stdout_log_row = _long_gate_success_log_row(result, stream="stdout", rel_path=stdout_log_path)
     stderr_log_row = _long_gate_success_log_row(result, stream="stderr", rel_path=stderr_log_path)
+    if not str(result.get("stdout") or "").strip():
+        raise QualityGateError("startup runtime regressions stdout 为空，无法证明 pytest 实际执行结果")
     payload = {
         "schema_version": STARTUP_RUNTIME_REGRESSIONS_PROOF_SCHEMA_VERSION,
         "status": "passed",
@@ -1742,10 +1781,9 @@ def _write_required_regressions_proof(
     }
     if uses_full_test_debt_verifier:
         verifier_payload = _load_required_regressions_verifier_proof(abs_path)
-        if verifier_payload is not None:
-            merged_payload = dict(verifier_payload)
-            merged_payload.update(payload)
-            payload = merged_payload
+        merged_payload = dict(verifier_payload)
+        merged_payload.update(payload)
+        payload = merged_payload
     if uses_full_test_debt_verifier:
         payload = required_regressions_verifier.write_required_regressions_proof_bundle(
             abs_path,
@@ -2913,6 +2951,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     remove_current_debt=not preserve_full_test_debt_outputs,
                     remove_full_test_debt_summary=not preserve_full_test_debt_outputs,
                 )
+            _clear_stale_long_gate_output_files(
+                long_gate_runtime_entries,
+                preserve_full_test_debt_outputs=preserve_full_test_debt_outputs,
+            )
         except Exception:
             failure_kind = "quality_gate_cleanup_failed"
             raise

@@ -61,6 +61,7 @@ jobs:
             evidence/QualityGate/ruff_check_full.json
             evidence/QualityGate/pyright_gate_full.json
             evidence/QualityGate/pyright_tools_full.json
+            evidence/QualityGate/quickref_vs_routes.md
           key: quality-long-gate-${{ runner.os }}-py38-deps-${{ hashFiles('requirements.txt', 'requirements-dev.txt') }}-tooling-${{ hashFiles('.github/workflows/quality.yml', '.pre-commit-config.yaml', 'scripts/run_quality_gate.py', 'scripts/run_daily_quality_gate.py', 'tools/**/*.py', 'pyrightconfig.gate.json', 'pyrightconfig.tools.json') }}-sha-${{ github.sha }}-run-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             quality-long-gate-${{ runner.os }}-py38-deps-${{ hashFiles('requirements.txt', 'requirements-dev.txt') }}-tooling-${{ hashFiles('.github/workflows/quality.yml', '.pre-commit-config.yaml', 'scripts/run_quality_gate.py', 'scripts/run_daily_quality_gate.py', 'tools/**/*.py', 'pyrightconfig.gate.json', 'pyrightconfig.tools.json') }}-
@@ -69,7 +70,7 @@ jobs:
         run: python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache
 
       - name: 保存 long gate cache
-        if: ${{ success() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        if: ${{ success() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
@@ -86,6 +87,7 @@ jobs:
             evidence/QualityGate/ruff_check_full.json
             evidence/QualityGate/pyright_gate_full.json
             evidence/QualityGate/pyright_tools_full.json
+            evidence/QualityGate/quickref_vs_routes.md
           key: quality-long-gate-${{ runner.os }}-py38-deps-${{ hashFiles('requirements.txt', 'requirements-dev.txt') }}-tooling-${{ hashFiles('.github/workflows/quality.yml', '.pre-commit-config.yaml', 'scripts/run_quality_gate.py', 'scripts/run_daily_quality_gate.py', 'tools/**/*.py', 'pyrightconfig.gate.json', 'pyrightconfig.tools.json') }}-sha-${{ github.sha }}-run-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: 上传 quality gate evidence

@@ -333,7 +333,6 @@ def _scopes_for_entry(
         input_scopes.extend(
             [
                 "tools/__init__.py",
-                "tools/full_test_debt_shards.py",
                 "web/bootstrap/**/*.py",
                 "core/infrastructure/logging.py",
                 "core/infrastructure/transaction.py",
@@ -614,7 +613,7 @@ def _scopes_for_entry(
                 "PYTHONIOENCODING",
             ]
         )
-        output_files = ["evidence/Conformance/quickref_vs_routes.md"]
+        output_files = [quality_gate_shared.QUALITY_GATE_QUICKREF_VS_ROUTES_REL.replace("\\", "/")]
     elif entry_type == ENTRY_DEBT_LEDGER_SYNC:
         input_scopes.extend(
             [

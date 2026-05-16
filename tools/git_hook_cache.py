@@ -229,13 +229,16 @@ def _cache_key_payload(
     executable: str,
     extra: Mapping[str, Any],
     watched_paths: Sequence[str],
+    tool_modules: Sequence[str] = ("ruff",),
 ) -> Dict[str, Any]:
+    tool_versions = {str(module): _tool_version(executable, str(module)) for module in list(tool_modules or ())}
     return {
         "schema_version": CACHE_SCHEMA_VERSION,
         "kind": kind,
         "extra": dict(extra),
         "python": _python_identity(executable),
-        "ruff_version": _tool_version(executable, "ruff"),
+        "ruff_version": tool_versions.get("ruff", ""),
+        "tool_versions": tool_versions,
         "watched_files": _file_hashes(watched_paths),
     }
 
@@ -331,9 +334,11 @@ def daily_gate_cache_key(executable: str, *, remote_name: str = "", remote_ref: 
         kind="pre-push-daily",
         executable=executable,
         watched_paths=DAILY_GATE_TOOL_PATHS,
+        tool_modules=("ruff", "pytest", "pyright"),
         extra={
             "head_sha": head_sha(),
             "head_tree": head_tree_hash(),
+            "git_status_short": git_status_lines(),
             "remote_name": str(remote_name or ""),
             "remote_ref": str(remote_ref or ""),
         },
@@ -342,11 +347,15 @@ def daily_gate_cache_key(executable: str, *, remote_name: str = "", remote_ref: 
 
 
 def pre_push_daily_cache_hit(executable: str, *, remote_name: str = "", remote_ref: str = "") -> bool:
+    if git_status_lines():
+        return False
     key_hash, _payload = daily_gate_cache_key(executable, remote_name=remote_name, remote_ref=remote_ref)
     return _cache_matches(cache_path(PRE_PUSH_DAILY_CACHE_NAME), key_hash)
 
 
 def write_pre_push_daily_cache(executable: str, *, remote_name: str = "", remote_ref: str = "") -> None:
+    if git_status_lines():
+        raise HookCacheError("pre-push daily gate pass cache 只能在干净工作区写入")
     key_hash, key_payload = daily_gate_cache_key(executable, remote_name=remote_name, remote_ref=remote_ref)
     _write_pass_cache(
         cache_path(PRE_PUSH_DAILY_CACHE_NAME),
@@ -389,6 +398,7 @@ def final_gate_cache_key(executable: str) -> Tuple[str, Dict[str, Any]]:
         kind="final-gate-exact-head",
         executable=executable,
         watched_paths=FINAL_GATE_SOURCE_PATHS,
+        tool_modules=("ruff", "pytest", "pyright"),
         extra={
             "head_sha": head_sha(),
             "head_tree": head_tree_hash(),

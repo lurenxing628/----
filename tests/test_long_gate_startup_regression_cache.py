@@ -187,6 +187,33 @@ def test_startup_success_writes_proof_and_reuses_next_run(monkeypatch, tmp_path)
     assert _success_path(repo_root, ENTRY_REQUIRED_REGRESSIONS).exists()
 
 
+def test_startup_empty_stdout_does_not_write_success_proof(monkeypatch, tmp_path):
+    ctx = _prepare_gate_run_context(monkeypatch, tmp_path)
+    module = ctx.module
+    repo_root = ctx.repo_root
+    command_plan = ctx.command_plan
+    manifest = _manifest_for(command_plan, repo_root)
+    startup_entry = _entry_by_id(manifest, ENTRY_STARTUP_RUNTIME_REGRESSIONS)
+    startup_index = next(
+        index
+        for index, entry in enumerate(manifest["entries"], start=1)
+        if entry["entry_id"] == ENTRY_STARTUP_RUNTIME_REGRESSIONS
+    )
+
+    with pytest.raises(module.QualityGateError, match="stdout 为空"):
+        module._write_startup_runtime_regressions_proof(
+            startup_entry,
+            {"stdout": "", "stderr": "", "returncode": 0, "duration_s": 0.1},
+            run_id="run-empty-stdout",
+            command_index=startup_index,
+            command_plan=command_plan,
+            fingerprint={"hash": "fingerprint-hash"},
+            cache_dir="evidence/QualityGate/long_gate",
+        )
+
+    assert not _proof_path_for_entry(repo_root, ENTRY_STARTUP_RUNTIME_REGRESSIONS).exists()
+
+
 @pytest.mark.parametrize(
     "mutate",
     [

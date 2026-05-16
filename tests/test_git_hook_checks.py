@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import io
 import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 from pre_commit.clientlib import load_config
 
 from tools import git_hook_cache, git_hook_checks
@@ -17,6 +19,11 @@ def _init_repo(repo_root: Path) -> None:
     _git(repo_root, "init", "-q")
     _git(repo_root, "config", "user.email", "test@example.invalid")
     _git(repo_root, "config", "user.name", "Test User")
+
+
+def _commit_all(repo_root: Path, message: str = "init") -> None:
+    _git(repo_root, "add", ".")
+    _git(repo_root, "commit", "-q", "-m", message)
 
 
 def test_project_python_executable_prefers_windows_venv(monkeypatch, tmp_path: Path) -> None:
@@ -186,7 +193,7 @@ def test_blocked_paths_include_long_gate_runtime_artifacts() -> None:
             "evidence/QualityGate/ruff_check_full.json",
             "evidence/QualityGate/pyright_gate_full.json",
             "evidence/QualityGate/pyright_tools_full.json",
-            "evidence/Conformance/quickref_vs_routes.md",
+            "evidence/QualityGate/quickref_vs_routes.md",
         ]
     ) == [
         (
@@ -230,8 +237,26 @@ def test_blocked_paths_include_long_gate_runtime_artifacts() -> None:
             "pyright tools proof 是运行产物，应由当前门禁重新生成",
         ),
         (
-            "evidence/Conformance/quickref_vs_routes.md",
+            "evidence/QualityGate/quickref_vs_routes.md",
             "quickref/routes 对账报告是运行产物，应由当前门禁重新生成",
+        ),
+    ]
+
+
+def test_blocked_paths_normalize_windows_separators() -> None:
+    assert git_hook_checks._blocked_paths(
+        [
+            r".\evidence\QualityGate\quickref_vs_routes.md",
+            r"evidence\QualityGate\required_regressions\core.json",
+        ]
+    ) == [
+        (
+            "evidence/QualityGate/quickref_vs_routes.md",
+            "quickref/routes 对账报告是运行产物，应由当前门禁重新生成",
+        ),
+        (
+            "evidence/QualityGate/required_regressions/core.json",
+            "required regressions 分组 proof 是运行产物，应由当前门禁重新生成",
         ),
     ]
 
@@ -279,6 +304,25 @@ def test_staged_ruff_exports_index_content_and_reuses_pass_cache(monkeypatch, tm
     assert len(calls) == 1
     assert calls[0][0][-1] == "pkg/module.py"
     assert calls[0][2]["PYTHONUTF8"] == "1"
+
+
+def test_staged_ruff_failure_does_not_write_success_cache(monkeypatch, tmp_path: Path) -> None:
+    _init_repo(tmp_path)
+    target = tmp_path / "module.py"
+    target.write_text("VALUE = 1\n", encoding="utf-8")
+    _git(tmp_path, "add", "module.py")
+
+    monkeypatch.setattr(git_hook_cache, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(
+        git_hook_cache,
+        "_python_identity",
+        lambda executable: {"executable_realpath": executable, "version": "3.8"},
+    )
+    monkeypatch.setattr(git_hook_cache, "_tool_version", lambda executable, module: "ruff 0.0.0")
+    monkeypatch.setattr(subprocess, "call", lambda *_args, **_kwargs: 1)
+
+    assert git_hook_cache.run_staged_ruff(sys.executable) == 1
+    assert not git_hook_cache.cache_path(git_hook_cache.STAGED_RUFF_CACHE_NAME).exists()
 
 
 def test_staged_ruff_cache_invalidates_when_staged_tree_changes(monkeypatch, tmp_path: Path) -> None:
@@ -337,6 +381,99 @@ def test_pre_push_daily_gate_reuses_same_head_tree_cache(monkeypatch, tmp_path: 
     assert git_hook_checks.main(["run-quality-gate", "origin", "https://example.invalid/repo.git"]) == 0
 
     assert calls == []
+
+
+def test_pre_push_daily_gate_reads_remote_ref_from_pre_push_stdin(monkeypatch, tmp_path: Path) -> None:
+    captured = {}
+    project_python = str(tmp_path / ".venv" / "bin" / "python")
+    monkeypatch.setattr(git_hook_checks, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(git_hook_checks, "_project_python_executable", lambda: project_python)
+    monkeypatch.setattr(
+        git_hook_checks.sys,
+        "stdin",
+        io.StringIO("refs/heads/main abc refs/heads/release def\nrefs/heads/dev 123 refs/heads/release 456\n"),
+    )
+
+    def fake_hit(executable, remote_name="", remote_ref=""):
+        captured["executable"] = executable
+        captured["remote_name"] = remote_name
+        captured["remote_ref"] = remote_ref
+        return True
+
+    monkeypatch.setattr(git_hook_checks.git_hook_cache, "pre_push_daily_cache_hit", fake_hit)
+    monkeypatch.setattr(subprocess, "call", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("daily gate should be skipped")))
+
+    assert git_hook_checks.main(["run-quality-gate", "origin", "https://example.invalid/repo.git"]) == 0
+
+    assert captured == {
+        "executable": project_python,
+        "remote_name": "origin",
+        "remote_ref": "refs/heads/release",
+    }
+
+
+def test_pre_push_daily_cache_refuses_dirty_worktree(monkeypatch, tmp_path: Path) -> None:
+    _init_repo(tmp_path)
+    (tmp_path / "README.md").write_text("base\n", encoding="utf-8")
+    _commit_all(tmp_path)
+    monkeypatch.setattr(git_hook_cache, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(
+        git_hook_cache,
+        "_python_identity",
+        lambda executable: {"executable_realpath": executable, "version": "3.8"},
+    )
+    monkeypatch.setattr(git_hook_cache, "_tool_version", lambda executable, module: f"{module} 1.0")
+
+    git_hook_cache.write_pre_push_daily_cache(sys.executable, remote_name="origin", remote_ref="refs/heads/main")
+    assert git_hook_cache.pre_push_daily_cache_hit(
+        sys.executable,
+        remote_name="origin",
+        remote_ref="refs/heads/main",
+    )
+
+    (tmp_path / "dirty.py").write_text("DIRTY = True\n", encoding="utf-8")
+
+    assert not git_hook_cache.pre_push_daily_cache_hit(
+        sys.executable,
+        remote_name="origin",
+        remote_ref="refs/heads/main",
+    )
+    with pytest.raises(git_hook_cache.HookCacheError, match="干净工作区"):
+        git_hook_cache.write_pre_push_daily_cache(
+            sys.executable,
+            remote_name="origin",
+            remote_ref="refs/heads/main",
+        )
+
+
+def test_pre_push_daily_cache_key_tracks_pytest_and_pyright_versions(monkeypatch, tmp_path: Path) -> None:
+    _init_repo(tmp_path)
+    (tmp_path / "README.md").write_text("base\n", encoding="utf-8")
+    _commit_all(tmp_path)
+    monkeypatch.setattr(git_hook_cache, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(
+        git_hook_cache,
+        "_python_identity",
+        lambda executable: {"executable_realpath": executable, "version": "3.8"},
+    )
+    versions = {"ruff": "ruff 0.15.4", "pytest": "pytest 8.3.5", "pyright": "pyright 1.1.406"}
+    monkeypatch.setattr(git_hook_cache, "_tool_version", lambda executable, module: versions[module])
+    before, before_payload = git_hook_cache.daily_gate_cache_key(
+        sys.executable,
+        remote_name="origin",
+        remote_ref="refs/heads/main",
+    )
+
+    versions["pytest"] = "pytest 8.3.6"
+    after, after_payload = git_hook_cache.daily_gate_cache_key(
+        sys.executable,
+        remote_name="origin",
+        remote_ref="refs/heads/main",
+    )
+
+    assert before != after
+    assert before_payload["tool_versions"]["pyright"] == "pyright 1.1.406"
+    assert after_payload["tool_versions"]["pytest"] == "pytest 8.3.6"
 
 
 def test_pre_push_daily_gate_writes_cache_only_after_success(monkeypatch, tmp_path: Path) -> None:
@@ -428,6 +565,28 @@ def test_run_final_quality_gate_if_needed_writes_cache_after_success(monkeypatch
         ),
         ("write", project_python),
     ]
+
+
+def test_final_gate_cache_refuses_dirty_worktree(monkeypatch, tmp_path: Path) -> None:
+    _init_repo(tmp_path)
+    (tmp_path / "README.md").write_text("base\n", encoding="utf-8")
+    _commit_all(tmp_path)
+    monkeypatch.setattr(git_hook_cache, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(
+        git_hook_cache,
+        "_python_identity",
+        lambda executable: {"executable_realpath": executable, "version": "3.8"},
+    )
+    monkeypatch.setattr(git_hook_cache, "_tool_version", lambda executable, module: f"{module} 1.0")
+
+    git_hook_cache.write_final_gate_cache(sys.executable)
+    assert git_hook_cache.final_gate_cache_hit(sys.executable)
+
+    (tmp_path / "README.md").write_text("dirty\n", encoding="utf-8")
+
+    assert not git_hook_cache.final_gate_cache_hit(sys.executable)
+    with pytest.raises(git_hook_cache.HookCacheError, match="干净工作区"):
+        git_hook_cache.write_final_gate_cache(sys.executable)
 
 
 def test_main_reexecs_into_project_python_for_real_hook_entry(monkeypatch, tmp_path: Path) -> None:

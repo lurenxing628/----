@@ -117,6 +117,7 @@ def _patch_gate_environment(monkeypatch, module, repo_root: Path, *, statuses: S
     monkeypatch.setattr(module, "_run_git_bytes", lambda _args: b"")
     monkeypatch.setattr(module, "_runtime_state_snapshot", lambda: {"runtime_state": "absent"})
     monkeypatch.setattr(module, "_assert_pyright_tools_coverage", lambda: None)
+    monkeypatch.setattr(module, "_assert_pyright_tools_config_matches_tool_paths", lambda: None)
     monkeypatch.setattr(module, "pytest_distribution_version", lambda strict=False: "pytest 8.3.5")
     monkeypatch.setattr(
         fingerprint_mod,
@@ -253,7 +254,7 @@ def _write_full_test_debt_outputs(repo_root: Path, token: str = "ok") -> None:
 
 
 def _write_quickref_report(repo_root: Path) -> Path:
-    report = repo_root / "evidence" / "Conformance" / "quickref_vs_routes.md"
+    report = repo_root / "evidence" / "QualityGate" / "quickref_vs_routes.md"
     report.parent.mkdir(parents=True, exist_ok=True)
     report.write_text(
         "# 系统速查表与真实路由对账\n\n"
@@ -441,7 +442,7 @@ def _fake_successful_command(
                 return {"stdout": "quickref failed\n", "stderr": "boom\n", "returncode": 1}
             _write_quickref_report(repo_root)
             return {
-                "stdout": "evidence/Conformance/quickref_vs_routes.md\nOK\n",
+                "stdout": "evidence/QualityGate/quickref_vs_routes.md\nOK\n",
                 "stderr": "",
                 "returncode": 0,
             }

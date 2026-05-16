@@ -88,6 +88,11 @@ QUALITY_GATE_PYRIGHT_TOOLS_FULL_REL = os.path.join(
     "QualityGate",
     "pyright_tools_full.json",
 )
+QUALITY_GATE_QUICKREF_VS_ROUTES_REL = os.path.join(
+    "evidence",
+    "QualityGate",
+    "quickref_vs_routes.md",
+)
 FORMAL_FULL_TEST_PYTEST_ARGS = ["tests", "-q", "--tb=short", "-ra", "-p", "no:cacheprovider"]
 REQUIRED_BROWSER_ENV_OVERLAY = {
     "APS_BROWSER_SMOKE_REQUIRED": "1",
@@ -111,6 +116,7 @@ QUALITY_GATE_TOOL_PATHS = [
     "tools/git_hook_checks.py",
     "tools/check_full_test_debt.py",
     "tools/collect_full_test_debt.py",
+    "tools/full_test_debt_shards.py",
     "tools/benchmark_full_test_debt_shards.py",
     "tools/verify_required_regressions_from_full_test_debt.py",
     "tools/architecture_scan_cache.py",
