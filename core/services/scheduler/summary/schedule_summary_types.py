@@ -47,6 +47,8 @@ class SummaryBuildContext:
     algo_stats: Optional[Dict[str, Any]] = None
     algo_warnings: Optional[List[str]] = None
     warning_merge_status: Optional[Dict[str, Any]] = None
+    graph_analysis_public: Optional[Dict[str, Any]] = None
+    graph_analysis_diagnostics: Optional[Dict[str, Any]] = None
     simulate: bool = False
     t0: float = 0.0
 

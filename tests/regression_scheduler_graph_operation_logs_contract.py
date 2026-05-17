@@ -1,0 +1,184 @@
+from __future__ import annotations
+
+from contextlib import contextmanager
+from datetime import datetime, timedelta
+from types import SimpleNamespace
+from typing import Any, Dict, Iterator, List
+
+from core.services.scheduler.run.schedule_persistence import build_validated_schedule_payload, persist_schedule
+
+_PUBLIC_GRAPH_KEYS = {
+    "mode",
+    "effective_mode",
+    "status",
+    "node_count",
+    "edge_count",
+    "is_dag",
+    "critical_path_minutes",
+    "critical_path_node_count",
+    "warning_count",
+    "cycle_edge_count",
+    "time_cost_ms",
+}
+_FORBIDDEN_LOG_KEYS = {
+    "diagnostics",
+    "nodes",
+    "edges",
+    "raw",
+    "node_metrics",
+    "topological_order",
+    "topological_order_sample",
+    "critical_path_sample",
+    "warnings_sample",
+    "cycle_edges_sample",
+}
+
+
+def _make_dt(hours: int) -> datetime:
+    return datetime(2026, 1, 1, 8, 0, 0) + timedelta(hours=hours)
+
+
+class _TxManager:
+    @contextmanager
+    def transaction(self) -> Iterator[None]:
+        yield
+
+
+class _ScheduleRepo:
+    def __init__(self) -> None:
+        self.rows: List[Dict[str, Any]] = []
+
+    def bulk_create(self, rows: List[Dict[str, Any]]) -> None:
+        self.rows.extend(rows)
+
+
+class _HistoryRepo:
+    def __init__(self) -> None:
+        self.rows: List[Dict[str, Any]] = []
+
+    def create(self, row: Dict[str, Any]) -> None:
+        self.rows.append(dict(row))
+
+
+class _UpdateRepo:
+    def __init__(self) -> None:
+        self.updates: List[Any] = []
+
+    def update(self, key: Any, payload: Dict[str, Any]) -> None:
+        self.updates.append((key, dict(payload)))
+
+
+class _OpLogger:
+    def __init__(self) -> None:
+        self.calls: List[Dict[str, Any]] = []
+
+    def info(self, **kwargs: Any) -> None:
+        self.calls.append(dict(kwargs))
+
+
+class _Svc:
+    def __init__(self) -> None:
+        self.tx_manager = _TxManager()
+        self.schedule_repo = _ScheduleRepo()
+        self.history_repo = _HistoryRepo()
+        self.op_repo = _UpdateRepo()
+        self.batch_repo = _UpdateRepo()
+        self.op_logger = _OpLogger()
+
+    @staticmethod
+    def _format_dt(value: datetime) -> str:
+        return value.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _result() -> SimpleNamespace:
+    return SimpleNamespace(
+        op_id=1,
+        batch_id="B001",
+        machine_id="MC1",
+        operator_id="OP1",
+        start_time=_make_dt(0),
+        end_time=_make_dt(1),
+        source="internal",
+    )
+
+
+def _result_summary_obj() -> Dict[str, Any]:
+    return {
+        "algo": {
+            "graph_analysis": {
+                "mode": "report",
+                "effective_mode": "report",
+                "status": "available",
+                "node_count": 2,
+                "edge_count": 1,
+                "is_dag": True,
+                "critical_path_minutes": 60,
+                "critical_path_node_count": 2,
+                "warning_count": 0,
+                "cycle_edge_count": 0,
+                "time_cost_ms": 4,
+            }
+        },
+        "diagnostics": {
+            "graph_analysis": {
+                "topological_order_sample": ["op:1", "op:2"],
+                "critical_path_sample": ["op:1", "op:2"],
+                "warnings_sample": [],
+                "cycle_edges_sample": [],
+                "node_metrics_sample": [{"node_id": "op:1"}],
+            }
+        },
+    }
+
+
+def _iter_keys(value: Any) -> Iterator[str]:
+    if isinstance(value, dict):
+        for key, child in value.items():
+            yield str(key)
+            yield from _iter_keys(child)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _iter_keys(item)
+
+
+def _persist_once(*, simulate: bool) -> Dict[str, Any]:
+    svc = _Svc()
+    result = _result()
+    payload = build_validated_schedule_payload([result], allowed_op_ids={1})
+    result_summary_obj = _result_summary_obj()
+    persist_schedule(
+        svc,
+        cfg=SimpleNamespace(auto_assign_persist="no"),
+        version=3,
+        validated_schedule_payload=payload,
+        summary=SimpleNamespace(total_ops=1, scheduled_ops=1, failed_ops=0),
+        used_strategy=SimpleNamespace(value="priority_first"),
+        used_params={"dispatch": "fifo"},
+        batches={"B001": SimpleNamespace(batch_id="B001", status="pending")},
+        reschedulable_operations=[],
+        normalized_batch_ids=["B001"],
+        created_by="pytest",
+        simulate=simulate,
+        frozen_op_ids=set(),
+        result_status="simulated" if simulate else "success",
+        result_summary_json="{}",
+        result_summary_obj=result_summary_obj,
+        missing_internal_resource_op_ids=set(),
+        overdue_items=[],
+        time_cost_ms=9,
+    )
+    assert len(svc.op_logger.calls) == 1
+    return svc.op_logger.calls[0]
+
+
+def test_operation_logs_keep_only_graph_public_summary_for_simulate_and_schedule() -> None:
+    for simulate, action in ((True, "simulate"), (False, "schedule")):
+        call = _persist_once(simulate=simulate)
+        detail = call["detail"]
+        graph_analysis = detail["algo"]["graph_analysis"]
+
+        assert call["action"] == action
+        assert set(graph_analysis) == _PUBLIC_GRAPH_KEYS
+        assert graph_analysis["status"] == "available"
+        assert "diagnostics" not in detail
+        assert _FORBIDDEN_LOG_KEYS.isdisjoint(set(_iter_keys(detail)))

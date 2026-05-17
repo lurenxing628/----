@@ -260,6 +260,12 @@ def _algo_warning_pipeline_dict(
     }
 
 
+def _graph_analysis_algo_dict(ctx: SummaryBuildContext) -> Dict[str, Any]:
+    if ctx.graph_analysis_public is None:
+        return {}
+    return {"graph_analysis": dict(ctx.graph_analysis_public)}
+
+
 def _algo_dict(state: AlgorithmSummaryState) -> Dict[str, Any]:
     ctx = state.ctx
     auto_assign_enabled = bool(state.downtime_state.get("auto_assign_enabled"))
@@ -304,6 +310,7 @@ def _algo_dict(state: AlgorithmSummaryState) -> Dict[str, Any]:
         algo["fallback_samples"] = dict(state.fallback_state.fallback_samples)
     if state.fallback_state.param_fallbacks:
         algo["param_fallbacks"] = dict(state.fallback_state.param_fallbacks)
+    algo.update(_graph_analysis_algo_dict(ctx))
     return algo
 
 
@@ -369,6 +376,9 @@ def _build_result_summary_obj(
         "warnings": list(freeze_state.all_warnings),
         "time_cost_ms": int(time_cost_ms),
     }
-    if optimizer_diagnostics:
-        result_summary["diagnostics"] = optimizer_diagnostics
+    diagnostics = dict(optimizer_diagnostics or {})
+    if ctx.graph_analysis_diagnostics is not None:
+        diagnostics["graph_analysis"] = dict(ctx.graph_analysis_diagnostics)
+    if diagnostics:
+        result_summary["diagnostics"] = diagnostics
     return result_summary

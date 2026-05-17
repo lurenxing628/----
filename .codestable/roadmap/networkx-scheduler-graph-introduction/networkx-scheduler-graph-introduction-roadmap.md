@@ -252,6 +252,7 @@ time_cost_ms
 - report 模式接入到 `ScheduleHistory.result_summary`。
 - on 模式逐步接入 SGS 候选队列和候选评分。
 - 新增测试、性能记录、打包验证、回滚点。
+- 多权重候选方案试跑时，第一版时间到达上限就采用已完成候选里的最好结果；真正“继续补跑剩余方案”放到后续增强。
 
 本路线图明确不做：
 
@@ -263,6 +264,7 @@ time_cost_ms
 - 不把 `nx.Graph` / `nx.DiGraph` 暴露给 Controller、页面、数据库、Excel 导出层。
 - 不在第一版做前端图展示。
 - 不在第一版做最小费用流精排。
+- 不在第一版做候选方案续跑。
 - 不新增静默兜底、宽泛 fallback、宽泛吞错。
 - 不改变 `readiness_gate_enabled=False` 时齐套和齐套日期不影响排产的语义。
 - 不把冻结窗口 `seed_results` 里的工序重新放回待排候选队列。
@@ -288,6 +290,7 @@ time_cost_ms
 | 11 | 有环时的处理策略 | 否 | 低 |
 | 12 | ready 队列参与 SGS 候选 | 是 | 中 |
 | 13 | 关键路径评分、资源匹配、调试导出和最终打包验收 | 是/可控 | 中 |
+| 14 | 后续增强：候选方案续跑 | 否/可控 | 中 |
 
 ## 阶段 0：建分支、记录 before_networkx 基线、落 ADR
 
@@ -4151,125 +4154,891 @@ PR-2 仍然没有把图分析接入排产结果摘要。
 
 ## 阶段 10：接入 report 模式，不改变排产结果
 
-### 10.1 接入原则
+阶段 10 是 PR-3 的主工作：把阶段 9 已经完成的图分析入口接到排产主链旁边，先只做 `report` 模式。它不是新算法阶段，也不是 `on` 模式阶段。
 
-这是最重要的低风险接入点。
+大白话说，排产照旧先跑完，排产结果先定下来；图分析只在旁边看一眼这些工序关系，然后把“看出来的摘要”写进本次排产结果里，方便人判断工序链路有没有风险。它不能反过来影响排产顺序、候选集合、评分、冻结窗口或落库明细。
 
-`report` 模式只能：
+阶段 10 的前置条件：
 
 ```text
-读取 schedule_input.algo_ops_to_schedule。
-读取 schedule_input.batches。
-读取 schedule_input.resource_pool。
-生成 graph_analysis 摘要。
-写入 result_summary 和小日志摘要。
+1. PR-2 / scheduler-graph-core-module 已经完成并提交。
+2. core/services/scheduler/graph/input_adapter.py 已能把 algo_ops_to_schedule 转成 OperationGraphNode。
+3. core/services/scheduler/graph/analysis_service.py 已能返回 GraphAnalysisSummary。
+4. core/services/scheduler/graph/exporter.py 已能把 GraphAnalysisSummary 转成普通 dict。
+5. graph_analysis_mode / graph_block_on_cycle / graph_debug_export 等配置字段已经走完 config snapshot 和页面保存链路。
 ```
 
-`report` 模式不能：
+如果前置条件不满足，先回阶段 9 或 PR-2 收尾，不要在阶段 10 里补图核心模块的旧账。
+
+### 10.0 整体实现要求
+
+本阶段必须把下面这些实现原则当成硬约束写进设计、代码和验收里：
 
 ```text
-改变 sorted_ops。
-改变 batch_order。
-改变 dispatch_sgs 候选集合。
-改变 SGS 评分。
-改变 seed_results。
-改变冻结窗口。
-改变落库 schedule_rows。
+优雅简洁：
+- 阶段 10 只做“排产主链旁路接入 + summary 投影 + 日志小摘要合同 + 回归测试”。
+- schedule_orchestrator.py 只负责判断 graph_analysis_mode、调用图分析服务、拿到 public / diagnostics 两个普通 dict。
+- summary 组装层只负责把 public 放进 result_summary["algo"]["graph_analysis"]，把 diagnostics 放进 result_summary["diagnostics"]["graph_analysis"]。
+- OperationLogs 不新增一套图日志写入器；继续沿用现有 result_summary_obj.get("algo") 小摘要路径。
+- 第一版不要新建 graph_report_pipeline.py、graph_summary_repository.py、graph_observer.py 这类过早抽象；如果需要 helper，先放在 orchestrator 或 summary 附近的小函数里，保持调用链短而清楚。
+
+不过度兜底：
+- 不允许 broad except Exception 后返回空 graph_analysis。
+- 不允许 NetworkX 缺失、版本不对、图输入合同错误时伪装成 status="available" 或“没有图数据”。
+- 不允许因为 report 是旁路能力，就吞掉 GraphInputContractError / GraphBuildContractError 的原因。
+- 不允许发现 diagnostics 太大时悄悄删字段；必须按本阶段写死的采样规则输出，并由测试验证 size guard。
+- 不允许为了兼容脏输入，在阶段 10 里补默认 source、默认 duration、默认 seq、默认 batch。
+
+不做静默回退：
+- graph_analysis_mode=off 时不 import graph 模块，不调用 NetworkX，不写 graph_analysis 字段。
+- graph_analysis_mode=report 时，如果 NetworkX 不可用，必须写出 status="unavailable"、reason="networkx_unavailable" 和业务可读 message；这不是静默回退，因为结果里明确告诉用户“图分析没跑起来”。
+- graph_analysis_mode=report 时，如果图输入合同错误，必须写出 status="input_error" 或 status="build_error" 和明确 reason；不能把错误吞掉当作正常空图。
+- 未知异常不要捕获成空报告；未知异常说明实现有 bug，应暴露给测试和开发者处理。
+- 有环不是 Python 异常；应保留 status="available"、is_dag=false、cycle_edge_count 和 warning_count，是否阻止排产留到阶段 11。
+
+不过度防御性编程：
+- maybe_analyze_schedule_graph 只接收 ScheduleRunInput，不兼容 dict、Flask request、数据库 row、Excel row。
+- 图输入只来自 schedule_input.algo_ops_to_schedule / batches / resource_pool，不重新查数据库。
+- 不在阶段 10 里重新实现 input_adapter、analysis_service、exporter 的字段映射和图算法。
+- 不写“字段 A 没有就试 B/C/D”的多套兼容分支；字段合同由阶段 5 到阶段 9 保证。
+- 继续使用 Python 3.8 兼容写法：Dict / List / Optional / Tuple / Any，不使用 list[str] / str | None。
+
+高内聚低耦合：
+- schedule_orchestrator.py 可以在 graph_analysis_mode 为 report/on 时局部 import input_adapter、analysis_service、exporter、nx_runtime 和图合同错误类型；off 模式不能触发这些 import。
+- core/services/scheduler/graph/ 不能反向 import schedule_orchestrator.py、schedule_summary_assembly.py、schedule_persistence.py、ScheduleService、Flask、数据库或页面。
+- SummaryBuildContext 只新增普通 dict 字段，不承载 nx.DiGraph、GraphAnalysisSummary 原对象、OperationGraphNode 列表、完整 nodes/edges。
+- result_summary 和 OperationLogs 不能出现 nx.DiGraph、完整 node_metrics、完整 topological_order、完整 nodes/edges 或 raw 原始对象。
+- 阶段 10 不改变 optimizer_outcome.results、best_order、attempts、batch_order、sorted_ops、seed_results、frozen_op_ids、validated_schedule_payload 和 schedule_rows。
+```
+
+### 10.1 阶段目标与上下游合同
+
+阶段 10 的输入来自当前排产编排层已有的 `ScheduleRunInput`：
+
+```python
+from core.services.scheduler.run.schedule_input_collector import ScheduleRunInput
+
+schedule_input: ScheduleRunInput
+```
+
+本阶段只读取这些字段：
+
+```text
+schedule_input.cfg.graph_analysis_mode
+schedule_input.algo_ops_to_schedule
+schedule_input.batches
+schedule_input.resource_pool
+```
+
+这些字段已经在 `ScheduleRunInput` 中存在，阶段 10 不需要新增输入收集逻辑，也不需要重新查仓库。
+
+阶段 10 的输出只允许是两个普通 dict：
+
+```python
+from typing import Any, Dict, Optional, Tuple
+
+GraphAnalysisProjection = Tuple[
+    Optional[Dict[str, Any]],  # public
+    Optional[Dict[str, Any]],  # diagnostics
+]
+```
+
+输出去向固定：
+
+```text
+public:
+  result_summary["algo"]["graph_analysis"]
+  OperationLogs.detail["algo"]["graph_analysis"] 也会跟随现有 algo 小摘要出现
+
+diagnostics:
+  result_summary["diagnostics"]["graph_analysis"]
+  不进入 OperationLogs
+```
+
+阶段 10 的模式口径：
+
+```text
+graph_analysis_mode=off:
+  不分析。
+  不 import graph 模块。
+  不写 graph_analysis 字段。
+  不要求安装 NetworkX。
+
+graph_analysis_mode=report:
+  运行只读图分析。
+  写 result_summary 小摘要和采样诊断。
+  不改变排产结果。
+
+graph_analysis_mode=on:
+  阶段 10 先按 report 同等处理，只写摘要和诊断。
+  不接 ready 队列。
+  不接关键路径评分。
+  不接资源匹配。
+  真正改变候选队列和评分留到阶段 12 / 阶段 13。
+```
+
+为什么 `on` 在阶段 10 先按 `report` 处理：
+
+```text
+配置项已经允许 on，但阶段 10 还没有实现 ready 队列和评分。
+为了不让用户误以为 on 已经改变排产，本阶段必须在 public 摘要里写清 effective_mode="report_only"。
+后续阶段 12 接 ready 队列时，再把 on 的行为真正切过去。
 ```
 
 ### 10.2 在排产入口加旁路分析
 
-当前仓库建议放在：
+接入位置固定在：
 
 ```text
 core/services/scheduler/run/schedule_orchestrator.py
   orchestrate_schedule_run()
 ```
 
-伪代码：
-
-```python
-def maybe_analyze_schedule_graph(schedule_input, graph_mode: str):
-    if graph_mode not in ("report", "on"):
-        return None
-
-    from core.services.scheduler.graph.analysis_service import ScheduleGraphAnalysisService
-    from core.services.scheduler.graph.exporter import graph_summary_to_dict
-    from core.services.scheduler.graph.input_adapter import build_operation_nodes_from_rows
-
-    nodes = build_operation_nodes_from_rows(
-        schedule_input.algo_ops_to_schedule,
-        batches=schedule_input.batches,
-        resource_pool=schedule_input.resource_pool,
-    )
-    service = ScheduleGraphAnalysisService()
-    summary = service.analyze_linear_batches(nodes)
-
-    return graph_summary_to_dict(summary)
-```
-
-接入时要把 `graph_analysis` 带进 `SummaryBuildContext`，然后由 summary 组装层放入：
+更具体的位置：
 
 ```text
-result_summary["algo"]["graph_analysis"]
-result_summary["diagnostics"]["graph_analysis"]
+1. optimize_schedule_fn(...) 已经返回 optimizer_outcome。
+2. build_validated_schedule_payload(...) 已经验证排产结果可落库。
+3. SummaryBuildContext(...) 还没创建。
+4. build_result_summary_fn(...) 还没调用。
 ```
 
-### 10.3 写入 result_summary
+这样做的目的：
 
-公开小摘要建议：
+```text
+排产结果已经由原算法算完。
+落库 payload 已经按原规则验证。
+图分析只在 summary 组装前补一份报告。
+如果图分析写错，测试能直接证明它有没有碰到结果、候选、落库行。
+```
+
+建议新增一个小函数：
+
+```python
+from typing import Any, Dict, Optional, Tuple
+
+from .schedule_input_collector import ScheduleRunInput
+
+
+def maybe_analyze_schedule_graph(
+    schedule_input: ScheduleRunInput,
+) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    mode = _graph_analysis_mode(schedule_input.cfg)
+    if mode == "off":
+        return None, None
+
+    return _build_schedule_graph_analysis_projection(schedule_input, mode=mode)
+```
+
+`_graph_analysis_mode(cfg)` 的规则：
+
+```text
+读取 cfg.graph_analysis_mode。
+只接受 off / report / on。
+如果 cfg 已经过 config snapshot 校验，这里不再做第二套兜底。
+如果读到未知值，抛 ValueError 或合同错误；不要静默改成 off。
+```
+
+`_build_schedule_graph_analysis_projection(...)` 的核心伪代码：
+
+```python
+def _build_schedule_graph_analysis_projection(
+    schedule_input: ScheduleRunInput,
+    *,
+    mode: str,
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    from core.services.scheduler.graph.analysis_service import ScheduleGraphAnalysisService
+    from core.services.scheduler.graph.exporter import graph_summary_to_dict
+    from core.services.scheduler.graph.input_adapter import (
+        GraphInputContractError,
+        build_operation_nodes_from_rows,
+    )
+    from core.services.scheduler.graph.nx_runtime import NetworkXUnavailable
+    from core.services.scheduler.graph.precedence_builder import GraphBuildContractError
+
+    started = time.time()
+    try:
+        nodes = build_operation_nodes_from_rows(
+            schedule_input.algo_ops_to_schedule,
+            batches=schedule_input.batches,
+            resource_pool=schedule_input.resource_pool,
+        )
+        summary = ScheduleGraphAnalysisService().analyze_linear_batches(nodes)
+        payload = graph_summary_to_dict(summary)
+    except NetworkXUnavailable as exc:
+        return _graph_unavailable_projection(mode=mode, exc=exc, started=started)
+    except GraphInputContractError as exc:
+        return _graph_contract_error_projection(
+            mode=mode,
+            status="input_error",
+            reason="graph_input_contract_error",
+            exc=exc,
+            started=started,
+        )
+    except GraphBuildContractError as exc:
+        return _graph_contract_error_projection(
+            mode=mode,
+            status="build_error",
+            reason="graph_build_contract_error",
+            exc=exc,
+            started=started,
+        )
+
+    return _project_graph_analysis_payload(
+        mode=mode,
+        payload=payload,
+        elapsed_ms=_elapsed_ms(started),
+    )
+```
+
+禁止事项：
+
+```text
+不要把 import 放到模块顶层导致 off 模式也 import graph 模块。
+不要在 except 里捕获 Exception。
+不要在这里调用 schedule_optimizer.py、GreedyScheduler、dispatch_sgs、summary builder、persistence、repo、Flask request。
+不要在这里修改 schedule_input.algo_ops_to_schedule、schedule_input.resource_pool、schedule_input.seed_results。
+不要把 graph_summary_to_dict(summary) 原样全量塞进 public 或 diagnostics。
+```
+
+### 10.3 graph_analysis 投影字段
+
+`graph_summary_to_dict(summary)` 是阶段 9 的完整普通 dict，不等于阶段 10 能直接写入 `result_summary` 的内容。阶段 10 必须从它投影出两份更小、更稳定的结构。
+
+公开小摘要 `public` 固定结构：
 
 ```json
 {
   "mode": "report",
+  "effective_mode": "report",
   "status": "available",
   "node_count": 120,
   "edge_count": 118,
   "is_dag": true,
   "critical_path_minutes": 960,
-  "warning_count": 0
+  "critical_path_node_count": 8,
+  "warning_count": 0,
+  "cycle_edge_count": 0,
+  "time_cost_ms": 12
 }
 ```
 
-诊断采样建议：
+当配置是 `on`、但仍处于阶段 10 时：
 
 ```json
 {
-  "topological_order_sample": ["op:1", "op:2", "op:3"],
-  "critical_path": ["op:1", "op:2", "op:3"],
-  "cycle_edges": [],
-  "warnings": []
+  "mode": "on",
+  "effective_mode": "report_only",
+  "status": "available",
+  "node_count": 120,
+  "edge_count": 118,
+  "is_dag": true,
+  "critical_path_minutes": 960,
+  "critical_path_node_count": 8,
+  "warning_count": 0,
+  "cycle_edge_count": 0,
+  "time_cost_ms": 12
 }
+```
+
+NetworkX 不可用时的公开小摘要：
+
+```json
+{
+  "mode": "report",
+  "effective_mode": "report",
+  "status": "unavailable",
+  "reason": "networkx_unavailable",
+  "message": "缺少可选依赖 networkx==3.1；请先安装 requirements-optimizer-lite-win7.txt",
+  "time_cost_ms": 1
+}
+```
+
+图输入合同错误时的公开小摘要：
+
+```json
+{
+  "mode": "report",
+  "effective_mode": "report",
+  "status": "input_error",
+  "reason": "graph_input_contract_error",
+  "message": "graph_input.op[123] 字段 source 只允许 internal/external：'bad'",
+  "time_cost_ms": 2
+}
+```
+
+诊断采样 `diagnostics` 固定结构：
+
+```json
+{
+  "topological_order_sample": ["op:B001:OP10:123", "op:B001:OP20:124"],
+  "topological_order_count": 120,
+  "topological_order_truncated": true,
+  "critical_path_sample": ["op:B001:OP10:123", "op:B001:OP20:124"],
+  "critical_path_count": 8,
+  "critical_path_truncated": false,
+  "cycle_edges_sample": [],
+  "cycle_edge_count": 0,
+  "warnings_sample": [],
+  "warning_count": 0,
+  "node_metrics_sample": [
+    {
+      "node_id": "op:B001:OP10:123",
+      "is_on_critical_path": true,
+      "critical_path_rank": 0,
+      "impact_count": 3,
+      "generation_index": 0,
+      "downstream_critical_minutes": 960
+    }
+  ],
+  "node_metrics_count": 120,
+  "node_metrics_truncated": true
+}
+```
+
+采样上限建议写成常量，不要散落魔法数字：
+
+```python
+_GRAPH_TOPOLOGICAL_SAMPLE_LIMIT = 20
+_GRAPH_CRITICAL_PATH_SAMPLE_LIMIT = 50
+_GRAPH_WARNING_SAMPLE_LIMIT = 20
+_GRAPH_CYCLE_EDGE_SAMPLE_LIMIT = 20
+_GRAPH_NODE_METRIC_SAMPLE_LIMIT = 20
+```
+
+采样规则：
+
+```text
+topological_order_sample:
+  取 topological_order 前 20 个。
+
+critical_path_sample:
+  取 critical_path 前 50 个。
+
+cycle_edges_sample:
+  取 cycle_edges 前 20 个。
+
+warnings_sample:
+  取 warnings 前 20 个，每条只保留 code / message / data。
+
+node_metrics_sample:
+  优先按 topological_order 前 20 个节点取 node_metrics。
+  如果 topological_order 为空，就按 node_id 字符串排序取前 20 个。
+
+*_count:
+  保留原始总数。
+
+*_truncated:
+  原始总数大于 sample 上限时为 true。
+```
+
+禁止字段：
+
+```text
+public 不放 topological_order_sample。
+public 不放 critical_path_sample。
+public 不放 node_metrics_sample。
+diagnostics 不放完整 topological_order。
+diagnostics 不放完整 node_metrics。
+diagnostics 不放 nodes / edges。
+diagnostics 不放 raw。
+任何位置都不放 nx.DiGraph。
+```
+
+### 10.4 SummaryBuildContext 和 summary 组装接入
+
+在 `core/services/scheduler/summary/schedule_summary_types.py` 的 `SummaryBuildContext` 增加两个可选字段：
+
+```python
+from typing import Any, Dict, Optional
+
+
+@dataclass(frozen=True)
+class SummaryBuildContext:
+    ...
+    graph_analysis_public: Optional[Dict[str, Any]] = None
+    graph_analysis_diagnostics: Optional[Dict[str, Any]] = None
+```
+
+字段规则：
+
+```text
+graph_analysis_public:
+  只能是 public 小摘要 dict。
+  None 表示 off 模式或未启用图分析。
+
+graph_analysis_diagnostics:
+  只能是 diagnostics 采样 dict。
+  None 表示 off 模式、图分析不可用、或没有诊断信息。
+```
+
+在 `core/services/scheduler/run/schedule_orchestrator.py` 创建 `SummaryBuildContext` 前调用：
+
+```python
+graph_analysis_public, graph_analysis_diagnostics = maybe_analyze_schedule_graph(schedule_input)
+
+summary_ctx = SummaryBuildContext(
+    ...
+    graph_analysis_public=graph_analysis_public,
+    graph_analysis_diagnostics=graph_analysis_diagnostics,
+)
+```
+
+在 `core/services/scheduler/summary/schedule_summary_assembly.py` 里接入：
+
+```python
+def _algo_dict(state: AlgorithmSummaryState) -> Dict[str, Any]:
+    ...
+    if state.ctx.graph_analysis_public is not None:
+        algo["graph_analysis"] = dict(state.ctx.graph_analysis_public)
+    return algo
+```
+
+`diagnostics` 合并规则：
+
+```python
+public_algo, optimizer_diagnostics = project_public_algo_summary(_algo_dict(algorithm_state))
+diagnostics = dict(optimizer_diagnostics or {})
+if ctx.graph_analysis_diagnostics:
+    diagnostics["graph_analysis"] = dict(ctx.graph_analysis_diagnostics)
+...
+if diagnostics:
+    result_summary["diagnostics"] = diagnostics
 ```
 
 注意：
 
 ```text
-result_summary 有 size guard，诊断信息要采样。
-OperationLogs 只放小摘要，不放完整节点边。
+不要改变 summary_schema_version。
+不要让 optimizer_public_summary.py 为 graph_analysis 写特殊过滤逻辑；public 小摘要本身已经是公开安全结构。
+不要把 graph_analysis_diagnostics 先塞进 algo 再让 project_public_algo_summary 拆出来；这样边界绕远了。
+不要把 diagnostics.graph_analysis 写进 ScheduleSummaryContract 的顶层字段之外。
 ```
 
-### 10.4 report 模式验收
+### 10.5 OperationLogs 小摘要合同
 
-对阶段 0 保存的三个 case 重新跑：
+当前 `core/services/scheduler/run/schedule_persistence.py` 的 OperationLogs detail 会写：
+
+```text
+detail["algo"] = result_summary_obj.get("algo")
+```
+
+所以阶段 10 不需要新增 OperationLogs 写入入口。它只需要保证：
+
+```text
+result_summary_obj["algo"]["graph_analysis"] 本身就是小摘要。
+diagnostics.graph_analysis 不进入 OperationLogs。
+完整 nodes / edges 不进入 OperationLogs。
+完整 node_metrics 不进入 OperationLogs。
+完整 topological_order 不进入 OperationLogs。
+```
+
+OperationLogs 允许看到的字段：
+
+```json
+{
+  "algo": {
+    "graph_analysis": {
+      "mode": "report",
+      "effective_mode": "report",
+      "status": "available",
+      "node_count": 120,
+      "edge_count": 118,
+      "is_dag": true,
+      "critical_path_minutes": 960,
+      "critical_path_node_count": 8,
+      "warning_count": 0,
+      "cycle_edge_count": 0,
+      "time_cost_ms": 12
+    }
+  }
+}
+```
+
+OperationLogs 禁止看到的 key：
+
+```text
+nodes
+edges
+raw
+topological_order
+node_metrics
+topological_order_sample
+critical_path_sample
+warnings_sample
+cycle_edges_sample
+```
+
+如果后续用户需要看完整图，只能走阶段 13 的 debug export 或后续受控调试接口，不能在阶段 10 偷偷把全量图塞进日志。
+
+### 10.6 report 模式错误和 warning 口径
+
+阶段 10 的错误分三类：
+
+```text
+1. 图分析没启用：
+   graph_analysis_mode=off。
+   不输出 graph_analysis。
+
+2. 图分析启用了，但可选依赖或图输入合同不满足：
+   输出 public graph_analysis，status 明确为 unavailable / input_error / build_error。
+   不输出 diagnostics 或只输出很小的 error 诊断。
+   不改变排产结果。
+
+3. 图分析自身遇到未知异常：
+   不捕获成空报告。
+   让异常暴露，让测试和开发者修实现问题。
+```
+
+已知错误状态：
+
+```text
+NetworkXUnavailable:
+  status="unavailable"
+  reason="networkx_unavailable"
+
+GraphInputContractError:
+  status="input_error"
+  reason="graph_input_contract_error"
+
+GraphBuildContractError:
+  status="build_error"
+  reason="graph_build_contract_error"
+```
+
+有环图的口径：
+
+```text
+有环图不是 input_error。
+只要图成功建成，status 仍是 available。
+public.is_dag=false。
+public.cycle_edge_count > 0。
+public.warning_count > 0。
+diagnostics.cycle_edges_sample 给出采样。
+阶段 10 不阻止排产。
+阶段 11 再决定 on + block_on_cycle=yes 时是否阻止。
+```
+
+为什么 NetworkX 不可用不直接阻止 report 模式排产：
+
+```text
+report 模式的承诺是“不改变排产结果，只增加可见报告”。
+如果现场少装可选依赖就阻止排产，等于 report 模式反而改变了业务结果。
+所以这里允许排产继续，但必须把 status="unavailable" 明确写进结果摘要。
+这不是静默回退，因为用户和测试都能看到图分析没有实际运行。
+```
+
+### 10.7 测试文件和用例
+
+阶段 10 至少新增或补齐三份回归测试：
+
+```text
+tests/regression_scheduler_graph_report_mode_contract.py
+tests/regression_scheduler_graph_summary_contract.py
+tests/regression_scheduler_graph_operation_logs_contract.py
+```
+
+`regression_scheduler_graph_report_mode_contract.py` 必须覆盖：
+
+```text
+测试 1：off 模式不 import graph 模块、不要求 NetworkX
+做法：
+  复用 regression_scheduler_graph_lazy_runtime_contract.py 的思路。
+断言：
+  graph_analysis_mode=off 时不出现 result_summary.algo.graph_analysis。
+  import schedule_orchestrator 不触发 networkx import。
+
+测试 2：report 模式不改变 optimizer_outcome 和 validated_schedule_payload
+做法：
+  构造固定 schedule_input 和假 optimize_schedule_fn。
+  记录 optimize 返回的 results / best_order / attempts。
+  跑 orchestrate_schedule_run。
+断言：
+  outcome.results 与 optimize 返回对象一致或值一致。
+  outcome.best_order 不被重排。
+  outcome.validated_schedule_payload.schedule_rows 与关闭 graph 时一致。
+
+测试 3：report 模式只读取 algo_ops_to_schedule / batches / resource_pool
+做法：
+  monkeypatch build_operation_nodes_from_rows，记录入参。
+断言：
+  rows 是 schedule_input.algo_ops_to_schedule。
+  batches 是 schedule_input.batches。
+  resource_pool 是 schedule_input.resource_pool。
+  不调用 repo / db / Flask。
+
+测试 4：NetworkXUnavailable 可见但不改排产结果
+做法：
+  monkeypatch ScheduleGraphAnalysisService 或 import_networkx 触发 NetworkXUnavailable。
+断言：
+  outcome.result_summary_obj["algo"]["graph_analysis"]["status"] == "unavailable"。
+  reason == "networkx_unavailable"。
+  outcome.results / schedule_rows 仍与关闭 graph 时一致。
+
+测试 5：GraphInputContractError / GraphBuildContractError 可见但不伪装成功
+断言：
+  status 分别是 input_error / build_error。
+  reason 分别是 graph_input_contract_error / graph_build_contract_error。
+  不返回 status="available"。
+  不返回空 dict 冒充成功。
+
+测试 6：未知异常不被吞掉
+做法：
+  monkeypatch 图分析函数抛 RuntimeError("boom")。
+断言：
+  orchestrate_schedule_run 抛出 RuntimeError。
+  不生成 status="available" 或 status="unavailable" 的假报告。
+```
+
+`regression_scheduler_graph_summary_contract.py` 必须覆盖：
+
+```text
+测试 1：algo.graph_analysis 是公开小摘要
+断言：
+  result_summary_obj["algo"]["graph_analysis"] 包含 mode / effective_mode / status / node_count / edge_count / is_dag / critical_path_minutes / warning_count / time_cost_ms。
+  不包含 topological_order_sample / node_metrics_sample / nodes / edges / raw。
+
+测试 2：diagnostics.graph_analysis 是采样诊断
+断言：
+  result_summary_obj["diagnostics"]["graph_analysis"] 包含 topological_order_sample / critical_path_sample / warnings_sample / node_metrics_sample。
+  各 sample 长度不超过本阶段常量。
+  有 *_count 和 *_truncated 字段说明是否被截断。
+
+测试 3：diagnostics 与 optimizer diagnostics 能共存
+做法：
+  构造 optimizer attempts 产生 diagnostics.optimizer。
+  同时开启 graph report。
+断言：
+  diagnostics.optimizer 仍存在。
+  diagnostics.graph_analysis 也存在。
+  两者没有互相覆盖。
+
+测试 4：summary size guard 不靠全量图硬扛
+做法：
+  构造超过 sample limit 的 graph payload。
+断言：
+  graph diagnostics 已先采样。
+  apply_summary_size_guard 后 result_summary 仍可 json.dumps。
+  不出现完整 node_metrics。
+```
+
+`regression_scheduler_graph_operation_logs_contract.py` 必须覆盖：
+
+```text
+测试 1：OperationLogs 只写 graph_analysis 小摘要
+做法：
+  跑一次 report 模式排产或直接调用 persist_schedule 相关路径。
+断言：
+  OperationLogs.detail["algo"]["graph_analysis"] 存在。
+  只包含 public 小摘要字段。
+
+测试 2：OperationLogs 不写完整图
+断言：
+  OperationLogs.detail JSON 递归搜索不到 nodes / edges / raw / node_metrics / topological_order。
+  也搜索不到 topological_order_sample / critical_path_sample / warnings_sample / cycle_edges_sample。
+
+测试 3：simulate 和正式排产日志口径一致
+断言：
+  simulate=True 时 action="simulate"，graph_analysis 仍是小摘要。
+  simulate=False 时 action="schedule"，graph_analysis 仍是小摘要。
+```
+
+建议同步补充或复跑这些已有测试：
+
+```text
+tests/regression_schedule_orchestrator_contract.py
+tests/regression_schedule_service_facade_delegation.py
+tests/regression_scheduler_summary_result_summary_contract.py
+tests/regression_schedule_summary_size_guard_large_lists.py
+tests/regression_scheduler_graph_lazy_runtime_contract.py
+tests/scheduler_graph
+```
+
+### 10.8 阶段 0 基线对比口径
+
+阶段 10 必须重新跑阶段 0 保存的三个 case：
+
+```text
+case_001_normal
+case_002_urgent
+case_003_external
+```
+
+运行配置：
 
 ```text
 graph_analysis_mode=report
+graph_debug_export=no
+graph_block_on_cycle=no
 ```
 
-验收：
+对比目标：
 
 ```text
-case_001 排产结果与 baseline 完全一致。
-case_002 排产结果与 baseline 完全一致。
-case_003 排产结果与 baseline 完全一致。
-
-但 result_summary["algo"]["graph_analysis"] 里多了图分析小摘要。
-diagnostics.graph_analysis 里有采样诊断。
-OperationLogs 只有小摘要，不包含完整 nodes/edges。
+case_001 排产结果与 before_networkx baseline 完全一致。
+case_002 排产结果与 before_networkx baseline 完全一致。
+case_003 排产结果与 before_networkx baseline 完全一致。
 ```
 
-如果这一步排产结果变了，说明图分析误接入了算法，应立即回退。
+允许不同的字段：
+
+```text
+version
+schedule_time / created_at / updated_at
+time_cost_ms
+history id / log id
+result_summary.algo.graph_analysis
+result_summary.diagnostics.graph_analysis
+```
+
+不允许不同的字段：
+
+```text
+Schedule 行数
+每条 Schedule 的 op_id / batch_id / machine_id / operator_id / supplier_id
+每条 Schedule 的 start_time / end_time
+summary.total_ops / scheduled_ops / failed_ops
+best_order
+selected_batch_ids
+freeze_window.frozen_op_count
+resource_pool 公开状态
+```
+
+如果这些不允许不同的字段发生变化：
+
+```text
+立即停止。
+不要继续补更多兼容逻辑。
+先回 schedule_orchestrator.py 检查图分析是否误改了输入、候选、排序或落库 payload。
+```
+
+### 10.9 实施顺序
+
+建议按下面顺序开工：
+
+```text
+1. 先补 tests/regression_scheduler_graph_summary_contract.py，写清 public / diagnostics 字段形状。
+2. 在 SummaryBuildContext 增加 graph_analysis_public / graph_analysis_diagnostics 两个可选 dict 字段。
+3. 在 schedule_summary_assembly.py 把 public 写进 algo.graph_analysis，把 diagnostics 合并进 diagnostics.graph_analysis。
+4. 跑 summary 合同测试，确认不影响现有 optimizer diagnostics。
+5. 在 schedule_orchestrator.py 增加 _graph_analysis_mode 和 maybe_analyze_schedule_graph。
+6. 在 schedule_orchestrator.py 增加 public / diagnostics 投影 helper，off 模式保持零 graph import。
+7. 补 tests/regression_scheduler_graph_report_mode_contract.py，锁住 off/report/on 阶段 10 行为。
+8. 补 tests/regression_scheduler_graph_operation_logs_contract.py，锁住日志只写小摘要。
+9. 复跑 tests/scheduler_graph，确认阶段 5 到阶段 9 图模块合同没有被阶段 10 反向污染。
+10. 对阶段 0 三个 baseline case 做 report 模式对比。
+11. 跑 ruff / pyright。
+12. 提交后在干净工作区跑最终 quality gate。
+13. 回填本 roadmap、items.yaml 和对应 CodeStable feature/acceptance 记录。
+```
+
+注意：
+
+```text
+第 5 步之前，不要先改 schedule_optimizer.py 或 core/algorithms/greedy/。
+第 6 步如果发现 off 模式 import 了 graph 模块，先修 import 边界，不要靠测试里 monkeypatch 掩盖。
+第 10 步如果 baseline 有差异，先停下来找误接入点，不要通过放宽对比规则过关。
+```
+
+### 10.10 阶段验收清单
+
+```text
+[x] graph_analysis_mode=off 时不 import graph 模块，不要求 NetworkX，不写 graph_analysis。
+[x] graph_analysis_mode=report 时调用 build_operation_nodes_from_rows、ScheduleGraphAnalysisService.analyze_linear_batches、graph_summary_to_dict。
+[x] graph_analysis_mode=on 在阶段 10 只按 report_only 输出摘要，不接 ready 队列、不接评分。
+[x] maybe_analyze_schedule_graph 只读取 schedule_input.cfg / algo_ops_to_schedule / batches / resource_pool。
+[x] schedule_orchestrator.py 不修改 optimizer_outcome.results、best_order、attempts、seed_results、frozen_op_ids。
+[x] SummaryBuildContext 只新增 graph_analysis_public / graph_analysis_diagnostics 普通 dict 字段。
+[x] result_summary["algo"]["graph_analysis"] 是 public 小摘要。
+[x] result_summary["diagnostics"]["graph_analysis"] 是采样诊断。
+[x] public 小摘要不包含 topological_order_sample、critical_path_sample、node_metrics_sample、nodes、edges、raw。
+[x] diagnostics 只包含 sample/count/truncated，不包含完整 topological_order、完整 node_metrics、nodes、edges、raw。
+[x] OperationLogs.detail["algo"]["graph_analysis"] 只有 public 小摘要。
+[x] OperationLogs.detail 中没有 diagnostics.graph_analysis。
+[x] OperationLogs.detail 递归搜索不到 nodes / edges / raw / node_metrics / topological_order。
+[x] NetworkXUnavailable 会输出 status="unavailable" 和 reason="networkx_unavailable"。
+[x] GraphInputContractError 会输出 status="input_error" 和 reason="graph_input_contract_error"。
+[x] GraphBuildContractError 会输出 status="build_error" 和 reason="graph_build_contract_error"。
+[x] 未知异常不会被 broad except 吞成空报告。
+[x] 有环图在 report 模式只写 warning / cycle_edges_sample，不阻止排产。
+[x] 阶段 0 三个 baseline case 在 report 模式下排产结果不变，只新增 graph_analysis 摘要。
+[x] tests/regression_scheduler_graph_report_mode_contract.py 通过。
+[x] tests/regression_scheduler_graph_summary_contract.py 通过。
+[x] tests/regression_scheduler_graph_operation_logs_contract.py 通过。
+[x] tests/regression_schedule_orchestrator_contract.py 继续通过。
+[x] tests/regression_schedule_service_facade_delegation.py 继续通过。
+[x] tests/regression_scheduler_summary_result_summary_contract.py 继续通过。
+[x] tests/regression_schedule_summary_size_guard_large_lists.py 继续通过。
+[x] tests/regression_scheduler_graph_lazy_runtime_contract.py 继续通过。
+[x] tests/scheduler_graph 全目录继续通过。
+[x] ruff check 通过。
+[x] pyright 通过。
+[ ] 最终 clean-worktree quality gate 在提交后通过。
+```
+
+推荐验证命令：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_scheduler_graph_report_mode_contract.py tests/regression_scheduler_graph_summary_contract.py tests/regression_scheduler_graph_operation_logs_contract.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_schedule_orchestrator_contract.py tests/regression_schedule_service_facade_delegation.py tests/regression_scheduler_summary_result_summary_contract.py tests/regression_schedule_summary_size_guard_large_lists.py tests/regression_scheduler_graph_lazy_runtime_contract.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/scheduler_graph
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler/run/schedule_orchestrator.py core/services/scheduler/summary core/services/scheduler/graph tests/regression_scheduler_graph_report_mode_contract.py tests/regression_scheduler_graph_summary_contract.py tests/regression_scheduler_graph_operation_logs_contract.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright core/services/scheduler/run/schedule_orchestrator.py core/services/scheduler/summary core/services/scheduler/graph
+```
+
+PR-3 最终收尾前还要在干净工作区跑：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
+```
+
+注意：
+
+```text
+--require-clean-worktree 必须等阶段 10 代码、测试、roadmap / items.yaml / feature 记录全部提交后再跑。
+如果工作区还有未提交文件，不能把它说成 clean-worktree proof。
+```
+
+### 10.11 明确不做
+
+阶段 10 明确不做：
+
+```text
+[ ] 不改 schedule_optimizer.py。
+[ ] 不改 core/algorithms/greedy/scheduler.py。
+[ ] 不改 core/algorithms/greedy/dispatch/sgs.py。
+[ ] 不改 core/algorithms/greedy/dispatch/sgs_scoring.py。
+[ ] 不新增 ready_queue.py 的主链调用。
+[ ] 不新增 scoring.py 的主链调用。
+[ ] 不新增 resource_matching.py 的主链调用。
+[ ] 不改变 sorted_ops。
+[ ] 不改变 batch_order。
+[ ] 不改变 dispatch_sgs 候选集合。
+[ ] 不改变 SGS 评分。
+[ ] 不改变 seed_results。
+[ ] 不改变冻结窗口。
+[ ] 不改变 validated_schedule_payload。
+[ ] 不改变落库 schedule_rows。
+[ ] 不改变 ScheduleHistory 行生成规则，除了 result_summary 多 graph_analysis 摘要。
+[ ] 不改变 summary_schema_version。
+[ ] 不把完整图写进 result_summary。
+[ ] 不把完整图写进 OperationLogs。
+[ ] 不新增页面、按钮、调试接口。
+[ ] 不做 graph_debug_export 文件导出。
+[ ] 不做 2000 节点性能证据。
+[ ] 不做 PyInstaller / Win7 打包验证。
+```
+
+阶段 10 完成后的交接话术必须写清：
+
+```text
+阶段 10 只完成 report 模式旁路分析和结果摘要。
+PR-3 仍然没有让图分析改变排产候选、评分、冻结窗口或落库 schedule_rows。
+阶段 11 才处理有环阻止策略。
+阶段 12 / 阶段 13 才能开始 on 模式的 ready 队列和评分接入。
+```
+
+如果这一步排产结果变了，说明图分析误接入了算法，应立即回退本阶段改动，先找误接入点，不要通过放宽测试或新增兜底逻辑让它“看起来通过”。
 
 ## 阶段 11：有环时的处理策略
 
@@ -5400,6 +6169,57 @@ Chrome109 启动链失败。
 保留用户现场数据库和共享目录数据。
 ```
 
+## 阶段 23：候选方案续跑作为后续增强
+
+这一阶段不是第一版必做。第一版多权重试跑先采用更轻的做法：
+
+```text
+1. 原算法候选先跑，保证一定有兜底结果。
+2. 关键链权重候选按系统预设档位继续跑。
+3. 如果时间上限没到，就尽量跑完所有档位。
+4. 如果时间上限到了，就停止继续新增候选。
+5. 从已经完成的候选里选最好结果。
+6. 页面告诉用户“本次跑完了几套 / 总共计划几套”。
+```
+
+第一版不做“继续补跑剩余方案”按钮，原因是它不是简单地接着算一下。真正续跑必须先解决下面这些问题：
+
+```text
+冻结当时的订单、工序、设备、人员、日历和配置快照。
+保存候选方案队列：哪些已完成，哪些还没跑。
+保存每个候选的摘要、代表性明细和选择理由。
+保证续跑时仍然使用原始快照，不能混入后来被用户改过的数据。
+支持页面展示“继续补跑剩余方案”的状态、结果和失败原因。
+```
+
+后续如果做 B，目标形态是：
+
+```text
+用户第一次排产只跑完 3/5 套方案。
+系统已采用这 3 套里的最好结果，并记录剩余 2 套没跑。
+用户在结果页或分析页点击“继续补跑剩余方案”。
+系统基于第一次排产冻结的快照补跑剩余候选。
+补跑完成后，只更新本次排产的候选对比和推荐结果，不偷偷改历史输入。
+```
+
+续跑的硬性边界：
+
+```text
+不能用当前最新订单重新拼接旧排产。
+不能让子进程或后台任务直接写正式排产明细。
+不能把未完成候选伪装成完整比较结果。
+不能因为补跑失败就覆盖第一次已经可用的排产结果。
+```
+
+建议落地顺序：
+
+```text
+1. 先把第一版“时间到了就用已完成候选”的记录字段做稳。
+2. 再加候选方案快照表或等价持久化结构。
+3. 再加续跑入口和状态页。
+4. 最后再考虑后台任务、取消、失败重试和自动清理旧候选。
+```
+
 ## 最小可执行版本
 
 如果只想先做一个最小可用版本，建议只做下面这些文件：
@@ -5531,6 +6351,9 @@ on 模式：
 
 ## 变更记录
 
+- 2026-05-17：根据用户确认，把多权重试跑的时间上限策略定为第一版先不做续跑；时间到了就从已完成候选里选择最好结果并提示完成数量。真正“继续补跑剩余方案”作为阶段 23 后续增强，要求先冻结输入快照、保存候选队列和代表性明细，再提供续跑入口。
+- 2026-05-17：实施阶段 10，接入 `graph_analysis_mode=report` 的旁路图分析：排产和落库 payload 算完后才生成 `algo.graph_analysis` 小摘要，并把采样诊断写入 `diagnostics.graph_analysis`；`off` 模式仍不 import graph 模块，`on` 在本阶段只标成 `effective_mode="report_only"`。补齐三份 report/summary/OperationLogs 回归测试，复跑阶段 10 建议测试、`tests/scheduler_graph`、ruff、pyright，并用阶段 0 三个 baseline case 验证 report 模式不改变排产结果。提交后 clean-worktree 门禁先发现 orchestrator 文件大小和 summary 函数复杂度踩线，已把图报告 helper 收到 `schedule_graph_report.py` 并拆出 summary 小函数，两个 architecture fitness 节点复验通过；clean-worktree quality gate 需在 amend 后重新跑完整链路。
+- 2026-05-17：细化阶段 10，把 PR-3 report 模式接入写到可执行程度：明确前置条件、整体实现要求、旁路接入点、SummaryBuildContext 字段、public / diagnostics 投影、OperationLogs 小摘要合同、错误与 warning 口径、测试用例、实施顺序、验收命令和明确不做；同时把“优雅简洁、不做过度兜底、不做静默回退、不做过度防御性编程、高内聚低耦合”写成阶段 10 的硬约束。
 - 2026-05-17：实施阶段 9，补齐 `GraphAnalysisSummary.node_metrics`、`exporter.py` 普通 dict 导出、`analysis_service.py` 统一分析入口，以及 `test_exporter.py` / `test_analysis_service.py`；本阶段仍只停留在图模块内部，没有进入阶段 10 / PR-3，没有写 `result_summary` 或 OperationLogs。
 - 2026-05-17：细化阶段 9，把 `exporter.py`、`analysis_service.py`、`GraphAnalysisSummary.node_metrics` 补齐、DAG/有环处理口径、禁止静默回退、禁止过度兜底、测试用例、实施顺序和验收命令写到可执行程度；同时明确阶段 9 仍只做图模块内部统一入口和普通 dict 导出，不接 report 模式、不写 `result_summary`、不写 OperationLogs、不改变排产结果。
 - 2026-05-17：细化阶段 8，把 `metrics.py` 的拓扑顺序、层级、关键路径、影响范围、节点指标、错误暴露、测试用例和验收命令补到可执行程度；同时明确阶段 8 只做图指标，不接 report、不接 SGS、不写 `result_summary`，并把“优雅简洁、不做过度兜底、不做静默回退、不做过度防御性编程、高内聚低耦合”写成硬要求。

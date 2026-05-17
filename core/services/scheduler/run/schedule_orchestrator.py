@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..summary.schedule_summary_types import SummaryBuildContext
+from .schedule_graph_report import maybe_analyze_schedule_graph
 from .schedule_input_collector import ScheduleRunInput
 from .schedule_persistence import ValidatedSchedulePayload, build_validated_schedule_payload
 
@@ -257,6 +258,8 @@ def orchestrate_schedule_run(
         list(schedule_input.algo_warnings or []),
     )
 
+    graph_analysis_public, graph_analysis_diagnostics = maybe_analyze_schedule_graph(schedule_input)
+
     with svc.tx_manager.transaction():
         version = int(svc.history_repo.allocate_next_version())
 
@@ -291,6 +294,8 @@ def orchestrate_schedule_run(
         algo_stats=optimizer_outcome.algo_stats,
         algo_warnings=list(schedule_input.algo_warnings or []),
         warning_merge_status=warning_merge_status,
+        graph_analysis_public=graph_analysis_public,
+        graph_analysis_diagnostics=graph_analysis_diagnostics,
         simulate=simulate,
         t0=schedule_input.t0,
     )

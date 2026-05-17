@@ -20,7 +20,7 @@ def _make_dt(hours: int) -> datetime:
 
 def _base_input() -> Any:
     return SimpleNamespace(
-        cfg=SimpleNamespace(),
+        cfg=SimpleNamespace(graph_analysis_mode="off"),
         cal_svc=SimpleNamespace(),
         cfg_svc=SimpleNamespace(),
         readiness_gate_enabled=True,

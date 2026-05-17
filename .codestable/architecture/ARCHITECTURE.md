@@ -41,3 +41,11 @@
 - Win7 x64、Python 3.8、离线交付是长期约束。
 - 质量门禁入口仍以仓库现有 `scripts/run_quality_gate.py` 为准。
 - 旧 `.limcode/plans/`、`.limcode/review/` 里有大量历史上下文，迁移初期不得批量删除或搬动。
+
+## 6. 排产工序图分析现状
+
+- `core/services/scheduler/graph/` 是排产工序图的内部分析模块，当前负责把已整理好的待排工序转成图节点、构建同批次前后工序边、校验 DAG / 环、计算拓扑顺序、关键路径和节点指标，并导出普通 dict 摘要。
+- `graph_analysis_mode=off` 是默认关闭模式。关闭时排产主链不导入图模块，不要求安装 NetworkX，也不会在 `result_summary` 里写 `graph_analysis`。
+- `graph_analysis_mode=report` 已作为旁路报告接入 `core/services/scheduler/run/schedule_orchestrator.py`。接入点在原排产算法已经算完、`validated_schedule_payload` 已经生成之后，图报告判断、错误投影和采样投影收在 `core/services/scheduler/run/schedule_graph_report.py`，只读取 `ScheduleRunInput.cfg`、`algo_ops_to_schedule`、`batches` 和 `resource_pool`。
+- report 模式只把公开小摘要写进 `result_summary["algo"]["graph_analysis"]`，把采样诊断写进 `result_summary["diagnostics"]["graph_analysis"]`。OperationLogs 沿用现有 `detail["algo"]` 小摘要路径，因此只能看到 `algo.graph_analysis`，不能看到完整 nodes、edges、node_metrics、topological_order 或 raw 对象。
+- `graph_analysis_mode=on` 在当前阶段仍按 report-only 处理，并在摘要里写 `effective_mode="report_only"`。它还没有接 ready 队列、SGS 候选集合、评分、冻结窗口或落库行；真正改变排产行为要等后续图 ready 队列和评分阶段。

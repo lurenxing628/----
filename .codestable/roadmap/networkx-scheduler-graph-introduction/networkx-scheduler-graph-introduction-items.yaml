@@ -63,7 +63,7 @@ items:
   - slug: scheduler-graph-core-module
     title: PR-2 图分析核心模块
     description: "新增 core/services/scheduler/graph/ 内部模块，包括懒加载、dataclass、节点 ID、input adapter、依赖边、校验、指标、导出和统一分析服务。"
-    status: in-progress
+    status: done
     feature: null
     minimal_loop: false
     depends_on: [scheduler-graph-config-default-off]
@@ -74,19 +74,21 @@ items:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_graph
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler/graph tests/scheduler_graph
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright core/services/scheduler/graph
-    notes: "进行中：87d0fcca 完成 graph 骨架和 nx_runtime 懒加载；7fe964c6 完成节点 ID 和图值对象；1e40d571 / 7380d6ff 完成阶段 4.5 基础设施硬化；6d0a75e0 完成阶段 5 input_adapter；9a8332ad 完成阶段 6 precedence_builder；0df1330b 完成阶段 7 validators；cccf9d1b 完成阶段 8 metrics；251a0016 按复审意见补齐 seq 严格整数、resource_pool 坏结构报错、OperationGraphNode 运行时类型合同和 snapshot 重复字段防回归。2026-05-17 当前工作区已完成阶段 9：GraphAnalysisSummary.node_metrics、exporter.py 普通 dict 导出、analysis_service.py 统一分析入口、test_exporter.py 和 test_analysis_service.py，并通过阶段 9 局部 pytest、tests/scheduler_graph、懒加载回归、ruff、pyright。当前仍保持 in-progress：这些改动尚未形成本地提交后的 clean-worktree proof；仍未进入 PR-3 report 模式，未写 result_summary / OperationLogs。"
+    notes: "已完成：87d0fcca 完成 graph 骨架和 nx_runtime 懒加载；7fe964c6 完成节点 ID 和图值对象；1e40d571 / 7380d6ff 完成阶段 4.5 基础设施硬化；6d0a75e0 完成阶段 5 input_adapter；9a8332ad 完成阶段 6 precedence_builder；0df1330b 完成阶段 7 validators；cccf9d1b 完成阶段 8 metrics；251a0016 按复审意见补齐 seq 严格整数、resource_pool 坏结构报错、OperationGraphNode 运行时类型合同和 snapshot 重复字段防回归；72fbe56c 完成阶段 9 GraphAnalysisSummary.node_metrics、exporter.py 普通 dict 导出、analysis_service.py 统一分析入口和对应图模块测试。2026-05-17 阶段 10 开工前已复跑 tests/scheduler_graph 与懒加载回归，确认 PR-2 图核心模块可作为 PR-3 report 模式接入前置。"
 
   - slug: scheduler-graph-report-mode
     title: PR-3 report 模式接入 summary
     description: "在 schedule_orchestrator 附近接入只读图分析，把小摘要写入 result_summary.algo.graph_analysis，把采样诊断写入 diagnostics.graph_analysis，不改变排产结果。"
-    status: planned
-    feature: null
+    status: done
+    feature: .codestable/features/2026-05-17-scheduler-graph-report-mode/
     minimal_loop: false
     depends_on: [scheduler-graph-core-module]
     primary_paths:
       - core/services/scheduler/run/schedule_orchestrator.py
+      - core/services/scheduler/run/schedule_graph_report.py
       - core/services/scheduler/summary/schedule_summary.py
       - core/services/scheduler/summary/schedule_summary_assembly.py
+      - core/services/scheduler/summary/schedule_summary_types.py
       - core/services/scheduler/summary/summary_size_guard.py
       - core/services/scheduler/run/schedule_persistence.py
       - tests/regression_scheduler_graph_report_mode_contract.py
@@ -95,7 +97,7 @@ items:
     exit_checks:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_graph_report_mode_contract.py tests/regression_scheduler_graph_summary_contract.py tests/regression_scheduler_graph_operation_logs_contract.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_optimizer_public_summary_projection_contract.py tests/regression_schedule_summary_v11_contract.py
-    notes: "report 模式只能读输入和结果，不能改 sorted_ops、batch_order、seed_results、SGS 候选或落库 schedule_rows。"
+    notes: "已完成：阶段 10 在 schedule_orchestrator 的排产结果和 validated_schedule_payload 都已生成之后，旁路调用 graph input_adapter、ScheduleGraphAnalysisService 和 exporter；图报告判断、错误投影和采样投影收在 schedule_graph_report.py，避免 orchestrator 超过架构门禁文件大小阈值。graph_analysis_mode=off 不 import graph 模块、不写 graph_analysis；report 写 result_summary.algo.graph_analysis 小摘要和 result_summary.diagnostics.graph_analysis 采样诊断；on 在本阶段只输出 effective_mode=report_only，不接 ready 队列、不接评分。OperationLogs 继续沿用现有 algo 小摘要路径，只能看到 graph_analysis public 小摘要，不能看到 diagnostics、nodes、edges、raw、完整 node_metrics 或完整 topological_order。阶段 0 三个 baseline case 在 report 模式下对比通过，排产 rows、best_order、selected_batch_ids、freeze_window 和 resource_pool 公开状态未变；本阶段未改 schedule_optimizer.py、GreedyScheduler、SGS、seed_results、冻结窗口、validated_schedule_payload 或 schedule_rows。"
 
   - slug: scheduler-graph-debug-performance
     title: PR-4 调试导出和性能证据
@@ -180,3 +182,20 @@ items:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
     notes: "正式交付不能只跑 validate_dist_exe.py；要按现有 Win7 双包和 Chrome109 启动链验收。"
+
+  - slug: scheduler-graph-candidate-resume-later
+    title: PR-9 后续增强：候选方案续跑
+    description: "第一版先不做续跑；多权重试跑到达时间上限时，从已完成候选里选择最好结果并提示完成数量。后续再增加“继续补跑剩余方案”能力，基于第一次排产冻结的输入快照补跑未完成候选。"
+    status: planned
+    feature: null
+    minimal_loop: false
+    depends_on: [scheduler-graph-win7-package-closeout]
+    primary_paths:
+      - core/services/scheduler/run/schedule_optimizer.py
+      - core/services/scheduler/run/schedule_persistence.py
+      - web/routes/domains/scheduler/
+      - templates/scheduler/
+      - tests/regression_scheduler_candidate_resume_contract.py
+    exit_checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_resume_contract.py
+    notes: "续跑必须保存原始输入快照、候选方案队列、已完成候选摘要和代表性明细；续跑时不能混入后来被用户改过的订单、工序、资源或配置。补跑失败也不能覆盖第一次已经可用的排产结果。"
