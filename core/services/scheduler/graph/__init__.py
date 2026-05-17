@@ -1,7 +1,8 @@
-"""Scheduler graph foundation package.
+"""Scheduler graph analysis package.
 
-Phase 0-4.5 keeps graph analysis as optional infrastructure only.  Public
-modules in this package must not require NetworkX at import time.
+Graph analysis stays optional infrastructure until it is explicitly wired into
+report/on scheduling modes. Public modules in this package must not require
+NetworkX at import time.
 """
 
 from __future__ import annotations

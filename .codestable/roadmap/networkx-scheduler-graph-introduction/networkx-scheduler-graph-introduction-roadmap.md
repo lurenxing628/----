@@ -3605,4 +3605,5 @@ on 模式：
 
 ## 变更记录
 
+- 2026-05-17：执行阶段 5，新增 `core/services/scheduler/graph/input_adapter.py` 和 `tests/scheduler_graph/test_input_adapter.py`，把已整理好的排产输入转换为 `OperationGraphNode`；同时修复 `FrozenDict` 只读方法的 pyright 签名问题。阶段 5 仍只做输入转换，不构建 `nx.DiGraph`，不接入排产，不写 `result_summary`，不改变排产结果。
 - 2026-05-17：细化阶段 5，把 `input_adapter.py` 的职责、输入合同、字段映射、时长计算、候选资源、raw 快照、错误处理、测试用例和验收命令补到可执行程度；同时把“优雅简洁、不做过度兜底、不做静默回退、不做过度防御性编程、高内聚低耦合”写成阶段 5 的硬要求；按只读核实结果补准固定人员/固定设备候选资源口径、外协天数必须大于 0、source 严格合同和 pyright 收尾要求。

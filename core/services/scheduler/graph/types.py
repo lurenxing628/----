@@ -1,22 +1,35 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Mapping, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, NoReturn, Optional, Tuple
 
 
 class FrozenDict(dict):
     """JSON-serializable immutable dict used by graph value snapshots."""
 
-    def _readonly(self, *args: Any, **kwargs: Any) -> None:
+    def _readonly(self) -> NoReturn:
         raise TypeError("FrozenDict is immutable")
 
-    __setitem__ = _readonly
-    __delitem__ = _readonly
-    clear = _readonly
-    pop = _readonly
-    popitem = _readonly
-    setdefault = _readonly
-    update = _readonly
+    def __setitem__(self, key: Any, value: Any) -> None:
+        self._readonly()
+
+    def __delitem__(self, key: Any) -> None:
+        self._readonly()
+
+    def clear(self) -> None:
+        self._readonly()
+
+    def pop(self, key: Any, default: Any = None) -> Any:
+        self._readonly()
+
+    def popitem(self) -> Tuple[Any, Any]:
+        self._readonly()
+
+    def setdefault(self, key: Any, default: Any = None) -> Any:
+        self._readonly()
+
+    def update(self, *args: Iterable[Tuple[Any, Any]], **kwargs: Any) -> None:
+        self._readonly()
 
 
 def _freeze_json_like(value: Any) -> Any:
