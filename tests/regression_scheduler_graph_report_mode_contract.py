@@ -69,7 +69,8 @@ def _algo_op() -> SimpleNamespace:
 
 
 def _schedule_input(mode: str) -> SimpleNamespace:
-    algo_ops_to_schedule = [_algo_op()]
+    algo_ops = [_algo_op()]
+    algo_ops_to_schedule = list(algo_ops)
     batches = {"B001": SimpleNamespace(batch_id="B001", quantity=1, due_date="2026-01-02")}
     resource_pool = {"machines_by_op_type": {}, "operators_by_machine": {}, "machines_by_operator": {}}
     return SimpleNamespace(
@@ -77,6 +78,7 @@ def _schedule_input(mode: str) -> SimpleNamespace:
         cal_svc=SimpleNamespace(),
         cfg_svc=SimpleNamespace(),
         readiness_gate_enabled=True,
+        algo_ops=algo_ops,
         algo_ops_to_schedule=algo_ops_to_schedule,
         batches=batches,
         start_dt_norm=datetime(2026, 1, 1, 8, 0, 0),
@@ -153,7 +155,7 @@ def _graph_payload() -> Dict[str, Any]:
 
 def _summary_from_ctx(_svc: Any, *, ctx: Any) -> Tuple[List[Dict[str, Any]], str, Dict[str, Any], str, int]:
     algo: Dict[str, Any] = {"ok": 1}
-    result_summary_obj: Dict[str, Any] = {"algo": algo}
+    result_summary_obj: Dict[str, Any] = {"algo": algo, "warnings": [], "errors": []}
     if ctx.graph_analysis_public is not None:
         algo["graph_analysis"] = dict(ctx.graph_analysis_public)
     if ctx.graph_analysis_diagnostics is not None:
@@ -244,13 +246,20 @@ def test_report_and_on_modes_add_summary_without_changing_schedule_payload(monke
 
     captured: List[Dict[str, Any]] = []
 
-    def fake_build_operation_nodes_from_rows(rows: Any, *, batches: Any, resource_pool: Any) -> List[str]:
-        captured.append({"rows": rows, "batches": batches, "resource_pool": resource_pool})
-        return ["node"]
+    def fake_build_operation_nodes_from_rows(
+        rows: Any,
+        *,
+        batches: Any,
+        resource_pool: Any,
+        frozen_op_ids: Any,
+    ) -> List[Any]:
+        captured.append({"rows": rows, "batches": batches, "resource_pool": resource_pool, "frozen_op_ids": frozen_op_ids})
+        return [SimpleNamespace(is_frozen=False)]
 
     class FakeGraphService:
-        def analyze_linear_batches(self, nodes: Any) -> object:
+        def analyze_linear_batches(self, nodes: Any, *, metrics_mode: str = "full") -> object:
             captured[-1]["nodes"] = nodes
+            captured[-1]["metrics_mode"] = metrics_mode
             return object()
 
     monkeypatch.setattr(input_adapter, "build_operation_nodes_from_rows", fake_build_operation_nodes_from_rows)
@@ -267,11 +276,38 @@ def test_report_and_on_modes_add_summary_without_changing_schedule_payload(monke
     assert _schedule_payload_signature(on_outcome) == _schedule_payload_signature(off_outcome)
     assert report_outcome.result_summary_obj["algo"]["graph_analysis"]["effective_mode"] == "report"
     assert on_outcome.result_summary_obj["algo"]["graph_analysis"]["effective_mode"] == "report_only"
-    assert captured[0]["rows"] is report_input.algo_ops_to_schedule
+    assert captured[0]["rows"] is report_input.algo_ops
     assert captured[0]["batches"] is report_input.batches
     assert captured[0]["resource_pool"] is report_input.resource_pool
-    assert captured[1]["rows"] is on_input.algo_ops_to_schedule
-    assert captured[0]["nodes"] == ["node"]
+    assert captured[0]["frozen_op_ids"] is report_input.frozen_op_ids
+    assert captured[1]["rows"] is on_input.algo_ops
+
+
+def test_report_mode_uses_real_graph_path_and_marks_frozen_scope() -> None:
+    schedule_input = _schedule_input("report")
+    frozen_op = _algo_op()
+    frozen_op.id = 2
+    frozen_op.op_code = "OP-B001-005"
+    frozen_op.seq = 5
+    schedule_input.algo_ops = [frozen_op] + list(schedule_input.algo_ops)
+    schedule_input.algo_ops_to_schedule = [schedule_input.algo_ops[1]]
+    schedule_input.frozen_op_ids = {2, 999}
+    schedule_input.seed_results = [{"op_id": 2}]
+
+    outcome = _run_orchestrator_for_input(schedule_input)
+
+    graph_analysis = outcome.result_summary_obj["algo"]["graph_analysis"]
+    diagnostics = outcome.result_summary_obj["diagnostics"]["graph_analysis"]
+    assert graph_analysis["status"] == "available"
+    assert graph_analysis["input_scope"] == "all_algo_ops_with_frozen_markers"
+    assert graph_analysis["total_algo_op_count"] == 2
+    assert graph_analysis["reschedulable_unfrozen_op_count"] == 1
+    assert graph_analysis["frozen_node_count"] == 1
+    assert graph_analysis["seed_result_count"] == 1
+    assert graph_analysis["node_count"] == 2
+    assert diagnostics["node_metrics_sample"] == []
+    assert diagnostics["node_metrics_count"] == 0
+    assert diagnostics["node_metrics_status"] == "skipped_basic_report"
 
 
 @pytest.mark.parametrize(
@@ -312,7 +348,7 @@ def test_known_graph_errors_are_visible_without_changing_schedule(
     from core.services.scheduler.graph import analysis_service
 
     class FailingGraphService:
-        def analyze_linear_batches(self, _nodes: Any) -> object:
+        def analyze_linear_batches(self, _nodes: Any, *, metrics_mode: str = "full") -> object:
             raise exception_factory()
 
     monkeypatch.setattr(analysis_service, "ScheduleGraphAnalysisService", FailingGraphService)
@@ -324,6 +360,8 @@ def test_known_graph_errors_are_visible_without_changing_schedule(
     assert graph_analysis["status"] == status
     assert graph_analysis["reason"] == reason
     assert graph_analysis["message"]
+    assert "graph_analysis" not in report_outcome.result_summary_obj.get("diagnostics", {})
+    assert not report_outcome.result_summary_obj.get("errors")
     assert _schedule_payload_signature(report_outcome) == _schedule_payload_signature(off_outcome)
 
 
@@ -331,7 +369,7 @@ def test_unknown_graph_error_is_not_swallowed(monkeypatch: Any) -> None:
     from core.services.scheduler.graph import analysis_service
 
     class FailingGraphService:
-        def analyze_linear_batches(self, _nodes: Any) -> object:
+        def analyze_linear_batches(self, _nodes: Any, *, metrics_mode: str = "full") -> object:
             raise RuntimeError("boom")
 
     monkeypatch.setattr(analysis_service, "ScheduleGraphAnalysisService", FailingGraphService)

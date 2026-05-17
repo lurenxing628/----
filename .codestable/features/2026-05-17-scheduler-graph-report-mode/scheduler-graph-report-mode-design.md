@@ -24,7 +24,7 @@ tags: [scheduler, graph, networkx, summary, operation-logs]
 - `graph_analysis_mode=on`：本阶段先按 report-only 处理，公开摘要里写 `effective_mode="report_only"`，不接 ready 队列，也不接评分。
 - 接入点放在 `schedule_orchestrator.py` 中，位置是 `optimize_schedule_fn(...)` 和 `build_validated_schedule_payload(...)` 都完成之后、`SummaryBuildContext(...)` 创建之前。
 - 图报告判断、错误投影和采样投影放在 `schedule_graph_report.py`。这个文件仍属于排产 run 层，只服务阶段 10 的旁路 report 模式，避免把 orchestrator 撑过架构门禁文件大小阈值。
-- 图输入只来自 `schedule_input.cfg`、`schedule_input.algo_ops_to_schedule`、`schedule_input.batches`、`schedule_input.resource_pool`，不重新查数据库。
+- 2026-05-18 加固后，图输入只来自 `schedule_input.cfg`、完整 `schedule_input.algo_ops`、`schedule_input.algo_ops_to_schedule` 计数、`schedule_input.batches`、`schedule_input.resource_pool`、`schedule_input.frozen_op_ids` 和 `schedule_input.seed_results` 计数，不重新查数据库。
 - `SummaryBuildContext` 只承载两个普通 dict：`graph_analysis_public` 和 `graph_analysis_diagnostics`。
 - OperationLogs 不新增图日志写入器，继续沿用现有 `detail["algo"]` 小摘要路径。
 
@@ -58,7 +58,7 @@ OperationLogs.detail["algo"]["graph_analysis"]
 result_summary["diagnostics"]["graph_analysis"]
 ```
 
-公开小摘要只允许包含模式、状态、节点数、边数、DAG 状态、关键路径长度、warning 数、cycle edge 数和耗时。采样诊断只允许包含 sample / count / truncated 这类小字段。
+公开小摘要只允许包含模式、状态、节点数、边数、DAG 状态、关键路径长度、warning 数、cycle edge 数、耗时，以及 2026-05-18 加固新增的 `input_scope`、`total_algo_op_count`、`reschedulable_unfrozen_op_count`、`frozen_node_count`、`seed_result_count`。采样诊断只允许包含 sample / count / truncated 这类小字段；`warning.data` 必须先投影成 JSON 可保存的小对象，列表要带样本、总数和截断标记。
 
 禁止进入 `result_summary` 或 OperationLogs 的内容：
 

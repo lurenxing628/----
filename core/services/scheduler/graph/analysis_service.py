@@ -26,7 +26,11 @@ class ScheduleGraphAnalysisService:
     def analyze_linear_batches(
         self,
         nodes: Iterable[OperationGraphNode],
+        *,
+        metrics_mode: str = "full",
     ) -> GraphAnalysisSummary:
+        if metrics_mode not in ("basic", "full"):
+            raise ValueError(f"metrics_mode 只支持 basic/full：{metrics_mode!r}")
         graph: Any = self._build_graph_for_linear_batches(nodes)
 
         cycle_edges = find_cycle_edges(graph)
@@ -41,7 +45,8 @@ class ScheduleGraphAnalysisService:
         if dag_ok:
             topological_order = get_topological_order(graph)
             critical_path, critical_path_minutes = get_critical_path(graph)
-            node_metrics = build_node_metrics(graph)
+            if metrics_mode == "full":
+                node_metrics = build_node_metrics(graph)
         else:
             warnings.append(
                 GraphWarning(

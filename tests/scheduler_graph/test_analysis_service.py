@@ -62,6 +62,32 @@ def test_analyze_linear_batches_returns_summary_for_single_batch() -> None:
     assert isinstance(summary.warnings, list)
 
 
+def test_analyze_linear_batches_basic_mode_skips_node_metrics(monkeypatch: Any) -> None:
+    nodes = [
+        _node(node_id="op:1", op_code="B001_10", seq=10, duration_minutes=10),
+        _node(node_id="op:2", op_code="B001_20", seq=20, duration_minutes=20),
+    ]
+
+    def fail_if_called(*_args: Any, **_kwargs: Any) -> Any:
+        raise AssertionError("basic metrics mode must not build node metrics")
+
+    monkeypatch.setattr(analysis_service, "build_node_metrics", fail_if_called)
+
+    summary = ScheduleGraphAnalysisService().analyze_linear_batches(nodes, metrics_mode="basic")
+
+    assert summary.node_count == 2
+    assert summary.edge_count == 1
+    assert summary.topological_order == ["op:1", "op:2"]
+    assert summary.critical_path == ["op:1", "op:2"]
+    assert summary.critical_path_minutes == 30
+    assert summary.node_metrics == {}
+
+
+def test_analyze_linear_batches_rejects_unknown_metrics_mode() -> None:
+    with pytest.raises(ValueError, match="metrics_mode"):
+        ScheduleGraphAnalysisService().analyze_linear_batches([], metrics_mode="debug")
+
+
 def test_analyze_linear_batches_keeps_batches_separate() -> None:
     nodes = [
         _node(node_id="op:B001:10", batch_id="B001", op_code="B001_10", seq=10, duration_minutes=10),

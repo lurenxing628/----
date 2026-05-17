@@ -7,6 +7,8 @@ import sys
 from dataclasses import asdict
 from typing import Any, Dict, List
 
+import pytest
+
 from core.services.scheduler.graph.precedence_builder import build_linear_edges_by_batch, build_precedence_graph
 from core.services.scheduler.graph.types import OperationGraphEdge, OperationGraphNode
 
@@ -112,6 +114,16 @@ def test_cyclic_graph_reports_false_and_cycle_edge_details() -> None:
     assert {item["kind"] for item in cycle_edges} == {"precedence", "external_lag", "explicit"}
 
 
+def test_cycle_edge_projection_requires_edge_kind_contract() -> None:
+    from core.services.scheduler.graph.validators import find_cycle_edges
+
+    graph = _cycle_graph()
+    del graph.edges["op:1", "op:2"]["kind"]
+
+    with pytest.raises(KeyError, match="kind"):
+        find_cycle_edges(graph)
+
+
 def test_isolated_operation_returns_warning() -> None:
     from core.services.scheduler.graph.validators import collect_graph_warnings, find_isolated_nodes
 
@@ -133,6 +145,17 @@ def test_isolated_operation_returns_warning() -> None:
         "batch_id": "B001",
         "seq": 10,
     }
+
+
+@pytest.mark.parametrize("field_name", ["batch_id", "seq", "op_code"])
+def test_collect_warnings_requires_builder_node_fields(field_name: str) -> None:
+    from core.services.scheduler.graph.validators import collect_graph_warnings
+
+    graph = build_precedence_graph([_node(node_id="op:1", op_code="B001_10", seq=10)], [])
+    del graph.nodes["op:1"][field_name]
+
+    with pytest.raises(KeyError, match=field_name):
+        collect_graph_warnings(graph)
 
 
 def test_duplicate_seq_in_same_batch_returns_warning_with_stable_order() -> None:

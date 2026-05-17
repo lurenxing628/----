@@ -266,6 +266,19 @@ def _graph_analysis_algo_dict(ctx: SummaryBuildContext) -> Dict[str, Any]:
     return {"graph_analysis": dict(ctx.graph_analysis_public)}
 
 
+def _graph_analysis_summary_warning(ctx: SummaryBuildContext) -> Optional[str]:
+    public = ctx.graph_analysis_public if isinstance(ctx.graph_analysis_public, dict) else None
+    if not public:
+        return None
+    status = str(public.get("status") or "").strip().lower()
+    if not status or status == "available":
+        return None
+    reason = str(public.get("reason") or "").strip()
+    message = str(public.get("message") or "").strip()
+    detail = message or reason or status
+    return f"工序图分析没有生成可用报告：{detail}"
+
+
 def _algo_dict(state: AlgorithmSummaryState) -> Dict[str, Any]:
     ctx = state.ctx
     auto_assign_enabled = bool(state.downtime_state.get("auto_assign_enabled"))
@@ -337,6 +350,11 @@ def _build_result_summary_obj(
         _actionable_missing_internal_resource_op_ids(ctx),
     )
     public_algo, optimizer_diagnostics = project_public_algo_summary(_algo_dict(algorithm_state))
+    warnings = list(freeze_state.all_warnings)
+    graph_warning = _graph_analysis_summary_warning(ctx)
+    if graph_warning and graph_warning not in warnings:
+        warnings.append(graph_warning)
+
     result_summary = {
         "summary_schema_version": "1.2",
         "is_simulation": bool(ctx.simulate),
@@ -373,7 +391,7 @@ def _build_result_summary_obj(
         "raw_error_count": len(raw_summary_errors),
         "missing_internal_resource_count": len(missing_resource_ops),
         "missing_internal_resource_ops": missing_resource_ops,
-        "warnings": list(freeze_state.all_warnings),
+        "warnings": warnings,
         "time_cost_ms": int(time_cost_ms),
     }
     diagnostics = dict(optimizer_diagnostics or {})

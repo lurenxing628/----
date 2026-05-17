@@ -8,11 +8,13 @@ _SOURCE_NODE_ID = "__GRAPH_METRICS_SOURCE__"
 
 
 def _node_sort_key(graph: Any, node_id: str) -> Tuple[str, int, str, str]:
+    if node_id == _SOURCE_NODE_ID:
+        return ("", -1, "", str(node_id))
     data = graph.nodes[node_id]
     return (
-        str(data.get("batch_id") or ""),
-        int(data.get("seq") or 0),
-        str(data.get("op_code") or ""),
+        str(data["batch_id"]),
+        int(data["seq"]),
+        str(data["op_code"]),
         str(node_id),
     )
 

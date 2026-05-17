@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping as MappingABC
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Set, Tuple
 
 from .id_policy import GraphNodeIdError, make_operation_node_id
 from .types import OperationGraphNode
@@ -16,11 +16,13 @@ def build_operation_nodes_from_rows(
     *,
     batches: Mapping[str, Any],
     resource_pool: Optional[Mapping[str, Any]] = None,
+    frozen_op_ids: Optional[Iterable[int]] = None,
 ) -> List[OperationGraphNode]:
     nodes: List[OperationGraphNode] = []
     pool = _ResourcePoolView(resource_pool)
+    frozen_ids = _positive_int_set(frozen_op_ids or ())
     for row in rows:
-        nodes.append(_build_operation_node(row, batches=batches, resource_pool=pool))
+        nodes.append(_build_operation_node(row, batches=batches, resource_pool=pool, frozen_op_ids=frozen_ids))
     return nodes
 
 
@@ -31,8 +33,15 @@ class _ResourcePoolView:
         self.machines_by_operator = _mapping_part(resource_pool, "machines_by_operator")
 
 
-def _build_operation_node(row: Any, *, batches: Mapping[str, Any], resource_pool: _ResourcePoolView) -> OperationGraphNode:
+def _build_operation_node(
+    row: Any,
+    *,
+    batches: Mapping[str, Any],
+    resource_pool: _ResourcePoolView,
+    frozen_op_ids: Set[int],
+) -> OperationGraphNode:
     scope = _operation_scope(row)
+    op_id = _operation_id(row)
     batch_id = _require_text(row, "batch_id", scope=scope)
     op_code = _require_text(row, "op_code", scope=scope)
     batch = _require_batch(batches, batch_id, scope=scope)
@@ -66,6 +75,8 @@ def _build_operation_node(row: Any, *, batches: Mapping[str, Any], resource_pool
         "part_no": _optional_text(_read_field(batch, "part_no")),
         "source": source,
         "due_date": _optional_due_date(_read_field(batch, "due_date")),
+        "is_frozen": op_id in frozen_op_ids,
+        "fixed_source": "freeze_window" if op_id in frozen_op_ids else "",
         "op_type_id": _optional_text(_read_field(row, "op_type_id")),
         "machine_id": _optional_text(_read_field(row, "machine_id")),
         "operator_id": _optional_text(_read_field(row, "operator_id")),
@@ -104,6 +115,29 @@ def _read_field(row: Any, field: str) -> Any:
     if isinstance(row, dict):
         return row.get(field)
     return getattr(row, field, None)
+
+
+def _positive_int_set(values: Iterable[int]) -> Set[int]:
+    result: Set[int] = set()
+    for value in values:
+        try:
+            number = int(value)
+        except (TypeError, ValueError):
+            continue
+        if number > 0:
+            result.add(number)
+    return result
+
+
+def _operation_id(row: Any) -> int:
+    value = _read_field(row, "id")
+    if isinstance(value, bool):
+        return 0
+    try:
+        number = int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+    return number if number > 0 else 0
 
 
 def _operation_scope(row: Any) -> str:

@@ -20,6 +20,9 @@ steps:
   - action: "CodeStable 回填：roadmap、items.yaml、architecture 和 feature acceptance 与真实完成范围一致"
     exit_signal: "PR-2 标 done，PR-3 标 done，feature 记录写明已做、未做、验证和 clean proof 口径"
     status: done
+  - action: "阶段 10 图报告加固回填：记录 P1/P2/P3 修复结果，并收紧 PR-4/PR-5 承接边界"
+    exit_signal: "basic metrics、frozen/seed scope、warning.data 深层采样、known graph error 顶层 warning、P3 exporter/config/fail-fast 均进入 acceptance、issue fix-note 和 roadmap/items 追踪"
+    status: done
 
 checks:
   - item: "graph_analysis_mode=off 不 import graph，不要求 NetworkX，不写 graph_analysis"
@@ -57,4 +60,16 @@ checks:
     status: passed
   - item: "Python 3.8 / Win7 兼容，不使用 list[str] 或 str | None 生产类型写法"
     source: ruff and pyright
+    status: passed
+  - item: "basic metrics 写入 public 小摘要，不能只检查 graph_analysis 字段存在"
+    source: scheduler graph report hardening review
+    status: passed
+  - item: "frozen/seed scope 明确为后续 on 模式的已固定前置，不得重新进入待排候选"
+    source: scheduler graph report hardening review
+    status: passed
+  - item: "warning.data 深层采样保持 JSON 可序列化，known graph error 在顶层 public warning/status 可见"
+    source: scheduler graph report hardening review
+    status: passed
+  - item: "P3 exporter/config/fail-fast 边界已回填，PR-4 前不能把万能清洗、绕配置入口或吞未知异常当作通过"
+    source: scheduler graph report hardening review
     status: passed

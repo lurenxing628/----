@@ -77,6 +77,8 @@ class OperationGraphNode:
     priority: str = "normal"
     source: str = "internal"
     status: str = "pending"
+    is_frozen: bool = False
+    fixed_source: str = ""
     due_date: Optional[str] = None
     op_type_id: Optional[str] = None
     machine_id: Optional[str] = None

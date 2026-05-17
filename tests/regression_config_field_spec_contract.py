@@ -39,11 +39,12 @@ def test_config_field_spec_registry_contract() -> None:
     from core.services.scheduler.config.config_field_spec import (
         choice_label_map_for,
         choices_for,
-        default_for,
-        field_label_for,
-        list_config_fields,
-        page_metadata_for,
-    )
+            default_for,
+            field_label_for,
+            get_field_spec,
+            list_config_fields,
+            page_metadata_for,
+        )
 
     field_keys = [spec.key for spec in list_config_fields()]
     fields = set(field_keys)
@@ -137,8 +138,13 @@ def test_config_field_spec_registry_contract() -> None:
     assert metadata["graph_analysis_mode"].choices[0]["value"] == "off"
     assert metadata["graph_analysis_mode"].choices[1]["value"] == "report"
     assert metadata["graph_analysis_mode"].choices[2]["value"] == "on"
+    assert metadata["graph_analysis_mode"].choices[2]["label"] == "按只读报告处理（当前不改排产）"
+    assert "阶段 2" not in metadata["graph_analysis_mode"].hint
+    assert "只生成分析报告" in metadata["graph_analysis_mode"].hint
     assert metadata["graph_critical_weight"].label == "关键路径权重"
-    assert metadata["graph_debug_export"].hint
+    assert "为后续图评分预留" in get_field_spec("graph_critical_weight").description
+    assert "为后续图评分预留" in get_field_spec("graph_impact_weight").description
+    assert "阶段 2" not in metadata["graph_debug_export"].hint
 
 
 def test_config_service_exposes_same_page_metadata_shape() -> None:

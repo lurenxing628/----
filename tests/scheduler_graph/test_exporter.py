@@ -110,6 +110,47 @@ def test_graph_summary_to_dict_is_json_serializable() -> None:
     assert payload["warnings"] == [graph_warning_to_dict(warning)]
 
 
+def test_graph_summary_to_dict_returns_mutation_isolated_payload() -> None:
+    summary = GraphAnalysisSummary(
+        node_count=1,
+        edge_count=0,
+        is_dag=True,
+        cycle_edges=[{"from": "op:1", "to": "op:2", "kind": "precedence"}],
+        topological_order=["op:1"],
+        critical_path=["op:1"],
+        critical_path_minutes=60,
+        node_metrics={
+            "op:1": {
+                "is_on_critical_path": True,
+                "critical_path_rank": 0,
+                "impact_count": 0,
+                "generation_index": 0,
+                "downstream_critical_minutes": 60,
+            }
+        },
+        warnings=[],
+    )
+
+    payload = graph_summary_to_dict(summary)
+
+    assert payload["node_metrics"] is not summary.node_metrics
+    assert payload["node_metrics"]["op:1"] is not summary.node_metrics["op:1"]
+    assert payload["cycle_edges"] is not summary.cycle_edges
+    assert payload["cycle_edges"][0] is not summary.cycle_edges[0]
+    assert payload["topological_order"] is not summary.topological_order
+    assert payload["critical_path"] is not summary.critical_path
+
+    payload["node_metrics"]["op:1"]["impact_count"] = 999
+    payload["cycle_edges"][0]["kind"] = "changed"
+    payload["topological_order"].append("op:2")
+    payload["critical_path"].append("op:2")
+
+    assert summary.node_metrics["op:1"]["impact_count"] == 0
+    assert summary.cycle_edges[0]["kind"] == "precedence"
+    assert summary.topological_order == ["op:1"]
+    assert summary.critical_path == ["op:1"]
+
+
 def test_graph_to_plain_dict_does_not_modify_graph() -> None:
     graph = build_precedence_graph(
         [

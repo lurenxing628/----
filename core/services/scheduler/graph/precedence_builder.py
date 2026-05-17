@@ -117,6 +117,8 @@ def _node_attrs(node: OperationGraphNode) -> Dict[str, Any]:
         "priority": node.priority,
         "source": node.source,
         "status": node.status,
+        "is_frozen": node.is_frozen,
+        "fixed_source": node.fixed_source,
         "due_date": node.due_date,
         "op_type_id": node.op_type_id,
         "machine_id": node.machine_id,

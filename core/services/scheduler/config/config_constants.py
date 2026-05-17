@@ -97,9 +97,9 @@ CONFIG_PAGE_VISIBLE_CHANGE_FIELDS: Tuple[str, ...] = CONFIG_PAGE_FIELDS + (
 )
 CONFIG_PAGE_HIDDEN_REPAIR_FIELDS: Tuple[str, ...] = ("auto_assign_persist",)
 
-GRAPH_CONFIG_PENDING_NOTICE = "当前版本仅保存工序图分析配置，不执行图分析、不改变排产结果；report/on 将在后续阶段接入。"
+GRAPH_CONFIG_PENDING_NOTICE = "off 会关闭工序图分析；report 会生成只读报告，不改变排产结果；on 当前先按 report-only 生成报告。"
 GRAPH_CONFIG_PENDING_ACTIVE_NOTICE = (
-    "已保存为 report/on，但当前构建尚未接入图分析执行链路；排产结果不会因此改变。"
+    "已保存为 report/on。本阶段会生成图分析报告，但不会让图分析参与 ready 队列、评分或多方案择优。"
 )
 
 HOLIDAY_DEFAULT_EFFICIENCY_PAGE_WARNING_TEMPLATE = (

@@ -11,6 +11,10 @@ _GRAPH_CRITICAL_PATH_SAMPLE_LIMIT = 50
 _GRAPH_WARNING_SAMPLE_LIMIT = 20
 _GRAPH_CYCLE_EDGE_SAMPLE_LIMIT = 20
 _GRAPH_NODE_METRIC_SAMPLE_LIMIT = 20
+_GRAPH_WARNING_DATA_LIST_SAMPLE_LIMIT = 20
+_GRAPH_WARNING_DATA_DICT_FIELD_LIMIT = 20
+_GRAPH_INPUT_SCOPE = "all_algo_ops_with_frozen_markers"
+_JSON_SCALAR_TYPES = (str, int, float, bool)
 
 
 def _elapsed_ms(started: float) -> int:
@@ -45,16 +49,19 @@ def _build_schedule_graph_analysis_projection(
     from core.services.scheduler.graph.precedence_builder import GraphBuildContractError
 
     started = time.time()
+    scope = _graph_input_scope(schedule_input)
     try:
         nodes = build_operation_nodes_from_rows(
-            schedule_input.algo_ops_to_schedule,
+            schedule_input.algo_ops,
             batches=schedule_input.batches,
             resource_pool=schedule_input.resource_pool,
+            frozen_op_ids=schedule_input.frozen_op_ids,
         )
-        summary = ScheduleGraphAnalysisService().analyze_linear_batches(nodes)
+        scope = _graph_input_scope(schedule_input, nodes=nodes)
+        summary = ScheduleGraphAnalysisService().analyze_linear_batches(nodes, metrics_mode="basic")
         payload = graph_summary_to_dict(summary)
     except NetworkXUnavailable as exc:
-        return _graph_unavailable_projection(mode=mode, exc=exc, elapsed_ms=_elapsed_ms(started))
+        return _graph_unavailable_projection(mode=mode, exc=exc, elapsed_ms=_elapsed_ms(started), scope=scope)
     except GraphInputContractError as exc:
         return _graph_contract_error_projection(
             mode=mode,
@@ -62,6 +69,7 @@ def _build_schedule_graph_analysis_projection(
             reason="graph_input_contract_error",
             exc=exc,
             elapsed_ms=_elapsed_ms(started),
+            scope=scope,
         )
     except GraphBuildContractError as exc:
         return _graph_contract_error_projection(
@@ -70,13 +78,29 @@ def _build_schedule_graph_analysis_projection(
             reason="graph_build_contract_error",
             exc=exc,
             elapsed_ms=_elapsed_ms(started),
+            scope=scope,
         )
 
     return _project_graph_analysis_payload(
         mode=mode,
         payload=payload,
         elapsed_ms=_elapsed_ms(started),
+        scope=scope,
     )
+
+
+def _graph_input_scope(schedule_input: ScheduleRunInput, *, nodes: Optional[List[Any]] = None) -> Dict[str, Any]:
+    if nodes is None:
+        frozen_node_count = len(schedule_input.frozen_op_ids or set())
+    else:
+        frozen_node_count = sum(1 for node in nodes if bool(node.is_frozen))
+    return {
+        "input_scope": _GRAPH_INPUT_SCOPE,
+        "total_algo_op_count": int(len(schedule_input.algo_ops or [])),
+        "reschedulable_unfrozen_op_count": int(len(schedule_input.algo_ops_to_schedule or [])),
+        "frozen_node_count": int(frozen_node_count),
+        "seed_result_count": int(len(schedule_input.seed_results or [])),
+    }
 
 
 def _effective_graph_analysis_mode(mode: str) -> str:
@@ -90,6 +114,7 @@ def _graph_unavailable_projection(
     mode: str,
     exc: Exception,
     elapsed_ms: int,
+    scope: Dict[str, Any],
 ) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]]]:
     return (
         {
@@ -99,6 +124,7 @@ def _graph_unavailable_projection(
             "reason": "networkx_unavailable",
             "message": str(exc),
             "time_cost_ms": int(elapsed_ms),
+            **dict(scope),
         },
         None,
     )
@@ -111,6 +137,7 @@ def _graph_contract_error_projection(
     reason: str,
     exc: Exception,
     elapsed_ms: int,
+    scope: Dict[str, Any],
 ) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]]]:
     return (
         {
@@ -120,6 +147,7 @@ def _graph_contract_error_projection(
             "reason": reason,
             "message": str(exc),
             "time_cost_ms": int(elapsed_ms),
+            **dict(scope),
         },
         None,
     )
@@ -133,11 +161,66 @@ def _sample(values: List[Any], limit: int) -> List[Any]:
     return list(values[: int(limit)])
 
 
+def _project_warning_data_value(value: Any) -> Tuple[Any, bool]:
+    if value is None or isinstance(value, _JSON_SCALAR_TYPES):
+        return value, False
+    if isinstance(value, tuple):
+        value = list(value)
+    if isinstance(value, list):
+        projected_items: List[Any] = []
+        truncated_any = _truncated(value, _GRAPH_WARNING_DATA_LIST_SAMPLE_LIMIT)
+        for item in _sample(value, _GRAPH_WARNING_DATA_LIST_SAMPLE_LIMIT):
+            projected_item, item_truncated = _project_warning_data_value(item)
+            projected_items.append(projected_item)
+            truncated_any = truncated_any or item_truncated
+        return projected_items, truncated_any
+    if isinstance(value, dict):
+        items = list(value.items())
+        projected: Dict[str, Any] = {}
+        truncated_any = _truncated(items, _GRAPH_WARNING_DATA_DICT_FIELD_LIMIT)
+        for raw_key, raw_value in items[:_GRAPH_WARNING_DATA_DICT_FIELD_LIMIT]:
+            projected_value, value_truncated = _project_warning_data_value(raw_value)
+            projected[str(raw_key)] = projected_value
+            truncated_any = truncated_any or value_truncated
+        if len(items) > _GRAPH_WARNING_DATA_DICT_FIELD_LIMIT:
+            projected["_field_count"] = int(len(items))
+            projected["_fields_truncated"] = True
+        return projected, truncated_any
+    return {"unsupported_value_type": type(value).__name__}, True
+
+
+def _project_warning_data(raw_data: Any) -> Tuple[Dict[str, Any], bool]:
+    if not isinstance(raw_data, dict):
+        return {"unsupported_data_type": type(raw_data).__name__}, True
+    projected: Dict[str, Any] = {}
+    items = list(raw_data.items())
+    truncated_any = _truncated(items, _GRAPH_WARNING_DATA_DICT_FIELD_LIMIT)
+    for key, value in items[:_GRAPH_WARNING_DATA_DICT_FIELD_LIMIT]:
+        key_text = str(key)
+        if isinstance(value, list):
+            sample, sample_truncated = _project_warning_data_value(value)
+            projected[f"{key_text}_sample"] = sample
+            projected[f"{key_text}_count"] = int(len(value))
+            truncated = _truncated(value, _GRAPH_WARNING_DATA_LIST_SAMPLE_LIMIT)
+            projected[f"{key_text}_truncated"] = bool(truncated or sample_truncated)
+            truncated_any = truncated_any or truncated or sample_truncated
+        else:
+            projected_value, value_truncated = _project_warning_data_value(value)
+            projected[key_text] = projected_value
+            truncated_any = truncated_any or value_truncated
+    if len(items) > _GRAPH_WARNING_DATA_DICT_FIELD_LIMIT:
+        projected["_field_count"] = int(len(items))
+        projected["_fields_truncated"] = True
+    return projected, truncated_any
+
+
 def _project_warning(warning: Dict[str, Any]) -> Dict[str, Any]:
+    data, warning_data_truncated = _project_warning_data(warning.get("data"))
     return {
         "code": warning["code"],
         "message": warning["message"],
-        "data": dict(warning.get("data") or {}),
+        "data": data,
+        "warning_data_truncated": bool(warning_data_truncated),
     }
 
 
@@ -169,6 +252,7 @@ def _project_graph_analysis_payload(
     mode: str,
     payload: Dict[str, Any],
     elapsed_ms: int,
+    scope: Dict[str, Any],
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     cycle_edges = list(payload["cycle_edges"])
     topological_order = list(payload["topological_order"])
@@ -188,6 +272,7 @@ def _project_graph_analysis_payload(
         "warning_count": int(len(warnings)),
         "cycle_edge_count": int(len(cycle_edges)),
         "time_cost_ms": int(elapsed_ms),
+        **dict(scope),
     }
     diagnostics = {
         "topological_order_sample": _sample(topological_order, _GRAPH_TOPOLOGICAL_SAMPLE_LIMIT),
@@ -209,6 +294,7 @@ def _project_graph_analysis_payload(
             list(node_metrics),
             _GRAPH_NODE_METRIC_SAMPLE_LIMIT,
         ),
+        "node_metrics_status": "available" if node_metrics else "skipped_basic_report",
     }
     return public, diagnostics
 

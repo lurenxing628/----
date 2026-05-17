@@ -19,6 +19,11 @@ _PUBLIC_GRAPH_KEYS = {
     "warning_count",
     "cycle_edge_count",
     "time_cost_ms",
+    "input_scope",
+    "total_algo_op_count",
+    "reschedulable_unfrozen_op_count",
+    "frozen_node_count",
+    "seed_result_count",
 }
 _FORBIDDEN_LOG_KEYS = {
     "diagnostics",
@@ -117,6 +122,11 @@ def _result_summary_obj() -> Dict[str, Any]:
                 "warning_count": 0,
                 "cycle_edge_count": 0,
                 "time_cost_ms": 4,
+                "input_scope": "all_algo_ops_with_frozen_markers",
+                "total_algo_op_count": 2,
+                "reschedulable_unfrozen_op_count": 2,
+                "frozen_node_count": 0,
+                "seed_result_count": 0,
             }
         },
         "diagnostics": {

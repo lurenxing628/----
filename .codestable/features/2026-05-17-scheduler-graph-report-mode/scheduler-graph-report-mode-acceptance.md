@@ -48,7 +48,7 @@ accepted_at: 2026-05-17
 ## 4. 验收核对
 
 - off 模式不 import graph 模块，不要求 NetworkX，不写 graph_analysis。
-- report 模式只读取 `schedule_input.cfg`、`algo_ops_to_schedule`、`batches`、`resource_pool`。
+- report 模式读取 `schedule_input.cfg`、完整 `algo_ops`、`algo_ops_to_schedule` 计数、`batches`、`resource_pool`、`frozen_op_ids` 和 `seed_results` 计数；冻结工序只作为图节点标记，不重新参与排产评分。
 - on 模式在本阶段只输出 report-only 摘要。
 - public 小摘要不包含 `topological_order_sample`、`critical_path_sample`、`node_metrics_sample`、`nodes`、`edges`、`raw`。
 - diagnostics 不包含完整 `topological_order`、完整 `node_metrics`、`nodes`、`edges`、`raw`。
@@ -61,7 +61,7 @@ accepted_at: 2026-05-17
 
 ## 5. 验证结果
 
-- `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_scheduler_graph_report_mode_contract.py tests/regression_scheduler_graph_summary_contract.py tests/regression_scheduler_graph_operation_logs_contract.py`：通过，9 passed。
+- `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_scheduler_graph_report_mode_contract.py tests/regression_scheduler_graph_report_mode_service_contract.py tests/regression_scheduler_graph_summary_contract.py tests/regression_scheduler_graph_operation_logs_contract.py`：通过，17 passed。
 - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_schedule_orchestrator_contract.py tests/regression_schedule_service_facade_delegation.py tests/regression_scheduler_summary_result_summary_contract.py tests/regression_schedule_summary_size_guard_large_lists.py tests/regression_scheduler_graph_lazy_runtime_contract.py`：通过，12 passed。
 - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/scheduler_graph`：通过，151 passed。
 - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler/run/schedule_orchestrator.py core/services/scheduler/summary core/services/scheduler/graph tests/regression_scheduler_graph_report_mode_contract.py tests/regression_scheduler_graph_summary_contract.py tests/regression_scheduler_graph_operation_logs_contract.py`：通过。
@@ -72,6 +72,8 @@ accepted_at: 2026-05-17
 ## 6. Proof 口径
 
 - 本验收记录证明阶段 10 相关代码、测试、baseline 对比、ruff 和 pyright 已通过。
+- 2026-05-18 阶段 10 图报告加固已补充 P1/P2/P3 证据口径：basic metrics、frozen/seed scope、`warning.data` 深层 JSON 安全投影、known graph error 顶层 warning、P3 exporter/config/fail-fast 均已纳入追踪。
+- 2026-05-18 追加服务级真实路径回归：同一份最小排产数据分别以 off/report/on 跑 `ScheduleService.run_schedule()`，确认 Schedule 行、summary counts 不变；report/on 只新增图报告，且 basic report 不生成全量 `node_metrics`。
 - 当前没有 clean-worktree final proof，因为阶段 10 的代码和 CodeStable 回填尚未提交。
 - `scripts/run_quality_gate.py --require-clean-worktree` 必须等本阶段改动提交、工作区干净后再跑，不能用当前 dirty worktree 冒充 clean proof。
 
@@ -89,7 +91,8 @@ accepted_at: 2026-05-17
 
 ## 9. 遗留
 
-- 后续阶段 11 处理有环阻止策略。
+- 后续 PR-4 已从“调试导出和性能证据”调整为“性能护栏 + diagnostics 加固 + 真实集成证明”：先证明 2000 节点性能、采样诊断、warning 顶层可见性、真实排产链路和配置 fail-fast 都稳，再考虑受控导出。
+- PR-5 on 模式 ready 队列仍被 PR-4 证据阻塞。PR-5 不能只承接“report 模式字段存在”，必须承接“report 模式在性能、diagnostics、frozen/seed scope 和真实集成链路上都有证明”。
+- 后续阶段 11 处理有环阻止策略，但不能替代 PR-4 的性能和 diagnostics 证明。
 - 后续阶段 12 / 13 才能让 on 模式接 ready 队列和评分。
-- 后续阶段 13 之后才考虑受控图导出或调试入口。
 - 提交后仍需要在干净工作区运行最终 quality gate。

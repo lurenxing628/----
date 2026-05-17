@@ -164,6 +164,8 @@ def test_build_precedence_graph_copies_node_attributes() -> None:
         "merge_context_degraded": True,
         "candidate_machine_ids": ["M01", "M02"],
         "candidate_operator_ids": ["U01", "U02"],
+        "is_frozen": False,
+        "fixed_source": "",
         "raw": {"row_id": 1, "source": "external"},
     }
     assert attrs["raw"] is not node.raw

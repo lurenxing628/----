@@ -306,22 +306,22 @@ _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
         field_type="enum",
         default="off",
         label="工序图分析",
-        description="NetworkX 工序依赖图分析模式：关闭 / 只生成报告 / 参与排产",
+        description="NetworkX 工序依赖图分析模式：关闭 / 只生成报告 / 当前按只读报告处理",
         choices=("off", "report", "on"),
         choice_labels={
             "off": "关闭",
             "report": "只生成分析报告，不改变排产结果",
-            "on": "参与排产（试验）",
+            "on": "按只读报告处理（当前不改排产）",
         },
         page_metadata=ConfigFieldPageMetadata(
             key="graph_analysis_mode",
             label="工序图分析",
-            hint="默认关闭。阶段 2 只保存配置，不执行图分析；report/on 将在后续阶段生效。",
+            hint="默认关闭。off 不加载图分析；report 只生成分析报告，不改排产结果；on 当前先按 report-only 生成报告。",
             choices=_choice_pairs(
                 {
                     "off": "关闭",
                     "report": "只生成分析报告，不改变排产结果",
-                    "on": "参与排产（试验）",
+                    "on": "按只读报告处理（当前不改排产）",
                 }
             ),
         ),
@@ -337,7 +337,7 @@ _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
         page_metadata=ConfigFieldPageMetadata(
             key="graph_block_on_cycle",
             label="遇到循环依赖时停止排产",
-            hint="默认关闭。阶段 2 只保存配置；report 模式只提示，on 模式后续才会按该开关处理。",
+            hint="默认关闭。当前 report/on 只提示循环依赖，不阻止排产；后续 on 模式接入主链前再启用阻止策略。",
         ),
     ),
     ConfigFieldSpec(
@@ -345,12 +345,12 @@ _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
         field_type="int",
         default=500,
         label="关键路径权重",
-        description="图分析参与排产时，关键路径工序的加分权重",
+        description="为后续图评分预留的关键路径权重；当前不改变排产结果",
         min_value=0,
         page_metadata=ConfigFieldPageMetadata(
             key="graph_critical_weight",
             label="关键路径权重",
-            hint="阶段 2 仅保存配置；后续 on 模式评分时使用。建议先保持默认。",
+            hint="当前仅保存为后续评分配置；阶段 10 report/on 不使用它改变排产结果。建议先保持默认。",
         ),
     ),
     ConfigFieldSpec(
@@ -358,12 +358,12 @@ _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
         field_type="int",
         default=10,
         label="后续影响权重",
-        description="图分析参与排产时，后续影响范围的加分权重",
+        description="为后续图评分预留的后续影响权重；当前不改变排产结果",
         min_value=0,
         page_metadata=ConfigFieldPageMetadata(
             key="graph_impact_weight",
             label="后续影响权重",
-            hint="阶段 2 仅保存配置；后续 on 模式评分时使用。建议先保持默认。",
+            hint="当前仅保存为后续评分配置；阶段 10 report/on 不使用它改变排产结果。建议先保持默认。",
         ),
     ),
     ConfigFieldSpec(
@@ -377,7 +377,7 @@ _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
         page_metadata=ConfigFieldPageMetadata(
             key="graph_debug_export",
             label="导出图分析调试文件",
-            hint="默认关闭。阶段 2 只保存配置；后续 graph_debug_export=yes 时才写 logs/schedule_graph/。",
+            hint="默认关闭。当前不会写调试文件；后续 debug/export 阶段才会写 logs/schedule_graph/。",
         ),
     ),
 )

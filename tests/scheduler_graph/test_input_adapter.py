@@ -86,6 +86,20 @@ def test_build_external_operation_node_duration() -> None:
     assert nodes[0].source == "external"
 
 
+def test_frozen_operation_marks_fixed_node_without_changing_duration() -> None:
+    nodes = build_operation_nodes_from_rows(
+        [_internal_row(id=1), _internal_row(id=2, op_code="B001_20", seq=20)],
+        batches={"B001": _batch()},
+        frozen_op_ids={1},
+    )
+
+    assert nodes[0].is_frozen is True
+    assert nodes[0].fixed_source == "freeze_window"
+    assert nodes[0].duration_minutes == 360
+    assert nodes[1].is_frozen is False
+    assert nodes[1].fixed_source == ""
+
+
 def test_build_merged_external_operation_node_duration() -> None:
     row = _external_row(ext_days=2, ext_group_id="EG01", ext_merge_mode="merged", ext_group_total_days=3)
 

@@ -9,9 +9,9 @@ from .types import GraphWarning
 def _node_sort_key(graph: Any, node_id: str) -> Tuple[str, int, str, str]:
     data = graph.nodes[node_id]
     return (
-        str(data.get("batch_id") or ""),
-        int(data.get("seq") or 0),
-        str(data.get("op_code") or ""),
+        str(data["batch_id"]),
+        int(data["seq"]),
+        str(data["op_code"]),
         str(node_id),
     )
 
@@ -38,9 +38,9 @@ def find_cycle_edges(graph: Any) -> List[Dict[str, Any]]:
             {
                 "from": from_node_id,
                 "to": to_node_id,
-                "from_op_code": graph.nodes[from_node_id].get("op_code", from_node_id),
-                "to_op_code": graph.nodes[to_node_id].get("op_code", to_node_id),
-                "kind": edge_data.get("kind", "precedence"),
+                "from_op_code": graph.nodes[from_node_id]["op_code"],
+                "to_op_code": graph.nodes[to_node_id]["op_code"],
+                "kind": edge_data["kind"],
             }
         )
     return result
@@ -58,10 +58,8 @@ def find_duplicate_seq_warnings(graph: Any) -> List[GraphWarning]:
     grouped: Dict[Tuple[str, int], List[str]] = {}
 
     for node_id, data in graph.nodes(data=True):
-        batch_id = data.get("batch_id")
-        seq = data.get("seq")
-        if not batch_id or seq is None:
-            continue
+        batch_id = data["batch_id"]
+        seq = data["seq"]
         key = (str(batch_id), int(seq))
         grouped.setdefault(key, []).append(node_id)
 
@@ -71,7 +69,7 @@ def find_duplicate_seq_warnings(graph: Any) -> List[GraphWarning]:
         node_ids = sorted(grouped[key], key=lambda item: _node_sort_key(graph, item))
         if len(node_ids) <= 1:
             continue
-        op_codes = [str(graph.nodes[node_id].get("op_code") or "") for node_id in node_ids]
+        op_codes = [str(graph.nodes[node_id]["op_code"]) for node_id in node_ids]
         warnings.append(
             GraphWarning(
                 code="DUPLICATE_SEQ",
@@ -93,16 +91,16 @@ def collect_graph_warnings(graph: Any) -> List[GraphWarning]:
 
     for node_id in find_isolated_nodes(graph):
         data = graph.nodes[node_id]
-        op_code = data.get("op_code")
+        op_code = data["op_code"]
         warnings.append(
             GraphWarning(
                 code="ISOLATED_OPERATION",
-                message=f"发现孤立工序：{op_code or node_id}",
+                message=f"发现孤立工序：{op_code}",
                 data={
                     "node_id": node_id,
                     "op_code": op_code,
-                    "batch_id": data.get("batch_id"),
-                    "seq": data.get("seq"),
+                    "batch_id": data["batch_id"],
+                    "seq": data["seq"],
                 },
             )
         )

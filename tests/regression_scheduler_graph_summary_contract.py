@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from types import SimpleNamespace
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from core.algorithms.evaluation import ScheduleMetrics
 from core.services.scheduler.run.schedule_graph_report import _project_graph_analysis_payload
@@ -85,10 +86,20 @@ def _graph_payload(size: int = 60) -> Dict[str, Any]:
     }
 
 
+def _scope(size: int = 60) -> Dict[str, Any]:
+    return {
+        "input_scope": "all_algo_ops_with_frozen_markers",
+        "total_algo_op_count": size,
+        "reschedulable_unfrozen_op_count": size,
+        "frozen_node_count": 0,
+        "seed_result_count": 0,
+    }
+
+
 def _ctx(
     *,
     graph_analysis_public: Dict[str, Any],
-    graph_analysis_diagnostics: Dict[str, Any],
+    graph_analysis_diagnostics: Optional[Dict[str, Any]],
 ) -> SummaryBuildContext:
     start = datetime(2026, 4, 1, 8, 0, 0)
     end = datetime(2026, 4, 1, 10, 0, 0)
@@ -151,6 +162,7 @@ def test_graph_projection_keeps_public_summary_small_and_samples_diagnostics() -
         mode="on",
         payload=_graph_payload(),
         elapsed_ms=7,
+        scope=_scope(),
     )
 
     assert public["mode"] == "on"
@@ -178,7 +190,137 @@ def test_graph_projection_keeps_public_summary_small_and_samples_diagnostics() -
     assert len(diagnostics["node_metrics_sample"]) == 20
     assert diagnostics["node_metrics_count"] == 60
     assert diagnostics["node_metrics_truncated"] is True
+    assert diagnostics["node_metrics_status"] == "available"
     assert diagnostics["node_metrics_sample"][0]["node_id"] == "op:B001:OP000:0"
+
+
+def test_graph_warning_data_lists_are_sampled_inside_warning_projection() -> None:
+    payload = _graph_payload(size=30)
+    payload["warnings"] = [
+        {
+            "code": "GRAPH_HAS_CYCLE",
+            "message": "cycle",
+            "data": {
+                "cycle_edges": [
+                    {"from": f"op:{index}", "to": f"op:{index + 1}", "kind": "precedence"}
+                    for index in range(30)
+                ],
+                "batch_id": "B001",
+            },
+        }
+    ]
+
+    _public, diagnostics = _project_graph_analysis_payload(
+        mode="report",
+        payload=payload,
+        elapsed_ms=3,
+        scope=_scope(30),
+    )
+
+    warning = diagnostics["warnings_sample"][0]
+    data = warning["data"]
+    assert warning["warning_data_truncated"] is True
+    assert len(data["cycle_edges_sample"]) == 20
+    assert data["cycle_edges_count"] == 30
+    assert data["cycle_edges_truncated"] is True
+    assert data["batch_id"] == "B001"
+
+
+def test_graph_warning_data_projection_is_deep_json_safe() -> None:
+    payload = _graph_payload(size=3)
+    payload["warnings"] = [
+        {
+            "code": "DUPLICATE_SEQ",
+            "message": "duplicate",
+            "data": {
+                "node_ids": [object()] + [f"op:{index}" for index in range(30)],
+                "nested": {
+                    "bad": object(),
+                    "items": [object(), {"ok": "yes"}],
+                },
+                "wide": {f"k{index}": index for index in range(25)},
+            },
+        }
+    ]
+
+    _public, diagnostics = _project_graph_analysis_payload(
+        mode="report",
+        payload=payload,
+        elapsed_ms=3,
+        scope=_scope(3),
+    )
+
+    json.dumps(diagnostics, ensure_ascii=False)
+    warning = diagnostics["warnings_sample"][0]
+    data = warning["data"]
+    assert warning["warning_data_truncated"] is True
+    assert data["node_ids_sample"][0] == {"unsupported_value_type": "object"}
+    assert data["node_ids_count"] == 31
+    assert data["node_ids_truncated"] is True
+    assert data["nested"]["bad"] == {"unsupported_value_type": "object"}
+    assert data["nested"]["items"][0] == {"unsupported_value_type": "object"}
+    assert data["wide"]["_field_count"] == 25
+    assert data["wide"]["_fields_truncated"] is True
+
+
+def test_graph_warning_data_projection_limits_top_level_fields() -> None:
+    payload = _graph_payload(size=3)
+    payload["warnings"] = [
+        {
+            "code": "WIDE_DATA",
+            "message": "wide",
+            "data": {f"k{index}": index for index in range(5000)},
+        }
+    ]
+
+    _public, diagnostics = _project_graph_analysis_payload(
+        mode="report",
+        payload=payload,
+        elapsed_ms=3,
+        scope=_scope(3),
+    )
+
+    data = diagnostics["warnings_sample"][0]["data"]
+    assert diagnostics["warnings_sample"][0]["warning_data_truncated"] is True
+    assert data["_field_count"] == 5000
+    assert data["_fields_truncated"] is True
+    assert "k20" not in data
+    assert len(data) == 22
+    json.dumps(diagnostics, ensure_ascii=False)
+
+
+def test_graph_warning_data_projection_marks_non_dict_data() -> None:
+    payload = _graph_payload(size=3)
+    payload["warnings"] = [{"code": "BAD_DATA", "message": "bad", "data": [object()]}]
+
+    _public, diagnostics = _project_graph_analysis_payload(
+        mode="report",
+        payload=payload,
+        elapsed_ms=3,
+        scope=_scope(3),
+    )
+
+    warning = diagnostics["warnings_sample"][0]
+    assert warning["warning_data_truncated"] is True
+    assert warning["data"] == {"unsupported_data_type": "list"}
+    json.dumps(diagnostics, ensure_ascii=False)
+
+
+def test_graph_projection_marks_basic_report_when_node_metrics_are_skipped() -> None:
+    payload = _graph_payload(size=3)
+    payload["node_metrics"] = {}
+
+    _public, diagnostics = _project_graph_analysis_payload(
+        mode="report",
+        payload=payload,
+        elapsed_ms=3,
+        scope=_scope(3),
+    )
+
+    assert diagnostics["node_metrics_sample"] == []
+    assert diagnostics["node_metrics_count"] == 0
+    assert diagnostics["node_metrics_truncated"] is False
+    assert diagnostics["node_metrics_status"] == "skipped_basic_report"
 
 
 def test_summary_assembly_keeps_graph_public_and_diagnostics_separate() -> None:
@@ -186,6 +328,7 @@ def test_summary_assembly_keeps_graph_public_and_diagnostics_separate() -> None:
         mode="report",
         payload=_graph_payload(size=3),
         elapsed_ms=3,
+        scope=_scope(3),
     )
     svc = SimpleNamespace(
         _format_dt=lambda value: value.strftime("%Y-%m-%d %H:%M:%S"),
@@ -207,3 +350,37 @@ def test_summary_assembly_keeps_graph_public_and_diagnostics_separate() -> None:
     assert "optimizer" in result_summary_obj["diagnostics"]
     assert "graph_analysis" not in result_summary_obj["diagnostics"]["optimizer"]
     assert _PUBLIC_FORBIDDEN_KEYS.isdisjoint(graph_public)
+
+
+def test_known_graph_error_adds_top_level_warning_without_errors_or_diagnostics() -> None:
+    public = {
+        "mode": "report",
+        "effective_mode": "report",
+        "status": "unavailable",
+        "reason": "networkx_unavailable",
+        "message": "缺少可选依赖 networkx==3.1",
+        "time_cost_ms": 3,
+        "input_scope": "all_algo_ops_with_frozen_markers",
+        "total_algo_op_count": 1,
+        "reschedulable_unfrozen_op_count": 1,
+        "frozen_node_count": 0,
+        "seed_result_count": 0,
+    }
+    svc = SimpleNamespace(
+        _format_dt=lambda value: value.strftime("%Y-%m-%d %H:%M:%S"),
+        _normalize_text=lambda value: str(value).strip() if value else None,
+    )
+
+    _overdue, result_status, result_summary_obj, _json, _time_cost_ms = build_result_summary(
+        svc,
+        ctx=_ctx(
+            graph_analysis_public=public,
+            graph_analysis_diagnostics=None,
+        ),
+    )
+
+    assert result_status == "simulated"
+    assert result_summary_obj["errors"] == []
+    assert "graph_analysis" not in result_summary_obj.get("diagnostics", {})
+    assert result_summary_obj["algo"]["graph_analysis"] == public
+    assert result_summary_obj["warnings"] == ["工序图分析没有生成可用报告：缺少可选依赖 networkx==3.1"]

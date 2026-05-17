@@ -115,6 +115,23 @@ def test_cycle_topology_exposes_networkx_unfeasible() -> None:
         get_topological_order(graph)
 
 
+@pytest.mark.parametrize("field_name", ["batch_id", "seq", "op_code"])
+def test_topology_sort_key_requires_builder_node_fields(field_name: str) -> None:
+    from core.services.scheduler.graph.metrics import get_topological_order
+
+    graph = build_precedence_graph(
+        [
+            _node(node_id="op:A", op_code="B001_10", seq=10),
+            _node(node_id="op:B", op_code="B001_20", seq=20),
+        ],
+        [],
+    )
+    del graph.nodes["op:A"][field_name]
+
+    with pytest.raises(KeyError, match=field_name):
+        get_topological_order(graph)
+
+
 def test_metrics_module_does_not_import_upper_graph_layers() -> None:
     forbidden_modules = [
         "core.services.scheduler.graph.validators",

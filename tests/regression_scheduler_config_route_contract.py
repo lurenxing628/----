@@ -280,6 +280,10 @@ def test_scheduler_config_route_uses_request_services(monkeypatch) -> None:
     assert payload["current_config_state"]["label"] == "当前以手动设置为准。"
     assert payload["auto_assign_persist_state"]["enabled"] is True
     assert payload["auto_assign_persist_state"]["label"]
+    notice_text = json.dumps(payload["current_config_notice_items"], ensure_ascii=False)
+    assert "阶段 2" not in notice_text
+    assert "尚未接入" not in notice_text
+    assert "report 会生成只读报告" in notice_text
     toggles = payload["scheduler_config_toggles"]
     assert set(toggles) == {
         "freeze_window_enabled",
@@ -303,6 +307,15 @@ def test_scheduler_config_route_uses_request_services(monkeypatch) -> None:
 
     assert post_response.status_code in (301, 302)
     assert config_service.restore_default_called is True
+
+
+def test_scheduler_config_template_graph_copy_matches_report_only_stage() -> None:
+    template = (REPO_ROOT / "templates/scheduler/config.html").read_text(encoding="utf-8")
+
+    assert "阶段 2 只保存" not in template
+    assert "真正图分析将在后续阶段接入" not in template
+    assert "report 会生成只读图分析报告" in template
+    assert "on 当前先按 report-only 处理" in template
 
 
 def test_scheduler_config_post_uses_atomic_save_entrypoint(monkeypatch) -> None:
