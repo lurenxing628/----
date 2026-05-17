@@ -44,8 +44,6 @@ _SCHEDULER_CONFIG_TOGGLE_FIELDS = frozenset(
         "auto_assign_enabled",
         "ortools_enabled",
         "freeze_window_enabled",
-        "graph_block_on_cycle",
-        "graph_debug_export",
     }
 )
 
@@ -444,11 +442,6 @@ def _collect_scheduler_config_form_payload(form) -> Dict[str, Any]:
         "time_budget_seconds",
         "freeze_window_enabled",
         "freeze_window_days",
-        "graph_analysis_mode",
-        "graph_block_on_cycle",
-        "graph_critical_weight",
-        "graph_impact_weight",
-        "graph_debug_export",
     ):
         if key not in form:
             continue

@@ -5,7 +5,7 @@ from typing import List, Optional
 
 from .migrations.common import MigrationOutcome, column_exists, fallback_log
 
-CURRENT_SCHEMA_VERSION = 9
+CURRENT_SCHEMA_VERSION = 8
 
 
 class MigrationContractError(RuntimeError):

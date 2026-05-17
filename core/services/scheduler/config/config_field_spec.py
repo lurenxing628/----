@@ -43,11 +43,6 @@ _YES_NO_LABELS = {
 
 _YES_NO_CHOICES = tuple(_YES_NO_LABELS.keys())
 _OBJECTIVE_LABELS = _objective_choice_labels()
-_GRAPH_ANALYSIS_MODE_LABELS = {
-    "off": "关闭",
-    "report": "仅保存配置（后续接入报告）",
-    "on": "仅保存配置（后续接入分析）",
-}
 
 _FIELD_LABEL_ALIASES = {
     "preset_name": "方案名称",
@@ -299,75 +294,6 @@ _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
             key="freeze_window_days",
             label="锁定天数",
             unit="天",
-        ),
-    ),
-    ConfigFieldSpec(
-        key="graph_analysis_mode",
-        field_type="enum",
-        default="off",
-        label="工序图分析模式",
-        description="工序图分析模式：off/report/on；当前版本仅保存配置，不执行图分析",
-        choices=("off", "report", "on"),
-        choice_labels=_GRAPH_ANALYSIS_MODE_LABELS,
-        page_metadata=ConfigFieldPageMetadata(
-            key="graph_analysis_mode",
-            label="工序图分析模式",
-            hint="当前版本仅保存该设置；report/on 仍不会执行图分析，不改变排产结果。",
-            choices=_choice_pairs(_GRAPH_ANALYSIS_MODE_LABELS),
-        ),
-    ),
-    ConfigFieldSpec(
-        key="graph_block_on_cycle",
-        field_type="yes_no",
-        default="no",
-        label="图分析发现环时阻止排产",
-        description="工序图分析发现环时是否阻止排产；当前版本仅保存配置，不执行阻断",
-        choices=_YES_NO_CHOICES,
-        choice_labels=_YES_NO_LABELS,
-        page_metadata=ConfigFieldPageMetadata(
-            key="graph_block_on_cycle",
-            label="图分析发现环时阻止排产",
-            hint="当前版本不会执行图分析，因此该开关暂不影响排产结果。",
-        ),
-    ),
-    ConfigFieldSpec(
-        key="graph_critical_weight",
-        field_type="int",
-        default=500,
-        label="工序图关键路径评分权重",
-        description="工序图关键路径评分权重；当前版本仅保存配置，不参与排产评分",
-        min_value=0,
-        page_metadata=ConfigFieldPageMetadata(
-            key="graph_critical_weight",
-            label="工序图关键路径评分权重",
-            hint="当前版本不参与排产评分，先保存为后续阶段参数。",
-        ),
-    ),
-    ConfigFieldSpec(
-        key="graph_impact_weight",
-        field_type="int",
-        default=10,
-        label="工序图后续影响范围评分权重",
-        description="工序图后续影响范围评分权重；当前版本仅保存配置，不参与排产评分",
-        min_value=0,
-        page_metadata=ConfigFieldPageMetadata(
-            key="graph_impact_weight",
-            label="工序图后续影响范围评分权重",
-            hint="当前版本不参与排产评分，先保存为后续阶段参数。",
-        ),
-    ),
-    ConfigFieldSpec(
-        key="graph_debug_export",
-        field_type="yes_no",
-        default="no",
-        label="输出工序图调试文件",
-        description="是否输出工序图分析调试文件；当前版本仅保存配置，不输出文件",
-        choices=_YES_NO_CHOICES,
-        choice_labels=_YES_NO_LABELS,
-        page_metadata=ConfigFieldPageMetadata(
-            key="graph_debug_export",
-            label="输出工序图调试文件",
-            hint="当前版本尚未接入图分析执行链路，因此不会输出调试文件。",
         ),
     ),
 )

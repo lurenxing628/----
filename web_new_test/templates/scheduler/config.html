@@ -17,11 +17,6 @@
   {% set time_budget_seconds_meta = config_field_metadata["time_budget_seconds"] %}
   {% set freeze_window_enabled_meta = config_field_metadata["freeze_window_enabled"] %}
   {% set freeze_window_days_meta = config_field_metadata["freeze_window_days"] %}
-  {% set graph_analysis_mode_meta = config_field_metadata["graph_analysis_mode"] %}
-  {% set graph_critical_weight_meta = config_field_metadata["graph_critical_weight"] %}
-  {% set graph_impact_weight_meta = config_field_metadata["graph_impact_weight"] %}
-  {% set graph_pending_notice = '当前版本仅保存工序图分析配置，不执行图分析、不改变排产结果；report/on 将在后续阶段接入。' %}
-  {% set graph_active_notice = '已保存为 report/on，但当前构建尚未接入图分析执行链路；排产结果不会因此改变。' %}
   {% macro render_config_field_warning(field_key) -%}
     {% set warning = config_field_warnings.get(field_key) %}
     {% if warning %}
@@ -198,55 +193,6 @@
           >
           {{ render_config_field_warning("holiday_default_efficiency") }}
           <div class="scheduler-config-hint">{{ holiday_default_efficiency_meta.hint or '假期也安排生产且未单独填写效率时，系统会使用这里的效率值；请输入大于 0 的数字。' }}</div>
-        </div>
-      </div>
-
-      <div class="card section-card scheduler-graph-config-card">
-        <h4 class="section-title">工序图分析配置</h4>
-        <div class="flash-card flash-info" role="status" aria-live="polite">
-          <div class="scheduler-config-hint">{{ graph_pending_notice }}</div>
-        </div>
-        {% if cfg.graph_analysis_mode != 'off' %}
-          <div class="flash-card flash-warning" role="status" aria-live="polite">
-            <div class="scheduler-config-hint">{{ graph_active_notice }}</div>
-          </div>
-        {% endif %}
-        <div class="scheduler-config-form-grid mt-3">
-          <div class="scheduler-config-field">
-            <label>{{ graph_analysis_mode_meta.label }}</label>
-            <select name="graph_analysis_mode">
-              {% for choice in graph_analysis_mode_meta.choices %}
-                <option value="{{ choice.value }}" {% if cfg.graph_analysis_mode == choice.value %}selected{% endif %}>{{ choice.label }}</option>
-              {% endfor %}
-            </select>
-            <div class="scheduler-config-hint">{{ graph_analysis_mode_meta.hint }}</div>
-            {{ render_config_field_warning("graph_analysis_mode") }}
-          </div>
-
-          <div class="scheduler-config-field">
-            <label>{{ graph_critical_weight_meta.label }}</label>
-            <input name="graph_critical_weight" value="{{ cfg.graph_critical_weight }}">
-            <div class="scheduler-config-hint">{{ graph_critical_weight_meta.hint }}</div>
-            {{ render_config_field_warning("graph_critical_weight") }}
-          </div>
-
-          <div class="scheduler-config-field">
-            <label>{{ graph_impact_weight_meta.label }}</label>
-            <input name="graph_impact_weight" value="{{ cfg.graph_impact_weight }}">
-            <div class="scheduler-config-hint">{{ graph_impact_weight_meta.hint }}</div>
-            {{ render_config_field_warning("graph_impact_weight") }}
-          </div>
-        </div>
-
-        <div class="scheduler-config-switches mt-3">
-          <div class="scheduler-config-switch">
-            {{ ui.toggle(scheduler_config_toggles["graph_block_on_cycle"], class='scheduler-config-switch-main') }}
-            {{ render_config_field_warning("graph_block_on_cycle") }}
-          </div>
-          <div class="scheduler-config-switch">
-            {{ ui.toggle(scheduler_config_toggles["graph_debug_export"], class='scheduler-config-switch-main') }}
-            {{ render_config_field_warning("graph_debug_export") }}
-          </div>
         </div>
       </div>
 

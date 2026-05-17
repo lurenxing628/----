@@ -1,6 +1,6 @@
 roadmap: networkx-scheduler-graph-introduction
 created: 2026-05-08
-last_reviewed: 2026-05-17
+last_reviewed: 2026-05-08
 
 items:
   - slug: networkx-compatibility-decision
@@ -48,7 +48,7 @@ items:
   - slug: scheduler-graph-core-module
     title: PR-2 图分析核心模块
     description: "新增 core/services/scheduler/graph/ 内部模块，包括懒加载、dataclass、节点 ID、input adapter、依赖边、校验、指标、导出和统一分析服务。"
-    status: in-progress
+    status: planned
     feature: null
     minimal_loop: false
     depends_on: [scheduler-graph-config-default-off]
@@ -59,7 +59,7 @@ items:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_graph
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler/graph tests/scheduler_graph
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright core/services/scheduler/graph
-    notes: "NetworkX 只允许在 graph 目录内部懒加载；对外不暴露 nx.DiGraph。2026-05-17 已完成阶段 5 input_adapter.py 和 tests/scheduler_graph/test_input_adapter.py；后续仍需继续阶段 6–9。"
+    notes: "NetworkX 只允许在 graph 目录内部懒加载；对外不暴露 nx.DiGraph。"
 
   - slug: scheduler-graph-report-mode
     title: PR-3 report 模式接入 summary

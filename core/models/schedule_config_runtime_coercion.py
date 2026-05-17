@@ -372,11 +372,6 @@ def ensure_schedule_config_snapshot(
         objective=str(values["objective"]),
         freeze_window_enabled=str(values["freeze_window_enabled"]),
         freeze_window_days=int(values["freeze_window_days"]),
-        graph_analysis_mode=str(values["graph_analysis_mode"]),
-        graph_block_on_cycle=str(values["graph_block_on_cycle"]),
-        graph_critical_weight=int(values["graph_critical_weight"]),
-        graph_impact_weight=int(values["graph_impact_weight"]),
-        graph_debug_export=str(values["graph_debug_export"]),
         degradation_events=tuple(degradation_events_to_dicts(collector.to_list())),
         degradation_counters=merge_degradation_counters(
             getattr(cfg, "degradation_counters", None),

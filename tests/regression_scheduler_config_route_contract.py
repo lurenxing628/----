@@ -113,11 +113,6 @@ class _ConfigServiceStub:
             objective="min_overdue",
             freeze_window_enabled="no",
             freeze_window_days=3,
-            graph_analysis_mode="off",
-            graph_block_on_cycle="no",
-            graph_critical_weight=500,
-            graph_impact_weight=10,
-            graph_debug_export="no",
             degradation_events=(),
         )
         self.apply_result = {
@@ -287,8 +282,6 @@ def test_scheduler_config_route_uses_request_services(monkeypatch) -> None:
         "enforce_ready_default",
         "auto_assign_enabled",
         "ortools_enabled",
-        "graph_block_on_cycle",
-        "graph_debug_export",
     }
     assert toggles["freeze_window_enabled"]["id"] == "freezeWindowEnabled"
     assert toggles["freeze_window_enabled"]["name"] == "freeze_window_enabled"
@@ -296,9 +289,6 @@ def test_scheduler_config_route_uses_request_services(monkeypatch) -> None:
     assert toggles["freeze_window_enabled"]["submitted_value"] == "no"
     assert toggles["ortools_enabled"]["id"] == "orToolsEnabled"
     assert "不保证每次一定更好" in toggles["ortools_enabled"]["desc"]
-    assert toggles["graph_block_on_cycle"]["id"] == "graphBlockOnCycle"
-    assert toggles["graph_debug_export"]["id"] == "graphDebugExport"
-    assert any("当前版本仅保存工序图分析配置" in item["body"] for item in payload["current_config_notice_items"])
 
     post_response = client.post("/scheduler/config/default")
 
@@ -330,11 +320,6 @@ def test_scheduler_config_post_uses_atomic_save_entrypoint(monkeypatch) -> None:
             "time_budget_seconds": "30",
             "freeze_window_enabled": "yes",
             "freeze_window_days": "2",
-            "graph_analysis_mode": "report",
-            "graph_block_on_cycle": "yes",
-            "graph_critical_weight": "500",
-            "graph_impact_weight": "10",
-            "graph_debug_export": "no",
         },
     )
 
@@ -342,8 +327,6 @@ def test_scheduler_config_post_uses_atomic_save_entrypoint(monkeypatch) -> None:
     assert config_service.save_page_config_called is True
     assert config_service.saved_payload["dispatch_mode"] == "sgs"
     assert config_service.saved_payload["priority_weight"] == "0.4"
-    assert config_service.saved_payload["graph_analysis_mode"] == "report"
-    assert config_service.saved_payload["graph_block_on_cycle"] == "yes"
 
 
 def test_scheduler_config_post_parses_toggle_fields_without_order_dependency(monkeypatch) -> None:
@@ -366,10 +349,6 @@ def test_scheduler_config_post_parses_toggle_fields_without_order_dependency(mon
                 ("auto_assign_enabled", "true"),
                 ("ortools_enabled", "0"),
                 ("ortools_enabled", "y"),
-                ("graph_block_on_cycle", "no"),
-                ("graph_block_on_cycle", "on"),
-                ("graph_debug_export", "off"),
-                ("graph_debug_export", "true"),
             ]
         ),
     )
@@ -381,23 +360,6 @@ def test_scheduler_config_post_parses_toggle_fields_without_order_dependency(mon
     assert config_service.saved_payload["enforce_ready_default"] == "yes"
     assert config_service.saved_payload["auto_assign_enabled"] == "yes"
     assert config_service.saved_payload["ortools_enabled"] == "yes"
-    assert config_service.saved_payload["graph_block_on_cycle"] == "yes"
-    assert config_service.saved_payload["graph_debug_export"] == "yes"
-
-
-def test_scheduler_config_page_warns_report_mode_is_pending(monkeypatch) -> None:
-    config_service = _ConfigServiceStub()
-    config_service.snapshot["graph_analysis_mode"] = "report"
-    app = _build_app(monkeypatch, config_service)
-    client = app.test_client()
-
-    response = client.get("/scheduler/config")
-    payload = response.get_json()
-
-    assert response.status_code == 200
-    notice_text = "\n".join(str(item.get("body") or "") for item in payload["current_config_notice_items"])
-    assert "当前版本仅保存工序图分析配置，不执行图分析、不改变排产结果" in notice_text
-    assert "已保存为 report/on，但当前构建尚未接入图分析执行链路" in notice_text
 
 
 def test_scheduler_config_post_rejects_invalid_toggle_value(monkeypatch) -> None:
