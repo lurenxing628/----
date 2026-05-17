@@ -1114,6 +1114,7 @@ graph_analysis_mode=off 不需要安装 NetworkX。
 
 不做静默回退：
 - source 缺失或不是 internal/external，不在本阶段猜测，应抛 GraphInputContractError。
+- 当前老排产链路里，历史数据缺 source 或 source 异常时，部分入口可能会按 internal 继续跑；阶段 5 的图输入合同要比老链路更严格，只吃已经整理好的 OpForScheduleAlgo。
 - seq、duration、quantity 这类影响图结果的字段不合法，应抛 GraphInputContractError。
 - resource_pool 缺少某个映射时，可以得到空候选集合，但必须保持“空”这个事实，不允许回退成“全量设备/全量人员”。
 
@@ -1204,7 +1205,7 @@ resource_pool:
 | `supplier_id` | row.supplier_id | 可为空 |
 | `ext_group_id` | row.ext_group_id | 可为空 |
 | `ext_merge_mode` | row.ext_merge_mode | 可为空 |
-| `ext_group_total_days` | row.ext_group_total_days | 可为空；非空时必须是非负数字 |
+| `ext_group_total_days` | row.ext_group_total_days | 可为空；非空时必须大于 0 |
 | `merge_context_degraded` | row.merge_context_degraded | 布尔值；只做 bool 归一，不据此另造时长默认 |
 | `candidate_machine_ids` | row.machine_id 或 resource_pool.machines_by_op_type | 去重后转 Tuple[str, ...] |
 | `candidate_operator_ids` | row.operator_id 或 resource_pool.operators_by_machine | 去重后转 Tuple[str, ...] |
@@ -1231,7 +1232,9 @@ resource_pool:
 必需校验：
 
 ```text
-setup_hours、unit_hours、quantity、ext_days、ext_group_total_days 不能为负数。
+setup_hours、unit_hours、quantity 不能为负数。
+普通外协 ext_days 必须大于 0。
+merged 外协 ext_group_total_days 必须大于 0。
 source == internal 时，setup_hours、unit_hours、batch.quantity 必须可读。
 source == external 且不是有效 merged 总天数时，ext_days 必须可读。
 duration_minutes 最终不能为负数。
@@ -1242,6 +1245,7 @@ duration_minutes 最终不能为负数。
 ```text
 不要在 input_adapter.py 里给 ext_days 缺失补 1 天。
 如果现有非严格模式需要“外协天数缺失按 1 天继续”，这个语义必须继续由 schedule_input_builder.py 负责。
+如果输入来自 OpForScheduleAlgo，setup_hours 和 unit_hours 已经在上游排产输入构建阶段收口成数字；input_adapter.py 只消费这个结果，不再自己把缺失值补成 0。
 adapter 只消费已经进入 OpForScheduleAlgo 的结果，不能自己再造一套兜底规则。
 ```
 
@@ -1280,6 +1284,13 @@ def _require_nonnegative_float(value: Any, *, field: str, scope: str) -> float:
     if number < 0:
         raise GraphInputContractError("{} 字段 {} 不能为负数：{!r}".format(scope, field, value))
     return number
+
+
+def _require_positive_float(value: Any, *, field: str, scope: str) -> float:
+    number = _require_nonnegative_float(value, field=field, scope=scope)
+    if number <= 0:
+        raise GraphInputContractError("{} 字段 {} 必须大于 0：{!r}".format(scope, field, value))
+    return number
 ```
 
 实现要求：
@@ -1288,6 +1299,8 @@ def _require_nonnegative_float(value: Any, *, field: str, scope: str) -> float:
 只捕获 TypeError / ValueError，不捕获 Exception。
 错误信息必须带 scope，例如 graph_input.op[123] 或 graph_input.batch[B001].seq[10]。
 解析失败时抛 GraphInputContractError，不返回默认值。
+自制工序的 setup_hours、unit_hours、quantity 用 _require_nonnegative_float。
+普通外协 ext_days、merged 外协 ext_group_total_days 用 _require_positive_float。
 ```
 
 ### 5.5 候选资源整理
@@ -1297,10 +1310,25 @@ def _require_nonnegative_float(value: Any, *, field: str, scope: str) -> float:
 设备候选：
 
 ```text
-如果 row.machine_id 有值：
-  candidate_machine_ids = (machine_id,)
-否则如果 row.op_type_id 有值：
-  candidate_machine_ids = resource_pool["machines_by_op_type"][op_type_id] 去重后结果
+先读取：
+  fixed_machine = row.machine_id
+  fixed_operator = row.operator_id
+  op_type_id = row.op_type_id
+  machines_by_op_type = resource_pool["machines_by_op_type"]
+  machines_by_operator = resource_pool["machines_by_operator"]
+  operators_by_machine = resource_pool["operators_by_machine"]
+
+如果 fixed_machine 有值：
+  先得到 candidate_machine_ids = (fixed_machine,)
+  如果 op_type_id 在 machines_by_op_type 里有明确候选池：
+    再把 fixed_machine 和这个候选池取交集。
+    如果 fixed_machine 不在该工种候选池里，candidate_machine_ids = ()。
+否则如果 fixed_operator 有值：
+  先从 machines_by_operator[fixed_operator] 取候选设备。
+  如果 machines_by_operator 里没有，再按当前 auto_assign 口径从 operators_by_machine 反查这个人员能操作的设备。
+  如果 op_type_id 在 machines_by_op_type 里有明确候选池，再和这个候选池取交集。
+否则如果 op_type_id 有值且 machines_by_op_type 里有这个工种：
+  candidate_machine_ids = machines_by_op_type[op_type_id] 去重后结果。
 否则：
   candidate_machine_ids = ()
 ```
@@ -1308,12 +1336,25 @@ def _require_nonnegative_float(value: Any, *, field: str, scope: str) -> float:
 人员候选：
 
 ```text
-如果 row.operator_id 有值：
-  candidate_operator_ids = (operator_id,)
+如果 fixed_operator 有值：
+  如果 candidate_machine_ids 非空：
+    candidate_operator_ids = fixed_operator 和每台候选设备 operators_by_machine[machine_id] 的交集。
+    如果固定人员不在候选设备可用人员里，candidate_operator_ids = ()。
+  否则：
+    candidate_operator_ids = (fixed_operator,)
 否则如果 candidate_machine_ids 非空：
-  candidate_operator_ids = 这些设备在 resource_pool["operators_by_machine"] 下的人员并集，按原顺序去重
+  candidate_operator_ids = 这些设备在 operators_by_machine 下的人员并集，按原顺序去重。
 否则：
   candidate_operator_ids = ()
+```
+
+边界说明：
+
+```text
+阶段 5 只整理图分析能看见的候选范围，不计算最优人机组合。
+阶段 5 不看当前时间轴、不看设备停机、不看人员停机、不看冻结窗口、不做 probe_only 自动分配。
+如果后续要让图分析候选和排产可行性完全一致，应在后续阶段复用 auto_assign 的候选解析 helper，不能在 input_adapter.py 里复制一套复杂派工器。
+resource_pool 本身可能已经按 resource_pool_builder 的既有口径带着更宽的映射；adapter 不再额外回退成全量设备或全量人员。
 ```
 
 禁止：
@@ -1442,11 +1483,14 @@ test_build_merged_external_operation_node_duration:
   merged 外协按 ext_group_total_days 算分钟。
 
 test_candidate_resources_from_resource_pool:
-  没有固定设备时，按 op_type_id 从 machines_by_op_type 取候选设备。
+  没有固定设备和固定人员时，按 op_type_id 从 machines_by_op_type 取候选设备。
   没有固定人员时，按候选设备从 operators_by_machine 取候选人员。
 
 test_fixed_resources_win_over_pool_candidates:
-  row.machine_id / row.operator_id 有值时，固定资源优先。
+  row.machine_id / row.operator_id 有值时，固定资源优先，但仍按 op_type_id 候选池过滤明显不匹配的设备。
+
+test_fixed_operator_resolves_machine_candidates:
+  row.operator_id 有值但 row.machine_id 为空时，先用 machines_by_operator 找候选设备；缺失时按 operators_by_machine 反查。
 
 test_missing_required_field_raises_contract_error:
   batch_id、op_code、seq、source 缺失或非法时抛 GraphInputContractError。
@@ -1456,6 +1500,7 @@ test_invalid_source_raises_contract_error:
 
 test_missing_duration_inputs_raise_contract_error:
   缺 quantity、setup_hours、unit_hours、ext_days 时不静默转 0。
+  ext_days=0 或 ext_group_total_days=0 时抛 GraphInputContractError。
 
 test_raw_snapshot_is_json_serializable_and_frozen:
   json.dumps(dict(node.raw), ensure_ascii=False) 可用；
@@ -1480,6 +1525,8 @@ test_input_adapter_does_not_import_networkx:
 [ ] tests/scheduler_graph/test_input_adapter.py 通过。
 [ ] PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_graph/test_input_adapter.py tests/scheduler_graph/test_graph_types.py tests/scheduler_graph/test_id_policy.py
 [ ] PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler/graph tests/scheduler_graph
+[ ] PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright core/services/scheduler/graph
+[ ] 如果 pyright 仍被 graph/types.py 里的既有 FrozenDict 方法签名问题挡住，本阶段收尾必须一并修掉；不能只说 input_adapter 自己测试通过。
 ```
 
 ## 阶段 6：构建工序依赖图
@@ -3558,4 +3605,4 @@ on 模式：
 
 ## 变更记录
 
-- 2026-05-17：细化阶段 5，把 `input_adapter.py` 的职责、输入合同、字段映射、时长计算、候选资源、raw 快照、错误处理、测试用例和验收命令补到可执行程度；同时把“优雅简洁、不做过度兜底、不做静默回退、不做过度防御性编程、高内聚低耦合”写成阶段 5 的硬要求。
+- 2026-05-17：细化阶段 5，把 `input_adapter.py` 的职责、输入合同、字段映射、时长计算、候选资源、raw 快照、错误处理、测试用例和验收命令补到可执行程度；同时把“优雅简洁、不做过度兜底、不做静默回退、不做过度防御性编程、高内聚低耦合”写成阶段 5 的硬要求；按只读核实结果补准固定人员/固定设备候选资源口径、外协天数必须大于 0、source 严格合同和 pyright 收尾要求。
