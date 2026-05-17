@@ -51,6 +51,11 @@ DEFAULT_TIME_BUDGET_SECONDS = int(default_for("time_budget_seconds"))
 DEFAULT_OBJECTIVE = str(default_for("objective"))
 DEFAULT_FREEZE_WINDOW_ENABLED = str(default_for("freeze_window_enabled"))
 DEFAULT_FREEZE_WINDOW_DAYS = int(default_for("freeze_window_days"))
+DEFAULT_GRAPH_ANALYSIS_MODE = str(default_for("graph_analysis_mode"))
+DEFAULT_GRAPH_BLOCK_ON_CYCLE = str(default_for("graph_block_on_cycle"))
+DEFAULT_GRAPH_CRITICAL_WEIGHT = int(default_for("graph_critical_weight"))
+DEFAULT_GRAPH_IMPACT_WEIGHT = int(default_for("graph_impact_weight"))
+DEFAULT_GRAPH_DEBUG_EXPORT = str(default_for("graph_debug_export"))
 
 VALID_STRATEGIES = choices_for("sort_strategy")
 VALID_ALGO_MODES = choices_for("algo_mode")
@@ -58,6 +63,7 @@ VALID_OBJECTIVES = choices_for("objective")
 VALID_DISPATCH_MODES = choices_for("dispatch_mode")
 VALID_DISPATCH_RULES = choices_for("dispatch_rule")
 STRATEGY_NAME_ZH = choice_label_map_for("sort_strategy")
+VALID_GRAPH_ANALYSIS_MODES = choices_for("graph_analysis_mode")
 
 CONFIG_PAGE_FIELDS: Tuple[str, ...] = (
     "sort_strategy",
@@ -74,6 +80,11 @@ CONFIG_PAGE_FIELDS: Tuple[str, ...] = (
     "time_budget_seconds",
     "freeze_window_enabled",
     "freeze_window_days",
+    "graph_analysis_mode",
+    "graph_block_on_cycle",
+    "graph_critical_weight",
+    "graph_impact_weight",
+    "graph_debug_export",
 )
 CONFIG_PAGE_WRITE_FIELDS: Tuple[str, ...] = CONFIG_PAGE_FIELDS + (
     "priority_weight",
@@ -85,6 +96,11 @@ CONFIG_PAGE_VISIBLE_CHANGE_FIELDS: Tuple[str, ...] = CONFIG_PAGE_FIELDS + (
     "due_weight",
 )
 CONFIG_PAGE_HIDDEN_REPAIR_FIELDS: Tuple[str, ...] = ("auto_assign_persist",)
+
+GRAPH_CONFIG_PENDING_NOTICE = "当前版本仅保存工序图分析配置，不执行图分析、不改变排产结果；report/on 将在后续阶段接入。"
+GRAPH_CONFIG_PENDING_ACTIVE_NOTICE = (
+    "已保存为 report/on，但当前构建尚未接入图分析执行链路；排产结果不会因此改变。"
+)
 
 HOLIDAY_DEFAULT_EFFICIENCY_PAGE_WARNING_TEMPLATE = (
     "“假期工作效率”这项设置现在不能直接用，页面已临时按 {value:g} 显示默认值；"
@@ -117,6 +133,14 @@ __all__ = [
     "CONFIG_PAGE_HIDDEN_REPAIR_FIELDS",
     "CONFIG_PAGE_VISIBLE_CHANGE_FIELDS",
     "CONFIG_PAGE_WRITE_FIELDS",
+    "DEFAULT_GRAPH_ANALYSIS_MODE",
+    "DEFAULT_GRAPH_BLOCK_ON_CYCLE",
+    "DEFAULT_GRAPH_CRITICAL_WEIGHT",
+    "DEFAULT_GRAPH_DEBUG_EXPORT",
+    "DEFAULT_GRAPH_IMPACT_WEIGHT",
+    "GRAPH_CONFIG_PENDING_ACTIVE_NOTICE",
+    "GRAPH_CONFIG_PENDING_NOTICE",
     "HOLIDAY_DEFAULT_EFFICIENCY_PAGE_WARNING_TEMPLATE",
     "PRESET_PREFIX",
+    "VALID_GRAPH_ANALYSIS_MODES",
 ]

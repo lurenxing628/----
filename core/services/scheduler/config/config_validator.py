@@ -170,6 +170,8 @@ def normalize_preset_snapshot(
     auto_assign_persist = _yes_no("auto_assign_persist", str(base.auto_assign_persist))
     ortools_enabled = _yes_no("ortools_enabled", str(base.ortools_enabled))
     freeze_window_enabled = _yes_no("freeze_window_enabled", str(base.freeze_window_enabled))
+    graph_block_on_cycle = _yes_no("graph_block_on_cycle", str(base.graph_block_on_cycle))
+    graph_debug_export = _yes_no("graph_debug_export", str(base.graph_debug_export))
 
     def _choice(key: str, fallback: str) -> str:
         missing, raw = _read(key)
@@ -190,6 +192,7 @@ def normalize_preset_snapshot(
     dr = _choice("dispatch_rule", str(base.dispatch_rule))
     algo_mode = _choice("algo_mode", str(base.algo_mode))
     objective = _choice("objective", str(base.objective))
+    graph_analysis_mode = _choice("graph_analysis_mode", str(base.graph_analysis_mode))
 
     ort_missing, ort_raw = _read("ortools_time_limit_seconds")
     ort_limit = _preset_int(
@@ -218,6 +221,24 @@ def normalize_preset_snapshot(
         missing=fw_missing,
         fallback=int(base.freeze_window_days),
     )
+    graph_critical_missing, graph_critical_raw = _read("graph_critical_weight")
+    graph_critical_weight = _preset_int(
+        "graph_critical_weight",
+        graph_critical_raw,
+        strict_mode=bool(strict_mode),
+        collector=collector,
+        missing=graph_critical_missing,
+        fallback=int(base.graph_critical_weight),
+    )
+    graph_impact_missing, graph_impact_raw = _read("graph_impact_weight")
+    graph_impact_weight = _preset_int(
+        "graph_impact_weight",
+        graph_impact_raw,
+        strict_mode=bool(strict_mode),
+        collector=collector,
+        missing=graph_impact_missing,
+        fallback=int(base.graph_impact_weight),
+    )
 
     return ScheduleConfigSnapshot(
         sort_strategy=st,
@@ -238,6 +259,11 @@ def normalize_preset_snapshot(
         objective=objective,
         freeze_window_enabled=freeze_window_enabled,
         freeze_window_days=int(fw_days),
+        graph_analysis_mode=graph_analysis_mode,
+        graph_block_on_cycle=graph_block_on_cycle,
+        graph_critical_weight=int(graph_critical_weight),
+        graph_impact_weight=int(graph_impact_weight),
+        graph_debug_export=graph_debug_export,
         degradation_events=tuple(degradation_events_to_dicts(collector.to_list())),
         degradation_counters=collector.to_counters(),
     )
