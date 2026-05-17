@@ -3513,82 +3513,298 @@ get_critical_path 直接暴露 KeyError / TypeError / ValueError。
 
 ## 阶段 9：图导出和统一分析服务入口
 
-### 9.1 新建 exporter.py
+阶段 9 是 PR-2 图核心模块的最后一段，不接排产主链，不写 `result_summary`，不碰页面、数据库、SGS、ready queue 或评分。它只把阶段 5 到阶段 8 已经做好的零件串成一个清楚入口，并提供纯 Python / 纯 JSON 友好的导出结果。
+
+大白话说，前面阶段已经能把工序变成节点、把同一批次工序连成边、检查图有没有问题、算拓扑和关键路径。阶段 9 要做的是把这些能力收成两个清楚工具：
+
+```text
+analysis_service.py：
+  给后续阶段 10 调用的统一图分析入口。
+  它负责串联建图、校验、指标和摘要组装。
+
+exporter.py：
+  给测试和后续 debug/export 用的普通 dict 导出工具。
+  它只把 graph / summary 转成 JSON 可序列化数据，不做业务判断。
+```
+
+### 9.0 整体实现要求
+
+本阶段必须把下面这些实现原则当成硬约束写进设计、代码和验收里：
+
+```text
+优雅简洁：
+- analysis_service.py 只做编排，不重新实现 input_adapter、precedence_builder、validators、metrics 里的逻辑。
+- exporter.py 只做导出，不判断排产是否可继续、不读配置、不接数据库、不写日志。
+- 阶段 9 可以做一个很小的类型补齐：如果要把阶段 8 的 build_node_metrics 放进摘要，就在 GraphAnalysisSummary 增加 node_metrics 字段；不要为了这一点新增复杂结果对象。
+- 第一版不要新增 graph_analysis_result.py、summary_builder.py、export_schema.py 这类过早拆分文件；两个占位文件加必要的 types.py 小补齐即可。
+
+不做过度兜底：
+- 不允许 broad except Exception 后返回空摘要。
+- 不允许 NetworkX 未安装、版本不对、输入合同错误时伪装成“没有图数据”。
+- 不允许 duration_minutes / lag_minutes / seq 缺失或异常时在阶段 9 里偷偷补 0。
+- 不允许有环时继续调用 topological_sort、topological_generations、dag_longest_path 或 build_node_metrics。
+- 不允许 exporter 写万能清洗器，把任意对象 str() 之后塞进 JSON；如果上游把 datetime 原对象、数据库对象、tuple key 传下来，应该暴露问题并回前置阶段修。
+
+不做静默回退：
+- 图输入坏了就暴露 GraphInputContractError / GraphBuildContractError / NetworkX 版本错误等明确错误，不吞掉。
+- DAG 有环是业务图质量结果，返回 is_dag=False、cycle_edges 和明确 warning；这不是异常，也不是“无数据”。
+- 如果未来性能验证发现 node_metrics 太慢，不允许在代码里悄悄跳过；要回 roadmap 决定是优化、拆阶段，还是调整字段。
+
+不做过度防御性编程：
+- analysis_service.py 只接收 Iterable[OperationGraphNode]，不兼容 dict、ORM、OpForScheduleAlgo、BatchOperation 等多种原始对象；这些对象必须先经过 input_adapter.py。
+- exporter.py 只导出阶段 6/8/9 明确承诺的字段，不为未知字段做猜测转换。
+- 不写“如果字段 A 没有就试字段 B/C/D”的兼容分支。
+- 不使用 Python 3.9+ 写法；生产代码和示例都继续用 List / Dict / Optional / Tuple / Any 这类 Python 3.8 兼容注解。
+
+高内聚低耦合：
+- analysis_service.py 可以 import precedence_builder.py、validators.py、metrics.py、types.py。
+- exporter.py 可以 import dataclasses.asdict 和 types.py；JSON 校验放在测试里做。
+- precedence_builder.py、validators.py、metrics.py 不反向 import analysis_service.py / exporter.py。
+- analysis_service.py / exporter.py 顶层不直接 import networkx；NetworkX 仍只能通过 nx_runtime.import_networkx() 懒加载。
+- nx.DiGraph 仍只在 core/services/scheduler/graph/ 内部流转，不能流到 Controller、页面、数据库、Excel 导出、summary 外层或排产主链。
+- 阶段 9 不改变 algo_ops_to_schedule、seed_results、frozen_op_ids、batch_order、sorted_ops、SGS 候选集合和任何排产结果。
+```
+
+### 9.1 阶段目标与上下游合同
+
+阶段 9 的输入来自阶段 5：
 
 ```python
-from __future__ import annotations
+from typing import Iterable
 
+from core.services.scheduler.graph.types import OperationGraphNode
+
+nodes: Iterable[OperationGraphNode]
+```
+
+阶段 9 的核心输出是：
+
+```python
+from core.services.scheduler.graph.types import GraphAnalysisSummary
+
+summary: GraphAnalysisSummary
+```
+
+后续阶段 10 只能拿 `GraphAnalysisSummary` 或 `graph_summary_to_dict(summary)`，不能拿内部 `nx.DiGraph`。
+
+阶段 9 允许内部短暂持有 `graph`：
+
+```text
+OperationGraphNode 列表
+  ↓
+build_linear_edges_by_batch()
+  ↓
+build_precedence_graph()
+  ↓
+validators.is_dag() / find_cycle_edges() / collect_graph_warnings()
+  ↓
+如果 is_dag=True，再调用 metrics.py
+  ↓
+GraphAnalysisSummary
+```
+
+阶段 9 不允许跨到阶段 10：
+
+```text
+不改 schedule_orchestrator.py。
+不改 schedule_summary_assembly.py。
+不改 schedule_persistence.py。
+不写 result_summary["algo"]["graph_analysis"]。
+不写 result_summary["diagnostics"]["graph_analysis"]。
+不写 OperationLogs。
+不新增页面入口。
+```
+
+### 9.2 必要类型补齐
+
+阶段 8 已经产出 `build_node_metrics(graph)`，里面包含每个节点是否在关键路径、影响多少后续节点、所在层级等字段。阶段 9 要让这些指标进入统一摘要，所以允许在 `core/services/scheduler/graph/types.py` 做一个最小补齐：
+
+```python
+from dataclasses import dataclass, field
 from typing import Any, Dict, List
 
 
-def graph_to_plain_dict(graph) -> Dict[str, Any]:
-    nodes: List[Dict[str, Any]] = []
-    edges: List[Dict[str, Any]] = []
-
-    for node_id, data in graph.nodes(data=True):
-        item = dict(data)
-        item["id"] = node_id
-        nodes.append(item)
-
-    for u, v, data in graph.edges(data=True):
-        item = dict(data)
-        item["from"] = u
-        item["to"] = v
-        edges.append(item)
-
-    return {
-        "nodes": nodes,
-        "edges": edges,
-    }
-
-
-def graph_summary_to_dict(summary) -> Dict[str, Any]:
-    return {
-        "node_count": summary.node_count,
-        "edge_count": summary.edge_count,
-        "is_dag": summary.is_dag,
-        "cycle_edges": summary.cycle_edges,
-        "topological_order": summary.topological_order,
-        "critical_path": summary.critical_path,
-        "critical_path_minutes": summary.critical_path_minutes,
-        "warnings": [
-            {
-                "code": warning.code,
-                "message": warning.message,
-                "data": warning.data,
-            }
-            for warning in summary.warnings
-        ],
-    }
+@dataclass
+class GraphAnalysisSummary:
+    node_count: int
+    edge_count: int
+    is_dag: bool
+    cycle_edges: List[Dict[str, Any]]
+    topological_order: List[str]
+    critical_path: List[str]
+    critical_path_minutes: int
+    node_metrics: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    warnings: List[GraphWarning] = field(default_factory=list)
 ```
 
-测试：
-
-```python
-import json
-
-payload = graph_to_plain_dict(graph)
-json.dumps(payload, ensure_ascii=False)
-```
-
-验收：
+补齐规则：
 
 ```text
-能 json.dumps。
-不包含 nx.DiGraph 对象。
-不包含 datetime 原对象。
-不包含数据库连接对象。
-不包含元组 key。
+node_metrics:
+  第一层 key 是 node_id。
+  第二层固定使用阶段 8 build_node_metrics 的字段：
+    is_on_critical_path
+    critical_path_rank
+    impact_count
+    generation_index
+    downstream_critical_minutes
+  所有值必须可 json.dumps(..., ensure_ascii=False)。
+
+warnings:
+  可以改成 default_factory=list，方便有环和空 warning 场景。
+  不要改变 GraphWarning 的 code/message/data 结构。
 ```
 
-### 9.2 新建 analysis_service.py
+测试要求：
+
+```text
+tests/scheduler_graph/test_graph_types.py 继续通过。
+新增或补充一条 GraphAnalysisSummary 可 json.dumps(asdict(summary), ensure_ascii=False) 的测试。
+```
+
+禁止事项：
+
+```text
+不要把 nx.DiGraph 放进 GraphAnalysisSummary。
+不要把 OperationGraphNode / OperationGraphEdge 原对象列表放进 GraphAnalysisSummary。
+不要为了阶段 9 新增复杂嵌套 DTO；阶段 10 需要小摘要时从 summary 再投影。
+```
+
+### 9.3 实现 exporter.py
+
+实现文件：
+
+```text
+core/services/scheduler/graph/exporter.py
+```
+
+第一版只暴露三个函数：
 
 ```python
 from __future__ import annotations
 
-from typing import Iterable, Tuple
+from dataclasses import asdict
+from typing import Any, Dict
 
-from .metrics import get_critical_path, get_topological_order
+from .types import GraphAnalysisSummary, GraphWarning
+
+
+def graph_to_plain_dict(graph: Any) -> Dict[str, Any]:
+    ...
+
+
+def graph_warning_to_dict(warning: GraphWarning) -> Dict[str, Any]:
+    ...
+
+
+def graph_summary_to_dict(summary: GraphAnalysisSummary) -> Dict[str, Any]:
+    ...
+```
+
+`graph_to_plain_dict(graph)` 输出结构固定为：
+
+```json
+{
+  "nodes": [
+    {
+      "id": "op:B001:OP10:123",
+      "batch_id": "B001",
+      "op_code": "OP10",
+      "seq": 10,
+      "duration_minutes": 120
+    }
+  ],
+  "edges": [
+    {
+      "from": "op:B001:OP10:123",
+      "to": "op:B001:OP20:124",
+      "kind": "precedence",
+      "lag_minutes": 0
+    }
+  ]
+}
+```
+
+节点排序规则：
+
+```text
+按 (batch_id, seq, op_code, id) 稳定排序。
+如果节点缺少这些属性，让 KeyError / TypeError 暴露，不在 exporter.py 里猜默认值。
+```
+
+边排序规则：
+
+```text
+按 (from_batch_id, from_seq, from_op_code, from, to) 稳定排序。
+如果 from/to 节点不在图里，让 NetworkX 或 KeyError 暴露；阶段 6 已经负责边合同。
+```
+
+`graph_warning_to_dict(warning)` 输出结构固定为：
+
+```json
+{
+  "code": "DUPLICATE_SEQ",
+  "message": "同一批次存在重复工序顺序号：batch_id=B001, seq=10",
+  "data": {
+    "batch_id": "B001",
+    "seq": 10,
+    "node_ids": ["op:B001:OP10:123"]
+  }
+}
+```
+
+`graph_summary_to_dict(summary)` 输出结构固定为：
+
+```json
+{
+  "node_count": 3,
+  "edge_count": 2,
+  "is_dag": true,
+  "cycle_edges": [],
+  "topological_order": ["op:B001:OP10:123", "op:B001:OP20:124"],
+  "critical_path": ["op:B001:OP10:123", "op:B001:OP20:124"],
+  "critical_path_minutes": 240,
+  "node_metrics": {
+    "op:B001:OP10:123": {
+      "is_on_critical_path": true,
+      "critical_path_rank": 0,
+      "impact_count": 1,
+      "generation_index": 0,
+      "downstream_critical_minutes": 240
+    }
+  },
+  "warnings": []
+}
+```
+
+导出验收：
+
+```python
+payload = graph_summary_to_dict(summary)
+json.dumps(payload, ensure_ascii=False)
+
+graph_payload = graph_to_plain_dict(graph)
+json.dumps(graph_payload, ensure_ascii=False)
+```
+
+禁止事项：
+
+```text
+不要在 exporter.py 顶层 import networkx。
+不要在 exporter.py 里 import input_adapter.py、schedule_orchestrator.py、summary、数据库、Flask。
+不要在 exporter.py 里修改 graph。
+不要把 graph_to_plain_dict 输出直接塞进 OperationLogs 或公开 result_summary；完整 nodes/edges 只给测试和后续 debug/export 使用。
+不要写递归万能 sanitizer；导出失败说明前置合同坏了。
+```
+
+### 9.4 实现 analysis_service.py
+
+```python
+from __future__ import annotations
+
+from typing import Iterable
+
+from .metrics import build_node_metrics, get_critical_path, get_topological_order
 from .precedence_builder import build_linear_edges_by_batch, build_precedence_graph
 from .types import GraphAnalysisSummary, GraphWarning, OperationGraphNode
 from .validators import collect_graph_warnings, find_cycle_edges, is_dag
@@ -3601,10 +3817,10 @@ class ScheduleGraphAnalysisService:
     对外不暴露 NetworkX。
     """
 
-    def build_graph_for_linear_batches(
+    def _build_graph_for_linear_batches(
         self,
         nodes: Iterable[OperationGraphNode],
-    ):
+    ) -> object:
         node_list = list(nodes)
         edges = build_linear_edges_by_batch(node_list)
         return build_precedence_graph(node_list, edges)
@@ -3612,21 +3828,22 @@ class ScheduleGraphAnalysisService:
     def analyze_linear_batches(
         self,
         nodes: Iterable[OperationGraphNode],
-    ) -> Tuple[object, GraphAnalysisSummary]:
-        graph = self.build_graph_for_linear_batches(nodes)
+    ) -> GraphAnalysisSummary:
+        graph = self._build_graph_for_linear_batches(nodes)
 
         cycle_edges = find_cycle_edges(graph)
         dag_ok = is_dag(graph)
-
         warnings = collect_graph_warnings(graph)
 
         topological_order = []
         critical_path = []
         critical_path_minutes = 0
+        node_metrics = {}
 
         if dag_ok:
             topological_order = get_topological_order(graph)
             critical_path, critical_path_minutes = get_critical_path(graph)
+            node_metrics = build_node_metrics(graph)
         else:
             warnings.append(
                 GraphWarning(
@@ -3644,17 +3861,292 @@ class ScheduleGraphAnalysisService:
             topological_order=topological_order,
             critical_path=critical_path,
             critical_path_minutes=critical_path_minutes,
+            node_metrics=node_metrics,
             warnings=warnings,
         )
 
-        return graph, summary
+        return summary
 ```
 
-验收：
+实现细节：
 
 ```text
-业务层只需要调用 ScheduleGraphAnalysisService。
-除 core/services/scheduler/graph/ 外，其他核心业务文件不直接 import networkx。
+_build_graph_for_linear_batches:
+  私有方法，只给 analyze_linear_batches 用。
+  负责 list(nodes)、build_linear_edges_by_batch、build_precedence_graph。
+  不对外返回给排产主链。
+
+analyze_linear_batches:
+  唯一稳定入口。
+  接收 Iterable[OperationGraphNode]。
+  返回 GraphAnalysisSummary。
+  不返回 graph。
+  不导出 dict；需要 dict 时由调用方显式调用 exporter.graph_summary_to_dict(summary)。
+
+有环处理：
+  find_cycle_edges(graph) 先拿到 cycle_edges。
+  is_dag(graph) 为 False 时，不调用 metrics.py。
+  topological_order / critical_path / node_metrics 保持空结构。
+  critical_path_minutes 保持 0。
+  warnings 追加 GRAPH_HAS_CYCLE。
+
+无环处理：
+  调用 get_topological_order(graph)。
+  调用 get_critical_path(graph)。
+  调用 build_node_metrics(graph)。
+  这些调用只能发生在 dag_ok=True 分支里。
+```
+
+为什么有环时允许空结构：
+
+```text
+这是明确状态，不是静默回退。
+summary.is_dag=False 和 cycle_edges 已经告诉调用方“这张图不能算拓扑和关键路径”。
+阶段 11 / on 模式再决定是否阻止排产；阶段 9 不做这个业务决定。
+```
+
+错误暴露口径：
+
+```text
+nodes 不是 OperationGraphNode：
+  由 build_linear_edges_by_batch / build_precedence_graph 暴露 GraphBuildContractError。
+
+字段缺失或类型不对：
+  OperationGraphNode 自己的构造、阶段 5 input_adapter、阶段 6 builder 已经 fail fast；阶段 9 不补字段。
+
+NetworkX 没安装或版本不等于 3.1：
+  由 nx_runtime.import_networkx() 暴露明确错误。
+
+DAG 有环：
+  不是 Python 异常，返回 GraphAnalysisSummary(is_dag=False)。
+```
+
+依赖方向：
+
+```text
+analysis_service.py -> precedence_builder.py
+analysis_service.py -> validators.py
+analysis_service.py -> metrics.py
+analysis_service.py -> types.py
+
+禁止反向：
+precedence_builder.py 不 import analysis_service.py。
+validators.py 不 import analysis_service.py。
+metrics.py 不 import analysis_service.py。
+exporter.py 不 import analysis_service.py。
+```
+
+禁止事项：
+
+```text
+不要在 analysis_service.py 顶层 import networkx。
+不要在 analysis_service.py 里调用 input_adapter.py；阶段 10 接入时再由 orchestrator 侧先把业务 row 转成 OperationGraphNode。
+不要在 analysis_service.py 里 import schedule_orchestrator.py、schedule_optimizer.py、GreedyScheduler、SummaryBuildContext、OperationLogs、数据库、Flask。
+不要在 analysis_service.py 里写 graph_analysis_mode 判断；配置开关属于阶段 10 接入层。
+不要在 analysis_service.py 里捕获所有异常后返回空 summary。
+不要在 analysis_service.py 里改排产输入、排序、资源、seed 或冻结窗口。
+```
+
+### 9.5 测试文件和用例
+
+阶段 9 新增：
+
+```text
+tests/scheduler_graph/test_exporter.py
+tests/scheduler_graph/test_analysis_service.py
+```
+
+`test_exporter.py` 必须覆盖：
+
+```text
+测试 1：graph_to_plain_dict 可 JSON 序列化
+输入：
+  用 OperationGraphNode + OperationGraphEdge 建一张两节点一边的图。
+断言：
+  payload 有 nodes / edges。
+  json.dumps(payload, ensure_ascii=False) 成功。
+  nodes 按 (batch_id, seq, op_code, id) 稳定排序。
+  edges 有 from / to / kind / lag_minutes。
+  payload 里没有 nx.DiGraph 对象。
+
+测试 2：graph_summary_to_dict 可 JSON 序列化
+输入：
+  构造 GraphAnalysisSummary，带 node_metrics 和 GraphWarning。
+断言：
+  json.dumps(payload, ensure_ascii=False) 成功。
+  warnings 被转成 code/message/data。
+  node_metrics 原样保留为普通 dict。
+
+测试 3：graph_to_plain_dict 不修改 graph
+输入：
+  调用前后记录 graph.number_of_nodes() / graph.number_of_edges() 和节点属性。
+断言：
+  导出函数只读，不新增节点、不删边、不改属性。
+
+测试 4：导出字段不夹带完整业务对象
+输入：
+  使用阶段 6 graph node attrs。
+断言：
+  不出现数据库连接、ORM 对象、datetime 原对象、nx.DiGraph。
+```
+
+`test_analysis_service.py` 必须覆盖：
+
+```text
+测试 1：analyze_linear_batches 返回 GraphAnalysisSummary
+输入：
+  同批次三道线性工序。
+断言：
+  node_count=3。
+  edge_count=2。
+  is_dag=True。
+  topological_order 正确。
+  critical_path 正确。
+  critical_path_minutes 正确。
+  node_metrics 包含每个 node_id。
+  warnings 至少是 list。
+
+测试 2：多批次不串线
+输入：
+  两个批次各两道工序。
+断言：
+  edge_count=2，而不是 3。
+  每个批次内部按 seq 连边。
+
+测试 3：有环时不调用 metrics
+做法：
+  可以 monkeypatch analysis_service 模块里的 get_topological_order / get_critical_path / build_node_metrics，让它们一旦被调用就抛 AssertionError。
+输入：
+  直接通过 build_precedence_graph 或 monkeypatch _build_graph_for_linear_batches 构造一张有环图。
+断言：
+  summary.is_dag=False。
+  cycle_edges 非空。
+  topological_order=[]。
+  critical_path=[]。
+  critical_path_minutes=0。
+  node_metrics={}。
+  warnings 里有 GRAPH_HAS_CYCLE。
+  被 monkeypatch 的 metrics 函数没有被调用。
+
+测试 4：坏输入不被吞掉
+输入：
+  analyze_linear_batches([object()])。
+断言：
+  抛 GraphBuildContractError 或清晰合同错误。
+  不返回空 summary。
+
+测试 5：analysis_service 顶层不直接 import networkx
+做法：
+  沿用 tests/regression_scheduler_graph_lazy_runtime_contract.py 的口径，或在本文件里断言 import analysis_service 不触发 networkx 加载。
+断言：
+  graph_analysis_mode=off 的启动合同不被阶段 9 破坏。
+```
+
+### 9.6 阶段 9 实施顺序
+
+建议按下面顺序开工，避免写着写着把范围带到阶段 10：
+
+```text
+1. 补 GraphAnalysisSummary.node_metrics 默认字段，并跑 graph_types 测试。
+2. 实现 exporter.graph_warning_to_dict 和 graph_summary_to_dict。
+3. 实现 exporter.graph_to_plain_dict 的稳定排序和只读导出。
+4. 新增 tests/scheduler_graph/test_exporter.py。
+5. 实现 ScheduleGraphAnalysisService.analyze_linear_batches。
+6. 新增 tests/scheduler_graph/test_analysis_service.py。
+7. 跑 tests/scheduler_graph 全目录。
+8. 跑 ruff / pyright。
+9. 确认没有改到排产主链、summary、persistence、页面、数据库。
+```
+
+如果第 1 步发现补 `node_metrics` 会影响大量已有测试，先停下来回看阶段 8 和 types.py 合同，不要用兼容字段或双结构绕过去。
+
+### 9.7 阶段 9 验收清单
+
+```text
+[ ] GraphAnalysisSummary 已补齐 node_metrics，字段为 Dict[str, Dict[str, Any]]，默认是空 dict。
+[ ] warnings 默认是空 list，GraphWarning 结构不变。
+[ ] exporter.py 只负责 graph / summary / warning 转普通 dict。
+[ ] exporter.py 顶层不直接 import networkx。
+[ ] exporter.py 不 import 排产主链、summary、数据库、Flask、页面。
+[ ] graph_to_plain_dict 输出 nodes / edges，且顺序稳定。
+[ ] graph_summary_to_dict 输出 node_count、edge_count、is_dag、cycle_edges、topological_order、critical_path、critical_path_minutes、node_metrics、warnings。
+[ ] exporter.py 导出的 payload 可以 json.dumps(..., ensure_ascii=False)。
+[ ] exporter.py 不修改 graph。
+[ ] analysis_service.py 只负责串联 build_linear_edges_by_batch、build_precedence_graph、validators、metrics 和 GraphAnalysisSummary。
+[ ] analysis_service.py 顶层不直接 import networkx。
+[ ] analysis_service.py 不 import input_adapter.py。
+[ ] analysis_service.py 不 import schedule_orchestrator.py、schedule_optimizer.py、GreedyScheduler、SummaryBuildContext、OperationLogs、数据库、Flask。
+[ ] analyze_linear_batches 返回 GraphAnalysisSummary，不返回 nx.DiGraph。
+[ ] analyze_linear_batches 只接收 Iterable[OperationGraphNode]。
+[ ] DAG 图会计算 topological_order、critical_path、critical_path_minutes、node_metrics。
+[ ] 有环图会返回 is_dag=False、cycle_edges 和 GRAPH_HAS_CYCLE warning。
+[ ] 有环图不会调用 get_topological_order、get_critical_path、build_node_metrics。
+[ ] 坏输入直接暴露合同错误，不返回空 summary。
+[ ] NetworkX 不可用或版本不对时错误显式暴露，不伪装成“没数据”。
+[ ] 新增 tests/scheduler_graph/test_exporter.py 并通过。
+[ ] 新增 tests/scheduler_graph/test_analysis_service.py 并通过。
+[ ] 阶段 5 到阶段 8 已有 tests/scheduler_graph 回归继续通过。
+[ ] regression_scheduler_graph_lazy_runtime_contract.py 继续通过。
+[ ] ruff check core/services/scheduler/graph tests/scheduler_graph 通过。
+[ ] pyright core/services/scheduler/graph 通过。
+[ ] 阶段 9 完成后仍不修改 schedule_orchestrator.py、schedule_summary_assembly.py、schedule_persistence.py、SGS、summary、页面、数据库。
+[ ] 阶段 9 完成后仍不写 result_summary，不写 OperationLogs，不改变排产结果。
+```
+
+推荐验证命令：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/scheduler_graph/test_graph_types.py tests/scheduler_graph/test_exporter.py tests/scheduler_graph/test_analysis_service.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/scheduler_graph
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_scheduler_graph_lazy_runtime_contract.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler/graph tests/scheduler_graph
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright core/services/scheduler/graph
+```
+
+PR-2 最终收尾前还要在干净工作区跑：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
+```
+
+注意：
+
+```text
+--require-clean-worktree 必须等阶段 9 代码、测试和文档全部提交后再跑。
+如果工作区还有未提交文件，不能把它说成 clean-worktree proof。
+```
+
+### 9.8 明确不做
+
+阶段 9 明确不做：
+
+```text
+[ ] 不改 schedule_orchestrator.py。
+[ ] 不改 schedule_optimizer.py。
+[ ] 不改 schedule_summary_assembly.py。
+[ ] 不改 schedule_persistence.py。
+[ ] 不写 result_summary["algo"]["graph_analysis"]。
+[ ] 不写 result_summary["diagnostics"]["graph_analysis"]。
+[ ] 不写 OperationLogs。
+[ ] 不接 graph_analysis_mode 配置判断。
+[ ] 不接 report 模式。
+[ ] 不接 ready_queue.py。
+[ ] 不接 scoring.py。
+[ ] 不接 resource_matching.py。
+[ ] 不接 SGS 候选集合。
+[ ] 不改变 sorted_ops / batch_order / seed_results / frozen_op_ids。
+[ ] 不新增页面、按钮、调试接口。
+[ ] 不做完整 nodes/edges 落库。
+[ ] 不做性能缓存。
+[ ] 不做 PyInstaller / Win7 打包验证。
+```
+
+阶段 9 完成后的交接话术必须写清：
+
+```text
+阶段 9 只完成图模块内部的统一分析入口和导出合同。
+PR-2 仍然没有把图分析接入排产结果摘要。
+阶段 10 / PR-3 才能开始 report 模式，把 graph_summary_to_dict(summary) 投影成 result_summary 小摘要。
 ```
 
 ## 阶段 10：接入 report 模式，不改变排产结果
@@ -3711,7 +4203,7 @@ def maybe_analyze_schedule_graph(schedule_input, graph_mode: str):
         resource_pool=schedule_input.resource_pool,
     )
     service = ScheduleGraphAnalysisService()
-    _graph, summary = service.analyze_linear_batches(nodes)
+    summary = service.analyze_linear_batches(nodes)
 
     return graph_summary_to_dict(summary)
 ```
@@ -4475,7 +4967,7 @@ summary 可 JSON 序列化。
 `test_analysis_service.py`
 
 ```text
-analyze_linear_batches 返回 graph + summary。
+analyze_linear_batches 返回 GraphAnalysisSummary，不返回 nx.DiGraph。
 有环时 summary.is_dag=False。
 无环时有 critical_path。
 ```
@@ -5039,6 +5531,8 @@ on 模式：
 
 ## 变更记录
 
+- 2026-05-17：实施阶段 9，补齐 `GraphAnalysisSummary.node_metrics`、`exporter.py` 普通 dict 导出、`analysis_service.py` 统一分析入口，以及 `test_exporter.py` / `test_analysis_service.py`；本阶段仍只停留在图模块内部，没有进入阶段 10 / PR-3，没有写 `result_summary` 或 OperationLogs。
+- 2026-05-17：细化阶段 9，把 `exporter.py`、`analysis_service.py`、`GraphAnalysisSummary.node_metrics` 补齐、DAG/有环处理口径、禁止静默回退、禁止过度兜底、测试用例、实施顺序和验收命令写到可执行程度；同时明确阶段 9 仍只做图模块内部统一入口和普通 dict 导出，不接 report 模式、不写 `result_summary`、不写 OperationLogs、不改变排产结果。
 - 2026-05-17：细化阶段 8，把 `metrics.py` 的拓扑顺序、层级、关键路径、影响范围、节点指标、错误暴露、测试用例和验收命令补到可执行程度；同时明确阶段 8 只做图指标，不接 report、不接 SGS、不写 `result_summary`，并把“优雅简洁、不做过度兜底、不做静默回退、不做过度防御性编程、高内聚低耦合”写成硬要求。
 - 2026-05-17：细化阶段 7，把 `validators.py` 的目标边界、整体实现要求、输入输出合同、DAG/环检测、孤立节点 warning、重复 `seq` warning、汇总规则、测试用例和验收命令补到可执行程度；同时明确阶段 7 只暴露图质量问题，不修图、不静默回退、不接排产、不写 `result_summary`，并把“优雅简洁、不做过度兜底、不做过度防御性编程、高内聚低耦合”写成硬要求。
 - 2026-05-17：细化阶段 6，把 `precedence_builder.py` 的职责、输入输出合同、边生成规则、图构建规则、错误处理、测试用例和验收命令补到可执行程度；同时把“优雅简洁、不做过度兜底、不做静默回退、不做过度防御性编程、高内聚低耦合”写成阶段 6 的硬要求，并同步整体执行顺序表中阶段 5/6/7 的口径，避免后续按错阶段执行。

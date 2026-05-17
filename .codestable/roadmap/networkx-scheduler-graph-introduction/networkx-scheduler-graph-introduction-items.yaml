@@ -1,12 +1,12 @@
 roadmap: networkx-scheduler-graph-introduction
 created: 2026-05-08
-last_reviewed: 2026-05-16
+last_reviewed: 2026-05-17
 
 items:
   - slug: networkx-compatibility-decision
     title: PR-0 NetworkX 引入前基线和 ADR
     description: "只做 before_networkx 决策与证据留痕：建独立分支，记录 Git/Python/pip freeze/hash，采集三组排产基线 JSON，并落 ADR-0012；不安装 NetworkX、不新增可选依赖文件、不改排产业务逻辑。"
-    status: planned
+    status: done
     feature: null
     minimal_loop: true
     depends_on: []
@@ -31,12 +31,12 @@ items:
       - test -f evidence/scheduler_baseline/case_003_external_result.json
       - test -f "开发文档/ADR/0012-networkx-排产依赖图建模.md"
       - grep -q "networkx==3.1" "开发文档/ADR/0012-networkx-排产依赖图建模.md"
-    notes: "阶段 0 是引入前基线，不得把 networkx 安装进当前项目 venv；如负责人坚持兼容探针，只能用隔离临时 venv，且不能覆盖 before_networkx 的 pip freeze。"
+    notes: "已完成：cab8d12d 记录 before_networkx 基线，ADR-0012、pip freeze、三组排产基线 JSON 和 capture 工具均已落盘。本阶段没有安装 NetworkX，没有改 requirements.txt，也没有接入排产主链。"
 
   - slug: scheduler-graph-config-default-off
     title: PR-1 可选依赖验证与图分析配置默认关闭
     description: "先新增 requirements-optimizer-lite-win7.txt 并在阶段 0 基线之后验证 networkx==3.1（优先隔离 venv，必要时记录 after_networkx freeze），再新增 graph_analysis_mode 等配置字段和旧库迁移，默认 off，确保未安装 NetworkX 时系统仍能启动和排产。"
-    status: planned
+    status: done
     feature: null
     minimal_loop: false
     depends_on: [networkx-compatibility-decision]
@@ -54,12 +54,11 @@ items:
       - evidence/baseline_pip_freeze_after_networkx.txt
     exit_checks:
       - test -f evidence/baseline_pip_freeze_before_networkx.txt
-      - python -m venv /tmp/aps_nx_probe_py38
-      - /tmp/aps_nx_probe_py38/bin/python -m pip install -r requirements-optimizer-lite-win7.txt
-      - /tmp/aps_nx_probe_py38/bin/python -c "import networkx as nx; print(nx.__version__); assert nx.__version__ == '3.1'"
-      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_config_snapshot_projection_sync.py
-      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_graph_config_contract.py
-    notes: "安装验证从阶段 0 移到阶段 1；不得覆盖 before_networkx pip freeze。配置字段走现有 snapshot 链路；默认 off 不要求 import networkx。"
+      - test -f evidence/scheduler_graph/phase1/dependency_validation.md
+      - test -f evidence/scheduler_graph/phase1/networkx_3_1_wheel_manifest.txt
+      - grep -q "networkx==3.1" requirements-optimizer-lite-win7.txt
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_config_snapshot_projection_sync.py tests/regression_graph_config_bootstrap_contract.py tests/regression_migrate_v9_graph_config_defaults.py tests/regression_scheduler_config_spec_sync_contract.py
+    notes: "已完成：de191378 新增 requirements-optimizer-lite-win7.txt，并用隔离 Python 3.8 venv 验证 networkx==3.1、API smoke、重依赖检查、离线 wheel 安装和 wheel hash；b82c9a4d / 7380d6ff / 1e40d571 补齐 graph_analysis_mode 等配置默认关闭链路、迁移、页面配置和测试。项目主 requirements.txt 未引入 NetworkX；graph_analysis_mode=off 仍不要求 import NetworkX。未生成 evidence/baseline_pip_freeze_after_networkx.txt 是刻意保持项目 venv 不安装 NetworkX，实际安装证据在 evidence/scheduler_graph/phase1/dependency_validation.md。"
 
   - slug: scheduler-graph-core-module
     title: PR-2 图分析核心模块
@@ -75,7 +74,7 @@ items:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_graph
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler/graph tests/scheduler_graph
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright core/services/scheduler/graph
-    notes: "NetworkX 只允许在 graph 目录内部懒加载；对外不暴露 nx.DiGraph。2026-05-17 已完成阶段 5 input_adapter.py 和 tests/scheduler_graph/test_input_adapter.py；后续仍需继续阶段 6–9。"
+    notes: "进行中：87d0fcca 完成 graph 骨架和 nx_runtime 懒加载；7fe964c6 完成节点 ID 和图值对象；1e40d571 / 7380d6ff 完成阶段 4.5 基础设施硬化；6d0a75e0 完成阶段 5 input_adapter；9a8332ad 完成阶段 6 precedence_builder；0df1330b 完成阶段 7 validators；cccf9d1b 完成阶段 8 metrics；251a0016 按复审意见补齐 seq 严格整数、resource_pool 坏结构报错、OperationGraphNode 运行时类型合同和 snapshot 重复字段防回归。2026-05-17 当前工作区已完成阶段 9：GraphAnalysisSummary.node_metrics、exporter.py 普通 dict 导出、analysis_service.py 统一分析入口、test_exporter.py 和 test_analysis_service.py，并通过阶段 9 局部 pytest、tests/scheduler_graph、懒加载回归、ruff、pyright。当前仍保持 in-progress：这些改动尚未形成本地提交后的 clean-worktree proof；仍未进入 PR-3 report 模式，未写 result_summary / OperationLogs。"
 
   - slug: scheduler-graph-report-mode
     title: PR-3 report 模式接入 summary

@@ -113,9 +113,35 @@ def test_graph_edge_and_summary_are_plain_python_value_objects() -> None:
         topological_order=["op:1", "op:2"],
         critical_path=["op:1", "op:2"],
         critical_path_minutes=60,
+        node_metrics={
+            "op:1": {
+                "is_on_critical_path": True,
+                "critical_path_rank": 0,
+                "impact_count": 1,
+                "generation_index": 0,
+                "downstream_critical_minutes": 60,
+            }
+        },
         warnings=[warning],
     )
 
     assert edge.kind == "precedence"
+    assert summary.node_metrics["op:1"]["impact_count"] == 1
     assert summary.warnings[0].code == "DEMO"
+    json.dumps(asdict(summary), ensure_ascii=False)
+
+
+def test_graph_analysis_summary_defaults_are_json_serializable() -> None:
+    summary = GraphAnalysisSummary(
+        node_count=1,
+        edge_count=0,
+        is_dag=True,
+        cycle_edges=[],
+        topological_order=["op:1"],
+        critical_path=["op:1"],
+        critical_path_minutes=60,
+    )
+
+    assert summary.node_metrics == {}
+    assert summary.warnings == []
     json.dumps(asdict(summary), ensure_ascii=False)

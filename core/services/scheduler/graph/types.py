@@ -130,7 +130,8 @@ class GraphAnalysisSummary:
     topological_order: List[str]
     critical_path: List[str]
     critical_path_minutes: int
-    warnings: List[GraphWarning]
+    node_metrics: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    warnings: List[GraphWarning] = field(default_factory=list)
 
 
 __all__ = [
