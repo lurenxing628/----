@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, is_dataclass
+from dataclasses import FrozenInstanceError, asdict
+
+import pytest
 
 from core.services.scheduler.graph.types import (
     GraphAnalysisSummary,
@@ -11,126 +13,94 @@ from core.services.scheduler.graph.types import (
 )
 
 
-def test_operation_graph_node_defaults_are_json_serializable() -> None:
-    node = OperationGraphNode(
-        node_id="op:1",
-        batch_id="B001",
-        op_code="B001_10",
-        seq=10,
-        name="下料",
-        duration_minutes=360,
-    )
-
-    assert is_dataclass(node)
-    payload = asdict(node)
-    assert payload["priority"] == "normal"
-    assert payload["source"] == "internal"
-    assert payload["status"] == "pending"
-    assert payload["candidate_machine_ids"] == []
-    assert payload["candidate_operator_ids"] == []
-    assert payload["raw"] == {}
-    json.dumps(payload, ensure_ascii=False)
-
-
-def test_operation_graph_node_default_lists_are_isolated() -> None:
-    first = OperationGraphNode(
-        node_id="op:1",
-        batch_id="B001",
-        op_code="B001_10",
-        seq=10,
-        name="下料",
-        duration_minutes=60,
-    )
-    second = OperationGraphNode(
-        node_id="op:2",
-        batch_id="B001",
-        op_code="B001_20",
-        seq=20,
-        name="车削",
-        duration_minutes=120,
-    )
-
-    first.candidate_machine_ids.append("CNC-01")
-    assert second.candidate_machine_ids == []
-
-
-def test_operation_graph_node_preserves_current_scheduler_fields() -> None:
-    node = OperationGraphNode(
-        node_id="op:2",
-        batch_id="B001",
-        op_code="B001_20",
-        seq=20,
-        name="外协热处理",
-        duration_minutes=2880,
-        part_no="P001",
-        priority="urgent",
-        source="external",
-        status="pending",
-        due_date="2026-05-20",
-        op_type_id="OT-HT",
-        supplier_id="SUP-01",
-        ext_group_id="G-01",
-        ext_merge_mode="merged",
-        ext_group_total_days=2.0,
-        merge_context_degraded=False,
-        raw={"id": 2, "source": "external"},
-    )
-
-    payload = asdict(node)
-    assert payload["source"] == "external"
-    assert payload["ext_merge_mode"] == "merged"
-    assert payload["ext_group_total_days"] == 2.0
-    json.dumps(payload, ensure_ascii=False)
-
-
-def test_operation_graph_edge_defaults_are_json_serializable() -> None:
-    edge = OperationGraphEdge(from_node_id="op:1", to_node_id="op:2")
-
-    payload = asdict(edge)
-    assert payload == {
-        "from_node_id": "op:1",
-        "to_node_id": "op:2",
-        "kind": "precedence",
-        "lag_minutes": 0,
-        "note": "",
+def _make_node(**overrides) -> OperationGraphNode:
+    data = {
+        "node_id": "op:1",
+        "batch_id": "B001",
+        "op_code": "B001_10",
+        "seq": 10,
+        "name": "下料",
+        "duration_minutes": 60,
     }
-    json.dumps(payload, ensure_ascii=False)
+    data.update(overrides)
+    return OperationGraphNode(**data)
 
 
-def test_graph_warning_defaults_are_json_serializable() -> None:
-    warning = GraphWarning(code="DUPLICATE_SEQ", message="同一批次存在重复工序顺序号")
+def test_operation_graph_node_candidate_ids_are_immutable() -> None:
+    node = _make_node(candidate_machine_ids=["CNC-01"], candidate_operator_ids=["OP-01"])
 
-    payload = asdict(warning)
-    assert payload["data"] == {}
-    json.dumps(payload, ensure_ascii=False)
+    assert node.candidate_machine_ids == ("CNC-01",)
+    assert node.candidate_operator_ids == ("OP-01",)
 
-
-def test_graph_analysis_summary_defaults_are_json_serializable() -> None:
-    summary = GraphAnalysisSummary(node_count=2, edge_count=1, is_dag=True)
-
-    payload = asdict(summary)
-    assert payload["cycle_edges"] == []
-    assert payload["topological_order"] == []
-    assert payload["critical_path"] == []
-    assert payload["critical_path_minutes"] == 0
-    assert payload["warnings"] == []
-    json.dumps(payload, ensure_ascii=False)
+    with pytest.raises(AttributeError):
+        node.candidate_machine_ids.append("CNC-02")
+    with pytest.raises(FrozenInstanceError):
+        node.candidate_machine_ids = ("CNC-02",)
 
 
-def test_graph_analysis_summary_can_embed_warnings() -> None:
+def test_operation_graph_node_candidate_ids_strip_and_drop_blank_values() -> None:
+    node = _make_node(candidate_machine_ids=[" CNC-01 ", "", "   "], candidate_operator_ids=[" OP-01 ", None])
+
+    assert node.candidate_machine_ids == ("CNC-01",)
+    assert node.candidate_operator_ids == ("OP-01",)
+
+
+def test_operation_graph_node_raw_is_immutable_json_like_snapshot() -> None:
+    node = _make_node(raw={"id": 1, "tags": ["a", "b"], "meta": {"x": 1}})
+
+    with pytest.raises(TypeError):
+        node.raw["id"] = 2
+
+    with pytest.raises(TypeError):
+        node.raw["meta"]["x"] = 2
+
+    assert node.raw["tags"] == ("a", "b")
+    json.dumps(asdict(node), ensure_ascii=False)
+
+
+def test_operation_graph_node_raw_defensively_copies_source_mapping() -> None:
+    raw = {"id": 1, "meta": {"x": 1}}
+    node = _make_node(raw=raw)
+
+    raw["id"] = 2
+    raw["meta"]["x"] = 3
+
+    assert node.raw["id"] == 1
+    assert node.raw["meta"]["x"] == 1
+
+
+@pytest.mark.parametrize(
+    "field_name, kwargs",
+    [
+        ("node_id", {"node_id": ""}),
+        ("batch_id", {"batch_id": ""}),
+        ("op_code", {"op_code": ""}),
+    ],
+)
+def test_operation_graph_node_rejects_blank_required_identifiers(field_name, kwargs) -> None:
+    with pytest.raises(ValueError, match=field_name):
+        _make_node(**kwargs)
+
+
+def test_operation_graph_node_rejects_negative_duration() -> None:
+    with pytest.raises(ValueError, match="duration_minutes"):
+        _make_node(duration_minutes=-1)
+
+
+def test_graph_edge_and_summary_are_plain_python_value_objects() -> None:
+    edge = OperationGraphEdge(from_node_id="op:1", to_node_id="op:2")
+    warning = GraphWarning(code="DEMO", message="提示", data={"node_id": "op:1"})
     summary = GraphAnalysisSummary(
-        node_count=1,
-        edge_count=0,
+        node_count=2,
+        edge_count=1,
         is_dag=True,
-        warnings=[
-            GraphWarning(
-                code="ISOLATED_OPERATION",
-                message="发现孤立工序",
-                data={"node_id": "op:1"},
-            )
-        ],
+        cycle_edges=[],
+        topological_order=["op:1", "op:2"],
+        critical_path=["op:1", "op:2"],
+        critical_path_minutes=60,
+        warnings=[warning],
     )
 
-    payload = asdict(summary)
-    assert payload["warnings"][0]["code"] == "ISOLATED_OPERATION"
-    json.dumps(payload, ensure_ascii=False)
+    assert edge.kind == "precedence"
+    assert summary.warnings[0].code == "DEMO"
+    json.dumps(asdict(summary), ensure_ascii=False)

@@ -1,85 +1,91 @@
-"""Scheduler graph node ID policy helpers.
-
-This module is pure Python and must not import NetworkX.
-"""
 from __future__ import annotations
 
-import math
-from decimal import Decimal
+import re
 from typing import Any, Optional
 
 OPERATION_NODE_PREFIX = "op:"
 MACHINE_NODE_PREFIX = "machine:"
 OPERATOR_NODE_PREFIX = "operator:"
 
+_ROW_ID_TEXT_PATTERN = re.compile(r"^0*[1-9][0-9]*(?:\.0+)?$")
 
-def _clean_text(value: Any) -> str:
+
+class GraphNodeIdError(ValueError):
+    """Raised when graph node id construction receives unsafe business identifiers."""
+
+
+def _display_text(value: Any) -> str:
     if value is None:
         return ""
-    if isinstance(value, (bytes, bytearray)):
-        value = value.decode("utf-8", errors="ignore")
     return str(value).strip()
 
 
-def normalize_operation_row_id(row_id: Any) -> Optional[str]:
-    """Return canonical positive operation row id text, or None when invalid.
+def _require_text_component(value: Any, *, field_name: str) -> str:
+    if isinstance(value, (bytes, bytearray)):
+        raise GraphNodeIdError(f"{field_name} 不能是 bytes/bytearray，避免静默解码造成节点 ID 碰撞。")
+    text = "" if value is None else str(value).strip()
+    if not text:
+        raise GraphNodeIdError(f"{field_name} 不能为空，无法生成稳定图节点 ID。")
+    return text
 
-    Row ids represent BatchOperations.id. They must be positive integer-like
-    values. bool is rejected explicitly because bool is a subclass of int.
-    """
-    if row_id is None or isinstance(row_id, bool):
+
+def normalize_operation_row_id(row_id: Any) -> Optional[int]:
+    """Return a positive integer operation row id, or None for unsafe/invalid values."""
+    if row_id is None or isinstance(row_id, bool) or isinstance(row_id, (bytes, bytearray)):
         return None
-
-    if isinstance(row_id, int):
-        return str(row_id) if row_id > 0 else None
-
-    if isinstance(row_id, float):
-        if math.isfinite(row_id) and row_id.is_integer() and row_id > 0:
-            return str(int(row_id))
+    text = str(row_id).strip()
+    if not text or not _ROW_ID_TEXT_PATTERN.fullmatch(text):
         return None
-
-    text = _clean_text(row_id)
-    if text == "":
-        return None
-
     try:
-        value = Decimal(text)
+        normalized = int(float(text))
     except Exception:
         return None
-
-    if not value.is_finite() or value <= 0:
+    if normalized <= 0:
         return None
-    if value != value.to_integral_value():
-        return None
-
-    return str(int(value))
+    return normalized
 
 
 def make_operation_node_id(batch_id: Any, op_code: Any, row_id: Any = None) -> str:
-    """Generate stable operation graph node id.
+    if isinstance(row_id, (bytes, bytearray)):
+        raise GraphNodeIdError("row_id 不能是 bytes/bytearray。")
 
-    Prefer a valid positive BatchOperations.id. If row_id is absent or invalid,
-    fall back to batch_id + op_code for pre-persistence or synthetic test data.
-    """
     normalized_row_id = normalize_operation_row_id(row_id)
     if normalized_row_id is not None:
         return f"{OPERATION_NODE_PREFIX}{normalized_row_id}"
 
-    return f"{OPERATION_NODE_PREFIX}{_clean_text(batch_id)}:{_clean_text(op_code)}"
+    batch_text = _require_text_component(batch_id, field_name="batch_id")
+    op_text = _require_text_component(op_code, field_name="op_code")
+    return f"{OPERATION_NODE_PREFIX}{batch_text}:{op_text}"
 
 
 def make_machine_node_id(machine_id: Any) -> str:
-    return f"{MACHINE_NODE_PREFIX}{_clean_text(machine_id)}"
+    return f"{MACHINE_NODE_PREFIX}{_require_text_component(machine_id, field_name='machine_id')}"
 
 
 def make_operator_node_id(operator_id: Any) -> str:
-    return f"{OPERATOR_NODE_PREFIX}{_clean_text(operator_id)}"
+    return f"{OPERATOR_NODE_PREFIX}{_require_text_component(operator_id, field_name='operator_id')}"
 
 
 def display_id(node_id: Any) -> str:
-    """Strip known graph node prefixes for human-readable diagnostics."""
-    text = _clean_text(node_id)
-    for prefix in (OPERATION_NODE_PREFIX, MACHINE_NODE_PREFIX, OPERATOR_NODE_PREFIX):
-        if text.startswith(prefix):
-            return text[len(prefix) :]
+    """Return a human-readable id for diagnostics; intentionally tolerant."""
+    text = _display_text(node_id)
+    if text.startswith(OPERATION_NODE_PREFIX):
+        return text[len(OPERATION_NODE_PREFIX) :]
+    if text.startswith(MACHINE_NODE_PREFIX):
+        return text[len(MACHINE_NODE_PREFIX) :]
+    if text.startswith(OPERATOR_NODE_PREFIX):
+        return text[len(OPERATOR_NODE_PREFIX) :]
     return text
+
+
+__all__ = [
+    "GraphNodeIdError",
+    "MACHINE_NODE_PREFIX",
+    "OPERATION_NODE_PREFIX",
+    "OPERATOR_NODE_PREFIX",
+    "display_id",
+    "make_machine_node_id",
+    "make_operation_node_id",
+    "make_operator_node_id",
+    "normalize_operation_row_id",
+]

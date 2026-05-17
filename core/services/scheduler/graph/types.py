@@ -1,18 +1,66 @@
-"""Pure scheduler graph input/output dataclasses.
-
-This module must not import NetworkX. It also must not store nx.Graph or
-nx.DiGraph objects in any public dataclass field.
-"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Mapping, NoReturn, Optional, Tuple
+
+
+class FrozenDict(dict):
+    """JSON-serializable immutable dict used by graph value snapshots."""
+
+    def _readonly(self) -> NoReturn:
+        raise TypeError("FrozenDict is immutable")
+
+    def __setitem__(self, key: Any, value: Any) -> None:
+        self._readonly()
+
+    def __delitem__(self, key: Any) -> None:
+        self._readonly()
+
+    def clear(self) -> None:
+        self._readonly()
+
+    def pop(self, key: Any, default: Any = None) -> Any:
+        self._readonly()
+
+    def popitem(self) -> Tuple[Any, Any]:
+        self._readonly()
+
+    def setdefault(self, key: Any, default: Any = None) -> Any:
+        self._readonly()
+
+    def update(self, *args: Iterable[Tuple[Any, Any]], **kwargs: Any) -> None:
+        self._readonly()
+
+
+def _freeze_json_like(value: Any) -> Any:
+    if isinstance(value, FrozenDict):
+        return value
+    if isinstance(value, dict):
+        return FrozenDict({str(k): _freeze_json_like(v) for k, v in value.items()})
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze_json_like(item) for item in value)
+    return value
+
+
+def _compact_text_tuple(values: Any) -> Tuple[str, ...]:
+    compact = []
+    for item in values or ():
+        if item is None:
+            continue
+        text = str(item).strip()
+        if not text:
+            continue
+        compact.append(text)
+    return tuple(compact)
+
+
+def _require_nonblank(value: Any, *, field_name: str) -> None:
+    if not str(value or "").strip():
+        raise ValueError(f"OperationGraphNode.{field_name} 不能为空。")
 
 
 @dataclass(frozen=True)
 class OperationGraphNode:
-    """Business-level operation node used by scheduler graph analysis."""
-
     node_id: str
     batch_id: str
     op_code: str
@@ -32,15 +80,23 @@ class OperationGraphNode:
     ext_merge_mode: str = ""
     ext_group_total_days: Optional[float] = None
     merge_context_degraded: bool = False
-    candidate_machine_ids: List[str] = field(default_factory=list)
-    candidate_operator_ids: List[str] = field(default_factory=list)
-    raw: Dict[str, Any] = field(default_factory=dict)
+    candidate_machine_ids: Tuple[str, ...] = field(default_factory=tuple)
+    candidate_operator_ids: Tuple[str, ...] = field(default_factory=tuple)
+    raw: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        _require_nonblank(self.node_id, field_name="node_id")
+        _require_nonblank(self.batch_id, field_name="batch_id")
+        _require_nonblank(self.op_code, field_name="op_code")
+        if int(self.duration_minutes) < 0:
+            raise ValueError("OperationGraphNode.duration_minutes 不能为负数。")
+        object.__setattr__(self, "candidate_machine_ids", _compact_text_tuple(self.candidate_machine_ids))
+        object.__setattr__(self, "candidate_operator_ids", _compact_text_tuple(self.candidate_operator_ids))
+        object.__setattr__(self, "raw", _freeze_json_like(dict(self.raw or {})))
 
 
 @dataclass(frozen=True)
 class OperationGraphEdge:
-    """Business-level directed edge between operation graph nodes."""
-
     from_node_id: str
     to_node_id: str
     kind: str = "precedence"
@@ -50,8 +106,6 @@ class OperationGraphEdge:
 
 @dataclass
 class GraphWarning:
-    """Business-readable graph warning produced by validators or metrics."""
-
     code: str
     message: str
     data: Dict[str, Any] = field(default_factory=dict)
@@ -59,13 +113,20 @@ class GraphWarning:
 
 @dataclass
 class GraphAnalysisSummary:
-    """Small graph-analysis summary safe to convert into result diagnostics."""
-
     node_count: int
     edge_count: int
     is_dag: bool
-    cycle_edges: List[Dict[str, Any]] = field(default_factory=list)
-    topological_order: List[str] = field(default_factory=list)
-    critical_path: List[str] = field(default_factory=list)
-    critical_path_minutes: int = 0
-    warnings: List[GraphWarning] = field(default_factory=list)
+    cycle_edges: List[Dict[str, Any]]
+    topological_order: List[str]
+    critical_path: List[str]
+    critical_path_minutes: int
+    warnings: List[GraphWarning]
+
+
+__all__ = [
+    "FrozenDict",
+    "GraphAnalysisSummary",
+    "GraphWarning",
+    "OperationGraphEdge",
+    "OperationGraphNode",
+]
