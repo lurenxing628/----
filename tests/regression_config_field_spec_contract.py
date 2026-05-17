@@ -51,6 +51,7 @@ def test_config_field_spec_registry_contract() -> None:
     assert "objective" in fields
     assert "freeze_window_days" in fields
     assert "auto_assign_persist" in fields
+    assert "graph_analysis_mode" in fields
     objective_spec = next(spec for spec in list_config_fields() if spec.key == "objective")
     assert "graph_analysis_mode" in fields
     assert "graph_block_on_cycle" in fields
@@ -76,6 +77,8 @@ def test_config_field_spec_registry_contract() -> None:
     assert choice_label_map_for("objective") == objective_choice_labels()
     assert choice_label_map_for("objective")["min_overdue"] == "最少超期"
     assert choice_label_map_for("objective")["min_weighted_tardiness"] == "最少加权拖期小时"
+    assert choices_for("graph_analysis_mode") == ("off", "report", "on")
+    assert default_for("graph_critical_weight") == 500
     assert field_label_for("holiday_default_efficiency") == "假期工作效率"
     assert field_label_for("preset_name") == "方案名称"
 
@@ -177,6 +180,8 @@ def test_config_service_snapshot_includes_hidden_field_and_get_stays_single_arg(
     assert snap.graph_impact_weight == 10
     assert snap.graph_debug_export == "no"
     assert config_service.get("objective") == "min_overdue"
+    assert snap.graph_analysis_mode == "off"
+    assert snap.to_dict()["graph_critical_weight"] == 500
     with pytest.raises(TypeError):
         config_service.get("objective", "fallback")
 

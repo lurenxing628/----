@@ -868,6 +868,8 @@ web/routes/domains/scheduler/scheduler_config.py
 web/routes/domains/scheduler/scheduler_config_display_state.py
 ```
 
+Phase 4.5 追加约束：主配置规格与 runtime 规格必须用测试锁住 key 集合、`field_type`、`default`、`min_value`、`min_inclusive`、`choices` 一致，避免图配置只写一边。
+
 ### 2.3 迁移建议
 
 当前配置默认行不是直接写死在 `schema.sql` 里，但老库可能已有 `ScheduleConfig` 和 preset JSON。建议新增迁移：
@@ -892,8 +894,9 @@ core/infrastructure/migrations/v9.py
 ```text
 core/infrastructure/migration_state.py
 core/infrastructure/migrations/__init__.py
-schema.sql
 ```
+
+Phase 4.5 修正：不要把 graph 默认行直接写入 `schema.sql`。新库应继续先建空结构并通过 `ConfigService.ensure_defaults()` 填默认配置，避免破坏空库 SchemaVersion fast-forward / `is_truly_empty_db()` 语义。
 
 验收：
 
@@ -903,6 +906,8 @@ schema.sql
 旧库迁移后页面能看到默认 off。
 配置页面选择 report/on 后能进入 snapshot。
 配置字段同步测试通过。
+v9 迁移必须幂等。
+坏 preset JSON 必须 fail fast，不可静默跳过。
 ```
 
 ## 阶段 3：建目录结构和懒加载层
@@ -1148,7 +1153,7 @@ def test_machine_node_id():
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 
 @dataclass(frozen=True)
@@ -1172,9 +1177,9 @@ class OperationGraphNode:
     ext_merge_mode: str = ""
     ext_group_total_days: Optional[float] = None
     merge_context_degraded: bool = False
-    candidate_machine_ids: List[str] = field(default_factory=list)
-    candidate_operator_ids: List[str] = field(default_factory=list)
-    raw: Dict[str, Any] = field(default_factory=dict)
+    candidate_machine_ids: Tuple[str, ...] = field(default_factory=tuple)
+    candidate_operator_ids: Tuple[str, ...] = field(default_factory=tuple)
+    raw: Mapping[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -1229,12 +1234,15 @@ source:
 
 candidate_machine_ids:
   候选设备，用于后续资源匹配，来自 resource_pool。
+  Phase 4.5 起必须是 Tuple[str, ...]，不能保留可变 list。
 
 candidate_operator_ids:
   候选人员，用于后续双资源匹配，来自 resource_pool。
+  Phase 4.5 起必须是 Tuple[str, ...]，不能保留可变 list。
 
 raw:
   原始业务数据快照，只放 JSON 可序列化字段。
+  Phase 4.5 起必须冻结为不可变 JSON-like 快照，同时仍可被 json.dumps(asdict(node), ensure_ascii=False) 序列化。
 ```
 
 注意事项：
@@ -1243,6 +1251,8 @@ raw:
 types.py 不 import networkx。
 不要把数据库连接、repo、模型原对象、datetime 原对象、NetworkX 对象放进 raw。
 raw 必须能 json.dumps(..., ensure_ascii=False)。
+OperationGraphNode 内部不能保留调用方传入的可变 list/dict 引用。
+GraphWarning / GraphAnalysisSummary 当前仍是纯 Python 汇总 DTO，不承载 nx.DiGraph。
 ```
 
 验收：
@@ -1251,163 +1261,389 @@ raw 必须能 json.dumps(..., ensure_ascii=False)。
 types.py 不 import networkx。
 所有 dataclass 都是业务友好的纯 Python 结构。
 Python 3.8 下类型注解通过 ruff/pyright。
+candidate_machine_ids / candidate_operator_ids 为 Tuple[str, ...]。
+OperationGraphNode.raw 不可变且可 JSON 序列化。
+```
+
+## 阶段 4.5：图基础设施硬化
+
+本阶段只加固阶段 0–4 已经允许存在的基础设施，不进入阶段 5 及之后的图构建、校验、指标、分析服务、ready 队列、评分或排产接入。
+
+### 4.5.1 边界声明
+
+```text
+允许：
+- graph 包骨架、懒加载 NetworkX wrapper、节点 ID 策略、纯值对象。
+- 图配置字段、v9 迁移、fresh DB ensure_defaults 合同。
+- 配置页面如实提示 report/on 当前只保存配置。
+- 回写 roadmap / ADR。
+
+禁止：
+- input_adapter.py
+- precedence_builder.py
+- validators.py
+- metrics.py
+- analysis_service.py
+- nx.DiGraph 构建或对外暴露
+- result_summary 图分析接入
+- scheduling / ready queue / scoring 集成
+```
+
+### 4.5.2 ID 策略硬化
+
+```text
+make_operation_node_id 不得生成 op::。
+make_machine_node_id 不得生成 machine:。
+make_operator_node_id 不得生成 operator:。
+bytes / bytearray 不得静默 decode 成 ID。
+row_id 只接受正整数语义：1、"1"、"001"、"1.0"、1.0。
+row_id 拒绝 None、空白、0、bool、负数、科学计数、非整数小数、bytes。
+```
+
+### 4.5.3 值对象硬化
+
+```text
+OperationGraphNode 必须 frozen=True。
+candidate_machine_ids: Tuple[str, ...]
+candidate_operator_ids: Tuple[str, ...]
+raw: Mapping[str, Any]
+raw 内部递归冻结，不能被调用方后续修改污染。
+json.dumps(asdict(node), ensure_ascii=False) 必须可用。
+types.py 不 import networkx。
+```
+
+### 4.5.4 配置 / 迁移 / UI 合同
+
+```text
+主 config_field_spec 与 runtime_config_fields 必须保持 key 集合和字段元数据一致。
+Fresh DB 不在 schema.sql 直接插入 graph 配置行，而由 ConfigService.ensure_defaults() 补齐。
+v9 只负责已有库：补 ScheduleConfig 默认行，并补 preset.* JSON。
+v9 必须幂等。
+坏 preset JSON 必须 fail fast。
+report/on 当前只能保存配置，页面必须提示不执行图分析、不改变排产结果。
+graph_analysis_mode=off 不需要安装 NetworkX。
+```
+
+### 4.5.5 验收清单
+
+```text
+[ ] make_operation_node_id 不生成 op::。
+[ ] make_machine_node_id 不生成 machine:。
+[ ] make_operator_node_id 不生成 operator:。
+[ ] bytes / bytearray 不被静默解码。
+[ ] OperationGraphNode.candidate_machine_ids / candidate_operator_ids 为 Tuple[str, ...]。
+[ ] OperationGraphNode.raw 不可变且 JSON 可序列化。
+[ ] 主配置规格与 runtime 规格同步测试通过。
+[ ] fresh DB + ensure_defaults 插入 graph 默认配置。
+[ ] v9 迁移幂等。
+[ ] report/on UI 明确说明当前版本只保存配置、不执行图分析、不改变排产结果。
+[ ] graph 模块仍不静态 import networkx。
 ```
 
 ## 阶段 5：把现有业务数据转成图节点
 
-### 5.1 新建 input_adapter.py
+本阶段的目标很窄：只把现有排产输入里的工序、批次、资源池信息转换成 `OperationGraphNode`。这一阶段不构图、不校验 DAG、不算关键路径、不写 `result_summary`、不接 SGS，也不改变任何排产结果。
 
-第一版不要一上来绑定数据库 repo。输入可以支持两种：
+### 5.0 整体实现要求
+
+本阶段必须把下面这些实现原则当成硬约束写进设计和验收里：
 
 ```text
-List[OpForScheduleAlgo] + batches map
-List[Dict[str, Any]] + batches map
+优雅简洁：
+- input_adapter.py 只做“业务输入 -> OperationGraphNode”的转换，不做图算法、不查数据库、不读配置、不写日志、不调用排产。
+- 辅助函数只保留字段读取、显式解析、时长计算、候选资源整理这几类；不要写万能转换器。
+- 一个函数只管一件事，函数名要直接说明业务目的。
+
+不做过度兜底：
+- 不允许 broad except Exception 后悄悄给 0、空字符串、internal、normal 这类默认值。
+- 只有当前排产链路已经明确存在的默认语义，才可以沿用；例如外协天数的“非严格模式默认 1 天”已经在 schedule_input_builder 层处理，input_adapter.py 不再重复造一个默认。
+- 缺少必需字段时要给出清楚错误，不能把坏数据悄悄变成空节点继续往下跑。
+
+不做静默回退：
+- source 缺失或不是 internal/external，不在本阶段猜测，应抛 GraphInputContractError。
+- 当前老排产链路里，历史数据缺 source 或 source 异常时，部分入口可能会按 internal 继续跑；阶段 5 的图输入合同要比老链路更严格，只吃已经整理好的 OpForScheduleAlgo。
+- seq、duration、quantity 这类影响图结果的字段不合法，应抛 GraphInputContractError。
+- resource_pool 缺少某个映射时，可以得到空候选集合，但必须保持“空”这个事实，不允许回退成“全量设备/全量人员”。
+
+不做过度防御性编程：
+- 本阶段的输入来源是当前排产链路整理后的 OpForScheduleAlgo、batches map、resource_pool，不为任意外部 JSON 做复杂兼容。
+- 不要同时支持十几种字段别名；字段名必须按当前仓库事实走：source、setup_hours、unit_hours、ext_days、ext_group_total_days。
+- 不在 adapter 里吞掉上游数据质量问题；如果上游合同不清楚，先补上游合同或测试。
+
+高内聚低耦合：
+- input_adapter.py 可以 import id_policy.py 和 types.py。
+- input_adapter.py 不 import networkx，不 import nx_runtime.py，不 import precedence_builder.py，不 import validators.py。
+- input_adapter.py 不 import Flask route、repo、db session、ConfigService、ScheduleService、GreedyScheduler。
+- 对外只返回纯 Python dataclass 列表；后续阶段要构图时再把这些节点交给 precedence_builder.py。
 ```
 
-核心目标是把现有算法输入转成 `OperationGraphNode`。
+### 5.1 新建 input_adapter.py
 
-建议代码：
+新增文件：
+
+```text
+core/services/scheduler/graph/input_adapter.py
+```
+
+第一版对外只暴露这两个名字：
 
 ```python
-from __future__ import annotations
-
-from typing import Any, Dict, Iterable, List, Optional
-
-from .id_policy import make_operation_node_id
-from .types import OperationGraphNode
-
-
-def _as_int(value: Any, default: int = 0) -> int:
-    try:
-        if value is None or value == "":
-            return default
-        return int(value)
-    except Exception:
-        return default
-
-
-def _as_float(value: Any, default: float = 0.0) -> float:
-    try:
-        if value is None or value == "":
-            return default
-        return float(value)
-    except Exception:
-        return default
-
-
-def _text(value: Any) -> str:
-    return str(value or "").strip()
-
-
-def _batch_quantity(batch: Any) -> float:
-    if batch is None:
-        return 0.0
-    if isinstance(batch, dict):
-        return _as_float(batch.get("quantity"), 0.0)
-    return _as_float(getattr(batch, "quantity", None), 0.0)
-
-
-def _batch_field(batch: Any, field: str, default: Any = None) -> Any:
-    if batch is None:
-        return default
-    if isinstance(batch, dict):
-        return batch.get(field, default)
-    return getattr(batch, field, default)
-
-
-def _row_field(row: Any, field: str, default: Any = None) -> Any:
-    if isinstance(row, dict):
-        return row.get(field, default)
-    return getattr(row, field, default)
-
-
-def _duration_minutes(row: Any, batch: Any) -> int:
-    source = _text(_row_field(row, "source", "internal")).lower() or "internal"
-    if source == "external":
-        merge_mode = _text(_row_field(row, "ext_merge_mode", "")).lower()
-        group_days = _as_float(_row_field(row, "ext_group_total_days", None), 0.0)
-        ext_days = _as_float(_row_field(row, "ext_days", None), 0.0)
-        days = group_days if merge_mode == "merged" and group_days > 0 else ext_days
-        return int(round(max(days, 0.0) * 24 * 60))
-
-    setup_hours = _as_float(_row_field(row, "setup_hours", 0.0), 0.0)
-    unit_hours = _as_float(_row_field(row, "unit_hours", 0.0), 0.0)
-    quantity = _batch_quantity(batch)
-    return int(round(max(setup_hours + unit_hours * quantity, 0.0) * 60))
+class GraphInputContractError(ValueError):
+    pass
 
 
 def build_operation_nodes_from_rows(
     rows: Iterable[Any],
     *,
-    batches: Optional[Dict[str, Any]] = None,
-    resource_pool: Optional[Dict[str, Any]] = None,
+    batches: Mapping[str, Any],
+    resource_pool: Optional[Mapping[str, Any]] = None,
 ) -> List[OperationGraphNode]:
-    result: List[OperationGraphNode] = []
-    batches = dict(batches or {})
-    resource_pool = dict(resource_pool or {})
-    machines_by_op_type = dict(resource_pool.get("machines_by_op_type") or {})
-
-    for row in rows:
-        batch_id = _text(_row_field(row, "batch_id"))
-        op_code = _text(_row_field(row, "op_code"))
-        row_id = _row_field(row, "id")
-        batch = batches.get(batch_id)
-
-        node_id = make_operation_node_id(batch_id=batch_id, op_code=op_code, row_id=row_id)
-        op_type_id = _text(_row_field(row, "op_type_id", "")) or None
-        source = _text(_row_field(row, "source", "internal")).lower() or "internal"
-        machine_id = _text(_row_field(row, "machine_id", "")) or None
-        operator_id = _text(_row_field(row, "operator_id", "")) or None
-
-        candidate_machine_ids = []
-        if machine_id:
-            candidate_machine_ids.append(machine_id)
-        elif op_type_id:
-            candidate_machine_ids.extend([_text(item) for item in machines_by_op_type.get(op_type_id, []) if _text(item)])
-
-        node = OperationGraphNode(
-            node_id=node_id,
-            batch_id=batch_id,
-            op_code=op_code,
-            seq=_as_int(_row_field(row, "seq"), 0),
-            name=_text(_row_field(row, "op_type_name", "")),
-            duration_minutes=_duration_minutes(row, batch),
-            part_no=_text(_batch_field(batch, "part_no", "")) or None,
-            priority=_text(_batch_field(batch, "priority", "normal")) or "normal",
-            source=source,
-            status=_text(_row_field(row, "status", "pending")) or "pending",
-            due_date=_text(_batch_field(batch, "due_date", "")) or None,
-            op_type_id=op_type_id,
-            machine_id=machine_id,
-            operator_id=operator_id,
-            supplier_id=_text(_row_field(row, "supplier_id", "")) or None,
-            ext_group_id=_text(_row_field(row, "ext_group_id", "")) or None,
-            ext_merge_mode=_text(_row_field(row, "ext_merge_mode", "")),
-            ext_group_total_days=(
-                _as_float(_row_field(row, "ext_group_total_days", None), 0.0)
-                if _row_field(row, "ext_group_total_days", None) not in (None, "")
-                else None
-            ),
-            merge_context_degraded=bool(_row_field(row, "merge_context_degraded", False)),
-            candidate_machine_ids=list(dict.fromkeys(candidate_machine_ids)),
-            candidate_operator_ids=[operator_id] if operator_id else [],
-            raw={
-                "id": row_id,
-                "batch_id": batch_id,
-                "op_code": op_code,
-                "seq": _row_field(row, "seq"),
-                "source": source,
-                "op_type_id": op_type_id,
-                "ext_group_id": _text(_row_field(row, "ext_group_id", "")) or None,
-                "ext_merge_mode": _text(_row_field(row, "ext_merge_mode", "")),
-            },
-        )
-        result.append(node)
-
-    return result
+    ...
 ```
 
-### 5.2 验收数据样例
+输入边界：
+
+```text
+rows:
+  首选 List[OpForScheduleAlgo]。
+  测试里可以用 List[Dict[str, Any]]，但只能使用当前仓库真实字段名。
+
+batches:
+  batch_id -> Batch 或 dict。
+  这是必传参数，不允许默认为空 dict。
+
+resource_pool:
+  来自当前 resource_pool_builder 的结果。
+  本阶段只读 machines_by_op_type、operators_by_machine、machines_by_operator。
+  缺失时只会导致候选集合为空，不会回退成全量资源。
+```
+
+禁止事项：
+
+```text
+不要在 input_adapter.py 里 import networkx。
+不要在 input_adapter.py 里调用 import_networkx()。
+不要在 input_adapter.py 里查数据库。
+不要在 input_adapter.py 里重新计算外协组合并上下文。
+不要在 input_adapter.py 里修改传入的 rows、batches、resource_pool。
+不要返回 dict 节点；统一返回 OperationGraphNode。
+```
+
+### 5.2 字段映射合同
+
+每个 `OperationGraphNode` 的字段来源必须按下面这张表执行。表里写“必需”的字段，缺失或非法时直接抛 `GraphInputContractError`。
+
+| 节点字段 | 来源 | 要求 |
+| --- | --- | --- |
+| `node_id` | `make_operation_node_id(batch_id, op_code, id)` | `id` 可以缺失；缺失时 `batch_id + op_code` 必须可生成稳定 ID |
+| `batch_id` | row.batch_id | 必需，不能为空 |
+| `op_code` | row.op_code | 必需，不能为空 |
+| `seq` | row.seq | 必需，必须能转成整数 |
+| `name` | row.op_type_name | 可为空，空时保留空字符串 |
+| `duration_minutes` | 本阶段派生 | 必需，不能为负数 |
+| `part_no` | batch.part_no | 可为空 |
+| `priority` | batch.priority | 可为空；为空时使用 `OperationGraphNode` 自身默认值，不在 adapter 里另造复杂优先级 |
+| `source` | row.source | 必需，只允许 `internal` 或 `external` |
+| `status` | row.status | 可为空；为空时使用节点默认值 |
+| `due_date` | batch.due_date | 可为空；如为日期对象，必须显式转 `isoformat()` 字符串 |
+| `op_type_id` | row.op_type_id | 可为空 |
+| `machine_id` | row.machine_id | 可为空 |
+| `operator_id` | row.operator_id | 可为空 |
+| `supplier_id` | row.supplier_id | 可为空 |
+| `ext_group_id` | row.ext_group_id | 可为空 |
+| `ext_merge_mode` | row.ext_merge_mode | 可为空 |
+| `ext_group_total_days` | row.ext_group_total_days | 可为空；非空时必须大于 0 |
+| `merge_context_degraded` | row.merge_context_degraded | 布尔值；只做 bool 归一，不据此另造时长默认 |
+| `candidate_machine_ids` | row.machine_id 或 resource_pool.machines_by_op_type | 去重后转 Tuple[str, ...] |
+| `candidate_operator_ids` | row.operator_id 或 resource_pool.operators_by_machine | 去重后转 Tuple[str, ...] |
+| `raw` | row 的少量源字段 | 只放 JSON 可序列化快照，不放模型对象、repo、db session、datetime 原对象 |
+
+### 5.3 时长计算规则
+
+时长只在这里做一件事：把当前排产输入已经收口好的小时/天数转换成分钟。
+
+```text
+自制工序：
+  duration_minutes = round((setup_hours + unit_hours * batch.quantity) * 60)
+
+普通外协：
+  duration_minutes = round(ext_days * 24 * 60)
+
+合并外协：
+  当 source == external 且 ext_merge_mode == merged 且 ext_group_total_days 非空时：
+    duration_minutes = round(ext_group_total_days * 24 * 60)
+  其他外协情况：
+    duration_minutes = round(ext_days * 24 * 60)
+```
+
+必需校验：
+
+```text
+setup_hours、unit_hours、quantity 不能为负数。
+普通外协 ext_days 必须大于 0。
+merged 外协 ext_group_total_days 必须大于 0。
+source == internal 时，setup_hours、unit_hours、batch.quantity 必须可读。
+source == external 且不是有效 merged 总天数时，ext_days 必须可读。
+duration_minutes 最终不能为负数。
+```
+
+特别注意：
+
+```text
+不要在 input_adapter.py 里给 ext_days 缺失补 1 天。
+如果现有非严格模式需要“外协天数缺失按 1 天继续”，这个语义必须继续由 schedule_input_builder.py 负责。
+如果输入来自 OpForScheduleAlgo，setup_hours 和 unit_hours 已经在上游排产输入构建阶段收口成数字；input_adapter.py 只消费这个结果，不再自己把缺失值补成 0。
+adapter 只消费已经进入 OpForScheduleAlgo 的结果，不能自己再造一套兜底规则。
+```
+
+### 5.4 显式解析助手
+
+建议只写下面这种窄助手，避免万能解析和静默吞错：
+
+```python
+def _read_field(row: Any, field: str) -> Any:
+    if isinstance(row, dict):
+        return row.get(field)
+    return getattr(row, field, None)
+
+
+def _require_text(row: Any, field: str, *, scope: str) -> str:
+    value = _read_field(row, field)
+    text = str(value or "").strip()
+    if not text:
+        raise GraphInputContractError("{} 缺少必填字段 {}".format(scope, field))
+    return text
+
+
+def _require_int(row: Any, field: str, *, scope: str) -> int:
+    value = _read_field(row, field)
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise GraphInputContractError("{} 字段 {} 不是整数：{!r}".format(scope, field, value)) from exc
+
+
+def _require_nonnegative_float(value: Any, *, field: str, scope: str) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise GraphInputContractError("{} 字段 {} 不是数字：{!r}".format(scope, field, value)) from exc
+    if number < 0:
+        raise GraphInputContractError("{} 字段 {} 不能为负数：{!r}".format(scope, field, value))
+    return number
+
+
+def _require_positive_float(value: Any, *, field: str, scope: str) -> float:
+    number = _require_nonnegative_float(value, field=field, scope=scope)
+    if number <= 0:
+        raise GraphInputContractError("{} 字段 {} 必须大于 0：{!r}".format(scope, field, value))
+    return number
+```
+
+实现要求：
+
+```text
+只捕获 TypeError / ValueError，不捕获 Exception。
+错误信息必须带 scope，例如 graph_input.op[123] 或 graph_input.batch[B001].seq[10]。
+解析失败时抛 GraphInputContractError，不返回默认值。
+自制工序的 setup_hours、unit_hours、quantity 用 _require_nonnegative_float。
+普通外协 ext_days、merged 外协 ext_group_total_days 用 _require_positive_float。
+```
+
+### 5.5 候选资源整理
+
+候选资源只表达“图分析看到的候选范围”，不在这里做派工选择。
+
+设备候选：
+
+```text
+先读取：
+  fixed_machine = row.machine_id
+  fixed_operator = row.operator_id
+  op_type_id = row.op_type_id
+  machines_by_op_type = resource_pool["machines_by_op_type"]
+  machines_by_operator = resource_pool["machines_by_operator"]
+  operators_by_machine = resource_pool["operators_by_machine"]
+
+如果 fixed_machine 有值：
+  先得到 candidate_machine_ids = (fixed_machine,)
+  如果 op_type_id 在 machines_by_op_type 里有明确候选池：
+    再把 fixed_machine 和这个候选池取交集。
+    如果 fixed_machine 不在该工种候选池里，candidate_machine_ids = ()。
+否则如果 fixed_operator 有值：
+  先从 machines_by_operator[fixed_operator] 取候选设备。
+  如果 machines_by_operator 里没有，再按当前 auto_assign 口径从 operators_by_machine 反查这个人员能操作的设备。
+  如果 op_type_id 在 machines_by_op_type 里有明确候选池，再和这个候选池取交集。
+否则如果 op_type_id 有值且 machines_by_op_type 里有这个工种：
+  candidate_machine_ids = machines_by_op_type[op_type_id] 去重后结果。
+否则：
+  candidate_machine_ids = ()
+```
+
+人员候选：
+
+```text
+如果 fixed_operator 有值：
+  如果 candidate_machine_ids 非空：
+    candidate_operator_ids = fixed_operator 和每台候选设备 operators_by_machine[machine_id] 的交集。
+    如果固定人员不在候选设备可用人员里，candidate_operator_ids = ()。
+  否则：
+    candidate_operator_ids = (fixed_operator,)
+否则如果 candidate_machine_ids 非空：
+  candidate_operator_ids = 这些设备在 operators_by_machine 下的人员并集，按原顺序去重。
+否则：
+  candidate_operator_ids = ()
+```
+
+边界说明：
+
+```text
+阶段 5 只整理图分析能看见的候选范围，不计算最优人机组合。
+阶段 5 不看当前时间轴、不看设备停机、不看人员停机、不看冻结窗口、不做 probe_only 自动分配。
+如果后续要让图分析候选和排产可行性完全一致，应在后续阶段复用 auto_assign 的候选解析 helper，不能在 input_adapter.py 里复制一套复杂派工器。
+resource_pool 本身可能已经按 resource_pool_builder 的既有口径带着更宽的映射；adapter 不再额外回退成全量设备或全量人员。
+```
+
+禁止：
+
+```text
+不要因为找不到 op_type_id 对应设备，就把所有设备塞进 candidate_machine_ids。
+不要因为找不到设备对应人员，就把所有人员塞进 candidate_operator_ids。
+不要在 adapter 里调用 auto_assign_internal_resources。
+不要在 adapter 里考虑 machine downtime、operator downtime、冻结窗口、当前时间轴占用。
+```
+
+### 5.6 raw 快照规则
+
+`raw` 只用于后续调试和诊断采样，不是第二份业务模型。
+
+建议只放：
+
+```text
+id
+batch_id
+op_code
+seq
+source
+op_type_id
+machine_id
+operator_id
+supplier_id
+ext_group_id
+ext_merge_mode
+merge_context_degraded
+```
+
+要求：
+
+```text
+raw 必须能 json.dumps(dict(raw), ensure_ascii=False)。
+raw 会被 OperationGraphNode.__post_init__ 递归冻结，调用方后续修改原始 row 不应污染节点。
+raw 不放 Batch / BatchOperation / OpForScheduleAlgo 原对象。
+raw 不放 datetime 原对象；如必须放日期，先转 isoformat 字符串。
+```
+
+### 5.7 验收数据样例
 
 输入：
 
@@ -1422,6 +1658,7 @@ rows = [
         "source": "internal",
         "setup_hours": 1,
         "unit_hours": 0.5,
+        "op_type_id": "cut",
     },
     {
         "id": 2,
@@ -1433,7 +1670,19 @@ rows = [
         "ext_days": 2,
     },
 ]
-batches = {"B001": {"batch_id": "B001", "quantity": 10, "priority": "normal", "due_date": "2026-05-20"}}
+batches = {
+    "B001": {
+        "batch_id": "B001",
+        "quantity": 10,
+        "priority": "normal",
+        "due_date": "2026-05-20",
+    }
+}
+resource_pool = {
+    "machines_by_op_type": {"cut": ["M01", "M02"]},
+    "operators_by_machine": {"M01": ["U01"], "M02": ["U02"]},
+    "machines_by_operator": {"U01": ["M01"], "U02": ["M02"]},
+}
 ```
 
 期望：
@@ -1442,11 +1691,25 @@ batches = {"B001": {"batch_id": "B001", "quantity": 10, "priority": "normal", "d
 生成 2 个 OperationGraphNode。
 node_id 分别为 op:1、op:2。
 第一道自制工序 duration_minutes = (1 + 0.5 * 10) * 60 = 360。
+第一道自制工序 candidate_machine_ids = ("M01", "M02")。
+第一道自制工序 candidate_operator_ids = ("U01", "U02")。
 第二道外协工序 duration_minutes = 2 * 24 * 60 = 2880。
 source 分别为 internal、external。
+raw 可 JSON 序列化，并且不被原始 rows 后续修改影响。
 ```
 
-### 5.3 测试文件
+错误样例：
+
+```text
+缺 batch_id：抛 GraphInputContractError。
+缺 source：抛 GraphInputContractError。
+source = "unknown"：抛 GraphInputContractError。
+seq = "abc"：抛 GraphInputContractError。
+source = internal 且 batch.quantity 缺失：抛 GraphInputContractError。
+source = external 且 ext_days 缺失、也没有有效 merged ext_group_total_days：抛 GraphInputContractError。
+```
+
+### 5.8 测试文件
 
 新增：
 
@@ -1454,16 +1717,63 @@ source 分别为 internal、external。
 tests/scheduler_graph/test_input_adapter.py
 ```
 
-验收：
+核心用例：
 
 ```text
-空时长不会报错，转成 0。
-缺 source 时默认 internal。
-缺 priority 时默认 normal。
-自制工序按 setup_hours + unit_hours * batch.quantity 算分钟。
-普通外协按 ext_days 算分钟。
-merged 外协按 ext_group_total_days 算分钟。
-raw 能 json.dumps。
+test_build_internal_operation_node_duration:
+  自制工序按 setup_hours + unit_hours * batch.quantity 算分钟。
+
+test_build_external_operation_node_duration:
+  普通外协按 ext_days 算分钟。
+
+test_build_merged_external_operation_node_duration:
+  merged 外协按 ext_group_total_days 算分钟。
+
+test_candidate_resources_from_resource_pool:
+  没有固定设备和固定人员时，按 op_type_id 从 machines_by_op_type 取候选设备。
+  没有固定人员时，按候选设备从 operators_by_machine 取候选人员。
+
+test_fixed_resources_win_over_pool_candidates:
+  row.machine_id / row.operator_id 有值时，固定资源优先，但仍按 op_type_id 候选池过滤明显不匹配的设备。
+
+test_fixed_operator_resolves_machine_candidates:
+  row.operator_id 有值但 row.machine_id 为空时，先用 machines_by_operator 找候选设备；缺失时按 operators_by_machine 反查。
+
+test_missing_required_field_raises_contract_error:
+  batch_id、op_code、seq、source 缺失或非法时抛 GraphInputContractError。
+
+test_invalid_source_raises_contract_error:
+  source 不是 internal/external 时抛 GraphInputContractError。
+
+test_missing_duration_inputs_raise_contract_error:
+  缺 quantity、setup_hours、unit_hours、ext_days 时不静默转 0。
+  ext_days=0 或 ext_group_total_days=0 时抛 GraphInputContractError。
+
+test_raw_snapshot_is_json_serializable_and_frozen:
+  json.dumps(dict(node.raw), ensure_ascii=False) 可用；
+  修改原始 row 后 node.raw 不变化。
+
+test_input_adapter_does_not_import_networkx:
+  import core.services.scheduler.graph.input_adapter 不触发 networkx import。
+```
+
+### 5.9 阶段验收清单
+
+```text
+[ ] 新增 core/services/scheduler/graph/input_adapter.py。
+[ ] input_adapter.py 只 import id_policy.py 和 types.py 以及标准库 typing，不 import networkx / repo / db / scheduler。
+[ ] build_operation_nodes_from_rows 返回 List[OperationGraphNode]。
+[ ] 缺少必需字段时抛 GraphInputContractError，不静默补默认值。
+[ ] source 只接受 internal / external。
+[ ] 自制、普通外协、合并外协三类时长计算都有测试。
+[ ] 候选资源来自固定资源或 resource_pool，不回退成全量资源。
+[ ] raw 快照 JSON 可序列化、不可被原始输入后续修改污染。
+[ ] OperationGraphNode.candidate_machine_ids / candidate_operator_ids 最终是 Tuple[str, ...]。
+[ ] tests/scheduler_graph/test_input_adapter.py 通过。
+[ ] PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_graph/test_input_adapter.py tests/scheduler_graph/test_graph_types.py tests/scheduler_graph/test_id_policy.py
+[ ] PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler/graph tests/scheduler_graph
+[ ] PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright core/services/scheduler/graph
+[ ] 如果 pyright 仍被 graph/types.py 里的既有 FrozenDict 方法签名问题挡住，本阶段收尾必须一并修掉；不能只说 input_adapter 自己测试通过。
 ```
 
 ## 阶段 6：构建工序依赖图
@@ -3544,3 +3854,7 @@ on 模式：
 
 这个路线比直接上 OR-Tools 稳得多，也更符合当前 Win7/Python 3.8.10/离线交付的实际约束。
 
+## 变更记录
+
+- 2026-05-17：执行阶段 5，新增 `core/services/scheduler/graph/input_adapter.py` 和 `tests/scheduler_graph/test_input_adapter.py`，把已整理好的排产输入转换为 `OperationGraphNode`；同时修复 `FrozenDict` 只读方法的 pyright 签名问题。阶段 5 仍只做输入转换，不构建 `nx.DiGraph`，不接入排产，不写 `result_summary`，不改变排产结果。
+- 2026-05-17：细化阶段 5，把 `input_adapter.py` 的职责、输入合同、字段映射、时长计算、候选资源、raw 快照、错误处理、测试用例和验收命令补到可执行程度；同时把“优雅简洁、不做过度兜底、不做静默回退、不做过度防御性编程、高内聚低耦合”写成阶段 5 的硬要求；按只读核实结果补准固定人员/固定设备候选资源口径、外协天数必须大于 0、source 严格合同和 pyright 收尾要求。

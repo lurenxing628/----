@@ -63,6 +63,7 @@ VALID_OBJECTIVES = choices_for("objective")
 VALID_DISPATCH_MODES = choices_for("dispatch_mode")
 VALID_DISPATCH_RULES = choices_for("dispatch_rule")
 STRATEGY_NAME_ZH = choice_label_map_for("sort_strategy")
+VALID_GRAPH_ANALYSIS_MODES = choices_for("graph_analysis_mode")
 
 CONFIG_PAGE_FIELDS: Tuple[str, ...] = (
     "sort_strategy",
@@ -95,6 +96,11 @@ CONFIG_PAGE_VISIBLE_CHANGE_FIELDS: Tuple[str, ...] = CONFIG_PAGE_FIELDS + (
     "due_weight",
 )
 CONFIG_PAGE_HIDDEN_REPAIR_FIELDS: Tuple[str, ...] = ("auto_assign_persist",)
+
+GRAPH_CONFIG_PENDING_NOTICE = "当前版本仅保存工序图分析配置，不执行图分析、不改变排产结果；report/on 将在后续阶段接入。"
+GRAPH_CONFIG_PENDING_ACTIVE_NOTICE = (
+    "已保存为 report/on，但当前构建尚未接入图分析执行链路；排产结果不会因此改变。"
+)
 
 HOLIDAY_DEFAULT_EFFICIENCY_PAGE_WARNING_TEMPLATE = (
     "“假期工作效率”这项设置现在不能直接用，页面已临时按 {value:g} 显示默认值；"
@@ -134,4 +140,5 @@ __all__ = [
     "DEFAULT_GRAPH_IMPACT_WEIGHT",
     "HOLIDAY_DEFAULT_EFFICIENCY_PAGE_WARNING_TEMPLATE",
     "PRESET_PREFIX",
+    "VALID_GRAPH_ANALYSIS_MODES",
 ]

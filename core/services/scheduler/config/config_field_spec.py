@@ -43,6 +43,11 @@ _YES_NO_LABELS = {
 
 _YES_NO_CHOICES = tuple(_YES_NO_LABELS.keys())
 _OBJECTIVE_LABELS = _objective_choice_labels()
+_GRAPH_ANALYSIS_MODE_LABELS = {
+    "off": "关闭",
+    "report": "仅保存配置（后续接入报告）",
+    "on": "仅保存配置（后续接入分析）",
+}
 
 _FIELD_LABEL_ALIASES = {
     "preset_name": "方案名称",
