@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping as MappingABC
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 
 from .id_policy import GraphNodeIdError, make_operation_node_id
@@ -89,10 +90,14 @@ def _build_operation_node(row: Any, *, batches: Mapping[str, Any], resource_pool
 def _mapping_part(source: Optional[Mapping[str, Any]], key: str) -> Mapping[Any, Any]:
     if source is None:
         return {}
-    value = source.get(key)
-    if isinstance(value, dict):
+    if not isinstance(source, MappingABC):
+        raise GraphInputContractError("resource_pool 必须是映射。")
+    if key not in source:
+        return {}
+    value = source[key]
+    if isinstance(value, MappingABC):
         return value
-    return {}
+    raise GraphInputContractError(f"resource_pool.{key} 必须是映射。")
 
 
 def _read_field(row: Any, field: str) -> Any:
@@ -143,10 +148,14 @@ def _require_int(row: Any, field: str, *, scope: str) -> int:
     value = _read_field(row, field)
     if isinstance(value, bool):
         raise GraphInputContractError(f"{scope} 字段 {field} 不是整数：{value!r}")
-    try:
-        return int(value)
-    except (TypeError, ValueError) as exc:
-        raise GraphInputContractError(f"{scope} 字段 {field} 不是整数：{value!r}") from exc
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        text = value.strip()
+        signless_text = text[1:] if text[:1] in ("+", "-") else text
+        if signless_text and signless_text.isdigit():
+            return int(text)
+    raise GraphInputContractError(f"{scope} 字段 {field} 不是整数：{value!r}")
 
 
 def _require_nonnegative_float(value: Any, *, field: str, scope: str) -> float:

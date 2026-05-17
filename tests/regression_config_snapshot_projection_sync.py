@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import ast
+from pathlib import Path
+
 import pytest
 
 from core.infrastructure.errors import ValidationError
@@ -7,6 +10,8 @@ from core.services.scheduler.config.config_field_spec import default_snapshot_va
 from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot
 from core.services.scheduler.config.config_validator import normalize_preset_snapshot
 from core.services.scheduler.config_snapshot import ScheduleConfigSnapshot, build_schedule_config_snapshot
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 class _EmptyRepo:
@@ -61,6 +66,39 @@ def test_registry_keys_match_snapshot_projection_keys() -> None:
     assert snapshot_keys == registry_keys
     assert default_keys == registry_keys
     assert built_snapshot_keys == registry_keys
+
+
+def _duplicate_class_annotations(path: Path, class_name: str) -> list[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    for node in tree.body:
+        if not isinstance(node, ast.ClassDef) or node.name != class_name:
+            continue
+        seen = {}
+        duplicates = []
+        for item in node.body:
+            if not isinstance(item, ast.AnnAssign) or not isinstance(item.target, ast.Name):
+                continue
+            field_name = item.target.id
+            seen[field_name] = seen.get(field_name, 0) + 1
+            if seen[field_name] == 2:
+                duplicates.append(field_name)
+        return duplicates
+    raise AssertionError(f"{path} 缺少 {class_name}")
+
+
+def test_schedule_config_snapshot_sources_do_not_duplicate_field_annotations() -> None:
+    targets = [
+        REPO_ROOT / "core" / "services" / "scheduler" / "config" / "config_snapshot.py",
+        REPO_ROOT / "core" / "models" / "schedule_config_runtime_snapshot.py",
+    ]
+    failures = []
+
+    for path in targets:
+        duplicates = _duplicate_class_annotations(path, "ScheduleConfigSnapshot")
+        if duplicates:
+            failures.append(f"{path.relative_to(REPO_ROOT)}: {', '.join(duplicates)}")
+
+    assert not failures, "ScheduleConfigSnapshot 存在重复字段声明: " + "; ".join(failures)
 
 
 def test_strict_snapshot_rejects_inconsistent_weight_triplet() -> None:

@@ -158,6 +158,19 @@ def test_missing_required_field_raises_contract_error(field_name, row) -> None:
         build_operation_nodes_from_rows([row], batches={"B001": _batch()})
 
 
+@pytest.mark.parametrize("seq", [1.5, "1.5", "1.0", "1e2", True, False])
+def test_seq_rejects_values_that_are_not_plain_integers(seq) -> None:
+    with pytest.raises(GraphInputContractError, match="seq"):
+        build_operation_nodes_from_rows([_internal_row(seq=seq)], batches={"B001": _batch()})
+
+
+@pytest.mark.parametrize("seq", [10, "10", " 10 "])
+def test_seq_accepts_plain_int_and_integer_text(seq) -> None:
+    node = build_operation_nodes_from_rows([_internal_row(seq=seq)], batches={"B001": _batch()})[0]
+
+    assert node.seq == 10
+
+
 def test_missing_batch_raises_contract_error() -> None:
     with pytest.raises(GraphInputContractError, match="找不到批次"):
         build_operation_nodes_from_rows([_internal_row(batch_id="B404")], batches={"B001": _batch()})
@@ -193,6 +206,23 @@ def test_resource_pool_missing_mapping_keeps_empty_candidates() -> None:
 
     assert node.candidate_machine_ids == ()
     assert node.candidate_operator_ids == ()
+
+
+@pytest.mark.parametrize(
+    "resource_pool, message",
+    [
+        ({"machines_by_op_type": []}, "resource_pool.machines_by_op_type"),
+        ({"operators_by_machine": "bad"}, "resource_pool.operators_by_machine"),
+        ({"machines_by_operator": None}, "resource_pool.machines_by_operator"),
+    ],
+)
+def test_resource_pool_present_mapping_with_bad_shape_raises_contract_error(resource_pool, message) -> None:
+    with pytest.raises(GraphInputContractError, match=message):
+        build_operation_nodes_from_rows(
+            [_internal_row(op_type_id="cut")],
+            batches={"B001": _batch()},
+            resource_pool=resource_pool,
+        )
 
 
 def test_raw_snapshot_is_json_serializable_and_frozen() -> None:

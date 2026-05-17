@@ -87,6 +87,21 @@ def test_operation_graph_node_rejects_negative_duration() -> None:
         _make_node(duration_minutes=-1)
 
 
+@pytest.mark.parametrize(
+    "field_name, kwargs",
+    [
+        ("seq", {"seq": 1.5}),
+        ("seq", {"seq": "10"}),
+        ("seq", {"seq": True}),
+        ("duration_minutes", {"duration_minutes": "60"}),
+        ("duration_minutes", {"duration_minutes": True}),
+    ],
+)
+def test_operation_graph_node_rejects_non_integer_runtime_fields(field_name, kwargs) -> None:
+    with pytest.raises(ValueError, match=field_name):
+        _make_node(**kwargs)
+
+
 def test_graph_edge_and_summary_are_plain_python_value_objects() -> None:
     edge = OperationGraphEdge(from_node_id="op:1", to_node_id="op:2")
     warning = GraphWarning(code="DEMO", message="提示", data={"node_id": "op:1"})

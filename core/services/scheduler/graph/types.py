@@ -59,6 +59,12 @@ def _require_nonblank(value: Any, *, field_name: str) -> None:
         raise ValueError(f"OperationGraphNode.{field_name} 不能为空。")
 
 
+def _require_int_value(value: Any, *, field_name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"OperationGraphNode.{field_name} 必须是整数。")
+    return value
+
+
 @dataclass(frozen=True)
 class OperationGraphNode:
     node_id: str
@@ -88,8 +94,12 @@ class OperationGraphNode:
         _require_nonblank(self.node_id, field_name="node_id")
         _require_nonblank(self.batch_id, field_name="batch_id")
         _require_nonblank(self.op_code, field_name="op_code")
-        if int(self.duration_minutes) < 0:
+        seq = _require_int_value(self.seq, field_name="seq")
+        duration_minutes = _require_int_value(self.duration_minutes, field_name="duration_minutes")
+        if duration_minutes < 0:
             raise ValueError("OperationGraphNode.duration_minutes 不能为负数。")
+        object.__setattr__(self, "seq", seq)
+        object.__setattr__(self, "duration_minutes", duration_minutes)
         object.__setattr__(self, "candidate_machine_ids", _compact_text_tuple(self.candidate_machine_ids))
         object.__setattr__(self, "candidate_operator_ids", _compact_text_tuple(self.candidate_operator_ids))
         object.__setattr__(self, "raw", _freeze_json_like(dict(self.raw or {})))
