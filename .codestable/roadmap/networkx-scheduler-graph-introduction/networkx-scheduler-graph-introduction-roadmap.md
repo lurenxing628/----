@@ -5780,6 +5780,629 @@ selection_reason
 不把每个候选都保存成正式排产历史版本。
 ```
 
+#### 13.6.8 当前仓库接入事实
+
+PR-7 实现前必须承认当前仓库的几个事实：
+
+```text
+正式排产明细存在 Schedule 表。
+Schedule 表有 version + op_id 唯一索引，同一个 version 里同一道工序只能有一条正式排程。
+ScheduleHistory 表按 version 保存一次排产历史和 result_summary。
+甘特图、周计划、资源派工目前都按 version 从 Schedule 查询明细。
+优化分析页主要读 ScheduleHistory.result_summary。
+```
+
+所以第一版不能这样做：
+
+```text
+不能把最终采用、原算法最好、关键链最好三套明细都塞进 Schedule 同一个 version。
+不能为了保存候选方案，偷偷新增多个正式 version，让用户误以为自己排了多次。
+不能只保存 result_summary 摘要，因为用户后面没法打开另一套方案的甘特图、周计划和资源派工。
+```
+
+PR-7 必须采用这个落库形态：
+
+```text
+Schedule：只保存最终采用方案，继续作为正式排产结果。
+ScheduleHistory：继续保存本次正式排产历史，并在 result_summary 里放候选对比小摘要。
+ScheduleCandidate：保存本次所有候选方案摘要。
+ScheduleCandidateRows：只保存代表候选方案的完整排产明细。
+ScheduleCandidateSelection：保存“最终采用 / 原算法最好 / 关键链最好”等角色指向哪个候选。
+```
+
+#### 13.6.9 数据库表设计
+
+PR-7 建议新增一次迁移，例如 `v10.py`。迁移只新增表和配置默认值，不改旧历史语义。
+
+新增表 1：`ScheduleCandidate`
+
+```sql
+CREATE TABLE IF NOT EXISTS ScheduleCandidate (
+    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+    version               INTEGER NOT NULL,
+    candidate_key         TEXT NOT NULL,
+    candidate_label       TEXT NOT NULL,
+    candidate_kind        TEXT NOT NULL,
+    status                TEXT NOT NULL,
+    graph_enabled         TEXT NOT NULL DEFAULT 'no',
+    weight_level          INTEGER,
+    weight_count          INTEGER,
+    critical_weight       INTEGER,
+    impact_weight         INTEGER,
+    downstream_weight     INTEGER,
+    sort_strategy         TEXT,
+    dispatch_mode         TEXT,
+    dispatch_rule         TEXT,
+    objective             TEXT,
+    score_json            TEXT,
+    metrics_json          TEXT,
+    health_json           TEXT,
+    summary_json          TEXT,
+    selection_reason      TEXT,
+    failure_reason        TEXT,
+    detail_saved          TEXT NOT NULL DEFAULT 'no',
+    elapsed_ms            INTEGER,
+    started_at            DATETIME,
+    finished_at           DATETIME,
+    created_at            DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(version, candidate_key)
+);
+```
+
+字段大白话说明：
+
+```text
+candidate_key：稳定内部编号，例如 baseline、graph_w1、graph_w2。
+candidate_label：页面显示名，例如“原算法”“关键链 3/5”。
+candidate_kind：baseline / critical_chain。
+status：completed / failed / skipped / adopted。
+graph_enabled：这套候选有没有关键链参与。
+score_json：当前系统评分的原始 tuple，保留可解释性。
+metrics_json：failed_ops、overdue_count、tardiness、makespan 等核心指标。
+health_json：关键链健康状态和支撑指标。
+summary_json：页面候选表需要的小摘要。
+detail_saved：这套候选有没有保存完整排产明细。
+```
+
+新增表 2：`ScheduleCandidateRows`
+
+```sql
+CREATE TABLE IF NOT EXISTS ScheduleCandidateRows (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    version          INTEGER NOT NULL,
+    candidate_id     INTEGER NOT NULL,
+    op_id            INTEGER NOT NULL,
+    machine_id       TEXT,
+    operator_id      TEXT,
+    start_time       DATETIME NOT NULL,
+    end_time         DATETIME NOT NULL,
+    lock_status      TEXT DEFAULT 'unlocked',
+    created_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(candidate_id) REFERENCES ScheduleCandidate(id) ON DELETE CASCADE,
+    UNIQUE(candidate_id, op_id)
+);
+```
+
+新增表 3：`ScheduleCandidateSelection`
+
+```sql
+CREATE TABLE IF NOT EXISTS ScheduleCandidateSelection (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    version         INTEGER NOT NULL,
+    role            TEXT NOT NULL,
+    candidate_id    INTEGER NOT NULL,
+    source_table     TEXT NOT NULL,
+    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(candidate_id) REFERENCES ScheduleCandidate(id) ON DELETE CASCADE,
+    UNIQUE(version, role)
+);
+```
+
+`role` 第一版固定这些值：
+
+```text
+adopted：最终采用方案。
+baseline_best：原算法最好方案。
+critical_best：关键链最好方案。
+```
+
+`source_table` 第一版固定这些值：
+
+```text
+schedule：角色对应最终采用方案，明细从正式 Schedule 表读。
+candidate_rows：角色对应未采用的代表候选，明细从 ScheduleCandidateRows 读。
+```
+
+索引：
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_schedule_candidate_version ON ScheduleCandidate(version);
+CREATE INDEX IF NOT EXISTS idx_schedule_candidate_rows_version_candidate ON ScheduleCandidateRows(version, candidate_id);
+CREATE INDEX IF NOT EXISTS idx_schedule_candidate_rows_time ON ScheduleCandidateRows(start_time, end_time);
+CREATE INDEX IF NOT EXISTS idx_schedule_candidate_selection_version ON ScheduleCandidateSelection(version);
+```
+
+#### 13.6.10 配置字段和页面设置
+
+PR-7 需要补齐这些配置字段：
+
+```text
+graph_candidate_weight_count
+graph_selection_policy
+graph_overdue_tolerance_count
+graph_tardiness_tolerance_ratio
+```
+
+建议默认值：
+
+```text
+graph_candidate_weight_count = 5
+graph_selection_policy = balanced
+graph_overdue_tolerance_count = 1
+graph_tardiness_tolerance_ratio = 0.10
+```
+
+可选值：
+
+```text
+graph_candidate_weight_count：3 / 5 / 7
+graph_selection_policy：balanced / score_only
+graph_overdue_tolerance_count：0 / 1 / 2
+graph_tardiness_tolerance_ratio：0.05 / 0.10 / 0.20
+```
+
+页面口径：
+
+```text
+普通用户默认不用碰这些。
+高级设置里显示成“关键链试跑档数”“自动择优偏好”“超期批次数容忍”“拖期时长容忍”。
+排产执行前允许临时填写本次时间上限 run_time_budget_seconds；这个值只影响本次排产，不写回长期配置。
+```
+
+默认开启口径：
+
+```text
+PR-7 完成并验收后，正式交付默认 graph_analysis_mode=on。
+开发、灰度和排障仍可手动切 off / report。
+如果迁移遇到已经存在的用户配置，不要静默覆盖用户明确保存过的值；需要在升级说明里写清默认开启策略。
+```
+
+#### 13.6.11 权重档位生成规则
+
+第一版权重必须稳定、可复现，不使用随机数。
+
+基准值来自配置：
+
+```text
+base_critical_weight = graph_critical_weight
+base_impact_weight = graph_impact_weight
+base_downstream_minutes_weight = 1
+```
+
+档位倍数：
+
+```text
+3 档：0.50 / 1.00 / 1.50
+5 档：0.50 / 0.75 / 1.00 / 1.25 / 1.50
+7 档：0.40 / 0.60 / 0.80 / 1.00 / 1.20 / 1.40 / 1.60
+```
+
+候选 key 示例：
+
+```text
+baseline
+graph_w1_of_5
+graph_w2_of_5
+graph_w3_of_5
+graph_w4_of_5
+graph_w5_of_5
+```
+
+候选构造结果示例：
+
+```text
+baseline：graph_enabled=no，critical_weight=0，impact_weight=0
+graph_w1_of_5：graph_enabled=yes，critical_weight=250，impact_weight=5
+graph_w3_of_5：graph_enabled=yes，critical_weight=500，impact_weight=10
+graph_w5_of_5：graph_enabled=yes，critical_weight=750，impact_weight=15
+```
+
+注意：
+
+```text
+候选 0 永远先跑 baseline。
+关键链候选按档位从低到高跑。
+如果时间不足，只跳过后续未启动候选，不中断已经完成的候选落摘要。
+```
+
+#### 13.6.12 算法运行器拆分
+
+建议新增内部模块：
+
+```text
+core/services/scheduler/run/schedule_candidate_runner.py
+core/services/scheduler/run/schedule_candidate_selection.py
+core/services/scheduler/run/schedule_candidate_persistence.py
+```
+
+`schedule_candidate_runner.py` 负责：
+
+```text
+根据配置生成候选列表。
+串行运行候选。
+每个候选调用现有 optimize_schedule / GreedyScheduler 链路。
+单个候选失败时记录 failed，不影响其他候选继续。
+时间上限到了就标记剩余候选 skipped。
+返回所有候选摘要和已完成候选的内存结果。
+```
+
+`schedule_candidate_selection.py` 负责：
+
+```text
+从 completed 候选中找 raw score 最好。
+找 baseline_best。
+找 critical_best。
+根据 balanced 规则决定 adopted。
+生成 selection_reason。
+决定哪些候选需要保存完整明细。
+```
+
+`schedule_candidate_persistence.py` 负责：
+
+```text
+保存 ScheduleCandidate。
+保存 ScheduleCandidateSelection。
+只为代表候选保存 ScheduleCandidateRows。
+最终采用方案仍交给现有 persist_schedule 写入 Schedule 和 ScheduleHistory。
+```
+
+推荐输出类型：
+
+```python
+CandidatePlan(
+    candidate_key: str,
+    label: str,
+    kind: str,
+    status: str,
+    graph_enabled: bool,
+    weight_level: Optional[int],
+    weight_count: Optional[int],
+    critical_weight: int,
+    impact_weight: int,
+    downstream_weight: int,
+    results: List[ScheduleResult],
+    summary: Any,
+    metrics: Any,
+    score: Tuple[float, ...],
+    health: Dict[str, Any],
+    elapsed_ms: int,
+    failure_reason: Optional[str],
+)
+
+CandidateSelectionOutcome(
+    adopted: CandidatePlan,
+    baseline_best: CandidatePlan,
+    critical_best: Optional[CandidatePlan],
+    raw_score_best: CandidatePlan,
+    completed_count: int,
+    planned_count: int,
+    time_budget_reached: bool,
+    skipped_candidate_labels: List[str],
+    selection_reason: str,
+)
+```
+
+#### 13.6.13 排产主链接入顺序
+
+当前 `orchestrate_schedule_run()` 是：
+
+```text
+optimize_schedule()
+build_validated_schedule_payload()
+maybe_analyze_schedule_graph()
+allocate_next_version()
+build_result_summary()
+persist_schedule()
+```
+
+PR-7 后建议变成：
+
+```text
+run_candidate_comparison()
+select adopted candidate
+用 adopted.results 做 build_validated_schedule_payload()
+maybe_analyze_schedule_graph()
+allocate_next_version()
+build_result_summary() 时写入 candidate_comparison 小摘要
+persist_schedule() 正常写 adopted 到 Schedule + ScheduleHistory
+persist_candidate_comparison() 写候选摘要、代表明细和角色映射
+```
+
+硬性要求：
+
+```text
+正式 Schedule 只写 adopted。
+如果候选对比保存失败，不能让正式排产静默变成“成功但候选丢了”；要么同事务回滚，要么 result_summary 明确标 degraded。
+不要让子候选直接写 DB；候选运行阶段只在内存里产生结果。
+simulate=True 也要保存候选对比，方便用户模拟时比较；但仍不改变批次和工序状态。
+```
+
+#### 13.6.14 result_summary 小摘要合同
+
+`result_summary.algo` 下新增：
+
+```json
+{
+  "candidate_comparison": {
+    "enabled": true,
+    "planned_candidate_count": 6,
+    "completed_candidate_count": 4,
+    "time_budget_reached": true,
+    "skipped_candidate_labels": ["关键链 4/5", "关键链 5/5"],
+    "adopted_candidate_key": "graph_w2_of_5",
+    "baseline_best_candidate_key": "baseline",
+    "critical_best_candidate_key": "graph_w2_of_5",
+    "raw_score_best_candidate_key": "baseline",
+    "selection_policy": "balanced",
+    "selection_reason": "评分接近，关键链健康更好",
+    "candidates": []
+  }
+}
+```
+
+`candidates` 里每条只放小摘要：
+
+```json
+{
+  "candidate_key": "graph_w2_of_5",
+  "label": "关键链 2/5",
+  "kind": "critical_chain",
+  "status": "completed",
+  "score": [0, 2, 180],
+  "metrics": {
+    "failed_ops": 0,
+    "overdue_count": 2,
+    "total_tardiness_minutes": 180,
+    "makespan_minutes": 4200
+  },
+  "critical_chain_health": {
+    "state": "更健康",
+    "reason": "关键链等待更少，高影响工序更早开始"
+  },
+  "detail_saved": true,
+  "roles": ["adopted", "critical_best"]
+}
+```
+
+摘要大小控制：
+
+```text
+candidates 最多写 planned_candidate_count 条。
+每条只写小字段，不写 schedule rows。
+完整 ScheduleResult、nodes、edges、raw、完整 node_metrics 不能进 result_summary。
+OperationLogs 继续只写 algo 小摘要，不写候选明细 rows。
+```
+
+#### 13.6.15 平衡择优具体规则
+
+先排序出 raw_score_best：
+
+```text
+score tuple 越小越好。
+failed_ops 是第一优先级。
+objective_score 沿用当前系统。
+```
+
+再判断关键链候选是否可以反超：
+
+```text
+1. critical_best 必须存在且 completed。
+2. critical_best.failed_ops <= raw_score_best.failed_ops。
+3. critical_best.overdue_count <= raw_score_best.overdue_count + graph_overdue_tolerance_count。
+4. critical_best.total_tardiness_minutes <= raw_score_best.total_tardiness_minutes * (1 + graph_tardiness_tolerance_ratio)。
+5. critical_best.critical_chain_health.state == "更健康"。
+6. 上面全部满足时，balanced 可以采用 critical_best。
+```
+
+如果不满足：
+
+```text
+采用 raw_score_best。
+如果 raw_score_best 是 baseline，页面提示“已比较关键链方案，本次原算法更优”。
+如果 raw_score_best 是关键链，页面提示“本次关键链方案评分更优”。
+```
+
+关键链健康状态第一版计算口径：
+
+```text
+以 baseline_best 为对照。
+critical_chain_finish_time 更早：+1。
+critical_chain_wait_minutes 减少 5% 以上：+1。
+top impact 工序平均开始时间更早：+1。
+关键链 finish 更晚 5% 以上：-1。
+关键链等待增加 5% 以上：-1。
+总分 >= 2：更健康。
+总分 <= -2：更差。
+其他：差不多。
+```
+
+如果 baseline 没有完成：
+
+```text
+不允许 balanced 反超。
+直接在 completed 候选中按 raw_score 选择。
+result_summary 标记 baseline_missing_or_failed。
+```
+
+#### 13.6.16 代表方案查询服务
+
+建议新增：
+
+```text
+core/services/scheduler/schedule_plan_query_service.py
+```
+
+入口：
+
+```python
+resolve_plan(version: int, role: str) -> SchedulePlanResolution
+list_plan_roles(version: int) -> List[SchedulePlanRoleOption]
+```
+
+`role` 第一版支持：
+
+```text
+adopted
+baseline_best
+critical_best
+```
+
+查询规则：
+
+```text
+role 缺省时使用 adopted。
+role 找不到时回退 adopted，并给页面一个可见提示。
+role 对应 source_table=schedule 时，从 Schedule 表读。
+role 对应 source_table=candidate_rows 时，从 ScheduleCandidateRows 表读。
+```
+
+已有服务改造：
+
+```text
+GanttService.get_gantt_tasks 增加 plan_role 参数。
+GanttService.get_week_plan_rows 增加 plan_role 参数。
+ResourceDispatchService.build_page_context / get_dispatch_payload 增加 plan_role 参数。
+Analysis 页面读取 candidate_comparison 后生成候选对比表和当前选中角色。
+```
+
+#### 13.6.17 前端 URL 和控件
+
+统一 query 参数：
+
+```text
+plan_role=adopted
+plan_role=baseline_best
+plan_role=critical_best
+```
+
+页面控件：
+
+```text
+在版本选择附近增加一个“查看方案”下拉。
+选项文案固定为：最终采用 / 原算法最好 / 关键链最好。
+当前版本没有候选对比时，不显示该下拉。
+某个角色没有明细时，该选项置灰或隐藏，并显示“本次没有保存这套方案明细”。
+```
+
+链接保留规则：
+
+```text
+甘特图设备/人员切换要保留 plan_role。
+甘特图上周/下周/日期范围要保留 plan_role。
+周计划查询和导出要保留 plan_role。
+资源派工查询和导出要保留 plan_role。
+优化分析页跳甘特图时要带 plan_role。
+系统历史里的链接默认不带 plan_role，相当于打开最终采用方案。
+```
+
+页面提示：
+
+```text
+最终采用原算法：已比较关键链方案，本次原算法更优。
+最终采用关键链且 raw score 不是第一：评分接近，关键链健康更好。
+候选没跑完：本次只比较了 X/Y 套方案。
+当前切换到非最终方案：当前查看的是对比方案，不是本次正式采用结果。
+```
+
+#### 13.6.18 测试清单
+
+PR-7 至少新增或补齐这些测试：
+
+```text
+tests/regression_scheduler_graph_auto_selection_contract.py
+  - 默认生成 baseline + 5 个关键链候选。
+  - 候选按 baseline 先跑。
+  - 时间上限到达时，只选择 completed 候选。
+  - 单个关键链候选失败不影响其他候选。
+  - score_only 选择 raw_score_best。
+  - balanced 在容差内且关键链更健康时选择 critical_best。
+  - failed_ops 变差时关键链不能反超。
+  - 超期批次数超过容差时关键链不能反超。
+  - 拖期时长超过容差时关键链不能反超。
+
+tests/regression_scheduler_candidate_persistence_contract.py
+  - Schedule 只保存 adopted。
+  - ScheduleCandidate 保存所有候选摘要。
+  - ScheduleCandidateRows 只保存代表方案明细。
+  - 同一候选同时是 adopted 和 critical_best 时不重复保存明细。
+  - ScheduleCandidateSelection 能正确映射 adopted / baseline_best / critical_best。
+  - simulate=True 也能保存候选对比，但不改变批次状态。
+
+tests/regression_scheduler_candidate_plan_switch_contract.py
+  - 甘特图 plan_role=baseline_best 读取候选明细。
+  - 甘特图 plan_role=adopted 读取正式 Schedule。
+  - 周计划 plan_role 能切换。
+  - 资源派工 plan_role 能切换。
+  - plan_role 不存在时回到 adopted，并给出可见提示。
+  - 页面链接保留 plan_role。
+
+tests/regression_scheduler_candidate_summary_contract.py
+  - result_summary.algo.candidate_comparison 只写小摘要。
+  - OperationLogs 不写候选 rows。
+  - summary_size_guard 不会因为候选摘要超限。
+```
+
+回归必须继续通过：
+
+```text
+tests/regression_scheduler_graph_on_mode_contract.py
+tests/regression_scheduler_graph_summary_contract.py
+tests/test_sgs_internal_scoring_matches_execution.py
+tests/test_sgs_total_hours_cache.py
+```
+
+#### 13.6.19 实施顺序
+
+建议按这个顺序做，避免一上来把算法、数据库、页面混成一团：
+
+```text
+1. 新增配置字段和迁移测试。
+2. 新增候选方案表、仓库和持久化测试。
+3. 新增 CandidatePlan / CandidateSelectionOutcome 等内部值对象。
+4. 新增候选生成和权重档位单测。
+5. 新增候选串行运行器，先只在测试里跑假 scheduler。
+6. 新增 balanced 自动择优函数和单测。
+7. 接入 orchestrate_schedule_run，让 adopted 继续走现有正式落库链路。
+8. 把 candidate_comparison 小摘要接入 result_summary。
+9. 保存代表方案明细和角色映射。
+10. 新增 SchedulePlanQueryService。
+11. 改甘特图、周计划、资源派工读取 plan_role。
+12. 改优化分析页展示候选对比和选择理由。
+13. 补系统历史入口和页面提示。
+14. 跑 PR-7 专项测试和既有 graph / SGS 回归。
+```
+
+#### 13.6.20 阶段验收清单
+
+```text
+[ ] graph_analysis_mode=on 时默认启用候选对比。
+[ ] baseline 永远先跑。
+[ ] 默认生成 5 档关键链候选。
+[ ] 档数可配置为 3 / 5 / 7。
+[ ] 时间到达上限时，能从已完成候选里选最好结果。
+[ ] result_summary 写 planned_candidate_count / completed_candidate_count / time_budget_reached。
+[ ] 自动择优复用当前 objective_score。
+[ ] balanced 规则按 failed_ops、超期批次数、拖期时长、关键链健康共同判断。
+[ ] Schedule 只写最终采用方案。
+[ ] 原算法最好和关键链最好如果不是最终采用，能从候选明细表打开。
+[ ] 甘特图、周计划、资源派工、优化分析页都能切换代表方案。
+[ ] 非最终方案页面明确提示“当前查看的是对比方案，不是正式采用结果”。
+[ ] OperationLogs 和 result_summary 不保存候选完整 rows。
+[ ] 单个候选失败不影响其他候选继续。
+[ ] 候选全部失败时，给出可见错误，不写伪成功历史。
+[ ] 第一版不做后台续跑、不做实时评分、不做多进程并行。
+```
+
 ## 阶段 14：资源匹配第一版
 
 这一步不是必须马上做，但如果要进一步优化设备/人员分配，可以用 NetworkX 二分图先做“可行匹配”。

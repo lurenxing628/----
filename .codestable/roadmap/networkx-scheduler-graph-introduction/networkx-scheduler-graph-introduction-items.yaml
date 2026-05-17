@@ -157,9 +157,20 @@ items:
     minimal_loop: false
     depends_on: [scheduler-graph-critical-score-on-mode]
     primary_paths:
+      - schema.sql
+      - core/infrastructure/migrations/v10.py
+      - data/repositories/schedule_candidate_repo.py
+      - core/models/schedule_candidate.py
+      - core/services/scheduler/run/schedule_candidate_runner.py
+      - core/services/scheduler/run/schedule_candidate_selection.py
+      - core/services/scheduler/run/schedule_candidate_persistence.py
       - core/services/scheduler/run/schedule_optimizer.py
       - core/services/scheduler/run/schedule_optimizer_steps.py
       - core/services/scheduler/run/schedule_persistence.py
+      - core/services/scheduler/run/schedule_orchestrator.py
+      - core/services/scheduler/schedule_plan_query_service.py
+      - core/services/scheduler/gantt_service.py
+      - core/services/scheduler/resource_dispatch_service.py
       - core/models/schedule_config_runtime_fields.py
       - core/services/scheduler/config/config_field_spec.py
       - web/routes/domains/scheduler/
@@ -167,11 +178,13 @@ items:
       - templates/scheduler/
       - templates/system/history.html
       - tests/regression_scheduler_graph_auto_selection_contract.py
+      - tests/regression_scheduler_candidate_persistence_contract.py
       - tests/regression_scheduler_candidate_plan_switch_contract.py
+      - tests/regression_scheduler_candidate_summary_contract.py
     exit_checks:
-      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_graph_auto_selection_contract.py tests/regression_scheduler_candidate_plan_switch_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_graph_auto_selection_contract.py tests/regression_scheduler_candidate_persistence_contract.py tests/regression_scheduler_candidate_plan_switch_contract.py tests/regression_scheduler_candidate_summary_contract.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_graph_on_mode_contract.py tests/regression_scheduler_graph_summary_contract.py
-    notes: "第一版默认关键链参与排产；候选 0 必须是原算法兜底，关键链候选默认 5 档且档数可在高级设置改。择优先复用当前 objective_score，failed_ops 不能变差；超期批次数默认最多多 1 个、拖期时长默认 10% 容差，后续允许在高级设置调。第一版串行试跑，不做实时评分、不做多进程、不做续跑、不把每个候选保存成正式历史版本。"
+    notes: "第一版默认关键链参与排产；候选 0 必须是原算法兜底，关键链候选默认 5 档且档数可在高级设置改。正式 Schedule 只保存最终采用方案；所有候选保存摘要，代表方案明细保存到 ScheduleCandidateRows，并用 ScheduleCandidateSelection 映射 adopted / baseline_best / critical_best。择优先复用当前 objective_score，failed_ops 不能变差；超期批次数默认最多多 1 个、拖期时长默认 10% 容差，后续允许在高级设置调。结果页通过 plan_role=adopted/baseline_best/critical_best 切换代表方案。第一版串行试跑，不做实时评分、不做多进程、不做续跑、不把每个候选保存成正式历史版本。"
 
   - slug: scheduler-graph-resource-matching-report
     title: PR-8 资源匹配 report-only 分析
