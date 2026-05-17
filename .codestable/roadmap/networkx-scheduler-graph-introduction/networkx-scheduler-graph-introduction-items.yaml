@@ -149,13 +149,37 @@ items:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_sgs_internal_scoring_matches_execution.py tests/test_sgs_total_hours_cache.py
     notes: "现有排序 key 是越小越优先；图分数如果越大越重要，接入 tuple 时要验证方向，不能凭感觉。"
 
-  - slug: scheduler-graph-resource-matching-report
-    title: PR-7 资源匹配 report-only 分析
-    description: "基于 NetworkX 二分图最大匹配，分析 ready 工序与候选设备的可行匹配数量、未匹配工序和瓶颈设备，第一版只写报告不改排产。"
+  - slug: scheduler-graph-auto-selection-comparison
+    title: PR-7 多权重自动择优和代表方案对比
+    description: "排产时先跑原算法候选，再按系统预设默认 5 档关键链权重试跑；复用当前评分目标自动择优，并在评分接近时用关键链健康做平衡判断。所有候选保存摘要，完整明细只保存最终采用方案、原算法最好方案、关键链最好方案，并让主要结果页支持代表方案切换。"
     status: planned
     feature: null
     minimal_loop: false
     depends_on: [scheduler-graph-critical-score-on-mode]
+    primary_paths:
+      - core/services/scheduler/run/schedule_optimizer.py
+      - core/services/scheduler/run/schedule_optimizer_steps.py
+      - core/services/scheduler/run/schedule_persistence.py
+      - core/models/schedule_config_runtime_fields.py
+      - core/services/scheduler/config/config_field_spec.py
+      - web/routes/domains/scheduler/
+      - web/viewmodels/
+      - templates/scheduler/
+      - templates/system/history.html
+      - tests/regression_scheduler_graph_auto_selection_contract.py
+      - tests/regression_scheduler_candidate_plan_switch_contract.py
+    exit_checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_graph_auto_selection_contract.py tests/regression_scheduler_candidate_plan_switch_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_graph_on_mode_contract.py tests/regression_scheduler_graph_summary_contract.py
+    notes: "第一版默认关键链参与排产；候选 0 必须是原算法兜底，关键链候选默认 5 档且档数可在高级设置改。择优先复用当前 objective_score，failed_ops 不能变差；超期批次数默认最多多 1 个、拖期时长默认 10% 容差，后续允许在高级设置调。第一版串行试跑，不做实时评分、不做多进程、不做续跑、不把每个候选保存成正式历史版本。"
+
+  - slug: scheduler-graph-resource-matching-report
+    title: PR-8 资源匹配 report-only 分析
+    description: "基于 NetworkX 二分图最大匹配，分析 ready 工序与候选设备的可行匹配数量、未匹配工序和瓶颈设备，第一版只写报告不改排产。"
+    status: planned
+    feature: null
+    minimal_loop: false
+    depends_on: [scheduler-graph-auto-selection-comparison]
     primary_paths:
       - core/services/scheduler/graph/resource_matching.py
       - tests/scheduler_graph/test_resource_matching.py
@@ -164,7 +188,7 @@ items:
     notes: "第一版不使用匹配结果直接分配设备；最小费用流留到后续增强。"
 
   - slug: scheduler-graph-win7-package-closeout
-    title: PR-8 Win7 离线打包和最终验收
+    title: PR-9 Win7 离线打包和最终验收
     description: "验证离线 wheel、PyInstaller 4.10、Win7 启动、graph_analysis_mode=off/report/on 三种模式，并跑最终质量门禁。"
     status: planned
     feature: null
@@ -184,7 +208,7 @@ items:
     notes: "正式交付不能只跑 validate_dist_exe.py；要按现有 Win7 双包和 Chrome109 启动链验收。"
 
   - slug: scheduler-graph-candidate-resume-later
-    title: PR-9 后续增强：候选方案续跑
+    title: PR-10 后续增强：候选方案续跑
     description: "第一版先不做续跑；多权重试跑到达时间上限时，从已完成候选里选择最好结果并提示完成数量。后续再增加“继续补跑剩余方案”能力，基于第一次排产冻结的输入快照补跑未完成候选。"
     status: planned
     feature: null
