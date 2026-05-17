@@ -3,7 +3,7 @@ doc_type: roadmap
 slug: networkx-scheduler-graph-introduction
 status: active
 created: 2026-05-08
-last_reviewed: 2026-05-16
+last_reviewed: 2026-05-17
 tags: [scheduler, graph, networkx, win7, python38]
 related_requirements: []
 related_architecture: [.codestable/architecture/ARCHITECTURE.md]
@@ -270,7 +270,7 @@ time_cost_ms
 
 ## 整体执行顺序
 
-建议分 13 个 PR 或小阶段推进。每个阶段都能单独提交，方便回滚。
+建议按下面这些 PR 或小阶段推进。每个阶段都能单独提交，方便回滚；正文后面的详细阶段是执行时的准绳。
 
 | 阶段 | 目标 | 是否改变排产结果 | 风险 |
 | -: | --- | ---: | -: |
@@ -279,15 +279,15 @@ time_cost_ms
 | 2 | 加配置开关和迁移，默认 off | 否 | 低 |
 | 3 | 建目录和 NetworkX 懒加载层 | 否 | 低 |
 | 4 | 定义图输入数据结构和节点 ID 规范 | 否 | 低 |
-| 5 | 实现工序依赖图构建 | 否 | 低 |
-| 6 | 实现图校验：环、孤立、重复 seq | 否 | 低 |
-| 7 | 实现指标：拓扑顺序、层级、关键路径、影响范围 | 否 | 低 |
-| 8 | 接入 report 模式，写 result_summary 小摘要 | 否 | 低 |
-| 9 | 调试导出和性能记录 | 否 | 低 |
-| 10 | ready 队列参与 SGS 候选 | 是 | 中 |
-| 11 | 关键路径评分参与 SGS 打分 | 是 | 中 |
-| 12 | 资源匹配 report-only 分析 | 部分 | 中 |
-| 13 | 打包、离线、回归、验收、归档 | 否/可控 | 中 |
+| 5 | 把现有业务数据转成图节点 | 否 | 低 |
+| 6 | 构建工序依赖图 | 否 | 低 |
+| 7 | 实现图校验：环、孤立、重复 seq | 否 | 低 |
+| 8 | 实现指标：拓扑顺序、层级、关键路径、影响范围 | 否 | 低 |
+| 9 | 图导出和统一分析服务入口 | 否 | 低 |
+| 10 | 接入 report 模式，写 result_summary 小摘要 | 否 | 低 |
+| 11 | 有环时的处理策略 | 否 | 低 |
+| 12 | ready 队列参与 SGS 候选 | 是 | 中 |
+| 13 | 关键路径评分、资源匹配、调试导出和最终打包验收 | 是/可控 | 中 |
 
 ## 阶段 0：建分支、记录 before_networkx 基线、落 ADR
 
@@ -1778,21 +1778,126 @@ test_input_adapter_does_not_import_networkx:
 
 ## 阶段 6：构建工序依赖图
 
+本阶段的目标很窄：只把阶段 5 已经整理好的 `OperationGraphNode` 连成“同一批次内的前后顺序边”，再把节点和边装进内部 `nx.DiGraph`。这一阶段不是图校验、不是关键路径分析、不是 ready 队列、不是 SGS 评分，也不是 `result_summary` 接入。
+
+大白话说，阶段 6 只做“把干净节点接成最小依赖图”。坏输入要清楚报错，合法输入要稳定建图；重复 `seq`、孤立节点、环、关键路径这些分析交给阶段 7 和阶段 8。
+
+### 6.0 整体实现要求
+
+本阶段必须把下面这些实现原则当成硬约束写进设计和验收里：
+
+```text
+优雅简洁：
+- precedence_builder.py 只做两件事：把 OperationGraphNode 生成 OperationGraphEdge；把 OperationGraphNode + OperationGraphEdge 装进内部 nx.DiGraph。
+- 文件内函数保持窄职责：分组排序、边生成、节点属性复制、边属性复制、图输入合同校验，各管各的。
+- 不新增 graph_edges.py；第一版边对象已经在 types.py，边生成逻辑放 precedence_builder.py 就够清楚。
+- 不在本阶段引入 GraphBuildResult、分析服务、导出格式或页面字段，避免把后续阶段提前揉进 builder。
+
+不做过度兜底：
+- 不允许 broad except Exception 后跳过坏节点继续建图。
+- 不允许重复 node_id 被 NetworkX 静默覆盖。
+- 不允许 edge 指向不存在的 node_id 后让 NetworkX 自动补空节点。
+- 不允许 lag_minutes 为负数时悄悄改成 0。
+- 不允许因为资源候选为空就补资源边或补全量资源。
+
+不做静默回退：
+- 阶段 6 只接收 OperationGraphNode 和 OperationGraphEdge，不接收 dict、ORM 对象、BatchOperation、OpForScheduleAlgo 原始对象。
+- 阶段 6 不重新生成 node_id、不重新解析 row、不重新计算 duration_minutes、不重新整理 candidate_machine_ids / candidate_operator_ids。
+- 同批次重复 seq 不在本阶段伪装成“业务顺序已经确定”；本阶段只用 (seq, op_code, node_id) 保证输出稳定，阶段 7 必须产出 DUPLICATE_SEQ warning。
+- 外协边的 external_lag 只表达“外协工序完成后才能进入下一道工序”，第一版不额外增加等待时间。
+
+不做过度防御性编程：
+- 不兼容十几种字段别名，不为任意外部 JSON 做适配。
+- 不在 builder 里查数据库、读配置、读 Flask request、访问 repo、调用 ScheduleService、调用 GreedyScheduler。
+- 不提前处理环、孤立节点、重复 seq 报告、拓扑排序、关键路径、影响范围。
+
+高内聚低耦合：
+- precedence_builder.py 可以 import nx_runtime.py 和 types.py。
+- precedence_builder.py 不 import input_adapter.py、validators.py、metrics.py、analysis_service.py、ready_queue.py、scoring.py。
+- precedence_builder.py 不 import Flask route、数据库、summary、OperationLogs、SGS、dispatch_rules。
+- nx.DiGraph 只能留在 core/services/scheduler/graph/ 内部流转，不能流到 Controller、页面、数据库、Excel 导出、summary 外层或 SGS。
+- 阶段 6 不改变 algo_ops_to_schedule、seed_results、frozen_op_ids、batch_order、sorted_ops、SGS 候选集合和任何排产结果。
+```
+
 ### 6.1 新建 precedence_builder.py
+
+本阶段只新增 / 实现：
+
+```text
+core/services/scheduler/graph/precedence_builder.py
+```
+
+第一版对外只暴露下面这些名字：
+
+```python
+class GraphBuildContractError(ValueError):
+    pass
+
+
+def build_linear_edges_by_batch(nodes: Iterable[OperationGraphNode]) -> List[OperationGraphEdge]:
+    ...
+
+
+def build_precedence_graph(
+    nodes: Iterable[OperationGraphNode],
+    edges: Iterable[OperationGraphEdge],
+):
+    ...
+```
+
+输入边界：
+
+```text
+nodes:
+  必须是阶段 5 产出的 OperationGraphNode。
+  函数内部先转换成 node_list = list(nodes)，避免 Iterable 被消费一次后后续建图丢节点。
+  不接受 dict / ORM / OpForScheduleAlgo / BatchOperation 原始对象。
+
+edges:
+  必须是 OperationGraphEdge。
+  build_linear_edges_by_batch 生成的边可直接传入 build_precedence_graph。
+  未来如果要加入跨批次显式边，也必须先变成 OperationGraphEdge，再进入 builder。
+```
+
+输出边界：
+
+```text
+build_linear_edges_by_batch:
+  返回 List[OperationGraphEdge]。
+  不 import NetworkX。
+  不做图校验、不算指标、不写日志。
+
+build_precedence_graph:
+  返回内部 nx.DiGraph。
+  函数签名不要把 NetworkX 类型写进对外注解，避免把可选依赖暴露到 graph 包外层。
+  只能通过 import_networkx() 懒加载 NetworkX，不能在模块顶层 import networkx。
+```
+
+禁止事项：
+
+```text
+不要在 precedence_builder.py 顶层 import networkx。
+不要在 precedence_builder.py 里调用 build_operation_nodes_from_rows。
+不要在 precedence_builder.py 里查数据库或读取配置。
+不要在 precedence_builder.py 里调用 validators / metrics / analysis_service。
+不要在 precedence_builder.py 里写 result_summary / diagnostics / OperationLogs。
+不要在 precedence_builder.py 里接入 schedule_orchestrator、SGS、dispatch_rules。
+```
+
+### 6.2 边生成规则
 
 第一版只做最稳的：同一批次内按 `seq` 串成线性工艺路线。
 
 ```python
 from __future__ import annotations
 
-from typing import Iterable, List
+from typing import Dict, Iterable, List
 
-from .nx_runtime import import_networkx
 from .types import OperationGraphEdge, OperationGraphNode
 
 
 def build_linear_edges_by_batch(nodes: Iterable[OperationGraphNode]) -> List[OperationGraphEdge]:
-    grouped = {}
+    grouped: Dict[str, List[OperationGraphNode]] = {}
 
     for node in nodes:
         grouped.setdefault(node.batch_id, []).append(node)
@@ -1818,54 +1923,188 @@ def build_linear_edges_by_batch(nodes: Iterable[OperationGraphNode]) -> List[Ope
             )
 
     return edges
+```
 
+执行规则：
 
+```text
+1. 按 node.batch_id 分组。
+2. 每个 batch 内按 (seq, op_code, node_id) 排序。
+3. 相邻两个节点生成一条 prev -> next 的 OperationGraphEdge。
+4. prev_node.source == "external" 时，edge.kind = "external_lag"。
+5. 其他情况 edge.kind = "precedence"。
+6. 第一版 lag_minutes 固定为 0，不从外协天数、资源占用、冻结窗口里派生额外等待。
+7. edge.note 写清 batch_id 和 seq 变化，方便后续导出采样时看懂。
+```
+
+重复 `seq` 的处理口径：
+
+```text
+阶段 6 不负责判断重复 seq 是不是业务错误，否则会把“构图”和“校验”揉在一起。
+阶段 6 只用 (seq, op_code, node_id) 保证输出稳定，不偷偷改 seq，也不跳过重复 seq 节点。
+阶段 7 必须通过 DUPLICATE_SEQ warning 把这个问题暴露出来。
+后续 analysis_service 串联阶段 6 + 阶段 7 时，不能把重复 seq 当成完全正常状态吞掉。
+```
+
+外协边的含义：
+
+```text
+external_lag 不是“新增等待时间”，只是“上一道外协完成后才能进入下一道工序”的边类型标签。
+外协组合并信息保留在节点属性 ext_group_id / ext_merge_mode / ext_group_total_days / merge_context_degraded 上。
+阶段 6 不把同一外协组压成一个节点，不改变阶段 5 已经生成的 OperationGraphNode。
+```
+
+明确不做：
+
+```text
+不引入跨批次依赖。
+不把设备冲突、人员冲突、供应商冲突建成 precedence 边。
+不处理冻结窗口 seed_results / frozen_op_ids。
+不决定 ready 队列。
+不计算关键路径。
+不计算资源匹配。
+```
+
+### 6.3 图构建规则
+
+`build_precedence_graph` 负责把节点和边装进内部 `nx.DiGraph`。
+
+```python
 def build_precedence_graph(
     nodes: Iterable[OperationGraphNode],
     edges: Iterable[OperationGraphEdge],
 ):
+    node_list = list(nodes)
+    edge_list = list(edges)
+
+    _validate_unique_node_ids(node_list)
+    _validate_edges_reference_existing_nodes(edge_list, node_list)
+
     nx = import_networkx()
     graph = nx.DiGraph()
 
-    for node in nodes:
-        graph.add_node(
-            node.node_id,
-            batch_id=node.batch_id,
-            op_code=node.op_code,
-            seq=node.seq,
-            name=node.name,
-            duration_minutes=node.duration_minutes,
-            part_no=node.part_no,
-            priority=node.priority,
-            source=node.source,
-            status=node.status,
-            due_date=node.due_date,
-            op_type_id=node.op_type_id,
-            machine_id=node.machine_id,
-            operator_id=node.operator_id,
-            supplier_id=node.supplier_id,
-            ext_group_id=node.ext_group_id,
-            ext_merge_mode=node.ext_merge_mode,
-            ext_group_total_days=node.ext_group_total_days,
-            merge_context_degraded=node.merge_context_degraded,
-            candidate_machine_ids=list(node.candidate_machine_ids),
-            candidate_operator_ids=list(node.candidate_operator_ids),
-            raw=dict(node.raw),
-        )
+    for node in node_list:
+        graph.add_node(node.node_id, **_node_attrs(node))
 
-    for edge in edges:
-        graph.add_edge(
-            edge.from_node_id,
-            edge.to_node_id,
-            kind=edge.kind,
-            lag_minutes=edge.lag_minutes,
-            note=edge.note,
-        )
+    for edge in edge_list:
+        graph.add_edge(edge.from_node_id, edge.to_node_id, **_edge_attrs(edge))
 
     return graph
 ```
 
-### 6.2 测试
+建议内部窄助手：
+
+```text
+_validate_unique_node_ids(nodes):
+  发现重复 node_id 时抛 GraphBuildContractError。
+  错误信息包含重复 node_id 和样本 op_code。
+
+_validate_edges_reference_existing_nodes(edges, nodes):
+  edge.from_node_id / edge.to_node_id 必须都存在于 node_id 集合。
+  缺失时抛 GraphBuildContractError。
+  不能让 NetworkX 自动补空节点。
+
+_validate_edge(edge):
+  from_node_id / to_node_id 不能为空。
+  kind 第一版只允许 precedence / external_lag / explicit。
+  lag_minutes 必须 >= 0。
+
+_node_attrs(node):
+  只复制 OperationGraphNode 上已经存在的事实字段。
+  不派生分析字段，不写 predecessor_ids / successor_ids / in_degree。
+
+_edge_attrs(edge):
+  只复制 kind / lag_minutes / note。
+```
+
+节点属性第一版必须保留：
+
+```text
+batch_id
+op_code
+seq
+name
+duration_minutes
+part_no
+priority
+source
+status
+due_date
+op_type_id
+machine_id
+operator_id
+supplier_id
+ext_group_id
+ext_merge_mode
+ext_group_total_days
+merge_context_degraded
+candidate_machine_ids
+candidate_operator_ids
+raw
+```
+
+属性复制口径：
+
+```text
+candidate_machine_ids / candidate_operator_ids 进入 graph 属性时转成 list，方便后续 JSON 导出。
+raw 进入 graph 属性时使用 dict(node.raw)，保持可序列化快照。
+不要把 OperationGraphNode 原对象挂到 graph node 属性里。
+不要把 Batch / BatchOperation / OpForScheduleAlgo 原对象挂到 graph node 属性里。
+不要在属性复制时修改 node 自身。
+```
+
+边属性第一版必须保留：
+
+```text
+kind
+lag_minutes
+note
+```
+
+为后续阶段预留但本阶段不生成的内容：
+
+```text
+ready queue 后续会需要 predecessor_ids / successor_ids / in_degree，但阶段 6 不生成这些业务输出。
+关键路径后续会使用 duration_minutes 和 lag_minutes，但阶段 6 不调用 dag_longest_path。
+report 模式后续会写 node_count / edge_count / warning_count / sample_edges，但阶段 6 不写 result_summary。
+```
+
+### 6.4 错误处理合同
+
+阶段 6 的错误要少而清楚。只要发现下面这些情况，就抛 `GraphBuildContractError`：
+
+```text
+重复 node_id。
+edge.from_node_id 为空。
+edge.to_node_id 为空。
+edge.from_node_id 不在节点集合里。
+edge.to_node_id 不在节点集合里。
+edge.kind 不在 precedence / external_lag / explicit 里。
+edge.lag_minutes < 0。
+传入对象不是 OperationGraphNode 或 OperationGraphEdge。
+```
+
+不要做：
+
+```text
+不要跳过坏节点。
+不要跳过坏边。
+不要给缺失端点生成临时节点。
+不要因为某条边坏了就只返回部分图。
+不要捕获 GraphBuildContractError 后改成空图。
+不要捕获 NetworkXUnavailable 后改成普通 dict 图。
+```
+
+NetworkX 缺失或版本不对时：
+
+```text
+继续沿用 nx_runtime.NetworkXUnavailable。
+不要在 precedence_builder.py 里重新包装成别的错误。
+graph_analysis_mode=off 不会调用 build_precedence_graph，所以 off 模式仍不要求安装 NetworkX。
+```
+
+### 6.5 测试文件
+
 
 新增：
 
@@ -1873,7 +2112,7 @@ def build_precedence_graph(
 tests/scheduler_graph/test_precedence_builder.py
 ```
 
-测试 1：单批次线性
+测试 1：单批次线性边
 
 ```text
 B001_10 -> B001_20 -> B001_30
@@ -1902,7 +2141,33 @@ B002_10 -> B002_20
 B001 不连到 B002。
 ```
 
-测试 3：外部工序边类型
+测试 3：输入顺序打乱仍按 seq 排边
+
+```text
+输入顺序：B001_30, B001_10, B001_20
+```
+
+期望：
+
+```text
+边仍然是 B001_10 -> B001_20 -> B001_30。
+```
+
+测试 4：重复 seq 保持稳定排序但不伪装成校验通过
+
+```text
+B001 seq=10 op_code=B001_A
+B001 seq=10 op_code=B001_B
+```
+
+期望：
+
+```text
+阶段 6 按 (seq, op_code, node_id) 稳定输出边。
+测试说明重复 seq 的业务 warning 属于阶段 7，不在阶段 6 吞掉或改写。
+```
+
+测试 5：外部工序边类型
 
 ```text
 B001_10 internal
@@ -1916,25 +2181,200 @@ B001_30 internal
 B001_20 -> B001_30 的边 kind = external_lag。
 ```
 
-验收：
+测试 6：图节点属性复制
+
+```text
+构建包含 duration_minutes、source、batch_id、candidate_machine_ids、candidate_operator_ids、raw 的节点。
+```
+
+期望：
+
+```text
+graph.nodes[node_id] 里字段齐全。
+candidate_machine_ids / candidate_operator_ids 是 list。
+raw 是普通 dict。
+没有把 OperationGraphNode 原对象挂进 graph。
+```
+
+测试 7：图边属性复制
+
+```text
+传入 kind=external_lag、lag_minutes=0、note=...
+```
+
+期望：
+
+```text
+graph.edges[from_id, to_id] 里 kind / lag_minutes / note 保持一致。
+```
+
+测试 8：重复 node_id fail fast
+
+```text
+两个 OperationGraphNode 使用同一个 node_id。
+```
+
+期望：
+
+```text
+build_precedence_graph 抛 GraphBuildContractError。
+错误信息包含重复 node_id。
+```
+
+测试 9：未知边端点 fail fast
+
+```text
+edge.from_node_id 或 edge.to_node_id 不在 nodes 集合中。
+```
+
+期望：
+
+```text
+build_precedence_graph 抛 GraphBuildContractError。
+不会让 NetworkX 自动补空节点。
+```
+
+测试 10：非法边合同 fail fast
+
+```text
+edge.kind = "resource_conflict"
+edge.lag_minutes = -1
+```
+
+期望：
+
+```text
+分别抛 GraphBuildContractError。
+```
+
+测试 11：模块导入不触发 NetworkX
+
+```text
+import core.services.scheduler.graph.precedence_builder
+```
+
+期望：
+
+```text
+模块导入不 import networkx。
+只有调用 build_precedence_graph 时才通过 import_networkx() 懒加载。
+```
+
+测试 12：不接排产主链
+
+```text
+测试不需要真实数据库、Flask app、ScheduleService、GreedyScheduler。
+```
+
+期望：
+
+```text
+test_precedence_builder.py 只构造 OperationGraphNode / OperationGraphEdge。
+```
+
+### 6.6 阶段验收清单
+
+```text
+[ ] 实现 core/services/scheduler/graph/precedence_builder.py。
+[ ] 新增 tests/scheduler_graph/test_precedence_builder.py。
+[ ] precedence_builder.py 只 import nx_runtime.py、types.py 和标准库 typing / collections，不 import networkx。
+[ ] build_linear_edges_by_batch 返回 List[OperationGraphEdge]。
+[ ] build_precedence_graph 只通过 import_networkx() 懒加载 NetworkX。
+[ ] 同批次只按 seq 前后连边，不引入跨批次依赖。
+[ ] 外协前置边使用 kind=external_lag，lag_minutes 第一版仍为 0。
+[ ] 重复 node_id 抛 GraphBuildContractError，不被 NetworkX 覆盖。
+[ ] edge 端点不存在时抛 GraphBuildContractError，不被 NetworkX 自动补空节点。
+[ ] 非法 edge.kind / 负 lag_minutes 抛 GraphBuildContractError。
+[ ] 重复 seq 不在阶段 6 修复或跳过；阶段 7 必须继续保留 DUPLICATE_SEQ warning 计划。
+[ ] 不修改 validators.py、metrics.py、analysis_service.py、ready_queue.py、scoring.py。
+[ ] 不修改 schedule_orchestrator.py、schedule_optimizer.py、SGS、dispatch_rules、summary、OperationLogs、页面和数据库。
+[ ] tests/scheduler_graph/test_precedence_builder.py 通过。
+[ ] 阶段 5 已有 graph 基础测试继续通过。
+[ ] PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_graph/test_precedence_builder.py tests/scheduler_graph/test_input_adapter.py tests/scheduler_graph/test_graph_types.py tests/scheduler_graph/test_id_policy.py tests/scheduler_graph/test_nx_runtime.py
+[ ] PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler/graph tests/scheduler_graph
+[ ] PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright core/services/scheduler/graph
+```
+
+验收口径：
 
 ```text
 第一版只表达同批次 seq 前后依赖。
 不引入跨批次依赖。
 不把资源冲突当成 precedence 边。
+不改变任何排产结果。
+不写 result_summary。
+不把 nx.DiGraph 暴露到 graph 包外层。
 ```
 
 ## 阶段 7：图校验
 
+本阶段的目标也很窄：只检查阶段 6 产出的内部 `nx.DiGraph` 有没有环、有没有孤立工序、有没有同一批次重复 `seq`。这一阶段只暴露问题，不修图、不改节点、不删边、不接排产、不写 `result_summary`。
+
+大白话说，阶段 7 只负责“把图里看得见的问题讲清楚”。如果图有环，就把环上的边列出来；如果有孤立工序，就给 warning；如果同一批次有重复顺序号，就给 warning。后续到底要不要阻止排产，留给阶段 11；拓扑排序、关键路径、影响范围，留给阶段 8。
+
+### 7.0 整体实现要求
+
+本阶段必须把下面这些实现原则当成硬约束写进设计和验收里：
+
+```text
+优雅简洁：
+- validators.py 只做三类校验：DAG / cycle、isolated node、duplicate seq。
+- 每个函数只回答一个问题：是否 DAG、环边列表、孤立节点列表、重复 seq warning、汇总 warning。
+- 输出用 GraphWarning 和普通 dict，不新增复杂结果对象；阶段 9 统一分析服务再负责组装 GraphAnalysisSummary。
+- 有环时只给出可读证据，不提前决定 report / on 模式怎么处理。
+
+不做过度兜底：
+- 不允许 broad except Exception 后返回“无环”或“无 warning”。
+- 不允许 NetworkX 不可用时伪装成校验通过。
+- 不允许因为图为空就随便补一个“正常”结果；空图如果出现，应由调用方明确决定是否允许。
+- 不允许发现坏数据后自动删除节点、删除边、重连边或重排 seq。
+
+不做静默回退：
+- 阶段 7 只接收阶段 6 产出的内部 nx.DiGraph。
+- 阶段 7 不接收 OperationGraphNode 列表重新构图，不接收 dict / ORM / OpForScheduleAlgo 原始对象。
+- 重复 seq 只返回 DUPLICATE_SEQ warning，不在 validators.py 里重排、不改 seq、不跳过其中一个节点。
+- 孤立节点只返回 ISOLATED_OPERATION warning，不在 validators.py 里补边。
+
+不做过度防御性编程：
+- 不兼容十几种节点字段别名，只读取阶段 6 已经写进 graph node 的 batch_id / op_code / seq。
+- 不在 validators.py 里查数据库、读配置、读 Flask request、访问 repo、调用 ScheduleService、调用 GreedyScheduler。
+- 不提前实现 topological_sort、topological_generations、dag_longest_path、descendants、ancestors。
+
+高内聚低耦合：
+- validators.py 可以 import nx_runtime.py 和 types.py。
+- validators.py 不 import precedence_builder.py、metrics.py、analysis_service.py、exporter.py、ready_queue.py、scoring.py。
+- validators.py 不 import Flask route、数据库、summary、OperationLogs、SGS、dispatch_rules。
+- nx.DiGraph 仍只在 core/services/scheduler/graph/ 内部流转，不能流到 Controller、页面、数据库、Excel 导出、summary 外层或 SGS。
+- 阶段 7 不改变 algo_ops_to_schedule、seed_results、frozen_op_ids、batch_order、sorted_ops、SGS 候选集合和任何排产结果。
+```
+
 ### 7.1 新建 validators.py
+
+本阶段只实现：
+
+```text
+core/services/scheduler/graph/validators.py
+```
+
+第一版对外只暴露下面这些名字：
 
 ```python
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from .nx_runtime import import_networkx
 from .types import GraphWarning
+
+
+def _node_sort_key(graph, node_id: str) -> Tuple[str, int, str, str]:
+    data = graph.nodes[node_id]
+    return (
+        str(data.get("batch_id") or ""),
+        int(data.get("seq") or 0),
+        str(data.get("op_code") or ""),
+        str(node_id),
+    )
 
 
 def find_cycle_edges(graph) -> List[Dict[str, Any]]:
@@ -1949,12 +2389,14 @@ def find_cycle_edges(graph) -> List[Dict[str, Any]]:
     for item in cycle:
         u = item[0]
         v = item[1]
+        edge_data = graph.edges[u, v]
         result.append(
             {
                 "from": u,
                 "to": v,
                 "from_op_code": graph.nodes[u].get("op_code", u),
                 "to_op_code": graph.nodes[v].get("op_code", v),
+                "kind": edge_data.get("kind", "precedence"),
             }
         )
     return result
@@ -1968,29 +2410,44 @@ def is_dag(graph) -> bool:
 def find_isolated_nodes(graph) -> List[str]:
     return [
         node_id
-        for node_id in graph.nodes
+        for node_id in sorted(graph.nodes, key=lambda item: _node_sort_key(graph, item))
         if graph.in_degree(node_id) == 0 and graph.out_degree(node_id) == 0
     ]
 
 
 def find_duplicate_seq_warnings(graph) -> List[GraphWarning]:
-    grouped = {}
+    grouped: Dict[Tuple[str, int], List[str]] = {}
 
     for node_id, data in graph.nodes(data=True):
-        key = (data.get("batch_id"), data.get("seq"))
+        batch_id = data.get("batch_id")
+        seq = data.get("seq")
+        if not batch_id or seq is None:
+            continue
+        key = (str(batch_id), int(seq))
         grouped.setdefault(key, []).append(node_id)
 
-    warnings = []
-    for key, node_ids in grouped.items():
+    warnings: List[GraphWarning] = []
+    for key in sorted(grouped):
         batch_id, seq = key
-        if batch_id and seq is not None and len(node_ids) > 1:
-            warnings.append(
-                GraphWarning(
-                    code="DUPLICATE_SEQ",
-                    message="同一批次存在重复工序顺序号：batch_id={}, seq={}".format(batch_id, seq),
-                    data={"batch_id": batch_id, "seq": seq, "node_ids": node_ids},
-                )
+        node_ids = sorted(grouped[key], key=lambda item: _node_sort_key(graph, item))
+        if len(node_ids) <= 1:
+            continue
+        op_codes = [
+            str(graph.nodes[node_id].get("op_code") or "")
+            for node_id in node_ids
+        ]
+        warnings.append(
+            GraphWarning(
+                code="DUPLICATE_SEQ",
+                message="同一批次存在重复工序顺序号：batch_id={}, seq={}".format(batch_id, seq),
+                data={
+                    "batch_id": batch_id,
+                    "seq": seq,
+                    "node_ids": list(node_ids),
+                    "op_codes": op_codes,
+                },
             )
+        )
 
     return warnings
 
@@ -2004,7 +2461,12 @@ def collect_graph_warnings(graph) -> List[GraphWarning]:
             GraphWarning(
                 code="ISOLATED_OPERATION",
                 message="发现孤立工序：{}".format(data.get("op_code", node_id)),
-                data={"node_id": node_id, "op_code": data.get("op_code")},
+                data={
+                    "node_id": node_id,
+                    "op_code": data.get("op_code"),
+                    "batch_id": data.get("batch_id"),
+                    "seq": data.get("seq"),
+                },
             )
         )
 
@@ -2013,7 +2475,227 @@ def collect_graph_warnings(graph) -> List[GraphWarning]:
     return warnings
 ```
 
-### 7.2 测试
+输入边界：
+
+```text
+graph:
+  必须是阶段 6 build_precedence_graph() 产出的内部 nx.DiGraph。
+  validators.py 不负责构图，也不负责把业务 row 转成节点。
+  函数签名不要把 NetworkX 类型写进对外注解，避免把可选依赖暴露到 graph 包外层。
+```
+
+输出边界：
+
+```text
+is_dag:
+  返回 bool。
+
+find_cycle_edges:
+  返回 List[Dict[str, Any]]。
+  没有环时返回 []。
+  有环时只返回环上的边，不继续展开全图。
+
+find_isolated_nodes:
+  返回 List[str]，里面是 node_id。
+
+find_duplicate_seq_warnings / collect_graph_warnings:
+  返回 List[GraphWarning]。
+  warning.data 必须只放 JSON 可序列化值。
+```
+
+禁止事项：
+
+```text
+不要在 validators.py 顶层 import networkx。
+不要在 validators.py 里调用 build_linear_edges_by_batch / build_precedence_graph。
+不要在 validators.py 里调用 metrics / analysis_service / exporter。
+不要在 validators.py 里写 result_summary / diagnostics / OperationLogs。
+不要在 validators.py 里接入 schedule_orchestrator、SGS、dispatch_rules。
+```
+
+### 7.2 DAG 和环检测规则
+
+`is_dag(graph)` 只做一件事：
+
+```text
+通过 import_networkx() 懒加载 NetworkX。
+调用 nx.is_directed_acyclic_graph(graph)。
+返回 bool(...)。
+```
+
+`find_cycle_edges(graph)` 只做一件事：
+
+```text
+通过 import_networkx() 懒加载 NetworkX。
+调用 nx.find_cycle(graph, orientation="original")。
+如果抛 nx.NetworkXNoCycle，返回 []。
+如果找到环，把环上的边转成业务可读的小字典。
+```
+
+环边输出字段第一版固定为：
+
+```text
+from
+to
+from_op_code
+to_op_code
+kind
+```
+
+字段来源：
+
+```text
+from / to:
+  NetworkX 返回的 node_id。
+
+from_op_code / to_op_code:
+  graph.nodes[node_id].get("op_code", node_id)。
+
+kind:
+  graph.edges[from_id, to_id].get("kind", "precedence")。
+```
+
+有环时仍然不做：
+
+```text
+不调用 topological_sort。
+不调用 dag_longest_path。
+不调用 metrics.py。
+不在本阶段阻止排产。
+不把环拆掉继续分析。
+```
+
+NetworkX 异常处理口径：
+
+```text
+只捕获 nx.NetworkXNoCycle，因为它表示“没有环”这个正常结果。
+不要捕获 NetworkXUnfeasible、NetworkXError、Exception 后改成空列表。
+如果传入的图对象不符合 NetworkX 预期，让异常暴露给调用方或测试；不要在 validators.py 里吞掉。
+```
+
+### 7.3 孤立节点 warning
+
+孤立节点判断标准：
+
+```text
+graph.in_degree(node_id) == 0
+graph.out_degree(node_id) == 0
+```
+
+返回规则：
+
+```text
+find_isolated_nodes(graph):
+  返回按 (batch_id, seq, op_code, node_id) 排序后的 node_id 列表。
+
+collect_graph_warnings(graph):
+  对每个孤立节点生成 GraphWarning(code="ISOLATED_OPERATION", ...)
+```
+
+warning 内容：
+
+```python
+GraphWarning(
+    code="ISOLATED_OPERATION",
+    message="发现孤立工序：{}".format(op_code),
+    data={
+        "node_id": node_id,
+        "op_code": op_code,
+        "batch_id": batch_id,
+        "seq": seq,
+    },
+)
+```
+
+孤立节点的业务口径：
+
+```text
+孤立节点不一定是错误；单工序批次在第一版图里可能就是孤立节点。
+所以阶段 7 只把它作为 warning 暴露出来，不抛异常、不阻止 report 模式、不改排产结果。
+如果后续产品决定单工序批次不应提示 warning，需要先回 roadmap 更新口径，再改测试。
+```
+
+### 7.4 同批次重复 seq warning
+
+重复 `seq` 判断标准：
+
+```text
+按 (batch_id, seq) 分组。
+batch_id 不能为空，seq 不能是 None。
+同一组 node 数量大于 1 时，生成 DUPLICATE_SEQ warning。
+```
+
+排序规则：
+
+```text
+每个重复组内的 node_id / op_code 按 (op_code, node_id) 排序。
+所有 warning 按 (batch_id, seq) 排序。
+```
+
+warning 内容：
+
+```python
+GraphWarning(
+    code="DUPLICATE_SEQ",
+    message="同一批次存在重复工序顺序号：batch_id={}, seq={}".format(batch_id, seq),
+    data={
+        "batch_id": batch_id,
+        "seq": seq,
+        "node_ids": node_ids,
+        "op_codes": op_codes,
+    },
+)
+```
+
+重复 `seq` 的业务口径：
+
+```text
+阶段 6 已经用 (seq, op_code, node_id) 保证边生成稳定。
+阶段 7 必须继续把重复 seq 暴露出来，不能因为阶段 6 能稳定排序就把它当正常状态吞掉。
+阶段 7 不判断谁先谁后才是业务正确顺序，不写自动修复。
+```
+
+### 7.5 collect_graph_warnings 汇总规则
+
+`collect_graph_warnings(graph)` 第一版只汇总两类 warning：
+
+```text
+ISOLATED_OPERATION
+DUPLICATE_SEQ
+```
+
+汇总顺序：
+
+```text
+1. 先按稳定顺序加入孤立节点 warning。
+2. 再按稳定顺序加入重复 seq warning。
+```
+
+明确不放进 warnings 的内容：
+
+```text
+cycle_edges 不放进 warnings。
+is_dag 不放进 warnings。
+拓扑排序失败不放进 warnings，因为阶段 7 不运行拓扑排序。
+关键路径失败不放进 warnings，因为阶段 7 不运行关键路径。
+```
+
+原因：
+
+```text
+cycle_edges 是更高优先级的结构结果，后续阶段 11 会根据 graph_block_on_cycle 决定 report / on 模式怎么处理。
+warning 只放“不一定阻止继续分析，但必须让人看见”的图质量提示。
+```
+
+JSON 序列化要求：
+
+```text
+GraphWarning.data 中只能放 str / int / float / bool / None / list / dict。
+node_ids 和 op_codes 必须是 list，不能是 set 或 tuple。
+后续 exporter / analysis_service 可直接 json.dumps(asdict(warning), ensure_ascii=False)。
+```
+
+### 7.6 测试文件
 
 新增：
 
@@ -2021,7 +2703,20 @@ def collect_graph_warnings(graph) -> List[GraphWarning]:
 tests/scheduler_graph/test_validators.py
 ```
 
-测试 1：无环
+测试 1：模块导入不触发 NetworkX
+
+```text
+import core.services.scheduler.graph.validators
+```
+
+期望：
+
+```text
+模块导入不 import networkx。
+只有调用 is_dag / find_cycle_edges 时才通过 import_networkx() 懒加载。
+```
+
+测试 2：无环
 
 ```text
 A -> B -> C
@@ -2034,7 +2729,7 @@ is_dag=True
 cycle_edges=[]
 ```
 
-测试 2：有环
+测试 3：有环
 
 ```text
 A -> B -> C -> A
@@ -2045,9 +2740,10 @@ A -> B -> C -> A
 ```text
 is_dag=False
 cycle_edges 非空。
+cycle_edges 里的每条记录都有 from / to / from_op_code / to_op_code / kind。
 ```
 
-测试 3：孤立节点
+测试 4：孤立节点
 
 ```text
 A
@@ -2058,9 +2754,11 @@ B -> C
 
 ```text
 A 被识别为孤立节点。
+collect_graph_warnings 返回 ISOLATED_OPERATION。
+warning.data 包含 node_id / op_code / batch_id / seq。
 ```
 
-测试 4：同批次重复 seq
+测试 5：同批次重复 seq
 
 ```text
 B001 seq=10
@@ -2071,36 +2769,198 @@ B001 seq=10
 
 ```text
 出现 DUPLICATE_SEQ warning。
+warning.data 包含 batch_id / seq / node_ids / op_codes。
+node_ids 和 op_codes 顺序稳定。
 ```
 
-验收：
+测试 6：不同批次相同 seq 不报警
 
 ```text
-NetworkX 的 topological_sort 只对 DAG 有效。
-调用拓扑排序和关键路径前必须先做 DAG 校验。
-有环时不能继续算关键路径。
+B001 seq=10
+B002 seq=10
+```
+
+期望：
+
+```text
+不出现 DUPLICATE_SEQ warning。
+```
+
+测试 7：warning 可 JSON 序列化
+
+```text
+json.dumps([asdict(warning) for warning in warnings], ensure_ascii=False)
+```
+
+期望：
+
+```text
+不报错。
+输出里没有 set / tuple / dataclass 原对象。
+```
+
+测试 8：校验函数不修改原图
+
+```text
+先记录 graph.nodes(data=True) 和 graph.edges(data=True)。
+调用 is_dag / find_cycle_edges / collect_graph_warnings。
+再比对节点、边和属性。
+```
+
+期望：
+
+```text
+节点、边、属性不被修改。
+```
+
+测试 9：有环时不调用阶段 8 指标
+
+```text
+构造 A -> B -> A。
+只调用阶段 7 函数。
+```
+
+期望：
+
+```text
+能拿到 cycle_edges。
+测试不需要 metrics.py，不需要 topological_sort，不需要 dag_longest_path。
+```
+
+测试 10：和阶段 6 builder 串起来
+
+```text
+用 OperationGraphNode -> build_linear_edges_by_batch -> build_precedence_graph -> validators。
+```
+
+期望：
+
+```text
+正常线性批次 is_dag=True。
+重复 seq 仍能通过阶段 6 建图，但阶段 7 返回 DUPLICATE_SEQ warning。
+```
+
+### 7.7 阶段验收清单
+
+```text
+[ ] 实现 core/services/scheduler/graph/validators.py。
+[ ] 新增 tests/scheduler_graph/test_validators.py。
+[ ] validators.py 只 import nx_runtime.py、types.py 和标准库 typing / collections，不在顶层 import networkx。
+[ ] is_dag 只调用 nx.is_directed_acyclic_graph，不做额外业务判断。
+[ ] find_cycle_edges 只捕获 nx.NetworkXNoCycle，不 broad except。
+[ ] find_cycle_edges 输出 from / to / from_op_code / to_op_code / kind。
+[ ] find_isolated_nodes 按稳定顺序返回 node_id。
+[ ] collect_graph_warnings 返回 ISOLATED_OPERATION 和 DUPLICATE_SEQ。
+[ ] DUPLICATE_SEQ 按 (batch_id, seq) 分组，不跨批次误报。
+[ ] warning.data 全部 JSON 可序列化。
+[ ] 有环时阶段 7 只检测，不运行拓扑排序、关键路径或影响范围。
+[ ] 阶段 7 不改 graph 节点、边和属性。
+[ ] 不修改 metrics.py、analysis_service.py、exporter.py、ready_queue.py、scoring.py。
+[ ] 不修改 schedule_orchestrator.py、schedule_optimizer.py、SGS、dispatch_rules、summary、OperationLogs、页面和数据库。
+[ ] tests/scheduler_graph/test_validators.py 通过。
+[ ] 阶段 5 / 阶段 6 已有 graph 基础测试继续通过。
+[ ] PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_graph/test_validators.py tests/scheduler_graph/test_precedence_builder.py tests/scheduler_graph/test_input_adapter.py tests/scheduler_graph/test_graph_types.py tests/scheduler_graph/test_id_policy.py tests/scheduler_graph/test_nx_runtime.py
+[ ] PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler/graph tests/scheduler_graph
+[ ] PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright core/services/scheduler/graph
+```
+
+验收口径：
+
+```text
+阶段 7 完成后，系统仍然不改变任何排产结果。
+阶段 7 完成后，graph_analysis_mode=off 仍不要求安装 NetworkX，因为 validators.py 只在被调用时懒加载。
+阶段 7 完成后，后续阶段 8 必须先确认 is_dag=True，再做 topological_sort、topological_generations、dag_longest_path。
+阶段 7 完成后，阶段 11 才能根据 graph_block_on_cycle 决定 report / on 模式遇到环时怎么处理。
 ```
 
 ## 阶段 8：拓扑排序、层级、关键路径、影响范围
 
-### 8.1 在 metrics.py 写基础指标
+本阶段的目标仍然很窄：只在 `core/services/scheduler/graph/metrics.py` 里计算“图指标”。它读取阶段 6 已经建好的内部 `nx.DiGraph`，默认调用方已经先用阶段 7 确认 `is_dag=True`，然后输出拓扑顺序、层级、关键路径和每个节点的影响范围。
+
+大白话说，阶段 8 只回答“这张工序图里谁应该在谁前面、哪条链最长、某道工序会影响后面多少工序”。它不修图、不决定要不要阻止排产、不接入 `result_summary`、不改变 SGS 候选和打分，也不因为图有问题就悄悄返回空结果。
+
+### 8.0 整体实现要求
+
+本阶段必须把下面这些实现原则当成硬约束写进设计和验收里：
+
+```text
+优雅简洁：
+- metrics.py 只做四类指标：拓扑顺序、层级 generation、关键路径、影响范围。
+- 拓扑顺序和 generation 使用同一套稳定排序口径，避免两个函数看起来都对但顺序不一致。
+- 关键路径只在一个内部加权图里处理“节点工时转边权重”，不要把这套转换逻辑散落到多个函数。
+- build_node_metrics 只组装每个节点的指标小字典，不引入 GraphAnalysisSummary；统一摘要留给阶段 9 analysis_service。
+- 不新增 graph_metrics_service.py、critical_path_builder.py、impact_analyzer.py 这类过早拆分文件；第一版一个 metrics.py 足够清楚。
+
+不做过度兜底：
+- 不允许 broad except Exception 后返回空拓扑、空关键路径或 0 分钟。
+- 不允许有环时吞掉 NetworkXUnfeasible，再假装“没有关键路径”。
+- 不允许 duration_minutes 缺失或异常时随手用业务猜测补时长；阶段 6 已经把节点属性写进图，本阶段只读取合同字段。
+- 不允许 lag_minutes 为负数时悄悄改成 0；阶段 6 已经 fail fast，阶段 8 不重复兜底。
+
+不做静默回退：
+- 阶段 8 只接收阶段 6 产出的内部 nx.DiGraph。
+- 阶段 8 不接收 OperationGraphNode 列表重新构图，不接收 dict / ORM / OpForScheduleAlgo 原始对象。
+- 阶段 8 不在发现环时改走“只算一部分节点”的降级路径；调用方必须先用阶段 7 判断 DAG。
+- 如果后续 2000 节点性能验证发现 downstream_critical_minutes 太慢，不允许在代码里静默关闭字段；要停止并回 roadmap 决定是优化缓存、拆阶段，还是调整验收字段。
+
+不做过度防御性编程：
+- 不兼容十几种字段别名，只读取阶段 6 已经写进 graph node / edge 的 duration_minutes、batch_id、seq、op_code、lag_minutes。
+- 不在 metrics.py 里查数据库、读配置、读 Flask request、访问 repo、调用 ScheduleService、调用 GreedyScheduler。
+- 不在 metrics.py 里调用 validators.py、analysis_service.py、exporter.py、ready_queue.py、scoring.py，避免图指标层反向依赖上层编排。
+- 不为 Python 3.10+ 语法图省事；仓库仍要兼容 Python 3.8，所以不要使用 itertools.pairwise、list[str]、dict[str, int] 这类 3.9/3.10 之后才稳的写法。
+
+高内聚低耦合：
+- metrics.py 可以 import nx_runtime.py 和标准库 typing。
+- metrics.py 不 import precedence_builder.py、validators.py、analysis_service.py、exporter.py、ready_queue.py、scoring.py。
+- metrics.py 不 import Flask route、数据库、summary、OperationLogs、SGS、dispatch_rules。
+- nx.DiGraph 仍只在 core/services/scheduler/graph/ 内部流转，不能流到 Controller、页面、数据库、Excel 导出、summary 外层或 SGS。
+- 阶段 8 不改变 algo_ops_to_schedule、seed_results、frozen_op_ids、batch_order、sorted_ops、SGS 候选集合和任何排产结果。
+```
+
+### 8.1 新建 / 实现 metrics.py
+
+本阶段只实现：
+
+```text
+core/services/scheduler/graph/metrics.py
+```
+
+第一版对外只暴露下面这些名字：
 
 ```python
 from __future__ import annotations
 
-from typing import Dict, List, Set, Tuple
+from typing import Any, Dict, List, Set, Tuple
 
 from .nx_runtime import import_networkx
 
+_SOURCE_NODE_ID = "__GRAPH_METRICS_SOURCE__"
+
+
+def _node_sort_key(graph: Any, node_id: str) -> Tuple[str, int, str, str]:
+    data = graph.nodes[node_id]
+    return (
+        str(data.get("batch_id") or ""),
+        int(data.get("seq") or 0),
+        str(data.get("op_code") or ""),
+        str(node_id),
+    )
+
 
 def get_topological_order(graph) -> List[str]:
-    nx = import_networkx()
-    return list(nx.topological_sort(graph))
+    return [
+        node_id
+        for group in get_topological_generations(graph)
+        for node_id in group
+    ]
 
 
 def get_topological_generations(graph) -> List[List[str]]:
     nx = import_networkx()
-    return [list(group) for group in nx.topological_generations(graph)]
+    return [
+        sorted(list(group), key=lambda node_id: _node_sort_key(graph, node_id))
+        for group in nx.topological_generations(graph)
+    ]
 
 
 def get_generation_index(graph) -> Dict[str, int]:
@@ -2111,53 +2971,155 @@ def get_generation_index(graph) -> Dict[str, int]:
             result[node_id] = index
 
     return result
+
+
+def build_duration_weighted_graph(graph):
+    ...
+
+
+def get_critical_path(graph) -> Tuple[List[str], int]:
+    ...
+
+
+def get_upstream_operations(graph, node_id: str) -> Set[str]:
+    ...
+
+
+def get_downstream_operations(graph, node_id: str) -> Set[str]:
+    ...
+
+
+def get_impact_count(graph, node_id: str) -> int:
+    ...
+
+
+def get_downstream_critical_minutes(graph, node_id: str) -> int:
+    ...
+
+
+def build_node_metrics(graph) -> Dict[str, Dict[str, Any]]:
+    ...
 ```
 
-含义：
+输入边界：
+
+```text
+graph:
+  必须是阶段 6 build_precedence_graph() 产出的内部 nx.DiGraph。
+  调用拓扑、generation、关键路径、影响范围前，调用方必须先用阶段 7 确认 is_dag=True。
+  metrics.py 不负责构图，也不负责把业务 row 转成节点。
+  函数签名不要把 NetworkX 类型写进对外注解，避免把可选依赖暴露到 graph 包外层。
+
+node_id:
+  get_upstream_operations / get_downstream_operations / get_impact_count / get_downstream_critical_minutes 接收图里已有的 node_id。
+  node_id 不存在时，让 NetworkX 的错误直接暴露，不要返回空集合伪装成“没有影响”。
+```
+
+输出边界：
 
 ```text
 topological_order:
-  给出一个合法的工序顺序。
+  返回 List[str]，里面是 node_id。
+  顺序按 generation 从小到大，同一 generation 内按 (batch_id, seq, op_code, node_id) 稳定排序。
 
 topological_generations:
-  给出“第几层工序”。
-  第 0 层是没有前置的工序。
-  第 1 层是只依赖第 0 层的工序。
+  返回 List[List[str]]。
+  第 0 层是没有前置的工序，第 1 层是只依赖前面层级的工序。
+
+generation_index:
+  返回 Dict[str, int]，key 是 node_id，value 是 generation 序号。
+
+critical_path:
+  返回 Tuple[List[str], int]。
+  List[str] 是关键路径上的 node_id。
+  int 是关键路径总分钟数。
+
+upstream / downstream:
+  返回 Set[str]，只用于内部计算和测试断言，不直接写 JSON。
+
+node_metrics:
+  返回 Dict[str, Dict[str, Any]]。
+  第一层 key 是 node_id。
+  第二层字段必须是 JSON 可序列化值，后续 exporter / analysis_service 可以直接取用。
 ```
 
 官方定义里，拓扑排序要求如果有边 `u -> v`，那么 `u` 必须出现在 `v` 前面；这刚好对应“前工序必须早于后工序”。
 
-### 8.2 关键路径计算
+禁止事项：
+
+```text
+不要在 metrics.py 顶层 import networkx。
+不要在 metrics.py 里调用 build_linear_edges_by_batch / build_precedence_graph。
+不要在 metrics.py 里调用 validators / analysis_service / exporter。
+不要在 metrics.py 里写 result_summary / diagnostics / OperationLogs。
+不要在 metrics.py 里接入 schedule_orchestrator、SGS、dispatch_rules。
+不要在 metrics.py 里捕获 NetworkXUnfeasible 后返回空结果。
+```
+
+### 8.2 拓扑顺序和层级规则
+
+拓扑顺序和层级必须共用 `get_topological_generations` 这一套稳定输出：
+
+```text
+1. 通过 import_networkx() 懒加载 NetworkX。
+2. 调用 nx.topological_generations(graph)。
+3. 每一层内部按 (batch_id, seq, op_code, node_id) 排序。
+4. get_topological_order 只把 generation 摊平成一维列表。
+5. get_generation_index 只根据 get_topological_generations 的结果填 index。
+```
+
+这样做的目的：
+
+```text
+同一张图里，topological_order 和 generation_index 不会各用一套顺序规则。
+同层并行工序的顺序稳定，测试和后续摘要不会因为 NetworkX 内部迭代顺序抖动。
+```
+
+有环时的口径：
+
+```text
+nx.topological_generations 会抛 NetworkXUnfeasible。
+metrics.py 不捕获它。
+analysis_service 阶段 9 必须先用 validators.is_dag(graph) 判断，只有 DAG 才调用阶段 8 指标。
+阶段 8 单测要证明有环时不会被吞成空拓扑。
+```
+
+### 8.3 关键路径计算
 
 NetworkX 的 `dag_longest_path` 是按边权重算最长路径。当前工时在“工序节点”上，所以要把节点工时转成边权重。
 
-在 `metrics.py` 里新增：
+在 `metrics.py` 里实现：
 
 ```python
 def _duration_of(graph, node_id: str) -> int:
-    return int(graph.nodes[node_id].get("duration_minutes", 0) or 0)
+    return int(graph.nodes[node_id]["duration_minutes"])
 
 
 def build_duration_weighted_graph(graph):
     nx = import_networkx()
 
     weighted = nx.DiGraph()
-    source = "__SOURCE__"
-
-    weighted.add_node(source)
+    weighted.add_node(_SOURCE_NODE_ID)
 
     for node_id, data in graph.nodes(data=True):
         weighted.add_node(node_id, **dict(data))
 
     for node_id in graph.nodes:
         if graph.in_degree(node_id) == 0:
-            weighted.add_edge(source, node_id, weight=_duration_of(graph, node_id))
+            weighted.add_edge(_SOURCE_NODE_ID, node_id, weight=_duration_of(graph, node_id))
 
     for u, v, data in graph.edges(data=True):
-        lag_minutes = int(data.get("lag_minutes", 0) or 0)
+        lag_minutes = int(data["lag_minutes"])
         weighted.add_edge(u, v, weight=_duration_of(graph, v) + lag_minutes)
 
     return weighted
+
+
+def _path_weight(graph, path: List[str]) -> int:
+    total = 0
+    for from_node_id, to_node_id in zip(path, path[1:]):
+        total += int(graph.edges[from_node_id, to_node_id]["weight"])
+    return total
 
 
 def get_critical_path(graph) -> Tuple[List[str], int]:
@@ -2165,24 +3127,62 @@ def get_critical_path(graph) -> Tuple[List[str], int]:
 
     weighted = build_duration_weighted_graph(graph)
 
-    path = nx.dag_longest_path(weighted, weight="weight")
-    minutes = nx.dag_longest_path_length(weighted, weight="weight")
+    raw_path = nx.dag_longest_path(
+        weighted,
+        weight="weight",
+        topo_order=get_topological_order(weighted),
+    )
+    minutes = _path_weight(weighted, raw_path)
 
-    path = [node_id for node_id in path if node_id != "__SOURCE__"]
-
-    return path, int(minutes)
+    path = [node_id for node_id in raw_path if node_id != _SOURCE_NODE_ID]
+    return path, minutes
 ```
 
-验收：
+关键规则：
 
 ```text
-关键路径计算只在 DAG 图上执行。
-有环时不计算关键路径，只返回 warning。
+节点工时：
+  graph.nodes[node_id]["duration_minutes"]。
+  缺字段、None、非数字时直接暴露 KeyError / TypeError / ValueError，不在 metrics.py 里改成 0。
+
+边等待时间：
+  graph.edges[u, v]["lag_minutes"]。
+  第一版阶段 6 生成的边通常是 0，但阶段 8 要保留这个字段，让后续显式等待边能自然参与计算。
+  缺字段或非数字时直接暴露错误，不在 metrics.py 里补默认等待时间。
+
+虚拟起点：
+  _SOURCE_NODE_ID 只存在于 build_duration_weighted_graph 返回的新图里。
+  它不写回原图，不出现在最终 critical_path 里。
+
+权重转换：
+  无前置节点：_SOURCE_NODE_ID -> node 的 weight = node.duration_minutes。
+  普通边 u -> v 的 weight = v.duration_minutes + edge.lag_minutes。
+
+总分钟数：
+  用最终选中的 raw_path 上各条边 weight 相加。
+  不用 itertools.pairwise，因为本仓库要兼容 Python 3.8。
 ```
 
-### 8.3 影响范围计算
+关键路径并列时的口径：
 
-在 `metrics.py` 新增：
+```text
+先用 get_topological_order(weighted) 给 dag_longest_path 一个稳定 topo_order。
+同样长度的路径如果存在并列，第一版接受 NetworkX 在稳定拓扑顺序下选出的那一条。
+不要为了“看起来更聪明”额外写复杂并列评分。
+```
+
+明确不做：
+
+```text
+不把资源冲突、人员冲突、设备冲突转成关键路径边。
+不根据交期、优先级、冻结窗口调整关键路径。
+不把外协天数重新折算成等待时间；阶段 6 第一版 lag_minutes 已经固定为 0。
+不修改原始 graph 的节点、边和属性。
+```
+
+### 8.4 影响范围计算
+
+在 `metrics.py` 实现：
 
 ```python
 def get_upstream_operations(graph, node_id: str) -> Set[str]:
@@ -2210,18 +3210,23 @@ def get_downstream_critical_minutes(graph, node_id: str) -> int:
     return int(minutes)
 
 
-def build_node_metrics(graph):
+def build_node_metrics(graph) -> Dict[str, Dict[str, Any]]:
     critical_path, _critical_minutes = get_critical_path(graph)
     critical_set = set(critical_path)
+    critical_rank = {
+        node_id: index
+        for index, node_id in enumerate(critical_path)
+    }
     generation_index = get_generation_index(graph)
 
-    result = {}
+    result: Dict[str, Dict[str, Any]] = {}
 
     for node_id in graph.nodes:
         result[node_id] = {
             "is_on_critical_path": node_id in critical_set,
+            "critical_path_rank": critical_rank.get(node_id),
             "impact_count": get_impact_count(graph, node_id),
-            "generation_index": generation_index.get(node_id, 0),
+            "generation_index": generation_index[node_id],
             "downstream_critical_minutes": get_downstream_critical_minutes(graph, node_id),
         }
 
@@ -2244,15 +3249,34 @@ downstream_critical_minutes:
   从这个工序开始，后面最长还要多久。
 ```
 
-性能提醒：
+node_metrics 字段第一版固定为：
 
 ```text
-get_downstream_critical_minutes 对每个节点都算一次子图关键路径，2000 节点时可能变慢。
-第一版性能如果超过目标，可以先只算 critical_path、impact_count、generation_index。
-downstream_critical_minutes 留到后续优化。
+is_on_critical_path:
+  bool，当前节点是否在全图关键路径上。
+
+critical_path_rank:
+  当前节点在关键路径上的序号；不在关键路径上则为 None。
+
+impact_count:
+  当前节点后面会影响多少个节点。
+
+generation_index:
+  当前节点在第几层。
+
+downstream_critical_minutes:
+  从当前节点开始往后看，最长链路还需要多少分钟。
 ```
 
-### 8.4 测试
+性能口径：
+
+```text
+get_downstream_critical_minutes 会对每个节点的下游子图再算一次关键路径，小图阶段可以接受。
+阶段 8 不做缓存优化，先把语义写准、测试锁住。
+阶段 18/PR-4 做 2000 节点性能记录时，如果这个字段明显拖慢，不能静默关闭；要回到 roadmap 明确改成缓存版或拆成后续优化项。
+```
+
+### 8.5 测试文件
 
 新增：
 
@@ -2262,7 +3286,20 @@ tests/scheduler_graph/test_metrics_critical_path.py
 tests/scheduler_graph/test_metrics_impact.py
 ```
 
-拓扑测试：
+测试 1：模块导入不触发 NetworkX
+
+```text
+import core.services.scheduler.graph.metrics
+```
+
+期望：
+
+```text
+模块导入不 import networkx。
+只有调用指标函数时才通过 import_networkx() 懒加载。
+```
+
+测试 2：线性拓扑顺序
 
 ```text
 A -> B -> C
@@ -2274,7 +3311,7 @@ generation_index[B] = 1
 generation_index[C] = 2
 ```
 
-并行层级测试：
+测试 3：并行层级稳定排序
 
 ```text
 A -> C
@@ -2283,9 +3320,23 @@ B -> C
 期望：
 A 和 B 都在第 0 层
 C 在第 1 层
+同层节点按 (batch_id, seq, op_code, node_id) 稳定排序。
 ```
 
-关键路径线性测试：
+测试 4：有环时不吞异常
+
+```text
+A -> B -> A
+```
+
+期望：
+
+```text
+get_topological_order 或 get_topological_generations 抛 NetworkXUnfeasible。
+metrics.py 不返回 []、不返回 0、不把有环图伪装成正常 DAG。
+```
+
+测试 5：线性关键路径
 
 ```text
 A(10) -> B(20) -> C(30)
@@ -2295,7 +3346,7 @@ critical_path = [A, B, C]
 critical_path_minutes = 60
 ```
 
-关键路径分叉测试：
+测试 6：分叉关键路径
 
 ```text
 A(10) -> B(100) -> D(10)
@@ -2306,7 +3357,7 @@ critical_path = [A, B, D]
 critical_path_minutes = 120
 ```
 
-外协等待测试：
+测试 7：边等待时间参与关键路径
 
 ```text
 A(10) -> B(20), edge lag_minutes=1440
@@ -2315,7 +3366,23 @@ A(10) -> B(20), edge lag_minutes=1440
 critical_path_minutes = 1470
 ```
 
-影响范围测试：
+测试 8：单节点图关键路径
+
+```text
+A(10)
+```
+
+期望：
+
+```text
+critical_path = [A]
+critical_path_minutes = 10
+generation_index[A] = 0
+impact_count[A] = 0
+downstream_critical_minutes[A] = 10
+```
+
+测试 9：影响范围
 
 ```text
 A -> B -> C
@@ -2326,6 +3393,122 @@ A downstream = {B, C, D}
 B downstream = {C}
 C downstream = {}
 A impact_count = 3
+```
+
+测试 10：上游范围
+
+```text
+A -> B -> C
+D -> C
+```
+
+期望：
+
+```text
+C upstream = {A, B, D}
+A upstream = {}
+```
+
+测试 11：build_node_metrics 汇总字段
+
+```text
+A(10) -> B(100) -> D(10)
+A(10) -> C(20)  -> D(10)
+```
+
+期望：
+
+```text
+每个 node_id 都有 is_on_critical_path / critical_path_rank / impact_count / generation_index / downstream_critical_minutes。
+B 在关键路径上。
+C 不在关键路径上，critical_path_rank is None。
+A impact_count = 3。
+D downstream_critical_minutes = 10。
+```
+
+测试 12：指标函数不修改原图
+
+```text
+先记录 graph.nodes(data=True) 和 graph.edges(data=True)。
+调用 get_topological_order / get_critical_path / build_node_metrics。
+再比对节点、边和属性。
+```
+
+期望：
+
+```text
+原图节点、边、属性不被修改。
+build_duration_weighted_graph 返回的新图可以包含 _SOURCE_NODE_ID，但原图不能出现这个虚拟节点。
+```
+
+测试 13：metrics 不反向依赖上层模块
+
+```text
+导入 metrics.py 后检查 sys.modules。
+```
+
+期望：
+
+```text
+不导入 validators.py。
+不导入 analysis_service.py。
+不导入 exporter.py。
+不导入 ready_queue.py。
+不导入 scoring.py。
+不导入 schedule_orchestrator.py。
+```
+
+测试 14：缺合同字段不静默补 0
+
+```text
+构造缺 duration_minutes 的节点。
+构造缺 lag_minutes 的边。
+```
+
+期望：
+
+```text
+get_critical_path 直接暴露 KeyError / TypeError / ValueError。
+不要返回 0 分钟。
+不要返回空 critical_path。
+不要把缺字段解释成“没有工时”或“没有等待”。
+```
+
+### 8.6 阶段验收清单
+
+```text
+[ ] 实现 core/services/scheduler/graph/metrics.py。
+[ ] 新增 tests/scheduler_graph/test_metrics_topology.py。
+[ ] 新增 tests/scheduler_graph/test_metrics_critical_path.py。
+[ ] 新增 tests/scheduler_graph/test_metrics_impact.py。
+[ ] metrics.py 只 import nx_runtime.py 和标准库 typing，不在顶层 import networkx。
+[ ] metrics.py 不 import validators.py / analysis_service.py / exporter.py / ready_queue.py / scoring.py。
+[ ] get_topological_order / get_topological_generations / get_generation_index 使用同一套稳定 generation 口径。
+[ ] 有环图调用拓扑或关键路径时异常暴露，不返回空结果。
+[ ] build_duration_weighted_graph 用虚拟起点把节点工时转成边权重，不修改原图。
+[ ] critical_path_minutes 包含节点 duration_minutes 和边 lag_minutes。
+[ ] 缺 duration_minutes / lag_minutes 时不静默补 0。
+[ ] get_upstream_operations / get_downstream_operations 使用 NetworkX ancestors / descendants。
+[ ] build_node_metrics 输出 is_on_critical_path / critical_path_rank / impact_count / generation_index / downstream_critical_minutes。
+[ ] build_node_metrics 输出值全部 JSON 可序列化。
+[ ] 阶段 8 不写 result_summary / diagnostics / OperationLogs。
+[ ] 阶段 8 不修改 schedule_orchestrator.py、schedule_optimizer.py、SGS、dispatch_rules、summary、页面和数据库。
+[ ] tests/scheduler_graph/test_metrics_topology.py 通过。
+[ ] tests/scheduler_graph/test_metrics_critical_path.py 通过。
+[ ] tests/scheduler_graph/test_metrics_impact.py 通过。
+[ ] 阶段 5 / 阶段 6 / 阶段 7 已有 graph 基础测试继续通过。
+[ ] PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_graph/test_metrics_topology.py tests/scheduler_graph/test_metrics_critical_path.py tests/scheduler_graph/test_metrics_impact.py tests/scheduler_graph/test_validators.py tests/scheduler_graph/test_precedence_builder.py tests/scheduler_graph/test_input_adapter.py tests/scheduler_graph/test_graph_types.py tests/scheduler_graph/test_id_policy.py tests/scheduler_graph/test_nx_runtime.py
+[ ] PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler/graph tests/scheduler_graph
+[ ] PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright core/services/scheduler/graph
+```
+
+验收口径：
+
+```text
+阶段 8 完成后，系统仍然不改变任何排产结果。
+阶段 8 完成后，graph_analysis_mode=off 仍不要求安装 NetworkX，因为 metrics.py 只在被调用时懒加载。
+阶段 8 完成后，有环图仍由阶段 7 / 阶段 11 的策略处理；阶段 8 不自己兜底。
+阶段 8 完成后，阶段 9 可以直接调用 metrics.py 组装 GraphAnalysisSummary，不需要重新设计指标字段。
 ```
 
 ## 阶段 9：图导出和统一分析服务入口
@@ -3856,5 +5039,8 @@ on 模式：
 
 ## 变更记录
 
+- 2026-05-17：细化阶段 8，把 `metrics.py` 的拓扑顺序、层级、关键路径、影响范围、节点指标、错误暴露、测试用例和验收命令补到可执行程度；同时明确阶段 8 只做图指标，不接 report、不接 SGS、不写 `result_summary`，并把“优雅简洁、不做过度兜底、不做静默回退、不做过度防御性编程、高内聚低耦合”写成硬要求。
+- 2026-05-17：细化阶段 7，把 `validators.py` 的目标边界、整体实现要求、输入输出合同、DAG/环检测、孤立节点 warning、重复 `seq` warning、汇总规则、测试用例和验收命令补到可执行程度；同时明确阶段 7 只暴露图质量问题，不修图、不静默回退、不接排产、不写 `result_summary`，并把“优雅简洁、不做过度兜底、不做过度防御性编程、高内聚低耦合”写成硬要求。
+- 2026-05-17：细化阶段 6，把 `precedence_builder.py` 的职责、输入输出合同、边生成规则、图构建规则、错误处理、测试用例和验收命令补到可执行程度；同时把“优雅简洁、不做过度兜底、不做静默回退、不做过度防御性编程、高内聚低耦合”写成阶段 6 的硬要求，并同步整体执行顺序表中阶段 5/6/7 的口径，避免后续按错阶段执行。
 - 2026-05-17：执行阶段 5，新增 `core/services/scheduler/graph/input_adapter.py` 和 `tests/scheduler_graph/test_input_adapter.py`，把已整理好的排产输入转换为 `OperationGraphNode`；同时修复 `FrozenDict` 只读方法的 pyright 签名问题。阶段 5 仍只做输入转换，不构建 `nx.DiGraph`，不接入排产，不写 `result_summary`，不改变排产结果。
 - 2026-05-17：细化阶段 5，把 `input_adapter.py` 的职责、输入合同、字段映射、时长计算、候选资源、raw 快照、错误处理、测试用例和验收命令补到可执行程度；同时把“优雅简洁、不做过度兜底、不做静默回退、不做过度防御性编程、高内聚低耦合”写成阶段 5 的硬要求；按只读核实结果补准固定人员/固定设备候选资源口径、外协天数必须大于 0、source 严格合同和 pyright 收尾要求。
