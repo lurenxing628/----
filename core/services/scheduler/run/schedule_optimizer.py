@@ -10,6 +10,7 @@ from core.algorithms import GreedyScheduler, ScheduleResult, SortStrategy, Strat
 from core.algorithms.evaluation import compute_metrics, objective_score
 from core.algorithms.greedy.algo_stats import merge_algo_stats, snapshot_algo_stats
 from core.algorithms.ordering import build_batch_sort_inputs, build_normalized_batches_map
+from core.infrastructure.errors import ValidationError
 
 from .optimizer_config import ensure_optimizer_config_snapshot, resolve_optimizer_config
 from .optimizer_local_search import run_local_search as _run_local_search_impl
@@ -84,6 +85,7 @@ def optimize_schedule(
     readiness_gate_enabled: bool = False,
     strict_mode: bool = False,
     graph_ready_context: Optional[Any] = None,
+    graph_dispatch_mode_override: Optional[str] = None,
     _runtime: Optional[OptimizerRuntime] = None,
 ) -> OptimizationOutcome:
     """
@@ -94,6 +96,8 @@ def optimize_schedule(
     runtime = _runtime or _default_runtime()
     optimizer_algo_stats: Dict[str, Any] = {"fallback_counts": {}, "param_fallbacks": {}}
     cfg = ensure_optimizer_config_snapshot(cfg, strict_mode=bool(strict_mode))
+    if graph_dispatch_mode_override not in (None, "sgs"):
+        raise ValidationError("图派工模式覆盖只允许使用 sgs。", field="graph_dispatch_mode_override")
 
     # 保持原有顺序：strict 配置快照错误先于 seed 错误；allowlist 解析仍在 seed 边界之后。
     seed_sr_list = _coerce_seed_results(seed_results, optimizer_algo_stats=optimizer_algo_stats)
@@ -104,9 +108,9 @@ def optimize_schedule(
         optimizer_algo_stats=optimizer_algo_stats,
         strict_mode=bool(strict_mode),
     )
-    graph_ready_enabled = graph_ready_context is not None
-    dispatch_mode_cfg = "sgs" if graph_ready_enabled else optimizer_cfg.dispatch_mode
-    dispatch_modes = ["sgs"] if graph_ready_enabled else optimizer_cfg.dispatch_modes()
+    graph_sgs_required = graph_ready_context is not None or graph_dispatch_mode_override == "sgs"
+    dispatch_mode_cfg = "sgs" if graph_sgs_required else optimizer_cfg.dispatch_mode
+    dispatch_modes = ["sgs"] if graph_sgs_required else optimizer_cfg.dispatch_modes()
 
     normalized_batches_for_sort = build_normalized_batches_map(batches)
 

@@ -26,6 +26,7 @@ class ScheduleGraphDispatchPreparation:
     graph_analysis_public: Optional[Dict[str, Any]]
     graph_analysis_diagnostics: Optional[Dict[str, Any]]
     graph_ready_context: Optional[Any]
+    graph_dispatch_mode_override: Optional[str] = None
 
 
 def _elapsed_ms(started: float) -> int:
@@ -62,9 +63,10 @@ def prepare_schedule_graph_for_dispatch(
             graph_analysis_public=None,
             graph_analysis_diagnostics=None,
             graph_ready_context=None,
+            graph_dispatch_mode_override=None,
         )
     graph_block_on_cycle = _graph_block_on_cycle(schedule_input.cfg)
-    public, diagnostics, graph_ready_context = _build_schedule_graph_analysis_projection(
+    public, diagnostics, graph_ready_context, graph_dispatch_mode_override = _build_schedule_graph_analysis_projection(
         schedule_input,
         mode=mode,
         graph_block_on_cycle=graph_block_on_cycle,
@@ -79,6 +81,7 @@ def prepare_schedule_graph_for_dispatch(
         graph_analysis_public=public,
         graph_analysis_diagnostics=diagnostics,
         graph_ready_context=graph_ready_context,
+        graph_dispatch_mode_override=graph_dispatch_mode_override,
     )
 
 
@@ -87,7 +90,7 @@ def _build_schedule_graph_analysis_projection(
     *,
     mode: str,
     graph_block_on_cycle: str,
-) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]], Optional[Dict[str, Any]], Optional[str]]:
     from core.services.scheduler.graph.analysis_service import ScheduleGraphAnalysisService
     from core.services.scheduler.graph.exporter import graph_summary_to_dict
     from core.services.scheduler.graph.input_adapter import GraphInputContractError, build_operation_nodes_from_rows
@@ -115,7 +118,7 @@ def _build_schedule_graph_analysis_projection(
         )
     except NetworkXUnavailable as exc:
         public, diagnostics = _graph_unavailable_projection(mode=mode, exc=exc, elapsed_ms=_elapsed_ms(started), scope=scope)
-        return public, diagnostics, None
+        return public, diagnostics, None, None
     except GraphInputContractError as exc:
         public, diagnostics = _graph_contract_error_projection(
             mode=mode,
@@ -125,7 +128,7 @@ def _build_schedule_graph_analysis_projection(
             elapsed_ms=_elapsed_ms(started),
             scope=scope,
         )
-        return public, diagnostics, None
+        return public, diagnostics, None, None
     except GraphBuildContractError as exc:
         public, diagnostics = _graph_contract_error_projection(
             mode=mode,
@@ -135,7 +138,7 @@ def _build_schedule_graph_analysis_projection(
             elapsed_ms=_elapsed_ms(started),
             scope=scope,
         )
-        return public, diagnostics, None
+        return public, diagnostics, None, None
 
     public, diagnostics = _project_graph_analysis_payload(
         mode=mode,
@@ -144,7 +147,7 @@ def _build_schedule_graph_analysis_projection(
         elapsed_ms=_elapsed_ms(started),
         scope=scope,
     )
-    return public, diagnostics, graph_ready_context
+    return public, diagnostics, graph_ready_context, _graph_dispatch_mode_override(public)
 
 
 def _graph_input_scope(schedule_input: ScheduleRunInput, *, nodes: Optional[List[Any]] = None) -> Dict[str, Any]:
@@ -253,6 +256,12 @@ def _graph_cycle_disabled_public_fields() -> Dict[str, Any]:
         "ready_queue_enabled": False,
         "graph_enhancement_message": "工序图存在循环，本次跳过图 ready 队列，继续使用原 SGS 候选逻辑。",
     }
+
+
+def _graph_dispatch_mode_override(public: Dict[str, Any]) -> Optional[str]:
+    if public.get("effective_mode") == "sgs_without_graph_ready_queue":
+        return "sgs"
+    return None
 
 
 def _graph_ready_public_fields(*, mode: str, is_dag: bool, graph_block_on_cycle: str) -> Dict[str, Any]:

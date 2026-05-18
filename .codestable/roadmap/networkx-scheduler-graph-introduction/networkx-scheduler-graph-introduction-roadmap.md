@@ -1125,6 +1125,7 @@ core/services/scheduler/graph/scoring.py
 core/services/scheduler/graph/resource_matching.py
 core/services/scheduler/graph/exporter.py
 core/services/scheduler/graph/analysis_service.py
+core/algorithms/greedy/dispatch/ready_queue.py
 ```
 
 每个文件职责：
@@ -1137,7 +1138,8 @@ input_adapter.py       把现有算法输入对象转成图节点
 precedence_builder.py  构建工序依赖图
 validators.py          环检测、孤立节点、重复 seq 检查
 metrics.py             拓扑顺序、层级、关键路径、影响范围
-ready_queue.py         当前可排工序计算
+graph/ready_queue.py   兼容导出算法层 ready_queue helper，不放真实调度逻辑
+dispatch/ready_queue.py 当前可排工序计算，PR-5 的真实实现位置
 scoring.py             图指标转 SGS 打分加成
 resource_matching.py   二分图资源匹配，后续增强
 exporter.py            图转 JSON/dict
@@ -6038,7 +6040,7 @@ report 模式仍然只提示、不改变排产。
 目标：
 
 ```text
-1. 实现已有 `core/services/scheduler/graph/ready_queue.py`，让它能根据前置关系算出当前 ready 工序。
+1. 实现 ready 队列 helper，让它能根据前置关系算出当前 ready 工序；当前真实实现放在 `core/algorithms/greedy/dispatch/ready_queue.py`，`core/services/scheduler/graph/ready_queue.py` 只保留兼容导出。
 2. 在 optimizer / SGS 之前准备图调度上下文。
 3. 把 ready 上下文沿 `optimize_schedule()` -> `GreedyScheduler.schedule()` -> `dispatch_sgs()` 传下去。
 4. `graph_analysis_mode=on + DAG` 时，SGS 候选集合来自图 ready 队列。
@@ -6251,7 +6253,7 @@ schedule_graph_cycle
 
 ### 12.5 ready_queue.py 的职责
 
-`core/services/scheduler/graph/ready_queue.py` 当前是占位文件，PR-5 要实现它，但不要把它写成新的调度器。
+当前真实实现放在 `core/algorithms/greedy/dispatch/ready_queue.py`，`core/services/scheduler/graph/ready_queue.py` 只做兼容导出，避免算法层反向依赖 scheduler service。这个 helper 不是新的调度器。
 
 建议职责：
 
@@ -6532,141 +6534,535 @@ PR-5 未证明：
   多权重候选试跑、自动择优、候选落库或页面切换。
 ```
 
-## 阶段 13：关键路径评分接入
+## 阶段 13：PR-6 关键路径评分接入
 
-### 13.1 新建 scoring.py
+PR-6 是第一个真正把图分析结果放进 SGS 候选评分的 PR。大白话说，PR-5 已经做到“只从前置工序都完成的 ready 工序里挑候选”，PR-6 才开始决定“这些 ready 候选里，关键路径更重、影响后续更多、后续关键工作量更大的工序是否应该更靠前”。
 
-```python
-from __future__ import annotations
-
-from typing import Any, Dict
-
-
-def graph_score_bonus(
-    node_metric: Dict[str, Any],
-    critical_weight: int = 500,
-    impact_weight: int = 10,
-    downstream_minutes_weight: int = 1,
-) -> int:
-    score = 0
-
-    if node_metric.get("is_on_critical_path"):
-        score += int(critical_weight)
-
-    score += int(node_metric.get("impact_count", 0) or 0) * int(impact_weight)
-
-    downstream_minutes = int(node_metric.get("downstream_critical_minutes", 0) or 0)
-    score += downstream_minutes * int(downstream_minutes_weight)
-
-    return int(score)
-```
-
-### 13.2 当前仓库接入点
-
-当前 SGS 候选评分主入口：
+PR-6 只能继承 PR-5 已经证明的 ready 资格：
 
 ```text
+可以继承：
+  on + DAG 时，SGS 候选集合已经由 graph_ready_context 筛过。
+  ready 队列不会放出前置未完成的工序。
+  frozen / seed 工序只作为已固定前置，不会重复进入候选。
+  有环 / 图不可用 / 图输入错误不会被伪装成图增强成功。
+
+不能继承：
+  关键路径工序一定更优先。
+  graph_score_bonus 方向正确。
+  SLACK / CR / ATC 和图分数合并后仍符合原语义。
+  多权重候选试跑、自动择优、候选落库或页面切换。
+```
+
+### PR-6.1 总体目标
+
+PR-6 只做一件事：在 `graph_analysis_mode=on`、图是 DAG、`graph_enhancement_allowed=true` 时，把图指标转成 SGS 候选排序里的一个可解释分量。
+
+这一步做完后，系统应该能说清：
+
+```text
+1. 哪个工序因为在关键路径上而被提前。
+2. 哪个工序因为影响更多后续工序而被提前。
+3. 哪个工序因为后续关键工作量更大而被提前。
+4. 这个提前只发生在 on + DAG + 图增强允许的 SGS 候选评分里。
+5. off / report / on 但图增强未允许时，仍按 PR-5 或更早的旧逻辑排。
+```
+
+### PR-6.2 整体实现要求
+
+PR-6 的实现要求写死在计划里，后续 feature-design 和代码实现都要按这里验：
+
+```text
+优雅简洁：
+  只在图模块算图分数，只在 SGS 候选评分拼接图分量。
+  不把图评分逻辑散落到 orchestrator、optimizer、页面、数据库或持久化里。
+
+不做过度兜底：
+  on 模式需要图评分却拿不到 node_metrics 时，不允许悄悄当 0 分继续。
+  权重为 0 是用户配置出来的真实含义；缺字段、坏字段不是 0，必须暴露为合同错误。
+
+不做静默回退：
+  on + graph_enhancement_allowed=true 时，评分上下文缺失、op_id 对不上、指标字段缺失，都不能假装回到旧评分。
+  如果业务决定本次不能启用图评分，必须在 public 小摘要里写清 disabled reason，而不是让用户以为图增强生效。
+
+不做过度防御性编程：
+  不到处铺宽泛 try/except。
+  不写“能转就转、转不了给默认值”的宽松解析。
+  只在边界入口校验一次合同，内部使用清楚的普通 Python 结构。
+
+高内聚低耦合：
+  core/services/scheduler/graph/scoring.py 只负责图分数纯计算。
+  core/services/scheduler/run/schedule_graph_report.py 只负责把图分析结果准备成普通 Python 调度上下文。
+  core/algorithms/greedy/dispatch/sgs.py 只负责把上下文传到候选评分。
+  core/algorithms/greedy/dispatch/sgs_scoring.py 只负责把图分量拼进现有排序 key。
+  core/algorithms/dispatch_rules.py 继续负责原 SLACK / CR / ATC key，不把 NetworkX 或 graph DTO 引进去。
+```
+
+### PR-6.3 明确不做
+
+下面这些都不是 PR-6 范围，后续不要顺手做：
+
+```text
+1. 不做 PR-7 的多权重候选试跑。
+2. 不做自动择优。
+3. 不新增候选表、候选仓库、候选落库事务。
+4. 不改 schema.sql。
+5. 不新增页面按钮、甘特图切换、周计划切换或导出切换。
+6. 不把 nx.DiGraph、完整 node_metrics、完整关键路径、完整拓扑序写进 Controller、页面、数据库、Excel 或 OperationLogs。
+7. 不绕过 build_dispatch_key() 直接改 batch_order、best_order、selected_batch_ids 或最终落库 rows。
+8. 不让 report 模式改变排产结果。
+9. 不把 graph_critical_weight / graph_impact_weight 之外的新配置临时塞成环境变量。
+```
+
+### PR-6.4 当前仓库接入点
+
+PR-6 实施前先复核这些真实入口，不能按旧草图凭感觉改：
+
+```text
+core/services/scheduler/run/schedule_graph_report.py
+  _build_schedule_graph_analysis_projection()
+  _build_graph_ready_context()
+  _project_graph_analysis_payload()
+
+core/services/scheduler/graph/analysis_service.py
+  ScheduleGraphAnalysisService.analyze_linear_batches(metrics_mode="basic" / "full")
+
+core/services/scheduler/graph/metrics.py
+  build_node_metrics()
+  get_critical_path()
+  get_impact_count()
+  get_downstream_critical_minutes()
+
+core/services/scheduler/graph/scoring.py
+  PR-6 新增图评分纯函数。
+
 core/algorithms/greedy/dispatch/sgs.py
+  dispatch_sgs()
   _score_candidates()
   _score_candidate()
-```
+  _prepare_graph_ready_state()
 
-内外协分别进入：
-
-```text
 core/algorithms/greedy/dispatch/sgs_scoring.py
+  _dispatch_key()
   _score_external_candidate()
   _score_internal_candidate()
-```
 
-最终排序 key 由：
-
-```text
 core/algorithms/dispatch_rules.py
   build_dispatch_key()
 ```
 
-所以图分数不应该绕开 `build_dispatch_key()` 直接改 `batch_order`。更稳的方式是：
+当前 `build_dispatch_key()` 的排序合同是“tuple 越小越优先”。PR-6 不能把这个方向改掉；图分数越大越重要时，放进排序 key 之前必须转成“越小越靠前”的图排序分量。
+
+### PR-6.5 图指标准备合同
+
+当前 report 链路为了性能护栏使用：
+
+```python
+summary = ScheduleGraphAnalysisService().analyze_linear_batches(nodes, metrics_mode="basic")
+```
+
+`basic` 只算公开小摘要，不算完整 `node_metrics`。PR-6 要求：
 
 ```text
-先在 SGS 候选评分里拿到 node_metric。
-把 graph_score_bonus 转成一个“越重要越靠前”的评分分量。
-保持现有 SLACK / CR / ATC、换型、优先级、交期、批次顺序、工序顺序语义。
+1. off 模式仍然不 import graph 模块，不准备图指标。
+2. report 模式继续使用 basic，不为了评分去计算完整 node_metrics，不改变排产结果。
+3. on + DAG + graph_enhancement_allowed=true 时，才允许计算 full node_metrics。
+4. on + 有环 / 图不可用 / 图输入错误 / graph_enhancement_allowed=false 时，不准备图评分上下文。
+5. full node_metrics 只转成普通 Python 调度上下文，不把 nx.DiGraph 或 GraphAnalysisSummary 原对象传到 SGS。
 ```
 
-### 13.3 接入原评分函数
-
-假设原来有：
+建议把 `graph_ready_context` 扩成同一个高内聚的普通 dict，而不是再造一条平行上下文：
 
 ```python
-base_score = calc_priority_score(op) + calc_due_date_score(op)
+{
+    "enabled": True,
+    "disabled_reason": None,
+    "schedulable_op_ids": set(...),
+    "fixed_op_ids": set(...),
+    "predecessor_op_ids_by_op_id": {...},
+    "successor_op_ids_by_op_id": {...},
+    "sort_key_by_op_id": {...},
+    "score_enabled": True,
+    "score_weights": {
+        "critical_weight": 500,
+        "impact_weight": 10,
+        "downstream_minutes_weight": 1,
+    },
+    "node_metrics_by_op_id": {
+        101: {
+            "is_on_critical_path": True,
+            "critical_path_rank": 0,
+            "impact_count": 3,
+            "downstream_critical_minutes": 120,
+        },
+    },
+}
 ```
 
-改成：
-
-```python
-base_score = calc_priority_score(op) + calc_due_date_score(op)
-
-if graph_mode == "on":
-    node_metric = graph_metrics.get(node_id, {})
-    base_score += graph_score_bonus(
-        node_metric=node_metric,
-        critical_weight=config.graph_critical_weight,
-        impact_weight=config.graph_impact_weight,
-    )
-```
-
-但当前仓库实际是 tuple key 越小越优先，所以实现时要注意方向。图 bonus 如果越大越优先，放进 tuple 前可能要转成负数：
-
-```python
-graph_priority = -float(graph_score_bonus(...))
-dispatch_key = (graph_priority,) + tuple(existing_key)
-```
-
-这一步必须通过测试证明，不要靠感觉。
-
-### 13.4 第一版权重建议
+字段要求：
 
 ```text
-critical_weight = 500
-impact_weight = 10
-downstream_minutes_weight = 1
+schedulable_op_ids：
+  只能包含本次真正要排的 op_id。
+
+fixed_op_ids：
+  frozen_op_ids + seed_results 的 op_id，只作为已固定前置。
+
+node_metrics_by_op_id：
+  key 必须是正整数 op_id。
+  value 必须包含 is_on_critical_path、critical_path_rank、impact_count、downstream_critical_minutes。
+  只允许包含 schedulable_op_ids 或 fixed_op_ids 能解释的节点。
+  对本次 schedulable_op_ids 中每个候选必须有指标。
+
+score_enabled：
+  只有 on + DAG + graph_enhancement_allowed=true + full node_metrics 准备完成时才是 True。
 ```
 
-这只是初值。上线前用历史案例调参。
+如果 `score_enabled=True`，但 `node_metrics_by_op_id` 缺候选指标，应该报合同错误，不能把缺指标当 0 分。
 
-### 13.5 测试
+### PR-6.6 新建 graph/scoring.py 纯函数
 
-构造两个批次：
+`core/services/scheduler/graph/scoring.py` 只放图评分纯函数，不读数据库、不读配置、不 import NetworkX、不接触排产状态。
+
+建议接口：
+
+```python
+from __future__ import annotations
+
+from typing import Any, Dict, Tuple
+
+
+class GraphScoringContractError(ValueError):
+    pass
+
+
+def graph_score_bonus(
+    node_metric: Dict[str, Any],
+    *,
+    critical_weight: int,
+    impact_weight: int,
+    downstream_minutes_weight: int = 1,
+) -> int:
+    ...
+
+
+def graph_priority_key_component(
+    node_metric: Dict[str, Any],
+    *,
+    critical_weight: int,
+    impact_weight: int,
+    downstream_minutes_weight: int = 1,
+) -> Tuple[float, ...]:
+    ...
+```
+
+字段校验要求：
+
+```text
+is_on_critical_path：
+  必须存在，必须是 bool。
+
+critical_path_rank：
+  可以是 None；如果不是 None，必须是非负整数。
+
+impact_count：
+  必须存在，必须是非负整数。
+
+downstream_critical_minutes：
+  必须存在，必须是非负整数。
+
+critical_weight / impact_weight / downstream_minutes_weight：
+  必须是非负整数。
+  0 表示该分量不参与评分，是正常配置。
+```
+
+计算建议：
+
+```text
+graph_score_bonus 越大，表示越应该提前。
+
+bonus =
+  is_on_critical_path ? critical_weight : 0
+  + impact_count * impact_weight
+  + downstream_critical_minutes * downstream_minutes_weight
+
+graph_priority_key_component 返回 (-bonus, critical_path_rank_or_large_number)
+```
+
+为什么要返回负数：当前 SGS 用 `min()` 挑 tuple，tuple 越小越优先。图 bonus 越大越重要，所以要变成负数才能排到更前。
+
+为什么带 `critical_path_rank`：两个候选 bonus 一样时，关键路径上更靠前的节点应更早释放后续工序。非关键路径节点用一个稳定大数放后面。
+
+### PR-6.7 SGS 接入规则
+
+PR-6 只允许在 SGS 候选评分里加图分量：
+
+```text
+1. _prepare_graph_ready_state() 负责校验 graph_ready_context 基本合同。
+2. 校验通过后，把 node_metrics_by_op_id、score_weights、score_enabled 放进 graph_state。
+3. _score_candidates() 把 graph_state 传给 _score_candidate()。
+4. _score_candidate() 根据 op.id 取 node_metric。
+5. _score_external_candidate() 和 _score_internal_candidate() 继续产出旧 base_key。
+6. 只在 base_key 外层拼接 graph_priority_key_component。
+7. 没有 graph_state 时，旧评分 key 完全不变。
+```
+
+推荐拼接位置：
+
+```python
+base_key = _score_internal_candidate(...)
+if graph_score_enabled:
+    graph_key = graph_priority_key_component(...)
+    return tuple(graph_key) + tuple(base_key)
+return base_key
+```
+
+这样做的含义是：在已经被 ready 队列放出的候选里，先看图关键程度，再看原 SLACK / CR / ATC。PR-6 必须用测试证明这不会让前置未完成的工序被放进候选，因为候选资格仍由 PR-5 ready 队列控制。
+
+如果评审认为图分量不应该压过原规则，可以改成：
+
+```python
+return (base_key[0],) + tuple(graph_key) + tuple(base_key[1:])
+```
+
+但只能选一种，并用 `tests/regression_scheduler_graph_on_mode_contract.py` 证明方向。不能在代码里做“有时放前面、有时放后面”的隐式策略。
+
+### PR-6.8 配置和页面说明同步
+
+PR-6 不新增配置项，只让已有配置真正生效：
+
+```text
+graph_critical_weight
+graph_impact_weight
+```
+
+需要同步检查：
+
+```text
+core/services/scheduler/config/config_field_spec.py
+core/services/scheduler/config/config_snapshot.py
+core/models/schedule_config_runtime_fields.py
+templates/scheduler/config.html
+web/viewmodels/scheduler_config_panel.py
+```
+
+当前这些字段如果还写着“预留、不改变排产结果”，PR-6 要改成业务用户能看懂的话：
+
+```text
+关键路径权重：
+  graph_analysis_mode=on 且工序图可用时，关键路径上的工序会更靠前。
+
+影响范围权重：
+  graph_analysis_mode=on 且工序图可用时，影响更多后续工序的工序会更靠前。
+```
+
+不要新增环境变量，不要新增隐藏配置，不要在页面上做 PR7 的候选方案开关。
+
+### PR-6.9 result_summary 和 OperationLogs 口径
+
+PR-6 可以在公开小摘要里补“图评分是否启用”的小字段，但不能塞完整指标：
+
+```text
+允许放进 result_summary["algo"]["graph_analysis"]：
+  score_enabled: true / false
+  score_weight_summary: {"critical_weight": 500, "impact_weight": 10}
+  score_metric_status: "available" / "disabled" / "unavailable"
+  score_disabled_reason: None 或短字符串
+
+允许放进 result_summary["diagnostics"]["graph_analysis"]：
+  少量 graph_score_sample，例如前 10 个 node 的 op_id、bonus、is_on_critical_path、impact_count。
+  graph_score_sample_count / graph_score_sample_truncated。
+
+禁止：
+  完整 node_metrics。
+  完整 topological_order。
+  完整 critical_path。
+  完整 edges / nodes / raw graph。
+  nx.DiGraph 或 GraphAnalysisSummary 原对象。
+```
+
+OperationLogs 继续只吃公开小摘要，不吃 diagnostics。PR-6 如果要让日志能看出“本次图评分生效”，只能通过 `algo.graph_analysis.score_enabled` 这类小字段体现。
+
+### PR-6.10 测试用例清单
+
+必须新增或扩展：
+
+```text
+tests/scheduler_graph/test_graph_scoring.py
+  - critical_path=True 时 bonus 增加 critical_weight。
+  - impact_count 按 impact_weight 增加。
+  - downstream_critical_minutes 按 downstream_minutes_weight 增加。
+  - 权重为 0 时该分量不参与评分。
+  - 缺 is_on_critical_path / impact_count / downstream_critical_minutes 抛 GraphScoringContractError。
+  - impact_count / downstream_critical_minutes 为负数抛 GraphScoringContractError。
+  - graph_priority_key_component 返回值方向为“bonus 越大，tuple 越小”。
+
+tests/regression_scheduler_graph_on_mode_contract.py
+  - on + DAG + graph_enhancement_allowed=true 时，关键路径候选排在同条件非关键候选前。
+  - on + DAG 下，impact_count 更大的同条件候选更靠前。
+  - on + DAG 下，downstream_critical_minutes 更大的同条件候选更靠前。
+  - graph_critical_weight=0 且 graph_impact_weight=0 时，结果等价 PR-5 ready 队列行为。
+  - on + cycle + block=no 时，ready 队列和图评分都不启用，public 写明 disabled reason。
+  - on + graph unavailable / input_error / build_error 时，不伪装成 score_enabled=true。
+
+tests/test_sgs_internal_scoring_matches_execution.py
+  - 内部工序评分明细和实际执行顺序仍一致。
+  - 图分量接入后，测试不要只断言旧 key，要断言新 key 和执行选择一致。
+
+tests/test_sgs_total_hours_cache.py
+  - total_hours_by_op_id 缓存仍被内部候选评分复用，图评分不能破坏原性能缓存。
+
+tests/regression_scheduler_graph_summary_contract.py
+  - public 只新增 score_enabled / score_metric_status 等小字段。
+  - diagnostics 只有采样，不出现完整 node_metrics。
+
+tests/regression_scheduler_graph_operation_logs_contract.py
+  - OperationLogs 不出现 diagnostics、完整 node_metrics、nodes、edges、raw graph。
+
+tests/regression_scheduler_config_spec_sync_contract.py
+tests/regression_scheduler_config_route_contract.py
+  - 配置说明文字和字段规格仍同步。
+```
+
+三种 dispatch rule 都要覆盖：
+
+```text
+SLACK：
+  原 slack 越小越优先的方向不反。
+
+CR：
+  原 cr 越小越优先的方向不反。
+
+ATC：
+  原 atc 已通过负值变成 tuple 越小越优先，PR-6 不再二次反向。
+```
+
+### PR-6.11 最小业务样例
+
+构造两个同等候选：
 
 ```text
 批次 A：A1(10) -> A2(10)
 批次 B：B1(10) -> B2(100) -> B3(10)
 ```
 
-如果：
+前置条件：
 
 ```text
-A1 和 B1 同优先级、同交期、同状态
+A1 和 B1 都已经 ready。
+A1 和 B1 同优先级、同交期、同来源、同状态。
+设备和人员都可用。
+dispatch_rule 分别用 SLACK / CR / ATC 跑。
+graph_analysis_mode=on。
+graph_critical_weight > 0 或 graph_impact_weight > 0。
 ```
 
 期望：
 
 ```text
-B1 得分高于 A1。
+B1 比 A1 更靠前。
+原因是 B1 的后续关键工作量更长，或 impact_count / downstream_critical_minutes 更大。
 ```
 
-因为 B1 后续关键工作量更长。
-
-验收：
+同时要构造反例：
 
 ```text
-graph_mode=report 时，评分不变。
-graph_mode=on 时，关键路径工序得分更高。
-所有评分明细能写入 diagnostics，便于解释为什么选它。
+graph_analysis_mode=report 时，A1 / B1 顺序仍由旧规则决定。
+graph_critical_weight=0 且 graph_impact_weight=0 时，on 模式不应因为空图权重改变旧顺序。
 ```
 
-### 13.6 多权重候选试跑、自动择优和代表方案对比
+### PR-6.12 实施顺序
+
+按下面顺序执行，不要跳：
+
+```text
+1. 只读复核 PR-5 现状：
+   - graph_ready_context 当前字段。
+   - schedule_graph_report.py 里 basic/full metrics_mode 位置。
+   - SGS 当前评分 key 形状。
+
+2. 新增 tests/scheduler_graph/test_graph_scoring.py：
+   - 先写纯函数测试，锁定 bonus 方向和坏字段报错。
+
+3. 实现 core/services/scheduler/graph/scoring.py：
+   - 只做纯函数。
+   - 不 import NetworkX。
+   - 不读配置、不读数据库、不接日志。
+
+4. 扩展 graph_ready_context：
+   - 只在 on + DAG + graph_enhancement_allowed=true 时计算 full node_metrics。
+   - 把 node_metrics 转成 node_metrics_by_op_id。
+   - 校验 schedulable_op_ids 都能找到指标。
+
+5. 接 SGS 评分：
+   - _prepare_graph_ready_state 校验 score 字段。
+   - _score_candidates / _score_candidate 传入 graph_state。
+   - 在旧 base_key 外拼 graph_priority_key_component。
+
+6. 同步配置说明：
+   - 把“预留、不改变排产结果”改成“on 模式图评分生效”。
+   - 不新增配置项。
+
+7. 补 summary / OperationLogs 合同：
+   - public 小字段说明 score 是否启用。
+   - diagnostics 只采样。
+
+8. 跑 PR-6 targeted proof：
+   - 先跑新增图评分测试。
+   - 再跑 on/report/ready/SGS 回归。
+   - 最后跑 ruff、pyright、items.yaml 校验。
+
+9. 回填 CodeStable：
+   - 创建或更新 feature 记录。
+   - items.yaml 的 PR-6 status 在 acceptance 时再从 planned 改 done。
+   - roadmap 变更记录写清 PR-6 已证明什么、没证明什么。
+```
+
+### PR-6.13 验收命令
+
+PR-6 至少跑：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/scheduler_graph/test_graph_scoring.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_scheduler_graph_on_mode_contract.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_scheduler_graph_cycle_policy_contract.py tests/scheduler_graph/test_ready_queue.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_scheduler_graph_report_mode_contract.py tests/regression_scheduler_graph_report_mode_service_contract.py tests/regression_scheduler_graph_summary_contract.py tests/regression_scheduler_graph_operation_logs_contract.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_sgs_internal_scoring_matches_execution.py tests/test_sgs_total_hours_cache.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_scheduler_config_spec_sync_contract.py tests/regression_scheduler_config_route_contract.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler/graph/scoring.py core/services/scheduler/run/schedule_graph_report.py core/algorithms/greedy/dispatch/sgs.py core/algorithms/greedy/dispatch/sgs_scoring.py core/algorithms/dispatch_rules.py tests/scheduler_graph/test_graph_scoring.py tests/regression_scheduler_graph_on_mode_contract.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright core/services/scheduler/graph/scoring.py core/services/scheduler/run/schedule_graph_report.py core/algorithms/greedy/dispatch/sgs.py core/algorithms/greedy/dispatch/sgs_scoring.py core/algorithms/dispatch_rules.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .codestable/tools/validate-yaml.py --file .codestable/roadmap/networkx-scheduler-graph-introduction/networkx-scheduler-graph-introduction-items.yaml --yaml-only
+```
+
+如果要对外说 clean-worktree proof，还必须在本地提交后、工作区干净时跑：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
+```
+
+如果工作树不干净，只能说 PR-6 targeted proof 通过，不能说 clean-worktree proof。
+
+### PR-6.14 完成口径
+
+PR-6 完成后必须能对 PR-7 说清：
+
+```text
+PR-6 已证明：
+  on + DAG + 图增强允许时，SGS ready 候选会按图关键程度参与排序。
+  图分数方向经过测试，bonus 越大越靠前。
+  graph_critical_weight / graph_impact_weight 为 0 时可回到 PR-5 ready 队列行为。
+  SLACK / CR / ATC 原排序合同没有被改反。
+  report / off / on 但图增强未允许时不改变排产结果。
+  summary 和 OperationLogs 只暴露小摘要，不泄漏完整图数据。
+
+PR-6 未证明：
+  多权重候选哪一档最好。
+  自动择优能稳定选 adopted。
+  候选摘要、候选明细、代表方案切换和同事务落库。
+  页面切换最终采用 / 原算法最好 / 关键链最好。
+```
+
+## 阶段 13.6：PR-7 多权重候选试跑、自动择优和代表方案对比
 
 阶段 13.6 是用户已经确认要做的“真正可用形态”。它不只是把关键路径分数塞进一次排产，而是让系统自动多跑几套候选，再把最合适的一套展示给用户。
 
@@ -8543,12 +8939,17 @@ core/services/scheduler/
 │   ├── precedence_builder.py
 │   ├── validators.py
 │   ├── metrics.py
-│   ├── ready_queue.py
+│   ├── ready_queue.py        # 兼容导出算法层 ready_queue helper
 │   ├── scoring.py
 │   ├── resource_matching.py
 │   ├── exporter.py
 │   └── analysis_service.py
-└── 原有排产服务文件
+└── run/
+    └── 原有排产服务文件
+
+core/algorithms/greedy/dispatch/
+├── ready_queue.py            # PR-5 真实 ready 队列实现
+└── sgs.py                    # SGS 接入 ready 候选
 ```
 
 排产流程最终变成：
@@ -8569,7 +8970,7 @@ on 模式：
     ↓
     每轮取 ready 工序
     ↓
-    用原排序 + 关键路径加分 + 影响范围加分
+    用原排序 + 关键路径加分 + 影响范围加分 + 后续关键工作量加分
     ↓
     选择工序
     ↓
@@ -8582,7 +8983,9 @@ on 模式：
 
 ## 变更记录
 
-- 2026-05-18：完成 PR-5 `scheduler-graph-ready-queue-on-mode`：阶段 11 实现有环安全门，`report` 有环只提示，`on + block=yes` 在 version 分配前阻止并返回中文业务错误，`on + block=no` 继续原排产逻辑并在 public 摘要写明图增强未启用；阶段 12 实现纯 Python `ready_queue.py`，在 optimizer 前准备 plain `graph_ready_context`，排产和 `result_summary` 共用同一份图分析结论，并沿 optimizer / GreedyScheduler / `dispatch_sgs` 传递；`on + DAG` 时强制 SGS 并用 ready 队列筛候选，无 graph context 时旧 SGS 候选逻辑保持；frozen / seed 只作为已固定前置，前置失败时图后继不释放并计入失败说明。PR-5 未实现图评分、候选池、多权重试跑、自动择优、落库或页面按钮；PR-6 只能继承 ready 资格，不能继承图评分方向证明。
+- 2026-05-18：细化 PR-6 `scheduler-graph-critical-score-on-mode` 到可执行级：补齐 PR-6 承接 PR-5 的边界，明确只继承 ready 资格、不继承图评分方向证明；把阶段 13 从草图扩成完整执行计划，写清整体实现要求必须优雅简洁、不做过度兜底、不做静默回退、不做过度防御性编程、保持高内聚低耦合；补齐图指标准备合同、`graph/scoring.py` 纯函数、SGS 接入位置、配置说明同步、summary / OperationLogs 小摘要口径、测试用例、实施顺序、验收命令和 PR-7 交接边界；同步 items.yaml 的 PR-6 description、primary_paths、forbidden_paths、exit_checks 和 notes。
+- 2026-05-18：补充复验 PR-5 `scheduler-graph-ready-queue-on-mode`：修正 `on + block=no + 有环` 的 public 摘要和真实 dispatch mode 口径，改为通过 `graph_dispatch_mode_override="sgs"` 继续旧 SGS 候选逻辑，但保持 `graph_ready_context=None`，确保图 ready 队列不启用；补强 ready_queue / SGS 边界的图对象误传、嵌套前后置图对象、字符串/bool sort key 合同；把 SGS 前后置映射标准化结果写回运行态，确保校验和失败后继阻断使用同一口径；补 `graph_ready_context + 非 SGS` 直接报错和 `graph_dispatch_mode_override` 合法值校验，避免 ready 队列被悄悄忽略。复跑 PR-5 targeted tests、ruff、pyright 和 items.yaml 校验均通过；当前仍是 dirty worktree targeted proof，不是 clean-worktree proof。
+- 2026-05-18：完成 PR-5 `scheduler-graph-ready-queue-on-mode`：阶段 11 实现有环安全门，`report` 有环只提示，`on + block=yes` 在 version 分配前阻止并返回中文业务错误，`on + block=no` 继续旧 SGS 候选逻辑并在 public 摘要写明图增强未启用；阶段 12 实现纯 Python `ready_queue.py`，在 optimizer 前准备 plain `graph_ready_context`，排产和 `result_summary` 共用同一份图分析结论，并沿 optimizer / GreedyScheduler / `dispatch_sgs` 传递；`on + DAG` 时强制 SGS 并用 ready 队列筛候选，无 graph context 时旧 SGS 候选逻辑保持；frozen / seed 只作为已固定前置，前置失败时图后继不释放并计入失败说明。PR-5 未实现图评分、候选池、多权重试跑、自动择优、落库或页面按钮；PR-6 只能继承 ready 资格，不能继承图评分方向证明。
 - 2026-05-18：细化 PR-5 `scheduler-graph-ready-queue-on-mode` 到可执行级：补齐 PR-5 总体实现要求，明确优雅简洁、不做过度兜底、不做静默回退、不做过度防御性编程、高内聚低耦合；把阶段 12 从草图扩成完整执行计划，要求在 optimizer 前准备图调度上下文，沿 optimizer / GreedyScheduler / dispatch_sgs 传入 plain graph_ready_context，只在 DAG 且 graph_enhancement_allowed=true 时启用 ready 队列；补齐 on 模式不可用/有环矩阵、frozen/seed 边界、SGS 接入规则、测试用例、实施顺序、验收命令和 PR-6 交接边界；同步 items.yaml 的 PR-5 description、primary_paths、forbidden_paths、exit_checks 和 notes。
 - 2026-05-18：完成 PR-4 `scheduler-graph-debug-performance`：新增 2000 节点 basic report 性能测试和 `evidence/scheduler_graph/performance_2000_nodes.txt`，补 diagnostics 长文本截断合同、真实服务级 off/report/on 普通与 frozen/seed 对比、OperationLogs known graph error 小摘要检查，并创建 `.codestable/features/2026-05-18-scheduler-graph-debug-performance/` 验收记录。PR-4 没有实现 `graph_debug_export`、PR-5 有环安全门、ready 队列或 PR-6 图评分，`graph_analysis_mode=on` 仍然只是 `report_only`。
 - 2026-05-18：细化 PR-4，把“性能护栏 + diagnostics 加固 + 真实集成证明”写成可执行计划：明确 PR-4 先证据后导出，补齐整体实现要求、文件边界、实施顺序、basic report 性能口径、diagnostics 采样/JSON 安全投影、known graph error 顶层可见、真实服务级 off/report/on 对比、OperationLogs 不泄漏、受控 debug export、验收命令和明确不做；同时把“优雅简洁、不做过度兜底、不做静默回退、不做过度防御性编程、高内聚低耦合”写成 PR-4 的硬要求。

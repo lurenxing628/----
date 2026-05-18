@@ -6,10 +6,10 @@ steps:
     exit_signal: "确认阶段 11 只做 cycle policy，不提前接 ready 队列或图评分"
     status: done
   - action: "阶段 11 实现：有环安全门和 public 摘要口径"
-    exit_signal: "report 只提示；on+block=yes 阻止；on+block=no 继续原排产逻辑并写图增强未启用"
+    exit_signal: "report 只提示；on+block=yes 阻止；on+block=no 继续旧 SGS 候选逻辑并写图增强未启用"
     status: done
   - action: "阶段 11 对抗审查和修复"
-    exit_signal: "修复旧测试签名、配置口径、结构化 cycle details、页面/配置提示旧文案后，复审阻塞清零"
+    exit_signal: "修复 public 摘要与实际 dispatch mode 不一致：on+block=no+有环强制旧 SGS 但不启用 ready 队列，复审阻塞清零"
     status: done
   - action: "阶段 12a 实现前只读核实：ready_queue 纯函数边界和坏上下文风险"
     exit_signal: "确认 ready_queue 不接 NetworkX、不读数据库、不读配置、不调评分或资源匹配"
@@ -18,7 +18,7 @@ steps:
     exit_signal: "普通 Python 数据输入，输出当前 ready 的 op_id 列表，缺字段和坏映射明确报错"
     status: done
   - action: "阶段 12a 对抗审查和修复"
-    exit_signal: "修复缺 predecessor key、None 集合、blocked/done 重叠、坏 sort key 等合同问题后，复审阻塞清零"
+    exit_signal: "修复图对象误传、字符串/bool sort key 等合同问题后，复审阻塞清零"
     status: done
   - action: "阶段 12b/12c 实现前只读核实：optimizer 前准备上下文和调用链传递风险"
     exit_signal: "确认不能复用 optimizer 后 report 投影，排产和 summary 必须共用同一份图准备结果"
@@ -33,9 +33,9 @@ steps:
     exit_signal: "有 graph_ready_context 时候选资格来自 ready 队列；无上下文时旧 SGS 行为保持"
     status: done
   - action: "阶段 12d 对抗审查和修复"
-    exit_signal: "修复 public 与实际 dispatch mode 不一致、前置失败后继漏统计等阻塞问题后，复审阻塞清零"
+    exit_signal: "修复前后置映射标准化结果未写回运行态、嵌套图对象误吞、非 SGS 直接调用等边界问题后，复审阻塞清零"
     status: done
-  - action: "CodeStable 回填：更新 feature、roadmap、items.yaml 和 architecture"
+  - action: "CodeStable 回填：更新 feature、roadmap 和 items.yaml"
     exit_signal: "PR-5 状态、feature 路径、完成范围、未证明范围和 PR-6 交接边界与实际代码一致"
     status: done
 

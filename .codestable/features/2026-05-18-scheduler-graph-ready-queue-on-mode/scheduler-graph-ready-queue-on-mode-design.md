@@ -22,7 +22,7 @@ tags: [scheduler, graph, networkx, ready-queue, sgs]
 - 阶段 11：实现有环安全门。
   - `report` 模式只提示循环依赖，不阻止排产。
   - `on + graph_block_on_cycle=yes + 有环` 在 version 分配前阻止排产，返回中文业务错误。
-  - `on + graph_block_on_cycle=no + 有环` 继续原排产逻辑，但 public 摘要明确写图增强未启用。
+  - `on + graph_block_on_cycle=no + 有环` 继续旧 SGS 候选逻辑，但不启用图 ready 队列，public 摘要明确写图增强未启用。
   - known graph error / unknown graph error 不伪装成有环，也不静默吞掉。
 - 阶段 12a：实现 ready 队列 helper。
   - 只处理普通 Python 集合和映射。
@@ -59,6 +59,11 @@ tags: [scheduler, graph, networkx, ready-queue, sgs]
   - `graph_ready_context`
 - `graph_ready_context` 只使用 `dict`、`set`、`tuple`、`int` 等普通 Python 数据。
 - `graph_analysis_mode=on + DAG` 时，optimizer 强制使用 SGS，因为 ready 队列当前只接入 SGS 候选集合。
+- `graph_analysis_mode=on + 有环 + graph_block_on_cycle=no` 时，optimizer 也强制使用 SGS，但 `graph_ready_context` 保持为空，确保只回到旧 SGS 候选逻辑，不误启用图 ready 队列。
+- 如果绕过 optimizer 直接调用算法层，`graph_ready_context` 只能和 SGS 一起使用；否则直接报错，避免 ready 队列被 `batch_order` 悄悄忽略。
+- `graph_dispatch_mode_override` 只允许内部传入 `sgs`，其他值直接报错，避免未来误传后被静默忽略。
 - `dispatch_sgs()` 在无图上下文时继续调用旧 `_collect_sgs_candidates()`。
 - `dispatch_sgs()` 在有图上下文时用 ready `op_id` 映射回 `(batch_id, op)`，再交给原评分函数。
+- `dispatch_sgs()` 会在转集合前拒绝图对象和图对象样子的输入，包括 op_id 集合以及前后置映射里的嵌套集合。
+- `sort_key_by_op_id` 的 key 必须已经是正整数 `op_id`，不接受字符串 key 或 bool key。
 - 前置工序排产失败时，图后继不会被释放；这些被图依赖阻断的工序会计入失败数，并写清楚“依赖的前序工序排产失败，本次跳过”。

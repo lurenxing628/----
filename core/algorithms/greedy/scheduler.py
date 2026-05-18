@@ -28,6 +28,7 @@ from core.algorithms.ordering import (
     resolve_batch_sort_batch_id,
 )
 from core.algorithms.value_domains import INTERNAL
+from core.infrastructure.errors import ValidationError
 
 from ..sort_strategies import SortStrategy, StrategyFactory
 from ..types import ScheduleResult, ScheduleSummary
@@ -385,6 +386,8 @@ def _freeze_seed_resources(state: ScheduleRunState, result: ScheduleResult) -> N
 
 
 def _run_dispatch(ctx: ScheduleRunContext, *, state: ScheduleRunState, sorted_ops: List[Any], batches: Dict[str, Any], batch_order: Dict[str, int], params: Any, machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]], resource_pool: Optional[Dict[str, Any]], graph_ready_context: Optional[Any], strict_mode: bool) -> None:
+    if graph_ready_context is not None and params.dispatch_mode_key != "sgs":
+        raise ValidationError("图 ready 队列只能在 SGS 派工模式下启用。", field="graph_ready_context")
     if params.dispatch_mode_key != "sgs":
         dispatch_batch_order(
             ctx,

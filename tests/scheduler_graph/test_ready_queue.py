@@ -139,6 +139,12 @@ def test_sort_key_mapping_must_be_mapping() -> None:
         )
 
 
+@pytest.mark.parametrize("raw_key", ["1", True])
+def test_sort_key_mapping_key_must_be_strict_positive_int(raw_key) -> None:
+    with pytest.raises(ReadyQueueContractError, match="sort_key_by_op_id 的 key 必须是正整数 op_id"):
+        _ready(schedulable={1}, predecessors={1: set()}, sort_keys={raw_key: (0, 10, 1)})
+
+
 def test_sort_key_mapping_must_be_valid_even_when_no_operation_is_ready() -> None:
     with pytest.raises(ReadyQueueContractError, match="sort_key_by_op_id 必须是映射"):
         get_ready_operation_ids(
@@ -161,6 +167,24 @@ def test_op_id_inputs_must_be_iterable_collections() -> None:
         )
 
 
+def test_graph_like_object_is_not_accepted_as_op_id_collection() -> None:
+    class GraphLike:
+        nodes = (1, 2)
+        edges = ()
+
+        def __iter__(self):
+            return iter(self.nodes)
+
+    with pytest.raises(ReadyQueueContractError, match="不能传图对象"):
+        get_ready_operation_ids(
+            schedulable_op_ids=GraphLike(),
+            completed_or_fixed_op_ids=set(),
+            blocked_op_ids=set(),
+            predecessor_op_ids_by_op_id={1: set(), 2: set()},
+            sort_key_by_op_id={1: (0, 1, 1), 2: (0, 2, 2)},
+        )
+
+
 def test_bad_sort_key_shape_reports_contract_error() -> None:
     with pytest.raises(ReadyQueueContractError, match="排序 key 必须是三元组"):
         _ready(schedulable={1}, predecessors={1: set()}, sort_keys={1: (0, 1)})
@@ -169,6 +193,11 @@ def test_bad_sort_key_shape_reports_contract_error() -> None:
 def test_bad_sort_key_value_reports_contract_error() -> None:
     with pytest.raises(ReadyQueueContractError, match="排序 key 必须只包含整数"):
         _ready(schedulable={1}, predecessors={1: set()}, sort_keys={1: (0, "bad", 1)})
+
+
+def test_bool_sort_key_value_reports_contract_error() -> None:
+    with pytest.raises(ReadyQueueContractError, match="排序 key 必须只包含整数"):
+        _ready(schedulable={1}, predecessors={1: set()}, sort_keys={1: (False, 1, 1)})
 
 
 def test_predecessor_key_outside_known_scope_reports_contract_error() -> None:

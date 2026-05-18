@@ -280,6 +280,23 @@ def _op_id(op: Any) -> int:
     return parse_required_int(getattr(op, "id", 0), field="id")
 
 
+def _is_graph_like(value: Any) -> bool:
+    return hasattr(value, "nodes") and hasattr(value, "edges")
+
+
+def _graph_ready_op_id_set(value: Any, *, field: str) -> set:
+    if value is None:
+        raise ValidationError(f"图 ready 队列上下文缺少 {field} 集合。", field="graph_ready_context")
+    if isinstance(value, (str, bytes)):
+        raise ValidationError(f"图 ready 队列上下文 {field} 必须是 op_id 集合。", field="graph_ready_context")
+    if _is_graph_like(value):
+        raise ValidationError(f"图 ready 队列上下文 {field} 只能传普通 op_id 集合，不能传图对象。", field="graph_ready_context")
+    try:
+        return {parse_required_int(item, field=field) for item in value}
+    except TypeError as exc:
+        raise ValidationError(f"图 ready 队列上下文 {field} 必须是 op_id 集合。", field="graph_ready_context") from exc
+
+
 def _prepare_graph_ready_state(
     graph_ready_context: Optional[Any],
     *,
@@ -298,19 +315,20 @@ def _prepare_graph_ready_state(
                 raise ValidationError(f"图 ready 队列上下文发现重复 op_id：{op_id}", field="graph_ready_context")
             op_by_id[op_id] = (batch_id, op)
 
-    schedulable_ids = set(graph_ready_context.get("schedulable_op_ids") or set())
+    schedulable_ids = _graph_ready_op_id_set(graph_ready_context.get("schedulable_op_ids"), field="schedulable_op_ids")
+    fixed_op_ids = _graph_ready_op_id_set(graph_ready_context.get("fixed_op_ids"), field="fixed_op_ids")
     if schedulable_ids != set(op_by_id):
         raise ValidationError("图 ready 队列上下文和本次待排工序不一致。", field="graph_ready_context")
     predecessor_map = graph_ready_context.get("predecessor_op_ids_by_op_id")
     successor_map = graph_ready_context.get("successor_op_ids_by_op_id")
-    _validate_graph_ready_links(
-        op_ids=set(op_by_id).union(set(graph_ready_context.get("fixed_op_ids") or set())),
+    predecessor_map, successor_map = _validate_graph_ready_links(
+        op_ids=set(op_by_id).union(fixed_op_ids),
         predecessor_map=predecessor_map,
         successor_map=successor_map,
     )
     return {
         "op_by_id": op_by_id,
-        "completed_or_fixed_op_ids": set(graph_ready_context.get("fixed_op_ids") or set()),
+        "completed_or_fixed_op_ids": fixed_op_ids,
         "blocked_op_ids": set(),
         "predecessor_op_ids_by_op_id": predecessor_map,
         "successor_op_ids_by_op_id": successor_map,
@@ -326,6 +344,8 @@ def _normalize_link_map(value: Any, *, field: str) -> Dict[int, set]:
         op_id = parse_required_int(raw_op_id, field=field)
         if raw_linked_ids is None or isinstance(raw_linked_ids, (str, bytes)):
             raise ValidationError(f"图 ready 队列上下文 {field} 映射不是集合。", field="graph_ready_context")
+        if _is_graph_like(raw_linked_ids):
+            raise ValidationError(f"图 ready 队列上下文 {field} 映射不能传图对象。", field="graph_ready_context")
         try:
             normalized[op_id] = {parse_required_int(item, field=field) for item in raw_linked_ids}
         except TypeError as exc:
@@ -333,7 +353,7 @@ def _normalize_link_map(value: Any, *, field: str) -> Dict[int, set]:
     return normalized
 
 
-def _validate_graph_ready_links(*, op_ids: set, predecessor_map: Any, successor_map: Any) -> None:
+def _validate_graph_ready_links(*, op_ids: set, predecessor_map: Any, successor_map: Any) -> Tuple[Dict[int, set], Dict[int, set]]:
     predecessors = _normalize_link_map(predecessor_map, field="predecessor_op_ids_by_op_id")
     successors = _normalize_link_map(successor_map, field="successor_op_ids_by_op_id")
     for op_id in op_ids:
@@ -353,6 +373,7 @@ def _validate_graph_ready_links(*, op_ids: set, predecessor_map: Any, successor_
                     f"图 ready 队列上下文不一致：工序 {op_id} 记录了后继 {successor_id}，但前置映射没有对应关系。",
                     field="graph_ready_context",
                 )
+    return predecessors, successors
 
 
 def _collect_candidates(

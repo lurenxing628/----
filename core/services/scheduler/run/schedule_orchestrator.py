@@ -245,6 +245,7 @@ def orchestrate_schedule_run(
             readiness_gate_enabled=bool(schedule_input.readiness_gate_enabled),
             strict_mode=bool(strict_mode),
             graph_ready_context=graph_preparation.graph_ready_context,
+            graph_dispatch_mode_override=graph_preparation.graph_dispatch_mode_override,
         )
     )
 

@@ -28,6 +28,8 @@ def _op_id_set(values: Iterable[Any], *, field: str) -> Set[int]:
         raise ReadyQueueContractError(f"{field} 不能为空。")
     if isinstance(values, (str, bytes)):
         raise ReadyQueueContractError(f"{field} 必须是 op_id 集合。")
+    if hasattr(values, "nodes") and hasattr(values, "edges"):
+        raise ReadyQueueContractError(f"{field} 只能传普通 op_id 集合，不能传图对象。")
     try:
         return {_normalize_op_id(value, field=field) for value in values}
     except TypeError as exc:
@@ -37,6 +39,9 @@ def _op_id_set(values: Iterable[Any], *, field: str) -> Set[int]:
 def _validate_sort_key_mapping(sort_key_by_op_id: Mapping[int, Tuple[int, int, int]]) -> None:
     if not isinstance(sort_key_by_op_id, Mapping):
         raise ReadyQueueContractError("sort_key_by_op_id 必须是映射。")
+    for raw_op_id in sort_key_by_op_id:
+        if isinstance(raw_op_id, bool) or not isinstance(raw_op_id, int) or raw_op_id <= 0:
+            raise ReadyQueueContractError("sort_key_by_op_id 的 key 必须是正整数 op_id。")
 
 
 def _predecessor_map(values: Mapping[int, Iterable[Any]]) -> Dict[int, Set[int]]:
@@ -87,6 +92,8 @@ def _sort_key(sort_key_by_op_id: Mapping[int, Tuple[int, int, int]], op_id: int)
     raw_key = sort_key_by_op_id[op_id]
     if not isinstance(raw_key, tuple) or len(raw_key) != 3:
         raise ReadyQueueContractError(f"ready 队列工序 {op_id} 的排序 key 必须是三元组。")
+    if any(isinstance(item, bool) for item in raw_key):
+        raise ReadyQueueContractError(f"ready 队列工序 {op_id} 的排序 key 必须只包含整数。")
     try:
         return (int(raw_key[0]), int(raw_key[1]), int(raw_key[2]))
     except (TypeError, ValueError) as exc:
@@ -129,4 +136,3 @@ def get_ready_operation_ids(
 
 
 __all__ = ["ReadyQueueContractError", "get_ready_operation_ids"]
-

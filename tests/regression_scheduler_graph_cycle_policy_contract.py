@@ -161,12 +161,16 @@ def _summary_from_ctx(_svc: Any, *, ctx: Any) -> Tuple[List[Dict[str, Any]], str
 
 
 def _run_orchestrator(schedule_input: Any, svc: _Svc) -> Any:
+    return _run_orchestrator_with_optimizer(schedule_input, svc, optimize_fn=lambda **_kwargs: _optimizer_outcome())
+
+
+def _run_orchestrator_with_optimizer(schedule_input: Any, svc: _Svc, *, optimize_fn: Any) -> Any:
     return orchestrate_schedule_run(
         svc,
         schedule_input=schedule_input,
         simulate=True,
         strict_mode=True,
-        optimize_schedule_fn=lambda **_kwargs: _optimizer_outcome(),
+        optimize_schedule_fn=optimize_fn,
         build_result_summary_fn=_summary_from_ctx,
     )
 
@@ -219,8 +223,13 @@ def test_on_mode_cycle_with_block_yes_stops_before_version_allocation(cycle_grap
 
 def test_on_mode_cycle_with_block_no_disables_graph_enhancement_and_keeps_old_sgs(cycle_graph: None) -> None:
     svc = _Svc()
+    captured: Dict[str, Any] = {}
 
-    outcome = _run_orchestrator(_schedule_input("on", block_on_cycle="no"), svc)
+    def _optimize(**kwargs: Any) -> OptimizationOutcome:
+        captured.update(kwargs)
+        return _optimizer_outcome()
+
+    outcome = _run_orchestrator_with_optimizer(_schedule_input("on", block_on_cycle="no"), svc, optimize_fn=_optimize)
 
     graph_analysis = outcome.result_summary_obj["algo"]["graph_analysis"]
     assert graph_analysis["effective_mode"] == "sgs_without_graph_ready_queue"
@@ -228,16 +237,51 @@ def test_on_mode_cycle_with_block_no_disables_graph_enhancement_and_keeps_old_sg
     assert graph_analysis["graph_enhancement_disabled_reason"] == "schedule_graph_cycle"
     assert graph_analysis["ready_queue_enabled"] is False
     assert "继续使用原 SGS 候选逻辑" in graph_analysis["graph_enhancement_message"]
+    assert captured["graph_ready_context"] is None
+    assert captured["graph_dispatch_mode_override"] == "sgs"
     assert svc.history_repo.allocate_calls == 1
 
 
-def test_on_mode_known_graph_error_is_not_reported_as_cycle(monkeypatch: Any) -> None:
+@pytest.mark.parametrize(
+    ("exception_factory", "status", "reason"),
+    [
+        (
+            lambda: __import__(
+                "core.services.scheduler.graph.nx_runtime",
+                fromlist=["NetworkXUnavailable"],
+            ).NetworkXUnavailable("缺少可选依赖 networkx==3.1"),
+            "unavailable",
+            "networkx_unavailable",
+        ),
+        (
+            lambda: __import__(
+                "core.services.scheduler.graph.input_adapter",
+                fromlist=["GraphInputContractError"],
+            ).GraphInputContractError("source 不合法"),
+            "input_error",
+            "graph_input_contract_error",
+        ),
+        (
+            lambda: __import__(
+                "core.services.scheduler.graph.precedence_builder",
+                fromlist=["GraphBuildContractError"],
+            ).GraphBuildContractError("重复 node_id"),
+            "build_error",
+            "graph_build_contract_error",
+        ),
+    ],
+)
+def test_on_mode_known_graph_error_is_not_reported_as_cycle(
+    monkeypatch: Any,
+    exception_factory: Any,
+    status: str,
+    reason: str,
+) -> None:
     from core.services.scheduler.graph import analysis_service
-    from core.services.scheduler.graph.nx_runtime import NetworkXUnavailable
 
     class FailingGraphService:
         def analyze_linear_batches(self, _nodes: Any, *, metrics_mode: str = "full") -> object:
-            raise NetworkXUnavailable("缺少可选依赖 networkx==3.1")
+            raise exception_factory()
 
     monkeypatch.setattr(analysis_service, "ScheduleGraphAnalysisService", FailingGraphService)
     svc = _Svc()
@@ -245,11 +289,11 @@ def test_on_mode_known_graph_error_is_not_reported_as_cycle(monkeypatch: Any) ->
     with pytest.raises(ValidationError) as exc_info:
         _run_orchestrator(_schedule_input("on", block_on_cycle="yes"), svc)
 
-    assert exc_info.value.field == "networkx_unavailable"
+    assert exc_info.value.field == reason
     assert exc_info.value.details == {
-        "reason": "networkx_unavailable",
-        "status": "unavailable",
-        "field": "networkx_unavailable",
+        "reason": reason,
+        "status": status,
+        "field": reason,
     }
     assert "工序图增强无法启用" in exc_info.value.message
     assert "循环依赖" not in exc_info.value.message

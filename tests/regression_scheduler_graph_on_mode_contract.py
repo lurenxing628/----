@@ -152,6 +152,29 @@ def _summary_from_ctx(_svc: Any, *, ctx: Any) -> Tuple[List[Dict[str, Any]], str
     return [], "success", {"algo": {"graph_analysis": dict(ctx.graph_analysis_public or {})}}, "{}", 1
 
 
+def _cycle_graph_payload() -> Dict[str, Any]:
+    return {
+        "node_count": 2,
+        "edge_count": 2,
+        "is_dag": False,
+        "cycle_edges": [
+            {"from": "op:B001:OP-B001-010:1", "to": "op:B001:OP-B001-020:2", "kind": "precedence"},
+            {"from": "op:B001:OP-B001-020:2", "to": "op:B001:OP-B001-010:1", "kind": "explicit"},
+        ],
+        "topological_order": [],
+        "critical_path": [],
+        "critical_path_minutes": 0,
+        "node_metrics": {},
+        "warnings": [
+            {
+                "code": "GRAPH_HAS_CYCLE",
+                "message": "工序依赖图存在循环，无法计算拓扑顺序和关键路径。",
+                "data": {"cycle_edges": []},
+            }
+        ],
+    }
+
+
 def _cfg(dispatch_mode: str = "sgs") -> SimpleNamespace:
     return SimpleNamespace(
         sort_strategy="priority_first",
@@ -190,6 +213,18 @@ def _cfg_svc() -> SimpleNamespace:
     )
 
 
+@pytest.fixture()
+def cycle_graph(monkeypatch: Any) -> None:
+    from core.services.scheduler.graph import analysis_service, exporter
+
+    class FakeGraphService:
+        def analyze_linear_batches(self, _nodes: Any, *, metrics_mode: str = "full") -> object:
+            return object()
+
+    monkeypatch.setattr(analysis_service, "ScheduleGraphAnalysisService", FakeGraphService)
+    monkeypatch.setattr(exporter, "graph_summary_to_dict", lambda _summary: _cycle_graph_payload())
+
+
 def test_on_dag_prepares_plain_graph_ready_context_before_optimizer() -> None:
     captured: Dict[str, Any] = {}
 
@@ -216,6 +251,72 @@ def test_on_dag_prepares_plain_graph_ready_context_before_optimizer() -> None:
     assert outcome.result_summary_obj["algo"]["graph_analysis"]["status"] == "available"
     assert outcome.result_summary_obj["algo"]["graph_analysis"]["effective_mode"] == "graph_ready_queue"
     assert outcome.result_summary_obj["algo"]["graph_analysis"]["ready_queue_enabled"] is True
+    assert outcome.validated_schedule_payload.scheduled_op_ids == {2}
+    assert [row.op_id for row in outcome.validated_schedule_payload.schedule_rows] == [2]
+
+
+def test_on_cycle_block_no_uses_real_optimizer_sgs_override(cycle_graph: None) -> None:
+    calls: Dict[str, Any] = {}
+    schedule_input = _schedule_input("on")
+    schedule_input.cfg = _cfg(dispatch_mode="batch_order")
+    schedule_input.cfg.graph_block_on_cycle = "no"
+    schedule_input.cfg_svc = _cfg_svc()
+    schedule_input.seed_results = [
+        {
+            "op_id": 1,
+            "op_code": "OP-B001-010",
+            "batch_id": "B001",
+            "seq": 10,
+            "machine_id": "MC001",
+            "operator_id": "OP001",
+            "start_time": _make_dt(-1),
+            "end_time": _make_dt(0),
+            "source": "internal",
+            "op_type_name": "车削",
+        }
+    ]
+
+    class Scheduler:
+        _last_algo_stats = {"fallback_counts": {}, "param_fallbacks": {}}
+
+        def schedule(self, **kwargs: Any) -> Tuple[List[Any], Any, Any, Dict[str, Any]]:
+            calls["scheduler_graph_ready_context"] = kwargs.get("graph_ready_context")
+            calls["scheduler_dispatch_mode"] = kwargs.get("dispatch_mode")
+            summary = SimpleNamespace(success=True, total_ops=1, scheduled_ops=1, failed_ops=0, warnings=[], errors=[])
+            return [_optimizer_outcome().results[0]], summary, kwargs.get("strategy"), dict(kwargs.get("strategy_params") or {})
+
+    def _keep_best(**kwargs: Any) -> Any:
+        if "dispatch_modes" in kwargs:
+            calls["multi_start_dispatch_modes"] = list(kwargs.get("dispatch_modes") or [])
+        if "dispatch_mode_cfg" in kwargs:
+            calls.setdefault("dispatch_mode_cfg_values", []).append(kwargs.get("dispatch_mode_cfg"))
+        return kwargs.get("best")
+
+    runtime = OptimizerRuntime(
+        scheduler_factory=lambda **_kwargs: Scheduler(),
+        clock=lambda: 1000.0,
+        rng_factory=lambda _seed: None,
+        run_ortools_warmstart=_keep_best,
+        run_multi_start=_keep_best,
+        run_local_search=_keep_best,
+    )
+
+    outcome = orchestrate_schedule_run(
+        _Svc(),
+        schedule_input=schedule_input,  # type: ignore[arg-type]
+        simulate=True,
+        strict_mode=True,
+        optimize_schedule_fn=lambda **kwargs: optimize_schedule(**kwargs, _runtime=runtime),
+        build_result_summary_fn=_summary_from_ctx,
+    )
+
+    graph_analysis = outcome.result_summary_obj["algo"]["graph_analysis"]
+    assert graph_analysis["effective_mode"] == "sgs_without_graph_ready_queue"
+    assert graph_analysis["ready_queue_enabled"] is False
+    assert calls["scheduler_graph_ready_context"] is None
+    assert calls["scheduler_dispatch_mode"] == "sgs"
+    assert calls["multi_start_dispatch_modes"] == ["sgs"]
+    assert calls["dispatch_mode_cfg_values"] == ["sgs", "sgs"]
 
 
 def test_report_mode_does_not_prepare_graph_ready_context() -> None:
@@ -223,6 +324,7 @@ def test_report_mode_does_not_prepare_graph_ready_context() -> None:
 
     assert preparation.graph_analysis_public is not None
     assert preparation.graph_ready_context is None
+    assert preparation.graph_dispatch_mode_override is None
 
 
 def test_optimizer_passes_graph_ready_context_to_runtime_steps_and_fallback_scheduler() -> None:
@@ -284,6 +386,113 @@ def test_optimizer_passes_graph_ready_context_to_runtime_steps_and_fallback_sche
     assert calls["multi_start_dispatch_modes"] == ["sgs"]
     assert calls["local_search_dispatch_mode"] == "sgs"
     assert calls["scheduler_dispatch_mode"] == "sgs"
+
+
+def test_optimizer_dispatch_override_uses_sgs_without_graph_ready_context() -> None:
+    calls: Dict[str, Any] = {}
+
+    class Scheduler:
+        _last_algo_stats = {"fallback_counts": {}, "param_fallbacks": {}}
+
+        def schedule(self, **kwargs: Any) -> Tuple[List[Any], Any, Any, Dict[str, Any]]:
+            calls["scheduler_graph_ready_context"] = kwargs.get("graph_ready_context")
+            calls["scheduler_dispatch_mode"] = kwargs.get("dispatch_mode")
+            summary = SimpleNamespace(success=True, total_ops=0, scheduled_ops=0, failed_ops=0, warnings=[], errors=[])
+            return [], summary, kwargs.get("strategy"), dict(kwargs.get("strategy_params") or {})
+
+    def _step(name: str):
+        def _inner(**kwargs: Any) -> Any:
+            calls[name] = kwargs.get("graph_ready_context")
+            if name == "multi_start":
+                calls["multi_start_dispatch_modes"] = list(kwargs.get("dispatch_modes") or [])
+            if name in ("ortools", "local_search"):
+                calls[f"{name}_dispatch_mode"] = kwargs.get("dispatch_mode_cfg")
+            return kwargs.get("best")
+
+        return _inner
+
+    runtime = OptimizerRuntime(
+        scheduler_factory=lambda **_kwargs: Scheduler(),
+        clock=lambda: 1000.0,
+        rng_factory=lambda _seed: None,
+        run_ortools_warmstart=_step("ortools"),
+        run_multi_start=_step("multi_start"),
+        run_local_search=_step("local_search"),
+    )
+
+    optimize_schedule(
+        calendar_service=SimpleNamespace(),
+        cfg_svc=_cfg_svc(),
+        cfg=_cfg(dispatch_mode="batch_order"),
+        algo_ops_to_schedule=[],
+        batches={},
+        start_dt=datetime(2026, 1, 1, 8, 0, 0),
+        end_date=None,
+        downtime_map={},
+        seed_results=[],
+        resource_pool=None,
+        version=1,
+        logger=None,
+        strict_mode=True,
+        graph_ready_context=None,
+        graph_dispatch_mode_override="sgs",
+        _runtime=runtime,
+    )
+
+    assert calls["ortools"] is None
+    assert calls["multi_start"] is None
+    assert calls["local_search"] is None
+    assert calls["scheduler_graph_ready_context"] is None
+    assert calls["ortools_dispatch_mode"] == "sgs"
+    assert calls["multi_start_dispatch_modes"] == ["sgs"]
+    assert calls["local_search_dispatch_mode"] == "sgs"
+    assert calls["scheduler_dispatch_mode"] == "sgs"
+
+
+def test_optimizer_rejects_unknown_graph_dispatch_override() -> None:
+    with pytest.raises(ValidationError) as exc_info:
+        optimize_schedule(
+            calendar_service=SimpleNamespace(),
+            cfg_svc=_cfg_svc(),
+            cfg=_cfg(dispatch_mode="batch_order"),
+            algo_ops_to_schedule=[],
+            batches={},
+            start_dt=datetime(2026, 1, 1, 8, 0, 0),
+            end_date=None,
+            downtime_map={},
+            seed_results=[],
+            resource_pool=None,
+            version=1,
+            logger=None,
+            strict_mode=True,
+            graph_ready_context=None,
+            graph_dispatch_mode_override="batch_order",
+        )
+
+    assert exc_info.value.field == "graph_dispatch_mode_override"
+
+
+def test_greedy_scheduler_rejects_graph_ready_context_without_sgs_dispatch_mode() -> None:
+    graph_ready_context = {
+        "enabled": True,
+        "schedulable_op_ids": {1},
+        "fixed_op_ids": set(),
+        "predecessor_op_ids_by_op_id": {1: set()},
+        "successor_op_ids_by_op_id": {1: set()},
+        "sort_key_by_op_id": {1: (0, 10, 1)},
+    }
+
+    with pytest.raises(ValidationError) as exc_info:
+        GreedyScheduler(_Calendar()).schedule(
+            operations=[_op(1, "B1", 10)],
+            batches={"B1": SimpleNamespace(batch_id="B1", quantity=1, due_date="2026-01-02", priority="normal")},
+            start_dt=datetime(2026, 1, 1, 8, 0, 0),
+            dispatch_mode="batch_order",
+            graph_ready_context=graph_ready_context,
+        )
+
+    assert exc_info.value.field == "graph_ready_context"
+    assert "SGS" in exc_info.value.message
 
 
 def test_sgs_uses_graph_ready_context_as_candidate_qualification() -> None:
@@ -394,6 +603,139 @@ def test_sgs_graph_ready_context_does_not_release_successor_after_blocked_failur
     assert results == []
     assert summary.failed_ops == 2
     assert any("OP-B2-010" in error and "OP-B1-010" in error and "本次跳过" in error for error in summary.errors)
+
+
+def test_sgs_graph_ready_context_uses_normalized_successor_map_for_blocking() -> None:
+    start_dt = datetime(2026, 1, 1, 8, 0, 0)
+    blocking_op = _op(1, "B1", 10)
+    blocking_op.setup_hours = 48.0
+    successor_op = _op(2, "B2", 10)
+    graph_ready_context = {
+        "enabled": True,
+        "schedulable_op_ids": {1, 2},
+        "fixed_op_ids": set(),
+        "predecessor_op_ids_by_op_id": {"1": set(), "2": {"1"}},
+        "successor_op_ids_by_op_id": {"1": {"2"}, "2": set()},
+        "sort_key_by_op_id": {1: (0, 10, 1), 2: (1, 10, 2)},
+    }
+
+    results, summary, _strategy, _params = GreedyScheduler(_Calendar()).schedule(
+        operations=[blocking_op, successor_op],
+        batches={
+            "B1": SimpleNamespace(batch_id="B1", quantity=1, due_date="2026-01-02", priority="normal"),
+            "B2": SimpleNamespace(batch_id="B2", quantity=1, due_date="2026-01-02", priority="normal"),
+        },
+        start_dt=start_dt,
+        end_date="2026-01-01",
+        dispatch_mode="sgs",
+        dispatch_rule="slack",
+        graph_ready_context=graph_ready_context,
+    )
+
+    assert results == []
+    assert summary.failed_ops == 2
+    assert any("OP-B2-010" in error and "OP-B1-010" in error and "本次跳过" in error for error in summary.errors)
+
+
+@pytest.mark.parametrize("field", ["schedulable_op_ids", "fixed_op_ids"])
+def test_sgs_graph_ready_context_rejects_graph_like_op_id_collections(field: str) -> None:
+    class GraphLike:
+        def nodes(self) -> List[int]:
+            return [1]
+
+        def edges(self) -> List[Tuple[int, int]]:
+            return []
+
+    graph_ready_context = {
+        "enabled": True,
+        "schedulable_op_ids": {1},
+        "fixed_op_ids": set(),
+        "predecessor_op_ids_by_op_id": {1: set()},
+        "successor_op_ids_by_op_id": {1: set()},
+        "sort_key_by_op_id": {1: (0, 10, 1)},
+    }
+    graph_ready_context[field] = GraphLike()
+
+    with pytest.raises(ValidationError) as exc_info:
+        GreedyScheduler(_Calendar()).schedule(
+            operations=[_op(1, "B1", 10)],
+            batches={"B1": SimpleNamespace(batch_id="B1", quantity=1, due_date="2026-01-02", priority="normal")},
+            start_dt=datetime(2026, 1, 1, 8, 0, 0),
+            dispatch_mode="sgs",
+            dispatch_rule="slack",
+            graph_ready_context=graph_ready_context,
+        )
+
+    assert exc_info.value.field == "graph_ready_context"
+    assert field in exc_info.value.message
+    assert "不能传图对象" in exc_info.value.message
+
+
+@pytest.mark.parametrize(
+    ("field", "op_id"),
+    [
+        ("predecessor_op_ids_by_op_id", 2),
+        ("successor_op_ids_by_op_id", 1),
+    ],
+)
+def test_sgs_graph_ready_context_rejects_graph_like_link_collections(field: str, op_id: int) -> None:
+    class GraphLike:
+        nodes = (1, 2)
+        edges = ()
+
+        def __iter__(self):
+            return iter(self.nodes)
+
+    graph_ready_context = {
+        "enabled": True,
+        "schedulable_op_ids": {1, 2},
+        "fixed_op_ids": set(),
+        "predecessor_op_ids_by_op_id": {1: set(), 2: {1}},
+        "successor_op_ids_by_op_id": {1: {2}, 2: set()},
+        "sort_key_by_op_id": {1: (0, 10, 1), 2: (0, 20, 2)},
+    }
+    graph_ready_context[field] = dict(graph_ready_context[field])
+    graph_ready_context[field][op_id] = GraphLike()
+
+    with pytest.raises(ValidationError) as exc_info:
+        GreedyScheduler(_Calendar()).schedule(
+            operations=[_op(1, "B1", 10), _op(2, "B1", 20)],
+            batches={"B1": SimpleNamespace(batch_id="B1", quantity=1, due_date="2026-01-02", priority="normal")},
+            start_dt=datetime(2026, 1, 1, 8, 0, 0),
+            dispatch_mode="sgs",
+            dispatch_rule="slack",
+            graph_ready_context=graph_ready_context,
+        )
+
+    assert exc_info.value.field == "graph_ready_context"
+    assert field in exc_info.value.message
+    assert "不能传图对象" in exc_info.value.message
+
+
+@pytest.mark.parametrize("raw_sort_key", ["1", True])
+def test_sgs_graph_ready_context_keeps_sort_key_op_id_keys_strict(raw_sort_key: Any) -> None:
+    graph_ready_context = {
+        "enabled": True,
+        "schedulable_op_ids": {1},
+        "fixed_op_ids": set(),
+        "predecessor_op_ids_by_op_id": {1: set()},
+        "successor_op_ids_by_op_id": {1: set()},
+        "sort_key_by_op_id": {raw_sort_key: (0, 10, 1)},
+    }
+
+    with pytest.raises(ValidationError) as exc_info:
+        GreedyScheduler(_Calendar()).schedule(
+            operations=[_op(1, "B1", 10)],
+            batches={"B1": SimpleNamespace(batch_id="B1", quantity=1, due_date="2026-01-02", priority="normal")},
+            start_dt=datetime(2026, 1, 1, 8, 0, 0),
+            dispatch_mode="sgs",
+            dispatch_rule="slack",
+            graph_ready_context=graph_ready_context,
+        )
+
+    assert exc_info.value.field == "graph_ready_context"
+    assert "sort_key_by_op_id" in exc_info.value.message
+    assert "正整数 op_id" in exc_info.value.message
 
 
 def test_sgs_graph_ready_context_does_not_double_count_same_batch_blocked_successor() -> None:
