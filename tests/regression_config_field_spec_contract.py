@@ -138,9 +138,10 @@ def test_config_field_spec_registry_contract() -> None:
     assert metadata["graph_analysis_mode"].choices[0]["value"] == "off"
     assert metadata["graph_analysis_mode"].choices[1]["value"] == "report"
     assert metadata["graph_analysis_mode"].choices[2]["value"] == "on"
-    assert metadata["graph_analysis_mode"].choices[2]["label"] == "按只读报告处理（当前不改排产）"
+    assert metadata["graph_analysis_mode"].choices[2]["label"] == "启用图安全检查和 ready 队列"
     assert "阶段 2" not in metadata["graph_analysis_mode"].hint
     assert "只生成分析报告" in metadata["graph_analysis_mode"].hint
+    assert "可用 DAG 会用 ready 队列参与 SGS 候选" in metadata["graph_analysis_mode"].hint
     assert metadata["graph_critical_weight"].label == "关键路径权重"
     assert "为后续图评分预留" in get_field_spec("graph_critical_weight").description
     assert "为后续图评分预留" in get_field_spec("graph_impact_weight").description

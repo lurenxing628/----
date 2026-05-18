@@ -284,6 +284,10 @@ def test_scheduler_config_route_uses_request_services(monkeypatch) -> None:
     assert "阶段 2" not in notice_text
     assert "尚未接入" not in notice_text
     assert "report 会生成只读报告" in notice_text
+    assert "on 当前先按 report-only" not in notice_text
+    assert "不会让图分析参与 ready 队列" not in notice_text
+    assert "on 会先做图安全检查" in notice_text
+    assert "可用 DAG 会用 ready 队列参与 SGS 候选" in notice_text
     toggles = payload["scheduler_config_toggles"]
     assert set(toggles) == {
         "freeze_window_enabled",
@@ -309,13 +313,14 @@ def test_scheduler_config_route_uses_request_services(monkeypatch) -> None:
     assert config_service.restore_default_called is True
 
 
-def test_scheduler_config_template_graph_copy_matches_report_only_stage() -> None:
+def test_scheduler_config_template_graph_copy_matches_cycle_gate_stage() -> None:
     template = (REPO_ROOT / "templates/scheduler/config.html").read_text(encoding="utf-8")
 
     assert "阶段 2 只保存" not in template
     assert "真正图分析将在后续阶段接入" not in template
     assert "report 会生成只读图分析报告" in template
-    assert "on 当前先按 report-only 处理" in template
+    assert "on 会先做图安全检查" in template
+    assert "可用 DAG 会用 ready 队列参与 SGS 候选" in template
 
 
 def test_scheduler_config_post_uses_atomic_save_entrypoint(monkeypatch) -> None:

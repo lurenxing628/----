@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..summary.schedule_summary_types import SummaryBuildContext
-from .schedule_graph_report import maybe_analyze_schedule_graph
+from .schedule_graph_report import prepare_schedule_graph_for_dispatch
 from .schedule_input_collector import ScheduleRunInput
 from .schedule_persistence import ValidatedSchedulePayload, build_validated_schedule_payload
 
@@ -227,6 +227,7 @@ def orchestrate_schedule_run(
     optimize_schedule_fn: Any,
     build_result_summary_fn: Any,
 ) -> ScheduleOrchestrationOutcome:
+    graph_preparation = prepare_schedule_graph_for_dispatch(schedule_input)
     optimizer_outcome = _normalize_optimizer_outcome(
         optimize_schedule_fn(
             calendar_service=schedule_input.cal_svc,
@@ -243,6 +244,7 @@ def orchestrate_schedule_run(
             logger=svc.logger,
             readiness_gate_enabled=bool(schedule_input.readiness_gate_enabled),
             strict_mode=bool(strict_mode),
+            graph_ready_context=graph_preparation.graph_ready_context,
         )
     )
 
@@ -257,8 +259,6 @@ def orchestrate_schedule_run(
         optimizer_outcome.summary,
         list(schedule_input.algo_warnings or []),
     )
-
-    graph_analysis_public, graph_analysis_diagnostics = maybe_analyze_schedule_graph(schedule_input)
 
     with svc.tx_manager.transaction():
         version = int(svc.history_repo.allocate_next_version())
@@ -294,8 +294,8 @@ def orchestrate_schedule_run(
         algo_stats=optimizer_outcome.algo_stats,
         algo_warnings=list(schedule_input.algo_warnings or []),
         warning_merge_status=warning_merge_status,
-        graph_analysis_public=graph_analysis_public,
-        graph_analysis_diagnostics=graph_analysis_diagnostics,
+        graph_analysis_public=graph_preparation.graph_analysis_public,
+        graph_analysis_diagnostics=graph_preparation.graph_analysis_diagnostics,
         simulate=simulate,
         t0=schedule_input.t0,
     )

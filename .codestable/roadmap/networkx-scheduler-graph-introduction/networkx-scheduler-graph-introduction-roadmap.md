@@ -449,9 +449,9 @@ failed_ops 不能变差。
 当前推进指针：
 
 ```text
-PR-0 到 PR-4 已完成。
-下一步是 PR-5。
-PR-5 先做阶段 11 有环安全门，再做阶段 12 ready 队列。
+PR-0 到 PR-5 已完成。
+下一步是 PR-6。
+PR-6 只能继承 PR-5 已证明的 ready 资格，不能继承图评分方向证明。
 ```
 
 | PR / items.yaml 条目 | 对应技术章节 | 目标 | 是否改变排产结果 | 状态 |
@@ -461,7 +461,7 @@ PR-5 先做阶段 11 有环安全门，再做阶段 12 ready 队列。
 | PR-2 `scheduler-graph-core-module` | 阶段 3-9 | 图核心模块：懒加载、节点、输入转换、建图、校验、指标、导出、分析服务 | 否 | done |
 | PR-3 `scheduler-graph-report-mode` | 阶段 10 | 接入 report 模式，写 result_summary 小摘要和 diagnostics 采样 | 否 | done |
 | PR-4 `scheduler-graph-debug-performance` | 阶段 10.9 + 阶段 16 + 阶段 17 相关测试 + 阶段 18 | 性能护栏、diagnostics 加固、真实集成证明；受控 debug export 只是附属能力 | 否 | done |
-| PR-5 `scheduler-graph-ready-queue-on-mode` | 阶段 11 + 阶段 12 | 先做有环安全门，再让 ready 队列参与 SGS 候选 | 是 | planned |
+| PR-5 `scheduler-graph-ready-queue-on-mode` | 阶段 11 + 阶段 12 | 先做有环安全门，再让 ready 队列参与 SGS 候选 | 是 | done |
 | PR-6 `scheduler-graph-critical-score-on-mode` | 阶段 13 | 关键路径、影响范围、后续关键工作量进入评分 | 是/可控 | planned |
 | PR-7a 到 PR-7e | 阶段 13.6 | 多权重候选试跑、自动择优、同事务落库、代表方案切换和配置收口 | 是/可控 | planned |
 | PR-8 `scheduler-graph-resource-matching-report` | 阶段 14-15 | 资源匹配 report-only 分析，最小费用流只作为后续增强 | 否 | planned |
@@ -8582,6 +8582,7 @@ on 模式：
 
 ## 变更记录
 
+- 2026-05-18：完成 PR-5 `scheduler-graph-ready-queue-on-mode`：阶段 11 实现有环安全门，`report` 有环只提示，`on + block=yes` 在 version 分配前阻止并返回中文业务错误，`on + block=no` 继续原排产逻辑并在 public 摘要写明图增强未启用；阶段 12 实现纯 Python `ready_queue.py`，在 optimizer 前准备 plain `graph_ready_context`，排产和 `result_summary` 共用同一份图分析结论，并沿 optimizer / GreedyScheduler / `dispatch_sgs` 传递；`on + DAG` 时强制 SGS 并用 ready 队列筛候选，无 graph context 时旧 SGS 候选逻辑保持；frozen / seed 只作为已固定前置，前置失败时图后继不释放并计入失败说明。PR-5 未实现图评分、候选池、多权重试跑、自动择优、落库或页面按钮；PR-6 只能继承 ready 资格，不能继承图评分方向证明。
 - 2026-05-18：细化 PR-5 `scheduler-graph-ready-queue-on-mode` 到可执行级：补齐 PR-5 总体实现要求，明确优雅简洁、不做过度兜底、不做静默回退、不做过度防御性编程、高内聚低耦合；把阶段 12 从草图扩成完整执行计划，要求在 optimizer 前准备图调度上下文，沿 optimizer / GreedyScheduler / dispatch_sgs 传入 plain graph_ready_context，只在 DAG 且 graph_enhancement_allowed=true 时启用 ready 队列；补齐 on 模式不可用/有环矩阵、frozen/seed 边界、SGS 接入规则、测试用例、实施顺序、验收命令和 PR-6 交接边界；同步 items.yaml 的 PR-5 description、primary_paths、forbidden_paths、exit_checks 和 notes。
 - 2026-05-18：完成 PR-4 `scheduler-graph-debug-performance`：新增 2000 节点 basic report 性能测试和 `evidence/scheduler_graph/performance_2000_nodes.txt`，补 diagnostics 长文本截断合同、真实服务级 off/report/on 普通与 frozen/seed 对比、OperationLogs known graph error 小摘要检查，并创建 `.codestable/features/2026-05-18-scheduler-graph-debug-performance/` 验收记录。PR-4 没有实现 `graph_debug_export`、PR-5 有环安全门、ready 队列或 PR-6 图评分，`graph_analysis_mode=on` 仍然只是 `report_only`。
 - 2026-05-18：细化 PR-4，把“性能护栏 + diagnostics 加固 + 真实集成证明”写成可执行计划：明确 PR-4 先证据后导出，补齐整体实现要求、文件边界、实施顺序、basic report 性能口径、diagnostics 采样/JSON 安全投影、known graph error 顶层可见、真实服务级 off/report/on 对比、OperationLogs 不泄漏、受控 debug export、验收命令和明确不做；同时把“优雅简洁、不做过度兜底、不做静默回退、不做过度防御性编程、高内聚低耦合”写成 PR-4 的硬要求。

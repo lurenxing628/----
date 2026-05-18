@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Set, Tuple
+
+from core.infrastructure.errors import ValidationError
 
 from .schedule_input_collector import ScheduleRunInput
 
@@ -15,6 +18,14 @@ _GRAPH_WARNING_DATA_LIST_SAMPLE_LIMIT = 20
 _GRAPH_WARNING_DATA_DICT_FIELD_LIMIT = 20
 _GRAPH_WARNING_TEXT_SAMPLE_LIMIT = 500
 _GRAPH_INPUT_SCOPE = "all_algo_ops_with_frozen_markers"
+_GRAPH_CYCLE_DISABLED_REASON = "schedule_graph_cycle"
+
+
+@dataclass(frozen=True)
+class ScheduleGraphDispatchPreparation:
+    graph_analysis_public: Optional[Dict[str, Any]]
+    graph_analysis_diagnostics: Optional[Dict[str, Any]]
+    graph_ready_context: Optional[Any]
 
 
 def _elapsed_ms(started: float) -> int:
@@ -28,25 +39,60 @@ def _graph_analysis_mode(cfg: Any) -> str:
     return mode
 
 
+def _graph_block_on_cycle(cfg: Any) -> str:
+    value = str(getattr(cfg, "graph_block_on_cycle", "no") or "no").strip().lower()
+    if value not in ("yes", "no"):
+        raise ValueError(f"graph_block_on_cycle 只支持 yes/no：{value!r}")
+    return value
+
+
 def maybe_analyze_schedule_graph(
     schedule_input: ScheduleRunInput,
 ) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    preparation = prepare_schedule_graph_for_dispatch(schedule_input)
+    return preparation.graph_analysis_public, preparation.graph_analysis_diagnostics
+
+
+def prepare_schedule_graph_for_dispatch(
+    schedule_input: ScheduleRunInput,
+) -> ScheduleGraphDispatchPreparation:
     mode = _graph_analysis_mode(schedule_input.cfg)
     if mode == "off":
-        return None, None
-    return _build_schedule_graph_analysis_projection(schedule_input, mode=mode)
+        return ScheduleGraphDispatchPreparation(
+            graph_analysis_public=None,
+            graph_analysis_diagnostics=None,
+            graph_ready_context=None,
+        )
+    graph_block_on_cycle = _graph_block_on_cycle(schedule_input.cfg)
+    public, diagnostics, graph_ready_context = _build_schedule_graph_analysis_projection(
+        schedule_input,
+        mode=mode,
+        graph_block_on_cycle=graph_block_on_cycle,
+    )
+    _enforce_graph_dispatch_policy(
+        mode=mode,
+        graph_block_on_cycle=graph_block_on_cycle,
+        public=public,
+        diagnostics=diagnostics,
+    )
+    return ScheduleGraphDispatchPreparation(
+        graph_analysis_public=public,
+        graph_analysis_diagnostics=diagnostics,
+        graph_ready_context=graph_ready_context,
+    )
 
 
 def _build_schedule_graph_analysis_projection(
     schedule_input: ScheduleRunInput,
     *,
     mode: str,
-) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]]]:
+    graph_block_on_cycle: str,
+) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
     from core.services.scheduler.graph.analysis_service import ScheduleGraphAnalysisService
     from core.services.scheduler.graph.exporter import graph_summary_to_dict
     from core.services.scheduler.graph.input_adapter import GraphInputContractError, build_operation_nodes_from_rows
     from core.services.scheduler.graph.nx_runtime import NetworkXUnavailable
-    from core.services.scheduler.graph.precedence_builder import GraphBuildContractError
+    from core.services.scheduler.graph.precedence_builder import GraphBuildContractError, build_linear_edges_by_batch
 
     started = time.time()
     scope = _graph_input_scope(schedule_input)
@@ -58,12 +104,20 @@ def _build_schedule_graph_analysis_projection(
             frozen_op_ids=schedule_input.frozen_op_ids,
         )
         scope = _graph_input_scope(schedule_input, nodes=nodes)
+        edges = build_linear_edges_by_batch(nodes)
         summary = ScheduleGraphAnalysisService().analyze_linear_batches(nodes, metrics_mode="basic")
         payload = graph_summary_to_dict(summary)
+        graph_ready_context = _build_graph_ready_context(
+            schedule_input,
+            nodes=nodes,
+            edges=edges,
+            enabled=(mode == "on" and bool(payload["is_dag"])),
+        )
     except NetworkXUnavailable as exc:
-        return _graph_unavailable_projection(mode=mode, exc=exc, elapsed_ms=_elapsed_ms(started), scope=scope)
+        public, diagnostics = _graph_unavailable_projection(mode=mode, exc=exc, elapsed_ms=_elapsed_ms(started), scope=scope)
+        return public, diagnostics, None
     except GraphInputContractError as exc:
-        return _graph_contract_error_projection(
+        public, diagnostics = _graph_contract_error_projection(
             mode=mode,
             status="input_error",
             reason="graph_input_contract_error",
@@ -71,8 +125,9 @@ def _build_schedule_graph_analysis_projection(
             elapsed_ms=_elapsed_ms(started),
             scope=scope,
         )
+        return public, diagnostics, None
     except GraphBuildContractError as exc:
-        return _graph_contract_error_projection(
+        public, diagnostics = _graph_contract_error_projection(
             mode=mode,
             status="build_error",
             reason="graph_build_contract_error",
@@ -80,13 +135,16 @@ def _build_schedule_graph_analysis_projection(
             elapsed_ms=_elapsed_ms(started),
             scope=scope,
         )
+        return public, diagnostics, None
 
-    return _project_graph_analysis_payload(
+    public, diagnostics = _project_graph_analysis_payload(
         mode=mode,
+        graph_block_on_cycle=graph_block_on_cycle,
         payload=payload,
         elapsed_ms=_elapsed_ms(started),
         scope=scope,
     )
+    return public, diagnostics, graph_ready_context
 
 
 def _graph_input_scope(schedule_input: ScheduleRunInput, *, nodes: Optional[List[Any]] = None) -> Dict[str, Any]:
@@ -103,10 +161,167 @@ def _graph_input_scope(schedule_input: ScheduleRunInput, *, nodes: Optional[List
     }
 
 
+def _node_op_id(node: Any) -> int:
+    raw = getattr(node, "raw", {}) or {}
+    value = raw.get("id") if isinstance(raw, dict) else None
+    if isinstance(value, bool):
+        value = None
+    try:
+        op_id = int(value or 0)
+    except (TypeError, ValueError):
+        op_id = 0
+    if op_id <= 0:
+        from core.services.scheduler.graph.input_adapter import GraphInputContractError
+
+        raise GraphInputContractError(f"graph_ready_context 节点缺少有效 op_id：{getattr(node, 'node_id', '-')}")
+    return op_id
+
+
+def _positive_op_id_set(values: Any) -> Set[int]:
+    result: Set[int] = set()
+    for value in values or ():
+        if isinstance(value, bool):
+            continue
+        try:
+            op_id = int(value or 0)
+        except (TypeError, ValueError):
+            continue
+        if op_id > 0:
+            result.add(op_id)
+    return result
+
+
+def _sort_key_by_op_id(nodes: List[Any], *, schedulable_op_ids: Set[int]) -> Dict[int, Tuple[int, int, int]]:
+    batch_order: Dict[str, int] = {}
+    for node in sorted(nodes, key=lambda item: (str(item.batch_id), int(item.seq), str(item.op_code), str(item.node_id))):
+        batch_order.setdefault(str(node.batch_id), len(batch_order))
+    sort_keys: Dict[int, Tuple[int, int, int]] = {}
+    for node in nodes:
+        op_id = _node_op_id(node)
+        if op_id in schedulable_op_ids:
+            sort_keys[op_id] = (int(batch_order[str(node.batch_id)]), int(node.seq), int(op_id))
+    return sort_keys
+
+
+def _build_predecessor_successor_maps(nodes: List[Any], edges: List[Any]) -> Tuple[Dict[int, Set[int]], Dict[int, Set[int]]]:
+    op_id_by_node_id = {str(node.node_id): _node_op_id(node) for node in nodes}
+    predecessors: Dict[int, Set[int]] = {op_id: set() for op_id in op_id_by_node_id.values()}
+    successors: Dict[int, Set[int]] = {op_id: set() for op_id in op_id_by_node_id.values()}
+    for edge in edges:
+        from_op_id = op_id_by_node_id[str(edge.from_node_id)]
+        to_op_id = op_id_by_node_id[str(edge.to_node_id)]
+        predecessors.setdefault(to_op_id, set()).add(from_op_id)
+        successors.setdefault(from_op_id, set()).add(to_op_id)
+    return predecessors, successors
+
+
+def _build_graph_ready_context(
+    schedule_input: ScheduleRunInput,
+    *,
+    nodes: List[Any],
+    edges: List[Any],
+    enabled: bool,
+) -> Optional[Dict[str, Any]]:
+    if not enabled:
+        return None
+    schedulable_op_ids = _positive_op_id_set(getattr(op, "id", None) for op in schedule_input.algo_ops_to_schedule or [])
+    fixed_op_ids = _positive_op_id_set(schedule_input.frozen_op_ids or ())
+    fixed_op_ids.update(_positive_op_id_set((item or {}).get("op_id") if isinstance(item, dict) else getattr(item, "op_id", None) for item in schedule_input.seed_results or ()))
+    predecessor_map, successor_map = _build_predecessor_successor_maps(nodes, edges)
+    return {
+        "enabled": True,
+        "disabled_reason": None,
+        "schedulable_op_ids": set(schedulable_op_ids),
+        "fixed_op_ids": set(fixed_op_ids),
+        "predecessor_op_ids_by_op_id": predecessor_map,
+        "successor_op_ids_by_op_id": successor_map,
+        "sort_key_by_op_id": _sort_key_by_op_id(nodes, schedulable_op_ids=schedulable_op_ids),
+    }
+
+
 def _effective_graph_analysis_mode(mode: str) -> str:
     if mode == "on":
         return "report_only"
     return mode
+
+
+def _graph_cycle_disabled_public_fields() -> Dict[str, Any]:
+    return {
+        "effective_mode": "sgs_without_graph_ready_queue",
+        "graph_enhancement_allowed": False,
+        "graph_enhancement_disabled_reason": _GRAPH_CYCLE_DISABLED_REASON,
+        "ready_queue_enabled": False,
+        "graph_enhancement_message": "工序图存在循环，本次跳过图 ready 队列，继续使用原 SGS 候选逻辑。",
+    }
+
+
+def _graph_ready_public_fields(*, mode: str, is_dag: bool, graph_block_on_cycle: str) -> Dict[str, Any]:
+    if mode != "on":
+        return {}
+    if is_dag:
+        return {
+            "effective_mode": "graph_ready_queue",
+            "graph_enhancement_allowed": True,
+            "graph_enhancement_disabled_reason": None,
+            "ready_queue_enabled": True,
+        }
+    if graph_block_on_cycle == "no":
+        return _graph_cycle_disabled_public_fields()
+    return {
+        "graph_enhancement_allowed": False,
+        "graph_enhancement_disabled_reason": _GRAPH_CYCLE_DISABLED_REASON,
+        "ready_queue_enabled": False,
+    }
+
+
+def _format_cycle_error_message(diagnostics: Optional[Dict[str, Any]]) -> str:
+    sample = []
+    if isinstance(diagnostics, dict):
+        sample = list(diagnostics.get("cycle_edges_sample") or [])
+    if not sample:
+        return "工序图存在循环依赖，已按配置停止排产。请先检查工艺路线里的前后工序关系。"
+    return f"工序图存在循环依赖，已按配置停止排产。请先检查这些环边样本：{sample}"
+
+
+def _cycle_error_details(diagnostics: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    sample = []
+    count = 0
+    if isinstance(diagnostics, dict):
+        sample = list(diagnostics.get("cycle_edges_sample") or [])
+        count = int(diagnostics.get("cycle_edge_count") or len(sample))
+    return {
+        "reason": _GRAPH_CYCLE_DISABLED_REASON,
+        "cycle_edge_count": int(count),
+        "cycle_edges_sample": sample,
+    }
+
+
+def _enforce_graph_dispatch_policy(
+    *,
+    mode: str,
+    graph_block_on_cycle: str,
+    public: Dict[str, Any],
+    diagnostics: Optional[Dict[str, Any]],
+) -> None:
+    if mode != "on":
+        return
+    status = str(public.get("status") or "")
+    if status != "available":
+        reason = str(public.get("reason") or "graph_enhancement_unavailable")
+        message = str(public.get("message") or "工序图增强无法启用。")
+        raise ValidationError(
+            f"工序图增强无法启用：{message}",
+            field=reason,
+            details={"reason": reason, "status": status},
+        )
+    if bool(public.get("is_dag", False)):
+        return
+    if graph_block_on_cycle == "yes":
+        raise ValidationError(
+            _format_cycle_error_message(diagnostics),
+            field=_GRAPH_CYCLE_DISABLED_REASON,
+            details=_cycle_error_details(diagnostics),
+        )
 
 
 def _graph_unavailable_projection(
@@ -268,6 +483,7 @@ def _node_metrics_sample(
 def _project_graph_analysis_payload(
     *,
     mode: str,
+    graph_block_on_cycle: str = "no",
     payload: Dict[str, Any],
     elapsed_ms: int,
     scope: Dict[str, Any],
@@ -292,6 +508,13 @@ def _project_graph_analysis_payload(
         "time_cost_ms": int(elapsed_ms),
         **dict(scope),
     }
+    public.update(
+        _graph_ready_public_fields(
+            mode=mode,
+            is_dag=bool(payload["is_dag"]),
+            graph_block_on_cycle=graph_block_on_cycle,
+        )
+    )
     diagnostics = {
         "topological_order_sample": _sample(topological_order, _GRAPH_TOPOLOGICAL_SAMPLE_LIMIT),
         "topological_order_count": int(len(topological_order)),
@@ -317,4 +540,8 @@ def _project_graph_analysis_payload(
     return public, diagnostics
 
 
-__all__ = ["maybe_analyze_schedule_graph"]
+__all__ = [
+    "ScheduleGraphDispatchPreparation",
+    "maybe_analyze_schedule_graph",
+    "prepare_schedule_graph_for_dispatch",
+]

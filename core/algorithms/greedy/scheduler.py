@@ -82,6 +82,7 @@ class GreedyScheduler:
         resource_pool: Optional[Dict[str, Any]] = None,
         readiness_gate_enabled: bool = False,
         strict_mode: bool = False,
+        graph_ready_context: Optional[Any] = None,
     ) -> Tuple[List[ScheduleResult], ScheduleSummary, SortStrategy, Dict[str, Any]]:
         t0 = datetime.now()
         algo_stats = self._reset_algo_stats()
@@ -132,6 +133,7 @@ class GreedyScheduler:
             params=params,
             machine_downtimes=machine_downtimes,
             resource_pool=resource_pool,
+            graph_ready_context=graph_ready_context,
             strict_mode=bool(strict_mode),
         )
         summary = _build_summary(state=state, warnings=warnings, sorted_ops=sorted_ops, duration=(datetime.now() - t0).total_seconds())
@@ -382,7 +384,7 @@ def _freeze_seed_resources(state: ScheduleRunState, result: ScheduleResult) -> N
         occupy_resource(state.operator_timeline, operator_id, result.start_time, result.end_time)
 
 
-def _run_dispatch(ctx: ScheduleRunContext, *, state: ScheduleRunState, sorted_ops: List[Any], batches: Dict[str, Any], batch_order: Dict[str, int], params: Any, machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]], resource_pool: Optional[Dict[str, Any]], strict_mode: bool) -> None:
+def _run_dispatch(ctx: ScheduleRunContext, *, state: ScheduleRunState, sorted_ops: List[Any], batches: Dict[str, Any], batch_order: Dict[str, int], params: Any, machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]], resource_pool: Optional[Dict[str, Any]], graph_ready_context: Optional[Any], strict_mode: bool) -> None:
     if params.dispatch_mode_key != "sgs":
         dispatch_batch_order(
             ctx,
@@ -409,6 +411,7 @@ def _run_dispatch(ctx: ScheduleRunContext, *, state: ScheduleRunState, sorted_op
         state=state,
         auto_assign_enabled=params.auto_assign_enabled,
         resource_pool=resource_pool,
+        graph_ready_context=graph_ready_context,
         strict_mode=strict_mode,
     )
 

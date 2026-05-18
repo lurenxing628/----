@@ -166,7 +166,8 @@ def test_graph_projection_keeps_public_summary_small_and_samples_diagnostics() -
     )
 
     assert public["mode"] == "on"
-    assert public["effective_mode"] == "report_only"
+    assert public["effective_mode"] == "graph_ready_queue"
+    assert public["ready_queue_enabled"] is True
     assert public["status"] == "available"
     assert public["node_count"] == 60
     assert public["edge_count"] == 59

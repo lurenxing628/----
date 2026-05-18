@@ -48,4 +48,4 @@
 - `graph_analysis_mode=off` 是默认关闭模式。关闭时排产主链不导入图模块，不要求安装 NetworkX，也不会在 `result_summary` 里写 `graph_analysis`。
 - `graph_analysis_mode=report` 已作为旁路报告接入 `core/services/scheduler/run/schedule_orchestrator.py`。接入点在原排产算法已经算完、`validated_schedule_payload` 已经生成之后，图报告判断、错误投影和采样投影收在 `core/services/scheduler/run/schedule_graph_report.py`，只读取 `ScheduleRunInput.cfg`、`algo_ops_to_schedule`、`batches` 和 `resource_pool`。
 - report 模式只把公开小摘要写进 `result_summary["algo"]["graph_analysis"]`，把采样诊断写进 `result_summary["diagnostics"]["graph_analysis"]`。OperationLogs 沿用现有 `detail["algo"]` 小摘要路径，因此只能看到 `algo.graph_analysis`，不能看到完整 nodes、edges、node_metrics、topological_order 或 raw 对象。
-- `graph_analysis_mode=on` 在当前阶段仍按 report-only 处理，并在摘要里写 `effective_mode="report_only"`。它还没有接 ready 队列、SGS 候选集合、评分、冻结窗口或落库行；真正改变排产行为要等后续图 ready 队列和评分阶段。
+- `graph_analysis_mode=on` 当前已经接入 PR-5 ready 队列：可用 DAG 会在 optimizer 前生成 plain `graph_ready_context`，并让 SGS 候选集合只从图 ready 工序里取。`on + 有环 + graph_block_on_cycle=yes` 会在 version 分配前阻止排产；`on + 有环 + graph_block_on_cycle=no` 会继续原排产逻辑，但 public 摘要会写明图增强未启用。当前还没有接入图评分、候选池、多权重试跑、自动择优或候选落库；PR-6 需要重新证明关键路径和影响范围评分方向。

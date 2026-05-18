@@ -104,10 +104,12 @@ class AppError(Exception):
 class ValidationError(AppError):
     field: Optional[str]
 
-    def __init__(self, message: str, field: Optional[str] = None, **kwargs):
+    def __init__(self, message: str, field: Optional[str] = None, details: Optional[Dict[str, Any]] = None, **kwargs):
         self.field = field
-        details = {"field": field} if field else None
-        super().__init__(code=ErrorCode.VALIDATION_ERROR, message=message, details=details, **kwargs)
+        payload = dict(details or {})
+        if field:
+            payload.setdefault("field", field)
+        super().__init__(code=ErrorCode.VALIDATION_ERROR, message=message, details=(payload or None), **kwargs)
 
 
 class NotFoundError(AppError):

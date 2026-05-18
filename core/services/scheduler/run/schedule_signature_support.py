@@ -85,7 +85,11 @@ def is_unexpected_strict_mode_type_error(exc: TypeError) -> bool:
 
 
 def _unsupported_schedule_keyword_message(keyword: str) -> str:
-    return f"当前调度器不支持 {keyword}，不能执行启用齐套检查的排产。"
+    if keyword == "graph_ready_context":
+        return "当前调度器不支持 graph_ready_context，不能执行启用工序图 ready 队列的排产。"
+    if keyword == "readiness_gate_enabled":
+        return "当前调度器不支持 readiness_gate_enabled，不能执行启用齐套检查的排产。"
+    return f"当前调度器不支持 {keyword}，不能执行本次排产。"
 
 
 def raise_unsupported_schedule_keyword(keyword: str) -> None:
@@ -102,11 +106,23 @@ def _without_disabled_readiness_keyword_or_raise(kwargs: Dict[str, Any], exc: Ty
     return out
 
 
+def _without_empty_graph_ready_keyword_or_raise(kwargs: Dict[str, Any], exc: TypeError) -> Optional[Dict[str, Any]]:
+    if not is_unexpected_keyword_type_error(exc, "graph_ready_context") or "graph_ready_context" not in kwargs:
+        return None
+    if kwargs.get("graph_ready_context") is not None:
+        raise_unsupported_schedule_keyword("graph_ready_context")
+    out = dict(kwargs)
+    out.pop("graph_ready_context", None)
+    return out
+
+
 def _schedule_without_strict_mode_with_keyword_fallback(scheduler: Any, kwargs: Dict[str, Any]) -> Any:
     try:
         return scheduler.schedule(**kwargs)
     except TypeError as exc:
         retry_kwargs = _without_disabled_readiness_keyword_or_raise(kwargs, exc)
+        if retry_kwargs is None:
+            retry_kwargs = _without_empty_graph_ready_keyword_or_raise(kwargs, exc)
         if retry_kwargs is None:
             raise
     return scheduler.schedule(**retry_kwargs)
@@ -136,8 +152,8 @@ def schedule_with_optional_strict_mode(scheduler: Any, *, strict_mode: bool = Fa
     kwargs = strip_unsupported_schedule_keywords(
         scheduler,
         kwargs,
-        ("readiness_gate_enabled",),
-        required_truthy_keywords=("readiness_gate_enabled",),
+        ("readiness_gate_enabled", "graph_ready_context"),
+        required_truthy_keywords=("readiness_gate_enabled", "graph_ready_context"),
     )
     supports_strict_mode = schedule_supports_strict_mode(scheduler)
     if supports_strict_mode is True:
@@ -149,6 +165,8 @@ def schedule_with_optional_strict_mode(scheduler: Any, *, strict_mode: bool = Fa
         return scheduler.schedule(**kwargs, strict_mode=bool(strict_mode))
     except TypeError as exc:
         retry_kwargs = _without_disabled_readiness_keyword_or_raise(kwargs, exc)
+        if retry_kwargs is None:
+            retry_kwargs = _without_empty_graph_ready_keyword_or_raise(kwargs, exc)
         if retry_kwargs is not None:
             return schedule_with_optional_strict_mode(scheduler, strict_mode=bool(strict_mode), **retry_kwargs)
         if not is_unexpected_strict_mode_type_error(exc):

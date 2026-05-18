@@ -83,6 +83,7 @@ def optimize_schedule(
     logger: Any = None,
     readiness_gate_enabled: bool = False,
     strict_mode: bool = False,
+    graph_ready_context: Optional[Any] = None,
     _runtime: Optional[OptimizerRuntime] = None,
 ) -> OptimizationOutcome:
     """
@@ -103,6 +104,9 @@ def optimize_schedule(
         optimizer_algo_stats=optimizer_algo_stats,
         strict_mode=bool(strict_mode),
     )
+    graph_ready_enabled = graph_ready_context is not None
+    dispatch_mode_cfg = "sgs" if graph_ready_enabled else optimizer_cfg.dispatch_mode
+    dispatch_modes = ["sgs"] if graph_ready_enabled else optimizer_cfg.dispatch_modes()
 
     normalized_batches_for_sort = build_normalized_batches_map(batches)
 
@@ -133,7 +137,7 @@ def optimize_schedule(
         end_date=end_date,
         downtime_map=downtime_map,
         seed_sr_list=seed_sr_list,
-        dispatch_mode_cfg=optimizer_cfg.dispatch_mode,
+        dispatch_mode_cfg=dispatch_mode_cfg,
         dispatch_rule_cfg=optimizer_cfg.dispatch_rule,
         resource_pool=resource_pool,
         attempts=state.attempts,
@@ -144,12 +148,13 @@ def optimize_schedule(
         logger=logger,
         readiness_gate_enabled=bool(readiness_gate_enabled),
         strict_mode=bool(strict_mode),
+        graph_ready_context=graph_ready_context,
         clock=runtime.clock,
     )
 
     state.best = runtime.run_multi_start(
         keys=optimizer_cfg.strategy_keys(),
-        dispatch_modes=optimizer_cfg.dispatch_modes(),
+        dispatch_modes=dispatch_modes,
         dispatch_rule_cfg=optimizer_cfg.dispatch_rule,
         valid_dispatch_rules=list(optimizer_cfg.valid_dispatch_rules),
         scheduler=scheduler,
@@ -171,6 +176,7 @@ def optimize_schedule(
         build_order=_build_order,
         readiness_gate_enabled=bool(readiness_gate_enabled),
         strict_mode=bool(strict_mode),
+        graph_ready_context=graph_ready_context,
         clock=runtime.clock,
     )
 
@@ -187,7 +193,7 @@ def optimize_schedule(
         end_date=end_date,
         downtime_map=downtime_map,
         seed_sr_list=seed_sr_list,
-        dispatch_mode_cfg=optimizer_cfg.dispatch_mode,
+        dispatch_mode_cfg=dispatch_mode_cfg,
         dispatch_rule_cfg=optimizer_cfg.dispatch_rule,
         resource_pool=resource_pool,
         objective_name=optimizer_cfg.objective_name,
@@ -197,6 +203,7 @@ def optimize_schedule(
         t_begin=t_begin,
         readiness_gate_enabled=bool(readiness_gate_enabled),
         strict_mode=bool(strict_mode),
+        graph_ready_context=graph_ready_context,
         clock=runtime.clock,
         rng_factory=runtime.rng_factory,
         schedule_fn=_schedule_with_optional_strict_mode,
@@ -214,8 +221,10 @@ def optimize_schedule(
             end_date=end_date,
             machine_downtimes=downtime_map,
             seed_results=seed_sr_list,
+            dispatch_mode=dispatch_mode_cfg,
             resource_pool=resource_pool,
             readiness_gate_enabled=bool(readiness_gate_enabled),
+            graph_ready_context=graph_ready_context,
         )
         best_metrics = compute_metrics(results, batches)
         best_score = (float(summary.failed_ops),) + objective_score(optimizer_cfg.objective_name, best_metrics)

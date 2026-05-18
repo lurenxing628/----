@@ -45,8 +45,8 @@ _YES_NO_CHOICES = tuple(_YES_NO_LABELS.keys())
 _OBJECTIVE_LABELS = _objective_choice_labels()
 _GRAPH_ANALYSIS_MODE_LABELS = {
     "off": "关闭",
-    "report": "仅保存配置（后续接入报告）",
-    "on": "仅保存配置（后续接入分析）",
+    "report": "只生成分析报告",
+    "on": "启用图安全检查和 ready 队列",
 }
 
 _FIELD_LABEL_ALIASES = {
@@ -306,22 +306,22 @@ _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
         field_type="enum",
         default="off",
         label="工序图分析",
-        description="NetworkX 工序依赖图分析模式：关闭 / 只生成报告 / 当前按只读报告处理",
+        description="NetworkX 工序依赖图分析模式：关闭 / 只生成报告 / 图安全检查和 ready 队列",
         choices=("off", "report", "on"),
         choice_labels={
             "off": "关闭",
             "report": "只生成分析报告，不改变排产结果",
-            "on": "按只读报告处理（当前不改排产）",
+            "on": "启用图安全检查和 ready 队列",
         },
         page_metadata=ConfigFieldPageMetadata(
             key="graph_analysis_mode",
             label="工序图分析",
-            hint="默认关闭。off 不加载图分析；report 只生成分析报告，不改排产结果；on 当前先按 report-only 生成报告。",
+            hint="默认关闭。off 不加载图分析；report 只生成分析报告，不改排产结果；on 会先做图安全检查，可用 DAG 会用 ready 队列参与 SGS 候选。",
             choices=_choice_pairs(
                 {
                     "off": "关闭",
                     "report": "只生成分析报告，不改变排产结果",
-                    "on": "按只读报告处理（当前不改排产）",
+                    "on": "启用图安全检查和 ready 队列",
                 }
             ),
         ),
@@ -337,7 +337,7 @@ _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
         page_metadata=ConfigFieldPageMetadata(
             key="graph_block_on_cycle",
             label="遇到循环依赖时停止排产",
-            hint="默认关闭。当前 report/on 只提示循环依赖，不阻止排产；后续 on 模式接入主链前再启用阻止策略。",
+            hint="默认关闭。report 只提示循环依赖；on 遇到循环依赖时，开启后停止排产，关闭时继续旧 SGS 并在摘要里说明图增强未启用。",
         ),
     ),
     ConfigFieldSpec(

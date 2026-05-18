@@ -13,6 +13,7 @@ from ..internal_slot import estimate_internal_slot, validate_internal_hours_for_
 from ..run_context import ensure_run_context
 from ..run_state import ScheduleRunState
 from .batch_order import _coerce_state, _schedule_op
+from .ready_queue import ReadyQueueContractError, get_ready_operation_ids
 from .sgs_scoring import (
     _collect_sgs_candidates,
     _positive_op_id,
@@ -61,6 +62,7 @@ def dispatch_sgs(
     last_end_by_machine: Optional[Dict[str, datetime]] = None,
     auto_assign_enabled: bool,
     resource_pool: Optional[Dict[str, Any]],
+    graph_ready_context: Optional[Any] = None,
     results: Optional[List[ScheduleResult]] = None,
     errors: Optional[List[str]] = None,
     blocked_batches: Optional[set] = None,
@@ -111,6 +113,7 @@ def dispatch_sgs(
         bool(strict_mode),
         avg_proc_hours,
         total_hours_by_op_id,
+        graph_ready_context,
     )
     _ = scheduled_count
     return run_state.scheduled_count, run_state.failed_count
@@ -184,15 +187,20 @@ def _run_sgs_loop(
     strict_mode: bool,
     avg_proc_hours: float,
     total_hours_by_op_id: Dict[int, float],
+    graph_ready_context: Optional[Any],
 ) -> None:
+    graph_state = _prepare_graph_ready_state(graph_ready_context, ops_by_batch=ops_by_batch)
     while True:
-        candidates = _collect_sgs_candidates(
-            batch_ids_in_order=batch_ids,
+        candidates = _collect_candidates(
+            graph_state=graph_state,
+            batch_ids=batch_ids,
             ops_by_batch=ops_by_batch,
             next_idx=next_idx,
             blocked_batches=state.blocked_batches,
         )
         if not candidates:
+            if graph_state is not None:
+                _ensure_graph_ready_complete(graph_state=graph_state, ops_by_batch=ops_by_batch)
             return
         batch_id, op = _pick_best_candidate(
             _score_candidates(
@@ -224,6 +232,7 @@ def _run_sgs_loop(
             auto_assign_enabled,
             resource_pool,
             strict_mode,
+            graph_state=graph_state,
         )
 
 
@@ -265,6 +274,176 @@ def _score_candidates(
         )
         for batch_id, op in candidates
     ]
+
+
+def _op_id(op: Any) -> int:
+    return parse_required_int(getattr(op, "id", 0), field="id")
+
+
+def _prepare_graph_ready_state(
+    graph_ready_context: Optional[Any],
+    *,
+    ops_by_batch: Dict[str, List[Any]],
+) -> Optional[Dict[str, Any]]:
+    if graph_ready_context is None:
+        return None
+    if not isinstance(graph_ready_context, dict) or not graph_ready_context.get("enabled"):
+        raise ValidationError("图 ready 队列上下文无效，不能启用图排产候选。", field="graph_ready_context")
+
+    op_by_id: Dict[int, Tuple[str, Any]] = {}
+    for batch_id, operations in ops_by_batch.items():
+        for op in operations:
+            op_id = _op_id(op)
+            if op_id in op_by_id:
+                raise ValidationError(f"图 ready 队列上下文发现重复 op_id：{op_id}", field="graph_ready_context")
+            op_by_id[op_id] = (batch_id, op)
+
+    schedulable_ids = set(graph_ready_context.get("schedulable_op_ids") or set())
+    if schedulable_ids != set(op_by_id):
+        raise ValidationError("图 ready 队列上下文和本次待排工序不一致。", field="graph_ready_context")
+    predecessor_map = graph_ready_context.get("predecessor_op_ids_by_op_id")
+    successor_map = graph_ready_context.get("successor_op_ids_by_op_id")
+    _validate_graph_ready_links(
+        op_ids=set(op_by_id).union(set(graph_ready_context.get("fixed_op_ids") or set())),
+        predecessor_map=predecessor_map,
+        successor_map=successor_map,
+    )
+    return {
+        "op_by_id": op_by_id,
+        "completed_or_fixed_op_ids": set(graph_ready_context.get("fixed_op_ids") or set()),
+        "blocked_op_ids": set(),
+        "predecessor_op_ids_by_op_id": predecessor_map,
+        "successor_op_ids_by_op_id": successor_map,
+        "sort_key_by_op_id": graph_ready_context.get("sort_key_by_op_id"),
+    }
+
+
+def _normalize_link_map(value: Any, *, field: str) -> Dict[int, set]:
+    if not isinstance(value, dict):
+        raise ValidationError(f"图 ready 队列上下文缺少 {field} 映射。", field="graph_ready_context")
+    normalized: Dict[int, set] = {}
+    for raw_op_id, raw_linked_ids in value.items():
+        op_id = parse_required_int(raw_op_id, field=field)
+        if raw_linked_ids is None or isinstance(raw_linked_ids, (str, bytes)):
+            raise ValidationError(f"图 ready 队列上下文 {field} 映射不是集合。", field="graph_ready_context")
+        try:
+            normalized[op_id] = {parse_required_int(item, field=field) for item in raw_linked_ids}
+        except TypeError as exc:
+            raise ValidationError(f"图 ready 队列上下文 {field} 映射不是集合。", field="graph_ready_context") from exc
+    return normalized
+
+
+def _validate_graph_ready_links(*, op_ids: set, predecessor_map: Any, successor_map: Any) -> None:
+    predecessors = _normalize_link_map(predecessor_map, field="predecessor_op_ids_by_op_id")
+    successors = _normalize_link_map(successor_map, field="successor_op_ids_by_op_id")
+    for op_id in op_ids:
+        predecessors.setdefault(op_id, set())
+        successors.setdefault(op_id, set())
+    for op_id, predecessor_ids in predecessors.items():
+        for predecessor_id in predecessor_ids:
+            if op_id not in successors.get(predecessor_id, set()):
+                raise ValidationError(
+                    f"图 ready 队列上下文不一致：工序 {op_id} 记录了前置 {predecessor_id}，但后继映射没有对应关系。",
+                    field="graph_ready_context",
+                )
+    for op_id, successor_ids in successors.items():
+        for successor_id in successor_ids:
+            if op_id not in predecessors.get(successor_id, set()):
+                raise ValidationError(
+                    f"图 ready 队列上下文不一致：工序 {op_id} 记录了后继 {successor_id}，但前置映射没有对应关系。",
+                    field="graph_ready_context",
+                )
+
+
+def _collect_candidates(
+    *,
+    graph_state: Optional[Dict[str, Any]],
+    batch_ids: List[str],
+    ops_by_batch: Dict[str, List[Any]],
+    next_idx: Dict[str, int],
+    blocked_batches: set,
+) -> List[Tuple[str, Any]]:
+    if graph_state is None:
+        return _collect_sgs_candidates(
+            batch_ids_in_order=batch_ids,
+            ops_by_batch=ops_by_batch,
+            next_idx=next_idx,
+            blocked_batches=blocked_batches,
+        )
+    blocked_op_ids = set(graph_state["blocked_op_ids"])
+    for op_id, (batch_id, _op) in graph_state["op_by_id"].items():
+        if batch_id in blocked_batches:
+            blocked_op_ids.add(op_id)
+    try:
+        ready_op_ids = get_ready_operation_ids(
+            schedulable_op_ids=set(graph_state["op_by_id"]),
+            completed_or_fixed_op_ids=graph_state["completed_or_fixed_op_ids"],
+            blocked_op_ids=blocked_op_ids,
+            predecessor_op_ids_by_op_id=graph_state["predecessor_op_ids_by_op_id"],
+            sort_key_by_op_id=graph_state["sort_key_by_op_id"],
+        )
+    except ReadyQueueContractError as exc:
+        raise ValidationError(f"图 ready 队列上下文无效：{exc}", field="graph_ready_context") from exc
+    return [graph_state["op_by_id"][op_id] for op_id in ready_op_ids]
+
+
+def _ensure_graph_ready_complete(*, graph_state: Dict[str, Any], ops_by_batch: Dict[str, List[Any]]) -> None:
+    expected = set(graph_state["op_by_id"])
+    finished = set(graph_state["completed_or_fixed_op_ids"])
+    blocked = set(graph_state["blocked_op_ids"])
+    if expected.issubset(finished.union(blocked)):
+        return
+    remaining = sorted(expected.difference(finished).difference(blocked))
+    raise ValidationError(f"图 ready 队列没有可排工序，但仍有未完成工序：{remaining}", field="graph_ready_context")
+
+
+def _block_graph_operation(graph_state: Dict[str, Any], op_id: int) -> List[int]:
+    blocked = graph_state["blocked_op_ids"]
+    successors_by_op_id = graph_state["successor_op_ids_by_op_id"]
+    newly_blocked: List[int] = []
+    stack = [op_id]
+    while stack:
+        current = stack.pop()
+        if current in blocked:
+            continue
+        blocked.add(current)
+        newly_blocked.append(current)
+        stack.extend(successors_by_op_id.get(current) or set())
+    return newly_blocked
+
+
+def _batch_failed_op_ids(batch_id: str, next_idx: Dict[str, int], ops_by_batch: Dict[str, List[Any]]) -> set:
+    operations = ops_by_batch.get(batch_id) or []
+    idx0 = int(next_idx.get(batch_id, 0) or 0)
+    return {_op_id(op) for op in operations[idx0:]}
+
+
+def _graph_op_label(graph_state: Dict[str, Any], op_id: int) -> str:
+    op_entry = graph_state["op_by_id"].get(op_id)
+    if not op_entry:
+        return str(op_id)
+    _batch_id, op = op_entry
+    return str(getattr(op, "op_code", None) or op_id)
+
+
+def _record_graph_blocked_operations(
+    state: ScheduleRunState,
+    *,
+    graph_state: Dict[str, Any],
+    failed_op_id: int,
+    newly_blocked_op_ids: List[int],
+    already_counted_op_ids: set,
+) -> int:
+    extra_failed_count = 0
+    failed_label = _graph_op_label(graph_state, failed_op_id)
+    for blocked_op_id in sorted(set(newly_blocked_op_ids)):
+        if blocked_op_id == failed_op_id or blocked_op_id not in graph_state["op_by_id"]:
+            continue
+        blocked_label = _graph_op_label(graph_state, blocked_op_id)
+        state.errors.append(f"工序 {blocked_label}：依赖的前序工序 {failed_label} 排产失败，本次跳过。")
+        if blocked_op_id not in already_counted_op_ids:
+            extra_failed_count += 1
+    return extra_failed_count
 
 
 def _score_candidate(
@@ -331,6 +510,7 @@ def _dispatch_selected(
     auto_assign_enabled: bool,
     resource_pool: Optional[Dict[str, Any]],
     strict_mode: bool,
+    graph_state: Optional[Dict[str, Any]] = None,
 ) -> None:
     try:
         result, _blocked = _schedule_op(
@@ -348,13 +528,41 @@ def _dispatch_selected(
         if result and result.start_time and result.end_time:
             state.record_dispatch_success(result)
             next_idx[batch_id] = int(next_idx.get(batch_id, 0) or 0) + 1
+            if graph_state is not None:
+                graph_state["completed_or_fixed_op_ids"].add(_op_id(op))
         else:
-            state.record_dispatch_failure(batch_id, block=True, remaining_failed=_remaining_failed(batch_id, next_idx, ops_by_batch))
+            extra_failed_count = 0
+            if graph_state is not None:
+                failed_op_id = _op_id(op)
+                newly_blocked_op_ids = _block_graph_operation(graph_state, failed_op_id)
+                extra_failed_count = _record_graph_blocked_operations(
+                    state,
+                    graph_state=graph_state,
+                    failed_op_id=failed_op_id,
+                    newly_blocked_op_ids=newly_blocked_op_ids,
+                    already_counted_op_ids=_batch_failed_op_ids(batch_id, next_idx, ops_by_batch),
+                )
+            state.record_dispatch_failure(
+                batch_id,
+                block=True,
+                remaining_failed=_remaining_failed(batch_id, next_idx, ops_by_batch) + extra_failed_count,
+            )
     except ValidationError:
         raise
     except Exception:
-        state.failed_count += 1 + _remaining_failed(batch_id, next_idx, ops_by_batch)
+        extra_failed_count = 0
         state.errors.append(f"工序 {getattr(op, 'op_code', '-') or '-'} {_SCHEDULE_OPERATION_FAILED_MESSAGE}")
+        if graph_state is not None:
+            failed_op_id = _op_id(op)
+            newly_blocked_op_ids = _block_graph_operation(graph_state, failed_op_id)
+            extra_failed_count = _record_graph_blocked_operations(
+                state,
+                graph_state=graph_state,
+                failed_op_id=failed_op_id,
+                newly_blocked_op_ids=newly_blocked_op_ids,
+                already_counted_op_ids=_batch_failed_op_ids(batch_id, next_idx, ops_by_batch),
+            )
+        state.failed_count += 1 + _remaining_failed(batch_id, next_idx, ops_by_batch) + extra_failed_count
         ctx.log_exception(f"工序 {getattr(op, 'op_code', '-') or '-'} 排产异常")
         state.blocked_batches.add(batch_id)
 

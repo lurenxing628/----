@@ -68,6 +68,21 @@ def _algo_op() -> SimpleNamespace:
     )
 
 
+def _graph_node() -> Any:
+    from core.services.scheduler.graph.types import OperationGraphNode
+
+    return OperationGraphNode(
+        node_id="op:B001:OP-B001-010:1",
+        batch_id="B001",
+        op_code="OP-B001-010",
+        seq=10,
+        name="车削",
+        duration_minutes=60,
+        source="internal",
+        raw={"id": 1},
+    )
+
+
 def _schedule_input(mode: str) -> SimpleNamespace:
     algo_ops = [_algo_op()]
     algo_ops_to_schedule = list(algo_ops)
@@ -254,7 +269,7 @@ def test_report_and_on_modes_add_summary_without_changing_schedule_payload(monke
         frozen_op_ids: Any,
     ) -> List[Any]:
         captured.append({"rows": rows, "batches": batches, "resource_pool": resource_pool, "frozen_op_ids": frozen_op_ids})
-        return [SimpleNamespace(is_frozen=False)]
+        return [_graph_node()]
 
     class FakeGraphService:
         def analyze_linear_batches(self, nodes: Any, *, metrics_mode: str = "full") -> object:
@@ -275,7 +290,8 @@ def test_report_and_on_modes_add_summary_without_changing_schedule_payload(monke
     assert _schedule_payload_signature(report_outcome) == _schedule_payload_signature(off_outcome)
     assert _schedule_payload_signature(on_outcome) == _schedule_payload_signature(off_outcome)
     assert report_outcome.result_summary_obj["algo"]["graph_analysis"]["effective_mode"] == "report"
-    assert on_outcome.result_summary_obj["algo"]["graph_analysis"]["effective_mode"] == "report_only"
+    assert on_outcome.result_summary_obj["algo"]["graph_analysis"]["effective_mode"] == "graph_ready_queue"
+    assert on_outcome.result_summary_obj["algo"]["graph_analysis"]["ready_queue_enabled"] is True
     assert captured[0]["rows"] is report_input.algo_ops
     assert captured[0]["batches"] is report_input.batches
     assert captured[0]["resource_pool"] is report_input.resource_pool

@@ -24,6 +24,9 @@ _PUBLIC_GRAPH_KEYS = {
     "reschedulable_unfrozen_op_count",
     "frozen_node_count",
     "seed_result_count",
+    "graph_enhancement_allowed",
+    "graph_enhancement_disabled_reason",
+    "ready_queue_enabled",
 }
 _ERROR_PUBLIC_GRAPH_KEYS = {
     "mode",
@@ -140,6 +143,9 @@ def _result_summary_obj() -> Dict[str, Any]:
                 "reschedulable_unfrozen_op_count": 2,
                 "frozen_node_count": 0,
                 "seed_result_count": 0,
+                "graph_enhancement_allowed": True,
+                "graph_enhancement_disabled_reason": None,
+                "ready_queue_enabled": True,
             }
         },
         "diagnostics": {

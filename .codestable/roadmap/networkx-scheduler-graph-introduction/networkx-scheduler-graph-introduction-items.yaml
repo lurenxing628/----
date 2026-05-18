@@ -132,8 +132,8 @@ items:
   - slug: scheduler-graph-ready-queue-on-mode
     title: PR-5 有环安全门 + on 模式 ready 队列
     description: "先实现有环安全门：report 只提示，on+block=yes 在 version 分配前阻止，on+block=no 可见禁用图增强；再实现已有 ready_queue.py，并只在 graph_enhancement_allowed=true 的 DAG 场景下让 ready 队列过滤 SGS 候选。PR-5 不做图评分、不做候选池、不做落库和页面。"
-    status: planned
-    feature: null
+    status: done
+    feature: .codestable/features/2026-05-18-scheduler-graph-ready-queue-on-mode/
     minimal_loop: false
     depends_on: [scheduler-graph-debug-performance]
     primary_paths:
@@ -142,29 +142,40 @@ items:
       - core/services/scheduler/run/schedule_optimizer.py
       - core/services/scheduler/run/schedule_optimizer_steps.py
       - core/services/scheduler/run/optimizer_local_search.py
+      - core/services/scheduler/run/schedule_signature_support.py
+      - core/infrastructure/errors.py
+      - core/services/scheduler/config/config_constants.py
+      - core/services/scheduler/config/config_field_spec.py
       - core/services/scheduler/graph/ready_queue.py
+      - core/algorithms/greedy/dispatch/ready_queue.py
       - core/algorithms/greedy/scheduler.py
       - core/algorithms/greedy/dispatch/sgs.py
       - core/algorithms/greedy/dispatch/sgs_scoring.py
+      - templates/scheduler/config.html
+      - web_new_test/templates/scheduler/config.html
+      - web/viewmodels/scheduler_config_panel.py
+      - tests/regression_config_field_spec_contract.py
+      - tests/regression_scheduler_config_route_contract.py
       - tests/regression_scheduler_graph_cycle_policy_contract.py
       - tests/scheduler_graph/test_ready_queue.py
       - tests/regression_scheduler_graph_on_mode_contract.py
+      - tests/test_schedule_optimizer_strict_mode_signature_cache.py
     forbidden_paths:
       - core/services/scheduler/graph/scoring.py
       - core/algorithms/dispatch_rules.py
       - schema.sql
       - data/repositories/schedule_candidate_repo.py
-      - templates/
       - web/routes/
     exit_checks:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_scheduler_graph_cycle_policy_contract.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/scheduler_graph/test_ready_queue.py tests/regression_scheduler_graph_on_mode_contract.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_scheduler_graph_report_mode_contract.py tests/regression_scheduler_graph_report_mode_service_contract.py tests/regression_scheduler_graph_summary_contract.py tests/regression_scheduler_graph_operation_logs_contract.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_sgs_internal_scoring_matches_execution.py tests/test_sgs_total_hours_cache.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_scheduler_config_route_contract.py tests/regression_config_field_spec_contract.py tests/test_schedule_optimizer_strict_mode_signature_cache.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler/run/schedule_graph_report.py core/services/scheduler/run/schedule_orchestrator.py core/services/scheduler/run/schedule_optimizer.py core/services/scheduler/run/schedule_optimizer_steps.py core/services/scheduler/run/optimizer_local_search.py core/services/scheduler/graph/ready_queue.py core/algorithms/greedy/scheduler.py core/algorithms/greedy/dispatch/sgs.py core/algorithms/greedy/dispatch/sgs_scoring.py tests/regression_scheduler_graph_cycle_policy_contract.py tests/scheduler_graph/test_ready_queue.py tests/regression_scheduler_graph_on_mode_contract.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright core/services/scheduler/run/schedule_graph_report.py core/services/scheduler/run/schedule_orchestrator.py core/services/scheduler/run/schedule_optimizer.py core/services/scheduler/run/schedule_optimizer_steps.py core/services/scheduler/run/optimizer_local_search.py core/services/scheduler/graph/ready_queue.py core/algorithms/greedy/scheduler.py core/algorithms/greedy/dispatch/sgs.py core/algorithms/greedy/dispatch/sgs_scoring.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .codestable/tools/validate-yaml.py --file .codestable/roadmap/networkx-scheduler-graph-introduction/networkx-scheduler-graph-introduction-items.yaml --yaml-only
-    notes: "当前 SGS 候选逻辑是每个批次下一道工序，不是完整 DAG ready 队列；改动必须在 feature flag 后面。PR-5 开始前必须承认当前 graph report 位于 optimizer 之后，ready 队列要影响 SGS，必须新增 optimizer/SGS 前可用的图准入数据通道，不能复用 optimizer 后的 report 投影冒充排产输入。PR-5 内部先做阶段 11 有环安全门和测试，再做阶段 12 ready_queue.py 和 graph_ready_context 传递；DAG 且 graph_enhancement_allowed=true 才能启用 ready 队列。PR-5 完成后只把 ready 资格交给 PR-6，PR-6 仍需单独证明图评分方向和原有 SLACK/CR/ATC 语义不被破坏。"
+    notes: "已完成：2026-05-18 阶段 11 实现有环安全门，report 有环只提示，on+block=yes 在 version 分配前抛中文 ValidationError 并带 reason/cycle_edges_sample 等结构化详情，on+block=no 继续原排产逻辑但 public 明确 ready_queue_enabled=false、graph_enhancement_disabled_reason=schedule_graph_cycle；known graph error 不伪装成有环，unknown graph error 不静默吞掉。阶段 12a 实现 ready_queue.py 纯 Python helper，只处理 op_id 集合、前置映射、blocked/completed/fixed 集合和排序 key，不接 NetworkX、不读数据库/配置、不调评分或资源匹配；实际 helper 下沉到 core/algorithms/greedy/dispatch/ready_queue.py，core/services/scheduler/graph/ready_queue.py 保留兼容导出，避免算法层反向 import service。阶段 12b/12c 在 optimizer 前准备 graph_ready_context，并让排产和 result_summary 共用同一份图分析结论，沿 schedule_orchestrator、schedule_optimizer、schedule_optimizer_steps、optimizer_local_search、GreedyScheduler.schedule、dispatch_sgs 传递普通 Python 结构。阶段 12d 在 on+DAG 且 graph_enhancement_allowed=true 时启用 ready 队列筛 SGS 候选；有 graph_ready_context 时 optimizer 强制 SGS，避免 public 摘要和实际 dispatch mode 漂移；无 graph_ready_context 时旧 _collect_sgs_candidates 行为保持；评分、资源匹配、build_dispatch_key、SLACK/CR/ATC 方向未改。frozen/seed 只作为已固定前置，不重复进 candidates，不重复写 rows；前置失败时图后继不释放，并补失败计数和中文错误说明。只同步已有配置说明文字和镜像模板，不新增页面按钮或路由。PR-5 只证明 ready 资格可以交给 SGS 候选，PR-6 不能继承任何图评分方向证明，仍需单独证明关键路径/影响范围评分不破坏原有评分语义。"
 
   - slug: scheduler-graph-critical-score-on-mode
     title: PR-6 关键路径评分接入

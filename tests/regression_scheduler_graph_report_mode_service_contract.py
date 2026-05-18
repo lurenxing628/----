@@ -205,7 +205,8 @@ def test_graph_report_and_on_modes_use_real_graph_without_changing_schedule_resu
     on_graph = on_case["summary"]["algo"]["graph_analysis"]
     assert on_graph["status"] == "available"
     assert on_graph["mode"] == "on"
-    assert on_graph["effective_mode"] == "report_only"
+    assert on_graph["effective_mode"] == "graph_ready_queue"
+    assert on_graph["ready_queue_enabled"] is True
     assert on_graph["input_scope"] == "all_algo_ops_with_frozen_markers"
 
     report_diagnostics = report_case["summary"]["diagnostics"]["graph_analysis"]
@@ -239,7 +240,8 @@ def test_graph_report_and_on_modes_preserve_frozen_seed_service_contract(tmp_pat
 
     on_graph = on_case["summary"]["algo"]["graph_analysis"]
     assert on_graph["mode"] == "on"
-    assert on_graph["effective_mode"] == "report_only"
+    assert on_graph["effective_mode"] == "graph_ready_queue"
+    assert on_graph["ready_queue_enabled"] is True
     assert on_graph["total_algo_op_count"] == 2
     assert on_graph["reschedulable_unfrozen_op_count"] == 1
     assert on_graph["frozen_node_count"] == 1

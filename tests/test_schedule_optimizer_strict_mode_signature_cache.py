@@ -148,6 +148,16 @@ def test_legacy_scheduler_rejects_enabled_readiness_keyword() -> None:
         )
 
 
+def test_legacy_scheduler_rejects_graph_ready_context_with_graph_message() -> None:
+    with pytest.raises(ValidationError, match="工序图 ready 队列"):
+        _schedule_with_optional_strict_mode(
+            _LegacyScheduler(),
+            strict_mode=False,
+            graph_ready_context={"enabled": True},
+            value=7,
+        )
+
+
 def test_unknown_signature_keeps_unexpected_keyword_fallback(monkeypatch) -> None:
     monkeypatch.setattr(
         signature_support.inspect,
