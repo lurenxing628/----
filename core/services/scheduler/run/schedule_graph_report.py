@@ -13,8 +13,8 @@ _GRAPH_CYCLE_EDGE_SAMPLE_LIMIT = 20
 _GRAPH_NODE_METRIC_SAMPLE_LIMIT = 20
 _GRAPH_WARNING_DATA_LIST_SAMPLE_LIMIT = 20
 _GRAPH_WARNING_DATA_DICT_FIELD_LIMIT = 20
+_GRAPH_WARNING_TEXT_SAMPLE_LIMIT = 500
 _GRAPH_INPUT_SCOPE = "all_algo_ops_with_frozen_markers"
-_JSON_SCALAR_TYPES = (str, int, float, bool)
 
 
 def _elapsed_ms(started: float) -> int:
@@ -162,8 +162,16 @@ def _sample(values: List[Any], limit: int) -> List[Any]:
 
 
 def _project_warning_data_value(value: Any) -> Tuple[Any, bool]:
-    if value is None or isinstance(value, _JSON_SCALAR_TYPES):
+    if value is None or isinstance(value, (int, float, bool)):
         return value, False
+    if isinstance(value, str):
+        if len(value) <= _GRAPH_WARNING_TEXT_SAMPLE_LIMIT:
+            return value, False
+        return {
+            "text_sample": value[:_GRAPH_WARNING_TEXT_SAMPLE_LIMIT],
+            "text_length": int(len(value)),
+            "text_truncated": True,
+        }, True
     if isinstance(value, tuple):
         value = list(value)
     if isinstance(value, list):
@@ -187,6 +195,13 @@ def _project_warning_data_value(value: Any) -> Tuple[Any, bool]:
             projected["_fields_truncated"] = True
         return projected, truncated_any
     return {"unsupported_value_type": type(value).__name__}, True
+
+
+def _project_warning_message(message: Any) -> Tuple[str, bool]:
+    text = str(message or "")
+    if len(text) <= _GRAPH_WARNING_TEXT_SAMPLE_LIMIT:
+        return text, False
+    return text[:_GRAPH_WARNING_TEXT_SAMPLE_LIMIT], True
 
 
 def _project_warning_data(raw_data: Any) -> Tuple[Dict[str, Any], bool]:
@@ -216,11 +231,14 @@ def _project_warning_data(raw_data: Any) -> Tuple[Dict[str, Any], bool]:
 
 def _project_warning(warning: Dict[str, Any]) -> Dict[str, Any]:
     data, warning_data_truncated = _project_warning_data(warning.get("data"))
+    message, message_truncated = _project_warning_message(warning["message"])
     return {
         "code": warning["code"],
-        "message": warning["message"],
+        "message": message,
+        "message_length": len(str(warning["message"] or "")),
+        "message_truncated": bool(message_truncated),
         "data": data,
-        "warning_data_truncated": bool(warning_data_truncated),
+        "warning_data_truncated": bool(warning_data_truncated or message_truncated),
     }
 
 

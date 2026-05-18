@@ -289,6 +289,35 @@ def test_graph_warning_data_projection_limits_top_level_fields() -> None:
     json.dumps(diagnostics, ensure_ascii=False)
 
 
+def test_graph_warning_projection_truncates_long_text_scalars() -> None:
+    long_text = "很长的诊断文本" * 200
+    payload = _graph_payload(size=3)
+    payload["warnings"] = [
+        {
+            "code": "LONG_TEXT",
+            "message": long_text,
+            "data": {"note": long_text},
+        }
+    ]
+
+    _public, diagnostics = _project_graph_analysis_payload(
+        mode="report",
+        payload=payload,
+        elapsed_ms=3,
+        scope=_scope(3),
+    )
+
+    warning = diagnostics["warnings_sample"][0]
+    assert warning["message_truncated"] is True
+    assert warning["message_length"] == len(long_text)
+    assert len(warning["message"]) == 500
+    assert warning["warning_data_truncated"] is True
+    assert warning["data"]["note"]["text_sample"] == long_text[:500]
+    assert warning["data"]["note"]["text_length"] == len(long_text)
+    assert warning["data"]["note"]["text_truncated"] is True
+    json.dumps(diagnostics, ensure_ascii=False)
+
+
 def test_graph_warning_data_projection_marks_non_dict_data() -> None:
     payload = _graph_payload(size=3)
     payload["warnings"] = [{"code": "BAD_DATA", "message": "bad", "data": [object()]}]

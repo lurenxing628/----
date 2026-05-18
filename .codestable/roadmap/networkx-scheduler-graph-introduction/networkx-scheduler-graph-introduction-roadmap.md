@@ -444,29 +444,39 @@ failed_ops 不能变差。
 
 ## 整体执行顺序
 
-建议按下面这些 PR 或小阶段推进。每个阶段都能单独提交，方便回滚；正文后面的详细阶段是执行时的准绳。
+后续实施以 `networkx-scheduler-graph-introduction-items.yaml` 里的 PR 顺序为准；正文里的“阶段 0 / 阶段 11 / 阶段 16”是技术章节编号，不再代表线性执行顺序。大白话说：不能从阶段 11、12、13 一路顺着做，因为有些后写的章节已经被收进前面的 PR 加固包里了。
 
-| 阶段 | 目标 | 是否改变排产结果 | 风险 |
-| -: | --- | ---: | -: |
-| 0 | 建分支、记录基线、落 ADR 和依赖决策 | 否 | 很低 |
-| 1 | 加可选依赖文件、安装验证和离线 wheel 流程 | 否 | 很低 |
-| 2 | 加配置开关和迁移，默认 off | 否 | 低 |
-| 3 | 建目录和 NetworkX 懒加载层 | 否 | 低 |
-| 4 | 定义图输入数据结构和节点 ID 规范 | 否 | 低 |
-| 5 | 把现有业务数据转成图节点 | 否 | 低 |
-| 6 | 构建工序依赖图 | 否 | 低 |
-| 7 | 实现图校验：环、孤立、重复 seq | 否 | 低 |
-| 8 | 实现指标：拓扑顺序、层级、关键路径、影响范围 | 否 | 低 |
-| 9 | 图导出和统一分析服务入口 | 否 | 低 |
-| 10 | 接入 report 模式，写 result_summary 小摘要 | 否 | 低 |
-| 11 | 有环时的处理策略 | 否 | 低 |
-| 12 | ready 队列参与 SGS 候选 | 是 | 中 |
-| 13 | 关键路径评分接入 | 是/可控 | 中 |
-| 13.6 | 多权重候选试跑、自动择优和代表方案对比 | 是/可控 | 中 |
-| 14 | 资源匹配 report-only 分析 | 否 | 中 |
-| 16-18 | 调试导出、测试目录和性能证据 | 否 | 中 |
-| 21 | Win7 离线打包和最终验收 | 否/可控 | 中 |
-| 23 | 后续增强：候选方案续跑 | 否/可控 | 中 |
+当前推进指针：
+
+```text
+PR-0 到 PR-4 已完成。
+下一步是 PR-5。
+PR-5 先做阶段 11 有环安全门，再做阶段 12 ready 队列。
+```
+
+| PR / items.yaml 条目 | 对应技术章节 | 目标 | 是否改变排产结果 | 状态 |
+| --- | --- | --- | ---: | --- |
+| PR-0 `networkx-compatibility-decision` | 阶段 0 | 建分支、记录基线、落 ADR 和依赖决策 | 否 | done |
+| PR-1 `scheduler-graph-config-default-off` | 阶段 1-2 | 加可选依赖验证、配置开关和迁移，默认 off | 否 | done |
+| PR-2 `scheduler-graph-core-module` | 阶段 3-9 | 图核心模块：懒加载、节点、输入转换、建图、校验、指标、导出、分析服务 | 否 | done |
+| PR-3 `scheduler-graph-report-mode` | 阶段 10 | 接入 report 模式，写 result_summary 小摘要和 diagnostics 采样 | 否 | done |
+| PR-4 `scheduler-graph-debug-performance` | 阶段 10.9 + 阶段 16 + 阶段 17 相关测试 + 阶段 18 | 性能护栏、diagnostics 加固、真实集成证明；受控 debug export 只是附属能力 | 否 | done |
+| PR-5 `scheduler-graph-ready-queue-on-mode` | 阶段 11 + 阶段 12 | 先做有环安全门，再让 ready 队列参与 SGS 候选 | 是 | planned |
+| PR-6 `scheduler-graph-critical-score-on-mode` | 阶段 13 | 关键路径、影响范围、后续关键工作量进入评分 | 是/可控 | planned |
+| PR-7a 到 PR-7e | 阶段 13.6 | 多权重候选试跑、自动择优、同事务落库、代表方案切换和配置收口 | 是/可控 | planned |
+| PR-8 `scheduler-graph-resource-matching-report` | 阶段 14-15 | 资源匹配 report-only 分析，最小费用流只作为后续增强 | 否 | planned |
+| PR-9 `scheduler-graph-win7-package-closeout` | 阶段 21 | Win7 离线打包和最终验收 | 否/可控 | planned |
+| PR-10 `scheduler-graph-candidate-resume-later` | 阶段 23 | 后续增强：候选方案续跑 | 否/可控 | planned |
+
+执行规则：
+
+```text
+1. 做事看 PR，不看阶段号顺序。
+2. 每个 PR 仍然可以单独提交，方便回滚。
+3. 阶段章节只作为该 PR 内部的技术细节说明。
+4. 如果某个阶段章节和 items.yaml 的 PR 拆分冲突，以 items.yaml 的 PR 拆分为准，并回本节同步修正。
+5. 不允许因为“阶段 11 写在阶段 10 后面”就跳过 PR-4 直接做有环安全门；PR-5 必须等 PR-4 完成。
+```
 
 ## 阶段 0：建分支、记录 before_networkx 基线、落 ADR
 
@@ -5254,60 +5264,465 @@ PR-4 = 性能护栏 + diagnostics 加固 + 真实集成证明。
 PR-4 必须先证明：
 
 ```text
-[ ] 2000 节点规模的 report 分析耗时有记录，有必要时有阈值护栏。
-[ ] diagnostics.graph_analysis 只含采样、总数、截断标记和 JSON 可序列化 warning.data。
-[ ] known graph error 在 public 顶层可见，用户或日志小摘要能看懂失败原因。
-[ ] 真实排产链路里 report 模式仍不改变 rows、best_order、selected_batch_ids、freeze_window、resource_pool、seed_results、frozen_op_ids。
-[ ] config 默认 off、report/on 保存、fail-fast 和 exporter 边界都有测试或证据。
-[ ] graph_debug_export 如果要做，只能作为受控调试输出，不能替代上面的证据。
+[x] 2000 节点规模的 report 分析耗时有记录，并已有阈值护栏。
+[x] diagnostics.graph_analysis 只含采样、总数、截断标记和 JSON 可序列化 warning.data。
+[x] known graph error 在 public 顶层可见，用户或日志小摘要能看懂失败原因。
+[x] 真实排产链路里 report 模式仍不改变 rows、best_order、selected_batch_ids、freeze_window、resource_pool、seed_results、frozen_op_ids。
+[x] config 默认 off、report/on 保存、fail-fast 和 exporter 边界都有测试或证据。
+[x] graph_debug_export 本阶段未实现，已确认它只是后续附属能力，不能替代上面的证据。
 ```
 
-PR-5 仍被这些证据阻塞：
+#### PR-4 可执行细化：先证据，后导出
+
+PR-4 的定位是“report 模式进入 on 模式前的证据关口”。大白话说，就是先证明这套图分析只是旁边看一眼、记一笔，不会偷偷改变排产；也要证明数据量变大时不会把摘要撑爆、不会慢到不可用。只有这些证据都稳了，后面的 PR-5 才能放心把图 ready 队列接到 SGS 候选集合。
+
+PR-4 不是“把 NetworkX 接进排产决策”的 PR，也不是“先弄一个调试 JSON 文件看看”的 PR。调试导出只是最后的附属工具，不能拿它代替性能、diagnostics 和真实链路证明。
+
+整体实现要求必须写进 PR-4 feature design，并在验收时逐条对照：
+
+```text
+1. 优雅简洁：只补当前证据关口需要的代码，不为了“以后可能会用”提前铺大框架。
+2. 高内聚低耦合：run 层只负责调用和投影，graph 层只负责图构建/指标/普通 dict 导出，summary 层只负责合并 public/diagnostics，OperationLogs 只记录 public 小摘要，config 只走已有配置链路。
+3. 不做过度兜底：不能为了让测试绿，给每层都加一套 fallback。
+4. 不做静默回退：性能不达标、debug export 写失败、diagnostics 投影异常，都不能悄悄变成“成功但少字段”。
+5. 不做过度防御性编程：只捕获已知图错误；未知异常必须暴露，不能被 broad except 吞成空报告。
+6. 不自动关闭慢指标：如果 2000 节点性能不达标，必须回 roadmap 明确选择 basic report、缓存优化或拆后续 feature，不能在代码里偷偷变更输出口径。
+```
+
+PR-4 的文件边界：
+
+```text
+核心允许改：
+- core/services/scheduler/run/schedule_graph_report.py
+- core/services/scheduler/graph/exporter.py
+- core/services/scheduler/graph/metrics.py
+- tests/scheduler_graph/test_graph_performance.py
+- tests/regression_scheduler_graph_report_mode_contract.py
+- tests/regression_scheduler_graph_report_mode_service_contract.py
+- tests/regression_scheduler_graph_summary_contract.py
+- tests/regression_scheduler_graph_operation_logs_contract.py
+- evidence/scheduler_graph/performance_2000_nodes.txt
+
+按需触碰，但不能扩业务语义：
+- core/services/scheduler/config/
+- web/routes/domains/scheduler/scheduler_config.py
+- web/routes/domains/scheduler/scheduler_config_display_state.py
+
+默认不要碰：
+- core/services/scheduler/schedule_service.py
+- core/services/scheduler/run/schedule_optimizer.py
+- core/algorithms/greedy/scheduler.py
+- core/algorithms/greedy/dispatch/sgs.py
+- core/algorithms/greedy/dispatch/sgs_scoring.py
+- core/services/scheduler/graph/ready_queue.py
+- core/services/scheduler/graph/scoring.py
+```
+
+为什么默认不要碰这些文件：
+
+```text
+PR-4 只证明 report 模式稳。
+schedule_optimizer.py / GreedyScheduler / SGS / ready_queue / scoring 是排产决策链。
+这些文件一动，就很容易从“只读报告”滑到“改变排产候选或评分”。
+那是 PR-5 / PR-6 的范围，不属于 PR-4。
+```
+
+PR-4 执行顺序：
+
+```text
+1. 先补性能测试 tests/scheduler_graph/test_graph_performance.py。
+   - 构造 100 个批次，每批 20 道工序。
+   - 得到 2000 个节点、1900 条同批次前后置边。
+   - 分别记录 build_nodes_ms、build_graph_ms、validate_dag_ms、critical_path_ms、impact_metrics_ms。
+   - 跑 3 次取平均，写入 evidence/scheduler_graph/performance_2000_nodes.txt。
+
+2. 明确 PR-4 的 report 默认指标口径。
+   - 当前 report 模式默认 metrics_mode="basic"。
+   - basic report 必须能写 node_count、edge_count、is_dag、critical_path_minutes、critical_path_node_count、warning_count、cycle_edge_count、time_cost_ms。
+   - PR-4 默认不强行计算完整 node_metrics / downstream_critical_minutes。
+   - diagnostics 里 node_metrics_count=0 且 node_metrics_status="skipped_basic_report" 是明确合同，不是静默降级。
+
+3. 加固 diagnostics 采样合同。
+   - diagnostics.graph_analysis 只能放 sample / count / truncated / status。
+   - topological_order、critical_path、cycle_edges、warnings、node_metrics 都必须是采样。
+   - warning.data 必须能 json.dumps。
+   - 遇到 list / dict 过大要写 count/truncated。
+   - 遇到不支持对象要标 unsupported_value_type 或 unsupported_data_type，不能 str() 后伪装成正常数据。
+   - 禁止 nodes、edges、raw、完整 topological_order、完整 node_metrics 进入 diagnostics。
+
+4. 加固 known graph error 口径。
+   - NetworkXUnavailable -> public.status="unavailable" / reason="networkx_unavailable"。
+   - GraphInputContractError -> public.status="input_error" / reason="graph_input_contract_error"。
+   - GraphBuildContractError -> public.status="build_error" / reason="graph_build_contract_error"。
+   - 这些已知错误只进入 public 顶层小摘要，不写 diagnostics 全量细节。
+   - 未知异常继续暴露，不能吞成空报告。
+
+5. 补真实服务级集成证明。
+   - 优先沿用 tests/regression_scheduler_graph_report_mode_service_contract.py。
+   - 同一套真实服务级案例对比 off / report / on。
+   - off 不 import graph 模块，不写 graph_analysis。
+   - report 写 graph_analysis，但 rows、summary counts、best_order、selected_batch_ids、freeze_window、resource_pool、seed_results、frozen_op_ids 不变。
+   - on 在 PR-4 仍然只输出 effective_mode="report_only"，不能提前进入 ready 队列或评分。
+   - 带 frozen/seed 的案例必须断言 total_algo_op_count、reschedulable_unfrozen_op_count、frozen_node_count、seed_result_count 正确。
+
+6. 补 OperationLogs 泄漏检查。
+   - OperationLogs 只允许看到 result_summary.algo.graph_analysis 的 public 小摘要。
+   - 递归检查没有 diagnostics、nodes、edges、raw、完整 node_metrics、完整 topological_order。
+
+7. 最后再考虑 graph_debug_export。
+   - graph_debug_export=no 时不写任何 logs/schedule_graph 文件。
+   - graph_debug_export=yes 时只能写普通 JSON 文件，不能写 nx.DiGraph、datetime 原对象、数据库连接、repo、模型原对象或 raw runtime 对象。
+   - 测试要用临时目录，不污染真实 logs/。
+   - 如果文件名需要 schedule_id / version，必须在 version 已知之后写；不能为了调试文件提前移动 allocate_next_version，也不能把写文件塞进排产决策链或落库事务里。
+   - PR-4 不做管理员 HTTP 调试接口，不新增页面按钮。
+
+8. 收尾回填。
+   - 更新本 roadmap 和 networkx-scheduler-graph-introduction-items.yaml。
+   - 如果开了对应 feature 文档，回填 feature design / checklist / acceptance。
+   - PR-4 完成后，PR-5 才能开始有环安全门和 ready 队列。
+```
+
+PR-4 的验收命令：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_graph/test_graph_performance.py
+test -f evidence/scheduler_graph/performance_2000_nodes.txt
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_graph_report_mode_contract.py tests/regression_scheduler_graph_report_mode_service_contract.py tests/regression_scheduler_graph_summary_contract.py tests/regression_scheduler_graph_operation_logs_contract.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_graph/test_exporter.py tests/scheduler_graph/test_analysis_service.py tests/scheduler_graph/test_metrics_critical_path.py tests/scheduler_graph/test_metrics_impact.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_graph_config_bootstrap_contract.py tests/regression_migrate_v9_graph_config_defaults.py tests/regression_scheduler_config_spec_sync_contract.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler/run/schedule_graph_report.py core/services/scheduler/graph tests/scheduler_graph tests/regression_scheduler_graph_report_mode_contract.py tests/regression_scheduler_graph_summary_contract.py tests/regression_scheduler_graph_operation_logs_contract.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright core/services/scheduler/run/schedule_graph_report.py core/services/scheduler/graph
+```
+
+PR-4 最终提交后，如果要给 clean-worktree proof，再跑：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
+```
+
+注意：
+
+```text
+--require-clean-worktree 必须等 PR-4 代码、测试、evidence、roadmap / items.yaml / feature 记录全部提交后再跑。
+如果工作区还有未提交文件，不能把它说成 clean-worktree proof。
+```
+
+PR-4 明确不做：
+
+```text
+[ ] 不实现阶段 11 有环安全门。
+[ ] 不实现阶段 12 ready 队列。
+[ ] 不实现阶段 13 图评分。
+[ ] 不改 schedule_optimizer.py。
+[ ] 不改 GreedyScheduler 排产行为。
+[ ] 不改 SGS 候选集合。
+[ ] 不改 SGS 评分。
+[ ] 不改 sorted_ops / batch_order。
+[ ] 不改 seed_results / frozen_op_ids 语义。
+[ ] 不改 validated_schedule_payload。
+[ ] 不改落库 schedule_rows。
+[ ] 不让 graph_analysis_mode=on 真正改变排产行为。
+[ ] 不把 debug export 当成性能或真实集成证明。
+[ ] 不做管理员 debug HTTP 接口。
+[ ] 不新增页面按钮。
+[ ] 不为了调试导出重排 version 分配、事务或持久化主链。
+```
+
+PR-4 的完成口径：
+
+```text
+看到性能文件，不代表完成。
+看到 debug JSON，不代表完成。
+只有性能护栏、diagnostics 采样、known graph error 顶层可见、frozen/seed scope、真实服务级 off/report/on 对比、OperationLogs 不泄漏、配置链路验证和必要 lint/type 检查都通过，才算 PR-4 可以移交 PR-5。
+```
+
+PR-4 实际完成记录：
+
+```text
+2026-05-18 已完成 PR-4：
+- 新增 2000 节点 basic report 性能护栏和 evidence/scheduler_graph/performance_2000_nodes.txt。
+- 明确 basic report 不计算完整 node_metrics / downstream_critical_minutes，diagnostics 写 node_metrics_status="skipped_basic_report"。
+- diagnostics 增加长 warning message / 长字符串 warning.data 截断合同。
+- 真实服务级 off/report/on 对比覆盖普通场景和 frozen/seed 场景，确认 rows、best_order、selected_batch_ids、freeze_window、resource_pool 不变。
+- OperationLogs 增加 known graph error 小摘要检查，继续不写 diagnostics 或完整图。
+- 本阶段未实现 graph_debug_export；它仍只是后续可选附属能力，不能替代 PR-4 证据。
+- 本阶段未实现 PR-5 有环安全门、ready 队列或 PR-6 图评分。
+```
+
+PR-5 现在承接这些证据：
 
 ```text
 PR-5 不能只承接“PR-3 已经有 graph_analysis 字段”。
-PR-5 必须等 PR-4 证明 report 模式在性能、diagnostics、warning 顶层可见性、frozen/seed scope 和真实集成链路上都稳了，才能开始把图 ready 队列接进 SGS 候选集合。
+PR-5 必须承接 PR-4 已经证明的性能、diagnostics、warning 顶层可见性、frozen/seed scope 和真实集成链路，再开始把图 ready 队列接进 SGS 候选集合。
+```
+
+### PR-5 总体实现要求
+
+PR-5 是这条路线第一次让图分析真正影响排产候选集合，所以整体要求要比 report 模式更硬：
+
+```text
+1. 优雅简洁：
+   只围绕“有环安全门”和“ready 资格过滤”做事，不趁机铺评分、候选池、页面、落库或导出大框架。
+
+2. 高内聚：
+   graph 模块负责把工序图整理成可用的普通数据。
+   run / orchestrator 负责模式判断、错误口径和把图上下文传进 optimizer。
+   GreedyScheduler / SGS 只消费 ready 上下文来收集候选，不反向理解 NetworkX。
+
+3. 低耦合：
+   NetworkX 图对象、NetworkX 异常、完整 nodes/edges 只能留在 `core/services/scheduler/graph/` 内部。
+   `core/algorithms/greedy/` 只能看到普通 Python 结构，例如 op_id、前置 op_id 集合、后继 op_id 集合、已固定 op_id 集合。
+
+4. 不过度兜底：
+   `graph_analysis_mode=on` 时，如果图不可用、输入坏、建图坏或有环且 block=yes，必须明确失败或明确禁用图增强。
+   不能用“空 ready”“空 graph context”“except Exception”把合同错误藏成旧 SGS 正常结果。
+
+5. 不静默回退：
+   只有 `graph_analysis_mode=off/report` 才能自然不接 ready 队列。
+   `on + block=no + 有环` 可以继续旧 SGS，但 public 摘要必须写出图增强没有启用。
+   `on + DAG` 如果按旧 SGS 跑了，必须是测试能抓出来的错误。
+
+6. 不过度防御性编程：
+   对本项目自己生成的字段直接按合同读，字段缺失就让测试失败。
+   不写多层 `get(..., default)` 把投影字段缺失伪装成业务分支。
+
+7. PR-5 只交给 PR-6 一个东西：
+   “哪些工序现在有资格进入候选集合”。
+   PR-5 不证明关键路径工序会更优先，不证明图评分方向，也不改变 SLACK / CR / ATC 等评分语义。
 ```
 
 ## 阶段 11：有环时的处理策略
 
-### 11.1 report 模式
+阶段 11 的定位是“有环安全门”。它不负责实现 ready 队列，也不负责关键路径评分，只负责把阶段 7/9/10 已经能发现的“工序依赖有环”变成清楚、稳定、可测试的运行策略。
+
+大白话说：图里如果出现“20 工序要等 30 工序，30 工序又要等 20 工序”这种绕圈，图算法就不能拿来决定谁先排。report 模式只把问题讲出来，不影响排产；真正进入 on 模式后，要么明确阻止排产，要么明确跳过图增强继续走原排产，不能半推半就地拿一张有问题的图去改 SGS 候选或评分。
+
+### 11.0 阶段目标与前置条件
 
 ```text
-发现有环：
-  只记录 warning。
-  不阻止排产。
-  不改变结果。
-  不计算拓扑顺序。
-  不计算关键路径。
+目标：
+  把 graph_analysis_mode / graph_block_on_cycle / is_dag=false 三者的关系写进代码合同。
+  明确 report、on + block=yes、on + block=no 三种场景怎么处理。
+  给用户可读中文错误或 warning。
+  给阶段 12 ready 队列一个明确准入条件：只有可用 DAG 才能进入图 ready 队列。
+
+前置：
+  PR-4 已完成 report 模式性能护栏、diagnostics 采样、known graph error 顶层可见、frozen/seed scope 和真实集成证明。
+  graph_analysis_public / graph_analysis_diagnostics 已由 maybe_analyze_schedule_graph() 生成。
+  analysis_service 已经保证有环时不计算 topological_order、critical_path、node_metrics。
+
+所属实现窗口：
+  作为 PR-5 的第一步做。
+  先落有环安全门和测试，再开始阶段 12 ready_queue.py。
 ```
 
-### 11.2 on 模式
+### 11.1 整体实现要求
 
-当：
+本阶段必须保持优雅简洁：
 
 ```text
-graph_analysis_mode=on
-graph_block_on_cycle=yes
+1. 高内聚：
+   有环决策只收在 graph report / orchestrator 附近的一个小 helper 里。
+   graph 模块继续只负责“发现有环并给出分析结果”，不反向 import 排产主链。
+
+2. 低耦合：
+   不让 nx.DiGraph、NetworkX 异常、完整 nodes/edges 泄漏到 Controller、页面、数据库或 OperationLogs。
+   阶段 12 / 13 只读取“图是否可用于排产”的明确结果，不重新解析 diagnostics。
+
+3. 不过度兜底：
+   不写 except Exception 把未知图错误吞成 warning。
+   未知错误继续按阶段 10 合同暴露，测试继续锁住。
+
+4. 不静默回退：
+   on + block=no 且有环时，可以继续走原排产，但必须写出“图增强已禁用”的可见原因。
+   不能悄悄不用图，又让用户以为关键链已经参与了排产。
+
+5. 不过度防御性编程：
+   helper 只接收本项目自己生成的 graph_analysis_public / diagnostics。
+   对已承诺字段使用明确字段名，不写一堆模糊 get + 默认值把合同错误藏起来。
+   如果字段缺失，让测试失败，回头修投影合同。
 ```
 
-发现有环时：
+### 11.2 复用已有接口，不新造一套图错误系统
+
+阶段 11 只复用现有接口：
+
+```text
+core/services/scheduler/graph/validators.py
+  is_dag(graph)
+  find_cycle_edges(graph)
+  collect_graph_warnings(graph)
+
+core/services/scheduler/graph/analysis_service.py
+  ScheduleGraphAnalysisService.analyze_linear_batches(...)
+
+core/services/scheduler/graph/types.py
+  GraphWarning
+  GraphAnalysisSummary
+
+core/services/scheduler/graph/exporter.py
+  graph_summary_to_dict(summary)
+
+core/services/scheduler/run/schedule_graph_report.py
+  maybe_analyze_schedule_graph(schedule_input)
+```
+
+现状已经成立：
+
+```text
+有环时：
+  GraphAnalysisSummary.is_dag = False
+  GraphAnalysisSummary.cycle_edges 保留环边
+  warnings 追加 code="GRAPH_HAS_CYCLE"
+  topological_order = []
+  critical_path = []
+  critical_path_minutes = 0
+  node_metrics = {}
+```
+
+不要新增：
+
+```text
+GraphAnalysisError
+GraphAnalysisWarning
+新的 cycle detector
+新的 warning 投影器
+新的完整 graph 导出结构
+```
+
+### 11.3 配置和模式矩阵
+
+阶段 11 按下面矩阵执行：
+
+| graph_analysis_mode | graph_block_on_cycle | 图分析结果 | 处理方式 | 是否允许阶段 12 使用图 ready 队列 |
+|---|---|---|---|---|
+| off | 任意 | 不运行图分析 | 不写 graph_analysis，不加载 graph 模块 | 否 |
+| report | no/yes | status=available, is_dag=true | 只写 report 摘要，不改变排产 | 否 |
+| report | no/yes | status=available, is_dag=false | 只写 warning / cycle_edges_sample，不阻止排产 | 否 |
+| report | no/yes | status!=available | 沿阶段 10 known graph error 顶层 warning，不改变排产 | 否 |
+| on | no | status=available, is_dag=true | 图可用于后续 ready 队列 | 是 |
+| on | yes | status=available, is_dag=true | 图可用于后续 ready 队列 | 是 |
+| on | no | status=available, is_dag=false | 不阻止排产，但必须可见地禁用图增强 | 否 |
+| on | yes | status=available, is_dag=false | 阻止排产，抛中文 ValidationError | 否 |
+| on | no/yes | status!=available | 不按“有环”处理；沿阶段 10 已知错误口径，后续 on 模式启用前另立合同 | 否 |
+
+注意：
+
+```text
+report 模式永远不因为 graph_block_on_cycle=yes 阻止排产。
+graph_block_on_cycle 只在 graph_analysis_mode=on 且 status=available 且 is_dag=false 时生效。
+status!=available 不是“有环”，不要伪装成 schedule_graph_cycle。
+```
+
+### 11.4 接入位置和最小 helper
+
+当前真实接入顺序是：
+
+```text
+orchestrate_schedule_run()
+  optimize_schedule_fn(...)
+  build_validated_schedule_payload(...)
+  _merge_summary_warnings(...)
+  maybe_analyze_schedule_graph(schedule_input)
+  allocate_next_version()
+  build_result_summary(...)
+  persist_schedule(...)
+```
+
+阶段 11 的阻止判断必须放在：
+
+```text
+maybe_analyze_schedule_graph(schedule_input)
+之后
+allocate_next_version()
+之前
+```
+
+原因：
+
+```text
+on + block=yes + 有环时，本次排产不应分配正式 version。
+不应写 ScheduleHistory。
+不应写 OperationLogs。
+不应生成“排产成功但图有环”的历史记录。
+```
+
+建议新增小 helper，优先放在 `core/services/scheduler/run/schedule_graph_report.py`：
 
 ```python
-if graph_analysis["is_dag"] is False and block_on_cycle:
-    raise ValidationError(
-        "工序依赖存在循环，无法排产。",
-        field="graph_analysis",
+from typing import Any, Dict, Optional
+
+
+def ensure_graph_cycle_policy_allows_schedule(
+    cfg: Any,
+    graph_analysis_public: Optional[Dict[str, Any]],
+    graph_analysis_diagnostics: Optional[Dict[str, Any]],
+) -> None:
+    if graph_analysis_public is None:
+        return
+
+    mode = _graph_analysis_mode(cfg)
+    block_on_cycle = str(cfg.graph_block_on_cycle).strip().lower() == "yes"
+
+    if mode != "on":
+        return
+    if graph_analysis_public["status"] != "available":
+        return
+    if graph_analysis_public["is_dag"] is not False:
+        return
+    if not block_on_cycle:
+        return
+
+    raise _build_graph_cycle_validation_error(
+        graph_analysis_diagnostics=graph_analysis_diagnostics,
     )
 ```
 
-错误 details 建议：
+这里的判断只做一件事：`on + block=yes + 可用图分析明确发现有环` 时阻止排产。不要在这个 helper 里处理 ready 队列、评分、debug export、候选方案或资源匹配。
+
+如果后续觉得名字太长，也可以用：
+
+```text
+enforce_graph_cycle_policy(...)
+```
+
+但不要拆成很多小函数。阶段 11 要的是清楚的安全门，不是新的小框架。
+
+注意阶段 11 和阶段 12 的关系：
+
+```text
+阶段 11 单独落安全门时，可以先复用现有 maybe_analyze_schedule_graph() 后置投影，在 allocate_next_version() 前阻止错误历史落库。
+但阶段 12 真正接 ready 队列时，不能继续只依赖 optimizer 之后的 report 投影。
+PR-5 最终形态必须在 optimize_schedule_fn(...) 之前准备图调度上下文，并把同一份图分析结论继续交给后面的 result_summary 使用，避免前后两次建图口径不一致。
+```
+
+### 11.5 cycle_edges 来源和用户可读 details
+
+阶段 10 之后字段边界是：
+
+```text
+result_summary["algo"]["graph_analysis"]
+  public 小摘要
+  有 is_dag / cycle_edge_count
+  没有完整 cycle_edges
+
+result_summary["diagnostics"]["graph_analysis"]
+  采样诊断
+  有 cycle_edges_sample / cycle_edge_count
+  有 warnings_sample / warning_count
+```
+
+所以阶段 11 不能再写：
 
 ```python
-exc.details = {
-    "reason": "schedule_graph_cycle",
-    "cycle_edges": graph_analysis["cycle_edges"],
-}
+graph_analysis["cycle_edges"]
+```
+
+应该使用 diagnostics 里的采样：
+
+```python
+cycle_edges_sample = graph_analysis_diagnostics["cycle_edges_sample"]
+cycle_edge_count = graph_analysis_diagnostics["cycle_edge_count"]
 ```
 
 用户看到的文案建议：
@@ -5317,191 +5732,804 @@ exc.details = {
 B001_20 -> B001_30 -> B001_20
 ```
 
-不要只显示：
+错误 details 建议：
+
+```python
+exc = ValidationError(
+    "工序依赖存在循环，无法排产。请检查工艺路线里前后工序是否互相引用。",
+    field="graph_analysis",
+)
+exc.details = {
+    "field": "graph_analysis",
+    "reason": "schedule_graph_cycle",
+    "cycle_edge_count": cycle_edge_count,
+    "cycle_edges_sample": cycle_edges_sample,
+}
+raise exc
+```
+
+`cycle_edges_sample` 只放采样，不放完整图。每条边沿用现有字段：
+
+```text
+from
+to
+from_op_code
+to_op_code
+kind
+```
+
+页面或接口可以用 `from_op_code -> to_op_code` 拼中文提示；如果后续需要更漂亮的路径文案，只做展示层格式化，不回头改 graph 核心结构。
+
+不要只显示英文底层错误：
 
 ```text
 Graph has cycle
 ```
 
-验收：
+### 11.6 report 模式有环口径
+
+report 模式下发现有环时：
 
 ```text
-report 模式：有环只提示。
-on + block=yes：有环阻止排产。
-on + block=no：有环不阻止，但不能使用拓扑/关键路径评分。
+不阻止排产。
+不改变 rows / best_order / selected_batch_ids / freeze_window / resource_pool / seed_results / frozen_op_ids。
+不写 result_summary["errors"]。
+不分配新的图增强状态给 SGS。
+不调用 ready_queue.py。
+不调用 scoring.py。
+```
+
+写入结果：
+
+```text
+algo.graph_analysis.status = "available"
+algo.graph_analysis.is_dag = false
+algo.graph_analysis.cycle_edge_count > 0
+algo.graph_analysis.warning_count > 0
+
+diagnostics.graph_analysis.cycle_edges_sample 有采样边
+diagnostics.graph_analysis.warnings_sample 有 GRAPH_HAS_CYCLE
+```
+
+如果要把有环提示放到顶层 `result_summary["warnings"]`，必须满足：
+
+```text
+只追加中文 warning。
+不追加 errors。
+不改变排产状态。
+不复制完整 cycle_edges。
+```
+
+推荐 warning 文案：
+
+```text
+工序图分析发现循环依赖，本次仅记录提示，排产结果未受图分析影响。
+```
+
+### 11.7 on + block=yes 阻止排产口径
+
+当同时满足：
+
+```text
+graph_analysis_mode=on
+graph_block_on_cycle=yes
+graph_analysis_public["status"] == "available"
+graph_analysis_public["is_dag"] is False
+```
+
+必须阻止排产：
+
+```text
+抛 ValidationError。
+中文 message 直接说明“工序依赖存在循环，无法排产”。
+details.reason = "schedule_graph_cycle"。
+details.cycle_edges_sample 只放 diagnostics 采样。
+在 allocate_next_version() 之前失败。
+不写 ScheduleHistory。
+不写 OperationLogs。
+不落库候选方案。
+```
+
+这不是“兜底失败后继续跑”，而是明确的业务校验失败。
+
+### 11.8 on + block=no 可见禁用图增强口径
+
+当同时满足：
+
+```text
+graph_analysis_mode=on
+graph_block_on_cycle=no
+graph_analysis_public["status"] == "available"
+graph_analysis_public["is_dag"] is False
+```
+
+不阻止排产，但必须明确：
+
+```text
+本次图不可用于排产增强。
+阶段 12 的 ready 队列不得启用。
+阶段 13 的关键路径评分不得启用。
+继续使用原 SGS / 原排序 / 原资源匹配。
+result_summary 或 graph_analysis public 小摘要里要能看出禁用原因。
+```
+
+建议 public 增加：
+
+```python
+{
+    "graph_enhancement_allowed": False,
+    "graph_enhancement_disabled_reason": "schedule_graph_cycle",
+    "graph_enhancement_message": "工序图存在循环，本次跳过图增强，继续使用原排产逻辑。",
+}
+```
+
+无环时建议 public 增加：
+
+```python
+{
+    "graph_enhancement_allowed": True,
+    "graph_enhancement_disabled_reason": None,
+}
+```
+
+这里的 `graph_enhancement_allowed` 是给阶段 12/13 读的硬合同。阶段 12 不要自己重新判断 `cycle_edges_sample`，只看这个准入结果。
+
+### 11.9 交给阶段 12 的准入合同
+
+阶段 12 开始前必须能回答这个问题：
+
+```text
+这次排产能不能让图影响候选集合？
+```
+
+唯一允许进入 ready 队列的条件：
+
+```text
+graph_analysis_mode=on
+graph_analysis_public["status"] == "available"
+graph_analysis_public["is_dag"] is True
+graph_analysis_public["graph_enhancement_allowed"] is True
+```
+
+任何一个条件不满足：
+
+```text
+不得调用 get_ready_operations(...)
+不得把图 ready 队列接入 SGS 候选集合
+不得计算图评分 bonus
+不得改变 schedule_rows
+```
+
+### 11.10 测试用例
+
+新增或扩展测试时，优先新增一份独立合同测试：
+
+```text
+tests/regression_scheduler_graph_cycle_policy_contract.py
+```
+
+至少覆盖：
+
+```text
+测试 1：report + 有环
+  构造或 monkeypatch 出 is_dag=false 的 GraphAnalysisSummary。
+  断言不抛 ValidationError。
+  断言排产 payload 签名和 off 模式一致。
+  断言 algo.graph_analysis.is_dag=false。
+  断言 diagnostics.graph_analysis.cycle_edges_sample 有值。
+  断言 result_summary["errors"] 为空。
+
+测试 2：report + graph_block_on_cycle=yes + 有环
+  断言仍不阻止排产。
+  断言 graph_block_on_cycle 不在 report 模式生效。
+
+测试 3：on + block=yes + 有环
+  断言抛 ValidationError。
+  断言 message 是中文业务文案。
+  断言 details.reason == "schedule_graph_cycle"。
+  断言 details.cycle_edges_sample 只包含采样边。
+  断言 history_repo.allocate_next_version() 没有被调用。
+  断言 persist_schedule() 没有被调用。
+
+测试 4：on + block=no + 有环
+  断言不阻止排产。
+  断言 graph_enhancement_allowed=false。
+  断言 graph_enhancement_disabled_reason="schedule_graph_cycle"。
+  断言后续 ready 队列准入函数返回 false。
+
+测试 5：on + block=yes + 无环
+  断言不阻止。
+  断言 graph_enhancement_allowed=true。
+
+测试 6：known graph error
+  NetworkXUnavailable / GraphInputContractError / GraphBuildContractError 仍沿阶段 10 合同输出。
+  不把这些错误伪装成 schedule_graph_cycle。
+
+测试 7：unknown graph error
+  RuntimeError 继续抛出。
+  不被 except Exception 吞掉。
+
+测试 8：OperationLogs
+  成功场景仍只写 algo.graph_analysis public 小摘要。
+  不写 diagnostics.graph_analysis。
+  不写完整 cycle_edges / topological_order / node_metrics / nodes / edges / raw。
+  阻止场景不写 OperationLogs。
+```
+
+图有环的测试构造建议：
+
+```text
+图模块单测可以用 build_precedence_graph + 显式反向边构造环。
+主链回归测试不要为了造环去改 build_linear_edges_by_batch() 正常规则。
+主链可以 monkeypatch ScheduleGraphAnalysisService 或 maybe_analyze_schedule_graph() 返回有环投影。
+```
+
+### 11.11 实施顺序
+
+```text
+1. 先补红灯测试：report 有环、on+block=yes 有环、on+block=no 有环。
+2. 在 schedule_graph_report.py 增加最小有环策略 helper。
+3. 在 orchestrate_schedule_run() 的 maybe_analyze_schedule_graph() 后、allocate_next_version() 前调用 helper。
+4. 给 public 小摘要补 graph_enhancement_allowed / graph_enhancement_disabled_reason。
+5. 补 result_summary 顶层 warning 时，只加中文提示，不写 errors。
+6. 补 OperationLogs 合同测试，确认不泄漏 diagnostics 和完整图。
+7. 复跑阶段 10 report 合同，确认 report 模式仍不改变排产结果。
+8. 再进入阶段 12 ready_queue.py。
+```
+
+### 11.12 验收命令
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_scheduler_graph_cycle_policy_contract.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_scheduler_graph_report_mode_contract.py tests/regression_scheduler_graph_summary_contract.py tests/regression_scheduler_graph_operation_logs_contract.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/scheduler_graph/test_analysis_service.py tests/scheduler_graph/test_validators.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler/run/schedule_graph_report.py core/services/scheduler/run/schedule_orchestrator.py tests/regression_scheduler_graph_cycle_policy_contract.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright core/services/scheduler/run/schedule_graph_report.py core/services/scheduler/run/schedule_orchestrator.py
+```
+
+如果本阶段提交前工作树已经干净，还要跑：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
+```
+
+如果工作树不是干净的，只能如实说这是 targeted proof，不要把它说成 clean-worktree proof。
+
+### 11.13 明确不做
+
+阶段 11 不做：
+
+```text
+不实现 ready_queue.py。
+不把图 ready 队列接入 SGS。
+不实现 graph_score_bonus。
+不改变 build_dispatch_key()。
+不改变 frozen_op_ids / seed_results 语义。
+不改 schedule_rows 生成规则。
+不做候选方案表。
+不做 graph_debug_export。
+不把完整图写入 result_summary。
+不把 diagnostics 写入 OperationLogs。
+不引入新的 graph 错误类。
+不写宽泛 except Exception 兜底。
+```
+
+### 11.14 阶段交接话术
+
+阶段 11 完成后，交给阶段 12 的结论必须写清：
+
+```text
+当前 on 模式如果图是 DAG，允许进入图 ready 队列。
+当前 on 模式如果图有环：
+  block=yes 时排产被阻止，用户能看到中文错误和采样环边；
+  block=no 时排产继续，但图增强被明确禁用。
+report 模式仍然只提示、不改变排产。
+未知图错误仍然不被吞掉。
 ```
 
 ## 阶段 12：ready 队列参与排产
 
-这一阶段开始改变排产行为，所以必须在 `graph_analysis_mode=on` 之后才启用。
+这一阶段开始改变排产行为，所以必须在 `graph_analysis_mode=on` 且图已经通过阶段 11 准入之后才启用。
 
-### 12.1 新建 ready_queue.py
+大白话说：report 模式只是“看一眼图，写一段报告”；阶段 12 是“这张图真的决定哪些工序现在能被拿来候选”。所以这里不能靠 optimizer 之后的报告投影硬凑，必须在排产前准备一份给 SGS 用的 ready 上下文。
 
-```python
-from __future__ import annotations
+### 12.0 阶段目标和非目标
 
-from typing import Iterable, List, Set
+目标：
 
-
-def get_ready_operations(
-    graph,
-    unscheduled_node_ids: Iterable[str],
-    completed_or_scheduled_node_ids: Iterable[str],
-) -> List[str]:
-    unscheduled: Set[str] = set(unscheduled_node_ids)
-    done: Set[str] = set(completed_or_scheduled_node_ids)
-
-    ready = []
-
-    for node_id in unscheduled:
-        predecessors = set(graph.predecessors(node_id))
-        if predecessors.issubset(done):
-            ready.append(node_id)
-
-    return ready
+```text
+1. 实现已有 `core/services/scheduler/graph/ready_queue.py`，让它能根据前置关系算出当前 ready 工序。
+2. 在 optimizer / SGS 之前准备图调度上下文。
+3. 把 ready 上下文沿 `optimize_schedule()` -> `GreedyScheduler.schedule()` -> `dispatch_sgs()` 传下去。
+4. `graph_analysis_mode=on + DAG` 时，SGS 候选集合来自图 ready 队列。
+5. frozen / seed 工序只作为已固定前置，不允许重新进入待排候选。
+6. 保持原评分、原资源匹配、原 dispatch key 语义不变。
 ```
 
-### 12.2 当前仓库接入点
+非目标：
 
-当前 SGS 的候选收集在：
+```text
+不实现 graph_score_bonus。
+不接关键路径评分。
+不改 build_dispatch_key()。
+不改 SLACK / CR / ATC / 批次优先级 / 交期排序含义。
+不做候选方案池。
+不做候选落库。
+不做页面切换。
+不做 debug export。
+不把 ready_status / ready_date 当成图 ready 队列。
+```
+
+### 12.1 整体实现要求
+
+阶段 12 的代码要求和 PR-5 总要求一致，执行时按下面口径落到 feature design：
+
+```text
+1. ready_queue.py 保持纯净：
+   可以接收普通 Python 映射、集合、列表。
+   不在模块导入时 import NetworkX。
+   不 import orchestrator、optimizer、GreedyScheduler 或 SGS。
+
+2. graph 预处理保持高内聚：
+   从 schedule_input.algo_ops + batches + resource_pool + frozen_op_ids 构建图。
+   只在 `core/services/scheduler/graph/` 内部接触 nx.DiGraph。
+   输出给排产链的是普通上下文，不是图对象。
+
+3. SGS 保持低耦合：
+   dispatch_sgs() 只多接一个可选 graph_ready_context。
+   没有 graph_ready_context 时，旧 `_collect_sgs_candidates()` 路径完全不变。
+   有 graph_ready_context 时，只替换“候选资格集合”，不替换评分、资源匹配和实际派工。
+
+4. 不静默回退：
+   `graph_analysis_mode=on + DAG` 时，graph_ready_context 必须存在并生效。
+   如果 context 丢了、字段缺了、op_id 映射不上，应该失败并被测试抓住，不能悄悄走旧 SGS。
+
+5. 不过度兜底：
+   ready 为空不自动回旧 SGS。
+   如果图已经声明 DAG，但调度过程中出现无 ready 且仍有未排工序，这是合同错误，应抛清楚的 ValidationError。
+```
+
+### 12.2 当前仓库事实和必须修正的误区
+
+当前 report 图分析位置是：
+
+```text
+core/services/scheduler/run/schedule_orchestrator.py
+  optimize_schedule_fn(...)
+  build_validated_schedule_payload(...)
+  maybe_analyze_schedule_graph(schedule_input)
+```
+
+这个位置对 report 模式是对的，因为 report 只需要看最终输入并写摘要。但它对 ready 队列不够早，因为 SGS 候选集合已经在 `optimize_schedule_fn(...)` 里算完了。
+
+PR-5 必须改成下面这个目标顺序：
+
+```text
+orchestrate_schedule_run()
+  prepare_schedule_graph_for_dispatch(schedule_input)
+    -> graph_analysis_public
+    -> graph_analysis_diagnostics
+    -> graph_ready_context 或 None
+  optimize_schedule_fn(..., graph_ready_context=graph_ready_context)
+  build_validated_schedule_payload(...)
+  allocate_next_version()
+  build_result_summary(..., graph_analysis_public, graph_analysis_diagnostics)
+  persist_schedule(...)
+```
+
+这样做的目的：
+
+```text
+1. SGS 能在排产前拿到 ready 上下文。
+2. result_summary 继续使用同一份图分析结果，不重复建图、不前后口径漂移。
+3. on + block=yes + 有环可以在 optimizer 前失败，不浪费一次排产尝试，也不产生半成品。
+```
+
+当前 SGS 候选收集在：
 
 ```text
 core/algorithms/greedy/dispatch/sgs_scoring.py
-  _collect_sgs_candidates()
+  _collect_sgs_candidates(...)
 ```
 
-它现在的 ready 语义是：
+现有语义是：
 
 ```text
-每个批次只拿下一道工序。
+每个批次只拿 next_idx 指向的下一道工序。
 ```
 
-不是完整 DAG ready 队列。所以文档和实现都不能直接说“现有就是 DAG ready”。应当写成：
+这不是完整 DAG ready 队列。PR-5 不能把旧 `next_idx` 说成图 ready；也不能一刀切删掉它。正确口径是：
 
 ```text
-在 graph_analysis_mode=on 时，把现有 SGS 候选队列改造成图 ready 队列。
-ready 队列只决定“哪些工序有资格被选”。
-具体选哪个，仍交给原来的排序/评分策略。
+graph_ready_context is None:
+  继续使用旧 `_collect_sgs_candidates()`。
+
+graph_ready_context 存在:
+  从图 ready 上下文取本轮可候选 op_id。
+  再映射回 `(batch_id, op)` 交给现有 `_score_candidates()`。
+  `_score_candidates()`、`_score_candidate()`、`_dispatch_selected()` 继续沿用原逻辑。
 ```
 
-### 12.3 改造排产主循环的目标形态
+### 12.3 图调度上下文合同
 
-原逻辑类似：
+建议新增一个小的准备入口，优先放在 `core/services/scheduler/run/schedule_graph_report.py` 或同目录很窄的 helper 文件里；如果 `schedule_graph_report.py` 继续变大，再拆成 `core/services/scheduler/run/schedule_graph_dispatch.py`。
+
+建议名字：
+
+```text
+prepare_schedule_graph_for_dispatch(schedule_input)
+```
+
+返回值建议是一个小 dataclass，字段只放 PR-5 必需内容：
 
 ```python
-for op in sorted_pending_ops:
-    schedule(op)
+@dataclass(frozen=True)
+class ScheduleGraphDispatchPreparation:
+    graph_analysis_public: Optional[Dict[str, Any]]
+    graph_analysis_diagnostics: Optional[Dict[str, Any]]
+    graph_ready_context: Optional[Any]
 ```
 
-或 SGS 当前类似：
+`graph_ready_context` 只能包含普通 Python 数据，建议字段：
 
 ```text
-每轮从每个 batch 拿 next_idx 对应的下一道工序。
+enabled: bool
+disabled_reason: Optional[str]
+schedulable_op_ids: Set[int]
+fixed_op_ids: Set[int]
+predecessor_op_ids_by_op_id: Dict[int, Set[int]]
+successor_op_ids_by_op_id: Dict[int, Set[int]]
 ```
 
-目标形态：
+说明：
+
+```text
+schedulable_op_ids 只来自 schedule_input.algo_ops_to_schedule。
+fixed_op_ids 来自 frozen_op_ids / seed_results 对应的 op_id。
+predecessor_op_ids_by_op_id 可以包含 fixed_op_ids，因为固定工序能释放后继。
+successor_op_ids_by_op_id 用于排成功后释放后续工序。
+不要把 node_id 当成算法层主键；算法层继续按 op_id 找工序对象。
+不要把 nx.DiGraph 放进 graph_ready_context。
+```
+
+如果实现时确实需要排序稳定性，ready 队列返回结果按下面顺序排序：
+
+```text
+batch_order
+seq
+op_id
+```
+
+这样能保证同一批数据多次运行候选顺序稳定，也方便测试。
+
+### 12.4 on 模式准入矩阵
+
+阶段 12 开始后，`on` 模式不能再长期停在 `effective_mode="report_only"`。按下面矩阵执行：
+
+| graph_analysis_mode | 图分析结果 | graph_block_on_cycle | graph_ready_context | 排产行为 |
+|---|---|---|---|---|
+| off | 不运行 | 任意 | None | 完全旧排产，不写 graph_analysis |
+| report | available / unavailable / input_error / build_error | 任意 | None | 只写报告，不改变排产 |
+| on | available + is_dag=true + graph_enhancement_allowed=true | no/yes | 必须存在 | SGS 使用图 ready 队列 |
+| on | available + is_dag=false | yes | None | optimizer 前抛 ValidationError，不分配 version |
+| on | available + is_dag=false | no | None | 继续旧 SGS，但 public 明确写图增强禁用原因 |
+| on | unavailable / input_error / build_error | no/yes | None | 抛中文 ValidationError，不允许静默走旧 SGS |
+
+最后一行是阶段 11 “后续 on 模式启用前另立合同”的补齐口径。原因很简单：PR-5 之后 `on` 已经代表“图 ready 队列要参与排产”，如果 NetworkX 不可用或图输入坏了还悄悄走旧 SGS，用户会以为关键链已经参与，实际没有参与。
+
+建议错误 reason：
+
+```text
+graph_enhancement_unavailable
+graph_input_contract_error
+graph_build_contract_error
+schedule_graph_cycle
+```
+
+建议 public 字段：
 
 ```python
-unscheduled = set(all_node_ids)
-scheduled = set(already_fixed_node_ids)
-
-while unscheduled:
-    ready_node_ids = get_ready_operations(
-        graph=graph,
-        unscheduled_node_ids=unscheduled,
-        completed_or_scheduled_node_ids=scheduled,
-    )
-
-    if not ready_node_ids:
-        raise ValidationError(
-            "没有可排工序：可能存在循环依赖或前置工序状态异常。",
-            field="graph_analysis",
-        )
-
-    selected_node_id = choose_best_ready_operation(ready_node_ids)
-    schedule_one_operation(selected_node_id)
-
-    unscheduled.remove(selected_node_id)
-    scheduled.add(selected_node_id)
+{
+    "effective_mode": "graph_ready_queue",
+    "graph_enhancement_allowed": True,
+    "graph_enhancement_disabled_reason": None,
+    "ready_queue_enabled": True,
+}
 ```
 
-### 12.4 冻结窗口和 seed_results 注意点
+有环且 block=no 时：
 
-这是当前仓库特别重要的边界：
+```python
+{
+    "effective_mode": "sgs_without_graph_ready_queue",
+    "graph_enhancement_allowed": False,
+    "graph_enhancement_disabled_reason": "schedule_graph_cycle",
+    "ready_queue_enabled": False,
+    "graph_enhancement_message": "工序图存在循环，本次跳过图 ready 队列，继续使用原 SGS 候选逻辑。",
+}
+```
+
+### 12.5 ready_queue.py 的职责
+
+`core/services/scheduler/graph/ready_queue.py` 当前是占位文件，PR-5 要实现它，但不要把它写成新的调度器。
+
+建议职责：
 
 ```text
-freeze_window 会先从上一版排程生成 seed_results。
-冻结工序会从 algo_ops_to_schedule 里剔除。
-图 ready 队列不能把冻结工序重新放回待排候选队列。
+1. 根据 predecessor 映射和 completed/fixed op_id，算当前 ready op_id。
+2. 排除已经 scheduled、failed_blocked、not_schedulable 的 op_id。
+3. 按稳定 key 排序 ready op_id。
+4. 提供 mark_scheduled(op_id) 或返回新集合的纯函数式更新方式。
 ```
 
-建议规则：
+建议核心函数形态：
+
+```python
+def get_ready_operation_ids(
+    *,
+    schedulable_op_ids: Iterable[int],
+    completed_or_fixed_op_ids: Iterable[int],
+    blocked_op_ids: Iterable[int],
+    predecessor_op_ids_by_op_id: Mapping[int, Set[int]],
+    sort_key_by_op_id: Mapping[int, Tuple[int, int, int]],
+) -> List[int]:
+    ...
+```
+
+实现要求：
 
 ```text
-待排节点：来自 schedule_input.algo_ops_to_schedule。
-已固定节点：来自 seed_results / frozen_op_ids。
-已固定节点可以作为前置已完成条件，但不能被再次排。
+不接收 nx.DiGraph。
+不读 cfg。
+不读数据库。
+不读 schedule_input。
+不调 estimate_internal_slot。
+不调 _score_candidate。
+不判断 graph_analysis_mode。
+只做“哪些 op_id ready”这一个问题。
 ```
 
-### 12.5 测试
+### 12.6 SGS 接入方式
 
-新增：
+`dispatch_sgs()` 增加可选参数：
+
+```python
+graph_ready_context: Optional[Any] = None
+```
+
+传递链路必须覆盖：
+
+```text
+core/services/scheduler/run/schedule_orchestrator.py
+  optimize_schedule_fn(..., graph_ready_context=...)
+
+core/services/scheduler/run/schedule_optimizer.py
+  optimize_schedule(..., graph_ready_context=...)
+
+core/services/scheduler/run/schedule_optimizer_steps.py
+  _schedule_with_optional_strict_mode(..., graph_ready_context=...)
+  _run_multi_start(..., graph_ready_context=...)
+  _run_ortools_warmstart(..., graph_ready_context=...)
+
+core/services/scheduler/run/optimizer_local_search.py
+  run_local_search(..., graph_ready_context=...)
+
+core/algorithms/greedy/scheduler.py
+  GreedyScheduler.schedule(..., graph_ready_context=...)
+
+core/algorithms/greedy/dispatch/sgs.py
+  dispatch_sgs(..., graph_ready_context=...)
+```
+
+SGS 内部规则：
+
+```text
+graph_ready_context is None:
+  原 `_collect_sgs_candidates()` 保持不变。
+
+graph_ready_context 存在:
+  不再按“每个 batch 下一道工序”收候选。
+  每轮从 ready_context 拿 ready_op_ids。
+  ready_op_ids 映射回当前 ops_by_batch 里的 op。
+  映射不到说明上下文和待排集合不一致，应抛 ValidationError 或合同错误，不静默忽略。
+  评分仍走 `_score_candidates()`。
+  排成功后把 op_id 加入 completed/scheduled，再释放后继。
+  排失败并 block 时，不释放后继工序。
+```
+
+不要改的地方：
+
+```text
+_score_external_candidate()
+_score_internal_candidate()
+_dispatch_key()
+build_dispatch_key()
+estimate_internal_slot()
+auto_assign_resources()
+```
+
+### 12.7 frozen / seed 边界
+
+这是 PR-5 最容易出错的地方，必须写成测试：
+
+```text
+图输入：schedule_input.algo_ops，包含 frozen 节点和待排节点。
+待排候选：只能来自 schedule_input.algo_ops_to_schedule。
+已固定前置：frozen_op_ids / seed_results 对应 op_id。
+```
+
+规则：
+
+```text
+固定节点可以让后继工序变 ready。
+固定节点不能进入 schedulable_op_ids。
+固定节点不能出现在 SGS candidates。
+固定节点不能再次写入新的 schedule_rows。
+固定节点的资源占用继续沿用现有 seed_results 逻辑，不在 ready_queue.py 里重算资源。
+```
+
+如果 frozen_op_ids 里有一个 op_id，但图输入没有对应节点：
+
+```text
+不在 ready_queue.py 里兜底补节点。
+由 graph input adapter / preparation 阶段暴露合同错误或 warning。
+```
+
+### 12.8 测试用例
+
+新增或扩展：
 
 ```text
 tests/scheduler_graph/test_ready_queue.py
+tests/regression_scheduler_graph_on_mode_contract.py
 ```
 
-测试 1：线性
+ready_queue.py 单测至少覆盖：
 
 ```text
-A -> B -> C
-done = {}
-ready = [A]
-```
+测试 1：线性 A -> B -> C
+  done = {}
+  ready = [A]
 
-测试 2：
+测试 2：A 完成后释放 B
+  done = {A}
+  ready = [B]
 
-```text
-done = {A}
-ready = [B]
-```
-
-测试 3：
-
-```text
-done = {A, B}
-ready = [C]
-```
+测试 3：A、B 完成后释放 C
+  done = {A, B}
+  ready = [C]
 
 测试 4：输入顺序反过来
+  输入 C, B, A，依赖 A -> B -> C。
+  ready 输出仍按 batch_order / seq / op_id 稳定排序。
 
-```text
-输入顺序 C, B, A
-依赖 A -> B -> C
+测试 5：分叉
+  A -> B, A -> C。
+  done = {A}
+  ready = [B, C]，顺序稳定。
+
+测试 6：汇合
+  A -> C, B -> C。
+  done = {A}
+  C 不 ready。
+  done = {A, B}
+  C ready。
+
+测试 7：冻结窗口
+  A -> B -> C。
+  A 已在 frozen_op_ids / seed_results。
+  schedulable = {B, C}
+  fixed = {A}
+  ready = [B]。
+  A 不能出现在 ready。
+
+测试 8：失败不释放后继
+  A 派工失败且 batch 被 block。
+  B 仍不 ready。
+
+测试 9：坏 op_id 映射
+  predecessor 里出现 schedulable 集合外且 fixed 集合外的 op_id。
+  抛清楚的合同错误，不能忽略。
 ```
 
-期望：
+主链回归至少覆盖：
 
 ```text
-实际可排顺序仍然是 A, B, C。
+测试 1：off 模式
+  不准备 graph_ready_context。
+  不 import graph 模块。
+  schedule_rows / best_order / selected_batch_ids 与旧口径一致。
+
+测试 2：report 模式
+  只写 graph_analysis。
+  不调用 ready_queue。
+  不改变 schedule_rows。
+
+测试 3：on + DAG
+  graph_ready_context 被传进 dispatch_sgs。
+  SGS 候选不违反前后置。
+  后工序不会排到前工序之前。
+  public.effective_mode="graph_ready_queue"。
+
+测试 4：on + cycle + block=yes
+  optimizer 前抛 ValidationError。
+  不调用 allocate_next_version。
+  不调用 persist_schedule。
+
+测试 5：on + cycle + block=no
+  不启用 ready_queue。
+  继续旧 SGS。
+  public.effective_mode="sgs_without_graph_ready_queue"。
+  public.graph_enhancement_disabled_reason="schedule_graph_cycle"。
+
+测试 6：on + graph unavailable / input_error / build_error
+  抛中文 ValidationError。
+  不能静默走旧 SGS。
+
+测试 7：frozen/seed
+  frozen 工序释放后继。
+  frozen 工序不进入 candidates。
+  frozen 工序不重复写 schedule_rows。
+
+测试 8：无 graph context 的 SGS
+  `_collect_sgs_candidates()` 旧行为保持。
+  `tests/test_sgs_internal_scoring_matches_execution.py` 和 `tests/test_sgs_total_hours_cache.py` 继续通过。
 ```
 
-测试 5：冻结窗口
+### 12.9 实施顺序
+
+按下面顺序做，避免先改 SGS 后发现安全门没定：
 
 ```text
-A -> B -> C
-A 已在 seed_results / frozen_op_ids
-unscheduled = {B, C}
-done = {A}
-ready = [B]
+1. 先补阶段 11 cycle policy 测试，并让红灯说明当前 on+cycle 没有安全门。
+2. 落阶段 11 helper 和 orchestrator 调用，确保 on+block=yes 不分配 version。
+3. 在 `ready_queue.py` 写纯函数 ready 计算和单测。
+4. 新增 graph dispatch preparation：构建图、产出 public/diagnostics、产出 plain graph_ready_context。
+5. 把 orchestrator 改为 optimizer 前准备图上下文，后续 summary 复用同一份 public/diagnostics。
+6. 沿 optimizer / scheduler / dispatch_sgs 传递 graph_ready_context。
+7. 只在 dispatch_sgs 候选收集处接 graph_ready_context，其余评分和派工函数不改。
+8. 补 on 模式主链回归，证明 DAG 才启用 ready 队列，有环或图错误不会静默回退。
+9. 复跑 PR-3 / PR-4 report 合同，证明 off/report 仍不改变排产。
+10. 回填 feature / roadmap / items.yaml，写清 PR-6 只能继承 ready 资格，不能继承评分证明。
 ```
 
-验收：
+### 12.10 验收命令
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_scheduler_graph_cycle_policy_contract.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/scheduler_graph/test_ready_queue.py tests/regression_scheduler_graph_on_mode_contract.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_scheduler_graph_report_mode_contract.py tests/regression_scheduler_graph_report_mode_service_contract.py tests/regression_scheduler_graph_summary_contract.py tests/regression_scheduler_graph_operation_logs_contract.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_sgs_internal_scoring_matches_execution.py tests/test_sgs_total_hours_cache.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler/run/schedule_graph_report.py core/services/scheduler/run/schedule_orchestrator.py core/services/scheduler/run/schedule_optimizer.py core/services/scheduler/run/schedule_optimizer_steps.py core/services/scheduler/run/optimizer_local_search.py core/services/scheduler/graph/ready_queue.py core/algorithms/greedy/scheduler.py core/algorithms/greedy/dispatch/sgs.py core/algorithms/greedy/dispatch/sgs_scoring.py tests/regression_scheduler_graph_cycle_policy_contract.py tests/scheduler_graph/test_ready_queue.py tests/regression_scheduler_graph_on_mode_contract.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright core/services/scheduler/run/schedule_graph_report.py core/services/scheduler/run/schedule_orchestrator.py core/services/scheduler/run/schedule_optimizer.py core/services/scheduler/run/schedule_optimizer_steps.py core/services/scheduler/run/optimizer_local_search.py core/services/scheduler/graph/ready_queue.py core/algorithms/greedy/scheduler.py core/algorithms/greedy/dispatch/sgs.py core/algorithms/greedy/dispatch/sgs_scoring.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .codestable/tools/validate-yaml.py --file .codestable/roadmap/networkx-scheduler-graph-introduction/networkx-scheduler-graph-introduction-items.yaml --yaml-only
+```
+
+如果 PR-5 代码、测试、feature 文档、roadmap 和 items.yaml 都已经提交，工作树干净后再跑：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
+```
+
+如果工作树不是干净的，只能说 targeted proof 通过，不能说 clean-worktree proof。
+
+### 12.11 阶段完成口径
+
+阶段 12 完成后必须能对 PR-6 说清：
 
 ```text
-graph_analysis_mode=report 时，不参与 ready 队列。
-graph_analysis_mode=on 时，ready 队列不违反前后置。
-冻结窗口 seed 工序不被重复排。
+PR-5 已证明：
+  DAG 可用时，SGS 候选集合来自图 ready 队列。
+  ready 队列不违反前后置。
+  frozen / seed 工序不会重复排。
+  off / report 不改变排产结果。
+  on + 有环 / 图不可用不会静默伪装成图增强成功。
+
+PR-5 未证明：
+  关键路径工序更优先。
+  graph_score_bonus 方向正确。
+  SLACK / CR / ATC 和图分数如何合并。
+  多权重候选试跑、自动择优、候选落库或页面切换。
 ```
 
 ## 阶段 13：关键路径评分接入
@@ -7058,6 +8086,16 @@ impact_count
 generation_index
 ```
 
+PR-4 执行时按下面口径处理：
+
+```text
+1. PR-4 默认性能护栏先测 basic report。
+2. basic report 是明确合同：它不计算完整 node_metrics / downstream_critical_minutes。
+3. 如果要测 full metrics，只能作为单独子用例或后续优化证据，不能影响 report 默认输出。
+4. 如果 full metrics 慢，不允许代码自动把 full 改成 basic 后继续说“成功”；必须把选择写回 roadmap 或 feature design。
+5. performance_2000_nodes.txt 要写清楚本次测的是 basic 还是 full，避免后续把两种耗时混用。
+```
+
 ## 阶段 19：排产服务接入点建议
 
 ### 19.1 找“加载待排工序”的位置
@@ -7544,6 +8582,10 @@ on 模式：
 
 ## 变更记录
 
+- 2026-05-18：细化 PR-5 `scheduler-graph-ready-queue-on-mode` 到可执行级：补齐 PR-5 总体实现要求，明确优雅简洁、不做过度兜底、不做静默回退、不做过度防御性编程、高内聚低耦合；把阶段 12 从草图扩成完整执行计划，要求在 optimizer 前准备图调度上下文，沿 optimizer / GreedyScheduler / dispatch_sgs 传入 plain graph_ready_context，只在 DAG 且 graph_enhancement_allowed=true 时启用 ready 队列；补齐 on 模式不可用/有环矩阵、frozen/seed 边界、SGS 接入规则、测试用例、实施顺序、验收命令和 PR-6 交接边界；同步 items.yaml 的 PR-5 description、primary_paths、forbidden_paths、exit_checks 和 notes。
+- 2026-05-18：完成 PR-4 `scheduler-graph-debug-performance`：新增 2000 节点 basic report 性能测试和 `evidence/scheduler_graph/performance_2000_nodes.txt`，补 diagnostics 长文本截断合同、真实服务级 off/report/on 普通与 frozen/seed 对比、OperationLogs known graph error 小摘要检查，并创建 `.codestable/features/2026-05-18-scheduler-graph-debug-performance/` 验收记录。PR-4 没有实现 `graph_debug_export`、PR-5 有环安全门、ready 队列或 PR-6 图评分，`graph_analysis_mode=on` 仍然只是 `report_only`。
+- 2026-05-18：细化 PR-4，把“性能护栏 + diagnostics 加固 + 真实集成证明”写成可执行计划：明确 PR-4 先证据后导出，补齐整体实现要求、文件边界、实施顺序、basic report 性能口径、diagnostics 采样/JSON 安全投影、known graph error 顶层可见、真实服务级 off/report/on 对比、OperationLogs 不泄漏、受控 debug export、验收命令和明确不做；同时把“优雅简洁、不做过度兜底、不做静默回退、不做过度防御性编程、高内聚低耦合”写成 PR-4 的硬要求。
+- 2026-05-18：细化阶段 11，把“有环时的处理策略”写成 PR-5 开始前的可执行安全门：明确阶段目标、前置条件、整体实现要求、复用现有 graph 分析接口、不新造错误系统、配置/模式矩阵、接入位置、cycle_edges 采样来源、report / on+block=yes / on+block=no 三种处理口径、阶段 12 准入合同、测试用例、实施顺序、验收命令和明确不做；同时把“优雅简洁、不做过度兜底、不做静默回退、不做过度防御性编程、高内聚低耦合”写成阶段 11 的硬要求。
 - 2026-05-17：补齐用户讨论后形成的完整产品口径：正式交付默认开启关键链；排产时原算法先跑作为兜底，关键链默认 5 档权重且档数可配置；系统复用现有评分自动择优，并在评分接近时用关键链健康做平衡判断；所有候选保留摘要，代表方案保留明细；甘特图、周计划、资源派工、分析页等主要结果页默认展示最终采用方案，并支持切换最终采用 / 原算法最好 / 关键链最好；第一版串行试跑，不做实时评分、多进程、续跑或新数据库。
 - 2026-05-17：根据用户确认，把多权重试跑的时间上限策略定为第一版先不做续跑；时间到了就从已完成候选里选择最好结果并提示完成数量。真正“继续补跑剩余方案”作为阶段 23 后续增强，要求先冻结输入快照、保存候选队列和代表性明细，再提供续跑入口。
 - 2026-05-17：实施阶段 10，接入 `graph_analysis_mode=report` 的旁路图分析：排产和落库 payload 算完后才生成 `algo.graph_analysis` 小摘要，并把采样诊断写入 `diagnostics.graph_analysis`；`off` 模式仍不 import graph 模块，`on` 在本阶段只标成 `effective_mode="report_only"`。补齐三份 report/summary/OperationLogs 回归测试，复跑阶段 10 建议测试、`tests/scheduler_graph`、ruff、pyright，并用阶段 0 三个 baseline case 验证 report 模式不改变排产结果。提交后 clean-worktree 门禁先发现 orchestrator 文件大小和 summary 函数复杂度踩线，已把图报告 helper 收到 `schedule_graph_report.py` 并拆出 summary 小函数，两个 architecture fitness 节点复验通过；clean-worktree quality gate 需在 amend 后重新跑完整链路。

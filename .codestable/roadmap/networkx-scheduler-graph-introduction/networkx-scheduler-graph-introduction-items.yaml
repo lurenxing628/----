@@ -102,8 +102,8 @@ items:
   - slug: scheduler-graph-debug-performance
     title: PR-4 性能护栏 + diagnostics 加固 + 真实集成证明
     description: "先证明 report 模式在真实排产链路里稳定：2000 节点性能有护栏，diagnostics 只写可控采样和 JSON 可序列化 warning.data，known graph error 能在 public 顶层看到，frozen/seed scope 不被误排；受控 graph_debug_export 只能作为通过这些证据后的附属调试能力。"
-    status: planned
-    feature: null
+    status: done
+    feature: .codestable/features/2026-05-18-scheduler-graph-debug-performance/
     minimal_loop: false
     depends_on: [scheduler-graph-report-mode]
     primary_paths:
@@ -112,31 +112,59 @@ items:
       - core/services/scheduler/graph/metrics.py
       - core/services/scheduler/config/
       - logs/schedule_graph/
+      - evidence/scheduler_graph/
       - evidence/scheduler_graph/performance_2000_nodes.txt
       - tests/regression_scheduler_graph_report_mode_contract.py
+      - tests/regression_scheduler_graph_report_mode_service_contract.py
       - tests/regression_scheduler_graph_summary_contract.py
+      - tests/regression_scheduler_graph_operation_logs_contract.py
       - tests/scheduler_graph/test_graph_performance.py
     exit_checks:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_graph/test_graph_performance.py
-      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_graph_report_mode_contract.py tests/regression_scheduler_graph_summary_contract.py tests/regression_scheduler_graph_operation_logs_contract.py
-    notes: "2026-05-18 调整范围：PR-4 不再只是 graph_debug_export 文件导出。阶段 10 加固已先补 basic metrics、warning.data 深层 JSON 安全投影、known graph error 顶层 warning、frozen/seed scope、P3 exporter/config/fail-fast 和真实服务级回归；PR-4 仍必须补齐 2000 节点性能护栏、受控 debug/export 和更完整的规模证据。若逐节点 downstream_critical_minutes 太慢，第一版先只启用 critical_path、impact_count、generation_index；不能静默关闭或把慢路径藏起来。"
+      - test -f evidence/scheduler_graph/performance_2000_nodes.txt
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_graph_report_mode_contract.py tests/regression_scheduler_graph_report_mode_service_contract.py tests/regression_scheduler_graph_summary_contract.py tests/regression_scheduler_graph_operation_logs_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_graph/test_exporter.py tests/scheduler_graph/test_analysis_service.py tests/scheduler_graph/test_metrics_critical_path.py tests/scheduler_graph/test_metrics_impact.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_graph_config_bootstrap_contract.py tests/regression_migrate_v9_graph_config_defaults.py tests/regression_scheduler_config_spec_sync_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler/run/schedule_graph_report.py core/services/scheduler/graph tests/scheduler_graph tests/regression_scheduler_graph_report_mode_contract.py tests/regression_scheduler_graph_summary_contract.py tests/regression_scheduler_graph_operation_logs_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright core/services/scheduler/run/schedule_graph_report.py core/services/scheduler/graph
+    notes: "已完成：2026-05-18 新增 2000 节点 basic report 性能护栏和 evidence/scheduler_graph/performance_2000_nodes.txt，明确 node_metrics / downstream_critical_minutes 在 basic report 中是 skipped_basic_report，不是静默降级；diagnostics 补长文本采样、长度和截断标记，继续保持 warning.data JSON 安全投影；真实服务级回归补 off/report/on 普通场景和 frozen/seed 场景对比，确认 rows、best_order、selected_batch_ids、freeze_window、resource_pool 不变，report/on 只新增 graph_analysis 小摘要且 on 仍为 report_only；OperationLogs 补 known graph error 小摘要检查，不泄漏 diagnostics、nodes、edges、raw、完整 node_metrics 或完整 topological_order。本阶段未实现 graph_debug_export、PR-5 有环安全门、ready 队列或 PR-6 图评分，也未改 schedule_optimizer.py、GreedyScheduler、SGS、validated_schedule_payload 或 schedule_rows。"
 
   - slug: scheduler-graph-ready-queue-on-mode
-    title: PR-5 on 模式 ready 队列
-    description: "在 graph_analysis_mode=on 时，让图 ready 队列参与 SGS 候选集合；seed_results 和 frozen_op_ids 只作为已固定前置，不得重复排。"
+    title: PR-5 有环安全门 + on 模式 ready 队列
+    description: "先实现有环安全门：report 只提示，on+block=yes 在 version 分配前阻止，on+block=no 可见禁用图增强；再实现已有 ready_queue.py，并只在 graph_enhancement_allowed=true 的 DAG 场景下让 ready 队列过滤 SGS 候选。PR-5 不做图评分、不做候选池、不做落库和页面。"
     status: planned
     feature: null
     minimal_loop: false
     depends_on: [scheduler-graph-debug-performance]
     primary_paths:
+      - core/services/scheduler/run/schedule_graph_report.py
+      - core/services/scheduler/run/schedule_orchestrator.py
+      - core/services/scheduler/run/schedule_optimizer.py
+      - core/services/scheduler/run/schedule_optimizer_steps.py
+      - core/services/scheduler/run/optimizer_local_search.py
       - core/services/scheduler/graph/ready_queue.py
+      - core/algorithms/greedy/scheduler.py
       - core/algorithms/greedy/dispatch/sgs.py
       - core/algorithms/greedy/dispatch/sgs_scoring.py
+      - tests/regression_scheduler_graph_cycle_policy_contract.py
+      - tests/scheduler_graph/test_ready_queue.py
       - tests/regression_scheduler_graph_on_mode_contract.py
+    forbidden_paths:
+      - core/services/scheduler/graph/scoring.py
+      - core/algorithms/dispatch_rules.py
+      - schema.sql
+      - data/repositories/schedule_candidate_repo.py
+      - templates/
+      - web/routes/
     exit_checks:
-      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_graph/test_ready_queue.py tests/regression_scheduler_graph_on_mode_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_scheduler_graph_cycle_policy_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/scheduler_graph/test_ready_queue.py tests/regression_scheduler_graph_on_mode_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_scheduler_graph_report_mode_contract.py tests/regression_scheduler_graph_report_mode_service_contract.py tests/regression_scheduler_graph_summary_contract.py tests/regression_scheduler_graph_operation_logs_contract.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_sgs_internal_scoring_matches_execution.py tests/test_sgs_total_hours_cache.py
-    notes: "当前 SGS 候选逻辑是每个批次下一道工序，不是完整 DAG ready 队列；改动必须在 feature flag 后面。PR-5 仍被 PR-4 阻塞：必须先看到性能护栏、diagnostics 加固、known graph error 顶层 warning、frozen/seed scope 和真实集成证明全部通过，才能开始让图 ready 队列参与 SGS 候选集合。"
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler/run/schedule_graph_report.py core/services/scheduler/run/schedule_orchestrator.py core/services/scheduler/run/schedule_optimizer.py core/services/scheduler/run/schedule_optimizer_steps.py core/services/scheduler/run/optimizer_local_search.py core/services/scheduler/graph/ready_queue.py core/algorithms/greedy/scheduler.py core/algorithms/greedy/dispatch/sgs.py core/algorithms/greedy/dispatch/sgs_scoring.py tests/regression_scheduler_graph_cycle_policy_contract.py tests/scheduler_graph/test_ready_queue.py tests/regression_scheduler_graph_on_mode_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright core/services/scheduler/run/schedule_graph_report.py core/services/scheduler/run/schedule_orchestrator.py core/services/scheduler/run/schedule_optimizer.py core/services/scheduler/run/schedule_optimizer_steps.py core/services/scheduler/run/optimizer_local_search.py core/services/scheduler/graph/ready_queue.py core/algorithms/greedy/scheduler.py core/algorithms/greedy/dispatch/sgs.py core/algorithms/greedy/dispatch/sgs_scoring.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .codestable/tools/validate-yaml.py --file .codestable/roadmap/networkx-scheduler-graph-introduction/networkx-scheduler-graph-introduction-items.yaml --yaml-only
+    notes: "当前 SGS 候选逻辑是每个批次下一道工序，不是完整 DAG ready 队列；改动必须在 feature flag 后面。PR-5 开始前必须承认当前 graph report 位于 optimizer 之后，ready 队列要影响 SGS，必须新增 optimizer/SGS 前可用的图准入数据通道，不能复用 optimizer 后的 report 投影冒充排产输入。PR-5 内部先做阶段 11 有环安全门和测试，再做阶段 12 ready_queue.py 和 graph_ready_context 传递；DAG 且 graph_enhancement_allowed=true 才能启用 ready 队列。PR-5 完成后只把 ready 资格交给 PR-6，PR-6 仍需单独证明图评分方向和原有 SLACK/CR/ATC 语义不被破坏。"
 
   - slug: scheduler-graph-critical-score-on-mode
     title: PR-6 关键路径评分接入

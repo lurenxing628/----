@@ -1,0 +1,45 @@
+feature: 2026-05-18-scheduler-graph-debug-performance
+created: 2026-05-18
+
+steps:
+  - action: "只读核实：并行 Subagent 核查 PR-4 范围、现有代码、测试、证据缺口和越界风险"
+    exit_signal: "确认 PR-4 缺口集中在 2000 节点性能证据、真实服务级 frozen/seed 对比、CodeStable 回填；不进入 PR-5/PR-6"
+    status: done
+  - action: "性能护栏：新增 2000 节点 basic report 性能测试和 evidence 文件"
+    exit_signal: "性能测试断言 100x20 工序图的节点、边、耗时、摘要大小和 basic metrics 口径"
+    status: done
+  - action: "diagnostics 加固：补长文本截断合同，保持 JSON 安全投影"
+    exit_signal: "长 warning message / warning.data string 只保留 sample、length、truncated，不撑大 result_summary"
+    status: done
+  - action: "真实链路证明：扩展服务级 off/report/on 回归，覆盖 freeze seed"
+    exit_signal: "同一套冻结窗口场景下 rows、best_order、selected_batch_ids、freeze_window、resource_pool 在 off/report/on 下一致"
+    status: done
+  - action: "OperationLogs 证明：补 known graph error 小摘要检查"
+    exit_signal: "OperationLogs 能看到 public reason/message，但看不到 diagnostics、nodes、edges、raw、完整 node_metrics"
+    status: done
+  - action: "CodeStable 回填：更新 feature、roadmap 和 items.yaml"
+    exit_signal: "PR-4 状态、feature 路径、完成范围、未做范围和验证口径与实际代码一致"
+    status: done
+
+checks:
+  - item: "2000 节点 basic report 性能护栏"
+    source: tests/scheduler_graph/test_graph_performance.py
+    status: passed
+  - item: "performance_2000_nodes.txt 已提交并标明 basic report / skipped_basic_report"
+    source: evidence/scheduler_graph/performance_2000_nodes.txt
+    status: passed
+  - item: "diagnostics 长文本截断和 JSON 安全投影"
+    source: tests/regression_scheduler_graph_summary_contract.py
+    status: passed
+  - item: "off/report/on 不改变普通服务级排产结果"
+    source: tests/regression_scheduler_graph_report_mode_service_contract.py
+    status: passed
+  - item: "off/report/on 不改变 frozen/seed 服务级排产结果"
+    source: tests/regression_scheduler_graph_report_mode_service_contract.py
+    status: passed
+  - item: "OperationLogs 不泄漏 diagnostics 或完整图"
+    source: tests/regression_scheduler_graph_operation_logs_contract.py
+    status: passed
+  - item: "PR-5/PR-6 未提前实现"
+    source: scope review
+    status: passed
