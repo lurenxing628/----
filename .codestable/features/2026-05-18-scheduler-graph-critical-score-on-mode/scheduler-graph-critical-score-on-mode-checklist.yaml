@@ -1,0 +1,54 @@
+feature: 2026-05-18-scheduler-graph-critical-score-on-mode
+created: 2026-05-18
+
+steps:
+  - action: "只读核实：并行 Subagent 核查调度主链、SGS 评分、graph 模块、配置日志和测试缺口"
+    exit_signal: "确认 PR-6 只继承 PR-5 ready 资格，不继承评分方向证明"
+    status: done
+  - action: "方案对抗复审"
+    exit_signal: "修正算法层不能反向 import service、full node_metrics 必须补性能证明两个阻塞点"
+    status: done
+  - action: "实现图评分纯函数和纯函数测试"
+    exit_signal: "bonus 方向、缺字段报错、坏字段报错和 0 权重合同被单测锁住"
+    status: done
+  - action: "准备 graph_ready_context 评分数据"
+    exit_signal: "on+DAG+权重大于 0 只跑一次 full 指标，并把评分 key 预先转成普通 tuple"
+    status: done
+  - action: "SGS 评分接入"
+    exit_signal: "score_penalty 保持第一位，图 key 只影响 ready 候选排序，SLACK/CR/ATC 方向保持"
+    status: done
+  - action: "同步配置、summary、OperationLogs 和性能证据"
+    exit_signal: "页面不再说图评分预留；summary/log 只放小摘要；2000 节点 full 路径有证据"
+    status: done
+  - action: "CodeStable 回填"
+    exit_signal: "feature、architecture、roadmap、items.yaml 和 acceptance 记录同步"
+    status: done
+
+checks:
+  - item: "图评分纯函数合同"
+    source: tests/scheduler_graph/test_graph_scoring.py
+    status: passed
+  - item: "on 模式图评分主链和 SGS 排序合同"
+    source: tests/regression_scheduler_graph_on_mode_contract.py
+    status: passed
+  - item: "有环安全门和 ready 队列旧合同"
+    source: tests/regression_scheduler_graph_cycle_policy_contract.py; tests/scheduler_graph/test_ready_queue.py
+    status: passed
+  - item: "report/summary/OperationLogs 不泄漏合同"
+    source: tests/regression_scheduler_graph_report_mode_contract.py; tests/regression_scheduler_graph_summary_contract.py; tests/regression_scheduler_graph_operation_logs_contract.py
+    status: passed
+  - item: "SGS 旧评分和 total_hours 缓存合同"
+    source: tests/test_sgs_internal_scoring_matches_execution.py; tests/test_sgs_total_hours_cache.py
+    status: passed
+  - item: "配置说明同步合同"
+    source: tests/regression_scheduler_config_spec_sync_contract.py; tests/regression_scheduler_config_route_contract.py; tests/regression_config_field_spec_contract.py; tests/regression_mirror_template_sync.py
+    status: passed
+  - item: "2000 节点 full/on-score 性能证据"
+    source: tests/scheduler_graph/test_graph_performance.py; evidence/scheduler_graph/performance_2000_nodes.txt
+    status: passed
+  - item: "架构大小和复杂度门禁"
+    source: tests/test_architecture_fitness.py; tests/test_greedy_refactor_contracts.py
+    status: passed
+  - item: "ruff / pyright / yaml / diff check"
+    source: targeted proof commands
+    status: passed

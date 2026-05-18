@@ -202,7 +202,7 @@
       </div>
 
       <h4 class="section-title">工序图分析配置</h4>
-      <div class="muted mb-2">report 会生成只读图分析报告，不改变排产结果；on 会先做图安全检查，可用 DAG 会用 ready 队列参与 SGS 候选。</div>
+      <div class="muted mb-2">report 会生成只读图分析报告，不改变排产结果；on 会先做图安全检查，可用 DAG 会用 ready 队列参与 SGS 候选，并按关键路径和后续影响权重参与候选排序。</div>
       <div class="scheduler-config-form-grid">
         <div class="scheduler-config-field">
           <label>{{ graph_analysis_mode_meta.label }}</label>

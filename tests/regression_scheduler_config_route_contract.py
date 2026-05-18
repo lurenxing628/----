@@ -288,6 +288,8 @@ def test_scheduler_config_route_uses_request_services(monkeypatch) -> None:
     assert "不会让图分析参与 ready 队列" not in notice_text
     assert "on 会先做图安全检查" in notice_text
     assert "可用 DAG 会用 ready 队列参与 SGS 候选" in notice_text
+    assert "参与候选排序" in notice_text
+    assert "仍不启用图评分" not in notice_text
     toggles = payload["scheduler_config_toggles"]
     assert set(toggles) == {
         "freeze_window_enabled",
@@ -315,12 +317,18 @@ def test_scheduler_config_route_uses_request_services(monkeypatch) -> None:
 
 def test_scheduler_config_template_graph_copy_matches_cycle_gate_stage() -> None:
     template = (REPO_ROOT / "templates/scheduler/config.html").read_text(encoding="utf-8")
+    config_constants = (REPO_ROOT / "core/services/scheduler/config/config_constants.py").read_text(encoding="utf-8")
 
     assert "阶段 2 只保存" not in template
     assert "真正图分析将在后续阶段接入" not in template
     assert "report 会生成只读图分析报告" in template
     assert "on 会先做图安全检查" in template
     assert "可用 DAG 会用 ready 队列参与 SGS 候选" in template
+    assert "参与候选排序" in template
+    assert "仍不启用图评分" not in template
+    assert "当前仅保存为后续评分配置" not in template
+    assert "仍不启用图评分" not in config_constants
+    assert "参与候选排序" in config_constants
 
 
 def test_scheduler_config_post_uses_atomic_save_entrypoint(monkeypatch) -> None:

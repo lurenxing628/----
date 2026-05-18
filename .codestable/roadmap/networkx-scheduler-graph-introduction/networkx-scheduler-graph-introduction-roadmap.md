@@ -449,9 +449,9 @@ failed_ops 不能变差。
 当前推进指针：
 
 ```text
-PR-0 到 PR-5 已完成。
-下一步是 PR-6。
-PR-6 只能继承 PR-5 已证明的 ready 资格，不能继承图评分方向证明。
+PR-0 到 PR-6 已完成。
+下一步是 PR-7。
+PR-7 可以继承 PR-6 已证明的 on+DAG 图评分方向，但不能继承多权重候选试跑、自动择优、候选落库或页面方案切换证明。
 ```
 
 | PR / items.yaml 条目 | 对应技术章节 | 目标 | 是否改变排产结果 | 状态 |
@@ -462,7 +462,7 @@ PR-6 只能继承 PR-5 已证明的 ready 资格，不能继承图评分方向�
 | PR-3 `scheduler-graph-report-mode` | 阶段 10 | 接入 report 模式，写 result_summary 小摘要和 diagnostics 采样 | 否 | done |
 | PR-4 `scheduler-graph-debug-performance` | 阶段 10.9 + 阶段 16 + 阶段 17 相关测试 + 阶段 18 | 性能护栏、diagnostics 加固、真实集成证明；受控 debug export 只是附属能力 | 否 | done |
 | PR-5 `scheduler-graph-ready-queue-on-mode` | 阶段 11 + 阶段 12 | 先做有环安全门，再让 ready 队列参与 SGS 候选 | 是 | done |
-| PR-6 `scheduler-graph-critical-score-on-mode` | 阶段 13 | 关键路径、影响范围、后续关键工作量进入评分 | 是/可控 | planned |
+| PR-6 `scheduler-graph-critical-score-on-mode` | 阶段 13 | 关键路径、影响范围、后续关键工作量进入评分 | 是/可控 | done |
 | PR-7a 到 PR-7e | 阶段 13.6 | 多权重候选试跑、自动择优、同事务落库、代表方案切换和配置收口 | 是/可控 | planned |
 | PR-8 `scheduler-graph-resource-matching-report` | 阶段 14-15 | 资源匹配 report-only 分析，最小费用流只作为后续增强 | 否 | planned |
 | PR-9 `scheduler-graph-win7-package-closeout` | 阶段 21 | Win7 离线打包和最终验收 | 否/可控 | planned |
@@ -7029,6 +7029,8 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider test
 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_scheduler_graph_report_mode_contract.py tests/regression_scheduler_graph_report_mode_service_contract.py tests/regression_scheduler_graph_summary_contract.py tests/regression_scheduler_graph_operation_logs_contract.py
 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_sgs_internal_scoring_matches_execution.py tests/test_sgs_total_hours_cache.py
 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_scheduler_config_spec_sync_contract.py tests/regression_scheduler_config_route_contract.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_mirror_template_sync.py tests/regression_config_field_spec_contract.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_architecture_fitness.py::test_cyclomatic_complexity_threshold tests/test_architecture_fitness.py::test_file_size_limit tests/test_architecture_fitness.py::test_greedy_refactor_files_stay_under_quality_gate_limits tests/test_greedy_refactor_contracts.py::test_refactored_files_and_entry_functions_stay_under_quality_gate
 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler/graph/scoring.py core/services/scheduler/run/schedule_graph_report.py core/algorithms/greedy/dispatch/sgs.py core/algorithms/greedy/dispatch/sgs_scoring.py core/algorithms/dispatch_rules.py tests/scheduler_graph/test_graph_scoring.py tests/regression_scheduler_graph_on_mode_contract.py
 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright core/services/scheduler/graph/scoring.py core/services/scheduler/run/schedule_graph_report.py core/algorithms/greedy/dispatch/sgs.py core/algorithms/greedy/dispatch/sgs_scoring.py core/algorithms/dispatch_rules.py
 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .codestable/tools/validate-yaml.py --file .codestable/roadmap/networkx-scheduler-graph-introduction/networkx-scheduler-graph-introduction-items.yaml --yaml-only
@@ -8983,6 +8985,7 @@ on 模式：
 
 ## 变更记录
 
+- 2026-05-18：完成 PR-6 `scheduler-graph-critical-score-on-mode`：新增 `graph/scoring.py` 纯函数和纯函数测试，证明图 bonus 越大排序 tuple 越小，缺字段/坏字段/坏权重直接报合同错误；`schedule_graph_report.py` 在 `on + DAG + 权重大于 0` 时计算 full `node_metrics` 并预先转成 `graph_priority_key_by_op_id`，权重全 0 时显式写 `score_weights_zero` 并保持 PR-5 ready 队列行为；SGS 只拼普通 tuple，保留 `score_penalty` 第一位，不让算法层反向依赖 service，SLACK / CR / ATC 方向保持；配置页、summary、OperationLogs、2000 节点 full/on-score 性能证据和架构现状已同步。PR-6 没有实现 PR-7 的候选池、多权重试跑、自动择优、候选落库、页面切换或 schema 迁移。
 - 2026-05-18：细化 PR-6 `scheduler-graph-critical-score-on-mode` 到可执行级：补齐 PR-6 承接 PR-5 的边界，明确只继承 ready 资格、不继承图评分方向证明；把阶段 13 从草图扩成完整执行计划，写清整体实现要求必须优雅简洁、不做过度兜底、不做静默回退、不做过度防御性编程、保持高内聚低耦合；补齐图指标准备合同、`graph/scoring.py` 纯函数、SGS 接入位置、配置说明同步、summary / OperationLogs 小摘要口径、测试用例、实施顺序、验收命令和 PR-7 交接边界；同步 items.yaml 的 PR-6 description、primary_paths、forbidden_paths、exit_checks 和 notes。
 - 2026-05-18：补充复验 PR-5 `scheduler-graph-ready-queue-on-mode`：修正 `on + block=no + 有环` 的 public 摘要和真实 dispatch mode 口径，改为通过 `graph_dispatch_mode_override="sgs"` 继续旧 SGS 候选逻辑，但保持 `graph_ready_context=None`，确保图 ready 队列不启用；补强 ready_queue / SGS 边界的图对象误传、嵌套前后置图对象、字符串/bool sort key 合同；把 SGS 前后置映射标准化结果写回运行态，确保校验和失败后继阻断使用同一口径；补 `graph_ready_context + 非 SGS` 直接报错和 `graph_dispatch_mode_override` 合法值校验，避免 ready 队列被悄悄忽略。复跑 PR-5 targeted tests、ruff、pyright 和 items.yaml 校验均通过；当前仍是 dirty worktree targeted proof，不是 clean-worktree proof。
 - 2026-05-18：完成 PR-5 `scheduler-graph-ready-queue-on-mode`：阶段 11 实现有环安全门，`report` 有环只提示，`on + block=yes` 在 version 分配前阻止并返回中文业务错误，`on + block=no` 继续旧 SGS 候选逻辑并在 public 摘要写明图增强未启用；阶段 12 实现纯 Python `ready_queue.py`，在 optimizer 前准备 plain `graph_ready_context`，排产和 `result_summary` 共用同一份图分析结论，并沿 optimizer / GreedyScheduler / `dispatch_sgs` 传递；`on + DAG` 时强制 SGS 并用 ready 队列筛候选，无 graph context 时旧 SGS 候选逻辑保持；frozen / seed 只作为已固定前置，前置失败时图后继不释放并计入失败说明。PR-5 未实现图评分、候选池、多权重试跑、自动择优、落库或页面按钮；PR-6 只能继承 ready 资格，不能继承图评分方向证明。

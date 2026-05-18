@@ -55,7 +55,12 @@ def _algo_op(op_id: int = 1, seq: int = 10) -> SimpleNamespace:
 def _schedule_input(mode: str, *, block_on_cycle: str) -> SimpleNamespace:
     algo_ops = [_algo_op()]
     return SimpleNamespace(
-        cfg=SimpleNamespace(graph_analysis_mode=mode, graph_block_on_cycle=block_on_cycle),
+        cfg=SimpleNamespace(
+            graph_analysis_mode=mode,
+            graph_block_on_cycle=block_on_cycle,
+            graph_critical_weight=500,
+            graph_impact_weight=10,
+        ),
         cal_svc=SimpleNamespace(),
         cfg_svc=SimpleNamespace(),
         readiness_gate_enabled=True,

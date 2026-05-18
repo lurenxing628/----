@@ -57,6 +57,10 @@ def _dispatch_key(
     return (float(score_penalty),) + tuple(base_key)
 
 
+def with_graph_priority_key(base_key: Tuple[float, ...], graph_key: Tuple[float, ...]) -> Tuple[float, ...]:
+    return tuple(base_key[:1]) + tuple(graph_key) + tuple(base_key[1:])
+
+
 def _collect_sgs_candidates(
     *,
     batch_ids_in_order: List[str],

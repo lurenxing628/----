@@ -1,60 +1,109 @@
-PR-4 scheduler-graph-debug-performance 2000 节点 basic report 性能证据
+PR-6 scheduler-graph-critical-score-on-mode 2000 节点 basic/full 图分析性能证据
 
 captured_at: 2026-05-18
-command: PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_graph/test_graph_performance.py
+command: PYTHONDONTWRITEBYTECODE=1 .venv/bin/python - <<'PY' ... tests.scheduler_graph.test_graph_performance helpers
 scope: 100 个批次，每批 20 道工序
-metrics_mode: basic
 node_count: 2000
 edge_count: 1900
 is_dag: true
 
-threshold_avg_total_ms: 2500
-threshold_max_total_ms: 5000
+threshold_basic_avg_total_ms: 2500
+threshold_basic_max_total_ms: 5000
+threshold_full_avg_total_ms: 2500
+threshold_full_max_total_ms: 5000
 diagnostics_bytes_limit: 20000
 projection_bytes_limit: 30000
 
-run_1:
-  build_nodes_ms: 27
-  build_graph_ms: 44
-  validate_dag_ms: 7
-  critical_path_ms: 10
-  impact_metrics_ms: 0
-  impact_metrics_status: skipped_basic_report
-  basic_report_total_ms: 88
-  diagnostics_bytes: 776
-  projection_bytes: 1263
+basic_report:
+  metrics_mode: basic
 
-run_2:
-  build_nodes_ms: 33
-  build_graph_ms: 8
-  validate_dag_ms: 7
-  critical_path_ms: 10
-  impact_metrics_ms: 0
-  impact_metrics_status: skipped_basic_report
-  basic_report_total_ms: 58
-  diagnostics_bytes: 776
-  projection_bytes: 1263
+  run_1:
+    build_nodes_ms: 29
+    build_graph_ms: 42
+    validate_dag_ms: 8
+    critical_path_ms: 10
+    impact_metrics_ms: 0
+    impact_metrics_status: skipped_basic_report
+    basic_report_total_ms: 89
+    diagnostics_bytes: 776
+    projection_bytes: 1263
 
-run_3:
-  build_nodes_ms: 26
-  build_graph_ms: 8
-  validate_dag_ms: 7
-  critical_path_ms: 10
-  impact_metrics_ms: 0
-  impact_metrics_status: skipped_basic_report
-  basic_report_total_ms: 51
-  diagnostics_bytes: 776
-  projection_bytes: 1263
+  run_2:
+    build_nodes_ms: 33
+    build_graph_ms: 9
+    validate_dag_ms: 7
+    critical_path_ms: 10
+    impact_metrics_ms: 0
+    impact_metrics_status: skipped_basic_report
+    basic_report_total_ms: 59
+    diagnostics_bytes: 776
+    projection_bytes: 1263
 
-avg_total_ms: 65.67
-max_total_ms: 88
-critical_path_minutes: 1200
-critical_path_node_count: 20
-topological_order_count: 2000
-node_metrics_count: 0
-warnings_count: 0
+  run_3:
+    build_nodes_ms: 27
+    build_graph_ms: 8
+    validate_dag_ms: 7
+    critical_path_ms: 10
+    impact_metrics_ms: 0
+    impact_metrics_status: skipped_basic_report
+    basic_report_total_ms: 52
+    diagnostics_bytes: 776
+    projection_bytes: 1263
+
+  avg_total_ms: 66.67
+  max_total_ms: 89
+  critical_path_minutes: 1200
+  critical_path_node_count: 20
+  topological_order_count: 2000
+  node_metrics_count: 0
+  warnings_count: 0
+
+full_on_score_path:
+  metrics_mode: full
+
+  run_1:
+    build_nodes_ms: 27
+    build_graph_ms: 16
+    validate_dag_ms: 7
+    critical_path_ms: 10
+    impact_metrics_ms: 320
+    impact_metrics_status: available
+    full_report_total_ms: 380
+    diagnostics_bytes: 4073
+    projection_bytes: 4836
+
+  run_2:
+    build_nodes_ms: 27
+    build_graph_ms: 12
+    validate_dag_ms: 7
+    critical_path_ms: 9
+    impact_metrics_ms: 296
+    impact_metrics_status: available
+    full_report_total_ms: 351
+    diagnostics_bytes: 4073
+    projection_bytes: 4836
+
+  run_3:
+    build_nodes_ms: 27
+    build_graph_ms: 12
+    validate_dag_ms: 7
+    critical_path_ms: 10
+    impact_metrics_ms: 296
+    impact_metrics_status: available
+    full_report_total_ms: 352
+    diagnostics_bytes: 4073
+    projection_bytes: 4836
+
+  avg_total_ms: 361.00
+  max_total_ms: 380
+  critical_path_minutes: 1200
+  critical_path_node_count: 20
+  topological_order_count: 2000
+  node_metrics_count: 2000
+  warnings_count: 0
 
 结论:
-  basic report 在 2000 节点下通过性能护栏。
-  PR-4 明确不计算完整 node_metrics / downstream_critical_minutes。
-  impact metrics 在 basic report 中是 skipped_basic_report，不是静默降级。
+  basic report 在 2000 节点下继续通过性能护栏。
+  report/basic 仍明确不计算完整 node_metrics / downstream_critical_minutes。
+  on-score/full 路径在 2000 节点下通过性能护栏，node_metrics_count=2000，impact_metrics_status=available。
+  full 指标没有被静默跳过；diagnostics 和 projection 仍保持采样后的小体积。

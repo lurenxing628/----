@@ -86,6 +86,43 @@ def test_sgs_reuses_successful_total_hours_between_average_and_scoring(monkeypat
     assert sorted(calls) == [1, 2]
 
 
+def test_sgs_graph_score_does_not_disable_total_hours_cache(monkeypatch) -> None:
+    calls: List[int] = []
+
+    def _counting_validate(op: Any, batch: Any, *, strict_mode: bool) -> float:
+        calls.append(int(getattr(op, "id", 0) or 0))
+        return original_validate_internal_hours_for_mode(op, batch, strict_mode=strict_mode)
+
+    monkeypatch.setattr(sgs_module, "validate_internal_hours_for_mode", _counting_validate)
+    monkeypatch.setattr(sgs_scoring_module, "validate_internal_hours_for_mode", _counting_validate)
+
+    scheduler = GreedyScheduler(calendar_service=_Calendar())
+    graph_ready_context = {
+        "enabled": True,
+        "schedulable_op_ids": {1, 2},
+        "fixed_op_ids": set(),
+        "predecessor_op_ids_by_op_id": {1: set(), 2: set()},
+        "successor_op_ids_by_op_id": {1: set(), 2: set()},
+        "sort_key_by_op_id": {1: (0, 10, 1), 2: (1, 10, 2)},
+        "score_enabled": True,
+        "graph_priority_key_by_op_id": {1: (0.0, 0.0), 2: (-100.0, 0.0)},
+    }
+    results, summary, _strategy, _used_params = scheduler.schedule(
+        operations=[_internal_op(1, "B1", 2.0), _internal_op(2, "B2", 1.0)],
+        batches={"B1": _batch("B1"), "B2": _batch("B2")},
+        start_dt=datetime(2026, 1, 1, 8, 0, 0),
+        dispatch_mode="sgs",
+        dispatch_rule="slack",
+        batch_order_override=["B1", "B2"],
+        graph_ready_context=graph_ready_context,
+    )
+
+    assert summary.failed_ops == 0
+    assert [result.op_id for result in results] == [2, 1]
+    assert len(calls) == 2
+    assert sorted(calls) == [1, 2]
+
+
 def test_sgs_average_does_not_cache_non_positive_or_missing_op_ids() -> None:
     missing_id_op = _internal_op(3, "B1", 5.0)
     delattr(missing_id_op, "id")

@@ -138,13 +138,16 @@ def test_config_field_spec_registry_contract() -> None:
     assert metadata["graph_analysis_mode"].choices[0]["value"] == "off"
     assert metadata["graph_analysis_mode"].choices[1]["value"] == "report"
     assert metadata["graph_analysis_mode"].choices[2]["value"] == "on"
-    assert metadata["graph_analysis_mode"].choices[2]["label"] == "启用图安全检查和 ready 队列"
+    assert metadata["graph_analysis_mode"].choices[2]["label"] == "启用图安全检查、ready 队列和图评分"
     assert "阶段 2" not in metadata["graph_analysis_mode"].hint
     assert "只生成分析报告" in metadata["graph_analysis_mode"].hint
     assert "可用 DAG 会用 ready 队列参与 SGS 候选" in metadata["graph_analysis_mode"].hint
+    assert "参与候选排序" in metadata["graph_analysis_mode"].hint
     assert metadata["graph_critical_weight"].label == "关键路径权重"
-    assert "为后续图评分预留" in get_field_spec("graph_critical_weight").description
-    assert "为后续图评分预留" in get_field_spec("graph_impact_weight").description
+    assert "关键路径上的候选工序会更靠前" in get_field_spec("graph_critical_weight").description
+    assert "影响更多后续工序的候选会更靠前" in get_field_spec("graph_impact_weight").description
+    assert "预留" not in get_field_spec("graph_critical_weight").description
+    assert "当前不改变排产结果" not in metadata["graph_critical_weight"].hint
     assert "阶段 2" not in metadata["graph_debug_export"].hint
 
 

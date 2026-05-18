@@ -76,7 +76,12 @@ def _schedule_input(mode: str = "on") -> SimpleNamespace:
     independent_op = _op(3, "B002", 10)
     algo_ops = [frozen_op, ready_op, independent_op]
     return SimpleNamespace(
-        cfg=SimpleNamespace(graph_analysis_mode=mode, graph_block_on_cycle="no"),
+        cfg=SimpleNamespace(
+            graph_analysis_mode=mode,
+            graph_block_on_cycle="no",
+            graph_critical_weight=500,
+            graph_impact_weight=10,
+        ),
         cal_svc=SimpleNamespace(),
         cfg_svc=SimpleNamespace(),
         readiness_gate_enabled=True,
@@ -101,6 +106,57 @@ def _schedule_input(mode: str = "on") -> SimpleNamespace:
         resource_pool_meta={"build_ok": True},
         algo_warnings=[],
         frozen_op_ids={1},
+        t0=0.0,
+        optimizer_seed_version=6,
+        run_label="schedule",
+        prev_version=5,
+        created_by_text="tester",
+        missing_internal_resource_op_ids=set(),
+    )
+
+
+def _chain_schedule_input(
+    *,
+    graph_critical_weight: int = 500,
+    graph_impact_weight: int = 10,
+) -> SimpleNamespace:
+    a1 = _op(1, "B_A", 10)
+    a2 = _op(2, "B_A", 20)
+    b1 = _op(3, "B_B", 10)
+    b2 = _op(4, "B_B", 20)
+    b3 = _op(5, "B_B", 30)
+    ops = [a1, a2, b1, b2, b3]
+    return SimpleNamespace(
+        cfg=SimpleNamespace(
+            graph_analysis_mode="on",
+            graph_block_on_cycle="no",
+            graph_critical_weight=graph_critical_weight,
+            graph_impact_weight=graph_impact_weight,
+        ),
+        cal_svc=SimpleNamespace(),
+        cfg_svc=SimpleNamespace(),
+        readiness_gate_enabled=True,
+        algo_ops=ops,
+        algo_ops_to_schedule=ops,
+        batches={
+            "B_A": SimpleNamespace(batch_id="B_A", quantity=1, due_date="2026-01-02", priority="normal"),
+            "B_B": SimpleNamespace(batch_id="B_B", quantity=1, due_date="2026-01-02", priority="normal"),
+        },
+        start_dt_norm=datetime(2026, 1, 1, 8, 0, 0),
+        end_date_norm=None,
+        downtime_map={},
+        seed_results=[],
+        resource_pool={"machines_by_op_type": {}, "operators_by_machine": {}, "machines_by_operator": {}},
+        operations=[SimpleNamespace(id=getattr(op, "id"), batch_id=getattr(op, "batch_id")) for op in ops],
+        reschedulable_operations=[SimpleNamespace(id=getattr(op, "id")) for op in ops],
+        reschedulable_op_ids={1, 2, 3, 4, 5},
+        normalized_batch_ids=["B_A", "B_B"],
+        freeze_meta={"loaded": True},
+        algo_input_outcome=SimpleNamespace(value=[]),
+        downtime_meta={"load_ok": True},
+        resource_pool_meta={"build_ok": True},
+        algo_warnings=[],
+        frozen_op_ids=set(),
         t0=0.0,
         optimizer_seed_version=6,
         run_label="schedule",
@@ -247,12 +303,70 @@ def test_on_dag_prepares_plain_graph_ready_context_before_optimizer() -> None:
     assert set(context["fixed_op_ids"]) == {1}
     assert context["predecessor_op_ids_by_op_id"][2] == {1}
     assert context["predecessor_op_ids_by_op_id"][3] == set()
+    assert context["score_enabled"] is True
+    assert set(context["graph_priority_key_by_op_id"]) == {2, 3}
     assert "graph" not in context
     assert outcome.result_summary_obj["algo"]["graph_analysis"]["status"] == "available"
     assert outcome.result_summary_obj["algo"]["graph_analysis"]["effective_mode"] == "graph_ready_queue"
     assert outcome.result_summary_obj["algo"]["graph_analysis"]["ready_queue_enabled"] is True
+    assert outcome.result_summary_obj["algo"]["graph_analysis"]["score_enabled"] is True
+    assert outcome.result_summary_obj["algo"]["graph_analysis"]["score_metric_status"] == "available"
     assert outcome.validated_schedule_payload.scheduled_op_ids == {2}
     assert [row.op_id for row in outcome.validated_schedule_payload.schedule_rows] == [2]
+
+
+def test_on_dag_score_context_uses_single_full_metrics_pass(monkeypatch: Any) -> None:
+    from core.services.scheduler.graph.analysis_service import ScheduleGraphAnalysisService
+
+    calls: List[str] = []
+    original = ScheduleGraphAnalysisService.analyze_linear_batches
+
+    def _wrapped(self: Any, nodes: Any, *, metrics_mode: str = "full") -> Any:
+        calls.append(metrics_mode)
+        return original(self, nodes, metrics_mode=metrics_mode)
+
+    monkeypatch.setattr(ScheduleGraphAnalysisService, "analyze_linear_batches", _wrapped)
+
+    preparation = prepare_schedule_graph_for_dispatch(_schedule_input("on"))  # type: ignore[arg-type]
+
+    assert calls == ["full"]
+    assert preparation.graph_ready_context is not None
+    assert preparation.graph_ready_context["score_enabled"] is True
+    assert preparation.graph_analysis_public is not None
+    assert preparation.graph_analysis_public["score_enabled"] is True
+    assert preparation.graph_analysis_diagnostics is not None
+    assert preparation.graph_analysis_diagnostics["node_metrics_status"] == "available"
+    assert "graph_score_sample" in preparation.graph_analysis_diagnostics
+
+
+def test_on_dag_zero_graph_weights_keep_ready_queue_but_disable_scoring(monkeypatch: Any) -> None:
+    from core.services.scheduler.graph.analysis_service import ScheduleGraphAnalysisService
+
+    calls: List[str] = []
+    original = ScheduleGraphAnalysisService.analyze_linear_batches
+
+    def _wrapped(self: Any, nodes: Any, *, metrics_mode: str = "full") -> Any:
+        calls.append(metrics_mode)
+        return original(self, nodes, metrics_mode=metrics_mode)
+
+    schedule_input = _schedule_input("on")
+    schedule_input.cfg.graph_critical_weight = 0
+    schedule_input.cfg.graph_impact_weight = 0
+    monkeypatch.setattr(ScheduleGraphAnalysisService, "analyze_linear_batches", _wrapped)
+
+    preparation = prepare_schedule_graph_for_dispatch(schedule_input)  # type: ignore[arg-type]
+
+    assert calls == ["basic"]
+    assert preparation.graph_ready_context is not None
+    assert preparation.graph_ready_context["score_enabled"] is False
+    assert "graph_priority_key_by_op_id" not in preparation.graph_ready_context
+    assert preparation.graph_analysis_public is not None
+    assert preparation.graph_analysis_public["ready_queue_enabled"] is True
+    assert preparation.graph_analysis_public["score_enabled"] is False
+    assert preparation.graph_analysis_public["score_metric_status"] == "disabled"
+    assert preparation.graph_analysis_public["score_disabled_reason"] == "score_weights_zero"
+    assert preparation.graph_analysis_diagnostics is not None
+    assert preparation.graph_analysis_diagnostics["node_metrics_status"] == "skipped_basic_report"
 
 
 def test_on_cycle_block_no_uses_real_optimizer_sgs_override(cycle_graph: None) -> None:
@@ -533,6 +647,108 @@ def test_sgs_uses_graph_ready_context_as_candidate_qualification() -> None:
     assert graph_summary.failed_ops == 0
     assert [result.op_id for result in baseline_results] == [2, 1]
     assert [result.op_id for result in graph_results] == [1, 2]
+
+
+def test_on_dag_graph_score_makes_longer_critical_chain_candidate_first() -> None:
+    schedule_input = _chain_schedule_input()
+    preparation = prepare_schedule_graph_for_dispatch(schedule_input)  # type: ignore[arg-type]
+
+    baseline_results, baseline_summary, _strategy, _params = GreedyScheduler(_Calendar()).schedule(
+        operations=schedule_input.algo_ops_to_schedule,
+        batches=schedule_input.batches,
+        start_dt=schedule_input.start_dt_norm,
+        dispatch_mode="sgs",
+        dispatch_rule="slack",
+        batch_order_override=["B_A", "B_B"],
+    )
+    graph_results, graph_summary, _strategy, _params = GreedyScheduler(_Calendar()).schedule(
+        operations=schedule_input.algo_ops_to_schedule,
+        batches=schedule_input.batches,
+        start_dt=schedule_input.start_dt_norm,
+        dispatch_mode="sgs",
+        dispatch_rule="slack",
+        batch_order_override=["B_A", "B_B"],
+        graph_ready_context=preparation.graph_ready_context,
+    )
+
+    assert baseline_summary.failed_ops == 0
+    assert graph_summary.failed_ops == 0
+    assert baseline_results[0].op_id == 1
+    assert graph_results[0].op_id == 3
+    assert preparation.graph_ready_context is not None
+    assert preparation.graph_ready_context["graph_priority_key_by_op_id"][3] < preparation.graph_ready_context["graph_priority_key_by_op_id"][1]
+
+
+@pytest.mark.parametrize(
+    ("graph_priority_key_by_op_id", "expected_first_op_id"),
+    [
+        ({1: (0.0, 1_000_000_000.0), 2: (-500.0, 0.0)}, 2),
+        ({1: (-10.0, 1_000_000_000.0), 2: (-30.0, 1_000_000_000.0)}, 2),
+        ({1: (-20.0, 1_000_000_000.0), 2: (-120.0, 1_000_000_000.0)}, 2),
+    ],
+)
+@pytest.mark.parametrize("dispatch_rule", ["slack", "cr", "atc"])
+def test_sgs_graph_score_component_orders_ready_candidates_without_reversing_dispatch_rules(
+    graph_priority_key_by_op_id: Dict[int, Tuple[float, ...]],
+    expected_first_op_id: int,
+    dispatch_rule: str,
+) -> None:
+    start_dt = datetime(2026, 1, 1, 8, 0, 0)
+    graph_ready_context = {
+        "enabled": True,
+        "schedulable_op_ids": {1, 2},
+        "fixed_op_ids": set(),
+        "predecessor_op_ids_by_op_id": {1: set(), 2: set()},
+        "successor_op_ids_by_op_id": {1: set(), 2: set()},
+        "sort_key_by_op_id": {1: (0, 10, 1), 2: (1, 10, 2)},
+        "score_enabled": True,
+        "graph_priority_key_by_op_id": graph_priority_key_by_op_id,
+    }
+
+    results, summary, _strategy, _params = GreedyScheduler(_Calendar()).schedule(
+        operations=[_op(1, "B1", 10), _op(2, "B2", 10)],
+        batches={
+            "B1": SimpleNamespace(batch_id="B1", quantity=1, due_date="2026-01-02", priority="normal"),
+            "B2": SimpleNamespace(batch_id="B2", quantity=1, due_date="2026-01-02", priority="normal"),
+        },
+        start_dt=start_dt,
+        dispatch_mode="sgs",
+        dispatch_rule=dispatch_rule,
+        batch_order_override=["B1", "B2"],
+        graph_ready_context=graph_ready_context,
+    )
+
+    assert summary.failed_ops == 0
+    assert results[0].op_id == expected_first_op_id
+
+
+def test_sgs_graph_score_missing_candidate_key_is_contract_error() -> None:
+    graph_ready_context = {
+        "enabled": True,
+        "schedulable_op_ids": {1, 2},
+        "fixed_op_ids": set(),
+        "predecessor_op_ids_by_op_id": {1: set(), 2: set()},
+        "successor_op_ids_by_op_id": {1: set(), 2: set()},
+        "sort_key_by_op_id": {1: (0, 10, 1), 2: (1, 10, 2)},
+        "score_enabled": True,
+        "graph_priority_key_by_op_id": {1: (0.0, 0.0)},
+    }
+
+    with pytest.raises(ValidationError) as exc_info:
+        GreedyScheduler(_Calendar()).schedule(
+            operations=[_op(1, "B1", 10), _op(2, "B2", 10)],
+            batches={
+                "B1": SimpleNamespace(batch_id="B1", quantity=1, due_date="2026-01-02", priority="normal"),
+                "B2": SimpleNamespace(batch_id="B2", quantity=1, due_date="2026-01-02", priority="normal"),
+            },
+            start_dt=datetime(2026, 1, 1, 8, 0, 0),
+            dispatch_mode="sgs",
+            dispatch_rule="slack",
+            graph_ready_context=graph_ready_context,
+        )
+
+    assert exc_info.value.field == "graph_ready_context"
+    assert "评分 key" in exc_info.value.message
 
 
 def test_sgs_graph_ready_context_treats_seed_as_fixed_predecessor_without_rescheduling_it() -> None:

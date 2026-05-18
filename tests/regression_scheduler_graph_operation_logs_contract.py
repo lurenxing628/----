@@ -27,6 +27,10 @@ _PUBLIC_GRAPH_KEYS = {
     "graph_enhancement_allowed",
     "graph_enhancement_disabled_reason",
     "ready_queue_enabled",
+    "score_enabled",
+    "score_metric_status",
+    "score_disabled_reason",
+    "score_weight_summary",
 }
 _ERROR_PUBLIC_GRAPH_KEYS = {
     "mode",
@@ -52,6 +56,7 @@ _FORBIDDEN_LOG_KEYS = {
     "critical_path_sample",
     "warnings_sample",
     "cycle_edges_sample",
+    "graph_score_sample",
 }
 
 
@@ -146,6 +151,10 @@ def _result_summary_obj() -> Dict[str, Any]:
                 "graph_enhancement_allowed": True,
                 "graph_enhancement_disabled_reason": None,
                 "ready_queue_enabled": True,
+                "score_enabled": True,
+                "score_metric_status": "available",
+                "score_disabled_reason": None,
+                "score_weight_summary": {"critical_weight": 500, "impact_weight": 10},
             }
         },
         "diagnostics": {
@@ -155,6 +164,7 @@ def _result_summary_obj() -> Dict[str, Any]:
                 "warnings_sample": [],
                 "cycle_edges_sample": [],
                 "node_metrics_sample": [{"node_id": "op:1"}],
+                "graph_score_sample": [{"op_id": 1, "bonus": 560}],
             }
         },
     }

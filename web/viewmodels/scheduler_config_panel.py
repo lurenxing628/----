@@ -6,8 +6,8 @@ from typing import Any, Callable, Dict, Sequence, Tuple
 from .scheduler_batches_notices import build_config_notice_items
 from .ui_presenters import UiDetailsNotice, UiSummaryItem
 
-GRAPH_CONFIG_PENDING_NOTICE = "off 会关闭工序图分析；report 会生成只读报告，不改变排产结果；on 会先做图安全检查，可用 DAG 会用 ready 队列参与 SGS 候选。"
-GRAPH_CONFIG_PENDING_ACTIVE_NOTICE = "已保存为 report/on。report 只生成图分析报告；on 会先做图安全检查，可用 DAG 会用 ready 队列参与 SGS 候选，仍不启用图评分或多方案择优。"
+GRAPH_CONFIG_PENDING_NOTICE = "off 会关闭工序图分析；report 会生成只读报告，不改变排产结果；on 会先做图安全检查，可用 DAG 会用 ready 队列参与 SGS 候选，并按关键路径和后续影响权重参与候选排序。"
+GRAPH_CONFIG_PENDING_ACTIVE_NOTICE = "已保存为 report/on。report 只生成图分析报告；on 会先做图安全检查，可用 DAG 会用 ready 队列参与 SGS 候选，并按关键路径和后续影响权重参与候选排序；不启用多方案择优。"
 
 _AutoAssignPersistDisplayBuilder = Callable[[Any], Dict[str, Any]]
 

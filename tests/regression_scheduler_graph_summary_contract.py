@@ -14,6 +14,7 @@ _PUBLIC_FORBIDDEN_KEYS = {
     "topological_order_sample",
     "critical_path_sample",
     "node_metrics_sample",
+    "graph_score_sample",
     "nodes",
     "edges",
     "raw",
@@ -163,11 +164,35 @@ def test_graph_projection_keeps_public_summary_small_and_samples_diagnostics() -
         payload=_graph_payload(),
         elapsed_ms=7,
         scope=_scope(),
+        score_public={
+            "score_enabled": True,
+            "score_metric_status": "available",
+            "score_disabled_reason": None,
+            "score_weight_summary": {"critical_weight": 500, "impact_weight": 10},
+        },
+        score_diagnostics={
+            "graph_score_sample": [
+                {
+                    "op_id": 1,
+                    "bonus": 1500,
+                    "priority_key": [-1500.0, 0.0],
+                    "is_on_critical_path": True,
+                    "impact_count": 59,
+                    "downstream_critical_minutes": 960,
+                }
+            ],
+            "graph_score_sample_count": 60,
+            "graph_score_sample_truncated": True,
+        },
     )
 
     assert public["mode"] == "on"
     assert public["effective_mode"] == "graph_ready_queue"
     assert public["ready_queue_enabled"] is True
+    assert public["score_enabled"] is True
+    assert public["score_metric_status"] == "available"
+    assert public["score_disabled_reason"] is None
+    assert public["score_weight_summary"] == {"critical_weight": 500, "impact_weight": 10}
     assert public["status"] == "available"
     assert public["node_count"] == 60
     assert public["edge_count"] == 59
@@ -193,6 +218,9 @@ def test_graph_projection_keeps_public_summary_small_and_samples_diagnostics() -
     assert diagnostics["node_metrics_truncated"] is True
     assert diagnostics["node_metrics_status"] == "available"
     assert diagnostics["node_metrics_sample"][0]["node_id"] == "op:B001:OP000:0"
+    assert diagnostics["graph_score_sample"][0]["op_id"] == 1
+    assert diagnostics["graph_score_sample_count"] == 60
+    assert diagnostics["graph_score_sample_truncated"] is True
 
 
 def test_graph_warning_data_lists_are_sampled_inside_warning_projection() -> None:

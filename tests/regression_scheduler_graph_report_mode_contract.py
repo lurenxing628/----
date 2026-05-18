@@ -89,7 +89,12 @@ def _schedule_input(mode: str) -> SimpleNamespace:
     batches = {"B001": SimpleNamespace(batch_id="B001", quantity=1, due_date="2026-01-02")}
     resource_pool = {"machines_by_op_type": {}, "operators_by_machine": {}, "machines_by_operator": {}}
     return SimpleNamespace(
-        cfg=SimpleNamespace(graph_analysis_mode=mode),
+        cfg=SimpleNamespace(
+            graph_analysis_mode=mode,
+            graph_block_on_cycle="no",
+            graph_critical_weight=500,
+            graph_impact_weight=10,
+        ),
         cal_svc=SimpleNamespace(),
         cfg_svc=SimpleNamespace(),
         readiness_gate_enabled=True,

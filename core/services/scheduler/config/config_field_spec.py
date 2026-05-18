@@ -46,7 +46,7 @@ _OBJECTIVE_LABELS = _objective_choice_labels()
 _GRAPH_ANALYSIS_MODE_LABELS = {
     "off": "关闭",
     "report": "只生成分析报告",
-    "on": "启用图安全检查和 ready 队列",
+    "on": "启用图安全检查、ready 队列和图评分",
 }
 
 _FIELD_LABEL_ALIASES = {
@@ -306,22 +306,22 @@ _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
         field_type="enum",
         default="off",
         label="工序图分析",
-        description="NetworkX 工序依赖图分析模式：关闭 / 只生成报告 / 图安全检查和 ready 队列",
+        description="NetworkX 工序依赖图分析模式：关闭 / 只生成报告 / 图安全检查、ready 队列和图评分",
         choices=("off", "report", "on"),
         choice_labels={
             "off": "关闭",
             "report": "只生成分析报告，不改变排产结果",
-            "on": "启用图安全检查和 ready 队列",
+            "on": "启用图安全检查、ready 队列和图评分",
         },
         page_metadata=ConfigFieldPageMetadata(
             key="graph_analysis_mode",
             label="工序图分析",
-            hint="默认关闭。off 不加载图分析；report 只生成分析报告，不改排产结果；on 会先做图安全检查，可用 DAG 会用 ready 队列参与 SGS 候选。",
+            hint="默认关闭。off 不加载图分析；report 只生成分析报告，不改排产结果；on 会先做图安全检查，可用 DAG 会用 ready 队列参与 SGS 候选，并按下面权重参与候选排序。",
             choices=_choice_pairs(
                 {
                     "off": "关闭",
                     "report": "只生成分析报告，不改变排产结果",
-                    "on": "启用图安全检查和 ready 队列",
+                    "on": "启用图安全检查、ready 队列和图评分",
                 }
             ),
         ),
@@ -345,12 +345,12 @@ _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
         field_type="int",
         default=500,
         label="关键路径权重",
-        description="为后续图评分预留的关键路径权重；当前不改变排产结果",
+        description="graph_analysis_mode=on 且工序图可用时，关键路径上的候选工序会更靠前；填 0 表示不按关键路径加分",
         min_value=0,
         page_metadata=ConfigFieldPageMetadata(
             key="graph_critical_weight",
             label="关键路径权重",
-            hint="当前仅保存为后续评分配置；阶段 10 report/on 不使用它改变排产结果。建议先保持默认。",
+            hint="on 且工序图可用时生效。数值越大，关键路径上的 ready 候选越容易提前；填 0 表示关闭这项加分。",
         ),
     ),
     ConfigFieldSpec(
@@ -358,12 +358,12 @@ _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
         field_type="int",
         default=10,
         label="后续影响权重",
-        description="为后续图评分预留的后续影响权重；当前不改变排产结果",
+        description="graph_analysis_mode=on 且工序图可用时，影响更多后续工序的候选会更靠前；填 0 表示不按影响范围加分",
         min_value=0,
         page_metadata=ConfigFieldPageMetadata(
             key="graph_impact_weight",
             label="后续影响权重",
-            hint="当前仅保存为后续评分配置；阶段 10 report/on 不使用它改变排产结果。建议先保持默认。",
+            hint="on 且工序图可用时生效。数值越大，影响后续越多的 ready 候选越容易提前；填 0 表示关闭这项加分。",
         ),
     ),
     ConfigFieldSpec(

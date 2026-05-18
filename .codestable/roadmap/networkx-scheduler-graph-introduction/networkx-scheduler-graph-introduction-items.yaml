@@ -180,21 +180,29 @@ items:
   - slug: scheduler-graph-critical-score-on-mode
     title: PR-6 关键路径评分接入
     description: "只在 graph_analysis_mode=on、DAG 可用且 graph_enhancement_allowed=true 时，把关键路径、影响范围、后续关键分钟转换成 SGS 候选评分分量；off/report 和图增强未允许时不改变排产结果。实现必须优雅简洁，不做过度兜底、静默回退或过度防御性编程，保持 graph/scoring.py 纯计算、schedule_graph_report.py 只准备普通 Python 上下文、SGS 只拼接评分分量的高内聚低耦合边界。"
-    status: planned
-    feature: null
+    status: done
+    feature: .codestable/features/2026-05-18-scheduler-graph-critical-score-on-mode
     minimal_loop: false
     depends_on: [scheduler-graph-ready-queue-on-mode]
     primary_paths:
       - core/services/scheduler/graph/scoring.py
+      - core/services/scheduler/run/schedule_graph_dispatch_context.py
       - core/services/scheduler/run/schedule_graph_report.py
       - core/algorithms/greedy/dispatch/sgs.py
+      - core/algorithms/greedy/dispatch/sgs_graph.py
       - core/algorithms/greedy/dispatch/sgs_scoring.py
       - core/algorithms/dispatch_rules.py
       - core/services/scheduler/config/config_field_spec.py
+      - core/services/scheduler/config/config_constants.py
       - templates/scheduler/config.html
+      - web_new_test/templates/scheduler/config.html
       - web/viewmodels/scheduler_config_panel.py
       - core/services/scheduler/summary/schedule_summary_assembly.py
+      - .codestable/architecture/ARCHITECTURE.md
+      - evidence/scheduler_graph/performance_2000_nodes.txt
       - tests/scheduler_graph/test_graph_scoring.py
+      - tests/scheduler_graph/test_graph_performance.py
+      - tests/regression_mirror_template_sync.py
       - tests/regression_scheduler_graph_on_mode_contract.py
       - tests/regression_scheduler_graph_summary_contract.py
       - tests/regression_scheduler_graph_operation_logs_contract.py
@@ -216,10 +224,12 @@ items:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_scheduler_graph_report_mode_contract.py tests/regression_scheduler_graph_report_mode_service_contract.py tests/regression_scheduler_graph_summary_contract.py tests/regression_scheduler_graph_operation_logs_contract.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_sgs_internal_scoring_matches_execution.py tests/test_sgs_total_hours_cache.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_scheduler_config_spec_sync_contract.py tests/regression_scheduler_config_route_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_mirror_template_sync.py tests/regression_config_field_spec_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_architecture_fitness.py::test_cyclomatic_complexity_threshold tests/test_architecture_fitness.py::test_file_size_limit tests/test_architecture_fitness.py::test_greedy_refactor_files_stay_under_quality_gate_limits tests/test_greedy_refactor_contracts.py::test_refactored_files_and_entry_functions_stay_under_quality_gate
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler/graph/scoring.py core/services/scheduler/run/schedule_graph_report.py core/algorithms/greedy/dispatch/sgs.py core/algorithms/greedy/dispatch/sgs_scoring.py core/algorithms/dispatch_rules.py tests/scheduler_graph/test_graph_scoring.py tests/regression_scheduler_graph_on_mode_contract.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright core/services/scheduler/graph/scoring.py core/services/scheduler/run/schedule_graph_report.py core/algorithms/greedy/dispatch/sgs.py core/algorithms/greedy/dispatch/sgs_scoring.py core/algorithms/dispatch_rules.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .codestable/tools/validate-yaml.py --file .codestable/roadmap/networkx-scheduler-graph-introduction/networkx-scheduler-graph-introduction-items.yaml --yaml-only
-    notes: "PR-6 只能继承 PR-5 的 ready 资格，不能继承图评分方向证明。当前排序 key 是越小越优先；图 bonus 越大越重要时，必须转成 tuple 更小的分量并用测试证明。on 模式需要图评分却缺 node_metrics、op_id 对不上或字段缺失时，不能静默当 0 分回退旧评分；0 权重才表示真实禁用该分量。PR-6 不做候选池、多权重试跑、自动择优、候选落库、页面切换或 schema 迁移。"
+    notes: "已完成：2026-05-18 新增 graph/scoring.py 纯函数和 test_graph_scoring.py，证明 bonus 越大 tuple 越小，缺字段/坏字段/坏权重报 GraphScoringContractError，不把坏指标当 0。schedule_graph_report.py 只在 on+DAG 且 graph_critical_weight/graph_impact_weight 至少一个大于 0 时用 full node_metrics，并在 service 层通过 schedule_graph_dispatch_context.py 预先转成 graph_priority_key_by_op_id；权重全 0 时明确 score_weights_zero，继续 PR-5 ready 队列行为。SGS 只拼普通 tuple，图 ready 上下文校验下沉到 sgs_graph.py，保留 score_penalty 第一位，不反向 import scheduler service，SLACK/CR/ATC 方向保持。summary 只放 score_enabled、score_metric_status、score_weight_summary 等小字段，diagnostics 只采样 graph_score_sample，OperationLogs 不拿 diagnostics，不泄漏完整 node_metrics/nodes/edges/raw。配置页、镜像模板和配置常量已从“预留/不改变结果”改成 on 且图可用时参与候选排序。新增 2000 节点 full/on-score 性能证据，full 平均约 361ms。PR-6 未实现 PR-7 的候选池、多权重试跑、自动择优、候选落库、页面切换或 schema 迁移；这些仍由后续 PR-7 承接。"
 
   - slug: scheduler-graph-candidate-schema-query
     title: PR-7a 候选表、仓库和统一方案查询服务
