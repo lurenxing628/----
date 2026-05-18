@@ -369,6 +369,26 @@ def test_on_dag_zero_graph_weights_keep_ready_queue_but_disable_scoring(monkeypa
     assert preparation.graph_analysis_diagnostics["node_metrics_status"] == "skipped_basic_report"
 
 
+def test_on_dag_bad_ready_edge_endpoint_reports_graph_input_contract_error(monkeypatch: Any) -> None:
+    from core.services.scheduler.graph import precedence_builder
+    from core.services.scheduler.graph.types import OperationGraphEdge
+
+    def _bad_edges(nodes: Any) -> List[OperationGraphEdge]:
+        return [OperationGraphEdge(from_node_id="unknown-node", to_node_id=str(nodes[0].node_id))]
+
+    monkeypatch.setattr(precedence_builder, "build_linear_edges_by_batch", _bad_edges)
+
+    with pytest.raises(ValidationError) as exc_info:
+        prepare_schedule_graph_for_dispatch(_schedule_input("on"))  # type: ignore[arg-type]
+
+    assert exc_info.value.field == "graph_input_contract_error"
+    details = exc_info.value.details
+    assert details is not None
+    assert details["reason"] == "graph_input_contract_error"
+    assert details["status"] == "input_error"
+    assert "工序图增强无法启用" in str(exc_info.value)
+
+
 def test_on_cycle_block_no_uses_real_optimizer_sgs_override(cycle_graph: None) -> None:
     calls: Dict[str, Any] = {}
     schedule_input = _schedule_input("on")

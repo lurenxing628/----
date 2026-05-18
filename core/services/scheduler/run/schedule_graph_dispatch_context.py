@@ -362,12 +362,32 @@ def build_available_graph_score_projection(
 
 
 def build_predecessor_successor_maps(nodes: List[Any], edges: List[Any]) -> Tuple[Dict[int, Set[int]], Dict[int, Set[int]]]:
+    from core.services.scheduler.graph.input_adapter import GraphInputContractError
+
+    def _edge_node_id(edge: Any, attr: str, index: int) -> str:
+        if not hasattr(edge, attr):
+            raise GraphInputContractError(f"图 ready 队列边缺少字段 {attr}：edge_index={index}")
+        node_id = str(getattr(edge, attr) or "").strip()
+        if not node_id:
+            raise GraphInputContractError(f"图 ready 队列边字段 {attr} 不能为空：edge_index={index}")
+        return node_id
+
     op_id_by_node_id = {str(node.node_id): node_op_id(node) for node in nodes}
     predecessors: Dict[int, Set[int]] = {op_id: set() for op_id in op_id_by_node_id.values()}
     successors: Dict[int, Set[int]] = {op_id: set() for op_id in op_id_by_node_id.values()}
-    for edge in edges:
-        from_op_id = op_id_by_node_id[str(edge.from_node_id)]
-        to_op_id = op_id_by_node_id[str(edge.to_node_id)]
+    for index, edge in enumerate(edges):
+        from_node_id = _edge_node_id(edge, "from_node_id", index)
+        to_node_id = _edge_node_id(edge, "to_node_id", index)
+        if from_node_id not in op_id_by_node_id:
+            raise GraphInputContractError(
+                f"图 ready 队列边引用未知前置节点：from_node_id={from_node_id!r}，edge_index={index}"
+            )
+        if to_node_id not in op_id_by_node_id:
+            raise GraphInputContractError(
+                f"图 ready 队列边引用未知后置节点：to_node_id={to_node_id!r}，edge_index={index}"
+            )
+        from_op_id = op_id_by_node_id[from_node_id]
+        to_op_id = op_id_by_node_id[to_node_id]
         predecessors.setdefault(to_op_id, set()).add(from_op_id)
         successors.setdefault(from_op_id, set()).add(to_op_id)
     return predecessors, successors
