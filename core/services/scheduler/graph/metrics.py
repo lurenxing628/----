@@ -105,15 +105,18 @@ def get_impact_count(graph: Any, node_id: str) -> int:
     return len(get_downstream_operations(graph, node_id))
 
 
+def _build_downstream_critical_minutes_by_node(graph: Any) -> Dict[str, int]:
+    result: Dict[str, int] = {}
+    for node_id in reversed(get_topological_order(graph)):
+        result[node_id] = _duration_of(graph, node_id) + max(
+            (int(data["lag_minutes"]) + result[to_node_id] for _from_node_id, to_node_id, data in graph.out_edges(node_id, data=True)),
+            default=0,
+        )
+    return result
+
+
 def get_downstream_critical_minutes(graph: Any, node_id: str) -> int:
-    nx = import_networkx()
-
-    node_ids = {node_id}
-    node_ids.update(nx.descendants(graph, node_id))
-
-    subgraph = graph.subgraph(node_ids).copy()
-    _path, minutes = get_critical_path(subgraph)
-    return int(minutes)
+    return _build_downstream_critical_minutes_by_node(graph)[node_id]
 
 
 def build_node_metrics(graph: Any) -> Dict[str, Dict[str, Any]]:
@@ -124,6 +127,7 @@ def build_node_metrics(graph: Any) -> Dict[str, Dict[str, Any]]:
         for index, node_id in enumerate(critical_path)
     }
     generation_index = get_generation_index(graph)
+    downstream_critical_minutes = _build_downstream_critical_minutes_by_node(graph)
 
     result: Dict[str, Dict[str, Any]] = {}
 
@@ -133,7 +137,7 @@ def build_node_metrics(graph: Any) -> Dict[str, Dict[str, Any]]:
             "critical_path_rank": critical_rank.get(node_id),
             "impact_count": get_impact_count(graph, node_id),
             "generation_index": generation_index[node_id],
-            "downstream_critical_minutes": get_downstream_critical_minutes(graph, node_id),
+            "downstream_critical_minutes": downstream_critical_minutes[node_id],
         }
 
     return result

@@ -447,6 +447,10 @@ def test_on_cycle_block_no_uses_real_optimizer_sgs_override(cycle_graph: None) -
     graph_analysis = outcome.result_summary_obj["algo"]["graph_analysis"]
     assert graph_analysis["effective_mode"] == "sgs_without_graph_ready_queue"
     assert graph_analysis["ready_queue_enabled"] is False
+    assert graph_analysis["graph_enhancement_disabled_reason"] == "schedule_graph_cycle"
+    assert graph_analysis["score_enabled"] is False
+    assert graph_analysis["score_metric_status"] == "disabled"
+    assert graph_analysis["score_disabled_reason"] == "schedule_graph_cycle"
     assert calls["scheduler_graph_ready_context"] is None
     assert calls["scheduler_dispatch_mode"] == "sgs"
     assert calls["multi_start_dispatch_modes"] == ["sgs"]

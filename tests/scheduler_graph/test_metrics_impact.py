@@ -112,6 +112,26 @@ def test_downstream_critical_minutes_starts_from_requested_node() -> None:
     assert get_downstream_critical_minutes(graph, "op:D") == 10
 
 
+def test_build_node_metrics_does_not_rebuild_longest_path_per_node(monkeypatch: Any) -> None:
+    from core.services.scheduler.graph import metrics as graph_metrics
+
+    graph = _linear_graph(8)
+    calls = {"get_critical_path": 0}
+    original = graph_metrics.get_critical_path
+
+    def _counted_get_critical_path(graph_arg: Any) -> Any:
+        calls["get_critical_path"] += 1
+        return original(graph_arg)
+
+    monkeypatch.setattr(graph_metrics, "get_critical_path", _counted_get_critical_path)
+
+    node_metrics = graph_metrics.build_node_metrics(graph)
+
+    assert calls["get_critical_path"] == 1
+    assert node_metrics["op:1"]["downstream_critical_minutes"] == 8
+    assert node_metrics["op:8"]["downstream_critical_minutes"] == 1
+
+
 def test_metrics_functions_do_not_modify_original_graph() -> None:
     from core.services.scheduler.graph.metrics import build_node_metrics, get_critical_path, get_topological_order
 
@@ -142,6 +162,18 @@ def _branch_graph() -> Any:
             _edge(from_node_id="op:C", to_node_id="op:D"),
         ],
     )
+
+
+def _linear_graph(node_count: int) -> Any:
+    nodes = [
+        _node(node_id=f"op:{index}", op_code=f"B001_{index * 10:03d}", seq=index * 10, duration_minutes=1)
+        for index in range(1, node_count + 1)
+    ]
+    edges = [
+        _edge(from_node_id=f"op:{index}", to_node_id=f"op:{index + 1}")
+        for index in range(1, node_count)
+    ]
+    return build_precedence_graph(nodes, edges)
 
 
 def _node_snapshot(graph: Any) -> List[Any]:
