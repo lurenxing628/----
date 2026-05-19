@@ -234,8 +234,8 @@ items:
   - slug: scheduler-graph-candidate-schema-query
     title: PR-7a 候选表、仓库和统一方案查询服务
     description: "先把候选方案的数据底座做准：新增 ScheduleCandidate / ScheduleCandidateRows / ScheduleCandidateSelection，Schedule 仍只保存 adopted；新增候选仓库、plan query repo 和 SchedulePlanQueryService，让 adopted 从 Schedule 读，非 adopted 代表方案从 CandidateRows 读。"
-    status: planned
-    feature: null
+    status: done
+    feature: .codestable/features/2026-05-18-scheduler-graph-candidate-schema-query/
     minimal_loop: false
     depends_on: [scheduler-graph-critical-score-on-mode]
     primary_paths:
@@ -253,13 +253,13 @@ items:
     exit_checks:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_schema_contract.py tests/regression_scheduler_candidate_plan_query_contract.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .codestable/tools/validate-yaml.py --file .codestable/roadmap/networkx-scheduler-graph-introduction/networkx-scheduler-graph-introduction-items.yaml --yaml-only
-    notes: "强一致第一步：一个正式 version 只代表一次排产，Schedule 只保存 adopted，所有候选保存摘要，只有非 adopted 的 baseline_best / critical_best 代表方案明细保存到 ScheduleCandidateRows。ScheduleCandidate.status 只允许 completed / failed / skipped / not_run；adopted / baseline_best / critical_best 只属于 ScheduleCandidateSelection.role。schedule_detail_query.py 需要支持 plan rows CTE，不能继续把所有明细查询写死在 Schedule 表上。"
+    notes: "已完成：2026-05-18 新增 ScheduleCandidate / ScheduleCandidateRows / ScheduleCandidateSelection 和 v10 迁移，SchemaVersion 当前版本升到 10；ScheduleCandidate.status 只允许 completed / failed / skipped / not_run，selection.role 只允许 adopted / baseline_best / critical_best，且没有把 ScheduleCandidate.version 外键到 ScheduleHistory(version)。新增候选模型和候选仓库，bulk create candidates 逐条插入拿 id，不依赖 executemany.lastrowid。新增 SchedulePlanQueryService 和 plan query repo：adopted 永远从 Schedule 读，合法但旧历史缺少 baseline_best / critical_best selection 时可见 fallback 到 adopted；未知 plan_role 直接报错；selection 指向 candidate_rows 时必须 detail_saved=yes 且实际存在 ScheduleCandidateRows，否则直接报错，不静默返回空结果。PR-7a 未实现候选运行、自动择优、主链同事务持久化、页面切换或配置字段，这些继续由 PR-7b 到 PR-7e 承接。"
 
   - slug: scheduler-graph-candidate-runner-selection
     title: PR-7b 候选生成、运行、自动择优和关键链健康
     description: "实现 baseline + 关键链 3/5/7 档候选生成、串行候选运行、整次全局时间预算、candidate_trial_mode 冻结当前排序/派工规则、score_only / balanced 自动择优，以及落库前纯函数关键链健康计算。"
-    status: planned
-    feature: null
+    status: done
+    feature: .codestable/features/2026-05-18-scheduler-graph-candidate-runner-selection/
     minimal_loop: false
     depends_on: [scheduler-graph-candidate-schema-query]
     primary_paths:
@@ -277,13 +277,13 @@ items:
     exit_checks:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_generation_contract.py tests/regression_scheduler_candidate_runner_contract.py tests/regression_scheduler_graph_auto_selection_contract.py tests/regression_scheduler_candidate_health_contract.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_graph_on_mode_contract.py tests/test_sgs_internal_scoring_matches_execution.py tests/test_sgs_total_hours_cache.py
-    notes: "默认生成 baseline + 5 档关键链候选，档数可为 3 / 5 / 7。time_budget_seconds / run_time_budget_seconds 是整次候选比较总预算，不是每个候选各用一次。raw score 复用当前 objective_score，score tuple 越小越好；balanced 只在 failed_ops、overdue_count、total_tardiness_hours 容差内且关键链健康 better 时允许关键链反超。内部指标使用小时口径字段，不用拖期分钟或完工分钟字段。"
+    notes: "已完成：2026-05-18 新增 schedule_candidate_specs / health / selection / runner 和四份合同测试。默认生成 baseline + 5 档关键链候选，档数可为 3 / 5 / 7；runner 只做内存候选比较，不走 orchestrate_schedule_run，不分配正式 version，不调用 persist_schedule。每个候选先用临时 cfg 构造候选级 ScheduleRunInput，调用 prepare_schedule_graph_for_dispatch，再把 graph_ready_context / graph_dispatch_mode_override 传给 optimize_schedule；trial 模式用内存态 cfg_svc 把 sort_strategy / dispatch_mode / dispatch_rule 收窄为当前单值，避免混入 improve 多起点组合。time_budget_seconds / run_time_budget_seconds 是整次候选比较总预算，不是每个候选各用一次。raw score 复用当前 objective_score，score tuple 越小越好；balanced 只在 failed_ops、overdue_count、total_tardiness_hours 容差内且关键链健康 better 时允许关键链反超。ValidationError 一律原样抛出，不把图上下文/输入/配置/数据范围错误吞成候选 failed 后继续选 baseline。PR-7b 未实现 PR-7c 主链同事务持久化、PR-7d plan_role 页面/报表切换或 PR-7e 配置收口。"
 
   - slug: scheduler-graph-candidate-transaction-persistence
     title: PR-7c 主链和同事务候选持久化
     description: "改造排产主链和持久化：候选运行只在内存里跑，最终 adopted payload 校验后分配正式 version，并通过 persist_schedule_run_with_candidates 同事务写 Schedule、ScheduleHistory、候选摘要、代表明细和角色映射；OperationLogs 事务后只写极小摘要。"
-    status: planned
-    feature: null
+    status: done
+    feature: .codestable/features/2026-05-18-scheduler-graph-candidate-transaction-persistence/
     minimal_loop: false
     depends_on: [scheduler-graph-candidate-runner-selection]
     primary_paths:
@@ -299,31 +299,38 @@ items:
     exit_checks:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_persistence_contract.py tests/regression_scheduler_candidate_summary_contract.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_schedule_summary_v11_contract.py tests/regression_scheduler_graph_summary_contract.py tests/regression_scheduler_graph_operation_logs_contract.py
-    notes: "PR-7 第一版不走 degraded 方案。Schedule / ScheduleHistory / ScheduleCandidate / ScheduleCandidateRows / ScheduleCandidateSelection 必须同事务写入；候选持久化失败时整次排产回滚，不生成“正式成功但候选缺失”的历史。OperationLogs 不能再复制完整 result_summary.algo，只允许写 planned/completed/time_budget/adopted/selection_policy/selection_reason_code 等极小摘要。"
+    notes: "已完成：2026-05-18 正式主链接入 run_candidate_comparison，只采用 selection.selected_plan，adopted payload 校验通过后才分配一次正式 version；CandidatePlan 补齐 adopted summary 所需的 optimizer 字段，CandidateComparisonOutcome 带 run_time_budget_seconds，summary/log 不从配置默认值反推。新增 schedule_candidate_summary.py 和 schedule_candidate_persistence.py：result_summary.algo.candidate_comparison 只写小摘要，summary_size_guard 最小摘要仍保留候选极小字段；OperationLogs 只写 enabled / planned / completed / time_budget_reached / run_time_budget_seconds / adopted / selection_policy / selection_reason_code。persist_schedule_run_with_candidates 在同一个事务里写 Schedule、状态更新、ScheduleHistory、ScheduleCandidate、非 adopted 代表 ScheduleCandidateRows 和 adopted/baseline_best/critical_best selection；候选写入失败时正式排产和历史一起回滚，成功日志事务后写。PR-7c 未实现 PR-7d 页面/接口/导出/报表 plan_role 切换，也未实现 PR-7e 配置收口、候选清理或性能守卫。"
 
   - slug: scheduler-graph-plan-role-pages-reports
     title: PR-7d 结果页、接口、导出和独立报表 plan_role 切换
     description: "把甘特图、周计划、资源派工、优化分析页、超期/利用率/停机影响独立报表、对应 data 接口和导出统一接入 plan_role，页面预览和导出读同一套方案，非 adopted 明确提示这是对比方案。"
-    status: planned
-    feature: null
+    status: done
+    feature: .codestable/features/2026-05-18-scheduler-graph-plan-role-pages-reports
     minimal_loop: false
     depends_on: [scheduler-graph-candidate-transaction-persistence]
     primary_paths:
       - core/services/scheduler/gantt_service.py
+      - core/services/scheduler/gantt_plan_query.py
       - core/services/scheduler/resource_dispatch_service.py
       - core/services/report/report_engine.py
       - core/services/scheduler/gantt_critical_chain.py
+      - web/bootstrap/request_services.py
       - web/routes/domains/scheduler/scheduler_gantt.py
       - web/routes/domains/scheduler/scheduler_week_plan.py
       - web/routes/domains/scheduler/scheduler_resource_dispatch.py
       - web/routes/domains/scheduler/scheduler_analysis.py
       - web/routes/reports.py
       - web/viewmodels/scheduler_analysis_vm.py
+      - web/viewmodels/scheduler_analysis_candidates.py
+      - web/viewmodels/scheduler_resource_dispatch.py
       - templates/scheduler/gantt.html
       - templates/scheduler/week_plan.html
       - templates/scheduler/resource_dispatch.html
       - templates/scheduler/analysis.html
-      - templates/system/history.html
+      - templates/reports/overdue.html
+      - templates/reports/utilization.html
+      - templates/reports/downtime.html
+      - web_new_test/templates/scheduler/gantt.html
       - static/js/gantt_boot.js
       - static/js/resource_dispatch.js
       - tests/regression_scheduler_candidate_gantt_plan_role_contract.py
@@ -334,7 +341,8 @@ items:
     exit_checks:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_gantt_plan_role_contract.py tests/regression_scheduler_candidate_week_plan_contract.py tests/regression_scheduler_candidate_resource_dispatch_contract.py tests/regression_scheduler_candidate_reports_contract.py tests/regression_scheduler_candidate_analysis_contract.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_plan_query_contract.py
-    notes: "所有页面、data 接口、导出和日志 filters 都要带 requested_plan_role / effective_plan_role。甘特图设备/人员切换、上周/下周、日期范围和 JS /gantt/data 请求都要保留 plan_role。周计划、资源派工、超期、利用率、停机影响的页面预览和导出必须读同一个 plan_role。甘特关键链高亮缓存 key 必须带 plan_role / candidate_id，不能只按 version 缓存。"
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_architecture_fitness.py::test_file_size_limit tests/test_architecture_fitness.py::test_cyclomatic_complexity_threshold
+    notes: "已完成：2026-05-18 甘特图、周计划、资源派工、分析页、超期/利用率/停机影响报表页面和导出统一接入 plan_role；页面、data 接口、导出链接和日志 filters 都带 requested/effective/status/candidate 小字段，不写 rows 或完整候选列表。甘特图设备/人员切换、周切换、日期范围和 JS /gantt/data 请求保留 plan_role；关键链 adopted 保留旧 compute_critical_chain 入口，候选方案从当前 plan rows 计算，缓存 key 带 role/source_table/candidate_id。周计划、资源派工和三类报表预览/导出读同一套 effective plan rows；非 adopted 明确提示对比方案，合法缺失角色可见 fallback adopted，未知 plan_role 直接 400。PR-7d 没有实现 PR-7e 配置/清理/性能守卫，也没有改 PR-8 report-only 资源匹配计划。"
 
   - slug: scheduler-graph-candidate-config-closeout
     title: PR-7e 配置、临时时间上限、清理策略和兼容收口
@@ -369,17 +377,41 @@ items:
 
   - slug: scheduler-graph-resource-matching-report
     title: PR-8 资源匹配 report-only 分析
-    description: "基于 NetworkX 二分图最大匹配，分析 ready 工序与候选设备的可行匹配数量、未匹配工序和瓶颈设备，第一版只写报告不改排产。"
+    description: "基于 NetworkX 二分图最大匹配，按 PR-5 ready 口径分析首波 ready 工序与 candidate_machine_ids 的可行设备匹配，输出 matched/unmatched/bottleneck 小摘要和 diagnostics 采样；第一版只写 result_summary 报告，不改 SGS 候选排序、不改资源分配、不落候选表、不加页面入口。"
     status: planned
     feature: null
     minimal_loop: false
     depends_on: [scheduler-graph-candidate-config-closeout]
     primary_paths:
       - core/services/scheduler/graph/resource_matching.py
+      - core/services/scheduler/run/schedule_graph_dispatch_context.py
+      - core/services/scheduler/run/schedule_graph_report.py
       - tests/scheduler_graph/test_resource_matching.py
+      - tests/regression_scheduler_graph_resource_matching_report_contract.py
+      - tests/regression_scheduler_graph_operation_logs_contract.py
+    forbidden_paths:
+      - schema.sql
+      - core/infrastructure/migrations/
+      - data/repositories/schedule_candidate_repo.py
+      - data/repositories/schedule_plan_query_repo.py
+      - core/services/scheduler/run/schedule_candidate_specs.py
+      - core/services/scheduler/run/schedule_candidate_runner.py
+      - core/services/scheduler/run/schedule_candidate_selection.py
+      - core/services/scheduler/run/schedule_candidate_persistence.py
+      - core/services/scheduler/run/schedule_optimizer.py
+      - core/algorithms/greedy/dispatch/sgs.py
+      - core/algorithms/greedy/dispatch/sgs_scoring.py
+      - core/services/scheduler/resource_dispatch_service.py
+      - web/routes/
+      - templates/
     exit_checks:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_graph/test_resource_matching.py
-    notes: "第一版不使用匹配结果直接分配设备；最小费用流留到后续增强。"
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_graph_resource_matching_report_contract.py tests/regression_scheduler_graph_operation_logs_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_graph_report_mode_contract.py tests/regression_scheduler_graph_on_mode_contract.py tests/regression_scheduler_graph_summary_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler/graph/resource_matching.py core/services/scheduler/run/schedule_graph_dispatch_context.py core/services/scheduler/run/schedule_graph_report.py tests/scheduler_graph/test_resource_matching.py tests/regression_scheduler_graph_resource_matching_report_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright core/services/scheduler/graph/resource_matching.py core/services/scheduler/run/schedule_graph_dispatch_context.py core/services/scheduler/run/schedule_graph_report.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .codestable/tools/validate-yaml.py --file .codestable/roadmap/networkx-scheduler-graph-introduction/networkx-scheduler-graph-introduction-items.yaml --yaml-only
+    notes: "PR-8 只做 report-only 资源匹配诊断：resource_matching.py 只接 OperationGraphNode ready_nodes，使用 nx.bipartite.maximum_matching 后只保留工序侧映射；无候选设备、空 ready、有环、图增强不可用、NetworkX 不可用都必须以 status/reason/warning 可见，不允许静默回退成全量设备或 matched=0 成功。public 只写 ready/matched/unmatched/bottleneck 计数和小样本，diagnostics 只写采样；OperationLogs 只能看到 public 小摘要。第一版不做人员匹配、不做最小费用流、不改排产结果、不改资源分配、不新增配置/schema/页面。"
 
   - slug: scheduler-graph-win7-package-closeout
     title: PR-9 Win7 离线打包和最终验收

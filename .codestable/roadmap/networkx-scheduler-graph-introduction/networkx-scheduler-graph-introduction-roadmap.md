@@ -450,8 +450,12 @@ failed_ops 不能变差。
 
 ```text
 PR-0 到 PR-6 已完成。
-下一步是 PR-7。
-PR-7 可以继承 PR-6 已证明的 on+DAG 图评分方向，但不能继承多权重候选试跑、自动择优、候选落库或页面方案切换证明。
+PR-7a 已完成。
+PR-7b 已完成。
+PR-7c 已完成。
+PR-7d 已完成。
+下一步是 PR-7e。
+PR-7e 可以继承 PR-7a 已证明的候选表、候选仓库和统一方案查询底座，继承 PR-7b 已证明的内存候选生成、候选运行、自动择优和关键链健康计算，继承 PR-7c 已证明的 adopted 方案同事务持久化、候选摘要、代表明细和角色映射，也可以继承 PR-7d 已证明的页面、接口、导出和独立报表按 plan_role 切换能力；但不能继承配置字段、临时时间上限、旧 preset 补字段、候选清理策略或性能守卫的证明。
 ```
 
 | PR / items.yaml 条目 | 对应技术章节 | 目标 | 是否改变排产结果 | 状态 |
@@ -463,8 +467,8 @@ PR-7 可以继承 PR-6 已证明的 on+DAG 图评分方向，但不能继承多�
 | PR-4 `scheduler-graph-debug-performance` | 阶段 10.9 + 阶段 16 + 阶段 17 相关测试 + 阶段 18 | 性能护栏、diagnostics 加固、真实集成证明；受控 debug export 只是附属能力 | 否 | done |
 | PR-5 `scheduler-graph-ready-queue-on-mode` | 阶段 11 + 阶段 12 | 先做有环安全门，再让 ready 队列参与 SGS 候选 | 是 | done |
 | PR-6 `scheduler-graph-critical-score-on-mode` | 阶段 13 | 关键路径、影响范围、后续关键工作量进入评分 | 是/可控 | done |
-| PR-7a 到 PR-7e | 阶段 13.6 | 多权重候选试跑、自动择优、同事务落库、代表方案切换和配置收口 | 是/可控 | planned |
-| PR-8 `scheduler-graph-resource-matching-report` | 阶段 14-15 | 资源匹配 report-only 分析，最小费用流只作为后续增强 | 否 | planned |
+| PR-7a 到 PR-7e | 阶段 13.6 | 多权重候选试跑、自动择优、同事务落库、代表方案切换和配置收口 | 是/可控 | PR-7a / PR-7b / PR-7c / PR-7d done；PR-7e planned |
+| PR-8 `scheduler-graph-resource-matching-report` | 阶段 14-15 | 资源匹配 report-only 分析：首波 ready 工序 × 候选设备最大匹配，输出可见瓶颈/未匹配诊断；最小费用流只留后续增强 | 否 | planned |
 | PR-9 `scheduler-graph-win7-package-closeout` | 阶段 21 | Win7 离线打包和最终验收 | 否/可控 | planned |
 | PR-10 `scheduler-graph-candidate-resume-later` | 阶段 23 | 后续增强：候选方案续跑 | 否/可控 | planned |
 
@@ -8027,92 +8031,400 @@ tests/test_sgs_total_hours_cache.py
 
 ## 阶段 14：资源匹配第一版
 
-这一步不是必须马上做，但如果要进一步优化设备/人员分配，可以用 NetworkX 二分图先做“可行匹配”。
+本阶段对应 PR-8 `scheduler-graph-resource-matching-report`。它只做“资源可行匹配诊断”，不做自动派工，不改变排产结果。
 
-第一版只做 report-only：
+大白话说：前面 PR-5 / PR-6 已经能知道哪些工序 ready、哪些工序更关键；PR-8 只回答一个更窄的问题——“首波 ready 工序里，按当前图输入看到的候选设备，最多能同时匹配多少道工序，哪些工序没有设备可匹配，哪些设备是瓶颈”。
+
+### 14.0 PR-8 边界和整体要求
+
+第一版只分析设备维度，不分析人员维度的二次匹配；原因是当前 `OperationGraphNode` 已经有 `candidate_machine_ids` 和 `candidate_operator_ids`，但真实内部派工还会考虑日历、停机、冻结窗口、当前时间轴、固定人员、外协等约束。PR-8 如果试图在 report-only 阶段复制整套 `auto_assign_resources`，会制造第二套派工器，后续很难对齐。
+
+本阶段的硬要求：
 
 ```text
-ready 工序数量
-最大可匹配数量
-未匹配工序
-瓶颈设备
+1. 优雅简洁：resource_matching.py 只做二分图最大匹配和摘要投影，不写万能资源优化器。
+2. 高内聚低耦合：只依赖 graph/types.py、id_policy.py、nx_runtime.py，不反向 import scheduler run / optimizer / SGS / repo / Flask。
+3. 不允许静默回退：NetworkX 不可用、输入合同错误、候选设备缺失都必须以 status/reason/warning 明确可见；不能把坏输入当成“匹配数量 0 且一切正常”。
+4. 不允许过度兜底：没有候选设备就是没有候选设备，不能回退成全量设备；没有 ready 工序就是 empty_ready_set，不能随手拿全部待排工序替代。
+5. 不允许吞错：调用方只捕获已有图链路明确允许的 NetworkXUnavailable / GraphInputContractError / GraphBuildContractError；未知异常继续暴露，不包成 degraded 成功。
+6. 不做过度防御性编程：输入来源只接受 PR-5 已准备的 OperationGraphNode + OperationGraphEdge；不兼容任意 JSON、数据库 row、Excel row 或 nx.DiGraph。
 ```
 
-不要马上用匹配结果改排产。
+PR-8 只允许写：
 
-### 14.1 新建 resource_matching.py
+```text
+result_summary["algo"]["graph_analysis"]["resource_matching"]
+result_summary["diagnostics"]["graph_analysis"]["resource_matching"]
+```
+
+禁止写：
+
+```text
+Schedule rows
+ScheduleCandidate / ScheduleCandidateRows / ScheduleCandidateSelection
+schedule_optimizer.py / GreedyScheduler / dispatch_sgs 资源选择逻辑
+resource_dispatch_service.py 的方案明细
+schema.sql / migrations
+配置新增项
+页面新增按钮或路由
+```
+
+### 14.1 分析输入口径
+
+PR-8 复用 PR-5 的 ready 资格口径，不重新发明 ready 队列：
+
+```text
+nodes:
+  build_operation_nodes_from_rows(schedule_input.algo_ops, batches, resource_pool, frozen_op_ids)
+
+edges:
+  build_linear_edges_by_batch(nodes)
+
+ready_op_ids:
+  从 build_graph_ready_context(...) 得到首轮 ready 集合：
+    schedulable_op_ids = algo_ops_to_schedule 的 op_id
+    fixed_op_ids = frozen_op_ids + seed_results.op_id
+    predecessor_op_ids_by_op_id = build_predecessor_successor_maps(nodes, edges)
+    ready = 前置全部在 fixed_op_ids 内、且自身属于 schedulable_op_ids 的工序
+
+candidate machines:
+  使用 OperationGraphNode.candidate_machine_ids
+```
+
+如果 `graph_analysis_mode=report`，本阶段仍可计算 report-only 资源匹配，但 ready 口径必须显式写为 `first_wave_ready_from_fixed_predecessors`，只代表“按冻结/seed 视为已固定后的首波 ready”。
+
+如果 `graph_analysis_mode=on` 且 DAG 可用，本阶段的 ready 口径仍与 PR-5 图 ready 队列一致；但匹配结果仍只写报告，不参与 SGS 候选排序或资源选择。
+
+有环或图增强未允许时：
+
+```text
+resource_matching.status = "skipped"
+resource_matching.reason = "graph_not_dag" 或已有 graph_enhancement_disabled_reason
+不运行 maximum_matching
+不写伪 matching_count=0 作为正常结果
+```
+
+### 14.2 resource_matching.py 接口契约
+
+`core/services/scheduler/graph/resource_matching.py` 保持纯图分析模块，只提供普通 Python DTO 和纯函数。
+
+建议接口：
 
 ```python
 from __future__ import annotations
 
-from typing import Dict, Iterable, List
+from dataclasses import dataclass, field
+from typing import Any, Dict, Iterable, Tuple
 
-from .id_policy import make_machine_node_id
+from .id_policy import display_id, make_machine_node_id
 from .nx_runtime import import_networkx
+from .types import OperationGraphNode
 
 
-def build_operation_machine_graph(
-    operation_node_ids: Iterable[str],
-    operation_to_machine_ids: Dict[str, List[str]],
-):
-    nx = import_networkx()
-    graph = nx.Graph()
-
-    op_set = set(operation_node_ids)
-
-    for op_node_id in op_set:
-        graph.add_node(op_node_id, bipartite="operation")
-
-        for machine_id in operation_to_machine_ids.get(op_node_id, []):
-            machine_node_id = make_machine_node_id(machine_id)
-            graph.add_node(machine_node_id, bipartite="machine")
-            graph.add_edge(op_node_id, machine_node_id)
-
-    return graph, op_set
+class GraphResourceMatchingContractError(ValueError):
+    pass
 
 
-def max_operation_machine_matching(
-    operation_node_ids: Iterable[str],
-    operation_to_machine_ids: Dict[str, List[str]],
-) -> Dict[str, str]:
-    nx = import_networkx()
+@dataclass(frozen=True)
+class OperationMachineMatch:
+    operation_node_id: str
+    machine_node_id: str
+    operation_id: str
+    machine_id: str
 
-    graph, op_set = build_operation_machine_graph(
-        operation_node_ids=operation_node_ids,
-        operation_to_machine_ids=operation_to_machine_ids,
-    )
 
-    matching = nx.bipartite.maximum_matching(graph, top_nodes=op_set)
-
-    return {
-        op_node_id: machine_node_id
-        for op_node_id, machine_node_id in matching.items()
-        if op_node_id in op_set
-    }
+@dataclass(frozen=True)
+class ResourceMatchingSummary:
+    status: str
+    reason: str
+    ready_operation_count: int
+    operation_with_candidate_count: int
+    machine_count: int
+    edge_count: int
+    matched_operation_count: int
+    unmatched_operation_ids: Tuple[str, ...] = field(default_factory=tuple)
+    bottleneck_machine_ids: Tuple[str, ...] = field(default_factory=tuple)
+    matches: Tuple[OperationMachineMatch, ...] = field(default_factory=tuple)
+    warnings: Tuple[Dict[str, Any], ...] = field(default_factory=tuple)
 ```
 
-### 14.2 测试
+字段口径：
 
-新增：
+```text
+status:
+  available / skipped / empty / error。
+  resource_matching.py 自身正常分析只返回 available 或 empty。
+  skipped 由调用方在非 DAG / 图增强不可用时投影。
+  error 只用于已知合同错误的 public 投影，不掩盖未知异常。
+
+reason:
+  ok / empty_ready_set / graph_not_dag / graph_enhancement_disabled / graph_resource_matching_contract_error / networkx_unavailable。
+
+ready_operation_count:
+  输入 ready 节点数量。
+
+operation_with_candidate_count:
+  ready 节点中 candidate_machine_ids 非空的工序数量。
+
+machine_count:
+  ready 节点候选设备去重数量。
+
+edge_count:
+  operation-machine 二分边数量。
+
+matched_operation_count:
+  maximum_matching 选中的工序数。
+
+unmatched_operation_ids:
+  ready 工序中没有被匹配的 operation 展示 ID，按 ready 输入顺序输出。
+
+bottleneck_machine_ids:
+  候选边数大于 1、且至少参与一个未匹配工序候选集的设备展示 ID，按边数降序再按 ID 排序；只做诊断提示，不代表真实负荷。
+
+matches:
+  只保留工序侧映射；NetworkX 返回的机器侧反向映射必须过滤掉。
+
+warnings:
+  只放结构化、JSON 可序列化的小 warning，例如 ready 工序无候选设备。
+```
+
+核心函数：
+
+```python
+def summarize_operation_machine_matching(
+    ready_nodes: Iterable[OperationGraphNode],
+) -> ResourceMatchingSummary:
+    """Return report-only maximum matching summary for first-wave ready operations."""
+
+
+def resource_matching_summary_to_public_dict(summary: ResourceMatchingSummary) -> Dict[str, Any]:
+    """Return small result_summary.algo.graph_analysis.resource_matching payload."""
+
+
+def resource_matching_summary_to_diagnostics_dict(summary: ResourceMatchingSummary) -> Dict[str, Any]:
+    """Return sampled diagnostics payload; never returns nx.Graph."""
+```
+
+内部 helper 可以有：
+
+```python
+def _build_operation_machine_graph(ready_nodes: List[OperationGraphNode]):
+    nx = import_networkx()
+    graph = nx.Graph()
+    operation_node_ids = {node.node_id for node in ready_nodes}
+    ...
+    return graph, operation_node_ids, machine_edge_counts
+```
+
+合同要求：
+
+```text
+ready_nodes 必须是 OperationGraphNode；传 dict / nx node / 任意对象直接 GraphResourceMatchingContractError。
+OperationGraphNode.node_id 必须非空且唯一；重复 node_id 直接报错。
+candidate_machine_ids 已由 input_adapter 规范化；这里不再做全量资源兜底。
+candidate_machine_ids 为空的 ready 工序进入 unmatched_operation_ids，并产生 warning code="graph_resource_no_candidate_machine"。
+nx.Graph 不从函数返回，不进入 summary，不进入 diagnostics。
+```
+
+### 14.3 最大匹配和瓶颈诊断规则
+
+最大匹配规则：
+
+```text
+1. 左侧节点：ready OperationGraphNode.node_id。
+2. 右侧节点：make_machine_node_id(machine_id)。
+3. 边：每个 ready 工序到自己的 candidate_machine_ids。
+4. 调用 nx.bipartite.maximum_matching(graph, top_nodes=operation_node_ids)。
+5. 只保留 key 属于 operation_node_ids 的映射。
+6. machine_node_id 用 display_id 还原成业务 machine_id，便于 public / diagnostics 展示。
+```
+
+未匹配规则：
+
+```text
+unmatched = ready_operation_ids - matched_operation_ids
+输出按 ready_nodes 输入顺序，不按 NetworkX 返回顺序。
+```
+
+瓶颈设备规则必须简单、可解释：
+
+```text
+1. 对所有二分边统计 machine_id -> candidate_edge_count。
+2. 找出未匹配工序的候选设备集合。
+3. bottleneck_machine_ids = 同时满足：
+   - candidate_edge_count > 1
+   - machine_id 出现在至少一个未匹配工序候选集中
+4. 排序：candidate_edge_count 降序，再 machine_id 升序。
+5. 默认最多 public 展示 10 个，diagnostics 可采样 50 个。
+```
+
+这不是设备负荷优化，不考虑时间、停机、日历、换型、人员可用性；文案里必须写清“仅按候选设备集合估算”。
+
+### 14.4 接入 schedule_graph_report.py
+
+接入位置在 `_build_schedule_graph_analysis_projection()` 中，必须复用已经构建好的 `nodes`、`edges` 和 `payload`：
+
+```text
+build_operation_nodes_from_rows(...)
+build_linear_edges_by_batch(nodes)
+analyze_linear_batches(...)
+payload = graph_summary_to_dict(summary)
+build_graph_score_projection(...)
+build_graph_ready_context(...)
+build_graph_resource_matching_projection(...)
+project_graph_analysis_payload(..., resource_matching_public, resource_matching_diagnostics)
+```
+
+建议在 `core/services/scheduler/run/schedule_graph_dispatch_context.py` 新增一个小 helper，避免 `schedule_graph_report.py` 继续膨胀：
+
+```python
+def build_graph_resource_matching_projection(
+    *,
+    mode: str,
+    is_dag: bool,
+    graph_enhancement_allowed: bool,
+    nodes: List[Any],
+    graph_ready_context: Optional[Dict[str, Any]],
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    ...
+```
+
+这个 helper 只做投影协调：
+
+```text
+1. mode=off 不会走到这里。
+2. is_dag=False 时返回 skipped / graph_not_dag。
+3. graph_ready_context is None 且 mode=on 时返回 skipped / graph_enhancement_disabled。
+4. report 模式可用同一套 predecessor/fixed/schedulable 口径临时构造首波 ready，不启用 SGS。
+5. 得到 ready_nodes 后调用 summarize_operation_machine_matching(ready_nodes)。
+6. public 只放小摘要；diagnostics 只放采样。
+```
+
+public 字段示例：
+
+```json
+{
+  "status": "available",
+  "reason": "ok",
+  "ready_operation_count": 3,
+  "operation_with_candidate_count": 3,
+  "machine_count": 2,
+  "edge_count": 4,
+  "matched_operation_count": 2,
+  "unmatched_operation_count": 1,
+  "bottleneck_machine_count": 1,
+  "unmatched_operation_sample": ["101"],
+  "bottleneck_machine_sample": ["M2"]
+}
+```
+
+diagnostics 字段示例：
+
+```json
+{
+  "matches_sample": [
+    {"operation_id": "100", "machine_id": "M1"}
+  ],
+  "matches_count": 2,
+  "matches_truncated": false,
+  "unmatched_operation_ids_sample": ["101"],
+  "unmatched_operation_count": 1,
+  "bottleneck_machine_ids_sample": ["M2"],
+  "bottleneck_machine_count": 1,
+  "warnings_sample": [],
+  "warning_count": 0
+}
+```
+
+采样限制沿用小常量，不允许把完整匹配图、完整节点、完整候选资源池塞进 `result_summary`。
+
+### 14.5 OperationLogs 和页面边界
+
+OperationLogs 仍只能通过现有 `detail["algo"]` 看到 public 小摘要，因此 PR-8 不需要新增日志写入点。
+
+允许 OperationLogs 看到：
+
+```text
+graph_analysis.resource_matching.status
+graph_analysis.resource_matching.reason
+ready_operation_count
+matched_operation_count
+unmatched_operation_count
+bottleneck_machine_count
+```
+
+禁止 OperationLogs 看到：
+
+```text
+matches_sample
+完整 unmatched_operation_ids
+完整 bottleneck_machine_ids
+nx.Graph
+OperationGraphNode.raw
+完整 resource_pool
+```
+
+页面层第一版不新增入口；后续如果要展示，只读取 `result_summary.algo.graph_analysis.resource_matching` 的小摘要，不直接调用 graph 模块。
+
+### 14.6 测试
+
+新增或补齐：
 
 ```text
 tests/scheduler_graph/test_resource_matching.py
+tests/regression_scheduler_graph_resource_matching_report_contract.py
+tests/regression_scheduler_graph_operation_logs_contract.py
 ```
 
-测试：
+`tests/scheduler_graph/test_resource_matching.py` 至少覆盖：
 
 ```text
-O1 可用 M1, M2
-O2 可用 M2
-O3 可用 M2
+1. O1 可用 M1/M2，O2 可用 M2，O3 可用 M2：最多匹配 2 个工序，同一机器不会重复匹配。
+2. 返回 matches 只保留工序侧映射，不包含机器侧反向映射。
+3. 无候选设备的 ready 工序进入 unmatched_operation_ids，并产生 graph_resource_no_candidate_machine warning。
+4. 空 ready_nodes 返回 status=empty、reason=empty_ready_set，不调用方伪造成功。
+5. 重复 OperationGraphNode.node_id 直接 GraphResourceMatchingContractError。
+6. 传入非 OperationGraphNode 直接 GraphResourceMatchingContractError。
+7. summary/public/diagnostics 可 JSON 序列化，且不包含 nx.Graph。
+8. bottleneck_machine_ids 按“参与未匹配候选 + 边数大于 1”规则输出，并按边数降序排序。
 ```
 
-期望：
+`tests/regression_scheduler_graph_resource_matching_report_contract.py` 至少覆盖：
 
 ```text
-最多匹配 2 个工序。
-不会把同一台机器同时分给多个工序。
-返回值只保留工序侧映射。
+1. graph_analysis_mode=report 时，排产 rows / best_order / selected_batch_ids / freeze_window / resource_pool 不变，但 result_summary.algo.graph_analysis.resource_matching 有小摘要。
+2. graph_analysis_mode=on + DAG 时，ready 队列和图评分既有字段不变，并额外写 resource_matching 小摘要；匹配结果不参与资源分配。
+3. 有环且 block=no 时，resource_matching.status=skipped，不运行 maximum_matching，不写伪 matched=0。
+4. NetworkX 不可用时沿用已有 graph_analysis unavailable 口径，不单独吞错成 resource_matching empty。
+5. diagnostics.graph_analysis.resource_matching 只有采样，没有完整 resource_pool、raw、nx.Graph。
+6. OperationLogs 只看到 public 小摘要，不泄漏 diagnostics.matches_sample。
+```
+
+### 14.7 实施顺序
+
+```text
+1. 先写 tests/scheduler_graph/test_resource_matching.py，锁住纯函数合同。
+2. 实现 resource_matching.py：DTO、合同错误、最大匹配、public/diagnostics 投影。
+3. 在 schedule_graph_dispatch_context.py 增加 build_graph_resource_matching_projection 小 helper。
+4. 在 schedule_graph_report.py 接入 helper，并把 resource_matching public/diagnostics 合并进现有 graph_analysis 投影。
+5. 补 regression_scheduler_graph_resource_matching_report_contract.py，证明 report/on 都不改变排产结果。
+6. 补 OperationLogs 回归断言，只允许 public 小摘要。
+7. 跑 PR-8 targeted tests、PR-3/4/5/6 图回归、ruff、pyright。
+8. 回填 roadmap/items 和验收记录。
+```
+
+### 14.8 阶段验收清单
+
+```text
+[ ] resource_matching.py 不在模块 import 时 import networkx。
+[ ] resource_matching.py 不 import scheduler run / optimizer / SGS / repo / Flask。
+[ ] 最大匹配只返回工序侧映射。
+[ ] 无候选设备不回退成全量设备。
+[ ] 空 ready、有环、图增强不可用、NetworkX 不可用都有明确 status/reason。
+[ ] report/on 模式只新增 result_summary graph_analysis 小摘要和 diagnostics 采样，不改变排产 rows / best_order / selected_batch_ids / resource_pool。
+[ ] OperationLogs 不泄漏 diagnostics、matches_sample、完整 resource_pool、raw 或 nx.Graph。
+[ ] 不新增配置、不改 schema、不改候选表、不改资源派工逻辑、不改页面路由。
+[ ] ruff / pyright 通过。
 ```
 
 ## 阶段 15：最小费用流作为后续增强
@@ -8984,6 +9296,16 @@ on 模式：
 这个路线比直接上 OR-Tools 稳得多，也更符合当前 Win7/Python 3.8.10/离线交付的实际约束。
 
 ## 变更记录
+
+- 2026-05-18：完成 PR-7c `scheduler-graph-candidate-transaction-persistence`：正式排产主链接入内存候选比较，只采用 `selection.selected_plan` 作为最终 adopted 方案，且 adopted payload 校验通过后才分配正式 `version`；新增候选小摘要投影和候选持久化 helper，让 `Schedule`、状态更新、`ScheduleHistory`、`ScheduleCandidate`、非 adopted 代表 `ScheduleCandidateRows`、`ScheduleCandidateSelection` 在同一个事务里写入，候选写入失败时正式排产和历史一起回滚；`result_summary.algo.candidate_comparison` 只保留小摘要，summary 超限后的最小摘要仍保留 adopted key、代表 key、候选数量、时间预算和选择原因这些极小字段，`OperationLogs` 只写极小日志字段，不泄漏候选列表、排产行、图节点边、raw graph 或完整 diagnostics。PR-7c 没有实现 PR-7d 页面/接口/导出/报表 `plan_role` 切换，也没有实现 PR-7e 配置收口、候选清理或性能守卫。
+
+- 2026-05-18：完成 PR-7d `scheduler-graph-plan-role-pages-reports`：甘特图、周计划、资源派工、分析页、超期清单、资源负荷与利用率、停机影响统计页面和导出统一接入 `plan_role`，旧链接默认 `adopted`，合法缺失角色可见 fallback adopted，未知角色直接校验错误；页面预览、JSON data、Excel 导出和 OperationLogs filters 使用同一套 requested/effective/status/candidate 小字段，不写 rows 或完整候选列表。甘特关键链 adopted 保留旧 `compute_critical_chain(schedule_repo, version)` 入口，候选方案从当前 plan rows 计算并按 role/source_table/candidate_id 隔离缓存。PR-7d 未实现 PR-7e 配置收口、候选清理或性能守卫，也未改 PR-8 report-only 资源匹配计划。
+
+- 2026-05-18：完成 PR-7b `scheduler-graph-candidate-runner-selection`：新增候选规格生成、关键链健康纯函数、自动择优和内存候选 runner，默认生成 baseline + 5 档关键链候选并支持 3 / 5 / 7；runner 不走正式总编排、不分配正式 version、不写库，每个候选先用临时 cfg 准备图 ready 上下文，再把 `graph_ready_context` / `graph_dispatch_mode_override` 传给优化器；trial 模式显式锁住当前排序策略、派工方式和派工规则，避免把关键链权重比较混进 improve 多起点组合搜索；`score_only` 只看 raw score，`balanced` 只在关键链健康 better 且失败/超期/拖期没有明显变差时允许反超；`ValidationError` 一律原样抛出，不把图上下文、输入、配置或数据范围错误吞成候选失败后继续选 baseline。PR-7b 没有实现 PR-7c 主链同事务落库、PR-7d 页面/报表 `plan_role` 切换，也没有实现 PR-7e 配置收口。
+
+- 2026-05-18：完成 PR-7a `scheduler-graph-candidate-schema-query`：新增 `ScheduleCandidate` / `ScheduleCandidateRows` / `ScheduleCandidateSelection` 和 v10 迁移，SchemaVersion 当前版本升到 10；候选表只保存候选摘要和非 adopted 代表方案明细，不把 `ScheduleCandidate.version` 外键到 `ScheduleHistory(version)`；新增候选模型、候选仓库、`SchedulePlanQueryService` 和 plan query repo，让 adopted 永远从 `Schedule` 读，合法但旧历史缺 selection 时可见 fallback 到 adopted，未知 `plan_role` 直接报错；selection 指向 `candidate_rows` 时必须 `detail_saved=yes` 且实际存在候选明细，否则直接报错，避免空结果被误当成功。PR-7a 没有实现 PR-7b 的候选生成/运行/自动择优，没有实现 PR-7c 主链同事务落库，没有实现 PR-7d 页面切换，也没有实现 PR-7e 配置收口。
+
+- 2026-05-18：细化 PR-8 `scheduler-graph-resource-matching-report` 到可执行级：把阶段 14 从二分图草图扩成 report-only 资源匹配诊断方案，明确只分析首波 ready 工序 × `candidate_machine_ids` 的设备最大匹配，不做人员匹配、不做最小费用流、不改 SGS 候选排序、不改资源分配、不落候选表、不新增配置/schema/页面；补齐优雅简洁、不静默回退、不吞错、不过度兜底/防御的硬要求，写清 `resource_matching.py` DTO/纯函数合同、ready 输入口径、matched/unmatched/bottleneck 规则、`schedule_graph_dispatch_context.py` 小 helper 接入、public/diagnostics/OperationLogs 投影边界、测试用例、实施顺序和验收清单；同步 items.yaml 的 PR-8 description、primary_paths、forbidden_paths、exit_checks 和 notes。
 
 - 2026-05-18：完成 PR-6 `scheduler-graph-critical-score-on-mode`：新增 `graph/scoring.py` 纯函数和纯函数测试，证明图 bonus 越大排序 tuple 越小，缺字段/坏字段/坏权重直接报合同错误；`schedule_graph_report.py` 在 `on + DAG + 权重大于 0` 时计算 full `node_metrics` 并预先转成 `graph_priority_key_by_op_id`，权重全 0 时显式写 `score_weights_zero` 并保持 PR-5 ready 队列行为；SGS 只拼普通 tuple，保留 `score_penalty` 第一位，不让算法层反向依赖 service，SLACK / CR / ATC 方向保持；配置页、summary、OperationLogs、2000 节点 full/on-score 性能证据和架构现状已同步。PR-6 没有实现 PR-7 的候选池、多权重试跑、自动择优、候选落库、页面切换或 schema 迁移。
 - 2026-05-18：细化 PR-6 `scheduler-graph-critical-score-on-mode` 到可执行级：补齐 PR-6 承接 PR-5 的边界，明确只继承 ready 资格、不继承图评分方向证明；把阶段 13 从草图扩成完整执行计划，写清整体实现要求必须优雅简洁、不做过度兜底、不做静默回退、不做过度防御性编程、保持高内聚低耦合；补齐图指标准备合同、`graph/scoring.py` 纯函数、SGS 接入位置、配置说明同步、summary / OperationLogs 小摘要口径、测试用例、实施顺序、验收命令和 PR-7 交接边界；同步 items.yaml 的 PR-6 description、primary_paths、forbidden_paths、exit_checks 和 notes。
