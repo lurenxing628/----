@@ -462,3 +462,22 @@ def test_candidate_plan_time_span_and_dispatch_scope_use_candidate_rows(tmp_path
         assert dispatch_rows[0].get("operator_team_id") == "T-CANDIDATE"
     finally:
         conn.close()
+
+
+def test_plan_query_service_lists_overdue_base_rows_from_candidate_rows(tmp_path: Path) -> None:
+    conn = _seed_db(tmp_path)
+    try:
+        service = SchedulePlanQueryService(conn)
+
+        adopted_rows = service.list_plan_overdue_base_rows(version=VERSION, role=ROLE_ADOPTED)
+        baseline_rows = service.list_plan_overdue_base_rows(version=VERSION, role=ROLE_BASELINE_BEST)
+
+        assert len(adopted_rows) == 1
+        assert adopted_rows[0]["batch_id"] == "B1"
+        assert adopted_rows[0]["finish_time"] == "2026-05-01 10:00"
+
+        assert len(baseline_rows) == 1
+        assert baseline_rows[0]["batch_id"] == "B1"
+        assert baseline_rows[0]["finish_time"] == "2026-05-01 15:00"
+    finally:
+        conn.close()

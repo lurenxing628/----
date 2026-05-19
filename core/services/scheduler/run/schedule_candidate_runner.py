@@ -397,7 +397,7 @@ def _candidate_health(
         return unavailable_health("baseline")
     if not baseline_results:
         return unavailable_health("baseline_result_unavailable")
-    graph_metrics = _graph_metrics_payload(graph_preparation)
+    graph_metrics = _graph_health_context_payload(graph_preparation)
     return evaluate_candidate_health(
         baseline_results=baseline_results,
         candidate_results=list(outcome.results or []),
@@ -405,18 +405,11 @@ def _candidate_health(
     )
 
 
-def _graph_metrics_payload(graph_preparation: Any) -> Dict[str, Any]:
-    payload: Dict[str, Any] = {}
-    public = getattr(graph_preparation, "graph_analysis_public", None)
-    diagnostics = getattr(graph_preparation, "graph_analysis_diagnostics", None)
+def _graph_health_context_payload(graph_preparation: Any) -> Dict[str, Any]:
     health_context = getattr(graph_preparation, "graph_health_context", None)
-    if isinstance(public, dict):
-        payload.update(public)
-    if isinstance(diagnostics, dict):
-        payload.update(diagnostics)
     if isinstance(health_context, dict):
-        payload.update(health_context)
-    return payload
+        return dict(health_context)
+    return {}
 
 
 def _resolve_total_budget(run_time_budget_seconds: Optional[float], *, cfg: Any) -> float:

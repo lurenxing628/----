@@ -23,6 +23,7 @@ from .gantt_plan_query import (
 from .gantt_range import WeekRange, resolve_week_range
 from .gantt_tasks import build_calendar_days, build_tasks
 from .gantt_week_plan import build_week_plan_rows
+from .plan_overdue_markers import build_overdue_meta_for_plan
 from .resource_dispatch_support import extract_overdue_batch_ids_with_meta
 from .schedule_plan_query_service import ROLE_ADOPTED, SchedulePlanQueryService
 from .version_resolution import VersionResolution, require_selected_version, resolve_version_or_latest
@@ -382,7 +383,17 @@ class GanttService:
             start_time=wr.start_str,
             end_time=wr.end_exclusive_str,
         )
-        overdue_meta = self._overdue_batch_ids_from_history(ver)
+        effective_role = selected_plan_role(plan_resolution)
+        try:
+            overdue_meta = build_overdue_meta_for_plan(
+                version=ver,
+                role=effective_role,
+                list_plan_overdue_base_rows=plan_query.list_plan_overdue_base_rows,
+                load_adopted_meta=self._overdue_batch_ids_from_history,
+                log_degraded=self._log_overdue_marker_degraded,
+            )
+        except ValueError as exc:
+            raise ValidationError(str(exc), field="plan_role") from exc
         overdue_set = set(overdue_meta.get("ids") or [])
 
         tasks_outcome = build_tasks(view=view, wr=wr, rows=rows, overdue_set=overdue_set)

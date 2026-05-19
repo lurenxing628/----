@@ -21,7 +21,14 @@ def _require_id(value) -> int:
     return int(value)
 
 
-def _seed_plan_role_context(conn) -> None:
+def _seed_plan_role_context(
+    conn,
+    *,
+    due_date: str = "2026-05-20",
+    candidate_start: str = "2026-05-12 13:00:00",
+    candidate_end: str = "2026-05-13 15:00:00",
+    result_summary=None,
+) -> None:
     conn.executescript(
         """
         INSERT INTO Machines(machine_id, name, status)
@@ -40,6 +47,7 @@ def _seed_plan_role_context(conn) -> None:
         VALUES ('OP-B1-10', 'B1', 'piece-a', 10, '车削', 'internal', 'M-ADOPTED', 'O-ADOPTED', 'scheduled');
         """
     )
+    conn.execute("UPDATE Batches SET due_date = ? WHERE batch_id = 'B1'", (due_date,))
     op_id = int(conn.execute("SELECT id FROM BatchOperations WHERE op_code='OP-B1-10'").fetchone()["id"])
     conn.execute(
         """
@@ -53,7 +61,15 @@ def _seed_plan_role_context(conn) -> None:
         INSERT INTO ScheduleHistory(version, strategy, batch_count, op_count, result_status, result_summary, created_by)
         VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
-        (VERSION, "greedy", 1, 1, "success", json.dumps({"overdue_batches": []}, ensure_ascii=False), "pytest"),
+        (
+            VERSION,
+            "greedy",
+            1,
+            1,
+            "success",
+            json.dumps(result_summary if result_summary is not None else {"overdue_batches": []}, ensure_ascii=False),
+            "pytest",
+        ),
     )
 
     repo = ScheduleCandidateRepository(conn)
@@ -91,8 +107,8 @@ def _seed_plan_role_context(conn) -> None:
                 op_id=op_id,
                 machine_id="M-CANDIDATE",
                 operator_id="O-CANDIDATE",
-                start_time="2026-05-12 13:00:00",
-                end_time="2026-05-13 15:00:00",
+                start_time=candidate_start,
+                end_time=candidate_end,
                 lock_status="locked",
             )
         ]
@@ -117,7 +133,15 @@ def _seed_plan_role_context(conn) -> None:
     )
 
 
-def _build_app(tmp_path, monkeypatch):
+def _build_app(
+    tmp_path,
+    monkeypatch,
+    *,
+    due_date: str = "2026-05-20",
+    candidate_start: str = "2026-05-12 13:00:00",
+    candidate_end: str = "2026-05-13 15:00:00",
+    result_summary=None,
+):
     repo_root = str(REPO_ROOT)
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
@@ -139,7 +163,13 @@ def _build_app(tmp_path, monkeypatch):
     ensure_schema(str(db_path), logger=None, schema_path=str(SCHEMA_PATH), backup_dir=None)
     conn = get_connection(str(db_path))
     try:
-        _seed_plan_role_context(conn)
+        _seed_plan_role_context(
+            conn,
+            due_date=due_date,
+            candidate_start=candidate_start,
+            candidate_end=candidate_end,
+            result_summary=result_summary,
+        )
         conn.commit()
     finally:
         conn.close()
@@ -232,6 +262,40 @@ def test_gantt_page_and_boot_preserve_plan_role(tmp_path, monkeypatch) -> None:
     assert "对比方案" in html
     assert "planRole: ds.planRole" in boot_js
     assert 'url.searchParams.set("plan_role", String(cfg.planRole))' in boot_js
+
+
+def test_gantt_candidate_plan_overdue_markers_are_computed_from_candidate_rows(tmp_path, monkeypatch) -> None:
+    app = _build_app(tmp_path, monkeypatch, due_date="2026-05-12")
+    client = app.test_client()
+
+    resp = client.get(f"/scheduler/gantt/data?view=machine&version={VERSION}&plan_role={ROLE_BASELINE_BEST}")
+    data = (resp.get_json() or {}).get("data") or {}
+    tasks = data.get("tasks") or []
+
+    assert resp.status_code == 200
+    assert data.get("effective_plan_role") == ROLE_BASELINE_BEST
+    assert data.get("overdue_markers_degraded") is False
+    assert len(tasks) == 1
+    assert (tasks[0].get("meta") or {}).get("batch_id") == "B1"
+    assert (tasks[0].get("meta") or {}).get("is_overdue") is True
+    assert "overdue" in str(tasks[0].get("custom_class") or "")
+
+
+def test_gantt_candidate_plan_overdue_markers_do_not_reuse_adopted_history(tmp_path, monkeypatch) -> None:
+    app = _build_app(tmp_path, monkeypatch, result_summary={"overdue_batches": ["B1"]})
+    client = app.test_client()
+
+    resp = client.get(f"/scheduler/gantt/data?view=machine&version={VERSION}&plan_role={ROLE_BASELINE_BEST}")
+    data = (resp.get_json() or {}).get("data") or {}
+    tasks = data.get("tasks") or []
+
+    assert resp.status_code == 200
+    assert data.get("effective_plan_role") == ROLE_BASELINE_BEST
+    assert data.get("overdue_markers_degraded") is False
+    assert len(tasks) == 1
+    assert (tasks[0].get("meta") or {}).get("batch_id") == "B1"
+    assert (tasks[0].get("meta") or {}).get("is_overdue") is False
+    assert "overdue" not in str(tasks[0].get("custom_class") or "")
 
 
 def test_gantt_page_rejects_unknown_plan_role_without_history(tmp_path, monkeypatch) -> None:

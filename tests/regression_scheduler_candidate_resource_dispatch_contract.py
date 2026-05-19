@@ -186,6 +186,80 @@ def test_resource_dispatch_service_reads_requested_candidate_plan_and_falls_back
         conn.close()
 
 
+def test_resource_dispatch_candidate_overdue_markers_are_computed_from_candidate_rows(tmp_path: Path) -> None:
+    conn = _seed_db(tmp_path)
+    try:
+        conn.execute("UPDATE Batches SET due_date = '2026-05-02' WHERE batch_id = 'B1'")
+        conn.execute(
+            """
+            UPDATE ScheduleCandidateRows
+               SET start_time = '2026-05-03 13:00',
+                   end_time = '2026-05-03 15:00'
+             WHERE version = ? AND op_id = 10
+            """,
+            (VERSION,),
+        )
+        conn.commit()
+
+        from core.services.scheduler.resource_dispatch_service import ResourceDispatchService
+
+        svc = ResourceDispatchService(conn, logger=None, op_logger=None)
+        payload = svc.get_dispatch_payload(
+            scope_type="operator",
+            operator_id="O-CANDIDATE",
+            period_preset="week",
+            query_date="2026-05-01",
+            version=VERSION,
+            plan_role=ROLE_BASELINE_BEST,
+        )
+
+        detail_rows = payload.get("detail_rows") or []
+        assert (payload.get("filters") or {}).get("effective_plan_role") == ROLE_BASELINE_BEST
+        assert payload.get("overdue_markers_degraded") is False
+        assert len(detail_rows) == 1
+        assert detail_rows[0].get("batch_id") == "B1"
+        assert detail_rows[0].get("is_overdue") is True
+        assert (payload.get("summary") or {}).get("overdue_count") == 1
+    finally:
+        conn.close()
+
+
+def test_resource_dispatch_candidate_overdue_markers_do_not_reuse_adopted_history(tmp_path: Path) -> None:
+    conn = _seed_db(tmp_path)
+    try:
+        conn.execute(
+            """
+            UPDATE ScheduleHistory
+               SET result_summary = '{"overdue_batches": ["B1"]}'
+             WHERE version = ?
+            """,
+            (VERSION,),
+        )
+        conn.commit()
+
+        from core.services.scheduler.resource_dispatch_service import ResourceDispatchService
+
+        svc = ResourceDispatchService(conn, logger=None, op_logger=None)
+        payload = svc.get_dispatch_payload(
+            scope_type="operator",
+            operator_id="O-CANDIDATE",
+            period_preset="week",
+            query_date="2026-05-01",
+            version=VERSION,
+            plan_role=ROLE_BASELINE_BEST,
+        )
+
+        detail_rows = payload.get("detail_rows") or []
+        assert (payload.get("filters") or {}).get("effective_plan_role") == ROLE_BASELINE_BEST
+        assert payload.get("overdue_markers_degraded") is False
+        assert len(detail_rows) == 1
+        assert detail_rows[0].get("batch_id") == "B1"
+        assert detail_rows[0].get("is_overdue") is False
+        assert (payload.get("summary") or {}).get("overdue_count") == 0
+    finally:
+        conn.close()
+
+
 def test_resource_dispatch_page_data_and_export_keep_plan_role_in_urls_and_log(tmp_path: Path, monkeypatch) -> None:
     conn = _seed_db(tmp_path)
     app = _build_route_app()

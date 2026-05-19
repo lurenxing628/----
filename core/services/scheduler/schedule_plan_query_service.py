@@ -195,6 +195,14 @@ class SchedulePlanQueryService:
             candidate_id=resolution.candidate_id,
         )
 
+    def list_plan_overdue_base_rows(self, *, version: int, role: Optional[str]) -> List[Dict[str, Any]]:
+        resolution = self.resolve_plan(version, role)
+        return self.repo.list_overdue_base_rows(
+            version=int(version),
+            source_table=resolution.source_table,
+            candidate_id=resolution.candidate_id,
+        )
+
     def list_plan_dispatch_rows(
         self,
         *,

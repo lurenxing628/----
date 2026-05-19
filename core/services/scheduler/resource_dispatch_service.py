@@ -7,6 +7,7 @@ from core.services.equipment.machine_service import MachineService
 from core.services.personnel import ResourceTeamService
 from core.services.personnel.operator_service import OperatorService
 
+from .plan_overdue_markers import build_overdue_meta_for_plan
 from .resource_dispatch_range import resolve_dispatch_range
 from .resource_dispatch_support import (
     build_dispatch_filters,
@@ -277,6 +278,20 @@ class ResourceDispatchService:
             )
         return meta
 
+    def _load_overdue_meta_for_plan(self, *, version: int, role: str) -> Dict[str, Any]:
+        try:
+            return build_overdue_meta_for_plan(
+                version=version,
+                role=role,
+                list_plan_overdue_base_rows=self.plan_query_service.list_plan_overdue_base_rows,
+                load_adopted_meta=self._load_overdue_meta,
+                log_degraded=self._log_overdue_marker_degraded,
+            )
+        except ValidationError:
+            raise
+        except ValueError as exc:
+            raise ValidationError(str(exc), field="plan_role") from exc
+
     def build_page_context(
         self,
         *,
@@ -394,6 +409,7 @@ class ResourceDispatchService:
         selected_version = require_selected_version(version_resolution)
         plan_resolution = self._resolve_plan(version=selected_version, plan_role=normalized_plan_role)
         plan_role_fields = self._plan_role_fields_from_resolution(plan_resolution)
+        effective_role = str(plan_role_fields.get("effective_plan_role") or ROLE_ADOPTED)
 
         selected_scope_id = self._resolve_scope_id(
             scope_type=normalized_scope_type,
@@ -411,13 +427,13 @@ class ResourceDispatchService:
             start_date=start_date,
             end_date=end_date,
         )
-        overdue_meta = self._load_overdue_meta(selected_version)
+        overdue_meta = self._load_overdue_meta_for_plan(version=selected_version, role=effective_role)
         overdue_set = set(overdue_meta.get("ids") or [])
         rows = self.plan_query_service.list_plan_dispatch_rows(
             start_time=dr.start_time,
             end_time=dr.end_time,
             version=selected_version,
-            role=normalized_plan_role,
+            role=effective_role,
             scope_type=normalized_scope_type,
             scope_id=selected_scope_id,
         )

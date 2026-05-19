@@ -202,12 +202,8 @@ class ReportEngine:
     # 1) 超期清单
     # -------------------------
     def _fetch_overdue_base_rows_for_plan(self, version: int, plan_role: Optional[str]) -> List[Dict[str, Any]]:
-        resolution = self._resolve_plan(version, plan_role)
-        return self.plan_query_service.repo.list_overdue_base_rows(
-            version=int(version),
-            source_table=resolution.source_table,
-            candidate_id=resolution.candidate_id,
-        )
+        self._resolve_plan(version, plan_role)
+        return self.plan_query_service.list_plan_overdue_base_rows(version=int(version), role=plan_role)
 
     def overdue_batches(self, version: int, plan_role: Optional[str] = None) -> Dict[str, Any]:
         v = int(version or 0)

@@ -150,6 +150,7 @@ def _critical_path_op_ids(graph_metrics: Optional[Dict[str, Any]]) -> _CriticalP
     op_ids = _op_id_set(values)
     if op_ids:
         return _CriticalPathExtraction(op_ids, "")
+    # Samples are only for page display and diagnosis; they are not complete enough for health decisions.
     if isinstance(graph_metrics.get("critical_path_sample"), (list, tuple)):
         return _CriticalPathExtraction(set(), "critical_path_sample_only")
     return _CriticalPathExtraction(set(), "critical_path_unavailable")
