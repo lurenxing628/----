@@ -859,9 +859,11 @@ def test_summary_display_warnings_preview_filters_historical_raw_warnings() -> N
         result_status="success",
     )
 
-    assert display["warning_total"] == 3
+    assert display["warning_total"] == 1
     assert display["warnings_preview"] == ["冻结窗口存在跳批风险"]
-    assert display["warning_hidden_count"] == 2
+    assert display["warning_hidden_count"] == 0
+    assert display["warning_recorded_total"] == 3
+    assert display["maintenance_diagnostic_count"] == 2
     assert "sqlite" not in str(display["warnings_preview"])
     assert "SECRET_TOKEN" not in str(display["warnings_preview"])
 

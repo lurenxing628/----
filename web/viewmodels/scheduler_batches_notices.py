@@ -61,12 +61,18 @@ def latest_warning_state(
         (latest_summary or {}).get("warnings") if isinstance(latest_summary, dict) else None
     )
     latest_warning_preview = list(latest_summary_display.get("warnings_preview") or [])
-    if not latest_warning_preview and not latest_summary_display.get("warning_total"):
+    has_display_warning_total = "warning_total" in latest_summary_display
+    if not has_display_warning_total and not latest_warning_preview:
         latest_warning_preview = latest_warning_messages[:3]
-    latest_warning_total = int(latest_summary_display.get("warning_total") or len(latest_warning_messages))
-    latest_warning_hidden_count = int(
-        latest_summary_display.get("warning_hidden_count") or max(0, latest_warning_total - len(latest_warning_preview))
+    raw_warning_total = latest_summary_display.get("warning_total") if has_display_warning_total else len(latest_warning_messages)
+    latest_warning_total = int(raw_warning_total or 0)
+    has_display_warning_hidden_count = "warning_hidden_count" in latest_summary_display
+    raw_warning_hidden_count = (
+        latest_summary_display.get("warning_hidden_count")
+        if has_display_warning_hidden_count
+        else max(0, latest_warning_total - len(latest_warning_preview))
     )
+    latest_warning_hidden_count = int(raw_warning_hidden_count or 0)
     return latest_warning_preview, latest_warning_total, latest_warning_hidden_count
 
 
@@ -146,6 +152,17 @@ def latest_detail_notice_items(
                 detail_label=f"查看前 {len(latest_warning_preview)} 条提醒",
                 detail_items=tuple(str(item) for item in latest_warning_preview),
                 footer=footer,
+                role="status",
+                aria_live="polite",
+            )
+        )
+    maintenance_diagnostic_count = int(latest_summary_display.get("maintenance_diagnostic_count") or 0)
+    if maintenance_diagnostic_count > 0:
+        notices.append(
+            UiDetailsNotice(
+                "维护诊断",
+                f"系统记录了 {maintenance_diagnostic_count} 条维护诊断，普通页面不展开；如需排查，请查看系统日志。",
+                tone="warning",
                 role="status",
                 aria_live="polite",
             )

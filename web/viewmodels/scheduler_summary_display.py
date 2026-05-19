@@ -440,6 +440,7 @@ def build_summary_display_state(
 
     warning_messages = _normalize_text_list(summary_dict.get("warnings"))
     public_warning_messages = public_summary_warning_messages(summary_dict.get("warnings"))
+    maintenance_diagnostic_count = sum(1 for item in warning_messages if not public_summary_warning_messages([item]))
     warnings_preview = public_warning_messages[:3]
     error_messages = _summary_error_messages(summary_dict)
     try:
@@ -471,8 +472,11 @@ def build_summary_display_state(
         "display_secondary_degradation_messages": display_secondary_degradation_messages,
         "warning_pipeline_display": warning_pipeline_display,
         "warnings_preview": warnings_preview,
-        "warning_total": len(warning_messages),
-        "warning_hidden_count": max(0, len(warning_messages) - len(warnings_preview)),
+        "warning_total": len(public_warning_messages),
+        "warning_hidden_count": max(0, len(public_warning_messages) - len(warnings_preview)),
+        "warning_recorded_total": len(warning_messages),
+        "warning_internal_count": maintenance_diagnostic_count,
+        "maintenance_diagnostic_count": maintenance_diagnostic_count,
         "errors_preview": error_messages[:3],
         "errors_display": error_messages,
         "error_display_count": len(error_messages),

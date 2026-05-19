@@ -150,25 +150,27 @@
         {% set warning_preview_count = selected_summary_display.warnings_preview|length %}
         <div class="flash-card flash-warning mt-2">
           <div>提醒：{{ selected_summary_display.warning_total }} 条</div>
-          {% if warning_preview_count > 0 %}
-            {% call ui.flash_details('查看前 ' ~ warning_preview_count ~ ' 条提醒') %}
-              <ul class="list-tight">
-                {% for item in selected_summary_display.warnings_preview %}
-                  <li>{{ item }}</li>
-                {% endfor %}
-              </ul>
-            {% endcall %}
-          {% else %}
-            <div class="muted text-xs">这次有 {{ selected_summary_display.warning_total }} 条提醒，但当前页没有可安全展开的提醒明细；请到系统管理里的排产历史查看这次排产的详细提醒。</div>
+          {% call ui.flash_details('查看前 ' ~ warning_preview_count ~ ' 条提醒') %}
+            <ul class="list-tight">
+              {% for item in selected_summary_display.warnings_preview %}
+                <li>{{ item }}</li>
+              {% endfor %}
+            </ul>
+          {% endcall %}
+          {% if selected_summary_display.warning_hidden_count > 0 %}
+            <div class="muted text-xs">另有 {{ selected_summary_display.warning_hidden_count }} 条提醒，请到系统管理里的排产历史查看这次排产的详细提醒。</div>
             {% if selected and selected.version %}
               <div class="mt-2">
                 {{ ui.link_button('去排产历史查看', url_for('system.history_page', version=selected.version), 'secondary', 'sm') }}
               </div>
             {% endif %}
           {% endif %}
-          {% if selected_summary_display.warning_hidden_count > 0 and warning_preview_count > 0 %}
-            <div class="muted text-xs">另有 {{ selected_summary_display.warning_hidden_count }} 条提醒，请到系统管理里的排产历史查看这次排产的详细提醒。</div>
-          {% endif %}
+        </div>
+      {% endif %}
+      {% if selected_summary_display.maintenance_diagnostic_count %}
+        <div class="flash-card flash-warning mt-2">
+          <div>维护诊断：{{ selected_summary_display.maintenance_diagnostic_count }} 条</div>
+          <div class="muted text-xs">系统记录了维护诊断，普通页面不展开；如需排查，请联系维护人员查看系统日志。</div>
         </div>
       {% endif %}
       {% if selected_summary_display.error_total %}

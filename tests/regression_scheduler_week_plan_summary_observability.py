@@ -209,7 +209,7 @@ def _build_real_app(tmp_path, monkeypatch, *, summary_obj, result_status: str = 
 
 def test_week_plan_route_exposes_selected_summary_display(monkeypatch) -> None:
     summary = {
-        "warnings": ["告警一"],
+        "warnings": ["冻结窗口存在跳批风险"],
         "errors_sample": ["错误一"],
         "error_count": 12,
         "degraded_causes": ["resource_pool_degraded"],
@@ -257,12 +257,13 @@ def test_week_plan_page_hides_zero_warning_preview_button(tmp_path, monkeypatch)
     html = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert "提醒：1 条" in html
+    assert "提醒：1 条" not in html
+    assert "维护诊断：1 条" in html
     assert "查看前 0 条提醒" not in html
     assert "另有 1 条提醒" not in html
-    assert "当前页没有可安全展开的提醒明细" in html
-    assert "去排产历史查看" in html
-    assert "/system/history?version=3" in html
+    assert "当前页没有可安全展开的提醒明细" not in html
+    assert "去排产历史查看" not in html
+    assert "/system/history?version=3" not in html
     assert "sqlite" not in html
 
 

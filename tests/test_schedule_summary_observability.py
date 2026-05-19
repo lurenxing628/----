@@ -242,8 +242,9 @@ def test_scheduler_batches_accepts_preparsed_result_summary_dict(tmp_path, monke
 
     assert ctx["latest_summary"] == summary
     assert ctx["latest_warning_preview"] == []
-    assert ctx["latest_warning_total"] == 2
-    assert ctx["latest_warning_hidden_count"] == 2
+    assert ctx["latest_warning_total"] == 0
+    assert ctx["latest_warning_hidden_count"] == 0
+    assert any(item.title == "维护诊断" for item in ctx["latest_detail_notice_items"])
 
 
 def test_scheduler_batches_surfaces_current_config_state_and_other_degradation_messages(tmp_path, monkeypatch) -> None:

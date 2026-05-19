@@ -66,7 +66,8 @@ def test_scheduler_run_surfaces_resource_pool_warning() -> None:
         assert any(cat == "success" and "排产完成（版本 7）" in msg for cat, msg in flashes), flashes
         assert any(cat == "warning" and "自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员" in msg for cat, msg in flashes), flashes
         assert any(cat == "warning" and "开始时间已规范化为：2026-05-20 08:00:00" in msg for cat, msg in flashes), flashes
-        assert any(cat == "warning" and "另有 5 条提醒" in msg for cat, msg in flashes), flashes
+        assert any(cat == "warning" and "系统记录了 5 条维护诊断" in msg for cat, msg in flashes), flashes
+        assert not any(cat == "warning" and "另有 5 条提醒" in msg for cat, msg in flashes), flashes
         assert not any(cat == "warning" and "第 " in msg for cat, msg in flashes), flashes
     finally:
         route_mod.url_for = old_url_for

@@ -515,7 +515,8 @@ def test_scheduler_run_route_counts_hidden_string_warning_without_leaking_raw_te
             flashes = get_flashed_messages(with_categories=True)
 
         assert getattr(resp, "status_code", 0) in (301, 302)
-        assert any(cat == "warning" and "另有 1 条提醒" in msg for cat, msg in flashes), flashes
+        assert any(cat == "warning" and "系统记录了 1 条维护诊断" in msg for cat, msg in flashes), flashes
+        assert not any(cat == "warning" and "另有 1 条提醒" in msg for cat, msg in flashes), flashes
         visible = "\n".join(msg for _cat, msg in flashes)
         assert "SECRET" not in visible
         assert "password" not in visible
