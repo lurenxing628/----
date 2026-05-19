@@ -1,0 +1,54 @@
+feature: 2026-05-18-scheduler-graph-candidate-runner-selection
+created: 2026-05-18
+
+steps:
+  - action: "只读核实 PR-7b 范围、optimizer 接入、择优健康和测试模板"
+    exit_signal: "确认 PR-7b 只做内存候选生成、运行、择优和健康计算"
+    status: done
+  - action: "PR-7b 设计和范围对抗审核"
+    exit_signal: "确认未越界到 PR-7c/7d/7e，候选 runner 明确先准备图上下文再调用优化器，且不覆盖用户正在修的 PR-6 文件"
+    status: done
+  - action: "实现候选规格生成"
+    exit_signal: "baseline + 3/5/7 档关键链候选稳定生成，key 和权重可复现"
+    status: done
+  - action: "实现关键链健康纯函数"
+    exit_signal: "better/same/worse/unavailable 使用小时口径，指标不足直接 unavailable"
+    status: done
+  - action: "实现自动择优"
+    exit_signal: "score_only 和 balanced 按 raw score、容差和 health 合同选择"
+    status: done
+  - action: "实现内存候选 runner"
+    exit_signal: "baseline 先跑，关键链候选先准备图上下文再调用优化器，trial 模式锁住当前排序/派工方式/派工规则，全局 deadline 生效，单候选失败可见，全失败阻断"
+    status: done
+  - action: "补 PR-7b 合同测试"
+    exit_signal: "四份 PR-7b 回归测试覆盖生成、runner、selection、health"
+    status: done
+  - action: "PR-7b 对抗审核与修复"
+    exit_signal: "阻塞问题已修复并复审通过"
+    status: done
+  - action: "PR-7b CodeStable 回填与验证"
+    exit_signal: "items.yaml、feature 记录、yaml 校验和定向测试完成"
+    status: done
+
+checks:
+  - item: "候选生成合同"
+    source: tests/regression_scheduler_candidate_generation_contract.py
+    status: passed
+  - item: "候选 runner 合同"
+    source: tests/regression_scheduler_candidate_runner_contract.py
+    status: passed
+  - item: "候选图上下文合同"
+    source: tests/regression_scheduler_candidate_runner_contract.py
+    status: passed
+  - item: "候选 trial 模式合同"
+    source: tests/regression_scheduler_candidate_runner_contract.py
+    status: passed
+  - item: "自动择优合同"
+    source: tests/regression_scheduler_graph_auto_selection_contract.py
+    status: passed
+  - item: "关键链健康合同"
+    source: tests/regression_scheduler_candidate_health_contract.py
+    status: passed
+  - item: "PR-7b 范围守护"
+    source: .codestable/roadmap/networkx-scheduler-graph-introduction/networkx-scheduler-graph-introduction-items.yaml
+    status: passed
