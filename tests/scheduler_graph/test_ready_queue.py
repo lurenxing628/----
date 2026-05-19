@@ -296,6 +296,18 @@ def test_incremental_ready_queue_respects_fixed_predecessor() -> None:
     assert _incremental_ready_ids(graph_state, ops_by_batch) == _full_scan_ready_ids(graph_state) == [2]
 
 
+def test_graph_ready_state_rejects_schedulable_fixed_overlap() -> None:
+    predecessors = {1: set()}
+
+    with pytest.raises(ValidationError, match="不能同时是固定"):
+        _graph_state(
+            predecessors,
+            fixed={1},
+            ops_by_batch={"B1": [_op(1)]},
+            sort_keys={1: (0, 10, 1)},
+        )
+
+
 def test_graph_ready_state_rejects_non_positive_fixed_op_id() -> None:
     predecessors = {1: set()}
 

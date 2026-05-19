@@ -5,7 +5,12 @@ from types import SimpleNamespace
 import pytest
 
 from core.infrastructure.errors import ValidationError
-from core.services.scheduler.run.schedule_candidate_health import HEALTH_BETTER, HEALTH_UNAVAILABLE, CandidateHealth
+from core.services.scheduler.run.schedule_candidate_health import (
+    HEALTH_BETTER,
+    HEALTH_UNAVAILABLE,
+    CandidateHealth,
+    unavailable_health,
+)
 from core.services.scheduler.run.schedule_candidate_runner import CandidatePlan
 from core.services.scheduler.run.schedule_candidate_selection import select_candidate_plan
 
@@ -113,6 +118,33 @@ def test_balanced_does_not_override_when_health_is_unavailable() -> None:
 
     assert selection.selected_candidate_key == "baseline"
     assert selection.reason_code == "balanced_raw_score"
+
+
+def test_balanced_selection_does_not_override_when_critical_health_unavailable() -> None:
+    baseline = SimpleNamespace(
+        candidate_key="baseline",
+        kind="baseline",
+        status="completed",
+        sequence=0,
+        score=(0.0, 0.0),
+        metrics=SimpleNamespace(overdue_count=0, total_tardiness_hours=0.0),
+        health=None,
+    )
+    critical = SimpleNamespace(
+        candidate_key="critical",
+        kind="critical_chain",
+        status="completed",
+        sequence=1,
+        score=(0.0, 1.0),
+        metrics=SimpleNamespace(overdue_count=0, total_tardiness_hours=0.0),
+        health=unavailable_health("critical_path_sample_only"),
+    )
+
+    selection = select_candidate_plan([baseline, critical], policy="balanced")
+
+    assert selection.selected_candidate_key == "baseline"
+    assert selection.reason_code == "balanced_raw_score"
+    assert selection.critical_health_best_key is None
 
 
 def test_selection_fails_when_no_candidate_completed() -> None:

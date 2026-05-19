@@ -2,12 +2,17 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from dataclasses import replace
 from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Dict, List
 
+import pytest
+
 from core.infrastructure.database import ensure_schema, get_connection
+from core.infrastructure.errors import ValidationError
+from core.services.scheduler.run.schedule_candidate_persistence import persist_candidate_comparison
 from core.services.scheduler.run.schedule_candidate_runner import CandidateComparisonOutcome, CandidatePlan
 from core.services.scheduler.run.schedule_candidate_selection import CandidateSelectionResult
 from core.services.scheduler.run.schedule_candidate_summary import candidate_comparison_public_summary
@@ -174,6 +179,12 @@ def _comparison() -> CandidateComparisonOutcome:
     )
 
 
+def _comparison_with_selection(**overrides: Any) -> CandidateComparisonOutcome:
+    comparison = _comparison()
+    selection = replace(comparison.selection, **overrides)
+    return replace(comparison, selection=selection)
+
+
 def _persist_once(conn: sqlite3.Connection, *, op_logger: _OpLogger) -> None:
     svc = ScheduleService(conn, logger=None, op_logger=op_logger)
     comparison = _comparison()
@@ -284,5 +295,57 @@ def test_candidate_persistence_failure_rolls_back_schedule_history_and_candidate
         assert conn.execute("SELECT COUNT(*) FROM ScheduleCandidateRows WHERE version = 8").fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM ScheduleCandidateSelection WHERE version = 8").fetchone()[0] == 0
         assert op_logger.calls == []
+    finally:
+        conn.close()
+
+
+def test_candidate_persistence_rejects_missing_selected_candidate_key(tmp_path: Path) -> None:
+    conn = _connect_fresh_schema(tmp_path)
+    try:
+        _seed_schedule_context(conn)
+        svc = ScheduleService(conn, logger=None, op_logger=_OpLogger())
+        comparison = _comparison_with_selection(selected_candidate_key="missing_candidate")
+
+        with pytest.raises(ValidationError) as exc_info:
+            persist_candidate_comparison(
+                svc,
+                version=9,
+                candidate_comparison=comparison,
+                frozen_op_ids=set(),
+            )
+
+        assert exc_info.value.field == "candidate_selection"
+        assert "不存在的 candidate_key" in str(exc_info.value)
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize(
+    "selection_override",
+    [
+        {"baseline_best_key": "missing_baseline"},
+        {"critical_best_key": "missing_critical"},
+    ],
+)
+def test_candidate_persistence_rejects_missing_best_role_candidate_key(
+    tmp_path: Path,
+    selection_override: Dict[str, Any],
+) -> None:
+    conn = _connect_fresh_schema(tmp_path)
+    try:
+        _seed_schedule_context(conn)
+        svc = ScheduleService(conn, logger=None, op_logger=_OpLogger())
+        comparison = _comparison_with_selection(**selection_override)
+
+        with pytest.raises(ValidationError) as exc_info:
+            persist_candidate_comparison(
+                svc,
+                version=10,
+                candidate_comparison=comparison,
+                frozen_op_ids=set(),
+            )
+
+        assert exc_info.value.field == "candidate_selection"
+        assert "不存在的 candidate_key" in str(exc_info.value)
     finally:
         conn.close()

@@ -109,6 +109,20 @@ def _require_adopted_key(selection: Any) -> str:
     return adopted_key
 
 
+def _require_candidate_key_available(
+    *,
+    role: str,
+    key: str,
+    by_key: Dict[str, Any],
+    candidate_ids: Dict[str, int],
+) -> None:
+    if key not in by_key or key not in candidate_ids:
+        raise ValidationError(
+            f"候选方案角色 {role} 指向不存在的 candidate_key：{key}",
+            field="candidate_selection",
+        )
+
+
 def _comparison_weight_count(candidate_comparison: Any) -> int:
     return max(0, int(getattr(candidate_comparison, "planned_count", 0) or 0) - 1)
 
@@ -158,6 +172,12 @@ def _persist_candidate_detail_rows(
 ) -> None:
     repo = svc.candidate_repo
     for key in detail_keys:
+        _require_candidate_key_available(
+            role="detail_rows",
+            key=key,
+            by_key=by_key,
+            candidate_ids=candidate_ids,
+        )
         candidate = by_key[key]
         repo.bulk_create_candidate_rows(
             _candidate_rows(
@@ -176,6 +196,7 @@ def _persist_candidate_selections(
     version: int,
     candidate_comparison: Any,
     candidate_ids: Dict[str, int],
+    by_key: Dict[str, Any],
     adopted_key: str,
 ) -> None:
     repo = svc.candidate_repo
@@ -183,6 +204,12 @@ def _persist_candidate_selections(
         key = _role_key(candidate_comparison, role)
         if not key:
             continue
+        _require_candidate_key_available(
+            role=role,
+            key=key,
+            by_key=by_key,
+            candidate_ids=candidate_ids,
+        )
         repo.create_selection(
             ScheduleCandidateSelection(
                 id=None,
@@ -230,6 +257,7 @@ def persist_candidate_comparison(
         version=int(version),
         candidate_comparison=candidate_comparison,
         candidate_ids=candidate_ids,
+        by_key=by_key,
         adopted_key=adopted_key,
     )
 

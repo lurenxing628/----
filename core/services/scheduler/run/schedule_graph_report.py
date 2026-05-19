@@ -10,6 +10,9 @@ from .schedule_graph_dispatch_context import (
     GRAPH_CYCLE_DISABLED_REASON as _GRAPH_CYCLE_DISABLED_REASON,
 )
 from .schedule_graph_dispatch_context import (
+    build_graph_health_context as _build_graph_health_context,
+)
+from .schedule_graph_dispatch_context import (
     build_graph_ready_context as _build_graph_ready_context,
 )
 from .schedule_graph_dispatch_context import (
@@ -55,6 +58,7 @@ class ScheduleGraphDispatchPreparation:
     graph_analysis_diagnostics: Optional[Dict[str, Any]]
     graph_ready_context: Optional[Any]
     graph_dispatch_mode_override: Optional[str] = None
+    graph_health_context: Optional[Dict[str, Any]] = None
 
 
 def _elapsed_ms(started: float) -> int:
@@ -92,9 +96,10 @@ def prepare_schedule_graph_for_dispatch(
             graph_analysis_diagnostics=None,
             graph_ready_context=None,
             graph_dispatch_mode_override=None,
+            graph_health_context=None,
         )
     graph_block_on_cycle = _graph_block_on_cycle(schedule_input.cfg)
-    public, diagnostics, graph_ready_context, graph_dispatch_mode_override = _build_schedule_graph_analysis_projection(
+    public, diagnostics, graph_ready_context, graph_dispatch_mode_override, graph_health_context = _build_schedule_graph_analysis_projection(
         schedule_input,
         mode=mode,
         graph_block_on_cycle=graph_block_on_cycle,
@@ -110,6 +115,7 @@ def prepare_schedule_graph_for_dispatch(
         graph_analysis_diagnostics=diagnostics,
         graph_ready_context=graph_ready_context,
         graph_dispatch_mode_override=graph_dispatch_mode_override,
+        graph_health_context=graph_health_context,
     )
 
 
@@ -118,7 +124,7 @@ def _build_schedule_graph_analysis_projection(
     *,
     mode: str,
     graph_block_on_cycle: str,
-) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]], Optional[Dict[str, Any]], Optional[str]]:
+) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]], Optional[Dict[str, Any]], Optional[str], Optional[Dict[str, Any]]]:
     from core.services.scheduler.graph.analysis_service import ScheduleGraphAnalysisService
     from core.services.scheduler.graph.exporter import graph_summary_to_dict
     from core.services.scheduler.graph.input_adapter import GraphInputContractError, build_operation_nodes_from_rows
@@ -143,6 +149,11 @@ def _build_schedule_graph_analysis_projection(
             metrics_mode=("full" if score_requested else "basic"),
         )
         payload = graph_summary_to_dict(summary)
+        health_context = _build_graph_health_context(
+            nodes=nodes,
+            payload=payload,
+            schedule_input=schedule_input,
+        )
         score_context, score_public, score_diagnostics = _build_graph_score_projection(
             mode=mode,
             is_dag=bool(payload["is_dag"]),
@@ -162,7 +173,7 @@ def _build_schedule_graph_analysis_projection(
         )
     except NetworkXUnavailable as exc:
         public, diagnostics = _graph_unavailable_projection(mode=mode, exc=exc, elapsed_ms=_elapsed_ms(started), scope=scope)
-        return public, diagnostics, None, None
+        return public, diagnostics, None, None, None
     except GraphInputContractError as exc:
         public, diagnostics = _graph_contract_error_projection(
             mode=mode,
@@ -172,7 +183,7 @@ def _build_schedule_graph_analysis_projection(
             elapsed_ms=_elapsed_ms(started),
             scope=scope,
         )
-        return public, diagnostics, None, None
+        return public, diagnostics, None, None, None
     except GraphBuildContractError as exc:
         public, diagnostics = _graph_contract_error_projection(
             mode=mode,
@@ -182,7 +193,7 @@ def _build_schedule_graph_analysis_projection(
             elapsed_ms=_elapsed_ms(started),
             scope=scope,
         )
-        return public, diagnostics, None, None
+        return public, diagnostics, None, None, None
 
     public, diagnostics = _project_graph_analysis_payload(
         mode=mode,
@@ -193,7 +204,7 @@ def _build_schedule_graph_analysis_projection(
         score_public=score_public,
         score_diagnostics=score_diagnostics,
     )
-    return public, diagnostics, graph_ready_context, _graph_dispatch_mode_override(public)
+    return public, diagnostics, graph_ready_context, _graph_dispatch_mode_override(public), health_context
 
 
 def _format_cycle_error_message(diagnostics: Optional[Dict[str, Any]]) -> str:

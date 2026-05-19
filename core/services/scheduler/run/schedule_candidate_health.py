@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
 
 HEALTH_BETTER = "better"
 HEALTH_SAME = "same"
@@ -41,6 +41,12 @@ class CandidateHealth:
         }
 
 
+@dataclass(frozen=True)
+class _CriticalPathExtraction:
+    op_ids: Set[int]
+    reason_code: str = "critical_path_unavailable"
+
+
 def unavailable_health(reason_code: str) -> CandidateHealth:
     return CandidateHealth(
         state=HEALTH_UNAVAILABLE,
@@ -62,9 +68,10 @@ def evaluate_candidate_health(
     graph_metrics: Optional[Dict[str, Any]],
     neutral_tolerance_hours: float = 0.01,
 ) -> CandidateHealth:
-    critical_op_ids = _critical_path_op_ids(graph_metrics)
+    critical_path = _critical_path_op_ids(graph_metrics)
+    critical_op_ids = critical_path.op_ids
     if not critical_op_ids:
-        return unavailable_health("critical_path_unavailable")
+        return unavailable_health(critical_path.reason_code or "critical_path_unavailable")
 
     baseline_by_op_id = _results_by_op_id(baseline_results)
     candidate_by_op_id = _results_by_op_id(candidate_results)
@@ -129,58 +136,29 @@ def _results_by_op_id(results: Sequence[Any]) -> Dict[int, Any]:
     return out
 
 
-def _critical_path_op_ids(graph_metrics: Optional[Dict[str, Any]]) -> Set[int]:
+def _critical_path_op_ids(graph_metrics: Optional[Dict[str, Any]]) -> _CriticalPathExtraction:
     if not isinstance(graph_metrics, dict):
-        return set()
+        return _CriticalPathExtraction(set(), "critical_path_unavailable")
     values = _first_list(
         graph_metrics,
         (
             "critical_path_op_ids",
             "critical_op_ids",
-            "critical_path_sample",
-            "critical_path",
             "critical_path_node_ids",
         ),
     )
-    return _op_id_set(values)
+    op_ids = _op_id_set(values)
+    if op_ids:
+        return _CriticalPathExtraction(op_ids, "")
+    if isinstance(graph_metrics.get("critical_path_sample"), (list, tuple)):
+        return _CriticalPathExtraction(set(), "critical_path_sample_only")
+    return _CriticalPathExtraction(set(), "critical_path_unavailable")
 
 
 def _top_impact_op_ids(graph_metrics: Optional[Dict[str, Any]]) -> Set[int]:
     if not isinstance(graph_metrics, dict):
         return set()
-    direct = _op_id_set(_first_list(graph_metrics, ("top_impact_op_ids", "impact_op_ids")))
-    if direct:
-        return direct
-
-    scored = _impact_scored_op_ids(graph_metrics.get("graph_score_sample"), allow_node_id=False)
-    if scored:
-        return _positive_impact_op_ids(scored)
-
-    node_metrics = _impact_scored_op_ids(graph_metrics.get("node_metrics_sample"), allow_node_id=True)
-    return _positive_impact_op_ids(node_metrics)
-
-
-def _impact_scored_op_ids(sample: Any, *, allow_node_id: bool) -> List[Tuple[int, int]]:
-    scored: List[Tuple[int, int]] = []
-    for item in list(sample or ()):
-        if not isinstance(item, dict):
-            continue
-        op_id = _impact_sample_op_id(item, allow_node_id=allow_node_id)
-        if op_id is None:
-            continue
-        scored.append((int(item.get("impact_count") or 0), op_id))
-    scored.sort(reverse=True)
-    return scored
-
-
-def _impact_sample_op_id(item: Dict[str, Any], *, allow_node_id: bool) -> Optional[int]:
-    if allow_node_id:
-        return _coerce_op_id(item.get("op_id") if "op_id" in item else item.get("node_id"))
-    return _coerce_op_id(item.get("op_id"))
-
-
-def _positive_impact_op_ids(scored_op_ids: List[Tuple[int, int]]) -> Set[int]:
-    return {op_id for impact_count, op_id in scored_op_ids if impact_count > 0}
+    return _op_id_set(_first_list(graph_metrics, ("top_impact_op_ids", "impact_op_ids")))
 
 
 def _first_list(source: Dict[str, Any], keys: Iterable[str]) -> List[Any]:

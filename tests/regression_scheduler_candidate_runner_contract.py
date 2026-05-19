@@ -9,6 +9,7 @@ import core.services.scheduler.run.schedule_candidate_runner as runner
 from core.algorithms import ScheduleResult
 from core.infrastructure.errors import ValidationError
 from core.services.scheduler.config_snapshot import ScheduleConfigSnapshot
+from core.services.scheduler.run.schedule_candidate_health import HEALTH_BETTER
 from core.services.scheduler.run.schedule_candidate_runner import (
     CANDIDATE_STATUS_COMPLETED,
     CANDIDATE_STATUS_FAILED,
@@ -188,6 +189,58 @@ def test_candidate_runner_runs_baseline_first_and_passes_graph_context_to_critic
     assert optimize_calls[0]["graph_ready_context"] is None
     assert optimize_calls[1]["graph_ready_context"] == {"candidate": 250}
     assert optimize_calls[1]["graph_dispatch_mode_override"] == "sgs"
+
+
+def test_candidate_runner_uses_graph_health_context_for_critical_health() -> None:
+    def prepare_graph(schedule_input):
+        if schedule_input.cfg.graph_analysis_mode == "off":
+            return SimpleNamespace(
+                graph_analysis_public=None,
+                graph_analysis_diagnostics=None,
+                graph_health_context=None,
+                graph_ready_context=None,
+                graph_dispatch_mode_override=None,
+            )
+        return SimpleNamespace(
+            graph_analysis_public={"status": "available"},
+            graph_analysis_diagnostics={
+                "critical_path_sample": ["op:1"],
+                "critical_path_count": 2,
+                "critical_path_truncated": True,
+            },
+            graph_health_context={
+                "critical_path_op_ids": [1, 2],
+                "top_impact_op_ids": [1, 2],
+            },
+            graph_ready_context=None,
+            graph_dispatch_mode_override=None,
+        )
+
+    def optimize(**kwargs):
+        if kwargs["cfg"].graph_analysis_mode == "off":
+            return _outcome(
+                "baseline",
+                score=(0, 0, 10),
+                results=[_result(1, 8, 10), _result(2, 11, 13)],
+            )
+        return _outcome(
+            "critical",
+            score=(0, 0, 10),
+            results=[_result(1, 8, 9), _result(2, 9, 11)],
+        )
+
+    outcome = run_candidate_comparison(
+        schedule_input=_schedule_input(),
+        prepare_graph_fn=prepare_graph,
+        optimize_schedule_fn=optimize,
+        weight_count=3,
+        selection_policy="score_only",
+        clock=_StepClock([0] * 100),
+    )
+
+    critical = next(candidate for candidate in outcome.candidates if candidate.kind == "critical_chain")
+    assert critical.health is not None
+    assert critical.health.state == HEALTH_BETTER
 
 
 def test_candidate_trial_mode_locks_sort_dispatch_mode_and_dispatch_rule_to_current_values() -> None:

@@ -38,8 +38,8 @@ def test_candidate_health_is_better_when_critical_chain_finishes_earlier_and_wai
         baseline_results=baseline,
         candidate_results=candidate,
         graph_metrics={
-            "critical_path_sample": ["op:1", "op:2"],
-            "graph_score_sample": [{"op_id": 1, "impact_count": 3}, {"op_id": 2, "impact_count": 1}],
+            "critical_path_op_ids": [1, 2],
+            "top_impact_op_ids": [1, 2],
         },
     )
 
@@ -56,7 +56,7 @@ def test_candidate_health_is_worse_when_critical_chain_finishes_later_and_waits_
     health = evaluate_candidate_health(
         baseline_results=baseline,
         candidate_results=candidate,
-        graph_metrics={"critical_path_sample": ["op:1", "op:2"]},
+        graph_metrics={"critical_path_op_ids": [1, 2]},
     )
 
     assert health.state == HEALTH_WORSE
@@ -129,3 +129,67 @@ def test_candidate_health_is_unavailable_without_critical_path_metrics() -> None
 
     assert health.state == HEALTH_UNAVAILABLE
     assert health.reason_code == "critical_path_unavailable"
+
+
+def test_candidate_health_rejects_critical_path_sample_only() -> None:
+    baseline = [_result(1, 8, 10), _result(2, 11, 13)]
+    candidate = [_result(1, 8, 9), _result(2, 9, 11)]
+
+    health = evaluate_candidate_health(
+        baseline_results=baseline,
+        candidate_results=candidate,
+        graph_metrics={
+            "critical_path_sample": ["op:1", "op:2"],
+            "critical_path_count": 2,
+            "critical_path_truncated": False,
+        },
+    )
+
+    assert health.state == HEALTH_UNAVAILABLE
+    assert health.reason_code == "critical_path_sample_only"
+
+
+def test_candidate_health_rejects_truncated_critical_path_sample() -> None:
+    baseline = [_result(1, 8, 10), _result(2, 11, 13)]
+    candidate = [_result(1, 8, 9), _result(2, 9, 11)]
+
+    health = evaluate_candidate_health(
+        baseline_results=baseline,
+        candidate_results=candidate,
+        graph_metrics={
+            "critical_path_sample": ["op:1", "op:2"],
+            "critical_path_count": 60,
+            "critical_path_truncated": True,
+        },
+    )
+
+    assert health.state == HEALTH_UNAVAILABLE
+    assert health.reason_code == "critical_path_sample_only"
+
+
+def test_candidate_health_ignores_graph_score_sample_for_top_impact_signal() -> None:
+    baseline = [
+        _result(1, 8, 10),
+        _result(2, 10, 12),
+        _result(3, 12, 13),
+    ]
+    candidate = [
+        _result(1, 8, 10),
+        _result(2, 10, 11),
+        _result(3, 11, 12),
+    ]
+
+    health = evaluate_candidate_health(
+        baseline_results=baseline,
+        candidate_results=candidate,
+        graph_metrics={
+            "critical_path_op_ids": [1, 2],
+            "graph_score_sample": [{"op_id": 3, "impact_count": 99}],
+            "graph_score_sample_count": 100,
+            "graph_score_sample_truncated": True,
+        },
+    )
+
+    assert health.state == HEALTH_SAME
+    assert health.score == 1
+    assert health.top_impact_op_count == 0

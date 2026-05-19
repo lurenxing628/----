@@ -158,6 +158,38 @@ def positive_op_id_set(values: Any) -> Set[int]:
     return result
 
 
+def safe_node_op_id_map(nodes: List[Any]) -> Dict[str, int]:
+    return {str(node.node_id): int(node_op_id(node)) for node in nodes}
+
+
+def build_graph_health_context(
+    *,
+    nodes: List[Any],
+    payload: Dict[str, Any],
+    schedule_input: ScheduleRunInput,
+) -> Dict[str, Any]:
+    op_id_by_node_id = safe_node_op_id_map(nodes)
+    critical_path_op_ids = [
+        int(op_id_by_node_id[node_id])
+        for node_id in list(payload.get("critical_path") or [])
+        if str(node_id) in op_id_by_node_id
+    ]
+    schedulable_op_ids = positive_op_id_set(getattr(op, "id", None) for op in schedule_input.algo_ops_to_schedule or [])
+    scored_top_impact = []
+    for raw_node_id, raw_metrics in dict(payload.get("node_metrics") or {}).items():
+        op_id = op_id_by_node_id.get(str(raw_node_id))
+        if op_id is None or op_id not in schedulable_op_ids:
+            continue
+        impact_count = int(dict(raw_metrics or {}).get("impact_count") or 0)
+        if impact_count > 0:
+            scored_top_impact.append((impact_count, int(op_id)))
+    scored_top_impact.sort(reverse=True)
+    return {
+        "critical_path_op_ids": critical_path_op_ids,
+        "top_impact_op_ids": [op_id for _impact, op_id in scored_top_impact],
+    }
+
+
 def sort_key_by_op_id(nodes: List[Any], *, schedulable_op_ids: Set[int]) -> Dict[int, Tuple[int, int, int]]:
     batch_order: Dict[str, int] = {}
     for node in sorted(nodes, key=lambda item: (str(item.batch_id), int(item.seq), str(item.op_code), str(item.node_id))):

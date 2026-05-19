@@ -409,10 +409,13 @@ def _graph_metrics_payload(graph_preparation: Any) -> Dict[str, Any]:
     payload: Dict[str, Any] = {}
     public = getattr(graph_preparation, "graph_analysis_public", None)
     diagnostics = getattr(graph_preparation, "graph_analysis_diagnostics", None)
+    health_context = getattr(graph_preparation, "graph_health_context", None)
     if isinstance(public, dict):
         payload.update(public)
     if isinstance(diagnostics, dict):
         payload.update(diagnostics)
+    if isinstance(health_context, dict):
+        payload.update(health_context)
     return payload
 
 

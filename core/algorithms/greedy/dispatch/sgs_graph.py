@@ -50,6 +50,18 @@ def _prepare_graph_ready_state(
 
     schedulable_ids = _graph_ready_op_id_set(graph_ready_context.get("schedulable_op_ids"), field="schedulable_op_ids")
     fixed_op_ids = _graph_ready_op_id_set(graph_ready_context.get("fixed_op_ids"), field="fixed_op_ids")
+    overlap = sorted(schedulable_ids.intersection(fixed_op_ids))
+    if overlap:
+        sample = overlap[:20]
+        raise ValidationError(
+            f"图 ready 队列上下文不一致：待排工序不能同时是固定/已完成工序：{sample}",
+            field="graph_ready_context",
+            details={
+                "reason": "schedulable_fixed_overlap",
+                "overlap_count": len(overlap),
+                "overlap_sample": sample,
+            },
+        )
     if schedulable_ids != set(op_by_id):
         raise ValidationError("图 ready 队列上下文和本次待排工序不一致。", field="graph_ready_context")
     predecessor_map = graph_ready_context.get("predecessor_op_ids_by_op_id")
