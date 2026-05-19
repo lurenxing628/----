@@ -379,6 +379,32 @@ def main() -> None:
     assert 'stat-card-label">数据异常批次数</div>' in fallback_html, "读侧回退场景未展示数据异常卡片"
     assert 'stat-card-label">未排批次数</div>' in fallback_html, "读侧回退场景未展示未排批次卡片"
 
+    private_warning_summary = {
+        "version": 4,
+        "warnings": ["sqlite OperationalError: /Users/private/aps.db locked"],
+        "algo": {"metrics": make_metrics(overdue_count=0)},
+    }
+    private_warning_selected, private_warning_hist = build_case_inputs(version=4, summary_obj=private_warning_summary)
+    private_warning_ctx = build_analysis_context(
+        selected_ver=4,
+        raw_hist=[private_warning_hist],
+        selected_item=private_warning_selected,
+    )
+    private_warning_html = render_analysis_html(
+        app,
+        render_template,
+        version=4,
+        selected=private_warning_selected,
+        ctx=private_warning_ctx,
+    )
+    assert "提醒：1 条" in private_warning_html, "没有展示提醒总数"
+    assert "查看前 0 条提醒" not in private_warning_html, "不应为 0 条可见提醒展示空展开按钮"
+    assert "另有 1 条提醒" not in private_warning_html, "没有可见提醒时不应提示另有 1 条"
+    assert "当前页没有可安全展开的提醒明细" in private_warning_html, "没有可见提醒时应给出普通说明"
+    assert "去排产历史查看" in private_warning_html, "没有可见提醒时应提供排产历史跳转"
+    assert "/system/history?version=4" in private_warning_html, "排产历史跳转应带当前版本"
+    assert "sqlite" not in private_warning_html, "页面不应泄露内部错误细节"
+
     print("OK")
 
 

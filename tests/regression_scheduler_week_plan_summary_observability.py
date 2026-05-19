@@ -245,6 +245,27 @@ def test_week_plan_route_exposes_selected_summary_display(monkeypatch) -> None:
     assert history_service.version_queries == [3]
 
 
+def test_week_plan_page_hides_zero_warning_preview_button(tmp_path, monkeypatch) -> None:
+    summary = {
+        "warnings": ["sqlite OperationalError: /Users/private/aps.db locked"],
+        "algo": {"metrics": {"overdue_count": 0}},
+    }
+    app = _build_real_app(tmp_path, monkeypatch, summary_obj=summary)
+    client = app.test_client()
+
+    response = client.get("/scheduler/week-plan?version=3")
+    html = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "提醒：1 条" in html
+    assert "查看前 0 条提醒" not in html
+    assert "另有 1 条提醒" not in html
+    assert "当前页没有可安全展开的提醒明细" in html
+    assert "去排产历史查看" in html
+    assert "/system/history?version=3" in html
+    assert "sqlite" not in html
+
+
 def test_week_plan_route_marks_selected_summary_parse_failure(monkeypatch) -> None:
     history_service = _HistoryServiceStub("{broken json")
     app = _build_app(monkeypatch, history_service)
