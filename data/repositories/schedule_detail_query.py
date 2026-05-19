@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Sequence
+from typing import List, Optional, Sequence
 
 _COMMON_DETAIL_COLUMNS = (
     "s.id AS schedule_id",
@@ -93,6 +93,7 @@ def build_schedule_detail_sql(
     *,
     where_clauses: Sequence[str],
     include_team_context: bool = False,
+    plan_rows_cte_sql: Optional[str] = None,
 ) -> str:
     if not where_clauses:
         raise ValueError("where_clauses is required")
@@ -100,11 +101,21 @@ def build_schedule_detail_sql(
     columns_sql = ",\n            ".join(_select_columns(include_team_context=include_team_context))
     joins_sql = "\n        ".join(_join_clauses(include_team_context=include_team_context))
     where_sql = "\n          AND ".join(where_clauses)
+    from_sql = "Schedule s"
+    cte_sql = ""
+    if plan_rows_cte_sql is not None:
+        cte_sql = f"""
+        WITH plan_rows AS (
+            {plan_rows_cte_sql.strip()}
+        )
+        """
+        from_sql = "plan_rows s"
 
     return f"""
+        {cte_sql}
         SELECT
             {columns_sql}
-        FROM Schedule s
+        FROM {from_sql}
         {joins_sql}
         WHERE {where_sql}
         ORDER BY s.start_time, s.id
