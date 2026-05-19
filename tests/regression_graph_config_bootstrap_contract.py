@@ -10,10 +10,14 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 
 EXPECTED_GRAPH_DEFAULTS = {
-    "graph_analysis_mode": "off",
+    "graph_analysis_mode": "on",
     "graph_block_on_cycle": "no",
+    "graph_candidate_weight_count": "5",
     "graph_critical_weight": "500",
+    "graph_overdue_tolerance_count": "1",
     "graph_impact_weight": "10",
+    "graph_selection_policy": "balanced",
+    "graph_tardiness_tolerance_ratio": "0.1",
     "graph_debug_export": "no",
 }
 

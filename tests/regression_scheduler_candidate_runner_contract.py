@@ -14,8 +14,10 @@ from core.services.scheduler.run.schedule_candidate_runner import (
     CANDIDATE_STATUS_COMPLETED,
     CANDIDATE_STATUS_FAILED,
     CANDIDATE_STATUS_SKIPPED,
+    CandidatePlan,
     run_candidate_comparison,
 )
+from core.services.scheduler.run.schedule_candidate_selection import CandidateSelectionResult
 
 
 def _cfg(**overrides) -> ScheduleConfigSnapshot:
@@ -42,6 +44,7 @@ def _cfg(**overrides) -> ScheduleConfigSnapshot:
         "graph_block_on_cycle": "no",
         "graph_critical_weight": 500,
         "graph_impact_weight": 10,
+        "graph_downstream_weight": 1,
         "graph_debug_export": "no",
     }
     data.update(overrides)
@@ -186,6 +189,8 @@ def test_candidate_runner_runs_baseline_first_and_passes_graph_context_to_critic
     assert [candidate.status for candidate in outcome.candidates] == [CANDIDATE_STATUS_COMPLETED] * 4
     assert prepare_calls[0].graph_analysis_mode == "off"
     assert [cfg.graph_analysis_mode for cfg in prepare_calls[1:]] == ["on", "on", "on"]
+    assert prepare_calls[0].graph_downstream_weight == 0
+    assert [cfg.graph_downstream_weight for cfg in prepare_calls[1:]] == [1, 1, 2]
     assert optimize_calls[0]["graph_ready_context"] is None
     assert optimize_calls[1]["graph_ready_context"] == {"candidate": 250}
     assert optimize_calls[1]["graph_dispatch_mode_override"] == "sgs"
@@ -414,6 +419,11 @@ def test_candidate_runner_skips_not_started_candidates_after_global_deadline() -
     assert outcome.skipped_count == 3
     assert outcome.time_budget_reached is True
     assert [candidate.status for candidate in outcome.candidates[1:]] == [CANDIDATE_STATUS_SKIPPED] * 3
+    assert outcome.skipped_candidate_labels == [
+        "重点工序优先方案 1/3",
+        "重点工序优先方案 2/3",
+        "重点工序优先方案 3/3",
+    ]
 
 
 def test_candidate_runner_records_single_candidate_failure_and_continues() -> None:
@@ -443,6 +453,7 @@ def test_candidate_runner_records_single_candidate_failure_and_continues() -> No
     assert outcome.completed_count == 3
     assert outcome.candidates[1].status == CANDIDATE_STATUS_FAILED
     assert "candidate failed" in str(outcome.candidates[1].failure_reason)
+    assert outcome.baseline_missing_or_failed is False
 
 
 def test_candidate_runner_raises_validation_error_instead_of_selecting_baseline() -> None:
@@ -543,3 +554,63 @@ def test_candidate_runner_fails_when_every_candidate_failed() -> None:
         )
 
     assert exc_info.value.field == "candidate_selection"
+
+
+def test_comparison_outcome_marks_missing_or_failed_baseline() -> None:
+    critical = CandidatePlan(
+        sequence=1,
+        candidate_key="graph_w1_of_3",
+        kind="critical_chain",
+        label="重点工序优先方案 1/3",
+        status=CANDIDATE_STATUS_COMPLETED,
+        score=(0, 0, 10.0),
+        graph_critical_weight=500,
+        graph_impact_weight=10,
+        graph_downstream_weight=1,
+    )
+    selection = CandidateSelectionResult(
+        selected_candidate_key=critical.candidate_key,
+        selected_kind=critical.kind,
+        selection_policy="score_only",
+        reason_code="score_only_raw_score_best",
+        raw_score_best_key=critical.candidate_key,
+        baseline_best_key=None,
+        critical_best_key=critical.candidate_key,
+        critical_health_best_key=critical.candidate_key,
+        selected_score=critical.score or (),
+        selected_plan=critical,
+    )
+
+    missing = runner._comparison_outcome(
+        specs=[],
+        candidates=[critical],
+        selection=selection,
+        time_budget_reached=False,
+        selection_policy="score_only",
+        total_budget=20.0,
+    )
+    failed_baseline = runner._comparison_outcome(
+        specs=[],
+        candidates=[
+            CandidatePlan(
+                sequence=0,
+                candidate_key="baseline",
+                kind="baseline",
+                label="原算法方案",
+                status=CANDIDATE_STATUS_FAILED,
+                score=None,
+                graph_critical_weight=0,
+                graph_impact_weight=0,
+                graph_downstream_weight=0,
+                failure_reason="baseline failed",
+            ),
+            critical,
+        ],
+        selection=selection,
+        time_budget_reached=False,
+        selection_policy="score_only",
+        total_budget=20.0,
+    )
+
+    assert missing.baseline_missing_or_failed is True
+    assert failed_baseline.baseline_missing_or_failed is True

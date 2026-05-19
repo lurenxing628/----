@@ -168,7 +168,11 @@ def test_graph_projection_keeps_public_summary_small_and_samples_diagnostics() -
             "score_enabled": True,
             "score_metric_status": "available",
             "score_disabled_reason": None,
-            "score_weight_summary": {"critical_weight": 500, "impact_weight": 10},
+            "score_weight_summary": {
+                "critical_weight": 500,
+                "impact_weight": 10,
+                "downstream_minutes_weight": 1,
+            },
         },
         score_diagnostics={
             "graph_score_sample": [
@@ -192,7 +196,11 @@ def test_graph_projection_keeps_public_summary_small_and_samples_diagnostics() -
     assert public["score_enabled"] is True
     assert public["score_metric_status"] == "available"
     assert public["score_disabled_reason"] is None
-    assert public["score_weight_summary"] == {"critical_weight": 500, "impact_weight": 10}
+    assert public["score_weight_summary"] == {
+        "critical_weight": 500,
+        "impact_weight": 10,
+        "downstream_minutes_weight": 1,
+    }
     assert public["status"] == "available"
     assert public["node_count"] == 60
     assert public["edge_count"] == 59

@@ -5,7 +5,7 @@ from typing import List, Optional
 
 from .migrations.common import MigrationOutcome, column_exists, fallback_log
 
-CURRENT_SCHEMA_VERSION = 10
+CURRENT_SCHEMA_VERSION = 11
 
 
 class MigrationContractError(RuntimeError):
@@ -180,20 +180,26 @@ def _has_candidate_indexes(conn: sqlite3.Connection) -> bool:
         SELECT name
         FROM sqlite_master
         WHERE type='index'
-          AND name IN (
-              'idx_schedule_candidate_version',
-              'idx_schedule_candidate_version_kind',
-              'idx_schedule_candidate_rows_version_candidate',
-              'idx_schedule_candidate_rows_time',
-              'idx_schedule_candidate_selection_version'
-          )
+              AND name IN (
+                  'idx_schedule_version_time',
+                  'idx_schedule_history_version',
+                  'idx_schedule_candidate_version',
+                  'idx_schedule_candidate_version_kind',
+                  'idx_schedule_candidate_rows_version_candidate',
+                  'idx_schedule_candidate_rows_version_candidate_time',
+                  'idx_schedule_candidate_rows_time',
+                  'idx_schedule_candidate_selection_version'
+              )
         """
     ).fetchall()
     names = {r["name"] if isinstance(r, sqlite3.Row) else r[0] for r in rows}
     return names == {
+        "idx_schedule_version_time",
+        "idx_schedule_history_version",
         "idx_schedule_candidate_version",
         "idx_schedule_candidate_version_kind",
         "idx_schedule_candidate_rows_version_candidate",
+        "idx_schedule_candidate_rows_version_candidate_time",
         "idx_schedule_candidate_rows_time",
         "idx_schedule_candidate_selection_version",
     }

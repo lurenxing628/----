@@ -201,18 +201,18 @@
               <span class="aps-compact-switch-text">仅外协</span>
             </label>
             <label class="aps-compact-switch" for="ganttHighlightCC">
-              <input type="checkbox" id="ganttHighlightCC" checked aria-label="高亮关键链任务">
+              <input type="checkbox" id="ganttHighlightCC" checked aria-label="高亮关键工序">
               <span class="aps-compact-switch-track" aria-hidden="true"></span>
-              <span class="aps-compact-switch-text">高亮关键链</span>
+              <span class="aps-compact-switch-text">高亮关键工序</span>
             </label>
           </div>
         </div>
         <div class="aps-gantt-filter-item">
-          <label for="ganttDepsMode">依赖箭头</label><br/>
+          <label for="ganttDepsMode">工序关系线</label><br/>
           <select id="ganttDepsMode" class="w-180">
-            <option value="critical" selected>仅关键链箭头</option>
-            <option value="process">完整工艺依赖箭头</option>
-            <option value="none">不显示箭头</option>
+            <option value="critical" selected>只显示关键工序关系线</option>
+            <option value="process">显示全部工艺关系线</option>
+            <option value="none">不显示关系线</option>
           </select>
         </div>
         <div class="aps-gantt-filter-item aps-gantt-filter-action">{{ ui.button('重置', 'secondary', 'md', type_attr='button', class='gantt-reset-btn', element_id='ganttResetView') }}</div>

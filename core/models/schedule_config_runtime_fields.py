@@ -105,7 +105,7 @@ _FIELD_SPECS: Tuple[RuntimeConfigFieldSpec, ...] = (
     RuntimeConfigFieldSpec(
         key="graph_analysis_mode",
         field_type="enum",
-        default="off",
+        default="on",
         choices=("off", "report", "on"),
     ),
     RuntimeConfigFieldSpec(
@@ -125,6 +125,30 @@ _FIELD_SPECS: Tuple[RuntimeConfigFieldSpec, ...] = (
         field_type="int",
         default=10,
         min_value=0,
+    ),
+    RuntimeConfigFieldSpec(
+        key="graph_candidate_weight_count",
+        field_type="int",
+        default=5,
+        choices=("3", "5", "7"),
+    ),
+    RuntimeConfigFieldSpec(
+        key="graph_selection_policy",
+        field_type="enum",
+        default="balanced",
+        choices=("balanced", "score_only"),
+    ),
+    RuntimeConfigFieldSpec(
+        key="graph_overdue_tolerance_count",
+        field_type="int",
+        default=1,
+        choices=("0", "1", "2"),
+    ),
+    RuntimeConfigFieldSpec(
+        key="graph_tardiness_tolerance_ratio",
+        field_type="float",
+        default=0.10,
+        choices=("0.05", "0.1", "0.2"),
     ),
     RuntimeConfigFieldSpec(
         key="graph_debug_export",

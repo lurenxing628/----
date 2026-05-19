@@ -43,6 +43,7 @@ def run_schedule():
         batch_ids = request.form.getlist("batch_ids")
         start_dt = request.form.get("start_dt") or None
         end_date = request.form.get("end_date") or None
+        run_time_budget_seconds = request.form.get("run_time_budget_seconds") or None
         enforce_ready = form_optional_toggle_bool(request.form, "enforce_ready")
         strict_mode = form_toggle_bool(request.form, "strict_mode")
         sch_svc = g.services.schedule_service
@@ -53,6 +54,7 @@ def run_schedule():
             created_by="web",
             enforce_ready=enforce_ready,
             strict_mode=strict_mode,
+            run_time_budget_seconds=run_time_budget_seconds,
         )
         view_result = build_run_schedule_view_result(result)
         if view_result.result_status in {"success", "partial"}:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 
 from core.infrastructure.errors import ValidationError
 from core.shared.degradation import DegradationCollector, degradation_events_to_dicts
@@ -83,7 +83,7 @@ def normalize_preset_snapshot(
     payload = dict(data or {})
     collector = DegradationCollector()
 
-    def _read(key: str) -> tuple[bool, Any]:
+    def _read(key: str) -> Tuple[bool, Any]:
         return (key not in payload), payload.get(key)
 
     st_missing, st_raw = _read("sort_strategy")
@@ -193,6 +193,7 @@ def normalize_preset_snapshot(
     algo_mode = _choice("algo_mode", str(base.algo_mode))
     objective = _choice("objective", str(base.objective))
     graph_analysis_mode = _choice("graph_analysis_mode", str(base.graph_analysis_mode))
+    graph_selection_policy = _choice("graph_selection_policy", str(base.graph_selection_policy))
 
     ort_missing, ort_raw = _read("ortools_time_limit_seconds")
     ort_limit = _preset_int(
@@ -239,6 +240,33 @@ def normalize_preset_snapshot(
         missing=graph_impact_missing,
         fallback=int(base.graph_impact_weight),
     )
+    graph_candidate_count_missing, graph_candidate_count_raw = _read("graph_candidate_weight_count")
+    graph_candidate_weight_count = _preset_int(
+        "graph_candidate_weight_count",
+        graph_candidate_count_raw,
+        strict_mode=bool(strict_mode),
+        collector=collector,
+        missing=graph_candidate_count_missing,
+        fallback=int(base.graph_candidate_weight_count),
+    )
+    graph_overdue_missing, graph_overdue_raw = _read("graph_overdue_tolerance_count")
+    graph_overdue_tolerance_count = _preset_int(
+        "graph_overdue_tolerance_count",
+        graph_overdue_raw,
+        strict_mode=bool(strict_mode),
+        collector=collector,
+        missing=graph_overdue_missing,
+        fallback=int(base.graph_overdue_tolerance_count),
+    )
+    graph_tardiness_missing, graph_tardiness_raw = _read("graph_tardiness_tolerance_ratio")
+    graph_tardiness_tolerance_ratio = _preset_float(
+        "graph_tardiness_tolerance_ratio",
+        graph_tardiness_raw,
+        strict_mode=bool(strict_mode),
+        collector=collector,
+        missing=graph_tardiness_missing,
+        fallback=float(base.graph_tardiness_tolerance_ratio),
+    )
 
     return ScheduleConfigSnapshot(
         sort_strategy=st,
@@ -263,6 +291,10 @@ def normalize_preset_snapshot(
         graph_block_on_cycle=graph_block_on_cycle,
         graph_critical_weight=int(graph_critical_weight),
         graph_impact_weight=int(graph_impact_weight),
+        graph_candidate_weight_count=int(graph_candidate_weight_count),
+        graph_selection_policy=graph_selection_policy,
+        graph_overdue_tolerance_count=int(graph_overdue_tolerance_count),
+        graph_tardiness_tolerance_ratio=float(graph_tardiness_tolerance_ratio),
         graph_debug_export=graph_debug_export,
         degradation_events=tuple(degradation_events_to_dicts(collector.to_list())),
         degradation_counters=collector.to_counters(),

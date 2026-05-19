@@ -64,7 +64,7 @@ def test_score_only_selects_smallest_raw_score() -> None:
     )
 
     assert selection.selected_candidate_key == "graph_w1_of_5"
-    assert selection.reason_code == "score_only_raw_score"
+    assert selection.reason_code == "score_only_raw_score_best"
 
 
 def test_raw_score_tie_prefers_baseline_then_generation_order() -> None:
@@ -97,7 +97,7 @@ def test_balanced_allows_healthy_critical_candidate_to_override_within_tolerance
     )
 
     assert selection.selected_candidate_key == "graph_w2_of_5"
-    assert selection.reason_code == "balanced_health_override"
+    assert selection.reason_code == "balanced_critical_health_better"
 
 
 def test_balanced_does_not_override_when_health_is_unavailable() -> None:
@@ -117,7 +117,7 @@ def test_balanced_does_not_override_when_health_is_unavailable() -> None:
     )
 
     assert selection.selected_candidate_key == "baseline"
-    assert selection.reason_code == "balanced_raw_score"
+    assert selection.reason_code == "balanced_raw_score_best"
 
 
 def test_balanced_selection_does_not_override_when_critical_health_unavailable() -> None:
@@ -143,7 +143,7 @@ def test_balanced_selection_does_not_override_when_critical_health_unavailable()
     selection = select_candidate_plan([baseline, critical], policy="balanced")
 
     assert selection.selected_candidate_key == "baseline"
-    assert selection.reason_code == "balanced_raw_score"
+    assert selection.reason_code == "balanced_raw_score_best"
     assert selection.critical_health_best_key is None
 
 

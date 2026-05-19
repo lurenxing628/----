@@ -57,6 +57,7 @@ def persist_schedule_run_with_candidates(
                 candidate_comparison=candidate_comparison,
                 frozen_op_ids=frozen_op_ids,
             )
+        svc.candidate_repo.delete_without_schedule_history()
 
     log_schedule_operation(
         svc,

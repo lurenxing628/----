@@ -397,6 +397,7 @@ def simulate_schedule():
         batch_ids = request.form.getlist("batch_ids")
         start_dt = request.form.get("start_dt") or None
         end_date = request.form.get("end_date") or None
+        run_time_budget_seconds = request.form.get("run_time_budget_seconds") or None
         enforce_ready = form_optional_toggle_bool(request.form, "enforce_ready")
         strict_mode = form_toggle_bool(request.form, "strict_mode")
         if not batch_ids:
@@ -412,6 +413,7 @@ def simulate_schedule():
             simulate=True,
             enforce_ready=enforce_ready,
             strict_mode=strict_mode,
+            run_time_budget_seconds=run_time_budget_seconds,
         )
         ver = _simulate_result_version(result)
         result_dict = result if isinstance(result, dict) else {}

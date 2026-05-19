@@ -241,7 +241,8 @@ def analysis_page():
 
     raw_hist = _load_recent_analysis_history(q)
     ctx = build_analysis_context(selected_ver=selected_ver, raw_hist=raw_hist, selected_item=selected_item)
-    if ctx.get("candidate_comparison_display") is not None:
+    initial_candidate_display = ctx.get("candidate_comparison_display")
+    if isinstance(initial_candidate_display, dict) and initial_candidate_display.get("has_comparison"):
         plan_role_options = _load_selected_plan_role_options(g.services, selected_ver)
         ctx["candidate_comparison_display"] = build_candidate_comparison_display(
             ctx.get("selected_summary"),

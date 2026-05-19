@@ -166,6 +166,10 @@ def main() -> None:
             graph_block_on_cycle="no",
             graph_critical_weight=500,
             graph_impact_weight=10,
+            graph_candidate_weight_count=5,
+            graph_selection_policy="balanced",
+            graph_overdue_tolerance_count=1,
+            graph_tardiness_tolerance_ratio=0.10,
             graph_debug_export="no",
         )
         batches = {

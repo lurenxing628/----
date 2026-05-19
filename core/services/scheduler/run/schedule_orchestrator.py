@@ -206,7 +206,26 @@ def _normalize_candidate_plan(candidate_plan: Any) -> _NormalizedOptimizerOutcom
 
 
 def _candidate_comparison_enabled(cfg: Any) -> bool:
-    return str(getattr(cfg, "candidate_comparison_enabled", "no") or "no").strip().lower() == "yes"
+    return str(getattr(cfg, "graph_analysis_mode", "off") or "off").strip().lower() == "on"
+
+
+def _candidate_weight_count(cfg: Any) -> int:
+    value = getattr(cfg, "graph_candidate_weight_count", 5)
+    return 5 if value is None or str(value).strip() == "" else int(value)
+
+
+def _candidate_selection_policy(cfg: Any) -> str:
+    return str(getattr(cfg, "graph_selection_policy", "balanced") or "balanced").strip().lower()
+
+
+def _candidate_overdue_tolerance_count(cfg: Any) -> int:
+    value = getattr(cfg, "graph_overdue_tolerance_count", 1)
+    return 1 if value is None or str(value).strip() == "" else int(value)
+
+
+def _candidate_tardiness_tolerance_ratio(cfg: Any) -> float:
+    value = getattr(cfg, "graph_tardiness_tolerance_ratio", 0.10)
+    return 0.10 if value is None or str(value).strip() == "" else float(value)
 
 
 def _run_optimizer_once(
@@ -215,8 +234,10 @@ def _run_optimizer_once(
     optimize_schedule_fn: Any,
     strict_mode: bool,
     logger: Any,
+    graph_preparation: Optional[Any] = None,
 ) -> Tuple[_NormalizedOptimizerOutcome, Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
-    graph_preparation = prepare_schedule_graph_for_dispatch(schedule_input)
+    if graph_preparation is None:
+        graph_preparation = prepare_schedule_graph_for_dispatch(schedule_input)
     optimizer_outcome = _normalize_optimizer_outcome(
         optimize_schedule_fn(
             calendar_service=schedule_input.cal_svc,
@@ -305,9 +326,15 @@ def orchestrate_schedule_run(
 ) -> ScheduleOrchestrationOutcome:
     candidate_comparison = None
     if _candidate_comparison_enabled(schedule_input.cfg):
+        prepare_schedule_graph_for_dispatch(schedule_input)
         candidate_comparison = run_candidate_comparison(
             schedule_input=schedule_input,
             optimize_schedule_fn=optimize_schedule_fn,
+            run_time_budget_seconds=getattr(schedule_input, "run_time_budget_seconds", None),
+            weight_count=_candidate_weight_count(schedule_input.cfg),
+            selection_policy=_candidate_selection_policy(schedule_input.cfg),
+            graph_overdue_tolerance_count=_candidate_overdue_tolerance_count(schedule_input.cfg),
+            graph_tardiness_tolerance_ratio=_candidate_tardiness_tolerance_ratio(schedule_input.cfg),
             strict_mode=bool(strict_mode),
             logger=svc.logger,
         )

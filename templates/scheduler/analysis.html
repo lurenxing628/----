@@ -300,9 +300,15 @@
             <div class="stat-card-delta">任务分配均匀程度 {{ (m.get('operator_load_cv') or 0)|round(2) }}，越小越均匀</div>
           </div>
         </div>
-        <div class="muted mt-2">
-          下方按「{{ objective_key_label }}」展示各方案对比（越小越好）。
-        </div>
+        {% if candidate_comparison_display and candidate_comparison_display.has_comparison %}
+          <div class="muted mt-2">
+            下方按「{{ objective_key_label }}」展示同一次排产里的代表方案对比（越小越好）。
+          </div>
+        {% else %}
+          <div class="muted mt-2">
+            这些指标来自当前查看的排产版本。
+          </div>
+        {% endif %}
       {% else %}
         <div class="muted mt-2">该版本未记录排产指标（可能是旧版本）。</div>
       {% endif %}
@@ -321,12 +327,33 @@
       {% endif %}
     </div>
 
+    {% if candidate_comparison_display and not candidate_comparison_display.has_comparison and candidate_comparison_display.notice %}
+      <div class="flash-card mt-2" role="status">
+        {{ candidate_comparison_display.notice }}
+      </div>
+    {% endif %}
+
     {% if candidate_comparison_display and candidate_comparison_display.rows %}
       <div class="card">
-        <h3 class="section-title">候选方案对比</h3>
+        <h3 class="section-title">方案对比</h3>
         <div class="muted mt-1">
-          这里对比同一次排产里保留下来的代表方案；正式写入哪套方案会在“方案标签”里标出来，版本汇总仍是最终结果。
+          这里对比同一次排产里的代表方案：最终采用、原算法最好、重点工序优先方案最好。正式写入排程的是“最终采用”。
         </div>
+        {% if candidate_comparison_display.selection_reason_label %}
+          <div class="flash-card mt-2" role="status">
+            {{ candidate_comparison_display.selection_reason_label }}
+          </div>
+        {% endif %}
+        {% if candidate_comparison_display.baseline_missing_or_failed %}
+          <div class="flash-card flash-warning mt-2" role="status">
+            原算法候选缺失或失败，本次采用结果需复核。
+          </div>
+        {% endif %}
+        {% if candidate_comparison_display.skipped_candidate_labels %}
+          <div class="flash-card flash-warning mt-2" role="status">
+            因本次时间上限跳过：{{ candidate_comparison_display.skipped_candidate_labels | join('、') }}
+          </div>
+        {% endif %}
         <div class="aps-table-scroll mt-2">
           <table id="analysisCandidateComparisonTable" class="table-sticky table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v1_analysisCandidateComparisonTable">
             <thead>
@@ -353,10 +380,7 @@
                     {% endif %}
                   </td>
                   <td>
-                    {{ row.candidate_label or row.candidate_key or '-' }}
-                    {% if row.candidate_key %}
-                      <div class="muted text-xs">{{ row.candidate_key }}</div>
-                    {% endif %}
+                    {{ row.candidate_label or '-' }}
                   </td>
                   <td>{{ row.status_label or '-' }}</td>
                   <td>{{ row.failed_ops if row.failed_ops is not none else '-' }}</td>

@@ -347,8 +347,8 @@ items:
   - slug: scheduler-graph-candidate-config-closeout
     title: PR-7e 配置、临时时间上限、清理策略和兼容收口
     description: "补齐 PR-7 配置链路、运行期临时时间上限、旧 preset 补字段、候选数据清理策略、Python 3.8 / Win7 / 离线兼容和 SQLite 性能守卫，确保默认开启关键链候选比较但仍可 off/report 排障。"
-    status: planned
-    feature: null
+    status: done
+    feature: .codestable/features/2026-05-19-scheduler-graph-candidate-config-closeout/
     minimal_loop: false
     depends_on: [scheduler-graph-plan-role-pages-reports]
     primary_paths:
@@ -373,7 +373,7 @@ items:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_config_field_spec_contract.py tests/regression_scheduler_config_route_contract.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check
-    notes: "新增 graph_candidate_weight_count、graph_selection_policy、graph_overdue_tolerance_count、graph_tardiness_tolerance_ratio 和 run_time_budget_seconds 链路。新库默认 graph_analysis_mode=on，旧库已有用户值不覆盖；旧 preset 缺字段时补默认值，不拒绝整套配置。第一版不引入新数据库、不并行、不用 Python 3.9+ 语法、不引入外部前端资源；候选清理默认跟排产历史保留策略一致。"
+    notes: "已完成：2026-05-19 新增 graph_candidate_weight_count、graph_selection_policy、graph_overdue_tolerance_count、graph_tardiness_tolerance_ratio 和 run_time_budget_seconds 链路。新库默认 graph_analysis_mode=on，旧库已有 off/report/on 不覆盖；旧 preset 缺字段时补默认值，不拒绝整套配置。正式排产 graph_analysis_mode=on 时默认运行 baseline + 默认 5 档重点工序优先候选，off/report 保留单方案排障；run_time_budget_seconds 只作为本次运行预算，不写回配置。分析页只在候选摘要和明细完整时展示最终采用 / 原算法最好 / 重点工序优先方案最好；没有开启或记录不完整时显示明确提示，不生成假切换链接。新增候选孤儿清理和 v11 索引，性能守卫证明 list_plan_roles 不扫 CandidateRows 明细、get_plan_time_span 真实 SQL 走索引。Python 3.8 / Win7 / 离线约束已用守卫测试覆盖；浏览器临时库验证配置页、分析页、周计划、资源排班和 30 批 120 工序压力排产。第一版仍不引入新数据库、不并行、不做续跑。"
 
   - slug: scheduler-graph-resource-matching-report
     title: PR-8 资源匹配 report-only 分析

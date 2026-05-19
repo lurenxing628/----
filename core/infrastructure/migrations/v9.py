@@ -7,10 +7,14 @@ from typing import Any, Dict, List, Optional, Tuple
 from .common import MigrationOutcome, merge_outcomes, table_exists
 
 _DEFAULT_GRAPH_CONFIG: Tuple[Tuple[str, str, str], ...] = (
-    ("graph_analysis_mode", "off", "工序图分析模式：关闭/只生成报告/参与排产"),
+    ("graph_analysis_mode", "on", "工序图分析模式：关闭/只生成报告/参与排产"),
     ("graph_block_on_cycle", "no", "工序图分析发现循环依赖时是否阻止排产"),
     ("graph_critical_weight", "500", "图分析关键路径评分权重"),
     ("graph_impact_weight", "10", "图分析后续影响范围评分权重"),
+    ("graph_candidate_weight_count", "5", "参与排产时额外尝试的重点工序方案档数"),
+    ("graph_selection_policy", "balanced", "自动选择最终采用方案的规则"),
+    ("graph_overdue_tolerance_count", "1", "综合选择时允许多出的超期批次数"),
+    ("graph_tardiness_tolerance_ratio", "0.1", "综合选择时允许多出的拖期比例"),
     ("graph_debug_export", "no", "是否导出工序图分析调试文件"),
 )
 
@@ -94,7 +98,7 @@ def _migrate_preset_payloads(conn: sqlite3.Connection) -> MigrationOutcome:
 
 def run(conn: sqlite3.Connection, logger=None) -> MigrationOutcome:
     """
-    v9 迁移：补齐 NetworkX 工序图分析配置字段，默认关闭，不改变排产行为。
+    v9 迁移：补齐工序图分析配置字段；已有值不覆盖，缺少的字段按当前默认补齐。
     """
     outcomes = [
         _migrate_schedule_config_defaults(conn),

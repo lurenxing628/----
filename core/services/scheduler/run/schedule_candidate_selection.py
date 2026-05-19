@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from core.infrastructure.errors import ValidationError
 
@@ -27,7 +27,7 @@ class CandidateSelectionResult:
     selected_score: Tuple[float, ...]
     selected_plan: Any
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, Any]:
         return {
             "selected_candidate_key": self.selected_candidate_key,
             "selected_kind": self.selected_kind,
@@ -62,7 +62,7 @@ def select_candidate_plan(
         return _build_selection(
             selected=raw_score_best,
             policy=selection_policy,
-            reason_code="score_only_raw_score",
+            reason_code="score_only_raw_score_best",
             raw_score_best=raw_score_best,
             baseline_best=baseline_best,
             critical_best=critical_best,
@@ -82,7 +82,7 @@ def select_candidate_plan(
         return _build_selection(
             selected=critical_health_best,
             policy=selection_policy,
-            reason_code="balanced_health_override",
+            reason_code="balanced_critical_health_better",
             raw_score_best=raw_score_best,
             baseline_best=baseline_best,
             critical_best=critical_best,
@@ -92,7 +92,7 @@ def select_candidate_plan(
     return _build_selection(
         selected=raw_score_best,
         policy=selection_policy,
-        reason_code="balanced_raw_score",
+        reason_code="balanced_raw_score_best",
         raw_score_best=raw_score_best,
         baseline_best=baseline_best,
         critical_best=critical_best,

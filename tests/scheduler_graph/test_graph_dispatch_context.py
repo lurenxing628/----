@@ -6,7 +6,10 @@ import pytest
 
 from core.services.scheduler.graph.input_adapter import GraphInputContractError
 from core.services.scheduler.graph.types import OperationGraphEdge, OperationGraphNode
-from core.services.scheduler.run.schedule_graph_dispatch_context import build_predecessor_successor_maps
+from core.services.scheduler.run.schedule_graph_dispatch_context import (
+    build_predecessor_successor_maps,
+    graph_score_weights,
+)
 
 
 def _node(node_id: str, op_id: int) -> OperationGraphNode:
@@ -69,3 +72,26 @@ def test_build_predecessor_successor_maps_rejects_missing_endpoint_field() -> No
     message = str(exc_info.value)
     assert "缺少字段 to_node_id" in message
     assert "edge_index=0" in message
+
+
+def test_graph_score_weights_reads_downstream_weight_from_cfg() -> None:
+    weights = graph_score_weights(
+        SimpleNamespace(
+            graph_critical_weight=500,
+            graph_impact_weight=10,
+            graph_downstream_weight=3,
+        )
+    )
+
+    assert weights == {
+        "critical_weight": 500,
+        "impact_weight": 10,
+        "downstream_minutes_weight": 3,
+    }
+
+
+@pytest.mark.parametrize("value", [True, -1])
+def test_graph_score_weights_rejects_invalid_downstream_weight(value: object) -> None:
+    cfg = SimpleNamespace(graph_critical_weight=500, graph_impact_weight=10, graph_downstream_weight=value)
+    with pytest.raises(ValueError, match="graph_downstream_weight"):
+        graph_score_weights(cfg)

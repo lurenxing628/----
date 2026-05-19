@@ -113,10 +113,14 @@ class _ConfigServiceStub:
             objective="min_overdue",
             freeze_window_enabled="no",
             freeze_window_days=3,
-            graph_analysis_mode="off",
+            graph_analysis_mode="on",
             graph_block_on_cycle="no",
             graph_critical_weight=500,
             graph_impact_weight=10,
+            graph_candidate_weight_count=5,
+            graph_selection_policy="balanced",
+            graph_overdue_tolerance_count=1,
+            graph_tardiness_tolerance_ratio=0.10,
             graph_debug_export="no",
             degradation_events=(),
         )
@@ -285,7 +289,7 @@ def test_scheduler_config_route_uses_request_services(monkeypatch) -> None:
     assert "尚未接入" not in notice_text
     assert "只看分析报告" in notice_text
     assert "参与排产" in notice_text
-    assert "哪些工序先排" in notice_text
+    assert "先排普通方案" in notice_text
     assert "report 会生成只读报告" not in notice_text
     assert "on 当前先按 report-only" not in notice_text
     assert "不会让图分析参与 ready 队列" not in notice_text
@@ -327,7 +331,10 @@ def test_scheduler_config_template_graph_copy_matches_cycle_gate_stage() -> None
     assert "真正图分析将在后续阶段接入" not in template
     assert "只看分析报告" in template
     assert "参与排产" in template
-    assert "哪些工序先排" in template
+    assert "graph_candidate_weight_count" in template
+    assert "graph_selection_policy" in template
+    assert "graph_overdue_tolerance_count" in template
+    assert "graph_tardiness_tolerance_ratio" in template
     assert "report 会生成只读图分析报告" not in template
     assert "on 会先做图安全检查" not in template
     assert "可用 DAG 会用 ready 队列参与 SGS 候选" not in template
@@ -368,6 +375,10 @@ def test_scheduler_config_post_uses_atomic_save_entrypoint(monkeypatch) -> None:
             "graph_block_on_cycle": "yes",
             "graph_critical_weight": "700",
             "graph_impact_weight": "20",
+            "graph_candidate_weight_count": "7",
+            "graph_selection_policy": "score_only",
+            "graph_overdue_tolerance_count": "2",
+            "graph_tardiness_tolerance_ratio": "0.2",
             "graph_debug_export": "no",
         },
     )
@@ -380,6 +391,10 @@ def test_scheduler_config_post_uses_atomic_save_entrypoint(monkeypatch) -> None:
     assert config_service.saved_payload["graph_block_on_cycle"] == "yes"
     assert config_service.saved_payload["graph_critical_weight"] == "700"
     assert config_service.saved_payload["graph_impact_weight"] == "20"
+    assert config_service.saved_payload["graph_candidate_weight_count"] == "7"
+    assert config_service.saved_payload["graph_selection_policy"] == "score_only"
+    assert config_service.saved_payload["graph_overdue_tolerance_count"] == "2"
+    assert config_service.saved_payload["graph_tardiness_tolerance_ratio"] == "0.2"
 
 
 def test_scheduler_config_post_parses_toggle_fields_without_order_dependency(monkeypatch) -> None:
@@ -664,10 +679,14 @@ def test_scheduler_config_post_visible_repair_marks_custom_provenance(monkeypatc
                 "time_budget_seconds": "20",
                 "freeze_window_enabled": "no",
                 "freeze_window_days": "0",
-                "graph_analysis_mode": "off",
+                "graph_analysis_mode": "on",
                 "graph_block_on_cycle": "no",
                 "graph_critical_weight": "500",
                 "graph_impact_weight": "10",
+                "graph_candidate_weight_count": "5",
+                "graph_selection_policy": "balanced",
+                "graph_overdue_tolerance_count": "1",
+                "graph_tardiness_tolerance_ratio": "0.1",
                 "graph_debug_export": "no",
             },
             follow_redirects=True,
@@ -715,6 +734,10 @@ def test_scheduler_config_post_surfaces_service_validation_message(monkeypatch) 
             "graph_block_on_cycle": "no",
             "graph_critical_weight": "500",
             "graph_impact_weight": "10",
+            "graph_candidate_weight_count": "5",
+            "graph_selection_policy": "balanced",
+            "graph_overdue_tolerance_count": "1",
+            "graph_tardiness_tolerance_ratio": "0.1",
             "graph_debug_export": "no",
         },
         follow_redirects=True,

@@ -74,6 +74,8 @@ class CandidateComparisonOutcome:
     time_budget_reached: bool
     selection_policy: str
     run_time_budget_seconds: Optional[float]
+    skipped_candidate_labels: List[str]
+    baseline_missing_or_failed: bool
 
 
 @dataclass(frozen=True)
@@ -241,11 +243,28 @@ def _comparison_outcome(
         time_budget_reached=bool(time_budget_reached),
         selection_policy=str(selection_policy),
         run_time_budget_seconds=_public_budget(total_budget),
+        skipped_candidate_labels=_skipped_candidate_labels(candidates),
+        baseline_missing_or_failed=_baseline_missing_or_failed(candidates),
     )
 
 
 def _count_candidates(candidates: List[CandidatePlan], status: str) -> int:
     return sum(1 for candidate in candidates if candidate.status == status)
+
+
+def _skipped_candidate_labels(candidates: List[CandidatePlan]) -> List[str]:
+    return [
+        str(candidate.label)
+        for candidate in candidates
+        if candidate.status == CANDIDATE_STATUS_SKIPPED and str(candidate.label or "").strip()
+    ]
+
+
+def _baseline_missing_or_failed(candidates: List[CandidatePlan]) -> bool:
+    for candidate in candidates:
+        if candidate.kind == CANDIDATE_KIND_BASELINE:
+            return candidate.status != CANDIDATE_STATUS_COMPLETED
+    return True
 
 
 def _run_single_candidate(
@@ -373,6 +392,7 @@ def _candidate_cfg(base_cfg: Any, spec: CandidateRunSpec) -> Any:
         graph_analysis_mode=graph_mode,
         graph_critical_weight=int(spec.graph_critical_weight),
         graph_impact_weight=int(spec.graph_impact_weight),
+        graph_downstream_weight=int(spec.graph_downstream_weight),
     )
 
 
@@ -416,10 +436,13 @@ def _resolve_total_budget(run_time_budget_seconds: Optional[float], *, cfg: Any)
     if run_time_budget_seconds is None:
         return float(cfg.time_budget_seconds)
     if isinstance(run_time_budget_seconds, bool):
-        raise ValidationError("候选比较总时间预算必须是数字。", field="candidate_time_budget_seconds")
-    budget = float(run_time_budget_seconds)
-    if budget < 0:
-        raise ValidationError("候选比较总时间预算不能为负数。", field="candidate_time_budget_seconds")
+        raise ValidationError("本次方案比较时间上限必须是数字。", field="run_time_budget_seconds")
+    try:
+        budget = float(run_time_budget_seconds)
+    except Exception as exc:
+        raise ValidationError("本次方案比较时间上限必须是数字。", field="run_time_budget_seconds") from exc
+    if budget <= 0:
+        raise ValidationError("本次方案比较时间上限必须大于 0 秒。", field="run_time_budget_seconds")
     return budget
 
 
@@ -468,12 +491,4 @@ def _dict_or_none(value: Any) -> Optional[Dict[str, Any]]:
     raise TypeError("图分析结果必须是 dict 或 None。")
 
 
-__all__ = [
-    "CANDIDATE_STATUS_COMPLETED",
-    "CANDIDATE_STATUS_FAILED",
-    "CANDIDATE_STATUS_SKIPPED",
-    "CandidateComparisonOutcome",
-    "CandidatePlan",
-    "CandidateTrialFailure",
-    "run_candidate_comparison",
-]
+__all__ = ["CANDIDATE_STATUS_COMPLETED", "CANDIDATE_STATUS_FAILED", "CANDIDATE_STATUS_SKIPPED", "CandidateComparisonOutcome", "CandidatePlan", "CandidateTrialFailure", "run_candidate_comparison"]

@@ -66,9 +66,12 @@ def test_candidate_schema_exists_in_fresh_database_with_expected_constraints(tmp
 
         assert {"ScheduleCandidate", "ScheduleCandidateRows", "ScheduleCandidateSelection"} <= _table_names(conn)
         assert {
+            "idx_schedule_version_time",
+            "idx_schedule_history_version",
             "idx_schedule_candidate_version",
             "idx_schedule_candidate_version_kind",
             "idx_schedule_candidate_rows_version_candidate",
+            "idx_schedule_candidate_rows_version_candidate_time",
             "idx_schedule_candidate_rows_time",
             "idx_schedule_candidate_selection_version",
         } <= _index_names(conn)

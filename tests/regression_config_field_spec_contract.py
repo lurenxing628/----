@@ -58,16 +58,28 @@ def test_config_field_spec_registry_contract() -> None:
     assert "graph_block_on_cycle" in fields
     assert "graph_critical_weight" in fields
     assert "graph_impact_weight" in fields
+    assert "graph_candidate_weight_count" in fields
+    assert "graph_selection_policy" in fields
+    assert "graph_overdue_tolerance_count" in fields
+    assert "graph_tardiness_tolerance_ratio" in fields
     assert "graph_debug_export" in fields
     assert not hasattr(objective_spec, "policy")
 
     assert default_for("auto_assign_persist") == "yes"
-    assert default_for("graph_analysis_mode") == "off"
+    assert default_for("graph_analysis_mode") == "on"
     assert choices_for("graph_analysis_mode") == ("off", "report", "on")
     assert choice_label_map_for("graph_analysis_mode")["report"]
     assert default_for("graph_block_on_cycle") == "no"
     assert default_for("graph_critical_weight") == 500
     assert default_for("graph_impact_weight") == 10
+    assert default_for("graph_candidate_weight_count") == 5
+    assert choices_for("graph_candidate_weight_count") == ("3", "5", "7")
+    assert default_for("graph_selection_policy") == "balanced"
+    assert choices_for("graph_selection_policy") == ("balanced", "score_only")
+    assert default_for("graph_overdue_tolerance_count") == 1
+    assert choices_for("graph_overdue_tolerance_count") == ("0", "1", "2")
+    assert default_for("graph_tardiness_tolerance_ratio") == 0.10
+    assert choices_for("graph_tardiness_tolerance_ratio") == ("0.05", "0.1", "0.2")
     assert default_for("graph_debug_export") == "no"
     assert choices_for("objective") == (
         "min_overdue",
@@ -95,6 +107,10 @@ def test_config_field_spec_registry_contract() -> None:
             "graph_block_on_cycle",
             "graph_critical_weight",
             "graph_impact_weight",
+            "graph_candidate_weight_count",
+            "graph_selection_policy",
+            "graph_overdue_tolerance_count",
+            "graph_tardiness_tolerance_ratio",
             "graph_debug_export",
         ]
     )
@@ -110,6 +126,10 @@ def test_config_field_spec_registry_contract() -> None:
         "graph_block_on_cycle",
         "graph_critical_weight",
         "graph_impact_weight",
+        "graph_candidate_weight_count",
+        "graph_selection_policy",
+        "graph_overdue_tolerance_count",
+        "graph_tardiness_tolerance_ratio",
         "graph_debug_export",
     ]
     assert set(metadata.keys()) == {
@@ -123,6 +143,10 @@ def test_config_field_spec_registry_contract() -> None:
         "graph_block_on_cycle",
         "graph_critical_weight",
         "graph_impact_weight",
+        "graph_candidate_weight_count",
+        "graph_selection_policy",
+        "graph_overdue_tolerance_count",
+        "graph_tardiness_tolerance_ratio",
         "graph_debug_export",
     }
     assert metadata["objective"].choices[0]["value"] == "min_overdue"
@@ -141,12 +165,17 @@ def test_config_field_spec_registry_contract() -> None:
     assert metadata["graph_analysis_mode"].choices[1]["label"] == "只看分析报告"
     assert metadata["graph_analysis_mode"].choices[2]["label"] == "参与排产"
     assert "阶段 2" not in metadata["graph_analysis_mode"].hint
-    assert "只看分析报告" in metadata["graph_analysis_mode"].hint
     assert "参与排产" in metadata["graph_analysis_mode"].hint
-    assert "影响排产顺序" in metadata["graph_analysis_mode"].hint
+    assert "先排普通方案" in metadata["graph_analysis_mode"].hint
     assert "可用 DAG 会用 ready 队列参与 SGS 候选" not in metadata["graph_analysis_mode"].hint
     assert "ready 队列" not in metadata["graph_analysis_mode"].hint
     assert "图评分" not in metadata["graph_analysis_mode"].hint
+    assert metadata["graph_candidate_weight_count"].label == "重点工序方案档数"
+    assert metadata["graph_candidate_weight_count"].choices[1]["label"] == "5 档（默认）"
+    assert metadata["graph_selection_policy"].label == "最终方案选择方式"
+    assert metadata["graph_selection_policy"].choices[0]["value"] == "balanced"
+    assert metadata["graph_overdue_tolerance_count"].choices[0]["value"] == "0"
+    assert metadata["graph_tardiness_tolerance_ratio"].choices[1]["value"] == "0.1"
     assert metadata["graph_critical_weight"].label == "关键路径权重"
     assert "关键链路上的工序会更靠前" in get_field_spec("graph_critical_weight").description
     assert "会影响更多后续工序的当前工序会更靠前" in get_field_spec("graph_impact_weight").description
@@ -176,6 +205,10 @@ def test_config_service_exposes_same_page_metadata_shape() -> None:
             "graph_block_on_cycle",
             "graph_critical_weight",
             "graph_impact_weight",
+            "graph_candidate_weight_count",
+            "graph_selection_policy",
+            "graph_overdue_tolerance_count",
+            "graph_tardiness_tolerance_ratio",
             "graph_debug_export",
         ],
     )
@@ -194,13 +227,17 @@ def test_config_service_snapshot_includes_hidden_field_and_get_stays_single_arg(
     snap = config_service.get_snapshot()
     assert snap.auto_assign_persist == "yes"
     assert snap.to_dict()["auto_assign_persist"] == "yes"
-    assert snap.graph_analysis_mode == "off"
+    assert snap.graph_analysis_mode == "on"
     assert snap.graph_block_on_cycle == "no"
     assert snap.graph_critical_weight == 500
     assert snap.graph_impact_weight == 10
+    assert snap.graph_candidate_weight_count == 5
+    assert snap.graph_selection_policy == "balanced"
+    assert snap.graph_overdue_tolerance_count == 1
+    assert snap.graph_tardiness_tolerance_ratio == 0.10
     assert snap.graph_debug_export == "no"
     assert config_service.get("objective") == "min_overdue"
-    assert snap.graph_analysis_mode == "off"
+    assert snap.graph_analysis_mode == "on"
     assert snap.to_dict()["graph_critical_weight"] == 500
     with pytest.raises(TypeError):
         config_service.get("objective", "fallback")

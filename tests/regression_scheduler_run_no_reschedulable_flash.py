@@ -60,6 +60,7 @@ def main() -> None:
         created_by=None,
         simulate=False,
         enforce_ready=None,
+        run_time_budget_seconds=None,
         strict_mode=False,
     ):
         raise ValidationError("所选批次没有可重排工序，本次未执行排产。", field="排产")

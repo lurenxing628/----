@@ -132,7 +132,7 @@
       prefix += "（" + reason + "）";
     }
     return dedupeCriticalReason(
-      prefix + "，当前仅展示普通甘特任务与资源排程，不显示关键链控制前驱箭头与外框高亮。",
+      prefix + "，当前仅展示普通甘特任务与资源排程，不显示关键工序关系线和高亮框。",
       reason
     );
   }
@@ -154,10 +154,10 @@
   function getArrowModeLabel(depsMode, critical) {
     if (depsMode === "critical") {
       return getCriticalChainUnavailableMessage(critical)
-        ? "关键链控制前驱箭头（当前停用）"
-        : "关键链控制前驱箭头";
+        ? "关键工序关系线（当前停用）"
+        : "关键工序关系线";
     }
-    if (depsMode === "process") return "完整工艺依赖箭头";
+    if (depsMode === "process") return "全部工艺关系线";
     return "无";
   }
 
@@ -300,7 +300,7 @@
     if (criticalChainUnavailable) {
       var criticalMessage = getCriticalChainUnavailableMessage(cc);
       if (!criticalMessage) {
-        criticalMessage = "关键链暂不可用，当前仅展示普通甘特任务与资源排程，不显示关键链控制前驱箭头与外框高亮。";
+        criticalMessage = "关键工序关系暂不可用，当前只展示普通甘特任务与资源排程，不显示关键工序关系线和外框高亮。";
       }
       messages.push(criticalMessage);
     }
@@ -353,15 +353,15 @@
         : "假期/停工：背景淡红色竖条标注（口径：全局工作日历；未配置时周末默认视为假期）。",
       "红边：该批次在该版本中被判定为超期。",
       unavailableMessage
-        ? "关键链：当前不可用，不显示关键链任务外框高亮。"
-        : "关键链：任务条外框高亮，表示该任务仍在当前版本关键链上。",
+        ? "关键工序：当前不可用，不显示关键工序外框高亮。"
+        : "关键工序：任务条外框高亮，表示这道工序仍在当前版本的关键工序链路上。",
       "虚线边框：外协任务。",
       unavailableMessage
-        ? "箭头：关键链控制前驱当前停用；可切换完整工艺依赖或关闭。"
-        : "箭头：默认展示关键链控制前驱；可切换完整工艺依赖或关闭。",
+        ? "工序关系线：关键工序关系当前停用；可切换为全部工艺关系线或关闭。"
+        : "工序关系线：默认只显示关键工序之间的关系线；可切换为全部工艺关系线或关闭。",
       "聚焦：点击任务条可聚焦同批次任务，再次点击取消。",
       "筛选：支持批次/设备/人员筛选，并可叠加仅超期/仅外协。",
-      "关键链口径：关键链按全版本排程计算（不随周窗口截断）；综合工艺前驱与资源前驱（设备/人员）选取控制前驱回溯得到。",
+      "关键工序口径：按当前版本的全量排程计算，不随周窗口截断；会综合工艺前后关系、设备和人员占用关系来找最影响总工期的链路。",
     ];
     if (unavailableMessage) {
       items.push("关键链暂不可用：" + unavailableMessage);

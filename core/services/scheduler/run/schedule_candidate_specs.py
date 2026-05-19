@@ -75,7 +75,7 @@ def generate_candidate_specs(
                 sequence=index,
                 candidate_key=f"graph_w{index}_of_{count}",
                 kind=CANDIDATE_KIND_CRITICAL_CHAIN,
-                label=f"关键链候选 {index}/{count}",
+                label=f"重点工序优先方案 {index}/{count}",
                 graph_enabled=True,
                 graph_critical_weight=int(round(critical_base * float(multiplier))),
                 graph_impact_weight=int(round(impact_base * float(multiplier))),

@@ -3,14 +3,14 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.infrastructure.errors import ValidationError
 from core.models import Batch, BatchOperation
 from core.models.enums import BatchStatus, ReadyStatus, SourceType, YesNo
 from core.services.common.build_outcome import BuildOutcome
 
-from ..number_utils import to_yes_no
+from ..number_utils import parse_finite_float, to_yes_no
 from .schedule_input_contracts import _build_algo_operations_outcome
 from .schedule_input_runtime_support import _build_runtime_support_inputs
 
@@ -47,6 +47,7 @@ class ScheduleRunInput:
     downtime_map: Dict[str, Any]
     resource_pool: Any
     optimizer_seed_version: int
+    run_time_budget_seconds: Optional[float] = None
 
 
 def _normalized_status_text(value: Any) -> str:
@@ -78,7 +79,7 @@ def _normalize_batch_ids_or_raise(svc: Any, batch_ids: List[str]) -> List[str]:
     return normalized
 
 
-def _normalize_schedule_window(svc: Any, *, start_dt: Any, end_date: Any) -> tuple[datetime, Optional[date]]:
+def _normalize_schedule_window(svc: Any, *, start_dt: Any, end_date: Any) -> Tuple[datetime, Optional[date]]:
     if start_dt is not None and str(start_dt).strip() != "":
         start_dt_norm = svc._normalize_datetime(start_dt)
         if start_dt_norm is None:
@@ -110,7 +111,16 @@ def _resolve_enforce_ready_effective(cfg: Any, enforce_ready: Optional[bool]) ->
     return bool(enforce_ready)
 
 
-def _load_batches_and_operations(svc: Any, normalized_batch_ids: List[str]) -> tuple[Dict[str, Batch], List[BatchOperation]]:
+def _normalize_run_time_budget_seconds(value: Any) -> Optional[float]:
+    if value is None or str(value).strip() == "":
+        return None
+    budget = parse_finite_float(value, field="run_time_budget_seconds", allow_none=False)
+    if budget is None or float(budget) <= 0:
+        raise ValidationError("本次方案比较时间上限必须大于 0 秒。", field="run_time_budget_seconds")
+    return float(budget)
+
+
+def _load_batches_and_operations(svc: Any, normalized_batch_ids: List[str]) -> Tuple[Dict[str, Batch], List[BatchOperation]]:
     batches: Dict[str, Batch] = {}
     operations: List[BatchOperation] = []
     blocked_batch_ids: List[str] = []
@@ -135,7 +145,7 @@ def _build_reschedulable_state(
     operations: List[BatchOperation],
     *,
     run_label: str,
-) -> tuple[List[BatchOperation], Set[int], Set[int]]:
+) -> Tuple[List[BatchOperation], Set[int], Set[int]]:
     reschedulable_operations = [op for op in operations if svc._is_reschedulable_operation(op)]
     if not reschedulable_operations:
         _raise_schedule_empty_result(
@@ -187,6 +197,7 @@ def collect_schedule_run_input(
     simulate: bool = False,
     enforce_ready: Optional[bool] = None,
     strict_mode: bool = False,
+    run_time_budget_seconds: Any = None,
     calendar_service_cls: Any,
     config_service_cls: Any,
     get_snapshot_with_strict_mode: Any,
@@ -207,6 +218,7 @@ def collect_schedule_run_input(
     cfg_svc = config_service_cls(svc.conn, logger=svc.logger, op_logger=svc.op_logger)
     cfg = get_snapshot_with_strict_mode(cfg_svc, strict_mode=bool(strict_mode))
     enforce_ready_effective = _resolve_enforce_ready_effective(cfg, enforce_ready)
+    normalized_run_time_budget_seconds = _normalize_run_time_budget_seconds(run_time_budget_seconds)
 
     batches, operations = _load_batches_and_operations(svc, normalized)
     reschedulable_operations, reschedulable_op_ids, missing_internal_resource_op_ids = _build_reschedulable_state(
@@ -289,4 +301,5 @@ def collect_schedule_run_input(
         downtime_map=downtime_map,
         resource_pool=resource_pool,
         optimizer_seed_version=optimizer_seed_version,
+        run_time_budget_seconds=normalized_run_time_budget_seconds,
     )

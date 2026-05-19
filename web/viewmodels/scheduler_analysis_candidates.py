@@ -10,7 +10,7 @@ VALID_PLAN_ROLES = (ROLE_ADOPTED, ROLE_BASELINE_BEST, ROLE_CRITICAL_BEST)
 _PLAN_ROLE_LABELS = {
     ROLE_ADOPTED: "最终采用",
     ROLE_BASELINE_BEST: "原算法最好",
-    ROLE_CRITICAL_BEST: "关键链最好",
+    ROLE_CRITICAL_BEST: "重点工序优先方案最好",
 }
 
 _CANDIDATE_ROLE_KEY_FIELDS = (
@@ -24,6 +24,15 @@ _CANDIDATE_STATUS_LABELS = {
     "failed": "失败",
     "skipped": "已跳过",
 }
+_NO_COMPARISON_NOTICE = "本次没有开启方案对比，只生成了最终采用方案。"
+
+_SELECTION_REASON_LABELS = {
+    "score_only_raw_score_best": "本次设置为只看整体分数，系统采用综合评分最好的方案。",
+    "balanced_critical_health_better": "系统综合查看交期和整体分数后，重点工序优先方案表现更合适，所以采用它。",
+    "balanced_raw_score_best": "系统综合查看交期和整体分数后，采用整体评分最好、且没有明显增加拖期风险的方案。",
+}
+
+_REQUIRED_COMPARISON_ROLES = frozenset((ROLE_ADOPTED, ROLE_BASELINE_BEST, ROLE_CRITICAL_BEST))
 
 
 def _plan_role_label(role: str) -> str:
@@ -125,8 +134,34 @@ def _candidate_status_label(status_value: Any) -> str:
     return _CANDIDATE_STATUS_LABELS.get(status, status)
 
 
+def _selection_reason_label(reason_code: Any) -> str:
+    code = str(reason_code or "").strip()
+    if not code:
+        return "系统按本次设置自动选择最终采用方案。"
+    return _SELECTION_REASON_LABELS.get(code, "系统按本次设置自动选择最终采用方案。")
+
+
+def _candidate_label_from_key(candidate_key: str, role: str) -> str:
+    key = str(candidate_key or "").strip()
+    if key == "baseline":
+        return "原算法方案"
+    if key.startswith("graph_w") and "_of_" in key:
+        parts = key.replace("graph_w", "", 1).split("_of_", 1)
+        if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+            return f"重点工序优先方案 {int(parts[0])}/{int(parts[1])}"
+    return _plan_role_label(role)
+
+
 def _candidate_label(candidate: Dict[str, Any], option: Optional[Dict[str, Any]], *, candidate_key: str, role: str) -> str:
-    return str(candidate.get("label") or (option or {}).get("candidate_label") or candidate_key or _plan_role_label(role)).strip()
+    raw_label = str(candidate.get("label") or (option or {}).get("candidate_label") or "").strip()
+    if raw_label and raw_label != str(candidate_key or "").strip():
+        return raw_label.replace("关键链候选", "重点工序优先方案")
+    return _candidate_label_from_key(candidate_key, role)
+
+
+def _has_complete_comparison_rows(rows: List[Dict[str, Any]]) -> bool:
+    roles = {str(row.get("role") or "") for row in list(rows or [])}
+    return _REQUIRED_COMPARISON_ROLES <= roles
 
 
 def _candidate_kind(candidate: Dict[str, Any], option: Optional[Dict[str, Any]]) -> str:
@@ -150,8 +185,13 @@ def _candidate_display_row(
     if not candidate_key:
         return None
 
-    candidate = candidates_by_key.get(candidate_key, {})
-    role_label = str((option or {}).get("label") or _plan_role_label(role))
+    candidate = candidates_by_key.get(candidate_key)
+    if candidate is None:
+        return None
+    role_label = str((option or {}).get("label") or _plan_role_label(role)).replace(
+        "关键链最好",
+        "重点工序优先方案最好",
+    )
     status = _candidate_status(candidate, option)
     return {
         "role": role,
@@ -211,7 +251,31 @@ def _candidate_comparison_display_payload(
         "failed_candidate_count": comparison.get("failed_candidate_count"),
         "skipped_candidate_count": comparison.get("skipped_candidate_count"),
         "time_budget_reached": bool(comparison.get("time_budget_reached")),
+        "skipped_candidate_labels": list(comparison.get("skipped_candidate_labels") or []),
+        "baseline_missing_or_failed": bool(comparison.get("baseline_missing_or_failed")),
         "selection_reason_code": comparison.get("selection_reason_code"),
+        "selection_reason_label": _selection_reason_label(comparison.get("selection_reason_code")),
+        "notice": "",
+        "has_comparison": True,
+    }
+
+
+def _no_comparison_display_payload(selected_ver: Optional[int]) -> Dict[str, Any]:
+    return {
+        "version": int(selected_ver or 0),
+        "rows": [],
+        "available_role_count": 1,
+        "planned_candidate_count": None,
+        "completed_candidate_count": None,
+        "failed_candidate_count": None,
+        "skipped_candidate_count": None,
+        "time_budget_reached": False,
+        "skipped_candidate_labels": [],
+        "baseline_missing_or_failed": False,
+        "selection_reason_code": "",
+        "selection_reason_label": "",
+        "notice": _NO_COMPARISON_NOTICE,
+        "has_comparison": False,
     }
 
 
@@ -222,8 +286,10 @@ def build_candidate_comparison_display(
     plan_role_options: Optional[List[Any]] = None,
 ) -> Optional[Dict[str, Any]]:
     comparison = _candidate_comparison_summary(selected_summary)
-    if comparison is None or selected_ver is None:
+    if selected_ver is None:
         return None
+    if comparison is None:
+        return _no_comparison_display_payload(selected_ver)
 
     options_by_role = _plan_role_options_by_role(plan_role_options)
     candidates_by_key = _candidate_rows_by_key(comparison)
@@ -233,8 +299,10 @@ def build_candidate_comparison_display(
         options_by_role=options_by_role,
     )
 
-    if not rows:
-        return None
+    if not _has_complete_comparison_rows(rows):
+        display = _no_comparison_display_payload(selected_ver)
+        display["notice"] = "本次方案对比记录不完整，当前只展示最终采用方案。"
+        return display
     return _candidate_comparison_display_payload(
         comparison=comparison,
         selected_ver=int(selected_ver),

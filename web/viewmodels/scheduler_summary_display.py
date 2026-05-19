@@ -492,10 +492,4 @@ def build_summary_display_state(
     }
 
 
-__all__ = [
-    "build_display_secondary_degradation_messages",
-    "build_result_state",
-    "build_summary_display_state",
-    "derive_completion_status",
-    "result_status_display_label",
-]
+__all__ = ["build_display_secondary_degradation_messages", "build_result_state", "build_summary_display_state", "derive_completion_status", "result_status_display_label"]

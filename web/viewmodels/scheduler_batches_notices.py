@@ -94,30 +94,26 @@ def _format_degradation_message(item: Dict[str, Any]) -> str:
     return label or message
 
 
-def latest_detail_notice_items(
-    *,
-    latest_summary_display: Dict[str, Any],
-    latest_warning_preview: Sequence[str],
-    latest_warning_total: int,
-    latest_warning_hidden_count: int,
-) -> Tuple[UiDetailsNotice, ...]:
-    notices: List[UiDetailsNotice] = []
+def _primary_detail_notice(latest_summary_display: Dict[str, Any]) -> Tuple[UiDetailsNotice, ...]:
     primary_degradation = latest_summary_display.get("primary_degradation") or {}
     primary_message = str(primary_degradation.get("message") or "").strip()
+    if not primary_message:
+        return ()
     primary_details = tuple(str(item) for item in primary_degradation.get("details") or [])
-    if primary_message:
-        notices.append(
-            UiDetailsNotice(
-                "排产过程需要注意",
-                primary_message,
-                tone="warning",
-                detail_label=f"查看 {len(primary_details)} 条明细",
-                detail_items=primary_details,
-                role="status",
-                aria_live="polite",
-            )
-        )
+    return (
+        UiDetailsNotice(
+            "排产过程需要注意",
+            primary_message,
+            tone="warning",
+            detail_label=f"查看 {len(primary_details)} 条明细",
+            detail_items=primary_details,
+            role="status",
+            aria_live="polite",
+        ),
+    )
 
+
+def _secondary_detail_notice(latest_summary_display: Dict[str, Any]) -> Tuple[UiDetailsNotice, ...]:
     other_messages = tuple(
         message
         for message in (
@@ -127,46 +123,79 @@ def latest_detail_notice_items(
         )
         if message
     )
-    if other_messages:
-        notices.append(
-            UiDetailsNotice(
-                "其他需要注意的排产提示",
-                "这些提示不会阻止你查看快照，但建议排产前一起复核。",
-                tone="warning",
-                detail_label=f"查看 {len(other_messages)} 条提示",
-                detail_items=other_messages,
-                role="status",
-                aria_live="polite",
-            )
-        )
+    if not other_messages:
+        return ()
+    return (
+        UiDetailsNotice(
+            "其他需要注意的排产提示",
+            "这些提示不会阻止你查看快照，但建议排产前一起复核。",
+            tone="warning",
+            detail_label=f"查看 {len(other_messages)} 条提示",
+            detail_items=other_messages,
+            role="status",
+            aria_live="polite",
+        ),
+    )
 
-    if latest_warning_total:
-        footer = ""
-        if latest_warning_hidden_count > 0:
-            footer = f"另有 {latest_warning_hidden_count} 条提醒，请到系统管理里的排产历史查看这次排产的详细提醒。"
-        notices.append(
-            UiDetailsNotice(
-                "排产提醒",
-                f"提醒：{latest_warning_total} 条",
-                tone="warning",
-                detail_label=f"查看前 {len(latest_warning_preview)} 条提醒",
-                detail_items=tuple(str(item) for item in latest_warning_preview),
-                footer=footer,
-                role="status",
-                aria_live="polite",
-            )
-        )
+
+def _warning_detail_notice(
+    *,
+    latest_warning_preview: Sequence[str],
+    latest_warning_total: int,
+    latest_warning_hidden_count: int,
+) -> Tuple[UiDetailsNotice, ...]:
+    if not latest_warning_total:
+        return ()
+    footer = ""
+    if latest_warning_hidden_count > 0:
+        footer = f"另有 {latest_warning_hidden_count} 条提醒，请到系统管理里的排产历史查看这次排产的详细提醒。"
+    return (
+        UiDetailsNotice(
+            "排产提醒",
+            f"提醒：{latest_warning_total} 条",
+            tone="warning",
+            detail_label=f"查看前 {len(latest_warning_preview)} 条提醒",
+            detail_items=tuple(str(item) for item in latest_warning_preview),
+            footer=footer,
+            role="status",
+            aria_live="polite",
+        ),
+    )
+
+
+def _maintenance_detail_notice(latest_summary_display: Dict[str, Any]) -> Tuple[UiDetailsNotice, ...]:
     maintenance_diagnostic_count = int(latest_summary_display.get("maintenance_diagnostic_count") or 0)
-    if maintenance_diagnostic_count > 0:
-        notices.append(
-            UiDetailsNotice(
-                "维护诊断",
-                f"系统记录了 {maintenance_diagnostic_count} 条维护诊断，普通页面不展开；如需排查，请查看系统日志。",
-                tone="warning",
-                role="status",
-                aria_live="polite",
-            )
+    if maintenance_diagnostic_count <= 0:
+        return ()
+    return (
+        UiDetailsNotice(
+            "维护诊断",
+            f"系统记录了 {maintenance_diagnostic_count} 条维护诊断，普通页面不展开；如需排查，请查看系统日志。",
+            tone="warning",
+            role="status",
+            aria_live="polite",
+        ),
+    )
+
+
+def latest_detail_notice_items(
+    *,
+    latest_summary_display: Dict[str, Any],
+    latest_warning_preview: Sequence[str],
+    latest_warning_total: int,
+    latest_warning_hidden_count: int,
+) -> Tuple[UiDetailsNotice, ...]:
+    notices: List[UiDetailsNotice] = []
+    notices.extend(_primary_detail_notice(latest_summary_display))
+    notices.extend(_secondary_detail_notice(latest_summary_display))
+    notices.extend(
+        _warning_detail_notice(
+            latest_warning_preview=latest_warning_preview,
+            latest_warning_total=int(latest_warning_total),
+            latest_warning_hidden_count=int(latest_warning_hidden_count),
         )
+    )
+    notices.extend(_maintenance_detail_notice(latest_summary_display))
     return tuple(notices)
 
 

@@ -454,8 +454,9 @@ PR-7a 已完成。
 PR-7b 已完成。
 PR-7c 已完成。
 PR-7d 已完成。
-下一步是 PR-7e。
-PR-7e 可以继承 PR-7a 已证明的候选表、候选仓库和统一方案查询底座，继承 PR-7b 已证明的内存候选生成、候选运行、自动择优和关键链健康计算，继承 PR-7c 已证明的 adopted 方案同事务持久化、候选摘要、代表明细和角色映射接入点，也可以继承 PR-7d 已证明的页面、接口、导出和独立报表按 plan_role 切换能力；但不能继承配置字段、默认启用候选比较、临时时间上限、旧 preset 补字段、候选清理策略或性能守卫的证明。
+PR-7e 已完成。
+下一步是 PR-8。
+PR-8 可以继承 PR-7a 到 PR-7e 已证明的候选表、候选运行、同事务保存、代表方案切换、默认配置收口、清理和性能守卫；但不能继承资源匹配 report-only 分析、最大匹配诊断或资源瓶颈说明的证明。
 ```
 
 | PR / items.yaml 条目 | 对应技术章节 | 目标 | 是否改变排产结果 | 状态 |
@@ -467,7 +468,7 @@ PR-7e 可以继承 PR-7a 已证明的候选表、候选仓库和统一方案查�
 | PR-4 `scheduler-graph-debug-performance` | 阶段 10.9 + 阶段 16 + 阶段 17 相关测试 + 阶段 18 | 性能护栏、diagnostics 加固、真实集成证明；受控 debug export 只是附属能力 | 否 | done |
 | PR-5 `scheduler-graph-ready-queue-on-mode` | 阶段 11 + 阶段 12 | 先做有环安全门，再让 ready 队列参与 SGS 候选 | 是 | done |
 | PR-6 `scheduler-graph-critical-score-on-mode` | 阶段 13 | 关键路径、影响范围、后续关键工作量进入评分 | 是/可控 | done |
-| PR-7a 到 PR-7e | 阶段 13.6 | 多权重候选试跑、自动择优、同事务落库、代表方案切换和配置收口 | 是/可控 | PR-7a / PR-7b / PR-7c / PR-7d done；PR-7e planned |
+| PR-7a 到 PR-7e | 阶段 13.6 | 多权重候选试跑、自动择优、同事务落库、代表方案切换和配置收口 | 是/可控 | done |
 | PR-8 `scheduler-graph-resource-matching-report` | 阶段 14-15 | 资源匹配 report-only 分析：首波 ready 工序 × 候选设备最大匹配，输出可见瓶颈/未匹配诊断；最小费用流只留后续增强 | 否 | planned |
 | PR-9 `scheduler-graph-win7-package-closeout` | 阶段 21 | Win7 离线打包和最终验收 | 否/可控 | planned |
 | PR-10 `scheduler-graph-candidate-resume-later` | 阶段 23 | 后续增强：候选方案续跑 | 否/可控 | planned |
@@ -9296,6 +9297,8 @@ on 模式：
 这个路线比直接上 OR-Tools 稳得多，也更符合当前 Win7/Python 3.8.10/离线交付的实际约束。
 
 ## 变更记录
+
+- 2026-05-19：完成 PR-7e `scheduler-graph-candidate-config-closeout`：新增候选档数、择优方式、超期批次数容差、拖期比例容差和本次候选比较时间上限链路；新库默认 `graph_analysis_mode=on`，旧库已有 `off/report/on` 不覆盖，旧 preset 缺字段会补默认值但保留用户已保存值。正式排产 `on` 默认运行 baseline + 5 档重点工序优先候选，`off/report` 仍是单方案排障；主链保留 `on + block=yes + 有环` 的提前阻断合同，`block=no` 时仍允许候选试跑但图增强降回普通排法。分析页只在候选摘要和明细完整时显示“最终采用 / 原算法最好 / 重点工序优先方案最好”，没有开启或记录不完整时明确提示，不生成假切换链接；周计划、资源排班等沿 PR-7d 的 plan_role 入口查看代表方案。新增 v11 时间索引和孤儿候选清理，性能守卫证明真实 `get_plan_time_span` SQL 走索引、`list_plan_roles` 不扫候选明细。浏览器临时库验证配置页、分析页、旧历史提示、代表方案页面和 30 批 120 工序压力排产；第一版仍不并行、不续跑、不换数据库。
 
 - 2026-05-18：完成 PR-7c `scheduler-graph-candidate-transaction-persistence`：正式排产主链保留内存候选比较接入点，但在 PR-7e 配置字段落地前默认不启用，避免 `off/report/on` 既有排产合同被候选试跑改变；启用后只采用 `selection.selected_plan` 作为最终 adopted 方案，且 adopted payload 校验通过后才分配正式 `version`；新增候选小摘要投影和候选持久化 helper，让 `Schedule`、状态更新、`ScheduleHistory`、`ScheduleCandidate`、非 adopted 代表 `ScheduleCandidateRows`、`ScheduleCandidateSelection` 在同一个事务里写入，候选写入失败时正式排产和历史一起回滚；`result_summary.algo.candidate_comparison` 只保留小摘要，summary 超限后的最小摘要仍保留 adopted key、代表 key、候选数量、时间预算和选择原因这些极小字段，`OperationLogs` 只写极小日志字段，不泄漏候选列表、排产行、图节点边、raw graph 或完整 diagnostics。PR-7c 没有实现 PR-7d 页面/接口/导出/报表 `plan_role` 切换，也没有实现 PR-7e 配置收口、默认启用、候选清理或性能守卫。
 

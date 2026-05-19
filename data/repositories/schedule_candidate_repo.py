@@ -258,3 +258,16 @@ class ScheduleCandidateRepository(BaseRepository):
 
     def delete_by_version(self, version: int) -> None:
         self.execute("DELETE FROM ScheduleCandidate WHERE version = ?", (int(version),))
+
+    def delete_without_schedule_history(self) -> int:
+        cur = self.execute(
+            """
+            DELETE FROM ScheduleCandidate
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM ScheduleHistory h
+                WHERE h.version = ScheduleCandidate.version
+            )
+            """
+        )
+        return int(cur.rowcount or 0)

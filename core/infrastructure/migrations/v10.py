@@ -72,6 +72,9 @@ ON ScheduleCandidate(version, candidate_kind);
 CREATE INDEX IF NOT EXISTS idx_schedule_candidate_rows_version_candidate
 ON ScheduleCandidateRows(version, candidate_id);
 
+CREATE INDEX IF NOT EXISTS idx_schedule_candidate_rows_version_candidate_time
+ON ScheduleCandidateRows(version, candidate_id, start_time, end_time);
+
 CREATE INDEX IF NOT EXISTS idx_schedule_candidate_rows_time
 ON ScheduleCandidateRows(start_time, end_time);
 

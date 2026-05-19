@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from typing import Any, Iterator
@@ -8,6 +9,7 @@ from core.services.scheduler.run.schedule_candidate_runner import CandidateCompa
 from core.services.scheduler.run.schedule_candidate_selection import CandidateSelectionResult
 from core.services.scheduler.run.schedule_candidate_summary import (
     candidate_comparison_log_summary,
+    candidate_comparison_minimal_summary,
     candidate_comparison_public_summary,
 )
 from core.services.scheduler.run.schedule_orchestrator import _graph_analysis_for_summary
@@ -36,7 +38,7 @@ def _comparison() -> CandidateComparisonOutcome:
         sequence=1,
         candidate_key="graph_w1_of_3",
         kind="critical_chain",
-        label="关键链候选 1/3",
+        label="重点工序优先方案 1/3",
         status="completed",
         score=(0, 0, 1.0),
         graph_critical_weight=500,
@@ -63,7 +65,7 @@ def _comparison() -> CandidateComparisonOutcome:
         selected_candidate_key=candidate.candidate_key,
         selected_kind=candidate.kind,
         selection_policy="balanced",
-        reason_code="balanced_health_override",
+        reason_code="balanced_critical_health_better",
         raw_score_best_key=candidate.candidate_key,
         baseline_best_key=None,
         critical_best_key=candidate.candidate_key,
@@ -81,6 +83,8 @@ def _comparison() -> CandidateComparisonOutcome:
         time_budget_reached=False,
         selection_policy="balanced",
         run_time_budget_seconds=20.0,
+        skipped_candidate_labels=[],
+        baseline_missing_or_failed=True,
     )
 
 
@@ -101,7 +105,7 @@ def _baseline_adopted_comparison_with_critical_graph() -> CandidateComparisonOut
         sequence=1,
         candidate_key="graph_w1_of_3",
         kind="critical_chain",
-        label="关键链候选 1/3",
+        label="重点工序优先方案 1/3",
         status="completed",
         score=(0, 1, 2.0),
         graph_critical_weight=500,
@@ -123,7 +127,7 @@ def _baseline_adopted_comparison_with_critical_graph() -> CandidateComparisonOut
         selected_candidate_key=baseline.candidate_key,
         selected_kind=baseline.kind,
         selection_policy="balanced",
-        reason_code="balanced_raw_score",
+        reason_code="balanced_raw_score_best",
         raw_score_best_key=baseline.candidate_key,
         baseline_best_key=baseline.candidate_key,
         critical_best_key=critical.candidate_key,
@@ -141,6 +145,8 @@ def _baseline_adopted_comparison_with_critical_graph() -> CandidateComparisonOut
         time_budget_reached=False,
         selection_policy="balanced",
         run_time_budget_seconds=20.0,
+        skipped_candidate_labels=[],
+        baseline_missing_or_failed=False,
     )
 
 
@@ -160,6 +166,8 @@ def test_candidate_public_summary_is_small_and_does_not_embed_rows_or_graph_diag
 
     assert public["adopted_candidate_key"] == "graph_w1_of_3"
     assert public["run_time_budget_seconds"] == 20.0
+    assert public["skipped_candidate_labels"] == []
+    assert public["baseline_missing_or_failed"] is True
     assert len(public["candidates"]) == 1
     assert public["candidates"][0]["detail_saved"] is False
     assert "results" not in keys
@@ -183,9 +191,11 @@ def test_candidate_operation_log_summary_drops_candidate_list_and_details() -> N
         "completed_candidate_count": 1,
         "time_budget_reached": False,
         "run_time_budget_seconds": 20.0,
+        "skipped_candidate_labels": [],
+        "baseline_missing_or_failed": True,
         "adopted_candidate_key": "graph_w1_of_3",
         "selection_policy": "balanced",
-        "selection_reason_code": "balanced_health_override",
+        "selection_reason_code": "balanced_critical_health_better",
     }
 
 
@@ -216,6 +226,8 @@ def test_summary_size_guard_keeps_minimal_candidate_comparison_when_summary_is_t
     assert guarded["summary_truncated"] is True
     assert candidate_summary["adopted_candidate_key"] == "graph_w1_of_3"
     assert candidate_summary["run_time_budget_seconds"] == 20.0
+    assert candidate_summary["skipped_candidate_labels"] == []
+    assert candidate_summary["baseline_missing_or_failed"] is True
     assert "candidates" not in candidate_summary
 
 
@@ -247,3 +259,37 @@ def test_baseline_adopted_still_exposes_critical_graph_public_summary_without_lo
     assert "nodes" not in keys
     assert "edges" not in keys
     assert "node_metrics" not in keys
+
+
+def test_candidate_summary_preserves_skipped_labels_in_public_minimal_and_log_views() -> None:
+    comparison = _baseline_adopted_comparison_with_critical_graph()
+    skipped = CandidatePlan(
+        sequence=2,
+        candidate_key="graph_w2_of_3",
+        kind="critical_chain",
+        label="重点工序优先方案 2/3",
+        status="skipped",
+        score=None,
+        graph_critical_weight=500,
+        graph_impact_weight=10,
+        graph_downstream_weight=1,
+        failure_reason="candidate_time_budget_reached",
+    )
+    comparison = replace(
+        comparison,
+        candidates=list(comparison.candidates) + [skipped],
+        planned_count=3,
+        skipped_count=1,
+        time_budget_reached=True,
+        skipped_candidate_labels=["重点工序优先方案 2/3"],
+    )
+
+    public = candidate_comparison_public_summary(comparison)
+    minimal = candidate_comparison_minimal_summary(public)
+    log_summary = candidate_comparison_log_summary(public)
+
+    assert public["skipped_candidate_labels"] == ["重点工序优先方案 2/3"]
+    assert minimal["skipped_candidate_labels"] == ["重点工序优先方案 2/3"]
+    assert minimal["baseline_missing_or_failed"] is False
+    assert log_summary["skipped_candidate_labels"] == ["重点工序优先方案 2/3"]
+    assert log_summary["baseline_missing_or_failed"] is False

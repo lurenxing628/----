@@ -198,6 +198,7 @@ class ScheduleService:
         simulate: bool = False,
         enforce_ready: Optional[bool] = None,
         strict_mode: bool = False,
+        run_time_budget_seconds: Any = None,
     ) -> Dict[str, Any]:
         if not _RUN_SCHEDULE_LOCK.acquire(blocking=False):
             raise ValidationError("系统正在执行排产，请稍后重试。", field="排产")
@@ -211,6 +212,7 @@ class ScheduleService:
                 simulate=simulate,
                 enforce_ready=enforce_ready,
                 strict_mode=strict_mode,
+                run_time_budget_seconds=run_time_budget_seconds,
             )
         finally:
             self._aps_schedule_input_cache = None
@@ -225,6 +227,7 @@ class ScheduleService:
         simulate: bool = False,
         enforce_ready: Optional[bool] = None,
         strict_mode: bool = False,
+        run_time_budget_seconds: Any = None,
     ) -> Dict[str, Any]:
         """
         执行排产并落库（Schedule）+ 留痕（ScheduleHistory + OperationLogs）。
@@ -252,6 +255,7 @@ class ScheduleService:
             simulate=simulate,
             enforce_ready=enforce_ready,
             strict_mode=bool(strict_mode),
+            run_time_budget_seconds=run_time_budget_seconds,
             calendar_service_cls=CalendarService,
             config_service_cls=ConfigService,
             get_snapshot_with_strict_mode=_get_snapshot_with_strict_mode,

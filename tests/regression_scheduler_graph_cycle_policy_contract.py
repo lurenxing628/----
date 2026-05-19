@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Tuple
 import pytest
 
 from core.infrastructure.errors import ValidationError
+from core.services.scheduler.config.config_snapshot import ScheduleConfigSnapshot
 from core.services.scheduler.run.schedule_optimizer import OptimizationOutcome
 from core.services.scheduler.schedule_orchestrator import orchestrate_schedule_run
 
@@ -55,11 +56,30 @@ def _algo_op(op_id: int = 1, seq: int = 10) -> SimpleNamespace:
 def _schedule_input(mode: str, *, block_on_cycle: str) -> SimpleNamespace:
     algo_ops = [_algo_op()]
     return SimpleNamespace(
-        cfg=SimpleNamespace(
+        cfg=ScheduleConfigSnapshot(
+            sort_strategy="priority_first",
+            priority_weight=0.4,
+            due_weight=0.5,
+            ready_weight=0.1,
+            holiday_default_efficiency=1.0,
+            enforce_ready_default="no",
+            prefer_primary_skill="no",
+            dispatch_mode="batch_order",
+            dispatch_rule="slack",
+            auto_assign_enabled="no",
+            auto_assign_persist="yes",
+            ortools_enabled="no",
+            ortools_time_limit_seconds=5,
+            algo_mode="greedy",
+            time_budget_seconds=5,
+            objective="min_overdue",
+            freeze_window_enabled="no",
+            freeze_window_days=0,
             graph_analysis_mode=mode,
             graph_block_on_cycle=block_on_cycle,
             graph_critical_weight=500,
             graph_impact_weight=10,
+            graph_debug_export="no",
         ),
         cal_svc=SimpleNamespace(),
         cfg_svc=SimpleNamespace(),
@@ -241,7 +261,7 @@ def test_on_mode_cycle_with_block_no_disables_graph_enhancement_and_keeps_old_sg
     assert graph_analysis["graph_enhancement_allowed"] is False
     assert graph_analysis["graph_enhancement_disabled_reason"] == "schedule_graph_cycle"
     assert graph_analysis["ready_queue_enabled"] is False
-    assert "继续使用原 SGS 候选逻辑" in graph_analysis["graph_enhancement_message"]
+    assert "继续按普通排法处理" in graph_analysis["graph_enhancement_message"]
     assert captured["graph_ready_context"] is None
     assert captured["graph_dispatch_mode_override"] == "sgs"
     assert svc.history_repo.allocate_calls == 1

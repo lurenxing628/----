@@ -388,9 +388,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_schedule_version_op_unique ON Schedule(ver
 CREATE INDEX IF NOT EXISTS idx_schedule_machine ON Schedule(machine_id);
 CREATE INDEX IF NOT EXISTS idx_schedule_operator ON Schedule(operator_id);
 CREATE INDEX IF NOT EXISTS idx_schedule_time ON Schedule(start_time, end_time);
+CREATE INDEX IF NOT EXISTS idx_schedule_version_time ON Schedule(version, start_time, end_time);
 CREATE INDEX IF NOT EXISTS idx_schedule_candidate_version ON ScheduleCandidate(version);
 CREATE INDEX IF NOT EXISTS idx_schedule_candidate_version_kind ON ScheduleCandidate(version, candidate_kind);
 CREATE INDEX IF NOT EXISTS idx_schedule_candidate_rows_version_candidate ON ScheduleCandidateRows(version, candidate_id);
+CREATE INDEX IF NOT EXISTS idx_schedule_candidate_rows_version_candidate_time ON ScheduleCandidateRows(version, candidate_id, start_time, end_time);
 CREATE INDEX IF NOT EXISTS idx_schedule_candidate_rows_time ON ScheduleCandidateRows(start_time, end_time);
 CREATE INDEX IF NOT EXISTS idx_schedule_candidate_selection_version ON ScheduleCandidateSelection(version);
 
@@ -428,6 +430,7 @@ CREATE INDEX IF NOT EXISTS idx_operation_logs_time ON OperationLogs(log_time);
 CREATE INDEX IF NOT EXISTS idx_operation_logs_level ON OperationLogs(log_level);
 CREATE INDEX IF NOT EXISTS idx_operation_logs_module ON OperationLogs(module);
 CREATE INDEX IF NOT EXISTS idx_schedule_history_time ON ScheduleHistory(schedule_time);
+CREATE INDEX IF NOT EXISTS idx_schedule_history_version ON ScheduleHistory(version);
 
 -- ============================================================
 -- Material Module（预留）

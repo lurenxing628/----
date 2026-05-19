@@ -158,7 +158,7 @@ def _comparison() -> CandidateComparisonOutcome:
         selected_candidate_key=adopted.candidate_key,
         selected_kind=adopted.kind,
         selection_policy="balanced",
-        reason_code="balanced_health_override",
+        reason_code="balanced_critical_health_better",
         raw_score_best_key=adopted.candidate_key,
         baseline_best_key=baseline.candidate_key,
         critical_best_key=adopted.candidate_key,
@@ -176,6 +176,8 @@ def _comparison() -> CandidateComparisonOutcome:
         time_budget_reached=False,
         selection_policy="balanced",
         run_time_budget_seconds=20.0,
+        skipped_candidate_labels=[],
+        baseline_missing_or_failed=False,
     )
 
 

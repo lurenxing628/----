@@ -287,7 +287,11 @@ def _measure_full_report_once() -> Dict[str, Any]:
             "score_enabled": True,
             "score_metric_status": "available",
             "score_disabled_reason": None,
-            "score_weight_summary": {"critical_weight": 500, "impact_weight": 10},
+            "score_weight_summary": {
+                "critical_weight": 500,
+                "impact_weight": 10,
+                "downstream_minutes_weight": 1,
+            },
         },
         score_diagnostics={
             "graph_score_sample": [],

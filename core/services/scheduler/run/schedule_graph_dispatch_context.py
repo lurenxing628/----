@@ -8,7 +8,6 @@ GRAPH_CYCLE_DISABLED_REASON = "schedule_graph_cycle"
 GRAPH_SCORE_WEIGHTS_ZERO_REASON = "score_weights_zero"
 
 _GRAPH_INPUT_SCOPE = "all_algo_ops_with_frozen_markers"
-_GRAPH_DOWNSTREAM_MINUTES_WEIGHT = 1
 _GRAPH_SCORE_SAMPLE_LIMIT = 10
 
 
@@ -42,7 +41,7 @@ def graph_score_weight(cfg: Any, field: str) -> int:
 def graph_score_weights(cfg: Any) -> Dict[str, int]:
     critical_weight = graph_score_weight(cfg, "graph_critical_weight")
     impact_weight = graph_score_weight(cfg, "graph_impact_weight")
-    downstream_minutes_weight = _GRAPH_DOWNSTREAM_MINUTES_WEIGHT if critical_weight > 0 or impact_weight > 0 else 0
+    downstream_minutes_weight = graph_score_weight(cfg, "graph_downstream_weight")
     return {
         "critical_weight": critical_weight,
         "impact_weight": impact_weight,
@@ -64,6 +63,7 @@ def score_weight_summary(score_weights: Optional[Dict[str, int]]) -> Optional[Di
     return {
         "critical_weight": int(score_weights["critical_weight"]),
         "impact_weight": int(score_weights["impact_weight"]),
+        "downstream_minutes_weight": int(score_weights["downstream_minutes_weight"]),
     }
 
 
@@ -99,7 +99,7 @@ def graph_cycle_disabled_public_fields() -> Dict[str, Any]:
         "graph_enhancement_allowed": False,
         "graph_enhancement_disabled_reason": GRAPH_CYCLE_DISABLED_REASON,
         "ready_queue_enabled": False,
-        "graph_enhancement_message": "工序图存在循环，本次跳过图 ready 队列，继续使用原 SGS 候选逻辑。",
+        "graph_enhancement_message": "工序关系里有互相卡住的地方，本次先不用重点工序优先排法，继续按普通排法处理。",
     }
 
 

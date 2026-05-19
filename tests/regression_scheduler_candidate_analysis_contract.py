@@ -67,7 +67,7 @@ class _PlanRoleServiceStub:
 
 class _PlanRoleServiceMustNotBeCalled:
     def list_plan_roles(self, version: int) -> List[SchedulePlanRoleOption]:
-        raise AssertionError(f"无候选对比时不应该查询方案角色，version={version}")
+        raise AssertionError(f"没有方案对比数据时不应该查询方案角色，version={version}")
 
 
 def _comparison_summary() -> Dict[str, Any]:
@@ -80,6 +80,8 @@ def _comparison_summary() -> Dict[str, Any]:
                 "completed_candidate_count": 3,
                 "failed_candidate_count": 0,
                 "skipped_candidate_count": 0,
+                "skipped_candidate_labels": [],
+                "baseline_missing_or_failed": False,
                 "adopted_candidate_key": "adopted",
                 "baseline_best_candidate_key": "baseline",
                 "critical_best_candidate_key": "critical",
@@ -116,7 +118,7 @@ def _comparison_summary() -> Dict[str, Any]:
                     },
                     {
                         "candidate_key": "critical",
-                        "label": "关键链候选",
+                        "label": "重点工序优先方案",
                         "kind": "critical_chain",
                         "status": "completed",
                         "score": [0, 0, 9.0],
@@ -162,7 +164,7 @@ def _plan_role_options() -> List[SchedulePlanRoleOption]:
             source_table=SOURCE_CANDIDATE_ROWS,
             candidate_id=3,
             candidate_key="critical",
-            candidate_label="关键链候选",
+            candidate_label="重点工序优先方案",
             candidate_kind="critical_chain",
             candidate_status="completed",
             detail_saved="yes",
@@ -238,6 +240,8 @@ def test_analysis_route_builds_candidate_comparison_rows_with_shared_role_labels
     assert rows[ROLE_ADOPTED]["is_comparison"] is False
     assert "对比方案" in rows[ROLE_BASELINE_BEST]["comparison_note"]
     assert "对比方案" in rows[ROLE_CRITICAL_BEST]["comparison_note"]
+    assert display["skipped_candidate_labels"] == []
+    assert display["baseline_missing_or_failed"] is False
 
     for role, row in rows.items():
         urls = [link["url"] for link in row["links"]]
@@ -249,7 +253,7 @@ def test_analysis_route_builds_candidate_comparison_rows_with_shared_role_labels
     json.dumps(payload, ensure_ascii=False)
 
 
-def test_analysis_route_keeps_legacy_page_when_candidate_comparison_is_missing() -> None:
+def test_analysis_route_shows_clear_notice_when_candidate_comparison_is_missing() -> None:
     history_service = _HistoryServiceStub({"algo": {"metrics": {"overdue_count": 0}}})
     app, route_mod = _build_app()
 
@@ -260,7 +264,30 @@ def test_analysis_route_keeps_legacy_page_when_candidate_comparison_is_missing()
         plan_role_service=_PlanRoleServiceMustNotBeCalled(),
     )
 
-    assert payload["candidate_comparison_display"] is None
+    display = payload["candidate_comparison_display"]
+    assert display["has_comparison"] is False
+    assert display["rows"] == []
+    assert "本次没有开启方案对比，只生成了最终采用方案" in display["notice"]
+
+
+def test_analysis_route_shows_incomplete_notice_when_candidate_detail_is_missing() -> None:
+    summary = _comparison_summary()
+    comparison = summary["algo"]["candidate_comparison"]
+    comparison["candidates"] = []
+    history_service = _HistoryServiceStub(summary)
+    app, route_mod = _build_app()
+
+    payload = _call_analysis_page(
+        app,
+        route_mod,
+        history_service=history_service,
+        plan_role_service=_PlanRoleServiceStub([]),
+    )
+
+    display = payload["candidate_comparison_display"]
+    assert display["has_comparison"] is False
+    assert display["rows"] == []
+    assert "本次方案对比记录不完整，当前只展示最终采用方案" in display["notice"]
 
 
 def test_analysis_template_uses_viewmodel_candidate_rows_and_route_built_links() -> None:
@@ -270,4 +297,32 @@ def test_analysis_template_uses_viewmodel_candidate_rows_and_route_built_links()
     assert "candidate_comparison_display.rows" in source
     assert "row.comparison_note" in source
     assert "row.links" in source
+    assert "原算法候选缺失或失败，本次采用结果需复核。" in source
+    assert "因本次时间上限跳过" in source
     assert "plan_role=" not in source
+    assert "关键链最好" not in source
+
+
+def test_candidate_display_and_plan_role_options_hide_old_internal_labels() -> None:
+    from web.viewmodels.scheduler_analysis_candidates import build_candidate_comparison_display
+
+    summary = _comparison_summary()
+    display = build_candidate_comparison_display(
+        summary,
+        selected_ver=7,
+        plan_role_options=_plan_role_options(),
+    )
+
+    visible_text = json.dumps(
+        [(row["role_label"], row["candidate_label"]) for row in display["rows"]],
+        ensure_ascii=False,
+    )
+    assert "关键链最好" not in visible_text
+    assert "关键链候选" not in visible_text
+    assert "graph_w" not in visible_text
+    assert "重点工序优先方案" in visible_text
+
+    option_text = json.dumps([option.to_dict() for option in _plan_role_options()], ensure_ascii=False)
+    assert "关键链最好" not in option_text
+    assert "关键链候选" not in option_text
+    assert "重点工序优先方案" in option_text

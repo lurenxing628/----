@@ -9,6 +9,7 @@ import pytest
 
 from core.algorithms import GreedyScheduler, ScheduleResult, SortStrategy
 from core.infrastructure.errors import ValidationError
+from core.services.scheduler.config.config_snapshot import ScheduleConfigSnapshot
 from core.services.scheduler.run.optimizer_runtime import OptimizerRuntime
 from core.services.scheduler.run.schedule_graph_report import prepare_schedule_graph_for_dispatch
 from core.services.scheduler.run.schedule_optimizer import OptimizationOutcome, optimize_schedule
@@ -35,6 +36,43 @@ class _Svc:
         self.logger = None
         self.tx_manager = _TxManager()
         self.history_repo = _HistoryRepo()
+
+
+def _config(
+    *,
+    graph_analysis_mode: str = "on",
+    graph_block_on_cycle: str = "no",
+    graph_critical_weight: int = 500,
+    graph_impact_weight: int = 10,
+    graph_downstream_weight: int = 1,
+    dispatch_mode: str = "sgs",
+) -> ScheduleConfigSnapshot:
+    return ScheduleConfigSnapshot(
+        sort_strategy="priority_first",
+        priority_weight=0.4,
+        due_weight=0.5,
+        ready_weight=0.1,
+        holiday_default_efficiency=1.0,
+        enforce_ready_default="no",
+        prefer_primary_skill="no",
+        dispatch_mode=dispatch_mode,
+        dispatch_rule="slack",
+        auto_assign_enabled="no",
+        auto_assign_persist="yes",
+        ortools_enabled="no",
+        ortools_time_limit_seconds=5,
+        algo_mode="greedy",
+        objective="min_overdue",
+        time_budget_seconds=5,
+        freeze_window_enabled="no",
+        freeze_window_days=0,
+        graph_analysis_mode=graph_analysis_mode,
+        graph_block_on_cycle=graph_block_on_cycle,
+        graph_critical_weight=graph_critical_weight,
+        graph_impact_weight=graph_impact_weight,
+        graph_downstream_weight=graph_downstream_weight,
+        graph_debug_export="no",
+    )
 
 
 def _op(op_id: int, batch_id: str, seq: int) -> SimpleNamespace:
@@ -76,12 +114,7 @@ def _schedule_input(mode: str = "on") -> SimpleNamespace:
     independent_op = _op(3, "B002", 10)
     algo_ops = [frozen_op, ready_op, independent_op]
     return SimpleNamespace(
-        cfg=SimpleNamespace(
-            graph_analysis_mode=mode,
-            graph_block_on_cycle="no",
-            graph_critical_weight=500,
-            graph_impact_weight=10,
-        ),
+        cfg=_config(graph_analysis_mode=mode),
         cal_svc=SimpleNamespace(),
         cfg_svc=SimpleNamespace(),
         readiness_gate_enabled=True,
@@ -112,6 +145,7 @@ def _schedule_input(mode: str = "on") -> SimpleNamespace:
         prev_version=5,
         created_by_text="tester",
         missing_internal_resource_op_ids=set(),
+        run_time_budget_seconds=None,
     )
 
 
@@ -119,6 +153,7 @@ def _chain_schedule_input(
     *,
     graph_critical_weight: int = 500,
     graph_impact_weight: int = 10,
+    graph_downstream_weight: int = 1,
 ) -> SimpleNamespace:
     a1 = _op(1, "B_A", 10)
     a2 = _op(2, "B_A", 20)
@@ -127,11 +162,10 @@ def _chain_schedule_input(
     b3 = _op(5, "B_B", 30)
     ops = [a1, a2, b1, b2, b3]
     return SimpleNamespace(
-        cfg=SimpleNamespace(
-            graph_analysis_mode="on",
-            graph_block_on_cycle="no",
+        cfg=_config(
             graph_critical_weight=graph_critical_weight,
             graph_impact_weight=graph_impact_weight,
+            graph_downstream_weight=graph_downstream_weight,
         ),
         cal_svc=SimpleNamespace(),
         cfg_svc=SimpleNamespace(),
@@ -163,6 +197,7 @@ def _chain_schedule_input(
         prev_version=5,
         created_by_text="tester",
         missing_internal_resource_op_ids=set(),
+        run_time_budget_seconds=None,
     )
 
 
@@ -232,31 +267,7 @@ def _cycle_graph_payload() -> Dict[str, Any]:
 
 
 def _cfg(dispatch_mode: str = "sgs") -> SimpleNamespace:
-    return SimpleNamespace(
-        sort_strategy="priority_first",
-        priority_weight=0.4,
-        due_weight=0.5,
-        ready_weight=0.1,
-        holiday_default_efficiency=1.0,
-        enforce_ready_default="no",
-        prefer_primary_skill="no",
-        dispatch_mode=dispatch_mode,
-        dispatch_rule="slack",
-        auto_assign_enabled="no",
-        auto_assign_persist="yes",
-        ortools_enabled="no",
-        ortools_time_limit_seconds=5,
-        algo_mode="greedy",
-        objective="min_overdue",
-        time_budget_seconds=5,
-        freeze_window_enabled="no",
-        freeze_window_days=0,
-        graph_analysis_mode="on",
-        graph_block_on_cycle="no",
-        graph_critical_weight=500,
-        graph_impact_weight=10,
-        graph_debug_export="no",
-    )
+    return _config(dispatch_mode=dispatch_mode)
 
 
 def _cfg_svc() -> SimpleNamespace:
@@ -352,6 +363,7 @@ def test_on_dag_zero_graph_weights_keep_ready_queue_but_disable_scoring(monkeypa
     schedule_input = _schedule_input("on")
     schedule_input.cfg.graph_critical_weight = 0
     schedule_input.cfg.graph_impact_weight = 0
+    schedule_input.cfg.graph_downstream_weight = 0
     monkeypatch.setattr(ScheduleGraphAnalysisService, "analyze_linear_batches", _wrapped)
 
     preparation = prepare_schedule_graph_for_dispatch(schedule_input)  # type: ignore[arg-type]
@@ -454,7 +466,7 @@ def test_on_cycle_block_no_uses_real_optimizer_sgs_override(cycle_graph: None) -
     assert calls["scheduler_graph_ready_context"] is None
     assert calls["scheduler_dispatch_mode"] == "sgs"
     assert calls["multi_start_dispatch_modes"] == ["sgs"]
-    assert calls["dispatch_mode_cfg_values"] == ["sgs", "sgs"]
+    assert calls["dispatch_mode_cfg_values"] == ["batch_order", "batch_order"] + ["sgs"] * 10
 
 
 def test_report_mode_does_not_prepare_graph_ready_context() -> None:

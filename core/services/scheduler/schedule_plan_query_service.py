@@ -18,13 +18,27 @@ VALID_PLAN_ROLES = (ROLE_ADOPTED, ROLE_BASELINE_BEST, ROLE_CRITICAL_BEST)
 PLAN_ROLE_LABELS = {
     ROLE_ADOPTED: "最终采用",
     ROLE_BASELINE_BEST: "原算法最好",
-    ROLE_CRITICAL_BEST: "关键链最好",
+    ROLE_CRITICAL_BEST: "重点工序优先方案最好",
 }
 
 
 def plan_role_label(role: Optional[str]) -> str:
     normalized = _normalize_role(role)
     return PLAN_ROLE_LABELS.get(normalized, normalized)
+
+
+def plan_candidate_label(label: Optional[str], *, role: Optional[str] = None, candidate_key: Optional[str] = None) -> str:
+    text = str(label or "").strip()
+    key = str(candidate_key or "").strip()
+    if text and text != key:
+        return text.replace("关键链候选", "重点工序优先方案")
+    if key == "baseline":
+        return "原算法方案"
+    if key.startswith("graph_w") and "_of_" in key:
+        parts = key.replace("graph_w", "", 1).split("_of_", 1)
+        if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+            return f"重点工序优先方案 {int(parts[0])}/{int(parts[1])}"
+    return plan_role_label(role)
 
 
 @dataclass(frozen=True)
@@ -233,7 +247,11 @@ class SchedulePlanQueryService:
             source_table=str(row.get("source_table") or ""),
             candidate_id=int(resolved_candidate_id) if resolved_candidate_id is not None else None,
             candidate_key=str(row.get("candidate_key")) if row.get("candidate_key") is not None else None,
-            candidate_label=str(row.get("candidate_label") or ""),
+            candidate_label=plan_candidate_label(
+                row.get("candidate_label"),
+                role=str(row.get("role") or ""),
+                candidate_key=str(row.get("candidate_key")) if row.get("candidate_key") is not None else None,
+            ),
             candidate_kind=str(row.get("candidate_kind")) if row.get("candidate_kind") is not None else None,
             candidate_status=str(row.get("candidate_status")) if row.get("candidate_status") is not None else None,
             detail_saved=str(row.get("detail_saved")) if row.get("detail_saved") is not None else None,

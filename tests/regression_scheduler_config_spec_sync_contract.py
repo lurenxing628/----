@@ -23,10 +23,14 @@ def test_graph_config_fields_are_registered_in_both_specs() -> None:
     service_specs = {spec.key: spec for spec in list_config_fields()}
 
     expected = {
-        "graph_analysis_mode": ("enum", "off", None, True, ("off", "report", "on")),
+        "graph_analysis_mode": ("enum", "on", None, True, ("off", "report", "on")),
         "graph_block_on_cycle": ("yes_no", "no", None, True, ("yes", "no")),
         "graph_critical_weight": ("int", 500, 0, True, ()),
         "graph_impact_weight": ("int", 10, 0, True, ()),
+        "graph_candidate_weight_count": ("int", 5, None, True, ("3", "5", "7")),
+        "graph_selection_policy": ("enum", "balanced", None, True, ("balanced", "score_only")),
+        "graph_overdue_tolerance_count": ("int", 1, None, True, ("0", "1", "2")),
+        "graph_tardiness_tolerance_ratio": ("float", 0.10, None, True, ("0.05", "0.1", "0.2")),
         "graph_debug_export": ("yes_no", "no", None, True, ("yes", "no")),
     }
     for key, contract in expected.items():

@@ -55,6 +55,10 @@ DEFAULT_GRAPH_ANALYSIS_MODE = str(default_for("graph_analysis_mode"))
 DEFAULT_GRAPH_BLOCK_ON_CYCLE = str(default_for("graph_block_on_cycle"))
 DEFAULT_GRAPH_CRITICAL_WEIGHT = int(default_for("graph_critical_weight"))
 DEFAULT_GRAPH_IMPACT_WEIGHT = int(default_for("graph_impact_weight"))
+DEFAULT_GRAPH_CANDIDATE_WEIGHT_COUNT = int(default_for("graph_candidate_weight_count"))
+DEFAULT_GRAPH_SELECTION_POLICY = str(default_for("graph_selection_policy"))
+DEFAULT_GRAPH_OVERDUE_TOLERANCE_COUNT = int(default_for("graph_overdue_tolerance_count"))
+DEFAULT_GRAPH_TARDINESS_TOLERANCE_RATIO = float(default_for("graph_tardiness_tolerance_ratio"))
 DEFAULT_GRAPH_DEBUG_EXPORT = str(default_for("graph_debug_export"))
 
 VALID_STRATEGIES = choices_for("sort_strategy")
@@ -64,6 +68,10 @@ VALID_DISPATCH_MODES = choices_for("dispatch_mode")
 VALID_DISPATCH_RULES = choices_for("dispatch_rule")
 STRATEGY_NAME_ZH = choice_label_map_for("sort_strategy")
 VALID_GRAPH_ANALYSIS_MODES = choices_for("graph_analysis_mode")
+VALID_GRAPH_CANDIDATE_WEIGHT_COUNTS = choices_for("graph_candidate_weight_count")
+VALID_GRAPH_SELECTION_POLICIES = choices_for("graph_selection_policy")
+VALID_GRAPH_OVERDUE_TOLERANCE_COUNTS = choices_for("graph_overdue_tolerance_count")
+VALID_GRAPH_TARDINESS_TOLERANCE_RATIOS = choices_for("graph_tardiness_tolerance_ratio")
 
 CONFIG_PAGE_FIELDS: Tuple[str, ...] = (
     "sort_strategy",
@@ -84,6 +92,10 @@ CONFIG_PAGE_FIELDS: Tuple[str, ...] = (
     "graph_block_on_cycle",
     "graph_critical_weight",
     "graph_impact_weight",
+    "graph_candidate_weight_count",
+    "graph_selection_policy",
+    "graph_overdue_tolerance_count",
+    "graph_tardiness_tolerance_ratio",
     "graph_debug_export",
 )
 CONFIG_PAGE_WRITE_FIELDS: Tuple[str, ...] = CONFIG_PAGE_FIELDS + (
@@ -97,9 +109,9 @@ CONFIG_PAGE_VISIBLE_CHANGE_FIELDS: Tuple[str, ...] = CONFIG_PAGE_FIELDS + (
 )
 CONFIG_PAGE_HIDDEN_REPAIR_FIELDS: Tuple[str, ...] = ("auto_assign_persist",)
 
-GRAPH_CONFIG_PENDING_NOTICE = "默认关闭。只看分析报告：只检查工序先后关系，不改排产结果；参与排产：检查通过后，再帮助系统决定哪些工序先排。"
+GRAPH_CONFIG_PENDING_NOTICE = "默认参与排产。系统会先排普通方案，再试几档重点工序优先方案，最后自动采用更合适的一版。"
 GRAPH_CONFIG_PENDING_ACTIVE_NOTICE = (
-    "当前已打开工序图分析。只看分析报告只给出检查结果；参与排产会在检查通过后参与排产顺序判断。本页暂不做多方案自动择优。"
+    "当前已打开工序图分析。参与排产会自动比较普通方案和重点工序优先方案；只看分析报告只给出检查结果，不会改变排产结果。"
 )
 
 HOLIDAY_DEFAULT_EFFICIENCY_PAGE_WARNING_TEMPLATE = (
@@ -135,10 +147,18 @@ __all__ = [
     "CONFIG_PAGE_WRITE_FIELDS",
     "DEFAULT_GRAPH_ANALYSIS_MODE",
     "DEFAULT_GRAPH_BLOCK_ON_CYCLE",
+    "DEFAULT_GRAPH_CANDIDATE_WEIGHT_COUNT",
     "DEFAULT_GRAPH_CRITICAL_WEIGHT",
     "DEFAULT_GRAPH_DEBUG_EXPORT",
     "DEFAULT_GRAPH_IMPACT_WEIGHT",
+    "DEFAULT_GRAPH_OVERDUE_TOLERANCE_COUNT",
+    "DEFAULT_GRAPH_SELECTION_POLICY",
+    "DEFAULT_GRAPH_TARDINESS_TOLERANCE_RATIO",
     "HOLIDAY_DEFAULT_EFFICIENCY_PAGE_WARNING_TEMPLATE",
     "PRESET_PREFIX",
     "VALID_GRAPH_ANALYSIS_MODES",
+    "VALID_GRAPH_CANDIDATE_WEIGHT_COUNTS",
+    "VALID_GRAPH_OVERDUE_TOLERANCE_COUNTS",
+    "VALID_GRAPH_SELECTION_POLICIES",
+    "VALID_GRAPH_TARDINESS_TOLERANCE_RATIOS",
 ]

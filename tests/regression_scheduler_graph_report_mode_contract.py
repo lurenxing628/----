@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Tuple
 
 import pytest
 
+from core.services.scheduler.config.config_field_spec import default_snapshot_values
 from core.services.scheduler.run.schedule_optimizer import OptimizationOutcome
 from core.services.scheduler.schedule_orchestrator import orchestrate_schedule_run
 
@@ -88,13 +89,18 @@ def _schedule_input(mode: str) -> SimpleNamespace:
     algo_ops_to_schedule = list(algo_ops)
     batches = {"B001": SimpleNamespace(batch_id="B001", quantity=1, due_date="2026-01-02")}
     resource_pool = {"machines_by_op_type": {}, "operators_by_machine": {}, "machines_by_operator": {}}
+    cfg_values = default_snapshot_values()
+    cfg_values.update(
+        {
+            "graph_analysis_mode": mode,
+            "graph_block_on_cycle": "no",
+            "graph_critical_weight": 500,
+            "graph_impact_weight": 10,
+            "graph_downstream_weight": 1,
+        }
+    )
     return SimpleNamespace(
-        cfg=SimpleNamespace(
-            graph_analysis_mode=mode,
-            graph_block_on_cycle="no",
-            graph_critical_weight=500,
-            graph_impact_weight=10,
-        ),
+        cfg=SimpleNamespace(**cfg_values),
         cal_svc=SimpleNamespace(),
         cfg_svc=SimpleNamespace(),
         readiness_gate_enabled=True,

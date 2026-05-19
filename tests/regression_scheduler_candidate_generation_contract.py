@@ -28,6 +28,8 @@ def test_candidate_generation_defaults_to_baseline_plus_five_stable_graph_candid
     assert [spec.kind for spec in specs[1:]] == [CANDIDATE_KIND_CRITICAL_CHAIN] * 5
     assert [spec.graph_critical_weight for spec in specs[1:]] == [250, 375, 500, 625, 750]
     assert [spec.graph_impact_weight for spec in specs[1:]] == [5, 8, 10, 12, 15]
+    assert specs[0].graph_downstream_weight == 0
+    assert [spec.graph_downstream_weight for spec in specs[1:]] == [1, 1, 1, 1, 2]
 
 
 @pytest.mark.parametrize(

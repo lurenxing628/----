@@ -6,8 +6,8 @@ from typing import Any, Callable, Dict, Sequence, Tuple
 from .scheduler_batches_notices import build_config_notice_items
 from .ui_presenters import UiDetailsNotice, UiSummaryItem
 
-GRAPH_CONFIG_PENDING_NOTICE = "默认关闭。只看分析报告：只检查工序先后关系，不改排产结果；参与排产：检查通过后，再帮助系统决定哪些工序先排。"
-GRAPH_CONFIG_PENDING_ACTIVE_NOTICE = "当前已打开工序图分析。只看分析报告只给出检查结果；参与排产会在检查通过后参与排产顺序判断。本页暂不做多方案自动择优。"
+GRAPH_CONFIG_PENDING_NOTICE = "默认参与排产。系统会先排普通方案，再试几档重点工序优先方案，最后自动采用更合适的一版。"
+GRAPH_CONFIG_PENDING_ACTIVE_NOTICE = "当前已打开工序图分析。参与排产会自动比较普通方案和重点工序优先方案；只看分析报告只给出检查结果，不会改变排产结果。"
 
 _AutoAssignPersistDisplayBuilder = Callable[[Any], Dict[str, Any]]
 

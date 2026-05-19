@@ -18,6 +18,13 @@ from .config_field_spec import get_field_spec, list_config_fields
 from .config_snapshot import ScheduleConfigSnapshot, build_schedule_config_snapshot
 from .config_validator import normalize_preset_snapshot as normalize_preset_snapshot_dict
 
+LEGACY_OPTIONAL_PRESET_FIELDS: Tuple[str, ...] = (
+    "graph_candidate_weight_count",
+    "graph_selection_policy",
+    "graph_overdue_tolerance_count",
+    "graph_tardiness_tolerance_ratio",
+)
+
 
 def preset_key(name: str) -> str:
     return f"{PRESET_PREFIX}{str(name or '').strip()}"
@@ -110,7 +117,8 @@ def registered_preset_keys() -> Tuple[str, ...]:
 
 def missing_required_preset_fields(data: Dict[str, Any]) -> List[str]:
     payload = dict(data or {})
-    return [key for key in registered_preset_keys() if key not in payload]
+    legacy_optional = set(LEGACY_OPTIONAL_PRESET_FIELDS)
+    return [key for key in registered_preset_keys() if key not in payload and key not in legacy_optional]
 
 
 def raw_value_matches_canonical(key: str, raw_value: Any, canonical_value: Any) -> bool:
@@ -184,6 +192,7 @@ __all__ = [
     "dump_snapshot_payload",
     "get_snapshot_from_repo",
     "load_preset_payload",
+    "LEGACY_OPTIONAL_PRESET_FIELDS",
     "missing_required_preset_fields",
     "normalize_preset_snapshot",
     "preset_key",
