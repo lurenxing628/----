@@ -6,6 +6,8 @@ from typing import Any, Dict, Iterator, List, Optional, Set, Tuple, cast
 from core.infrastructure.errors import ValidationError
 from core.models.enums import BatchOperationStatus, BatchStatus, SourceType, YesNo
 
+from .schedule_candidate_persistence_helpers import persist_schedule_run_with_candidates as _persist_with_candidates
+from .schedule_candidate_persistence_models import operation_log_algo_summary as _operation_log_algo_summary
 from .schedule_persistence_errors import raise_no_actionable_schedule_error
 
 _TERMINAL_OPERATION_STATUSES = frozenset((BatchOperationStatus.COMPLETED.value, BatchOperationStatus.SKIPPED.value))
@@ -51,11 +53,7 @@ def _normalized_status_text(value: Any, *, default: str) -> str:
     return text or default
 
 
-def _iter_actionable_results(
-    results: List[Any],
-    *,
-    allowed_op_ids: Optional[Set[int]] = None,
-) -> Iterator[Tuple[int, Any]]:
+def _iter_actionable_results(results: List[Any], *, allowed_op_ids: Optional[Set[int]] = None) -> Iterator[Tuple[int, Any]]:
     for result in results:
         if result is None or getattr(result, "op_id", None) is None:
             continue
@@ -133,12 +131,7 @@ def _result_identity(result: Any, *, index: int) -> str:
     return ",".join(parts)
 
 
-def _build_validated_schedule_row(
-    result: Any,
-    *,
-    index: int,
-    allowed_op_ids: Optional[Set[int]],
-) -> Tuple[Optional[ValidatedScheduleRow], Optional[int], Optional[str]]:
+def _build_validated_schedule_row(result: Any, *, index: int, allowed_op_ids: Optional[Set[int]]) -> Tuple[Optional[ValidatedScheduleRow], Optional[int], Optional[str]]:
     identity = _result_identity(result, index=index)
     if result is None:
         return None, None, f"{identity}: 排产结果为空"
@@ -177,13 +170,7 @@ def _build_validated_schedule_row(
     )
 
 
-def build_validated_schedule_payload(
-    results: List[Any],
-    *,
-    allowed_op_ids: Optional[Set[int]] = None,
-    operations: Optional[List[Any]] = None,
-    missing_internal_resource_op_ids: Optional[Set[int]] = None,
-) -> ValidatedSchedulePayload:
+def build_validated_schedule_payload(results: List[Any], *, allowed_op_ids: Optional[Set[int]] = None, operations: Optional[List[Any]] = None, missing_internal_resource_op_ids: Optional[Set[int]] = None) -> ValidatedSchedulePayload:
     schedule_rows: List[ValidatedScheduleRow] = []
     scheduled_op_ids: Set[int] = set()
     assigned_by_op_id: Dict[int, Dict[str, Any]] = {}
@@ -362,7 +349,7 @@ def _log_schedule_operation(
         "version": int(version),
         "strategy": used_strategy.value,
         "strategy_params": used_params or {},
-        "algo": result_summary_obj.get("algo"),
+        "algo": _operation_log_algo_summary(result_summary_obj),
         "batch_ids": list(normalized_batch_ids),
         "batch_count": len(batches),
         "op_count": int(getattr(summary, "total_ops", 0)),
@@ -379,6 +366,72 @@ def _log_schedule_operation(
         target_type="schedule",
         target_id=str(version),
         detail=detail,
+    )
+
+
+def persist_schedule_core_in_tx(
+    svc,
+    *,
+    cfg: Any,
+    version: int,
+    validated_schedule_payload: ValidatedSchedulePayload,
+    summary: Any,
+    used_strategy: Any,
+    batches: Dict[str, Any],
+    reschedulable_operations: List[Any],
+    created_by: str,
+    simulate: bool,
+    frozen_op_ids: Set[int],
+    result_status: str,
+    result_summary_json: str,
+    missing_internal_resource_op_ids: Set[int],
+) -> None:
+    if not validated_schedule_payload.schedule_rows:
+        raise_no_actionable_schedule_error(
+            validated_schedule_payload.validation_errors,
+            operations=reschedulable_operations,
+            missing_internal_resource_op_ids=missing_internal_resource_op_ids,
+        )
+
+    schedule_rows = validated_schedule_payload.to_repo_rows(
+        svc,
+        version=int(version),
+        frozen_op_ids=frozen_op_ids,
+    )
+
+    if schedule_rows:
+        svc.schedule_repo.bulk_create(schedule_rows)
+
+    if not simulate:
+        auto_assign_persist = str(cfg.auto_assign_persist or "").strip().lower() == YesNo.YES.value
+        scheduled_op_ids = set(validated_schedule_payload.scheduled_op_ids)
+        assigned_by_op_id = dict(validated_schedule_payload.assigned_by_op_id)
+
+        _persist_operation_statuses(
+            svc,
+            reschedulable_operations=reschedulable_operations,
+            scheduled_op_ids=scheduled_op_ids,
+            auto_assign_persist=auto_assign_persist,
+            missing_internal_resource_op_ids=missing_internal_resource_op_ids,
+            assigned_by_op_id=assigned_by_op_id,
+        )
+
+        _persist_batch_statuses(
+            svc,
+            batches=batches,
+            reschedulable_operations=reschedulable_operations,
+            scheduled_op_ids=scheduled_op_ids,
+        )
+
+    _persist_schedule_history(
+        svc,
+        version=int(version),
+        used_strategy=used_strategy,
+        batches=batches,
+        summary=summary,
+        result_status=result_status,
+        result_summary_json=result_summary_json,
+        created_by=created_by,
     )
 
 
@@ -404,53 +457,22 @@ def persist_schedule(
     overdue_items: List[Dict[str, Any]],
     time_cost_ms: int,
 ) -> None:
-    if not validated_schedule_payload.schedule_rows:
-        raise_no_actionable_schedule_error(
-            validated_schedule_payload.validation_errors,
-            operations=reschedulable_operations,
-            missing_internal_resource_op_ids=missing_internal_resource_op_ids,
-        )
-
-    schedule_rows = validated_schedule_payload.to_repo_rows(
-        svc,
-        version=int(version),
-        frozen_op_ids=frozen_op_ids,
-    )
-
     with svc.tx_manager.transaction():
-        if schedule_rows:
-            svc.schedule_repo.bulk_create(schedule_rows)
-
-        if not simulate:
-            auto_assign_persist = str(cfg.auto_assign_persist or "").strip().lower() == YesNo.YES.value
-            scheduled_op_ids = set(validated_schedule_payload.scheduled_op_ids)
-            assigned_by_op_id = dict(validated_schedule_payload.assigned_by_op_id)
-
-            _persist_operation_statuses(
-                svc,
-                reschedulable_operations=reschedulable_operations,
-                scheduled_op_ids=scheduled_op_ids,
-                auto_assign_persist=auto_assign_persist,
-                missing_internal_resource_op_ids=missing_internal_resource_op_ids,
-                assigned_by_op_id=assigned_by_op_id,
-            )
-
-            _persist_batch_statuses(
-                svc,
-                batches=batches,
-                reschedulable_operations=reschedulable_operations,
-                scheduled_op_ids=scheduled_op_ids,
-            )
-
-        _persist_schedule_history(
+        persist_schedule_core_in_tx(
             svc,
-            version=int(version),
+            cfg=cfg,
+            version=version,
+            validated_schedule_payload=validated_schedule_payload,
+            summary=summary,
             used_strategy=used_strategy,
             batches=batches,
-            summary=summary,
+            reschedulable_operations=reschedulable_operations,
+            created_by=created_by,
+            simulate=simulate,
+            frozen_op_ids=frozen_op_ids,
             result_status=result_status,
             result_summary_json=result_summary_json,
-            created_by=created_by,
+            missing_internal_resource_op_ids=missing_internal_resource_op_ids,
         )
 
     _log_schedule_operation(
@@ -467,3 +489,7 @@ def persist_schedule(
         overdue_items=overdue_items,
         time_cost_ms=time_cost_ms,
     )
+
+
+def persist_schedule_run_with_candidates(svc: Any, **kwargs: Any) -> None:
+    _persist_with_candidates(svc, persist_schedule_core_in_tx=persist_schedule_core_in_tx, log_schedule_operation=_log_schedule_operation, **kwargs)

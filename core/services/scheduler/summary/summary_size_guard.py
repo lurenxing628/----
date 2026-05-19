@@ -9,6 +9,7 @@ from core.models.scheduler_public_errors import (
     public_safe_identifier,
     public_safe_label,
 )
+from core.services.scheduler.run.schedule_candidate_summary import candidate_comparison_minimal_summary
 
 from .schedule_summary_types import DEFAULT_TRUNCATION_TIERS
 
@@ -212,6 +213,9 @@ def _minimal_summary_for_size_guard(
         max_items=4,
         max_value_chars=80,
     )
+    candidate_comparison = candidate_comparison_minimal_summary(algo_dict.get("candidate_comparison"))
+    if candidate_comparison:
+        minimal_algo["candidate_comparison"] = candidate_comparison
     if minimal_algo:
         minimal["algo"] = minimal_algo
     if diagnostics_truncated or bool(result_summary_obj.get("diagnostics_truncated")):

@@ -3,7 +3,7 @@ import sqlite3
 import sys
 from datetime import datetime, timedelta
 from types import SimpleNamespace
-from typing import Any, Dict
+from typing import Any, Dict, cast
 
 
 def find_repo_root() -> str:
@@ -19,8 +19,34 @@ def _make_dt(hours: int) -> datetime:
 
 
 def _base_input() -> Any:
+    from core.services.scheduler.config_snapshot import ScheduleConfigSnapshot
+
     return SimpleNamespace(
-        cfg=SimpleNamespace(graph_analysis_mode="off"),
+        cfg=ScheduleConfigSnapshot(
+            sort_strategy="priority_first",
+            priority_weight=0.4,
+            due_weight=0.5,
+            ready_weight=0.1,
+            holiday_default_efficiency=0.8,
+            enforce_ready_default="no",
+            prefer_primary_skill="no",
+            dispatch_mode="sgs",
+            dispatch_rule="cr",
+            auto_assign_enabled="no",
+            auto_assign_persist="yes",
+            ortools_enabled="no",
+            ortools_time_limit_seconds=5,
+            algo_mode="improve",
+            time_budget_seconds=20,
+            objective="min_overdue",
+            freeze_window_enabled="no",
+            freeze_window_days=0,
+            graph_analysis_mode="off",
+            graph_block_on_cycle="no",
+            graph_critical_weight=500,
+            graph_impact_weight=10,
+            graph_debug_export="no",
+        ),
         cal_svc=SimpleNamespace(),
         cfg_svc=SimpleNamespace(),
         readiness_gate_enabled=True,
@@ -66,7 +92,7 @@ def main() -> None:
         return OptimizationOutcome(
             results=list(kwargs.get("results") or []),
             summary=kwargs.get("summary"),
-            used_strategy=kwargs.get("used_strategy"),
+            used_strategy=cast(Any, kwargs.get("used_strategy")),
             used_params=dict(kwargs.get("used_params") or {}),
             metrics=kwargs.get("metrics"),
             best_score=tuple(kwargs.get("best_score") or ()),

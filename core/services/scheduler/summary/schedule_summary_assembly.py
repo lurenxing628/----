@@ -266,6 +266,12 @@ def _graph_analysis_algo_dict(ctx: SummaryBuildContext) -> Dict[str, Any]:
     return {"graph_analysis": dict(ctx.graph_analysis_public)}
 
 
+def _candidate_comparison_algo_dict(ctx: SummaryBuildContext) -> Dict[str, Any]:
+    if ctx.candidate_comparison_public is None:
+        return {}
+    return {"candidate_comparison": dict(ctx.candidate_comparison_public)}
+
+
 def _graph_analysis_summary_warning(ctx: SummaryBuildContext) -> Optional[str]:
     public = ctx.graph_analysis_public if isinstance(ctx.graph_analysis_public, dict) else None
     if not public:
@@ -324,6 +330,7 @@ def _algo_dict(state: AlgorithmSummaryState) -> Dict[str, Any]:
     if state.fallback_state.param_fallbacks:
         algo["param_fallbacks"] = dict(state.fallback_state.param_fallbacks)
     algo.update(_graph_analysis_algo_dict(ctx))
+    algo.update(_candidate_comparison_algo_dict(ctx))
     return algo
 
 

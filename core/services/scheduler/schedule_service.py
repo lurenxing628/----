@@ -19,7 +19,7 @@ from .run.schedule_input_builder import build_algo_operations
 from .run.schedule_input_collector import collect_schedule_run_input
 from .run.schedule_optimizer import optimize_schedule
 from .run.schedule_orchestrator import orchestrate_schedule_run
-from .run.schedule_persistence import persist_schedule
+from .run.schedule_persistence import persist_schedule_run_with_candidates as persist_schedule
 from .run.schedule_template_lookup import get_template_and_group_for_op
 from .summary.schedule_summary import build_result_summary
 
@@ -71,6 +71,7 @@ class ScheduleService:
         self.supplier_repo = self._repos.supplier_repo
         self.schedule_repo = self._repos.schedule_repo
         self.history_repo = self._repos.history_repo
+        self.candidate_repo = self._repos.candidate_repo
 
     # -------------------------
     # 工具方法
@@ -290,6 +291,7 @@ class ScheduleService:
             missing_internal_resource_op_ids=schedule_input.missing_internal_resource_op_ids,
             overdue_items=orchestration.overdue_items,
             time_cost_ms=orchestration.time_cost_ms,
+            candidate_comparison=orchestration.candidate_comparison,
         )
 
         return {
