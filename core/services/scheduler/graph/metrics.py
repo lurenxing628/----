@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .nx_runtime import import_networkx
 
@@ -105,9 +105,39 @@ def get_impact_count(graph: Any, node_id: str) -> int:
     return len(get_downstream_operations(graph, node_id))
 
 
-def _build_downstream_critical_minutes_by_node(graph: Any) -> Dict[str, int]:
+def _popcount(mask: int) -> int:
+    return bin(mask).count("1")
+
+
+def _compute_impact_counts_by_node(graph: Any, topological_order: List[str]) -> Dict[str, int]:
+    node_to_index = {
+        node_id: index
+        for index, node_id in enumerate(topological_order)
+    }
+    downstream_bits_by_node: Dict[str, int] = {}
     result: Dict[str, int] = {}
-    for node_id in reversed(get_topological_order(graph)):
+
+    for node_id in reversed(topological_order):
+        mask = 0
+        for successor_id in graph.successors(node_id):
+            mask |= 1 << node_to_index[successor_id]
+            mask |= downstream_bits_by_node[successor_id]
+        downstream_bits_by_node[node_id] = mask
+        result[node_id] = _popcount(mask)
+
+    return result
+
+
+def _build_downstream_critical_minutes_by_node(
+    graph: Any,
+    *,
+    topological_order: Optional[List[str]] = None,
+) -> Dict[str, int]:
+    if topological_order is None:
+        topological_order = get_topological_order(graph)
+
+    result: Dict[str, int] = {}
+    for node_id in reversed(topological_order):
         result[node_id] = _duration_of(graph, node_id) + max(
             (int(data["lag_minutes"]) + result[to_node_id] for _from_node_id, to_node_id, data in graph.out_edges(node_id, data=True)),
             default=0,
@@ -119,15 +149,30 @@ def get_downstream_critical_minutes(graph: Any, node_id: str) -> int:
     return _build_downstream_critical_minutes_by_node(graph)[node_id]
 
 
-def build_node_metrics(graph: Any) -> Dict[str, Dict[str, Any]]:
-    critical_path, _critical_minutes = get_critical_path(graph)
+def build_node_metrics(
+    graph: Any,
+    *,
+    topological_order: Optional[List[str]] = None,
+    critical_path: Optional[List[str]] = None,
+    generation_index: Optional[Dict[str, int]] = None,
+) -> Dict[str, Dict[str, Any]]:
+    if topological_order is None:
+        topological_order = get_topological_order(graph)
+    if critical_path is None:
+        critical_path, _critical_minutes = get_critical_path(graph)
+    if generation_index is None:
+        generation_index = get_generation_index(graph)
+
     critical_set = set(critical_path)
     critical_rank = {
         node_id: index
         for index, node_id in enumerate(critical_path)
     }
-    generation_index = get_generation_index(graph)
-    downstream_critical_minutes = _build_downstream_critical_minutes_by_node(graph)
+    impact_count_by_node = _compute_impact_counts_by_node(graph, topological_order)
+    downstream_critical_minutes = _build_downstream_critical_minutes_by_node(
+        graph,
+        topological_order=topological_order,
+    )
 
     result: Dict[str, Dict[str, Any]] = {}
 
@@ -135,7 +180,7 @@ def build_node_metrics(graph: Any) -> Dict[str, Dict[str, Any]]:
         result[node_id] = {
             "is_on_critical_path": node_id in critical_set,
             "critical_path_rank": critical_rank.get(node_id),
-            "impact_count": get_impact_count(graph, node_id),
+            "impact_count": impact_count_by_node[node_id],
             "generation_index": generation_index[node_id],
             "downstream_critical_minutes": downstream_critical_minutes[node_id],
         }

@@ -4,7 +4,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict
 
 import pytest
 
@@ -83,6 +83,43 @@ def test_analyze_linear_batches_basic_mode_skips_node_metrics(monkeypatch: Any) 
     assert summary.node_metrics == {}
 
 
+def test_analyze_linear_batches_reuses_precomputed_metrics_context(monkeypatch: Any) -> None:
+    nodes = [
+        _node(node_id="op:1", op_code="B001_10", seq=10, duration_minutes=10),
+        _node(node_id="op:2", op_code="B001_20", seq=20, duration_minutes=20),
+    ]
+    captured: Dict[str, Any] = {}
+
+    def fake_build_node_metrics(graph: Any, **kwargs: Any) -> Dict[str, Dict[str, Any]]:
+        captured["node_count"] = graph.number_of_nodes()
+        captured.update(kwargs)
+        return {
+            "op:1": {
+                "is_on_critical_path": True,
+                "critical_path_rank": 0,
+                "impact_count": 1,
+                "generation_index": 0,
+                "downstream_critical_minutes": 30,
+            },
+            "op:2": {
+                "is_on_critical_path": True,
+                "critical_path_rank": 1,
+                "impact_count": 0,
+                "generation_index": 1,
+                "downstream_critical_minutes": 20,
+            },
+        }
+
+    monkeypatch.setattr(analysis_service, "build_node_metrics", fake_build_node_metrics)
+
+    summary = ScheduleGraphAnalysisService().analyze_linear_batches(nodes)
+
+    assert summary.node_metrics["op:1"]["impact_count"] == 1
+    assert captured["node_count"] == 2
+    assert captured["topological_order"] == ["op:1", "op:2"]
+    assert captured["critical_path"] == ["op:1", "op:2"]
+
+
 def test_analyze_linear_batches_rejects_unknown_metrics_mode() -> None:
     with pytest.raises(ValueError, match="metrics_mode"):
         ScheduleGraphAnalysisService().analyze_linear_batches([], metrics_mode="debug")
@@ -122,7 +159,7 @@ def test_cyclic_graph_returns_summary_without_calling_metrics(monkeypatch: Any) 
         raise AssertionError("cyclic graph must not call metrics")
 
     monkeypatch.setattr(service, "_build_graph_for_linear_batches", lambda _nodes: graph)
-    monkeypatch.setattr(analysis_service, "get_topological_order", fail_if_called)
+    monkeypatch.setattr(analysis_service, "get_topological_generations", fail_if_called)
     monkeypatch.setattr(analysis_service, "get_critical_path", fail_if_called)
     monkeypatch.setattr(analysis_service, "build_node_metrics", fail_if_called)
 

@@ -978,6 +978,54 @@ def test_sgs_graph_ready_context_keeps_sort_key_op_id_keys_strict(raw_sort_key: 
     assert "正整数 op_id" in exc_info.value.message
 
 
+@pytest.mark.parametrize("raw_sort_key_value", ["bad", 1.9, True])
+def test_sgs_graph_ready_context_keeps_sort_key_values_strict(raw_sort_key_value: Any) -> None:
+    graph_ready_context = {
+        "enabled": True,
+        "schedulable_op_ids": {1},
+        "fixed_op_ids": set(),
+        "predecessor_op_ids_by_op_id": {1: set()},
+        "successor_op_ids_by_op_id": {1: set()},
+        "sort_key_by_op_id": {1: (0, 10, raw_sort_key_value)},
+    }
+
+    with pytest.raises(ValidationError) as exc_info:
+        GreedyScheduler(_Calendar()).schedule(
+            operations=[_op(1, "B1", 10)],
+            batches={"B1": SimpleNamespace(batch_id="B1", quantity=1, due_date="2026-01-02", priority="normal")},
+            start_dt=datetime(2026, 1, 1, 8, 0, 0),
+            dispatch_mode="sgs",
+            dispatch_rule="slack",
+            graph_ready_context=graph_ready_context,
+        )
+
+    assert exc_info.value.field == "graph_ready_context"
+    assert "排序 key 必须只包含整数" in exc_info.value.message
+
+
+def test_sgs_graph_ready_context_accepts_integer_text_sort_key_values() -> None:
+    graph_ready_context = {
+        "enabled": True,
+        "schedulable_op_ids": {1},
+        "fixed_op_ids": set(),
+        "predecessor_op_ids_by_op_id": {1: set()},
+        "successor_op_ids_by_op_id": {1: set()},
+        "sort_key_by_op_id": {1: (0, "10", 1)},
+    }
+
+    results, summary, _strategy, _params = GreedyScheduler(_Calendar()).schedule(
+        operations=[_op(1, "B1", 10)],
+        batches={"B1": SimpleNamespace(batch_id="B1", quantity=1, due_date="2026-01-02", priority="normal")},
+        start_dt=datetime(2026, 1, 1, 8, 0, 0),
+        dispatch_mode="sgs",
+        dispatch_rule="slack",
+        graph_ready_context=graph_ready_context,
+    )
+
+    assert summary.failed_ops == 0
+    assert [result.op_id for result in results] == [1]
+
+
 def test_sgs_graph_ready_context_does_not_double_count_same_batch_blocked_successor() -> None:
     start_dt = datetime(2026, 1, 1, 8, 0, 0)
     blocking_op = _op(1, "B1", 10)
@@ -1005,6 +1053,35 @@ def test_sgs_graph_ready_context_does_not_double_count_same_batch_blocked_succes
     assert results == []
     assert summary.failed_ops == 2
     assert any("OP-B1-020" in error and "OP-B1-010" in error and "本次跳过" in error for error in summary.errors)
+
+
+def test_sgs_graph_ready_context_exits_when_remaining_ready_ops_are_batch_blocked() -> None:
+    start_dt = datetime(2026, 1, 1, 8, 0, 0)
+    blocking_op = _op(1, "B1", 10)
+    blocking_op.setup_hours = 48.0
+    independent_same_batch_op = _op(2, "B1", 20)
+    independent_same_batch_op.setup_hours = 48.0
+    graph_ready_context = {
+        "enabled": True,
+        "schedulable_op_ids": {1, 2},
+        "fixed_op_ids": set(),
+        "predecessor_op_ids_by_op_id": {1: set(), 2: set()},
+        "successor_op_ids_by_op_id": {1: set(), 2: set()},
+        "sort_key_by_op_id": {1: (0, 10, 1), 2: (0, 20, 2)},
+    }
+
+    results, summary, _strategy, _params = GreedyScheduler(_Calendar()).schedule(
+        operations=[blocking_op, independent_same_batch_op],
+        batches={"B1": SimpleNamespace(batch_id="B1", quantity=1, due_date="2026-01-02", priority="normal")},
+        start_dt=start_dt,
+        end_date="2026-01-01",
+        dispatch_mode="sgs",
+        dispatch_rule="slack",
+        graph_ready_context=graph_ready_context,
+    )
+
+    assert results == []
+    assert summary.failed_ops == 2
 
 
 def test_sgs_graph_ready_context_rejects_mismatched_successor_map() -> None:

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable
 
-from .metrics import build_node_metrics, get_critical_path, get_topological_order
+from .metrics import build_node_metrics, get_critical_path, get_topological_generations
 from .precedence_builder import build_linear_edges_by_batch, build_precedence_graph
 from .types import GraphAnalysisSummary, GraphWarning, OperationGraphNode
 from .validators import collect_graph_warnings, find_cycle_edges, is_dag
@@ -43,10 +43,25 @@ class ScheduleGraphAnalysisService:
         node_metrics: Dict[str, Dict[str, Any]] = {}
 
         if dag_ok:
-            topological_order = get_topological_order(graph)
+            topological_generations = get_topological_generations(graph)
+            topological_order = [
+                node_id
+                for group in topological_generations
+                for node_id in group
+            ]
+            generation_index = {
+                node_id: index
+                for index, group in enumerate(topological_generations)
+                for node_id in group
+            }
             critical_path, critical_path_minutes = get_critical_path(graph)
             if metrics_mode == "full":
-                node_metrics = build_node_metrics(graph)
+                node_metrics = build_node_metrics(
+                    graph,
+                    topological_order=topological_order,
+                    critical_path=critical_path,
+                    generation_index=generation_index,
+                )
         else:
             warnings.append(
                 GraphWarning(

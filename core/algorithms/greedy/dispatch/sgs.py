@@ -18,6 +18,7 @@ from .sgs_graph import (
     _block_graph_operation,
     _collect_candidates,
     _ensure_graph_ready_complete,
+    _mark_graph_operation_completed,
     _op_id,
     _prepare_graph_ready_state,
     _record_graph_blocked_operations,
@@ -208,7 +209,11 @@ def _run_sgs_loop(
         )
         if not candidates:
             if graph_state is not None:
-                _ensure_graph_ready_complete(graph_state=graph_state, ops_by_batch=ops_by_batch)
+                _ensure_graph_ready_complete(
+                    graph_state=graph_state,
+                    ops_by_batch=ops_by_batch,
+                    blocked_batches=state.blocked_batches,
+                )
             return
         batch_id, op = _pick_best_candidate(
             _score_candidates(
@@ -378,7 +383,7 @@ def _dispatch_selected(
             state.record_dispatch_success(result)
             next_idx[batch_id] = int(next_idx.get(batch_id, 0) or 0) + 1
             if graph_state is not None:
-                graph_state["completed_or_fixed_op_ids"].add(_op_id(op))
+                _mark_graph_operation_completed(graph_state, _op_id(op))
         else:
             extra_failed_count = 0
             if graph_state is not None:

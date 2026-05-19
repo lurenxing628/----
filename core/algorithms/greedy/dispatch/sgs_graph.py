@@ -6,7 +6,6 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.infrastructure.errors import ValidationError
 from core.shared.strict_parse import parse_required_int
 
-from .ready_queue import ReadyQueueContractError, get_ready_operation_ids
 from .sgs_scoring import _collect_sgs_candidates
 
 
@@ -26,7 +25,7 @@ def _graph_ready_op_id_set(value: Any, *, field: str) -> set:
     if _is_graph_like(value):
         raise ValidationError(f"图 ready 队列上下文 {field} 只能传普通 op_id 集合，不能传图对象。", field="graph_ready_context")
     try:
-        return {parse_required_int(item, field=field) for item in value}
+        return {parse_required_int(item, field=field, min_value=1) for item in value}
     except TypeError as exc:
         raise ValidationError(f"图 ready 队列上下文 {field} 必须是 op_id 集合。", field="graph_ready_context") from exc
 
@@ -67,13 +66,24 @@ def _prepare_graph_ready_state(
             graph_ready_context.get("graph_priority_key_by_op_id"),
             schedulable_ids=set(op_by_id),
         )
+    sort_key_by_op_id = _graph_sort_key_map(
+        graph_ready_context.get("sort_key_by_op_id"),
+        schedulable_ids=set(op_by_id),
+    )
+    remaining_predecessor_count_by_op_id, ready_op_ids = _initialize_graph_ready_frontier(
+        schedulable_ids=set(op_by_id),
+        completed_or_fixed_op_ids=fixed_op_ids,
+        predecessor_op_ids_by_op_id=predecessor_map,
+    )
     return {
         "op_by_id": op_by_id,
         "completed_or_fixed_op_ids": fixed_op_ids,
         "blocked_op_ids": set(),
         "predecessor_op_ids_by_op_id": predecessor_map,
         "successor_op_ids_by_op_id": successor_map,
-        "sort_key_by_op_id": graph_ready_context.get("sort_key_by_op_id"),
+        "sort_key_by_op_id": sort_key_by_op_id,
+        "remaining_predecessor_count_by_op_id": remaining_predecessor_count_by_op_id,
+        "ready_op_ids": ready_op_ids,
         "score_enabled": score_enabled,
         "graph_priority_key_by_op_id": graph_priority_key_by_op_id,
     }
@@ -114,6 +124,31 @@ def _graph_priority_key_map(value: Any, *, schedulable_ids: set) -> Dict[int, Tu
     return normalized
 
 
+def _graph_sort_key_map(value: Any, *, schedulable_ids: set) -> Dict[int, Tuple[int, int, int]]:
+    if not isinstance(value, dict):
+        raise ValidationError("图 ready 队列上下文 sort_key_by_op_id 必须是映射。", field="graph_ready_context")
+    for raw_op_id in value:
+        if isinstance(raw_op_id, bool) or not isinstance(raw_op_id, int) or raw_op_id <= 0:
+            raise ValidationError("图 ready 队列上下文 sort_key_by_op_id 的 key 必须是正整数 op_id。", field="graph_ready_context")
+
+    normalized: Dict[int, Tuple[int, int, int]] = {}
+    for op_id in sorted(schedulable_ids):
+        if op_id not in value:
+            raise ValidationError(f"图 ready 队列缺少工序 {op_id} 的排序 key。", field="graph_ready_context")
+        raw_key = value[op_id]
+        if not isinstance(raw_key, tuple) or len(raw_key) != 3:
+            raise ValidationError(f"图 ready 队列工序 {op_id} 的排序 key 必须是三元组。", field="graph_ready_context")
+        try:
+            normalized[op_id] = (
+                parse_required_int(raw_key[0], field=f"sort_key_by_op_id[{op_id}]"),
+                parse_required_int(raw_key[1], field=f"sort_key_by_op_id[{op_id}]"),
+                parse_required_int(raw_key[2], field=f"sort_key_by_op_id[{op_id}]"),
+            )
+        except ValidationError as exc:
+            raise ValidationError(f"图 ready 队列工序 {op_id} 的排序 key 必须只包含整数。", field="graph_ready_context") from exc
+    return normalized
+
+
 def _normalize_link_map(value: Any, *, field: str) -> Dict[int, set]:
     if not isinstance(value, dict):
         raise ValidationError(f"图 ready 队列上下文缺少 {field} 映射。", field="graph_ready_context")
@@ -134,6 +169,16 @@ def _normalize_link_map(value: Any, *, field: str) -> Dict[int, set]:
 def _validate_graph_ready_links(*, op_ids: set, predecessor_map: Any, successor_map: Any) -> Tuple[Dict[int, set], Dict[int, set]]:
     predecessors = _normalize_link_map(predecessor_map, field="predecessor_op_ids_by_op_id")
     successors = _normalize_link_map(successor_map, field="successor_op_ids_by_op_id")
+    _validate_link_scope(
+        link_map=predecessors,
+        known_op_ids=op_ids,
+        link_label="前置工序",
+    )
+    _validate_link_scope(
+        link_map=successors,
+        known_op_ids=op_ids,
+        link_label="后继工序",
+    )
     for op_id in op_ids:
         predecessors.setdefault(op_id, set())
         successors.setdefault(op_id, set())
@@ -154,6 +199,36 @@ def _validate_graph_ready_links(*, op_ids: set, predecessor_map: Any, successor_
     return predecessors, successors
 
 
+def _validate_link_scope(*, link_map: Dict[int, set], known_op_ids: set, link_label: str) -> None:
+    for op_id, linked_ids in link_map.items():
+        if op_id not in known_op_ids:
+            raise ValidationError(f"图 ready 队列上下文不完整：工序 {op_id} 不在待排或已固定集合里。", field="graph_ready_context")
+        for linked_id in linked_ids:
+            if linked_id not in known_op_ids:
+                raise ValidationError(
+                    f"图 ready 队列上下文不完整：工序 {op_id} 的{link_label} {linked_id} 既不是待排也不是固定/已完成。",
+                    field="graph_ready_context",
+                )
+
+
+def _initialize_graph_ready_frontier(
+    *,
+    schedulable_ids: set,
+    completed_or_fixed_op_ids: set,
+    predecessor_op_ids_by_op_id: Dict[int, set],
+) -> Tuple[Dict[int, int], set]:
+    remaining_predecessor_count_by_op_id: Dict[int, int] = {}
+    ready_op_ids = set()
+
+    for op_id in sorted(schedulable_ids):
+        remaining_count = sum(1 for predecessor_id in predecessor_op_ids_by_op_id.get(op_id, set()) if predecessor_id not in completed_or_fixed_op_ids)
+        remaining_predecessor_count_by_op_id[op_id] = remaining_count
+        if remaining_count == 0 and op_id not in completed_or_fixed_op_ids:
+            ready_op_ids.add(op_id)
+
+    return remaining_predecessor_count_by_op_id, ready_op_ids
+
+
 def _collect_candidates(
     *,
     graph_state: Optional[Dict[str, Any]],
@@ -169,27 +244,24 @@ def _collect_candidates(
             next_idx=next_idx,
             blocked_batches=blocked_batches,
         )
-    blocked_op_ids = set(graph_state["blocked_op_ids"])
-    for op_id, (batch_id, _op) in graph_state["op_by_id"].items():
+    ready_op_ids: List[int] = []
+    for op_id in graph_state["ready_op_ids"]:
+        if op_id in graph_state["completed_or_fixed_op_ids"] or op_id in graph_state["blocked_op_ids"]:
+            continue
+        batch_id, _op = graph_state["op_by_id"][op_id]
         if batch_id in blocked_batches:
-            blocked_op_ids.add(op_id)
-    try:
-        ready_op_ids = get_ready_operation_ids(
-            schedulable_op_ids=set(graph_state["op_by_id"]),
-            completed_or_fixed_op_ids=graph_state["completed_or_fixed_op_ids"],
-            blocked_op_ids=blocked_op_ids,
-            predecessor_op_ids_by_op_id=graph_state["predecessor_op_ids_by_op_id"],
-            sort_key_by_op_id=graph_state["sort_key_by_op_id"],
-        )
-    except ReadyQueueContractError as exc:
-        raise ValidationError(f"图 ready 队列上下文无效：{exc}", field="graph_ready_context") from exc
+            continue
+        ready_op_ids.append(op_id)
+    ready_op_ids = sorted(ready_op_ids, key=lambda item: graph_state["sort_key_by_op_id"][item])
     return [graph_state["op_by_id"][op_id] for op_id in ready_op_ids]
 
 
-def _ensure_graph_ready_complete(*, graph_state: Dict[str, Any], ops_by_batch: Dict[str, List[Any]]) -> None:
+def _ensure_graph_ready_complete(*, graph_state: Dict[str, Any], ops_by_batch: Dict[str, List[Any]], blocked_batches: set) -> None:
     expected = set(graph_state["op_by_id"])
     finished = set(graph_state["completed_or_fixed_op_ids"])
     blocked = set(graph_state["blocked_op_ids"])
+    for batch_id in blocked_batches:
+        blocked.update(_op_id(op) for op in ops_by_batch.get(batch_id, []))
     if expected.issubset(finished.union(blocked)):
         return
     remaining = sorted(expected.difference(finished).difference(blocked))
@@ -199,16 +271,41 @@ def _ensure_graph_ready_complete(*, graph_state: Dict[str, Any], ops_by_batch: D
 def _block_graph_operation(graph_state: Dict[str, Any], op_id: int) -> List[int]:
     blocked = graph_state["blocked_op_ids"]
     successors_by_op_id = graph_state["successor_op_ids_by_op_id"]
+    completed_or_fixed = graph_state["completed_or_fixed_op_ids"]
     newly_blocked: List[int] = []
     stack = [op_id]
     while stack:
         current = stack.pop()
         if current in blocked:
             continue
+        if current in completed_or_fixed:
+            raise ValidationError(
+                f"图 ready 队列阻塞状态和固定/已完成工序冲突：{current}",
+                field="graph_ready_context",
+            )
         blocked.add(current)
+        graph_state["ready_op_ids"].discard(current)
         newly_blocked.append(current)
         stack.extend(successors_by_op_id.get(current) or set())
     return newly_blocked
+
+
+def _mark_graph_operation_completed(graph_state: Dict[str, Any], op_id: int) -> None:
+    completed_or_fixed = graph_state["completed_or_fixed_op_ids"]
+    if op_id in completed_or_fixed:
+        return
+
+    completed_or_fixed.add(op_id)
+    graph_state["ready_op_ids"].discard(op_id)
+    for successor_id in graph_state["successor_op_ids_by_op_id"].get(op_id, set()):
+        if successor_id not in graph_state["op_by_id"]:
+            continue
+        if successor_id in completed_or_fixed or successor_id in graph_state["blocked_op_ids"]:
+            continue
+        remaining = int(graph_state["remaining_predecessor_count_by_op_id"][successor_id]) - 1
+        graph_state["remaining_predecessor_count_by_op_id"][successor_id] = remaining
+        if remaining == 0:
+            graph_state["ready_op_ids"].add(successor_id)
 
 
 def _batch_failed_op_ids(batch_id: str, next_idx: Dict[str, int], ops_by_batch: Dict[str, List[Any]]) -> set:

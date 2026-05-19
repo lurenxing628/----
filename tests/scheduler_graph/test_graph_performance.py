@@ -3,15 +3,21 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
-from statistics import mean
+from statistics import mean, median
 from types import SimpleNamespace
 from typing import Any, Dict, List, Tuple
 
+from core.algorithms.greedy.dispatch.sgs_graph import (
+    _collect_candidates,
+    _mark_graph_operation_completed,
+    _op_id,
+    _prepare_graph_ready_state,
+)
 from core.services.scheduler.graph.exporter import graph_summary_to_dict
 from core.services.scheduler.graph.input_adapter import build_operation_nodes_from_rows
 from core.services.scheduler.graph.metrics import build_node_metrics, get_critical_path, get_topological_order
 from core.services.scheduler.graph.precedence_builder import build_linear_edges_by_batch, build_precedence_graph
-from core.services.scheduler.graph.types import GraphAnalysisSummary
+from core.services.scheduler.graph.types import GraphAnalysisSummary, OperationGraphEdge, OperationGraphNode
 from core.services.scheduler.graph.validators import collect_graph_warnings, find_cycle_edges, is_dag
 from core.services.scheduler.run.schedule_graph_report import _project_graph_analysis_payload
 
@@ -29,6 +35,10 @@ FULL_REPORT_AVG_LIMIT_MS = 2500
 FULL_REPORT_MAX_LIMIT_MS = 5000
 GRAPH_DIAGNOSTICS_BYTES_LIMIT = 20000
 GRAPH_PROJECTION_BYTES_LIMIT = 30000
+LONG_CHAIN_NODE_COUNT = 5000
+LONG_CHAIN_METRICS_MEDIAN_LIMIT_MS = 1500
+READY_CHAIN_NODE_COUNT = 2000
+READY_CHAIN_LOOP_LIMIT_MS = 1500
 
 
 def _make_rows() -> Tuple[List[Any], Dict[str, Any], Dict[str, Any]]:
@@ -75,6 +85,63 @@ def _make_rows() -> Tuple[List[Any], Dict[str, Any], Dict[str, Any]]:
 
 def _elapsed_ms(started: float) -> int:
     return int((time.perf_counter() - started) * 1000)
+
+
+def _make_linear_graph(node_count: int) -> Any:
+    nodes = [
+        OperationGraphNode(
+            node_id=f"op:{index}",
+            batch_id="B001",
+            op_code=f"B001_{index * 10:05d}",
+            seq=index * 10,
+            name="测试工序",
+            duration_minutes=1,
+        )
+        for index in range(1, node_count + 1)
+    ]
+    edges = [
+        OperationGraphEdge(
+            from_node_id=f"op:{index}",
+            to_node_id=f"op:{index + 1}",
+            kind="precedence",
+            lag_minutes=0,
+            note="测试边",
+        )
+        for index in range(1, node_count)
+    ]
+    return build_precedence_graph(nodes, edges)
+
+
+def _make_ready_chain_state(node_count: int) -> Tuple[Dict[str, Any], Dict[str, List[Any]], List[str], Dict[str, int]]:
+    ops_by_batch = {
+        f"B{index:05d}": [
+            SimpleNamespace(
+                id=index,
+                batch_id=f"B{index:05d}",
+                op_code=f"OP-{index:05d}",
+                seq=10,
+            )
+        ]
+        for index in range(1, node_count + 1)
+    }
+    predecessor_map = {1: set()}
+    successor_map = {index: set() for index in range(1, node_count + 1)}
+    for index in range(2, node_count + 1):
+        predecessor_map[index] = {index - 1}
+        successor_map[index - 1].add(index)
+    graph_ready_context = {
+        "enabled": True,
+        "schedulable_op_ids": set(range(1, node_count + 1)),
+        "fixed_op_ids": set(),
+        "predecessor_op_ids_by_op_id": predecessor_map,
+        "successor_op_ids_by_op_id": successor_map,
+        "sort_key_by_op_id": {index: (index, 10, index) for index in range(1, node_count + 1)},
+    }
+    graph_state = _prepare_graph_ready_state(graph_ready_context, ops_by_batch=ops_by_batch)
+    assert graph_state is not None
+    batch_ids = list(ops_by_batch)
+    next_idx = {batch_id: 0 for batch_id in batch_ids}
+    return graph_state, ops_by_batch, batch_ids, next_idx
 
 
 def _measure_basic_report_once() -> Dict[str, Any]:
@@ -186,7 +253,11 @@ def _measure_full_report_once() -> Dict[str, Any]:
     critical_path_ms = _elapsed_ms(started)
 
     started = time.perf_counter()
-    node_metrics = build_node_metrics(graph)
+    node_metrics = build_node_metrics(
+        graph,
+        topological_order=topological_order,
+        critical_path=critical_path,
+    )
     impact_metrics_ms = _elapsed_ms(started)
 
     summary = GraphAnalysisSummary(
@@ -290,6 +361,43 @@ def test_full_metrics_handles_2000_nodes_for_on_score_path() -> None:
 
     assert mean(totals) < FULL_REPORT_AVG_LIMIT_MS
     assert max(totals) < FULL_REPORT_MAX_LIMIT_MS
+
+
+def test_build_node_metrics_handles_5000_node_single_chain_without_4s_regression() -> None:
+    graph = _make_linear_graph(LONG_CHAIN_NODE_COUNT)
+    build_node_metrics(graph)
+
+    samples = []
+    latest_metrics: Dict[str, Dict[str, Any]] = {}
+    for _index in range(5):
+        started = time.perf_counter()
+        latest_metrics = build_node_metrics(graph)
+        samples.append((time.perf_counter() - started) * 1000)
+
+    assert len(latest_metrics) == LONG_CHAIN_NODE_COUNT
+    assert latest_metrics["op:1"]["impact_count"] == LONG_CHAIN_NODE_COUNT - 1
+    assert latest_metrics[f"op:{LONG_CHAIN_NODE_COUNT}"]["impact_count"] == 0
+    assert latest_metrics["op:1"]["downstream_critical_minutes"] == LONG_CHAIN_NODE_COUNT
+    assert median(samples) < LONG_CHAIN_METRICS_MEDIAN_LIMIT_MS, samples
+
+
+def test_incremental_ready_queue_handles_2000_node_single_chain_without_full_scan_regression() -> None:
+    graph_state, ops_by_batch, batch_ids, next_idx = _make_ready_chain_state(READY_CHAIN_NODE_COUNT)
+
+    started = time.perf_counter()
+    for expected_op_id in range(1, READY_CHAIN_NODE_COUNT + 1):
+        candidates = _collect_candidates(
+            graph_state=graph_state,
+            batch_ids=batch_ids,
+            ops_by_batch=ops_by_batch,
+            next_idx=next_idx,
+            blocked_batches=set(),
+        )
+        assert [_op_id(op) for _batch_id, op in candidates] == [expected_op_id]
+        _mark_graph_operation_completed(graph_state, expected_op_id)
+    elapsed_ms = (time.perf_counter() - started) * 1000
+
+    assert elapsed_ms < READY_CHAIN_LOOP_LIMIT_MS
 
 
 def test_committed_2000_node_performance_evidence_matches_pr4_contract() -> None:
