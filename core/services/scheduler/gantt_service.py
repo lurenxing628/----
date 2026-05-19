@@ -270,17 +270,14 @@ class GanttService:
                 out["cache_hit"] = True
                 return out
 
-        try:
-            role = str(plan_resolution.get("selected_role") or ROLE_ADOPTED)
-            if role == ROLE_ADOPTED:
-                raw = compute_critical_chain(self.schedule_repo, int(version))
-            else:
-                if plan_query_service is None:
-                    plan_query_service = self._get_plan_query_service()
-                rows = plan_query_service.list_plan_detail_rows_all(version=int(version), role=role)
-                raw = compute_critical_chain_from_rows([dict(row) for row in rows])
-        except Exception:
-            raw = {"available": False, "reason": "repo_exception"}
+        role = str(plan_resolution.get("selected_role") or ROLE_ADOPTED)
+        if role == ROLE_ADOPTED:
+            raw = compute_critical_chain(self.schedule_repo, int(version))
+        else:
+            if plan_query_service is None:
+                plan_query_service = self._get_plan_query_service()
+            rows = plan_query_service.list_plan_detail_rows_all(version=int(version), role=role)
+            raw = compute_critical_chain_from_rows([dict(row) for row in rows])
         computed = self._normalize_critical_chain_result(raw)
         computed["cache_hit"] = False
 

@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from ..summary.schedule_summary_types import SummaryBuildContext
 from .schedule_candidate_runner import run_candidate_comparison
 from .schedule_candidate_summary import candidate_comparison_public_summary
+from .schedule_graph_report import prepare_schedule_graph_for_dispatch
 from .schedule_input_collector import ScheduleRunInput
 from .schedule_persistence import ValidatedSchedulePayload, build_validated_schedule_payload
 
@@ -204,6 +205,45 @@ def _normalize_candidate_plan(candidate_plan: Any) -> _NormalizedOptimizerOutcom
     )
 
 
+def _candidate_comparison_enabled(cfg: Any) -> bool:
+    return str(getattr(cfg, "candidate_comparison_enabled", "no") or "no").strip().lower() == "yes"
+
+
+def _run_optimizer_once(
+    *,
+    schedule_input: ScheduleRunInput,
+    optimize_schedule_fn: Any,
+    strict_mode: bool,
+    logger: Any,
+) -> Tuple[_NormalizedOptimizerOutcome, Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    graph_preparation = prepare_schedule_graph_for_dispatch(schedule_input)
+    optimizer_outcome = _normalize_optimizer_outcome(
+        optimize_schedule_fn(
+            calendar_service=schedule_input.cal_svc,
+            cfg_svc=schedule_input.cfg_svc,
+            cfg=schedule_input.cfg,
+            algo_ops_to_schedule=schedule_input.algo_ops_to_schedule,
+            batches=schedule_input.batches,
+            start_dt=schedule_input.start_dt_norm,
+            end_date=schedule_input.end_date_norm,
+            downtime_map=schedule_input.downtime_map,
+            seed_results=schedule_input.seed_results,
+            resource_pool=schedule_input.resource_pool,
+            version=schedule_input.optimizer_seed_version,
+            logger=logger,
+            readiness_gate_enabled=bool(schedule_input.readiness_gate_enabled),
+            strict_mode=bool(strict_mode),
+            graph_ready_context=graph_preparation.graph_ready_context,
+            graph_dispatch_mode_override=graph_preparation.graph_dispatch_mode_override,
+        )
+    )
+    return (
+        optimizer_outcome,
+        graph_preparation.graph_analysis_public,
+        graph_preparation.graph_analysis_diagnostics,
+    )
+
+
 def _graph_analysis_for_summary(candidate_comparison: Any, adopted_plan: Any) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
     public = getattr(adopted_plan, "graph_analysis_public", None)
     diagnostics = getattr(adopted_plan, "graph_analysis_diagnostics", None)
@@ -263,15 +303,24 @@ def orchestrate_schedule_run(
     optimize_schedule_fn: Any,
     build_result_summary_fn: Any,
 ) -> ScheduleOrchestrationOutcome:
-    candidate_comparison = run_candidate_comparison(
-        schedule_input=schedule_input,
-        optimize_schedule_fn=optimize_schedule_fn,
-        strict_mode=bool(strict_mode),
-        logger=svc.logger,
-    )
-    adopted_plan = candidate_comparison.selection.selected_plan
-    optimizer_outcome = _normalize_candidate_plan(adopted_plan)
-    graph_analysis_public, graph_analysis_diagnostics = _graph_analysis_for_summary(candidate_comparison, adopted_plan)
+    candidate_comparison = None
+    if _candidate_comparison_enabled(schedule_input.cfg):
+        candidate_comparison = run_candidate_comparison(
+            schedule_input=schedule_input,
+            optimize_schedule_fn=optimize_schedule_fn,
+            strict_mode=bool(strict_mode),
+            logger=svc.logger,
+        )
+        adopted_plan = candidate_comparison.selection.selected_plan
+        optimizer_outcome = _normalize_candidate_plan(adopted_plan)
+        graph_analysis_public, graph_analysis_diagnostics = _graph_analysis_for_summary(candidate_comparison, adopted_plan)
+    else:
+        optimizer_outcome, graph_analysis_public, graph_analysis_diagnostics = _run_optimizer_once(
+            schedule_input=schedule_input,
+            optimize_schedule_fn=optimize_schedule_fn,
+            strict_mode=bool(strict_mode),
+            logger=svc.logger,
+        )
 
     validated_schedule_payload = build_validated_schedule_payload(
         optimizer_outcome.results,
@@ -321,7 +370,11 @@ def orchestrate_schedule_run(
         warning_merge_status=warning_merge_status,
         graph_analysis_public=graph_analysis_public,
         graph_analysis_diagnostics=graph_analysis_diagnostics,
-        candidate_comparison_public=candidate_comparison_public_summary(candidate_comparison),
+        candidate_comparison_public=(
+            candidate_comparison_public_summary(candidate_comparison)
+            if candidate_comparison is not None
+            else None
+        ),
         simulate=simulate,
         t0=schedule_input.t0,
     )

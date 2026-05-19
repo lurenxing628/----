@@ -455,7 +455,7 @@ PR-7b 已完成。
 PR-7c 已完成。
 PR-7d 已完成。
 下一步是 PR-7e。
-PR-7e 可以继承 PR-7a 已证明的候选表、候选仓库和统一方案查询底座，继承 PR-7b 已证明的内存候选生成、候选运行、自动择优和关键链健康计算，继承 PR-7c 已证明的 adopted 方案同事务持久化、候选摘要、代表明细和角色映射，也可以继承 PR-7d 已证明的页面、接口、导出和独立报表按 plan_role 切换能力；但不能继承配置字段、临时时间上限、旧 preset 补字段、候选清理策略或性能守卫的证明。
+PR-7e 可以继承 PR-7a 已证明的候选表、候选仓库和统一方案查询底座，继承 PR-7b 已证明的内存候选生成、候选运行、自动择优和关键链健康计算，继承 PR-7c 已证明的 adopted 方案同事务持久化、候选摘要、代表明细和角色映射接入点，也可以继承 PR-7d 已证明的页面、接口、导出和独立报表按 plan_role 切换能力；但不能继承配置字段、默认启用候选比较、临时时间上限、旧 preset 补字段、候选清理策略或性能守卫的证明。
 ```
 
 | PR / items.yaml 条目 | 对应技术章节 | 目标 | 是否改变排产结果 | 状态 |
@@ -9297,7 +9297,7 @@ on 模式：
 
 ## 变更记录
 
-- 2026-05-18：完成 PR-7c `scheduler-graph-candidate-transaction-persistence`：正式排产主链接入内存候选比较，只采用 `selection.selected_plan` 作为最终 adopted 方案，且 adopted payload 校验通过后才分配正式 `version`；新增候选小摘要投影和候选持久化 helper，让 `Schedule`、状态更新、`ScheduleHistory`、`ScheduleCandidate`、非 adopted 代表 `ScheduleCandidateRows`、`ScheduleCandidateSelection` 在同一个事务里写入，候选写入失败时正式排产和历史一起回滚；`result_summary.algo.candidate_comparison` 只保留小摘要，summary 超限后的最小摘要仍保留 adopted key、代表 key、候选数量、时间预算和选择原因这些极小字段，`OperationLogs` 只写极小日志字段，不泄漏候选列表、排产行、图节点边、raw graph 或完整 diagnostics。PR-7c 没有实现 PR-7d 页面/接口/导出/报表 `plan_role` 切换，也没有实现 PR-7e 配置收口、候选清理或性能守卫。
+- 2026-05-18：完成 PR-7c `scheduler-graph-candidate-transaction-persistence`：正式排产主链保留内存候选比较接入点，但在 PR-7e 配置字段落地前默认不启用，避免 `off/report/on` 既有排产合同被候选试跑改变；启用后只采用 `selection.selected_plan` 作为最终 adopted 方案，且 adopted payload 校验通过后才分配正式 `version`；新增候选小摘要投影和候选持久化 helper，让 `Schedule`、状态更新、`ScheduleHistory`、`ScheduleCandidate`、非 adopted 代表 `ScheduleCandidateRows`、`ScheduleCandidateSelection` 在同一个事务里写入，候选写入失败时正式排产和历史一起回滚；`result_summary.algo.candidate_comparison` 只保留小摘要，summary 超限后的最小摘要仍保留 adopted key、代表 key、候选数量、时间预算和选择原因这些极小字段，`OperationLogs` 只写极小日志字段，不泄漏候选列表、排产行、图节点边、raw graph 或完整 diagnostics。PR-7c 没有实现 PR-7d 页面/接口/导出/报表 `plan_role` 切换，也没有实现 PR-7e 配置收口、默认启用、候选清理或性能守卫。
 
 - 2026-05-18：完成 PR-7d `scheduler-graph-plan-role-pages-reports`：甘特图、周计划、资源派工、分析页、超期清单、资源负荷与利用率、停机影响统计页面和导出统一接入 `plan_role`，旧链接默认 `adopted`，合法缺失角色可见 fallback adopted，未知角色直接校验错误；页面预览、JSON data、Excel 导出和 OperationLogs filters 使用同一套 requested/effective/status/candidate 小字段，不写 rows 或完整候选列表。甘特关键链 adopted 保留旧 `compute_critical_chain(schedule_repo, version)` 入口，候选方案从当前 plan rows 计算并按 role/source_table/candidate_id 隔离缓存。PR-7d 未实现 PR-7e 配置收口、候选清理或性能守卫，也未改 PR-8 report-only 资源匹配计划。
 

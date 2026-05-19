@@ -2,13 +2,16 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from core.services.scheduler.schedule_plan_query_service import (
-    ROLE_ADOPTED,
-    ROLE_BASELINE_BEST,
-    ROLE_CRITICAL_BEST,
-    VALID_PLAN_ROLES,
-    plan_role_label,
-)
+ROLE_ADOPTED = "adopted"
+ROLE_BASELINE_BEST = "baseline_best"
+ROLE_CRITICAL_BEST = "critical_best"
+VALID_PLAN_ROLES = (ROLE_ADOPTED, ROLE_BASELINE_BEST, ROLE_CRITICAL_BEST)
+
+_PLAN_ROLE_LABELS = {
+    ROLE_ADOPTED: "最终采用",
+    ROLE_BASELINE_BEST: "原算法最好",
+    ROLE_CRITICAL_BEST: "关键链最好",
+}
 
 _CANDIDATE_ROLE_KEY_FIELDS = (
     (ROLE_ADOPTED, "adopted_candidate_key"),
@@ -21,6 +24,10 @@ _CANDIDATE_STATUS_LABELS = {
     "failed": "失败",
     "skipped": "已跳过",
 }
+
+
+def _plan_role_label(role: str) -> str:
+    return _PLAN_ROLE_LABELS.get(str(role or "").strip(), str(role or "").strip() or "-")
 
 
 def _dict_from_role_option(raw: Any) -> Optional[Dict[str, Any]]:
@@ -119,7 +126,7 @@ def _candidate_status_label(status_value: Any) -> str:
 
 
 def _candidate_label(candidate: Dict[str, Any], option: Optional[Dict[str, Any]], *, candidate_key: str, role: str) -> str:
-    return str(candidate.get("label") or (option or {}).get("candidate_label") or candidate_key or plan_role_label(role)).strip()
+    return str(candidate.get("label") or (option or {}).get("candidate_label") or candidate_key or _plan_role_label(role)).strip()
 
 
 def _candidate_kind(candidate: Dict[str, Any], option: Optional[Dict[str, Any]]) -> str:
@@ -144,7 +151,7 @@ def _candidate_display_row(
         return None
 
     candidate = candidates_by_key.get(candidate_key, {})
-    role_label = str((option or {}).get("label") or plan_role_label(role))
+    role_label = str((option or {}).get("label") or _plan_role_label(role))
     status = _candidate_status(candidate, option)
     return {
         "role": role,

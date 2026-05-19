@@ -50,12 +50,13 @@ def persist_schedule_run_with_candidates(
             result_summary_json=result_summary_json,
             missing_internal_resource_op_ids=missing_internal_resource_op_ids,
         )
-        persist_candidate_comparison(
-            svc,
-            version=int(version),
-            candidate_comparison=candidate_comparison,
-            frozen_op_ids=frozen_op_ids,
-        )
+        if candidate_comparison is not None:
+            persist_candidate_comparison(
+                svc,
+                version=int(version),
+                candidate_comparison=candidate_comparison,
+                frozen_op_ids=frozen_op_ids,
+            )
 
     log_schedule_operation(
         svc,
