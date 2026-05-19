@@ -37,6 +37,9 @@ class SchedulePlanRoleOption:
     candidate_kind: Optional[str]
     candidate_status: Optional[str]
     detail_saved: Optional[str]
+    selection_candidate_id: Optional[int] = None
+    resolved_candidate_id: Optional[int] = None
+    candidate_missing: bool = False
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -44,11 +47,14 @@ class SchedulePlanRoleOption:
             "label": plan_role_label(self.role),
             "source_table": self.source_table,
             "candidate_id": self.candidate_id,
+            "selection_candidate_id": self.selection_candidate_id,
+            "resolved_candidate_id": self.resolved_candidate_id,
             "candidate_key": self.candidate_key,
             "candidate_label": self.candidate_label,
             "candidate_kind": self.candidate_kind,
             "candidate_status": self.candidate_status,
             "detail_saved": self.detail_saved,
+            "candidate_missing": self.candidate_missing,
             "is_comparison": self.role != ROLE_ADOPTED,
         }
 
@@ -117,8 +123,7 @@ class SchedulePlanQueryService:
         options = [self._role_option_from_row(row) for row in rows]
         if not options:
             return [_default_adopted_option()]
-        if not any(option.role == ROLE_ADOPTED for option in options):
-            return [_default_adopted_option()] + options
+        self._validate_plan_role_options_integrity(int(version), options)
         return options
 
     def resolve_plan(self, version: int, role: Optional[str]) -> SchedulePlanResolution:
@@ -213,17 +218,32 @@ class SchedulePlanQueryService:
 
     @staticmethod
     def _role_option_from_row(row: Dict[str, Any]) -> SchedulePlanRoleOption:
-        candidate_id = row.get("candidate_id")
+        selection_candidate_id = row.get("selection_candidate_id")
+        resolved_candidate_id = row.get("resolved_candidate_id")
         return SchedulePlanRoleOption(
             role=str(row.get("role") or ""),
             source_table=str(row.get("source_table") or ""),
-            candidate_id=int(candidate_id) if candidate_id is not None else None,
+            candidate_id=int(resolved_candidate_id) if resolved_candidate_id is not None else None,
             candidate_key=str(row.get("candidate_key")) if row.get("candidate_key") is not None else None,
             candidate_label=str(row.get("candidate_label") or ""),
             candidate_kind=str(row.get("candidate_kind")) if row.get("candidate_kind") is not None else None,
             candidate_status=str(row.get("candidate_status")) if row.get("candidate_status") is not None else None,
             detail_saved=str(row.get("detail_saved")) if row.get("detail_saved") is not None else None,
+            selection_candidate_id=int(selection_candidate_id) if selection_candidate_id is not None else None,
+            resolved_candidate_id=int(resolved_candidate_id) if resolved_candidate_id is not None else None,
+            candidate_missing=selection_candidate_id is not None and resolved_candidate_id is None,
         )
+
+    def _validate_plan_role_options_integrity(self, version: int, options: List[SchedulePlanRoleOption]) -> None:
+        for option in options:
+            if option.candidate_missing:
+                raise ValueError(
+                    f"候选方案角色映射损坏：version={version}, role={option.role} 指向的候选不存在。"
+                )
+
+        roles = {option.role for option in options}
+        if ROLE_ADOPTED not in roles:
+            raise ValueError(f"候选方案角色映射损坏：version={version} 缺少 adopted 最终采用方案。")
 
     def _validate_resolution_option(self, version: int, option: SchedulePlanRoleOption) -> None:
         if option.role not in VALID_PLAN_ROLES:

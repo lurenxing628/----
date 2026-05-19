@@ -24,6 +24,11 @@ CANDIDATE_STATUS_COMPLETED = "completed"
 CANDIDATE_STATUS_FAILED = "failed"
 CANDIDATE_STATUS_SKIPPED = "skipped"
 
+
+class CandidateTrialFailure(RuntimeError):
+    """单个候选方案可记录为 failed 的运行失败。"""
+
+
 @dataclass(frozen=True)
 class CandidatePlan:
     sequence: int
@@ -108,7 +113,7 @@ def run_candidate_comparison(
     now = clock or time.time
     optimize = optimize_schedule_fn or optimize_schedule
     prepare_graph = prepare_graph_fn or prepare_schedule_graph_for_dispatch
-    cfg = ensure_schedule_config_snapshot(schedule_input.cfg, strict_mode=False)
+    cfg = ensure_schedule_config_snapshot(schedule_input.cfg, strict_mode=bool(strict_mode))
     specs = generate_candidate_specs(
         weight_count=weight_count,
         base_critical_weight=int(cfg.graph_critical_weight),
@@ -206,9 +211,7 @@ def _run_candidate_with_failure_capture(
             logger=logger,
             baseline_results=baseline_results,
         )
-    except ValidationError:
-        raise
-    except Exception as exc:
+    except CandidateTrialFailure as exc:
         return _failed_plan(spec, exc, elapsed_seconds=now() - candidate_started)
     return replace(plan, elapsed_seconds=now() - candidate_started)
 
@@ -475,5 +478,6 @@ __all__ = [
     "CANDIDATE_STATUS_SKIPPED",
     "CandidateComparisonOutcome",
     "CandidatePlan",
+    "CandidateTrialFailure",
     "run_candidate_comparison",
 ]

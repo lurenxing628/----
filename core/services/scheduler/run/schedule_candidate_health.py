@@ -8,6 +8,9 @@ HEALTH_BETTER = "better"
 HEALTH_SAME = "same"
 HEALTH_WORSE = "worse"
 HEALTH_UNAVAILABLE = "unavailable"
+HEALTH_RELATIVE_TOLERANCE_RATIO = 0.05
+HEALTH_BETTER_MIN_SCORE = 2
+HEALTH_WORSE_MAX_SCORE = -2
 
 _OP_NODE_PREFIX = "op:"
 
@@ -68,8 +71,13 @@ def evaluate_candidate_health(
     if not critical_op_ids.issubset(set(baseline_by_op_id)) or not critical_op_ids.issubset(set(candidate_by_op_id)):
         return unavailable_health("critical_path_result_missing")
 
-    finish_delta = _finish_hours(candidate_by_op_id, critical_op_ids) - _finish_hours(baseline_by_op_id, critical_op_ids)
-    wait_delta = _chain_wait_hours(candidate_by_op_id, critical_op_ids) - _chain_wait_hours(baseline_by_op_id, critical_op_ids)
+    baseline_finish_hours = _finish_hours(baseline_by_op_id, critical_op_ids)
+    candidate_finish_hours = _finish_hours(candidate_by_op_id, critical_op_ids)
+    finish_delta = candidate_finish_hours - baseline_finish_hours
+
+    baseline_wait_hours = _chain_wait_hours(baseline_by_op_id, critical_op_ids)
+    candidate_wait_hours = _chain_wait_hours(candidate_by_op_id, critical_op_ids)
+    wait_delta = candidate_wait_hours - baseline_wait_hours
     top_impact_op_ids = _top_impact_op_ids(graph_metrics)
     top_start_delta = _avg_start_delta_hours(
         baseline_by_op_id=baseline_by_op_id,
@@ -79,16 +87,22 @@ def evaluate_candidate_health(
     slack_delta = _critical_slack_delta_hours(graph_metrics)
 
     score = 0
-    score += _smaller_is_better_score(finish_delta, neutral_tolerance_hours)
-    score += _smaller_is_better_score(wait_delta, neutral_tolerance_hours)
+    score += _smaller_is_better_score(
+        finish_delta,
+        _relative_tolerance_hours(baseline_finish_hours, fallback_hours=neutral_tolerance_hours),
+    )
+    score += _smaller_is_better_score(
+        wait_delta,
+        _relative_tolerance_hours(baseline_wait_hours, fallback_hours=neutral_tolerance_hours),
+    )
     if top_start_delta is not None:
         score += _smaller_is_better_score(top_start_delta, neutral_tolerance_hours)
     if slack_delta is not None:
         score += _larger_is_better_score(slack_delta, neutral_tolerance_hours)
 
-    if score > 0:
+    if score >= HEALTH_BETTER_MIN_SCORE:
         state = HEALTH_BETTER
-    elif score < 0:
+    elif score <= HEALTH_WORSE_MAX_SCORE:
         state = HEALTH_WORSE
     else:
         state = HEALTH_SAME
@@ -263,6 +277,15 @@ def _hours(delta: Any) -> float:
     return float(delta.total_seconds()) / 3600.0
 
 
+def _relative_tolerance_hours(reference_hours: Optional[float], *, fallback_hours: float) -> float:
+    if reference_hours is None:
+        return float(fallback_hours)
+    reference = abs(float(reference_hours))
+    if reference <= 0:
+        return float(fallback_hours)
+    return reference * HEALTH_RELATIVE_TOLERANCE_RATIO
+
+
 def _smaller_is_better_score(delta: float, tolerance: float) -> int:
     if delta < -float(tolerance):
         return 1
@@ -287,9 +310,12 @@ def _round_hours(value: Optional[float]) -> Optional[float]:
 
 __all__ = [
     "HEALTH_BETTER",
+    "HEALTH_BETTER_MIN_SCORE",
+    "HEALTH_RELATIVE_TOLERANCE_RATIO",
     "HEALTH_SAME",
     "HEALTH_UNAVAILABLE",
     "HEALTH_WORSE",
+    "HEALTH_WORSE_MAX_SCORE",
     "CandidateHealth",
     "evaluate_candidate_health",
     "unavailable_health",

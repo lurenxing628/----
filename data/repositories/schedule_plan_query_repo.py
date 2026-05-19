@@ -54,6 +54,8 @@ class SchedulePlanQueryRepository(BaseRepository):
             SELECT
                 s.role AS role,
                 s.source_table AS source_table,
+                s.candidate_id AS selection_candidate_id,
+                c.id AS resolved_candidate_id,
                 c.id AS candidate_id,
                 c.candidate_key AS candidate_key,
                 c.candidate_label AS candidate_label,
@@ -61,7 +63,7 @@ class SchedulePlanQueryRepository(BaseRepository):
                 c.status AS candidate_status,
                 c.detail_saved AS detail_saved
             FROM ScheduleCandidateSelection s
-            JOIN ScheduleCandidate c
+            LEFT JOIN ScheduleCandidate c
               ON c.id = s.candidate_id
              AND c.version = s.version
             WHERE s.version = ?

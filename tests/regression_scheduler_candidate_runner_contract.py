@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import core.services.scheduler.run.schedule_candidate_runner as runner
 from core.algorithms import ScheduleResult
 from core.infrastructure.errors import ValidationError
 from core.services.scheduler.config_snapshot import ScheduleConfigSnapshot
@@ -105,6 +106,40 @@ class _StepClock:
         if self._values:
             return float(self._values.pop(0))
         return 999.0
+
+
+def test_candidate_comparison_honors_strict_mode_for_runtime_config(monkeypatch) -> None:
+    calls = []
+
+    def fake_ensure_snapshot(cfg, *, strict_mode, source="scheduler.runtime_config"):
+        calls.append((strict_mode, source))
+        return cfg
+
+    def prepare_graph(schedule_input):
+        return SimpleNamespace(
+            graph_analysis_public=None,
+            graph_analysis_diagnostics=None,
+            graph_ready_context=None,
+            graph_dispatch_mode_override=None,
+        )
+
+    def optimize(**kwargs):
+        return _outcome("x", score=(0, 0, 10), tardiness=10.0)
+
+    monkeypatch.setattr(runner, "ensure_schedule_config_snapshot", fake_ensure_snapshot)
+
+    runner.run_candidate_comparison(
+        schedule_input=_schedule_input(),
+        prepare_graph_fn=prepare_graph,
+        optimize_schedule_fn=optimize,
+        strict_mode=True,
+        weight_count=3,
+        selection_policy="score_only",
+        clock=_StepClock([0] * 100),
+    )
+
+    assert calls
+    assert calls[0][0] is True
 
 
 def test_candidate_runner_runs_baseline_first_and_passes_graph_context_to_critical_candidates() -> None:
@@ -240,7 +275,7 @@ def test_candidate_runner_records_single_candidate_failure_and_continues() -> No
 
     def optimize(**kwargs):
         if kwargs["cfg"].graph_critical_weight == 250:
-            raise RuntimeError("candidate failed")
+            raise runner.CandidateTrialFailure("candidate failed")
         return _outcome("x", score=(0, 0, 10), tardiness=10.0)
 
     outcome = run_candidate_comparison(
@@ -285,6 +320,54 @@ def test_candidate_runner_raises_validation_error_instead_of_selecting_baseline(
     assert exc_info.value.field == "graph_ready_context"
 
 
+def test_candidate_runner_propagates_unexpected_contract_errors() -> None:
+    def prepare_graph(schedule_input):
+        return SimpleNamespace(
+            graph_analysis_public=None,
+            graph_analysis_diagnostics={"critical_path_sample": ["op:1", "op:2"]},
+            graph_ready_context=None,
+            graph_dispatch_mode_override=None,
+        )
+
+    def optimize(**kwargs):
+        raise TypeError("optimizer contract broken")
+
+    with pytest.raises(TypeError, match="optimizer contract broken"):
+        run_candidate_comparison(
+            schedule_input=_schedule_input(),
+            prepare_graph_fn=prepare_graph,
+            optimize_schedule_fn=optimize,
+            strict_mode=True,
+            weight_count=3,
+            selection_policy="score_only",
+            clock=_StepClock([0] * 100),
+        )
+
+
+def test_candidate_runner_propagates_runtime_contract_errors() -> None:
+    def prepare_graph(schedule_input):
+        return SimpleNamespace(
+            graph_analysis_public=None,
+            graph_analysis_diagnostics={"critical_path_sample": ["op:1", "op:2"]},
+            graph_ready_context=None,
+            graph_dispatch_mode_override=None,
+        )
+
+    def optimize(**kwargs):
+        raise RuntimeError("graph ready context contract broken")
+
+    with pytest.raises(RuntimeError, match="graph ready context contract broken"):
+        run_candidate_comparison(
+            schedule_input=_schedule_input(),
+            prepare_graph_fn=prepare_graph,
+            optimize_schedule_fn=optimize,
+            strict_mode=True,
+            weight_count=3,
+            selection_policy="score_only",
+            clock=_StepClock([0] * 100),
+        )
+
+
 def test_candidate_runner_fails_when_every_candidate_failed() -> None:
     def prepare_graph(schedule_input):
         return SimpleNamespace(
@@ -295,7 +378,7 @@ def test_candidate_runner_fails_when_every_candidate_failed() -> None:
         )
 
     def optimize(**kwargs):
-        raise RuntimeError("all failed")
+        raise runner.CandidateTrialFailure("all failed")
 
     with pytest.raises(ValidationError) as exc_info:
         run_candidate_comparison(

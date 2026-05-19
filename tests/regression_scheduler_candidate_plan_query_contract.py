@@ -291,6 +291,117 @@ def test_plan_query_has_visible_legacy_fallback_and_rejects_unknown_role(tmp_pat
         conn.close()
 
 
+def test_plan_query_keeps_legacy_no_selection_fallback_to_adopted(tmp_path: Path) -> None:
+    conn = _connect_fresh_schema(tmp_path)
+    try:
+        _seed_schedule_context(conn)
+        conn.commit()
+
+        service = SchedulePlanQueryService(conn)
+        resolution = service.resolve_plan(VERSION, ROLE_BASELINE_BEST)
+
+        assert resolution.selected_role == ROLE_ADOPTED
+        assert resolution.status == "fallback_to_adopted"
+    finally:
+        conn.close()
+
+
+def test_plan_query_rejects_selection_pointing_to_missing_candidate(tmp_path: Path) -> None:
+    conn = _connect_fresh_schema(tmp_path)
+    try:
+        _seed_schedule_context(conn)
+        repo = ScheduleCandidateRepository(conn)
+        adopted = repo.create_candidate(
+            ScheduleCandidate(
+                id=None,
+                version=VERSION,
+                candidate_key="adopted",
+                candidate_label="最终采用",
+                candidate_kind="baseline",
+                status="completed",
+                graph_enabled="no",
+                detail_saved="no",
+            )
+        )
+        repo.create_selection(
+            ScheduleCandidateSelection(
+                id=None,
+                version=VERSION,
+                role=ROLE_ADOPTED,
+                candidate_id=_require_id(adopted.id),
+                source_table=SOURCE_SCHEDULE,
+            )
+        )
+        conn.commit()
+
+        conn.execute("PRAGMA foreign_keys = OFF")
+        conn.execute(
+            """
+            INSERT INTO ScheduleCandidateSelection(version, role, candidate_id, source_table)
+            VALUES (?, ?, ?, ?)
+            """,
+            (VERSION, ROLE_BASELINE_BEST, 999999, SOURCE_CANDIDATE_ROWS),
+        )
+        conn.commit()
+        conn.execute("PRAGMA foreign_keys = ON")
+
+        service = SchedulePlanQueryService(conn)
+        with pytest.raises(ValueError, match="候选方案角色映射.*不存在|指向的候选不存在"):
+            service.resolve_plan(VERSION, ROLE_BASELINE_BEST)
+    finally:
+        conn.close()
+
+
+def test_plan_query_rejects_candidate_selection_set_without_adopted_role(tmp_path: Path) -> None:
+    conn = _connect_fresh_schema(tmp_path)
+    try:
+        _seed_schedule_context(conn)
+        repo = ScheduleCandidateRepository(conn)
+        candidate = repo.create_candidate(
+            ScheduleCandidate(
+                id=None,
+                version=VERSION,
+                candidate_key="baseline_best",
+                candidate_label="候选代表",
+                candidate_kind="baseline",
+                status="completed",
+                graph_enabled="no",
+                detail_saved="yes",
+            )
+        )
+        repo.bulk_create_candidate_rows(
+            [
+                ScheduleCandidateRows(
+                    id=None,
+                    version=VERSION,
+                    candidate_id=_require_id(candidate.id),
+                    op_id=10,
+                    machine_id="M-CANDIDATE",
+                    operator_id="O-CANDIDATE",
+                    start_time="2026-05-01 13:00",
+                    end_time="2026-05-01 15:00",
+                    lock_status="locked",
+                )
+            ]
+        )
+        repo.create_selection(
+            ScheduleCandidateSelection(
+                id=None,
+                version=VERSION,
+                role=ROLE_BASELINE_BEST,
+                candidate_id=_require_id(candidate.id),
+                source_table=SOURCE_CANDIDATE_ROWS,
+            )
+        )
+        conn.commit()
+
+        service = SchedulePlanQueryService(conn)
+        with pytest.raises(ValueError, match="缺少 adopted|最终采用"):
+            service.resolve_plan(VERSION, ROLE_ADOPTED)
+    finally:
+        conn.close()
+
+
 def test_plan_query_rejects_candidate_rows_selection_without_saved_details(tmp_path: Path) -> None:
     conn = _connect_fresh_schema(tmp_path)
     try:
