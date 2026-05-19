@@ -86,14 +86,6 @@ button, input, select, textarea {
     overflow-y: auto;
 }
 
-/* Sidebar 一直是深色底，脚注边框需固定深色系避免亮线突兀 */
-.sidebar .sidebar-footnote {
-    padding: 1rem;
-    font-size: 0.75rem;
-    color: var(--sidebar-muted);
-    border-top: 1px solid var(--sidebar-border);
-}
-
 .nav-item {
     position: relative;
     display: flex;

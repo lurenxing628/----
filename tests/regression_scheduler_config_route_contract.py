@@ -283,12 +283,16 @@ def test_scheduler_config_route_uses_request_services(monkeypatch) -> None:
     notice_text = json.dumps(payload["current_config_notice_items"], ensure_ascii=False)
     assert "阶段 2" not in notice_text
     assert "尚未接入" not in notice_text
-    assert "report 会生成只读报告" in notice_text
+    assert "只看分析报告" in notice_text
+    assert "参与排产" in notice_text
+    assert "哪些工序先排" in notice_text
+    assert "report 会生成只读报告" not in notice_text
     assert "on 当前先按 report-only" not in notice_text
     assert "不会让图分析参与 ready 队列" not in notice_text
-    assert "on 会先做图安全检查" in notice_text
-    assert "可用 DAG 会用 ready 队列参与 SGS 候选" in notice_text
-    assert "参与候选排序" in notice_text
+    assert "on 会先做图安全检查" not in notice_text
+    assert "可用 DAG 会用 ready 队列参与 SGS 候选" not in notice_text
+    assert "参与候选排序" not in notice_text
+    assert "图评分" not in notice_text
     assert "仍不启用图评分" not in notice_text
     toggles = payload["scheduler_config_toggles"]
     assert set(toggles) == {
@@ -321,14 +325,19 @@ def test_scheduler_config_template_graph_copy_matches_cycle_gate_stage() -> None
 
     assert "阶段 2 只保存" not in template
     assert "真正图分析将在后续阶段接入" not in template
-    assert "report 会生成只读图分析报告" in template
-    assert "on 会先做图安全检查" in template
-    assert "可用 DAG 会用 ready 队列参与 SGS 候选" in template
-    assert "参与候选排序" in template
+    assert "只看分析报告" in template
+    assert "参与排产" in template
+    assert "哪些工序先排" in template
+    assert "report 会生成只读图分析报告" not in template
+    assert "on 会先做图安全检查" not in template
+    assert "可用 DAG 会用 ready 队列参与 SGS 候选" not in template
+    assert "参与候选排序" not in template
     assert "仍不启用图评分" not in template
     assert "当前仅保存为后续评分配置" not in template
     assert "仍不启用图评分" not in config_constants
-    assert "参与候选排序" in config_constants
+    assert "只看分析报告" in config_constants
+    assert "参与排产" in config_constants
+    assert "参与候选排序" not in config_constants
 
 
 def test_scheduler_config_post_uses_atomic_save_entrypoint(monkeypatch) -> None:

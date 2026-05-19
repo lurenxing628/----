@@ -244,9 +244,11 @@ def main() -> None:
             if ui_mode == "v2":
                 sidebar_idx = content.find('class="sidebar"')
                 manual_idx = content.find("floating-manual-wrapper")
-                footnote_idx = content.find("sidebar-footnote")
-                if not (0 <= sidebar_idx < manual_idx < footnote_idx):
-                    raise RuntimeError(f"v2 模式下说明入口应渲染在侧边栏脚注前，避免覆盖主内容区：{endpoint}")
+                if not (0 <= sidebar_idx < manual_idx):
+                    raise RuntimeError(f"v2 模式下说明入口应渲染在侧边栏内，避免覆盖主内容区：{endpoint}")
+                _assert_not_contains(content, "sidebar-footnote", f"{ui_mode} 模式下不应再显示侧边栏脚注：{endpoint}")
+                _assert_not_contains(content, "Win7 单机版", f"{ui_mode} 模式下不应再显示侧边栏版本脚注：{endpoint}")
+                _assert_not_contains(content, "离线运行", f"{ui_mode} 模式下不应再显示侧边栏离线脚注：{endpoint}")
 
             if expect_help_card:
                 _assert_contains(content, 'data-manual-popover="1"', f"{ui_mode} 模式下缺少 popover 触发标记：{endpoint}")

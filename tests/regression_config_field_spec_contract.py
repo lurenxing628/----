@@ -138,17 +138,27 @@ def test_config_field_spec_registry_contract() -> None:
     assert metadata["graph_analysis_mode"].choices[0]["value"] == "off"
     assert metadata["graph_analysis_mode"].choices[1]["value"] == "report"
     assert metadata["graph_analysis_mode"].choices[2]["value"] == "on"
-    assert metadata["graph_analysis_mode"].choices[2]["label"] == "启用图安全检查、ready 队列和图评分"
+    assert metadata["graph_analysis_mode"].choices[1]["label"] == "只看分析报告"
+    assert metadata["graph_analysis_mode"].choices[2]["label"] == "参与排产"
     assert "阶段 2" not in metadata["graph_analysis_mode"].hint
-    assert "只生成分析报告" in metadata["graph_analysis_mode"].hint
-    assert "可用 DAG 会用 ready 队列参与 SGS 候选" in metadata["graph_analysis_mode"].hint
-    assert "参与候选排序" in metadata["graph_analysis_mode"].hint
+    assert "只看分析报告" in metadata["graph_analysis_mode"].hint
+    assert "参与排产" in metadata["graph_analysis_mode"].hint
+    assert "影响排产顺序" in metadata["graph_analysis_mode"].hint
+    assert "可用 DAG 会用 ready 队列参与 SGS 候选" not in metadata["graph_analysis_mode"].hint
+    assert "ready 队列" not in metadata["graph_analysis_mode"].hint
+    assert "图评分" not in metadata["graph_analysis_mode"].hint
     assert metadata["graph_critical_weight"].label == "关键路径权重"
-    assert "关键路径上的候选工序会更靠前" in get_field_spec("graph_critical_weight").description
-    assert "影响更多后续工序的候选会更靠前" in get_field_spec("graph_impact_weight").description
+    assert "关键链路上的工序会更靠前" in get_field_spec("graph_critical_weight").description
+    assert "会影响更多后续工序的当前工序会更靠前" in get_field_spec("graph_impact_weight").description
     assert "预留" not in get_field_spec("graph_critical_weight").description
     assert "当前不改变排产结果" not in metadata["graph_critical_weight"].hint
+    assert "ready 候选" not in metadata["graph_critical_weight"].hint
+    assert "ready 候选" not in metadata["graph_impact_weight"].hint
+    assert "on 且" not in metadata["graph_critical_weight"].hint
+    assert "on 且" not in metadata["graph_impact_weight"].hint
     assert "阶段 2" not in metadata["graph_debug_export"].hint
+    assert "debug/export" not in metadata["graph_debug_export"].hint
+    assert "logs/schedule_graph" not in metadata["graph_debug_export"].hint
 
 
 def test_config_service_exposes_same_page_metadata_shape() -> None:
@@ -175,7 +185,7 @@ def test_config_service_exposes_same_page_metadata_shape() -> None:
     assert metadata["objective"].choices[0]["value"] == "min_overdue"
     assert metadata["objective"].choices[0]["label"] == "最少超期"
     assert metadata["graph_analysis_mode"].choices[1]["value"] == "report"
-    assert metadata["graph_block_on_cycle"].label == "遇到循环依赖时停止排产"
+    assert metadata["graph_block_on_cycle"].label == "工序关系互相卡住时停止排产"
 
 
 def test_config_service_snapshot_includes_hidden_field_and_get_stays_single_arg(config_service: ConfigService) -> None:

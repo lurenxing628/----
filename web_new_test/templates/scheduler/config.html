@@ -201,35 +201,50 @@
         </div>
       </div>
 
-      <h4 class="section-title">工序图分析配置</h4>
-      <div class="muted mb-2">report 会生成只读图分析报告，不改变排产结果；on 会先做图安全检查，可用 DAG 会用 ready 队列参与 SGS 候选，并按关键路径和后续影响权重参与候选排序。</div>
-      <div class="scheduler-config-form-grid">
-        <div class="scheduler-config-field">
-          <label>{{ graph_analysis_mode_meta.label }}</label>
-          <select name="graph_analysis_mode">
-            {% for choice in graph_analysis_mode_meta.choices %}
-              <option value="{{ choice.value }}" {% if cfg.graph_analysis_mode == choice.value %}selected{% endif %}>{{ choice.label }}</option>
-            {% endfor %}
-          </select>
-          <div class="scheduler-config-hint">{{ graph_analysis_mode_meta.hint }}</div>
-          {{ render_config_field_warning("graph_analysis_mode") }}
+      <div class="scheduler-config-section scheduler-config-section--graph">
+        <div class="scheduler-config-section-heading">
+          <h4 class="section-title scheduler-config-section-title">工序图分析配置</h4>
+          <div class="scheduler-config-mode-guide" aria-label="工序图分析选项说明">
+            <div class="scheduler-config-mode-guide-item">
+              <span class="scheduler-config-mode-guide-label">只看分析报告</span>
+              <span class="scheduler-config-mode-guide-copy">系统只检查工序之间的先后关系，不会改变排产结果。</span>
+            </div>
+            <div class="scheduler-config-mode-guide-item">
+              <span class="scheduler-config-mode-guide-label">参与排产</span>
+              <span class="scheduler-config-mode-guide-copy">系统先检查关系是否能正常使用，检查通过后再帮助系统决定哪些工序先排。</span>
+            </div>
+          </div>
         </div>
 
-        <div class="scheduler-config-field">
-          <label>{{ graph_critical_weight_meta.label }}</label>
-          <input name="graph_critical_weight" value="{{ cfg.graph_critical_weight }}">
-          <div class="scheduler-config-hint">{{ graph_critical_weight_meta.hint }}</div>
-          {{ render_config_field_warning("graph_critical_weight") }}
-        </div>
+        <div class="scheduler-config-form-grid scheduler-config-form-grid--graph">
+          <div class="scheduler-config-field scheduler-config-field--wide">
+            <label>{{ graph_analysis_mode_meta.label }}</label>
+            <select name="graph_analysis_mode">
+              {% for choice in graph_analysis_mode_meta.choices %}
+                <option value="{{ choice.value }}" {% if cfg.graph_analysis_mode == choice.value %}selected{% endif %}>{{ choice.label }}</option>
+              {% endfor %}
+            </select>
+            <div class="scheduler-config-hint">{{ graph_analysis_mode_meta.hint }}</div>
+            {{ render_config_field_warning("graph_analysis_mode") }}
+          </div>
 
-        <div class="scheduler-config-field">
-          <label>{{ graph_impact_weight_meta.label }}</label>
-          <input name="graph_impact_weight" value="{{ cfg.graph_impact_weight }}">
-          <div class="scheduler-config-hint">{{ graph_impact_weight_meta.hint }}</div>
-          {{ render_config_field_warning("graph_impact_weight") }}
+          <div class="scheduler-config-field">
+            <label>{{ graph_critical_weight_meta.label }}</label>
+            <input name="graph_critical_weight" value="{{ cfg.graph_critical_weight }}">
+            <div class="scheduler-config-hint">{{ graph_critical_weight_meta.hint }}</div>
+            {{ render_config_field_warning("graph_critical_weight") }}
+          </div>
+
+          <div class="scheduler-config-field">
+            <label>{{ graph_impact_weight_meta.label }}</label>
+            <input name="graph_impact_weight" value="{{ cfg.graph_impact_weight }}">
+            <div class="scheduler-config-hint">{{ graph_impact_weight_meta.hint }}</div>
+            {{ render_config_field_warning("graph_impact_weight") }}
+          </div>
         </div>
       </div>
 
+      <h4 class="section-title scheduler-config-switches-heading">排产开关</h4>
       {% include "scheduler/_config_switches.html" %}
 
       <div class="mt-3">

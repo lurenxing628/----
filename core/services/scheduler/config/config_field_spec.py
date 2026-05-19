@@ -45,8 +45,8 @@ _YES_NO_CHOICES = tuple(_YES_NO_LABELS.keys())
 _OBJECTIVE_LABELS = _objective_choice_labels()
 _GRAPH_ANALYSIS_MODE_LABELS = {
     "off": "关闭",
-    "report": "只生成分析报告",
-    "on": "启用图安全检查、ready 队列和图评分",
+    "report": "只看分析报告",
+    "on": "参与排产",
 }
 
 _FIELD_LABEL_ALIASES = {
@@ -306,38 +306,28 @@ _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
         field_type="enum",
         default="off",
         label="工序图分析",
-        description="NetworkX 工序依赖图分析模式：关闭 / 只生成报告 / 图安全检查、ready 队列和图评分",
+        description="工序先后关系分析：关闭 / 只看分析报告 / 检查通过后参与排产",
         choices=("off", "report", "on"),
-        choice_labels={
-            "off": "关闭",
-            "report": "只生成分析报告，不改变排产结果",
-            "on": "启用图安全检查、ready 队列和图评分",
-        },
+        choice_labels=dict(_GRAPH_ANALYSIS_MODE_LABELS),
         page_metadata=ConfigFieldPageMetadata(
             key="graph_analysis_mode",
             label="工序图分析",
-            hint="默认关闭。off 不加载图分析；report 只生成分析报告，不改排产结果；on 会先做图安全检查，可用 DAG 会用 ready 队列参与 SGS 候选，并按下面权重参与候选排序。",
-            choices=_choice_pairs(
-                {
-                    "off": "关闭",
-                    "report": "只生成分析报告，不改变排产结果",
-                    "on": "启用图安全检查、ready 队列和图评分",
-                }
-            ),
+            hint="一般先保持关闭；只想看检查结果时选“只看分析报告”，确认要让工序先后关系影响排产顺序时再选“参与排产”。",
+            choices=_choice_pairs(_GRAPH_ANALYSIS_MODE_LABELS),
         ),
     ),
     ConfigFieldSpec(
         key="graph_block_on_cycle",
         field_type="yes_no",
         default="no",
-        label="图分析遇到环时阻止排产",
-        description="工序图分析发现循环依赖时是否阻止排产；默认不阻止",
+        label="工序关系互相卡住时停止排产",
+        description="工序先后关系互相卡住时是否停止排产；默认不停止",
         choices=_YES_NO_CHOICES,
         choice_labels=_YES_NO_LABELS,
         page_metadata=ConfigFieldPageMetadata(
             key="graph_block_on_cycle",
-            label="遇到循环依赖时停止排产",
-            hint="默认关闭。report 只提示循环依赖；on 遇到循环依赖时，开启后停止排产，关闭时继续旧 SGS 并在摘要里说明图增强未启用。",
+            label="工序关系互相卡住时停止排产",
+            hint="默认关闭。选择“只看分析报告”时只提示问题；选择“参与排产”时，如果打开这项，发现工序前后关系互相卡住就停止排产；如果关闭这项，系统会跳过工序图分析，继续按普通方式排产，并在摘要里说明。",
         ),
     ),
     ConfigFieldSpec(
@@ -345,12 +335,12 @@ _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
         field_type="int",
         default=500,
         label="关键路径权重",
-        description="graph_analysis_mode=on 且工序图可用时，关键路径上的候选工序会更靠前；填 0 表示不按关键路径加分",
+        description="选择“参与排产”且工序关系可用时，关键链路上的工序会更靠前；填 0 表示不按关键链路加分",
         min_value=0,
         page_metadata=ConfigFieldPageMetadata(
             key="graph_critical_weight",
             label="关键路径权重",
-            hint="on 且工序图可用时生效。数值越大，关键路径上的 ready 候选越容易提前；填 0 表示关闭这项加分。",
+            hint="选择“参与排产”且工序关系可用时生效。数值越大，处在关键链路上的工序越容易提前；填 0 表示不使用这项加分。",
         ),
     ),
     ConfigFieldSpec(
@@ -358,26 +348,26 @@ _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
         field_type="int",
         default=10,
         label="后续影响权重",
-        description="graph_analysis_mode=on 且工序图可用时，影响更多后续工序的候选会更靠前；填 0 表示不按影响范围加分",
+        description="选择“参与排产”且工序关系可用时，会影响更多后续工序的当前工序会更靠前；填 0 表示不按影响范围加分",
         min_value=0,
         page_metadata=ConfigFieldPageMetadata(
             key="graph_impact_weight",
             label="后续影响权重",
-            hint="on 且工序图可用时生效。数值越大，影响后续越多的 ready 候选越容易提前；填 0 表示关闭这项加分。",
+            hint="选择“参与排产”且工序关系可用时生效。数值越大，后面牵着更多工序的当前工序越容易提前；填 0 表示不使用这项加分。",
         ),
     ),
     ConfigFieldSpec(
         key="graph_debug_export",
         field_type="yes_no",
         default="no",
-        label="导出图分析调试文件",
-        description="是否导出工序图分析 JSON 调试文件",
+        label="导出工序图排查文件",
+        description="是否导出工序先后关系排查文件",
         choices=_YES_NO_CHOICES,
         choice_labels=_YES_NO_LABELS,
         page_metadata=ConfigFieldPageMetadata(
             key="graph_debug_export",
-            label="导出图分析调试文件",
-            hint="默认关闭。当前不会写调试文件；后续 debug/export 阶段才会写 logs/schedule_graph/。",
+            label="导出工序图排查文件",
+            hint="默认关闭。一般调度员不用打开；需要排查工序前后关系问题时，再由维护人员开启。",
         ),
     ),
 )

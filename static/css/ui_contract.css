@@ -3124,13 +3124,6 @@ html[data-theme="dark"] .bg-slate-50 {
   background-color: #162032;
 }
 
-.sidebar-footnote {
-  padding: 1rem;
-  font-size: 0.75rem;
-  color: var(--ui-muted);
-  border-top: 1px solid var(--ui-border);
-}
-
 /* table header sticky (v1/v2) */
 .table-sticky th {
   position: sticky;
@@ -3830,6 +3823,72 @@ html.aps-theme-switching *::after {
   line-height: 1.5;
 }
 
+.scheduler-config-section {
+  margin-top: 26px;
+  padding-top: 22px;
+  border-top: 1px solid var(--ui-border);
+}
+
+.scheduler-config-section-heading {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.scheduler-config-section-title {
+  margin: 0;
+}
+
+.scheduler-config-mode-guide {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 14px;
+}
+
+.scheduler-config-mode-guide-item {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--ui-info-border);
+  border-left: 3px solid var(--ui-primary);
+  border-radius: var(--ui-radius);
+  background: var(--ui-info-bg);
+}
+
+.scheduler-config-mode-guide-label {
+  color: var(--ui-info-text);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.scheduler-config-mode-guide-copy {
+  color: var(--ui-info-muted);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.scheduler-config-form-grid--graph {
+  grid-template-columns: repeat(2, minmax(240px, 1fr));
+  gap: 18px 24px;
+}
+
+.scheduler-config-form-grid--graph .scheduler-config-field--wide {
+  grid-column: 1 / -1;
+  max-width: 760px;
+}
+
+.scheduler-config-form-grid--graph .scheduler-config-hint,
+.scheduler-config-degraded-summary .aps-notice-body {
+  max-width: 86ch;
+  line-height: 1.7;
+}
+
+.scheduler-config-switches-heading {
+  margin-top: 26px;
+}
+
 .scheduler-config-switches {
   display: grid;
   gap: 12px;
@@ -3915,6 +3974,15 @@ html[data-theme="dark"] .aps-danger-zone {
 @media (max-width: 760px) {
   .scheduler-config-form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .scheduler-config-mode-guide,
+  .scheduler-config-form-grid--graph {
+    grid-template-columns: 1fr;
+  }
+
+  .scheduler-config-form-grid--graph .scheduler-config-field--wide {
+    max-width: none;
   }
 }
 

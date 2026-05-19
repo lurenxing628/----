@@ -10,12 +10,23 @@ from core.models.objective import (
     objective_choice_labels as _objective_choice_labels,
 )
 
+_LEGACY_OBJECTIVE_METRIC_KEYS = {
+    "min_makespan": "makespan_hours",
+}
+
+_LEGACY_OBJECTIVE_LABELS = {
+    "min_makespan": "最短总工期",
+}
+
 
 def objective_choice_labels() -> Dict[str, str]:
     return _objective_choice_labels()
 
 
 def objective_key_from_objective(value: Any) -> str:
+    key = str(value or "").strip().lower()
+    if key in _LEGACY_OBJECTIVE_METRIC_KEYS:
+        return _LEGACY_OBJECTIVE_METRIC_KEYS[key]
     return comparison_metric_key(value)
 
 
@@ -27,6 +38,8 @@ def objective_label_for(value: Any, *, algo: Any = None) -> str:
     choice_labels = objective_choice_labels()
     if key in choice_labels:
         return choice_labels[key]
+    if key in _LEGACY_OBJECTIVE_LABELS:
+        return _LEGACY_OBJECTIVE_LABELS[key]
 
     if isinstance(algo, dict):
         schema = algo.get("best_score_schema")

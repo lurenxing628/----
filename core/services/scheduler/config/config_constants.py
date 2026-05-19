@@ -97,9 +97,9 @@ CONFIG_PAGE_VISIBLE_CHANGE_FIELDS: Tuple[str, ...] = CONFIG_PAGE_FIELDS + (
 )
 CONFIG_PAGE_HIDDEN_REPAIR_FIELDS: Tuple[str, ...] = ("auto_assign_persist",)
 
-GRAPH_CONFIG_PENDING_NOTICE = "off 会关闭工序图分析；report 会生成只读报告，不改变排产结果；on 会先做图安全检查，可用 DAG 会用 ready 队列参与 SGS 候选，并按关键路径和后续影响权重参与候选排序。"
+GRAPH_CONFIG_PENDING_NOTICE = "默认关闭。只看分析报告：只检查工序先后关系，不改排产结果；参与排产：检查通过后，再帮助系统决定哪些工序先排。"
 GRAPH_CONFIG_PENDING_ACTIVE_NOTICE = (
-    "已保存为 report/on。report 只生成图分析报告；on 会先做图安全检查，可用 DAG 会用 ready 队列参与 SGS 候选，并按关键路径和后续影响权重参与候选排序；不启用多方案择优。"
+    "当前已打开工序图分析。只看分析报告只给出检查结果；参与排产会在检查通过后参与排产顺序判断。本页暂不做多方案自动择优。"
 )
 
 HOLIDAY_DEFAULT_EFFICIENCY_PAGE_WARNING_TEMPLATE = (
