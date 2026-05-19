@@ -1,0 +1,68 @@
+doc_type: feature-checklist
+feature: 2026-05-18-scheduler-graph-plan-role-pages-reports
+created: 2026-05-18
+status: done
+roadmap: networkx-scheduler-graph-introduction
+roadmap_item: scheduler-graph-plan-role-pages-reports
+summary: "PR-7d 页面、接口、导出和报表统一接入 plan_role"
+
+steps:
+  - action: "只读核实 PR-7a/7b/7c 候选查询、候选摘要、角色 selection 和当前页面读取路径"
+    exit_signal: "确认 SchedulePlanQueryService、candidate_comparison、ScheduleCandidateSelection 与当前 Gantt/Week/Resource/Reports/Analysis 入口的真实现状"
+    status: done
+  - action: "建立统一 plan context"
+    exit_signal: "页面、data、export 可拿到 requested_plan_role、effective_plan_role、plan_role_status、message、available_roles、candidate_id、candidate_key、is_comparison"
+    status: done
+  - action: "接入甘特图 plan_role"
+    exit_signal: "甘特页面、/gantt/data、设备/人员切换、上周/下周、日期范围、JS 请求和关键链缓存都按 plan_role 工作"
+    status: done
+  - action: "接入周计划 plan_role"
+    exit_signal: "周计划页面预览和导出读取同一套 effective plan rows，导出文件名或摘要标明非 adopted 对比方案"
+    status: done
+  - action: "接入资源派工 plan_role"
+    exit_signal: "资源派工 page/data/export 保留 plan_role，人员/设备/班组过滤作用于当前方案 rows，JS 请求不丢 plan_role"
+    status: done
+  - action: "接入独立报表和导出 plan_role"
+    exit_signal: "超期、利用率、停机影响页面和导出按同一 effective plan rows 计算，日期默认范围按当前方案读取"
+    status: done
+  - action: "接入排产优化分析页候选对比入口"
+    exit_signal: "analysis 页显示 candidate_comparison 表，adopted / baseline_best / critical_best 跳转甘特、周计划、资源派工时带 version + plan_role"
+    status: done
+  - action: "补 OperationLogs filters 合同"
+    exit_signal: "周计划、资源派工和三类报表导出日志 filters 记录 requested/effective plan_role、status 和候选小字段，不写 rows 或完整候选列表"
+    status: done
+  - action: "补 PR-7d 合同测试并复跑指定回归"
+    exit_signal: "5 份 PR-7d 回归和 plan query 回归覆盖页面、data、export、fallback adopted、非 adopted 提示和日志 filters"
+    status: done
+
+checks:
+  - item: "范围守护：不碰 PR-6 图评分、PR-8 资源匹配、PR-7e 配置和清理策略"
+    source: "design.md#1-目标约束和明确不做"
+    status: done
+  - item: "甘特图 plan_role 合同"
+    source: "tests/regression_scheduler_candidate_gantt_plan_role_contract.py"
+    status: done
+  - item: "周计划 plan_role 合同"
+    source: "tests/regression_scheduler_candidate_week_plan_contract.py"
+    status: done
+  - item: "资源派工 plan_role 合同"
+    source: "tests/regression_scheduler_candidate_resource_dispatch_contract.py"
+    status: done
+  - item: "独立报表 plan_role 合同"
+    source: "tests/regression_scheduler_candidate_reports_contract.py"
+    status: done
+  - item: "排产优化分析页候选对比与跳转合同"
+    source: "tests/regression_scheduler_candidate_analysis_contract.py"
+    status: done
+  - item: "plan query fallback adopted 合同"
+    source: "tests/regression_scheduler_candidate_plan_query_contract.py"
+    status: done
+  - item: "OperationLogs filters 只写小字段"
+    source: "week_plan/resource_dispatch/reports export log filters"
+    status: done
+  - item: "非 adopted 页面和导出明确提示对比方案"
+    source: "gantt/week_plan/resource_dispatch/analysis/reports templates and exports"
+    status: done
+  - item: "CodeStable YAML 校验"
+    source: "python .codestable/tools/validate-yaml.py --dir .codestable/features/2026-05-18-scheduler-graph-plan-role-pages-reports"
+    status: done

@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional
 from flask import current_app, g, jsonify, request, url_for
 
 from core.infrastructure.errors import AppError, BusinessError, ErrorCode, ValidationError, error_response
+from core.services.scheduler.schedule_plan_query_service import ROLE_ADOPTED, VALID_PLAN_ROLES, plan_role_label
 from web.error_boundary import json_error_response
 from web.routes.history_summary_logging import (
     log_history_summary_parse_warning,
@@ -38,6 +39,47 @@ def _get_bool_arg(name: str, default: bool = False) -> bool:
     raise ValidationError(f"{name} 填写不对，这里只能填写是或否。", field=name)
 
 
+def _get_plan_role_arg() -> Optional[str]:
+    raw = request.args.get("plan_role")
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    return text or None
+
+
+def _fallback_plan_context(plan_role: Optional[str]) -> Dict[str, Any]:
+    requested_role = str(plan_role or "").strip() or ROLE_ADOPTED
+    if requested_role not in VALID_PLAN_ROLES:
+        valid_labels = " / ".join(plan_role_label(role) for role in VALID_PLAN_ROLES)
+        raise ValidationError(f"排产方案不正确，请选择：{valid_labels}。", field="plan_role")
+    selected_label = plan_role_label(ROLE_ADOPTED)
+    return {
+        "requested_role": requested_role,
+        "requested_label": plan_role_label(requested_role),
+        "selected_role": ROLE_ADOPTED,
+        "selected_label": selected_label,
+        "message": "" if requested_role == ROLE_ADOPTED else "当前版本没有保存这套方案明细，已显示最终采用方案。",
+        "available_roles": [{"role": ROLE_ADOPTED, "label": selected_label, "is_comparison": False}],
+        "is_fallback": requested_role != ROLE_ADOPTED,
+        "is_comparison": False,
+    }
+
+
+def _resolve_plan_context(services, version: Optional[int], plan_role: Optional[str]) -> Dict[str, Any]:
+    if version is None:
+        return _fallback_plan_context(plan_role)
+    plan_query_service = getattr(services, "schedule_plan_query_service", None)
+    if plan_query_service is not None:
+        try:
+            return plan_query_service.resolve_plan(int(version), plan_role).to_dict()
+        except ValueError as exc:
+            raise ValidationError(str(exc), field="plan_role") from exc
+    gantt_service = getattr(services, "gantt_service", None)
+    if gantt_service is not None and hasattr(gantt_service, "resolve_plan_context"):
+        return gantt_service.resolve_plan_context(int(version), plan_role)
+    return _fallback_plan_context(plan_role)
+
+
 def _selected_version_result_status_label(services, version: Optional[int]) -> str:
     if version is None:
         return ""
@@ -67,6 +109,7 @@ def gantt_page():
     week_start = (request.args.get("week_start") or "").strip() or None
     start_date = (request.args.get("start_date") or "").strip() or None
     end_date = (request.args.get("end_date") or "").strip() or None
+    plan_role = _get_plan_role_arg()
     services = g.services
     offset = _get_int_arg("offset", 0)
     effective_offset = 0 if (start_date or end_date) else offset
@@ -83,8 +126,12 @@ def gantt_page():
             },
         )
     ver = version_resolution.selected_version
+    plan_resolution = _resolve_plan_context(services, ver, plan_role)
+    plan_query_service = getattr(services, "schedule_plan_query_service", None)
     wr, version_span, range_source = svc.resolve_gantt_range_for_version(
         version=ver,
+        plan_role=plan_resolution.get("selected_role"),
+        plan_query_service=plan_query_service,
         week_start=week_start,
         offset_weeks=effective_offset,
         start_date=start_date,
@@ -108,6 +155,10 @@ def gantt_page():
         versions=versions,
         selected_result_status_label=selected_result_status_label,
         has_history=bool(versions),
+        plan_role=plan_resolution.get("requested_role") or ROLE_ADOPTED,
+        effective_plan_role=plan_resolution.get("selected_role") or ROLE_ADOPTED,
+        plan_resolution=plan_resolution,
+        plan_role_options=plan_resolution.get("available_roles") or [],
         version_span=version_span,
         range_source=range_source,
         data_url=url_for("scheduler.gantt_data"),
@@ -123,21 +174,28 @@ def gantt_data():
     week_start = (request.args.get("week_start") or "").strip() or None
     start_date = (request.args.get("start_date") or "").strip() or None
     end_date = (request.args.get("end_date") or "").strip() or None
+    plan_role = _get_plan_role_arg()
     svc = g.services.gantt_service
     try:
         offset = _get_int_arg("offset", 0)
         # 当显式给出区间时，以 start/end 为准，避免客户端重复叠加 offset 造成“跳两周”。
         effective_offset = 0 if (start_date or end_date) else offset
         include_history = _get_bool_arg("include_history", False)
-        data: Dict[str, Any] = svc.get_gantt_tasks(
-            view=view,
-            week_start=week_start,
-            offset_weeks=effective_offset,
-            start_date=start_date,
-            end_date=end_date,
-            version=request.args.get("version"),
-            include_history=include_history,
-        )
+        data_kwargs: Dict[str, Any] = {
+            "view": view,
+            "week_start": week_start,
+            "offset_weeks": effective_offset,
+            "start_date": start_date,
+            "end_date": end_date,
+            "version": request.args.get("version"),
+            "include_history": include_history,
+        }
+        if plan_role is not None:
+            data_kwargs["plan_role"] = plan_role
+        plan_query_service = getattr(g.services, "schedule_plan_query_service", None)
+        if plan_query_service is not None:
+            data_kwargs["plan_query_service"] = plan_query_service
+        data: Dict[str, Any] = svc.get_gantt_tasks(**data_kwargs)
         return jsonify({"success": True, "data": data})
     except AppError as exc:
         return json_error_response(exc)

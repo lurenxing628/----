@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import Any, Dict, Optional
 
 from flask import current_app, flash, g, redirect, request, send_file, url_for
 
 from core.infrastructure.errors import AppError, BusinessError, ErrorCode, ValidationError
 from core.services.common.excel_audit import log_excel_export
 from core.services.common.excel_templates import build_xlsx_bytes
+from core.services.scheduler.schedule_plan_query_service import ROLE_ADOPTED, plan_role_label
 from core.services.scheduler.summary.schedule_summary_types import ScheduleResultStatus
 from core.shared.strict_parse import parse_required_int
 from web.error_boundary import user_visible_app_error_message
@@ -39,6 +40,57 @@ def _get_int_arg(name: str, default: int = 0) -> int:
         return int(str(raw).strip())
     except (TypeError, ValueError) as e:
         raise ValidationError(f"{name} 填写不对，请填写整数。", field=name) from e
+
+
+def _get_plan_role_arg() -> Optional[str]:
+    raw = request.args.get("plan_role")
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    return text or None
+
+
+def _fallback_plan_context(plan_role: Optional[str]) -> Dict[str, Any]:
+    requested_role = str(plan_role or "").strip() or ROLE_ADOPTED
+    selected_label = plan_role_label(ROLE_ADOPTED)
+    return {
+        "requested_role": requested_role,
+        "requested_label": plan_role_label(requested_role),
+        "selected_role": ROLE_ADOPTED,
+        "selected_label": selected_label,
+        "message": "" if requested_role == ROLE_ADOPTED else "当前版本没有保存这套方案明细，已显示最终采用方案。",
+        "available_roles": [{"role": ROLE_ADOPTED, "label": selected_label, "is_comparison": False}],
+        "is_fallback": requested_role != ROLE_ADOPTED,
+        "is_comparison": False,
+    }
+
+
+def _plan_context_from_data(data: Dict[str, Any], plan_role: Optional[str]) -> Dict[str, Any]:
+    plan_resolution = data.get("plan_role_resolution") if isinstance(data, dict) else None
+    if isinstance(plan_resolution, dict):
+        return plan_resolution
+    return _fallback_plan_context(plan_role)
+
+
+def _week_plan_data_kwargs(
+    *,
+    week_start: Optional[str],
+    offset_weeks: int,
+    version: Any,
+    plan_role: Optional[str],
+    services: Any,
+) -> Dict[str, Any]:
+    data_kwargs = {
+        "week_start": week_start,
+        "offset_weeks": offset_weeks,
+        "version": version,
+    }
+    if plan_role is not None:
+        data_kwargs["plan_role"] = plan_role
+        plan_query_service = getattr(services, "schedule_plan_query_service", None)
+        if plan_query_service is not None:
+            data_kwargs["plan_query_service"] = plan_query_service
+    return data_kwargs
 
 
 def _load_selected_week_plan_summary(services, version: int):
@@ -137,9 +189,94 @@ def _flash_simulate_summary(summary, summary_display, *, completion_status: str)
     )
 
 
+def _build_week_plan_export_workbook(rows):
+    headers = ["日期", "批次号", "图号", "工序", "设备", "人员", "时段"]
+    return build_xlsx_bytes(
+        headers,
+        [[r.get(h, "") for h in headers] for r in rows],
+        format_spec={
+            "date_cols": [0],
+            "text_cols": [1, 2, 4, 5, 6],
+            "int_cols": [3],
+            "column_widths": {0: 12, 1: 14, 2: 14, 3: 10, 4: 14, 5: 14, 6: 18},
+        },
+        sheet_title="周计划",
+        sanitize_formula=True,
+    )
+
+
+def _ensure_week_plan_exportable(data: Dict[str, Any]) -> None:
+    if data.get("status") == "no_history":
+        raise BusinessError(ErrorCode.NOT_FOUND, "暂无排产历史，无法导出周计划。", details={"field": "version", "status": "no_history"})
+
+
+def _log_week_plan_export(
+    *,
+    data: Dict[str, Any],
+    plan_resolution: Dict[str, Any],
+    row_count: int,
+    time_cost_ms: int,
+) -> None:
+    ver = int(data.get("version") or 0)
+    log_excel_export(
+        op_logger=getattr(g, "op_logger", None),
+        module="scheduler",
+        target_type="week_plan",
+        template_or_export_type="周计划表.xlsx",
+        filters={
+            "version": ver,
+            "requested_plan_role": plan_resolution.get("requested_role") or ROLE_ADOPTED,
+            "effective_plan_role": plan_resolution.get("selected_role") or ROLE_ADOPTED,
+            "plan_role_status": plan_resolution.get("status"),
+            "candidate_id": plan_resolution.get("candidate_id"),
+            "candidate_key": plan_resolution.get("candidate_key"),
+        },
+        row_count=row_count,
+        time_range={"start": data.get("week_start"), "end": data.get("week_end")},
+        time_cost_ms=time_cost_ms,
+        target_id=str(ver),
+    )
+
+
+def _safe_filename_part(value: Any) -> str:
+    text = str(value or "").strip()
+    for old, new in (("/", "-"), ("\\", "-"), (":", "-"), ("*", ""), ("?", ""), ('"', ""), ("<", ""), (">", ""), ("|", "-")):
+        text = text.replace(old, new)
+    return text.strip()
+
+
+def _send_week_plan_export_file(output, *, version: int, week_start: Any, week_end: Any, plan_resolution: Dict[str, Any]):
+    selected_role = str(plan_resolution.get("selected_role") or ROLE_ADOPTED)
+    requested_role = str(plan_resolution.get("requested_role") or ROLE_ADOPTED)
+    include_plan_label = selected_role != ROLE_ADOPTED or requested_role != selected_role
+    plan_label = _safe_filename_part(plan_resolution.get("selected_label")) if include_plan_label else ""
+    plan_suffix = f"_{plan_label}" if plan_label else ""
+    filename = f"周计划表_v{version}_{week_start}_to_{week_end}{plan_suffix}.xlsx"
+    return send_file(
+        output,
+        as_attachment=True,
+        download_name=filename,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+def _week_plan_page_redirect(plan_role: Optional[str]):
+    if plan_role is not None:
+        return redirect(url_for("scheduler.week_plan_page", plan_role=plan_role))
+    return redirect(url_for("scheduler.week_plan_page"))
+
+
+def _handle_week_plan_export_app_error(error: AppError, plan_role: Optional[str]):
+    if error.code == ErrorCode.NOT_FOUND:
+        return user_visible_app_error_message(error), 404
+    flash(user_visible_app_error_message(error), "error")
+    return _week_plan_page_redirect(plan_role)
+
+
 @bp.get("/week-plan")
 def week_plan_page():
     week_start = (request.args.get("week_start") or "").strip() or None
+    plan_role = _get_plan_role_arg()
     services = g.services
     offset = _get_int_arg("offset", 0)
     svc = services.gantt_service
@@ -148,10 +285,15 @@ def week_plan_page():
     versions = decorate_history_version_options(services.schedule_history_query_service.list_versions(limit=30))
     log_history_version_option_parse_warnings(versions, log_label="周计划页")
     data = svc.get_week_plan_rows(
-        week_start=wr.week_start_date.isoformat(),
-        offset_weeks=0,
-        version=request.args.get("version"),
+        **_week_plan_data_kwargs(
+            week_start=wr.week_start_date.isoformat(),
+            offset_weeks=0,
+            version=request.args.get("version"),
+            plan_role=plan_role,
+            services=services,
+        )
     )
+    plan_resolution = _plan_context_from_data(data, plan_role)
     ver = data.get("version")
     selected_history, selected_summary, selected_summary_display = (
         _load_selected_week_plan_summary(services, int(ver))
@@ -181,6 +323,10 @@ def week_plan_page():
         selected_history_resolution=selected_history_resolution,
         selected_summary=selected_summary,
         selected_summary_display=selected_summary_display,
+        plan_role=plan_resolution.get("requested_role") or ROLE_ADOPTED,
+        effective_plan_role=plan_resolution.get("selected_role") or ROLE_ADOPTED,
+        plan_resolution=plan_resolution,
+        plan_role_options=plan_resolution.get("available_roles") or [],
         preview_rows=preview_state["preview_rows"],
         total_rows=len(preview_state["rows"]),
         export_url=(
@@ -188,6 +334,7 @@ def week_plan_page():
                 "scheduler.week_plan_export",
                 week_start=wr.week_start_date.isoformat(),
                 version=ver,
+                plan_role=plan_resolution.get("requested_role") or ROLE_ADOPTED,
             )
             if ver is not None
             else None
@@ -199,65 +346,44 @@ def week_plan_page():
 def week_plan_export():
     start = time.time()
     week_start = (request.args.get("week_start") or "").strip() or None
+    plan_role = _get_plan_role_arg()
     offset = _get_int_arg("offset", 0)
 
     svc = g.services.gantt_service
     try:
         data = svc.get_week_plan_rows(
-            week_start=week_start,
-            offset_weeks=offset,
-            version=request.args.get("version"),
+            **_week_plan_data_kwargs(
+                week_start=week_start,
+                offset_weeks=offset,
+                version=request.args.get("version"),
+                plan_role=plan_role,
+                services=g.services,
+            )
         )
-        if data.get("status") == "no_history":
-            raise BusinessError(ErrorCode.NOT_FOUND, "暂无排产历史，无法导出周计划。", details={"field": "version", "status": "no_history"})
+        plan_resolution = _plan_context_from_data(data, plan_role)
+        _ensure_week_plan_exportable(data)
         rows = data.get("rows") or []
         ver = int(data.get("version") or 0)
         ws = data.get("week_start")
         we = data.get("week_end")
 
-        headers = ["日期", "批次号", "图号", "工序", "设备", "人员", "时段"]
-        output = build_xlsx_bytes(
-            headers,
-            [[r.get(h, "") for h in headers] for r in rows],
-            format_spec={
-                "date_cols": [0],
-                "text_cols": [1, 2, 4, 5, 6],
-                "int_cols": [3],
-                "column_widths": {0: 12, 1: 14, 2: 14, 3: 10, 4: 14, 5: 14, 6: 18},
-            },
-            sheet_title="周计划",
-            sanitize_formula=True,
-        )
+        output = _build_week_plan_export_workbook(rows)
 
         time_cost_ms = int((time.time() - start) * 1000)
-        log_excel_export(
-            op_logger=getattr(g, "op_logger", None),
-            module="scheduler",
-            target_type="week_plan",
-            template_or_export_type="周计划表.xlsx",
-            filters={"version": ver},
+        _log_week_plan_export(
+            data=data,
+            plan_resolution=plan_resolution,
             row_count=len(rows),
-            time_range={"start": ws, "end": we},
             time_cost_ms=time_cost_ms,
-            target_id=str(ver),
         )
 
-        filename = f"周计划表_v{ver}_{ws}_to_{we}.xlsx"
-        return send_file(
-            output,
-            as_attachment=True,
-            download_name=filename,
-            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
+        return _send_week_plan_export_file(output, version=ver, week_start=ws, week_end=we, plan_resolution=plan_resolution)
     except AppError as e:
-        if e.code == ErrorCode.NOT_FOUND:
-            return user_visible_app_error_message(e), 404
-        flash(user_visible_app_error_message(e), "error")
-        return redirect(url_for("scheduler.week_plan_page"))
+        return _handle_week_plan_export_app_error(e, plan_role)
     except Exception:
         current_app.logger.exception("导出周计划失败")
         flash("导出周计划失败，请稍后重试。", "error")
-        return redirect(url_for("scheduler.week_plan_page"))
+        return _week_plan_page_redirect(plan_role)
 
 
 @bp.post("/simulate")

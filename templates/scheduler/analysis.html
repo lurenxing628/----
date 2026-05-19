@@ -309,6 +309,69 @@
       {% endif %}
     </div>
 
+    {% if candidate_comparison_display and candidate_comparison_display.rows %}
+      <div class="card">
+        <h3 class="section-title">候选方案对比</h3>
+        <div class="muted mt-1">
+          这里对比同一次排产里保留下来的代表方案；正式写入哪套方案会在“方案标签”里标出来，版本汇总仍是最终结果。
+        </div>
+        <div class="aps-table-scroll mt-2">
+          <table id="analysisCandidateComparisonTable" class="table-sticky table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v1_analysisCandidateComparisonTable">
+            <thead>
+              <tr>
+                <th class="w-150" data-col-key="role" data-default-w="150" data-min-w="120">方案标签</th>
+                <th class="w-220" data-col-key="candidate" data-default-w="220" data-min-w="160">方案</th>
+                <th class="w-110" data-col-key="status" data-default-w="110" data-min-w="90">状态</th>
+                <th class="w-120" data-col-key="failed_ops" data-default-w="120" data-min-w="100">失败工序数</th>
+                <th class="w-120" data-col-key="overdue" data-default-w="120" data-min-w="100">超期批次数</th>
+                <th class="w-140" data-col-key="tardiness" data-default-w="140" data-min-w="110">总拖期（小时）</th>
+                <th class="w-140" data-col-key="makespan" data-default-w="140" data-min-w="110">总工期（小时）</th>
+                <th class="w-120" data-col-key="changeover" data-default-w="120" data-min-w="100">换型次数</th>
+                <th class="w-170" data-col-key="score" data-default-w="170" data-min-w="130">评分</th>
+                <th class="w-320" data-col-key="links" data-default-w="320" data-min-w="260">查看排程</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in candidate_comparison_display.rows %}
+                <tr>
+                  <td>
+                    <strong>{{ row.role_label }}</strong>
+                    {% if row.is_comparison %}
+                      <div class="muted text-xs">{{ row.comparison_note }}</div>
+                    {% endif %}
+                  </td>
+                  <td>
+                    {{ row.candidate_label or row.candidate_key or '-' }}
+                    {% if row.candidate_key %}
+                      <div class="muted text-xs">{{ row.candidate_key }}</div>
+                    {% endif %}
+                  </td>
+                  <td>{{ row.status_label or '-' }}</td>
+                  <td>{{ row.failed_ops if row.failed_ops is not none else '-' }}</td>
+                  <td>{{ row.overdue_count if row.overdue_count is not none else '-' }}</td>
+                  <td>{{ row.total_tardiness_hours if row.total_tardiness_hours is not none else '-' }}</td>
+                  <td>{{ row.makespan_hours if row.makespan_hours is not none else '-' }}</td>
+                  <td>{{ row.changeover_count if row.changeover_count is not none else '-' }}</td>
+                  <td>{{ row.score_label or '-' }}</td>
+                  <td>
+                    {% if row.links and row.links|length > 0 %}
+                      <div class="aps-form-actions">
+                        {% for link in row.links %}
+                          <a class="table-action-link" href="{{ link.url }}">{{ link.label }}</a>
+                        {% endfor %}
+                      </div>
+                    {% else %}
+                      <span class="muted">暂无可跳转明细</span>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    {% endif %}
+
     {% if selected_summary and selected_summary.get('summary_truncated') %}
       <div class="flash-card flash-warning">
         本次结果数据量较大，页面只显示重点内容；尝试方案、优化曲线、超期明细可能不完整。

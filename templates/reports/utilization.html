@@ -22,6 +22,16 @@
             {% endfor %}
           </select>
         </div>
+        <div class="form-field aps-report-plan-field">
+          <label>排产方案</label>
+          <select name="plan_role">
+            {% for it in plan_options %}
+              <option value="{{ it.role }}" {% if selected_plan_role == it.role %}selected{% endif %}>
+                {{ it.label }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
         <div class="form-field aps-report-start-date">
           <label>开始日期</label>
           <input type="date" name="start_date" value="{{ start_date }}">
@@ -33,7 +43,7 @@
         <div class="aps-form-actions aps-report-actions">
           {{ ui.button('查询', 'primary', 'md', type_attr='submit') }}
           {% if machine_rows or operator_rows %}
-            {{ ui.link_button('导出 Excel', url_for('reports.utilization_export', version=version, start_date=start_date, end_date=end_date), 'secondary', 'md') }}
+            {{ ui.link_button('导出 Excel', url_for('reports.utilization_export', version=version, plan_role=requested_plan_role, start_date=start_date, end_date=end_date), 'secondary', 'md') }}
           {% else %}
             {{ ui.button('导出 Excel', 'secondary', 'md', type_attr='button', disabled=True, class='aps-disabled-button') }}
           {% endif %}
@@ -48,7 +58,11 @@
     {% if has_history %}
       <div class="aps-result-summary-grid mt-3">
         {% set date_source_label = '已按所选版本的排程范围自动带入日期' if date_source == 'version_span' else ('未识别到该版本的排程范围，已自动显示最近 7 天' if date_source == 'default_7d' else '已按你填写的日期范围查询') %}
+        {{ ui.summary_item('排产方案', plan_resolution.selected_label if plan_resolution else '最终采用') }}
         {{ ui.summary_item('单资源可用工时', capacity_hours ~ ' 小时') }}
+      </div>
+      <div class="aps-filter-note aps-report-plan-source">
+        当前方案：{{ plan_resolution.selected_label }}{% if plan_resolution.is_fallback and plan_resolution.message %}。{{ plan_resolution.message }}{% endif %}
       </div>
       <div class="aps-filter-note aps-report-date-source">日期来源：{{ date_source_label }}。</div>
     {% endif %}

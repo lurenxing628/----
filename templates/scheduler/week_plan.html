@@ -11,6 +11,7 @@
       'manual': '手动排产'
     } %}
   {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'simulated': '模拟排产', 'ok': '成功', 'fail': '失败', 'ok2': '成功'} %}
+  {% set current_plan_label = plan_resolution.selected_label if plan_resolution else '最终采用' %}
 
   {% set week_plan_actions %}
     {{ ui.link_button('去执行排产', url_for('scheduler.batches_page'), 'primary', 'md') }}
@@ -29,7 +30,8 @@
     {{ ui.aps_card_header('查询与导出', '选择周范围和版本后查看预览，需要时导出当前周计划。') }}
     {{ ui.aps_context_bar([
       {'label': '周范围', 'value': week_start ~ ' ～ ' ~ week_end},
-      {'label': '版本', 'value': (('v' ~ version) if version is not none else '暂无版本')}
+      {'label': '版本', 'value': (('v' ~ version) if version is not none else '暂无版本')},
+      {'label': '方案', 'value': current_plan_label}
     ]) }}
     <form method="get" action="{{ url_for('scheduler.week_plan_page') }}" class="aps-query-form-grid aps-week-plan-query-grid">
       <div class="form-field">
@@ -50,6 +52,16 @@
           <input name="version" value="{{ version or '' }}" class="w-160">
         {% endif %}
       </div>
+      <div class="form-field">
+        <label>方案</label>
+        <select name="plan_role" class="w-160">
+          {% for option in plan_role_options or [] %}
+            <option value="{{ option.role }}" {% if option.role == effective_plan_role %}selected{% endif %}>
+              {{ option.label }}{% if option.candidate_label %} · {{ option.candidate_label }}{% endif %}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
       <div class="aps-query-form-actions">
         {{ ui.button('查询', 'primary', 'md', type_attr='submit') }}
       </div>
@@ -66,6 +78,16 @@
   {% if selected_history_resolution and selected_history_resolution.message %}
     <div class="flash-card flash-warning mt-2">
       {{ selected_history_resolution.message }}
+    </div>
+  {% endif %}
+  {% if plan_resolution and plan_resolution.message %}
+    <div class="flash-card flash-warning mt-2">
+      {{ plan_resolution.message }}
+    </div>
+  {% endif %}
+  {% if plan_resolution and plan_resolution.is_comparison %}
+    <div class="flash-card flash-warning mt-2">
+      当前正在查看“{{ plan_resolution.selected_label }}”对比方案，这套方案只用于对比，不代表最终采用的排产结果。
     </div>
   {% endif %}
 

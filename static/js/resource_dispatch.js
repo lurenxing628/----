@@ -418,8 +418,15 @@
     if (trim(filters.start_date)) params.set("start_date", trim(filters.start_date));
     if (trim(filters.end_date)) params.set("end_date", trim(filters.end_date));
     if (trim(filters.version)) params.set("version", trim(filters.version));
+    if (trim(filters.plan_role)) params.set("plan_role", trim(filters.plan_role));
     const textQs = params.toString();
     return textQs ? ("?" + textQs) : "";
+  }
+
+  function dataRequestUrl() {
+    const url = state.cfg.dataUrl || "";
+    if (!url) return "";
+    return url.indexOf("?") >= 0 ? url : url + currentQueryString();
   }
 
   async function loadData() {
@@ -431,7 +438,7 @@
     setOverdueWarning("");
     setDegradationSummary(null);
     try {
-      const resp = await fetch(state.cfg.dataUrl + currentQueryString(), { headers: { Accept: "application/json" } });
+      const resp = await fetch(dataRequestUrl(), { headers: { Accept: "application/json" } });
       const payload = await resp.json();
       if (!resp.ok || !payload || payload.success !== true) {
         const errorMessage = payload && payload.error && payload.error.message ? payload.error.message : "资源排班数据加载失败，请稍后重试。";

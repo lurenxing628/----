@@ -48,14 +48,15 @@
         {% set selected_version_row.item = item %}
       {% endif %}
     {% endfor %}
-    {{ ui.aps_card_header('查询条件', '选择视角、资源、区间和版本。') }}
+    {{ ui.aps_card_header('查询条件', '选择视角、资源、区间、版本和方案。') }}
     {% if has_history %}
       {{ ui.aps_context_bar([
         {'label': '当前视角', 'value': filters.scope_type_label},
         {'label': '查询对象', 'value': filters.scope_label or '待选择'},
         {'label': '班组轴', 'value': filters.team_axis_label if filters.scope_type == 'team' else None},
         {'label': '区间', 'value': filters.start_date ~ ' ～ ' ~ filters.end_date},
-        {'label': '版本', 'value': 'v' ~ filters.version}
+        {'label': '版本', 'value': 'v' ~ filters.version},
+        {'label': '方案', 'value': filters.effective_plan_role_label or filters.plan_role_label}
       ]) }}
     {% endif %}
     <form method="get" action="{{ url_for('scheduler.resource_dispatch_page') }}" class="aps-query-form-grid aps-resource-query-grid">
@@ -133,17 +134,31 @@
           <input name="version" value="{{ filters.version or '' }}" class="w-160">
         {% endif %}
       </div>
+      <div class="form-field">
+        <label>方案</label>
+        <select name="plan_role" class="w-180">
+          {% for option in plan_role_options or [] %}
+            <option value="{{ option.role }}" {% if option.role == filters.plan_role %}selected{% endif %}>
+              {{ option.label }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
       <div class="aps-query-form-actions aps-resource-query-actions">
         {{ ui.button('查询', 'primary', 'md', type_attr='submit') }}
         {{ ui.link_button('重置', url_for('scheduler.resource_dispatch_page'), 'secondary', 'md') }}
       </div>
     </form>
+    {% if plan_role_notice %}
+      <div class="flash-card flash-warning mt-2" role="status">{{ plan_role_notice }}</div>
+    {% endif %}
     {% if selected_version_row.item %}
       <div class="aps-summary-grid aps-version-summary">
         {{ ui.summary_item('版本', 'v' ~ selected_version_row.item.version) }}
         {{ ui.summary_item('时间', selected_version_row.item.schedule_time) }}
         {{ ui.summary_item('排产方式', selected_version_row.item.strategy_label or strategy_zh.get(selected_version_row.item.strategy, '未知排产方式')) }}
         {{ ui.summary_item('结果', selected_version_row.item.result_status_label or status_zh.get(selected_version_row.item.result_status, '结果状态未知')) }}
+        {{ ui.summary_item('查看方案', filters.effective_plan_role_label or filters.plan_role_label) }}
       </div>
     {% endif %}
     {% if not has_history %}

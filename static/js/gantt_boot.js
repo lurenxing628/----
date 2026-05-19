@@ -203,6 +203,7 @@
         endDate: ds.endDate || "",
         offset: ds.offset || 0,
         version: ds.version || "",
+        planRole: ds.planRole || "",
         hasHistory: ds.hasHistory || "",
         versionSpanStart: ds.versionSpanStart || "",
         versionSpanEnd: ds.versionSpanEnd || "",
@@ -269,6 +270,7 @@
       if (typeof cfg.offset !== "undefined") url.searchParams.set("offset", String(cfg.offset));
     }
     if (cfg.version) url.searchParams.set("version", String(cfg.version));
+    if (cfg.planRole) url.searchParams.set("plan_role", String(cfg.planRole));
     const fetchTimeoutMs = parsePositiveInt(cfg.fetchTimeoutMs, 12000);
 
     const reqId = (_perfState.activeRequestId || 0) + 1;

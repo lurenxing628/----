@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
+from .scheduler_analysis_candidates import build_candidate_comparison_display
 from .scheduler_analysis_labels import (
     objective_choice_labels,
     objective_key_from_objective,
@@ -185,6 +186,7 @@ def build_analysis_context(
     selected_ver: Optional[int],
     raw_hist: List[Any],
     selected_item: Any,
+    plan_role_options: Optional[List[Any]] = None,
 ) -> Dict[str, Any]:
     trend_all, trend_rows = build_trend_rows(raw_hist, extract_metrics_from_summary=extract_metrics_from_summary)
     trend_charts = build_trend_charts(trend_rows)
@@ -224,6 +226,11 @@ def build_analysis_context(
     selected_algo = selected_algo if isinstance(selected_algo, dict) else {}
     best_score_schema_display = _best_score_schema_display(selected_summary)
     compat_fallback = _compat_fallback_state(selected_summary)
+    candidate_comparison_display = build_candidate_comparison_display(
+        selected_summary,
+        selected_ver=selected_ver,
+        plan_role_options=plan_role_options,
+    )
     algo_config_snapshot = selected_algo.get("config_snapshot") if isinstance(selected_algo, dict) else None
     algo_config_snapshot_objective_label = "-"
     if isinstance(algo_config_snapshot, dict):
@@ -248,6 +255,7 @@ def build_analysis_context(
         "algo_objective_label": algo_objective_label,
         "best_score_schema_display": best_score_schema_display,
         "compat_fallback": compat_fallback,
+        "candidate_comparison_display": candidate_comparison_display,
         "algo_config_snapshot_objective_label": algo_config_snapshot_objective_label,
         "objective_key_label": objective_key_label,
         "objective_choice_labels": objective_choice_labels(),
@@ -266,6 +274,7 @@ __all__ = [
     "_comparison_metric_from_algo",
     "_objective_key_from_algo_objective",
     "build_analysis_context",
+    "build_candidate_comparison_display",
     "extract_metrics_from_summary",
     "objective_label_for",
     "safe_float",

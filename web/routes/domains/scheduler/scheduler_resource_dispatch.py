@@ -41,6 +41,7 @@ _EXPORT_ARG_KEYS = (
     "start_date",
     "end_date",
     "version",
+    "plan_role",
 )
 _FIELD_QUERY_KEY_DROPS = {
     "scope_type": ("scope_type", *_SCOPE_ARG_KEYS),
@@ -55,6 +56,7 @@ _FIELD_QUERY_KEY_DROPS = {
     "end_date": _DATE_ARG_KEYS,
     "date_range": _DATE_ARG_KEYS,
     "version": ("version",),
+    "plan_role": ("plan_role",),
 }
 
 
@@ -83,6 +85,7 @@ def _request_kwargs() -> Dict[str, Any]:
         "start_date": _arg_text("start_date"),
         "end_date": _arg_text("end_date"),
         "version": _arg_text("version"),
+        "plan_role": _arg_text("plan_role"),
     }
 
 
@@ -108,13 +111,22 @@ def _page_url(query: Optional[Dict[str, str]] = None) -> str:
     return _url_with_query("scheduler.resource_dispatch_page", query)
 
 
-def _export_url(filters: Dict[str, Any]) -> str:
+def _query_from_filters(filters: Dict[str, Any]) -> Dict[str, str]:
     query: Dict[str, str] = {}
     for key in _EXPORT_ARG_KEYS:
         value = filters.get(key)
         text = str(value or "").strip()
         if text:
             query[key] = text
+    return query
+
+
+def _data_url(filters: Dict[str, Any]) -> str:
+    return _url_with_query("scheduler.resource_dispatch_data", _query_from_filters(filters))
+
+
+def _export_url(filters: Dict[str, Any]) -> str:
+    query = _query_from_filters(filters)
     return _url_with_query("scheduler.resource_dispatch_export", query)
 
 
@@ -218,7 +230,7 @@ def resource_dispatch_page():
     return render_template(
         "scheduler/resource_dispatch.html",
         title="资源排班",
-        data_url=url_for("scheduler.resource_dispatch_data"),
+        data_url=_data_url(filters),
         export_url=export_url,
         **context,
     )
@@ -267,6 +279,11 @@ def resource_dispatch_export():
                 "team_id": filters.get("team_id"),
                 "team_axis": filters.get("team_axis"),
                 "version": filters.get("version"),
+                "requested_plan_role": filters.get("requested_plan_role"),
+                "effective_plan_role": filters.get("effective_plan_role"),
+                "plan_role_status": filters.get("plan_role_status"),
+                "candidate_id": filters.get("candidate_id"),
+                "candidate_key": filters.get("candidate_key"),
                 "period_preset": filters.get("period_preset"),
             },
             row_count=row_count,

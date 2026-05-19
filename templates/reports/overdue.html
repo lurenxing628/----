@@ -22,10 +22,20 @@
             {% endfor %}
           </select>
         </div>
+        <div class="form-field aps-report-plan-field">
+          <label>排产方案</label>
+          <select name="plan_role">
+            {% for it in plan_options %}
+              <option value="{{ it.role }}" {% if selected_plan_role == it.role %}selected{% endif %}>
+                {{ it.label }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
         <div class="aps-form-actions aps-report-actions">
           {{ ui.button('查询', 'primary', 'md', type_attr='submit') }}
           {% if rows %}
-            {{ ui.link_button('导出 Excel', url_for('reports.overdue_export', version=version), 'secondary', 'md') }}
+            {{ ui.link_button('导出 Excel', url_for('reports.overdue_export', version=version, plan_role=requested_plan_role), 'secondary', 'md') }}
           {% else %}
             {{ ui.button('导出 Excel', 'secondary', 'md', type_attr='button', disabled=True, class='aps-disabled-button') }}
           {% endif %}
@@ -37,11 +47,17 @@
         {% endif %}
       </div>
     </form>
+    {% if has_history and plan_resolution %}
+      <div class="aps-filter-note aps-report-plan-source">
+        当前方案：{{ plan_resolution.selected_label }}{% if plan_resolution.is_fallback and plan_resolution.message %}。{{ plan_resolution.message }}{% endif %}
+      </div>
+    {% endif %}
   </div>
 
   <div class="card">
     <h3 class="section-title">结果明细</h3>
     <div class="aps-result-summary-grid">
+      {{ ui.summary_item('排产方案', plan_resolution.selected_label if plan_resolution else '最终采用') }}
       {{ ui.summary_item('总数', count ~ ' 个') }}
       {{ ui.summary_item('已排程', scheduled_count ~ ' 个') }}
       {{ ui.summary_item('未排程', unscheduled_count ~ ' 个') }}

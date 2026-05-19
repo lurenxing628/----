@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-from flask import g, request
+from flask import g, request, url_for
 
 from core.services.scheduler.version_resolution import resolve_version_or_latest
 from web.routes.history_summary_logging import (
@@ -11,7 +11,7 @@ from web.routes.history_summary_logging import (
     log_history_version_option_parse_warnings,
 )
 from web.ui_mode import render_ui_template as render_template
-from web.viewmodels.scheduler_analysis_vm import build_analysis_context, safe_int
+from web.viewmodels.scheduler_analysis_vm import build_analysis_context, build_candidate_comparison_display, safe_int
 from web.viewmodels.scheduler_history_summary import decorate_history_version_options, parse_history_summary_state
 from web.viewmodels.scheduler_summary_display import build_summary_display_state
 
@@ -171,6 +171,63 @@ def _trend_summary_state(raw_hist: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
+def _plan_role_option_to_dict(item: Any) -> Optional[Dict[str, Any]]:
+    if hasattr(item, "to_dict"):
+        data = item.to_dict()
+        return dict(data) if isinstance(data, dict) else None
+    if isinstance(item, dict):
+        return dict(item)
+    return None
+
+
+def _load_selected_plan_role_options(services: Any, selected_ver: Optional[int]) -> List[Dict[str, Any]]:
+    if selected_ver is None:
+        return []
+    plan_query_service = getattr(services, "schedule_plan_query_service", None)
+    if plan_query_service is None:
+        return []
+    options: List[Dict[str, Any]] = []
+    for item in plan_query_service.list_plan_roles(int(selected_ver)):
+        option = _plan_role_option_to_dict(item)
+        if option:
+            options.append(option)
+    return options
+
+
+def _plan_role_links(version: int, role: str) -> List[Dict[str, str]]:
+    return [
+        {
+            "label": "设备甘特图",
+            "url": url_for("scheduler.gantt_page", view="machine", version=version, plan_role=role),
+        },
+        {
+            "label": "人员甘特图",
+            "url": url_for("scheduler.gantt_page", view="operator", version=version, plan_role=role),
+        },
+        {
+            "label": "周计划",
+            "url": url_for("scheduler.week_plan_page", version=version, plan_role=role),
+        },
+        {
+            "label": "资源排班",
+            "url": url_for("scheduler.resource_dispatch_page", version=version, plan_role=role),
+        },
+    ]
+
+
+def _attach_candidate_plan_links(ctx: Dict[str, Any], selected_ver: Optional[int]) -> None:
+    display = ctx.get("candidate_comparison_display")
+    if selected_ver is None or not isinstance(display, dict):
+        return
+    for row in list(display.get("rows") or []):
+        if not isinstance(row, dict) or not row.get("plan_role_available"):
+            continue
+        role = str(row.get("role") or "").strip()
+        if not role:
+            continue
+        row["links"] = _plan_role_links(int(selected_ver), role)
+
+
 @bp.get("/analysis")
 def analysis_page():
     q = g.services.schedule_history_query_service
@@ -184,6 +241,14 @@ def analysis_page():
 
     raw_hist = _load_recent_analysis_history(q)
     ctx = build_analysis_context(selected_ver=selected_ver, raw_hist=raw_hist, selected_item=selected_item)
+    if ctx.get("candidate_comparison_display") is not None:
+        plan_role_options = _load_selected_plan_role_options(g.services, selected_ver)
+        ctx["candidate_comparison_display"] = build_candidate_comparison_display(
+            ctx.get("selected_summary"),
+            selected_ver=selected_ver,
+            plan_role_options=plan_role_options,
+        )
+        _attach_candidate_plan_links(ctx, selected_ver)
     requested_ver = version_resolution.requested_version if version_resolution.requested_version is not None else selected_ver
     selected_history_resolution = build_requested_history_resolution(
         requested_version=requested_ver,

@@ -294,18 +294,7 @@ def _edge_type_stats(edges: List[Dict[str, Any]]) -> Dict[str, int]:
     return stats
 
 
-def compute_critical_chain(schedule_repo, version: int) -> Dict[str, Any]:
-    """
-    关键链识别（可解释，近似 CC/CP 语义）：
-    - 输入：某一 version 的全量排程（不按周截断）
-    - 前驱集合：工艺前驱 + 设备资源前驱 + 人员资源前驱
-    - 控制前驱：从候选前驱里选“end_time 最晚且 <= 当前 start_time”的那个
-    - 从 makespan 结束的任务回溯控制前驱，得到关键链
-    """
-    try:
-        rows = _load_rows(schedule_repo, version=int(version))
-    except Exception:
-        return _unavailable_result("repo_exception")
+def _compute_critical_chain_from_loaded_rows(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     nodes = _build_nodes(rows)
     if not nodes:
         return _empty_result()
@@ -329,3 +318,24 @@ def compute_critical_chain(schedule_repo, version: int) -> Dict[str, Any]:
         "edge_count": len(edges),
     }
 
+
+def compute_critical_chain_from_rows(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    try:
+        return _compute_critical_chain_from_loaded_rows(list(rows or []))
+    except Exception:
+        return _unavailable_result("rows_exception")
+
+
+def compute_critical_chain(schedule_repo, version: int) -> Dict[str, Any]:
+    """
+    关键链识别（可解释，近似 CC/CP 语义）：
+    - 输入：某一 version 的全量排程（不按周截断）
+    - 前驱集合：工艺前驱 + 设备资源前驱 + 人员资源前驱
+    - 控制前驱：从候选前驱里选“end_time 最晚且 <= 当前 start_time”的那个
+    - 从 makespan 结束的任务回溯控制前驱，得到关键链
+    """
+    try:
+        rows = _load_rows(schedule_repo, version=int(version))
+    except Exception:
+        return _unavailable_result("repo_exception")
+    return _compute_critical_chain_from_loaded_rows(rows)

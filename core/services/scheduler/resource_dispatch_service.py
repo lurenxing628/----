@@ -6,7 +6,6 @@ from core.infrastructure.errors import ValidationError
 from core.services.equipment.machine_service import MachineService
 from core.services.personnel import ResourceTeamService
 from core.services.personnel.operator_service import OperatorService
-from data.repositories import ScheduleRepository
 
 from .resource_dispatch_range import resolve_dispatch_range
 from .resource_dispatch_support import (
@@ -18,7 +17,15 @@ from .resource_dispatch_support import (
     extract_overdue_batch_ids_with_meta,
 )
 from .schedule_history_query_service import ScheduleHistoryQueryService
+from .schedule_plan_query_service import (
+    ROLE_ADOPTED,
+    VALID_PLAN_ROLES,
+    SchedulePlanQueryService,
+    plan_role_label,
+)
 from .version_resolution import VersionResolution, require_selected_version, resolve_version_or_latest
+
+_PLAN_ROLE_COMPARE_HINT = "当前查看的是对比方案，只用来和最终采用方案比一比；现场执行仍以“最终采用”为准。"
 
 
 class ResourceDispatchService:
@@ -26,7 +33,7 @@ class ResourceDispatchService:
         self.conn = conn
         self.logger = logger
         self.op_logger = op_logger
-        self.schedule_repo = ScheduleRepository(conn, logger=logger)
+        self.plan_query_service = SchedulePlanQueryService(conn, logger=logger)
         self.history_service = ScheduleHistoryQueryService(conn, logger=logger, op_logger=op_logger)
         self.operator_service = OperatorService(conn, logger=logger, op_logger=op_logger)
         self.machine_service = MachineService(conn, logger=logger, op_logger=op_logger)
@@ -50,6 +57,102 @@ class ResourceDispatchService:
         if team_axis not in {"operator", "machine"}:
             raise ValidationError("班组轴类型不正确，请选择：人员轴 / 设备轴。", field="team_axis")
         return team_axis
+
+    def _normalize_plan_role(self, value: Any) -> str:
+        plan_role = str(value or "").strip() or ROLE_ADOPTED
+        if plan_role not in VALID_PLAN_ROLES:
+            valid_labels = " / ".join(plan_role_label(role) for role in VALID_PLAN_ROLES)
+            raise ValidationError(f"排产方案不正确，请选择：{valid_labels}。", field="plan_role")
+        return plan_role
+
+    def _serialize_plan_role_options(self, options: Any) -> List[Dict[str, Any]]:
+        out: List[Dict[str, Any]] = []
+        for option in options or []:
+            if hasattr(option, "to_dict"):
+                item = dict(option.to_dict())
+            else:
+                role = str(getattr(option, "role", "") or "").strip()
+                item = {
+                    "role": role,
+                    "label": plan_role_label(role),
+                    "source_table": getattr(option, "source_table", None),
+                    "candidate_id": getattr(option, "candidate_id", None),
+                    "candidate_key": getattr(option, "candidate_key", None),
+                    "candidate_label": getattr(option, "candidate_label", None),
+                    "candidate_kind": getattr(option, "candidate_kind", None),
+                    "candidate_status": getattr(option, "candidate_status", None),
+                    "detail_saved": getattr(option, "detail_saved", None),
+                    "is_comparison": role != ROLE_ADOPTED,
+                }
+            role = str(item.get("role") or "").strip()
+            if not role:
+                continue
+            out.append(item)
+        if out:
+            return out
+        return [{"role": ROLE_ADOPTED, "label": plan_role_label(ROLE_ADOPTED), "is_comparison": False}]
+
+    def _resolve_plan(self, *, version: int, plan_role: str):
+        try:
+            return self.plan_query_service.resolve_plan(int(version), plan_role)
+        except ValueError as exc:
+            raise ValidationError(str(exc), field="plan_role") from exc
+
+    def _plan_role_resolution_dict(self, resolution: Any) -> Dict[str, Any]:
+        if hasattr(resolution, "to_dict"):
+            return dict(resolution.to_dict())
+        return {
+            "version": getattr(resolution, "version", None),
+            "requested_role": getattr(resolution, "requested_role", ROLE_ADOPTED),
+            "requested_label": plan_role_label(getattr(resolution, "requested_role", ROLE_ADOPTED)),
+            "selected_role": getattr(resolution, "selected_role", ROLE_ADOPTED),
+            "selected_label": plan_role_label(getattr(resolution, "selected_role", ROLE_ADOPTED)),
+            "status": getattr(resolution, "status", "selected"),
+            "message": getattr(resolution, "message", ""),
+            "is_fallback": getattr(resolution, "status", "") == "fallback_to_adopted",
+            "is_comparison": getattr(resolution, "selected_role", ROLE_ADOPTED) != ROLE_ADOPTED,
+        }
+
+    def _plan_role_filter_fields(
+        self,
+        *,
+        requested_role: str,
+        effective_role: str,
+        status: str = "selected",
+        message: str = "",
+        candidate_id: Any = None,
+        candidate_key: Any = None,
+    ) -> Dict[str, Any]:
+        return {
+            "plan_role": requested_role,
+            "requested_plan_role": requested_role,
+            "effective_plan_role": effective_role,
+            "plan_role_status": status,
+            "plan_role_message": message,
+            "plan_role_label": plan_role_label(effective_role),
+            "requested_plan_role_label": plan_role_label(requested_role),
+            "effective_plan_role_label": plan_role_label(effective_role),
+            "candidate_id": candidate_id,
+            "candidate_key": candidate_key,
+        }
+
+    def _plan_role_fields_from_resolution(self, resolution: Any) -> Dict[str, Any]:
+        data = self._plan_role_resolution_dict(resolution)
+        return self._plan_role_filter_fields(
+            requested_role=str(data.get("requested_role") or ROLE_ADOPTED),
+            effective_role=str(data.get("selected_role") or ROLE_ADOPTED),
+            status=str(data.get("status") or "selected"),
+            message=str(data.get("message") or ""),
+            candidate_id=data.get("candidate_id"),
+            candidate_key=data.get("candidate_key"),
+        )
+
+    def _plan_role_notice_from_fields(self, fields: Dict[str, Any]) -> str:
+        effective_role = str(fields.get("effective_plan_role") or ROLE_ADOPTED)
+        if effective_role != ROLE_ADOPTED:
+            return _PLAN_ROLE_COMPARE_HINT
+        message = str(fields.get("plan_role_message") or "").strip()
+        return message
 
     def _resolve_scope_id(
         self,
@@ -188,9 +291,11 @@ class ResourceDispatchService:
         start_date: Any = None,
         end_date: Any = None,
         version: Any = None,
+        plan_role: Any = None,
     ) -> Dict[str, Any]:
         normalized_scope_type = self._normalize_scope_type(scope_type)
         normalized_team_axis = self._normalize_team_axis(team_axis)
+        normalized_plan_role = self._normalize_plan_role(plan_role)
         versions = self._list_versions(limit=50)
         latest_version = int(versions[0].get("version") or 0) if versions else self._latest_version()
         dr = resolve_dispatch_range(
@@ -212,22 +317,35 @@ class ResourceDispatchService:
         if version_resolution.status == "missing_history":
             require_selected_version(version_resolution)
         selected_version = version_resolution.selected_version
+        plan_role_fields = self._plan_role_filter_fields(
+            requested_role=normalized_plan_role,
+            effective_role=ROLE_ADOPTED,
+        )
+        plan_role_options = self._serialize_plan_role_options([])
+        if selected_version:
+            plan_resolution = self._resolve_plan(version=int(selected_version), plan_role=normalized_plan_role)
+            plan_role_fields = self._plan_role_fields_from_resolution(plan_resolution)
+            plan_role_options = self._serialize_plan_role_options(plan_resolution.available_roles)
+        filters = {
+            "scope_type": normalized_scope_type,
+            "scope_id": selected_scope_id or "",
+            "scope_name": selected_scope_name,
+            "operator_id": selected_scope_id if normalized_scope_type == "operator" else self._text(operator_id) or "",
+            "machine_id": selected_scope_id if normalized_scope_type == "machine" else self._text(machine_id) or "",
+            "team_id": selected_scope_id if normalized_scope_type == "team" else self._text(team_id) or "",
+            "team_axis": normalized_team_axis,
+            "period_preset": dr.period_preset,
+            "query_date": dr.query_date.isoformat(),
+            "start_date": dr.start_date.isoformat(),
+            "end_date": dr.end_date.isoformat(),
+            "version": selected_version,
+        }
+        filters.update(plan_role_fields)
         return {
-            "filters": {
-                "scope_type": normalized_scope_type,
-                "scope_id": selected_scope_id or "",
-                "scope_name": selected_scope_name,
-                "operator_id": selected_scope_id if normalized_scope_type == "operator" else self._text(operator_id) or "",
-                "machine_id": selected_scope_id if normalized_scope_type == "machine" else self._text(machine_id) or "",
-                "team_id": selected_scope_id if normalized_scope_type == "team" else self._text(team_id) or "",
-                "team_axis": normalized_team_axis,
-                "period_preset": dr.period_preset,
-                "query_date": dr.query_date.isoformat(),
-                "start_date": dr.start_date.isoformat(),
-                "end_date": dr.end_date.isoformat(),
-                "version": selected_version,
-            },
+            "filters": filters,
             "versions": versions,
+            "plan_role_options": plan_role_options,
+            "plan_role_notice": self._plan_role_notice_from_fields(plan_role_fields),
             "has_history": bool(versions),
             "operator_options": operator_options,
             "machine_options": machine_options,
@@ -249,9 +367,11 @@ class ResourceDispatchService:
         start_date: Any = None,
         end_date: Any = None,
         version: Any = None,
+        plan_role: Any = None,
     ) -> Dict[str, Any]:
         normalized_scope_type = self._normalize_scope_type(scope_type)
         normalized_team_axis = self._normalize_team_axis(team_axis)
+        normalized_plan_role = self._normalize_plan_role(plan_role)
         latest_version = self._latest_version()
         version_resolution = self._resolve_version(version, latest_version=latest_version)
         if version_resolution.status == "no_history":
@@ -260,10 +380,20 @@ class ResourceDispatchService:
                 team_axis=normalized_team_axis,
                 version=None,
             )
+            payload["filters"].update(
+                self._plan_role_filter_fields(
+                    requested_role=normalized_plan_role,
+                    effective_role=ROLE_ADOPTED,
+                )
+            )
+            payload["plan_role_options"] = self._serialize_plan_role_options([])
+            payload["plan_role_notice"] = ""
             payload["status"] = "no_history"
             payload["requested_version"] = version_resolution.requested_version
             return payload
         selected_version = require_selected_version(version_resolution)
+        plan_resolution = self._resolve_plan(version=selected_version, plan_role=normalized_plan_role)
+        plan_role_fields = self._plan_role_fields_from_resolution(plan_resolution)
 
         selected_scope_id = self._resolve_scope_id(
             scope_type=normalized_scope_type,
@@ -283,10 +413,11 @@ class ResourceDispatchService:
         )
         overdue_meta = self._load_overdue_meta(selected_version)
         overdue_set = set(overdue_meta.get("ids") or [])
-        rows = self.schedule_repo.list_dispatch_rows_with_resource_context(
+        rows = self.plan_query_service.list_plan_dispatch_rows(
             start_time=dr.start_time,
             end_time=dr.end_time,
             version=selected_version,
+            role=normalized_plan_role,
             scope_type=normalized_scope_type,
             scope_id=selected_scope_id,
         )
@@ -317,6 +448,9 @@ class ResourceDispatchService:
             dr=dr,
             selected_version=selected_version,
         )
+        payload["filters"].update(plan_role_fields)
+        payload["plan_role_options"] = self._serialize_plan_role_options(plan_resolution.available_roles)
+        payload["plan_role_notice"] = self._plan_role_notice_from_fields(plan_role_fields)
         payload["has_history"] = True
         payload["status"] = "ok"
         payload["requested_version"] = version_resolution.requested_version
