@@ -349,6 +349,13 @@ def test_view_context_resolves_real_critical_best_candidate_rows(tmp_path: Path)
         assert context.candidate_id == critical_id
         assert context.candidate_key == "graph_w1_of_5"
         assert context.is_comparison is True
+
+        critical_span = SchedulePlanQueryService(conn).get_plan_time_span(VERSION, ROLE_CRITICAL_BEST)
+        assert critical_span == {
+            "version": VERSION,
+            "start_time": "2026-05-01 16:00",
+            "end_time": "2026-05-01 18:00",
+        }
     finally:
         conn.close()
 

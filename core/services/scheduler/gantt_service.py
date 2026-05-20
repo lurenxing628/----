@@ -118,11 +118,15 @@ class GanttService:
         plan_role: Optional[str] = None,
         plan_resolution: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        wr = self.resolve_week_range(
+        wr, _, _ = resolve_schedule_result_week_range(
+            plan_query_service=None,
+            version=None,
+            plan_role=None,
             week_start=week_start,
             offset_weeks=offset_weeks,
             start_date=start_date,
             end_date=end_date,
+            default_to_version_span=False,
         )
         calendar_days_outcome = build_calendar_days(self.conn, wr=wr, logger=self.logger, op_logger=self.op_logger)
         out = build_gantt_contract(

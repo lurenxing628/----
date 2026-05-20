@@ -41,6 +41,26 @@ def _get_bool_arg(name: str, default: bool = False) -> bool:
     raise ValidationError(f"{name} 填写不对，这里只能填写是或否。", field=name)
 
 
+def _get_raw_arg(name: str, default: str = "0") -> str:
+    raw = request.args.get(name)
+    if raw is None or str(raw).strip() == "":
+        return str(default)
+    return str(raw).strip()
+
+
+def _get_effective_offset_for_display_range(*, start_date: Optional[str], end_date: Optional[str]) -> int:
+    try:
+        return normalize_week_offset_for_explicit_range(
+            start_date=start_date,
+            end_date=end_date,
+            offset_weeks=_get_raw_arg("offset", "0"),
+        )
+    except ValidationError as exc:
+        if (exc.details or {}).get("field") == "offset_weeks":
+            raise ValidationError("offset 填写不对，请填写整数。", field="offset") from exc
+        raise
+
+
 def _get_plan_role_arg() -> Optional[str]:
     raw = request.args.get("plan_role")
     if raw is None:
@@ -93,12 +113,7 @@ def gantt_page():
     end_date = (request.args.get("end_date") or "").strip() or None
     plan_role = _get_plan_role_arg()
     services = g.services
-    offset = _get_int_arg("offset", 0)
-    effective_offset = normalize_week_offset_for_explicit_range(
-        start_date=start_date,
-        end_date=end_date,
-        offset_weeks=offset,
-    )
+    effective_offset = _get_effective_offset_for_display_range(start_date=start_date, end_date=end_date)
     svc = services.gantt_service
     version_resolution = svc.resolve_version(request.args.get("version"))
     if version_resolution.status == "missing_history":
@@ -163,12 +178,7 @@ def gantt_data():
     plan_role = _get_plan_role_arg()
     svc = g.services.gantt_service
     try:
-        offset = _get_int_arg("offset", 0)
-        effective_offset = normalize_week_offset_for_explicit_range(
-            start_date=start_date,
-            end_date=end_date,
-            offset_weeks=offset,
-        )
+        effective_offset = _get_effective_offset_for_display_range(start_date=start_date, end_date=end_date)
         include_history = _get_bool_arg("include_history", False)
         data_kwargs: Dict[str, Any] = {
             "view": view,

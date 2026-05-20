@@ -17,12 +17,12 @@ def normalize_week_offset_for_explicit_range(
     end_date: Optional[str],
     offset_weeks: Any,
 ) -> int:
+    if _has_text(start_date) or _has_text(end_date):
+        return 0
     try:
         offset_int = int(offset_weeks or 0)
     except Exception as exc:
         raise ValidationError("周偏移填写不对，请填写整数。", field="offset_weeks") from exc
-    if _has_text(start_date) or _has_text(end_date):
-        return 0
     return offset_int
 
 

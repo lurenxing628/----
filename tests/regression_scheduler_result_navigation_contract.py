@@ -74,32 +74,43 @@ def test_resource_dispatch_calendar_keeps_clear_day_segment_labels() -> None:
 def test_schedule_success_redirect_uses_version_real_span() -> None:
     app = Flask(__name__)
 
-    with app.app_context():
-        g.services = SimpleNamespace(
-            gantt_service=SimpleNamespace(
-                get_version_time_span_dates=lambda version: {
-                    "version": version,
+    class _GanttService:
+        def resolve_gantt_range_for_version(self, **kwargs):
+            assert kwargs == {"version": 12}
+            return (
+                None,
+                {
+                    "version": 12,
                     "start_date": "2026-05-11",
                     "end_date": "2026-05-18",
-                }
+                },
+                "version_span",
             )
-        )
+
+        def get_version_time_span_dates(self, _version):
+            raise AssertionError("成功跳转应通过统一范围入口解析版本跨度")
+
+    with app.app_context():
+        g.services = SimpleNamespace(gantt_service=_GanttService())
 
         kwargs = build_success_gantt_redirect_kwargs({"version": 12})
 
     assert kwargs == {
         "view": "machine",
         "version": 12,
-        "start_date": "2026-05-11",
-        "end_date": "2026-05-18",
     }
 
 
 def test_schedule_success_redirect_falls_back_to_requested_start_when_summary_start_invalid() -> None:
     app = Flask(__name__)
 
+    class _GanttService:
+        def resolve_gantt_range_for_version(self, **kwargs):
+            assert kwargs == {"version": 12}
+            return None, None, "request"
+
     with app.app_context():
-        g.services = SimpleNamespace(gantt_service=SimpleNamespace(get_version_time_span_dates=lambda _version: None))
+        g.services = SimpleNamespace(gantt_service=_GanttService())
 
         kwargs = build_success_gantt_redirect_kwargs(
             {"version": 12, "summary": {"start_time": "bad-start"}},
@@ -117,8 +128,13 @@ def test_schedule_success_redirect_falls_back_to_requested_start_when_summary_st
 def test_schedule_success_redirect_logs_warning_and_keeps_no_date_when_all_fallback_anchors_invalid(caplog) -> None:
     app = Flask(__name__)
 
+    class _GanttService:
+        def resolve_gantt_range_for_version(self, **kwargs):
+            assert kwargs == {"version": 12}
+            return None, None, "request"
+
     with app.app_context():
-        g.services = SimpleNamespace(gantt_service=SimpleNamespace(get_version_time_span_dates=lambda _version: None))
+        g.services = SimpleNamespace(gantt_service=_GanttService())
 
         with caplog.at_level(logging.WARNING, logger=app.logger.name):
             kwargs = build_success_gantt_redirect_kwargs(

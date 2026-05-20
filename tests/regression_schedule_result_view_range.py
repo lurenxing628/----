@@ -104,6 +104,44 @@ def test_explicit_start_end_dates_ignore_offset() -> None:
     ) == 0
 
 
+def test_explicit_start_end_dates_ignore_invalid_offset() -> None:
+    wr, _, range_source = resolve_schedule_result_week_range(
+        plan_query_service=FakePlanQueryService(_span()),
+        version=7,
+        plan_role=None,
+        start_date="2026-03-10",
+        end_date="2026-03-12",
+        offset_weeks="bad",
+        default_to_version_span=True,
+    )
+
+    assert wr.week_start_date.isoformat() == "2026-03-10"
+    assert wr.week_end_date.isoformat() == "2026-03-12"
+    assert range_source == "request"
+
+
+def test_single_explicit_date_ignores_offset() -> None:
+    start_wr, _, _ = resolve_schedule_result_week_range(
+        plan_query_service=FakePlanQueryService(_span()),
+        version=7,
+        plan_role=None,
+        start_date="2026-03-10",
+        offset_weeks=1,
+        default_to_version_span=True,
+    )
+    end_wr, _, _ = resolve_schedule_result_week_range(
+        plan_query_service=FakePlanQueryService(_span()),
+        version=7,
+        plan_role=None,
+        end_date="2030-03-12",
+        offset_weeks=1,
+        default_to_version_span=True,
+    )
+
+    assert start_wr == resolve_week_range(start_date="2026-03-10", offset_weeks=0)
+    assert end_wr == resolve_week_range(end_date="2030-03-12", offset_weeks=0)
+
+
 def test_only_start_date_keeps_existing_range_mode_defaults() -> None:
     wr, _, range_source = resolve_schedule_result_week_range(
         plan_query_service=FakePlanQueryService(_span()),

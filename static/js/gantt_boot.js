@@ -260,12 +260,13 @@
       show(errEl, true);
       return;
     }
-    const hasEffectiveRange = !!(cfg.startDate || cfg.endDate);
+    const usesVersionSpanRange = cfg.rangeSource === "version_span";
+    const hasEffectiveRange = !!(cfg.startDate || cfg.endDate) && !usesVersionSpanRange;
     if (cfg.view) url.searchParams.set("view", cfg.view);
     if (hasEffectiveRange) {
       if (cfg.startDate) url.searchParams.set("start_date", cfg.startDate);
       if (cfg.endDate) url.searchParams.set("end_date", cfg.endDate);
-    } else {
+    } else if (!usesVersionSpanRange) {
       if (cfg.weekStart) url.searchParams.set("week_start", cfg.weekStart);
       if (typeof cfg.offset !== "undefined") url.searchParams.set("offset", String(cfg.offset));
     }

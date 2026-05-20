@@ -46,7 +46,13 @@ def build_success_gantt_redirect_kwargs(result: Dict[str, Any], *, requested_sta
     version = parse_required_int(result["version"], field="排产版本", min_value=1)
     kwargs: Dict[str, Any] = {"view": "machine", "version": version}
 
-    span = g.services.gantt_service.get_version_time_span_dates(version) or _result_start_week_span(
+    range_resolver = getattr(g.services.gantt_service, "resolve_gantt_range_for_version", None)
+    if callable(range_resolver):
+        _wr, version_span, _range_source = range_resolver(version=version)
+        if version_span:
+            return kwargs
+
+    span = _result_start_week_span(
         result,
         requested_start_dt=requested_start_dt,
         version=version,

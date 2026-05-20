@@ -666,9 +666,13 @@ def test_scheduler_run_success_redirects_to_gantt_actual_span() -> None:
             }
 
     class _StubGanttService:
-        def get_version_time_span_dates(self, version):
+        def resolve_gantt_range_for_version(self, **kwargs):
+            version = kwargs.get("version")
             assert int(version) == 31
-            return {"start_date": "2026-05-11", "end_date": "2026-05-16"}
+            return None, {"start_date": "2026-05-11", "end_date": "2026-05-16"}, "version_span"
+
+        def get_version_time_span_dates(self, _version):
+            raise AssertionError("成功跳转应通过统一范围入口解析版本跨度")
 
     old_url_for = route_mod.url_for
 
@@ -689,8 +693,8 @@ def test_scheduler_run_success_redirects_to_gantt_actual_span() -> None:
         assert location.startswith("/scheduler.gantt_page?")
         assert "view=machine" in location
         assert "version=31" in location
-        assert "start_date=2026-05-11" in location
-        assert "end_date=2026-05-16" in location
+        assert "start_date=" not in location
+        assert "end_date=" not in location
         assert any(cat == "success" and "排产完成（版本 31）" in msg for cat, msg in flashes), flashes
     finally:
         route_mod.url_for = old_url_for
@@ -719,8 +723,8 @@ def test_scheduler_run_partial_redirects_to_gantt_with_requested_start_when_span
             }
 
     class _StubGanttService:
-        def get_version_time_span_dates(self, _version):
-            return None
+        def resolve_gantt_range_for_version(self, **_kwargs):
+            return None, None, "request"
 
     old_url_for = route_mod.url_for
     route_mod.url_for = lambda endpoint, **kwargs: f"/{endpoint}?{urlencode(kwargs)}"
