@@ -210,6 +210,7 @@ REQUEST_SERVICE_TARGET_FILES = [
     "web/routes/domains/scheduler/scheduler_run.py",
     "web/routes/dashboard.py",
     "web/routes/domains/scheduler/scheduler_analysis.py",
+    "web/routes/domains/scheduler/scheduler_analysis_read.py",
     "web/routes/material.py",
     "web/routes/domains/scheduler/scheduler_batches.py",
     "web/routes/domains/scheduler/scheduler_batch_detail.py",

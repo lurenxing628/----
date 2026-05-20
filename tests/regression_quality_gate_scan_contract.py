@@ -416,6 +416,7 @@ def test_request_service_architecture_filter_does_not_hide_registered_helper_deb
 def test_request_service_target_files_cover_history_and_system_routes() -> None:
     expected_targets = {
         "web/routes/domains/scheduler/scheduler_analysis.py",
+        "web/routes/domains/scheduler/scheduler_analysis_read.py",
         "web/routes/system_history.py",
         "web/routes/system_backup.py",
         "web/routes/system_logs.py",

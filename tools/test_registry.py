@@ -59,6 +59,7 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/regression_scheduler_objective_labels.py",
     "tests/regression_objective_projection_contract.py",
     "tests/regression_scheduler_analysis_route_contract.py",
+    "tests/regression_scheduler_analysis_read_context.py",
     "tests/regression_scheduler_analysis_observability.py",
     "tests/regression_analysis_page_version_default_latest.py",
     "tests/regression_scheduler_analysis_vm_legacy_summary_bridge.py",
@@ -416,6 +417,7 @@ REQUIRED_REGRESSION_GROUPS = (
         "label": "Scheduler analysis, gantt, reports, and week plan contracts",
         "target_paths": (
             "tests/regression_scheduler_analysis_route_contract.py",
+            "tests/regression_scheduler_analysis_read_context.py",
             "tests/regression_scheduler_analysis_observability.py",
             "tests/regression_analysis_page_version_default_latest.py",
             "tests/regression_scheduler_analysis_vm_legacy_summary_bridge.py",
@@ -435,6 +437,7 @@ REQUIRED_REGRESSION_GROUPS = (
         "input_file_scopes": (
             "core/services/scheduler/**/*.py",
             "web/routes/domains/scheduler/scheduler_analysis.py",
+            "web/routes/domains/scheduler/scheduler_analysis_read.py",
             "web/routes/domains/scheduler/scheduler_gantt.py",
             "web/routes/domains/scheduler/scheduler_gantt_redirect.py",
             "web/routes/domains/scheduler/scheduler_week_plan.py",
