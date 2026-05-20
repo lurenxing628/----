@@ -455,8 +455,8 @@ PR-7b 已完成。
 PR-7c 已完成。
 PR-7d 已完成。
 PR-7e 已完成。
-下一步是 PR-8。
-PR-8 可以继承 PR-7a 到 PR-7e 已证明的候选表、候选运行、同事务保存、代表方案切换、默认配置收口、清理和性能守卫；但不能继承资源匹配 report-only 分析、最大匹配诊断或资源瓶颈说明的证明。
+PR-8 已完成，下一步是 PR-9。
+PR-8 继承了 PR-7a 到 PR-7e 已证明的候选表、候选运行、同事务保存、代表方案切换、默认配置收口、清理和性能守卫；本轮已补齐资源匹配 report-only 分析、最大匹配诊断和资源瓶颈说明的第一版证明。
 ```
 
 | PR / items.yaml 条目 | 对应技术章节 | 目标 | 是否改变排产结果 | 状态 |
@@ -469,7 +469,7 @@ PR-8 可以继承 PR-7a 到 PR-7e 已证明的候选表、候选运行、同事�
 | PR-5 `scheduler-graph-ready-queue-on-mode` | 阶段 11 + 阶段 12 | 先做有环安全门，再让 ready 队列参与 SGS 候选 | 是 | done |
 | PR-6 `scheduler-graph-critical-score-on-mode` | 阶段 13 | 关键路径、影响范围、后续关键工作量进入评分 | 是/可控 | done |
 | PR-7a 到 PR-7e | 阶段 13.6 | 多权重候选试跑、自动择优、同事务落库、代表方案切换和配置收口 | 是/可控 | done |
-| PR-8 `scheduler-graph-resource-matching-report` | 阶段 14-15 | 资源匹配 report-only 分析：首波 ready 工序 × 候选设备最大匹配，输出可见瓶颈/未匹配诊断；最小费用流只留后续增强 | 否 | planned |
+| PR-8 `scheduler-graph-resource-matching-report` | 阶段 14-15 | 资源匹配 report-only 分析：首波 ready 工序 × 候选设备最大匹配，输出可见瓶颈/未匹配诊断；最小费用流只留后续增强 | 否 | done |
 | PR-9 `scheduler-graph-win7-package-closeout` | 阶段 21 | Win7 离线打包和最终验收 | 否/可控 | planned |
 | PR-10 `scheduler-graph-candidate-resume-later` | 阶段 23 | 后续增强：候选方案续跑 | 否/可控 | planned |
 
@@ -684,35 +684,29 @@ PR-8 不做：
 PR-8 的失败和降级也必须可见：
 
 ```text
-没有 candidate_machine_ids：显示 unavailable 或 warning，不能默默塞全量设备。
-ready 工序为空：显示 no_ready_operations，不要假装有匹配结果。
-NetworkX 不可用：显示 unavailable，不要吞掉。
-图增强不可用：显示 degraded 或 unavailable，不要假装成功。
-存在有环：显示 cycle_related_warning 或 graph_unavailable，不要继续输出误导结果。
+没有 candidate_machine_ids：resource_matching.status="available"，但该工序进入 unmatched，并写 warning code="graph_resource_no_candidate_machine"；不能默默塞全量设备。
+ready 工序为空：resource_matching.status="empty"，reason="empty_ready_set"；不要假装有匹配结果。
+NetworkX 不可用：沿用顶层 graph_analysis.status="unavailable"、reason="networkx_unavailable"；不要在 resource_matching 里伪造 empty 或 available。
+图增强不可用：resource_matching.status="skipped"，reason 使用已有 graph_enhancement_disabled_reason；不要假装成功。
+存在有环：resource_matching.status="skipped"，reason="graph_not_dag"；不运行 maximum_matching，不继续输出误导结果。
 匹配结果为空：要区分“确实没有可匹配设备”和“输入为空 / 分析失败”。
 ```
+
+PR-8 最小 public 摘要只能放状态和计数，不放样本。原因是当前 OperationLogs 会复制 `algo.graph_analysis` 的 public 小摘要；如果 public 放样本，日志也会跟着看到样本，和“日志只看计数”的边界冲突。第一版选择更简单的做法：样本只进 diagnostics，不给 OperationLogs 增加额外过滤分支。
 
 PR-8 最小 public 摘要建议只放这种级别：
 
 ```text
 resource_matching:
-  status: warning
+  status: available
+  reason: ok
   ready_operation_count: 12
+  operation_with_candidate_count: 10
+  machine_count: 6
+  edge_count: 18
   matched_operation_count: 9
   unmatched_operation_count: 3
   bottleneck_machine_count: 2
-  unmatched_samples:
-    - op_id: 101
-      op_code: OP-101
-      reason: candidate_machine_ids_empty
-    - op_id: 128
-      op_code: OP-128
-      reason: no_available_candidate_machine
-  bottleneck_samples:
-    - machine_id: M01
-      matched_ready_operation_count: 5
-    - machine_id: M03
-      matched_ready_operation_count: 4
 ```
 
 不建议 public 摘要放这些：
@@ -724,6 +718,9 @@ resource_matching:
 完整 candidate_machine_ids 列表。
 完整 ready 工序列表。
 完整 diagnostics。
+unmatched_operation_sample / unmatched_samples。
+bottleneck_machine_sample / bottleneck_samples。
+matches_sample。
 nx.Graph / nx.DiGraph 对象。
 ```
 
@@ -994,7 +991,7 @@ resource_coverage:
 ```text
 没有候选设备时，不能默默塞全量设备。
 没有候选人员时，不能默默塞全量人员。
-资源匹配失败时，要显示 warning / degraded / unavailable。
+资源匹配失败时，要按 PR-8 固定状态表达：available / empty / skipped / error；NetworkX 不可用走顶层 graph_analysis unavailable。
 不能把匹配失败包装成 matched=0 的正常成功。
 ```
 
@@ -1729,26 +1726,25 @@ NetworkX 不可用时假装分析成功。
 
 ### 5. 资源匹配失败必须可见
 
-资源匹配可能失败或不可用。必须有明确状态：
+资源匹配可能失败或不可用。PR-8 实现层必须固定成明确状态：
 
 ```text
-ok。
-warning。
-degraded。
-unavailable。
+available。
+empty。
+skipped。
 error。
 ```
 
-这些是展示层建议词，后续实现时要映射到既有 graph_analysis public 合同，不能随手破坏已存在的 `status` / `reason` 口径。
+这些是 `resource_matching.status` 的内部 public 合同；页面如果以后要显示成“正常 / 提醒 / 不可用”，由页面再翻译，不允许在代码里混用 `warning/degraded/no_ready_operations/cycle_related_warning` 这类临时词。
 
 示例：
 
 ```text
-candidate_machine_ids 为空：warning 或 unavailable。
-ready_nodes 为空：ok + no_ready_operations，或者 unavailable，按业务口径固定。
-NetworkX 未安装：unavailable。
-图增强不可用：degraded。
-匹配结果不能覆盖所有 ready 工序：warning。
+candidate_machine_ids 为空：status="available"，该工序进入 unmatched，并写 warning code="graph_resource_no_candidate_machine"。
+ready_nodes 为空：status="empty"，reason="empty_ready_set"。
+NetworkX 未安装：顶层 graph_analysis.status="unavailable"，reason="networkx_unavailable"。
+图增强不可用：status="skipped"，reason 使用已有 graph_enhancement_disabled_reason。
+匹配结果不能覆盖所有 ready 工序：status 仍是 "available"，通过 unmatched_operation_count 表达，不改成失败。
 ```
 
 ### 6. 没有候选资源不能默默塞全量资源
@@ -9546,7 +9542,7 @@ tests/test_sgs_total_hours_cache.py
 2. 高内聚低耦合：只依赖 graph/types.py、id_policy.py、nx_runtime.py，不反向 import scheduler run / optimizer / SGS / repo / Flask。
 3. 不允许静默回退：NetworkX 不可用、输入合同错误、候选设备缺失都必须以 status/reason/warning 明确可见；不能把坏输入当成“匹配数量 0 且一切正常”。
 4. 不允许过度兜底：没有候选设备就是没有候选设备，不能回退成全量设备；没有 ready 工序就是 empty_ready_set，不能随手拿全部待排工序替代。
-5. 不允许吞错：调用方只捕获已有图链路明确允许的 NetworkXUnavailable / GraphInputContractError / GraphBuildContractError；未知异常继续暴露，不包成 degraded 成功。
+5. 不允许吞错：调用方只捕获已有图链路明确允许的 NetworkXUnavailable / GraphInputContractError / GraphBuildContractError，以及 PR-8 新增的 GraphResourceMatchingContractError；未知异常继续暴露，不包成 degraded 成功。
 6. 不做过度防御性编程：输入来源只接受 PR-5 已准备的 OperationGraphNode + OperationGraphEdge；不兼容任意 JSON、数据库 row、Excel row 或 nx.DiGraph。
 ```
 
@@ -9590,6 +9586,26 @@ ready_op_ids:
 candidate machines:
   使用 OperationGraphNode.candidate_machine_ids
 ```
+
+PR-8 的 ready 节点提取必须写成一个小 helper，复用已有工具，不另造第三套 ready 规则：
+
+```text
+build_first_wave_ready_nodes(schedule_input, nodes, edges, graph_ready_context)
+
+report 模式：
+  1. 用 positive_op_id_set(schedule_input.algo_ops_to_schedule.id) 得到 schedulable_op_ids。
+  2. 用 frozen_op_ids + seed_results.op_id 得到 fixed_op_ids。
+  3. 用 build_predecessor_successor_maps(nodes, edges) 得到 predecessor_op_ids_by_op_id。
+  4. ready_op_ids = op_id 属于 schedulable_op_ids，且该 op_id 的全部 predecessor 都在 fixed_op_ids。
+  5. 按 nodes 原始顺序返回 ready_nodes，不按 set 顺序返回。
+
+on 模式：
+  1. 直接读取 graph_ready_context 里的 schedulable_op_ids / fixed_op_ids / predecessor_op_ids_by_op_id。
+  2. 用同一条公式算首波 ready_op_ids。
+  3. 按 nodes 原始顺序返回 ready_nodes。
+```
+
+这个 helper 只能使用 `node_op_id`、`positive_op_id_set`、`build_predecessor_successor_maps` 这类已有图上下文工具；不能调用 SGS、资源派工、候选 runner、数据库或页面层。
 
 如果 `graph_analysis_mode=report`，本阶段仍可计算 report-only 资源匹配，但 ready 口径必须显式写为 `first_wave_ready_from_fixed_predecessors`，只代表“按冻结/seed 视为已固定后的首波 ready”。
 
@@ -9658,7 +9674,8 @@ status:
   error 只用于已知合同错误的 public 投影，不掩盖未知异常。
 
 reason:
-  ok / empty_ready_set / graph_not_dag / graph_enhancement_disabled / graph_resource_matching_contract_error / networkx_unavailable。
+  ok / empty_ready_set / graph_not_dag / graph_enhancement_disabled / graph_resource_matching_contract_error。
+  networkx_unavailable 属于顶层 graph_analysis 口径：Graph 分析整体缺 NetworkX 时，输出 graph_analysis.status="unavailable"、reason="networkx_unavailable"，resource_matching 不单独伪造 empty/available。
 
 ready_operation_count:
   输入 ready 节点数量。
@@ -9687,6 +9704,17 @@ matches:
 warnings:
   只放结构化、JSON 可序列化的小 warning，例如 ready 工序无候选设备。
 ```
+
+PR-8 的嵌套状态固定成这一张表，后续实现和测试按这张表锁死，不能再混用 `warning/degraded/no_ready_operations/cycle_related_warning`：
+
+| 场景 | resource_matching.status | resource_matching.reason | 说明 |
+|---|---|---|---|
+| ready 工序非空且匹配分析正常完成 | `available` | `ok` | 即使存在未匹配工序，也还是 available；未匹配通过计数和 warning 表达 |
+| ready 工序为空 | `empty` | `empty_ready_set` | 不调用 maximum_matching，不写伪 matched=0 成功 |
+| 图不是 DAG | `skipped` | `graph_not_dag` | 不运行 maximum_matching |
+| `on` 模式图增强被禁用 | `skipped` | `graph_enhancement_disabled` 或已有 disabled reason | 不运行 maximum_matching |
+| resource_matching 输入合同错误 | `error` | `graph_resource_matching_contract_error` | 只捕获 GraphResourceMatchingContractError，未知异常继续暴露 |
+| NetworkX 不可用 | 顶层 `graph_analysis.status="unavailable"` | 顶层 `reason="networkx_unavailable"` | resource_matching 不单独吞错或伪造结果 |
 
 核心函数：
 
@@ -9755,7 +9783,7 @@ unmatched = ready_operation_ids - matched_operation_ids
    - candidate_edge_count > 1
    - machine_id 出现在至少一个未匹配工序候选集中
 4. 排序：candidate_edge_count 降序，再 machine_id 升序。
-5. 默认最多 public 展示 10 个，diagnostics 可采样 50 个。
+5. public 只展示 bottleneck_machine_count，不展示 ID 样本；diagnostics 最多采样 50 个 bottleneck_machine_ids。
 ```
 
 这不是设备负荷优化，不考虑时间、停机、日历、换型、人员可用性；文案里必须写清“仅按候选设备集合估算”。
@@ -9783,7 +9811,10 @@ def build_graph_resource_matching_projection(
     mode: str,
     is_dag: bool,
     graph_enhancement_allowed: bool,
+    graph_enhancement_disabled_reason: Optional[str],
+    schedule_input: ScheduleRunInput,
     nodes: List[Any],
+    edges: List[Any],
     graph_ready_context: Optional[Dict[str, Any]],
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     ...
@@ -9794,10 +9825,11 @@ def build_graph_resource_matching_projection(
 ```text
 1. mode=off 不会走到这里。
 2. is_dag=False 时返回 skipped / graph_not_dag。
-3. graph_ready_context is None 且 mode=on 时返回 skipped / graph_enhancement_disabled。
+3. graph_ready_context is None 且 mode=on 时返回 skipped / graph_enhancement_disabled 或传入的 graph_enhancement_disabled_reason。
 4. report 模式可用同一套 predecessor/fixed/schedulable 口径临时构造首波 ready，不启用 SGS。
 5. 得到 ready_nodes 后调用 summarize_operation_machine_matching(ready_nodes)。
-6. public 只放小摘要；diagnostics 只放采样。
+6. GraphResourceMatchingContractError 转成 resource_matching.status="error" / reason="graph_resource_matching_contract_error"；未知异常继续抛出。
+7. public 只放状态和计数；diagnostics 只放采样。
 ```
 
 public 字段示例：
@@ -9812,9 +9844,7 @@ public 字段示例：
   "edge_count": 4,
   "matched_operation_count": 2,
   "unmatched_operation_count": 1,
-  "bottleneck_machine_count": 1,
-  "unmatched_operation_sample": ["101"],
-  "bottleneck_machine_sample": ["M2"]
+  "bottleneck_machine_count": 1
 }
 ```
 
@@ -9836,11 +9866,11 @@ diagnostics 字段示例：
 }
 ```
 
-采样限制沿用小常量，不允许把完整匹配图、完整节点、完整候选资源池塞进 `result_summary`。
+采样限制沿用小常量，例如 `_GRAPH_RESOURCE_MATCH_PUBLIC_SAMPLE_LIMIT = 0`（public 第一版不放样本）、`_GRAPH_RESOURCE_MATCH_DIAGNOSTIC_SAMPLE_LIMIT = 50`（diagnostics 采样）。不允许把完整匹配图、完整节点、完整候选资源池塞进 `result_summary`。
 
 ### 14.5 OperationLogs 和页面边界
 
-OperationLogs 仍只能通过现有 `detail["algo"]` 看到 public 小摘要，因此 PR-8 不需要新增日志写入点。
+OperationLogs 仍只能通过现有 `detail["algo"]` 看到 public 小摘要，因此 PR-8 第一版不新增日志写入点。对应约束是：`resource_matching_summary_to_public_dict()` 不允许输出任何样本字段。如果实现时确实要把样本放进 public，就必须同时改 `operation_log_algo_summary()` 增加更小的 graph_analysis 投影，并补回归；但 PR-8 首选方案是不加这层过滤，保持 public 只有计数。
 
 允许 OperationLogs 看到：
 
@@ -9859,6 +9889,8 @@ bottleneck_machine_count
 matches_sample
 完整 unmatched_operation_ids
 完整 bottleneck_machine_ids
+unmatched_operation_sample / unmatched_samples
+bottleneck_machine_sample / bottleneck_samples
 nx.Graph
 OperationGraphNode.raw
 完整 resource_pool
@@ -9872,8 +9904,11 @@ OperationGraphNode.raw
 
 ```text
 tests/scheduler_graph/test_resource_matching.py
+tests/scheduler_graph/test_graph_dispatch_context.py
 tests/regression_scheduler_graph_resource_matching_report_contract.py
 tests/regression_scheduler_graph_operation_logs_contract.py
+tests/regression_scheduler_graph_lazy_runtime_contract.py
+tests/scheduler_graph/test_nx_runtime.py
 ```
 
 `tests/scheduler_graph/test_resource_matching.py` 至少覆盖：
@@ -9887,6 +9922,18 @@ tests/regression_scheduler_graph_operation_logs_contract.py
 6. 传入非 OperationGraphNode 直接 GraphResourceMatchingContractError。
 7. summary/public/diagnostics 可 JSON 序列化，且不包含 nx.Graph。
 8. bottleneck_machine_ids 按“参与未匹配候选 + 边数大于 1”规则输出，并按边数降序排序。
+9. public dict 不包含 unmatched_operation_sample / bottleneck_machine_sample / matches_sample；这些样本只能出现在 diagnostics。
+10. 模块 import 时不 import NetworkX，只有 summarize_operation_machine_matching 执行到构图时才懒加载。
+```
+
+`tests/scheduler_graph/test_graph_dispatch_context.py` 至少补 PR-8 helper 覆盖：
+
+```text
+1. report 模式按 fixed_op_ids + seed_results 计算 first_wave_ready_from_fixed_predecessors，返回顺序跟 nodes 一致。
+2. on 模式复用 graph_ready_context 的 schedulable/fixed/predecessor 口径，不重新造一套 SGS ready 规则。
+3. 非 DAG 返回 skipped / graph_not_dag，且不调用 summarize_operation_machine_matching。
+4. on 模式 graph_ready_context 缺失时返回 skipped / graph_enhancement_disabled，不调用 maximum_matching。
+5. GraphResourceMatchingContractError 被投影成 resource_matching.status="error"，未知异常不被吞掉。
 ```
 
 `tests/regression_scheduler_graph_resource_matching_report_contract.py` 至少覆盖：
@@ -9897,7 +9944,9 @@ tests/regression_scheduler_graph_operation_logs_contract.py
 3. 有环且 block=no 时，resource_matching.status=skipped，不运行 maximum_matching，不写伪 matched=0。
 4. NetworkX 不可用时沿用已有 graph_analysis unavailable 口径，不单独吞错成 resource_matching empty。
 5. diagnostics.graph_analysis.resource_matching 只有采样，没有完整 resource_pool、raw、nx.Graph。
-6. OperationLogs 只看到 public 小摘要，不泄漏 diagnostics.matches_sample。
+6. result_summary.algo.graph_analysis.resource_matching public 只含状态和计数，不含 unmatched_operation_sample / bottleneck_machine_sample / matches_sample。
+7. OperationLogs 只看到 public 小摘要，不泄漏 diagnostics.matches_sample，也不会误带 public 样本。
+8. 当前 .venv 已安装 NetworkX 时，需要用 monkeypatch/隔离 import 测试证明 NetworkX 不可用口径，不能把本机已安装状态当作 off 模式证明。
 ```
 
 ### 14.7 实施顺序
@@ -9905,12 +9954,13 @@ tests/regression_scheduler_graph_operation_logs_contract.py
 ```text
 1. 先写 tests/scheduler_graph/test_resource_matching.py，锁住纯函数合同。
 2. 实现 resource_matching.py：DTO、合同错误、最大匹配、public/diagnostics 投影。
-3. 在 schedule_graph_dispatch_context.py 增加 build_graph_resource_matching_projection 小 helper。
+3. 在 schedule_graph_dispatch_context.py 增加 first-wave ready 小 helper 和 build_graph_resource_matching_projection 小 helper，明确 report/on 共用同一套 ready 计算公式。
 4. 在 schedule_graph_report.py 接入 helper，并把 resource_matching public/diagnostics 合并进现有 graph_analysis 投影。
 5. 补 regression_scheduler_graph_resource_matching_report_contract.py，证明 report/on 都不改变排产结果。
-6. 补 OperationLogs 回归断言，只允许 public 小摘要。
-7. 跑 PR-8 targeted tests、PR-3/4/5/6 图回归、ruff、pyright。
-8. 回填 roadmap/items 和验收记录。
+6. 补 OperationLogs 回归断言，只允许 public 计数字段，不允许 diagnostics 和 public 样本进日志。
+7. 补 lazy runtime 回归，证明模块导入不 import NetworkX，NetworkX 不可用时沿用顶层 graph_analysis unavailable。
+8. 跑 PR-8 targeted tests、PR-3/4/5/6 图回归、ruff、pyright。
+9. 按 CodeStable feature 流程回填 feature/design/checklist/acceptance、items.yaml 和 roadmap 变更记录；最后在干净工作区跑完整 clean proof。
 ```
 
 ### 14.8 阶段验收清单
@@ -9920,12 +9970,32 @@ tests/regression_scheduler_graph_operation_logs_contract.py
 [ ] resource_matching.py 不 import scheduler run / optimizer / SGS / repo / Flask。
 [ ] 最大匹配只返回工序侧映射。
 [ ] 无候选设备不回退成全量设备。
-[ ] 空 ready、有环、图增强不可用、NetworkX 不可用都有明确 status/reason。
-[ ] report/on 模式只新增 result_summary graph_analysis 小摘要和 diagnostics 采样，不改变排产 rows / best_order / selected_batch_ids / resource_pool。
-[ ] OperationLogs 不泄漏 diagnostics、matches_sample、完整 resource_pool、raw 或 nx.Graph。
+[ ] 空 ready、有环、图增强不可用、合同错误、NetworkX 不可用都有明确 status/reason；NetworkX 不可用走顶层 graph_analysis unavailable，不伪造 resource_matching。
+[ ] report/on 模式只新增 result_summary graph_analysis 计数字段小摘要和 diagnostics 采样，不改变排产 rows / best_order / selected_batch_ids / resource_pool。
+[ ] public resource_matching 不包含 unmatched_operation_sample / bottleneck_machine_sample / matches_sample。
+[ ] OperationLogs 不泄漏 diagnostics、matches_sample、public 样本、完整 resource_pool、raw 或 nx.Graph。
 [ ] 不新增配置、不改 schema、不改候选表、不改资源派工逻辑、不改页面路由。
 [ ] ruff / pyright 通过。
+[ ] 最终 clean proof 使用 `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`；如果 Win7 实机/虚拟机证据还没跑，必须在验收记录里明确写“Win7 证据不足，由 PR-9 承接”，不能说已经完成 Win7 交付。
 ```
+
+### 14.9 PR-8 验证命令
+
+实现 PR-8 时按下面顺序跑，失败就先修失败，不要把失败解释成“旧问题”跳过去：
+
+```text
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_graph/test_resource_matching.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_graph/test_graph_dispatch_context.py tests/scheduler_graph/test_resource_matching.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_graph_resource_matching_report_contract.py tests/regression_scheduler_graph_operation_logs_contract.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_graph_lazy_runtime_contract.py tests/scheduler_graph/test_nx_runtime.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_graph_report_mode_contract.py tests/regression_scheduler_graph_on_mode_contract.py tests/regression_scheduler_graph_summary_contract.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler/graph/resource_matching.py core/services/scheduler/run/schedule_graph_dispatch_context.py core/services/scheduler/run/schedule_graph_resource_matching_context.py core/services/scheduler/run/schedule_graph_projection_helpers.py core/services/scheduler/run/schedule_graph_report.py tests/scheduler_graph/test_resource_matching.py tests/scheduler_graph/test_graph_dispatch_context.py tests/scheduler_graph/test_nx_runtime.py tests/regression_scheduler_graph_resource_matching_report_contract.py tests/regression_scheduler_graph_operation_logs_contract.py tests/regression_scheduler_graph_lazy_runtime_contract.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright core/services/scheduler/graph/resource_matching.py core/services/scheduler/run/schedule_graph_dispatch_context.py core/services/scheduler/run/schedule_graph_resource_matching_context.py core/services/scheduler/run/schedule_graph_projection_helpers.py core/services/scheduler/run/schedule_graph_report.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .codestable/tools/validate-yaml.py --file .codestable/roadmap/networkx-scheduler-graph-introduction/networkx-scheduler-graph-introduction-items.yaml --yaml-only
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache
+```
+
+最后一条必须在 PR-8 代码、测试、feature 验收记录和 roadmap/items 回填都完成，并且工作区干净之后再跑。当前本机是 macOS，即使 `.venv` 是 Python 3.8.10，也不能冒充 Win7 实机/虚拟机离线交付证据；Win7 证据仍由 PR-9 收口。
 
 ## 阶段 15：最小费用流作为后续增强
 
@@ -10796,6 +10866,10 @@ on 模式：
 这个路线比直接上 OR-Tools 稳得多，也更符合当前 Win7/Python 3.8.10/离线交付的实际约束。
 
 ## 变更记录
+
+- 2026-05-20：完成 PR-8 `scheduler-graph-resource-matching-report`：新增 resource_matching.py 纯分析模块，运行时懒加载 NetworkX，只分析首波 ready 工序与 `candidate_machine_ids` 的设备最大匹配；report/on 通过 schedule_graph_resource_matching_context.py 复用 first-wave ready 口径，schedule_graph_dispatch_context.py 保留轻量入口以守住 500 行架构门禁，schedule_graph_report.py 的 warning / node_metrics 采样 helper 下沉到 schedule_graph_projection_helpers.py 后也回到 500 行以内；report 只把 public 小摘要和 diagnostics 采样合进 result_summary，不改 graph_ready_context、SGS、候选排序、资源分配、候选表、配置、schema 或页面。public 只放 `status/reason` 和计数，样本只进 diagnostics，OperationLogs 回归证明日志只看到 public 计数字段。空 ready、有环、图增强不可用、合同错误和 NetworkX 不可用都有固定状态口径；Win7 实机或虚拟机离线证据未跑，证据不足，由 PR-9 承接。
+
+- 2026-05-20：复核并继续细化 PR-8 `scheduler-graph-resource-matching-report`：按子代理只读审查结果，把 PR-8 状态/原因口径收成固定表，明确 `available/skipped/empty/error` 的使用场景；把 public 摘要收紧成“只放状态和计数，不放样本”，避免 OperationLogs 因复制 `algo.graph_analysis` 而看到 unmatched/bottleneck/matches 样本；补清 report/on 两种模式都用同一套 first-wave ready 计算公式，要求 helper 显式接收 `schedule_input/nodes/edges/graph_ready_context`；把 GraphResourceMatchingContractError、lazy NetworkX、dispatch context helper、OperationLogs 边界、最终 clean proof 和 Win7 证据不足承接写进执行计划和验收清单。
 
 - 2026-05-19：完成 PR-7e `scheduler-graph-candidate-config-closeout`：新增候选档数、择优方式、超期批次数容差、拖期比例容差和本次候选比较时间上限链路；新库默认 `graph_analysis_mode=on`，旧库已有 `off/report/on` 不覆盖，旧 preset 缺字段会补默认值但保留用户已保存值。正式排产 `on` 默认运行 baseline + 5 档重点工序优先候选，`off/report` 仍是单方案排障；主链保留 `on + block=yes + 有环` 的提前阻断合同，`block=no` 时仍允许候选试跑但图增强降回普通排法。分析页只在候选摘要和明细完整时显示“最终采用 / 原算法最好 / 重点工序优先方案最好”，没有开启或记录不完整时明确提示，不生成假切换链接；周计划、资源排班等沿 PR-7d 的 plan_role 入口查看代表方案。新增 v11 时间索引和孤儿候选清理，性能守卫证明真实 `get_plan_time_span` SQL 走索引、`list_plan_roles` 不扫候选明细。浏览器临时库验证配置页、分析页、旧历史提示、代表方案页面和 30 批 120 工序压力排产；第一版仍不并行、不续跑、不换数据库。
 

@@ -57,6 +57,13 @@ _FORBIDDEN_LOG_KEYS = {
     "warnings_sample",
     "cycle_edges_sample",
     "graph_score_sample",
+    "node_metrics_sample",
+    "matches_sample",
+    "unmatched_operation_sample",
+    "unmatched_operation_ids_sample",
+    "bottleneck_machine_sample",
+    "bottleneck_machine_ids_sample",
+    "resource_pool",
 }
 
 
@@ -194,6 +201,56 @@ def _known_error_result_summary_obj() -> Dict[str, Any]:
     }
 
 
+def _resource_matching_result_summary_obj() -> Dict[str, Any]:
+    return {
+        "algo": {
+            "graph_analysis": {
+                "mode": "report",
+                "effective_mode": "report",
+                "status": "available",
+                "node_count": 3,
+                "edge_count": 0,
+                "is_dag": True,
+                "critical_path_minutes": 60,
+                "critical_path_node_count": 1,
+                "warning_count": 0,
+                "cycle_edge_count": 0,
+                "time_cost_ms": 4,
+                "input_scope": "all_algo_ops_with_frozen_markers",
+                "total_algo_op_count": 3,
+                "reschedulable_unfrozen_op_count": 3,
+                "frozen_node_count": 0,
+                "seed_result_count": 0,
+                "resource_matching": {
+                    "status": "available",
+                    "reason": "ok",
+                    "ready_operation_count": 3,
+                    "operation_with_candidate_count": 3,
+                    "machine_count": 2,
+                    "edge_count": 6,
+                    "matched_operation_count": 2,
+                    "unmatched_operation_count": 1,
+                    "bottleneck_machine_count": 2,
+                },
+            }
+        },
+        "diagnostics": {
+            "graph_analysis": {
+                "resource_matching": {
+                    "matches_sample": [{"operation_id": "1", "machine_id": "M1"}],
+                    "matches_count": 2,
+                    "unmatched_operation_ids_sample": ["3"],
+                    "unmatched_operation_count": 1,
+                    "bottleneck_machine_ids_sample": ["M1", "M2"],
+                    "bottleneck_machine_count": 2,
+                    "warnings_sample": [],
+                    "resource_pool": {"machines_by_op_type": {"cut": ["M1", "M2"]}},
+                }
+            }
+        },
+    }
+
+
 def _iter_keys(value: Any) -> Iterator[str]:
     if isinstance(value, dict):
         for key, child in value.items():
@@ -256,5 +313,26 @@ def test_operation_logs_keep_known_graph_error_public_and_small() -> None:
     assert graph_analysis["status"] == "unavailable"
     assert graph_analysis["reason"] == "networkx_unavailable"
     assert graph_analysis["message"] == "缺少可选依赖 networkx==3.1"
+    assert "diagnostics" not in detail
+    assert _FORBIDDEN_LOG_KEYS.isdisjoint(set(_iter_keys(detail)))
+
+
+def test_operation_logs_keep_resource_matching_public_counts_without_samples() -> None:
+    call = _persist_once(simulate=True, result_summary_obj=_resource_matching_result_summary_obj())
+    detail = call["detail"]
+    graph_analysis = detail["algo"]["graph_analysis"]
+    resource_matching = graph_analysis["resource_matching"]
+
+    assert resource_matching == {
+        "status": "available",
+        "reason": "ok",
+        "ready_operation_count": 3,
+        "operation_with_candidate_count": 3,
+        "machine_count": 2,
+        "edge_count": 6,
+        "matched_operation_count": 2,
+        "unmatched_operation_count": 1,
+        "bottleneck_machine_count": 2,
+    }
     assert "diagnostics" not in detail
     assert _FORBIDDEN_LOG_KEYS.isdisjoint(set(_iter_keys(detail)))

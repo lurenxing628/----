@@ -16,6 +16,9 @@ from .schedule_graph_dispatch_context import (
     build_graph_ready_context as _build_graph_ready_context,
 )
 from .schedule_graph_dispatch_context import (
+    build_graph_resource_matching_projection as _build_graph_resource_matching_projection,
+)
+from .schedule_graph_dispatch_context import (
     build_graph_score_projection as _build_graph_score_projection,
 )
 from .schedule_graph_dispatch_context import (
@@ -39,6 +42,12 @@ from .schedule_graph_dispatch_context import (
 from .schedule_graph_dispatch_context import (
     score_disabled_public_fields as _score_disabled_public_fields,
 )
+from .schedule_graph_projection_helpers import (
+    graph_node_metrics_sample as _graph_node_metrics_sample,
+)
+from .schedule_graph_projection_helpers import (
+    project_graph_warning as _project_graph_warning,
+)
 from .schedule_input_collector import ScheduleRunInput
 
 _GRAPH_ANALYSIS_MODES = {"off", "report", "on"}
@@ -47,9 +56,6 @@ _GRAPH_CRITICAL_PATH_SAMPLE_LIMIT = 50
 _GRAPH_WARNING_SAMPLE_LIMIT = 20
 _GRAPH_CYCLE_EDGE_SAMPLE_LIMIT = 20
 _GRAPH_NODE_METRIC_SAMPLE_LIMIT = 20
-_GRAPH_WARNING_DATA_LIST_SAMPLE_LIMIT = 20
-_GRAPH_WARNING_DATA_DICT_FIELD_LIMIT = 20
-_GRAPH_WARNING_TEXT_SAMPLE_LIMIT = 500
 
 
 @dataclass(frozen=True)
@@ -171,6 +177,16 @@ def _build_schedule_graph_analysis_projection(
             enabled=(mode == "on" and bool(payload["is_dag"])),
             score_context=score_context,
         )
+        resource_matching_public, resource_matching_diagnostics = _build_graph_resource_matching_projection(
+            mode=mode,
+            is_dag=bool(payload["is_dag"]),
+            graph_enhancement_allowed=bool(mode != "on" or graph_ready_context is not None),
+            graph_enhancement_disabled_reason=None,
+            schedule_input=schedule_input,
+            nodes=nodes,
+            edges=edges,
+            graph_ready_context=graph_ready_context,
+        )
     except NetworkXUnavailable as exc:
         public, diagnostics = _graph_unavailable_projection(mode=mode, exc=exc, elapsed_ms=_elapsed_ms(started), scope=scope)
         return public, diagnostics, None, None, None
@@ -203,6 +219,8 @@ def _build_schedule_graph_analysis_projection(
         scope=scope,
         score_public=score_public,
         score_diagnostics=score_diagnostics,
+        resource_matching_public=resource_matching_public,
+        resource_matching_diagnostics=resource_matching_diagnostics,
     )
     return public, diagnostics, graph_ready_context, _graph_dispatch_mode_override(public), health_context
 
@@ -321,110 +339,6 @@ def _sample(values: List[Any], limit: int) -> List[Any]:
     return list(values[: int(limit)])
 
 
-def _project_warning_data_value(value: Any) -> Tuple[Any, bool]:
-    if value is None or isinstance(value, (int, float, bool)):
-        return value, False
-    if isinstance(value, str):
-        if len(value) <= _GRAPH_WARNING_TEXT_SAMPLE_LIMIT:
-            return value, False
-        return {
-            "text_sample": value[:_GRAPH_WARNING_TEXT_SAMPLE_LIMIT],
-            "text_length": int(len(value)),
-            "text_truncated": True,
-        }, True
-    if isinstance(value, tuple):
-        value = list(value)
-    if isinstance(value, list):
-        projected_items: List[Any] = []
-        truncated_any = _truncated(value, _GRAPH_WARNING_DATA_LIST_SAMPLE_LIMIT)
-        for item in _sample(value, _GRAPH_WARNING_DATA_LIST_SAMPLE_LIMIT):
-            projected_item, item_truncated = _project_warning_data_value(item)
-            projected_items.append(projected_item)
-            truncated_any = truncated_any or item_truncated
-        return projected_items, truncated_any
-    if isinstance(value, dict):
-        items = list(value.items())
-        projected: Dict[str, Any] = {}
-        truncated_any = _truncated(items, _GRAPH_WARNING_DATA_DICT_FIELD_LIMIT)
-        for raw_key, raw_value in items[:_GRAPH_WARNING_DATA_DICT_FIELD_LIMIT]:
-            projected_value, value_truncated = _project_warning_data_value(raw_value)
-            projected[str(raw_key)] = projected_value
-            truncated_any = truncated_any or value_truncated
-        if len(items) > _GRAPH_WARNING_DATA_DICT_FIELD_LIMIT:
-            projected["_field_count"] = int(len(items))
-            projected["_fields_truncated"] = True
-        return projected, truncated_any
-    return {"unsupported_value_type": type(value).__name__}, True
-
-
-def _project_warning_message(message: Any) -> Tuple[str, bool]:
-    text = str(message or "")
-    if len(text) <= _GRAPH_WARNING_TEXT_SAMPLE_LIMIT:
-        return text, False
-    return text[:_GRAPH_WARNING_TEXT_SAMPLE_LIMIT], True
-
-
-def _project_warning_data(raw_data: Any) -> Tuple[Dict[str, Any], bool]:
-    if not isinstance(raw_data, dict):
-        return {"unsupported_data_type": type(raw_data).__name__}, True
-    projected: Dict[str, Any] = {}
-    items = list(raw_data.items())
-    truncated_any = _truncated(items, _GRAPH_WARNING_DATA_DICT_FIELD_LIMIT)
-    for key, value in items[:_GRAPH_WARNING_DATA_DICT_FIELD_LIMIT]:
-        key_text = str(key)
-        if isinstance(value, list):
-            sample, sample_truncated = _project_warning_data_value(value)
-            projected[f"{key_text}_sample"] = sample
-            projected[f"{key_text}_count"] = int(len(value))
-            truncated = _truncated(value, _GRAPH_WARNING_DATA_LIST_SAMPLE_LIMIT)
-            projected[f"{key_text}_truncated"] = bool(truncated or sample_truncated)
-            truncated_any = truncated_any or truncated or sample_truncated
-        else:
-            projected_value, value_truncated = _project_warning_data_value(value)
-            projected[key_text] = projected_value
-            truncated_any = truncated_any or value_truncated
-    if len(items) > _GRAPH_WARNING_DATA_DICT_FIELD_LIMIT:
-        projected["_field_count"] = int(len(items))
-        projected["_fields_truncated"] = True
-    return projected, truncated_any
-
-
-def _project_warning(warning: Dict[str, Any]) -> Dict[str, Any]:
-    data, warning_data_truncated = _project_warning_data(warning.get("data"))
-    message, message_truncated = _project_warning_message(warning["message"])
-    return {
-        "code": warning["code"],
-        "message": message,
-        "message_length": len(str(warning["message"] or "")),
-        "message_truncated": bool(message_truncated),
-        "data": data,
-        "warning_data_truncated": bool(warning_data_truncated or message_truncated),
-    }
-
-
-def _node_metrics_sample(
-    *,
-    node_metrics: Dict[str, Dict[str, Any]],
-    topological_order: List[str],
-) -> List[Dict[str, Any]]:
-    if topological_order:
-        sample_node_ids = topological_order[:_GRAPH_NODE_METRIC_SAMPLE_LIMIT]
-    else:
-        sample_node_ids = sorted(node_metrics)[:_GRAPH_NODE_METRIC_SAMPLE_LIMIT]
-    return [
-        {
-            "node_id": node_id,
-            "is_on_critical_path": bool(node_metrics[node_id]["is_on_critical_path"]),
-            "critical_path_rank": node_metrics[node_id]["critical_path_rank"],
-            "impact_count": int(node_metrics[node_id]["impact_count"]),
-            "generation_index": int(node_metrics[node_id]["generation_index"]),
-            "downstream_critical_minutes": int(node_metrics[node_id]["downstream_critical_minutes"]),
-        }
-        for node_id in sample_node_ids
-        if node_id in node_metrics
-    ]
-
-
 def _project_graph_analysis_payload(
     *,
     mode: str,
@@ -434,6 +348,8 @@ def _project_graph_analysis_payload(
     scope: Dict[str, Any],
     score_public: Optional[Dict[str, Any]] = None,
     score_diagnostics: Optional[Dict[str, Any]] = None,
+    resource_matching_public: Optional[Dict[str, Any]] = None,
+    resource_matching_diagnostics: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     cycle_edges = list(payload["cycle_edges"])
     topological_order = list(payload["topological_order"])
@@ -464,6 +380,8 @@ def _project_graph_analysis_payload(
     )
     if score_public:
         public.update(dict(score_public))
+    if resource_matching_public:
+        public["resource_matching"] = dict(resource_matching_public)
     diagnostics = {
         "topological_order_sample": _sample(topological_order, _GRAPH_TOPOLOGICAL_SAMPLE_LIMIT),
         "topological_order_count": int(len(topological_order)),
@@ -473,11 +391,12 @@ def _project_graph_analysis_payload(
         "critical_path_truncated": _truncated(critical_path, _GRAPH_CRITICAL_PATH_SAMPLE_LIMIT),
         "cycle_edges_sample": _sample(cycle_edges, _GRAPH_CYCLE_EDGE_SAMPLE_LIMIT),
         "cycle_edge_count": int(len(cycle_edges)),
-        "warnings_sample": [_project_warning(warning) for warning in warnings[:_GRAPH_WARNING_SAMPLE_LIMIT]],
+        "warnings_sample": [_project_graph_warning(warning) for warning in warnings[:_GRAPH_WARNING_SAMPLE_LIMIT]],
         "warning_count": int(len(warnings)),
-        "node_metrics_sample": _node_metrics_sample(
+        "node_metrics_sample": _graph_node_metrics_sample(
             node_metrics=node_metrics,
             topological_order=topological_order,
+            limit=_GRAPH_NODE_METRIC_SAMPLE_LIMIT,
         ),
         "node_metrics_count": int(len(node_metrics)),
         "node_metrics_truncated": _truncated(
@@ -488,6 +407,8 @@ def _project_graph_analysis_payload(
     }
     if score_diagnostics:
         diagnostics.update(dict(score_diagnostics))
+    if resource_matching_diagnostics is not None:
+        diagnostics["resource_matching"] = dict(resource_matching_diagnostics)
     return public, diagnostics
 
 

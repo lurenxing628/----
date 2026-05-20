@@ -1,6 +1,6 @@
 roadmap: networkx-scheduler-graph-introduction
 created: 2026-05-08
-last_reviewed: 2026-05-18
+last_reviewed: 2026-05-20
 
 items:
   - slug: networkx-compatibility-decision
@@ -377,18 +377,23 @@ items:
 
   - slug: scheduler-graph-resource-matching-report
     title: PR-8 资源匹配 report-only 分析
-    description: "基于 NetworkX 二分图最大匹配，按 PR-5 ready 口径分析首波 ready 工序与 candidate_machine_ids 的可行设备匹配，输出 matched/unmatched/bottleneck 小摘要和 diagnostics 采样；第一版只写 result_summary 报告，不改 SGS 候选排序、不改资源分配、不落候选表、不加页面入口。"
-    status: planned
-    feature: null
+    description: "基于 NetworkX 二分图最大匹配，按 PR-5 ready 口径分析首波 ready 工序与 candidate_machine_ids 的可行设备匹配；public 只输出 status/reason 和 matched/unmatched/bottleneck 计数，样本只进 diagnostics，避免 OperationLogs 泄漏；第一版只写 result_summary 报告，不改 SGS 候选排序、不改资源分配、不落候选表、不加页面入口。"
+    status: done
+    feature: .codestable/features/2026-05-20-scheduler-graph-resource-matching-report/
     minimal_loop: false
     depends_on: [scheduler-graph-candidate-config-closeout]
     primary_paths:
       - core/services/scheduler/graph/resource_matching.py
       - core/services/scheduler/run/schedule_graph_dispatch_context.py
+      - core/services/scheduler/run/schedule_graph_resource_matching_context.py
+      - core/services/scheduler/run/schedule_graph_projection_helpers.py
       - core/services/scheduler/run/schedule_graph_report.py
       - tests/scheduler_graph/test_resource_matching.py
+      - tests/scheduler_graph/test_graph_dispatch_context.py
       - tests/regression_scheduler_graph_resource_matching_report_contract.py
       - tests/regression_scheduler_graph_operation_logs_contract.py
+      - tests/regression_scheduler_graph_lazy_runtime_contract.py
+      - tests/scheduler_graph/test_nx_runtime.py
     forbidden_paths:
       - schema.sql
       - core/infrastructure/migrations/
@@ -406,12 +411,15 @@ items:
       - templates/
     exit_checks:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_graph/test_resource_matching.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_graph/test_graph_dispatch_context.py tests/scheduler_graph/test_resource_matching.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_graph_resource_matching_report_contract.py tests/regression_scheduler_graph_operation_logs_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_graph_lazy_runtime_contract.py tests/scheduler_graph/test_nx_runtime.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_graph_report_mode_contract.py tests/regression_scheduler_graph_on_mode_contract.py tests/regression_scheduler_graph_summary_contract.py
-      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler/graph/resource_matching.py core/services/scheduler/run/schedule_graph_dispatch_context.py core/services/scheduler/run/schedule_graph_report.py tests/scheduler_graph/test_resource_matching.py tests/regression_scheduler_graph_resource_matching_report_contract.py
-      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright core/services/scheduler/graph/resource_matching.py core/services/scheduler/run/schedule_graph_dispatch_context.py core/services/scheduler/run/schedule_graph_report.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler/graph/resource_matching.py core/services/scheduler/run/schedule_graph_dispatch_context.py core/services/scheduler/run/schedule_graph_resource_matching_context.py core/services/scheduler/run/schedule_graph_projection_helpers.py core/services/scheduler/run/schedule_graph_report.py tests/scheduler_graph/test_resource_matching.py tests/scheduler_graph/test_graph_dispatch_context.py tests/scheduler_graph/test_nx_runtime.py tests/regression_scheduler_graph_resource_matching_report_contract.py tests/regression_scheduler_graph_operation_logs_contract.py tests/regression_scheduler_graph_lazy_runtime_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright core/services/scheduler/graph/resource_matching.py core/services/scheduler/run/schedule_graph_dispatch_context.py core/services/scheduler/run/schedule_graph_resource_matching_context.py core/services/scheduler/run/schedule_graph_projection_helpers.py core/services/scheduler/run/schedule_graph_report.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .codestable/tools/validate-yaml.py --file .codestable/roadmap/networkx-scheduler-graph-introduction/networkx-scheduler-graph-introduction-items.yaml --yaml-only
-    notes: "PR-8 只做 report-only 资源匹配诊断：resource_matching.py 只接 OperationGraphNode ready_nodes，使用 nx.bipartite.maximum_matching 后只保留工序侧映射；无候选设备、空 ready、有环、图增强不可用、NetworkX 不可用都必须以 status/reason/warning 可见，不允许静默回退成全量设备或 matched=0 成功。public 只写 ready/matched/unmatched/bottleneck 计数和小样本，diagnostics 只写采样；OperationLogs 只能看到 public 小摘要。第一版不做人员匹配、不做最小费用流、不改排产结果、不改资源分配、不新增配置/schema/页面。"
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache
+    notes: "已完成：2026-05-20 新增 resource_matching.py 纯分析模块，运行时懒加载 NetworkX，按首波 ready 工序 × candidate_machine_ids 构造二分图并调用 nx.bipartite.maximum_matching，只保留工序侧映射。report/on 通过 schedule_graph_resource_matching_context.py 复用同一套 first-wave ready 口径，schedule_graph_dispatch_context.py 保留轻量入口以守住 500 行架构门禁；schedule_graph_report.py 的 warning / node_metrics 采样 helper 下沉到 schedule_graph_projection_helpers.py，让 report 文件也回到 500 行以内。资源匹配结果只写 result_summary.algo.graph_analysis.resource_matching 和 diagnostics.graph_analysis.resource_matching，不进入 graph_ready_context、SGS 候选排序、资源分配或候选表。public 只写 status/reason 和计数，不写 unmatched_operation_sample、bottleneck_machine_sample、matches_sample 或完整 ids；样本只进 diagnostics，OperationLogs 只能看到 public 计数字段。无候选设备进入 unmatched 并写 graph_resource_no_candidate_machine warning；空 ready、有环、图增强不可用、合同错误、NetworkX 不可用都有明确 status/reason，NetworkX 不可用沿用顶层 graph_analysis unavailable。第一版不做人员匹配、不做最小费用流、不改排产结果、不新增配置/schema/页面。Win7 实机或虚拟机离线证据未跑，证据不足，由 PR-9 承接。"
 
   - slug: scheduler-graph-win7-package-closeout
     title: PR-9 Win7 离线打包和最终验收
