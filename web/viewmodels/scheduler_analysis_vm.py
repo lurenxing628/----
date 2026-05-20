@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from .scheduler_analysis_candidates import build_candidate_comparison_display
+from .scheduler_analysis_diagnostics import build_diagnostic_sections
 from .scheduler_analysis_labels import (
     objective_choice_labels,
     objective_key_from_objective,
@@ -231,6 +232,10 @@ def build_analysis_context(
         selected_ver=selected_ver,
         plan_role_options=plan_role_options,
     )
+    diagnostic_sections = build_diagnostic_sections(
+        selected_summary,
+        selected_ver=selected_ver,
+    )
     algo_config_snapshot = selected_algo.get("config_snapshot") if isinstance(selected_algo, dict) else None
     algo_config_snapshot_objective_label = "-"
     if isinstance(algo_config_snapshot, dict):
@@ -256,6 +261,7 @@ def build_analysis_context(
         "best_score_schema_display": best_score_schema_display,
         "compat_fallback": compat_fallback,
         "candidate_comparison_display": candidate_comparison_display,
+        "diagnostic_sections": diagnostic_sections,
         "algo_config_snapshot_objective_label": algo_config_snapshot_objective_label,
         "objective_key_label": objective_key_label,
         "objective_choice_labels": objective_choice_labels(),

@@ -80,6 +80,7 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/regression_gantt_critical_chain_provider.py",
     "tests/regression_scheduler_candidate_gantt_plan_role_contract.py",
     "tests/regression_scheduler_analysis_candidate_links_and_roles.py",
+    "tests/regression_scheduler_analysis_diagnostic_contract.py",
     "tests/regression_quality_gate_scan_contract.py",
     "tests/regression_request_services_contract.py",
     "tests/regression_request_services_lazy_construction.py",
@@ -435,6 +436,7 @@ REQUIRED_REGRESSION_GROUPS = (
             "tests/regression_gantt_critical_chain_provider.py",
             "tests/regression_scheduler_candidate_gantt_plan_role_contract.py",
             "tests/regression_scheduler_analysis_candidate_links_and_roles.py",
+            "tests/regression_scheduler_analysis_diagnostic_contract.py",
         ),
         "input_file_scopes": (
             "core/models/schedule_plan_role.py",
