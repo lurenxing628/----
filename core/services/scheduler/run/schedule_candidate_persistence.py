@@ -27,21 +27,26 @@ def _candidate_by_key(candidate_comparison: Any) -> Dict[str, Any]:
     return out
 
 
-def _require_result_row(candidate: Any, result: Any) -> Dict[str, Any]:
+def _require_result_row(candidate: Any, result: Any, *, allowed_op_ids: Set[int]) -> Dict[str, Any]:
     key = str(getattr(candidate, "candidate_key", "") or "")
     try:
         op_id = int(getattr(result, "op_id", 0) or 0)
-    except Exception as exc:
+    except (TypeError, ValueError) as exc:
         raise ValidationError(f"候选方案 {key} 的工序编号不合法，已拒绝写入候选明细。", field="candidate_rows") from exc
     if op_id <= 0:
         raise ValidationError(f"候选方案 {key} 的工序编号必须大于 0，已拒绝写入候选明细。", field="candidate_rows")
+    if op_id not in allowed_op_ids:
+        raise ValidationError(
+            f"候选方案 {key} 包含超出本次可重排范围的工序 {op_id}，已拒绝写入候选明细。",
+            field="candidate_rows",
+        )
     start_time = getattr(result, "start_time", None)
     end_time = getattr(result, "end_time", None)
     if start_time is None or end_time is None:
         raise ValidationError(f"候选方案 {key} 缺少开始或结束时间，已拒绝写入候选明细。", field="candidate_rows")
     try:
         valid_range = start_time < end_time
-    except Exception as exc:
+    except TypeError as exc:
         raise ValidationError(f"候选方案 {key} 的开始/结束时间不可比较，已拒绝写入候选明细。", field="candidate_rows") from exc
     if not valid_range:
         raise ValidationError(f"候选方案 {key} 的开始时间必须早于结束时间，已拒绝写入候选明细。", field="candidate_rows")
@@ -61,10 +66,11 @@ def _candidate_rows(
     version: int,
     candidate_id: int,
     frozen_op_ids: Set[int],
+    allowed_op_ids: Set[int],
 ) -> List[ScheduleCandidateRows]:
     rows: List[ScheduleCandidateRows] = []
     for result in list(getattr(candidate, "results", None) or []):
-        row = _require_result_row(candidate, result)
+        row = _require_result_row(candidate, result, allowed_op_ids=allowed_op_ids)
         op_id = int(row["op_id"])
         rows.append(
             ScheduleCandidateRows(
@@ -169,6 +175,7 @@ def _persist_candidate_detail_rows(
     by_key: Dict[str, Any],
     detail_keys: List[str],
     frozen_op_ids: Set[int],
+    allowed_op_ids: Set[int],
 ) -> None:
     repo = svc.candidate_repo
     for key in detail_keys:
@@ -186,6 +193,7 @@ def _persist_candidate_detail_rows(
                 version=int(version),
                 candidate_id=int(candidate_ids[key]),
                 frozen_op_ids=frozen_op_ids,
+                allowed_op_ids=allowed_op_ids,
             )
         )
 
@@ -227,6 +235,7 @@ def persist_candidate_comparison(
     version: int,
     candidate_comparison: Any,
     frozen_op_ids: Set[int],
+    allowed_op_ids: Set[int],
 ) -> None:
     repo = svc.candidate_repo
     roles_by_key = candidate_roles_by_key(candidate_comparison)
@@ -251,6 +260,7 @@ def persist_candidate_comparison(
         by_key=by_key,
         detail_keys=_detail_keys(candidate_comparison, adopted_key=adopted_key),
         frozen_op_ids=frozen_op_ids,
+        allowed_op_ids=allowed_op_ids,
     )
     _persist_candidate_selections(
         svc,

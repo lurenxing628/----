@@ -8,6 +8,14 @@ ScheduleCorePersist = Callable[..., None]
 ScheduleOperationLogger = Callable[..., None]
 
 
+def _operation_ids(reschedulable_operations: List[Any]) -> Set[int]:
+    return {
+        int(op.id)
+        for op in list(reschedulable_operations or [])
+        if getattr(op, "id", None)
+    }
+
+
 def persist_schedule_run_with_candidates(
     svc: Any,
     *,
@@ -56,6 +64,7 @@ def persist_schedule_run_with_candidates(
                 version=int(version),
                 candidate_comparison=candidate_comparison,
                 frozen_op_ids=frozen_op_ids,
+                allowed_op_ids=_operation_ids(reschedulable_operations),
             )
         svc.candidate_repo.delete_without_schedule_history()
 

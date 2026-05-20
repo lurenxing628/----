@@ -36,6 +36,25 @@ PR-7e 代码级收口已完成。
 - 对抗审核发现：性能测试解释的是测试手写 SQL，不是真实服务 SQL。已改为抓 `get_plan_time_span()` 实际执行 SQL 再做 `EXPLAIN QUERY PLAN`。
 - 对抗审核发现：`on + 有环 + block=no` 的旧图合同和默认候选链路容易冲突。已让主链先保留阻断检查，再继续默认候选比较。
 
+## 本次 review 修复验证
+
+- adopted 与 `baseline_best` / `critical_best` 指向同一个候选时，分析页不再把 best role 误说成“不是正式写入的结果”，而是显示“与最终采用方案相同，正式排程已写入这一版”。
+- 非代表候选运行失败时，分析页会把失败数量、失败候选名称和失败原因放进页面提示；代表方案表仍正常展示。
+- role 映射或候选明细完整性损坏时，分析页只把 `ValueError` 转成“本次方案对比记录不完整”的可见提示，不生成假的方案跳转链接；其它异常仍继续暴露。
+- 保存候选代表明细前，会校验 `candidate_rows.op_id` 是否属于本次可重排工序范围；发现越界会拒绝保存并回滚正式 `Schedule`、`ScheduleHistory` 和候选表写入。
+- 新增测试名：
+  - `test_analysis_route_builds_candidate_comparison_rows_with_shared_role_labels_and_links`
+  - `test_candidate_display_marks_baseline_best_as_adopted_when_baseline_is_selected`
+  - `test_candidate_display_surfaces_non_representative_failed_candidates`
+  - `test_candidate_display_status_messages_include_candidate_run_state`
+  - `test_analysis_route_shows_incomplete_notice_when_candidate_detail_is_missing`
+  - `test_analysis_route_surfaces_plan_role_integrity_error_without_fake_links`
+  - `test_candidate_detail_rows_reject_out_of_scope_op_id_and_rollback`
+- 通过命令：
+  - `.venv/bin/python -m pytest tests/regression_scheduler_candidate_analysis_contract.py tests/regression_scheduler_candidate_persistence_contract.py`，结果：15 passed。
+  - `.venv/bin/python -m pytest tests/regression_scheduler_candidate_config_contract.py tests/regression_scheduler_candidate_py38_contract.py tests/regression_scheduler_candidate_performance_guard.py tests/regression_scheduler_candidate_analysis_contract.py tests/regression_scheduler_candidate_generation_contract.py tests/regression_scheduler_candidate_runner_contract.py tests/regression_scheduler_candidate_persistence_contract.py tests/regression_scheduler_candidate_schema_contract.py tests/regression_scheduler_candidate_summary_contract.py tests/regression_scheduler_graph_auto_selection_contract.py tests/regression_scheduler_graph_on_mode_contract.py tests/regression_scheduler_graph_report_mode_contract.py tests/regression_scheduler_graph_operation_logs_contract.py tests/regression_scheduler_graph_summary_contract.py`，结果：115 passed。
+  - `.venv/bin/python -m pytest tests/regression_scheduler_config_route_contract.py tests/regression_scheduler_config_spec_sync_contract.py tests/regression_config_field_spec_contract.py tests/regression_graph_config_bootstrap_contract.py tests/regression_gantt_critical_outline_sync.py tests/regression_improve_dispatch_modes.py tests/regression_optimizer_seed_results_contract.py tests/regression_schedule_service_reject_no_actionable_schedule_rows.py tests/regression_scheduler_run_no_reschedulable_flash.py tests/regression_scheduler_week_plan_no_reschedulable_flash.py tests/scheduler_graph/test_graph_dispatch_context.py tests/scheduler_graph/test_graph_performance.py tests/test_optimizer_build_order_once_per_strategy.py`，结果：79 passed。
+
 ## 验证
 
 - 浏览器验证：

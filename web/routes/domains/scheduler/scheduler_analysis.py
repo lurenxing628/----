@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, NamedTuple, Optional
 
 from flask import g, request, url_for
 
@@ -180,18 +180,30 @@ def _plan_role_option_to_dict(item: Any) -> Optional[Dict[str, Any]]:
     return None
 
 
-def _load_selected_plan_role_options(services: Any, selected_ver: Optional[int]) -> List[Dict[str, Any]]:
+class PlanRoleOptionsLoadResult(NamedTuple):
+    options: List[Dict[str, Any]]
+    integrity_notice: str
+
+
+def _load_selected_plan_role_options(services: Any, selected_ver: Optional[int]) -> PlanRoleOptionsLoadResult:
     if selected_ver is None:
-        return []
+        return PlanRoleOptionsLoadResult([], "")
     plan_query_service = getattr(services, "schedule_plan_query_service", None)
     if plan_query_service is None:
-        return []
+        return PlanRoleOptionsLoadResult([], "")
     options: List[Dict[str, Any]] = []
-    for item in plan_query_service.list_plan_roles(int(selected_ver)):
+    try:
+        items = plan_query_service.list_plan_roles(int(selected_ver))
+    except ValueError as exc:
+        return PlanRoleOptionsLoadResult(
+            [],
+            f"本次方案对比记录不完整，当前只展示最终采用方案。原因：{exc}",
+        )
+    for item in items:
         option = _plan_role_option_to_dict(item)
         if option:
             options.append(option)
-    return options
+    return PlanRoleOptionsLoadResult(options, "")
 
 
 def _plan_role_links(version: int, role: str) -> List[Dict[str, str]]:
@@ -243,11 +255,12 @@ def analysis_page():
     ctx = build_analysis_context(selected_ver=selected_ver, raw_hist=raw_hist, selected_item=selected_item)
     initial_candidate_display = ctx.get("candidate_comparison_display")
     if isinstance(initial_candidate_display, dict) and initial_candidate_display.get("has_comparison"):
-        plan_role_options = _load_selected_plan_role_options(g.services, selected_ver)
+        plan_role_load = _load_selected_plan_role_options(g.services, selected_ver)
         ctx["candidate_comparison_display"] = build_candidate_comparison_display(
             ctx.get("selected_summary"),
             selected_ver=selected_ver,
-            plan_role_options=plan_role_options,
+            plan_role_options=plan_role_load.options,
+            integrity_notice=plan_role_load.integrity_notice,
         )
         _attach_candidate_plan_links(ctx, selected_ver)
     requested_ver = version_resolution.requested_version if version_resolution.requested_version is not None else selected_ver

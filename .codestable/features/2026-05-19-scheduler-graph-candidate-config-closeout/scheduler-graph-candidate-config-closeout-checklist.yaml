@@ -23,6 +23,9 @@ steps:
   - action: "阶段 6：浏览器验证和压力数据验证"
     exit_signal: "本地服务真实页面和数据库候选表对账完成，无法 clean proof 时明确说明"
     status: done
+  - action: "review 修复：候选展示语义和候选明细保存合同收紧"
+    exit_signal: "adopted 与 best role 重合不误标；非代表候选失败可见；role 映射损坏只显示不完整提示且不生成假链接；candidate_rows 保存前拒绝越界 op_id"
+    status: done
 
 checks:
   - item: "PR-7e 配置、Python 3.8、性能和分析页 targeted tests"
@@ -33,4 +36,13 @@ checks:
     status: passed
   - item: "CodeStable 最终浏览器/门禁"
     source: "临时库 /tmp/aps-pr7e-browser.tMI6Op/aps.db；浏览器打开配置页和分析页；30 批 120 工序压力排产"
+    status: passed
+  - item: "review 修复 targeted tests"
+    source: ".venv/bin/python -m pytest tests/regression_scheduler_candidate_analysis_contract.py tests/regression_scheduler_candidate_persistence_contract.py"
+    status: passed
+  - item: "review 修复 PR-7e 候选与图相关回归"
+    source: ".venv/bin/python -m pytest tests/regression_scheduler_candidate_config_contract.py tests/regression_scheduler_candidate_py38_contract.py tests/regression_scheduler_candidate_performance_guard.py tests/regression_scheduler_candidate_analysis_contract.py tests/regression_scheduler_candidate_generation_contract.py tests/regression_scheduler_candidate_runner_contract.py tests/regression_scheduler_candidate_persistence_contract.py tests/regression_scheduler_candidate_schema_contract.py tests/regression_scheduler_candidate_summary_contract.py tests/regression_scheduler_graph_auto_selection_contract.py tests/regression_scheduler_graph_on_mode_contract.py tests/regression_scheduler_graph_report_mode_contract.py tests/regression_scheduler_graph_operation_logs_contract.py tests/regression_scheduler_graph_summary_contract.py"
+    status: passed
+  - item: "review 修复页面和查询相关回归"
+    source: ".venv/bin/python -m pytest tests/regression_scheduler_config_route_contract.py tests/regression_scheduler_config_spec_sync_contract.py tests/regression_config_field_spec_contract.py tests/regression_graph_config_bootstrap_contract.py tests/regression_gantt_critical_outline_sync.py tests/regression_improve_dispatch_modes.py tests/regression_optimizer_seed_results_contract.py tests/regression_schedule_service_reject_no_actionable_schedule_rows.py tests/regression_scheduler_run_no_reschedulable_flash.py tests/regression_scheduler_week_plan_no_reschedulable_flash.py tests/scheduler_graph/test_graph_dispatch_context.py tests/scheduler_graph/test_graph_performance.py tests/test_optimizer_build_order_once_per_strategy.py"
     status: passed

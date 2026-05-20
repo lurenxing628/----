@@ -332,6 +332,13 @@
         {{ candidate_comparison_display.notice }}
       </div>
     {% endif %}
+    {% if candidate_comparison_display and candidate_comparison_display.status_messages %}
+      {% for message in candidate_comparison_display.status_messages %}
+        <div class="{{ message.class_name }}" role="status">
+          {{ message.text }}
+        </div>
+      {% endfor %}
+    {% endif %}
 
     {% if candidate_comparison_display and candidate_comparison_display.rows %}
       <div class="card">
@@ -342,16 +349,6 @@
         {% if candidate_comparison_display.selection_reason_label %}
           <div class="flash-card mt-2" role="status">
             {{ candidate_comparison_display.selection_reason_label }}
-          </div>
-        {% endif %}
-        {% if candidate_comparison_display.baseline_missing_or_failed %}
-          <div class="flash-card flash-warning mt-2" role="status">
-            原算法候选缺失或失败，本次采用结果需复核。
-          </div>
-        {% endif %}
-        {% if candidate_comparison_display.skipped_candidate_labels %}
-          <div class="flash-card flash-warning mt-2" role="status">
-            因本次时间上限跳过：{{ candidate_comparison_display.skipped_candidate_labels | join('、') }}
           </div>
         {% endif %}
         <div class="aps-table-scroll mt-2">
@@ -375,7 +372,7 @@
                 <tr>
                   <td>
                     <strong>{{ row.role_label }}</strong>
-                    {% if row.is_comparison %}
+                    {% if row.comparison_note %}
                       <div class="muted text-xs">{{ row.comparison_note }}</div>
                     {% endif %}
                   </td>

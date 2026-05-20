@@ -72,6 +72,10 @@ def _candidate_comparison_summary(selected_summary: Optional[Dict[str, Any]]) ->
     return comparison
 
 
+def _adopted_candidate_key(comparison: Dict[str, Any]) -> str:
+    return str(comparison.get("adopted_candidate_key") or "").strip()
+
+
 def _candidate_rows_by_key(comparison: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     out: Dict[str, Dict[str, Any]] = {}
     for raw in list(comparison.get("candidates") or []):
@@ -159,6 +163,47 @@ def _candidate_label(candidate: Dict[str, Any], option: Optional[Dict[str, Any]]
     return _candidate_label_from_key(candidate_key, role)
 
 
+def _comparison_note(*, role: str, candidate_key: str, adopted_key: str) -> str:
+    if role == ROLE_ADOPTED:
+        return ""
+    if candidate_key == adopted_key:
+        return "与最终采用方案相同，正式排程已写入这一版。"
+    return "这是对比方案，不是正式写入的结果。"
+
+
+def _failed_candidate_labels(comparison: Dict[str, Any]) -> List[str]:
+    labels: List[str] = []
+    for candidate in list(comparison.get("candidates") or []):
+        if not isinstance(candidate, dict):
+            continue
+        if str(candidate.get("status") or "").strip() != "failed":
+            continue
+        key = str(candidate.get("candidate_key") or "").strip()
+        label = str(candidate.get("label") or "").strip() or _candidate_label_from_key(key, "")
+        reason = str(candidate.get("failure_reason") or "").strip()
+        labels.append(f"{label}（{reason}）" if reason else label)
+    return labels
+
+
+def _warning_message(text: str) -> Dict[str, str]:
+    return {"class_name": "flash-card flash-warning mt-2", "text": text}
+
+
+def _comparison_status_messages(comparison: Dict[str, Any]) -> List[Dict[str, str]]:
+    messages: List[Dict[str, str]] = []
+    failed_count = int(comparison.get("failed_candidate_count") or 0)
+    failed_labels = _failed_candidate_labels(comparison)
+    if failed_count > 0:
+        suffix = f"：{'、'.join(failed_labels)}。" if failed_labels else "。"
+        messages.append(_warning_message(f"本次有 {failed_count} 个候选运行失败{suffix}系统只在可用候选中自动择优。"))
+    if bool(comparison.get("baseline_missing_or_failed")):
+        messages.append(_warning_message("原算法候选缺失或失败，本次采用结果需复核。"))
+    skipped_labels = list(comparison.get("skipped_candidate_labels") or [])
+    if skipped_labels:
+        messages.append(_warning_message(f"因本次时间上限跳过：{'、'.join(str(item) for item in skipped_labels)}"))
+    return messages
+
+
 def _has_complete_comparison_rows(rows: List[Dict[str, Any]]) -> bool:
     roles = {str(row.get("role") or "") for row in list(rows or [])}
     return _REQUIRED_COMPARISON_ROLES <= roles
@@ -193,6 +238,9 @@ def _candidate_display_row(
         "重点工序优先方案最好",
     )
     status = _candidate_status(candidate, option)
+    adopted_key = _adopted_candidate_key(comparison)
+    is_same_as_adopted = bool(candidate_key and candidate_key == adopted_key)
+    comparison_note = _comparison_note(role=role, candidate_key=candidate_key, adopted_key=adopted_key)
     return {
         "role": role,
         "role_label": role_label,
@@ -209,8 +257,9 @@ def _candidate_display_row(
         "score_label": _candidate_score_label(candidate),
         "plan_role_available": role in options_by_role,
         "is_adopted": role == ROLE_ADOPTED,
-        "is_comparison": role != ROLE_ADOPTED,
-        "comparison_note": "" if role == ROLE_ADOPTED else "这是对比方案，不是正式写入的结果。",
+        "is_same_as_adopted": is_same_as_adopted,
+        "is_comparison": role != ROLE_ADOPTED and not is_same_as_adopted,
+        "comparison_note": comparison_note,
         "links": {},
     }
 
@@ -252,11 +301,39 @@ def _candidate_comparison_display_payload(
         "skipped_candidate_count": comparison.get("skipped_candidate_count"),
         "time_budget_reached": bool(comparison.get("time_budget_reached")),
         "skipped_candidate_labels": list(comparison.get("skipped_candidate_labels") or []),
+        "failed_candidate_labels": _failed_candidate_labels(comparison),
         "baseline_missing_or_failed": bool(comparison.get("baseline_missing_or_failed")),
         "selection_reason_code": comparison.get("selection_reason_code"),
         "selection_reason_label": _selection_reason_label(comparison.get("selection_reason_code")),
+        "status_messages": _comparison_status_messages(comparison),
         "notice": "",
         "has_comparison": True,
+    }
+
+
+def _incomplete_comparison_display_payload(
+    *,
+    comparison: Dict[str, Any],
+    selected_ver: int,
+    notice: str,
+) -> Dict[str, Any]:
+    return {
+        "version": int(selected_ver),
+        "rows": [],
+        "available_role_count": 1,
+        "planned_candidate_count": comparison.get("planned_candidate_count"),
+        "completed_candidate_count": comparison.get("completed_candidate_count"),
+        "failed_candidate_count": comparison.get("failed_candidate_count"),
+        "skipped_candidate_count": comparison.get("skipped_candidate_count"),
+        "time_budget_reached": bool(comparison.get("time_budget_reached")),
+        "skipped_candidate_labels": list(comparison.get("skipped_candidate_labels") or []),
+        "failed_candidate_labels": _failed_candidate_labels(comparison),
+        "baseline_missing_or_failed": bool(comparison.get("baseline_missing_or_failed")),
+        "selection_reason_code": comparison.get("selection_reason_code"),
+        "selection_reason_label": _selection_reason_label(comparison.get("selection_reason_code")),
+        "status_messages": _comparison_status_messages(comparison),
+        "notice": notice,
+        "has_comparison": False,
     }
 
 
@@ -271,9 +348,11 @@ def _no_comparison_display_payload(selected_ver: Optional[int]) -> Dict[str, Any
         "skipped_candidate_count": None,
         "time_budget_reached": False,
         "skipped_candidate_labels": [],
+        "failed_candidate_labels": [],
         "baseline_missing_or_failed": False,
         "selection_reason_code": "",
         "selection_reason_label": "",
+        "status_messages": [],
         "notice": _NO_COMPARISON_NOTICE,
         "has_comparison": False,
     }
@@ -284,12 +363,19 @@ def build_candidate_comparison_display(
     *,
     selected_ver: Optional[int],
     plan_role_options: Optional[List[Any]] = None,
+    integrity_notice: str = "",
 ) -> Optional[Dict[str, Any]]:
     comparison = _candidate_comparison_summary(selected_summary)
     if selected_ver is None:
         return None
     if comparison is None:
         return _no_comparison_display_payload(selected_ver)
+    if integrity_notice:
+        return _incomplete_comparison_display_payload(
+            comparison=comparison,
+            selected_ver=int(selected_ver),
+            notice=integrity_notice,
+        )
 
     options_by_role = _plan_role_options_by_role(plan_role_options)
     candidates_by_key = _candidate_rows_by_key(comparison)
@@ -300,9 +386,11 @@ def build_candidate_comparison_display(
     )
 
     if not _has_complete_comparison_rows(rows):
-        display = _no_comparison_display_payload(selected_ver)
-        display["notice"] = "本次方案对比记录不完整，当前只展示最终采用方案。"
-        return display
+        return _incomplete_comparison_display_payload(
+            comparison=comparison,
+            selected_ver=int(selected_ver),
+            notice="本次方案对比记录不完整，当前只展示最终采用方案。",
+        )
     return _candidate_comparison_display_payload(
         comparison=comparison,
         selected_ver=int(selected_ver),

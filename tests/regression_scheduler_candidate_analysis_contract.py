@@ -70,68 +70,87 @@ class _PlanRoleServiceMustNotBeCalled:
         raise AssertionError(f"没有方案对比数据时不应该查询方案角色，version={version}")
 
 
-def _comparison_summary() -> Dict[str, Any]:
+class _PlanRoleServiceBroken:
+    def list_plan_roles(self, version: int) -> List[SchedulePlanRoleOption]:
+        raise ValueError(f"候选方案角色映射损坏：version={version}, role=baseline_best 指向的候选不存在。")
+
+
+def _comparison_summary(
+    *,
+    adopted_key: str = "graph_w1_of_5",
+    failed_extra: bool = False,
+    incomplete: bool = False,
+) -> Dict[str, Any]:
+    baseline_roles = [ROLE_BASELINE_BEST]
+    critical_roles = [ROLE_CRITICAL_BEST]
+    if adopted_key == "baseline":
+        baseline_roles.append(ROLE_ADOPTED)
+    if adopted_key == "graph_w1_of_5":
+        critical_roles.append(ROLE_ADOPTED)
+
+    candidates = [
+        {
+            "candidate_key": "baseline",
+            "label": "原算法候选",
+            "kind": "baseline",
+            "status": "completed",
+            "score": [0, 0, 12.0],
+            "metrics": {
+                "failed_ops": 0,
+                "overdue_count": 0,
+                "total_tardiness_hours": 0,
+                "makespan_hours": 12.0,
+                "changeover_count": 2,
+            },
+            "roles": baseline_roles,
+        },
+        {
+            "candidate_key": "graph_w1_of_5",
+            "label": "graph_w1_of_5",
+            "kind": "critical_chain",
+            "status": "completed",
+            "score": [0, 0, 9.0],
+            "metrics": {
+                "failed_ops": 0,
+                "overdue_count": 0,
+                "total_tardiness_hours": 0,
+                "makespan_hours": 9.0,
+                "changeover_count": 1,
+            },
+            "roles": critical_roles,
+        },
+    ]
+    if failed_extra:
+        candidates.append(
+            {
+                "candidate_key": "graph_w5_of_5",
+                "label": "重点工序优先方案 5/5",
+                "kind": "critical_chain",
+                "status": "failed",
+                "failure_reason": "图分析失败：存在环",
+                "score": [],
+                "metrics": {},
+                "roles": [],
+            }
+        )
+    if incomplete:
+        candidates = []
+
     return {
         "algo": {
             "metrics": {"overdue_count": 0},
             "candidate_comparison": {
                 "enabled": True,
-                "planned_candidate_count": 3,
-                "completed_candidate_count": 3,
-                "failed_candidate_count": 0,
+                "planned_candidate_count": 6 if failed_extra else 3,
+                "completed_candidate_count": 5 if failed_extra else 3,
+                "failed_candidate_count": 1 if failed_extra else 0,
                 "skipped_candidate_count": 0,
                 "skipped_candidate_labels": [],
                 "baseline_missing_or_failed": False,
-                "adopted_candidate_key": "adopted",
+                "adopted_candidate_key": adopted_key,
                 "baseline_best_candidate_key": "baseline",
-                "critical_best_candidate_key": "critical",
-                "candidates": [
-                    {
-                        "candidate_key": "adopted",
-                        "label": "正式写入方案",
-                        "kind": "baseline",
-                        "status": "completed",
-                        "score": [0, 0, 10.0],
-                        "metrics": {
-                            "failed_ops": 0,
-                            "overdue_count": 0,
-                            "total_tardiness_hours": 0,
-                            "makespan_hours": 10.0,
-                            "changeover_count": 1,
-                        },
-                        "roles": [ROLE_ADOPTED],
-                    },
-                    {
-                        "candidate_key": "baseline",
-                        "label": "原算法候选",
-                        "kind": "baseline",
-                        "status": "completed",
-                        "score": [0, 0, 12.0],
-                        "metrics": {
-                            "failed_ops": 0,
-                            "overdue_count": 0,
-                            "total_tardiness_hours": 0,
-                            "makespan_hours": 12.0,
-                            "changeover_count": 2,
-                        },
-                        "roles": [ROLE_BASELINE_BEST],
-                    },
-                    {
-                        "candidate_key": "critical",
-                        "label": "重点工序优先方案",
-                        "kind": "critical_chain",
-                        "status": "completed",
-                        "score": [0, 0, 9.0],
-                        "metrics": {
-                            "failed_ops": 0,
-                            "overdue_count": 0,
-                            "total_tardiness_hours": 0,
-                            "makespan_hours": 9.0,
-                            "changeover_count": 1,
-                        },
-                        "roles": [ROLE_CRITICAL_BEST],
-                    },
-                ],
+                "critical_best_candidate_key": "graph_w1_of_5",
+                "candidates": candidates,
             },
         }
     }
@@ -143,9 +162,9 @@ def _plan_role_options() -> List[SchedulePlanRoleOption]:
             role=ROLE_ADOPTED,
             source_table=SOURCE_SCHEDULE,
             candidate_id=1,
-            candidate_key="adopted",
-            candidate_label="正式写入方案",
-            candidate_kind="baseline",
+            candidate_key="graph_w1_of_5",
+            candidate_label="重点工序优先方案 1/5",
+            candidate_kind="critical_chain",
             candidate_status="completed",
             detail_saved="no",
         ),
@@ -161,13 +180,13 @@ def _plan_role_options() -> List[SchedulePlanRoleOption]:
         ),
         SchedulePlanRoleOption(
             role=ROLE_CRITICAL_BEST,
-            source_table=SOURCE_CANDIDATE_ROWS,
-            candidate_id=3,
-            candidate_key="critical",
-            candidate_label="重点工序优先方案",
+            source_table=SOURCE_SCHEDULE,
+            candidate_id=1,
+            candidate_key="graph_w1_of_5",
+            candidate_label="重点工序优先方案 1/5",
             candidate_kind="critical_chain",
             candidate_status="completed",
-            detail_saved="yes",
+            detail_saved="no",
         ),
     ]
 
@@ -237,9 +256,17 @@ def test_analysis_route_builds_candidate_comparison_rows_with_shared_role_labels
     assert rows[ROLE_ADOPTED]["role_label"] == plan_role_label(ROLE_ADOPTED)
     assert rows[ROLE_BASELINE_BEST]["role_label"] == plan_role_label(ROLE_BASELINE_BEST)
     assert rows[ROLE_CRITICAL_BEST]["role_label"] == plan_role_label(ROLE_CRITICAL_BEST)
+    assert rows[ROLE_CRITICAL_BEST]["candidate_key"] == rows[ROLE_ADOPTED]["candidate_key"]
+    assert rows[ROLE_CRITICAL_BEST]["is_same_as_adopted"] is True
+    assert rows[ROLE_CRITICAL_BEST]["is_comparison"] is False
+    assert (
+        "与最终采用方案相同" in rows[ROLE_CRITICAL_BEST]["comparison_note"]
+        or "正式排程已写入这一版" in rows[ROLE_CRITICAL_BEST]["comparison_note"]
+    )
     assert rows[ROLE_ADOPTED]["is_comparison"] is False
+    assert rows[ROLE_BASELINE_BEST]["is_comparison"] is True
     assert "对比方案" in rows[ROLE_BASELINE_BEST]["comparison_note"]
-    assert "对比方案" in rows[ROLE_CRITICAL_BEST]["comparison_note"]
+    assert "这是对比方案，不是正式写入的结果" in rows[ROLE_BASELINE_BEST]["comparison_note"]
     assert display["skipped_candidate_labels"] == []
     assert display["baseline_missing_or_failed"] is False
 
@@ -271,9 +298,11 @@ def test_analysis_route_shows_clear_notice_when_candidate_comparison_is_missing(
 
 
 def test_analysis_route_shows_incomplete_notice_when_candidate_detail_is_missing() -> None:
-    summary = _comparison_summary()
+    summary = _comparison_summary(incomplete=True)
     comparison = summary["algo"]["candidate_comparison"]
-    comparison["candidates"] = []
+    comparison["failed_candidate_count"] = 1
+    comparison["baseline_missing_or_failed"] = True
+    comparison["skipped_candidate_labels"] = ["重点工序优先方案 4/5"]
     history_service = _HistoryServiceStub(summary)
     app, route_mod = _build_app()
 
@@ -287,7 +316,35 @@ def test_analysis_route_shows_incomplete_notice_when_candidate_detail_is_missing
     display = payload["candidate_comparison_display"]
     assert display["has_comparison"] is False
     assert display["rows"] == []
+    assert display["failed_candidate_count"] == 1
+    assert display["baseline_missing_or_failed"] is True
+    assert display["skipped_candidate_labels"] == ["重点工序优先方案 4/5"]
+    status_text = " ".join(message["text"] for message in display["status_messages"])
+    assert "候选运行失败" in status_text
+    assert "原算法候选缺失或失败" in status_text
+    assert "因本次时间上限跳过" in status_text
     assert "本次方案对比记录不完整，当前只展示最终采用方案" in display["notice"]
+
+
+def test_analysis_route_surfaces_plan_role_integrity_error_without_fake_links() -> None:
+    summary = _comparison_summary(failed_extra=True)
+    history_service = _HistoryServiceStub(summary)
+    app, route_mod = _build_app()
+
+    payload = _call_analysis_page(
+        app,
+        route_mod,
+        history_service=history_service,
+        plan_role_service=_PlanRoleServiceBroken(),
+    )
+
+    display = payload["candidate_comparison_display"]
+    assert display["has_comparison"] is False
+    assert display["rows"] == []
+    assert "本次方案对比记录不完整" in display["notice"]
+    assert "角色映射损坏" in display["notice"]
+    assert display["failed_candidate_count"] == 1
+    assert not any(row.get("links") for row in display["rows"])
 
 
 def test_analysis_template_uses_viewmodel_candidate_rows_and_route_built_links() -> None:
@@ -297,10 +354,68 @@ def test_analysis_template_uses_viewmodel_candidate_rows_and_route_built_links()
     assert "candidate_comparison_display.rows" in source
     assert "row.comparison_note" in source
     assert "row.links" in source
-    assert "原算法候选缺失或失败，本次采用结果需复核。" in source
-    assert "因本次时间上限跳过" in source
+    assert "candidate_comparison_display.status_messages" in source
+    assert "message.class_name" in source
+    assert "message.text" in source
     assert "plan_role=" not in source
     assert "关键链最好" not in source
+
+
+def test_candidate_display_marks_baseline_best_as_adopted_when_baseline_is_selected() -> None:
+    from web.viewmodels.scheduler_analysis_candidates import build_candidate_comparison_display
+
+    display = build_candidate_comparison_display(
+        _comparison_summary(adopted_key="baseline"),
+        selected_ver=7,
+        plan_role_options=_plan_role_options(),
+    )
+
+    rows = {row["role"]: row for row in display["rows"]}
+    assert rows[ROLE_BASELINE_BEST]["is_same_as_adopted"] is True
+    assert rows[ROLE_BASELINE_BEST]["is_comparison"] is False
+    assert "与最终采用方案相同" in rows[ROLE_BASELINE_BEST]["comparison_note"]
+    assert rows[ROLE_CRITICAL_BEST]["is_same_as_adopted"] is False
+    assert rows[ROLE_CRITICAL_BEST]["is_comparison"] is True
+    assert "这是对比方案，不是正式写入的结果" in rows[ROLE_CRITICAL_BEST]["comparison_note"]
+
+
+def test_candidate_display_surfaces_non_representative_failed_candidates() -> None:
+    from web.viewmodels.scheduler_analysis_candidates import build_candidate_comparison_display
+
+    display = build_candidate_comparison_display(
+        _comparison_summary(failed_extra=True),
+        selected_ver=7,
+        plan_role_options=_plan_role_options(),
+    )
+
+    assert display["failed_candidate_count"] == 1
+    assert any("重点工序优先方案 5/5" in label for label in display["failed_candidate_labels"])
+    status_text = " ".join(message["text"] for message in display["status_messages"])
+    assert "候选运行失败" in status_text
+    assert "重点工序优先方案 5/5" in status_text
+    rows = {row["role"]: row for row in display["rows"]}
+    assert set(rows) == {ROLE_ADOPTED, ROLE_BASELINE_BEST, ROLE_CRITICAL_BEST}
+
+
+def test_candidate_display_status_messages_include_candidate_run_state() -> None:
+    from web.viewmodels.scheduler_analysis_candidates import build_candidate_comparison_display
+
+    summary = _comparison_summary(failed_extra=True)
+    comparison = summary["algo"]["candidate_comparison"]
+    comparison["baseline_missing_or_failed"] = True
+    comparison["skipped_candidate_labels"] = ["重点工序优先方案 4/5"]
+
+    display = build_candidate_comparison_display(
+        summary,
+        selected_ver=7,
+        plan_role_options=_plan_role_options(),
+    )
+
+    status_text = " ".join(message["text"] for message in display["status_messages"])
+    assert "候选运行失败" in status_text
+    assert "图分析失败：存在环" in status_text
+    assert "原算法候选缺失或失败，本次采用结果需复核。" in status_text
+    assert "因本次时间上限跳过：重点工序优先方案 4/5" in status_text
 
 
 def test_candidate_display_and_plan_role_options_hide_old_internal_labels() -> None:

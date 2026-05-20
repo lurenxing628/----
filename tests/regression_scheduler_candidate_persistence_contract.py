@@ -98,6 +98,7 @@ def _candidate(
     kind: str,
     *,
     sequence: int,
+    op_id: int = 10,
     machine_id: str,
     operator_id: str,
     score: Any,
@@ -112,7 +113,7 @@ def _candidate(
         graph_critical_weight=500 if kind == "critical_chain" else 0,
         graph_impact_weight=10 if kind == "critical_chain" else 0,
         graph_downstream_weight=1 if kind == "critical_chain" else 0,
-        results=[_result(10, machine_id, operator_id, sequence * 2)],
+        results=[_result(op_id, machine_id, operator_id, sequence * 2)],
         summary=SimpleNamespace(total_ops=1, scheduled_ops=1, failed_ops=0, warnings=[], errors=[]),
         metrics=SimpleNamespace(
             overdue_count=int(score[1]),
@@ -137,11 +138,12 @@ def _candidate(
     )
 
 
-def _comparison() -> CandidateComparisonOutcome:
+def _comparison(*, baseline_op_id: int = 10, adopted_op_id: int = 10) -> CandidateComparisonOutcome:
     baseline = _candidate(
         "baseline",
         "baseline",
         sequence=0,
+        op_id=baseline_op_id,
         machine_id="M-BASELINE",
         operator_id="O-BASELINE",
         score=(0, 1, 2.0),
@@ -150,6 +152,7 @@ def _comparison() -> CandidateComparisonOutcome:
         "graph_w1_of_3",
         "critical_chain",
         sequence=1,
+        op_id=adopted_op_id,
         machine_id="M-ADOPTED",
         operator_id="O-ADOPTED",
         score=(0, 0, 1.0),
@@ -202,7 +205,7 @@ def _persist_once(conn: sqlite3.Connection, *, op_logger: _OpLogger) -> None:
         used_strategy=adopted.used_strategy,
         used_params=adopted.used_params,
         batches={"B1": SimpleNamespace(batch_id="B1", status="pending")},
-        reschedulable_operations=[],
+        reschedulable_operations=[SimpleNamespace(id=10, batch_id="B1", status="pending")],
         normalized_batch_ids=["B1"],
         created_by="pytest",
         simulate=True,
@@ -273,7 +276,7 @@ def test_candidate_persistence_failure_rolls_back_schedule_history_and_candidate
                 used_strategy=adopted.used_strategy,
                 used_params=adopted.used_params,
                 batches={"B1": SimpleNamespace(batch_id="B1", status="pending")},
-                reschedulable_operations=[],
+                reschedulable_operations=[SimpleNamespace(id=10, batch_id="B1", status="pending")],
                 normalized_batch_ids=["B1"],
                 created_by="pytest",
                 simulate=True,
@@ -301,6 +304,52 @@ def test_candidate_persistence_failure_rolls_back_schedule_history_and_candidate
         conn.close()
 
 
+def test_candidate_detail_rows_reject_out_of_scope_op_id_and_rollback(tmp_path: Path) -> None:
+    conn = _connect_fresh_schema(tmp_path)
+    op_logger = _OpLogger()
+    try:
+        _seed_schedule_context(conn)
+        svc = ScheduleService(conn, logger=None, op_logger=op_logger)
+        comparison = _comparison(baseline_op_id=999)
+        adopted = comparison.selection.selected_plan
+        payload = build_validated_schedule_payload(list(adopted.results), allowed_op_ids={10})
+
+        with pytest.raises(ValidationError) as exc_info:
+            persist_schedule_run_with_candidates(
+                svc,
+                cfg=SimpleNamespace(auto_assign_persist="no"),
+                version=11,
+                validated_schedule_payload=payload,
+                summary=adopted.summary,
+                used_strategy=adopted.used_strategy,
+                used_params=adopted.used_params,
+                batches={"B1": SimpleNamespace(batch_id="B1", status="pending")},
+                reschedulable_operations=[SimpleNamespace(id=10, batch_id="B1", status="pending")],
+                normalized_batch_ids=["B1"],
+                created_by="pytest",
+                simulate=True,
+                frozen_op_ids=set(),
+                result_status="simulated",
+                result_summary_json="{}",
+                result_summary_obj={"algo": {"candidate_comparison": candidate_comparison_public_summary(comparison)}},
+                missing_internal_resource_op_ids=set(),
+                overdue_items=[],
+                time_cost_ms=12,
+                candidate_comparison=comparison,
+            )
+
+        assert exc_info.value.field == "candidate_rows"
+        assert "超出本次可重排范围" in str(exc_info.value)
+        assert conn.execute("SELECT COUNT(*) FROM Schedule WHERE version = 11").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM ScheduleHistory WHERE version = 11").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM ScheduleCandidate WHERE version = 11").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM ScheduleCandidateRows WHERE version = 11").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM ScheduleCandidateSelection WHERE version = 11").fetchone()[0] == 0
+        assert op_logger.calls == []
+    finally:
+        conn.close()
+
+
 def test_candidate_persistence_rejects_missing_selected_candidate_key(tmp_path: Path) -> None:
     conn = _connect_fresh_schema(tmp_path)
     try:
@@ -314,6 +363,7 @@ def test_candidate_persistence_rejects_missing_selected_candidate_key(tmp_path: 
                 version=9,
                 candidate_comparison=comparison,
                 frozen_op_ids=set(),
+                allowed_op_ids={10},
             )
 
         assert exc_info.value.field == "candidate_selection"
@@ -345,6 +395,7 @@ def test_candidate_persistence_rejects_missing_best_role_candidate_key(
                 version=10,
                 candidate_comparison=comparison,
                 frozen_op_ids=set(),
+                allowed_op_ids={10},
             )
 
         assert exc_info.value.field == "candidate_selection"
