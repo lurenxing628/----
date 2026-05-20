@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import threading
-from collections import OrderedDict
 from typing import Any, Dict, Optional, Tuple
 
 from core.infrastructure.errors import ValidationError
@@ -9,7 +7,7 @@ from core.services.common.degradation import DegradationCollector, DegradationEv
 from data.repositories import ScheduleHistoryRepository, ScheduleRepository
 
 from .gantt_contract import build_gantt_contract
-from .gantt_critical_chain import compute_critical_chain, compute_critical_chain_from_rows
+from .gantt_critical_chain_provider import GanttCriticalChainProvider
 from .gantt_plan_query import (
     attach_gantt_range_metadata,
     build_empty_week_plan_payload,
@@ -21,7 +19,7 @@ from .gantt_tasks import build_calendar_days, build_tasks
 from .gantt_week_plan import build_week_plan_rows
 from .plan_overdue_markers import build_overdue_meta_for_plan
 from .resource_dispatch_support import extract_overdue_batch_ids_with_meta
-from .schedule_plan_query_service import ROLE_ADOPTED, SchedulePlanQueryService
+from .schedule_plan_query_service import SchedulePlanQueryService
 from .schedule_result_view_context import (
     ScheduleResultViewContext,
     attach_plan_metadata,
@@ -43,9 +41,6 @@ class GanttService:
     - 复用 ScheduleHistory.result_summary 的超期信息做标记
     """
     CONTRACT_VERSION = 2
-    _CRITICAL_CHAIN_CACHE_MAX = 64
-    _CRITICAL_CHAIN_CACHE: OrderedDict[tuple, Dict[str, Any]] = OrderedDict()
-    _CRITICAL_CHAIN_CACHE_LOCK = threading.Lock()
 
     def __init__(self, conn, logger=None, op_logger=None, plan_query_service=None):
         self.conn = conn
@@ -54,6 +49,7 @@ class GanttService:
         self.schedule_repo = ScheduleRepository(conn, logger=logger)
         self.history_repo = ScheduleHistoryRepository(conn, logger=logger)
         self._plan_query_service = plan_query_service
+        self._critical_chain_provider = None
 
     def get_latest_version_or_1(self) -> int:
         v = int(self.history_repo.get_latest_version() or 0)
@@ -73,6 +69,16 @@ class GanttService:
         if self._plan_query_service is None:
             self._plan_query_service = SchedulePlanQueryService(self.conn, logger=self.logger)
         return self._plan_query_service
+
+    def _get_critical_chain_provider(self) -> GanttCriticalChainProvider:
+        if self._critical_chain_provider is None:
+            self._critical_chain_provider = GanttCriticalChainProvider(
+                conn=self.conn,
+                schedule_repo=self.schedule_repo,
+                plan_query_service_factory=self._get_plan_query_service,
+                logger=self.logger,
+            )
+        return self._critical_chain_provider
 
     def resolve_result_view_context(
         self,
@@ -234,112 +240,6 @@ class GanttService:
             )
         return meta
 
-    def _critical_chain_cache_key(self, version: int, *, plan_resolution: Dict[str, Any]) -> tuple:
-        scope = str(id(self.conn))
-        try:
-            rows = self.conn.execute("PRAGMA database_list").fetchall()
-            for r in rows or []:
-                try:
-                    name = r["name"] if isinstance(r, dict) or hasattr(r, "keys") else r[1]
-                    if str(name) != "main":
-                        continue
-                    file_path = r["file"] if isinstance(r, dict) or hasattr(r, "keys") else r[2]
-                    if file_path:
-                        scope = str(file_path)
-                    break
-                except Exception:
-                    continue
-        except Exception:
-            pass
-        return (
-            scope,
-            int(version),
-            str(plan_resolution.get("selected_role") or ROLE_ADOPTED),
-            str(plan_resolution.get("source_table") or "schedule"),
-            int(plan_resolution.get("candidate_id") or 0),
-        )
-
-    @staticmethod
-    def _normalize_critical_chain_result(raw: Any) -> Dict[str, Any]:
-        if not isinstance(raw, dict):
-            raw = {}
-        available = raw.get("available")
-        if isinstance(available, bool):
-            is_available = available
-        else:
-            is_available = True
-        reason_text = str(raw.get("reason") or "").strip()
-        if is_available:
-            reason_text = ""
-        return {
-            "ids": list(raw.get("ids") or []),
-            "edges": list(raw.get("edges") or []),
-            "makespan_end": raw.get("makespan_end"),
-            "edge_type_stats": dict(
-                raw.get("edge_type_stats") or {"process": 0, "machine": 0, "operator": 0, "unknown": 0}
-            ),
-            "edge_count": int(raw.get("edge_count") or 0),
-            "available": is_available,
-            "reason": reason_text,
-        }
-
-    @staticmethod
-    def _critical_chain_cacheable(result: Dict[str, Any]) -> bool:
-        return bool(result.get("available", True))
-
-    def _get_critical_chain(
-        self,
-        version: int,
-        *,
-        plan_resolution: Optional[Dict[str, Any]] = None,
-        plan_query_service=None,
-    ) -> Dict[str, Any]:
-        plan_resolution = plan_resolution or default_plan_resolution_dict(ROLE_ADOPTED)
-        key = self._critical_chain_cache_key(version, plan_resolution=plan_resolution)
-        with self._CRITICAL_CHAIN_CACHE_LOCK:
-            cached = self._CRITICAL_CHAIN_CACHE.get(key)
-            if cached is not None:
-                try:
-                    self._CRITICAL_CHAIN_CACHE.move_to_end(key)
-                except Exception:
-                    pass
-                out = dict(cached)
-                out["cache_hit"] = True
-                return out
-
-        role = str(plan_resolution.get("selected_role") or ROLE_ADOPTED)
-        if role == ROLE_ADOPTED:
-            raw = compute_critical_chain(self.schedule_repo, int(version))
-        else:
-            if plan_query_service is None:
-                plan_query_service = self._get_plan_query_service()
-            rows = plan_query_service.list_plan_detail_rows_all(version=int(version), role=role)
-            raw = compute_critical_chain_from_rows([dict(row) for row in rows])
-        computed = self._normalize_critical_chain_result(raw)
-        computed["cache_hit"] = False
-
-        if not self._critical_chain_cacheable(computed):
-            return dict(computed)
-
-        with self._CRITICAL_CHAIN_CACHE_LOCK:
-            cached = self._CRITICAL_CHAIN_CACHE.get(key)
-            if cached is not None:
-                try:
-                    self._CRITICAL_CHAIN_CACHE.move_to_end(key)
-                except Exception:
-                    pass
-                out = dict(cached)
-                out["cache_hit"] = True
-                return out
-
-            self._CRITICAL_CHAIN_CACHE[key] = computed
-            while len(self._CRITICAL_CHAIN_CACHE) > int(self._CRITICAL_CHAIN_CACHE_MAX):
-                try:
-                    self._CRITICAL_CHAIN_CACHE.popitem(last=False)
-                except Exception:
-                    break
-            return dict(computed)
-
     def _history_payload_for_gantt(self, *, version: int, include_history: bool) -> Optional[Dict[str, Any]]:
         if not include_history:
             return None
@@ -442,7 +342,11 @@ class GanttService:
         tasks_outcome = build_tasks(view=view, wr=wr, rows=rows, overdue_set=overdue_set)
         empty_reason = tasks_outcome.empty_reason or calendar_days_outcome.empty_reason
 
-        critical_chain = self._get_critical_chain(ver, plan_resolution=plan_resolution, plan_query_service=plan_query)
+        critical_chain = self._get_critical_chain_provider().get_critical_chain(
+            ver,
+            plan_resolution=plan_resolution,
+            plan_query_service=plan_query,
+        )
         degradation_collector = self._collect_gantt_degradation_events(
             calendar_days_outcome=calendar_days_outcome,
             tasks_outcome=tasks_outcome,

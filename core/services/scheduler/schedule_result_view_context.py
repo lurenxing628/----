@@ -151,29 +151,52 @@ def attach_plan_metadata(data: Dict[str, Any], plan_resolution: Dict[str, Any]) 
     )
 
 
-def plan_role_filter_fields(plan_resolution_or_context: Any = None, **overrides: Any) -> Dict[str, Any]:
-    if plan_resolution_or_context is None:
-        data = {}
-    else:
-        data = _resolution_to_dict(plan_resolution_or_context)
+def _truthy_override_or_data(
+    overrides: Dict[str, Any],
+    data: Dict[str, Any],
+    override_key: str,
+    data_keys: tuple,
+    default: Any,
+) -> Any:
+    override_value = overrides.get(override_key)
+    if override_value:
+        return override_value
+    for key in data_keys:
+        data_value = data.get(key)
+        if data_value:
+            return data_value
+    return default
 
-    requested_role = str(overrides.get("requested_role") or data.get("requested_role") or ROLE_ADOPTED)
+
+def _override_or_data(overrides: Dict[str, Any], data: Dict[str, Any], key: str) -> Any:
+    return overrides.get(key) if key in overrides else data.get(key)
+
+
+def _plan_role_message(overrides: Dict[str, Any], data: Dict[str, Any]) -> str:
+    override_value = overrides.get("message")
+    if override_value is not None:
+        return str(override_value)
+    return str(data.get("message") or "")
+
+
+def _plan_role_is_comparison(overrides: Dict[str, Any], data: Dict[str, Any], source_table: Any) -> bool:
+    if "is_comparison" in overrides:
+        return bool(overrides.get("is_comparison"))
+    return bool(data.get("is_comparison") or is_comparison_source(source_table))
+
+
+def plan_role_filter_fields(plan_resolution_or_context: Any = None, **overrides: Any) -> Dict[str, Any]:
+    data = {} if plan_resolution_or_context is None else _resolution_to_dict(plan_resolution_or_context)
+    requested_role = str(_truthy_override_or_data(overrides, data, "requested_role", ("requested_role",), ROLE_ADOPTED))
     effective_role = str(
-        overrides.get("effective_role")
-        or data.get("selected_role")
-        or data.get("effective_plan_role")
-        or ROLE_ADOPTED
+        _truthy_override_or_data(overrides, data, "effective_role", ("selected_role", "effective_plan_role"), ROLE_ADOPTED)
     )
-    status = str(overrides.get("status") or data.get("status") or data.get("plan_role_status") or "selected")
-    message = str(overrides.get("message") if overrides.get("message") is not None else data.get("message") or "")
-    candidate_id = overrides.get("candidate_id") if "candidate_id" in overrides else data.get("candidate_id")
-    candidate_key = overrides.get("candidate_key") if "candidate_key" in overrides else data.get("candidate_key")
-    source_table = overrides.get("source_table") if "source_table" in overrides else data.get("source_table")
-    is_comparison = (
-        bool(overrides.get("is_comparison"))
-        if "is_comparison" in overrides
-        else bool(data.get("is_comparison") or is_comparison_source(source_table))
-    )
+    status = str(_truthy_override_or_data(overrides, data, "status", ("status", "plan_role_status"), "selected"))
+    message = _plan_role_message(overrides, data)
+    candidate_id = _override_or_data(overrides, data, "candidate_id")
+    candidate_key = _override_or_data(overrides, data, "candidate_key")
+    source_table = _override_or_data(overrides, data, "source_table")
+    is_comparison = _plan_role_is_comparison(overrides, data, source_table)
 
     return {
         "plan_role": requested_role,

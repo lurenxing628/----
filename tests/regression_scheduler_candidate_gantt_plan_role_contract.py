@@ -229,10 +229,87 @@ def test_gantt_data_reads_candidate_rows_and_returns_plan_role_metadata(tmp_path
     assert data.get("requested_plan_role") == ROLE_BASELINE_BEST
     assert data.get("effective_plan_role") == ROLE_BASELINE_BEST
     assert (data.get("plan_role_resolution") or {}).get("is_comparison") is True
+    assert (data.get("plan_role_resolution") or {}).get("source_table") == SOURCE_CANDIDATE_ROWS
     assert (data.get("version_time_span") or {}).get("start_date") == "2026-05-12"
     assert len(tasks) == 1
     assert (tasks[0].get("meta") or {}).get("machine_id") == "M-CANDIDATE"
     assert (tasks[0].get("meta") or {}).get("operator_id") == "O-CANDIDATE"
+    assert (data.get("critical_chain") or {}).get("makespan_end") == "2026-05-13 15:00:00"
+    assert (data.get("critical_chain") or {}).get("cache_hit") is False
+
+
+def test_gantt_candidate_critical_chain_unavailable_uses_public_contract(tmp_path, monkeypatch) -> None:
+    import core.services.scheduler.gantt_critical_chain_provider as provider_module
+
+    app = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+
+    def _candidate_chain_unavailable(_rows):
+        return {
+            "available": False,
+            "reason": "rows_exception",
+            "ids": ["INTERNAL-CANDIDATE-ID"],
+            "edges": [{"from": "A", "to": "B"}],
+            "edge_count": 1,
+            "edge_type_stats": {"process": 1},
+        }
+
+    monkeypatch.setattr(provider_module, "compute_critical_chain_from_rows", _candidate_chain_unavailable)
+
+    resp = client.get(f"/scheduler/gantt/data?view=machine&version={VERSION}&plan_role={ROLE_BASELINE_BEST}")
+    payload = resp.get_json()
+    data = payload.get("data") or {}
+    critical_chain = data.get("critical_chain") or {}
+
+    assert resp.status_code == 200
+    assert payload.get("success") is True
+    assert critical_chain.get("available") is False
+    assert critical_chain.get("reason_code") == "unknown"
+    assert critical_chain.get("reason") == "关键链暂不可用"
+    assert critical_chain.get("ids") == []
+    assert critical_chain.get("edges") == []
+    assert critical_chain.get("edge_count") == 0
+    assert critical_chain.get("edge_type_stats") == {}
+    assert critical_chain.get("cache_hit") is False
+    assert "rows_exception" not in str(data)
+    assert "INTERNAL-CANDIDATE-ID" not in str(data)
+    assert data.get("degraded") is True
+    events = list(data.get("degradation_events") or ())
+    assert any(str(event.get("code") or "").strip() == "critical_chain_unavailable" for event in events), events
+
+
+def test_gantt_candidate_rows_load_failure_uses_public_critical_chain_contract(tmp_path, monkeypatch) -> None:
+    app = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+
+    def _raise_rows_load_failure(self, *, version: int, source_table: str, candidate_id):
+        raise RuntimeError("candidate rows load failed")
+
+    monkeypatch.setattr(
+        SchedulePlanQueryService,
+        "list_plan_detail_rows_all_for_resolution",
+        _raise_rows_load_failure,
+    )
+
+    resp = client.get(f"/scheduler/gantt/data?view=machine&version={VERSION}&plan_role={ROLE_BASELINE_BEST}")
+    payload = resp.get_json()
+    data = payload.get("data") or {}
+    critical_chain = data.get("critical_chain") or {}
+
+    assert resp.status_code == 200
+    assert payload.get("success") is True
+    assert critical_chain.get("available") is False
+    assert critical_chain.get("reason_code") == "repo_exception"
+    assert critical_chain.get("reason") == "关键链计算异常"
+    assert critical_chain.get("ids") == []
+    assert critical_chain.get("edges") == []
+    assert critical_chain.get("edge_count") == 0
+    assert critical_chain.get("edge_type_stats") == {}
+    assert critical_chain.get("cache_hit") is False
+    assert "candidate rows load failed" not in str(data)
+    assert data.get("degraded") is True
+    events = list(data.get("degradation_events") or ())
+    assert any(str(event.get("code") or "").strip() == "critical_chain_unavailable" for event in events), events
 
 
 def test_gantt_missing_valid_plan_role_falls_back_to_adopted(tmp_path, monkeypatch) -> None:

@@ -3,6 +3,7 @@ import threading
 from collections import OrderedDict
 from pathlib import Path
 
+from core.services.scheduler.gantt_critical_chain_provider import GanttCriticalChainProvider
 from core.services.scheduler.gantt_service import GanttService
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -44,9 +45,9 @@ def test_gantt_payload_surfaces_critical_chain_unavailable(monkeypatch) -> None:
         conn.commit()
 
         svc = GanttService(conn, logger=None, op_logger=None)
-        monkeypatch.setattr(GanttService, "_CRITICAL_CHAIN_CACHE", OrderedDict())
-        monkeypatch.setattr(GanttService, "_CRITICAL_CHAIN_CACHE_LOCK", threading.Lock())
-        monkeypatch.setattr(GanttService, "_CRITICAL_CHAIN_CACHE_MAX", 8)
+        monkeypatch.setattr(GanttCriticalChainProvider, "_CRITICAL_CHAIN_CACHE", OrderedDict())
+        monkeypatch.setattr(GanttCriticalChainProvider, "_CRITICAL_CHAIN_CACHE_LOCK", threading.Lock())
+        monkeypatch.setattr(GanttCriticalChainProvider, "_CRITICAL_CHAIN_CACHE_MAX", 8)
 
         def _repo_raise(_version: int):
             raise RuntimeError("repo boom")
@@ -79,26 +80,27 @@ def test_gantt_payload_surfaces_critical_chain_unavailable(monkeypatch) -> None:
 
 def test_critical_chain_unavailable_result_is_not_cached(monkeypatch) -> None:
     svc = GanttService(_DummyConn(str(REPO_ROOT / "db" / "aps.db")))
+    provider = GanttCriticalChainProvider(conn=svc.conn, schedule_repo=svc.schedule_repo)
 
-    monkeypatch.setattr(GanttService, "_CRITICAL_CHAIN_CACHE", OrderedDict())
-    monkeypatch.setattr(GanttService, "_CRITICAL_CHAIN_CACHE_LOCK", threading.Lock())
-    monkeypatch.setattr(GanttService, "_CRITICAL_CHAIN_CACHE_MAX", 8)
+    monkeypatch.setattr(GanttCriticalChainProvider, "_CRITICAL_CHAIN_CACHE", OrderedDict())
+    monkeypatch.setattr(GanttCriticalChainProvider, "_CRITICAL_CHAIN_CACHE_LOCK", threading.Lock())
+    monkeypatch.setattr(GanttCriticalChainProvider, "_CRITICAL_CHAIN_CACHE_MAX", 8)
 
     def _repo_raise(_version: int):
         raise RuntimeError("repo boom")
 
     monkeypatch.setattr(svc.schedule_repo, "list_by_version_with_details", _repo_raise)
 
-    first = svc._get_critical_chain(77)
+    first = provider.get_critical_chain(77)
     assert first.get("available") is False
     assert first.get("reason") == "repo_exception"
     assert first.get("cache_hit") is False
-    assert len(GanttService._CRITICAL_CHAIN_CACHE) == 0
+    assert len(GanttCriticalChainProvider._CRITICAL_CHAIN_CACHE) == 0
 
     monkeypatch.setattr(svc.schedule_repo, "list_by_version_with_details", lambda _version: [])
 
-    second = svc._get_critical_chain(77)
-    third = svc._get_critical_chain(77)
+    second = provider.get_critical_chain(77)
+    third = provider.get_critical_chain(77)
 
     assert second.get("available") is True
     assert second.get("reason") in (None, "")

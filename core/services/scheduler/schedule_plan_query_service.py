@@ -207,10 +207,23 @@ class SchedulePlanQueryService:
 
     def list_plan_detail_rows_all(self, *, version: int, role: Optional[str]) -> List[ScheduleDetailRow]:
         resolution = self.resolve_plan(version, role)
-        return self.repo.list_detail_rows_all(
+        return self.list_plan_detail_rows_all_for_resolution(
             version=int(version),
             source_table=resolution.source_table,
             candidate_id=resolution.candidate_id,
+        )
+
+    def list_plan_detail_rows_all_for_resolution(
+        self,
+        *,
+        version: int,
+        source_table: str,
+        candidate_id: Optional[int],
+    ) -> List[ScheduleDetailRow]:
+        return self.repo.list_detail_rows_all(
+            version=int(version),
+            source_table=source_table,
+            candidate_id=candidate_id,
         )
 
     def list_plan_overdue_base_rows(self, *, version: int, role: Optional[str]) -> List[Dict[str, Any]]:
