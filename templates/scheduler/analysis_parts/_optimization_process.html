@@ -1,0 +1,77 @@
+    {% if selected_summary and selected_summary.get('summary_truncated') %}
+      <div class="flash-card flash-warning">
+        本次结果数据量较大，页面只显示重点内容；尝试方案、优化曲线、超期明细可能不完整。
+        {% if selected_summary.get('original_size_bytes') %}
+          原始结果大小约 {{ selected_summary.get('original_size_bytes') }} 字节。
+        {% endif %}
+      </div>
+    {% endif %}
+
+    <div class="card">
+      <h3 class="section-title">优化过程</h3>
+      {% if trace_chart %}
+        <div class="svg-title">计算过程曲线（横轴=用时，纵轴=方案评分，越低越好）</div>
+        <div class="svg-wrap">
+          <svg viewBox="0 0 {{ trace_chart.width }} {{ trace_chart.height }}" width="100%" height="{{ trace_chart.height }}">
+            <polyline points="{{ trace_chart.points }}" fill="none" stroke="#1565c0" stroke-width="2"></polyline>
+            <circle cx="{{ trace_chart.last_x }}" cy="{{ trace_chart.last_y }}" r="3" fill="#1565c0"></circle>
+          </svg>
+        </div>
+        <div class="muted">最小 {{ trace_chart.y_min|round(4) }} / 最大 {{ trace_chart.y_max|round(4) }}</div>
+      {% endif %}
+      {% if attempts and attempts|length > 0 %}
+        <div class="aps-table-scroll">
+        <table id="analysisAttemptsTable" class="table-sticky table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v3_analysisAttemptsTable">
+          <thead>
+            <tr>
+              <th class="w-80" data-col-key="rank" data-default-w="80" data-min-w="70">排序</th>
+              <th class="w-160" data-col-key="source" data-default-w="160" data-min-w="130">方案来源</th>
+              <th class="w-160" data-col-key="strategy" data-default-w="160" data-min-w="130">排序策略</th>
+              <th class="w-220" data-col-key="dispatch" data-default-w="220" data-min-w="180">派工</th>
+              <th class="w-120" data-col-key="failed_ops" data-default-w="120" data-min-w="100">失败工序数</th>
+              <th class="w-160" data-col-key="objective" data-default-w="160" data-min-w="130">{{ objective_key_label }}</th>
+              <th class="w-180" data-col-key="bar" data-default-w="180" data-min-w="150">条形</th>
+              <th class="w-140" data-col-key="score" data-default-w="140" data-min-w="120">综合评分</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in attempts %}
+              {% set mm = r.metrics if r.metrics else {} %}
+              <tr>
+                <td>{{ loop.index }}</td>
+                <td>{{ r.display_tag or '方案来源未知' }}</td>
+                <td>{{ strategy_zh.get(r.strategy, '未知排产方式') }}</td>
+                {% set row_dispatch_mode = r.dispatch_mode %}
+                {% set row_dispatch_rule = r.dispatch_rule %}
+                <td>
+                  {{ dispatch_mode_zh.get(row_dispatch_mode, '未知派工方式') }}{% if row_dispatch_rule %} / {{ dispatch_rule_zh.get(row_dispatch_rule, '未知派工规则') }}{% endif %}
+                </td>
+                <td>{{ r.failed_ops }}</td>
+                <td>
+                  {% if objective_key in mm %}
+                    {{ mm[objective_key] }}
+                  {% else %}
+                    {{ r.primary_value }}
+                  {% endif %}
+                </td>
+                <td>
+                  <progress
+                    class="analysis-score-bar"
+                    value="{{ r.bar_pct }}"
+                    max="100"
+                    aria-label="综合评分条"
+                  >{{ r.bar_pct }}%</progress>
+                </td>
+                <td>{{ r.score }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        <div class="muted mt-2">
+          注：这里展示的是系统尝试过的一部分排产方案，最终结果以当前版本汇总为准。
+        </div>
+      {% else %}
+        <div class="muted">该版本未记录优化过程（可能是快速模式或旧版本）。</div>
+      {% endif %}
+    </div>

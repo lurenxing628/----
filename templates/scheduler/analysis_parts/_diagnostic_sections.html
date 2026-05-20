@@ -1,0 +1,22 @@
+{% if diagnostic_sections %}
+  <div class="card">
+    <h3 class="section-title">诊断摘要</h3>
+    {% for section in diagnostic_sections %}
+      <section class="aps-diagnostic-section">
+        <h4>{{ section.title }}</h4>
+        {% if section.summary %}
+          <div class="muted mt-1">{{ section.summary }}</div>
+        {% endif %}
+        {% if section.items %}
+          <div class="aps-summary-grid mt-2">
+            {% for item in section.items %}
+              {{ ui.summary_item(item.label, item.value if item.value is not none else '-', item.message) }}
+            {% endfor %}
+          </div>
+        {% elif section.empty_reason %}
+          <div class="muted mt-2">{{ section.empty_reason }}</div>
+        {% endif %}
+      </section>
+    {% endfor %}
+  </div>
+{% endif %}

@@ -14,7 +14,17 @@ def _find_repo_root() -> str:
 
 def _read(path: str) -> str:
     with open(path, "r", encoding="utf-8") as f:
-        return f.read()
+        source = f.read()
+    if path.endswith(os.path.join("templates", "scheduler", "analysis.html")):
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(path), "..", ".."))
+        for rel_path in (
+            "templates/scheduler/analysis_parts/_version_picker.html",
+            "templates/scheduler/analysis_parts/_selected_overview.html",
+            "templates/scheduler/analysis_parts/_optimization_process.html",
+        ):
+            with open(os.path.join(repo_root, rel_path), "r", encoding="utf-8") as f:
+                source += "\n" + f.read()
+    return source
 
 
 def _assert_regex(text: str, pattern: str, msg: str) -> None:

@@ -425,7 +425,9 @@ def test_analysis_route_surfaces_plan_role_integrity_error_without_fake_links() 
 
 
 def test_analysis_template_uses_viewmodel_candidate_rows_and_route_built_links() -> None:
-    source = (Path(__file__).resolve().parents[1] / "templates/scheduler/analysis.html").read_text(encoding="utf-8")
+    source = (
+        Path(__file__).resolve().parents[1] / "templates/scheduler/analysis_parts/_candidate_comparison.html"
+    ).read_text(encoding="utf-8")
 
     assert "analysisCandidateComparisonTable" in source
     assert "candidate_comparison_display.rows" in source

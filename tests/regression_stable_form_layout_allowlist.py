@@ -6,7 +6,14 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _read(rel_path: str) -> str:
-    return (REPO_ROOT / rel_path).read_text(encoding="utf-8")
+    source = (REPO_ROOT / rel_path).read_text(encoding="utf-8")
+    if rel_path == "templates/scheduler/analysis.html":
+        for part in (
+            "templates/scheduler/analysis_parts/_version_picker.html",
+            "templates/scheduler/analysis_parts/_selected_overview.html",
+        ):
+            source += "\n" + (REPO_ROOT / part).read_text(encoding="utf-8")
+    return source
 
 
 def test_first_batch_pages_do_not_use_old_flex_filter_rows() -> None:

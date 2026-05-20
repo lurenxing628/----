@@ -13,6 +13,17 @@ def _read(rel_path: str) -> str:
     return (REPO_ROOT / rel_path).read_text(encoding="utf-8")
 
 
+def _read_analysis_template() -> str:
+    parts = (
+        "templates/scheduler/analysis.html",
+        "templates/scheduler/analysis_parts/_version_picker.html",
+        "templates/scheduler/analysis_parts/_selected_overview.html",
+        "templates/scheduler/analysis_parts/_candidate_comparison.html",
+        "templates/scheduler/analysis_parts/_optimization_process.html",
+    )
+    return "\n".join(_read(path) for path in parts)
+
+
 def test_scheduler_config_and_batch_hints_are_user_facing_chinese() -> None:
     expected_holiday_hint = "假期也安排生产且未单独填写效率时，系统会使用这里的效率值；请输入大于 0 的数字。"
     expected_batch_manage_hint = (
@@ -103,7 +114,7 @@ def test_scheduler_config_repair_notices_use_public_field_labels() -> None:
 
 
 def test_scheduler_analysis_gantt_and_logs_do_not_surface_internal_terms() -> None:
-    analysis = _read("templates/scheduler/analysis.html")
+    analysis = _read_analysis_template()
     assert "dispatch_mode_zh" in analysis
     assert "dispatch_rule_zh" in analysis
     assert "attempts / 优化曲线 / 超期明细" not in analysis
@@ -635,7 +646,7 @@ def test_scheduler_analysis_hides_internal_schema_and_attempt_tags() -> None:
     assert '"comparison_metric": "优化对比指标"' in analysis_compat
     assert '"best_score_schema": "评分顺序"' in analysis_compat
 
-    analysis_template = _read("templates/scheduler/analysis.html")
+    analysis_template = _read_analysis_template()
     assert "compat_fallback.missing_field_labels" in analysis_template
     assert "compat_fallback.missing_fields | join" not in analysis_template
     assert 'data-col-key="source"' in analysis_template

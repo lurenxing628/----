@@ -19,6 +19,17 @@ def _read(rel_path: str) -> str:
     return (REPO_ROOT / rel_path).read_text(encoding="utf-8")
 
 
+def _read_analysis_template() -> str:
+    return "\n".join(
+        _read(path)
+        for path in (
+            "templates/scheduler/analysis.html",
+            "templates/scheduler/analysis_parts/_selected_overview.html",
+            "templates/scheduler/analysis_parts/_summary_warnings.html",
+        )
+    )
+
+
 def _load_schema(conn: sqlite3.Connection) -> None:
     conn.executescript((REPO_ROOT / "schema.sql").read_text(encoding="utf-8"))
     conn.commit()
@@ -269,7 +280,7 @@ def test_build_summary_display_state_dedupes_counted_primary_degradation_from_se
 
 
 def test_scheduler_analysis_template_uses_shared_objective_label_helper() -> None:
-    template_source = _read("templates/scheduler/analysis.html")
+    template_source = _read_analysis_template()
 
     assert "objective_label_for(" not in template_source
     assert "algo_objective_label" in template_source
