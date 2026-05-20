@@ -72,6 +72,8 @@ def generate_candidate_specs(
     for index, multiplier in enumerate(_WEIGHT_MULTIPLIERS[count], start=1):
         specs.append(
             CandidateRunSpec(
+                # graph_downstream_weight 是候选方案内部参数：不进入用户配置页或配置保存链，
+                # 默认由候选档位自动试探 baseline=0、多数重点方案=1、最高档=2。
                 sequence=index,
                 candidate_key=f"graph_w{index}_of_{count}",
                 kind=CANDIDATE_KIND_CRITICAL_CHAIN,

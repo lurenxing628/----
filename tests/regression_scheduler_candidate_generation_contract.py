@@ -32,6 +32,13 @@ def test_candidate_generation_defaults_to_baseline_plus_five_stable_graph_candid
     assert [spec.graph_downstream_weight for spec in specs[1:]] == [1, 1, 1, 1, 2]
 
 
+def test_candidate_downstream_weight_uses_internal_default_ladder() -> None:
+    specs = generate_candidate_specs(weight_count=5)
+
+    assert [spec.graph_downstream_weight for spec in specs] == [0, 1, 1, 1, 1, 2]
+    assert sorted({spec.graph_downstream_weight for spec in specs}) == [0, 1, 2]
+
+
 @pytest.mark.parametrize(
     ("weight_count", "keys"),
     [

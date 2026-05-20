@@ -10,10 +10,17 @@ import pytest
 
 from core.infrastructure.database import ensure_schema, get_connection
 from core.infrastructure.errors import ValidationError
-from core.services.scheduler.config.config_field_spec import choices_for, coerce_config_field, default_for
+from core.models.schedule_config_runtime_fields import list_runtime_config_fields
+from core.services.scheduler.config.config_constants import CONFIG_PAGE_FIELDS, CONFIG_PAGE_WRITE_FIELDS
+from core.services.scheduler.config.config_field_spec import (
+    choices_for,
+    coerce_config_field,
+    default_for,
+    list_config_fields,
+)
 from core.services.scheduler.config.config_presets import missing_required_preset_fields
 from core.services.scheduler.config.config_service import ConfigService
-from core.services.scheduler.config.config_snapshot import ScheduleConfigSnapshot
+from core.services.scheduler.config.config_snapshot import ScheduleConfigSnapshot, ensure_schedule_config_snapshot
 from core.services.scheduler.config.config_validator import normalize_preset_snapshot
 from core.services.scheduler.run import schedule_orchestrator
 from core.services.scheduler.run.schedule_optimizer import OptimizationOutcome
@@ -261,6 +268,23 @@ def test_old_presets_may_omit_pr7e_fields_but_preserve_saved_values() -> None:
     assert normalized_saved.graph_selection_policy == "score_only"
     assert normalized_saved.graph_overdue_tolerance_count == 0
     assert normalized_saved.graph_tardiness_tolerance_ratio == 0.20
+
+
+def test_graph_downstream_weight_stays_internal_candidate_parameter() -> None:
+    field = "graph_downstream_weight"
+    service_config_keys = {spec.key for spec in list_config_fields()}
+    runtime_config_keys = {spec.key for spec in list_runtime_config_fields()}
+
+    assert field not in CONFIG_PAGE_FIELDS
+    assert field not in CONFIG_PAGE_WRITE_FIELDS
+    assert field not in service_config_keys
+    assert field not in runtime_config_keys
+    assert _collect_scheduler_config_form_payload({field: "3"}) == {}
+
+    external_payload = _base_snapshot().to_dict()
+    external_payload[field] = 3
+    normalized = ensure_schedule_config_snapshot(external_payload, strict_mode=True)
+    assert normalized.graph_downstream_weight == 1
 
 
 def test_graph_analysis_mode_controls_candidate_comparison_without_user_visible_toggle() -> None:
