@@ -7,6 +7,7 @@ from flask import current_app, g, jsonify, request, url_for
 from core.infrastructure.errors import AppError, BusinessError, ErrorCode, ValidationError, error_response
 from core.services.scheduler.schedule_plan_query_service import ROLE_ADOPTED
 from core.services.scheduler.schedule_result_view_context import default_plan_resolution_dict
+from core.services.scheduler.schedule_result_view_range import normalize_week_offset_for_explicit_range
 from web.error_boundary import json_error_response
 from web.routes.history_summary_logging import (
     log_history_summary_parse_warning,
@@ -93,7 +94,11 @@ def gantt_page():
     plan_role = _get_plan_role_arg()
     services = g.services
     offset = _get_int_arg("offset", 0)
-    effective_offset = 0 if (start_date or end_date) else offset
+    effective_offset = normalize_week_offset_for_explicit_range(
+        start_date=start_date,
+        end_date=end_date,
+        offset_weeks=offset,
+    )
     svc = services.gantt_service
     version_resolution = svc.resolve_version(request.args.get("version"))
     if version_resolution.status == "missing_history":
@@ -159,8 +164,11 @@ def gantt_data():
     svc = g.services.gantt_service
     try:
         offset = _get_int_arg("offset", 0)
-        # 当显式给出区间时，以 start/end 为准，避免客户端重复叠加 offset 造成“跳两周”。
-        effective_offset = 0 if (start_date or end_date) else offset
+        effective_offset = normalize_week_offset_for_explicit_range(
+            start_date=start_date,
+            end_date=end_date,
+            offset_weeks=offset,
+        )
         include_history = _get_bool_arg("include_history", False)
         data_kwargs: Dict[str, Any] = {
             "view": view,

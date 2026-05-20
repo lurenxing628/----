@@ -29,6 +29,7 @@ from .schedule_result_view_context import (
     resolve_schedule_result_view_context,
     selected_plan_role,
 )
+from .schedule_result_view_range import resolve_schedule_result_week_range
 from .version_resolution import VersionResolution, require_selected_version, resolve_version_or_latest
 
 
@@ -489,8 +490,17 @@ class GanttService:
         返回周计划行（用于页面预览与导出）。
         字段：日期/批次号/图号/工序/设备/人员/时段
         """
-        wr = self.resolve_week_range(week_start=week_start, offset_weeks=offset_weeks, start_date=start_date, end_date=end_date)
         plan_query = self._get_plan_query_service(plan_query_service)
+        wr, _, _ = resolve_schedule_result_week_range(
+            plan_query_service=plan_query,
+            version=None,
+            plan_role=None,
+            week_start=week_start,
+            offset_weeks=offset_weeks,
+            start_date=start_date,
+            end_date=end_date,
+            default_to_version_span=False,
+        )
         view_context = self.resolve_result_view_context(
             version=version,
             plan_role=plan_role,
