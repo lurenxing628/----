@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Set
 from core.infrastructure.errors import ValidationError
 from core.models.enums import LockStatus
 from core.models.schedule_candidate import ScheduleCandidate, ScheduleCandidateRows, ScheduleCandidateSelection
+from core.models.schedule_plan_role import SOURCE_CANDIDATE_ROWS, SOURCE_SCHEDULE
 
 from .schedule_candidate_persistence_models import build_candidate_model
 from .schedule_candidate_summary import (
@@ -13,9 +14,6 @@ from .schedule_candidate_summary import (
     ROLE_CRITICAL_BEST,
     candidate_roles_by_key,
 )
-
-SOURCE_SCHEDULE = "schedule"
-SOURCE_CANDIDATE_ROWS = "candidate_rows"
 
 
 def _candidate_by_key(candidate_comparison: Any) -> Dict[str, Any]:

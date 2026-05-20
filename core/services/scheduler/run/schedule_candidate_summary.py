@@ -2,11 +2,9 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from .schedule_candidate_specs import CANDIDATE_KIND_CRITICAL_CHAIN
+from core.models.schedule_plan_role import ROLE_ADOPTED, ROLE_BASELINE_BEST, ROLE_CRITICAL_BEST
 
-ROLE_ADOPTED = "adopted"
-ROLE_BASELINE_BEST = "baseline_best"
-ROLE_CRITICAL_BEST = "critical_best"
+from .schedule_candidate_specs import CANDIDATE_KIND_CRITICAL_CHAIN
 
 
 def _candidate_key(value: Any) -> Optional[str]:

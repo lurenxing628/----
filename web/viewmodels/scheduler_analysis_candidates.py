@@ -2,18 +2,15 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-ROLE_ADOPTED = "adopted"
-ROLE_BASELINE_BEST = "baseline_best"
-ROLE_CRITICAL_BEST = "critical_best"
-VALID_PLAN_ROLES = (ROLE_ADOPTED, ROLE_BASELINE_BEST, ROLE_CRITICAL_BEST)
-SOURCE_SCHEDULE = "schedule"
-SOURCE_CANDIDATE_ROWS = "candidate_rows"
-
-_PLAN_ROLE_LABELS = {
-    ROLE_ADOPTED: "最终采用",
-    ROLE_BASELINE_BEST: "原算法最好",
-    ROLE_CRITICAL_BEST: "重点工序优先方案最好",
-}
+from core.models.schedule_plan_role import (
+    ROLE_ADOPTED,
+    ROLE_BASELINE_BEST,
+    ROLE_CRITICAL_BEST,
+    SOURCE_CANDIDATE_ROWS,
+    SOURCE_SCHEDULE,
+    VALID_PLAN_ROLES,
+    plan_role_label,
+)
 
 _CANDIDATE_ROLE_KEY_FIELDS = (
     (ROLE_ADOPTED, "adopted_candidate_key"),
@@ -38,7 +35,8 @@ _REQUIRED_COMPARISON_ROLES = frozenset((ROLE_ADOPTED, ROLE_BASELINE_BEST, ROLE_C
 
 
 def _plan_role_label(role: str) -> str:
-    return _PLAN_ROLE_LABELS.get(str(role or "").strip(), str(role or "").strip() or "-")
+    text = str(role or "").strip()
+    return plan_role_label(text) if text else "-"
 
 
 def _dict_from_role_option(raw: Any) -> Optional[Dict[str, Any]]:

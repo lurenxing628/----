@@ -12,6 +12,7 @@ from core.services.scheduler.schedule_plan_query_service import (
     ROLE_ADOPTED,
     ROLE_BASELINE_BEST,
     ROLE_CRITICAL_BEST,
+    VALID_PLAN_ROLES,
     SchedulePlanRoleOption,
     plan_role_label,
 )
@@ -289,6 +290,16 @@ def test_analysis_route_builds_candidate_comparison_rows_with_shared_role_labels
     )
 
     display = payload["candidate_comparison_display"]
+    assert [row["role"] for row in display["rows"]] == [
+        ROLE_ADOPTED,
+        ROLE_BASELINE_BEST,
+        ROLE_CRITICAL_BEST,
+    ]
+    assert [row["role_label"] for row in display["rows"]] == [
+        "最终采用",
+        "原算法最好",
+        "重点工序优先方案最好",
+    ]
     rows = {row["role"]: row for row in display["rows"]}
     assert rows[ROLE_ADOPTED]["role_label"] == plan_role_label(ROLE_ADOPTED)
     assert rows[ROLE_BASELINE_BEST]["role_label"] == plan_role_label(ROLE_BASELINE_BEST)
@@ -308,13 +319,42 @@ def test_analysis_route_builds_candidate_comparison_rows_with_shared_role_labels
     assert display["baseline_missing_or_failed"] is False
 
     for role, row in rows.items():
-        urls = [link["url"] for link in row["links"]]
-        assert urls
+        links = list(row["links"])
+        assert [link["label"] for link in links] == ["设备甘特图", "人员甘特图", "周计划", "资源排班"]
+        urls = [link["url"] for link in links]
+        assert "/scheduler/gantt?view=machine" in urls[0]
+        assert "/scheduler/gantt?view=operator" in urls[1]
+        assert "/scheduler/week-plan?" in urls[2]
+        assert "/scheduler/resource-dispatch?" in urls[3]
         assert all("version=7" in url for url in urls)
         assert all(f"plan_role={role}" in url for url in urls)
 
     assert plan_role_service.version_queries == [7]
     json.dumps(payload, ensure_ascii=False)
+
+
+def test_analysis_candidate_display_keeps_core_role_order_and_labels() -> None:
+    from web.viewmodels.scheduler_analysis_candidates import build_candidate_comparison_display
+
+    display = build_candidate_comparison_display(
+        _comparison_summary(),
+        selected_ver=7,
+        plan_role_options=_plan_role_options(),
+    )
+
+    assert [row["role"] for row in display["rows"]] == list(VALID_PLAN_ROLES)
+    assert [row["role_label"] for row in display["rows"]] == [
+        "最终采用",
+        "原算法最好",
+        "重点工序优先方案最好",
+    ]
+
+
+def test_analysis_candidate_empty_role_label_stays_placeholder() -> None:
+    from web.viewmodels.scheduler_analysis_candidates import _plan_role_label
+
+    assert _plan_role_label("") == "-"
+    assert _plan_role_label(None) == "-"
 
 
 def test_analysis_route_shows_clear_notice_when_candidate_comparison_is_missing() -> None:

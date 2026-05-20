@@ -2,13 +2,11 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple, cast
 
+from core.models.schedule_plan_role import SOURCE_CANDIDATE_ROWS, SOURCE_SCHEDULE
+
 from .base_repo import BaseRepository
 from .schedule_detail_query import build_schedule_detail_sql
 from .schedule_rows import ScheduleDetailRow, ScheduleDispatchRow, ScheduleTimeSpanRow
-
-SOURCE_SCHEDULE = "schedule"
-SOURCE_CANDIDATE_ROWS = "candidate_rows"
-
 
 _SCHEDULE_PLAN_ROWS_SQL = """
 SELECT
