@@ -22,6 +22,10 @@ PLAN_ROLE_LABELS = {
 }
 
 
+def is_comparison_source(source_table: Optional[str]) -> bool:
+    return str(source_table or "").strip() == SOURCE_CANDIDATE_ROWS
+
+
 def plan_role_label(role: Optional[str]) -> str:
     normalized = _normalize_role(role)
     return PLAN_ROLE_LABELS.get(normalized, normalized)
@@ -69,7 +73,7 @@ class SchedulePlanRoleOption:
             "candidate_status": self.candidate_status,
             "detail_saved": self.detail_saved,
             "candidate_missing": self.candidate_missing,
-            "is_comparison": self.role != ROLE_ADOPTED,
+            "is_comparison": is_comparison_source(self.source_table),
         }
 
 
@@ -99,7 +103,7 @@ class SchedulePlanResolution:
             "message": self.message,
             "available_roles": [item.to_dict() for item in self.available_roles],
             "is_fallback": self.status == "fallback_to_adopted",
-            "is_comparison": self.selected_role != ROLE_ADOPTED,
+            "is_comparison": is_comparison_source(self.source_table),
         }
 
 

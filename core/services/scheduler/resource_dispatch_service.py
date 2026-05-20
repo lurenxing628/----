@@ -22,6 +22,7 @@ from .schedule_plan_query_service import (
     ROLE_ADOPTED,
     VALID_PLAN_ROLES,
     SchedulePlanQueryService,
+    is_comparison_source,
     plan_role_label,
 )
 from .version_resolution import VersionResolution, require_selected_version, resolve_version_or_latest
@@ -73,17 +74,18 @@ class ResourceDispatchService:
                 item = dict(option.to_dict())
             else:
                 role = str(getattr(option, "role", "") or "").strip()
+                source_table = getattr(option, "source_table", None)
                 item = {
                     "role": role,
                     "label": plan_role_label(role),
-                    "source_table": getattr(option, "source_table", None),
+                    "source_table": source_table,
                     "candidate_id": getattr(option, "candidate_id", None),
                     "candidate_key": getattr(option, "candidate_key", None),
                     "candidate_label": getattr(option, "candidate_label", None),
                     "candidate_kind": getattr(option, "candidate_kind", None),
                     "candidate_status": getattr(option, "candidate_status", None),
                     "detail_saved": getattr(option, "detail_saved", None),
-                    "is_comparison": role != ROLE_ADOPTED,
+                    "is_comparison": is_comparison_source(source_table),
                 }
             role = str(item.get("role") or "").strip()
             if not role:
@@ -102,16 +104,20 @@ class ResourceDispatchService:
     def _plan_role_resolution_dict(self, resolution: Any) -> Dict[str, Any]:
         if hasattr(resolution, "to_dict"):
             return dict(resolution.to_dict())
+        source_table = getattr(resolution, "source_table", None)
         return {
             "version": getattr(resolution, "version", None),
             "requested_role": getattr(resolution, "requested_role", ROLE_ADOPTED),
             "requested_label": plan_role_label(getattr(resolution, "requested_role", ROLE_ADOPTED)),
             "selected_role": getattr(resolution, "selected_role", ROLE_ADOPTED),
             "selected_label": plan_role_label(getattr(resolution, "selected_role", ROLE_ADOPTED)),
+            "source_table": source_table,
+            "candidate_id": getattr(resolution, "candidate_id", None),
+            "candidate_key": getattr(resolution, "candidate_key", None),
             "status": getattr(resolution, "status", "selected"),
             "message": getattr(resolution, "message", ""),
             "is_fallback": getattr(resolution, "status", "") == "fallback_to_adopted",
-            "is_comparison": getattr(resolution, "selected_role", ROLE_ADOPTED) != ROLE_ADOPTED,
+            "is_comparison": is_comparison_source(source_table),
         }
 
     def _plan_role_filter_fields(
@@ -123,6 +129,8 @@ class ResourceDispatchService:
         message: str = "",
         candidate_id: Any = None,
         candidate_key: Any = None,
+        source_table: Any = None,
+        is_comparison: bool = False,
     ) -> Dict[str, Any]:
         return {
             "plan_role": requested_role,
@@ -135,6 +143,8 @@ class ResourceDispatchService:
             "effective_plan_role_label": plan_role_label(effective_role),
             "candidate_id": candidate_id,
             "candidate_key": candidate_key,
+            "source_table": source_table,
+            "is_comparison": bool(is_comparison),
         }
 
     def _plan_role_fields_from_resolution(self, resolution: Any) -> Dict[str, Any]:
@@ -146,11 +156,12 @@ class ResourceDispatchService:
             message=str(data.get("message") or ""),
             candidate_id=data.get("candidate_id"),
             candidate_key=data.get("candidate_key"),
+            source_table=data.get("source_table"),
+            is_comparison=bool(data.get("is_comparison")),
         )
 
     def _plan_role_notice_from_fields(self, fields: Dict[str, Any]) -> str:
-        effective_role = str(fields.get("effective_plan_role") or ROLE_ADOPTED)
-        if effective_role != ROLE_ADOPTED:
+        if bool(fields.get("is_comparison")):
             return _PLAN_ROLE_COMPARE_HINT
         message = str(fields.get("plan_role_message") or "").strip()
         return message

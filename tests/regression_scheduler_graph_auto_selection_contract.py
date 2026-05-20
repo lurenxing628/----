@@ -100,6 +100,47 @@ def test_balanced_allows_healthy_critical_candidate_to_override_within_tolerance
     assert selection.reason_code == "balanced_critical_health_better"
 
 
+def test_balanced_only_allows_critical_best_to_override_raw_score_best() -> None:
+    selection = select_candidate_plan(
+        [
+            _plan(
+                "baseline",
+                "baseline",
+                (0, 0, 10),
+                sequence=0,
+                overdue_count=0,
+                total_tardiness_hours=10.0,
+            ),
+            _plan(
+                "graph_w1_of_5",
+                "critical_chain",
+                (0, 0, 11),
+                sequence=1,
+                overdue_count=0,
+                total_tardiness_hours=10.5,
+                health_state=HEALTH_UNAVAILABLE,
+            ),
+            _plan(
+                "graph_w2_of_5",
+                "critical_chain",
+                (0, 0, 12),
+                sequence=2,
+                overdue_count=0,
+                total_tardiness_hours=10.5,
+                health_state=HEALTH_BETTER,
+            ),
+        ],
+        policy="balanced",
+        graph_tardiness_tolerance_ratio=0.10,
+    )
+
+    assert selection.raw_score_best_key == "baseline"
+    assert selection.critical_best_key == "graph_w1_of_5"
+    assert selection.critical_health_best_key is None
+    assert selection.selected_candidate_key == "baseline"
+    assert selection.reason_code == "balanced_raw_score_best"
+
+
 def test_balanced_does_not_override_when_health_is_unavailable() -> None:
     selection = select_candidate_plan(
         [

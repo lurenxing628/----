@@ -426,7 +426,7 @@ def test_candidate_runner_skips_not_started_candidates_after_global_deadline() -
     ]
 
 
-def test_candidate_runner_records_single_candidate_failure_and_continues() -> None:
+def test_candidate_runner_records_explicit_candidate_trial_failure_and_continues() -> None:
     def prepare_graph(schedule_input):
         return SimpleNamespace(
             graph_analysis_public=None,
@@ -439,6 +439,8 @@ def test_candidate_runner_records_single_candidate_failure_and_continues() -> No
         if kwargs["cfg"].graph_critical_weight == 250:
             raise runner.CandidateTrialFailure("candidate failed")
         return _outcome("x", score=(0, 0, 10), tardiness=10.0)
+
+    # 只有显式 CandidateTrialFailure 是候选级失败；ValidationError / RuntimeError / TypeError 必须继续向上抛。
 
     outcome = run_candidate_comparison(
         schedule_input=_schedule_input(),

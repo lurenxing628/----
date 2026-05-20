@@ -56,7 +56,7 @@ def select_candidate_plan(
     raw_score_best = min(completed, key=_candidate_sort_key)
     baseline_best = _best_of_kind(completed, CANDIDATE_KIND_BASELINE)
     critical_best = _best_of_kind(completed, CANDIDATE_KIND_CRITICAL_CHAIN)
-    critical_health_best = _best_healthy_critical(completed)
+    critical_health_best = _health_eligible_critical_best(critical_best)
 
     if selection_policy == SELECTION_POLICY_SCORE_ONLY:
         return _build_selection(
@@ -139,16 +139,12 @@ def _best_of_kind(candidates: Sequence[Any], kind: str) -> Optional[Any]:
     return min(scoped, key=_candidate_sort_key)
 
 
-def _best_healthy_critical(candidates: Sequence[Any]) -> Optional[Any]:
-    scoped = [
+def _health_eligible_critical_best(candidate: Optional[Any]) -> Optional[Any]:
+    return (
         candidate
-        for candidate in candidates
-        if str(getattr(candidate, "kind", "")) == CANDIDATE_KIND_CRITICAL_CHAIN
-        and _health_state(getattr(candidate, "health", None)) == HEALTH_BETTER
-    ]
-    if not scoped:
-        return None
-    return min(scoped, key=_candidate_sort_key)
+        if candidate is not None and _health_state(getattr(candidate, "health", None)) == HEALTH_BETTER
+        else None
+    )
 
 
 def _health_state(health: Any) -> str:

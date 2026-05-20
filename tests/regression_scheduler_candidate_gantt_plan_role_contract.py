@@ -7,7 +7,12 @@ from pathlib import Path
 
 from core.infrastructure.database import ensure_schema, get_connection
 from core.models.schedule_candidate import ScheduleCandidate, ScheduleCandidateRows, ScheduleCandidateSelection
-from core.services.scheduler.schedule_plan_query_service import ROLE_ADOPTED, ROLE_BASELINE_BEST, ROLE_CRITICAL_BEST
+from core.services.scheduler.schedule_plan_query_service import (
+    ROLE_ADOPTED,
+    ROLE_BASELINE_BEST,
+    ROLE_CRITICAL_BEST,
+    SchedulePlanQueryService,
+)
 from data.repositories.schedule_candidate_repo import ScheduleCandidateRepository
 from data.repositories.schedule_plan_query_repo import SOURCE_CANDIDATE_ROWS, SOURCE_SCHEDULE
 
@@ -245,6 +250,47 @@ def test_gantt_missing_valid_plan_role_falls_back_to_adopted(tmp_path, monkeypat
     assert "最终采用方案" in str(data.get("plan_role_message") or "")
     assert len(tasks) == 1
     assert (tasks[0].get("meta") or {}).get("machine_id") == "M-ADOPTED"
+
+
+def test_plan_role_same_as_adopted_is_not_marked_as_comparison(tmp_path) -> None:
+    db_path = tmp_path / "aps_test.db"
+    ensure_schema(str(db_path), logger=None, schema_path=str(SCHEMA_PATH), backup_dir=None)
+    conn = get_connection(str(db_path))
+    try:
+        _seed_plan_role_context(conn)
+        repo = ScheduleCandidateRepository(conn)
+
+        adopted_id = conn.execute(
+            """
+            SELECT candidate_id
+            FROM ScheduleCandidateSelection
+            WHERE version = ? AND role = ?
+            """,
+            (VERSION, ROLE_ADOPTED),
+        ).fetchone()["candidate_id"]
+
+        conn.execute(
+            "DELETE FROM ScheduleCandidateSelection WHERE version = ? AND role = ?",
+            (VERSION, ROLE_BASELINE_BEST),
+        )
+        repo.create_selection(
+            ScheduleCandidateSelection(
+                id=None,
+                version=VERSION,
+                role=ROLE_BASELINE_BEST,
+                candidate_id=int(adopted_id),
+                source_table=SOURCE_SCHEDULE,
+            )
+        )
+        conn.commit()
+
+        resolution = SchedulePlanQueryService(conn).resolve_plan(VERSION, ROLE_BASELINE_BEST).to_dict()
+
+        assert resolution["selected_role"] == ROLE_BASELINE_BEST
+        assert resolution["source_table"] == SOURCE_SCHEDULE
+        assert resolution["is_comparison"] is False
+    finally:
+        conn.close()
 
 
 def test_gantt_page_and_boot_preserve_plan_role(tmp_path, monkeypatch) -> None:
