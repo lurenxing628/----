@@ -629,10 +629,11 @@ def test_process_and_scheduler_errors_use_chinese_terms() -> None:
 
 def test_scheduler_analysis_hides_internal_schema_and_attempt_tags() -> None:
     analysis_vm = _read("web/viewmodels/scheduler_analysis_vm.py")
-    assert "这个历史版本缺少新的分析字段，页面只展示能确认的内容。" in analysis_vm
-    assert "新 schema 字段" not in analysis_vm
-    assert '"comparison_metric": "优化对比指标"' in analysis_vm
-    assert '"best_score_schema": "评分顺序"' in analysis_vm
+    analysis_compat = _read("web/viewmodels/scheduler_analysis_compat.py")
+    assert "这个历史版本缺少新的分析字段，页面只展示能确认的内容。" in analysis_compat
+    assert "新 schema 字段" not in analysis_vm + analysis_compat
+    assert '"comparison_metric": "优化对比指标"' in analysis_compat
+    assert '"best_score_schema": "评分顺序"' in analysis_compat
 
     analysis_template = _read("templates/scheduler/analysis.html")
     assert "compat_fallback.missing_field_labels" in analysis_template

@@ -1,26 +1,12 @@
 {% extends "base.html" %}
 {% import "components/ui_macros.html" as ui %}
 {% block content %}
-  {% set strategy_zh = {
-      'priority_first': '优先级优先',
-      'due_date_first': '交期优先',
-      'weighted': '综合优先级和交期',
-      'fifo': '先进先出',
-      'improve': '优化排产',
-      'greedy': '快速排产',
-      'manual': '手动排产'
-    } %}
-  {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'simulated': '模拟排产', 'ok': '成功', 'fail': '失败', 'ok2': '成功'} %}
-  {% set mode_zh = {'improve': '优化模式', 'greedy': '快速模式', 'single': '单次排产'} %}
-  {% set dispatch_mode_zh = {
-      'batch_order': '按批次顺序排',
-      'sgs': '智能派工'
-    } %}
-  {% set dispatch_rule_zh = {
-      'slack': '时间余量少的先做',
-      'cr': '交期更紧的先做',
-      'atc': '综合紧急度优先'
-    } %}
+  {% set analysis_labels = analysis_labels or {} %}
+  {% set strategy_zh = analysis_labels.get('strategy', {}) %}
+  {% set status_zh = analysis_labels.get('status', {}) %}
+  {% set mode_zh = analysis_labels.get('mode', {}) %}
+  {% set dispatch_mode_zh = analysis_labels.get('dispatch_mode', {}) %}
+  {% set dispatch_rule_zh = analysis_labels.get('dispatch_rule', {}) %}
   {{ ui.aps_page_hero(
     '排产优化分析',
     '查看每次排产的结果、对比和计算过程，本系统离线也能使用。',
