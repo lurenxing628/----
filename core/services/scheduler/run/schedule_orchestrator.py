@@ -326,7 +326,6 @@ def orchestrate_schedule_run(
 ) -> ScheduleOrchestrationOutcome:
     candidate_comparison = None
     if _candidate_comparison_enabled(schedule_input.cfg):
-        prepare_schedule_graph_for_dispatch(schedule_input)
         candidate_comparison = run_candidate_comparison(
             schedule_input=schedule_input,
             optimize_schedule_fn=optimize_schedule_fn,

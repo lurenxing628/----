@@ -406,7 +406,6 @@ def _validate_present_runtime_cfg_fields(
             missing_policy=MISSING_POLICY_ERROR,
         )
 
-
 def ensure_schedule_config_snapshot(
     cfg: Any,
     *,
@@ -468,6 +467,7 @@ def ensure_schedule_config_snapshot(
         graph_block_on_cycle=str(values["graph_block_on_cycle"]),
         graph_critical_weight=int(values["graph_critical_weight"]),
         graph_impact_weight=int(values["graph_impact_weight"]),
+        graph_downstream_weight=0 if int(values["graph_critical_weight"]) == 0 and int(values["graph_impact_weight"]) == 0 else int(ScheduleConfigSnapshot.graph_downstream_weight),
         graph_candidate_weight_count=int(values["graph_candidate_weight_count"]),
         graph_selection_policy=str(values["graph_selection_policy"]),
         graph_overdue_tolerance_count=int(values["graph_overdue_tolerance_count"]),

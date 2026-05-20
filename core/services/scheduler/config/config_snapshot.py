@@ -86,6 +86,12 @@ class ScheduleConfigSnapshot:
         }
 
 
+def _graph_downstream_weight_for_visible_weights(*, critical_weight: int, impact_weight: int) -> int:
+    if int(critical_weight) == 0 and int(impact_weight) == 0:
+        return 0
+    return int(ScheduleConfigSnapshot.graph_downstream_weight)
+
+
 def _read_runtime_cfg_raw_value(cfg: Any, key: str) -> Tuple[bool, Any]:
     if cfg is None:
         return True, None
@@ -286,6 +292,10 @@ def _build_schedule_config_snapshot_from_runtime_cfg(
         graph_block_on_cycle=str(values["graph_block_on_cycle"]),
         graph_critical_weight=int(values["graph_critical_weight"]),
         graph_impact_weight=int(values["graph_impact_weight"]),
+        graph_downstream_weight=_graph_downstream_weight_for_visible_weights(
+            critical_weight=int(values["graph_critical_weight"]),
+            impact_weight=int(values["graph_impact_weight"]),
+        ),
         graph_candidate_weight_count=int(values["graph_candidate_weight_count"]),
         graph_selection_policy=str(values["graph_selection_policy"]),
         graph_overdue_tolerance_count=int(values["graph_overdue_tolerance_count"]),
@@ -437,6 +447,10 @@ def build_schedule_config_snapshot(
         graph_block_on_cycle=str(values["graph_block_on_cycle"]),
         graph_critical_weight=int(values["graph_critical_weight"]),
         graph_impact_weight=int(values["graph_impact_weight"]),
+        graph_downstream_weight=_graph_downstream_weight_for_visible_weights(
+            critical_weight=int(values["graph_critical_weight"]),
+            impact_weight=int(values["graph_impact_weight"]),
+        ),
         graph_candidate_weight_count=int(values["graph_candidate_weight_count"]),
         graph_selection_policy=str(values["graph_selection_policy"]),
         graph_overdue_tolerance_count=int(values["graph_overdue_tolerance_count"]),

@@ -455,7 +455,7 @@ PR-7b 已完成。
 PR-7c 已完成。
 PR-7d 已完成。
 PR-7e 已完成。
-PR-8 已完成，下一步是 PR-9。
+PR-8 已完成，下一步是 PR-9 排产分析页诊断摘要第一版；Win7 离线打包和最终验收顺延为 PR-10，候选方案续跑顺延为 PR-11。
 PR-8 继承了 PR-7a 到 PR-7e 已证明的候选表、候选运行、同事务保存、代表方案切换、默认配置收口、清理和性能守卫；本轮已补齐资源匹配 report-only 分析、最大匹配诊断和资源瓶颈说明的第一版证明。
 ```
 
@@ -470,8 +470,9 @@ PR-8 继承了 PR-7a 到 PR-7e 已证明的候选表、候选运行、同事务�
 | PR-6 `scheduler-graph-critical-score-on-mode` | 阶段 13 | 关键路径、影响范围、后续关键工作量进入评分 | 是/可控 | done |
 | PR-7a 到 PR-7e | 阶段 13.6 | 多权重候选试跑、自动择优、同事务落库、代表方案切换和配置收口 | 是/可控 | done |
 | PR-8 `scheduler-graph-resource-matching-report` | 阶段 14-15 | 资源匹配 report-only 分析：首波 ready 工序 × 候选设备最大匹配，输出可见瓶颈/未匹配诊断；最小费用流只留后续增强 | 否 | done |
-| PR-9 `scheduler-graph-win7-package-closeout` | 阶段 21 | Win7 离线打包和最终验收 | 否/可控 | planned |
-| PR-10 `scheduler-graph-candidate-resume-later` | 阶段 23 | 后续增强：候选方案续跑 | 否/可控 | planned |
+| PR-9 `scheduler-graph-analysis-diagnostic-sections` | 阶段 14-15 之后的分析页展示层 | 排产分析页诊断摘要第一版：排产体检、资源卡点、延期风险、影响解释 | 否 | planned |
+| PR-10 `scheduler-graph-win7-package-closeout` | 阶段 21 | Win7 离线打包和最终验收 | 否/可控 | planned |
+| PR-11 `scheduler-graph-candidate-resume-later` | 阶段 23 | 后续增强：候选方案续跑 | 否/可控 | planned |
 
 执行规则：
 
@@ -561,15 +562,15 @@ PR-7 候选比较负责“在几版候选里选一版正式采用”。
 NetworkX 后续诊断负责“告诉用户这版结果哪里健康、哪里危险、哪里会卡”。
 ```
 
-### 推荐产品形态：排产诊断中心
+### 推荐产品形态：先做排产分析页诊断摘要
 
-后续如果要把更多 NetworkX 分析展示到页面上，建议统一收进一个入口，暂定名：
+后续如果要把更多 NetworkX 分析展示到页面上，长期可以统一收进一个入口，暂定名：
 
 ```text
 排产诊断中心
 ```
 
-这里的“中心”是产品组织方式，不代表 PR-8 必须新增页面。具体是新页面、分析页增强，还是系统历史详情里的一个诊断区，留到后续 feature-design 再决定。当前 roadmap 只先锁定一个原则：诊断按业务问题组织，不按算法名字分散到各处。
+这里的“中心”是产品组织方式，不代表下一步必须新增页面。当前分支已经把排产分析页的读取、viewmodel、诊断合同和模板块拆出来了，所以正式 PR-9 先不造新页面，也不碰历史详情，只把分析页已有的 `diagnostic_sections` 填成业务诊断。当前 roadmap 继续锁定一个原则：诊断按业务问题组织，不按算法名字分散到各处。
 
 不建议这样做：
 
@@ -586,16 +587,17 @@ NetworkX 后续诊断负责“告诉用户这版结果哪里健康、哪里危�
 
 ```text
 保留现有甘特图、周计划、资源派工、分析页的原职责。
-后续统一设计“排产诊断中心”或等价统一入口。
+PR-9 先在排产分析页展示诊断摘要；后续再统一设计“排产诊断中心”或等价统一入口。
 排产诊断按调度员关心的问题组织，而不是按算法组织。
 ```
 
-第一版“排产诊断中心”只回答三个问题：
+PR-9 第一版排产分析页诊断摘要回答四个问题：
 
 ```text
 1. 这版排产有没有明显问题？
 2. 这版排产最卡在哪里？
 3. 这版排产为什么可能延期？
+4. 哪些样本能解释后续影响？
 ```
 
 页面上不要出现太多算法词。调度员不需要先理解什么是中心性、最大匹配、最长路径、最小割。页面应该直接讲：
@@ -645,7 +647,7 @@ graph_analysis_status=degraded。
 
 ## PR-8 边界：资源匹配仍然只做 report-only
 
-PR-8 是下一步，但 PR-8 不应该承载“排产诊断中心”的全部内容。PR-8 只做资源匹配 report-only 分析。
+PR-8 已完成，它不承载“排产诊断中心”的全部内容。PR-8 只做资源匹配 report-only 分析。
 
 PR-8 的核心目标：
 
@@ -734,7 +736,7 @@ PR-8 完成后，它应该成为后续“资源覆盖报告”的基础证据，
 看清当前这版排产。
 ```
 
-这批功能只回答“当前排出来的这版有没有问题、哪里最卡、为什么可能延期”。它不处理“异常发生后怎么重排”，也不做自动建议。第一批可以作为 PR-8 之后的后续规划候选，但是否拆进 items.yaml、拆成几个 PR，要等用户确认后再做。
+这批功能只回答“当前排出来的这版有没有问题、哪里最卡、为什么可能延期”。它不处理“异常发生后怎么重排”，也不做自动建议。现在已经确认先把第一批最小闭环收成 PR-9：排产分析页诊断摘要第一版。
 
 建议第一批拆成四块：
 
@@ -1874,30 +1876,49 @@ OperationLogs 小摘要。
 自动排序。
 ```
 
-### PR-8 之后：第一批诊断方向
+### PR-9：排产分析页诊断摘要第一版
 
-可以考虑拆成 2 到 4 个小 PR，而不是一个大 PR。
+PR-9 不再新增独立“排产诊断中心”页面。当前分支已经有 `build_diagnostic_sections(...)`、`diagnostic_sections` 和 `_diagnostic_sections.html`，所以第一版最小范围就是把这个空壳填起来。
 
-建议拆法：
+实现时保持分析页 viewmodel 纯展示层：`scheduler_analysis_diagnostics.py` 只做总入口，具体诊断整理拆到 `scheduler_analysis_diagnostic_helpers.py`、`scheduler_analysis_diagnostic_health.py`、`scheduler_analysis_diagnostic_delay_impact.py`。这些 helper 只读 `selected_summary`，不访问数据库、不 import Flask、不调用排产运行层，也不反向 import `core.services`，这样后续维护时不会把页面诊断和排产算法绑在一起。
+
+PR-9 只做：
 
 ```text
-PR-A：排产体检报告。
-PR-B：资源覆盖报告增强，承接 PR-8。
-PR-C：瓶颈雷达。
-PR-D：交期风险清单。
+排产分析页展示层。
+排产体检。
+资源卡点。
+延期风险。
+影响解释。
 ```
 
-这些只是后续拆分建议，不等同于已经写入 items.yaml 的正式 planned 条目。真正进入开发前，仍要由用户确认，并通过 roadmap update 拆成具体 items。
-
-如果想更小，可以先把页面入口延后，只先把 summary 小摘要打稳。
-
-优先级建议：
+PR-9 明确不做：
 
 ```text
-1. 资源覆盖报告，因为最贴近 PR-8。
-2. 排产体检报告，因为能发现明显数据和结构问题。
-3. 瓶颈雷达，因为需要整合关键链、负荷和影响范围。
-4. 交期风险清单，因为需要把多类风险解释成人话。
+不新增独立页面。
+不新增历史详情诊断区。
+不新增 schema。
+不改排产算法。
+不改 schedule_graph_report.py 输出合同。
+不往 result_summary 里新增 schedule_diagnostic 字段。
+不改 OperationLogs。
+不自动派工。
+不自动换设备。
+不自动调顺序。
+不自动建议重排。
+不做停机 / 缺料 / 插单 what-if 模拟。
+不做完整影响清单。
+不导出 Excel。
+不改 ReportEngine。
+```
+
+PR-9 的四块诊断：
+
+```text
+1. 排产体检：解释 graph_analysis 状态、节点、关系、关键链、循环关系和耗时。
+2. 资源卡点：解释 resource_matching public 计数，并只从 diagnostics 样本里取少量未匹配工序和瓶颈设备。
+3. 延期风险：解释失败工序、未排批次、超期批次、总拖期、关键链时长和关键链工序数。
+4. 影响解释：展示关键链样本、影响范围样本、资源异常样本和图分析提醒样本，并明确这些只是样本，不是完整清单。
 ```
 
 ### 第一批稳定之后：第二批影响分析
@@ -1954,7 +1975,7 @@ PR-G：版本差异影响报告。
 | 是否进 OperationLogs | 只进 public 小摘要 |
 | 是否暴露完整图 | 不暴露 |
 | 是否暴露 diagnostics 完整内容 | 不暴露，只采样 |
-| 是否新增页面入口 | 第一批可规划为统一诊断入口，PR-8 不新增 |
+| 是否新增页面入口 | PR-9 不新增独立页面，只填排产分析页已有诊断块；后续统一入口另拆 |
 | 是否引入重依赖 | 不引入 |
 | 是否支持 Win7 / Python 3.8 | 必须支持 |
 
@@ -1964,7 +1985,7 @@ PR-G：版本差异影响报告。
 
 ```text
 PR-8：资源匹配 report-only，补资源覆盖证据。
-第一批：排产诊断中心，看清当前这版排产。
+PR-9：排产分析页诊断摘要第一版，看清当前这版排产。
 第二批：影响分析，看清异常会影响谁。
 第三批：自动建议和局部重排暂缓，只放后续研究。
 ```
@@ -1974,7 +1995,7 @@ PR-8：资源匹配 report-only，补资源覆盖证据。
 ```text
 NetworkX 是排产结果体检医生，不是第二套排产大脑。
 PR-8 仍然 report-only，不改排产结果。
-第一批和第二批都优先做只读解释。
+PR-9、第一批后续和第二批都优先做只读解释。
 第三批涉及系统参与改排产，当前先不承诺开发。
 ```
 
@@ -8666,7 +8687,7 @@ baseline_missing_or_failed
 本次时间到了，只比较了 3/6 套方案，已采用已完成方案里的最好结果。想比较完整，可以提高本次时间上限后重新排产。
 ```
 
-第一版不做续跑；续跑放到 PR-10 / 后续增强。
+第一版不做续跑；续跑放到 PR-11 / 后续增强。
 
 #### 13.6.4 候选失败规则
 
@@ -9976,7 +9997,7 @@ tests/scheduler_graph/test_nx_runtime.py
 [ ] OperationLogs 不泄漏 diagnostics、matches_sample、public 样本、完整 resource_pool、raw 或 nx.Graph。
 [ ] 不新增配置、不改 schema、不改候选表、不改资源派工逻辑、不改页面路由。
 [ ] ruff / pyright 通过。
-[ ] 最终 clean proof 使用 `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`；如果 Win7 实机/虚拟机证据还没跑，必须在验收记录里明确写“Win7 证据不足，由 PR-9 承接”，不能说已经完成 Win7 交付。
+[ ] 最终 clean proof 使用 `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`；如果 Win7 实机/虚拟机证据还没跑，必须在验收记录里明确写“Win7 证据不足，由 PR-10 承接”，不能说已经完成 Win7 交付。
 ```
 
 ### 14.9 PR-8 验证命令
@@ -9995,7 +10016,7 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .codestable/tools/validate-yaml.py --
 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache
 ```
 
-最后一条必须在 PR-8 代码、测试、feature 验收记录和 roadmap/items 回填都完成，并且工作区干净之后再跑。当前本机是 macOS，即使 `.venv` 是 Python 3.8.10，也不能冒充 Win7 实机/虚拟机离线交付证据；Win7 证据仍由 PR-9 收口。
+最后一条必须在 PR-8 代码、测试、feature 验收记录和 roadmap/items 回填都完成，并且工作区干净之后再跑。当前本机是 macOS，即使 `.venv` 是 Python 3.8.10，也不能冒充 Win7 实机/虚拟机离线交付证据；Win7 证据仍由 PR-10 收口。
 
 ## 阶段 15：最小费用流作为后续增强
 
@@ -10525,6 +10546,8 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require
 
 ## 阶段 21：打包和 Win7 验证
 
+本阶段现在对应 PR-10 `scheduler-graph-win7-package-closeout`。PR-9 先做排产分析页诊断摘要，不抢 Win7 最终验收范围。
+
 ### 21.1 打包前验证
 
 ```bat
@@ -10681,6 +10704,8 @@ Chrome109 启动链失败。
 ```
 
 ## 阶段 23：候选方案续跑作为后续增强
+
+本阶段现在对应 PR-11 `scheduler-graph-candidate-resume-later`。PR-9 和 PR-10 都不实现候选续跑。
 
 这一阶段不是第一版必做。第一版多权重试跑先采用更轻的做法：
 
@@ -10867,7 +10892,9 @@ on 模式：
 
 ## 变更记录
 
-- 2026-05-20：完成 PR-8 `scheduler-graph-resource-matching-report`：新增 resource_matching.py 纯分析模块，运行时懒加载 NetworkX，只分析首波 ready 工序与 `candidate_machine_ids` 的设备最大匹配；report/on 通过 schedule_graph_resource_matching_context.py 复用 first-wave ready 口径，schedule_graph_dispatch_context.py 保留轻量入口以守住 500 行架构门禁，schedule_graph_report.py 的 warning / node_metrics 采样 helper 下沉到 schedule_graph_projection_helpers.py 后也回到 500 行以内；report 只把 public 小摘要和 diagnostics 采样合进 result_summary，不改 graph_ready_context、SGS、候选排序、资源分配、候选表、配置、schema 或页面。public 只放 `status/reason` 和计数，样本只进 diagnostics，OperationLogs 回归证明日志只看到 public 计数字段。空 ready、有环、图增强不可用、合同错误和 NetworkX 不可用都有固定状态口径；Win7 实机或虚拟机离线证据未跑，证据不足，由 PR-9 承接。
+- 2026-05-21：重新策划 PR-9：基于 `codex/scheduler-analysis-entry-refactor` 已完成的分析页读取上下文、viewmodel 拆分、诊断合同和模板 parts，正式插入 `scheduler-graph-analysis-diagnostic-sections`，只填充排产分析页 `diagnostic_sections`，分成排产体检、资源卡点、延期风险、影响解释四块；不新增独立页面、不碰历史详情、不改排产算法、不改 result_summary / OperationLogs 合同。原 PR-9 Win7 closeout 顺延为 PR-10，原 PR-10 候选续跑顺延为 PR-11。
+
+- 2026-05-20：完成 PR-8 `scheduler-graph-resource-matching-report`：新增 resource_matching.py 纯分析模块，运行时懒加载 NetworkX，只分析首波 ready 工序与 `candidate_machine_ids` 的设备最大匹配；report/on 通过 schedule_graph_resource_matching_context.py 复用 first-wave ready 口径，schedule_graph_dispatch_context.py 保留轻量入口以守住 500 行架构门禁，schedule_graph_report.py 的 warning / node_metrics 采样 helper 下沉到 schedule_graph_projection_helpers.py 后也回到 500 行以内；report 只把 public 小摘要和 diagnostics 采样合进 result_summary，不改 graph_ready_context、SGS、候选排序、资源分配、候选表、配置、schema 或页面。public 只放 `status/reason` 和计数，样本只进 diagnostics，OperationLogs 回归证明日志只看到 public 计数字段。空 ready、有环、图增强不可用、合同错误和 NetworkX 不可用都有固定状态口径；Win7 实机或虚拟机离线证据未跑，证据不足，由 PR-10 承接。
 
 - 2026-05-20：复核并继续细化 PR-8 `scheduler-graph-resource-matching-report`：按子代理只读审查结果，把 PR-8 状态/原因口径收成固定表，明确 `available/skipped/empty/error` 的使用场景；把 public 摘要收紧成“只放状态和计数，不放样本”，避免 OperationLogs 因复制 `algo.graph_analysis` 而看到 unmatched/bottleneck/matches 样本；补清 report/on 两种模式都用同一套 first-wave ready 计算公式，要求 helper 显式接收 `schedule_input/nodes/edges/graph_ready_context`；把 GraphResourceMatchingContractError、lazy NetworkX、dispatch context helper、OperationLogs 边界、最终 clean proof 和 Win7 证据不足承接写进执行计划和验收清单。
 

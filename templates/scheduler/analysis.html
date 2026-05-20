@@ -25,9 +25,9 @@
   {% if selected %}
     {% include "scheduler/analysis_parts/_selected_overview.html" with context %}
     {% include "scheduler/analysis_parts/_summary_warnings.html" with context %}
+    {% include "scheduler/analysis_parts/_diagnostic_sections.html" with context %}
     {% include "scheduler/analysis_parts/_metric_cards.html" with context %}
     {% include "scheduler/analysis_parts/_candidate_comparison.html" with context %}
-    {% include "scheduler/analysis_parts/_diagnostic_sections.html" with context %}
     {% include "scheduler/analysis_parts/_optimization_process.html" with context %}
   {% endif %}
 

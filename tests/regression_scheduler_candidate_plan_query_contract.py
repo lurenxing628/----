@@ -8,6 +8,7 @@ import pytest
 
 from core.infrastructure.database import ensure_schema, get_connection
 from core.models.schedule_candidate import ScheduleCandidate, ScheduleCandidateRows, ScheduleCandidateSelection
+from core.services.scheduler.plan_overdue_markers import build_overdue_meta_for_plan
 from core.services.scheduler.schedule_plan_query_service import (
     ROLE_ADOPTED,
     ROLE_BASELINE_BEST,
@@ -239,6 +240,25 @@ def test_candidate_repository_roundtrips_candidates_rows_and_selections(tmp_path
         assert selection.source_table == SOURCE_CANDIDATE_ROWS
     finally:
         conn.close()
+
+
+def test_candidate_overdue_marker_projection_does_not_swallow_repository_errors() -> None:
+    degraded_logs: List[Any] = []
+
+    def _raise_repo_error(**_kwargs: Any) -> List[Any]:
+        raise RuntimeError("repository failed")
+
+    with pytest.raises(RuntimeError, match="repository failed"):
+        build_overdue_meta_for_plan(
+            version=VERSION,
+            role=ROLE_BASELINE_BEST,
+            source_table=SOURCE_CANDIDATE_ROWS,
+            list_plan_overdue_base_rows=_raise_repo_error,
+            load_adopted_meta=lambda _version: {"ids": []},
+            log_degraded=lambda **kwargs: degraded_logs.append(kwargs),
+        )
+
+    assert degraded_logs == []
 
 
 def test_plan_query_reads_adopted_and_candidate_rows_with_same_detail_shape(tmp_path: Path) -> None:

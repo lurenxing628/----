@@ -4,7 +4,7 @@ import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Dict, List
+from typing import Any, Dict, List, cast
 
 import pytest
 
@@ -92,7 +92,7 @@ def _base_snapshot(**overrides: Any) -> ScheduleConfigSnapshot:
     return ScheduleConfigSnapshot(**data)
 
 
-def _schedule_input(cfg: ScheduleConfigSnapshot, *, run_time_budget_seconds: Any = None) -> SimpleNamespace:
+def _schedule_input(cfg: ScheduleConfigSnapshot, *, run_time_budget_seconds: Any = None) -> Any:
     algo_ops = [
         SimpleNamespace(
             id=1,
@@ -135,7 +135,7 @@ def _schedule_input(cfg: ScheduleConfigSnapshot, *, run_time_budget_seconds: Any
     )
 
 
-def _selected_result() -> SimpleNamespace:
+def _selected_result() -> Any:
     return SimpleNamespace(
         op_id=1,
         op_code="OP001",
@@ -286,6 +286,10 @@ def test_graph_downstream_weight_stays_internal_candidate_parameter() -> None:
     normalized = ensure_schedule_config_snapshot(external_payload, strict_mode=True)
     assert normalized.graph_downstream_weight == 1
 
+    zero_visible_payload = _base_snapshot(graph_critical_weight=0, graph_impact_weight=0).to_dict()
+    normalized_zero = ensure_schedule_config_snapshot(zero_visible_payload, strict_mode=True)
+    assert normalized_zero.graph_downstream_weight == 0
+
 
 def test_graph_analysis_mode_controls_candidate_comparison_without_user_visible_toggle() -> None:
     assert schedule_orchestrator._candidate_comparison_enabled(_base_snapshot(graph_analysis_mode="on")) is True
@@ -319,6 +323,7 @@ def test_graph_analysis_mode_controls_candidate_comparison_without_user_visible_
 
 def test_orchestrator_passes_pr7e_runtime_fields_to_default_candidate_runner(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: Dict[str, Any] = {}
+    preflight_calls: List[Any] = []
 
     def _fake_run_candidate_comparison(**kwargs: Any) -> SimpleNamespace:
         captured.update(kwargs)
@@ -334,13 +339,7 @@ def test_orchestrator_passes_pr7e_runtime_fields_to_default_candidate_runner(mon
     monkeypatch.setattr(
         schedule_orchestrator,
         "prepare_schedule_graph_for_dispatch",
-        lambda _schedule_input: SimpleNamespace(
-            graph_analysis_public={"status": "available", "graph_enhancement_allowed": True},
-            graph_analysis_diagnostics=None,
-            graph_ready_context={},
-            graph_dispatch_mode_override=None,
-            graph_health_context={},
-        ),
+        lambda schedule_input: preflight_calls.append(schedule_input),
     )
 
     outcome = schedule_orchestrator.orchestrate_schedule_run(
@@ -357,6 +356,7 @@ def test_orchestrator_passes_pr7e_runtime_fields_to_default_candidate_runner(mon
     assert captured["selection_policy"] == "score_only"
     assert captured["graph_overdue_tolerance_count"] == 0
     assert captured["graph_tardiness_tolerance_ratio"] == 0.20
+    assert preflight_calls == []
     assert outcome.candidate_comparison is not None
     assert outcome.result_summary_obj["algo"]["candidate_comparison"]["planned_candidate_count"] == 8
 
@@ -376,7 +376,7 @@ def test_orchestrator_keeps_off_and_report_as_single_plan_modes(
         return OptimizationOutcome(
             results=[_selected_result()],
             summary=SimpleNamespace(success=True, total_ops=1, scheduled_ops=1, failed_ops=0, warnings=[], errors=[]),
-            used_strategy=SimpleNamespace(value="priority_first"),
+            used_strategy=cast(Any, SimpleNamespace(value="priority_first")),
             used_params={"dispatch": "sgs"},
             metrics=None,
             best_score=(0.0,),

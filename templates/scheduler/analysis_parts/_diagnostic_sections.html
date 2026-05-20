@@ -1,20 +1,71 @@
 {% if diagnostic_sections %}
   <div class="card">
-    <h3 class="section-title">诊断摘要</h3>
+    <h3 class="section-title">排产诊断</h3>
+    <div class="muted mt-1">根据当前排产摘要生成，只做解释，不会自动改排产结果。</div>
     {% for section in diagnostic_sections %}
+      {% set section_items = section.get('items') or [] %}
+      {% set section_links = section.get('links') or [] %}
       <section class="aps-diagnostic-section">
-        <h4>{{ section.title }}</h4>
+        <h4>
+          {{ section.title }}
+          {% if section.status_label %}
+            <span class="muted text-xs">{{ section.status_label }}</span>
+          {% endif %}
+        </h4>
         {% if section.summary %}
           <div class="muted mt-1">{{ section.summary }}</div>
         {% endif %}
-        {% if section.items %}
+        {% if section.degraded %}
+          <div class="muted mt-1">本诊断使用降级信息生成，请结合原始结果一起确认。</div>
+        {% endif %}
+        {% if section_items %}
           <div class="aps-summary-grid mt-2">
-            {% for item in section.items %}
-              {{ ui.summary_item(item.label, item.value if item.value is not none else '-', item.message) }}
+            {% for item in section_items %}
+              {% set item_tone = 'neutral' %}
+              {% if item.level in ['danger', 'error'] %}
+                {% set item_tone = 'danger' %}
+              {% elif item.level == 'warning' %}
+                {% set item_tone = 'warning' %}
+              {% elif item.level in ['notice', 'unknown'] %}
+                {% set item_tone = 'info' %}
+              {% elif item.level == 'ok' %}
+                {% set item_tone = 'success' %}
+              {% endif %}
+              {% call ui.summary_item_block(item.label, item.value if item.value is not none else '-', item_tone) %}
+                {% if item.message %}
+                  <div class="aps-summary-desc">{{ item.message }}</div>
+                {% endif %}
+                {% if item.details %}
+                  <details class="aps-help-details aps-summary-help-details">
+                    <summary>查看诊断依据</summary>
+                    <div class="aps-help-details-body">
+                      <ul class="list-tight">
+                        {% for detail in item.details %}
+                          <li>{{ detail }}</li>
+                        {% endfor %}
+                      </ul>
+                    </div>
+                  </details>
+                {% endif %}
+                {% if item.links %}
+                  <div class="mt-1">
+                    {% for link in item.links %}
+                      {{ ui.link_button(link.label, link.url, 'secondary', 'sm') }}
+                    {% endfor %}
+                  </div>
+                {% endif %}
+              {% endcall %}
             {% endfor %}
           </div>
         {% elif section.empty_reason %}
           <div class="muted mt-2">{{ section.empty_reason }}</div>
+        {% endif %}
+        {% if section_links %}
+          <div class="mt-2">
+            {% for link in section_links %}
+              {{ ui.link_button(link.label, link.url, 'secondary', 'sm') }}
+            {% endfor %}
+          </div>
         {% endif %}
       </section>
     {% endfor %}

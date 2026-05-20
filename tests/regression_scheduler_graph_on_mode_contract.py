@@ -9,7 +9,7 @@ import pytest
 
 from core.algorithms import GreedyScheduler, ScheduleResult, SortStrategy
 from core.infrastructure.errors import ValidationError
-from core.services.scheduler.config.config_snapshot import ScheduleConfigSnapshot
+from core.services.scheduler.config.config_snapshot import ScheduleConfigSnapshot, ensure_schedule_config_snapshot
 from core.services.scheduler.run.optimizer_runtime import OptimizerRuntime
 from core.services.scheduler.run.schedule_graph_report import prepare_schedule_graph_for_dispatch
 from core.services.scheduler.run.schedule_optimizer import OptimizationOutcome, optimize_schedule
@@ -266,7 +266,7 @@ def _cycle_graph_payload() -> Dict[str, Any]:
     }
 
 
-def _cfg(dispatch_mode: str = "sgs") -> SimpleNamespace:
+def _cfg(dispatch_mode: str = "sgs") -> ScheduleConfigSnapshot:
     return _config(dispatch_mode=dispatch_mode)
 
 
@@ -361,9 +361,10 @@ def test_on_dag_zero_graph_weights_keep_ready_queue_but_disable_scoring(monkeypa
         return original(self, nodes, metrics_mode=metrics_mode)
 
     schedule_input = _schedule_input("on")
-    schedule_input.cfg.graph_critical_weight = 0
-    schedule_input.cfg.graph_impact_weight = 0
-    schedule_input.cfg.graph_downstream_weight = 0
+    schedule_input.cfg = ensure_schedule_config_snapshot(
+        _config(graph_analysis_mode="on", graph_critical_weight=0, graph_impact_weight=0).to_dict(),
+        strict_mode=True,
+    )
     monkeypatch.setattr(ScheduleGraphAnalysisService, "analyze_linear_batches", _wrapped)
 
     preparation = prepare_schedule_graph_for_dispatch(schedule_input)  # type: ignore[arg-type]
@@ -377,6 +378,7 @@ def test_on_dag_zero_graph_weights_keep_ready_queue_but_disable_scoring(monkeypa
     assert preparation.graph_analysis_public["score_enabled"] is False
     assert preparation.graph_analysis_public["score_metric_status"] == "disabled"
     assert preparation.graph_analysis_public["score_disabled_reason"] == "score_weights_zero"
+    assert preparation.graph_analysis_public["score_weight_summary"]["downstream_minutes_weight"] == 0
     assert preparation.graph_analysis_diagnostics is not None
     assert preparation.graph_analysis_diagnostics["node_metrics_status"] == "skipped_basic_report"
 

@@ -9,13 +9,30 @@ _FREEZE_STATE_LABELS = {
 }
 
 
-def build_freeze_display(selected_summary: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+def _freeze_window_from_summary(selected_summary: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     algo = selected_summary.get("algo") if selected_summary else None
-    if not algo or "freeze_window" not in algo:
+    if not isinstance(algo, dict) or "freeze_window" not in algo:
         return None
 
     freeze_window = algo.get("freeze_window")
-    if not freeze_window:
+    if not isinstance(freeze_window, dict) or not freeze_window:
+        return None
+    return freeze_window
+
+
+def _freeze_state(*, enabled: bool, applied: bool, raw_state: str, degraded: bool) -> str:
+    if degraded:
+        return "degraded"
+    if raw_state in _FREEZE_STATE_LABELS:
+        return raw_state
+    if enabled and applied:
+        return "active"
+    return "disabled"
+
+
+def build_freeze_display(selected_summary: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    freeze_window = _freeze_window_from_summary(selected_summary)
+    if freeze_window is None:
         return None
 
     enabled = str(freeze_window.get("enabled", "")).strip().lower() == "yes"
@@ -24,14 +41,12 @@ def build_freeze_display(selected_summary: Optional[Dict[str, Any]]) -> Optional
     sample_batches = list(freeze_window.get("frozen_batch_ids_sample") or [])[:5]
     sample_total = int(freeze_window.get("frozen_batch_count") or 0)
     degraded = bool(freeze_window.get("degraded")) or raw_state == "degraded"
-    if degraded:
-        state = "degraded"
-    elif raw_state in _FREEZE_STATE_LABELS:
-        state = raw_state
-    elif enabled and applied:
-        state = "active"
-    else:
-        state = "disabled"
+    state = _freeze_state(
+        enabled=enabled,
+        applied=applied,
+        raw_state=raw_state,
+        degraded=degraded,
+    )
     return {
         "enabled": enabled,
         "days": int(freeze_window.get("days") or 0),

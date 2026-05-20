@@ -1,6 +1,6 @@
 roadmap: networkx-scheduler-graph-introduction
 created: 2026-05-08
-last_reviewed: 2026-05-20
+last_reviewed: 2026-05-21
 
 items:
   - slug: networkx-compatibility-decision
@@ -419,15 +419,77 @@ items:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright core/services/scheduler/graph/resource_matching.py core/services/scheduler/run/schedule_graph_dispatch_context.py core/services/scheduler/run/schedule_graph_resource_matching_context.py core/services/scheduler/run/schedule_graph_projection_helpers.py core/services/scheduler/run/schedule_graph_report.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .codestable/tools/validate-yaml.py --file .codestable/roadmap/networkx-scheduler-graph-introduction/networkx-scheduler-graph-introduction-items.yaml --yaml-only
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache
-    notes: "已完成：2026-05-20 新增 resource_matching.py 纯分析模块，运行时懒加载 NetworkX，按首波 ready 工序 × candidate_machine_ids 构造二分图并调用 nx.bipartite.maximum_matching，只保留工序侧映射。report/on 通过 schedule_graph_resource_matching_context.py 复用同一套 first-wave ready 口径，schedule_graph_dispatch_context.py 保留轻量入口以守住 500 行架构门禁；schedule_graph_report.py 的 warning / node_metrics 采样 helper 下沉到 schedule_graph_projection_helpers.py，让 report 文件也回到 500 行以内。资源匹配结果只写 result_summary.algo.graph_analysis.resource_matching 和 diagnostics.graph_analysis.resource_matching，不进入 graph_ready_context、SGS 候选排序、资源分配或候选表。public 只写 status/reason 和计数，不写 unmatched_operation_sample、bottleneck_machine_sample、matches_sample 或完整 ids；样本只进 diagnostics，OperationLogs 只能看到 public 计数字段。无候选设备进入 unmatched 并写 graph_resource_no_candidate_machine warning；空 ready、有环、图增强不可用、合同错误、NetworkX 不可用都有明确 status/reason，NetworkX 不可用沿用顶层 graph_analysis unavailable。第一版不做人员匹配、不做最小费用流、不改排产结果、不新增配置/schema/页面。Win7 实机或虚拟机离线证据未跑，证据不足，由 PR-9 承接。"
+    notes: "已完成：2026-05-20 新增 resource_matching.py 纯分析模块，运行时懒加载 NetworkX，按首波 ready 工序 × candidate_machine_ids 构造二分图并调用 nx.bipartite.maximum_matching，只保留工序侧映射。report/on 通过 schedule_graph_resource_matching_context.py 复用同一套 first-wave ready 口径，schedule_graph_dispatch_context.py 保留轻量入口以守住 500 行架构门禁；schedule_graph_report.py 的 warning / node_metrics 采样 helper 下沉到 schedule_graph_projection_helpers.py，让 report 文件也回到 500 行以内。资源匹配结果只写 result_summary.algo.graph_analysis.resource_matching 和 diagnostics.graph_analysis.resource_matching，不进入 graph_ready_context、SGS 候选排序、资源分配或候选表。public 只写 status/reason 和计数，不写 unmatched_operation_sample、bottleneck_machine_sample、matches_sample 或完整 ids；样本只进 diagnostics，OperationLogs 只能看到 public 计数字段。无候选设备进入 unmatched 并写 graph_resource_no_candidate_machine warning；空 ready、有环、图增强不可用、合同错误、NetworkX 不可用都有明确 status/reason，NetworkX 不可用沿用顶层 graph_analysis unavailable。第一版不做人员匹配、不做最小费用流、不改排产结果、不新增配置/schema/页面。Win7 实机或虚拟机离线证据未跑，证据不足，由 PR-10 承接。"
 
-  - slug: scheduler-graph-win7-package-closeout
-    title: PR-9 Win7 离线打包和最终验收
-    description: "验证离线 wheel、PyInstaller 4.10、Win7 启动、graph_analysis_mode=off/report/on 三种模式，并跑最终质量门禁。"
+  - slug: scheduler-graph-analysis-diagnostic-sections
+    title: PR-9 排产分析页诊断摘要第一版
+    description: "基于 PR-8 已完成的 graph_analysis / resource_matching 摘要，在排产分析页填充 diagnostic_sections：按排产体检、资源卡点、延期风险、影响解释四块，把 NetworkX 图分析结果翻译成调度员能看懂的诊断摘要。第一版只做页面展示层，不新增独立页面、不新增 schema、不写候选表、不改排产结果、不自动派工、不自动调顺序、不做停机/缺料/插单 what-if 模拟。"
     status: planned
     feature: null
     minimal_loop: false
     depends_on: [scheduler-graph-resource-matching-report]
+    primary_paths:
+      - .codestable/roadmap/networkx-scheduler-graph-introduction/networkx-scheduler-graph-introduction-roadmap.md
+      - .codestable/roadmap/networkx-scheduler-graph-introduction/networkx-scheduler-graph-introduction-items.yaml
+      - .codestable/architecture/ARCHITECTURE.md
+      - core/services/scheduler/analysis/schedule_diagnostic_contract.py
+      - web/viewmodels/scheduler_analysis_diagnostic_helpers.py
+      - web/viewmodels/scheduler_analysis_diagnostic_health.py
+      - web/viewmodels/scheduler_analysis_diagnostic_delay_impact.py
+      - web/viewmodels/scheduler_analysis_diagnostics.py
+      - web/viewmodels/scheduler_analysis_vm.py
+      - templates/scheduler/analysis.html
+      - templates/scheduler/analysis_parts/_diagnostic_sections.html
+      - tests/regression_scheduler_analysis_diagnostic_contract.py
+      - tests/regression_scheduler_analysis_template_parts.py
+      - tests/regression_scheduler_analysis_viewmodel_split.py
+      - tests/regression_scheduler_analysis_read_context.py
+      - tests/regression_scheduler_graph_resource_matching_report_contract.py
+      - tests/regression_scheduler_graph_operation_logs_contract.py
+      - tests/regression_scheduler_graph_summary_contract.py
+    forbidden_paths:
+      - schema.sql
+      - core/infrastructure/migrations/
+      - vendor/wheels/
+      - installer/
+      - DELIVERY_WIN7.md
+      - core/services/scheduler/run/schedule_graph_report.py
+      - core/services/scheduler/run/schedule_graph_dispatch_context.py
+      - core/services/scheduler/run/schedule_graph_resource_matching_context.py
+      - core/services/scheduler/graph/resource_matching.py
+      - core/services/scheduler/graph/metrics.py
+      - core/services/scheduler/graph/scoring.py
+      - core/services/scheduler/run/schedule_optimizer.py
+      - core/algorithms/greedy/dispatch/sgs.py
+      - core/algorithms/greedy/dispatch/sgs_scoring.py
+      - core/services/scheduler/resource_dispatch_service.py
+      - core/services/report/report_engine.py
+      - web/routes/reports.py
+      - data/repositories/schedule_candidate_repo.py
+      - data/repositories/schedule_plan_query_repo.py
+      - core/services/scheduler/run/schedule_candidate_specs.py
+      - core/services/scheduler/run/schedule_candidate_runner.py
+      - core/services/scheduler/run/schedule_candidate_selection.py
+      - core/services/scheduler/run/schedule_candidate_persistence.py
+    exit_checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_analysis_diagnostic_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_analysis_template_parts.py tests/regression_scheduler_analysis_viewmodel_split.py tests/regression_scheduler_analysis_read_context.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_analysis_candidate_links_and_roles.py tests/regression_scheduler_candidate_analysis_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_graph_resource_matching_report_contract.py tests/regression_scheduler_graph_operation_logs_contract.py tests/regression_scheduler_graph_summary_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_graph_on_mode_contract.py tests/scheduler_graph/test_graph_dispatch_context.py tests/scheduler_graph/test_resource_matching.py tests/scheduler_graph/test_graph_scoring.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler/analysis/schedule_diagnostic_contract.py web/viewmodels/scheduler_analysis_diagnostic_helpers.py web/viewmodels/scheduler_analysis_diagnostic_health.py web/viewmodels/scheduler_analysis_diagnostic_delay_impact.py web/viewmodels/scheduler_analysis_diagnostics.py web/viewmodels/scheduler_analysis_vm.py tests/regression_scheduler_analysis_diagnostic_contract.py tests/regression_scheduler_analysis_template_parts.py tests/regression_scheduler_analysis_viewmodel_split.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright core/services/scheduler/analysis/schedule_diagnostic_contract.py web/viewmodels/scheduler_analysis_diagnostic_helpers.py web/viewmodels/scheduler_analysis_diagnostic_health.py web/viewmodels/scheduler_analysis_diagnostic_delay_impact.py web/viewmodels/scheduler_analysis_diagnostics.py web/viewmodels/scheduler_analysis_vm.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .codestable/tools/validate-yaml.py --file .codestable/roadmap/networkx-scheduler-graph-introduction/networkx-scheduler-graph-introduction-items.yaml --yaml-only
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache
+    notes: "本 PR 基于 codex/scheduler-analysis-entry-refactor 已完成的分析页读取上下文、viewmodel 拆分、诊断合同和模板 parts。第一版只填充排产分析页 diagnostic_sections，不新增 result_summary 字段，不改变 OperationLogs 边界。诊断 builder 按 helper、排产体检/资源卡点、延期风险/影响解释拆成纯 viewmodel 小文件，避免 viewmodel 反向 import service 层并守住架构复杂度/文件大小门禁。原 PR-9 Win7 closeout 顺延为 PR-10，原 PR-10 候选续跑顺延为 PR-11。"
+
+  - slug: scheduler-graph-win7-package-closeout
+    title: PR-10 Win7 离线打包和最终验收
+    description: "验证离线 wheel、PyInstaller 4.10、Win7 启动、graph_analysis_mode=off/report/on 三种模式，并跑最终质量门禁。"
+    status: planned
+    feature: null
+    minimal_loop: false
+    depends_on: [scheduler-graph-analysis-diagnostic-sections]
     primary_paths:
       - vendor/wheels/
       - installer/README_WIN7_INSTALLER.md
@@ -442,7 +504,7 @@ items:
     notes: "正式交付不能只跑 validate_dist_exe.py；要按现有 Win7 双包和 Chrome109 启动链验收。"
 
   - slug: scheduler-graph-candidate-resume-later
-    title: PR-10 后续增强：候选方案续跑
+    title: PR-11 后续增强：候选方案续跑
     description: "第一版先不做续跑；多权重试跑到达时间上限时，从已完成候选里选择最好结果并提示完成数量。后续再增加“继续补跑剩余方案”能力，基于第一次排产冻结的输入快照补跑未完成候选。"
     status: planned
     feature: null

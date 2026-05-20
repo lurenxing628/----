@@ -196,6 +196,36 @@ def test_candidate_runner_runs_baseline_first_and_passes_graph_context_to_critic
     assert optimize_calls[1]["graph_dispatch_mode_override"] == "sgs"
 
 
+def test_candidate_runner_keeps_internal_downstream_weights_when_visible_weights_are_zero() -> None:
+    prepare_calls = []
+
+    def prepare_graph(schedule_input):
+        prepare_calls.append(schedule_input.cfg)
+        return SimpleNamespace(
+            graph_analysis_public=None,
+            graph_analysis_diagnostics=None,
+            graph_ready_context=None,
+            graph_dispatch_mode_override=None,
+        )
+
+    def optimize(**_kwargs):
+        return _outcome("same", score=(0, 0, 0), tardiness=0.0)
+
+    run_candidate_comparison(
+        schedule_input=_schedule_input(cfg=_cfg(graph_analysis_mode="on", graph_critical_weight=0, graph_impact_weight=0)),
+        prepare_graph_fn=prepare_graph,
+        optimize_schedule_fn=optimize,
+        weight_count=3,
+        selection_policy="score_only",
+        clock=_StepClock([0] * 100),
+    )
+
+    assert prepare_calls[0].graph_downstream_weight == 0
+    assert [cfg.graph_critical_weight for cfg in prepare_calls[1:]] == [0, 0, 0]
+    assert [cfg.graph_impact_weight for cfg in prepare_calls[1:]] == [0, 0, 0]
+    assert [cfg.graph_downstream_weight for cfg in prepare_calls[1:]] == [1, 1, 2]
+
+
 def test_candidate_runner_uses_graph_health_context_for_critical_health() -> None:
     def prepare_graph(schedule_input):
         if schedule_input.cfg.graph_analysis_mode == "off":

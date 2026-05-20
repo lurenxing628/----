@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from core.algorithms.objective_specs import best_score_schema, comparison_metric_key
 from core.models.enums import YesNo
@@ -57,8 +57,8 @@ def _finish_time_by_batch(results: List[Any]) -> Dict[str, datetime]:
     return finish_by_batch
 
 
-def _positive_result_op_ids(results: List[Any]) -> set[int]:
-    op_ids: set[int] = set()
+def _positive_result_op_ids(results: List[Any]) -> Set[int]:
+    op_ids: Set[int] = set()
     for result in list(results or []):
         try:
             op_id = int(getattr(result, "op_id", 0) or 0)
@@ -69,8 +69,8 @@ def _positive_result_op_ids(results: List[Any]) -> set[int]:
     return op_ids
 
 
-def _positive_int_set(values: Any) -> set[int]:
-    out: set[int] = set()
+def _positive_int_set(values: Any) -> Set[int]:
+    out: Set[int] = set()
     for value in list(values or []):
         try:
             number = int(value or 0)
@@ -81,7 +81,7 @@ def _positive_int_set(values: Any) -> set[int]:
     return out
 
 
-def _actionable_missing_internal_resource_op_ids(ctx: SummaryBuildContext) -> set[int]:
+def _actionable_missing_internal_resource_op_ids(ctx: SummaryBuildContext) -> Set[int]:
     missing_ids = _positive_int_set(ctx.missing_internal_resource_op_ids)
     if not missing_ids:
         return set()

@@ -32,6 +32,7 @@ PR7E_PYTHON_FILES = (
     "core/services/scheduler/run/schedule_orchestrator.py",
     "core/services/scheduler/run/schedule_candidate_persistence_helpers.py",
     "core/services/scheduler/run/schedule_persistence.py",
+    "core/services/scheduler/summary/schedule_summary_assembly.py",
     "data/repositories/schedule_candidate_repo.py",
     "web/routes/domains/scheduler/scheduler_analysis.py",
     "web/routes/domains/scheduler/scheduler_config.py",
