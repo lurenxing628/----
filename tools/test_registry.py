@@ -480,6 +480,7 @@ REQUIRED_REGRESSION_GROUPS = (
             "web/routes/domains/scheduler/scheduler_batch_detail.py",
             "web/routes/domains/scheduler/scheduler_excel_batches*.py",
             "web/routes/domains/scheduler/scheduler_resource_dispatch.py",
+            "web/routes/domains/scheduler/scheduler_resource_dispatch_query.py",
             "web/routes/material.py",
             "web/routes/scheduler_batches.py",
             "web/routes/scheduler_batch_detail.py",
