@@ -13,6 +13,7 @@ import pytest
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.services.scheduler.resource_dispatch_range import resolve_dispatch_range
 from core.services.scheduler.resource_dispatch_service import ResourceDispatchService
+from core.services.scheduler.schedule_plan_query_service import ROLE_ADOPTED, ROLE_CRITICAL_BEST
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -369,13 +370,29 @@ def test_resource_dispatch_service_no_history_latest_returns_empty_zero_version(
 
     latest_payload = svc.get_dispatch_payload(scope_type="operator", version="latest")
     default_payload = svc.get_dispatch_payload(scope_type="operator", version=None)
+    critical_payload = svc.get_dispatch_payload(scope_type="operator", version="latest", plan_role=ROLE_CRITICAL_BEST)
 
-    for payload in (latest_payload, default_payload):
+    for payload in (latest_payload, default_payload, critical_payload):
         assert payload["has_history"] is False
         assert payload["status"] == "no_history"
         assert payload["filters"]["version"] is None
         assert payload["tasks"] == []
         assert payload["empty_message"] == "暂无排产历史，请先执行排产。"
+
+    critical_filters = critical_payload["filters"]
+    assert critical_filters["plan_role"] == ROLE_CRITICAL_BEST
+    assert critical_filters["requested_plan_role"] == ROLE_CRITICAL_BEST
+    assert critical_filters["effective_plan_role"] == ROLE_ADOPTED
+    assert critical_filters["plan_role_status"] == "selected"
+    assert critical_filters["plan_role_message"] == ""
+    assert critical_filters["candidate_id"] is None
+    assert critical_filters["candidate_key"] is None
+    assert critical_filters["source_table"] is None
+    assert critical_filters["is_comparison"] is False
+    assert critical_payload["plan_role_options"] == [
+        {"role": ROLE_ADOPTED, "label": "最终采用", "is_comparison": False}
+    ]
+    assert critical_payload["plan_role_notice"] == ""
 
 
 def test_resource_dispatch_range_validation_errors_use_machine_field_keys() -> None:

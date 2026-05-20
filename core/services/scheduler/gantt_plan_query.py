@@ -5,68 +5,37 @@ from typing import Any, Dict, Optional, Sequence, Tuple
 from core.infrastructure.errors import ValidationError
 
 from .gantt_range import WeekRange, resolve_week_range
-from .schedule_plan_query_service import ROLE_ADOPTED, VALID_PLAN_ROLES, plan_role_label
+from .schedule_result_view_context import (
+    attach_plan_metadata,
+)
+from .schedule_result_view_context import (
+    default_plan_resolution_dict as _default_plan_resolution_dict,
+)
+from .schedule_result_view_context import (
+    resolve_plan as _resolve_plan,
+)
+from .schedule_result_view_context import (
+    selected_plan_role as _selected_plan_role,
+)
 from .version_resolution import VersionResolution
 
 
 def default_plan_resolution_dict(plan_role: Optional[str] = None) -> Dict[str, Any]:
-    requested_role = str(plan_role or "").strip() or ROLE_ADOPTED
-    if requested_role not in VALID_PLAN_ROLES:
-        raise ValidationError(f"未知的排产方案角色：{requested_role}", field="plan_role")
-    selected_label = plan_role_label(ROLE_ADOPTED)
-    return {
-        "version": None,
-        "requested_role": requested_role,
-        "requested_label": plan_role_label(requested_role),
-        "selected_role": ROLE_ADOPTED,
-        "selected_label": selected_label,
-        "source_table": "schedule",
-        "candidate_id": None,
-        "candidate_key": None,
-        "status": "selected" if requested_role == ROLE_ADOPTED else "fallback_to_adopted",
-        "message": "" if requested_role == ROLE_ADOPTED else "当前版本没有保存这套方案明细，已显示最终采用方案。",
-        "available_roles": [
-            {
-                "role": ROLE_ADOPTED,
-                "label": selected_label,
-                "source_table": "schedule",
-                "candidate_id": None,
-                "candidate_key": None,
-                "candidate_label": selected_label,
-                "candidate_kind": None,
-                "candidate_status": None,
-                "detail_saved": None,
-                "is_comparison": False,
-            }
-        ],
-        "is_fallback": requested_role != ROLE_ADOPTED,
-        "is_comparison": False,
-    }
+    try:
+        return _default_plan_resolution_dict(plan_role)
+    except ValidationError as exc:
+        requested_role = str(plan_role or "").strip()
+        if requested_role and (exc.details or {}).get("field") == "plan_role":
+            raise ValidationError(f"未知的排产方案角色：{requested_role}", field="plan_role") from exc
+        raise
 
 
 def resolve_plan(plan_query_service, version: int, plan_role: Optional[str]):
-    try:
-        return plan_query_service.resolve_plan(int(version), plan_role)
-    except ValueError as exc:
-        raise ValidationError(str(exc), field="plan_role") from exc
+    return _resolve_plan(plan_query_service, version, plan_role)
 
 
 def selected_plan_role(plan_resolution: Dict[str, Any]) -> str:
-    return str(plan_resolution.get("selected_role") or ROLE_ADOPTED)
-
-
-def attach_plan_metadata(data: Dict[str, Any], plan_resolution: Dict[str, Any]) -> None:
-    data.update(
-        requested_plan_role=plan_resolution.get("requested_role"),
-        requested_plan_role_label=plan_resolution.get("requested_label"),
-        effective_plan_role=plan_resolution.get("selected_role"),
-        effective_plan_role_label=plan_resolution.get("selected_label"),
-        plan_role_status=plan_resolution.get("status"),
-        plan_role_message=plan_resolution.get("message"),
-        plan_role_resolution=plan_resolution,
-        available_plan_roles=list(plan_resolution.get("available_roles") or []),
-        is_comparison_plan=bool(plan_resolution.get("is_comparison")),
-    )
+    return _selected_plan_role(plan_resolution)
 
 
 def get_version_time_span_dates(plan_query_service, version: int, plan_role: Optional[str] = None) -> Optional[Dict[str, Any]]:

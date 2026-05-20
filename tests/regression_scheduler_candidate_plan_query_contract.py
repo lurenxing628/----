@@ -14,6 +14,7 @@ from core.services.scheduler.schedule_plan_query_service import (
     ROLE_CRITICAL_BEST,
     SchedulePlanQueryService,
 )
+from core.services.scheduler.schedule_result_view_context import resolve_schedule_result_view_context
 from data.repositories.schedule_candidate_repo import ScheduleCandidateRepository
 from data.repositories.schedule_plan_query_repo import SOURCE_CANDIDATE_ROWS, SOURCE_SCHEDULE
 
@@ -287,6 +288,67 @@ def test_plan_query_has_visible_legacy_fallback_and_rejects_unknown_role(tmp_pat
 
         with pytest.raises(ValueError, match="未知的排产方案角色"):
             service.resolve_plan(VERSION, "typo-role")
+    finally:
+        conn.close()
+
+
+def test_view_context_resolves_real_critical_best_candidate_rows(tmp_path: Path) -> None:
+    conn = _seed_db(tmp_path)
+    try:
+        repo = ScheduleCandidateRepository(conn)
+        critical = repo.create_candidate(
+            ScheduleCandidate(
+                id=None,
+                version=VERSION,
+                candidate_key="graph_w1_of_5",
+                candidate_label="关键链候选 1/5",
+                candidate_kind="critical_chain",
+                status="completed",
+                graph_enabled="yes",
+                detail_saved="yes",
+            )
+        )
+        critical_id = _require_id(critical.id)
+        repo.bulk_create_candidate_rows(
+            [
+                ScheduleCandidateRows(
+                    id=None,
+                    version=VERSION,
+                    candidate_id=critical_id,
+                    op_id=10,
+                    machine_id="M-CANDIDATE",
+                    operator_id="O-CANDIDATE",
+                    start_time="2026-05-01 16:00",
+                    end_time="2026-05-01 18:00",
+                    lock_status="locked",
+                )
+            ]
+        )
+        repo.create_selection(
+            ScheduleCandidateSelection(
+                id=None,
+                version=VERSION,
+                role=ROLE_CRITICAL_BEST,
+                candidate_id=critical_id,
+                source_table=SOURCE_CANDIDATE_ROWS,
+            )
+        )
+        conn.commit()
+
+        context = resolve_schedule_result_view_context(
+            raw_version=VERSION,
+            raw_plan_role=ROLE_CRITICAL_BEST,
+            latest_version=VERSION,
+            version_exists=lambda version: int(version) == VERSION,
+            plan_query_service=SchedulePlanQueryService(conn),
+        )
+
+        assert context.requested_role == ROLE_CRITICAL_BEST
+        assert context.selected_role == ROLE_CRITICAL_BEST
+        assert context.source_table == SOURCE_CANDIDATE_ROWS
+        assert context.candidate_id == critical_id
+        assert context.candidate_key == "graph_w1_of_5"
+        assert context.is_comparison is True
     finally:
         conn.close()
 

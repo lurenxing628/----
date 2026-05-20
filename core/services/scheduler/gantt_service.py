@@ -12,13 +12,9 @@ from .gantt_contract import build_gantt_contract
 from .gantt_critical_chain import compute_critical_chain, compute_critical_chain_from_rows
 from .gantt_plan_query import (
     attach_gantt_range_metadata,
-    attach_plan_metadata,
     build_empty_week_plan_payload,
-    default_plan_resolution_dict,
     get_version_time_span_dates,
     resolve_gantt_range_for_version,
-    resolve_plan,
-    selected_plan_role,
 )
 from .gantt_range import WeekRange, resolve_week_range
 from .gantt_tasks import build_calendar_days, build_tasks
@@ -26,6 +22,13 @@ from .gantt_week_plan import build_week_plan_rows
 from .plan_overdue_markers import build_overdue_meta_for_plan
 from .resource_dispatch_support import extract_overdue_batch_ids_with_meta
 from .schedule_plan_query_service import ROLE_ADOPTED, SchedulePlanQueryService
+from .schedule_result_view_context import (
+    ScheduleResultViewContext,
+    attach_plan_metadata,
+    default_plan_resolution_dict,
+    resolve_schedule_result_view_context,
+    selected_plan_role,
+)
 from .version_resolution import VersionResolution, require_selected_version, resolve_version_or_latest
 
 
@@ -70,9 +73,36 @@ class GanttService:
             self._plan_query_service = SchedulePlanQueryService(self.conn, logger=self.logger)
         return self._plan_query_service
 
-    def resolve_plan_context(self, version: int, plan_role: Optional[str] = None, plan_query_service=None) -> Dict[str, Any]:
-        plan_query = self._get_plan_query_service(plan_query_service)
-        return resolve_plan(plan_query, int(version), plan_role).to_dict()
+    def resolve_result_view_context(
+        self,
+        *,
+        version: Any = None,
+        plan_role: Optional[str] = None,
+        plan_query_service=None,
+        require_existing_version: bool = False,
+    ) -> ScheduleResultViewContext:
+        latest = int(self.history_repo.get_latest_version() or 0)
+        return resolve_schedule_result_view_context(
+            raw_version=version,
+            raw_plan_role=plan_role,
+            latest_version=latest,
+            version_exists=lambda item: self.history_repo.get_by_version(int(item)) is not None,
+            plan_query_service=self._get_plan_query_service(plan_query_service),
+            require_existing_version=require_existing_version,
+        )
+
+    def resolve_plan_context(
+        self,
+        version: Optional[Any],
+        plan_role: Optional[str] = None,
+        plan_query_service=None,
+    ) -> Dict[str, Any]:
+        return self.resolve_result_view_context(
+            version=version,
+            plan_role=plan_role,
+            plan_query_service=plan_query_service,
+            require_existing_version=version is not None,
+        ).plan_resolution
 
     def _empty_gantt_contract(
         self,
@@ -85,6 +115,7 @@ class GanttService:
         include_history: bool,
         resolution: VersionResolution,
         plan_role: Optional[str] = None,
+        plan_resolution: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         wr = self.resolve_week_range(
             week_start=week_start,
@@ -112,7 +143,7 @@ class GanttService:
         out["has_history"] = False
         out["status"] = resolution.status
         out["requested_version"] = resolution.requested_version
-        attach_plan_metadata(out, default_plan_resolution_dict(plan_role))
+        attach_plan_metadata(out, plan_resolution or default_plan_resolution_dict(plan_role))
         return out
 
     def resolve_week_range(
@@ -350,7 +381,14 @@ class GanttService:
         if view not in ("machine", "operator"):
             raise ValidationError("视图不正确，请选择：设备 / 人员。", field="视图")
 
-        resolution = self.resolve_version(version)
+        plan_query = self._get_plan_query_service(plan_query_service)
+        view_context = self.resolve_result_view_context(
+            version=version,
+            plan_role=plan_role,
+            plan_query_service=plan_query,
+            require_existing_version=True,
+        )
+        resolution = view_context.version_resolution
         if resolution.status == "no_history":
             return self._empty_gantt_contract(
                 view=view,
@@ -361,11 +399,10 @@ class GanttService:
                 include_history=include_history,
                 resolution=resolution,
                 plan_role=plan_role,
-        )
+                plan_resolution=view_context.plan_resolution,
+            )
         ver = require_selected_version(resolution)
-        plan_query = self._get_plan_query_service(plan_query_service)
-        plan_resolution_obj = resolve_plan(plan_query, ver, plan_role)
-        plan_resolution = plan_resolution_obj.to_dict()
+        plan_resolution = view_context.plan_resolution
         wr, version_span, range_source = self.resolve_gantt_range_for_version(
             version=ver,
             plan_role=selected_plan_role(plan_resolution),
@@ -453,14 +490,19 @@ class GanttService:
         字段：日期/批次号/图号/工序/设备/人员/时段
         """
         wr = self.resolve_week_range(week_start=week_start, offset_weeks=offset_weeks, start_date=start_date, end_date=end_date)
-        resolution = self.resolve_version(version)
+        plan_query = self._get_plan_query_service(plan_query_service)
+        view_context = self.resolve_result_view_context(
+            version=version,
+            plan_role=plan_role,
+            plan_query_service=plan_query,
+            require_existing_version=True,
+        )
+        resolution = view_context.version_resolution
         if resolution.status == "no_history":
-            plan_resolution = default_plan_resolution_dict(plan_role)
+            plan_resolution = view_context.plan_resolution
             return build_empty_week_plan_payload(wr=wr, resolution=resolution, plan_resolution=plan_resolution)
         ver = require_selected_version(resolution)
-        plan_query = self._get_plan_query_service(plan_query_service)
-        plan_resolution_obj = resolve_plan(plan_query, ver, plan_role)
-        plan_resolution = plan_resolution_obj.to_dict()
+        plan_resolution = view_context.plan_resolution
 
         rows = plan_query.list_plan_detail_rows_between(
             version=ver,
