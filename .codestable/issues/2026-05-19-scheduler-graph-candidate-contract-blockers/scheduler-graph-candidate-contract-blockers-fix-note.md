@@ -106,3 +106,34 @@ PR-7a 到 PR-7d 已经进入完成状态后，复审又发现 3 个会影响候�
 - `git diff --check` 通过。
 
 说明：本次没有跑 clean-worktree QualityGate；当前仍是带本轮未提交改动的工作区验证。
+
+## 8. PR7 source_table 主合同收口（2026-05-20）
+
+PR7 合并前复审又发现 2 个同类主合同问题：页面和标记逻辑仍在个别地方用 `role` 或 `candidate_key` 猜“正式方案 / 对比方案”，没有完全以 `ScheduleCandidateSelection.source_table` 为准。
+
+本次只修 `source_table` 主合同，不处理本轮复审里的 3 个 Low 项：
+
+- L1：on-mode orchestrator 在 candidate runner 前额外 prepare graph。
+- L2：版本号 allocation 与最终落库分属两个事务，允许版本号跳号但缺少更明确合同测试。
+- L3：周计划导出普通异常后跳回页面时只保留 `plan_role`，没有保留 `version / week_start / offset`。
+
+实际修复：
+
+- 分析页候选展示改为使用 plan role option 的 `source_table / is_comparison` 判断“正式方案 / 对比方案”；`candidate_key` 只用于定位候选和显示候选编号。
+- 分析页 route 在存在候选对比摘要时会先加载 plan role options，再生成候选展示，避免因为无 `source_table` 的初始展示被误判成“不需要加载角色选项”。
+- `plan_overdue_markers.py` 改为接收已经解析出的 `source_table`：`schedule` 读取正式排产历史超期标记，`candidate_rows` 才按当前方案 rows 重新计算候选方案超期标记，未知来源直接报错。
+- `GanttService` 和 `ResourceDispatchService` 调用超期标记 helper 时传入解析后的 `source_table`，不再只靠 effective role 判断来源。
+
+补充测试：
+
+- 分析页新增 `baseline_best` 的 `source_table=schedule` 但 `candidate_key != adopted_key` 的回归测试，确认页面不再显示“这是对比方案”。
+- 甘特图新增非 adopted role 但 `source_table=schedule` 时复用正式历史超期标记的回归测试。
+- 资源派工新增同类回归测试，确认 filters 中 `source_table=schedule / is_comparison=false`，且明细和超期标记来源一致。
+
+补充验证：
+
+- `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_scheduler_candidate_analysis_contract.py tests/regression_scheduler_candidate_gantt_plan_role_contract.py tests/regression_scheduler_candidate_resource_dispatch_contract.py tests/regression_scheduler_candidate_plan_query_contract.py` 通过，33 passed。
+- `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_scheduler_candidate_py38_contract.py` 通过，2 passed。
+- `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler/plan_overdue_markers.py core/services/scheduler/gantt_service.py core/services/scheduler/resource_dispatch_service.py web/viewmodels/scheduler_analysis_candidates.py web/routes/domains/scheduler/scheduler_analysis.py tests/regression_scheduler_candidate_analysis_contract.py tests/regression_scheduler_candidate_gantt_plan_role_contract.py tests/regression_scheduler_candidate_resource_dispatch_contract.py` 通过。
+
+说明：本次仍未处理 L1 / L2 / L3；这 3 项应作为后续小修复或 UI 体验 issue 单独处理。当前记录还不是 clean-worktree QualityGate proof，最终合并前仍需在提交后跑 `scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`。

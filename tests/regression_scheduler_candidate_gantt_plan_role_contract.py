@@ -344,6 +344,41 @@ def test_gantt_candidate_plan_overdue_markers_do_not_reuse_adopted_history(tmp_p
     assert "overdue" not in str(tasks[0].get("custom_class") or "")
 
 
+def test_gantt_non_adopted_schedule_source_overdue_markers_use_adopted_history(tmp_path, monkeypatch) -> None:
+    app = _build_app(tmp_path, monkeypatch, result_summary={"overdue_batches": ["B1"]})
+    db_path = tmp_path / "aps_test.db"
+    conn = get_connection(str(db_path))
+    try:
+        conn.execute(
+            """
+            UPDATE ScheduleCandidateSelection
+               SET source_table = ?
+             WHERE version = ? AND role = ?
+            """,
+            (SOURCE_SCHEDULE, VERSION, ROLE_BASELINE_BEST),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    client = app.test_client()
+
+    resp = client.get(f"/scheduler/gantt/data?view=machine&version={VERSION}&plan_role={ROLE_BASELINE_BEST}")
+    data = (resp.get_json() or {}).get("data") or {}
+    tasks = data.get("tasks") or []
+    plan_resolution = data.get("plan_role_resolution") or {}
+
+    assert resp.status_code == 200
+    assert data.get("effective_plan_role") == ROLE_BASELINE_BEST
+    assert plan_resolution.get("source_table") == SOURCE_SCHEDULE
+    assert plan_resolution.get("is_comparison") is False
+    assert data.get("overdue_markers_degraded") is False
+    assert len(tasks) == 1
+    assert (tasks[0].get("meta") or {}).get("machine_id") == "M-ADOPTED"
+    assert (tasks[0].get("meta") or {}).get("batch_id") == "B1"
+    assert (tasks[0].get("meta") or {}).get("is_overdue") is True
+    assert "overdue" in str(tasks[0].get("custom_class") or "")
+
+
 def test_gantt_page_rejects_unknown_plan_role_without_history(tmp_path, monkeypatch) -> None:
     app = _build_empty_app(tmp_path, monkeypatch)
     client = app.test_client()

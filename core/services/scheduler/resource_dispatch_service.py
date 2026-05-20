@@ -289,11 +289,12 @@ class ResourceDispatchService:
             )
         return meta
 
-    def _load_overdue_meta_for_plan(self, *, version: int, role: str) -> Dict[str, Any]:
+    def _load_overdue_meta_for_plan(self, *, version: int, role: str, source_table: str) -> Dict[str, Any]:
         try:
             return build_overdue_meta_for_plan(
                 version=version,
                 role=role,
+                source_table=source_table,
                 list_plan_overdue_base_rows=self.plan_query_service.list_plan_overdue_base_rows,
                 load_adopted_meta=self._load_overdue_meta,
                 log_degraded=self._log_overdue_marker_degraded,
@@ -438,7 +439,11 @@ class ResourceDispatchService:
             start_date=start_date,
             end_date=end_date,
         )
-        overdue_meta = self._load_overdue_meta_for_plan(version=selected_version, role=effective_role)
+        overdue_meta = self._load_overdue_meta_for_plan(
+            version=selected_version,
+            role=effective_role,
+            source_table=str(plan_role_fields.get("source_table") or ""),
+        )
         overdue_set = set(overdue_meta.get("ids") or [])
         rows = self.plan_query_service.list_plan_dispatch_rows(
             start_time=dr.start_time,

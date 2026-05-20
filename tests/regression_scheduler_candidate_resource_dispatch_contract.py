@@ -260,6 +260,54 @@ def test_resource_dispatch_candidate_overdue_markers_do_not_reuse_adopted_histor
         conn.close()
 
 
+def test_resource_dispatch_non_adopted_schedule_source_overdue_markers_use_adopted_history(tmp_path: Path) -> None:
+    conn = _seed_db(tmp_path)
+    try:
+        conn.execute(
+            """
+            UPDATE ScheduleHistory
+               SET result_summary = '{"overdue_batches": ["B1"]}'
+             WHERE version = ?
+            """,
+            (VERSION,),
+        )
+        conn.execute(
+            """
+            UPDATE ScheduleCandidateSelection
+               SET source_table = ?
+             WHERE version = ? AND role = ?
+            """,
+            (SOURCE_SCHEDULE, VERSION, ROLE_BASELINE_BEST),
+        )
+        conn.commit()
+
+        from core.services.scheduler.resource_dispatch_service import ResourceDispatchService
+
+        svc = ResourceDispatchService(conn, logger=None, op_logger=None)
+        payload = svc.get_dispatch_payload(
+            scope_type="operator",
+            operator_id="O-ADOPTED",
+            period_preset="week",
+            query_date="2026-05-01",
+            version=VERSION,
+            plan_role=ROLE_BASELINE_BEST,
+        )
+
+        filters = payload.get("filters") or {}
+        detail_rows = payload.get("detail_rows") or []
+        assert filters.get("effective_plan_role") == ROLE_BASELINE_BEST
+        assert filters.get("source_table") == SOURCE_SCHEDULE
+        assert filters.get("is_comparison") is False
+        assert payload.get("overdue_markers_degraded") is False
+        assert len(detail_rows) == 1
+        assert detail_rows[0].get("operator_id") == "O-ADOPTED"
+        assert detail_rows[0].get("batch_id") == "B1"
+        assert detail_rows[0].get("is_overdue") is True
+        assert (payload.get("summary") or {}).get("overdue_count") == 1
+    finally:
+        conn.close()
+
+
 def test_resource_dispatch_page_data_and_export_keep_plan_role_in_urls_and_log(tmp_path: Path, monkeypatch) -> None:
     conn = _seed_db(tmp_path)
     app = _build_route_app()

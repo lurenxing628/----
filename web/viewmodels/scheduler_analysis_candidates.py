@@ -6,6 +6,8 @@ ROLE_ADOPTED = "adopted"
 ROLE_BASELINE_BEST = "baseline_best"
 ROLE_CRITICAL_BEST = "critical_best"
 VALID_PLAN_ROLES = (ROLE_ADOPTED, ROLE_BASELINE_BEST, ROLE_CRITICAL_BEST)
+SOURCE_SCHEDULE = "schedule"
+SOURCE_CANDIDATE_ROWS = "candidate_rows"
 
 _PLAN_ROLE_LABELS = {
     ROLE_ADOPTED: "最终采用",
@@ -163,12 +165,30 @@ def _candidate_label(candidate: Dict[str, Any], option: Optional[Dict[str, Any]]
     return _candidate_label_from_key(candidate_key, role)
 
 
-def _comparison_note(*, role: str, candidate_key: str, adopted_key: str) -> str:
+def _role_source_table(option: Optional[Dict[str, Any]]) -> str:
+    source_table = str((option or {}).get("source_table") or "").strip()
+    if source_table in (SOURCE_SCHEDULE, SOURCE_CANDIDATE_ROWS):
+        return source_table
+    return ""
+
+
+def _role_is_comparison(option: Optional[Dict[str, Any]]) -> Optional[bool]:
+    source_table = _role_source_table(option)
+    if not source_table:
+        return None
+    if "is_comparison" in (option or {}):
+        return bool((option or {}).get("is_comparison"))
+    return source_table == SOURCE_CANDIDATE_ROWS
+
+
+def _comparison_note(*, role: str, is_comparison: bool, is_same_as_adopted: bool) -> str:
     if role == ROLE_ADOPTED:
         return ""
-    if candidate_key == adopted_key:
+    if is_comparison:
+        return "这是对比方案，不是正式写入的结果。"
+    if is_same_as_adopted:
         return "与最终采用方案相同，正式排程已写入这一版。"
-    return "这是对比方案，不是正式写入的结果。"
+    return "这套方案从正式排程读取，正式排程已写入这一版。"
 
 
 def _failed_candidate_labels(comparison: Dict[str, Any]) -> List[str]:
@@ -226,6 +246,9 @@ def _candidate_display_row(
     key_field: str,
 ) -> Optional[Dict[str, Any]]:
     option = options_by_role.get(role)
+    is_comparison = _role_is_comparison(option)
+    if is_comparison is None:
+        return None
     candidate_key = _candidate_key_for_role(comparison, candidates_by_key, role, key_field, option)
     if not candidate_key:
         return None
@@ -240,10 +263,15 @@ def _candidate_display_row(
     status = _candidate_status(candidate, option)
     adopted_key = _adopted_candidate_key(comparison)
     is_same_as_adopted = bool(candidate_key and candidate_key == adopted_key)
-    comparison_note = _comparison_note(role=role, candidate_key=candidate_key, adopted_key=adopted_key)
+    comparison_note = _comparison_note(
+        role=role,
+        is_comparison=bool(is_comparison),
+        is_same_as_adopted=is_same_as_adopted,
+    )
     return {
         "role": role,
         "role_label": role_label,
+        "source_table": _role_source_table(option),
         "candidate_key": candidate_key,
         "candidate_label": _candidate_label(candidate, option, candidate_key=candidate_key, role=role),
         "kind": _candidate_kind(candidate, option),
@@ -258,7 +286,7 @@ def _candidate_display_row(
         "plan_role_available": role in options_by_role,
         "is_adopted": role == ROLE_ADOPTED,
         "is_same_as_adopted": is_same_as_adopted,
-        "is_comparison": role != ROLE_ADOPTED and not is_same_as_adopted,
+        "is_comparison": bool(is_comparison),
         "comparison_note": comparison_note,
         "links": {},
     }

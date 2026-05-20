@@ -4,8 +4,7 @@ from typing import Any, Callable, Dict, List, Optional, Set
 
 from core.infrastructure.errors import ValidationError
 from core.services.common.overdue_calculations import compute_overdue_buckets
-
-from .schedule_plan_query_service import ROLE_ADOPTED
+from data.repositories.schedule_plan_query_repo import SOURCE_CANDIDATE_ROWS, SOURCE_SCHEDULE
 
 _CANDIDATE_OVERDUE_MESSAGE = "候选方案超期标记计算失败，当前不显示候选方案超期标记。"
 
@@ -24,12 +23,16 @@ def build_overdue_meta_for_plan(
     *,
     version: int,
     role: str,
+    source_table: str,
     list_plan_overdue_base_rows: Callable[..., List[Dict[str, Any]]],
     load_adopted_meta: Callable[[int], Dict[str, Any]],
     log_degraded: Optional[Callable[..., None]] = None,
 ) -> Dict[str, Any]:
-    if role == ROLE_ADOPTED:
+    normalized_source = str(source_table or "").strip()
+    if normalized_source == SOURCE_SCHEDULE:
         return load_adopted_meta(int(version))
+    if normalized_source != SOURCE_CANDIDATE_ROWS:
+        raise ValueError(f"未知的排产方案数据来源：{normalized_source or '-'}")
     try:
         rows = list_plan_overdue_base_rows(version=int(version), role=role)
         ids = build_overdue_batch_ids_from_plan_rows([dict(row) for row in rows])

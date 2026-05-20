@@ -191,6 +191,43 @@ def _plan_role_options() -> List[SchedulePlanRoleOption]:
     ]
 
 
+def _plan_role_options_with_baseline_source(source_table: str) -> List[SchedulePlanRoleOption]:
+    detail_saved = "yes" if source_table == SOURCE_CANDIDATE_ROWS else "no"
+    return [
+        option
+        if option.role != ROLE_BASELINE_BEST
+        else SchedulePlanRoleOption(
+            role=ROLE_BASELINE_BEST,
+            source_table=source_table,
+            candidate_id=option.candidate_id,
+            candidate_key=option.candidate_key,
+            candidate_label=option.candidate_label,
+            candidate_kind=option.candidate_kind,
+            candidate_status=option.candidate_status,
+            detail_saved=detail_saved,
+        )
+        for option in _plan_role_options()
+    ]
+
+
+def _plan_role_options_for_baseline_adopted() -> List[SchedulePlanRoleOption]:
+    return [
+        option
+        if option.role not in (ROLE_BASELINE_BEST, ROLE_CRITICAL_BEST)
+        else SchedulePlanRoleOption(
+            role=option.role,
+            source_table=SOURCE_SCHEDULE if option.role == ROLE_BASELINE_BEST else SOURCE_CANDIDATE_ROWS,
+            candidate_id=option.candidate_id,
+            candidate_key=option.candidate_key,
+            candidate_label=option.candidate_label,
+            candidate_kind=option.candidate_kind,
+            candidate_status=option.candidate_status,
+            detail_saved="no" if option.role == ROLE_BASELINE_BEST else "yes",
+        )
+        for option in _plan_role_options()
+    ]
+
+
 def _reset_scheduler_modules() -> None:
     for name in list(sys.modules):
         if name.startswith("web.routes.scheduler") or name.startswith("web.routes.domains.scheduler"):
@@ -367,7 +404,7 @@ def test_candidate_display_marks_baseline_best_as_adopted_when_baseline_is_selec
     display = build_candidate_comparison_display(
         _comparison_summary(adopted_key="baseline"),
         selected_ver=7,
-        plan_role_options=_plan_role_options(),
+        plan_role_options=_plan_role_options_for_baseline_adopted(),
     )
 
     rows = {row["role"]: row for row in display["rows"]}
@@ -377,6 +414,24 @@ def test_candidate_display_marks_baseline_best_as_adopted_when_baseline_is_selec
     assert rows[ROLE_CRITICAL_BEST]["is_same_as_adopted"] is False
     assert rows[ROLE_CRITICAL_BEST]["is_comparison"] is True
     assert "这是对比方案，不是正式写入的结果" in rows[ROLE_CRITICAL_BEST]["comparison_note"]
+
+
+def test_candidate_display_uses_plan_role_source_table_for_comparison_state() -> None:
+    from web.viewmodels.scheduler_analysis_candidates import build_candidate_comparison_display
+
+    display = build_candidate_comparison_display(
+        _comparison_summary(),
+        selected_ver=7,
+        plan_role_options=_plan_role_options_with_baseline_source(SOURCE_SCHEDULE),
+    )
+
+    rows = {row["role"]: row for row in display["rows"]}
+    assert rows[ROLE_BASELINE_BEST]["candidate_key"] != rows[ROLE_ADOPTED]["candidate_key"]
+    assert rows[ROLE_BASELINE_BEST]["source_table"] == SOURCE_SCHEDULE
+    assert rows[ROLE_BASELINE_BEST]["is_same_as_adopted"] is False
+    assert rows[ROLE_BASELINE_BEST]["is_comparison"] is False
+    assert "这是对比方案" not in rows[ROLE_BASELINE_BEST]["comparison_note"]
+    assert "正式排程已写入这一版" in rows[ROLE_BASELINE_BEST]["comparison_note"]
 
 
 def test_candidate_display_surfaces_non_representative_failed_candidates() -> None:

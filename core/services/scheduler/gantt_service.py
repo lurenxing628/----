@@ -388,6 +388,7 @@ class GanttService:
             overdue_meta = build_overdue_meta_for_plan(
                 version=ver,
                 role=effective_role,
+                source_table=str(plan_resolution.get("source_table") or ""),
                 list_plan_overdue_base_rows=plan_query.list_plan_overdue_base_rows,
                 load_adopted_meta=self._overdue_batch_ids_from_history,
                 log_degraded=self._log_overdue_marker_degraded,
