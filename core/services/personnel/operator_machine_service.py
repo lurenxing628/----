@@ -279,6 +279,52 @@ class OperatorMachineService:
     # -------------------------
     # 关联 CRUD
     # -------------------------
+
+    @staticmethod
+    def _append_import_error_sample(
+        errors_sample: List[Dict[str, Any]],
+        pr: ImportPreviewRow,
+        message: str,
+        *,
+        limit: int = 10,
+    ) -> None:
+        if len(errors_sample) >= limit:
+            return
+        errors_sample.append(
+            {
+                "row": getattr(pr, "source_row_num", None) or pr.row_num,
+                "source_row_num": getattr(pr, "source_row_num", None),
+                "source_sheet_name": getattr(pr, "source_sheet_name", None),
+                "message": message,
+            }
+        )
+
+    def _apply_import_link_write(
+        self,
+        *,
+        op_id: str,
+        mc_id: str,
+        new_skill: str,
+        new_primary: str,
+        mode: ImportMode,
+        existing_map: Dict[str, Dict[str, str]],
+    ) -> str:
+        key = f"{op_id}|{mc_id}"
+        if self.repo.exists(op_id, mc_id):
+            if mode == ImportMode.APPEND:
+                return "skip"
+            if new_primary == YesNo.YES.value:
+                self.repo.clear_primary_for_operator(op_id)
+            self.repo.update_fields(op_id, mc_id, skill_level=new_skill, is_primary=new_primary)
+            existing_map[key] = {"skill_level": new_skill, "is_primary": new_primary}
+            return "update"
+
+        if new_primary == YesNo.YES.value:
+            self.repo.clear_primary_for_operator(op_id)
+        self.repo.add(op_id, mc_id, skill_level=new_skill, is_primary=new_primary)
+        existing_map[key] = {"skill_level": new_skill, "is_primary": new_primary}
+        return "new"
+
     def list_by_operator(self, operator_id: str) -> List[OperatorMachine]:
         op_id = self._normalize_text(operator_id)
         if not op_id:
@@ -423,15 +469,8 @@ class OperatorMachineService:
             for pr in preview_rows or []:
                 if pr.status == RowStatus.ERROR:
                     error_count += 1
-                    if pr.message and len(errors_sample) < 10:
-                        errors_sample.append(
-                            {
-                                "row": getattr(pr, "source_row_num", None) or pr.row_num,
-                                "source_row_num": getattr(pr, "source_row_num", None),
-                                "source_sheet_name": getattr(pr, "source_sheet_name", None),
-                                "message": pr.message,
-                            }
-                        )
+                    if pr.message:
+                        self._append_import_error_sample(errors_sample, pr, pr.message)
                     continue
 
                 if pr.status == RowStatus.SKIP:
@@ -446,15 +485,7 @@ class OperatorMachineService:
                 mc_id = to_str_or_blank(pr.data.get("设备编号"))
                 if not op_id or not mc_id:
                     error_count += 1
-                    if len(errors_sample) < 10:
-                        errors_sample.append(
-                            {
-                                "row": getattr(pr, "source_row_num", None) or pr.row_num,
-                                "source_row_num": getattr(pr, "source_row_num", None),
-                                "source_sheet_name": getattr(pr, "source_sheet_name", None),
-                                "message": "缺少“工号/设备编号”，无法写入。",
-                            }
-                        )
+                    self._append_import_error_sample(errors_sample, pr, "缺少“工号/设备编号”，无法写入。")
                     continue
 
                 key = f"{op_id}|{mc_id}"
@@ -465,34 +496,23 @@ class OperatorMachineService:
                 )
                 if err:
                     error_count += 1
-                    if len(errors_sample) < 10:
-                        errors_sample.append(
-                            {
-                                "row": getattr(pr, "source_row_num", None) or pr.row_num,
-                                "source_row_num": getattr(pr, "source_row_num", None),
-                                "source_sheet_name": getattr(pr, "source_sheet_name", None),
-                                "message": err,
-                            }
-                        )
+                    self._append_import_error_sample(errors_sample, pr, err)
                     continue
 
-                # 写入
-                if self.repo.exists(op_id, mc_id):
-                    if mode == ImportMode.APPEND:
-                        skip_count += 1
-                        continue
-                    # 更新
-                    if new_primary == YesNo.YES.value:
-                        self.repo.clear_primary_for_operator(op_id)
-                    self.repo.update_fields(op_id, mc_id, skill_level=new_skill, is_primary=new_primary)
+                write_action = self._apply_import_link_write(
+                    op_id=op_id,
+                    mc_id=mc_id,
+                    new_skill=new_skill,
+                    new_primary=new_primary,
+                    mode=mode,
+                    existing_map=existing_map,
+                )
+                if write_action == "skip":
+                    skip_count += 1
+                elif write_action == "update":
                     update_count += 1
-                    existing_map[key] = {"skill_level": new_skill, "is_primary": new_primary}
                 else:
-                    if new_primary == YesNo.YES.value:
-                        self.repo.clear_primary_for_operator(op_id)
-                    self.repo.add(op_id, mc_id, skill_level=new_skill, is_primary=new_primary)
                     new_count += 1
-                    existing_map[key] = {"skill_level": new_skill, "is_primary": new_primary}
 
         return {
             "total_rows": len(preview_rows),

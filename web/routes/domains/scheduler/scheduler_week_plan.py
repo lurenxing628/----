@@ -260,17 +260,35 @@ def _send_week_plan_export_file(output, *, version: int, week_start: Any, week_e
     )
 
 
-def _week_plan_page_redirect(plan_role: Optional[str]):
-    if plan_role is not None:
-        return redirect(url_for("scheduler.week_plan_page", plan_role=plan_role))
-    return redirect(url_for("scheduler.week_plan_page"))
+def _week_plan_page_redirect(
+    *,
+    week_start: Optional[str],
+    offset: int,
+    version: Optional[str],
+    plan_role: Optional[str],
+):
+    args = {
+        "week_start": week_start,
+        "version": version,
+        "plan_role": plan_role,
+    }
+    return redirect(
+        url_for(
+            "scheduler.week_plan_page",
+            offset=str(int(offset)),
+            **{k: v for k, v in args.items() if str(v or "").strip()},
+        )
+    )
 
 
-def _handle_week_plan_export_app_error(error: AppError, plan_role: Optional[str]):
+def _handle_week_plan_export_app_error(error: AppError, *, redirect_context: Dict[str, Any]):
     if error.code == ErrorCode.NOT_FOUND:
         return user_visible_app_error_message(error), 404
     flash(user_visible_app_error_message(error), "error")
-    return _week_plan_page_redirect(plan_role)
+    context = dict(redirect_context)
+    if isinstance(error, ValidationError) and error.field == "version":
+        context["version"] = None
+    return _week_plan_page_redirect(**context)
 
 
 @bp.get("/week-plan")
@@ -348,6 +366,12 @@ def week_plan_export():
     week_start = (request.args.get("week_start") or "").strip() or None
     plan_role = _get_plan_role_arg()
     offset = _get_int_arg("offset", 0)
+    redirect_context = {
+        "week_start": week_start,
+        "offset": offset,
+        "version": request.args.get("version"),
+        "plan_role": plan_role,
+    }
 
     svc = g.services.gantt_service
     try:
@@ -379,11 +403,11 @@ def week_plan_export():
 
         return _send_week_plan_export_file(output, version=ver, week_start=ws, week_end=we, plan_resolution=plan_resolution)
     except AppError as e:
-        return _handle_week_plan_export_app_error(e, plan_role)
+        return _handle_week_plan_export_app_error(e, redirect_context=redirect_context)
     except Exception:
         current_app.logger.exception("导出周计划失败")
         flash("导出周计划失败，请稍后重试。", "error")
-        return _week_plan_page_redirect(plan_role)
+        return _week_plan_page_redirect(**redirect_context)
 
 
 @bp.post("/simulate")

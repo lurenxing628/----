@@ -7,6 +7,59 @@ from core.services.common.enum_normalizers import normalize_skill_level, normali
 from data.repositories import OperatorMachineRepository
 
 
+def _readside_text(value: Any) -> str:
+    return "" if value is None else str(value).strip()
+
+
+def _mark_dirty(dirty_fields: List[str], dirty_reasons: Dict[str, str], field: str, reason: str) -> None:
+    field_name = str(field or "").strip()
+    message = str(reason or "").strip()
+    if not field_name or not message:
+        return
+    if field_name not in dirty_fields:
+        dirty_fields.append(field_name)
+    dirty_reasons[field_name] = message
+
+
+def _normalize_skill_field(out: Dict[str, Any], dirty_fields: List[str], dirty_reasons: Dict[str, str]) -> None:
+    raw_skill = out.get("skill_level")
+    raw_skill_text = _readside_text(raw_skill)
+    try:
+        out["skill_level"] = normalize_skill_level(out.get("skill_level"), default="normal", allow_none=False)
+    except ValueError:
+        out["skill_level"] = "normal"
+        if raw_skill is None or raw_skill_text == "":
+            _mark_dirty(dirty_fields, dirty_reasons, "skill_level", "历史技能等级为空，系统已先按“普通”处理。")
+        else:
+            _mark_dirty(
+                dirty_fields,
+                dirty_reasons,
+                "skill_level",
+                f"历史技能等级“{raw_skill_text}”不在可选范围内，系统已先按“普通”处理。",
+            )
+    else:
+        if raw_skill is None or raw_skill_text == "":
+            _mark_dirty(dirty_fields, dirty_reasons, "skill_level", "历史技能等级为空，系统已先按“普通”处理。")
+        elif raw_skill_text.lower() != str(out.get("skill_level") or "").strip().lower():
+            _mark_dirty(dirty_fields, dirty_reasons, "skill_level", "历史技能等级写法较旧，系统已先按能识别的中文选项处理。")
+
+
+def _normalize_primary_field(out: Dict[str, Any], dirty_fields: List[str], dirty_reasons: Dict[str, str]) -> None:
+    raw_primary = out.get("is_primary")
+    raw_primary_text = _readside_text(raw_primary)
+    out["is_primary"] = normalize_yes_no_wide(out.get("is_primary"), default=YesNo.NO.value, unknown_policy="no")
+    if raw_primary is None or raw_primary_text == "":
+        _mark_dirty(dirty_fields, dirty_reasons, "is_primary", "历史主操标记为空，系统已先按“否”处理。")
+    elif raw_primary_text.lower() != str(out.get("is_primary") or "").strip().lower():
+        _mark_dirty(dirty_fields, dirty_reasons, "is_primary", "历史主操标记写法较旧，系统已先按“否”处理。")
+
+
+def _attach_dirty_metadata(out: Dict[str, Any], dirty_fields: List[str], dirty_reasons: Dict[str, str]) -> None:
+    if dirty_fields:
+        out["dirty_fields"] = list(dirty_fields)
+        out["dirty_reasons"] = dict(dirty_reasons)
+
+
 class OperatorMachineQueryService:
     """
     人员-设备关联查询服务（只读 façade）。
@@ -28,42 +81,11 @@ class OperatorMachineQueryService:
         dirty_fields: List[str] = []
         dirty_reasons: Dict[str, str] = {}
 
-        def _mark_dirty(field: str, reason: str) -> None:
-            field_name = str(field or "").strip()
-            message = str(reason or "").strip()
-            if not field_name or not message:
-                return
-            if field_name not in dirty_fields:
-                dirty_fields.append(field_name)
-            dirty_reasons[field_name] = message
-
         if "skill_level" in out:
-            raw_skill = out.get("skill_level")
-            raw_skill_text = "" if raw_skill is None else str(raw_skill).strip()
-            try:
-                out["skill_level"] = normalize_skill_level(out.get("skill_level"), default="normal", allow_none=False)
-            except ValueError:
-                out["skill_level"] = "normal"
-                if raw_skill is None or raw_skill_text == "":
-                    _mark_dirty("skill_level", "历史技能等级为空，系统已先按“普通”处理。")
-                else:
-                    _mark_dirty("skill_level", f"历史技能等级“{raw_skill_text}”不在可选范围内，系统已先按“普通”处理。")
-            else:
-                if raw_skill is None or raw_skill_text == "":
-                    _mark_dirty("skill_level", "历史技能等级为空，系统已先按“普通”处理。")
-                elif raw_skill_text.lower() != str(out.get("skill_level") or "").strip().lower():
-                    _mark_dirty("skill_level", "历史技能等级写法较旧，系统已先按能识别的中文选项处理。")
+            _normalize_skill_field(out, dirty_fields, dirty_reasons)
         if "is_primary" in out:
-            raw_primary = out.get("is_primary")
-            raw_primary_text = "" if raw_primary is None else str(raw_primary).strip()
-            out["is_primary"] = normalize_yes_no_wide(out.get("is_primary"), default=YesNo.NO.value, unknown_policy="no")
-            if raw_primary is None or raw_primary_text == "":
-                _mark_dirty("is_primary", "历史主操标记为空，系统已先按“否”处理。")
-            elif raw_primary_text.lower() != str(out.get("is_primary") or "").strip().lower():
-                _mark_dirty("is_primary", "历史主操标记写法较旧，系统已先按“否”处理。")
-        if dirty_fields:
-            out["dirty_fields"] = list(dirty_fields)
-            out["dirty_reasons"] = dict(dirty_reasons)
+            _normalize_primary_field(out, dirty_fields, dirty_reasons)
+        _attach_dirty_metadata(out, dirty_fields, dirty_reasons)
         return out
 
     @classmethod

@@ -5,6 +5,7 @@ import io
 import os
 import sys
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 import openpyxl
 
@@ -160,3 +161,35 @@ def test_week_plan_export_uses_week_start_only_when_stale_range_present(tmp_path
     sheet = workbook.active
     assert sheet["A2"].value == "2026-05-11"
     assert sheet["B2"].value == "B001"
+
+
+def test_week_plan_export_failure_redirect_preserves_request_context(tmp_path, monkeypatch) -> None:
+    app = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+
+    from core.services.scheduler.gantt_service import GanttService
+
+    def _raise_export_failure(self, **kwargs):
+        raise RuntimeError("forced export failure")
+
+    monkeypatch.setattr(GanttService, "get_week_plan_rows", _raise_export_failure)
+
+    resp = client.get(
+        "/scheduler/week-plan/export"
+        "?week_start=2026-05-11"
+        "&offset=2"
+        "&version=7"
+        "&plan_role=baseline_best",
+        follow_redirects=False,
+    )
+
+    assert resp.status_code == 302
+    location = resp.headers.get("Location", "")
+    parsed = urlparse(location)
+    query = parse_qs(parsed.query)
+    assert parsed.path == "/scheduler/week-plan"
+    assert query.get("week_start") == ["2026-05-11"]
+    assert query.get("offset") == ["2"]
+    assert query.get("version") == ["7"]
+    assert query.get("plan_role") == ["baseline_best"]
+    assert "forced export failure" not in location
