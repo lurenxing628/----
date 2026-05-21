@@ -267,7 +267,8 @@ def _week_plan_page_redirect(
     version: Optional[str],
     plan_role: Optional[str],
 ):
-    args = {
+    args: Dict[str, Any] = {
+        "offset": str(int(offset)),
         "week_start": week_start,
         "version": version,
         "plan_role": plan_role,
@@ -275,7 +276,6 @@ def _week_plan_page_redirect(
     return redirect(
         url_for(
             "scheduler.week_plan_page",
-            offset=str(int(offset)),
             **{k: v for k, v in args.items() if str(v or "").strip()},
         )
     )
