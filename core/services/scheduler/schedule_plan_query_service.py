@@ -156,6 +156,41 @@ class SchedulePlanQueryService:
             available_roles=available_roles,
         )
 
+    def resolve_existing_plan(self, version: int, role: str) -> SchedulePlanResolution:
+        requested_role = str(role or "").strip()
+        if not requested_role:
+            raise ValueError("基准方案角色不能为空。")
+        if requested_role not in VALID_PLAN_ROLES:
+            raise ValueError(f"未知的排产方案角色：{requested_role}")
+
+        available_roles = self.list_plan_roles(int(version))
+        roles_by_name = {option.role: option for option in available_roles}
+        option = roles_by_name.get(requested_role)
+        if option is None:
+            raise ValueError("基准方案不存在。")
+
+        try:
+            self._validate_resolution_option(int(version), option)
+        except ValueError as exc:
+            raise ValueError("基准方案明细不存在。") from exc
+        if self.repo.get_plan_time_span(
+            version=int(version),
+            source_table=option.source_table,
+            candidate_id=option.candidate_id,
+        ) is None:
+            raise ValueError("基准方案明细不存在。")
+        return SchedulePlanResolution(
+            version=int(version),
+            requested_role=requested_role,
+            selected_role=option.role,
+            source_table=option.source_table,
+            candidate_id=option.candidate_id,
+            candidate_key=option.candidate_key,
+            status="selected",
+            message="",
+            available_roles=available_roles,
+        )
+
     def get_plan_time_span(self, version: int, role: Optional[str]) -> Optional[ScheduleTimeSpanRow]:
         resolution = self.resolve_plan(version, role)
         return self.repo.get_plan_time_span(

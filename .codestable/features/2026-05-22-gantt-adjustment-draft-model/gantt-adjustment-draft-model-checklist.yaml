@@ -1,0 +1,37 @@
+feature: 2026-05-22-gantt-adjustment-draft-model
+status: done
+roadmap: gantt-result-view-and-manual-adjustment
+roadmap_item: gantt-adjustment-draft-model
+
+steps:
+  - slug: boundary-and-docs
+    title: 明确 Draft 模型边界和 roadmap 状态
+    status: done
+    exit_signal: design/checklist 已落盘，明确本阶段不新增 route、不开放前端入口。
+
+  - slug: schema-and-migration
+    title: 新增 Draft 表和 v12 迁移
+    status: done
+    exit_signal: fresh DB 和 v11 升级都能得到 ScheduleAdjustmentDraft / ScheduleAdjustmentChange。
+
+  - slug: model-repository-service
+    title: 新增模型、仓储和 Draft 服务
+    status: done
+    exit_signal: 服务能创建草稿、记录时间/资源调整、丢弃草稿，只写 Draft 表。
+
+  - slug: regression
+    title: 增加 Draft 模型回归测试和门禁分组
+    status: done
+    exit_signal: 测试覆盖不写 Schedule/ScheduleHistory/ScheduleVersionSeq 和非法基准拒绝。
+
+  - slug: verification
+    title: 回归验证
+    status: done
+    exit_signal: 目标 pytest、ruff、YAML、fast precheck 通过。
+
+checks:
+  - 草稿记录包含基准版本、方案角色、调整列表、操作者、原因和状态。
+  - 创建草稿不会改变正式版本指针。
+  - 删除草稿不会影响正式 Schedule/ScheduleHistory。
+  - 服务和仓储可重新读取草稿及未发布调整列表。
+  - 本阶段不新增 route，不开放前端可点击入口。

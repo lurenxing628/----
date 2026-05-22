@@ -182,18 +182,19 @@ items:
       - 查看模式和模拟调整模式一眼能区分
       - 没有后端校验服务时保存按钮不能假装可用
       - 当前入口不产生未保存调整，因此不绑定离开页面提醒
-    notes: 已完成禁用占位入口；真实模拟状态、未保存调整和离开提醒等草稿模型完成后再开放。
+    notes: 已完成禁用占位入口；Draft 模型完成后先进入后端校验与试算，真实模拟状态、未保存调整和离开提醒等要等校验链路完成后再开放。
 
   - slug: gantt-adjustment-draft-model
     title: 后续 Draft 调整草稿模型
     description: 后续建立调整草稿数据模型和迁移，记录基准版本、调整列表、操作者、原因、状态和审计摘要。
     depends_on: [gantt-simulation-entry-shell]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-22-gantt-adjustment-draft-model
     minimal_loop: false
     primary_paths:
       - schema.sql
       - core/infrastructure/migrations/
+      - core/models/schedule_adjustment.py
       - core/services/scheduler/
       - data/repositories/
       - tests/regression_gantt_adjustment_draft_model.py
@@ -201,8 +202,8 @@ items:
       - 草稿记录包含基准版本、方案角色、调整列表、操作者、原因和状态
       - 创建草稿不会改变正式版本指针
       - 删除草稿不会影响正式 Schedule/ScheduleHistory
-      - 草稿可重新打开并显示未发布调整
-    notes: Draft 只是“用户想怎么改”，不是正式排产结果；模拟入口边界清楚后再落库。
+      - 服务和仓储可重新读取草稿及未发布调整列表
+    notes: Draft 只是“用户想怎么改”，不是正式排产结果；已落后端表、迁移、仓储、服务和回归测试，页面入口仍禁用。
 
   - slug: gantt-adjustment-validate-simulate
     title: 后续拖动落点校验与试算

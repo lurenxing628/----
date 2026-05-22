@@ -5,7 +5,7 @@ from typing import List, Optional
 
 from .migrations.common import MigrationOutcome, column_exists, fallback_log
 
-CURRENT_SCHEMA_VERSION = 11
+CURRENT_SCHEMA_VERSION = 12
 
 
 class MigrationContractError(RuntimeError):
@@ -125,6 +125,9 @@ def detect_schema_is_current(conn: sqlite3.Connection) -> bool:
         ("ScheduleCandidate", "status"),
         ("ScheduleCandidateRows", "candidate_id"),
         ("ScheduleCandidateSelection", "source_table"),
+        ("ScheduleVersionSeq", "version"),
+        ("ScheduleAdjustmentDraft", "draft_id"),
+        ("ScheduleAdjustmentChange", "draft_id"),
     ]
     for table, col in needed:
         if not column_exists(conn, table, col):
@@ -133,6 +136,7 @@ def detect_schema_is_current(conn: sqlite3.Connection) -> bool:
         _has_system_management_tables(conn)
         and _has_schedule_unique_index(conn)
         and _has_candidate_indexes(conn)
+        and _has_adjustment_draft_indexes(conn)
         and _batch_material_ready_default_is_no(conn)
     )
 
@@ -202,4 +206,25 @@ def _has_candidate_indexes(conn: sqlite3.Connection) -> bool:
         "idx_schedule_candidate_rows_version_candidate_time",
         "idx_schedule_candidate_rows_time",
         "idx_schedule_candidate_selection_version",
+    }
+
+
+def _has_adjustment_draft_indexes(conn: sqlite3.Connection) -> bool:
+    rows = conn.execute(
+        """
+        SELECT name
+        FROM sqlite_master
+        WHERE type='index'
+              AND name IN (
+                  'idx_schedule_adjustment_draft_base',
+                  'idx_schedule_adjustment_draft_status',
+                  'idx_schedule_adjustment_change_draft_op'
+              )
+        """
+    ).fetchall()
+    names = {r["name"] if isinstance(r, sqlite3.Row) else r[0] for r in rows}
+    return names == {
+        "idx_schedule_adjustment_draft_base",
+        "idx_schedule_adjustment_draft_status",
+        "idx_schedule_adjustment_change_draft_op",
     }

@@ -52,6 +52,17 @@ tags: [scheduler, gantt, frontend, readonly, vendor]
 
 真实模拟调整入口尚未开放。当前页面上的 `ganttSimulationEntry` 按钮是 disabled 占位按钮，后续必须等 Draft 草稿模型和后端校验链路完成后，才能升级为可点击入口。
 
-## 5. vendor 补丁治理
+## 5. Draft 草稿模型
+
+后端已经有 `ScheduleAdjustmentDraft` 和 `ScheduleAdjustmentChange` 两张表，用来记录后续模拟调整里“用户想怎么改”。它们不属于正式排产结果：
+
+- 不写 `Schedule`。
+- 不写 `ScheduleHistory`。
+- 不写 `ScheduleVersionSeq`。
+- 不改变甘特图、周计划、资源排班和报表默认读取的正式版本。
+
+`GanttAdjustmentDraftService` 创建草稿前会确认基准正式版本存在，要求调用方显式传入 `base_plan_role`，并用无回退的方案解析确认这个角色有真实排程明细。当前页面入口仍禁用；本阶段只是模型能力，不是用户可点击的模拟调整功能。
+
+## 6. vendor 补丁治理
 
 `static/js/frappe-gantt.min.js` 当前本地补丁说明见 `.codestable/vendor/frappe-gantt-local-patches.md`。后续只有 Frappe 内部时间尺、任务条几何、命中区或事件绑定确实需要改时，才允许继续改 vendor 文件；业务规则优先放到 APS 自己的 `gantt_zoom.js` / `gantt_adapter.js` / `gantt_ui.js` / `gantt_render.js`。
