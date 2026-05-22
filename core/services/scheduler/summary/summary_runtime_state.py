@@ -93,6 +93,26 @@ def _append_summary_warning(summary: Any, message: str) -> bool:
         return False
 
 
+def _parse_counter_value(raw: Any, *, bucket_name: str, key_text: str) -> Tuple[Optional[int], Optional[str]]:
+    if raw is None or raw == "":
+        return None, None
+    if isinstance(raw, bool):
+        return None, f"{bucket_name}.{key_text} 不能是布尔值：{raw!r}"
+    try:
+        if isinstance(raw, int):
+            count = raw
+        else:
+            decimal_value = Decimal(str(raw).strip())
+            if not decimal_value.is_finite() or decimal_value != decimal_value.to_integral_value():
+                return None, f"{bucket_name}.{key_text} 必须是整数：{raw!r}"
+            count = int(decimal_value)
+    except (InvalidOperation, TypeError, ValueError):
+        return None, f"{bucket_name}.{key_text} 必须是整数：{raw!r}"
+    if count < 0:
+        return None, f"{bucket_name}.{key_text} 不能为负数：{raw!r}"
+    return count, None
+
+
 def _counter_dict(value: Any, *, bucket_name: str) -> Tuple[Dict[str, int], List[str]]:
     if not isinstance(value, dict):
         return {}, []
@@ -102,32 +122,10 @@ def _counter_dict(value: Any, *, bucket_name: str) -> Tuple[Dict[str, int], List
         key_text = str(key or "").strip()
         if not key_text:
             continue
-        if raw is None or raw == "":
-            continue
-        if isinstance(raw, bool):
-            errors.append(f"{bucket_name}.{key_text} 不能是布尔值：{raw!r}")
-            continue
-        try:
-            if isinstance(raw, int):
-                count = raw
-            elif isinstance(raw, float):
-                if not raw.is_integer():
-                    errors.append(f"{bucket_name}.{key_text} 必须是整数：{raw!r}")
-                    continue
-                count = int(raw)
-            else:
-                decimal_value = Decimal(str(raw).strip())
-                if not decimal_value.is_finite() or decimal_value != decimal_value.to_integral_value():
-                    errors.append(f"{bucket_name}.{key_text} 必须是整数：{raw!r}")
-                    continue
-                count = int(decimal_value)
-        except (InvalidOperation, TypeError, ValueError):
-            errors.append(f"{bucket_name}.{key_text} 必须是整数：{raw!r}")
-            continue
-        if count < 0:
-            errors.append(f"{bucket_name}.{key_text} 不能为负数：{raw!r}")
-            continue
-        if count != 0:
+        count, error = _parse_counter_value(raw, bucket_name=bucket_name, key_text=key_text)
+        if error:
+            errors.append(error)
+        if count:
             out[key_text] = int(count)
     return out, errors
 

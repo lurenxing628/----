@@ -99,7 +99,7 @@ def main() -> None:
 
     install_fake_cp_model()
 
-    from core.algorithms.ortools_bottleneck import try_solve_bottleneck_batch_order
+    from core.algorithms.ortools_bottleneck import OrtoolsWarmstartError, try_solve_bottleneck_batch_order
 
     start_dt = datetime(2026, 1, 1, 8, 0, 0)
 
@@ -107,9 +107,9 @@ def main() -> None:
     b2 = SimpleNamespace(batch_id="B2", priority="normal", due_date="2025-12-31", quantity=1)
     batches = {"B1": b1, "B2": b2}
 
-    # 混入 NaN/Inf：若未过滤，旧实现可能在 math.ceil(h*60) 处崩溃，或污染瓶颈识别
+    # 混入 NaN/Inf：新合同要求可见报错，不能再静默跳过。
     ops = [
-        # B1：非有限工时（应被跳过）
+        # B1：非有限工时（应报错）
         SimpleNamespace(
             id=1,
             op_code="OP_B1_NAN",
@@ -120,7 +120,7 @@ def main() -> None:
             setup_hours=float("nan"),
             unit_hours=0.0,
         ),
-        # B1：有限工时（应保留）
+        # B1：有限工时
         SimpleNamespace(
             id=2,
             op_code="OP_B1_OK",
@@ -131,7 +131,7 @@ def main() -> None:
             setup_hours=1.0,
             unit_hours=0.0,
         ),
-        # B2：非有限工时（应被跳过）
+        # B2：非有限工时
         SimpleNamespace(
             id=3,
             op_code="OP_B2_INF",
@@ -142,7 +142,7 @@ def main() -> None:
             setup_hours=float("inf"),
             unit_hours=0.0,
         ),
-        # B2：有限工时（应保留）
+        # B2：有限工时
         SimpleNamespace(
             id=4,
             op_code="OP_B2_OK",
@@ -155,19 +155,21 @@ def main() -> None:
         ),
     ]
 
-    order = try_solve_bottleneck_batch_order(
-        operations=ops,
-        batches=batches,
-        start_dt=start_dt,
-        time_limit_seconds=2,
-        max_jobs=200,
-        logger=None,
-    )
-    assert order is not None, "过滤非有限工时后应仍可产生 warm-start 顺序"
-    assert len(order) == 2, f"期望仅包含 2 个批次，实际 order={order!r}"
-    assert order == ["B1", "B2"], f"期望短工时优先（B1 在前）：order={order!r}"
-    assert _FakeCpModel.interval_durations == [60, 120], (
-        "CP 模型里只能出现有限工时任务，"
+    try:
+        try_solve_bottleneck_batch_order(
+            operations=ops,
+            batches=batches,
+            start_dt=start_dt,
+            time_limit_seconds=2,
+            max_jobs=200,
+            logger=None,
+        )
+    except OrtoolsWarmstartError as exc:
+        assert "有限数字" in str(exc), str(exc)
+    else:
+        raise AssertionError("OR-Tools warm-start 非有限工时不能静默跳过")
+    assert _FakeCpModel.interval_durations == [], (
+        "非有限工时应在建模前报错，"
         f"实际 durations={_FakeCpModel.interval_durations!r}"
     )
 

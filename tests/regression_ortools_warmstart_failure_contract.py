@@ -137,16 +137,29 @@ def test_ortools_nonfinite_hours_is_visible(monkeypatch):
     from core.algorithms.ortools_bottleneck import OrtoolsWarmstartError, try_solve_bottleneck_batch_order
 
     _install_fake_cp_model(monkeypatch, status=4)
-    operations, batches = _sample_inputs()
-    operations[0].setup_hours = float("nan")
 
-    with pytest.raises(OrtoolsWarmstartError, match="有限数字"):
-        try_solve_bottleneck_batch_order(
-            operations=operations,
-            batches=batches,
-            start_dt=datetime(2026, 1, 1, 8, 0, 0),
-            logger=None,
-        )
+    for field in ("setup_hours", "unit_hours"):
+        for bad_value in (float("nan"), float("inf")):
+            operations, batches = _sample_inputs()
+            setattr(operations[0], field, bad_value)
+            with pytest.raises(OrtoolsWarmstartError, match="有限数字"):
+                try_solve_bottleneck_batch_order(
+                    operations=operations,
+                    batches=batches,
+                    start_dt=datetime(2026, 1, 1, 8, 0, 0),
+                    logger=None,
+                )
+
+    for bad_value in (float("nan"), float("inf")):
+        operations, batches = _sample_inputs()
+        batches["B1"].quantity = bad_value
+        with pytest.raises(OrtoolsWarmstartError, match="有限数字"):
+            try_solve_bottleneck_batch_order(
+                operations=operations,
+                batches=batches,
+                start_dt=datetime(2026, 1, 1, 8, 0, 0),
+                logger=None,
+            )
 
 
 def test_ortools_bool_hours_are_visible(monkeypatch):
@@ -156,8 +169,20 @@ def test_ortools_bool_hours_are_visible(monkeypatch):
     operations, batches = _sample_inputs()
 
     for field in ("setup_hours", "unit_hours"):
+        for bad_value in (True, False):
+            operations, batches = _sample_inputs()
+            setattr(operations[0], field, bad_value)
+            with pytest.raises(OrtoolsWarmstartError, match="布尔值"):
+                try_solve_bottleneck_batch_order(
+                    operations=operations,
+                    batches=batches,
+                    start_dt=datetime(2026, 1, 1, 8, 0, 0),
+                    logger=None,
+                )
+
+    for bad_value in (True, False):
         operations, batches = _sample_inputs()
-        setattr(operations[0], field, True)
+        batches["B1"].quantity = bad_value
         with pytest.raises(OrtoolsWarmstartError, match="布尔值"):
             try_solve_bottleneck_batch_order(
                 operations=operations,
@@ -165,16 +190,6 @@ def test_ortools_bool_hours_are_visible(monkeypatch):
                 start_dt=datetime(2026, 1, 1, 8, 0, 0),
                 logger=None,
             )
-
-    operations, batches = _sample_inputs()
-    batches["B1"].quantity = True
-    with pytest.raises(OrtoolsWarmstartError, match="布尔值"):
-        try_solve_bottleneck_batch_order(
-            operations=operations,
-            batches=batches,
-            start_dt=datetime(2026, 1, 1, 8, 0, 0),
-            logger=None,
-        )
 
 
 def test_ortools_negative_hour_parts_are_visible(monkeypatch):

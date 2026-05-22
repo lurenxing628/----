@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import math
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -11,6 +10,8 @@ from .schedule_candidate_summary import candidate_comparison_public_summary
 from .schedule_graph_report import prepare_schedule_graph_for_dispatch
 from .schedule_input_collector import ScheduleRunInput
 from .schedule_persistence import ValidatedSchedulePayload, build_validated_schedule_payload
+from .schedule_summary_contract import ScheduleSummaryContract
+from .schedule_summary_contract import build_summary_contract as _build_summary_contract
 
 _LOGGER = logging.getLogger(__name__)
 _SUMMARY_MERGE_ERROR_CODES = {
@@ -27,14 +28,6 @@ def _normalize_summary_merge_error(reason: Any) -> Optional[str]:
     if text in _SUMMARY_MERGE_ERROR_CODES:
         return text
     return "summary_warnings_assignment_failed"
-
-
-@dataclass(frozen=True)
-class ScheduleSummaryContract:
-    payload: Dict[str, Any]
-
-    def to_dict(self) -> Dict[str, Any]:
-        return dict(self.payload)
 
 
 @dataclass
@@ -80,188 +73,6 @@ class _NormalizedOptimizerOutcome:
     objective_name: str
     algo_stats: Dict[str, Any]
     time_budget_seconds: int
-
-
-def _summary_field(summary: Any, field: str, default: Any) -> Any:
-    if isinstance(summary, dict):
-        return summary.get(field, default)
-    return getattr(summary, field, default)
-
-
-def _summary_warnings(result_summary_obj: Dict[str, Any], summary: Any) -> List[str]:
-    if isinstance(result_summary_obj, dict) and "warnings" in result_summary_obj:
-        raw_warnings = result_summary_obj.get("warnings")
-        if raw_warnings is None:
-            return []
-        if isinstance(raw_warnings, str):
-            return [raw_warnings] if raw_warnings else []
-        try:
-            return [str(item) for item in list(raw_warnings or []) if str(item)]
-        except Exception:
-            text = str(raw_warnings).strip()
-            return [text] if text else []
-    return list(_summary_field(summary, "warnings", []) or [])
-
-
-def _summary_errors(result_summary_obj: Dict[str, Any], summary: Any) -> List[str]:
-    if isinstance(result_summary_obj, dict) and "errors" in result_summary_obj:
-        raw_errors = result_summary_obj.get("errors")
-    else:
-        raw_errors = _summary_field(summary, "errors", [])
-    if raw_errors is None:
-        return []
-    if isinstance(raw_errors, str):
-        return [raw_errors] if raw_errors else []
-    try:
-        return [str(item) for item in list(raw_errors or []) if str(item)]
-    except Exception:
-        text = str(raw_errors).strip()
-        return [text] if text else []
-
-
-def _parse_summary_count(value: Any, *, field: str) -> Tuple[int, Optional[str]]:
-    if value is None or value == "":
-        return 0, None
-    if isinstance(value, bool):
-        return 0, f"{field} 不能是布尔值：{value!r}"
-    try:
-        if isinstance(value, float):
-            if not math.isfinite(value) or not value.is_integer():
-                return 0, f"{field} 必须是非负整数：{value!r}"
-            number = int(value)
-        else:
-            text = str(value).strip()
-            if not text:
-                return 0, None
-            if "." in text:
-                fv = float(text)
-                if not math.isfinite(fv) or not fv.is_integer():
-                    return 0, f"{field} 必须是非负整数：{value!r}"
-                number = int(fv)
-            else:
-                number = int(text)
-    except Exception:
-        return 0, f"{field} 必须是非负整数：{value!r}"
-    if number < 0:
-        return 0, f"{field} 不能为负数：{value!r}"
-    return number, None
-
-
-def _summary_counts(result_summary_obj: Dict[str, Any], summary: Any) -> Tuple[Dict[str, int], List[str]]:
-    raw_counts = result_summary_obj.get("counts") if isinstance(result_summary_obj, dict) else {}
-    counts = dict(raw_counts or {}) if isinstance(raw_counts, dict) else {}
-    errors: List[str] = []
-
-    total_ops, err = _parse_summary_count(
-        counts.get("op_count", counts.get("total_ops", _summary_field(summary, "total_ops", 0))),
-        field="total_ops",
-    )
-    if err:
-        errors.append(err)
-    scheduled_ops, err = _parse_summary_count(
-        counts.get("scheduled_ops", _summary_field(summary, "scheduled_ops", 0)),
-        field="scheduled_ops",
-    )
-    if err:
-        errors.append(err)
-    failed_ops, err = _parse_summary_count(
-        counts.get("failed_ops", _summary_field(summary, "failed_ops", 0)),
-        field="failed_ops",
-    )
-    if err:
-        errors.append(err)
-
-    for field, raw_value in (
-        ("total_ops", _summary_field(summary, "total_ops", None)),
-        ("scheduled_ops", _summary_field(summary, "scheduled_ops", None)),
-        ("failed_ops", _summary_field(summary, "failed_ops", None)),
-    ):
-        _parsed, raw_err = _parse_summary_count(raw_value, field=field)
-        if raw_err and raw_err not in errors:
-            errors.append(raw_err)
-
-    counts["op_count"] = total_ops
-    counts["total_ops"] = total_ops
-    counts["scheduled_ops"] = scheduled_ops
-    counts["failed_ops"] = failed_ops
-    return counts, errors
-
-
-def _safe_count(value: Any, default: int = 0) -> int:
-    try:
-        return int(value or 0)
-    except Exception:
-        return int(default)
-
-
-def _build_summary_contract(summary: Any, *, result_summary_obj: Dict[str, Any]) -> ScheduleSummaryContract:
-    payload = dict(result_summary_obj or {})
-    warnings = _summary_warnings(result_summary_obj, summary)
-    errors = _summary_errors(result_summary_obj, summary)
-    counts, count_errors = _summary_counts(result_summary_obj, summary)
-    payload.update(
-        {
-            "success": bool(_summary_field(summary, "success", False)),
-            "total_ops": int(counts.get("total_ops") or 0),
-            "scheduled_ops": int(counts.get("scheduled_ops") or 0),
-            "failed_ops": int(counts.get("failed_ops") or 0),
-            "warnings": list(warnings),
-            "errors": list(errors),
-            "duration_seconds": float(_summary_field(summary, "duration_seconds", 0.0) or 0.0),
-            "degradation_events": list(payload.get("degradation_events") or []),
-            "degradation_counters": dict(payload.get("degradation_counters") or {}),
-            "degraded_success": bool(payload.get("degraded_success") or False),
-            "degraded_causes": list(payload.get("degraded_causes") or []),
-            "error_count": _safe_count(payload.get("error_count"), len(errors)),
-            "errors_sample": list(payload.get("errors_sample") or errors[:10]),
-            "counts": counts,
-        }
-    )
-    existing_count_errors = [
-        str(item)
-        for item in list(payload.get("summary_count_parse_errors") or [])
-        if str(item)
-    ]
-    for err in count_errors:
-        if err not in existing_count_errors:
-            existing_count_errors.append(err)
-
-    if existing_count_errors:
-        warning_text = "排产摘要里的数量记录异常，不能按这些数量判断结果。"
-        payload["summary_count_parse_failed"] = True
-        payload["summary_count_parse_errors"] = existing_count_errors[:10]
-        payload["warnings"] = list(payload.get("warnings") or [])
-        if warning_text not in payload["warnings"]:
-            payload["warnings"].append(warning_text)
-        payload["errors_sample"] = list(payload.get("errors_sample") or [])
-        for err in existing_count_errors[:10]:
-            if err not in payload["errors_sample"]:
-                payload["errors_sample"].append(err)
-        events = list(payload.get("degradation_events") or [])
-        if not any(str(event.get("code") or "") == "summary_count_parse_failed" for event in events if isinstance(event, dict)):
-            events.append(
-                {
-                    "code": "summary_count_parse_failed",
-                    "scope": "schedule.summary.contract",
-                    "field": "counts",
-                    "message": warning_text,
-                    "count": len(existing_count_errors),
-                }
-            )
-        payload["degradation_events"] = events
-        counters = dict(payload.get("degradation_counters") or {})
-        counters["summary_count_parse_failed"] = max(
-            int(counters.get("summary_count_parse_failed") or 0),
-            len(existing_count_errors),
-        )
-        payload["degradation_counters"] = counters
-        causes = list(payload.get("degraded_causes") or [])
-        if "summary_count_parse_failed" not in causes:
-            causes.append("summary_count_parse_failed")
-        payload["degraded_causes"] = causes
-        payload["degraded_success"] = bool(payload.get("degraded_success") or payload.get("success"))
-    payload["error_count"] = max(_safe_count(payload.get("error_count"), 0), len(payload["errors_sample"]), len(errors))
-    return ScheduleSummaryContract(payload=payload)
 
 
 def _normalize_optimizer_outcome(optimizer_outcome: Any) -> _NormalizedOptimizerOutcome:
