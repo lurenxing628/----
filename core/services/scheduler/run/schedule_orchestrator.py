@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -118,31 +119,86 @@ def _summary_errors(result_summary_obj: Dict[str, Any], summary: Any) -> List[st
         return [text] if text else []
 
 
-def _summary_counts(result_summary_obj: Dict[str, Any], summary: Any) -> Dict[str, int]:
+def _parse_summary_count(value: Any, *, field: str) -> Tuple[int, Optional[str]]:
+    if value is None or value == "":
+        return 0, None
+    if isinstance(value, bool):
+        return 0, f"{field} 不能是布尔值：{value!r}"
+    try:
+        if isinstance(value, float):
+            if not math.isfinite(value) or not value.is_integer():
+                return 0, f"{field} 必须是非负整数：{value!r}"
+            number = int(value)
+        else:
+            text = str(value).strip()
+            if not text:
+                return 0, None
+            if "." in text:
+                fv = float(text)
+                if not math.isfinite(fv) or not fv.is_integer():
+                    return 0, f"{field} 必须是非负整数：{value!r}"
+                number = int(fv)
+            else:
+                number = int(text)
+    except Exception:
+        return 0, f"{field} 必须是非负整数：{value!r}"
+    if number < 0:
+        return 0, f"{field} 不能为负数：{value!r}"
+    return number, None
+
+
+def _summary_counts(result_summary_obj: Dict[str, Any], summary: Any) -> Tuple[Dict[str, int], List[str]]:
     raw_counts = result_summary_obj.get("counts") if isinstance(result_summary_obj, dict) else {}
     counts = dict(raw_counts or {}) if isinstance(raw_counts, dict) else {}
+    errors: List[str] = []
 
-    def _to_int(value: Any) -> int:
-        try:
-            return int(value or 0)
-        except Exception:
-            return 0
+    total_ops, err = _parse_summary_count(
+        counts.get("op_count", counts.get("total_ops", _summary_field(summary, "total_ops", 0))),
+        field="total_ops",
+    )
+    if err:
+        errors.append(err)
+    scheduled_ops, err = _parse_summary_count(
+        counts.get("scheduled_ops", _summary_field(summary, "scheduled_ops", 0)),
+        field="scheduled_ops",
+    )
+    if err:
+        errors.append(err)
+    failed_ops, err = _parse_summary_count(
+        counts.get("failed_ops", _summary_field(summary, "failed_ops", 0)),
+        field="failed_ops",
+    )
+    if err:
+        errors.append(err)
 
-    total_ops = _to_int(counts.get("op_count", counts.get("total_ops", _summary_field(summary, "total_ops", 0))))
-    scheduled_ops = _to_int(counts.get("scheduled_ops", _summary_field(summary, "scheduled_ops", 0)))
-    failed_ops = _to_int(counts.get("failed_ops", _summary_field(summary, "failed_ops", 0)))
+    for field, raw_value in (
+        ("total_ops", _summary_field(summary, "total_ops", None)),
+        ("scheduled_ops", _summary_field(summary, "scheduled_ops", None)),
+        ("failed_ops", _summary_field(summary, "failed_ops", None)),
+    ):
+        _parsed, raw_err = _parse_summary_count(raw_value, field=field)
+        if raw_err and raw_err not in errors:
+            errors.append(raw_err)
+
     counts["op_count"] = total_ops
     counts["total_ops"] = total_ops
     counts["scheduled_ops"] = scheduled_ops
     counts["failed_ops"] = failed_ops
-    return counts
+    return counts, errors
+
+
+def _safe_count(value: Any, default: int = 0) -> int:
+    try:
+        return int(value or 0)
+    except Exception:
+        return int(default)
 
 
 def _build_summary_contract(summary: Any, *, result_summary_obj: Dict[str, Any]) -> ScheduleSummaryContract:
     payload = dict(result_summary_obj or {})
     warnings = _summary_warnings(result_summary_obj, summary)
     errors = _summary_errors(result_summary_obj, summary)
-    counts = _summary_counts(result_summary_obj, summary)
+    counts, count_errors = _summary_counts(result_summary_obj, summary)
     payload.update(
         {
             "success": bool(_summary_field(summary, "success", False)),
@@ -156,12 +212,55 @@ def _build_summary_contract(summary: Any, *, result_summary_obj: Dict[str, Any])
             "degradation_counters": dict(payload.get("degradation_counters") or {}),
             "degraded_success": bool(payload.get("degraded_success") or False),
             "degraded_causes": list(payload.get("degraded_causes") or []),
-            "error_count": int(payload.get("error_count") or len(errors)),
+            "error_count": _safe_count(payload.get("error_count"), len(errors)),
             "errors_sample": list(payload.get("errors_sample") or errors[:10]),
             "counts": counts,
         }
     )
-    payload["error_count"] = max(int(payload.get("error_count") or 0), len(payload["errors_sample"]), len(errors))
+    existing_count_errors = [
+        str(item)
+        for item in list(payload.get("summary_count_parse_errors") or [])
+        if str(item)
+    ]
+    for err in count_errors:
+        if err not in existing_count_errors:
+            existing_count_errors.append(err)
+
+    if existing_count_errors:
+        warning_text = "排产摘要里的数量记录异常，不能按这些数量判断结果。"
+        payload["summary_count_parse_failed"] = True
+        payload["summary_count_parse_errors"] = existing_count_errors[:10]
+        payload["warnings"] = list(payload.get("warnings") or [])
+        if warning_text not in payload["warnings"]:
+            payload["warnings"].append(warning_text)
+        payload["errors_sample"] = list(payload.get("errors_sample") or [])
+        for err in existing_count_errors[:10]:
+            if err not in payload["errors_sample"]:
+                payload["errors_sample"].append(err)
+        events = list(payload.get("degradation_events") or [])
+        if not any(str(event.get("code") or "") == "summary_count_parse_failed" for event in events if isinstance(event, dict)):
+            events.append(
+                {
+                    "code": "summary_count_parse_failed",
+                    "scope": "schedule.summary.contract",
+                    "field": "counts",
+                    "message": warning_text,
+                    "count": len(existing_count_errors),
+                }
+            )
+        payload["degradation_events"] = events
+        counters = dict(payload.get("degradation_counters") or {})
+        counters["summary_count_parse_failed"] = max(
+            int(counters.get("summary_count_parse_failed") or 0),
+            len(existing_count_errors),
+        )
+        payload["degradation_counters"] = counters
+        causes = list(payload.get("degraded_causes") or [])
+        if "summary_count_parse_failed" not in causes:
+            causes.append("summary_count_parse_failed")
+        payload["degraded_causes"] = causes
+        payload["degraded_success"] = bool(payload.get("degraded_success") or payload.get("success"))
+    payload["error_count"] = max(_safe_count(payload.get("error_count"), 0), len(payload["errors_sample"]), len(errors))
     return ScheduleSummaryContract(payload=payload)
 
 

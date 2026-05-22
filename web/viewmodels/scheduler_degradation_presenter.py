@@ -20,6 +20,9 @@ _SUMMARY_DEGRADATION_LABELS = {
     "external_group_missing": "组合并外协组资料不完整",
     "merge_context_degraded": "组合并资料不完整",
     "summary_merge_failed": "部分排产提示没有整理完整，请到排产历史或日志查看详情",
+    "optimizer_metrics_invalid": "优化指标记录异常",
+    "fallback_count_parse_failed": "排产降级统计记录异常",
+    "summary_count_parse_failed": "排产摘要数量记录异常",
 }
 
 

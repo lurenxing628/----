@@ -31,6 +31,9 @@ _PUBLIC_EVENT_MESSAGES = {
     "external_group_missing": "组合并外协组资料不完整，本次未使用这项资料。",
     "merge_context_degraded": "组合并资料不完整，本次按可确认内容继续。",
     "ortools_warmstart_failed": "系统没能复用上一次的排产结果，本次已从头重新计算。结果仍然有效，但耗时可能更长。",
+    "optimizer_metrics_invalid": "优化指标记录异常，不能按这些指标判断结果。",
+    "fallback_count_parse_failed": "排产降级统计记录异常，部分降级原因无法完整展示。",
+    "summary_count_parse_failed": "排产摘要里的数量记录异常，不能按这些数量判断结果。",
     "calendar_load_failed": "工作日历加载失败，当前不显示假期/停工背景标注。",
     "bad_time_row_skipped": "有些甘特记录的开始或结束时间写法不对，页面已先过滤。",
     "critical_chain_unavailable": "关键链信息暂时算不出来，所以甘特图不会显示关键工序的箭头和高亮框。排产结果本身仍可查看。",
@@ -52,6 +55,9 @@ _PUBLIC_WARNING_MESSAGES = {
     "截止日期无法解析，本次已忽略这个截止日期。",
     AUTO_ASSIGN_RESOURCE_MISSING_MESSAGE,
     _PUBLIC_RESOURCE_POOL_WARNING_MESSAGE,
+    "优化指标记录异常，不能按这些指标判断结果。",
+    "排产降级统计记录异常，部分降级原因无法完整展示。",
+    "排产摘要里的数量记录异常，不能按这些数量判断结果。",
 }
 
 _PUBLIC_NORMALIZED_START_TIME_WARNING_RE = re.compile(

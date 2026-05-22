@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
@@ -24,6 +25,9 @@ _SUMMARY_MERGE_ERROR_CODES = {
     "summary_warnings_assignment_failed",
     "summary_warnings_unavailable",
 }
+_OPTIMIZER_METRICS_INVALID_WARNING = "优化指标记录异常，不能按这些指标判断结果。"
+_FALLBACK_COUNT_PARSE_WARNING = "排产降级统计记录异常，部分降级原因无法完整展示。"
+_SUMMARY_COUNT_PARSE_WARNING = "排产摘要里的数量记录异常，不能按这些数量判断结果。"
 
 
 def _config_snapshot_dict(cfg: Any) -> Dict[str, Any]:
@@ -273,6 +277,48 @@ def _candidate_comparison_algo_dict(ctx: SummaryBuildContext) -> Dict[str, Any]:
     return {"candidate_comparison": dict(ctx.candidate_comparison_public)}
 
 
+def _safe_metrics_dict(metrics: Any) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    if metrics is None:
+        return None, None
+    try:
+        return metrics.to_dict(), None
+    except Exception as exc:
+        return None, {
+            "parse_failed": True,
+            "error_type": type(exc).__name__,
+            "message": _OPTIMIZER_METRICS_INVALID_WARNING,
+            "detail": str(exc)[:300],
+        }
+
+
+def _parse_summary_count(value: Any, *, field: str) -> Tuple[int, Optional[str]]:
+    if value is None or value == "":
+        return 0, None
+    if isinstance(value, bool):
+        return 0, f"{field} 不能是布尔值：{value!r}"
+    try:
+        if isinstance(value, float):
+            if not math.isfinite(value) or not value.is_integer():
+                return 0, f"{field} 必须是非负整数：{value!r}"
+            number = int(value)
+        else:
+            text = str(value).strip()
+            if not text:
+                return 0, None
+            if "." in text:
+                fv = float(text)
+                if not math.isfinite(fv) or not fv.is_integer():
+                    return 0, f"{field} 必须是非负整数：{value!r}"
+                number = int(fv)
+            else:
+                number = int(text)
+    except Exception:
+        return 0, f"{field} 必须是非负整数：{value!r}"
+    if number < 0:
+        return 0, f"{field} 不能为负数：{value!r}"
+    return number, None
+
+
 def _graph_analysis_summary_warning(ctx: SummaryBuildContext) -> Optional[str]:
     public = ctx.graph_analysis_public if isinstance(ctx.graph_analysis_public, dict) else None
     if not public:
@@ -289,6 +335,7 @@ def _graph_analysis_summary_warning(ctx: SummaryBuildContext) -> Optional[str]:
 def _algo_dict(state: AlgorithmSummaryState) -> Dict[str, Any]:
     ctx = state.ctx
     auto_assign_enabled = bool(state.downtime_state.get("auto_assign_enabled"))
+    metrics_dict, metrics_state = _safe_metrics_dict(ctx.best_metrics)
     algo: Dict[str, Any] = {
         "mode": ctx.algo_mode,
         "objective": ctx.objective_name,
@@ -299,7 +346,7 @@ def _algo_dict(state: AlgorithmSummaryState) -> Dict[str, Any]:
         "soft_objectives": [ctx.objective_name],
         "best_score": list(ctx.best_score) if ctx.best_score is not None else None,
         "best_score_schema": _best_score_schema(ctx.objective_name),
-        "metrics": ctx.best_metrics.to_dict() if ctx.best_metrics is not None else None,
+        "metrics": metrics_dict,
         "best_batch_order": list(ctx.best_order or []),
         "attempts": compact_attempts(list(ctx.attempts or []), limit=12),
         "improvement_trace": list(ctx.improvement_trace or [])[:200],
@@ -311,6 +358,8 @@ def _algo_dict(state: AlgorithmSummaryState) -> Dict[str, Any]:
         "merge_context_events": list(state.warning_state.merge_context_events),
         "freeze_window": _algo_freeze_window_dict(state),
     }
+    if metrics_state:
+        algo["metrics_state"] = metrics_state
     if state.resource_pool_enabled or (isinstance(state.resource_pool_meta, dict) and bool(state.resource_pool_meta)):
         algo["resource_pool"] = _algo_resource_pool_dict(
             resource_pool_attempted=state.resource_pool_attempted,
@@ -330,9 +379,42 @@ def _algo_dict(state: AlgorithmSummaryState) -> Dict[str, Any]:
         algo["fallback_samples"] = dict(state.fallback_state.fallback_samples)
     if state.fallback_state.param_fallbacks:
         algo["param_fallbacks"] = dict(state.fallback_state.param_fallbacks)
+    if state.fallback_state.fallback_count_parse_errors:
+        algo["fallback_count_parse_failed"] = True
+        algo["fallback_count_parse_errors"] = list(state.fallback_state.fallback_count_parse_errors[:10])
     algo.update(_graph_analysis_algo_dict(ctx))
     algo.update(_candidate_comparison_algo_dict(ctx))
     return algo
+
+
+def _append_warning_once(warnings: List[str], message: str) -> None:
+    if message not in warnings:
+        warnings.append(message)
+
+
+def _record_summary_degradation(
+    *,
+    events: List[Dict[str, Any]],
+    counters: Dict[str, Any],
+    causes: List[str],
+    code: str,
+    scope: str,
+    field: str,
+    message: str,
+    count: int,
+) -> None:
+    events.append(
+        {
+            "code": code,
+            "scope": scope,
+            "field": field,
+            "message": message,
+            "count": int(count),
+        }
+    )
+    counters[code] = int(counters.get(code) or 0) + int(count)
+    if code not in causes:
+        causes.append(code)
 
 
 def _build_result_summary_obj(
@@ -362,6 +444,61 @@ def _build_result_summary_obj(
     graph_warning = _graph_analysis_summary_warning(ctx)
     if graph_warning and graph_warning not in warnings:
         warnings.append(graph_warning)
+    degradation_events = list(summary_degradation.get("events") or [])
+    degradation_counters = dict(summary_degradation.get("counters") or {})
+    result_degraded_causes = list(degraded_causes or [])
+    result_degraded_success = bool(degraded_success)
+
+    metrics_state = public_algo.get("metrics_state") if isinstance(public_algo, dict) else None
+    if isinstance(metrics_state, dict) and metrics_state.get("parse_failed"):
+        _append_warning_once(warnings, _OPTIMIZER_METRICS_INVALID_WARNING)
+        _record_summary_degradation(
+            events=degradation_events,
+            counters=degradation_counters,
+            causes=result_degraded_causes,
+            code="optimizer_metrics_invalid",
+            scope="schedule.summary.metrics",
+            field="metrics",
+            message=_OPTIMIZER_METRICS_INVALID_WARNING,
+            count=1,
+        )
+        result_degraded_success = bool(result_degraded_success or str(completion_status or "") == "success")
+
+    fallback_parse_errors = list(getattr(fallback_state, "fallback_count_parse_errors", []) or [])
+    if fallback_parse_errors:
+        _append_warning_once(warnings, _FALLBACK_COUNT_PARSE_WARNING)
+        _record_summary_degradation(
+            events=degradation_events,
+            counters=degradation_counters,
+            causes=result_degraded_causes,
+            code="fallback_count_parse_failed",
+            scope="schedule.summary.fallback_counts",
+            field="fallback_counts",
+            message=_FALLBACK_COUNT_PARSE_WARNING,
+            count=len(fallback_parse_errors),
+        )
+        result_degraded_success = bool(result_degraded_success or str(completion_status or "") == "success")
+
+    op_count, op_count_error = _parse_summary_count(getattr(ctx.summary, "total_ops", 0), field="total_ops")
+    scheduled_ops, scheduled_ops_error = _parse_summary_count(
+        getattr(ctx.summary, "scheduled_ops", 0),
+        field="scheduled_ops",
+    )
+    failed_ops, failed_ops_error = _parse_summary_count(getattr(ctx.summary, "failed_ops", 0), field="failed_ops")
+    summary_count_errors = [item for item in (op_count_error, scheduled_ops_error, failed_ops_error) if item]
+    if summary_count_errors:
+        _append_warning_once(warnings, _SUMMARY_COUNT_PARSE_WARNING)
+        _record_summary_degradation(
+            events=degradation_events,
+            counters=degradation_counters,
+            causes=result_degraded_causes,
+            code="summary_count_parse_failed",
+            scope="schedule.summary.counts",
+            field="counts",
+            message=_SUMMARY_COUNT_PARSE_WARNING,
+            count=len(summary_count_errors),
+        )
+        result_degraded_success = bool(result_degraded_success or str(completion_status or "") == "success")
 
     result_summary = {
         "summary_schema_version": "1.2",
@@ -380,15 +517,15 @@ def _build_result_summary_obj(
         "unscheduled_batch_count": int(runtime_state.unscheduled_batch_count),
         "unscheduled_batch_ids_sample": list(runtime_state.unscheduled_batch_ids_sample[:20]),
         "legacy_external_days_defaulted_count": int(fallback_state.legacy_external_days_defaulted_count),
-        "degradation_events": list(summary_degradation.get("events") or []),
-        "degradation_counters": dict(summary_degradation.get("counters") or {}),
-        "degraded_success": bool(degraded_success),
-        "degraded_causes": list(degraded_causes or []),
+        "degradation_events": degradation_events,
+        "degradation_counters": degradation_counters,
+        "degraded_success": bool(result_degraded_success),
+        "degraded_causes": result_degraded_causes,
         "counts": {
             "batch_count": len(ctx.batches),
-            "op_count": int(getattr(ctx.summary, "total_ops", 0)),
-            "scheduled_ops": int(getattr(ctx.summary, "scheduled_ops", 0)),
-            "failed_ops": int(getattr(ctx.summary, "failed_ops", 0)),
+            "op_count": op_count,
+            "scheduled_ops": scheduled_ops,
+            "failed_ops": failed_ops,
             "unscheduled_batch_count": int(runtime_state.unscheduled_batch_count),
         },
         "overdue_batches": {"count": len(runtime_state.overdue_items), "items": runtime_state.overdue_items},
@@ -402,6 +539,15 @@ def _build_result_summary_obj(
         "warnings": warnings,
         "time_cost_ms": int(time_cost_ms),
     }
+    if summary_count_errors:
+        result_summary["summary_count_parse_failed"] = True
+        result_summary["summary_count_parse_errors"] = summary_count_errors[:10]
+        errors_sample = list(result_summary.get("errors_sample") or [])
+        for err in summary_count_errors[:10]:
+            if err not in errors_sample:
+                errors_sample.append(err)
+        result_summary["errors_sample"] = errors_sample
+        result_summary["error_count"] = max(int(result_summary.get("error_count") or 0), len(errors_sample), len(summary_count_errors))
     diagnostics = dict(optimizer_diagnostics or {})
     if ctx.graph_analysis_diagnostics is not None:
         diagnostics["graph_analysis"] = dict(ctx.graph_analysis_diagnostics)

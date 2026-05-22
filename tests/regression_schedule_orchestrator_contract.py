@@ -297,6 +297,44 @@ def main() -> None:
         },
     }
 
+    bad_count_contract = _build_summary_contract(
+        SimpleNamespace(
+            success=True,
+            total_ops="bad",
+            scheduled_ops=True,
+            failed_ops=0,
+            warnings=[],
+            errors=[],
+            duration_seconds=0.0,
+        ),
+        result_summary_obj={},
+    ).to_dict()
+    assert bool(bad_count_contract.get("summary_count_parse_failed")), bad_count_contract
+    assert int(bad_count_contract.get("error_count") or 0) > 0, bad_count_contract
+    assert bad_count_contract["counts"]["total_ops"] == 0, bad_count_contract
+    assert bad_count_contract["counts"]["scheduled_ops"] == 0, bad_count_contract
+    assert any("数量记录异常" in item for item in list(bad_count_contract.get("warnings") or [])), bad_count_contract
+    assert any(
+        str(event.get("code") or "") == "summary_count_parse_failed"
+        for event in list(bad_count_contract.get("degradation_events") or [])
+    ), bad_count_contract
+
+    integer_like_contract = _build_summary_contract(
+        SimpleNamespace(
+            success=True,
+            total_ops="2.0",
+            scheduled_ops=1.0,
+            failed_ops="0",
+            warnings=[],
+            errors=[],
+            duration_seconds=0.0,
+        ),
+        result_summary_obj={},
+    ).to_dict()
+    assert integer_like_contract["counts"]["total_ops"] == 2, integer_like_contract
+    assert integer_like_contract["counts"]["scheduled_ops"] == 1, integer_like_contract
+    assert not integer_like_contract.get("summary_count_parse_failed"), integer_like_contract
+
     summary_kwargs = captured_ok.get("summary_kwargs") or {}
     summary_ctx = summary_kwargs.get("ctx")
     assert isinstance(summary_ctx, SummaryBuildContext), summary_kwargs

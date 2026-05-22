@@ -69,10 +69,41 @@ def test_malformed_counts_override_database_success_status() -> None:
     assert derive_completion_status(result_status="success", summary=summary) == "unknown"
 
 
-def test_explicit_summary_completion_status_still_wins_over_bad_counts() -> None:
+def test_bool_counts_mark_summary_count_parse_failed() -> None:
+    summary = {"counts": {"scheduled_ops": True, "failed_ops": 0, "op_count": 1}}
+    display = build_summary_display_state(summary, result_status="success")
+
+    assert display["summary_count_parse_failed"] is True
+    assert display["completion_status"] == "unknown"
+
+
+def test_non_integer_counts_mark_summary_count_parse_failed() -> None:
+    bad_values = ["1.5", float("nan"), float("inf"), -1]
+    for bad_value in bad_values:
+        summary = {"counts": {"scheduled_ops": 1, "failed_ops": 0, "op_count": bad_value}}
+        display = build_summary_display_state(summary, result_status="success")
+
+        assert display["summary_count_parse_failed"] is True, bad_value
+        assert display["completion_status"] == "unknown", bad_value
+
+
+def test_bad_counts_override_explicit_success_completion_status() -> None:
     summary = {
         "completion_status": "success",
         "counts": {"op_count": "bad", "scheduled_ops": 1, "failed_ops": 0},
     }
 
-    assert derive_completion_status(result_status="failed", summary=summary) == "success"
+    assert derive_completion_status(result_status="failed", summary=summary) == "unknown"
+
+
+def test_backend_summary_count_parse_failed_flag_overrides_explicit_success() -> None:
+    summary = {
+        "completion_status": "success",
+        "summary_count_parse_failed": True,
+        "counts": {"op_count": 0, "scheduled_ops": 0, "failed_ops": 0},
+    }
+
+    assert derive_completion_status(result_status="success", summary=summary) == "unknown"
+    display = build_summary_display_state(summary, result_status="success")
+    assert display["summary_count_parse_failed"] is True
+    assert display["completion_status"] == "unknown"

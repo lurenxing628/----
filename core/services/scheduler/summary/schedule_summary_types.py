@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -91,6 +91,7 @@ class FallbackState:
     param_fallbacks: Dict[str, int]
     legacy_external_days_defaulted_count: int
     ortools_warmstart_failed_count: int
+    fallback_count_parse_errors: List[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
