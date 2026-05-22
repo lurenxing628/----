@@ -72,6 +72,12 @@ def test_part_service_normalize_float_rejects_nonfinite_hours() -> None:
     assert PartService._normalize_float("1.5", "工时", allow_none=False) == 1.5
 
 
+def test_part_service_normalize_float_rejects_bool_hours() -> None:
+    for bad_value in (True, False):
+        with pytest.raises(ValidationError, match="必须是数字"):
+            PartService._normalize_float(bad_value, "工时", allow_none=False)
+
+
 def test_operation_edit_rejects_unknown_batch_operation_source() -> None:
     op = BatchOperation(
         id=1,

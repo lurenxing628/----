@@ -65,6 +65,8 @@ class PartService:
     def _normalize_float(value: Any, field: str, allow_none: bool = True) -> Optional[float]:
         if value is None or (isinstance(value, str) and value.strip() == ""):
             return None if allow_none else 0.0
+        if isinstance(value, bool):
+            raise ValidationError(f"“{field}”必须是数字", field=field)
         try:
             parsed = float(value)
         except Exception as e:

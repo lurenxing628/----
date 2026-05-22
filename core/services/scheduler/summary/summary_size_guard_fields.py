@@ -127,6 +127,12 @@ def _copy_minimal_error_fields(minimal: Dict[str, Any], result_summary_obj: Dict
         minimal["error_count"] = size_guard_scalar(result_summary_obj.get("error_count"), max_chars=40)
     if result_summary_obj.get("raw_error_count") is not None:
         minimal["raw_error_count"] = size_guard_scalar(result_summary_obj.get("raw_error_count"), max_chars=40)
+    if result_summary_obj.get("summary_count_parse_failed") is not None:
+        minimal["summary_count_parse_failed"] = bool(result_summary_obj.get("summary_count_parse_failed"))
+    if isinstance(result_summary_obj.get("summary_count_parse_errors"), list):
+        minimal["summary_count_parse_errors"] = [
+            str(item)[:200] for item in list(result_summary_obj.get("summary_count_parse_errors") or [])[:10]
+        ]
     if isinstance(result_summary_obj.get("public_error_details"), list):
         minimal["public_error_details"] = guarded_items(
             result_summary_obj.get("public_error_details"),

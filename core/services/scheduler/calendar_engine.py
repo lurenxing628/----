@@ -129,6 +129,8 @@ class CalendarEngine:
         raw_efficiency = getattr(cal, "efficiency", 1.0)
         if raw_efficiency is None or (isinstance(raw_efficiency, str) and raw_efficiency.strip() == ""):
             raw_efficiency = 1.0
+        if isinstance(raw_efficiency, bool):
+            raise ValidationError("日历效率必须是数字", field="efficiency")
         try:
             efficiency = float(raw_efficiency)
         except Exception:
@@ -168,8 +170,13 @@ class CalendarEngine:
 
         cal = self._resolve_calendar_row(date_str, op_id)
 
+        raw_shift_hours = getattr(cal, "shift_hours", 0.0)
+        if raw_shift_hours is None or (isinstance(raw_shift_hours, str) and raw_shift_hours.strip() == ""):
+            raw_shift_hours = 0.0
+        if isinstance(raw_shift_hours, bool):
+            raise ValidationError("班次工时必须是数字", field="shift_hours")
         try:
-            shift_hours = float(getattr(cal, "shift_hours", 0.0) or 0.0)
+            shift_hours = float(raw_shift_hours)
         except Exception:
             raise ValidationError("班次工时必须是数字", field="shift_hours") from None
         if not math.isfinite(shift_hours):

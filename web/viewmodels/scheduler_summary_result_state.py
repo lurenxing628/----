@@ -18,6 +18,24 @@ _LEGACY_RESULT_STATUS_ALIASES = {
     "ok2": "success",
     "fail": "failed",
 }
+_SUMMARY_COUNT_PARSE_FAILED_CODE = "summary_count_parse_failed"
+
+
+def _has_summary_count_parse_marker(summary: Dict[str, Any]) -> bool:
+    if bool(summary.get("summary_count_parse_failed")):
+        return True
+    counters = summary.get("degradation_counters")
+    if isinstance(counters, dict) and counters.get(_SUMMARY_COUNT_PARSE_FAILED_CODE):
+        return True
+    causes = summary.get("degraded_causes")
+    if isinstance(causes, list) and _SUMMARY_COUNT_PARSE_FAILED_CODE in {str(item or "").strip() for item in causes}:
+        return True
+    events = summary.get("degradation_events")
+    if isinstance(events, list):
+        for event in events:
+            if isinstance(event, dict) and str(event.get("code") or "").strip() == _SUMMARY_COUNT_PARSE_FAILED_CODE:
+                return True
+    return False
 
 
 def counts_from_summary(summary: Dict[str, Any]) -> Dict[str, int]:
@@ -61,7 +79,7 @@ def counts_from_summary(summary: Dict[str, Any]) -> Dict[str, int]:
         "scheduled_ops": _to_int(counts.get("scheduled_ops", summary.get("scheduled_ops"))),
         "failed_ops": _to_int(counts.get("failed_ops", summary.get("failed_ops"))),
         "total_ops": _to_int(counts.get("op_count", counts.get("total_ops", summary.get("total_ops")))),
-        "_parse_failed": int(parse_failed or bool(summary.get("summary_count_parse_failed"))),
+        "_parse_failed": int(parse_failed or _has_summary_count_parse_marker(summary)),
     }
 
 

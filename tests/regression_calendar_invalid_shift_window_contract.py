@@ -95,6 +95,14 @@ def test_blank_calendar_numbers_still_use_business_defaults() -> None:
     assert cal.efficiency == 1.0
 
 
+def test_work_calendar_rejects_bool_calendar_numbers() -> None:
+    with pytest.raises(ValueError, match="shift_hours"):
+        WorkCalendar.from_row({"date": "2026-05-01", "shift_hours": True, "efficiency": "1"})
+
+    with pytest.raises(ValueError, match="efficiency"):
+        WorkCalendar.from_row({"date": "2026-05-01", "shift_hours": "8", "efficiency": False})
+
+
 def test_engine_rejects_negative_shift_hours() -> None:
     engine = _engine_with_calendar_row(_calendar_row(shift_hours=-1.0))
 
@@ -114,6 +122,18 @@ def test_engine_rejects_inf_efficiency() -> None:
 
     with pytest.raises(ValidationError, match="有限数字"):
         engine.policy_for_datetime(datetime(2026, 1, 1, 9, 0, 0))
+
+
+def test_engine_rejects_bool_calendar_numbers() -> None:
+    for row in (
+        _calendar_row(shift_hours=True),
+        _calendar_row(shift_hours=False),
+        _calendar_row(efficiency=True),
+        _calendar_row(efficiency=False),
+    ):
+        engine = _engine_with_calendar_row(row)
+        with pytest.raises(ValidationError, match="必须是数字"):
+            engine.policy_for_datetime(datetime(2026, 1, 1, 9, 0, 0))
 
 
 def test_engine_rejects_zero_efficiency() -> None:
