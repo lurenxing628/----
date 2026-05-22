@@ -54,6 +54,7 @@ if exist vendor (
     --hidden-import web.routes.domains.scheduler.scheduler_excel_batches ^
     --hidden-import web.routes.domains.scheduler.scheduler_excel_calendar ^
     --hidden-import web.routes.domains.scheduler.scheduler_gantt ^
+    --hidden-import web.routes.domains.scheduler.scheduler_gantt_adjustments ^
     --hidden-import web.routes.domains.scheduler.scheduler_ops ^
     --hidden-import web.routes.domains.scheduler.scheduler_resource_dispatch ^
     --hidden-import web.routes.domains.scheduler.scheduler_run ^
@@ -77,6 +78,7 @@ if exist vendor (
     --hidden-import web.routes.domains.scheduler.scheduler_excel_batches ^
     --hidden-import web.routes.domains.scheduler.scheduler_excel_calendar ^
     --hidden-import web.routes.domains.scheduler.scheduler_gantt ^
+    --hidden-import web.routes.domains.scheduler.scheduler_gantt_adjustments ^
     --hidden-import web.routes.domains.scheduler.scheduler_ops ^
     --hidden-import web.routes.domains.scheduler.scheduler_resource_dispatch ^
     --hidden-import web.routes.domains.scheduler.scheduler_run ^
