@@ -177,6 +177,33 @@ def test_ortools_bool_hours_are_visible(monkeypatch):
         )
 
 
+def test_ortools_negative_hour_parts_are_visible(monkeypatch):
+    from core.algorithms.ortools_bottleneck import OrtoolsWarmstartError, try_solve_bottleneck_batch_order
+
+    _install_fake_cp_model(monkeypatch, status=4)
+
+    for field in ("setup_hours", "unit_hours"):
+        operations, batches = _sample_inputs()
+        setattr(operations[0], field, -1)
+        with pytest.raises(OrtoolsWarmstartError, match="不能为负数"):
+            try_solve_bottleneck_batch_order(
+                operations=operations,
+                batches=batches,
+                start_dt=datetime(2026, 1, 1, 8, 0, 0),
+                logger=None,
+            )
+
+    operations, batches = _sample_inputs()
+    batches["B1"].quantity = -1
+    with pytest.raises(OrtoolsWarmstartError, match="不能为负数"):
+        try_solve_bottleneck_batch_order(
+            operations=operations,
+            batches=batches,
+            start_dt=datetime(2026, 1, 1, 8, 0, 0),
+            logger=None,
+        )
+
+
 def test_ortools_unknown_status_is_not_reported_as_failure(monkeypatch):
     from core.algorithms.ortools_bottleneck import try_solve_bottleneck_batch_order
 

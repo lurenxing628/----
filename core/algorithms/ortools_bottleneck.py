@@ -47,6 +47,11 @@ def _finite_positive_hours(*, op: Any, batch: Any) -> Optional[float]:
         unit_hours = float(raw_unit_hours or 0)
     except (TypeError, ValueError) as exc:
         raise OrtoolsWarmstartError(f"OR-Tools 预热无法读取工序工时：op={op_id!r}") from exc
+    for field, number in (("quantity", qty), ("setup_hours", setup_hours), ("unit_hours", unit_hours)):
+        if not math.isfinite(number):
+            raise OrtoolsWarmstartError(f"OR-Tools 预热{field}不是有限数字：op={op_id!r}")
+        if number < 0:
+            raise OrtoolsWarmstartError(f"OR-Tools 预热{field}不能为负数：op={op_id!r}")
     hours = float(setup_hours) + float(unit_hours) * float(qty)
     if not math.isfinite(hours):
         raise OrtoolsWarmstartError(f"OR-Tools 预热工时不是有限数字：op={op_id!r}")

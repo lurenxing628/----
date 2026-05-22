@@ -283,6 +283,8 @@ class CalendarEngine:
         """
         if hours is None:
             raise ValidationError("缺少工时参数", field="hours")
+        if isinstance(hours, bool):
+            raise ValidationError("工时必须是数字", field="hours")
         try:
             total = float(hours)
         except Exception:
@@ -341,6 +343,8 @@ class CalendarEngine:
         """
         if days is None:
             raise ValidationError("缺少周期参数", field="days")
+        if isinstance(days, bool):
+            raise ValidationError("周期必须是数字", field="days")
         try:
             d = float(days)
         except Exception:

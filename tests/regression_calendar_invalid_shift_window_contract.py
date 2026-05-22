@@ -157,6 +157,14 @@ def test_add_working_hours_rejects_inf() -> None:
         engine.add_working_hours(datetime(2026, 1, 1, 8, 0, 0), float("inf"))
 
 
+def test_add_working_hours_rejects_bool() -> None:
+    engine = _engine_with_calendar_row(_calendar_row())
+
+    for bad_value in (True, False):
+        with pytest.raises(ValidationError, match="必须是数字"):
+            engine.add_working_hours(datetime(2026, 1, 1, 8, 0, 0), bad_value)
+
+
 def test_add_calendar_days_rejects_nan() -> None:
     engine = _engine_with_calendar_row(_calendar_row())
 
@@ -169,3 +177,11 @@ def test_add_calendar_days_rejects_inf() -> None:
 
     with pytest.raises(ValidationError, match="有限数字"):
         engine.add_calendar_days(datetime(2026, 1, 1, 8, 0, 0), float("inf"))
+
+
+def test_add_calendar_days_rejects_bool() -> None:
+    engine = _engine_with_calendar_row(_calendar_row())
+
+    for bad_value in (True, False):
+        with pytest.raises(ValidationError, match="必须是数字"):
+            engine.add_calendar_days(datetime(2026, 1, 1, 8, 0, 0), bad_value)
