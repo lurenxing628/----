@@ -1398,12 +1398,12 @@ process.stdout.write(JSON.stringify({{
     assert "关键链 2" in preview["legend"]
 
     for result in (formal, preview):
-      assert "关键链前驱：T1" in result["popup"]
-      assert "设备前驱" in result["popup"]
-      assert "控制前驱" in result["popup"]
-      assert "关键链控制前驱" in result["legend"]
-      assert "控制前驱" in result["help"]
-      assert "工艺依赖，后一工序依赖前一工序" not in result["help"]
+        assert "关键链前驱：T1" in result["popup"]
+        assert "设备前驱" in result["popup"]
+        assert "控制前驱" in result["popup"]
+        assert "关键工序关系线" in result["legend"]
+        assert "工艺前后关系、设备和人员占用关系" in result["help"]
+        assert "工艺依赖，后一工序依赖前一工序" not in result["help"]
 
 
 def test_critical_chain_unavailable_semantics_match_formal_preview_and_export_html(tmp_path: Path) -> None:

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from ._helpers import RowLike, as_dict, get, parse_float
+from ._helpers import RowLike, as_dict, get, parse_float_or_default
 from .enums import SupplierStatus
 
 
@@ -20,12 +20,12 @@ class Supplier:
     @classmethod
     def from_row(cls, row: RowLike) -> Supplier:
         op_type_id = get(row, "op_type_id")
-        default_days = parse_float(get(row, "default_days"), default=1.0)
+        default_days = parse_float_or_default(get(row, "default_days"), 1.0, field="default_days")
         return cls(
             supplier_id=str(get(row, "supplier_id") or ""),
             name=str(get(row, "name") or ""),
             op_type_id=str(op_type_id) if op_type_id is not None and op_type_id != "" else None,
-            default_days=default_days if default_days is not None else 1.0,
+            default_days=default_days,
             status=(
                 str(get(row, "status") or SupplierStatus.ACTIVE.value).strip().lower() or SupplierStatus.ACTIVE.value
             ),
@@ -45,4 +45,3 @@ class Supplier:
                 "created_at": self.created_at,
             }
         )
-

@@ -23,21 +23,13 @@ from .scheduler_degradation_presenter import (
     degradation_reason_key,
     format_degradation_detail,
 )
-from .scheduler_summary_status import error_count_blocks_success_inference
+from .scheduler_summary_result_state import (
+    build_result_state,
+    counts_from_summary,
+    derive_completion_status,
+    result_status_display_label,
+)
 
-_RESULT_STATUS_LABELS = {
-    "success": "成功",
-    "partial": "部分成功",
-    "failed": "失败",
-    "simulated": "模拟排产",
-    "unknown": "有问题，需检查",
-}
-_COMPLETION_STATUS_VALUES = {"success", "partial", "failed", "unknown"}
-_LEGACY_RESULT_STATUS_ALIASES = {
-    "ok": "success",
-    "ok2": "success",
-    "fail": "failed",
-}
 _GENERIC_ERROR_MESSAGE = GENERIC_PUBLIC_ERROR_MESSAGE
 
 
@@ -263,24 +255,6 @@ def build_display_secondary_degradation_messages(
     return filtered
 
 
-def _counts_from_summary(summary: Dict[str, Any]) -> Dict[str, int]:
-    counts = summary.get("counts")
-    if not isinstance(counts, dict):
-        counts = {}
-
-    def _to_int(value: Any) -> int:
-        try:
-            return int(value or 0)
-        except Exception:
-            return 0
-
-    return {
-        "scheduled_ops": _to_int(counts.get("scheduled_ops", summary.get("scheduled_ops"))),
-        "failed_ops": _to_int(counts.get("failed_ops", summary.get("failed_ops"))),
-        "total_ops": _to_int(counts.get("op_count", counts.get("total_ops", summary.get("total_ops")))),
-    }
-
-
 def _safe_int_or_none(value: Any) -> Optional[int]:
     if value is None or value == "":
         return None
@@ -338,87 +312,6 @@ def _build_warning_pipeline_display(summary: Dict[str, Any]) -> Optional[Dict[st
     }
 
 
-def _known_completion_status(value: Any) -> str:
-    text = _normalize_result_status_value(value)
-    if text in _COMPLETION_STATUS_VALUES:
-        return text
-    return ""
-
-
-def _normalize_result_status_value(value: Any) -> str:
-    text = str(value or "").strip().lower()
-    return _LEGACY_RESULT_STATUS_ALIASES.get(text, text)
-
-
-def _completion_status_from_counts(*, status: str, scheduled_ops: int, failed_ops: int, total_ops: int) -> str:
-    if scheduled_ops <= 0 and failed_ops <= 0 and total_ops <= 0:
-        return "unknown"
-    if failed_ops > 0 and scheduled_ops > 0:
-        return "partial"
-    if failed_ops > 0:
-        return "failed"
-    if total_ops > 0 and scheduled_ops < total_ops:
-        return "partial"
-    return "success"
-
-
-def _has_summary_errors(summary: Dict[str, Any]) -> bool:
-    if error_count_blocks_success_inference(summary.get("error_count")):
-        return True
-
-    for key in ("errors", "errors_sample", "public_error_details"):
-        value = summary.get(key)
-        if isinstance(value, (list, tuple)) and len(value) > 0:
-            return True
-        if isinstance(value, str) and value.strip():
-            return True
-    return False
-
-
-def derive_completion_status(*, result_status: Any, summary: Optional[Dict[str, Any]]) -> str:
-    summary_dict = summary if isinstance(summary, dict) else {}
-    summary_status = _known_completion_status(summary_dict.get("completion_status"))
-    if summary_status:
-        return summary_status
-
-    status = _normalize_result_status_value(result_status)
-    known_status = _known_completion_status(status)
-    if known_status:
-        return known_status
-
-    if _has_summary_errors(summary_dict):
-        return "unknown"
-
-    counts = _counts_from_summary(summary_dict)
-    return _completion_status_from_counts(
-        status=status,
-        scheduled_ops=int(counts.get("scheduled_ops") or 0),
-        failed_ops=int(counts.get("failed_ops") or 0),
-        total_ops=int(counts.get("total_ops") or 0),
-    )
-
-
-def result_status_display_label(*, raw_status: Any, outcome_status: Any) -> str:
-    raw = _normalize_result_status_value(raw_status)
-    outcome = _normalize_result_status_value(outcome_status)
-    raw_label = _RESULT_STATUS_LABELS.get(raw, raw or "")
-    outcome_label = _RESULT_STATUS_LABELS.get(outcome, outcome or "")
-    if raw == "simulated" and outcome_label:
-        return f"{raw_label} / {outcome_label}"
-    return outcome_label or raw_label or "-"
-
-
-def build_result_state(*, result_status: Any, summary: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    raw_status = _normalize_result_status_value(result_status)
-    outcome_status = derive_completion_status(result_status=result_status, summary=summary)
-    return {
-        "raw_status": raw_status,
-        "outcome_status": outcome_status,
-        "is_simulated": raw_status == "simulated",
-        "display_label": result_status_display_label(raw_status=raw_status, outcome_status=outcome_status),
-    }
-
-
 def build_summary_display_state(
     summary: Optional[Dict[str, Any]],
     *,
@@ -427,6 +320,8 @@ def build_summary_display_state(
 ) -> Dict[str, Any]:
     summary_dict = summary if isinstance(summary, dict) else {}
     result_state = build_result_state(result_status=result_status, summary=summary_dict)
+    summary_counts = counts_from_summary(summary_dict)
+    summary_count_parse_failed = bool(summary_counts.get("_parse_failed"))
     completion_status = str(result_state.get("outcome_status") or "")
     if not completion_status:
         completion_status = "success"
@@ -440,6 +335,7 @@ def build_summary_display_state(
 
     warning_messages = _normalize_text_list(summary_dict.get("warnings"))
     public_warning_messages = public_summary_warning_messages(summary_dict.get("warnings"))
+    maintenance_diagnostic_count = sum(1 for item in warning_messages if not public_summary_warning_messages([item]))
     warnings_preview = public_warning_messages[:3]
     error_messages = _summary_error_messages(summary_dict)
     try:
@@ -471,8 +367,11 @@ def build_summary_display_state(
         "display_secondary_degradation_messages": display_secondary_degradation_messages,
         "warning_pipeline_display": warning_pipeline_display,
         "warnings_preview": warnings_preview,
-        "warning_total": len(warning_messages),
-        "warning_hidden_count": max(0, len(warning_messages) - len(warnings_preview)),
+        "warning_total": len(public_warning_messages),
+        "warning_hidden_count": max(0, len(public_warning_messages) - len(warnings_preview)),
+        "warning_recorded_total": len(warning_messages),
+        "warning_internal_count": maintenance_diagnostic_count,
+        "maintenance_diagnostic_count": maintenance_diagnostic_count,
         "errors_preview": error_messages[:3],
         "errors_display": error_messages,
         "error_display_count": len(error_messages),
@@ -485,13 +384,11 @@ def build_summary_display_state(
         "missing_internal_resource_ops_truncated": bool(summary_dict.get("missing_internal_resource_ops_truncated")),
         "summary_truncated": bool(summary_dict.get("summary_truncated")),
         "summary_parse_state": parse_state_dict,
+        "summary_count_parse_failed": summary_count_parse_failed,
+        "summary_count_parse_message": "排产摘要里的数量记录异常，不能按这些数量判断结果，请检查这次排产历史或日志。"
+        if summary_count_parse_failed
+        else None,
     }
 
 
-__all__ = [
-    "build_display_secondary_degradation_messages",
-    "build_result_state",
-    "build_summary_display_state",
-    "derive_completion_status",
-    "result_status_display_label",
-]
+__all__ = ["build_display_secondary_degradation_messages", "build_result_state", "build_summary_display_state", "derive_completion_status", "result_status_display_label"]

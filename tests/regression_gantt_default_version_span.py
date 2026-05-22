@@ -150,18 +150,63 @@ def test_gantt_page_and_data_ignore_offset_when_explicit_dates_present(tmp_path,
     assert data.get("tasks") == []
 
 
+def test_gantt_page_and_data_ignore_invalid_offset_when_explicit_dates_present(tmp_path, monkeypatch) -> None:
+    app = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+
+    page_resp = client.get("/scheduler/gantt?version=3&start_date=2026-05-04&end_date=2026-05-10&offset=bad")
+    html = page_resp.get_data(as_text=True)
+
+    assert page_resp.status_code == 200
+    assert 'data-start-date="2026-05-04"' in html
+    assert 'data-end-date="2026-05-10"' in html
+    assert 'data-offset="0"' in html
+
+    data_resp = client.get(
+        "/scheduler/gantt/data?view=machine&version=3&start_date=2026-05-04&end_date=2026-05-10&offset=bad"
+    )
+    payload = data_resp.get_json()
+    data = payload.get("data") or {}
+
+    assert data_resp.status_code == 200
+    assert data.get("week_start") == "2026-05-04"
+    assert data.get("week_end") == "2026-05-10"
+    assert data.get("range_source") == "request"
+
+
+def test_gantt_data_start_date_only_ignores_offset(tmp_path, monkeypatch) -> None:
+    app = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+
+    data_resp = client.get("/scheduler/gantt/data?view=machine&version=3&start_date=2026-05-04&offset=1")
+    payload = data_resp.get_json()
+    data = payload.get("data") or {}
+
+    assert data_resp.status_code == 200
+    assert data.get("week_start") == "2026-05-04"
+    assert data.get("week_end") == "2026-05-10"
+    assert data.get("range_source") == "request"
+
+
 def test_gantt_boot_sends_one_range_mode_to_data_endpoint() -> None:
     js = (REPO_ROOT / "static/js/gantt_boot.js").read_text(encoding="utf-8")
 
     start_idx = js.index('if (hasEffectiveRange) {')
     start_date_idx = js.index('url.searchParams.set("start_date", cfg.startDate)', start_idx)
     end_date_idx = js.index('url.searchParams.set("end_date", cfg.endDate)', start_idx)
-    else_idx = js.index('} else {', end_date_idx)
+    else_idx = js.index("} else if (!usesVersionSpanRange) {", end_date_idx)
     week_idx = js.index('url.searchParams.set("week_start", cfg.weekStart)', else_idx)
     offset_idx = js.index('url.searchParams.set("offset", String(cfg.offset))', week_idx)
 
     assert start_idx < start_date_idx < end_date_idx < else_idx < week_idx < offset_idx
     assert 'if (cfg.weekStart) url.searchParams.set("week_start", cfg.weekStart);\n    if (cfg.startDate)' not in js
+
+
+def test_gantt_boot_keeps_version_span_as_data_default() -> None:
+    js = (REPO_ROOT / "static/js/gantt_boot.js").read_text(encoding="utf-8")
+
+    assert 'const usesVersionSpanRange = cfg.rangeSource === "version_span";' in js
+    assert "} else if (!usesVersionSpanRange) {" in js
 
 
 def test_gantt_without_version_span_keeps_request_range_source(tmp_path, monkeypatch) -> None:

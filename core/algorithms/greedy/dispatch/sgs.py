@@ -13,10 +13,20 @@ from ..internal_slot import estimate_internal_slot, validate_internal_hours_for_
 from ..run_context import ensure_run_context
 from ..run_state import ScheduleRunState
 from .batch_order import _coerce_state, _schedule_op
+from .sgs_graph import (
+    _batch_failed_op_ids,
+    _block_graph_operation,
+    _collect_candidates,
+    _ensure_graph_ready_complete,
+    _mark_graph_operation_completed,
+    _op_id,
+    _prepare_graph_ready_state,
+    _record_graph_blocked_operations,
+)
 from .sgs_scoring import (
-    _collect_sgs_candidates,
     _positive_op_id,
     _score_external_candidate,
+    with_graph_priority_key,
 )
 from .sgs_scoring import (
     _score_internal_candidate as _score_internal_candidate_impl,
@@ -61,6 +71,7 @@ def dispatch_sgs(
     last_end_by_machine: Optional[Dict[str, datetime]] = None,
     auto_assign_enabled: bool,
     resource_pool: Optional[Dict[str, Any]],
+    graph_ready_context: Optional[Any] = None,
     results: Optional[List[ScheduleResult]] = None,
     errors: Optional[List[str]] = None,
     blocked_batches: Optional[set] = None,
@@ -111,6 +122,7 @@ def dispatch_sgs(
         bool(strict_mode),
         avg_proc_hours,
         total_hours_by_op_id,
+        graph_ready_context,
     )
     _ = scheduled_count
     return run_state.scheduled_count, run_state.failed_count
@@ -184,15 +196,24 @@ def _run_sgs_loop(
     strict_mode: bool,
     avg_proc_hours: float,
     total_hours_by_op_id: Dict[int, float],
+    graph_ready_context: Optional[Any],
 ) -> None:
+    graph_state = _prepare_graph_ready_state(graph_ready_context, ops_by_batch=ops_by_batch)
     while True:
-        candidates = _collect_sgs_candidates(
-            batch_ids_in_order=batch_ids,
+        candidates = _collect_candidates(
+            graph_state=graph_state,
+            batch_ids=batch_ids,
             ops_by_batch=ops_by_batch,
             next_idx=next_idx,
             blocked_batches=state.blocked_batches,
         )
         if not candidates:
+            if graph_state is not None:
+                _ensure_graph_ready_complete(
+                    graph_state=graph_state,
+                    ops_by_batch=ops_by_batch,
+                    blocked_batches=state.blocked_batches,
+                )
             return
         batch_id, op = _pick_best_candidate(
             _score_candidates(
@@ -209,6 +230,7 @@ def _run_sgs_loop(
                 strict_mode,
                 avg_proc_hours,
                 total_hours_by_op_id,
+                graph_state,
             )
         )
         _dispatch_selected(
@@ -224,6 +246,7 @@ def _run_sgs_loop(
             auto_assign_enabled,
             resource_pool,
             strict_mode,
+            graph_state=graph_state,
         )
 
 
@@ -241,6 +264,7 @@ def _score_candidates(
     strict_mode: bool,
     avg_proc_hours: float,
     total_hours_by_op_id: Dict[int, float],
+    graph_state: Optional[Dict[str, Any]],
 ) -> List[Tuple[Tuple[float, ...], str, Any]]:
     return [
         (
@@ -259,6 +283,7 @@ def _score_candidates(
                 strict_mode,
                 avg_proc_hours,
                 total_hours_by_op_id,
+                graph_state,
             ),
             batch_id,
             op,
@@ -282,6 +307,7 @@ def _score_candidate(
     strict_mode: bool,
     avg_proc_hours: float,
     total_hours_by_op_id: Dict[int, float],
+    graph_state: Optional[Dict[str, Any]] = None,
 ) -> Tuple[float, ...]:
     def score() -> Tuple[float, ...]:
         if (getattr(op, "source", INTERNAL) or INTERNAL).strip().lower() == EXTERNAL:
@@ -315,7 +341,14 @@ def _score_candidate(
             strict_mode=strict_mode,
         )
 
-    return score()
+    base_key = score()
+    if graph_state is None or not bool(graph_state.get("score_enabled")):
+        return base_key
+    op_id = _op_id(op)
+    graph_key = (graph_state.get("graph_priority_key_by_op_id") or {}).get(op_id)
+    if graph_key is None:
+        raise ValidationError(f"图评分上下文缺少待排工序 {op_id} 的评分 key。", field="graph_ready_context")
+    return with_graph_priority_key(base_key, graph_key)
 
 
 def _dispatch_selected(
@@ -331,6 +364,7 @@ def _dispatch_selected(
     auto_assign_enabled: bool,
     resource_pool: Optional[Dict[str, Any]],
     strict_mode: bool,
+    graph_state: Optional[Dict[str, Any]] = None,
 ) -> None:
     try:
         result, _blocked = _schedule_op(
@@ -348,13 +382,41 @@ def _dispatch_selected(
         if result and result.start_time and result.end_time:
             state.record_dispatch_success(result)
             next_idx[batch_id] = int(next_idx.get(batch_id, 0) or 0) + 1
+            if graph_state is not None:
+                _mark_graph_operation_completed(graph_state, _op_id(op))
         else:
-            state.record_dispatch_failure(batch_id, block=True, remaining_failed=_remaining_failed(batch_id, next_idx, ops_by_batch))
+            extra_failed_count = 0
+            if graph_state is not None:
+                failed_op_id = _op_id(op)
+                newly_blocked_op_ids = _block_graph_operation(graph_state, failed_op_id)
+                extra_failed_count = _record_graph_blocked_operations(
+                    state,
+                    graph_state=graph_state,
+                    failed_op_id=failed_op_id,
+                    newly_blocked_op_ids=newly_blocked_op_ids,
+                    already_counted_op_ids=_batch_failed_op_ids(batch_id, next_idx, ops_by_batch),
+                )
+            state.record_dispatch_failure(
+                batch_id,
+                block=True,
+                remaining_failed=_remaining_failed(batch_id, next_idx, ops_by_batch) + extra_failed_count,
+            )
     except ValidationError:
         raise
     except Exception:
-        state.failed_count += 1 + _remaining_failed(batch_id, next_idx, ops_by_batch)
+        extra_failed_count = 0
         state.errors.append(f"工序 {getattr(op, 'op_code', '-') or '-'} {_SCHEDULE_OPERATION_FAILED_MESSAGE}")
+        if graph_state is not None:
+            failed_op_id = _op_id(op)
+            newly_blocked_op_ids = _block_graph_operation(graph_state, failed_op_id)
+            extra_failed_count = _record_graph_blocked_operations(
+                state,
+                graph_state=graph_state,
+                failed_op_id=failed_op_id,
+                newly_blocked_op_ids=newly_blocked_op_ids,
+                already_counted_op_ids=_batch_failed_op_ids(batch_id, next_idx, ops_by_batch),
+            )
+        state.failed_count += 1 + _remaining_failed(batch_id, next_idx, ops_by_batch) + extra_failed_count
         ctx.log_exception(f"工序 {getattr(op, 'op_code', '-') or '-'} 排产异常")
         state.blocked_batches.add(batch_id)
 

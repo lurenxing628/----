@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 import sqlite3
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, Optional, Union
 
 RowLike = Union[sqlite3.Row, Dict[str, Any]]
@@ -23,7 +23,7 @@ def get(row: Optional[RowLike], key: str, default: Any = None) -> Any:
         return row.get(key, default)
     try:
         return row[key]
-    except Exception:
+    except (KeyError, IndexError):
         return default
 
 
@@ -45,7 +45,7 @@ def parse_int(value: Any, default: Optional[int] = None) -> Optional[int]:
         try:
             if math.isfinite(value) and value.is_integer():
                 return int(value)
-        except Exception:
+        except (TypeError, ValueError, OverflowError):
             return default
         return default
     try:
@@ -56,7 +56,7 @@ def parse_int(value: Any, default: Optional[int] = None) -> Optional[int]:
             return default
         try:
             return int(s)
-        except Exception:
+        except ValueError:
             pass
         try:
             d = Decimal(s)
@@ -64,10 +64,10 @@ def parse_int(value: Any, default: Optional[int] = None) -> Optional[int]:
                 return default
             if d == d.to_integral_value():
                 return int(d)
-        except Exception:
+        except (InvalidOperation, ValueError):
             return default
         return default
-    except Exception:
+    except (UnicodeDecodeError, TypeError, ValueError, ArithmeticError):
         return default
 
 
@@ -94,6 +94,32 @@ def parse_float(value: Any, default: Optional[float] = None) -> Optional[float]:
         if not math.isfinite(f):
             return default
         return f
-    except Exception:
+    except (UnicodeDecodeError, TypeError, ValueError, OverflowError):
         return default
 
+
+def parse_int_or_default(value: Any, default: int, *, field: str) -> int:
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return int(default)
+    parsed = parse_int(value, default=None)
+    if parsed is None:
+        raise ValueError(f"{field} 必须是整数，当前值无法读取：{value!r}")
+    return parsed
+
+
+def parse_float_or_default(value: Any, default: float, *, field: str) -> float:
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return float(default)
+    parsed = parse_float(value, default=None)
+    if parsed is None:
+        raise ValueError(f"{field} 必须是数字，当前值无法读取：{value!r}")
+    return parsed
+
+
+def parse_optional_float(value: Any, *, field: str) -> Optional[float]:
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    parsed = parse_float(value, default=None)
+    if parsed is None:
+        raise ValueError(f"{field} 必须是数字，当前值无法读取：{value!r}")
+    return parsed

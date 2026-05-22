@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Dict, List, Tuple
 
 from core.algorithms import ScheduleResult
 from core.algorithms.greedy.algo_stats import increment_counter
+from core.algorithms.greedy.seed import _identity_int, _invalid_identity_supplied
 from core.algorithms.value_domains import INTERNAL
 from core.infrastructure.errors import ValidationError
 
@@ -35,6 +37,8 @@ def _coerce_seed_time_range(item: Dict[str, Any], *, idx: int) -> Tuple[Any, Any
     end_time = item.get("end_time")
     if start_time is None or end_time is None:
         raise TypeError(f"第 {idx + 1} 条已有排产记录缺少开始时间或结束时间。")
+    if not isinstance(start_time, datetime) or not isinstance(end_time, datetime):
+        raise TypeError(f"第 {idx + 1} 条已有排产记录的开始时间和结束时间必须是有效时间。")
     try:
         valid_time_range = start_time < end_time
     except Exception as exc:
@@ -44,15 +48,26 @@ def _coerce_seed_time_range(item: Dict[str, Any], *, idx: int) -> Tuple[Any, Any
     return start_time, end_time
 
 
+def _coerce_optional_seed_identity(value: Any, *, idx: int, field: str) -> int:
+    identity = _identity_int(value)
+    if identity > 0:
+        return identity
+    if _invalid_identity_supplied(value):
+        raise TypeError(f"第 {idx + 1} 条已有排产记录的{field}必须是正整数。")
+    return 0
+
+
 def coerce_seed_result_item(item: Any, *, idx: int) -> ScheduleResult:
     if not isinstance(item, dict):
         raise TypeError(f"第 {idx + 1} 条已有排产记录格式不正确。")
     start_time, end_time = _coerce_seed_time_range(item, idx=idx)
+    op_id = _coerce_optional_seed_identity(item.get("op_id"), idx=idx, field="工序编号")
+    seq = _coerce_optional_seed_identity(item.get("seq"), idx=idx, field="工序号")
     return ScheduleResult(
-        op_id=int(item.get("op_id") or 0),
+        op_id=op_id,
         op_code=str(item.get("op_code") or ""),
         batch_id=str(item.get("batch_id") or ""),
-        seq=int(item.get("seq") or 0),
+        seq=seq,
         machine_id=(str(item.get("machine_id") or "") or None),
         operator_id=(str(item.get("operator_id") or "") or None),
         start_time=start_time,

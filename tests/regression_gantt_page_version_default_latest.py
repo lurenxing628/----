@@ -143,6 +143,45 @@ def test_gantt_no_history_does_not_synthesize_v1_even_with_orphan_schedule(tmp_p
     assert missing_payload["success"] is False
 
 
+def test_gantt_no_history_explicit_dates_ignore_offset(tmp_path, monkeypatch) -> None:
+    app = _build_app(tmp_path, monkeypatch, with_history=False)
+    client = app.test_client()
+
+    data_resp = client.get(
+        "/scheduler/gantt/data?view=machine&start_date=2026-03-10&end_date=2026-03-12&offset=1"
+    )
+    payload = data_resp.get_json()
+    data = payload.get("data") or {}
+
+    assert data_resp.status_code == 200
+    assert payload.get("success") is True, payload
+    assert data.get("status") == "no_history", data
+    assert data.get("week_start") == "2026-03-10", data
+    assert data.get("week_end") == "2026-03-12", data
+
+
+def test_gantt_service_no_history_explicit_dates_ignore_offset(tmp_path, monkeypatch) -> None:
+    _build_app(tmp_path, monkeypatch, with_history=False)
+
+    from core.infrastructure.database import get_connection
+    from core.services.scheduler.gantt_service import GanttService
+
+    conn = get_connection(os.environ["APS_DB_PATH"])
+    try:
+        data = GanttService(conn, logger=None, op_logger=None).get_gantt_tasks(
+            view="machine",
+            start_date="2026-03-10",
+            end_date="2026-03-12",
+            offset_weeks=1,
+        )
+    finally:
+        conn.close()
+
+    assert data.get("status") == "no_history", data
+    assert data.get("week_start") == "2026-03-10", data
+    assert data.get("week_end") == "2026-03-12", data
+
+
 def test_gantt_page_selected_version_label_includes_simulated_completion_status(tmp_path, monkeypatch) -> None:
     app = _build_app(
         tmp_path,

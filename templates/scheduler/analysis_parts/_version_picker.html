@@ -1,0 +1,31 @@
+  <div class="card aps-query-card">
+    {{ ui.aps_card_header('筛选版本', '选择要查看的排产版本；有版本后可以直接跳到设备或人员甘特图。') }}
+    <form method="get" action="{{ url_for('scheduler.analysis_page') }}" class="aps-query-form-grid aps-version-picker-form">
+      <div class="form-field">
+        <label>选择版本</label>
+        {% if versions and versions|length > 0 %}
+          <select name="version" class="w-140">
+            {% if selected_history_resolution and selected_history_resolution.history_missing %}
+              <option value="" selected disabled>v{{ selected_history_resolution.requested_version }}（不存在）</option>
+            {% endif %}
+            {% for v in versions %}
+              <option value="{{ v.version }}" {% if selected and (selected.version|int)==(v.version|int) %}selected{% endif %}>
+                {{ ui.version_option_label(v, status_zh.get(v.result_status, '结果状态未知')) }}
+              </option>
+            {% endfor %}
+          </select>
+        {% else %}
+          <span class="muted">暂无排产历史（请先执行一次排产/模拟）。</span>
+        {% endif %}
+      </div>
+      <div class="aps-query-form-actions">
+        {{ ui.button('加载', 'primary', 'md', type_attr='submit') }}
+      </div>
+      {% if selected %}
+        <div class="aps-version-link-actions">
+          {{ ui.link_button('查看设备甘特图', url_for('scheduler.gantt_page', view='machine', version=selected.version), 'secondary', 'md') }}
+          {{ ui.link_button('查看人员甘特图', url_for('scheduler.gantt_page', view='operator', version=selected.version), 'secondary', 'md') }}
+        </div>
+      {% endif %}
+    </form>
+  </div>

@@ -19,7 +19,7 @@ from .run.schedule_input_builder import build_algo_operations
 from .run.schedule_input_collector import collect_schedule_run_input
 from .run.schedule_optimizer import optimize_schedule
 from .run.schedule_orchestrator import orchestrate_schedule_run
-from .run.schedule_persistence import persist_schedule
+from .run.schedule_persistence import persist_schedule_run_with_candidates as persist_schedule
 from .run.schedule_template_lookup import get_template_and_group_for_op
 from .summary.schedule_summary import build_result_summary
 
@@ -71,6 +71,7 @@ class ScheduleService:
         self.supplier_repo = self._repos.supplier_repo
         self.schedule_repo = self._repos.schedule_repo
         self.history_repo = self._repos.history_repo
+        self.candidate_repo = self._repos.candidate_repo
 
     # -------------------------
     # 工具方法
@@ -197,6 +198,7 @@ class ScheduleService:
         simulate: bool = False,
         enforce_ready: Optional[bool] = None,
         strict_mode: bool = False,
+        run_time_budget_seconds: Any = None,
     ) -> Dict[str, Any]:
         if not _RUN_SCHEDULE_LOCK.acquire(blocking=False):
             raise ValidationError("系统正在执行排产，请稍后重试。", field="排产")
@@ -210,6 +212,7 @@ class ScheduleService:
                 simulate=simulate,
                 enforce_ready=enforce_ready,
                 strict_mode=strict_mode,
+                run_time_budget_seconds=run_time_budget_seconds,
             )
         finally:
             self._aps_schedule_input_cache = None
@@ -224,6 +227,7 @@ class ScheduleService:
         simulate: bool = False,
         enforce_ready: Optional[bool] = None,
         strict_mode: bool = False,
+        run_time_budget_seconds: Any = None,
     ) -> Dict[str, Any]:
         """
         执行排产并落库（Schedule）+ 留痕（ScheduleHistory + OperationLogs）。
@@ -251,6 +255,7 @@ class ScheduleService:
             simulate=simulate,
             enforce_ready=enforce_ready,
             strict_mode=bool(strict_mode),
+            run_time_budget_seconds=run_time_budget_seconds,
             calendar_service_cls=CalendarService,
             config_service_cls=ConfigService,
             get_snapshot_with_strict_mode=_get_snapshot_with_strict_mode,
@@ -290,6 +295,7 @@ class ScheduleService:
             missing_internal_resource_op_ids=schedule_input.missing_internal_resource_op_ids,
             overdue_items=orchestration.overdue_items,
             time_cost_ms=orchestration.time_cost_ms,
+            candidate_comparison=orchestration.candidate_comparison,
         )
 
         return {

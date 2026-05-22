@@ -42,6 +42,24 @@ def _format_choice_allow_text(valid_values: Tuple[str, ...]) -> str:
     return " / ".join(valid_values) if valid_values else "<empty>"
 
 
+def _float_matches_choice(value: float, choices: Tuple[str, ...]) -> bool:
+    if not choices:
+        return True
+    for raw_choice in choices:
+        try:
+            if abs(float(raw_choice) - float(value)) <= 1e-9:
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def _int_matches_choice(value: int, choices: Tuple[str, ...]) -> bool:
+    if not choices:
+        return True
+    return str(int(value)) in _normalize_valid_texts(choices)
+
+
 def _record_blank_choice_degradation(
     collector: DegradationCollector,
     *,
@@ -89,7 +107,7 @@ def _handle_missing_value(
     fallback: Any,
     scope: str,
     missing_policy: str,
-) -> tuple[bool, Any]:
+) -> Tuple[bool, Any]:
     label = display_field_label(field, fallback="配置项")
     policy = str(missing_policy or MISSING_POLICY_FALLBACK_WITH_DEGRADATION).strip().lower()
     if policy == MISSING_POLICY_ERROR:
@@ -209,6 +227,91 @@ def _yes_no_with_degradation(
     return to_yes_no(raw_value, default=normalized_default)
 
 
+def _coerce_float_field(
+    spec: Any,
+    value: Any,
+    *,
+    strict_mode: bool,
+    source: str,
+    active_collector: DegradationCollector,
+    effective_fallback: Any,
+    label: str,
+) -> float:
+    parsed_float = float(
+        parse_field_float(
+            value,
+            field=spec.key,
+            strict_mode=bool(strict_mode),
+            scope=source,
+            fallback=float(effective_fallback),
+            collector=active_collector,
+            min_value=spec.min_value,
+            min_inclusive=bool(spec.min_inclusive),
+            field_label=label,
+        )
+    )
+    if spec.choices and not _float_matches_choice(parsed_float, tuple(spec.choices)):
+        if strict_mode:
+            raise ValidationError(
+                f"“{label}”填写不正确：{value}（可填写：{_format_choice_allow_text(tuple(spec.choices))}）",
+                field=spec.key,
+            )
+        _record_invalid_choice_degradation(
+            active_collector,
+            scope=source,
+            field=spec.key,
+            raw_value=value,
+            fallback=str(effective_fallback),
+            valid_values=tuple(spec.choices),
+        )
+        return float(effective_fallback)
+    return parsed_float
+
+
+def _coerce_int_field(
+    spec: Any,
+    value: Any,
+    *,
+    strict_mode: bool,
+    source: str,
+    active_collector: DegradationCollector,
+    effective_fallback: Any,
+    label: str,
+) -> int:
+    min_violation_fallback = int(effective_fallback)
+    if spec.min_value is not None:
+        min_violation_fallback = int(spec.min_value)
+    parsed_int = int(
+        parse_field_int(
+            value,
+            field=spec.key,
+            strict_mode=bool(strict_mode),
+            scope=source,
+            fallback=int(effective_fallback),
+            collector=active_collector,
+            min_value=(None if spec.min_value is None else int(spec.min_value)),
+            min_violation_fallback=min_violation_fallback,
+            field_label=label,
+        )
+    )
+    if spec.choices and not _int_matches_choice(parsed_int, tuple(spec.choices)):
+        if strict_mode:
+            raise ValidationError(
+                f"“{label}”填写不正确：{value}（可填写：{_format_choice_allow_text(tuple(spec.choices))}）",
+                field=spec.key,
+            )
+        _record_invalid_choice_degradation(
+            active_collector,
+            scope=source,
+            field=spec.key,
+            raw_value=value,
+            fallback=str(effective_fallback),
+            valid_values=tuple(spec.choices),
+        )
+        return int(effective_fallback)
+    return parsed_int
+
+
 def coerce_config_field(
     key: str,
     value: Any,
@@ -258,35 +361,24 @@ def coerce_config_field(
         )
         return handled
     if spec.field_type == "float":
-        return float(
-            parse_field_float(
-                value,
-                field=spec.key,
-                strict_mode=bool(strict_mode),
-                scope=source,
-                fallback=float(effective_fallback),
-                collector=active_collector,
-                min_value=spec.min_value,
-                min_inclusive=bool(spec.min_inclusive),
-                field_label=label,
-            )
+        return _coerce_float_field(
+            spec,
+            value,
+            strict_mode=bool(strict_mode),
+            source=source,
+            active_collector=active_collector,
+            effective_fallback=effective_fallback,
+            label=label,
         )
     if spec.field_type == "int":
-        min_violation_fallback = int(effective_fallback)
-        if spec.min_value is not None:
-            min_violation_fallback = int(spec.min_value)
-        return int(
-            parse_field_int(
-                value,
-                field=spec.key,
-                strict_mode=bool(strict_mode),
-                scope=source,
-                fallback=int(effective_fallback),
-                collector=active_collector,
-                min_value=(None if spec.min_value is None else int(spec.min_value)),
-                min_violation_fallback=min_violation_fallback,
-                field_label=label,
-            )
+        return _coerce_int_field(
+            spec,
+            value,
+            strict_mode=bool(strict_mode),
+            source=source,
+            active_collector=active_collector,
+            effective_fallback=effective_fallback,
+            label=label,
         )
     raise TypeError(f"不支持的配置字段类型：{spec.field_type!r}")
 

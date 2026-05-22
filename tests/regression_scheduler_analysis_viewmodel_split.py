@@ -1,0 +1,141 @@
+from __future__ import annotations
+
+import json
+
+from web.viewmodels.scheduler_analysis_freeze import build_freeze_display
+from web.viewmodels.scheduler_analysis_metrics import build_extra_cards, extract_metrics_from_summary
+from web.viewmodels.scheduler_analysis_overview import build_analysis_labels
+from web.viewmodels.scheduler_analysis_vm import build_analysis_context, safe_float
+
+
+def _selected_summary() -> dict:
+    return {
+        "time_cost_ms": 321,
+        "invalid_due_count": 2,
+        "unscheduled_batch_count": 1,
+        "algo": {
+            "objective": "min_tardiness",
+            "comparison_metric": "total_tardiness_hours",
+            "best_score_schema": [
+                {"index": 0, "key": "failed_ops", "label": "失败工序数"},
+                {"index": 1, "key": "total_tardiness_hours"},
+            ],
+            "metrics": {
+                "overdue_count": 4,
+                "total_tardiness_hours": 9.5,
+                "weighted_tardiness_hours": 11.0,
+                "makespan_hours": 32.0,
+                "makespan_internal_hours": 25.0,
+                "changeover_count": 3,
+            },
+            "freeze_window": {
+                "enabled": "yes",
+                "freeze_applied": True,
+                "freeze_state": "degraded",
+                "days": 2,
+                "frozen_op_count": 4,
+                "frozen_batch_count": 7,
+                "frozen_batch_ids_sample": ["B001", "B002", "B003", "B004", "B005", "B006"],
+                "degraded": True,
+                "degradation_reason": "示例原因",
+            },
+            "config_snapshot": {
+                "objective": "min_tardiness",
+                "sort_strategy": "fifo",
+                "dispatch_mode": "sgs",
+                "dispatch_rule": "slack",
+                "time_budget_seconds": 10,
+            },
+        },
+    }
+
+
+def test_analysis_viewmodel_split_preserves_context_payload() -> None:
+    prev_summary = {
+        "algo": {
+            "metrics": {
+                "overdue_count": 1,
+                "total_tardiness_hours": 4.5,
+                "weighted_tardiness_hours": 5.0,
+                "makespan_hours": 20.0,
+                "makespan_internal_hours": 18.0,
+                "changeover_count": 1,
+            }
+        },
+        "invalid_due_count": 1,
+        "unscheduled_batch_count": 0,
+    }
+    summary = _selected_summary()
+
+    ctx = build_analysis_context(
+        selected_ver=7,
+        raw_hist=[
+            {"version": 6, "result_summary": prev_summary},
+            {"version": 7, "result_summary": summary},
+        ],
+        selected_item={"version": 7, "result_summary": summary},
+    )
+
+    expected_keys = {
+        "selected",
+        "selected_summary",
+        "selected_metrics",
+        "prev_metrics",
+        "objective_key",
+        "algo_objective_label",
+        "best_score_schema_display",
+        "compat_fallback",
+        "candidate_comparison_display",
+        "diagnostic_sections",
+        "analysis_labels",
+        "algo_config_snapshot_objective_label",
+        "objective_key_label",
+        "objective_choice_labels",
+        "attempts",
+        "trace_chart",
+        "trend_rows",
+        "trend_charts",
+        "extra_cards",
+        "freeze_display",
+        "summary_degradation_messages",
+        "display_summary_degradation_messages",
+    }
+    assert expected_keys <= set(ctx)
+    assert ctx["selected_metrics"]["overdue_count"] == 4
+    assert ctx["prev_metrics"]["overdue_count"] == 1
+    assert ctx["extra_cards"] == [
+        {"key": "invalid_due_count", "label": "数据异常批次数", "value": 2, "delta": None, "type_class": "type-info"},
+        {"key": "unscheduled_batch_count", "label": "未排批次数", "value": 1, "delta": None, "type_class": ""},
+    ]
+    assert ctx["freeze_display"]["state_label"] == "部分未生效"
+    assert ctx["freeze_display"]["sample_batches"] == ["B001", "B002", "B003", "B004", "B005"]
+    assert ctx["freeze_display"]["sample_more_count"] == 2
+    assert ctx["compat_fallback"]["used"] is False
+    assert ctx["best_score_schema_display"][1]["display_label"] == "总拖期小时"
+    assert ctx["analysis_labels"]["dispatch_mode"]["sgs"] == "智能派工"
+    assert ctx["analysis_labels"]["dispatch_rule"]["slack"] == "时间余量少的先做"
+    assert safe_float("3.5") == 3.5
+    json.dumps(ctx, ensure_ascii=False)
+
+
+def test_split_helpers_keep_standalone_behavior() -> None:
+    summary = _selected_summary()
+    metrics = extract_metrics_from_summary(summary)
+
+    assert metrics and metrics["changeover_count"] == 3
+    assert build_extra_cards(summary, metrics, {"invalid_due_count": 1})[0]["delta"] == 1
+    assert build_freeze_display(summary)["state"] == "degraded"
+    assert build_analysis_labels()["status"]["partial"] == "部分成功"
+
+
+def test_analysis_viewmodel_split_preserves_legacy_compat_fallback() -> None:
+    summary = {"algo": {"objective": "min_tardiness", "metrics": {"total_tardiness_hours": 3.5}}}
+
+    ctx = build_analysis_context(
+        selected_ver=8,
+        raw_hist=[{"version": 8, "result_summary": summary}],
+        selected_item={"version": 8, "result_summary": summary},
+    )
+
+    assert ctx["compat_fallback"]["used"] is True
+    assert ctx["compat_fallback"]["missing_field_labels"] == ["优化对比指标", "评分顺序"]

@@ -43,6 +43,15 @@ _YES_NO_LABELS = {
 
 _YES_NO_CHOICES = tuple(_YES_NO_LABELS.keys())
 _OBJECTIVE_LABELS = _objective_choice_labels()
+_GRAPH_ANALYSIS_MODE_LABELS = {
+    "off": "关闭",
+    "report": "只看分析报告",
+    "on": "参与排产",
+}
+_GRAPH_CANDIDATE_WEIGHT_COUNT_LABELS = {"3": "3 档（更快）", "5": "5 档（默认）", "7": "7 档（更细）"}
+_GRAPH_SELECTION_POLICY_LABELS = {"balanced": "综合看交期和整体分数", "score_only": "只看整体分数"}
+_GRAPH_OVERDUE_TOLERANCE_COUNT_LABELS = {"0": "0 批", "1": "1 批（默认）", "2": "2 批"}
+_GRAPH_TARDINESS_TOLERANCE_RATIO_LABELS = {"0.05": "5%", "0.1": "10%（默认）", "0.2": "20%"}
 
 _FIELD_LABEL_ALIASES = {
     "preset_name": "方案名称",
@@ -52,6 +61,28 @@ _FIELD_LABEL_ALIASES = {
 
 def _choice_pairs(choice_labels: Dict[str, str]) -> Tuple[Dict[str, str], ...]:
     return tuple({"value": key, "label": value} for key, value in choice_labels.items())
+
+
+def _candidate_option_spec(
+    key: str,
+    field_type: str,
+    default: Any,
+    label: str,
+    description: str,
+    choices: Tuple[str, ...],
+    choice_labels: Dict[str, str],
+    hint: str,
+) -> ConfigFieldSpec:
+    return ConfigFieldSpec(
+        key=key,
+        field_type=field_type,
+        default=default,
+        label=label,
+        description=description,
+        choices=choices,
+        choice_labels=dict(choice_labels),
+        page_metadata=ConfigFieldPageMetadata(key=key, label=label, hint=hint, choices=_choice_pairs(choice_labels)),
+    )
 
 
 _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
@@ -294,6 +325,79 @@ _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
             key="freeze_window_days",
             label="锁定天数",
             unit="天",
+        ),
+    ),
+    ConfigFieldSpec(
+        key="graph_analysis_mode",
+        field_type="enum",
+        default="on",
+        label="工序图分析",
+        description="工序先后关系分析：关闭 / 只看分析报告 / 检查通过后参与排产",
+        choices=("off", "report", "on"),
+        choice_labels=dict(_GRAPH_ANALYSIS_MODE_LABELS),
+        page_metadata=ConfigFieldPageMetadata(
+            key="graph_analysis_mode",
+            label="工序图分析",
+            hint="默认选择“参与排产”。这样每次排产都会先排普通方案，再试几档重点工序优先方案，最后自动采用更合适的一版。",
+            choices=_choice_pairs(_GRAPH_ANALYSIS_MODE_LABELS),
+        ),
+    ),
+    ConfigFieldSpec(
+        key="graph_block_on_cycle",
+        field_type="yes_no",
+        default="no",
+        label="工序关系互相卡住时停止排产",
+        description="工序先后关系互相卡住时是否停止排产；默认不停止",
+        choices=_YES_NO_CHOICES,
+        choice_labels=_YES_NO_LABELS,
+        page_metadata=ConfigFieldPageMetadata(
+            key="graph_block_on_cycle",
+            label="工序关系互相卡住时停止排产",
+            hint="一般保持关闭。打开后，如果发现工序先后关系互相卡住，本次排产会直接停下，让你先修资料；关闭时会在结果里提醒问题，排产继续走可用的方案。",
+        ),
+    ),
+    ConfigFieldSpec(
+        key="graph_critical_weight",
+        field_type="int",
+        default=500,
+        label="关键路径权重",
+        description="选择“参与排产”且工序关系可用时，关键链路上的工序会更靠前；填 0 表示不按关键链路加分",
+        min_value=0,
+        page_metadata=ConfigFieldPageMetadata(
+            key="graph_critical_weight",
+            label="关键路径权重",
+            hint="选择“参与排产”且工序关系可用时生效。数值越大，处在关键链路上的工序越容易提前；填 0 表示不使用这项加分。",
+        ),
+    ),
+    ConfigFieldSpec(
+        key="graph_impact_weight",
+        field_type="int",
+        default=10,
+        label="后续影响权重",
+        description="选择“参与排产”且工序关系可用时，会影响更多后续工序的当前工序会更靠前；填 0 表示不按影响范围加分",
+        min_value=0,
+        page_metadata=ConfigFieldPageMetadata(
+            key="graph_impact_weight",
+            label="后续影响权重",
+            hint="选择“参与排产”且工序关系可用时生效。数值越大，后面牵着更多工序的当前工序越容易提前；填 0 表示不使用这项加分。",
+        ),
+    ),
+    _candidate_option_spec("graph_candidate_weight_count", "int", 5, "重点工序方案档数", "参与排产时，系统额外尝试几档重点工序优先方案", ("3", "5", "7"), _GRAPH_CANDIDATE_WEIGHT_COUNT_LABELS, "默认 5 档。档数越多，系统会多试几种排法，结果更容易挑细一点，但也会多花一点时间。"),
+    _candidate_option_spec("graph_selection_policy", "enum", "balanced", "最终方案选择方式", "系统自动挑最终采用方案时使用的规则", ("balanced", "score_only"), _GRAPH_SELECTION_POLICY_LABELS, "默认综合判断。综合判断会先避免明显拖期更多的方案，再看整体排产分数；只看整体分数则完全按分数最高的方案来选。"),
+    _candidate_option_spec("graph_overdue_tolerance_count", "int", 1, "允许多超期批次数", "综合选择方案时，最多允许比当前最好方案多几个超期批次", ("0", "1", "2"), _GRAPH_OVERDUE_TOLERANCE_COUNT_LABELS, "默认 1 批。综合判断时，如果一个方案让超期批次数多太多，系统不会只因为分数高就采用它。"),
+    _candidate_option_spec("graph_tardiness_tolerance_ratio", "float", 0.10, "允许多拖期比例", "综合选择方案时，最多允许比当前最好方案多出的拖期比例", ("0.05", "0.1", "0.2"), _GRAPH_TARDINESS_TOLERANCE_RATIO_LABELS, "默认 10%。综合判断时，如果一个方案拖期时间多太多，系统不会只因为分数高就采用它。"),
+    ConfigFieldSpec(
+        key="graph_debug_export",
+        field_type="yes_no",
+        default="no",
+        label="导出工序图排查文件",
+        description="是否导出工序先后关系排查文件",
+        choices=_YES_NO_CHOICES,
+        choice_labels=_YES_NO_LABELS,
+        page_metadata=ConfigFieldPageMetadata(
+            key="graph_debug_export",
+            label="导出工序图排查文件",
+            hint="默认关闭。一般调度员不用打开；需要排查工序前后关系问题时，再由维护人员开启。",
         ),
     ),
 )

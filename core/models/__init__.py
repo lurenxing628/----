@@ -42,6 +42,7 @@ from .part import Part
 from .part_operation import PartOperation
 from .resource_team import ResourceTeam
 from .schedule import Schedule
+from .schedule_candidate import ScheduleCandidate, ScheduleCandidateRows, ScheduleCandidateSelection
 from .schedule_history import ScheduleHistory
 from .supplier import Supplier
 from .system_config import SystemConfig
@@ -78,6 +79,9 @@ __all__ = [
     "Batch",
     "BatchOperation",
     "Schedule",
+    "ScheduleCandidate",
+    "ScheduleCandidateRows",
+    "ScheduleCandidateSelection",
     "WorkCalendar",
     "OperatorCalendar",
     "ScheduleConfig",

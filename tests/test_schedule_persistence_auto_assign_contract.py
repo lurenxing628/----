@@ -10,7 +10,12 @@ import pytest
 
 from core.infrastructure.database import CURRENT_SCHEMA_VERSION, ensure_schema
 from core.infrastructure.errors import ValidationError
-from core.services.scheduler.run.schedule_persistence import build_validated_schedule_payload, persist_schedule
+from core.services.scheduler.run.schedule_persistence import (
+    ValidatedSchedulePayload,
+    ValidatedScheduleRow,
+    build_validated_schedule_payload,
+    persist_schedule,
+)
 from core.services.scheduler.schedule_service import ScheduleService
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -97,6 +102,77 @@ def test_schedule_payload_rejects_duplicate_op_id_before_persistence() -> None:
 
     assert details.get("sample_op_ids") == [1], details
     assert details.get("count") == 1, details
+
+
+@pytest.mark.parametrize(
+    "invalid_result, expected_text",
+    [
+        (_result(2, source="internal", machine_id=None, operator_id="OP_A"), "internal 工序必须有设备和人员"),
+        (_result(2, source="internal", machine_id="MC_A", operator_id=None), "internal 工序必须有设备和人员"),
+        (
+            SimpleNamespace(
+                op_id=2,
+                op_code="B001_02",
+                batch_id="B001",
+                seq=2,
+                machine_id="MC_A",
+                operator_id="OP_A",
+                start_time="2026-01-01 08:00:00",
+                end_time=_make_dt(1),
+                source="internal",
+                op_type_name="A",
+            ),
+            "start_time/end_time 必须是有效时间",
+        ),
+        (_result(2, source="legacy", machine_id="MC_A", operator_id="OP_A"), "source 必须是 internal 或 external"),
+    ],
+)
+def test_schedule_payload_rejects_invalid_persist_rows_before_any_valid_save(invalid_result, expected_text) -> None:
+    valid = _result(1, machine_id="MC_A", operator_id="OP_A", start_offset=0, end_offset=1)
+
+    details = _assert_validation_reason(
+        [valid, invalid_result],
+        allowed_op_ids={1, 2},
+        reason="invalid_schedule_rows",
+    )
+
+    assert expected_text in "\n".join(details.get("validation_errors") or []), details
+
+
+def test_schedule_payload_rejects_result_source_that_disagrees_with_operation_source() -> None:
+    valid = _result(1, machine_id="MC_A", operator_id="OP_A", source="internal")
+    wrong_source = _result(2, machine_id="MC_A", operator_id="OP_A", source="external")
+    operations = [
+        SimpleNamespace(id=1, source="internal"),
+        SimpleNamespace(id=2, source="internal"),
+    ]
+
+    with pytest.raises(ValidationError) as exc_info:
+        build_validated_schedule_payload(
+            [valid, wrong_source],
+            allowed_op_ids={1, 2},
+            operations=operations,
+        )
+
+    details = dict(getattr(exc_info.value, "details", {}) or {})
+    assert details.get("reason") == "invalid_schedule_rows", details
+    assert "source 与原工序不一致" in "\n".join(details.get("validation_errors") or []), details
+
+
+def test_schedule_payload_rejects_dirty_operation_source_instead_of_trusting_result_source() -> None:
+    result = _result(1, machine_id="MC_A", operator_id="OP_A", source="internal")
+    operations = [SimpleNamespace(id=1, source="legacy")]
+
+    with pytest.raises(ValidationError) as exc_info:
+        build_validated_schedule_payload(
+            [result],
+            allowed_op_ids={1},
+            operations=operations,
+        )
+
+    details = dict(getattr(exc_info.value, "details", {}) or {})
+    assert details.get("reason") == "invalid_schedule_rows", details
+    assert "source 必须是 internal 或 external" in "\n".join(details.get("validation_errors") or []), details
 
 
 def _seed_common(conn: sqlite3.Connection, rows: Iterable[tuple]) -> None:
@@ -234,6 +310,143 @@ def test_simulate_keeps_real_status_and_auto_assign_resources_unchanged() -> Non
         assert int(conn.execute("SELECT COUNT(1) AS cnt FROM Schedule WHERE version=11").fetchone()["cnt"] or 0) == 1
         hist = conn.execute("SELECT result_status FROM ScheduleHistory WHERE version=11").fetchone()
         assert hist is not None and hist["result_status"] == "simulated"
+    finally:
+        conn.close()
+
+
+def test_persist_schedule_revalidates_manual_payload_before_writing() -> None:
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON;")
+    _load_schema(conn)
+    try:
+        _seed_common(conn, [(1, "internal", "ready", "MC_A", "OP_A")])
+        svc = ScheduleService(conn, logger=None, op_logger=None)
+        operations = [svc.op_repo.get(1)]
+        payload = ValidatedSchedulePayload(
+            schedule_rows=[
+                ValidatedScheduleRow(
+                    op_id=1,
+                    machine_id="",
+                    operator_id="OP_A",
+                    start_time=_make_dt(0),
+                    end_time=_make_dt(1),
+                    source="internal",
+                )
+            ],
+            scheduled_op_ids={1},
+            assigned_by_op_id={},
+        )
+
+        with pytest.raises(ValidationError) as exc_info:
+            persist_schedule(
+                svc,
+                **_base_persist_kwargs(
+                    svc,
+                    cfg=SimpleNamespace(auto_assign_persist="no"),
+                    version=31,
+                    payload=payload,
+                    operations=operations,
+                    simulate=False,
+                    missing_internal_resource_op_ids=set(),
+                ),
+            )
+
+        details = dict(getattr(exc_info.value, "details", {}) or {})
+        assert details.get("reason") == "invalid_schedule_rows", details
+        assert "internal 工序必须有设备和人员" in "\n".join(details.get("validation_errors") or []), details
+        assert int(conn.execute("SELECT COUNT(1) AS cnt FROM Schedule WHERE version=31").fetchone()["cnt"] or 0) == 0
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize(
+    "payload, operations, expected_text",
+    [
+        (
+            ValidatedSchedulePayload(
+                schedule_rows=[
+                    ValidatedScheduleRow(
+                        op_id=1,
+                        machine_id="",
+                        operator_id="",
+                        start_time=_make_dt(0),
+                        end_time=_make_dt(1),
+                        source="external",
+                    )
+                ],
+                scheduled_op_ids={1},
+                assigned_by_op_id={},
+            ),
+            [SimpleNamespace(id=1, source="internal")],
+            "source 与原工序不一致",
+        ),
+        (
+            ValidatedSchedulePayload(
+                schedule_rows=[
+                    ValidatedScheduleRow(
+                        op_id=1,
+                        machine_id="MC_A",
+                        operator_id="OP_A",
+                        start_time=_make_dt(0),
+                        end_time=_make_dt(1),
+                        source="internal",
+                    )
+                ],
+                scheduled_op_ids={1},
+                assigned_by_op_id={},
+            ),
+            [],
+            "工序超出本次可重排范围",
+        ),
+        (
+            ValidatedSchedulePayload(
+                schedule_rows=[
+                    ValidatedScheduleRow(
+                        op_id=1,
+                        machine_id="MC_A",
+                        operator_id="OP_A",
+                        start_time=_make_dt(0),
+                        end_time=_make_dt(1),
+                        source="internal",
+                    )
+                ],
+                scheduled_op_ids=[1, 1],  # type: ignore[arg-type]
+                assigned_by_op_id={},
+            ),
+            [SimpleNamespace(id=1, source="internal")],
+            "payload.scheduled_op_ids: 重复工序编号 1",
+        ),
+    ],
+)
+def test_persist_schedule_revalidates_manual_payload_scope_source_and_ids(payload, operations, expected_text) -> None:
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON;")
+    _load_schema(conn)
+    try:
+        _seed_common(conn, [(1, "internal", "ready", "MC_A", "OP_A")])
+        svc = ScheduleService(conn, logger=None, op_logger=None)
+
+        with pytest.raises(ValidationError) as exc_info:
+            persist_schedule(
+                svc,
+                **_base_persist_kwargs(
+                    svc,
+                    cfg=SimpleNamespace(auto_assign_persist="no"),
+                    version=32,
+                    payload=payload,
+                    operations=operations,
+                    simulate=False,
+                    missing_internal_resource_op_ids=set(),
+                ),
+            )
+
+        details = dict(getattr(exc_info.value, "details", {}) or {})
+        assert details.get("reason") == "invalid_schedule_rows", details
+        assert expected_text in "\n".join(details.get("validation_errors") or []), details
+        assert int(conn.execute("SELECT COUNT(1) AS cnt FROM Schedule WHERE version=32").fetchone()["cnt"] or 0) == 0
+        assert int(conn.execute("SELECT COUNT(1) AS cnt FROM ScheduleHistory WHERE version=32").fetchone()["cnt"] or 0) == 0
     finally:
         conn.close()
 

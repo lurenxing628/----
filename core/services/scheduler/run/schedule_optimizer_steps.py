@@ -87,6 +87,7 @@ def _evaluate_ortools_candidate(
     objective_name: str,
     optimizer_algo_stats: Optional[Dict[str, Any]],
     readiness_gate_enabled: bool,
+    graph_ready_context: Optional[Any],
 ) -> Dict[str, Any]:
     res, summ, used_strat, used_params = _schedule_with_optional_strict_mode(
         scheduler,
@@ -104,6 +105,7 @@ def _evaluate_ortools_candidate(
         dispatch_rule=dispatch_rule_cfg,
         resource_pool=resource_pool,
         readiness_gate_enabled=bool(readiness_gate_enabled),
+        graph_ready_context=graph_ready_context,
     )
     metrics = compute_metrics(res, batches)
     score = (float(summ.failed_ops),) + objective_score(objective_name, metrics)
@@ -202,6 +204,7 @@ def _run_ortools_warmstart(
     logger: Any,
     optimizer_algo_stats: Optional[Dict[str, Any]] = None,
     readiness_gate_enabled: bool = False,
+    graph_ready_context: Optional[Any] = None,
     strict_mode: bool = False,
     clock: Optional[Callable[[], float]] = None,
 ) -> Optional[Dict[str, Any]]:
@@ -244,6 +247,7 @@ def _run_ortools_warmstart(
             objective_name=objective_name,
             optimizer_algo_stats=optimizer_algo_stats,
             readiness_gate_enabled=bool(readiness_gate_enabled),
+            graph_ready_context=graph_ready_context,
         )
         _append_ortools_attempt(attempts=attempts, candidate=cand)
         if best is None or cand["score"] < best["score"]:
@@ -308,6 +312,7 @@ def _evaluate_multi_start_candidate(
     objective_name: str,
     optimizer_algo_stats: Optional[Dict[str, Any]],
     readiness_gate_enabled: bool,
+    graph_ready_context: Optional[Any],
 ) -> Dict[str, Any]:
     res, summ, used_strat, used_params = _schedule_with_optional_strict_mode(
         scheduler,
@@ -325,6 +330,7 @@ def _evaluate_multi_start_candidate(
         dispatch_rule=dispatch_rule,
         resource_pool=resource_pool,
         readiness_gate_enabled=bool(readiness_gate_enabled),
+        graph_ready_context=graph_ready_context,
     )
     metrics = compute_metrics(res, batches)
     score = (float(summ.failed_ops),) + objective_score(objective_name, metrics)
@@ -367,6 +373,7 @@ def _run_multi_start(
     build_order: Any,
     optimizer_algo_stats: Optional[Dict[str, Any]] = None,
     readiness_gate_enabled: bool = False,
+    graph_ready_context: Optional[Any] = None,
     strict_mode: bool = False,
     clock: Optional[Callable[[], float]] = None,
 ) -> Optional[Dict[str, Any]]:
@@ -424,6 +431,7 @@ def _run_multi_start(
                         objective_name=objective_name,
                         optimizer_algo_stats=optimizer_algo_stats,
                         readiness_gate_enabled=bool(readiness_gate_enabled),
+                        graph_ready_context=graph_ready_context,
                     ),
                     attempts=attempts,
                     strategy_key=k,

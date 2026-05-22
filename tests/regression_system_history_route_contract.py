@@ -272,6 +272,27 @@ def test_system_history_page_renders_warning_pipeline_guard_html(tmp_path, monke
     assert "INTERNAL_RESULT_SUMMARY_SECRET" not in html
 
 
+def test_system_history_page_hides_zero_warning_preview_button(tmp_path, monkeypatch) -> None:
+    summary = {
+        "warnings": ["sqlite OperationalError: /Users/private/aps.db locked"],
+        "algo": {"metrics": {"overdue_count": 0}},
+    }
+    app = _build_real_app(tmp_path, monkeypatch, summary_obj=summary)
+    client = app.test_client()
+
+    response = client.get("/system/history?version=3")
+    html = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "提醒：1 条" not in html
+    assert "维护诊断：1 条" in html
+    assert "查看前 0 条提醒" not in html
+    assert "另有 1 条提醒" not in html
+    assert "当前详情没有可安全展开的提醒明细" not in html
+    assert "这次没有需要调度员处理的业务提醒" in html
+    assert "sqlite" not in html
+
+
 def test_system_history_page_renders_missing_version_notice(tmp_path, monkeypatch) -> None:
     app = _build_real_app(tmp_path, monkeypatch, summary_obj={"warnings": []})
     client = app.test_client()

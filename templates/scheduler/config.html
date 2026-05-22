@@ -17,6 +17,15 @@
   {% set time_budget_seconds_meta = config_field_metadata["time_budget_seconds"] %}
   {% set freeze_window_enabled_meta = config_field_metadata["freeze_window_enabled"] %}
   {% set freeze_window_days_meta = config_field_metadata["freeze_window_days"] %}
+  {% set graph_analysis_mode_meta = config_field_metadata["graph_analysis_mode"] %}
+  {% set graph_block_on_cycle_meta = config_field_metadata["graph_block_on_cycle"] %}
+  {% set graph_critical_weight_meta = config_field_metadata["graph_critical_weight"] %}
+  {% set graph_impact_weight_meta = config_field_metadata["graph_impact_weight"] %}
+  {% set graph_candidate_weight_count_meta = config_field_metadata["graph_candidate_weight_count"] %}
+  {% set graph_selection_policy_meta = config_field_metadata["graph_selection_policy"] %}
+  {% set graph_overdue_tolerance_count_meta = config_field_metadata["graph_overdue_tolerance_count"] %}
+  {% set graph_tardiness_tolerance_ratio_meta = config_field_metadata["graph_tardiness_tolerance_ratio"] %}
+  {% set graph_debug_export_meta = config_field_metadata["graph_debug_export"] %}
   {% macro render_config_field_warning(field_key) -%}
     {% set warning = config_field_warnings.get(field_key) %}
     {% if warning %}
@@ -196,6 +205,94 @@
         </div>
       </div>
 
+      <div class="scheduler-config-section scheduler-config-section--graph">
+        <div class="scheduler-config-section-heading">
+          <h4 class="section-title scheduler-config-section-title">工序图分析配置</h4>
+          <div class="scheduler-config-mode-guide" aria-label="工序图分析选项说明">
+            <div class="scheduler-config-mode-guide-item">
+              <span class="scheduler-config-mode-guide-label">只看分析报告</span>
+              <span class="scheduler-config-mode-guide-copy">系统只检查工序之间的先后关系，不会改变排产结果。</span>
+            </div>
+            <div class="scheduler-config-mode-guide-item">
+              <span class="scheduler-config-mode-guide-label">参与排产</span>
+              <span class="scheduler-config-mode-guide-copy">系统会自动比较普通方案和重点工序优先方案，最后采用更合适的一版。</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="scheduler-config-form-grid scheduler-config-form-grid--graph">
+          <div class="scheduler-config-field scheduler-config-field--wide">
+            <label>{{ graph_analysis_mode_meta.label }}</label>
+            <select name="graph_analysis_mode">
+              {% for choice in graph_analysis_mode_meta.choices %}
+                <option value="{{ choice.value }}" {% if cfg.graph_analysis_mode == choice.value %}selected{% endif %}>{{ choice.label }}</option>
+              {% endfor %}
+            </select>
+            <div class="scheduler-config-hint">{{ graph_analysis_mode_meta.hint }}</div>
+            {{ render_config_field_warning("graph_analysis_mode") }}
+          </div>
+
+          <div class="scheduler-config-field">
+            <label>{{ graph_critical_weight_meta.label }}</label>
+            <input name="graph_critical_weight" value="{{ cfg.graph_critical_weight }}">
+            <div class="scheduler-config-hint">{{ graph_critical_weight_meta.hint }}</div>
+            {{ render_config_field_warning("graph_critical_weight") }}
+          </div>
+
+          <div class="scheduler-config-field">
+            <label>{{ graph_impact_weight_meta.label }}</label>
+            <input name="graph_impact_weight" value="{{ cfg.graph_impact_weight }}">
+            <div class="scheduler-config-hint">{{ graph_impact_weight_meta.hint }}</div>
+            {{ render_config_field_warning("graph_impact_weight") }}
+          </div>
+
+          <div class="scheduler-config-field">
+            <label>{{ graph_candidate_weight_count_meta.label }}</label>
+            <select name="graph_candidate_weight_count">
+              {% for choice in graph_candidate_weight_count_meta.choices %}
+                <option value="{{ choice.value }}" {% if cfg.graph_candidate_weight_count|string == choice.value|string %}selected{% endif %}>{{ choice.label }}</option>
+              {% endfor %}
+            </select>
+            <div class="scheduler-config-hint">{{ graph_candidate_weight_count_meta.hint }}</div>
+            {{ render_config_field_warning("graph_candidate_weight_count") }}
+          </div>
+
+          <div class="scheduler-config-field">
+            <label>{{ graph_selection_policy_meta.label }}</label>
+            <select name="graph_selection_policy">
+              {% for choice in graph_selection_policy_meta.choices %}
+                <option value="{{ choice.value }}" {% if cfg.graph_selection_policy == choice.value %}selected{% endif %}>{{ choice.label }}</option>
+              {% endfor %}
+            </select>
+            <div class="scheduler-config-hint">{{ graph_selection_policy_meta.hint }}</div>
+            {{ render_config_field_warning("graph_selection_policy") }}
+          </div>
+
+          <div class="scheduler-config-field">
+            <label>{{ graph_overdue_tolerance_count_meta.label }}</label>
+            <select name="graph_overdue_tolerance_count">
+              {% for choice in graph_overdue_tolerance_count_meta.choices %}
+                <option value="{{ choice.value }}" {% if cfg.graph_overdue_tolerance_count|string == choice.value|string %}selected{% endif %}>{{ choice.label }}</option>
+              {% endfor %}
+            </select>
+            <div class="scheduler-config-hint">{{ graph_overdue_tolerance_count_meta.hint }}</div>
+            {{ render_config_field_warning("graph_overdue_tolerance_count") }}
+          </div>
+
+          <div class="scheduler-config-field">
+            <label>{{ graph_tardiness_tolerance_ratio_meta.label }}</label>
+            <select name="graph_tardiness_tolerance_ratio">
+              {% for choice in graph_tardiness_tolerance_ratio_meta.choices %}
+                <option value="{{ choice.value }}" {% if cfg.graph_tardiness_tolerance_ratio|string == choice.value|string %}selected{% endif %}>{{ choice.label }}</option>
+              {% endfor %}
+            </select>
+            <div class="scheduler-config-hint">{{ graph_tardiness_tolerance_ratio_meta.hint }}</div>
+            {{ render_config_field_warning("graph_tardiness_tolerance_ratio") }}
+          </div>
+        </div>
+      </div>
+
+      <h4 class="section-title scheduler-config-switches-heading">排产开关</h4>
       {% include "scheduler/_config_switches.html" %}
 
       <div class="mt-3">

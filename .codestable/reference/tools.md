@@ -98,3 +98,30 @@ python .codestable/tools/validate-yaml.py --file {文件路径} --require doc_ty
 # 批量校验目录下所有文件
 python .codestable/tools/validate-yaml.py --dir {目录} --require doc_type --require status
 ```
+
+---
+
+## 3. quality_gate_scan.py
+
+项目质量门禁扫描工具。当前静默回退收口验收使用以下真实入口，不再使用旧速记 `tools.quality_gate_scan --strict`。
+
+```bash
+# 严格静默回退门禁：成功时保持无输出，退出码为 0
+.venv/bin/python -m tools.quality_gate_scan --strict
+
+# 严格静默回退门禁计数快照：输出 JSON，用于留存 evidence
+.venv/bin/python -m tools.quality_gate_scan --strict --json
+
+# 历史生产范围 inventory 摘要：用于复核 2026-05-20 原始静态清单口径，不等同于当前 unresolved count
+.venv/bin/python -m tools.quality_gate_scan --inventory-summary --json
+
+# 技术债务台账一致性检查：本仓库需用 venv Python，普通 python 可能缺 radon
+.venv/bin/python scripts/sync_debt_ledger.py check
+```
+
+关键口径：
+
+- `--strict` 校验当前 quality-gate 边界，即 `tools.quality_gate_operations.architecture_silent_scan_entries()` 与 `开发文档/技术债务治理台账.md` 的 active ledger IDs 是否一致。
+- `--strict` 成功时无输出；漂移或台账格式错误会向 stderr 打印 `ERROR:` 并以退出码 `2` 失败。
+- `--strict --json` 当前用于生成 `evidence/QualityGate/silent_fallback_inventory_acceptance/strict_scan_json.log`。
+- 2026-05-22 静默回退收口证据统一放在 `evidence/QualityGate/silent_fallback_inventory_acceptance/`，索引见 `.codestable/compound/2026-05-20-explore-current-silent-fallback-inventory.md`。

@@ -107,7 +107,19 @@ def _oversized_public_field_case():
         "strategy": "priority_first",
         "strategy_params": {"payload": "x" * 600000},
         "algo": {"attempts": [], "improvement_trace": [], "best_batch_order": []},
-        "warnings": [],
+        "warnings": ["停机资料有部分设备读取失败", "资源池资料有部分候选设备读取失败"],
+        "degradation_events": [
+            {
+                "code": "downtime_avoid_degraded",
+                "scope": "schedule.summary.downtime_avoid",
+                "field": "downtime_avoid",
+                "message": "部分设备停机区间加载失败",
+                "count": 2,
+                "sample": "MC_BAD",
+            }
+        ],
+        "degradation_counters": {"downtime_avoid_degraded": 2},
+        "degraded_causes": ["downtime_avoid_degraded"],
         "selected_batch_ids": [],
         "overdue_batches": {"count": 0, "items": []},
         "counts": {"scheduled_ops": 1, "failed_ops": 0},
@@ -270,6 +282,13 @@ def main() -> None:
     oversized_public_after = _size_bytes(oversized_public_after_obj)
     assert bool(oversized_public_after_obj.get("summary_truncated")), "oversized_public_field_case 未标记 summary_truncated"
     assert int(oversized_public_after_obj.get("original_size_bytes") or 0) == oversized_public_before
+    assert int(oversized_public_after_obj.get("warning_count") or 0) == 2, "minimal summary 不应丢失 warning_count"
+    assert oversized_public_after_obj.get("warnings_sample"), "minimal summary 不应丢失 warnings_sample"
+    assert bool(oversized_public_after_obj.get("warnings_truncated")), "minimal summary 裁掉 warnings 后应标记 warnings_truncated"
+    events = list(oversized_public_after_obj.get("degradation_events") or [])
+    assert events and events[0].get("code") == "downtime_avoid_degraded", "minimal summary 不应丢失 degradation_events"
+    assert oversized_public_after_obj.get("degradation_counters") == {"downtime_avoid_degraded": 2}
+    assert oversized_public_after_obj.get("degraded_causes") == ["downtime_avoid_degraded"]
     assert oversized_public_after <= SUMMARY_SIZE_LIMIT_BYTES, "oversized_public_field_case 截断后仍超过 512KB"
 
     malformed_list_obj = _malformed_large_list_field_case()

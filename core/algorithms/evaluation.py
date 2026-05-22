@@ -67,31 +67,31 @@ class ScheduleMetrics:
     unscheduled_batch_ids_sample: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
-        def _round_finite(v: Any, ndigits: int) -> float:
+        def _round_finite(key: str, v: Any, ndigits: int) -> float:
             try:
                 fv = float(v)
-            except Exception:
-                return 0.0
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise ValueError(f"排产指标 {key} 必须是数字：{v!r}") from exc
             if not math.isfinite(fv):
-                return 0.0
+                raise ValueError(f"排产指标 {key} 必须是有限数字：{v!r}")
             return float(round(fv, ndigits))
 
         return {
             "overdue_count": int(self.overdue_count),
-            "total_tardiness_hours": _round_finite(self.total_tardiness_hours, 4),
-            "makespan_hours": _round_finite(self.makespan_hours, 4),
+            "total_tardiness_hours": _round_finite("total_tardiness_hours", self.total_tardiness_hours, 4),
+            "makespan_hours": _round_finite("makespan_hours", self.makespan_hours, 4),
             "changeover_count": int(self.changeover_count),
-            "weighted_tardiness_hours": _round_finite(self.weighted_tardiness_hours, 4),
-            "makespan_internal_hours": _round_finite(self.makespan_internal_hours, 4),
+            "weighted_tardiness_hours": _round_finite("weighted_tardiness_hours", self.weighted_tardiness_hours, 4),
+            "makespan_internal_hours": _round_finite("makespan_internal_hours", self.makespan_internal_hours, 4),
             "machine_used_count": int(self.machine_used_count),
             "operator_used_count": int(self.operator_used_count),
-            "machine_busy_hours_total": _round_finite(self.machine_busy_hours_total, 4),
-            "operator_busy_hours_total": _round_finite(self.operator_busy_hours_total, 4),
-            "machine_util_avg": _round_finite(self.machine_util_avg, 6),
-            "operator_util_avg": _round_finite(self.operator_util_avg, 6),
-            "machine_load_cv": _round_finite(self.machine_load_cv, 6),
-            "operator_load_cv": _round_finite(self.operator_load_cv, 6),
-            "internal_horizon_hours": _round_finite(self.internal_horizon_hours, 4),
+            "machine_busy_hours_total": _round_finite("machine_busy_hours_total", self.machine_busy_hours_total, 4),
+            "operator_busy_hours_total": _round_finite("operator_busy_hours_total", self.operator_busy_hours_total, 4),
+            "machine_util_avg": _round_finite("machine_util_avg", self.machine_util_avg, 6),
+            "operator_util_avg": _round_finite("operator_util_avg", self.operator_util_avg, 6),
+            "machine_load_cv": _round_finite("machine_load_cv", self.machine_load_cv, 6),
+            "operator_load_cv": _round_finite("operator_load_cv", self.operator_load_cv, 6),
+            "internal_horizon_hours": _round_finite("internal_horizon_hours", self.internal_horizon_hours, 4),
             "util_defined": bool(self.util_defined),
             "invalid_due_count": int(self.invalid_due_count),
             "unscheduled_batch_count": int(self.unscheduled_batch_count),
@@ -314,9 +314,11 @@ def _finite_non_negative(values: Dict[str, float]) -> List[float]:
     for value in values.values():
         try:
             float_value = float(value)
-        except Exception:
-            continue
-        if math.isfinite(float_value) and float_value >= 0:
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError(f"负荷统计值必须是数字：{value!r}") from exc
+        if not math.isfinite(float_value):
+            raise ValueError(f"负荷统计值必须是有限数字：{value!r}")
+        if float_value >= 0:
             out.append(float_value)
     return out
 
@@ -330,19 +332,18 @@ def _cv(values: List[float]) -> float:
     for value in values:
         try:
             float_value = float(value)
-        except Exception:
-            continue
-        if math.isfinite(float_value) and float_value >= 0:
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError(f"负荷波动统计值必须是数字：{value!r}") from exc
+        if not math.isfinite(float_value):
+            raise ValueError(f"负荷波动统计值必须是有限数字：{value!r}")
+        if float_value >= 0:
             clean.append(float_value)
     if len(clean) <= 1:
         return 0.0
     mean_value = statistics.fmean(clean)
     if not math.isfinite(mean_value) or mean_value <= 0:
         return 0.0
-    try:
-        return float(statistics.pstdev(clean) / mean_value)
-    except Exception:
-        return 0.0
+    return float(statistics.pstdev(clean) / mean_value)
 
 
 def objective_score(objective: str, metrics: ScheduleMetrics) -> Tuple[float, ...]:

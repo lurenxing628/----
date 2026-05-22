@@ -1,0 +1,39 @@
+feature: 2026-05-18-scheduler-graph-candidate-schema-query
+created: 2026-05-18
+
+steps:
+  - action: "只读核实 PR-7a schema、迁移、仓库、查询服务和测试现状"
+    exit_signal: "确认 PR-7a 只做数据底座，不提前进入候选运行、主链持久化、页面或配置"
+    status: done
+  - action: "阶段范围对抗复审"
+    exit_signal: "确认总目标是 NetworkX PR7，但当前入口只做 PR-7a"
+    status: done
+  - action: "实现候选表 schema 和 v10 迁移"
+    exit_signal: "新库和 v9 旧库都能得到 ScheduleCandidate / ScheduleCandidateRows / ScheduleCandidateSelection 及索引约束"
+    status: done
+  - action: "实现候选模型和仓库"
+    exit_signal: "候选摘要、代表明细和角色映射可以按 version/candidate_key/role 写入和读取"
+    status: done
+  - action: "实现统一方案查询服务"
+    exit_signal: "adopted 从 Schedule 读，非 adopted 代表方案从 CandidateRows 读，缺角色可见 fallback"
+    status: done
+  - action: "补 PR-7a 合同测试"
+    exit_signal: "schema 合同和 plan query 合同覆盖正常、旧历史 fallback、候选 rows join 字段"
+    status: done
+  - action: "PR-7a 对抗审核与修复"
+    exit_signal: "阻塞问题已修复并复审通过"
+    status: done
+  - action: "PR-7a CodeStable 回填与验证"
+    exit_signal: "items.yaml、feature 记录、yaml 校验和定向测试完成"
+    status: done
+
+checks:
+  - item: "候选表 schema 合同"
+    source: tests/regression_scheduler_candidate_schema_contract.py
+    status: passed
+  - item: "统一方案查询合同"
+    source: tests/regression_scheduler_candidate_plan_query_contract.py
+    status: passed
+  - item: "PR-7a 范围守护"
+    source: .codestable/roadmap/networkx-scheduler-graph-introduction/networkx-scheduler-graph-introduction-items.yaml
+    status: passed

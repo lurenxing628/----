@@ -1,10 +1,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
-from ._helpers import RowLike, as_dict, get, parse_float
+from ._helpers import RowLike, as_dict, get, parse_float_or_default
 from .enums import CalendarDayType, YesNo
+
+
+def _validate_calendar_numbers(*, shift_hours: float, efficiency: float, scope: str) -> Tuple[float, float]:
+    if shift_hours < 0:
+        raise ValueError(f"{scope}.shift_hours 不能为负数：{shift_hours!r}")
+    if efficiency <= 0:
+        raise ValueError(f"{scope}.efficiency 必须大于 0：{efficiency!r}")
+    return float(shift_hours), float(efficiency)
 
 
 @dataclass
@@ -23,15 +31,13 @@ class WorkCalendar:
     def from_row(cls, row: RowLike) -> WorkCalendar:
         raw_shift_hours = get(row, "shift_hours")
         raw_efficiency = get(row, "efficiency")
-        shift_hours = parse_float(raw_shift_hours, default=8.0)
-        efficiency = parse_float(raw_efficiency, default=1.0)
-        # 防御：负值归零；空值/非法值回落默认值
-        if shift_hours is None:
-            shift_hours = 8.0
-        elif shift_hours < 0:
-            shift_hours = 0.0
-        if efficiency is None or efficiency <= 0:
-            efficiency = 1.0
+        shift_hours = parse_float_or_default(raw_shift_hours, 8.0, field="shift_hours")
+        efficiency = parse_float_or_default(raw_efficiency, 1.0, field="efficiency")
+        shift_hours, efficiency = _validate_calendar_numbers(
+            shift_hours=shift_hours,
+            efficiency=efficiency,
+            scope="WorkCalendar",
+        )
         shift_start = get(row, "shift_start")
         shift_end = get(row, "shift_end")
         return cls(
@@ -90,15 +96,13 @@ class OperatorCalendar:
     def from_row(cls, row: RowLike) -> OperatorCalendar:
         raw_shift_hours = get(row, "shift_hours")
         raw_efficiency = get(row, "efficiency")
-        shift_hours = parse_float(raw_shift_hours, default=8.0)
-        efficiency = parse_float(raw_efficiency, default=1.0)
-        # 防御：负值归零；空值/非法值回落默认值
-        if shift_hours is None:
-            shift_hours = 8.0
-        elif shift_hours < 0:
-            shift_hours = 0.0
-        if efficiency is None or efficiency <= 0:
-            efficiency = 1.0
+        shift_hours = parse_float_or_default(raw_shift_hours, 8.0, field="shift_hours")
+        efficiency = parse_float_or_default(raw_efficiency, 1.0, field="efficiency")
+        shift_hours, efficiency = _validate_calendar_numbers(
+            shift_hours=shift_hours,
+            efficiency=efficiency,
+            scope="OperatorCalendar",
+        )
         shift_start = get(row, "shift_start")
         shift_end = get(row, "shift_end")
         return cls(
@@ -132,4 +136,3 @@ class OperatorCalendar:
                 "remark": self.remark,
             }
         )
-

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Union
 
+from core.infrastructure.errors import BusinessError, ErrorCode
+from core.infrastructure.logging import safe_log
 from core.models import ExternalGroup
 
 from .base_repo import BaseRepository
@@ -75,16 +77,17 @@ class ExternalGroupRepository(BaseRepository):
             cols = self.fetchall("PRAGMA table_info(ExternalGroups)")
             if any(str(r.get("name")) == "updated_at" for r in (cols or [])):
                 set_parts.append("updated_at = CURRENT_TIMESTAMP")
-        except Exception:
-            pass
+        except Exception as exc:
+            safe_log(self.logger, "warning", f"检查 ExternalGroups.updated_at 字段失败，已继续保存外协工序组：{exc}")
 
         params.append(group_id)
         sql = f"UPDATE ExternalGroups SET {', '.join(set_parts)} WHERE group_id = ?"
-        self.execute(sql, tuple(params))
+        cur = self.execute(sql, tuple(params))
+        if int(getattr(cur, "rowcount", 0) or 0) == 0:
+            raise BusinessError(ErrorCode.EXTERNAL_GROUP_ERROR, f"外协工序组“{group_id}”不存在或已被删除")
 
     def delete(self, group_id: str) -> None:
         self.execute("DELETE FROM ExternalGroups WHERE group_id = ?", (group_id,))
 
     def delete_by_part(self, part_no: str) -> None:
         self.execute("DELETE FROM ExternalGroups WHERE part_no = ?", (part_no,))
-

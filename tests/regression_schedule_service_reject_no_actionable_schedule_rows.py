@@ -30,6 +30,10 @@ def test_schedule_service_rejects_no_actionable_schedule_rows(monkeypatch) -> No
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON;")
         _load_schema(conn)
+        conn.execute(
+            "INSERT OR REPLACE INTO ScheduleConfig (config_key, config_value, description) VALUES (?, ?, ?)",
+            ("graph_analysis_mode", "off", "本用例只验证无可保存排程行的报错顺序"),
+        )
         conn.execute("INSERT INTO Parts (part_no, part_name, route_parsed) VALUES (?, ?, ?)", ("P001", "测试件", "yes"))
         conn.execute(
             "INSERT INTO Batches (batch_id, part_no, part_name, quantity, due_date, priority, ready_status, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -63,6 +67,8 @@ def test_schedule_service_rejects_no_actionable_schedule_rows(monkeypatch) -> No
                         operator_id=op.operator_id,
                         supplier_id=getattr(op, "supplier_id", None),
                         op_type_name=getattr(op, "op_type_name", None),
+                        setup_hours=getattr(op, "setup_hours", 0.0),
+                        unit_hours=getattr(op, "unit_hours", 0.0),
                     )
                 )
             if return_outcome:
@@ -99,7 +105,7 @@ def test_schedule_service_rejects_no_actionable_schedule_rows(monkeypatch) -> No
                 used_strategy=SimpleNamespace(value="priority_first"),
                 used_params={},
                 metrics=None,
-                best_score=None,
+                best_score=(0.0,),
                 best_order=[],
                 attempts=[],
                 improvement_trace=[],

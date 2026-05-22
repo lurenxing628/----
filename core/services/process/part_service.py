@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
@@ -64,10 +65,15 @@ class PartService:
     def _normalize_float(value: Any, field: str, allow_none: bool = True) -> Optional[float]:
         if value is None or (isinstance(value, str) and value.strip() == ""):
             return None if allow_none else 0.0
+        if isinstance(value, bool):
+            raise ValidationError(f"“{field}”必须是数字", field=field)
         try:
-            return float(value)
+            parsed = float(value)
         except Exception as e:
             raise ValidationError(f"“{field}”必须是数字", field=field) from e
+        if not math.isfinite(parsed):
+            raise ValidationError(f"“{field}”必须是有限数字", field=field)
+        return parsed
 
     def _get_or_raise(self, part_no: str) -> Part:
         p = self.part_repo.get(part_no)

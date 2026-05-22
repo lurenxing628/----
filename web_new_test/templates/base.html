@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="aps-ui-template-env" content="{{ ui_template_env | default('unknown') }}">
     <meta name="aps-ui-template-env-degraded" content="{{ '1' if ui_template_env_degraded else '0' }}">
-    <title>{% block title %}APS 排产系统{% endblock %} - Win7 单机版</title>
+    <title>{% block title %}APS 排产系统{% endblock %}</title>
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
     <script>
         (function () {
@@ -105,9 +105,6 @@
                 </a>
             </nav>
             {{ ui.floating_manual_button() }}
-            <div class="sidebar-footnote">
-                Win7 单机版<br>离线运行
-            </div>
         </div>
 
         <!-- Main Content -->

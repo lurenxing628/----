@@ -55,6 +55,8 @@ def main() -> None:
             """,
             ("B_ZERO", "P001", "zero", 1, "2026-01-10", "normal", "yes", "scheduled"),
         )
+        conn.execute("INSERT INTO Machines (machine_id, name, status) VALUES (?, ?, ?)", ("MC_A", "MC_A", "active"))
+        conn.execute("INSERT INTO Operators (operator_id, name, status) VALUES (?, ?, ?)", ("OP_A", "OP_A", "active"))
         conn.executemany(
             """
             INSERT INTO BatchOperations
@@ -94,8 +96,8 @@ def main() -> None:
                 op_code="B_MIX_20",
                 batch_id="B_MIX",
                 seq=20,
-                machine_id=None,
-                operator_id=None,
+                machine_id="MC_A",
+                operator_id="OP_A",
                 start_time=_make_dt(1),
                 end_time=_make_dt(2),
                 source="internal",

@@ -37,6 +37,8 @@ def main() -> None:
         "holiday_default_efficiency",
         "freeze_window_days",
         "ortools_time_limit_seconds",
+        "graph_critical_weight",
+        "graph_impact_weight",
         "time_budget_seconds",
         "due_date",
         "start_time",
@@ -73,6 +75,14 @@ def main() -> None:
     assert freeze_window_days.has_compat_default is True and int(freeze_window_days.compat_default) == 0, (
         f"freeze_window_days compat 回退值异常：{freeze_window_days.compat_default!r}"
     )
+
+    graph_critical_weight = get_field_policy("graph_critical_weight")
+    graph_impact_weight = get_field_policy("graph_impact_weight")
+    assert graph_critical_weight.read_mode == READ_COMPAT, (
+        f"graph_critical_weight 读取语义异常：{graph_critical_weight.read_mode!r}"
+    )
+    assert graph_critical_weight.has_compat_default is False, "graph_critical_weight 不应在矩阵中写死运行时默认值"
+    assert graph_impact_weight.has_compat_default is False, "graph_impact_weight 不应在矩阵中写死运行时默认值"
 
     due_date = get_field_policy("due_date")
     assert due_date.write_mode == WRITE_OPTIONAL, f"due_date 写入语义异常：{due_date.write_mode!r}"

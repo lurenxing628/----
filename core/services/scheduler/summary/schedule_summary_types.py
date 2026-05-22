@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -47,6 +47,9 @@ class SummaryBuildContext:
     algo_stats: Optional[Dict[str, Any]] = None
     algo_warnings: Optional[List[str]] = None
     warning_merge_status: Optional[Dict[str, Any]] = None
+    graph_analysis_public: Optional[Dict[str, Any]] = None
+    graph_analysis_diagnostics: Optional[Dict[str, Any]] = None
+    candidate_comparison_public: Optional[Dict[str, Any]] = None
     simulate: bool = False
     t0: float = 0.0
 
@@ -88,6 +91,7 @@ class FallbackState:
     param_fallbacks: Dict[str, int]
     legacy_external_days_defaulted_count: int
     ortools_warmstart_failed_count: int
+    fallback_count_parse_errors: List[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

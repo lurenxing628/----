@@ -7,16 +7,13 @@ from typing import Any, Dict, List, Optional
 
 from flask import current_app, flash, g, redirect, request, send_file, url_for
 
-from core.infrastructure.errors import AppError, ValidationError
-from core.infrastructure.transaction import TransactionManager
+from core.infrastructure.errors import ValidationError
 from core.models.enums import SupplierStatus
 from core.services.common.excel_audit import log_excel_export, log_excel_import
-from core.services.common.excel_backend_factory import get_excel_backend
-from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
+from core.services.common.excel_service import ImportMode, ImportPreviewRow
 from core.services.common.excel_templates import build_xlsx_bytes, get_template_definition
 from core.services.common.normalize import is_blank_value
 from core.services.process import PartService
-from core.services.scheduler.batch_query_service import BatchQueryService
 from web.routes.form_values import form_toggle_bool
 from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.ui_presenters import UiToggleRow, checked_attr
@@ -26,13 +23,16 @@ from .excel_utils import (
     build_preview_baseline_token,
     collect_error_rows,
     encode_preview_rows_payload,
-    extract_import_stats,
-    flash_import_result,
     load_confirm_payload,
     preview_baseline_is_stale,
     send_excel_template_file,
 )
 from .process_bp import _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx, bp
+from .process_excel_route_apply import (
+    apply_excel_route_preview_rows,
+    flash_route_import_outcome,
+    preview_excel_route_rows,
+)
 
 # ============================================================
 # Excel：零件工艺路线（Parts.route_raw + 解析生成模板）
@@ -142,6 +142,48 @@ def _render_excel_routes_page(
     )
 
 
+def _render_routes_confirm_rejected(
+    *,
+    existing: Dict[str, Dict[str, Any]],
+    mode: ImportMode,
+    filename: str,
+    strict_mode: bool,
+):
+    flash("导入被拒绝：数据已变化，请重新上传 Excel 并检查后再确认写入。", "error")
+    return _render_excel_routes_page(
+        existing=existing,
+        preview_rows=None,
+        raw_rows_json=None,
+        preview_baseline=None,
+        mode_value=mode.value,
+        filename=filename,
+        strict_mode=strict_mode,
+    )
+
+
+def _render_routes_confirm_error_rows(
+    *,
+    existing: Dict[str, Dict[str, Any]],
+    preview_rows: List[ImportPreviewRow],
+    rows: List[Dict[str, Any]],
+    preview_baseline: Optional[str],
+    mode: ImportMode,
+    filename: str,
+    strict_mode: bool,
+):
+    error_rows = collect_error_rows(preview_rows)
+    flash(build_error_rows_message(error_rows), "error")
+    return _render_excel_routes_page(
+        existing=existing,
+        preview_rows=preview_rows,
+        raw_rows_json=json.dumps(rows, ensure_ascii=False),
+        preview_baseline=preview_baseline,
+        mode_value=mode.value,
+        filename=filename,
+        strict_mode=strict_mode,
+    )
+
+
 @bp.get("/excel/routes")
 def excel_routes_page():
     svc = PartService(g.db, op_logger=getattr(g, "op_logger", None))
@@ -172,15 +214,14 @@ def excel_routes_preview():
     part_svc = PartService(g.db, op_logger=getattr(g, "op_logger", None))
     existing = part_svc.build_existing_for_excel_routes()
 
-    def validate_row(row: Dict[str, Any]) -> Optional[str]: return _validate_route_row(part_svc, row, strict_mode=strict_mode)
+    def validate_row(row: Dict[str, Any]) -> Optional[str]:
+        return _validate_route_row(part_svc, row, strict_mode=strict_mode)
 
-    excel_svc = ExcelService(backend=get_excel_backend(), logger=None, op_logger=getattr(g, "op_logger", None))
-    preview_rows = excel_svc.preview_import(
+    preview_rows = preview_excel_route_rows(
         rows=rows,
-        id_column="图号",
-        existing_data=existing,
-        validators=[validate_row],
+        existing=existing,
         mode=mode,
+        validate_row=validate_row,
     )
     preview_baseline = build_preview_baseline_token(
         existing_data=existing,
@@ -233,127 +274,44 @@ def excel_routes_confirm():
         extra_state=_route_parse_extra_state(part_svc, strict_mode=strict_mode),
         rows=rows,
     ):
-        flash("导入被拒绝：数据已变化，请重新上传 Excel 并检查后再确认写入。", "error")
-        return _render_excel_routes_page(
+        return _render_routes_confirm_rejected(
             existing=existing,
-            preview_rows=None,
-            raw_rows_json=None,
-            preview_baseline=None,
-            mode_value=mode.value,
             filename=filename,
+            mode=mode,
             strict_mode=strict_mode,
         )
 
-    def validate_row(row: Dict[str, Any]) -> Optional[str]: return _validate_route_row(part_svc, row, strict_mode=strict_mode)
+    def validate_row(row: Dict[str, Any]) -> Optional[str]:
+        return _validate_route_row(part_svc, row, strict_mode=strict_mode)
 
-    excel_svc = ExcelService(backend=get_excel_backend(), logger=None, op_logger=getattr(g, "op_logger", None))
-    preview_rows = excel_svc.preview_import(
+    preview_rows = preview_excel_route_rows(
         rows=rows,
-        id_column="图号",
-        existing_data=existing,
-        validators=[validate_row],
+        existing=existing,
         mode=mode,
+        validate_row=validate_row,
     )
 
     error_rows = collect_error_rows(preview_rows)
     if error_rows:
-        flash(build_error_rows_message(error_rows), "error")
-        return _render_excel_routes_page(
+        return _render_routes_confirm_error_rows(
             existing=existing,
             preview_rows=preview_rows,
-            raw_rows_json=json.dumps(rows, ensure_ascii=False),
+            rows=rows,
             preview_baseline=payload.preview_baseline,
-            mode_value=mode.value,
             filename=filename,
+            mode=mode,
             strict_mode=strict_mode,
         )
 
-    tx = TransactionManager(g.db)
-    new_count = update_count = skip_count = error_count = 0
-    errors_sample: List[Dict[str, Any]] = []
-    route_warnings_sample: List[Dict[str, Any]] = []
-    route_warning_total = 0
-
-    with tx.transaction():
-        if mode == ImportMode.REPLACE:
-            # 若存在批次引用，删除 Parts 会触发外键错误，因此这里做保护
-            batch_q = BatchQueryService(g.db, op_logger=getattr(g, "op_logger", None))
-            if batch_q.has_any():
-                raise ValidationError("已存在批次数据，不能执行“清空本类数据后重导”。请改用“更新已有，新增缺少”或“只导入新编号”。")
-            part_svc.delete_all_no_tx()
-            existing = {}
-
-        for pr in preview_rows:
-            if pr.status == RowStatus.ERROR:
-                error_count += 1
-                if pr.message and len(errors_sample) < 10:
-                    errors_sample.append(
-                        {
-                            "row": getattr(pr, "source_row_num", None) or pr.row_num,
-                            "source_row_num": getattr(pr, "source_row_num", None),
-                            "source_sheet_name": getattr(pr, "source_sheet_name", None),
-                            "message": pr.message,
-                        }
-                    )
-                continue
-            if pr.status == RowStatus.SKIP:
-                skip_count += 1
-                continue
-            if pr.status == RowStatus.UNCHANGED and mode != ImportMode.REPLACE:
-                skip_count += 1
-                continue
-
-            pn = str(pr.data.get("图号")).strip()
-            name = str(pr.data.get("名称")).strip()
-            route_raw = str(pr.data.get("工艺路线字符串")).strip()
-
-            if mode == ImportMode.APPEND and pn in existing:
-                skip_count += 1
-                continue
-
-            try:
-                existed = pn in existing
-                parse_result = part_svc.upsert_and_parse_no_tx(
-                    part_no=pn,
-                    part_name=name,
-                    route_raw=route_raw,
-                    strict_mode=strict_mode,
-                )
-                for warning in getattr(parse_result, "warnings", None) or []:
-                    route_warning_total += 1
-                    if len(route_warnings_sample) < 5:
-                        route_warnings_sample.append(
-                            {
-                                "row": getattr(pr, "source_row_num", None) or pr.row_num,
-                                "message": str(warning),
-                            }
-                        )
-                if existed:
-                    update_count += 1
-                else:
-                    new_count += 1
-            except AppError as e:
-                error_count += 1
-                if len(errors_sample) < 10:
-                    errors_sample.append(
-                        {
-                            "row": getattr(pr, "source_row_num", None) or pr.row_num,
-                            "source_row_num": getattr(pr, "source_row_num", None),
-                            "source_sheet_name": getattr(pr, "source_sheet_name", None),
-                            "message": e.message,
-                        }
-                    )
-                continue
-
+    apply_result = apply_excel_route_preview_rows(
+        part_svc=part_svc,
+        preview_rows=preview_rows,
+        mode=mode,
+        strict_mode=strict_mode,
+        existing=existing,
+    )
     time_cost_ms = int((time.time() - start) * 1000)
-    result = {
-        "total_rows": len(preview_rows),
-        "new_count": new_count,
-        "update_count": update_count,
-        "skip_count": skip_count,
-        "error_count": error_count,
-        "errors_sample": errors_sample,
-    }
+    result = apply_result.to_import_result()
     log_excel_import(
         op_logger=getattr(g, "op_logger", None),
         module="process",
@@ -363,20 +321,7 @@ def excel_routes_confirm():
         preview_or_result=result,
         time_cost_ms=time_cost_ms,
     )
-    new_count, update_count, skip_count, error_count = extract_import_stats(result)
-
-    flash_import_result(
-        new_count=new_count,
-        update_count=update_count,
-        skip_count=skip_count,
-        error_count=error_count,
-        errors_sample=errors_sample,
-    )
-    if route_warnings_sample:
-        warning_text = "；".join(f"第 {item['row']} 行：{item['message']}" for item in route_warnings_sample)
-        if route_warning_total > len(route_warnings_sample):
-            warning_text += f"；还有 {route_warning_total - len(route_warnings_sample)} 条提示未显示"
-        flash(f"导入完成，但有些工艺路线先按临时规则处理：{warning_text}。请补齐资料后重新导入，或让系统重新检查工艺路线。", "warning")
+    flash_route_import_outcome(apply_result)
     return redirect(url_for("process.excel_routes_page"))
 
 

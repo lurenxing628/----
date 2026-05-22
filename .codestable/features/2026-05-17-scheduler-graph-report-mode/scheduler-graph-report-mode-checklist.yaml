@@ -1,0 +1,75 @@
+feature: 2026-05-17-scheduler-graph-report-mode
+created: 2026-05-17
+
+steps:
+  - action: "只读核实：确认阶段 10 蓝本、排产调用链、summary/diagnostics、OperationLogs、图模块能力和测试模板"
+    exit_signal: "subagent 只读核实完成，接入点锁定在 schedule_orchestrator 的 validated_schedule_payload 之后、SummaryBuildContext 之前"
+    status: done
+  - action: "summary 接入：SummaryBuildContext 增加 graph_analysis_public / graph_analysis_diagnostics，并在 summary assembly 写入 algo / diagnostics"
+    exit_signal: "public 小摘要进入 algo.graph_analysis，采样诊断进入 diagnostics.graph_analysis，optimizer diagnostics 仍能共存"
+    status: done
+  - action: "orchestrator 接入：report/on 旁路调用图分析，off 保持零 graph import"
+    exit_signal: "off 不导入 graph；report 只读调用 input_adapter、analysis_service、exporter；on 在本阶段输出 report_only"
+    status: done
+  - action: "OperationLogs 合同：保持现有 algo 小摘要路径，不写完整图对象和 diagnostics"
+    exit_signal: "simulate 和正式排产日志都只能看到 public 小摘要，看不到 nodes、edges、raw、node_metrics、topological_order"
+    status: done
+  - action: "阶段 0 baseline 对比：三组 baseline 在 report 模式下排产结果不变"
+    exit_signal: "case_001_normal、case_002_urgent、case_003_external 均通过；只新增 graph_analysis 摘要"
+    status: done
+  - action: "CodeStable 回填：roadmap、items.yaml、architecture 和 feature acceptance 与真实完成范围一致"
+    exit_signal: "PR-2 标 done，PR-3 标 done，feature 记录写明已做、未做、验证和 clean proof 口径"
+    status: done
+  - action: "阶段 10 图报告加固回填：记录 P1/P2/P3 修复结果，并收紧 PR-4/PR-5 承接边界"
+    exit_signal: "basic metrics、frozen/seed scope、warning.data 深层采样、known graph error 顶层 warning、P3 exporter/config/fail-fast 均进入 acceptance、issue fix-note 和 roadmap/items 追踪"
+    status: done
+
+checks:
+  - item: "graph_analysis_mode=off 不 import graph，不要求 NetworkX，不写 graph_analysis"
+    source: regression_scheduler_graph_report_mode_contract.py
+    status: passed
+  - item: "graph_analysis_mode=report 只读图分析，不改变 optimizer_outcome 或 validated_schedule_payload"
+    source: regression_scheduler_graph_report_mode_contract.py
+    status: passed
+  - item: "graph_analysis_mode=on 在阶段 10 只输出 effective_mode=report_only"
+    source: regression_scheduler_graph_report_mode_contract.py
+    status: passed
+  - item: "NetworkXUnavailable、GraphInputContractError、GraphBuildContractError 都有明确 status 和 reason"
+    source: regression_scheduler_graph_report_mode_contract.py
+    status: passed
+  - item: "未知异常不会被 broad except 吞成空报告"
+    source: regression_scheduler_graph_report_mode_contract.py
+    status: passed
+  - item: "result_summary.algo.graph_analysis 只包含 public 小摘要"
+    source: regression_scheduler_graph_summary_contract.py
+    status: passed
+  - item: "result_summary.diagnostics.graph_analysis 只包含采样、总数和截断标记"
+    source: regression_scheduler_graph_summary_contract.py
+    status: passed
+  - item: "diagnostics.optimizer 与 diagnostics.graph_analysis 可以共存"
+    source: regression_scheduler_graph_summary_contract.py
+    status: passed
+  - item: "OperationLogs 只写 algo.graph_analysis 小摘要，不写 diagnostics 或完整图"
+    source: regression_scheduler_graph_operation_logs_contract.py
+    status: passed
+  - item: "阶段 0 三个 baseline case 在 report 模式下排产结果不变"
+    source: baseline comparison
+    status: passed
+  - item: "不改 schedule_optimizer.py、GreedyScheduler、SGS、seed_results、冻结窗口、validated_schedule_payload、schedule_rows"
+    source: scope review
+    status: passed
+  - item: "Python 3.8 / Win7 兼容，不使用 list[str] 或 str | None 生产类型写法"
+    source: ruff and pyright
+    status: passed
+  - item: "basic metrics 写入 public 小摘要，不能只检查 graph_analysis 字段存在"
+    source: scheduler graph report hardening review
+    status: passed
+  - item: "frozen/seed scope 明确为后续 on 模式的已固定前置，不得重新进入待排候选"
+    source: scheduler graph report hardening review
+    status: passed
+  - item: "warning.data 深层采样保持 JSON 可序列化，known graph error 在顶层 public warning/status 可见"
+    source: scheduler graph report hardening review
+    status: passed
+  - item: "P3 exporter/config/fail-fast 边界已回填，PR-4 前不能把万能清洗、绕配置入口或吞未知异常当作通过"
+    source: scheduler graph report hardening review
+    status: passed

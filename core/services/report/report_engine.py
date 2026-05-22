@@ -2,10 +2,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, BinaryIO, Callable, ClassVar, Dict, List
+from typing import Any, BinaryIO, Callable, ClassVar, Dict, List, Optional
 
 from core.infrastructure.errors import AppError, ErrorCode, ValidationError
 from core.services.scheduler.calendar_service import CalendarService
+from core.services.scheduler.schedule_plan_query_service import (
+    SchedulePlanQueryService,
+    SchedulePlanResolution,
+    plan_role_label,
+)
 from data.repositories import ScheduleHistoryRepository, ScheduleRepository
 
 from . import calculations, queries
@@ -44,6 +49,7 @@ class ReportEngine:
         self.logger = logger
         self.schedule_repo = ScheduleRepository(conn, logger=logger)
         self.history_repo = ScheduleHistoryRepository(conn, logger=logger)
+        self.plan_query_service = SchedulePlanQueryService(conn, logger=logger)
         self.calendar = CalendarService(conn, logger=logger)
 
     def _sanitize_export_threshold(self, value: Any, *, default: int) -> int:
@@ -111,7 +117,48 @@ class ReportEngine:
     def latest_version(self) -> int:
         return int(self.history_repo.get_latest_version() or 0)
 
-    def version_date_range(self, version: int) -> Dict[str, Any]:
+    def _resolve_plan(self, version: int, plan_role: Optional[str]) -> SchedulePlanResolution:
+        try:
+            return self.plan_query_service.resolve_plan(int(version), plan_role)
+        except ValueError as exc:
+            raise ValidationError(str(exc), field="plan_role") from exc
+
+    def resolve_plan_context(self, version: int, plan_role: Optional[str] = None) -> Dict[str, Any]:
+        return self._resolve_plan(version, plan_role).to_dict()
+
+    def _get_plan_time_span(self, version: int, plan_role: Optional[str]):
+        try:
+            return self.plan_query_service.get_plan_time_span(int(version), plan_role)
+        except ValueError as exc:
+            raise ValidationError(str(exc), field="plan_role") from exc
+
+    def _list_plan_rows_between(self, *, version: int, plan_role: Optional[str], start_time: str, end_time: str):
+        try:
+            return self.plan_query_service.list_plan_detail_rows_between(
+                version=int(version),
+                role=plan_role,
+                start_time=start_time,
+                end_time=end_time,
+            )
+        except ValueError as exc:
+            raise ValidationError(str(exc), field="plan_role") from exc
+
+    def _plan_meta(self, resolution: SchedulePlanResolution) -> Dict[str, Any]:
+        return {
+            "plan_role": resolution.selected_role,
+            "plan_role_label": plan_role_label(resolution.selected_role),
+            "requested_plan_role": resolution.requested_role,
+            "requested_plan_role_label": plan_role_label(resolution.requested_role),
+            "plan_resolution": resolution.to_dict(),
+        }
+
+    def _filename_plan_label(self, resolution: SchedulePlanResolution) -> str:
+        label = plan_role_label(resolution.selected_role)
+        for old, new in (("/", "-"), ("\\", "-"), (":", "-"), ("*", ""), ("?", ""), ('"', ""), ("<", ""), (">", ""), ("|", "-")):
+            label = label.replace(old, new)
+        return label.strip() or resolution.selected_role
+
+    def version_date_range(self, version: int, plan_role: Optional[str] = None) -> Dict[str, Any]:
         """
         返回指定版本的排程日期范围（用于报表默认筛选）。
         """
@@ -123,11 +170,17 @@ class ReportEngine:
             "start_date": None,
             "end_date": None,
             "has_data": False,
+            "plan_role": "adopted",
+            "plan_role_label": plan_role_label("adopted"),
+            "plan_resolution": None,
         }
         if v <= 0:
             return out
 
-        span = self.schedule_repo.get_version_time_span(v)
+        resolution = self._resolve_plan(v, plan_role)
+        out.update(self._plan_meta(resolution))
+
+        span = self._get_plan_time_span(v, plan_role)
         if not span:
             return out
 
@@ -148,13 +201,19 @@ class ReportEngine:
     # -------------------------
     # 1) 超期清单
     # -------------------------
-    def overdue_batches(self, version: int) -> Dict[str, Any]:
+    def _fetch_overdue_base_rows_for_plan(self, version: int, plan_role: Optional[str]) -> List[Dict[str, Any]]:
+        self._resolve_plan(version, plan_role)
+        return self.plan_query_service.list_plan_overdue_base_rows(version=int(version), role=plan_role)
+
+    def overdue_batches(self, version: int, plan_role: Optional[str] = None) -> Dict[str, Any]:
         v = int(version or 0)
-        rows = queries.fetch_overdue_base_rows(self.conn, v)
+        resolution = self._resolve_plan(v, plan_role)
+        rows = self._fetch_overdue_base_rows_for_plan(v, plan_role)
         scheduled, unscheduled, as_of = calculations.compute_overdue_buckets(rows)
         items = list(scheduled) + list(unscheduled)
         return {
             "version": v,
+            **self._plan_meta(resolution),
             "count": len(items),
             "scheduled_count": len(scheduled),
             "unscheduled_count": len(unscheduled),
@@ -166,14 +225,15 @@ class ReportEngine:
             "unscheduled_items": list(unscheduled),
         }
 
-    def export_overdue_xlsx(self, version: int) -> ReportExport:
-        rep = self.overdue_batches(version)
+    def export_overdue_xlsx(self, version: int, plan_role: Optional[str] = None) -> ReportExport:
+        rep = self.overdue_batches(version) if plan_role is None else self.overdue_batches(version, plan_role=plan_role)
         items = list(rep.get("items") or [])
         if not items:
             raise ValidationError("当前版本没有可导出的超期结果，请换一个排产版本后再试。", field="导出")
+        resolution = self._resolve_plan(int(rep["version"]), plan_role)
         return self._build_xlsx_export(
             report_name="超期清单",
-            filename=f"超期清单_v{int(rep['version'])}.xlsx",
+            filename=f"超期清单_{self._filename_plan_label(resolution)}_v{int(rep['version'])}.xlsx",
             estimated_rows=len(items),
             build_direct=lambda: export_overdue_xlsx(items),
             build_stream=lambda: export_overdue_xlsx(items, write_only=True),
@@ -182,8 +242,9 @@ class ReportEngine:
     # -------------------------
     # 2) 资源负荷/利用率
     # -------------------------
-    def utilization(self, version: int, start_date: Any, end_date: Any) -> Dict[str, Any]:
+    def utilization(self, version: int, start_date: Any, end_date: Any, plan_role: Optional[str] = None) -> Dict[str, Any]:
         v = int(version or 0)
+        resolution = self._resolve_plan(v, plan_role)
         sd = calculations.parse_date(start_date, field="start_date")
         ed = calculations.parse_date(end_date, field="end_date")
         if ed < sd:
@@ -194,7 +255,7 @@ class ReportEngine:
         start_s = start_dt.strftime("%Y-%m-%d %H:%M:%S")
         end_s = end_dt_excl.strftime("%Y-%m-%d %H:%M:%S")
 
-        schedule_rows = self.schedule_repo.list_overlapping_with_details(start_s, end_s, v)
+        schedule_rows = self._list_plan_rows_between(version=v, plan_role=plan_role, start_time=start_s, end_time=end_s)
 
         cap_hours = calculations.capacity_hours(self.calendar, sd, ed)
         if cap_hours <= 0:
@@ -209,6 +270,7 @@ class ReportEngine:
 
         return {
             "version": v,
+            **self._plan_meta(resolution),
             "start_date": sd.isoformat(),
             "end_date": ed.isoformat(),
             "capacity_hours_per_resource": round(float(cap_hours), 2),
@@ -216,15 +278,20 @@ class ReportEngine:
             "operators": operator_rows,
         }
 
-    def export_utilization_xlsx(self, version: int, start_date: Any, end_date: Any) -> ReportExport:
-        rep = self.utilization(version, start_date, end_date)
+    def export_utilization_xlsx(self, version: int, start_date: Any, end_date: Any, plan_role: Optional[str] = None) -> ReportExport:
+        rep = (
+            self.utilization(version, start_date, end_date)
+            if plan_role is None
+            else self.utilization(version, start_date, end_date, plan_role=plan_role)
+        )
         machines = list(rep.get("machines") or [])
         operators = list(rep.get("operators") or [])
         if not machines and not operators:
             raise ValidationError("暂无数据，不能导出。请调整版本或日期范围后再试。", field="导出")
+        resolution = self._resolve_plan(int(rep["version"]), plan_role)
         return self._build_xlsx_export(
             report_name="资源负荷与利用率",
-            filename=f"资源负荷与利用率_v{int(rep['version'])}_{rep['start_date']}_to_{rep['end_date']}.xlsx",
+            filename=f"资源负荷与利用率_{self._filename_plan_label(resolution)}_v{int(rep['version'])}_{rep['start_date']}_to_{rep['end_date']}.xlsx",
             estimated_rows=len(machines) + len(operators),
             build_direct=lambda: export_utilization_xlsx(machines, operators),
             build_stream=lambda: export_utilization_xlsx(machines, operators, write_only=True),
@@ -233,8 +300,9 @@ class ReportEngine:
     # -------------------------
     # 3) 停机影响统计
     # -------------------------
-    def downtime_impact(self, version: int, start_date: Any, end_date: Any) -> Dict[str, Any]:
+    def downtime_impact(self, version: int, start_date: Any, end_date: Any, plan_role: Optional[str] = None) -> Dict[str, Any]:
         v = int(version or 0)
+        resolution = self._resolve_plan(v, plan_role)
         sd = calculations.parse_date(start_date, field="start_date")
         ed = calculations.parse_date(end_date, field="end_date")
         if ed < sd:
@@ -246,7 +314,7 @@ class ReportEngine:
         end_s = end_dt_excl.strftime("%Y-%m-%d %H:%M:%S")
 
         downtime_rows = queries.fetch_downtime_rows(self.conn, start_s, end_s)
-        sch_rows = self.schedule_repo.list_overlapping_with_details(start_s, end_s, v)
+        sch_rows = self._list_plan_rows_between(version=v, plan_role=plan_role, start_time=start_s, end_time=end_s)
 
         machines = calculations.compute_downtime_impact(
             downtime_rows=downtime_rows,
@@ -257,19 +325,25 @@ class ReportEngine:
 
         return {
             "version": v,
+            **self._plan_meta(resolution),
             "start_date": sd.isoformat(),
             "end_date": ed.isoformat(),
             "machines": machines,
         }
 
-    def export_downtime_impact_xlsx(self, version: int, start_date: Any, end_date: Any) -> ReportExport:
-        rep = self.downtime_impact(version, start_date, end_date)
+    def export_downtime_impact_xlsx(self, version: int, start_date: Any, end_date: Any, plan_role: Optional[str] = None) -> ReportExport:
+        rep = (
+            self.downtime_impact(version, start_date, end_date)
+            if plan_role is None
+            else self.downtime_impact(version, start_date, end_date, plan_role=plan_role)
+        )
         machines = list(rep.get("machines") or [])
         if not machines:
             raise ValidationError("暂无数据，不能导出。请调整版本或日期范围后再试。", field="导出")
+        resolution = self._resolve_plan(int(rep["version"]), plan_role)
         return self._build_xlsx_export(
             report_name="停机影响统计",
-            filename=f"停机影响统计_v{int(rep['version'])}_{rep['start_date']}_to_{rep['end_date']}.xlsx",
+            filename=f"停机影响统计_{self._filename_plan_label(resolution)}_v{int(rep['version'])}_{rep['start_date']}_to_{rep['end_date']}.xlsx",
             estimated_rows=len(machines),
             build_direct=lambda: export_downtime_impact_xlsx(machines),
             build_stream=lambda: export_downtime_impact_xlsx(machines, write_only=True),

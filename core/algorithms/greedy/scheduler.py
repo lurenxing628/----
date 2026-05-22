@@ -28,6 +28,7 @@ from core.algorithms.ordering import (
     resolve_batch_sort_batch_id,
 )
 from core.algorithms.value_domains import INTERNAL
+from core.infrastructure.errors import ValidationError
 
 from ..sort_strategies import SortStrategy, StrategyFactory
 from ..types import ScheduleResult, ScheduleSummary
@@ -40,7 +41,7 @@ from .internal_operation import schedule_internal_operation
 from .run_context import ScheduleRunContext
 from .run_state import ScheduleRunState
 from .schedule_params import resolve_schedule_params
-from .seed import normalize_seed_results
+from .seed import _identity_int, normalize_seed_results
 
 __all__ = [
     "GreedyScheduler",
@@ -82,6 +83,7 @@ class GreedyScheduler:
         resource_pool: Optional[Dict[str, Any]] = None,
         readiness_gate_enabled: bool = False,
         strict_mode: bool = False,
+        graph_ready_context: Optional[Any] = None,
     ) -> Tuple[List[ScheduleResult], ScheduleSummary, SortStrategy, Dict[str, Any]]:
         t0 = datetime.now()
         algo_stats = self._reset_algo_stats()
@@ -132,6 +134,7 @@ class GreedyScheduler:
             params=params,
             machine_downtimes=machine_downtimes,
             resource_pool=resource_pool,
+            graph_ready_context=graph_ready_context,
             strict_mode=bool(strict_mode),
         )
         summary = _build_summary(state=state, warnings=warnings, sorted_ops=sorted_ops, duration=(datetime.now() - t0).total_seconds())
@@ -308,7 +311,7 @@ def _drop_seeded_operations(operations: List[Any], seed_op_ids: set) -> Tuple[Li
     filtered = []
     dropped = 0
     for op in operations:
-        op_id = _safe_op_id(op)
+        op_id = _operation_op_id(op)
         if op_id and op_id in seed_op_ids:
             dropped += 1
             continue
@@ -316,11 +319,12 @@ def _drop_seeded_operations(operations: List[Any], seed_op_ids: set) -> Tuple[Li
     return filtered, dropped
 
 
-def _safe_op_id(op: Any) -> int:
-    try:
-        return int(getattr(op, "id", 0) or 0)
-    except Exception:
-        return 0
+def _operation_op_id(op: Any) -> int:
+    raw_id = getattr(op, "id", 0)
+    op_id = _identity_int(raw_id)
+    if op_id <= 0:
+        raise ValidationError(f"待排工序编号不合法：{raw_id!r}", field="operations")
+    return op_id
 
 
 def _prepare_run_state(
@@ -355,18 +359,21 @@ def _initialize_ready_progress(calendar: Any, *, state: ScheduleRunState, batche
 
 def _apply_seed_results(*, state: ScheduleRunState, seed_results: List[ScheduleResult]) -> None:
     for result in seed_results:
-        if _valid_seed_result(result):
-            _freeze_seed_resources(state, result)
-            state.record_seed_result(result)
+        _validate_seed_result(result)
+        _freeze_seed_resources(state, result)
+        state.record_seed_result(result)
 
 
-def _valid_seed_result(result: ScheduleResult) -> bool:
-    if not result or not isinstance(result.start_time, datetime) or not isinstance(result.end_time, datetime):
-        return False
-    try:
-        return int(getattr(result, "op_id", 0) or 0) > 0
-    except Exception:
-        return False
+def _validate_seed_result(result: ScheduleResult) -> None:
+    if not result:
+        raise ValidationError("已有排产记录无效，系统已停止排产。", field="seed_results")
+    if not isinstance(result.start_time, datetime) or not isinstance(result.end_time, datetime):
+        raise ValidationError("已有排产记录的开始时间和结束时间必须是有效时间。", field="seed_results")
+    if result.end_time <= result.start_time:
+        raise ValidationError("已有排产记录的开始时间必须早于结束时间。", field="seed_results")
+    op_id = _identity_int(getattr(result, "op_id", 0))
+    if op_id <= 0:
+        raise ValidationError("已有排产记录缺少有效工序编号，系统已停止排产。", field="seed_results")
 
 
 def _freeze_seed_resources(state: ScheduleRunState, result: ScheduleResult) -> None:
@@ -382,7 +389,9 @@ def _freeze_seed_resources(state: ScheduleRunState, result: ScheduleResult) -> N
         occupy_resource(state.operator_timeline, operator_id, result.start_time, result.end_time)
 
 
-def _run_dispatch(ctx: ScheduleRunContext, *, state: ScheduleRunState, sorted_ops: List[Any], batches: Dict[str, Any], batch_order: Dict[str, int], params: Any, machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]], resource_pool: Optional[Dict[str, Any]], strict_mode: bool) -> None:
+def _run_dispatch(ctx: ScheduleRunContext, *, state: ScheduleRunState, sorted_ops: List[Any], batches: Dict[str, Any], batch_order: Dict[str, int], params: Any, machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]], resource_pool: Optional[Dict[str, Any]], graph_ready_context: Optional[Any], strict_mode: bool) -> None:
+    if graph_ready_context is not None and params.dispatch_mode_key != "sgs":
+        raise ValidationError("图 ready 队列只能在 SGS 派工模式下启用。", field="graph_ready_context")
     if params.dispatch_mode_key != "sgs":
         dispatch_batch_order(
             ctx,
@@ -409,6 +418,7 @@ def _run_dispatch(ctx: ScheduleRunContext, *, state: ScheduleRunState, sorted_op
         state=state,
         auto_assign_enabled=params.auto_assign_enabled,
         resource_pool=resource_pool,
+        graph_ready_context=graph_ready_context,
         strict_mode=strict_mode,
     )
 

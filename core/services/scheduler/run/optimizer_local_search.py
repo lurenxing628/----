@@ -81,6 +81,7 @@ def _evaluate_candidate(
     optimizer_algo_stats: Optional[Dict[str, Any]],
     schedule_fn: Callable[..., Any],
     readiness_gate_enabled: bool,
+    graph_ready_context: Optional[Any],
 ) -> Dict[str, Any]:
     res, summ, used_strat, used_params = schedule_fn(
         scheduler,
@@ -98,6 +99,7 @@ def _evaluate_candidate(
         dispatch_rule=dispatch_rule,
         resource_pool=resource_pool,
         readiness_gate_enabled=bool(readiness_gate_enabled),
+        graph_ready_context=graph_ready_context,
     )
     metrics = compute_metrics(res, batches)
     algo_stats = merge_algo_stats(optimizer_algo_stats, snapshot_algo_stats(scheduler))
@@ -239,6 +241,7 @@ def run_local_search(
     clock: Callable[[], float],
     rng_factory: Callable[[int], Any],
     schedule_fn: Callable[..., Any],
+    graph_ready_context: Optional[Any] = None,
 ) -> Optional[Dict[str, Any]]:
     if algo_mode != "improve" or best is None or len(best.get("order") or []) < 2:
         return best
@@ -283,6 +286,7 @@ def run_local_search(
                 optimizer_algo_stats=optimizer_algo_stats,
                 schedule_fn=schedule_fn,
                 readiness_gate_enabled=bool(readiness_gate_enabled),
+                graph_ready_context=graph_ready_context,
             ),
             attempts=attempts,
             move=move,

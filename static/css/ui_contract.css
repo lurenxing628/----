@@ -1668,12 +1668,23 @@ table td {
   white-space: nowrap;
 }
 
+.aps-table--editable td {
+  min-width: 0;
+}
+
 .aps-table--editable input,
 .aps-table--editable select,
-.aps-table--editable textarea,
+.aps-table--editable textarea {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
 .aps-table--editable button,
 .aps-table--editable .btn {
   max-width: 100%;
+  box-sizing: border-box;
 }
 
 /* batch detail: hints should wrap even in fixed-layout tables */
@@ -2447,16 +2458,22 @@ button.toc-toggle:hover {
 
 /* 排产说明书悬浮按钮 */
 .floating-manual-wrapper {
-  position: relative;
-  z-index: 10;
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 80;
   display: flex;
   justify-content: flex-end;
-  max-width: 1440px;
-  margin: 0 auto 24px;
-  padding: 0 24px;
+  max-width: calc(100vw - 48px);
+  margin: 0;
+  padding: 0;
 }
 
 .sidebar .floating-manual-wrapper {
+  position: relative;
+  right: auto;
+  bottom: auto;
+  z-index: auto;
   display: block;
   flex: 0 0 auto;
   max-width: none;
@@ -2523,6 +2540,7 @@ button.toc-toggle:hover {
 
 .manual-popover {
   position: absolute;
+  z-index: 120;
   left: auto;
   right: 0;
   bottom: calc(100% + 12px);
@@ -2623,11 +2641,27 @@ html[data-theme="dark"] .manual-popover .manual-popover__close:hover {
   color: #f1f5f9;
 }
 
+/* V2 窄屏时侧边栏会变成顶部导航，说明弹层需要改为向下展开 */
+@media (max-width: 760px) {
+  .sidebar .manual-popover {
+    left: 0;
+    right: auto;
+    top: calc(100% + 8px);
+    bottom: auto;
+    width: min(420px, calc(100vw - 32px));
+    max-width: calc(100vw - 32px);
+    max-height: min(70vh, 480px);
+  }
+}
+
 @media (max-width: 640px) {
   .floating-manual-wrapper {
-    justify-content: flex-start;
-    margin-bottom: 16px;
-    padding: 0 16px;
+    right: 12px;
+    bottom: 12px;
+    justify-content: flex-end;
+    max-width: calc(100vw - 24px);
+    margin: 0;
+    padding: 0;
   }
 
   .floating-manual-btn {
@@ -2638,6 +2672,14 @@ html[data-theme="dark"] .manual-popover .manual-popover__close:hover {
   .manual-popover {
     width: calc(100vw - 24px);
     max-width: 320px;
+  }
+
+  .sidebar .floating-manual-wrapper {
+    right: auto;
+    bottom: auto;
+    max-width: none;
+    margin: 0 16px 16px;
+    padding: 0;
   }
 }
 
@@ -3122,13 +3164,6 @@ html[data-theme="dark"] .nav-card-desc {
 
 html[data-theme="dark"] .bg-slate-50 {
   background-color: #162032;
-}
-
-.sidebar-footnote {
-  padding: 1rem;
-  font-size: 0.75rem;
-  color: var(--ui-muted);
-  border-top: 1px solid var(--ui-border);
 }
 
 /* table header sticky (v1/v2) */
@@ -3646,6 +3681,20 @@ html.aps-theme-switching *::after {
   grid-column: 1 / -1;
 }
 
+.aps-excel-upload-field,
+.aps-batch-material-batch-field,
+.aps-batch-material-material-field {
+  min-width: min(100%, 320px);
+}
+
+.aps-excel-upload-field input[type="file"],
+.aps-excel-upload-input {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
 .aps-action-card-status {
   margin-left: auto;
   color: var(--ui-muted);
@@ -3670,6 +3719,40 @@ html.aps-theme-switching *::after {
   font-size: 13px;
   line-height: 1.65;
   overflow-wrap: anywhere;
+}
+
+.aps-resource-gantt {
+  min-height: 360px;
+}
+
+@media (max-width: 520px) {
+  .aps-excel-card-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .aps-excel-card-actions .btn {
+    min-height: 40px;
+    white-space: normal;
+    line-height: 1.25;
+  }
+
+  .aps-action-card-status,
+  .aps-run-panel-status {
+    flex-basis: 100%;
+    margin-left: 0;
+    text-align: left;
+    white-space: normal;
+  }
+
+  .aps-excel-upload-field,
+  .aps-batch-material-batch-field,
+  .aps-batch-material-material-field {
+    min-width: 0;
+  }
+
+  .aps-resource-gantt {
+    min-height: 300px;
+  }
 }
 
 .aps-action-card .action-bar-flat,
@@ -3830,6 +3913,72 @@ html.aps-theme-switching *::after {
   line-height: 1.5;
 }
 
+.scheduler-config-section {
+  margin-top: 26px;
+  padding-top: 22px;
+  border-top: 1px solid var(--ui-border);
+}
+
+.scheduler-config-section-heading {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.scheduler-config-section-title {
+  margin: 0;
+}
+
+.scheduler-config-mode-guide {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 14px;
+}
+
+.scheduler-config-mode-guide-item {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--ui-info-border);
+  border-left: 3px solid var(--ui-primary);
+  border-radius: var(--ui-radius);
+  background: var(--ui-info-bg);
+}
+
+.scheduler-config-mode-guide-label {
+  color: var(--ui-info-text);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.scheduler-config-mode-guide-copy {
+  color: var(--ui-info-muted);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.scheduler-config-form-grid--graph {
+  grid-template-columns: repeat(2, minmax(240px, 1fr));
+  gap: 18px 24px;
+}
+
+.scheduler-config-form-grid--graph .scheduler-config-field--wide {
+  grid-column: 1 / -1;
+  max-width: 760px;
+}
+
+.scheduler-config-form-grid--graph .scheduler-config-hint,
+.scheduler-config-degraded-summary .aps-notice-body {
+  max-width: 86ch;
+  line-height: 1.7;
+}
+
+.scheduler-config-switches-heading {
+  margin-top: 26px;
+}
+
 .scheduler-config-switches {
   display: grid;
   gap: 12px;
@@ -3915,6 +4064,15 @@ html[data-theme="dark"] .aps-danger-zone {
 @media (max-width: 760px) {
   .scheduler-config-form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .scheduler-config-mode-guide,
+  .scheduler-config-form-grid--graph {
+    grid-template-columns: 1fr;
+  }
+
+  .scheduler-config-form-grid--graph .scheduler-config-field--wide {
+    max-width: none;
   }
 }
 
@@ -5002,6 +5160,14 @@ html[data-theme="dark"] .aps-danger-zone {
 
   .aps-calendar-actions {
     justify-content: flex-start;
+  }
+
+  .aps-calendar-date-field {
+    min-width: 0;
+  }
+
+  .aps-calendar-date-field .aps-date-picker-field {
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 }
 

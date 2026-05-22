@@ -20,6 +20,7 @@ from core.services.scheduler import (
     ScheduleService,
 )
 from core.services.scheduler.schedule_history_query_service import ScheduleHistoryQueryService
+from core.services.scheduler.schedule_plan_query_service import SchedulePlanQueryService
 from core.services.system import OperationLogService, SystemConfigService, SystemJobStateQueryService
 
 REQUEST_SERVICES_PUBLIC_ATTRS = (
@@ -28,6 +29,7 @@ REQUEST_SERVICES_PUBLIC_ATTRS = (
     "config_service",
     "calendar_service",
     "schedule_history_query_service",
+    "schedule_plan_query_service",
     "machine_service",
     "operator_service",
     "supplier_service",
@@ -98,6 +100,13 @@ class RequestServices:
         return self._construct(
             "schedule_history_query_service",
             lambda: ScheduleHistoryQueryService(self._db, logger=self._app_logger, op_logger=self._op_logger),
+        )
+
+    @cached_property
+    def schedule_plan_query_service(self) -> SchedulePlanQueryService:
+        return self._construct(
+            "schedule_plan_query_service",
+            lambda: SchedulePlanQueryService(self._db, logger=self._app_logger),
         )
 
     @cached_property

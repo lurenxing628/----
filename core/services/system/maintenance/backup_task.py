@@ -7,20 +7,14 @@ from datetime import datetime
 from typing import Any, Callable, Dict, Tuple, Union
 
 from core.infrastructure.backup import BackupManager
+from core.infrastructure.logging import safe_log
 from core.infrastructure.transaction import TransactionManager
 
 IsDueResult = Union[Tuple[bool, Any], Tuple[bool, Any, str, Any]]
 
 
 def _safe_logger_emit(logger, level: str, message: str) -> None:
-    if logger is None:
-        return
-    try:
-        fn = getattr(logger, str(level or "").strip(), None)
-        if callable(fn):
-            fn(message)
-    except Exception:
-        pass
+    safe_log(logger, level, message)
 
 
 def _write_oplog(conn, *, op_logger, logger=None, level: str, **kwargs) -> bool:
@@ -36,7 +30,7 @@ def _write_oplog(conn, *, op_logger, logger=None, level: str, **kwargs) -> bool:
                 raise RuntimeError("OperationLogs 未成功落库。")
         return True
     except Exception as e:
-        _safe_logger_emit(logger, "warning", f"自动备份 telemetry 写入 OperationLogs 失败：{e}")
+        safe_log(logger, "warning", f"自动备份 telemetry 写入 OperationLogs 失败：{e}")
         return False
 
 
@@ -50,7 +44,7 @@ def _write_job_state(conn, *, job_repo, job_key: str, last_run_time: str, last_r
             )
         return True
     except Exception as e:
-        _safe_logger_emit(logger, "warning", f"自动备份 telemetry 写入 SystemJobState 失败：{e}")
+        safe_log(logger, "warning", f"自动备份 telemetry 写入 SystemJobState 失败：{e}")
         return False
 
 
@@ -95,19 +89,34 @@ def maybe_run_auto_backup(
         filename = os.path.basename(path)
         time_cost_ms = int((time.time() - t0) * 1000)
         size_mb = None
+        size_mb_status = "ok"
+        size_mb_error = None
         try:
             size_mb = round(os.stat(path).st_size / 1024 / 1024, 2)
-        except Exception:
-            size_mb = None
+        except OSError as exc:
+            size_mb_status = "stat_failed"
+            size_mb_error = str(exc)
 
         detail = {
             "filename": filename,
             "suffix": "auto",
             "size_mb": size_mb,
+            "size_mb_status": size_mb_status,
             "mode": "auto",
             "time_cost_ms": time_cost_ms,
         }
-        job_detail = json.dumps({"filename": filename, "size_mb": size_mb, "time_cost_ms": time_cost_ms}, ensure_ascii=False)
+        if size_mb_error:
+            detail["size_mb_error"] = size_mb_error
+        job_detail = json.dumps(
+            {
+                "filename": filename,
+                "size_mb": size_mb,
+                "size_mb_status": size_mb_status,
+                "size_mb_error": size_mb_error,
+                "time_cost_ms": time_cost_ms,
+            },
+            ensure_ascii=False,
+        )
 
         oplog_written = _write_oplog(
             conn,
@@ -131,11 +140,14 @@ def maybe_run_auto_backup(
         return True, {
             "due": True,
             "created": filename,
+            "size_mb": size_mb,
+            "size_mb_status": size_mb_status,
+            "size_mb_error": size_mb_error,
             "oplog_persisted": bool(oplog_written),
             "job_state_persisted": bool(job_state_written),
         }
     except Exception as e:
-        _safe_logger_emit(logger, "error", f"自动备份失败：{e}")
+        safe_log(logger, "error", f"自动备份失败：{e}")
         time_cost_ms = int((time.time() - t0) * 1000)
         oplog_written = _write_oplog(
             conn,
@@ -164,4 +176,3 @@ def maybe_run_auto_backup(
             "oplog_persisted": bool(oplog_written),
             "job_state_persisted": bool(job_state_written),
         }
-

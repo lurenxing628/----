@@ -3,6 +3,7 @@ import sqlite3
 import sys
 from datetime import datetime, timedelta
 from types import SimpleNamespace
+from typing import Any, cast
 
 
 def find_repo_root() -> str:
@@ -46,6 +47,8 @@ def _patch_schedule_module(schedule_service_mod, captured):
                 operator_id=op.operator_id,
                 supplier_id=op.supplier_id,
                 op_type_name=getattr(op, "op_type_name", None),
+                setup_hours=getattr(op, "setup_hours", 0.0),
+                unit_hours=getattr(op, "unit_hours", 0.0),
             )
             for op in ops
         ]
@@ -106,7 +109,7 @@ def _patch_schedule_module(schedule_service_mod, captured):
         return OptimizationOutcome(
             results=results,
             summary=summary,
-            used_strategy=SimpleNamespace(value="priority_first"),
+            used_strategy=cast(Any, SimpleNamespace(value="priority_first")),
             used_params={},
             metrics=None,
             best_score=(0.0,),

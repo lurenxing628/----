@@ -68,7 +68,7 @@
           <form id="mform_{{ loop.index0 }}" method="post" action="{{ url_for('material.materials_update', material_id=m.material_id) }}" class="d-none"></form>
       {% endfor %}
       <div class="aps-table-scroll">
-      <table id="materialsTable" class="table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v2_materialsTable">
+      <table id="materialsTable" class="table-layout-fixed aps-table-wide aps-table aps-table--fixed aps-table--editable aps-table--actions-nowrap aps-table-size-wide" data-col-resize="1" data-table-key="v2_materialsTable">
         <thead>
           <tr>
             <th class="w-140" data-col-key="material_id" data-default-w="140" data-min-w="120">物料编号</th>

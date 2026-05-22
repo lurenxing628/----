@@ -3,7 +3,7 @@ import sqlite3
 import sys
 from datetime import datetime, timedelta
 from types import SimpleNamespace
-from typing import Any, Dict
+from typing import Any, Dict, cast
 
 
 def find_repo_root() -> str:
@@ -19,8 +19,34 @@ def _make_dt(hours: int) -> datetime:
 
 
 def _base_input() -> Any:
+    from core.services.scheduler.config_snapshot import ScheduleConfigSnapshot
+
     return SimpleNamespace(
-        cfg=SimpleNamespace(),
+        cfg=ScheduleConfigSnapshot(
+            sort_strategy="priority_first",
+            priority_weight=0.4,
+            due_weight=0.5,
+            ready_weight=0.1,
+            holiday_default_efficiency=0.8,
+            enforce_ready_default="no",
+            prefer_primary_skill="no",
+            dispatch_mode="sgs",
+            dispatch_rule="cr",
+            auto_assign_enabled="no",
+            auto_assign_persist="yes",
+            ortools_enabled="no",
+            ortools_time_limit_seconds=5,
+            algo_mode="improve",
+            time_budget_seconds=20,
+            objective="min_overdue",
+            freeze_window_enabled="no",
+            freeze_window_days=0,
+            graph_analysis_mode="off",
+            graph_block_on_cycle="no",
+            graph_critical_weight=500,
+            graph_impact_weight=10,
+            graph_debug_export="no",
+        ),
         cal_svc=SimpleNamespace(),
         cfg_svc=SimpleNamespace(),
         readiness_gate_enabled=True,
@@ -32,7 +58,7 @@ def _base_input() -> Any:
         seed_results=[],
         resource_pool=None,
         operations=[SimpleNamespace(id=1, batch_id="B001")],
-        reschedulable_operations=[SimpleNamespace(id=1)],
+        reschedulable_operations=[SimpleNamespace(id=1, source="internal")],
         reschedulable_op_ids={1},
         normalized_batch_ids=["B001"],
         freeze_meta={"loaded": True},
@@ -66,7 +92,7 @@ def main() -> None:
         return OptimizationOutcome(
             results=list(kwargs.get("results") or []),
             summary=kwargs.get("summary"),
-            used_strategy=kwargs.get("used_strategy"),
+            used_strategy=cast(Any, kwargs.get("used_strategy")),
             used_params=dict(kwargs.get("used_params") or {}),
             metrics=kwargs.get("metrics"),
             best_score=tuple(kwargs.get("best_score") or ()),
@@ -270,6 +296,44 @@ def main() -> None:
             "failed_ops": 0,
         },
     }
+
+    bad_count_contract = _build_summary_contract(
+        SimpleNamespace(
+            success=True,
+            total_ops="bad",
+            scheduled_ops=True,
+            failed_ops=0,
+            warnings=[],
+            errors=[],
+            duration_seconds=0.0,
+        ),
+        result_summary_obj={},
+    ).to_dict()
+    assert bool(bad_count_contract.get("summary_count_parse_failed")), bad_count_contract
+    assert int(bad_count_contract.get("error_count") or 0) > 0, bad_count_contract
+    assert bad_count_contract["counts"]["total_ops"] == 0, bad_count_contract
+    assert bad_count_contract["counts"]["scheduled_ops"] == 0, bad_count_contract
+    assert any("数量记录异常" in item for item in list(bad_count_contract.get("warnings") or [])), bad_count_contract
+    assert any(
+        str(event.get("code") or "") == "summary_count_parse_failed"
+        for event in list(bad_count_contract.get("degradation_events") or [])
+    ), bad_count_contract
+
+    integer_like_contract = _build_summary_contract(
+        SimpleNamespace(
+            success=True,
+            total_ops="2.0",
+            scheduled_ops=1.0,
+            failed_ops="0",
+            warnings=[],
+            errors=[],
+            duration_seconds=0.0,
+        ),
+        result_summary_obj={},
+    ).to_dict()
+    assert integer_like_contract["counts"]["total_ops"] == 2, integer_like_contract
+    assert integer_like_contract["counts"]["scheduled_ops"] == 1, integer_like_contract
+    assert not integer_like_contract.get("summary_count_parse_failed"), integer_like_contract
 
     summary_kwargs = captured_ok.get("summary_kwargs") or {}
     summary_ctx = summary_kwargs.get("ctx")

@@ -156,6 +156,7 @@ def test_system_utils_helpers_use_request_services_without_g_db() -> None:
     assert job_state["auto_backup"]["last_run_detail_obj"] == {"ok": True}
     assert job_state["auto_log_cleanup"]["last_run_state"] == "invalid"
     assert job_state["auto_log_cleanup"]["last_run_detail_obj"] is None
+    assert job_state["auto_log_cleanup"]["last_run_detail_parse_error"]
 
 
 def test_system_utils_request_service_helper_rejects_missing_context_or_service() -> None:

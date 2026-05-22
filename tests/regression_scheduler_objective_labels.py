@@ -12,6 +12,7 @@ def test_scheduler_objective_labels_follow_registry_projection() -> None:
     assert objective_label_for("min_overdue") == "最少超期"
     assert objective_label_for("min_weighted_tardiness") == objective_labels["min_weighted_tardiness"]
     assert objective_label_for("min_changeover") == objective_labels["min_changeover"]
+    assert objective_label_for("min_makespan") == "最短总工期"
     assert objective_label_for("overdue_count") == "超期批次数"
     assert objective_label_for("weighted_tardiness_hours") == metric_label_for("weighted_tardiness_hours")
     assert objective_label_for("changeover_count") == metric_label_for("changeover_count")
@@ -36,3 +37,4 @@ def test_analysis_prefers_comparison_metric_and_schema_over_objective_fallback()
         ],
     }
     assert _comparison_metric_from_algo(algo_with_schema) == "weighted_tardiness_hours"
+    assert _comparison_metric_from_algo({"objective": "min_makespan"}) == "makespan_hours"

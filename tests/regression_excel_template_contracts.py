@@ -421,7 +421,13 @@ def _assert_legacy_op_type_template_refreshes() -> None:
 
             result = excel_templates.ensure_excel_templates(tmpdir)
             assert "工种配置.xlsx" in result.get("created", []), f"{label} 时，旧模板没有触发自动刷新"
-            _assert_op_type_template_current(template_path)
+            definition = _template_definition("工种配置.xlsx")
+            expected_headers = [str(item) for item in definition.get("headers") or []]
+            expected_enums = _definition_enum_values_by_header(definition)
+            actual_headers, actual_sample_rows, actual_enums = _read_template_snapshot(template_path, definition)
+            assert actual_headers == expected_headers, f"{label} 时，表头应保持当前定义"
+            assert actual_sample_rows == sample_rows, f"{label} 时，已有示例行不能被自动覆盖"
+            assert actual_enums == expected_enums, f"{label} 时，归属下拉应刷新为自制/外协"
 
 
 def _assert_legacy_op_type_template_with_extra_rows_repairs_dropdown_without_overwriting_data() -> None:
@@ -460,6 +466,114 @@ def _assert_legacy_op_type_template_with_extra_rows_repairs_dropdown_without_ove
         assert actual_headers == expected_headers, "旧工种模板有额外数据行时，表头应刷新为当前表头"
         assert actual_rows == original_rows, "旧工种模板有额外数据行时，用户数据行不能被覆盖"
         assert actual_enums == expected_enums, "旧工种模板有额外数据行时，归属下拉应刷新为自制/外协"
+
+
+def _assert_legacy_op_type_template_custom_rows_repairs_dropdown_without_overwriting_data() -> None:
+    _ensure_repo_on_path()
+    excel_templates = importlib.import_module("core.services.common.excel_templates")
+
+    original_rows = [
+        ["OT777", "现场自定义工种", "内部"],
+    ]
+
+    with tempfile.TemporaryDirectory(prefix="aps_excel_template_contract_") as tmpdir:
+        template_path = Path(tmpdir) / "工种配置.xlsx"
+        _write_legacy_op_type_template(
+            template_path,
+            sample_rows=original_rows,
+            dropdown_values=["内部", "外部"],
+        )
+
+        result = excel_templates.ensure_excel_templates(tmpdir)
+        assert "工种配置.xlsx" in result.get("created", []), "旧工种模板有自定义数据行时，应只修下拉"
+
+        definition = _template_definition("工种配置.xlsx")
+        expected_headers = [str(item) for item in definition.get("headers") or []]
+        expected_enums = _definition_enum_values_by_header(definition)
+        workbook = load_workbook(template_path, data_only=True)
+        try:
+            ws = workbook.active
+            actual_headers = _read_header_row(ws)
+            actual_rows = _read_sample_rows(ws, width=len(expected_headers), count=len(original_rows))
+            actual_enums = _actual_enum_values_by_header(ws, expected_headers)
+        finally:
+            workbook.close()
+
+        assert actual_headers == expected_headers, "旧工种模板有自定义数据行时，表头应保持当前定义"
+        assert actual_rows == original_rows, "旧工种模板有自定义数据行时，用户数据行不能被覆盖"
+        assert actual_enums == expected_enums, "旧工种模板有自定义数据行时，归属下拉应刷新为自制/外协"
+
+
+def _assert_broken_existing_template_is_not_silently_overwritten() -> None:
+    _ensure_repo_on_path()
+    excel_templates = importlib.import_module("core.services.common.excel_templates")
+
+    with tempfile.TemporaryDirectory(prefix="aps_excel_template_contract_") as tmpdir:
+        template_path = Path(tmpdir) / "人员基本信息.xlsx"
+        original_bytes = b"not a real xlsx"
+        template_path.write_bytes(original_bytes)
+
+        try:
+            excel_templates.ensure_excel_templates(tmpdir)
+        except excel_templates.ExcelTemplateError as exc:
+            assert "人员基本信息.xlsx" in str(exc), "坏模板报错应带文件名，方便现场定位"
+        else:
+            raise AssertionError("已有模板读取失败时不应被静默覆盖重建")
+        assert template_path.read_bytes() == original_bytes, "坏模板读取失败时不能覆盖用户文件"
+
+
+def _assert_mismatched_existing_template_is_not_silently_overwritten() -> None:
+    _ensure_repo_on_path()
+    excel_templates = importlib.import_module("core.services.common.excel_templates")
+
+    with tempfile.TemporaryDirectory(prefix="aps_excel_template_contract_") as tmpdir:
+        template_path = Path(tmpdir) / "人员基本信息.xlsx"
+        workbook = Workbook()
+        try:
+            ws = workbook.active
+            ws.append(["自定义列", "姓名", "备注"])
+            ws.append(["现场保留值", "张三", "不要覆盖"])
+            workbook.save(template_path)
+        finally:
+            workbook.close()
+        original_bytes = template_path.read_bytes()
+
+        try:
+            excel_templates.ensure_excel_templates(tmpdir)
+        except excel_templates.ExcelTemplateError as exc:
+            assert "人员基本信息.xlsx" in str(exc), "表头不匹配报错应带文件名，方便现场定位"
+        else:
+            raise AssertionError("可打开但表头不匹配的已有模板不应被静默覆盖重建")
+        assert template_path.read_bytes() == original_bytes, "表头不匹配时不能覆盖现场已有模板"
+
+
+def _assert_mismatched_op_type_template_extra_header_is_not_repaired() -> None:
+    _ensure_repo_on_path()
+    excel_templates = importlib.import_module("core.services.common.excel_templates")
+
+    with tempfile.TemporaryDirectory(prefix="aps_excel_template_contract_") as tmpdir:
+        template_path = Path(tmpdir) / "工种配置.xlsx"
+        definition = _template_definition("工种配置.xlsx")
+        workbook = Workbook()
+        try:
+            ws = workbook.active
+            ws.append(list(definition.get("headers") or []) + ["现场自定义列"])
+            ws.append(["OT777", "现场工种", "内部", "不要覆盖"])
+            validation = DataValidation(type="list", formula1="\"内部,外部\"", allow_blank=True)
+            validation.add("C2:C500")
+            ws.add_data_validation(validation)
+            workbook.save(template_path)
+        finally:
+            workbook.close()
+        original_bytes = template_path.read_bytes()
+
+        try:
+            excel_templates.ensure_excel_templates(tmpdir)
+        except excel_templates.ExcelTemplateError as exc:
+            assert "工种配置.xlsx" in str(exc), "表头多列报错应带文件名，方便现场定位"
+        else:
+            raise AssertionError("工种模板多出现场自定义列时，不应被自动修复保存")
+        assert template_path.read_bytes() == original_bytes, "表头多列时不能改动现场已有模板"
 
 
 def _assert_process_excel_template_files_match_registered_definitions() -> None:
@@ -632,6 +746,10 @@ def main() -> None:
     _assert_relation_reverse_header_copy_matches_templates()
     _assert_legacy_op_type_template_refreshes()
     _assert_legacy_op_type_template_with_extra_rows_repairs_dropdown_without_overwriting_data()
+    _assert_legacy_op_type_template_custom_rows_repairs_dropdown_without_overwriting_data()
+    _assert_broken_existing_template_is_not_silently_overwritten()
+    _assert_mismatched_existing_template_is_not_silently_overwritten()
+    _assert_mismatched_op_type_template_extra_header_is_not_repaired()
     print("OK")
 
 

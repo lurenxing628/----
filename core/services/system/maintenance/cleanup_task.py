@@ -6,20 +6,14 @@ import time
 from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, Tuple, Union
 
+from core.infrastructure.logging import safe_log
 from core.infrastructure.transaction import TransactionManager
 
 IsDueResult = Union[Tuple[bool, Any], Tuple[bool, Any, str, Any]]
 
 
 def _safe_logger_emit(logger, level: str, message: str) -> None:
-    if logger is None:
-        return
-    try:
-        fn = getattr(logger, str(level or "").strip(), None)
-        if callable(fn):
-            fn(message)
-    except Exception:
-        pass
+    safe_log(logger, level, message)
 
 
 def _write_oplog(conn, *, op_logger, logger=None, level: str, **kwargs) -> bool:
@@ -35,7 +29,7 @@ def _write_oplog(conn, *, op_logger, logger=None, level: str, **kwargs) -> bool:
                 raise RuntimeError("OperationLogs 未成功落库。")
         return True
     except Exception as e:
-        _safe_logger_emit(logger, "warning", f"系统维护 telemetry 写入 OperationLogs 失败：{e}")
+        safe_log(logger, "warning", f"系统维护 telemetry 写入 OperationLogs 失败：{e}")
         return False
 
 
@@ -49,7 +43,7 @@ def _write_job_state(conn, *, job_repo, job_key: str, last_run_time: str, last_r
             )
         return True
     except Exception as e:
-        _safe_logger_emit(logger, "warning", f"系统维护 telemetry 写入 SystemJobState 失败：{e}")
+        safe_log(logger, "warning", f"系统维护 telemetry 写入 SystemJobState 失败：{e}")
         return False
 
 
@@ -80,13 +74,18 @@ def cleanup_backups_with_limit(
         return 0, {"cutoff": fmt_db_dt_fn(cutoff), "reason": "backup_dir_not_exists"}
 
     candidates = []
+    mtime_error_count = 0
+    mtime_error_sample = []
     for fn in os.listdir(backup_dir):
         if not fn.startswith("aps_backup_") or not fn.endswith(".db"):
             continue
         fp = os.path.join(backup_dir, fn)
         try:
             mtime = datetime.fromtimestamp(os.path.getmtime(fp))
-        except Exception:
+        except (OSError, OverflowError, ValueError) as exc:
+            mtime_error_count += 1
+            if len(mtime_error_sample) < 10:
+                mtime_error_sample.append({"filename": fn, "error": str(exc)})
             continue
         if mtime < cutoff:
             candidates.append((mtime, fn, fp))
@@ -94,16 +93,29 @@ def cleanup_backups_with_limit(
     candidates.sort(key=lambda x: x[0])
     removed = 0
     removed_sample = []
+    delete_error_count = 0
+    delete_error_sample = []
     for _, fn, fp in candidates[: int(max_delete)]:
         try:
             os.remove(fp)
             removed += 1
             if len(removed_sample) < 10:
                 removed_sample.append(fn)
-        except Exception:
+        except OSError as exc:
+            delete_error_count += 1
+            if len(delete_error_sample) < 10:
+                delete_error_sample.append({"filename": fn, "error": str(exc)})
             continue
 
-    return removed, {"cutoff": fmt_db_dt_fn(cutoff), "candidates": len(candidates), "removed_sample": removed_sample}
+    return removed, {
+        "cutoff": fmt_db_dt_fn(cutoff),
+        "candidates": len(candidates),
+        "removed_sample": removed_sample,
+        "mtime_error_count": int(mtime_error_count),
+        "mtime_error_sample": mtime_error_sample,
+        "delete_error_count": int(delete_error_count),
+        "delete_error_sample": delete_error_sample,
+    }
 
 
 def cleanup_operation_logs_with_limit(
@@ -214,7 +226,7 @@ def maybe_run_auto_backup_cleanup(
             **meta,
         }
     except Exception as e:
-        _safe_logger_emit(logger, "error", f"自动清理备份失败：{e}")
+        safe_log(logger, "error", f"自动清理备份失败：{e}")
         time_cost_ms = int((time.time() - t0) * 1000)
         oplog_written = _write_oplog(
             conn,
@@ -319,7 +331,7 @@ def maybe_run_auto_log_cleanup(
             **meta,
         }
     except Exception as e:
-        _safe_logger_emit(logger, "error", f"自动清理操作日志失败：{e}")
+        safe_log(logger, "error", f"自动清理操作日志失败：{e}")
         time_cost_ms = int((time.time() - t0) * 1000)
         oplog_written = _write_oplog(
             conn,
@@ -348,4 +360,3 @@ def maybe_run_auto_log_cleanup(
             "oplog_persisted": bool(oplog_written),
             "job_state_persisted": bool(job_state_written),
         }
-

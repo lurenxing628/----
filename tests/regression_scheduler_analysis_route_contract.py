@@ -17,10 +17,11 @@ class _HistoryItem:
 
 
 class _HistoryServiceStub:
-    def __init__(self, summary, *, versions=None, latest_version=3):
+    def __init__(self, summary, *, versions=None, latest_version=3, recent_items=None):
         self.summary = summary
         self.versions = list(versions) if versions is not None else [{"version": 3}]
         self.latest_version = int(latest_version)
+        self.recent_items = list(recent_items) if recent_items is not None else None
         self.version_limits = []
         self.version_queries = []
         self.latest_version_calls = 0
@@ -40,6 +41,8 @@ class _HistoryServiceStub:
 
     def list_recent(self, limit=400):
         self.recent_limits.append(limit)
+        if self.recent_items is not None:
+            return [_HistoryItem(int(version), summary) for version, summary in self.recent_items]
         return [_HistoryItem(3, self.summary)]
 
 
@@ -88,7 +91,7 @@ def test_scheduler_analysis_route_uses_request_services(monkeypatch) -> None:
     assert payload["selected_summary_display"]["summary_parse_state"]["parse_failed"] is False
     assert payload["selected_summary_display"]["warning_total"] == 1
     assert payload["selected_summary_display"]["warnings_preview"] == ["冻结窗口存在跳批风险"]
-    assert payload["trend_summary_state"] == {"incomplete": False, "parse_failed_count": 0}
+    assert payload["trend_summary_state"] == {"incomplete": False, "parse_failed_count": 0, "metric_parse_failed_count": 0}
     assert "objective_label_for" not in payload
     json.dumps(payload, ensure_ascii=False)
     assert history_service.version_limits == [50]
@@ -107,7 +110,77 @@ def test_scheduler_analysis_route_marks_parse_failure_and_incomplete_trend(monke
     assert response.status_code == 200
     assert payload["selected_summary"] == {}
     assert payload["selected_summary_display"]["summary_parse_state"]["parse_failed"] is True
-    assert payload["trend_summary_state"] == {"incomplete": True, "parse_failed_count": 1}
+    assert payload["trend_summary_state"] == {"incomplete": True, "parse_failed_count": 1, "metric_parse_failed_count": 0}
+
+
+def test_scheduler_analysis_route_marks_bad_trend_metric_without_drawing_zero(monkeypatch) -> None:
+    summary = {"algo": {"metrics": {"overdue_count": "坏数据", "total_tardiness_hours": 8}}}
+    history_service = _HistoryServiceStub(summary)
+    app = _build_app(monkeypatch, history_service)
+    client = app.test_client()
+
+    response = client.get("/scheduler/analysis?version=3")
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    assert payload["trend_summary_state"] == {"incomplete": True, "parse_failed_count": 0, "metric_parse_failed_count": 1}
+    assert payload["trend_charts"]["overdue"] is None, "坏趋势指标不能画成 0"
+
+
+def test_scheduler_analysis_route_does_not_plot_missing_trend_metric_as_zero(monkeypatch) -> None:
+    selected_summary = {"algo": {"metrics": {"overdue_count": 1}}}
+    recent_items = [
+        (4, {"algo": {"metrics": {"overdue_count": 1}}}),
+        (3, {"algo": {"metrics": {"overdue_count": 2}}}),
+    ]
+    history_service = _HistoryServiceStub(selected_summary, recent_items=recent_items)
+    app = _build_app(monkeypatch, history_service)
+    client = app.test_client()
+
+    response = client.get("/scheduler/analysis?version=3")
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    assert payload["trend_summary_state"] == {"incomplete": False, "parse_failed_count": 0, "metric_parse_failed_count": 0}
+    assert payload["trend_charts"]["tardiness"] is None, "缺少拖期小时不能画成 0"
+
+
+def test_scheduler_analysis_route_marks_bad_attempt_and_trace_metrics(monkeypatch) -> None:
+    selected_summary = {
+        "algo": {
+            "comparison_metric": "overdue_count",
+            "metrics": {"overdue_count": 1},
+            "attempts": [
+                {
+                    "candidate_id": "bad",
+                    "strategy": "greedy",
+                    "failed_ops": "坏数据",
+                    "metrics": {"overdue_count": "坏数据"},
+                }
+            ],
+            "improvement_trace": [
+                {"elapsed_ms": 1, "metrics": {"overdue_count": "坏数据"}},
+                {"elapsed_ms": "坏时间", "metrics": {"overdue_count": 3}},
+                {"elapsed_ms": 2, "metrics": {"overdue_count": 2}},
+            ],
+        }
+    }
+    history_service = _HistoryServiceStub(selected_summary)
+    app = _build_app(monkeypatch, history_service)
+    client = app.test_client()
+
+    response = client.get("/scheduler/analysis?version=3")
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    attempts = payload["attempts"]
+    assert attempts[0]["primary_value_parse_failed"] is True
+    assert attempts[0]["primary_value"] is None
+    assert attempts[0]["bar_pct"] is None
+    assert attempts[0]["failed_ops_parse_failed"] is True
+    assert attempts[0]["failed_ops"] is None
+    assert payload["trace_chart"]["metric_parse_failed"] is True
+    assert not payload["trace_chart"].get("points"), "坏优化过程指标不能画成 0"
 
 
 def test_scheduler_analysis_route_surfaces_missing_requested_history(monkeypatch) -> None:

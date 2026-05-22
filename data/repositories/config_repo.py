@@ -2,9 +2,19 @@ from __future__ import annotations
 
 from typing import Iterable, List, Optional, Tuple
 
+from core.infrastructure.errors import AppError, ErrorCode
 from core.models import ScheduleConfig
 
 from .base_repo import BaseRepository
+
+
+def _strict_non_negative_int(value, *, field: str) -> int:
+    if value is None or isinstance(value, bool) or isinstance(value, float):
+        raise ValueError(f"invalid {field}: {value!r}")
+    number = int(value)
+    if number < 0:
+        raise ValueError(f"invalid {field}: {value!r}")
+    return number
 
 
 class ConfigRepository(BaseRepository):
@@ -32,11 +42,14 @@ class ConfigRepository(BaseRepository):
         return [ScheduleConfig.from_row(r) for r in rows]
 
     def count_all(self) -> int:
-        value = self.fetchvalue("SELECT COUNT(1) FROM ScheduleConfig", (), default=0)
         try:
-            return int(value or 0)
-        except Exception:
-            return 0
+            value = self.fetchvalue("SELECT COUNT(1) FROM ScheduleConfig", (), default=0)
+            count = _strict_non_negative_int(value, field="config count")
+        except AppError:
+            raise
+        except (TypeError, ValueError) as exc:
+            raise AppError(ErrorCode.DB_QUERY_ERROR, "读取排产配置数量失败，请查看日志。", cause=exc) from exc
+        return count
 
     def set(self, config_key: str, config_value: str, description: Optional[str] = None) -> None:
         self.execute(
@@ -69,4 +82,3 @@ class ConfigRepository(BaseRepository):
 
     def delete(self, config_key: str) -> None:
         self.execute("DELETE FROM ScheduleConfig WHERE config_key = ?", (config_key,))
-

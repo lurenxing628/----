@@ -1,0 +1,48 @@
+feature: 2026-05-19-scheduler-graph-candidate-config-closeout
+created: 2026-05-19
+
+steps:
+  - action: "阶段 0：只读摸底 PR-7e 缺口和 PR-7a 到 PR-7d 前置能力"
+    exit_signal: "确认默认未开启、配置字段、旧 preset、页面提示、清理和性能守卫缺口"
+    status: done
+  - action: "阶段 1：补配置字段、默认值、旧库迁移、旧 preset 和页面保存链路"
+    exit_signal: "新库默认 on，旧库已有值不覆盖，四个新字段进入 snapshot/runtime/page/preset"
+    status: done
+  - action: "阶段 2：收口默认候选比较运行链路"
+    exit_signal: "on 默认候选，off/report 单方案；候选档数、择优策略、容差和本次预算都传入 runner"
+    status: done
+  - action: "阶段 3：结果展示和页面文案收口"
+    exit_signal: "完整候选才展示对比；缺数据时明确提示，不露 graph_w 和旧误导文案"
+    status: done
+  - action: "阶段 4：候选清理和性能守卫"
+    exit_signal: "孤儿候选清理不删正式历史，真实 time span 查询走索引，list_plan_roles 不扫明细"
+    status: done
+  - action: "阶段 5：测试补齐和对抗审核"
+    exit_signal: "配置、运行链路、展示、Python 3.8、性能和旧 PR7 合同都有测试锁住"
+    status: done
+  - action: "阶段 6：浏览器验证和压力数据验证"
+    exit_signal: "本地服务真实页面和数据库候选表对账完成，无法 clean proof 时明确说明"
+    status: done
+  - action: "review 修复：候选展示语义和候选明细保存合同收紧"
+    exit_signal: "adopted 与 best role 重合不误标；非代表候选失败可见；role 映射损坏只显示不完整提示且不生成假链接；candidate_rows 保存前拒绝越界 op_id"
+    status: done
+
+checks:
+  - item: "PR-7e 配置、Python 3.8、性能和分析页 targeted tests"
+    source: "pytest -q tests/regression_scheduler_candidate_config_contract.py tests/regression_scheduler_candidate_py38_contract.py tests/regression_scheduler_candidate_performance_guard.py tests/regression_scheduler_candidate_analysis_contract.py"
+    status: passed
+  - item: "PR-7 候选与图相关全量回归"
+    source: "pytest -q tests/regression_scheduler_candidate_*.py tests/regression_scheduler_graph_auto_selection_contract.py tests/regression_scheduler_graph_on_mode_contract.py tests/regression_scheduler_graph_cycle_policy_contract.py tests/scheduler_graph/test_ready_queue.py tests/scheduler_graph/test_metrics_impact.py tests/scheduler_graph/test_analysis_service.py"
+    status: passed
+  - item: "CodeStable 最终浏览器/门禁"
+    source: "临时库 /tmp/aps-pr7e-browser.tMI6Op/aps.db；浏览器打开配置页和分析页；30 批 120 工序压力排产"
+    status: passed
+  - item: "review 修复 targeted tests"
+    source: ".venv/bin/python -m pytest tests/regression_scheduler_candidate_analysis_contract.py tests/regression_scheduler_candidate_persistence_contract.py"
+    status: passed
+  - item: "review 修复 PR-7e 候选与图相关回归"
+    source: ".venv/bin/python -m pytest tests/regression_scheduler_candidate_config_contract.py tests/regression_scheduler_candidate_py38_contract.py tests/regression_scheduler_candidate_performance_guard.py tests/regression_scheduler_candidate_analysis_contract.py tests/regression_scheduler_candidate_generation_contract.py tests/regression_scheduler_candidate_runner_contract.py tests/regression_scheduler_candidate_persistence_contract.py tests/regression_scheduler_candidate_schema_contract.py tests/regression_scheduler_candidate_summary_contract.py tests/regression_scheduler_graph_auto_selection_contract.py tests/regression_scheduler_graph_on_mode_contract.py tests/regression_scheduler_graph_report_mode_contract.py tests/regression_scheduler_graph_operation_logs_contract.py tests/regression_scheduler_graph_summary_contract.py"
+    status: passed
+  - item: "review 修复页面和查询相关回归"
+    source: ".venv/bin/python -m pytest tests/regression_scheduler_config_route_contract.py tests/regression_scheduler_config_spec_sync_contract.py tests/regression_config_field_spec_contract.py tests/regression_graph_config_bootstrap_contract.py tests/regression_gantt_critical_outline_sync.py tests/regression_improve_dispatch_modes.py tests/regression_optimizer_seed_results_contract.py tests/regression_schedule_service_reject_no_actionable_schedule_rows.py tests/regression_scheduler_run_no_reschedulable_flash.py tests/regression_scheduler_week_plan_no_reschedulable_flash.py tests/scheduler_graph/test_graph_dispatch_context.py tests/scheduler_graph/test_graph_performance.py tests/test_optimizer_build_order_once_per_strategy.py"
+    status: passed

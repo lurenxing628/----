@@ -113,6 +113,15 @@ class _ConfigServiceStub:
             objective="min_overdue",
             freeze_window_enabled="no",
             freeze_window_days=3,
+            graph_analysis_mode="on",
+            graph_block_on_cycle="no",
+            graph_critical_weight=500,
+            graph_impact_weight=10,
+            graph_candidate_weight_count=5,
+            graph_selection_policy="balanced",
+            graph_overdue_tolerance_count=1,
+            graph_tardiness_tolerance_ratio=0.10,
+            graph_debug_export="no",
             degradation_events=(),
         )
         self.apply_result = {
@@ -275,6 +284,20 @@ def test_scheduler_config_route_uses_request_services(monkeypatch) -> None:
     assert payload["current_config_state"]["label"] == "当前以手动设置为准。"
     assert payload["auto_assign_persist_state"]["enabled"] is True
     assert payload["auto_assign_persist_state"]["label"]
+    notice_text = json.dumps(payload["current_config_notice_items"], ensure_ascii=False)
+    assert "阶段 2" not in notice_text
+    assert "尚未接入" not in notice_text
+    assert "只看分析报告" in notice_text
+    assert "参与排产" in notice_text
+    assert "先排普通方案" in notice_text
+    assert "report 会生成只读报告" not in notice_text
+    assert "on 当前先按 report-only" not in notice_text
+    assert "不会让图分析参与 ready 队列" not in notice_text
+    assert "on 会先做图安全检查" not in notice_text
+    assert "可用 DAG 会用 ready 队列参与 SGS 候选" not in notice_text
+    assert "参与候选排序" not in notice_text
+    assert "图评分" not in notice_text
+    assert "仍不启用图评分" not in notice_text
     toggles = payload["scheduler_config_toggles"]
     assert set(toggles) == {
         "freeze_window_enabled",
@@ -282,6 +305,8 @@ def test_scheduler_config_route_uses_request_services(monkeypatch) -> None:
         "enforce_ready_default",
         "auto_assign_enabled",
         "ortools_enabled",
+        "graph_block_on_cycle",
+        "graph_debug_export",
     }
     assert toggles["freeze_window_enabled"]["id"] == "freezeWindowEnabled"
     assert toggles["freeze_window_enabled"]["name"] == "freeze_window_enabled"
@@ -289,11 +314,37 @@ def test_scheduler_config_route_uses_request_services(monkeypatch) -> None:
     assert toggles["freeze_window_enabled"]["submitted_value"] == "no"
     assert toggles["ortools_enabled"]["id"] == "orToolsEnabled"
     assert "不保证每次一定更好" in toggles["ortools_enabled"]["desc"]
+    assert toggles["graph_block_on_cycle"]["id"] == "graphBlockOnCycle"
+    assert toggles["graph_debug_export"]["id"] == "graphDebugExport"
 
     post_response = client.post("/scheduler/config/default")
 
     assert post_response.status_code in (301, 302)
     assert config_service.restore_default_called is True
+
+
+def test_scheduler_config_template_graph_copy_matches_cycle_gate_stage() -> None:
+    template = (REPO_ROOT / "templates/scheduler/config.html").read_text(encoding="utf-8")
+    config_constants = (REPO_ROOT / "core/services/scheduler/config/config_constants.py").read_text(encoding="utf-8")
+
+    assert "阶段 2 只保存" not in template
+    assert "真正图分析将在后续阶段接入" not in template
+    assert "只看分析报告" in template
+    assert "参与排产" in template
+    assert "graph_candidate_weight_count" in template
+    assert "graph_selection_policy" in template
+    assert "graph_overdue_tolerance_count" in template
+    assert "graph_tardiness_tolerance_ratio" in template
+    assert "report 会生成只读图分析报告" not in template
+    assert "on 会先做图安全检查" not in template
+    assert "可用 DAG 会用 ready 队列参与 SGS 候选" not in template
+    assert "参与候选排序" not in template
+    assert "仍不启用图评分" not in template
+    assert "当前仅保存为后续评分配置" not in template
+    assert "仍不启用图评分" not in config_constants
+    assert "只看分析报告" in config_constants
+    assert "参与排产" in config_constants
+    assert "参与候选排序" not in config_constants
 
 
 def test_scheduler_config_post_uses_atomic_save_entrypoint(monkeypatch) -> None:
@@ -320,6 +371,15 @@ def test_scheduler_config_post_uses_atomic_save_entrypoint(monkeypatch) -> None:
             "time_budget_seconds": "30",
             "freeze_window_enabled": "yes",
             "freeze_window_days": "2",
+            "graph_analysis_mode": "report",
+            "graph_block_on_cycle": "yes",
+            "graph_critical_weight": "700",
+            "graph_impact_weight": "20",
+            "graph_candidate_weight_count": "7",
+            "graph_selection_policy": "score_only",
+            "graph_overdue_tolerance_count": "2",
+            "graph_tardiness_tolerance_ratio": "0.2",
+            "graph_debug_export": "no",
         },
     )
 
@@ -327,6 +387,14 @@ def test_scheduler_config_post_uses_atomic_save_entrypoint(monkeypatch) -> None:
     assert config_service.save_page_config_called is True
     assert config_service.saved_payload["dispatch_mode"] == "sgs"
     assert config_service.saved_payload["priority_weight"] == "0.4"
+    assert config_service.saved_payload["graph_analysis_mode"] == "report"
+    assert config_service.saved_payload["graph_block_on_cycle"] == "yes"
+    assert config_service.saved_payload["graph_critical_weight"] == "700"
+    assert config_service.saved_payload["graph_impact_weight"] == "20"
+    assert config_service.saved_payload["graph_candidate_weight_count"] == "7"
+    assert config_service.saved_payload["graph_selection_policy"] == "score_only"
+    assert config_service.saved_payload["graph_overdue_tolerance_count"] == "2"
+    assert config_service.saved_payload["graph_tardiness_tolerance_ratio"] == "0.2"
 
 
 def test_scheduler_config_post_parses_toggle_fields_without_order_dependency(monkeypatch) -> None:
@@ -349,6 +417,10 @@ def test_scheduler_config_post_parses_toggle_fields_without_order_dependency(mon
                 ("auto_assign_enabled", "true"),
                 ("ortools_enabled", "0"),
                 ("ortools_enabled", "y"),
+                ("graph_block_on_cycle", "no"),
+                ("graph_block_on_cycle", "on"),
+                ("graph_debug_export", "0"),
+                ("graph_debug_export", "true"),
             ]
         ),
     )
@@ -360,6 +432,8 @@ def test_scheduler_config_post_parses_toggle_fields_without_order_dependency(mon
     assert config_service.saved_payload["enforce_ready_default"] == "yes"
     assert config_service.saved_payload["auto_assign_enabled"] == "yes"
     assert config_service.saved_payload["ortools_enabled"] == "yes"
+    assert config_service.saved_payload["graph_block_on_cycle"] == "yes"
+    assert config_service.saved_payload["graph_debug_export"] == "yes"
 
 
 def test_scheduler_config_post_rejects_invalid_toggle_value(monkeypatch) -> None:
@@ -605,6 +679,15 @@ def test_scheduler_config_post_visible_repair_marks_custom_provenance(monkeypatc
                 "time_budget_seconds": "20",
                 "freeze_window_enabled": "no",
                 "freeze_window_days": "0",
+                "graph_analysis_mode": "on",
+                "graph_block_on_cycle": "no",
+                "graph_critical_weight": "500",
+                "graph_impact_weight": "10",
+                "graph_candidate_weight_count": "5",
+                "graph_selection_policy": "balanced",
+                "graph_overdue_tolerance_count": "1",
+                "graph_tardiness_tolerance_ratio": "0.1",
+                "graph_debug_export": "no",
             },
             follow_redirects=True,
         )
@@ -647,6 +730,15 @@ def test_scheduler_config_post_surfaces_service_validation_message(monkeypatch) 
             "time_budget_seconds": "20",
             "freeze_window_enabled": "no",
             "freeze_window_days": "3",
+            "graph_analysis_mode": "off",
+            "graph_block_on_cycle": "no",
+            "graph_critical_weight": "500",
+            "graph_impact_weight": "10",
+            "graph_candidate_weight_count": "5",
+            "graph_selection_policy": "balanced",
+            "graph_overdue_tolerance_count": "1",
+            "graph_tardiness_tolerance_ratio": "0.1",
+            "graph_debug_export": "no",
         },
         follow_redirects=True,
     )

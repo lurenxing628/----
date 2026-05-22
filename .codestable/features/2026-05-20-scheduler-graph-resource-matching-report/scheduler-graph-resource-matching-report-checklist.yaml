@@ -1,0 +1,51 @@
+feature: 2026-05-20-scheduler-graph-resource-matching-report
+created: 2026-05-20
+
+steps:
+  - action: "阶段 0：只读读取 attention、system overview、PR-8 roadmap/items，并区分 dirty worktree"
+    exit_signal: "确认 PR-8 只做 report-only 资源匹配；初始 dirty 只包含 roadmap/items 既有改动"
+    status: done
+  - action: "阶段 1：补 resource_matching 纯函数合同测试并实现纯分析模块"
+    exit_signal: "最大匹配、空 ready、无候选设备、合同错误、public/diagnostics 分离和懒加载都有测试"
+    status: done
+  - action: "阶段 2：接入 first-wave ready helper 和 resource matching 投影"
+    exit_signal: "report/on 共用 ready 公式；非 DAG、图增强不可用、合同错误和未知异常口径固定"
+    status: done
+  - action: "阶段 3：接入 report/on 主链回归和 OperationLogs 禁漏回归"
+    exit_signal: "排产结果不变；public 只有计数；diagnostics 和样本不进 OperationLogs"
+    status: done
+  - action: "阶段 4：lazy runtime、ruff、pyright 和旧图回归验证"
+    exit_signal: "资源匹配导入不提前加载 NetworkX，旧 report/on/summary 合同仍通过"
+    status: done
+  - action: "阶段 5：CodeStable 文档、roadmap/items 回填和最终门禁"
+    exit_signal: "feature/design/checklist/acceptance 落盘，items/roadmap 状态更新，最终 clean proof 由提交后门禁证明"
+    status: done
+
+checks:
+  - item: "resource_matching 纯函数合同"
+    source: "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_graph/test_resource_matching.py"
+    status: passed
+  - item: "first-wave ready 与 resource matching 投影合同"
+    source: "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_graph/test_graph_dispatch_context.py tests/scheduler_graph/test_resource_matching.py"
+    status: passed
+  - item: "report/on 资源匹配和 OperationLogs 禁漏回归"
+    source: "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_graph_resource_matching_report_contract.py tests/regression_scheduler_graph_operation_logs_contract.py"
+    status: passed
+  - item: "lazy NetworkX 回归"
+    source: "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_graph_lazy_runtime_contract.py tests/scheduler_graph/test_nx_runtime.py"
+    status: passed
+  - item: "旧 graph report/on/summary 合同"
+    source: "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_graph_report_mode_contract.py tests/regression_scheduler_graph_on_mode_contract.py tests/regression_scheduler_graph_summary_contract.py"
+    status: passed
+  - item: "ruff targeted"
+    source: "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler/graph/resource_matching.py core/services/scheduler/run/schedule_graph_dispatch_context.py core/services/scheduler/run/schedule_graph_resource_matching_context.py core/services/scheduler/run/schedule_graph_projection_helpers.py core/services/scheduler/run/schedule_graph_report.py tests/scheduler_graph/test_resource_matching.py tests/scheduler_graph/test_graph_dispatch_context.py tests/scheduler_graph/test_nx_runtime.py tests/regression_scheduler_graph_resource_matching_report_contract.py tests/regression_scheduler_graph_operation_logs_contract.py tests/regression_scheduler_graph_lazy_runtime_contract.py"
+    status: passed
+  - item: "pyright targeted"
+    source: "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright core/services/scheduler/graph/resource_matching.py core/services/scheduler/run/schedule_graph_dispatch_context.py core/services/scheduler/run/schedule_graph_resource_matching_context.py core/services/scheduler/run/schedule_graph_projection_helpers.py core/services/scheduler/run/schedule_graph_report.py"
+    status: passed
+  - item: "items.yaml 校验"
+    source: "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .codestable/tools/validate-yaml.py --file .codestable/roadmap/networkx-scheduler-graph-introduction/networkx-scheduler-graph-introduction-items.yaml --yaml-only"
+    status: passed
+  - item: "最终 clean-worktree quality gate"
+    source: "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache"
+    status: pending

@@ -167,8 +167,9 @@ class OperationLogger:
             pre_in_tx = False
             try:
                 pre_in_tx = bool(getattr(self.conn, "in_transaction", False))
-            except Exception:
-                pre_in_tx = False
+            except Exception as exc:
+                pre_in_tx = True
+                safe_log(self.logger, "warning", f"读取数据库事务状态失败，操作日志不会自动提交：{exc}")
             auto_commit = (not pre_in_tx) and (not in_transaction_context(self.conn))
             self.conn.execute(
                 """
@@ -232,4 +233,3 @@ class OperationLogger:
         if ok:
             _invoke_safely(self.logger.error, f"[{module}] 失败：{action}（[{error_code}] {error_message}）")
         return bool(ok)
-

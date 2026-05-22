@@ -7,6 +7,7 @@ from unittest import mock
 
 from core.algorithms import GreedyScheduler, ScheduleResult
 from core.algorithms.greedy.dispatch import sgs as sgs_module
+from core.algorithms.greedy.dispatch.sgs_scoring import with_graph_priority_key
 
 
 @dataclass
@@ -149,6 +150,13 @@ def test_sgs_internal_scoring_uses_shared_estimator_and_matches_execution_order(
     assert wrapped.call_count >= 2, "SGS 评分阶段应调用统一估算器"
     non_seed_results = [result for result in results if result.batch_id in {"B_A", "B_B"}]
     assert [result.batch_id for result in non_seed_results] == ["B_B", "B_A"]
+
+
+def test_graph_priority_key_keeps_score_penalty_as_first_sort_component():
+    penalized_high_graph = with_graph_priority_key((1.0, 0.0, 1.0), (-999.0, 0.0))
+    unpenalized_low_graph = with_graph_priority_key((0.0, 999.0, 1.0), (0.0, 999.0))
+
+    assert unpenalized_low_graph < penalized_high_graph
 
 
 def test_sgs_probe_none_efficiency_default_does_not_pollute_formal_counter():

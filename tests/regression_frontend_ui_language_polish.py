@@ -13,6 +13,17 @@ def _read(rel_path: str) -> str:
     return (REPO_ROOT / rel_path).read_text(encoding="utf-8")
 
 
+def _read_analysis_template() -> str:
+    parts = (
+        "templates/scheduler/analysis.html",
+        "templates/scheduler/analysis_parts/_version_picker.html",
+        "templates/scheduler/analysis_parts/_selected_overview.html",
+        "templates/scheduler/analysis_parts/_candidate_comparison.html",
+        "templates/scheduler/analysis_parts/_optimization_process.html",
+    )
+    return "\n".join(_read(path) for path in parts)
+
+
 def test_scheduler_config_and_batch_hints_are_user_facing_chinese() -> None:
     expected_holiday_hint = "假期也安排生产且未单独填写效率时，系统会使用这里的效率值；请输入大于 0 的数字。"
     expected_batch_manage_hint = (
@@ -103,7 +114,7 @@ def test_scheduler_config_repair_notices_use_public_field_labels() -> None:
 
 
 def test_scheduler_analysis_gantt_and_logs_do_not_surface_internal_terms() -> None:
-    analysis = _read("templates/scheduler/analysis.html")
+    analysis = _read_analysis_template()
     assert "dispatch_mode_zh" in analysis
     assert "dispatch_rule_zh" in analysis
     assert "attempts / 优化曲线 / 超期明细" not in analysis
@@ -450,25 +461,28 @@ def test_excel_templates_default_to_chinese_enum_values_accepted_by_backend() ->
 
 
 def test_ensure_excel_templates_refreshes_known_stale_generated_template(tmp_path) -> None:
-    from core.services.common.excel_templates import build_xlsx_bytes, ensure_excel_templates
+    from core.services.common.excel_templates import ExcelTemplateError, build_xlsx_bytes, ensure_excel_templates
 
     stale_path = tmp_path / "人员基本信息.xlsx"
+    stale_bytes = build_xlsx_bytes(
+        ["工号", "姓名", "状态", "班组", "备注"],
+        [["OP001", "张三", "active", None, "旧模板"]],
+        format_spec={"enum_cols": {2: ["active", "inactive"]}},
+    ).getvalue()
     stale_path.write_bytes(
-        build_xlsx_bytes(
-            ["工号", "姓名", "状态", "班组", "备注"],
-            [["OP001", "张三", "active", None, "旧模板"]],
-            format_spec={"enum_cols": {2: ["active", "inactive"]}},
-        ).getvalue()
+        stale_bytes
     )
 
-    stats = ensure_excel_templates(str(tmp_path))
-    assert "人员基本信息.xlsx" in stats["created"]
+    with pytest.raises(ExcelTemplateError) as exc_info:
+        ensure_excel_templates(str(tmp_path))
+    assert "不能安全自动覆盖" in str(exc_info.value)
+    assert stale_path.read_bytes() == stale_bytes
 
     workbook = None
     try:
         workbook = openpyxl.load_workbook(filename=stale_path, data_only=True)
         ws = workbook.active
-        assert ws["C2"].value == "在岗"
+        assert ws["C2"].value == "active"
     finally:
         if workbook is not None:
             workbook.close()
@@ -629,12 +643,13 @@ def test_process_and_scheduler_errors_use_chinese_terms() -> None:
 
 def test_scheduler_analysis_hides_internal_schema_and_attempt_tags() -> None:
     analysis_vm = _read("web/viewmodels/scheduler_analysis_vm.py")
-    assert "这个历史版本缺少新的分析字段，页面只展示能确认的内容。" in analysis_vm
-    assert "新 schema 字段" not in analysis_vm
-    assert '"comparison_metric": "优化对比指标"' in analysis_vm
-    assert '"best_score_schema": "评分顺序"' in analysis_vm
+    analysis_compat = _read("web/viewmodels/scheduler_analysis_compat.py")
+    assert "这个历史版本缺少新的分析字段，页面只展示能确认的内容。" in analysis_compat
+    assert "新 schema 字段" not in analysis_vm + analysis_compat
+    assert '"comparison_metric": "优化对比指标"' in analysis_compat
+    assert '"best_score_schema": "评分顺序"' in analysis_compat
 
-    analysis_template = _read("templates/scheduler/analysis.html")
+    analysis_template = _read_analysis_template()
     assert "compat_fallback.missing_field_labels" in analysis_template
     assert "compat_fallback.missing_fields | join" not in analysis_template
     assert 'data-col-key="source"' in analysis_template

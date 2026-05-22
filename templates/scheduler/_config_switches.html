@@ -33,4 +33,14 @@
     {{ render_config_field_warning("ortools_enabled") }}
     {{ render_config_field_warning("ortools_time_limit_seconds") }}
   </div>
+
+  <div class="scheduler-config-switch">
+    {{ ui.toggle(scheduler_config_toggles["graph_block_on_cycle"], class='scheduler-config-switch-main') }}
+    {{ render_config_field_warning("graph_block_on_cycle") }}
+  </div>
+
+  <div class="scheduler-config-switch">
+    {{ ui.toggle(scheduler_config_toggles["graph_debug_export"], class='scheduler-config-switch-main') }}
+    {{ render_config_field_warning("graph_debug_export") }}
+  </div>
 </div>

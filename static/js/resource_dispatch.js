@@ -63,6 +63,13 @@
     return '<span class="aps-col-code" title="' + escapeHtml(v) + '">' + escapeHtml(v) + '</span>';
   }
 
+  function fullTextCell(value, className) {
+    const v = text(value);
+    const classAttr = className ? ' class="' + escapeHtml(className) + '"' : "";
+    const safe = escapeHtml(v);
+    return '<td' + classAttr + ' title="' + safe + '" data-full-text="' + safe + '">' + safe + '</td>';
+  }
+
   function renderFlags(row) {
     const items = [];
     if (trim(row && row.lock_status) === "locked") items.push(badge("已锁定", "update"));
@@ -170,8 +177,8 @@
           '<td>' + codeCell(row.part_no || "") + '</td>' +
           '<td>' + codeCell(row.op_code || "") + '</td>' +
           '<td>' + escapeHtml(row.seq) + '</td>' +
-          '<td>' + escapeHtml(row.current_resource_label || "") + '</td>' +
-          '<td>' + escapeHtml(row.counterpart_resource_label || "") + '</td>' +
+          fullTextCell(row.current_resource_label || "", "aps-resource-cell") +
+          fullTextCell(row.counterpart_resource_label || "", "aps-resource-cell") +
           '<td>' + relationBadge(row.team_relation_label) + '</td>' +
           '<td>' + escapeHtml(sourceLabel(row.source)) + '</td>' +
           '<td>' + renderFlags(row) + '</td>' +
@@ -418,8 +425,15 @@
     if (trim(filters.start_date)) params.set("start_date", trim(filters.start_date));
     if (trim(filters.end_date)) params.set("end_date", trim(filters.end_date));
     if (trim(filters.version)) params.set("version", trim(filters.version));
+    if (trim(filters.plan_role)) params.set("plan_role", trim(filters.plan_role));
     const textQs = params.toString();
     return textQs ? ("?" + textQs) : "";
+  }
+
+  function dataRequestUrl() {
+    const url = state.cfg.dataUrl || "";
+    if (!url) return "";
+    return url.indexOf("?") >= 0 ? url : url + currentQueryString();
   }
 
   async function loadData() {
@@ -431,7 +445,7 @@
     setOverdueWarning("");
     setDegradationSummary(null);
     try {
-      const resp = await fetch(state.cfg.dataUrl + currentQueryString(), { headers: { Accept: "application/json" } });
+      const resp = await fetch(dataRequestUrl(), { headers: { Accept: "application/json" } });
       const payload = await resp.json();
       if (!resp.ok || !payload || payload.success !== true) {
         const errorMessage = payload && payload.error && payload.error.message ? payload.error.message : "资源排班数据加载失败，请稍后重试。";

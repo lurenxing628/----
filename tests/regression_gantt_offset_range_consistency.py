@@ -111,12 +111,19 @@ def main() -> None:
     boot_js_path = os.path.join(repo_root, "static", "js", "gantt_boot.js")
     with open(boot_js_path, "r", encoding="utf-8") as f:
         src = f.read()
-    _assert_true("const hasEffectiveRange = !!(cfg.startDate || cfg.endDate);" in src, "gantt_boot.js 缺少有效区间判断")
-    range_idx = src.index("const hasEffectiveRange = !!(cfg.startDate || cfg.endDate);")
+    _assert_true(
+        'const usesVersionSpanRange = cfg.rangeSource === "version_span";' in src,
+        "gantt_boot.js 缺少版本跨度范围判断",
+    )
+    _assert_true(
+        "const hasEffectiveRange = !!(cfg.startDate || cfg.endDate) && !usesVersionSpanRange;" in src,
+        "gantt_boot.js 缺少有效区间判断",
+    )
+    range_idx = src.index("const hasEffectiveRange = !!(cfg.startDate || cfg.endDate) && !usesVersionSpanRange;")
     explicit_idx = src.index("if (hasEffectiveRange)", range_idx)
     start_idx = src.index('url.searchParams.set("start_date", cfg.startDate)', explicit_idx)
     end_idx = src.index('url.searchParams.set("end_date", cfg.endDate)', start_idx)
-    week_branch_idx = src.index("} else {", end_idx)
+    week_branch_idx = src.index("} else if (!usesVersionSpanRange) {", end_idx)
     week_idx = src.index('url.searchParams.set("week_start", cfg.weekStart)', week_branch_idx)
     offset_idx = src.index('url.searchParams.set("offset", String(cfg.offset))', week_idx)
     _assert_true(

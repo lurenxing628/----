@@ -84,8 +84,9 @@ def main() -> None:
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
 
-    import core.services.scheduler.gantt_service as gantt_module
-    from core.services.scheduler.gantt_service import GanttService
+    import core.services.scheduler.gantt_critical_chain_provider as provider_module
+    from core.services.scheduler.gantt_critical_chain_provider import GanttCriticalChainProvider
+    from data.repositories import ScheduleRepository
 
     probe_cache = ConcurrencyProbeOrderedDict()
     compute_count = {"value": 0}
@@ -105,27 +106,27 @@ def main() -> None:
             "reason": "",
         }
 
-    old_cache = GanttService._CRITICAL_CHAIN_CACHE
-    old_lock = GanttService._CRITICAL_CHAIN_CACHE_LOCK
-    old_max = GanttService._CRITICAL_CHAIN_CACHE_MAX
-    old_compute = gantt_module.compute_critical_chain
+    old_cache = GanttCriticalChainProvider._CRITICAL_CHAIN_CACHE
+    old_lock = GanttCriticalChainProvider._CRITICAL_CHAIN_CACHE_LOCK
+    old_max = GanttCriticalChainProvider._CRITICAL_CHAIN_CACHE_MAX
+    old_compute = provider_module.compute_critical_chain
 
     conn = _DummyConn(db_file=os.path.join(repo_root, "db", "aps.db"))
-    svc = GanttService(conn)
+    provider = GanttCriticalChainProvider(conn=conn, schedule_repo=ScheduleRepository(conn))
     errors: List[Exception] = []
 
     try:
-        GanttService._CRITICAL_CHAIN_CACHE = probe_cache
-        GanttService._CRITICAL_CHAIN_CACHE_LOCK = threading.Lock()
-        GanttService._CRITICAL_CHAIN_CACHE_MAX = 8
-        gantt_module.compute_critical_chain = _fake_compute
+        GanttCriticalChainProvider._CRITICAL_CHAIN_CACHE = probe_cache
+        GanttCriticalChainProvider._CRITICAL_CHAIN_CACHE_LOCK = threading.Lock()
+        GanttCriticalChainProvider._CRITICAL_CHAIN_CACHE_MAX = 8
+        provider_module.compute_critical_chain = _fake_compute
 
         def _worker(seed: int) -> None:
             rng = random.Random(seed)
             try:
                 for _ in range(80):
                     version = rng.randint(1, 32)
-                    cc = svc._get_critical_chain(version)
+                    cc = provider.get_critical_chain(version)
                     if not isinstance(cc, dict):
                         raise RuntimeError("critical_chain 返回类型异常")
                     if "ids" not in cc or "available" not in cc or "reason" not in cc or "cache_hit" not in cc:
@@ -145,12 +146,12 @@ def main() -> None:
             raise RuntimeError(f"检测到缓存并发访问重叠：{probe_cache.concurrent_hits}")
 
         # 容量契约：LRU 缓存条目数不应超过上限。
-        if len(GanttService._CRITICAL_CHAIN_CACHE) > int(GanttService._CRITICAL_CHAIN_CACHE_MAX):
+        if len(GanttCriticalChainProvider._CRITICAL_CHAIN_CACHE) > int(GanttCriticalChainProvider._CRITICAL_CHAIN_CACHE_MAX):
             raise RuntimeError("critical_chain 缓存容量超过上限")
 
         # cache_hit 契约：同 key 连续调用，第二次应命中缓存。
-        first = svc._get_critical_chain(999)
-        second = svc._get_critical_chain(999)
+        first = provider.get_critical_chain(999)
+        second = provider.get_critical_chain(999)
         if bool(first.get("cache_hit")):
             raise RuntimeError(f"首次调用不应命中缓存：{first}")
         if not bool(second.get("cache_hit")):
@@ -160,10 +161,10 @@ def main() -> None:
 
         print("OK")
     finally:
-        GanttService._CRITICAL_CHAIN_CACHE = old_cache
-        GanttService._CRITICAL_CHAIN_CACHE_LOCK = old_lock
-        GanttService._CRITICAL_CHAIN_CACHE_MAX = old_max
-        gantt_module.compute_critical_chain = old_compute
+        GanttCriticalChainProvider._CRITICAL_CHAIN_CACHE = old_cache
+        GanttCriticalChainProvider._CRITICAL_CHAIN_CACHE_LOCK = old_lock
+        GanttCriticalChainProvider._CRITICAL_CHAIN_CACHE_MAX = old_max
+        provider_module.compute_critical_chain = old_compute
 
 
 if __name__ == "__main__":

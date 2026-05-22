@@ -210,6 +210,7 @@ REQUEST_SERVICE_TARGET_FILES = [
     "web/routes/domains/scheduler/scheduler_run.py",
     "web/routes/dashboard.py",
     "web/routes/domains/scheduler/scheduler_analysis.py",
+    "web/routes/domains/scheduler/scheduler_analysis_read.py",
     "web/routes/material.py",
     "web/routes/domains/scheduler/scheduler_batches.py",
     "web/routes/domains/scheduler/scheduler_batch_detail.py",
@@ -314,17 +315,10 @@ class SilentFallbackSample:
 
 STARTUP_SAMPLE_EXPECTATIONS = [
     SilentFallbackSample(
-        path="web/bootstrap/static_versioning.py",
-        symbol="_versioned_url_for",
-        line_start=84,
-        line_end=86,
-        fallback_kind="silent_swallow",
-    ),
-    SilentFallbackSample(
-        path="web/bootstrap/static_versioning.py",
-        symbol="_mtime_version",
-        line_start=68,
-        line_end=69,
+        path="web/bootstrap/launcher_observability.py",
+        symbol="_format_message",
+        line_start=77,
+        line_end=78,
         fallback_kind="silent_default_fallback",
     ),
     SilentFallbackSample(
@@ -337,8 +331,8 @@ STARTUP_SAMPLE_EXPECTATIONS = [
     SilentFallbackSample(
         path="web/bootstrap/factory.py",
         symbol="_close_db",
-        line_start=397,
-        line_end=398,
+        line_start=405,
+        line_end=406,
         fallback_kind="cleanup_best_effort",
     ),
     SilentFallbackSample(

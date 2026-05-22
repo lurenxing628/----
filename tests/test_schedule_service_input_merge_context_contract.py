@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import datetime
 from types import SimpleNamespace
+from typing import Any, cast
 
 from core.services.scheduler.config.config_field_spec import default_snapshot_values
 from core.services.scheduler.config.config_snapshot import ScheduleConfigSnapshot
@@ -134,6 +135,7 @@ def test_schedule_service_returns_merge_context_degraded_summary_without_input_f
             result_summary_obj=result_summary_obj,
             overdue_items=[],
             time_cost_ms=time_cost_ms,
+            candidate_comparison=SimpleNamespace(),
         )
 
     def _stub_build_freeze_window_seed(*args, **kwargs):
@@ -162,21 +164,24 @@ def test_schedule_service_returns_merge_context_degraded_summary_without_input_f
     monkeypatch.setattr(schedule_service_mod, "persist_schedule", lambda *args, **kwargs: None)
 
     service = ScheduleService(conn, logger=None, op_logger=None)
-    service.batch_repo = _Repo(
-        {
-            "B001": SimpleNamespace(
-                batch_id="B001",
-                part_no="P001",
-                status="planned",
-                ready_status="yes",
-                due_date=None,
-            )
-        }
+    service.batch_repo = cast(
+        Any,
+        _Repo(
+            {
+                "B001": SimpleNamespace(
+                    batch_id="B001",
+                    part_no="P001",
+                    status="planned",
+                    ready_status="yes",
+                    due_date=None,
+                )
+            }
+        ),
     )
-    service.op_repo = _OperationRepo({"B001": [_external_op()]})
-    service.part_op_repo = _Repo({("P001", 20): SimpleNamespace(ext_group_id="G404")})
-    service.group_repo = _Repo({})
-    service.history_repo = SimpleNamespace(get_latest_version=lambda: 0)
+    service.op_repo = cast(Any, _OperationRepo({"B001": [_external_op()]}))
+    service.part_op_repo = cast(Any, _Repo({("P001", 20): SimpleNamespace(ext_group_id="G404")}))
+    service.group_repo = cast(Any, _Repo({}))
+    service.history_repo = cast(Any, SimpleNamespace(get_latest_version=lambda: 0))
 
     try:
         result = service.run_schedule(
@@ -191,9 +196,12 @@ def test_schedule_service_returns_merge_context_degraded_summary_without_input_f
     finally:
         conn.close()
 
-    assert service.op_repo.calls == ["B001"]
-    assert service.part_op_repo.calls == [("P001", 20)]
-    assert service.group_repo.calls == ["G404"]
+    op_repo = cast(Any, service.op_repo)
+    part_op_repo = cast(Any, service.part_op_repo)
+    group_repo = cast(Any, service.group_repo)
+    assert op_repo.calls == ["B001"]
+    assert part_op_repo.calls == [("P001", 20)]
+    assert group_repo.calls == ["G404"]
     summary = result["summary"]
     assert "merge_context_degraded" in summary["degraded_causes"]
     assert "input_fallback" not in summary["degraded_causes"]

@@ -53,6 +53,63 @@ def test_run_layer_rejects_invalid_raw_seed_before_algorithm_cleanup() -> None:
     assert int((stats.get("fallback_counts") or {}).get("optimizer_seed_result_invalid_count") or 0) == 2
 
 
+def test_run_layer_rejects_string_seed_times_before_algorithm_cleanup() -> None:
+    stats = {"fallback_counts": {}, "param_fallbacks": {}}
+
+    with pytest.raises(ValidationError) as exc_info:
+        coerce_seed_results(
+            [
+                {
+                    "op_id": 7,
+                    "op_code": "B001_10",
+                    "batch_id": "B001",
+                    "seq": 10,
+                    "start_time": "2026-04-01 08:00:00",
+                    "end_time": "2026-04-01 10:00:00",
+                }
+            ],
+            optimizer_algo_stats=stats,
+        )
+
+    details = getattr(exc_info.value, "details", {}) or {}
+    assert exc_info.value.field == "seed_results"
+    assert details.get("reason") == "invalid_seed_results"
+    assert int(details.get("invalid_seed_count") or 0) == 1
+    assert "有效时间" in str((details.get("invalid_seed_samples") or [{}])[0].get("error") or "")
+
+
+@pytest.mark.parametrize(
+    "payload, expected_text",
+    [
+        ({"op_id": 7.5, "seq": 10}, "工序编号必须是正整数"),
+        ({"op_id": True, "seq": 10}, "工序编号必须是正整数"),
+        ({"op_id": -7, "seq": 10}, "工序编号必须是正整数"),
+        ({"op_id": "-7", "seq": 10}, "工序编号必须是正整数"),
+        ({"op_id": 0, "seq": 1.5}, "工序号必须是正整数"),
+        ({"op_id": 0, "seq": -1}, "工序号必须是正整数"),
+    ],
+)
+def test_run_layer_rejects_seed_identity_values_that_would_be_truncated(payload, expected_text) -> None:
+    start = datetime(2026, 4, 1, 8, 0, 0)
+    end = datetime(2026, 4, 1, 10, 0, 0)
+    stats = {"fallback_counts": {}, "param_fallbacks": {}}
+    item = {
+        "op_code": "B001_10",
+        "batch_id": "B001",
+        "start_time": start,
+        "end_time": end,
+    }
+    item.update(payload)
+
+    with pytest.raises(ValidationError) as exc_info:
+        coerce_seed_results([item], optimizer_algo_stats=stats)
+
+    details = getattr(exc_info.value, "details", {}) or {}
+    assert exc_info.value.field == "seed_results"
+    assert details.get("reason") == "invalid_seed_results"
+    assert expected_text in str((details.get("invalid_seed_samples") or [{}])[0].get("error") or "")
+
+
 def test_algorithm_seed_normalizer_is_not_the_raw_dict_boundary() -> None:
     start = datetime(2026, 4, 1, 8, 0, 0)
     end = datetime(2026, 4, 1, 10, 0, 0)
@@ -75,3 +132,85 @@ def test_algorithm_seed_normalizer_is_not_the_raw_dict_boundary() -> None:
     assert normalized == []
     assert seed_op_ids == set()
     assert warnings == []
+
+
+def test_algorithm_seed_normalizer_does_not_filter_operation_for_string_time_seed() -> None:
+    normalized, seed_op_ids, warnings = normalize_seed_results(
+        seed_results=[
+            SimpleNamespace(
+                op_id=7,
+                op_code="B001_10",
+                batch_id="B001",
+                seq=10,
+                start_time="2026-04-01 08:00:00",
+                end_time="2026-04-01 10:00:00",
+            )
+        ],
+        operations=[SimpleNamespace(id=7, op_code="B001_10", batch_id="B001", seq=10)],
+        algo_stats={"fallback_counts": {}, "param_fallbacks": {}},
+    )
+
+    assert normalized == []
+    assert seed_op_ids == set()
+    assert any("格式不正确" in warning for warning in warnings)
+
+
+def test_algorithm_seed_normalizer_does_not_backfill_negative_identity() -> None:
+    start = datetime(2026, 4, 1, 8, 0, 0)
+    end = datetime(2026, 4, 1, 10, 0, 0)
+    stats = {"fallback_counts": {}, "param_fallbacks": {}}
+
+    normalized, seed_op_ids, warnings = normalize_seed_results(
+        seed_results=[
+            SimpleNamespace(
+                op_id=-7,
+                op_code="B001_10",
+                batch_id="B001",
+                seq=10,
+                start_time=start,
+                end_time=end,
+            ),
+            SimpleNamespace(
+                op_id=0,
+                op_code="",
+                batch_id="B001",
+                seq="-10",
+                start_time=start,
+                end_time=end,
+            ),
+        ],
+        operations=[SimpleNamespace(id=7, op_code="B001_10", batch_id="B001", seq=10)],
+        algo_stats=stats,
+    )
+
+    assert normalized == []
+    assert seed_op_ids == set()
+    assert int((stats.get("fallback_counts") or {}).get("seed_invalid_dropped_count") or 0) == 2
+    assert any("无法匹配" in warning for warning in warnings)
+
+
+@pytest.mark.parametrize("seq", [-1, "-1", 1.5, "1.5", True])
+def test_algorithm_seed_normalizer_does_not_ignore_bad_seq_when_op_code_matches(seq) -> None:
+    start = datetime(2026, 4, 1, 8, 0, 0)
+    end = datetime(2026, 4, 1, 10, 0, 0)
+    stats = {"fallback_counts": {}, "param_fallbacks": {}}
+
+    normalized, seed_op_ids, warnings = normalize_seed_results(
+        seed_results=[
+            SimpleNamespace(
+                op_id=0,
+                op_code="B001_10",
+                batch_id="B001",
+                seq=seq,
+                start_time=start,
+                end_time=end,
+            )
+        ],
+        operations=[SimpleNamespace(id=7, op_code="B001_10", batch_id="B001", seq=10)],
+        algo_stats=stats,
+    )
+
+    assert normalized == []
+    assert seed_op_ids == set()
+    assert int((stats.get("fallback_counts") or {}).get("seed_invalid_dropped_count") or 0) == 1
+    assert any("无法匹配" in warning for warning in warnings)

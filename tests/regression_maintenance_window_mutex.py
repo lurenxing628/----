@@ -138,6 +138,33 @@ def main() -> None:
     if not any("维护锁状态检测失败" in message for message in lock_warnings):
         raise RuntimeError(f"维护锁读取失败应记录可诊断 warning，实际日志：{lock_warnings}")
 
+    with mock.patch.object(backup_mod.os, "write", side_effect=OSError("lock metadata boom")):
+        try:
+            with maintenance_window(db_path, logger=None, action="metadata_write_fail"):
+                raise RuntimeError("metadata 写入失败时不应进入维护窗口")
+        except MaintenanceWindowError as e:
+            if e.code != "lock_metadata_write_failed":
+                raise RuntimeError(f"metadata 写入失败预期 lock_metadata_write_failed，实际 {e.code}/{e}")
+        else:
+            raise RuntimeError("metadata 写入失败时 maintenance_window 不应成功")
+    if os.path.exists(stale_lock):
+        raise RuntimeError("metadata 写入失败后不应留下维护锁文件")
+    with maintenance_window(db_path, logger=None, action="metadata_write_retry"):
+        if not is_maintenance_window_active(db_path):
+            raise RuntimeError("metadata 写入失败后应释放互斥锁，允许后续重试进入维护窗口")
+
+    with mock.patch.object(backup_mod.os, "write", return_value=0):
+        try:
+            with maintenance_window(db_path, logger=None, action="metadata_short_write"):
+                raise RuntimeError("metadata 短写时不应进入维护窗口")
+        except MaintenanceWindowError as e:
+            if e.code != "lock_metadata_write_failed":
+                raise RuntimeError(f"metadata 短写预期 lock_metadata_write_failed，实际 {e.code}/{e}")
+        else:
+            raise RuntimeError("metadata 短写时 maintenance_window 不应成功")
+    if os.path.exists(stale_lock):
+        raise RuntimeError("metadata 短写后不应留下维护锁文件")
+
     backup_entered = threading.Event()
     backup_release = threading.Event()
 

@@ -1,0 +1,66 @@
+feature: 2026-05-18-scheduler-graph-candidate-transaction-persistence
+created: 2026-05-18
+
+steps:
+  - action: "只读核实 PR-7c 主链、候选持久化、summary/log 和测试边界"
+    exit_signal: "确认 PR-7c 只做同事务持久化和小摘要，不越界到页面或配置"
+    status: done
+  - action: "PR-7c 设计对抗审核"
+    exit_signal: "确认事务边界、summary/log 白名单、PR6 保护和 PR7d/7e 边界没有阻塞问题"
+    status: done
+  - action: "补强 CandidatePlan adopted summary 字段"
+    exit_signal: "adopted 方案能提供 summary 所需优化器字段"
+    status: done
+  - action: "补强 CandidateComparisonOutcome 总时间预算字段"
+    exit_signal: "候选比较 outcome 带 run_time_budget_seconds，summary/log 不从配置默认值反推"
+    status: done
+  - action: "实现 candidate comparison 小摘要投影"
+    exit_signal: "result_summary 只包含候选小摘要，不包含 rows 或图诊断"
+    status: done
+  - action: "实现 summary size guard 候选极小摘要保护"
+    exit_signal: "result_summary 超限进入最小摘要时仍保留 candidate_comparison 极小字段"
+    status: done
+  - action: "实现候选比较持久化 helper"
+    exit_signal: "ScheduleCandidate、ScheduleCandidateRows、ScheduleCandidateSelection 按角色规则写入"
+    status: done
+  - action: "拆分 schedule 持久化事务内核心并新增同事务入口"
+    exit_signal: "Schedule / ScheduleHistory / Candidate 在一个事务里写入，OperationLogs 仍事务后写"
+    status: done
+  - action: "接入排产主链"
+    exit_signal: "正式主链运行内存候选、采用 selected_plan、校验 adopted payload、分配一次正式 version"
+    status: done
+  - action: "补 PR-7c 合同测试"
+    exit_signal: "持久化和 summary/log 合同测试覆盖同事务回滚、小摘要和范围边界"
+    status: done
+  - action: "PR-7c 实现对抗审核与修复"
+    exit_signal: "阻塞问题已修复并复审通过"
+    status: done
+  - action: "PR-7c CodeStable 回填与验证"
+    exit_signal: "items.yaml、acceptance、yaml 校验和定向测试完成"
+    status: done
+
+checks:
+  - item: "候选持久化合同"
+    source: tests/regression_scheduler_candidate_persistence_contract.py
+    status: passed
+  - item: "候选 summary/log 合同"
+    source: tests/regression_scheduler_candidate_summary_contract.py
+    status: passed
+  - item: "summary size guard 候选摘要保留合同"
+    source: tests/regression_scheduler_candidate_summary_contract.py
+    status: passed
+  - item: "summary v1.1/v1.2 回归"
+    source: tests/regression_schedule_summary_v11_contract.py
+    status: passed
+  - item: "图 summary 回归"
+    source: tests/regression_scheduler_graph_summary_contract.py
+    status: passed
+  - item: "图 OperationLogs 回归"
+    source: tests/regression_scheduler_graph_operation_logs_contract.py
+    status: passed
+  - item: "PR-7a/7b 候选底座回归"
+    source: tests/regression_scheduler_candidate_schema_contract.py tests/regression_scheduler_candidate_plan_query_contract.py tests/regression_scheduler_candidate_generation_contract.py tests/regression_scheduler_candidate_runner_contract.py tests/regression_scheduler_candidate_health_contract.py tests/regression_scheduler_graph_auto_selection_contract.py
+    status: passed
+  - item: "空排产不生成历史回归"
+    source: tests/regression_schedule_history_not_created_for_empty_schedule.py
+    status: passed

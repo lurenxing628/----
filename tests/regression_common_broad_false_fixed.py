@@ -24,8 +24,18 @@ def main() -> None:
         conn.commit()
         assert table_exists(conn, "TestTable") is True
         assert column_exists(conn, "TestTable", "name") is True
-        assert table_exists(conn, "1-bad-table") is False
-        assert column_exists(conn, "1-bad-table", "name") is False
+        try:
+            table_exists(conn, "1-bad-table")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("非法表名不应被当成表不存在")
+        try:
+            column_exists(conn, "TestTable", "1-bad-column")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("非法列名不应被当成列不存在")
     finally:
         conn.close()
 

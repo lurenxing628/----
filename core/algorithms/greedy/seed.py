@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.algorithms.types import ScheduleResult
@@ -23,6 +24,7 @@ def normalize_seed_results(
     counters = {
         "backfilled": 0,
         "dropped_invalid": 0,
+        "dropped_bad_time_type": 0,
         "dropped_bad_time_order": 0,
         "dropped_bad_time_incomparable": 0,
         "dropped_dup": 0,
@@ -90,6 +92,8 @@ def _normalize_one_seed_result(seed_result: Any, *, lookup: Dict[str, Any]) -> T
 
     raw_oid = getattr(seed_result, "op_id", 0)
     oid = _identity_int(raw_oid)
+    if _invalid_identity_supplied(getattr(seed_result, "seq", 0)):
+        return None, "dropped_invalid"
     if oid > 0:
         return seed_result, None
     if _invalid_identity_supplied(raw_oid):
@@ -101,6 +105,8 @@ def _normalize_one_seed_result(seed_result: Any, *, lookup: Dict[str, Any]) -> T
 
 
 def _invalid_time_window_reason(seed_result: Any) -> Optional[str]:
+    if not isinstance(getattr(seed_result, "start_time", None), datetime) or not isinstance(getattr(seed_result, "end_time", None), datetime):
+        return "dropped_bad_time_type"
     try:
         if seed_result.end_time > seed_result.start_time:
             return None
@@ -152,21 +158,24 @@ def _invalid_identity_supplied(value: Any) -> bool:
     if isinstance(value, bool):
         return True
     if isinstance(value, int):
-        return False
+        return value < 0
     if isinstance(value, float):
-        return not value.is_integer()
+        return value < 0 or not value.is_integer()
     text = str(value).strip()
     if not text:
         return False
+    if text.startswith("-"):
+        return True
     digits = text[1:] if text[:1] in {"+", "-"} else text
     return not digits.isdecimal()
 
 
 def _record_seed_counters(algo_stats: Any, counters: Dict[str, int]) -> None:
-    bad_time_total = counters["dropped_bad_time_order"] + counters["dropped_bad_time_incomparable"]
+    bad_time_total = counters["dropped_bad_time_type"] + counters["dropped_bad_time_order"] + counters["dropped_bad_time_incomparable"]
     increment_counter(algo_stats, "seed_op_id_backfilled_count", counters["backfilled"])
     increment_counter(algo_stats, "seed_invalid_dropped_count", counters["dropped_invalid"])
     increment_counter(algo_stats, "seed_bad_time_dropped_count", bad_time_total)
+    increment_counter(algo_stats, "seed_bad_time_type_dropped_count", counters["dropped_bad_time_type"])
     increment_counter(algo_stats, "seed_bad_time_order_dropped_count", counters["dropped_bad_time_order"])
     increment_counter(algo_stats, "seed_bad_time_incomparable_dropped_count", counters["dropped_bad_time_incomparable"])
     increment_counter(algo_stats, "seed_duplicate_dropped_count", counters["dropped_dup"])
@@ -178,6 +187,8 @@ def _seed_warnings(counters: Dict[str, int], dup_samples: List[str]) -> List[str
         warnings.append(f"沿用旧排产结果时发现 {counters['backfilled']} 条工序编号缺失或不合法的记录，已按工序代码、批次号和工序号补回工序编号，避免重复排产。")
     if counters["dropped_invalid"]:
         warnings.append(f"沿用旧排产结果时发现 {counters['dropped_invalid']} 条工序编号缺失或不合法且无法匹配的记录，系统已忽略这些记录，避免重复统计或重复排产。")
+    if counters["dropped_bad_time_type"]:
+        warnings.append(f"沿用旧排产结果时发现 {counters['dropped_bad_time_type']} 条开始时间或结束时间格式不正确的记录，系统已忽略这些记录，避免锁定近期排程或资源占用异常。")
     if counters["dropped_bad_time_order"]:
         warnings.append(f"沿用旧排产结果时发现 {counters['dropped_bad_time_order']} 条开始时间不早于结束时间的记录，系统已忽略这些记录，避免锁定近期排程或资源占用异常。")
     if counters["dropped_bad_time_incomparable"]:

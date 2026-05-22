@@ -68,6 +68,11 @@
           {{ selected_summary_display.summary_parse_state.user_message }}
         </div>
       {% endif %}
+      {% if selected_summary_display.summary_count_parse_failed %}
+        <div class="flash-card flash-warning mt-2">
+          {{ selected_summary_display.summary_count_parse_message }}
+        </div>
+      {% endif %}
       {% if selected_summary_display.primary_degradation %}
         <div class="flash-card flash-warning mt-2">
           {% if selected_summary_display.primary_degradation.details %}
@@ -115,9 +120,10 @@
         </div>
       {% endif %}
       {% if selected_summary_display.warning_total %}
+        {% set warning_preview_count = selected_summary_display.warnings_preview|length %}
         <div class="flash-card flash-warning mt-2">
           <div>提醒：{{ selected_summary_display.warning_total }} 条</div>
-          {% call ui.flash_details('查看前 ' ~ (selected_summary_display.warnings_preview|length) ~ ' 条提醒') %}
+          {% call ui.flash_details('查看前 ' ~ warning_preview_count ~ ' 条提醒') %}
             <ul class="list-tight">
               {% for item in selected_summary_display.warnings_preview %}
                 <li>{{ item }}</li>
@@ -127,6 +133,18 @@
           {% if selected_summary_display.warning_hidden_count > 0 %}
             <div class="muted text-xs">另有 {{ selected_summary_display.warning_hidden_count }} 条提醒未在当前详情中展开。</div>
           {% endif %}
+        </div>
+      {% endif %}
+      {% if selected_summary_display.maintenance_diagnostic_count %}
+        <div class="flash-card flash-warning mt-2">
+          <div>维护诊断：{{ selected_summary_display.maintenance_diagnostic_count }} 条</div>
+          <div class="muted text-xs">
+            {% if selected_summary_display.warning_total %}
+              系统另外记录了维护诊断，具体内容不在业务页面展示；需要排查时请让维护人员查看系统日志。
+            {% else %}
+              这次没有需要调度员处理的业务提醒；系统另外记录了维护诊断，具体内容不在业务页面展示。需要排查时请让维护人员查看系统日志。
+            {% endif %}
+          </div>
         </div>
       {% endif %}
       {% if selected_summary_display.error_total %}
@@ -229,6 +247,9 @@
                 {% if r.result_summary_display.summary_parse_state.parse_failed %}
                   <div class="muted">{{ r.result_summary_display.summary_parse_state.user_message }}</div>
                 {% endif %}
+                {% if r.result_summary_display.summary_count_parse_failed %}
+                  <div class="muted">{{ r.result_summary_display.summary_count_parse_message }}</div>
+                {% endif %}
                 {% if r.result_summary_display.primary_degradation %}
                   <div>{{ r.result_summary_display.primary_degradation.message }}</div>
                 {% endif %}
@@ -249,6 +270,9 @@
                 {% endif %}
                 {% if r.result_summary_display.warning_total %}
                   <div class="muted">提醒 {{ r.result_summary_display.warning_total }} 条</div>
+                {% endif %}
+                {% if r.result_summary_display.maintenance_diagnostic_count %}
+                  <div class="muted">维护诊断 {{ r.result_summary_display.maintenance_diagnostic_count }} 条</div>
                 {% endif %}
                 {% if r.result_summary_display.error_total %}
                   <div class="muted">错误 {{ r.result_summary_display.error_total }} 条</div>

@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from core.infrastructure.errors import ValidationError
 from core.services.equipment.machine_service import MachineService
 from core.services.personnel import ResourceTeamService
 from core.services.personnel.operator_service import OperatorService
-from data.repositories import ScheduleRepository
 
+from .plan_overdue_markers import build_overdue_meta_for_plan
 from .resource_dispatch_range import resolve_dispatch_range
 from .resource_dispatch_support import (
     build_dispatch_filters,
@@ -18,6 +18,14 @@ from .resource_dispatch_support import (
     extract_overdue_batch_ids_with_meta,
 )
 from .schedule_history_query_service import ScheduleHistoryQueryService
+from .schedule_plan_query_service import ROLE_ADOPTED, SchedulePlanQueryService
+from .schedule_result_view_context import (
+    normalize_plan_role,
+    plan_role_filter_fields,
+    plan_role_notice_from_fields,
+    resolve_schedule_result_view_context,
+    serialize_plan_role_options,
+)
 from .version_resolution import VersionResolution, require_selected_version, resolve_version_or_latest
 
 
@@ -26,7 +34,7 @@ class ResourceDispatchService:
         self.conn = conn
         self.logger = logger
         self.op_logger = op_logger
-        self.schedule_repo = ScheduleRepository(conn, logger=logger)
+        self.plan_query_service = SchedulePlanQueryService(conn, logger=logger)
         self.history_service = ScheduleHistoryQueryService(conn, logger=logger, op_logger=op_logger)
         self.operator_service = OperatorService(conn, logger=logger, op_logger=op_logger)
         self.machine_service = MachineService(conn, logger=logger, op_logger=op_logger)
@@ -81,6 +89,24 @@ class ResourceDispatchService:
             value,
             latest_version=latest,
             version_exists=lambda version: self.history_service.get_by_version(int(version)) is not None,
+        )
+
+    def _resolve_result_view_context(
+        self,
+        *,
+        version: Any,
+        plan_role: Any,
+        latest_version: Optional[int] = None,
+        require_existing_version: bool = False,
+    ):
+        latest = self._latest_version() if latest_version is None else int(latest_version or 0)
+        return resolve_schedule_result_view_context(
+            raw_version=version,
+            raw_plan_role=plan_role,
+            latest_version=latest,
+            version_exists=lambda item: self.history_service.get_by_version(int(item)) is not None,
+            plan_query_service=getattr(self, "plan_query_service", None),
+            require_existing_version=require_existing_version,
         )
 
     def _scope_record(self, scope_type: str, scope_id: str):
@@ -174,6 +200,21 @@ class ResourceDispatchService:
             )
         return meta
 
+    def _load_overdue_meta_for_plan(self, *, version: int, role: str, source_table: str) -> Dict[str, Any]:
+        try:
+            return build_overdue_meta_for_plan(
+                version=version,
+                role=role,
+                source_table=source_table,
+                list_plan_overdue_base_rows=self.plan_query_service.list_plan_overdue_base_rows,
+                load_adopted_meta=self._load_overdue_meta,
+                log_degraded=self._log_overdue_marker_degraded,
+            )
+        except ValidationError:
+            raise
+        except ValueError as exc:
+            raise ValidationError(str(exc), field="plan_role") from exc
+
     def build_page_context(
         self,
         *,
@@ -188,9 +229,11 @@ class ResourceDispatchService:
         start_date: Any = None,
         end_date: Any = None,
         version: Any = None,
+        plan_role: Any = None,
     ) -> Dict[str, Any]:
         normalized_scope_type = self._normalize_scope_type(scope_type)
         normalized_team_axis = self._normalize_team_axis(team_axis)
+        normalized_plan_role = normalize_plan_role(plan_role)
         versions = self._list_versions(limit=50)
         latest_version = int(versions[0].get("version") or 0) if versions else self._latest_version()
         dr = resolve_dispatch_range(
@@ -208,26 +251,44 @@ class ResourceDispatchService:
         )
         selected_scope_name = self._scope_name_for_query(normalized_scope_type, selected_scope_id)
         operator_options, machine_options, team_options = self._build_scope_options()
-        version_resolution = self._resolve_version(version, latest_version=latest_version)
+        view_context = self._resolve_result_view_context(
+            version=version,
+            plan_role=normalized_plan_role,
+            latest_version=latest_version,
+        )
+        version_resolution = view_context.version_resolution
         if version_resolution.status == "missing_history":
             require_selected_version(version_resolution)
         selected_version = version_resolution.selected_version
+        if selected_version:
+            plan_role_fields = plan_role_filter_fields(view_context)
+            plan_role_options = serialize_plan_role_options(view_context.available_roles)
+        else:
+            plan_role_fields = plan_role_filter_fields(
+                requested_role=normalized_plan_role,
+                effective_role=ROLE_ADOPTED,
+            )
+            plan_role_options = serialize_plan_role_options([])
+        filters = {
+            "scope_type": normalized_scope_type,
+            "scope_id": selected_scope_id or "",
+            "scope_name": selected_scope_name,
+            "operator_id": selected_scope_id if normalized_scope_type == "operator" else self._text(operator_id) or "",
+            "machine_id": selected_scope_id if normalized_scope_type == "machine" else self._text(machine_id) or "",
+            "team_id": selected_scope_id if normalized_scope_type == "team" else self._text(team_id) or "",
+            "team_axis": normalized_team_axis,
+            "period_preset": dr.period_preset,
+            "query_date": dr.query_date.isoformat(),
+            "start_date": dr.start_date.isoformat(),
+            "end_date": dr.end_date.isoformat(),
+            "version": selected_version,
+        }
+        filters.update(plan_role_fields)
         return {
-            "filters": {
-                "scope_type": normalized_scope_type,
-                "scope_id": selected_scope_id or "",
-                "scope_name": selected_scope_name,
-                "operator_id": selected_scope_id if normalized_scope_type == "operator" else self._text(operator_id) or "",
-                "machine_id": selected_scope_id if normalized_scope_type == "machine" else self._text(machine_id) or "",
-                "team_id": selected_scope_id if normalized_scope_type == "team" else self._text(team_id) or "",
-                "team_axis": normalized_team_axis,
-                "period_preset": dr.period_preset,
-                "query_date": dr.query_date.isoformat(),
-                "start_date": dr.start_date.isoformat(),
-                "end_date": dr.end_date.isoformat(),
-                "version": selected_version,
-            },
+            "filters": filters,
             "versions": versions,
+            "plan_role_options": plan_role_options,
+            "plan_role_notice": plan_role_notice_from_fields(plan_role_fields),
             "has_history": bool(versions),
             "operator_options": operator_options,
             "machine_options": machine_options,
@@ -249,21 +310,37 @@ class ResourceDispatchService:
         start_date: Any = None,
         end_date: Any = None,
         version: Any = None,
+        plan_role: Any = None,
     ) -> Dict[str, Any]:
         normalized_scope_type = self._normalize_scope_type(scope_type)
         normalized_team_axis = self._normalize_team_axis(team_axis)
+        normalized_plan_role = normalize_plan_role(plan_role)
         latest_version = self._latest_version()
-        version_resolution = self._resolve_version(version, latest_version=latest_version)
+        view_context = self._resolve_result_view_context(
+            version=version,
+            plan_role=normalized_plan_role,
+            latest_version=latest_version,
+        )
+        version_resolution = view_context.version_resolution
         if version_resolution.status == "no_history":
             payload = empty_dispatch_payload(
                 scope_type=normalized_scope_type,
                 team_axis=normalized_team_axis,
                 version=None,
             )
+            plan_role_fields = plan_role_filter_fields(
+                requested_role=normalized_plan_role,
+                effective_role=ROLE_ADOPTED,
+            )
+            payload["filters"].update(plan_role_fields)
+            payload["plan_role_options"] = serialize_plan_role_options([])
+            payload["plan_role_notice"] = ""
             payload["status"] = "no_history"
             payload["requested_version"] = version_resolution.requested_version
             return payload
         selected_version = require_selected_version(version_resolution)
+        plan_role_fields = plan_role_filter_fields(view_context)
+        effective_role = str(plan_role_fields.get("effective_plan_role") or ROLE_ADOPTED)
 
         selected_scope_id = self._resolve_scope_id(
             scope_type=normalized_scope_type,
@@ -281,12 +358,17 @@ class ResourceDispatchService:
             start_date=start_date,
             end_date=end_date,
         )
-        overdue_meta = self._load_overdue_meta(selected_version)
+        overdue_meta = self._load_overdue_meta_for_plan(
+            version=selected_version,
+            role=effective_role,
+            source_table=str(plan_role_fields.get("source_table") or ""),
+        )
         overdue_set = set(overdue_meta.get("ids") or [])
-        rows = self.schedule_repo.list_dispatch_rows_with_resource_context(
+        rows = self.plan_query_service.list_plan_dispatch_rows(
             start_time=dr.start_time,
             end_time=dr.end_time,
             version=selected_version,
+            role=effective_role,
             scope_type=normalized_scope_type,
             scope_id=selected_scope_id,
         )
@@ -317,6 +399,9 @@ class ResourceDispatchService:
             dr=dr,
             selected_version=selected_version,
         )
+        payload["filters"].update(plan_role_fields)
+        payload["plan_role_options"] = serialize_plan_role_options(view_context.available_roles)
+        payload["plan_role_notice"] = plan_role_notice_from_fields(plan_role_fields)
         payload["has_history"] = True
         payload["status"] = "ok"
         payload["requested_version"] = version_resolution.requested_version

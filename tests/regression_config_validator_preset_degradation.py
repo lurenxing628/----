@@ -27,6 +27,11 @@ def _base_snapshot() -> ScheduleConfigSnapshot:
         objective="min_overdue",
         freeze_window_enabled="no",
         freeze_window_days=0,
+        graph_analysis_mode="off",
+        graph_block_on_cycle="no",
+        graph_critical_weight=500,
+        graph_impact_weight=10,
+        graph_debug_export="no",
     )
 
 
@@ -38,6 +43,11 @@ def test_config_validator_preset_degradation_and_min_clamp() -> None:
             "ortools_time_limit_seconds": "0",
             "time_budget_seconds": "-5",
             "freeze_window_days": "-3",
+            "graph_analysis_mode": "bad",
+            "graph_block_on_cycle": "maybe",
+            "graph_critical_weight": "-1",
+            "graph_impact_weight": "bad",
+            "graph_debug_export": "maybe",
         },
         base=_base_snapshot(),
     )
@@ -47,6 +57,11 @@ def test_config_validator_preset_degradation_and_min_clamp() -> None:
     assert snap.ortools_time_limit_seconds == 1
     assert snap.time_budget_seconds == 1
     assert snap.freeze_window_days == 0
+    assert snap.graph_analysis_mode == "off"
+    assert snap.graph_block_on_cycle == "no"
+    assert snap.graph_critical_weight == 0
+    assert snap.graph_impact_weight == 10
+    assert snap.graph_debug_export == "no"
 
     event_fields = {str(event.get("field") or "") for event in (snap.degradation_events or ())}
     assert {
@@ -55,10 +70,17 @@ def test_config_validator_preset_degradation_and_min_clamp() -> None:
         "ortools_time_limit_seconds",
         "time_budget_seconds",
         "freeze_window_days",
+        "graph_analysis_mode",
+        "graph_block_on_cycle",
+        "graph_critical_weight",
+        "graph_impact_weight",
+        "graph_debug_export",
     }.issubset(event_fields)
 
     counters = snap.degradation_counters or {}
-    assert int(counters.get("number_below_minimum") or 0) == 5
+    assert int(counters.get("number_below_minimum") or 0) == 6
+    assert int(counters.get("invalid_number") or 0) == 1
+    assert int(counters.get("invalid_choice") or 0) == 3
     event_messages = " ".join(str(event.get("message") or "") for event in (snap.degradation_events or ()))
     assert "优先级权重" in event_messages
     assert "锁定天数" in event_messages
@@ -126,6 +148,14 @@ def test_config_validator_preset_strict_blank_rejected_but_missing_allowed() -> 
         )
     assert exc_info.value.field == "objective"
 
+    with pytest.raises(ValidationError) as exc_info:
+        normalize_preset_snapshot(
+            {"graph_analysis_mode": "   "},
+            base=base,
+            strict_mode=True,
+        )
+    assert exc_info.value.field == "graph_analysis_mode"
+
 
 def test_config_validator_preset_relaxed_invalid_numeric_falls_back_with_degradation() -> None:
     snap = normalize_preset_snapshot(
@@ -160,6 +190,9 @@ def test_config_validator_preset_relaxed_invalid_choice_and_yesno_are_observable
             "sort_strategy": "bad_strategy",
             "dispatch_mode": "bad_mode",
             "auto_assign_enabled": "maybe",
+            "graph_analysis_mode": "bad",
+            "graph_block_on_cycle": "maybe",
+            "graph_debug_export": "maybe",
         },
         base=_base_snapshot(),
     )
@@ -167,8 +200,11 @@ def test_config_validator_preset_relaxed_invalid_choice_and_yesno_are_observable
     assert snap.sort_strategy == "priority_first"
     assert snap.dispatch_mode == "batch_order"
     assert snap.auto_assign_enabled == "no"
+    assert snap.graph_analysis_mode == "off"
+    assert snap.graph_block_on_cycle == "no"
+    assert snap.graph_debug_export == "no"
     counters = snap.degradation_counters or {}
-    assert int(counters.get("invalid_choice") or 0) == 3, counters
+    assert int(counters.get("invalid_choice") or 0) == 6, counters
 
 
 def test_config_validator_preset_relaxed_blank_choice_and_yesno_emit_blank_required() -> None:
@@ -176,11 +212,15 @@ def test_config_validator_preset_relaxed_blank_choice_and_yesno_emit_blank_requi
         {
             "dispatch_rule": "   ",
             "freeze_window_enabled": None,
+            "graph_analysis_mode": "   ",
+            "graph_debug_export": None,
         },
         base=_base_snapshot(),
     )
 
     assert snap.dispatch_rule == "slack"
     assert snap.freeze_window_enabled == "no"
+    assert snap.graph_analysis_mode == "off"
+    assert snap.graph_debug_export == "no"
     counters = snap.degradation_counters or {}
-    assert int(counters.get("blank_required") or 0) == 2, counters
+    assert int(counters.get("blank_required") or 0) == 4, counters

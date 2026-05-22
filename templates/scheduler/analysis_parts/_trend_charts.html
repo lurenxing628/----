@@ -1,0 +1,106 @@
+  <div class="card">
+    <h3 class="section-title">版本趋势（最近 {{ trend_rows|length }} 个有指标的版本）</h3>
+    {% if trend_summary_state.incomplete %}
+      <div class="flash-card flash-warning mb-2">
+        {% if trend_summary_state.parse_failed_count %}
+          趋势摘要不完整：最近 {{ trend_summary_state.parse_failed_count }} 个版本的摘要读取失败，趋势图仅基于可读取版本生成。
+        {% endif %}
+        {% if trend_summary_state.metric_parse_failed_count %}
+          趋势指标不完整：最近 {{ trend_summary_state.metric_parse_failed_count }} 个版本的指标不是数字，趋势图已跳过这些坏指标。
+        {% endif %}
+      </div>
+    {% endif %}
+    {% if trend_rows and trend_rows|length > 1 %}
+        <div class="muted">范围：v{{ trend_rows[0].version }} ～ v{{ trend_rows[-1].version }}</div>
+
+        {% if trend_charts.overdue %}
+          <div class="svg-title">超期批次数</div>
+          <div class="svg-wrap">
+            <svg viewBox="0 0 {{ trend_charts.overdue.width }} {{ trend_charts.overdue.height }}" width="100%" height="{{ trend_charts.overdue.height }}">
+              <polyline points="{{ trend_charts.overdue.points }}" fill="none" stroke="#1976d2" stroke-width="2"></polyline>
+              <circle cx="{{ trend_charts.overdue.last_x }}" cy="{{ trend_charts.overdue.last_y }}" r="3" fill="#1976d2"></circle>
+            </svg>
+          </div>
+          <div class="muted">最小 {{ trend_charts.overdue.y_min|round(4) }} / 最大 {{ trend_charts.overdue.y_max|round(4) }}</div>
+        {% endif %}
+
+        {% if trend_charts.tardiness %}
+          <div class="svg-title">总拖期（小时）</div>
+          <div class="svg-wrap">
+            <svg viewBox="0 0 {{ trend_charts.tardiness.width }} {{ trend_charts.tardiness.height }}" width="100%" height="{{ trend_charts.tardiness.height }}">
+              <polyline points="{{ trend_charts.tardiness.points }}" fill="none" stroke="#7b1fa2" stroke-width="2"></polyline>
+              <circle cx="{{ trend_charts.tardiness.last_x }}" cy="{{ trend_charts.tardiness.last_y }}" r="3" fill="#7b1fa2"></circle>
+            </svg>
+          </div>
+          <div class="muted">最小 {{ trend_charts.tardiness.y_min|round(4) }} / 最大 {{ trend_charts.tardiness.y_max|round(4) }}</div>
+        {% endif %}
+
+        {% if trend_charts.weighted_tardiness %}
+          <div class="svg-title">加权拖期（小时）</div>
+          <div class="svg-wrap">
+            <svg viewBox="0 0 {{ trend_charts.weighted_tardiness.width }} {{ trend_charts.weighted_tardiness.height }}" width="100%" height="{{ trend_charts.weighted_tardiness.height }}">
+              <polyline points="{{ trend_charts.weighted_tardiness.points }}" fill="none" stroke="#5d4037" stroke-width="2"></polyline>
+              <circle cx="{{ trend_charts.weighted_tardiness.last_x }}" cy="{{ trend_charts.weighted_tardiness.last_y }}" r="3" fill="#5d4037"></circle>
+            </svg>
+          </div>
+          <div class="muted">最小 {{ trend_charts.weighted_tardiness.y_min|round(4) }} / 最大 {{ trend_charts.weighted_tardiness.y_max|round(4) }}</div>
+        {% endif %}
+
+        {% if trend_charts.makespan %}
+          <div class="svg-title">总工期（小时）</div>
+          <div class="svg-wrap">
+            <svg viewBox="0 0 {{ trend_charts.makespan.width }} {{ trend_charts.makespan.height }}" width="100%" height="{{ trend_charts.makespan.height }}">
+              <polyline points="{{ trend_charts.makespan.points }}" fill="none" stroke="#ef6c00" stroke-width="2"></polyline>
+              <circle cx="{{ trend_charts.makespan.last_x }}" cy="{{ trend_charts.makespan.last_y }}" r="3" fill="#ef6c00"></circle>
+            </svg>
+          </div>
+          <div class="muted">最小 {{ trend_charts.makespan.y_min|round(4) }} / 最大 {{ trend_charts.makespan.y_max|round(4) }}</div>
+        {% endif %}
+
+        {% if trend_charts.makespan_internal %}
+          <div class="svg-title">内制工期（小时）</div>
+          <div class="svg-wrap">
+            <svg viewBox="0 0 {{ trend_charts.makespan_internal.width }} {{ trend_charts.makespan_internal.height }}" width="100%" height="{{ trend_charts.makespan_internal.height }}">
+              <polyline points="{{ trend_charts.makespan_internal.points }}" fill="none" stroke="#00838f" stroke-width="2"></polyline>
+              <circle cx="{{ trend_charts.makespan_internal.last_x }}" cy="{{ trend_charts.makespan_internal.last_y }}" r="3" fill="#00838f"></circle>
+            </svg>
+          </div>
+          <div class="muted">最小 {{ trend_charts.makespan_internal.y_min|round(4) }} / 最大 {{ trend_charts.makespan_internal.y_max|round(4) }}</div>
+        {% endif %}
+
+        {% if trend_charts.changeover %}
+          <div class="svg-title">换型次数</div>
+          <div class="svg-wrap">
+            <svg viewBox="0 0 {{ trend_charts.changeover.width }} {{ trend_charts.changeover.height }}" width="100%" height="{{ trend_charts.changeover.height }}">
+              <polyline points="{{ trend_charts.changeover.points }}" fill="none" stroke="#2e7d32" stroke-width="2"></polyline>
+              <circle cx="{{ trend_charts.changeover.last_x }}" cy="{{ trend_charts.changeover.last_y }}" r="3" fill="#2e7d32"></circle>
+            </svg>
+          </div>
+          <div class="muted">最小 {{ trend_charts.changeover.y_min|round(4) }} / 最大 {{ trend_charts.changeover.y_max|round(4) }}</div>
+        {% endif %}
+
+        {% if trend_charts.machine_util %}
+          <div class="svg-title">设备平均利用率（1 表示 100%）</div>
+          <div class="svg-wrap">
+            <svg viewBox="0 0 {{ trend_charts.machine_util.width }} {{ trend_charts.machine_util.height }}" width="100%" height="{{ trend_charts.machine_util.height }}">
+              <polyline points="{{ trend_charts.machine_util.points }}" fill="none" stroke="#3949ab" stroke-width="2"></polyline>
+              <circle cx="{{ trend_charts.machine_util.last_x }}" cy="{{ trend_charts.machine_util.last_y }}" r="3" fill="#3949ab"></circle>
+            </svg>
+          </div>
+          <div class="muted">最小 {{ trend_charts.machine_util.y_min|round(6) }} / 最大 {{ trend_charts.machine_util.y_max|round(6) }}</div>
+        {% endif %}
+
+        {% if trend_charts.operator_util %}
+          <div class="svg-title">人员平均利用率（0~1）</div>
+          <div class="svg-wrap">
+            <svg viewBox="0 0 {{ trend_charts.operator_util.width }} {{ trend_charts.operator_util.height }}" width="100%" height="{{ trend_charts.operator_util.height }}">
+              <polyline points="{{ trend_charts.operator_util.points }}" fill="none" stroke="#6d4c41" stroke-width="2"></polyline>
+              <circle cx="{{ trend_charts.operator_util.last_x }}" cy="{{ trend_charts.operator_util.last_y }}" r="3" fill="#6d4c41"></circle>
+            </svg>
+          </div>
+          <div class="muted">最小 {{ trend_charts.operator_util.y_min|round(6) }} / 最大 {{ trend_charts.operator_util.y_max|round(6) }}</div>
+        {% endif %}
+    {% else %}
+      <div class="muted">暂无趋势数据（需要至少 2 个包含排产指标的版本）。</div>
+    {% endif %}
+  </div>

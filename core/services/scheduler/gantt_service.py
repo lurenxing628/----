@@ -1,19 +1,33 @@
 from __future__ import annotations
 
-import threading
-from collections import OrderedDict
-from typing import Any, Dict, Optional, Sequence, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from core.infrastructure.errors import ValidationError
 from core.services.common.degradation import DegradationCollector, DegradationEvent, degradation_events_to_dicts
 from data.repositories import ScheduleHistoryRepository, ScheduleRepository
 
 from .gantt_contract import build_gantt_contract
-from .gantt_critical_chain import compute_critical_chain
+from .gantt_critical_chain_provider import GanttCriticalChainProvider
+from .gantt_plan_query import (
+    attach_gantt_range_metadata,
+    build_empty_week_plan_payload,
+    get_version_time_span_dates,
+    resolve_gantt_range_for_version,
+)
 from .gantt_range import WeekRange, resolve_week_range
 from .gantt_tasks import build_calendar_days, build_tasks
 from .gantt_week_plan import build_week_plan_rows
+from .plan_overdue_markers import build_overdue_meta_for_plan
 from .resource_dispatch_support import extract_overdue_batch_ids_with_meta
+from .schedule_plan_query_service import SchedulePlanQueryService
+from .schedule_result_view_context import (
+    ScheduleResultViewContext,
+    attach_plan_metadata,
+    default_plan_resolution_dict,
+    resolve_schedule_result_view_context,
+    selected_plan_role,
+)
+from .schedule_result_view_range import resolve_schedule_result_week_range
 from .version_resolution import VersionResolution, require_selected_version, resolve_version_or_latest
 
 
@@ -27,16 +41,15 @@ class GanttService:
     - 复用 ScheduleHistory.result_summary 的超期信息做标记
     """
     CONTRACT_VERSION = 2
-    _CRITICAL_CHAIN_CACHE_MAX = 64
-    _CRITICAL_CHAIN_CACHE: OrderedDict[tuple, Dict[str, Any]] = OrderedDict()
-    _CRITICAL_CHAIN_CACHE_LOCK = threading.Lock()
 
-    def __init__(self, conn, logger=None, op_logger=None):
+    def __init__(self, conn, logger=None, op_logger=None, plan_query_service=None):
         self.conn = conn
         self.logger = logger
         self.op_logger = op_logger
         self.schedule_repo = ScheduleRepository(conn, logger=logger)
         self.history_repo = ScheduleHistoryRepository(conn, logger=logger)
+        self._plan_query_service = plan_query_service
+        self._critical_chain_provider = None
 
     def get_latest_version_or_1(self) -> int:
         v = int(self.history_repo.get_latest_version() or 0)
@@ -50,6 +63,54 @@ class GanttService:
             version_exists=lambda version: self.history_repo.get_by_version(int(version)) is not None,
         )
 
+    def _get_plan_query_service(self, plan_query_service=None) -> SchedulePlanQueryService:
+        if plan_query_service is not None:
+            return plan_query_service
+        if self._plan_query_service is None:
+            self._plan_query_service = SchedulePlanQueryService(self.conn, logger=self.logger)
+        return self._plan_query_service
+
+    def _get_critical_chain_provider(self) -> GanttCriticalChainProvider:
+        if self._critical_chain_provider is None:
+            self._critical_chain_provider = GanttCriticalChainProvider(
+                conn=self.conn,
+                schedule_repo=self.schedule_repo,
+                plan_query_service_factory=self._get_plan_query_service,
+                logger=self.logger,
+            )
+        return self._critical_chain_provider
+
+    def resolve_result_view_context(
+        self,
+        *,
+        version: Any = None,
+        plan_role: Optional[str] = None,
+        plan_query_service=None,
+        require_existing_version: bool = False,
+    ) -> ScheduleResultViewContext:
+        latest = int(self.history_repo.get_latest_version() or 0)
+        return resolve_schedule_result_view_context(
+            raw_version=version,
+            raw_plan_role=plan_role,
+            latest_version=latest,
+            version_exists=lambda item: self.history_repo.get_by_version(int(item)) is not None,
+            plan_query_service=self._get_plan_query_service(plan_query_service),
+            require_existing_version=require_existing_version,
+        )
+
+    def resolve_plan_context(
+        self,
+        version: Optional[Any],
+        plan_role: Optional[str] = None,
+        plan_query_service=None,
+    ) -> Dict[str, Any]:
+        return self.resolve_result_view_context(
+            version=version,
+            plan_role=plan_role,
+            plan_query_service=plan_query_service,
+            require_existing_version=version is not None,
+        ).plan_resolution
+
     def _empty_gantt_contract(
         self,
         *,
@@ -60,12 +121,18 @@ class GanttService:
         end_date: Optional[str],
         include_history: bool,
         resolution: VersionResolution,
+        plan_role: Optional[str] = None,
+        plan_resolution: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        wr = self.resolve_week_range(
+        wr, _, _ = resolve_schedule_result_week_range(
+            plan_query_service=None,
+            version=None,
+            plan_role=None,
             week_start=week_start,
             offset_weeks=offset_weeks,
             start_date=start_date,
             end_date=end_date,
+            default_to_version_span=False,
         )
         calendar_days_outcome = build_calendar_days(self.conn, wr=wr, logger=self.logger, op_logger=self.op_logger)
         out = build_gantt_contract(
@@ -87,6 +154,7 @@ class GanttService:
         out["has_history"] = False
         out["status"] = resolution.status
         out["requested_version"] = resolution.requested_version
+        attach_plan_metadata(out, plan_resolution or default_plan_resolution_dict(plan_role))
         return out
 
     def resolve_week_range(
@@ -98,82 +166,35 @@ class GanttService:
     ) -> WeekRange:
         return resolve_week_range(week_start=week_start, offset_weeks=offset_weeks, start_date=start_date, end_date=end_date)
 
-    def get_version_time_span_dates(self, version: int) -> Optional[Dict[str, Any]]:
-        span = self.schedule_repo.get_version_time_span(int(version))
-        if not span:
-            return None
-
-        start_time = str(span.get("start_time") or "").strip()
-        end_time = str(span.get("end_time") or "").strip()
-        if not start_time or not end_time:
-            return None
-
-        start_date = start_time.replace("T", " ").split(" ", 1)[0]
-        end_date = end_time.replace("T", " ").split(" ", 1)[0]
-        if not start_date or not end_date:
-            return None
-
-        return {
-            "version": int(version),
-            "start_time": start_time,
-            "end_time": end_time,
-            "start_date": start_date,
-            "end_date": end_date,
-        }
-
-    @staticmethod
-    def _has_explicit_gantt_range(
-        *,
-        week_start: Optional[str],
-        offset_weeks: int,
-        start_date: Optional[str],
-        end_date: Optional[str],
-    ) -> bool:
-        try:
-            offset_int = int(offset_weeks or 0)
-        except Exception as e:
-            raise ValidationError("周偏移填写不对，请填写整数。", field="offset_weeks") from e
-        return bool(
-            str(week_start or "").strip()
-            or str(start_date or "").strip()
-            or str(end_date or "").strip()
-            or offset_int != 0
-        )
+    def get_version_time_span_dates(
+        self,
+        version: int,
+        plan_role: Optional[str] = None,
+        plan_query_service=None,
+    ) -> Optional[Dict[str, Any]]:
+        plan_query = self._get_plan_query_service(plan_query_service)
+        return get_version_time_span_dates(plan_query, int(version), plan_role)
 
     def resolve_gantt_range_for_version(
         self,
         *,
         version: Optional[int],
+        plan_role: Optional[str] = None,
+        plan_query_service=None,
         week_start: Optional[str] = None,
         offset_weeks: int = 0,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
     ) -> Tuple[WeekRange, Optional[Dict[str, Any]], str]:
-        version_span = self.get_version_time_span_dates(int(version)) if version is not None else None
-        effective_offset_weeks = 0 if (str(start_date or "").strip() or str(end_date or "").strip()) else offset_weeks
-        explicit_range = self._has_explicit_gantt_range(
+        return resolve_gantt_range_for_version(
+            plan_query_service=self._get_plan_query_service(plan_query_service),
+            version=version,
+            plan_role=plan_role,
             week_start=week_start,
-            offset_weeks=effective_offset_weeks,
+            offset_weeks=offset_weeks,
             start_date=start_date,
             end_date=end_date,
         )
-
-        if not explicit_range and version_span:
-            wr = self.resolve_week_range(
-                week_start=None,
-                offset_weeks=0,
-                start_date=version_span["start_date"],
-                end_date=version_span["end_date"],
-            )
-            return wr, version_span, "version_span"
-
-        wr = self.resolve_week_range(
-            week_start=week_start,
-            offset_weeks=effective_offset_weeks,
-            start_date=start_date,
-            end_date=end_date,
-        )
-        return wr, version_span, "request"
 
     def _log_overdue_marker_degraded(self, *, version: int, reason: str, message: str) -> None:
         if self.logger is None:
@@ -219,91 +240,6 @@ class GanttService:
             )
         return meta
 
-    def _critical_chain_cache_key(self, version: int) -> tuple:
-        scope = str(id(self.conn))
-        try:
-            rows = self.conn.execute("PRAGMA database_list").fetchall()
-            for r in rows or []:
-                try:
-                    name = r["name"] if isinstance(r, dict) or hasattr(r, "keys") else r[1]
-                    if str(name) != "main":
-                        continue
-                    file_path = r["file"] if isinstance(r, dict) or hasattr(r, "keys") else r[2]
-                    if file_path:
-                        scope = str(file_path)
-                    break
-                except Exception:
-                    continue
-        except Exception:
-            pass
-        return (scope, int(version))
-
-    @staticmethod
-    def _normalize_critical_chain_result(raw: Any) -> Dict[str, Any]:
-        if not isinstance(raw, dict):
-            raw = {}
-        available = raw.get("available")
-        if isinstance(available, bool):
-            is_available = available
-        else:
-            is_available = True
-        reason_text = str(raw.get("reason") or "").strip()
-        if is_available:
-            reason_text = ""
-        return {
-            "ids": list(raw.get("ids") or []),
-            "edges": list(raw.get("edges") or []),
-            "makespan_end": raw.get("makespan_end"),
-            "edge_type_stats": dict(
-                raw.get("edge_type_stats") or {"process": 0, "machine": 0, "operator": 0, "unknown": 0}
-            ),
-            "edge_count": int(raw.get("edge_count") or 0),
-            "available": is_available,
-            "reason": reason_text,
-        }
-
-    @staticmethod
-    def _critical_chain_cacheable(result: Dict[str, Any]) -> bool:
-        return bool(result.get("available", True))
-
-    def _get_critical_chain(self, version: int) -> Dict[str, Any]:
-        key = self._critical_chain_cache_key(version)
-        with self._CRITICAL_CHAIN_CACHE_LOCK:
-            cached = self._CRITICAL_CHAIN_CACHE.get(key)
-            if cached is not None:
-                try:
-                    self._CRITICAL_CHAIN_CACHE.move_to_end(key)
-                except Exception:
-                    pass
-                out = dict(cached)
-                out["cache_hit"] = True
-                return out
-
-        computed = self._normalize_critical_chain_result(compute_critical_chain(self.schedule_repo, int(version)))
-        computed["cache_hit"] = False
-
-        if not self._critical_chain_cacheable(computed):
-            return dict(computed)
-
-        with self._CRITICAL_CHAIN_CACHE_LOCK:
-            cached = self._CRITICAL_CHAIN_CACHE.get(key)
-            if cached is not None:
-                try:
-                    self._CRITICAL_CHAIN_CACHE.move_to_end(key)
-                except Exception:
-                    pass
-                out = dict(cached)
-                out["cache_hit"] = True
-                return out
-
-            self._CRITICAL_CHAIN_CACHE[key] = computed
-            while len(self._CRITICAL_CHAIN_CACHE) > int(self._CRITICAL_CHAIN_CACHE_MAX):
-                try:
-                    self._CRITICAL_CHAIN_CACHE.popitem(last=False)
-                except Exception:
-                    break
-            return dict(computed)
-
     def _history_payload_for_gantt(self, *, version: int, include_history: bool) -> Optional[Dict[str, Any]]:
         if not include_history:
             return None
@@ -332,41 +268,6 @@ class GanttService:
             )
         return collector
 
-    @staticmethod
-    def _empty_message_for_out_of_range(
-        *,
-        tasks: Sequence[Dict[str, Any]],
-        version_span: Optional[Dict[str, Any]],
-        wr: WeekRange,
-    ) -> str:
-        if tasks or not version_span:
-            return ""
-        requested_start, requested_end = wr.week_start_date.isoformat(), wr.week_end_date.isoformat()
-        actual_start, actual_end = str(version_span.get("start_date") or ""), str(version_span.get("end_date") or "")
-        if requested_start == actual_start and requested_end == actual_end:
-            return ""
-        return f"当前范围无任务，请切换到 {actual_start} ～ {actual_end}。"
-
-    @staticmethod
-    def _attach_gantt_range_metadata(
-        data: Dict[str, Any],
-        *,
-        resolution: VersionResolution,
-        version_span: Optional[Dict[str, Any]],
-        range_source: str,
-        wr: WeekRange,
-    ) -> None:
-        data.update(
-            has_history=True,
-            status="ok",
-            requested_version=resolution.requested_version,
-            version_time_span=version_span,
-            range_source=range_source,
-        )
-        empty_message = GanttService._empty_message_for_out_of_range(tasks=list(data.get("tasks") or []), version_span=version_span, wr=wr)
-        if empty_message:
-            data["empty_message"] = empty_message
-
     def get_gantt_tasks(
         self,
         *,
@@ -377,13 +278,22 @@ class GanttService:
         end_date: Optional[str] = None,
         version: Optional[int] = None,
         include_history: bool = False,
+        plan_role: Optional[str] = None,
+        plan_query_service=None,
     ) -> Dict[str, Any]:
         """返回甘特图数据（tasks + 元信息）。"""
         view = (view or "").strip() or "machine"
         if view not in ("machine", "operator"):
             raise ValidationError("视图不正确，请选择：设备 / 人员。", field="视图")
 
-        resolution = self.resolve_version(version)
+        plan_query = self._get_plan_query_service(plan_query_service)
+        view_context = self.resolve_result_view_context(
+            version=version,
+            plan_role=plan_role,
+            plan_query_service=plan_query,
+            require_existing_version=True,
+        )
+        resolution = view_context.version_resolution
         if resolution.status == "no_history":
             return self._empty_gantt_contract(
                 view=view,
@@ -393,10 +303,15 @@ class GanttService:
                 end_date=end_date,
                 include_history=include_history,
                 resolution=resolution,
+                plan_role=plan_role,
+                plan_resolution=view_context.plan_resolution,
             )
         ver = require_selected_version(resolution)
+        plan_resolution = view_context.plan_resolution
         wr, version_span, range_source = self.resolve_gantt_range_for_version(
             version=ver,
+            plan_role=selected_plan_role(plan_resolution),
+            plan_query_service=plan_query,
             week_start=week_start,
             offset_weeks=offset_weeks,
             start_date=start_date,
@@ -404,14 +319,34 @@ class GanttService:
         )
 
         calendar_days_outcome = build_calendar_days(self.conn, wr=wr, logger=self.logger, op_logger=self.op_logger)
-        rows = self.schedule_repo.list_overlapping_with_details(wr.start_str, wr.end_exclusive_str, ver)
-        overdue_meta = self._overdue_batch_ids_from_history(ver)
+        rows = plan_query.list_plan_detail_rows_between(
+            version=ver,
+            role=selected_plan_role(plan_resolution),
+            start_time=wr.start_str,
+            end_time=wr.end_exclusive_str,
+        )
+        effective_role = selected_plan_role(plan_resolution)
+        try:
+            overdue_meta = build_overdue_meta_for_plan(
+                version=ver,
+                role=effective_role,
+                source_table=str(plan_resolution.get("source_table") or ""),
+                list_plan_overdue_base_rows=plan_query.list_plan_overdue_base_rows,
+                load_adopted_meta=self._overdue_batch_ids_from_history,
+                log_degraded=self._log_overdue_marker_degraded,
+            )
+        except ValueError as exc:
+            raise ValidationError(str(exc), field="plan_role") from exc
         overdue_set = set(overdue_meta.get("ids") or [])
 
         tasks_outcome = build_tasks(view=view, wr=wr, rows=rows, overdue_set=overdue_set)
         empty_reason = tasks_outcome.empty_reason or calendar_days_outcome.empty_reason
 
-        critical_chain = self._get_critical_chain(ver)
+        critical_chain = self._get_critical_chain_provider().get_critical_chain(
+            ver,
+            plan_resolution=plan_resolution,
+            plan_query_service=plan_query,
+        )
         degradation_collector = self._collect_gantt_degradation_events(
             calendar_days_outcome=calendar_days_outcome,
             tasks_outcome=tasks_outcome,
@@ -438,12 +373,13 @@ class GanttService:
             include_history=include_history,
             history=hist_dict if include_history else None,
         )
-        self._attach_gantt_range_metadata(
+        attach_gantt_range_metadata(
             data,
             resolution=resolution,
             version_span=version_span,
             range_source=range_source,
             wr=wr,
+            plan_resolution=plan_resolution,
         )
         return data
 
@@ -455,35 +391,47 @@ class GanttService:
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
         version: Optional[int] = None,
+        plan_role: Optional[str] = None,
+        plan_query_service=None,
     ) -> Dict[str, Any]:
         """
         返回周计划行（用于页面预览与导出）。
         字段：日期/批次号/图号/工序/设备/人员/时段
         """
-        wr = self.resolve_week_range(week_start=week_start, offset_weeks=offset_weeks, start_date=start_date, end_date=end_date)
-        resolution = self.resolve_version(version)
+        plan_query = self._get_plan_query_service(plan_query_service)
+        wr, _, _ = resolve_schedule_result_week_range(
+            plan_query_service=plan_query,
+            version=None,
+            plan_role=None,
+            week_start=week_start,
+            offset_weeks=offset_weeks,
+            start_date=start_date,
+            end_date=end_date,
+            default_to_version_span=False,
+        )
+        view_context = self.resolve_result_view_context(
+            version=version,
+            plan_role=plan_role,
+            plan_query_service=plan_query,
+            require_existing_version=True,
+        )
+        resolution = view_context.version_resolution
         if resolution.status == "no_history":
-            return {
-                "version": None,
-                "requested_version": resolution.requested_version,
-                "status": "no_history",
-                "has_history": False,
-                "week_start": wr.week_start_date.isoformat(),
-                "week_end": wr.week_end_date.isoformat(),
-                "rows": [],
-                "degraded": False,
-                "degradation_events": [],
-                "degradation_counters": {},
-                "empty_reason": "no_history",
-                "history": None,
-            }
+            plan_resolution = view_context.plan_resolution
+            return build_empty_week_plan_payload(wr=wr, resolution=resolution, plan_resolution=plan_resolution)
         ver = require_selected_version(resolution)
+        plan_resolution = view_context.plan_resolution
 
-        rows = self.schedule_repo.list_overlapping_with_details(wr.start_str, wr.end_exclusive_str, ver)
+        rows = plan_query.list_plan_detail_rows_between(
+            version=ver,
+            role=selected_plan_role(plan_resolution),
+            start_time=wr.start_str,
+            end_time=wr.end_exclusive_str,
+        )
         outcome = build_week_plan_rows(rows=rows, wr=wr)
 
         hist = self.history_repo.get_by_version(ver)
-        return {
+        data = {
             "version": ver,
             "requested_version": resolution.requested_version,
             "status": "ok",
@@ -497,3 +445,5 @@ class GanttService:
             "empty_reason": outcome.empty_reason,
             "history": hist.to_dict() if hist else None,
         }
+        attach_plan_metadata(data, plan_resolution)
+        return data

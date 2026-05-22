@@ -1,0 +1,110 @@
+      {% if freeze_display %}
+        <div class="aps-summary-grid mt-2">
+          {% if freeze_display.state == 'disabled' %}
+            {{ ui.summary_item('冻结窗口', '未启用') }}
+          {% else %}
+            {{ ui.summary_item('冻结窗口', '已启用' if freeze_display.enabled else freeze_display.state_label) }}
+            {{ ui.summary_item('当前状态', freeze_display.state_label) }}
+            {{ ui.summary_item('锁定天数', freeze_display.days ~ ' 天') }}
+            {{ ui.summary_item('实际生效', '是' if freeze_display.applied else '否') }}
+            {{ ui.summary_item('冻结工序数', freeze_display.frozen_op_count) }}
+            {{ ui.summary_item('冻结批次数', freeze_display.frozen_batch_count) }}
+          {% endif %}
+        </div>
+        {% if freeze_display.state != 'disabled' and freeze_display.sample_batches %}
+          <div class="muted mt-2">
+            示例批次：{{ freeze_display.sample_batches|join('、') }}{% if freeze_display.sample_more_count > 0 %} 及其他 {{ freeze_display.sample_more_count }} 个…{% endif %}
+          </div>
+        {% endif %}
+      {% endif %}
+
+      {% if selected_metrics %}
+        {% set m = selected_metrics %}
+        <div class="stat-grid">
+          <div class="stat-card type-danger">
+            <div class="stat-card-label">超期批次数</div>
+            <div class="stat-card-value danger">{{ m.get('overdue_count', 0) }}</div>
+            {% if prev_metrics %}
+              {% set d = (m.get('overdue_count', 0) - prev_metrics.get('overdue_count', 0)) %}
+              <div class="stat-card-delta">对比上一版：{{ '+' if d>0 else '' }}{{ d }}</div>
+            {% endif %}
+          </div>
+          <div class="stat-card">
+            <div class="stat-card-label">总拖期（小时）</div>
+            <div class="stat-card-value">{{ m.get('total_tardiness_hours', 0) }}</div>
+            {% if prev_metrics %}
+              {% set d = (m.get('total_tardiness_hours', 0) - prev_metrics.get('total_tardiness_hours', 0)) %}
+              <div class="stat-card-delta">对比上一版：{{ '+' if d>0 else '' }}{{ d|round(4) }}</div>
+            {% endif %}
+          </div>
+          <div class="stat-card">
+            <div class="stat-card-label">加权拖期（小时）</div>
+            <div class="stat-card-value">{{ m.get('weighted_tardiness_hours', 0) }}</div>
+            {% if prev_metrics %}
+              {% set d = (m.get('weighted_tardiness_hours', 0) - prev_metrics.get('weighted_tardiness_hours', 0)) %}
+              <div class="stat-card-delta">对比上一版：{{ '+' if d>0 else '' }}{{ d|round(4) }}</div>
+            {% endif %}
+          </div>
+          <div class="stat-card">
+            <div class="stat-card-label">总工期（小时）</div>
+            <div class="stat-card-value">{{ m.get('makespan_hours', 0) }}</div>
+            {% if prev_metrics %}
+              {% set d = (m.get('makespan_hours', 0) - prev_metrics.get('makespan_hours', 0)) %}
+              <div class="stat-card-delta">对比上一版：{{ '+' if d>0 else '' }}{{ d|round(4) }}</div>
+            {% endif %}
+          </div>
+          <div class="stat-card">
+            <div class="stat-card-label">内制工期（小时）</div>
+            <div class="stat-card-value">{{ m.get('makespan_internal_hours', 0) }}</div>
+            {% if prev_metrics %}
+              {% set d = (m.get('makespan_internal_hours', 0) - prev_metrics.get('makespan_internal_hours', 0)) %}
+              <div class="stat-card-delta">对比上一版：{{ '+' if d>0 else '' }}{{ d|round(4) }}</div>
+            {% endif %}
+          </div>
+          <div class="stat-card">
+            <div class="stat-card-label">换型次数</div>
+            <div class="stat-card-value">{{ m.get('changeover_count', 0) }}</div>
+            {% if prev_metrics %}
+              {% set d = (m.get('changeover_count', 0) - prev_metrics.get('changeover_count', 0)) %}
+              <div class="stat-card-delta">对比上一版：{{ '+' if d>0 else '' }}{{ d }}</div>
+            {% endif %}
+          </div>
+          <div class="stat-card type-primary">
+            <div class="stat-card-label">设备平均利用率</div>
+            <div class="stat-card-value primary">{{ (m.get('machine_util_avg', 0) * 100)|round(2) }}%</div>
+            <div class="stat-card-delta">已用 {{ m.get('machine_used_count', 0) }} 台</div>
+            <div class="stat-card-delta">任务分配均匀程度 {{ (m.get('machine_load_cv') or 0)|round(2) }}，越小越均匀</div>
+          </div>
+          <div class="stat-card type-success">
+            <div class="stat-card-label">人员平均利用率</div>
+            <div class="stat-card-value success">{{ (m.get('operator_util_avg', 0) * 100)|round(2) }}%</div>
+            <div class="stat-card-delta">已用 {{ m.get('operator_used_count', 0) }} 人</div>
+            <div class="stat-card-delta">任务分配均匀程度 {{ (m.get('operator_load_cv') or 0)|round(2) }}，越小越均匀</div>
+          </div>
+        </div>
+        {% if candidate_comparison_display and candidate_comparison_display.has_comparison %}
+          <div class="muted mt-2">
+            下方按「{{ objective_key_label }}」展示同一次排产里的代表方案对比（越小越好）。
+          </div>
+        {% else %}
+          <div class="muted mt-2">
+            这些指标来自当前查看的排产版本。
+          </div>
+        {% endif %}
+      {% else %}
+        <div class="muted mt-2">该版本未记录排产指标（可能是旧版本）。</div>
+      {% endif %}
+      {% if extra_cards %}
+        <div class="stat-grid mt-2">
+          {% for card in extra_cards %}
+            <div class="stat-card{% if card.type_class %} {{ card.type_class }}{% endif %}">
+              <div class="stat-card-label">{{ card.label }}</div>
+              <div class="stat-card-value">{{ card.value }}</div>
+              {% if card.delta is not none %}
+                <div class="stat-card-delta">对比上一版：{{ '+' if card.delta > 0 else '' }}{{ card.delta }}</div>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </div>

@@ -391,6 +391,35 @@ def _silent_scan_has_group(entry: Dict[str, Any], scan_entries: Sequence[Dict[st
     return any(_silent_refresh_group_key(scan_entry) == key for scan_entry in scan_entries)
 
 
+def _silent_entry_key(entry: Dict[str, Any]) -> Tuple[str, str, str, int]:
+    return (
+        str(entry.get("path") or ""),
+        str(entry.get("symbol") or ""),
+        str(entry.get("handler_fingerprint") or ""),
+        int(entry.get("except_ordinal") or 0),
+    )
+
+
+def _silent_scan_group_has_exact_ledger_peer(
+    entry: Dict[str, Any],
+    *,
+    silent_entries: Sequence[Dict[str, Any]],
+    scan_entries: Sequence[Dict[str, Any]],
+) -> bool:
+    group_key = _silent_refresh_group_key(entry)
+    entry_id = str(entry.get("id") or "")
+    ledger_keys = {
+        _silent_entry_key(current)
+        for current in silent_entries
+        if str(current.get("id") or "") != entry_id
+    }
+    return any(
+        _silent_refresh_group_key(scan_entry) == group_key
+        and _silent_entry_key(scan_entry) in ledger_keys
+        for scan_entry in scan_entries
+    )
+
+
 def _reject_fixed_silent_entries_still_in_scan(
     silent_entries: Sequence[Dict[str, Any]],
     scan_entries: Sequence[Dict[str, Any]],
@@ -500,6 +529,27 @@ def refresh_auto_fields(ledger: Optional[Dict[str, Any]] = None) -> Dict[str, An
     removed_silent_ids: Set[str] = set()
     for entry in silent_entries:
         if str(entry.get("status") or "open") == "fixed" and not is_startup_scope_path(str(entry.get("path") or "")):
+            removed_silent_ids.add(str(entry.get("id") or ""))
+            continue
+        key = (
+            str(entry.get("path") or ""),
+            str(entry.get("symbol") or ""),
+            str(entry.get("handler_fingerprint") or ""),
+            int(entry.get("except_ordinal") or 0),
+        )
+        if (
+            str(entry.get("source") or "") == "migrated_from_architecture_fitness_counter"
+            and not is_startup_scope_path(str(entry.get("path") or ""))
+            and key not in silent_scan
+            and (
+                not _silent_scan_has_group(entry, silent_scan_entries)
+                or _silent_scan_group_has_exact_ledger_peer(
+                    entry,
+                    silent_entries=silent_entries,
+                    scan_entries=silent_scan_entries,
+                )
+            )
+        ):
             removed_silent_ids.add(str(entry.get("id") or ""))
             continue
         matched_entry = silent_group_alignment.get(str(entry.get("id") or ""))

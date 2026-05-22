@@ -11,6 +11,7 @@ from data.repositories import (
     OperatorMachineRepository,
     OperatorRepository,
     PartOperationRepository,
+    ScheduleCandidateRepository,
     ScheduleHistoryRepository,
     ScheduleRepository,
     SupplierRepository,
@@ -29,6 +30,7 @@ class ScheduleRepositoryBundle:
     supplier_repo: SupplierRepository
     schedule_repo: ScheduleRepository
     history_repo: ScheduleHistoryRepository
+    candidate_repo: ScheduleCandidateRepository
 
 
 def build_schedule_repository_bundle(conn: Any, *, logger: Any = None) -> ScheduleRepositoryBundle:
@@ -43,4 +45,5 @@ def build_schedule_repository_bundle(conn: Any, *, logger: Any = None) -> Schedu
         supplier_repo=SupplierRepository(conn, logger=logger),
         schedule_repo=ScheduleRepository(conn, logger=logger),
         history_repo=ScheduleHistoryRepository(conn, logger=logger),
+        candidate_repo=ScheduleCandidateRepository(conn, logger=logger),
     )

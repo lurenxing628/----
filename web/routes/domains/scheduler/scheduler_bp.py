@@ -87,9 +87,10 @@ def _surface_public_summary_warnings(
         flash(item, "warning")
     remaining_public = len(warnings) - len(shown)
     hidden_raw = sum(1 for item in raw_warnings if not public_summary_warning_messages([item]))
-    remaining = remaining_public + hidden_raw
-    if remaining > 0:
-        flash(remaining_message.format(remaining=remaining), "warning")
+    if remaining_public > 0:
+        flash(remaining_message.format(remaining=remaining_public), "warning")
+    if hidden_raw > 0:
+        flash(f"系统记录了 {hidden_raw} 条维护诊断，普通页面不展开；如需排查，请查看系统日志。", "warning")
 
 
 def _surface_schedule_errors(

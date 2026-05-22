@@ -137,7 +137,7 @@ def test_latest_schedule_snapshot_uses_dedicated_sections() -> None:
 
 def test_scheduler_error_summaries_render_as_summary_cards() -> None:
     cases = (
-        ("templates/scheduler/analysis.html", "selected_summary_display.error_total"),
+        ("templates/scheduler/analysis_parts/_summary_warnings.html", "selected_summary_display.error_total"),
         ("templates/scheduler/week_plan.html", "selected_summary_display.error_total"),
         ("templates/scheduler/batches.html", "latest_summary_display.error_total"),
         ("web_new_test/templates/scheduler/batches.html", "latest_summary_display.error_total"),

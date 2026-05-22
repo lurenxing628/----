@@ -37,6 +37,12 @@ def test_scheduler_config_separates_preset_actions_from_runtime_state() -> None:
         assert 'data-auto-submit="1"' in source
         assert 'data-autosave="true"' in source
         assert 'data-autosave-key="scheduler-config-main"' in source
+        assert "scheduler-config-section--graph" in source
+        assert "scheduler-config-mode-guide" in source
+        assert "scheduler-config-field--wide" in source
+        assert "scheduler-config-form-grid--graph" in source
+        assert "scheduler-config-switches-heading" in source
+        assert "选择“只看分析报告”时，系统只检查工序之间的先后关系" not in source
 
         assert 'name="ready_weight"' not in source
         assert 'name="auto_assign_persist"' not in source
@@ -49,6 +55,8 @@ def test_scheduler_config_setting_switches_use_compact_toggle_controls() -> None
         "enforce_ready_default",
         "auto_assign_enabled",
         "ortools_enabled",
+        "graph_block_on_cycle",
+        "graph_debug_export",
     )
     for rel_path in ("templates/scheduler/config.html", "web_new_test/templates/scheduler/config.html"):
         source = _read(rel_path)

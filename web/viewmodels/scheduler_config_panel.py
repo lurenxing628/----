@@ -6,6 +6,9 @@ from typing import Any, Callable, Dict, Sequence, Tuple
 from .scheduler_batches_notices import build_config_notice_items
 from .ui_presenters import UiDetailsNotice, UiSummaryItem
 
+GRAPH_CONFIG_PENDING_NOTICE = "默认参与排产。系统会先排普通方案，再试几档重点工序优先方案，最后自动采用更合适的一版。"
+GRAPH_CONFIG_PENDING_ACTIVE_NOTICE = "当前已打开工序图分析。参与排产会自动比较普通方案和重点工序优先方案；只看分析报告只给出检查结果，不会改变排产结果。"
+
 _AutoAssignPersistDisplayBuilder = Callable[[Any], Dict[str, Any]]
 
 
@@ -138,6 +141,30 @@ def _current_auto_assign_enabled_item(cfg: Any) -> UiSummaryItem:
     )
 
 
+def _graph_config_notice_items(cfg: Any) -> Tuple[UiDetailsNotice, ...]:
+    mode = str(getattr(cfg, "graph_analysis_mode", "off") or "off").strip().lower()
+    notices = [
+        UiDetailsNotice(
+            "工序图分析说明",
+            GRAPH_CONFIG_PENDING_NOTICE,
+            tone="warning" if mode in ("report", "on") else "info",
+            role="status",
+            aria_live="polite",
+        )
+    ]
+    if mode in ("report", "on"):
+        notices.append(
+            UiDetailsNotice(
+                "工序图分析当前状态",
+                GRAPH_CONFIG_PENDING_ACTIVE_NOTICE,
+                tone="warning",
+                role="status",
+                aria_live="polite",
+            )
+        )
+    return tuple(notices)
+
+
 def build_scheduler_config_panel_state(
     *,
     cfg: Any,
@@ -165,6 +192,7 @@ def build_scheduler_config_panel_state(
     active_preset = preset_display_state.get("active_preset")
     current_config_notice_items = (
         *_repair_notice_items(current_config_state),
+        *_graph_config_notice_items(cfg),
         *notice_items,
     )
     current_config_summary_items = _current_config_summary_items(

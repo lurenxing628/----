@@ -100,17 +100,40 @@ def main() -> None:
         )
         conn.commit()
 
-        neg_cal = cal_svc.get("2026-02-12")
-        assert float(neg_cal.shift_hours) == 0.0, f"预期历史负工时读侧归零，实际 {neg_cal.shift_hours!r}"
-        neg_policy = cal_svc.policy_for_datetime(datetime(2026, 2, 12, 9, 0, 0))
-        assert float(neg_policy.shift_hours) == 0.0, f"预期负工时 policy.shift_hours=0，实际 {neg_policy.shift_hours!r}"
-        assert capacity_hours(cal_svc, date(2026, 2, 12), date(2026, 2, 12)) == 0.0, "预期负工时读侧归零后 capacity_hours=0"
+        try:
+            cal_svc.get("2026-02-12")
+        except ValueError as exc:
+            assert "shift_hours" in str(exc), f"负工时错误信息应指出字段：{exc!r}"
+        else:
+            raise AssertionError("历史负工时读侧不能静默归零")
 
-        neg_op_cal = cal_svc.get_operator_calendar("OP100", "2026-02-13")
-        assert neg_op_cal is not None, "未读取到负工时 OperatorCalendar 记录"
-        assert float(neg_op_cal.shift_hours) == 0.0, f"预期个人日历负工时读侧归零，实际 {neg_op_cal.shift_hours!r}"
-        neg_op_policy = cal_svc.policy_for_datetime(datetime(2026, 2, 13, 9, 0, 0), operator_id="OP100")
-        assert float(neg_op_policy.shift_hours) == 0.0, f"预期个人负工时 policy.shift_hours=0，实际 {neg_op_policy.shift_hours!r}"
+        try:
+            cal_svc.policy_for_datetime(datetime(2026, 2, 12, 9, 0, 0))
+        except ValueError as exc:
+            assert "shift_hours" in str(exc), f"负工时 policy 错误信息应指出字段：{exc!r}"
+        else:
+            raise AssertionError("负工时 policy 不能静默归零")
+
+        try:
+            capacity_hours(cal_svc, date(2026, 2, 12), date(2026, 2, 12))
+        except ValueError as exc:
+            assert "shift_hours" in str(exc), f"负工时 capacity 错误信息应指出字段：{exc!r}"
+        else:
+            raise AssertionError("负工时 capacity 不能静默归零")
+
+        try:
+            cal_svc.get_operator_calendar("OP100", "2026-02-13")
+        except ValueError as exc:
+            assert "shift_hours" in str(exc), f"个人负工时错误信息应指出字段：{exc!r}"
+        else:
+            raise AssertionError("个人日历负工时读侧不能静默归零")
+
+        try:
+            cal_svc.policy_for_datetime(datetime(2026, 2, 13, 9, 0, 0), operator_id="OP100")
+        except ValueError as exc:
+            assert "shift_hours" in str(exc), f"个人负工时 policy 错误信息应指出字段：{exc!r}"
+        else:
+            raise AssertionError("个人负工时 policy 不能静默归零")
     finally:
         try:
             conn.close()

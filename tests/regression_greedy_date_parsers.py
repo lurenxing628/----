@@ -9,6 +9,11 @@ import sys
 from datetime import date, datetime
 
 
+class _BrokenText:
+    def __str__(self) -> str:
+        raise RuntimeError("date text exploded")
+
+
 def find_repo_root() -> str:
     here = os.path.dirname(os.path.abspath(__file__))
     repo_root = os.path.abspath(os.path.join(here, ".."))
@@ -31,6 +36,12 @@ def main() -> None:
     assert parse_date("2026/02/14") == date(2026, 2, 14)
     assert parse_date(datetime(2026, 2, 14, 8, 30, 0)) == date(2026, 2, 14)
     assert parse_date("bad-date") is None
+    try:
+        parse_date(_BrokenText())
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("日期解析不应吞掉非格式类运行时异常")
 
     dt = parse_datetime("2026-02-14 08:30")
     assert dt == datetime(2026, 2, 14, 8, 30, 0), dt
@@ -38,6 +49,12 @@ def main() -> None:
     assert parse_datetime("2026/02/14 08:30:11") == datetime(2026, 2, 14, 8, 30, 11)
     assert parse_datetime("2026-02-14") == datetime(2026, 2, 14, 0, 0, 0)
     assert parse_datetime("invalid") is None
+    try:
+        parse_datetime(_BrokenText())
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("时间解析不应吞掉非格式类运行时异常")
 
     # 兼容导出：外部继续从 schedule_params 导入解析函数。
     assert parse_date_compat("2026-02-14") == date(2026, 2, 14)
@@ -48,4 +65,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

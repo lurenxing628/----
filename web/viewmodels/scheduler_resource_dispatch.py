@@ -259,4 +259,7 @@ def build_resource_dispatch_filename(payload: Dict[str, Any]) -> str:
         filename += f"_{_text(filters.get('start_date'))}_{_text(filters.get('end_date'))}"
     if _text(filters.get("version")):
         filename += f"_v{_text(filters.get('version'))}"
+    plan_role_label = _text(filters.get("effective_plan_role_label")) or _text(filters.get("plan_role_label"))
+    if plan_role_label:
+        filename += f"_{plan_role_label}"
     return f"{filename}.xlsx"

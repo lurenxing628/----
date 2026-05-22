@@ -1,5 +1,3 @@
-import json
-import math
 import os
 import sys
 
@@ -17,6 +15,7 @@ def main() -> None:
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
 
+    from core.algorithms import evaluation
     from core.algorithms.evaluation import ScheduleMetrics
 
     m = ScheduleMetrics(
@@ -35,31 +34,55 @@ def main() -> None:
         internal_horizon_hours=float("inf"),
         util_defined=True,
     )
-    d = m.to_dict()
+    try:
+        m.to_dict()
+    except ValueError as exc:
+        assert "有限数字" in str(exc), exc
+    else:
+        raise AssertionError("NaN/Infinity 指标不能静默变成 0")
 
-    float_keys = [
-        "total_tardiness_hours",
-        "makespan_hours",
-        "weighted_tardiness_hours",
-        "makespan_internal_hours",
-        "machine_busy_hours_total",
-        "operator_busy_hours_total",
-        "machine_util_avg",
-        "operator_util_avg",
-        "machine_load_cv",
-        "operator_load_cv",
-        "internal_horizon_hours",
-    ]
-    for k in float_keys:
-        v = float(d.get(k, 0.0))
-        assert math.isfinite(v), f"{k} 应为有限数值：{k}={v!r} d={d!r}"
+    class BadFloat:
+        def __float__(self):
+            raise RuntimeError("bad float should not become zero")
 
-    # 严格 JSON（禁止 NaN/Infinity）应可序列化
-    _ = json.dumps(d, allow_nan=False)
+    bad = ScheduleMetrics(
+        overdue_count=1,
+        total_tardiness_hours=BadFloat(),
+        makespan_hours=1.0,
+        changeover_count=0,
+    )
+    try:
+        bad.to_dict()
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("内部坏指标不能静默变成 0")
+
+    try:
+        evaluation._finite_non_negative({"ok": 1.0, "bad": "坏数据"})
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("负荷统计坏值不能被跳过后继续算")
+
+    real_pstdev = evaluation.statistics.pstdev
+
+    def fail_pstdev(_values):
+        raise RuntimeError("pstdev failed")
+
+    evaluation.statistics.pstdev = fail_pstdev
+    try:
+        try:
+            evaluation._cv([1.0, 2.0])
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError("负荷波动内部计算错误不能静默变 0")
+    finally:
+        evaluation.statistics.pstdev = real_pstdev
 
     print("OK")
 
 
 if __name__ == "__main__":
     main()
-

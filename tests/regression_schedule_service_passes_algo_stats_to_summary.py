@@ -54,6 +54,8 @@ def main() -> None:
                 operator_id=getattr(op, "operator_id", None),
                 supplier_id=getattr(op, "supplier_id", None),
                 op_type_name=getattr(op, "op_type_name", None),
+                setup_hours=getattr(op, "setup_hours", 0.0),
+                unit_hours=getattr(op, "unit_hours", 0.0),
             )
             for op in ops
         ]
@@ -99,9 +101,9 @@ def main() -> None:
             duration_seconds=0.0,
         )
         return OptimizationOutcome(
-            results=results,
+            results=cast(Any, results),
             summary=summary,
-            used_strategy=SimpleNamespace(value="priority_first"),
+            used_strategy=cast(Any, SimpleNamespace(value="priority_first")),
             used_params={},
             metrics=None,
             best_score=(0.0,),

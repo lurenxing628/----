@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from core.algorithms.objective_specs import best_score_schema, comparison_metric_key
 from core.models.enums import YesNo
-from core.models.scheduler_public_errors import build_public_error_records
 from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot
 from core.services.scheduler.run.optimizer_search_state import compact_attempts
 from core.services.scheduler.run.schedule_persistence_errors import missing_internal_resource_samples
@@ -17,6 +16,17 @@ from .schedule_summary_types import (
     FreezeState,
     RuntimeState,
     SummaryBuildContext,
+)
+from .summary_visible_degradation import (
+    apply_fallback_count_degradation,
+    apply_metrics_degradation,
+    apply_summary_count_degradation,
+    apply_summary_count_errors,
+    apply_summary_diagnostics,
+    public_summary_error_state,
+    safe_metrics_dict,
+    summary_counts_with_errors,
+    warnings_with_graph,
 )
 
 _SUMMARY_MERGE_ERROR_CODES = {
@@ -57,8 +67,8 @@ def _finish_time_by_batch(results: List[Any]) -> Dict[str, datetime]:
     return finish_by_batch
 
 
-def _positive_result_op_ids(results: List[Any]) -> set[int]:
-    op_ids: set[int] = set()
+def _positive_result_op_ids(results: List[Any]) -> Set[int]:
+    op_ids: Set[int] = set()
     for result in list(results or []):
         try:
             op_id = int(getattr(result, "op_id", 0) or 0)
@@ -69,8 +79,8 @@ def _positive_result_op_ids(results: List[Any]) -> set[int]:
     return op_ids
 
 
-def _positive_int_set(values: Any) -> set[int]:
-    out: set[int] = set()
+def _positive_int_set(values: Any) -> Set[int]:
+    out: Set[int] = set()
     for value in list(values or []):
         try:
             number = int(value or 0)
@@ -81,7 +91,7 @@ def _positive_int_set(values: Any) -> set[int]:
     return out
 
 
-def _actionable_missing_internal_resource_op_ids(ctx: SummaryBuildContext) -> set[int]:
+def _actionable_missing_internal_resource_op_ids(ctx: SummaryBuildContext) -> Set[int]:
     missing_ids = _positive_int_set(ctx.missing_internal_resource_op_ids)
     if not missing_ids:
         return set()
@@ -175,6 +185,7 @@ def _algo_downtime_dict(*, auto_assign_enabled: bool, downtime_state: Dict[str, 
         "extend_attempted": bool(downtime_state.get("downtime_extend_attempted")) if auto_assign_enabled else False,
         "load_partial_fail_count": int(downtime_state.get("load_partial_fail_count") or 0),
         "load_partial_fail_machines_sample": list(downtime_state.get("load_partial_fail_machines_sample") or []),
+        "downtime_meta_parse_failed": bool(downtime_state.get("downtime_meta_parse_failed")),
         "extend_partial_fail_count": int(downtime_state.get("extend_partial_fail_count") or 0)
         if auto_assign_enabled
         else 0,
@@ -260,31 +271,21 @@ def _algo_warning_pipeline_dict(
     }
 
 
-def _algo_dict(state: AlgorithmSummaryState) -> Dict[str, Any]:
-    ctx = state.ctx
-    auto_assign_enabled = bool(state.downtime_state.get("auto_assign_enabled"))
-    algo: Dict[str, Any] = {
-        "mode": ctx.algo_mode,
-        "objective": ctx.objective_name,
-        "comparison_metric": _comparison_metric(ctx.objective_name),
-        "config_snapshot": _config_snapshot_dict(ctx.cfg),
-        "time_budget_seconds": int(ctx.time_budget_seconds),
-        "hard_constraints": list(state.hard_constraints),
-        "soft_objectives": [ctx.objective_name],
-        "best_score": list(ctx.best_score) if ctx.best_score is not None else None,
-        "best_score_schema": _best_score_schema(ctx.objective_name),
-        "metrics": ctx.best_metrics.to_dict() if ctx.best_metrics is not None else None,
-        "best_batch_order": list(ctx.best_order or []),
-        "attempts": compact_attempts(list(ctx.attempts or []), limit=12),
-        "improvement_trace": list(ctx.improvement_trace or [])[:200],
-        "downtime_avoid": _algo_downtime_dict(
-            auto_assign_enabled=auto_assign_enabled, downtime_state=state.downtime_state
-        ),
-        "input_contract": _algo_input_contract_dict(state.input_state),
-        "merge_context_degraded": bool(state.warning_state.merge_context_degraded),
-        "merge_context_events": list(state.warning_state.merge_context_events),
-        "freeze_window": _algo_freeze_window_dict(state),
-    }
+def _graph_analysis_algo_dict(ctx: SummaryBuildContext) -> Dict[str, Any]:
+    if ctx.graph_analysis_public is None:
+        return {}
+    return {"graph_analysis": dict(ctx.graph_analysis_public)}
+
+
+def _candidate_comparison_algo_dict(ctx: SummaryBuildContext) -> Dict[str, Any]:
+    if ctx.candidate_comparison_public is None:
+        return {}
+    return {"candidate_comparison": dict(ctx.candidate_comparison_public)}
+
+
+def _apply_optional_algo_fields(algo: Dict[str, Any], state: AlgorithmSummaryState, metrics_state: Any) -> None:
+    if metrics_state:
+        algo["metrics_state"] = metrics_state
     if state.resource_pool_enabled or (isinstance(state.resource_pool_meta, dict) and bool(state.resource_pool_meta)):
         algo["resource_pool"] = _algo_resource_pool_dict(
             resource_pool_attempted=state.resource_pool_attempted,
@@ -298,13 +299,94 @@ def _algo_dict(state: AlgorithmSummaryState) -> Dict[str, Any]:
             algo_warning_list=state.warning_state.algo_warning_list,
             warning_pipeline=state.warning_pipeline,
         )
-    if state.fallback_state.fallback_counts:
-        algo["fallback_counts"] = dict(state.fallback_state.fallback_counts)
-    if state.fallback_state.fallback_samples:
-        algo["fallback_samples"] = dict(state.fallback_state.fallback_samples)
-    if state.fallback_state.param_fallbacks:
-        algo["param_fallbacks"] = dict(state.fallback_state.param_fallbacks)
+
+
+def _apply_fallback_algo_fields(algo: Dict[str, Any], fallback_state: FallbackState) -> None:
+    if fallback_state.fallback_counts:
+        algo["fallback_counts"] = dict(fallback_state.fallback_counts)
+    if fallback_state.fallback_samples:
+        algo["fallback_samples"] = dict(fallback_state.fallback_samples)
+    if fallback_state.param_fallbacks:
+        algo["param_fallbacks"] = dict(fallback_state.param_fallbacks)
+    if fallback_state.fallback_count_parse_errors:
+        algo["fallback_count_parse_failed"] = True
+        algo["fallback_count_parse_errors"] = list(fallback_state.fallback_count_parse_errors[:10])
+
+
+def _algo_dict(state: AlgorithmSummaryState) -> Dict[str, Any]:
+    ctx = state.ctx
+    auto_assign_enabled = bool(state.downtime_state.get("auto_assign_enabled"))
+    metrics_dict, metrics_state = safe_metrics_dict(ctx.best_metrics)
+    algo: Dict[str, Any] = {
+        "mode": ctx.algo_mode,
+        "objective": ctx.objective_name,
+        "comparison_metric": _comparison_metric(ctx.objective_name),
+        "config_snapshot": _config_snapshot_dict(ctx.cfg),
+        "time_budget_seconds": int(ctx.time_budget_seconds),
+        "hard_constraints": list(state.hard_constraints),
+        "soft_objectives": [ctx.objective_name],
+        "best_score": list(ctx.best_score) if ctx.best_score is not None else None,
+        "best_score_schema": _best_score_schema(ctx.objective_name),
+        "metrics": metrics_dict,
+        "best_batch_order": list(ctx.best_order or []),
+        "attempts": compact_attempts(list(ctx.attempts or []), limit=12),
+        "improvement_trace": list(ctx.improvement_trace or [])[:200],
+        "downtime_avoid": _algo_downtime_dict(
+            auto_assign_enabled=auto_assign_enabled, downtime_state=state.downtime_state
+        ),
+        "input_contract": _algo_input_contract_dict(state.input_state),
+        "merge_context_degraded": bool(state.warning_state.merge_context_degraded),
+        "merge_context_events": list(state.warning_state.merge_context_events),
+        "freeze_window": _algo_freeze_window_dict(state),
+    }
+    _apply_optional_algo_fields(algo, state, metrics_state)
+    _apply_fallback_algo_fields(algo, state.fallback_state)
+    algo.update(_graph_analysis_algo_dict(ctx))
+    algo.update(_candidate_comparison_algo_dict(ctx))
     return algo
+
+
+def _apply_visible_degradations(
+    *,
+    public_algo: Dict[str, Any],
+    fallback_state: FallbackState,
+    summary: Any,
+    warnings: List[str],
+    events: List[Dict[str, Any]],
+    counters: Dict[str, Any],
+    causes: List[str],
+    completion_status: str,
+    degraded_success: bool,
+) -> Tuple[bool, int, int, int, List[str]]:
+    degraded_success = apply_metrics_degradation(
+        metrics_state=public_algo.get("metrics_state"),
+        warnings=warnings,
+        events=events,
+        counters=counters,
+        causes=causes,
+        completion_status=completion_status,
+        degraded_success=degraded_success,
+    )
+    degraded_success = apply_fallback_count_degradation(
+        fallback_parse_errors=list(getattr(fallback_state, "fallback_count_parse_errors", []) or []),
+        warnings=warnings,
+        events=events,
+        counters=counters,
+        causes=causes,
+        completion_status=completion_status,
+        degraded_success=degraded_success,
+    )
+    op_count, scheduled_ops, failed_ops, summary_count_errors = summary_counts_with_errors(summary)
+    degraded_success = apply_summary_count_degradation(
+        summary_count_errors=summary_count_errors,
+        warnings=warnings,
+        events=events,
+        counters=counters,
+        causes=causes,
+        completion_status=completion_status,
+        degraded_success=degraded_success,
+    )
+    return degraded_success, op_count, scheduled_ops, failed_ops, summary_count_errors
 
 
 def _build_result_summary_obj(
@@ -323,13 +405,28 @@ def _build_result_summary_obj(
     serialize_end_date_fn: Callable[[Optional[Any]], Optional[str]],
 ) -> Dict[str, Any]:
     raw_summary_errors = list(getattr(ctx.summary, "errors", None) or [])
-    public_error_details = build_public_error_records(raw_summary_errors)
-    public_error_messages = [str(item.get("message") or "") for item in public_error_details if item.get("message")]
+    public_error_details, public_error_messages = public_summary_error_state(raw_summary_errors)
     missing_resource_ops = missing_internal_resource_samples(
         ctx.operations,
         _actionable_missing_internal_resource_op_ids(ctx),
     )
     public_algo, optimizer_diagnostics = project_public_algo_summary(_algo_dict(algorithm_state))
+    warnings = warnings_with_graph(freeze_state, ctx)
+    degradation_events = list(summary_degradation.get("events") or [])
+    degradation_counters = dict(summary_degradation.get("counters") or {})
+    result_degraded_causes = list(degraded_causes or [])
+    result_degraded_success, op_count, scheduled_ops, failed_ops, summary_count_errors = _apply_visible_degradations(
+        public_algo=public_algo,
+        fallback_state=fallback_state,
+        summary=ctx.summary,
+        warnings=warnings,
+        events=degradation_events,
+        counters=degradation_counters,
+        causes=result_degraded_causes,
+        completion_status=completion_status,
+        degraded_success=bool(degraded_success),
+    )
+
     result_summary = {
         "summary_schema_version": "1.2",
         "is_simulation": bool(ctx.simulate),
@@ -347,15 +444,15 @@ def _build_result_summary_obj(
         "unscheduled_batch_count": int(runtime_state.unscheduled_batch_count),
         "unscheduled_batch_ids_sample": list(runtime_state.unscheduled_batch_ids_sample[:20]),
         "legacy_external_days_defaulted_count": int(fallback_state.legacy_external_days_defaulted_count),
-        "degradation_events": list(summary_degradation.get("events") or []),
-        "degradation_counters": dict(summary_degradation.get("counters") or {}),
-        "degraded_success": bool(degraded_success),
-        "degraded_causes": list(degraded_causes or []),
+        "degradation_events": degradation_events,
+        "degradation_counters": degradation_counters,
+        "degraded_success": bool(result_degraded_success),
+        "degraded_causes": result_degraded_causes,
         "counts": {
             "batch_count": len(ctx.batches),
-            "op_count": int(getattr(ctx.summary, "total_ops", 0)),
-            "scheduled_ops": int(getattr(ctx.summary, "scheduled_ops", 0)),
-            "failed_ops": int(getattr(ctx.summary, "failed_ops", 0)),
+            "op_count": op_count,
+            "scheduled_ops": scheduled_ops,
+            "failed_ops": failed_ops,
             "unscheduled_batch_count": int(runtime_state.unscheduled_batch_count),
         },
         "overdue_batches": {"count": len(runtime_state.overdue_items), "items": runtime_state.overdue_items},
@@ -366,9 +463,9 @@ def _build_result_summary_obj(
         "raw_error_count": len(raw_summary_errors),
         "missing_internal_resource_count": len(missing_resource_ops),
         "missing_internal_resource_ops": missing_resource_ops,
-        "warnings": list(freeze_state.all_warnings),
+        "warnings": warnings,
         "time_cost_ms": int(time_cost_ms),
     }
-    if optimizer_diagnostics:
-        result_summary["diagnostics"] = optimizer_diagnostics
+    apply_summary_count_errors(result_summary, summary_count_errors)
+    apply_summary_diagnostics(result_summary, optimizer_diagnostics, ctx)
     return result_summary

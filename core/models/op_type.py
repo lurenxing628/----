@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from ._helpers import RowLike, as_dict, get, parse_float
+from ._helpers import RowLike, as_dict, get, parse_optional_float
 from .enums import SourceType
 
 
@@ -23,7 +23,7 @@ class OpType:
             op_type_id=str(get(row, "op_type_id") or ""),
             name=str(get(row, "name") or ""),
             category=(str(get(row, "category") or SourceType.INTERNAL.value).strip().lower() or SourceType.INTERNAL.value),
-            default_hours=parse_float(val, default=None),
+            default_hours=parse_optional_float(val, field="default_hours"),
             remark=get(row, "remark"),
             created_at=get(row, "created_at"),
         )
@@ -39,4 +39,3 @@ class OpType:
                 "created_at": self.created_at,
             }
         )
-

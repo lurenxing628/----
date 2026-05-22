@@ -229,7 +229,7 @@
     overdueMarkersDegraded: false,
     overdueMarkersPartial: false,
     overdueMarkersMessage: "",
-    // 默认：按批次配色；高亮关键链；仅显示关键链箭头（避免全图箭头过密）
+    // 默认：按批次配色；高亮关键工序；只显示关键工序关系线，避免全图线条过密。
     ui: {
       viewMode: "Day",
       colorMode: "batch",
@@ -274,4 +274,3 @@
   ns.state = state;
   ns._perfState = _perfState;
 })();
-

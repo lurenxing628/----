@@ -112,7 +112,7 @@ def make_new_summary() -> Dict[str, Any]:
             "冻结窗口存在跳批风险",
             "停机区间加载失败，本次先按常规能力继续",
             "存在 1 个批次未命中首选技能",
-            "另有提醒需要在排产历史查看",
+            "开始时间已规范化为：2026-05-19 08:00:00",
         ],
         "algo": {
             "mode": "improve",
@@ -340,7 +340,7 @@ def main() -> None:
     assert "停机区间加载失败，本次先按常规能力继续" in new_html, "未展示第二条 warnings_preview"
     assert "存在 1 个批次未命中首选技能" in new_html, "未展示第三条 warnings_preview"
     assert "另有 1 条提醒，请到系统管理里的排产历史查看这次排产的详细提醒。" in new_html, "未展示 warning_hidden_count"
-    assert "另有提醒需要在排产历史查看" not in new_html, "第 4 条 warning 不应出现在 preview 中"
+    assert "开始时间已规范化为：2026-05-19 08:00:00" not in new_html, "第 4 条 warning 不应出现在 preview 中"
     assert "停机时间资料不完整" in new_html, "未展示停机提示"
     assert "停机区间加载失败" in new_html, "未展示停机降级原因"
     assert "冻结窗口资料不完整" in new_html, "未展示冻结窗口提示"
@@ -378,6 +378,33 @@ def main() -> None:
     fallback_html = render_analysis_html(app, render_template, version=3, selected=fallback_selected, ctx=fallback_ctx)
     assert 'stat-card-label">数据异常批次数</div>' in fallback_html, "读侧回退场景未展示数据异常卡片"
     assert 'stat-card-label">未排批次数</div>' in fallback_html, "读侧回退场景未展示未排批次卡片"
+
+    private_warning_summary = {
+        "version": 4,
+        "warnings": ["sqlite OperationalError: /Users/private/aps.db locked"],
+        "algo": {"metrics": make_metrics(overdue_count=0)},
+    }
+    private_warning_selected, private_warning_hist = build_case_inputs(version=4, summary_obj=private_warning_summary)
+    private_warning_ctx = build_analysis_context(
+        selected_ver=4,
+        raw_hist=[private_warning_hist],
+        selected_item=private_warning_selected,
+    )
+    private_warning_html = render_analysis_html(
+        app,
+        render_template,
+        version=4,
+        selected=private_warning_selected,
+        ctx=private_warning_ctx,
+    )
+    assert "提醒：1 条" not in private_warning_html, "内部诊断不应算作业务提醒"
+    assert "维护诊断：1 条" in private_warning_html, "内部诊断应单独展示为维护诊断"
+    assert "查看前 0 条提醒" not in private_warning_html, "不应为 0 条可见提醒展示空展开按钮"
+    assert "另有 1 条提醒" not in private_warning_html, "没有可见提醒时不应提示另有 1 条"
+    assert "当前页没有可安全展开的提醒明细" not in private_warning_html, "不应再用空提醒文案解释内部诊断"
+    assert "去排产历史查看" not in private_warning_html, "只有内部诊断时不应提供无效历史跳转"
+    assert "/system/history?version=4" not in private_warning_html, "只有内部诊断时不应生成历史跳转"
+    assert "sqlite" not in private_warning_html, "页面不应泄露内部错误细节"
 
     print("OK")
 

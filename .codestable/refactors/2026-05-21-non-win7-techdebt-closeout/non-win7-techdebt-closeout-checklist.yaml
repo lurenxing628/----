@@ -1,0 +1,89 @@
+doc_type: refactor-checklist
+refactor: 2026-05-21-non-win7-techdebt-closeout
+status: draft
+source_plan: .codestable/refactors/2026-05-21-non-win7-techdebt-closeout/non-win7-techdebt-closeout-refactor-design.md
+scope: Non-Win7 prioritized technical-debt closeout.
+excluded_scope:
+  - Win7 / launcher accepted risks
+  - silent fallback debt entries themselves
+guardrails:
+  - no new broad except Exception blocks
+  - no swallowed unexpected errors
+  - no silent fallback/defaulting unless already an explicit contract
+  - no unnecessary defensive if branches
+  - one step per implementation pass with validation before continuing
+steps:
+  - id: step-01-pr7e-review-state-closeout
+    title: Verify PR7E code chain and close stale review findings only if evidence passes
+    status: pending
+    type: review_status_closeout
+    touch_files:
+      - .limcode/review/pr7e-uncommitted-changes-review.md
+    do_not_touch_unless_verification_fails:
+      - core/services/scheduler/run/schedule_candidate_runner.py
+      - core/services/scheduler/run/schedule_graph_dispatch_context.py
+      - core/services/scheduler/run/schedule_candidate_summary.py
+      - web/viewmodels/scheduler_analysis_candidates.py
+    checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_runner_contract.py tests/regression_scheduler_candidate_persistence_contract.py tests/regression_scheduler_candidate_analysis_contract.py
+    exit_signal: PR7E review no longer reports fixed code paths as open findings, and targeted tests pass.
+
+  - id: step-02-week-plan-export-redirect-context
+    title: Preserve week-plan export redirect context on visible export failure
+    status: pending
+    type: targeted_bug_fix
+    touch_files:
+      - web/routes/domains/scheduler/scheduler_week_plan.py
+      - tests/regression_week_plan_filename_uses_normalized_version.py
+    checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_week_plan_filename_uses_normalized_version.py tests/regression_scheduler_candidate_week_plan_contract.py tests/regression_scheduler_week_plan_summary_observability.py
+    exit_signal: Failure redirect Location preserves week_start, offset, version, and plan_role without adding new exception handling.
+
+  - id: step-03-version-gap-contract-proof
+    title: Prove ScheduleHistory version gaps are allowed and versions are not reused
+    status: pending
+    type: contract_test
+    touch_files:
+      - tests/regression_schedule_history_version_gap_contract.py
+    reference_files:
+      - data/repositories/schedule_history_repo.py
+      - core/services/scheduler/run/schedule_orchestrator.py
+    checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_schedule_orchestrator_contract.py tests/regression_schedule_history_version_gap_contract.py
+    exit_signal: Contract test proves monotonic non-reuse without moving transaction boundaries.
+
+  - id: step-04-process-excel-routes-confirm-refactor
+    title: Extract cohesive helpers from excel_routes_confirm without behavior changes
+    status: pending
+    type: behavior_equivalent_refactor
+    touch_files:
+      - web/routes/process_excel_routes.py
+      - tests/regression_process_excel_routes_extra_state_guard.py
+    checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_process_excel_routes_extra_state_guard.py tests/regression_excel_preview_confirm_baseline_guard.py tests/regression_excel_failure_semantics_contracts.py tests/regression_route_parser_strict_mode_rejects_supplier_fallback.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check web/routes/process_excel_routes.py tests/regression_process_excel_routes_extra_state_guard.py
+    exit_signal: excel_routes_confirm is orchestration-only; stale baseline, strict mode, replace guard, warning flash, and audit logging are unchanged.
+
+  - id: step-05-operator-machine-import-readside-refactor
+    title: Extract operator-machine import write helpers and readside normalization helpers
+    status: pending
+    type: behavior_equivalent_refactor
+    touch_files:
+      - core/services/personnel/operator_machine_service.py
+      - core/services/personnel/operator_machine_query_service.py
+    checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_operator_machine_exception_paths.py tests/test_operator_machine_excel_route_error_handling.py tests/test_query_services.py tests/regression_excel_failure_semantics_contracts.py tests/regression_operator_machine_dirty_flags_visible.py tests/regression_operator_machine_missing_columns.py tests/regression_operator_machine_detail_readside_normalization.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/personnel/operator_machine_service.py core/services/personnel/operator_machine_query_service.py tests/test_operator_machine_exception_paths.py
+    exit_signal: Row-level ValidationError accumulation remains visible; unexpected normalizer/runtime errors still propagate.
+
+  - id: step-06-pr8-clean-worktree-qualitygate-proof
+    title: Run and archive clean-worktree QualityGate proof only after the worktree is clean
+    status: pending
+    type: final_proof
+    preconditions:
+      - all intended code and docs are committed or the run is executed in a clean checkout
+      - git status --short is empty
+      - radon and other quality-gate dependencies are installed
+    checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache
+    exit_signal: QualityGate succeeds on a clean worktree and evidence is archived without claiming proof before success.

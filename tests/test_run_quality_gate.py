@@ -267,6 +267,21 @@ def test_assert_no_active_runtime_allows_stale_trace_and_prints_paths(monkeypatc
     assert "lock=C:/tmp/aps_runtime.lock" in stdout
 
 
+def test_pid_signal_keeps_unknown_pid_probe_visible(monkeypatch):
+    module = _import_run_quality_gate()
+
+    monkeypatch.setattr(module.launcher, "runtime_pid_state", lambda pid: None)
+
+    state, pid, pid_match, exe_path = module._pid_signal(
+        {"pid": 321, "exe_path": sys.executable}
+    )
+
+    assert state == module.RuntimeProbeState.UNKNOWN
+    assert pid == 321
+    assert pid_match is None
+    assert exe_path == sys.executable
+
+
 def test_main_runs_guard_preflight_before_static_and_startup_checks(monkeypatch, tmp_path):
     module = _import_run_quality_gate()
 
@@ -620,11 +635,16 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
         "tests/regression_route_version_normalizers_contract.py",
         "tests/regression_gantt_page_version_default_latest.py",
         "tests/regression_gantt_default_version_span.py",
+        "tests/regression_calendar_layout_contract.py",
+        "tests/regression_gantt_layout_contract.py",
         "tests/regression_reports_page_version_default_latest.py",
         "tests/regression_gantt_calendar_load_failed_degraded.py",
         "tests/regression_gantt_bad_time_rows_surface_degraded.py",
+        "tests/regression_scheduler_result_navigation_contract.py",
         "tests/regression_gantt_contract_snapshot.py",
         "tests/regression_gantt_critical_chain_unavailable.py",
+        "tests/regression_gantt_critical_chain_provider.py",
+        "tests/regression_scheduler_candidate_gantt_plan_role_contract.py",
         "tests/regression_quality_gate_scan_contract.py",
         "tests/regression_scheduler_batch_template_warning_surface.py",
         "tests/test_scheduler_run_view_result_contract.py",
@@ -635,6 +655,9 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
         "tests/test_ui_geometry_html_contract.py",
         "tests/regression_scheduler_ui_range_feedback_contract.py",
         "tests/regression_scheduler_route_enforce_ready_tristate.py",
+        "tests/regression_ui_layout_risk_contract.py",
+        "tests/regression_responsive_min_width_contract.py",
+        "tests/regression_table_layout_readability_contract.py",
         "tests/test_run_full_selftest_report_metadata.py",
         "tests/test_holiday_default_efficiency_read_guard.py",
         "tests/test_excel_import_hardening.py",

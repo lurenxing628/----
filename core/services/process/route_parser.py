@@ -125,7 +125,12 @@ class RouteParser:
 
         errors.extend(route_format_errors(normalized))
         op_types = {ot.name: ot for ot in (self.op_types_repo.list() or [])}
-        suppliers, supplier_issues = self._build_supplier_map()
+        suppliers, supplier_issues, supplier_global_issues = self._build_supplier_map_with_global_issues()
+        if supplier_global_issues:
+            if strict_mode:
+                errors.extend(supplier_global_issues)
+            else:
+                warnings.extend(supplier_global_issues)
         matches = route_tokens(normalized)
 
         if not matches:
@@ -185,11 +190,19 @@ class RouteParser:
         return preprocess_route_string(route_string)
 
     def _build_supplier_map(self) -> Tuple[Dict[str, Tuple[str, float]], Dict[str, List[str]]]:
-        return SupplierConstraintResolver(
+        supplier_map, supplier_issues, _global_issues = self._build_supplier_map_with_global_issues()
+        return supplier_map, supplier_issues
+
+    def _build_supplier_map_with_global_issues(
+        self,
+    ) -> Tuple[Dict[str, Tuple[str, float]], Dict[str, List[str]], List[str]]:
+        resolver = SupplierConstraintResolver(
             self.op_types_repo,
             self.suppliers_repo,
             logger=self.logger,
-        ).build_supplier_map()
+        )
+        supplier_map, supplier_issues = resolver.build_supplier_map()
+        return supplier_map, supplier_issues, list(resolver.global_issues)
 
     def _parse_operations(
         self,

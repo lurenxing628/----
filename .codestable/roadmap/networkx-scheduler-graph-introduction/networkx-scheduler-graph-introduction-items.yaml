@@ -1,36 +1,47 @@
 roadmap: networkx-scheduler-graph-introduction
 created: 2026-05-08
-last_reviewed: 2026-05-08
+last_reviewed: 2026-05-21
 
 items:
   - slug: networkx-compatibility-decision
-    title: PR-0 NetworkX 兼容性、基线和 ADR
-    description: "确认 NetworkX 3.1 与 Python 3.8、Win7 离线交付、当前轻量依赖口径兼容；记录 pip freeze、三组排产基线，并落 ADR-0012。"
-    status: planned
+    title: PR-0 NetworkX 引入前基线和 ADR
+    description: "只做 before_networkx 决策与证据留痕：建独立分支，记录 Git/Python/pip freeze/hash，采集三组排产基线 JSON，并落 ADR-0012；不安装 NetworkX、不新增可选依赖文件、不改排产业务逻辑。"
+    status: done
     feature: null
     minimal_loop: true
     depends_on: []
     primary_paths:
-      - requirements.txt
-      - requirements-optimizer-lite-win7.txt
       - 开发文档/ADR/0012-networkx-排产依赖图建模.md
       - evidence/baseline_pip_freeze_before_networkx.txt
       - evidence/scheduler_baseline/
+      - tools/capture_networkx_phase0_baseline.py
+    forbidden_paths:
+      - requirements.txt
+      - requirements-optimizer-lite-win7.txt
+      - core/services/scheduler/run/schedule_orchestrator.py
+      - core/services/scheduler/run/schedule_optimizer.py
+      - core/services/scheduler/run/schedule_persistence.py
+      - core/services/scheduler/graph/
+      - schema.sql
     exit_checks:
       - python --version
-      - python -m pip freeze > evidence/baseline_pip_freeze_before_networkx.txt
-      - python -m pip install -r requirements-optimizer-lite-win7.txt
-      - python -c "import networkx as nx; print(nx.__version__); assert nx.__version__ == '3.1'"
-    notes: "本项只确认依赖和决策边界，不改排产业务逻辑；ADR 编号必须用 0012，不能覆盖已有 0004。"
+      - test -f evidence/baseline_pip_freeze_before_networkx.txt
+      - test -f evidence/scheduler_baseline/case_001_normal_result.json
+      - test -f evidence/scheduler_baseline/case_002_urgent_result.json
+      - test -f evidence/scheduler_baseline/case_003_external_result.json
+      - test -f "开发文档/ADR/0012-networkx-排产依赖图建模.md"
+      - grep -q "networkx==3.1" "开发文档/ADR/0012-networkx-排产依赖图建模.md"
+    notes: "已完成：cab8d12d 记录 before_networkx 基线，ADR-0012、pip freeze、三组排产基线 JSON 和 capture 工具均已落盘。本阶段没有安装 NetworkX，没有改 requirements.txt，也没有接入排产主链。"
 
   - slug: scheduler-graph-config-default-off
-    title: PR-1 图分析配置默认关闭
-    description: "新增 graph_analysis_mode 等配置字段和旧库迁移，默认 off，确保未安装 NetworkX 时系统仍能启动和排产。"
-    status: planned
+    title: PR-1 可选依赖验证与图分析配置默认关闭
+    description: "先新增 requirements-optimizer-lite-win7.txt 并在阶段 0 基线之后验证 networkx==3.1（优先隔离 venv，必要时记录 after_networkx freeze），再新增 graph_analysis_mode 等配置字段和旧库迁移，默认 off，确保未安装 NetworkX 时系统仍能启动和排产。"
+    status: done
     feature: null
     minimal_loop: false
     depends_on: [networkx-compatibility-decision]
     primary_paths:
+      - requirements-optimizer-lite-win7.txt
       - core/services/scheduler/config/config_field_spec.py
       - core/services/scheduler/config/config_snapshot.py
       - core/services/scheduler/config/config_constants.py
@@ -40,15 +51,19 @@ items:
       - web/routes/domains/scheduler/scheduler_config_display_state.py
       - core/infrastructure/migrations/
       - schema.sql
+      - evidence/baseline_pip_freeze_after_networkx.txt
     exit_checks:
-      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_config_snapshot_projection_sync.py
-      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_graph_config_contract.py
-    notes: "配置字段走现有 snapshot 链路；默认 off 不要求 import networkx。"
+      - test -f evidence/baseline_pip_freeze_before_networkx.txt
+      - test -f evidence/scheduler_graph/phase1/dependency_validation.md
+      - test -f evidence/scheduler_graph/phase1/networkx_3_1_wheel_manifest.txt
+      - grep -q "networkx==3.1" requirements-optimizer-lite-win7.txt
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_config_snapshot_projection_sync.py tests/regression_graph_config_bootstrap_contract.py tests/regression_migrate_v9_graph_config_defaults.py tests/regression_scheduler_config_spec_sync_contract.py
+    notes: "已完成：de191378 新增 requirements-optimizer-lite-win7.txt，并用隔离 Python 3.8 venv 验证 networkx==3.1、API smoke、重依赖检查、离线 wheel 安装和 wheel hash；b82c9a4d / 7380d6ff / 1e40d571 补齐 graph_analysis_mode 等配置默认关闭链路、迁移、页面配置和测试。项目主 requirements.txt 未引入 NetworkX；graph_analysis_mode=off 仍不要求 import NetworkX。未生成 evidence/baseline_pip_freeze_after_networkx.txt 是刻意保持项目 venv 不安装 NetworkX，实际安装证据在 evidence/scheduler_graph/phase1/dependency_validation.md。"
 
   - slug: scheduler-graph-core-module
     title: PR-2 图分析核心模块
     description: "新增 core/services/scheduler/graph/ 内部模块，包括懒加载、dataclass、节点 ID、input adapter、依赖边、校验、指标、导出和统一分析服务。"
-    status: planned
+    status: done
     feature: null
     minimal_loop: false
     depends_on: [scheduler-graph-config-default-off]
@@ -59,19 +74,21 @@ items:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_graph
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler/graph tests/scheduler_graph
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright core/services/scheduler/graph
-    notes: "NetworkX 只允许在 graph 目录内部懒加载；对外不暴露 nx.DiGraph。"
+    notes: "已完成：87d0fcca 完成 graph 骨架和 nx_runtime 懒加载；7fe964c6 完成节点 ID 和图值对象；1e40d571 / 7380d6ff 完成阶段 4.5 基础设施硬化；6d0a75e0 完成阶段 5 input_adapter；9a8332ad 完成阶段 6 precedence_builder；0df1330b 完成阶段 7 validators；cccf9d1b 完成阶段 8 metrics；251a0016 按复审意见补齐 seq 严格整数、resource_pool 坏结构报错、OperationGraphNode 运行时类型合同和 snapshot 重复字段防回归；72fbe56c 完成阶段 9 GraphAnalysisSummary.node_metrics、exporter.py 普通 dict 导出、analysis_service.py 统一分析入口和对应图模块测试。2026-05-17 阶段 10 开工前已复跑 tests/scheduler_graph 与懒加载回归，确认 PR-2 图核心模块可作为 PR-3 report 模式接入前置。"
 
   - slug: scheduler-graph-report-mode
     title: PR-3 report 模式接入 summary
     description: "在 schedule_orchestrator 附近接入只读图分析，把小摘要写入 result_summary.algo.graph_analysis，把采样诊断写入 diagnostics.graph_analysis，不改变排产结果。"
-    status: planned
-    feature: null
+    status: done
+    feature: .codestable/features/2026-05-17-scheduler-graph-report-mode/
     minimal_loop: false
     depends_on: [scheduler-graph-core-module]
     primary_paths:
       - core/services/scheduler/run/schedule_orchestrator.py
+      - core/services/scheduler/run/schedule_graph_report.py
       - core/services/scheduler/summary/schedule_summary.py
       - core/services/scheduler/summary/schedule_summary_assembly.py
+      - core/services/scheduler/summary/schedule_summary_types.py
       - core/services/scheduler/summary/summary_size_guard.py
       - core/services/scheduler/run/schedule_persistence.py
       - tests/regression_scheduler_graph_report_mode_contract.py
@@ -80,79 +97,399 @@ items:
     exit_checks:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_graph_report_mode_contract.py tests/regression_scheduler_graph_summary_contract.py tests/regression_scheduler_graph_operation_logs_contract.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_optimizer_public_summary_projection_contract.py tests/regression_schedule_summary_v11_contract.py
-    notes: "report 模式只能读输入和结果，不能改 sorted_ops、batch_order、seed_results、SGS 候选或落库 schedule_rows。"
+    notes: "已完成：阶段 10 在 schedule_orchestrator 的排产结果和 validated_schedule_payload 都已生成之后，旁路调用 graph input_adapter、ScheduleGraphAnalysisService 和 exporter；图报告判断、错误投影和采样投影收在 schedule_graph_report.py，避免 orchestrator 超过架构门禁文件大小阈值。graph_analysis_mode=off 不 import graph 模块、不写 graph_analysis；report 写 result_summary.algo.graph_analysis 小摘要和 result_summary.diagnostics.graph_analysis 采样诊断；on 在本阶段只输出 effective_mode=report_only，不接 ready 队列、不接评分。2026-05-18 加固后，report/on 默认使用 basic metrics，不再计算全量 node_metrics；图输入改为完整 algo_ops，并用 frozen_op_ids 标记固定节点，同时公开 input_scope、total/reschedulable/frozen/seed 计数。OperationLogs 继续沿用现有 algo 小摘要路径，只能看到 graph_analysis public 小摘要，不能看到 diagnostics、nodes、edges、raw、完整 node_metrics 或完整 topological_order。阶段 0 三个 baseline case 在 report 模式下对比通过，排产 rows、best_order、selected_batch_ids、freeze_window 和 resource_pool 公开状态未变；本阶段未改 schedule_optimizer.py、GreedyScheduler、SGS、seed_results、冻结窗口、validated_schedule_payload 或 schedule_rows。"
 
   - slug: scheduler-graph-debug-performance
-    title: PR-4 调试导出和性能证据
-    description: "在 graph_debug_export=yes 时输出图 JSON 和摘要 JSON，并记录 2000 节点规模的构建、校验、拓扑、关键路径、影响范围耗时。"
-    status: planned
-    feature: null
+    title: PR-4 性能护栏 + diagnostics 加固 + 真实集成证明
+    description: "先证明 report 模式在真实排产链路里稳定：2000 节点性能有护栏，diagnostics 只写可控采样和 JSON 可序列化 warning.data，known graph error 能在 public 顶层看到，frozen/seed scope 不被误排；受控 graph_debug_export 只能作为通过这些证据后的附属调试能力。"
+    status: done
+    feature: .codestable/features/2026-05-18-scheduler-graph-debug-performance/
     minimal_loop: false
     depends_on: [scheduler-graph-report-mode]
     primary_paths:
+      - core/services/scheduler/run/schedule_graph_report.py
+      - core/services/scheduler/graph/exporter.py
+      - core/services/scheduler/graph/metrics.py
+      - core/services/scheduler/config/
       - logs/schedule_graph/
+      - evidence/scheduler_graph/
       - evidence/scheduler_graph/performance_2000_nodes.txt
+      - tests/regression_scheduler_graph_report_mode_contract.py
+      - tests/regression_scheduler_graph_report_mode_service_contract.py
+      - tests/regression_scheduler_graph_summary_contract.py
+      - tests/regression_scheduler_graph_operation_logs_contract.py
       - tests/scheduler_graph/test_graph_performance.py
     exit_checks:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_graph/test_graph_performance.py
-    notes: "如果逐节点 downstream_critical_minutes 太慢，第一版先只启用 critical_path、impact_count、generation_index。"
+      - test -f evidence/scheduler_graph/performance_2000_nodes.txt
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_graph_report_mode_contract.py tests/regression_scheduler_graph_report_mode_service_contract.py tests/regression_scheduler_graph_summary_contract.py tests/regression_scheduler_graph_operation_logs_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_graph/test_exporter.py tests/scheduler_graph/test_analysis_service.py tests/scheduler_graph/test_metrics_critical_path.py tests/scheduler_graph/test_metrics_impact.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_graph_config_bootstrap_contract.py tests/regression_migrate_v9_graph_config_defaults.py tests/regression_scheduler_config_spec_sync_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler/run/schedule_graph_report.py core/services/scheduler/graph tests/scheduler_graph tests/regression_scheduler_graph_report_mode_contract.py tests/regression_scheduler_graph_summary_contract.py tests/regression_scheduler_graph_operation_logs_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright core/services/scheduler/run/schedule_graph_report.py core/services/scheduler/graph
+    notes: "已完成：2026-05-18 新增 2000 节点 basic report 性能护栏和 evidence/scheduler_graph/performance_2000_nodes.txt，明确 node_metrics / downstream_critical_minutes 在 basic report 中是 skipped_basic_report，不是静默降级；diagnostics 补长文本采样、长度和截断标记，继续保持 warning.data JSON 安全投影；真实服务级回归补 off/report/on 普通场景和 frozen/seed 场景对比，确认 rows、best_order、selected_batch_ids、freeze_window、resource_pool 不变，report/on 只新增 graph_analysis 小摘要且 on 仍为 report_only；OperationLogs 补 known graph error 小摘要检查，不泄漏 diagnostics、nodes、edges、raw、完整 node_metrics 或完整 topological_order。本阶段未实现 graph_debug_export、PR-5 有环安全门、ready 队列或 PR-6 图评分，也未改 schedule_optimizer.py、GreedyScheduler、SGS、validated_schedule_payload 或 schedule_rows。"
 
   - slug: scheduler-graph-ready-queue-on-mode
-    title: PR-5 on 模式 ready 队列
-    description: "在 graph_analysis_mode=on 时，让图 ready 队列参与 SGS 候选集合；seed_results 和 frozen_op_ids 只作为已固定前置，不得重复排。"
-    status: planned
-    feature: null
+    title: PR-5 有环安全门 + on 模式 ready 队列
+    description: "先实现有环安全门：report 只提示，on+block=yes 在 version 分配前阻止，on+block=no 可见禁用图增强；再实现算法层 ready_queue helper，service 层 ready_queue.py 只做兼容导出，并只在 graph_enhancement_allowed=true 的 DAG 场景下让 ready 队列过滤 SGS 候选。PR-5 不做图评分、不做候选池、不做落库和页面。"
+    status: done
+    feature: .codestable/features/2026-05-18-scheduler-graph-ready-queue-on-mode/
     minimal_loop: false
     depends_on: [scheduler-graph-debug-performance]
     primary_paths:
+      - core/services/scheduler/run/schedule_graph_report.py
+      - core/services/scheduler/run/schedule_orchestrator.py
+      - core/services/scheduler/run/schedule_optimizer.py
+      - core/services/scheduler/run/schedule_optimizer_steps.py
+      - core/services/scheduler/run/optimizer_local_search.py
+      - core/services/scheduler/run/schedule_signature_support.py
+      - core/infrastructure/errors.py
+      - core/services/scheduler/config/config_constants.py
+      - core/services/scheduler/config/config_field_spec.py
       - core/services/scheduler/graph/ready_queue.py
+      - core/algorithms/greedy/dispatch/ready_queue.py
+      - core/algorithms/greedy/scheduler.py
       - core/algorithms/greedy/dispatch/sgs.py
       - core/algorithms/greedy/dispatch/sgs_scoring.py
+      - templates/scheduler/config.html
+      - web_new_test/templates/scheduler/config.html
+      - web/viewmodels/scheduler_config_panel.py
+      - tests/regression_config_field_spec_contract.py
+      - tests/regression_scheduler_config_route_contract.py
+      - tests/regression_scheduler_graph_cycle_policy_contract.py
+      - tests/scheduler_graph/test_ready_queue.py
       - tests/regression_scheduler_graph_on_mode_contract.py
+      - tests/test_schedule_optimizer_strict_mode_signature_cache.py
+    forbidden_paths:
+      - core/services/scheduler/graph/scoring.py
+      - core/algorithms/dispatch_rules.py
+      - schema.sql
+      - data/repositories/schedule_candidate_repo.py
+      - web/routes/
     exit_checks:
-      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_graph/test_ready_queue.py tests/regression_scheduler_graph_on_mode_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_scheduler_graph_cycle_policy_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/scheduler_graph/test_ready_queue.py tests/regression_scheduler_graph_on_mode_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_scheduler_graph_report_mode_contract.py tests/regression_scheduler_graph_report_mode_service_contract.py tests/regression_scheduler_graph_summary_contract.py tests/regression_scheduler_graph_operation_logs_contract.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_sgs_internal_scoring_matches_execution.py tests/test_sgs_total_hours_cache.py
-    notes: "当前 SGS 候选逻辑是每个批次下一道工序，不是完整 DAG ready 队列；改动必须在 feature flag 后面。"
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_scheduler_config_route_contract.py tests/regression_config_field_spec_contract.py tests/test_schedule_optimizer_strict_mode_signature_cache.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler/run/schedule_graph_report.py core/services/scheduler/run/schedule_orchestrator.py core/services/scheduler/run/schedule_optimizer.py core/services/scheduler/run/schedule_optimizer_steps.py core/services/scheduler/run/optimizer_local_search.py core/services/scheduler/graph/ready_queue.py core/algorithms/greedy/scheduler.py core/algorithms/greedy/dispatch/ready_queue.py core/algorithms/greedy/dispatch/sgs.py core/algorithms/greedy/dispatch/sgs_scoring.py tests/regression_scheduler_graph_cycle_policy_contract.py tests/scheduler_graph/test_ready_queue.py tests/regression_scheduler_graph_on_mode_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright core/services/scheduler/run/schedule_graph_report.py core/services/scheduler/run/schedule_orchestrator.py core/services/scheduler/run/schedule_optimizer.py core/services/scheduler/run/schedule_optimizer_steps.py core/services/scheduler/run/optimizer_local_search.py core/services/scheduler/graph/ready_queue.py core/algorithms/greedy/scheduler.py core/algorithms/greedy/dispatch/ready_queue.py core/algorithms/greedy/dispatch/sgs.py core/algorithms/greedy/dispatch/sgs_scoring.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .codestable/tools/validate-yaml.py --file .codestable/roadmap/networkx-scheduler-graph-introduction/networkx-scheduler-graph-introduction-items.yaml --yaml-only
+    notes: "已完成：2026-05-18 阶段 11 实现有环安全门，report 有环只提示，on+block=yes 在 version 分配前抛中文 ValidationError 并带 reason/cycle_edges_sample 等结构化详情，on+block=no 继续旧 SGS 候选逻辑但 public 明确 ready_queue_enabled=false、graph_enhancement_disabled_reason=schedule_graph_cycle；该路径通过 graph_dispatch_mode_override=\"sgs\" 强制 optimizer 走 SGS，同时 graph_ready_context 保持 None，避免误启用 ready 队列。known graph error 不伪装成有环，unknown graph error 不静默吞掉。阶段 12a 实现 ready_queue.py 纯 Python helper，只处理 op_id 集合、前置映射、blocked/completed/fixed 集合和排序 key，不接 NetworkX、不读数据库/配置、不调评分或资源匹配；实际 helper 下沉到 core/algorithms/greedy/dispatch/ready_queue.py，core/services/scheduler/graph/ready_queue.py 保留兼容导出，避免算法层反向 import service；已补强 op_id 集合、前后置嵌套集合的图对象误传合同，以及 sort_key 值、字符串 key、bool key 合同。阶段 12b/12c 在 optimizer 前准备 graph_ready_context，并让排产和 result_summary 共用同一份图分析结论，沿 schedule_orchestrator、schedule_optimizer、schedule_optimizer_steps、optimizer_local_search、GreedyScheduler.schedule、dispatch_sgs 传递普通 Python 结构。阶段 12d 在 on+DAG 且 graph_enhancement_allowed=true 时启用 ready 队列筛 SGS 候选；有 graph_ready_context 时 optimizer 强制 SGS，避免 public 摘要和实际 dispatch mode 漂移；graph_ready_context 直接配非 SGS 会报错，避免绕过 optimizer 时 ready 队列被 batch_order 悄悄忽略；无 graph_ready_context 时旧 _collect_sgs_candidates 行为保持；graph_dispatch_mode_override 只允许内部使用 sgs，其他值直接报错；评分、资源匹配、build_dispatch_key、SLACK/CR/ATC 方向未改；SGS 会把前后置映射标准化后写回运行态，确保校验和阻断使用同一口径。frozen/seed 只作为已固定前置，不重复进 candidates，不重复写 rows；前置失败时图后继不释放，并补失败计数和中文错误说明。只同步已有配置说明文字和镜像模板，不新增页面按钮或路由。PR-5 只证明 ready 资格可以交给 SGS 候选，PR-6 不能继承任何图评分方向证明，仍需单独证明关键路径/影响范围评分不破坏原有评分语义。"
 
   - slug: scheduler-graph-critical-score-on-mode
     title: PR-6 关键路径评分接入
-    description: "在 graph_analysis_mode=on 时，把关键路径、影响范围、后续关键分钟转换成 SGS 候选评分分量，同时保留 SLACK/CR/ATC、批次顺序、交期和优先级语义。"
-    status: planned
-    feature: null
+    description: "只在 graph_analysis_mode=on、DAG 可用且 graph_enhancement_allowed=true 时，把关键路径、影响范围、后续关键分钟转换成 SGS 候选评分分量；off/report 和图增强未允许时不改变排产结果。实现必须优雅简洁，不做过度兜底、静默回退或过度防御性编程，保持 graph/scoring.py 纯计算、schedule_graph_report.py 只准备普通 Python 上下文、SGS 只拼接评分分量的高内聚低耦合边界。"
+    status: done
+    feature: .codestable/features/2026-05-18-scheduler-graph-critical-score-on-mode
     minimal_loop: false
     depends_on: [scheduler-graph-ready-queue-on-mode]
     primary_paths:
       - core/services/scheduler/graph/scoring.py
+      - core/services/scheduler/run/schedule_graph_dispatch_context.py
+      - core/services/scheduler/run/schedule_graph_report.py
       - core/algorithms/greedy/dispatch/sgs.py
+      - core/algorithms/greedy/dispatch/sgs_graph.py
       - core/algorithms/greedy/dispatch/sgs_scoring.py
       - core/algorithms/dispatch_rules.py
+      - core/services/scheduler/config/config_field_spec.py
+      - core/services/scheduler/config/config_constants.py
+      - templates/scheduler/config.html
+      - web_new_test/templates/scheduler/config.html
+      - web/viewmodels/scheduler_config_panel.py
+      - core/services/scheduler/summary/schedule_summary_assembly.py
+      - .codestable/architecture/ARCHITECTURE.md
+      - evidence/scheduler_graph/performance_2000_nodes.txt
+      - tests/scheduler_graph/test_graph_scoring.py
+      - tests/scheduler_graph/test_graph_performance.py
+      - tests/regression_mirror_template_sync.py
       - tests/regression_scheduler_graph_on_mode_contract.py
+      - tests/regression_scheduler_graph_summary_contract.py
+      - tests/regression_scheduler_graph_operation_logs_contract.py
+    forbidden_paths:
+      - schema.sql
+      - core/infrastructure/migrations/
+      - data/repositories/schedule_candidate_repo.py
+      - data/repositories/schedule_plan_query_repo.py
+      - core/services/scheduler/run/schedule_candidate_specs.py
+      - core/services/scheduler/run/schedule_candidate_runner.py
+      - core/services/scheduler/run/schedule_candidate_selection.py
+      - core/services/scheduler/run/schedule_candidate_persistence.py
+      - core/services/scheduler/schedule_plan_query_service.py
+      - web/routes/
     exit_checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/scheduler_graph/test_graph_scoring.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_graph_on_mode_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_scheduler_graph_cycle_policy_contract.py tests/scheduler_graph/test_ready_queue.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_scheduler_graph_report_mode_contract.py tests/regression_scheduler_graph_report_mode_service_contract.py tests/regression_scheduler_graph_summary_contract.py tests/regression_scheduler_graph_operation_logs_contract.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_sgs_internal_scoring_matches_execution.py tests/test_sgs_total_hours_cache.py
-    notes: "现有排序 key 是越小越优先；图分数如果越大越重要，接入 tuple 时要验证方向，不能凭感觉。"
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_scheduler_config_spec_sync_contract.py tests/regression_scheduler_config_route_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_mirror_template_sync.py tests/regression_config_field_spec_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_architecture_fitness.py::test_cyclomatic_complexity_threshold tests/test_architecture_fitness.py::test_file_size_limit tests/test_architecture_fitness.py::test_greedy_refactor_files_stay_under_quality_gate_limits tests/test_greedy_refactor_contracts.py::test_refactored_files_and_entry_functions_stay_under_quality_gate
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler/graph/scoring.py core/services/scheduler/run/schedule_graph_report.py core/algorithms/greedy/dispatch/sgs.py core/algorithms/greedy/dispatch/sgs_scoring.py core/algorithms/dispatch_rules.py tests/scheduler_graph/test_graph_scoring.py tests/regression_scheduler_graph_on_mode_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright core/services/scheduler/graph/scoring.py core/services/scheduler/run/schedule_graph_report.py core/algorithms/greedy/dispatch/sgs.py core/algorithms/greedy/dispatch/sgs_scoring.py core/algorithms/dispatch_rules.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .codestable/tools/validate-yaml.py --file .codestable/roadmap/networkx-scheduler-graph-introduction/networkx-scheduler-graph-introduction-items.yaml --yaml-only
+    notes: "已完成：2026-05-18 新增 graph/scoring.py 纯函数和 test_graph_scoring.py，证明 bonus 越大 tuple 越小，缺字段/坏字段/坏权重报 GraphScoringContractError，不把坏指标当 0。schedule_graph_report.py 只在 on+DAG 且 graph_critical_weight/graph_impact_weight 至少一个大于 0 时用 full node_metrics，并在 service 层通过 schedule_graph_dispatch_context.py 预先转成 graph_priority_key_by_op_id；权重全 0 时明确 score_weights_zero，继续 PR-5 ready 队列行为。SGS 只拼普通 tuple，图 ready 上下文校验下沉到 sgs_graph.py，保留 score_penalty 第一位，不反向 import scheduler service，SLACK/CR/ATC 方向保持。summary 只放 score_enabled、score_metric_status、score_weight_summary 等小字段，diagnostics 只采样 graph_score_sample，OperationLogs 不拿 diagnostics，不泄漏完整 node_metrics/nodes/edges/raw。配置页、镜像模板和配置常量已从“预留/不改变结果”改成 on 且图可用时参与候选排序。新增 2000 节点 full/on-score 性能证据，full 平均约 361ms。PR-6 未实现 PR-7 的候选池、多权重试跑、自动择优、候选落库、页面切换或 schema 迁移；这些仍由后续 PR-7 承接。"
 
-  - slug: scheduler-graph-resource-matching-report
-    title: PR-7 资源匹配 report-only 分析
-    description: "基于 NetworkX 二分图最大匹配，分析 ready 工序与候选设备的可行匹配数量、未匹配工序和瓶颈设备，第一版只写报告不改排产。"
-    status: planned
-    feature: null
+  - slug: scheduler-graph-candidate-schema-query
+    title: PR-7a 候选表、仓库和统一方案查询服务
+    description: "先把候选方案的数据底座做准：新增 ScheduleCandidate / ScheduleCandidateRows / ScheduleCandidateSelection，Schedule 仍只保存 adopted；新增候选仓库、plan query repo 和 SchedulePlanQueryService，让 adopted 从 Schedule 读，非 adopted 代表方案从 CandidateRows 读。"
+    status: done
+    feature: .codestable/features/2026-05-18-scheduler-graph-candidate-schema-query/
     minimal_loop: false
     depends_on: [scheduler-graph-critical-score-on-mode]
     primary_paths:
+      - schema.sql
+      - core/infrastructure/migrations/v10.py
+      - core/infrastructure/migrations/__init__.py
+      - core/infrastructure/migration_state.py
+      - data/repositories/schedule_candidate_repo.py
+      - data/repositories/schedule_plan_query_repo.py
+      - data/repositories/schedule_detail_query.py
+      - core/models/schedule_candidate.py
+      - core/services/scheduler/schedule_plan_query_service.py
+      - tests/regression_scheduler_candidate_schema_contract.py
+      - tests/regression_scheduler_candidate_plan_query_contract.py
+    exit_checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_schema_contract.py tests/regression_scheduler_candidate_plan_query_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .codestable/tools/validate-yaml.py --file .codestable/roadmap/networkx-scheduler-graph-introduction/networkx-scheduler-graph-introduction-items.yaml --yaml-only
+    notes: "已完成：2026-05-18 新增 ScheduleCandidate / ScheduleCandidateRows / ScheduleCandidateSelection 和 v10 迁移，SchemaVersion 当前版本升到 10；ScheduleCandidate.status 只允许 completed / failed / skipped / not_run，selection.role 只允许 adopted / baseline_best / critical_best，且没有把 ScheduleCandidate.version 外键到 ScheduleHistory(version)。新增候选模型和候选仓库，bulk create candidates 逐条插入拿 id，不依赖 executemany.lastrowid。新增 SchedulePlanQueryService 和 plan query repo：adopted 永远从 Schedule 读，合法但旧历史缺少 baseline_best / critical_best selection 时可见 fallback 到 adopted；未知 plan_role 直接报错；selection 指向 candidate_rows 时必须 detail_saved=yes 且实际存在 ScheduleCandidateRows，否则直接报错，不静默返回空结果。PR-7a 未实现候选运行、自动择优、主链同事务持久化、页面切换或配置字段，这些继续由 PR-7b 到 PR-7e 承接。"
+
+  - slug: scheduler-graph-candidate-runner-selection
+    title: PR-7b 候选生成、运行、自动择优和关键链健康
+    description: "实现 baseline + 关键链 3/5/7 档候选生成、串行候选运行、整次全局时间预算、candidate_trial_mode 冻结当前排序/派工规则、score_only / balanced 自动择优，以及落库前纯函数关键链健康计算。"
+    status: done
+    feature: .codestable/features/2026-05-18-scheduler-graph-candidate-runner-selection/
+    minimal_loop: false
+    depends_on: [scheduler-graph-candidate-schema-query]
+    primary_paths:
+      - core/services/scheduler/run/schedule_candidate_specs.py
+      - core/services/scheduler/run/schedule_candidate_runner.py
+      - core/services/scheduler/run/schedule_candidate_selection.py
+      - core/services/scheduler/run/schedule_candidate_health.py
+      - core/services/scheduler/run/schedule_optimizer.py
+      - core/services/scheduler/run/schedule_optimizer_steps.py
+      - core/algorithms/evaluation.py
+      - tests/regression_scheduler_candidate_generation_contract.py
+      - tests/regression_scheduler_candidate_runner_contract.py
+      - tests/regression_scheduler_graph_auto_selection_contract.py
+      - tests/regression_scheduler_candidate_health_contract.py
+    exit_checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_generation_contract.py tests/regression_scheduler_candidate_runner_contract.py tests/regression_scheduler_graph_auto_selection_contract.py tests/regression_scheduler_candidate_health_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_graph_on_mode_contract.py tests/test_sgs_internal_scoring_matches_execution.py tests/test_sgs_total_hours_cache.py
+    notes: "已完成：2026-05-18 新增 schedule_candidate_specs / health / selection / runner 和四份合同测试。默认生成 baseline + 5 档关键链候选，档数可为 3 / 5 / 7；runner 只做内存候选比较，不走 orchestrate_schedule_run，不分配正式 version，不调用 persist_schedule。每个候选先用临时 cfg 构造候选级 ScheduleRunInput，调用 prepare_schedule_graph_for_dispatch，再把 graph_ready_context / graph_dispatch_mode_override 传给 optimize_schedule；trial 模式用内存态 cfg_svc 把 sort_strategy / dispatch_mode / dispatch_rule 收窄为当前单值，避免混入 improve 多起点组合。time_budget_seconds / run_time_budget_seconds 是整次候选比较总预算，不是每个候选各用一次。raw score 复用当前 objective_score，score tuple 越小越好；balanced 只在 failed_ops、overdue_count、total_tardiness_hours 容差内且关键链健康 better 时允许关键链反超。ValidationError 一律原样抛出，不把图上下文/输入/配置/数据范围错误吞成候选 failed 后继续选 baseline。PR-7b 未实现 PR-7c 主链同事务持久化、PR-7d plan_role 页面/报表切换或 PR-7e 配置收口。"
+
+  - slug: scheduler-graph-candidate-transaction-persistence
+    title: PR-7c 主链和同事务候选持久化
+    description: "改造排产主链和持久化：候选运行只在内存里跑，最终 adopted payload 校验后分配正式 version，并通过 persist_schedule_run_with_candidates 同事务写 Schedule、ScheduleHistory、候选摘要、代表明细和角色映射；OperationLogs 事务后只写极小摘要。"
+    status: done
+    feature: .codestable/features/2026-05-18-scheduler-graph-candidate-transaction-persistence/
+    minimal_loop: false
+    depends_on: [scheduler-graph-candidate-runner-selection]
+    primary_paths:
+      - core/services/scheduler/run/schedule_orchestrator.py
+      - core/services/scheduler/run/schedule_persistence.py
+      - core/services/scheduler/run/schedule_candidate_persistence.py
+      - core/services/scheduler/summary/schedule_summary.py
+      - core/services/scheduler/summary/schedule_summary_assembly.py
+      - core/services/scheduler/summary/summary_size_guard.py
+      - core/services/scheduler/schedule_service.py
+      - tests/regression_scheduler_candidate_persistence_contract.py
+      - tests/regression_scheduler_candidate_summary_contract.py
+    exit_checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_persistence_contract.py tests/regression_scheduler_candidate_summary_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_schedule_summary_v11_contract.py tests/regression_scheduler_graph_summary_contract.py tests/regression_scheduler_graph_operation_logs_contract.py
+    notes: "已完成：2026-05-18 正式主链保留 run_candidate_comparison 接入点，但在 PR-7e 配置字段落地前默认不启用，避免 off/report/on 既有排产合同被候选试跑改变；启用后只采用 selection.selected_plan，adopted payload 校验通过后才分配一次正式 version；CandidatePlan 补齐 adopted summary 所需的 optimizer 字段，CandidateComparisonOutcome 带 run_time_budget_seconds，summary/log 不从配置默认值反推。新增 schedule_candidate_summary.py 和 schedule_candidate_persistence.py：result_summary.algo.candidate_comparison 只写小摘要，summary_size_guard 最小摘要仍保留候选极小字段；OperationLogs 只写 enabled / planned / completed / time_budget_reached / run_time_budget_seconds / adopted / selection_policy / selection_reason_code。persist_schedule_run_with_candidates 在同一个事务里写 Schedule、状态更新、ScheduleHistory、ScheduleCandidate、非 adopted 代表 ScheduleCandidateRows 和 adopted/baseline_best/critical_best selection；候选写入失败时正式排产和历史一起回滚，成功日志事务后写。PR-7c 未实现 PR-7d 页面/接口/导出/报表 plan_role 切换，也未实现 PR-7e 配置字段默认值、候选清理或性能守卫。"
+
+  - slug: scheduler-graph-plan-role-pages-reports
+    title: PR-7d 结果页、接口、导出和独立报表 plan_role 切换
+    description: "把甘特图、周计划、资源派工、优化分析页、超期/利用率/停机影响独立报表、对应 data 接口和导出统一接入 plan_role，页面预览和导出读同一套方案，非 adopted 明确提示这是对比方案。"
+    status: done
+    feature: .codestable/features/2026-05-18-scheduler-graph-plan-role-pages-reports
+    minimal_loop: false
+    depends_on: [scheduler-graph-candidate-transaction-persistence]
+    primary_paths:
+      - core/services/scheduler/gantt_service.py
+      - core/services/scheduler/gantt_plan_query.py
+      - core/services/scheduler/resource_dispatch_service.py
+      - core/services/report/report_engine.py
+      - core/services/scheduler/gantt_critical_chain.py
+      - web/bootstrap/request_services.py
+      - web/routes/domains/scheduler/scheduler_gantt.py
+      - web/routes/domains/scheduler/scheduler_week_plan.py
+      - web/routes/domains/scheduler/scheduler_resource_dispatch.py
+      - web/routes/domains/scheduler/scheduler_analysis.py
+      - web/routes/reports.py
+      - web/viewmodels/scheduler_analysis_vm.py
+      - web/viewmodels/scheduler_analysis_candidates.py
+      - web/viewmodels/scheduler_resource_dispatch.py
+      - templates/scheduler/gantt.html
+      - templates/scheduler/week_plan.html
+      - templates/scheduler/resource_dispatch.html
+      - templates/scheduler/analysis.html
+      - templates/reports/overdue.html
+      - templates/reports/utilization.html
+      - templates/reports/downtime.html
+      - web_new_test/templates/scheduler/gantt.html
+      - static/js/gantt_boot.js
+      - static/js/resource_dispatch.js
+      - tests/regression_scheduler_candidate_gantt_plan_role_contract.py
+      - tests/regression_scheduler_candidate_week_plan_contract.py
+      - tests/regression_scheduler_candidate_resource_dispatch_contract.py
+      - tests/regression_scheduler_candidate_reports_contract.py
+      - tests/regression_scheduler_candidate_analysis_contract.py
+    exit_checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_gantt_plan_role_contract.py tests/regression_scheduler_candidate_week_plan_contract.py tests/regression_scheduler_candidate_resource_dispatch_contract.py tests/regression_scheduler_candidate_reports_contract.py tests/regression_scheduler_candidate_analysis_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_plan_query_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_architecture_fitness.py::test_file_size_limit tests/test_architecture_fitness.py::test_cyclomatic_complexity_threshold
+    notes: "已完成：2026-05-18 甘特图、周计划、资源派工、分析页、超期/利用率/停机影响报表页面和导出统一接入 plan_role；页面、data 接口、导出链接和日志 filters 都带 requested/effective/status/candidate 小字段，不写 rows 或完整候选列表。甘特图设备/人员切换、周切换、日期范围和 JS /gantt/data 请求保留 plan_role；关键链 adopted 保留旧 compute_critical_chain 入口，候选方案从当前 plan rows 计算，缓存 key 带 role/source_table/candidate_id。周计划、资源派工和三类报表预览/导出读同一套 effective plan rows；非 adopted 明确提示对比方案，合法缺失角色可见 fallback adopted，未知 plan_role 直接 400。PR-7d 没有实现 PR-7e 配置/清理/性能守卫，也没有改 PR-8 report-only 资源匹配计划。"
+
+  - slug: scheduler-graph-candidate-config-closeout
+    title: PR-7e 配置、临时时间上限、清理策略和兼容收口
+    description: "补齐 PR-7 配置链路、运行期临时时间上限、旧 preset 补字段、候选数据清理策略、Python 3.8 / Win7 / 离线兼容和 SQLite 性能守卫，确保默认开启关键链候选比较但仍可 off/report 排障。"
+    status: done
+    feature: .codestable/features/2026-05-19-scheduler-graph-candidate-config-closeout/
+    minimal_loop: false
+    depends_on: [scheduler-graph-plan-role-pages-reports]
+    primary_paths:
+      - core/services/scheduler/config/config_field_spec.py
+      - core/services/scheduler/config/config_snapshot.py
+      - core/services/scheduler/config/config_constants.py
+      - core/services/scheduler/config/config_presets.py
+      - core/services/scheduler/config/config_preset_service.py
+      - core/models/schedule_config_runtime_fields.py
+      - core/models/schedule_config_runtime_snapshot.py
+      - web/routes/domains/scheduler/scheduler_config.py
+      - web/routes/domains/scheduler/scheduler_config_display_state.py
+      - web/routes/domains/scheduler/scheduler_run.py
+      - web/viewmodels/scheduler_config_panel.py
+      - templates/scheduler/config.html
+      - templates/scheduler/_run_panel.html
+      - tests/regression_scheduler_candidate_config_contract.py
+      - tests/regression_scheduler_candidate_py38_contract.py
+      - tests/regression_scheduler_candidate_performance_guard.py
+    exit_checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_config_contract.py tests/regression_scheduler_candidate_py38_contract.py tests/regression_scheduler_candidate_performance_guard.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_config_field_spec_contract.py tests/regression_scheduler_config_route_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check
+    notes: "已完成：2026-05-19 新增 graph_candidate_weight_count、graph_selection_policy、graph_overdue_tolerance_count、graph_tardiness_tolerance_ratio 和 run_time_budget_seconds 链路。新库默认 graph_analysis_mode=on，旧库已有 off/report/on 不覆盖；旧 preset 缺字段时补默认值，不拒绝整套配置。正式排产 graph_analysis_mode=on 时默认运行 baseline + 默认 5 档重点工序优先候选，off/report 保留单方案排障；run_time_budget_seconds 只作为本次运行预算，不写回配置。分析页只在候选摘要和明细完整时展示最终采用 / 原算法最好 / 重点工序优先方案最好；没有开启或记录不完整时显示明确提示，不生成假切换链接。新增候选孤儿清理和 v11 索引，性能守卫证明 list_plan_roles 不扫 CandidateRows 明细、get_plan_time_span 真实 SQL 走索引。Python 3.8 / Win7 / 离线约束已用守卫测试覆盖；浏览器临时库验证配置页、分析页、周计划、资源排班和 30 批 120 工序压力排产。第一版仍不引入新数据库、不并行、不做续跑。"
+
+  - slug: scheduler-graph-resource-matching-report
+    title: PR-8 资源匹配 report-only 分析
+    description: "基于 NetworkX 二分图最大匹配，按 PR-5 ready 口径分析首波 ready 工序与 candidate_machine_ids 的可行设备匹配；public 只输出 status/reason 和 matched/unmatched/bottleneck 计数，样本只进 diagnostics，避免 OperationLogs 泄漏；第一版只写 result_summary 报告，不改 SGS 候选排序、不改资源分配、不落候选表、不加页面入口。"
+    status: done
+    feature: .codestable/features/2026-05-20-scheduler-graph-resource-matching-report/
+    minimal_loop: false
+    depends_on: [scheduler-graph-candidate-config-closeout]
+    primary_paths:
       - core/services/scheduler/graph/resource_matching.py
+      - core/services/scheduler/run/schedule_graph_dispatch_context.py
+      - core/services/scheduler/run/schedule_graph_resource_matching_context.py
+      - core/services/scheduler/run/schedule_graph_projection_helpers.py
+      - core/services/scheduler/run/schedule_graph_report.py
       - tests/scheduler_graph/test_resource_matching.py
+      - tests/scheduler_graph/test_graph_dispatch_context.py
+      - tests/regression_scheduler_graph_resource_matching_report_contract.py
+      - tests/regression_scheduler_graph_operation_logs_contract.py
+      - tests/regression_scheduler_graph_lazy_runtime_contract.py
+      - tests/scheduler_graph/test_nx_runtime.py
+    forbidden_paths:
+      - schema.sql
+      - core/infrastructure/migrations/
+      - data/repositories/schedule_candidate_repo.py
+      - data/repositories/schedule_plan_query_repo.py
+      - core/services/scheduler/run/schedule_candidate_specs.py
+      - core/services/scheduler/run/schedule_candidate_runner.py
+      - core/services/scheduler/run/schedule_candidate_selection.py
+      - core/services/scheduler/run/schedule_candidate_persistence.py
+      - core/services/scheduler/run/schedule_optimizer.py
+      - core/algorithms/greedy/dispatch/sgs.py
+      - core/algorithms/greedy/dispatch/sgs_scoring.py
+      - core/services/scheduler/resource_dispatch_service.py
+      - web/routes/
+      - templates/
     exit_checks:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_graph/test_resource_matching.py
-    notes: "第一版不使用匹配结果直接分配设备；最小费用流留到后续增强。"
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_graph/test_graph_dispatch_context.py tests/scheduler_graph/test_resource_matching.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_graph_resource_matching_report_contract.py tests/regression_scheduler_graph_operation_logs_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_graph_lazy_runtime_contract.py tests/scheduler_graph/test_nx_runtime.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_graph_report_mode_contract.py tests/regression_scheduler_graph_on_mode_contract.py tests/regression_scheduler_graph_summary_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler/graph/resource_matching.py core/services/scheduler/run/schedule_graph_dispatch_context.py core/services/scheduler/run/schedule_graph_resource_matching_context.py core/services/scheduler/run/schedule_graph_projection_helpers.py core/services/scheduler/run/schedule_graph_report.py tests/scheduler_graph/test_resource_matching.py tests/scheduler_graph/test_graph_dispatch_context.py tests/scheduler_graph/test_nx_runtime.py tests/regression_scheduler_graph_resource_matching_report_contract.py tests/regression_scheduler_graph_operation_logs_contract.py tests/regression_scheduler_graph_lazy_runtime_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright core/services/scheduler/graph/resource_matching.py core/services/scheduler/run/schedule_graph_dispatch_context.py core/services/scheduler/run/schedule_graph_resource_matching_context.py core/services/scheduler/run/schedule_graph_projection_helpers.py core/services/scheduler/run/schedule_graph_report.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .codestable/tools/validate-yaml.py --file .codestable/roadmap/networkx-scheduler-graph-introduction/networkx-scheduler-graph-introduction-items.yaml --yaml-only
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache
+    notes: "已完成：2026-05-20 新增 resource_matching.py 纯分析模块，运行时懒加载 NetworkX，按首波 ready 工序 × candidate_machine_ids 构造二分图并调用 nx.bipartite.maximum_matching，只保留工序侧映射。report/on 通过 schedule_graph_resource_matching_context.py 复用同一套 first-wave ready 口径，schedule_graph_dispatch_context.py 保留轻量入口以守住 500 行架构门禁；schedule_graph_report.py 的 warning / node_metrics 采样 helper 下沉到 schedule_graph_projection_helpers.py，让 report 文件也回到 500 行以内。资源匹配结果只写 result_summary.algo.graph_analysis.resource_matching 和 diagnostics.graph_analysis.resource_matching，不进入 graph_ready_context、SGS 候选排序、资源分配或候选表。public 只写 status/reason 和计数，不写 unmatched_operation_sample、bottleneck_machine_sample、matches_sample 或完整 ids；样本只进 diagnostics，OperationLogs 只能看到 public 计数字段。无候选设备进入 unmatched 并写 graph_resource_no_candidate_machine warning；空 ready、有环、图增强不可用、合同错误、NetworkX 不可用都有明确 status/reason，NetworkX 不可用沿用顶层 graph_analysis unavailable。第一版不做人员匹配、不做最小费用流、不改排产结果、不新增配置/schema/页面。Win7 实机或虚拟机离线证据未跑，证据不足，由 PR-10 承接。"
 
-  - slug: scheduler-graph-win7-package-closeout
-    title: PR-8 Win7 离线打包和最终验收
-    description: "验证离线 wheel、PyInstaller 4.10、Win7 启动、graph_analysis_mode=off/report/on 三种模式，并跑最终质量门禁。"
+  - slug: scheduler-graph-analysis-diagnostic-sections
+    title: PR-9 排产分析页诊断摘要第一版
+    description: "基于 PR-8 已完成的 graph_analysis / resource_matching 摘要，在排产分析页填充 diagnostic_sections：按排产体检、资源卡点、延期风险、影响解释四块，把 NetworkX 图分析结果翻译成调度员能看懂的诊断摘要。第一版只做页面展示层，不新增独立页面、不新增 schema、不写候选表、不改排产结果、不自动派工、不自动调顺序、不做停机/缺料/插单 what-if 模拟。"
     status: planned
     feature: null
     minimal_loop: false
     depends_on: [scheduler-graph-resource-matching-report]
+    primary_paths:
+      - .codestable/roadmap/networkx-scheduler-graph-introduction/networkx-scheduler-graph-introduction-roadmap.md
+      - .codestable/roadmap/networkx-scheduler-graph-introduction/networkx-scheduler-graph-introduction-items.yaml
+      - .codestable/architecture/ARCHITECTURE.md
+      - core/services/scheduler/analysis/schedule_diagnostic_contract.py
+      - web/viewmodels/scheduler_analysis_diagnostic_helpers.py
+      - web/viewmodels/scheduler_analysis_diagnostic_health.py
+      - web/viewmodels/scheduler_analysis_diagnostic_delay_impact.py
+      - web/viewmodels/scheduler_analysis_diagnostics.py
+      - web/viewmodels/scheduler_analysis_vm.py
+      - templates/scheduler/analysis.html
+      - templates/scheduler/analysis_parts/_diagnostic_sections.html
+      - tests/regression_scheduler_analysis_diagnostic_contract.py
+      - tests/regression_scheduler_analysis_template_parts.py
+      - tests/regression_scheduler_analysis_viewmodel_split.py
+      - tests/regression_scheduler_analysis_read_context.py
+      - tests/regression_scheduler_graph_resource_matching_report_contract.py
+      - tests/regression_scheduler_graph_operation_logs_contract.py
+      - tests/regression_scheduler_graph_summary_contract.py
+    forbidden_paths:
+      - schema.sql
+      - core/infrastructure/migrations/
+      - vendor/wheels/
+      - installer/
+      - DELIVERY_WIN7.md
+      - core/services/scheduler/run/schedule_graph_report.py
+      - core/services/scheduler/run/schedule_graph_dispatch_context.py
+      - core/services/scheduler/run/schedule_graph_resource_matching_context.py
+      - core/services/scheduler/graph/resource_matching.py
+      - core/services/scheduler/graph/metrics.py
+      - core/services/scheduler/graph/scoring.py
+      - core/services/scheduler/run/schedule_optimizer.py
+      - core/algorithms/greedy/dispatch/sgs.py
+      - core/algorithms/greedy/dispatch/sgs_scoring.py
+      - core/services/scheduler/resource_dispatch_service.py
+      - core/services/report/report_engine.py
+      - web/routes/reports.py
+      - data/repositories/schedule_candidate_repo.py
+      - data/repositories/schedule_plan_query_repo.py
+      - core/services/scheduler/run/schedule_candidate_specs.py
+      - core/services/scheduler/run/schedule_candidate_runner.py
+      - core/services/scheduler/run/schedule_candidate_selection.py
+      - core/services/scheduler/run/schedule_candidate_persistence.py
+    exit_checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_analysis_diagnostic_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_analysis_template_parts.py tests/regression_scheduler_analysis_viewmodel_split.py tests/regression_scheduler_analysis_read_context.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_analysis_candidate_links_and_roles.py tests/regression_scheduler_candidate_analysis_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_graph_resource_matching_report_contract.py tests/regression_scheduler_graph_operation_logs_contract.py tests/regression_scheduler_graph_summary_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_graph_on_mode_contract.py tests/scheduler_graph/test_graph_dispatch_context.py tests/scheduler_graph/test_resource_matching.py tests/scheduler_graph/test_graph_scoring.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler/analysis/schedule_diagnostic_contract.py web/viewmodels/scheduler_analysis_diagnostic_helpers.py web/viewmodels/scheduler_analysis_diagnostic_health.py web/viewmodels/scheduler_analysis_diagnostic_delay_impact.py web/viewmodels/scheduler_analysis_diagnostics.py web/viewmodels/scheduler_analysis_vm.py tests/regression_scheduler_analysis_diagnostic_contract.py tests/regression_scheduler_analysis_template_parts.py tests/regression_scheduler_analysis_viewmodel_split.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright core/services/scheduler/analysis/schedule_diagnostic_contract.py web/viewmodels/scheduler_analysis_diagnostic_helpers.py web/viewmodels/scheduler_analysis_diagnostic_health.py web/viewmodels/scheduler_analysis_diagnostic_delay_impact.py web/viewmodels/scheduler_analysis_diagnostics.py web/viewmodels/scheduler_analysis_vm.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .codestable/tools/validate-yaml.py --file .codestable/roadmap/networkx-scheduler-graph-introduction/networkx-scheduler-graph-introduction-items.yaml --yaml-only
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache
+    notes: "本 PR 基于 codex/scheduler-analysis-entry-refactor 已完成的分析页读取上下文、viewmodel 拆分、诊断合同和模板 parts。第一版只填充排产分析页 diagnostic_sections，不新增 result_summary 字段，不改变 OperationLogs 边界。诊断 builder 按 helper、排产体检/资源卡点、延期风险/影响解释拆成纯 viewmodel 小文件，避免 viewmodel 反向 import service 层并守住架构复杂度/文件大小门禁。原 PR-9 Win7 closeout 顺延为 PR-10，原 PR-10 候选续跑顺延为 PR-11。"
+
+  - slug: scheduler-graph-win7-package-closeout
+    title: PR-10 Win7 离线打包和最终验收
+    description: "验证离线 wheel、PyInstaller 4.10、Win7 启动、graph_analysis_mode=off/report/on 三种模式，并跑最终质量门禁。"
+    status: planned
+    feature: null
+    minimal_loop: false
+    depends_on: [scheduler-graph-analysis-diagnostic-sections]
     primary_paths:
       - vendor/wheels/
       - installer/README_WIN7_INSTALLER.md
@@ -165,3 +502,20 @@ items:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
     notes: "正式交付不能只跑 validate_dist_exe.py；要按现有 Win7 双包和 Chrome109 启动链验收。"
+
+  - slug: scheduler-graph-candidate-resume-later
+    title: PR-11 后续增强：候选方案续跑
+    description: "第一版先不做续跑；多权重试跑到达时间上限时，从已完成候选里选择最好结果并提示完成数量。后续再增加“继续补跑剩余方案”能力，基于第一次排产冻结的输入快照补跑未完成候选。"
+    status: planned
+    feature: null
+    minimal_loop: false
+    depends_on: [scheduler-graph-win7-package-closeout]
+    primary_paths:
+      - core/services/scheduler/run/schedule_optimizer.py
+      - core/services/scheduler/run/schedule_persistence.py
+      - web/routes/domains/scheduler/
+      - templates/scheduler/
+      - tests/regression_scheduler_candidate_resume_contract.py
+    exit_checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_resume_contract.py
+    notes: "续跑必须保存原始输入快照、候选方案队列、已完成候选摘要和代表性明细；续跑时不能混入后来被用户改过的订单、工序、资源或配置。补跑失败也不能覆盖第一次已经可用的排产结果。"

@@ -37,6 +37,33 @@ def test_gantt_control_css_keeps_query_controls_horizontal() -> None:
         assert token in css
 
 
+def test_gantt_range_form_keeps_tablet_and_phone_breakpoints() -> None:
+    css = _read("static/css/aps_gantt.css")
+    tablet_block = css.split("@media (max-width: 980px)", 1)[1].split("@media", 1)[0]
+    phone_block = css.split("@media (max-width: 560px)", 1)[1].split("@media", 1)[0]
+
+    assert ".aps-gantt-range-form" in tablet_block
+    assert "grid-template-columns: repeat(2, minmax(0, 1fr));" in tablet_block
+    assert ".aps-gantt-range-form .aps-query-form-actions" in tablet_block
+    assert "grid-column: 1 / -1;" in tablet_block
+
+    assert ".aps-gantt-range-form" in phone_block
+    assert "grid-template-columns: 1fr;" in phone_block
+    assert ".aps-gantt-range-form .aps-query-form-actions .btn" in phone_block
+    assert "width: 100%;" in phone_block
+
+
+def test_gantt_filter_checks_does_not_force_overwide_column_near_900px() -> None:
+    css = _read("static/css/aps_gantt.css")
+    base_block = css[css.index(".aps-gantt-filter-checks {") : css.index("}", css.index(".aps-gantt-filter-checks {"))]
+    desktop_block = css.split("@media (min-width: 900px)", 1)[1]
+
+    assert "min-width: 0;" in base_block
+    assert ".aps-gantt-filter-checks" in desktop_block
+    assert "min-width: min(100%, 260px);" in desktop_block
+    assert "min-width: 320px;" not in desktop_block
+
+
 def test_gantt_popup_keeps_readable_width_and_autofits_visible_area() -> None:
     css = _read("static/css/aps_gantt.css")
     fit_js = _read("static/js/gantt_popup_fit.js")
@@ -69,6 +96,8 @@ def test_gantt_popup_keeps_readable_width_and_autofits_visible_area() -> None:
 def main() -> None:
     test_gantt_control_area_does_not_nest_generic_form_grids()
     test_gantt_control_css_keeps_query_controls_horizontal()
+    test_gantt_range_form_keeps_tablet_and_phone_breakpoints()
+    test_gantt_filter_checks_does_not_force_overwide_column_near_900px()
     test_gantt_popup_keeps_readable_width_and_autofits_visible_area()
     print("OK")
 

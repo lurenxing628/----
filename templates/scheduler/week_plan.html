@@ -11,6 +11,7 @@
       'manual': '手动排产'
     } %}
   {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'simulated': '模拟排产', 'ok': '成功', 'fail': '失败', 'ok2': '成功'} %}
+  {% set current_plan_label = plan_resolution.selected_label if plan_resolution else '最终采用' %}
 
   {% set week_plan_actions %}
     {{ ui.link_button('去执行排产', url_for('scheduler.batches_page'), 'primary', 'md') }}
@@ -29,7 +30,8 @@
     {{ ui.aps_card_header('查询与导出', '选择周范围和版本后查看预览，需要时导出当前周计划。') }}
     {{ ui.aps_context_bar([
       {'label': '周范围', 'value': week_start ~ ' ～ ' ~ week_end},
-      {'label': '版本', 'value': (('v' ~ version) if version is not none else '暂无版本')}
+      {'label': '版本', 'value': (('v' ~ version) if version is not none else '暂无版本')},
+      {'label': '方案', 'value': current_plan_label}
     ]) }}
     <form method="get" action="{{ url_for('scheduler.week_plan_page') }}" class="aps-query-form-grid aps-week-plan-query-grid">
       <div class="form-field">
@@ -50,6 +52,16 @@
           <input name="version" value="{{ version or '' }}" class="w-160">
         {% endif %}
       </div>
+      <div class="form-field">
+        <label>方案</label>
+        <select name="plan_role" class="w-160">
+          {% for option in plan_role_options or [] %}
+            <option value="{{ option.role }}" {% if option.role == effective_plan_role %}selected{% endif %}>
+              {{ option.label }}{% if option.candidate_label %} · {{ option.candidate_label }}{% endif %}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
       <div class="aps-query-form-actions">
         {{ ui.button('查询', 'primary', 'md', type_attr='submit') }}
       </div>
@@ -68,6 +80,16 @@
       {{ selected_history_resolution.message }}
     </div>
   {% endif %}
+  {% if plan_resolution and plan_resolution.message %}
+    <div class="flash-card flash-warning mt-2">
+      {{ plan_resolution.message }}
+    </div>
+  {% endif %}
+  {% if plan_resolution and plan_resolution.is_comparison %}
+    <div class="flash-card flash-warning mt-2">
+      当前正在查看“{{ plan_resolution.selected_label }}”对比方案，这套方案只用于对比，不代表最终采用的排产结果。
+    </div>
+  {% endif %}
 
   {% if selected_history %}
     <div class="card">
@@ -81,6 +103,11 @@
       {% if selected_summary_display.summary_parse_state.parse_failed %}
         <div class="flash-card flash-warning mt-2">
           {{ selected_summary_display.summary_parse_state.user_message }}
+        </div>
+      {% endif %}
+      {% if selected_summary_display.summary_count_parse_failed %}
+        <div class="flash-card flash-warning mt-2">
+          {{ selected_summary_display.summary_count_parse_message }}
         </div>
       {% endif %}
       {% if selected_summary_display.primary_degradation %}
@@ -127,9 +154,10 @@
         </div>
       {% endif %}
       {% if selected_summary_display.warning_total %}
+        {% set warning_preview_count = selected_summary_display.warnings_preview|length %}
         <div class="flash-card flash-warning mt-2">
           <div>提醒：{{ selected_summary_display.warning_total }} 条</div>
-          {% call ui.flash_details('查看前 ' ~ (selected_summary_display.warnings_preview|length) ~ ' 条提醒') %}
+          {% call ui.flash_details('查看前 ' ~ warning_preview_count ~ ' 条提醒') %}
             <ul class="list-tight">
               {% for item in selected_summary_display.warnings_preview %}
                 <li>{{ item }}</li>
@@ -138,7 +166,18 @@
           {% endcall %}
           {% if selected_summary_display.warning_hidden_count > 0 %}
             <div class="muted text-xs">另有 {{ selected_summary_display.warning_hidden_count }} 条提醒，请到系统管理里的排产历史查看这次排产的详细提醒。</div>
+            {% if version is not none %}
+              <div class="mt-2">
+                {{ ui.link_button('去排产历史查看', url_for('system.history_page', version=version), 'secondary', 'sm') }}
+              </div>
+            {% endif %}
           {% endif %}
+        </div>
+      {% endif %}
+      {% if selected_summary_display.maintenance_diagnostic_count %}
+        <div class="flash-card flash-warning mt-2">
+          <div>维护诊断：{{ selected_summary_display.maintenance_diagnostic_count }} 条</div>
+          <div class="muted text-xs">系统记录了维护诊断，普通页面不展开；如需排查，请联系维护人员查看系统日志。</div>
         </div>
       {% endif %}
       {% if selected_summary_display.error_total %}
