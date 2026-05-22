@@ -244,7 +244,7 @@ class OperatorMachineService:
                 continue
             if op_id in dup_ops and OperatorMachineService._is_primary_yes(pr.data or {}):
                 pr.status = RowStatus.ERROR
-                pr.message = f"人员“{op_id}”在 Excel 中设置了多个主操设备（主操设备=yes 只能有一条）。"
+                pr.message = f"人员“{op_id}”在 Excel 中设置了多个主操设备；同一个人员只能有一条主操设备填“是”。"
                 pr.changes = {}
 
     def _enforce_primary_unique_in_file(self, preview: List[ImportPreviewRow]) -> None:

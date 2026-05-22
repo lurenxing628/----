@@ -245,7 +245,7 @@ def test_diagnostic_sections_translate_statuses_to_business_levels() -> None:
     assert by_key["resource_bottleneck"]["status"] == "warning"
     assert by_key["delay_risk"]["status"] == "warning"
     assert by_key["impact_explanation"]["status"] == "warning"
-    assert "首波 ready 工序里有 1 道" in by_key["resource_bottleneck"]["summary"]
+    assert "第一批可排工序里有 1 道" in by_key["resource_bottleneck"]["summary"]
     assert "以下只展示本次诊断采样，不是完整清单。" == by_key["impact_explanation"]["summary"]
 
 
@@ -256,6 +256,7 @@ def test_diagnostic_sections_keep_diagnostics_samples_limited_and_safe() -> None
     assert "以下只是样本，不是完整清单。" in text_blob
     assert "未匹配工序样本：3、4、5、6、7" in text_blob
     for forbidden in (
+        "首波 ready",
         "candidate_machine_ids",
         "resource_pool",
         "nodes",
@@ -296,6 +297,9 @@ def test_diagnostic_sections_handle_unavailable_and_basic_report_samples() -> No
 
     assert "resource_bottleneck" not in by_key
     assert by_key["schedule_health"]["status"] == "unavailable"
+    health_text = "\n".join(_iter_text(by_key["schedule_health"]))
+    assert "图分析组件暂不可用" in health_text
+    assert "networkx" not in health_text.lower()
     impact_text = "\n".join(_iter_text(by_key["impact_explanation"]))
     assert "本次未生成完整影响范围指标" in impact_text
 
@@ -411,7 +415,7 @@ def test_overall_health_section_status_scenarios(
                 "bottleneck_machine_count": 0,
             },
             "ok",
-            "首波 ready 工序都有可用设备匹配。",
+            "第一批可排工序都有可用设备可用。",
         ),
         (
             {
@@ -426,7 +430,7 @@ def test_overall_health_section_status_scenarios(
                 "bottleneck_machine_count": 0,
             },
             "warning",
-            "首波 ready 工序里有 1 道暂时无法匹配到可用设备。",
+            "第一批可排工序里有 1 道暂时找不到可用设备。",
         ),
         (
             {
@@ -435,7 +439,7 @@ def test_overall_health_section_status_scenarios(
                 "ready_operation_count": 0,
             },
             "empty",
-            "本次暂无首波 ready 工序可做资源匹配。",
+            "本次暂无第一批可排工序可做资源匹配。",
         ),
         (
             {

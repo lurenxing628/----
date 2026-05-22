@@ -119,6 +119,8 @@ def test_scheduler_analysis_gantt_and_logs_do_not_surface_internal_terms() -> No
     assert "dispatch_rule_zh" in analysis
     assert "attempts / 优化曲线 / 超期明细" not in analysis
     assert "r.dispatch_mode }}/{{ r.dispatch_rule" not in analysis
+    assert "algo_config.get('algo_mode') or algo.mode" in analysis
+    assert "mode_zh.get(algo.mode" not in analysis
 
     for rel_path in ("templates/scheduler/gantt.html", "web_new_test/templates/scheduler/gantt.html"):
         source = _read(rel_path)
@@ -239,6 +241,15 @@ def test_process_excel_current_tables_render_chinese_display_fields() -> None:
 
     part_operation_hours_route = _read("web/routes/process_excel_part_operation_hours.py")
     assert '"归属显示": source_type_label(source)' in part_operation_hours_route
+
+    operator_machine_route = _read("web/routes/personnel_excel_links.py")
+    assert "project_preview_rows_for_display" in operator_machine_route
+    assert '"技能等级": skill_level_label' in operator_machine_route
+    assert '"主操设备": yes_no_label' in operator_machine_route
+
+    operator_machine_service = _read("core/services/personnel/operator_machine_service.py")
+    assert "主操设备=yes" not in operator_machine_service
+    assert "主操设备填“是”" in operator_machine_service
 
 
 def test_manuals_keep_backend_supported_english_aliases_but_mark_them_as_compatible() -> None:

@@ -205,7 +205,15 @@ def _format_warning_sample(value: Any) -> str:
     message = safe_text(item.get("message"))
     if not code and not message:
         return ""
-    text = f"{code}：{message}" if code and message else code or message
+    lowered = (message or code).lower()
+    if "networkx" in lowered:
+        text = "图分析组件暂不可用，请检查应用安装包或联系维护人员。"
+    elif any(token in (message or code) for token in ("candidate_machine_ids", "graph_ready_context", "predecessor_op_ids_by_op_id")):
+        text = "图分析数据暂时无法读取，请到排产历史查看本次排产提醒。"
+    elif "internal/external" in (message or code) or "internal / external" in (message or code):
+        text = "工序归属数据不完整，请检查工艺路线里的自制/外协设置。"
+    else:
+        text = message or "有一条图分析提醒，详细信息请到排产历史查看。"
     if item.get("message_truncated"):
         text = f"{text}（已截断）"
     return text
@@ -271,7 +279,7 @@ def _node_metrics_item(samples: Dict[str, Any], sample_note: str) -> Dict[str, A
 def _resource_sample_details(samples: Dict[str, Any]) -> List[str]:
     details: List[str] = []
     if samples["unmatched"]:
-        details.append(f"未匹配 ready 工序样本：{'、'.join(samples['unmatched'])}")
+        details.append(f"未匹配工序样本：{'、'.join(samples['unmatched'])}")
     if samples["bottlenecks"]:
         details.append(f"瓶颈设备样本：{'、'.join(samples['bottlenecks'])}")
     return details

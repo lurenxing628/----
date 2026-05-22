@@ -2,12 +2,14 @@
       <h3 class="section-title">版本概览</h3>
       <div class="aps-summary-grid aps-summary-grid--version-overview">
         {{ ui.summary_item('版本', 'v' ~ selected.version) }}
-        {{ ui.summary_item('时间', selected.schedule_time) }}
+        {{ ui.summary_item('时间', selected.schedule_time_display or selected.schedule_time) }}
         {{ ui.summary_item('排产方式', selected.strategy_label or strategy_zh.get(selected.strategy, '未知排产方式')) }}
         {{ ui.summary_item('状态', selected_summary_display.result_status_label or status_zh.get(selected.result_status, '结果状态未知')) }}
         {{ ui.summary_item('创建人', selected.created_by or '-') }}
         {% set algo = (selected_summary.algo if selected_summary and selected_summary.algo else {}) %}
-        {{ ui.summary_item('计算模式', mode_zh.get(algo.mode, algo.mode or '-')) }}
+        {% set algo_config = algo.config_snapshot if algo and algo.config_snapshot else {} %}
+        {% set algo_mode_value = algo_config.get('algo_mode') or algo.mode %}
+        {{ ui.summary_item('计算模式', mode_zh.get(algo_mode_value, algo_mode_value or '-')) }}
         {{ ui.summary_item('优化目标', algo_objective_label) }}
         {{ ui.summary_item('计算时间上限', (algo.time_budget_seconds or '-') ~ ' 秒') }}
         {{ ui.summary_item('实际用时', (selected_summary.time_cost_ms if selected_summary else '-') ~ ' 毫秒') }}
@@ -32,14 +34,15 @@
         <details class="mt-2">
           <summary>本次排产实际使用的设置</summary>
           <div class="aps-summary-grid mt-2">
-            {% set snapshot_sort_strategy = algo.config_snapshot.get('sort_strategy', '-') %}
-            {% set snapshot_dispatch_mode = algo.config_snapshot.get('dispatch_mode') %}
-            {% set snapshot_dispatch_rule = algo.config_snapshot.get('dispatch_rule') %}
+            {% set snapshot_sort_strategy = algo_config.get('sort_strategy', '-') %}
+            {% set snapshot_dispatch_mode = algo_config.get('dispatch_mode') %}
+            {% set snapshot_dispatch_rule = algo_config.get('dispatch_rule') %}
             {{ ui.summary_item('排序', strategy_zh.get(snapshot_sort_strategy, '未知排产方式')) }}
+            {{ ui.summary_item('计算模式', mode_zh.get(algo_config.get('algo_mode'), algo_config.get('algo_mode') or '-')) }}
             {{ ui.summary_item('派工方式', dispatch_mode_zh.get(snapshot_dispatch_mode, '未知派工方式')) }}
             {{ ui.summary_item('派工规则', dispatch_rule_zh.get(snapshot_dispatch_rule, '未知派工规则')) }}
             {{ ui.summary_item('目标', algo_config_snapshot_objective_label) }}
-            {{ ui.summary_item('时间预算', algo.config_snapshot.get('time_budget_seconds', '-') ~ ' 秒') }}
+            {{ ui.summary_item('时间预算', algo_config.get('time_budget_seconds', '-') ~ ' 秒') }}
           </div>
         </details>
       {% endif %}

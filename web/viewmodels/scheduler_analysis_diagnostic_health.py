@@ -89,6 +89,23 @@ def _overall_health_extra_items(*, error_total: int, warning_total: int) -> List
     return items
 
 
+def _public_graph_status_message(graph_public: Dict[str, Any]) -> str:
+    raw = str(graph_public.get("message") or graph_public.get("reason") or "").strip()
+    reason = str(graph_public.get("reason") or "").strip()
+    if not raw:
+        return ""
+    lowered = raw.lower()
+    if "networkx" in lowered or reason == "networkx_unavailable":
+        return "图分析组件暂不可用，请检查应用安装包或联系维护人员。"
+    if reason in {"graph_resource_matching_contract_error", "input_error", "build_error"}:
+        return "图分析数据暂时无法读取，请到排产历史查看本次排产提醒。"
+    if any(token in raw for token in ("candidate_machine_ids", "graph_ready_context", "predecessor_op_ids_by_op_id")):
+        return "图分析数据暂时无法读取，请到排产历史查看本次排产提醒。"
+    if "internal/external" in raw or "internal / external" in raw:
+        return "工序归属数据不完整，请检查工艺路线里的自制/外协设置。"
+    return raw
+
+
 def build_overall_health_section(
     selected_summary: Optional[Dict[str, Any]],
     graph_public: Dict[str, Any],
@@ -114,7 +131,7 @@ def build_overall_health_section(
             label="图分析状态",
             value=graph_status_value(graph_public),
             level=state["graph_level"],
-            message=str(graph_public.get("message") or graph_public.get("reason") or ""),
+            message=_public_graph_status_message(graph_public),
         ),
         build_item(
             key="node_count",
@@ -171,11 +188,11 @@ def _resource_matching_summary(
     unmatched_count: int,
 ) -> str:
     if status == "available" and unmatched_count > 0:
-        return f"首波 ready 工序里有 {unmatched_count} 道暂时无法匹配到可用设备。"
+        return f"第一批可排工序里有 {unmatched_count} 道暂时找不到可用设备。"
     if status == "available":
-        return "首波 ready 工序都有可用设备匹配。"
+        return "第一批可排工序都有可用设备可用。"
     if status == "empty":
-        return "本次暂无首波 ready 工序可做资源匹配。"
+        return "本次暂无第一批可排工序可做资源匹配。"
     if status == "skipped" and reason == "graph_not_dag":
         return "工序关系异常，资源匹配诊断已跳过。"
     if status == "skipped":
@@ -221,7 +238,7 @@ def _build_resource_bottleneck_items(
     return [
         build_item(
             key="ready_operation_count",
-            label="首波 ready 工序",
+            label="第一批可排工序",
             value=format_count(ready_count, "道"),
             level=level_if(ready_count == 0, "notice", "ok"),
             message="当前可以作为第一波候选来看的工序数量。",
@@ -245,7 +262,7 @@ def _build_resource_bottleneck_items(
             label="最多可匹配工序",
             value=format_count(matched_count, "道"),
             level=level_if(matched_count >= ready_count and ready_count > 0, "ok", "notice"),
-            message="按当前候选设备关系，首波 ready 工序里最多可同时匹配的数量。",
+            message="按当前候选设备关系，第一批可排工序里最多可同时匹配的数量。",
         ),
         build_item(
             key="unmatched_operation_count",
@@ -254,8 +271,8 @@ def _build_resource_bottleneck_items(
             level=level_if(unmatched_count > 0, "warning", "ok"),
             message=text_if(
                 unmatched_count > 0,
-                f"首波 ready 工序中有 {unmatched_count} 道未匹配到设备。",
-                "首波 ready 工序都能匹配到设备。",
+                f"第一批可排工序中有 {unmatched_count} 道未匹配到设备。",
+                "第一批可排工序都能匹配到设备。",
             ),
             details=detail_from_samples("未匹配工序样本：", unmatched_samples),
         ),
@@ -321,7 +338,7 @@ def build_resource_bottleneck_section(
             unmatched_samples=unmatched_samples,
             bottleneck_samples=bottleneck_samples,
         ),
-        empty_reason=text_if(status == "empty", "本次没有首波 ready 工序，因此没有资源卡点可分析。", ""),
+        empty_reason=text_if(status == "empty", "本次没有第一批可排工序，因此没有资源卡点可分析。", ""),
     )
 
 

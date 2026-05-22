@@ -10,7 +10,11 @@ from web.routes.history_summary_logging import (
 )
 from web.viewmodels.scheduler_analysis_metrics import extract_metrics_from_summary
 from web.viewmodels.scheduler_analysis_trends import _metric_float_state, _metric_has_parse_failure, safe_int
-from web.viewmodels.scheduler_history_summary import decorate_history_version_options, parse_history_summary_state
+from web.viewmodels.scheduler_history_summary import (
+    decorate_history_version_options,
+    format_public_datetime,
+    parse_history_summary_state,
+)
 
 from .scheduler_history_resolution import build_requested_history_resolution
 
@@ -31,6 +35,7 @@ def _parse_analysis_summary(row: Dict[str, Any], *, source: str) -> Dict[str, An
     payload = parse_state.get("payload")
     parsed["result_summary_parse_state"] = parse_state
     parsed["result_summary"] = payload if isinstance(payload, dict) else None
+    parsed["schedule_time_display"] = format_public_datetime(parsed.get("schedule_time"))
     return parsed
 
 
@@ -43,6 +48,15 @@ def _load_selected_analysis_item(history_query_service, selected_ver: Optional[i
         return None
     item = history_query_service.get_by_version(int(selected_ver))
     return None if item is None else _parse_analysis_summary(_history_item_to_dict(item), source="selected")
+
+
+def _public_analysis_version_options(versions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for item in versions or []:
+        public_item = dict(item or {})
+        public_item.pop("result_summary", None)
+        out.append(public_item)
+    return out
 
 
 @dataclass(frozen=True)
@@ -257,7 +271,7 @@ def build_analysis_read_context(services: Any, raw_version: Any) -> AnalysisRead
     history_query_service = services.schedule_history_query_service
     versions = history_query_service.list_versions(limit=50)
     selection = _select_analysis_version(history_query_service, versions=versions, raw_version=raw_version)
-    version_options = decorate_history_version_options(selection.versions)
+    version_options = _public_analysis_version_options(decorate_history_version_options(selection.versions))
     log_history_version_option_parse_warnings(version_options, log_label="排产分析页")
 
     raw_hist = _load_recent_analysis_history(history_query_service)

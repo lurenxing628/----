@@ -90,14 +90,14 @@ def test_analysis_template_renders_diagnostic_status_details_and_links() -> None
                 "title": "资源卡点",
                 "status": "warning",
                 "status_label": "需要关注",
-                "summary": "首波 ready 工序里有 1 道暂时无法匹配到可用设备。",
+                "summary": "第一批可排工序里有 1 道暂时找不到可用设备。",
                 "items": [
                     {
                         "key": "unmatched_operation_count",
                         "label": "未匹配工序",
                         "value": "1 道",
                         "level": "warning",
-                        "message": "首波 ready 工序中有 1 道未匹配到设备。",
+                        "message": "第一批可排工序中有 1 道未匹配到设备。",
                         "details": ["工序样本：3"],
                         "links": [{"label": "查看明细", "url": "/scheduler/analysis", "kind": "page"}],
                     }
@@ -117,7 +117,7 @@ def test_analysis_template_renders_diagnostic_status_details_and_links() -> None
     assert "本诊断使用降级信息生成" in html
     assert "未匹配工序" in html
     assert "1 道" in html
-    assert "首波 ready 工序中有 1 道未匹配到设备。" in html
+    assert "第一批可排工序中有 1 道未匹配到设备。" in html
     assert "<details" in html
     assert "查看诊断依据" in html
     assert "工序样本：3" in html

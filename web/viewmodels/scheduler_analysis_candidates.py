@@ -135,7 +135,7 @@ def _candidate_status_label(status_value: Any) -> str:
     status = str(status_value or "").strip()
     if not status:
         return "-"
-    return _CANDIDATE_STATUS_LABELS.get(status, status)
+    return _CANDIDATE_STATUS_LABELS.get(status, "状态未识别")
 
 
 def _selection_reason_label(reason_code: Any) -> str:

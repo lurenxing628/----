@@ -26,6 +26,7 @@ from .excel_utils import (
     flash_import_result,
     load_confirm_payload,
     preview_baseline_is_stale,
+    project_preview_rows_for_display,
     send_excel_template_file,
 )
 from .personnel_bp import _parse_mode, _read_uploaded_xlsx, bp
@@ -92,11 +93,15 @@ def _render_excel_link_page(
     mode_value: str,
     filename: Optional[str],
 ):
+    preview_display_rows = project_preview_rows_for_display(
+        preview_rows,
+        {"技能等级": skill_level_label, "主操设备": yes_no_label},
+    )
     return render_template(
         "personnel/excel_import_operator_machine.html",
         title="批量维护人员设备关系",
         existing_list=existing_list,
-        preview_rows=preview_rows,
+        preview_rows=preview_display_rows,
         raw_rows_json=encode_preview_rows_payload(raw_rows_json),
         preview_baseline=preview_baseline,
         mode=mode_value,

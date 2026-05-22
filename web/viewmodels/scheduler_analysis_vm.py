@@ -24,6 +24,29 @@ from .scheduler_degradation_presenter import build_primary_degradation, build_su
 from .scheduler_summary_display import build_display_secondary_degradation_messages, build_result_state
 
 
+def _public_summary_for_template(summary: Any) -> Any:
+    if not isinstance(summary, dict):
+        return summary
+    public_summary = dict(summary)
+    public_summary.pop("diagnostics", None)
+    return public_summary
+
+
+def _public_selected_for_template(selected: Any, public_summary: Any) -> Any:
+    if not isinstance(selected, dict):
+        return selected
+    public_selected = dict(selected)
+    if "result_summary" in public_selected:
+        public_selected["result_summary"] = public_summary
+    parse_state = public_selected.get("result_summary_parse_state")
+    if isinstance(parse_state, dict):
+        public_parse_state = dict(parse_state)
+        if "payload" in public_parse_state:
+            public_parse_state["payload"] = public_summary
+        public_selected["result_summary_parse_state"] = public_parse_state
+    return public_selected
+
+
 def _comparison_metric_from_algo(algo: Any) -> str:
     if isinstance(algo, dict):
         metric = str(algo.get("comparison_metric") or "").strip()
@@ -114,9 +137,11 @@ def build_analysis_context(
         objective_key,
         algo=selected_algo,
     )
+    public_selected_summary = _public_summary_for_template(selected_summary)
+    public_selected = _public_selected_for_template(selected, public_selected_summary)
     return {
-        "selected": selected,
-        "selected_summary": selected_summary,
+        "selected": public_selected,
+        "selected_summary": public_selected_summary,
         "selected_metrics": selected_metrics,
         "prev_metrics": prev_metrics,
         "objective_key": objective_key,
