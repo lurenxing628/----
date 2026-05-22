@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from ._helpers import RowLike, as_dict, get, parse_float, parse_int
+from ._helpers import RowLike, as_dict, get, parse_float_or_default, parse_int
 from .enums import YesNo
 
 
@@ -23,8 +23,8 @@ class BatchMaterial:
             id=parse_int(raw_id, default=None),
             batch_id=str(get(row, "batch_id") or ""),
             material_id=str(get(row, "material_id") or ""),
-            required_qty=parse_float(get(row, "required_qty"), default=0.0) or 0.0,
-            available_qty=parse_float(get(row, "available_qty"), default=0.0) or 0.0,
+            required_qty=parse_float_or_default(get(row, "required_qty"), 0.0, field="required_qty"),
+            available_qty=parse_float_or_default(get(row, "available_qty"), 0.0, field="available_qty"),
             ready_status=(str(get(row, "ready_status") or YesNo.NO.value).strip().lower() or YesNo.NO.value),
         )
 
@@ -39,4 +39,3 @@ class BatchMaterial:
                 "ready_status": self.ready_status,
             }
         )
-

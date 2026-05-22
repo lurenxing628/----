@@ -133,6 +133,22 @@ def test_ortools_model_invalid_is_visible(monkeypatch):
         )
 
 
+def test_ortools_nonfinite_hours_is_visible(monkeypatch):
+    from core.algorithms.ortools_bottleneck import OrtoolsWarmstartError, try_solve_bottleneck_batch_order
+
+    _install_fake_cp_model(monkeypatch, status=4)
+    operations, batches = _sample_inputs()
+    operations[0].setup_hours = float("nan")
+
+    with pytest.raises(OrtoolsWarmstartError, match="有限数字"):
+        try_solve_bottleneck_batch_order(
+            operations=operations,
+            batches=batches,
+            start_dt=datetime(2026, 1, 1, 8, 0, 0),
+            logger=None,
+        )
+
+
 def test_ortools_unknown_status_is_not_reported_as_failure(monkeypatch):
     from core.algorithms.ortools_bottleneck import try_solve_bottleneck_batch_order
 

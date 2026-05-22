@@ -38,7 +38,10 @@ def _finite_positive_hours(*, op: Any, batch: Any) -> Optional[float]:
         op_id = getattr(op, "id", None) or getattr(op, "op_code", None) or "?"
         raise OrtoolsWarmstartError(f"OR-Tools 预热无法读取工序工时：op={op_id!r}") from exc
     hours = float(setup_hours) + float(unit_hours) * float(qty)
-    if not math.isfinite(hours) or hours <= 0:
+    if not math.isfinite(hours):
+        op_id = getattr(op, "id", None) or getattr(op, "op_code", None) or "?"
+        raise OrtoolsWarmstartError(f"OR-Tools 预热工时不是有限数字：op={op_id!r}")
+    if hours <= 0:
         return None
     return float(hours)
 

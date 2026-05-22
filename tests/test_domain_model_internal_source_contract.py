@@ -64,6 +64,14 @@ def test_part_service_update_internal_hours_rejects_unknown_source() -> None:
         svc.update_internal_hours("P1", 10, 1.0, 2.0)
 
 
+def test_part_service_normalize_float_rejects_nonfinite_hours() -> None:
+    for bad_value in ("nan", "inf", "-inf"):
+        with pytest.raises(ValidationError, match="有限数字"):
+            PartService._normalize_float(bad_value, "工时", allow_none=False)
+
+    assert PartService._normalize_float("1.5", "工时", allow_none=False) == 1.5
+
+
 def test_operation_edit_rejects_unknown_batch_operation_source() -> None:
     op = BatchOperation(
         id=1,
