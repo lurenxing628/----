@@ -1,0 +1,36 @@
+feature: 2026-05-22-gantt-simulation-entry-shell
+status: done
+roadmap: gantt-result-view-and-manual-adjustment
+roadmap_item: gantt-simulation-entry-shell
+
+steps:
+  - slug: boundary-and-docs
+    title: 明确入口壳边界和 roadmap 状态
+    status: done
+    exit_signal: design/checklist 已落盘，roadmap item 进入本阶段实现。
+
+  - slug: disabled-entry-ui
+    title: 模板双份同步增加禁用入口壳
+    status: done
+    exit_signal: 主模板和镜像模板都有模拟调整占位入口，默认仍是查看模式。
+
+  - slug: copy-and-style
+    title: 补样式、说明书和页面帮助
+    status: done
+    exit_signal: 用户能看懂当前入口只是后续开放，不会保存或发布。
+
+  - slug: regression
+    title: 增加入口壳回归测试和门禁分组
+    status: done
+    exit_signal: 测试覆盖按钮禁用、无保存入口、模板同步和文档提示。
+
+  - slug: verification
+    title: 回归验证
+    status: done
+    exit_signal: 目标 pytest、JS/Python 静态检查、YAML 校验通过。
+
+checks:
+  - 默认仍是查看模式，不进入 simulate。
+  - 模拟调整入口只占位，不触发保存。
+  - 不新增后端接口，不写正式排产数据。
+  - 两份模板同步。

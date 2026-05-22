@@ -18,6 +18,8 @@ tags: [scheduler, gantt, frontend, readonly, vendor]
 
 页面把 `data-gantt-mode="view"` 和 `data-zoom-level` 下发给前端。第一版只读甘特图不提供保存按钮，也不调用任何正式写库接口。
 
+页面顶部现在有 `ganttSimulationEntryShell`。它只显示灰色禁用按钮 `模拟调整（后续开放）`，用于告诉用户后续入口位置；当前不会切换 `simulate`，不会发保存请求，也不会产生草稿、模拟方案或正式新版本。
+
 ## 2. 前端职责拆分
 
 - `static/js/gantt_zoom.js`：只放时间粒度规格、URL 稳定值、范围保护和估算节点数。
@@ -26,6 +28,7 @@ tags: [scheduler, gantt, frontend, readonly, vendor]
 - `static/js/gantt_render.js`：过滤任务、做范围保护、通过适配层创建 Frappe Gantt、挂接点击弹窗和视觉标记。
 - `static/js/gantt_contract.js`：集中维护页面帮助、状态文案和任务弹窗里对用户可见的说明。
 - `static/js/frappe-gantt.min.js`：本地 vendor 文件，只保留必须落在 Frappe 内部的补丁。
+- `static/css/aps_gantt_simulation.css`：只放模拟调整入口壳样式，避免继续扩大主甘特图样式文件职责。
 
 ## 3. 时间和缩放合同
 
@@ -46,6 +49,8 @@ tags: [scheduler, gantt, frontend, readonly, vendor]
 这会禁掉拖动、左右拉伸和进度拖动，但保留点击任务条、弹窗、批次聚焦、筛选、配色、关键工序外框和依赖线查看。
 
 `simulate` 模式目前只在 `gantt_adapter.js` 中保留事件出口，不连接保存接口，不创建草稿，也不写正式排产数据。
+
+真实模拟调整入口尚未开放。当前页面上的 `ganttSimulationEntry` 按钮是 disabled 占位按钮，后续必须等 Draft 草稿模型和后端校验链路完成后，才能升级为可点击入口。
 
 ## 5. vendor 补丁治理
 

@@ -166,23 +166,23 @@ items:
 
   - slug: gantt-simulation-entry-shell
     title: 后续模拟调整入口壳
-    description: 后续增加“进入模拟调整”入口、调整工具栏、未保存调整数量和禁用态说明，但不做无校验保存。
+    description: 后续增加“模拟调整（后续开放）”灰色禁用占位入口和禁用态说明，但不做调整工具栏、未保存计数或无校验保存。
     depends_on: [gantt-adapter-contract]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-22-gantt-simulation-entry-shell
     minimal_loop: false
     primary_paths:
       - templates/scheduler/gantt.html
       - web_new_test/templates/scheduler/gantt.html
       - static/js/gantt_ui.js
       - static/js/gantt_render.js
-      - static/css/aps_gantt.css
+      - static/css/aps_gantt_simulation.css
       - web/viewmodels/page_manuals_scheduler_outputs.py
     exit_checks:
       - 查看模式和模拟调整模式一眼能区分
       - 没有后端校验服务时保存按钮不能假装可用
-      - 有未保存调整时离开页面会提醒保存或放弃
-    notes: 后续入口必须明确告诉用户“模拟调整不是正式计划”；适配层完成前不启动。
+      - 当前入口不产生未保存调整，因此不绑定离开页面提醒
+    notes: 已完成禁用占位入口；真实模拟状态、未保存调整和离开提醒等草稿模型完成后再开放。
 
   - slug: gantt-adjustment-draft-model
     title: 后续 Draft 调整草稿模型

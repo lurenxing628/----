@@ -4,6 +4,7 @@
 {% block extra_head %}
   <link rel="stylesheet" href="{{ url_for('static', filename='css/frappe-gantt.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/aps_gantt.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/aps_gantt_simulation.css') }}">
 {% endblock %}
 
 {% block content %}
@@ -150,8 +151,19 @@
       提示：默认按“批次”配色，可在下方切换为按优先级/来源/状态；红色边框表示该批次在该版本中被判定为“超期”。
       若看不到条形，请先在【排产调度】执行排产生成排程数据。
     </p>
-    <div class="flash-card mt-3">
-      当前为查看模式：这里显示排产结果。你可以点击任务条查看详情、筛选、切换配色和缩放时间粒度；拖动或拉伸任务条不会修改计划。模拟调整功能后续单独开放。
+    <div id="ganttSimulationEntryShell" class="aps-gantt-mode-shell mt-3" data-simulation-state="disabled">
+      <div class="aps-gantt-mode-shell-copy">
+        <span class="aps-gantt-mode-badge">当前为查看模式</span>
+        <span>这里只显示排产结果。你可以点击任务条查看详情、筛选、切换配色和缩放时间粒度；拖动或拉伸任务条不会修改计划。</span>
+      </div>
+      <button
+        id="ganttSimulationEntry"
+        class="aps-gantt-simulation-entry"
+        type="button"
+        disabled
+        aria-disabled="true"
+        title="草稿和校验链路完成后开放"
+      >模拟调整（后续开放）</button>
     </div>
     <div id="ganttOverdueWarning" class="flash-card flash-warning mt-3 is-hidden" role="alert" aria-live="polite">
       有些超期红框可能暂时没标出来，排程数据本身还在。请刷新后重试，或到系统管理里的排产历史查看这次排产的详细提醒。

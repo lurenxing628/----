@@ -1,0 +1,78 @@
+/* APS Gantt simulation entry shell. */
+
+.aps-gantt-mode-shell {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid #bae6fd;
+  border-radius: 10px;
+  background: #f0f9ff;
+  color: #0f172a;
+}
+
+.aps-gantt-mode-shell-copy {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.aps-gantt-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: #0f766e;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.aps-gantt-simulation-entry {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 6px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #64748b;
+  font: inherit;
+  cursor: not-allowed;
+}
+
+.aps-gantt-simulation-entry:disabled {
+  opacity: 0.85;
+}
+
+html[data-theme="dark"] .aps-gantt-mode-shell {
+  border-color: #155e75;
+  background: #0f2537;
+  color: var(--ui-text, #f1f5f9);
+}
+
+html[data-theme="dark"] .aps-gantt-mode-badge {
+  background: #14b8a6;
+  color: #042f2e;
+}
+
+html[data-theme="dark"] .aps-gantt-simulation-entry {
+  border-color: var(--ui-border, #334155);
+  background: #162032;
+  color: var(--ui-muted, #94a3b8);
+}
+
+@media (max-width: 720px) {
+  .aps-gantt-mode-shell {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .aps-gantt-simulation-entry {
+    width: 100%;
+  }
+}

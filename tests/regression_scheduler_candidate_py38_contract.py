@@ -69,6 +69,7 @@ PR7E_FRONTEND_FILES = (
     "static/js/gantt.js",
     "static/js/gantt_adapter.js",
     "static/js/gantt_contract.js",
+    "static/css/aps_gantt_simulation.css",
 )
 
 _PEP585_PART = r"\b(?:list|dict|set|tuple)\s*\["
