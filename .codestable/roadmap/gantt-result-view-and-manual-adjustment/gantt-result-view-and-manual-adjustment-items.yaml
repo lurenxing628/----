@@ -1,0 +1,217 @@
+roadmap: gantt-result-view-and-manual-adjustment
+created: 2026-05-22
+last_reviewed: 2026-05-22
+
+items:
+  - slug: gantt-readonly-result-mode
+    title: 阶段 1 甘特图查看模式收口
+    description: 把甘特图默认收成只读查看模式，禁掉无效拖动和拉伸，只保留点击详情、筛选、配色和关键链查看。
+    depends_on: []
+    status: planned
+    feature: null
+    minimal_loop: true
+    primary_paths:
+      - templates/scheduler/gantt.html
+      - web_new_test/templates/scheduler/gantt.html
+      - static/js/gantt_render.js
+      - static/js/frappe-gantt.min.js
+      - static/css/aps_gantt.css
+      - static/docs/scheduler_manual.md
+      - tests/regression_frappe_gantt_short_task_contract.py
+      - tests/regression_gantt_layout_contract.py
+      - tests/regression_gantt_url_persistence.py
+    exit_checks:
+      - 甘特图页面显示“查看模式”提示
+      - 设备视图和人员视图的条形图都不能拖动或拉伸
+      - 点击条形图仍能打开详情弹窗并高亮批次
+      - 筛选、配色、关键链、工序关系线不退化
+      - 刷新页面后条形位置不因前端拖动产生变化
+    notes: 第一阶段最小闭环；必须先解决“能拖但不生效”的误导，不做拖动保存。
+
+  - slug: gantt-time-zoom-readside
+    title: 阶段 2 甘特图小时与分钟级缩放
+    description: 增加甘特图时间缩放，支持日/周/月之外的半天、6小时、小时、15分钟、5分钟和1分钟查看，让短工序能看清具体小时分钟。
+    depends_on: [gantt-readonly-result-mode]
+    status: planned
+    feature: null
+    minimal_loop: false
+    primary_paths:
+      - templates/scheduler/gantt.html
+      - web_new_test/templates/scheduler/gantt.html
+      - static/js/gantt_ui.js
+      - static/js/gantt_render.js
+      - static/js/frappe-gantt.min.js
+      - static/css/aps_gantt.css
+      - tests/regression_gantt_url_persistence.py
+      - tests/regression_gantt_critical_outline_sync.py
+      - tests/regression_frappe_gantt_short_task_contract.py
+    exit_checks:
+      - 时间粒度支持月、周、日、12小时、6小时、小时、15分钟、5分钟、1分钟
+      - 36分钟和51分钟工序在小时/15分钟/5分钟/1分钟视图中可见且可点击
+      - 缩放状态写入 URL，复制链接可复现
+      - 宽范围使用15分钟、5分钟、1分钟视图时有范围保护和清楚提示
+      - 假期背景、今天高亮、关键链线、超期红框在缩放后仍对齐
+    notes: 第二阶段只做查看缩放，不做拖动保存；解决“一拖就是一天”和“看不清小时分钟”的体验根因；当前主线不做秒级、0.1秒或精细模式。
+
+  - slug: gantt-adapter-contract
+    title: 阶段 3 甘特适配层
+    description: 新增甘特适配层，统一封装 Frappe 的时间尺、点击、只读、缩放和未来模拟拖动事件。
+    depends_on: [gantt-time-zoom-readside]
+    status: planned
+    feature: null
+    minimal_loop: false
+    primary_paths:
+      - static/js/gantt_adapter.js
+      - static/js/gantt_render.js
+      - static/js/gantt_ui.js
+      - static/js/frappe-gantt.min.js
+      - tests/regression_gantt_adapter_contract.py
+    exit_checks:
+      - 业务渲染代码不直接依赖 Frappe 的拖动内部细节
+      - 适配层能设置 view/simulate 模式
+      - 适配层能设置 zoom level
+      - 适配层能保留点击详情事件
+      - 未来更换组件时后端草稿/校验接口不需要重写
+    notes: 避免后续继续直接魔改压缩版 Frappe；这是后续模拟调整的前置边界。
+
+  - slug: gantt-simulation-entry-shell
+    title: 阶段 4 模拟调整入口壳
+    description: 增加“进入模拟调整”入口、调整工具栏、未保存调整数量和禁用态说明，但不做无校验保存。
+    depends_on: [gantt-adapter-contract]
+    status: planned
+    feature: null
+    minimal_loop: false
+    primary_paths:
+      - templates/scheduler/gantt.html
+      - web_new_test/templates/scheduler/gantt.html
+      - static/js/gantt_ui.js
+      - static/js/gantt_render.js
+      - static/css/aps_gantt.css
+      - web/viewmodels/page_manuals_scheduler_outputs.py
+    exit_checks:
+      - 查看模式和模拟调整模式一眼能区分
+      - 进入模拟调整后显示撤销、重做、放弃调整、保存为模拟版本等工具
+      - 没有后端校验服务时保存按钮不能假装可用
+      - 有未保存调整时离开页面会提醒保存或放弃
+    notes: 入口必须明确告诉用户“模拟调整不是正式计划”，不能做假保存按钮。
+
+  - slug: gantt-adjustment-draft-model
+    title: 阶段 5 调整草稿模型
+    description: 建立调整草稿数据模型和迁移，记录基准版本、调整列表、操作者、原因、状态和审计摘要。
+    depends_on: [gantt-adapter-contract]
+    status: planned
+    feature: null
+    minimal_loop: false
+    primary_paths:
+      - schema.sql
+      - core/infrastructure/migrations/
+      - core/services/scheduler/
+      - data/repositories/
+      - tests/regression_gantt_adjustment_draft_model.py
+    exit_checks:
+      - 草稿记录包含基准版本、方案角色、调整列表、操作者、原因和状态
+      - 创建草稿不会改变正式版本指针
+      - 删除草稿不会影响正式 Schedule/ScheduleHistory
+      - 草稿可重新打开并显示未发布调整
+    notes: 草稿只是“用户想怎么改”，不是正式排产结果。
+
+  - slug: gantt-adjustment-validate-simulate
+    title: 阶段 6 拖动落点校验与试算
+    description: 实现拖动落点后端校验和试算，返回资源冲突、工序倒挂、日历停机、物料齐套、交期影响和用户可读提示。
+    depends_on: [gantt-adjustment-draft-model]
+    status: planned
+    feature: null
+    minimal_loop: false
+    primary_paths:
+      - core/services/scheduler/
+      - web/routes/domains/scheduler/
+      - data/repositories/
+      - tests/regression_gantt_adjustment_validate_simulate.py
+    exit_checks:
+      - 设备重叠能返回 blocker
+      - 人员重叠能返回 blocker
+      - 前后工序倒挂能返回 blocker
+      - 工作日历/停机冲突能返回 blocker 或 warning
+      - 物料齐套和交期影响能返回用户可读说明
+      - 返回内容不泄漏内部图结构、原始对象或诊断样本
+    notes: 不允许只返回 success=false；必须解释为什么不能放和下一步怎么处理。
+
+  - slug: gantt-draft-save-and-preview
+    title: 阶段 7 保存模拟版本并预览
+    description: 保存模拟版本，并支持甘特图、周计划、资源排班和报表按模拟版本预览。
+    depends_on: [gantt-adjustment-validate-simulate]
+    status: planned
+    feature: null
+    minimal_loop: false
+    primary_paths:
+      - core/services/scheduler/
+      - web/routes/domains/scheduler/
+      - templates/scheduler/gantt.html
+      - templates/scheduler/resource_dispatch.html
+      - templates/reports/
+      - tests/regression_gantt_draft_save_and_preview.py
+    exit_checks:
+      - 保存后提示“已保存为模拟版本，正式计划还没有改变”
+      - 甘特图可选择模拟版本预览
+      - 周计划和资源排班可选择模拟版本预览
+      - 报表默认不自动使用模拟版本，除非用户显式选择
+      - 页面和导出文件都能标识模拟版本
+    notes: 所有页面必须清楚标识“模拟版本，正式计划未改变”。
+
+  - slug: gantt-draft-publish-official-version
+    title: 阶段 8 模拟版本正式采用
+    description: 用户确认后把模拟版本正式采用，生成新的正式排产版本，并统一甘特图、周计划、资源排班、报表和历史口径。
+    depends_on: [gantt-draft-save-and-preview]
+    status: planned
+    feature: null
+    minimal_loop: false
+    primary_paths:
+      - core/services/scheduler/
+      - data/repositories/
+      - web/routes/domains/scheduler/
+      - templates/system/history.html
+      - tests/regression_gantt_draft_publish_official_version.py
+    exit_checks:
+      - 发布前重新校验草稿
+      - 发布生成新的正式版本，不原地改旧版本
+      - 发布后甘特图、周计划、资源排班、报表、历史页都读新版本
+      - 旧版本仍可回看
+      - 审计记录能看出谁、何时、基于哪个版本、发布成哪个版本
+    notes: 发布不能原地改旧正式版本，必须写审计记录并重新校验草稿。
+
+  - slug: gantt-adjustment-user-guide-and-qa
+    title: 阶段 9 说明书与浏览器压测收口
+    description: 更新说明书、页面帮助、浏览器压测手册和回归测试，覆盖查看、缩放、模拟调整、正式采用和冲突提示。
+    depends_on: [gantt-draft-publish-official-version]
+    status: planned
+    feature: null
+    minimal_loop: false
+    primary_paths:
+      - static/docs/scheduler_manual.md
+      - web/viewmodels/page_manuals_scheduler_outputs.py
+      - docs/dev/aps-browser-scheduler-qa-replay.md
+      - tests/regression_frontend_ui_language_polish.py
+      - tests/regression_gantt_layout_contract.py
+    exit_checks:
+      - 说明书分清查看模式、缩放、模拟调整、保存模拟版本和正式采用
+      - 页面帮助与真实页面行为一致
+      - 浏览器压测手册覆盖短工序、长工序、冲突、草稿、预览、正式采用
+      - 冲突提示使用调度员能看懂的话，不暴露内部算法对象
+    notes: 文案必须用调度员能看懂的话，不暴露内部算法对象或诊断样本。
+
+  - slug: gantt-component-upgrade-spike
+    title: 阶段 10 甘特组件升级评估
+    description: 在 Win7 Chrome 109 与离线交付边界下评估继续 Frappe、封装 Frappe、替换 Bryntum/DHTMLX/Syncfusion 的真实成本。
+    depends_on: [gantt-time-zoom-readside]
+    status: planned
+    feature: null
+    minimal_loop: false
+    primary_paths:
+      - .codestable/roadmap/gantt-result-view-and-manual-adjustment/drafts/
+      - evidence/
+      - static/js/
+    exit_checks:
+      - 有 Win7 Chrome 109 或等价目标浏览器的 POC 证据
+      - 对比 Frappe、Bryntum、DHTMLX、Syncfusion 的缩放、只读、拖动、依赖线、资源视图、性能、授权和离线部署
+      - 只有 Frappe 明确撑不住时才提出替换建议
+    notes: 这是调研 spike，不阻塞只读和缩放；不能凭感觉换组件。
