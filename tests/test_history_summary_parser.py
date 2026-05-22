@@ -4,6 +4,8 @@ from core.models.scheduler_history_parser import parse_result_summary_payload
 from web.viewmodels.scheduler_history_summary import (
     build_history_summary_display,
     decorate_history_version_options,
+    format_public_date,
+    format_public_datetime,
     parse_history_summary_state,
     strategy_display_label,
 )
@@ -66,6 +68,18 @@ def test_decorate_history_version_options_preserves_status_label_contract() -> N
     assert decorated[0]["strategy_display_state"] == "missing"
     assert decorated[0]["strategy_label"] == "旧历史未记录"
     assert "旧版本" in decorated[0]["strategy_display_message"]
+
+
+def test_history_time_display_uses_chinese_business_format() -> None:
+    assert format_public_date("2026-05-04") == "2026年5月4日"
+    assert format_public_datetime("2026-05-04 03:20:59") == "2026年5月4日 03:20"
+    assert format_public_datetime("Wed, 13 May 2026 00:00:00 GMT") == "2026年5月13日 00:00"
+
+    decorated = decorate_history_version_options(
+        [{"version": 4, "schedule_time": "2026-05-05 10:00:00", "result_status": "ok", "result_summary": "{}"}]
+    )
+
+    assert decorated[0]["schedule_time_display"] == "2026年5月5日 10:00"
 
 
 def test_decorate_history_version_options_keeps_legacy_status_aliases() -> None:

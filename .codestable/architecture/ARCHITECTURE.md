@@ -28,6 +28,7 @@
 - `tests/`：自动化测试。
 - `tools/`、`scripts/`：质量门禁、治理台账、辅助检查脚本。
 - `开发文档/`、`audit/`、`evidence/`：开发说明、审计记录和验证证据。
+- `.codestable/architecture/ui-gantt.md`：甘特图结果查看页面、缩放协议、只读边界和本地 Frappe 补丁治理现状。
 
 ## 4. 关键架构决定
 

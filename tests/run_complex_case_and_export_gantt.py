@@ -72,23 +72,45 @@ def build_preview_client_bootstrap(
                   .replace(/"/g, "&quot;")
                   .replace(/'/g, "&#39;");
               }}
+              const formatChineseDateTime = typeof contractApi.formatChineseDateTime === "function"
+                ? contractApi.formatChineseDateTime
+                : function(value) {{ return value || "-"; }};
+              const publicSourceLabel = typeof contractApi.publicSourceLabel === "function"
+                ? contractApi.publicSourceLabel
+                : function(value) {{ return value || "-"; }};
+              const publicPriorityLabel = typeof contractApi.publicPriorityLabel === "function"
+                ? contractApi.publicPriorityLabel
+                : function(value) {{ return value || "-"; }};
+              const publicStatusLabel = typeof contractApi.publicStatusLabel === "function"
+                ? contractApi.publicStatusLabel
+                : function(value) {{ return value || "-"; }};
 
               const lines = [
                 `<div class="title">${{escapeHtml(meta._raw_name || task.name || "")}}</div>`,
-                `<div class="subtitle">时间：${{escapeHtml(task.start || "-")}} ～ ${{escapeHtml(task.end || "-")}}</div>`,
+                `<div class="subtitle">时间：${{escapeHtml(formatChineseDateTime(task.start || "-"))}} ～ ${{escapeHtml(formatChineseDateTime(task.end || "-"))}}</div>`,
                 `<div class="subtitle">批次：${{escapeHtml(meta.batch_id || "-")}}</div>`,
                 `<div class="subtitle">件：${{escapeHtml(meta.piece_id || "-")}}</div>`,
                 `<div class="subtitle">图号：${{escapeHtml(meta.part_no || "-")}}</div>`,
                 `<div class="subtitle">工序：${{escapeHtml(meta.seq || "-")}}（${{escapeHtml(meta.op_type_name || "-")}}）</div>`,
                 `<div class="subtitle">设备：${{escapeHtml(meta.machine || "-")}}</div>`,
                 `<div class="subtitle">人员：${{escapeHtml(meta.operator || "-")}}</div>`,
-                `<div class="subtitle">来源：${{escapeHtml(meta.source || "-")}}</div>`,
-                `<div class="subtitle">关键链：${{escapeHtml(criticalInfo.statusLabel)}}｜超期：${{meta.is_overdue ? "是" : "否"}}</div>`,
-                `<div class="subtitle">关键链前驱：${{escapeHtml(criticalInfo.predecessorText)}}｜类型：${{escapeHtml(criticalInfo.edgeTypeText)}}｜间隔(分)：${{escapeHtml(criticalInfo.gapText)}}</div>`,
-                `<div class="subtitle">关键链依据：${{escapeHtml(criticalInfo.reasonText)}}</div>`,
+                `<div class="subtitle">加工方式：${{escapeHtml(publicSourceLabel(meta.source))}}</div>`,
+                `<div class="subtitle">状态：${{escapeHtml(publicStatusLabel(meta.status))}}</div>`,
+                `<div class="subtitle">优先级：${{escapeHtml(publicPriorityLabel(meta.priority))}}</div>`,
+                `<div class="subtitle">交期：${{escapeHtml(formatChineseDateTime(meta.due_date || "-"))}}</div>`,
+                `<div class="subtitle">关键工序：${{escapeHtml(criticalInfo.statusLabel)}}｜超期：${{meta.is_overdue ? "是" : "否"}}</div>`,
               ];
+              if (criticalInfo.isCritical && criticalInfo.predecessorText !== "-") {{
+                lines.push(`<div class="subtitle">前面影响它的工序编号：${{escapeHtml(criticalInfo.predecessorText)}}</div>`);
+              }}
+              if (criticalInfo.isCritical && criticalInfo.reasonText !== "-") {{
+                lines.push(`<div class="subtitle">为什么影响总工期：${{escapeHtml(criticalInfo.reasonText)}}</div>`);
+              }}
+              if (criticalInfo.isCritical && criticalInfo.gapText !== "-") {{
+                lines.push(`<div class="subtitle">中间等待：${{escapeHtml(criticalInfo.gapText)}}</div>`);
+              }}
               if (criticalInfo.unavailableMessage) {{
-                lines.push(`<div class="subtitle">关键链降级：${{escapeHtml(criticalInfo.unavailableMessage)}}</div>`);
+                lines.push(`<div class="subtitle">关键链暂不可用：${{escapeHtml(criticalInfo.unavailableMessage)}}</div>`);
               }}
               return lines.join("");
             }}
@@ -298,7 +320,9 @@ def build_preview_client_bootstrap(
 
             const normalizedChain = contractApi.normalizeCriticalChain(chain);
             const ccCount = normalizedChain && normalizedChain.idSet ? normalizedChain.idSet.size : 0;
-            const makespanEnd = norm(chain && chain.makespan_end) || "-";
+            const makespanEnd = norm(chain && chain.makespan_end)
+              ? contractApi.formatChineseDateTime(chain.makespan_end)
+              : "-";
             const calendarDayList = Array.isArray(days) ? days : [];
             const holidayCount = calendarDayList.filter((day) => day && (day.is_holiday || day.is_nonworking)).length;
             const calendarBackgroundDisabled = calendarDayList.length === 0
@@ -306,7 +330,7 @@ def build_preview_client_bootstrap(
 
             const summaryRow = row();
             const summary = document.createElement("span");
-            summary.textContent = `任务 ${{(renderList || []).length}} · 关键链 ${{ccCount}} · 完工 ${{makespanEnd}} · 假期/停工 ${{holidayCount}} · 箭头 ${{contractApi.getArrowModeLabel("critical", chain)}} · ${{contractApi.getCriticalStatusLabel(chain)}}`;
+            summary.textContent = `任务 ${{(renderList || []).length}} · 关键工序 ${{ccCount}} · 完工 ${{makespanEnd}} · 假期/停工 ${{holidayCount}} · 箭头 ${{contractApi.getArrowModeLabel("critical", chain)}} · ${{contractApi.getCriticalStatusLabel(chain)}}`;
             summaryRow.appendChild(summary);
             legend.appendChild(summaryRow);
 
@@ -338,7 +362,7 @@ def build_preview_client_bootstrap(
             markRow.appendChild(item("超期", {{ background: "#ffffff", borderColor: "#ef4444", borderWidth: 2.5 }}));
             const criticalMarkerDisabled = normalizedChain && normalizedChain.available === false;
             markRow.appendChild(item(
-              criticalMarkerDisabled ? "关键链(停用)" : "关键链",
+              criticalMarkerDisabled ? "关键工序(停用)" : "关键工序",
               {{ background: "#ffffff", borderColor: criticalMarkerDisabled ? "#94a3b8" : "#38bdf8", borderWidth: 2.5 }}
             ));
             markRow.appendChild(item("外协", {{ background: "#ffffff", borderColor: "#334155", borderWidth: 1.5, borderStyle: "dashed" }}));

@@ -21,6 +21,7 @@
   {% set base_week_start = week_start %}
   {% set base_start_date = start_date %}
   {% set base_end_date = end_date %}
+  {% set display_range = (week_start_display or week_start) ~ ' ～ ' ~ (week_end_display or week_end) %}
   {% set current_plan_role = plan_role or 'adopted' %}
   {% set current_plan_label = plan_resolution.selected_label if plan_resolution else '最终采用' %}
 
@@ -34,7 +35,7 @@
   {% if not has_history %}
   <div class="card aps-empty-state">
     {{ ui.aps_context_bar([
-      {'label': '显示范围', 'value': week_start ~ ' ～ ' ~ week_end},
+      {'label': '显示范围', 'value': display_range},
       {'label': '版本', 'value': (('第 ' ~ version ~ ' 版') if version is not none else '暂无排产版本')},
       {'label': '方案', 'value': current_plan_label}
     ]) }}
@@ -52,7 +53,7 @@
   {% else %}
   <div class="card">
     {{ ui.aps_context_bar([
-      {'label': '显示范围', 'value': week_start ~ ' ～ ' ~ week_end},
+      {'label': '显示范围', 'value': display_range},
       {'label': '版本', 'value': (('第 ' ~ version ~ ' 版') if version is not none else '暂无排产版本')},
       {'label': '方案', 'value': current_plan_label}
     ]) }}
@@ -76,11 +77,11 @@
         <label>视图</label>
         <div class="aps-form-actions">
           {% if view == 'machine' %}
-            {{ ui.link_button('设备视图', url_for('scheduler.gantt_page', view='machine', version=version, start_date=base_start_date, end_date=base_end_date, plan_role=current_plan_role), 'primary', 'sm') }}
-            {{ ui.link_button('人员视图', url_for('scheduler.gantt_page', view='operator', version=version, start_date=base_start_date, end_date=base_end_date, plan_role=current_plan_role), 'secondary', 'sm') }}
+            {{ ui.link_button('设备视图', url_for('scheduler.gantt_page', view='machine', version=version, start_date=base_start_date, end_date=base_end_date, plan_role=current_plan_role, gantt_zoom=gantt_zoom or 'day'), 'primary', 'sm') }}
+            {{ ui.link_button('人员视图', url_for('scheduler.gantt_page', view='operator', version=version, start_date=base_start_date, end_date=base_end_date, plan_role=current_plan_role, gantt_zoom=gantt_zoom or 'day'), 'secondary', 'sm') }}
           {% else %}
-            {{ ui.link_button('设备视图', url_for('scheduler.gantt_page', view='machine', version=version, start_date=base_start_date, end_date=base_end_date, plan_role=current_plan_role), 'secondary', 'sm') }}
-            {{ ui.link_button('人员视图', url_for('scheduler.gantt_page', view='operator', version=version, start_date=base_start_date, end_date=base_end_date, plan_role=current_plan_role), 'primary', 'sm') }}
+            {{ ui.link_button('设备视图', url_for('scheduler.gantt_page', view='machine', version=version, start_date=base_start_date, end_date=base_end_date, plan_role=current_plan_role, gantt_zoom=gantt_zoom or 'day'), 'secondary', 'sm') }}
+            {{ ui.link_button('人员视图', url_for('scheduler.gantt_page', view='operator', version=version, start_date=base_start_date, end_date=base_end_date, plan_role=current_plan_role, gantt_zoom=gantt_zoom or 'day'), 'primary', 'sm') }}
           {% endif %}
         </div>
       </div>
@@ -97,6 +98,7 @@
 
       <form method="get" action="{{ url_for('scheduler.gantt_page') }}" class="aps-gantt-range-form">
         <input type="hidden" name="view" value="{{ view }}">
+        <input type="hidden" id="ganttZoomFormValue" name="gantt_zoom" value="{{ gantt_zoom or 'day' }}">
         <div class="form-field">
           <label>排产区间（起）</label>
           <input type="date" name="start_date" value="{{ start_date }}" class="w-160">
@@ -135,7 +137,7 @@
       {% if selected_version_row.item %}
         <div class="aps-summary-grid aps-version-summary aps-gantt-version-summary">
           {{ ui.summary_item('版本', 'v' ~ selected_version_row.item.version) }}
-          {{ ui.summary_item('时间', selected_version_row.item.schedule_time) }}
+          {{ ui.summary_item('时间', selected_version_row.item.schedule_time_display or selected_version_row.item.schedule_time) }}
           {{ ui.summary_item('排产方式', selected_version_row.item.strategy_label or strategy_zh.get(selected_version_row.item.strategy, '未知排产方式')) }}
           {{ ui.summary_item('结果', selected_version_row.item.result_status_label or selected_result_status_label or status_zh.get(selected_version_row.item.result_status, '结果状态未知')) }}
         </div>
@@ -148,22 +150,32 @@
       提示：默认按“批次”配色，可在下方切换为按优先级/来源/状态；红色边框表示该批次在该版本中被判定为“超期”。
       若看不到条形，请先在【排产调度】执行排产生成排程数据。
     </p>
+    <div class="flash-card mt-3">
+      当前为查看模式：这里显示排产结果。你可以点击任务条查看详情、筛选、切换配色和缩放时间粒度；拖动或拉伸任务条不会修改计划。模拟调整功能后续单独开放。
+    </div>
     <div id="ganttOverdueWarning" class="flash-card flash-warning mt-3 is-hidden" role="alert" aria-live="polite">
       有些超期红框可能暂时没标出来，排程数据本身还在。请刷新后重试，或到系统管理里的排产历史查看这次排产的详细提醒。
     </div>
     <div id="ganttDegradationWarning" class="flash-card flash-warning mt-3 is-hidden" role="alert" aria-live="polite">
       工作日历加载失败，当前不显示假期/停工背景标注。
     </div>
+    <div id="ganttZoomWarning" class="flash-card flash-warning mt-3 is-hidden" role="alert" aria-live="polite"></div>
 
     <details class="details-panel">
       <summary class="details-summary">筛选与配色</summary>
       <div class="aps-gantt-filter-grid mt-2">
         <div class="aps-gantt-filter-item">
-          <label for="ganttViewMode">时间粒度</label><br/>
-          <select id="ganttViewMode" class="w-180">
-            <option value="Day" selected>日视图</option>
-            <option value="Week">周视图</option>
-            <option value="Month">月视图</option>
+          <label for="ganttZoomLevel">时间粒度</label><br/>
+          <select id="ganttZoomLevel" class="w-180">
+            <option value="month">月</option>
+            <option value="week">周</option>
+            <option value="day" selected>日</option>
+            <option value="half-day">12小时</option>
+            <option value="quarter-day">6小时</option>
+            <option value="hour">小时</option>
+            <option value="fifteen-minute">15分钟</option>
+            <option value="five-minute">5分钟</option>
+            <option value="one-minute">1分钟</option>
           </select>
         </div>
         <div class="aps-gantt-filter-item">
@@ -240,6 +252,8 @@
       data-offset="{{ offset }}"
       data-version="{{ version or '' }}"
       data-plan-role="{{ current_plan_role }}"
+      data-gantt-mode="view"
+      data-zoom-level="{{ gantt_zoom or 'day' }}"
       data-has-history="{{ '1' if has_history else '0' }}"
       data-version-span-start="{{ version_span.start_date if version_span else '' }}"
       data-version-span-end="{{ version_span.end_date if version_span else '' }}"
@@ -254,6 +268,7 @@
   {% if has_history %}
     <script src="{{ url_for('static', filename='js/frappe-gantt.min.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/gantt.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/gantt_zoom.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/gantt_color.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/gantt_outline.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/gantt_contract.js') }}" defer></script>

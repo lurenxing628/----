@@ -49,6 +49,14 @@ const tasks = [
     progress: 0,
     dependencies: "",
   }},
+  {{
+    id: "T36MID",
+    name: "36 minute midnight task",
+    start: "2026-05-11 23:24:00",
+    end: "2026-05-12 00:00:00",
+    progress: 0,
+    dependencies: "",
+  }},
 ];
 
 const gantt = new Gantt("#gantt", tasks, {{ view_mode: "Day" }});
@@ -72,12 +80,26 @@ function snapshot(taskId) {{
   }};
 }}
 
+function clickHit(taskId) {{
+  const wrapper = findWrapperById(taskId);
+  const hit = wrapper.querySelector(".bar-hit");
+  const evt = document.createEvent("HTMLEvents");
+  evt.initEvent("click", true, true);
+  hit.dispatchEvent(evt);
+  return {{
+    active: wrapper.classList.contains("active"),
+    popupOpacity: document.querySelector("#gantt .popup-wrapper").style.opacity,
+  }};
+}}
+
 const initial = {{
   T36: snapshot("T36"),
   T51: snapshot("T51"),
   T73: snapshot("T73"),
+  T36MID: snapshot("T36MID"),
 }};
 
+const shortTaskClick = clickHit("T36");
 const bar36 = gantt.get_bar("T36");
 bar36.update_bar_position({{ width: 0.5 }});
 const resized = snapshot("T36");
@@ -86,6 +108,7 @@ const movedToZero = snapshot("T36");
 
 process.stdout.write(JSON.stringify({{
   initial,
+  shortTaskClick,
   resized,
   movedToZero,
 }}));
@@ -96,9 +119,10 @@ process.stdout.write(JSON.stringify({{
     assert abs(initial["T36"]["width"] - 0.95) < 0.001
     assert abs(initial["T51"]["width"] - 1.3616666667) < 0.001
     assert abs(initial["T73"]["width"] - 1.9316666667) < 0.001
+    assert abs(initial["T36MID"]["width"] - 0.95) < 0.001
     assert abs((initial["T51"]["x"] - initial["T36"]["x"]) - 1.3616666667) < 0.001
 
-    for task_id in ("T36", "T51", "T73"):
+    for task_id in ("T36", "T51", "T73", "T36MID"):
         task = initial[task_id]
         assert task["width"] > 0
         assert task["hitWidth"] >= 12
@@ -106,25 +130,151 @@ process.stdout.write(JSON.stringify({{
         assert task["startDeltaMs"] == 0
         assert task["endDeltaMs"] == 0
 
+    assert result["shortTaskClick"]["active"] is True
+    assert str(result["shortTaskClick"]["popupOpacity"]) == "1"
     assert result["resized"]["width"] == 0.5
     assert result["resized"]["hitWidth"] >= 12
     assert result["movedToZero"]["x"] == 0
+
+
+def test_frappe_gantt_supports_hour_and_minute_zoom_geometry() -> None:
+    helpers = _load_gantt_dom_helpers()
+    node_code = f"""
+{helpers.DOM_SHIM_JS}
+createHost("gantt");
+loadScript({helpers._vendor_js()});
+
+const modes = [
+  ["Hour", 60, 48, 36 * 48 / 60],
+  ["Fifteen Minute", 15, 32, 36 * 32 / 15],
+  ["Five Minute", 5, 24, 36 * 24 / 5],
+  ["One Minute", 1, 18, 36 * 18],
+];
+
+const results = modes.map(([mode, stepMinutes, columnWidth, expectedWidth]) => {{
+  const host = createHost("gantt_" + mode.replace(/\\s+/g, "_"));
+  const gantt = new Gantt(host, [{{
+    id: "T36",
+    name: "36 minute task",
+    start: "2026-05-11 08:00:00",
+    end: "2026-05-11 08:36:00",
+    progress: 0,
+    dependencies: "",
+  }}], {{ view_mode: mode }});
+  const bar = gantt.get_bar("T36");
+  return {{
+    mode,
+    stepMinutes: gantt.options.step_minutes,
+    columnWidth: gantt.options.column_width,
+    dateDeltaMs: gantt.dates[1] - gantt.dates[0],
+    width: Number(bar.$bar.getAttribute("width")),
+    expectedWidth,
+    startDeltaMs: bar.compute_start_end_date().new_start_date - bar.task._start,
+    endDeltaMs: bar.compute_start_end_date().new_end_date - bar.task._end,
+  }};
+}});
+
+process.stdout.write(JSON.stringify({{ results }}));
+"""
+    result = helpers._run_node_json(node_code)
+
+    for item in result["results"]:
+        assert item["stepMinutes"] in (60, 15, 5, 1)
+        assert item["dateDeltaMs"] == item["stepMinutes"] * 60 * 1000
+        assert abs(item["width"] - item["expectedWidth"]) < 0.001
+        assert item["startDeltaMs"] == 0
+        assert item["endDeltaMs"] == 0
+
+
+def test_short_task_width_matrix_covers_all_readonly_zoom_levels_and_midnight_edges() -> None:
+    helpers = _load_gantt_dom_helpers()
+    node_code = f"""
+{helpers.DOM_SHIM_JS}
+loadScript({helpers._vendor_js()});
+
+const modes = [
+  "Month",
+  "Week",
+  "Day",
+  "Half Day",
+  "Quarter Day",
+  "Hour",
+  "Fifteen Minute",
+  "Five Minute",
+  "One Minute",
+];
+const taskSpecs = [
+  ["T36", "2026-05-11 08:00:00", "2026-05-11 08:36:00", 36],
+  ["T51", "2026-05-11 00:05:00", "2026-05-11 00:56:00", 51],
+  ["T73", "2026-05-11 10:00:00", "2026-05-11 11:13:00", 73],
+  ["T30CROSS", "2026-05-11 23:45:00", "2026-05-12 00:15:00", 30],
+  ["T36MID", "2026-05-11 23:24:00", "2026-05-12 00:00:00", 36],
+];
+const out = [];
+
+for (const mode of modes) {{
+  const host = createHost("gantt_" + mode.replace(/\\s+/g, "_"));
+  const tasks = taskSpecs.map(([id, start, end]) => ({{
+    id,
+    name: id,
+    start,
+    end,
+    progress: 0,
+    dependencies: "",
+  }}));
+  const gantt = new Gantt(host, tasks, {{ view_mode: mode }});
+  for (const [id, start, end, minutes] of taskSpecs) {{
+    const bar = gantt.get_bar(id);
+    const width = Number(bar.$bar.getAttribute("width"));
+    const expectedWidth = minutes / gantt.options.step_minutes * gantt.options.column_width;
+    const dates = bar.compute_start_end_date();
+    out.push({{
+      mode,
+      id,
+      width,
+      expectedWidth,
+      hitWidth: Number(bar.$bar_hit.getAttribute("width")),
+      stepMinutes: gantt.options.step_minutes,
+      startDeltaMs: dates.new_start_date - bar.task._start,
+      endDeltaMs: dates.new_end_date - bar.task._end,
+      rawStart: start,
+      rawEnd: end,
+    }});
+  }}
+}}
+
+process.stdout.write(JSON.stringify({{ out }}));
+"""
+    result = helpers._run_node_json(node_code)
+
+    assert len(result["out"]) == 9 * 5
+    for item in result["out"]:
+      assert item["width"] > 0, f"{item['mode']} {item['id']} width should stay visible"
+      assert abs(item["width"] - item["expectedWidth"]) < 0.001, item
+      assert item["hitWidth"] >= 12
+      assert item["startDeltaMs"] == 0, item
+      assert item["endDeltaMs"] == 0, item
 
 
 def test_short_task_fix_stays_inside_vendor_time_geometry() -> None:
     vendor_js = (REPO_ROOT / "static" / "js" / "frappe-gantt.min.js").read_text(encoding="utf-8")
     render_js = (REPO_ROOT / "static" / "js" / "gantt_render.js").read_text(encoding="utf-8")
 
-    assert "this.duration=(this.task._end-this.task._start)/36e5/this.gantt.options.step" in vendor_js
+    assert "this.duration=(this.task._end-this.task._start)/(this.gantt.options.step_ms||36e5*this.gantt.options.step)" in vendor_js
     assert "compute_start_end_date(){const t=this.$bar" in vendor_js
-    assert "new Date(this.gantt.gantt_start.getTime()+e*s)" in vendor_js
+    assert "this.gantt.options.step_ms||36e5*this.gantt.options.step" in vendor_js
     assert "draw_hitbox()" in vendor_js
+    assert "t._end_is_date_only" in vendor_js
+    assert "Fifteen Minute" in vendor_js
+    assert "One Minute" in vendor_js
     assert ".bar-hit" not in render_js
     assert "min-width" not in render_js
 
 
 def main() -> None:
     test_frappe_gantt_keeps_short_tasks_visible_and_draggable()
+    test_frappe_gantt_supports_hour_and_minute_zoom_geometry()
+    test_short_task_width_matrix_covers_all_readonly_zoom_levels_and_midnight_edges()
     test_short_task_fix_stays_inside_vendor_time_geometry()
     print("OK")
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
 from core.models.scheduler_history_parser import (
@@ -29,6 +30,33 @@ _VERSION_OPTION_STATUS_LABELS = {
     "partial": "部分成功",
     "failed": "失败",
     "unknown": "有问题，需检查",
+}
+
+_MONTH_NAMES = {
+    "jan": 1,
+    "january": 1,
+    "feb": 2,
+    "february": 2,
+    "mar": 3,
+    "march": 3,
+    "apr": 4,
+    "april": 4,
+    "may": 5,
+    "jun": 6,
+    "june": 6,
+    "jul": 7,
+    "july": 7,
+    "aug": 8,
+    "august": 8,
+    "sep": 9,
+    "sept": 9,
+    "september": 9,
+    "oct": 10,
+    "october": 10,
+    "nov": 11,
+    "november": 11,
+    "dec": 12,
+    "december": 12,
 }
 
 
@@ -70,6 +98,82 @@ def strict_strategy_display_label(value: Any) -> str:
     return _STRATEGY_LABELS[raw]
 
 
+def _public_date_parts(year: Any, month: Any, day: Any) -> str:
+    return f"{int(year)}年{int(month)}月{int(day)}日"
+
+
+def _public_datetime_parts(year: Any, month: Any, day: Any, hour: Any, minute: Any) -> str:
+    return f"{_public_date_parts(year, month, day)} {int(hour):02d}:{int(minute):02d}"
+
+
+def _parse_public_date_parts(value: Any) -> Optional[Dict[str, int]]:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return {
+            "year": value.year,
+            "month": value.month,
+            "day": value.day,
+            "hour": value.hour,
+            "minute": value.minute,
+            "has_time": True,
+        }
+    if isinstance(value, date):
+        return {
+            "year": value.year,
+            "month": value.month,
+            "day": value.day,
+            "hour": 0,
+            "minute": 0,
+            "has_time": False,
+        }
+    text = str(value or "").strip()
+    if not text:
+        return None
+    import re
+
+    iso = re.match(
+        r"^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::\d{1,2}(?:\.\d+)?)?)?",
+        text,
+    )
+    if iso:
+        return {
+            "year": int(iso.group(1)),
+            "month": int(iso.group(2)),
+            "day": int(iso.group(3)),
+            "hour": int(iso.group(4) or 0),
+            "minute": int(iso.group(5) or 0),
+            "has_time": bool(iso.group(4)),
+        }
+    rfc = re.match(r"^(?:[A-Za-z]{3},\s*)?(\d{1,2})\s+([A-Za-z]{3,9})\s+(\d{4})\s+(\d{1,2}):(\d{2})", text)
+    if rfc:
+        month = _MONTH_NAMES.get(rfc.group(2).lower())
+        if month:
+            return {
+                "year": int(rfc.group(3)),
+                "month": month,
+                "day": int(rfc.group(1)),
+                "hour": int(rfc.group(4)),
+                "minute": int(rfc.group(5)),
+                "has_time": True,
+            }
+    return None
+
+
+def format_public_date(value: Any) -> str:
+    parts = _parse_public_date_parts(value)
+    if not parts:
+        return str(value or "").strip() or "-"
+    return _public_date_parts(parts["year"], parts["month"], parts["day"])
+
+
+def format_public_datetime(value: Any) -> str:
+    parts = _parse_public_date_parts(value)
+    if not parts:
+        return str(value or "").strip() or "-"
+    return _public_datetime_parts(parts["year"], parts["month"], parts["day"], parts["hour"], parts["minute"])
+
+
 def parse_state_from_result(result: ResultSummaryParseResult) -> Dict[str, Any]:
     user_message = _PARSE_USER_MESSAGES.get(result.reason) if result.parse_failed else None
     state = result.to_parse_state(user_message=user_message)
@@ -103,6 +207,7 @@ def decorate_history_version_options(versions: Any) -> List[Dict[str, Any]]:
         row["strategy_label"] = strategy_state["label"]
         row["strategy_display_state"] = strategy_state["state"]
         row["strategy_display_message"] = strategy_state["message"]
+        row["schedule_time_display"] = format_public_datetime(row.get("schedule_time"))
         version_text = str(row.get("version") or "").strip()
         result_state = display_state.get("result_state") if isinstance(display_state, dict) else None
         outcome_status = str((result_state or {}).get("outcome_status") or "").strip()
@@ -129,6 +234,8 @@ def build_history_summary_display(
 __all__ = [
     "build_history_summary_display",
     "decorate_history_version_options",
+    "format_public_date",
+    "format_public_datetime",
     "parse_history_summary_state",
     "parse_state_from_result",
     "parsed_history_summary_payload",

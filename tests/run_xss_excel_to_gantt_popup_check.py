@@ -108,26 +108,35 @@ def _excel_preview_confirm(
  
 def _run_node_check(*, repo_root: str, hit_task_path: str) -> Dict[str, Any]:
     gantt_core_js = os.path.join(repo_root, "static", "js", "gantt.js")
+    gantt_contract_js = os.path.join(repo_root, "static", "js", "gantt_contract.js")
     gantt_render_js = os.path.join(repo_root, "static", "js", "gantt_render.js")
     if not os.path.exists(gantt_core_js):
         raise RuntimeError(f"missing {gantt_core_js}")
+    if not os.path.exists(gantt_contract_js):
+        raise RuntimeError(f"missing {gantt_contract_js}")
     if not os.path.exists(gantt_render_js):
         raise RuntimeError(f"missing {gantt_render_js}")
  
     node_code = r"""
 const fs = require("fs");
+const vm = require("vm");
  
 const corePath = String(process.env.APS_GANTT_JS || "");
+const contractPath = String(process.env.APS_GANTT_CONTRACT_JS || "");
 const renderPath = String(process.env.APS_GANTT_RENDER_JS || "");
 const taskPath = String(process.env.APS_HIT_TASK_JSON || "");
 const xss = String(process.env.APS_XSS || "");
  
-if (!corePath || !renderPath || !taskPath) {
-  console.error("missing env APS_GANTT_JS/APS_GANTT_RENDER_JS/APS_HIT_TASK_JSON");
+if (!corePath || !contractPath || !renderPath || !taskPath) {
+  console.error("missing env APS_GANTT_JS/APS_GANTT_CONTRACT_JS/APS_GANTT_RENDER_JS/APS_HIT_TASK_JSON");
   process.exit(2);
 }
  
 const code = fs.readFileSync(corePath, "utf8") + "\n" + fs.readFileSync(renderPath, "utf8");
+global.window = global.window || {};
+vm.runInThisContext(fs.readFileSync(contractPath, "utf8"), { filename: contractPath });
+const contractApi = global.window.__APS_GANTT__ && global.window.__APS_GANTT__.contract;
+if (!contractApi) throw new Error("missing APS gantt contract api");
 const task = JSON.parse(fs.readFileSync(taskPath, "utf8"));
  
 function escapeRe(s) {
@@ -217,7 +226,11 @@ eval(escapeSrc);
  
 function norm(v) { return str(v).trim(); }
 function statusKeyForTask(_task) { return "pending"; }
-const state = { ccIdSet: new Set() };
+const state = { ccIdSet: new Set(), critical: { ids: [], edges: [], available: true } };
+const getCriticalTooltip = contractApi.getCriticalTooltip;
+const publicSourceLabel = contractApi.publicSourceLabel;
+const publicPriorityLabel = contractApi.publicPriorityLabel;
+const formatChineseDateTime = contractApi.formatChineseDateTime;
  
 const customPopup = (eval("(" + popupSrc + ")"));
  
@@ -246,6 +259,7 @@ process.stdout.write(JSON.stringify(result));
  
     env = dict(os.environ)
     env["APS_GANTT_JS"] = gantt_core_js
+    env["APS_GANTT_CONTRACT_JS"] = gantt_contract_js
     env["APS_GANTT_RENDER_JS"] = gantt_render_js
     env["APS_HIT_TASK_JSON"] = hit_task_path
     env["APS_XSS"] = XSS

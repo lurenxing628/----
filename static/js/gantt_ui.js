@@ -12,6 +12,8 @@
   var state = ns.state;
   var safeDecorateDynamic = ns.safeDecorateDynamic;
   var render = ns.render;
+  var zoom = ns.zoom;
+  var show = ns.show;
 
   if (typeof $ !== "function") return;
   if (typeof on !== "function") return;
@@ -20,10 +22,64 @@
   if (!state) return;
   if (typeof safeDecorateDynamic !== "function") return;
   if (typeof render !== "function") return;
+  if (!zoom || typeof zoom.normalizeZoomLevel !== "function" || typeof zoom.getZoomSpec !== "function") return;
+
+  function setZoomWarning(message) {
+    const el = $("ganttZoomWarning");
+    if (!el) return;
+    el.textContent = message || "";
+    if (typeof show === "function") {
+      show(el, !!message);
+    }
+  }
+
+  function setUrlZoomWarning(message) {
+    state.ui.zoomWarningMessage = message || "";
+    setZoomWarning(state.ui.zoomWarningMessage);
+  }
+
+  function syncZoomCarriers(level) {
+    const normalized = zoom.normalizeZoomLevel(level || "day");
+    const hidden = $("ganttZoomFormValue");
+    if (hidden) hidden.value = normalized;
+
+    document.querySelectorAll("a").forEach(function (link) {
+      let url;
+      try {
+        url = new URL(link.getAttribute("href") || "", window.location.origin);
+      } catch (_) {
+        return;
+      }
+      if (url.pathname !== "/scheduler/gantt") return;
+      if (normalized === "day") {
+        url.searchParams.delete("gantt_zoom");
+      } else {
+        url.searchParams.set("gantt_zoom", normalized);
+      }
+      link.setAttribute("href", url.pathname + url.search + url.hash);
+    });
+  }
+
+  function zoomControl() {
+    return $("ganttZoomLevel") || $("ganttViewMode");
+  }
+
+  function legacyViewModeToZoom(value) {
+    return zoom.normalizeZoomLevel(value || "day");
+  }
+
+  function applyZoomToState(rawValue) {
+    const level = zoom.normalizeZoomLevel(rawValue || (state.ui && state.ui.zoomLevel) || "day");
+    const spec = zoom.getZoomSpec(level);
+    state.ui.zoomLevel = level;
+    state.ui.viewMode = spec.frappeViewMode || "Day";
+    syncZoomCarriers(level);
+    return level;
+  }
 
   function readUi() {
-    const viewModeRaw = norm($("ganttViewMode") && $("ganttViewMode").value) || "Day";
-    state.ui.viewMode = (viewModeRaw === "Week" || viewModeRaw === "Month") ? viewModeRaw : "Day";
+    const zoomRaw = norm(zoomControl() && zoomControl().value) || "day";
+    applyZoomToState(zoomRaw);
     state.ui.colorMode = norm($("ganttColorMode") && $("ganttColorMode").value) || "batch";
     state.ui.filterBatch = norm($("ganttFilterBatch") && $("ganttFilterBatch").value);
     state.ui.filterResource = norm($("ganttFilterResource") && $("ganttFilterResource").value);
@@ -51,11 +107,19 @@
     } catch (_) {
       return;
     }
-    const vm = params.get("gantt_vm") || params.get("view_mode");
-    if (vm) {
-      const el = $("ganttViewMode");
-      if (el && (vm === "Day" || vm === "Week" || vm === "Month")) el.value = vm;
+    const zoomParam = params.get("gantt_zoom");
+    const legacyVm = params.get("gantt_vm") || params.get("view_mode");
+    let level = "";
+    if (zoomParam || legacyVm) {
+      level = zoomParam ? zoom.normalizeZoomLevel(zoomParam) : legacyViewModeToZoom(legacyVm || "");
+      const isKnown = !zoomParam || typeof zoom.isKnownZoomLevel !== "function" || zoom.isKnownZoomLevel(zoomParam);
+      setUrlZoomWarning(isKnown ? "" : "链接里的时间粒度无法识别，已切回日视图。");
+    } else {
+      level = applyZoomToState((state.ui && state.ui.zoomLevel) || "day");
+      setUrlZoomWarning("");
     }
+    const zoomEl = zoomControl();
+    if (zoomEl) zoomEl.value = level;
     const cm = params.get("gantt_color");
     if (cm) {
       const el = $("ganttColorMode");
@@ -105,7 +169,10 @@
       if (isDefault) url.searchParams.delete(key);
       else url.searchParams.set(key, String(val));
     };
-    setOrDelete("gantt_vm", ui.viewMode || "Day", !ui.viewMode || ui.viewMode === "Day");
+    const level = zoom.normalizeZoomLevel(ui.zoomLevel || ui.viewMode || "day");
+    setOrDelete("gantt_zoom", level, level === "day");
+    url.searchParams.delete("gantt_vm");
+    url.searchParams.delete("view_mode");
     setOrDelete("gantt_color", ui.colorMode || "batch", !ui.colorMode || ui.colorMode === "batch");
     setOrDelete("gantt_batch", ui.filterBatch || "", !ui.filterBatch);
     setOrDelete("gantt_resource", ui.filterResource || "", !ui.filterResource);
@@ -130,8 +197,8 @@
       on(resetBtn, "click", function () {
         state.focusBatch = "";
 
-        const vm = $("ganttViewMode");
-        if (vm) vm.value = "Day";
+        const vm = zoomControl();
+        if (vm) vm.value = "day";
         const cm = $("ganttColorMode");
         if (cm) cm.value = "batch";
         const fb = $("ganttFilterBatch");
@@ -148,6 +215,7 @@
         const hc = $("ganttHighlightCC");
         if (hc) hc.checked = true;
 
+        setUrlZoomWarning("");
         readUi();
         persistUiToUrl();
         render();
@@ -160,6 +228,7 @@
     function scheduleFullRender() {
       if (timerFull) clearTimeout(timerFull);
       timerFull = setTimeout(function () {
+        setUrlZoomWarning("");
         readUi();
         persistUiToUrl();
         render();
@@ -182,7 +251,7 @@
     });
 
     // 数据集合/依赖类：必须全量 render
-    ["ganttViewMode", "ganttOnlyOverdue", "ganttOnlyExternal", "ganttDepsMode"].forEach((id) => {
+    ["ganttZoomLevel", "ganttViewMode", "ganttOnlyOverdue", "ganttOnlyExternal", "ganttDepsMode"].forEach((id) => {
       const el = $(id);
       if (el) on(el, "change", scheduleFullRender);
     });
@@ -200,4 +269,3 @@
   ns.persistUiToUrl = persistUiToUrl;
   ns.bindUi = bindUi;
 })();
-

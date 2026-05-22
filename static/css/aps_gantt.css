@@ -67,6 +67,15 @@
   filter: drop-shadow(0 6px 14px rgba(15, 23, 42, 0.18));
 }
 
+#gantt[data-gantt-mode="view"] .gantt .handle {
+  display: none;
+}
+
+#gantt[data-gantt-mode="view"] .gantt .bar-wrapper,
+#gantt[data-gantt-mode="view"] .gantt .bar-hit {
+  cursor: pointer;
+}
+
 /* label inside bar */
 .gantt .bar-label {
   font-size: 12px;
@@ -368,6 +377,7 @@
   opacity: 0.55;
 }
 
+#ganttZoomLevel,
 #ganttViewMode,
 #ganttColorMode,
 #ganttDepsMode,
@@ -381,6 +391,7 @@
   border-radius: 8px;
   outline: none;
 }
+#ganttZoomLevel:focus,
 #ganttViewMode:focus,
 #ganttColorMode:focus,
 #ganttDepsMode:focus,
@@ -543,6 +554,7 @@ html[data-theme="dark"] .aps-gantt-check-group label {
   }
 }
 
+html[data-theme="dark"] #ganttZoomLevel,
 html[data-theme="dark"] #ganttViewMode,
 html[data-theme="dark"] #ganttColorMode,
 html[data-theme="dark"] #ganttDepsMode,
@@ -552,6 +564,7 @@ html[data-theme="dark"] #ganttFilterResource {
   border-color: var(--ui-border, #334155);
   color: var(--ui-text, #f1f5f9);
 }
+html[data-theme="dark"] #ganttZoomLevel:focus,
 html[data-theme="dark"] #ganttViewMode:focus,
 html[data-theme="dark"] #ganttColorMode:focus,
 html[data-theme="dark"] #ganttDepsMode:focus,
@@ -561,6 +574,7 @@ html[data-theme="dark"] #ganttFilterResource:focus {
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
 }
 
+html[data-theme="dark"] #ganttZoomLevel option,
 html[data-theme="dark"] #ganttViewMode option,
 html[data-theme="dark"] #ganttColorMode option,
 html[data-theme="dark"] #ganttDepsMode option,

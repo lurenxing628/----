@@ -75,7 +75,7 @@ def test_gantt_page_without_range_uses_selected_version_span(tmp_path, monkeypat
     assert 'data-start-date="2026-05-11"' in html
     assert 'data-end-date="2026-05-16"' in html
     assert 'data-range-source="version_span"' in html
-    assert "2026-05-11 ～ 2026-05-16" in html
+    assert "2026年5月11日 ～ 2026年5月16日" in html
     assert 'name="week_start"' not in html
 
 

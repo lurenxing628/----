@@ -22,6 +22,7 @@
   var getColor = ns.getColor;
   var outlineApi = ns.outline;
   var contractApi = ns.contract;
+  var zoomApi = ns.zoom;
 
   if (typeof $ !== "function") return;
   if (typeof show !== "function") return;
@@ -32,6 +33,7 @@
   if (typeof includesI !== "function") return;
   if (!outlineApi) return;
   if (!contractApi) return;
+  if (!zoomApi) return;
   if (!state || !_perfState) return;
 
   var setCriticalOutlineEnabled = outlineApi.setCriticalOutlineEnabled;
@@ -41,6 +43,12 @@
   var getCriticalStatusLabel = contractApi.getCriticalStatusLabel;
   var getCriticalTooltip = contractApi.getCriticalTooltip;
   var shouldUseFallbackCalendarDays = contractApi.shouldUseFallbackCalendarDays;
+  var publicSourceLabel = contractApi.publicSourceLabel;
+  var publicPriorityLabel = contractApi.publicPriorityLabel;
+  var formatChineseDateTime = contractApi.formatChineseDateTime;
+  var getZoomSpec = zoomApi.getZoomSpec;
+  var getGanttScale = zoomApi.getGanttScale;
+  var validateZoomRange = zoomApi.validateZoomRange;
 
   if (typeof setCriticalOutlineEnabled !== "function") return;
   if (typeof installCriticalOutlineSyncAdapter !== "function") return;
@@ -49,6 +57,12 @@
   if (typeof getCriticalStatusLabel !== "function") return;
   if (typeof getCriticalTooltip !== "function") return;
   if (typeof shouldUseFallbackCalendarDays !== "function") return;
+  if (typeof publicSourceLabel !== "function") return;
+  if (typeof publicPriorityLabel !== "function") return;
+  if (typeof formatChineseDateTime !== "function") return;
+  if (typeof getZoomSpec !== "function") return;
+  if (typeof getGanttScale !== "function") return;
+  if (typeof validateZoomRange !== "function") return;
 
   // ---- render/decorate cache (Win7 友好：减少不必要的全量重渲染) ----
   let _renderToken = 0; // 每次全量 render() + new Gantt() 递增
@@ -206,7 +220,8 @@
     // 关键链：后端为“全版本口径”；当前页面仅展示本窗口 tasks 的子集
     const ccTotal = state.ccIdSet ? state.ccIdSet.size : 0;
     const ccVisible = criticalVisibleCount();
-    const makespanEnd = norm(state.critical && state.critical.makespan_end) || "-";
+    const rawMakespanEnd = norm(state.critical && state.critical.makespan_end);
+    const makespanEnd = rawMakespanEnd ? formatChineseDateTime(rawMakespanEnd) : "-";
     const ccStatusText = getCriticalStatusLabel(state.critical);
     const ccUnavailable = !!(state.critical && state.critical.available === false);
     const ccCacheText = ccUnavailable
@@ -225,7 +240,7 @@
     const digest = [
       state.filteredTasks.length,
       state.allTasks.length,
-      state.ui.viewMode || "Day",
+      _currentZoomLevel(),
       state.ui.colorMode || "batch",
       state.ui.depsMode || "critical",
       ccTotal,
@@ -243,15 +258,16 @@
 
     // Row 1: summary
     const r1 = row();
-    const vmZh = {"Day": "日", "Week": "周", "Month": "月"}[state.ui.viewMode] || "日";
+    const zoomSpec = getZoomSpec(_currentZoomLevel());
+    const vmZh = zoomSpec.label || "日";
     r1.appendChild(summaryItem("显示", `${state.filteredTasks.length}/${state.allTasks.length}`));
     r1.appendChild(summaryItem("视图", vmZh));
     r1.appendChild(summaryItem("配色", modeText()));
     r1.appendChild(summaryItem("箭头", arrowText()));
-    r1.appendChild(summaryItem("关键链（全版本/本窗口可见）", `${ccTotal}/${ccVisible}`));
+    r1.appendChild(summaryItem("关键工序（全部/本页）", `${ccTotal}/${ccVisible}`));
     r1.appendChild(summaryItem("完工", makespanEnd));
     r1.appendChild(summaryItem("状态", ccStatusText));
-    r1.appendChild(summaryItem("关键链数据", ccCacheText));
+    r1.appendChild(summaryItem("关键工序计算", ccCacheText));
     el.appendChild(r1);
 
     // Row 2: color legend
@@ -287,9 +303,9 @@
     }
     r3.appendChild(item("超期(红边)", { background: "#ffffff", borderColor: "#ef4444", borderWidth: 2.5 }));
     if (ccUnavailable) {
-      r3.appendChild(item("关键链(停用)", { background: "#ffffff", borderColor: "#94a3b8", borderWidth: 2.5 }));
+      r3.appendChild(item("关键工序(停用)", { background: "#ffffff", borderColor: "#94a3b8", borderWidth: 2.5 }));
     } else {
-      r3.appendChild(item("关键链(外框)", { background: "#ffffff", borderColor: "#38bdf8", borderWidth: 2.5 }));
+      r3.appendChild(item("关键工序(外框)", { background: "#ffffff", borderColor: "#38bdf8", borderWidth: 2.5 }));
     }
     r3.appendChild(item("外协(虚线)", { background: "#ffffff", borderColor: "#334155", borderWidth: 1.5, borderStyle: "dashed" }));
     r3.appendChild(item("非聚焦(变淡)", { background: "#94a3b8", opacity: 0.25 }));
@@ -463,6 +479,135 @@
     return height || 0;
   }
 
+  function _countDependencies(tasks) {
+    let count = 0;
+    const list = Array.isArray(tasks) ? tasks : [];
+    for (let i = 0; i < list.length; i++) {
+      const deps = list[i] && list[i].dependencies;
+      if (Array.isArray(deps)) {
+        count += deps.length;
+      } else if (typeof deps === "string" && deps.trim()) {
+        count += deps.split(",").filter(Boolean).length;
+      }
+    }
+    return count;
+  }
+
+  function _parseLocalTaskDate(value) {
+    if (value instanceof Date && !isNaN(value.getTime())) return value;
+    const text = norm(value);
+    if (!text) return null;
+    const match = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2})(?:\.\d+)?)?)?/.exec(text);
+    if (match) {
+      return new Date(
+        Number(match[1]),
+        Number(match[2]) - 1,
+        Number(match[3]),
+        Number(match[4] || 0),
+        Number(match[5] || 0),
+        Number(match[6] || 0),
+        0
+      );
+    }
+    const parsed = new Date(text);
+    return isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  function _localDateText(value) {
+    if (!(value instanceof Date) || isNaN(value.getTime())) return "";
+    const month = value.getMonth() + 1;
+    const day = value.getDate();
+    return [
+      value.getFullYear(),
+      month < 10 ? "0" + month : String(month),
+      day < 10 ? "0" + day : String(day),
+    ].join("-");
+  }
+
+  function _localEndDateText(value) {
+    if (!(value instanceof Date) || isNaN(value.getTime())) return "";
+    if (
+      value.getHours() === 0 &&
+      value.getMinutes() === 0 &&
+      value.getSeconds() === 0 &&
+      value.getMilliseconds() === 0
+    ) {
+      return _localDateText(new Date(value.getTime() - 1));
+    }
+    return _localDateText(value);
+  }
+
+  function _taskDateBounds(tasks) {
+    const list = Array.isArray(tasks) ? tasks : [];
+    let minDate = null;
+    let maxDate = null;
+    for (let i = 0; i < list.length; i++) {
+      const start = _parseLocalTaskDate(list[i] && list[i].start);
+      const end = _parseLocalTaskDate(list[i] && list[i].end);
+      if (start && (!minDate || start < minDate)) minDate = start;
+      if (end && (!maxDate || end > maxDate)) maxDate = end;
+    }
+    return {
+      startDate: _localDateText(minDate),
+      endDate: _localEndDateText(maxDate),
+    };
+  }
+
+  function _mergeDateBounds(primaryStart, primaryEnd, secondaryStart, secondaryEnd) {
+    const starts = [_parseLocalTaskDate(primaryStart), _parseLocalTaskDate(secondaryStart)].filter(Boolean);
+    const ends = [_parseLocalTaskDate(primaryEnd), _parseLocalTaskDate(secondaryEnd)].filter(Boolean);
+    const start = starts.length ? starts.reduce((a, b) => (b < a ? b : a), starts[0]) : null;
+    const end = ends.length ? ends.reduce((a, b) => (b > a ? b : a), ends[0]) : null;
+    return {
+      startDate: _localDateText(start),
+      endDate: _localDateText(end),
+    };
+  }
+
+  function _setZoomWarning(message, visible) {
+    const el = $("ganttZoomWarning");
+    if (!el) return;
+    el.textContent = message || "";
+    show(el, !!visible);
+  }
+
+  function _currentZoomLevel() {
+    const ui = state.ui || {};
+    const rawZoom = norm(ui.zoomLevel || "");
+    const rawViewMode = norm(ui.viewMode || "");
+    if (rawViewMode && rawViewMode !== "Day" && (!rawZoom || rawZoom === "day")) {
+      return rawViewMode;
+    }
+    return rawZoom || rawViewMode || "day";
+  }
+
+  function _validateRenderZoom(tasks) {
+    const cfg = state.cfg || {};
+    const taskBounds = _taskDateBounds(tasks);
+    const rangeBounds = _mergeDateBounds(
+      cfg.startDate || cfg.weekStart || cfg.versionSpanStart || "",
+      cfg.endDate || cfg.versionSpanEnd || cfg.weekStart || "",
+      taskBounds.startDate,
+      taskBounds.endDate
+    );
+    const result = validateZoomRange({
+      zoomLevel: _currentZoomLevel(),
+      startDate: rangeBounds.startDate,
+      endDate: rangeBounds.endDate,
+      taskCount: Array.isArray(tasks) ? tasks.length : 0,
+      dependencyCount: _countDependencies(tasks),
+      holidayMarkerCount: Array.isArray(state.calendarDays) ? state.calendarDays.length : 0,
+    });
+    if (result && result.message) {
+      _setZoomWarning(result.message, true);
+    } else if (state.ui && state.ui.zoomWarningMessage) {
+      _setZoomWarning(state.ui.zoomWarningMessage, true);
+    } else {
+      _setZoomWarning("", false);
+    }
+    return result;
+  }
+
   function renderHolidayColumns() {
     const gantt = state.gantt;
     if (!gantt || !gantt.gantt_start || !gantt.options) return;
@@ -497,11 +642,12 @@
     }
     if (sameDigest && sameHeight) return;
 
-    const step = Number(gantt.options.step) || 24;
-    const col = Number(gantt.options.column_width) || 38;
+    const scale = getGanttScale(gantt);
+    const stepMinutes = scale.stepMinutes;
+    const col = scale.columnWidth;
     const start = gantt.gantt_start;
     const NS = "http://www.w3.org/2000/svg";
-    const frag = document.createDocumentFragment();
+    const rects = [];
 
     for (let i = 0; i < days.length; i++) {
       const d = days[i] || {};
@@ -514,22 +660,24 @@
       const dt = new Date(dateStr + " 00:00:00");
       if (isNaN(dt.getTime())) continue;
 
-      const diffHours = (dt.getTime() - start.getTime()) / 3600000.0;
-      const x = (diffHours / step) * col;
+      const diffMinutes = (dt.getTime() - start.getTime()) / 60000.0;
+      const x = (diffMinutes / stepMinutes) * col;
 
       const rect = document.createElementNS(NS, "rect");
       rect.setAttribute("x", String(Math.floor(x)));
       rect.setAttribute("y", "0");
-      rect.setAttribute("width", String(col));
+      rect.setAttribute("width", String(scale.dayWidth));
       rect.setAttribute("height", String(height || 0));
       rect.setAttribute("class", isNonworking ? "aps-holiday-rect aps-nonworking" : "aps-holiday-rect");
       rect.setAttribute("data-date", dateStr);
-      frag.appendChild(rect);
+      rects.push(rect);
     }
 
     try {
       layer.textContent = "";
-      layer.appendChild(frag);
+      for (let i = 0; i < rects.length; i++) {
+        layer.appendChild(rects[i]);
+      }
     } catch (_) {
       // ignore
     }
@@ -544,8 +692,9 @@
       if (container && gantt && gantt.gantt_start) {
         const anchor = norm(cfg.startDate || cfg.weekStart || "");
         const target = new Date(anchor + " 00:00:00");
-        const diffHours = (target.getTime() - gantt.gantt_start.getTime()) / 3600000.0;
-        const px = (diffHours / gantt.options.step) * gantt.options.column_width - gantt.options.column_width;
+        const scale = getGanttScale(gantt);
+        const diffMinutes = (target.getTime() - gantt.gantt_start.getTime()) / 60000.0;
+        const px = (diffMinutes / scale.stepMinutes) * scale.columnWidth - scale.columnWidth;
         container.scrollLeft = Math.max(0, Math.floor(px));
       }
     } catch (_) {
@@ -651,6 +800,8 @@
         if (!t) return;
         const meta = t.meta || {};
         const isExternal = norm(meta.source) === "external";
+        const isOverdue = meta.is_overdue === true || w.classList.contains("overdue");
+        w.classList.toggle("overdue", isOverdue);
         w.classList.toggle("aps-external", isExternal);
       });
       // 旧版本残留：全局清理（避免逐 wrapper 扫描）
@@ -853,9 +1004,27 @@
 
     const tasks = buildRenderTasks();
     state.currentTasks = tasks;
+    const zoomCheck = _validateRenderZoom(tasks);
+    if (zoomCheck && zoomCheck.ok === false) {
+      state.gantt = null;
+      _resetDecorCache();
+      updateLegend();
+      return;
+    }
+    const zoomSpec = getZoomSpec(_currentZoomLevel());
+    if (host && host.dataset) {
+      host.dataset.ganttMode = state.ui && state.ui.mode ? state.ui.mode : "view";
+      host.dataset.zoomLevel = zoomSpec.level || "day";
+    }
 
     const gantt = new Gantt("#gantt", tasks, {
-      view_mode: (state.ui && state.ui.viewMode) ? state.ui.viewMode : "Day",
+      view_mode: zoomSpec.frappeViewMode || ((state.ui && state.ui.viewMode) ? state.ui.viewMode : "Day"),
+      step_minutes: zoomSpec.stepMinutes,
+      step_ms: zoomSpec.stepMinutes * 60 * 1000,
+      column_width: zoomSpec.columnWidthPx,
+      readonly: true,
+      readonly_dates: true,
+      readonly_progress: true,
       language: "zh",
       popup_trigger: "click",
       on_click: function (task) {
@@ -875,8 +1044,8 @@
 
         // XSS 防御：所有动态字段必须 HTML 转义后再拼接
         const titleText = escapeHtml(str(meta._raw_name || (task && task.name ? task.name : "")));
-        const startText = escapeHtml(str(task && task.start ? task.start : ""));
-        const endText = escapeHtml(str(task && task.end ? task.end : ""));
+        const startText = escapeHtml(formatChineseDateTime(task && task.start ? task.start : ""));
+        const endText = escapeHtml(formatChineseDateTime(task && task.end ? task.end : ""));
         const batchText = escapeHtml(str(meta.batch_id || "-"));
         const pieceText = escapeHtml(str(meta.piece_id || "-"));
         const partText = escapeHtml(str(meta.part_no || "-"));
@@ -884,13 +1053,12 @@
         const opTypeText = escapeHtml(str(meta.op_type_name || "-"));
         const machineText = escapeHtml(str(meta.machine || "-"));
         const operatorText = escapeHtml(str(meta.operator || "-"));
-        const sourceText = escapeHtml(str(meta.source || "-"));
+        const sourceText = escapeHtml(publicSourceLabel(meta.source));
         const statusText = escapeHtml(str(skZh));
-        const priorityText = escapeHtml(str(meta.priority || "-"));
-        const dueText = escapeHtml(str(meta.due_date || "-"));
+        const priorityText = escapeHtml(publicPriorityLabel(meta.priority));
+        const dueText = escapeHtml(formatChineseDateTime(meta.due_date));
         const ccStatusText = escapeHtml(str(criticalInfo.statusLabel));
         const ccFromText = escapeHtml(str(criticalInfo.predecessorText));
-        const ccTypeText = escapeHtml(str(criticalInfo.edgeTypeText));
         const ccReasonText = escapeHtml(str(criticalInfo.reasonText));
         const ccGapText = escapeHtml(str(criticalInfo.gapText));
         const ccUnavailableText = escapeHtml(str(criticalInfo.unavailableMessage));
@@ -904,17 +1072,22 @@
           `<div class="subtitle">工序：${seqText}（${opTypeText}）</div>`,
           `<div class="subtitle">设备：${machineText}</div>`,
           `<div class="subtitle">人员：${operatorText}</div>`,
-          `<div class="subtitle">来源：${sourceText}</div>`,
+          `<div class="subtitle">加工方式：${sourceText}</div>`,
           `<div class="subtitle">状态：${statusText}</div>`,
           `<div class="subtitle">优先级：${priorityText}</div>`,
           `<div class="subtitle">交期：${dueText}</div>`,
-          `<div class="subtitle">关键链：${ccStatusText}</div>`,
+          `<div class="subtitle">关键工序：${ccStatusText}</div>`,
           `<div class="subtitle">超期：${meta.is_overdue ? "是" : "否"}</div>`,
-          `<div class="subtitle">关键链前驱：${ccFromText}</div>`,
-          `<div class="subtitle">类型：${ccTypeText}</div>`,
-          `<div class="subtitle">间隔（分钟）：${ccGapText}</div>`,
-          `<div class="subtitle">关键链依据：${ccReasonText}</div>`,
         ];
+        if (criticalInfo.isCritical && ccFromText !== "-") {
+          lines.push(`<div class="subtitle">前面影响它的工序编号：${ccFromText}</div>`);
+        }
+        if (criticalInfo.isCritical && ccReasonText !== "-") {
+          lines.push(`<div class="subtitle">为什么影响总工期：${ccReasonText}</div>`);
+        }
+        if (criticalInfo.isCritical && ccGapText !== "-") {
+          lines.push(`<div class="subtitle">中间等待：${ccGapText}</div>`);
+        }
         if (ccUnavailableText) {
           lines.push(`<div class="subtitle">关键链暂不可用：${ccUnavailableText}</div>`);
         }

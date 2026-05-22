@@ -14,7 +14,11 @@ from web.routes.history_summary_logging import (
     log_history_version_option_parse_warnings,
 )
 from web.ui_mode import render_ui_template as render_template
-from web.viewmodels.scheduler_history_summary import build_history_summary_display, decorate_history_version_options
+from web.viewmodels.scheduler_history_summary import (
+    build_history_summary_display,
+    decorate_history_version_options,
+    format_public_date,
+)
 
 from .scheduler_bp import bp
 
@@ -112,6 +116,7 @@ def gantt_page():
     start_date = (request.args.get("start_date") or "").strip() or None
     end_date = (request.args.get("end_date") or "").strip() or None
     plan_role = _get_plan_role_arg()
+    gantt_zoom = (request.args.get("gantt_zoom") or "day").strip() or "day"
     services = g.services
     effective_offset = _get_effective_offset_for_display_range(start_date=start_date, end_date=end_date)
     svc = services.gantt_service
@@ -148,6 +153,8 @@ def gantt_page():
         view=view,
         week_start=wr.week_start_date.isoformat(),
         week_end=wr.week_end_date.isoformat(),
+        week_start_display=format_public_date(wr.week_start_date),
+        week_end_display=format_public_date(wr.week_end_date),
         start_date=wr.week_start_date.isoformat(),
         end_date=wr.week_end_date.isoformat(),
         offset=effective_offset,
@@ -163,6 +170,7 @@ def gantt_page():
         version_span=version_span,
         range_source=range_source,
         data_url=url_for("scheduler.gantt_data"),
+        gantt_zoom=gantt_zoom,
     )
 
 

@@ -231,6 +231,8 @@
     overdueMarkersMessage: "",
     // 默认：按批次配色；高亮关键工序；只显示关键工序关系线，避免全图线条过密。
     ui: {
+      mode: "view",
+      zoomLevel: "day",
       viewMode: "Day",
       colorMode: "batch",
       filterBatch: "",

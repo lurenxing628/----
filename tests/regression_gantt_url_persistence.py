@@ -1,10 +1,21 @@
 from __future__ import annotations
 
+import importlib.util
+import json
 import os
 import sqlite3
 import sys
 import tempfile
-from urllib.parse import parse_qs, urlparse
+
+
+def _load_gantt_dom_helpers(repo_root: str):
+    helper_path = os.path.join(repo_root, "tests", "regression_gantt_critical_outline_sync.py")
+    spec = importlib.util.spec_from_file_location("regression_gantt_critical_outline_sync", helper_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load gantt DOM helper from {helper_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _find_repo_root() -> str:
@@ -31,6 +42,124 @@ def _setup_runtime() -> str:
 def _assert_true(cond: bool, msg: str) -> None:
     if not cond:
         raise RuntimeError(msg)
+
+
+def _assert_js_url_contract(repo_root: str) -> None:
+    helpers = _load_gantt_dom_helpers(repo_root)
+    node_code = f"""
+{helpers.DOM_SHIM_JS}
+
+function makeControl(tag, id, value) {{
+  const el = document.createElement(tag);
+  el.setAttribute("id", id);
+  el.value = value || "";
+  el.options = [];
+  document.body.appendChild(el);
+  return el;
+}}
+
+makeControl("select", "ganttZoomLevel", "day");
+makeControl("select", "ganttColorMode", "batch");
+makeControl("select", "ganttFilterBatch", "");
+makeControl("select", "ganttFilterResource", "");
+makeControl("input", "ganttOnlyOverdue", "");
+makeControl("input", "ganttOnlyExternal", "");
+makeControl("select", "ganttDepsMode", "critical");
+makeControl("input", "ganttHighlightCC", "").checked = true;
+makeControl("input", "ganttZoomFormValue", "day");
+createHost("ganttZoomWarning");
+const link = document.createElement("a");
+link.setAttribute("href", "/scheduler/gantt?view=operator&version=1");
+document.body.appendChild(link);
+
+window.location.href = "http://local.test/scheduler/gantt?gantt_zoom=fifteen-minute&gantt_color=status&gantt_batch=B001&gantt_resource=MC01&gantt_overdue=1&gantt_external=1&gantt_deps=process&gantt_hcc=0";
+window.history = {{
+  replaceState: function (_state, _title, url) {{
+    window.location.href = String(url);
+  }},
+}};
+
+loadScript({json.dumps(os.path.join(repo_root, "static", "js", "gantt.js"))});
+window.__APS_GANTT__.safeDecorateDynamic = function () {{}};
+window.__APS_GANTT__.render = function () {{}};
+loadScript({json.dumps(os.path.join(repo_root, "static", "js", "gantt_zoom.js"))});
+loadScript({json.dumps(os.path.join(repo_root, "static", "js", "gantt_ui.js"))});
+
+const ns = window.__APS_GANTT__;
+ns.applyUiFromUrl();
+ns.readUi();
+const fromNewUrl = {{
+  zoomControl: document.getElementById("ganttZoomLevel").value,
+  zoomLevel: ns.state.ui.zoomLevel,
+  viewMode: ns.state.ui.viewMode,
+  color: ns.state.ui.colorMode,
+  batch: ns.state.ui.filterBatch,
+  resource: ns.state.ui.filterResource,
+  hiddenZoom: document.getElementById("ganttZoomFormValue").value,
+  linkHref: link.getAttribute("href"),
+  overdue: ns.state.ui.onlyOverdue,
+  external: ns.state.ui.onlyExternal,
+  deps: ns.state.ui.depsMode,
+  hcc: ns.state.ui.highlightCC,
+}};
+
+ns.persistUiToUrl();
+const persisted = window.location.href;
+
+window.location.href = "http://local.test/scheduler/gantt?gantt_vm=Week";
+document.getElementById("ganttZoomLevel").value = "day";
+ns.applyUiFromUrl();
+ns.readUi();
+const legacyWeek = {{ zoomLevel: ns.state.ui.zoomLevel, viewMode: ns.state.ui.viewMode }};
+
+window.location.href = "http://local.test/scheduler/gantt?gantt_zoom=bad-value";
+document.getElementById("ganttZoomLevel").value = "one-minute";
+ns.applyUiFromUrl();
+ns.readUi();
+ns.persistUiToUrl();
+ns.render();
+const invalid = {{
+  zoomLevel: ns.state.ui.zoomLevel,
+  warning: document.getElementById("ganttZoomWarning").textContent || "",
+}};
+
+window.location.href = "http://local.test/scheduler/gantt";
+ns.state.ui.zoomLevel = "five-minute";
+document.getElementById("ganttZoomLevel").value = "day";
+ns.applyUiFromUrl();
+ns.readUi();
+const fromDataState = {{
+  zoomControl: document.getElementById("ganttZoomLevel").value,
+  zoomLevel: ns.state.ui.zoomLevel,
+  viewMode: ns.state.ui.viewMode,
+}};
+
+process.stdout.write(JSON.stringify({{ fromNewUrl, persisted, legacyWeek, invalid, fromDataState }}));
+"""
+    result = helpers._run_node_json(node_code)
+    _assert_true(result["fromNewUrl"]["zoomControl"] == "fifteen-minute", "gantt_zoom 没有写入缩放控件")
+    _assert_true(result["fromNewUrl"]["zoomLevel"] == "fifteen-minute", "gantt_zoom 没有进入 state.ui.zoomLevel")
+    _assert_true(result["fromNewUrl"]["viewMode"] == "Fifteen Minute", "gantt_zoom 没有映射到 Frappe view mode")
+    _assert_true(result["fromNewUrl"]["color"] == "status", "gantt_color 没有进入 state")
+    _assert_true(result["fromNewUrl"]["batch"] == "B001", "gantt_batch 没有进入 state")
+    _assert_true(result["fromNewUrl"]["resource"] == "MC01", "gantt_resource 没有进入 state")
+    _assert_true(result["fromNewUrl"]["hiddenZoom"] == "fifteen-minute", "查询表单没有同步 gantt_zoom")
+    _assert_true(
+        "gantt_zoom=fifteen-minute" in result["fromNewUrl"]["linkHref"],
+        "设备/人员视图链接没有同步 gantt_zoom",
+    )
+    _assert_true(result["fromNewUrl"]["overdue"] is True, "gantt_overdue 没有进入 state")
+    _assert_true(result["fromNewUrl"]["external"] is True, "gantt_external 没有进入 state")
+    _assert_true(result["fromNewUrl"]["deps"] == "process", "gantt_deps 没有进入 state")
+    _assert_true(result["fromNewUrl"]["hcc"] is False, "gantt_hcc 没有进入 state")
+    _assert_true("gantt_zoom=fifteen-minute" in result["persisted"], "persistUiToUrl 没有保留新 zoom")
+    _assert_true("gantt_vm=" not in result["persisted"], "persistUiToUrl 没有清理旧 gantt_vm")
+    _assert_true(result["legacyWeek"]["zoomLevel"] == "week", "旧 gantt_vm=Week 没有兼容到 week")
+    _assert_true(result["legacyWeek"]["viewMode"] == "Week", "旧 gantt_vm=Week 没有兼容到 Frappe Week")
+    _assert_true(result["invalid"]["zoomLevel"] == "day", "非法 gantt_zoom 没有回到 day")
+    _assert_true("无法识别" in result["invalid"]["warning"], "非法 gantt_zoom 真实启动后没有保留提示")
+    _assert_true(result["fromDataState"]["zoomControl"] == "five-minute", "无 URL 参数时没有把 data/state zoom 写回控件")
+    _assert_true(result["fromDataState"]["zoomLevel"] == "five-minute", "无 URL 参数时 state zoom 被控件默认值覆盖")
 
 
 def main() -> None:
@@ -60,7 +189,11 @@ def main() -> None:
     resp = client.get("/scheduler/gantt?view=machine&week_start=2026-03-02&version=1")
     _assert_true(resp.status_code == 200, f"GET /scheduler/gantt 返回 {resp.status_code}")
     html = resp.data.decode("utf-8", errors="ignore")
-    _assert_true('id="ganttViewMode"' in html, "缺少 ganttViewMode 控件")
+    _assert_true('id="ganttZoomLevel"' in html, "缺少 ganttZoomLevel 控件")
+    _assert_true('id="ganttZoomFormValue"' in html, "缺少用于加载表单延续 gantt_zoom 的隐藏字段")
+    _assert_true('id="ganttZoomWarning"' in html, "缺少 ganttZoomWarning 提示")
+    _assert_true('data-gantt-mode="view"' in html, "缺少甘特图查看模式标记")
+    _assert_true('data-zoom-level="' in html, "缺少甘特图缩放等级标记")
     _assert_true('id="ganttColorMode"' in html, "缺少 ganttColorMode 控件")
     _assert_true('id="ganttFilterBatch"' in html, "缺少 ganttFilterBatch 控件")
 
@@ -71,7 +204,7 @@ def main() -> None:
     for needle in (
         "function applyUiFromUrl()",
         "function persistUiToUrl()",
-        "gantt_vm",
+        "gantt_zoom",
         "gantt_color",
         "gantt_batch",
         "gantt_resource",
@@ -84,17 +217,12 @@ def main() -> None:
 
     # 轻量级语义检查：确保默认值会被删除，不污染 URL
     # 这里不执行浏览器，仅验证 key 设计与默认值逻辑存在
-    _assert_true('ui.viewMode === "Day"' in src, "viewMode 默认值清理逻辑缺失")
+    _assert_true('level === "day"' in src, "gantt_zoom 默认值清理逻辑缺失")
+    _assert_true('url.searchParams.delete("gantt_vm")' in src, "旧 gantt_vm 清理逻辑缺失")
     _assert_true('ui.colorMode === "batch"' in src, "colorMode 默认值清理逻辑缺失")
     _assert_true('ui.depsMode === "critical"' in src, "depsMode 默认值清理逻辑缺失")
 
-    # 参数名称稳定性检查：避免未来改名导致分享链接失效
-    sample = "https://local.test/scheduler/gantt?gantt_vm=Week&gantt_color=status&gantt_batch=B001&gantt_overdue=1"
-    parsed = parse_qs(urlparse(sample).query)
-    _assert_true(parsed.get("gantt_vm", [""])[0] == "Week", "gantt_vm 解析异常")
-    _assert_true(parsed.get("gantt_color", [""])[0] == "status", "gantt_color 解析异常")
-    _assert_true(parsed.get("gantt_batch", [""])[0] == "B001", "gantt_batch 解析异常")
-    _assert_true(parsed.get("gantt_overdue", [""])[0] == "1", "gantt_overdue 解析异常")
+    _assert_js_url_contract(repo_root)
 
     print("OK")
 

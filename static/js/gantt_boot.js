@@ -204,6 +204,8 @@
         offset: ds.offset || 0,
         version: ds.version || "",
         planRole: ds.planRole || "",
+        ganttMode: ds.ganttMode || "view",
+        zoomLevel: ds.zoomLevel || "day",
         hasHistory: ds.hasHistory || "",
         versionSpanStart: ds.versionSpanStart || "",
         versionSpanEnd: ds.versionSpanEnd || "",
@@ -212,6 +214,8 @@
       };
     })();
     state.cfg = cfg;
+    state.ui.mode = norm(cfg.ganttMode || "view") || "view";
+    state.ui.zoomLevel = norm(cfg.zoomLevel || "day") || "day";
     const emptyEl = $("ganttEmpty");
     const errEl = $("ganttError");
     show(emptyEl, false);

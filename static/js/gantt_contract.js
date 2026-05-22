@@ -163,10 +163,116 @@
 
   function getCriticalEdgeTypeLabel(edgeType) {
     var text = norm(edgeType);
-    if (text === "process") return "工艺前驱";
-    if (text === "machine") return "设备前驱";
-    if (text === "operator") return "人员前驱";
-    return "控制前驱";
+    if (text === "process") return "要等上一道工序完成";
+    if (text === "machine") return "同一设备前面还有任务";
+    if (text === "operator") return "同一人员前面还有任务";
+    return "前面任务会影响开工";
+  }
+
+  function publicCriticalEdgeReason(reason, edgeType) {
+    var raw = norm(reason);
+    var type = norm(edgeType);
+    if (!raw || raw === "控制前驱") return getCriticalEdgeTypeLabel(type);
+    if (raw === "工艺前驱" || raw === "process") return getCriticalEdgeTypeLabel("process");
+    if (raw === "设备前驱" || raw === "machine") return getCriticalEdgeTypeLabel("machine");
+    if (raw === "人员前驱" || raw === "operator") return getCriticalEdgeTypeLabel("operator");
+    if (raw === "资源前驱（设备）") return getCriticalEdgeTypeLabel("machine");
+    if (raw === "资源前驱（人员）") return getCriticalEdgeTypeLabel("operator");
+    if (raw.indexOf("资源前驱") >= 0) return getCriticalEdgeTypeLabel(type);
+    if (/^[A-Za-z0-9_.:-]+$/.test(raw)) return getCriticalEdgeTypeLabel(type);
+    return raw;
+  }
+
+  function publicGapLabel(gapMinutes) {
+    if (gapMinutes === null || typeof gapMinutes === "undefined" || gapMinutes === "") return "-";
+    var num = Number(gapMinutes);
+    if (isNaN(num)) return "等待时间暂无法识别";
+    var text = Math.round(num) === num ? String(num) : String(Math.round(num * 100) / 100);
+    if (num === 0) return "0 分钟（紧接前一道）";
+    return text + " 分钟";
+  }
+
+  function publicSourceLabel(source) {
+    var text = norm(source);
+    if (!text) return "-";
+    if (text === "internal") return "自制";
+    if (text === "external") return "外协";
+    if (/^[A-Za-z0-9_.:-]+$/.test(text)) return "未识别的加工方式";
+    return text;
+  }
+
+  function publicPriorityLabel(priority) {
+    var text = norm(priority);
+    if (!text) return "-";
+    if (text === "normal") return "普通";
+    if (text === "urgent") return "急件";
+    if (text === "critical") return "特急";
+    if (text === "low") return "较低";
+    if (/^[A-Za-z0-9_.:-]+$/.test(text)) return "未识别的优先级";
+    return text;
+  }
+
+  function publicStatusLabel(status) {
+    var text = norm(status);
+    if (!text) return "-";
+    if (text === "done" || text === "completed" || text === "finished") return "已完成";
+    if (text === "in_progress" || text === "running") return "进行中";
+    if (text === "blocked") return "阻塞";
+    if (text === "pending" || text === "scheduled" || text === "not_started") return "未开始";
+    if (/^[A-Za-z0-9_.:-]+$/.test(text)) return "未识别的状态";
+    return text;
+  }
+
+  function _pad2(value) {
+    var num = Number(value) || 0;
+    return num < 10 ? ("0" + num) : String(num);
+  }
+
+  function _monthNumber(mon) {
+    var text = norm(mon).toLowerCase();
+    var names = {
+      jan: 1, january: 1,
+      feb: 2, february: 2,
+      mar: 3, march: 3,
+      apr: 4, april: 4,
+      may: 5,
+      jun: 6, june: 6,
+      jul: 7, july: 7,
+      aug: 8, august: 8,
+      sep: 9, sept: 9, september: 9,
+      oct: 10, october: 10,
+      nov: 11, november: 11,
+      dec: 12, december: 12,
+    };
+    return names[text] || 0;
+  }
+
+  function _formatDateParts(year, month, day, hour, minute) {
+    return String(Number(year)) + "年" + String(Number(month)) + "月" + String(Number(day)) + "日 "
+      + _pad2(hour) + ":" + _pad2(minute);
+  }
+
+  function formatChineseDateTime(value) {
+    if (value === null || typeof value === "undefined" || value === "") return "-";
+    if (value instanceof Date && !isNaN(value.getTime())) {
+      return _formatDateParts(value.getFullYear(), value.getMonth() + 1, value.getDate(), value.getHours(), value.getMinutes());
+    }
+    var text = norm(value);
+    if (!text) return "-";
+    var iso = /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::\d{1,2}(?:\.\d+)?)?)?/.exec(text);
+    if (iso) {
+      return _formatDateParts(iso[1], iso[2], iso[3], iso[4] || 0, iso[5] || 0);
+    }
+    var rfc = /^(?:[A-Za-z]{3},\s*)?(\d{1,2})\s+([A-Za-z]{3,9})\s+(\d{4})\s+(\d{1,2}):(\d{2})/.exec(text);
+    if (rfc) {
+      var month = _monthNumber(rfc[2]);
+      if (month) return _formatDateParts(rfc[3], month, rfc[1], rfc[4], rfc[5]);
+    }
+    var parsed = new Date(text);
+    if (!isNaN(parsed.getTime())) {
+      return _formatDateParts(parsed.getFullYear(), parsed.getMonth() + 1, parsed.getDate(), parsed.getHours(), parsed.getMinutes());
+    }
+    return text;
   }
 
   function resolveDependencies(task, visibleIdSet, depsMode, critical) {
@@ -336,9 +442,9 @@
       edgeTypeText: isCritical && meta ? getCriticalEdgeTypeLabel(meta.edge_type) : "-",
       reasonText: cc.available === false
         ? (publicCriticalChainReason(cc.reason, cc.reason_code) || "-")
-        : (isCritical && meta ? (meta.reason || "控制前驱") : "-"),
+        : (isCritical && meta ? publicCriticalEdgeReason(meta.reason, meta.edge_type) : "-"),
       gapText: isCritical && meta && meta.gap_minutes !== null && typeof meta.gap_minutes !== "undefined"
-        ? str(meta.gap_minutes)
+        ? publicGapLabel(meta.gap_minutes)
         : "-",
     };
   }
@@ -347,6 +453,11 @@
     var unavailableMessage = getCriticalChainUnavailableMessage(critical);
     var calendarFailed = isCalendarLoadFailed(payload || {});
     var items = [
+      "查看模式：这里只显示排产结果。可以点击任务条看详情、筛选、切换配色和缩放时间粒度；拖动或拉伸任务条不会修改计划。",
+      "日期范围：按本地自然日计算，开始日从 00:00 开始，结束日整天都算在内。",
+      "时间粒度：月/周/日适合看整体范围；12小时/6小时适合看班次附近；小时/15分钟/5分钟/1分钟适合看短工序的开始和结束时间。",
+      "短工序：时间很短的工序会按真实时长显示，所以条形可能很窄；页面会保留方便点击的区域，点击后仍能看详情。",
+      "范围保护：时间粒度越细，能看的日期范围越短；范围太大时，页面会提示先缩短日期范围或切回更粗的时间粒度，避免浏览器卡顿。",
       "颜色：默认按批次，同批次同色；可切换按优先级/来源/状态。",
       calendarFailed
         ? "假期/停工：工作日历加载失败，当前不显示假期/停工背景标注。"
@@ -354,14 +465,14 @@
       "红边：该批次在该版本中被判定为超期。",
       unavailableMessage
         ? "关键工序：当前不可用，不显示关键工序外框高亮。"
-        : "关键工序：任务条外框高亮，表示这道工序仍在当前版本的关键工序链路上。",
+        : "关键工序：这些工序会直接影响当前版本的最晚完工时间，系统用外框标出。",
       "虚线边框：外协任务。",
       unavailableMessage
         ? "工序关系线：关键工序关系当前停用；可切换为全部工艺关系线或关闭。"
         : "工序关系线：默认只显示关键工序之间的关系线；可切换为全部工艺关系线或关闭。",
       "聚焦：点击任务条可聚焦同批次任务，再次点击取消。",
       "筛选：支持批次/设备/人员筛选，并可叠加仅超期/仅外协。",
-      "关键工序口径：按当前版本的全量排程计算，不随周窗口截断；会综合工艺前后关系、设备和人员占用关系来找最影响总工期的链路。",
+      "关键工序口径：按当前版本的全量排程计算，不随当前页面的日期窗口截断；会综合工艺前后关系、设备和人员占用关系来找最影响总工期的链路。",
     ];
     if (unavailableMessage) {
       items.push("关键链暂不可用：" + unavailableMessage);
@@ -392,6 +503,12 @@
   api.getCriticalChainUnavailableMessage = getCriticalChainUnavailableMessage;
   api.getArrowModeLabel = getArrowModeLabel;
   api.getCriticalEdgeTypeLabel = getCriticalEdgeTypeLabel;
+  api.publicCriticalEdgeReason = publicCriticalEdgeReason;
+  api.publicGapLabel = publicGapLabel;
+  api.publicSourceLabel = publicSourceLabel;
+  api.publicPriorityLabel = publicPriorityLabel;
+  api.publicStatusLabel = publicStatusLabel;
+  api.formatChineseDateTime = formatChineseDateTime;
   api.resolveDependencies = resolveDependencies;
   api.buildRenderTasks = buildRenderTasks;
   api.getCriticalStatusLabel = getCriticalStatusLabel;

@@ -5,8 +5,8 @@ status: active
 created: 2026-05-22
 last_reviewed: 2026-05-22
 tags: [scheduler, gantt, manual-adjustment, zoom, draft-version, win7]
-related_requirements: []
-related_architecture: [.codestable/architecture/ARCHITECTURE.md]
+related_requirements: [.codestable/requirements/gantt-readonly-result-view.md]
+related_architecture: [.codestable/architecture/ARCHITECTURE.md, .codestable/architecture/ui-gantt.md]
 ---
 
 # 甘特图查看、缩放与手工调整路线图
@@ -24,8 +24,9 @@ related_architecture: [.codestable/architecture/ARCHITECTURE.md]
 
 1. 先把甘特图变成明确的**查看模式**，禁掉假拖动。
 2. 再把查看能力做好，尤其是**小时 / 分钟级缩放**。
-3. 再抽出甘特适配层，避免继续直接魔改压缩版 Frappe。
-4. 最后才做**模拟调整、草稿、校验、保存、正式采用**。
+3. 再把短工序点击区、假期背景、今天高亮、关键工序外框和依赖线这些视觉标记全部对齐到当前缩放。
+4. 再加范围保护和 Win7 Chrome 109 压测边界，避免 1 分钟视图把浏览器撑死。
+5. 最后才另开后续主线做**模拟调整、草稿、校验、保存、正式采用**。
 
 大白话说：先让用户看到的东西可信，再让用户看得细，最后再让用户改得安全。
 
@@ -35,16 +36,13 @@ related_architecture: [.codestable/architecture/ARCHITECTURE.md]
 
 | 阶段 | 名称 | 用户看到什么 | 本阶段完成后能证明什么 |
 |---|---|---|---|
+| 0 | 只读基础合同与 vendor 治理 | 用户暂时看不到明显变化，但路线图、测试和本地 Frappe 补丁边界被写清楚 | 后续不会继续在压缩版 Frappe 里散修 |
 | 1 | 查看模式收口 | 甘特图明确显示“查看模式”，条形不能拖动或拉伸，只能点击看详情 | 用户不会再被“假拖动”误导 |
-| 2 | 时间缩放 | 用户可以在日、半天、6 小时、小时、15 分钟、5 分钟、1 分钟之间切换 | 短工序能看清具体小时分钟，不再只能看哪一天 |
-| 3 | 甘特适配层 | 页面行为更稳定，Frappe 细节被包住 | 后续模拟调整不用继续直接改压缩版库 |
-| 4 | 模拟调整入口 | 页面出现“进入模拟调整”，有未保存状态、撤销/放弃按钮，但不直接保存正式计划 | 用户知道调整和查看是两种模式 |
-| 5 | 草稿模型 | 拖动意图能保存成草稿记录，不污染正式版本 | 系统能记住“用户想怎么改” |
-| 6 | 后端校验试算 | 拖动后系统告诉用户能不能放、冲突在哪、影响谁 | 拖动不再只是前端视觉动作 |
-| 7 | 保存模拟版本 | 草稿能保存成模拟版本，可预览甘特图、周计划、资源排班、报表 | 用户可以试排，但正式计划还不变 |
-| 8 | 正式采用 | 用户确认后，模拟版本成为新的正式排产版本 | 所有结果页统一读新版本 |
-| 9 | 文档与压测收口 | 说明书、页面帮助、浏览器压测手册都更新 | 后续能复测、能交接、能培训 |
-| 10 | 组件升级评估 | 验证 Frappe 是否够用，是否需要 Bryntum/DHTMLX | 不靠猜测决定是否换组件 |
+| 2 | 时间缩放 | 用户可以在月、周、日、12 小时、6 小时、小时、15 分钟、5 分钟、1 分钟之间切换 | 短工序能看清具体小时分钟，不再只能看哪一天 |
+| 3 | 缩放后的视觉标记对齐 | 假期/停工背景、今天高亮、关键工序外框、超期红框、外协虚线和依赖线都跟着缩放走 | 用户看到的标记不会因为缩放变成错位提示 |
+| 4 | 范围保护和性能压测 | 细粒度范围太大时先提示缩小范围，不能让页面卡死 | 1 分钟视图在 Win7 Chrome 109 边界下有保护 |
+| 5 | 说明书、页面帮助和 QA 收口 | 文档和页面都说清楚“这里是查看结果，不是正式调整” | 调度员能照着说明复查和培训 |
+| 后续 | 模拟调整 / 草稿 / 场景 / 正式发布 | 另开独立实现主线，不进入第一版只读验收 | 只读甘特图没有验收完成前，不进入拖动编辑 |
 
 ### 为什么必须按这个顺序
 
@@ -62,14 +60,50 @@ related_architecture: [.codestable/architecture/ARCHITECTURE.md]
 
 ### 本轮讨论后的拍板口径
 
-这次讨论里确认：当前 APS 路线图先做到 **小时 / 15 分钟 / 5 分钟 / 1 分钟**。秒级、0.1 秒和精细模式暂时不进入本 roadmap 主线。
+本轮最终拍板：
 
-这个口径的意思是：
+1. 第一版时间缩放支持：
+   月、周、日、12小时、6小时、小时、15分钟、5分钟、1分钟。
 
-- **第一步先让调度员看清楚**：小时、15 分钟、5 分钟、1 分钟已经能覆盖绝大多数短工序查看需求。
-- **不在当前阶段做 0.1 秒**：0.1 秒更像设备采集、PLC、仿真回放或特殊高速节拍场景，不适合作为当前排产甘特图默认能力。
-- **不做精细模式入口**：避免还没把查看模式和分钟级缩放做好，就提前引入更复杂的编辑模式。
-- **后续如果业务真的需要秒级**：另开独立 roadmap 或 spike，不混在这条“查看、缩放、模拟调整”主线里。
+2. 第一版不做：
+   秒级、0.1秒、精细拖动模式、拖动保存、模拟调整正式发布。
+
+3. 时间口径：
+   全部使用本地时间。
+   页面上的日期范围按本地自然日解释：
+   起始日 = 当天 00:00:00
+   结束日 = 当天 23:59:59
+
+4. 只读甘特图完成标准：
+   用户能可信地查看正式排产结果，不能拖动误改；
+   能通过缩放看清短工序的小时/分钟位置；
+   所有视觉标记在缩放后仍对齐；
+   Win7 Chrome 109 / 离线静态资源 / 本地部署边界下不能卡死。
+
+5. 后续模拟调整版本模型：
+   采用 `Draft -> Scenario -> Official Version` 三层模型。
+   草稿和模拟方案不能直接写进正式 `Schedule` / `ScheduleHistory`。
+   只有正式发布时，才分配新的正式版本、复制方案行、写正式历史和审计记录。
+
+这个口径的意思是：第一版不是“能拖动的甘特图”，而是“可信、可缩放、可点击、不卡死的只读排产结果图”。模拟调整只保留方向和合同，等只读甘特图完整验收后再独立启动。
+
+### 权限与审计拍板口径
+
+第一版只读甘特图不新增复杂权限：
+
+- 能访问排产结果页的人，都能查看甘特图、切换缩放、筛选、打开详情。
+- 查看、缩放、筛选不产生审计事件。
+
+后续模拟调整必须分权，不能只靠按钮显隐：
+
+- `gantt.view`：查看正式甘特图、缩放、筛选、打开详情。
+- `gantt.simulation.create`：进入模拟调整，创建 Draft 草稿。
+- `gantt.simulation.save`：把通过校验的草稿保存为 Scenario 模拟方案。
+- `gantt.simulation.publish`：把 Scenario 正式采用为新的 Official Version。
+- `gantt.override_locked`：允许调整锁定工序，默认不给普通调度员。
+- `gantt.admin`：草稿清理、异常回滚、权限兜底。
+
+正式采用不是 `gantt_mode`，而是一类发布动作。它必须二次确认、原因必填、重新校验、确认基准版本未过期、生成新正式版本，并记录 `created_by / published_by / base_version / new_version / change_count / reason`。
 
 ## 3. 范围与明确不做
 
@@ -77,39 +111,44 @@ related_architecture: [.codestable/architecture/ARCHITECTURE.md]
 
 - 甘特图默认查看模式：禁用无效拖动和拉伸，只保留点击详情、筛选、配色、关键链、依赖线等查看能力。
 - 甘特图时间缩放：从当前日/周/月，扩展到适合 APS 的半天、6 小时、小时、15 分钟、5 分钟、1 分钟查看。
-- 甘特图缩放体验：缩放按钮、当前粒度标识、横向滚动、定位到任务、短工序可点击热区、URL 可复现。
-- 甘特图模拟调整：只有进入单独模式后才允许移动工序、拉伸时间、换设备/人员。
-- 调整草稿：拖动后先形成待确认调整清单，不直接改正式排产。
-- 后端校验：检查设备、人员、工序前后、工作日历、停机、物料齐套、交期、锁定工序、版本并发。
-- 模拟版本和正式采用：草稿保存为模拟版本，用户确认后发布成新的正式排产版本。
-- 版本一致性：甘特图、周计划、资源排班、报表、历史页使用同一个版本解析口径。
+- 甘特图缩放体验：第一版使用时间粒度下拉控件、当前粒度标识、横向滚动、定位到任务、短工序可点击热区、URL 可复现。
+- 缩放后的视觉标记：短条命中区、假期/停工背景、今天高亮、关键工序外框、超期红框、外协虚线、依赖线和标签都必须跟缩放同步。
+- 分钟级范围保护：1 分钟第一版不做虚拟滚动，先用范围保护、节点数保护和浏览器压测守住。
+- 只读阶段版本一致性：甘特图只读查看正式排产版本，不新增任何保存、草稿、正式采用动作。
+- 模拟调整后续方向：只保留 Draft / Scenario / Official Version 的边界和合同，不进入第一版只读验收。
 - 用户提示：不说内部算法词，直接说明“哪道工序、为什么不能放、影响谁、下一步怎么办”。
 
 ### 明确不做
 
-- 第一阶段不做“拖动保存”。先把假拖动关掉，避免误导。
-- 第一阶段不替换 Frappe Gantt。继续使用本地静态资源，符合 Win7 离线交付边界。
-- 不做“拖一下直接改旧正式版本”。正式采用必须生成新版本，旧版本不可原地改。
+- 第一版不做“拖动保存”。先把假拖动关掉，避免误导。
+- 第一版不替换 Frappe Gantt。继续使用本地静态资源，符合 Win7 离线交付边界。
+- 第一版不新增 `POST /scheduler/gantt/adjustments/save-draft`，不新增正式采用接口。
+- 第一版不写 `Schedule`，不写 `ScheduleHistory`，不改变正式版本指针。
+- 不做“拖一下直接改旧正式版本”。后续正式采用必须生成新版本，旧版本不可原地改。
 - 不做秒级和 0.1 秒级缩放，不做精细模式。后续如果业务证明需要，另起独立调研和路线。
 - 不在整天、整周、整月视图里渲染过细网格。5 分钟和 1 分钟视图必须有日期范围保护。
 - 不把草稿混进默认正式报表。草稿只能预览，默认报表和车间执行口径仍读正式版本。
-- 不在 roadmap 阶段改业务源码。每条子 feature 后续单独进入 `cs-feat-design` 再实现。
+- 只读甘特图没有验收完成前，不进入拖动编辑。
 - 不引入外部 CDN、在线脚本或必须联网的前端资源。
 
 ## 4. 模块拆分（概设）
 
 ```text
 甘特图查看、缩放与手工调整
+├── 只读基础合同与 vendor 治理：先统一模式、时间、缩放、任务身份和补丁证据
 ├── 查看模式与交互边界：默认只读，禁止假拖动，保留点击详情
-├── 时间缩放与时间尺：小时/15分钟/5分钟/1分钟查看，短工序可读，URL 可复现
-├── 甘特适配层：隔离 Frappe 事件、缩放、点击、拖动、装饰逻辑
-├── 模拟调整入口：把“查看”和“调整”拆成两个模式
-├── 调整草稿模型：记录用户想怎么改，不直接改正式排产
-├── 后端校验与试算：判断能不能放、影响哪些工序、冲突在哪里
-├── 模拟版本预览：草稿保存为模拟版本，但正式计划不变
-├── 正式采用：确认后生成新的正式排产版本
-└── 用户提示与验收手册：按钮、状态、冲突说明、浏览器压测步骤
+├── 时间缩放与时间尺：月/周/日/12小时/6小时/小时/15分钟/5分钟/1分钟查看，短工序可读，URL 可复现
+├── 缩放后的视觉标记对齐：假期、今天、关键工序、超期、外协、依赖线都跟当前时间尺对齐
+├── 性能范围保护：分钟级视图先拦过宽范围和过多节点，不做虚拟滚动大改
+├── 用户提示与验收手册：页面帮助、说明书、浏览器压测步骤和回归测试同步
+└── 后续模拟调整合同：Draft / Scenario / Official Version，只保留方向，不进入第一版只读实现
 ```
+
+### 只读基础合同与 vendor 治理
+
+- **职责**：先把第一版只读甘特图的合同写稳。这里管模式、缩放枚举、本地自然日、任务业务身份、Frappe 本地补丁说明和测试证据。
+- **承载的子 feature**：`gantt-readonly-foundation-contract`
+- **触碰的现有代码 / 模块**：路线图、items、`static/js/gantt_zoom.js`、`templates/scheduler/gantt.html`、`web_new_test/templates/scheduler/gantt.html`、`tests/regression_gantt_critical_outline_sync.py`、`.codestable/vendor/frappe-gantt-local-patches.md`。
 
 ### 查看模式与交互边界
 
@@ -120,52 +159,89 @@ related_architecture: [.codestable/architecture/ARCHITECTURE.md]
 ### 时间缩放与时间尺
 
 - **职责**：让用户能从“看哪一天”放大到“看哪个小时、哪 15 分钟、哪 5 分钟、哪 1 分钟”。它只解决查看清楚，不承担保存排产。
-- **承载的子 feature**：`gantt-time-zoom-readside`
+- **承载的子 feature**：`gantt-readonly-time-zoom`
 - **触碰的现有代码 / 模块**：`templates/scheduler/gantt.html` 的时间粒度控件、`static/js/gantt_ui.js` 的 URL 状态和默认值、`static/js/gantt_render.js` 的渲染与节假日背景、`static/js/frappe-gantt.min.js` 的时间尺和缩放、`static/css/aps_gantt.css` 的横向滚动和标签显示。
 
-### 甘特适配层
+### 缩放后的视觉标记对齐
 
-- **职责**：不让业务页面直接依赖 Frappe 的内部事件名和时间计算。适配层统一暴露“查看、缩放、点击详情、模拟拖动、禁用拖动”等行为，未来换 Bryntum / DHTMLX 时后端合同不重写。
-- **承载的子 feature**：`gantt-adapter-contract`
-- **触碰的现有代码 / 模块**：新增或整理 `static/js/gantt_adapter.js`，收口 `gantt_render.js`、`gantt_ui.js`、`frappe-gantt.min.js` 之间的边界；补前端合同测试。
+- **职责**：缩放以后，所有标记都要仍然指向同一个真实时间。短条的透明点击区只能方便点击，不能把真实工序时长放大；假期、今天、关键工序、超期、外协和依赖线都要跟当前时间尺对齐。
+- **承载的子 feature**：`gantt-readonly-decoration-sync`
+- **触碰的现有代码 / 模块**：`static/js/gantt_render.js`、`static/js/gantt_outline.js`、`static/js/frappe-gantt.min.js`、`tests/regression_gantt_zoom_decoration_sync.py`、`tests/regression_gantt_critical_outline_sync.py`。
 
-### 模拟调整入口
+### 性能范围保护
+
+- **职责**：1 分钟视图第一版不做虚拟滚动，也不换组件。先用日期范围、列数和节点数估算把超宽页面拦住，并把 Win7 Chrome 109 压测步骤写成可复跑手册。
+- **承载的子 feature**：`gantt-readonly-performance-guards`
+- **触碰的现有代码 / 模块**：`static/js/gantt_zoom.js`、`static/js/gantt_render.js`、`static/js/gantt_ui.js`、`templates/scheduler/gantt.html`、`static/css/aps_gantt.css`、`tests/regression_gantt_zoom_range_guard.py`、`docs/dev/aps-browser-scheduler-qa-replay.md`。
+
+### 用户提示与验收手册
+
+- **职责**：把只读查看、缩放、短工序点击区和范围保护写成调度员能看懂的话，页面帮助、说明书和回归测试一起收口。
+- **承载的子 feature**：`gantt-readonly-docs-and-qa`
+- **触碰的现有代码 / 模块**：`static/docs/scheduler_manual.md`、`web/viewmodels/page_manuals_scheduler_outputs.py`、`static/js/gantt_contract.js`、`templates/scheduler/gantt.html`、`web_new_test/templates/scheduler/gantt.html`、`tests/regression_frontend_ui_language_polish.py`。
+
+### 后续模拟调整合同
+
+- **职责**：只保留方向和接口合同。未来模拟调整必须是 Draft → Scenario → Official Version，不能把草稿直接塞进正式排产历史。
+- **承载的后续子 feature**：`gantt-adapter-contract`、`gantt-simulation-entry-shell`、`gantt-adjustment-draft-model`、`gantt-adjustment-validate-simulate`、`gantt-draft-save-and-preview`、`gantt-draft-publish-official-version`、`gantt-component-upgrade-spike`
+- **触碰的现有代码 / 模块**：后续单独进入 feature 流程时再确认；第一版只读甘特图不改数据库、不新增保存接口。
+
+### 模拟调整入口（后续方向）
 
 - **职责**：在页面上明确拆开“查看结果”和“模拟调整”。查看模式不能拖；模拟调整模式才出现拖动、撤销、放弃、保存草稿等工具。
 - **承载的子 feature**：`gantt-simulation-entry-shell`
 - **触碰的现有代码 / 模块**：甘特图模板、CSS、前端状态管理、页面帮助、浏览器验证脚本。
 
-### 调整草稿模型
+### 调整草稿模型（后续方向）
 
 - **职责**：记录“用户想怎么改”。例如把某道工序从 5 月 6 日 10:00 挪到 5 月 6 日 14:30，或者从设备 A 换到设备 B。这些只是草稿，不是正式排产。
 - **承载的子 feature**：`gantt-adjustment-draft-model`
 - **触碰的现有代码 / 模块**：新增数据库表或草稿持久化服务、调度版本查询服务、审计日志摘要、迁移和 schema。
 
-### 后端校验与试算
+### 后端校验与试算（后续方向）
 
 - **职责**：判断一次拖动能不能成立。不能只看开始/结束时间，还要看设备占用、人员占用、工序前后顺序、工作日历、停机、齐套、交期、锁定工序和当前版本是否过期。
 - **承载的子 feature**：`gantt-adjustment-validate-simulate`
 - **触碰的现有代码 / 模块**：`core/services/scheduler/` 下新增调整校验服务，复用 `SchedulePlanQueryService`、工作日历、停机、批次物料和版本解析能力。
 
-### 模拟版本预览
+### Scenario 模拟方案预览（后续方向）
 
-- **职责**：草稿通过校验后保存为模拟版本。用户能预览甘特图、周计划、资源排班和报表，但页面要一直标清“这是模拟版本，正式计划还没有改变”。
+- **职责**：草稿通过校验后保存为 Scenario 模拟方案。用户能预览甘特图、周计划、资源排班和报表，但页面要一直标清“这是模拟方案，正式计划还没有改变”。
 - **承载的子 feature**：`gantt-draft-save-and-preview`
-- **触碰的现有代码 / 模块**：`ScheduleHistory`、`Schedule`、`SchedulePlanQueryService`、甘特图、周计划、资源派工、报表版本选择。
+- **触碰的现有代码 / 模块**：新增 Scenario 存储服务、`SchedulePlanQueryService`、甘特图、周计划、资源派工、报表显式预览入口。
 
-### 正式采用
+### 正式采用（后续方向）
 
-- **职责**：用户确认后，把模拟版本发布成新的正式排产版本。旧版本不原地修改；报表、周计划、资源排班和历史页都按新版本读取。
+- **职责**：用户确认后，把 Scenario 模拟方案发布成新的正式排产版本。旧版本不原地修改；报表、周计划、资源排班和历史页都按新版本读取。
 - **承载的子 feature**：`gantt-draft-publish-official-version`
 - **触碰的现有代码 / 模块**：版本发布服务、历史记录、审计摘要、所有结果页的版本解析。
 
-### 用户提示与验收手册
+### 调整阶段用户提示与验收手册（后续方向）
 
 - **职责**：把复杂规则翻译成调度员能看懂的话，并沉淀浏览器验收脚本和说明书。比如“不能放到这里：设备 M01 在 10:00 到 12:00 已安排 B002 第10道工序”。
 - **承载的子 feature**：`gantt-adjustment-user-guide-and-qa`
 - **触碰的现有代码 / 模块**：`static/docs/scheduler_manual.md`、页面帮助 viewmodel、浏览器 QA 文档、回归测试。
 
 ## 5. 阶段路线详设
+
+### 阶段 0：只读甘特图基础合同与 vendor 治理
+
+**目标**：先统一模式、时间、缩放、任务身份、vendor 补丁管理，避免后续继续在压缩版 Frappe 里散修。
+
+**范围**：
+
+- 定义 `gantt_mode=view`。
+- 定义 `gantt_zoom=month/week/day/half-day/quarter-day/hour/fifteen-minute/five-minute/one-minute`。
+- 定义本地时间与自然日边界。
+- 定义任务业务身份：`base_version + base_plan_role + schedule_id + op_id`。
+- 定义 vendor 文件补丁治理方式。
+- 定义只读甘特图第一版不产生任何保存、草稿、正式采用动作。
+
+**验收**：
+
+- roadmap 和 items.yaml 都写明第一版只读边界。
+- 测试计划里包含短工序、跨天、00:00 end、缩放、只读禁拖、性能范围保护。
+- 明确 `static/js/frappe-gantt.min.js` 的修改必须有合同测试和补丁说明。
 
 ### 阶段 1：查看模式收口
 
@@ -218,7 +294,7 @@ related_architecture: [.codestable/architecture/ARCHITECTURE.md]
   - `15分钟`
   - `5分钟`
   - `1分钟`
-- 增加 `放大`、`缩小`、`适合当前范围`、`回到日视图` 这类按钮。
+- 第一版先用一个“时间粒度”下拉框完成切换；`放大`、`缩小`、`适合当前范围`、`回到日视图` 这类快捷按钮先不做，等只读缩放稳定后再评估。
 - 选中 `小时` 后，顶部时间尺显示当天的小时。
 - 选中 `15分钟` 后，能看清 36 分钟、51 分钟这类短工序的真实长度。
 - 选中 `5分钟` 或 `1分钟` 后，能进一步确认短工序的开始/结束分钟，不需要猜它到底落在哪个小时间隔。
@@ -268,7 +344,99 @@ related_architecture: [.codestable/architecture/ARCHITECTURE.md]
 - 不在这个阶段开放拖动保存。
 - 不做草稿和发布。
 
-### 阶段 3：甘特适配层
+### 阶段 3：缩放后的视觉标记对齐
+
+**目标**：缩放后这些标记都不能错位：短条 hitbox、假期/停工背景、今天高亮、关键工序外框、超期红框、外协虚线、依赖线、标签、横向滚动定位。
+
+**用户看到的变化**：
+
+- 1 分钟、5 分钟、15 分钟视图里，短工序按真实时长显示，但仍然容易点中。
+- 假期/停工背景按整天覆盖，不会在小时/分钟视图里只盖一小格。
+- 今天高亮按整天覆盖。
+- 关键工序外框、超期红框、外协虚线和依赖线跟真实任务条对齐。
+
+**技术路线**：
+
+- `.bar-hit` 只扩大点击区域，不改变 `.bar` 的真实宽度。
+- 假期/停工背景和今天高亮按 `1440 / stepMinutes * columnWidth` 计算一天宽度。
+- 关键工序 outline 继续跟随真实 `.bar`，不跟随透明点击区。
+- 依赖线使用真实 bar 的 x 和 width，避免 `NaN`。
+- 横向滚动定位改成 `diffMinutes / stepMinutes * columnWidth - columnWidth`。
+
+**验收标准**：
+
+- 36 分钟、51 分钟、73 分钟工序在小时/15分钟/5分钟/1分钟视图可见、可点。
+- 跨天短工序、结束在 `00:00:00` 的短工序不会被错误扩成整天。
+- 假期背景、今天高亮、关键工序外框、超期红框、外协虚线和依赖线都能随缩放对齐。
+
+### 阶段 4：分钟级范围保护和性能压测
+
+**目标**：1 分钟视图第一版不做虚拟滚动，不换组件；先用范围保护、节点数保护和浏览器压测守住页面不被撑死。
+
+**范围保护建议**：
+
+| 缩放 | step | column width | max_range_days | 说明 |
+|---|---:|---:|---:|---|
+| 月 | 1月 | 120px | 不设硬上限 | 仅粗看 |
+| 周 | 1周 | 140px | 不设硬上限 | 仅粗看 |
+| 日 | 1天 | 38px | 62天 | 当前主视图 |
+| 12小时 | 720分钟 | 56px | 31天 | 适合看班次级 |
+| 6小时 | 360分钟 | 56px | 21天 | 适合看半班/短日程 |
+| 小时 | 60分钟 | 48px | 14天 | 适合看一天到两周 |
+| 15分钟 | 15分钟 | 32px | 7天 | 适合看短工序 |
+| 5分钟 | 5分钟 | 24px | 3天 | 适合看单日到数日 |
+| 1分钟 | 1分钟 | 18px | 1天 | 只看单日/单班 |
+
+**节点保护建议**：
+
+```text
+estimated_columns = ceil(range_minutes / step_minutes)
+
+estimated_svg_nodes =
+  estimated_columns * 3
+  + task_count * 8
+  + dependency_count * 2
+  + holiday_marker_count
+```
+
+```text
+soft_node_limit = 12000
+hard_node_limit = 18000
+hard_column_limit = 1500
+```
+
+**行为**：
+
+- 超过 `max_range_days`：不渲染细粒度视图，提示用户缩小日期范围或切换到更粗粒度。
+- 超过 `hard_node_limit` 或 `hard_column_limit`：不渲染，提示先筛选设备/人员/批次。
+- 超过 `soft_node_limit` 但没超过硬限制：允许渲染，但显示性能提示。
+
+**验收标准**：
+
+- `one-minute + 2天`、`five-minute + 4天`、`fifteen-minute + 8天`、`hour + 15天` 都阻止渲染。
+- 1分钟 / 单日 / 500任务以内不应卡死。
+- 1分钟 / 单日 / 1000任务以上如果卡顿，可以通过范围保护或筛选提示接受。
+- 不引入外部 CDN，离线静态资源可用。
+
+### 阶段 5：说明书、页面帮助和浏览器验收收口
+
+**目标**：把页面提示、说明书、页面帮助、浏览器压测手册和回归测试一起收口，让调度员知道这里是查看结果，不是正式调整。
+
+**必须说明**：
+
+- 当前为查看模式：这里只显示排产结果，拖动或拉伸任务条不会修改计划。
+- 月/周/日适合看整体范围；12小时/6小时适合看班次附近；小时/15分钟/5分钟/1分钟适合看短工序的具体开始和结束时间。
+- 范围太大时，系统会提示先缩小日期范围，避免页面卡顿。
+- 很短的工序按真实时长显示，所以看起来可能很窄；透明点击区域只是方便点击，不代表工序时长被放大。
+- 关键工序是会直接影响当前版本最晚完工时间的工序，系统用外框标出。
+
+**验收标准**：
+
+- 页面帮助、说明书和回归测试都覆盖只读、缩放、短工序、范围保护、Win7 Chrome 109 压测。
+- 页面文案不把调度员带到“拖动已经保存”的误解里。
+- `templates/scheduler/gantt.html` 和 `web_new_test/templates/scheduler/gantt.html` 保持同步。
+
+### 后续路线：甘特适配层
 
 **目标**：把 Frappe 的内部行为包起来，后续所有页面只跟 APS 自己的甘特接口说话。
 
@@ -297,7 +465,7 @@ related_architecture: [.codestable/architecture/ARCHITECTURE.md]
 - 适配层能同时支持查看模式和未来模拟模式的事件出口。
 - 如果后续换 DHTMLX/Bryntum，后端草稿和校验接口不需要重写。
 
-### 阶段 4：模拟调整入口壳
+### 后续路线：模拟调整入口壳
 
 **目标**：让用户明确知道“查看”和“调整”是两回事。
 
@@ -310,7 +478,7 @@ related_architecture: [.codestable/architecture/ARCHITECTURE.md]
   - `撤销`
   - `重做`
   - `放弃调整`
-  - `保存为模拟版本`
+  - `保存为模拟方案`
 - 如果后端校验还没完成，保存按钮必须禁用，并说明原因。
 
 **技术路线**：
@@ -319,7 +487,7 @@ related_architecture: [.codestable/architecture/ARCHITECTURE.md]
   - `view`
   - `simulate`
 - 切换到 `simulate` 时，只允许本地形成调整意图，不允许直接改正式版本。
-- `保存为模拟版本` 在没有后端草稿服务前不能做假按钮。要么禁用，要么等阶段 5/6 完成后再开放。
+- `保存为模拟方案` 在没有后端草稿服务前不能做假按钮。要么禁用，要么等阶段 5/6 完成后再开放。
 
 **验收标准**：
 
@@ -327,7 +495,7 @@ related_architecture: [.codestable/architecture/ARCHITECTURE.md]
 - 用户离开页面前，如果有未保存调整，要提示保存或放弃。
 - 没有后端校验时，不允许出现“看起来保存成功”的提示。
 
-### 阶段 5：调整草稿模型
+### 后续路线：调整草稿模型
 
 **目标**：系统能保存“用户想怎么改”，但不污染正式排产。
 
@@ -363,7 +531,7 @@ related_architecture: [.codestable/architecture/ARCHITECTURE.md]
 - 草稿能重新打开，看到未发布调整。
 - 删除草稿不会影响正式版本。
 
-### 阶段 6：后端校验和试算
+### 后续路线：后端校验和试算
 
 **目标**：拖动不再只是前端视觉动作。每次调整都要由后端判断能不能成立。
 
@@ -399,35 +567,35 @@ related_architecture: [.codestable/architecture/ARCHITECTURE.md]
 - 无冲突时返回受影响工序清单。
 - 校验失败不能保存草稿为可发布状态。
 
-### 阶段 7：保存模拟版本和预览
+### 后续路线：保存 Scenario 模拟方案和预览
 
-**目标**：用户可以把调整结果保存成模拟版本，拿来比较，但正式计划不变。
+**目标**：用户可以把调整结果保存成 Scenario 模拟方案，拿来比较，但正式计划不变。Scenario 不占正式版本号，不写正式 `ScheduleHistory`。
 
 **用户看到的变化**：
 
-- 点击 `保存为模拟版本` 后，提示：
-  - `已保存为模拟版本 v16，正式计划还没有改变。`
-- 甘特图、周计划、资源排班、报表可以选择这个模拟版本预览。
-- 页面一直显示模拟标识，不能让用户误当正式版本。
+- 点击 `保存为模拟方案` 后，提示：
+  - `已保存为模拟方案 S-20260522-001，正式计划还没有改变。`
+- 甘特图、周计划、资源排班、报表可以显式选择这个 Scenario 预览。
+- 页面一直显示模拟方案标识，不能让用户误当正式版本。
 
 **技术路线**：
 
-- 保存草稿时生成模拟版本或模拟方案角色。
-- 结果页版本选择必须明确区分：
-  - 正式采用
-  - 模拟版本
+- 保存草稿时生成 Scenario 模拟方案记录，不占用 `ScheduleHistory.version`。
+- 结果页选择必须明确区分：
+  - 正式版本
+  - Scenario 模拟方案
   - 对比方案
-- 报表默认不能自动吃模拟版本，必须用户显式选择。
+- 报表默认不能自动读取 Scenario，必须用户显式选择。
 
 **验收标准**：
 
-- 保存模拟版本后，正式版本仍保持原样。
-- 甘特图 / 周计划 / 资源排班 / 报表都能按模拟版本预览。
-- 页面和导出文件都能标出“模拟版本”。
+- 保存 Scenario 后，正式版本仍保持原样。
+- 甘特图 / 周计划 / 资源排班 / 报表都能按 Scenario 预览。
+- 页面和导出文件都能标出“模拟方案”。
 
-### 阶段 8：正式采用
+### 后续路线：正式采用
 
-**目标**：用户确认后，把模拟版本变成新的正式排产版本。
+**目标**：用户确认后，把 Scenario 模拟方案发布成新的正式排产版本。
 
 **用户看到的变化**：
 
@@ -456,7 +624,7 @@ related_architecture: [.codestable/architecture/ARCHITECTURE.md]
 - 审计记录能看出谁做了这次正式采用。
 - 并发发布要能阻止旧草稿覆盖新正式版本。
 
-### 阶段 9：文档、帮助和浏览器压测
+### 后续路线：模拟调整文档、帮助和浏览器压测
 
 **目标**：让用户知道怎么用，也让后续能复测。
 
@@ -466,7 +634,7 @@ related_architecture: [.codestable/architecture/ARCHITECTURE.md]
   - 查看模式
   - 时间缩放
   - 模拟调整
-  - 保存模拟版本
+  - 保存模拟方案
   - 正式采用
 - 页面帮助不再说空泛术语。
 
@@ -483,7 +651,7 @@ related_architecture: [.codestable/architecture/ARCHITECTURE.md]
   - 设备冲突
   - 工序倒挂
   - 草稿保存
-  - 模拟版本预览
+  - 模拟方案预览
   - 正式采用
 
 **验收标准**：
@@ -492,7 +660,7 @@ related_architecture: [.codestable/architecture/ARCHITECTURE.md]
 - 调度员不需要懂算法词，也能看懂冲突提示。
 - 文档和页面真实行为一致。
 
-### 阶段 10：组件升级评估
+### 后续路线：组件升级评估
 
 **目标**：用真实证据决定继续 Frappe、封装 Frappe，还是换 Bryntum / DHTMLX / Syncfusion。
 
@@ -529,16 +697,17 @@ related_architecture: [.codestable/architecture/ARCHITECTURE.md]
 **契约**：
 
 ```text
-data-gantt-mode: "view" | "simulate" | "adopt"
+data-gantt-mode: "view"
 data-zoom-level: "month" | "week" | "day" | "half-day" | "quarter-day" | "hour" | "fifteen-minute" | "five-minute" | "one-minute"
 data-version: str
 data-plan-role: str
 data-start-date: YYYY-MM-DD
 data-end-date: YYYY-MM-DD
 data-range-source: str
+task-business-id: base_version + base_plan_role + schedule_id + op_id
 
 URL query:
-gantt_mode=view|simulate|adopt
+gantt_mode=view
 gantt_zoom=month|week|day|half-day|quarter-day|hour|fifteen-minute|five-minute|one-minute
 gantt_color=batch|priority|source|status
 gantt_deps=critical|process|none
@@ -552,7 +721,12 @@ gantt_resource=<machine_id_or_operator_id>
 - 默认 `gantt_zoom=day`，但页面必须允许用户切到小时级。
 - URL 参数必须能复现当前视图，方便用户发给别人一起看。
 - 旧参数 `gantt_vm=Day|Week|Month` 可以兼容读取，但新实现以 `gantt_zoom` 为主。
-- `simulate` 和 `adopt` 不在第一阶段启用；页面入口可以先禁用显示，不能给用户一个无效可点按钮。
+- 页面日期 `start_date/end_date` 是本地日期。
+- `start_date` 解释为当天 `00:00:00`。
+- `end_date` 解释为当天 `23:59:59`。
+- 后端若内部使用 `end_exclusive`，可以转换成次日 `00:00:00`，但页面、提示、测试都按 `23:59:59` 解释。
+- 第一版只读甘特图不新增任何保存、草稿、正式采用动作。
+- 第一版不允许 `simulate`、`adopt` 作为页面模式。后续 `simulate` 是编辑模式，`adopt` 是正式发布动作，不是甘特图查看模式。
 
 ### 6.2 甘特缩放配置
 
@@ -596,7 +770,7 @@ one-minute:     step_minutes=1,     column_width_px=18,  max_range_days=1
 - 假期/停工背景、今天高亮、关键链线条必须跟缩放比例同步。
 - Win7 Chrome 109 下不能依赖新的浏览器 API。
 
-### 6.3 调整草稿请求
+### 6.3 后续调整草稿请求
 
 **方向**：前端模拟调整 → 后端校验 / 草稿服务
 
@@ -642,12 +816,13 @@ Response:
 
 **约束**：
 
+- 本节只作为后续模拟调整合同，第一版只读甘特图不得新增这个接口。
 - 任何保存前都必须走后端校验。
 - `base_version` 必须仍存在，且没有被新的正式采用动作覆盖。
 - `snap_minutes` 来自当前缩放/调整粒度，但后端仍要按真实时间校验，不能只信前端。
 - 返回的 `message` 必须是业务中文，不暴露内部对象、图结构或算法调试样本。
 
-### 6.4 调整草稿保存与发布
+### 6.4 后续 Draft / Scenario / Official Version 保存与发布
 
 **方向**：前端模拟调整 → 后端草稿 / 版本服务 → 结果页
 
@@ -660,6 +835,7 @@ POST /scheduler/gantt/adjustments/save-draft
 Request:
   {
     "base_version": 15,
+    "base_plan_role": "adopted",
     "draft_id": "optional-draft-id",
     "changes": [GanttAdjustmentChange],
     "reason": "保存说明"
@@ -668,16 +844,17 @@ Response:
   {
     "status": "saved",
     "draft_id": "draft-20260522-001",
-    "preview_version": 16,
-    "message": "已保存为模拟版本 v16，正式计划还没有改变。"
+    "scenario_id": "scenario-20260522-001",
+    "message": "已保存为模拟方案，正式计划还没有改变。"
   }
 
 POST /scheduler/gantt/adjustments/publish
 Request:
   {
-    "draft_id": "draft-20260522-001",
+    "scenario_id": "scenario-20260522-001",
     "base_version": 15,
-    "confirm_text": "正式采用"
+    "confirm_text": "正式采用",
+    "reason": "正式采用原因"
   }
 Response:
   {
@@ -689,8 +866,12 @@ Response:
 
 **约束**：
 
+- 本节只作为后续模拟调整合同，第一版只读甘特图不得新增保存和发布接口。
+- 后续版本模型固定为 `Draft -> Scenario -> Official Version`。
+- Draft 是草稿，Scenario 是模拟方案，Official Version 是正式版本；三者不能混用。
 - 保存草稿不能改变正式版本指针。
 - 发布必须重新校验草稿，防止别人已经发布了更新版本。
+- 正式采用必须二次确认，原因必填。
 - 发布不能原地改旧 `Schedule` 行，必须生成新版本。
 - 甘特图、周计划、资源排班、报表、历史页必须通过统一版本解析读取新版本。
 - 审计日志至少记录：谁、什么时候、基于哪个版本、改了哪些工序、为什么改、发布成哪个版本。
@@ -740,84 +921,105 @@ GanttAdjustmentConflict:
 
 ## 7. 子 feature 清单
 
-1. **gantt-readonly-result-mode** — 把甘特图默认收成只读查看模式，禁掉无效拖动和拉伸，只保留点击详情。
-   - 所属模块：查看模式与交互边界
+1. **gantt-readonly-foundation-contract** — 阶段 0 只读甘特图基础合同与 vendor 治理。
+   - 所属模块：只读基础合同与 vendor 治理
    - 依赖：无
-   - 状态：planned
-   - 对应 feature：未启动
-   - 备注：第一阶段最小闭环，必须在任何模拟调整前先做。
+   - 状态：done
+   - 对应 feature：`2026-05-22-gantt-readonly-docs-and-qa`
+   - 备注：明确本地自然日、缩放枚举、任务业务身份、只读边界和 vendor 补丁证据。
 
-2. **gantt-time-zoom-readside** — 增加时间缩放能力，支持日/周/月之外的半天、6 小时、小时、15 分钟、5 分钟和 1 分钟查看。
+2. **gantt-readonly-result-mode** — 阶段 1 甘特图查看模式收口。
+   - 所属模块：查看模式与交互边界
+   - 依赖：`gantt-readonly-foundation-contract`
+   - 状态：done
+   - 对应 feature：`2026-05-22-gantt-readonly-docs-and-qa`
+   - 备注：默认只读，不能拖动或拉伸，点击详情、筛选、配色、关键工序和依赖线保留。
+
+3. **gantt-readonly-time-zoom** — 阶段 2 只读甘特图时间缩放。
    - 所属模块：时间缩放与时间尺
    - 依赖：`gantt-readonly-result-mode`
-   - 状态：planned
-   - 对应 feature：未启动
-   - 备注：解决“拖动一下就是一天”和“看不清小时分钟”的根问题。第一版只做查看缩放，不做保存；不做秒级和 0.1 秒精细模式。
+   - 状态：done
+   - 对应 feature：`2026-05-22-gantt-readonly-docs-and-qa`
+   - 备注：支持 `month/week/day/half-day/quarter-day/hour/fifteen-minute/five-minute/one-minute`，URL 可复现，不做保存。
 
-3. **gantt-adapter-contract** — 新增甘特适配层，统一封装 Frappe 的时间尺、点击、禁用拖动、缩放、未来模拟拖动事件。
-   - 所属模块：甘特适配层
-   - 依赖：`gantt-time-zoom-readside`
-   - 状态：planned
-   - 对应 feature：未启动
-   - 备注：先把前端边界收住，避免后续继续直接魔改压缩版 Frappe。
+4. **gantt-readonly-decoration-sync** — 阶段 3 缩放后的视觉标记对齐。
+   - 所属模块：缩放后的视觉标记对齐
+   - 依赖：`gantt-readonly-time-zoom`
+   - 状态：done
+   - 对应 feature：`2026-05-22-gantt-readonly-docs-and-qa`
+   - 备注：短条 hitbox、假期/停工背景、今天高亮、关键工序外框、超期红框、外协虚线、依赖线都随缩放对齐。
 
-4. **gantt-simulation-entry-shell** — 增加“进入模拟调整”入口、调整工具栏、未保存调整状态和禁用态说明。
-   - 所属模块：模拟调整入口、用户提示与验收手册
-   - 依赖：`gantt-adapter-contract`
-   - 状态：planned
-   - 对应 feature：未启动
-   - 备注：这一阶段可以先显示入口和说明，但不允许无后端校验的保存。
+5. **gantt-readonly-performance-guards** — 阶段 4 分钟级视图范围保护和性能压测。
+   - 所属模块：性能范围保护
+   - 依赖：`gantt-readonly-decoration-sync`
+   - 状态：done
+   - 对应 feature：`2026-05-22-gantt-readonly-docs-and-qa`
+   - 备注：1 分钟第一版不做虚拟滚动，先用 `max_range_days`、列数和节点数保护守住 Win7 Chrome 109。
 
-5. **gantt-adjustment-draft-model** — 建立调整草稿数据模型和迁移，能记录基准版本、调整列表、操作者、原因、状态。
-   - 所属模块：调整草稿模型
-   - 依赖：`gantt-adapter-contract`
-   - 状态：planned
-   - 对应 feature：未启动
-   - 备注：提供后续校验和发布的持久化基础。
-
-6. **gantt-adjustment-validate-simulate** — 实现拖动落点后端校验和试算，返回冲突、影响范围、交期变化和可读提示。
-   - 所属模块：后端校验与试算
-   - 依赖：`gantt-adjustment-draft-model`
-   - 状态：planned
-   - 对应 feature：未启动
-   - 备注：只校验和试算，不发布正式版本。
-
-7. **gantt-draft-save-and-preview** — 保存模拟版本，并支持甘特图、周计划、资源排班、报表按模拟版本预览。
-   - 所属模块：模拟版本预览
-   - 依赖：`gantt-adjustment-validate-simulate`
-   - 状态：planned
-   - 对应 feature：未启动
-   - 备注：必须清楚标识“模拟版本，正式计划未改变”。
-
-8. **gantt-draft-publish-official-version** — 用户确认后把模拟版本正式采用，生成新的正式排产版本，并统一历史、报表和导出口径。
-   - 所属模块：正式采用
-   - 依赖：`gantt-draft-save-and-preview`
-   - 状态：planned
-   - 对应 feature：未启动
-   - 备注：旧正式版本不可原地修改。
-
-9. **gantt-adjustment-user-guide-and-qa** — 更新说明书、页面帮助、浏览器压测手册和回归测试，覆盖查看、缩放、模拟调整、正式采用。
+6. **gantt-readonly-docs-and-qa** — 阶段 5 说明书、页面帮助和浏览器验收收口。
    - 所属模块：用户提示与验收手册
-   - 依赖：`gantt-draft-publish-official-version`
+   - 依赖：`gantt-readonly-performance-guards`
+   - 状态：done
+   - 对应 feature：`2026-05-22-gantt-readonly-docs-and-qa`
+   - 备注：把查看模式、缩放、短工序点击、范围保护、浏览器压测和回归测试全部落地。
+
+7. **gantt-adapter-contract** — 后续甘特适配层。
+   - 所属模块：后续模拟调整合同
+   - 依赖：`gantt-readonly-docs-and-qa`
    - 状态：planned
    - 对应 feature：未启动
-   - 备注：后续每条能力落地时可局部更新，最后统一收口。
+   - 备注：后续独立启动；不阻塞第一版只读甘特图验收。
 
-10. **gantt-component-upgrade-spike** — 在真实 Win7 Chrome 109 边界下评估继续 Frappe、封装 Frappe、替换 Bryntum/DHTMLX/Syncfusion 的成本。
-    - 所属模块：甘特适配层
-    - 依赖：`gantt-time-zoom-readside`
+8. **gantt-simulation-entry-shell** — 后续模拟调整入口壳。
+   - 所属模块：后续模拟调整合同
+   - 依赖：`gantt-adapter-contract`
+   - 状态：planned
+   - 对应 feature：未启动
+   - 备注：适配层完成前不开放拖动编辑入口，避免继续直接依赖 Frappe 内部细节。
+
+9. **gantt-adjustment-draft-model** — 后续 Draft 草稿模型。
+   - 所属模块：后续模拟调整合同
+   - 依赖：`gantt-simulation-entry-shell`
+   - 状态：planned
+   - 对应 feature：未启动
+   - 备注：草稿只记录用户想怎么改，不写正式 `Schedule/ScheduleHistory`；模拟入口边界清楚后再落库。
+
+10. **gantt-adjustment-validate-simulate** — 后续拖动落点校验与试算。
+    - 所属模块：后续模拟调整合同
+    - 依赖：`gantt-adjustment-draft-model`
     - 状态：planned
     - 对应 feature：未启动
-    - 备注：这是 spike，不阻塞前面只读和缩放；只有当 Frappe 时间尺能力确实撑不住时才作为替换依据。
+    - 备注：只校验和试算，不发布正式版本。
 
-**最小闭环**：第 1 条 `gantt-readonly-result-mode` 做完后，用户打开当前甘特图会明确看到“查看模式”，条形图不能再被拖动或拉伸，但仍能点击看详情、筛选、配色和看关键链。这样先把误导风险关掉。
+11. **gantt-draft-save-and-preview** — 后续 Scenario 模拟方案保存和预览。
+    - 所属模块：后续模拟调整合同
+    - 依赖：`gantt-adjustment-validate-simulate`
+    - 状态：planned
+    - 对应 feature：未启动
+    - 备注：保存成模拟方案，正式计划仍不改变。
+
+12. **gantt-draft-publish-official-version** — 后续 Official Version 正式采用。
+    - 所属模块：后续模拟调整合同
+    - 依赖：`gantt-draft-save-and-preview`
+    - 状态：planned
+    - 对应 feature：未启动
+    - 备注：必须二次确认、原因必填、重新校验、生成新正式版本、写审计记录。
+
+13. **gantt-component-upgrade-spike** — 后续甘特组件升级评估。
+    - 所属模块：后续模拟调整合同
+    - 依赖：`gantt-adapter-contract`
+    - 状态：planned
+    - 对应 feature：未启动
+    - 备注：这是 spike，不阻塞只读和缩放；适配层完成后再评估，只有 Frappe 确实撑不住时才提出替换。
+
+**最小闭环**：第 1 到第 6 条一起构成第一版闭环。它做完以后，用户打开当前甘特图会明确看到“查看模式”，条形图不能再被拖动或拉伸，月/周/日/12小时/6小时/小时/15分钟/5分钟/1分钟都能切换，短工序可见可点，范围过大时系统主动拦截，说明书和回归测试也都同步。模拟调整不在这个闭环里。
 
 ## 8. 排期思路
 
 这条路线按“先可信、再看细、再能改”的顺序推进：
 
 1. **先可信**：`gantt-readonly-result-mode` 先做。它解决当前最伤信任的问题：页面看起来能拖，实际什么都没保存。
-2. **再看细**：`gantt-time-zoom-readside` 第二个做。它解决你指出的“一拖就是一天、看不到小时分钟”的核心体验问题，而且它不改业务数据，风险比模拟调整低。
+2. **再看细**：`gantt-readonly-time-zoom` 第二个做。它解决你指出的“一拖就是一天、看不到小时分钟”的核心体验问题，而且它不改业务数据，风险比模拟调整低。
 3. **再收边界**：`gantt-adapter-contract` 第三个做。它不是炫技，而是为了后面的模拟调整不继续靠补丁堆。
 4. **最后再调整**：模拟调整拆成入口、草稿、校验、预览、正式采用五段。每段都有单独验收，任何一段没做完，都不能假装“拖动已经正式生效”。
 
@@ -825,16 +1027,17 @@ GanttAdjustmentConflict:
 
 ## 9. 观察项
 
-- 当前 `templates/scheduler/gantt.html` 只开放 `Day / Week / Month` 三个时间粒度，`static/js/gantt_ui.js` 也只接受这三种值；这是页面没有小时/分钟级缩放的直接原因。
+- 改造前 `templates/scheduler/gantt.html` 只开放 `Day / Week / Month` 三个时间粒度，`static/js/gantt_ui.js` 也只接受这三种值；本轮只读缩放改造已经把第一版 9 档缩放作为必须验收项。
 - 当前压缩版 `static/js/frappe-gantt.min.js` 内部已有 `Quarter Day` 和 `Half Day` 模式，但没有页面入口，也没有 APS 级 `hour / fifteen-minute / five-minute / one-minute` 缩放协议。
 - 当前 Frappe 拖动吸附逻辑主要按当前列宽吸附，日视图下移动一格就是一天；即使短工序显示修好了，拖动颗粒度也仍然太粗。
-- 说明书 `static/docs/scheduler_manual.md` 已写“甘特图不支持拖拽任务条来改计划”，但真实页面目前仍可能被拖动，体验和说明不一致。
-- `web_new_test/templates/scheduler/gantt.html` 可能需要同步模板改动，避免界面模式切换后两套模板口径漂移。
+- 改造前说明书 `static/docs/scheduler_manual.md` 已写“甘特图不支持拖拽任务条来改计划”，但真实页面仍可能被拖动；本轮只读查看模式必须把说明和真实行为对齐。
+- `web_new_test/templates/scheduler/gantt.html` 必须同步模板改动，避免界面模式切换后两套模板口径漂移。
 - 资源排班页也有内嵌甘特图，它的时间粒度和只读/编辑边界后续需要单独核对，避免两个甘特页面行为不一致。
-- 报表是否默认排除模拟版本，需要在 `gantt-draft-save-and-preview` 前专门查清；这关系到草稿会不会污染正式统计。
+- 报表默认不读取 Scenario 模拟方案；只有用户显式选择 Scenario 预览时才展示。后续 `gantt-draft-save-and-preview` 前仍要核实每个报表入口是否都遵守这条。
 
 ## 10. 变更日志
 
-- 2026-05-22：新建路线图，覆盖甘特图只读查看、时间缩放、模拟调整草稿、后端校验、模拟版本预览、正式采用和说明书验收。
+- 2026-05-22：新建路线图，覆盖甘特图只读查看、时间缩放、模拟调整草稿、后端校验、Scenario 模拟方案预览、正式采用和说明书验收。
 - 2026-05-22：按 review 意见重写为“先查看模式、再缩放、再后续调整能力”的阶段路线；补充每阶段用户变化、技术路线、验收标准和明确不做。
 - 2026-05-22：按讨论拍板把时间缩放主线收口为小时、15 分钟、5 分钟、1 分钟；当前 roadmap 不纳入秒级、0.1 秒和精细模式。
+- 2026-05-22：完成只读甘特图第一版闭环，前 6 个只读阶段回写为 done；模拟调整、草稿、Scenario 和正式发布仍保留为后续 planned 路线。

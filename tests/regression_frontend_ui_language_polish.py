@@ -612,8 +612,46 @@ def test_frontend_scripts_keep_internal_details_out_of_user_messages() -> None:
     gantt_render = _read("static/js/gantt_render.js")
     assert "甘特图装饰刷新失败" in gantt_render
     assert "Gantt decorate failed" not in gantt_render
-    assert "间隔（分钟）" in gantt_render
+    assert "加工方式：" in gantt_render
+    assert "前面影响它的工序编号：" in gantt_render
+    assert "为什么影响总工期：" in gantt_render
+    assert "中间等待：" in gantt_render
+    assert "间隔（分钟）" not in gantt_render
     assert "间隔(分)" not in gantt_render
+    assert "关键链前驱：" not in gantt_render
+    assert "关键链依据：" not in gantt_render
+
+    gantt_contract = _read("static/js/gantt_contract.js")
+    for phrase in (
+        "查看模式",
+        "时间粒度：月/周/日",
+        "短工序",
+        "范围保护",
+        "开始日从 00:00 开始",
+    ):
+        assert phrase in gantt_contract
+    assert "透明点击区" not in gantt_contract
+
+    manual = _read("static/docs/scheduler_manual.md")
+    manual_mirror = _read("web_new_test/static/docs/scheduler_manual.md")
+    manual_viewmodel = _read("web/viewmodels/page_manuals_scheduler_outputs.py")
+    for phrase in (
+        "甘特图当前是",
+        "月、周、日",
+        "12小时 / 6小时",
+        "1分钟",
+        "范围太大",
+        "保留方便点击的区域",
+    ):
+        assert phrase in manual
+        assert phrase in manual_mirror
+    for phrase in (
+        "查看模式",
+        "时间粒度",
+        "范围太大",
+        "短工序",
+    ):
+        assert phrase in manual_viewmodel
 
     resource_dispatch = _read("static/js/resource_dispatch.js")
     assert "有一条排班提示没有完整说明" in resource_dispatch

@@ -742,6 +742,10 @@ def _gantt_color_js() -> str:
     return json.dumps(str(REPO_ROOT / "static" / "js" / "gantt_color.js"))
 
 
+def _gantt_zoom_js() -> str:
+    return json.dumps(str(REPO_ROOT / "static" / "js" / "gantt_zoom.js"))
+
+
 def _gantt_render_js() -> str:
     return json.dumps(str(REPO_ROOT / "static" / "js" / "gantt_render.js"))
 
@@ -773,6 +777,7 @@ def test_gantt_contract_asset_is_tracked_and_loaded_before_render_in_all_templat
     expected_order = [
         "js/frappe-gantt.min.js",
         "js/gantt.js",
+        "js/gantt_zoom.js",
         "js/gantt_color.js",
         "js/gantt_outline.js",
         "js/gantt_contract.js",
@@ -789,15 +794,16 @@ def test_gantt_contract_asset_is_tracked_and_loaded_before_render_in_all_templat
         ]
         assert scripts == expected_order, template_rel
 
-    contract_path = REPO_ROOT / "static" / "js" / "gantt_contract.js"
-    assert contract_path.is_file()
-    tracked = subprocess.run(
-        ["git", "ls-files", "--error-unmatch", "static/js/gantt_contract.js"],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-    )
-    assert tracked.returncode == 0, tracked.stderr
+    for asset_rel in ("static/js/gantt_contract.js", "static/js/gantt_zoom.js"):
+        asset_path = REPO_ROOT / asset_rel
+        assert asset_path.is_file()
+        tracked = subprocess.run(
+            ["git", "ls-files", "--error-unmatch", asset_rel],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+        )
+        assert tracked.returncode == 0, tracked.stderr
 
 
 def test_outline_helper_contract_and_adapter_binding() -> None:
@@ -969,6 +975,7 @@ window.Gantt = CapturingGantt;
 global.Gantt = CapturingGantt;
 
 loadScript({_gantt_js()});
+loadScript({_gantt_zoom_js()});
 loadScript({_gantt_color_js()});
 loadScript({_outline_js()});
 loadScript({_gantt_contract_js()});
@@ -1271,7 +1278,7 @@ def test_formal_page_and_preview_share_critical_edge_tooltip_and_help_semantics(
                 "from": "T1",
                 "to": "T2",
                 "edge_type": "machine",
-                "reason": "控制前驱",
+                "reason": "资源前驱（设备）",
                 "gap_minutes": 30,
             }
         ],
@@ -1303,6 +1310,7 @@ window.Gantt = CapturingGantt;
 global.Gantt = CapturingGantt;
 
 loadScript({_gantt_js()});
+loadScript({_gantt_zoom_js()});
 loadScript({_gantt_color_js()});
 loadScript({_outline_js()});
 loadScript({_gantt_contract_js()});
@@ -1394,13 +1402,28 @@ process.stdout.write(JSON.stringify({{
 
     assert formal["dependency"] == "T1"
     assert preview["dependency"] == "T1"
-    assert "关键链（全版本/本窗口可见）2/2" in formal["legend"]
-    assert "关键链 2" in preview["legend"]
+    assert "关键工序（全部/本页）2/2" in formal["legend"]
+    assert "完工2026年1月28日 00:00" in formal["legend"]
+    assert "关键工序 2" in preview["legend"]
+    assert "完工 2026年1月28日 00:00" in preview["legend"]
 
     for result in (formal, preview):
-        assert "关键链前驱：T1" in result["popup"]
-        assert "设备前驱" in result["popup"]
-        assert "控制前驱" in result["popup"]
+        assert "加工方式：自制" in result["popup"]
+        assert "状态：未开始" in result["popup"]
+        assert "优先级：特急" in result["popup"]
+        assert "交期：2026年1月28日 00:00" in result["popup"]
+        assert "前面影响它的工序编号：T1" in result["popup"]
+        assert "为什么影响总工期：同一设备前面还有任务" in result["popup"]
+        assert "中间等待：30 分钟" in result["popup"]
+        assert "来源：internal" not in result["popup"]
+        assert "状态：pending" not in result["popup"]
+        assert "优先级：critical" not in result["popup"]
+        assert "关键链前驱" not in result["popup"]
+        assert "设备前驱" not in result["popup"]
+        assert "控制前驱" not in result["popup"]
+        assert "资源前驱" not in result["popup"]
+        assert "间隔" not in result["popup"]
+        assert "关键链依据" not in result["popup"]
         assert "关键工序关系线" in result["legend"]
         assert "工艺前后关系、设备和人员占用关系" in result["help"]
         assert "工艺依赖，后一工序依赖前一工序" not in result["help"]
@@ -1451,6 +1474,7 @@ document.readyState = "loading";
 
 loadScript({_vendor_js()});
 loadScript({_gantt_js()});
+loadScript({_gantt_zoom_js()});
 loadScript({_gantt_color_js()});
 loadScript({_outline_js()});
 loadScript({_gantt_contract_js()});
@@ -1556,10 +1580,10 @@ process.stdout.write(JSON.stringify({{
 
     assert formal["dependency"] == preview["dependency"] == ""
     assert formal["warning"] == preview["warning"]
-    assert "关键链（全版本/本窗口可见）0/0" in formal["legend"]
-    assert "关键链 0" in preview["legend"]
+    assert "关键工序（全部/本页）0/0" in formal["legend"]
+    assert "关键工序 0" in preview["legend"]
     assert "关键链 2" not in preview["legend"]
-    assert "关键链(停用)" in preview["legend"]
+    assert "关键工序(停用)" in preview["legend"]
     for result in (formal, preview):
       assert result["t1Critical"] is False
       assert result["t2Critical"] is False
@@ -1570,7 +1594,7 @@ process.stdout.write(JSON.stringify({{
       assert "缓存缺失" in result["warning"]
       assert "仅展示普通甘特任务与资源排程" in result["warning"]
       assert "关键链暂不可用" in result["legend"]
-      assert "关键链(停用)" in result["legend"] or "关键链 0" in result["legend"]
+      assert "关键工序(停用)" in result["legend"] or "关键工序 0" in result["legend"]
       assert "缓存缺失" in result["help"]
       assert "任务条外框高亮，表示该任务仍在当前版本关键链上" not in result["help"]
       assert "默认展示关键链控制前驱" not in result["help"]
@@ -1768,6 +1792,7 @@ document.readyState = "loading";
 
 loadScript({_vendor_js()});
 loadScript({_gantt_js()});
+loadScript({_gantt_zoom_js()});
 loadScript({_gantt_color_js()});
 loadScript({_outline_js()});
 loadScript({_gantt_contract_js()});
