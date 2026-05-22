@@ -209,8 +209,8 @@ items:
     title: 后续拖动落点校验与试算
     description: 后续实现拖动落点后端校验和试算，返回资源冲突、工序倒挂、日历停机、物料齐套、交期影响和用户可读提示。
     depends_on: [gantt-adjustment-draft-model]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-22-gantt-adjustment-validate-simulate
     minimal_loop: false
     primary_paths:
       - core/services/scheduler/
@@ -223,7 +223,7 @@ items:
       - 前后工序倒挂能返回 blocker
       - 工作日历/停机冲突能返回 blocker 或 warning
       - 返回内容不泄漏内部图结构、原始对象或诊断样本
-    notes: 不允许只返回 success=false；必须解释为什么不能放和下一步怎么处理。
+    notes: 已完成内存投影、薄 route 和回归测试；不允许只返回 success=false，必须解释为什么不能放和下一步怎么处理。页面入口仍禁用，不保存 Scenario，不发布正式版本。
 
   - slug: gantt-draft-save-and-preview
     title: 后续 Scenario 模拟方案保存并预览

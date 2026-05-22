@@ -547,7 +547,7 @@ hard_column_limit = 1500
 **技术路线**：
 
 - 新增校验接口：
-  - `POST /scheduler/gantt/adjustments/validate`
+  - `POST /scheduler/gantt/adjustments/validate-simulate`
 - 后端检查：
   - 版本是否还有效
   - 工序是否存在
@@ -780,7 +780,7 @@ one-minute:     step_minutes=1,     column_width_px=18,  max_range_days=1
 **契约**：
 
 ```text
-POST /scheduler/gantt/adjustments/validate
+POST /scheduler/gantt/adjustments/validate-simulate
 Request:
   {
     "request_id": "uuid-or-client-generated-id",
@@ -988,9 +988,9 @@ GanttAdjustmentConflict:
 10. **gantt-adjustment-validate-simulate** — 后续拖动落点校验与试算。
     - 所属模块：后续模拟调整合同
     - 依赖：`gantt-adjustment-draft-model`
-    - 状态：planned
-    - 对应 feature：未启动
-    - 备注：只校验和试算，不发布正式版本。
+    - 状态：done
+    - 对应 feature：`2026-05-22-gantt-adjustment-validate-simulate`
+    - 备注：已完成内存投影、后端校验接口和回归测试；只校验和试算，不保存 Scenario，不发布正式版本，页面入口仍未开放。
 
 11. **gantt-draft-save-and-preview** — 后续 Scenario 模拟方案保存和预览。
     - 所属模块：后续模拟调整合同
@@ -1046,3 +1046,5 @@ GanttAdjustmentConflict:
 - 2026-05-22：完成模拟调整入口壳；页面显示禁用态“模拟调整（后续开放）”，说明书和回归测试锁住“不保存、不发布、不进入真实 simulate”。
 - 2026-05-22：启动 Draft 调整草稿模型；本阶段只落后端草稿表、仓储、服务和合同测试，不新增 route，不开放页面入口。
 - 2026-05-22：完成 Draft 调整草稿模型；新增 `ScheduleAdjustmentDraft` / `ScheduleAdjustmentChange`、v12 迁移、模型、仓储、服务和回归测试，锁住不写正式版本、不静默回退 adopted、基准方案必须有真实明细。
+- 2026-05-22：启动拖动落点校验与试算；本阶段只返回能不能放、为什么和影响，不保存 Scenario，不发布正式版本，页面入口继续禁用。
+- 2026-05-22：完成拖动落点校验与试算；新增 `POST /scheduler/gantt/adjustments/validate-simulate`、内存投影、资源/顺序/日历/停机/交期/齐套检查和回归测试，锁住不写正式表、不回退 adopted、页面不开放入口。

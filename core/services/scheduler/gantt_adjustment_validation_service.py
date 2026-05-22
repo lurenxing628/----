@@ -1,0 +1,157 @@
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional, Sequence
+
+from core.infrastructure.errors import ValidationError
+from core.models.schedule_adjustment import DRAFT_STATUS_EDITING
+from data.repositories import ScheduleAdjustmentRepository
+
+from .calendar_service import CalendarService
+from .gantt_adjustment_projection import (
+    AdjustmentIssue,
+    AdjustmentPlanRow,
+    build_adjusted_plan_rows,
+    find_due_date_warnings,
+    find_precedence_violations,
+    find_resource_conflicts,
+    result_message,
+    result_status,
+)
+from .schedule_plan_query_service import SchedulePlanQueryService
+
+
+class GanttAdjustmentValidationService:
+    """甘特图 Draft 调整校验服务：只读正式排产，返回内存试算结果。"""
+
+    def __init__(self, conn, logger=None):
+        self.conn = conn
+        self.logger = logger
+        self.draft_repo = ScheduleAdjustmentRepository(conn, logger=logger)
+        self.plan_service = SchedulePlanQueryService(conn, logger=logger)
+        self.calendar_service = CalendarService(conn, logger=logger)
+
+    def validate_draft(
+        self,
+        *,
+        draft_id: Any,
+        expected_base_version: Optional[Any] = None,
+        expected_base_plan_role: Optional[Any] = None,
+    ) -> Dict[str, Any]:
+        draft_key = _required_text(draft_id, field="draft_id", label="草稿编号")
+        draft = self.draft_repo.get_draft(draft_key)
+        if draft is None:
+            raise ValidationError("调整草稿不存在。", field="draft_id")
+        if draft.status != DRAFT_STATUS_EDITING:
+            raise ValidationError("只有编辑中的调整草稿才能校验。", field="draft_id")
+        _check_expected_base(draft.base_version, draft.base_plan_role, expected_base_version, expected_base_plan_role)
+
+        changes = self.draft_repo.list_changes(draft.draft_id)
+        try:
+            resolution = self.plan_service.resolve_existing_plan(draft.base_version, draft.base_plan_role)
+        except ValueError as exc:
+            raise ValidationError(str(exc), field="base_plan_role") from exc
+        base_rows = self.plan_service.list_plan_detail_rows_all_for_resolution(
+            version=draft.base_version,
+            source_table=resolution.source_table,
+            candidate_id=resolution.candidate_id,
+        )
+        adjusted_rows = build_adjusted_plan_rows(base_rows, changes)
+        issues = self._collect_issues(adjusted_rows)
+        status = result_status(issues)
+        return {
+            "draft_id": draft.draft_id,
+            "base_version": draft.base_version,
+            "base_plan_role": draft.base_plan_role,
+            "status": status,
+            "can_apply": status != "blocked",
+            "message": result_message(status),
+            "issue_count": len(issues),
+            "issues": [issue.to_dict() for issue in issues],
+        }
+
+    def _collect_issues(self, rows: Sequence[AdjustmentPlanRow]) -> List[AdjustmentIssue]:
+        issues: List[AdjustmentIssue] = []
+        issues.extend(find_resource_conflicts(rows))
+        issues.extend(find_precedence_violations(rows))
+        issues.extend(self._calendar_issues(rows))
+        issues.extend(self._downtime_issues(rows))
+        issues.extend(find_due_date_warnings(rows))
+        issues.extend(self._material_warnings(rows))
+        return issues
+
+    def _calendar_issues(self, rows: Sequence[AdjustmentPlanRow]) -> List[AdjustmentIssue]:
+        issues: List[AdjustmentIssue] = []
+        for row in rows:
+            policy = self.calendar_service.policy_for_datetime(row.start, operator_id=row.operator_id)
+            window_start, window_end = policy.work_window()
+            if policy.shift_hours <= 0 or not policy.is_priority_allowed(row.priority):
+                issues.append(_issue("blocker", "calendar_unavailable", row, "目标时间所在日期不可排产。"))
+            elif row.start < window_start or row.end > window_end:
+                issues.append(_issue("blocker", "calendar_window", row, "目标时间不在允许排产的班次时间内。"))
+        return issues
+
+    def _downtime_issues(self, rows: Sequence[AdjustmentPlanRow]) -> List[AdjustmentIssue]:
+        issues: List[AdjustmentIssue] = []
+        for row in rows:
+            if not row.machine_id:
+                continue
+            hit = self.conn.execute(
+                """
+                SELECT 1
+                FROM MachineDowntimes
+                WHERE machine_id = ?
+                  AND status = 'active'
+                  AND start_time < ?
+                  AND end_time > ?
+                LIMIT 1
+                """,
+                (row.machine_id, row.end.strftime("%Y-%m-%d %H:%M:%S"), row.start.strftime("%Y-%m-%d %H:%M:%S")),
+            ).fetchone()
+            if hit is not None:
+                issues.append(_issue("blocker", "machine_downtime", row, f"设备 {row.machine_id} 在目标时间段有停机记录。"))
+        return issues
+
+    def _material_warnings(self, rows: Sequence[AdjustmentPlanRow]) -> List[AdjustmentIssue]:
+        batch_ids = sorted({row.batch_id for row in rows if row.batch_id})
+        if not batch_ids:
+            return []
+        placeholders = ", ".join("?" for _ in batch_ids)
+        status_by_batch = {
+            str(row["batch_id"]): str(row["ready_status"] or "").strip()
+            for row in self.conn.execute(
+                f"SELECT batch_id, ready_status FROM Batches WHERE batch_id IN ({placeholders})",
+                tuple(batch_ids),
+            ).fetchall()
+        }
+        issues: List[AdjustmentIssue] = []
+        for row in rows:
+            ready = status_by_batch.get(row.batch_id)
+            if ready is None or ready == "":
+                issues.append(_issue("warning", "material_status_missing", row, f"批次 {row.batch_id} 没有找到物料齐套状态。"))
+                continue
+            if ready in ("no", "partial"):
+                issues.append(_issue("warning", "material_not_ready", row, f"批次 {row.batch_id} 物料齐套状态是 {ready}。"))
+        return issues
+
+
+def _issue(severity: str, code: str, row: AdjustmentPlanRow, message: str) -> AdjustmentIssue:
+    return AdjustmentIssue(severity=severity, code=code, op_id=row.op_id, message=message)
+
+
+def _required_text(value: Any, *, field: str, label: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        raise ValidationError(f"{label}不能为空。", field=field)
+    return text
+
+
+def _check_expected_base(
+    actual_version: int,
+    actual_role: str,
+    expected_version: Optional[Any],
+    expected_role: Optional[Any],
+) -> None:
+    if expected_version is not None and str(expected_version).strip() != str(actual_version):
+        raise ValidationError("页面草稿基准版本已变化，请刷新后重试。", field="base_version")
+    if expected_role is not None and str(expected_role).strip() != actual_role:
+        raise ValidationError("页面草稿基准方案已变化，请刷新后重试。", field="base_plan_role")

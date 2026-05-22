@@ -50,9 +50,9 @@ tags: [scheduler, gantt, frontend, readonly, vendor]
 
 `simulate` 模式目前只在 `gantt_adapter.js` 中保留事件出口，不连接保存接口，不创建草稿，也不写正式排产数据。
 
-真实模拟调整入口尚未开放。当前页面上的 `ganttSimulationEntry` 按钮是 disabled 占位按钮，后续必须等 Draft 草稿模型和后端校验链路完成后，才能升级为可点击入口。
+真实模拟调整入口尚未开放。当前页面上的 `ganttSimulationEntry` 按钮是 disabled 占位按钮。后续即使后端校验链路完成，可点击入口也只能进入校验/试算；保存模拟方案和正式发布仍然必须等后续独立阶段实现。
 
-## 5. Draft 草稿模型
+## 5. Draft 草稿模型与校验试算
 
 后端已经有 `ScheduleAdjustmentDraft` 和 `ScheduleAdjustmentChange` 两张表，用来记录后续模拟调整里“用户想怎么改”。它们不属于正式排产结果：
 
@@ -62,6 +62,10 @@ tags: [scheduler, gantt, frontend, readonly, vendor]
 - 不改变甘特图、周计划、资源排班和报表默认读取的正式版本。
 
 `GanttAdjustmentDraftService` 创建草稿前会确认基准正式版本存在，要求调用方显式传入 `base_plan_role`，并用无回退的方案解析确认这个角色有真实排程明细。当前页面入口仍禁用；本阶段只是模型能力，不是用户可点击的模拟调整功能。
+
+后端现在已有 `GanttAdjustmentValidationService` 和 `POST /scheduler/gantt/adjustments/validate-simulate`。这条链路只读取 Draft 和基准排产，把调整项叠到内存里的临时排程上，然后返回 `valid` / `warning` / `blocked` 以及中文原因。它会检查设备重叠、人员重叠、前后工序倒挂、工作日历、停机、交期和物料齐套，但不会写 `Schedule`、`ScheduleHistory`、`ScheduleVersionSeq`、`ScheduleCandidate*`，也不会调用正式排产或发布流程。
+
+当前页面模板仍没有注入 `validate-simulate` 地址，也没有 `data-adjustment-url`。因此这条接口只是后续模拟调整入口的后端合同，还不是用户可点击功能。
 
 ## 6. vendor 补丁治理
 

@@ -1,0 +1,36 @@
+feature: 2026-05-22-gantt-adjustment-validate-simulate
+status: done
+roadmap: gantt-result-view-and-manual-adjustment
+roadmap_item: gantt-adjustment-validate-simulate
+
+steps:
+  - slug: boundary-and-docs
+    title: 明确校验/试算边界
+    status: done
+    exit_signal: design/checklist 已写明本阶段不保存 Scenario、不发布正式版本。
+
+  - slug: projection-and-service
+    title: 新增内存投影和校验服务
+    status: done
+    exit_signal: 服务能返回 valid/warning/blocked，且只读正式排产数据。
+
+  - slug: route-contract
+    title: 新增薄 route 合同
+    status: done
+    exit_signal: route 可 POST 调用，但页面模板仍不开放入口。
+
+  - slug: regression
+    title: 增加校验/试算回归测试
+    status: done
+    exit_signal: 覆盖资源重叠、顺序倒挂、日历停机、交期、齐套和不写正式版本。
+
+  - slug: verification
+    title: 回归验证
+    status: done
+    exit_signal: 目标 pytest、ruff、YAML、fast precheck 通过。
+
+checks:
+  - 发现冲突时返回中文 blocker/warning，不只返回 success=false。
+  - 校验和试算不写 Schedule/ScheduleHistory/ScheduleVersionSeq/ScheduleCandidate*。
+  - 不调用 ScheduleService.run_schedule(simulate=True)。
+  - 页面入口仍是禁用占位，不注入调整校验 URL。

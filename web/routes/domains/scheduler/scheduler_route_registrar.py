@@ -11,6 +11,7 @@ _ROUTE_MODULES = (
     "scheduler_excel_batches",
     "scheduler_excel_calendar",
     "scheduler_gantt",
+    "scheduler_gantt_adjustments",
     "scheduler_ops",
     "scheduler_resource_dispatch",
     "scheduler_run",
