@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple, cast
 
-from core.models.schedule_plan_role import SOURCE_CANDIDATE_ROWS, SOURCE_SCHEDULE
+from core.models.schedule_plan_role import (
+    SOURCE_ADJUSTMENT_SCENARIO_ROWS,
+    SOURCE_CANDIDATE_ROWS,
+    SOURCE_SCHEDULE,
+)
 
 from .base_repo import BaseRepository
 from .schedule_detail_query import build_schedule_detail_sql
@@ -36,11 +40,33 @@ FROM ScheduleCandidateRows
 WHERE version = ? AND candidate_id = ?
 """
 
+_SCENARIO_PLAN_ROWS_SQL = """
+SELECT
+    r.id,
+    r.op_id,
+    r.machine_id,
+    r.operator_id,
+    r.start_time,
+    r.end_time,
+    r.lock_status,
+    s.base_version AS version
+FROM ScheduleAdjustmentScenarioRow r
+JOIN ScheduleAdjustmentScenario s ON s.scenario_id = r.scenario_id
+WHERE s.base_version = ? AND r.scenario_id = ? AND s.status = 'active'
+"""
+
 
 def _require_candidate_id(source_table: str, candidate_id: Optional[int]) -> Optional[int]:
     if source_table == SOURCE_CANDIDATE_ROWS and candidate_id is None:
         raise ValueError("candidate_id is required for candidate_rows plan")
     return candidate_id
+
+
+def _require_scenario_id(source_table: str, scenario_id: Optional[str]) -> str:
+    text = str(scenario_id or "").strip()
+    if source_table == SOURCE_ADJUSTMENT_SCENARIO_ROWS and not text:
+        raise ValueError("scenario_id is required for adjustment_scenario_rows plan")
+    return text
 
 
 class SchedulePlanQueryRepository(BaseRepository):
@@ -88,12 +114,54 @@ class SchedulePlanQueryRepository(BaseRepository):
         )
         return row is not None
 
-    def _plan_rows_sql(self, *, source_table: str, candidate_id: Optional[int]) -> Tuple[str, List[Any]]:
+    def get_scenario_context(self, scenario_id: str) -> Optional[Dict[str, Any]]:
+        return self.fetchone(
+            """
+            SELECT
+                scenario_id,
+                source_draft_id,
+                base_version,
+                base_plan_role,
+                base_source_table,
+                base_candidate_id,
+                base_candidate_key,
+                scenario_name,
+                status,
+                validation_status,
+                issue_count,
+                row_count
+            FROM ScheduleAdjustmentScenario
+            WHERE scenario_id = ?
+            """,
+            (str(scenario_id),),
+        )
+
+    def has_scenario_rows(self, *, scenario_id: str) -> bool:
+        row = self.fetchone(
+            """
+            SELECT 1
+            FROM ScheduleAdjustmentScenarioRow
+            WHERE scenario_id = ?
+            LIMIT 1
+            """,
+            (str(scenario_id),),
+        )
+        return row is not None
+
+    def _plan_rows_sql(
+        self,
+        *,
+        source_table: str,
+        candidate_id: Optional[int],
+        scenario_id: Optional[str],
+    ) -> Tuple[str, List[Any]]:
         if source_table == SOURCE_SCHEDULE:
             return _SCHEDULE_PLAN_ROWS_SQL, []
         if source_table == SOURCE_CANDIDATE_ROWS:
             _require_candidate_id(source_table, candidate_id)
             return _CANDIDATE_PLAN_ROWS_SQL, [int(candidate_id or 0)]
+        if source_table == SOURCE_ADJUSTMENT_SCENARIO_ROWS:
+            return _SCENARIO_PLAN_ROWS_SQL, [_require_scenario_id(source_table, scenario_id)]
         raise ValueError(f"未知的排产方案数据来源：{source_table}")
 
     def get_plan_time_span(
@@ -102,6 +170,7 @@ class SchedulePlanQueryRepository(BaseRepository):
         version: int,
         source_table: str,
         candidate_id: Optional[int],
+        scenario_id: Optional[str] = None,
     ) -> Optional[ScheduleTimeSpanRow]:
         if source_table == SOURCE_SCHEDULE:
             row = self.fetchone(
@@ -126,6 +195,19 @@ class SchedulePlanQueryRepository(BaseRepository):
                 """,
                 (int(version), int(candidate_id or 0)),
             )
+        elif source_table == SOURCE_ADJUSTMENT_SCENARIO_ROWS:
+            scenario_key = _require_scenario_id(source_table, scenario_id)
+            row = self.fetchone(
+                """
+                SELECT MIN(r.start_time) AS min_start_time, MAX(r.end_time) AS max_end_time
+                FROM ScheduleAdjustmentScenarioRow r
+                JOIN ScheduleAdjustmentScenario s ON s.scenario_id = r.scenario_id
+                WHERE s.base_version = ? AND r.scenario_id = ? AND s.status = 'active'
+                  AND TRIM(CAST(r.start_time AS TEXT)) <> ''
+                  AND TRIM(CAST(r.end_time AS TEXT)) <> ''
+                """,
+                (int(version), scenario_key),
+            )
         else:
             raise ValueError(f"未知的排产方案数据来源：{source_table}")
         if not row:
@@ -142,10 +224,15 @@ class SchedulePlanQueryRepository(BaseRepository):
         version: int,
         source_table: str,
         candidate_id: Optional[int],
+        scenario_id: Optional[str] = None,
         start_time: str,
         end_time: str,
     ) -> List[ScheduleDetailRow]:
-        plan_sql, extra_params = self._plan_rows_sql(source_table=source_table, candidate_id=candidate_id)
+        plan_sql, extra_params = self._plan_rows_sql(
+            source_table=source_table,
+            candidate_id=candidate_id,
+            scenario_id=scenario_id,
+        )
         sql = build_schedule_detail_sql(
             where_clauses=("s.start_time < ?", "s.end_time > ?"),
             plan_rows_cte_sql=plan_sql,
@@ -159,8 +246,13 @@ class SchedulePlanQueryRepository(BaseRepository):
         version: int,
         source_table: str,
         candidate_id: Optional[int],
+        scenario_id: Optional[str] = None,
     ) -> List[ScheduleDetailRow]:
-        plan_sql, extra_params = self._plan_rows_sql(source_table=source_table, candidate_id=candidate_id)
+        plan_sql, extra_params = self._plan_rows_sql(
+            source_table=source_table,
+            candidate_id=candidate_id,
+            scenario_id=scenario_id,
+        )
         sql = build_schedule_detail_sql(
             where_clauses=("1 = 1",),
             plan_rows_cte_sql=plan_sql,
@@ -174,8 +266,13 @@ class SchedulePlanQueryRepository(BaseRepository):
         version: int,
         source_table: str,
         candidate_id: Optional[int],
+        scenario_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        plan_sql, extra_params = self._plan_rows_sql(source_table=source_table, candidate_id=candidate_id)
+        plan_sql, extra_params = self._plan_rows_sql(
+            source_table=source_table,
+            candidate_id=candidate_id,
+            scenario_id=scenario_id,
+        )
         sql = f"""
             WITH plan_rows AS (
                 {plan_sql.strip()}
@@ -203,12 +300,17 @@ class SchedulePlanQueryRepository(BaseRepository):
         version: int,
         source_table: str,
         candidate_id: Optional[int],
+        scenario_id: Optional[str] = None,
         start_time: str,
         end_time: str,
         scope_type: Optional[str] = None,
         scope_id: Optional[str] = None,
     ) -> List[ScheduleDispatchRow]:
-        plan_sql, extra_params = self._plan_rows_sql(source_table=source_table, candidate_id=candidate_id)
+        plan_sql, extra_params = self._plan_rows_sql(
+            source_table=source_table,
+            candidate_id=candidate_id,
+            scenario_id=scenario_id,
+        )
         scope_type_text = str(scope_type or "").strip().lower()
         scope_id_text = str(scope_id or "").strip()
         where_clauses = ["s.start_time < ?", "s.end_time > ?"]

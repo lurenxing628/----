@@ -16,6 +16,7 @@ from .v9 import run as run_v9
 from .v10 import run as run_v10
 from .v11 import run as run_v11
 from .v12 import run as run_v12
+from .v13 import run as run_v13
 
 # 版本迁移注册表：target_version -> run(conn, logger=None) -> MigrationOutcome
 MIGRATIONS: Dict[int, Callable[..., MigrationOutcome]] = {
@@ -31,6 +32,7 @@ MIGRATIONS: Dict[int, Callable[..., MigrationOutcome]] = {
     10: run_v10,
     11: run_v11,
     12: run_v12,
+    13: run_v13,
 }
 
 

@@ -32,6 +32,9 @@ class ScheduleResultViewContext:
     available_roles: List[Dict[str, Any]]
     is_fallback: bool
     is_comparison: bool
+    is_scenario_preview: bool
+    scenario_id: Any
+    scenario_name: Any
     plan_role_notice: str
 
     def to_dict(self) -> Dict[str, Any]:
@@ -49,6 +52,9 @@ class ScheduleResultViewContext:
             "available_roles": list(self.available_roles),
             "is_fallback": self.is_fallback,
             "is_comparison": self.is_comparison,
+            "is_scenario_preview": self.is_scenario_preview,
+            "scenario_id": self.scenario_id,
+            "scenario_name": self.scenario_name,
             "plan_role_notice": self.plan_role_notice,
         }
 
@@ -91,6 +97,9 @@ def default_plan_resolution_dict(plan_role: Optional[str] = None) -> Dict[str, A
         ],
         "is_fallback": requested_role != ROLE_ADOPTED,
         "is_comparison": False,
+        "is_scenario_preview": False,
+        "scenario_id": None,
+        "scenario_name": None,
     }
 
 
@@ -123,11 +132,16 @@ def _resolution_to_dict(resolution: Any) -> Dict[str, Any]:
         "available_roles": serialize_plan_role_options(getattr(resolution, "available_roles", None)),
         "is_fallback": getattr(resolution, "status", "") == "fallback_to_adopted",
         "is_comparison": is_comparison_source(source_table),
+        "is_scenario_preview": bool(getattr(resolution, "is_scenario_preview", False)),
+        "scenario_id": getattr(resolution, "scenario_id", None),
+        "scenario_name": getattr(resolution, "scenario_name", None),
     }
 
 
-def resolve_plan(plan_query_service, version: int, plan_role: Optional[str]):
+def resolve_plan(plan_query_service, version: int, plan_role: Optional[str], scenario_id: Optional[str] = None):
     try:
+        if scenario_id:
+            return plan_query_service.resolve_plan_view(int(version), plan_role, scenario_id)
         return plan_query_service.resolve_plan(int(version), plan_role)
     except ValueError as exc:
         raise ValidationError(str(exc), field="plan_role") from exc
@@ -148,6 +162,9 @@ def attach_plan_metadata(data: Dict[str, Any], plan_resolution: Dict[str, Any]) 
         plan_role_resolution=plan_resolution,
         available_plan_roles=list(plan_resolution.get("available_roles") or []),
         is_comparison_plan=bool(plan_resolution.get("is_comparison")),
+        is_scenario_preview=bool(plan_resolution.get("is_scenario_preview")),
+        scenario_id=plan_resolution.get("scenario_id"),
+        scenario_name=plan_resolution.get("scenario_name"),
     )
 
 
@@ -197,6 +214,9 @@ def plan_role_filter_fields(plan_resolution_or_context: Any = None, **overrides:
     candidate_key = _override_or_data(overrides, data, "candidate_key")
     source_table = _override_or_data(overrides, data, "source_table")
     is_comparison = _plan_role_is_comparison(overrides, data, source_table)
+    scenario_id = _override_or_data(overrides, data, "scenario_id")
+    scenario_name = _override_or_data(overrides, data, "scenario_name")
+    is_scenario_preview = bool(_override_or_data(overrides, data, "is_scenario_preview"))
 
     return {
         "plan_role": requested_role,
@@ -211,6 +231,9 @@ def plan_role_filter_fields(plan_resolution_or_context: Any = None, **overrides:
         "candidate_key": candidate_key,
         "source_table": source_table,
         "is_comparison": bool(is_comparison),
+        "is_scenario_preview": is_scenario_preview,
+        "scenario_id": scenario_id,
+        "scenario_name": scenario_name,
     }
 
 
@@ -250,6 +273,8 @@ def serialize_plan_role_options(options: Any) -> List[Dict[str, Any]]:
 
 def plan_role_notice_from_fields(fields: Dict[str, Any]) -> str:
     if bool(fields.get("is_comparison")):
+        if bool(fields.get("is_scenario_preview")):
+            return "当前正在预览模拟方案，正式计划还没有改变。"
         return _PLAN_ROLE_COMPARE_HINT
     return str(fields.get("plan_role_message") or "").strip()
 
@@ -279,6 +304,9 @@ def _build_view_context(
         available_roles=available_roles,
         is_fallback=bool(plan_resolution.get("is_fallback")),
         is_comparison=bool(plan_resolution.get("is_comparison")),
+        is_scenario_preview=bool(plan_resolution.get("is_scenario_preview")),
+        scenario_id=plan_resolution.get("scenario_id"),
+        scenario_name=plan_resolution.get("scenario_name"),
         plan_role_notice=plan_role_notice_from_fields(fields),
     )
 
@@ -291,6 +319,7 @@ def resolve_schedule_result_view_context(
     version_exists: Callable[[int], bool],
     plan_query_service,
     require_existing_version: bool = False,
+    raw_scenario_id: Any = None,
 ) -> ScheduleResultViewContext:
     version_resolution = resolve_version_or_latest(
         raw_version,
@@ -312,7 +341,7 @@ def resolve_schedule_result_view_context(
         )
 
     selected_version = require_selected_version(version_resolution)
-    plan_resolution_obj = resolve_plan(plan_query_service, selected_version, raw_plan_role)
+    plan_resolution_obj = resolve_plan(plan_query_service, selected_version, raw_plan_role, raw_scenario_id)
     return _build_view_context(
         version_resolution=version_resolution,
         plan_resolution=_resolution_to_dict(plan_resolution_obj),

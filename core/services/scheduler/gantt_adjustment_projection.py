@@ -40,6 +40,8 @@ class AdjustmentPlanRow:
     operator_id: Optional[str]
     due_date: Optional[str]
     priority: Optional[str]
+    lock_status: Optional[str]
+    is_changed: bool = False
 
 
 def build_adjusted_plan_rows(
@@ -152,6 +154,7 @@ def _plan_row(row: ScheduleDetailRow) -> AdjustmentPlanRow:
         operator_id=_text_or_none(row.get("operator_id")),
         due_date=_text_or_none(row.get("due_date")),
         priority=_text_or_none(row.get("priority")),
+        lock_status=_text_or_none(row.get("lock_status")),
     )
 
 
@@ -162,10 +165,13 @@ def _apply_change(row: AdjustmentPlanRow, change: ScheduleAdjustmentChange) -> N
         raise ValidationError("调整后结束时间必须晚于开始时间。", field="to_end")
     row.start = new_start
     row.end = new_end
+    row.is_changed = True
     if change.to_machine_id is not None:
         row.machine_id = _text_or_none(change.to_machine_id)
+        row.is_changed = True
     if change.to_operator_id is not None:
         row.operator_id = _text_or_none(change.to_operator_id)
+        row.is_changed = True
 
 
 def _overlap_pairs(rows: Sequence[AdjustmentPlanRow], field: str) -> List[Tuple[AdjustmentPlanRow, AdjustmentPlanRow]]:

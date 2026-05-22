@@ -15,6 +15,7 @@ from core.services.scheduler import (
     BatchService,
     CalendarService,
     ConfigService,
+    GanttAdjustmentScenarioService,
     GanttAdjustmentValidationService,
     GanttService,
     ResourceDispatchService,
@@ -39,6 +40,7 @@ REQUEST_SERVICES_PUBLIC_ATTRS = (
     "batch_material_service",
     "gantt_service",
     "gantt_adjustment_validation_service",
+    "gantt_adjustment_scenario_service",
     "resource_dispatch_service",
     "part_service",
     "part_operation_query_service",
@@ -165,6 +167,13 @@ class RequestServices:
         return self._construct(
             "gantt_adjustment_validation_service",
             lambda: GanttAdjustmentValidationService(self._db, logger=self._app_logger),
+        )
+
+    @cached_property
+    def gantt_adjustment_scenario_service(self) -> GanttAdjustmentScenarioService:
+        return self._construct(
+            "gantt_adjustment_scenario_service",
+            lambda: GanttAdjustmentScenarioService(self._db, logger=self._app_logger),
         )
 
     @cached_property

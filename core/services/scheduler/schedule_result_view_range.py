@@ -45,11 +45,16 @@ def get_plan_time_span_dates(
     plan_query_service,
     version: int,
     plan_role: Optional[str] = None,
+    scenario_id: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     try:
-        span = plan_query_service.get_plan_time_span(int(version), plan_role)
+        if scenario_id:
+            span = plan_query_service.get_plan_time_span_for_view(int(version), plan_role, scenario_id)
+        else:
+            span = plan_query_service.get_plan_time_span(int(version), plan_role)
     except ValueError as exc:
-        raise ValidationError(str(exc), field="plan_role") from exc
+        field = "scenario_id" if scenario_id else "plan_role"
+        raise ValidationError(str(exc), field=field) from exc
     if not span:
         return None
 
@@ -77,6 +82,7 @@ def resolve_schedule_result_week_range(
     plan_query_service,
     version: Optional[int],
     plan_role: Optional[str] = None,
+    scenario_id: Optional[str] = None,
     week_start: Optional[str] = None,
     offset_weeks: Any = 0,
     start_date: Optional[str] = None,
@@ -84,7 +90,14 @@ def resolve_schedule_result_week_range(
     default_to_version_span: bool,
 ) -> Tuple[WeekRange, Optional[Dict[str, Any]], str]:
     version_span = (
-        get_plan_time_span_dates(plan_query_service, int(version), plan_role=plan_role) if version is not None else None
+        get_plan_time_span_dates(
+            plan_query_service,
+            int(version),
+            plan_role=plan_role,
+            scenario_id=scenario_id,
+        )
+        if version is not None
+        else None
     )
     effective_offset_weeks = normalize_week_offset_for_explicit_range(
         start_date=start_date,

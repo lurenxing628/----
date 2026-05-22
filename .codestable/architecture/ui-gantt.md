@@ -50,7 +50,7 @@ tags: [scheduler, gantt, frontend, readonly, vendor]
 
 `simulate` 模式目前只在 `gantt_adapter.js` 中保留事件出口，不连接保存接口，不创建草稿，也不写正式排产数据。
 
-真实模拟调整入口尚未开放。当前页面上的 `ganttSimulationEntry` 按钮是 disabled 占位按钮。后续即使后端校验链路完成，可点击入口也只能进入校验/试算；保存模拟方案和正式发布仍然必须等后续独立阶段实现。
+真实拖动调整入口尚未开放。当前页面上的 `ganttSimulationEntry` 按钮是 disabled 占位按钮。后端已经有保存模拟方案的接口，但模板仍不注入保存按钮，也不打开拖拽编辑；用户必须通过后续模拟调整入口创建 Draft 后，才能保存 Scenario。
 
 ## 5. Draft 草稿模型与校验试算
 
@@ -67,6 +67,26 @@ tags: [scheduler, gantt, frontend, readonly, vendor]
 
 当前页面模板仍没有注入 `validate-simulate` 地址，也没有 `data-adjustment-url`。因此这条接口只是后续模拟调整入口的后端合同，还不是用户可点击功能。
 
-## 6. vendor 补丁治理
+## 6. Scenario 模拟方案保存与只读预览
+
+后端现在已有 `ScheduleAdjustmentScenario` 和 `ScheduleAdjustmentScenarioRow` 两张表，用来保存通过校验后的模拟方案。Scenario 不是正式排产版本：
+
+- 不写 `Schedule`。
+- 不写 `ScheduleHistory`。
+- 不写 `ScheduleVersionSeq`。
+- 不写 `ScheduleCandidate*`。
+- 不改变默认甘特图、周计划、资源排班和报表的正式结果口径。
+
+`POST /scheduler/gantt/adjustments/save-scenario` 会重新执行 Draft 校验。只有 `valid` 和 `warning` 可以保存；`blocked` 会被拒绝。保存成功后 Draft 状态变成 `saved_scenario`，返回 `scenario_id` 和只读甘特图预览链接。
+
+只读甘特图支持显式 `scenario_id` 预览：
+
+- `SchedulePlanQueryService.resolve_plan_view()` 在有 `scenario_id` 时读取 `ScheduleAdjustmentScenarioRow`。
+- 找不到 Scenario、版本不匹配、方案角色不匹配或 Scenario 明细缺失时直接报错，不回退到 `adopted`。
+- 时间范围、任务明细、超期标记和关键工序都按 Scenario 行计算。
+- 页面、`/scheduler/gantt/data`、视图切换、周切换、查询表单和 `static/js/gantt_boot.js` 都会保留 `scenario_id`。
+- 页面显示“当前正在预览模拟方案，正式计划还没有改变”。
+
+## 7. vendor 补丁治理
 
 `static/js/frappe-gantt.min.js` 当前本地补丁说明见 `.codestable/vendor/frappe-gantt-local-patches.md`。后续只有 Frappe 内部时间尺、任务条几何、命中区或事件绑定确实需要改时，才允许继续改 vendor 文件；业务规则优先放到 APS 自己的 `gantt_zoom.js` / `gantt_adapter.js` / `gantt_ui.js` / `gantt_render.js`。

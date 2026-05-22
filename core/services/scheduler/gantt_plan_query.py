@@ -39,16 +39,21 @@ def default_plan_resolution_dict(plan_role: Optional[str] = None) -> Dict[str, A
         raise
 
 
-def resolve_plan(plan_query_service, version: int, plan_role: Optional[str]):
-    return _resolve_plan(plan_query_service, version, plan_role)
+def resolve_plan(plan_query_service, version: int, plan_role: Optional[str], scenario_id: Optional[str] = None):
+    return _resolve_plan(plan_query_service, version, plan_role, scenario_id)
 
 
 def selected_plan_role(plan_resolution: Dict[str, Any]) -> str:
     return _selected_plan_role(plan_resolution)
 
 
-def get_version_time_span_dates(plan_query_service, version: int, plan_role: Optional[str] = None) -> Optional[Dict[str, Any]]:
-    return _get_plan_time_span_dates(plan_query_service, int(version), plan_role)
+def get_version_time_span_dates(
+    plan_query_service,
+    version: int,
+    plan_role: Optional[str] = None,
+    scenario_id: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    return _get_plan_time_span_dates(plan_query_service, int(version), plan_role, scenario_id)
 
 
 def _has_explicit_gantt_range(
@@ -71,6 +76,7 @@ def resolve_gantt_range_for_version(
     plan_query_service,
     version: Optional[int],
     plan_role: Optional[str] = None,
+    scenario_id: Optional[str] = None,
     week_start: Optional[str] = None,
     offset_weeks: int = 0,
     start_date: Optional[str] = None,
@@ -80,6 +86,7 @@ def resolve_gantt_range_for_version(
         plan_query_service=plan_query_service,
         version=version,
         plan_role=plan_role,
+        scenario_id=scenario_id,
         week_start=week_start,
         offset_weeks=offset_weeks,
         start_date=start_date,

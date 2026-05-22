@@ -78,6 +78,7 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/regression_gantt_simulation_entry_shell.py",
     "tests/regression_gantt_adjustment_draft_model.py",
     "tests/regression_gantt_adjustment_validate_simulate.py",
+    "tests/regression_gantt_draft_save_and_preview.py",
     "tests/regression_frappe_gantt_short_task_contract.py",
     "tests/regression_gantt_readonly_mode_contract.py",
     "tests/regression_gantt_zoom_contract.py",

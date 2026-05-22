@@ -9,6 +9,7 @@ VALID_PLAN_ROLES = (ROLE_ADOPTED, ROLE_BASELINE_BEST, ROLE_CRITICAL_BEST)
 
 SOURCE_SCHEDULE = "schedule"
 SOURCE_CANDIDATE_ROWS = "candidate_rows"
+SOURCE_ADJUSTMENT_SCENARIO_ROWS = "adjustment_scenario_rows"
 
 PLAN_ROLE_LABELS = {
     ROLE_ADOPTED: "最终采用",
@@ -23,7 +24,7 @@ def _normalize_role(role: Optional[str]) -> str:
 
 
 def is_comparison_source(source_table: Optional[str]) -> bool:
-    return str(source_table or "").strip() == SOURCE_CANDIDATE_ROWS
+    return str(source_table or "").strip() in (SOURCE_CANDIDATE_ROWS, SOURCE_ADJUSTMENT_SCENARIO_ROWS)
 
 
 def plan_role_label(role: Optional[str]) -> str:
@@ -51,6 +52,7 @@ __all__ = [
     "ROLE_BASELINE_BEST",
     "ROLE_CRITICAL_BEST",
     "SOURCE_CANDIDATE_ROWS",
+    "SOURCE_ADJUSTMENT_SCENARIO_ROWS",
     "SOURCE_SCHEDULE",
     "VALID_PLAN_ROLES",
     "is_comparison_source",

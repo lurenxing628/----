@@ -5,6 +5,8 @@ import threading
 from collections import OrderedDict
 from typing import Any, Callable, Dict, Optional
 
+from core.models.schedule_plan_role import SOURCE_SCHEDULE
+
 from .gantt_critical_chain import compute_critical_chain, compute_critical_chain_from_rows
 from .schedule_plan_query_service import ROLE_ADOPTED, SchedulePlanQueryService
 from .schedule_result_view_context import default_plan_resolution_dict, selected_plan_role
@@ -86,6 +88,7 @@ class GanttCriticalChainProvider:
             str(plan_resolution.get("selected_role") or ROLE_ADOPTED),
             str(plan_resolution.get("source_table") or "schedule"),
             int(plan_resolution.get("candidate_id") or 0),
+            str(plan_resolution.get("scenario_id") or ""),
         )
 
     @staticmethod
@@ -143,16 +146,20 @@ class GanttCriticalChainProvider:
                 return out
 
         role = selected_plan_role(plan_resolution)
-        if role == ROLE_ADOPTED:
+        source_table = str(plan_resolution.get("source_table") or "schedule")
+        if role == ROLE_ADOPTED and source_table == SOURCE_SCHEDULE:
             raw = compute_critical_chain(self.schedule_repo, int(version))
         else:
             try:
                 plan_query = self._get_plan_query_service(plan_query_service)
-                rows = plan_query.list_plan_detail_rows_all_for_resolution(
-                    version=int(version),
-                    source_table=str(plan_resolution.get("source_table") or "schedule"),
-                    candidate_id=plan_resolution.get("candidate_id"),
-                )
+                query_kwargs = {
+                    "version": int(version),
+                    "source_table": source_table,
+                    "candidate_id": plan_resolution.get("candidate_id"),
+                }
+                if plan_resolution.get("scenario_id"):
+                    query_kwargs["scenario_id"] = plan_resolution.get("scenario_id")
+                rows = plan_query.list_plan_detail_rows_all_for_resolution(**query_kwargs)
             except (RuntimeError, ValueError, TypeError, KeyError, IndexError, sqlite3.Error):
                 raw = {"available": False, "reason": "repo_exception"}
             else:

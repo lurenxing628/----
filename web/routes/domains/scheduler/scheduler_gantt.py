@@ -73,16 +73,35 @@ def _get_plan_role_arg() -> Optional[str]:
     return text or None
 
 
-def _resolve_plan_context(services, version: Optional[int], plan_role: Optional[str]) -> Dict[str, Any]:
+def _get_scenario_id_arg() -> Optional[str]:
+    raw = request.args.get("scenario_id")
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    return text or None
+
+
+def _resolve_plan_context(
+    services,
+    version: Optional[int],
+    plan_role: Optional[str],
+    scenario_id: Optional[str] = None,
+) -> Dict[str, Any]:
     plan_query_service = getattr(services, "schedule_plan_query_service", None)
     if plan_query_service is not None and version is not None:
         try:
-            return plan_query_service.resolve_plan(int(version), plan_role).to_dict()
+            return plan_query_service.resolve_plan_view(int(version), plan_role, scenario_id).to_dict()
         except ValueError as exc:
-            raise ValidationError(str(exc), field="plan_role") from exc
+            field = "scenario_id" if scenario_id else "plan_role"
+            raise ValidationError(str(exc), field=field) from exc
     gantt_service = getattr(services, "gantt_service", None)
     if gantt_service is not None and hasattr(gantt_service, "resolve_plan_context"):
-        return gantt_service.resolve_plan_context(version, plan_role, plan_query_service=plan_query_service)
+        return gantt_service.resolve_plan_context(
+            version,
+            plan_role,
+            scenario_id=scenario_id,
+            plan_query_service=plan_query_service,
+        )
     return default_plan_resolution_dict(plan_role)
 
 
@@ -116,6 +135,7 @@ def gantt_page():
     start_date = (request.args.get("start_date") or "").strip() or None
     end_date = (request.args.get("end_date") or "").strip() or None
     plan_role = _get_plan_role_arg()
+    scenario_id = _get_scenario_id_arg()
     gantt_zoom = (request.args.get("gantt_zoom") or "day").strip() or "day"
     services = g.services
     effective_offset = _get_effective_offset_for_display_range(start_date=start_date, end_date=end_date)
@@ -132,11 +152,12 @@ def gantt_page():
             },
         )
     ver = version_resolution.selected_version
-    plan_resolution = _resolve_plan_context(services, ver, plan_role)
+    plan_resolution = _resolve_plan_context(services, ver, plan_role, scenario_id)
     plan_query_service = getattr(services, "schedule_plan_query_service", None)
     wr, version_span, range_source = svc.resolve_gantt_range_for_version(
         version=ver,
         plan_role=plan_resolution.get("selected_role"),
+        scenario_id=plan_resolution.get("scenario_id"),
         plan_query_service=plan_query_service,
         week_start=week_start,
         offset_weeks=effective_offset,
@@ -171,6 +192,9 @@ def gantt_page():
         range_source=range_source,
         data_url=url_for("scheduler.gantt_data"),
         gantt_zoom=gantt_zoom,
+        scenario_id=plan_resolution.get("scenario_id"),
+        scenario_name=plan_resolution.get("scenario_name"),
+        is_scenario_preview=bool(plan_resolution.get("is_scenario_preview")),
     )
 
 
@@ -184,6 +208,7 @@ def gantt_data():
     start_date = (request.args.get("start_date") or "").strip() or None
     end_date = (request.args.get("end_date") or "").strip() or None
     plan_role = _get_plan_role_arg()
+    scenario_id = _get_scenario_id_arg()
     svc = g.services.gantt_service
     try:
         effective_offset = _get_effective_offset_for_display_range(start_date=start_date, end_date=end_date)
@@ -199,6 +224,8 @@ def gantt_data():
         }
         if plan_role is not None:
             data_kwargs["plan_role"] = plan_role
+        if scenario_id is not None:
+            data_kwargs["scenario_id"] = scenario_id
         plan_query_service = getattr(g.services, "schedule_plan_query_service", None)
         if plan_query_service is not None:
             data_kwargs["plan_query_service"] = plan_query_service

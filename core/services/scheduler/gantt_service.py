@@ -85,6 +85,7 @@ class GanttService:
         *,
         version: Any = None,
         plan_role: Optional[str] = None,
+        scenario_id: Optional[str] = None,
         plan_query_service=None,
         require_existing_version: bool = False,
     ) -> ScheduleResultViewContext:
@@ -92,6 +93,7 @@ class GanttService:
         return resolve_schedule_result_view_context(
             raw_version=version,
             raw_plan_role=plan_role,
+            raw_scenario_id=scenario_id,
             latest_version=latest,
             version_exists=lambda item: self.history_repo.get_by_version(int(item)) is not None,
             plan_query_service=self._get_plan_query_service(plan_query_service),
@@ -102,11 +104,13 @@ class GanttService:
         self,
         version: Optional[Any],
         plan_role: Optional[str] = None,
+        scenario_id: Optional[str] = None,
         plan_query_service=None,
     ) -> Dict[str, Any]:
         return self.resolve_result_view_context(
             version=version,
             plan_role=plan_role,
+            scenario_id=scenario_id,
             plan_query_service=plan_query_service,
             require_existing_version=version is not None,
         ).plan_resolution
@@ -170,16 +174,18 @@ class GanttService:
         self,
         version: int,
         plan_role: Optional[str] = None,
+        scenario_id: Optional[str] = None,
         plan_query_service=None,
     ) -> Optional[Dict[str, Any]]:
         plan_query = self._get_plan_query_service(plan_query_service)
-        return get_version_time_span_dates(plan_query, int(version), plan_role)
+        return get_version_time_span_dates(plan_query, int(version), plan_role, scenario_id)
 
     def resolve_gantt_range_for_version(
         self,
         *,
         version: Optional[int],
         plan_role: Optional[str] = None,
+        scenario_id: Optional[str] = None,
         plan_query_service=None,
         week_start: Optional[str] = None,
         offset_weeks: int = 0,
@@ -190,6 +196,7 @@ class GanttService:
             plan_query_service=self._get_plan_query_service(plan_query_service),
             version=version,
             plan_role=plan_role,
+            scenario_id=scenario_id,
             week_start=week_start,
             offset_weeks=offset_weeks,
             start_date=start_date,
@@ -279,6 +286,7 @@ class GanttService:
         version: Optional[int] = None,
         include_history: bool = False,
         plan_role: Optional[str] = None,
+        scenario_id: Optional[str] = None,
         plan_query_service=None,
     ) -> Dict[str, Any]:
         """返回甘特图数据（tasks + 元信息）。"""
@@ -290,6 +298,7 @@ class GanttService:
         view_context = self.resolve_result_view_context(
             version=version,
             plan_role=plan_role,
+            scenario_id=scenario_id,
             plan_query_service=plan_query,
             require_existing_version=True,
         )
@@ -311,6 +320,7 @@ class GanttService:
         wr, version_span, range_source = self.resolve_gantt_range_for_version(
             version=ver,
             plan_role=selected_plan_role(plan_resolution),
+            scenario_id=plan_resolution.get("scenario_id"),
             plan_query_service=plan_query,
             week_start=week_start,
             offset_weeks=offset_weeks,
@@ -319,9 +329,11 @@ class GanttService:
         )
 
         calendar_days_outcome = build_calendar_days(self.conn, wr=wr, logger=self.logger, op_logger=self.op_logger)
-        rows = plan_query.list_plan_detail_rows_between(
+        rows = plan_query.list_plan_detail_rows_between_for_resolution(
             version=ver,
-            role=selected_plan_role(plan_resolution),
+            source_table=str(plan_resolution.get("source_table") or ""),
+            candidate_id=plan_resolution.get("candidate_id"),
+            scenario_id=plan_resolution.get("scenario_id"),
             start_time=wr.start_str,
             end_time=wr.end_exclusive_str,
         )
@@ -331,7 +343,12 @@ class GanttService:
                 version=ver,
                 role=effective_role,
                 source_table=str(plan_resolution.get("source_table") or ""),
-                list_plan_overdue_base_rows=plan_query.list_plan_overdue_base_rows,
+                list_plan_overdue_base_rows=lambda **_: plan_query.list_plan_overdue_base_rows_for_resolution(
+                    version=ver,
+                    source_table=str(plan_resolution.get("source_table") or ""),
+                    candidate_id=plan_resolution.get("candidate_id"),
+                    scenario_id=plan_resolution.get("scenario_id"),
+                ),
                 load_adopted_meta=self._overdue_batch_ids_from_history,
                 log_degraded=self._log_overdue_marker_degraded,
             )
@@ -392,6 +409,7 @@ class GanttService:
         end_date: Optional[str] = None,
         version: Optional[int] = None,
         plan_role: Optional[str] = None,
+        scenario_id: Optional[str] = None,
         plan_query_service=None,
     ) -> Dict[str, Any]:
         """
@@ -412,6 +430,7 @@ class GanttService:
         view_context = self.resolve_result_view_context(
             version=version,
             plan_role=plan_role,
+            scenario_id=scenario_id,
             plan_query_service=plan_query,
             require_existing_version=True,
         )
@@ -422,9 +441,11 @@ class GanttService:
         ver = require_selected_version(resolution)
         plan_resolution = view_context.plan_resolution
 
-        rows = plan_query.list_plan_detail_rows_between(
+        rows = plan_query.list_plan_detail_rows_between_for_resolution(
             version=ver,
-            role=selected_plan_role(plan_resolution),
+            source_table=str(plan_resolution.get("source_table") or ""),
+            candidate_id=plan_resolution.get("candidate_id"),
+            scenario_id=plan_resolution.get("scenario_id"),
             start_time=wr.start_str,
             end_time=wr.end_exclusive_str,
         )

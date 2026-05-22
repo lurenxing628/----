@@ -2,8 +2,12 @@ from __future__ import annotations
 
 from typing import Any, Callable, Dict, List, Optional, Set
 
+from core.models.schedule_plan_role import (
+    SOURCE_ADJUSTMENT_SCENARIO_ROWS,
+    SOURCE_CANDIDATE_ROWS,
+    SOURCE_SCHEDULE,
+)
 from core.services.common.overdue_calculations import compute_overdue_buckets
-from data.repositories.schedule_plan_query_repo import SOURCE_CANDIDATE_ROWS, SOURCE_SCHEDULE
 
 
 def build_overdue_batch_ids_from_plan_rows(rows: List[Dict[str, Any]]) -> Set[str]:
@@ -28,7 +32,7 @@ def build_overdue_meta_for_plan(
     normalized_source = str(source_table or "").strip()
     if normalized_source == SOURCE_SCHEDULE:
         return load_adopted_meta(int(version))
-    if normalized_source != SOURCE_CANDIDATE_ROWS:
+    if normalized_source not in (SOURCE_CANDIDATE_ROWS, SOURCE_ADJUSTMENT_SCENARIO_ROWS):
         raise ValueError(f"未知的排产方案数据来源：{normalized_source or '-'}")
     rows = list_plan_overdue_base_rows(version=int(version), role=role)
     ids = build_overdue_batch_ids_from_plan_rows([dict(row) for row in rows])

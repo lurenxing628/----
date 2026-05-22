@@ -1,0 +1,42 @@
+feature: 2026-05-22-gantt-draft-save-and-preview
+status: done
+roadmap: gantt-result-view-and-manual-adjustment
+roadmap_item: gantt-draft-save-and-preview
+
+steps:
+  - slug: boundary-and-docs
+    title: 明确 Scenario 保存和预览边界
+    status: done
+    exit_signal: design/checklist 已写明 Scenario 不是正式版本，不写 Schedule/ScheduleHistory/ScheduleVersionSeq。
+
+  - slug: scenario-storage
+    title: 新增 Scenario 表、模型、仓储和保存服务
+    status: done
+    exit_signal: Draft 通过重新校验后可保存 Scenario；blocked Draft 被拒绝；正式表不变。
+
+  - slug: scenario-preview-query
+    title: 接入显式 scenario_id 预览查询链路
+    status: done
+    exit_signal: 甘特图数据接口带 scenario_id 时读取 Scenario 行，不带时正式链路不变。
+
+  - slug: page-url-contract
+    title: 接入页面提示和 URL 复现
+    status: done
+    exit_signal: 页面显示模拟预览提示，缩放/刷新不丢 scenario_id。
+
+  - slug: regression
+    title: 增加保存和预览回归测试
+    status: done
+    exit_signal: 覆盖迁移、保存、blocked 拒绝、正式表不变、显式预览和非法 scenario 不回退。
+
+  - slug: verification
+    title: 回归验证
+    status: done
+    exit_signal: 目标 pytest、ruff、YAML、fast precheck 通过。
+
+checks:
+  - Scenario 保存不写 Schedule/ScheduleHistory/ScheduleVersionSeq/ScheduleCandidate*。
+  - 保存前必须重新执行 Draft 校验。
+  - scenario_id 是显式预览身份，不能被当作 plan_role。
+  - 找不到 Scenario 时必须报错，不能回退 adopted。
+  - 页面和返回文案都要说明“正式计划还没有改变”。

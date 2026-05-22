@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence
 
 from core.infrastructure.errors import ValidationError
@@ -20,6 +21,32 @@ from .gantt_adjustment_projection import (
 from .schedule_plan_query_service import SchedulePlanQueryService
 
 
+@dataclass(frozen=True)
+class GanttAdjustmentEvaluation:
+    draft: Any
+    changes: Sequence[Any]
+    plan_resolution: Any
+    adjusted_rows: Sequence[AdjustmentPlanRow]
+    issues: Sequence[AdjustmentIssue]
+    status: str
+
+    @property
+    def can_apply(self) -> bool:
+        return self.status != "blocked"
+
+    def to_response(self) -> Dict[str, Any]:
+        return {
+            "draft_id": self.draft.draft_id,
+            "base_version": self.draft.base_version,
+            "base_plan_role": self.draft.base_plan_role,
+            "status": self.status,
+            "can_apply": self.can_apply,
+            "message": result_message(self.status),
+            "issue_count": len(self.issues),
+            "issues": [issue.to_dict() for issue in self.issues],
+        }
+
+
 class GanttAdjustmentValidationService:
     """甘特图 Draft 调整校验服务：只读正式排产，返回内存试算结果。"""
 
@@ -37,6 +64,19 @@ class GanttAdjustmentValidationService:
         expected_base_version: Optional[Any] = None,
         expected_base_plan_role: Optional[Any] = None,
     ) -> Dict[str, Any]:
+        return self.evaluate_draft(
+            draft_id=draft_id,
+            expected_base_version=expected_base_version,
+            expected_base_plan_role=expected_base_plan_role,
+        ).to_response()
+
+    def evaluate_draft(
+        self,
+        *,
+        draft_id: Any,
+        expected_base_version: Optional[Any] = None,
+        expected_base_plan_role: Optional[Any] = None,
+    ) -> GanttAdjustmentEvaluation:
         draft_key = _required_text(draft_id, field="draft_id", label="草稿编号")
         draft = self.draft_repo.get_draft(draft_key)
         if draft is None:
@@ -58,16 +98,14 @@ class GanttAdjustmentValidationService:
         adjusted_rows = build_adjusted_plan_rows(base_rows, changes)
         issues = self._collect_issues(adjusted_rows)
         status = result_status(issues)
-        return {
-            "draft_id": draft.draft_id,
-            "base_version": draft.base_version,
-            "base_plan_role": draft.base_plan_role,
-            "status": status,
-            "can_apply": status != "blocked",
-            "message": result_message(status),
-            "issue_count": len(issues),
-            "issues": [issue.to_dict() for issue in issues],
-        }
+        return GanttAdjustmentEvaluation(
+            draft=draft,
+            changes=changes,
+            plan_resolution=resolution,
+            adjusted_rows=adjusted_rows,
+            issues=issues,
+            status=status,
+        )
 
     def _collect_issues(self, rows: Sequence[AdjustmentPlanRow]) -> List[AdjustmentIssue]:
         issues: List[AdjustmentIssue] = []

@@ -227,10 +227,10 @@ items:
 
   - slug: gantt-draft-save-and-preview
     title: 后续 Scenario 模拟方案保存并预览
-    description: 后续保存模拟方案，并支持甘特图、周计划、资源排班和报表按模拟方案预览。
+    description: 后续保存模拟方案；本阶段先支持甘特图按 scenario_id 显式预览，周计划、资源排班和报表预览另列后续接入。
     depends_on: [gantt-adjustment-validate-simulate]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-22-gantt-draft-save-and-preview
     minimal_loop: false
     primary_paths:
       - core/services/scheduler/
@@ -241,10 +241,9 @@ items:
       - tests/regression_gantt_draft_save_and_preview.py
     exit_checks:
       - 保存后提示“已保存为模拟方案，正式计划还没有改变”
-      - 甘特图可选择模拟方案预览
-      - 周计划和资源排班可选择模拟方案预览
-      - 报表默认不自动使用模拟方案，除非用户显式选择
-    notes: Scenario 是模拟方案，不是正式版本。
+      - 甘特图可通过 scenario_id 显式预览模拟方案
+      - 报表、周计划和资源排班默认不自动使用模拟方案
+    notes: 已完成 Scenario 保存与只读甘特图显式预览；Scenario 是模拟方案，不是正式版本。周计划、资源排班和报表显式预览留到后续独立接入。
 
   - slug: gantt-draft-publish-official-version
     title: 后续 Official Version 正式采用
