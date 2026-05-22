@@ -161,7 +161,9 @@
               </div>
             </div>
           </div>
-          {% if st_ab and st_ab.last_run_detail_obj %}
+          {% if st_ab and st_ab.last_run_detail_parse_error %}
+            <div class="flash-card flash-warning mt-2">上次结果记录异常，详细内容请让维护人员查看日志。</div>
+          {% elif st_ab and st_ab.last_run_detail_obj %}
             <details class="muted mt-2">
               <summary>上次结果</summary>
               <div>系统已记录上次执行结果；详细内容请让维护人员查看日志。</div>
@@ -193,7 +195,9 @@
               </div>
             </div>
           </div>
-          {% if st_bc and st_bc.last_run_detail_obj %}
+          {% if st_bc and st_bc.last_run_detail_parse_error %}
+            <div class="flash-card flash-warning mt-2">上次结果记录异常，详细内容请让维护人员查看日志。</div>
+          {% elif st_bc and st_bc.last_run_detail_obj %}
             <details class="muted mt-2">
               <summary>上次结果</summary>
               <div>系统已记录上次执行结果；详细内容请让维护人员查看日志。</div>

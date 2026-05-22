@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
@@ -27,6 +28,8 @@ class StepRecord:
     setup_min: Optional[float]
     unit_min: Optional[float]
     batch_min: Optional[float]
+    row_num: int = 0
+    diagnostics: List[Dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -57,7 +60,7 @@ class UnitExcelParser:
             parts: Dict[str, PartContext] = {}
             current_part_no: Optional[str] = None
 
-            for row in ws.iter_rows(min_row=2, values_only=True):
+            for row_num, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
                 if row is None:
                     continue
                 row_values = list(row)
@@ -67,7 +70,7 @@ class UnitExcelParser:
                     continue
 
                 ctx = parts[current_part_no]
-                self._append_station_step_records(ctx, row_values=row_values, stations=stations)
+                self._append_station_step_records(ctx, row_values=row_values, stations=stations, row_num=row_num)
             return parts, stations
         finally:
             try:
@@ -104,13 +107,16 @@ class UnitExcelParser:
 
         return part_no
 
-    def _append_station_step_records(self, ctx: PartContext, *, row_values: Sequence[Any], stations: Sequence[StationMeta]) -> None:
+    def _append_station_step_records(self, ctx: PartContext, *, row_values: Sequence[Any], stations: Sequence[StationMeta], row_num: int) -> None:
         for station in stations:
             step_text = self._to_text(self._pick_cell(row_values, station.col_start))
             if not step_text:
                 continue
 
-            seq, has_step_code = self._parse_step_seq(step_text)
+            diagnostics: List[Dict[str, Any]] = []
+            seq, has_step_code, seq_issue = self._parse_step_seq_detail(step_text, row_num=row_num)
+            if seq_issue:
+                diagnostics.append(seq_issue)
             rec = StepRecord(
                 part_no=ctx.part_no,
                 seq=seq,
@@ -118,9 +124,26 @@ class UnitExcelParser:
                 has_step_code=has_step_code,
                 machine_id=station.machine_id,
                 operators=list(station.operators),
-                setup_min=self._to_float(self._pick_cell(row_values, station.col_start + 1)),
-                unit_min=self._to_float(self._pick_cell(row_values, station.col_start + 2)),
-                batch_min=self._to_float(self._pick_cell(row_values, station.col_start + 3)),
+                setup_min=self._to_float_with_diagnostic(
+                    self._pick_cell(row_values, station.col_start + 1),
+                    row_num=row_num,
+                    field="换型时间(min)",
+                    diagnostics=diagnostics,
+                ),
+                unit_min=self._to_float_with_diagnostic(
+                    self._pick_cell(row_values, station.col_start + 2),
+                    row_num=row_num,
+                    field="单件加工时间(min)",
+                    diagnostics=diagnostics,
+                ),
+                batch_min=self._to_float_with_diagnostic(
+                    self._pick_cell(row_values, station.col_start + 3),
+                    row_num=row_num,
+                    field="批次加工时间(min)",
+                    diagnostics=diagnostics,
+                ),
+                row_num=int(row_num),
+                diagnostics=diagnostics,
             )
             ctx.step_records.append(rec)
 
@@ -193,22 +216,47 @@ class UnitExcelParser:
 
     @staticmethod
     def _parse_step_seq(step_text: str) -> Tuple[Optional[int], bool]:
+        seq, has_step_code, _issue = UnitExcelParser._parse_step_seq_detail(step_text, row_num=0)
+        return seq, has_step_code
+
+    @staticmethod
+    def _parse_step_seq_detail(step_text: str, *, row_num: int) -> Tuple[Optional[int], bool, Optional[Dict[str, Any]]]:
         s = (step_text or "").strip()
         if not s:
-            return None, False
+            return None, False, None
         m = re.match(r"^(\d{1,3})-([0-9A-Za-z]+)", s)
         if m:
             try:
-                return int(m.group(1)), True
-            except Exception:
-                return None, True
+                return int(m.group(1)), True, None
+            except Exception as exc:
+                return None, True, UnitExcelParser._diagnostic(
+                    code="invalid_step_seq",
+                    field="工序号",
+                    message="工序号无法识别，系统已跳过这条工序号。",
+                    row_num=row_num,
+                    raw_value=step_text,
+                    error=exc,
+                )
         m2 = re.match(r"^(\d{1,3})", s)
         if m2:
             try:
-                return int(m2.group(1)), False
-            except Exception:
-                return None, False
-        return None, False
+                return int(m2.group(1)), False, None
+            except Exception as exc:
+                return None, False, UnitExcelParser._diagnostic(
+                    code="invalid_step_seq",
+                    field="工序号",
+                    message="工序号无法识别，系统已跳过这条工序号。",
+                    row_num=row_num,
+                    raw_value=step_text,
+                    error=exc,
+                )
+        return None, False, UnitExcelParser._diagnostic(
+            code="invalid_step_seq",
+            field="工序号",
+            message="工序号无法识别，系统已按可确认内容继续转换。",
+            row_num=row_num,
+            raw_value=step_text,
+        )
 
     def _parse_route_map(self, route_raw: str) -> Dict[int, str]:
         normalized = self._normalize_route(route_raw)
@@ -236,23 +284,83 @@ class UnitExcelParser:
 
     @staticmethod
     def _to_float(v: Any) -> Optional[float]:
+        return UnitExcelParser._parse_positive_float(v)[0]
+
+    @staticmethod
+    def _diagnostic(
+        *,
+        code: str,
+        field: str,
+        message: str,
+        row_num: int,
+        raw_value: Any,
+        error: Optional[BaseException] = None,
+    ) -> Dict[str, Any]:
+        out: Dict[str, Any] = {
+            "code": code,
+            "field": field,
+            "message": message,
+            "row_num": int(row_num or 0),
+            "raw_value": str(raw_value)[:120],
+        }
+        if error is not None:
+            out["error_type"] = type(error).__name__
+        return out
+
+    @staticmethod
+    def _parse_positive_float(v: Any) -> Tuple[Optional[float], Optional[str]]:
         if v is None:
-            return None
+            return None, None
+        if isinstance(v, bool):
+            return None, "invalid_number"
         if isinstance(v, (int, float)):
             try:
                 fv = float(v)
             except Exception:
-                return None
-            return fv if fv > 0 else None
+                return None, "invalid_number"
+            if not math.isfinite(fv):
+                return None, "non_finite_number"
+            return (fv, None) if fv > 0 else (None, "number_below_minimum")
         s = str(v).strip()
         if not s:
-            return None
+            return None, None
         s = s.replace(",", "")
         try:
             fv = float(s)
-            return fv if fv > 0 else None
         except Exception:
-            return None
+            return None, "invalid_number"
+        if not math.isfinite(fv):
+            return None, "non_finite_number"
+        return (fv, None) if fv > 0 else (None, "number_below_minimum")
+
+    @staticmethod
+    def _float_issue_message(issue_code: str, field: str) -> str:
+        if issue_code == "non_finite_number":
+            return f"{field} 不是有限数字，系统已忽略该单元格。"
+        if issue_code == "number_below_minimum":
+            return f"{field} 必须大于 0，系统已忽略该单元格。"
+        return f"{field} 不是有效数字，系统已忽略该单元格。"
+
+    def _to_float_with_diagnostic(
+        self,
+        v: Any,
+        *,
+        row_num: int,
+        field: str,
+        diagnostics: List[Dict[str, Any]],
+    ) -> Optional[float]:
+        value, issue_code = self._parse_positive_float(v)
+        if issue_code is not None:
+            diagnostics.append(
+                self._diagnostic(
+                    code=issue_code,
+                    field=field,
+                    message=self._float_issue_message(issue_code, field),
+                    row_num=row_num,
+                    raw_value=v,
+                )
+            )
+        return value
 
     @staticmethod
     def _pick_cell(row_values: Sequence[Any], idx: int) -> Any:
@@ -277,4 +385,3 @@ class UnitExcelParser:
         s = self._SEPARATORS_RE.sub("", s)
         s = s.translate(str.maketrans("０１２３４５６７８９", "0123456789"))
         return s
-

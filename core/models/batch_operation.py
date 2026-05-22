@@ -3,7 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from ._helpers import RowLike, as_dict, get, parse_float, parse_int
+from ._helpers import (
+    RowLike,
+    as_dict,
+    get,
+    parse_float_or_default,
+    parse_int,
+    parse_int_or_default,
+    parse_optional_float,
+)
 from .enums import BatchOperationStatus, SourceType
 
 
@@ -70,7 +78,7 @@ class BatchOperation:
             op_code=str(get(row, "op_code") or ""),
             batch_id=str(get(row, "batch_id") or ""),
             piece_id=str(piece_id) if piece_id is not None and piece_id != "" else None,
-            seq=parse_int(seq, default=0) or 0,
+            seq=parse_int_or_default(seq, 0, field="seq"),
             op_type_id=str(op_type_id) if op_type_id is not None and op_type_id != "" else None,
             op_type_name=str(get(row, "op_type_name") or ""),
             source=(
@@ -79,9 +87,9 @@ class BatchOperation:
             machine_id=str(machine_id) if machine_id is not None and machine_id != "" else None,
             operator_id=str(operator_id) if operator_id is not None and operator_id != "" else None,
             supplier_id=str(supplier_id) if supplier_id is not None and supplier_id != "" else None,
-            setup_hours=parse_float(setup_hours, default=0.0) or 0.0,
-            unit_hours=parse_float(unit_hours, default=0.0) or 0.0,
-            ext_days=parse_float(ext_days, default=None),
+            setup_hours=parse_float_or_default(setup_hours, 0.0, field="setup_hours"),
+            unit_hours=parse_float_or_default(unit_hours, 0.0, field="unit_hours"),
+            ext_days=parse_optional_float(ext_days, field="ext_days"),
             status=(
                 str(get(row, "status") or BatchOperationStatus.PENDING.value).strip().lower()
                 or BatchOperationStatus.PENDING.value

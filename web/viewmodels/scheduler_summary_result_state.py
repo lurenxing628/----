@@ -1,0 +1,134 @@
+from __future__ import annotations
+
+from typing import Any, Dict, Optional
+
+from .scheduler_summary_status import error_count_blocks_success_inference
+
+_RESULT_STATUS_LABELS = {
+    "success": "成功",
+    "partial": "部分成功",
+    "failed": "失败",
+    "simulated": "模拟排产",
+    "unknown": "有问题，需检查",
+}
+_COMPLETION_STATUS_VALUES = {"success", "partial", "failed", "unknown"}
+_LEGACY_RESULT_STATUS_ALIASES = {
+    "ok": "success",
+    "ok2": "success",
+    "fail": "failed",
+}
+
+
+def counts_from_summary(summary: Dict[str, Any]) -> Dict[str, int]:
+    counts = summary.get("counts")
+    if not isinstance(counts, dict):
+        counts = {}
+
+    parse_failed = False
+
+    def _to_int(value: Any) -> int:
+        nonlocal parse_failed
+        try:
+            return int(value or 0)
+        except (TypeError, ValueError, OverflowError):
+            parse_failed = True
+            return 0
+
+    return {
+        "scheduled_ops": _to_int(counts.get("scheduled_ops", summary.get("scheduled_ops"))),
+        "failed_ops": _to_int(counts.get("failed_ops", summary.get("failed_ops"))),
+        "total_ops": _to_int(counts.get("op_count", counts.get("total_ops", summary.get("total_ops")))),
+        "_parse_failed": int(parse_failed),
+    }
+
+
+def _normalize_result_status_value(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    return _LEGACY_RESULT_STATUS_ALIASES.get(text, text)
+
+
+def _known_completion_status(value: Any) -> str:
+    text = _normalize_result_status_value(value)
+    if text in _COMPLETION_STATUS_VALUES:
+        return text
+    return ""
+
+
+def _completion_status_from_counts(*, status: str, scheduled_ops: int, failed_ops: int, total_ops: int) -> str:
+    if scheduled_ops <= 0 and failed_ops <= 0 and total_ops <= 0:
+        return "unknown"
+    if failed_ops > 0 and scheduled_ops > 0:
+        return "partial"
+    if failed_ops > 0:
+        return "failed"
+    if total_ops > 0 and scheduled_ops < total_ops:
+        return "partial"
+    return "success"
+
+
+def _has_summary_errors(summary: Dict[str, Any]) -> bool:
+    if error_count_blocks_success_inference(summary.get("error_count")):
+        return True
+
+    for key in ("errors", "errors_sample", "public_error_details"):
+        value = summary.get(key)
+        if isinstance(value, (list, tuple)) and len(value) > 0:
+            return True
+        if isinstance(value, str) and value.strip():
+            return True
+    return False
+
+
+def derive_completion_status(*, result_status: Any, summary: Optional[Dict[str, Any]]) -> str:
+    summary_dict = summary if isinstance(summary, dict) else {}
+    summary_status = _known_completion_status(summary_dict.get("completion_status"))
+    if summary_status:
+        return summary_status
+
+    status = _normalize_result_status_value(result_status)
+    known_status = _known_completion_status(status)
+
+    counts = counts_from_summary(summary_dict)
+    if bool(counts.get("_parse_failed")):
+        return "unknown"
+    if known_status:
+        if known_status == "success" and _has_summary_errors(summary_dict):
+            return "unknown"
+        return known_status
+    if _has_summary_errors(summary_dict):
+        return "unknown"
+    return _completion_status_from_counts(
+        status=status,
+        scheduled_ops=int(counts.get("scheduled_ops") or 0),
+        failed_ops=int(counts.get("failed_ops") or 0),
+        total_ops=int(counts.get("total_ops") or 0),
+    )
+
+
+def result_status_display_label(*, raw_status: Any, outcome_status: Any) -> str:
+    raw = _normalize_result_status_value(raw_status)
+    outcome = _normalize_result_status_value(outcome_status)
+    raw_label = _RESULT_STATUS_LABELS.get(raw, raw or "")
+    outcome_label = _RESULT_STATUS_LABELS.get(outcome, outcome or "")
+    if raw == "simulated" and outcome_label:
+        return f"{raw_label} / {outcome_label}"
+    return outcome_label or raw_label or "-"
+
+
+def build_result_state(*, result_status: Any, summary: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    raw_status = _normalize_result_status_value(result_status)
+    outcome_status = derive_completion_status(result_status=result_status, summary=summary)
+    return {
+        "raw_status": raw_status,
+        "outcome_status": outcome_status,
+        "is_simulated": raw_status == "simulated",
+        "display_label": result_status_display_label(raw_status=raw_status, outcome_status=outcome_status),
+    }
+
+
+__all__ = [
+    "build_result_state",
+    "counts_from_summary",
+    "derive_completion_status",
+    "result_status_display_label",
+]

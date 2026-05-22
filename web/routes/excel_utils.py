@@ -12,10 +12,12 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from flask import current_app, flash, has_app_context, send_file
+from openpyxl import load_workbook
 
 from core.infrastructure.errors import AppError, ErrorCode, ValidationError
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ImportMode, RowStatus
+from core.services.common.excel_templates import get_template_definition
 
 XLSX_MIMETYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 ENCODED_PREVIEW_ROWS_PREFIX = "aps-preview-json-b64:"
@@ -343,12 +345,50 @@ def read_uploaded_xlsx(file_storage) -> List[Dict[str, Any]]:
             pass
 
 
+def _validate_download_template_headers(workbook: Any, *, download_name: str, template_path: str) -> None:
+    try:
+        definition = get_template_definition(download_name)
+    except KeyError:
+        return
+    expected_headers = [str(header).strip() for header in (definition.get("headers") or [])]
+    try:
+        ws = workbook.active
+        first_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True), None)
+        actual_headers = ["" if value is None else str(value).strip() for value in (first_row or ())]
+        while actual_headers and not actual_headers[-1]:
+            actual_headers.pop()
+    except (AttributeError, IndexError, KeyError, TypeError, ValueError) as exc:
+        raise AppError(
+            ErrorCode.EXCEL_FORMAT_ERROR,
+            f"模板文件表头读取失败，请联系维护人员修复：{Path(template_path).name}",
+        ) from exc
+    if actual_headers != expected_headers:
+        raise AppError(
+            ErrorCode.EXCEL_FORMAT_ERROR,
+            f"模板文件表头不匹配，请联系维护人员修复：{Path(template_path).name}",
+        )
+
+
 def send_excel_template_file(
     template_path: str,
     *,
     download_name: str,
     mimetype: str = XLSX_MIMETYPE,
 ):
+    workbook = None
+    try:
+        workbook = load_workbook(template_path, read_only=True, data_only=True)
+        _validate_download_template_headers(workbook, download_name=download_name, template_path=template_path)
+    except Exception as exc:
+        if isinstance(exc, AppError):
+            raise
+        raise AppError(
+            ErrorCode.EXCEL_FORMAT_ERROR,
+            f"模板文件读取失败，请联系维护人员修复：{Path(template_path).name}",
+        ) from exc
+    finally:
+        if workbook is not None:
+            workbook.close()
     data = Path(template_path).read_bytes()
     return send_file(
         io.BytesIO(data),

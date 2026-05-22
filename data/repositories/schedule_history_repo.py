@@ -9,6 +9,15 @@ from core.models import ScheduleHistory
 from .base_repo import BaseRepository
 
 
+def _strict_non_negative_int(value, *, field: str) -> int:
+    if value is None or isinstance(value, bool) or isinstance(value, float):
+        raise ValueError(f"invalid {field}: {value!r}")
+    number = int(value)
+    if number < 0:
+        raise ValueError(f"invalid {field}: {value!r}")
+    return number
+
+
 class ScheduleHistoryRepository(BaseRepository):
     """排产历史仓库（ScheduleHistory）。"""
 
@@ -34,11 +43,14 @@ class ScheduleHistoryRepository(BaseRepository):
         return ScheduleHistory.from_row(row) if row else None
 
     def get_latest_version(self) -> int:
-        val = self.fetchvalue("SELECT COALESCE(MAX(version), 0) FROM ScheduleHistory", default=0)
         try:
-            return int(val)
-        except Exception:
-            return 0
+            val = self.fetchvalue("SELECT COALESCE(MAX(version), 0) FROM ScheduleHistory", default=0)
+            latest = _strict_non_negative_int(val, field="latest schedule version")
+        except AppError:
+            raise
+        except (TypeError, ValueError) as exc:
+            raise AppError(ErrorCode.DB_QUERY_ERROR, "读取最新排产版本失败，请查看日志。", cause=exc) from exc
+        return latest
 
     def allocate_next_version(self) -> int:
         """

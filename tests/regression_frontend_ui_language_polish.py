@@ -461,25 +461,28 @@ def test_excel_templates_default_to_chinese_enum_values_accepted_by_backend() ->
 
 
 def test_ensure_excel_templates_refreshes_known_stale_generated_template(tmp_path) -> None:
-    from core.services.common.excel_templates import build_xlsx_bytes, ensure_excel_templates
+    from core.services.common.excel_templates import ExcelTemplateError, build_xlsx_bytes, ensure_excel_templates
 
     stale_path = tmp_path / "人员基本信息.xlsx"
+    stale_bytes = build_xlsx_bytes(
+        ["工号", "姓名", "状态", "班组", "备注"],
+        [["OP001", "张三", "active", None, "旧模板"]],
+        format_spec={"enum_cols": {2: ["active", "inactive"]}},
+    ).getvalue()
     stale_path.write_bytes(
-        build_xlsx_bytes(
-            ["工号", "姓名", "状态", "班组", "备注"],
-            [["OP001", "张三", "active", None, "旧模板"]],
-            format_spec={"enum_cols": {2: ["active", "inactive"]}},
-        ).getvalue()
+        stale_bytes
     )
 
-    stats = ensure_excel_templates(str(tmp_path))
-    assert "人员基本信息.xlsx" in stats["created"]
+    with pytest.raises(ExcelTemplateError) as exc_info:
+        ensure_excel_templates(str(tmp_path))
+    assert "不能安全自动覆盖" in str(exc_info.value)
+    assert stale_path.read_bytes() == stale_bytes
 
     workbook = None
     try:
         workbook = openpyxl.load_workbook(filename=stale_path, data_only=True)
         ws = workbook.active
-        assert ws["C2"].value == "在岗"
+        assert ws["C2"].value == "active"
     finally:
         if workbook is not None:
             workbook.close()

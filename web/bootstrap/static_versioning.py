@@ -29,6 +29,18 @@ def _parse_versioned_endpoints(app: Flask) -> Set[str]:
     return endpoints
 
 
+def _warn_once(app: Flask, code: str, message: str) -> None:
+    seen_key = "aps.static_versioning.warnings"
+    seen = app.extensions.setdefault(seen_key, set())
+    if code in seen:
+        return
+    seen.add(code)
+    logger = getattr(app, "logger", None)
+    warning = getattr(logger, "warning", None) if logger is not None else None
+    if callable(warning):
+        warning(message)
+
+
 def _pick_fixed_version(app: Flask) -> str:
     env_v = str(os.environ.get("APS_STATIC_VERSION") or "").strip()
     if env_v:
@@ -65,7 +77,8 @@ def build_versioned_url_for(app: Flask, static_dir: str) -> Callable[..., str]:
         cache_key = f"{endpoint}|{rel}"
         try:
             mtime = int(os.path.getmtime(file_path))
-        except Exception:
+        except OSError as exc:
+            _warn_once(app, f"mtime:{cache_key}", f"静态资源版本号读取失败，已使用原始 URL：{rel}（{exc}）")
             return ""
         if mtime_cache.get(cache_key) == mtime:
             return version_cache.get(cache_key, "")
@@ -75,15 +88,11 @@ def build_versioned_url_for(app: Flask, static_dir: str) -> Callable[..., str]:
         return ver
 
     def _versioned_url_for(endpoint: str, **values: Any) -> str:
-        try:
-            if endpoint in versioned_endpoints and "v" not in values:
-                version = fixed_version or _mtime_version(endpoint, values.get("filename"))
-                if version:
-                    values = dict(values)
-                    values["v"] = version
-        except Exception:
-            # 失败时降级到原生 url_for，避免影响页面可用性
-            pass
+        if endpoint in versioned_endpoints and "v" not in values:
+            version = fixed_version or _mtime_version(endpoint, values.get("filename"))
+            if version:
+                values = dict(values)
+                values["v"] = version
         return flask_url_for(endpoint, **values)
 
     return _versioned_url_for
@@ -99,5 +108,5 @@ def install_versioned_url_for(app: Flask, static_dir: str) -> None:
 
     try:
         app.jinja_env.globals["url_for"] = versioned_url_for
-    except Exception:
-        pass
+    except Exception as exc:
+        _warn_once(app, "jinja_url_for", f"模板静态资源版本函数注入失败，已保留兼容入口：{exc}")

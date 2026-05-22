@@ -48,7 +48,15 @@ def main() -> None:
     try:
         conn.execute(
             "INSERT OR REPLACE INTO SystemJobState (job_key, last_run_time, last_run_detail) VALUES (?, ?, ?)",
-            ("auto_log_cleanup", "坏时间戳", '{"status":"noop"}'),
+            ("auto_backup", "2026-03-13 08:00:00", "{bad-json"),
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO SystemJobState (job_key, last_run_time, last_run_detail) VALUES (?, ?, ?)",
+            ("auto_backup_cleanup", "2026-03-13 08:00:00", "{bad-json"),
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO SystemJobState (job_key, last_run_time, last_run_detail) VALUES (?, ?, ?)",
+            ("auto_log_cleanup", "坏时间戳", "{bad-json"),
         )
         conn.commit()
     finally:
@@ -63,6 +71,13 @@ def main() -> None:
     html = resp.data.decode("utf-8", errors="ignore")
 
     assert "上次执行时间记录异常，系统会在下次执行后重新记录。" in html, html
+    assert "上次结果记录异常，详细内容请让维护人员查看日志。" in html, html
+
+    resp = client.get("/system/backup")
+    _assert_status(resp, "GET /system/backup")
+    backup_html = resp.data.decode("utf-8", errors="ignore")
+
+    assert "上次结果记录异常，详细内容请让维护人员查看日志。" in backup_html, backup_html
 
     print("OK")
 

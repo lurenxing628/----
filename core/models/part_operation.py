@@ -3,7 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from ._helpers import RowLike, as_dict, get, parse_float, parse_int
+from ._helpers import (
+    RowLike,
+    as_dict,
+    get,
+    parse_float_or_default,
+    parse_int,
+    parse_int_or_default,
+    parse_optional_float,
+)
 from .enums import PartOperationStatus, SourceType
 
 
@@ -57,17 +65,17 @@ class PartOperation:
         return cls(
             id=parse_int(raw_id, default=None),
             part_no=str(get(row, "part_no") or ""),
-            seq=parse_int(raw_seq, default=0) or 0,
+            seq=parse_int_or_default(raw_seq, 0, field="seq"),
             op_type_id=str(op_type_id) if op_type_id is not None and op_type_id != "" else None,
             op_type_name=str(get(row, "op_type_name") or ""),
             source=(
                 str(get(row, "source") or SourceType.INTERNAL.value).strip().lower() or SourceType.INTERNAL.value
             ),
             supplier_id=str(supplier_id) if supplier_id is not None and supplier_id != "" else None,
-            ext_days=parse_float(ext_days, default=None),
+            ext_days=parse_optional_float(ext_days, field="ext_days"),
             ext_group_id=str(ext_group_id) if ext_group_id is not None and ext_group_id != "" else None,
-            setup_hours=parse_float(setup_hours, default=0.0) or 0.0,
-            unit_hours=parse_float(unit_hours, default=0.0) or 0.0,
+            setup_hours=parse_float_or_default(setup_hours, 0.0, field="setup_hours"),
+            unit_hours=parse_float_or_default(unit_hours, 0.0, field="unit_hours"),
             status=(
                 str(get(row, "status") or PartOperationStatus.ACTIVE.value).strip().lower()
                 or PartOperationStatus.ACTIVE.value

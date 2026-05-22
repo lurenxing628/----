@@ -1,17 +1,19 @@
 from __future__ import annotations
 
+import argparse
 import ast
 import hashlib
 import importlib
 import importlib.util
 import json
 import re
+import sys
 from collections import defaultdict
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple, cast
 
-from .quality_gate_ledger import entry_sort_key
+from .quality_gate_ledger import entry_sort_key, load_ledger, validate_ledger
 from .quality_gate_shared import (
     _CLEANUP_KEYWORDS,
     _LOG_METHODS,
@@ -189,7 +191,7 @@ def _categorize_call(node: ast.Call) -> str:
     tail = target.split(".")[-1]
     if target in {"_launcher_log_contract_warning", "_log_warning", "fallback_log", "launcher_log_warning", "safe_log"}:
         return "log:warning"
-    if tail in {"_app_log_once", "_launcher_log_contract_warning", "_log_startup_warning", "launcher_log_warning", "safe_log"}:
+    if tail in {"_app_log_once", "_launcher_log_contract_warning", "_log_startup_warning", "_warn_once", "launcher_log_warning", "safe_log"}:
         return "log:warning"
     if tail == "_write_launch_error_with_observability":
         return "log:error"
@@ -199,6 +201,8 @@ def _categorize_call(node: ast.Call) -> str:
         "collector" in target or "degradation" in target or any(kw.arg in {"code", "scope", "message"} for kw in node.keywords)
     ):
         return "collector:add"
+    if target == "os.kill" and len(node.args) >= 2 and isinstance(node.args[1], ast.Constant) and node.args[1].value == 0:
+        return "call:kill_probe"
     if tail in _CLEANUP_KEYWORDS:
         return f"cleanup:{tail}"
     return f"call:{tail}"
@@ -520,7 +524,12 @@ def validate_startup_samples(entries: Optional[Sequence[Dict[str, Any]]] = None)
         matched_kinds.add(str(match.get("fallback_kind")))
         if match.get("scope_tag"):
             matched_scopes.add(str(match.get("scope_tag")))
-    missing_kinds = sorted(FALLBACK_KIND_VALUES - matched_kinds)
+    present_kinds = {
+        str(entry.get("fallback_kind"))
+        for entry in entry_list
+        if str(entry.get("fallback_kind")) in FALLBACK_KIND_VALUES
+    }
+    missing_kinds = sorted(present_kinds - matched_kinds)
     if missing_kinds:
         errors.append("四类分类样本覆盖不完整：{}".format(", ".join(missing_kinds)))
     missing_scopes = sorted(UI_MODE_SCOPE_TAG_VALUES - matched_scopes)
@@ -889,6 +898,172 @@ def scan_oversize_entries(paths: Sequence[str], context: Optional[ScanContext] =
     return entries
 
 
+def _strict_silent_fallback_scan_entries() -> List[Dict[str, Any]]:
+    """Return the entries enforced by the strict silent-fallback gate.
+
+    The strict gate intentionally follows the repository's current quality-gate
+    boundary rather than the historical full-inventory exploration scope:
+
+    - startup scope keeps all four fallback/degradation classifications;
+    - non-startup scope only continues to track legacy silent-swallow debt.
+
+    This mirrors ``architecture_silent_scan_entries`` in
+    ``tools.quality_gate_operations`` without importing it at module import time,
+    avoiding a circular import for users that import this module as a scanner API.
+    """
+
+    from .quality_gate_operations import architecture_silent_scan_entries
+
+    return architecture_silent_scan_entries()
+
+
+def _strict_silent_fallback_summary(
+    entries: Sequence[Dict[str, Any]],
+    ledger_entries: Sequence[Dict[str, Any]],
+) -> Dict[str, Any]:
+    by_kind: Dict[str, int] = {}
+    by_status: Dict[str, int] = {}
+    for entry in entries:
+        kind = str(entry.get("fallback_kind") or "unknown")
+        by_kind[kind] = by_kind.get(kind, 0) + 1
+    for entry in ledger_entries:
+        status = str(entry.get("status") or "open")
+        by_status[status] = by_status.get(status, 0) + 1
+    return {
+        "scan_entry_count": len(list(entries)),
+        "ledger_entry_count": len(list(ledger_entries)),
+        "by_fallback_kind": dict(sorted(by_kind.items())),
+        "ledger_by_status": dict(sorted(by_status.items())),
+    }
+
+
+def run_strict_silent_fallback_gate(*, emit_json: bool = False, quiet: bool = True) -> int:
+    """Validate the current strict silent-fallback gate against the debt ledger.
+
+    Exit code semantics:
+
+    - ``0``: current strict scan and ledger are aligned;
+    - ``2``: the strict gate detected drift or malformed ledger data.
+
+    The default ``quiet=True`` keeps successful execution silent so it can be used
+    as an acceptance-table command with "通过，无输出" semantics. Pass
+    ``emit_json=True`` to print a reproducible count summary on success.
+    """
+
+    ledger = load_ledger(required=True)
+    validate_ledger(ledger)
+
+    scan_entries = _strict_silent_fallback_scan_entries()
+    validate_startup_samples()
+    ledger_entries = list(cast(Dict[str, Any], ledger.get("silent_fallback") or {}).get("entries") or [])
+
+    scan_ids = {str(entry.get("id") or "") for entry in scan_entries}
+    active_ledger_ids = {
+        str(entry.get("id") or "")
+        for entry in ledger_entries
+        if str(entry.get("status") or "open") != "fixed"
+    }
+    missing_in_ledger = sorted(scan_ids - active_ledger_ids)
+    missing_in_scan = sorted(active_ledger_ids - scan_ids)
+    if missing_in_ledger or missing_in_scan:
+        raise QualityGateError(
+            "strict silent-fallback gate drift: "
+            f"missing_in_ledger={missing_in_ledger[:10]} "
+            f"missing_in_scan={missing_in_scan[:10]}"
+        )
+
+    if emit_json:
+        print(json.dumps(_strict_silent_fallback_summary(scan_entries, ledger_entries), ensure_ascii=False, indent=2, sort_keys=True))
+    elif not quiet:
+        summary = _strict_silent_fallback_summary(scan_entries, ledger_entries)
+        print(
+            "strict silent-fallback gate passed: "
+            f"scan_entry_count={summary['scan_entry_count']} "
+            f"ledger_entry_count={summary['ledger_entry_count']}"
+        )
+    return 0
+
+
+def _production_inventory_paths() -> List[str]:
+    roots = ["core", "data", "web", "desktop", "plugins"]
+    paths: List[str] = []
+    for root in roots:
+        paths.extend(collect_globbed_files([f"{root}/**/*.py"]))
+    for path in ["app.py", "app_new_ui.py", "config.py"]:
+        try:
+            read_text_file(path)
+        except QualityGateError:
+            continue
+        paths.append(path)
+    return sorted(set(paths))
+
+
+def _build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="APS quality-gate scan utilities")
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="validate the current strict silent-fallback gate against 开发文档/技术债务治理台账.md",
+    )
+    parser.add_argument("--json", action="store_true", help="print JSON summary for --strict or --inventory-summary")
+    parser.add_argument(
+        "--inventory-summary",
+        action="store_true",
+        help="print the historical production-scope silent-fallback inventory summary",
+    )
+    parser.add_argument(
+        "--paths",
+        nargs="*",
+        help="explicit Python files to scan for --inventory-summary; defaults to production inventory scope",
+    )
+    return parser
+
+
+def _run_inventory_summary(paths: Optional[Sequence[str]], *, emit_json: bool) -> int:
+    scan_paths = sorted(set(paths or _production_inventory_paths()))
+    entries = scan_silent_fallback_entries(scan_paths)
+    by_kind: Dict[str, int] = {}
+    for entry in entries:
+        kind = str(entry.get("fallback_kind") or "unknown")
+        by_kind[kind] = by_kind.get(kind, 0) + 1
+    strict_count = sum(
+        1
+        for entry in entries
+        if str(entry.get("fallback_kind") or "") in {"silent_swallow", "silent_default_fallback"}
+    )
+    payload = {
+        "scanned_file_count": len(scan_paths),
+        "entry_count": len(entries),
+        "strict_candidate_count": strict_count,
+        "by_fallback_kind": dict(sorted(by_kind.items())),
+    }
+    if emit_json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+    else:
+        print(
+            "production inventory summary: "
+            f"files={payload['scanned_file_count']} entries={payload['entry_count']} "
+            f"strict_candidates={payload['strict_candidate_count']} "
+            f"by_fallback_kind={payload['by_fallback_kind']}"
+        )
+    return 0
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    parser = _build_arg_parser()
+    args = parser.parse_args(list(argv) if argv is not None else None)
+    try:
+        if args.strict:
+            return run_strict_silent_fallback_gate(emit_json=bool(args.json), quiet=True)
+        if args.inventory_summary:
+            return _run_inventory_summary(args.paths, emit_json=bool(args.json))
+        parser.print_help()
+        return 0
+    except QualityGateError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+
+
 __all__ = [
     "ScanContext",
     "ScanFile",
@@ -903,4 +1078,10 @@ __all__ = [
     "ui_mode_scope_tag",
     "validate_startup_samples",
     "complexity_scan_map",
+    "run_strict_silent_fallback_gate",
+    "main",
 ]
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

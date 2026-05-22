@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable as IterableABC
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -219,7 +219,7 @@ class ExcelService:
             # 数字字符串："1" / "1.0" / "1e3" 等视作数值（用于等价比较）
             try:
                 return ("__num__", Decimal(s))
-            except Exception:
+            except (InvalidOperation, ValueError):
                 return s
         if isinstance(value, datetime):
             return value.strftime("%Y-%m-%d %H:%M:%S")
@@ -230,7 +230,7 @@ class ExcelService:
         if isinstance(value, (int, float, Decimal)):
             try:
                 return ("__num__", Decimal(str(value)))
-            except Exception:
+            except (InvalidOperation, ValueError):
                 return float(value) if isinstance(value, float) else value
         return value
 
@@ -243,22 +243,21 @@ class ExcelService:
             existing_dict = existing
         else:
             # 兼容 sqlite3.Row / Mapping-like：支持 keys() + 下标访问
-            try:
-                keys = getattr(existing, "keys", None)
-                if callable(keys):
+            keys = getattr(existing, "keys", None)
+            if callable(keys):
+                try:
                     key_items = keys()
-                    if isinstance(key_items, IterableABC):
-                        existing_dict = {k: existing[k] for k in key_items}
-                else:
-                    existing_dict = {}
-            except Exception:
-                existing_dict = {}
+                except (TypeError, ValueError) as exc:
+                    raise ValidationError("读取已有记录失败，无法生成导入预览变更。") from exc
+                if not isinstance(key_items, IterableABC):
+                    raise ValidationError("读取已有记录失败，无法生成导入预览变更。")
+                existing_dict = {k: existing[k] for k in key_items}
             # 兜底：普通对象（含 dataclass / model）通过 __dict__ 取值
             if not existing_dict:
                 try:
                     existing_dict = vars(existing)  # type: ignore[arg-type]
-                except Exception:
-                    existing_dict = {}
+                except TypeError as exc:
+                    raise ValidationError("读取已有记录失败，无法生成导入预览变更。") from exc
 
         for key, new_val in new_data.items():
             if key in existing_dict:

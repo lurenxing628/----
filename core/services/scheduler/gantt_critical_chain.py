@@ -130,28 +130,22 @@ def _build_prev_by_resource(nodes: Dict[str, Dict[str, Any]], *, resource_key: s
 
 def _eligible_process_edge(pn: Dict[str, Any], n: Dict[str, Any]) -> bool:
     # 工艺前驱：允许“merged 外协组”导致的同起止时间（pn.start==n.start 且 pn.end==n.end）
-    try:
-        pn_end = _node_dt(pn, "end")
-        n_start = _node_dt(n, "start")
-        if pn_end is None or n_start is None:
-            return False
-        pn_start = _node_dt(pn, "start")
-        n_end = _node_dt(n, "end")
-        return (pn_end <= n_start) or (pn_start is not None and n_end is not None and pn_start == n_start and pn_end == n_end)
-    except Exception:
-        return False
+    pn_end = _node_dt(pn, "end")
+    n_start = _node_dt(n, "start")
+    pn_start = _node_dt(pn, "start")
+    n_end = _node_dt(n, "end")
+    if pn_end is None or n_start is None or pn_start is None or n_end is None:
+        raise ValueError("关键链工艺前驱时间字段缺失。")
+    return (pn_end <= n_start) or (pn_start == n_start and pn_end == n_end)
 
 
 def _eligible_resource_edge(pn: Dict[str, Any], n: Dict[str, Any]) -> bool:
     # 资源前驱：必须满足 pn.end <= n.start（不允许重叠）
-    try:
-        pn_end = _node_dt(pn, "end")
-        n_start = _node_dt(n, "start")
-        if pn_end is None or n_start is None:
-            return False
-        return pn_end <= n_start
-    except Exception:
-        return False
+    pn_end = _node_dt(pn, "end")
+    n_start = _node_dt(n, "start")
+    if pn_end is None or n_start is None:
+        raise ValueError("关键链资源前驱时间字段缺失。")
+    return pn_end <= n_start
 
 
 def _process_prev_candidate(
@@ -338,4 +332,7 @@ def compute_critical_chain(schedule_repo, version: int) -> Dict[str, Any]:
         rows = _load_rows(schedule_repo, version=int(version))
     except Exception:
         return _unavailable_result("repo_exception")
-    return _compute_critical_chain_from_loaded_rows(rows)
+    try:
+        return _compute_critical_chain_from_loaded_rows(rows)
+    except Exception:
+        return _unavailable_result("calc_exception")

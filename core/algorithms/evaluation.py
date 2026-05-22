@@ -70,8 +70,8 @@ class ScheduleMetrics:
         def _round_finite(v: Any, ndigits: int) -> float:
             try:
                 fv = float(v)
-            except Exception:
-                return 0.0
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise ValueError(f"排产指标必须是数字：{v!r}") from exc
             if not math.isfinite(fv):
                 return 0.0
             return float(round(fv, ndigits))
@@ -314,9 +314,11 @@ def _finite_non_negative(values: Dict[str, float]) -> List[float]:
     for value in values.values():
         try:
             float_value = float(value)
-        except Exception:
-            continue
-        if math.isfinite(float_value) and float_value >= 0:
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError(f"负荷统计值必须是数字：{value!r}") from exc
+        if not math.isfinite(float_value):
+            raise ValueError(f"负荷统计值必须是有限数字：{value!r}")
+        if float_value >= 0:
             out.append(float_value)
     return out
 
@@ -330,19 +332,18 @@ def _cv(values: List[float]) -> float:
     for value in values:
         try:
             float_value = float(value)
-        except Exception:
-            continue
-        if math.isfinite(float_value) and float_value >= 0:
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError(f"负荷波动统计值必须是数字：{value!r}") from exc
+        if not math.isfinite(float_value):
+            raise ValueError(f"负荷波动统计值必须是有限数字：{value!r}")
+        if float_value >= 0:
             clean.append(float_value)
     if len(clean) <= 1:
         return 0.0
     mean_value = statistics.fmean(clean)
     if not math.isfinite(mean_value) or mean_value <= 0:
         return 0.0
-    try:
-        return float(statistics.pstdev(clean) / mean_value)
-    except Exception:
-        return 0.0
+    return float(statistics.pstdev(clean) / mean_value)
 
 
 def objective_score(objective: str, metrics: ScheduleMetrics) -> Tuple[float, ...]:

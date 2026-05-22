@@ -12,6 +12,10 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from .excel_template_defaults import get_default_templates
 
 
+class ExcelTemplateError(RuntimeError):
+    """Excel 模板文件不可安全读取或修复。"""
+
+
 def _close_workbook_quietly(wb: Any) -> None:
     try:
         wb.close()
@@ -22,7 +26,7 @@ def _close_workbook_quietly(wb: Any) -> None:
 def _active_sheet_or_none(wb: Any) -> Any:
     try:
         return wb.active
-    except Exception:
+    except (AttributeError, IndexError, KeyError):
         return None
 
 
@@ -150,18 +154,18 @@ def _write_xlsx(
 def _read_xlsx_headers(path: str) -> List[str]:
     try:
         wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
-    except Exception:
-        return []
+    except Exception as exc:
+        raise ExcelTemplateError(f"读取 Excel 模板表头失败：{os.path.basename(path)}") from exc
     try:
-        ws = _active_sheet_or_none(wb)
-        if ws is None:
-            return []
+        ws = _require_active_sheet(wb)
         first_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True), None)
         if not first_row:
             return []
         return ["" if value is None else str(value).strip() for value in first_row]
-    except Exception:
-        return []
+    except ExcelTemplateError:
+        raise
+    except Exception as exc:
+        raise ExcelTemplateError(f"读取 Excel 模板首行失败：{os.path.basename(path)}") from exc
     finally:
         _close_workbook_quietly(wb)
 
@@ -282,14 +286,25 @@ def _current_headers(ws: Any, header_count: int) -> List[str]:
     return [_cell_text(ws.cell(1, col_idx).value) for col_idx in range(1, header_count + 1)]
 
 
+def _trim_trailing_blank_headers(headers: Sequence[Any]) -> List[str]:
+    out = [_cell_text(value) for value in headers]
+    while out and not out[-1]:
+        out.pop()
+    return out
+
+
+def _current_header_row(ws: Any) -> List[str]:
+    return _trim_trailing_blank_headers([cell.value for cell in ws[1]])
+
+
 def _template_needs_layout_repair(ws: Any, repair_plan: Mapping[str, Any]) -> bool:
     non_empty_data_rows = _non_empty_data_rows(ws)
-    if len(non_empty_data_rows) <= int(repair_plan["sample_row_count"]):
-        return False
     headers = list(repair_plan["headers"])
+    if _current_header_row(ws) != headers:
+        return False
     enum_texts = _enum_texts_from_rows(non_empty_data_rows, repair_plan["enum_col_indices"])
     enum_texts.update(_inline_validation_texts(ws))
-    return _current_headers(ws, len(headers)) != headers or bool(enum_texts & _LEGACY_TEMPLATE_ENUM_VALUES)
+    return bool(enum_texts & _LEGACY_TEMPLATE_ENUM_VALUES)
 
 
 def _rewrite_template_headers(ws: Any, headers: Sequence[str]) -> None:
@@ -303,12 +318,10 @@ def _refresh_existing_template_layout(path: str, template_def: Mapping[str, Any]
         return False
     try:
         wb = openpyxl.load_workbook(path)
-    except Exception:
-        return False
+    except Exception as exc:
+        raise ExcelTemplateError(f"打开待修复 Excel 模板失败：{os.path.basename(path)}") from exc
     try:
-        ws = _active_sheet_or_none(wb)
-        if ws is None:
-            return False
+        ws = _require_active_sheet(wb)
 
         if not _template_needs_layout_repair(ws, repair_plan):
             return False
@@ -318,8 +331,10 @@ def _refresh_existing_template_layout(path: str, template_def: Mapping[str, Any]
         _apply_sheet_layout(ws, format_spec=repair_plan["format_spec"], data_row_count=ws.max_row - 1)
         wb.save(path)
         return True
-    except Exception:
-        return False
+    except ExcelTemplateError:
+        raise
+    except Exception as exc:
+        raise ExcelTemplateError(f"修复 Excel 模板布局失败：{os.path.basename(path)}") from exc
     finally:
         _close_workbook_quietly(wb)
 
@@ -340,12 +355,10 @@ def _known_generated_template_needs_refresh(path: str, template_def: Mapping[str
     can_repair_extra_rows = str(template_def.get("filename") or "") in _EXTRA_ROW_LAYOUT_REPAIR_TEMPLATES
     try:
         wb = openpyxl.load_workbook(path, data_only=True)
-    except Exception:
-        return False
+    except Exception as exc:
+        raise ExcelTemplateError(f"检查 Excel 模板是否需要刷新失败：{os.path.basename(path)}") from exc
     try:
-        ws = _active_sheet_or_none(wb)
-        if ws is None:
-            return False
+        ws = _require_active_sheet(wb)
 
         non_empty_data_rows = _non_empty_data_rows(ws)
         if len(non_empty_data_rows) > sample_row_count and not can_repair_extra_rows:
@@ -354,8 +367,10 @@ def _known_generated_template_needs_refresh(path: str, template_def: Mapping[str
         enum_texts.update(_inline_validation_texts(ws))
 
         return bool(enum_texts & _LEGACY_TEMPLATE_ENUM_VALUES)
-    except Exception:
-        return False
+    except ExcelTemplateError:
+        raise
+    except Exception as exc:
+        raise ExcelTemplateError(f"检查 Excel 模板枚举值失败：{os.path.basename(path)}") from exc
     finally:
         _close_workbook_quietly(wb)
 
@@ -384,22 +399,19 @@ def ensure_excel_templates(template_dir: str) -> Dict[str, Any]:
         filename = t["filename"]
         path = os.path.join(template_dir, filename)
         expected_headers = [str(header).strip() for header in (t.get("headers") or [])]
-        if (
-            os.path.exists(path)
-            and _read_xlsx_headers(path) == expected_headers
-            and not _known_generated_template_needs_refresh(path, t)
-        ):
-            skipped.append(filename)
-            continue
-        if os.path.exists(path) and _refresh_existing_template_layout(path, t):
-            created.append(filename)
-            continue
-        _write_xlsx(
-            path,
-            headers=t["headers"],
-            sample_rows=t.get("sample_rows") or [],
-            format_spec=t.get("format_spec"),
-        )
+        if os.path.exists(path):
+            actual_headers = _read_xlsx_headers(path)
+            if actual_headers == expected_headers:
+                if not _known_generated_template_needs_refresh(path, t):
+                    skipped.append(filename)
+                    continue
+                if _refresh_existing_template_layout(path, t):
+                    created.append(filename)
+                    continue
+                raise ExcelTemplateError(f"已有 Excel 模板内容需要刷新，但不能安全自动覆盖：{filename}")
+            raise ExcelTemplateError(f"已有 Excel 模板表头和当前定义不一致，不能自动覆盖：{filename}")
+
+        _write_xlsx(path, headers=t["headers"], sample_rows=t.get("sample_rows") or [], format_spec=t.get("format_spec"))
         created.append(filename)
 
     return {"template_dir": template_dir, "created": created, "skipped": skipped}

@@ -72,6 +72,22 @@ def _build_source_xlsx(path: str) -> None:
                 15,
             ]
         )
+        ws.append(
+            [
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                "ABC粗车",
+                "abc",
+                True,
+                "inf",
+            ]
+        )
         wb.save(path)
     finally:
         try:
@@ -103,9 +119,15 @@ def main() -> None:
     assert int(counters.get("default_filled") or 0) >= 1, diagnostics
     assert int(counters.get("inferred_field") or 0) >= 1, diagnostics
     assert int(counters.get("compatible_row") or 0) >= 1, diagnostics
+    assert int(counters.get("invalid_step_seq") or 0) >= 1, diagnostics
+    assert int(counters.get("invalid_number") or 0) >= 1, diagnostics
+    assert int(counters.get("non_finite_number") or 0) >= 1, diagnostics
     assert samples.get("default_filled"), diagnostics
     assert samples.get("inferred_field"), diagnostics
     assert samples.get("compatible_row"), diagnostics
+    assert samples.get("invalid_step_seq"), diagnostics
+    assert samples.get("invalid_number"), diagnostics
+    assert samples.get("non_finite_number"), diagnostics
 
     stdout = io.StringIO()
     old_argv = list(sys.argv)

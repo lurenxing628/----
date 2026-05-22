@@ -275,7 +275,7 @@ def _persist_once(*, simulate: bool, result_summary_obj: Optional[Dict[str, Any]
         used_strategy=SimpleNamespace(value="priority_first"),
         used_params={"dispatch": "fifo"},
         batches={"B001": SimpleNamespace(batch_id="B001", status="pending")},
-        reschedulable_operations=[],
+        reschedulable_operations=[SimpleNamespace(id=1, batch_id="B001", source="internal")],
         normalized_batch_ids=["B001"],
         created_by="pytest",
         simulate=simulate,

@@ -41,7 +41,7 @@ from .internal_operation import schedule_internal_operation
 from .run_context import ScheduleRunContext
 from .run_state import ScheduleRunState
 from .schedule_params import resolve_schedule_params
-from .seed import normalize_seed_results
+from .seed import _identity_int, normalize_seed_results
 
 __all__ = [
     "GreedyScheduler",
@@ -311,7 +311,7 @@ def _drop_seeded_operations(operations: List[Any], seed_op_ids: set) -> Tuple[Li
     filtered = []
     dropped = 0
     for op in operations:
-        op_id = _safe_op_id(op)
+        op_id = _operation_op_id(op)
         if op_id and op_id in seed_op_ids:
             dropped += 1
             continue
@@ -319,11 +319,12 @@ def _drop_seeded_operations(operations: List[Any], seed_op_ids: set) -> Tuple[Li
     return filtered, dropped
 
 
-def _safe_op_id(op: Any) -> int:
-    try:
-        return int(getattr(op, "id", 0) or 0)
-    except Exception:
-        return 0
+def _operation_op_id(op: Any) -> int:
+    raw_id = getattr(op, "id", 0)
+    op_id = _identity_int(raw_id)
+    if op_id <= 0:
+        raise ValidationError(f"待排工序编号不合法：{raw_id!r}", field="operations")
+    return op_id
 
 
 def _prepare_run_state(
@@ -358,18 +359,21 @@ def _initialize_ready_progress(calendar: Any, *, state: ScheduleRunState, batche
 
 def _apply_seed_results(*, state: ScheduleRunState, seed_results: List[ScheduleResult]) -> None:
     for result in seed_results:
-        if _valid_seed_result(result):
-            _freeze_seed_resources(state, result)
-            state.record_seed_result(result)
+        _validate_seed_result(result)
+        _freeze_seed_resources(state, result)
+        state.record_seed_result(result)
 
 
-def _valid_seed_result(result: ScheduleResult) -> bool:
-    if not result or not isinstance(result.start_time, datetime) or not isinstance(result.end_time, datetime):
-        return False
-    try:
-        return int(getattr(result, "op_id", 0) or 0) > 0
-    except Exception:
-        return False
+def _validate_seed_result(result: ScheduleResult) -> None:
+    if not result:
+        raise ValidationError("已有排产记录无效，系统已停止排产。", field="seed_results")
+    if not isinstance(result.start_time, datetime) or not isinstance(result.end_time, datetime):
+        raise ValidationError("已有排产记录的开始时间和结束时间必须是有效时间。", field="seed_results")
+    if result.end_time <= result.start_time:
+        raise ValidationError("已有排产记录的开始时间必须早于结束时间。", field="seed_results")
+    op_id = _identity_int(getattr(result, "op_id", 0))
+    if op_id <= 0:
+        raise ValidationError("已有排产记录缺少有效工序编号，系统已停止排产。", field="seed_results")
 
 
 def _freeze_seed_resources(state: ScheduleRunState, result: ScheduleResult) -> None:

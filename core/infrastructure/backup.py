@@ -205,6 +205,29 @@ def _acquire_maintenance_mutex() -> None:
         raise MaintenanceWindowError("busy", "数据库正在维护/恢复中，请稍后重试。")
 
 
+def _write_maintenance_lock_metadata(lock_fd: int, payload: str) -> None:
+    data = str(payload or "").encode("utf-8")
+    written_total = 0
+    while written_total < len(data):
+        written = os.write(lock_fd, data[written_total:])
+        if int(written or 0) <= 0:
+            raise OSError("维护锁文件 metadata 写入不完整。")
+        written_total += int(written)
+
+
+def _cleanup_failed_maintenance_lock(lock_fd: Optional[int], lock_path: str, *, logger=None) -> None:
+    if lock_fd is not None:
+        try:
+            os.close(lock_fd)
+        except Exception as e:
+            fallback_log(logger, "warning", f"维护锁创建失败后的句柄关闭失败：{e}")
+    try:
+        if os.path.exists(lock_path):
+            os.remove(lock_path)
+    except Exception as e:
+        fallback_log(logger, "warning", f"维护锁创建失败后的锁文件清理失败：{e}")
+
+
 @contextmanager
 def maintenance_window(db_path: str, *, logger=None, action: str = "maintenance") -> Iterator[None]:
     db_abs = os.path.abspath(db_path)
@@ -228,11 +251,15 @@ def maintenance_window(db_path: str, *, logger=None, action: str = "maintenance"
         try:
             lock_fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
             try:
-                os.write(lock_fd, f"pid={os.getpid()} action={action} ts={datetime.now().isoformat()}".encode())
-            except Exception:
-                pass
+                _write_maintenance_lock_metadata(lock_fd, f"pid={os.getpid()} action={action} ts={datetime.now().isoformat()}")
+            except Exception as e:
+                _cleanup_failed_maintenance_lock(lock_fd, lock_path, logger=logger)
+                lock_fd = None
+                raise MaintenanceWindowError("lock_metadata_write_failed", f"维护锁文件写入失败：{e}") from e
         except FileExistsError as e:
             raise MaintenanceWindowError("busy", "数据库正在维护/恢复中，请稍后重试。") from e
+        except MaintenanceWindowError:
+            raise
         except Exception as e:
             raise MaintenanceWindowError("lock_failed", f"维护锁文件创建失败：{e}") from e
 

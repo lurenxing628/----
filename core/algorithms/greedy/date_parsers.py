@@ -17,7 +17,7 @@ def parse_date(value: Any) -> Optional[date]:
     s = s.replace("/", "-")
     try:
         return datetime.strptime(s, "%Y-%m-%d").date()
-    except Exception:
+    except ValueError:
         return None
 
 
@@ -35,11 +35,11 @@ def parse_datetime(value: Any) -> Optional[datetime]:
     for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
         try:
             return datetime.strptime(s, fmt)
-        except Exception:
+        except ValueError:
             continue
     try:
         return datetime.strptime(s, "%Y-%m-%d")
-    except Exception:
+    except ValueError:
         return None
 
 

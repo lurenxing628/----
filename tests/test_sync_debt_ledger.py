@@ -878,6 +878,55 @@ def test_refresh_auto_fields_allows_legacy_non_startup_cleanup_reclassify(monkey
     assert "legacy architecture silent entry reclassified" in entry["realignment_reason"]
 
 
+def test_refresh_auto_fields_rejects_legacy_non_startup_ordinal_drift(monkeypatch):
+    module = _import_quality_gate_support()
+    ledger = {
+        "oversize_allowlist": [],
+        "complexity_allowlist": [],
+        "silent_fallback": {
+            "scope": ["web/bootstrap/**/*.py"],
+            "entries": [
+                {
+                    "id": "fallback:legacy-nonstartup",
+                    "path": "core/infrastructure/database.py",
+                    "symbol": "ensure_schema",
+                    "status": "open",
+                    "owner": "SP03",
+                    "batch": "SP03",
+                    "exit_condition": "keep tracking",
+                    "last_verified_at": "2026-04-15T08:26:05+08:00",
+                    "notes": "legacy architecture counter",
+                    "handler_fingerprint": "sha1:ctx-stable",
+                    "handler_context_hash": "sha1:handler-context-stable",
+                    "except_ordinal": 1,
+                    "line_start": 10,
+                    "line_end": 12,
+                    "fallback_kind": "silent_swallow",
+                    "source": "migrated_from_architecture_fitness_counter",
+                }
+            ],
+        },
+    }
+    scan_entry = {
+        "id": "fallback:legacy-nonstartup-new",
+        "path": "core/infrastructure/database.py",
+        "symbol": "ensure_schema",
+        "handler_fingerprint": "sha1:ctx-stable",
+        "handler_context_hash": "sha1:handler-context-stable",
+        "except_ordinal": 2,
+        "line_start": 20,
+        "line_end": 22,
+        "fallback_kind": "silent_swallow",
+    }
+
+    refresh_globals = module.refresh_auto_fields.__globals__
+    _patch_architecture_scan_cache(monkeypatch, refresh_globals, silent_entries=[scan_entry])
+    monkeypatch.setitem(refresh_globals, "finalize_ledger_update", lambda current: current)
+
+    with pytest.raises(module.QualityGateError, match="except ordinal changed"):
+        module.refresh_auto_fields(ledger)
+
+
 def test_refresh_auto_fields_rejects_startup_cleanup_reclassify(monkeypatch):
     module = _import_quality_gate_support()
     ledger = {

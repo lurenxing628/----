@@ -31,7 +31,7 @@ def parse_dispatch_rule(value: Any, default: DispatchRule = DispatchRule.SLACK) 
     try:
         # 容错：大小写/空白（例如 "CR" / " atc "）
         return DispatchRule(str(value).strip().lower())
-    except Exception:
+    except ValueError:
         return default
 
 
@@ -73,7 +73,7 @@ def build_dispatch_key(inp: DispatchInputs) -> Tuple[float, ...]:
     def _safe_positive(v: Any) -> float:
         try:
             fv = float(v)
-        except Exception:
+        except (TypeError, ValueError, OverflowError):
             return 0.0
         if (not math.isfinite(fv)) or fv <= 0:
             return 0.0
@@ -123,7 +123,7 @@ def mean_positive(values: Dict[str, float]) -> float:
             continue
         try:
             fv = float(v)
-        except Exception:
+        except (TypeError, ValueError, OverflowError):
             continue
         if math.isfinite(fv) and fv > 0:
             vals.append(fv)

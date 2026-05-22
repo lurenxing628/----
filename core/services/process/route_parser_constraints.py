@@ -19,6 +19,7 @@ class SupplierConstraintResolver:
         self.op_types_repo = op_types_repo
         self.suppliers_repo = suppliers_repo
         self.logger = logger
+        self.global_issues: List[str] = []
 
     def build_supplier_map(self) -> Tuple[Dict[str, Tuple[str, float]], Dict[str, List[str]]]:
         """
@@ -67,10 +68,20 @@ class SupplierConstraintResolver:
         try:
             op_type = self.op_types_repo.get(supplier.op_type_id)
         except Exception as exc:
-            safe_warning(self.logger, f"供应商“{supplier_id}”工种映射加载失败（op_type_id={supplier.op_type_id!r}）：{exc}")
+            message = f"供应商“{supplier_id}”工种映射加载失败（op_type_id={supplier.op_type_id!r}），请检查供应商对应工种。"
+            self.global_issues.append(message)
+            safe_warning(self.logger, f"{message} 原因：{exc}")
             return None
         name = getattr(op_type, "name", None) if op_type else None
-        return str(name) if name else None
+        if not name:
+            message = (
+                f"供应商“{supplier_id}”工种映射加载失败（op_type_id={supplier.op_type_id!r}），"
+                "没有找到对应工种，请检查供应商对应工种。"
+            )
+            self.global_issues.append(message)
+            safe_warning(self.logger, message)
+            return None
+        return str(name)
 
     @staticmethod
     def _resolve_supplier_default_days(

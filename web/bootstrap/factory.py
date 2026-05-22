@@ -20,7 +20,7 @@ from core.infrastructure.logging import AppLogger, OperationLogger, safe_log
 from core.infrastructure.migrations.common import fallback_log
 from core.models.enums import YesNo
 from core.services.common.excel_backend_factory import get_excel_backend
-from core.services.common.excel_templates import ensure_excel_templates
+from core.services.common.excel_templates import ExcelTemplateError, ensure_excel_templates
 from web.error_boundary import (
     render_error_template,
     render_minimal_error_page,
@@ -268,8 +268,16 @@ def create_app_core(
         stats = ensure_excel_templates(app.config["EXCEL_TEMPLATE_DIR"])
         if stats.get("created"):
             app.logger.info(f"已生成 Excel 模板：{len(stats.get('created', []))} 个")
+    except ExcelTemplateError as e:
+        app.config["EXCEL_TEMPLATE_INIT_STATUS"] = {"ok": False, "error": str(e)}
+        safe_log(app.logger, "error", f"Excel 模板初始化失败，系统启动已停止：{e}")
+        raise
     except Exception as e:
-        app.logger.warning(f"生成 Excel 模板失败（将使用动态模板兜底）：{e}")
+        app.config["EXCEL_TEMPLATE_INIT_STATUS"] = {"ok": False, "error": str(e)}
+        safe_log(app.logger, "error", f"Excel 模板初始化出现未知错误，系统启动已停止：{e}")
+        raise
+    else:
+        app.config["EXCEL_TEMPLATE_INIT_STATUS"] = {"ok": True, "error": None}
 
     schema_path = os.path.abspath(os.path.join(base_dir, "schema.sql"))
     ensure_schema(

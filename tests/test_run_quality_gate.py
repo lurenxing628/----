@@ -267,6 +267,21 @@ def test_assert_no_active_runtime_allows_stale_trace_and_prints_paths(monkeypatc
     assert "lock=C:/tmp/aps_runtime.lock" in stdout
 
 
+def test_pid_signal_keeps_unknown_pid_probe_visible(monkeypatch):
+    module = _import_run_quality_gate()
+
+    monkeypatch.setattr(module.launcher, "runtime_pid_state", lambda pid: None)
+
+    state, pid, pid_match, exe_path = module._pid_signal(
+        {"pid": 321, "exe_path": sys.executable}
+    )
+
+    assert state == module.RuntimeProbeState.UNKNOWN
+    assert pid == 321
+    assert pid_match is None
+    assert exe_path == sys.executable
+
+
 def test_main_runs_guard_preflight_before_static_and_startup_checks(monkeypatch, tmp_path):
     module = _import_run_quality_gate()
 

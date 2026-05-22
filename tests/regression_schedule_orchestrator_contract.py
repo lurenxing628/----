@@ -58,7 +58,7 @@ def _base_input() -> Any:
         seed_results=[],
         resource_pool=None,
         operations=[SimpleNamespace(id=1, batch_id="B001")],
-        reschedulable_operations=[SimpleNamespace(id=1)],
+        reschedulable_operations=[SimpleNamespace(id=1, source="internal")],
         reschedulable_op_ids={1},
         normalized_batch_ids=["B001"],
         freeze_meta={"loaded": True},

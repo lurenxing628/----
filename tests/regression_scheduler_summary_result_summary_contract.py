@@ -182,6 +182,7 @@ def _persist_summary_roundtrip(test_db: Path) -> dict[str, Any]:
         _overdue, result_status, result_summary_obj, result_summary_json, time_cost_ms = build_result_summary(svc, ctx=ctx)
         payload = build_validated_schedule_payload([result], allowed_op_ids={int(op_id)})
 
+        reschedulable_operations = [SimpleNamespace(id=int(op_id), source="internal")]
         persist_schedule(
             svc,
             cfg=cfg,
@@ -191,7 +192,7 @@ def _persist_summary_roundtrip(test_db: Path) -> dict[str, Any]:
             used_strategy=ctx.used_strategy,
             used_params=ctx.used_params,
             batches={"B001": batch},
-            reschedulable_operations=[],
+            reschedulable_operations=reschedulable_operations,
             normalized_batch_ids=["B001"],
             created_by="pytest",
             simulate=True,
@@ -438,4 +439,3 @@ def test_optimizer_diagnostics_secret_is_not_rendered_on_public_scheduler_surfac
         assert response.status_code == 200, f"{path} 返回异常：{response.status_code}\n{html[:500]}"
         if "selected_summary_display" in html or "latest_summary_display" in html:
             assert INTERNAL_SECRET not in html, path
-

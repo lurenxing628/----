@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from ._helpers import RowLike, as_dict, get, parse_float
+from ._helpers import RowLike, as_dict, get, parse_float_or_default
 from .enums import CalendarDayType, YesNo
 
 
@@ -23,9 +23,9 @@ class WorkCalendar:
     def from_row(cls, row: RowLike) -> WorkCalendar:
         raw_shift_hours = get(row, "shift_hours")
         raw_efficiency = get(row, "efficiency")
-        shift_hours = parse_float(raw_shift_hours, default=8.0)
-        efficiency = parse_float(raw_efficiency, default=1.0)
-        # 防御：负值归零；空值/非法值回落默认值
+        shift_hours = parse_float_or_default(raw_shift_hours, 8.0, field="shift_hours")
+        efficiency = parse_float_or_default(raw_efficiency, 1.0, field="efficiency")
+        # 空值保留旧默认；坏数字直接报错，避免把坏日历当正常班次使用。
         if shift_hours is None:
             shift_hours = 8.0
         elif shift_hours < 0:
@@ -90,9 +90,9 @@ class OperatorCalendar:
     def from_row(cls, row: RowLike) -> OperatorCalendar:
         raw_shift_hours = get(row, "shift_hours")
         raw_efficiency = get(row, "efficiency")
-        shift_hours = parse_float(raw_shift_hours, default=8.0)
-        efficiency = parse_float(raw_efficiency, default=1.0)
-        # 防御：负值归零；空值/非法值回落默认值
+        shift_hours = parse_float_or_default(raw_shift_hours, 8.0, field="shift_hours")
+        efficiency = parse_float_or_default(raw_efficiency, 1.0, field="efficiency")
+        # 空值保留旧默认；坏数字直接报错，避免把坏日历当正常班次使用。
         if shift_hours is None:
             shift_hours = 8.0
         elif shift_hours < 0:
@@ -132,4 +132,3 @@ class OperatorCalendar:
                 "remark": self.remark,
             }
         )
-

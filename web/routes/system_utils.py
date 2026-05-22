@@ -41,10 +41,10 @@ def _parse_dt(value: str, field: str) -> Tuple[datetime, bool]:
         for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
             try:
                 return datetime.strptime(v, fmt), False
-            except Exception:
+            except ValueError:
                 continue
         raise ValueError("no fmt")
-    except Exception as e:
+    except ValueError as e:
         raise ValidationError("时间格式不正确，请按 2026-03-13、2026/03/13 或 2026-03-13 08:00:00 这样的格式填写。", field=field) from e
 
 
@@ -74,13 +74,8 @@ def _normalize_time_range(start_raw: Optional[str], end_raw: Optional[str]) -> T
 
     # 若两者都存在，校验 start <= end
     if start_norm and end_norm:
-        try:
-            if datetime.strptime(start_norm, "%Y-%m-%d %H:%M:%S") > datetime.strptime(end_norm, "%Y-%m-%d %H:%M:%S"):
-                raise ValidationError("开始时间不能晚于结束时间。", field="开始时间")
-        except ValidationError:
-            raise
-        except Exception:
-            _ = None
+        if datetime.strptime(start_norm, "%Y-%m-%d %H:%M:%S") > datetime.strptime(end_norm, "%Y-%m-%d %H:%M:%S"):
+            raise ValidationError("开始时间不能晚于结束时间。", field="开始时间")
 
     return start_norm, end_norm
 
@@ -91,7 +86,7 @@ def _safe_int(value: Optional[str], field: str, default: int, min_v: int, max_v:
         return int(default)
     try:
         v = int(raw)
-    except Exception as e:
+    except (TypeError, ValueError, OverflowError) as e:
         raise ValidationError(f"{field} 不合法（期望整数）", field=field) from e
     if v < min_v:
         return int(min_v)
@@ -176,8 +171,10 @@ def _get_job_state_map() -> Dict[str, Any]:
         raw = d.get("last_run_detail")
         try:
             d["last_run_detail_obj"] = json.loads(raw) if raw else None
-        except Exception:
+            d["last_run_detail_parse_error"] = None
+        except (TypeError, json.JSONDecodeError) as exc:
             d["last_run_detail_obj"] = None
+            d["last_run_detail_parse_error"] = str(exc)
         return d
 
     return {

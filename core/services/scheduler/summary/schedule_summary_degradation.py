@@ -7,11 +7,11 @@ from core.services.common.build_outcome import BuildOutcome
 from core.services.common.degradation import DegradationCollector, degradation_events_to_dicts
 from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot
 from core.services.scheduler.degradation_messages import (
-    DOWNTIME_EXTEND_FAILED_MESSAGE,
-    DOWNTIME_LOAD_FAILED_MESSAGE,
     RESOURCE_POOL_BUILD_FAILED_MESSAGE,
     public_degradation_event_message,
 )
+
+from .schedule_summary_downtime_degradation import compute_downtime_degradation as _compute_downtime_degradation
 
 _LEGACY_MERGE_CONTEXT_CODES = {"template_missing", "external_group_missing"}
 
@@ -120,29 +120,24 @@ def _input_build_state(input_build_outcome: Optional[BuildOutcome[Any]]) -> Dict
     }
 
 
-def _meta_int(meta: Dict[str, Any], key: str) -> int:
-    try:
-        return max(0, int(meta.get(key) or 0))
-    except Exception:
-        return 0
-
-
-def _meta_sample(meta: Dict[str, Any], key: str, *, limit: int = 5) -> List[str]:
-    raw = meta.get(key)
-    if not isinstance(raw, (list, tuple)):
-        return []
-    out: List[str] = []
-    for item in raw:
-        try:
-            text = str(item).strip()
-        except Exception:
-            continue
-        if not text or text in out:
-            continue
-        out.append(text)
-        if len(out) >= limit:
-            break
-    return out
+def _meta_bool_state(meta: Dict[str, Any], key: str, *, default: bool) -> Tuple[bool, bool]:
+    if key not in meta or meta.get(key) is None:
+        return bool(default), False
+    value = meta.get(key)
+    if isinstance(value, bool):
+        return value, False
+    if isinstance(value, int) and not isinstance(value, bool):
+        if value in (0, 1):
+            return bool(value), False
+        return bool(default), True
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in {"true", "1", "yes", "y", "on"}:
+            return True, False
+        if text in {"false", "0", "no", "n", "off"}:
+            return False, False
+        return bool(default), True
+    return bool(default), True
 
 
 def _metric_int(metrics: Any, key: str) -> int:
@@ -363,84 +358,6 @@ def _summary_degradation_state(
     return {"events": degradation_events_to_dicts(collector.to_list()), "counters": collector.to_counters()}
 
 
-def _partial_fail_reason(prefix: str, count: int, sample: List[str], suffix: str) -> str:
-    sample_text = "、".join(sample)
-    message = f"{prefix}（{count} 台"
-    if sample_text:
-        message += f"，如：{sample_text}"
-    return message + f"），{suffix}"
-
-
-def _downtime_reason(
-    *,
-    auto_assign_enabled: bool,
-    downtime_extend_attempted: bool,
-    load_failed: bool,
-    downtime_load_error: Any,
-    load_partial_fail_count: int,
-    load_partial_fail_machines_sample: List[str],
-    extend_failed: bool,
-    downtime_extend_error: Any,
-    extend_partial_fail_count: int,
-    extend_partial_fail_machines_sample: List[str],
-) -> Optional[str]:
-    if load_partial_fail_count > 0:
-        return _partial_fail_reason(
-            "部分设备停机区间加载失败", load_partial_fail_count, load_partial_fail_machines_sample, "这些设备本次先不使用停机约束"
-        )
-    if load_failed:
-        return DOWNTIME_LOAD_FAILED_MESSAGE
-    if auto_assign_enabled and downtime_extend_attempted and extend_partial_fail_count > 0:
-        return _partial_fail_reason(
-            "部分候选设备停机区间扩展加载失败", extend_partial_fail_count, extend_partial_fail_machines_sample, "这些候选设备可能未覆盖停机约束"
-        )
-    if extend_failed:
-        return DOWNTIME_EXTEND_FAILED_MESSAGE
-    return None
-
-
-def _compute_downtime_degradation(cfg: Any, *, downtime_meta: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    snapshot = ensure_schedule_config_snapshot(
-        cfg,
-        strict_mode=False,
-        source="scheduler.summary.downtime_degradation",
-    )
-    auto_assign_enabled = str(snapshot.auto_assign_enabled).strip().lower() == YesNo.YES.value
-    meta = downtime_meta if isinstance(downtime_meta, dict) else {}
-
-    downtime_load_ok = True if "downtime_load_ok" not in meta else bool(meta.get("downtime_load_ok"))
-    load_partial_fail_count = _meta_int(meta, "downtime_partial_fail_count")
-    extend_partial_fail_count = _meta_int(meta, "downtime_extend_partial_fail_count")
-    downtime_extend_attempted = bool(meta.get("downtime_extend_attempted") or False)
-    extend_ok_raw = meta.get("downtime_extend_ok")
-    downtime_extend_ok = True if extend_ok_raw is None else bool(extend_ok_raw)
-    load_failed = bool(not downtime_load_ok)
-    extend_failed = bool(auto_assign_enabled and downtime_extend_attempted and (not downtime_extend_ok))
-
-    return {
-        "auto_assign_enabled": bool(auto_assign_enabled),
-        "downtime_load_ok": bool(downtime_load_ok),
-        "downtime_degraded": bool(load_failed or extend_failed),
-        "downtime_degradation_reason": _downtime_reason(
-            auto_assign_enabled=bool(auto_assign_enabled),
-            downtime_extend_attempted=bool(downtime_extend_attempted),
-            load_failed=bool(load_failed),
-            downtime_load_error=meta.get("downtime_load_error"),
-            load_partial_fail_count=int(load_partial_fail_count),
-            load_partial_fail_machines_sample=_meta_sample(meta, "downtime_partial_fail_machines_sample"),
-            extend_failed=bool(extend_failed),
-            downtime_extend_error=meta.get("downtime_extend_error"),
-            extend_partial_fail_count=int(extend_partial_fail_count),
-            extend_partial_fail_machines_sample=_meta_sample(meta, "downtime_extend_partial_fail_machines_sample"),
-        ),
-        "downtime_extend_attempted": bool(downtime_extend_attempted),
-        "load_partial_fail_count": int(load_partial_fail_count),
-        "load_partial_fail_machines_sample": _meta_sample(meta, "downtime_partial_fail_machines_sample"),
-        "extend_partial_fail_count": int(extend_partial_fail_count),
-        "extend_partial_fail_machines_sample": _meta_sample(meta, "downtime_extend_partial_fail_machines_sample"),
-    }
-
-
 def _compute_resource_pool_degradation(cfg: Any, *, resource_pool_meta: Optional[Dict[str, Any]]) -> Tuple[bool, bool, Optional[str], bool]:
     snapshot = ensure_schedule_config_snapshot(
         cfg,
@@ -449,9 +366,12 @@ def _compute_resource_pool_degradation(cfg: Any, *, resource_pool_meta: Optional
     )
     auto_assign_enabled = str(snapshot.auto_assign_enabled).strip().lower() == YesNo.YES.value
     meta = resource_pool_meta if isinstance(resource_pool_meta, dict) else {}
-    attempted = bool(meta.get("resource_pool_attempted") or False)
-    build_ok_raw = meta.get("resource_pool_build_ok")
-    build_ok = True if build_ok_raw is None else bool(build_ok_raw)
+    attempted, attempted_parse_failed = _meta_bool_state(meta, "resource_pool_attempted", default=False)
+    build_ok, build_ok_parse_failed = _meta_bool_state(meta, "resource_pool_build_ok", default=True)
+    if attempted_parse_failed or build_ok_parse_failed:
+        if attempted_parse_failed:
+            attempted = True
+        build_ok = False
     degraded = bool(auto_assign_enabled and attempted and (not build_ok))
     reason = RESOURCE_POOL_BUILD_FAILED_MESSAGE if degraded else None
     return bool(auto_assign_enabled), bool(degraded), reason, bool(attempted)

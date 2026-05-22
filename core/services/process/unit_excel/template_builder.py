@@ -164,6 +164,60 @@ class UnitTemplateBuilder:
     def _all_seqs(ctx: PartContext, internal_seq_set: Set[int]) -> List[int]:
         return sorted(set(ctx.route_map.keys()) | set(internal_seq_set))
 
+    def _record_step_record_diagnostics(
+        self,
+        *,
+        ctx: PartContext,
+        rec: StepRecord,
+        collector: DegradationCollector,
+        samples: Dict[str, List[Any]],
+    ) -> None:
+        for issue in list(getattr(rec, "diagnostics", None) or []):
+            if not isinstance(issue, dict):
+                continue
+            self._record_diagnostic(
+                collector,
+                samples,
+                code=str(issue.get("code") or "invalid_unit_excel_cell"),
+                scope="unit_excel.step_record",
+                field=str(issue.get("field") or ""),
+                message=str(issue.get("message") or "单元 Excel 中有无法识别的单元格，系统已按可确认内容继续转换。"),
+                sample={
+                    "part_no": ctx.part_no,
+                    "machine_id": rec.machine_id,
+                    "step_text": rec.step_text,
+                    "row_num": int(issue.get("row_num") or getattr(rec, "row_num", 0) or 0),
+                    "field": issue.get("field"),
+                    "raw_value": issue.get("raw_value"),
+                },
+            )
+
+    def _record_compatible_row_diagnostic(
+        self,
+        *,
+        ctx: PartContext,
+        rec: StepRecord,
+        collector: DegradationCollector,
+        samples: Dict[str, List[Any]],
+    ) -> None:
+        if not rec.step_text or (rec.has_step_code and rec.operators):
+            return
+        self._record_diagnostic(
+            collector,
+            samples,
+            code="compatible_row",
+            scope="unit_excel.step_record",
+            field="step_text",
+            message="发现旧格式行，系统已按旧文件的写法识别并继续转换。",
+            sample={
+                "part_no": ctx.part_no,
+                "machine_id": rec.machine_id,
+                "step_text": rec.step_text,
+                "has_step_code": bool(rec.has_step_code),
+                "operator_count": int(len(rec.operators or [])),
+            },
+        )
+
     def _collect_op_records(
         self,
         parts: Dict[str, PartContext],
@@ -182,24 +236,17 @@ class UnitTemplateBuilder:
             ctx = parts[part_no]
             seq_to_records, internal_seq_set = self._build_seq_maps(ctx)
             for rec in ctx.step_records:
-                if not rec.step_text:
-                    continue
-                if rec.has_step_code and rec.operators:
-                    continue
-                self._record_diagnostic(
-                    collector,
-                    samples,
-                    code="compatible_row",
-                    scope="unit_excel.step_record",
-                    field="step_text",
-                    message="发现旧格式行，系统已按旧文件的写法识别并继续转换。",
-                    sample={
-                        "part_no": ctx.part_no,
-                        "machine_id": rec.machine_id,
-                        "step_text": rec.step_text,
-                        "has_step_code": bool(rec.has_step_code),
-                        "operator_count": int(len(rec.operators or [])),
-                    },
+                self._record_step_record_diagnostics(
+                    ctx=ctx,
+                    rec=rec,
+                    collector=collector,
+                    samples=samples,
+                )
+                self._record_compatible_row_diagnostic(
+                    ctx=ctx,
+                    rec=rec,
+                    collector=collector,
+                    samples=samples,
                 )
 
             inferred_missing_name = self._infer_missing_name_map(

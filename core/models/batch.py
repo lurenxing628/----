@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from ._helpers import RowLike, as_dict, get, parse_int
+from ._helpers import RowLike, as_dict, get, parse_int_or_default
 from .enums import BatchPriority, BatchStatus, ReadyStatus
 
 
@@ -29,7 +29,7 @@ class Batch:
             batch_id=str(get(row, "batch_id") or ""),
             part_no=str(get(row, "part_no") or ""),
             part_name=get(row, "part_name"),
-            quantity=parse_int(qty, default=0) or 0,
+            quantity=parse_int_or_default(qty, 0, field="quantity"),
             due_date=get(row, "due_date"),
             priority=(
                 str(get(row, "priority") or BatchPriority.NORMAL.value).strip().lower() or BatchPriority.NORMAL.value

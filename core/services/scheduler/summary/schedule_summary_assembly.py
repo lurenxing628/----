@@ -175,6 +175,7 @@ def _algo_downtime_dict(*, auto_assign_enabled: bool, downtime_state: Dict[str, 
         "extend_attempted": bool(downtime_state.get("downtime_extend_attempted")) if auto_assign_enabled else False,
         "load_partial_fail_count": int(downtime_state.get("load_partial_fail_count") or 0),
         "load_partial_fail_machines_sample": list(downtime_state.get("load_partial_fail_machines_sample") or []),
+        "downtime_meta_parse_failed": bool(downtime_state.get("downtime_meta_parse_failed")),
         "extend_partial_fail_count": int(downtime_state.get("extend_partial_fail_count") or 0)
         if auto_assign_enabled
         else 0,

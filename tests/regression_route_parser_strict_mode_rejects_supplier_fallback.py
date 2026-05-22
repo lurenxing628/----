@@ -41,6 +41,17 @@ class _StubOpTypesRepo:
 
 
 @dataclass
+class _RaisingGetOpTypesRepo:
+    op_types: List[_OpType]
+
+    def list(self):
+        return list(self.op_types)
+
+    def get(self, _op_type_id: str):
+        raise RuntimeError("op type repo boom")
+
+
+@dataclass
 class _StubSuppliersRepo:
     suppliers: List[object]
 
@@ -82,6 +93,58 @@ def main() -> None:
     )
     assert any("已开启严格校验，请先把这个周期补正确" in str(msg) for msg in (result_invalid.errors or [])), (
         f"strict_mode 默认周期错误未透出：{result_invalid.errors!r}"
+    )
+
+    parser_mapping_failed_relaxed = RouteParser(
+        op_types_repo=_RaisingGetOpTypesRepo(op_types=[_OpType(op_type_id="OT_EXT", name="表处理", category="external")]),
+        suppliers_repo=_StubSuppliersRepo(suppliers=[_Supplier(supplier_id="SUP_BAD_MAP", op_type_id="OT_EXT", default_days=1.0)]),
+        logger=None,
+    )
+    result_mapping_failed_relaxed = parser_mapping_failed_relaxed.parse("5表处理", part_no="P_SUP_MAP_WARN", strict_mode=False)
+    assert result_mapping_failed_relaxed.status in (ParseStatus.PARTIAL, ParseStatus.PARTIAL.value), (
+        f"供应商工种映射失败 relaxed 应为 partial：{result_mapping_failed_relaxed.status!r}"
+    )
+    assert any("工种映射加载失败" in str(msg) for msg in (result_mapping_failed_relaxed.warnings or [])), (
+        f"供应商工种映射失败 warning 未透出：{result_mapping_failed_relaxed.warnings!r}"
+    )
+
+    parser_mapping_failed_strict = RouteParser(
+        op_types_repo=_RaisingGetOpTypesRepo(op_types=[_OpType(op_type_id="OT_EXT", name="表处理", category="external")]),
+        suppliers_repo=_StubSuppliersRepo(suppliers=[_Supplier(supplier_id="SUP_BAD_MAP", op_type_id="OT_EXT", default_days=1.0)]),
+        logger=None,
+    )
+    result_mapping_failed_strict = parser_mapping_failed_strict.parse("5表处理", part_no="P_SUP_MAP_ERR", strict_mode=True)
+    assert result_mapping_failed_strict.status in (ParseStatus.FAILED, ParseStatus.FAILED.value), (
+        f"供应商工种映射失败 strict 应失败：{result_mapping_failed_strict.status!r}"
+    )
+    assert any("工种映射加载失败" in str(msg) for msg in (result_mapping_failed_strict.errors or [])), (
+        f"供应商工种映射失败 error 未透出：{result_mapping_failed_strict.errors!r}"
+    )
+
+    parser_mapping_missing_relaxed = RouteParser(
+        op_types_repo=op_repo,
+        suppliers_repo=_StubSuppliersRepo(suppliers=[_Supplier(supplier_id="SUP_STALE_MAP", op_type_id="OT_MISSING", default_days=1.0)]),
+        logger=None,
+    )
+    result_mapping_missing_relaxed = parser_mapping_missing_relaxed.parse("5表处理", part_no="P_SUP_MAP_MISSING_WARN", strict_mode=False)
+    assert result_mapping_missing_relaxed.status in (ParseStatus.PARTIAL, ParseStatus.PARTIAL.value), (
+        f"供应商工种指向不存在 relaxed 应为 partial：{result_mapping_missing_relaxed.status!r}"
+    )
+    assert any("工种映射加载失败" in str(msg) and "没有找到对应工种" in str(msg) for msg in (result_mapping_missing_relaxed.warnings or [])), (
+        f"供应商工种指向不存在 warning 未透出：{result_mapping_missing_relaxed.warnings!r}"
+    )
+
+    parser_mapping_missing_strict = RouteParser(
+        op_types_repo=op_repo,
+        suppliers_repo=_StubSuppliersRepo(suppliers=[_Supplier(supplier_id="SUP_STALE_MAP", op_type_id="OT_MISSING", default_days=1.0)]),
+        logger=None,
+    )
+    result_mapping_missing_strict = parser_mapping_missing_strict.parse("5表处理", part_no="P_SUP_MAP_MISSING_ERR", strict_mode=True)
+    assert result_mapping_missing_strict.status in (ParseStatus.FAILED, ParseStatus.FAILED.value), (
+        f"供应商工种指向不存在 strict 应失败：{result_mapping_missing_strict.status!r}"
+    )
+    assert any("工种映射加载失败" in str(msg) and "没有找到对应工种" in str(msg) for msg in (result_mapping_missing_strict.errors or [])), (
+        f"供应商工种指向不存在 error 未透出：{result_mapping_missing_strict.errors!r}"
     )
 
     print("OK")

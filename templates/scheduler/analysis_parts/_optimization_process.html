@@ -9,7 +9,11 @@
 
     <div class="card">
       <h3 class="section-title">优化过程</h3>
+      {% if trace_chart and trace_chart.metric_parse_failed %}
+        <div class="flash-card flash-warning mb-2">优化过程指标记录异常，部分点位已跳过，最终结果以当前版本汇总为准。</div>
+      {% endif %}
       {% if trace_chart %}
+        {% if trace_chart.points %}
         <div class="svg-title">计算过程曲线（横轴=用时，纵轴=方案评分，越低越好）</div>
         <div class="svg-wrap">
           <svg viewBox="0 0 {{ trace_chart.width }} {{ trace_chart.height }}" width="100%" height="{{ trace_chart.height }}">
@@ -18,8 +22,12 @@
           </svg>
         </div>
         <div class="muted">最小 {{ trace_chart.y_min|round(4) }} / 最大 {{ trace_chart.y_max|round(4) }}</div>
+        {% endif %}
       {% endif %}
       {% if attempts and attempts|length > 0 %}
+        {% if attempts|selectattr('primary_value_parse_failed')|list|length > 0 %}
+          <div class="flash-card flash-warning mb-2">优化方案指标记录异常，异常值没有按 0 计算，请以当前版本汇总为准。</div>
+        {% endif %}
         <div class="aps-table-scroll">
         <table id="analysisAttemptsTable" class="table-sticky table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v3_analysisAttemptsTable">
           <thead>
@@ -46,21 +54,37 @@
                 <td>
                   {{ dispatch_mode_zh.get(row_dispatch_mode, '未知派工方式') }}{% if row_dispatch_rule %} / {{ dispatch_rule_zh.get(row_dispatch_rule, '未知派工规则') }}{% endif %}
                 </td>
-                <td>{{ r.failed_ops }}</td>
                 <td>
-                  {% if objective_key in mm %}
-                    {{ mm[objective_key] }}
+                  {% if r.failed_ops_parse_failed %}
+                    记录异常
+                  {% elif r.failed_ops is not none %}
+                    {{ r.failed_ops }}
                   {% else %}
-                    {{ r.primary_value }}
+                    -
                   {% endif %}
                 </td>
                 <td>
+                  {% if r.primary_value_parse_failed %}
+                    记录异常
+                  {% elif objective_key in mm and r.primary_value is not none %}
+                    {{ mm[objective_key] }}
+                  {% elif r.primary_value is not none %}
+                    {{ r.primary_value }}
+                  {% else %}
+                    -
+                  {% endif %}
+                </td>
+                <td>
+                  {% if r.bar_pct is not none %}
                   <progress
                     class="analysis-score-bar"
                     value="{{ r.bar_pct }}"
                     max="100"
                     aria-label="综合评分条"
                   >{{ r.bar_pct }}%</progress>
+                  {% else %}
+                    -
+                  {% endif %}
                 </td>
                 <td>{{ r.score }}</td>
               </tr>

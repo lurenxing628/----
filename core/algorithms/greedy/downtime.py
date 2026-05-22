@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import bisect
+import math
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
@@ -37,8 +38,10 @@ def find_earliest_available_start(
 ) -> datetime:
     try:
         dur = float(duration_hours)
-    except Exception:
-        dur = 0.0
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"排产时长必须是数字：{duration_hours!r}") from exc
+    if not math.isfinite(dur):
+        raise ValueError(f"排产时长必须是有限数字：{duration_hours!r}")
     if dur <= 0:
         return base_time
 

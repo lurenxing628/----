@@ -361,7 +361,7 @@ def test_seed_bad_time_reasons_are_separated() -> None:
     from core.algorithms.greedy.seed import normalize_seed_results
     from core.algorithms.types import ScheduleResult
 
-    class _IncomparableTime:
+    class _IncomparableDateTime(datetime):
         def __gt__(self, _other):
             raise TypeError("time cannot compare")
 
@@ -390,8 +390,8 @@ def test_seed_bad_time_reasons_are_separated() -> None:
             seq=2,
             machine_id="M2",
             operator_id="O2",
-            start_time=_IncomparableTime(),  # type: ignore[arg-type]
-            end_time=base_time + timedelta(hours=2),
+            start_time=base_time,
+            end_time=_IncomparableDateTime(2026, 1, 1, 10, 0, 0),
             source="internal",
         ),
     ]

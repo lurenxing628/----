@@ -1,8 +1,10 @@
 import sqlite3
 import threading
 from collections import OrderedDict
+from datetime import datetime
 from pathlib import Path
 
+from core.services.scheduler import gantt_critical_chain
 from core.services.scheduler.gantt_critical_chain_provider import GanttCriticalChainProvider
 from core.services.scheduler.gantt_service import GanttService
 
@@ -107,3 +109,70 @@ def test_critical_chain_unavailable_result_is_not_cached(monkeypatch) -> None:
     assert second.get("cache_hit") is False
     assert third.get("available") is True
     assert third.get("cache_hit") is True
+
+
+def test_adopted_critical_chain_calc_exception_is_visible(monkeypatch) -> None:
+    class _Repo:
+        @staticmethod
+        def list_by_version_with_details(_version: int):
+            return [
+                {
+                    "op_id": 1,
+                    "op_code": "OP1",
+                    "batch_id": "B1",
+                    "piece_id": "P1",
+                    "seq": 1,
+                    "machine_id": "MC1",
+                    "operator_id": "O1",
+                    "start_time": datetime(2026, 1, 1, 8, 0, 0),
+                    "end_time": datetime(2026, 1, 1, 9, 0, 0),
+                }
+            ]
+
+    def _boom(_rows):
+        raise RuntimeError("critical calc boom")
+
+    monkeypatch.setattr(gantt_critical_chain, "_compute_critical_chain_from_loaded_rows", _boom)
+
+    result = gantt_critical_chain.compute_critical_chain(_Repo(), 1)
+
+    assert result.get("available") is False
+    assert result.get("reason") == "calc_exception"
+    assert result.get("ids") == []
+    assert "critical calc boom" not in str(result)
+
+
+def test_critical_chain_edge_time_errors_do_not_drop_edges_silently() -> None:
+    nodes = {
+        "A": {
+            "id": "A",
+            "start": datetime(2026, 1, 1, 8, 0, 0),
+            "end": datetime(2026, 1, 1, 9, 0, 0),
+            "batch_id": "B1",
+            "piece_id": "P1",
+            "seq": 1,
+            "machine_id": "MC1",
+            "operator_id": "O1",
+        },
+        "B": {
+            "id": "B",
+            "start": None,
+            "end": datetime(2026, 1, 1, 10, 0, 0),
+            "batch_id": "B1",
+            "piece_id": "P1",
+            "seq": 2,
+            "machine_id": "MC1",
+            "operator_id": "O1",
+        },
+    }
+
+    proc_prev = {"B": "A"}
+    mach_prev = {"B": "A"}
+    op_prev = {}
+
+    try:
+        gantt_critical_chain._choose_control_prev(nodes, proc_prev=proc_prev, mach_prev=mach_prev, op_prev=op_prev)
+    except ValueError as exc:
+        assert "时间字段缺失" in str(exc)
+    else:
+        raise AssertionError("关键链边时间异常不应静默当成没有前驱边")

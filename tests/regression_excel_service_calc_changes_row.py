@@ -19,6 +19,14 @@ class _DummyBackend:
         raise NotImplementedError
 
 
+class _ExplodingMapping:
+    def keys(self):
+        return ["状态"]
+
+    def __getitem__(self, _key):
+        raise RuntimeError("existing row exploded")
+
+
 def main() -> None:
     repo_root = find_repo_root()
     if repo_root not in sys.path:
@@ -60,6 +68,13 @@ def main() -> None:
         assert pr2.status == RowStatus.UNCHANGED, f"期望 UNCHANGED，实际={pr2.status!r}"
         assert not pr2.changes, f"不应有 changes：{pr2.changes!r}"
 
+        try:
+            svc._calc_changes(_ExplodingMapping(), {"状态": "inactive"})
+        except RuntimeError as exc:
+            assert "existing row exploded" in str(exc), "已有记录读取内部异常不能伪装成普通导入校验失败"
+        else:
+            raise AssertionError("已有记录读取内部异常不应被静默包装")
+
         print("OK")
     finally:
         try:
@@ -70,4 +85,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

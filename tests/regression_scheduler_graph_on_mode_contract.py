@@ -129,8 +129,14 @@ def _schedule_input(mode: str = "on") -> SimpleNamespace:
         downtime_map={},
         seed_results=[{"op_id": 1}],
         resource_pool={"machines_by_op_type": {}, "operators_by_machine": {}, "machines_by_operator": {}},
-        operations=[SimpleNamespace(id=2, batch_id="B001"), SimpleNamespace(id=3, batch_id="B002")],
-        reschedulable_operations=[SimpleNamespace(id=2), SimpleNamespace(id=3)],
+        operations=[
+            SimpleNamespace(id=2, batch_id="B001", source="internal"),
+            SimpleNamespace(id=3, batch_id="B002", source="internal"),
+        ],
+        reschedulable_operations=[
+            SimpleNamespace(id=2, batch_id="B001", source="internal"),
+            SimpleNamespace(id=3, batch_id="B002", source="internal"),
+        ],
         reschedulable_op_ids={2, 3},
         normalized_batch_ids=["B001", "B002"],
         freeze_meta={"loaded": True},
@@ -181,8 +187,14 @@ def _chain_schedule_input(
         downtime_map={},
         seed_results=[],
         resource_pool={"machines_by_op_type": {}, "operators_by_machine": {}, "machines_by_operator": {}},
-        operations=[SimpleNamespace(id=getattr(op, "id"), batch_id=getattr(op, "batch_id")) for op in ops],
-        reschedulable_operations=[SimpleNamespace(id=getattr(op, "id")) for op in ops],
+        operations=[
+            SimpleNamespace(id=getattr(op, "id"), batch_id=getattr(op, "batch_id"), source=getattr(op, "source"))
+            for op in ops
+        ],
+        reschedulable_operations=[
+            SimpleNamespace(id=getattr(op, "id"), batch_id=getattr(op, "batch_id"), source=getattr(op, "source"))
+            for op in ops
+        ],
         reschedulable_op_ids={1, 2, 3, 4, 5},
         normalized_batch_ids=["B_A", "B_B"],
         freeze_meta={"loaded": True},

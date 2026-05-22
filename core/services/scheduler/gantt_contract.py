@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 from core.services.scheduler.degradation_messages import public_degradation_events
 
 _CRITICAL_REASON_LABELS = {
+    "calc_exception": "关键链计算异常",
     "repo_exception": "关键链计算异常",
     "no_history": "暂无排产历史，关键链暂不可用",
     "unknown": "关键链暂不可用",

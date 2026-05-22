@@ -87,8 +87,14 @@ def _schedule_input(mode: str) -> SimpleNamespace:
             "operators_by_machine": {"M1": ["O1"], "M2": ["O2"]},
             "machines_by_operator": {},
         },
-        operations=[SimpleNamespace(id=getattr(op, "id"), batch_id=getattr(op, "batch_id")) for op in ops],
-        reschedulable_operations=[SimpleNamespace(id=getattr(op, "id")) for op in ops],
+        operations=[
+            SimpleNamespace(id=getattr(op, "id"), batch_id=getattr(op, "batch_id"), source=getattr(op, "source"))
+            for op in ops
+        ],
+        reschedulable_operations=[
+            SimpleNamespace(id=getattr(op, "id"), batch_id=getattr(op, "batch_id"), source=getattr(op, "source"))
+            for op in ops
+        ],
         reschedulable_op_ids={1, 2, 3},
         normalized_batch_ids=["B001", "B002", "B003"],
         freeze_meta={"loaded": True},

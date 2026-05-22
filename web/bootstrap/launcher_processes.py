@@ -17,7 +17,7 @@ def set_process_log_context(*, state_dir: str = "", runtime_dir: str = "") -> No
     _PROCESS_LOG_RUNTIME_DIR = str(runtime_dir or "").strip()
 
 
-def _process_log_warning(logger: Optional[logging.Logger], message: str, *args) -> None:
+def _log_warning(logger: Optional[logging.Logger], message: str, *args) -> None:
     launcher_log_warning(
         logger,
         message,
@@ -30,8 +30,8 @@ def _process_log_warning(logger: Optional[logging.Logger], message: str, *args) 
 def _parse_pid(pid: int) -> int:
     try:
         return int(pid)
-    except Exception as exc:
-        _process_log_warning(None, "解析运行时 pid 失败，已按不存在处理：pid=%r error=%s", pid, exc)
+    except (TypeError, ValueError, OverflowError) as exc:
+        _log_warning(None, "解析运行时 pid 失败，已按不存在处理：pid=%r error=%s", pid, exc)
         return 0
 
 
@@ -45,10 +45,10 @@ def _windows_pid_state(pid_i: int) -> Optional[bool]:
             check=False,
         )
     except Exception as exc:
-        _process_log_warning(None, "枚举 Windows pid 失败，运行时身份状态未知：pid=%s error=%s", pid_i, exc)
+        _log_warning(None, "枚举 Windows pid 失败，运行时身份状态未知：pid=%s error=%s", pid_i, exc)
         return None
     if int(result.returncode or 0) != 0:
-        _process_log_warning(
+        _log_warning(
             None,
             "枚举 Windows pid 返回失败，运行时身份状态未知：pid=%s rc=%s stderr=%s",
             pid_i,
@@ -72,10 +72,10 @@ def _posix_pid_state(pid_i: int) -> Optional[bool]:
     except PermissionError:
         return True
     except OSError as exc:
-        _process_log_warning(None, "探测 pid 存活状态失败，运行时身份状态未知：pid=%s error=%s", pid_i, exc)
+        _log_warning(None, "探测 pid 存活状态失败，运行时身份状态未知：pid=%s error=%s", pid_i, exc)
         return None
     except Exception as exc:
-        _process_log_warning(None, "探测 pid 存活状态失败，运行时身份状态未知：pid=%s error=%s", pid_i, exc)
+        _log_warning(None, "探测 pid 存活状态失败，运行时身份状态未知：pid=%s error=%s", pid_i, exc)
         return None
 
 
@@ -121,7 +121,7 @@ def _run_powershell_text(script: str, timeout_s: float = 8.0) -> Tuple[Optional[
             check=False,
     )
     except Exception as exc:
-        _process_log_warning(None, "PowerShell 运行失败，相关运行时能力不可确认：%s", exc)
+        _log_warning(None, "PowerShell 运行失败，相关运行时能力不可确认：%s", exc)
         return None, ""
     output = (result.stdout or "").strip()
     stderr_text = (result.stderr or "").strip()
@@ -133,8 +133,8 @@ def _run_powershell_text(script: str, timeout_s: float = 8.0) -> Tuple[Optional[
 def _query_process_executable_path(pid: int) -> Optional[str]:
     try:
         pid_i = int(pid)
-    except Exception as exc:
-        _process_log_warning(None, "解析进程路径 pid 失败，无法确认运行时身份：pid=%r error=%s", pid, exc)
+    except (TypeError, ValueError, OverflowError) as exc:
+        _log_warning(None, "解析进程路径 pid 失败，无法确认运行时身份：pid=%r error=%s", pid, exc)
         return None
     if pid_i <= 0:
         return None
@@ -161,10 +161,10 @@ def _query_process_executable_path(pid: int) -> Optional[str]:
     )
     rc, output = _run_powershell_text(script, timeout_s=8.0)
     if rc == 2:
-        _process_log_warning(None, "进程路径为空，无法确认运行时身份：pid=%s", pid_i)
+        _log_warning(None, "进程路径为空，无法确认运行时身份：pid=%s", pid_i)
         return ""
     if rc is None or rc != 0:
-        _process_log_warning(None, "查询进程路径失败，无法确认运行时身份：pid=%s rc=%s", pid_i, rc)
+        _log_warning(None, "查询进程路径失败，无法确认运行时身份：pid=%s rc=%s", pid_i, rc)
         return None
     for line in str(output or "").splitlines():
         value_s = str(line or "").strip()
@@ -194,8 +194,8 @@ def runtime_pid_matches_executable(pid: int, expected_exe_path: str) -> Optional
 def _kill_runtime_pid(pid: int) -> bool:
     try:
         pid_i = int(pid)
-    except Exception as exc:
-        _process_log_warning(None, "解析待强制停止 pid 失败，已拒绝强杀：pid=%r error=%s", pid, exc)
+    except (TypeError, ValueError, OverflowError) as exc:
+        _log_warning(None, "解析待强制停止 pid 失败，已拒绝强杀：pid=%r error=%s", pid, exc)
         return False
     if pid_i <= 0:
         return False
@@ -209,11 +209,11 @@ def _kill_runtime_pid(pid: int) -> bool:
                 check=False,
         )
         except Exception as exc:
-            _process_log_warning(None, "强制停止运行时 pid 失败：pid=%s error=%s", pid_i, exc)
+            _log_warning(None, "强制停止运行时 pid 失败：pid=%s error=%s", pid_i, exc)
             return False
         ok = int(result.returncode or 0) == 0
         if not ok:
-            _process_log_warning(
+            _log_warning(
                 None,
                 "强制停止运行时 pid 返回失败：pid=%s rc=%s stderr=%s",
                 pid_i,

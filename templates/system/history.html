@@ -68,6 +68,11 @@
           {{ selected_summary_display.summary_parse_state.user_message }}
         </div>
       {% endif %}
+      {% if selected_summary_display.summary_count_parse_failed %}
+        <div class="flash-card flash-warning mt-2">
+          {{ selected_summary_display.summary_count_parse_message }}
+        </div>
+      {% endif %}
       {% if selected_summary_display.primary_degradation %}
         <div class="flash-card flash-warning mt-2">
           {% if selected_summary_display.primary_degradation.details %}
@@ -241,6 +246,9 @@
               <td>
                 {% if r.result_summary_display.summary_parse_state.parse_failed %}
                   <div class="muted">{{ r.result_summary_display.summary_parse_state.user_message }}</div>
+                {% endif %}
+                {% if r.result_summary_display.summary_count_parse_failed %}
+                  <div class="muted">{{ r.result_summary_display.summary_count_parse_message }}</div>
                 {% endif %}
                 {% if r.result_summary_display.primary_degradation %}
                   <div>{{ r.result_summary_display.primary_degradation.message }}</div>

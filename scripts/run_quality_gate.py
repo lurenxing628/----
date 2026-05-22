@@ -1431,9 +1431,11 @@ def _pid_signal(payload: Optional[Dict[str, object]]) -> Tuple[RuntimeProbeState
     exe_path = str(payload.get("exe_path") or "").strip()
     if pid <= 0:
         return RuntimeProbeState.STALE, pid, False, exe_path
-    pid_exists = bool(launcher.runtime_pid_exists(pid))
-    if not pid_exists:
+    pid_state = launcher.runtime_pid_state(pid)
+    if pid_state is False:
         return RuntimeProbeState.STALE, pid, False, exe_path
+    if pid_state is None:
+        return RuntimeProbeState.UNKNOWN, pid, None, exe_path
     if not exe_path:
         return RuntimeProbeState.UNKNOWN, pid, None, exe_path
     pid_match = launcher.runtime_pid_matches_executable(pid, exe_path)

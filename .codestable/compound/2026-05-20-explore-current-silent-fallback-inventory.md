@@ -2,9 +2,9 @@
 doc_type: explore
 type: question
 slug: current-silent-fallback-inventory
-status: active
+status: completed
 created_at: 2026-05-20
-updated_at: 2026-05-20
+updated_at: 2026-05-22
 confidence: high
 tags:
   - silent-fallback
@@ -13,11 +13,56 @@ tags:
   - tech-debt
 ---
 
-# 当前静默回退清单留档
+# 当前静默回退清单留档（已修复验收）
 
 ## 速答
 
-本次只做只读审查与留档，**未修改业务代码**。
+2026-05-22 更新：本文件已从“发现清单”进入“修复验收留档”。下面的全量清单保留 2026-05-20 的原始扫描证据，方便以后追溯当时发现了什么；它不再代表当前代码仍然存在这些问题。
+
+本轮已完成当前清单内需要处理的静默回退问题，处理口径是：
+
+- 会改变排产业务事实的坏数据，不再悄悄变成 0、1、空值或默认值。
+- 必须兼容旧数据的地方，要么留下 warning / degradation / 页面提示 / OperationLogs，要么明确登记为可接受的展示兼容。
+- Excel 模板不再因为“能打开”就被自动覆盖或下载，表头不一致会直接报可见错误。
+- 分析页、历史页、周计划页遇到坏摘要数字或坏优化指标时，会显示“记录异常/结果有问题”，不会画成 0 或显示成功。
+- 算法统计计数不再把坏值、小数、布尔值截成正常整数。
+
+当前验收结果：
+
+| 验收项 | 实际命令 | 结果 | 证据 |
+|---|---|---|---|
+| 严格静默回退门禁 | `.venv/bin/python -m tools.quality_gate_scan --strict` | `return_code=0`，成功无输出 | `evidence/QualityGate/silent_fallback_inventory_acceptance/strict_scan.log` |
+| 严格静默回退门禁计数快照 | `.venv/bin/python -m tools.quality_gate_scan --strict --json` | `scan_entry_count=100`，`ledger_entry_count=100`，分类：`observable_degrade=62` / `cleanup_best_effort=14` / `silent_default_fallback=6` / `silent_swallow=18` | `evidence/QualityGate/silent_fallback_inventory_acceptance/strict_scan_json.log` |
+| 严格扫描 CLI 合同 | `.venv/bin/python -m pytest tests/regression_quality_gate_scan_contract.py -q` | `28 passed` | `evidence/QualityGate/silent_fallback_inventory_acceptance/strict_cli_contract_pytest.log` |
+| 台账一致性检查 | `.venv/bin/python scripts/sync_debt_ledger.py check` | `return_code=0`，当前 `silent_fallback_count=100` | `evidence/QualityGate/silent_fallback_inventory_acceptance/quality_gate_ledger_check.log` |
+| diff 空白检查 | `git diff --check` | `return_code=0`，无输出 | `evidence/QualityGate/silent_fallback_inventory_acceptance/git_diff_check.log` |
+| 定向核心回归 | `.venv/bin/python -m pytest tests/regression_model_helper_silent_fallback_contract.py tests/regression_models_numeric_parse_hybrid_safe.py tests/regression_strict_parse_blank_required.py tests/regression_schedule_summary_fallback_counts_output.py tests/regression_metrics_to_dict_nonfinite_safe.py tests/regression_calendar_invalid_shift_window_contract.py tests/regression_seed_results_drop_duplicate_op_id_and_bad_time.py tests/regression_seed_results_dedup.py tests/regression_unit_excel_converter_diagnostics_visible.py tests/regression_unit_excel_converter_merge_steps_and_classify.py -q` | `15 passed` | `evidence/QualityGate/silent_fallback_inventory_acceptance/targeted_core_pytest.log` |
+| 启动链 / UI mode / runtime 回归 | `.venv/bin/python -m pytest tests -q -k 'launcher or runtime or startup or stop or ui_mode or render_bridge' -p no:cacheprovider` | `272 passed, 3000 deselected` | `evidence/QualityGate/silent_fallback_inventory_acceptance/web_startup_pytest.log` |
+| Excel 模板合同脚本 | `.venv/bin/python tests/regression_excel_template_contracts.py` | `OK` | `evidence/QualityGate/silent_fallback_inventory_acceptance/excel_template_contract_script.log` |
+| 系统维护坏 JSON / 页面可见性合同 | `.venv/bin/python -m pytest tests/regression_maintenance_window_mutex.py tests/test_history_summary_parser.py tests/regression_system_logs_presenter_contract.py tests/regression_system_request_services_contract.py -q` | `31 passed` | `evidence/QualityGate/silent_fallback_inventory_acceptance/system_maintenance_bad_json_pytest.log` |
+| 指标 JSON 安全脚本 | `.venv/bin/python tests/regression_metrics_to_dict_nonfinite_safe.py` | `OK` | `evidence/QualityGate/silent_fallback_inventory_acceptance/metrics_json_script.log` |
+| 子代理修后对抗复审 | 人工/子代理交叉审查摘要 | Excel、模型/统计、分析展示均无剩余真问题；机器验收以上述命令和日志为准 | 本文档 + `.limcode/review/2026-05-21-silent-fallback-inventory-review.md` |
+
+验收证据说明：
+
+- 以上表格是 2026-05-22 08:27 +08:00 后重新补齐的可复现收口证据，所有命令均记录了 `started_at`、`finished_at`、`command`、`return_code` 和关键输出。
+- 早期速记里的“定向 pytest 第一组 `58 passed` / 第二组 `141 passed`”未保留可审计 receipt，已由上表的当前可复现命令取代；后续不得再把旧数字当成当前验收依据。
+- 原验收项 `tools.quality_gate_scan --strict` 已替换为真实可执行入口 `.venv/bin/python -m tools.quality_gate_scan --strict`；该命令成功时保持无输出，`--json` 用于留存计数快照。
+- 当前技术债务台账快照仍是 `开发文档/技术债务治理台账.md` 中 `updated_at=2026-05-22T07:03:42+08:00`、`silent_fallback_count=100`；本文下方 181 / 77 文件清单仍仅代表 2026-05-20 原始发现口径。
+
+本轮主要修复范围：
+
+- 排产种子、日期解析、日历班次、版本仓库、摘要降级、关键链、排产持久化。
+- 工艺路线解析、供应商默认周期、Unit Excel 诊断、OR-Tools 预热失败、启动器 PID 状态。
+- Excel 模板生成/修复/下载校验、Excel 导入差异计算、基础设施日志与迁移标识符。
+- 系统维护备份/清理结果、系统页面坏 JSON 显示、报表字段坏值校验。
+- 分析页趋势图、优化过程表、优化曲线、历史摘要 counts 状态。
+- 模型层关键数字字段：批次数量、批次工序顺序/工时/外协天数、零件工序模板顺序/工时/外协天数、日历班次/效率、供应商默认周期。
+- 算法指标和统计：指标坏值不再变 0，负荷统计坏值不再跳过，fallback 计数坏值不再跳过、覆盖或截断。
+
+> 说明：2026-05-20 原始内容里写着“本次只做只读审查与留档，未修改业务代码”，那是当时生成清单时的状态。2026-05-22 已按这份清单完成修复、回归和对抗复审。
+
+## 原始扫描摘要
 
 按当前仓库生产代码范围扫描：
 

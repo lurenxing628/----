@@ -8,7 +8,8 @@ from web.routes.history_summary_logging import (
     log_history_summary_parse_warning,
     log_history_version_option_parse_warnings,
 )
-from web.viewmodels.scheduler_analysis_trends import safe_int
+from web.viewmodels.scheduler_analysis_metrics import extract_metrics_from_summary
+from web.viewmodels.scheduler_analysis_trends import _metric_float_state, _metric_has_parse_failure, safe_int
 from web.viewmodels.scheduler_history_summary import decorate_history_version_options, parse_history_summary_state
 
 from .scheduler_history_resolution import build_requested_history_resolution
@@ -156,13 +157,40 @@ def _ensure_selected_analysis_context(
     ctx["selected"] = _selected_history_placeholder(selected_ver)
 
 
+_TREND_METRIC_KEYS = (
+    "overdue_count",
+    "total_tardiness_hours",
+    "weighted_tardiness_hours",
+    "makespan_hours",
+    "makespan_internal_hours",
+    "changeover_count",
+    "machine_util_avg",
+    "operator_util_avg",
+)
+
+
+def _trend_metric_parse_failed(item: Dict[str, Any]) -> bool:
+    summary = (item or {}).get("result_summary")
+    if not isinstance(summary, dict):
+        return False
+    metrics = extract_metrics_from_summary(summary)
+    if not isinstance(metrics, dict):
+        return False
+    for key in _TREND_METRIC_KEYS:
+        if _metric_has_parse_failure(metrics, key):
+            return True
+    return False
+
+
 def _trend_summary_state(raw_hist: List[Dict[str, Any]]) -> Dict[str, Any]:
     parse_failed_count = sum(
         1 for item in raw_hist if bool(((item or {}).get("result_summary_parse_state") or {}).get("parse_failed"))
     )
+    metric_parse_failed_count = sum(1 for item in raw_hist if _trend_metric_parse_failed(item))
     return {
-        "incomplete": bool(parse_failed_count),
+        "incomplete": bool(parse_failed_count or metric_parse_failed_count),
         "parse_failed_count": int(parse_failed_count),
+        "metric_parse_failed_count": int(metric_parse_failed_count),
     }
 
 

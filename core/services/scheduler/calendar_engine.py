@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional, Tuple
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.models import WorkCalendar
 from core.models.enums import BATCH_PRIORITY_VALUES, BatchPriority, CalendarDayType, YesNo
+from core.services.common.datetime_normalize import normalize_hhmm
 from core.services.common.normalize import normalize_text
 from data.repositories import CalendarRepository, OperatorCalendarRepository
 
@@ -129,33 +130,22 @@ class CalendarEngine:
 
     @staticmethod
     def _parse_shift_start(cal: Any) -> time:
-        ss = (cal.shift_start or "").strip() if getattr(cal, "shift_start", None) else ""
-        if not ss:
-            ss = "08:00"
-        ss = ss.replace("：", ":")
-        try:
-            return datetime.strptime(ss, "%H:%M").time()
-        except Exception:
-            return time(8, 0, 0)
+        ss = normalize_hhmm(getattr(cal, "shift_start", None), field="班次开始", allow_none=True) or "08:00"
+        return datetime.strptime(ss, "%H:%M").time()
 
     @staticmethod
     def _override_shift_hours_by_shift_end(cal: Any, *, date_str: str, shift_start_t: time, shift_hours: float) -> float:
-        se = (cal.shift_end or "").strip() if getattr(cal, "shift_end", None) else ""
+        se = normalize_hhmm(getattr(cal, "shift_end", None), field="班次结束", allow_none=True)
         if not se:
             return shift_hours
-        se = se.replace("：", ":")
-        try:
-            se_t = datetime.strptime(se, "%H:%M").time()
-            base_d = date.fromisoformat(getattr(cal, "date", None) or date_str)
-            st_dt = datetime.combine(base_d, shift_start_t)
-            et_dt = datetime.combine(base_d, se_t)
-            # 跨午夜：shift_end <= shift_start 表示次日结束（含相等：24h）
-            if et_dt <= st_dt:
-                et_dt = et_dt + timedelta(days=1)
-            return (et_dt - st_dt).total_seconds() / 3600.0
-        except (ValueError, TypeError):
-            # shift_end 非法：回退到 shift_hours（已从 cal.shift_hours 读取）
-            return shift_hours
+        se_t = datetime.strptime(se, "%H:%M").time()
+        base_d = date.fromisoformat(getattr(cal, "date", None) or date_str)
+        st_dt = datetime.combine(base_d, shift_start_t)
+        et_dt = datetime.combine(base_d, se_t)
+        # 跨午夜：shift_end <= shift_start 表示次日结束（含相等：24h）
+        if et_dt <= st_dt:
+            et_dt = et_dt + timedelta(days=1)
+        return (et_dt - st_dt).total_seconds() / 3600.0
 
     def _policy_for_date(self, date_str: str, operator_id: Optional[str] = None) -> DayPolicy:
         """获取某个“日期键”的 DayPolicy（不做跨午夜归属判断）。"""
@@ -332,4 +322,3 @@ class CalendarEngine:
         if d < 0:
             raise ValidationError("周期不能为负数", field="days")
         return start + timedelta(days=d)
-

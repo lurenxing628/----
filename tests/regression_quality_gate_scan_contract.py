@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from textwrap import dedent
 
 import tools.quality_gate_operations as ops_mod
@@ -515,6 +516,84 @@ def test_silent_fallback_entries_include_stable_handler_context_hash() -> None:
         raise AssertionError("missing handler")
 
     assert scan_mod._handler_context_hash(_handler(first)) == scan_mod._handler_context_hash(_handler(second))
+
+
+def test_strict_silent_fallback_cli_is_quiet_on_success(monkeypatch, capsys) -> None:
+    scan_entry = {
+        "id": "silent-fallback:demo",
+        "path": "web/bootstrap/demo.py",
+        "symbol": "demo",
+        "fallback_kind": "silent_swallow",
+    }
+    ledger = {
+        "silent_fallback": {
+            "entries": [
+                {
+                    "id": "silent-fallback:demo",
+                    "fallback_kind": "silent_swallow",
+                    "status": "open",
+                }
+            ]
+        }
+    }
+
+    monkeypatch.setattr(scan_mod, "load_ledger", lambda required=True: ledger)
+    monkeypatch.setattr(scan_mod, "validate_ledger", lambda _ledger: None)
+    monkeypatch.setattr(scan_mod, "validate_startup_samples", lambda: {"sample_count": 0})
+    monkeypatch.setattr(ops_mod, "architecture_silent_scan_entries", lambda: [scan_entry])
+
+    assert scan_mod.main(["--strict"]) == 0
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+
+
+def test_strict_silent_fallback_cli_json_summary(monkeypatch, capsys) -> None:
+    scan_entry = {
+        "id": "silent-fallback:demo-json",
+        "path": "web/bootstrap/demo.py",
+        "symbol": "demo",
+        "fallback_kind": "observable_degrade",
+    }
+    ledger = {
+        "silent_fallback": {
+            "entries": [
+                {
+                    "id": "silent-fallback:demo-json",
+                    "fallback_kind": "observable_degrade",
+                    "status": "open",
+                }
+            ]
+        }
+    }
+
+    monkeypatch.setattr(scan_mod, "load_ledger", lambda required=True: ledger)
+    monkeypatch.setattr(scan_mod, "validate_ledger", lambda _ledger: None)
+    monkeypatch.setattr(scan_mod, "validate_startup_samples", lambda: {"sample_count": 0})
+    monkeypatch.setattr(ops_mod, "architecture_silent_scan_entries", lambda: [scan_entry])
+
+    assert scan_mod.main(["--strict", "--json"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["scan_entry_count"] == 1
+    assert payload["ledger_entry_count"] == 1
+    assert payload["by_fallback_kind"] == {"observable_degrade": 1}
+    assert payload["ledger_by_status"] == {"open": 1}
+
+
+def test_strict_silent_fallback_cli_reports_drift_to_stderr(monkeypatch, capsys) -> None:
+    scan_entry = {"id": "silent-fallback:missing", "fallback_kind": "silent_swallow"}
+    monkeypatch.setattr(scan_mod, "load_ledger", lambda required=True: {"silent_fallback": {"entries": []}})
+    monkeypatch.setattr(scan_mod, "validate_ledger", lambda _ledger: None)
+    monkeypatch.setattr(scan_mod, "validate_startup_samples", lambda: {"sample_count": 0})
+    monkeypatch.setattr(ops_mod, "architecture_silent_scan_entries", lambda: [scan_entry])
+
+    assert scan_mod.main(["--strict"]) == 2
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "strict silent-fallback gate drift" in captured.err
 
 
 def test_request_service_target_files_keep_system_route_gate_coverage() -> None:

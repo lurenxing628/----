@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import time
 from datetime import date, datetime, timedelta
 
@@ -35,7 +36,7 @@ def _validate_ymd_date(raw: str, field: str) -> str:
     s = s.replace("/", "-")
     try:
         datetime.strptime(s, "%Y-%m-%d")
-    except Exception as e:
+    except ValueError as e:
         raise ValidationError("日期格式不正确，请按 2026-03-13 或 2026/03/13 这样的格式填写。", field=field) from e
     return s
 
@@ -155,13 +156,29 @@ def _send_report_export_file(report_export):
         mimetype=report_export.content_type,
     )
     mode = str(getattr(report_export, "mode", "direct") or "direct").strip() or "direct"
-    try:
-        estimated_rows = int(getattr(report_export, "estimated_rows", 0) or 0)
-    except Exception:
-        estimated_rows = 0
+    estimated_rows = _report_nonnegative_int(getattr(report_export, "estimated_rows", 0), field="导出行数")
     resp.headers["X-APS-Report-Export-Mode"] = mode
-    resp.headers["X-APS-Report-Estimated-Rows"] = str(max(0, estimated_rows))
+    resp.headers["X-APS-Report-Estimated-Rows"] = str(estimated_rows)
     return resp
+
+
+def _report_number(value, *, field: str) -> float:
+    if value is None or (isinstance(value, str) and value.strip() == ""):
+        return 0.0
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValidationError(f"{field} 数据异常，无法生成报表。", field=field) from exc
+    if not math.isfinite(number):
+        raise ValidationError(f"{field} 数据异常，无法生成报表。", field=field)
+    return number
+
+
+def _report_nonnegative_int(value, *, field: str) -> int:
+    number = _report_number(value, field=field)
+    if not number.is_integer():
+        raise ValidationError(f"{field} 数据异常，无法生成报表。", field=field)
+    return max(0, int(number))
 
 
 def _report_export_filters(engine: ReportEngine, version: int, raw_plan_role) -> dict:
@@ -193,7 +210,7 @@ def _log_report_export(
         target_type=target_type,
         template_or_export_type=export_type,
         filters=_report_export_filters(engine, int(version), raw_plan_role),
-        row_count=int(getattr(report_export, "estimated_rows", 0) or 0),
+        row_count=_report_nonnegative_int(getattr(report_export, "estimated_rows", 0), field="导出行数"),
         time_range=time_range or {},
         time_cost_ms=int((time.time() - started_at) * 1000),
         target_id=str(version),
@@ -204,14 +221,11 @@ def _with_utilization_percent(rows):
     out = []
     for row in list(rows or []):
         item = dict(row or {})
-        try:
-            raw_utilization = item.get("utilization")
-            if raw_utilization is None or str(raw_utilization).strip() == "":
-                item["utilization_percent"] = None
-            else:
-                item["utilization_percent"] = round(float(raw_utilization) * 100.0, 2)
-        except Exception:
+        raw_utilization = item.get("utilization")
+        if raw_utilization is None or (isinstance(raw_utilization, str) and raw_utilization.strip() == ""):
             item["utilization_percent"] = None
+        else:
+            item["utilization_percent"] = round(_report_number(raw_utilization, field="利用率") * 100.0, 2)
         out.append(item)
     return out
 
@@ -219,10 +233,7 @@ def _with_utilization_percent(rows):
 def _sum_report_number(rows, key: str) -> float:
     total = 0.0
     for row in rows or []:
-        try:
-            total += float((row or {}).get(key) or 0)
-        except Exception:
-            continue
+        total += _report_number((row or {}).get(key), field=key)
     return round(total, 2)
 
 

@@ -18,6 +18,11 @@
           {{ selected_summary_display.summary_parse_state.user_message }}
         </div>
       {% endif %}
+      {% if selected_summary_display.summary_count_parse_failed %}
+        <div class="flash-card flash-warning mt-2">
+          {{ selected_summary_display.summary_count_parse_message }}
+        </div>
+      {% endif %}
       {% if selected_summary_display.primary_degradation %}
         <div class="flash-card flash-warning mt-2">
           <div>{{ selected_summary_display.primary_degradation.message }}</div>

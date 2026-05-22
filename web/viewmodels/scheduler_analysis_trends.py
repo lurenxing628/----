@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.models.scheduler_history_parser import parse_result_summary_payload
@@ -7,19 +8,40 @@ from core.models.scheduler_history_parser import parse_result_summary_payload
 
 def safe_float(v: Any, default: float = 0.0) -> float:
     try:
-        if v is None or str(v).strip() == "":
+        if v is None or (isinstance(v, str) and v.strip() == ""):
             return float(default)
         return float(v)
-    except Exception:
+    except (TypeError, ValueError, OverflowError):
         return float(default)
+
+
+def _metric_float_state(v: Any) -> Tuple[Optional[float], bool]:
+    if v is None or (isinstance(v, str) and v.strip() == ""):
+        return None, False
+    try:
+        number = float(v)
+    except (TypeError, ValueError, OverflowError):
+        return None, True
+    if not math.isfinite(number):
+        return None, True
+    return number, False
+
+
+def _int_state(v: Any) -> Tuple[Optional[int], bool]:
+    if v is None or (isinstance(v, str) and v.strip() == ""):
+        return None, False
+    try:
+        return int(v), False
+    except (TypeError, ValueError, OverflowError):
+        return None, True
 
 
 def safe_int(v: Any, default: int = 0) -> int:
     try:
-        if v is None or str(v).strip() == "":
+        if v is None or (isinstance(v, str) and v.strip() == ""):
             return int(default)
         return int(float(v))
-    except Exception:
+    except (TypeError, ValueError, OverflowError):
         return int(default)
 
 
@@ -70,7 +92,7 @@ def score_key(score: Any) -> Tuple[float, ...]:
     for x in score:
         try:
             out.append(float(x))
-        except Exception:
+        except (TypeError, ValueError, OverflowError):
             out.append(float("inf"))
     return tuple(out)
 
@@ -82,11 +104,27 @@ def safe_load_json(value: Any) -> Dict[str, Any]:
     return dict(result.payload) if isinstance(result.payload, dict) else {}
 
 
-def metric_value(row: Dict[str, Any], key: str) -> float:
+def metric_value(row: Dict[str, Any], key: str) -> Optional[float]:
     metrics = row.get("metrics") or {}
     if not isinstance(metrics, dict):
-        return 0.0
-    return safe_float(metrics.get(key), default=0.0)
+        return None
+    value, failed = _metric_float_state(metrics.get(key))
+    return None if failed else value
+
+
+def _metric_has_parse_failure(metrics: Dict[str, Any], key: str) -> bool:
+    _value, failed = _metric_float_state(metrics.get(key))
+    return bool(failed)
+
+
+def _metric_points(rows: List[Dict[str, Any]], key: str) -> List[Tuple[int, float]]:
+    points: List[Tuple[int, float]] = []
+    for row in rows or []:
+        value = metric_value(row, key)
+        if value is None:
+            continue
+        points.append((int(row["version"]), float(value)))
+    return points
 
 
 def build_trend_rows(
@@ -96,10 +134,7 @@ def build_trend_rows(
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     by_ver: Dict[int, Dict[str, Any]] = {}
     for h in raw_hist or []:
-        try:
-            d = h.to_dict() if hasattr(h, "to_dict") else (h if isinstance(h, dict) else {})
-        except Exception:
-            d = {}
+        d = h.to_dict() if hasattr(h, "to_dict") else (h if isinstance(h, dict) else {})
         ver = safe_int(d.get("version"), default=0)
         if ver <= 0 or ver in by_ver:
             continue
@@ -126,26 +161,19 @@ def build_trend_rows(
 
 def build_trend_charts(trend_rows: List[Dict[str, Any]]) -> Dict[str, Optional[Dict[str, Any]]]:
     return {
-        "overdue": build_svg_polyline([(r["version"], metric_value(r, "overdue_count")) for r in trend_rows]),
-        "tardiness": build_svg_polyline([(r["version"], metric_value(r, "total_tardiness_hours")) for r in trend_rows]),
-        "weighted_tardiness": build_svg_polyline(
-            [(r["version"], metric_value(r, "weighted_tardiness_hours")) for r in trend_rows]
-        ),
-        "makespan": build_svg_polyline([(r["version"], metric_value(r, "makespan_hours")) for r in trend_rows]),
-        "makespan_internal": build_svg_polyline(
-            [(r["version"], metric_value(r, "makespan_internal_hours")) for r in trend_rows]
-        ),
-        "changeover": build_svg_polyline([(r["version"], metric_value(r, "changeover_count")) for r in trend_rows]),
-        "machine_util": build_svg_polyline([(r["version"], metric_value(r, "machine_util_avg")) for r in trend_rows]),
-        "operator_util": build_svg_polyline([(r["version"], metric_value(r, "operator_util_avg")) for r in trend_rows]),
+        "overdue": build_svg_polyline(_metric_points(trend_rows, "overdue_count")),
+        "tardiness": build_svg_polyline(_metric_points(trend_rows, "total_tardiness_hours")),
+        "weighted_tardiness": build_svg_polyline(_metric_points(trend_rows, "weighted_tardiness_hours")),
+        "makespan": build_svg_polyline(_metric_points(trend_rows, "makespan_hours")),
+        "makespan_internal": build_svg_polyline(_metric_points(trend_rows, "makespan_internal_hours")),
+        "changeover": build_svg_polyline(_metric_points(trend_rows, "changeover_count")),
+        "machine_util": build_svg_polyline(_metric_points(trend_rows, "machine_util_avg")),
+        "operator_util": build_svg_polyline(_metric_points(trend_rows, "operator_util_avg")),
     }
 
 
 def _selected_dict(selected_item: Any) -> Optional[Dict[str, Any]]:
-    try:
-        return selected_item.to_dict() if hasattr(selected_item, "to_dict") else (selected_item if isinstance(selected_item, dict) else None)
-    except Exception:
-        return None
+    return selected_item.to_dict() if hasattr(selected_item, "to_dict") else (selected_item if isinstance(selected_item, dict) else None)
 
 
 def _selected_summary_context(selected: Dict[str, Any], *, extract_metrics_from_summary) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]], Dict[str, Any]]:
@@ -167,6 +195,11 @@ def _build_attempt_rows(algo: Dict[str, Any], *, objective_key: str) -> List[Dic
         public_source_label = str(attempt.get("source_label") or "").strip()
         raw_tag = str(attempt.get("tag") or "").strip()
         source_tag = str(attempt.get("source") or attempt.get("origin") or "").strip()
+        primary_value = None
+        primary_value_parse_failed = False
+        if isinstance(metrics, dict):
+            primary_value, primary_value_parse_failed = _metric_float_state(metrics.get(objective_key))
+        failed_ops, failed_ops_parse_failed = _int_state(attempt.get("failed_ops"))
         attempts_rows.append(
             {
                 "tag": raw_tag,
@@ -175,10 +208,12 @@ def _build_attempt_rows(algo: Dict[str, Any], *, objective_key: str) -> List[Dic
                 "strategy": attempt.get("strategy") or "-",
                 "dispatch_mode": attempt.get("dispatch_mode") or "",
                 "dispatch_rule": attempt.get("dispatch_rule") or "",
-                "failed_ops": safe_int(attempt.get("failed_ops"), default=0),
+                "failed_ops": failed_ops,
+                "failed_ops_parse_failed": bool(failed_ops_parse_failed),
                 "score": attempt.get("score") if isinstance(attempt.get("score"), list) else [],
                 "metrics": metrics,
-                "primary_value": safe_float(metrics.get(objective_key), default=0.0) if isinstance(metrics, dict) else 0.0,
+                "primary_value": primary_value,
+                "primary_value_parse_failed": bool(primary_value_parse_failed),
             }
         )
     return attempts_rows
@@ -202,20 +237,37 @@ def _build_trace_chart(algo: Dict[str, Any], *, objective_key: str) -> Optional[
     if not isinstance(trace, list):
         return None
     trace_values: List[Tuple[int, float]] = []
+    trace_metric_parse_failed = False
+    trace_time_parse_failed = False
     for item in trace:
         if not isinstance(item, dict):
             continue
         metrics = item.get("metrics") if isinstance(item.get("metrics"), dict) else {}
+        primary_value, primary_value_parse_failed = _metric_float_state(metrics.get(objective_key)) if isinstance(metrics, dict) else (None, False)
+        if primary_value_parse_failed:
+            trace_metric_parse_failed = True
+            continue
+        if primary_value is None:
+            continue
+        elapsed_ms, elapsed_ms_parse_failed = _int_state(item.get("elapsed_ms"))
+        if elapsed_ms_parse_failed:
+            trace_time_parse_failed = True
+            continue
+        if elapsed_ms is None:
+            continue
         trace_values.append(
             (
-                int(safe_int(item.get("elapsed_ms"), default=0)),
-                float(safe_float(metrics.get(objective_key), default=0.0) if isinstance(metrics, dict) else 0.0),
+                int(elapsed_ms),
+                float(primary_value),
             )
         )
     if len(trace_values) < 2:
-        return None
+        return {"metric_parse_failed": True, "chart": None} if trace_metric_parse_failed or trace_time_parse_failed else None
     trace_values.sort(key=lambda x: x[0])
-    return build_svg_polyline(trace_values, width=520, height=120, pad=18)
+    chart = build_svg_polyline(trace_values, width=520, height=120, pad=18)
+    if chart is not None:
+        chart["metric_parse_failed"] = bool(trace_metric_parse_failed or trace_time_parse_failed)
+    return chart
 
 
 def _previous_metrics(trend_all: List[Dict[str, Any]], *, selected_ver: int) -> Optional[Dict[str, Any]]:
@@ -271,14 +323,34 @@ def sort_and_enrich_attempts(
     attempts_rows_sorted = sorted(attempts_rows or [], key=lambda r: score_key(r.get("score")))
     max_primary = 0.0
     if attempts_rows_sorted:
-        max_primary = max([safe_float(r.get("primary_value"), default=0.0) for r in attempts_rows_sorted] + [0.0])
+        max_primary = max([float(r["primary_value"]) for r in attempts_rows_sorted if r.get("primary_value") is not None] + [0.0])
     if selected_metrics and isinstance(selected_metrics, dict):
-        max_primary = max(max_primary, safe_float(selected_metrics.get(objective_key), default=0.0))
+        selected_primary, selected_primary_failed = _metric_float_state(selected_metrics.get(objective_key))
+        if selected_primary is not None and not selected_primary_failed:
+            max_primary = max(max_primary, float(selected_primary))
     if max_primary <= 0:
         max_primary = 0.0
     for index, r in enumerate(attempts_rows_sorted, start=1):
         if not r.get("display_tag"):
             r["display_tag"] = f"方案 {index}"
-        v = safe_float(r.get("primary_value"), default=0.0)
-        r["bar_pct"] = 0.0 if max_primary <= 0 else float(round((v / max_primary) * 100.0, 4))
+        value = r.get("primary_value")
+        if value is None or max_primary <= 0:
+            r["bar_pct"] = None
+        else:
+            r["bar_pct"] = float(round((float(value) / max_primary) * 100.0, 4))
     return attempts_rows_sorted
+
+
+__all__ = [
+    "_metric_float_state",
+    "_metric_has_parse_failure",
+    "build_selected_details",
+    "build_svg_polyline",
+    "build_trend_charts",
+    "build_trend_rows",
+    "metric_value",
+    "safe_float",
+    "safe_int",
+    "score_key",
+    "sort_and_enrich_attempts",
+]

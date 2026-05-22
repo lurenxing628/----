@@ -51,6 +51,7 @@ def _build_summary(
     warnings,
     improvement_trace,
     downtime_meta: Optional[Dict[str, Any]] = None,
+    resource_pool_meta: Optional[Dict[str, Any]] = None,
     auto_assign_enabled: str = "no",
 ):
     from core.algorithms.evaluation import ScheduleMetrics
@@ -110,6 +111,7 @@ def _build_summary(
         improvement_trace=list(improvement_trace or []),
         frozen_op_ids=set(),
         downtime_meta=dict(downtime_meta or {}),
+        resource_pool_meta=dict(resource_pool_meta or {}),
         simulate=False,
         t0=time.time(),
     )
@@ -215,6 +217,129 @@ def _assert_downtime_partial_fail_contract() -> None:
             f"extend partial fail sample 未入摘要：{extend_da!r}"
         )
         assert "MC_BAD" in str(extend_da.get("degradation_reason") or ""), f"extend degradation_reason 未暴露样例：{extend_da!r}"
+
+        partial_load_meta = {
+            "downtime_load_ok": True,
+            "downtime_partial_fail_count": 1,
+            "downtime_partial_fail_machines_sample": ["MC_BAD"],
+        }
+        _o3, _s3, partial_load_summary_obj, _j3, _m3 = _build_summary(
+            objective_name="min_weighted_tardiness",
+            warnings=[],
+            improvement_trace=[],
+            downtime_meta=partial_load_meta,
+        )
+        partial_load_da = ((partial_load_summary_obj.get("algo") or {}).get("downtime_avoid") or {})
+        assert bool(partial_load_da.get("degraded")), f"load 部分失败计数应单独触发 degraded：{partial_load_da!r}"
+        assert "MC_BAD" in str(partial_load_da.get("degradation_reason") or ""), (
+            f"load 部分失败计数应保留样例：{partial_load_da!r}"
+        )
+        assert any(
+            str(event.get("code") or "") == "downtime_avoid_degraded"
+            for event in list(partial_load_summary_obj.get("degradation_events") or [])
+        ), f"load 部分失败计数应进入顶层 degradation_events：{partial_load_summary_obj!r}"
+
+        partial_extend_meta = {
+            "downtime_load_ok": True,
+            "downtime_extend_attempted": True,
+            "downtime_extend_ok": True,
+            "downtime_extend_partial_fail_count": 1,
+            "downtime_extend_partial_fail_machines_sample": ["MC_BAD"],
+        }
+        _o4, _s4, partial_extend_summary_obj, _j4, _m4 = _build_summary(
+            objective_name="min_weighted_tardiness",
+            warnings=[],
+            improvement_trace=[],
+            downtime_meta=partial_extend_meta,
+            auto_assign_enabled="yes",
+        )
+        partial_extend_da = ((partial_extend_summary_obj.get("algo") or {}).get("downtime_avoid") or {})
+        assert bool(partial_extend_da.get("degraded")), f"extend 部分失败计数应单独触发 degraded：{partial_extend_da!r}"
+        assert "MC_BAD" in str(partial_extend_da.get("degradation_reason") or ""), (
+            f"extend 部分失败计数应保留样例：{partial_extend_da!r}"
+        )
+        assert any(
+            str(event.get("code") or "") == "downtime_avoid_degraded"
+            for event in list(partial_extend_summary_obj.get("degradation_events") or [])
+        ), f"extend 部分失败计数应进入顶层 degradation_events：{partial_extend_summary_obj!r}"
+
+        bad_count_meta = {
+            "downtime_load_ok": True,
+            "downtime_partial_fail_count": "not-a-number",
+        }
+        _o5, _s5, bad_count_summary_obj, _j5, _m5 = _build_summary(
+            objective_name="min_weighted_tardiness",
+            warnings=[],
+            improvement_trace=[],
+            downtime_meta=bad_count_meta,
+        )
+        bad_count_da = ((bad_count_summary_obj.get("algo") or {}).get("downtime_avoid") or {})
+        assert bool(bad_count_da.get("degraded")), f"停机降级计数坏值不能被当 0 静默压掉：{bad_count_da!r}"
+        assert bool(bad_count_da.get("downtime_meta_parse_failed")), (
+            f"停机降级计数坏值应有 meta_parse_failed 标记：{bad_count_da!r}"
+        )
+        assert any(
+            str(event.get("code") or "") == "downtime_avoid_degraded"
+            for event in list(bad_count_summary_obj.get("degradation_events") or [])
+        ), f"停机降级计数坏值应进入顶层 degradation_events：{bad_count_summary_obj!r}"
+
+        bad_bool_meta = {
+            "downtime_load_ok": "false",
+            "downtime_extend_attempted": "true",
+            "downtime_extend_ok": "false",
+        }
+        _o6, _s6, bad_bool_summary_obj, _j6, _m6 = _build_summary(
+            objective_name="min_weighted_tardiness",
+            warnings=[],
+            improvement_trace=[],
+            downtime_meta=bad_bool_meta,
+            auto_assign_enabled="yes",
+        )
+        bad_bool_da = ((bad_bool_summary_obj.get("algo") or {}).get("downtime_avoid") or {})
+        assert bad_bool_da.get("loaded_ok") is False, f"字符串 false 不能被当成 True：{bad_bool_da!r}"
+        assert bool(bad_bool_da.get("degraded")), f"字符串 false 应触发停机降级：{bad_bool_da!r}"
+        assert not bool(bad_bool_da.get("downtime_meta_parse_failed")), f"明确 false 不应算解析失败：{bad_bool_da!r}"
+
+        unknown_bool_meta = {
+            "downtime_load_ok": "maybe",
+        }
+        _o7, _s7, unknown_bool_summary_obj, _j7, _m7 = _build_summary(
+            objective_name="min_weighted_tardiness",
+            warnings=[],
+            improvement_trace=[],
+            downtime_meta=unknown_bool_meta,
+        )
+        unknown_bool_da = ((unknown_bool_summary_obj.get("algo") or {}).get("downtime_avoid") or {})
+        assert bool(unknown_bool_da.get("degraded")), f"未知布尔值不能被静默当成正常：{unknown_bool_da!r}"
+        assert bool(unknown_bool_da.get("downtime_meta_parse_failed")), (
+            f"未知布尔值应有 meta_parse_failed 标记：{unknown_bool_da!r}"
+        )
+
+        _o8, _s8, pool_bool_summary_obj, _j8, _m8 = _build_summary(
+            objective_name="min_weighted_tardiness",
+            warnings=[],
+            improvement_trace=[],
+            resource_pool_meta={"resource_pool_attempted": "true", "resource_pool_build_ok": "false"},
+            auto_assign_enabled="yes",
+        )
+        pool_state = ((pool_bool_summary_obj.get("algo") or {}).get("resource_pool") or {})
+        assert bool(pool_state.get("attempted")), f"resource_pool_attempted 字符串 true 应识别为 True：{pool_state!r}"
+        assert bool(pool_state.get("degraded")), f"resource_pool_build_ok 字符串 false 应触发降级：{pool_state!r}"
+
+        _o9, _s9, pool_bad_attempted_summary_obj, _j9, _m9 = _build_summary(
+            objective_name="min_weighted_tardiness",
+            warnings=[],
+            improvement_trace=[],
+            resource_pool_meta={"resource_pool_attempted": "maybe", "resource_pool_build_ok": "true"},
+            auto_assign_enabled="yes",
+        )
+        bad_attempted_pool = ((pool_bad_attempted_summary_obj.get("algo") or {}).get("resource_pool") or {})
+        assert bool(bad_attempted_pool.get("attempted")), (
+            f"resource_pool_attempted 坏值不能被静默当成未尝试：{bad_attempted_pool!r}"
+        )
+        assert bool(bad_attempted_pool.get("degraded")), (
+            f"resource_pool_attempted 坏值应触发可见降级：{bad_attempted_pool!r}"
+        )
     finally:
         builder_mod.MachineDowntimeRepository = original_repo
 
