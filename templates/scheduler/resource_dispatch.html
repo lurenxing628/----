@@ -56,10 +56,13 @@
         {'label': '班组轴', 'value': filters.team_axis_label if filters.scope_type == 'team' else None},
         {'label': '区间', 'value': filters.start_date ~ ' ～ ' ~ filters.end_date},
         {'label': '版本', 'value': 'v' ~ filters.version},
-        {'label': '方案', 'value': filters.effective_plan_role_label or filters.plan_role_label}
+        {'label': '方案', 'value': filters.scenario_name or filters.effective_plan_role_label or filters.plan_role_label}
       ]) }}
     {% endif %}
     <form method="get" action="{{ url_for('scheduler.resource_dispatch_page') }}" class="aps-query-form-grid aps-resource-query-grid">
+      {% if filters.scenario_id %}
+        <input type="hidden" name="scenario_id" value="{{ filters.scenario_id }}">
+      {% endif %}
       <div class="form-field">
         <label>视角</label>
         <select name="scope_type" id="rdScopeType" class="w-140">
@@ -149,8 +152,13 @@
         {{ ui.link_button('重置', url_for('scheduler.resource_dispatch_page'), 'secondary', 'md') }}
       </div>
     </form>
-    {% if plan_role_notice %}
+    {% if plan_role_notice and not filters.is_scenario_preview %}
       <div class="flash-card flash-warning mt-2" role="status">{{ plan_role_notice }}</div>
+    {% endif %}
+    {% if filters.is_scenario_preview %}
+      <div class="flash-card flash-warning mt-2" role="status">
+        当前资源排班正在预览“{{ filters.scenario_name or filters.scenario_id or '模拟方案' }}”，正式计划还没有改变。
+      </div>
     {% endif %}
     {% if selected_version_row.item %}
       <div class="aps-summary-grid aps-version-summary">
@@ -158,7 +166,7 @@
         {{ ui.summary_item('时间', selected_version_row.item.schedule_time) }}
         {{ ui.summary_item('排产方式', selected_version_row.item.strategy_label or strategy_zh.get(selected_version_row.item.strategy, '未知排产方式')) }}
         {{ ui.summary_item('结果', selected_version_row.item.result_status_label or status_zh.get(selected_version_row.item.result_status, '结果状态未知')) }}
-        {{ ui.summary_item('查看方案', filters.effective_plan_role_label or filters.plan_role_label) }}
+        {{ ui.summary_item('查看方案', filters.scenario_name or filters.effective_plan_role_label or filters.plan_role_label) }}
       </div>
     {% endif %}
     {% if not has_history %}

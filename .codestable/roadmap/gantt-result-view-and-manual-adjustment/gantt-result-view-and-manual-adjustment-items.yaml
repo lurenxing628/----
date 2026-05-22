@@ -266,10 +266,36 @@ items:
       - 审计记录能看出谁、何时、基于哪个版本、发布成哪个版本
     notes: 已完成后端正式采用合同；接口必须二次确认、原因必填、发布前重校验和基准未过期检查。页面按钮仍留到后续编辑界面，不在只读甘特图里开放。
 
+  - slug: gantt-scenario-preview-secondary-outputs
+    title: 后续 Scenario 二级结果页显式预览
+    description: 后续把已保存的 Scenario 模拟方案按 scenario_id 显式接到周计划、资源排班和报表；不带 scenario_id 时仍然看正式版本。
+    depends_on: [gantt-draft-publish-official-version]
+    status: done
+    feature: 2026-05-23-scenario-preview-secondary-outputs
+    minimal_loop: false
+    primary_paths:
+      - core/services/scheduler/resource_dispatch_service.py
+      - core/services/report/report_engine.py
+      - web/routes/domains/scheduler/scheduler_week_plan.py
+      - web/routes/domains/scheduler/scheduler_resource_dispatch.py
+      - web/routes/reports.py
+      - templates/scheduler/week_plan.html
+      - templates/scheduler/resource_dispatch.html
+      - templates/reports/
+      - tests/regression_scenario_preview_secondary_outputs.py
+    exit_checks:
+      - 周计划页面和导出带 scenario_id 时读取 Scenario 行
+      - 资源排班页面、data 和导出带 scenario_id 时读取 Scenario 行
+      - 报表页面带 scenario_id 时读取 Scenario 行
+      - 报表导出带 scenario_id 时明确拒绝，不忽略参数
+      - 三类页面都提示“当前正在预览模拟方案，正式计划还没有改变”
+      - 非法 scenario_id 报错且不回退 adopted
+    notes: 已完成周计划、资源排班和报表的显式 Scenario 预览；报表导出在预览态明确拒绝，避免模拟方案 Excel 被误当正式文件流转。
+
   - slug: gantt-component-upgrade-spike
     title: 后续甘特组件升级评估
     description: 后续在 Win7 Chrome 109 与离线交付边界下评估继续 Frappe、封装 Frappe、替换 Bryntum/DHTMLX/Syncfusion 的真实成本。
-    depends_on: [gantt-draft-publish-official-version]
+    depends_on: [gantt-scenario-preview-secondary-outputs]
     status: planned
     feature: null
     minimal_loop: false

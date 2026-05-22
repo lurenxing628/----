@@ -96,6 +96,7 @@ class ResourceDispatchService:
         *,
         version: Any,
         plan_role: Any,
+        scenario_id: Any = None,
         latest_version: Optional[int] = None,
         require_existing_version: bool = False,
     ):
@@ -107,6 +108,7 @@ class ResourceDispatchService:
             version_exists=lambda item: self.history_service.get_by_version(int(item)) is not None,
             plan_query_service=getattr(self, "plan_query_service", None),
             require_existing_version=require_existing_version,
+            raw_scenario_id=scenario_id,
         )
 
     def _scope_record(self, scope_type: str, scope_id: str):
@@ -200,13 +202,26 @@ class ResourceDispatchService:
             )
         return meta
 
-    def _load_overdue_meta_for_plan(self, *, version: int, role: str, source_table: str) -> Dict[str, Any]:
+    def _load_overdue_meta_for_plan(
+        self,
+        *,
+        version: int,
+        role: str,
+        source_table: str,
+        candidate_id: Any = None,
+        scenario_id: Any = None,
+    ) -> Dict[str, Any]:
         try:
             return build_overdue_meta_for_plan(
                 version=version,
                 role=role,
                 source_table=source_table,
-                list_plan_overdue_base_rows=self.plan_query_service.list_plan_overdue_base_rows,
+                list_plan_overdue_base_rows=lambda **_: self.plan_query_service.list_plan_overdue_base_rows_for_resolution(
+                    version=int(version),
+                    source_table=source_table,
+                    candidate_id=candidate_id,
+                    scenario_id=scenario_id,
+                ),
                 load_adopted_meta=self._load_overdue_meta,
                 log_degraded=self._log_overdue_marker_degraded,
             )
@@ -230,10 +245,12 @@ class ResourceDispatchService:
         end_date: Any = None,
         version: Any = None,
         plan_role: Any = None,
+        scenario_id: Any = None,
     ) -> Dict[str, Any]:
         normalized_scope_type = self._normalize_scope_type(scope_type)
         normalized_team_axis = self._normalize_team_axis(team_axis)
         normalized_plan_role = normalize_plan_role(plan_role)
+        normalized_scenario_id = self._text(scenario_id)
         versions = self._list_versions(limit=50)
         latest_version = int(versions[0].get("version") or 0) if versions else self._latest_version()
         dr = resolve_dispatch_range(
@@ -254,6 +271,7 @@ class ResourceDispatchService:
         view_context = self._resolve_result_view_context(
             version=version,
             plan_role=normalized_plan_role,
+            scenario_id=normalized_scenario_id,
             latest_version=latest_version,
         )
         version_resolution = view_context.version_resolution
@@ -311,14 +329,17 @@ class ResourceDispatchService:
         end_date: Any = None,
         version: Any = None,
         plan_role: Any = None,
+        scenario_id: Any = None,
     ) -> Dict[str, Any]:
         normalized_scope_type = self._normalize_scope_type(scope_type)
         normalized_team_axis = self._normalize_team_axis(team_axis)
         normalized_plan_role = normalize_plan_role(plan_role)
+        normalized_scenario_id = self._text(scenario_id)
         latest_version = self._latest_version()
         view_context = self._resolve_result_view_context(
             version=version,
             plan_role=normalized_plan_role,
+            scenario_id=normalized_scenario_id,
             latest_version=latest_version,
         )
         version_resolution = view_context.version_resolution
@@ -362,13 +383,17 @@ class ResourceDispatchService:
             version=selected_version,
             role=effective_role,
             source_table=str(plan_role_fields.get("source_table") or ""),
+            candidate_id=plan_role_fields.get("candidate_id"),
+            scenario_id=plan_role_fields.get("scenario_id"),
         )
         overdue_set = set(overdue_meta.get("ids") or [])
-        rows = self.plan_query_service.list_plan_dispatch_rows(
+        rows = self.plan_query_service.list_plan_dispatch_rows_for_resolution(
             start_time=dr.start_time,
             end_time=dr.end_time,
             version=selected_version,
-            role=effective_role,
+            source_table=str(plan_role_fields.get("source_table") or ""),
+            candidate_id=plan_role_fields.get("candidate_id"),
+            scenario_id=plan_role_fields.get("scenario_id"),
             scope_type=normalized_scope_type,
             scope_id=selected_scope_id,
         )

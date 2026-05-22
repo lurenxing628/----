@@ -641,6 +641,7 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
         "tests/regression_gantt_adjustment_validate_simulate.py",
         "tests/regression_gantt_draft_save_and_preview.py",
         "tests/regression_gantt_scenario_publish.py",
+        "tests/regression_scenario_preview_secondary_outputs.py",
         "tests/regression_reports_page_version_default_latest.py",
         "tests/regression_gantt_calendar_load_failed_degraded.py",
         "tests/regression_gantt_bad_time_rows_surface_degraded.py",

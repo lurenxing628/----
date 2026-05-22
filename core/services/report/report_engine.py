@@ -117,31 +117,50 @@ class ReportEngine:
     def latest_version(self) -> int:
         return int(self.history_repo.get_latest_version() or 0)
 
-    def _resolve_plan(self, version: int, plan_role: Optional[str]) -> SchedulePlanResolution:
+    def _resolve_plan(
+        self,
+        version: int,
+        plan_role: Optional[str],
+        scenario_id: Optional[str] = None,
+    ) -> SchedulePlanResolution:
         try:
-            return self.plan_query_service.resolve_plan(int(version), plan_role)
+            return self.plan_query_service.resolve_plan_view(int(version), plan_role, scenario_id)
         except ValueError as exc:
-            raise ValidationError(str(exc), field="plan_role") from exc
+            raise ValidationError(str(exc), field="scenario_id" if scenario_id else "plan_role") from exc
 
-    def resolve_plan_context(self, version: int, plan_role: Optional[str] = None) -> Dict[str, Any]:
-        return self._resolve_plan(version, plan_role).to_dict()
+    def resolve_plan_context(
+        self,
+        version: int,
+        plan_role: Optional[str] = None,
+        scenario_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        return self._resolve_plan(version, plan_role, scenario_id).to_dict()
 
-    def _get_plan_time_span(self, version: int, plan_role: Optional[str]):
+    def _get_plan_time_span(self, version: int, plan_role: Optional[str], scenario_id: Optional[str] = None):
         try:
-            return self.plan_query_service.get_plan_time_span(int(version), plan_role)
+            return self.plan_query_service.get_plan_time_span_for_view(int(version), plan_role, scenario_id)
         except ValueError as exc:
-            raise ValidationError(str(exc), field="plan_role") from exc
+            raise ValidationError(str(exc), field="scenario_id" if scenario_id else "plan_role") from exc
 
-    def _list_plan_rows_between(self, *, version: int, plan_role: Optional[str], start_time: str, end_time: str):
+    def _list_plan_rows_between(
+        self,
+        *,
+        version: int,
+        plan_role: Optional[str],
+        scenario_id: Optional[str] = None,
+        start_time: str,
+        end_time: str,
+    ):
         try:
-            return self.plan_query_service.list_plan_detail_rows_between(
+            return self.plan_query_service.list_plan_detail_rows_between_for_view(
                 version=int(version),
                 role=plan_role,
+                scenario_id=scenario_id,
                 start_time=start_time,
                 end_time=end_time,
             )
         except ValueError as exc:
-            raise ValidationError(str(exc), field="plan_role") from exc
+            raise ValidationError(str(exc), field="scenario_id" if scenario_id else "plan_role") from exc
 
     def _plan_meta(self, resolution: SchedulePlanResolution) -> Dict[str, Any]:
         return {
@@ -149,6 +168,9 @@ class ReportEngine:
             "plan_role_label": plan_role_label(resolution.selected_role),
             "requested_plan_role": resolution.requested_role,
             "requested_plan_role_label": plan_role_label(resolution.requested_role),
+            "scenario_id": resolution.scenario_id,
+            "scenario_name": resolution.scenario_name,
+            "is_scenario_preview": bool(resolution.is_scenario_preview),
             "plan_resolution": resolution.to_dict(),
         }
 
@@ -158,7 +180,12 @@ class ReportEngine:
             label = label.replace(old, new)
         return label.strip() or resolution.selected_role
 
-    def version_date_range(self, version: int, plan_role: Optional[str] = None) -> Dict[str, Any]:
+    def version_date_range(
+        self,
+        version: int,
+        plan_role: Optional[str] = None,
+        scenario_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """
         返回指定版本的排程日期范围（用于报表默认筛选）。
         """
@@ -177,10 +204,10 @@ class ReportEngine:
         if v <= 0:
             return out
 
-        resolution = self._resolve_plan(v, plan_role)
+        resolution = self._resolve_plan(v, plan_role, scenario_id)
         out.update(self._plan_meta(resolution))
 
-        span = self._get_plan_time_span(v, plan_role)
+        span = self._get_plan_time_span(v, plan_role, scenario_id)
         if not span:
             return out
 
@@ -201,14 +228,29 @@ class ReportEngine:
     # -------------------------
     # 1) 超期清单
     # -------------------------
-    def _fetch_overdue_base_rows_for_plan(self, version: int, plan_role: Optional[str]) -> List[Dict[str, Any]]:
-        self._resolve_plan(version, plan_role)
-        return self.plan_query_service.list_plan_overdue_base_rows(version=int(version), role=plan_role)
+    def _fetch_overdue_base_rows_for_plan(
+        self,
+        version: int,
+        plan_role: Optional[str],
+        scenario_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        resolution = self._resolve_plan(version, plan_role, scenario_id)
+        return self.plan_query_service.list_plan_overdue_base_rows_for_resolution(
+            version=int(version),
+            source_table=resolution.source_table,
+            candidate_id=resolution.candidate_id,
+            scenario_id=resolution.scenario_id,
+        )
 
-    def overdue_batches(self, version: int, plan_role: Optional[str] = None) -> Dict[str, Any]:
+    def overdue_batches(
+        self,
+        version: int,
+        plan_role: Optional[str] = None,
+        scenario_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
         v = int(version or 0)
-        resolution = self._resolve_plan(v, plan_role)
-        rows = self._fetch_overdue_base_rows_for_plan(v, plan_role)
+        resolution = self._resolve_plan(v, plan_role, scenario_id)
+        rows = self._fetch_overdue_base_rows_for_plan(v, plan_role, scenario_id)
         scheduled, unscheduled, as_of = calculations.compute_overdue_buckets(rows)
         items = list(scheduled) + list(unscheduled)
         return {
@@ -242,9 +284,16 @@ class ReportEngine:
     # -------------------------
     # 2) 资源负荷/利用率
     # -------------------------
-    def utilization(self, version: int, start_date: Any, end_date: Any, plan_role: Optional[str] = None) -> Dict[str, Any]:
+    def utilization(
+        self,
+        version: int,
+        start_date: Any,
+        end_date: Any,
+        plan_role: Optional[str] = None,
+        scenario_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
         v = int(version or 0)
-        resolution = self._resolve_plan(v, plan_role)
+        resolution = self._resolve_plan(v, plan_role, scenario_id)
         sd = calculations.parse_date(start_date, field="start_date")
         ed = calculations.parse_date(end_date, field="end_date")
         if ed < sd:
@@ -255,7 +304,13 @@ class ReportEngine:
         start_s = start_dt.strftime("%Y-%m-%d %H:%M:%S")
         end_s = end_dt_excl.strftime("%Y-%m-%d %H:%M:%S")
 
-        schedule_rows = self._list_plan_rows_between(version=v, plan_role=plan_role, start_time=start_s, end_time=end_s)
+        schedule_rows = self._list_plan_rows_between(
+            version=v,
+            plan_role=plan_role,
+            scenario_id=scenario_id,
+            start_time=start_s,
+            end_time=end_s,
+        )
 
         cap_hours = calculations.capacity_hours(self.calendar, sd, ed)
         if cap_hours <= 0:
@@ -300,9 +355,16 @@ class ReportEngine:
     # -------------------------
     # 3) 停机影响统计
     # -------------------------
-    def downtime_impact(self, version: int, start_date: Any, end_date: Any, plan_role: Optional[str] = None) -> Dict[str, Any]:
+    def downtime_impact(
+        self,
+        version: int,
+        start_date: Any,
+        end_date: Any,
+        plan_role: Optional[str] = None,
+        scenario_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
         v = int(version or 0)
-        resolution = self._resolve_plan(v, plan_role)
+        resolution = self._resolve_plan(v, plan_role, scenario_id)
         sd = calculations.parse_date(start_date, field="start_date")
         ed = calculations.parse_date(end_date, field="end_date")
         if ed < sd:
@@ -314,7 +376,13 @@ class ReportEngine:
         end_s = end_dt_excl.strftime("%Y-%m-%d %H:%M:%S")
 
         downtime_rows = queries.fetch_downtime_rows(self.conn, start_s, end_s)
-        sch_rows = self._list_plan_rows_between(version=v, plan_role=plan_role, start_time=start_s, end_time=end_s)
+        sch_rows = self._list_plan_rows_between(
+            version=v,
+            plan_role=plan_role,
+            scenario_id=scenario_id,
+            start_time=start_s,
+            end_time=end_s,
+        )
 
         machines = calculations.compute_downtime_impact(
             downtime_rows=downtime_rows,

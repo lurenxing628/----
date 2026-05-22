@@ -37,13 +37,18 @@ def _svc() -> Any:
     return g.services.resource_dispatch_service
 
 
+def _is_scenario_id_error(exc: AppError) -> bool:
+    details = getattr(exc, "details", None)
+    return isinstance(details, dict) and str(details.get("field") or "").strip() == "scenario_id"
+
+
 @bp.get("/resource-dispatch")
 def resource_dispatch_page():
     svc = _svc()
     try:
         context = svc.build_page_context(**_request_kwargs())
     except AppError as exc:
-        if _is_missing_history_version_error(exc):
+        if _is_missing_history_version_error(exc) or _is_scenario_id_error(exc):
             raise
         current_args = _current_request_args()
         if current_args:
@@ -127,6 +132,9 @@ def resource_dispatch_export():
                 "plan_role_status": filters.get("plan_role_status"),
                 "candidate_id": filters.get("candidate_id"),
                 "candidate_key": filters.get("candidate_key"),
+                "scenario_id": filters.get("scenario_id"),
+                "scenario_name": filters.get("scenario_name"),
+                "is_scenario_preview": filters.get("is_scenario_preview"),
                 "period_preset": filters.get("period_preset"),
             },
             row_count=row_count,
@@ -136,6 +144,8 @@ def resource_dispatch_export():
         )
         return send_file(buf, as_attachment=True, download_name=filename, mimetype=_EXCEL_MIMETYPE)
     except AppError as exc:
+        if _is_scenario_id_error(exc):
+            return user_visible_app_error_message(exc), 400
         if exc.code == ErrorCode.NOT_FOUND:
             return user_visible_app_error_message(exc), 404
         flash(user_visible_app_error_message(exc), "error")

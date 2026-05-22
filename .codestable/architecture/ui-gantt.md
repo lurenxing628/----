@@ -87,6 +87,15 @@ tags: [scheduler, gantt, frontend, readonly, vendor]
 - 页面、`/scheduler/gantt/data`、视图切换、周切换、查询表单和 `static/js/gantt_boot.js` 都会保留 `scenario_id`。
 - 页面显示“当前正在预览模拟方案，正式计划还没有改变”。
 
+周计划、资源排班和报表也支持显式 `scenario_id` 预览：
+
+- 周计划页面和导出复用 `GanttService.get_week_plan_rows(..., scenario_id=...)`，页面表单、导出 URL、导出日志和文件名都保留 Scenario 身份。
+- 资源排班页面、`/scheduler/resource-dispatch/data` 和导出会把 `scenario_id` 传到 `ResourceDispatchService`，明细行和超期标记都按同一份 Scenario 解析结果计算。
+- 资源排班 Excel 的查询摘要会写明模拟方案编号，并提示“正式计划还没有改变”。
+- 报表页面的超期清单、资源负荷与利用率、停机影响统计会按 Scenario 行计算；报表导出在预览态明确拒绝，要求先正式采用生成新版本后再导出。
+- Scheduler 主导航和报表页导航在预览态会保留 `version`、`plan_role` 和 `scenario_id`，避免用户点跨页导航后悄悄掉回正式计划。
+- 非法 Scenario 在页面、data 接口和导出入口都必须报错，不允许清掉 `scenario_id` 后展示正式计划。
+
 ## 7. Scenario 正式采用
 
 后端现在已有 `GanttAdjustmentPublishService` 和 `POST /scheduler/gantt/adjustments/publish-scenario`。这条链路把已保存的 Scenario 正式采用为新的官方排产版本：

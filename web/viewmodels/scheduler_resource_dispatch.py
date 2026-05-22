@@ -25,6 +25,13 @@ def _text(value: Any) -> str:
     return str(value or "").strip()
 
 
+def _safe_filename_part(value: Any) -> str:
+    text = _text(value)
+    for old, new in (("/", "-"), ("\\", "-"), (":", "-"), ("*", ""), ("?", ""), ('"', ""), ("<", ""), (">", ""), ("|", "-")):
+        text = text.replace(old, new)
+    return text.strip()
+
+
 def period_preset_label(value: Any) -> str:
     text = _text(value).lower()
     return _PERIOD_PRESET_LABELS.get(text, _text(value))
@@ -259,7 +266,13 @@ def build_resource_dispatch_filename(payload: Dict[str, Any]) -> str:
         filename += f"_{_text(filters.get('start_date'))}_{_text(filters.get('end_date'))}"
     if _text(filters.get("version")):
         filename += f"_v{_text(filters.get('version'))}"
-    plan_role_label = _text(filters.get("effective_plan_role_label")) or _text(filters.get("plan_role_label"))
+    if filters.get("is_scenario_preview"):
+        scenario_id = _safe_filename_part(filters.get("scenario_id"))
+        scenario_name = _safe_filename_part(filters.get("scenario_name"))
+        scenario_label = "_".join(part for part in ("模拟方案", scenario_id, scenario_name) if part)
+        filename += f"_{scenario_label or '模拟方案'}"
+        return f"{filename}.xlsx"
+    plan_role_label = _safe_filename_part(filters.get("effective_plan_role_label")) or _safe_filename_part(filters.get("plan_role_label"))
     if plan_role_label:
-        filename += f"_{plan_role_label}"
+        filename += f"_{_safe_filename_part(plan_role_label)}"
     return f"{filename}.xlsx"

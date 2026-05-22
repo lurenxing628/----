@@ -1,0 +1,37 @@
+feature: 2026-05-23-scenario-preview-secondary-outputs
+status: done
+roadmap: gantt-result-view-and-manual-adjustment
+roadmap_item: gantt-scenario-preview-secondary-outputs
+
+steps:
+  - slug: design-contract
+    title: 明确二级结果页 Scenario 预览合同
+    status: done
+    exit_signal: design 写明周计划、资源排班和报表都必须显式 scenario_id，不写正式版本，不静默回退。
+
+  - slug: week-plan-preview
+    title: 周计划接入 scenario_id 预览和导出
+    status: done
+    exit_signal: 页面、查询、导出、日志和文件名都保留并显示模拟方案。
+
+  - slug: resource-dispatch-preview
+    title: 资源排班接入 scenario_id 预览和导出
+    status: done
+    exit_signal: 页面/data/export/Excel 摘要都按 Scenario 行计算，并保留 scenario_id。
+
+  - slug: reports-preview
+    title: 报表接入 scenario_id 页面预览
+    status: done
+    exit_signal: 超期、利用率、停机页面按 Scenario 行计算；导出带 scenario_id 时明确拒绝。
+
+  - slug: regression-and-docs
+    title: 回归测试和说明文档
+    status: done
+    exit_signal: 覆盖三条链路的 Scenario 读取、URL 保留、非法 scenario 不回退和导出边界。
+
+checks:
+  - scenario_id 只能是显式预览身份，不能伪装成 plan_role。
+  - 所有数据读取必须先走 resolve_plan_view 或已解析的 plan_resolution。
+  - 找不到 Scenario 时必须报错，不能返回正式计划。
+  - 页面必须用业务话说明“正式计划还没有改变”。
+  - 不写 Schedule/ScheduleHistory/ScheduleVersionSeq/ScheduleCandidate*。

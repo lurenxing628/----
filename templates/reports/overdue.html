@@ -11,6 +11,9 @@
   <div class="card aps-report-filter-card">
     {{ ui.aps_card_header('筛选', '选择排产版本后查看超期批次，需要时导出 Excel。') }}
     <form method="get" action="{{ url_for('reports.overdue_page') }}">
+      {% if scenario_id %}
+        <input type="hidden" name="scenario_id" value="{{ scenario_id }}">
+      {% endif %}
       <div class="aps-report-filter-grid aps-report-filter-grid--single">
         <div class="form-field aps-report-version-field">
           <label>排产版本</label>
@@ -34,7 +37,9 @@
         </div>
         <div class="aps-form-actions aps-report-actions">
           {{ ui.button('查询', 'primary', 'md', type_attr='submit') }}
-          {% if rows %}
+          {% if plan_resolution and plan_resolution.is_scenario_preview %}
+            {{ ui.button('导出 Excel', 'secondary', 'md', type_attr='button', disabled=True, class='aps-disabled-button') }}
+          {% elif rows %}
             {{ ui.link_button('导出 Excel', url_for('reports.overdue_export', version=version, plan_role=requested_plan_role), 'secondary', 'md') }}
           {% else %}
             {{ ui.button('导出 Excel', 'secondary', 'md', type_attr='button', disabled=True, class='aps-disabled-button') }}
@@ -42,14 +47,21 @@
         </div>
         {% if not has_history %}
           <div class="aps-filter-note">暂无排产历史，请先执行排产后再查看报表。</div>
+        {% elif plan_resolution and plan_resolution.is_scenario_preview %}
+          <div class="aps-filter-note">当前正在预览模拟方案，正式计划还没有改变。模拟方案预览暂不支持导出报表。</div>
         {% elif not rows %}
           <div class="aps-filter-note">当前版本没有可导出的超期结果，请换一个排产版本后再试。</div>
         {% endif %}
       </div>
     </form>
+    {% if has_history and plan_resolution and plan_resolution.is_scenario_preview %}
+      <div class="flash-card flash-warning mt-2" role="status">
+        当前超期清单正在预览“{{ plan_resolution.scenario_name or plan_resolution.scenario_id or '模拟方案' }}”，正式计划还没有改变。
+      </div>
+    {% endif %}
     {% if has_history and plan_resolution %}
       <div class="aps-filter-note aps-report-plan-source">
-        当前方案：{{ plan_resolution.selected_label }}{% if plan_resolution.is_fallback and plan_resolution.message %}。{{ plan_resolution.message }}{% endif %}
+        当前方案：{{ plan_resolution.scenario_name or plan_resolution.scenario_id or plan_resolution.selected_label }}{% if plan_resolution.is_fallback and plan_resolution.message %}。{{ plan_resolution.message }}{% endif %}
       </div>
     {% endif %}
   </div>
@@ -57,7 +69,7 @@
   <div class="card">
     <h3 class="section-title">结果明细</h3>
     <div class="aps-result-summary-grid">
-      {{ ui.summary_item('排产方案', plan_resolution.selected_label if plan_resolution else '最终采用') }}
+      {{ ui.summary_item('排产方案', (plan_resolution.scenario_name or plan_resolution.scenario_id or plan_resolution.selected_label) if plan_resolution else '最终采用') }}
       {{ ui.summary_item('总数', count ~ ' 个') }}
       {{ ui.summary_item('已排程', scheduled_count ~ ' 个') }}
       {{ ui.summary_item('未排程', unscheduled_count ~ ' 个') }}

@@ -2,43 +2,30 @@ from __future__ import annotations
 
 import math
 import time
-from datetime import date, datetime, timedelta
 
 from flask import Blueprint, g, request, send_file
 
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.services.common.excel_audit import log_excel_export
 from core.services.report import ReportEngine
-from core.services.scheduler.schedule_plan_query_service import ROLE_ADOPTED, VALID_PLAN_ROLES, plan_role_label
 from core.services.scheduler.version_resolution import (
     VersionResolution,
     require_selected_version,
     resolve_version_or_latest,
 )
 from web.routes.history_summary_logging import log_history_version_option_parse_warnings
+from web.routes.report_plan_preview import (
+    export_date_range_or_version_span,
+    page_date_range_or_version_span,
+    page_plan_resolution,
+    reject_scenario_export,
+    report_export_filters,
+    request_scenario_id,
+)
 from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.scheduler_history_summary import decorate_history_version_options
 
 bp = Blueprint("reports", __name__)
-
-
-def _default_date_range(days: int = 7):
-    end_d = date.today()
-    start_d = end_d - timedelta(days=max(0, int(days) - 1))
-    return start_d.isoformat(), end_d.isoformat()
-
-
-def _validate_ymd_date(raw: str, field: str) -> str:
-    s = (raw or "").strip()
-    if not s:
-        raise ValidationError("缺少开始日期或结束日期。", field="日期范围")
-
-    s = s.replace("/", "-")
-    try:
-        datetime.strptime(s, "%Y-%m-%d")
-    except ValueError as e:
-        raise ValidationError("日期格式不正确，请按 2026-03-13 或 2026/03/13 这样的格式填写。", field=field) from e
-    return s
 
 
 def _export_version_or_latest(engine: ReportEngine) -> int:
@@ -78,74 +65,8 @@ def _request_plan_role():
     return request.args.get("plan_role")
 
 
-def _default_plan_resolution(version=None, raw_role=None):
-    requested_role = str(raw_role or "").strip() or ROLE_ADOPTED
-    if requested_role not in VALID_PLAN_ROLES:
-        valid_labels = " / ".join(plan_role_label(role) for role in VALID_PLAN_ROLES)
-        raise ValidationError(f"排产方案不正确，请选择：{valid_labels}。", field="plan_role")
-    selected_role = ROLE_ADOPTED
-    return {
-        "version": version,
-        "requested_role": requested_role,
-        "requested_label": plan_role_label(requested_role),
-        "selected_role": selected_role,
-        "selected_label": plan_role_label(selected_role),
-        "source_table": "schedule",
-        "candidate_id": None,
-        "candidate_key": None,
-        "status": "selected",
-        "message": "",
-        "available_roles": [
-            {
-                "role": ROLE_ADOPTED,
-                "label": plan_role_label(ROLE_ADOPTED),
-                "source_table": "schedule",
-                "candidate_id": None,
-                "candidate_key": None,
-                "candidate_label": plan_role_label(ROLE_ADOPTED),
-                "candidate_kind": None,
-                "candidate_status": None,
-                "detail_saved": None,
-                "is_comparison": False,
-            }
-        ],
-        "is_fallback": False,
-        "is_comparison": False,
-    }
-
-
-def _page_plan_resolution(version, raw_role):
-    if version is None:
-        return _default_plan_resolution(version=version, raw_role=raw_role)
-    try:
-        return g.services.schedule_plan_query_service.resolve_plan(int(version), raw_role).to_dict()
-    except ValueError as exc:
-        raise ValidationError(str(exc), field="plan_role") from exc
-
-
-def _page_date_range_or_version_span(engine: ReportEngine, version: int, plan_role, start_raw: str, end_raw: str):
-    s = (start_raw or "").strip()
-    e = (end_raw or "").strip()
-    if s and e:
-        return s, e, "query", {"has_data": False}
-
-    span = engine.version_date_range(int(version or 0), plan_role=plan_role)
-    if span.get("has_data") and span.get("start_date") and span.get("end_date"):
-        return str(span["start_date"]), str(span["end_date"]), "version_span", span
-
-    s7, e7 = _default_date_range(days=7)
-    return s7, e7, "default_7d", span
-
-
-def _export_date_range_or_version_span(engine: ReportEngine, version: int, plan_role, start_raw: str, end_raw: str):
-    s = (start_raw or "").strip()
-    e = (end_raw or "").strip()
-    if s or e:
-        return _validate_ymd_date(s, field="开始日期"), _validate_ymd_date(e, field="结束日期")
-    span = engine.version_date_range(int(version or 0), plan_role=plan_role)
-    if span.get("has_data") and span.get("start_date") and span.get("end_date"):
-        return str(span["start_date"]), str(span["end_date"])
-    raise ValidationError("暂无数据，不能导出。请调整版本或日期范围后再试。", field="导出")
+def _request_scenario_id():
+    return request_scenario_id(request.args)
 
 
 def _send_report_export_file(report_export):
@@ -181,18 +102,6 @@ def _report_nonnegative_int(value, *, field: str) -> int:
     return max(0, int(number))
 
 
-def _report_export_filters(engine: ReportEngine, version: int, raw_plan_role) -> dict:
-    plan_resolution = engine.resolve_plan_context(int(version), raw_plan_role)
-    return {
-        "version": int(version),
-        "requested_plan_role": plan_resolution.get("requested_role") or ROLE_ADOPTED,
-        "effective_plan_role": plan_resolution.get("selected_role") or ROLE_ADOPTED,
-        "plan_role_status": plan_resolution.get("status"),
-        "candidate_id": plan_resolution.get("candidate_id"),
-        "candidate_key": plan_resolution.get("candidate_key"),
-    }
-
-
 def _log_report_export(
     *,
     engine: ReportEngine,
@@ -209,7 +118,7 @@ def _log_report_export(
         module="reports",
         target_type=target_type,
         template_or_export_type=export_type,
-        filters=_report_export_filters(engine, int(version), raw_plan_role),
+        filters=report_export_filters(engine, int(version), raw_plan_role),
         row_count=_report_nonnegative_int(getattr(report_export, "estimated_rows", 0), field="导出行数"),
         time_range=time_range or {},
         time_cost_ms=int((time.time() - started_at) * 1000),
@@ -265,9 +174,10 @@ def overdue_page():
     resolution = _page_version_or_latest(engine)
     version = resolution.selected_version
     raw_plan_role = _request_plan_role()
-    plan_resolution = _page_plan_resolution(version, raw_plan_role)
+    scenario_id = _request_scenario_id()
+    plan_resolution = page_plan_resolution(g.services.schedule_plan_query_service, version, raw_plan_role, scenario_id)
     rep = (
-        engine.overdue_batches(int(version), plan_role=raw_plan_role)
+        engine.overdue_batches(int(version), plan_role=raw_plan_role, scenario_id=scenario_id)
         if version is not None
         else {"version": None, "items": [], "count": 0, "scheduled_count": 0, "unscheduled_count": 0, "as_of_time": None}
     )
@@ -284,6 +194,7 @@ def overdue_page():
         selected_plan_role=plan_resolution["selected_role"],
         requested_plan_role=plan_resolution["requested_role"],
         plan_resolution=plan_resolution,
+        scenario_id=scenario_id,
         rows=rep["items"],
         count=int(rep["count"]),
         scheduled_count=int(rep.get("scheduled_count") or 0),
@@ -300,6 +211,7 @@ def overdue_export():
     engine = ReportEngine(g.db)
     version = _export_version_or_latest(engine)
     plan_role = _request_plan_role()
+    reject_scenario_export(_request_scenario_id())
     x = engine.export_overdue_xlsx(version, plan_role=plan_role)
     _log_report_export(
         engine=engine,
@@ -321,17 +233,19 @@ def utilization_page():
     resolution = _page_version_or_latest(engine)
     version = resolution.selected_version
     raw_plan_role = _request_plan_role()
-    plan_resolution = _page_plan_resolution(version, raw_plan_role)
-    start_date, end_date, date_source, _span = _page_date_range_or_version_span(
+    scenario_id = _request_scenario_id()
+    plan_resolution = page_plan_resolution(g.services.schedule_plan_query_service, version, raw_plan_role, scenario_id)
+    start_date, end_date, date_source, _span = page_date_range_or_version_span(
         engine,
         int(version or 0),
         raw_plan_role,
+        scenario_id,
         request.args.get("start_date") or "",
         request.args.get("end_date") or "",
     )
 
     rep = (
-        engine.utilization(int(version), start_date, end_date, plan_role=raw_plan_role)
+        engine.utilization(int(version), start_date, end_date, plan_role=raw_plan_role, scenario_id=scenario_id)
         if version is not None
         else {"version": None, "start_date": start_date, "end_date": end_date, "capacity_hours_per_resource": 0, "machines": [], "operators": []}
     )
@@ -355,6 +269,7 @@ def utilization_page():
         selected_plan_role=plan_resolution["selected_role"],
         requested_plan_role=plan_resolution["requested_role"],
         plan_resolution=plan_resolution,
+        scenario_id=scenario_id,
         start_date=rep["start_date"],
         end_date=rep["end_date"],
         capacity_hours=rep["capacity_hours_per_resource"],
@@ -372,7 +287,8 @@ def utilization_export():
     engine = ReportEngine(g.db)
     version = _export_version_or_latest(engine)
     plan_role = _request_plan_role()
-    start_date, end_date = _export_date_range_or_version_span(
+    reject_scenario_export(_request_scenario_id())
+    start_date, end_date = export_date_range_or_version_span(
         engine,
         int(version or 0),
         plan_role,
@@ -401,17 +317,19 @@ def downtime_page():
     resolution = _page_version_or_latest(engine)
     version = resolution.selected_version
     raw_plan_role = _request_plan_role()
-    plan_resolution = _page_plan_resolution(version, raw_plan_role)
-    start_date, end_date, date_source, _span = _page_date_range_or_version_span(
+    scenario_id = _request_scenario_id()
+    plan_resolution = page_plan_resolution(g.services.schedule_plan_query_service, version, raw_plan_role, scenario_id)
+    start_date, end_date, date_source, _span = page_date_range_or_version_span(
         engine,
         int(version or 0),
         raw_plan_role,
+        scenario_id,
         request.args.get("start_date") or "",
         request.args.get("end_date") or "",
     )
 
     rep = (
-        engine.downtime_impact(int(version), start_date, end_date, plan_role=raw_plan_role)
+        engine.downtime_impact(int(version), start_date, end_date, plan_role=raw_plan_role, scenario_id=scenario_id)
         if version is not None
         else {"version": None, "start_date": start_date, "end_date": end_date, "machines": []}
     )
@@ -443,6 +361,7 @@ def downtime_page():
         selected_plan_role=plan_resolution["selected_role"],
         requested_plan_role=plan_resolution["requested_role"],
         plan_resolution=plan_resolution,
+        scenario_id=scenario_id,
         start_date=rep["start_date"],
         end_date=rep["end_date"],
         rows=downtime_rows,
@@ -459,7 +378,8 @@ def downtime_export():
     engine = ReportEngine(g.db)
     version = _export_version_or_latest(engine)
     plan_role = _request_plan_role()
-    start_date, end_date = _export_date_range_or_version_span(
+    reject_scenario_export(_request_scenario_id())
+    start_date, end_date = export_date_range_or_version_span(
         engine,
         int(version or 0),
         plan_role,

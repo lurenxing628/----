@@ -12,6 +12,9 @@
     } %}
   {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'simulated': '模拟排产', 'ok': '成功', 'fail': '失败', 'ok2': '成功'} %}
   {% set current_plan_label = plan_resolution.selected_label if plan_resolution else '最终采用' %}
+  {% if plan_resolution and plan_resolution.is_scenario_preview %}
+    {% set current_plan_label = plan_resolution.scenario_name or plan_resolution.scenario_id or '模拟方案' %}
+  {% endif %}
 
   {% set week_plan_actions %}
     {{ ui.link_button('去执行排产', url_for('scheduler.batches_page'), 'primary', 'md') }}
@@ -34,6 +37,9 @@
       {'label': '方案', 'value': current_plan_label}
     ]) }}
     <form method="get" action="{{ url_for('scheduler.week_plan_page') }}" class="aps-query-form-grid aps-week-plan-query-grid">
+      {% if scenario_id %}
+        <input type="hidden" name="scenario_id" value="{{ scenario_id }}">
+      {% endif %}
       <div class="form-field">
         <label title="任意日期，系统会自动归到周一">指定周</label>
         <input type="date" name="week_start" value="{{ week_start }}" class="w-160">
@@ -80,9 +86,14 @@
       {{ selected_history_resolution.message }}
     </div>
   {% endif %}
-  {% if plan_resolution and plan_resolution.message %}
+  {% if plan_resolution and plan_resolution.message and not plan_resolution.is_scenario_preview %}
     <div class="flash-card flash-warning mt-2">
       {{ plan_resolution.message }}
+    </div>
+  {% endif %}
+  {% if plan_resolution and plan_resolution.is_scenario_preview %}
+    <div class="flash-card flash-warning mt-2">
+      当前周计划正在预览“{{ current_plan_label }}”，正式计划还没有改变。
     </div>
   {% endif %}
   {% if plan_resolution and plan_resolution.is_comparison %}

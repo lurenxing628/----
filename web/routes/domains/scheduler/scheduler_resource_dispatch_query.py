@@ -23,6 +23,7 @@ _EXPORT_ARG_KEYS = (
     "end_date",
     "version",
     "plan_role",
+    "scenario_id",
 )
 _FIELD_QUERY_KEY_DROPS = {
     "scope_type": ("scope_type", *_SCOPE_ARG_KEYS),
@@ -63,6 +64,7 @@ def _request_kwargs() -> Dict[str, Any]:
         "end_date": _arg_text("end_date"),
         "version": _arg_text("version"),
         "plan_role": _arg_text("plan_role"),
+        "scenario_id": _arg_text("scenario_id"),
     }
 
 

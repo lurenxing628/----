@@ -144,7 +144,7 @@ def resolve_plan(plan_query_service, version: int, plan_role: Optional[str], sce
             return plan_query_service.resolve_plan_view(int(version), plan_role, scenario_id)
         return plan_query_service.resolve_plan(int(version), plan_role)
     except ValueError as exc:
-        raise ValidationError(str(exc), field="plan_role") from exc
+        raise ValidationError(str(exc), field="scenario_id" if scenario_id else "plan_role") from exc
 
 
 def selected_plan_role(plan_resolution: Dict[str, Any]) -> str:

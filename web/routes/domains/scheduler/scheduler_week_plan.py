@@ -50,6 +50,11 @@ def _get_plan_role_arg() -> Optional[str]:
     return text or None
 
 
+def _get_scenario_id_arg() -> Optional[str]:
+    text = str(request.args.get("scenario_id") or "").strip()
+    return text or None
+
+
 def _fallback_plan_context(plan_role: Optional[str]) -> Dict[str, Any]:
     requested_role = str(plan_role or "").strip() or ROLE_ADOPTED
     selected_label = plan_role_label(ROLE_ADOPTED)
@@ -62,6 +67,9 @@ def _fallback_plan_context(plan_role: Optional[str]) -> Dict[str, Any]:
         "available_roles": [{"role": ROLE_ADOPTED, "label": selected_label, "is_comparison": False}],
         "is_fallback": requested_role != ROLE_ADOPTED,
         "is_comparison": False,
+        "is_scenario_preview": False,
+        "scenario_id": None,
+        "scenario_name": None,
     }
 
 
@@ -78,6 +86,7 @@ def _week_plan_data_kwargs(
     offset_weeks: int,
     version: Any,
     plan_role: Optional[str],
+    scenario_id: Optional[str],
     services: Any,
 ) -> Dict[str, Any]:
     data_kwargs = {
@@ -87,6 +96,9 @@ def _week_plan_data_kwargs(
     }
     if plan_role is not None:
         data_kwargs["plan_role"] = plan_role
+    if scenario_id is not None:
+        data_kwargs["scenario_id"] = scenario_id
+    if plan_role is not None or scenario_id is not None:
         plan_query_service = getattr(services, "schedule_plan_query_service", None)
         if plan_query_service is not None:
             data_kwargs["plan_query_service"] = plan_query_service
@@ -230,6 +242,9 @@ def _log_week_plan_export(
             "plan_role_status": plan_resolution.get("status"),
             "candidate_id": plan_resolution.get("candidate_id"),
             "candidate_key": plan_resolution.get("candidate_key"),
+            "scenario_id": plan_resolution.get("scenario_id"),
+            "scenario_name": plan_resolution.get("scenario_name"),
+            "is_scenario_preview": bool(plan_resolution.get("is_scenario_preview")),
         },
         row_count=row_count,
         time_range={"start": data.get("week_start"), "end": data.get("week_end")},
@@ -248,8 +263,13 @@ def _safe_filename_part(value: Any) -> str:
 def _send_week_plan_export_file(output, *, version: int, week_start: Any, week_end: Any, plan_resolution: Dict[str, Any]):
     selected_role = str(plan_resolution.get("selected_role") or ROLE_ADOPTED)
     requested_role = str(plan_resolution.get("requested_role") or ROLE_ADOPTED)
-    include_plan_label = selected_role != ROLE_ADOPTED or requested_role != selected_role
-    plan_label = _safe_filename_part(plan_resolution.get("selected_label")) if include_plan_label else ""
+    if bool(plan_resolution.get("is_scenario_preview")):
+        scenario_id = _safe_filename_part(plan_resolution.get("scenario_id"))
+        scenario_name = _safe_filename_part(plan_resolution.get("scenario_name"))
+        plan_label = "_".join(part for part in ("模拟方案", scenario_id, scenario_name) if part)
+    else:
+        include_plan_label = selected_role != ROLE_ADOPTED or requested_role != selected_role
+        plan_label = _safe_filename_part(plan_resolution.get("selected_label")) if include_plan_label else ""
     plan_suffix = f"_{plan_label}" if plan_label else ""
     filename = f"周计划表_v{version}_{week_start}_to_{week_end}{plan_suffix}.xlsx"
     return send_file(
@@ -266,12 +286,14 @@ def _week_plan_page_redirect(
     offset: int,
     version: Optional[str],
     plan_role: Optional[str],
+    scenario_id: Optional[str],
 ):
     args: Dict[str, Any] = {
         "offset": str(int(offset)),
         "week_start": week_start,
         "version": version,
         "plan_role": plan_role,
+        "scenario_id": scenario_id,
     }
     return redirect(
         url_for(
@@ -295,6 +317,7 @@ def _handle_week_plan_export_app_error(error: AppError, *, redirect_context: Dic
 def week_plan_page():
     week_start = (request.args.get("week_start") or "").strip() or None
     plan_role = _get_plan_role_arg()
+    scenario_id = _get_scenario_id_arg()
     services = g.services
     offset = _get_int_arg("offset", 0)
     svc = services.gantt_service
@@ -308,6 +331,7 @@ def week_plan_page():
             offset_weeks=0,
             version=request.args.get("version"),
             plan_role=plan_role,
+            scenario_id=scenario_id,
             services=services,
         )
     )
@@ -344,6 +368,7 @@ def week_plan_page():
         plan_role=plan_resolution.get("requested_role") or ROLE_ADOPTED,
         effective_plan_role=plan_resolution.get("selected_role") or ROLE_ADOPTED,
         plan_resolution=plan_resolution,
+        scenario_id=plan_resolution.get("scenario_id") or scenario_id,
         plan_role_options=plan_resolution.get("available_roles") or [],
         preview_rows=preview_state["preview_rows"],
         total_rows=len(preview_state["rows"]),
@@ -353,6 +378,7 @@ def week_plan_page():
                 week_start=wr.week_start_date.isoformat(),
                 version=ver,
                 plan_role=plan_resolution.get("requested_role") or ROLE_ADOPTED,
+                scenario_id=plan_resolution.get("scenario_id") or None,
             )
             if ver is not None
             else None
@@ -365,12 +391,14 @@ def week_plan_export():
     start = time.time()
     week_start = (request.args.get("week_start") or "").strip() or None
     plan_role = _get_plan_role_arg()
+    scenario_id = _get_scenario_id_arg()
     offset = _get_int_arg("offset", 0)
     redirect_context = {
         "week_start": week_start,
         "offset": offset,
         "version": request.args.get("version"),
         "plan_role": plan_role,
+        "scenario_id": scenario_id,
     }
 
     svc = g.services.gantt_service
@@ -381,6 +409,7 @@ def week_plan_export():
                 offset_weeks=offset,
                 version=request.args.get("version"),
                 plan_role=plan_role,
+                scenario_id=scenario_id,
                 services=g.services,
             )
         )
