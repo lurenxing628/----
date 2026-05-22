@@ -83,6 +83,7 @@ global.Gantt = CapturingGantt;
 
 loadScript({helpers._gantt_js()});
 loadScript({helpers._gantt_zoom_js()});
+loadScript({helpers._gantt_adapter_js()});
 loadScript({helpers._gantt_color_js()});
 loadScript({helpers._outline_js()});
 loadScript({helpers._gantt_contract_js()});
@@ -160,6 +161,7 @@ global.Gantt = CapturingGantt;
 
 loadScript({helpers._gantt_js()});
 loadScript({helpers._gantt_zoom_js()});
+loadScript({helpers._gantt_adapter_js()});
 loadScript({helpers._gantt_color_js()});
 loadScript({helpers._outline_js()});
 loadScript({helpers._gantt_contract_js()});

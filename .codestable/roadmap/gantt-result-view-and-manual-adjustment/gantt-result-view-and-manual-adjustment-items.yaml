@@ -148,8 +148,8 @@ items:
     title: 后续甘特适配层
     description: 后续新增甘特适配层，统一封装 Frappe 的时间尺、点击、只读、缩放和未来模拟拖动事件。
     depends_on: [gantt-readonly-docs-and-qa]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-22-gantt-adapter-contract
     minimal_loop: false
     primary_paths:
       - static/js/gantt_adapter.js
@@ -162,7 +162,7 @@ items:
       - 适配层能设置 view/simulate 模式
       - 适配层能设置 zoom level
       - 适配层能保留点击详情事件
-    notes: 后续独立启动；只读甘特图没有验收完成前不进入拖动编辑。
+    notes: 已新增薄适配层；仍未开放模拟调整保存。
 
   - slug: gantt-simulation-entry-shell
     title: 后续模拟调整入口壳
@@ -269,7 +269,7 @@ items:
   - slug: gantt-component-upgrade-spike
     title: 后续甘特组件升级评估
     description: 后续在 Win7 Chrome 109 与离线交付边界下评估继续 Frappe、封装 Frappe、替换 Bryntum/DHTMLX/Syncfusion 的真实成本。
-    depends_on: [gantt-adapter-contract]
+    depends_on: [gantt-draft-publish-official-version]
     status: planned
     feature: null
     minimal_loop: false
@@ -281,4 +281,4 @@ items:
       - 有 Win7 Chrome 109 或等价目标浏览器的 POC 证据
       - 对比 Frappe、Bryntum、DHTMLX、Syncfusion 的缩放、只读、拖动、依赖线、资源视图、性能、授权和离线部署
       - 只有 Frappe 明确撑不住时才提出替换建议
-    notes: 这是 spike，不阻塞只读和缩放；适配层完成后再评估，不能凭感觉换组件。
+    notes: 这是 spike，不阻塞只读和缩放；主线模拟调整闭环完成后再评估，不能凭感觉换组件。

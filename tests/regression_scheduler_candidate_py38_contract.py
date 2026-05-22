@@ -67,6 +67,7 @@ PR7E_FRONTEND_FILES = (
     "templates/scheduler/gantt.html",
     "web_new_test/templates/scheduler/gantt.html",
     "static/js/gantt.js",
+    "static/js/gantt_adapter.js",
     "static/js/gantt_contract.js",
 )
 

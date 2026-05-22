@@ -1,0 +1,36 @@
+feature: 2026-05-22-gantt-adapter-contract
+status: done
+roadmap: gantt-result-view-and-manual-adjustment
+roadmap_item: gantt-adapter-contract
+
+steps:
+  - slug: boundary-and-docs
+    title: 立适配层边界和 roadmap 状态
+    status: done
+    exit_signal: design/checklist 已落盘，roadmap item 已进入 in-progress。
+
+  - slug: adapter-contract-tests
+    title: 增加适配层合同测试
+    status: done
+    exit_signal: 测试覆盖 view/simulate、zoom、点击和真实 vendor 几何。
+
+  - slug: adapter-runtime
+    title: 新增 gantt_adapter.js 并迁移 render 创建入口
+    status: done
+    exit_signal: render 通过 adapter 创建 Frappe Gantt，页面行为不变。
+
+  - slug: script-order-and-registry
+    title: 同步脚本顺序和质量门禁分组
+    status: done
+    exit_signal: 模板、镜像模板、脚本顺序测试和 test_registry 同步。
+
+  - slug: verification
+    title: 回归验证
+    status: done
+    exit_signal: adapter 测试、只读甘特图回归、JS 语法、YAML 和 fast precheck 通过。
+
+checks:
+  - adapter 不复制 zoom 映射，只调用 gantt_zoom.js。
+  - view 模式继续只读禁拖。
+  - simulate 只暴露事件出口，不保存。
+  - 不新增后端接口，不写正式排产数据。

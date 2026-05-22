@@ -23,6 +23,7 @@
   var outlineApi = ns.outline;
   var contractApi = ns.contract;
   var zoomApi = ns.zoom;
+  var adapterApi = ns.adapter;
 
   if (typeof $ !== "function") return;
   if (typeof show !== "function") return;
@@ -34,6 +35,7 @@
   if (!outlineApi) return;
   if (!contractApi) return;
   if (!zoomApi) return;
+  if (!adapterApi) return;
   if (!state || !_perfState) return;
 
   var setCriticalOutlineEnabled = outlineApi.setCriticalOutlineEnabled;
@@ -49,6 +51,7 @@
   var getZoomSpec = zoomApi.getZoomSpec;
   var getGanttScale = zoomApi.getGanttScale;
   var validateZoomRange = zoomApi.validateZoomRange;
+  var createGantt = adapterApi.createGantt;
 
   if (typeof setCriticalOutlineEnabled !== "function") return;
   if (typeof installCriticalOutlineSyncAdapter !== "function") return;
@@ -63,6 +66,7 @@
   if (typeof getZoomSpec !== "function") return;
   if (typeof getGanttScale !== "function") return;
   if (typeof validateZoomRange !== "function") return;
+  if (typeof createGantt !== "function") return;
 
   // ---- render/decorate cache (Win7 友好：减少不必要的全量重渲染) ----
   let _renderToken = 0; // 每次全量 render() + new Gantt() 递增
@@ -1017,17 +1021,13 @@
       host.dataset.zoomLevel = zoomSpec.level || "day";
     }
 
-    const gantt = new Gantt("#gantt", tasks, {
-      view_mode: zoomSpec.frappeViewMode || ((state.ui && state.ui.viewMode) ? state.ui.viewMode : "Day"),
-      step_minutes: zoomSpec.stepMinutes,
-      step_ms: zoomSpec.stepMinutes * 60 * 1000,
-      column_width: zoomSpec.columnWidthPx,
-      readonly: true,
-      readonly_dates: true,
-      readonly_progress: true,
-      language: "zh",
-      popup_trigger: "click",
-      on_click: function (task) {
+    const gantt = createGantt({
+      selector: "#gantt",
+      tasks: tasks,
+      mode: (state.ui && state.ui.mode) || host.dataset.ganttMode || "view",
+      zoomLevel: zoomSpec.level,
+      fallbackViewMode: state.ui && state.ui.viewMode ? state.ui.viewMode : "Day",
+      onClick: function (task) {
         const meta = task && task.meta ? task.meta : {};
         const bid = norm(meta.batch_id);
         if (!bid) return;
@@ -1035,7 +1035,7 @@
         // 纯视觉交互：只做增量装饰（Win7 避免全量重建）
         safeDecorateDynamic({ updateLegend: false });
       },
-      custom_popup_html: function (task) {
+      customPopupHtml: function (task) {
         const meta = task && task.meta ? task.meta : {};
         const criticalInfo = getCriticalTooltip(task, state.critical);
         const sk = statusKeyForTask(task);

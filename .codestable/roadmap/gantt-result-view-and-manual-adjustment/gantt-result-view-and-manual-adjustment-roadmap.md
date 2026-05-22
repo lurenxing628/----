@@ -966,9 +966,9 @@ GanttAdjustmentConflict:
 7. **gantt-adapter-contract** — 后续甘特适配层。
    - 所属模块：后续模拟调整合同
    - 依赖：`gantt-readonly-docs-and-qa`
-   - 状态：planned
-   - 对应 feature：未启动
-   - 备注：后续独立启动；不阻塞第一版只读甘特图验收。
+   - 状态：done
+   - 对应 feature：`2026-05-22-gantt-adapter-contract`
+   - 备注：已新增薄适配层；当前阶段不开放模拟调整保存。
 
 8. **gantt-simulation-entry-shell** — 后续模拟调整入口壳。
    - 所属模块：后续模拟调整合同
@@ -1007,10 +1007,10 @@ GanttAdjustmentConflict:
 
 13. **gantt-component-upgrade-spike** — 后续甘特组件升级评估。
     - 所属模块：后续模拟调整合同
-    - 依赖：`gantt-adapter-contract`
+    - 依赖：`gantt-draft-publish-official-version`
     - 状态：planned
     - 对应 feature：未启动
-    - 备注：这是 spike，不阻塞只读和缩放；适配层完成后再评估，只有 Frappe 确实撑不住时才提出替换。
+    - 备注：这是 spike，不阻塞只读和缩放；主线模拟调整闭环完成后再评估，只有 Frappe 确实撑不住时才提出替换。
 
 **最小闭环**：第 1 到第 6 条一起构成第一版闭环。它做完以后，用户打开当前甘特图会明确看到“查看模式”，条形图不能再被拖动或拉伸，月/周/日/12小时/6小时/小时/15分钟/5分钟/1分钟都能切换，短工序可见可点，范围过大时系统主动拦截，说明书和回归测试也都同步。模拟调整不在这个闭环里。
 

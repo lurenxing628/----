@@ -746,6 +746,10 @@ def _gantt_zoom_js() -> str:
     return json.dumps(str(REPO_ROOT / "static" / "js" / "gantt_zoom.js"))
 
 
+def _gantt_adapter_js() -> str:
+    return json.dumps(str(REPO_ROOT / "static" / "js" / "gantt_adapter.js"))
+
+
 def _gantt_render_js() -> str:
     return json.dumps(str(REPO_ROOT / "static" / "js" / "gantt_render.js"))
 
@@ -778,6 +782,7 @@ def test_gantt_contract_asset_is_tracked_and_loaded_before_render_in_all_templat
         "js/frappe-gantt.min.js",
         "js/gantt.js",
         "js/gantt_zoom.js",
+        "js/gantt_adapter.js",
         "js/gantt_color.js",
         "js/gantt_outline.js",
         "js/gantt_contract.js",
@@ -794,7 +799,7 @@ def test_gantt_contract_asset_is_tracked_and_loaded_before_render_in_all_templat
         ]
         assert scripts == expected_order, template_rel
 
-    for asset_rel in ("static/js/gantt_contract.js", "static/js/gantt_zoom.js"):
+    for asset_rel in ("static/js/gantt_contract.js", "static/js/gantt_zoom.js", "static/js/gantt_adapter.js"):
         asset_path = REPO_ROOT / asset_rel
         assert asset_path.is_file()
         tracked = subprocess.run(
@@ -976,6 +981,7 @@ global.Gantt = CapturingGantt;
 
 loadScript({_gantt_js()});
 loadScript({_gantt_zoom_js()});
+loadScript({_gantt_adapter_js()});
 loadScript({_gantt_color_js()});
 loadScript({_outline_js()});
 loadScript({_gantt_contract_js()});
@@ -1311,6 +1317,7 @@ global.Gantt = CapturingGantt;
 
 loadScript({_gantt_js()});
 loadScript({_gantt_zoom_js()});
+loadScript({_gantt_adapter_js()});
 loadScript({_gantt_color_js()});
 loadScript({_outline_js()});
 loadScript({_gantt_contract_js()});
@@ -1475,6 +1482,7 @@ document.readyState = "loading";
 loadScript({_vendor_js()});
 loadScript({_gantt_js()});
 loadScript({_gantt_zoom_js()});
+loadScript({_gantt_adapter_js()});
 loadScript({_gantt_color_js()});
 loadScript({_outline_js()});
 loadScript({_gantt_contract_js()});
@@ -1793,6 +1801,7 @@ document.readyState = "loading";
 loadScript({_vendor_js()});
 loadScript({_gantt_js()});
 loadScript({_gantt_zoom_js()});
+loadScript({_gantt_adapter_js()});
 loadScript({_gantt_color_js()});
 loadScript({_outline_js()});
 loadScript({_gantt_contract_js()});
