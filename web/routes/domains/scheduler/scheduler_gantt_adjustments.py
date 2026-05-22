@@ -58,6 +58,35 @@ def save_gantt_adjustment_scenario():
         return jsonify(error_response(ErrorCode.UNKNOWN_ERROR, "甘特图模拟方案保存失败，请稍后重试。")), 500
 
 
+@bp.post("/gantt/adjustments/publish-scenario")
+def publish_gantt_adjustment_scenario():
+    try:
+        payload = _json_payload()
+        result = g.services.gantt_adjustment_publish_service.publish_scenario(
+            scenario_id=payload.get("scenario_id"),
+            confirm_text=payload.get("confirm_text"),
+            reason=payload.get("reason"),
+            expected_base_version=payload.get("base_version"),
+            expected_base_plan_role=payload.get("base_plan_role"),
+        )
+        result_data = result.to_dict()
+        result_data.update(
+            view_url=url_for(
+                "scheduler.gantt_page",
+                version=result.new_version,
+                plan_role="adopted",
+                gantt_zoom="day",
+            ),
+            message="已正式采用模拟方案，并生成新的正式排产版本。",
+        )
+        return jsonify({"success": True, "data": result_data})
+    except AppError as exc:
+        return json_error_response(exc)
+    except Exception:
+        current_app.logger.exception("甘特图模拟方案正式采用失败")
+        return jsonify(error_response(ErrorCode.UNKNOWN_ERROR, "甘特图模拟方案正式采用失败，请稍后重试。")), 500
+
+
 def _json_payload() -> Dict[str, Any]:
     payload = request.get_json(silent=True)
     if not isinstance(payload, dict):

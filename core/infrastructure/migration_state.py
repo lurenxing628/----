@@ -5,7 +5,7 @@ from typing import List, Optional
 
 from .migrations.common import MigrationOutcome, column_exists, fallback_log
 
-CURRENT_SCHEMA_VERSION = 13
+CURRENT_SCHEMA_VERSION = 14
 
 
 class MigrationContractError(RuntimeError):
@@ -129,6 +129,10 @@ def detect_schema_is_current(conn: sqlite3.Connection) -> bool:
         ("ScheduleAdjustmentDraft", "draft_id"),
         ("ScheduleAdjustmentChange", "draft_id"),
         ("ScheduleAdjustmentScenario", "scenario_id"),
+        ("ScheduleAdjustmentScenario", "published_version"),
+        ("ScheduleAdjustmentScenario", "published_by"),
+        ("ScheduleAdjustmentScenario", "published_reason"),
+        ("ScheduleAdjustmentScenario", "published_at"),
         ("ScheduleAdjustmentScenarioRow", "scenario_id"),
     ]
     for table, col in needed:

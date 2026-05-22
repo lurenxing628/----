@@ -24,6 +24,10 @@ _SCENARIO_COLUMNS = (
     "issues_json",
     "row_count",
     "created_by",
+    "published_version",
+    "published_by",
+    "published_reason",
+    "published_at",
     "created_at",
     "updated_at",
 )
@@ -125,6 +129,36 @@ class ScheduleAdjustmentScenarioRepository(BaseRepository):
             (str(scenario_id),),
         )
         return [ScheduleAdjustmentScenarioRow.from_row(row) for row in rows]
+
+    def mark_published(
+        self,
+        *,
+        scenario_id: str,
+        new_version: int,
+        published_by: str,
+        reason: str,
+    ) -> Optional[ScheduleAdjustmentScenario]:
+        cur = self.execute(
+            """
+            UPDATE ScheduleAdjustmentScenario
+            SET status = 'published',
+                published_version = ?,
+                published_by = ?,
+                published_reason = ?,
+                published_at = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE scenario_id = ?
+              AND status = 'active'
+              AND published_version IS NULL
+            """,
+            (int(new_version), str(published_by), str(reason), str(scenario_id)),
+        )
+        if int(cur.rowcount or 0) != 1:
+            return None
+        scenario = self.get_scenario(scenario_id)
+        if scenario is None:
+            raise RuntimeError(f"模拟方案不存在：{scenario_id}")
+        return scenario
 
     def _insert_rows(self, scenario_id: str, rows: Sequence[ScheduleAdjustmentScenarioRow]) -> None:
         self.executemany(

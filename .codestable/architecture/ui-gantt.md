@@ -87,6 +87,22 @@ tags: [scheduler, gantt, frontend, readonly, vendor]
 - 页面、`/scheduler/gantt/data`、视图切换、周切换、查询表单和 `static/js/gantt_boot.js` 都会保留 `scenario_id`。
 - 页面显示“当前正在预览模拟方案，正式计划还没有改变”。
 
-## 7. vendor 补丁治理
+## 7. Scenario 正式采用
+
+后端现在已有 `GanttAdjustmentPublishService` 和 `POST /scheduler/gantt/adjustments/publish-scenario`。这条链路把已保存的 Scenario 正式采用为新的官方排产版本：
+
+- 必须传入二次确认文本 `正式采用`。
+- 必须填写正式采用原因。
+- 发布前重新校验来源 Draft，且只允许 `saved_scenario` 状态。
+- 发布前要求 Scenario 的基准版本仍然是当前最新正式版本。
+- 同一事务里分配新版本号、复制 Scenario 行到 `Schedule`、写 `ScheduleHistory`、把 Scenario 和 Draft 标为 `published`。
+- 同一事务里写 `OperationLogs`，记录基准版本、新版本、Scenario、Draft、发布人、原因、调整数量和校验结果。
+- 发布人来自服务端可信上下文；当前没有登录/权限体系时使用 `system`，不会接受客户端自报姓名作为审计身份。
+- `OperationLogs` 写入属于发布事务；日志失败时整次发布回滚。
+- 不原地修改旧 `Schedule` 版本，不复用版本号，不写 `ScheduleCandidate*`。
+
+当前页面仍不开放可点击的正式采用按钮；接口作为后续编辑界面的后端合同。正式采用成功后调用方应跳转到 `/scheduler/gantt?version=<new_version>&plan_role=adopted`，不要继续携带 `scenario_id`。
+
+## 8. vendor 补丁治理
 
 `static/js/frappe-gantt.min.js` 当前本地补丁说明见 `.codestable/vendor/frappe-gantt-local-patches.md`。后续只有 Frappe 内部时间尺、任务条几何、命中区或事件绑定确实需要改时，才允许继续改 vendor 文件；业务规则优先放到 APS 自己的 `gantt_zoom.js` / `gantt_adapter.js` / `gantt_ui.js` / `gantt_render.js`。

@@ -156,6 +156,10 @@ class ScheduleAdjustmentScenario:
     issues_json: Optional[str] = None
     row_count: int = 0
     created_by: Optional[str] = None
+    published_version: Optional[int] = None
+    published_by: Optional[str] = None
+    published_reason: Optional[str] = None
+    published_at: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
@@ -176,6 +180,10 @@ class ScheduleAdjustmentScenario:
             issues_json=_text_or_none(get(row, "issues_json")),
             row_count=parse_int(get(row, "row_count"), default=0) or 0,
             created_by=_text_or_none(get(row, "created_by")),
+            published_version=parse_int(get(row, "published_version"), default=None),
+            published_by=_text_or_none(get(row, "published_by")),
+            published_reason=_text_or_none(get(row, "published_reason")),
+            published_at=_text_or_none(get(row, "published_at")),
             created_at=_text_or_none(get(row, "created_at")),
             updated_at=_text_or_none(get(row, "updated_at")),
         )

@@ -249,22 +249,22 @@ items:
     title: 后续 Official Version 正式采用
     description: 后续用户确认后把模拟方案正式采用，生成新的正式排产版本，并统一甘特图、周计划、资源排班、报表和历史口径。
     depends_on: [gantt-draft-save-and-preview]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-22-gantt-draft-publish-official-version
     minimal_loop: false
     primary_paths:
       - core/services/scheduler/
       - data/repositories/
       - web/routes/domains/scheduler/
       - templates/system/history.html
-      - tests/regression_gantt_draft_publish_official_version.py
+      - tests/regression_gantt_scenario_publish.py
     exit_checks:
       - 发布前重新校验草稿和模拟方案
       - 发布必须二次确认且原因必填
       - 发布生成新的正式版本，不原地改旧版本
       - 发布后甘特图、周计划、资源排班、报表、历史页都读新版本
       - 审计记录能看出谁、何时、基于哪个版本、发布成哪个版本
-    notes: Official Version 才能写正式 Schedule/ScheduleHistory。
+    notes: 已完成后端正式采用合同；接口必须二次确认、原因必填、发布前重校验和基准未过期检查。页面按钮仍留到后续编辑界面，不在只读甘特图里开放。
 
   - slug: gantt-component-upgrade-spike
     title: 后续甘特组件升级评估

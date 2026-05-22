@@ -455,6 +455,10 @@ CREATE TABLE IF NOT EXISTS ScheduleAdjustmentScenario (
     issues_json        TEXT,
     row_count          INTEGER NOT NULL DEFAULT 0,
     created_by         TEXT,
+    published_version  INTEGER,
+    published_by       TEXT,
+    published_reason   TEXT,
+    published_at       DATETIME,
     created_at         DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at         DATETIME DEFAULT CURRENT_TIMESTAMP
 );

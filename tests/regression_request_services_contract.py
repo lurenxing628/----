@@ -60,3 +60,23 @@ def test_request_services_exposes_gantt_adjustment_validation_service(monkeypatc
 
     assert services.gantt_adjustment_validation_service is services.gantt_adjustment_validation_service
     assert created == ["app-logger"]
+
+
+def test_request_services_exposes_gantt_adjustment_publish_service(monkeypatch) -> None:
+    created = []
+
+    class _StubPublishService:
+        def __init__(self, _conn, logger=None, op_logger=None, **_kwargs):
+            created.append((logger, op_logger))
+
+    monkeypatch.setattr(request_services_mod, "GanttAdjustmentPublishService", _StubPublishService)
+
+    services = request_services_mod.RequestServices(
+        db=object(),
+        app_logger="app-logger",
+        op_logger="op-logger",
+        get_excel_backend=lambda: object(),
+    )
+
+    assert services.gantt_adjustment_publish_service is services.gantt_adjustment_publish_service
+    assert created == [("app-logger", "op-logger")]

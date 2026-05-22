@@ -1,0 +1,31 @@
+slug: gantt-draft-publish-official-version
+title: 甘特图 Scenario 正式采用
+status: done
+items:
+  - slug: publish-schema
+    title: 发布审计字段和迁移
+    status: done
+    checks:
+      - ScheduleAdjustmentScenario 有 published_version/published_by/published_reason/published_at
+      - v13 旧库能迁移到当前版本
+  - slug: publish-service
+    title: 正式采用服务
+    status: done
+    checks:
+      - 二次确认和原因必填
+      - 发布前重新校验 saved_scenario Draft
+      - 基准版本不是最新正式版本时拒绝发布
+      - 新版本写 Schedule 和 ScheduleHistory
+      - 旧版本 Schedule 不被修改
+  - slug: publish-route
+    title: 薄 route 和服务容器
+    status: done
+    checks:
+      - route 只解析 JSON 并调用服务
+      - RequestServices 暴露 gantt_adjustment_publish_service
+      - 速查表列出新 POST 路由
+  - slug: publish-regression
+    title: 回归测试
+    status: done
+    checks:
+      - 覆盖正式写库、审计日志、基准过期、二次确认、重新校验

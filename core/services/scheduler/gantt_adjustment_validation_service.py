@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from core.infrastructure.errors import ValidationError
 from core.models.schedule_adjustment import DRAFT_STATUS_EDITING
@@ -76,13 +76,14 @@ class GanttAdjustmentValidationService:
         draft_id: Any,
         expected_base_version: Optional[Any] = None,
         expected_base_plan_role: Optional[Any] = None,
+        allowed_statuses: Tuple[str, ...] = (DRAFT_STATUS_EDITING,),
     ) -> GanttAdjustmentEvaluation:
         draft_key = _required_text(draft_id, field="draft_id", label="草稿编号")
         draft = self.draft_repo.get_draft(draft_key)
         if draft is None:
             raise ValidationError("调整草稿不存在。", field="draft_id")
-        if draft.status != DRAFT_STATUS_EDITING:
-            raise ValidationError("只有编辑中的调整草稿才能校验。", field="draft_id")
+        if draft.status not in allowed_statuses:
+            raise ValidationError(_status_error_message(allowed_statuses), field="draft_id")
         _check_expected_base(draft.base_version, draft.base_plan_role, expected_base_version, expected_base_plan_role)
 
         changes = self.draft_repo.list_changes(draft.draft_id)
@@ -193,3 +194,9 @@ def _check_expected_base(
         raise ValidationError("页面草稿基准版本已变化，请刷新后重试。", field="base_version")
     if expected_role is not None and str(expected_role).strip() != actual_role:
         raise ValidationError("页面草稿基准方案已变化，请刷新后重试。", field="base_plan_role")
+
+
+def _status_error_message(allowed_statuses: Sequence[str]) -> str:
+    if tuple(allowed_statuses) == (DRAFT_STATUS_EDITING,):
+        return "只有编辑中的调整草稿才能校验。"
+    return "调整草稿当前状态不能执行本次操作。"
