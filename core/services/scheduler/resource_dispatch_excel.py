@@ -154,22 +154,41 @@ def _degradation_message_text(summary: Dict[str, Any]) -> str:
     return "；".join(messages)
 
 
+def _summary_filter_value(filters: Dict[str, Any], key: str) -> Any:
+    return filters.get(key) or ""
+
+
+def _summary_plan_label(filters: Dict[str, Any]) -> Any:
+    return (
+        filters.get("scenario_name")
+        or filters.get("effective_plan_role_label")
+        or filters.get("plan_role_label")
+        or ""
+    )
+
+
+def _summary_scenario_note(filters: Dict[str, Any]) -> str:
+    if filters.get("is_scenario_preview"):
+        return "这是模拟方案预览，正式计划还没有改变。"
+    return ""
+
+
 def _summary_pairs(payload: Dict[str, Any]) -> List[List[Any]]:
     filters = payload.get("filters") or {}
     summary = payload.get("summary") or {}
     counters = summary.get("degradation_counters") or {}
     overdue_markers_message = payload.get("overdue_markers_message") or ""
     return [
-        ["视角", filters.get("scope_type_label") or ""],
-        ["查询对象", filters.get("scope_label") or ""],
-        ["班组轴", filters.get("team_axis_label") or ""],
-        ["区间类型", filters.get("period_preset_label") or ""],
-        ["开始日期", filters.get("start_date") or ""],
-        ["结束日期", filters.get("end_date") or ""],
-        ["排产版本", filters.get("version") or ""],
-        ["查看方案", filters.get("scenario_name") or filters.get("effective_plan_role_label") or filters.get("plan_role_label") or ""],
-        ["模拟方案编号", filters.get("scenario_id") or ""],
-        ["模拟方案说明", "这是模拟方案预览，正式计划还没有改变。" if filters.get("is_scenario_preview") else ""],
+        ["视角", _summary_filter_value(filters, "scope_type_label")],
+        ["查询对象", _summary_filter_value(filters, "scope_label")],
+        ["班组轴", _summary_filter_value(filters, "team_axis_label")],
+        ["区间类型", _summary_filter_value(filters, "period_preset_label")],
+        ["开始日期", _summary_filter_value(filters, "start_date")],
+        ["结束日期", _summary_filter_value(filters, "end_date")],
+        ["排产版本", _summary_filter_value(filters, "version")],
+        ["查看方案", _summary_plan_label(filters)],
+        ["模拟方案编号", _summary_filter_value(filters, "scenario_id")],
+        ["模拟方案说明", _summary_scenario_note(filters)],
         ["任务数量", summary.get("total_tasks") or 0],
         ["总工时（小时）", summary.get("total_hours") or 0],
         ["跨天任务", summary.get("cross_day_count") or 0],
