@@ -63,6 +63,13 @@
     return '<span class="aps-col-code" title="' + escapeHtml(v) + '">' + escapeHtml(v) + '</span>';
   }
 
+  function fullTextCell(value, className) {
+    const v = text(value);
+    const classAttr = className ? ' class="' + escapeHtml(className) + '"' : "";
+    const safe = escapeHtml(v);
+    return '<td' + classAttr + ' title="' + safe + '" data-full-text="' + safe + '">' + safe + '</td>';
+  }
+
   function renderFlags(row) {
     const items = [];
     if (trim(row && row.lock_status) === "locked") items.push(badge("已锁定", "update"));
@@ -170,8 +177,8 @@
           '<td>' + codeCell(row.part_no || "") + '</td>' +
           '<td>' + codeCell(row.op_code || "") + '</td>' +
           '<td>' + escapeHtml(row.seq) + '</td>' +
-          '<td>' + escapeHtml(row.current_resource_label || "") + '</td>' +
-          '<td>' + escapeHtml(row.counterpart_resource_label || "") + '</td>' +
+          fullTextCell(row.current_resource_label || "", "aps-resource-cell") +
+          fullTextCell(row.counterpart_resource_label || "", "aps-resource-cell") +
           '<td>' + relationBadge(row.team_relation_label) + '</td>' +
           '<td>' + escapeHtml(sourceLabel(row.source)) + '</td>' +
           '<td>' + renderFlags(row) + '</td>' +

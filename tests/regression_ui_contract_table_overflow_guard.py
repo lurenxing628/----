@@ -131,6 +131,9 @@ def main() -> None:
         ("templates/scheduler/excel_import_batches.html", 'id="excelBatchPreviewTable"', "v2_excelBatchPreviewTable"),
         ("templates/scheduler/excel_import_batches.html", 'id="excelBatchesExistingTable"', "v2_excelBatchesExistingTable"),
         ("templates/scheduler/resource_dispatch.html", 'id="rdDetailTable"', "v1_resourceDispatchDetail"),
+        ("templates/scheduler/resource_dispatch.html", 'id="rdTeamOperatorTable"', "v1_resourceDispatchTeamOperator"),
+        ("templates/scheduler/resource_dispatch.html", 'id="rdTeamMachineTable"', "v1_resourceDispatchTeamMachine"),
+        ("templates/scheduler/resource_dispatch.html", 'id="rdTeamCrossTable"', "v1_resourceDispatchTeamCross"),
         ("templates/equipment/list.html", 'id="equipmentTable"', "v2_equipmentTable"),
         ("templates/equipment/excel_import_machine.html", 'id="excelMachineExistingTable"', "v2_excelMachineExistingTable"),
         (

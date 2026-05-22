@@ -539,7 +539,7 @@ html[data-theme="dark"] .aps-gantt-check-group label {
 
 @media (min-width: 900px) {
   .aps-gantt-filter-checks {
-    min-width: 320px;
+    min-width: min(100%, 260px);
   }
 }
 

@@ -27,6 +27,12 @@ def test_calendar_forms_use_stable_date_picker_layout() -> None:
     assert "min-width: 1240px;" in css
     max_900_block = css.split("@media (max-width: 900px)", 1)[1].split("@media", 1)[0]
     assert ".aps-calendar-date-field" not in max_900_block
+    narrow_container_block = css.split("@container (max-width: 719px)", 1)[1]
+    assert ".aps-calendar-date-field {\n    min-width: 0;" in narrow_container_block
+    assert (
+        ".aps-calendar-date-field .aps-date-picker-field {\n"
+        "    grid-template-columns: minmax(0, 1fr) auto;"
+    ) in narrow_container_block
 
     for rel_path in ("templates/scheduler/calendar.html", "templates/personnel/calendar.html"):
         source = _read(rel_path)

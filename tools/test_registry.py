@@ -72,6 +72,8 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/regression_route_version_normalizers_contract.py",
     "tests/regression_gantt_page_version_default_latest.py",
     "tests/regression_gantt_default_version_span.py",
+    "tests/regression_calendar_layout_contract.py",
+    "tests/regression_gantt_layout_contract.py",
     "tests/regression_reports_page_version_default_latest.py",
     "tests/regression_week_plan_filename_uses_normalized_version.py",
     "tests/regression_gantt_calendar_load_failed_degraded.py",
@@ -141,6 +143,9 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/regression_scheduler_route_enforce_ready_tristate.py",
     "tests/test_ui_browser_geometry_env.py",
     "tests/test_ui_geometry_html_contract.py",
+    "tests/regression_ui_layout_risk_contract.py",
+    "tests/regression_responsive_min_width_contract.py",
+    "tests/regression_table_layout_readability_contract.py",
 )
 
 QUALITY_GATE_REQUIRED_TESTS = (QUALITY_GATE_SELFTEST_PATH, *QUALITY_GATE_GUARD_TESTS)
@@ -430,6 +435,8 @@ REQUIRED_REGRESSION_GROUPS = (
             "tests/regression_scheduler_week_plan_summary_observability.py",
             "tests/regression_gantt_page_version_default_latest.py",
             "tests/regression_gantt_default_version_span.py",
+            "tests/regression_calendar_layout_contract.py",
+            "tests/regression_gantt_layout_contract.py",
             "tests/regression_reports_page_version_default_latest.py",
             "tests/regression_week_plan_filename_uses_normalized_version.py",
             "tests/regression_gantt_calendar_load_failed_degraded.py",
@@ -631,6 +638,9 @@ REQUIRED_REGRESSION_GROUPS = (
             "tests/regression_system_history_route_contract.py",
             "tests/test_ui_browser_geometry_env.py",
             "tests/test_ui_geometry_html_contract.py",
+            "tests/regression_ui_layout_risk_contract.py",
+            "tests/regression_responsive_min_width_contract.py",
+            "tests/regression_table_layout_readability_contract.py",
         ),
         "input_file_scopes": (
             "tests/ui_geometry_contract_data.py",

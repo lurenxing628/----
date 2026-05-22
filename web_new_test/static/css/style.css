@@ -53,6 +53,7 @@ button, input, select, textarea {
 .app-container {
     display: flex;
     min-height: 100vh;
+    min-width: 0;
 }
 
 .sidebar {
@@ -136,6 +137,7 @@ button, input, select, textarea {
 
 .main-content {
     flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     overflow-x: hidden;
@@ -696,4 +698,98 @@ pre {
     width: 24px;
     height: 24px;
     vertical-align: -5px;
+}
+
+@media (max-width: 760px) {
+    .app-container {
+        display: block;
+    }
+
+    .sidebar {
+        width: 100%;
+        min-width: 0;
+        border-right: 0;
+        border-bottom: 1px solid rgba(15, 23, 42, 0.22);
+    }
+
+    .sidebar-header {
+        height: auto;
+        min-height: 52px;
+        padding: 0.875rem 1rem;
+    }
+
+    .sidebar-nav {
+        flex: none;
+        flex-direction: row;
+        gap: 0.5rem;
+        padding: 0.625rem;
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .nav-item {
+        flex: 0 0 auto;
+        min-height: 36px;
+        padding: 0 0.875rem;
+        white-space: nowrap;
+    }
+
+    .nav-item.active::before,
+    .nav-item[aria-current="page"]::before {
+        left: 0.875rem;
+        right: 0.875rem;
+        top: auto;
+        bottom: 0.25rem;
+        width: auto;
+        height: 3px;
+    }
+
+    .main-content {
+        width: 100%;
+        min-width: 0;
+    }
+
+    .top-header {
+        height: auto;
+        min-height: var(--header-height);
+        align-items: flex-start;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        padding: 0.75rem 1rem;
+    }
+
+    .top-header h2 {
+        min-width: 0;
+        overflow-wrap: anywhere;
+    }
+
+    .top-header .aps-header-controls {
+        width: 100%;
+        justify-content: flex-start;
+        flex-wrap: wrap;
+    }
+
+    .page-content {
+        min-width: 0;
+        padding: 1rem;
+    }
+}
+
+@media (max-width: 420px) {
+    .sidebar-header {
+        padding: 0.75rem 0.875rem;
+    }
+
+    .sidebar-nav {
+        padding: 0.5rem;
+    }
+
+    .top-header {
+        padding: 0.75rem;
+    }
+
+    .page-content {
+        padding: 0.75rem;
+    }
 }
