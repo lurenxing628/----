@@ -99,6 +99,7 @@ def test_analysis_viewmodel_split_preserves_context_payload() -> None:
         "freeze_display",
         "summary_degradation_messages",
         "display_summary_degradation_messages",
+        "metric_cards",
     }
     assert expected_keys <= set(ctx)
     assert ctx["selected_metrics"]["overdue_count"] == 4
@@ -107,6 +108,8 @@ def test_analysis_viewmodel_split_preserves_context_payload() -> None:
         {"key": "invalid_due_count", "label": "数据异常批次数", "value": 2, "delta": None, "type_class": "type-info"},
         {"key": "unscheduled_batch_count", "label": "未排批次数", "value": 1, "delta": None, "type_class": ""},
     ]
+    assert ctx["metric_cards"][0]["value"] == "4"
+    assert ctx["metric_cards"][0]["delta"] == "对比上一版：+3"
     assert ctx["freeze_display"]["state_label"] == "部分未生效"
     assert ctx["freeze_display"]["sample_batches"] == ["B001", "B002", "B003", "B004", "B005"]
     assert ctx["freeze_display"]["sample_more_count"] == 2
@@ -139,3 +142,91 @@ def test_analysis_viewmodel_split_preserves_legacy_compat_fallback() -> None:
 
     assert ctx["compat_fallback"]["used"] is True
     assert ctx["compat_fallback"]["missing_field_labels"] == ["优化对比指标", "评分顺序"]
+
+
+def test_analysis_metric_cards_surface_non_finite_values_without_template_arithmetic() -> None:
+    summary = _selected_summary()
+    metrics = summary["algo"]["metrics"]
+    metrics["overdue_count"] = "Infinity"
+    metrics["machine_util_avg"] = "Infinity"
+    metrics["machine_used_count"] = "NaN"
+    metrics["machine_load_cv"] = "1e9999"
+
+    ctx = build_analysis_context(
+        selected_ver=9,
+        raw_hist=[{"version": 9, "result_summary": summary}],
+        selected_item={"version": 9, "result_summary": summary},
+    )
+
+    by_key = {card["key"]: card for card in ctx["metric_cards"]}
+    assert by_key["overdue_count"]["value"] == "无法安全展示"
+    assert by_key["machine_util_avg"]["value"] == "无法安全展示"
+    assert "已用 无法安全展示 台" in by_key["machine_util_avg"]["secondary"]
+    assert "任务分配均匀程度 无法安全展示，越小越均匀" in by_key["machine_util_avg"]["secondary"]
+    json.dumps(ctx["metric_cards"], ensure_ascii=False, allow_nan=False)
+
+
+def test_analysis_extra_cards_do_not_turn_unknown_values_into_zero() -> None:
+    summary = _selected_summary()
+    summary["invalid_due_count"] = ""
+    summary["unscheduled_batch_count"] = "NaN"
+
+    ctx = build_analysis_context(
+        selected_ver=10,
+        raw_hist=[{"version": 10, "result_summary": summary}],
+        selected_item={"version": 10, "result_summary": summary},
+    )
+
+    by_key = {card["key"]: card for card in ctx["extra_cards"]}
+    assert by_key["invalid_due_count"]["value"] == "无法安全展示"
+    assert by_key["invalid_due_count"]["type_class"] == "type-danger"
+    assert by_key["unscheduled_batch_count"]["value"] == "无法安全展示"
+    assert by_key["unscheduled_batch_count"]["type_class"] == "type-danger"
+
+
+def test_extra_cards_distinguish_missing_from_untrusted_values() -> None:
+    cards = build_extra_cards(
+        {
+            "invalid_due_count": None,
+            "unscheduled_batch_count": "   ",
+        },
+        None,
+        None,
+    )
+
+    by_key = {card["key"]: card for card in cards}
+    assert by_key["invalid_due_count"]["value"] == "无法安全展示"
+    assert by_key["unscheduled_batch_count"]["value"] == "无法安全展示"
+    assert by_key["invalid_due_count"]["type_class"] == "type-danger"
+    assert by_key["unscheduled_batch_count"]["type_class"] == "type-danger"
+
+    assert build_extra_cards({}, None, None) == []
+
+
+def test_analysis_metric_cards_reject_boolean_values_as_untrusted_numbers() -> None:
+    summary = _selected_summary()
+    summary["invalid_due_count"] = False
+    summary["unscheduled_batch_count"] = True
+    metrics = summary["algo"]["metrics"]
+    metrics["overdue_count"] = True
+    metrics["machine_util_avg"] = False
+    metrics["machine_used_count"] = True
+    metrics["operator_util_avg"] = True
+    metrics["operator_load_cv"] = False
+
+    ctx = build_analysis_context(
+        selected_ver=11,
+        raw_hist=[{"version": 11, "result_summary": summary}],
+        selected_item={"version": 11, "result_summary": summary},
+    )
+
+    extra_by_key = {card["key"]: card for card in ctx["extra_cards"]}
+    assert extra_by_key["invalid_due_count"]["value"] == "无法安全展示"
+    assert extra_by_key["unscheduled_batch_count"]["value"] == "无法安全展示"
+
+    metric_by_key = {card["key"]: card for card in ctx["metric_cards"]}
+    assert metric_by_key["overdue_count"]["value"] == "无法安全展示"
+    assert metric_by_key["machine_util_avg"]["value"] == "无法安全展示"
+    assert "已用 无法安全展示 台" in metric_by_key["machine_util_avg"]["secondary"]
+    assert metric_by_key["operator_util_avg"]["value"] == "无法安全展示"
+    assert "任务分配均匀程度 无法安全展示，越小越均匀" in metric_by_key["operator_util_avg"]["secondary"]

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from core.models.scheduler_history_parser import parse_result_summary_payload
 from web.viewmodels.scheduler_history_summary import (
     build_history_summary_display,
@@ -34,6 +36,43 @@ def test_parse_result_summary_payload_reports_json_decode_error() -> None:
     assert result.payload is None
     assert result.parse_failed
     assert result.reason == "json_decode_error"
+
+
+@pytest.mark.parametrize(
+    "raw_summary",
+    [
+        '{"metrics": {"total_tardiness_hours": NaN}}',
+        '{"metrics": {"total_tardiness_hours": Infinity}}',
+        '{"metrics": {"total_tardiness_hours": -Infinity}}',
+        '{"metrics": {"total_tardiness_hours": 1e9999}}',
+    ],
+)
+def test_parse_result_summary_payload_rejects_non_finite_json_numbers(raw_summary: str) -> None:
+    result = parse_result_summary_payload(raw_summary)
+
+    assert result.payload is None
+    assert result.parse_failed is True
+    assert result.reason == "non_finite_number"
+    assert result.raw_type == "str"
+
+
+def test_parse_result_summary_payload_rejects_non_finite_dict_numbers() -> None:
+    result = parse_result_summary_payload({"metrics": {"total_tardiness_hours": float("nan")}})
+
+    assert result.payload is None
+    assert result.parse_failed is True
+    assert result.reason == "non_finite_number"
+    assert result.raw_type == "dict"
+
+
+def test_parse_history_summary_state_reports_non_finite_numbers_to_user() -> None:
+    state = parse_history_summary_state('{"metrics": {"total_tardiness_hours": Infinity}}')
+
+    assert state["payload"] is None
+    assert state["parse_failed"] is True
+    assert state["reason"] == "non_finite_number"
+    assert state["user_message"] == "当前版本的排产摘要包含异常数字，页面仅展示基础历史信息。"
+    assert state["raw_type"] == "str"
 
 
 def test_parse_result_summary_payload_rejects_json_list_as_invalid_structure() -> None:

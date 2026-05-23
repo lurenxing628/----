@@ -95,6 +95,31 @@ def test_reports_page_version_default_latest(tmp_path, monkeypatch) -> None:
     assert "排产版本不存在，请先选择已有版本。" in missing_html
 
 
+def test_reports_page_date_range_requires_both_sides_and_valid_format(tmp_path, monkeypatch) -> None:
+    app = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+
+    for endpoint in ("/reports/utilization", "/reports/downtime"):
+        start_only = client.get(f"{endpoint}?version=latest&start_date=2026-01-01")
+        assert start_only.status_code == 400
+        assert "缺少开始日期或结束日期" in start_only.get_data(as_text=True)
+
+        end_only = client.get(f"{endpoint}?version=latest&end_date=2026-01-07")
+        assert end_only.status_code == 400
+        assert "缺少开始日期或结束日期" in end_only.get_data(as_text=True)
+
+        bad_start = client.get(f"{endpoint}?version=latest&start_date=bad-date&end_date=2026-01-07")
+        assert bad_start.status_code == 400
+        assert "日期格式不正确" in bad_start.get_data(as_text=True)
+
+        bad_end = client.get(f"{endpoint}?version=latest&start_date=2026-01-01&end_date=bad-date")
+        assert bad_end.status_code == 400
+        assert "日期格式不正确" in bad_end.get_data(as_text=True)
+
+        ok_resp = client.get(f"{endpoint}?version=latest&start_date=2026-01-01&end_date=2026-01-07")
+        assert ok_resp.status_code == 200
+
+
 def test_reports_no_history_pages_do_not_expose_v0_and_exports_404(tmp_path, monkeypatch) -> None:
     app = _build_app(tmp_path, monkeypatch, with_history=False)
     client = app.test_client()

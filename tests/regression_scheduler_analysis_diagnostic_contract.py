@@ -6,12 +6,14 @@ from typing import Any, Dict, Iterable
 
 import pytest
 
+import web.viewmodels.scheduler_analysis_diagnostics as diagnostics
 from core.services.scheduler.analysis.schedule_diagnostic_contract import (
     build_diagnostic_item,
     build_diagnostic_link,
     build_diagnostic_section,
     empty_diagnostic_sections,
 )
+from web.viewmodels.scheduler_analysis_diagnostic_helpers import format_hours, safe_float, safe_int
 from web.viewmodels.scheduler_analysis_diagnostics import build_diagnostic_sections
 from web.viewmodels.scheduler_analysis_vm import build_analysis_context
 
@@ -231,7 +233,7 @@ def test_business_diagnostic_sections_cover_four_expected_blocks() -> None:
         "degradation_events",
         "empty_reason",
     } for section in sections)
-    json.dumps(sections, ensure_ascii=False)
+    json.dumps(sections, ensure_ascii=False, allow_nan=False)
     assert summary == before
 
 
@@ -336,7 +338,7 @@ def test_diagnostic_sections_tolerate_old_and_bad_summary_shapes() -> None:
         "delay_risk",
         "impact_explanation",
     ]
-    json.dumps(sections, ensure_ascii=False)
+    json.dumps(sections, ensure_ascii=False, allow_nan=False)
 
 
 def test_analysis_context_exposes_empty_diagnostic_sections_until_business_exists() -> None:
@@ -397,6 +399,100 @@ def test_overall_health_section_status_scenarios(
 
     assert sections[0]["key"] == "schedule_health"
     assert sections[0]["status"] == expected_status
+
+
+@pytest.mark.parametrize("raw_status", [None, "", "unknown", "future_status"])
+def test_overall_health_unknown_graph_status_is_visible_and_not_ok(raw_status: Any) -> None:
+    summary = _summary_with_graph({})
+    graph_analysis = summary["algo"]["graph_analysis"]
+    if raw_status is None:
+        graph_analysis.pop("status", None)
+    else:
+        graph_analysis["status"] = raw_status
+
+    sections = build_diagnostic_sections(summary, selected_ver=7)
+    health = sections[0]
+    graph_status_item = next(item for item in health["items"] if item["key"] == "graph_status")
+
+    assert health["key"] == "schedule_health"
+    assert health["status"] == "unknown"
+    assert graph_status_item["level"] == "unknown"
+    assert graph_status_item["value"] == "状态未知"
+
+
+@pytest.mark.parametrize("bad_value", [float("nan"), float("inf"), float("-inf"), "NaN", "Infinity", "-Infinity", "1e9999"])
+def test_diagnostic_numeric_helpers_reject_non_finite_numbers(bad_value: Any) -> None:
+    with pytest.raises(ValueError):
+        safe_int(bad_value)
+    with pytest.raises(ValueError):
+        safe_float(bad_value)
+    with pytest.raises(ValueError):
+        format_hours(bad_value)
+
+
+@pytest.mark.parametrize("bad_value", ["not-int", object(), [], {}])
+def test_diagnostic_numeric_helpers_keep_legacy_parse_defaults(bad_value: Any) -> None:
+    assert safe_int(bad_value, default=7) == 7
+    assert safe_float(bad_value, default=7.5) == 7.5
+
+
+@pytest.mark.parametrize(
+    ("mutator", "expected_section_key"),
+    [
+        (lambda summary: summary["algo"]["graph_analysis"].__setitem__("time_cost_ms", float("inf")), "schedule_health"),
+        (lambda summary: summary["algo"]["graph_analysis"].__setitem__("warning_count", float("nan")), "schedule_health"),
+        (lambda summary: summary["algo"]["metrics"].__setitem__("total_tardiness_hours", "Infinity"), "delay_risk"),
+        (
+            lambda summary: summary["algo"]["graph_analysis"]["resource_matching"].__setitem__(
+                "ready_operation_count",
+                float("inf"),
+            ),
+            "resource_bottleneck",
+        ),
+        (
+            lambda summary: summary["diagnostics"]["graph_analysis"]["node_metrics_sample"][0].__setitem__(
+                "downstream_critical_minutes",
+                "1e9999",
+            ),
+            "impact_explanation",
+        ),
+    ],
+)
+def test_diagnostic_sections_surface_non_finite_numbers_without_guessing_zero(
+    mutator: Any,
+    expected_section_key: str,
+) -> None:
+    summary = _full_graph_summary()
+    mutator(summary)
+
+    sections = build_diagnostic_sections(summary, selected_ver=7)
+
+    json.dumps(sections, ensure_ascii=False, allow_nan=False)
+    by_key = {section["key"]: section for section in sections}
+    section = by_key[expected_section_key]
+    item = next(item for item in section["items"] if item["key"] == "diagnostic_non_finite_number")
+
+    assert section["status"] == "error"
+    assert section["status_label"] == "诊断异常"
+    assert section["degraded"] is True
+    assert section["degradation_events"][0]["code"] == "diagnostic_non_finite_number"
+    assert item["level"] == "danger"
+    assert item["value"] == "无法安全展示"
+    assert "非有限数字" in item["message"]
+    text_blob = "\n".join(_iter_text(section))
+    assert "0 毫秒" not in text_blob
+    assert "0 分钟" not in text_blob
+    assert "0 小时" not in text_blob
+
+
+def test_diagnostic_sections_do_not_swallow_unexpected_exceptions(monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom(*args: Any, **kwargs: Any) -> Dict[str, Any]:
+        raise RuntimeError("unexpected diagnostic bug")
+
+    monkeypatch.setattr(diagnostics, "build_delay_risk_section", boom)
+
+    with pytest.raises(RuntimeError, match="unexpected diagnostic bug"):
+        diagnostics.build_diagnostic_sections(_summary_with_graph({}), selected_ver=7)
 
 
 @pytest.mark.parametrize(

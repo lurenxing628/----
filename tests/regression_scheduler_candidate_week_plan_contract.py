@@ -169,6 +169,9 @@ def test_week_plan_page_uses_candidate_rows_and_export_url_preserves_plan_role(t
     assert "候选人员" in html
     assert "plan_role=baseline_best" in html
     assert "对比方案" in html
+    assert "当前正在查看" in html
+    assert "这套方案只用于对比，不代表最终采用的排产结果" in html
+    assert "当前周计划正在预览" not in html
 
 
 def test_week_plan_export_uses_same_plan_role_and_logs_requested_effective_roles(tmp_path, monkeypatch) -> None:

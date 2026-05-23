@@ -11,6 +11,7 @@ from .migration_state import (
     MigrationContractError,
     build_contract_error,
     ensure_schema_version,
+    ensure_schema_version_not_newer,
     get_schema_version,
     set_schema_version,
 )
@@ -59,6 +60,7 @@ def migrate_with_backup(
 
     安全约束：只要进入迁移流程，就必须在迁移前获得一个可用备份；否则直接阻断迁移。
     """
+    ensure_schema_version_not_newer(from_version, supported_version=to_version)
     effective_backup_dir = _resolve_backup_dir(db_path, backup_dir, logger=logger)
     _ensure_backup_dir(effective_backup_dir, logger=logger)
 
@@ -117,9 +119,11 @@ def _run_preflight_on_probe(
     conn = None
     try:
         conn = connection_factory(probe_path)
+        ensure_schema_version_not_newer(get_schema_version(conn), supported_version=to_version)
         missing_tables = _prepare_probe_schema(conn, schema_sql)
         ensure_schema_version(conn, logger=None)
         current = get_schema_version(conn)
+        ensure_schema_version_not_newer(current, supported_version=to_version)
         if current >= to_version:
             return
         with conn:
@@ -199,11 +203,13 @@ def _apply_migrations(
     conn = None
     try:
         conn = connection_factory(db_path)
+        ensure_schema_version_not_newer(get_schema_version(conn), supported_version=to_version)
         if schema_sql:
             bootstrap_missing_tables_from_schema(conn, schema_sql, logger=logger)
         with conn:
             ensure_schema_version(conn, logger=logger)
             current = get_schema_version(conn)
+            ensure_schema_version_not_newer(current, supported_version=to_version)
             if current >= to_version:
                 return
             _apply_version_range(conn, current=current, to_version=to_version, logger=logger)

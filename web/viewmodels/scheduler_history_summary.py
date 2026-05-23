@@ -13,6 +13,7 @@ from .scheduler_summary_display import build_summary_display_state
 _PARSE_USER_MESSAGES = {
     "json_decode_error": "当前版本的排产摘要读取失败，页面仅展示基础历史信息。",
     "invalid_structure": "当前版本的排产摘要结构异常，页面仅展示基础历史信息。",
+    "non_finite_number": "当前版本的排产摘要包含异常数字，页面仅展示基础历史信息。",
 }
 
 _STRATEGY_LABELS = {

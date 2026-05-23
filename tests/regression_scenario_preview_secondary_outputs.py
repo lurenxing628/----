@@ -144,11 +144,13 @@ def test_secondary_output_pages_keep_scenario_context(tmp_path: Path, monkeypatc
     scenario_query = f"version={VERSION}&plan_role=adopted&scenario_id={scenario_id}"
 
     week_html = client.get(f"/scheduler/week-plan?week_start=2026-05-04&{scenario_query}").get_data(as_text=True)
-    assert "当前周计划正在预览" in week_html
+    assert "当前周计划正在预览“二级页模拟”" in week_html
+    assert week_html.count("当前周计划正在预览") == 1
     assert f'name="scenario_id" value="{scenario_id}"' in week_html
     assert f"scenario_id={scenario_id}" in week_html
     assert f"/scheduler/resource-dispatch?version={VERSION}&amp;plan_role=adopted&amp;scenario_id={scenario_id}" in week_html
     assert f"/scheduler/gantt?view=machine&amp;version={VERSION}&amp;plan_role=adopted&amp;scenario_id={scenario_id}" in week_html
+    assert "这套方案只用于对比，不代表最终采用的排产结果" not in week_html
     assert "2026-05-06" in week_html
     assert "11:00" in week_html
 

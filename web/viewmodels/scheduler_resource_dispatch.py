@@ -3,6 +3,8 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any, Dict, Iterable, List, MutableMapping
 
+from core.models.resource_dispatch_public_labels import lock_status_public_label, source_public_label
+
 _PERIOD_PRESET_LABELS = {
     "week": "按周",
     "month": "按月",
@@ -20,6 +22,18 @@ _TEAM_AXIS_LABELS = {
     "machine": "设备轴",
 }
 
+_FILENAME_REPLACEMENTS = (
+    ("/", "-"),
+    ("\\", "-"),
+    (":", "-"),
+    ("*", ""),
+    ("?", ""),
+    ('"', ""),
+    ("<", ""),
+    (">", ""),
+    ("|", "-"),
+)
+
 
 def _text(value: Any) -> str:
     return str(value or "").strip()
@@ -27,9 +41,9 @@ def _text(value: Any) -> str:
 
 def _safe_filename_part(value: Any) -> str:
     text = _text(value)
-    for old, new in (("/", "-"), ("\\", "-"), (":", "-"), ("*", ""), ("?", ""), ('"', ""), ("<", ""), (">", ""), ("|", "-")):
+    for old, new in _FILENAME_REPLACEMENTS:
         text = text.replace(old, new)
-    return text.strip()
+    return "".join(ch for ch in text if ord(ch) >= 32 and ord(ch) != 127).strip()
 
 
 def _scenario_filename_label(filters: Dict[str, Any]) -> str:
@@ -145,6 +159,8 @@ def _decorate_detail_row(row: MutableMapping[str, Any]) -> None:
     row["scope_type_label"] = scope_type_label(scope_type)
     row["counterpart_type_label"] = "设备" if scope_type == "operator" else "人员"
     row["scope_label"] = f"{_text(row.get('scope_id'))} {_text(row.get('scope_name'))}".strip()
+    row["source_label"] = source_public_label(row.get("source"))
+    row["lock_status_label"] = lock_status_public_label(row.get("lock_status"))
     row["current_resource_label"] = _current_resource_label(row)
     row["counterpart_resource_label"] = _counterpart_resource_label(row)
     row["team_relation_label"] = _team_relation_label(row.get("current_team_id"), row.get("counterpart_team_id"))
@@ -263,19 +279,21 @@ def decorate_resource_dispatch_context(context: Dict[str, Any]) -> Dict[str, Any
 def build_resource_dispatch_filename(payload: Dict[str, Any]) -> str:
     filters = payload.get("filters") or {}
     filename = "资源排班"
-    scope_type_text = _text(filters.get("scope_type_label"))
+    scope_type_text = _safe_filename_part(filters.get("scope_type_label"))
     if scope_type_text:
         filename += f"_{scope_type_text}"
-    scope_id = _text(filters.get("scope_id"))
+    scope_id = _safe_filename_part(filters.get("scope_id"))
     if scope_id:
         filename += f"_{scope_id}"
     if _text(filters.get("scope_type")) == "team" and _text(filters.get("team_axis")):
-        team_axis_text = _text(filters.get("team_axis_label")) or team_axis_label(filters.get("team_axis"))
+        team_axis_text = _safe_filename_part(filters.get("team_axis_label")) or _safe_filename_part(
+            team_axis_label(filters.get("team_axis"))
+        )
         filename += f"_{team_axis_text}"
     if _text(filters.get("start_date")) and _text(filters.get("end_date")):
-        filename += f"_{_text(filters.get('start_date'))}_{_text(filters.get('end_date'))}"
+        filename += f"_{_safe_filename_part(filters.get('start_date'))}_{_safe_filename_part(filters.get('end_date'))}"
     if _text(filters.get("version")):
-        filename += f"_v{_text(filters.get('version'))}"
+        filename += f"_v{_safe_filename_part(filters.get('version'))}"
     if filters.get("is_scenario_preview"):
         filename += f"_{_scenario_filename_label(filters)}"
         return f"{filename}.xlsx"

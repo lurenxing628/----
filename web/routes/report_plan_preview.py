@@ -90,8 +90,13 @@ def page_date_range_or_version_span(
 ):
     start_text = (start_raw or "").strip()
     end_text = (end_raw or "").strip()
-    if start_text and end_text:
-        return start_text, end_text, "query", {"has_data": False}
+    if start_text or end_text:
+        return (
+            validate_ymd_date(start_text, field="开始日期"),
+            validate_ymd_date(end_text, field="结束日期"),
+            "query",
+            {"has_data": False},
+        )
 
     span = engine.version_date_range(int(version or 0), plan_role=plan_role, scenario_id=scenario_id)
     if span.get("has_data") and span.get("start_date") and span.get("end_date"):

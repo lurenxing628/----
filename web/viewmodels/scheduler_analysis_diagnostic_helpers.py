@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 SAMPLE_LIMIT = 5
@@ -97,11 +98,43 @@ def safe_list(value: Any) -> List[Any]:
     return []
 
 
+class NonFiniteDiagnosticNumber(ValueError):
+    """诊断摘要中的数字不是有限值。"""
+
+
+def _raise_non_finite_number(value: Any) -> None:
+    raise NonFiniteDiagnosticNumber(f"诊断摘要包含非有限数字，无法安全展示：{value!r}")
+
+
+def _ensure_finite_number(number: float, original: Any) -> None:
+    if not math.isfinite(number):
+        _raise_non_finite_number(original)
+
+
+def _reject_non_finite_text(value: str) -> None:
+    text = value.strip()
+    if not text:
+        return
+    if text.lstrip("+-").isdigit():
+        return
+    try:
+        number = float(text)
+    except ValueError:
+        return
+    _ensure_finite_number(number, value)
+
+
 def safe_int(value: Any, default: int = 0) -> int:
     if value is None:
         return int(default)
+    if isinstance(value, float):
+        _ensure_finite_number(value, value)
+    elif isinstance(value, str):
+        _reject_non_finite_text(value)
     try:
         return int(value)
+    except OverflowError as exc:
+        raise NonFiniteDiagnosticNumber(f"诊断摘要包含非有限整数，无法安全展示：{value!r}") from exc
     except (TypeError, ValueError):
         return int(default)
 
@@ -110,9 +143,13 @@ def safe_float(value: Any, default: float = 0.0) -> float:
     if value is None:
         return float(default)
     try:
-        return float(value)
+        number = float(value)
+    except OverflowError as exc:
+        raise NonFiniteDiagnosticNumber(f"诊断摘要包含非有限小数，无法安全展示：{value!r}") from exc
     except (TypeError, ValueError):
         return float(default)
+    _ensure_finite_number(number, value)
+    return number
 
 
 def graph_public(selected_summary: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -207,7 +244,11 @@ def format_minutes(minutes: int) -> str:
 
 
 def format_hours(hours: float) -> str:
-    value = float(hours)
+    try:
+        value = float(hours)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"诊断小时数必须是有限数字：{hours!r}") from exc
+    _ensure_finite_number(value, hours)
     if value == int(value):
         return f"{int(value)} 小时"
     return f"{round(value, 1)} 小时"
@@ -238,6 +279,7 @@ def summary_warning_count(selected_summary: Optional[Dict[str, Any]]) -> int:
 
 
 __all__ = [
+    "NonFiniteDiagnosticNumber",
     "SAMPLE_LIMIT",
     "build_item",
     "build_section",

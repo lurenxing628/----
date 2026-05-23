@@ -28,6 +28,9 @@ from .migration_state import (
     ensure_schema_version as _ensure_schema_version,
 )
 from .migration_state import (
+    ensure_schema_version_not_newer as _ensure_schema_version_not_newer,
+)
+from .migration_state import (
     get_schema_version as _get_schema_version,
 )
 from .migration_state import (
@@ -133,12 +136,14 @@ def ensure_schema(
             # 仅在库中不存在任何业务表时才执行 schema.sql 建表。
             # 旧 schema 的空表库不能走这里，否则 CREATE TABLE IF NOT EXISTS
             # 不会修正既有表结构，后续索引/新列依赖会直接失败。
+            _ensure_schema_version_not_newer(_get_schema_version(conn), supported_version=CURRENT_SCHEMA_VERSION)
             if _has_no_user_tables(conn):
                 conn.executescript(script)
 
             # 确保 SchemaVersion 表存在，并获取当前版本
             _ensure_schema_version(conn, logger=logger)
             current_version = _get_schema_version(conn)
+            _ensure_schema_version_not_newer(current_version, supported_version=CURRENT_SCHEMA_VERSION)
             conn.commit()
             if logger:
                 fallback_log(logger, "info", "数据库结构检查完成（已确保所有表存在）。")

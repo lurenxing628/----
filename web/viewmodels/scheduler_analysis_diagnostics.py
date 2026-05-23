@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from .scheduler_analysis_diagnostic_delay_impact import (
     build_delay_risk_section,
@@ -9,6 +9,12 @@ from .scheduler_analysis_diagnostic_delay_impact import (
 from .scheduler_analysis_diagnostic_health import (
     build_overall_health_section,
     build_resource_bottleneck_section,
+)
+from .scheduler_analysis_diagnostic_helpers import (
+    NonFiniteDiagnosticNumber,
+    build_item,
+    build_section,
+    status_label,
 )
 from .scheduler_analysis_diagnostic_helpers import (
     graph_diagnostics as _graph_diagnostics,
@@ -39,6 +45,55 @@ from .scheduler_analysis_diagnostic_helpers import (
 )
 
 
+def _non_finite_number_section(
+    *,
+    key: str,
+    title: str,
+    exc: NonFiniteDiagnosticNumber,
+) -> Dict[str, Any]:
+    return build_section(
+        key=key,
+        title=title,
+        status="error",
+        status_label=status_label("error"),
+        summary="当前版本排产摘要包含异常数字，本诊断块无法可靠计算。",
+        degraded=True,
+        degradation_events=[
+            {
+                "code": "diagnostic_non_finite_number",
+                "message": "诊断摘要包含非有限数字，已停止本诊断块计算。",
+            }
+        ],
+        items=[
+            build_item(
+                key="diagnostic_non_finite_number",
+                label="诊断数据异常",
+                value="无法安全展示",
+                level="danger",
+                message="检测到 NaN/Infinity 等非有限数字；已拒绝把它当作 0 或正常值展示。",
+                details=[str(exc)],
+            )
+        ],
+    )
+
+
+def _build_guarded_diagnostic_section(
+    *,
+    key: str,
+    title: str,
+    factory: Callable[[], Optional[Dict[str, Any]]],
+) -> Optional[Dict[str, Any]]:
+    try:
+        return factory()
+    except NonFiniteDiagnosticNumber as exc:
+        return _non_finite_number_section(key=key, title=title, exc=exc)
+
+
+def _append_section(sections: List[Dict[str, Any]], section: Optional[Dict[str, Any]]) -> None:
+    if section is not None:
+        sections.append(section)
+
+
 def build_diagnostic_sections(
     selected_summary: Optional[Dict[str, Any]],
     selected_ver: Optional[int],
@@ -51,14 +106,39 @@ def build_diagnostic_sections(
 
     graph_diagnostics = _graph_diagnostics(selected_summary)
     summary = _safe_dict(selected_summary)
-    sections: List[Dict[str, Any]] = [
-        build_overall_health_section(summary, graph_public),
-    ]
-    resource_section = build_resource_bottleneck_section(graph_public, graph_diagnostics)
-    if resource_section is not None:
-        sections.append(resource_section)
-    sections.append(build_delay_risk_section(summary, graph_public))
-    sections.append(build_impact_explanation_section(graph_public, graph_diagnostics))
+    sections: List[Dict[str, Any]] = []
+    _append_section(
+        sections,
+        _build_guarded_diagnostic_section(
+            key="schedule_health",
+            title="排产体检",
+            factory=lambda: build_overall_health_section(summary, graph_public),
+        ),
+    )
+    _append_section(
+        sections,
+        _build_guarded_diagnostic_section(
+            key="resource_bottleneck",
+            title="资源卡点",
+            factory=lambda: build_resource_bottleneck_section(graph_public, graph_diagnostics),
+        ),
+    )
+    _append_section(
+        sections,
+        _build_guarded_diagnostic_section(
+            key="delay_risk",
+            title="延期风险",
+            factory=lambda: build_delay_risk_section(summary, graph_public),
+        ),
+    )
+    _append_section(
+        sections,
+        _build_guarded_diagnostic_section(
+            key="impact_explanation",
+            title="影响解释",
+            factory=lambda: build_impact_explanation_section(graph_public, graph_diagnostics),
+        ),
+    )
     return sections
 
 

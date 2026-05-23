@@ -39,6 +39,12 @@ def _overall_health_status(
             "graph_level": "warning",
             "summary": "本版本记录了图分析不可用，诊断摘要只展示能确认的信息。",
         }
+    if graph_status != "available":
+        return {
+            "status": "unknown",
+            "graph_level": "unknown",
+            "summary": "本版本的图分析状态未知，诊断摘要只展示能确认的信息。",
+        }
     if has_cycle:
         return {
             "status": "danger",

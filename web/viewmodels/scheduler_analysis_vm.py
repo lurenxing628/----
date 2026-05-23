@@ -11,7 +11,7 @@ from .scheduler_analysis_labels import (
     objective_key_from_objective,
     objective_label_for,
 )
-from .scheduler_analysis_metrics import build_extra_cards, extract_metrics_from_summary, safe_float
+from .scheduler_analysis_metrics import build_extra_cards, build_metric_cards, extract_metrics_from_summary, safe_float
 from .scheduler_analysis_overview import build_analysis_labels
 from .scheduler_analysis_trends import (
     build_selected_details,
@@ -93,6 +93,7 @@ def build_analysis_context(
         comparison_metric_from_algo=_comparison_metric_from_algo,
     )
     extra_cards = build_extra_cards(selected_summary, selected_metrics, prev_metrics)
+    metric_cards = build_metric_cards(selected_metrics, prev_metrics)
     freeze_display = build_freeze_display(selected_summary)
     summary_degradation_messages = build_summary_degradation_messages(selected_summary)
     result_state = build_result_state(
@@ -158,6 +159,7 @@ def build_analysis_context(
         "trace_chart": trace_chart,
         "trend_rows": trend_rows,
         "trend_charts": trend_charts,
+        "metric_cards": metric_cards,
         "extra_cards": extra_cards,
         "freeze_display": freeze_display,
         "summary_degradation_messages": summary_degradation_messages,

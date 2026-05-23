@@ -38,8 +38,10 @@ def _require_active_sheet(wb: Any) -> Any:
 
 
 def _sanitize_export_cell(value: Any) -> Any:
-    if isinstance(value, str) and value and value[0] in ("=", "+", "-", "@"):
-        return "'" + value
+    if isinstance(value, str):
+        value = "".join(ch for ch in value if ord(ch) >= 32 or ch in "\t\n\r")
+        if value and value[0] in ("=", "+", "-", "@"):
+            return "'" + value
     return value
 
 

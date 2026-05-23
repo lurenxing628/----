@@ -96,7 +96,7 @@
       当前周计划正在预览“{{ current_plan_label }}”，正式计划还没有改变。
     </div>
   {% endif %}
-  {% if plan_resolution and plan_resolution.is_comparison %}
+  {% if plan_resolution and plan_resolution.is_comparison and not plan_resolution.is_scenario_preview %}
     <div class="flash-card flash-warning mt-2">
       当前正在查看“{{ plan_resolution.selected_label }}”对比方案，这套方案只用于对比，不代表最终采用的排产结果。
     </div>

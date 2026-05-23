@@ -9,6 +9,7 @@ from openpyxl.styles import Alignment, Font
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
+from core.models.resource_dispatch_public_labels import lock_status_public_label, source_public_label
 from core.services.common.excel_templates import _sanitize_export_cell
 
 
@@ -86,6 +87,14 @@ def _yes_no_label(value: Any) -> str:
     return "是" if value else "否"
 
 
+def _source_label(row: Dict[str, Any]) -> str:
+    return str(_first_present(row, "source_label") or source_public_label(row.get("source")))
+
+
+def _lock_status_label(row: Dict[str, Any]) -> str:
+    return str(_first_present(row, "lock_status_label") or lock_status_public_label(row.get("lock_status")))
+
+
 def _build_detail_row(row: Dict[str, Any]) -> List[Any]:
     seq = row.get("seq")
     return [
@@ -104,8 +113,8 @@ def _build_detail_row(row: Dict[str, Any]) -> List[Any]:
         _first_present(row, "current_team_name", "current_team_id"),
         _first_present(row, "counterpart_team_name", "counterpart_team_id"),
         _first_present(row, "team_relation_label"),
-        _first_present(row, "source"),
-        _first_present(row, "lock_status"),
+        _source_label(row),
+        _lock_status_label(row),
         _yes_no_label(row.get("is_cross_day")),
         _yes_no_label(row.get("is_overdue")),
     ]
@@ -198,7 +207,7 @@ def _summary_pairs(payload: Dict[str, Any]) -> List[List[Any]]:
         ["数据不完整", _yes_no_label(summary.get("degraded"))],
         ["空结果说明", _yes_no_label(bool(summary.get("empty_reason")))],
         ["空结果原因", _empty_reason_text(summary.get("empty_reason"))],
-        ["坏时间过滤数量", int(counters.get("bad_time_row_skipped") or 0)],
+        ["开始或结束时间写法不对，已过滤的记录数", int(counters.get("bad_time_row_skipped") or 0)],
         ["处理提示", _degradation_message_text(summary)],
         ["超期标记说明", overdue_markers_message],
     ]

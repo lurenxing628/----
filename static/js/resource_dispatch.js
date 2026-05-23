@@ -43,11 +43,18 @@
     return '<span class="badge badge-' + escapeHtml(variant || "unchanged") + '">' + escapeHtml(label) + '</span>';
   }
 
-  function sourceLabel(value) {
+  function sourceLabel(value, publicLabel) {
+    const label = trim(publicLabel); if (label) return label;
     const v = trim(value);
-    if (v === "internal") return "自制";
-    if (v === "external") return "外协";
-    return v || "-";
+    if (v === "internal" || v === "external") return v === "internal" ? "自制" : "外协";
+    return v ? "来源未识别" : "来源未维护";
+  }
+
+  function lockStatusLabel(value, publicLabel) {
+    const label = trim(publicLabel); if (label) return label;
+    const v = trim(value);
+    if (v === "locked" || v === "unlocked" || !v) return v === "locked" ? "已锁定" : "未锁定";
+    return "锁定状态未识别";
   }
 
   function relationBadge(label) {
@@ -72,7 +79,9 @@
 
   function renderFlags(row) {
     const items = [];
-    if (trim(row && row.lock_status) === "locked") items.push(badge("已锁定", "update"));
+    const lockLabel = lockStatusLabel(row && row.lock_status, row && row.lock_status_label);
+    if (lockLabel === "已锁定") items.push(badge(lockLabel, "update"));
+    else if (lockLabel === "锁定状态未识别") items.push(badge(lockLabel, "skip"));
     if (row && row.is_overdue) items.push(badge("超期", "error"));
     if (row && row.is_cross_day) items.push(badge("跨天", "skip"));
     return items.length ? items.join(" ") : '<span class="muted">-</span>';
@@ -180,7 +189,7 @@
           fullTextCell(row.current_resource_label || "", "aps-resource-cell") +
           fullTextCell(row.counterpart_resource_label || "", "aps-resource-cell") +
           '<td>' + relationBadge(row.team_relation_label) + '</td>' +
-          '<td>' + escapeHtml(sourceLabel(row.source)) + '</td>' +
+          '<td>' + escapeHtml(sourceLabel(row.source, row.source_label)) + '</td>' +
           '<td>' + renderFlags(row) + '</td>' +
         '</tr>'
       );

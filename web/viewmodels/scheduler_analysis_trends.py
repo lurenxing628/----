@@ -10,9 +10,12 @@ def safe_float(v: Any, default: float = 0.0) -> float:
     try:
         if v is None or (isinstance(v, str) and v.strip() == ""):
             return float(default)
-        return float(v)
+        number = float(v)
     except (TypeError, ValueError, OverflowError):
         return float(default)
+    if not math.isfinite(number):
+        return float(default)
+    return number
 
 
 def _metric_float_state(v: Any) -> Tuple[Optional[float], bool]:
@@ -28,12 +31,22 @@ def _metric_float_state(v: Any) -> Tuple[Optional[float], bool]:
 
 
 def _int_state(v: Any) -> Tuple[Optional[int], bool]:
-    if v is None or (isinstance(v, str) and v.strip() == ""):
-        return None, False
-    try:
-        return int(v), False
-    except (TypeError, ValueError, OverflowError):
+    number, failed = _metric_float_state(v)
+    if failed or number is None:
+        return None, failed
+    if not float(number).is_integer():
         return None, True
+    return int(number), False
+
+
+def _score_value(v: Any) -> float:
+    try:
+        number = float(v)
+    except (TypeError, ValueError, OverflowError):
+        return float("inf")
+    if not math.isfinite(number):
+        return float("inf")
+    return number
 
 
 def safe_int(v: Any, default: int = 0) -> int:
@@ -88,18 +101,10 @@ def build_svg_polyline(values: List[Tuple[int, float]], *, width: int = 520, hei
 def score_key(score: Any) -> Tuple[float, ...]:
     if not isinstance(score, list) or not score:
         return (float("inf"),)
-    out: List[float] = []
-    for x in score:
-        try:
-            out.append(float(x))
-        except (TypeError, ValueError, OverflowError):
-            out.append(float("inf"))
-    return tuple(out)
+    return tuple(_score_value(x) for x in score)
 
 
 def safe_load_json(value: Any) -> Dict[str, Any]:
-    if isinstance(value, dict):
-        return dict(value)
     result = parse_result_summary_payload(value)
     return dict(result.payload) if isinstance(result.payload, dict) else {}
 

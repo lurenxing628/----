@@ -30,6 +30,26 @@ def build_contract_error(
     return MigrationContractError(" ".join(parts))
 
 
+def build_future_schema_version_error(db_version: int, *, supported_version: int = CURRENT_SCHEMA_VERSION) -> MigrationContractError:
+    current = int(db_version)
+    supported = int(supported_version)
+    return MigrationContractError(
+        " ".join(
+            [
+                f"检测到数据库 SchemaVersion={current} 高于当前程序支持版本 {supported}。",
+                "为避免旧程序破坏高版本数据库，已阻断启动/迁移。",
+                "不支持数据库降级迁移。",
+                "请升级程序或恢复兼容版本备份后再重试。",
+            ]
+        )
+    )
+
+
+def ensure_schema_version_not_newer(db_version: int, *, supported_version: int = CURRENT_SCHEMA_VERSION) -> None:
+    if int(db_version) > int(supported_version):
+        raise build_future_schema_version_error(int(db_version), supported_version=int(supported_version))
+
+
 def ensure_schema_version(conn: sqlite3.Connection, logger=None) -> None:
     """
     确保 SchemaVersion 表存在，并写入/修正版本号。

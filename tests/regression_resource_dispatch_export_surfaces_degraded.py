@@ -77,7 +77,7 @@ def test_resource_dispatch_export_surfaces_degraded() -> None:
         buffer = build_resource_dispatch_workbook(payload)
         wb = openpyxl.load_workbook(io.BytesIO(buffer.getvalue()))
         summary = _summary_map(wb)
-        assert summary.get("坏时间过滤数量") == "1"
+        assert summary.get("开始或结束时间写法不对，已过滤的记录数") == "1"
         assert summary.get("空结果说明") == "是"
         assert "超期" in str(summary.get("超期标记说明") or "")
 

@@ -163,7 +163,7 @@
     {% if selected_version_row.item %}
       <div class="aps-summary-grid aps-version-summary">
         {{ ui.summary_item('版本', 'v' ~ selected_version_row.item.version) }}
-        {{ ui.summary_item('时间', selected_version_row.item.schedule_time) }}
+        {{ ui.summary_item('时间', selected_version_row.item.schedule_time_display or selected_version_row.item.schedule_time) }}
         {{ ui.summary_item('排产方式', selected_version_row.item.strategy_label or strategy_zh.get(selected_version_row.item.strategy, '未知排产方式')) }}
         {{ ui.summary_item('结果', selected_version_row.item.result_status_label or status_zh.get(selected_version_row.item.result_status, '结果状态未知')) }}
         {{ ui.summary_item('查看方案', filters.scenario_name or filters.effective_plan_role_label or filters.plan_role_label) }}
