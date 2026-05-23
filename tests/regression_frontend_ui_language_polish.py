@@ -82,6 +82,7 @@ def test_scheduler_run_copy_avoids_vague_vocabulary_for_operators() -> None:
         "web/viewmodels/scheduler_degradation_presenter.py",
         "core/services/scheduler/summary/schedule_summary_degradation.py",
         "static/js/gantt_contract.js",
+        "static/js/gantt_help.js",
         "static/docs/scheduler_manual.md",
         "web_new_test/static/docs/scheduler_manual.md",
     )
@@ -315,6 +316,10 @@ def test_manuals_keep_backend_supported_english_aliases_but_mark_them_as_compati
     assert "归属可填：自制 / 外协。新文件请只填这两个中文选项" in process_manuals
     assert "兼容英文标准值" not in manual_sources
     assert "internal` / `external" not in manual_sources
+    assert "`internal`" not in full_manual
+    assert "`external`" not in full_manual
+    assert "`locked`" not in full_manual
+    assert "`unlocked`" not in full_manual
     assert "兼容英文标准值 `internal`/`external`" not in manual_sources
 
     assert normalize_operator_status("active") == OperatorStatus.ACTIVE.value
@@ -621,18 +626,21 @@ def test_frontend_scripts_keep_internal_details_out_of_user_messages() -> None:
     assert ">${fetchTimeoutMs}ms" not in gantt_boot
 
     gantt_render = _read("static/js/gantt_render.js")
-    assert "甘特图装饰刷新失败" in gantt_render
-    assert "Gantt decorate failed" not in gantt_render
-    assert "加工方式：" in gantt_render
-    assert "前面影响它的工序编号：" in gantt_render
-    assert "为什么影响总工期：" in gantt_render
-    assert "中间等待：" in gantt_render
-    assert "间隔（分钟）" not in gantt_render
-    assert "间隔(分)" not in gantt_render
-    assert "关键链前驱：" not in gantt_render
-    assert "关键链依据：" not in gantt_render
+    gantt_decorations = _read("static/js/gantt_decorations.js")
+    gantt_popup = _read("static/js/gantt_popup.js")
+    assert "甘特图装饰刷新失败" in gantt_decorations
+    assert "Gantt decorate failed" not in gantt_render + gantt_decorations
+    assert "加工方式：" in gantt_popup
+    assert "前面影响它的工序编号：" in gantt_popup
+    assert "为什么影响总工期：" in gantt_popup
+    assert "中间等待：" in gantt_popup
+    assert "间隔（分钟）" not in gantt_render + gantt_popup
+    assert "间隔(分)" not in gantt_render + gantt_popup
+    assert "关键链前驱：" not in gantt_render + gantt_popup
+    assert "关键链依据：" not in gantt_render + gantt_popup
 
     gantt_contract = _read("static/js/gantt_contract.js")
+    gantt_help = _read("static/js/gantt_help.js")
     for phrase in (
         "查看模式",
         "时间粒度：月/周/日",
@@ -640,8 +648,9 @@ def test_frontend_scripts_keep_internal_details_out_of_user_messages() -> None:
         "范围保护",
         "开始日从 00:00 开始",
     ):
-        assert phrase in gantt_contract
-    assert "透明点击区" not in gantt_contract
+        assert phrase in gantt_help
+    assert "function getHelpItems" not in gantt_contract
+    assert "透明点击区" not in gantt_help
 
     manual = _read("static/docs/scheduler_manual.md")
     manual_mirror = _read("web_new_test/static/docs/scheduler_manual.md")
@@ -653,19 +662,27 @@ def test_frontend_scripts_keep_internal_details_out_of_user_messages() -> None:
         "1分钟",
         "范围太大",
         "保留方便点击的区域",
+        "后续页面入口接好并放行后再开放",
     ):
         assert phrase in manual
         assert phrase in manual_mirror
+    assert "后续草稿和校验链路完成后再开放" not in manual
+    assert "后续草稿和校验链路完成后再开放" not in manual_mirror
     for phrase in (
         "查看模式",
         "时间粒度",
         "范围太大",
         "短工序",
+        "不能放进文件名的符号",
     ):
         assert phrase in manual_viewmodel
+    assert "不能放进下载文件名的符号" in manual
+    assert "不能放进下载文件名的符号" in manual_mirror
 
     resource_dispatch = _read("static/js/resource_dispatch.js")
     assert "有一条排班提示没有完整说明" in resource_dispatch
+    for phrase in ("自制", "外协", "来源未识别", "已锁定", "未锁定", "锁定状态未识别"):
+        assert phrase in resource_dispatch
     assert "parts.push(escapeHtml(code));" not in resource_dispatch
 
 

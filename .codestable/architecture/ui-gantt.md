@@ -3,7 +3,7 @@ doc_type: architecture
 slug: ui-gantt
 status: current
 created: 2026-05-22
-last_reviewed: 2026-05-22
+last_reviewed: 2026-05-23
 tags: [scheduler, gantt, frontend, readonly, vendor]
 ---
 
@@ -18,17 +18,24 @@ tags: [scheduler, gantt, frontend, readonly, vendor]
 
 页面把 `data-gantt-mode="view"` 和 `data-zoom-level` 下发给前端。第一版只读甘特图不提供保存按钮，也不调用任何正式写库接口。
 
-页面顶部现在有 `ganttSimulationEntryShell`。它只显示灰色禁用按钮 `模拟调整（后续开放）`，用于告诉用户后续入口位置；当前不会切换 `simulate`，不会发保存请求，也不会产生草稿、模拟方案或正式新版本。
+页面顶部现在有 `ganttSimulationEntryShell`。它只显示灰色禁用按钮 `模拟调整（后续开放）`；当前点击不了，不会切换 `simulate`，不会发保存请求，也不会产生草稿、模拟方案或正式新版本。
 
 ## 2. 前端职责拆分
 
 - `static/js/gantt_zoom.js`：只放时间粒度规格、URL 稳定值、范围保护和估算节点数。
 - `static/js/gantt_adapter.js`：把 APS 的查看/模拟模式、缩放等级和回调翻译成 Frappe Gantt options，并负责创建 Gantt 实例。
 - `static/js/gantt_ui.js`：读取页面控件、读取 URL、把当前状态写回 URL，并同步加载表单和视图切换链接。
-- `static/js/gantt_render.js`：过滤任务、做范围保护、通过适配层创建 Frappe Gantt、挂接点击弹窗和视觉标记。
-- `static/js/gantt_contract.js`：集中维护页面帮助、状态文案和任务弹窗里对用户可见的说明。
+- `static/js/gantt_contract.js`：集中维护甘特图数据合同、关键链状态、公开标签、任务数据转换和降级提示。
+- `static/js/gantt_help.js`：生成页面帮助列表，只负责用户能直接看到的查看说明。
+- `static/js/gantt_popup.js`：生成任务弹窗 HTML，只拼接已经转义后的公开字段。
+- `static/js/gantt_legend.js`：生成图例、关键工序状态、配色说明和假期背景说明。
+- `static/js/gantt_holidays.js`：管理后端日历或周末弱兜底的假期/停工背景标注，并保证周、月视图下单日背景只占一天宽度。
+- `static/js/gantt_decorations.js`：管理条形圆角、外协虚线、超期红框、关键工序外框、聚焦高亮和装饰缓存。
+- `static/js/gantt_render.js`：过滤任务、做范围保护、通过适配层创建 Frappe Gantt，并串联弹窗、假期、图例和视觉装饰模块。
 - `static/js/frappe-gantt.min.js`：本地 vendor 文件，只保留必须落在 Frappe 内部的补丁。
 - `static/css/aps_gantt_simulation.css`：只放模拟调整入口壳样式，避免继续扩大主甘特图样式文件职责。
+
+脚本加载顺序必须保持为 `gantt.js`、`gantt_zoom.js`、`gantt_adapter.js`、`gantt_color.js`、`gantt_outline.js`、`gantt_contract.js`、`gantt_help.js`、`gantt_popup_fit.js`、`gantt_popup.js`、`gantt_legend.js`、`gantt_holidays.js`、`gantt_decorations.js`、`gantt_render.js`、`gantt_ui.js`、`gantt_boot.js`。`gantt_boot.js` 负责请求数据和阻塞式错误展示：HTTP 错误会优先显示后端 JSON 里的业务错误，成功响应必须满足 `success=true` 且 `data.tasks` 是数组；渲染前准备、渲染或适配层异常会显示到页面错误区，不再伪装成空数据，也不会把内部英文错误直接展示给用户。
 
 ## 3. 时间和缩放合同
 
@@ -50,11 +57,11 @@ tags: [scheduler, gantt, frontend, readonly, vendor]
 
 `simulate` 模式目前只在 `gantt_adapter.js` 中保留事件出口，不连接保存接口，不创建草稿，也不写正式排产数据。
 
-真实拖动调整入口尚未开放。当前页面上的 `ganttSimulationEntry` 按钮是 disabled 占位按钮。后端已经有保存模拟方案的接口，但模板仍不注入保存按钮，也不打开拖拽编辑；用户必须通过后续模拟调整入口创建 Draft 后，才能保存 Scenario。
+真实拖动调整入口尚未开放。当前页面上的 `ganttSimulationEntry` 按钮是 disabled 占位按钮。后端已经有保存模拟方案的接口，但模板仍不注入保存按钮，也不打开拖拽编辑；当前页面不能创建 Draft，也不能保存 Scenario。
 
 ## 5. Draft 草稿模型与校验试算
 
-后端已经有 `ScheduleAdjustmentDraft` 和 `ScheduleAdjustmentChange` 两张表，用来记录后续模拟调整里“用户想怎么改”。它们不属于正式排产结果：
+后端已经有 `ScheduleAdjustmentDraft` 和 `ScheduleAdjustmentChange` 两张表，用来记录模拟调整草稿里“用户想怎么改”。它们不属于正式排产结果：
 
 - 不写 `Schedule`。
 - 不写 `ScheduleHistory`。
@@ -65,7 +72,7 @@ tags: [scheduler, gantt, frontend, readonly, vendor]
 
 后端现在已有 `GanttAdjustmentValidationService` 和 `POST /scheduler/gantt/adjustments/validate-simulate`。这条链路只读取 Draft 和基准排产，把调整项叠到内存里的临时排程上，然后返回 `valid` / `warning` / `blocked` 以及中文原因。它会检查设备重叠、人员重叠、前后工序倒挂、工作日历、停机、交期和物料齐套，但不会写 `Schedule`、`ScheduleHistory`、`ScheduleVersionSeq`、`ScheduleCandidate*`，也不会调用正式排产或发布流程。
 
-当前页面模板仍没有注入 `validate-simulate` 地址，也没有 `data-adjustment-url`。因此这条接口只是后续模拟调整入口的后端合同，还不是用户可点击功能。
+当前页面模板仍没有注入 `validate-simulate` 地址，也没有 `data-adjustment-url`。因此这条接口只是后端能力，页面上没有按钮，用户看不到也点不到。
 
 ## 6. Scenario 模拟方案保存与只读预览
 
@@ -110,8 +117,8 @@ tags: [scheduler, gantt, frontend, readonly, vendor]
 - `OperationLogs` 写入属于发布事务；日志失败时整次发布回滚。
 - 不原地修改旧 `Schedule` 版本，不复用版本号，不写 `ScheduleCandidate*`。
 
-当前页面仍不开放可点击的正式采用按钮；接口作为后续编辑界面的后端合同。正式采用成功后调用方应跳转到 `/scheduler/gantt?version=<new_version>&plan_role=adopted`，不要继续携带 `scenario_id`。
+当前页面仍不开放可点击的正式采用按钮；接口只作为后端能力存在，页面没有正式采用按钮。正式采用成功后调用方应跳转到 `/scheduler/gantt?version=<new_version>&plan_role=adopted`，不要继续携带 `scenario_id`。
 
 ## 8. vendor 补丁治理
 
-`static/js/frappe-gantt.min.js` 当前本地补丁说明见 `.codestable/vendor/frappe-gantt-local-patches.md`。后续只有 Frappe 内部时间尺、任务条几何、命中区或事件绑定确实需要改时，才允许继续改 vendor 文件；业务规则优先放到 APS 自己的 `gantt_zoom.js` / `gantt_adapter.js` / `gantt_ui.js` / `gantt_render.js`。
+`static/js/frappe-gantt.min.js` 当前本地补丁说明见 `.codestable/vendor/frappe-gantt-local-patches.md`。vendor 文件当前维护规则是：只有 Frappe 内部时间尺、任务条几何、命中区或事件绑定确实需要改时，才允许继续改 vendor 文件；业务规则优先放到 APS 自己的 `gantt_zoom.js` / `gantt_adapter.js` / `gantt_ui.js` / `gantt_render.js`。

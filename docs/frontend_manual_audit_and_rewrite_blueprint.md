@@ -142,7 +142,7 @@
 | 排产调度 | 执行/模拟、齐套检查、版本结果已有核心说明 | 黄色提醒按类型说明后续去哪看 | 不统一写死“更多提醒都去历史或分析” | `web/viewmodels/page_manuals_scheduler.py` | 按提醒来源补证据后再写 |
 | 高级设置 | 默认启用齐套检查、自动分配等已有说明基础 | 字段用更白话解释“日常别乱改” | 不把隐藏字段写成可编辑开关 | `core/services/scheduler/config/config_field_spec.py`、`templates/scheduler/config.html` | 只讲页面真实展示的中文项 |
 | 甘特图 | 版本、视角、筛选、关键链、空白图排查已覆盖 | 继续按真实控件验收遗漏 | 不再写成控件没有说明 | `web/viewmodels/page_manuals_scheduler_outputs.py`、`static/docs/scheduler_manual.md` | 小补遗漏，不从零重写 |
-| 资源排班 | 人员/设备/班组视角、62 天限制、三种视图、只导出不导入已覆盖 | 空态和导出灰掉原因可继续细化 | 不再写成三种视角没讲清 | `templates/scheduler/resource_dispatch.html`、`static/docs/scheduler_manual.md` | 补个别操作说明 |
+| 资源排班 | 人员/设备/班组视角、62 天限制、三种视图、只导出不导入、公开中文来源/锁定标签和导出文件名清理已覆盖 | 空态和导出灰掉原因可继续细化 | 不再写成三种视角没讲清，也不把 internal/external/locked/unlocked 当成用户说明 | `templates/scheduler/resource_dispatch.html`、`static/js/resource_dispatch.js`、`core/services/scheduler/resource_dispatch_excel.py`、`static/docs/scheduler_manual.md` | 维护现有口径，新增导出字段时同步页面和 Excel |
 | 排产优化分析 | 版本、方式、状态、指标和趋势已有说明 | 冻结窗口展示含义、趋势不完整时怎么理解 | 不写成 missing version 会假装最新 | `templates/scheduler/analysis.html`、`web/viewmodels/page_manuals_scheduler_outputs.py` | 补字段级解释 |
 | 周计划 | 版本、日期、导出、预览前 50 行已覆盖 | 无历史、版本不存在、区间无任务、坏时间过滤区别 | 不写成只导出前 50 行 | `templates/scheduler/week_plan.html`、`static/docs/scheduler_manual.md` | 加集中空态说明和测试 |
 | 报表中心 | 超期、资源负荷、停机影响和首页指标来源已有页面说明 | 后续如给报表导出补操作日志，要同步说明 | 不再写成 latest 和日期范围不清，也不写成所有导出都会留痕 | `web/routes/reports.py`、`web/viewmodels/page_manuals_reports.py` | 维护现有口径，按新行为小修 |
