@@ -50,6 +50,7 @@ def _empty_result() -> Dict[str, Any]:
         "edge_count": 0,
         "available": True,
         "reason": "",
+        "reason_code": "",
     }
 
 
@@ -61,6 +62,7 @@ def _unavailable_result(reason: str) -> Dict[str, Any]:
     result = _empty_result()
     result["available"] = False
     result["reason"] = str(reason or "").strip() or "unknown"
+    result["reason_code"] = result["reason"]
     return result
 
 

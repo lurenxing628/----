@@ -80,6 +80,27 @@ def test_gantt_payload_surfaces_critical_chain_unavailable(monkeypatch) -> None:
         conn.close()
 
 
+def test_gantt_public_contract_preserves_rows_exception_reason_code() -> None:
+    from core.services.scheduler.gantt_contract import build_gantt_contract
+
+    data = build_gantt_contract(
+        contract_version=1,
+        view="machine",
+        version=1,
+        week_start="2026-03-02",
+        week_end="2026-03-08",
+        tasks=[],
+        calendar_days=[],
+        critical_chain={"available": False, "reason": "rows_exception", "ids": ["RAW"], "edges": [{"from": "A", "to": "B"}]},
+    )
+    critical_chain = data["critical_chain"]
+
+    assert critical_chain.get("reason_code") == "rows_exception"
+    assert critical_chain.get("reason") == "关键链计算异常"
+    assert critical_chain.get("ids") == []
+    assert critical_chain.get("edges") == []
+
+
 def test_critical_chain_unavailable_result_is_not_cached(monkeypatch) -> None:
     svc = GanttService(_DummyConn(str(REPO_ROOT / "db" / "aps.db")))
     provider = GanttCriticalChainProvider(conn=svc.conn, schedule_repo=svc.schedule_repo)
@@ -96,6 +117,7 @@ def test_critical_chain_unavailable_result_is_not_cached(monkeypatch) -> None:
     first = provider.get_critical_chain(77)
     assert first.get("available") is False
     assert first.get("reason") == "repo_exception"
+    assert first.get("reason_code") == "repo_exception"
     assert first.get("cache_hit") is False
     assert len(GanttCriticalChainProvider._CRITICAL_CHAIN_CACHE) == 0
 
@@ -138,6 +160,7 @@ def test_adopted_critical_chain_calc_exception_is_visible(monkeypatch) -> None:
 
     assert result.get("available") is False
     assert result.get("reason") == "calc_exception"
+    assert result.get("reason_code") == "calc_exception"
     assert result.get("ids") == []
     assert "critical calc boom" not in str(result)
 

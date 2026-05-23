@@ -264,14 +264,13 @@ def test_gantt_candidate_critical_chain_unavailable_uses_public_contract(tmp_pat
     assert resp.status_code == 200
     assert payload.get("success") is True
     assert critical_chain.get("available") is False
-    assert critical_chain.get("reason_code") == "unknown"
-    assert critical_chain.get("reason") == "关键链暂不可用"
+    assert critical_chain.get("reason_code") == "rows_exception"
+    assert critical_chain.get("reason") == "关键链计算异常"
     assert critical_chain.get("ids") == []
     assert critical_chain.get("edges") == []
     assert critical_chain.get("edge_count") == 0
     assert critical_chain.get("edge_type_stats") == {}
     assert critical_chain.get("cache_hit") is False
-    assert "rows_exception" not in str(data)
     assert "INTERNAL-CANDIDATE-ID" not in str(data)
     assert data.get("degraded") is True
     events = list(data.get("degradation_events") or ())
@@ -299,8 +298,8 @@ def test_gantt_candidate_rows_load_failure_uses_public_critical_chain_contract(t
     assert resp.status_code == 200
     assert payload.get("success") is True
     assert critical_chain.get("available") is False
-    assert critical_chain.get("reason_code") == "repo_exception"
-    assert critical_chain.get("reason") == "关键链计算异常"
+    assert critical_chain.get("reason_code") == "rows_load_exception"
+    assert critical_chain.get("reason") == "关键链数据读取异常"
     assert critical_chain.get("ids") == []
     assert critical_chain.get("edges") == []
     assert critical_chain.get("edge_count") == 0

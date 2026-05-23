@@ -150,6 +150,16 @@
     return ZOOM_SPECS[normalizeZoomLevel(value)] || ZOOM_SPECS[DEFAULT_ZOOM];
   }
 
+  function currentZoomLevel(ui) {
+    var source = ui || {};
+    var rawZoom = norm(source.zoomLevel || "");
+    var rawViewMode = norm(source.viewMode || "");
+    if (rawViewMode && rawViewMode !== "Day" && (!rawZoom || rawZoom === DEFAULT_ZOOM)) {
+      return rawViewMode;
+    }
+    return rawZoom || rawViewMode || DEFAULT_ZOOM;
+  }
+
   function getGanttScale(gantt) {
     var options = gantt && gantt.options ? gantt.options : {};
     var stepMinutes = Number(options.step_minutes || 0);
@@ -258,6 +268,7 @@
     SOFT_NODE_LIMIT: SOFT_NODE_LIMIT,
     HARD_NODE_LIMIT: HARD_NODE_LIMIT,
     normalizeZoomLevel: normalizeZoomLevel,
+    currentZoomLevel: currentZoomLevel,
     isKnownZoomLevel: isKnownZoomLevel,
     getZoomSpec: getZoomSpec,
     getGanttScale: getGanttScale,

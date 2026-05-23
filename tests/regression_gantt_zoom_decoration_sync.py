@@ -34,6 +34,11 @@ loadScript({helpers._gantt_adapter_js()});
 loadScript({helpers._gantt_color_js()});
 loadScript({helpers._outline_js()});
 loadScript({helpers._gantt_contract_js()});
+loadScript({helpers._gantt_help_js()});
+loadScript({helpers._gantt_popup_js()});
+loadScript({helpers._gantt_legend_js()});
+loadScript({helpers._gantt_holidays_js()});
+loadScript({helpers._gantt_decorations_js()});
 loadScript({helpers._gantt_render_js()});
 
 const ns = window.__APS_GANTT__;
@@ -153,8 +158,94 @@ process.stdout.write(JSON.stringify({{ out }}));
         assert item["external"] is True
 
 
+
+
+def test_week_month_zoom_holiday_width_is_one_day_not_whole_column() -> None:
+    helpers = _load_helpers()
+    node_code = f"""
+{helpers.DOM_SHIM_JS}
+createHost("gantt");
+createHost("ganttEmpty");
+createHost("ganttError");
+createHost("ganttLegend");
+createHost("ganttZoomWarning");
+
+loadScript({helpers._vendor_js()});
+loadScript({helpers._gantt_js()});
+loadScript({helpers._gantt_zoom_js()});
+loadScript({helpers._gantt_adapter_js()});
+loadScript({helpers._gantt_color_js()});
+loadScript({helpers._outline_js()});
+loadScript({helpers._gantt_contract_js()});
+loadScript({helpers._gantt_help_js()});
+loadScript({helpers._gantt_popup_js()});
+loadScript({helpers._gantt_legend_js()});
+loadScript({helpers._gantt_holidays_js()});
+loadScript({helpers._gantt_decorations_js()});
+loadScript({helpers._gantt_render_js()});
+
+const ns = window.__APS_GANTT__;
+const state = ns.state;
+const anchor = "2026-06-01";
+const out = [];
+
+for (const level of ["week", "month"]) {{
+  const spec = ns.zoom.getZoomSpec(level);
+  state.cfg = {{
+    view: "machine",
+    startDate: anchor,
+    endDate: anchor,
+    weekStart: anchor,
+  }};
+  state.allTasks = [{{
+    id: "T10",
+    name: "Holiday width task",
+    start: anchor + " 08:00:00",
+    end: anchor + " 10:00:00",
+    progress: 0,
+    dependencies: "",
+    meta: {{ batch_id: "B001", source: "internal" }},
+  }}];
+  state.critical = {{ ids: [], edges: [], available: true }};
+  state.ccIdSet = new Set();
+  state.ccPrevByTo = new Map();
+  state.ccEdgeMetaByTo = new Map();
+  state.calendarDays = [{{ date: anchor, day_type: "holiday", shift_hours: 0, is_holiday: true, is_nonworking: true }}];
+  state.ui.zoomLevel = level;
+  state.ui.viewMode = spec.frappeViewMode;
+  state.ui.colorMode = "batch";
+  state.ui.depsMode = "none";
+  state.ui.highlightCC = true;
+  state.ui.onlyOverdue = false;
+  state.ui.onlyExternal = false;
+  state.ui.filterBatch = "";
+  state.ui.filterResource = "";
+
+  ns.render();
+
+  const holiday = document.querySelector(".aps-holiday-rect");
+  out.push({{
+    level,
+    holidayX: Number(holiday.getAttribute("x")),
+    holidayWidth: Number(holiday.getAttribute("width")),
+    expectedDayWidth: 1440 / spec.stepMinutes * spec.columnWidthPx,
+    columnWidth: spec.columnWidthPx,
+  }});
+}}
+
+process.stdout.write(JSON.stringify({{ out }}));
+"""
+    result = helpers._run_node_json(node_code)
+
+    assert [item["level"] for item in result["out"]] == ["week", "month"]
+    for item in result["out"]:
+        assert abs(item["holidayWidth"] - item["expectedDayWidth"]) < 0.001, item
+        assert item["holidayWidth"] < item["columnWidth"], item
+
+
 def main() -> None:
     test_fine_zoom_keeps_holiday_today_arrow_and_critical_outline_aligned_to_real_bar()
+    test_week_month_zoom_holiday_width_is_one_day_not_whole_column()
     print("OK")
 
 

@@ -24,11 +24,27 @@
   var outline = ns.outline;
   var contract = ns.contract;
 
+  function _showEarlyError(message) {
+    var msg = String(message || "甘特图页面脚本加载不完整，请刷新页面后重试。");
+    var errEl = document.getElementById("ganttError");
+    var emptyEl = document.getElementById("ganttEmpty");
+    var host = document.getElementById("gantt");
+    if (errEl) {
+      errEl.textContent = msg;
+      if (errEl.classList) errEl.classList.remove("is-hidden");
+      if (errEl.style) errEl.style.display = "block";
+    }
+    if (emptyEl) {
+      if (emptyEl.classList) emptyEl.classList.add("is-hidden");
+      if (emptyEl.style) emptyEl.style.display = "none";
+    }
+    if (host) host.innerHTML = "";
+  }
+
   function _reportMissingDeps(missing) {
     var detail = String((missing || []).join(", "));
-    var msg = detail
-      ? "甘特图页面脚本加载不完整（缺少 " + detail + "），请刷新页面后重试。"
-      : "甘特图页面脚本加载不完整，请刷新页面后重试。";
+    var msg = "甘特图页面脚本加载不完整，请刷新页面后重试。";
+    _showEarlyError(msg);
     if (typeof reportClientError === "function") {
       reportClientError(msg, detail ? new Error(detail) : undefined);
       return;
@@ -180,6 +196,116 @@
     });
   }
 
+  const DATA_FORMAT_ERROR = "甘特图数据格式不对，请刷新后重试或联系维护人员。";
+
+  function _isObject(value) {
+    return !!value && typeof value === "object" && !Array.isArray(value);
+  }
+
+  function _payloadErrorMessage(payload, fallback) {
+    if (_isObject(payload) && _isObject(payload.error)) {
+      const message = str(payload.error.message || "");
+      if (message) return message;
+    }
+    return fallback;
+  }
+
+  async function _readJsonErrorBody(resp) {
+    if (!resp || typeof resp.json !== "function") return null;
+    try {
+      return await resp.json();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function _validatePayload(payload) {
+    if (!_isObject(payload)) {
+      throw new Error(DATA_FORMAT_ERROR);
+    }
+    if (payload.success !== true) {
+      throw new Error(_payloadErrorMessage(payload, "甘特图数据获取失败。"));
+    }
+    if (!_isObject(payload.data) || !Array.isArray(payload.data.tasks)) {
+      throw new Error(DATA_FORMAT_ERROR);
+    }
+    return payload.data;
+  }
+
+  function _showBlockingError(emptyEl, errEl, message) {
+    const msg = str(message || "甘特图加载失败，请刷新后重试。");
+    if (errEl) errEl.textContent = msg;
+    else {
+      try {
+        console.error("Gantt load failed:", msg);
+      } catch (_) {
+        // ignore
+      }
+    }
+    const host = $("gantt");
+    if (host) {
+      host.innerHTML = "";
+      host.classList.remove("aps-has-focus");
+    }
+    state.gantt = null;
+    state.allTasks = [];
+    state.currentTasks = [];
+    state.filteredTasks = [];
+    resetOverdueMarkerState();
+    resetCalendarDegradationState();
+    applyCalendarDegradationState();
+    applyOverdueMarkerState();
+    show(emptyEl, false);
+    show(errEl, true);
+  }
+
+  function _renderErrorMessage(error) {
+    const rawMsg = str(error && error.message ? error.message : error);
+    if (!rawMsg) return "甘特图显示异常，请刷新后重试。";
+    if (rawMsg.indexOf("Gantt DOM mismatch") >= 0) {
+      return "甘特图显示异常，请刷新后重试。";
+    }
+    if (rawMsg.indexOf("Frappe Gantt 未加载") >= 0) {
+      return rawMsg;
+    }
+    if (!/[\u4e00-\u9fff]/.test(rawMsg)) {
+      return "甘特图显示异常，请刷新后重试。";
+    }
+    return rawMsg;
+  }
+
+  function _prepareVisibleState(data, emptyEl, errEl) {
+    const tasks = data.tasks;
+    state.degraded = data.degraded === true;
+    state.degradationEvents = Array.isArray(data.degradation_events) ? data.degradation_events : [];
+    state.degradationCounters = data.degradation_counters && typeof data.degradation_counters === "object"
+      ? data.degradation_counters
+      : {};
+    state.emptyReason = str(data.empty_reason || "");
+    state.emptyMessage = str(data.empty_message || "");
+    state.versionTimeSpan = data.version_time_span || null;
+    state.allTasks = tasks;
+    state.overdueMarkersDegraded = data.overdue_markers_degraded === true;
+    state.overdueMarkersPartial = data.overdue_markers_partial === true;
+    state.overdueMarkersMessage = str(data.overdue_markers_message || "");
+    initCriticalChain(data.critical_chain || null);
+    applyCalendarDegradationState();
+    contract.renderHelpList($("ganttHelpList"), state.critical || null, {
+      degradationEvents: state.degradationEvents,
+      degradationCounters: state.degradationCounters,
+      emptyReason: state.emptyReason,
+    });
+    initCalendarDays(data.calendar_days || null);
+    refreshFilterSelectOptions();
+
+    applyUiFromUrl();
+    applyOverdueMarkerState();
+    bindUi();
+    readUi();
+    persistUiToUrl();
+    render();
+  }
+
   async function loadAndRender() {
     const cfg = (function () {
       // 优先：window 注入（兼容旧模板）
@@ -286,20 +412,20 @@
     _perfState.activeRequestId = reqId;
     const reqUrl = url.toString();
     let payload;
+    let data;
     try {
       const resp = await _withFetchTimeout(reqUrl, fetchTimeoutMs);
       if (!resp || !resp.ok) {
-        throw new Error(`甘特图数据请求失败（HTTP ${resp ? resp.status : "0"}）`);
+        const errorPayload = await _readJsonErrorBody(resp);
+        throw new Error(
+          _payloadErrorMessage(errorPayload, `甘特图数据请求失败（HTTP ${resp ? resp.status : "0"}）`)
+        );
       }
       payload = await resp.json();
       if (reqId !== _perfState.activeRequestId) {
         return;
       }
-      if (!payload || payload.success !== true) {
-        const msg =
-          payload && payload.error && payload.error.message ? payload.error.message : "甘特图数据获取失败。";
-        throw new Error(msg);
-      }
+      data = _validatePayload(payload);
     } catch (e) {
       if (reqId !== _perfState.activeRequestId) {
         return;
@@ -312,52 +438,17 @@
       const msg = isAbortLike
         ? `甘特图数据请求超过 ${timeoutSeconds} 秒，请稍后重试。`
         : rawMsg;
-      if (errEl) errEl.textContent = msg;
-      else {
-        try {
-          console.error("Gantt load failed:", e);
-        } catch (_) {
-          // ignore
-        }
-      }
-      resetOverdueMarkerState();
-      resetCalendarDegradationState();
-      applyCalendarDegradationState();
-      applyOverdueMarkerState();
-      show(errEl, true);
+      _showBlockingError(emptyEl, errEl, msg);
       return;
     }
 
-    const data = payload.data || {};
-    const tasks = Array.isArray(data.tasks) ? data.tasks : [];
-    state.degraded = data.degraded === true;
-    state.degradationEvents = Array.isArray(data.degradation_events) ? data.degradation_events : [];
-    state.degradationCounters = data.degradation_counters && typeof data.degradation_counters === "object"
-      ? data.degradation_counters
-      : {};
-    state.emptyReason = str(data.empty_reason || "");
-    state.emptyMessage = str(data.empty_message || "");
-    state.versionTimeSpan = data.version_time_span || null;
-    state.allTasks = tasks;
-    state.overdueMarkersDegraded = data.overdue_markers_degraded === true;
-    state.overdueMarkersPartial = data.overdue_markers_partial === true;
-    state.overdueMarkersMessage = str(data.overdue_markers_message || "");
-    initCriticalChain(data.critical_chain || null);
-    applyCalendarDegradationState();
-    contract.renderHelpList($("ganttHelpList"), state.critical || null, {
-      degradationEvents: state.degradationEvents,
-      degradationCounters: state.degradationCounters,
-      emptyReason: state.emptyReason,
-    });
-    initCalendarDays(data.calendar_days || null);
-    refreshFilterSelectOptions();
-
-    applyUiFromUrl();
-    applyOverdueMarkerState();
-    bindUi();
-    readUi();
-    persistUiToUrl();
-    render();
+    try {
+      _prepareVisibleState(data, emptyEl, errEl);
+    } catch (e) {
+      const msg = _renderErrorMessage(e);
+      reportClientError("甘特图显示异常", e);
+      _showBlockingError(emptyEl, errEl, msg);
+    }
   }
 
   ns.loadAndRender = loadAndRender;

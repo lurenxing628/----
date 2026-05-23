@@ -97,6 +97,7 @@ class GanttCriticalChainProvider:
         out["ids"] = list(out.get("ids") or [])
         out["edges"] = [dict(edge) if isinstance(edge, dict) else edge for edge in list(out.get("edges") or [])]
         out["edge_type_stats"] = dict(out.get("edge_type_stats") or {})
+        out["reason_code"] = str(out.get("reason_code") or "").strip()
         return out
 
     @staticmethod
@@ -109,8 +110,10 @@ class GanttCriticalChainProvider:
         else:
             is_available = True
         reason_text = str(raw.get("reason") or "").strip()
+        reason_code = str(raw.get("reason_code") or raw.get("reason") or "").strip()
         if is_available:
             reason_text = ""
+            reason_code = ""
         return {
             "ids": list(raw.get("ids") or []),
             "edges": [dict(edge) if isinstance(edge, dict) else edge for edge in list(raw.get("edges") or [])],
@@ -121,6 +124,7 @@ class GanttCriticalChainProvider:
             "edge_count": int(raw.get("edge_count") or 0),
             "available": is_available,
             "reason": reason_text,
+            "reason_code": reason_code or ("unknown" if not is_available else ""),
         }
 
     @staticmethod
@@ -161,7 +165,7 @@ class GanttCriticalChainProvider:
                     query_kwargs["scenario_id"] = plan_resolution.get("scenario_id")
                 rows = plan_query.list_plan_detail_rows_all_for_resolution(**query_kwargs)
             except (RuntimeError, ValueError, TypeError, KeyError, IndexError, sqlite3.Error):
-                raw = {"available": False, "reason": "repo_exception"}
+                raw = {"available": False, "reason": "rows_load_exception", "reason_code": "rows_load_exception"}
             else:
                 raw = compute_critical_chain_from_rows([dict(row) for row in rows])
         computed = self._normalize_critical_chain_result(raw)

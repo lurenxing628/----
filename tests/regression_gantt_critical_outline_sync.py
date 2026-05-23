@@ -754,8 +754,28 @@ def _gantt_render_js() -> str:
     return json.dumps(str(REPO_ROOT / "static" / "js" / "gantt_render.js"))
 
 
+def _gantt_popup_js() -> str:
+    return json.dumps(str(REPO_ROOT / "static" / "js" / "gantt_popup.js"))
+
+
+def _gantt_legend_js() -> str:
+    return json.dumps(str(REPO_ROOT / "static" / "js" / "gantt_legend.js"))
+
+
+def _gantt_holidays_js() -> str:
+    return json.dumps(str(REPO_ROOT / "static" / "js" / "gantt_holidays.js"))
+
+
+def _gantt_decorations_js() -> str:
+    return json.dumps(str(REPO_ROOT / "static" / "js" / "gantt_decorations.js"))
+
+
 def _gantt_contract_js() -> str:
     return json.dumps(str(REPO_ROOT / "static" / "js" / "gantt_contract.js"))
+
+
+def _gantt_help_js() -> str:
+    return json.dumps(str(REPO_ROOT / "static" / "js" / "gantt_help.js"))
 
 
 def _gantt_boot_js() -> str:
@@ -786,7 +806,12 @@ def test_gantt_contract_asset_is_tracked_and_loaded_before_render_in_all_templat
         "js/gantt_color.js",
         "js/gantt_outline.js",
         "js/gantt_contract.js",
+        "js/gantt_help.js",
         "js/gantt_popup_fit.js",
+        "js/gantt_popup.js",
+        "js/gantt_legend.js",
+        "js/gantt_holidays.js",
+        "js/gantt_decorations.js",
         "js/gantt_render.js",
         "js/gantt_ui.js",
         "js/gantt_boot.js",
@@ -799,7 +824,16 @@ def test_gantt_contract_asset_is_tracked_and_loaded_before_render_in_all_templat
         ]
         assert scripts == expected_order, template_rel
 
-    for asset_rel in ("static/js/gantt_contract.js", "static/js/gantt_zoom.js", "static/js/gantt_adapter.js"):
+    for asset_rel in (
+        "static/js/gantt_contract.js",
+        "static/js/gantt_help.js",
+        "static/js/gantt_zoom.js",
+        "static/js/gantt_adapter.js",
+        "static/js/gantt_popup.js",
+        "static/js/gantt_legend.js",
+        "static/js/gantt_holidays.js",
+        "static/js/gantt_decorations.js",
+    ):
         asset_path = REPO_ROOT / asset_rel
         assert asset_path.is_file()
         tracked = subprocess.run(
@@ -985,6 +1019,11 @@ loadScript({_gantt_adapter_js()});
 loadScript({_gantt_color_js()});
 loadScript({_outline_js()});
 loadScript({_gantt_contract_js()});
+loadScript({_gantt_help_js()});
+loadScript({_gantt_popup_js()});
+loadScript({_gantt_legend_js()});
+loadScript({_gantt_holidays_js()});
+loadScript({_gantt_decorations_js()});
 loadScript({_gantt_render_js()});
 
 const ns = window.__APS_GANTT__;
@@ -1124,6 +1163,7 @@ createHost("legend");
 loadScript({_vendor_js()});
 loadScript({_outline_js()});
 loadScript({_gantt_contract_js()});
+loadScript({_gantt_help_js()});
 
 const tasks = {json.dumps(tasks)};
 const calendarDays = {json.dumps(calendar_days)};
@@ -1201,7 +1241,7 @@ process.stdout.write(JSON.stringify({{
     assert result["month"]["outline"]["count"] == 2
 
 
-def test_boot_reports_missing_outline_dependency_explicitly() -> None:
+def test_boot_hides_missing_outline_dependency_names_from_visible_error() -> None:
     node_code = f"""
 {DOM_SHIM_JS}
 createHost("gantt");
@@ -1226,8 +1266,9 @@ process.stdout.write(JSON.stringify({{
 """
     result = _run_node_json(node_code)
 
-    assert "outline.setCriticalOutlineEnabled" in result["message"]
-    assert "outline.installCriticalOutlineSyncAdapter" in result["message"]
+    assert result["message"] == "甘特图页面脚本加载不完整，请刷新页面后重试。"
+    assert "outline.setCriticalOutlineEnabled" not in result["message"]
+    assert "outline.installCriticalOutlineSyncAdapter" not in result["message"]
 
 
 def test_formal_page_and_preview_share_critical_edge_tooltip_and_help_semantics() -> None:
@@ -1321,6 +1362,11 @@ loadScript({_gantt_adapter_js()});
 loadScript({_gantt_color_js()});
 loadScript({_outline_js()});
 loadScript({_gantt_contract_js()});
+loadScript({_gantt_help_js()});
+loadScript({_gantt_popup_js()});
+loadScript({_gantt_legend_js()});
+loadScript({_gantt_holidays_js()});
+loadScript({_gantt_decorations_js()});
 loadScript({_gantt_render_js()});
 const ns = window.__APS_GANTT__;
 ns.applyUiFromUrl = function () {{}};
@@ -1384,6 +1430,7 @@ document.body.appendChild(helpList);
 loadScript({_vendor_js()});
 loadScript({_outline_js()});
 loadScript({_gantt_contract_js()});
+loadScript({_gantt_help_js()});
 
 const tasks = {json.dumps(tasks)};
 const calendarDays = [];
@@ -1486,6 +1533,11 @@ loadScript({_gantt_adapter_js()});
 loadScript({_gantt_color_js()});
 loadScript({_outline_js()});
 loadScript({_gantt_contract_js()});
+loadScript({_gantt_help_js()});
+loadScript({_gantt_popup_js()});
+loadScript({_gantt_legend_js()});
+loadScript({_gantt_holidays_js()});
+loadScript({_gantt_decorations_js()});
 loadScript({_gantt_render_js()});
 const ns = window.__APS_GANTT__;
 ns.applyUiFromUrl = function () {{}};
@@ -1556,6 +1608,7 @@ document.body.appendChild(helpList);
 loadScript({_vendor_js()});
 loadScript({_outline_js()});
 loadScript({_gantt_contract_js()});
+loadScript({_gantt_help_js()});
 
 const tasks = {json.dumps(tasks)};
 const calendarDays = [];
@@ -1619,6 +1672,7 @@ process.stdout.write(JSON.stringify({{
     )
     html = Path(html_path).read_text(encoding="utf-8")
     assert "../../static/js/gantt_contract.js" in html
+    assert "../../static/js/gantt_help.js" in html
     assert 'id="ganttDegradationWarning"' in html
     assert "工艺依赖，后一工序依赖前一工序" not in html
 
@@ -1635,6 +1689,7 @@ def test_gantt_contract_sanitizes_render_task_names_and_preserves_raw_name() -> 
     node_code = f"""
 {DOM_SHIM_JS}
 loadScript({_gantt_contract_js()});
+loadScript({_gantt_help_js()});
 const api = window.__APS_GANTT__.contract;
 const tasks = [
   {{
@@ -1664,6 +1719,7 @@ def test_gantt_contract_disables_calendar_fallback_when_calendar_load_failed() -
     node_code = f"""
 {DOM_SHIM_JS}
 loadScript({_gantt_contract_js()});
+loadScript({_gantt_help_js()});
 const api = window.__APS_GANTT__.contract;
 process.stdout.write(JSON.stringify({{
   normal: api.shouldUseFallbackCalendarDays({{ degradation_counters: {{}}, empty_reason: "" }}),
@@ -1686,6 +1742,7 @@ def test_gantt_contract_calendar_load_failed_message_does_not_echo_raw_event() -
     node_code = f"""
 {DOM_SHIM_JS}
 loadScript({_gantt_contract_js()});
+loadScript({_gantt_help_js()});
 const api = window.__APS_GANTT__.contract;
 const messages = api.buildDegradationMessages({{
   degradation_events: [
@@ -1706,6 +1763,7 @@ def test_gantt_contract_critical_unavailable_message_maps_reason_code() -> None:
     node_code = f"""
 {DOM_SHIM_JS}
 loadScript({_gantt_contract_js()});
+loadScript({_gantt_help_js()});
 const api = window.__APS_GANTT__.contract;
 const critical = {{ ids: ["T1"], edges: [], available: false, reason: "关键链计算异常", reason_code: "repo_exception" }};
 const state = {{}};
@@ -1805,6 +1863,11 @@ loadScript({_gantt_adapter_js()});
 loadScript({_gantt_color_js()});
 loadScript({_outline_js()});
 loadScript({_gantt_contract_js()});
+loadScript({_gantt_help_js()});
+loadScript({_gantt_popup_js()});
+loadScript({_gantt_legend_js()});
+loadScript({_gantt_holidays_js()});
+loadScript({_gantt_decorations_js()});
 loadScript({_gantt_render_js()});
 const ns = window.__APS_GANTT__;
 ns.applyUiFromUrl = function () {{}};
@@ -1868,6 +1931,7 @@ document.body.appendChild(helpList);
 loadScript({_vendor_js()});
 loadScript({_outline_js()});
 loadScript({_gantt_contract_js()});
+loadScript({_gantt_help_js()});
 
 const tasks = {json.dumps(tasks)};
 const calendarDays = [];

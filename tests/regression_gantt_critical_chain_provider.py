@@ -388,6 +388,7 @@ def test_unavailable_candidate_result_is_not_cached(monkeypatch) -> None:
 
     assert first["available"] is False
     assert first["reason"] == "rows_exception"
+    assert first["reason_code"] == "rows_exception"
     assert first["cache_hit"] is False
     assert second["ids"] == ["RECOVERED"]
     assert second["cache_hit"] is False
@@ -428,7 +429,8 @@ def test_candidate_rows_load_failure_returns_unavailable_and_is_not_cached(monke
     third = provider.get_critical_chain(7, plan_resolution=plan)
 
     assert first["available"] is False
-    assert first["reason"] == "repo_exception"
+    assert first["reason"] == "rows_load_exception"
+    assert first["reason_code"] == "rows_load_exception"
     assert first["cache_hit"] is False
     assert second["ids"] == ["RECOVERED"]
     assert second["cache_hit"] is False

@@ -8,6 +8,8 @@ from core.services.scheduler.degradation_messages import public_degradation_even
 _CRITICAL_REASON_LABELS = {
     "calc_exception": "关键链计算异常",
     "repo_exception": "关键链计算异常",
+    "rows_exception": "关键链计算异常",
+    "rows_load_exception": "关键链数据读取异常",
     "no_history": "暂无排产历史，关键链暂不可用",
     "unknown": "关键链暂不可用",
 }

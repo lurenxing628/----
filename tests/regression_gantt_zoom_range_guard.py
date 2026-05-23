@@ -87,6 +87,11 @@ loadScript({helpers._gantt_adapter_js()});
 loadScript({helpers._gantt_color_js()});
 loadScript({helpers._outline_js()});
 loadScript({helpers._gantt_contract_js()});
+loadScript({helpers._gantt_help_js()});
+loadScript({helpers._gantt_popup_js()});
+loadScript({helpers._gantt_legend_js()});
+loadScript({helpers._gantt_holidays_js()});
+loadScript({helpers._gantt_decorations_js()});
 loadScript({helpers._gantt_render_js()});
 
 const ns = window.__APS_GANTT__;
@@ -165,6 +170,11 @@ loadScript({helpers._gantt_adapter_js()});
 loadScript({helpers._gantt_color_js()});
 loadScript({helpers._outline_js()});
 loadScript({helpers._gantt_contract_js()});
+loadScript({helpers._gantt_help_js()});
+loadScript({helpers._gantt_popup_js()});
+loadScript({helpers._gantt_legend_js()});
+loadScript({helpers._gantt_holidays_js()});
+loadScript({helpers._gantt_decorations_js()});
 loadScript({helpers._gantt_render_js()});
 
 const ns = window.__APS_GANTT__;

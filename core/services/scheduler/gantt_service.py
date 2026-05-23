@@ -264,7 +264,7 @@ class GanttService:
         collector.extend(calendar_days_outcome.events)
         collector.extend(tasks_outcome.events)
         if critical_chain.get("available") is False:
-            reason = str(critical_chain.get("reason") or "").strip() or "unknown"
+            reason = str(critical_chain.get("reason_code") or critical_chain.get("reason") or "").strip() or "unknown"
             collector.add(
                 DegradationEvent(
                     code="critical_chain_unavailable",

@@ -479,6 +479,7 @@ def _write_html(
   <script src="../../static/js/frappe-gantt.min.js"></script>
   <script src="../../static/js/gantt_outline.js"></script>
   <script src="../../static/js/gantt_contract.js"></script>
+  <script src="../../static/js/gantt_help.js"></script>
   <script>
     const tasks = {tasks_json};
     const calendarDays = {cal_json};
