@@ -7,9 +7,9 @@ from flask import current_app, flash, g, redirect, request, send_file, url_for
 
 from core.infrastructure.errors import AppError, BusinessError, ErrorCode, ValidationError
 from core.services.common.excel_audit import log_excel_export
-from core.services.common.excel_templates import build_xlsx_bytes
 from core.services.scheduler.schedule_plan_query_service import ROLE_ADOPTED, plan_role_label
 from core.services.scheduler.summary.schedule_summary_types import ScheduleResultStatus
+from core.services.scheduler.week_plan_excel import build_week_plan_export_workbook
 from core.shared.strict_parse import parse_required_int
 from web.error_boundary import user_visible_app_error_message
 from web.routes.form_values import form_optional_toggle_bool, form_toggle_bool
@@ -30,6 +30,7 @@ from .scheduler_bp import (
 from .scheduler_gantt_redirect import build_success_gantt_redirect_kwargs
 from .scheduler_history_resolution import build_requested_history_resolution
 from .scheduler_user_messages import scheduler_user_visible_app_error_message
+from .scheduler_utils import _current_scheduler_operator
 
 
 def _get_int_arg(name: str, default: int = 0) -> int:
@@ -198,22 +199,6 @@ def _flash_simulate_summary(summary, summary_display, *, completion_status: str)
         summary_display.get("errors_preview"),
         total=int(summary_display.get("error_total") or 0),
         category=error_category,
-    )
-
-
-def _build_week_plan_export_workbook(rows):
-    headers = ["日期", "批次号", "图号", "工序", "设备", "人员", "时段"]
-    return build_xlsx_bytes(
-        headers,
-        [[r.get(h, "") for h in headers] for r in rows],
-        format_spec={
-            "date_cols": [0],
-            "text_cols": [1, 2, 4, 5, 6],
-            "int_cols": [3],
-            "column_widths": {0: 12, 1: 14, 2: 14, 3: 10, 4: 14, 5: 14, 6: 18},
-        },
-        sheet_title="周计划",
-        sanitize_formula=True,
     )
 
 
@@ -420,7 +405,11 @@ def week_plan_export():
         ws = data.get("week_start")
         we = data.get("week_end")
 
-        output = _build_week_plan_export_workbook(rows)
+        output = build_week_plan_export_workbook(
+            rows,
+            plan_resolution=plan_resolution,
+            export_context={"version": ver, "week_start": ws, "week_end": we},
+        )
 
         time_cost_ms = int((time.time() - start) * 1000)
         _log_week_plan_export(
@@ -462,7 +451,7 @@ def simulate_schedule():
             batch_ids=batch_ids,
             start_dt=start_dt,
             end_date=end_date,
-            created_by="web",
+            created_by=_current_scheduler_operator(),
             simulate=True,
             enforce_ready=enforce_ready,
             strict_mode=strict_mode,

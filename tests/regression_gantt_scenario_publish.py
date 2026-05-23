@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
+from regression_gantt_draft_save_and_preview import _build_app
 
 from core.infrastructure.database import CURRENT_SCHEMA_VERSION, ensure_schema, get_connection
 from core.infrastructure.errors import AppError, ValidationError
@@ -216,6 +217,52 @@ def test_publish_scenario_creates_new_formal_version_and_audit_log(tmp_path: Pat
         assert json.loads(log["detail"])["scenario_id"] == scenario.scenario_id
     finally:
         conn.close()
+
+
+def test_publish_scenario_route_uses_server_operator_not_system_or_json(tmp_path: Path, monkeypatch) -> None:
+    conn = _connect(tmp_path)
+    try:
+        _seed_base(conn)
+        scenario = _saved_scenario(conn)
+    finally:
+        conn.close()
+
+    app = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+    response = client.post(
+        "/scheduler/gantt/adjustments/publish-scenario",
+        json={
+            "scenario_id": scenario.scenario_id,
+            "confirm_text": "正式采用",
+            "reason": "页面确认采用",
+            "published_by": "mallory",
+            "base_version": VERSION,
+            "base_plan_role": "adopted",
+        },
+    )
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    assert payload["success"] is True
+    assert payload["data"]["published_by"] == "web"
+    assert payload["data"]["published_by"] != "system"
+
+    verify_conn = get_connection(str(tmp_path / "aps.db"))
+    try:
+        scenario_row = verify_conn.execute(
+            "SELECT published_by, published_reason FROM ScheduleAdjustmentScenario WHERE scenario_id = ?",
+            (scenario.scenario_id,),
+        ).fetchone()
+        assert dict(scenario_row) == {"published_by": "web", "published_reason": "页面确认采用"}
+        history_row = verify_conn.execute(
+            "SELECT created_by FROM ScheduleHistory WHERE version = ?",
+            (VERSION + 1,),
+        ).fetchone()
+        assert history_row["created_by"] == "web"
+        log_row = verify_conn.execute("SELECT operator FROM OperationLogs WHERE action = 'publish_scenario'").fetchone()
+        assert log_row["operator"] == "web"
+    finally:
+        verify_conn.close()
 
 
 def test_publish_requires_operation_log_success_and_rolls_back(tmp_path: Path) -> None:

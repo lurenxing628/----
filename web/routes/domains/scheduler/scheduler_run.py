@@ -16,6 +16,7 @@ from .scheduler_bp import (
 )
 from .scheduler_gantt_redirect import build_success_gantt_redirect_kwargs
 from .scheduler_user_messages import scheduler_user_visible_app_error_message
+from .scheduler_utils import _current_scheduler_operator
 
 
 def _flash_run_schedule_view_result(view_result: RunScheduleViewResult) -> None:
@@ -51,7 +52,7 @@ def run_schedule():
             batch_ids=batch_ids,
             start_dt=start_dt,
             end_date=end_date,
-            created_by="web",
+            created_by=_current_scheduler_operator(),
             enforce_ready=enforce_ready,
             strict_mode=strict_mode,
             run_time_budget_seconds=run_time_budget_seconds,

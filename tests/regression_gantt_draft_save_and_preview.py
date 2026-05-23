@@ -292,6 +292,51 @@ def test_gantt_service_and_template_keep_scenario_preview_context(tmp_path: Path
     assert "当前正在预览模拟方案" in html
     assert f'data-scenario-id="{scenario.scenario_id}"' in html
     assert f'name="scenario_id" value="{scenario.scenario_id}"' in html
+    assert f"scenario_id={scenario.scenario_id}" in html
+    zoom_html = client.get(
+        f"/scheduler/gantt?version={VERSION}&plan_role=adopted&scenario_id={scenario.scenario_id}&gantt_zoom=hour"
+    ).get_data(as_text=True)
+    assert zoom_html.count("gantt_zoom=hour") >= 5
+    assert "offset=-1" in zoom_html
+    assert f"scenario_id={scenario.scenario_id}" in zoom_html
+
+
+def test_save_scenario_route_uses_server_operator_not_json_created_by(tmp_path: Path, monkeypatch) -> None:
+    conn = _connect(tmp_path)
+    try:
+        _seed_base(conn)
+        draft_id = _draft_with_change(conn)
+    finally:
+        conn.close()
+
+    app = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+    response = client.post(
+        "/scheduler/gantt/adjustments/save-scenario",
+        json={
+            "draft_id": draft_id,
+            "scenario_name": "页面保存模拟",
+            "created_by": "mallory",
+            "base_version": VERSION,
+            "base_plan_role": "adopted",
+        },
+    )
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    assert payload["success"] is True
+    assert payload["data"]["created_by"] == "web"
+    assert payload["data"]["scenario_name"] == "页面保存模拟"
+
+    verify_conn = get_connection(str(tmp_path / "aps.db"))
+    try:
+        scenario = verify_conn.execute(
+            "SELECT created_by FROM ScheduleAdjustmentScenario WHERE scenario_id = ?",
+            (payload["data"]["scenario_id"],),
+        ).fetchone()
+        assert scenario["created_by"] == "web"
+    finally:
+        verify_conn.close()
 
 
 def _build_app(tmp_path: Path, monkeypatch):

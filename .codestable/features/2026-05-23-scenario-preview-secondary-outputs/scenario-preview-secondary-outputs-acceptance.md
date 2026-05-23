@@ -16,7 +16,7 @@ roadmap_item: gantt-scenario-preview-secondary-outputs
 
 ## 已落地范围
 
-- 周计划页面、查询表单、导出 URL、导出日志和导出文件名都保留 Scenario 身份。
+- 周计划页面、查询表单、导出 URL、导出日志、导出文件名和 Excel 内部“查询摘要”都保留 Scenario 身份，并提示正式计划还没有改变。
 - 资源排班页面、data 接口、导出接口、Excel 查询摘要和导出文件名都保留 Scenario 身份。
 - 报表页面的超期清单、资源负荷与利用率、停机影响统计都按 Scenario 行计算。
 - 报表导出在 Scenario 预览态明确拒绝，提示先正式采用生成新版本后再导出。

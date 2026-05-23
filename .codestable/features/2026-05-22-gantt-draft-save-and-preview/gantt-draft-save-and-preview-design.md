@@ -67,7 +67,7 @@ flowchart LR
 
 保存 Scenario：
 
-1. route 只解析 `draft_id`、`scenario_name`、`created_by`。
+1. route 只解析 `draft_id`、`scenario_name` 和基准校验参数；创建人由服务端当前操作者口径提供，不能接受客户端自报 `created_by`。
 2. 服务读取 Draft，并重新执行 `validate-simulate` 的同一套校验。
 3. 如果结果是 `blocked`，直接拒绝保存。
 4. 如果结果是 `valid` 或 `warning`，把投影后的全量排程行写入 `ScheduleAdjustmentScenarioRow`。

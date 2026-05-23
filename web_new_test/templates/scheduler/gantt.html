@@ -96,9 +96,9 @@
       <div class="aps-gantt-control-group">
         <label>周切换</label>
         <div class="aps-form-actions">
-          {{ ui.link_button('上周', url_for('scheduler.gantt_page', view=view, week_start=base_week_start, offset=offset-1, version=version, plan_role=current_plan_role, scenario_id=current_scenario_id), 'secondary', 'sm') }}
-          {{ ui.link_button('回到本周', url_for('scheduler.gantt_page', view=view, week_start=base_week_start, offset=0, version=version, plan_role=current_plan_role, scenario_id=current_scenario_id), 'secondary', 'sm') }}
-          {{ ui.link_button('下周', url_for('scheduler.gantt_page', view=view, week_start=base_week_start, offset=offset+1, version=version, plan_role=current_plan_role, scenario_id=current_scenario_id), 'secondary', 'sm') }}
+          {{ ui.link_button('上周', url_for('scheduler.gantt_page', view=view, week_start=base_week_start, offset=offset-1, version=version, plan_role=current_plan_role, scenario_id=current_scenario_id, gantt_zoom=gantt_zoom or 'day'), 'secondary', 'sm') }}
+          {{ ui.link_button('回到本周', url_for('scheduler.gantt_page', view=view, week_start=base_week_start, offset=0, version=version, plan_role=current_plan_role, scenario_id=current_scenario_id, gantt_zoom=gantt_zoom or 'day'), 'secondary', 'sm') }}
+          {{ ui.link_button('下周', url_for('scheduler.gantt_page', view=view, week_start=base_week_start, offset=offset+1, version=version, plan_role=current_plan_role, scenario_id=current_scenario_id, gantt_zoom=gantt_zoom or 'day'), 'secondary', 'sm') }}
         </div>
       </div>
       </div>
@@ -171,7 +171,7 @@
         type="button"
         disabled
         aria-disabled="true"
-        title="草稿和校验链路完成后开放"
+        title="页面编辑流程完成后开放"
       >模拟调整（后续开放）</button>
     </div>
     <div id="ganttOverdueWarning" class="flash-card flash-warning mt-3 is-hidden" role="alert" aria-live="polite">

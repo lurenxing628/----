@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
+from flask import g
+
 from core.services.common.excel_service import ImportMode
 
 from ...excel_utils import ensure_unique_ids, parse_import_mode, read_uploaded_xlsx
@@ -9,6 +11,11 @@ from ...normalizers import _normalize_batch_priority as _normalize_batch_priorit
 from ...normalizers import _normalize_day_type as _normalize_day_type_impl
 from ...normalizers import _normalize_ready_status as _normalize_ready_status_impl
 from ...normalizers import _normalize_yesno as _normalize_yesno_impl
+
+
+def _current_scheduler_operator() -> str:
+    operator = str(getattr(g, "scheduler_operator", "") or "").strip()
+    return operator or "web"
 
 
 def _parse_mode(value: str) -> ImportMode:

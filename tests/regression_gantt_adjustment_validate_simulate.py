@@ -395,3 +395,74 @@ def test_validate_simulate_route_is_callable_but_not_wired_to_gantt_page(tmp_pat
         text = (REPO_ROOT / rel).read_text(encoding="utf-8")
         assert "validate-simulate" not in text
         assert "data-adjustment-url" not in text
+
+
+def test_adjustment_draft_routes_create_record_and_discard_without_formal_writes(tmp_path: Path, monkeypatch) -> None:
+    app, _seeded_draft_id = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+    before_conn = get_connection(str(tmp_path / "route.db"))
+    try:
+        before = _snapshot(before_conn)
+    finally:
+        before_conn.close()
+
+    create_resp = client.post(
+        "/scheduler/gantt/adjustments/create-draft",
+        json={
+            "base_version": VERSION,
+            "base_plan_role": "adopted",
+            "created_by": "mallory",
+            "reason": "测试草稿",
+        },
+    )
+    create_payload = create_resp.get_json()
+    assert create_resp.status_code == 200
+    assert create_payload["success"] is True
+    draft_id = create_payload["data"]["draft_id"]
+    assert create_payload["data"]["created_by"] == "web"
+
+    time_resp = client.post(
+        "/scheduler/gantt/adjustments/record-time-change",
+        json={
+            "draft_id": draft_id,
+            "schedule_id": 90,
+            "op_id": 30,
+            "to_start": "2026-05-04 11:00:00",
+            "to_end": "2026-05-04 12:00:00",
+        },
+    )
+    assert time_resp.status_code == 200
+    assert time_resp.get_json()["data"]["change_type"] == "move_time"
+
+    resource_resp = client.post(
+        "/scheduler/gantt/adjustments/record-resource-change",
+        json={
+            "draft_id": draft_id,
+            "schedule_id": 90,
+            "op_id": 30,
+            "from_machine_id": "M2",
+            "to_machine_id": "M1",
+            "from_operator_id": "O2",
+            "to_operator_id": "O1",
+        },
+    )
+    assert resource_resp.status_code == 200
+    assert resource_resp.get_json()["data"]["change_type"] == "change_resource"
+
+    discard_resp = client.post(
+        "/scheduler/gantt/adjustments/discard-draft",
+        json={"draft_id": draft_id, "reason": "不采用"},
+    )
+    assert discard_resp.status_code == 200
+    assert discard_resp.get_json()["data"]["status"] == "discarded"
+
+    after_conn = get_connection(str(tmp_path / "route.db"))
+    try:
+        assert _snapshot(after_conn) == before
+        draft = after_conn.execute(
+            "SELECT created_by, status, change_count FROM ScheduleAdjustmentDraft WHERE draft_id = ?",
+            (draft_id,),
+        ).fetchone()
+        assert dict(draft) == {"created_by": "web", "status": "discarded", "change_count": 2}
+    finally:
+        after_conn.close()

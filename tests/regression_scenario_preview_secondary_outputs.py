@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import json
 import sys
+from io import BytesIO
 from pathlib import Path
 from urllib.parse import unquote
 
 import pytest
+from openpyxl import load_workbook
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TESTS_ROOT = REPO_ROOT / "tests"
@@ -60,6 +62,17 @@ def _save_secondary_output_scenario(conn) -> str:
 def _json_data(response):
     payload = json.loads(response.get_data(as_text=True) or "{}")
     return payload.get("data") or {}
+
+
+def _workbook_summary_values(xlsx_bytes):
+    wb = load_workbook(BytesIO(xlsx_bytes), read_only=True, data_only=True)
+    try:
+        if "查询摘要" not in wb.sheetnames:
+            return None
+        ws = wb["查询摘要"]
+        return {str(row[0] or ""): row[1] for row in ws.iter_rows(values_only=True) if row and row[0]}
+    finally:
+        wb.close()
 
 
 def test_secondary_output_services_read_scenario_rows_and_do_not_fallback(tmp_path: Path) -> None:
@@ -159,6 +172,16 @@ def test_secondary_output_pages_keep_scenario_context(tmp_path: Path, monkeypatc
     week_disposition = unquote(str(week_export.headers.get("Content-Disposition") or ""))
     assert scenario_id in week_disposition
     assert "二级页模拟" in week_disposition
+    week_summary = _workbook_summary_values(week_export.data)
+    assert week_summary is not None
+    assert week_summary["导出类型"] == "模拟方案预览"
+    assert week_summary["提示"] == "这是模拟方案预览，正式计划还没有改变。"
+    assert week_summary["模拟方案编号"] == scenario_id
+    assert week_summary["模拟方案名称"] == "二级页模拟"
+
+    formal_week_export = client.get(f"/scheduler/week-plan/export?week_start=2026-05-04&version={VERSION}&plan_role=adopted")
+    assert formal_week_export.status_code == 200
+    assert _workbook_summary_values(formal_week_export.data) is None
 
     resource_html = client.get(
         f"/scheduler/resource-dispatch?scope_type=operator&operator_id=O2&period_preset=week&query_date=2026-05-06&{scenario_query}"

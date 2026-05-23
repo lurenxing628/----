@@ -102,7 +102,8 @@ class GanttAdjustmentDraftService:
             reason=_text(reason) or None,
             expires_at=_text(expires_at) or None,
         )
-        return self.repo.create_draft(draft)
+        with self.conn:
+            return self.repo.create_draft(draft)
 
     def record_time_change(
         self,
@@ -120,19 +121,20 @@ class GanttAdjustmentDraftService:
         kind = _change_type(change_type)
         if kind not in (CHANGE_TYPE_MOVE_TIME, CHANGE_TYPE_RESIZE_TIME):
             raise ValidationError("时间调整只能是移动或改时长。", field="change_type")
-        return self.repo.create_change(
-            ScheduleAdjustmentChange(
-                id=None,
-                draft_id=draft_key,
-                schedule_id=schedule_id,
-                op_id=_op_id(op_id),
-                change_type=kind,
-                from_start=_text(from_start) or None,
-                from_end=_text(from_end) or None,
-                to_start=_text(to_start) or None,
-                to_end=_text(to_end) or None,
+        with self.conn:
+            return self.repo.create_change(
+                ScheduleAdjustmentChange(
+                    id=None,
+                    draft_id=draft_key,
+                    schedule_id=schedule_id,
+                    op_id=_op_id(op_id),
+                    change_type=kind,
+                    from_start=_text(from_start) or None,
+                    from_end=_text(from_end) or None,
+                    to_start=_text(to_start) or None,
+                    to_end=_text(to_end) or None,
+                )
             )
-        )
 
     def record_resource_change(
         self,
@@ -146,25 +148,27 @@ class GanttAdjustmentDraftService:
         to_operator_id: Optional[str] = None,
     ) -> ScheduleAdjustmentChange:
         draft_key = self._require_editing_draft(draft_id).draft_id
-        return self.repo.create_change(
-            ScheduleAdjustmentChange(
-                id=None,
-                draft_id=draft_key,
-                schedule_id=schedule_id,
-                op_id=_op_id(op_id),
-                change_type=CHANGE_TYPE_CHANGE_RESOURCE,
-                from_machine_id=_text(from_machine_id) or None,
-                to_machine_id=_text(to_machine_id) or None,
-                from_operator_id=_text(from_operator_id) or None,
-                to_operator_id=_text(to_operator_id) or None,
+        with self.conn:
+            return self.repo.create_change(
+                ScheduleAdjustmentChange(
+                    id=None,
+                    draft_id=draft_key,
+                    schedule_id=schedule_id,
+                    op_id=_op_id(op_id),
+                    change_type=CHANGE_TYPE_CHANGE_RESOURCE,
+                    from_machine_id=_text(from_machine_id) or None,
+                    to_machine_id=_text(to_machine_id) or None,
+                    from_operator_id=_text(from_operator_id) or None,
+                    to_operator_id=_text(to_operator_id) or None,
+                )
             )
-        )
 
     def discard_draft(self, *, draft_id: str, reason: Optional[str] = None) -> ScheduleAdjustmentDraft:
         draft_key = _draft_id(draft_id)
         if self.repo.get_draft(draft_key) is None:
             raise ValidationError("调整草稿不存在。", field="draft_id")
-        return self.repo.update_draft_status(draft_id=draft_key, status=DRAFT_STATUS_DISCARDED, reason=reason)
+        with self.conn:
+            return self.repo.update_draft_status(draft_id=draft_key, status=DRAFT_STATUS_DISCARDED, reason=reason)
 
     def _new_draft_id(self) -> str:
         return "draft-" + uuid.uuid4().hex[:16]

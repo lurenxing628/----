@@ -8,6 +8,93 @@ from core.infrastructure.errors import AppError, ErrorCode, ValidationError, err
 from web.error_boundary import json_error_response
 
 from .scheduler_bp import bp
+from .scheduler_utils import _current_scheduler_operator
+
+
+@bp.post("/gantt/adjustments/create-draft")
+def create_gantt_adjustment_draft():
+    try:
+        payload = _json_payload()
+        draft = g.services.gantt_adjustment_draft_service.create_draft(
+            base_version=payload.get("base_version"),
+            base_plan_role=payload.get("base_plan_role"),
+            created_by=_current_scheduler_operator(),
+            reason=payload.get("reason"),
+            expires_at=payload.get("expires_at"),
+        )
+        data = draft.to_dict()
+        data.update(message="已创建模拟调整草稿，正式计划还没有改变。")
+        return jsonify({"success": True, "data": data})
+    except AppError as exc:
+        return json_error_response(exc)
+    except Exception:
+        current_app.logger.exception("甘特图调整草稿创建失败")
+        return jsonify(error_response(ErrorCode.UNKNOWN_ERROR, "甘特图调整草稿创建失败，请稍后重试。")), 500
+
+
+@bp.post("/gantt/adjustments/record-time-change")
+def record_gantt_adjustment_time_change():
+    try:
+        payload = _json_payload()
+        change = g.services.gantt_adjustment_draft_service.record_time_change(
+            draft_id=payload.get("draft_id"),
+            schedule_id=payload.get("schedule_id"),
+            op_id=payload.get("op_id"),
+            change_type=payload.get("change_type") or "move_time",
+            from_start=payload.get("from_start"),
+            from_end=payload.get("from_end"),
+            to_start=payload.get("to_start"),
+            to_end=payload.get("to_end"),
+        )
+        data = change.to_dict()
+        data.update(message="已记录时间调整，正式计划还没有改变。")
+        return jsonify({"success": True, "data": data})
+    except AppError as exc:
+        return json_error_response(exc)
+    except Exception:
+        current_app.logger.exception("甘特图时间调整记录失败")
+        return jsonify(error_response(ErrorCode.UNKNOWN_ERROR, "甘特图时间调整记录失败，请稍后重试。")), 500
+
+
+@bp.post("/gantt/adjustments/record-resource-change")
+def record_gantt_adjustment_resource_change():
+    try:
+        payload = _json_payload()
+        change = g.services.gantt_adjustment_draft_service.record_resource_change(
+            draft_id=payload.get("draft_id"),
+            schedule_id=payload.get("schedule_id"),
+            op_id=payload.get("op_id"),
+            from_machine_id=payload.get("from_machine_id"),
+            to_machine_id=payload.get("to_machine_id"),
+            from_operator_id=payload.get("from_operator_id"),
+            to_operator_id=payload.get("to_operator_id"),
+        )
+        data = change.to_dict()
+        data.update(message="已记录资源调整，正式计划还没有改变。")
+        return jsonify({"success": True, "data": data})
+    except AppError as exc:
+        return json_error_response(exc)
+    except Exception:
+        current_app.logger.exception("甘特图资源调整记录失败")
+        return jsonify(error_response(ErrorCode.UNKNOWN_ERROR, "甘特图资源调整记录失败，请稍后重试。")), 500
+
+
+@bp.post("/gantt/adjustments/discard-draft")
+def discard_gantt_adjustment_draft():
+    try:
+        payload = _json_payload()
+        draft = g.services.gantt_adjustment_draft_service.discard_draft(
+            draft_id=payload.get("draft_id"),
+            reason=payload.get("reason"),
+        )
+        data = draft.to_dict()
+        data.update(message="已废弃模拟调整草稿，正式计划还没有改变。")
+        return jsonify({"success": True, "data": data})
+    except AppError as exc:
+        return json_error_response(exc)
+    except Exception:
+        current_app.logger.exception("甘特图调整草稿废弃失败")
+        return jsonify(error_response(ErrorCode.UNKNOWN_ERROR, "甘特图调整草稿废弃失败，请稍后重试。")), 500
 
 
 @bp.post("/gantt/adjustments/validate-simulate")
@@ -31,10 +118,11 @@ def validate_gantt_adjustment():
 def save_gantt_adjustment_scenario():
     try:
         payload = _json_payload()
+        operator = _current_scheduler_operator()
         scenario = g.services.gantt_adjustment_scenario_service.save_scenario(
             draft_id=payload.get("draft_id"),
             scenario_name=payload.get("scenario_name"),
-            created_by=payload.get("created_by"),
+            created_by=operator,
             expected_base_version=payload.get("base_version"),
             expected_base_plan_role=payload.get("base_plan_role"),
         )
@@ -62,10 +150,12 @@ def save_gantt_adjustment_scenario():
 def publish_gantt_adjustment_scenario():
     try:
         payload = _json_payload()
+        operator = _current_scheduler_operator()
         result = g.services.gantt_adjustment_publish_service.publish_scenario(
             scenario_id=payload.get("scenario_id"),
             confirm_text=payload.get("confirm_text"),
             reason=payload.get("reason"),
+            published_by=operator,
             expected_base_version=payload.get("base_version"),
             expected_base_plan_role=payload.get("base_plan_role"),
         )
