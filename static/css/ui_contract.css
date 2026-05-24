@@ -4570,8 +4570,48 @@ html[data-theme="dark"] .aps-danger-zone {
 .aps-run-options {
   min-width: 0;
   display: grid;
-  gap: 6px;
+  gap: 8px;
   align-self: stretch;
+}
+
+.aps-run-option-cards {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.aps-run-option-card {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  padding: 10px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.66);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.aps-run-option-card .aps-run-option-row {
+  width: auto;
+  align-items: center;
+  padding: 0;
+}
+
+.aps-run-option-card .aps-toggle-copy {
+  display: flex;
+  align-items: baseline;
+  gap: 4px 8px;
+  flex-wrap: wrap;
+}
+
+.aps-run-option-card .aps-toggle-title {
+  white-space: nowrap;
+}
+
+.aps-run-option-card .aps-run-option-note {
+  margin-left: 34px;
 }
 
 .aps-form-run-options {
@@ -4987,11 +5027,17 @@ html[data-theme="dark"] .aps-danger-zone {
   }
 
   .aps-run-panel-grid > .aps-run-options {
-    grid-column: 3;
+    grid-column: 1 / -1;
   }
 }
 
-@container (min-width: 760px) and (max-width: 1039px) {
+@container (max-width: 759px) {
+  .aps-run-option-cards {
+    grid-template-columns: 1fr;
+  }
+}
+
+@container (min-width: 641px) and (max-width: 1039px) {
   .aps-run-panel-grid > .aps-run-options {
     grid-column: 1 / -1;
   }
@@ -5214,6 +5260,12 @@ html[data-theme="dark"] .aps-run-panel {
   background: #162032;
   border-color: #334155;
 }
+
+html[data-theme="dark"] .aps-run-option-card {
+  background: rgba(30, 41, 59, 0.72);
+  border-color: #334155;
+}
+
 
 html[data-theme="dark"] .readonly-value {
   background: var(--ui-card-bg, #1e293b);

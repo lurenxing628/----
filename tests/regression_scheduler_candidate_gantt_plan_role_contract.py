@@ -265,7 +265,7 @@ def test_gantt_candidate_critical_chain_unavailable_uses_public_contract(tmp_pat
     assert payload.get("success") is True
     assert critical_chain.get("available") is False
     assert critical_chain.get("reason_code") == "rows_exception"
-    assert critical_chain.get("reason") == "关键链计算异常"
+    assert critical_chain.get("reason") == "关键工序关系计算异常"
     assert critical_chain.get("ids") == []
     assert critical_chain.get("edges") == []
     assert critical_chain.get("edge_count") == 0
@@ -299,7 +299,7 @@ def test_gantt_candidate_rows_load_failure_uses_public_critical_chain_contract(t
     assert payload.get("success") is True
     assert critical_chain.get("available") is False
     assert critical_chain.get("reason_code") == "rows_load_exception"
-    assert critical_chain.get("reason") == "关键链数据读取异常"
+    assert critical_chain.get("reason") == "关键工序关系资料读取异常"
     assert critical_chain.get("ids") == []
     assert critical_chain.get("edges") == []
     assert critical_chain.get("edge_count") == 0

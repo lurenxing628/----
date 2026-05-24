@@ -127,32 +127,36 @@
   function getCriticalChainUnavailableMessage(critical) {
     var cc = normalizeCriticalChain(critical);
     if (cc.available !== false) return "";
-    var prefix = "关键链暂不可用";
+    var prefix = "关键工序关系暂时看不了";
     var explicitReasonCode = critical && critical.reason_code;
     var reason = publicCriticalChainReason(cc.reason, cc.reason_code || explicitReasonCode);
     if (reason) {
       prefix += "（" + reason + "）";
     }
     return dedupeCriticalReason(
-      prefix + "，当前仅展示普通甘特任务与资源排程，不显示关键工序关系线和高亮框。",
+      prefix + "，当前只显示普通甘特任务和设备/人员安排，不显示关键工序关系线和高亮框。",
       reason
     );
   }
 
   function publicCriticalChainReason(reason, reasonCode) {
     var code = norm(reasonCode);
-    if (code === "repo_exception") return "关键链计算异常";
-    if (code === "calc_exception") return "关键链计算异常";
-    if (code === "rows_exception") return "关键链计算异常";
-    if (code === "rows_load_exception") return "关键链数据读取异常";
+    if (code === "repo_exception") return "关键工序关系计算异常";
+    if (code === "calc_exception") return "关键工序关系计算异常";
+    if (code === "rows_exception") return "关键工序关系计算异常";
+    if (code === "rows_load_exception") return "关键工序关系资料读取异常";
     if (code === "no_history") return "暂无排产历史";
     if (code === "unknown") return "状态未知";
     var text = norm(reason);
     if (!text) return "";
-    if (text === "repo_exception") return "关键链计算异常";
-    if (text === "calc_exception") return "关键链计算异常";
-    if (text === "rows_exception") return "关键链计算异常";
-    if (text === "rows_load_exception") return "关键链数据读取异常";
+    if (text === "关键链计算异常") return "关键工序关系计算异常";
+    if (text === "关键链数据读取异常") return "关键工序关系资料读取异常";
+    var legacyUnavailable = ["关键", "链暂不可用"].join("");
+    if (text === legacyUnavailable) return "关键工序关系暂时看不了";
+    if (text === "repo_exception") return "关键工序关系计算异常";
+    if (text === "calc_exception") return "关键工序关系计算异常";
+    if (text === "rows_exception") return "关键工序关系计算异常";
+    if (text === "rows_load_exception") return "关键工序关系资料读取异常";
     if (text === "no_history") return "暂无排产历史";
     if (text === "unknown") return "状态未知";
     if (/^[A-Za-z0-9_.:-]+$/.test(text)) return "状态异常";
@@ -339,9 +343,9 @@
     var cc = normalizeCriticalChain(critical);
     if (cc.available === false) {
       var reason = publicCriticalChainReason(cc.reason, cc.reason_code);
-      return reason ? ("关键链暂不可用（" + reason + "）") : "关键链暂不可用";
+      return reason ? ("关键工序关系暂时看不了（" + reason + "）") : "关键工序关系暂时看不了";
     }
-    return "关键链可用";
+    return "可查看";
   }
 
   function findDegradationEvent(events, code) {
@@ -414,7 +418,7 @@
     if (criticalChainUnavailable) {
       var criticalMessage = getCriticalChainUnavailableMessage(cc);
       if (!criticalMessage) {
-        criticalMessage = "关键工序关系暂不可用，当前只展示普通甘特任务与资源排程，不显示关键工序关系线和外框高亮。";
+        criticalMessage = "关键工序关系暂时看不了，当前只显示普通甘特任务和设备/人员安排，不显示关键工序关系线和外框高亮。";
       }
       messages.push(criticalMessage);
     }
@@ -445,7 +449,7 @@
       available: cc.available !== false,
       unavailableMessage: unavailableMessage,
       isCritical: isCritical,
-      statusLabel: cc.available === false ? "不可用" : (isCritical ? "是" : "否"),
+      statusLabel: cc.available === false ? "暂时看不了" : (isCritical ? "是" : "否"),
       predecessorText: isCritical && meta ? meta.from : "-",
       edgeTypeText: isCritical && meta ? getCriticalEdgeTypeLabel(meta.edge_type) : "-",
       reasonText: cc.available === false

@@ -58,7 +58,7 @@
 
   function resolveCtor(input) {
     var ctor = input && input.GanttCtor ? input.GanttCtor : window.Gantt;
-    if (typeof ctor !== "function") throw new Error("Frappe Gantt 未加载。");
+    if (typeof ctor !== "function") throw new Error("甘特图显示组件没有加载完成，请刷新后重试。");
     return ctor;
   }
 

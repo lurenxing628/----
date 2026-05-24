@@ -110,7 +110,7 @@ def build_preview_client_bootstrap(
                 lines.push(`<div class="subtitle">中间等待：${{escapeHtml(criticalInfo.gapText)}}</div>`);
               }}
               if (criticalInfo.unavailableMessage) {{
-                lines.push(`<div class="subtitle">关键链暂不可用：${{escapeHtml(criticalInfo.unavailableMessage)}}</div>`);
+                lines.push(`<div class="subtitle">关键工序关系暂时看不了：${{escapeHtml(criticalInfo.unavailableMessage)}}</div>`);
               }}
               return lines.join("");
             }}

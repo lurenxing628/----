@@ -93,15 +93,15 @@ def _downtime_reason(
             "这些设备本次先不使用停机约束",
         )
     if meta_parse_failed:
-        return "停机区间降级计数读取异常，本次按停机资料不完整处理。"
+        return "停机资料状态读取异常，本次按停机资料不完整处理；请联系维护人员检查停机资料。"
     if load_failed:
         return DOWNTIME_LOAD_FAILED_MESSAGE
     if auto_assign_enabled and downtime_extend_attempted and extend_partial_fail_count > 0:
         return _partial_fail_reason(
-            "部分候选设备停机区间扩展加载失败",
+            "部分自动安排设备停机区间扩展加载失败",
             extend_partial_fail_count,
             extend_partial_fail_machines_sample,
-            "这些候选设备可能未覆盖停机约束",
+            "这些设备可能未覆盖停机约束",
         )
     if extend_failed:
         return DOWNTIME_EXTEND_FAILED_MESSAGE

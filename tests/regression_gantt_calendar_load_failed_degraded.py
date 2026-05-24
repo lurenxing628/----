@@ -79,7 +79,7 @@ def main() -> None:
         _assert_status(page_resp, "GET /scheduler/gantt")
         html = page_resp.data.decode("utf-8", errors="ignore")
         assert 'id="ganttDegradationWarning"' in html, html
-        assert "工作日历加载失败，当前不显示假期/停工背景标注。" in html, html
+        assert "工作日历加载失败，当前不显示假期/停工背景标注。" not in html, html
 
         data_resp = client.get("/scheduler/gantt/data?view=machine&week_start=2026-03-02&version=3")
         _assert_status(data_resp, "GET /scheduler/gantt/data")

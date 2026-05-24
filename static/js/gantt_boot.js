@@ -23,6 +23,7 @@
   var render = ns.render;
   var outline = ns.outline;
   var contract = ns.contract;
+  var popup = ns.popup;
 
   function _showEarlyError(message) {
     var msg = String(message || "甘特图页面脚本加载不完整，请刷新页面后重试。");
@@ -89,6 +90,9 @@
   if (!outline || typeof outline.installCriticalOutlineSyncAdapter !== "function") {
     missingDeps.push("outline.installCriticalOutlineSyncAdapter");
   }
+  if (!popup || typeof popup.buildTaskPopupHtml !== "function") {
+    missingDeps.push("popup.buildTaskPopupHtml");
+  }
   if (missingDeps.length > 0) {
     _reportMissingDeps(missingDeps);
     return;
@@ -133,10 +137,11 @@
   function applyCalendarDegradationState() {
     const warningEl = $("ganttDegradationWarning");
     const messages = _buildDegradationMessages();
-    const visible = messages.length > 0;
-    const message = visible
-      ? messages.join(" ")
-      : "排程数据存在异常，可能影响甘特图展示，请检查数据。";
+    let message = messages.length > 0 ? messages.join(" ") : "";
+    if (!message && state.degraded === true) {
+      message = "这次排产有些提醒暂时没法直接说明，甘特图先按能识别的数据展示。请到系统管理里的排产历史查看详细提醒。";
+    }
+    const visible = !!message;
 
     if (warningEl) {
       warningEl.textContent = message;
@@ -265,8 +270,8 @@
     if (rawMsg.indexOf("Gantt DOM mismatch") >= 0) {
       return "甘特图显示异常，请刷新后重试。";
     }
-    if (rawMsg.indexOf("Frappe Gantt 未加载") >= 0) {
-      return rawMsg;
+    if (rawMsg.indexOf("甘特图显示组件没有加载完成") >= 0) {
+      return "甘特图显示组件没有加载完成，请刷新后重试。";
     }
     if (!/[\u4e00-\u9fff]/.test(rawMsg)) {
       return "甘特图显示异常，请刷新后重试。";

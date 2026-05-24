@@ -6,32 +6,38 @@ from typing import Any, Dict, List, Optional
 from core.services.scheduler.degradation_messages import public_degradation_events
 
 _CRITICAL_REASON_LABELS = {
-    "calc_exception": "关键链计算异常",
-    "repo_exception": "关键链计算异常",
-    "rows_exception": "关键链计算异常",
-    "rows_load_exception": "关键链数据读取异常",
-    "no_history": "暂无排产历史，关键链暂不可用",
-    "unknown": "关键链暂不可用",
+    "calc_exception": "关键工序关系计算异常",
+    "repo_exception": "关键工序关系计算异常",
+    "rows_exception": "关键工序关系计算异常",
+    "rows_load_exception": "关键工序关系资料读取异常",
+    "no_history": "暂无排产历史，关键工序关系暂时看不了",
+    "unknown": "关键工序关系暂时看不了",
 }
 _ALLOWED_CRITICAL_REASON_CODES = frozenset(_CRITICAL_REASON_LABELS)
 
 
 def _public_critical_chain(chain: Dict[str, Any]) -> Dict[str, Any]:
-    out = dict(chain or {})
-    reason = str(out.get("reason") or "").strip()
-    if bool(out.get("available") is False):
-        out["ids"] = []
-        out["edges"] = []
-        out["edge_count"] = 0
-        out["edge_type_stats"] = {}
-        reason_code = str(out.get("reason_code") or reason or "unknown").strip().lower() or "unknown"
+    raw = dict(chain or {})
+    reason = str(raw.get("reason") or "").strip()
+    if bool(raw.get("available") is False):
+        out = {
+            "available": False,
+            "ids": [],
+            "edges": [],
+            "edge_count": 0,
+            "edge_type_stats": {},
+        }
+        if "cache_hit" in raw:
+            out["cache_hit"] = bool(raw.get("cache_hit"))
+        reason_code = str(raw.get("reason_code") or reason or "unknown").strip().lower() or "unknown"
         if reason_code not in _ALLOWED_CRITICAL_REASON_CODES:
             reason_code = "unknown"
         out["reason_code"] = reason_code
         out["reason"] = _CRITICAL_REASON_LABELS.get(reason_code) or (
-            "关键链暂不可用" if reason and reason.isascii() else reason
+            "关键工序关系暂时看不了" if reason and reason.isascii() else reason
         )
-    return out
+        return out
+    return raw
 
 
 def _public_history(history: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:

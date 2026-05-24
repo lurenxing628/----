@@ -66,7 +66,7 @@ def test_gantt_payload_surfaces_critical_chain_unavailable(monkeypatch) -> None:
         critical_chain = data.get("critical_chain") or {}
 
         assert critical_chain.get("available") is False
-        assert critical_chain.get("reason") == "关键链计算异常"
+        assert critical_chain.get("reason") == "关键工序关系计算异常"
         assert critical_chain.get("reason_code") == "repo_exception"
         assert critical_chain.get("ids") == []
         assert critical_chain.get("cache_hit") is False
@@ -91,14 +91,26 @@ def test_gantt_public_contract_preserves_rows_exception_reason_code() -> None:
         week_end="2026-03-08",
         tasks=[],
         calendar_days=[],
-        critical_chain={"available": False, "reason": "rows_exception", "ids": ["RAW"], "edges": [{"from": "A", "to": "B"}]},
+        critical_chain={
+            "available": False,
+            "reason": "rows_exception",
+            "ids": ["RAW"],
+            "edges": [{"from": "A", "to": "B"}],
+            "debug_error": "sqlite SECRET",
+            "raw_rows": [{"internal": "row"}],
+            "traceback": "internal traceback",
+        },
     )
     critical_chain = data["critical_chain"]
 
     assert critical_chain.get("reason_code") == "rows_exception"
-    assert critical_chain.get("reason") == "关键链计算异常"
+    assert critical_chain.get("reason") == "关键工序关系计算异常"
     assert critical_chain.get("ids") == []
     assert critical_chain.get("edges") == []
+    assert "debug_error" not in critical_chain
+    assert "raw_rows" not in critical_chain
+    assert "traceback" not in critical_chain
+    assert "sqlite SECRET" not in str(data)
 
 
 def test_critical_chain_unavailable_result_is_not_cached(monkeypatch) -> None:

@@ -360,7 +360,14 @@ def test_run_option_css_is_scoped_to_the_right_surfaces() -> None:
     assert ".aps-run-options-title" in css
     assert ".aps-run-option-row + .aps-run-option-row" in css
     assert ".aps-run-option-note + .aps-run-option-row" in css
+    assert ".aps-run-option-cards" in css
+    assert ".aps-run-option-card" in css
+    assert ".aps-run-option-card .aps-run-option-row" in css
+    assert ".aps-run-option-card .aps-toggle-copy" in css
+    assert ".aps-run-option-card .aps-toggle-title" in css
     assert ".aps-form-toggle-field .aps-run-option-row" in css
+    assert ".aps-inline-run-action .aps-run-option-row" in css
+    assert ".aps-import-option-list .aps-run-option-row" in css
     assert ".aps-run-option-row .aps-toggle-control" in css
     assert ".aps-run-option-row .aps-toggle-title" in css
 

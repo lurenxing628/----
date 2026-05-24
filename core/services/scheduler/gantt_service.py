@@ -270,7 +270,7 @@ class GanttService:
                     code="critical_chain_unavailable",
                     scope="scheduler.gantt",
                     field="critical_chain",
-                    message=f"关键链不可用（reason={reason}）。",
+                    message=f"关键工序关系暂时看不了（reason={reason}）。",
                 )
             )
         return collector

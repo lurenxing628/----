@@ -197,7 +197,7 @@ def test_boot_catches_render_adapter_missing_gantt_and_writes_visible_error() ->
     result = _run_boot_case(_non_empty_payload(), load_vendor=False)
 
     assert result["rejected"] is False
-    assert "Frappe Gantt 未加载" in result["error"]
+    assert "甘特图显示组件没有加载完成" in result["error"]
     assert result["errorDisplay"] == "block"
     assert result["emptyDisplay"] != "block"
     assert "暂无排程数据" not in result["empty"]
@@ -213,6 +213,19 @@ def test_boot_surfaces_missing_render_dependency_to_visible_error() -> None:
     assert "脚本加载不完整" in result["error"]
     assert "render" not in result["error"]
     assert "contract." not in result["error"]
+    assert result["errorDisplay"] == "block"
+    assert result["emptyDisplay"] != "block"
+
+
+def test_boot_surfaces_missing_popup_dependency_to_visible_error() -> None:
+    result = _run_boot_case(
+        _valid_empty_payload(),
+        setup_after_scripts="window.__APS_GANTT__.popup = {};",
+    )
+
+    assert result["rejected"] is False
+    assert "脚本加载不完整" in result["error"]
+    assert "popup." not in result["error"]
     assert result["errorDisplay"] == "block"
     assert result["emptyDisplay"] != "block"
 

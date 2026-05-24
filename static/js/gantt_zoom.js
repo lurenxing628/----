@@ -10,6 +10,12 @@
   var HARD_COLUMN_LIMIT = 1500;
   var SOFT_NODE_LIMIT = 12000;
   var HARD_NODE_LIMIT = 18000;
+  var GANTT_ROW_PITCH_PX = 38;
+  var GANTT_BASE_HEIGHT_PX = 168;
+  var SOFT_TASK_LIMIT = 800;
+  var HARD_TASK_LIMIT = 1200;
+  var SOFT_HEIGHT_LIMIT_PX = 30000;
+  var HARD_HEIGHT_LIMIT_PX = 45000;
 
   var ZOOM_SPECS = {
     month: {
@@ -199,6 +205,25 @@
     return columns * 3 + taskCount * 8 + dependencyCount * 2 + holidayMarkerCount;
   }
 
+  function estimateGanttHeight(taskCount) {
+    var count = Number(taskCount || 0);
+    if (!isFinite(count) || count < 0) count = 0;
+    return GANTT_BASE_HEIGHT_PX + count * GANTT_ROW_PITCH_PX;
+  }
+
+  function baseZoomResult(ok, level, reason, columns, taskCount, estimatedNodes, estimatedHeight, message) {
+    return {
+      ok: ok,
+      level: level,
+      reason: reason,
+      columns: columns,
+      taskCount: taskCount,
+      estimatedNodes: estimatedNodes,
+      estimatedHeight: estimatedHeight,
+      message: message || "",
+    };
+  }
+
   function validateZoomRange(args) {
     var spec = getZoomSpec(args && args.zoomLevel);
     var start = parseLocalDate(args && args.startDate, false);
@@ -206,59 +231,52 @@
     var taskCount = Number(args && args.taskCount ? args.taskCount : 0);
     var dependencyCount = Number(args && args.dependencyCount ? args.dependencyCount : 0);
     var holidayMarkerCount = Number(args && args.holidayMarkerCount ? args.holidayMarkerCount : 0);
+    if (!isFinite(taskCount) || taskCount < 0) taskCount = 0;
+    if (!isFinite(dependencyCount) || dependencyCount < 0) dependencyCount = 0;
+    if (!isFinite(holidayMarkerCount) || holidayMarkerCount < 0) holidayMarkerCount = 0;
     var rangeMinutes = start && end && end >= start ? (end.getTime() - start.getTime() + 1) / 60000 : 0;
     var rangeDays = rangeMinutes ? rangeMinutes / DAY_MINUTES : 0;
     var columns = rangeMinutes ? Math.ceil(rangeMinutes / spec.stepMinutes) : 0;
     var estimatedNodes = estimateGanttCost(columns, taskCount, dependencyCount, holidayMarkerCount);
+    var estimatedHeight = estimateGanttHeight(taskCount);
 
     if (spec.maxRangeDays !== null && rangeDays > spec.maxRangeDays) {
-      return {
-        ok: false,
-        level: "hard",
-        reason: "range",
-        columns: columns,
-        estimatedNodes: estimatedNodes,
-        message: "当前日期范围太宽，请缩小日期范围，或切换到更粗的时间粒度。",
-      };
+      return baseZoomResult(false, "hard", "range", columns, taskCount, estimatedNodes, estimatedHeight, "当前日期范围太宽，请缩小日期范围，或切换到更粗的时间粒度。");
     }
     if (columns > HARD_COLUMN_LIMIT) {
-      return {
-        ok: false,
-        level: "hard",
-        reason: "columns",
-        columns: columns,
-        estimatedNodes: estimatedNodes,
-        message: "当前时间格太多，请缩小日期范围，或切换到更粗的时间粒度。",
-      };
+      return baseZoomResult(false, "hard", "columns", columns, taskCount, estimatedNodes, estimatedHeight, "当前时间格太多，请缩小日期范围，或切换到更粗的时间粒度。");
+    }
+    if (taskCount > HARD_TASK_LIMIT || estimatedHeight > HARD_HEIGHT_LIMIT_PX) {
+      return baseZoomResult(
+        false,
+        "hard",
+        taskCount > HARD_TASK_LIMIT ? "tasks" : "height",
+        columns,
+        taskCount,
+        estimatedNodes,
+        estimatedHeight,
+        "当前任务太多，直接打开甘特图可能会把页面卡住。请先筛选设备、人员或批次，或者缩短日期范围后再查看。"
+      );
     }
     if (estimatedNodes > HARD_NODE_LIMIT) {
-      return {
-        ok: false,
-        level: "hard",
-        reason: "nodes",
-        columns: columns,
-        estimatedNodes: estimatedNodes,
-        message: "当前任务数量太多，请先筛选设备、人员或批次，或使用更粗的时间粒度。",
-      };
+      return baseZoomResult(false, "hard", "nodes", columns, taskCount, estimatedNodes, estimatedHeight, "当前任务和连线太多，直接打开甘特图可能会把页面卡住。请先筛选设备、人员或批次，或者切换到更粗的时间粒度。");
+    }
+    if (taskCount > SOFT_TASK_LIMIT || estimatedHeight > SOFT_HEIGHT_LIMIT_PX) {
+      return baseZoomResult(
+        true,
+        "soft",
+        taskCount > SOFT_TASK_LIMIT ? "tasks" : "height",
+        columns,
+        taskCount,
+        estimatedNodes,
+        estimatedHeight,
+        "当前任务较多，页面可能会变慢。建议先筛选设备、人员或批次。"
+      );
     }
     if (estimatedNodes > SOFT_NODE_LIMIT) {
-      return {
-        ok: true,
-        level: "soft",
-        reason: "nodes",
-        columns: columns,
-        estimatedNodes: estimatedNodes,
-        message: "当前任务和时间格较多，页面可能变慢。建议先筛选设备、人员或批次。",
-      };
+      return baseZoomResult(true, "soft", "nodes", columns, taskCount, estimatedNodes, estimatedHeight, "当前任务和连线较多，页面可能会变慢。建议先筛选设备、人员或批次。");
     }
-    return {
-      ok: true,
-      level: "ok",
-      reason: "",
-      columns: columns,
-      estimatedNodes: estimatedNodes,
-      message: "",
-    };
+    return baseZoomResult(true, "ok", "", columns, taskCount, estimatedNodes, estimatedHeight, "");
   }
 
   ns.zoom = {
@@ -267,6 +285,12 @@
     HARD_COLUMN_LIMIT: HARD_COLUMN_LIMIT,
     SOFT_NODE_LIMIT: SOFT_NODE_LIMIT,
     HARD_NODE_LIMIT: HARD_NODE_LIMIT,
+    GANTT_ROW_PITCH_PX: GANTT_ROW_PITCH_PX,
+    GANTT_BASE_HEIGHT_PX: GANTT_BASE_HEIGHT_PX,
+    SOFT_TASK_LIMIT: SOFT_TASK_LIMIT,
+    HARD_TASK_LIMIT: HARD_TASK_LIMIT,
+    SOFT_HEIGHT_LIMIT_PX: SOFT_HEIGHT_LIMIT_PX,
+    HARD_HEIGHT_LIMIT_PX: HARD_HEIGHT_LIMIT_PX,
     normalizeZoomLevel: normalizeZoomLevel,
     currentZoomLevel: currentZoomLevel,
     isKnownZoomLevel: isKnownZoomLevel,
@@ -274,5 +298,6 @@
     getGanttScale: getGanttScale,
     validateZoomRange: validateZoomRange,
     estimateGanttCost: estimateGanttCost,
+    estimateGanttHeight: estimateGanttHeight,
   };
 })();

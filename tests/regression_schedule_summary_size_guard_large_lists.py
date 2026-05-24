@@ -107,7 +107,7 @@ def _oversized_public_field_case():
         "strategy": "priority_first",
         "strategy_params": {"payload": "x" * 600000},
         "algo": {"attempts": [], "improvement_trace": [], "best_batch_order": []},
-        "warnings": ["停机资料有部分设备读取失败", "资源池资料有部分候选设备读取失败"],
+        "warnings": ["停机资料有部分设备读取失败", "资源池资料有部分自动安排设备读取失败"],
         "degradation_events": [
             {
                 "code": "downtime_avoid_degraded",

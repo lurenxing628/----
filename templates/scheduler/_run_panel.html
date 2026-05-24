@@ -18,18 +18,22 @@
       <div class="muted text-xs mt-1">可选；填了以后会校验是否能在期限内完成。</div>
     </div>
     <div class="form-field">
-      <label for="schedulerRunTimeBudgetInput">本次方案比较最多用时</label>
+      <label for="schedulerRunTimeBudgetInput">这次找更好排法先试多久</label>
       <input id="schedulerRunTimeBudgetInput" type="number" name="run_time_budget_seconds" min="1" step="1" placeholder="不填按高级设置">
       <div class="muted text-xs mt-1">只影响这一次点击排产，不会保存到高级设置。</div>
     </div>
     <div class="aps-run-options" role="group" aria-label="排产选项">
       <div class="aps-run-options-title">排产选项</div>
-      {% for option in run_options %}
-        {{ ui.toggle(option.toggle, class='aps-run-option-row') }}
-        {% if option.note %}
-          <div class="muted text-xs scheduler-config-field-warning aps-run-option-note">{{ option.note }}</div>
-        {% endif %}
-      {% endfor %}
+      <div class="aps-run-option-cards">
+        {% for option in run_options %}
+          <div class="aps-run-option-card">
+            {{ ui.toggle(option.toggle, class='aps-run-option-row') }}
+            {% if option.note %}
+              <div class="muted text-xs scheduler-config-field-warning aps-run-option-note">{{ option.note }}</div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
     </div>
   </div>
   <div class="aps-run-panel-help">

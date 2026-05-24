@@ -41,8 +41,9 @@ process.stdout.write(JSON.stringify({{
   fiveMinuteFourDays: check("five-minute", "2026-05-11", "2026-05-14"),
   fifteenMinuteEightDays: check("fifteen-minute", "2026-05-11", "2026-05-18"),
   hourFifteenDays: check("hour", "2026-05-11", "2026-05-25"),
-  hardNodes: check("day", "2026-05-11", "2026-05-12", 3000, 0),
-  softNodes: check("day", "2026-05-11", "2026-05-12", 1600, 0),
+  hardNodes: check("day", "2026-05-11", "2026-05-12", 100, 10000),
+  softNodes: check("day", "2026-05-11", "2026-05-12", 100, 5600),
+  tooManyTasks: check("day", "2026-05-25", "2026-07-14", 1440, 0),
   okDay: check("day", "2026-05-11", "2026-05-12", 100, 20),
 }}));
 """
@@ -56,6 +57,11 @@ process.stdout.write(JSON.stringify({{
     assert result["hardNodes"]["reason"] == "nodes"
     assert result["softNodes"]["ok"] is True
     assert result["softNodes"]["level"] == "soft"
+    assert result["softNodes"]["reason"] == "nodes"
+    assert result["tooManyTasks"]["ok"] is False
+    assert result["tooManyTasks"]["level"] == "hard"
+    assert result["tooManyTasks"]["reason"] == "tasks"
+    assert "任务太多" in result["tooManyTasks"]["message"]
     assert result["okDay"]["ok"] is True
     assert result["okDay"]["level"] == "ok"
 
@@ -230,10 +236,95 @@ process.stdout.write(JSON.stringify({{
     assert result["barWidth"] == 270
 
 
+def test_render_guard_blocks_too_many_tasks_before_new_gantt() -> None:
+    helpers = _load_helpers()
+    node_code = f"""
+{helpers.DOM_SHIM_JS}
+createHost("gantt");
+createHost("ganttEmpty");
+createHost("ganttError");
+createHost("ganttLegend");
+createHost("ganttZoomWarning");
+
+let constructorCalls = 0;
+function CapturingGantt(selector, tasks, options) {{
+  constructorCalls += 1;
+  return {{ selector, tasks, options }};
+}}
+window.Gantt = CapturingGantt;
+global.Gantt = CapturingGantt;
+
+loadScript({helpers._gantt_js()});
+loadScript({helpers._gantt_zoom_js()});
+loadScript({helpers._gantt_adapter_js()});
+loadScript({helpers._gantt_color_js()});
+loadScript({helpers._outline_js()});
+loadScript({helpers._gantt_contract_js()});
+loadScript({helpers._gantt_help_js()});
+loadScript({helpers._gantt_popup_js()});
+loadScript({helpers._gantt_legend_js()});
+loadScript({helpers._gantt_holidays_js()});
+loadScript({helpers._gantt_decorations_js()});
+loadScript({helpers._gantt_render_js()});
+
+const ns = window.__APS_GANTT__;
+const state = ns.state;
+state.cfg = {{
+  view: "machine",
+  startDate: "2026-05-25",
+  endDate: "2026-07-14",
+  weekStart: "2026-05-25",
+}};
+state.allTasks = [];
+for (let i = 0; i < 1440; i += 1) {{
+  state.allTasks.push({{
+    id: "T_" + i,
+    name: "Task " + i,
+    start: "2026-05-25 08:00:00",
+    end: "2026-05-25 09:00:00",
+    progress: 0,
+    dependencies: "",
+    meta: {{ batch_id: "B" + i, source: "internal", status: "pending", machine_id: "M" + (i % 10), machine: "M" + (i % 10) }},
+  }});
+}}
+state.critical = {{ ids: [], edges: [], available: true }};
+state.ccIdSet = new Set();
+state.ccPrevByTo = new Map();
+state.ccEdgeMetaByTo = new Map();
+state.calendarDays = [];
+state.ui.zoomLevel = "day";
+state.ui.viewMode = "Day";
+state.ui.colorMode = "batch";
+state.ui.depsMode = "critical";
+state.ui.highlightCC = true;
+state.ui.onlyOverdue = false;
+state.ui.onlyExternal = false;
+state.ui.filterBatch = "";
+state.ui.filterResource = "";
+
+ns.render();
+
+process.stdout.write(JSON.stringify({{
+  constructorCalls,
+  warning: document.getElementById("ganttZoomWarning").textContent || "",
+  currentTasks: state.currentTasks.length,
+  ganttIsNull: state.gantt === null,
+}}));
+"""
+    result = helpers._run_node_json(node_code)
+
+    assert result["constructorCalls"] == 0
+    assert result["ganttIsNull"] is True
+    assert result["currentTasks"] == 1440
+    assert "任务太多" in result["warning"]
+    assert "页面卡住" in result["warning"]
+
+
 def main() -> None:
     test_zoom_range_guard_blocks_overwide_minute_views_and_warns_soft_limit()
     test_render_range_guard_uses_actual_task_span_and_blocks_before_new_gantt()
     test_render_range_guard_treats_midnight_end_as_selected_day_boundary()
+    test_render_guard_blocks_too_many_tasks_before_new_gantt()
     print("OK")
 
 

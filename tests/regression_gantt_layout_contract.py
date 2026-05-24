@@ -93,12 +93,22 @@ def test_gantt_popup_keeps_readable_width_and_autofits_visible_area() -> None:
         assert "js/gantt_popup_fit.js" in _read(rel_path)
 
 
+def test_gantt_container_has_scroll_height_guard_for_large_results() -> None:
+    css = _read("static/css/aps_gantt.css")
+    block = css[css.index("#gantt .gantt-container {") : css.index("}", css.index("#gantt .gantt-container {"))]
+
+    assert "max-height: 900px;" in block
+    assert "max-height: min(72vh, 900px);" in block
+    assert "overflow: auto;" in block
+
+
 def main() -> None:
     test_gantt_control_area_does_not_nest_generic_form_grids()
     test_gantt_control_css_keeps_query_controls_horizontal()
     test_gantt_range_form_keeps_tablet_and_phone_breakpoints()
     test_gantt_filter_checks_does_not_force_overwide_column_near_900px()
     test_gantt_popup_keeps_readable_width_and_autofits_visible_area()
+    test_gantt_container_has_scroll_height_guard_for_large_results()
     print("OK")
 
 

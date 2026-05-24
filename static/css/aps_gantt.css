@@ -10,6 +10,9 @@
   border: 1px solid #e2e8f0;
   border-radius: 10px;
   background: #ffffff;
+  max-height: 900px;
+  max-height: min(72vh, 900px);
+  overflow: auto;
 }
 
 /* ---- grid / timeline (subtle) ---- */

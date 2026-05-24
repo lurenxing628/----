@@ -98,20 +98,35 @@ def test_run_panel_container_breakpoint_has_room_for_declared_columns() -> None:
     assert ".aps-run-option-row" in css
     assert ".aps-run-option-title" in css
     assert ".aps-run-option-desc" in css
-    run_option_start = css.index(".aps-run-option-row {")
-    run_option_block = css[run_option_start : css.index(".aps-run-option-row + .aps-run-option-row", run_option_start)]
-    assert "width: 100%;" in run_option_block
-    assert "flex-wrap: nowrap;" in run_option_block
+    assert ".aps-run-option-cards" in css
+    assert ".aps-run-option-card" in css
+    cards_start = css.index(".aps-run-option-cards {")
+    cards_block = css[cards_start : css.index("}", cards_start)]
+    assert "grid-template-columns: repeat(2, minmax(0, 1fr));" in cards_block
+    card_row_start = css.index(".aps-run-option-card .aps-run-option-row {")
+    card_row_block = css[card_row_start : css.index("}", card_row_start)]
+    assert "width: auto;" in card_row_block
+    assert "align-items: center;" in card_row_block
+    card_copy_start = css.index(".aps-run-option-card .aps-toggle-copy {")
+    card_copy_block = css[card_copy_start : css.index("}", card_copy_start)]
+    assert "display: flex;" in card_copy_block
+    assert "flex-wrap: wrap;" in card_copy_block
     assert ".aps-run-option-row .aps-toggle-copy" in css
     assert ".aps-run-option-note:empty" in css
     assert "minmax(240px, 1fr)" in css
     assert "minmax(190px, 0.8fr)" in css
     assert "minmax(230px, 1fr)" in css
-    assert "@container (min-width: 760px) and (max-width: 1039px)" in css
-    medium_start = css.index("@container (min-width: 760px) and (max-width: 1039px)")
+    desktop_start = css.index("@container (min-width: 1040px)")
+    desktop_block = css[desktop_start : css.index("@container (max-width: 759px)", desktop_start)]
+    assert ".aps-run-panel-grid > .aps-run-options" in desktop_block
+    assert "grid-column: 1 / -1;" in desktop_block
+    phone_start = css.index("@container (max-width: 759px)")
+    phone_block = css[phone_start : css.index("@container (min-width: 641px) and (max-width: 1039px)", phone_start)]
+    assert "grid-template-columns: 1fr;" in phone_block
+    assert "@container (min-width: 641px) and (max-width: 1039px)" in css
+    medium_start = css.index("@container (min-width: 641px) and (max-width: 1039px)")
     medium_block = css[medium_start : css.index("@media (max-width: 1180px)", medium_start)]
     assert "grid-column: 1 / -1" in medium_block
-    assert "repeat(2, minmax(0, 1fr))" not in medium_block
 
 
 def test_latest_schedule_snapshot_uses_dedicated_sections() -> None:

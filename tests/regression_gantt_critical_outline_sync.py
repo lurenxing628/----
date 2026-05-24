@@ -40,7 +40,7 @@ def test_gantt_contract_clears_unavailable_critical_chain_payload() -> None:
     assert critical_chain["edge_count"] == 0
     assert critical_chain["edge_type_stats"] == {}
     assert critical_chain["reason_code"] == "repo_exception"
-    assert critical_chain["reason"] == "关键链计算异常"
+    assert critical_chain["reason"] == "关键工序关系计算异常"
 
 
 DOM_SHIM_JS = r"""
@@ -1651,10 +1651,10 @@ process.stdout.write(JSON.stringify({{
       assert result["t1Outline"] == 0
       assert result["t2Outline"] == 0
       assert "关键链前驱：T1" not in result["popup"]
-      assert "关键链暂不可用" in result["warning"]
+      assert "关键工序关系暂时看不了" in result["warning"]
       assert "缓存缺失" in result["warning"]
-      assert "仅展示普通甘特任务与资源排程" in result["warning"]
-      assert "关键链暂不可用" in result["legend"]
+      assert "当前只显示普通甘特任务和设备/人员安排" in result["warning"]
+      assert "关键工序关系暂时看不了" in result["legend"]
       assert "关键工序(停用)" in result["legend"] or "关键工序 0" in result["legend"]
       assert "缓存缺失" in result["help"]
       assert "任务条外框高亮，表示该任务仍在当前版本关键链上" not in result["help"]
@@ -1765,7 +1765,7 @@ def test_gantt_contract_critical_unavailable_message_maps_reason_code() -> None:
 loadScript({_gantt_contract_js()});
 loadScript({_gantt_help_js()});
 const api = window.__APS_GANTT__.contract;
-const critical = {{ ids: ["T1"], edges: [], available: false, reason: "关键链计算异常", reason_code: "repo_exception" }};
+const critical = {{ ids: ["T1"], edges: [], available: false, reason: "关键工序关系计算异常", reason_code: "repo_exception" }};
 const state = {{}};
 const normalized = api.applyCriticalChainToState(state, critical);
 const messages = api.buildDegradationMessages({{
@@ -1777,11 +1777,11 @@ process.stdout.write(JSON.stringify({{ messages, help, tooltip, normalized, stat
 """
     result = _run_node_json(node_code)
 
-    assert "关键链计算异常" in str(result)
+    assert "关键工序关系计算异常" in str(result)
     assert result["normalized"]["reason_code"] == "repo_exception"
     assert result["state"]["critical"]["reason_code"] == "repo_exception"
-    assert result["tooltip"]["reasonText"] in ("-", "关键链计算异常")
-    assert result["tooltip"]["unavailableMessage"].count("关键链计算异常") == 1
+    assert result["tooltip"]["reasonText"] in ("-", "关键工序关系计算异常")
+    assert result["tooltip"]["unavailableMessage"].count("关键工序关系计算异常") == 1
     public_text = " ".join(
         list(result["messages"])
         + [
@@ -1816,7 +1816,7 @@ def test_gantt_contract_public_history_and_critical_reason_do_not_echo_raw_value
         },
     )
 
-    assert data["critical_chain"]["reason"] == "关键链计算异常"
+    assert data["critical_chain"]["reason"] == "关键工序关系计算异常"
     assert data["critical_chain"]["reason_code"] == "repo_exception"
     assert data["history"]["version"] == 9
     assert "result_summary" not in data["history"]

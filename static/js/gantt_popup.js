@@ -78,7 +78,7 @@
       lines.push(`<div class="subtitle">中间等待：${ccGapText}</div>`);
     }
     if (ccUnavailableText) {
-      lines.push(`<div class="subtitle">关键链暂不可用：${ccUnavailableText}</div>`);
+      lines.push(`<div class="subtitle">关键工序关系暂时看不了：${ccUnavailableText}</div>`);
     }
     return lines.join("") + `<div class="pointer"></div>`;
   }

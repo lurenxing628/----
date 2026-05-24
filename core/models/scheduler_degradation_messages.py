@@ -4,12 +4,12 @@ import re
 from typing import Any, Dict, Iterable, List, Optional
 
 DOWNTIME_LOAD_FAILED_MESSAGE = "停机区间加载失败，本次排产先不使用停机约束。"
-DOWNTIME_EXTEND_FAILED_MESSAGE = "停机区间扩展加载失败，部分候选设备可能还没有避开停机时间。"
+DOWNTIME_EXTEND_FAILED_MESSAGE = "停机区间扩展加载失败，部分自动安排设备可能还没有避开停机时间。"
 FREEZE_WINDOW_DEGRADED_MESSAGE = "冻结窗口资料不完整，本次排产未使用冻结窗口。"
 FREEZE_WINDOW_PARTIALLY_APPLIED_MESSAGE = "冻结窗口资料不完整，本次只保留能确认的冻结工序。"
 RESOURCE_POOL_BUILD_FAILED_MESSAGE = "自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员。"
 AUTO_ASSIGN_RESOURCE_MISSING_MESSAGE = "自动分配已启用，但可用设备或人员资料缺失，自制工序无法自动分配设备或人员。"
-SCHEDULE_OPERATION_FAILED_MESSAGE = "工序排产异常，请查看系统日志。"
+SCHEDULE_OPERATION_FAILED_MESSAGE = "工序排产异常，请联系维护人员检查系统运行记录。"
 
 _PUBLIC_EVENT_MESSAGES = {
     "config_fallback": "配置里有填写不完整或不正确的内容，本次先按默认值生成摘要。",
@@ -33,13 +33,13 @@ _PUBLIC_EVENT_MESSAGES = {
     "ortools_warmstart_failed": "系统没能复用上一次的排产结果，本次已从头重新计算。结果仍然有效，但耗时可能更长。",
     "calendar_load_failed": "工作日历加载失败，当前不显示假期/停工背景标注。",
     "bad_time_row_skipped": "有些甘特记录的开始或结束时间写法不对，页面已先过滤。",
-    "critical_chain_unavailable": "关键链信息暂时算不出来，所以甘特图不会显示关键工序的箭头和高亮框。排产结果本身仍可查看。",
+    "critical_chain_unavailable": "关键工序关系暂时算不出来，所以甘特图不会显示关键工序的箭头和高亮框。排产结果本身仍可查看。",
     "plugin_bootstrap_db_unavailable": "扩展功能设置暂时读不到，当前按默认开关运行。",
     "plugin_bootstrap_config_reader_failed": "扩展功能设置读取器初始化失败，当前按默认开关运行。",
     "plugin_bootstrap_config_read_failed": "扩展功能设置读取失败，当前按默认开关运行。",
-    "plugin_bootstrap_load_failed": "插件加载失败，请查看系统日志。",
+    "plugin_bootstrap_load_failed": "插件加载失败，请联系维护人员检查系统运行记录。",
     "plugin_bootstrap_status_snapshot_failed": "扩展功能状态读取失败，当前仅展示可用的状态。",
-    "plugin_bootstrap_telemetry_failed": "扩展功能启动记录写入失败，请查看系统日志。",
+    "plugin_bootstrap_telemetry_failed": "扩展功能启动记录写入失败，请联系维护人员检查系统运行记录。",
 }
 
 _PUBLIC_RESOURCE_POOL_WARNING_MESSAGE = RESOURCE_POOL_BUILD_FAILED_MESSAGE

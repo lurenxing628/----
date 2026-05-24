@@ -189,8 +189,8 @@ def _assert_downtime_partial_fail_contract() -> None:
             warnings=extend_warnings,
             meta=extend_meta,
         )
-        assert "MC_OK" in extend_map and len(extend_map["MC_OK"]) == 1, f"extend 部分失败后应保留健康候选设备停机：{extend_map!r}"
-        assert "MC_BAD" not in extend_map, f"坏候选设备不应写入停机区间：{extend_map!r}"
+        assert "MC_OK" in extend_map and len(extend_map["MC_OK"]) == 1, f"extend 部分失败后应保留健康自动安排设备停机：{extend_map!r}"
+        assert "MC_BAD" not in extend_map, f"坏自动安排设备不应写入停机区间：{extend_map!r}"
         assert bool(extend_meta.get("downtime_extend_attempted")), f"extend_attempted 应为 True：{extend_meta!r}"
         assert not bool(extend_meta.get("downtime_extend_ok")), f"extend 部分失败时 downtime_extend_ok 应为 False：{extend_meta!r}"
         assert int(extend_meta.get("downtime_extend_partial_fail_count") or 0) == 1, (
