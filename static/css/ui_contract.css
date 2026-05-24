@@ -4382,7 +4382,8 @@ html[data-theme="dark"] .aps-danger-zone {
   align-items: flex-end;
   justify-content: flex-start;
   min-width: 0;
-  align-self: end;
+  align-self: start;
+  padding-top: 24px;
 }
 
 .aps-settings-cleanup-actions .btn {
@@ -4889,6 +4890,17 @@ html[data-theme="dark"] .aps-danger-zone {
   align-self: end;
 }
 
+.aps-scheduler-filter-actions {
+  align-self: start;
+  padding-top: 24px;
+}
+
+@container (max-width: 455px) {
+  .aps-scheduler-filter-actions {
+    padding-top: 0;
+  }
+}
+
 .aps-downtime-actions .btn,
 .aps-scheduler-filter-actions .btn {
   min-height: 36px;
@@ -4957,6 +4969,12 @@ html[data-theme="dark"] .aps-danger-zone {
 
   .aps-settings-cleanup-actions {
     grid-column: 5;
+  }
+}
+
+@container (max-width: 759px) {
+  .aps-settings-cleanup-actions {
+    padding-top: 0;
   }
 }
 
