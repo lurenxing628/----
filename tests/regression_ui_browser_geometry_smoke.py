@@ -553,7 +553,7 @@ def _build_app(tmp_path, monkeypatch):
         "registry": {"capabilities": ("ui-smoke-capability",)},
         "degradation_events": (
             {"message": "扩展功能配置暂时读取不到，系统已按默认开关运行。"},
-            {"message": "插件加载失败，请查看系统日志。"},
+            {"message": "插件加载失败，请联系维护人员检查系统运行记录。"},
         ),
         "conflicted_capabilities": (),
         "statuses": (
@@ -564,7 +564,7 @@ def _build_app(tmp_path, monkeypatch):
                 "enabled": "yes",
                 "loaded": "no",
                 "enabled_source": "default_due_to_config_read_failed",
-                "error": "插件加载失败，请查看系统日志。",
+                "error": "插件加载失败，请联系维护人员检查系统运行记录。",
                 "capabilities": ("ui-smoke-capability",),
             },
         ),

@@ -63,7 +63,7 @@ def test_apply_enabled_sources_keeps_explicit_config_source_and_public_error_mes
     ortools_row = _status_by_id(plugin_status, "ortools_probe")
 
     assert pandas_row.get("enabled_source") == "config", pandas_row
-    assert pandas_row.get("error") == "插件加载失败，请查看系统日志。", pandas_row
+    assert pandas_row.get("error") == "插件加载失败，请联系维护人员检查系统运行记录。", pandas_row
     assert ortools_row.get("enabled_source") == "default", ortools_row
     assert plugin_status.get("config_source") == "mixed", plugin_status
     assert "SECRET_INTERNAL_TRACE" not in str(plugin_status)

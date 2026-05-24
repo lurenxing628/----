@@ -119,7 +119,7 @@ def test_plugin_bootstrap_status_error_is_public_message(tmp_path: Path) -> None
     statuses = list(plugin_status.get("statuses") or [])
     row = next(item for item in statuses if str(item.get("plugin_id") or "") == "failing_plugin")
     assert row.get("loaded") == "no", row
-    assert row.get("error") == "插件加载失败，请查看系统日志。", row
+    assert row.get("error") == "插件加载失败，请联系维护人员检查系统运行记录。", row
     assert "PLUGIN_INTERNAL_SECRET" not in str(plugin_status), plugin_status
     assert plugin_status.get("degraded") is True, plugin_status
     counters = dict(plugin_status.get("degradation_counters") or {})
