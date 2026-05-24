@@ -606,7 +606,7 @@ def test_config_service_page_save_rejects_blank_time_budget() -> None:
                 }
             )
 
-        assert exc_info.value.field in {"time_budget_seconds", "计算时间上限"}
+        assert exc_info.value.field in {"time_budget_seconds", "找更好排法先试多久"}
         assert cfg_svc.get_snapshot(strict_mode=True).time_budget_seconds == before.time_budget_seconds
         assert cfg_svc.get_snapshot(strict_mode=True).sort_strategy == before.sort_strategy
     finally:

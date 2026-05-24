@@ -23,7 +23,7 @@ _FIELD_LABELS = {
     "priority_weight": "优先级权重",
     "due_weight": "交期权重",
     "ready_weight": "齐套权重",
-    "time_budget_seconds": "计算时间上限",
+    "time_budget_seconds": "找更好排法先试多久",
     "ortools_time_limit_seconds": "深度优化尝试时间",
     "freeze_window_days": "锁定天数",
 }

@@ -30,7 +30,7 @@ def test_error_handlers_prefer_config_service_field_labels() -> None:
 
     assert "config_field_spec import field_label_for" not in source
     assert "get_user_visible_field_label(" in source
-    assert _resolve_field_label({"field": "time_budget_seconds"}) == "计算时间上限"
+    assert _resolve_field_label({"field": "time_budget_seconds"}) == "找更好排法先试多久"
 
 
 def test_scheduler_config_page_requests_and_uses_visible_field_metadata() -> None:

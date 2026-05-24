@@ -139,7 +139,7 @@ def main() -> None:
         "strict.graph_critical_weight",
         lambda: _build({**defaults, "graph_critical_weight": "-1"}, strict_mode=True),
         "graph_critical_weight",
-        message_contains="关键路径权重",
+        message_contains="重点工序提前权重",
         forbidden_message_text="graph_critical_weight",
     )
     _expect_validation(

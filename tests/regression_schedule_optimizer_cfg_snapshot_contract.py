@@ -228,7 +228,7 @@ def test_optimizer_strict_mode_rejects_blank_numeric_on_raw_cfg(monkeypatch, cfg
     with pytest.raises(ValidationError) as exc_info:
         _optimize_with_cfg(cfg, strict_mode=True)
     assert exc_info.value.field == "time_budget_seconds"
-    _assert_public_message(exc_info.value, public_label="计算时间上限", internal_key="time_budget_seconds")
+    _assert_public_message(exc_info.value, public_label="找更好排法先试多久", internal_key="time_budget_seconds")
 
 
 @pytest.mark.parametrize(

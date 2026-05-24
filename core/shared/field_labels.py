@@ -24,8 +24,8 @@ CONFIG_FIELD_LABELS = {
     "graph_analysis_mode": "工序图分析",
     "graph_block_on_cycle": "工序关系互相卡住时停止排产",
     "graph_candidate_weight_count": "重点工序方案档数",
-    "graph_critical_weight": "关键路径权重",
-    "graph_debug_export": "导出图分析调试文件",
+    "graph_critical_weight": "重点工序提前权重",
+    "graph_debug_export": "导出工序关系分析文件",
     "graph_impact_weight": "后续影响权重",
     "graph_overdue_tolerance_count": "允许多超期批次数",
     "graph_selection_policy": "最终方案选择方式",
@@ -38,8 +38,8 @@ CONFIG_FIELD_LABELS = {
     "priority_weight": "优先级权重",
     "ready_weight": "齐套权重",
     "sort_strategy": "排产策略",
-    "time_budget_seconds": "计算时间上限",
-    "run_time_budget_seconds": "本次方案比较时间上限",
+    "time_budget_seconds": "找更好排法先试多久",
+    "run_time_budget_seconds": "这次找更好排法先试多久",
 }
 
 GENERAL_FIELD_LABELS = {

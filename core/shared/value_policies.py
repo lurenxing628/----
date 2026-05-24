@@ -154,7 +154,7 @@ _FIELD_POLICIES = (
         strict_reason_code="invalid_number",
         compat_reason_code="invalid_number",
         blank_reason_code="blank_required",
-        notes="图分析关键路径权重：兼容读取必须由调用方显式传入运行时默认值。",
+        notes="重点工序提前权重：兼容读取必须由调用方显式传入运行时默认值。",
     ),
     FieldPolicy(
         field="graph_impact_weight",

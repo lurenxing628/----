@@ -345,7 +345,7 @@ def main() -> None:
     assert dict_algo.get("downtime_avoid") == {
         "loaded_ok": True,
         "degraded": True,
-        "degradation_reason": "停机区间扩展加载失败，部分候选设备可能还没有避开停机时间。",
+        "degradation_reason": "停机区间扩展加载失败，部分自动安排设备可能还没有避开停机时间。",
         "extend_attempted": True,
         "load_partial_fail_count": 0,
         "load_partial_fail_machines_sample": [],

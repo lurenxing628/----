@@ -109,7 +109,7 @@ def _default_adopted_option() -> SchedulePlanRoleOption:
 
 
 class SchedulePlanQueryService:
-    """统一解析 adopted / 代表候选方案，并按同一字段形状读取明细。"""
+    """统一解析 adopted / 代表方案，并按同一字段形状读取明细。"""
 
     def __init__(
         self,
@@ -422,12 +422,12 @@ class SchedulePlanQueryService:
         for option in options:
             if option.candidate_missing:
                 raise ValueError(
-                    f"候选方案角色映射损坏：version={version}, role={option.role} 指向的候选不存在。"
+                    f"方案对比记录不完整：version={version}, role={option.role} 指向的方案不存在。"
                 )
 
         roles = {option.role for option in options}
         if ROLE_ADOPTED not in roles:
-            raise ValueError(f"候选方案角色映射损坏：version={version} 缺少 adopted 最终采用方案。")
+            raise ValueError(f"方案对比记录不完整：version={version} 缺少最终采用方案。")
 
     def _validate_resolution_option(self, version: int, option: SchedulePlanRoleOption) -> None:
         if option.role not in VALID_PLAN_ROLES:
@@ -436,11 +436,11 @@ class SchedulePlanQueryService:
             raise ValueError(f"未知的排产方案数据来源：{option.source_table}")
         if option.source_table == SOURCE_CANDIDATE_ROWS:
             if option.candidate_id is None:
-                raise ValueError("candidate_rows 方案缺少 candidate_id")
+                raise ValueError("方案对比明细缺少编号。")
             if option.detail_saved != "yes":
-                raise ValueError("候选方案指向 candidate_rows，但这套候选没有保存明细。")
+                raise ValueError("方案对比明细没有保存。")
             if not self.repo.has_candidate_rows(version=int(version), candidate_id=int(option.candidate_id)):
-                raise ValueError("候选方案指向 candidate_rows，但没有找到对应的候选明细。")
+                raise ValueError("方案对比明细没有找到对应排程。")
         if option.role == ROLE_ADOPTED and option.source_table != SOURCE_SCHEDULE:
             raise ValueError("adopted 方案必须从 Schedule 读取")
 

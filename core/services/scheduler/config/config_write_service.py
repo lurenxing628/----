@@ -189,7 +189,7 @@ class ConfigFieldMutationService:
 
     def set_time_budget_seconds(self, value: Any) -> None:
         if value is None or str(value).strip() == "":
-            raise ValidationError("计算时间上限不能为空。", field="计算时间上限")
+            raise ValidationError("找更好排法先试多久不能为空。", field="找更好排法先试多久")
         seconds = int(
             coerce_config_field(
                 "time_budget_seconds",

@@ -83,4 +83,17 @@ def test_save_page_config_rejects_blank_time_budget_seconds(config_service: Conf
 
     message = str(exc_info.value)
     assert "不能为空" in message
-    assert exc_info.value.field in {"time_budget_seconds", "计算时间上限"}
+    assert exc_info.value.field in {"time_budget_seconds", "找更好排法先试多久"}
+
+
+def test_direct_set_time_budget_rejects_blank_without_changing_snapshot(config_service: ConfigService) -> None:
+    config_service.restore_default()
+    before = config_service.get_snapshot(strict_mode=True).time_budget_seconds
+
+    with pytest.raises(ValidationError) as exc_info:
+        config_service.set_time_budget_seconds(" ")
+
+    message = str(exc_info.value)
+    assert "不能为空" in message
+    assert exc_info.value.field == "找更好排法先试多久"
+    assert config_service.get_snapshot(strict_mode=True).time_budget_seconds == before

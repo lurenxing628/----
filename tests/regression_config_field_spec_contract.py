@@ -176,8 +176,8 @@ def test_config_field_spec_registry_contract() -> None:
     assert metadata["graph_selection_policy"].choices[0]["value"] == "balanced"
     assert metadata["graph_overdue_tolerance_count"].choices[0]["value"] == "0"
     assert metadata["graph_tardiness_tolerance_ratio"].choices[1]["value"] == "0.1"
-    assert metadata["graph_critical_weight"].label == "关键路径权重"
-    assert "关键链路上的工序会更靠前" in get_field_spec("graph_critical_weight").description
+    assert metadata["graph_critical_weight"].label == "重点工序提前权重"
+    assert "影响完工时间的工序会更靠前" in get_field_spec("graph_critical_weight").description
     assert "会影响更多后续工序的当前工序会更靠前" in get_field_spec("graph_impact_weight").description
     assert "预留" not in get_field_spec("graph_critical_weight").description
     assert "当前不改变排产结果" not in metadata["graph_critical_weight"].hint

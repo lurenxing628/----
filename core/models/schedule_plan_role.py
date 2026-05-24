@@ -36,7 +36,10 @@ def plan_candidate_label(label: Optional[str], *, role: Optional[str] = None, ca
     text = str(label or "").strip()
     key = str(candidate_key or "").strip()
     if text and text != key:
-        return text.replace("关键链候选", "重点工序优先方案")
+        return (
+            text.replace("关键链候选", "重点工序优先方案")
+            .replace("原算法候选", "原算法方案")
+        )
     if key == "baseline":
         return "原算法方案"
     if key.startswith("graph_w") and "_of_" in key:

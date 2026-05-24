@@ -30,24 +30,24 @@ def _require_result_row(candidate: Any, result: Any, *, allowed_op_ids: Set[int]
     try:
         op_id = int(getattr(result, "op_id", 0) or 0)
     except (TypeError, ValueError) as exc:
-        raise ValidationError(f"候选方案 {key} 的工序编号不合法，已拒绝写入候选明细。", field="candidate_rows") from exc
+        raise ValidationError(f"试算方案 {key} 的工序编号不合法，已拒绝保存明细。", field="candidate_rows") from exc
     if op_id <= 0:
-        raise ValidationError(f"候选方案 {key} 的工序编号必须大于 0，已拒绝写入候选明细。", field="candidate_rows")
+        raise ValidationError(f"试算方案 {key} 的工序编号必须大于 0，已拒绝保存明细。", field="candidate_rows")
     if op_id not in allowed_op_ids:
         raise ValidationError(
-            f"候选方案 {key} 包含超出本次可重排范围的工序 {op_id}，已拒绝写入候选明细。",
+            f"试算方案 {key} 包含超出本次可重排范围的工序 {op_id}，已拒绝保存明细。",
             field="candidate_rows",
         )
     start_time = getattr(result, "start_time", None)
     end_time = getattr(result, "end_time", None)
     if start_time is None or end_time is None:
-        raise ValidationError(f"候选方案 {key} 缺少开始或结束时间，已拒绝写入候选明细。", field="candidate_rows")
+        raise ValidationError(f"试算方案 {key} 缺少开始或结束时间，已拒绝保存明细。", field="candidate_rows")
     try:
         valid_range = start_time < end_time
     except TypeError as exc:
-        raise ValidationError(f"候选方案 {key} 的开始/结束时间不可比较，已拒绝写入候选明细。", field="candidate_rows") from exc
+        raise ValidationError(f"试算方案 {key} 的开始/结束时间不可比较，已拒绝保存明细。", field="candidate_rows") from exc
     if not valid_range:
-        raise ValidationError(f"候选方案 {key} 的开始时间必须早于结束时间，已拒绝写入候选明细。", field="candidate_rows")
+        raise ValidationError(f"试算方案 {key} 的开始时间必须早于结束时间，已拒绝保存明细。", field="candidate_rows")
     return {
         "op_id": int(op_id),
         "machine_id": getattr(result, "machine_id", None),
@@ -84,7 +84,7 @@ def _candidate_rows(
             )
         )
     if not rows:
-        raise ValidationError("候选代表方案没有可写入的明细行，已拒绝保存。", field="candidate_rows")
+        raise ValidationError("代表试算方案没有可保存的明细行，已拒绝保存。", field="candidate_rows")
     return rows
 
 
@@ -109,7 +109,7 @@ def _selection_source(*, role_key: str, adopted_key: str) -> str:
 def _require_adopted_key(selection: Any) -> str:
     adopted_key = str(getattr(selection, "selected_candidate_key", "") or "").strip()
     if not adopted_key:
-        raise ValidationError("候选比较缺少最终采用方案，已拒绝保存。", field="candidate_selection")
+        raise ValidationError("方案对比缺少最终采用结果，已拒绝保存。", field="candidate_selection")
     return adopted_key
 
 
@@ -122,7 +122,7 @@ def _require_candidate_key_available(
 ) -> None:
     if key not in by_key or key not in candidate_ids:
         raise ValidationError(
-            f"候选方案角色 {role} 指向不存在的 candidate_key：{key}",
+            f"方案对比角色 {role} 指向不存在的方案编号：{key}",
             field="candidate_selection",
         )
 

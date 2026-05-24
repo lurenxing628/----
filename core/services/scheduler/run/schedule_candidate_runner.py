@@ -436,13 +436,13 @@ def _resolve_total_budget(run_time_budget_seconds: Optional[float], *, cfg: Any)
     if run_time_budget_seconds is None:
         return float(cfg.time_budget_seconds)
     if isinstance(run_time_budget_seconds, bool):
-        raise ValidationError("本次方案比较时间上限必须是数字。", field="run_time_budget_seconds")
+        raise ValidationError("这次找更好排法先试多久必须是数字。", field="run_time_budget_seconds")
     try:
         budget = float(run_time_budget_seconds)
     except Exception as exc:
-        raise ValidationError("本次方案比较时间上限必须是数字。", field="run_time_budget_seconds") from exc
+        raise ValidationError("这次找更好排法先试多久必须是数字。", field="run_time_budget_seconds") from exc
     if budget <= 0:
-        raise ValidationError("本次方案比较时间上限必须大于 0 秒。", field="run_time_budget_seconds")
+        raise ValidationError("这次找更好排法先试多久必须大于 0 秒。", field="run_time_budget_seconds")
     return budget
 
 

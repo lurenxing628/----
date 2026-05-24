@@ -51,7 +51,7 @@ def select_candidate_plan(
     selection_policy = _normalize_policy(policy)
     completed = _completed_candidates(candidates)
     if not completed:
-        raise ValidationError("候选方案全部失败，无法自动选择采用方案。", field="candidate_selection")
+        raise ValidationError("试算方案都没算成功，无法自动选择采用结果。", field="candidate_selection")
 
     raw_score_best = min(completed, key=_candidate_sort_key)
     baseline_best = _best_of_kind(completed, CANDIDATE_KIND_BASELINE)
@@ -104,7 +104,7 @@ def _normalize_policy(policy: str) -> str:
     value = str(policy or "").strip().lower()
     if value not in _SUPPORTED_POLICIES:
         supported = " / ".join(_SUPPORTED_POLICIES)
-        raise ValidationError(f"候选择优策略只支持 {supported}。", field="candidate_selection_policy")
+        raise ValidationError(f"自动选结果方式只支持 {supported}。", field="candidate_selection_policy")
     return value
 
 
@@ -115,7 +115,7 @@ def _completed_candidates(candidates: Sequence[Any]) -> List[Any]:
             continue
         score = getattr(candidate, "score", None)
         if not score:
-            raise ValidationError("已完成候选缺少 score，无法自动择优。", field="candidate_score")
+            raise ValidationError("已算成功的试算方案缺少评分，无法自动选结果。", field="candidate_score")
         out.append(candidate)
     return out
 
@@ -176,7 +176,7 @@ def _failed_ops(candidate: Any) -> float:
 def _metric(candidate: Any, name: str) -> float:
     metrics = getattr(candidate, "metrics", None)
     if metrics is None or not hasattr(metrics, name):
-        raise ValidationError(f"候选方案缺少 {name} 指标，无法执行 balanced 择优。", field=name)
+        raise ValidationError("试算方案缺少必要指标，无法自动选结果。", field=name)
     return float(getattr(metrics, name))
 
 

@@ -435,7 +435,7 @@ def test_plan_query_rejects_selection_pointing_to_missing_candidate(tmp_path: Pa
         conn.execute("PRAGMA foreign_keys = ON")
 
         service = SchedulePlanQueryService(conn)
-        with pytest.raises(ValueError, match="候选方案角色映射.*不存在|指向的候选不存在"):
+        with pytest.raises(ValueError, match="方案对比记录不完整.*不存在|指向的方案不存在"):
             service.resolve_plan(VERSION, ROLE_BASELINE_BEST)
     finally:
         conn.close()
@@ -499,7 +499,7 @@ def test_plan_query_rejects_candidate_rows_selection_without_saved_details(tmp_p
         conn.commit()
 
         service = SchedulePlanQueryService(conn)
-        with pytest.raises(ValueError, match="没有保存明细"):
+        with pytest.raises(ValueError, match="明细没有保存"):
             service.resolve_plan(VERSION, ROLE_BASELINE_BEST)
     finally:
         conn.close()
@@ -513,7 +513,7 @@ def test_plan_query_rejects_candidate_rows_selection_without_actual_rows(tmp_pat
         conn.commit()
 
         service = SchedulePlanQueryService(conn)
-        with pytest.raises(ValueError, match="没有找到对应的候选明细"):
+        with pytest.raises(ValueError, match="没有找到对应排程"):
             service.resolve_plan(VERSION, ROLE_BASELINE_BEST)
     finally:
         conn.close()

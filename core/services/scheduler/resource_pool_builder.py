@@ -335,7 +335,7 @@ def extend_downtime_map_for_resource_pool(
     meta: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, List[Tuple[datetime, datetime]]]:
     """
-    auto-assign 启用时：停机区间需要覆盖“候选设备”，否则算法可能误排到停机段内。
+    auto-assign 启用时：停机区间需要覆盖可自动安排的设备，否则算法可能误排到停机段内。
     """
     auto_assign_enabled = to_yes_no(cfg.auto_assign_enabled, default=YesNo.NO.value) == YesNo.YES.value
     if not auto_assign_enabled or not resource_pool or not isinstance(resource_pool.get("operators_by_machine"), dict):
@@ -357,7 +357,7 @@ def extend_downtime_map_for_resource_pool(
             meta["downtime_extend_ok"] = False
             meta["downtime_extend_error"] = DOWNTIME_EXTEND_FAILED_MESSAGE
         _append_warning(warnings, f"【停机】{DOWNTIME_EXTEND_FAILED_MESSAGE}")
-        _warn_service_logger(svc, f"停机区间扩展加载失败，候选设备可能未覆盖停机约束：{e}", exc_info=True)
+        _warn_service_logger(svc, f"停机区间扩展加载失败，自动安排设备可能未覆盖停机约束：{e}", exc_info=True)
         return downtime_map
 
     extra_downtime_map, partial_fail_mids = _load_downtime_intervals_for_machines(
@@ -365,15 +365,15 @@ def extend_downtime_map_for_resource_pool(
         dt_repo=dt_repo,
         machine_ids=extra_mids,
         start_str=start_str,
-        failure_log_template="停机区间扩展部分失败，候选设备 {mid} 可能未覆盖停机约束：{error}",
+        failure_log_template="停机区间扩展部分失败，自动安排设备 {mid} 可能未覆盖停机约束：{error}",
     )
     downtime_map.update(extra_downtime_map)
 
     if partial_fail_mids:
         msg, sample = _partial_failure_message(
-            label="部分候选设备停机区间扩展加载失败",
+            label="部分自动安排设备停机区间扩展加载失败",
             failed_mids=partial_fail_mids,
-            suffix="这些候选设备可能未覆盖停机约束",
+            suffix="这些设备可能未覆盖停机约束",
         )
         _record_extend_meta_partial(meta, msg=msg, sample=sample, count=len(partial_fail_mids))
         _append_warning(warnings, f"【停机】{msg}")

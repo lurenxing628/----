@@ -116,7 +116,7 @@ def _normalize_run_time_budget_seconds(value: Any) -> Optional[float]:
         return None
     budget = parse_finite_float(value, field="run_time_budget_seconds", allow_none=False)
     if budget is None or float(budget) <= 0:
-        raise ValidationError("本次方案比较时间上限必须大于 0 秒。", field="run_time_budget_seconds")
+        raise ValidationError("这次找更好排法先试多久必须大于 0 秒。", field="run_time_budget_seconds")
     return float(budget)
 
 
