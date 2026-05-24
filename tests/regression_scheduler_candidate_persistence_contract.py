@@ -367,7 +367,7 @@ def test_candidate_persistence_rejects_missing_selected_candidate_key(tmp_path: 
             )
 
         assert exc_info.value.field == "candidate_selection"
-        assert "不存在的 candidate_key" in str(exc_info.value)
+        assert "指向不存在的方案编号" in str(exc_info.value)
     finally:
         conn.close()
 
@@ -399,6 +399,6 @@ def test_candidate_persistence_rejects_missing_best_role_candidate_key(
             )
 
         assert exc_info.value.field == "candidate_selection"
-        assert "不存在的 candidate_key" in str(exc_info.value)
+        assert "指向不存在的方案编号" in str(exc_info.value)
     finally:
         conn.close()
