@@ -3,8 +3,8 @@ doc_type: issue-fix
 issue: 2026-05-23-review-report-dedupe-fix-plan
 path: standard
 fix_date: 2026-05-23
-status: pending_clean_proof
-clean_proof_status: not_available_dirty_worktree
+status: completed
+clean_proof_status: passed_after_origin_main_merge
 tags: [review, scheduler, gantt, resource-dispatch, quality-gate, database, codestable]
 ---
 
@@ -12,17 +12,17 @@ tags: [review, scheduler, gantt, resource-dispatch, quality-gate, database, code
 
 ## 1. 当前状态
 
-本轮已经把 `.codestable/audits/2026-05-23-review-report-dedupe/index.md` 去重后留下的主要问题推进到当前工作区：
+本轮已经把 `.codestable/audits/2026-05-23-review-report-dedupe/index.md` 去重后留下的主要问题推进到当前分支，并完成合并前收口：
 
 - P1 的 F-01 到 F-07 已经有对应代码、文案和回归测试改动。
 - P2-1、P2-2、P2-3 已经实际纳入本轮实现。
 - P2-4 已同步本轮实际改到的架构文档、页面帮助和用户手册。
 
-但现在还不能写成“可合并”：
+现在可以写成“当前分支已具备合并条件”：
 
-- 当前工作区仍有未提交修改。
-- 因为工作区不干净，不能声称已经通过 `--require-clean-worktree` 的最终质量门禁。
-- 最终 clean proof 应在提交整理后，再跑 `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`。
+- 当前分支已合入最新 `origin/main`，合并提交为 `94a0f584`。
+- 合并冲突只出现在 `开发文档/技术债务治理台账.md`；两边各减少一个复杂度白名单，最终合并后高复杂度登记从 13 降到 11。
+- `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree` 已在干净工作区通过；门禁开始和结束时 `git_status_short_before=[]`、`git_status_short_after=[]`。
 
 ## 2. 已修内容
 
@@ -86,18 +86,19 @@ tags: [review, scheduler, gantt, resource-dispatch, quality-gate, database, code
 已通过：
 
 - `git diff --check`
+- `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check`：通过；`complexity_count=11`，`oversize_count=1`，`silent_fallback_count=100`，`test_debt_count=5`。
 - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_database_high_version_failfast.py tests/test_database_migration_runner_delegation.py tests/regression_scheduler_analysis_viewmodel_split.py tests/regression_scheduler_analysis_diagnostic_contract.py tests/test_history_summary_parser.py tests/regression_gantt_frontend_error_boundary.py tests/regression_gantt_critical_outline_sync.py tests/regression_gantt_adapter_contract.py tests/regression_gantt_readonly_mode_contract.py tests/regression_gantt_zoom_decoration_sync.py tests/regression_gantt_zoom_range_guard.py tests/regression_resource_dispatch_public_output_contract.py tests/regression_resource_dispatch_export_surfaces_degraded.py tests/regression_frontend_ui_language_polish.py tests/regression_frontend_manual_blueprint_contract.py tests/regression_reports_page_version_default_latest.py tests/regression_scenario_preview_secondary_outputs.py tests/regression_scheduler_candidate_week_plan_contract.py tests/test_run_quality_gate.py`：252 passed
 - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --fast-precheck`：通过
 - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --allow-dirty-worktree --long-gate-cache`：13 步跑完，通过；结果标记为 `passed_but_unbound`，不能当成干净工作区最终 proof
+- `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree`：在合入 `origin/main` 后通过；收集 `3433` 个测试，`unexpected_failure_count=0`，13 步全部通过，最终状态 `passed`。
 
-没有声称完成：
+已经完成：
 
-- 还没有 clean-worktree final proof。
-- 本轮收口已决定把 CodeStable 审计/issue 文档、输入 review 报告和排产全流程图文档一起纳入本次交付边界。
-- 仍需在本地提交后，再用干净工作区跑最终门禁，把 proof 绑定到提交后的 HEAD。
+- `passed_but_unbound` 的旧证据已经被干净工作区 proof 替换。
+- 本轮收口已把 CodeStable 审计/issue 文档、输入 review 报告和排产全流程图文档纳入本次交付边界。
+- 合并回本地 `main` 后仍要在 `main` 上复跑同一条质量门禁，确认主分支落点也干净。
 
 ## 5. 后续收口建议
 
-- 提交前确认 `git status --porcelain=v1 -uall` 里没有 `AM`、没有意外 `??`、没有本应提交却仍未暂存的 ` M` 文件。
-- 本轮已决定把 `.codestable/audits/2026-05-23-review-report-dedupe/`、`review-244fbb7-to-d37df6d.md`、`docs/scheduler-full-flow-mermaid.md/html` 一起纳入本轮提交。
-- 提交后跑干净工作区质量门禁，把最终 proof 绑定到提交后的 HEAD。
+- 合并回本地 `main` 后，不自动 push，除非用户另行要求。
+- `main` 上复跑质量门禁通过后，才能把本次本地合并称为最终完成。
