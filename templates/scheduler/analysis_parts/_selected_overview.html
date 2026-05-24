@@ -11,8 +11,12 @@
         {% set algo_mode_value = algo_config.get('algo_mode') or algo.mode %}
         {{ ui.summary_item('计算模式', mode_zh.get(algo_mode_value, algo_mode_value or '-')) }}
         {{ ui.summary_item('优化目标', algo_objective_label) }}
-        {{ ui.summary_item('计算时间上限', (algo.time_budget_seconds or '-') ~ ' 秒') }}
-        {{ ui.summary_item('实际用时', (selected_summary.time_cost_ms if selected_summary else '-') ~ ' 毫秒') }}
+        {{ ui.summary_item('找更好排法先试多久', (algo.time_budget_seconds or '-') ~ ' 秒') }}
+        {{ ui.summary_item('这次排产总共用了', (selected_summary.time_cost_ms if selected_summary else '-') ~ ' 毫秒') }}
+      </div>
+      <div class="muted mt-2">
+        上面的秒数不是“到点马上停”。时间到了以后，系统就不再开始新的排法；已经开始算的会算完。
+        所以这次排产总共用时可能更长，还包括准备数据、检查结果和整理报告的时间。
       </div>
       {% if best_score_schema_display %}
         <div class="muted mt-2">
@@ -42,7 +46,7 @@
             {{ ui.summary_item('派工方式', dispatch_mode_zh.get(snapshot_dispatch_mode, '未知派工方式')) }}
             {{ ui.summary_item('派工规则', dispatch_rule_zh.get(snapshot_dispatch_rule, '未知派工规则')) }}
             {{ ui.summary_item('目标', algo_config_snapshot_objective_label) }}
-            {{ ui.summary_item('时间预算', algo_config.get('time_budget_seconds', '-') ~ ' 秒') }}
+            {{ ui.summary_item('找更好排法先试多久', algo_config.get('time_budget_seconds', '-') ~ ' 秒') }}
           </div>
         </details>
       {% endif %}

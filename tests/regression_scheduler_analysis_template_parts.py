@@ -67,11 +67,35 @@ def test_analysis_template_parts_preserve_existing_contract_markers() -> None:
         assert token in page_source
 
 
-def test_analysis_template_diagnostic_part_stays_hidden_when_empty() -> None:
+def test_analysis_template_diagnostic_part_stays_hidden_when_no_sections() -> None:
     html = _render_diagnostic_part([])
 
     assert "排产诊断" not in html
     assert "aps-diagnostic-section" not in html
+
+
+def test_analysis_template_diagnostic_part_shows_explicit_empty_state() -> None:
+    html = _render_diagnostic_part(
+        [
+            {
+                "key": "diagnostic_unavailable",
+                "title": "排产诊断状态",
+                "status": "empty",
+                "status_label": "暂无可分析",
+                "summary": "本版本没有生成排产诊断数据，仍可查看排产指标和方案对比。",
+                "items": [],
+                "links": [],
+                "degraded": False,
+                "degradation_events": [],
+                "empty_reason": "如果这是刚完成的排产，请刷新页面。",
+            }
+        ]
+    )
+
+    assert "排产诊断" in html
+    assert "排产诊断状态" in html
+    assert "本版本没有生成排产诊断数据" in html
+    assert "如果这是刚完成的排产" in html
 
 
 def test_analysis_template_places_diagnostics_before_metrics() -> None:
@@ -82,23 +106,35 @@ def test_analysis_template_places_diagnostics_before_metrics() -> None:
     assert source.index('_candidate_comparison.html') < source.index('_optimization_process.html')
 
 
+def test_analysis_overview_time_labels_use_plain_language() -> None:
+    source = _read("templates/scheduler/analysis_parts/_selected_overview.html")
+
+    assert "计算时间上限" not in source
+    assert "实际用时" not in source
+    assert "软预算" not in source
+    assert "找更好排法先试多久" in source
+    assert "这次排产总共用了" in source
+    assert "不是“到点马上停”" in source
+    assert "已经开始算的会算完" in source
+
+
 def test_analysis_template_renders_diagnostic_status_details_and_links() -> None:
     html = _render_diagnostic_part(
         [
             {
                 "key": "resource_bottleneck",
-                "title": "资源卡点",
+                "title": "设备安排情况",
                 "status": "warning",
                 "status_label": "需要关注",
-                "summary": "第一批可排工序里有 1 道暂时找不到可用设备。",
+                "summary": "第一批可排工序里有 1 道能找到设备，但这轮设备不够同时安排，后面还要继续排。",
                 "items": [
                     {
                         "key": "unmatched_operation_count",
-                        "label": "未匹配工序",
+                        "label": "这轮还没排上的工序",
                         "value": "1 道",
                         "level": "warning",
-                        "message": "第一批可排工序中有 1 道未匹配到设备。",
-                        "details": ["工序样本：3"],
+                        "message": "这轮还有 1 道没排上，不是没有设备能做，而是同一时间能用的设备不够。",
+                        "details": ["这轮还没排上的工序样本：3"],
                         "links": [{"label": "查看明细", "url": "/scheduler/analysis", "kind": "page"}],
                     }
                 ],
@@ -112,15 +148,18 @@ def test_analysis_template_renders_diagnostic_status_details_and_links() -> None
 
     assert "排产诊断" in html
     assert "根据当前排产摘要生成，只做解释，不会自动改排产结果。" in html
-    assert "资源卡点" in html
+    assert "设备安排情况" in html
     assert "需要关注" in html
-    assert "本诊断使用降级信息生成" in html
-    assert "未匹配工序" in html
+    assert "这块信息不完整，页面先按能确认的内容说明" in html
+    assert "这轮还没排上的工序" in html
     assert "1 道" in html
-    assert "第一批可排工序中有 1 道未匹配到设备。" in html
+    assert "不是没有设备能做" in html
+    assert "同一时间能用的设备不够" in html
     assert "<details" in html
     assert "查看诊断依据" in html
-    assert "工序样本：3" in html
+    assert "这轮还没排上的工序样本：3" in html
+    assert "找不到可用设备" not in html
+    assert "降级" not in html
     assert 'href="/scheduler/analysis"' in html
     assert 'href="/reports/utilization"' in html
     assert "aps-summary-item-warning" in html

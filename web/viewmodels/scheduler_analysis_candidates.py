@@ -156,10 +156,17 @@ def _candidate_label_from_key(candidate_key: str, role: str) -> str:
     return _plan_role_label(role)
 
 
+def _public_candidate_label_text(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    return text.replace("关键链候选", "重点工序优先方案").replace("原算法候选", "原算法方案")
+
+
 def _candidate_label(candidate: Dict[str, Any], option: Optional[Dict[str, Any]], *, candidate_key: str, role: str) -> str:
-    raw_label = str(candidate.get("label") or (option or {}).get("candidate_label") or "").strip()
+    raw_label = _public_candidate_label_text(candidate.get("label") or (option or {}).get("candidate_label"))
     if raw_label and raw_label != str(candidate_key or "").strip():
-        return raw_label.replace("关键链候选", "重点工序优先方案")
+        return raw_label
     return _candidate_label_from_key(candidate_key, role)
 
 
@@ -197,7 +204,7 @@ def _failed_candidate_labels(comparison: Dict[str, Any]) -> List[str]:
         if str(candidate.get("status") or "").strip() != "failed":
             continue
         key = str(candidate.get("candidate_key") or "").strip()
-        label = str(candidate.get("label") or "").strip() or _candidate_label_from_key(key, "")
+        label = _public_candidate_label_text(candidate.get("label")) or _candidate_label_from_key(key, "")
         reason = str(candidate.get("failure_reason") or "").strip()
         labels.append(f"{label}（{reason}）" if reason else label)
     return labels
@@ -213,12 +220,18 @@ def _comparison_status_messages(comparison: Dict[str, Any]) -> List[Dict[str, st
     failed_labels = _failed_candidate_labels(comparison)
     if failed_count > 0:
         suffix = f"：{'、'.join(failed_labels)}。" if failed_labels else "。"
-        messages.append(_warning_message(f"本次有 {failed_count} 个候选运行失败{suffix}系统只在可用候选中自动择优。"))
+        messages.append(_warning_message(f"这次有 {failed_count} 个试算方案没算成功{suffix}系统只在算成功的方案里选结果。"))
     if bool(comparison.get("baseline_missing_or_failed")):
-        messages.append(_warning_message("原算法候选缺失或失败，本次采用结果需复核。"))
-    skipped_labels = list(comparison.get("skipped_candidate_labels") or [])
+        messages.append(_warning_message("原算法那套方案缺失或没算成功，请复核这次采用的结果。"))
+    skipped_labels = [
+        label
+        for label in (
+            _public_candidate_label_text(item) for item in list(comparison.get("skipped_candidate_labels") or [])
+        )
+        if label
+    ]
     if skipped_labels:
-        messages.append(_warning_message(f"因本次时间上限跳过：{'、'.join(str(item) for item in skipped_labels)}"))
+        messages.append(_warning_message(f"因为时间到了，系统没再开始这些方案：{'、'.join(str(item) for item in skipped_labels)}"))
     return messages
 
 
@@ -326,7 +339,14 @@ def _candidate_comparison_display_payload(
         "failed_candidate_count": comparison.get("failed_candidate_count"),
         "skipped_candidate_count": comparison.get("skipped_candidate_count"),
         "time_budget_reached": bool(comparison.get("time_budget_reached")),
-        "skipped_candidate_labels": list(comparison.get("skipped_candidate_labels") or []),
+        "skipped_candidate_labels": [
+            label
+            for label in (
+                _public_candidate_label_text(item)
+                for item in list(comparison.get("skipped_candidate_labels") or [])
+            )
+            if label
+        ],
         "failed_candidate_labels": _failed_candidate_labels(comparison),
         "baseline_missing_or_failed": bool(comparison.get("baseline_missing_or_failed")),
         "selection_reason_code": comparison.get("selection_reason_code"),
@@ -352,7 +372,14 @@ def _incomplete_comparison_display_payload(
         "failed_candidate_count": comparison.get("failed_candidate_count"),
         "skipped_candidate_count": comparison.get("skipped_candidate_count"),
         "time_budget_reached": bool(comparison.get("time_budget_reached")),
-        "skipped_candidate_labels": list(comparison.get("skipped_candidate_labels") or []),
+        "skipped_candidate_labels": [
+            label
+            for label in (
+                _public_candidate_label_text(item)
+                for item in list(comparison.get("skipped_candidate_labels") or [])
+            )
+            if label
+        ],
         "failed_candidate_labels": _failed_candidate_labels(comparison),
         "baseline_missing_or_failed": bool(comparison.get("baseline_missing_or_failed")),
         "selection_reason_code": comparison.get("selection_reason_code"),

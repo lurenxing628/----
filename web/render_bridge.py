@@ -210,11 +210,11 @@ def render_ui_template(template_name_or_list, **context: Any) -> str:
     )
     if mode == "v2" and ui_template_source == "base_fallback":
         ui_template_env_degraded = True
-        fallback_reason = "mode=v2 but v2_env missing" if v2_env_missing else "mode=v2 but template resolved via base loader"
+        reason = "mode=v2 but v2_env missing" if v2_env_missing else "mode=v2 but template resolved from base loader"
         _warn_v2_render_fallback_once(
             app,
             template_name_or_list=template_name_or_list,
-            reason=fallback_reason,
+            reason=reason,
         )
 
     context.setdefault("ui_template_env", ui_template_env)

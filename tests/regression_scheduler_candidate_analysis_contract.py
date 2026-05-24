@@ -73,7 +73,32 @@ class _PlanRoleServiceMustNotBeCalled:
 
 class _PlanRoleServiceBroken:
     def list_plan_roles(self, version: int) -> List[SchedulePlanRoleOption]:
-        raise ValueError(f"候选方案角色映射损坏：version={version}, role=baseline_best 指向的候选不存在。")
+        raise ValueError(f"方案对比记录不完整：version={version}, role=baseline_best 指向的方案不存在。")
+
+
+class _PlanRoleServiceDetailBroken:
+    def list_plan_roles(self, version: int) -> List[SchedulePlanRoleOption]:
+        raise ValueError(f"方案对比明细缺少编号。version={version}")
+
+
+class _PlanRoleServiceDetailBrokenOnResolve(_PlanRoleServiceStub):
+    def resolve_plan(self, version: int, role: str) -> None:
+        raise ValueError(f"方案对比明细没有找到对应排程。version={version}, role={role}")
+
+
+class _PlanRoleServiceDriftOnResolve(_PlanRoleServiceStub):
+    def resolve_plan(self, version: int, role: str) -> SimpleNamespace:
+        return SimpleNamespace(
+            selected_role=role,
+            source_table=SOURCE_CANDIDATE_ROWS,
+            candidate_id=999,
+            candidate_key="other_candidate",
+        )
+
+
+class _PlanRoleServiceMissingAdopted:
+    def list_plan_roles(self, version: int) -> List[SchedulePlanRoleOption]:
+        raise ValueError(f"方案对比记录不完整：version={version} 缺少最终采用方案。")
 
 
 def _comparison_summary(
@@ -379,7 +404,7 @@ def test_analysis_route_shows_incomplete_notice_when_candidate_detail_is_missing
     comparison = summary["algo"]["candidate_comparison"]
     comparison["failed_candidate_count"] = 1
     comparison["baseline_missing_or_failed"] = True
-    comparison["skipped_candidate_labels"] = ["重点工序优先方案 4/5"]
+    comparison["skipped_candidate_labels"] = ["关键链候选 4/5"]
     history_service = _HistoryServiceStub(summary)
     app, route_mod = _build_app()
 
@@ -397,9 +422,9 @@ def test_analysis_route_shows_incomplete_notice_when_candidate_detail_is_missing
     assert display["baseline_missing_or_failed"] is True
     assert display["skipped_candidate_labels"] == ["重点工序优先方案 4/5"]
     status_text = " ".join(message["text"] for message in display["status_messages"])
-    assert "候选运行失败" in status_text
-    assert "原算法候选缺失或失败" in status_text
-    assert "因本次时间上限跳过" in status_text
+    assert "试算方案没算成功" in status_text
+    assert "原算法那套方案缺失或没算成功" in status_text
+    assert "因为时间到了，系统没再开始这些方案" in status_text
     assert "本次方案对比记录不完整，当前只展示最终采用方案" in display["notice"]
 
 
@@ -419,9 +444,86 @@ def test_analysis_route_surfaces_plan_role_integrity_error_without_fake_links() 
     assert display["has_comparison"] is False
     assert display["rows"] == []
     assert "本次方案对比记录不完整" in display["notice"]
-    assert "角色映射损坏" in display["notice"]
+    assert "方案对比记录里的跳转关系不完整" in display["notice"]
     assert display["failed_candidate_count"] == 1
     assert not any(row.get("links") for row in display["rows"])
+
+
+def test_analysis_route_classifies_plan_role_detail_errors_before_missing_links() -> None:
+    summary = _comparison_summary(failed_extra=True)
+    history_service = _HistoryServiceStub(summary)
+    app, route_mod = _build_app()
+
+    payload = _call_analysis_page(
+        app,
+        route_mod,
+        history_service=history_service,
+        plan_role_service=_PlanRoleServiceDetailBroken(),
+    )
+
+    display = payload["candidate_comparison_display"]
+    assert display["has_comparison"] is False
+    assert "本次方案对比记录不完整" in display["notice"]
+    assert "方案对比明细不完整" in display["notice"]
+    assert "跳转关系不完整" not in display["notice"]
+
+
+def test_analysis_route_validates_plan_role_targets_before_attaching_links() -> None:
+    summary = _comparison_summary(failed_extra=True)
+    history_service = _HistoryServiceStub(summary)
+    app, route_mod = _build_app()
+
+    payload = _call_analysis_page(
+        app,
+        route_mod,
+        history_service=history_service,
+        plan_role_service=_PlanRoleServiceDetailBrokenOnResolve(_plan_role_options()),
+    )
+
+    display = payload["candidate_comparison_display"]
+    assert display["has_comparison"] is False
+    assert display["rows"] == []
+    assert "方案对比明细不完整" in display["notice"]
+    assert not any(row.get("links") for row in display["rows"])
+
+
+def test_analysis_route_rejects_plan_role_target_drift_before_attaching_links() -> None:
+    summary = _comparison_summary(failed_extra=True)
+    history_service = _HistoryServiceStub(summary)
+    app, route_mod = _build_app()
+
+    payload = _call_analysis_page(
+        app,
+        route_mod,
+        history_service=history_service,
+        plan_role_service=_PlanRoleServiceDriftOnResolve(_plan_role_options()),
+    )
+
+    display = payload["candidate_comparison_display"]
+    assert display["has_comparison"] is False
+    assert display["rows"] == []
+    assert "方案对比明细不完整" in display["notice"]
+    assert not any(row.get("links") for row in display["rows"])
+
+
+def test_analysis_route_classifies_missing_adopted_role_without_link_notice() -> None:
+    summary = _comparison_summary(failed_extra=True)
+    history_service = _HistoryServiceStub(summary)
+    app, route_mod = _build_app()
+
+    payload = _call_analysis_page(
+        app,
+        route_mod,
+        history_service=history_service,
+        plan_role_service=_PlanRoleServiceMissingAdopted(),
+    )
+
+    display = payload["candidate_comparison_display"]
+    assert display["has_comparison"] is False
+    assert "当前不展示方案对比" in display["notice"]
+    assert "当前只展示最终采用方案" not in display["notice"]
+    assert "方案对比记录缺少最终采用方案" in display["notice"]
+    assert "跳转关系不完整" not in display["notice"]
 
 
 def test_analysis_template_uses_viewmodel_candidate_rows_and_route_built_links() -> None:
@@ -488,7 +590,7 @@ def test_candidate_display_surfaces_non_representative_failed_candidates() -> No
     assert display["failed_candidate_count"] == 1
     assert any("重点工序优先方案 5/5" in label for label in display["failed_candidate_labels"])
     status_text = " ".join(message["text"] for message in display["status_messages"])
-    assert "候选运行失败" in status_text
+    assert "试算方案没算成功" in status_text
     assert "重点工序优先方案 5/5" in status_text
     rows = {row["role"]: row for row in display["rows"]}
     assert set(rows) == {ROLE_ADOPTED, ROLE_BASELINE_BEST, ROLE_CRITICAL_BEST}
@@ -509,10 +611,14 @@ def test_candidate_display_status_messages_include_candidate_run_state() -> None
     )
 
     status_text = " ".join(message["text"] for message in display["status_messages"])
-    assert "候选运行失败" in status_text
+    assert "试算方案没算成功" in status_text
     assert "图分析失败：存在环" in status_text
-    assert "原算法候选缺失或失败，本次采用结果需复核。" in status_text
-    assert "因本次时间上限跳过：重点工序优先方案 4/5" in status_text
+    assert "原算法那套方案缺失或没算成功，请复核这次采用的结果。" in status_text
+    assert "因为时间到了，系统没再开始这些方案：重点工序优先方案 4/5" in status_text
+    assert "候选运行失败" not in status_text
+    assert "时间上限" not in status_text
+    assert "原算法候选" not in status_text
+    assert "关键链候选" not in status_text
 
 
 def test_candidate_display_and_plan_role_options_hide_old_internal_labels() -> None:

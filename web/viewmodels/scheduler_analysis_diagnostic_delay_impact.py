@@ -41,7 +41,7 @@ def _delay_risk_state(
     if invalid_due_count > 0:
         return {"status": "warning", "summary": f"有 {invalid_due_count} 个批次交期异常，超期判断可能不完整。"}
     if critical_path_minutes > 0:
-        return {"status": "notice", "summary": "本次没有看到失败、未排或超期批次；关键链需要结合交期继续观察。"}
+        return {"status": "notice", "summary": "本次没有看到失败、未排或超期批次；仍要结合交期看看哪些工序最影响完工时间。"}
     return {"status": "ok", "summary": "本次没有看到明显延期风险。"}
 
 
@@ -86,17 +86,17 @@ def _delay_risk_items(
         ),
         build_item(
             key="critical_path_minutes",
-            label="关键链时长",
+            label="影响完工的工序时长",
             value=format_minutes(critical_path_minutes),
             level="notice" if critical_path_minutes > 0 else "ok",
             message="这里不自行设危险阈值，需要结合实际交期判断。",
         ),
         build_item(
             key="critical_path_node_count",
-            label="关键链工序数",
+            label="影响完工的工序数",
             value=format_count(critical_path_node_count, "道"),
             level="notice" if critical_path_node_count > 0 else "ok",
-            message="关键链上的工序越多，后续联动越明显。",
+            message="这些工序越多，后面被带着一起变化的地方通常越多。",
         ),
     ]
     if invalid_due_count > 0:
@@ -164,7 +164,7 @@ def _format_node_metric_sample(value: Any) -> str:
     details: List[str] = []
     rank = item.get("critical_path_rank")
     if rank is not None:
-        details.append(f"关键链序号 {rank}")
+        details.append(f"影响顺序 {rank}")
     impact_count = item.get("impact_count")
     if impact_count is not None:
         details.append(f"影响 {impact_count} 个后续")
@@ -263,7 +263,7 @@ def _node_metrics_item(samples: Dict[str, Any], sample_note: str) -> Dict[str, A
             label="影响范围指标",
             value="未生成",
             level="notice",
-            message="本次未生成完整影响范围指标，只展示关键链和资源卡点样本。",
+            message="本次未生成完整影响范围指标，只展示重点工序和设备安排样本。",
         )
     node_metric_samples = samples["node_metrics"]
     return build_item(
@@ -279,9 +279,9 @@ def _node_metrics_item(samples: Dict[str, Any], sample_note: str) -> Dict[str, A
 def _resource_sample_details(samples: Dict[str, Any]) -> List[str]:
     details: List[str] = []
     if samples["unmatched"]:
-        details.append(f"未匹配工序样本：{'、'.join(samples['unmatched'])}")
+        details.append(f"这轮还没排上的工序样本：{'、'.join(samples['unmatched'])}")
     if samples["bottlenecks"]:
-        details.append(f"瓶颈设备样本：{'、'.join(samples['bottlenecks'])}")
+        details.append(f"可能不够用的设备样本：{'、'.join(samples['bottlenecks'])}")
     return details
 
 
@@ -292,7 +292,7 @@ def _impact_items(samples: Dict[str, Any], sample_note: str) -> List[Dict[str, A
     items = [
         build_item(
             key="critical_path_sample",
-            label="关键链样本",
+            label="重点工序样本",
             value=format_count(len(samples["critical_path"]), "条"),
             level="notice" if samples["critical_path"] else "ok",
             message=sample_note,

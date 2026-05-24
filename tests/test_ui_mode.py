@@ -418,8 +418,8 @@ def test_render_ui_template_marks_base_loader_resolution_as_degraded(tmp_path, m
         assert g.ui_template_env_degraded is True
 
     assert rendered == "v2|v2|base_fallback|1"
-    assert len(warnings) == 1, warnings
-    assert "mode=v2 but template resolved via base loader" in warnings[0]
+    assert len(warnings) == 1
+    assert "mode=v2 but template resolved from base loader" in warnings[0]
     assert "template=demo.html" in warnings[0]
     assert "path=/demo" in warnings[0]
 

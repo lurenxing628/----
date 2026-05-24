@@ -229,16 +229,50 @@ def _load_selected_plan_role_options(services: Any, selected_ver: Optional[int])
     if plan_query_service is None:
         return PlanRoleOptionsLoadResult([], "")
     options: List[Dict[str, Any]] = []
+
+    def _public_plan_role_error_message(error: Exception) -> str:
+        raw = str(error or "")
+        if "明细" in raw:
+            return "方案对比明细不完整"
+        if "缺少最终采用方案" in raw:
+            return "方案对比记录缺少最终采用方案"
+        if "不存在" in raw or "找不到" in raw or "缺少" in raw:
+            return "方案对比记录里的跳转关系不完整"
+        return "方案对比记录需要检查"
+
+    def _plan_role_integrity_notice(error: Exception) -> str:
+        reason = _public_plan_role_error_message(error)
+        if reason == "方案对比记录缺少最终采用方案":
+            return f"本次方案对比记录不完整，当前不展示方案对比。原因：{reason}。"
+        return f"本次方案对比记录不完整，当前只展示最终采用方案。原因：{reason}。"
+
+    def _validate_plan_role_link_target(item: Any, option: Dict[str, Any]) -> None:
+        resolve_plan = getattr(plan_query_service, "resolve_plan", None)
+        if not callable(resolve_plan):
+            return
+        role = str(option.get("role") or getattr(item, "role", "") or "").strip()
+        if role:
+            resolution = resolve_plan(int(selected_ver), role)
+            selected_role = str(getattr(resolution, "selected_role", role) or "").strip()
+            if selected_role and selected_role != role:
+                raise ValueError("方案对比明细和页面展示不一致。")
+            for field in ("source_table", "candidate_key", "candidate_id"):
+                option_value = option.get(field)
+                resolution_value = getattr(resolution, field, option_value)
+                if option_value is not None and resolution_value is not None and str(option_value) != str(resolution_value):
+                    raise ValueError("方案对比明细和页面展示不一致。")
+
     try:
         items = plan_query_service.list_plan_roles(int(selected_ver))
     except ValueError as exc:
-        return PlanRoleOptionsLoadResult(
-            [],
-            f"本次方案对比记录不完整，当前只展示最终采用方案。原因：{exc}",
-        )
+        return PlanRoleOptionsLoadResult([], _plan_role_integrity_notice(exc))
     for item in items:
         option = _plan_role_option_to_dict(item)
         if option:
+            try:
+                _validate_plan_role_link_target(item, option)
+            except ValueError as exc:
+                return PlanRoleOptionsLoadResult([], _plan_role_integrity_notice(exc))
             options.append(option)
     return PlanRoleOptionsLoadResult(options, "")
 

@@ -94,6 +94,17 @@ def _append_section(sections: List[Dict[str, Any]], section: Optional[Dict[str, 
         sections.append(section)
 
 
+def _missing_graph_section() -> Dict[str, Any]:
+    return build_section(
+        key="diagnostic_unavailable",
+        title="排产诊断状态",
+        status="empty",
+        status_label=status_label("empty"),
+        summary="本版本没有生成排产诊断数据，仍可查看排产指标和方案对比。",
+        empty_reason="如果这是刚完成的排产，请刷新页面；如果是旧版本，可能当时还没有生成这类诊断。",
+    )
+
+
 def build_diagnostic_sections(
     selected_summary: Optional[Dict[str, Any]],
     selected_ver: Optional[int],
@@ -102,7 +113,7 @@ def build_diagnostic_sections(
     _ = (selected_ver, kwargs)
     graph_public = _graph_public(selected_summary)
     if not graph_public:
-        return []
+        return [_missing_graph_section()]
 
     graph_diagnostics = _graph_diagnostics(selected_summary)
     summary = _safe_dict(selected_summary)
@@ -119,7 +130,7 @@ def build_diagnostic_sections(
         sections,
         _build_guarded_diagnostic_section(
             key="resource_bottleneck",
-            title="资源卡点",
+            title="设备安排情况",
             factory=lambda: build_resource_bottleneck_section(graph_public, graph_diagnostics),
         ),
     )

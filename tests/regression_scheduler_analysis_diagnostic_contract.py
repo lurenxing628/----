@@ -81,9 +81,14 @@ def test_diagnostic_contract_does_not_guess_success_when_status_missing() -> Non
     assert item["level"] == "unknown"
 
 
-def test_empty_diagnostic_sections_returns_empty_list() -> None:
+def test_missing_graph_diagnostic_sections_return_visible_empty_state() -> None:
     assert empty_diagnostic_sections() == []
-    assert build_diagnostic_sections({"algo": {}}, selected_ver=7) == []
+    sections = build_diagnostic_sections({"algo": {}}, selected_ver=7)
+
+    assert [section["key"] for section in sections] == ["diagnostic_unavailable"]
+    text_blob = "\n".join(_iter_text(sections[0]))
+    assert "本版本没有生成排产诊断数据" in text_blob
+    assert "刷新页面" in text_blob
 
 
 def _full_graph_summary() -> Dict[str, Any]:
@@ -216,7 +221,7 @@ def test_business_diagnostic_sections_cover_four_expected_blocks() -> None:
     ]
     assert [section["title"] for section in sections] == [
         "排产体检",
-        "资源卡点",
+        "设备安排情况",
         "延期风险",
         "影响解释",
     ]
@@ -256,7 +261,7 @@ def test_diagnostic_sections_keep_diagnostics_samples_limited_and_safe() -> None
     text_blob = "\n".join(_iter_text(sections))
 
     assert "以下只是样本，不是完整清单。" in text_blob
-    assert "未匹配工序样本：3、4、5、6、7" in text_blob
+    assert "这轮还没排上的工序样本：3、4、5、6、7" in text_blob
     for forbidden in (
         "首波 ready",
         "candidate_machine_ids",
@@ -297,7 +302,8 @@ def test_diagnostic_sections_handle_unavailable_and_basic_report_samples() -> No
     sections = build_diagnostic_sections(summary, selected_ver=8)
     by_key = {section["key"]: section for section in sections}
 
-    assert "resource_bottleneck" not in by_key
+    assert by_key["resource_bottleneck"]["status"] == "empty"
+    assert "没有生成设备安排诊断" in by_key["resource_bottleneck"]["summary"]
     assert by_key["schedule_health"]["status"] == "unavailable"
     health_text = "\n".join(_iter_text(by_key["schedule_health"]))
     assert "图分析组件暂不可用" in health_text
@@ -307,8 +313,8 @@ def test_diagnostic_sections_handle_unavailable_and_basic_report_samples() -> No
 
 
 def test_diagnostic_sections_tolerate_old_and_bad_summary_shapes() -> None:
-    assert build_diagnostic_sections(None, selected_ver=7) == []
-    assert build_diagnostic_sections({"algo": "bad"}, selected_ver=7) == []
+    assert build_diagnostic_sections(None, selected_ver=7)[0]["key"] == "diagnostic_unavailable"
+    assert build_diagnostic_sections({"algo": "bad"}, selected_ver=7)[0]["key"] == "diagnostic_unavailable"
 
     sections = build_diagnostic_sections(
         {
@@ -335,13 +341,18 @@ def test_diagnostic_sections_tolerate_old_and_bad_summary_shapes() -> None:
 
     assert [section["key"] for section in sections] == [
         "schedule_health",
+        "resource_bottleneck",
         "delay_risk",
         "impact_explanation",
     ]
+    by_key = {section["key"]: section for section in sections}
+    assert by_key["resource_bottleneck"]["status"] == "error"
+    assert "设备安排诊断数据格式异常" in by_key["resource_bottleneck"]["summary"]
+    assert "没有生成设备安排诊断" not in by_key["resource_bottleneck"]["summary"]
     json.dumps(sections, ensure_ascii=False, allow_nan=False)
 
 
-def test_analysis_context_exposes_empty_diagnostic_sections_until_business_exists() -> None:
+def test_analysis_context_exposes_visible_empty_diagnostic_state_until_business_exists() -> None:
     summary = {
         "algo": {
             "objective": "min_changeover",
@@ -360,7 +371,8 @@ def test_analysis_context_exposes_empty_diagnostic_sections_until_business_exist
     )
 
     assert "diagnostic_sections" in ctx
-    assert ctx["diagnostic_sections"] == []
+    assert [section["key"] for section in ctx["diagnostic_sections"]] == ["diagnostic_unavailable"]
+    assert "本版本没有生成排产诊断数据" in ctx["diagnostic_sections"][0]["summary"]
 
 
 def test_analysis_context_exposes_business_diagnostic_sections() -> None:
@@ -511,7 +523,7 @@ def test_diagnostic_sections_do_not_swallow_unexpected_exceptions(monkeypatch: p
                 "bottleneck_machine_count": 0,
             },
             "ok",
-            "第一批可排工序都有可用设备可用。",
+            "第一批可排工序都能找到设备。",
         ),
         (
             {
@@ -526,7 +538,22 @@ def test_diagnostic_sections_do_not_swallow_unexpected_exceptions(monkeypatch: p
                 "bottleneck_machine_count": 0,
             },
             "warning",
-            "第一批可排工序里有 1 道暂时找不到可用设备。",
+            "第一批可排工序里有 1 道还没配可用设备，请先检查工序设备配置。",
+        ),
+        (
+            {
+                "status": "available",
+                "reason": "ok",
+                "ready_operation_count": 180,
+                "operation_with_candidate_count": 180,
+                "machine_count": 18,
+                "edge_count": 180,
+                "matched_operation_count": 18,
+                "unmatched_operation_count": 162,
+                "bottleneck_machine_count": 18,
+            },
+            "warning",
+            "第一批可排工序里有 162 道能找到设备，但这轮设备不够同时安排，后面还要继续排。",
         ),
         (
             {
@@ -535,7 +562,7 @@ def test_diagnostic_sections_do_not_swallow_unexpected_exceptions(monkeypatch: p
                 "ready_operation_count": 0,
             },
             "empty",
-            "本次暂无第一批可排工序可做资源匹配。",
+            "本次没有第一批可排工序可检查设备。",
         ),
         (
             {
@@ -544,7 +571,7 @@ def test_diagnostic_sections_do_not_swallow_unexpected_exceptions(monkeypatch: p
                 "ready_operation_count": 0,
             },
             "warning",
-            "工序关系异常，资源匹配诊断已跳过。",
+            "工序先后关系有问题，本次先不检查设备安排。",
         ),
         (
             {
@@ -553,7 +580,7 @@ def test_diagnostic_sections_do_not_swallow_unexpected_exceptions(monkeypatch: p
                 "ready_operation_count": 0,
             },
             "error",
-            "资源匹配诊断异常，本次不展示资源匹配结果。",
+            "检查设备安排时出错，本次不展示设备检查结果。",
         ),
     ],
 )
@@ -570,6 +597,11 @@ def test_resource_bottleneck_section_status_scenarios(
 
     assert resource_section["status"] == expected_status
     assert resource_section["summary"] == expected_summary
+    text_blob = "\n".join(_iter_text(resource_section))
+    if resource_matching.get("operation_with_candidate_count") == resource_matching.get("ready_operation_count"):
+        assert "找不到可用设备" not in text_blob
+        assert "未匹配到设备" not in text_blob
+        assert "设备不够" in text_blob or "后面可能要排队" in text_blob or expected_status == "ok"
 
 
 @pytest.mark.parametrize(
