@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from typing import Any, Dict, Optional, Tuple
@@ -125,8 +126,20 @@ class CalendarEngine:
 
     @staticmethod
     def _normalize_efficiency(cal: Any) -> float:
-        efficiency = float(getattr(cal, "efficiency", 1.0) or 1.0)
-        return 1.0 if efficiency <= 0 else efficiency
+        raw_efficiency = getattr(cal, "efficiency", 1.0)
+        if raw_efficiency is None or (isinstance(raw_efficiency, str) and raw_efficiency.strip() == ""):
+            raw_efficiency = 1.0
+        if isinstance(raw_efficiency, bool):
+            raise ValidationError("日历效率必须是数字", field="efficiency")
+        try:
+            efficiency = float(raw_efficiency)
+        except Exception:
+            raise ValidationError("日历效率必须是数字", field="efficiency") from None
+        if not math.isfinite(efficiency):
+            raise ValidationError("日历效率必须是有限数字", field="efficiency")
+        if efficiency <= 0:
+            raise ValidationError("日历效率必须大于 0", field="efficiency")
+        return efficiency
 
     @staticmethod
     def _parse_shift_start(cal: Any) -> time:
@@ -157,8 +170,19 @@ class CalendarEngine:
 
         cal = self._resolve_calendar_row(date_str, op_id)
 
-        # 防御：异常值兜底
-        shift_hours = float(getattr(cal, "shift_hours", 0.0) or 0.0)
+        raw_shift_hours = getattr(cal, "shift_hours", 0.0)
+        if raw_shift_hours is None or (isinstance(raw_shift_hours, str) and raw_shift_hours.strip() == ""):
+            raw_shift_hours = 0.0
+        if isinstance(raw_shift_hours, bool):
+            raise ValidationError("班次工时必须是数字", field="shift_hours")
+        try:
+            shift_hours = float(raw_shift_hours)
+        except Exception:
+            raise ValidationError("班次工时必须是数字", field="shift_hours") from None
+        if not math.isfinite(shift_hours):
+            raise ValidationError("班次工时必须是有限数字", field="shift_hours")
+        if shift_hours < 0:
+            raise ValidationError("班次工时不能为负数", field="shift_hours")
         efficiency = self._normalize_efficiency(cal)
 
         # shift_start/shift_end：默认 08:00；若提供 shift_end 则优先用其推导 shift_hours
@@ -259,10 +283,14 @@ class CalendarEngine:
         """
         if hours is None:
             raise ValidationError("缺少工时参数", field="hours")
+        if isinstance(hours, bool):
+            raise ValidationError("工时必须是数字", field="hours")
         try:
             total = float(hours)
         except Exception:
             raise ValidationError("工时必须是数字", field="hours") from None
+        if not math.isfinite(total):
+            raise ValidationError("工时必须是有限数字", field="hours")
         if total < 0:
             raise ValidationError("工时不能为负数", field="hours")
         if total == 0:
@@ -315,10 +343,14 @@ class CalendarEngine:
         """
         if days is None:
             raise ValidationError("缺少周期参数", field="days")
+        if isinstance(days, bool):
+            raise ValidationError("周期必须是数字", field="days")
         try:
             d = float(days)
         except Exception:
             raise ValidationError("周期必须是数字", field="days") from None
+        if not math.isfinite(d):
+            raise ValidationError("周期必须是有限数字", field="days")
         if d < 0:
             raise ValidationError("周期不能为负数", field="days")
         return start + timedelta(days=d)

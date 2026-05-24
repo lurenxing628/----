@@ -53,6 +53,10 @@ def _build_summary(
     downtime_meta: Optional[Dict[str, Any]] = None,
     resource_pool_meta: Optional[Dict[str, Any]] = None,
     auto_assign_enabled: str = "no",
+    metrics_override: Optional[Any] = None,
+    total_ops: Any = 1,
+    scheduled_ops: Any = 1,
+    failed_ops: Any = 0,
 ):
     from core.algorithms.evaluation import ScheduleMetrics
     from core.services.scheduler.schedule_summary import build_result_summary
@@ -76,18 +80,22 @@ def _build_summary(
     )
     summary = SimpleNamespace(
         success=True,
-        total_ops=1,
-        scheduled_ops=1,
-        failed_ops=0,
+        total_ops=total_ops,
+        scheduled_ops=scheduled_ops,
+        failed_ops=failed_ops,
         warnings=list(warnings or []),
         errors=[],
     )
-    metrics = ScheduleMetrics(
-        overdue_count=1,
-        total_tardiness_hours=10.0,
-        makespan_hours=100.0,
-        changeover_count=2,
-        weighted_tardiness_hours=20.0,
+    metrics = (
+        metrics_override
+        if metrics_override is not None
+        else ScheduleMetrics(
+            overdue_count=1,
+            total_tardiness_hours=10.0,
+            makespan_hours=100.0,
+            changeover_count=2,
+            weighted_tardiness_hours=20.0,
+        )
     )
     summary_ctx = SummaryBuildContext(
         cfg=cfg,
@@ -406,6 +414,53 @@ def main() -> None:
     assert bool(big_obj.get("summary_truncated")), "超大 summary 未标记 summary_truncated"
     assert int(big_obj.get("original_size_bytes") or 0) > len(big_json.encode("utf-8")), "original_size_bytes 未记录原始大小"
     assert len(big_json.encode("utf-8")) <= 512 * 1024, "summary 截断后仍超过 512KB"
+
+    class BadMetrics:
+        invalid_due_count = 0
+        unscheduled_batch_count = 0
+        invalid_due_batch_ids_sample: List[str] = []
+        unscheduled_batch_ids_sample: List[str] = []
+
+        def to_dict(self):
+            raise ValueError("排产指标 makespan_hours 必须是有限数字：nan")
+
+    _overdue_bad, _status_bad, bad_metrics_obj, bad_metrics_json, _ms_bad = _build_summary(
+        objective_name="min_weighted_tardiness",
+        warnings=[],
+        improvement_trace=[],
+        metrics_override=BadMetrics(),
+    )
+    bad_algo = bad_metrics_obj.get("algo") or {}
+    assert bad_algo.get("metrics") is None, f"坏指标不能伪装成 0 指标：{bad_algo!r}"
+    assert bool((bad_algo.get("metrics_state") or {}).get("parse_failed")), f"坏指标应标记 metrics_state：{bad_algo!r}"
+    assert bad_metrics_obj.get("degraded_success") is True, f"坏指标应让成功摘要带降级标记：{bad_metrics_obj!r}"
+    assert "optimizer_metrics_invalid" in list(bad_metrics_obj.get("degraded_causes") or []), bad_metrics_obj
+    assert any(
+        str(event.get("code") or "") == "optimizer_metrics_invalid"
+        for event in list(bad_metrics_obj.get("degradation_events") or [])
+    ), f"坏指标应进入顶层 degradation_events：{bad_metrics_obj!r}"
+    assert "优化指标记录异常" in " ".join(list(bad_metrics_obj.get("warnings") or [])), bad_metrics_obj
+    json.loads(bad_metrics_json)
+
+    _overdue_count, _status_count, bad_count_obj, bad_count_json, _ms_count = _build_summary(
+        objective_name="min_weighted_tardiness",
+        warnings=[],
+        improvement_trace=[],
+        total_ops=True,
+        scheduled_ops=True,
+        failed_ops=False,
+    )
+    assert bad_count_obj["counts"]["op_count"] == 0, bad_count_obj
+    assert bool(bad_count_obj.get("summary_count_parse_failed")), bad_count_obj
+    assert int(bad_count_obj.get("error_count") or 0) > 0, bad_count_obj
+    assert list(bad_count_obj.get("errors_sample") or []), bad_count_obj
+    assert bad_count_obj.get("degraded_success") is True, bad_count_obj
+    assert any(
+        str(event.get("code") or "") == "summary_count_parse_failed"
+        for event in list(bad_count_obj.get("degradation_events") or [])
+    ), f"坏 counts 应进入顶层 degradation_events：{bad_count_obj!r}"
+    assert "数量记录异常" in " ".join(list(bad_count_obj.get("warnings") or [])), bad_count_obj
+    json.loads(bad_count_json)
 
     _assert_downtime_partial_fail_contract()
 

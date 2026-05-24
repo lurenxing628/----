@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .schedule_summary_assembly import (
@@ -92,18 +93,41 @@ def _append_summary_warning(summary: Any, message: str) -> bool:
         return False
 
 
-def _counter_dict(value: Any) -> Dict[str, int]:
+def _parse_counter_value(raw: Any, *, bucket_name: str, key_text: str) -> Tuple[Optional[int], Optional[str]]:
+    if raw is None or raw == "":
+        return None, None
+    if isinstance(raw, bool):
+        return None, f"{bucket_name}.{key_text} 不能是布尔值：{raw!r}"
+    try:
+        if isinstance(raw, int):
+            count = raw
+        else:
+            decimal_value = Decimal(str(raw).strip())
+            if not decimal_value.is_finite() or decimal_value != decimal_value.to_integral_value():
+                return None, f"{bucket_name}.{key_text} 必须是整数：{raw!r}"
+            count = int(decimal_value)
+    except (InvalidOperation, TypeError, ValueError):
+        return None, f"{bucket_name}.{key_text} 必须是整数：{raw!r}"
+    if count < 0:
+        return None, f"{bucket_name}.{key_text} 不能为负数：{raw!r}"
+    return count, None
+
+
+def _counter_dict(value: Any, *, bucket_name: str) -> Tuple[Dict[str, int], List[str]]:
     if not isinstance(value, dict):
-        return {}
+        return {}, []
     out: Dict[str, int] = {}
+    errors: List[str] = []
     for key, raw in value.items():
-        try:
-            count = int(raw)
-        except Exception:
+        key_text = str(key or "").strip()
+        if not key_text:
             continue
-        if count != 0:
-            out[str(key)] = int(count)
-    return out
+        count, error = _parse_counter_value(raw, bucket_name=bucket_name, key_text=key_text)
+        if error:
+            errors.append(error)
+        if count:
+            out[key_text] = int(count)
+    return out, errors
 
 
 def _fallback_samples_dict(value: Any) -> Dict[str, List[Dict[str, Any]]]:
@@ -228,9 +252,15 @@ def _build_freeze_state(
 
 def _build_fallback_state(algo_stats: Optional[Dict[str, Any]]) -> FallbackState:
     algo_stats_dict = algo_stats if isinstance(algo_stats, dict) else {}
-    fallback_counts = _counter_dict(algo_stats_dict.get("fallback_counts"))
+    fallback_counts, fallback_count_errors = _counter_dict(
+        algo_stats_dict.get("fallback_counts"),
+        bucket_name="fallback_counts",
+    )
     fallback_samples = _fallback_samples_dict(algo_stats_dict.get("fallback_samples"))
-    param_fallbacks = _counter_dict(algo_stats_dict.get("param_fallbacks"))
+    param_fallbacks, param_fallback_errors = _counter_dict(
+        algo_stats_dict.get("param_fallbacks"),
+        bucket_name="param_fallbacks",
+    )
     return FallbackState(
         raw_stats=algo_stats_dict,
         fallback_counts=fallback_counts,
@@ -238,6 +268,7 @@ def _build_fallback_state(algo_stats: Optional[Dict[str, Any]]) -> FallbackState
         param_fallbacks=param_fallbacks,
         legacy_external_days_defaulted_count=int(fallback_counts.get("legacy_external_days_defaulted_count") or 0),
         ortools_warmstart_failed_count=int(fallback_counts.get("ortools_warmstart_failed_count") or 0),
+        fallback_count_parse_errors=fallback_count_errors + param_fallback_errors,
     )
 
 
@@ -248,6 +279,8 @@ def _merge_fallback_warnings(all_warnings: List[str], fallback_state: FallbackSt
         all_warnings = _merge_warning_lists(all_warnings, [f"有 {legacy_count} 道外协工序缺少可用周期，本次先按 1 天计算。"])
     if warmstart_count > 0:
         all_warnings = _merge_warning_lists(all_warnings, ["OR-Tools 预热失败，系统已改用普通计算方式继续排产。"])
+    if fallback_state.fallback_count_parse_errors:
+        all_warnings = _merge_warning_lists(all_warnings, ["排产降级统计记录异常，部分降级原因无法完整展示。"])
     return all_warnings
 
 
@@ -269,6 +302,8 @@ def _degraded_cause_codes(
             "resource_pool_degraded",
             "merge_context_degraded",
             "summary_merge_failed",
+            "optimizer_metrics_invalid",
+            "fallback_count_parse_failed",
         }:
             causes.append(code)
     return _dedupe_text_list(causes)

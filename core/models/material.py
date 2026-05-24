@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from ._helpers import RowLike, as_dict, get, parse_float
+from ._helpers import RowLike, as_dict, get, parse_float_or_default
 from .enums import MaterialStatus
 
 
@@ -25,7 +25,7 @@ class Material:
             name=str(get(row, "name") or ""),
             spec=get(row, "spec"),
             unit=get(row, "unit"),
-            stock_qty=parse_float(get(row, "stock_qty"), default=0.0) or 0.0,
+            stock_qty=parse_float_or_default(get(row, "stock_qty"), 0.0, field="stock_qty"),
             status=(
                 str(get(row, "status") or MaterialStatus.ACTIVE.value).strip().lower()
                 or MaterialStatus.ACTIVE.value
@@ -47,4 +47,3 @@ class Material:
                 "created_at": self.created_at,
             }
         )
-

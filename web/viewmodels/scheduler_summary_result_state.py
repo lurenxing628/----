@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any, Dict, Optional
 
 from .scheduler_summary_status import error_count_blocks_success_inference
@@ -17,6 +18,24 @@ _LEGACY_RESULT_STATUS_ALIASES = {
     "ok2": "success",
     "fail": "failed",
 }
+_SUMMARY_COUNT_PARSE_FAILED_CODE = "summary_count_parse_failed"
+
+
+def _has_summary_count_parse_marker(summary: Dict[str, Any]) -> bool:
+    if bool(summary.get("summary_count_parse_failed")):
+        return True
+    counters = summary.get("degradation_counters")
+    if isinstance(counters, dict) and counters.get(_SUMMARY_COUNT_PARSE_FAILED_CODE):
+        return True
+    causes = summary.get("degraded_causes")
+    if isinstance(causes, list) and _SUMMARY_COUNT_PARSE_FAILED_CODE in {str(item or "").strip() for item in causes}:
+        return True
+    events = summary.get("degradation_events")
+    if isinstance(events, list):
+        for event in events:
+            if isinstance(event, dict) and str(event.get("code") or "").strip() == _SUMMARY_COUNT_PARSE_FAILED_CODE:
+                return True
+    return False
 
 
 def counts_from_summary(summary: Dict[str, Any]) -> Dict[str, int]:
@@ -28,17 +47,39 @@ def counts_from_summary(summary: Dict[str, Any]) -> Dict[str, int]:
 
     def _to_int(value: Any) -> int:
         nonlocal parse_failed
+        if value is None or value == "":
+            return 0
+        if isinstance(value, bool):
+            parse_failed = True
+            return 0
+        if isinstance(value, float) and (not math.isfinite(value) or not value.is_integer()):
+            parse_failed = True
+            return 0
         try:
-            return int(value or 0)
+            text = str(value).strip()
+            if not text:
+                return 0
+            if "." in text:
+                fv = float(text)
+                if not math.isfinite(fv) or not fv.is_integer():
+                    parse_failed = True
+                    return 0
+                number = int(fv)
+            else:
+                number = int(text)
         except (TypeError, ValueError, OverflowError):
             parse_failed = True
             return 0
+        if number < 0:
+            parse_failed = True
+            return 0
+        return number
 
     return {
         "scheduled_ops": _to_int(counts.get("scheduled_ops", summary.get("scheduled_ops"))),
         "failed_ops": _to_int(counts.get("failed_ops", summary.get("failed_ops"))),
         "total_ops": _to_int(counts.get("op_count", counts.get("total_ops", summary.get("total_ops")))),
-        "_parse_failed": int(parse_failed),
+        "_parse_failed": int(parse_failed or _has_summary_count_parse_marker(summary)),
     }
 
 
@@ -81,6 +122,10 @@ def _has_summary_errors(summary: Dict[str, Any]) -> bool:
 
 def derive_completion_status(*, result_status: Any, summary: Optional[Dict[str, Any]]) -> str:
     summary_dict = summary if isinstance(summary, dict) else {}
+    counts = counts_from_summary(summary_dict)
+    if bool(counts.get("_parse_failed")):
+        return "unknown"
+
     summary_status = _known_completion_status(summary_dict.get("completion_status"))
     if summary_status:
         return summary_status
@@ -88,9 +133,6 @@ def derive_completion_status(*, result_status: Any, summary: Optional[Dict[str, 
     status = _normalize_result_status_value(result_status)
     known_status = _known_completion_status(status)
 
-    counts = counts_from_summary(summary_dict)
-    if bool(counts.get("_parse_failed")):
-        return "unknown"
     if known_status:
         if known_status == "success" and _has_summary_errors(summary_dict):
             return "unknown"

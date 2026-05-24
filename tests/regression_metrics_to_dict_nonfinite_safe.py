@@ -1,5 +1,3 @@
-import json
-import math
 import os
 import sys
 
@@ -36,27 +34,12 @@ def main() -> None:
         internal_horizon_hours=float("inf"),
         util_defined=True,
     )
-    d = m.to_dict()
-
-    float_keys = [
-        "total_tardiness_hours",
-        "makespan_hours",
-        "weighted_tardiness_hours",
-        "makespan_internal_hours",
-        "machine_busy_hours_total",
-        "operator_busy_hours_total",
-        "machine_util_avg",
-        "operator_util_avg",
-        "machine_load_cv",
-        "operator_load_cv",
-        "internal_horizon_hours",
-    ]
-    for k in float_keys:
-        v = float(d.get(k, 0.0))
-        assert math.isfinite(v), f"{k} 应为有限数值：{k}={v!r} d={d!r}"
-
-    # 严格 JSON（禁止 NaN/Infinity）应可序列化
-    _ = json.dumps(d, allow_nan=False)
+    try:
+        m.to_dict()
+    except ValueError as exc:
+        assert "有限数字" in str(exc), exc
+    else:
+        raise AssertionError("NaN/Infinity 指标不能静默变成 0")
 
     class BadFloat:
         def __float__(self):

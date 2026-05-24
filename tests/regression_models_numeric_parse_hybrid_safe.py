@@ -126,18 +126,55 @@ def main() -> None:
     else:
         raise AssertionError("PartOperation.ext_days NaN 应直接报错，不能静默回落 None")
 
-    # BatchMaterial / Material：NaN/空字符串不应造成异常
-    bm = BatchMaterial.from_row(
-        {"id": "1.0", "batch_id": "B1", "material_id": "M1", "required_qty": "NaN", "available_qty": "", "ready_status": "YES"}
-    )
+    # BatchMaterial / Material：空字符串保留旧默认；显式 NaN/Inf 必须报错，不能伪装成 0。
+    try:
+        BatchMaterial.from_row(
+            {
+                "id": "1.0",
+                "batch_id": "B1",
+                "material_id": "M1",
+                "required_qty": "NaN",
+                "available_qty": "",
+                "ready_status": "YES",
+            }
+        )
+    except ValueError as exc:
+        assert "required_qty" in str(exc), f"BatchMaterial.required_qty 错误信息应指出字段：{exc!r}"
+    else:
+        raise AssertionError("BatchMaterial.required_qty NaN 应直接报错，不能静默回落 0.0")
+
+    try:
+        BatchMaterial.from_row(
+            {
+                "id": "1.0",
+                "batch_id": "B1",
+                "material_id": "M1",
+                "required_qty": "1.0",
+                "available_qty": "Inf",
+                "ready_status": "YES",
+            }
+        )
+    except ValueError as exc:
+        assert "available_qty" in str(exc), f"BatchMaterial.available_qty 错误信息应指出字段：{exc!r}"
+    else:
+        raise AssertionError("BatchMaterial.available_qty Inf 应直接报错，不能静默回落 0.0")
+
+    bm = BatchMaterial.from_row({"id": "1.0", "batch_id": "B1", "material_id": "M1", "required_qty": "1.0", "available_qty": "", "ready_status": "YES"})
     assert bm.id == 1, f"BatchMaterial.id 解析异常：{bm.id!r}"
-    assert float(bm.required_qty) == 0.0, f"BatchMaterial.required_qty NaN 应回落 0.0：{bm.required_qty!r}"
+    assert float(bm.required_qty) == 1.0, f"BatchMaterial.required_qty '1.0' 解析异常：{bm.required_qty!r}"
     assert float(bm.available_qty) == 0.0, f"BatchMaterial.available_qty 空字符串应回落 0.0：{bm.available_qty!r}"
 
-    mat = Material.from_row({"material_id": "MAT1", "name": "物料", "stock_qty": "NaN"})
-    assert float(mat.stock_qty) == 0.0, f"Material.stock_qty NaN 应回落 0.0：{mat.stock_qty!r}"
+    try:
+        Material.from_row({"material_id": "MAT1", "name": "物料", "stock_qty": "NaN"})
+    except ValueError as exc:
+        assert "stock_qty" in str(exc), f"Material.stock_qty 错误信息应指出字段：{exc!r}"
+    else:
+        raise AssertionError("Material.stock_qty NaN 应直接报错，不能静默回落 0.0")
 
-    # Supplier / OpType：0 值应被保留；NaN 应回落默认/None
+    mat = Material.from_row({"material_id": "MAT1", "name": "物料", "stock_qty": ""})
+    assert float(mat.stock_qty) == 0.0, f"Material.stock_qty 空字符串应回落 0.0：{mat.stock_qty!r}"
+
+    # Supplier / OpType：0 值应被保留；显式 NaN 不能回落默认/None。
     sup0 = Supplier.from_row({"supplier_id": "S0", "name": "供应商", "default_days": "0"})
     assert float(sup0.default_days) == 0.0, f"Supplier.default_days '0' 不应被覆盖为 1.0：{sup0.default_days!r}"
 
@@ -148,8 +185,12 @@ def main() -> None:
     else:
         raise AssertionError("Supplier.default_days NaN 应直接报错，不能静默回落默认值")
 
-    ot0 = OpType.from_row({"op_type_id": "OT1", "name": "工序", "default_hours": "NaN"})
-    assert ot0.default_hours is None, f"OpType.default_hours NaN 应回落 None：{ot0.default_hours!r}"
+    try:
+        OpType.from_row({"op_type_id": "OT1", "name": "工序", "default_hours": "NaN"})
+    except ValueError as exc:
+        assert "default_hours" in str(exc), f"OpType.default_hours 错误信息应指出字段：{exc!r}"
+    else:
+        raise AssertionError("OpType.default_hours NaN 应直接报错，不能静默回落 None")
 
     ot1 = OpType.from_row({"op_type_id": "OT2", "name": "工序", "default_hours": "1e3"})
     assert float(ot1.default_hours or 0.0) == 1000.0, f"OpType.default_hours '1e3' 解析异常：{ot1.default_hours!r}"

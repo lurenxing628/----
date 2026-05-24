@@ -18,11 +18,11 @@ tags:
   - quality-gate
 ---
 
-# P1 静默回退全面核实与修复计划
+# P1 静默回退条目核实与修复计划
 
 ## 0. 说明
 
-本文件汇总对 `.codestable/compound/2026-05-20-explore-current-silent-fallback-inventory.md` 中 **P1 静默回退**条目的只读核实结果与修复计划。
+本文件汇总对 `.codestable/compound/2026-05-20-explore-current-silent-fallback-inventory.md` 中 **P1 静默回退条目**的只读核实结果与修复计划；它不是全仓所有静默回退的清零证明。
 
 - 本轮未进入 Plan Mode。
 - 本轮未修改业务代码。
@@ -37,6 +37,7 @@ tags:
 - 2026-05-22 已发生后续修复、严格扫描 CLI 补齐、回归验证和证据补档；当前可复现收口入口以 `source_inventory` / `closeout_inventory` 指向的 inventory 文档为准。
 - 真实严格扫描命令是 `.venv/bin/python -m tools.quality_gate_scan --strict`，成功时保持无输出；计数快照命令是 `.venv/bin/python -m tools.quality_gate_scan --strict --json`。
 - 当前质量门禁边界是 `tools.quality_gate_operations.architecture_silent_scan_entries()` 与 `开发文档/技术债务治理台账.md` 的交集口径，不是本计划原始静态清单的 181 / 77 文件历史口径。
+- 严格静默回退门禁通过仅证明当前台账边界对齐：启动链范围四类 fallback 全量冻结，非启动链范围续管历史 `silent_swallow` 遗留项；不证明全仓 `silent_default_fallback` / `observable_degrade` 已全部清零。
 - 当前台账检查快照：`silent_fallback_count=100`，证据见 `evidence/QualityGate/silent_fallback_inventory_acceptance/quality_gate_ledger_check.log`。
 
 收口证据索引：
@@ -1227,8 +1228,8 @@ on_event("failed_exception", details)
 
 | 验收项 | 命令 | 证据 |
 |---|---|---|
-| 严格静默回退门禁 | `.venv/bin/python -m tools.quality_gate_scan --strict` | `evidence/QualityGate/silent_fallback_inventory_acceptance/strict_scan.log` |
-| 严格门禁计数快照 | `.venv/bin/python -m tools.quality_gate_scan --strict --json` | `evidence/QualityGate/silent_fallback_inventory_acceptance/strict_scan_json.log` |
+| 严格静默回退门禁（当前台账边界） | `.venv/bin/python -m tools.quality_gate_scan --strict` | `evidence/QualityGate/silent_fallback_inventory_acceptance/strict_scan.log` |
+| 严格门禁计数快照（启动链四类全量 + 非启动链历史 `silent_swallow`） | `.venv/bin/python -m tools.quality_gate_scan --strict --json` | `evidence/QualityGate/silent_fallback_inventory_acceptance/strict_scan_json.log` |
 | 严格扫描 CLI 合同 | `.venv/bin/python -m pytest tests/regression_quality_gate_scan_contract.py -q` | `evidence/QualityGate/silent_fallback_inventory_acceptance/strict_cli_contract_pytest.log` |
 | 台账一致性检查 | `.venv/bin/python scripts/sync_debt_ledger.py check` | `evidence/QualityGate/silent_fallback_inventory_acceptance/quality_gate_ledger_check.log` |
 | diff 空白检查 | `git diff --check` | `evidence/QualityGate/silent_fallback_inventory_acceptance/git_diff_check.log` |

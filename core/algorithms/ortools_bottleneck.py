@@ -30,15 +30,32 @@ class OrtoolsWarmstartError(RuntimeError):
 
 
 def _finite_positive_hours(*, op: Any, batch: Any) -> Optional[float]:
+    op_id = getattr(op, "id", None) or getattr(op, "op_code", None) or "?"
+    raw_qty = getattr(batch, "quantity", 0)
+    raw_setup_hours = getattr(op, "setup_hours", 0)
+    raw_unit_hours = getattr(op, "unit_hours", 0)
+    for field, raw in (
+        ("quantity", raw_qty),
+        ("setup_hours", raw_setup_hours),
+        ("unit_hours", raw_unit_hours),
+    ):
+        if isinstance(raw, bool):
+            raise OrtoolsWarmstartError(f"OR-Tools 预热{field}不能是布尔值：op={op_id!r}")
     try:
-        qty = float(getattr(batch, "quantity", 0) or 0)
-        setup_hours = float(getattr(op, "setup_hours", 0) or 0)
-        unit_hours = float(getattr(op, "unit_hours", 0) or 0)
+        qty = float(raw_qty or 0)
+        setup_hours = float(raw_setup_hours or 0)
+        unit_hours = float(raw_unit_hours or 0)
     except (TypeError, ValueError) as exc:
-        op_id = getattr(op, "id", None) or getattr(op, "op_code", None) or "?"
         raise OrtoolsWarmstartError(f"OR-Tools 预热无法读取工序工时：op={op_id!r}") from exc
+    for field, number in (("quantity", qty), ("setup_hours", setup_hours), ("unit_hours", unit_hours)):
+        if not math.isfinite(number):
+            raise OrtoolsWarmstartError(f"OR-Tools 预热{field}不是有限数字：op={op_id!r}")
+        if number < 0:
+            raise OrtoolsWarmstartError(f"OR-Tools 预热{field}不能为负数：op={op_id!r}")
     hours = float(setup_hours) + float(unit_hours) * float(qty)
-    if not math.isfinite(hours) or hours <= 0:
+    if not math.isfinite(hours):
+        raise OrtoolsWarmstartError(f"OR-Tools 预热工时不是有限数字：op={op_id!r}")
+    if hours <= 0:
         return None
     return float(hours)
 

@@ -13,15 +13,15 @@ tags:
   - tech-debt
 ---
 
-# 当前静默回退清单留档（已修复验收）
+# 当前静默回退清单留档（P1 业务边界已修复验收）
 
 ## 速答
 
-2026-05-22 更新：本文件已从“发现清单”进入“修复验收留档”。下面的全量清单保留 2026-05-20 的原始扫描证据，方便以后追溯当时发现了什么；它不再代表当前代码仍然存在这些问题。
+2026-05-22 更新：本文件已从“发现清单”进入“修复验收留档”。下面的“2026-05-20 原始全量扫描清单”只保留当日原始扫描证据，方便以后追溯当时发现了什么；它不再代表当前代码仍然存在这些问题。
 
-本轮已完成当前清单内需要处理的静默回退问题，处理口径是：
+本轮已完成原始清单中人工核实为需要处理的 P1 / 业务正确性静默回退问题，处理口径是：
 
-- 会改变排产业务事实的坏数据，不再悄悄变成 0、1、空值或默认值。
+- 本轮治理覆盖的重点业务边界中，会改变排产业务事实的坏数据，不再悄悄变成 0、1、空值或默认值。
 - 必须兼容旧数据的地方，要么留下 warning / degradation / 页面提示 / OperationLogs，要么明确登记为可接受的展示兼容。
 - Excel 模板不再因为“能打开”就被自动覆盖或下载，表头不一致会直接报可见错误。
 - 分析页、历史页、周计划页遇到坏摘要数字或坏优化指标时，会显示“记录异常/结果有问题”，不会画成 0 或显示成功。
@@ -31,8 +31,8 @@ tags:
 
 | 验收项 | 实际命令 | 结果 | 证据 |
 |---|---|---|---|
-| 严格静默回退门禁 | `.venv/bin/python -m tools.quality_gate_scan --strict` | `return_code=0`，成功无输出 | `evidence/QualityGate/silent_fallback_inventory_acceptance/strict_scan.log` |
-| 严格静默回退门禁计数快照 | `.venv/bin/python -m tools.quality_gate_scan --strict --json` | `scan_entry_count=100`，`ledger_entry_count=100`，分类：`observable_degrade=62` / `cleanup_best_effort=14` / `silent_default_fallback=6` / `silent_swallow=18` | `evidence/QualityGate/silent_fallback_inventory_acceptance/strict_scan_json.log` |
+| 严格静默回退门禁（当前台账边界） | `.venv/bin/python -m tools.quality_gate_scan --strict` | `return_code=0`，成功无输出 | `evidence/QualityGate/silent_fallback_inventory_acceptance/strict_scan.log` |
+| 严格静默回退门禁计数快照（启动链四类全量 + 非启动链历史 `silent_swallow`） | `.venv/bin/python -m tools.quality_gate_scan --strict --json` | `scan_entry_count=100`，`ledger_entry_count=100`，分类：`observable_degrade=62` / `cleanup_best_effort=14` / `silent_default_fallback=6` / `silent_swallow=18` | `evidence/QualityGate/silent_fallback_inventory_acceptance/strict_scan_json.log` |
 | 严格扫描 CLI 合同 | `.venv/bin/python -m pytest tests/regression_quality_gate_scan_contract.py -q` | `28 passed` | `evidence/QualityGate/silent_fallback_inventory_acceptance/strict_cli_contract_pytest.log` |
 | 台账一致性检查 | `.venv/bin/python scripts/sync_debt_ledger.py check` | `return_code=0`，当前 `silent_fallback_count=100` | `evidence/QualityGate/silent_fallback_inventory_acceptance/quality_gate_ledger_check.log` |
 | diff 空白检查 | `git diff --check` | `return_code=0`，无输出 | `evidence/QualityGate/silent_fallback_inventory_acceptance/git_diff_check.log` |
@@ -41,14 +41,14 @@ tags:
 | Excel 模板合同脚本 | `.venv/bin/python tests/regression_excel_template_contracts.py` | `OK` | `evidence/QualityGate/silent_fallback_inventory_acceptance/excel_template_contract_script.log` |
 | 系统维护坏 JSON / 页面可见性合同 | `.venv/bin/python -m pytest tests/regression_maintenance_window_mutex.py tests/test_history_summary_parser.py tests/regression_system_logs_presenter_contract.py tests/regression_system_request_services_contract.py -q` | `31 passed` | `evidence/QualityGate/silent_fallback_inventory_acceptance/system_maintenance_bad_json_pytest.log` |
 | 指标 JSON 安全脚本 | `.venv/bin/python tests/regression_metrics_to_dict_nonfinite_safe.py` | `OK` | `evidence/QualityGate/silent_fallback_inventory_acceptance/metrics_json_script.log` |
-| 子代理修后对抗复审 | 人工/子代理交叉审查摘要 | Excel、模型/统计、分析展示均无剩余真问题；机器验收以上述命令和日志为准 | 本文档 + `.limcode/review/2026-05-21-silent-fallback-inventory-review.md` |
+| 子代理修后对抗复审 | 人工/子代理交叉审查摘要 | 本轮核查范围内未发现需继续处理的 P1 真问题；不代表全仓静默回退清零，机器验收以上述命令和日志为准 | 本文档 + `.limcode/review/2026-05-21-silent-fallback-inventory-review.md` |
 
 验收证据说明：
 
 - 以上表格是 2026-05-22 08:27 +08:00 后重新补齐的可复现收口证据，所有命令均记录了 `started_at`、`finished_at`、`command`、`return_code` 和关键输出。
 - 早期速记里的“定向 pytest 第一组 `58 passed` / 第二组 `141 passed`”未保留可审计 receipt，已由上表的当前可复现命令取代；后续不得再把旧数字当成当前验收依据。
 - 原验收项 `tools.quality_gate_scan --strict` 已替换为真实可执行入口 `.venv/bin/python -m tools.quality_gate_scan --strict`；该命令成功时保持无输出，`--json` 用于留存计数快照。
-- 当前技术债务台账快照仍是 `开发文档/技术债务治理台账.md` 中 `updated_at=2026-05-22T07:03:42+08:00`、`silent_fallback_count=100`；本文下方 181 / 77 文件清单仍仅代表 2026-05-20 原始发现口径。
+- 当前技术债务台账快照以 `开发文档/技术债务治理台账.md` 当前受控结构块为准；严格门禁通过仅证明“启动链四类全量 + 非启动链历史 `silent_swallow`”这个当前台账边界对齐。本文下方 181 / 77 文件清单仍仅代表 2026-05-20 原始发现口径。
 
 本轮主要修复范围：
 
@@ -64,7 +64,7 @@ tags:
 
 ## 原始扫描摘要
 
-按当前仓库生产代码范围扫描：
+按 2026-05-20 原始生产代码范围扫描：
 
 - 扫描范围：`core/`、`data/`、`web/`、`desktop/`、`plugins/`、`app.py`、`app_new_ui.py`、`config.py`
 - 排除范围：`tests/`、`tools/`、`scripts/`、`docs/`、`evidence/`、`audit/`、历史计划/审查文档等非生产运行代码
@@ -225,7 +225,7 @@ PY
 - `web/bootstrap/static_versioning.py`
 - `web/bootstrap/launcher_observability.py`
 
-## 全量清单
+## 2026-05-20 原始全量扫描清单
 
 说明：
 
