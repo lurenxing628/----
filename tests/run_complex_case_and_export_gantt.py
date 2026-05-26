@@ -101,7 +101,7 @@ def build_preview_client_bootstrap(
                 `<div class="subtitle">关键工序：${{escapeHtml(criticalInfo.statusLabel)}}｜超期：${{meta.is_overdue ? "是" : "否"}}</div>`,
               ];
               if (criticalInfo.isCritical && criticalInfo.predecessorText !== "-") {{
-                lines.push(`<div class="subtitle">前面影响它的工序编号：${{escapeHtml(criticalInfo.predecessorText)}}</div>`);
+                lines.push(`<div class="subtitle">前面影响它的工序：${{escapeHtml(criticalInfo.predecessorText)}}</div>`);
               }}
               if (criticalInfo.isCritical && criticalInfo.reasonText !== "-") {{
                 lines.push(`<div class="subtitle">为什么影响总工期：${{escapeHtml(criticalInfo.reasonText)}}</div>`);

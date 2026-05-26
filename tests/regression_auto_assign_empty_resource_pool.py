@@ -102,12 +102,11 @@ def main():
     assert summary.failed_ops == 1, f"failed_ops 应为 1，实际 {summary.failed_ops}"
     assert len(results) == 0, f"不应产出排程结果，实际 results={len(results)}"
 
-    # 修复目标：resource_pool={} 时仍进入 auto-assign 分支，给出“自动分配失败”而不是“无法排产（必填）”
-    assert any("自动分配失败" in (e or "") for e in (summary.errors or [])), f"错误信息不符合预期：{summary.errors!r}"
+    # 修复目标：resource_pool={} 时仍进入 auto-assign 分支，并说明自动派工缺少哪类资料。
+    assert any("缺少自动派工所需工种信息" in (e or "") for e in (summary.errors or [])), f"错误信息不符合预期：{summary.errors!r}"
 
     print("OK")
 
 
 if __name__ == "__main__":
     main()
-

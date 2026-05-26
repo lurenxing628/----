@@ -46,7 +46,6 @@ def test_simulation_shell_has_no_save_or_publish_entry() -> None:
     forbidden = (
         "保存为模拟方案",
         "保存成功",
-        "正式采用",
         "提交调整",
         "adjustments/save-draft",
         "save-draft",

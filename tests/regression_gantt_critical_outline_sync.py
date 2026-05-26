@@ -1466,7 +1466,7 @@ process.stdout.write(JSON.stringify({{
         assert "状态：未开始" in result["popup"]
         assert "优先级：特急" in result["popup"]
         assert "交期：2026年1月28日 00:00" in result["popup"]
-        assert "前面影响它的工序编号：T1" in result["popup"]
+        assert "前面影响它的工序：T1" in result["popup"]
         assert "为什么影响总工期：同一设备前面还有任务" in result["popup"]
         assert "中间等待：30 分钟" in result["popup"]
         assert "来源：internal" not in result["popup"]
