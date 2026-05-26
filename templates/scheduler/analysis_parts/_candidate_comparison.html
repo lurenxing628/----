@@ -17,7 +17,17 @@
         <div class="muted mt-1">
           这里对比同一次排产里的三类结果：正式采用方案、原算法代表方案、重点工序优先代表方案。只有正式采用方案会写入正式排程。
         </div>
-        {% if candidate_comparison_display.selection_reason_label %}
+        {% if candidate_comparison_display.recommendation_card %}
+          {% set recommendation_card = candidate_comparison_display.recommendation_card %}
+          <div class="aps-summary-item aps-summary-item-success mt-2" role="status">
+            <p class="aps-summary-label">{{ recommendation_card.eyebrow }}</p>
+            <div class="aps-summary-value">
+              {{ recommendation_card.title }}：{{ recommendation_card.candidate_label }}
+            </div>
+            <p class="aps-summary-desc">{{ recommendation_card.reason }}</p>
+            <p class="aps-summary-desc">{{ recommendation_card.note }}</p>
+          </div>
+        {% elif candidate_comparison_display.selection_reason_label %}
           <div class="flash-card mt-2" role="status">
             {{ candidate_comparison_display.selection_reason_label }}
           </div>

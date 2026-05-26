@@ -178,7 +178,7 @@ def _public_candidate_label_text(value: Any) -> str:
     text = str(value or "").strip()
     if not text:
         return ""
-    return (
+    text = (
         text.replace("关键链候选", "重点工序优先方案")
         .replace("原算法候选", "原算法方案")
         .replace("重点工序优先方案最好", "重点工序优先代表方案")
@@ -190,6 +190,13 @@ def _public_candidate_label_text(value: Any) -> str:
         .replace("综合评分", "整体表现")
         .replace("整体评分", "整体表现")
     )
+    if text == "baseline":
+        return "原算法方案"
+    if text.startswith("graph_w") and "_of_" in text:
+        parts = text.replace("graph_w", "", 1).split("_of_", 1)
+        if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+            return f"重点工序优先方案 {int(parts[0])}/{int(parts[1])}"
+    return text
 
 
 def _candidate_label(candidate: Dict[str, Any], option: Optional[Dict[str, Any]], *, candidate_key: str, role: str) -> str:
@@ -237,7 +244,9 @@ def _failed_candidate_labels(comparison: Dict[str, Any]) -> List[str]:
         if str(candidate.get("status") or "").strip() != "failed":
             continue
         key = str(candidate.get("candidate_key") or "").strip()
-        label = _public_candidate_label_text(candidate.get("label")) or _candidate_label_from_key(key, "")
+        raw_label = _public_candidate_label_text(candidate.get("label"))
+        label = raw_label if raw_label != key else ""
+        label = label or _candidate_label_from_key(key, "")
         reason = _failure_reason_label(candidate.get("failure_reason"))
         labels.append(f"{label}（{reason}）" if reason else label)
     return labels
@@ -271,6 +280,34 @@ def _comparison_status_messages(comparison: Dict[str, Any]) -> List[Dict[str, st
 def _has_complete_comparison_rows(rows: List[Dict[str, Any]]) -> bool:
     roles = {str(row.get("role") or "") for row in list(rows or [])}
     return _REQUIRED_COMPARISON_ROLES <= roles
+
+
+def _adopted_row(rows: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    for row in list(rows or []):
+        if str(row.get("role") or "") == ROLE_ADOPTED:
+            return row
+    return None
+
+
+def _candidate_recommendation_card(
+    rows: List[Dict[str, Any]],
+    *,
+    selection_reason_label: str,
+) -> Optional[Dict[str, str]]:
+    adopted = _adopted_row(rows)
+    if not adopted:
+        return None
+    candidate_label = str(adopted.get("candidate_label") or adopted.get("role_label") or "").strip()
+    if not candidate_label:
+        return None
+    reason = str(selection_reason_label or "").strip() or "系统按本次设置自动选择正式采用方案。"
+    return {
+        "eyebrow": "推荐结论",
+        "title": "系统建议采用",
+        "candidate_label": candidate_label,
+        "reason": reason,
+        "note": "这套方案是正式采用方案；表格里的其它代表方案只用来对照查看，不能直接派工或提交现场反馈。",
+    }
 
 
 def _candidate_kind(candidate: Dict[str, Any], option: Optional[Dict[str, Any]]) -> str:
@@ -360,6 +397,7 @@ def _candidate_comparison_display_payload(
     options_by_role: Dict[str, Dict[str, Any]],
     rows: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
+    selection_reason_label = _selection_reason_label(comparison.get("selection_reason_code"))
     return {
         "version": int(selected_ver),
         "rows": rows,
@@ -380,7 +418,11 @@ def _candidate_comparison_display_payload(
         "failed_candidate_labels": _failed_candidate_labels(comparison),
         "baseline_missing_or_failed": bool(comparison.get("baseline_missing_or_failed")),
         "selection_reason_code": comparison.get("selection_reason_code"),
-        "selection_reason_label": _selection_reason_label(comparison.get("selection_reason_code")),
+        "selection_reason_label": selection_reason_label,
+        "recommendation_card": _candidate_recommendation_card(
+            rows,
+            selection_reason_label=selection_reason_label,
+        ),
         "status_messages": _comparison_status_messages(comparison),
         "notice": "",
         "has_comparison": True,
@@ -414,6 +456,7 @@ def _incomplete_comparison_display_payload(
         "baseline_missing_or_failed": bool(comparison.get("baseline_missing_or_failed")),
         "selection_reason_code": comparison.get("selection_reason_code"),
         "selection_reason_label": _selection_reason_label(comparison.get("selection_reason_code")),
+        "recommendation_card": None,
         "status_messages": _comparison_status_messages(comparison),
         "notice": notice,
         "has_comparison": False,
@@ -435,6 +478,7 @@ def _no_comparison_display_payload(selected_ver: Optional[int]) -> Dict[str, Any
         "baseline_missing_or_failed": False,
         "selection_reason_code": "",
         "selection_reason_label": "",
+        "recommendation_card": None,
         "status_messages": [],
         "notice": _NO_COMPARISON_NOTICE,
         "has_comparison": False,

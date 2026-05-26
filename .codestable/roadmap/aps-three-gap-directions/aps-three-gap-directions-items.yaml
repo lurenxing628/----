@@ -151,8 +151,8 @@ items:
     depends_on: [shared-plan-identity-evidence-contract]
     depends_on_reasons:
       shared-plan-identity-evidence-contract: 推荐卡必须先复用统一计划身份，才能把正式采用方案和对比参考方案讲清楚，避免用户误以为候选方案已经下发。
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-27-candidate-recommendation-card
     minimal_loop: false
     primary_paths:
       - web/viewmodels/scheduler_analysis_candidates.py

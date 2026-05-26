@@ -1,0 +1,33 @@
+feature: 2026-05-27-candidate-recommendation-card
+status: done
+roadmap: aps-three-gap-directions
+roadmap_item: candidate-recommendation-card
+
+steps:
+  - slug: reference-chain-investigation
+    title: 下钻方案对比数据、路由、模板和测试链路
+    status: done
+    exit_signal: 已确认推荐卡只需要复用现有候选行、正式采用角色、中文推荐原因和现有跳转链路。
+
+  - slug: recommendation-card-viewmodel
+    title: 组装推荐结论卡展示数据
+    status: done
+    exit_signal: ViewModel 新增 recommendation_card，只从正式采用方案行生成“推荐结论 / 系统建议采用 / 推荐理由 / 不能直接派工或反馈”。
+
+  - slug: recommendation-card-template
+    title: 在方案对比表格前展示推荐结论卡
+    status: done
+    exit_signal: 模板只读取推荐卡公开中文字段，有推荐卡时不重复显示旧提示，并且不使用打印时会隐藏的 flash-card。
+
+  - slug: regression-tests
+    title: 增加中文大白话和不越界测试
+    status: done
+    exit_signal: 测试锁住推荐卡文案、内部字段不外露、不完整方案不伪造推荐卡，以及不提前实现摘要差值卡。
+
+checks:
+  - 页面顶部能直接看到系统建议采用哪套代表方案。
+  - 推荐卡只说明正式采用方案和推荐理由，不计算三方案差值。
+  - 推荐理由使用中文大白话，不展示 score tuple、candidate_key、source_table、candidate_id 等内部字段。
+  - 候选未开启、候选失败或历史数据不完整时不伪造推荐卡。
+  - 页面继续标清正式采用方案和对比参考方案，对比参考方案不能直接派工或提交现场反馈。
+  - 不新增导出、数据库、排程算法、派工确认或现场反馈写入。

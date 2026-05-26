@@ -393,6 +393,7 @@ def test_analysis_route_shows_clear_notice_when_candidate_comparison_is_missing(
     display = payload["candidate_comparison_display"]
     assert display["has_comparison"] is False
     assert display["rows"] == []
+    assert display["recommendation_card"] is None
     assert "本次没有开启方案对比，只生成了正式采用方案" in display["notice"]
 
 
@@ -415,6 +416,7 @@ def test_analysis_route_shows_incomplete_notice_when_candidate_detail_is_missing
     display = payload["candidate_comparison_display"]
     assert display["has_comparison"] is False
     assert display["rows"] == []
+    assert display["recommendation_card"] is None
     assert display["failed_candidate_count"] == 1
     assert display["baseline_missing_or_failed"] is True
     assert display["skipped_candidate_labels"] == ["重点工序优先方案 4/5"]
@@ -440,6 +442,7 @@ def test_analysis_route_surfaces_plan_role_integrity_error_without_fake_links() 
     display = payload["candidate_comparison_display"]
     assert display["has_comparison"] is False
     assert display["rows"] == []
+    assert display["recommendation_card"] is None
     assert "本次方案对比记录不完整" in display["notice"]
     assert "方案对比记录里的跳转关系不完整" in display["notice"]
     assert display["failed_candidate_count"] == 1
@@ -460,6 +463,7 @@ def test_analysis_route_classifies_plan_role_detail_errors_before_missing_links(
 
     display = payload["candidate_comparison_display"]
     assert display["has_comparison"] is False
+    assert display["recommendation_card"] is None
     assert "本次方案对比记录不完整" in display["notice"]
     assert "方案对比明细不完整" in display["notice"]
     assert "跳转关系不完整" not in display["notice"]
@@ -480,6 +484,7 @@ def test_analysis_route_validates_plan_role_targets_before_attaching_links() -> 
     display = payload["candidate_comparison_display"]
     assert display["has_comparison"] is False
     assert display["rows"] == []
+    assert display["recommendation_card"] is None
     assert "方案对比明细不完整" in display["notice"]
     assert not any(row.get("links") for row in display["rows"])
 
@@ -499,6 +504,7 @@ def test_analysis_route_rejects_plan_role_target_drift_before_attaching_links() 
     display = payload["candidate_comparison_display"]
     assert display["has_comparison"] is False
     assert display["rows"] == []
+    assert display["recommendation_card"] is None
     assert "方案对比明细不完整" in display["notice"]
     assert not any(row.get("links") for row in display["rows"])
 
@@ -517,6 +523,7 @@ def test_analysis_route_classifies_missing_adopted_role_without_link_notice() ->
 
     display = payload["candidate_comparison_display"]
     assert display["has_comparison"] is False
+    assert display["recommendation_card"] is None
     assert "当前不展示方案对比" in display["notice"]
     assert "当前只展示正式采用方案" not in display["notice"]
     assert "方案对比记录缺少正式采用方案" in display["notice"]
@@ -626,7 +633,9 @@ def test_candidate_display_translates_internal_failure_reason_for_users() -> Non
 
     summary = _comparison_summary(failed_extra=True)
     failed_candidate = summary["algo"]["candidate_comparison"]["candidates"][-1]
+    failed_candidate["label"] = "graph_w5_of_5"
     failed_candidate["failure_reason"] = "candidate_time_budget_reached"
+    summary["algo"]["candidate_comparison"]["skipped_candidate_labels"] = ["graph_w4_of_5"]
 
     display = build_candidate_comparison_display(
         summary,
@@ -636,7 +645,11 @@ def test_candidate_display_translates_internal_failure_reason_for_users() -> Non
 
     status_text = " ".join(message["text"] for message in display["status_messages"])
     assert "试算时间到了，系统没有继续算这套方案" in status_text
+    assert "重点工序优先方案 5/5" in status_text
+    assert "重点工序优先方案 4/5" in status_text
     assert "candidate_time_budget_reached" not in status_text
+    assert "graph_w5_of_5" not in status_text
+    assert "graph_w4_of_5" not in status_text
 
 
 def test_candidate_display_and_plan_role_options_hide_old_internal_labels() -> None:
