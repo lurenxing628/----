@@ -5,13 +5,14 @@ import subprocess
 import sys
 import textwrap
 from pathlib import Path
+from typing import Optional
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SEARCH_TOOL = REPO_ROOT / ".codestable" / "tools" / "search-yaml.py"
 VALIDATE_TOOL = REPO_ROOT / ".codestable" / "tools" / "validate-yaml.py"
 
 
-def _run_tool(script: Path, *args: str, env: dict | None = None) -> subprocess.CompletedProcess:
+def _run_tool(script: Path, *args: str, env: Optional[dict] = None) -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, str(script), *args],
         cwd=str(REPO_ROOT),
@@ -35,6 +36,261 @@ def test_codestable_tools_start_under_current_python_runtime() -> None:
     for script in [SEARCH_TOOL, VALIDATE_TOOL]:
         proc = _run_tool(script, "--help")
         assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
+def test_validate_yaml_can_exclude_draft_dirs_from_required_field_checks(tmp_path: Path) -> None:
+    roadmap_dir = tmp_path / "roadmap"
+    draft_dir = roadmap_dir / "drafts"
+    draft_dir.mkdir(parents=True)
+    (roadmap_dir / "formal.md").write_text(
+        textwrap.dedent(
+            """
+            ---
+            doc_type: roadmap
+            status: draft
+            ---
+            body
+            """
+        ).lstrip(),
+        encoding="utf-8",
+    )
+    (draft_dir / "scratch.md").write_text(
+        textwrap.dedent(
+            """
+            ---
+            doc_type: roadmap-draft
+            ---
+            body
+            """
+        ).lstrip(),
+        encoding="utf-8",
+    )
+
+    failing = _run_tool(VALIDATE_TOOL, "--dir", str(roadmap_dir), "--require", "status")
+    passing = _run_tool(VALIDATE_TOOL, "--dir", str(roadmap_dir), "--require", "status", "--exclude-dir", "drafts")
+
+    assert failing.returncode == 1
+    assert "scratch.md" in failing.stdout
+    assert passing.returncode == 0, passing.stdout + passing.stderr
+    assert "scratch.md" not in passing.stdout
+    assert "formal.md" in passing.stdout
+
+
+def test_validate_yaml_can_exclude_dir_by_scan_relative_path(tmp_path: Path) -> None:
+    root_dir = tmp_path / "roadmap"
+    draft_dir = root_dir / "feature-a" / "drafts"
+    draft_dir.mkdir(parents=True)
+    (root_dir / "feature-a" / "formal.md").write_text(
+        textwrap.dedent(
+            """
+            ---
+            status: draft
+            ---
+            body
+            """
+        ).lstrip(),
+        encoding="utf-8",
+    )
+    (draft_dir / "scratch.md").write_text(
+        textwrap.dedent(
+            """
+            ---
+            doc_type: scratch
+            ---
+            body
+            """
+        ).lstrip(),
+        encoding="utf-8",
+    )
+
+    proc = _run_tool(
+        VALIDATE_TOOL,
+        "--dir",
+        str(root_dir),
+        "--require",
+        "status",
+        "--exclude-dir",
+        "feature-a/drafts",
+    )
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "feature-a/drafts/scratch.md" not in proc.stdout
+    assert "feature-a/formal.md" in proc.stdout
+
+
+def test_validate_yaml_fails_clearly_when_excludes_remove_all_files(tmp_path: Path) -> None:
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir()
+    (docs_dir / "scratch.md").write_text(
+        textwrap.dedent(
+            """
+            ---
+            status: draft
+            ---
+            body
+            """
+        ).lstrip(),
+        encoding="utf-8",
+    )
+
+    proc = _run_tool(VALIDATE_TOOL, "--dir", str(docs_dir), "--exclude-file", "scratch.md")
+
+    assert proc.returncode == 2
+    assert "No .md or .yaml files left after excludes" in proc.stderr
+
+
+def test_validate_yaml_can_exclude_index_file_from_required_field_checks(tmp_path: Path) -> None:
+    docs_dir = tmp_path / "requirements"
+    docs_dir.mkdir()
+    (docs_dir / "VISION.md").write_text(
+        textwrap.dedent(
+            """
+            ---
+            doc_type: requirements-index
+            last_reviewed: 2026-05-26
+            ---
+            body
+            """
+        ).lstrip(),
+        encoding="utf-8",
+    )
+    (docs_dir / "capability.md").write_text(
+        textwrap.dedent(
+            """
+            ---
+            doc_type: requirement
+            status: draft
+            ---
+            body
+            """
+        ).lstrip(),
+        encoding="utf-8",
+    )
+
+    proc = _run_tool(VALIDATE_TOOL, "--dir", str(docs_dir), "--require", "status", "--exclude-file", "VISION.md")
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "VISION.md" not in proc.stdout
+    assert "capability.md" in proc.stdout
+
+
+def test_compound_superseded_documents_use_hyphenated_field(tmp_path: Path) -> None:
+    compound_dir = REPO_ROOT / ".codestable" / "compound"
+    docs = list(compound_dir.glob("*.md"))
+    offenders = []
+    missing = []
+    for doc in docs:
+        text = doc.read_text(encoding="utf-8")
+        frontmatter = text.split("---", 2)[1] if text.startswith("---") and text.count("---") >= 2 else text
+        if "superseded_by:" in frontmatter:
+            offenders.append(doc.name)
+        if "\nstatus: superseded\n" in frontmatter and "superseded-by:" not in frontmatter:
+            missing.append(doc.name)
+
+    assert offenders == []
+    assert missing == []
+
+    docs_dir = tmp_path / "compound"
+    docs_dir.mkdir()
+    (docs_dir / "superseded.md").write_text(
+        textwrap.dedent(
+            """
+            ---
+            doc_type: explore
+            status: superseded
+            superseded-by: roadmap-target
+            ---
+            body
+            """
+        ).lstrip(),
+        encoding="utf-8",
+    )
+    (docs_dir / "active.md").write_text(
+        textwrap.dedent(
+            """
+            ---
+            doc_type: explore
+            status: active
+            ---
+            body roadmap-target
+            """
+        ).lstrip(),
+        encoding="utf-8",
+    )
+
+    proc = _run_tool(
+        SEARCH_TOOL,
+        "--dir",
+        str(docs_dir),
+        "--filter",
+        "superseded-by~=roadmap-target",
+        "--json",
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "superseded.md" in proc.stdout
+    assert "active.md" not in proc.stdout
+
+
+def test_review_fix_notes_use_searchable_issue_fix_frontmatter() -> None:
+    issues = [
+        "2026-05-25-quality-gate-timeout",
+        "2026-05-25-route-parser-supplier-global-scope",
+        "2026-05-25-review-followup-blockers",
+    ]
+    for issue in issues:
+        note_slug = issue[len("2026-05-25-") :]
+        note = REPO_ROOT / ".codestable" / "issues" / issue / f"{note_slug}-fix-note.md"
+        proc = _run_tool(
+            VALIDATE_TOOL,
+            "--file",
+            str(note),
+            "--require",
+            "doc_type",
+            "--require",
+            "issue",
+            "--require",
+            "path",
+            "--require",
+            "fix_date",
+            "--json",
+        )
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+
+        search = _run_tool(
+            SEARCH_TOOL,
+            "--dir",
+            str(REPO_ROOT / ".codestable" / "issues"),
+            "--filter",
+            f"issue={issue}",
+            "--filter",
+            "path=fast-track",
+            "--json",
+        )
+        assert search.returncode == 0, search.stdout + search.stderr
+        assert str(note.relative_to(REPO_ROOT / ".codestable" / "issues")) in search.stdout
+
+
+def test_aps_three_gap_roadmap_related_fields_are_slug_searchable() -> None:
+    filters = [
+        "related_requirements~=schedule-delay-diagnosis",
+        "related_architecture~=ARCHITECTURE",
+        "related_architecture~=ui-gantt",
+        "related_compound~=aps-three-gap-directions",
+        "related_audits~=aps-market-gap",
+    ]
+    for filter_text in filters:
+        proc = _run_tool(
+            SEARCH_TOOL,
+            "--dir",
+            str(REPO_ROOT / ".codestable" / "roadmap"),
+            "--filter",
+            "doc_type=roadmap",
+            "--filter",
+            filter_text,
+            "--json",
+        )
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        assert "aps-three-gap-directions-roadmap.md" in proc.stdout
 
 
 def test_search_yaml_rejects_bad_frontmatter_instead_of_fallback_parsing(tmp_path: Path) -> None:
@@ -355,3 +611,44 @@ def test_validate_yaml_directory_required_fields_apply_to_markdown_only(tmp_path
 
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "2 passed, 0 failed" in proc.stdout
+
+
+def test_validate_yaml_directory_yaml_required_fields_are_explicit(tmp_path: Path) -> None:
+    docs_dir = tmp_path / "feature"
+    docs_dir.mkdir()
+    (docs_dir / "feature-design.md").write_text(
+        textwrap.dedent(
+            """
+            ---
+            doc_type: feature-design
+            status: approved
+            ---
+            body
+            """
+        ).lstrip(),
+        encoding="utf-8",
+    )
+    (docs_dir / "feature-checklist.yaml").write_text(
+        textwrap.dedent(
+            """
+            steps:
+              - id: implement
+                status: done
+            """
+        ).lstrip(),
+        encoding="utf-8",
+    )
+
+    proc = _run_tool(
+        VALIDATE_TOOL,
+        "--dir",
+        str(docs_dir),
+        "--require",
+        "doc_type",
+        "--require-yaml",
+        "checks",
+    )
+
+    assert proc.returncode == 1
+    assert "feature-checklist.yaml" in proc.stdout
+    assert "Missing required field: 'checks'" in proc.stdout

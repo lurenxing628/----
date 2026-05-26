@@ -22,6 +22,12 @@ Usage examples:
   # Check that required fields exist in frontmatter
   python .codestable/tools/validate-yaml.py --dir .codestable/features --require doc_type --require status
 
+  # Check that required fields exist in pure YAML files inside a directory
+  python .codestable/tools/validate-yaml.py --dir .codestable/features --require-yaml steps
+
+  # Skip draft folders when checking required fields for formal documents
+  python .codestable/tools/validate-yaml.py --dir .codestable/roadmap --require status --exclude-dir drafts
+
   # JSON output for programmatic consumption
   python .codestable/tools/validate-yaml.py --dir docs/api --json
 
@@ -35,6 +41,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 # Force UTF-8 stdout/stderr on Windows where default codepage (e.g. GBK / cp936)
 # can't encode the ✓ / ✗ icons used in text output. Safe no-op on POSIX.
@@ -82,7 +89,7 @@ def _parse_scalar_value(val: str):
 def _builtin_parse_yaml(text: str) -> dict:
     """Minimal YAML parser for flat mappings with scalar values and block lists."""
     result: dict = {}
-    current_list_key: str | None = None
+    current_list_key: Optional[str] = None
     for line_number, line in enumerate(text.splitlines(), start=1):
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
@@ -112,7 +119,7 @@ def _builtin_parse_yaml(text: str) -> dict:
     return result
 
 
-def parse_yaml_text(text: str) -> tuple[dict | None, str | None]:
+def parse_yaml_text(text: str) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     """
     Parse a YAML string. Returns (parsed_dict, None) on success,
     or (None, error_message) on failure.
@@ -140,7 +147,7 @@ def parse_yaml_text(text: str) -> tuple[dict | None, str | None]:
 # Frontmatter extraction
 # ---------------------------------------------------------------------------
 
-def extract_frontmatter(text: str) -> tuple[str | None, str | None]:
+def extract_frontmatter(text: str) -> Tuple[Optional[str], Optional[str]]:
     """
     Extract YAML frontmatter from a markdown file.
     Returns (frontmatter_text, None) on success,
@@ -172,16 +179,16 @@ def extract_frontmatter(text: str) -> tuple[str | None, str | None]:
 class ValidationResult:
     def __init__(self, file_path: str):
         self.file = file_path
-        self.errors: list[str] = []
-        self.warnings: list[str] = []
-        self.fields: list[str] = []  # fields found in frontmatter
+        self.errors: List[str] = []
+        self.warnings: List[str] = []
+        self.fields: List[str] = []  # fields found in frontmatter
 
     @property
     def ok(self) -> bool:
         return len(self.errors) == 0
 
-    def to_dict(self) -> dict:
-        d: dict = {"file": self.file, "status": "pass" if self.ok else "fail"}
+    def to_dict(self) -> Dict[str, Any]:
+        d: Dict[str, Any] = {"file": self.file, "status": "pass" if self.ok else "fail"}
         if self.errors:
             d["errors"] = self.errors
         if self.warnings:
@@ -191,7 +198,11 @@ class ValidationResult:
         return d
 
 
-def _check_required(parsed: dict | None, required_fields: list[str] | None, result: ValidationResult) -> None:
+def _check_required(
+    parsed: Optional[Dict[str, Any]],
+    required_fields: Optional[List[str]],
+    result: ValidationResult,
+) -> None:
     if not required_fields:
         return
     for field in required_fields:
@@ -209,8 +220,8 @@ def _warn_if_builtin(result: ValidationResult) -> None:
 
 def _validate_file(
     file_path: Path,
-    required_fields: list[str] | None,
-    base_dir: Path | None,
+    required_fields: Optional[List[str]],
+    base_dir: Optional[Path],
     mode: str,  # "markdown" | "yaml"
 ) -> ValidationResult:
     display_path = str(file_path.relative_to(base_dir)) if base_dir else str(file_path)
@@ -260,7 +271,7 @@ def validate_yaml_file(file_path, required_fields=None, base_dir=None):
 # Output
 # ---------------------------------------------------------------------------
 
-def print_text_results(results: list[ValidationResult]) -> None:
+def print_text_results(results: List[ValidationResult]) -> None:
     passed = sum(1 for r in results if r.ok)
     failed = len(results) - passed
 
@@ -280,7 +291,7 @@ def print_text_results(results: list[ValidationResult]) -> None:
         print("\nAll files valid.")
 
 
-def print_json_results(results: list[ValidationResult]) -> None:
+def print_json_results(results: List[ValidationResult]) -> None:
     output = {
         "total": len(results),
         "passed": sum(1 for r in results if r.ok),
@@ -303,26 +314,72 @@ def _build_parser() -> argparse.ArgumentParser:
     source.add_argument("--dir", type=str, help="Directory to scan recursively for .md files")
     source.add_argument("--file", type=str, help="Single file to validate")
     parser.add_argument("--require", action="append", default=[], metavar="FIELD",
-                        help="Require this field in frontmatter (repeatable)")
+                        help="Require this field in Markdown frontmatter (repeatable)")
+    parser.add_argument("--require-yaml", action="append", default=[], metavar="FIELD",
+                        help="Require this field in pure YAML files during directory scans (repeatable)")
     parser.add_argument("--json", action="store_true", dest="json_output",
                         help="Output results as JSON")
     parser.add_argument("--yaml-only", action="store_true",
                         help="Treat input as pure YAML (not markdown with frontmatter). "
                              "Use for .yaml/.yml files like manifest.yaml.")
+    parser.add_argument("--exclude-dir", action="append", default=[], metavar="DIR",
+                        help="Skip matching directory names or paths relative to the scanned --dir.")
+    parser.add_argument("--exclude-file", action="append", default=[], metavar="FILE",
+                        help="Skip matching file names or paths relative to the scanned --dir.")
     return parser
 
 
-def _validate_single(path_str: str, require: list[str], yaml_only: bool) -> list[ValidationResult]:
+def _validate_single(path_str: str, require: List[str], require_yaml: List[str], yaml_only: bool) -> List[ValidationResult]:
     fp = Path(path_str)
     if not fp.exists():
         print(f"Error: File not found: {fp}", file=sys.stderr)
         sys.exit(2)
     if yaml_only or fp.suffix in (".yaml", ".yml"):
-        return [validate_yaml_file(fp, require)]
+        return [validate_yaml_file(fp, require_yaml or require)]
     return [validate_markdown_file(fp, require)]
 
 
-def _validate_directory(dir_str: str, require: list[str]) -> list[ValidationResult]:
+def _normalize_exclude(value: str) -> str:
+    return str(value or "").strip().strip("/\\").replace("\\", "/")
+
+
+def _is_excluded_path(file_path: Path, base_dir: Path, exclude_dirs: List[str], exclude_files: List[str]) -> bool:
+    rel_path = file_path.relative_to(base_dir).as_posix()
+    rel_parts = rel_path.split("/")
+    parent_path = "/".join(rel_parts[:-1])
+    file_name = rel_parts[-1]
+
+    for raw_dir in exclude_dirs:
+        excluded = _normalize_exclude(raw_dir)
+        if not excluded:
+            continue
+        if "/" in excluded and (parent_path == excluded or parent_path.startswith(excluded + "/")):
+            return True
+        if "/" not in excluded and excluded in rel_parts[:-1]:
+            return True
+
+    for raw_file in exclude_files:
+        excluded = _normalize_exclude(raw_file)
+        if not excluded:
+            continue
+        if "/" in excluded and rel_path == excluded:
+            return True
+        if "/" not in excluded and file_name == excluded:
+            return True
+    return False
+
+
+def _filter_excluded_files(files: List[Path], base_dir: Path, exclude_dirs: List[str], exclude_files: List[str]) -> List[Path]:
+    return [fp for fp in files if not _is_excluded_path(fp, base_dir, exclude_dirs, exclude_files)]
+
+
+def _validate_directory(
+    dir_str: str,
+    require: List[str],
+    require_yaml: List[str],
+    exclude_dirs: List[str],
+    exclude_files: List[str],
+) -> List[ValidationResult]:
     dp = Path(dir_str)
     if not dp.is_dir():
         print(f"Error: Directory not found: {dp}", file=sys.stderr)
@@ -335,8 +392,14 @@ def _validate_directory(dir_str: str, require: list[str]) -> list[ValidationResu
         print(f"No .md or .yaml files found under {dp}", file=sys.stderr)
         sys.exit(2)
 
+    md_files = _filter_excluded_files(md_files, dp, exclude_dirs, exclude_files)
+    yaml_files = _filter_excluded_files(yaml_files, dp, exclude_dirs, exclude_files)
+    if not md_files and not yaml_files:
+        print(f"No .md or .yaml files left after excludes under {dp}", file=sys.stderr)
+        sys.exit(2)
+
     results = [validate_markdown_file(md, require, dp) for md in md_files]
-    results += [validate_yaml_file(yf, [], dp) for yf in yaml_files]
+    results += [validate_yaml_file(yf, require_yaml, dp) for yf in yaml_files]
     return results
 
 
@@ -344,9 +407,9 @@ def main() -> None:
     args = _build_parser().parse_args()
 
     if args.file:
-        results = _validate_single(args.file, args.require, args.yaml_only)
+        results = _validate_single(args.file, args.require, args.require_yaml, args.yaml_only)
     else:
-        results = _validate_directory(args.dir, args.require)
+        results = _validate_directory(args.dir, args.require, args.require_yaml, args.exclude_dir, args.exclude_file)
 
     if args.json_output:
         print_json_results(results)

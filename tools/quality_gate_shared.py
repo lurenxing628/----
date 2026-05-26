@@ -9,7 +9,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Union, cast
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union, cast
 
 from tools.test_registry import (
     QUALITY_GATE_GUARD_TESTS,
@@ -566,7 +566,7 @@ def parse_pytest_collect_nodeids(output: str) -> List[str]:
     return nodeids
 
 
-def collect_current_pytest_nodeids(repo_root: Union[os.PathLike, str]) -> tuple[bool, List[str], str, str, str]:
+def collect_current_pytest_nodeids(repo_root: Union[os.PathLike, str]) -> Tuple[bool, List[str], str, str, str]:
     proc = subprocess.run(
         [sys.executable, "-m", "pytest", "--collect-only", "-q", "tests"],
         cwd=os.fspath(repo_root),
@@ -977,7 +977,7 @@ def _load_verified_quality_gate_receipt(
     command: Dict[str, Any],
     *,
     index: int,
-) -> tuple[Optional[Dict[str, Any]], Optional[str]]:
+) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     expected_path = build_quality_gate_receipt_rel_path(index, str(command.get("display") or ""))
     if receipt_entry.get("path") != expected_path:
         return None, "UNBOUND: quality gate command receipt path mismatch"
@@ -1160,7 +1160,7 @@ def _verify_manifest_header(
     repo_root: Union[os.PathLike, str],
     manifest: Dict[str, Any],
     head_sha: str,
-) -> tuple[Optional[str], str]:
+) -> Tuple[Optional[str], str]:
     current_identity = repo_identity(repo_root)
     manifest_checkout_root = os.path.realpath(str(manifest.get("checkout_root_realpath") or "").strip())
     manifest_git_common_dir = os.path.realpath(str(manifest.get("git_common_dir_realpath") or "").strip())
@@ -1207,7 +1207,7 @@ def _verify_manifest_clean_finish(
     return None
 
 
-def _verify_manifest_static_proof(manifest: Dict[str, Any]) -> tuple[Optional[str], List[str], List[Dict[str, Any]]]:
+def _verify_manifest_static_proof(manifest: Dict[str, Any]) -> Tuple[Optional[str], List[str], List[Dict[str, Any]]]:
     if dict(manifest.get("proof_scope") or {}) != dict(QUALITY_GATE_PROOF_SCOPE):
         return "UNBOUND: quality gate proof_scope mismatch", [], []
 
@@ -1301,7 +1301,7 @@ def verify_quality_gate_manifest(
     head_sha: str,
     git_status_lines: Sequence[str],
     replay_commands: bool = True,
-) -> tuple[bool, str]:
+) -> Tuple[bool, str]:
     if not isinstance(manifest, dict):
         return False, "UNBOUND: quality gate manifest 非法"
 

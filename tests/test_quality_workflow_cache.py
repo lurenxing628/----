@@ -8,6 +8,8 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "quality.yml"
 QUALITY_GATE_COMMAND = "python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache"
+PREVIOUS_GITHUB_CANCEL_LIMIT_MINUTES = 15
+MIN_QUALITY_GATE_TIMEOUT_MINUTES = 45
 DEPENDENCY_HASH = "${{ hashFiles('requirements.txt', 'requirements-dev.txt') }}"
 TOOLING_HASH = (
     "${{ hashFiles('.github/workflows/quality.yml', '.pre-commit-config.yaml', "
@@ -52,6 +54,15 @@ def test_quality_workflow_long_gate_cache_key_is_bound_to_tooling_and_sha() -> N
     assert "${{ github.sha }}" not in restore_keys
     assert "${{ github.run_id }}" not in restore_keys
     assert "${{ github.run_attempt }}" not in restore_keys
+
+
+def test_quality_workflow_timeout_keeps_uncached_gate_outside_old_cancel_limit() -> None:
+    workflow = _workflow()
+    quality_job = workflow["jobs"]["quality-gate"]
+    timeout_minutes = int(str(quality_job["timeout-minutes"]))
+
+    assert timeout_minutes > PREVIOUS_GITHUB_CANCEL_LIMIT_MINUTES
+    assert timeout_minutes >= MIN_QUALITY_GATE_TIMEOUT_MINUTES
 
 
 def test_quality_workflow_long_gate_cache_only_saves_trusted_runtime_outputs() -> None:

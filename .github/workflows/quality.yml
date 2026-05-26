@@ -10,7 +10,7 @@ on:
 jobs:
   quality-gate:
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
     env:
       PYTHONDONTWRITEBYTECODE: '1'
       PYTHONUTF8: '1'

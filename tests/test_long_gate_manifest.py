@@ -366,12 +366,36 @@ def test_collect_full_test_debt_static_gate_required_startup_and_quickref_entrie
     assert "core/**/*.py" in required["input_file_scopes"]
     assert "templates/**/*.html" in required["input_file_scopes"]
     assert "templates_excel/**/*" in required["input_file_scopes"]
+    for scope in [
+        ".codestable/architecture/**/*.md",
+        ".codestable/compound/**/*.md",
+        ".codestable/issues/**/*.md",
+        ".codestable/issues/**/*.yaml",
+        ".codestable/issues/**/*.yml",
+        ".codestable/requirements/**/*.md",
+        ".codestable/roadmap/**/*.md",
+        ".codestable/roadmap/**/*.yaml",
+        ".codestable/roadmap/**/*.yml",
+    ]:
+        assert scope in required["input_file_scopes"]
     assert "evidence/QualityGate/required_regressions.json" in required["output_result_files"]
     assert required["output_result_files"] == ["evidence/QualityGate/required_regressions.json"]
     assert "templates/**/*.html" in full_test_debt["input_file_scopes"]
     assert "templates_excel/**/*" in full_test_debt["input_file_scopes"]
     assert "static/**/*" in full_test_debt["input_file_scopes"]
     assert "audit/**/*.md" in full_test_debt["input_file_scopes"]
+    for scope in [
+        ".codestable/architecture/**/*.md",
+        ".codestable/compound/**/*.md",
+        ".codestable/issues/**/*.md",
+        ".codestable/issues/**/*.yaml",
+        ".codestable/issues/**/*.yml",
+        ".codestable/requirements/**/*.md",
+        ".codestable/roadmap/**/*.md",
+        ".codestable/roadmap/**/*.yaml",
+        ".codestable/roadmap/**/*.yml",
+    ]:
+        assert scope in full_test_debt["input_file_scopes"]
     assert "docs/**/*.md" in full_test_debt["input_file_scopes"]
     assert "evidence/current/README.md" in full_test_debt["input_file_scopes"]
     assert ".limcode/skills/**/*" in full_test_debt["input_file_scopes"]

@@ -43,6 +43,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 # ---------------------------------------------------------------------------
 # Frontmatter parsing  (PyYAML used when available, builtin fallback otherwise)
@@ -75,7 +76,7 @@ def _parse_yaml_scalar(val: str):
     return val
 
 
-def _split_frontmatter(text: str) -> tuple[str, str] | None:
+def _split_frontmatter(text: str) -> Optional[Tuple[str, str]]:
     lines = text.splitlines(keepends=True)
     if not lines:
         return None
@@ -91,7 +92,7 @@ def _split_frontmatter(text: str) -> tuple[str, str] | None:
 
 def _parse_builtin_yaml_mapping(fm_text: str) -> dict:
     meta: dict = {}
-    current_list_key: str | None = None
+    current_list_key: Optional[str] = None
     for line_number, raw_line in enumerate(fm_text.splitlines(), start=1):
         stripped = raw_line.strip()
         if not stripped or stripped.startswith("#"):
@@ -120,7 +121,7 @@ def _parse_builtin_yaml_mapping(fm_text: str) -> dict:
     return meta
 
 
-def parse_frontmatter(text: str) -> tuple[dict | None, str]:
+def parse_frontmatter(text: str) -> Tuple[Optional[Dict[str, Any]], str]:
     """
     Split a markdown document into (frontmatter_dict, body_text).
     Returns (None, full_text) when no frontmatter is present.
@@ -154,7 +155,7 @@ def parse_frontmatter(text: str) -> tuple[dict | None, str]:
 # Document loading
 # ---------------------------------------------------------------------------
 
-def load_documents(directory: Path) -> list[dict]:
+def load_documents(directory: Path) -> List[Dict[str, Any]]:
     docs = []
     for md_file in sorted(directory.rglob("*.md")):
         try:
@@ -181,7 +182,7 @@ def load_documents(directory: Path) -> list[dict]:
 # Filter parsing and evaluation
 # ---------------------------------------------------------------------------
 
-def _split_filter_values(value: str) -> list[str]:
+def _split_filter_values(value: str) -> List[str]:
     values = [part.strip() for part in value.split("|")]
     return [part for part in values if part] or [value.strip()]
 
@@ -259,7 +260,7 @@ def _sort_key(doc: dict, field: str):
         return (0, str(val))
 
 
-def doc_matches(doc: dict, filters: list[Filter], query: str | None) -> bool:
+def doc_matches(doc: dict, filters: List[Filter], query: Optional[str]) -> bool:
     meta = doc["meta"]
 
     for f in filters:
@@ -301,14 +302,14 @@ def format_full(doc: dict) -> str:
     return format_summary(doc) + "\n\n" + doc["body"]
 
 
-def print_text(results: list[dict], full: bool) -> None:
+def print_text(results: List[Dict[str, Any]], full: bool) -> None:
     print(f"Found {len(results)} document(s).\n")
     sep = "\n" + "─" * 60 + "\n"
     chunks = [format_full(d) if full else format_summary(d) for d in results]
     print(sep.join(chunks))
 
 
-def print_json(results: list[dict], full: bool) -> None:
+def print_json(results: List[Dict[str, Any]], full: bool) -> None:
     output = []
     for doc in results:
         body = doc["body"]
@@ -361,7 +362,7 @@ def _resolve_directory(dir_arg: str) -> Path:
     return directory
 
 
-def _sort_results(results: list[dict], sort_by: str, order: str) -> list[dict]:
+def _sort_results(results: List[Dict[str, Any]], sort_by: str, order: str) -> List[Dict[str, Any]]:
     def has_field(d: dict) -> bool:
         return sort_by in d["meta"] and d["meta"][sort_by] is not None
 
