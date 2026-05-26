@@ -1,9 +1,12 @@
 ---
 doc_type: requirement
 slug: gantt-readonly-result-view
+pitch: 调度员可以安全查看正式排产结果，不会误以为拖动任务条已经改了计划
 status: current
 created: 2026-05-22
-last_reviewed: 2026-05-22
+last_reviewed: 2026-05-25
+implemented_by:
+  - ui-gantt
 tags: [scheduler, gantt, readonly, zoom, win7]
 ---
 

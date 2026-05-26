@@ -3,8 +3,8 @@ doc_type: architecture
 slug: ui-gantt
 status: current
 created: 2026-05-22
-last_reviewed: 2026-05-23
-tags: [scheduler, gantt, frontend, readonly, vendor]
+last_reviewed: 2026-05-25
+tags: [scheduler, gantt, frontend, readonly, vendor, scenario-preview]
 ---
 
 # 甘特图结果查看架构现状
@@ -91,16 +91,16 @@ tags: [scheduler, gantt, frontend, readonly, vendor]
 - `SchedulePlanQueryService.resolve_plan_view()` 在有 `scenario_id` 时读取 `ScheduleAdjustmentScenarioRow`。
 - 找不到 Scenario、版本不匹配、方案角色不匹配或 Scenario 明细缺失时直接报错，不回退到 `adopted`。
 - 时间范围、任务明细、超期标记和关键工序都按 Scenario 行计算。
-- 页面、`/scheduler/gantt/data`、视图切换、周切换、查询表单和 `static/js/gantt_boot.js` 都会保留 `scenario_id`。
+- 页面、`/scheduler/gantt/data`、视图切换、周切换、查询表单和 `static/js/gantt_boot.js` 会在 URL、隐藏字段和服务端参数里保留 `scenario_id`，用来保证跨页仍查看同一个模拟预览；`scenario_id` 是程序内部身份，不是用户可见名称。
 - 页面显示“当前正在预览模拟方案，正式计划还没有改变”。
 
-周计划、资源排班和报表也支持显式 `scenario_id` 预览：
+周计划、资源排班和报表也支持显式 `scenario_id` 预览，但必须区分“程序内部传参”和“用户能看到的文案”：
 
-- 周计划页面和导出复用 `GanttService.get_week_plan_rows(..., scenario_id=...)`，页面表单、导出 URL、导出日志和文件名都保留 Scenario 身份。
+- 周计划页面和导出复用 `GanttService.get_week_plan_rows(..., scenario_id=...)`，页面表单、导出 URL 和服务端日志可以保留 Scenario 身份；用户可见位置使用 `scenario_display_name`、`scenario_name` 或“模拟预览（未命名）”，不把 `scenario_id` 拼到页面或文件名里。当前证据在 `templates/scheduler/week_plan.html:16`、`templates/scheduler/week_plan.html:96` 和 `core/services/scheduler/week_plan_excel.py:70`。
 - 资源排班页面、`/scheduler/resource-dispatch/data` 和导出会把 `scenario_id` 传到 `ResourceDispatchService`，明细行和超期标记都按同一份 Scenario 解析结果计算。
-- 资源排班 Excel 的查询摘要会写明模拟方案编号，并提示“正式计划还没有改变”。
-- 报表页面的超期清单、资源负荷与利用率、停机影响统计会按 Scenario 行计算；报表导出在预览态明确拒绝，要求先正式采用生成新版本后再导出。
-- Scheduler 主导航和报表页导航在预览态会保留 `version`、`plan_role` 和 `scenario_id`，避免用户点跨页导航后悄悄掉回正式计划。
+- 资源排班页面和 Excel 摘要会写明模拟预览名称或“模拟预览（未命名）”，并提示“正式计划还没有改变”，不把内部编号当作名称展示。当前证据在 `templates/scheduler/resource_dispatch.html:59`、`templates/scheduler/resource_dispatch.html:160` 和 `core/services/scheduler/resource_dispatch_excel.py:170`。
+- 报表页面的超期清单、资源负荷与利用率、停机影响统计会按 Scenario 行计算；报表导出在预览态明确拒绝，要求先正式采用生成新版本后再导出。当前页面提示使用“模拟预览（未命名）”兜底，证据在 `templates/reports/overdue.html:59`、`templates/reports/utilization.html:73`、`templates/reports/downtime.html:75` 和 `web/routes/reports.py:213`。
+- Scheduler 主导航和报表页导航在预览态会在 URL / 查询参数中保留 `version`、`plan_role` 和 `scenario_id`，避免用户点跨页导航后悄悄掉回正式计划；这些字段不能直接当页面文案、按钮文案、导出列名或导出文件名展示。
 - 非法 Scenario 在页面、data 接口和导出入口都必须报错，不允许清掉 `scenario_id` 后展示正式计划。
 
 ## 7. Scenario 正式采用
@@ -122,3 +122,7 @@ tags: [scheduler, gantt, frontend, readonly, vendor]
 ## 8. vendor 补丁治理
 
 `static/js/frappe-gantt.min.js` 当前本地补丁说明见 `.codestable/vendor/frappe-gantt-local-patches.md`。vendor 文件当前维护规则是：只有 Frappe 内部时间尺、任务条几何、命中区或事件绑定确实需要改时，才允许继续改 vendor 文件；业务规则优先放到 APS 自己的 `gantt_zoom.js` / `gantt_adapter.js` / `gantt_ui.js` / `gantt_render.js`。
+
+## 9. 变更日志
+
+- 2026-05-25：刷新 Scenario 预览的用户可见口径，明确 `scenario_id / plan_role` 等字段只作为 URL、隐藏字段和服务端参数使用；页面、导出文件名、工作簿摘要和提示语使用模拟预览名称或“模拟预览（未命名）”，不直接展示内部编号。

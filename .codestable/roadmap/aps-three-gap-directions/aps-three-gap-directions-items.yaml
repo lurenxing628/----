@@ -1,0 +1,768 @@
+roadmap: aps-three-gap-directions
+created: 2026-05-25
+last_reviewed: 2026-05-25
+
+# 说明：primary_paths 和 test_commands 里的 tests/regression_*.py 是对应子 feature 实施后要新增或更新的验收测试，
+# 不表示 roadmap 当前已经拥有这些未来测试文件。当前 roadmap 产物只要求本文件、主文档和已存在测试能通过校验。
+# 后续实施某条子 feature 时，test_commands 就是该条做完后必须跑的验收命令；不存在的测试文件要在对应 feature 里补出来。
+
+items:
+  - slug: shared-plan-identity-evidence-contract
+    title: 公共读取身份与证据协议
+    description: 统一读取排程结果时必须带的计划身份、证据来源和中文显示口径；只做公共读取协议，不提前实现派工确认或现场反馈写入。
+    depends_on: []
+    depends_on_reasons: {}
+    status: planned
+    feature: null
+    minimal_loop: false
+    primary_paths:
+      - core/models/schedule_plan_role.py
+      - core/services/scheduler/schedule_plan_query_service.py
+      - data/repositories/schedule_plan_query_repo.py
+      - data/repositories/schedule_history_repo.py
+      - web/viewmodels/scheduler_analysis_candidates.py
+      - tests/regression_scheduler_plan_identity_evidence_contract.py
+      - tests/regression_scheduler_candidate_gantt_plan_role_contract.py
+    entrypoints:
+      - "从本 roadmap 的 5.1 PlanIdentity 和 5.2 EvidenceLink 开始写 feature-design"
+      - "重点阅读 core/services/scheduler/schedule_plan_query_service.py 和 data/repositories/schedule_plan_query_repo.py"
+      - "检查所有会读取排程结果的页面是否都复用同一套计划身份和中文显示名"
+    test_commands:
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_plan_identity_evidence_contract.py tests/regression_scheduler_candidate_gantt_plan_role_contract.py"
+    forbidden_paths:
+      - installer/
+      - vendor/
+    exit_checks:
+      - 明确 adopted、baseline_best、critical_best、scenario_id、source_table 的代码含义和用户能看到的中文说法
+      - PlanIdentity 字段包含 version、requested_plan_role、effective_plan_role、plan_resolution_status、source_table、source_row_id、candidate_id、candidate_key、scenario_id、schedule_result_status、is_simulation、label、user_label、is_official、is_preview、is_current_executable_version、is_current_executable_official_version、is_superseded_by_newer_version、schedule_lock_status、can_dispatch、can_write_feedback、detail_saved
+      - 当前可执行版本按最新正式 ScheduleHistory.version 判定；Schedule.lock_status 只作冻结展示，不和“被新版本替代”混用
+      - can_dispatch 和 can_write_feedback 只有当前可执行正式采用方案才可能为 true；候选方案、模拟预览、历史正式方案、被新版本替代版本、模拟结果、失败结果、缺明细回退结果都必须为 false
+      - baseline_best 和 critical_best 是对比角色，来源以 source_table 为准；即使 source_table=schedule，也只能按对比参考展示，不能写现场反馈
+      - EvidenceLink 支持 row、aggregate、missing_data 三类证据范围；行级证据必须有 source_row_id，聚合证据必须有 aggregation_key 和 contributing_count，缺数据证据必须写清缺什么、查过哪里、影响谁、检查时间和中文缺口说明
+      - EvidenceLink.source_table 对行级证据必填；聚合证据和缺数据证据可以为空，不能为了凑字段填假表名
+      - 页面、导出、错误提示不能显示内部英文枚举、数据库字段名、函数名或内部异常堆栈
+      - 新增 Python 代码保持 Python 3.8 语法，不使用 list[X]、dict[K, V]、X | None
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_plan_identity_evidence_contract.py tests/regression_scheduler_candidate_gantt_plan_role_contract.py
+    notes: 后续所有子 feature 的共同读取输入；派工确认和现场反馈写入只在后续专门条目中落地。
+
+  - slug: delay-diagnosis-core-service
+    title: 延期诊断核心服务
+    description: 新增只读延期诊断服务，把超期事实、最后工序、关键链、资源负荷、停机、齐套状态收成事实、可能线索、证据、缺口和建议动作。
+    depends_on: [shared-plan-identity-evidence-contract]
+    depends_on_reasons:
+      shared-plan-identity-evidence-contract: 延期诊断必须先知道自己诊断的是正式采用方案、对比参考方案还是模拟预览，否则证据链接和页面跳转会串到另一套计划。
+    status: planned
+    feature: null
+    minimal_loop: false
+    primary_paths:
+      - core/services/scheduler/schedule_delay_diagnosis_service.py
+      - core/services/common/overdue_calculations.py
+      - core/services/report/report_engine.py
+      - core/services/report/downtime_impact.py
+      - core/services/report/utilization.py
+      - core/services/scheduler/gantt_critical_chain_provider.py
+      - core/services/scheduler/gantt_adjustment_validation_service.py
+      - data/repositories/batch_repo.py
+      - data/repositories/batch_material_repo.py
+      - data/repositories/material_repo.py
+      - core/services/material/batch_material_service.py
+      - tests/regression_scheduler_delay_diagnosis_contract.py
+      - tests/regression_due_exclusive_consistency.py
+      - tests/regression_gantt_adjustment_validate_simulate.py
+    entrypoints:
+      - "从本 roadmap 的 5.2 EvidenceLink 和 5.3 延期诊断服务契约开始写 feature-design"
+      - "先接 core/services/scheduler/schedule_delay_diagnosis_service.py，只做只读服务"
+      - "物料判断必须先看 Batches、BatchMaterials、Material 和批次物料服务能提供什么数据"
+    test_commands:
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_delay_diagnosis_contract.py tests/regression_due_exclusive_consistency.py tests/regression_gantt_adjustment_validate_simulate.py"
+    forbidden_paths:
+      - core/algorithms/
+      - installer/
+      - vendor/
+    exit_checks:
+      - diagnose_plan_overdue 和 diagnose_batch 只读，不写 Schedule、ScheduleHistory、候选表或 scenario 表
+      - 区分 scheduled_overdue 和 unscheduled_overdue
+      - 每条诊断包含 confirmed_facts、candidate_clues、confidence、evidences、data_gaps、suggested_actions、trace_meta
+      - confirmed_facts 不能只是字符串列表；每条已确认事实必须包含 text 和至少一条 EvidenceLink，没有证据只能放到 candidate_clues 或 data_gaps
+      - suggested_operation_clue、leading_clue_code 和 leading_clue_label 只能表示建议先复核的线索，不能命名为 primary_reason 或页面上的主要原因
+      - trace_meta 包含 plan_identity、evidence_count、evidence_sources、rule_version、ranking_inputs、clue_selection_trace、input_fingerprint
+      - 关键链只能作为内部线索，页面不能显示 critical_chain 或关键链命中这种术语，只能写建议先复核的工序
+      - 第一版物料判断只读 Batches.ready_status / ready_date 和 BatchMaterials 明细；不能承诺库存、采购、在途物料的完整追溯
+      - 读取齐套状态时必须明确查过 data/repositories/batch_repo.py、data/repositories/batch_material_repo.py、data/repositories/material_repo.py 和 core/services/material/batch_material_service.py 能提供的字段
+      - 没有 BatchMaterials 明细、没有批次齐套状态、或缺现场执行数据时必须输出 data_gaps 或 unknown；不能编造“物料不够导致延期”
+      - 候选方案和 scenario 诊断必须使用对应方案行，不能悄悄回到 adopted
+      - EvidenceLink 能追到具体来源；行级证据追到来源行，聚合证据写清 aggregation_key 和 contributing_count
+      - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_delay_diagnosis_contract.py tests/regression_due_exclusive_consistency.py tests/regression_gantt_adjustment_validate_simulate.py
+    notes: 第一版不改算法，不做 AI 根因，只做保守解释。
+
+  - slug: delay-diagnosis-overdue-report-entry
+    title: 超期清单延期解释入口
+    description: 把延期诊断接到超期清单，让每个超期批次显示可能线索、证据等级、建议动作和“查看为什么晚了”入口。
+    depends_on: [delay-diagnosis-core-service]
+    depends_on_reasons:
+      delay-diagnosis-core-service: 超期清单入口只负责展示和导出，必须先有只读诊断服务提供事实、线索、证据和缺口，页面不能自己临时拼原因。
+    status: planned
+    feature: null
+    minimal_loop: true
+    primary_paths:
+      - templates/reports/overdue.html
+      - web/routes/reports.py
+      - web/routes/report_plan_preview.py
+      - web/viewmodels/page_manuals_reports.py
+      - core/services/report/report_engine.py
+      - core/services/report/exporters/xlsx.py
+      - core/services/scheduler/schedule_delay_diagnosis_service.py
+      - tests/regression_scheduler_delay_diagnosis_contract.py
+      - tests/regression_report_delay_diagnosis_plain_language.py
+      - tests/regression_frontend_offline_static_assets.py
+      - tests/regression_gantt_partial_overdue_summary_surfaces_warning.py
+      - tests/regression_dashboard_overdue_count_tolerance.py
+    entrypoints:
+      - "从 templates/reports/overdue.html 和 web/routes/reports.py 接入超期清单入口"
+      - "导出增强走现有 GET /reports/overdue/export，不新增独立导出路由"
+      - "页面和导出先说“可能线索、建议复核、证据不足”，不能说系统已经判定根因"
+    test_commands:
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_delay_diagnosis_contract.py tests/regression_report_delay_diagnosis_plain_language.py tests/regression_frontend_offline_static_assets.py tests/regression_gantt_partial_overdue_summary_surfaces_warning.py tests/regression_dashboard_overdue_count_tolerance.py"
+    forbidden_paths:
+      - core/algorithms/
+      - installer/
+      - vendor/
+    exit_checks:
+      - 超期清单显示晚了多久、建议先复核哪里、证据等级、下一步去哪里看
+      - 行内能打开“查看为什么晚了”详情
+      - 证据不足时页面明确说当前数据不足，不能确定唯一原因
+      - 没有物料数据时不显示“物料不够导致延期”，只显示状态缺失或不判断物料
+      - 没有车间反馈前不判断“现场做慢了”
+      - 修掉 overdue.html 里 scenario_id 兜底显示；没有模拟方案名称时显示“模拟预览（未命名）”
+      - 详情接口和导出必须带 trace_meta；导出文件本身必须包含追溯信息，至少有“诊断依据”工作表或等价追溯信息，不能用“详情接口里有 trace_meta”替代；导出表头必须写成“本次诊断编号”“生成依据摘要”“核对信息”“证据来源”“证据缺口”“生成时间”“筛选条件”等中文大白话，不能把 trace_meta、rule_version、input_fingerprint 原样给用户看，也不能把“诊断规则版本”“输入指纹”作为用户表头
+      - 超期导出工作簿里的超期明细工作表必须叫“超期清单”，不能继续用 overdue 这类内部英文名；相关测试也要锁住这个中文工作表名
+      - 第一版增强现有 GET /reports/overdue/export；如果当前系统对模拟预览仍拒绝导出，延期诊断导出也保持拒绝，并用中文提示“模拟预览暂不支持导出，请切换到正式采用方案”
+      - 同步 web/routes/report_plan_preview.py 里的模拟预览导出拒绝文案、导出筛选条件和导出日志小字段，确保路由层记录的筛选条件能和导出文件里的诊断追溯信息对上
+      - 页面、按钮、空状态、错误提示都使用中文大白话，不出现英文原因码、数据库字段名、函数名、内部异常堆栈
+      - 新前端资源不走 CDN、外链字体、外链脚本、外链样式，不引入新前端框架或 Chrome 109 不支持能力
+      - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_delay_diagnosis_contract.py tests/regression_report_delay_diagnosis_plain_language.py tests/regression_frontend_offline_static_assets.py tests/regression_gantt_partial_overdue_summary_surfaces_warning.py tests/regression_dashboard_overdue_count_tolerance.py
+    notes: 本 roadmap 的最小闭环。做完后用户能从报表看到一条端到端解释链。
+
+  - slug: candidate-recommendation-card
+    title: 方案对比推荐结论卡
+    description: 在排产优化分析页方案对比区域增加推荐结论卡，用中文说明系统建议采用哪套代表方案、为什么、还有哪些点需要再看。
+    depends_on: [shared-plan-identity-evidence-contract]
+    depends_on_reasons:
+      shared-plan-identity-evidence-contract: 推荐卡必须先复用统一计划身份，才能把正式采用方案和对比参考方案讲清楚，避免用户误以为候选方案已经下发。
+    status: planned
+    feature: null
+    minimal_loop: false
+    primary_paths:
+      - web/viewmodels/scheduler_analysis_candidates.py
+      - templates/scheduler/analysis_parts/_candidate_comparison.html
+      - web/routes/domains/scheduler/scheduler_analysis.py
+      - tests/regression_scheduler_candidate_analysis_contract.py
+      - tests/regression_scheduler_analysis_candidate_links_and_roles.py
+      - tests/regression_scheduler_candidate_plain_language.py
+      - tests/regression_frontend_offline_static_assets.py
+    entrypoints:
+      - "从 templates/scheduler/analysis_parts/_candidate_comparison.html 的方案对比区域接推荐结论卡"
+      - "只翻译已有 selection_reason_code、候选 label 和推荐结论"
+      - "不要在本条里计算三方案差值，差值留给 candidate-summary-delta-cards"
+    test_commands:
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_analysis_contract.py tests/regression_scheduler_analysis_candidate_links_and_roles.py tests/regression_scheduler_candidate_plain_language.py tests/regression_frontend_offline_static_assets.py"
+    forbidden_paths:
+      - core/algorithms/
+      - installer/
+      - vendor/
+    exit_checks:
+      - 页面顶部直接显示系统建议采用哪套代表方案
+      - 本条只翻译现有 selection_reason_code、候选 label 和推荐结论，不提前计算三方案差值
+      - 推荐理由使用中文业务文案，不把 score tuple 当主解释；页面第一眼不能直接显示内部评分串
+      - 需要说明代价时只写“详细差值见后续摘要卡”，不偷偷实现下一条摘要差值范围
+      - 候选未开启时显示暂无方案对比
+      - 候选失败或跳过时显示清楚提示，不把失败候选当可采用方案
+      - 页面标清正式采用方案和对比参考方案，不让用户误以为候选已经下发
+      - 页面、按钮、空状态、错误提示、导出内容都使用中文大白话，不显示内部英文枚举、数据库字段名、函数名
+      - 页面、导出文件名、导出列名、空状态、错误提示、按钮、弹窗、表格表头都不能出现 plan_role、scenario_id、source_table、candidate_id、event_type
+      - 新前端资源不走 CDN、外链字体、外链脚本、外链样式，不引入新前端框架或 Chrome 109 不支持能力
+      - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_analysis_contract.py tests/regression_scheduler_analysis_candidate_links_and_roles.py tests/regression_scheduler_candidate_plain_language.py tests/regression_frontend_offline_static_assets.py
+    notes: 第一版只做推荐结论壳和中文解释；差值卡在下一条做。
+
+  - slug: candidate-summary-delta-cards
+    title: 代表三方案摘要卡和总指标差值
+    description: 把正式采用方案、原算法代表方案、重点工序优先代表方案做成三张摘要卡，并计算相对正式采用方案的失败工序、超期、拖期、工期、换型、加权拖期差值。
+    depends_on: [candidate-recommendation-card]
+    depends_on_reasons:
+      candidate-recommendation-card: 摘要卡要接在推荐结论卡后面，先有“系统建议看哪套方案”的入口，再补三张卡和差值，页面层级才不会乱。
+    status: planned
+    feature: null
+    minimal_loop: false
+    primary_paths:
+      - web/viewmodels/scheduler_analysis_candidates.py
+      - templates/scheduler/analysis_parts/_candidate_comparison.html
+      - core/services/scheduler/run/schedule_candidate_summary.py
+      - tests/regression_scheduler_candidate_analysis_contract.py
+      - tests/regression_scheduler_candidate_plain_language.py
+      - tests/regression_frontend_offline_static_assets.py
+    entrypoints:
+      - "从 core/services/scheduler/run/schedule_candidate_summary.py 读取已有候选摘要"
+      - "在 templates/scheduler/analysis_parts/_candidate_comparison.html 固定展示三张摘要卡"
+      - "差值固定相对正式采用方案计算，不做任意两方案自由比较"
+    test_commands:
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_analysis_contract.py tests/regression_scheduler_candidate_plain_language.py tests/regression_frontend_offline_static_assets.py"
+    forbidden_paths:
+      - core/algorithms/
+      - schema.sql
+      - installer/
+      - vendor/
+    exit_checks:
+      - 三张卡固定显示正式采用方案、原算法代表方案、重点工序优先代表方案
+      - 差值以 adopted 为基准，页面文案能区分多了、少了、基本持平、暂无数据
+      - 第一版不展示全部 3/5/7 档候选明细，不支持任意两个 candidate_id 自由对比，不提供 compare_plan_role 自由比较参数
+      - 第一版不承诺批次级影响清单或资源级变化清单
+      - 加权拖期如已在摘要中存在，可以展示；设备和人员平均利用率若没有进入候选摘要，不在本条承诺
+      - 评分只可作为“系统内部参考分”放技术详情，不把 score tuple 直接放在表格第一眼可见位置
+      - 页面、按钮、空状态、错误提示、导出内容都使用中文大白话，不显示内部英文枚举、数据库字段名、函数名
+      - 新前端资源不走 CDN、外链字体、外链脚本、外链样式，不引入新前端框架或 Chrome 109 不支持能力
+      - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_analysis_contract.py tests/regression_scheduler_candidate_plain_language.py tests/regression_frontend_offline_static_assets.py
+    notes: 只做代表方案总指标差值，不扩大落库范围。
+
+  - slug: candidate-drilldown-empty-states
+    title: 方案对比钻取、空状态和失败状态
+    description: 保留并增强现有甘特图、周计划、资源派工跳转，补未开启候选、历史摘要不完整、候选明细未保存等状态提示。
+    depends_on: [candidate-summary-delta-cards]
+    depends_on_reasons:
+      candidate-summary-delta-cards: 钻取和空状态要围绕三张摘要卡展开，先有固定三方案摘要，才能判断哪些跳转可用、哪些明细缺失。
+    status: planned
+    feature: null
+    minimal_loop: false
+    primary_paths:
+      - web/routes/domains/scheduler/scheduler_analysis_links.py
+      - templates/scheduler/week_plan.html
+      - web/routes/domains/scheduler/scheduler_week_plan.py
+      - core/services/scheduler/week_plan_excel.py
+      - templates/reports/utilization.html
+      - templates/reports/downtime.html
+      - web/routes/reports.py
+      - core/services/report/report_engine.py
+      - core/services/report/exporters/xlsx.py
+      - web/viewmodels/scheduler_analysis_candidates.py
+      - templates/scheduler/analysis_parts/_candidate_comparison.html
+      - tests/regression_scheduler_analysis_candidate_links_and_roles.py
+      - tests/regression_scheduler_candidate_reports_contract.py
+      - tests/regression_scheduler_candidate_plain_language.py
+      - tests/regression_frontend_offline_static_assets.py
+    entrypoints:
+      - "从 web/routes/domains/scheduler/scheduler_analysis_links.py 保留并增强跳转"
+      - "周计划入口看 templates/scheduler/week_plan.html、web/routes/domains/scheduler/scheduler_week_plan.py、core/services/scheduler/week_plan_excel.py"
+      - "资源负荷和停机影响入口看 templates/reports/utilization.html、templates/reports/downtime.html"
+      - "资源负荷和停机影响导出路径继续看 web/routes/reports.py、core/services/report/report_engine.py 和 core/services/report/exporters/xlsx.py"
+      - "导出工作簿需要检查 core/services/report/exporters/xlsx.py，确认工作表名、列名和空状态都用中文大白话"
+    test_commands:
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_analysis_candidate_links_and_roles.py tests/regression_scheduler_candidate_reports_contract.py tests/regression_scheduler_candidate_plain_language.py tests/regression_frontend_offline_static_assets.py"
+    forbidden_paths:
+      - core/algorithms/
+      - schema.sql
+      - installer/
+      - vendor/
+    exit_checks:
+      - 设备甘特图、人员甘特图、周计划、资源派工跳转保留 version 和 plan_role
+      - detail_saved=false 时不展示假跳转，要用中文解释“这套对比参考方案没有保存明细”
+      - 老历史缺 candidates 时页面显示“不完整，无法查看明细”这类大白话提示
+      - 跳转后仍查看同一方案身份，不悄悄回到 adopted
+      - 候选方案和模拟预览缺名称时显示中文兜底，例如“模拟预览（未命名）”，不显示 scenario_id 或 candidate_id
+      - 周计划页面、周计划导出工作簿内容、周计划导出文件名都不能显示 scenario_id；没有模拟方案名称时统一显示“模拟预览（未命名）”
+      - 资源负荷页和停机影响页也必须修掉 scenario_id 兜底显示；没有模拟方案名称时显示“模拟预览（未命名）”
+      - 资源负荷和停机影响的导出入口、导出文件名、导出工作簿摘要也不能显示 source_table、scenario_id、candidate_id、plan_role；没有模拟方案名称时统一写“模拟预览（未命名）”
+      - 导出文件名用用户能看懂的中文方案名、日期范围和报表名，不拼内部编号；例如“资源负荷-模拟预览（未命名）-2026-05-01 至 2026-05-07.xlsx”
+      - 页面、按钮、空状态、错误提示、导出内容都使用中文大白话，不显示内部英文枚举、数据库字段名、函数名
+      - 新前端资源不走 CDN、外链字体、外链脚本、外链样式，不引入新前端框架或 Chrome 109 不支持能力
+      - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_analysis_candidate_links_and_roles.py tests/regression_scheduler_candidate_reports_contract.py tests/regression_scheduler_candidate_plain_language.py tests/regression_frontend_offline_static_assets.py
+    notes: 这条是安全收口，避免页面增强后把旧版本或失败候选处理坏。
+
+  - slug: dispatch-plan-identity-guardrails
+    title: 资源派工计划身份护栏
+    description: 在资源派工页和导出中标清正式计划、对比参考方案、模拟预览；第一版只做提示、禁用和后端拒绝，不新增真正的确认派工写入。
+    depends_on: [shared-plan-identity-evidence-contract]
+    depends_on_reasons:
+      shared-plan-identity-evidence-contract: 资源派工能看多类计划结果，必须先有统一身份和 can_dispatch/can_write_feedback，才能安全地禁用候选方案和模拟预览写入。
+    status: planned
+    feature: null
+    minimal_loop: false
+    primary_paths:
+      - core/services/scheduler/resource_dispatch_service.py
+      - core/services/scheduler/resource_dispatch_excel.py
+      - templates/scheduler/resource_dispatch.html
+      - web/routes/domains/scheduler/scheduler_resource_dispatch.py
+      - web/viewmodels/scheduler_resource_dispatch.py
+      - static/js/resource_dispatch.js
+      - tests/regression_scheduler_candidate_resource_dispatch_contract.py
+      - tests/regression_scheduler_dispatch_plan_identity_guardrails.py
+      - tests/regression_frontend_offline_static_assets.py
+    entrypoints:
+      - "从 GET /scheduler/resource-dispatch?version=&plan_role=&scenario_id= 接入资源派工页"
+      - "导出入口沿用 GET /scheduler/resource-dispatch/export"
+      - "本条只做身份提示、禁用和后端拒绝，不新增确认派工写入"
+    test_commands:
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_resource_dispatch_contract.py tests/regression_scheduler_dispatch_plan_identity_guardrails.py tests/regression_frontend_offline_static_assets.py"
+    forbidden_paths:
+      - schema.sql
+      - core/algorithms/
+      - installer/
+      - vendor/
+    exit_checks:
+      - 当前可执行的正式采用方案显示可用于派工和现场反馈
+      - 历史正式方案显示只能查看，不能提交派工或现场反馈
+      - 原算法代表方案和重点工序优先代表方案显示为对比参考方案，不能确认派工或写现场反馈
+      - 模拟预览显示正式计划未改变，不能确认派工或写现场反馈
+      - 本条不新增 POST /scheduler/resource-dispatch/confirm，不新增确认派工表，不产生确认派工副作用
+      - 本条不测试真正反馈 POST；只验证 GET、data、export 不写 Schedule、执行事件、确认派工等业务表，并能复用 can_write_feedback=false 判定；导出审计日志 OperationLogs 可以保留
+      - 修掉 resource_dispatch.html 里 scenario_id 兜底显示；没有模拟方案名称时显示“模拟预览（未命名）”
+      - 导出文件和 payload 带计划身份；页面、Excel 内容、Excel 文件名、导出列名和空状态都不显示 source_table、scenario_id、candidate_id 这类内部字段名
+      - 新前端资源不走 CDN、外链字体、外链脚本、外链样式，不引入新前端框架或 Chrome 109 不支持能力
+      - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_resource_dispatch_contract.py tests/regression_scheduler_dispatch_plan_identity_guardrails.py tests/regression_frontend_offline_static_assets.py
+    notes: 这是车间反馈前必须先做的安全前置。
+
+  - slug: operation-execution-event-foundation
+    title: 车间执行事件基础
+    description: 新增 OperationExecutionEvents、执行事件 repository、执行状态聚合、幂等键、状态版本、合法状态流转和 schema 迁移测试。
+    depends_on: [dispatch-plan-identity-guardrails]
+    depends_on_reasons:
+      dispatch-plan-identity-guardrails: 执行事件会写现场事实，必须先完成派工身份护栏，保证只有最新正式采用方案能进入后续写入链路。
+    status: planned
+    feature: null
+    minimal_loop: false
+    primary_paths:
+      - schema.sql
+      - core/infrastructure/migration_state.py
+      - core/infrastructure/migrations/__init__.py
+      - core/infrastructure/migrations/v{next}.py
+      - data/repositories/operation_execution_event_repo.py
+      - data/repositories/__init__.py
+      - core/models/operation_execution_event.py
+      - core/models/operation_execution_state.py
+      - core/services/scheduler/__init__.py
+      - core/services/scheduler/operation_execution_feedback_service.py
+      - web/bootstrap/request_services.py
+      - tests/regression_operation_execution_event_foundation.py
+      - tests/regression_operation_execution_state_revision.py
+      - tests/regression_migrations.py
+    entrypoints:
+      - "从 schema.sql、core/infrastructure/migrations/__init__.py、core/infrastructure/migrations/v{next}.py 和 migration_state.py 新增执行事件表；v{next}.py 里的 next 要先查当前 CURRENT_SCHEMA_VERSION 再递增"
+      - "新增 data/repositories/operation_execution_event_repo.py 和 OperationExecutionEventRepo，repository 负责 SQL，service 负责校验身份、幂等、状态版本和状态聚合"
+      - "新增 core/models/operation_execution_event.py 和 core/models/operation_execution_state.py，分别放事件行结构和聚合后的现场状态结构"
+      - "先做表结构、迁移、repository 和状态聚合，不做暂停/异常业务页面"
+    test_commands:
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_operation_execution_event_foundation.py tests/regression_operation_execution_state_revision.py tests/regression_migrations.py"
+    forbidden_paths:
+      - core/algorithms/
+      - installer/
+      - vendor/
+    exit_checks:
+      - schema.sql 和新增迁移脚本都包含 OperationExecutionEvents
+      - CURRENT_SCHEMA_VERSION 按当前版本递增，并在 migrations 注册
+      - detect_schema_is_current 同步增加 OperationExecutionEvents 的表、字段、FK、CHECK、UNIQUE、索引列和索引唯一性检测；缺表、缺约束、索引列不对或唯一性不对时必须判定为非当前结构
+      - 新增 data/repositories/operation_execution_event_repo.py，类名为 OperationExecutionEventRepo
+      - OperationExecutionEventRepo 至少包含 get_event_by_id(event_id)、get_by_idempotency_key(idempotency_key)、insert_event(event_row)、list_events_by_op_id(op_id)、list_events_by_op_ids(op_ids)、list_latest_events_by_op_ids(op_ids)、list_latest_exception_events_by_op_ids(op_ids)、aggregate_states_by_op_ids(op_ids)
+      - repository 负责 OperationExecutionEvents 的所有 SQL，service 不裸写散 SQL；如果聚合逻辑放在 service，也必须由 repository 提供按 op_ids 批量拉事件的方法
+      - event_type 数据库 CHECK 只允许 start、pause、resume、finish、exception；foundation 只验结构和状态聚合边界，pause/resume/exception 的业务含义留给 shop-exception-feedback
+      - 程序动作 report_exception 入库前必须转成 event_type=exception；读取返回给前端时必须转回 action=report_exception、action_label=报异常；页面、导出和手册只能显示“报异常”
+      - 状态中文名和动作中文名必须分开实现：current_status/reported_status 的 exception 显示“异常中”，event_type=exception 必须先转 action=report_exception 再显示“报异常”，不能共用一个 exception 映射函数
+      - reported_status 数据库 CHECK 只允许 processing、paused、exception、completed，后续条目不能再使用 running 或 finished
+      - 每条事件强制绑定正式 Schedule 行，包含 schedule_version、schedule_id、source_table、effective_plan_role、scenario_id；schedule_id、schedule_version、op_id、batch_id 必须在同一事务里重新查库确认属于同一条正式计划行
+      - 数据库外键包含 op_id -> BatchOperations(id)、schedule_id -> Schedule(id)，并有 source_table='schedule'、effective_plan_role='adopted'、scenario_id IS NULL 约束
+      - 索引包含 op_id+event_time、schedule_id、schedule_id+op_id、batch_id、op_id+previous_state_revision
+      - OperationExecutionEvents 表只保存 previous_state_revision，不保存本条事件写入后的新 state_revision；新 state_revision 由插入后聚合状态返回，不能 UPDATE 事件行
+      - idempotency_key 唯一；request_fingerprint 由服务端根据完整计划身份、expected_state_revision、动作和动作载荷重算，不能信任前端
+      - 幂等判断必须排在状态版本判断前面：先查 idempotency_key，同 key 同服务端 fingerprint 和同载荷直接返回已有事件；只有 key 不存在时才比较 expected_state_revision，不能把重复提交误判成 stale_state_revision
+      - 同 key 同服务端 fingerprint 且同计划身份、同 op_id、同动作、同载荷时返回已有事件；同 key 但任一项不一致返回 409 且 details.reason=idempotency_conflict，不写事件
+      - 捕获任何 UNIQUE 冲突后都必须先重新按 idempotency_key 查同 key；同 key 同 fingerprint 且同计划身份、同 op_id、同动作、同载荷返回已有事件，同 key 不同内容返回 409 idempotency_conflict
+      - 捕获 idempotency_key UNIQUE 冲突后必须通过 OperationExecutionEventRepo.get_by_idempotency_key(idempotency_key) 回查，不能在 service 里临时写 SQL
+      - expected_state_revision 不一致返回 409 且 details.reason=stale_state_revision，不写新事件；数据库用 UNIQUE(op_id, previous_state_revision) 或 BEGIN IMMEDIATE 等价行锁防并发双写
+      - 只有 UNIQUE 冲突后查不到同 idempotency_key，且冲突来自 op_id+previous_state_revision 这类状态版本约束时，才重新聚合状态并返回 409 stale_state_revision
+      - state_revision 用写入前已提交事件聚合出的 op_id:event_count:last_committed_event_id 口径生成；不能依赖本次刚插入后才知道的事件 id 来决定是否允许写入
+      - schedule_id 和 schedule_version 只记录事件发生时用户看到的正式计划行；执行状态读取必须按 op_id 跨版本聚合，不能复制旧事件到新 schedule_id
+      - created_by 第一版来自页面必填反馈人，不能为空，不能默认写 system 或假用户
+      - 事件聚合能推导 OperationExecutionState 全字段：op_id、batch_id、current_status、current_status_label、actual_start_time、actual_end_time、actual_duration_minutes、pause_duration_minutes、actual_machine_id、actual_machine_label、actual_operator_id、actual_operator_label、last_event_id、last_event_type、last_event_time、last_event_action_label、last_event_remark、latest_exception_event_id、latest_exception_time、latest_exception_reason_code、latest_exception_reason_label、latest_exception_severity、latest_exception_severity_label、latest_exception_impact_minutes、latest_exception_impact_minutes_label、latest_exception_affected_machine_id、latest_exception_affected_machine_label、latest_exception_affected_operator_id、latest_exception_affected_operator_label、latest_exception_handling_status、latest_exception_handling_status_label、latest_exception_suggest_reschedule、latest_exception_suggest_reschedule_label、latest_exception_remark、state_revision、updated_at
+      - 事件聚合必须分开 last_event_* 和 latest_exception_*：last_event_* 表示最后一条现场事件，latest_exception_* 表示最近一次报异常；完工后仍保留最近异常信息，没有异常时 latest_exception_* 为空或默认 false
+      - 不能把暂停原因、完工备注或最后事件备注塞进 latest_exception_*；也不能因为最后一条事件不是异常就清掉历史最近异常
+      - 执行事件只追加，不允许更新或删除；纠错和撤销另起后续设计
+      - 不修改历史 Schedule.start_time/end_time
+      - 不把 BatchOperations.status 当作现场事实的唯一来源
+      - 新库 schema 测试和老库迁移测试通过
+      - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_operation_execution_event_foundation.py tests/regression_operation_execution_state_revision.py tests/regression_migrations.py
+    notes: 调研时当前 schema 是 v14；实现时先确认最新版本，再递增。
+
+  - slug: resource-dispatch-start-finish-feedback
+    title: 资源派工开工完工反馈
+    description: 在资源派工上下文新增车间反馈任务卡，第一版先支持开工和完工，展示实际开始、实际结束、当前现场状态和基本偏差。
+    depends_on: [operation-execution-event-foundation]
+    depends_on_reasons:
+      operation-execution-event-foundation: 开工和完工按钮必须写入正式执行事件并读取状态版本，没有事件表、repository 和聚合状态就无法安全提交。
+    status: planned
+    feature: null
+    minimal_loop: false
+    primary_paths:
+      - templates/scheduler/resource_dispatch.html
+      - static/js/resource_dispatch.js
+      - web/routes/domains/scheduler/scheduler_resource_dispatch.py
+      - core/services/scheduler/operation_execution_feedback_service.py
+      - web/bootstrap/request_services.py
+      - tests/regression_scheduler_candidate_resource_dispatch_contract.py
+      - tests/regression_operation_execution_feedback_routes.py
+      - tests/regression_frontend_offline_static_assets.py
+      - tests/regression_resource_dispatch_partial_overdue_summary_surfaces_warning.py
+    entrypoints:
+      - "从 GET /scheduler/resource-dispatch/execution/data 返回任务卡和按钮可用性"
+      - "POST /scheduler/resource-dispatch/execution/<op_id>/start 和 /finish 只在受控条件下写入"
+      - "最小重排护栏完成前，普通用户页面按钮隐藏或禁用，直接 POST 也拒绝"
+    test_commands:
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_resource_dispatch_contract.py tests/regression_operation_execution_feedback_routes.py tests/regression_frontend_offline_static_assets.py tests/regression_resource_dispatch_partial_overdue_summary_surfaces_warning.py"
+    forbidden_paths:
+      - core/algorithms/
+      - installer/
+      - vendor/
+    exit_checks:
+      - 资源派工页出现车间反馈入口或任务卡
+      - 服务端在受控条件下支持未开工任务写入 start 事件，但普通用户页面按钮默认隐藏或禁用，直到 reschedule-minimum-execution-guardrails 完成后再放开
+      - 服务端在受控条件下支持生产中任务写入 finish 事件，但普通用户页面按钮默认隐藏或禁用，直到 reschedule-minimum-execution-guardrails 完成后再放开
+      - 在 reschedule-minimum-execution-guardrails 完成前，普通用户即使绕过页面直接 POST 开工/完工，也必须被服务端拒绝；默认返回 6003 / 409，message 用中文说明“现场反馈保护还没开启，暂不能提交开工或完工”
+      - 如需在本条 feature 内做写入验收，只允许通过测试专用或内部受控开关放行；这个开关不能出现在普通用户页面，也不能默认开启
+      - 已完工任务不能再次开工
+      - GET /scheduler/resource-dispatch/execution/data 必须带 version、plan_role、scenario_id，并返回 can_write_feedback 和中文禁用原因
+      - GET /scheduler/resource-dispatch/execution/data 返回结构必须固定为 success/data，data 里至少包含 plan_identity、plan_identity_label、can_write_feedback、disabled_reason、tasks；plan_identity 是程序内部身份对象，页面展示只能使用 plan_identity_label、can_write_feedback 和 disabled_reason
+      - 每张任务卡至少返回 op_id、schedule_id、batch_id、op_name、current_status、current_status_label、state_revision、actual_start_time、actual_end_time、actual_machine_label、actual_operator_label、last_event_action_label、last_event_remark、updated_at、available_actions 和 unavailable_reasons
+      - available_actions 每项必须包含 action、label、enabled、disabled_reason；action 是程序内部动作值，页面只能显示 label；label 和 disabled_reason 必须是中文大白话，按钮能不能点必须由服务端返回，前端不能自己猜
+      - 按钮能不能点必须由服务端返回，不允许前端自己猜状态字符串
+      - POST 请求体里的 version、requested_plan_role、schedule_id、source_table、effective_plan_role、scenario_id、expected_state_revision、event_time、created_by、idempotency_key 都是程序内部提交字段，不能当页面文案展示；request_fingerprint 由服务端重算，不由前端填写
+      - start_operation 的 operator_id 和 machine_id 必填，页面字段名分别是“操作人员”和“设备”；缺失、找不到或设备不匹配当前正式排程记录时返回 1001/400，details.field_label 用中文字段名，message 用中文大白话
+      - finish_operation 的 quantity_done 必填且必须是大于等于 0 的整数；quantity_scrapped 可空，空值按 0，填写时也必须是大于等于 0 的整数；完成数量加报废数量不能超过任务计划数量
+      - 开工/完工的 remark 页面只叫“备注”，允许为空；如果填写，服务端去掉前后空格后保存
+      - 服务端必须重新解析 PlanIdentity；只要 requested_plan_role 不是 adopted，或者 can_write_feedback 不是 true，即使 source_table=schedule 也必须拒绝写入
+      - POST 成功返回必须包含 event、current_status、current_status_label、state_revision、idempotency_reused、task_card，便于前端局部刷新任务卡；event.action 给程序用，页面只能显示 event.action_label
+      - POST 成功 event 必须是公开 JSON 字段，至少包含 event_id、op_id、schedule_id、action、action_label、event_time、created_by、remark、reason_code、reason_label、severity、severity_label、impact_minutes、impact_minutes_label、affected_machine_label、affected_operator_label、handling_status_label、suggest_reschedule_label
+      - POST 成功 task_card 必须复用 execution/data.tasks[] 单项完整结构，不能只返回 op_id、schedule_id、current_status_label、available_actions 这几个局部字段
+      - POST 失败返回必须包含 error.code、中文 message 和 details；details.reason 至少覆盖 not_current_official_plan、stale_state_revision、invalid_state_transition、idempotency_conflict、feedback_not_enabled、schedule_mismatch、missing_required_field、invalid_field_value、permission_denied、not_found
+      - POST 失败 details.field 是给前端判断用的程序字段，details.field_label 是给页面显示的中文字段名；缺少字段或字段值不合法时必须同时返回 field 和 field_label，页面只能显示 field_label
+      - POST 失败如果和具体动作有关，details.action 是给前端判断用的程序动作，details.action_label 是给页面显示的中文动作名；页面只能显示 action_label，例如“开工”“完工”“报异常”，不能显示 start、finish、report_exception
+      - 现场反馈字段中文名映射必须至少覆盖：created_by=反馈人、reason_code=原因、severity=严重程度、impact_minutes=预计影响时间、expected_state_revision=页面状态、event_time=反馈时间、idempotency_key=重复提交标记、quantity_done=完成数量、quantity_scrapped=报废数量、affected_machine_id=影响设备、affected_operator_id=影响人员、handling_status=处理状态、suggest_reschedule=是否建议重新排程、remark=情况说明、requested_plan_role=当前方案、effective_plan_role=实际使用的方案、schedule_id=排程记录、schedule_version=排程版本、source_table=计划来源、scenario_id=模拟预览、op_id=工序编号、plan_role=方案
+      - POST 失败 reason 到 error.code/http 状态必须固定测试：missing_required_field 和 invalid_field_value 是 1001/400，not_found 是 1002/404，permission_denied 是 1004/403，其余计划身份、状态、幂等和写入保护冲突都是 6003/409
+      - 服务端重新查询正式 Schedule 行并确认 can_write_feedback=true，不信任前端传来的 schedule_id、source_table、effective_plan_role 或 scenario_id
+      - 页面显示计划时间和现场实际时间两套字段
+      - 候选方案、模拟预览、历史正式方案下按钮不可写入，直接 POST 也会被拒绝
+      - 非最新正式采用方案直接 POST 写入现场反馈时，返回 6003 / 409，error.details.reason=not_current_official_plan，message 用中文大白话说明“当前不是最新正式采用方案，不能提交现场反馈”，事件数保持不变；权限不足才返回 1004 / 403
+      - 本条能独立完成的边界是“后端受控写入能力 + 页面任务卡预备 + 普通请求服务端拒绝 + 按钮默认隐藏或禁用”；在 reschedule-minimum-execution-guardrails 完成前，不能把开工/完工写入对普通用户放开
+      - 本条不做撤销开工/撤销完工事件；按钮放开前必须有清楚确认提示、服务端状态版本校验、完整事件审计和计划员人工处理误点说明，真正 correction/reversal 另起后续 feature
+      - 并发双开工、开工和完工同时提交、状态过期提交都返回 409 且事件数不重复
+      - 页面、按钮、空状态、错误提示都使用中文大白话，不显示内部英文枚举、数据库字段名、函数名
+      - 新前端资源不走 CDN、外链字体、外链脚本、外链样式，不引入新前端框架或 Chrome 109 不支持能力
+      - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_resource_dispatch_contract.py tests/regression_operation_execution_feedback_routes.py tests/regression_frontend_offline_static_assets.py tests/regression_resource_dispatch_partial_overdue_summary_surfaces_warning.py
+    notes: 只跑通开工/完工的后端受控写入和页面预备，不把异常反馈混进本条；最小重排护栏完成前，普通用户页面按钮和直接 POST 都不能真正写入。
+
+  - slug: reschedule-minimum-execution-guardrails
+    title: 重排最小现场护栏
+    description: 开工和完工反馈上线后，先让重排尊重最基本现场事实，避免现场已经开工或完工的工序被普通排程随意移动。
+    depends_on: [resource-dispatch-start-finish-feedback]
+    depends_on_reasons:
+      resource-dispatch-start-finish-feedback: 最小现场护栏只保护开工和完工这两类已经能写入的事实，因此必须等开工/完工受控写入和任务卡预备完成后再做。
+    status: planned
+    feature: null
+    minimal_loop: false
+    primary_paths:
+      - core/services/scheduler/run/schedule_input_collector.py
+      - core/services/scheduler/run/freeze_window.py
+      - core/services/scheduler/run/schedule_optimizer.py
+      - core/services/scheduler/run/schedule_optimizer_steps.py
+      - core/services/scheduler/run/schedule_persistence.py
+      - core/services/scheduler/schedule_service.py
+      - core/services/scheduler/operation_execution_feedback_service.py
+      - core/services/scheduler/execution_fact_provider.py
+      - core/models/schedule_adjustment.py
+      - data/repositories/operation_execution_event_repo.py
+      - templates/scheduler/resource_dispatch.html
+      - static/js/resource_dispatch.js
+      - web/routes/domains/scheduler/scheduler_resource_dispatch.py
+      - tests/regression_operation_execution_feedback_routes.py
+      - tests/regression_scheduler_reschedule_execution_minimum_guardrails.py
+      - tests/regression_frontend_offline_static_assets.py
+    entrypoints:
+      - "从 core/services/scheduler/run/schedule_input_collector.py 接入已开工/已完工工序"
+      - "只检查普通重排主链路：schedule_input_collector.py、schedule_optimizer.py、schedule_optimizer_steps.py、schedule_persistence.py、schedule_service.py"
+      - "本条不做候选比较、多起点、局部搜索、图排程 ready queue、scenario 保存或 scenario 发布；这些统一放到 reschedule-respects-execution-facts"
+      - "同批解除上一条开工/完工按钮保护：资源派工模板、static/js/resource_dispatch.js、反馈 POST route 和直接 POST 测试都要一起验收"
+    test_commands:
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_reschedule_execution_minimum_guardrails.py tests/regression_operation_execution_feedback_routes.py tests/regression_frontend_offline_static_assets.py"
+    forbidden_paths:
+      - installer/
+      - vendor/
+    exit_checks:
+      - 回归测试先证明旧逻辑会把已开工或已完工工序重新移动，再证明新逻辑不再移动；最终退出条件以新行为为准
+      - 已完工工序在 input collector 阶段从 reschedulable_operations 删除，不再进入待排算法
+      - 已完工工序的实际完工时间必须写成下游最早开始约束，后续工序不能早于真实完工时间
+      - 生产中工序默认固定，不改已发生开始时间和资源
+      - 生产中工序通过 execution_fixed_op_ids 和 execution_seed_results 传给算法，不能复用 freeze window 的冻结含义
+      - 本条只要求普通重排主链路读取开工/完工事实；候选比较、多起点、局部搜索、图排程 ready queue、scenario save/publish 的统一执行快照留给 reschedule-respects-execution-facts
+      - execution_seed_results 在本条只用于开工/完工最小护栏，必须标明来源是 execution_fact 还是 freeze_window；同一 op_id 同时来自两边时以现场事实为准，冲突时拒绝落库并返回中文提示
+      - simulate=True 校验只做开工/完工最小冲突提示，不写 Schedule 或 ScheduleHistory；不保存或更新 scenario 执行快照
+      - freeze window 仍只表示排程冻结；execution fixed seed 才表示现场已经发生，两者变量和测试要分开
+      - 普通重排落库前如果发现已开工/已完工事实和当前排程结果冲突，返回 409，不写 Schedule 或 ScheduleHistory，并用中文提示重新排
+      - 本条不新增 execution_snapshot_revision、execution_snapshot_op_ids、scenario 保存快照或 scenario 发布复算；这些由 reschedule-respects-execution-facts 统一设计和验收
+      - persistence 不把 processing 或 completed 的现场状态覆盖成 scheduled
+      - 本条只处理开工和完工造成的最小安全补洞：已开工默认固定、已完工不再排、后续工序不能早于真实完工时间
+      - 本条不完整处理暂停、继续生产、报异常、异常影响时间、异常处理状态或异常重排策略；这些边界留给 shop-exception-feedback 和 reschedule-respects-execution-facts
+      - 当前没有异常反馈时不处理异常重排策略，异常策略留给后续完整重排条目
+      - 新前端资源不走 CDN、外链字体、外链脚本、外链样式，不引入新前端框架或 Chrome 109 不支持能力
+      - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
+      - 本条通过后才能把上一条预备好的开工/完工按钮对普通用户放开
+      - 本条完成后必须解除 resource-dispatch-start-finish-feedback 里普通用户开工/完工按钮隐藏或禁用的保护；按钮放开、页面可点击、直接 POST 可写入必须同批验收
+      - 普通用户直接 POST 开工/完工从“保护拒绝”变为“最新正式采用方案可写入”时，必须有回归测试证明事件写入、任务卡刷新、state_revision 更新都正确
+      - 候选方案、模拟预览、历史正式方案、非最新正式采用方案仍然拒绝开工/完工 POST，不能因为放开普通用户按钮把计划身份护栏一起放松
+      - 必须有页面按钮放开测试和绕过页面直接 POST 放开测试；只测算法最小护栏不算完成
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_reschedule_execution_minimum_guardrails.py tests/regression_operation_execution_feedback_routes.py tests/regression_frontend_offline_static_assets.py
+    notes: 这是安全补洞条目，避免现场反馈上线后到完整重排接入前出现危险空窗；本条完成后开工/完工反馈才算可对普通用户放开。
+
+  - slug: shop-exception-feedback
+    title: 车间暂停继续和异常反馈
+    description: 单独支持暂停、继续生产、报异常、异常类型、严重程度、影响时间、影响资源、处理状态和是否建议重排。
+    depends_on: [reschedule-minimum-execution-guardrails]
+    depends_on_reasons:
+      reschedule-minimum-execution-guardrails: 暂停和异常会影响后续重排，必须先有开工/完工的最小护栏，避免异常反馈上线后普通排程仍随意移动现场事实。
+    status: planned
+    feature: null
+    minimal_loop: false
+    primary_paths:
+      - templates/scheduler/resource_dispatch.html
+      - static/js/resource_dispatch.js
+      - web/routes/domains/scheduler/scheduler_resource_dispatch.py
+      - core/services/scheduler/operation_execution_feedback_service.py
+      - data/repositories/operation_execution_event_repo.py
+      - core/services/scheduler/run/schedule_input_collector.py
+      - core/services/scheduler/schedule_service.py
+      - core/services/scheduler/run/schedule_persistence.py
+      - tests/regression_operation_execution_exception_feedback.py
+      - tests/regression_operation_execution_feedback_routes.py
+      - tests/regression_scheduler_exception_blocks_auto_reschedule.py
+      - tests/regression_frontend_offline_static_assets.py
+    entrypoints:
+      - "从资源派工任务卡增加暂停、继续生产、报异常动作"
+      - "POST /scheduler/resource-dispatch/execution/<op_id>/pause、/resume、/report-exception 在本条落地"
+      - "异常中阻止普通自动重排的最小后端护栏必须和异常反馈同批完成"
+    test_commands:
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_operation_execution_exception_feedback.py tests/regression_operation_execution_feedback_routes.py tests/regression_scheduler_exception_blocks_auto_reschedule.py tests/regression_frontend_offline_static_assets.py"
+    forbidden_paths:
+      - core/algorithms/
+      - installer/
+      - vendor/
+    exit_checks:
+      - processing 状态允许 pause、finish、exception
+      - paused 状态允许 resume、finish、exception
+      - exception 状态允许 resume、finish
+      - not_started 状态不允许直接 exception；未开工发现问题时先由计划员处理计划或资源数据
+      - pause 和 exception 必须有 reason_code
+      - 异常类型至少覆盖 equipment、person、material、quality、process、external、other
+      - 本 roadmap 已经给出异常原因、严重程度、处理状态、是否建议重排的“程序值 -> 中文显示 -> 校验规则”第一版固定表；feature-design 不得临时改枚举，确实要改必须先回 roadmap update
+      - 异常原因 reason_code 固定为 equipment、person、material、quality、process、external、other；页面只显示设备问题、人员问题、物料问题、质量问题、工艺问题、外协问题、其他
+      - 严重程度 severity 固定为 low、medium、high、critical；页面只显示轻微、一般、严重、紧急
+      - 处理状态 handling_status 固定为 new、checking、waiting、handled；页面只显示刚上报、处理中、等待条件、已处理，且第一版只记录上报时状态
+      - 是否建议重排 suggest_reschedule 固定为 true/false；页面只显示建议重新排程、暂不建议重新排程，不自动触发重排
+      - handling_status 第一版只记录上报当时处理状态，不做后续更新动作；如果 feature-design 要支持更新处理状态，必须同时补更新路由、权限、状态流转和测试
+      - 本条必须同批实现“异常中阻止普通自动重排”的最小后端护栏：只要某工序当前是 exception，普通自动重排入口就要返回 409 并用中文提示计划员先处理异常；完整的算法接入仍放到 reschedule-respects-execution-facts
+      - report_exception 支持 severity、impact_minutes、affected_machine_id、affected_operator_id、handling_status、suggest_reschedule
+      - POST /scheduler/resource-dispatch/execution/<op_id>/report-exception 在 route 层映射为程序动作 report_exception，service/repository 入库前必须转成 event_type=exception
+      - 读取异常事件返回给前端时必须把 event_type=exception 转成 action=report_exception 和 action_label=报异常；页面、弹窗、表格、导出、手册都不能显示 exception 或 report_exception
+      - 状态中文名和动作中文名必须分开实现：current_status/reported_status 的 exception 显示“异常中”，event_type=exception 必须先转 action=report_exception 再显示“报异常”，不能共用一个 exception 映射函数
+      - report_exception 必须校验 severity 必填、impact_minutes 为非负整数、affected_machine_id/affected_operator_id 如填写则必须存在；remark/reason_detail 面向用户叫“情况说明”
+      - 页面能展示最近异常原因、严重程度、预计影响时间、影响设备、影响人员、处理状态、是否建议重排
+      - 弹窗、表格、详情区和导出都能展示“影响设备 / 影响人员”；没有填写时用中文空状态，不显示内部字段名
+      - impact_minutes 为空时页面和导出显示“暂时不知道影响多久”；填写时显示“预计影响 N 分钟”
+      - 页面、导出、按钮、弹窗、表格表头和空状态都用中文大白话，例如“设备问题”“预计影响 30 分钟”“建议重新排程”，不能显示 reason_code、severity、handling_status、event_type 这类内部字段名
+      - 异常导出文件名和导出列名不能出现内部英文枚举、数据库字段名或函数名
+      - 不把设备停机表当作现场异常表
+      - 非法状态返回中文大白话错误，不写新事件
+      - 并发暂停和完工、异常和继续生产同时提交时必须靠 expected_state_revision 拒绝过期请求
+      - 页面、按钮、空状态、错误提示都使用中文大白话，不显示内部英文枚举、数据库字段名、函数名
+      - 新前端资源不走 CDN、外链字体、外链脚本、外链样式，不引入新前端框架或 Chrome 109 不支持能力
+      - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_operation_execution_exception_feedback.py tests/regression_operation_execution_feedback_routes.py tests/regression_scheduler_exception_blocks_auto_reschedule.py tests/regression_frontend_offline_static_assets.py
+    notes: 异常复杂度高，必须独立 feature 设计和验收。
+
+  - slug: plan-vs-actual-review
+    title: 计划和现场实际复盘视图
+    description: 新增复盘视图，按版本、日期、批次查看计划开始/结束与实际开始/结束的偏差、暂停时长、异常原因和资源变化。
+    depends_on: [shop-exception-feedback]
+    depends_on_reasons:
+      shop-exception-feedback: 复盘要展示暂停、异常、影响时间、影响资源和处理状态，必须等异常反馈字段稳定后再做报表和导出。
+    status: planned
+    feature: null
+    minimal_loop: false
+    primary_paths:
+      - core/services/report/report_engine.py
+      - core/services/report/exporters/xlsx.py
+      - web/routes/reports.py
+      - templates/reports/index.html
+      - templates/reports/execution_review.html
+      - web/viewmodels/page_manuals_reports.py
+      - templates/scheduler/resource_dispatch.html
+      - core/services/scheduler/operation_execution_feedback_service.py
+      - tests/regression_plan_vs_actual_review.py
+      - tests/regression_operation_execution_event_foundation.py
+      - tests/regression_frontend_offline_static_assets.py
+    entrypoints:
+      - "只新增 /reports/execution-review 和 /reports/execution-review/export"
+      - "报表页面入口看 templates/reports/index.html，新页面拟新增 templates/reports/execution_review.html"
+      - "导出工作簿看 core/services/report/exporters/xlsx.py，工作表名固定为“计划和现场实际”，导出文件名固定使用“计划和现场实际-正式采用方案-v{version}-{date_from} 至 {date_to}.xlsx”这类中文格式，列名和空状态都要中文大白话"
+      - "用户手册入口看 web/viewmodels/page_manuals_reports.py"
+      - "资源派工页只加跳转到报表入口，不新增 /scheduler/execution-review"
+      - "报表数据从执行事件或执行状态读模型取实际时间和实际资源"
+    test_commands:
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_plan_vs_actual_review.py tests/regression_operation_execution_event_foundation.py tests/regression_frontend_offline_static_assets.py"
+    forbidden_paths:
+      - core/algorithms/
+      - installer/
+      - vendor/
+    exit_checks:
+      - 复盘视图能按版本、日期、批次筛选
+      - 明细显示计划开始、实际开始、开工偏差、计划结束、实际结束、完工偏差
+      - 明细显示暂停时长、异常原因、计划资源、实际资源
+      - 实际资源来自执行事件或执行状态读模型，不能从 Schedule 计划资源里冒充
+      - 没有执行事件时显示暂无现场反馈，不报错
+      - 不修改 Schedule 计划行
+      - 只新增 /reports/execution-review 和 /reports/execution-review/export；资源派工页只能跳转到报表入口，不新增 /scheduler/execution-review 路由
+      - 可导出时导出内容必须标清计划版本和筛选条件，但不显示内部字段名
+      - 导出文件名固定使用中文格式：“计划和现场实际-正式采用方案-v{version}-{date_from} 至 {date_to}.xlsx”；没有筛选日期时用“计划和现场实际-正式采用方案-v{version}.xlsx”，不能拼内部字段名或英文枚举
+      - 导出工作表名固定为“计划和现场实际”
+      - 导出列名固定为批次、工序、计划开始、实际开始、开工偏差、计划结束、实际结束、完工偏差、暂停时长、异常原因、严重程度、预计影响时间、影响设备、影响人员、处理状态、是否建议重新排程、计划资源、实际资源、现场反馈状态
+      - 没有执行事件时导出也写“暂无现场反馈”
+      - 页面、按钮、空状态、错误提示、导出文件名、导出列名和导出内容都使用中文大白话，不显示内部英文枚举、数据库字段名、函数名
+      - 新前端资源不走 CDN、外链字体、外链脚本、外链样式，不引入新前端框架或 Chrome 109 不支持能力
+      - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_plan_vs_actual_review.py tests/regression_operation_execution_event_foundation.py tests/regression_frontend_offline_static_assets.py
+    notes: 做完后，延期解释才能进一步区分计划侧原因和现场执行原因。
+
+  - slug: reschedule-respects-execution-facts
+    title: 重排尊重现场执行事实
+    description: 排程输入完整接入执行事实，已完工不再进入算法，生产中和暂停中默认固定，异常中阻止自动重排，落库前检查执行状态版本未变化。
+    depends_on: [reschedule-minimum-execution-guardrails, shop-exception-feedback]
+    depends_on_reasons:
+      reschedule-minimum-execution-guardrails: 完整重排要复用最小护栏已经落地的开工固定、完工剔除、普通重排输入读取和落库前最小冲突检查；完整执行事实快照、scenario 保存快照和 scenario 发布冲突检查在本条新增，不能提前塞进最小护栏。
+      shop-exception-feedback: 完整重排要处理暂停、异常、影响时间和建议重排，必须等这些现场事实已经能被记录和聚合。
+    status: planned
+    feature: null
+    minimal_loop: false
+    primary_paths:
+      - core/services/scheduler/run/schedule_input_collector.py
+      - core/services/scheduler/run/freeze_window.py
+      - core/services/scheduler/run/schedule_optimizer.py
+      - core/services/scheduler/run/schedule_optimizer_steps.py
+      - core/services/scheduler/run/optimizer_local_search.py
+      - core/services/scheduler/run/schedule_candidate_runner.py
+      - core/services/scheduler/run/schedule_graph_dispatch_context.py
+      - core/services/scheduler/run/schedule_seed_contracts.py
+      - core/services/scheduler/run/schedule_persistence.py
+      - core/services/scheduler/schedule_service.py
+      - core/services/scheduler/operation_execution_feedback_service.py
+      - core/services/scheduler/execution_fact_provider.py
+      - core/models/schedule_adjustment.py
+      - data/repositories/operation_execution_event_repo.py
+      - core/services/scheduler/gantt_adjustment_scenario_service.py
+      - core/services/scheduler/gantt_adjustment_publish_service.py
+      - data/repositories/schedule_adjustment_scenario_repo.py
+      - schema.sql
+      - core/infrastructure/migration_state.py
+      - core/infrastructure/migrations/__init__.py
+      - core/infrastructure/migrations/v{next}.py
+      - core/algorithms/greedy/scheduler.py
+      - core/algorithms/greedy/dispatch/sgs_graph.py
+      - tests/regression_scheduler_reschedule_execution_facts.py
+      - tests/regression_scheduler_reschedule_execution_minimum_guardrails.py
+      - tests/regression_gantt_adjustment_publish_execution_revision.py
+    entrypoints:
+      - "从 schedule_input_collector.py 完整接入 ExecutionFactProvider"
+      - "优化器、候选比较、多起点和局部搜索检查 schedule_optimizer.py、schedule_optimizer_steps.py、optimizer_local_search.py、schedule_candidate_runner.py"
+      - "普通排程、图排程、scenario 保存和 scenario 发布都要读取同一批执行事实快照"
+      - "异常中工序默认阻止普通自动重排，提示计划员先处理异常"
+    test_commands:
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_reschedule_execution_facts.py tests/regression_scheduler_reschedule_execution_minimum_guardrails.py tests/regression_gantt_adjustment_publish_execution_revision.py"
+    forbidden_paths:
+      - installer/
+      - vendor/
+    exit_checks:
+      - 新增回归先证明旧逻辑会错动 processing、paused、exception 或 completed 工序，再证明新逻辑不再错动；最终退出条件以新行为为准
+      - 本条是完整执行事实接入：在最小护栏基础上继续处理 paused、exception、异常影响时间、异常阻止普通重排和完整快照校验
+      - 已完工工序在 input collector 阶段从 reschedulable_operations 删除，不进入待排算法
+      - 已完工工序的实际完工时间写成下游最早开始约束，后续工序不能早于真实完工时间
+      - 生产中和暂停中工序默认固定，不改已发生时间和资源
+      - 生产中和暂停中工序通过 execution_fixed_op_ids 和 execution_seed_results 传给算法，不复用 freeze window 的冻结含义
+      - 候选比较、多起点、局部搜索、优化器、图排程 ready queue、scenario save/publish 都必须使用同一批执行事实快照
+      - execution_seed_results 必须标明来源是 execution_fact 还是 freeze_window；同一 op_id 同时来自两边时以现场事实为准，冲突时拒绝落库并返回中文提示
+      - simulate=True 校验必须读取执行快照，但只返回冲突提示，不写 Schedule、ScheduleHistory 或 scenario 执行快照
+      - 异常中工序默认阻止自动重排并提示计划员处理
+      - 排程开始记录 execution_snapshot_revision 和 execution_snapshot_op_ids，并写入 ScheduleHistory.result_summary；同时写入 op_id 数量和清单摘要或完整清单位置
+      - 普通重排落库前现场状态变化时返回 409，不写 Schedule 或 ScheduleHistory，并提示重新排
+      - ScheduleAdjustmentScenario 保存时记录 execution_snapshot_revision、execution_snapshot_op_ids 和 op_id 数量；scenario publish 发布前用保存时同一批 op_id 复算并校验，现场状态变化时返回 409，不写 Schedule 或 ScheduleHistory
+      - persistence 不把 processing、paused、exception、completed 的现场状态覆盖成 scheduled
+      - 图排程 fixed_op_ids 也尊重执行事实
+      - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_reschedule_execution_facts.py tests/regression_scheduler_reschedule_execution_minimum_guardrails.py tests/regression_gantt_adjustment_publish_execution_revision.py
+    notes: 这条依赖执行事件、状态读模型、最小重排护栏和异常反馈；不再被复盘页面阻塞。
+
+  - slug: aps-three-gap-docs-quality-gate
+    title: 文档、测试和 Win7 离线验收收口
+    description: 为三个方向补用户说明、开发说明、回归测试清单、YAML 校验、质量门禁和 Win7 + Chrome 109 离线静态资源验收。
+    depends_on: [delay-diagnosis-overdue-report-entry, candidate-drilldown-empty-states, plan-vs-actual-review, reschedule-respects-execution-facts]
+    depends_on_reasons:
+      delay-diagnosis-overdue-report-entry: 文档收口必须覆盖已经落地的延期解释页面、导出和诊断证据，不能在入口未完成时提前写成已可用。
+      candidate-drilldown-empty-states: 文档收口必须覆盖方案对比的跳转、空状态、周计划、资源负荷和停机影响导出，避免用户说明漏掉二级页面。
+      plan-vs-actual-review: 文档收口必须覆盖计划和现场实际复盘的页面、导出列和无现场反馈状态，否则用户不知道怎么核对现场结果。
+      reschedule-respects-execution-facts: 文档收口必须等重排完整尊重现场事实后再写验收手册，避免说明书承诺了系统还没保护的行为。
+    status: planned
+    feature: null
+    minimal_loop: false
+    primary_paths:
+      - static/docs/
+      - docs/dev/
+      - tests/
+      - .codestable/roadmap/aps-three-gap-directions/
+      - scripts/run_quality_gate.py
+      - tools/quality_gate_shared.py
+      - .codestable/tools/validate-yaml.py
+      - tests/regression_frontend_offline_static_assets.py
+      - tests/test_scan_py38plus_syntax.py
+      - tests/test_codestable_tools_contract.py
+      - docs/aps_frontend_workbench_mockup.html
+    entrypoints:
+      - "从 static/docs/、web/viewmodels/page_manuals_*.py、docs/dev/ 和测试清单收口"
+      - "先跑每条已完成 feature 的精准测试，再跑 YAML 校验和质量门禁"
+      - "用户说明只写中文大白话；内部字段名只允许出现在开发专用说明里"
+    test_commands:
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_frontend_offline_static_assets.py tests/test_codestable_tools_contract.py tests/test_scan_py38plus_syntax.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .codestable/tools/validate-yaml.py --file .codestable/roadmap/aps-three-gap-directions/aps-three-gap-directions-items.yaml --yaml-only --require roadmap --require created --require items"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tests/regression_frontend_offline_static_assets.py tests/regression_config_manual_markdown.py tests/regression_page_manual_registry.py tests/regression_scheduler_resource_dispatch_invalid_query_cleanup.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache"
+    forbidden_paths:
+      - vendor/
+      - installer/
+    exit_checks:
+      - 用户说明、页面、导出、用户可见示例用中文大白话讲清方案对比、延期解释、现场反馈分别做什么，不能出现内部英文枚举、数据库字段名、函数名
+      - 开发说明可以讲清 PlanIdentity、EvidenceLink、ExecutionEvent、ExecutionState、state_revision、重排事实接入，但必须明确标注“仅给开发和测试使用，不给用户看”
+      - 文档必须说明原 explore 后半旧路线草案已被本 roadmap 覆盖，后续实现以 roadmap 主文档和 items.yaml 为准
+      - 用户说明、页面示例、导出示例不能出现 plan_role、scenario_id、source_table、candidate_id、event_type、ReasonCode、score tuple 这类给程序看的名字；开发说明出现这些名字时必须放在开发专用小节
+      - 每个已完成 feature 的新增或更新测试文件都列入回归测试清单
+      - 每个 done feature 的精准测试、迁移测试、页面大白话测试、Win7/offline 相关测试都进入回归清单，不能只写“跑质量门禁”
+      - 收尾时必须运行 tests/test_codestable_tools_contract.py，证明 CodeStable YAML 工具仍能在 Python 3.8 口径下工作
+      - tests/regression_frontend_offline_static_assets.py 必须扫描 docs/aps_frontend_workbench_mockup.html，原型页不能引入外链脚本、外链样式、外链字体、CDN 或用户可见旧词
+      - Win7 x64、Python 3.8、Chrome 109、离线静态资源验收手册存在，并写清楚本地怎么验收
+      - 新前端资源不走 CDN、外链字体、外链脚本、外链样式，不引入新前端框架或 Chrome 109 不支持能力
+      - Python 3.8 语法约束测试覆盖新增代码，不升级破坏 Win7 x64 的依赖
+      - 必须运行 Python 3.8 语法风险扫描；如果全仓旧代码仍有历史风险，本条至少要对质量门禁入口、质量门禁 helper、本 roadmap 改动和本条新增测试运行 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tests/regression_frontend_offline_static_assets.py tests/regression_config_manual_markdown.py tests/regression_page_manual_registry.py tests/regression_scheduler_resource_dispatch_invalid_query_cleanup.py；实施 docs-quality-gate 时如果新增了测试文件，也要把新增文件加入扫描
+      - 上面固定命令只是当前路线图已有测试和工具的示例，不能当作最终完整扫描范围；docs-quality-gate 收口时必须汇总本 roadmap 所有已完成 feature 新增或修改过的 Python 文件，再一起运行 Python 3.8 语法风险扫描
+      - 如果实施时有稳定的 roadmap 起点提交，推荐用 git diff --name-only <roadmap-start-ref>...HEAD -- '*.py' 收集 Python 文件后传给 tools/scan_py38plus_syntax.py；如果没有稳定起点，就按每个已完成 feature acceptance 记录里的 changed Python files 汇总，不能只照抄固定几个测试文件
+      - YAML 校验通过
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_frontend_offline_static_assets.py tests/test_codestable_tools_contract.py tests/test_scan_py38plus_syntax.py；如果实施时新增 tests/regression_aps_three_gap_docs_quality_gate.py，再把它加入本命令
+      - 实施本条 feature 时必须运行并通过 YAML 校验：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .codestable/tools/validate-yaml.py --file .codestable/roadmap/aps-three-gap-directions/aps-three-gap-directions-items.yaml --yaml-only --require roadmap --require created --require items
+      - 实施本条 feature 收尾时必须运行质量门禁；若工作区干净，用 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache；若本地还有无关改动，只能用 --allow-dirty-worktree 作为反馈，不能宣称 clean proof
+    notes: 收尾项不能替代每条 feature 自己的精准测试。若工作区不干净，只能用 --allow-dirty-worktree 作为本地反馈，不能宣称 clean proof。
