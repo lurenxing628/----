@@ -268,6 +268,21 @@ def _role_is_comparison(option: Optional[Dict[str, Any]], *, role: str) -> Optio
     return source_table == SOURCE_CANDIDATE_ROWS
 
 
+def _role_detail_saved(option: Optional[Dict[str, Any]]) -> bool:
+    source_table = _role_source_table(option)
+    if source_table == SOURCE_SCHEDULE:
+        return True
+    return str((option or {}).get("detail_saved") or "").strip().lower() == "yes"
+
+
+def _link_unavailable_reason(*, detail_saved: bool, plan_role_available: bool) -> str:
+    if not plan_role_available:
+        return "这套方案记录不完整，当前无法查看明细。"
+    if not detail_saved:
+        return "这套对比参考方案没有保存明细，当前无法查看明细。"
+    return ""
+
+
 def _comparison_note(*, role: str, is_comparison: bool, is_same_as_adopted: bool) -> str:
     if role == ROLE_ADOPTED:
         return ""
@@ -385,6 +400,8 @@ def _candidate_display_row(
     status = _candidate_status(candidate, option)
     adopted_key = _adopted_candidate_key(comparison)
     is_same_as_adopted = bool(candidate_key and candidate_key == adopted_key)
+    plan_role_available = role in options_by_role
+    detail_saved = _role_detail_saved(option)
     comparison_note = _comparison_note(
         role=role,
         is_comparison=bool(is_comparison),
@@ -406,7 +423,13 @@ def _candidate_display_row(
         "makespan_hours": _candidate_metric(candidate, "makespan_hours"),
         "changeover_count": _candidate_metric(candidate, "changeover_count"),
         "technical_score_label": _candidate_technical_score_label(candidate),
-        "plan_role_available": role in options_by_role,
+        "plan_role_available": plan_role_available,
+        "detail_saved": detail_saved,
+        "can_open_detail": bool(plan_role_available and detail_saved),
+        "link_unavailable_reason": _link_unavailable_reason(
+            detail_saved=detail_saved,
+            plan_role_available=plan_role_available,
+        ),
         "is_adopted": role == ROLE_ADOPTED,
         "is_same_as_adopted": is_same_as_adopted,
         "is_comparison": bool(is_comparison),

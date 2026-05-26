@@ -181,10 +181,10 @@ class ReportEngine:
         }
 
     def _filename_plan_label(self, resolution: SchedulePlanResolution) -> str:
-        label = plan_role_label(resolution.selected_role)
+        label = resolution.scenario_display_name or plan_role_label(resolution.selected_role)
         for old, new in (("/", "-"), ("\\", "-"), (":", "-"), ("*", ""), ("?", ""), ('"', ""), ("<", ""), (">", ""), ("|", "-")):
             label = label.replace(old, new)
-        return label.strip() or resolution.selected_role
+        return label.strip() or plan_role_label(resolution.selected_role)
 
     def _public_plan_label(self, resolution: SchedulePlanResolution) -> str:
         if resolution.is_scenario_preview:

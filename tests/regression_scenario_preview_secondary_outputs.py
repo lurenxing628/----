@@ -234,6 +234,9 @@ def test_secondary_output_pages_keep_scenario_context(tmp_path: Path, monkeypatc
         "&amp;start_date=2026-05-06&amp;end_date=2026-05-06"
     ) in utilization_html
     assert "M2" in utilization_html
+    assert '<div class="aps-summary-label">排产方案</div>' in utilization_html
+    assert '<div class="aps-summary-value">二级页模拟</div>' in utilization_html
+    assert "当前方案：二级页模拟" in utilization_html
 
     downtime_html = client.get(
         f"/reports/downtime?start_date=2026-05-06&end_date=2026-05-06&{scenario_query}"
@@ -241,6 +244,9 @@ def test_secondary_output_pages_keep_scenario_context(tmp_path: Path, monkeypatc
     assert "当前停机影响统计正在预览" in downtime_html
     assert f'name="scenario_id" value="{scenario_id}"' in downtime_html
     assert "0.5" in downtime_html
+    assert '<div class="aps-summary-label">排产方案</div>' in downtime_html
+    assert '<div class="aps-summary-value">二级页模拟</div>' in downtime_html
+    assert "当前方案：二级页模拟" in downtime_html
 
     export_resp = client.get(f"/reports/overdue/export?{scenario_query}")
     assert export_resp.status_code == 400
@@ -282,6 +288,15 @@ def test_secondary_output_pages_use_plain_fallback_for_unnamed_scenario(tmp_path
     for url in page_urls:
         html = client.get(url).get_data(as_text=True)
         assert "模拟预览（未命名）" in html, url
+        if "/reports/utilization?" in url or "/reports/downtime?" in url:
+            assert "当前方案：模拟预览（未命名）" in html, url
+            assert '<div class="aps-summary-label">排产方案</div>' in html, url
+            assert '<div class="aps-summary-value">模拟预览（未命名）</div>' in html, url
+            assert "当前方案：None" not in html, url
+            if "/reports/utilization?" in url:
+                assert "当前资源负荷与利用率正在预览“模拟预览（未命名）”，正式计划还没有改变。" in html, url
+            if "/reports/downtime?" in url:
+                assert "当前停机影响统计正在预览“模拟预览（未命名）”，正式计划还没有改变。" in html, url
 
     week_export = client.get(f"/scheduler/week-plan/export?week_start=2026-05-04&{scenario_query}")
     assert week_export.status_code == 200

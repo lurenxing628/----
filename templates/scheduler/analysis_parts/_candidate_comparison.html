@@ -89,7 +89,7 @@
                         {% endfor %}
                       </div>
                     {% else %}
-                      <span class="muted">暂无可跳转明细</span>
+                      <span class="muted">{{ row.link_unavailable_reason or '暂无可跳转明细' }}</span>
                     {% endif %}
                   </td>
                 </tr>

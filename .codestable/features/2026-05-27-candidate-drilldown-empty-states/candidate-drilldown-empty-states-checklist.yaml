@@ -1,0 +1,45 @@
+feature: 2026-05-27-candidate-drilldown-empty-states
+status: done
+roadmap: aps-three-gap-directions
+roadmap_item: candidate-drilldown-empty-states
+
+steps:
+  - slug: reference-chain-investigation
+    title: 下钻方案对比跳转、周计划、报表和导出链路
+    status: done
+    exit_signal: 已确认分析页跳转由 ViewModel 行数据和链接层共同生成，周计划主链路已保留同方案身份，资源负荷和停机影响需要补未命名模拟预览兜底和导出防泄漏测试。
+
+  - slug: detail-saved-link-guard
+    title: 候选明细未保存时不生成假跳转
+    status: done
+    exit_signal: ViewModel 为每行产出 detail_saved、can_open_detail 和中文不可查看原因，链接层只在 can_open_detail 为真时生成设备甘特图、人员甘特图、周计划和资源排班入口。
+
+  - slug: drilldown-empty-state-copy
+    title: 钻取空状态改成中文大白话
+    status: done
+    exit_signal: 模板无链接时展示 ViewModel 给出的“这套对比参考方案没有保存明细，当前无法查看明细。”，模板不直接读取内部字段拼判断。
+
+  - slug: report-preview-fallback
+    title: 资源负荷和停机影响页面统一模拟预览兜底
+    status: done
+    exit_signal: 页面摘要和“当前方案”优先使用 scenario_display_name，没有名称时统一显示“模拟预览（未命名）”，不显示 None、内部编号或空白名称。
+
+  - slug: export-and-page-regression-tests
+    title: 增加跳转、空状态、导出和离线资源回归测试
+    status: done
+    exit_signal: 测试覆盖 detail_saved=false 不出假跳转、旧历史不完整提示、模拟预览未命名兜底、导出文件名和工作簿内容不泄露内部字段、候选方案 stream 导出防泄漏。
+
+  - slug: adversarial-review-loop
+    title: 对抗性审核和阻塞修复
+    status: done
+    exit_signal: 第一轮复审发现 CodeStable 回写缺失、提交隔离风险和两个测试缺口；已补回写、补测试，后续进入第二轮复审。
+
+checks:
+  - 设备甘特图、人员甘特图、周计划、资源排班跳转继续带 version 和 plan_role。
+  - detail_saved=false 的候选对比方案不显示假跳转，页面用中文说明“这套对比参考方案没有保存明细”。
+  - 正式采用方案来源为 Schedule 时，即使候选摘要里的 detail_saved 不是 yes，也继续允许查看正式明细。
+  - 旧历史缺 candidates 或记录不完整时，不伪造推荐卡、摘要卡或跳转。
+  - 周计划、资源负荷、停机影响在未命名模拟预览时统一显示“模拟预览（未命名）”。
+  - 报表导出文件名、工作表名、表头和工作簿内容不显示 plan_role、scenario_id、source_table、candidate_id、candidate_rows 等内部字段。
+  - URL、hidden input 和 select value 只作为程序传参保留，用户可见文案不展示这些内部字段名。
+  - 不改排程算法、不改数据库、不改迁移、不做派工确认和现场反馈。

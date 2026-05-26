@@ -233,8 +233,8 @@ items:
     depends_on: [candidate-summary-delta-cards]
     depends_on_reasons:
       candidate-summary-delta-cards: 钻取和空状态要围绕三张摘要卡展开，先有固定三方案摘要，才能判断哪些跳转可用、哪些明细缺失。
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-27-candidate-drilldown-empty-states
     minimal_loop: false
     primary_paths:
       - web/routes/domains/scheduler/scheduler_analysis_links.py

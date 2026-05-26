@@ -121,6 +121,32 @@ def test_candidate_recommendation_card_is_not_faked_when_comparison_is_missing()
     assert "本次没有开启方案对比" in display["notice"]
 
 
+def test_candidate_comparison_incomplete_history_uses_plain_notice_without_fake_cards() -> None:
+    display = build_candidate_comparison_display(
+        _comparison_summary(incomplete=True),
+        selected_ver=7,
+        plan_role_options=[],
+    )
+
+    assert display["has_comparison"] is False
+    assert display["rows"] == []
+    assert display["recommendation_card"] is None
+    assert display["summary_cards"] == []
+    assert "本次方案对比记录不完整，当前只展示正式采用方案" in display["notice"]
+    _assert_payload_not_leaking_internal_text([display["notice"]])
+
+
+def test_candidate_link_empty_state_uses_plain_public_reason() -> None:
+    source = (REPO_ROOT / "templates/scheduler/analysis_parts/_candidate_comparison.html").read_text(encoding="utf-8")
+
+    assert "row.link_unavailable_reason" in source
+    assert "暂无可跳转明细" in source
+    link_block = source[source.index("{% if row.links and row.links|length > 0 %}") : source.index("</td>", source.index("{% if row.links and row.links|length > 0 %}"))]
+    assert "row.detail_saved" not in link_block
+    assert "row.source_table" not in link_block
+    assert "candidate_id" not in link_block
+
+
 def test_candidate_recommendation_template_only_reads_public_card_fields() -> None:
     source = (REPO_ROOT / "templates/scheduler/analysis_parts/_candidate_comparison.html").read_text(encoding="utf-8")
     start = source.index("{% if candidate_comparison_display.recommendation_card %}")

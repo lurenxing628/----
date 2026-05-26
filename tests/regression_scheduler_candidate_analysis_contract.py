@@ -343,6 +343,10 @@ def test_analysis_route_builds_candidate_comparison_rows_with_shared_role_labels
     assert display["baseline_missing_or_failed"] is False
 
     for role, row in rows.items():
+        if role == ROLE_CRITICAL_BEST:
+            assert row["detail_saved"] is True
+            assert row["can_open_detail"] is True
+            assert row["link_unavailable_reason"] == ""
         links = list(row["links"])
         assert [link["label"] for link in links] == ["设备甘特图", "人员甘特图", "周计划", "资源排班"]
         urls = [link["url"] for link in links]
@@ -355,6 +359,44 @@ def test_analysis_route_builds_candidate_comparison_rows_with_shared_role_labels
 
     assert plan_role_service.version_queries == [7]
     json.dumps(payload, ensure_ascii=False)
+
+
+def test_analysis_route_hides_candidate_links_when_detail_was_not_saved() -> None:
+    options = [
+        option
+        if option.role != ROLE_BASELINE_BEST
+        else SchedulePlanRoleOption(
+            role=option.role,
+            source_table=SOURCE_CANDIDATE_ROWS,
+            candidate_id=option.candidate_id,
+            candidate_key=option.candidate_key,
+            candidate_label=option.candidate_label,
+            candidate_kind=option.candidate_kind,
+            candidate_status=option.candidate_status,
+            detail_saved="no",
+        )
+        for option in _plan_role_options()
+    ]
+    history_service = _HistoryServiceStub(_comparison_summary())
+    plan_role_service = _PlanRoleServiceStub(options)
+    app, route_mod = _build_app()
+
+    payload = _call_analysis_page(
+        app,
+        route_mod,
+        history_service=history_service,
+        plan_role_service=plan_role_service,
+    )
+
+    rows = {row["role"]: row for row in payload["candidate_comparison_display"]["rows"]}
+    baseline = rows[ROLE_BASELINE_BEST]
+    assert baseline["plan_role_available"] is True
+    assert baseline["detail_saved"] is False
+    assert baseline["can_open_detail"] is False
+    assert baseline["links"] == {}
+    assert baseline["link_unavailable_reason"] == "这套对比参考方案没有保存明细，当前无法查看明细。"
+    assert rows[ROLE_ADOPTED]["links"]
+    assert rows[ROLE_CRITICAL_BEST]["links"]
 
 
 def test_analysis_candidate_display_keeps_core_role_order_and_labels() -> None:

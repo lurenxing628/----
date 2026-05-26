@@ -17,6 +17,16 @@ from web.routes.report_plan_preview import default_plan_resolution
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 VERSION = 17
+EXPORT_INTERNAL_TERMS = (
+    "plan_role",
+    "candidate_key",
+    "candidate_id",
+    "source_table",
+    "baseline_best",
+    "critical_best",
+    "scenario_id",
+    "candidate_rows",
+)
 
 
 def _build_app(tmp_path, monkeypatch):
@@ -167,6 +177,25 @@ def _content_disposition(resp) -> str:
     return unquote(resp.headers.get("Content-Disposition", ""))
 
 
+def _workbook_text(resp) -> str:
+    wb = _load_xlsx(resp)
+    values = []
+    try:
+        for ws in wb.worksheets:
+            values.append(ws.title)
+            for row in ws.iter_rows(values_only=True):
+                values.extend(str(cell or "") for cell in row)
+    finally:
+        wb.close()
+    return "\n".join(values)
+
+
+def _assert_export_public_text(resp) -> None:
+    text = _content_disposition(resp) + "\n" + _workbook_text(resp)
+    for forbidden in EXPORT_INTERNAL_TERMS:
+        assert forbidden not in text
+
+
 def _latest_report_export_filters(tmp_path, target_type: str):
     conn = get_connection(str(tmp_path / "aps_test.db"))
     try:
@@ -251,6 +280,7 @@ def test_candidate_report_exports_use_selected_plan_rows_and_filename_label(tmp_
         assert ws["G2"].value == "2026-01-03 12:00:00"
     finally:
         wb.close()
+    _assert_export_public_text(overdue_resp)
 
     utilization_resp = client.get("/reports/utilization/export?version=17&plan_role=baseline_best&start_date=2026-01-03&end_date=2026-01-03")
     _assert_status(utilization_resp, "candidate utilization export")
@@ -267,6 +297,7 @@ def test_candidate_report_exports_use_selected_plan_rows_and_filename_label(tmp_
         _assert_number(ws["C2"].value, 4.0)
     finally:
         wb.close()
+    _assert_export_public_text(utilization_resp)
 
     downtime_resp = client.get("/reports/downtime/export?version=17&plan_role=baseline_best&start_date=2026-01-03&end_date=2026-01-03")
     _assert_status(downtime_resp, "candidate downtime export")
@@ -283,6 +314,7 @@ def test_candidate_report_exports_use_selected_plan_rows_and_filename_label(tmp_
         _assert_number(ws["E2"].value, 2.0)
     finally:
         wb.close()
+    _assert_export_public_text(downtime_resp)
 
 
 def test_candidate_report_missing_role_falls_back_to_adopted_with_visible_status(tmp_path, monkeypatch) -> None:
@@ -319,6 +351,31 @@ def test_candidate_report_missing_role_falls_back_to_adopted_with_visible_status
         assert ws["G2"].value == "2026-01-02 10:00:00"
     finally:
         wb.close()
+
+    utilization_export = client.get("/reports/utilization/export?version=17&plan_role=critical_best&start_date=2026-01-02&end_date=2026-01-02")
+    _assert_status(utilization_export, "candidate fallback utilization export")
+    assert "正式采用方案" in _content_disposition(utilization_export)
+    _assert_export_public_text(utilization_export)
+
+    downtime_export = client.get("/reports/downtime/export?version=17&plan_role=critical_best&start_date=2026-01-02&end_date=2026-01-02")
+    _assert_status(downtime_export, "candidate fallback downtime export")
+    assert "正式采用方案" in _content_disposition(downtime_export)
+    _assert_export_public_text(downtime_export)
+
+
+def test_report_pages_reject_scenario_export_with_plain_message(tmp_path, monkeypatch) -> None:
+    app = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+
+    for url in (
+        "/reports/utilization/export?version=17&scenario_id=scenario-1&start_date=2026-01-02&end_date=2026-01-02",
+        "/reports/downtime/export?version=17&scenario_id=scenario-1&start_date=2026-01-02&end_date=2026-01-02",
+    ):
+        resp = client.get(url)
+        html = resp.get_data(as_text=True)
+        assert resp.status_code == 400
+        assert "模拟预览暂不支持导出，请切换到正式采用方案" in html
+        assert "scenario_id" not in html
 
 
 def test_report_pages_reject_unknown_plan_role_without_history(tmp_path, monkeypatch) -> None:

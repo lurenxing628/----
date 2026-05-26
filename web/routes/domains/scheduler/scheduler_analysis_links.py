@@ -31,7 +31,7 @@ def attach_candidate_plan_links(ctx: Dict[str, Any], selected_ver: Optional[int]
     if selected_ver is None or not isinstance(display, dict):
         return
     for row in list(display.get("rows") or []):
-        if not isinstance(row, dict) or not row.get("plan_role_available"):
+        if not isinstance(row, dict) or not row.get("plan_role_available") or not row.get("can_open_detail"):
             continue
         role = str(row.get("role") or "").strip()
         if not role:

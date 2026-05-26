@@ -250,6 +250,10 @@ def _load_selected_plan_role_options(services: Any, selected_ver: Optional[int])
         resolve_plan = getattr(plan_query_service, "resolve_plan", None)
         if not callable(resolve_plan):
             return
+        source_table = str(option.get("source_table") or "").strip()
+        detail_saved = str(option.get("detail_saved") or "").strip().lower()
+        if source_table == "candidate_rows" and detail_saved != "yes":
+            return
         role = str(option.get("role") or getattr(item, "role", "") or "").strip()
         if role:
             resolution = resolve_plan(int(selected_ver), role)

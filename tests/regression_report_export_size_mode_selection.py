@@ -5,6 +5,7 @@ import sys
 import tempfile
 from io import BytesIO
 from typing import Any, Dict, List, cast
+from urllib.parse import unquote
 
 
 def find_repo_root() -> str:
@@ -57,6 +58,34 @@ def _assert_utilization_xlsx_percent(resp) -> None:
         wb.close()
 
 
+def _assert_no_internal_terms_in_xlsx(resp) -> None:
+    import openpyxl
+
+    forbidden_terms = (
+        "plan_role",
+        "candidate_key",
+        "candidate_id",
+        "source_table",
+        "baseline_best",
+        "critical_best",
+        "scenario_id",
+        "candidate_rows",
+    )
+    wb = openpyxl.load_workbook(BytesIO(resp.data), data_only=True)
+    values: List[str] = []
+    try:
+        for ws in wb.worksheets:
+            values.append(str(ws.title or ""))
+            for row in ws.iter_rows(values_only=True):
+                values.extend(str(cell or "") for cell in row)
+    finally:
+        wb.close()
+    text = resp.headers.get("Content-Disposition", "") + "\n" + "\n".join(values)
+    leaked = [term for term in forbidden_terms if term in text]
+    if leaked:
+        raise RuntimeError(f"候选方案 stream 导出泄露内部字段：{leaked!r}")
+
+
 def _make_overdue_items(count: int) -> List[Dict[str, Any]]:
     return [
         {
@@ -87,6 +116,21 @@ def _make_utilization_rows(count: int) -> List[Dict[str, Any]]:
         }
         for i in range(1, count + 1)
     ]
+
+
+class _FakePlanResolution:
+    def __init__(self, selected_role: str) -> None:
+        self.selected_role = selected_role
+        self.scenario_display_name = ""
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "requested_role": self.selected_role,
+            "selected_role": self.selected_role,
+            "status": "resolved_comparison" if self.selected_role == "baseline_best" else "resolved_adopted",
+            "candidate_id": 2 if self.selected_role == "baseline_best" else None,
+            "candidate_key": "baseline" if self.selected_role == "baseline_best" else None,
+        }
 
 
 def main() -> None:
@@ -139,6 +183,7 @@ def main() -> None:
     original_overdue_batches = ReportEngine.overdue_batches
     original_overdue_diagnosis_export_rows = ReportEngine._overdue_diagnosis_export_rows
     original_utilization = ReportEngine.utilization
+    original_resolve_plan = ReportEngine._resolve_plan
 
     try:
         report_engine_cls = cast(Any, ReportEngine)
@@ -158,7 +203,7 @@ def main() -> None:
                 "unscheduled_items": [],
             }
 
-        def fake_utilization(self, version: int, start_date: Any, end_date: Any) -> Dict[str, Any]:
+        def fake_utilization(self, version: int, start_date: Any, end_date: Any, plan_role: Any = None, scenario_id: Any = None) -> Dict[str, Any]:
             return {
                 "version": int(version),
                 "start_date": str(start_date),
@@ -167,6 +212,10 @@ def main() -> None:
                 "machines": _make_utilization_rows(3),
                 "operators": [],
             }
+
+        def fake_resolve_plan(self, version: int, plan_role: Any, scenario_id: Any = None):
+            selected_role = "baseline_best" if str(plan_role or "").strip() == "baseline_best" else "adopted"
+            return _FakePlanResolution(selected_role)
 
         def fake_overdue_diagnosis_export_rows(self, *, version: int, resolution) -> List[Dict[str, Any]]:
             return [
@@ -184,6 +233,7 @@ def main() -> None:
         ReportEngine.overdue_batches = fake_overdue_batches
         ReportEngine._overdue_diagnosis_export_rows = fake_overdue_diagnosis_export_rows
         ReportEngine.utilization = fake_utilization
+        ReportEngine._resolve_plan = fake_resolve_plan
 
         overdue_resp = client.get("/reports/overdue/export?version=7")
         _assert_xlsx(overdue_resp, "GET /reports/overdue/export", 7)
@@ -205,6 +255,17 @@ def main() -> None:
         if util_rows != "3":
             raise RuntimeError(f"资源负荷导出行数估计错误：{util_rows!r}")
 
+        candidate_stream_resp = client.get(
+            "/reports/utilization/export?version=7&plan_role=baseline_best&start_date=2026-01-01&end_date=2026-01-07"
+        )
+        _assert_xlsx(candidate_stream_resp, "GET /reports/utilization/export?plan_role=baseline_best", 7)
+        if candidate_stream_resp.headers.get("X-APS-Report-Export-Mode", "") != "stream":
+            raise RuntimeError("候选方案资源负荷导出没有走 stream 模式")
+        cd = unquote(candidate_stream_resp.headers.get("Content-Disposition", ""))
+        if "原算法代表方案" not in cd:
+            raise RuntimeError(f"候选方案 stream 导出文件名缺少中文方案名：{cd!r}")
+        _assert_no_internal_terms_in_xlsx(candidate_stream_resp)
+
         print("OK")
     finally:
         ReportEngine.EXPORT_DIRECT_MAX_ROWS = original_direct_max
@@ -212,6 +273,7 @@ def main() -> None:
         ReportEngine.overdue_batches = original_overdue_batches
         ReportEngine._overdue_diagnosis_export_rows = original_overdue_diagnosis_export_rows
         ReportEngine.utilization = original_utilization
+        ReportEngine._resolve_plan = original_resolve_plan
 
 
 if __name__ == "__main__":

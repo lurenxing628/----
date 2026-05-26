@@ -100,3 +100,38 @@ def test_analysis_candidate_links_and_roles_stay_stable() -> None:
         assert "/scheduler/gantt?view=operator" in urls[1]
         assert "/scheduler/week-plan?" in urls[2]
         assert "/scheduler/resource-dispatch?" in urls[3]
+
+
+def test_analysis_candidate_links_are_hidden_when_candidate_detail_is_not_saved() -> None:
+    options = [
+        option
+        if option.role != ROLE_BASELINE_BEST
+        else type(option)(
+            role=option.role,
+            source_table=option.source_table,
+            candidate_id=option.candidate_id,
+            candidate_key=option.candidate_key,
+            candidate_label=option.candidate_label,
+            candidate_kind=option.candidate_kind,
+            candidate_status=option.candidate_status,
+            detail_saved="no",
+        )
+        for option in _plan_role_options()
+    ]
+    history_service = _HistoryServiceStub(_comparison_summary())
+    plan_role_service = _PlanRoleServiceStub(options)
+    app, route_mod = _build_app()
+
+    payload = _call_analysis_page(
+        app,
+        route_mod,
+        history_service=history_service,
+        plan_role_service=plan_role_service,
+    )
+
+    rows = {row["role"]: row for row in payload["candidate_comparison_display"]["rows"]}
+    assert rows[ROLE_BASELINE_BEST]["links"] == {}
+    assert rows[ROLE_BASELINE_BEST]["can_open_detail"] is False
+    assert "这套对比参考方案没有保存明细" in rows[ROLE_BASELINE_BEST]["link_unavailable_reason"]
+    assert rows[ROLE_ADOPTED]["links"]
+    assert rows[ROLE_CRITICAL_BEST]["links"]
