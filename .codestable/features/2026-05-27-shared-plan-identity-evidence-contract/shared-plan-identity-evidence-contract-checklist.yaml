@@ -1,0 +1,36 @@
+feature: 2026-05-27-shared-plan-identity-evidence-contract
+status: done
+roadmap: aps-three-gap-directions
+roadmap_item: shared-plan-identity-evidence-contract
+
+steps:
+  - slug: reference-chain-investigation
+    title: 下钻排程读取、候选分析和资源派工引用链
+    status: done
+    exit_signal: 已确认入口、数据来源、页面展示、已有测试和不可提前开放的写入边界。
+
+  - slug: plan-identity-model
+    title: 新增统一计划身份模型
+    status: done
+    exit_signal: PlanIdentity 覆盖 roadmap 要求字段，并接入排程读取解析结果。
+
+  - slug: evidence-link-model
+    title: 新增证据链接模型
+    status: done
+    exit_signal: EvidenceLink 支持 row、aggregate、missing_data，并校验假来源和缺数据等级。
+
+  - slug: read-service-integration
+    title: 接入读取服务和页面默认上下文
+    status: done
+    exit_signal: 正式方案、候选代表方案、历史版本、模拟预览和缺明细回退都有统一身份。
+
+  - slug: regression-tests
+    title: 增加回归测试和 Python 3.8 扫描
+    status: done
+    exit_signal: 精准 pytest 和 Python 3.8 语法扫描通过。
+
+checks:
+  - 只有当前最新正式 adopted 方案才可能允许派工和现场反馈。
+  - 候选方案、模拟预览、历史正式版本、失败结果、模拟结果和缺明细回退全部禁止写入。
+  - 页面可见口径使用中文大白话，内部字段只保留在程序传参位置。
+  - 本阶段不提前实现后续派工确认、现场反馈、延期诊断或候选推荐功能。

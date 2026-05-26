@@ -12,8 +12,8 @@ items:
     description: 统一读取排程结果时必须带的计划身份、证据来源和中文显示口径；只做公共读取协议，不提前实现派工确认或现场反馈写入。
     depends_on: []
     depends_on_reasons: {}
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-27-shared-plan-identity-evidence-contract
     minimal_loop: false
     primary_paths:
       - core/models/schedule_plan_role.py

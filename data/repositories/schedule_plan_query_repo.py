@@ -72,6 +72,96 @@ def _require_scenario_id(source_table: str, scenario_id: Optional[str]) -> str:
 class SchedulePlanQueryRepository(BaseRepository):
     """按 adopted / 候选代表方案读取同一形状的排产明细。"""
 
+    def list_history_identity_rows(self) -> List[Dict[str, Any]]:
+        return self.fetchall(
+            """
+            SELECT
+                h.version,
+                h.result_status,
+                h.result_summary,
+                (
+                    SELECT COUNT(1)
+                    FROM Schedule s
+                    WHERE s.version = h.version
+                ) AS schedule_row_count
+            FROM ScheduleHistory h
+            WHERE h.id = (
+                SELECT h2.id
+                FROM ScheduleHistory h2
+                WHERE h2.version = h.version
+                ORDER BY h2.schedule_time DESC, h2.id DESC
+                LIMIT 1
+            )
+            ORDER BY h.version DESC
+            """
+        )
+
+    def get_history_identity_row(self, version: int) -> Optional[Dict[str, Any]]:
+        return self.fetchone(
+            """
+            SELECT
+                h.version,
+                h.result_status,
+                h.result_summary,
+                (
+                    SELECT COUNT(1)
+                    FROM Schedule s
+                    WHERE s.version = h.version
+                ) AS schedule_row_count
+            FROM ScheduleHistory h
+            WHERE h.version = ?
+            ORDER BY h.schedule_time DESC, h.id DESC
+            LIMIT 1
+            """,
+            (int(version),),
+        )
+
+    def get_first_plan_identity_row(
+        self,
+        *,
+        version: int,
+        source_table: str,
+        candidate_id: Optional[int],
+        scenario_id: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        if source_table == SOURCE_SCHEDULE:
+            return self.fetchone(
+                """
+                SELECT id AS source_row_id, lock_status
+                FROM Schedule
+                WHERE version = ?
+                ORDER BY id ASC
+                LIMIT 1
+                """,
+                (int(version),),
+            )
+        if source_table == SOURCE_CANDIDATE_ROWS:
+            _require_candidate_id(source_table, candidate_id)
+            return self.fetchone(
+                """
+                SELECT id AS source_row_id, lock_status
+                FROM ScheduleCandidateRows
+                WHERE version = ? AND candidate_id = ?
+                ORDER BY id ASC
+                LIMIT 1
+                """,
+                (int(version), int(candidate_id or 0)),
+            )
+        if source_table == SOURCE_ADJUSTMENT_SCENARIO_ROWS:
+            scenario_key = _require_scenario_id(source_table, scenario_id)
+            return self.fetchone(
+                """
+                SELECT r.id AS source_row_id, r.lock_status
+                FROM ScheduleAdjustmentScenarioRow r
+                JOIN ScheduleAdjustmentScenario s ON s.scenario_id = r.scenario_id
+                WHERE s.base_version = ? AND r.scenario_id = ? AND s.status = 'active'
+                ORDER BY r.id ASC
+                LIMIT 1
+                """,
+                (int(version), scenario_key),
+            )
+        return None
+
     def list_plan_role_options(self, version: int) -> List[Dict[str, Any]]:
         return self.fetchall(
             """

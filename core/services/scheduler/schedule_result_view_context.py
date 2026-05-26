@@ -74,6 +74,30 @@ def default_plan_resolution_dict(plan_role: Optional[str] = None) -> Dict[str, A
     requested_role = normalize_plan_role(plan_role)
     selected_label = plan_role_label(ROLE_ADOPTED)
     is_fallback = requested_role != ROLE_ADOPTED
+    plan_identity = {
+        "version": None,
+        "requested_plan_role": requested_role,
+        "effective_plan_role": ROLE_ADOPTED,
+        "plan_resolution_status": "fallback_to_adopted" if is_fallback else "resolved_adopted",
+        "source_table": SOURCE_SCHEDULE,
+        "source_row_id": None,
+        "candidate_id": None,
+        "candidate_key": None,
+        "scenario_id": None,
+        "schedule_result_status": None,
+        "is_simulation": False,
+        "label": selected_label,
+        "user_label": "对比参考方案" if is_fallback else selected_label,
+        "is_official": not is_fallback,
+        "is_preview": False,
+        "is_current_executable_version": False,
+        "is_current_executable_official_version": False,
+        "is_superseded_by_newer_version": False,
+        "schedule_lock_status": None,
+        "can_dispatch": False,
+        "can_write_feedback": False,
+        "detail_saved": True,
+    }
     return {
         "version": None,
         "requested_role": requested_role,
@@ -111,6 +135,15 @@ def default_plan_resolution_dict(plan_role: Optional[str] = None) -> Dict[str, A
         "scenario_id": None,
         "scenario_name": None,
         "scenario_display_name": None,
+        "plan_identity": plan_identity,
+        "can_dispatch": False,
+        "can_write_feedback": False,
+        "user_label": plan_identity["user_label"],
+        "is_official": bool(plan_identity["is_official"]),
+        "is_preview": False,
+        "is_current_executable_version": False,
+        "is_current_executable_official_version": False,
+        "is_superseded_by_newer_version": False,
     }
 
 
@@ -237,6 +270,7 @@ def _plan_role_is_comparison(
 
 def plan_role_filter_fields(plan_resolution_or_context: Any = None, **overrides: Any) -> Dict[str, Any]:
     data = {} if plan_resolution_or_context is None else _resolution_to_dict(plan_resolution_or_context)
+    plan_identity = data.get("plan_identity") if isinstance(data.get("plan_identity"), dict) else {}
     requested_role = str(_truthy_override_or_data(overrides, data, "requested_role", ("requested_role",), ROLE_ADOPTED))
     effective_role = str(
         _truthy_override_or_data(overrides, data, "effective_role", ("selected_role", "effective_plan_role"), ROLE_ADOPTED)
@@ -282,6 +316,21 @@ def plan_role_filter_fields(plan_resolution_or_context: Any = None, **overrides:
         "scenario_id": scenario_id,
         "scenario_name": scenario_name,
         "scenario_display_name": scenario_display_name,
+        "plan_identity_label": plan_identity.get("user_label") or data.get("user_label") or plan_role_label(effective_role),
+        "can_dispatch": bool(plan_identity.get("can_dispatch") or data.get("can_dispatch")),
+        "can_write_feedback": bool(plan_identity.get("can_write_feedback") or data.get("can_write_feedback")),
+        "is_official_plan": bool(plan_identity.get("is_official") or data.get("is_official")),
+        "is_preview_plan": bool(plan_identity.get("is_preview") or data.get("is_preview")),
+        "is_current_executable_version": bool(
+            plan_identity.get("is_current_executable_version") or data.get("is_current_executable_version")
+        ),
+        "is_current_executable_official_version": bool(
+            plan_identity.get("is_current_executable_official_version")
+            or data.get("is_current_executable_official_version")
+        ),
+        "is_superseded_by_newer_version": bool(
+            plan_identity.get("is_superseded_by_newer_version") or data.get("is_superseded_by_newer_version")
+        ),
     }
 
 
