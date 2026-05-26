@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, List
 
 from regression_scheduler_candidate_analysis_contract import (
     _comparison_summary,
@@ -50,6 +50,21 @@ def _visible_card_text(card: Any) -> str:
         card.get("note"),
     ]
     return " ".join(str(value or "") for value in values)
+
+
+def _visible_summary_card_values(cards: Iterable[Any]) -> List[str]:
+    values: List[str] = []
+    for card in cards:
+        assert isinstance(card, dict)
+        values.append(str(card.get("role_label") or ""))
+        values.append(str(card.get("candidate_label") or ""))
+        values.append(str(card.get("comparison_note") or ""))
+        for metric in list(card.get("metrics") or []):
+            assert isinstance(metric, dict)
+            values.append(str(metric.get("label") or ""))
+            values.append(str(metric.get("value") or ""))
+            values.append(str(metric.get("comparison_text") or ""))
+    return values
 
 
 def _assert_plain_card(card: Any, *, expected_candidate: str) -> None:
@@ -102,6 +117,7 @@ def test_candidate_recommendation_card_is_not_faked_when_comparison_is_missing()
 
     assert display["has_comparison"] is False
     assert display["recommendation_card"] is None
+    assert display["summary_cards"] == []
     assert "本次没有开启方案对比" in display["notice"]
 
 
@@ -133,6 +149,45 @@ def test_candidate_recommendation_template_only_reads_public_card_fields() -> No
         assert forbidden not in block
 
 
+def test_candidate_summary_cards_template_uses_public_fields_after_recommendation() -> None:
+    source = (REPO_ROOT / "templates/scheduler/analysis_parts/_candidate_comparison.html").read_text(encoding="utf-8")
+    recommendation_pos = source.index("{% if candidate_comparison_display.recommendation_card %}")
+    summary_pos = source.index("{% if candidate_comparison_display.summary_cards %}")
+    table_pos = source.index("analysisCandidateComparisonTable")
+    block = source[summary_pos:table_pos]
+
+    assert recommendation_pos < summary_pos < table_pos
+    assert 'aria-label="代表方案摘要"' in block
+    assert "aps-summary-grid" in block
+    assert "aps-summary-item" in block
+    assert "flash-card" not in block
+    assert "candidate_comparison_display.summary_cards" in block
+    assert "card.role_label" in block
+    assert "card.candidate_label" in block
+    assert "card.comparison_note" in block
+    assert "card.metrics" in block
+    assert "metric.label" in block
+    assert "metric.value" in block
+    assert "metric.comparison_text" in block
+    for forbidden in (
+        "row.score",
+        "score_label",
+        "technical_score",
+        "candidate_key",
+        "source_table",
+        "candidate_id",
+        "selection_reason_code",
+        "compare_plan_role",
+        "batch_impacts",
+        "resource_impacts",
+        "affected_batches",
+        "参考分",
+        "delta",
+        "diff",
+    ):
+        assert forbidden not in block
+
+
 def test_candidate_recommendation_visible_payload_hides_internal_fields() -> None:
     display = build_candidate_comparison_display(
         _comparison_summary(),
@@ -150,3 +205,35 @@ def test_candidate_recommendation_visible_payload_hides_internal_fields() -> Non
         display["notice"],
     ]
     _assert_payload_not_leaking_internal_text(visible_values)
+
+
+def test_candidate_summary_cards_visible_payload_hides_internal_fields() -> None:
+    display = build_candidate_comparison_display(
+        _comparison_summary(),
+        selected_ver=7,
+        plan_role_options=_plan_role_options(),
+    )
+
+    visible_values = _visible_summary_card_values(display["summary_cards"])
+    assert "比正式采用方案多了" in " ".join(visible_values)
+    assert "比正式采用方案少了" in " ".join(visible_values)
+    assert "和正式采用方案基本持平" in " ".join(visible_values)
+    _assert_payload_not_leaking_internal_text(visible_values)
+
+
+def test_candidate_summary_cards_visible_payload_uses_plain_no_data_copy() -> None:
+    summary = _comparison_summary()
+    summary["algo"]["candidate_comparison"]["candidates"][0]["metrics"].pop("makespan_hours")
+
+    display = build_candidate_comparison_display(
+        summary,
+        selected_ver=7,
+        plan_role_options=_plan_role_options(),
+    )
+
+    visible_text = " ".join(_visible_summary_card_values(display["summary_cards"]))
+    assert "暂无数据" in visible_text
+    assert "暂无对比数据" in visible_text
+    assert "None" not in visible_text
+    assert "nan" not in visible_text
+    assert "null" not in visible_text

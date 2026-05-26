@@ -32,6 +32,22 @@
             {{ candidate_comparison_display.selection_reason_label }}
           </div>
         {% endif %}
+        {% if candidate_comparison_display.summary_cards %}
+          <div class="aps-summary-grid mt-2" aria-label="代表方案摘要">
+            {% for card in candidate_comparison_display.summary_cards %}
+              <div class="aps-summary-item {{ card.tone_class }}" role="group" aria-label="{{ card.role_label }}">
+                <p class="aps-summary-label">{{ card.role_label }}</p>
+                <div class="aps-summary-value">{{ card.candidate_label }}</div>
+                <p class="aps-summary-desc">{{ card.comparison_note }}</p>
+                {% for metric in card.metrics %}
+                  <p class="aps-summary-desc">
+                    {{ metric.label }}：{{ metric.value }}，{{ metric.comparison_text }}
+                  </p>
+                {% endfor %}
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
         <div class="aps-table-scroll mt-2">
           <table id="analysisCandidateComparisonTable" class="table-sticky table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v1_analysisCandidateComparisonTable">
             <thead>

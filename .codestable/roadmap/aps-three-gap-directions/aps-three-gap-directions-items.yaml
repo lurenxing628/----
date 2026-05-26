@@ -193,8 +193,8 @@ items:
     depends_on: [candidate-recommendation-card]
     depends_on_reasons:
       candidate-recommendation-card: 摘要卡要接在推荐结论卡后面，先有“系统建议看哪套方案”的入口，再补三张卡和差值，页面层级才不会乱。
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-27-candidate-summary-delta-cards
     minimal_loop: false
     primary_paths:
       - web/viewmodels/scheduler_analysis_candidates.py

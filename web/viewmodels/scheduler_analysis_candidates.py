@@ -37,6 +37,15 @@ _FAILURE_REASON_LABELS = {
 
 _REQUIRED_COMPARISON_ROLES = frozenset((ROLE_ADOPTED, ROLE_BASELINE_BEST, ROLE_CRITICAL_BEST))
 
+_SUMMARY_CARD_METRICS = (
+    ("failed_ops", "失败工序", "道"),
+    ("overdue_count", "超期批次", "批"),
+    ("total_tardiness_hours", "总拖期", "小时"),
+    ("weighted_tardiness_hours", "加权拖期", "小时"),
+    ("makespan_hours", "总工期", "小时"),
+    ("changeover_count", "换型次数", "次"),
+)
+
 
 def _plan_role_label(role: str) -> str:
     text = str(role or "").strip()
@@ -133,6 +142,41 @@ def _candidate_technical_score_label(candidate: Dict[str, Any]) -> str:
     if isinstance(score, (list, tuple)) and score:
         return " / ".join(str(item) for item in score)
     return "-"
+
+
+def _metric_number(value: Any) -> Optional[float]:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return number
+
+
+def _format_metric_value(value: Any, unit: str) -> str:
+    number = _metric_number(value)
+    if number is None:
+        return "暂无数据"
+    if abs(number - round(number)) < 0.0001:
+        text = str(int(round(number)))
+    else:
+        text = f"{number:.2f}".rstrip("0").rstrip(".")
+    return f"{text} {unit}" if unit else text
+
+
+def _format_metric_comparison(value: Any, adopted_value: Any, unit: str, *, is_adopted: bool) -> str:
+    if is_adopted:
+        return "作为对比基准"
+    current = _metric_number(value)
+    adopted = _metric_number(adopted_value)
+    if current is None or adopted is None:
+        return "暂无对比数据"
+    delta = current - adopted
+    if abs(delta) < 0.0001:
+        return "和正式采用方案基本持平"
+    direction = "多了" if delta > 0 else "少了"
+    return f"比正式采用方案{direction} {_format_metric_value(abs(delta), unit)}"
 
 
 def _candidate_status_label(status_value: Any) -> str:
@@ -358,6 +402,7 @@ def _candidate_display_row(
         "failed_ops": _candidate_failed_ops(candidate),
         "overdue_count": _candidate_metric(candidate, "overdue_count"),
         "total_tardiness_hours": _candidate_metric(candidate, "total_tardiness_hours"),
+        "weighted_tardiness_hours": _candidate_metric(candidate, "weighted_tardiness_hours"),
         "makespan_hours": _candidate_metric(candidate, "makespan_hours"),
         "changeover_count": _candidate_metric(candidate, "changeover_count"),
         "technical_score_label": _candidate_technical_score_label(candidate),
@@ -388,6 +433,45 @@ def _candidate_display_rows(
         if row is not None:
             rows.append(row)
     return rows
+
+
+def _summary_metric_lines(row: Dict[str, Any], adopted: Optional[Dict[str, Any]]) -> List[Dict[str, str]]:
+    lines: List[Dict[str, str]] = []
+    is_adopted = str(row.get("role") or "") == ROLE_ADOPTED
+    for key, label, unit in _SUMMARY_CARD_METRICS:
+        value = row.get(key)
+        adopted_value = (adopted or {}).get(key)
+        lines.append(
+            {
+                "label": label,
+                "value": _format_metric_value(value, unit),
+                "comparison_text": _format_metric_comparison(value, adopted_value, unit, is_adopted=is_adopted),
+            }
+        )
+    return lines
+
+
+def _candidate_summary_cards(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    if not _has_complete_comparison_rows(rows):
+        return []
+    adopted = _adopted_row(rows)
+    if not adopted:
+        return []
+    cards: List[Dict[str, Any]] = []
+    for row in list(rows or []):
+        cards.append(
+            {
+                "role_label": row.get("role_label") or "",
+                "candidate_label": row.get("candidate_label") or "",
+                "is_adopted": str(row.get("role") or "") == ROLE_ADOPTED,
+                "tone_class": "aps-summary-item-success"
+                if str(row.get("role") or "") == ROLE_ADOPTED
+                else "aps-summary-item-neutral",
+                "comparison_note": row.get("comparison_note") or "正式采用方案，作为对比基准。",
+                "metrics": _summary_metric_lines(row, adopted),
+            }
+        )
+    return cards
 
 
 def _candidate_comparison_display_payload(
@@ -423,6 +507,7 @@ def _candidate_comparison_display_payload(
             rows,
             selection_reason_label=selection_reason_label,
         ),
+        "summary_cards": _candidate_summary_cards(rows),
         "status_messages": _comparison_status_messages(comparison),
         "notice": "",
         "has_comparison": True,
@@ -457,6 +542,7 @@ def _incomplete_comparison_display_payload(
         "selection_reason_code": comparison.get("selection_reason_code"),
         "selection_reason_label": _selection_reason_label(comparison.get("selection_reason_code")),
         "recommendation_card": None,
+        "summary_cards": [],
         "status_messages": _comparison_status_messages(comparison),
         "notice": notice,
         "has_comparison": False,
@@ -479,6 +565,7 @@ def _no_comparison_display_payload(selected_ver: Optional[int]) -> Dict[str, Any
         "selection_reason_code": "",
         "selection_reason_label": "",
         "recommendation_card": None,
+        "summary_cards": [],
         "status_messages": [],
         "notice": _NO_COMPARISON_NOTICE,
         "has_comparison": False,

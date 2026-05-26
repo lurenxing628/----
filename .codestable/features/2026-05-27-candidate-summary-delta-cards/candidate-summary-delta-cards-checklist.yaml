@@ -1,0 +1,39 @@
+feature: 2026-05-27-candidate-summary-delta-cards
+status: done
+roadmap: aps-three-gap-directions
+roadmap_item: candidate-summary-delta-cards
+
+steps:
+  - slug: reference-chain-investigation
+    title: 下钻候选摘要、模板位置、测试覆盖和提交边界
+    status: done
+    exit_signal: 已确认候选摘要已有失败工序、超期、拖期、加权拖期、总工期和换型指标；页面只需要接三类代表方案，不改算法或落库。
+
+  - slug: summary-card-viewmodel
+    title: 生成三张代表方案摘要卡
+    status: done
+    exit_signal: ViewModel 基于正式采用方案、原算法代表方案、重点工序优先代表方案三行生成 summary_cards，不展开全部候选明细。
+
+  - slug: adopted-baseline-delta
+    title: 固定按正式采用方案计算中文对比
+    status: done
+    exit_signal: 差异文案固定写成“作为对比基准 / 比正式采用方案多了 / 少了 / 基本持平 / 暂无对比数据”，不支持任意两方案自由比较。
+
+  - slug: template-display
+    title: 在推荐结论卡后、方案表格前展示摘要卡
+    status: done
+    exit_signal: 模板使用本地已有 aps-summary-grid 和 aps-summary-item，不新增 CSS、JS、外链资源或新前端框架。
+
+  - slug: regression-tests
+    title: 增加三张卡、差值、缺数据和不越界测试
+    status: done
+    exit_signal: 测试锁住三张卡数量和顺序、相对正式采用方案差值、缺数据“暂无数据”、内部字段不外露、非代表候选不进摘要卡。
+
+checks:
+  - 三张卡固定显示正式采用方案、原算法代表方案、重点工序优先代表方案。
+  - 差异固定相对正式采用方案计算，页面不提供 compare_plan_role 或任意两方案自由比较入口。
+  - 缺失指标显示“暂无数据”或“暂无对比数据”，不把缺失误写成 0。
+  - 加权拖期只在候选摘要已有字段时展示，不自己推算。
+  - 不展示全部 3/5/7 档候选明细，不展示批次级影响清单或资源级变化清单。
+  - 不显示 score tuple、candidate_key、source_table、candidate_id、plan_role、scenario_id 等内部字段。
+  - 不改排程算法、不改候选生成、不改数据库、不新增导出。

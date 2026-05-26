@@ -125,6 +125,7 @@ def _comparison_summary(
                 "failed_ops": 0,
                 "overdue_count": 0,
                 "total_tardiness_hours": 0,
+                "weighted_tardiness_hours": 6.0,
                 "makespan_hours": 12.0,
                 "changeover_count": 2,
             },
@@ -140,6 +141,7 @@ def _comparison_summary(
                 "failed_ops": 0,
                 "overdue_count": 0,
                 "total_tardiness_hours": 0,
+                "weighted_tardiness_hours": 8.0,
                 "makespan_hours": 9.0,
                 "changeover_count": 1,
             },
@@ -370,6 +372,120 @@ def test_analysis_candidate_display_keeps_core_role_order_and_labels() -> None:
         "原算法代表方案",
         "重点工序优先代表方案",
     ]
+    assert [card["role_label"] for card in display["summary_cards"]] == [
+        "正式采用方案",
+        "原算法代表方案",
+        "重点工序优先代表方案",
+    ]
+    assert len(display["summary_cards"]) == 3
+
+
+def test_candidate_summary_cards_use_adopted_plan_as_only_baseline() -> None:
+    from web.viewmodels.scheduler_analysis_candidates import build_candidate_comparison_display
+
+    display = build_candidate_comparison_display(
+        _comparison_summary(),
+        selected_ver=7,
+        plan_role_options=_plan_role_options(),
+    )
+
+    rows = {row["role"]: row for row in display["rows"]}
+    assert rows[ROLE_ADOPTED]["weighted_tardiness_hours"] == 8.0
+    assert rows[ROLE_BASELINE_BEST]["weighted_tardiness_hours"] == 6.0
+
+    cards = {card["role_label"]: card for card in display["summary_cards"]}
+    adopted_metrics = {metric["label"]: metric for metric in cards["正式采用方案"]["metrics"]}
+    baseline_metrics = {metric["label"]: metric for metric in cards["原算法代表方案"]["metrics"]}
+
+    assert adopted_metrics["总工期"]["comparison_text"] == "作为对比基准"
+    assert baseline_metrics["总工期"]["value"] == "12 小时"
+    assert baseline_metrics["总工期"]["comparison_text"] == "比正式采用方案多了 3 小时"
+    assert baseline_metrics["加权拖期"]["comparison_text"] == "比正式采用方案少了 2 小时"
+    assert baseline_metrics["失败工序"]["comparison_text"] == "和正式采用方案基本持平"
+
+
+def test_candidate_summary_cards_stay_to_three_representative_roles_only() -> None:
+    from web.viewmodels.scheduler_analysis_candidates import build_candidate_comparison_display
+
+    summary = _comparison_summary(failed_extra=True)
+    comparison = summary["algo"]["candidate_comparison"]
+    comparison["candidates"].append(
+        {
+            "candidate_key": "graph_w2_of_5",
+            "label": "重点工序优先方案 2/5",
+            "kind": "critical_chain",
+            "status": "completed",
+            "score": [0, 0, 8.0],
+            "metrics": {
+                "failed_ops": 0,
+                "overdue_count": 0,
+                "total_tardiness_hours": 0,
+                "weighted_tardiness_hours": 4.0,
+                "makespan_hours": 8.0,
+                "changeover_count": 3,
+            },
+            "roles": [],
+            "batch_impacts": [{"batch_id": "B-001"}],
+            "resource_impacts": [{"machine_id": "M-01"}],
+        }
+    )
+    options = _plan_role_options() + [
+        {
+            "role": "fastest_plan",
+            "source_table": SOURCE_CANDIDATE_ROWS,
+            "candidate_id": 8,
+            "candidate_key": "graph_w2_of_5",
+            "candidate_label": "最快试算方案",
+            "candidate_kind": "critical_chain",
+            "candidate_status": "completed",
+            "detail_saved": "yes",
+        }
+    ]
+
+    display = build_candidate_comparison_display(
+        summary,
+        selected_ver=7,
+        plan_role_options=options,
+    )
+
+    assert [card["role_label"] for card in display["summary_cards"]] == [
+        "正式采用方案",
+        "原算法代表方案",
+        "重点工序优先代表方案",
+    ]
+    visible_text = json.dumps(display["summary_cards"], ensure_ascii=False)
+    assert "最快试算方案" not in visible_text
+    assert "重点工序优先方案 2/5" not in visible_text
+    assert "batch_impacts" not in visible_text
+    assert "resource_impacts" not in visible_text
+
+
+def test_candidate_summary_cards_show_plain_no_data_when_metrics_are_missing() -> None:
+    from web.viewmodels.scheduler_analysis_candidates import build_candidate_comparison_display
+
+    summary = _comparison_summary()
+    candidates = summary["algo"]["candidate_comparison"]["candidates"]
+    candidates[0]["metrics"].pop("makespan_hours")
+    candidates[0]["metrics"].pop("changeover_count")
+
+    display = build_candidate_comparison_display(
+        summary,
+        selected_ver=7,
+        plan_role_options=_plan_role_options(),
+    )
+
+    baseline = {
+        card["role_label"]: card for card in display["summary_cards"]
+    }["原算法代表方案"]
+    metrics = {metric["label"]: metric for metric in baseline["metrics"]}
+
+    assert metrics["总工期"]["value"] == "暂无数据"
+    assert metrics["总工期"]["comparison_text"] == "暂无对比数据"
+    assert metrics["换型次数"]["value"] == "暂无数据"
+    visible_text = json.dumps(baseline, ensure_ascii=False)
+    assert "None" not in visible_text
+    assert "nan" not in visible_text
+    assert "null" not in visible_text
 
 
 def test_analysis_candidate_empty_role_label_stays_placeholder() -> None:
@@ -394,6 +510,7 @@ def test_analysis_route_shows_clear_notice_when_candidate_comparison_is_missing(
     assert display["has_comparison"] is False
     assert display["rows"] == []
     assert display["recommendation_card"] is None
+    assert display["summary_cards"] == []
     assert "本次没有开启方案对比，只生成了正式采用方案" in display["notice"]
 
 
@@ -417,6 +534,7 @@ def test_analysis_route_shows_incomplete_notice_when_candidate_detail_is_missing
     assert display["has_comparison"] is False
     assert display["rows"] == []
     assert display["recommendation_card"] is None
+    assert display["summary_cards"] == []
     assert display["failed_candidate_count"] == 1
     assert display["baseline_missing_or_failed"] is True
     assert display["skipped_candidate_labels"] == ["重点工序优先方案 4/5"]
@@ -443,6 +561,7 @@ def test_analysis_route_surfaces_plan_role_integrity_error_without_fake_links() 
     assert display["has_comparison"] is False
     assert display["rows"] == []
     assert display["recommendation_card"] is None
+    assert display["summary_cards"] == []
     assert "本次方案对比记录不完整" in display["notice"]
     assert "方案对比记录里的跳转关系不完整" in display["notice"]
     assert display["failed_candidate_count"] == 1
@@ -464,6 +583,7 @@ def test_analysis_route_classifies_plan_role_detail_errors_before_missing_links(
     display = payload["candidate_comparison_display"]
     assert display["has_comparison"] is False
     assert display["recommendation_card"] is None
+    assert display["summary_cards"] == []
     assert "本次方案对比记录不完整" in display["notice"]
     assert "方案对比明细不完整" in display["notice"]
     assert "跳转关系不完整" not in display["notice"]
@@ -485,6 +605,7 @@ def test_analysis_route_validates_plan_role_targets_before_attaching_links() -> 
     assert display["has_comparison"] is False
     assert display["rows"] == []
     assert display["recommendation_card"] is None
+    assert display["summary_cards"] == []
     assert "方案对比明细不完整" in display["notice"]
     assert not any(row.get("links") for row in display["rows"])
 
@@ -505,6 +626,7 @@ def test_analysis_route_rejects_plan_role_target_drift_before_attaching_links() 
     assert display["has_comparison"] is False
     assert display["rows"] == []
     assert display["recommendation_card"] is None
+    assert display["summary_cards"] == []
     assert "方案对比明细不完整" in display["notice"]
     assert not any(row.get("links") for row in display["rows"])
 
@@ -524,6 +646,7 @@ def test_analysis_route_classifies_missing_adopted_role_without_link_notice() ->
     display = payload["candidate_comparison_display"]
     assert display["has_comparison"] is False
     assert display["recommendation_card"] is None
+    assert display["summary_cards"] == []
     assert "当前不展示方案对比" in display["notice"]
     assert "当前只展示正式采用方案" not in display["notice"]
     assert "方案对比记录缺少正式采用方案" in display["notice"]
