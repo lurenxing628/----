@@ -1387,8 +1387,8 @@ execution_snapshot_op_ids
 7. **dispatch-plan-identity-guardrails**：资源派工页标清正式计划、对比参考方案、模拟预览，并阻止候选和模拟预览写现场反馈。
    - 所属模块：派工身份护栏。
    - 依赖：`shared-plan-identity-evidence-contract`。
-   - 状态：planned。
-   - 对应 feature：未启动。
+   - 状态：done。
+   - 对应 feature：`2026-05-27-dispatch-plan-identity-guardrails`。
    - 备注：只做提示、禁用和后端拒绝，不新增真正的确认派工写入。
 
 8. **operation-execution-event-foundation**：新增执行事件表、repository、状态聚合服务、幂等写入和状态版本规则。
@@ -1509,3 +1509,4 @@ execution_snapshot_op_ids
 - 2026-05-25：按第十九轮 5 个同范围对抗性审核 Subagent 结果继续修正：设备页面帮助里的 `step-by-step` 标题改成中文，并在页面说明注册测试里加入 `step-by-step` 禁词，防止用户可见帮助文案回退。
 - 2026-05-25：按第二十轮 2 个同范围最终复审 Subagent 结果确认：用户可见大白话、路线图/items/账本/旧 explore 一致性、接口字段、错误码、依赖和测试命令均无阻塞项；当前路线图可进入后续 feature-design。
 - 2026-05-25：补齐三类差距方向的 draft requirement 引用，并同步刷新 `ui-gantt` 架构文档里的模拟预览用户可见口径；路线图实施拆解不变。
+- 2026-05-27：完成 `dispatch-plan-identity-guardrails`。资源派工页、data 和 Excel 导出会用中文标清当前正式、历史正式、对比参考和模拟预览，并锁住本阶段不新增确认派工写入、不新增确认派工表、不产生确认派工副作用。

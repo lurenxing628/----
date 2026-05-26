@@ -1,0 +1,45 @@
+feature: 2026-05-27-dispatch-plan-identity-guardrails
+status: done
+roadmap: aps-three-gap-directions
+roadmap_item: dispatch-plan-identity-guardrails
+
+steps:
+  - slug: reference-chain-investigation
+    title: 下钻资源派工页面、数据接口、导出和计划身份链路
+    status: done
+    exit_signal: 已确认资源派工当前只有页面、data 和 export 读取入口，没有派工确认写入口；计划身份来自公共 PlanIdentity，页面和导出需要补中文护栏。
+
+  - slug: public-plan-identity-surface
+    title: 页面和公开数据增加中文计划身份
+    status: done
+    exit_signal: ViewModel 增加公开 plan_identity，用户只看到正式采用方案、历史正式方案、对比参考方案、模拟预览和中文可写说明。
+
+  - slug: export-guardrail-summary
+    title: 资源派工导出增加计划身份摘要
+    status: done
+    exit_signal: Excel 查询摘要新增“计划身份”和“派工反馈说明”，不显示 source_table、scenario_id、candidate_id 等内部字段。
+
+  - slug: read-only-side-effect-tests
+    title: 锁住只读入口没有派工确认副作用
+    status: done
+    exit_signal: 回归测试覆盖页面、data、export 不写 Schedule，不新增确认派工表，也不新增确认派工路由。
+
+  - slug: plan-identity-write-flag-regression
+    title: 锁住计划身份写入布尔值不能被外层字段覆盖
+    status: done
+    exit_signal: 测试证明 plan_identity.can_dispatch/can_write_feedback 为 false 时，外层同名旧字段不能把它改成 true。
+
+  - slug: adversarial-review-loop
+    title: 对抗性审核和阻塞修复
+    status: done
+    exit_signal: 第一轮复审发现计划身份布尔值覆盖、CodeStable 回写和提交隔离风险；已修复并进入第二轮复审。
+
+checks:
+  - 当前可执行的正式采用方案显示“可以用于派工和现场反馈”。
+  - 历史正式方案显示只能查看，不能提交派工或现场反馈。
+  - 原算法代表方案和重点工序优先代表方案显示为对比参考方案，不能确认派工或写现场反馈。
+  - 模拟预览显示正式计划还没有改变，不能确认派工或写现场反馈；没有名称时显示“模拟预览（未命名）”。
+  - 页面、公开 JSON、Excel 文件名和工作簿内容不显示 source_table、scenario_id、candidate_id、candidate_rows 等内部字段。
+  - 不新增 POST /scheduler/resource-dispatch/confirm，不新增确认派工表，不产生确认派工副作用。
+  - 不改 schema.sql、core/algorithms/、installer/、vendor/。
+  - 新增 Python 代码通过 Python 3.8 语法风险扫描。

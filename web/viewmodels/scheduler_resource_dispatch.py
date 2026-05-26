@@ -48,6 +48,14 @@ _PUBLIC_FILTER_DROP_KEYS = {
     "requested_plan_role",
     "effective_plan_role",
     "plan_role_status",
+    "plan_identity_label",
+    "can_dispatch",
+    "can_write_feedback",
+    "is_official_plan",
+    "is_preview_plan",
+    "is_current_executable_version",
+    "is_current_executable_official_version",
+    "is_superseded_by_newer_version",
 }
 
 _PUBLIC_PLAN_ROLE_OPTION_KEYS = {"role", "label", "is_comparison"}
@@ -89,6 +97,63 @@ def _scenario_filename_label(filters: Dict[str, Any]) -> str:
 
 def _plan_role_filename_label(filters: Dict[str, Any]) -> str:
     return _safe_filename_part(filters.get("effective_plan_role_label")) or _safe_filename_part(filters.get("plan_role_label"))
+
+
+def _public_plan_identity_label(filters: Dict[str, Any]) -> str:
+    if filters.get("is_scenario_preview"):
+        return _scenario_public_label(filters)
+    return _text(filters.get("plan_identity_label") or filters.get("effective_plan_role_label") or filters.get("plan_role_label"))
+
+
+def _public_plan_kind_label(filters: Dict[str, Any], *, can_dispatch: bool, can_write_feedback: bool) -> str:
+    if filters.get("is_scenario_preview"):
+        return "模拟预览"
+    if can_dispatch and can_write_feedback:
+        return "正式采用方案"
+    if filters.get("is_comparison"):
+        return "对比参考方案"
+    if filters.get("is_official_plan") and filters.get("is_superseded_by_newer_version"):
+        return "历史正式方案"
+    if filters.get("is_official_plan"):
+        return "正式采用方案"
+    return "只能查看的方案"
+
+
+def _public_plan_guardrail_text(filters: Dict[str, Any], *, can_dispatch: bool, can_write_feedback: bool) -> str:
+    if filters.get("is_scenario_preview"):
+        return "这是模拟预览，正式计划还没有改变，不能确认派工或写现场反馈。"
+    if can_dispatch and can_write_feedback:
+        return "这套是当前可执行的正式采用方案，可以用于派工和现场反馈。"
+    if filters.get("is_comparison"):
+        return "这是对比参考方案，只用来和正式采用方案比一比，不能确认派工或写现场反馈。"
+    if filters.get("is_official_plan") and filters.get("is_superseded_by_newer_version"):
+        return "这是历史正式方案，只能查看，不能提交派工或现场反馈。"
+    if filters.get("is_official_plan"):
+        return "这套正式方案暂时只能查看，不能提交派工或现场反馈。"
+    return "当前方案只能查看，不能提交派工或现场反馈。"
+
+
+def _public_plan_identity(filters: MutableMapping[str, Any]) -> Dict[str, Any]:
+    filters_dict = dict(filters)
+    can_dispatch = bool(filters_dict.get("can_dispatch"))
+    can_write_feedback = bool(filters_dict.get("can_write_feedback"))
+    can_write = can_dispatch and can_write_feedback
+    return {
+        "label": _public_plan_identity_label(filters_dict) or "正式采用方案",
+        "kind_label": _public_plan_kind_label(
+            filters_dict,
+            can_dispatch=can_dispatch,
+            can_write_feedback=can_write_feedback,
+        ),
+        "dispatch_feedback_label": "可用于派工和现场反馈" if can_write else "只能查看，不能提交派工或现场反馈",
+        "guardrail_text": _public_plan_guardrail_text(
+            filters_dict,
+            can_dispatch=can_dispatch,
+            can_write_feedback=can_write_feedback,
+        ),
+        "can_dispatch": can_dispatch,
+        "can_write_feedback": can_write_feedback,
+    }
 
 
 def period_preset_label(value: Any) -> str:
@@ -319,6 +384,7 @@ def decorate_resource_dispatch_payload(payload: Dict[str, Any]) -> Dict[str, Any
     filters = out.get("filters")
     if isinstance(filters, MutableMapping):
         _decorate_filters(filters)
+        out["plan_identity"] = _public_plan_identity(filters)
         out["filters"] = _public_filters(filters)
     out["plan_role_options"] = _public_plan_role_options(out.get("plan_role_options"))
     for key in _row_collection_names():
@@ -334,6 +400,7 @@ def decorate_resource_dispatch_context(context: Dict[str, Any]) -> Dict[str, Any
     filters = out.get("filters")
     if isinstance(filters, MutableMapping):
         _decorate_filters(filters)
+        out["plan_identity"] = _public_plan_identity(filters)
         out["client_filters"] = _public_filters(filters)
     out["plan_role_options"] = _public_plan_role_options(out.get("plan_role_options"))
     _decorate_options(out)

@@ -287,8 +287,8 @@ items:
     depends_on: [shared-plan-identity-evidence-contract]
     depends_on_reasons:
       shared-plan-identity-evidence-contract: 资源派工能看多类计划结果，必须先有统一身份和 can_dispatch/can_write_feedback，才能安全地禁用候选方案和模拟预览写入。
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-27-dispatch-plan-identity-guardrails
     minimal_loop: false
     primary_paths:
       - core/services/scheduler/resource_dispatch_service.py

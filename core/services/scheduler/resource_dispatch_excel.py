@@ -173,6 +173,24 @@ def _summary_plan_label(filters: Dict[str, Any]) -> Any:
     )
 
 
+def _summary_plan_identity_value(payload: Dict[str, Any]) -> str:
+    plan_identity = payload.get("plan_identity")
+    if not isinstance(plan_identity, dict):
+        return ""
+    parts = [
+        str(plan_identity.get("kind_label") or "").strip(),
+        str(plan_identity.get("dispatch_feedback_label") or "").strip(),
+    ]
+    return "；".join(part for part in parts if part)
+
+
+def _summary_plan_guardrail_value(payload: Dict[str, Any]) -> str:
+    plan_identity = payload.get("plan_identity")
+    if not isinstance(plan_identity, dict):
+        return ""
+    return str(plan_identity.get("guardrail_text") or "").strip()
+
+
 def _summary_scenario_note(filters: Dict[str, Any]) -> str:
     if filters.get("is_scenario_preview"):
         return "这是模拟方案预览，正式计划还没有改变。"
@@ -193,6 +211,8 @@ def _summary_pairs(payload: Dict[str, Any]) -> List[List[Any]]:
         ["结束日期", _summary_filter_value(filters, "end_date")],
         ["排产版本", _summary_filter_value(filters, "version")],
         ["查看方案", _summary_plan_label(filters)],
+        ["计划身份", _summary_plan_identity_value(payload)],
+        ["派工反馈说明", _summary_plan_guardrail_value(payload)],
         ["模拟方案说明", _summary_scenario_note(filters)],
         ["任务数量", summary.get("total_tasks") or 0],
         ["总工时（小时）", summary.get("total_hours") or 0],

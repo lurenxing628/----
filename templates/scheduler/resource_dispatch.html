@@ -167,6 +167,15 @@
         {{ ui.summary_item('排产方式', selected_version_row.item.strategy_label or strategy_zh.get(selected_version_row.item.strategy, '未知排产方式')) }}
         {{ ui.summary_item('结果', selected_version_row.item.result_status_label or status_zh.get(selected_version_row.item.result_status, '结果状态未知')) }}
         {{ ui.summary_item('查看方案', (filters.scenario_display_name or filters.scenario_name or '模拟预览（未命名）') if filters.is_scenario_preview else (filters.effective_plan_role_label or filters.plan_role_label)) }}
+        {% if plan_identity %}
+          {{ ui.summary_item('计划身份', plan_identity.kind_label) }}
+          {{ ui.summary_item('派工反馈', plan_identity.dispatch_feedback_label) }}
+        {% endif %}
+      </div>
+    {% endif %}
+    {% if plan_identity and plan_identity.guardrail_text %}
+      <div class="flash-card {% if plan_identity.can_dispatch and plan_identity.can_write_feedback %}flash-success{% else %}flash-warning{% endif %} mt-2" role="status">
+        {{ plan_identity.guardrail_text }}
       </div>
     {% endif %}
     {% if not has_history %}

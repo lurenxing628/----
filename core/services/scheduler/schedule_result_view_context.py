@@ -268,6 +268,12 @@ def _plan_role_is_comparison(
     return bool(data.get("is_comparison") or is_comparison_source(source_table))
 
 
+def _identity_bool(plan_identity: Dict[str, Any], data: Dict[str, Any], key: str) -> bool:
+    if key in plan_identity:
+        return bool(plan_identity.get(key))
+    return bool(data.get(key))
+
+
 def plan_role_filter_fields(plan_resolution_or_context: Any = None, **overrides: Any) -> Dict[str, Any]:
     data = {} if plan_resolution_or_context is None else _resolution_to_dict(plan_resolution_or_context)
     plan_identity = data.get("plan_identity") if isinstance(data.get("plan_identity"), dict) else {}
@@ -317,20 +323,17 @@ def plan_role_filter_fields(plan_resolution_or_context: Any = None, **overrides:
         "scenario_name": scenario_name,
         "scenario_display_name": scenario_display_name,
         "plan_identity_label": plan_identity.get("user_label") or data.get("user_label") or plan_role_label(effective_role),
-        "can_dispatch": bool(plan_identity.get("can_dispatch") or data.get("can_dispatch")),
-        "can_write_feedback": bool(plan_identity.get("can_write_feedback") or data.get("can_write_feedback")),
-        "is_official_plan": bool(plan_identity.get("is_official") or data.get("is_official")),
-        "is_preview_plan": bool(plan_identity.get("is_preview") or data.get("is_preview")),
-        "is_current_executable_version": bool(
-            plan_identity.get("is_current_executable_version") or data.get("is_current_executable_version")
+        "can_dispatch": _identity_bool(plan_identity, data, "can_dispatch"),
+        "can_write_feedback": _identity_bool(plan_identity, data, "can_write_feedback"),
+        "is_official_plan": _identity_bool(plan_identity, data, "is_official"),
+        "is_preview_plan": _identity_bool(plan_identity, data, "is_preview"),
+        "is_current_executable_version": _identity_bool(plan_identity, data, "is_current_executable_version"),
+        "is_current_executable_official_version": _identity_bool(
+            plan_identity,
+            data,
+            "is_current_executable_official_version",
         ),
-        "is_current_executable_official_version": bool(
-            plan_identity.get("is_current_executable_official_version")
-            or data.get("is_current_executable_official_version")
-        ),
-        "is_superseded_by_newer_version": bool(
-            plan_identity.get("is_superseded_by_newer_version") or data.get("is_superseded_by_newer_version")
-        ),
+        "is_superseded_by_newer_version": _identity_bool(plan_identity, data, "is_superseded_by_newer_version"),
     }
 
 
