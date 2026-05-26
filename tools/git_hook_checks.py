@@ -8,68 +8,17 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Iterable, List, Optional, Sequence, TextIO, Tuple
+from typing import Any, Dict, Iterable, List, NamedTuple, Optional, Sequence, TextIO, Tuple
 
 try:
     from tools import git_hook_cache
+    from tools.git_hook_blocked_paths import BLOCKED_PATH_RULES, GENERIC_COMMIT_SUBJECTS
 except ImportError:  # pragma: no cover - direct script execution path
     import git_hook_cache  # type: ignore[no-redef]
+    from git_hook_blocked_paths import BLOCKED_PATH_RULES, GENERIC_COMMIT_SUBJECTS  # type: ignore[no-redef]
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-
-BLOCKED_PATH_RULES: Tuple[Tuple[str, str], ...] = (
-    (".DS_Store", "macOS 自动生成文件，提交后只会制造无意义 diff"),
-    ("*/.DS_Store", "macOS 自动生成文件，提交后只会制造无意义 diff"),
-    (".iris/", "本机 Codex/Iris 临时计划文件，不属于项目源码"),
-    (".playwright-mcp/", "本地浏览器调试产物，不属于项目源码"),
-    (".limcode_", "LimCode 本地中间产物，不属于本次提交边界"),
-    ("logs/aps_port.txt", "APS 本地运行时端口文件，换机器后无意义"),
-    ("logs/aps_host.txt", "APS 本地运行时地址文件，换机器后无意义"),
-    ("logs/aps_db_path.txt", "APS 本地运行时数据库路径，换机器后无意义"),
-    ("logs/aps_runtime.json", "APS 本地运行时状态，换机器后无意义"),
-    ("logs/aps_runtime.lock", "APS 本地运行锁文件，提交后会干扰别人"),
-    ("logs/aps_secret_key.txt", "APS 本地密钥文件，不能提交"),
-    ("launcher.log", "APS 本地启动日志可能包含本机路径或错误明细，不能提交"),
-    ("*/launcher.log", "APS 本地启动日志可能包含本机路径或错误明细，不能提交"),
-    ("evidence/QualityGate/quality_gate_manifest.json", "质量门禁 proof 是运行产物，应由当前门禁重新生成"),
-    ("evidence/QualityGate/current_full_test_debt.json", "质量门禁债务快照是运行产物，应由当前门禁重新生成"),
-    ("evidence/QualityGate/full_test_debt_summary.json", "full-test-debt summary 是运行产物，应由当前门禁重新生成"),
-    ("evidence/QualityGate/full_test_debt_node_cache.json", "full-test-debt nodeid 缓存是运行产物，应由当前门禁重新生成"),
-    ("evidence/QualityGate/architecture_scan_cache.json", "architecture scan 文件级缓存是运行产物，应由当前门禁重新生成"),
-    ("evidence/QualityGate/startup_runtime_regressions.json", "startup regressions proof 是运行产物，应由当前门禁重新生成"),
-    ("evidence/QualityGate/required_regressions.json", "required regressions proof 是运行产物，应由当前门禁重新生成"),
-    ("evidence/QualityGate/required_regressions/", "required regressions 分组 proof 是运行产物，应由当前门禁重新生成"),
-    ("evidence/QualityGate/debt_ledger_sync.json", "debt ledger sync proof 是运行产物，应由当前门禁重新生成"),
-    ("evidence/QualityGate/ruff_check_full.json", "ruff full proof 是运行产物，应由当前门禁重新生成"),
-    ("evidence/QualityGate/pyright_gate_full.json", "pyright gate proof 是运行产物，应由当前门禁重新生成"),
-    ("evidence/QualityGate/pyright_tools_full.json", "pyright tools proof 是运行产物，应由当前门禁重新生成"),
-    ("evidence/QualityGate/quickref_vs_routes.md", "quickref/routes 对账报告是运行产物，应由当前门禁重新生成"),
-    ("evidence/QualityGate/receipts/", "质量门禁 receipts 是运行产物，应由当前门禁重新生成"),
-    ("evidence/QualityGate/logs/", "质量门禁日志是运行产物，不应该混进普通提交"),
-    ("evidence/QualityGate/long_gate/", "长耗时门禁缓存是本地运行产物，不应该混进普通提交"),
-    ("evidence/QualityGate/collect_nodeids.json", "pytest collect nodeid 快照是运行产物，应由当前门禁重新生成"),
-    ("evidence/FullSelfTest/pytest_tests_output.txt", "FullSelfTest 原始输出很重，应保留格式化报告而不是原始控制台输出"),
-    ("aps_test.db", "本地测试数据库，不属于项目源码"),
-    ("aps_test.db-", "本地测试数据库旁路文件，不属于项目源码"),
-)
-
-GENERIC_COMMIT_SUBJECTS = {
-    "fix",
-    "fix bug",
-    "update",
-    "change",
-    "changes",
-    "wip",
-    "tmp",
-    "temp",
-    "debug",
-    "修复",
-    "更新",
-    "修改",
-    "提交",
-    "改一下",
-}
-
+ZERO_SHA = "0" * 40
 
 def _run_git(args: Sequence[str]) -> str:
     result = subprocess.run(
@@ -174,24 +123,195 @@ def _quality_gate_env() -> dict:
     return env
 
 
-def _remote_refs_from_stdin(stream: Optional[TextIO] = None) -> List[str]:
+class PrePushRef(NamedTuple):
+    local_ref: str
+    local_sha: str
+    remote_ref: str
+    remote_sha: str
+
+
+class PrePushInput(NamedTuple):
+    refs: List[PrePushRef]
+    saw_push_input: bool
+
+
+def _pre_push_input_from_stdin(stream: Optional[TextIO] = None) -> PrePushInput:
     source: TextIO = stream if stream is not None else sys.stdin
     try:
         is_tty = bool(getattr(source, "isatty", lambda: True)())
     except Exception:
         is_tty = True
     if is_tty:
-        return []
+        return PrePushInput([], False)
     try:
         text = str(source.read() or "")
     except (AttributeError, OSError, ValueError):
-        return []
-    refs: List[str] = []
+        return PrePushInput([], False)
+    refs: List[PrePushRef] = []
+    saw_push_input = False
     for raw_line in text.splitlines():
-        parts = raw_line.split()
-        if len(parts) >= 3 and parts[2]:
-            refs.append(parts[2])
-    return sorted(dict.fromkeys(refs))
+        parts = raw_line.rsplit(maxsplit=3)
+        if len(parts) != 4:
+            continue
+        saw_push_input = True
+        local_ref, local_sha, remote_ref, remote_sha = parts
+        if local_sha == ZERO_SHA:
+            continue
+        refs.append(PrePushRef(local_ref, local_sha, remote_ref, remote_sha))
+    return PrePushInput(
+        sorted(dict.fromkeys(refs), key=lambda item: (item.remote_ref, item.local_ref, item.local_sha, item.remote_sha)),
+        saw_push_input,
+    )
+
+
+def _pre_push_refs_from_stdin(stream: Optional[TextIO] = None) -> List[PrePushRef]:
+    return _pre_push_input_from_stdin(stream).refs
+
+
+def _remote_refs_from_stdin(stream: Optional[TextIO] = None) -> List[str]:
+    return sorted(dict.fromkeys(ref.remote_ref for ref in _pre_push_refs_from_stdin(stream) if ref.remote_ref))
+
+
+def _pre_commit_input_from_env(env: Optional[Dict[str, str]] = None) -> PrePushInput:
+    source = env if env is not None else os.environ
+    from_ref = str(source.get("PRE_COMMIT_FROM_REF") or "").strip()
+    to_ref = str(source.get("PRE_COMMIT_TO_REF") or "").strip()
+    local_ref = str(source.get("PRE_COMMIT_LOCAL_BRANCH") or "").strip()
+    remote_ref = str(source.get("PRE_COMMIT_REMOTE_BRANCH") or "").strip()
+    if not to_ref:
+        return PrePushInput([], False)
+    if to_ref == ZERO_SHA:
+        return PrePushInput([], True)
+    return PrePushInput([PrePushRef(local_ref, to_ref, remote_ref, from_ref)], True)
+
+
+def _pre_push_input_for_hook(stream: Optional[TextIO] = None) -> PrePushInput:
+    env_input = _pre_commit_input_from_env()
+    if env_input.saw_push_input:
+        return env_input
+    return _pre_push_input_from_stdin(stream)
+
+
+def _pre_push_contexts_payload(refs: Sequence[PrePushRef]) -> List[Dict[str, str]]:
+    return [
+        {
+            "local_ref": ref.local_ref,
+            "local_sha": ref.local_sha,
+            "remote_ref": ref.remote_ref,
+            "remote_sha": ref.remote_sha,
+        }
+        for ref in refs
+    ]
+
+
+def _daily_gate_module():
+    repo_root = str(REPO_ROOT)
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+    from scripts import run_daily_quality_gate
+
+    return run_daily_quality_gate
+
+
+def _daily_scope_for_refs(refs: Sequence[PrePushRef], *, remote_name: str) -> Dict[str, Any]:
+    daily_gate = _daily_gate_module()
+    if not refs:
+        scope = daily_gate.build_daily_gate_scope()
+        return daily_gate.daily_gate_scope_payload(scope)
+    if len(refs) == 1:
+        ref = refs[0]
+        scope = daily_gate.build_daily_gate_scope(
+            pre_push_from_ref=ref.remote_sha,
+            pre_push_to_ref=ref.local_sha,
+            pre_push_remote_name=remote_name,
+            pre_push_remote_ref=ref.remote_ref,
+        )
+        return daily_gate.daily_gate_scope_payload(scope)
+
+    changed_paths: List[str] = []
+    reasons: List[str] = []
+    scope_known = True
+    for ref in refs:
+        changed = daily_gate._pre_push_diff_paths(
+            ref.remote_sha,
+            ref.local_sha,
+            remote_name,
+            remote_ref=ref.remote_ref,
+        )
+        changed_paths.extend(changed.paths)
+        if changed.reason:
+            reasons.append(changed.reason)
+        if not changed.scope_known:
+            scope_known = False
+    if scope_known:
+        scope = daily_gate.build_daily_gate_scope(
+            pre_push_changed_paths=daily_gate._dedupe_paths(changed_paths),
+            pre_push_scope_reason="multi-ref pre-push: " + "; ".join(sorted(dict.fromkeys(reasons))),
+        )
+    else:
+        scope = daily_gate.build_daily_gate_scope(
+            pre_push_from_ref="",
+            pre_push_to_ref="missing-multi-ref-range",
+            pre_push_remote_name=remote_name,
+            pre_push_remote_ref=",".join(sorted(dict.fromkeys(ref.remote_ref for ref in refs))),
+        )
+    return daily_gate.daily_gate_scope_payload(scope)
+
+
+def _daily_gate_command_for_refs(executable: str, refs: Sequence[PrePushRef], *, remote_name: str) -> List[str]:
+    command = [executable, "scripts/run_daily_quality_gate.py"]
+    if not refs:
+        return command
+    if len(refs) == 1:
+        ref = refs[0]
+        command.extend(
+            [
+                "--pre-push-from-ref",
+                ref.remote_sha,
+                "--pre-push-to-ref",
+                ref.local_sha,
+                "--pre-push-remote-name",
+                remote_name,
+                "--pre-push-remote-ref",
+                ref.remote_ref,
+            ]
+        )
+        return command
+
+    daily_gate = _daily_gate_module()
+    changed_paths: List[str] = []
+    reasons: List[str] = []
+    scope_known = True
+    for ref in refs:
+        changed = daily_gate._pre_push_diff_paths(
+            ref.remote_sha,
+            ref.local_sha,
+            remote_name,
+            remote_ref=ref.remote_ref,
+        )
+        changed_paths.extend(changed.paths)
+        if changed.reason:
+            reasons.append(changed.reason)
+        if not changed.scope_known:
+            scope_known = False
+    if not scope_known:
+        command.extend(
+            [
+                "--pre-push-from-ref",
+                "",
+                "--pre-push-to-ref",
+                "missing-multi-ref-range",
+                "--pre-push-remote-name",
+                remote_name,
+                "--pre-push-remote-ref",
+                ",".join(sorted(dict.fromkeys(ref.remote_ref for ref in refs))),
+            ]
+        )
+        return command
+    for path in daily_gate._dedupe_paths(changed_paths):
+        command.extend(["--pre-push-changed-path", path])
+    command.extend(["--pre-push-scope-reason", "multi-ref pre-push: " + "; ".join(sorted(dict.fromkeys(reasons)))])
+    return command
 
 
 def run_quality_gate(args: argparse.Namespace) -> int:
@@ -200,25 +320,44 @@ def run_quality_gate(args: argparse.Namespace) -> int:
     except RuntimeError as exc:
         print(str(exc), file=sys.stderr)
         return 1
-    remote_name = str(getattr(args, "remote_name", "") or "")
+    remote_name = str(getattr(args, "remote_name", "") or os.environ.get("PRE_COMMIT_REMOTE_NAME") or "")
+    pre_push_input = _pre_push_input_for_hook()
+    refs = pre_push_input.refs
+    if pre_push_input.saw_push_input and not refs:
+        print("[git-hook-cache] pre-push daily gate: no local ref to validate, skipped", flush=True)
+        return 0
     remote_ref = str(getattr(args, "remote_ref", "") or "")
     if not remote_ref:
-        remote_ref = ",".join(_remote_refs_from_stdin())
+        remote_ref = ",".join(sorted(dict.fromkeys(ref.remote_ref for ref in refs if ref.remote_ref)))
+    scope_payload = _daily_scope_for_refs(refs, remote_name=remote_name)
+    ref_contexts = _pre_push_contexts_payload(refs)
     try:
-        if git_hook_cache.pre_push_daily_cache_hit(executable, remote_name=remote_name, remote_ref=remote_ref):
+        if git_hook_cache.pre_push_daily_cache_hit(
+            executable,
+            remote_name=remote_name,
+            remote_ref=remote_ref,
+            scope_payload=scope_payload,
+            ref_contexts=ref_contexts,
+        ):
             print(
-                "[git-hook-cache] pre-push daily gate: reuse passed cache for unchanged HEAD/tree",
+                "[git-hook-cache] pre-push daily gate: reuse passed cache for unchanged tree and impact scope",
                 flush=True,
             )
             return 0
     except git_hook_cache.HookCacheError as exc:
         print(f"[git-hook-cache] pre-push daily gate cache unavailable: {exc}", flush=True)
 
-    command = [executable, "scripts/run_daily_quality_gate.py"]
+    command = _daily_gate_command_for_refs(executable, refs, remote_name=remote_name)
     returncode = subprocess.call(command, cwd=str(REPO_ROOT), env=_quality_gate_env())
     if int(returncode) == 0:
         try:
-            git_hook_cache.write_pre_push_daily_cache(executable, remote_name=remote_name, remote_ref=remote_ref)
+            git_hook_cache.write_pre_push_daily_cache(
+                executable,
+                remote_name=remote_name,
+                remote_ref=remote_ref,
+                scope_payload=scope_payload,
+                ref_contexts=ref_contexts,
+            )
         except git_hook_cache.HookCacheError as exc:
             print(f"[git-hook-cache] pre-push daily gate cache write skipped: {exc}", flush=True)
     return int(returncode)

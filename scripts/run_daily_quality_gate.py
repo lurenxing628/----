@@ -7,12 +7,15 @@ push-time smoke gate for obvious mistakes, not the final clean proof.
 
 from __future__ import annotations
 
+import argparse
+import hashlib
+import json
 import os
 import re
 import subprocess
 import sys
 from fnmatch import fnmatch
-from typing import Dict, List, NamedTuple, Optional, Sequence, Tuple
+from typing import Any, Dict, List, NamedTuple, Optional, Sequence, Tuple
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:
@@ -36,6 +39,7 @@ FOCUSED_PYTEST_NODEIDS: Tuple[str, ...] = (
 
 _COLLECT_COUNT_RE = re.compile(r"\b(\d+)\s+(?:tests?|items?) collected\b")
 _TAIL_LINES = 40
+_ZERO_SHA = "0" * 40
 
 
 class ChangedPathSet(NamedTuple):
@@ -55,6 +59,12 @@ class RuffPlan(NamedTuple):
     target_paths: List[str]
     all_files: bool
     reason: str
+
+
+class DailyGateScope(NamedTuple):
+    changed: ChangedPathSet
+    impact_plan: ImpactPlan
+    ruff_plan: RuffPlan
 
 
 _DOC_ONLY_EXTENSIONS: Tuple[str, ...] = (".md", ".rst", ".txt", ".adoc")
@@ -129,6 +139,35 @@ def _git_stdout(args: Sequence[str]) -> Optional[str]:
     return result.stdout.strip()
 
 
+def _stable_hash(payload: Any) -> str:
+    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _git_success(args: Sequence[str]) -> bool:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=REPO_ROOT,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return result.returncode == 0
+
+
+def _git_ref_exists(ref: str) -> bool:
+    value = str(ref or "").strip()
+    if not value or value == _ZERO_SHA:
+        return False
+    return _git_success(["cat-file", "-e", value + "^{commit}"])
+
+
+def _git_lines(args: Sequence[str]) -> Optional[List[str]]:
+    output = _git_stdout(args)
+    if output is None:
+        return None
+    return [line.strip() for line in output.splitlines() if line.strip()]
+
+
 def _branch_diff_paths() -> ChangedPathSet:
     upstream = _git_stdout(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"])
     if not upstream:
@@ -144,7 +183,64 @@ def _branch_diff_paths() -> ChangedPathSet:
     return ChangedPathSet(paths, True, "")
 
 
-def _changed_paths() -> ChangedPathSet:
+def _new_branch_pre_push_paths(to_ref: str, remote_name: str) -> ChangedPathSet:
+    if not _git_ref_exists(to_ref):
+        return ChangedPathSet([], False, "pre-push to-ref not found")
+    if not str(remote_name or "").strip():
+        return ChangedPathSet([], False, "pre-push remote name not found")
+
+    ancestors = _git_lines(["rev-list", to_ref, "--topo-order", "--reverse", "--not", "--remotes=" + remote_name])
+    if ancestors is None:
+        return ChangedPathSet([], False, "pre-push new branch ancestry detection failed")
+    if not ancestors:
+        return ChangedPathSet([], True, "pre-push has no new commits against remote")
+
+    first_ancestor = ancestors[0]
+    roots = _git_lines(["rev-list", "--max-parents=0", to_ref])
+    if roots is None:
+        return ChangedPathSet([], False, "pre-push root commit detection failed")
+    if first_ancestor in set(roots):
+        paths = _git_name_only(["ls-tree", "-r", "--name-only", to_ref])
+        if paths is None:
+            return ChangedPathSet([], False, "pre-push root tree listing failed")
+        return ChangedPathSet(paths, True, "pre-push new branch includes root commit")
+
+    source = _git_stdout(["rev-parse", first_ancestor + "^"])
+    if not source:
+        return ChangedPathSet([], False, "pre-push new branch source detection failed")
+    paths = _git_name_only(["diff", "--name-only", source + ".." + to_ref])
+    if paths is None:
+        return ChangedPathSet([], False, "pre-push new branch diff failed")
+    return ChangedPathSet(paths, True, "pre-push new branch diff")
+
+
+def _pre_push_diff_paths(from_ref: str, to_ref: str, remote_name: str, remote_ref: str = "") -> ChangedPathSet:
+    del remote_ref
+    to_value = str(to_ref or "").strip()
+    from_value = str(from_ref or "").strip()
+    if not to_value:
+        return _branch_diff_paths()
+    if to_value == _ZERO_SHA:
+        return ChangedPathSet([], True, "pre-push delete ref")
+    if not _git_ref_exists(to_value):
+        return ChangedPathSet([], False, "pre-push to-ref not found")
+    if _git_ref_exists(from_value):
+        paths = _git_name_only(["diff", "--name-only", from_value + ".." + to_value])
+        if paths is None:
+            return ChangedPathSet([], False, "pre-push ref diff failed")
+        return ChangedPathSet(paths, True, "pre-push ref diff")
+    return _new_branch_pre_push_paths(to_value, remote_name)
+
+
+def _changed_paths(
+    *,
+    pre_push_from_ref: str = "",
+    pre_push_to_ref: str = "",
+    pre_push_remote_name: str = "",
+    pre_push_remote_ref: str = "",
+    pre_push_changed_paths: Sequence[str] = (),
+    pre_push_scope_reason: str = "",
+) -> ChangedPathSet:
     local_sources = (
         ["diff", "--name-only"],
         ["diff", "--cached", "--name-only"],
@@ -157,7 +253,21 @@ def _changed_paths() -> ChangedPathSet:
             return ChangedPathSet([], False, "git changed path detection failed")
         changed.extend(paths)
 
-    branch_paths = _branch_diff_paths()
+    if pre_push_changed_paths:
+        branch_paths = ChangedPathSet(
+            _dedupe_paths(list(pre_push_changed_paths)),
+            True,
+            str(pre_push_scope_reason or "pre-push supplied changed paths"),
+        )
+    elif pre_push_from_ref or pre_push_to_ref:
+        branch_paths = _pre_push_diff_paths(
+            pre_push_from_ref,
+            pre_push_to_ref,
+            pre_push_remote_name,
+            remote_ref=pre_push_remote_ref,
+        )
+    else:
+        branch_paths = _branch_diff_paths()
     changed.extend(branch_paths.paths)
     return ChangedPathSet(_dedupe_paths(changed), branch_paths.scope_known, branch_paths.reason)
 
@@ -330,6 +440,57 @@ def _build_ruff_plan(changed: ChangedPathSet, impact_plan: ImpactPlan) -> RuffPl
     return RuffPlan([], False, "no changed Python files")
 
 
+def build_daily_gate_scope(
+    *,
+    pre_push_from_ref: str = "",
+    pre_push_to_ref: str = "",
+    pre_push_remote_name: str = "",
+    pre_push_remote_ref: str = "",
+    pre_push_changed_paths: Sequence[str] = (),
+    pre_push_scope_reason: str = "",
+) -> DailyGateScope:
+    changed = _changed_paths(
+        pre_push_from_ref=pre_push_from_ref,
+        pre_push_to_ref=pre_push_to_ref,
+        pre_push_remote_name=pre_push_remote_name,
+        pre_push_remote_ref=pre_push_remote_ref,
+        pre_push_changed_paths=pre_push_changed_paths,
+        pre_push_scope_reason=pre_push_scope_reason,
+    )
+    impact_plan = _build_impact_plan(changed)
+    ruff_plan = _build_ruff_plan(changed, impact_plan)
+    return DailyGateScope(changed, impact_plan, ruff_plan)
+
+
+def daily_gate_scope_payload(scope: DailyGateScope) -> Dict[str, object]:
+    changed = scope.changed
+    impact_plan = scope.impact_plan
+    ruff_plan = scope.ruff_plan
+    changed_paths = _dedupe_paths(changed.paths)
+    impact_targets = _dedupe_paths(impact_plan.target_paths)
+    ruff_targets = _dedupe_paths(ruff_plan.target_paths)
+    payload: Dict[str, object] = {
+        "scope_known": bool(changed.scope_known),
+        "reason": str(changed.reason or ""),
+        "changed_paths": changed_paths,
+        "changed_paths_hash": _stable_hash(changed_paths),
+        "impact_pytest": {
+            "target_paths": impact_targets,
+            "target_hash": _stable_hash(impact_targets),
+            "selected_group_ids": list(impact_plan.selected_group_ids),
+            "all_required_groups": bool(impact_plan.all_required_groups),
+            "reason": str(impact_plan.reason or ""),
+        },
+        "ruff": {
+            "target_paths": ruff_targets,
+            "target_hash": _stable_hash(ruff_targets),
+            "all_files": bool(ruff_plan.all_files),
+            "reason": str(ruff_plan.reason or ""),
+        },
+    }
+    return payload
+
+
 def _commands(required_targets: Sequence[str], ruff_plan: RuffPlan) -> List[Tuple[str, List[str]]]:
     commands = [
         (
@@ -420,10 +581,19 @@ def _run_collect_only(env: Dict[str, str]) -> int:
     return int(result.returncode)
 
 
+def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run the fast local development gate.")
+    parser.add_argument("--pre-push-from-ref", default="")
+    parser.add_argument("--pre-push-to-ref", default="")
+    parser.add_argument("--pre-push-remote-name", default="")
+    parser.add_argument("--pre-push-remote-ref", default="")
+    parser.add_argument("--pre-push-changed-path", action="append", default=[], help=argparse.SUPPRESS)
+    parser.add_argument("--pre-push-scope-reason", default="", help=argparse.SUPPRESS)
+    return parser.parse_args(list(argv) if argv is not None else None)
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    if argv:
-        print("run_daily_quality_gate.py does not accept arguments", file=sys.stderr)
-        return 2
+    args = _parse_args(argv)
 
     print("FAST DAILY GATE ONLY: not final clean proof", flush=True)
     print("快速日常门禁只挡明显问题，不声明 full-test-debt / clean proof。", flush=True)
@@ -433,9 +603,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         flush=True,
     )
     env = _gate_env()
-    changed = _changed_paths()
-    impact_plan = _build_impact_plan(changed)
-    ruff_plan = _build_ruff_plan(changed, impact_plan)
+    scope = build_daily_gate_scope(
+        pre_push_from_ref=str(args.pre_push_from_ref or ""),
+        pre_push_to_ref=str(args.pre_push_to_ref or ""),
+        pre_push_remote_name=str(args.pre_push_remote_name or ""),
+        pre_push_remote_ref=str(args.pre_push_remote_ref or ""),
+        pre_push_changed_paths=list(args.pre_push_changed_path or []),
+        pre_push_scope_reason=str(args.pre_push_scope_reason or ""),
+    )
+    impact_plan = scope.impact_plan
+    ruff_plan = scope.ruff_plan
     if impact_plan.target_paths:
         mode = "all required groups" if impact_plan.all_required_groups else "matched required groups"
         print(

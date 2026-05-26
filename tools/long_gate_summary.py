@@ -36,6 +36,13 @@ def _command_text_from_display(display: str) -> str:
     return str(display or "").strip()
 
 
+def _compact_values_text(values: Sequence[Any], *, limit: int = 10) -> str:
+    rows = [str(item) for item in list(values or [])]
+    shown = rows[: int(limit)]
+    suffix = f"; ... {len(rows) - len(shown)} more" if len(rows) > len(shown) else ""
+    return "; ".join(shown) + suffix
+
+
 def _pytest_nodeids_from_text(text: str) -> List[str]:
     nodeids: List[str] = []
     pattern = re.compile(r"(?P<nodeid>(?:[A-Za-z0-9_.\-/]+/)?tests/[^\s:]+\.py::[^\s]+)")
@@ -348,7 +355,7 @@ def render_summary_markdown(summary: Mapping[str, Any]) -> str:
         ]
     )
     for entry in list(summary.get("entries") or []):
-        invalidated_by = "; ".join(str(item) for item in list(entry.get("invalidated_by") or []))
+        invalidated_by = _compact_values_text(list(entry.get("invalidated_by") or []), limit=10)
         lines.append(
             "| {index} | {entry_id} | {decision} | {cache_status} | {execution_mode} | {env_overlay_keys} | {reason} | {invalidated_by} | {receipt_path} |".format(
                 index=entry.get("index") or "",
@@ -381,10 +388,17 @@ def render_summary_markdown(summary: Mapping[str, Any]) -> str:
                 "declared_helper_impacts",
                 "actual_importing_test_files",
                 "affected_test_files",
-                "selected_nodeids",
             ):
                 if key in plan:
                     lines.append(f"  - {key}: {json.dumps(plan.get(key), ensure_ascii=False, sort_keys=True)}")
+            selected = [str(item) for item in list(plan.get("selected_nodeids") or [])]
+            if selected or plan.get("selected_nodeid_count"):
+                count = int(plan.get("selected_nodeid_count") or len(selected))
+                sample = list(plan.get("selected_nodeids_sample") or selected[:10])
+                lines.append(f"  - selected_nodeid_count: {count}")
+                if plan.get("selected_nodeids_hash"):
+                    lines.append(f"  - selected_nodeids_hash: {plan.get('selected_nodeids_hash')}")
+                lines.append(f"  - selected_nodeids_sample: {json.dumps(sample, ensure_ascii=False, sort_keys=True)}")
     failure = summary.get("failure")
     if isinstance(failure, Mapping):
         lines.extend(

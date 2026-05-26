@@ -329,43 +329,113 @@ def _hook_env() -> Dict[str, str]:
     return env
 
 
-def daily_gate_cache_key(executable: str, *, remote_name: str = "", remote_ref: str = "") -> Tuple[str, Dict[str, Any]]:
+def _daily_scope_cache_extra(scope_payload: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
+    payload = dict(scope_payload or {})
+    impact = payload.get("impact_pytest")
+    ruff = payload.get("ruff")
+    impact_payload = dict(impact) if isinstance(impact, Mapping) else {}
+    ruff_payload = dict(ruff) if isinstance(ruff, Mapping) else {}
+    return {
+        "scope_known": bool(payload.get("scope_known")),
+        "scope_reason": str(payload.get("reason") or ""),
+        "changed_paths_hash": str(payload.get("changed_paths_hash") or _stable_hash({"changed_paths": []})),
+        "impact_pytest_target_hash": str(impact_payload.get("target_hash") or _stable_hash({"impact_targets": []})),
+        "impact_pytest_all_required_groups": bool(impact_payload.get("all_required_groups")),
+        "ruff_target_hash": str(ruff_payload.get("target_hash") or _stable_hash({"ruff_targets": []})),
+        "ruff_all_files": bool(ruff_payload.get("all_files")),
+        "scope_payload": payload,
+    }
+
+
+def _daily_ref_contexts_cache_extra(ref_contexts: Optional[Sequence[Mapping[str, Any]]]) -> List[Dict[str, str]]:
+    rows: List[Dict[str, str]] = []
+    for raw_context in list(ref_contexts or []):
+        context = dict(raw_context or {})
+        rows.append(
+            {
+                "local_ref": str(context.get("local_ref") or ""),
+                "remote_ref": str(context.get("remote_ref") or ""),
+                "remote_sha": str(context.get("remote_sha") or ""),
+            }
+        )
+    return sorted(rows, key=lambda item: (item["remote_ref"], item["local_ref"], item["remote_sha"]))
+
+
+def daily_gate_cache_key(
+    executable: str,
+    *,
+    remote_name: str = "",
+    remote_ref: str = "",
+    scope_payload: Optional[Mapping[str, Any]] = None,
+    ref_contexts: Optional[Sequence[Mapping[str, Any]]] = None,
+) -> Tuple[str, Dict[str, Any]]:
+    scope_extra = _daily_scope_cache_extra(scope_payload)
     key_payload = _cache_key_payload(
         kind="pre-push-daily",
         executable=executable,
         watched_paths=DAILY_GATE_TOOL_PATHS,
         tool_modules=("ruff", "pytest", "pyright"),
         extra={
-            "head_sha": head_sha(),
             "head_tree": head_tree_hash(),
             "git_status_short": git_status_lines(),
             "remote_name": str(remote_name or ""),
             "remote_ref": str(remote_ref or ""),
+            "ref_contexts": _daily_ref_contexts_cache_extra(ref_contexts),
+            **scope_extra,
         },
     )
     return _stable_hash(key_payload), key_payload
 
 
-def pre_push_daily_cache_hit(executable: str, *, remote_name: str = "", remote_ref: str = "") -> bool:
+def pre_push_daily_cache_hit(
+    executable: str,
+    *,
+    remote_name: str = "",
+    remote_ref: str = "",
+    scope_payload: Optional[Mapping[str, Any]] = None,
+    ref_contexts: Optional[Sequence[Mapping[str, Any]]] = None,
+) -> bool:
     if git_status_lines():
         return False
-    key_hash, _payload = daily_gate_cache_key(executable, remote_name=remote_name, remote_ref=remote_ref)
+    key_hash, _payload = daily_gate_cache_key(
+        executable,
+        remote_name=remote_name,
+        remote_ref=remote_ref,
+        scope_payload=scope_payload,
+        ref_contexts=ref_contexts,
+    )
     return _cache_matches(cache_path(PRE_PUSH_DAILY_CACHE_NAME), key_hash)
 
 
-def write_pre_push_daily_cache(executable: str, *, remote_name: str = "", remote_ref: str = "") -> None:
+def write_pre_push_daily_cache(
+    executable: str,
+    *,
+    remote_name: str = "",
+    remote_ref: str = "",
+    scope_payload: Optional[Mapping[str, Any]] = None,
+    ref_contexts: Optional[Sequence[Mapping[str, Any]]] = None,
+) -> None:
     if git_status_lines():
         raise HookCacheError("pre-push daily gate pass cache 只能在干净工作区写入")
-    key_hash, key_payload = daily_gate_cache_key(executable, remote_name=remote_name, remote_ref=remote_ref)
+    key_hash, key_payload = daily_gate_cache_key(
+        executable,
+        remote_name=remote_name,
+        remote_ref=remote_ref,
+        scope_payload=scope_payload,
+        ref_contexts=ref_contexts,
+    )
     _write_pass_cache(
         cache_path(PRE_PUSH_DAILY_CACHE_NAME),
         key_hash=key_hash,
         key_payload=key_payload,
         extra={
-            "head_sha": key_payload["extra"]["head_sha"],
+            "head_sha": head_sha(),
             "head_tree": key_payload["extra"]["head_tree"],
             "remote_name": str(remote_name or ""),
             "remote_ref": str(remote_ref or ""),
+            "changed_paths_hash": key_payload["extra"]["changed_paths_hash"],
+            "impact_pytest_target_hash": key_payload["extra"]["impact_pytest_target_hash"],
+            "ruff_target_hash": key_payload["extra"]["ruff_target_hash"],
         },
     )
 

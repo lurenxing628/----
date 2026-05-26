@@ -32,6 +32,13 @@ class ReuseEvaluation(TypedDict):
     stderr: str
 
 
+class FailureReuseEvaluation(TypedDict):
+    decision: Dict[str, Any]
+    validated_failure: Optional[Dict[str, Any]]
+    stdout: str
+    stderr: str
+
+
 def _safe_entry_id(entry_id: str) -> str:
     return str(entry_id or "").replace("\\", "_").replace("/", "_").strip() or "unknown"
 
@@ -469,6 +476,21 @@ def _reuse_evaluation(
     }
 
 
+def _failure_reuse_evaluation(
+    decision: Dict[str, Any],
+    *,
+    validated_failure: Optional[Mapping[str, Any]] = None,
+    stdout: str = "",
+    stderr: str = "",
+) -> FailureReuseEvaluation:
+    return {
+        "decision": decision,
+        "validated_failure": dict(validated_failure) if validated_failure is not None else None,
+        "stdout": stdout,
+        "stderr": stderr,
+    }
+
+
 def evaluate_reuse(
     entry: Mapping[str, Any],
     current_fingerprint: Mapping[str, Any],
@@ -683,6 +705,224 @@ def evaluate_reuse(
     )
 
 
+def evaluate_failure_reuse(
+    entry: Mapping[str, Any],
+    current_fingerprint: Mapping[str, Any],
+    *,
+    repo_root: Optional[str] = None,
+    cache_dir: Optional[str] = None,
+) -> FailureReuseEvaluation:
+    root = _repo_root(repo_root)
+    resolved_cache_dir = resolve_cache_dir(root, cache_dir)
+    entry_id = _safe_entry_id(str(entry.get("entry_id") or ""))
+    current_hash = str(current_fingerprint.get("hash") or "")
+    if not bool(entry.get("reuse_allowed")):
+        return _failure_reuse_evaluation(
+            _decision(entry_id, "run", "reuse is disabled for this entry", current_fingerprint_hash=current_hash)
+        )
+    result_rel = _failure_rel_path(entry_id, cache_dir=resolved_cache_dir)
+    previous, load_error = _load_json_object(_abs_from_rel(root, result_rel))
+    if load_error == "missing":
+        return _failure_reuse_evaluation(
+            _decision(entry_id, "run", "no previous failure cache", current_fingerprint_hash=current_hash)
+        )
+    if load_error:
+        return _failure_reuse_evaluation(_decision(entry_id, "run", load_error, current_fingerprint_hash=current_hash))
+    assert previous is not None
+
+    required_error = _validate_required_fields(previous)
+    if required_error:
+        return _failure_reuse_evaluation(_decision(entry_id, "run", required_error, current_fingerprint_hash=current_hash))
+    numeric_values: Dict[str, int] = {}
+    for field in ("schema_version", "cache_schema_version", "fingerprint_schema_version", "returncode"):
+        value, error = _coerce_plain_int_field(previous, field)
+        if error:
+            return _failure_reuse_evaluation(_decision(entry_id, "run", error, current_fingerprint_hash=current_hash))
+        assert value is not None
+        numeric_values[field] = value
+    _duration_s, duration_error = _coerce_plain_float_field(previous, "duration_s")
+    if duration_error:
+        return _failure_reuse_evaluation(_decision(entry_id, "run", duration_error, current_fingerprint_hash=current_hash))
+    if (
+        numeric_values["schema_version"] != LONG_GATE_CACHE_SCHEMA_VERSION
+        or numeric_values["cache_schema_version"] != LONG_GATE_CACHE_SCHEMA_VERSION
+    ):
+        return _failure_reuse_evaluation(_decision(entry_id, "run", "cache schema changed", current_fingerprint_hash=current_hash))
+    if numeric_values["fingerprint_schema_version"] != LONG_GATE_FINGERPRINT_SCHEMA_VERSION:
+        return _failure_reuse_evaluation(
+            _decision(
+                entry_id,
+                "run",
+                "input fingerprint changed",
+                invalidated_by=["fingerprint schema changed"],
+                current_fingerprint_hash=current_hash,
+            )
+        )
+    expected_metadata = long_gate_cache_metadata(root, cache_dir=resolved_cache_dir)
+    for untrusted_field, reason in (
+        ("runner_version_untrusted_paths", "runner version contains untrusted path"),
+        ("tooling_version_untrusted_paths", "tooling version contains untrusted path"),
+    ):
+        current_untrusted = [str(path) for path in list(expected_metadata.get(untrusted_field) or [])]
+        previous_untrusted = [str(path) for path in list(previous.get(untrusted_field) or [])]
+        if current_untrusted:
+            return _failure_reuse_evaluation(
+                _decision(
+                    entry_id,
+                    "run",
+                    reason,
+                    invalidated_by=current_untrusted,
+                    current_fingerprint_hash=current_hash,
+                )
+            )
+        if previous_untrusted:
+            return _failure_reuse_evaluation(
+                _decision(
+                    entry_id,
+                    "run",
+                    reason,
+                    invalidated_by=previous_untrusted,
+                    current_fingerprint_hash=current_hash,
+                )
+            )
+    for hash_field, reason in (
+        ("runner_version_hash", "runner version changed"),
+        ("tooling_version_hash", "tooling version changed"),
+    ):
+        if str(previous.get(hash_field) or "") != str(expected_metadata.get(hash_field) or ""):
+            return _failure_reuse_evaluation(_decision(entry_id, "run", reason, current_fingerprint_hash=current_hash))
+    if str(previous.get("cache_dir") or "").replace("\\", "/") != str(expected_metadata.get("cache_dir") or ""):
+        return _failure_reuse_evaluation(_decision(entry_id, "run", "cache dir changed", current_fingerprint_hash=current_hash))
+    for identity_field in ("repo_root_realpath", "git_common_dir_realpath"):
+        if os.path.realpath(str(previous.get(identity_field) or "")) != os.path.realpath(
+            str(expected_metadata.get(identity_field) or "")
+        ):
+            return _failure_reuse_evaluation(
+                _decision(entry_id, "run", "repo identity changed", current_fingerprint_hash=current_hash)
+            )
+    fingerprint_error = _fingerprint_hash_is_self_consistent(previous)
+    if fingerprint_error:
+        return _failure_reuse_evaluation(_decision(entry_id, "run", fingerprint_error, current_fingerprint_hash=current_hash))
+    if str(previous.get("entry_id") or "") != entry_id:
+        return _failure_reuse_evaluation(_decision(entry_id, "run", "cache entry_id changed", current_fingerprint_hash=current_hash))
+    if str(previous.get("status") or "") != "failed":
+        return _failure_reuse_evaluation(
+            _decision(entry_id, "run", "previous failure cache status changed", current_fingerprint_hash=current_hash)
+        )
+    if bool(previous.get("timed_out")):
+        return _failure_reuse_evaluation(
+            _decision(entry_id, "run", "previous failure timed out", current_fingerprint_hash=current_hash)
+        )
+    if bool(previous.get("interrupted")):
+        return _failure_reuse_evaluation(
+            _decision(entry_id, "run", "previous failure was interrupted", current_fingerprint_hash=current_hash)
+        )
+    if bool(previous.get("partial_write")):
+        return _failure_reuse_evaluation(
+            _decision(entry_id, "run", "previous failure was partially written", current_fingerprint_hash=current_hash)
+        )
+    previous_fingerprint_obj = previous.get("fingerprint")
+    previous_fingerprint = cast(Mapping[str, Any], previous_fingerprint_obj if isinstance(previous_fingerprint_obj, dict) else {})
+    untrusted_path_reason = _fingerprint_untrusted_path_reason(current_fingerprint) or _fingerprint_untrusted_path_reason(
+        previous_fingerprint
+    )
+    if untrusted_path_reason:
+        return _failure_reuse_evaluation(
+            _decision(
+                entry_id,
+                "run",
+                "input fingerprint contains untrusted path",
+                invalidated_by=[untrusted_path_reason],
+                current_fingerprint_hash=current_hash,
+            )
+        )
+    collect_nodeids_reason = _fingerprint_invalid_collect_nodeids_reason(
+        current_fingerprint
+    ) or _fingerprint_invalid_collect_nodeids_reason(previous_fingerprint)
+    if collect_nodeids_reason:
+        return _failure_reuse_evaluation(
+            _decision(
+                entry_id,
+                "run",
+                "collect nodeids proof is invalid",
+                invalidated_by=[collect_nodeids_reason],
+                current_fingerprint_hash=current_hash,
+            )
+        )
+    if str(previous.get("command_hash") or "") != str(entry.get("command_hash") or ""):
+        return _failure_reuse_evaluation(
+            _decision(entry_id, "run", "command identity changed", current_fingerprint_hash=current_hash)
+        )
+    if numeric_values["returncode"] == 0:
+        return _failure_reuse_evaluation(
+            _decision(entry_id, "run", "previous failure returncode was zero", current_fingerprint_hash=current_hash)
+        )
+    if str(previous.get("fingerprint_hash") or "") != current_hash:
+        diff = diff_fingerprints(previous_fingerprint, current_fingerprint)
+        reasons = list(diff.get("reasons") or ["input fingerprint changed"])
+        return _failure_reuse_evaluation(
+            _decision(
+                entry_id,
+                "run",
+                "input fingerprint changed",
+                invalidated_by=reasons,
+                fingerprint_diff=list(diff.get("components") or []),
+                previous_completed_at=str(previous.get("completed_at") or ""),
+                previous_result_path=result_rel,
+                current_fingerprint_hash=current_hash,
+            )
+        )
+
+    log_texts, log_error = _validated_log_texts(
+        root,
+        previous,
+        cache_dir=resolved_cache_dir,
+        entry_id=entry_id,
+    )
+    if log_error:
+        return _failure_reuse_evaluation(_decision(entry_id, "run", log_error, current_fingerprint_hash=current_hash))
+    if list(previous.get("output_files") or []):
+        return _failure_reuse_evaluation(
+            _decision(entry_id, "run", "previous failure cache declares output files", current_fingerprint_hash=current_hash)
+        )
+    result_hash = stable_json_hash(
+        {
+            "returncode": numeric_values["returncode"],
+            "stdout_sha256": str(previous.get("stdout_sha256") or ""),
+            "stderr_sha256": str(previous.get("stderr_sha256") or ""),
+        }
+    )
+    if str(previous.get("result_hash") or "") != result_hash:
+        return _failure_reuse_evaluation(
+            _decision(entry_id, "run", "previous failure result hash mismatch", current_fingerprint_hash=current_hash)
+        )
+
+    decision = _decision(
+        entry_id,
+        "cached_failure",
+        "fingerprint matched previous failed result",
+        previous_completed_at=str(previous.get("completed_at") or ""),
+        previous_result_path=result_rel,
+        current_fingerprint_hash=current_hash,
+    )
+    return _failure_reuse_evaluation(
+        decision,
+        validated_failure=previous,
+        stdout=str((log_texts or {}).get("stdout") or ""),
+        stderr=str((log_texts or {}).get("stderr") or ""),
+    )
+
+
+def decide_failure_reuse(
+    entry: Mapping[str, Any],
+    current_fingerprint: Mapping[str, Any],
+    *,
+    repo_root: Optional[str] = None,
+    cache_dir: Optional[str] = None,
+) -> Dict[str, Any]:
+    return dict(evaluate_failure_reuse(entry, current_fingerprint, repo_root=repo_root, cache_dir=cache_dir)["decision"])
+
+
 def decide_reuse(
     entry: Mapping[str, Any],
     current_fingerprint: Mapping[str, Any],
@@ -758,17 +998,42 @@ def _assert_success_command_result(command_result: Mapping[str, Any]) -> None:
             raise ValueError(f"long gate success cache requires {field} == False")
 
 
-def _assert_success_fingerprint(fingerprint: Mapping[str, Any]) -> None:
+def _assert_cache_fingerprint(fingerprint: Mapping[str, Any], cache_kind: str) -> None:
     fingerprint_hash = str(fingerprint.get("hash") or "").strip()
     if not fingerprint_hash:
-        raise ValueError("long gate success cache requires fingerprint hash")
+        raise ValueError(f"long gate {cache_kind} cache requires fingerprint hash")
     if not fingerprint_hash.startswith("sha256:"):
-        raise ValueError("long gate success cache requires sha256 fingerprint hash")
+        raise ValueError(f"long gate {cache_kind} cache requires sha256 fingerprint hash")
     if "schema_version" not in fingerprint:
-        raise ValueError("long gate success cache requires fingerprint schema_version")
+        raise ValueError(f"long gate {cache_kind} cache requires fingerprint schema_version")
     components = fingerprint.get("components")
     if not isinstance(components, Mapping):
-        raise ValueError("long gate success cache requires fingerprint components")
+        raise ValueError(f"long gate {cache_kind} cache requires fingerprint components")
+
+
+def _assert_success_fingerprint(fingerprint: Mapping[str, Any]) -> None:
+    _assert_cache_fingerprint(fingerprint, "success")
+
+
+def _assert_failure_fingerprint(fingerprint: Mapping[str, Any]) -> None:
+    _assert_cache_fingerprint(fingerprint, "failure")
+
+
+def _assert_failure_command_result(command_result: Mapping[str, Any]) -> None:
+    if "returncode" not in command_result:
+        raise ValueError("long gate failure cache requires returncode")
+    returncode_value = command_result.get("returncode")
+    if not isinstance(returncode_value, int) or isinstance(returncode_value, bool):
+        raise ValueError("long gate failure cache requires numeric returncode")
+    if int(returncode_value) == 0:
+        raise ValueError("long gate failure cache requires returncode != 0")
+    if "duration_s" in command_result:
+        duration_value = command_result.get("duration_s")
+        if not isinstance(duration_value, (int, float)) or isinstance(duration_value, bool):
+            raise ValueError("long gate failure cache requires numeric duration_s")
+    for field in ("timed_out", "interrupted", "partial_write"):
+        if bool(command_result.get(field)):
+            raise ValueError(f"long gate failure cache requires {field} == False")
 
 
 def write_success(
@@ -836,20 +1101,47 @@ def write_failure(
 ) -> None:
     root = _repo_root(repo_root)
     resolved_cache_dir = resolve_cache_dir(root, cache_dir)
+    _assert_failure_command_result(command_result)
+    _assert_failure_fingerprint(fingerprint)
     entry_id = _safe_entry_id(str(entry.get("entry_id") or ""))
+    stdout_log_path, stderr_log_path = _log_paths_for_result(
+        entry_id,
+        command_result,
+        cache_dir=resolved_cache_dir,
+    )
+    _write_text_if_needed(root, stdout_log_path, str(command_result.get("stdout") or ""))
+    _write_text_if_needed(root, stderr_log_path, str(command_result.get("stderr") or ""))
+    returncode = int(command_result.get("returncode") or 0)
     payload = {
         "schema_version": LONG_GATE_CACHE_SCHEMA_VERSION,
         **long_gate_cache_metadata(root, cache_dir=resolved_cache_dir),
         "entry_id": entry_id,
         "status": "failed",
         "completed_at": datetime.now().isoformat(timespec="seconds"),
+        "duration_s": float(command_result.get("duration_s") or 0.0),
         "display": str(entry.get("display") or ""),
         "args": [str(arg) for arg in list(entry.get("args") or [])],
         "command_hash": str(entry.get("command_hash") or ""),
         "fingerprint_hash": str(fingerprint.get("hash") or ""),
         "fingerprint": dict(fingerprint),
-        "returncode": int(command_result.get("returncode") or 0),
-        "result_hash": stable_json_hash(dict(command_result)),
+        "returncode": returncode,
+        "stdout_sha256": _sha256_bytes(_abs_from_rel(root, stdout_log_path)),
+        "stderr_sha256": _sha256_bytes(_abs_from_rel(root, stderr_log_path)),
+        "stdout_log_path": stdout_log_path,
+        "stderr_log_path": stderr_log_path,
+        "output_files": [],
+        "timed_out": bool(command_result.get("timed_out")),
+        "interrupted": bool(command_result.get("interrupted")),
+        "partial_write": bool(command_result.get("partial_write")),
+        "execution_mode": str(command_result.get("execution_mode") or "executed"),
+        "receipt_path": str(command_result.get("receipt_path") or ""),
+        "result_hash": stable_json_hash(
+            {
+                "returncode": returncode,
+                "stdout_sha256": _sha256_bytes(_abs_from_rel(root, stdout_log_path)),
+                "stderr_sha256": _sha256_bytes(_abs_from_rel(root, stderr_log_path)),
+            }
+        ),
     }
     rel_path = _failure_rel_path(entry_id, cache_dir=resolved_cache_dir)
     abs_path = _abs_from_rel(root, rel_path)

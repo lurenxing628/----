@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import glob
 import hashlib
 import json
@@ -19,6 +20,8 @@ from tools.long_gate_schema import (
     LONG_GATE_CACHE_SCHEMA_VERSION,
     LONG_GATE_FINGERPRINT_SCHEMA_VERSION,
     LONG_GATE_MANIFEST_SCHEMA_VERSION,
+    LONG_GATE_RUNNER_VERSION_PATHS,
+    LONG_GATE_TOOLING_VERSION_PATHS,
 )
 from tools.test_registry import (
     iter_required_regression_common_scope_policy,
@@ -246,10 +249,6 @@ def _scopes_for_entry(
     env_keys: List[str] = []
     output_files: List[str] = []
 
-    if entry_type in _LONG_ENTRY_TYPES:
-        tool_scopes = list(quality_gate_shared.QUALITY_GATE_TOOL_PATHS)
-        config_scopes = list(quality_gate_shared.QUALITY_GATE_SOURCE_FILES)
-
     if entry_type == ENTRY_RUFF_CHECK_FULL:
         input_scopes.extend(
             [
@@ -349,6 +348,7 @@ def _scopes_for_entry(
                 "setup.cfg",
             ]
         )
+        tool_scopes.extend(quality_gate_shared.QUALITY_GATE_TOOL_PATHS)
         dependency_scopes.extend(
             [
                 "requirements*.txt",
@@ -937,6 +937,105 @@ def build_long_gate_manifest(repo_root: Optional[str] = None) -> Dict[str, Any]:
     root = os.path.abspath(repo_root or quality_gate_shared.REPO_ROOT)
     command_plan = quality_gate_shared.build_quality_gate_command_plan()
     return build_manifest_from_quality_gate_plan(command_plan, repo_root=root)
+
+
+def _normalize_repo_path(path: str) -> str:
+    normalized = str(path or "").replace("\\", "/").strip()
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
+    return normalized.strip("/")
+
+
+def _scope_matches_path(path: str, scope: str) -> bool:
+    normalized_path = _normalize_repo_path(path)
+    normalized_scope = _normalize_repo_path(scope)
+    if not normalized_path or not normalized_scope:
+        return False
+    if normalized_scope.endswith("/"):
+        return normalized_path.startswith(normalized_scope)
+    if fnmatch.fnmatch(normalized_path, normalized_scope):
+        return True
+    if "**/" in normalized_scope and fnmatch.fnmatch(normalized_path, normalized_scope.replace("**/", "")):
+        return True
+    return False
+
+
+def _matches_for_scopes(paths: Sequence[str], scopes: Sequence[str]) -> List[Dict[str, str]]:
+    matches: List[Dict[str, str]] = []
+    for path in _dedupe([_normalize_repo_path(item) for item in paths]):
+        for scope in _dedupe([_normalize_repo_path(item) for item in scopes]):
+            if _scope_matches_path(path, scope):
+                matches.append({"path": path, "scope": scope})
+    return matches
+
+
+def _impact_reason(categories: Sequence[str], *, global_affected: bool) -> str:
+    pieces: List[str] = []
+    if global_affected:
+        pieces.append("global runner/tooling changed")
+    pieces.extend(category + " scope changed" for category in categories if category != "global_runner_tooling")
+    if not pieces:
+        return "no matching changed paths"
+    return "; ".join(_dedupe(pieces))
+
+
+def explain_long_gate_impact(
+    command_plan: Sequence[Mapping[str, Any]],
+    changed_paths: Sequence[str],
+    *,
+    repo_root: Optional[str] = None,
+) -> Dict[str, Any]:
+    root = os.path.abspath(repo_root or quality_gate_shared.REPO_ROOT)
+    normalized_paths = _dedupe([_normalize_repo_path(path) for path in changed_paths])
+    manifest = build_manifest_from_quality_gate_plan(command_plan, repo_root=root)
+    global_scopes = list(LONG_GATE_RUNNER_VERSION_PATHS) + list(LONG_GATE_TOOLING_VERSION_PATHS)
+    global_matches = _matches_for_scopes(normalized_paths, global_scopes)
+    global_affected = bool(global_matches)
+    entries: List[Dict[str, Any]] = []
+    for raw_entry in list(manifest.get("entries") or []):
+        entry = dict(raw_entry)
+        if not bool(entry.get("long_gate_candidate")) and not bool(entry.get("reuse_allowed")):
+            continue
+        matches_by_category = {
+            "input": _matches_for_scopes(normalized_paths, list(entry.get("input_file_scopes") or [])),
+            "config": _matches_for_scopes(normalized_paths, list(entry.get("config_file_scopes") or [])),
+            "tool": _matches_for_scopes(normalized_paths, list(entry.get("tool_file_scopes") or [])),
+            "dependency": _matches_for_scopes(normalized_paths, list(entry.get("dependency_file_scopes") or [])),
+            "output": _matches_for_scopes(normalized_paths, list(entry.get("output_result_files") or [])),
+        }
+        matched_categories = [
+            category
+            for category in ("input", "config", "tool", "dependency", "output")
+            if matches_by_category[category]
+        ]
+        if global_affected:
+            matched_categories.insert(0, "global_runner_tooling")
+        affected = bool(global_affected or matched_categories)
+        entries.append(
+            {
+                "entry_id": str(entry.get("entry_id") or ""),
+                "entry_type": str(entry.get("entry_type") or ""),
+                "display": str(entry.get("display") or ""),
+                "cache_status": str(entry.get("cache_status") or ""),
+                "reuse_allowed": bool(entry.get("reuse_allowed")),
+                "long_gate_candidate": bool(entry.get("long_gate_candidate")),
+                "affected": affected,
+                "reason": _impact_reason(matched_categories, global_affected=global_affected),
+                "global_runner_tooling_affected": global_affected,
+                "matched_categories": matched_categories,
+                "matches_by_category": matches_by_category,
+            }
+        )
+    return {
+        "schema_version": 1,
+        "mode": "long_gate_impact_explain",
+        "repo_root": root,
+        "changed_paths": normalized_paths,
+        "changed_paths_hash": _stable_json_hash(normalized_paths),
+        "global_runner_tooling_affected": global_affected,
+        "global_matches": global_matches,
+        "entries": entries,
+    }
 
 
 def _load_json_file(path: str) -> Tuple[Optional[Dict[str, Any]], str]:

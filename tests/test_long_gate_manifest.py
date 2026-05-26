@@ -479,6 +479,38 @@ def test_pyright_tools_entry_tracks_quality_gate_tool_paths():
     assert set(quality_gate_shared.QUALITY_GATE_TOOL_PATHS) <= set(pyright_tools["tool_file_scopes"])
 
 
+def test_long_gate_impact_explain_does_not_mark_every_entry_for_hook_only_change():
+    command_plan = quality_gate_shared.build_quality_gate_command_plan()
+    impact = manifest_mod.explain_long_gate_impact(
+        command_plan,
+        ["tools/git_hook_checks.py"],
+        repo_root=quality_gate_shared.REPO_ROOT,
+    )
+    entries = {entry["entry_id"]: entry for entry in impact["entries"]}
+
+    assert impact["global_runner_tooling_affected"] is False
+    assert entries["pyright_tools_full"]["affected"] is True
+    assert "input" in entries["pyright_tools_full"]["matched_categories"]
+    assert entries["startup_runtime_regressions"]["affected"] is False
+    assert entries["quickref_vs_routes"]["affected"] is False
+    assert entries["pyright_gate_full"]["affected"] is False
+
+
+def test_long_gate_impact_explain_marks_global_runner_tooling_change_for_all_entries():
+    command_plan = quality_gate_shared.build_quality_gate_command_plan()
+    impact = manifest_mod.explain_long_gate_impact(
+        command_plan,
+        ["scripts/run_quality_gate.py"],
+        repo_root=quality_gate_shared.REPO_ROOT,
+    )
+
+    assert impact["global_runner_tooling_affected"] is True
+    assert impact["global_matches"] == [{"path": "scripts/run_quality_gate.py", "scope": "scripts/run_quality_gate.py"}]
+    assert impact["entries"]
+    assert all(entry["affected"] for entry in impact["entries"])
+    assert all(entry["global_runner_tooling_affected"] for entry in impact["entries"])
+
+
 def test_pyright_tools_config_include_matches_quality_gate_tool_paths():
     config_path = os.path.join(
         quality_gate_shared.REPO_ROOT,

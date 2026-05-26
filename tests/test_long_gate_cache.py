@@ -11,7 +11,15 @@ import pytest
 
 from tools import long_gate_fingerprint as fingerprint_mod
 from tools import quality_gate_shared
-from tools.long_gate_cache import decide_reuse, evaluate_reuse, resolve_cache_dir, write_success
+from tools.long_gate_cache import (
+    decide_failure_reuse,
+    decide_reuse,
+    evaluate_failure_reuse,
+    evaluate_reuse,
+    resolve_cache_dir,
+    write_failure,
+    write_success,
+)
 from tools.long_gate_fingerprint import (
     LongGateFingerprintError,
     diff_fingerprint_components,
@@ -89,12 +97,39 @@ def _write_reusable_success(repo_root: Path, *, entry=None, fingerprint=None, ca
     return used_entry, used_fingerprint, output
 
 
+def _write_reusable_failure(repo_root: Path, *, entry=None, fingerprint=None, cache_dir=None):
+    used_entry = entry or _entry()
+    used_fingerprint = fingerprint or _fingerprint()
+    write_failure(
+        used_entry,
+        used_fingerprint,
+        {
+            "stdout": "failed\n",
+            "stderr": "AssertionError: boom\n",
+            "returncode": 1,
+            "duration_s": 2.5,
+            "execution_mode": "executed",
+        },
+        repo_root=str(repo_root),
+        cache_dir=cache_dir,
+    )
+    return used_entry, used_fingerprint
+
+
 def _success_path(repo_root: Path, *, cache_dir: str = "evidence/QualityGate/long_gate") -> Path:
     return repo_root / cache_dir / "results" / "example_gate.success.json"
 
 
+def _failure_path(repo_root: Path, *, cache_dir: str = "evidence/QualityGate/long_gate") -> Path:
+    return repo_root / cache_dir / "results" / "example_gate.failure.json"
+
+
 def _load_success(repo_root: Path, *, cache_dir: str = "evidence/QualityGate/long_gate") -> dict:
     return json.loads(_success_path(repo_root, cache_dir=cache_dir).read_text(encoding="utf-8"))
+
+
+def _load_failure(repo_root: Path, *, cache_dir: str = "evidence/QualityGate/long_gate") -> dict:
+    return json.loads(_failure_path(repo_root, cache_dir=cache_dir).read_text(encoding="utf-8"))
 
 
 def _store_success(repo_root: Path, payload: dict, *, cache_dir: str = "evidence/QualityGate/long_gate") -> None:
@@ -696,6 +731,51 @@ def test_evaluate_reuse_does_not_return_payload_when_log_hash_mismatches(tmp_pat
     assert evaluation["stdout"] == ""
 
 
+def test_evaluate_failure_reuse_returns_cached_failure_logs(tmp_path):
+    entry, fingerprint = _write_reusable_failure(tmp_path)
+
+    evaluation = evaluate_failure_reuse(entry, fingerprint, repo_root=str(tmp_path))
+
+    assert evaluation["decision"]["decision"] == "cached_failure"
+    assert evaluation["decision"]["reason"] == "fingerprint matched previous failed result"
+    assert evaluation["stdout"] == "failed\n"
+    assert evaluation["stderr"] == "AssertionError: boom\n"
+    assert isinstance(evaluation["validated_failure"], dict)
+
+
+def test_failure_cache_does_not_create_or_reuse_success_cache(tmp_path):
+    entry, fingerprint = _write_reusable_failure(tmp_path)
+
+    success_decision = decide_reuse(entry, fingerprint, repo_root=str(tmp_path))
+    failure_decision = decide_failure_reuse(entry, fingerprint, repo_root=str(tmp_path))
+
+    assert not _success_path(tmp_path).exists()
+    assert success_decision["decision"] == "run"
+    assert success_decision["reason"] == "no previous success cache"
+    assert failure_decision["decision"] == "cached_failure"
+
+
+def test_failure_reuse_is_invalidated_by_log_hash_mismatch(tmp_path):
+    entry, fingerprint = _write_reusable_failure(tmp_path)
+    payload = _load_failure(tmp_path)
+    (tmp_path / payload["stderr_log_path"]).write_text("changed\n", encoding="utf-8")
+
+    evaluation = evaluate_failure_reuse(entry, fingerprint, repo_root=str(tmp_path))
+
+    assert evaluation["decision"]["decision"] == "run"
+    assert evaluation["decision"]["reason"] == "previous logs missing or hash mismatch"
+    assert evaluation["validated_failure"] is None
+
+
+def test_failure_reuse_is_invalidated_by_fingerprint_change(tmp_path):
+    entry, _ = _write_reusable_failure(tmp_path)
+
+    decision = decide_failure_reuse(entry, _fingerprint("changed"), repo_root=str(tmp_path))
+
+    assert decision["decision"] == "run"
+    assert decision["reason"] == "input fingerprint changed"
+
+
 def test_reuse_disabled_entry_is_not_reused_even_when_cache_matches(tmp_path):
     entry, fingerprint, _output = _write_reusable_success(tmp_path)
     disabled_entry = dict(entry)
@@ -1240,6 +1320,29 @@ def test_write_success_rejects_nonzero_returncode(tmp_path):
             [str(output)],
             repo_root=str(tmp_path),
         )
+
+
+def test_write_failure_rejects_zero_returncode(tmp_path):
+    entry = _entry()
+
+    with pytest.raises(ValueError, match="requires returncode != 0"):
+        write_failure(
+            entry,
+            _fingerprint(),
+            {"stdout": "ok", "stderr": "", "returncode": 0},
+            repo_root=str(tmp_path),
+        )
+    assert not _failure_path(tmp_path).exists()
+
+
+@pytest.mark.parametrize("field", ["timed_out", "interrupted", "partial_write"])
+def test_write_failure_rejects_incomplete_failure_flags(tmp_path, field):
+    entry = _entry()
+    command_result = {"stdout": "bad", "stderr": "", "returncode": 1, field: True}
+
+    with pytest.raises(ValueError, match=f"requires {field} == False"):
+        write_failure(entry, _fingerprint(), command_result, repo_root=str(tmp_path))
+    assert not _failure_path(tmp_path).exists()
 
 
 @pytest.mark.parametrize(

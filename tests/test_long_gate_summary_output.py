@@ -701,3 +701,5 @@ def test_summary_markdown_displays_full_test_debt_helper_incremental_details():
     assert "declared_helper_impacts" in markdown
     assert "actual_importing_test_files" in markdown
     assert "affected_test_files" in markdown
+    assert "selected_nodeid_count" in markdown
+    assert "selected_nodeids_sample" in markdown

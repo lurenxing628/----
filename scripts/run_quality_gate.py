@@ -24,8 +24,9 @@ if REPO_ROOT not in sys.path:
 from tools import quality_gate_shared  # noqa: E402
 from tools import verify_required_regressions_from_full_test_debt as required_regressions_verifier  # noqa: E402
 from tools.architecture_scan_cache import architecture_scan_cache_metadata  # noqa: E402
-from tools.long_gate_cache import evaluate_reuse  # noqa: E402
+from tools.long_gate_cache import evaluate_failure_reuse, evaluate_reuse  # noqa: E402
 from tools.long_gate_cache import resolve_cache_dir as resolve_long_gate_cache_dir
+from tools.long_gate_cache import write_failure as write_long_gate_failure
 from tools.long_gate_cache import write_success as write_long_gate_success
 from tools.long_gate_collect import (  # noqa: E402
     COLLECT_NODEIDS_REL,
@@ -55,6 +56,7 @@ from tools.long_gate_manifest import (  # noqa: E402
     ENTRY_RUFF_CHECK_FULL,
     ENTRY_STARTUP_RUNTIME_REGRESSIONS,
     build_manifest_from_quality_gate_plan,
+    explain_long_gate_impact,
 )
 from tools.long_gate_schema import stable_json_hash  # noqa: E402
 from tools.long_gate_summary import (  # noqa: E402
@@ -806,6 +808,16 @@ def _clear_quality_gate_full_test_debt_summary() -> None:
         os.remove(summary_path)
 
 
+def _clear_full_test_debt_current_outputs_after_failure(runtime_entry: Optional[Mapping[str, Any]]) -> None:
+    if not isinstance(runtime_entry, Mapping):
+        return
+    entry = dict(runtime_entry.get("entry") or {})
+    if str(entry.get("entry_id") or "") != ENTRY_FULL_TEST_DEBT:
+        return
+    _clear_quality_gate_current_full_test_debt()
+    _clear_quality_gate_full_test_debt_summary()
+
+
 def _remove_quality_gate_manifest() -> None:
     manifest_path = _quality_gate_manifest_abs_path()
     if os.path.isfile(manifest_path):
@@ -1202,6 +1214,54 @@ def _run_quality_gate_command_plan(
                     flush=True,
                 )
                 continue
+            cached_failure = None
+            if long_gate_cache_write_success:
+                cached_failure = _cached_full_test_debt_failure_result(
+                    long_gate_runtime_entry,
+                    cache_dir=long_gate_cache_dir,
+                )
+            if cached_failure is not None:
+                result = _coerce_command_result(cached_failure)
+                result["execution_mode"] = "cached_failure"
+                result["reused_from"] = dict(cached_failure.get("reused_from") or {})
+                elapsed = _mark_command_timing(result, started_at=command_started_at, start_monotonic=start_monotonic)
+                result["duration_kind"] = "reuse_overhead"
+                if isinstance(result.get("reused_from"), dict):
+                    result["original_duration_s"] = float(result["reused_from"].get("duration_s") or 0.0)
+                commands.append(command)
+                receipt_entry = _write_command_receipt(command, run_id=run_id, index=command_index, result=result)
+                command_receipts.append(receipt_entry)
+                if long_gate_failure is not None:
+                    long_gate_failure.clear()
+                    long_gate_failure.update(
+                        extract_copyable_failure(
+                            entry_id=str(long_gate_entry.get("entry_id") or ""),
+                            display=display,
+                            result=result,
+                            receipt_path=receipt_entry["path"],
+                        )
+                    )
+                    _refresh_summary_entry(
+                        long_gate_runtime_entry,
+                        result=result,
+                        receipt_path=receipt_entry["path"],
+                        failed=True,
+                    )
+                    _print_long_gate_failure(long_gate_failure)
+                    _clear_full_test_debt_current_outputs_after_failure(long_gate_runtime_entry)
+                print(
+                    f"==> 第 {command_index}/{total} 步结束：[long-gate-cached-failure] "
+                    f"失败(returncode={int(result.get('returncode') or 0)})，耗时 {elapsed:.1f}s，"
+                    f"receipt={receipt_entry['path']}",
+                    flush=True,
+                )
+                _raise_command_failure(
+                    index=command_index,
+                    total=total,
+                    display=display,
+                    receipt_rel=receipt_entry["path"],
+                    result=result,
+                )
 
         raw_result: Any = None
         decision_for_special = dict((long_gate_runtime_entry or {}).get("decision") or {})
@@ -1259,6 +1319,14 @@ def _run_quality_gate_command_plan(
                     failed=True,
                 )
                 _print_long_gate_failure(long_gate_failure)
+                _clear_full_test_debt_current_outputs_after_failure(long_gate_runtime_entry)
+                _maybe_write_full_test_debt_failure_cache(
+                    long_gate_runtime_entry,
+                    result=result,
+                    receipt_path=receipt_entry["path"],
+                    cache_dir=long_gate_cache_dir,
+                    long_gate_cache_write_success=long_gate_cache_write_success,
+                )
             print(
                 f"==> 第 {command_index}/{total} 步结束：失败(returncode={returncode})，"
                 f"耗时 {elapsed:.1f}s，receipt={receipt_entry['path']}",
@@ -1981,6 +2049,89 @@ def _write_static_check_proof(
     return rel_path
 
 
+def _full_test_debt_failure_cache_is_allowed(
+    runtime_entry: Optional[Mapping[str, Any]],
+    *,
+    long_gate_cache_write_success: bool,
+) -> bool:
+    if not long_gate_cache_write_success or not isinstance(runtime_entry, Mapping):
+        return False
+    entry = dict(runtime_entry.get("entry") or {})
+    if str(entry.get("entry_id") or "") != ENTRY_FULL_TEST_DEBT:
+        return False
+    decision = dict(runtime_entry.get("decision") or {})
+    if _decision_cache_unavailable(decision):
+        return False
+    reason = str(decision.get("reason") or "")
+    if reason.startswith("forced by --long-gate-force-rerun"):
+        return False
+    return str(decision.get("decision") or "") == "run"
+
+
+def _maybe_write_full_test_debt_failure_cache(
+    runtime_entry: Optional[Mapping[str, Any]],
+    *,
+    result: Mapping[str, Any],
+    receipt_path: str,
+    cache_dir: str,
+    long_gate_cache_write_success: bool,
+) -> None:
+    if not _full_test_debt_failure_cache_is_allowed(
+        runtime_entry,
+        long_gate_cache_write_success=long_gate_cache_write_success,
+    ):
+        return
+    if str(result.get("execution_mode") or "executed") != "executed":
+        return
+    assert runtime_entry is not None
+    cache_result = dict(result)
+    cache_result["receipt_path"] = str(receipt_path or "")
+    write_long_gate_failure(
+        dict(runtime_entry.get("entry") or {}),
+        dict(runtime_entry.get("fingerprint") or {}),
+        cache_result,
+        repo_root=REPO_ROOT,
+        cache_dir=cache_dir,
+    )
+
+
+def _cached_full_test_debt_failure_result(
+    runtime_entry: Dict[str, Any],
+    *,
+    cache_dir: str,
+) -> Optional[Dict[str, Any]]:
+    if not _full_test_debt_failure_cache_is_allowed(runtime_entry, long_gate_cache_write_success=True):
+        return None
+    evaluation = evaluate_failure_reuse(
+        dict(runtime_entry.get("entry") or {}),
+        dict(runtime_entry.get("fingerprint") or {}),
+        repo_root=REPO_ROOT,
+        cache_dir=cache_dir,
+    )
+    decision = dict(evaluation["decision"])
+    runtime_entry["failure_evaluation"] = dict(evaluation)
+    runtime_entry["failure_decision"] = decision
+    if str(decision.get("decision") or "") != "cached_failure":
+        return None
+    previous = evaluation["validated_failure"]
+    if not isinstance(previous, dict):
+        raise QualityGateError("long gate failure cache 判定可复用，但缺少已验证失败结果")
+    return {
+        "stdout": str(evaluation.get("stdout") or ""),
+        "stderr": str(evaluation.get("stderr") or ""),
+        "returncode": int(previous.get("returncode") or 1),
+        "execution_mode": "cached_failure",
+        "reused_from": {
+            "result_path": str(decision.get("previous_result_path") or ""),
+            "completed_at": str(previous.get("completed_at") or ""),
+            "fingerprint_hash": str(previous.get("fingerprint_hash") or ""),
+            "duration_s": float(previous.get("duration_s") or 0.0),
+        },
+        "stdout_log_path": str(previous.get("stdout_log_path") or ""),
+        "stderr_log_path": str(previous.get("stderr_log_path") or ""),
+    }
+
+
 def _long_gate_success_result_rel_path(entry_id: str, *, cache_dir: str) -> str:
     cache_root = str(cache_dir or "evidence/QualityGate/long_gate").replace("\\", "/")
     safe_entry_id = str(entry_id or "").replace("\\", "_").replace("/", "_").strip() or "unknown"
@@ -2281,6 +2432,18 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
         help="print long-gate cache decisions without executing quality-gate commands",
     )
     parser.add_argument(
+        "--long-gate-impact-explain",
+        action="store_true",
+        help="print JSON explaining which long-gate entries are affected by changed paths",
+    )
+    parser.add_argument(
+        "--long-gate-impact-path",
+        action="append",
+        default=[],
+        metavar="PATH",
+        help="changed path to explain; may be repeated; defaults to current git changed paths",
+    )
+    parser.add_argument(
         "--no-resume",
         action="store_true",
         help="do not reuse the successful prefix from the previous failed dirty-worktree run",
@@ -2290,6 +2453,32 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
         parser.error("--require-clean-worktree and --allow-dirty-worktree are mutually exclusive")
     if (parsed.long_gate_cache or parsed.long_gate_cache_explain) and parsed.no_long_gate_cache:
         parser.error("--long-gate-cache/--long-gate-cache-explain and --no-long-gate-cache are mutually exclusive")
+    if parsed.long_gate_impact_path and not parsed.long_gate_impact_explain:
+        parser.error("--long-gate-impact-path requires --long-gate-impact-explain")
+    if parsed.long_gate_impact_explain:
+        incompatible = []
+        if parsed.fast_precheck:
+            incompatible.append("--fast-precheck")
+        if parsed.require_clean_worktree:
+            incompatible.append("--require-clean-worktree")
+        if parsed.allow_dirty_worktree:
+            incompatible.append("--allow-dirty-worktree")
+        if parsed.long_gate_cache:
+            incompatible.append("--long-gate-cache")
+        if parsed.no_long_gate_cache:
+            incompatible.append("--no-long-gate-cache")
+        if parsed.long_gate_cache_dir:
+            incompatible.append("--long-gate-cache-dir")
+        if parsed.long_gate_force_rerun:
+            incompatible.append("--long-gate-force-rerun")
+        if parsed.long_gate_force_rerun_all:
+            incompatible.append("--long-gate-force-rerun-all")
+        if parsed.long_gate_cache_explain:
+            incompatible.append("--long-gate-cache-explain")
+        if parsed.no_resume:
+            incompatible.append("--no-resume")
+        if incompatible:
+            parser.error("--long-gate-impact-explain cannot be combined with " + ", ".join(incompatible))
     if parsed.fast_precheck:
         incompatible = []
         if parsed.require_clean_worktree:
@@ -2308,6 +2497,10 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
             incompatible.append("--long-gate-force-rerun-all")
         if parsed.long_gate_cache_explain:
             incompatible.append("--long-gate-cache-explain")
+        if parsed.long_gate_impact_explain:
+            incompatible.append("--long-gate-impact-explain")
+        if parsed.long_gate_impact_path:
+            incompatible.append("--long-gate-impact-path")
         if parsed.no_resume:
             incompatible.append("--no-resume")
         if incompatible:
@@ -2436,10 +2629,16 @@ def _annotate_full_test_debt_incremental_decision(
         if str(node_plan.get("mode") or "") == "ledger_only":
             note = "full_test_debt ledger-only path available"
         else:
-            note = (
-                "full_test_debt nodeid incremental available: "
-                + ", ".join(str(item) for item in list(node_plan.get("selected_nodeids") or []))
-            )
+            selected = [str(item) for item in list(node_plan.get("selected_nodeids") or [])]
+            selected_count = int(node_plan.get("selected_nodeid_count") or len(selected))
+            selected_hash = str(node_plan.get("selected_nodeids_hash") or "")
+            selected_sample = [str(item) for item in list(node_plan.get("selected_nodeids_sample") or selected[:3])]
+            sample_text = ", ".join(selected_sample[:3])
+            note = f"full_test_debt nodeid incremental available: {selected_count} selected nodeids"
+            if selected_hash:
+                note += f" hash={selected_hash}"
+            if sample_text:
+                note += f" sample={sample_text}"
     else:
         note = "full_test_debt nodeid incremental fallback: " + str(node_plan.get("reason") or "")
     if note not in invalidated_by:
@@ -2685,6 +2884,9 @@ def _print_full_test_debt_incremental_diagnostics(entry: Mapping[str, Any]) -> N
             print(f"    {key}: {plan.get(key)}", flush=True)
     if bool(plan.get("available")):
         print(f"    mode: {plan.get('mode')}", flush=True)
+        for key in ("selection_scope", "merge_policy", "selected_nodeid_count", "selected_nodeids_hash"):
+            if key in plan and str(plan.get(key) or ""):
+                print(f"    {key}: {plan.get(key)}", flush=True)
         selected = [str(item) for item in list(plan.get("selected_nodeids") or [])]
         if selected:
             print("    selected_nodeids:", flush=True)
@@ -2702,6 +2904,57 @@ def _print_full_test_debt_incremental_diagnostics(entry: Mapping[str, Any]) -> N
                 print(f"    {key}: {json.dumps(plan.get(key), ensure_ascii=False, sort_keys=True)}", flush=True)
 
 
+def _normalize_impact_path(path: str) -> str:
+    normalized = str(path or "").replace("\\", "/").strip()
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
+    return normalized.strip("/")
+
+
+def _dedupe_impact_paths(paths: Sequence[str]) -> List[str]:
+    rows: List[str] = []
+    seen = set()
+    for raw_path in list(paths or []):
+        path = _normalize_impact_path(raw_path)
+        if not path or path in seen:
+            continue
+        seen.add(path)
+        rows.append(path)
+    return rows
+
+
+def _git_impact_paths(args: Sequence[str]) -> List[str]:
+    completed = subprocess.run(
+        ["git", *list(args)],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    if int(completed.returncode) != 0:
+        detail = str(completed.stderr or completed.stdout or "git command failed").strip()
+        raise QualityGateError("long-gate impact explain 无法读取 git 变更路径：git " + " ".join(args) + "：" + detail)
+    return _dedupe_impact_paths(str(completed.stdout or "").splitlines())
+
+
+def _current_impact_paths() -> List[str]:
+    paths: List[str] = []
+    for args in (
+        ["diff", "--name-only"],
+        ["diff", "--cached", "--name-only"],
+        ["ls-files", "--others", "--exclude-standard"],
+    ):
+        paths.extend(_git_impact_paths(args))
+    return _dedupe_impact_paths(paths)
+
+
+def _print_long_gate_impact_explain(command_plan: Sequence[Dict[str, Any]], paths: Sequence[str]) -> None:
+    impact = explain_long_gate_impact(command_plan, paths, repo_root=REPO_ROOT)
+    print(json.dumps(impact, ensure_ascii=False, sort_keys=True, indent=2), flush=True)
+
+
 def _quality_gate_rel_exists(rel_path: str) -> bool:
     return os.path.isfile(os.path.join(REPO_ROOT, str(rel_path).replace("\\", "/").replace("/", os.sep)))
 
@@ -2709,10 +2962,12 @@ def _quality_gate_rel_exists(rel_path: str) -> bool:
 def _print_long_gate_cache_decision_hint(entry: Dict[str, Any]) -> None:
     if str(entry.get("decision") or "") != "run":
         return
-    if str(entry.get("reason") or "") != "no previous success cache":
-        return
-    print("  cache_state: missing", flush=True)
     entry_id = str(entry.get("entry_id") or "")
+    reason = str(entry.get("reason") or "")
+    if reason == "no previous success cache":
+        print("  cache_state: missing", flush=True)
+    elif entry_id != ENTRY_FULL_TEST_DEBT:
+        return
     if entry_id != ENTRY_FULL_TEST_DEBT:
         return
     direct_outputs = [
@@ -2849,6 +3104,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         build_quality_gate_command_plan(),
         allow_dirty_worktree=bool(args.allow_dirty_worktree),
     )
+    if bool(args.long_gate_impact_explain):
+        impact_paths = (
+            _dedupe_impact_paths(list(args.long_gate_impact_path or []))
+            if list(args.long_gate_impact_path or [])
+            else _current_impact_paths()
+        )
+        _print_long_gate_impact_explain(command_plan, impact_paths)
+        return 0
     long_gate_cache_enabled = bool((args.long_gate_cache or args.long_gate_cache_explain) and not args.no_long_gate_cache)
     resolved_long_gate_cache_dir = "evidence/QualityGate/long_gate"
     if long_gate_cache_enabled:

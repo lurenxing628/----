@@ -22,6 +22,30 @@ def _patch_required_scope(monkeypatch, groups, common_policy=None) -> None:
     )
 
 
+def _git(repo_root, *args: str) -> str:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    return result.stdout.strip()
+
+
+def _init_repo(repo_root) -> None:
+    _git(repo_root, "init", "-q")
+    _git(repo_root, "config", "user.email", "test@example.invalid")
+    _git(repo_root, "config", "user.name", "Test User")
+
+
+def _commit_all(repo_root, message: str) -> str:
+    _git(repo_root, "add", ".")
+    _git(repo_root, "commit", "-q", "-m", message)
+    return _git(repo_root, "rev-parse", "HEAD")
+
+
 def test_collect_only_success_prints_count_without_raw_nodeids(monkeypatch, capsys) -> None:
     def fake_run(command, **kwargs):
         assert command == [sys.executable, "-m", "pytest", "--collect-only", "tests", "-q"]
@@ -74,6 +98,76 @@ def test_collect_only_success_without_count_is_reported_as_gate_failure(monkeypa
     assert captured.out == ""
     assert "did not report collected count" in captured.err
     assert "unexpected output" in captured.err
+
+
+def test_pre_push_ref_diff_uses_explicit_from_to_without_upstream(monkeypatch, tmp_path) -> None:
+    _init_repo(tmp_path)
+    target = tmp_path / "core" / "services" / "scheduler" / "run_flow.py"
+    target.parent.mkdir(parents=True)
+    target.write_text("VALUE = 1\n", encoding="utf-8")
+    base_sha = _commit_all(tmp_path, "base")
+    target.write_text("VALUE = 2\n", encoding="utf-8")
+    head_sha = _commit_all(tmp_path, "change scheduler")
+    monkeypatch.setattr(daily_gate, "REPO_ROOT", str(tmp_path))
+
+    changed = daily_gate._changed_paths(
+        pre_push_from_ref=base_sha,
+        pre_push_to_ref=head_sha,
+        pre_push_remote_name="origin",
+        pre_push_remote_ref="refs/heads/topic",
+    )
+
+    assert changed.scope_known is True
+    assert changed.paths == ["core/services/scheduler/run_flow.py"]
+    assert changed.reason == "pre-push ref diff"
+
+
+def test_pre_push_new_branch_uses_remote_refs_without_upstream(monkeypatch, tmp_path) -> None:
+    _init_repo(tmp_path)
+    base = tmp_path / "README.md"
+    base.write_text("base\n", encoding="utf-8")
+    base_sha = _commit_all(tmp_path, "base")
+    _git(tmp_path, "update-ref", "refs/remotes/origin/main", base_sha)
+    target = tmp_path / "core" / "services" / "scheduler" / "run_flow.py"
+    target.parent.mkdir(parents=True)
+    target.write_text("VALUE = 1\n", encoding="utf-8")
+    head_sha = _commit_all(tmp_path, "new branch change")
+    monkeypatch.setattr(daily_gate, "REPO_ROOT", str(tmp_path))
+
+    changed = daily_gate._pre_push_diff_paths(daily_gate._ZERO_SHA, head_sha, "origin", "refs/heads/topic")
+
+    assert changed.scope_known is True
+    assert changed.paths == ["core/services/scheduler/run_flow.py"]
+    assert changed.reason == "pre-push new branch diff"
+
+
+def test_daily_scope_payload_binds_changed_paths_and_targets(monkeypatch) -> None:
+    monkeypatch.setattr(daily_gate, "_git_name_only", lambda _args: [])
+    _patch_required_scope(
+        monkeypatch,
+        [
+            {
+                "group_id": "scheduler_run_core",
+                "target_paths": ["tests/regression_scheduler_run.py"],
+                "input_file_scopes": ["core/services/scheduler/**/*.py"],
+                "config_file_scopes": [],
+                "tool_file_scopes": [],
+                "dependency_file_scopes": [],
+            }
+        ],
+    )
+
+    scope = daily_gate.build_daily_gate_scope(
+        pre_push_changed_paths=["core/services/scheduler/run_flow.py"],
+        pre_push_scope_reason="test supplied paths",
+    )
+    payload = daily_gate.daily_gate_scope_payload(scope)
+
+    assert payload["scope_known"] is True
+    assert payload["changed_paths"] == ["core/services/scheduler/run_flow.py"]
+    assert payload["changed_paths_hash"]
+    assert payload["impact_pytest"]["target_paths"] == ["tests/regression_scheduler_run.py"]
+    assert payload["impact_pytest"]["target_hash"]
 
 
 def test_impact_plan_selects_matching_required_group(monkeypatch) -> None:

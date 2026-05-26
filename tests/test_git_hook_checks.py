@@ -11,6 +11,18 @@ from pre_commit.clientlib import load_config
 from tools import git_hook_cache, git_hook_checks
 
 
+@pytest.fixture(autouse=True)
+def _clear_pre_commit_push_env(monkeypatch) -> None:
+    for key in (
+        "PRE_COMMIT_FROM_REF",
+        "PRE_COMMIT_TO_REF",
+        "PRE_COMMIT_REMOTE_BRANCH",
+        "PRE_COMMIT_LOCAL_BRANCH",
+        "PRE_COMMIT_REMOTE_NAME",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+
 def _git(repo_root: Path, *args: str) -> None:
     subprocess.run(["git", *args], cwd=repo_root, check=True)
 
@@ -72,12 +84,12 @@ def test_run_quality_gate_command_uses_daily_gate_and_utf8_env(monkeypatch, tmp_
     monkeypatch.setattr(
         git_hook_checks.git_hook_cache,
         "pre_push_daily_cache_hit",
-        lambda executable, remote_name="", remote_ref="": False,
+        lambda executable, remote_name="", remote_ref="", scope_payload=None, ref_contexts=None: False,
     )
     monkeypatch.setattr(
         git_hook_checks.git_hook_cache,
         "write_pre_push_daily_cache",
-        lambda executable, remote_name="", remote_ref="": None,
+        lambda executable, remote_name="", remote_ref="", scope_payload=None, ref_contexts=None: None,
     )
 
     def fake_call(command, *, cwd, env):
@@ -101,6 +113,135 @@ def test_run_quality_gate_command_uses_daily_gate_and_utf8_env(monkeypatch, tmp_
     assert env["PYTHONDONTWRITEBYTECODE"] == "1"
     assert env["PYTHONUTF8"] == "1"
     assert env["PYTHONIOENCODING"] == "utf-8"
+
+
+def test_run_quality_gate_prefers_pre_commit_pre_push_env(monkeypatch, tmp_path: Path) -> None:
+    captured = {}
+    project_python = str(tmp_path / ".venv" / "bin" / "python")
+    monkeypatch.setenv("PRE_COMMIT_FROM_REF", "old-sha")
+    monkeypatch.setenv("PRE_COMMIT_TO_REF", "new-sha")
+    monkeypatch.setenv("PRE_COMMIT_REMOTE_BRANCH", "refs/heads/main")
+    monkeypatch.setenv("PRE_COMMIT_LOCAL_BRANCH", "refs/heads/topic")
+    monkeypatch.setenv("PRE_COMMIT_REMOTE_NAME", "origin")
+    monkeypatch.setattr(git_hook_checks, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(git_hook_checks, "_project_python_executable", lambda: project_python)
+
+    def fake_hit(executable, remote_name="", remote_ref="", scope_payload=None, ref_contexts=None):
+        captured["executable"] = executable
+        captured["remote_name"] = remote_name
+        captured["remote_ref"] = remote_ref
+        captured["ref_contexts"] = list(ref_contexts or [])
+        return True
+
+    monkeypatch.setattr(git_hook_checks.git_hook_cache, "pre_push_daily_cache_hit", fake_hit)
+    monkeypatch.setattr(subprocess, "call", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("skip")))
+
+    assert git_hook_checks.main(["run-quality-gate"]) == 0
+
+    assert captured["remote_name"] == "origin"
+    assert captured["remote_ref"] == "refs/heads/main"
+    assert captured["ref_contexts"] == [
+        {
+            "local_ref": "refs/heads/topic",
+            "local_sha": "new-sha",
+            "remote_ref": "refs/heads/main",
+            "remote_sha": "old-sha",
+        }
+    ]
+
+
+def test_run_quality_gate_passes_pre_commit_range_to_daily_gate(monkeypatch, tmp_path: Path) -> None:
+    calls = []
+    project_python = str(tmp_path / ".venv" / "bin" / "python")
+    monkeypatch.setenv("PRE_COMMIT_FROM_REF", "old-sha")
+    monkeypatch.setenv("PRE_COMMIT_TO_REF", "new-sha")
+    monkeypatch.setenv("PRE_COMMIT_REMOTE_BRANCH", "refs/heads/main")
+    monkeypatch.setenv("PRE_COMMIT_LOCAL_BRANCH", "refs/heads/topic")
+    monkeypatch.setenv("PRE_COMMIT_REMOTE_NAME", "origin")
+    monkeypatch.setattr(git_hook_checks, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(git_hook_checks, "_project_python_executable", lambda: project_python)
+    monkeypatch.setattr(
+        git_hook_checks.git_hook_cache,
+        "pre_push_daily_cache_hit",
+        lambda executable, remote_name="", remote_ref="", scope_payload=None, ref_contexts=None: False,
+    )
+    monkeypatch.setattr(
+        git_hook_checks.git_hook_cache,
+        "write_pre_push_daily_cache",
+        lambda executable, remote_name="", remote_ref="", scope_payload=None, ref_contexts=None: None,
+    )
+
+    def fake_call(command, *, cwd, env):
+        del cwd, env
+        calls.append(list(command))
+        return 0
+
+    monkeypatch.setattr(subprocess, "call", fake_call)
+
+    assert git_hook_checks.main(["run-quality-gate"]) == 0
+
+    command = calls[0]
+    assert command[:2] == [project_python, "scripts/run_daily_quality_gate.py"]
+    assert command[2:] == [
+        "--pre-push-from-ref",
+        "old-sha",
+        "--pre-push-to-ref",
+        "new-sha",
+        "--pre-push-remote-name",
+        "origin",
+        "--pre-push-remote-ref",
+        "refs/heads/main",
+    ]
+
+
+def test_run_quality_gate_skips_delete_only_pre_push(monkeypatch, tmp_path: Path) -> None:
+    project_python = str(tmp_path / ".venv" / "bin" / "python")
+    monkeypatch.setattr(git_hook_checks, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(git_hook_checks, "_project_python_executable", lambda: project_python)
+    monkeypatch.setattr(
+        git_hook_checks.sys,
+        "stdin",
+        io.StringIO("refs/heads/topic 0000000000000000000000000000000000000000 refs/heads/topic abc\n"),
+    )
+    monkeypatch.setattr(
+        git_hook_checks.git_hook_cache,
+        "pre_push_daily_cache_hit",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("cache should not be read")),
+    )
+    monkeypatch.setattr(subprocess, "call", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("skip")))
+
+    assert git_hook_checks.main(["run-quality-gate", "origin"]) == 0
+
+
+def test_run_quality_gate_does_not_skip_pre_commit_all_files_push(monkeypatch, tmp_path: Path) -> None:
+    calls = []
+    project_python = str(tmp_path / ".venv" / "bin" / "python")
+    monkeypatch.setenv("PRE_COMMIT_REMOTE_BRANCH", "refs/heads/main")
+    monkeypatch.setenv("PRE_COMMIT_LOCAL_BRANCH", "refs/heads/main")
+    monkeypatch.setenv("PRE_COMMIT_REMOTE_NAME", "origin")
+    monkeypatch.setattr(git_hook_checks, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(git_hook_checks, "_project_python_executable", lambda: project_python)
+    monkeypatch.setattr(
+        git_hook_checks.git_hook_cache,
+        "pre_push_daily_cache_hit",
+        lambda executable, remote_name="", remote_ref="", scope_payload=None, ref_contexts=None: False,
+    )
+    monkeypatch.setattr(
+        git_hook_checks.git_hook_cache,
+        "write_pre_push_daily_cache",
+        lambda executable, remote_name="", remote_ref="", scope_payload=None, ref_contexts=None: None,
+    )
+
+    def fake_call(command, *, cwd, env):
+        del cwd, env
+        calls.append(list(command))
+        return 0
+
+    monkeypatch.setattr(subprocess, "call", fake_call)
+
+    assert git_hook_checks.main(["run-quality-gate"]) == 0
+
+    assert calls == [[project_python, "scripts/run_daily_quality_gate.py"]]
 
 
 def test_run_final_quality_gate_command_uses_project_python_and_utf8_env(monkeypatch, tmp_path: Path) -> None:
@@ -373,7 +514,7 @@ def test_pre_push_daily_gate_reuses_same_head_tree_cache(monkeypatch, tmp_path: 
     monkeypatch.setattr(
         git_hook_checks.git_hook_cache,
         "pre_push_daily_cache_hit",
-        lambda executable, remote_name="", remote_ref="": True,
+        lambda executable, remote_name="", remote_ref="", scope_payload=None, ref_contexts=None: True,
     )
     monkeypatch.setattr(git_hook_checks.git_hook_cache, "write_pre_push_daily_cache", lambda *_args, **_kwargs: calls.append("write"))
     monkeypatch.setattr(subprocess, "call", lambda *_args, **_kwargs: calls.append("call") or 0)
@@ -394,10 +535,11 @@ def test_pre_push_daily_gate_reads_remote_ref_from_pre_push_stdin(monkeypatch, t
         io.StringIO("refs/heads/main abc refs/heads/release def\nrefs/heads/dev 123 refs/heads/release 456\n"),
     )
 
-    def fake_hit(executable, remote_name="", remote_ref=""):
+    def fake_hit(executable, remote_name="", remote_ref="", scope_payload=None, ref_contexts=None):
         captured["executable"] = executable
         captured["remote_name"] = remote_name
         captured["remote_ref"] = remote_ref
+        captured["ref_contexts"] = list(ref_contexts or [])
         return True
 
     monkeypatch.setattr(git_hook_checks.git_hook_cache, "pre_push_daily_cache_hit", fake_hit)
@@ -409,6 +551,20 @@ def test_pre_push_daily_gate_reads_remote_ref_from_pre_push_stdin(monkeypatch, t
         "executable": project_python,
         "remote_name": "origin",
         "remote_ref": "refs/heads/release",
+        "ref_contexts": [
+            {
+                "local_ref": "refs/heads/dev",
+                "local_sha": "123",
+                "remote_ref": "refs/heads/release",
+                "remote_sha": "456",
+            },
+            {
+                "local_ref": "refs/heads/main",
+                "local_sha": "abc",
+                "remote_ref": "refs/heads/release",
+                "remote_sha": "def",
+            },
+        ],
     }
 
 
@@ -476,6 +632,110 @@ def test_pre_push_daily_cache_key_tracks_pytest_and_pyright_versions(monkeypatch
     assert after_payload["tool_versions"]["pytest"] == "pytest 8.3.6"
 
 
+def test_pre_push_daily_cache_reuses_after_commit_message_amend(monkeypatch, tmp_path: Path) -> None:
+    _init_repo(tmp_path)
+    (tmp_path / "README.md").write_text("base\n", encoding="utf-8")
+    _commit_all(tmp_path)
+    monkeypatch.setattr(git_hook_cache, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(
+        git_hook_cache,
+        "_python_identity",
+        lambda executable: {"executable_realpath": executable, "version": "3.8"},
+    )
+    monkeypatch.setattr(git_hook_cache, "_tool_version", lambda executable, module: f"{module} 1.0")
+    scope_payload = {
+        "scope_known": True,
+        "reason": "pre-push ref diff",
+        "changed_paths": ["README.md"],
+        "changed_paths_hash": "changed-readme",
+        "impact_pytest": {
+            "target_paths": [],
+            "target_hash": "pytest-empty",
+            "selected_group_ids": [],
+            "all_required_groups": False,
+            "reason": "documentation-only changed paths",
+        },
+        "ruff": {
+            "target_paths": [],
+            "target_hash": "ruff-empty",
+            "all_files": False,
+            "reason": "no changed Python files",
+        },
+    }
+
+    git_hook_cache.write_pre_push_daily_cache(
+        sys.executable,
+        scope_payload=scope_payload,
+        ref_contexts=[
+            {
+                "local_ref": "refs/heads/topic",
+                "local_sha": "old-local-sha",
+                "remote_ref": "refs/heads/topic",
+                "remote_sha": "remote-sha",
+            }
+        ],
+    )
+    _git(tmp_path, "commit", "--amend", "-q", "-m", "amended message only")
+
+    assert git_hook_cache.pre_push_daily_cache_hit(
+        sys.executable,
+        scope_payload=scope_payload,
+        ref_contexts=[
+            {
+                "local_ref": "refs/heads/topic",
+                "local_sha": "new-local-sha",
+                "remote_ref": "refs/heads/topic",
+                "remote_sha": "remote-sha",
+            }
+        ],
+    )
+
+
+def test_pre_push_daily_cache_key_tracks_impact_scope(monkeypatch, tmp_path: Path) -> None:
+    _init_repo(tmp_path)
+    (tmp_path / "README.md").write_text("base\n", encoding="utf-8")
+    _commit_all(tmp_path)
+    monkeypatch.setattr(git_hook_cache, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(
+        git_hook_cache,
+        "_python_identity",
+        lambda executable: {"executable_realpath": executable, "version": "3.8"},
+    )
+    monkeypatch.setattr(git_hook_cache, "_tool_version", lambda executable, module: f"{module} 1.0")
+
+    def scope_payload(path: str) -> dict:
+        return {
+            "scope_known": True,
+            "reason": "pre-push ref diff",
+            "changed_paths": [path],
+            "changed_paths_hash": "changed-" + path,
+            "impact_pytest": {
+                "target_paths": ["tests/test_" + path.replace(".", "_")],
+                "target_hash": "pytest-" + path,
+                "selected_group_ids": ["group"],
+                "all_required_groups": False,
+                "reason": "matched changed paths",
+            },
+            "ruff": {
+                "target_paths": [path] if path.endswith(".py") else [],
+                "target_hash": "ruff-" + path,
+                "all_files": False,
+                "reason": "changed Python files",
+            },
+        }
+
+    readme_key, _readme_payload = git_hook_cache.daily_gate_cache_key(sys.executable, scope_payload=scope_payload("README.md"))
+    python_key, python_payload = git_hook_cache.daily_gate_cache_key(
+        sys.executable,
+        scope_payload=scope_payload("tools/git_hook_checks.py"),
+    )
+
+    assert readme_key != python_key
+    assert python_payload["extra"]["changed_paths_hash"] == "changed-tools/git_hook_checks.py"
+    assert python_payload["extra"]["impact_pytest_target_hash"] == "pytest-tools/git_hook_checks.py"
+    assert python_payload["extra"]["ruff_target_hash"] == "ruff-tools/git_hook_checks.py"
+
+
 def test_pre_push_daily_gate_writes_cache_only_after_success(monkeypatch, tmp_path: Path) -> None:
     calls = []
     project_python = str(tmp_path / ".venv" / "bin" / "python")
@@ -484,12 +744,12 @@ def test_pre_push_daily_gate_writes_cache_only_after_success(monkeypatch, tmp_pa
     monkeypatch.setattr(
         git_hook_checks.git_hook_cache,
         "pre_push_daily_cache_hit",
-        lambda executable, remote_name="", remote_ref="": False,
+        lambda executable, remote_name="", remote_ref="", scope_payload=None, ref_contexts=None: False,
     )
     monkeypatch.setattr(
         git_hook_checks.git_hook_cache,
         "write_pre_push_daily_cache",
-        lambda executable, remote_name="", remote_ref="": calls.append(("write", remote_name)),
+        lambda executable, remote_name="", remote_ref="", scope_payload=None, ref_contexts=None: calls.append(("write", remote_name)),
     )
 
     def fake_call(command, *, cwd, env):
@@ -514,7 +774,7 @@ def test_pre_push_daily_gate_failure_does_not_write_cache(monkeypatch, tmp_path:
     monkeypatch.setattr(
         git_hook_checks.git_hook_cache,
         "pre_push_daily_cache_hit",
-        lambda executable, remote_name="", remote_ref="": False,
+        lambda executable, remote_name="", remote_ref="", scope_payload=None, ref_contexts=None: False,
     )
     monkeypatch.setattr(git_hook_checks.git_hook_cache, "write_pre_push_daily_cache", lambda *_args, **_kwargs: calls.append("write"))
     monkeypatch.setattr(subprocess, "call", lambda *_args, **_kwargs: 8)
@@ -522,6 +782,65 @@ def test_pre_push_daily_gate_failure_does_not_write_cache(monkeypatch, tmp_path:
     assert git_hook_checks.main(["run-quality-gate"]) == 8
 
     assert calls == []
+
+
+def test_multi_ref_unknown_scope_command_matches_full_scope_payload(monkeypatch) -> None:
+    from scripts import run_daily_quality_gate as daily_gate
+
+    refs = [
+        git_hook_checks.PrePushRef("refs/heads/a", "to-a", "refs/heads/a", "from-a"),
+        git_hook_checks.PrePushRef("refs/heads/b", "to-b", "refs/heads/b", "missing-remote-b"),
+    ]
+
+    def fake_pre_push_diff_paths(from_ref, to_ref, remote_name, remote_ref=""):
+        del from_ref, remote_name, remote_ref
+        if to_ref == "to-a":
+            return daily_gate.ChangedPathSet(["core/service.py"], True, "pre-push ref diff")
+        return daily_gate.ChangedPathSet([], False, "remote object missing")
+
+    monkeypatch.setattr(git_hook_checks, "_daily_gate_module", lambda: daily_gate)
+    monkeypatch.setattr(daily_gate, "_pre_push_diff_paths", fake_pre_push_diff_paths)
+    monkeypatch.setattr(daily_gate, "_git_name_only", lambda _args: [])
+
+    scope_payload = git_hook_checks._daily_scope_for_refs(refs, remote_name="origin")
+    command = git_hook_checks._daily_gate_command_for_refs("/python", refs, remote_name="origin")
+
+    assert scope_payload["scope_known"] is False
+    assert scope_payload["impact_pytest"]["all_required_groups"] is True
+    assert scope_payload["ruff"]["all_files"] is True
+    assert command == [
+        "/python",
+        "scripts/run_daily_quality_gate.py",
+        "--pre-push-from-ref",
+        "",
+        "--pre-push-to-ref",
+        "missing-multi-ref-range",
+        "--pre-push-remote-name",
+        "origin",
+        "--pre-push-remote-ref",
+        "refs/heads/a,refs/heads/b",
+    ]
+
+
+def test_daily_gate_module_adds_repo_root_for_direct_script_execution(monkeypatch) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    original_path = list(sys.path)
+    filtered_path = [
+        path
+        for path in original_path
+        if path
+        and Path(path).resolve() != repo_root
+        and Path(path).resolve() != repo_root / "tools"
+    ]
+    monkeypatch.setattr(git_hook_checks, "REPO_ROOT", repo_root)
+    monkeypatch.setattr(sys, "path", [str(repo_root / "tools"), *filtered_path])
+    monkeypatch.delitem(sys.modules, "scripts", raising=False)
+    monkeypatch.delitem(sys.modules, "scripts.run_daily_quality_gate", raising=False)
+
+    daily_gate = git_hook_checks._daily_gate_module()
+
+    assert str(repo_root) in sys.path
+    assert daily_gate.__name__ == "scripts.run_daily_quality_gate"
 
 
 def test_run_final_quality_gate_if_needed_uses_exact_head_cache(monkeypatch, tmp_path: Path) -> None:

@@ -15,6 +15,7 @@ from tools import check_full_test_debt, collect_full_test_debt
 from tools.long_gate_collect import COLLECT_NODEIDS_REL, load_collect_nodeids
 from tools.long_gate_fingerprint import diff_fingerprints
 from tools.long_gate_schema import FULL_TEST_DEBT_NODE_CACHE_SCHEMA_VERSION, stable_json_hash
+from tools.long_gate_test_body_diff import select_precise_body_nodeids
 from tools.quality_gate_ledger import sort_ledger, validate_ledger
 from tools.quality_gate_shared import (
     FORMAL_FULL_TEST_PYTEST_ARGS,
@@ -37,6 +38,10 @@ LEDGER_REL = os.path.relpath(LEDGER_PATH, os.path.abspath(os.path.join(os.path.d
     "/",
 )
 COLLECT_REL = COLLECT_NODEIDS_REL.replace("\\", "/")
+INCREMENTAL_MERGE_POLICIES = {
+    "replace_reports_for_changed_test_files",
+    "replace_reports_for_selected_nodeids",
+}
 
 
 def _now_iso() -> str:
@@ -683,6 +688,145 @@ def _fingerprint_change_diagnostics(
     )
 
 
+def _read_current_test_source(repo_root: str, path: str) -> Tuple[str, str]:
+    normalized = _normalize_rel_path(path)
+    abs_path = _abs_path(repo_root, normalized)
+    if not os.path.isfile(abs_path):
+        return "", f"current test source is missing: {normalized}"
+    try:
+        with open(abs_path, "rb") as handle:
+            data = handle.read()
+        return data.decode("utf-8"), ""
+    except (OSError, UnicodeDecodeError) as exc:
+        return "", f"current test source is unreadable: {normalized}: {exc}"
+
+
+def _read_previous_test_source(
+    repo_root: str,
+    node_cache: Mapping[str, Any],
+    test_hashes: Mapping[str, Any],
+    path: str,
+) -> Tuple[str, str]:
+    normalized = _normalize_rel_path(path)
+    head_sha = str(node_cache.get("head_sha") or "")
+    if not head_sha:
+        return "", "node cache head_sha is missing"
+    expected_hash = str(test_hashes.get(normalized) or "")
+    if not expected_hash:
+        return "", f"node cache test hash is missing: {normalized}"
+    proc = subprocess.run(
+        ["git", "show", f"{head_sha}:{normalized}"],
+        cwd=_repo_root(repo_root),
+        capture_output=True,
+        check=False,
+    )
+    if int(proc.returncode) != 0:
+        return "", f"previous test source is unavailable from node cache head: {normalized}"
+    data = bytes(proc.stdout or b"")
+    if hashlib.sha256(data).hexdigest() != expected_hash:
+        return "", f"previous test source hash mismatch: {normalized}"
+    try:
+        return data.decode("utf-8"), ""
+    except UnicodeDecodeError as exc:
+        return "", f"previous test source is unreadable: {normalized}: {exc}"
+
+
+def _mapped_nodeids_by_file(mapping: Mapping[str, Any], path: str, *, missing_reason: str) -> Tuple[List[str], str]:
+    normalized = _normalize_rel_path(path)
+    mapped = mapping.get(normalized)
+    if not isinstance(mapped, list) or not mapped or any(not isinstance(item, str) for item in mapped):
+        return [], f"{missing_reason}: {normalized}"
+    return [str(item) for item in mapped], ""
+
+
+def _unchanged_nodeid_mapping_error(
+    current_by_file: Mapping[str, Any],
+    cached_by_file: Mapping[str, Any],
+    changed_files: Sequence[str],
+) -> str:
+    changed_file_set = {str(path) for path in changed_files}
+    for path in sorted(set(str(item) for item in current_by_file) | set(str(item) for item in cached_by_file)):
+        if path in changed_file_set:
+            continue
+        if current_by_file.get(path) != cached_by_file.get(path):
+            return f"nodeid mapping changed outside changed test files: {path}"
+    return ""
+
+
+def _precise_body_selection_plan(
+    *,
+    repo_root: str,
+    node_cache: Mapping[str, Any],
+    test_hashes: Mapping[str, Any],
+    nodeids_by_file: Mapping[str, Any],
+    cached_by_file: Mapping[str, Any],
+    changed_test_files: Sequence[str],
+    ledger_nodeids: Set[str],
+) -> Tuple[Optional[Dict[str, Any]], str]:
+    selected: List[str] = []
+    changed_nodeid_prefixes: List[str] = []
+    changed_functions: List[Dict[str, str]] = []
+    scope_basis: List[str] = []
+    for path in changed_test_files:
+        current_nodeids, mapping_error = _mapped_nodeids_by_file(
+            nodeids_by_file,
+            path,
+            missing_reason="changed test file has no trusted nodeid mapping",
+        )
+        if mapping_error:
+            return None, mapping_error
+        cached_nodeids, cached_error = _mapped_nodeids_by_file(
+            cached_by_file,
+            path,
+            missing_reason="node cache changed test file has no trusted nodeid mapping",
+        )
+        if cached_error:
+            return None, cached_error
+        if current_nodeids != cached_nodeids:
+            return None, f"changed test file nodeid mapping changed: {path}"
+        previous_source, previous_error = _read_previous_test_source(repo_root, node_cache, test_hashes, path)
+        if previous_error:
+            return None, previous_error
+        current_source, current_error = _read_current_test_source(repo_root, path)
+        if current_error:
+            return None, current_error
+        selection, selection_error = select_precise_body_nodeids(
+            path=path,
+            old_source=previous_source,
+            new_source=current_source,
+            nodeids=current_nodeids,
+        )
+        if selection_error or selection is None:
+            return None, selection_error
+        selected_for_file = [str(item) for item in list(selection.get("selected_nodeids") or [])]
+        for nodeid in selected_for_file:
+            if nodeid in ledger_nodeids:
+                return None, f"changed test function contains registered full-test-debt nodeid: {nodeid}"
+        selected.extend(selected_for_file)
+        changed_nodeid_prefixes.extend(str(item) for item in list(selection.get("changed_nodeid_prefixes") or []))
+        changed_functions.extend(
+            dict(item)
+            for item in list(selection.get("changed_functions") or [])
+            if isinstance(item, dict)
+        )
+        scope_basis.extend(str(item) for item in list(selection.get("scope_basis") or []))
+    selected = list(dict.fromkeys(selected))
+    if not selected:
+        return None, "precise test-body selection selected no nodeids"
+    return {
+        "selection_scope": "test_function_body",
+        "safe_scope_kind": "test_function_body_incremental",
+        "merge_policy": "replace_reports_for_selected_nodeids",
+        "changed_nodeid_prefixes": list(dict.fromkeys(changed_nodeid_prefixes)),
+        "changed_functions": changed_functions,
+        "selected_nodeids": selected,
+        "selected_nodeid_count": len(selected),
+        "selected_nodeids_hash": stable_json_hash(selected),
+        "selected_nodeids_sample": selected[:10],
+        "scope_basis": list(dict.fromkeys(scope_basis)),
+    }, ""
+
+
 def _classify_incremental_plan(
     *,
     repo_root: str,
@@ -777,8 +921,58 @@ def _classify_incremental_plan(
     affected_test_files.extend(actual_importing_test_files)
     affected_test_files = list(dict.fromkeys(affected_test_files))
 
-    selected: List[str] = []
     ledger_nodeids = _ledger_test_debt_nodeids(ledger)
+    import_error = _changed_test_imported_elsewhere(repo_root, affected_test_files)
+    if import_error:
+        return None, import_error
+
+    mapping_error = _unchanged_nodeid_mapping_error(nodeids_by_file, cached_by_file, affected_test_files)
+    if mapping_error:
+        return None, mapping_error
+
+    precision_fallback_reason = ""
+    if changed_regular_test_files and not changed_helpers:
+        precise_plan, precision_fallback_reason = _precise_body_selection_plan(
+            repo_root=repo_root,
+            node_cache=node_cache,
+            test_hashes=test_hashes,
+            nodeids_by_file=nodeids_by_file,
+            cached_by_file=cached_by_file,
+            changed_test_files=affected_test_files,
+            ledger_nodeids=ledger_nodeids,
+        )
+        if precise_plan is not None:
+            hash_error = _validate_node_cache_test_file_hashes(
+                repo_root,
+                test_hashes,
+                allowed_changed_files=affected_test_files,
+            )
+            if hash_error:
+                return None, hash_error
+            return {
+                "mode": "nodeid_incremental",
+                "changed_paths": changed_paths,
+                **_changed_scope_diagnostics(changed_paths, mode="test_function_body_incremental"),
+                "changed_test_files": affected_test_files,
+                "changed_helpers": changed_helpers,
+                "declared_helper_impacts": declared_helper_impacts,
+                "actual_importing_test_files": list(dict.fromkeys(actual_importing_test_files)),
+                "affected_test_files": affected_test_files,
+                **precise_plan,
+                "safety_checks": {
+                    "collect_nodeids_valid": True,
+                    "node_cache_valid": True,
+                    "unchanged_test_hashes_valid": True,
+                    "unchanged_nodeid_mapping_valid": True,
+                    "changed_test_imported_elsewhere": False,
+                    "registered_debt_nodeid_in_changed_files": False,
+                    "declared_helper_impacts_valid": True,
+                    "actual_helper_imports_within_declared_impacts": True,
+                    "test_function_body_precision_valid": True,
+                },
+            }, ""
+
+    selected: List[str] = []
     helper_affected_files = set(affected_test_files) - set(changed_regular_test_files)
     for path in affected_test_files:
         mapped = nodeids_by_file.get(path)
@@ -791,17 +985,6 @@ def _classify_incremental_plan(
                 return None, f"helper impact target contains registered full-test-debt nodeid: {path}"
             return None, f"changed test file contains registered full-test-debt nodeid: {path}"
         selected.extend(str(item) for item in mapped)
-
-    import_error = _changed_test_imported_elsewhere(repo_root, affected_test_files)
-    if import_error:
-        return None, import_error
-
-    changed_file_set = set(affected_test_files)
-    for path in sorted(set(str(item) for item in nodeids_by_file) | set(str(item) for item in cached_by_file)):
-        if path in changed_file_set:
-            continue
-        if nodeids_by_file.get(path) != cached_by_file.get(path):
-            return None, f"nodeid mapping changed outside changed test files: {path}"
 
     hash_error = _validate_node_cache_test_file_hashes(
         repo_root,
@@ -821,6 +1004,9 @@ def _classify_incremental_plan(
         "actual_importing_test_files": list(dict.fromkeys(actual_importing_test_files)),
         "affected_test_files": affected_test_files,
         "selected_nodeids": list(dict.fromkeys(selected)),
+        "selection_scope": "test_file",
+        "merge_policy": "replace_reports_for_changed_test_files",
+        "precision_fallback_reason": precision_fallback_reason,
         "safety_checks": {
             "collect_nodeids_valid": True,
             "node_cache_valid": True,
@@ -1203,6 +1389,67 @@ def _run_incremental_collector(
     }
 
 
+def _validate_incremental_payload_contract(
+    incremental_payload: Mapping[str, Any],
+    selected_nodeids: Sequence[str],
+    *,
+    returncode: int,
+) -> str:
+    exitstatus = incremental_payload.get("exitstatus")
+    if not isinstance(exitstatus, int) or isinstance(exitstatus, bool):
+        return "incremental collector payload exitstatus is invalid"
+    if int(exitstatus) != int(returncode):
+        return "incremental collector payload exitstatus does not match returncode"
+    raw_collected = incremental_payload.get("collected_nodeids")
+    expected = [str(item) for item in selected_nodeids]
+    if not isinstance(raw_collected, list) or any(not isinstance(item, str) for item in raw_collected):
+        return "incremental collector payload collected_nodeids is invalid"
+    collected = [str(item) for item in raw_collected]
+    if collected != expected:
+        return "incremental collector collected_nodeids does not match selected nodeids"
+    reports = incremental_payload.get("reports")
+    if not isinstance(reports, list) or any(not isinstance(item, dict) for item in reports):
+        return "incremental collector payload reports is invalid"
+    collection_errors = incremental_payload.get("collection_errors")
+    if not isinstance(collection_errors, list) or any(not isinstance(item, dict) for item in collection_errors):
+        return "incremental collector payload collection_errors is invalid"
+    selected = set(expected)
+    required_report_fields = {
+        "nodeid",
+        "when",
+        "outcome",
+        "longrepr",
+        "xfail_marker_present",
+        "xfail_marker_reason",
+        "xfail_marker_strict",
+        "xfail_marker_run",
+        "wasxfail_reason",
+        "strict_xpass",
+    }
+    for index, report in enumerate(list(reports)):
+        report_map = dict(report)
+        nodeid = report_map.get("nodeid")
+        if not isinstance(nodeid, str) or not nodeid:
+            return f"incremental collector payload reports[{index}].nodeid is invalid"
+        if str(nodeid) not in selected:
+            return f"incremental collector payload reports[{index}].nodeid is outside selected nodeids"
+        missing = sorted(field for field in required_report_fields if field not in report_map)
+        if missing:
+            return f"incremental collector payload reports[{index}] missing field: {missing[0]}"
+    reported_nodeids = {str(dict(report).get("nodeid") or "") for report in list(reports) if isinstance(report, dict)}
+    missing_report_nodeids = sorted(set(expected) - reported_nodeids)
+    if missing_report_nodeids:
+        return "incremental collector payload missing report for selected nodeid: " + missing_report_nodeids[0]
+    for index, error in enumerate(list(collection_errors)):
+        error_map = dict(error)
+        nodeid = error_map.get("nodeid")
+        if not isinstance(nodeid, str) or not nodeid:
+            return f"incremental collector payload collection_errors[{index}].nodeid is invalid"
+        if str(nodeid) not in selected:
+            return f"incremental collector payload collection_errors[{index}].nodeid is outside selected nodeids"
+    return ""
+
+
 def _call_with_env_overlay(callback, *, env_overlay: Optional[Mapping[str, str]] = None):
     if not env_overlay:
         return callback()
@@ -1235,12 +1482,22 @@ def _merge_payload(
 ) -> Dict[str, Any]:
     changed_files = {str(path) for path in changed_test_files}
     plan = incremental_plan if isinstance(incremental_plan, Mapping) else {}
+    merge_policy = str(plan.get("merge_policy") or "replace_reports_for_changed_test_files")
+    if merge_policy not in INCREMENTAL_MERGE_POLICIES:
+        raise QualityGateError("unknown full_test_debt incremental merge policy: " + merge_policy)
+    selected_nodeid_set = {str(nodeid) for nodeid in selected_nodeids}
 
     def keep_report(report: Mapping[str, Any]) -> bool:
-        return _nodeid_file(str(report.get("nodeid") or "")) not in changed_files
+        nodeid = str(report.get("nodeid") or "")
+        if merge_policy == "replace_reports_for_selected_nodeids":
+            return nodeid not in selected_nodeid_set
+        return _nodeid_file(nodeid) not in changed_files
 
     def keep_error(error: Mapping[str, Any]) -> bool:
-        return _nodeid_file(str(error.get("nodeid") or "")) not in changed_files
+        nodeid = str(error.get("nodeid") or "")
+        if merge_policy == "replace_reports_for_selected_nodeids":
+            return nodeid not in selected_nodeid_set
+        return _nodeid_file(nodeid) not in changed_files
 
     reports = [
         dict(report)
@@ -1308,7 +1565,14 @@ def _merge_payload(
                 "previous_payload_hash": f"sha256:{stable_json_hash(dict(old_payload))}",
                 "node_cache_hash": str(node_cache.get("payload_hash") or ""),
                 "collect_nodeids_hash": str(collect_snapshot.get("nodeid_hash") or ""),
-                "merge_policy": "replace_reports_for_changed_test_files",
+                "merge_policy": merge_policy,
+                "selection_scope": str(plan.get("selection_scope") or "test_file"),
+                "changed_nodeid_prefixes": list(plan.get("changed_nodeid_prefixes") or []),
+                "changed_functions": list(plan.get("changed_functions") or []),
+                "selected_nodeid_count": len(list(selected_nodeids)),
+                "selected_nodeids_hash": stable_json_hash([str(item) for item in selected_nodeids]),
+                "selected_nodeids_sample": [str(item) for item in list(selected_nodeids)[:10]],
+                "scope_basis": list(plan.get("scope_basis") or []),
             },
             "incremental_source": {
                 "mode": "nodeid_incremental",
@@ -1319,6 +1583,13 @@ def _merge_payload(
                 "changed_helpers": list(plan.get("changed_helpers") or []),
                 "affected_test_files": list(plan.get("affected_test_files") or changed_test_files),
                 "selected_nodeids": list(selected_nodeids),
+                "merge_policy": merge_policy,
+                "selection_scope": str(plan.get("selection_scope") or "test_file"),
+                "changed_nodeid_prefixes": list(plan.get("changed_nodeid_prefixes") or []),
+                "changed_functions": list(plan.get("changed_functions") or []),
+                "selected_nodeid_count": len(list(selected_nodeids)),
+                "selected_nodeids_hash": stable_json_hash([str(item) for item in selected_nodeids]),
+                "selected_nodeids_sample": [str(item) for item in list(selected_nodeids)[:10]],
             },
         }
     )
@@ -1467,6 +1738,8 @@ def try_run_special_full_test_debt_mode(
         "safe_scope_kind": str(plan.get("safe_scope_kind") or ""),
         "changed_files_classification": dict(plan.get("changed_files_classification") or {}),
         "ledger_change_kind": str(plan.get("ledger_change_kind") or ""),
+        "selection_scope": str(plan.get("selection_scope") or ""),
+        "merge_policy": str(plan.get("merge_policy") or ""),
     }
 
     if plan["mode"] == "ledger_only":
@@ -1536,6 +1809,19 @@ def try_run_special_full_test_debt_mode(
     incremental_payload = collector_result.get("payload")
     if not isinstance(incremental_payload, dict):
         return None
+    contract_error = _validate_incremental_payload_contract(
+        incremental_payload,
+        selected_nodeids,
+        returncode=int(collector_result.get("returncode") or 0),
+    )
+    if contract_error:
+        return {
+            "stdout": str(collector_result.get("stdout") or ""),
+            "stderr": str(collector_result.get("stderr") or "") + f"\nERROR: {contract_error}\n",
+            "returncode": 2,
+            "execution_mode": "nodeid_incremental",
+            "reused_from": reused_from,
+        }
     merged_payload = _merge_payload(
         repo_root=repo_root,
         old_payload=dict(node_cache["current_payload"]),
@@ -1575,6 +1861,11 @@ def try_run_special_full_test_debt_mode(
         "actual_importing_test_files": list(plan.get("actual_importing_test_files") or []),
         "affected_test_files": list(plan.get("affected_test_files") or []),
         "selected_nodeids": selected_nodeids,
+        "selection_scope": str(plan.get("selection_scope") or "test_file"),
+        "merge_policy": str(plan.get("merge_policy") or "replace_reports_for_changed_test_files"),
+        "selected_nodeid_count": len(selected_nodeids),
+        "selected_nodeids_hash": stable_json_hash(selected_nodeids),
+        "selected_nodeids_sample": selected_nodeids[:10],
     }
     result = {
         "stdout": _summary_stdout(summary, metadata),
@@ -1722,6 +2013,15 @@ def explain_special_full_test_debt_plan(
         "actual_importing_test_files": list(plan.get("actual_importing_test_files") or []),
         "affected_test_files": list(plan.get("affected_test_files") or []),
         "selected_nodeids": list(plan.get("selected_nodeids") or []),
+        "selected_nodeid_count": int(plan.get("selected_nodeid_count") or len(list(plan.get("selected_nodeids") or []))),
+        "selected_nodeids_hash": str(plan.get("selected_nodeids_hash") or ""),
+        "selected_nodeids_sample": list(plan.get("selected_nodeids_sample") or []),
+        "selection_scope": str(plan.get("selection_scope") or ""),
+        "merge_policy": str(plan.get("merge_policy") or ""),
+        "precision_fallback_reason": str(plan.get("precision_fallback_reason") or ""),
+        "changed_nodeid_prefixes": list(plan.get("changed_nodeid_prefixes") or []),
+        "changed_functions": list(plan.get("changed_functions") or []),
+        "scope_basis": list(plan.get("scope_basis") or []),
         "safety_checks": dict(plan.get("safety_checks") or {}),
         **_special_explain_diagnostics(
             repo_root=repo_root,

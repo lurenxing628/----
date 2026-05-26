@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import json
 import os
 import re
 import subprocess
@@ -450,6 +451,7 @@ def test_full_test_debt_proof_is_in_shared_quality_gate_plan() -> None:
         ".pre-commit-config.yaml",
         "scripts/run_daily_quality_gate.py",
         "tools/fast_static_precheck.py",
+        "tools/git_hook_blocked_paths.py",
         "tools/git_hook_cache.py",
         "tools/check_full_test_debt.py",
         "tools/collect_full_test_debt.py",
@@ -464,6 +466,7 @@ def test_full_test_debt_proof_is_in_shared_quality_gate_plan() -> None:
         "tools/long_gate_paths.py",
         "tools/long_gate_schema.py",
         "tools/long_gate_summary.py",
+        "tools/long_gate_test_body_diff.py",
         "tests/conftest.py",
         "tests/main_style_regression_runner.py",
         "tests/test_check_full_test_debt.py",
@@ -479,6 +482,7 @@ def test_full_test_debt_proof_is_in_shared_quality_gate_plan() -> None:
     for rel_path in [
         "scripts/run_daily_quality_gate.py",
         "tools/fast_static_precheck.py",
+        "tools/git_hook_blocked_paths.py",
         "tools/git_hook_cache.py",
         "tools/check_full_test_debt.py",
         "tools/collect_full_test_debt.py",
@@ -493,6 +497,7 @@ def test_full_test_debt_proof_is_in_shared_quality_gate_plan() -> None:
         "tools/long_gate_paths.py",
         "tools/long_gate_schema.py",
         "tools/long_gate_summary.py",
+        "tools/long_gate_test_body_diff.py",
         "tests/conftest.py",
         "tests/main_style_regression_runner.py",
     ]:
@@ -1281,6 +1286,7 @@ def test_main_writes_quality_gate_manifest_with_git_and_collection_proof(monkeyp
     assert "tools/quality_gate_operations.py" in {item["path"] for item in manifest["gate_sources"]}
     assert "scripts/sync_debt_ledger.py" in {item["path"] for item in manifest["gate_sources"]}
     assert "tools/test_registry.py" in {item["path"] for item in manifest["gate_sources"]}
+    assert "tools/git_hook_blocked_paths.py" in {item["path"] for item in manifest["gate_sources"]}
     assert "tools/long_gate_cache.py" in {item["path"] for item in manifest["gate_sources"]}
     assert "tools/long_gate_collect.py" in {item["path"] for item in manifest["gate_sources"]}
     assert "tools/long_gate_fingerprint.py" in {item["path"] for item in manifest["gate_sources"]}
@@ -1288,6 +1294,7 @@ def test_main_writes_quality_gate_manifest_with_git_and_collection_proof(monkeyp
     assert "tools/long_gate_paths.py" in {item["path"] for item in manifest["gate_sources"]}
     assert "tools/long_gate_schema.py" in {item["path"] for item in manifest["gate_sources"]}
     assert "tools/long_gate_summary.py" in {item["path"] for item in manifest["gate_sources"]}
+    assert "tools/long_gate_test_body_diff.py" in {item["path"] for item in manifest["gate_sources"]}
     assert ".github/workflows/quality.yml" in {item["path"] for item in manifest["gate_sources"]}
     assert "pyproject.toml" in {item["path"] for item in manifest["gate_sources"]}
     assert manifest["collection_proof"]["default_collect_nodeids"]
@@ -1576,6 +1583,37 @@ def test_long_gate_cache_explain_and_no_cache_are_mutually_exclusive():
         module._parse_args(["--long-gate-cache-explain", "--no-long-gate-cache"])
 
 
+def test_main_long_gate_impact_explain_prints_json_without_writing_proof(monkeypatch, tmp_path, capsys):
+    module = _import_run_quality_gate()
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    command_plan = _small_quality_gate_plan()
+    monkeypatch.setattr(module, "REPO_ROOT", str(repo_root))
+    monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("impact explain must not execute quality gate commands")
+
+    monkeypatch.setattr(module, "_run_command", fail_if_called)
+
+    assert module.main(["--long-gate-impact-explain", "--long-gate-impact-path", "tools/git_hook_checks.py"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["mode"] == "long_gate_impact_explain"
+    assert payload["changed_paths"] == ["tools/git_hook_checks.py"]
+    assert "entries" in payload
+    assert not (repo_root / "evidence" / "QualityGate" / "long_gate" / "summary.json").exists()
+    assert not (repo_root / "evidence" / "QualityGate" / "quality_gate_manifest.json").exists()
+    assert not (repo_root / "evidence" / "QualityGate" / "receipts").exists()
+
+
+def test_long_gate_impact_explain_rejects_cache_flags():
+    module = _import_run_quality_gate()
+
+    with pytest.raises(SystemExit):
+        module._parse_args(["--long-gate-impact-explain", "--long-gate-cache"])
+
+
 def test_main_fast_precheck_returns_before_full_quality_gate_plan(monkeypatch):
     module = _import_run_quality_gate()
     from tools import fast_static_precheck
@@ -1624,6 +1662,8 @@ def test_main_fast_precheck_returns_before_full_quality_gate_plan(monkeypatch):
         ["--long-gate-force-rerun", "pytest_collect_all"],
         ["--long-gate-force-rerun-all"],
         ["--long-gate-cache-explain"],
+        ["--long-gate-impact-explain"],
+        ["--long-gate-impact-explain", "--long-gate-impact-path", "tools/git_hook_checks.py"],
         ["--no-resume"],
     ],
 )
