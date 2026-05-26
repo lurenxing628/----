@@ -67,6 +67,7 @@ class AppError(Exception):
     message: str
     details: Optional[Dict[str, Any]] = None
     cause: Optional[Exception] = None
+    internal_details: Optional[Dict[str, Any]] = None
 
     def __post_init__(self):
         # dataclass 不会自动调用 Exception.__init__，导致 args 为空（序列化/日志会丢信息）

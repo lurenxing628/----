@@ -4,6 +4,7 @@ import ast
 from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
+from typing import List, Tuple
 
 import pytest
 
@@ -18,6 +19,7 @@ REFACTORED_ALGORITHM_FILES = (
     "core/algorithms/greedy/auto_assign.py",
     "core/algorithms/greedy/seed.py",
     "core/algorithms/greedy/dispatch/batch_order.py",
+    "core/algorithms/greedy/dispatch/resource_validation.py",
     "core/algorithms/greedy/dispatch/sgs.py",
     "core/algorithms/greedy/dispatch/sgs_scoring.py",
 )
@@ -40,7 +42,7 @@ def _line_count(relative_path: str) -> int:
     return len(_module_text(relative_path).splitlines())
 
 
-def _complexity_violations(relative_paths: tuple[str, ...], *, threshold: int) -> list[str]:
+def _complexity_violations(relative_paths: Tuple[str, ...], *, threshold: int) -> List[str]:
     from radon.complexity import cc_visit
 
     violations = []

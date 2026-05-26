@@ -249,6 +249,85 @@ def test_json_error_payload_keeps_internal_details_out_of_public_response() -> N
     assert "Sheet1" not in serialized
 
 
+def test_scheduler_operation_not_found_diagnostics_stay_internal() -> None:
+    message = "这道工序不存在或已被删除，请刷新批次详情后重试。"
+    exc = BusinessError(
+        ErrorCode.NOT_FOUND,
+        message,
+        details={"field": "op_id"},
+        internal_details={"reason": "missing_batch_operation", "op_id": 123},
+    )
+
+    payload = error_boundary_mod.build_user_visible_app_error_payload(exc)
+    serialized = json.dumps(payload, ensure_ascii=False)
+
+    assert payload["error"]["message"] == message
+    assert payload["error"]["details"] == {"field": "工序编号"}
+    assert "123" not in serialized
+    assert "missing_batch_operation" not in serialized
+    assert "internal_details" not in serialized
+    assert "internal_details" not in json.dumps(exc.to_dict(), ensure_ascii=False)
+
+
+def test_flask_error_handlers_keep_operation_not_found_internal_details_private() -> None:
+    app = _build_app()
+
+    @app.get("/missing-operation")
+    def _missing_operation():
+        raise BusinessError(
+            ErrorCode.NOT_FOUND,
+            "这道工序不存在或已被删除，请刷新批次详情后重试。",
+            details={"field": "op_id"},
+            internal_details={"reason": "missing_batch_operation", "op_id": 123},
+        )
+
+    with app.test_client() as client:
+        json_response = client.get("/missing-operation", headers={"Accept": "application/json"})
+        html_response = client.get("/missing-operation")
+
+    json_text = json.dumps(json_response.get_json(), ensure_ascii=False)
+    html_text = html_response.get_data(as_text=True)
+    assert json_response.status_code == 404
+    assert html_response.status_code == 404
+    assert "这道工序不存在或已被删除" in json_text
+    assert "这道工序不存在或已被删除" in html_text
+    for secret in ("123", "missing_batch_operation", "internal_details"):
+        assert secret not in json_text
+        assert secret not in html_text
+
+
+def test_schedule_service_missing_operation_keeps_op_id_in_internal_details() -> None:
+    from core.services.scheduler.schedule_service import ScheduleService
+
+    class _MissingOpRepo:
+        def __init__(self) -> None:
+            self.seen_op_id = None
+
+        def get(self, op_id):
+            self.seen_op_id = op_id
+            return None
+
+    class _Logger:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def warning(self, *args):
+            self.calls.append(args)
+
+    svc = object.__new__(ScheduleService)
+    svc.op_repo = _MissingOpRepo()
+    svc.logger = _Logger()
+
+    with pytest.raises(BusinessError) as exc_info:
+        svc._get_op_or_raise(123)
+
+    exc = exc_info.value
+    assert exc.details == {"field": "op_id"}
+    assert exc.internal_details == {"reason": "missing_batch_operation", "op_id": 123}
+    assert svc.op_repo.seen_op_id == 123
+    assert any(call[-1] == 123 for call in svc.logger.calls)
+
+
 def test_json_error_payload_does_not_expose_unknown_machine_field_or_unlisted_reason() -> None:
     app = _build_app()
 

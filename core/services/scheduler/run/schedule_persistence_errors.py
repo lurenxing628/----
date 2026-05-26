@@ -4,6 +4,10 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.infrastructure.errors import ValidationError
 from core.models.scheduler_public_errors import public_safe_identifier, public_safe_label
+from core.services.scheduler.run.auto_assign_resource_errors import (
+    first_auto_assign_resource_error,
+    first_public_auto_assign_resource_error,
+)
 
 
 def _positive_int(value: Any) -> Optional[int]:
@@ -120,6 +124,8 @@ def raise_no_actionable_schedule_error(
     if validation_errors:
         exc.details["validation_errors"] = list(validation_errors)
 
+    root_error_message = first_auto_assign_resource_error(validation_errors)
+    public_root_error_message = first_public_auto_assign_resource_error(validation_errors)
     missing_samples = _missing_internal_resource_samples(operations, missing_internal_resource_op_ids)
     if missing_samples:
         total = len(missing_samples)
@@ -127,9 +133,16 @@ def raise_no_actionable_schedule_error(
         suffix = f"；还有 {max(total - 10, 0)} 条未展示" if total > 10 else ""
         exc.details["missing_internal_resource_count"] = int(total)
         exc.details["missing_internal_resource_ops"] = missing_samples[:10]
+        if not root_error_message:
+            exc.details["user_message"] = (
+                f"本次排产没有生成可保存结果，存在自制工序缺设备/人员："
+                f"{sample_text}{suffix}。请先到批次工序补充页补齐后重试。"
+            )
+    if public_root_error_message:
         exc.details["user_message"] = (
-            f"本次排产没有生成可保存结果，存在自制工序缺设备/人员："
-            f"{sample_text}{suffix}。请先到批次工序补充页补齐后重试。"
+            "本次排产没有生成可保存结果，"
+            f"{public_root_error_message.rstrip('。')}"
+            "。"
         )
     raise exc
 

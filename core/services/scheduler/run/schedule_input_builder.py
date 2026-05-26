@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, overload
+from typing import Any, Dict, List, Optional, Union, overload
 
 try:
     from typing import Literal
@@ -26,6 +26,7 @@ class OpForScheduleAlgo:
     id: int
     op_code: str
     batch_id: str
+    piece_id: Optional[str]
     seq: int
     op_type_id: Optional[str]
     op_type_name: Optional[str]
@@ -191,6 +192,7 @@ def _make_algo_operation(
         id=int(getattr(op, "id", 0) or 0),
         op_code=str(getattr(op, "op_code", "") or ""),
         batch_id=str(getattr(op, "batch_id", "") or ""),
+        piece_id=getattr(op, "piece_id", None),
         seq=int(getattr(op, "seq", 0) or 0),
         op_type_id=getattr(op, "op_type_id", None),
         op_type_name=getattr(op, "op_type_name", None),
@@ -299,7 +301,7 @@ def build_algo_operations(
     *,
     strict_mode: bool = False,
     return_outcome: bool = False,
-) -> BuildOutcome[List[OpForScheduleAlgo]] | List[OpForScheduleAlgo]:
+) -> Union[BuildOutcome[List[OpForScheduleAlgo]], List[OpForScheduleAlgo]]:
     outcome = _build_algo_operations_outcome(svc, reschedulable_operations, strict_mode=bool(strict_mode))
     if return_outcome:
         return outcome

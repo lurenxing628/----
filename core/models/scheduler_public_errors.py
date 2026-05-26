@@ -8,8 +8,15 @@ GENERIC_PUBLIC_ERROR_MESSAGE = "排产执行遇到问题，请联系管理员查
 
 _ALLOWED_IDENTIFIER_RE = re.compile(r"^[\w\u4e00-\u9fff./:-]{1,120}$")
 _PUBLIC_ID_PATTERN = r"[\w\u4e00-\u9fff][\w\u4e00-\u9fff./_:-]{0,119}"
+_PUBLIC_OPERATION_CODE_RE = re.compile(r"^[\w\u4e00-\u9fff./_:-]+(?: [\w\u4e00-\u9fff./_:-]+)*$")
 _DATE_PATTERN = r"[0-9]{4}-[0-9]{2}-[0-9]{2}"
 _TIME_PATTERN = r"[0-9]{2}:[0-9]{2}"
+_SGS_INTERNAL_RESOURCE_CONTEXT_PATTERN = (
+    rf"^批次 {_PUBLIC_ID_PATTERN} 的"
+    rf"(?:工序 {_PUBLIC_ID_PATTERN}|工序顺序 [0-9]{{1,9}}|工序)"
+    r"（[^）\r\n]{1,300}）"
+)
+_SGS_MISSING_RESOURCE_SUFFIX_PATTERN = r"缺少(?:设备|人员|设备、人员|人员、设备)，请到批次详情补齐后再排产。"
 _SENSITIVE_ERROR_MARKERS: Tuple[str, ...] = (
     "traceback",
     "password",
@@ -55,18 +62,61 @@ _PATH_LIKE_RE = re.compile(
 LEGACY_PUBLIC_PATTERNS: Tuple[Pattern[str], ...] = (
     re.compile(rf"^自制工序未补全设备或人员，无法排产：工序 (?P<op>{_PUBLIC_ID_PATTERN})$"),
     re.compile(rf"^自制工序未补全设备或人员，而且系统自动分配失败：工序 (?P<op>{_PUBLIC_ID_PATTERN})$"),
+    re.compile(rf"^自制工序缺少自动派工所需工种信息，无法自动分配：工序 (?P<op>{_PUBLIC_ID_PATTERN})$"),
+    re.compile(rf"^自动派工资料不完整，本次无法自动补齐设备和人员：工序 (?P<op>{_PUBLIC_ID_PATTERN})$"),
+    re.compile(
+        rf"^自动派工没有找到可用的设备和人员组合：工序 (?P<op>{_PUBLIC_ID_PATTERN})。"
+        r"请检查设备工种、人员可操作设备和资源可用时间后再排产。$"
+    ),
+    re.compile(_SGS_INTERNAL_RESOURCE_CONTEXT_PATTERN + _SGS_MISSING_RESOURCE_SUFFIX_PATTERN + "$"),
+    re.compile(_SGS_INTERNAL_RESOURCE_CONTEXT_PATTERN + r"缺少自动派工所需工种信息，请补齐工种或固定设备后再排产。$"),
+    re.compile(_SGS_INTERNAL_RESOURCE_CONTEXT_PATTERN + r"自动派工资料不完整，请检查设备工种和人员可操作设备后再排产。$"),
+    re.compile(_SGS_INTERNAL_RESOURCE_CONTEXT_PATTERN + r"工时不合法，请修正工时后再排产。$"),
+    re.compile(
+        _SGS_INTERNAL_RESOURCE_CONTEXT_PATTERN
+        + r"没有找到可用的自动分配设备和人员组合，请检查设备工种、人员可操作设备和资源可用时间后再排产。$"
+    ),
     re.compile(
         rf"^排产窗口截止到 {_DATE_PATTERN}：(?:自制工序|外协工序|外协组) "
         rf"(?P<op>{_PUBLIC_ID_PATTERN})（批次 (?P<batch>{_PUBLIC_ID_PATTERN})）"
         rf"预计完工 {_DATE_PATTERN} {_TIME_PATTERN} 超出窗口$"
     ),
-    re.compile(rf"^工时不合法：工序 (?P<op>{_PUBLIC_ID_PATTERN})(?: [^\r\n]{{1,300}})?$"),
-    re.compile(rf"^外协周期不合法：工序 (?P<op>{_PUBLIC_ID_PATTERN})(?: [^\r\n]{{1,200}})?$"),
     re.compile(
         rf"^外部组合并周期未设置或不合法：批次 (?P<batch>{_PUBLIC_ID_PATTERN}) 组 (?P<group>{_PUBLIC_ID_PATTERN})"
         r"(?: total_days=[^\r\n]{1,120})?$"
     ),
 )
+
+_LEGACY_OPERATION_ERROR_PREFIXES: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
+    ("工时不合法：工序 ", (" 工时字段不合法：", " 工时总量不合法：")),
+    ("外协周期不合法：工序 ", (" ext_days=",)),
+)
+_LEGACY_CODE_PREFIXES: Tuple[Tuple[str, str], ...] = (
+    ("自制工序未补全设备或人员", "missing_internal_resource"),
+    ("自制工序缺少自动派工所需工种信息", "auto_assign_inputs_missing"),
+    ("自动派工资料不完整", "auto_assign_resource_pool_incomplete"),
+    ("自动派工没有找到可用的设备和人员组合", "auto_assign_no_resource_combination"),
+    ("排产窗口截止到 ", "schedule_window_exceeded"),
+    ("工时不合法：工序 ", "invalid_internal_work_hours"),
+    ("外协周期不合法：工序 ", "invalid_external_days"),
+    ("外部组合并周期未设置或不合法：", "invalid_external_group_days"),
+)
+_SGS_AUTO_ASSIGN_SUFFIX_CODES: Tuple[Tuple[str, str], ...] = (
+    ("缺少自动派工所需工种信息，请补齐工种或固定设备后再排产。", "auto_assign_inputs_missing"),
+    ("自动派工资料不完整，请检查设备工种和人员可操作设备后再排产。", "auto_assign_resource_pool_incomplete"),
+    ("工时不合法，请修正工时后再排产。", "invalid_internal_work_hours"),
+    (
+        "没有找到可用的自动分配设备和人员组合，请检查设备工种、人员可操作设备和资源可用时间后再排产。",
+        "auto_assign_no_resource_combination",
+    ),
+)
+_SGS_MISSING_RESOURCE_SUFFIX_CODES: Tuple[Tuple[str, str], ...] = (
+    ("缺少设备，请到批次详情补齐后再排产。", "missing_internal_resource"),
+    ("缺少人员，请到批次详情补齐后再排产。", "missing_internal_resource"),
+    ("缺少设备、人员，请到批次详情补齐后再排产。", "missing_internal_resource"),
+    ("缺少人员、设备，请到批次详情补齐后再排产。", "missing_internal_resource"),
+)
+_SGS_RESOURCE_SUFFIX_CODES = _SGS_MISSING_RESOURCE_SUFFIX_CODES + _SGS_AUTO_ASSIGN_SUFFIX_CODES
 
 
 def _clean_text(value: Any) -> str:
@@ -173,17 +223,38 @@ def legacy_public_error_message(raw: Any) -> str:
         return ""
     if _contains_sensitive_marker(text):
         return ""
+    legacy_operation_message = _legacy_operation_error_message(text)
+    if legacy_operation_message:
+        return legacy_operation_message
     for pattern in LEGACY_PUBLIC_PATTERNS:
         match = pattern.fullmatch(text)
         if not match:
             continue
-        if text.startswith("工时不合法：工序 "):
-            return f"工时不合法：工序 {match.group('op')}"
-        if text.startswith("外协周期不合法：工序 "):
-            return f"外协周期不合法：工序 {match.group('op')}"
         if text.startswith("外部组合并周期未设置或不合法："):
             return f"外部组合并周期未设置或不合法：批次 {match.group('batch')} 组 {match.group('group')}"
         return text[:500]
+    return ""
+
+
+def _legacy_operation_error_message(text: str) -> str:
+    for prefix, detail_markers in _LEGACY_OPERATION_ERROR_PREFIXES:
+        if not text.startswith(prefix):
+            continue
+        op_code = _legacy_operation_error_op_code(text[len(prefix) :], detail_markers=detail_markers)
+        return f"{prefix}{op_code}" if op_code else ""
+    return ""
+
+
+def _legacy_operation_error_op_code(tail: str, *, detail_markers: Tuple[str, ...]) -> str:
+    op_code = str(tail or "").strip()
+    for marker in detail_markers:
+        if marker in op_code:
+            op_code = op_code.split(marker, 1)[0].strip()
+            break
+    if not op_code or len(op_code) > 120:
+        return ""
+    if _PUBLIC_OPERATION_CODE_RE.fullmatch(op_code):
+        return op_code
     return ""
 
 
@@ -212,17 +283,21 @@ def public_error_message_from_detail(raw: Any) -> str:
 
 def infer_legacy_public_code(message: Any) -> str:
     text = str(message or "").strip()
-    if text.startswith("自制工序未补全设备或人员"):
-        return "missing_internal_resource"
-    if text.startswith("排产窗口截止到 "):
-        return "schedule_window_exceeded"
-    if text.startswith("工时不合法：工序 "):
-        return "invalid_internal_work_hours"
-    if text.startswith("外协周期不合法：工序 "):
-        return "invalid_external_days"
-    if text.startswith("外部组合并周期未设置或不合法："):
-        return "invalid_external_group_days"
+    if text.startswith("批次 "):
+        code = _code_from_suffixes(text, _SGS_RESOURCE_SUFFIX_CODES)
+        if code:
+            return code
+    for prefix, code in _LEGACY_CODE_PREFIXES:
+        if text.startswith(prefix):
+            return code
     return "scheduler_error"
+
+
+def _code_from_suffixes(text: str, suffixes: Tuple[Tuple[str, str], ...]) -> str:
+    for suffix, code in suffixes:
+        if text.endswith(suffix):
+            return code
+    return ""
 
 
 def _normalize_error_list(raw_errors: Any) -> List[str]:

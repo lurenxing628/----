@@ -96,9 +96,17 @@ class ScheduleService:
         return b
 
     def _get_op_or_raise(self, op_id: int) -> BatchOperation:
-        op = self.op_repo.get(int(op_id))
+        normalized_op_id = int(op_id)
+        op = self.op_repo.get(normalized_op_id)
         if not op:
-            raise BusinessError(ErrorCode.NOT_FOUND, f"批次工序（ID={op_id}）不存在")
+            if self.logger is not None:
+                self.logger.warning("排产工序不存在：op_id=%s", normalized_op_id)
+            raise BusinessError(
+                ErrorCode.NOT_FOUND,
+                "这道工序不存在或已被删除，请刷新批次详情后重试。",
+                details={"field": "op_id"},
+                internal_details={"reason": "missing_batch_operation", "op_id": normalized_op_id},
+            )
         return op
 
     def _get_template_and_group_for_op(self, op: BatchOperation) -> Tuple[Optional[PartOperation], Optional[ExternalGroup]]:

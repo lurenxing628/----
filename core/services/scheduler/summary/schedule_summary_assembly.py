@@ -6,6 +6,7 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 from core.algorithms.objective_specs import best_score_schema, comparison_metric_key
 from core.models.enums import YesNo
 from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot
+from core.services.scheduler.run.auto_assign_resource_errors import auto_assign_failed_op_ids_from_errors
 from core.services.scheduler.run.optimizer_search_state import compact_attempts
 from core.services.scheduler.run.schedule_persistence_errors import missing_internal_resource_samples
 
@@ -101,7 +102,11 @@ def _actionable_missing_internal_resource_op_ids(ctx: SummaryBuildContext) -> Se
     else:
         scheduled_ids = _positive_int_set(ctx.scheduled_op_ids)
 
-    return missing_ids - scheduled_ids
+    auto_assign_failed_ids = auto_assign_failed_op_ids_from_errors(
+        errors=getattr(ctx.summary, "errors", None),
+        operations=ctx.operations,
+    )
+    return missing_ids - scheduled_ids - auto_assign_failed_ids
 
 
 def _record_invalid_due(

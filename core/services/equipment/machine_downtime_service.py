@@ -82,7 +82,7 @@ class MachineDowntimeService:
             raise ValidationError("停机记录编号不合法", field="downtime_id") from e
         d = self.repo.get(did)
         if not d:
-            raise BusinessError(ErrorCode.NOT_FOUND, f"停机记录（ID={did}）不存在")
+            raise BusinessError(ErrorCode.NOT_FOUND, "这条停机记录不存在或已被删除，请刷新设备详情后重试。")
         return d
 
     # -------------------------

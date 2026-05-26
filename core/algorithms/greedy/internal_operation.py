@@ -8,6 +8,12 @@ from core.algorithms.types import ScheduleResult
 from core.algorithms.value_domains import INTERNAL
 
 from .algo_stats import increment_counter
+from .auto_assign import (
+    AUTO_ASSIGN_REASON_INVALID_INTERNAL_HOURS,
+    AUTO_ASSIGN_REASON_MISSING_MACHINE_POOL,
+    AUTO_ASSIGN_REASON_MISSING_OP_TYPE_ID,
+    auto_assign_attempt_from_result,
+)
 from .downtime import occupy_resource
 from .internal_slot import estimate_internal_slot, raise_strict_internal_hours_validation
 
@@ -114,7 +120,7 @@ def _resolve_internal_resources(
         return "", ""
 
     increment_counter(algo_stats, "internal_auto_assign_attempt_count")
-    chosen = auto_assign_resources(
+    attempt = auto_assign_attempt_from_result(auto_assign_resources(
         op=op,
         batch=batch,
         batch_progress=batch_progress,
@@ -127,13 +133,27 @@ def _resolve_internal_resources(
         last_op_type_by_machine=last_op_type_by_machine,
         machine_busy_hours=machine_busy_hours,
         operator_busy_hours=operator_busy_hours,
-    )
-    if chosen:
+    ))
+    if attempt.machine_id and attempt.operator_id:
         increment_counter(algo_stats, "internal_auto_assign_success_count")
-        return normalize_text_id(chosen[0]), normalize_text_id(chosen[1])
+        return normalize_text_id(attempt.machine_id), normalize_text_id(attempt.operator_id)
     increment_counter(algo_stats, "internal_auto_assign_failed_count")
-    errors.append(f"自制工序未补全设备或人员，而且系统自动分配失败：工序 {getattr(op, 'op_code', '-') or '-'}")
+    errors.append(_auto_assign_failure_message(op=op, reason=attempt.reason))
     return "", ""
+
+
+def _auto_assign_failure_message(*, op: Any, reason: str) -> str:
+    op_code = getattr(op, "op_code", "-") or "-"
+    if reason == AUTO_ASSIGN_REASON_MISSING_OP_TYPE_ID:
+        return f"自制工序缺少自动派工所需工种信息，无法自动分配：工序 {op_code}"
+    if reason == AUTO_ASSIGN_REASON_MISSING_MACHINE_POOL:
+        return f"自动派工资料不完整，本次无法自动补齐设备和人员：工序 {op_code}"
+    if reason == AUTO_ASSIGN_REASON_INVALID_INTERNAL_HOURS:
+        return f"工时不合法：工序 {op_code}"
+    return (
+        f"自动派工没有找到可用的设备和人员组合：工序 {op_code}。"
+        "请检查设备工种、人员可操作设备和资源可用时间后再排产。"
+    )
 
 
 def _estimate_internal(

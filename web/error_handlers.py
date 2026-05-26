@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import traceback
-from typing import Any, Optional
+from typing import Any, List, Optional, Tuple
 
 from werkzeug.exceptions import RequestEntityTooLarge
 
@@ -25,10 +25,10 @@ def _resolve_field_label(details: Any) -> Optional[str]:
     return get_user_visible_field_label(field) or field
 
 
-def _html_error_details(details: Any) -> tuple[Any, Optional[str]]:
+def _html_error_details(details: Any) -> Tuple[Any, Optional[str]]:
     if not isinstance(details, dict):
         return details, None
-    labels: list[str] = []
+    labels: List[str] = []
     field_label = _resolve_field_label(details)
     if field_label:
         labels.append(field_label)
@@ -46,7 +46,10 @@ def register_error_handlers(app):
 
     @app.errorhandler(AppError)
     def handle_app_error(e: AppError):
-        app.logger.warning(f"业务错误：{e}")
+        if e.internal_details:
+            app.logger.warning("业务错误：%s internal_details=%s", e, e.internal_details)
+        else:
+            app.logger.warning(f"业务错误：{e}")
         status_code = app_error_http_status(e.code)
         user_message = user_visible_app_error_message(e)
         user_details = user_visible_app_error_details(e)

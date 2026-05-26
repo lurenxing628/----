@@ -15,6 +15,7 @@ from core.algorithms.greedy.schedule_params import resolve_schedule_params
 from core.algorithms.sort_strategies import SortStrategy
 from core.infrastructure.errors import ValidationError
 from core.services.scheduler.schedule_summary import build_result_summary
+from core.shared.field_labels import display_field_label
 from web.routes.domains.scheduler import scheduler_config as scheduler_config_route
 from web.routes.domains.scheduler.scheduler_user_messages import scheduler_user_visible_app_error_message
 from web.viewmodels.scheduler_run_view_result import build_run_schedule_view_result
@@ -149,6 +150,36 @@ def test_schedule_params_validation_message_uses_chinese_field_label() -> None:
     message = str(exc_info.value)
     assert "派工方式" in message, message
     assert "dispatch_mode" not in message, message
+
+
+def test_execution_feedback_fields_have_user_visible_labels() -> None:
+    expected = {
+        "created_by": "反馈人",
+        "reason_code": "原因",
+        "severity": "严重程度",
+        "impact_minutes": "预计影响时间",
+        "expected_state_revision": "页面状态",
+        "event_time": "反馈时间",
+        "idempotency_key": "重复提交标记",
+        "quantity_done": "完成数量",
+        "quantity_scrapped": "报废数量",
+        "affected_machine_id": "影响设备",
+        "affected_operator_id": "影响人员",
+        "handling_status": "处理状态",
+        "suggest_reschedule": "是否建议重新排程",
+        "remark": "情况说明",
+        "requested_plan_role": "当前方案",
+        "effective_plan_role": "实际使用的方案",
+        "schedule_id": "排程记录",
+        "schedule_version": "排程版本",
+        "source_table": "计划来源",
+        "scenario_id": "模拟预览",
+        "op_id": "工序编号",
+        "plan_role": "方案",
+    }
+
+    for field, label in expected.items():
+        assert display_field_label(field) == label
 
 
 def test_scheduler_version_validation_message_is_user_facing_chinese(tmp_path, monkeypatch) -> None:
@@ -666,6 +697,8 @@ def test_schedule_summary_raw_internal_error_is_not_saved_in_public_errors() -> 
     records = build_public_error_records(
         [
             "工时不合法：工序 OP001 工时字段不合法：setup_hours='abc'",
+            "工时不合法：工序 OP SPACE 001",
+            "工时不合法：工序 OP SPACE 002 工时字段不合法：setup_hours='abc'",
             "工时不合法：工序 OP002 Traceback sqlite database password leaked /Users/private/aps.db",
             "外协周期不合法：工序 OP003 ext_days='bad'",
         ]
@@ -674,6 +707,8 @@ def test_schedule_summary_raw_internal_error_is_not_saved_in_public_errors() -> 
     messages = [item["message"] for item in records]
     assert messages == [
         "工时不合法：工序 OP001",
+        "工时不合法：工序 OP SPACE 001",
+        "工时不合法：工序 OP SPACE 002",
         "排产执行遇到问题，请联系管理员查看日志。",
         "外协周期不合法：工序 OP003",
     ]
@@ -682,24 +717,75 @@ def test_schedule_summary_raw_internal_error_is_not_saved_in_public_errors() -> 
     assert "/Users/private" not in str(records)
 
 
+def test_sgs_auto_assign_errors_keep_public_details() -> None:
+    from core.models.scheduler_public_errors import build_public_error_records
+
+    records = build_public_error_records(
+        [
+            "批次 B-1 的工序 OP-10（顺序 1，工种 数车，图号 P-1，零件 测试件）缺少自动派工所需工种信息，请补齐工种或固定设备后再排产。",
+            "批次 B-1 的工序 OP-11（顺序 2，工种 数车，图号 P-1，零件 测试件）自动派工资料不完整，请检查设备工种和人员可操作设备后再排产。",
+            "批次 B-1 的工序 OP-12（顺序 3，工种 数车，图号 P-1，零件 测试件）工时不合法，请修正工时后再排产。",
+            "批次 B-1 的工序 OP-13（顺序 4，工种 数车，图号 P-1，零件 测试件）没有找到可用的自动分配设备和人员组合，请检查设备工种、人员可操作设备和资源可用时间后再排产。",
+        ]
+    )
+
+    assert [item["code"] for item in records] == [
+        "auto_assign_inputs_missing",
+        "auto_assign_resource_pool_incomplete",
+        "invalid_internal_work_hours",
+        "auto_assign_no_resource_combination",
+    ]
+    assert "联系管理员" not in str(records)
+    assert all(str(item["message"]).startswith("批次 B-1 的工序 OP-") for item in records)
+
+
+def test_sgs_missing_resource_error_keeps_public_details() -> None:
+    from core.models.scheduler_public_errors import build_public_error_records
+
+    message = "批次 B-1 的工序 OP-10（顺序 1，工种 数车，图号 P-1，零件 测试件，件号 Piece-1）缺少设备、人员，请到批次详情补齐后再排产。"
+    dirty_message = "批次 B-1 的工序 OP-11（顺序 2，工种 数车，图号 P-1，零件 Traceback /tmp/private.db）缺少设备，请到批次详情补齐后再排产。"
+
+    records = build_public_error_records([message, dirty_message])
+
+    assert records[0]["code"] == "missing_internal_resource"
+    assert records[0]["message"] == message
+    assert records[1]["message"] == "排产执行遇到问题，请联系管理员查看日志。"
+    assert "Traceback" not in str(records)
+    assert "/tmp/private.db" not in str(records)
+
+
+def test_sgs_auto_assign_public_code_uses_error_suffix_not_context_keywords() -> None:
+    from core.models.scheduler_public_errors import build_public_error_records
+
+    records = build_public_error_records(
+        [
+            "批次 B-1 的工序 OP-12（顺序 3，工种 自动派工资料不完整，图号 P-1，零件 测试件）工时不合法，请修正工时后再排产。",
+        ]
+    )
+
+    assert [item["code"] for item in records] == ["invalid_internal_work_hours"]
+
+
 def test_summary_display_keeps_known_scheduler_errors_actionable() -> None:
     display = build_summary_display_state(
         {
             "errors_sample": [
                 "自制工序未补全设备或人员，无法排产：工序 UX-0510-E01_05",
+                "自动派工资料不完整，本次无法自动补齐设备和人员：工序 UX-0510-E01_06",
+                "自动派工没有找到可用的设备和人员组合：工序 UX-0510-E01_07。请检查设备工种、人员可操作设备和资源可用时间后再排产。",
                 "排产窗口截止到 2026-05-12：自制工序 OP-10（批次 B-1）预计完工 2026-05-13 10:00 超出窗口",
                 "工序 OP001 排产异常：database password leaked",
             ],
-            "error_count": 3,
-            "counts": {"op_count": 3, "scheduled_ops": 1, "failed_ops": 2},
+            "error_count": 5,
+            "counts": {"op_count": 5, "scheduled_ops": 1, "failed_ops": 4},
         },
         result_status="partial",
     )
 
     assert display["errors_preview"] == [
         "自制工序未补全设备或人员，无法排产：工序 UX-0510-E01_05",
-        "排产窗口截止到 2026-05-12：自制工序 OP-10（批次 B-1）预计完工 2026-05-13 10:00 超出窗口",
-        "排产执行遇到问题，请联系管理员查看日志。",
+        "自动派工资料不完整，本次无法自动补齐设备和人员：工序 UX-0510-E01_06",
+        "自动派工没有找到可用的设备和人员组合：工序 UX-0510-E01_07。请检查设备工种、人员可操作设备和资源可用时间后再排产。",
     ]
     assert "password leaked" not in str(display["errors_preview"])
 

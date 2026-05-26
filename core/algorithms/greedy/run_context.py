@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
 from .algo_stats import ensure_algo_stats, increment_counter
-from .auto_assign import auto_assign_internal_resources
+from .auto_assign import auto_assign_attempt_from_result, auto_assign_internal_resources_attempt
 from .external_groups import schedule_external
 from .internal_operation import schedule_internal_operation
 from .internal_slot import validate_internal_hours_for_mode
@@ -18,6 +18,7 @@ class ScheduleRunContext:
     external_callback: Optional[Callable[..., Any]] = None
     internal_callback: Optional[Callable[..., Any]] = None
     auto_assign_callback: Optional[Callable[..., Any]] = None
+    auto_assign_attempt_callback: Optional[Callable[..., Any]] = None
 
     @classmethod
     def from_legacy_scheduler(cls, scheduler: Any) -> ScheduleRunContext:
@@ -29,6 +30,7 @@ class ScheduleRunContext:
             external_callback=getattr(scheduler, "_schedule_external", None),
             internal_callback=getattr(scheduler, "_schedule_internal", None),
             auto_assign_callback=getattr(scheduler, "_auto_assign_internal_resources", None),
+            auto_assign_attempt_callback=getattr(scheduler, "_auto_assign_internal_resources_attempt", None),
         )
 
     def increment(self, key: str, amount: int = 1, *, bucket: str = "fallback_counts") -> None:
@@ -54,7 +56,7 @@ class ScheduleRunContext:
             return self.internal_callback(*args, **call_kwargs)
         call_kwargs.setdefault("calendar", self.calendar)
         call_kwargs.setdefault("algo_stats", self.algo_stats)
-        call_kwargs.setdefault("auto_assign_resources", self.auto_assign_internal_resources)
+        call_kwargs.setdefault("auto_assign_resources", self.auto_assign_internal_resources_attempt)
         call_kwargs["strict_mode"] = strict_mode
         return schedule_internal_operation(
             *args,
@@ -64,10 +66,20 @@ class ScheduleRunContext:
     def auto_assign_internal_resources(self, *args: Any, **kwargs: Any):
         if callable(self.auto_assign_callback):
             return self.auto_assign_callback(*args, **kwargs)
+        attempt = self.auto_assign_internal_resources_attempt(*args, **kwargs)
+        if attempt.machine_id and attempt.operator_id:
+            return attempt.machine_id, attempt.operator_id
+        return None
+
+    def auto_assign_internal_resources_attempt(self, *args: Any, **kwargs: Any):
+        if callable(self.auto_assign_attempt_callback):
+            return auto_assign_attempt_from_result(self.auto_assign_attempt_callback(*args, **kwargs))
+        if callable(self.auto_assign_callback):
+            return auto_assign_attempt_from_result(self.auto_assign_callback(*args, **kwargs))
         call_kwargs = dict(kwargs)
         call_kwargs.setdefault("calendar", self.calendar)
         call_kwargs.setdefault("algo_stats", self.algo_stats)
-        return auto_assign_internal_resources(*args, **call_kwargs)
+        return auto_assign_internal_resources_attempt(*args, **call_kwargs)
 
 
 def ensure_run_context(candidate: Any) -> ScheduleRunContext:

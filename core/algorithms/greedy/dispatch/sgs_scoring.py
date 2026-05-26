@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple
 
 from core.algorithms.dispatch_rules import DispatchInputs, DispatchRule, build_dispatch_key
 from core.algorithms.value_domains import MERGED
 from core.infrastructure.errors import ValidationError
 from core.shared.strict_parse import is_blank_input, parse_optional_date, parse_required_float, parse_required_int
 
+from ..auto_assign import auto_assign_attempt_from_result
 from ..date_parsers import parse_date
 from ..internal_slot import (
     estimate_internal_slot,
@@ -15,6 +16,19 @@ from ..internal_slot import (
     validate_internal_hours_for_mode,
 )
 from ..run_state import ScheduleRunState
+from .resource_validation import (
+    RESOURCE_REASON_AUTO_ASSIGN_UNAVAILABLE,
+    RESOURCE_REASON_FIXED,
+    RESOURCE_REASON_MANUAL_MISSING,
+    internal_resource_validation_message,
+)
+
+
+class _ScoringResources(NamedTuple):
+    machine_id: str
+    operator_id: str
+    reason: str
+    auto_assign_reason: str
 
 
 def _parse_due_date(value: Any, *, strict_mode: bool = False) -> Optional[date]:
@@ -151,7 +165,7 @@ def _score_internal_candidate(
         total_hours_by_op_id=total_hours_by_op_id,
         op_id=int(meta["op_id"]),
     )
-    machine_id, operator_id = _scoring_resources(
+    resources = _scoring_resources(
         ctx,
         state=state,
         op=op,
@@ -161,9 +175,30 @@ def _score_internal_candidate(
         auto_assign_enabled=auto_assign_enabled,
         resource_pool=resource_pool,
     )
-    if not machine_id or not operator_id:
-        raise ValidationError(f"智能派工计算时发现自制工序缺少设备或人员：工序编号={meta['op_id']!r}", field="resource")
-    estimate = _estimate_scoring_slot(ctx, state, op, batch, meta, machine_id, operator_id, end_dt_exclusive, machine_downtimes, total_hours, estimate_slot=estimate_slot)
+    if not resources.machine_id or not resources.operator_id:
+        message, details = internal_resource_validation_message(
+            batch=batch,
+            op=op,
+            meta=meta,
+            machine_id=resources.machine_id,
+            operator_id=resources.operator_id,
+            reason=resources.reason,
+            auto_assign_reason=resources.auto_assign_reason,
+        )
+        raise ValidationError(message, field="resource", details=details)
+    estimate = _estimate_scoring_slot(
+        ctx,
+        state,
+        op,
+        batch,
+        meta,
+        resources.machine_id,
+        resources.operator_id,
+        end_dt_exclusive,
+        machine_downtimes,
+        total_hours,
+        estimate_slot=estimate_slot,
+    )
     return _dispatch_key(
         dispatch_key_builder=dispatch_key_builder,
         dispatch_rule=dispatch_rule,
@@ -261,33 +296,56 @@ def _scoring_resources(
     machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
     auto_assign_enabled: bool,
     resource_pool: Optional[Dict[str, Any]],
-) -> Tuple[str, str]:
+) -> _ScoringResources:
     machine_id = str(getattr(op, "machine_id", None) or "").strip()
     operator_id = str(getattr(op, "operator_id", None) or "").strip()
     if machine_id and operator_id:
-        return machine_id, operator_id
+        return _ScoringResources(machine_id, operator_id, RESOURCE_REASON_FIXED, "")
     if not auto_assign_enabled or resource_pool is None:
-        return "", ""
-    chosen = ctx.auto_assign_internal_resources(
+        return _ScoringResources("", "", RESOURCE_REASON_MANUAL_MISSING, "")
+    attempt = _auto_assign_attempt_for_scoring(
+        ctx,
+        state=state,
         op=op,
         batch=batch,
-        batch_progress=state.batch_progress,
-        machine_timeline=state.machine_timeline,
-        operator_timeline=state.operator_timeline,
-        base_time=state.base_time,
         end_dt_exclusive=end_dt_exclusive,
         machine_downtimes=machine_downtimes,
-        resource_pool=(resource_pool if isinstance(resource_pool, dict) else {}),
-        last_op_type_by_machine=state.last_op_type_by_machine,
-        machine_busy_hours=state.machine_busy_hours,
-        operator_busy_hours=state.operator_busy_hours,
-        probe_only=True,
+        resource_pool=resource_pool,
     )
-    if chosen is None:
-        return "", ""
-    if not isinstance(chosen, (list, tuple)) or len(chosen) < 2:
-        raise TypeError("auto_assign probe result is not a pair")
-    return str(chosen[0] or "").strip(), str(chosen[1] or "").strip()
+    if not attempt.machine_id or not attempt.operator_id:
+        return _ScoringResources("", "", RESOURCE_REASON_AUTO_ASSIGN_UNAVAILABLE, attempt.reason)
+    return _ScoringResources(attempt.machine_id, attempt.operator_id, RESOURCE_REASON_FIXED, "")
+
+
+def _auto_assign_attempt_for_scoring(
+    ctx: Any,
+    *,
+    state: ScheduleRunState,
+    op: Any,
+    batch: Any,
+    end_dt_exclusive: Optional[datetime],
+    machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
+    resource_pool: Optional[Dict[str, Any]],
+):
+    kwargs = {
+        "op": op,
+        "batch": batch,
+        "batch_progress": state.batch_progress,
+        "machine_timeline": state.machine_timeline,
+        "operator_timeline": state.operator_timeline,
+        "base_time": state.base_time,
+        "end_dt_exclusive": end_dt_exclusive,
+        "machine_downtimes": machine_downtimes,
+        "resource_pool": (resource_pool if isinstance(resource_pool, dict) else {}),
+        "last_op_type_by_machine": state.last_op_type_by_machine,
+        "machine_busy_hours": state.machine_busy_hours,
+        "operator_busy_hours": state.operator_busy_hours,
+        "probe_only": True,
+    }
+    callback = getattr(ctx, "auto_assign_internal_resources_attempt", None)
+    if callable(callback):
+        return auto_assign_attempt_from_result(callback(**kwargs))
+    return auto_assign_attempt_from_result(ctx.auto_assign_internal_resources(**kwargs))
 
 
 def _estimate_scoring_slot(

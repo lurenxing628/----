@@ -7,7 +7,9 @@ from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Dict
+
+import pytest
 
 from core.algorithms.evaluation import ScheduleMetrics
 from core.infrastructure.database import ensure_schema, get_connection
@@ -173,7 +175,7 @@ def _prepare_db(tmp_path, monkeypatch) -> Path:
     return test_db
 
 
-def _persist_summary_roundtrip(test_db: Path) -> dict[str, Any]:
+def _persist_summary_roundtrip(test_db: Path) -> Dict[str, Any]:
     conn = get_connection(str(test_db))
     try:
         op_id = _seed_minimal_scheduler_rows(conn)
@@ -403,6 +405,133 @@ def test_missing_resource_filter_respects_empty_validated_scheduled_ids() -> Non
 
     _overdue, _result_status, result_summary_obj, _result_summary_json, _time_cost_ms = build_result_summary(svc, ctx=ctx)
 
+    assert result_summary_obj["missing_internal_resource_count"] == 1
+    assert {item["op_id"] for item in result_summary_obj["missing_internal_resource_ops"]} == {101}
+
+
+@pytest.mark.parametrize(
+    "error_message",
+    [
+        "自制工序缺少自动派工所需工种信息，无法自动分配：工序 OP-B001-001",
+        "自动派工资料不完整，本次无法自动补齐设备和人员：工序 OP-B001-001",
+        "自动派工没有找到可用的设备和人员组合：工序 OP-B001-001。请检查设备工种、人员可操作设备和资源可用时间后再排产。",
+        "工时不合法：工序 OP-B001-001",
+    ],
+)
+def test_auto_assign_failure_does_not_render_as_missing_resource_panel(error_message: str) -> None:
+    _cfg_obj, _batch, _raw_result_101, _summary, ctx = _build_summary_for_op(op_id=101)
+    missing_op_101 = SimpleNamespace(
+        id=101,
+        batch_id="B001",
+        seq=1,
+        op_code="OP-B001-001",
+        op_type_name="车削",
+        machine_id="",
+        operator_id="",
+    )
+    summary = SimpleNamespace(
+        success=False,
+        total_ops=1,
+        scheduled_ops=0,
+        failed_ops=1,
+        warnings=[],
+        errors=[error_message],
+    )
+    ctx = replace(
+        ctx,
+        operations=[missing_op_101],
+        results=[],
+        summary=summary,
+        missing_internal_resource_op_ids={101},
+        scheduled_op_ids=set(),
+    )
+    svc = SimpleNamespace(
+        _format_dt=lambda value: value.strftime("%Y-%m-%d %H:%M:%S"),
+        _normalize_text=lambda value: str(value).strip() if value else None,
+    )
+
+    _overdue, _result_status, result_summary_obj, _result_summary_json, _time_cost_ms = build_result_summary(svc, ctx=ctx)
+
+    assert result_summary_obj["errors"] == [error_message]
+    assert result_summary_obj["missing_internal_resource_count"] == 0
+    assert result_summary_obj["missing_internal_resource_ops"] == []
+
+
+def test_auto_assign_failure_filter_matches_full_op_code_with_spaces() -> None:
+    _cfg_obj, _batch, _raw_result_101, _summary, ctx = _build_summary_for_op(op_id=101)
+    op = SimpleNamespace(
+        id=101,
+        batch_id="B001",
+        seq=1,
+        op_code="OP SPACE 001",
+        op_type_name="车削",
+        machine_id="",
+        operator_id="",
+    )
+    summary = SimpleNamespace(
+        success=False,
+        total_ops=1,
+        scheduled_ops=0,
+        failed_ops=1,
+        warnings=[],
+        errors=["工时不合法：工序 OP SPACE 001"],
+    )
+    ctx = replace(
+        ctx,
+        operations=[op],
+        results=[],
+        summary=summary,
+        missing_internal_resource_op_ids={101},
+        scheduled_op_ids=set(),
+    )
+    svc = SimpleNamespace(
+        _format_dt=lambda value: value.strftime("%Y-%m-%d %H:%M:%S"),
+        _normalize_text=lambda value: str(value).strip() if value else None,
+    )
+
+    _overdue, _result_status, result_summary_obj, _result_summary_json, _time_cost_ms = build_result_summary(svc, ctx=ctx)
+
+    assert result_summary_obj["errors"] == ["工时不合法：工序 OP SPACE 001"]
+    assert result_summary_obj["missing_internal_resource_count"] == 0
+    assert result_summary_obj["missing_internal_resource_ops"] == []
+
+
+def test_invalid_hours_detail_does_not_get_deducted_as_auto_assign_failure() -> None:
+    _cfg_obj, _batch, _raw_result_101, _summary, ctx = _build_summary_for_op(op_id=101)
+    op = SimpleNamespace(
+        id=101,
+        batch_id="B001",
+        seq=1,
+        op_code="OP10",
+        op_type_name="车削",
+        machine_id="",
+        operator_id="",
+    )
+    error_message = "工时不合法：工序 OP10 工时字段不合法：setup_hours='abc'"
+    summary = SimpleNamespace(
+        success=False,
+        total_ops=1,
+        scheduled_ops=0,
+        failed_ops=1,
+        warnings=[],
+        errors=[error_message],
+    )
+    ctx = replace(
+        ctx,
+        operations=[op],
+        results=[],
+        summary=summary,
+        missing_internal_resource_op_ids={101},
+        scheduled_op_ids=set(),
+    )
+    svc = SimpleNamespace(
+        _format_dt=lambda value: value.strftime("%Y-%m-%d %H:%M:%S"),
+        _normalize_text=lambda value: str(value).strip() if value else None,
+    )
+
+    _overdue, _result_status, result_summary_obj, _result_summary_json, _time_cost_ms = build_result_summary(svc, ctx=ctx)
+
+    assert result_summary_obj["errors"] == ["工时不合法：工序 OP10"]
     assert result_summary_obj["missing_internal_resource_count"] == 1
     assert {item["op_id"] for item in result_summary_obj["missing_internal_resource_ops"]} == {101}
 

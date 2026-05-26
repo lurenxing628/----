@@ -124,3 +124,27 @@ def test_schedule_input_builder_does_not_fallback_to_legacy_private_lookup() -> 
 
     with pytest.raises(AttributeError):
         build_algo_operations(_LegacyOnlySvc(), [external])
+
+
+def test_schedule_input_builder_preserves_piece_id_for_user_visible_context() -> None:
+    svc = _StubSvc()
+    internal = SimpleNamespace(
+        id=5,
+        op_code="OP_INT_03",
+        batch_id="B001",
+        piece_id="B001-件1",
+        seq=30,
+        op_type_id="OT01",
+        op_type_name="车削",
+        source="internal",
+        machine_id="M001",
+        operator_id="O001",
+        supplier_id=None,
+        setup_hours=0.0,
+        unit_hours=0.5,
+        ext_days=None,
+    )
+
+    outcome = build_algo_operations(svc, [internal], return_outcome=True)
+
+    assert outcome.value[0].piece_id == "B001-件1"

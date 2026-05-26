@@ -7,6 +7,8 @@ from core.models import BatchOperation
 from core.models.enums import BatchOperationStatus, MachineStatus, MergeMode, OperatorStatus, SupplierStatus
 from core.services.common.strict_parse import parse_required_float
 
+_OPERATION_NOT_FOUND_MESSAGE = "这道工序不存在或已被删除，请刷新批次详情后重试。"
+
 
 def list_batch_operations(svc, batch_id: Any) -> List[BatchOperation]:
     bid = svc._normalize_text(batch_id)
@@ -20,7 +22,7 @@ def get_operation(svc, op_id: Any) -> BatchOperation:
     try:
         oid = int(op_id)
     except Exception as e:
-        raise ValidationError("工序ID 不合法", field="op_id") from e
+        raise ValidationError("工序编号不正确，请刷新批次详情后重试。", field="op_id") from e
     return svc._get_op_or_raise(oid)
 
 
@@ -66,7 +68,7 @@ def _normalize_batch_op_status(svc, value: Any) -> Optional[str]:
 
 def _ensure_internal_operation_editable(op: BatchOperation, *, op_id: Any) -> None:
     if op.id is None:
-        raise BusinessError(ErrorCode.NOT_FOUND, f"批次工序（ID={op_id}）不存在")
+        raise BusinessError(ErrorCode.NOT_FOUND, _OPERATION_NOT_FOUND_MESSAGE)
     if not op.is_internal():
         raise ValidationError("只能编辑内部工序的设备/人员/工时信息", field="source")
 
@@ -130,7 +132,7 @@ def update_internal_operation(
     op = get_operation(svc, op_id)
     _ensure_internal_operation_editable(op, op_id=op_id)
     if op.id is None:
-        raise BusinessError(ErrorCode.NOT_FOUND, f"批次工序（ID={op_id}）不存在")
+        raise BusinessError(ErrorCode.NOT_FOUND, _OPERATION_NOT_FOUND_MESSAGE)
 
     op_id_int = int(op.id)
 
@@ -180,7 +182,7 @@ def update_external_operation(
     """
     op = get_operation(svc, op_id)
     if op.id is None:
-        raise BusinessError(ErrorCode.NOT_FOUND, f"批次工序（ID={op_id}）不存在")
+        raise BusinessError(ErrorCode.NOT_FOUND, _OPERATION_NOT_FOUND_MESSAGE)
     op_id_int = int(op.id)
     if not op.is_external():
         raise ValidationError("只能编辑外协工序的供应商/周期信息", field="source")

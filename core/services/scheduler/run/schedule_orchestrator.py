@@ -263,6 +263,7 @@ def orchestrate_schedule_run(
         allowed_op_ids=set(schedule_input.reschedulable_op_ids),
         operations=list(schedule_input.reschedulable_operations or []),
         missing_internal_resource_op_ids=set(schedule_input.missing_internal_resource_op_ids or set()),
+        schedule_errors=list(getattr(optimizer_outcome.summary, "errors", None) or []),
     )
 
     warning_merge_status = _merge_summary_warnings(

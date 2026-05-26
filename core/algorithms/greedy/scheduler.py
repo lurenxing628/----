@@ -33,7 +33,7 @@ from core.infrastructure.errors import ValidationError
 from ..sort_strategies import SortStrategy, StrategyFactory
 from ..types import ScheduleResult, ScheduleSummary
 from .algo_stats import ensure_algo_stats, increment_counter, make_algo_stats
-from .auto_assign import auto_assign_internal_resources
+from .auto_assign import auto_assign_internal_resources, auto_assign_internal_resources_attempt
 from .dispatch import dispatch_batch_order, dispatch_sgs
 from .downtime import occupy_resource
 from .external_groups import schedule_external
@@ -200,7 +200,7 @@ class GreedyScheduler:
         return schedule_internal_operation(
             calendar=self.calendar,
             algo_stats=self._last_algo_stats,
-            auto_assign_resources=self._auto_assign_internal_resources,
+            auto_assign_resources=self._auto_assign_internal_resources_attempt,
             op=op,
             batch=batch,
             batch_progress=batch_progress,
@@ -236,6 +236,41 @@ class GreedyScheduler:
         probe_only: bool = False,
     ) -> Optional[Tuple[str, str]]:
         return auto_assign_internal_resources(
+            calendar=self.calendar,
+            algo_stats=self._last_algo_stats,
+            op=op,
+            batch=batch,
+            batch_progress=batch_progress,
+            machine_timeline=machine_timeline,
+            operator_timeline=operator_timeline,
+            base_time=base_time,
+            end_dt_exclusive=end_dt_exclusive,
+            machine_downtimes=machine_downtimes,
+            resource_pool=resource_pool,
+            last_op_type_by_machine=last_op_type_by_machine,
+            machine_busy_hours=machine_busy_hours,
+            operator_busy_hours=operator_busy_hours,
+            probe_only=probe_only,
+        )
+
+    def _auto_assign_internal_resources_attempt(
+        self,
+        *,
+        op: Any,
+        batch: Any,
+        batch_progress: Dict[str, datetime],
+        machine_timeline: Dict[str, List[Tuple[datetime, datetime]]],
+        operator_timeline: Dict[str, List[Tuple[datetime, datetime]]],
+        base_time: datetime,
+        end_dt_exclusive: Optional[datetime],
+        machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
+        resource_pool: Dict[str, Any],
+        last_op_type_by_machine: Dict[str, str],
+        machine_busy_hours: Dict[str, float],
+        operator_busy_hours: Dict[str, float],
+        probe_only: bool = False,
+    ):
+        return auto_assign_internal_resources_attempt(
             calendar=self.calendar,
             algo_stats=self._last_algo_stats,
             op=op,

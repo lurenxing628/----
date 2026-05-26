@@ -241,6 +241,7 @@ def build_validated_schedule_payload(
     allowed_op_ids: Optional[Set[int]] = None,
     operations: Optional[List[Any]] = None,
     missing_internal_resource_op_ids: Optional[Set[int]] = None,
+    schedule_errors: Optional[List[str]] = None,
 ) -> ValidatedSchedulePayload:
     schedule_rows: List[ValidatedScheduleRow] = []
     scheduled_op_ids: Set[int] = set()
@@ -248,6 +249,7 @@ def build_validated_schedule_payload(
     out_of_scope_op_ids: List[int] = []
     validation_errors: List[str] = []
     duplicate_op_ids: List[int] = []
+    no_actionable_errors = list(schedule_errors or [])
     op_source_by_id, operation_source_errors = _operation_sources(operations)
     validation_errors.extend(operation_source_errors)
 
@@ -284,7 +286,7 @@ def build_validated_schedule_payload(
         _raise_invalid_schedule_rows_error(validation_errors)
     if not schedule_rows:
         raise_no_actionable_schedule_error(
-            validation_errors,
+            list(validation_errors) + no_actionable_errors,
             operations=operations,
             missing_internal_resource_op_ids=missing_internal_resource_op_ids,
         )
