@@ -69,7 +69,7 @@
       `<div class="subtitle">超期：${meta.is_overdue ? "是" : "否"}</div>`,
     ];
     if (criticalInfo.isCritical && ccFromText !== "-") {
-      lines.push(`<div class="subtitle">前面影响它的工序编号：${ccFromText}</div>`);
+      lines.push(`<div class="subtitle">前面影响它的工序：${ccFromText}</div>`);
     }
     if (criticalInfo.isCritical && ccReasonText !== "-") {
       lines.push(`<div class="subtitle">为什么影响总工期：${ccReasonText}</div>`);

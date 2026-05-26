@@ -32,12 +32,23 @@ from ._sched_display_utils import (
 )
 from .gantt_tasks import _attach_process_dependencies, _sort_tasks
 from .resource_dispatch_range import DispatchRange
+from .resource_dispatch_task_ids import public_task_id as _public_task_id
+from .resource_dispatch_task_ids import row_identity as _row_identity
 
 _BAD_TIME_ROW_MESSAGE = "存在开始或结束时间写法不对的排班行，已跳过。"
 
 
 def _text(value: Any) -> str:
     return str(value or "").strip()
+
+
+def _operation_title(row: Mapping[str, Any]) -> str:
+    op_code = _text(row.get("op_code"))
+    if op_code:
+        return op_code
+    batch_id = _text(row.get("batch_id"))
+    seq = _text(row.get("seq"))
+    return " ".join(part for part in (batch_id, f"工序{seq}" if seq else "工序") if part)
 
 
 def _current_resource(scope_type: str, row: Mapping[str, Any]) -> Dict[str, str]:
@@ -149,9 +160,10 @@ def normalize_dispatch_row(
     current = _current_resource(scope_type, row)
     counterpart = _counterpart_resource(scope_type, row)
     batch_id = _text(row.get("batch_id"))
-    task_code = _text(row.get("op_code")) or (f"op_{row.get('op_id')}" if row.get("op_id") is not None else "")
+    task_code = _text(row.get("op_code"))
     is_cross_team = bool(current["team_id"] and counterpart["team_id"] and current["team_id"] != counterpart["team_id"])
     normalized = {
+        "_row_identity": _row_identity(row),
         "schedule_id": row.get("schedule_id"),
         "op_id": row.get("op_id"),
         "op_code": task_code,
@@ -217,7 +229,7 @@ def build_dispatch_detail_rows(
         collector.extend(item.events)
         if item.value is not None:
             out.append(item.value)
-    out.sort(key=lambda item: (str(item.get("start_time") or ""), str(item.get("schedule_id") or "")))
+    out.sort(key=lambda item: (str(item.get("start_time") or ""), str(item.get("_row_identity") or "")))
     empty_reason = None
     if not out and collector.to_counters().get("bad_time_row_skipped", 0) > 0:
         empty_reason = _BAD_TIME_EMPTY_REASON
@@ -247,9 +259,7 @@ def _normalized_row_in_range(
 
 
 def _task_id(normalized: Dict[str, Any]) -> str:
-    if normalized.get("schedule_id") is not None:
-        return f"schedule_{normalized['schedule_id']}"
-    return normalized.get("op_code") or f"op_{normalized.get('op_id')}"
+    return _public_task_id(normalized)
 
 
 def _task_classes(normalized: Dict[str, Any]) -> List[str]:
@@ -275,10 +285,9 @@ def _build_dispatch_task(normalized: Dict[str, Any], scope_id: str, start_dt: da
     meta["group_key"] = _task_group_key(normalized, scope_id)
     meta["visible_start"] = _fmt_dt(start_dt)
     meta["visible_end"] = _fmt_dt(end_dt)
-    name = str(normalized.get("op_code") or task_id).strip()
+    name = _operation_title(normalized)
     return {
         "id": task_id,
-        "schedule_id": normalized.get("schedule_id"),
         "name": name,
         "start": _fmt_dt(start_dt),
         "end": _fmt_dt(end_dt),
@@ -318,7 +327,7 @@ def build_dispatch_tasks(
 
 def _calendar_item_text(item: Dict[str, Any], start_dt: datetime, end_dt: datetime) -> str:
     parts = [_fmt_day_segment(start_dt, end_dt)]
-    title = _text(item.get("op_code")) or _text(item.get("batch_id"))
+    title = _operation_title(item)
     if title:
         parts.append(title)
     if item.get("part_no"):
@@ -384,6 +393,7 @@ def _append_calendar_segments(group_item: Dict[str, Any], normalized: Dict[str, 
                 "text": _calendar_item_text(normalized, part_start, part_end),
                 "batch_id": normalized.get("batch_id"),
                 "op_code": normalized.get("op_code"),
+                "seq": normalized.get("seq"),
                 "part_no": normalized.get("part_no"),
                 "scope_type": normalized.get("scope_type"),
                 "counterpart_resource_id": normalized.get("counterpart_resource_id"),

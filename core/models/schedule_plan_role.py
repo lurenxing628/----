@@ -12,9 +12,9 @@ SOURCE_CANDIDATE_ROWS = "candidate_rows"
 SOURCE_ADJUSTMENT_SCENARIO_ROWS = "adjustment_scenario_rows"
 
 PLAN_ROLE_LABELS = {
-    ROLE_ADOPTED: "最终采用",
-    ROLE_BASELINE_BEST: "原算法最好",
-    ROLE_CRITICAL_BEST: "重点工序优先方案最好",
+    ROLE_ADOPTED: "正式采用方案",
+    ROLE_BASELINE_BEST: "原算法代表方案",
+    ROLE_CRITICAL_BEST: "重点工序优先代表方案",
 }
 
 
@@ -25,6 +25,27 @@ def _normalize_role(role: Optional[str]) -> str:
 
 def is_comparison_source(source_table: Optional[str]) -> bool:
     return str(source_table or "").strip() in (SOURCE_CANDIDATE_ROWS, SOURCE_ADJUSTMENT_SCENARIO_ROWS)
+
+
+def is_comparison_role(role: Optional[str]) -> bool:
+    return str(role or "").strip() in (ROLE_BASELINE_BEST, ROLE_CRITICAL_BEST)
+
+
+def is_comparison_plan(
+    *,
+    requested_role: Optional[str] = None,
+    selected_role: Optional[str] = None,
+    role: Optional[str] = None,
+    source_table: Optional[str] = None,
+    is_scenario_preview: bool = False,
+) -> bool:
+    if bool(is_scenario_preview):
+        return True
+    return (
+        is_comparison_role(requested_role or role)
+        or is_comparison_role(selected_role)
+        or is_comparison_source(source_table)
+    )
 
 
 def plan_role_label(role: Optional[str]) -> str:
@@ -39,6 +60,12 @@ def plan_candidate_label(label: Optional[str], *, role: Optional[str] = None, ca
         return (
             text.replace("关键链候选", "重点工序优先方案")
             .replace("原算法候选", "原算法方案")
+            .replace("重点工序优先方案最好", "重点工序优先代表方案")
+            .replace("重点工序优先最好", "重点工序优先代表方案")
+            .replace("关键链最好", "重点工序优先代表方案")
+            .replace("原算法最好", "原算法代表方案")
+            .replace("最终采用方案", "正式采用方案")
+            .replace("最终采用", "正式采用方案")
         )
     if key == "baseline":
         return "原算法方案"
@@ -58,6 +85,8 @@ __all__ = [
     "SOURCE_ADJUSTMENT_SCENARIO_ROWS",
     "SOURCE_SCHEDULE",
     "VALID_PLAN_ROLES",
+    "is_comparison_plan",
+    "is_comparison_role",
     "is_comparison_source",
     "plan_candidate_label",
     "plan_role_label",

@@ -56,7 +56,7 @@
 | 需修正项 | 当前正确口径 | 不要再这样写 | 证据位置 |
 |---|---|---|---|
 | 人员状态推荐值 | 新模板推荐只写 `在岗 / 停用`；`休假 / 离岗` 只是旧写法兼容 | “模板下拉优先选：在岗 / 停用 / 休假” | `core/services/common/excel_template_defaults.py`、`tests/regression_excel_template_contracts.py` |
-| 备份文件命名 | 备份文件名由系统生成，形如 `aps_backup_时间_manual.db` 或恢复前带 `before_restore` | “建议用户按日期和用途命名” | `core/infrastructure/backup.py`、`web/routes/system_backup.py` |
+| 备份文件命名 | 备份文件名由系统生成，用户说明只讲“生成时间”和“备份用途”，不要直接教普通用户看英文后缀 | “建议用户按日期和用途命名”，或在用户说明里直接写 `manual`、`before_restore` | `core/infrastructure/backup.py`、`web/routes/system_backup.py` |
 | 停机时间修改 | 设备详情能新增和取消停机；没有直接编辑时间入口，填错应取消后重建 | “缩短停机 / 延长停机” | `templates/equipment/detail.html`、`web/routes/equipment_downtimes.py` |
 | 保存补齐资源 | `auto_assign_persist` 是隐藏配置；用户最多看到中文摘要“保存补齐资源”，不是可编辑开关 | “去高级设置打开/关闭 auto_assign_persist” | `core/services/scheduler/config/config_field_spec.py`、`templates/scheduler/config.html` |
 | 历史页查询 | 历史页按版本和最近记录条数筛选；不是关键词全文搜索 | “搜索历史版本”导致用户以为有关键词搜索框 | `templates/system/history.html`、`web/viewmodels/page_manuals_system.py` |
@@ -120,8 +120,8 @@
 | 人员专属工作日历 | 工号、日期、类型、班次开始、班次结束、可用工时、效率、允许普通件、允许急件、说明 | 类型推荐 `工作日 / 假期` |
 | 设备信息 | 设备编号、设备名称、工种、班组、状态 | 没有“设备类别”和“备注”列 |
 | 设备人员关联 | 设备编号、工号、技能等级、主操设备 | 和人员设备关联方向不同，别混用 |
-| 工种配置 | 工种ID、工种名称、归属 | 归属推荐 `自制 / 外协` |
-| 供应商配置 | 供应商ID、名称、对应工种、默认周期、状态、备注 | 状态推荐 `启用 / 停用` |
+| 工种配置 | 工种编号、工种名称、归属 | 归属推荐 `自制 / 外协` |
+| 供应商配置 | 供应商编号、名称、对应工种、默认周期、状态、备注 | 状态推荐 `启用 / 停用` |
 | 零件工艺路线 | 图号、名称、工艺路线字符串 | 路线文字要能匹配工种 |
 | 零件工序工时 | 图号、工序、换型时间(h)、单件工时(h) | 工时要能转成有效数字 |
 | 批次信息 | 批次号、图号、数量、交期、优先级、齐套、齐套日期、备注 | 优先级和齐套使用新模板三档推荐值 |

@@ -109,7 +109,7 @@ def _selection_source(*, role_key: str, adopted_key: str) -> str:
 def _require_adopted_key(selection: Any) -> str:
     adopted_key = str(getattr(selection, "selected_candidate_key", "") or "").strip()
     if not adopted_key:
-        raise ValidationError("方案对比缺少最终采用结果，已拒绝保存。", field="candidate_selection")
+        raise ValidationError("方案对比缺少正式采用方案，已拒绝保存。", field="candidate_selection")
     return adopted_key
 
 

@@ -191,9 +191,9 @@ def _check_expected_base(
     expected_role: Optional[Any],
 ) -> None:
     if expected_version is not None and str(expected_version).strip() != str(actual_version):
-        raise ValidationError("页面草稿基准版本已变化，请刷新后重试。", field="base_version")
+        raise ValidationError("页面草稿的调整依据版本已变化，请刷新后重试。", field="base_version")
     if expected_role is not None and str(expected_role).strip() != actual_role:
-        raise ValidationError("页面草稿基准方案已变化，请刷新后重试。", field="base_plan_role")
+        raise ValidationError("页面草稿的调整依据方案已变化，请刷新后重试。", field="base_plan_role")
 
 
 def _status_error_message(allowed_statuses: Sequence[str]) -> str:

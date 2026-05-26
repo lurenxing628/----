@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
+from typing import Set
 
 from core.services.scheduler.schedule_plan_query_service import (
     ROLE_ADOPTED,
@@ -30,9 +31,9 @@ PLAN_ROLE_COMPATIBILITY_FILES = (
 )
 
 
-def _direct_string_assignments(path: str) -> set[str]:
+def _direct_string_assignments(path: str) -> Set[str]:
     tree = ast.parse((PROJECT_ROOT / path).read_text(encoding="utf-8"))
-    names: set[str] = set()
+    names: Set[str] = set()
     for node in tree.body:
         if not isinstance(node, ast.Assign):
             continue
@@ -83,9 +84,9 @@ def test_analysis_candidate_links_and_roles_stay_stable() -> None:
         ROLE_CRITICAL_BEST,
     ]
     assert [row["role_label"] for row in rows] == [
-        "最终采用",
-        "原算法最好",
-        "重点工序优先方案最好",
+        "正式采用方案",
+        "原算法代表方案",
+        "重点工序优先代表方案",
     ]
 
     for row in rows:

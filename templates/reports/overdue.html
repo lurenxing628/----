@@ -56,12 +56,12 @@
     </form>
     {% if has_history and plan_resolution and plan_resolution.is_scenario_preview %}
       <div class="flash-card flash-warning mt-2" role="status">
-        当前超期清单正在预览“{{ plan_resolution.scenario_name or plan_resolution.scenario_id or '模拟方案' }}”，正式计划还没有改变。
+        当前超期清单正在预览“{{ plan_resolution.scenario_display_name or plan_resolution.scenario_name or '模拟预览（未命名）' }}”，正式计划还没有改变。
       </div>
     {% endif %}
     {% if has_history and plan_resolution %}
       <div class="aps-filter-note aps-report-plan-source">
-        当前方案：{{ plan_resolution.scenario_name or plan_resolution.scenario_id or plan_resolution.selected_label }}{% if plan_resolution.is_fallback and plan_resolution.message %}。{{ plan_resolution.message }}{% endif %}
+        当前方案：{{ plan_resolution.scenario_display_name or plan_resolution.scenario_name or plan_resolution.selected_label }}{% if plan_resolution.is_fallback and plan_resolution.message %}。{{ plan_resolution.message }}{% endif %}
       </div>
     {% endif %}
   </div>
@@ -69,7 +69,7 @@
   <div class="card">
     <h3 class="section-title">结果明细</h3>
     <div class="aps-result-summary-grid">
-      {{ ui.summary_item('排产方案', (plan_resolution.scenario_name or plan_resolution.scenario_id or plan_resolution.selected_label) if plan_resolution else '最终采用') }}
+      {{ ui.summary_item('排产方案', (plan_resolution.scenario_display_name or plan_resolution.scenario_name or plan_resolution.selected_label) if plan_resolution else '正式采用方案') }}
       {{ ui.summary_item('总数', count ~ ' 个') }}
       {{ ui.summary_item('已排程', scheduled_count ~ ' 个') }}
       {{ ui.summary_item('未排程', unscheduled_count ~ ' 个') }}

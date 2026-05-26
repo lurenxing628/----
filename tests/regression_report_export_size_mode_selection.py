@@ -17,7 +17,7 @@ def find_repo_root() -> str:
 
 def _assert_xlsx(resp, name: str, expect_version: int) -> None:
     if resp.status_code != 200:
-        body = resp.data.decode("utf-8", errors="ignore") if getattr(resp, "data", None) else ""
+        body = resp.data.decode("utf-8") if getattr(resp, "data", None) else ""
         raise RuntimeError(f"{name} 返回 {resp.status_code}，期望 200，body={body[:500]}")
     ct = resp.headers.get("Content-Type", "")
     if "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" not in ct:
@@ -32,7 +32,7 @@ def _assert_overdue_xlsx_columns(resp) -> None:
 
     wb = openpyxl.load_workbook(BytesIO(resp.data), data_only=True)
     try:
-        ws = wb["overdue"]
+        ws = wb["超期清单"]
         headers = [ws.cell(row=1, column=i).value for i in range(1, 10)]
         if headers != ["类别", "批次号", "图号", "名称", "数量", "交期", "完工/截至时间", "超期(天)", "超期(小时)"]:
             raise RuntimeError(f"超期清单表头顺序异常：{headers!r}")
@@ -48,7 +48,7 @@ def _assert_utilization_xlsx_percent(resp) -> None:
 
     wb = openpyxl.load_workbook(BytesIO(resp.data), data_only=True)
     try:
-        ws = wb["machines"]
+        ws = wb["设备负荷"]
         if ws["F1"].value != "利用率(%)":
             raise RuntimeError(f"利用率表头异常：{ws['F1'].value!r}")
         if ws["F2"].value != 50.0:

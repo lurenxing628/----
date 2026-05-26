@@ -23,12 +23,16 @@ _CANDIDATE_STATUS_LABELS = {
     "failed": "失败",
     "skipped": "已跳过",
 }
-_NO_COMPARISON_NOTICE = "本次没有开启方案对比，只生成了最终采用方案。"
+_NO_COMPARISON_NOTICE = "本次没有开启方案对比，只生成了正式采用方案。"
 
 _SELECTION_REASON_LABELS = {
-    "score_only_raw_score_best": "本次设置为只看整体分数，系统采用综合评分最好的方案。",
-    "balanced_critical_health_better": "系统综合查看交期和整体分数后，重点工序优先方案表现更合适，所以采用它。",
-    "balanced_raw_score_best": "系统综合查看交期和整体分数后，采用整体评分最好、且没有明显增加拖期风险的方案。",
+    "score_only_raw_score_best": "本次设置为只看整体表现，系统选择了整体表现更合适的方案。",
+    "balanced_critical_health_better": "系统综合查看交期和整体表现后，选择了重点工序优先方案。",
+    "balanced_raw_score_best": "系统综合查看交期和整体表现后，选择了整体表现更好、且没有明显增加拖期风险的方案。",
+}
+
+_FAILURE_REASON_LABELS = {
+    "candidate_time_budget_reached": "试算时间到了，系统没有继续算这套方案",
 }
 
 _REQUIRED_COMPARISON_ROLES = frozenset((ROLE_ADOPTED, ROLE_BASELINE_BEST, ROLE_CRITICAL_BEST))
@@ -124,7 +128,7 @@ def _candidate_failed_ops(candidate: Dict[str, Any]) -> Optional[Any]:
     return None
 
 
-def _candidate_score_label(candidate: Dict[str, Any]) -> str:
+def _candidate_technical_score_label(candidate: Dict[str, Any]) -> str:
     score = candidate.get("score") if isinstance(candidate, dict) else None
     if isinstance(score, (list, tuple)) and score:
         return " / ".join(str(item) for item in score)
@@ -141,8 +145,22 @@ def _candidate_status_label(status_value: Any) -> str:
 def _selection_reason_label(reason_code: Any) -> str:
     code = str(reason_code or "").strip()
     if not code:
-        return "系统按本次设置自动选择最终采用方案。"
-    return _SELECTION_REASON_LABELS.get(code, "系统按本次设置自动选择最终采用方案。")
+        return "系统按本次设置自动选择正式采用方案。"
+    return _SELECTION_REASON_LABELS.get(code, "系统按本次设置自动选择正式采用方案。")
+
+
+def _failure_reason_label(reason_value: Any) -> str:
+    reason = str(reason_value or "").strip()
+    if not reason:
+        return ""
+    mapped = _FAILURE_REASON_LABELS.get(reason)
+    if mapped:
+        return mapped
+    if any(marker in reason for marker in ("\n", "\r", "_", "Traceback", "Exception", "Error")):
+        return "没有完整原因说明"
+    if any(("a" <= ch.lower() <= "z") for ch in reason):
+        return "没有完整原因说明"
+    return reason
 
 
 def _candidate_label_from_key(candidate_key: str, role: str) -> str:
@@ -160,7 +178,18 @@ def _public_candidate_label_text(value: Any) -> str:
     text = str(value or "").strip()
     if not text:
         return ""
-    return text.replace("关键链候选", "重点工序优先方案").replace("原算法候选", "原算法方案")
+    return (
+        text.replace("关键链候选", "重点工序优先方案")
+        .replace("原算法候选", "原算法方案")
+        .replace("重点工序优先方案最好", "重点工序优先代表方案")
+        .replace("重点工序优先最好", "重点工序优先代表方案")
+        .replace("关键链最好", "重点工序优先代表方案")
+        .replace("原算法最好", "原算法代表方案")
+        .replace("最终采用方案", "正式采用方案")
+        .replace("最终采用", "正式采用方案")
+        .replace("综合评分", "整体表现")
+        .replace("整体评分", "整体表现")
+    )
 
 
 def _candidate_label(candidate: Dict[str, Any], option: Optional[Dict[str, Any]], *, candidate_key: str, role: str) -> str:
@@ -177,10 +206,12 @@ def _role_source_table(option: Optional[Dict[str, Any]]) -> str:
     return ""
 
 
-def _role_is_comparison(option: Optional[Dict[str, Any]]) -> Optional[bool]:
+def _role_is_comparison(option: Optional[Dict[str, Any]], *, role: str) -> Optional[bool]:
     source_table = _role_source_table(option)
     if not source_table:
         return None
+    if role != ROLE_ADOPTED:
+        return True
     if "is_comparison" in (option or {}):
         return bool((option or {}).get("is_comparison"))
     return source_table == SOURCE_CANDIDATE_ROWS
@@ -190,10 +221,12 @@ def _comparison_note(*, role: str, is_comparison: bool, is_same_as_adopted: bool
     if role == ROLE_ADOPTED:
         return ""
     if is_comparison:
-        return "这是对比方案，不是正式写入的结果。"
+        if is_same_as_adopted:
+            return "与正式采用方案相同，只作对比参考查看，不能直接派工或反馈。"
+        return "这是对比参考方案，不是正式采用方案，不能直接派工或反馈。"
     if is_same_as_adopted:
-        return "与最终采用方案相同，正式排程已写入这一版。"
-    return "这套方案从正式排程读取，正式排程已写入这一版。"
+        return "与正式采用方案相同，只作对比参考查看，不能直接派工或反馈。"
+    return "这是对比参考方案，不是正式采用方案，不能直接派工或反馈。"
 
 
 def _failed_candidate_labels(comparison: Dict[str, Any]) -> List[str]:
@@ -205,7 +238,7 @@ def _failed_candidate_labels(comparison: Dict[str, Any]) -> List[str]:
             continue
         key = str(candidate.get("candidate_key") or "").strip()
         label = _public_candidate_label_text(candidate.get("label")) or _candidate_label_from_key(key, "")
-        reason = str(candidate.get("failure_reason") or "").strip()
+        reason = _failure_reason_label(candidate.get("failure_reason"))
         labels.append(f"{label}（{reason}）" if reason else label)
     return labels
 
@@ -257,7 +290,7 @@ def _candidate_display_row(
     key_field: str,
 ) -> Optional[Dict[str, Any]]:
     option = options_by_role.get(role)
-    is_comparison = _role_is_comparison(option)
+    is_comparison = _role_is_comparison(option, role=role)
     if is_comparison is None:
         return None
     candidate_key = _candidate_key_for_role(comparison, candidates_by_key, role, key_field, option)
@@ -267,10 +300,7 @@ def _candidate_display_row(
     candidate = candidates_by_key.get(candidate_key)
     if candidate is None:
         return None
-    role_label = str((option or {}).get("label") or _plan_role_label(role)).replace(
-        "关键链最好",
-        "重点工序优先方案最好",
-    )
+    role_label = _public_candidate_label_text((option or {}).get("label") or _plan_role_label(role))
     status = _candidate_status(candidate, option)
     adopted_key = _adopted_candidate_key(comparison)
     is_same_as_adopted = bool(candidate_key and candidate_key == adopted_key)
@@ -293,7 +323,7 @@ def _candidate_display_row(
         "total_tardiness_hours": _candidate_metric(candidate, "total_tardiness_hours"),
         "makespan_hours": _candidate_metric(candidate, "makespan_hours"),
         "changeover_count": _candidate_metric(candidate, "changeover_count"),
-        "score_label": _candidate_score_label(candidate),
+        "technical_score_label": _candidate_technical_score_label(candidate),
         "plan_role_available": role in options_by_role,
         "is_adopted": role == ROLE_ADOPTED,
         "is_same_as_adopted": is_same_as_adopted,
@@ -442,7 +472,7 @@ def build_candidate_comparison_display(
         return _incomplete_comparison_display_payload(
             comparison=comparison,
             selected_ver=int(selected_ver),
-            notice="本次方案对比记录不完整，当前只展示最终采用方案。",
+            notice="本次方案对比记录不完整，当前只展示正式采用方案。",
         )
     return _candidate_comparison_display_payload(
         comparison=comparison,

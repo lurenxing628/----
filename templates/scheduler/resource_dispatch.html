@@ -19,7 +19,7 @@
   {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'simulated': '模拟排产', 'ok': '成功', 'fail': '失败', 'ok2': '成功'} %}
   <div
     id="rdPage"
-    data-filters='{{ filters | tojson }}'
+    data-filters='{{ (client_filters if client_filters is defined else filters) | tojson }}'
     data-url="{{ data_url }}"
     data-has-history="{{ '1' if has_history else '0' }}"
     data-can-query="{{ '1' if can_query else '0' }}"
@@ -56,7 +56,7 @@
         {'label': '班组轴', 'value': filters.team_axis_label if filters.scope_type == 'team' else None},
         {'label': '区间', 'value': filters.start_date ~ ' ～ ' ~ filters.end_date},
         {'label': '版本', 'value': 'v' ~ filters.version},
-        {'label': '方案', 'value': filters.scenario_name or filters.effective_plan_role_label or filters.plan_role_label}
+        {'label': '方案', 'value': (filters.scenario_display_name or filters.scenario_name or '模拟预览（未命名）') if filters.is_scenario_preview else (filters.effective_plan_role_label or filters.plan_role_label)}
       ]) }}
     {% endif %}
     <form method="get" action="{{ url_for('scheduler.resource_dispatch_page') }}" class="aps-query-form-grid aps-resource-query-grid">
@@ -157,7 +157,7 @@
     {% endif %}
     {% if filters.is_scenario_preview %}
       <div class="flash-card flash-warning mt-2" role="status">
-        当前资源排班正在预览“{{ filters.scenario_name or filters.scenario_id or '模拟方案' }}”，正式计划还没有改变。
+        当前资源排班正在预览“{{ filters.scenario_display_name or filters.scenario_name or '模拟预览（未命名）' }}”，正式计划还没有改变。
       </div>
     {% endif %}
     {% if selected_version_row.item %}
@@ -166,7 +166,7 @@
         {{ ui.summary_item('时间', selected_version_row.item.schedule_time_display or selected_version_row.item.schedule_time) }}
         {{ ui.summary_item('排产方式', selected_version_row.item.strategy_label or strategy_zh.get(selected_version_row.item.strategy, '未知排产方式')) }}
         {{ ui.summary_item('结果', selected_version_row.item.result_status_label or status_zh.get(selected_version_row.item.result_status, '结果状态未知')) }}
-        {{ ui.summary_item('查看方案', filters.scenario_name or filters.effective_plan_role_label or filters.plan_role_label) }}
+        {{ ui.summary_item('查看方案', (filters.scenario_display_name or filters.scenario_name or '模拟预览（未命名）') if filters.is_scenario_preview else (filters.effective_plan_role_label or filters.plan_role_label)) }}
       </div>
     {% endif %}
     {% if not has_history %}

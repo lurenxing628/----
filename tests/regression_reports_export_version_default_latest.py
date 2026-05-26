@@ -17,7 +17,7 @@ def find_repo_root() -> str:
 
 def _assert_xlsx(resp, name: str, expect_version: int) -> None:
     if resp.status_code != 200:
-        body = resp.data.decode("utf-8", errors="ignore") if getattr(resp, "data", None) else ""
+        body = resp.data.decode("utf-8") if getattr(resp, "data", None) else ""
         raise RuntimeError(f"{name} 返回 {resp.status_code}，期望 200，body={body[:500]}")
     ct = resp.headers.get("Content-Type", "")
     if "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" not in ct:
@@ -51,7 +51,7 @@ def _assert_overdue_export(resp, name: str, expect_version: int, expect_finish_t
     _assert_xlsx(resp, name, expect_version)
     wb = _load_xlsx(resp)
     try:
-        ws = wb["overdue"]
+        ws = wb["超期清单"]
         _assert_single_data_row(ws, name)
         if ws["B2"].value != "B_REPORT":
             raise RuntimeError(f"{name} 超期批次异常：{ws['B2'].value!r}")
@@ -66,7 +66,7 @@ def _assert_utilization_export(resp, name: str, expect_version: int, expect_mach
     _assert_xlsx(resp, name, expect_version)
     wb = _load_xlsx(resp)
     try:
-        ws = wb["machines"]
+        ws = wb["设备负荷"]
         _assert_single_data_row(ws, name)
         if ws["A2"].value != "MC_REPORT":
             raise RuntimeError(f"{name} 设备编号异常：{ws['A2'].value!r}")

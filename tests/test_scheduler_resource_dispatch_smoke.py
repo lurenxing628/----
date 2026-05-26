@@ -16,7 +16,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 def _assert_status(resp, name: str, expect: int = 200) -> None:
     if resp.status_code != expect:
-        body = resp.data.decode("utf-8", errors="ignore") if getattr(resp, "data", None) else ""
+        body = resp.data.decode("utf-8") if getattr(resp, "data", None) else ""
         raise AssertionError(f"{name} 返回 {resp.status_code}，期望 {expect}，body={body[:800]}")
 
 
@@ -107,26 +107,26 @@ def test_scheduler_resource_dispatch_page_data_export_and_dashboard_entry(tmp_pa
     _set_ui_mode_cookie(client, "v1")
     resp_dashboard_v1 = client.get("/")
     _assert_status(resp_dashboard_v1, "GET / (v1)")
-    html_dashboard_v1 = resp_dashboard_v1.data.decode("utf-8", errors="ignore")
+    html_dashboard_v1 = resp_dashboard_v1.data.decode("utf-8")
     assert "资源排班" in html_dashboard_v1
 
     _set_ui_mode_cookie(client, "v2")
     resp_dashboard_v2 = client.get("/")
     _assert_status(resp_dashboard_v2, "GET / (v2)")
-    html_dashboard_v2 = resp_dashboard_v2.data.decode("utf-8", errors="ignore")
+    html_dashboard_v2 = resp_dashboard_v2.data.decode("utf-8")
     assert "资源排班" in html_dashboard_v2
 
     default_query = "period_preset=week&query_date=2026-03-02&version=1"
 
     resp_default_page = client.get(f"/scheduler/resource-dispatch?{default_query}")
     _assert_status(resp_default_page, "GET /scheduler/resource-dispatch (default all operators)")
-    html_default_page = resp_default_page.data.decode("utf-8", errors="ignore")
+    html_default_page = resp_default_page.data.decode("utf-8")
     assert 'data-can-query="1"' in html_default_page
     assert "全部人员" in html_default_page
 
     resp_default_data = client.get(f"/scheduler/resource-dispatch/data?{default_query}")
     _assert_status(resp_default_data, "GET /scheduler/resource-dispatch/data (default all operators)")
-    default_payload = json.loads(resp_default_data.data.decode("utf-8", errors="ignore") or "{}")
+    default_payload = json.loads(resp_default_data.data.decode("utf-8") or "{}")
     assert default_payload.get("success") is True
     default_data = default_payload.get("data") or {}
     assert (default_data.get("filters") or {}).get("scope_id") == ""
@@ -138,7 +138,7 @@ def test_scheduler_resource_dispatch_page_data_export_and_dashboard_entry(tmp_pa
 
     resp_page = client.get(f"/scheduler/resource-dispatch?{query}")
     _assert_status(resp_page, "GET /scheduler/resource-dispatch")
-    html_page = resp_page.data.decode("utf-8", errors="ignore")
+    html_page = resp_page.data.decode("utf-8")
     assert "资源排班" in html_page
     assert 'id="rdPage"' in html_page
     assert "导出资源排班.xlsx" in html_page
@@ -146,7 +146,7 @@ def test_scheduler_resource_dispatch_page_data_export_and_dashboard_entry(tmp_pa
 
     resp_data = client.get(f"/scheduler/resource-dispatch/data?{query}")
     _assert_status(resp_data, "GET /scheduler/resource-dispatch/data")
-    payload = json.loads(resp_data.data.decode("utf-8", errors="ignore") or "{}")
+    payload = json.loads(resp_data.data.decode("utf-8") or "{}")
     assert payload.get("success") is True
     data = payload.get("data") or {}
     assert (data.get("filters") or {}).get("scope_id") == "OP001"
@@ -169,20 +169,22 @@ def test_scheduler_resource_dispatch_page_data_export_and_dashboard_entry(tmp_pa
     ws_detail = cast(Worksheet, wb["任务明细"])
     max_column = int(ws_detail.max_column)
     headers = [str(ws_detail.cell(1, idx).value or "").strip() for idx in range(1, max_column + 1)]
-    assert headers[:8] == ["排程ID", "工序ID", "工序编码", "批次号", "图号", "工序", "工序名称", "开始时间"]
-    assert str(ws_detail.cell(2, 4).value or "").strip() == "B001"
+    assert headers[:8] == ["工序编码", "批次号", "图号", "工序", "工序名称", "开始时间", "结束时间", "时长(分钟)"]
+    assert "排程编号" not in headers
+    assert "工序编号" not in headers
+    assert str(ws_detail.cell(2, 2).value or "").strip() == "B001"
 
     query_team = "scope_type=team&team_id=TEAM-OP&team_axis=operator&period_preset=week&query_date=2026-03-02&version=1"
 
     resp_team_page = client.get(f"/scheduler/resource-dispatch?{query_team}")
     _assert_status(resp_team_page, "GET /scheduler/resource-dispatch (team)")
-    html_team_page = resp_team_page.data.decode("utf-8", errors="ignore")
+    html_team_page = resp_team_page.data.decode("utf-8")
     assert "班组轴" in html_team_page
     assert '<option value="team" selected' in html_team_page
 
     resp_team_data = client.get(f"/scheduler/resource-dispatch/data?{query_team}")
     _assert_status(resp_team_data, "GET /scheduler/resource-dispatch/data (team)")
-    payload_team = json.loads(resp_team_data.data.decode("utf-8", errors="ignore") or "{}")
+    payload_team = json.loads(resp_team_data.data.decode("utf-8") or "{}")
     assert payload_team.get("success") is True
     data_team = payload_team.get("data") or {}
     assert (data_team.get("filters") or {}).get("scope_id") == "TEAM-OP"
@@ -206,7 +208,7 @@ def test_scheduler_resource_dispatch_page_data_export_and_dashboard_entry(tmp_pa
 
     resp_gantt = client.get("/scheduler/gantt/data?view=machine&week_start=2026-03-02&version=1")
     _assert_status(resp_gantt, "GET /scheduler/gantt/data")
-    gantt_payload = json.loads(resp_gantt.data.decode("utf-8", errors="ignore") or "{}")
+    gantt_payload = json.loads(resp_gantt.data.decode("utf-8") or "{}")
     assert gantt_payload.get("success") is True
     gantt_data = gantt_payload.get("data") or {}
     assert int(gantt_data.get("task_count") or 0) >= 1

@@ -141,7 +141,7 @@ def test_analysis_viewmodel_split_preserves_legacy_compat_fallback() -> None:
     )
 
     assert ctx["compat_fallback"]["used"] is True
-    assert ctx["compat_fallback"]["missing_field_labels"] == ["优化对比指标", "评分顺序"]
+    assert ctx["compat_fallback"]["missing_field_labels"] == ["优化对比指标", "系统比较顺序"]
 
 
 def test_analysis_metric_cards_surface_non_finite_values_without_template_arithmetic() -> None:

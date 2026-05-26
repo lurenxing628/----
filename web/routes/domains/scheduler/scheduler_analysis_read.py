@@ -234,17 +234,17 @@ def _load_selected_plan_role_options(services: Any, selected_ver: Optional[int])
         raw = str(error or "")
         if "明细" in raw:
             return "方案对比明细不完整"
-        if "缺少最终采用方案" in raw:
-            return "方案对比记录缺少最终采用方案"
+        if "缺少最终采用方案" in raw or "缺少正式采用方案" in raw:
+            return "方案对比记录缺少正式采用方案"
         if "不存在" in raw or "找不到" in raw or "缺少" in raw:
             return "方案对比记录里的跳转关系不完整"
         return "方案对比记录需要检查"
 
     def _plan_role_integrity_notice(error: Exception) -> str:
         reason = _public_plan_role_error_message(error)
-        if reason == "方案对比记录缺少最终采用方案":
+        if reason == "方案对比记录缺少正式采用方案":
             return f"本次方案对比记录不完整，当前不展示方案对比。原因：{reason}。"
-        return f"本次方案对比记录不完整，当前只展示最终采用方案。原因：{reason}。"
+        return f"本次方案对比记录不完整，当前只展示正式采用方案。原因：{reason}。"
 
     def _validate_plan_role_link_target(item: Any, option: Dict[str, Any]) -> None:
         resolve_plan = getattr(plan_query_service, "resolve_plan", None)

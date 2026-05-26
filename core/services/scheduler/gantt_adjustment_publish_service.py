@@ -11,6 +11,7 @@ from core.models.schedule_adjustment import (
     DRAFT_STATUS_SAVED_SCENARIO,
     SCENARIO_STATUS_ACTIVE,
 )
+from core.models.schedule_plan_role import ROLE_ADOPTED
 from data.repositories import (
     ScheduleAdjustmentRepository,
     ScheduleAdjustmentScenarioRepository,
@@ -64,7 +65,7 @@ class GanttAdjustmentPublishService:
         expected_base_version: Any = None,
         expected_base_plan_role: Any = None,
     ) -> GanttAdjustmentPublishResult:
-        scenario_key = _required_text(scenario_id, field="scenario_id", label="模拟方案编号")
+        scenario_key = _required_text(scenario_id, field="scenario_id", label="模拟预览")
         clean_reason = _required_text(reason, field="reason", label="正式采用原因")
         operator = _trusted_operator(published_by)
         _require_confirm(confirm_text)
@@ -75,6 +76,8 @@ class GanttAdjustmentPublishService:
         if scenario.status != SCENARIO_STATUS_ACTIVE:
             raise ValidationError("只有可预览的模拟方案才能正式采用。", field="scenario_id")
         _check_expected_base(scenario.base_version, scenario.base_plan_role, expected_base_version, expected_base_plan_role)
+        if str(scenario.base_plan_role or "").strip() != ROLE_ADOPTED:
+            raise ValidationError("只有从正式采用方案调整出来的模拟方案，才能正式采用。", field="base_plan_role")
 
         evaluation = self.validation_service.evaluate_draft(
             draft_id=scenario.source_draft_id,
@@ -92,7 +95,7 @@ class GanttAdjustmentPublishService:
             new_version = self.history_repo.allocate_next_version()
             latest_version = self.history_repo.get_latest_version()
             if latest_version != scenario.base_version:
-                raise ValidationError("模拟方案的基准版本已经不是最新正式版本，请重新模拟后再正式采用。", field="base_version")
+                raise ValidationError("模拟方案的调整依据版本已经不是最新正式版本，请重新模拟后再正式采用。", field="base_version")
             claimed = self.scenario_repo.mark_published(
                 scenario_id=scenario.scenario_id,
                 new_version=new_version,
@@ -174,9 +177,9 @@ def _trusted_operator(value: Any) -> str:
 
 def _check_expected_base(actual_version: int, actual_role: str, expected_version: Any, expected_role: Any) -> None:
     if expected_version is not None and _text(expected_version) != str(actual_version):
-        raise ValidationError("页面方案基准版本已变化，请刷新后重试。", field="base_version")
+        raise ValidationError("页面方案的调整依据版本已变化，请刷新后重试。", field="base_version")
     if expected_role is not None and _text(expected_role) != actual_role:
-        raise ValidationError("页面方案基准口径已变化，请刷新后重试。", field="base_plan_role")
+        raise ValidationError("页面方案的调整依据口径已变化，请刷新后重试。", field="base_plan_role")
 
 
 def _check_scenario_rows(rows: Sequence[Any], evaluation: GanttAdjustmentEvaluation) -> None:

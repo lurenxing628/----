@@ -62,7 +62,7 @@ class FakePlanQueryService:
                 source_table=selected.source_table,
                 candidate_id=selected.candidate_id,
                 candidate_key=selected.candidate_key,
-                status="selected",
+                status="resolved_adopted" if requested_role == ROLE_ADOPTED else "resolved_comparison",
                 message="",
                 available_roles=self.roles,
             )
@@ -75,7 +75,7 @@ class FakePlanQueryService:
             candidate_id=adopted.candidate_id,
             candidate_key=adopted.candidate_key,
             status="fallback_to_adopted",
-            message="当前版本没有保存这套方案明细，已显示最终采用方案。",
+            message="当前版本没有保存这套方案明细，已显示正式采用方案。",
             available_roles=self.roles,
         )
 
@@ -96,7 +96,7 @@ def test_context_defaults_empty_plan_role_to_adopted() -> None:
 
     assert context.requested_role == ROLE_ADOPTED
     assert context.selected_role == ROLE_ADOPTED
-    assert context.plan_resolution["status"] == "selected"
+    assert context.plan_resolution["status"] == "resolved_adopted"
 
 
 def test_context_keeps_explicit_adopted() -> None:
@@ -156,7 +156,31 @@ def test_context_falls_back_to_adopted_when_requested_role_is_missing() -> None:
     assert context.selected_role == ROLE_ADOPTED
     assert context.plan_resolution["status"] == "fallback_to_adopted"
     assert context.is_fallback is True
-    assert "最终采用方案" in context.plan_role_notice
+    assert context.is_comparison is True
+    assert "正式采用方案" in context.plan_role_notice
+
+
+def test_context_marks_non_adopted_schedule_source_as_comparison() -> None:
+    context = _resolve(
+        ROLE_BASELINE_BEST,
+        roles=[
+            _option(ROLE_ADOPTED),
+            _option(
+                ROLE_BASELINE_BEST,
+                source_table=SOURCE_SCHEDULE,
+                candidate_id=101,
+                candidate_key="baseline_best",
+            ),
+        ],
+    )
+    fields = plan_role_filter_fields(context)
+
+    assert context.requested_role == ROLE_BASELINE_BEST
+    assert context.selected_role == ROLE_BASELINE_BEST
+    assert context.source_table == SOURCE_SCHEDULE
+    assert context.is_comparison is True
+    assert fields["is_comparison"] is True
+    assert "只用来和正式采用方案比一比" in context.plan_role_notice
 
 
 def test_context_rejects_bad_plan_role_with_plan_role_field() -> None:
@@ -174,7 +198,8 @@ def test_context_no_history_uses_default_adopted_with_visible_fallback() -> None
     assert context.requested_role == ROLE_CRITICAL_BEST
     assert context.selected_role == ROLE_ADOPTED
     assert context.is_fallback is True
-    assert "最终采用方案" in context.plan_role_notice
+    assert context.is_comparison is True
+    assert "正式采用方案" in context.plan_role_notice
 
 
 def test_plan_metadata_and_resource_dispatch_filter_fields_stay_consistent() -> None:
@@ -213,7 +238,7 @@ def test_serialize_plan_role_options_keeps_existing_dict_items() -> None:
     options = [
         {
             "role": ROLE_BASELINE_BEST,
-            "label": "原算法最好",
+            "label": "原算法代表方案",
             "source_table": SOURCE_CANDIDATE_ROWS,
             "candidate_id": 101,
             "candidate_key": "baseline_best",

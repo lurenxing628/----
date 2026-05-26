@@ -293,7 +293,7 @@ def test_adjustment_draft_rejects_invalid_base_role(tmp_path: Path) -> None:
     conn = _connect_fresh_schema(tmp_path)
     try:
         service = GanttAdjustmentDraftService(conn)
-        with pytest.raises(ValidationError, match="基准方案角色不正确"):
+        with pytest.raises(ValidationError, match="调整依据方案不正确"):
             service.create_draft(base_version=5, base_plan_role="preview", created_by="planner")
     finally:
         conn.close()
@@ -304,9 +304,9 @@ def test_adjustment_draft_rejects_blank_role_and_float_version(tmp_path: Path) -
     try:
         _seed_formal_schedule(conn)
         service = GanttAdjustmentDraftService(conn)
-        with pytest.raises(ValidationError, match="基准方案角色不能为空"):
+        with pytest.raises(ValidationError, match="请选择调整依据方案"):
             service.create_draft(base_version=5, base_plan_role="", created_by="planner")
-        with pytest.raises(ValidationError, match="基准版本不正确"):
+        with pytest.raises(ValidationError, match="调整依据版本不正确"):
             service.create_draft(base_version=5.5, base_plan_role="adopted", created_by="planner")
     finally:
         conn.close()
@@ -316,11 +316,11 @@ def test_adjustment_draft_requires_existing_base_version_and_role(tmp_path: Path
     conn = _connect_fresh_schema(tmp_path)
     try:
         service = GanttAdjustmentDraftService(conn)
-        with pytest.raises(ValidationError, match="基准版本不存在"):
+        with pytest.raises(ValidationError, match="调整依据版本不存在"):
             service.create_draft(base_version=999, base_plan_role="adopted", created_by="planner")
 
         _seed_formal_schedule(conn)
-        with pytest.raises(ValidationError, match="基准方案不存在"):
+        with pytest.raises(ValidationError, match="所选方案不存在"):
             service.create_draft(base_version=5, base_plan_role="baseline_best", created_by="planner")
     finally:
         conn.close()
@@ -331,7 +331,7 @@ def test_adjustment_draft_requires_real_base_plan_rows(tmp_path: Path) -> None:
     try:
         service = GanttAdjustmentDraftService(conn)
         _seed_history_only(conn)
-        with pytest.raises(ValidationError, match="基准方案明细不存在"):
+        with pytest.raises(ValidationError, match="所选方案没有可查看的明细"):
             service.create_draft(base_version=5, base_plan_role="adopted", created_by="planner")
     finally:
         conn.close()
@@ -356,12 +356,12 @@ def test_adjustment_draft_requires_saved_candidate_rows(tmp_path: Path) -> None:
         conn.commit()
 
         service = GanttAdjustmentDraftService(conn)
-        with pytest.raises(ValidationError, match="基准方案明细不存在"):
+        with pytest.raises(ValidationError, match="所选方案没有可查看的明细"):
             service.create_draft(base_version=5, base_plan_role="baseline_best", created_by="planner")
 
         conn.execute("UPDATE ScheduleCandidate SET detail_saved = 'yes' WHERE id = ?", (baseline_id,))
         conn.commit()
-        with pytest.raises(ValidationError, match="基准方案明细不存在"):
+        with pytest.raises(ValidationError, match="所选方案没有可查看的明细"):
             service.create_draft(base_version=5, base_plan_role="baseline_best", created_by="planner")
     finally:
         conn.close()

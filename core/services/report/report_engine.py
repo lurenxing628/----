@@ -346,7 +346,7 @@ class ReportEngine:
         resolution = self._resolve_plan(int(rep["version"]), plan_role)
         return self._build_xlsx_export(
             report_name="资源负荷与利用率",
-            filename=f"资源负荷与利用率_{self._filename_plan_label(resolution)}_v{int(rep['version'])}_{rep['start_date']}_to_{rep['end_date']}.xlsx",
+            filename=f"资源负荷与利用率_{self._filename_plan_label(resolution)}_v{int(rep['version'])}_{rep['start_date']}至{rep['end_date']}.xlsx",
             estimated_rows=len(machines) + len(operators),
             build_direct=lambda: export_utilization_xlsx(machines, operators),
             build_stream=lambda: export_utilization_xlsx(machines, operators, write_only=True),
@@ -411,7 +411,7 @@ class ReportEngine:
         resolution = self._resolve_plan(int(rep["version"]), plan_role)
         return self._build_xlsx_export(
             report_name="停机影响统计",
-            filename=f"停机影响统计_{self._filename_plan_label(resolution)}_v{int(rep['version'])}_{rep['start_date']}_to_{rep['end_date']}.xlsx",
+            filename=f"停机影响统计_{self._filename_plan_label(resolution)}_v{int(rep['version'])}_{rep['start_date']}至{rep['end_date']}.xlsx",
             estimated_rows=len(machines),
             build_direct=lambda: export_downtime_impact_xlsx(machines),
             build_stream=lambda: export_downtime_impact_xlsx(machines, write_only=True),

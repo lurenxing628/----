@@ -52,7 +52,7 @@ def build_adjusted_plan_rows(
     for change in changes:
         row = rows_by_op.get(int(change.op_id))
         if row is None:
-            raise ValidationError("草稿调整指向的工序不在基准方案里。", field="op_id")
+            raise ValidationError("草稿调整指向的工序不在调整依据方案里。", field="op_id")
         _apply_change(row, change)
     return list(rows_by_op.values())
 
@@ -141,7 +141,7 @@ def _plan_row(row: ScheduleDetailRow) -> AdjustmentPlanRow:
     start = parse_required_datetime(row.get("start_time"), field="开始时间")
     end = parse_required_datetime(row.get("end_time"), field="结束时间")
     if end <= start:
-        raise ValidationError("基准方案中存在结束时间不晚于开始时间的工序。", field="end_time")
+        raise ValidationError("调整依据方案中存在结束时间不晚于开始时间的工序。", field="end_time")
     return AdjustmentPlanRow(
         schedule_id=int(row.get("schedule_id") or 0),
         op_id=int(row.get("op_id") or 0),

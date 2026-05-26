@@ -14,7 +14,7 @@
       {% endif %}
       {% if trace_chart %}
         {% if trace_chart.points %}
-        <div class="svg-title">计算过程曲线（横轴=用时，纵轴=方案评分，越低越好）</div>
+        <div class="svg-title">计算过程曲线（横轴=用时，纵轴=整体表现，位置越低通常越好）</div>
         <div class="svg-wrap">
           <svg viewBox="0 0 {{ trace_chart.width }} {{ trace_chart.height }}" width="100%" height="{{ trace_chart.height }}">
             <polyline points="{{ trace_chart.points }}" fill="none" stroke="#1565c0" stroke-width="2"></polyline>
@@ -39,7 +39,6 @@
               <th class="w-120" data-col-key="failed_ops" data-default-w="120" data-min-w="100">失败工序数</th>
               <th class="w-160" data-col-key="objective" data-default-w="160" data-min-w="130">{{ objective_key_label }}</th>
               <th class="w-180" data-col-key="bar" data-default-w="180" data-min-w="150">条形</th>
-              <th class="w-140" data-col-key="score" data-default-w="140" data-min-w="120">综合评分</th>
             </tr>
           </thead>
           <tbody>
@@ -80,13 +79,12 @@
                     class="analysis-score-bar"
                     value="{{ r.bar_pct }}"
                     max="100"
-                    aria-label="综合评分条"
+                    aria-label="整体表现条"
                   >{{ r.bar_pct }}%</progress>
                   {% else %}
                     -
                   {% endif %}
                 </td>
-                <td>{{ r.score }}</td>
               </tr>
             {% endfor %}
           </tbody>

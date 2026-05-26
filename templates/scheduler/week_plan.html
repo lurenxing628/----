@@ -11,9 +11,9 @@
       'manual': '手动排产'
     } %}
   {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'simulated': '模拟排产', 'ok': '成功', 'fail': '失败', 'ok2': '成功'} %}
-  {% set current_plan_label = plan_resolution.selected_label if plan_resolution else '最终采用' %}
+  {% set current_plan_label = plan_resolution.selected_label if plan_resolution else '正式采用方案' %}
   {% if plan_resolution and plan_resolution.is_scenario_preview %}
-    {% set current_plan_label = plan_resolution.scenario_name or plan_resolution.scenario_id or '模拟方案' %}
+    {% set current_plan_label = plan_resolution.scenario_display_name or plan_resolution.scenario_name or '模拟预览（未命名）' %}
   {% endif %}
 
   {% set week_plan_actions %}
@@ -96,9 +96,9 @@
       当前周计划正在预览“{{ current_plan_label }}”，正式计划还没有改变。
     </div>
   {% endif %}
-  {% if plan_resolution and plan_resolution.is_comparison and not plan_resolution.is_scenario_preview %}
+  {% if plan_resolution and plan_resolution.is_comparison and not plan_resolution.is_fallback and not plan_resolution.is_scenario_preview %}
     <div class="flash-card flash-warning mt-2">
-      当前正在查看“{{ plan_resolution.selected_label }}”对比方案，这套方案只用于对比，不代表最终采用的排产结果。
+      当前查看的是“{{ plan_resolution.selected_label }}”，这是一套对比参考方案，只能拿来和正式采用方案对照查看，不能直接派工或提交现场反馈。
     </div>
   {% endif %}
 

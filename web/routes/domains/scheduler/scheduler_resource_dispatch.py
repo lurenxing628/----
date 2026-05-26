@@ -101,14 +101,15 @@ def resource_dispatch_export():
     start = time.time()
     svc = _svc()
     try:
-        payload = svc.get_dispatch_payload(**_request_kwargs())
-        if not payload.get("has_history"):
+        raw_payload = svc.get_dispatch_payload(**_request_kwargs())
+        if not raw_payload.get("has_history"):
             raise BusinessError(
                 ErrorCode.NOT_FOUND,
                 "暂无排产历史，无法导出资源排班。",
                 details={"field": "version", "status": "no_history"},
             )
-        payload = decorate_resource_dispatch_payload(payload)
+        internal_filters = raw_payload.get("filters") or {}
+        payload = decorate_resource_dispatch_payload(raw_payload)
         buf = build_resource_dispatch_workbook(payload)
         filename = build_resource_dispatch_filename(payload)
         filters = payload.get("filters") or {}
@@ -127,13 +128,13 @@ def resource_dispatch_export():
                 "team_id": filters.get("team_id"),
                 "team_axis": filters.get("team_axis"),
                 "version": filters.get("version"),
-                "requested_plan_role": filters.get("requested_plan_role"),
-                "effective_plan_role": filters.get("effective_plan_role"),
-                "plan_role_status": filters.get("plan_role_status"),
-                "candidate_id": filters.get("candidate_id"),
-                "candidate_key": filters.get("candidate_key"),
-                "scenario_id": filters.get("scenario_id"),
-                "scenario_name": filters.get("scenario_name"),
+                "requested_plan_role": internal_filters.get("requested_plan_role"),
+                "effective_plan_role": internal_filters.get("effective_plan_role"),
+                "plan_role_status": internal_filters.get("plan_role_status"),
+                "candidate_id": internal_filters.get("candidate_id"),
+                "candidate_key": internal_filters.get("candidate_key"),
+                "scenario_id": internal_filters.get("scenario_id"),
+                "scenario_name": internal_filters.get("scenario_name"),
                 "is_scenario_preview": filters.get("is_scenario_preview"),
                 "period_preset": filters.get("period_preset"),
             },

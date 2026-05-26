@@ -15,7 +15,7 @@
       <div class="card">
         <h3 class="section-title">方案对比</h3>
         <div class="muted mt-1">
-          这里对比同一次排产里的代表方案：最终采用、原算法最好、重点工序优先方案最好。正式写入排程的是“最终采用”。
+          这里对比同一次排产里的三类结果：正式采用方案、原算法代表方案、重点工序优先代表方案。只有正式采用方案会写入正式排程。
         </div>
         {% if candidate_comparison_display.selection_reason_label %}
           <div class="flash-card mt-2" role="status">
@@ -34,7 +34,6 @@
                 <th class="w-140" data-col-key="tardiness" data-default-w="140" data-min-w="110">总拖期（小时）</th>
                 <th class="w-140" data-col-key="makespan" data-default-w="140" data-min-w="110">总工期（小时）</th>
                 <th class="w-120" data-col-key="changeover" data-default-w="120" data-min-w="100">换型次数</th>
-                <th class="w-170" data-col-key="score" data-default-w="170" data-min-w="130">评分</th>
                 <th class="w-320" data-col-key="links" data-default-w="320" data-min-w="260">查看排程</th>
               </tr>
             </thead>
@@ -56,7 +55,6 @@
                   <td>{{ row.total_tardiness_hours if row.total_tardiness_hours is not none else '-' }}</td>
                   <td>{{ row.makespan_hours if row.makespan_hours is not none else '-' }}</td>
                   <td>{{ row.changeover_count if row.changeover_count is not none else '-' }}</td>
-                  <td>{{ row.score_label or '-' }}</td>
                   <td>
                     {% if row.links and row.links|length > 0 %}
                       <div class="aps-form-actions">

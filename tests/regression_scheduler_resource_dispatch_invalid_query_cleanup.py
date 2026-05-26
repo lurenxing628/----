@@ -6,6 +6,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from typing import Dict, List
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -220,7 +221,7 @@ def test_resource_dispatch_mixed_invalid_filters_settle_without_500(tmp_path, mo
     )
 
     assert resp.status_code == 200
-    html = resp.data.decode("utf-8", errors="ignore")
+    html = resp.data.decode("utf-8")
     assert "资源排班" in html
     assert "id=\"rdPage\"" in html
     assert "query_date格式不正确" not in html
@@ -383,14 +384,14 @@ def test_resource_dispatch_service_no_history_latest_returns_empty_zero_version(
     assert critical_filters["plan_role"] == ROLE_CRITICAL_BEST
     assert critical_filters["requested_plan_role"] == ROLE_CRITICAL_BEST
     assert critical_filters["effective_plan_role"] == ROLE_ADOPTED
-    assert critical_filters["plan_role_status"] == "selected"
+    assert critical_filters["plan_role_status"] == "fallback_to_adopted"
     assert critical_filters["plan_role_message"] == ""
     assert critical_filters["candidate_id"] is None
     assert critical_filters["candidate_key"] is None
     assert critical_filters["source_table"] is None
-    assert critical_filters["is_comparison"] is False
+    assert critical_filters["is_comparison"] is True
     assert critical_payload["plan_role_options"] == [
-        {"role": ROLE_ADOPTED, "label": "最终采用", "is_comparison": False}
+        {"role": ROLE_ADOPTED, "label": "正式采用方案", "is_comparison": False}
     ]
     assert critical_payload["plan_role_notice"] == ""
 
@@ -430,7 +431,7 @@ def _is_generic_exception_handler(handler: ast.ExceptHandler) -> bool:
     return any(name == "Exception" for name in _exception_type_names(target))
 
 
-def _exception_type_names(target: ast.AST) -> list[str]:
+def _exception_type_names(target: ast.AST) -> List[str]:
     if isinstance(target, ast.Name):
         return [target.id]
     if isinstance(target, ast.Attribute):
@@ -443,7 +444,7 @@ def _exception_type_names(target: ast.AST) -> list[str]:
     return []
 
 
-def _handler_int_constants(handler: ast.ExceptHandler) -> dict[str, int]:
+def _handler_int_constants(handler: ast.ExceptHandler) -> Dict[str, int]:
     values = {}
     for node in ast.walk(handler):
         if not isinstance(node, ast.Assign) or len(node.targets) != 1:

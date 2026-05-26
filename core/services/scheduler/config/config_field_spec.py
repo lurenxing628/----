@@ -49,7 +49,7 @@ _GRAPH_ANALYSIS_MODE_LABELS = {
     "on": "参与排产",
 }
 _GRAPH_CANDIDATE_WEIGHT_COUNT_LABELS = {"3": "3 档（更快）", "5": "5 档（默认）", "7": "7 档（更细）"}
-_GRAPH_SELECTION_POLICY_LABELS = {"balanced": "综合看交期和整体分数", "score_only": "只看整体分数"}
+_GRAPH_SELECTION_POLICY_LABELS = {"balanced": "综合看交期和整体表现", "score_only": "只看整体表现值"}
 _GRAPH_OVERDUE_TOLERANCE_COUNT_LABELS = {"0": "0 批", "1": "1 批（默认）", "2": "2 批"}
 _GRAPH_TARDINESS_TOLERANCE_RATIO_LABELS = {"0.05": "5%", "0.1": "10%（默认）", "0.2": "20%"}
 
@@ -383,9 +383,9 @@ _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
         ),
     ),
     _candidate_option_spec("graph_candidate_weight_count", "int", 5, "重点工序方案档数", "参与排产时，系统额外尝试几档重点工序优先方案", ("3", "5", "7"), _GRAPH_CANDIDATE_WEIGHT_COUNT_LABELS, "默认 5 档。档数越多，系统会多试几种排法，结果更容易挑细一点，但也会多花一点时间。"),
-    _candidate_option_spec("graph_selection_policy", "enum", "balanced", "最终方案选择方式", "系统自动挑最终采用方案时使用的规则", ("balanced", "score_only"), _GRAPH_SELECTION_POLICY_LABELS, "默认综合判断。综合判断会先避免明显拖期更多的方案，再看整体排产分数；只看整体分数则完全按分数最高的方案来选。"),
-    _candidate_option_spec("graph_overdue_tolerance_count", "int", 1, "允许多超期批次数", "综合选择方案时，最多允许比当前最好方案多几个超期批次", ("0", "1", "2"), _GRAPH_OVERDUE_TOLERANCE_COUNT_LABELS, "默认 1 批。综合判断时，如果一个方案让超期批次数多太多，系统不会只因为分数高就采用它。"),
-    _candidate_option_spec("graph_tardiness_tolerance_ratio", "float", 0.10, "允许多拖期比例", "综合选择方案时，最多允许比当前最好方案多出的拖期比例", ("0.05", "0.1", "0.2"), _GRAPH_TARDINESS_TOLERANCE_RATIO_LABELS, "默认 10%。综合判断时，如果一个方案拖期时间多太多，系统不会只因为分数高就采用它。"),
+    _candidate_option_spec("graph_selection_policy", "enum", "balanced", "正式方案选择方式", "系统自动挑正式采用方案时使用的规则", ("balanced", "score_only"), _GRAPH_SELECTION_POLICY_LABELS, "默认综合判断。综合判断会先避免明显拖期更多的方案，再看整体表现；只看整体表现值则完全按这个内部参考值来选。"),
+    _candidate_option_spec("graph_overdue_tolerance_count", "int", 1, "允许多超期批次数", "综合选择方案时，最多允许比当前最好方案多几个超期批次", ("0", "1", "2"), _GRAPH_OVERDUE_TOLERANCE_COUNT_LABELS, "默认 1 批。综合判断时，如果一个方案让超期批次数多太多，系统不会只因为内部参考值好看就采用它。"),
+    _candidate_option_spec("graph_tardiness_tolerance_ratio", "float", 0.10, "允许多拖期比例", "综合选择方案时，最多允许比当前最好方案多出的拖期比例", ("0.05", "0.1", "0.2"), _GRAPH_TARDINESS_TOLERANCE_RATIO_LABELS, "默认 10%。综合判断时，如果一个方案拖期时间多太多，系统不会只因为内部参考值好看就采用它。"),
     ConfigFieldSpec(
         key="graph_debug_export",
         field_type="yes_no",

@@ -6,6 +6,7 @@ import re
 import sys
 import tempfile
 from pathlib import Path
+from typing import Dict, List, Set
 
 
 def _find_repo_root() -> str:
@@ -50,8 +51,8 @@ def _slugify_heading(text: str) -> str:
     return t or "section"
 
 
-def _extract_heading_ids(markdown_text: str) -> set[str]:
-    ids: set[str] = set()
+def _extract_heading_ids(markdown_text: str) -> Set[str]:
+    ids: Set[str] = set()
     for line in markdown_text.splitlines():
         m = re.match(r"^(#{2,4})\s+(.+)$", line.strip())
         if not m:
@@ -61,7 +62,7 @@ def _extract_heading_ids(markdown_text: str) -> set[str]:
 
 
 def _build_payload_text(payload: dict) -> str:
-    parts: list[str] = []
+    parts: List[str] = []
     parts.append(str(payload.get("title") or ""))
     parts.append(str(payload.get("summary") or ""))
     help_card = payload.get("help_card") or {}
@@ -167,7 +168,7 @@ USER_CORRECTED_TOPIC_SEMANTIC_CASES = {
     ],
     "scheduler_week_plan": [
         "页面只预览前 50 行",
-        "完整周计划以导出的表格为准",
+        "完整周计划以点击页面上的“导出周计划表.xlsx”按钮后下载的表格为准",
         "导出周计划表.xlsx",
         "没有单独的起止日期输入框",
     ],
@@ -199,7 +200,7 @@ USER_CORRECTED_FULL_MANUAL_PHRASES = [
     "新模板不要故意写旧叫法",
     "自定义日期范围最多 62 天；查更长时间要分段查",
     "页面只预览前 50 行，并显示总行数",
-    "完整周计划以 **导出周计划表.xlsx** 为准",
+    "完整周计划以点击 **导出周计划表.xlsx** 按钮后下载的 Excel 为准",
     "报表里的超期天数是小数天，不是只取整天",
     "资源负荷与利用率不展示完全没任务的资源",
     "按类别或全部批量停机时，默认只作用于状态为 **可用** 的设备",
@@ -290,6 +291,7 @@ PAGE_MANUAL_CLOSEOUT_FORBIDDEN_PHRASES = (
     "单件时间",
     "换型工时",
     "版本分析",
+    "step-by-step",
 )
 
 PAGE_MANUAL_CLOSEOUT_FORBIDDEN_TEMPLATE_PHRASES = (
@@ -323,14 +325,14 @@ READY_CHECK_LEGACY_FILTER_COPY = (
 
 PROCESS_USER_CORRECTED_REQUIRED_PHRASES = {
     "excel_op_types": [
-        "列：工种ID(必填不重复)、工种名称(必填)、归属。",
-        "工种ID就是系统里的工种编号",
-        "Excel 表头必须写“工种ID”，不要改成“工种编号”",
+        "列：工种编号(必填不重复)、工种名称(必填)、归属。",
+        "工种编号就是给工种起的固定编号",
+        "导出文件包含工种编号、工种名称和归属",
     ],
     "excel_suppliers": [
-        "列：供应商ID（必填不重复）、名称（必填）、对应工种、默认周期、状态、备注。",
-        "供应商ID就是系统里的供应商编号",
-        "Excel 表头必须写“供应商ID”，不要改成“供应商编号”",
+        "列：供应商编号（必填不重复）、名称（必填）、对应工种、默认周期、状态、备注。",
+        "供应商编号就是给供应商起的固定编号",
+        "导出文件包含供应商编号、名称、对应工种、默认周期、状态和备注",
         "旧模板中已有数据行不会被系统擅自改写",
     ],
     "excel_routes": [
@@ -343,8 +345,12 @@ PROCESS_USER_CORRECTED_REQUIRED_PHRASES = {
         "只补空工时",
         "只补自制工序里“换型时间和单件工时都为 0”的行",
     ],
+    "excel_part_ops_export": [
+        "导出列包括：图号、工序、工种、归属、供应商、周期",
+        "`周期`：外协工序的周期",
+    ],
     "scheduler_analysis": [
-        "不填版本、版本为空或填 latest，都会看最新历史版本",
+        "不填版本或版本为空，都会看最新历史版本",
         "输入不存在的版本时，页面会显示该版本不存在的占位，不会自动选最新",
     ],
 }
@@ -352,12 +358,12 @@ PROCESS_USER_CORRECTED_REQUIRED_PHRASES = {
 
 PROCESS_USER_CORRECTED_FORBIDDEN_PHRASES = {
     "excel_op_types": [
-        "列：工种编号",
-        "`工种编号`：唯一且稳定",
+        "工种ID",
+        "Excel 表头必须写“工种ID”",
     ],
     "excel_suppliers": [
-        "列：供应商编号",
-        "`供应商编号` 和 `名称` 必填",
+        "供应商ID",
+        "Excel 表头必须写“供应商ID”",
         "新填数据请使用自制/外协",
         "新填数据请使用 `自制`/`外协`",
     ],
@@ -369,6 +375,20 @@ PROCESS_USER_CORRECTED_FORBIDDEN_PHRASES = {
     ],
     "excel_routes": [
         "外协工序会自动关联启用供应商与默认周期",
+    ],
+    "excel_part_ops_export": [
+        "导出列包括：图号、零件名称",
+        "工序号、工种名称",
+        "工序、工种名称",
+        "供应商名称、外协周期",
+        "工时数据",
+        "外协周期（天）",
+        "外协周期(天)",
+        "换型时间（小时）",
+        "换型时间(h)",
+        "换型时间或单件工时",
+        "单件工时（小时）",
+        "单件工时(h)",
     ],
 }
 
@@ -669,7 +689,7 @@ def _assert_user_corrected_semantic_contracts(page_manuals, manual_text: str) ->
 
 
 def _assert_page_manual_closeout_forbidden_phrases(page_manuals) -> None:
-    surfaces: dict[str, str] = {}
+    surfaces: Dict[str, str] = {}
     for key, fragment in dict(page_manuals.SHARED_FRAGMENTS).items():
         surfaces[f"shared_fragment:{key}"] = str(fragment or "")
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
+from typing import List
 
 import openpyxl
 
@@ -68,8 +69,8 @@ def _detail_row(source: str, lock_status: str, suffix: str) -> dict:
     }
 
 
-def _workbook_cell_values(wb) -> list[str]:
-    values: list[str] = []
+def _workbook_cell_values(wb) -> List[str]:
+    values: List[str] = []
     for ws in wb.worksheets:
         for row in ws.iter_rows():
             for cell in row:
@@ -121,6 +122,23 @@ def test_resource_dispatch_excel_uses_public_labels_and_never_leaks_internal_enu
     all_values = "\n".join(_workbook_cell_values(wb))
     for forbidden in ("internal", "external", "locked", "unlocked", "future_source", "future_lock"):
         assert forbidden not in all_values
+
+
+def test_resource_dispatch_excel_never_uses_internal_op_id_when_op_code_missing() -> None:
+    payload = _base_payload()
+    row = _detail_row("internal", "locked", "001")
+    row["op_id"] = "INTERNAL-OP-ID-987654"
+    row["op_code"] = ""
+    payload["detail_rows"] = [row]
+
+    decorated = decorate_resource_dispatch_payload(payload)
+    buffer = build_resource_dispatch_workbook(decorated)
+    wb = openpyxl.load_workbook(io.BytesIO(buffer.getvalue()))
+    all_values = "\n".join(_workbook_cell_values(wb))
+
+    assert "INTERNAL-OP-ID-987654" not in all_values
+    assert "op_INTERNAL" not in all_values
+    assert "OPID-987654" not in all_values
 
 
 def test_resource_dispatch_team_excel_uses_public_labels_in_all_detail_sheets() -> None:

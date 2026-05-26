@@ -98,7 +98,7 @@ class _PlanRoleServiceDriftOnResolve(_PlanRoleServiceStub):
 
 class _PlanRoleServiceMissingAdopted:
     def list_plan_roles(self, version: int) -> List[SchedulePlanRoleOption]:
-        raise ValueError(f"方案对比记录不完整：version={version} 缺少最终采用方案。")
+        raise ValueError(f"方案对比记录不完整：version={version} 缺少正式采用方案。")
 
 
 def _comparison_summary(
@@ -321,9 +321,9 @@ def test_analysis_route_builds_candidate_comparison_rows_with_shared_role_labels
         ROLE_CRITICAL_BEST,
     ]
     assert [row["role_label"] for row in display["rows"]] == [
-        "最终采用",
-        "原算法最好",
-        "重点工序优先方案最好",
+        "正式采用方案",
+        "原算法代表方案",
+        "重点工序优先代表方案",
     ]
     rows = {row["role"]: row for row in display["rows"]}
     assert rows[ROLE_ADOPTED]["role_label"] == plan_role_label(ROLE_ADOPTED)
@@ -331,15 +331,12 @@ def test_analysis_route_builds_candidate_comparison_rows_with_shared_role_labels
     assert rows[ROLE_CRITICAL_BEST]["role_label"] == plan_role_label(ROLE_CRITICAL_BEST)
     assert rows[ROLE_CRITICAL_BEST]["candidate_key"] == rows[ROLE_ADOPTED]["candidate_key"]
     assert rows[ROLE_CRITICAL_BEST]["is_same_as_adopted"] is True
-    assert rows[ROLE_CRITICAL_BEST]["is_comparison"] is False
-    assert (
-        "与最终采用方案相同" in rows[ROLE_CRITICAL_BEST]["comparison_note"]
-        or "正式排程已写入这一版" in rows[ROLE_CRITICAL_BEST]["comparison_note"]
-    )
+    assert rows[ROLE_CRITICAL_BEST]["is_comparison"] is True
+    assert "只作对比参考查看" in rows[ROLE_CRITICAL_BEST]["comparison_note"]
     assert rows[ROLE_ADOPTED]["is_comparison"] is False
     assert rows[ROLE_BASELINE_BEST]["is_comparison"] is True
-    assert "对比方案" in rows[ROLE_BASELINE_BEST]["comparison_note"]
-    assert "这是对比方案，不是正式写入的结果" in rows[ROLE_BASELINE_BEST]["comparison_note"]
+    assert "对比参考方案" in rows[ROLE_BASELINE_BEST]["comparison_note"]
+    assert "不能直接派工或反馈" in rows[ROLE_BASELINE_BEST]["comparison_note"]
     assert display["skipped_candidate_labels"] == []
     assert display["baseline_missing_or_failed"] is False
 
@@ -369,9 +366,9 @@ def test_analysis_candidate_display_keeps_core_role_order_and_labels() -> None:
 
     assert [row["role"] for row in display["rows"]] == list(VALID_PLAN_ROLES)
     assert [row["role_label"] for row in display["rows"]] == [
-        "最终采用",
-        "原算法最好",
-        "重点工序优先方案最好",
+        "正式采用方案",
+        "原算法代表方案",
+        "重点工序优先代表方案",
     ]
 
 
@@ -396,7 +393,7 @@ def test_analysis_route_shows_clear_notice_when_candidate_comparison_is_missing(
     display = payload["candidate_comparison_display"]
     assert display["has_comparison"] is False
     assert display["rows"] == []
-    assert "本次没有开启方案对比，只生成了最终采用方案" in display["notice"]
+    assert "本次没有开启方案对比，只生成了正式采用方案" in display["notice"]
 
 
 def test_analysis_route_shows_incomplete_notice_when_candidate_detail_is_missing() -> None:
@@ -425,7 +422,7 @@ def test_analysis_route_shows_incomplete_notice_when_candidate_detail_is_missing
     assert "试算方案没算成功" in status_text
     assert "原算法那套方案缺失或没算成功" in status_text
     assert "因为时间到了，系统没再开始这些方案" in status_text
-    assert "本次方案对比记录不完整，当前只展示最终采用方案" in display["notice"]
+    assert "本次方案对比记录不完整，当前只展示正式采用方案" in display["notice"]
 
 
 def test_analysis_route_surfaces_plan_role_integrity_error_without_fake_links() -> None:
@@ -521,8 +518,8 @@ def test_analysis_route_classifies_missing_adopted_role_without_link_notice() ->
     display = payload["candidate_comparison_display"]
     assert display["has_comparison"] is False
     assert "当前不展示方案对比" in display["notice"]
-    assert "当前只展示最终采用方案" not in display["notice"]
-    assert "方案对比记录缺少最终采用方案" in display["notice"]
+    assert "当前只展示正式采用方案" not in display["notice"]
+    assert "方案对比记录缺少正式采用方案" in display["notice"]
     assert "跳转关系不完整" not in display["notice"]
 
 
@@ -540,6 +537,8 @@ def test_analysis_template_uses_viewmodel_candidate_rows_and_route_built_links()
     assert "message.text" in source
     assert "plan_role=" not in source
     assert "关键链最好" not in source
+    assert "row.score_label" not in source
+    assert ">评分<" not in source
 
 
 def test_candidate_display_marks_baseline_best_as_adopted_when_baseline_is_selected() -> None:
@@ -553,11 +552,11 @@ def test_candidate_display_marks_baseline_best_as_adopted_when_baseline_is_selec
 
     rows = {row["role"]: row for row in display["rows"]}
     assert rows[ROLE_BASELINE_BEST]["is_same_as_adopted"] is True
-    assert rows[ROLE_BASELINE_BEST]["is_comparison"] is False
-    assert "与最终采用方案相同" in rows[ROLE_BASELINE_BEST]["comparison_note"]
+    assert rows[ROLE_BASELINE_BEST]["is_comparison"] is True
+    assert "只作对比参考查看" in rows[ROLE_BASELINE_BEST]["comparison_note"]
     assert rows[ROLE_CRITICAL_BEST]["is_same_as_adopted"] is False
     assert rows[ROLE_CRITICAL_BEST]["is_comparison"] is True
-    assert "这是对比方案，不是正式写入的结果" in rows[ROLE_CRITICAL_BEST]["comparison_note"]
+    assert "不能直接派工或反馈" in rows[ROLE_CRITICAL_BEST]["comparison_note"]
 
 
 def test_candidate_display_uses_plan_role_source_table_for_comparison_state() -> None:
@@ -573,9 +572,10 @@ def test_candidate_display_uses_plan_role_source_table_for_comparison_state() ->
     assert rows[ROLE_BASELINE_BEST]["candidate_key"] != rows[ROLE_ADOPTED]["candidate_key"]
     assert rows[ROLE_BASELINE_BEST]["source_table"] == SOURCE_SCHEDULE
     assert rows[ROLE_BASELINE_BEST]["is_same_as_adopted"] is False
-    assert rows[ROLE_BASELINE_BEST]["is_comparison"] is False
-    assert "这是对比方案" not in rows[ROLE_BASELINE_BEST]["comparison_note"]
-    assert "正式排程已写入这一版" in rows[ROLE_BASELINE_BEST]["comparison_note"]
+    assert rows[ROLE_BASELINE_BEST]["is_comparison"] is True
+    assert "对比参考方案" in rows[ROLE_BASELINE_BEST]["comparison_note"]
+    assert "不能直接派工或反馈" in rows[ROLE_BASELINE_BEST]["comparison_note"]
+    assert "正式排程已写入这一版" not in rows[ROLE_BASELINE_BEST]["comparison_note"]
 
 
 def test_candidate_display_surfaces_non_representative_failed_candidates() -> None:
@@ -621,6 +621,24 @@ def test_candidate_display_status_messages_include_candidate_run_state() -> None
     assert "关键链候选" not in status_text
 
 
+def test_candidate_display_translates_internal_failure_reason_for_users() -> None:
+    from web.viewmodels.scheduler_analysis_candidates import build_candidate_comparison_display
+
+    summary = _comparison_summary(failed_extra=True)
+    failed_candidate = summary["algo"]["candidate_comparison"]["candidates"][-1]
+    failed_candidate["failure_reason"] = "candidate_time_budget_reached"
+
+    display = build_candidate_comparison_display(
+        summary,
+        selected_ver=7,
+        plan_role_options=_plan_role_options(),
+    )
+
+    status_text = " ".join(message["text"] for message in display["status_messages"])
+    assert "试算时间到了，系统没有继续算这套方案" in status_text
+    assert "candidate_time_budget_reached" not in status_text
+
+
 def test_candidate_display_and_plan_role_options_hide_old_internal_labels() -> None:
     from web.viewmodels.scheduler_analysis_candidates import build_candidate_comparison_display
 
@@ -644,3 +662,21 @@ def test_candidate_display_and_plan_role_options_hide_old_internal_labels() -> N
     assert "关键链最好" not in option_text
     assert "关键链候选" not in option_text
     assert "重点工序优先方案" in option_text
+
+
+def test_candidate_display_does_not_duplicate_adopted_plan_suffix() -> None:
+    from web.viewmodels.scheduler_analysis_candidates import build_candidate_comparison_display
+
+    summary = _comparison_summary()
+    candidates = summary["algo"]["candidate_comparison"]["candidates"]
+    candidates[0]["label"] = "最终采用方案"
+
+    display = build_candidate_comparison_display(
+        summary,
+        selected_ver=7,
+        plan_role_options=_plan_role_options(),
+    )
+
+    candidate_labels = [row["candidate_label"] for row in display["rows"]]
+    assert "正式采用方案" in candidate_labels
+    assert "正式采用方案方案" not in candidate_labels

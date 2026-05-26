@@ -20,9 +20,9 @@
       </div>
       {% if best_score_schema_display %}
         <div class="muted mt-2">
-          评分顺序：
+          系统先比较这些结果：
           {% for item in best_score_schema_display %}
-            {{ item.get('display_label') or item.get('label') or '未命名评分项' }}{% if not loop.last %} → {% endif %}
+            {{ item.get('display_label') or item.get('label') or '未命名比较项' }}{% if not loop.last %} → {% endif %}
           {% endfor %}
         </div>
       {% endif %}

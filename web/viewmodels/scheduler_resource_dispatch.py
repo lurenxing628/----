@@ -34,9 +34,42 @@ _FILENAME_REPLACEMENTS = (
     ("|", "-"),
 )
 
+_PUBLIC_FILTER_DROP_KEYS = {
+    "source_table",
+    "candidate_id",
+    "selection_candidate_id",
+    "resolved_candidate_id",
+    "scenario_id",
+    "candidate_key",
+    "candidate_kind",
+    "candidate_status",
+    "detail_saved",
+    "plan_role",
+    "requested_plan_role",
+    "effective_plan_role",
+    "plan_role_status",
+}
+
+_PUBLIC_PLAN_ROLE_OPTION_KEYS = {"role", "label", "is_comparison"}
+_PUBLIC_ROW_DROP_KEYS = {"schedule_id", "op_id", "_row_identity"}
+
 
 def _text(value: Any) -> str:
     return str(value or "").strip()
+
+
+def _operation_title(row: MutableMapping[str, Any]) -> str:
+    op_code = _text(row.get("op_code"))
+    if op_code:
+        return op_code
+    batch_id = _text(row.get("batch_id"))
+    seq = _text(row.get("seq"))
+    return " ".join(part for part in (batch_id, f"工序{seq}" if seq else "工序") if part)
+
+
+def _drop_internal_row_keys(row: MutableMapping[str, Any]) -> None:
+    for key in _PUBLIC_ROW_DROP_KEYS:
+        row.pop(key, None)
 
 
 def _safe_filename_part(value: Any) -> str:
@@ -46,10 +79,12 @@ def _safe_filename_part(value: Any) -> str:
     return "".join(ch for ch in text if ord(ch) >= 32 and ord(ch) != 127).strip()
 
 
+def _scenario_public_label(filters: Dict[str, Any]) -> str:
+    return _text(filters.get("scenario_display_name") or filters.get("scenario_name")) or "模拟预览（未命名）"
+
+
 def _scenario_filename_label(filters: Dict[str, Any]) -> str:
-    scenario_id = _safe_filename_part(filters.get("scenario_id"))
-    scenario_name = _safe_filename_part(filters.get("scenario_name"))
-    return "_".join(part for part in ("模拟方案", scenario_id, scenario_name) if part) or "模拟方案"
+    return _safe_filename_part(_scenario_public_label(filters)) or "模拟预览（未命名）"
 
 
 def _plan_role_filename_label(filters: Dict[str, Any]) -> str:
@@ -102,6 +137,28 @@ def _decorate_filters(filters: MutableMapping[str, Any]) -> None:
         filters["period_preset_label"] = period_preset_label(period_preset)
     if scope_id or scope_name:
         filters["scope_label"] = f"{scope_id} {scope_name}".strip()
+    if filters.get("is_scenario_preview"):
+        filters["scenario_display_name"] = _scenario_public_label(dict(filters))
+
+
+def _public_filters(filters: MutableMapping[str, Any]) -> Dict[str, Any]:
+    return {key: value for key, value in filters.items() if key not in _PUBLIC_FILTER_DROP_KEYS}
+
+
+def _public_plan_role_option(option: MutableMapping[str, Any]) -> Dict[str, Any]:
+    return {key: value for key, value in option.items() if key in _PUBLIC_PLAN_ROLE_OPTION_KEYS}
+
+
+def _public_plan_role_options(options: Any) -> List[Dict[str, Any]]:
+    if not isinstance(options, list):
+        return []
+    out: List[Dict[str, Any]] = []
+    for option in options:
+        if isinstance(option, MutableMapping):
+            public_option = _public_plan_role_option(option)
+            if public_option.get("role"):
+                out.append(public_option)
+    return out
 
 
 def _display_machine(machine_id: Any, machine_name: Any, supplier_name: Any = None) -> str:
@@ -164,6 +221,7 @@ def _decorate_detail_row(row: MutableMapping[str, Any]) -> None:
     row["current_resource_label"] = _current_resource_label(row)
     row["counterpart_resource_label"] = _counterpart_resource_label(row)
     row["team_relation_label"] = _team_relation_label(row.get("current_team_id"), row.get("counterpart_team_id"))
+    _drop_internal_row_keys(row)
 
 
 def _decorate_detail_rows(rows: Any) -> None:
@@ -181,7 +239,7 @@ def _calendar_item_text(item: MutableMapping[str, Any]) -> str:
         if legacy_text:
             return legacy_text
     parts: List[str] = [time_label]
-    title = _text(item.get("op_code")) or _text(item.get("batch_id"))
+    title = _operation_title(item)
     if title:
         parts.append(title)
     counterpart = _text(item.get("counterpart_resource_label"))
@@ -196,6 +254,7 @@ def _calendar_item_text(item: MutableMapping[str, Any]) -> str:
 def _decorate_calendar_item(item: MutableMapping[str, Any]) -> None:
     item["counterpart_resource_label"] = _counterpart_resource_label(item)
     item["text"] = _calendar_item_text(item)
+    _drop_internal_row_keys(item)
 
 
 def _decorate_calendar_row(row: MutableMapping[str, Any]) -> None:
@@ -230,12 +289,13 @@ def _decorate_task(task: MutableMapping[str, Any]) -> None:
     if isinstance(meta, MutableMapping):
         _decorate_detail_row(meta)
         task_id = _text(task.get("id"))
-        title = _text(meta.get("op_code")) or _text(task.get("name")) or task_id
+        title = _operation_title(meta) or _text(task.get("name")) or task_id
         counterpart = _text(meta.get("counterpart_resource_label"))
     else:
         title = _text(task.get("name")) or _text(task.get("id"))
         counterpart = ""
     task["name"] = f"{title} {counterpart}".strip()
+    _drop_internal_row_keys(task)
 
 
 def _decorate_tasks(tasks: Any) -> None:
@@ -259,6 +319,8 @@ def decorate_resource_dispatch_payload(payload: Dict[str, Any]) -> Dict[str, Any
     filters = out.get("filters")
     if isinstance(filters, MutableMapping):
         _decorate_filters(filters)
+        out["filters"] = _public_filters(filters)
+    out["plan_role_options"] = _public_plan_role_options(out.get("plan_role_options"))
     for key in _row_collection_names():
         _decorate_detail_rows(out.get(key))
     _decorate_tasks(out.get("tasks"))
@@ -272,6 +334,8 @@ def decorate_resource_dispatch_context(context: Dict[str, Any]) -> Dict[str, Any
     filters = out.get("filters")
     if isinstance(filters, MutableMapping):
         _decorate_filters(filters)
+        out["client_filters"] = _public_filters(filters)
+    out["plan_role_options"] = _public_plan_role_options(out.get("plan_role_options"))
     _decorate_options(out)
     return out
 

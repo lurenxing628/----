@@ -5,7 +5,7 @@ import io
 import os
 import sys
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 import openpyxl
 
@@ -80,13 +80,13 @@ def test_week_plan_filename_uses_normalized_version(tmp_path, monkeypatch) -> No
 
     resp_default = client.get("/scheduler/week-plan/export?week_start=2026-03-02")
     assert resp_default.status_code == 200
-    disposition_default = resp_default.headers.get("Content-Disposition", "")
-    assert "v7_2026-03-02_to_2026-03-08.xlsx" in disposition_default, disposition_default
+    disposition_default = unquote(resp_default.headers.get("Content-Disposition", ""))
+    assert "v7_2026-03-02至2026-03-08.xlsx" in disposition_default, disposition_default
 
     resp_latest = client.get("/scheduler/week-plan/export?week_start=2026-03-02&version=latest")
     assert resp_latest.status_code == 200
-    disposition_latest = resp_latest.headers.get("Content-Disposition", "")
-    assert "v7_2026-03-02_to_2026-03-08.xlsx" in disposition_latest, disposition_latest
+    disposition_latest = unquote(resp_latest.headers.get("Content-Disposition", ""))
+    assert "v7_2026-03-02至2026-03-08.xlsx" in disposition_latest, disposition_latest
 
     resp_invalid = client.get("/scheduler/week-plan/export?week_start=2026-03-02&version=abc", follow_redirects=True)
     assert resp_invalid.status_code == 200
@@ -154,8 +154,8 @@ def test_week_plan_export_uses_week_start_only_when_stale_range_present(tmp_path
 
     assert resp.status_code == 200
     assert calls == [{"week_start": "2026-05-11", "offset_weeks": 0, "version": "7"}]
-    disposition = resp.headers.get("Content-Disposition", "")
-    assert "v7_2026-05-11_to_2026-05-17.xlsx" in disposition, disposition
+    disposition = unquote(resp.headers.get("Content-Disposition", ""))
+    assert "v7_2026-05-11至2026-05-17.xlsx" in disposition, disposition
 
     workbook = openpyxl.load_workbook(io.BytesIO(resp.data))
     sheet = workbook.active

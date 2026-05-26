@@ -53,8 +53,6 @@ def _write_table(ws: Worksheet, headers: Sequence[str], rows: Sequence[Sequence[
 
 def _detail_headers() -> List[str]:
     return [
-        "排程ID",
-        "工序ID",
         "工序编码",
         "批次号",
         "图号",
@@ -98,8 +96,6 @@ def _lock_status_label(row: Dict[str, Any]) -> str:
 def _build_detail_row(row: Dict[str, Any]) -> List[Any]:
     seq = row.get("seq")
     return [
-        _first_present(row, "schedule_id"),
-        _first_present(row, "op_id"),
         _first_present(row, "op_code"),
         _first_present(row, "batch_id"),
         _first_present(row, "part_no"),
@@ -169,7 +165,8 @@ def _summary_filter_value(filters: Dict[str, Any], key: str) -> Any:
 
 def _summary_plan_label(filters: Dict[str, Any]) -> Any:
     return (
-        filters.get("scenario_name")
+        filters.get("scenario_display_name")
+        or filters.get("scenario_name")
         or filters.get("effective_plan_role_label")
         or filters.get("plan_role_label")
         or ""
@@ -196,7 +193,6 @@ def _summary_pairs(payload: Dict[str, Any]) -> List[List[Any]]:
         ["结束日期", _summary_filter_value(filters, "end_date")],
         ["排产版本", _summary_filter_value(filters, "version")],
         ["查看方案", _summary_plan_label(filters)],
-        ["模拟方案编号", _summary_filter_value(filters, "scenario_id")],
         ["模拟方案说明", _summary_scenario_note(filters)],
         ["任务数量", summary.get("total_tasks") or 0],
         ["总工时（小时）", summary.get("total_hours") or 0],

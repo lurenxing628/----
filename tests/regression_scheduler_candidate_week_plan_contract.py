@@ -11,9 +11,10 @@ import openpyxl
 
 from core.infrastructure.database import ensure_schema, get_connection
 from core.models.schedule_candidate import ScheduleCandidate, ScheduleCandidateRows, ScheduleCandidateSelection
-from core.services.scheduler.schedule_plan_query_service import ROLE_ADOPTED, ROLE_BASELINE_BEST
+from core.services.scheduler.schedule_plan_query_service import ROLE_ADOPTED, ROLE_BASELINE_BEST, ROLE_CRITICAL_BEST
 from data.repositories.schedule_candidate_repo import ScheduleCandidateRepository
 from data.repositories.schedule_plan_query_repo import SOURCE_CANDIDATE_ROWS, SOURCE_SCHEDULE
+from web.routes.domains.scheduler.scheduler_week_plan import _plan_context_from_data
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
@@ -156,6 +157,43 @@ def _build_app(tmp_path, monkeypatch):
     return app_mod.create_app(), db_path
 
 
+def test_week_plan_fallback_context_uses_common_plan_resolution_fields() -> None:
+    resolution = _plan_context_from_data({"version": VERSION}, ROLE_CRITICAL_BEST)
+
+    assert resolution["version"] == VERSION
+    assert resolution["requested_role"] == ROLE_CRITICAL_BEST
+    assert resolution["selected_role"] == ROLE_ADOPTED
+    assert resolution["source_table"] == SOURCE_SCHEDULE
+    assert resolution["candidate_id"] is None
+    assert resolution["candidate_key"] is None
+    assert resolution["status"] == "fallback_to_adopted"
+    assert resolution["is_fallback"] is True
+    assert resolution["is_comparison"] is True
+
+
+def test_week_plan_context_keeps_existing_plan_resolution_dict() -> None:
+    existing = {
+        "version": VERSION,
+        "requested_role": ROLE_BASELINE_BEST,
+        "selected_role": ROLE_BASELINE_BEST,
+        "source_table": SOURCE_CANDIDATE_ROWS,
+        "candidate_id": 12,
+        "candidate_key": "baseline_best",
+        "status": "scenario_preview",
+        "message": "当前正在预览模拟方案，正式计划还没有改变。",
+        "is_fallback": False,
+        "is_comparison": True,
+        "is_scenario_preview": True,
+        "scenario_id": "scenario-001",
+        "scenario_name": "晚班模拟",
+        "scenario_display_name": "晚班模拟",
+    }
+
+    resolution = _plan_context_from_data({"version": VERSION, "plan_role_resolution": existing}, ROLE_CRITICAL_BEST)
+
+    assert {key: resolution.get(key) for key in existing} == existing
+
+
 def test_week_plan_page_uses_candidate_rows_and_export_url_preserves_plan_role(tmp_path, monkeypatch) -> None:
     app, _db_path = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
@@ -168,10 +206,23 @@ def test_week_plan_page_uses_candidate_rows_and_export_url_preserves_plan_role(t
     assert "候选设备" in html
     assert "候选人员" in html
     assert "plan_role=baseline_best" in html
-    assert "对比方案" in html
-    assert "当前正在查看" in html
-    assert "这套方案只用于对比，不代表最终采用的排产结果" in html
+    assert "当前查看的是“原算法代表方案”" in html
+    assert "这是一套对比参考方案" in html
     assert "当前周计划正在预览" not in html
+
+
+def test_week_plan_missing_valid_plan_role_page_only_shows_fallback_notice(tmp_path, monkeypatch) -> None:
+    app, _db_path = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+
+    resp = client.get(f"/scheduler/week-plan?week_start=2026-05-11&version={VERSION}&plan_role={ROLE_CRITICAL_BEST}")
+    html = resp.get_data(as_text=True)
+
+    assert resp.status_code == 200
+    assert "你原本选择的是“重点工序优先代表方案”" in html
+    assert "已显示正式采用方案" in html
+    assert "这套结果只用来对照查看" not in html
+    assert "这是一套对比参考方案" not in html
 
 
 def test_week_plan_export_uses_same_plan_role_and_logs_requested_effective_roles(tmp_path, monkeypatch) -> None:
@@ -181,7 +232,7 @@ def test_week_plan_export_uses_same_plan_role_and_logs_requested_effective_roles
     resp = client.get(f"/scheduler/week-plan/export?week_start=2026-05-11&version={VERSION}&plan_role={ROLE_BASELINE_BEST}")
 
     assert resp.status_code == 200
-    assert "原算法最好" in unquote(str(resp.headers.get("Content-Disposition") or ""))
+    assert "原算法代表方案" in unquote(str(resp.headers.get("Content-Disposition") or ""))
     workbook = openpyxl.load_workbook(io.BytesIO(resp.data))
     sheet = workbook.active
     assert sheet is not None
@@ -209,10 +260,10 @@ def test_week_plan_export_uses_same_plan_role_and_logs_requested_effective_roles
     assert filters.get("version") == VERSION
     assert filters.get("requested_plan_role") == ROLE_BASELINE_BEST
     assert filters.get("effective_plan_role") == ROLE_BASELINE_BEST
-    assert filters.get("plan_role_status") == "selected"
+    assert filters.get("plan_role_status") == "resolved_comparison"
     assert filters.get("candidate_key") == "baseline_best"
 
     fallback_resp = client.get(f"/scheduler/week-plan/export?week_start=2026-05-11&version={VERSION}&plan_role=critical_best")
     assert fallback_resp.status_code == 200
     fallback_disposition = unquote(str(fallback_resp.headers.get("Content-Disposition") or ""))
-    assert "最终采用" in fallback_disposition
+    assert "正式采用方案" in fallback_disposition

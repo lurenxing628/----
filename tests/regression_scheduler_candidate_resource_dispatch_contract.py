@@ -144,7 +144,7 @@ def _build_route_app() -> Flask:
 
 
 def _json_data(resp) -> Dict[str, Any]:
-    return json.loads(resp.data.decode("utf-8", errors="ignore") or "{}").get("data") or {}
+    return json.loads(resp.data.decode("utf-8") or "{}").get("data") or {}
 
 
 def test_resource_dispatch_service_reads_requested_candidate_plan_and_falls_back_to_adopted(tmp_path: Path) -> None:
@@ -164,7 +164,7 @@ def test_resource_dispatch_service_reads_requested_candidate_plan_and_falls_back
         baseline_filters = baseline.get("filters") or {}
         assert baseline_filters.get("requested_plan_role") == ROLE_BASELINE_BEST
         assert baseline_filters.get("effective_plan_role") == ROLE_BASELINE_BEST
-        assert "最终采用" in str(baseline.get("plan_role_notice") or "")
+        assert "正式采用方案" in str(baseline.get("plan_role_notice") or "")
         assert (baseline.get("detail_rows") or [])[0].get("operator_id") == "O-CANDIDATE"
         assert (baseline.get("detail_rows") or [])[0].get("machine_id") == "M-CANDIDATE"
 
@@ -180,7 +180,7 @@ def test_resource_dispatch_service_reads_requested_candidate_plan_and_falls_back
         assert fallback_filters.get("requested_plan_role") == ROLE_CRITICAL_BEST
         assert fallback_filters.get("effective_plan_role") == ROLE_ADOPTED
         assert fallback_filters.get("plan_role_status") == "fallback_to_adopted"
-        assert "最终采用方案" in str(fallback.get("plan_role_notice") or "")
+        assert "正式采用方案" in str(fallback.get("plan_role_notice") or "")
         assert (fallback.get("detail_rows") or [])[0].get("operator_id") == "O-ADOPTED"
     finally:
         conn.close()
@@ -297,7 +297,7 @@ def test_resource_dispatch_non_adopted_schedule_source_overdue_markers_use_adopt
         detail_rows = payload.get("detail_rows") or []
         assert filters.get("effective_plan_role") == ROLE_BASELINE_BEST
         assert filters.get("source_table") == SOURCE_SCHEDULE
-        assert filters.get("is_comparison") is False
+        assert filters.get("is_comparison") is True
         assert payload.get("overdue_markers_degraded") is False
         assert len(detail_rows) == 1
         assert detail_rows[0].get("operator_id") == "O-ADOPTED"
@@ -336,7 +336,7 @@ def test_resource_dispatch_page_data_and_export_keep_plan_role_in_urls_and_log(t
         assert captured["template_name"] == "scheduler/resource_dispatch.html"
         assert "plan_role=baseline_best" in str(captured.get("data_url") or "")
         assert "plan_role=baseline_best" in str(captured.get("export_url") or "")
-        assert "只用来和最终采用方案比一比" in str(captured.get("plan_role_notice") or "")
+        assert "只用来和正式采用方案比一比" in str(captured.get("plan_role_notice") or "")
         assert (captured.get("filters") or {}).get("requested_plan_role") == ROLE_BASELINE_BEST
 
         with app.test_request_context(f"/scheduler/resource-dispatch/data?{query}"):
@@ -346,8 +346,9 @@ def test_resource_dispatch_page_data_and_export_keep_plan_role_in_urls_and_log(t
         assert data_resp.status_code == 200
         data = _json_data(data_resp)
         filters = data.get("filters") or {}
-        assert filters.get("requested_plan_role") == ROLE_BASELINE_BEST
-        assert filters.get("effective_plan_role") == ROLE_BASELINE_BEST
+        assert "requested_plan_role" not in filters
+        assert "effective_plan_role" not in filters
+        assert "plan_role_status" not in filters
         assert (data.get("detail_rows") or [])[0].get("current_resource_label") == "O-CANDIDATE 候选人员"
 
         export_logs: List[Dict[str, Any]] = []
@@ -362,12 +363,12 @@ def test_resource_dispatch_page_data_and_export_keep_plan_role_in_urls_and_log(t
             export_resp = rd_routes.resource_dispatch_export()
 
         assert export_resp.status_code == 200
-        assert "原算法最好" in unquote(str(export_resp.headers.get("Content-Disposition") or ""))
+        assert "原算法代表方案" in unquote(str(export_resp.headers.get("Content-Disposition") or ""))
         assert export_logs
         logged_filters = export_logs[0].get("filters") or {}
         assert logged_filters.get("requested_plan_role") == ROLE_BASELINE_BEST
         assert logged_filters.get("effective_plan_role") == ROLE_BASELINE_BEST
-        assert logged_filters.get("plan_role_status") == "selected"
+        assert logged_filters.get("plan_role_status") == "resolved_comparison"
         assert logged_filters.get("candidate_key") == "baseline_best"
     finally:
         conn.close()

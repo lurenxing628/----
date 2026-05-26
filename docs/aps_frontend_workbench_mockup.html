@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>APS 前端工作台原型 · 首页 / 甘特 / 方案对比 / 异常解释 / 车间反馈 / 报表中心</title>
+  <title>APS 前端工作台原型 · 首页 / 甘特 / 方案对比 / 延期说明 / 车间反馈 / 报表中心</title>
   <style>
     :root {
       --bg: #f3f6fb;
@@ -1135,6 +1135,15 @@
     .impact-table .wrap {
       white-space: normal;
     }
+    .empty-state {
+      border: 1px dashed var(--border);
+      background: #fff;
+      border-radius: 16px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.7;
+      padding: 16px;
+    }
 
     .exception-summary-grid {
       display: grid;
@@ -1574,7 +1583,7 @@
         <div class="brand-mark">A</div>
         <div>
           <h1>APS 前端工作台原型</h1>
-          <p>把首页、甘特、方案对比、异常解释、车间反馈和报表中心做成一套连贯的工作台。</p>
+          <p>把首页、甘特、方案对比、延期说明、车间反馈和报表中心做成一套连贯的工作台。</p>
         </div>
       </div>
 
@@ -1607,7 +1616,7 @@
           <div class="mini-kpi">
             <div class="label">反馈任务</div>
             <div class="value" style="color:var(--success);">18</div>
-            <div class="sub">车间待开工 / 暂停 / 完工</div>
+            <div class="sub">车间待开工 / 生产中 / 已完工</div>
           </div>
         </div>
       </div>
@@ -1618,8 +1627,8 @@
           <button class="active" data-scroll-target="home"><span>01 · 首页控制台</span><small>待处理 / 风险</small></button>
           <button data-scroll-target="workbench"><span>02 · 排产工作台</span><small>表格 / 甘特 / 详情</small></button>
           <button data-scroll-target="comparison"><span>03 · 方案对比</span><small>推荐 / 代价 / 影响</small></button>
-          <button data-scroll-target="exceptions"><span>04 · 异常解释</span><small>为什么晚 / 怎么改</small></button>
-          <button data-scroll-target="shopfloor"><span>05 · 车间反馈</span><small>开工 / 暂停 / 完工</small></button>
+          <button data-scroll-target="exceptions"><span>04 · 延期说明</span><small>为什么晚 / 怎么改</small></button>
+          <button data-scroll-target="shopfloor"><span>05 · 车间反馈</span><small>开工 / 完工</small></button>
           <button data-scroll-target="reports"><span>06 · 报表中心</span><small>超期 / 负荷 / 停机</small></button>
         </div>
       </div>
@@ -1639,12 +1648,12 @@
           <div class="topbar-badge">离线 · Win7 兼容 · 中文动作</div>
           <div>
             <h2>APS 前端工作台原型</h2>
-            <div class="desc">首页不只是看数字；甘特不只是看条；方案不只是看表；异常必须解释；车间必须能反馈。</div>
+            <div class="desc">首页不只是看数字；甘特不只是看条；方案不只是看表；延期要讲清楚；车间必须能反馈。</div>
           </div>
         </div>
         <div class="topbar-right">
           <span class="chip chip-soft">版本 v12</span>
-          <span class="chip chip-soft">方案：最终采用</span>
+          <span class="chip chip-soft">方案：正式采用</span>
           <span class="chip chip-soft">范围：05-23 ～ 05-29</span>
           <button class="btn btn-secondary btn-sm" id="densityToggle">切换密度</button>
           <button class="btn btn-primary btn-sm" id="jumpHome">回到首页</button>
@@ -1670,7 +1679,7 @@
         <div class="panel-body">
           <div class="context-bar">
             <div class="context-item"><div class="k">当前版本</div><div class="v">v12 · 2026-05-23 18:40</div></div>
-            <div class="context-item"><div class="k">当前方案</div><div class="v">最终采用 · 重点工序优先备选</div></div>
+            <div class="context-item"><div class="k">当前方案</div><div class="v">正式采用 · 重点工序优先备选</div></div>
             <div class="context-item"><div class="k">数据范围</div><div class="v">本周 · 05-23 ～ 05-29</div></div>
             <div class="context-item"><div class="k">刷新状态</div><div class="v">已完成 · 可直接进入甘特和分析</div></div>
           </div>
@@ -1721,7 +1730,7 @@
                   <div class="todo-dot danger"></div>
                   <div>
                     <div class="item-title"><strong>3 个批次会晚于交期</strong><span class="chip chip-danger">晚交</span></div>
-                    <div class="item-text">最晚批次 B202605-018 晚 14 小时。优先进入异常解释，不要只看总拖期。</div>
+                    <div class="item-text">最晚批次 B202605-018 晚 14 小时。优先进入延期说明，不要只看总拖期。</div>
                   </div>
                   <div class="item-actions"><span class="link-button">查看为什么晚了</span></div>
                 </div>
@@ -1769,7 +1778,7 @@
                 <strong>采用方案：</strong>重点工序优先。<br>
                 <strong>推荐理由：</strong>超期批次数更少，总拖期更短。<br>
                 <strong>代价：</strong>换型次数多 2 次，M-03 更忙。<br>
-                <strong>下一步：</strong>进入甘特图确认任务条、进入异常解释确认晚交批次、进入资源派工准备下发。
+                <strong>下一步：</strong>进入甘特图确认任务条、进入延期说明确认晚交批次、进入资源派工准备下发。
               </div>
               <div style="height:12px"></div>
               <div class="detail-grid">
@@ -1807,9 +1816,9 @@
               </div>
               <div class="workspace-card">
                 <div class="icon">↗</div>
-                <h4>分析复盘</h4>
-                <p>用推荐方案、异常解释和趋势记录这次排产为什么这样排、哪里值得改。</p>
-                <button class="btn btn-secondary btn-sm">查看分析</button>
+                <h4>查看排产结果</h4>
+                <p>用推荐方案、延期说明和趋势记录这次排产为什么这样排、后面先改哪里。</p>
+                <button class="btn btn-secondary btn-sm">查看结果</button>
               </div>
             </div>
           </div>
@@ -1841,9 +1850,9 @@
             <div class="group">
               <label>方案</label>
               <select>
-                <option>最终采用</option>
-                <option>原算法最好</option>
-                <option>重点工序优先最好</option>
+                <option>正式采用</option>
+                <option>原算法代表方案</option>
+                <option>重点工序优先代表方案</option>
               </select>
             </div>
             <div class="group">
@@ -1945,7 +1954,7 @@
               <div class="gantt-row">
                 <div class="gantt-label">
                   <div class="name">M-03</div>
-                  <div class="meta">任务 12 · 负荷 46.5h · 利用率 96%</div>
+                  <div class="meta">任务 12 · 负荷 46.5 小时 · 利用率 96%</div>
                 </div>
                 <div class="gantt-lane">
                   <div class="gantt-marker"></div>
@@ -1961,7 +1970,7 @@
               <div class="gantt-row">
                 <div class="gantt-label">
                   <div class="name">M-05</div>
-                  <div class="meta">任务 9 · 负荷 41.0h · 利用率 89%</div>
+                  <div class="meta">任务 9 · 负荷 41.0 小时 · 利用率 89%</div>
                 </div>
                 <div class="gantt-lane">
                   <div class="gantt-bar warning" style="left: 4%; width: 22%; top: 12px;">
@@ -1978,7 +1987,7 @@
               <div class="gantt-row">
                 <div class="gantt-label">
                   <div class="name">M-07</div>
-                  <div class="meta">任务 7 · 负荷 33.5h · 利用率 72%</div>
+                  <div class="meta">任务 7 · 负荷 33.5 小时 · 利用率 72%</div>
                 </div>
                 <div class="gantt-lane">
                   <div class="gantt-bar success" style="left: 8%; width: 18%; top: 12px;">
@@ -1992,7 +2001,7 @@
               <div class="gantt-row">
                 <div class="gantt-label">
                   <div class="name">M-12</div>
-                  <div class="meta">任务 5 · 负荷 27.0h · 利用率 58%</div>
+                  <div class="meta">任务 5 · 负荷 27.0 小时 · 利用率 58%</div>
                 </div>
                 <div class="gantt-lane">
                   <div class="gantt-bar neutral" style="left: 14%; width: 20%; top: 12px;">
@@ -2093,31 +2102,31 @@
               <div class="name">M-03</div>
               <div class="meta">设备 · 任务 12 · 利用率 96%</div>
               <div class="meter danger"><span style="width:96%"></span></div>
-              <div class="foot"><span>负荷 46.5h</span><span>接近满载</span></div>
+              <div class="foot"><span>负荷 46.5 小时</span><span>接近满载</span></div>
             </div>
             <div class="capacity-card">
               <div class="name">M-05</div>
               <div class="meta">设备 · 任务 9 · 利用率 89%</div>
               <div class="meter warning"><span style="width:89%"></span></div>
-              <div class="foot"><span>负荷 41.0h</span><span>需要关注</span></div>
+              <div class="foot"><span>负荷 41.0 小时</span><span>需要关注</span></div>
             </div>
             <div class="capacity-card">
               <div class="name">M-07</div>
               <div class="meta">设备 · 任务 7 · 利用率 72%</div>
               <div class="meter success"><span style="width:72%"></span></div>
-              <div class="foot"><span>负荷 33.5h</span><span>正常</span></div>
+              <div class="foot"><span>负荷 33.5 小时</span><span>正常</span></div>
             </div>
             <div class="capacity-card">
               <div class="name">张三</div>
               <div class="meta">人员 · 任务 6 · 利用率 89%</div>
               <div class="meter warning"><span style="width:89%"></span></div>
-              <div class="foot"><span>排班 42h</span><span>接近满载</span></div>
+              <div class="foot"><span>排班 42 小时</span><span>接近满载</span></div>
             </div>
             <div class="capacity-card">
               <div class="name">李四</div>
               <div class="meta">人员 · 任务 4 · 利用率 66%</div>
               <div class="meter success"><span style="width:66%"></span></div>
-              <div class="foot"><span>排班 31h</span><span>有余量</span></div>
+              <div class="foot"><span>排班 31 小时</span><span>有余量</span></div>
             </div>
           </div>
         </div>
@@ -2145,7 +2154,7 @@
               <h4>先看结论：这个方案更适合现在的交期压力</h4>
               <p class="lead">
                 它把超期批次数压得更低，总拖期也更少。代价是 M-03 更忙、换型次数多 2 次。<br>
-                这比单纯看评分更容易让计划员和业务方一起判断是否接受。
+                这样能把好处和代价说清楚，比只看系统给出的结果更容易让计划员和业务方一起判断能不能采用。
               </p>
               <div class="recommend-points">
                 <span class="chip chip-success">超期批次数少</span>
@@ -2156,7 +2165,7 @@
               <div class="action-row">
                 <button class="btn btn-primary btn-lg" disabled aria-disabled="true">示例：查看采用原因</button>
                 <button class="btn btn-secondary btn-lg">查看甘特图</button>
-                <button class="btn btn-secondary btn-lg">看影响清单</button>
+                <button class="btn btn-secondary btn-lg">查看后续入口</button>
               </div>
             </div>
             <div class="recommend-metrics">
@@ -2186,8 +2195,8 @@
           <div class="grid-3">
             <div class="scenario-card">
               <div class="top">
-                <h5>最终采用</h5>
-                <span class="score">业务主方案</span>
+                <h5>正式采用</h5>
+                <span class="score">正式采用方案</span>
               </div>
               <div class="chip-row">
                 <span class="chip chip-primary">推荐理由明确</span>
@@ -2201,13 +2210,13 @@
               </ul>
               <div class="metric-row">
                 <div class="scenario-mini"><div class="k">失败工序</div><div class="v">0</div></div>
-                <div class="scenario-mini"><div class="k">评分</div><div class="v">0.91</div></div>
+                <div class="scenario-mini"><div class="k">总拖期</div><div class="v">18 小时</div></div>
               </div>
             </div>
             <div class="scenario-card">
               <div class="top">
-                <h5>原算法最好</h5>
-                <span class="score">基线方案</span>
+                <h5>原算法代表方案</h5>
+                <span class="score">原算法代表方案</span>
               </div>
               <div class="chip-row">
                 <span class="chip chip-soft">更均衡</span>
@@ -2217,17 +2226,17 @@
                 <li>换型次数更少，但超期批次更多。</li>
                 <li>总拖期更长，不适合当前交期压力。</li>
                 <li>适合只看平滑度、不急着保交期的场景。</li>
-                <li>可以作为对照基线，但不要直接当主方案。</li>
+                <li>可以作为对比参考，但不要直接当主方案。</li>
               </ul>
               <div class="metric-row">
                 <div class="scenario-mini"><div class="k">超期批次</div><div class="v">3</div></div>
-                <div class="scenario-mini"><div class="k">总拖期</div><div class="v">24h</div></div>
+                <div class="scenario-mini"><div class="k">总拖期</div><div class="v">24 小时</div></div>
               </div>
             </div>
             <div class="scenario-card">
               <div class="top">
-                <h5>重点工序优先最好</h5>
-                <span class="score">最终推荐</span>
+                <h5>重点工序优先代表方案</h5>
+                <span class="score">重点工序优先代表方案</span>
               </div>
               <div class="chip-row">
                 <span class="chip chip-success">保交期</span>
@@ -2249,77 +2258,17 @@
           <div class="impact-grid">
             <div class="subpanel">
               <div class="subpanel-title">
-                <h4>批次级影响清单</h4>
-                <span class="meta">谁提前，谁延后，谁新增超期</span>
+                <h4>批次后续明细</h4>
+                <span class="meta">后续版本再补</span>
               </div>
-              <table class="impact-table">
-                <thead>
-                  <tr>
-                    <th>批次</th>
-                    <th>变化</th>
-                    <th>原因</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>B202605-018</td>
-                    <td><span class="table-status danger">晚 6h</span></td>
-                    <td class="wrap">换到 M-03 后等待资源，仍比原算法更稳。</td>
-                  </tr>
-                  <tr>
-                    <td>B202605-021</td>
-                    <td><span class="table-status warning">晚 2h</span></td>
-                    <td class="wrap">受停机窗口和前序排位影响。</td>
-                  </tr>
-                  <tr>
-                    <td>B202605-019</td>
-                    <td><span class="table-status success">提前 1h</span></td>
-                    <td class="wrap">被更早插入主线，减少传播。</td>
-                  </tr>
-                  <tr>
-                    <td>B202605-017</td>
-                    <td><span class="table-status info">不变</span></td>
-                    <td class="wrap">外协任务保持原有窗口。</td>
-                  </tr>
-                </tbody>
-              </table>
+              <div class="empty-state">第一版先看三套方案的总指标和跳转入口；批次、设备、人员这些更细明细后续版本再补。</div>
             </div>
             <div class="subpanel">
               <div class="subpanel-title">
-                <h4>资源影响清单</h4>
-                <span class="meta">设备 / 人员的负荷变化</span>
+                <h4>资源后续明细</h4>
+                <span class="meta">后续版本再补</span>
               </div>
-              <table class="impact-table">
-                <thead>
-                  <tr>
-                    <th>资源</th>
-                    <th>变化</th>
-                    <th>说明</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>M-03</td>
-                    <td><span class="table-status danger">+14%</span></td>
-                    <td class="wrap">周三白天连续排满，需重点关注。</td>
-                  </tr>
-                  <tr>
-                    <td>M-05</td>
-                    <td><span class="table-status warning">+8%</span></td>
-                    <td class="wrap">受停机窗口挤压，任务更集中。</td>
-                  </tr>
-                  <tr>
-                    <td>张三</td>
-                    <td><span class="table-status info">+6%</span></td>
-                    <td class="wrap">晚班任务增加，但仍可执行。</td>
-                  </tr>
-                  <tr>
-                    <td>李四</td>
-                    <td><span class="table-status success">-4%</span></td>
-                    <td class="wrap">局部释放负荷，可留作缓冲。</td>
-                  </tr>
-                </tbody>
-              </table>
+              <div class="empty-state">第一版先看三套方案的总指标和跳转入口；具体哪台设备、哪个人、哪个批次受影响，等后续版本补齐后再展示。</div>
             </div>
           </div>
 
@@ -2327,7 +2276,7 @@
           <div class="subpanel">
             <div class="subpanel-title">
               <h4>对比明细表</h4>
-              <span class="meta">评分只做参考，不做主语言</span>
+              <span class="meta">先看交期、拖期、换型这些业务指标</span>
             </div>
             <div class="table-wrap" style="max-height: none;">
               <table>
@@ -2341,45 +2290,41 @@
                     <th>总拖期</th>
                     <th>总工期</th>
                     <th>换型次数</th>
-                    <th>评分</th>
                     <th>查看</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr>
-                    <td><strong>最终采用</strong></td>
+                    <td><strong>正式采用</strong></td>
                     <td>重点工序优先</td>
                     <td><span class="table-status success">已采用</span></td>
                     <td>0</td>
                     <td>2</td>
-                    <td>18h</td>
+                    <td>18 小时</td>
                     <td>5.8 天</td>
                     <td>12</td>
-                    <td>0.91</td>
                     <td><span class="link-button">看甘特</span></td>
                   </tr>
                   <tr>
-                    <td><strong>原算法最好</strong></td>
+                    <td><strong>原算法代表方案</strong></td>
                     <td>快速排产</td>
                     <td><span class="table-status neutral">对照</span></td>
                     <td>0</td>
                     <td>3</td>
-                    <td>24h</td>
+                    <td>24 小时</td>
                     <td>5.6 天</td>
                     <td>10</td>
-                    <td>0.86</td>
                     <td><span class="link-button">看甘特</span></td>
                   </tr>
                   <tr>
-                    <td><strong>重点工序优先最好</strong></td>
+                    <td><strong>重点工序优先代表方案</strong></td>
                     <td>保交期优先</td>
                     <td><span class="table-status info">备选</span></td>
                     <td>0</td>
                     <td>2</td>
-                    <td>18h</td>
+                    <td>18 小时</td>
                     <td>5.8 天</td>
                     <td>12</td>
-                    <td>0.93</td>
                     <td><span class="link-button">看资源</span></td>
                   </tr>
                 </tbody>
@@ -2392,8 +2337,8 @@
       <section id="exceptions" class="panel">
         <div class="panel-header">
           <div>
-            <h3>04 · 异常解释</h3>
-            <p>异常页不是“错误清单”，而是把“为什么晚了、卡在哪里、怎么改”讲清楚。用户点进来就该知道下一步要做什么。</p>
+            <h3>04 · 延期说明</h3>
+            <p>这里不是“错误清单”，而是把“为什么晚了、建议先看哪里、怎么改”讲清楚。用户点进来就该知道下一步要做什么。</p>
           </div>
           <div class="chip-row">
             <span class="chip chip-danger">晚交风险</span>
@@ -2428,10 +2373,10 @@
               <div class="meta"><span class="chip chip-info">日历影响</span></div>
             </div>
             <div class="exception-summary">
-              <div class="name">物料未齐</div>
+              <div class="name">物料线索待核对</div>
               <div class="count" style="color:var(--primary-2);">2</div>
-              <div class="desc">物料到齐时间晚于工序开始时间，导致排不进去。</div>
-              <div class="meta"><span class="chip chip-primary">供料</span></div>
+              <div class="desc">需要先核对齐套状态和物料明细，当前只提示可能方向。</div>
+              <div class="meta"><span class="chip chip-primary">待核对</span></div>
             </div>
             <div class="exception-summary">
               <div class="name">排不进时间窗</div>
@@ -2444,7 +2389,7 @@
           <div class="exception-layout">
             <div class="subpanel">
               <div class="subpanel-title">
-                <h4>异常批次列表</h4>
+                <h4>晚交批次列表</h4>
                 <span class="meta">点进去看“为什么晚了”</span>
               </div>
               <div class="exception-list">
@@ -2452,7 +2397,7 @@
                   <div class="exception-dot danger"></div>
                   <div>
                     <div class="item-title"><strong>B202605-018 · 晚 14 小时</strong><span class="chip chip-danger">最严重</span></div>
-                    <div class="item-text">第 30 工序卡在 M-03，后续 2 道工序一起后移。</div>
+                    <div class="item-text">当前线索指向第 30 工序和 M-03，建议先复核资源占用。</div>
                   </div>
                   <div class="item-actions"><span class="link-button">查看详情</span></div>
                 </div>
@@ -2467,8 +2412,8 @@
                 <div class="exception-item">
                   <div class="exception-dot info"></div>
                   <div>
-                    <div class="item-title"><strong>B202605-017 · 物料未齐</strong><span class="chip chip-info">缺料</span></div>
-                    <div class="item-text">物料到齐时间晚于计划开始，工序只能往后排。</div>
+                    <div class="item-title"><strong>B202605-017 · 物料线索待核对</strong><span class="chip chip-info">待核对</span></div>
+                    <div class="item-text">需要先查物料需求和到料记录，不能直接判定就是物料导致延期。</div>
                   </div>
                   <div class="item-actions"><span class="link-button">查看详情</span></div>
                 </div>
@@ -2476,7 +2421,7 @@
               <div style="height:14px"></div>
               <div class="hint-box">
                 第一版只做可解释规则，不做自动改计划。<br>
-                先让用户知道：<strong>晚了多久、第一卡点是什么、受影响谁、下一步能点哪里。</strong>
+                先让用户知道：<strong>晚了多久、建议先复核哪道工序、受影响谁、下一步能点哪里。</strong>
               </div>
             </div>
 
@@ -2486,9 +2431,9 @@
                 <span class="chip chip-warning">晚 14 小时</span>
                 <span class="chip chip-info">第 30 工序</span>
               </div>
-              <h4>为什么晚了：先看卡点，再看传播路径</h4>
+              <h4>为什么晚了：先看建议复核点，再看后续影响</h4>
               <p class="story-lead">
-                这条解释要写成业务能读懂的话，不要写成算法名词。目标是让计划员马上知道是资源、前序、物料，还是停机造成的。
+                这条解释要写成业务能读懂的话，不要写成算法名词。目标是让计划员知道当前线索指向哪里，再去核对资源、前序、物料或停机证据。
               </p>
 
               <div class="cause-chain">
@@ -2502,8 +2447,8 @@
                 <div class="cause-step warning">
                   <div class="dot"></div>
                   <div>
-                    <div class="title">2. 第一卡点在 M-03</div>
-                    <div class="desc">第 30 工序排在 M-03，而 M-03 在这段时间已经被前面的任务占满，空档不足，所以必须等待。</div>
+                    <div class="title">2. 建议先复核 M-03</div>
+                    <div class="desc">第 30 工序排在 M-03，而 M-03 在这段时间看起来比较满，建议先查这台设备的占用和可用时间。</div>
                   </div>
                 </div>
                 <div class="cause-step danger">
@@ -2531,7 +2476,7 @@
 
               <div class="story-split">
                 <div class="story-block">
-                  <div class="k">第一卡点</div>
+                  <div class="k">建议先复核</div>
                   <div class="v">M-03 · 30 精加工</div>
                 </div>
                 <div class="story-block">
@@ -2563,12 +2508,12 @@
         <div class="panel-header">
           <div>
             <h3>05 · 车间反馈</h3>
-            <p>车间端要更简单：大按钮、少字段、明确状态。先让现场能点得动，再让计划员看得到计划 vs 实际。</p>
+            <p>车间端要更简单：大按钮、少字段、明确状态。当前阶段只展示开工和完工，让现场先能把进度反馈回来。</p>
           </div>
           <div class="chip-row">
-            <span class="chip chip-success">开工 / 完工</span>
-            <span class="chip chip-warning">暂停 / 异常</span>
-            <span class="chip chip-info">计划 vs 实际</span>
+            <span class="chip chip-success">当前阶段：开工 / 完工</span>
+            <span class="chip chip-info">重点：少填字段</span>
+            <span class="chip chip-soft">先不展示复杂操作</span>
           </div>
         </div>
         <div class="panel-body">
@@ -2576,7 +2521,7 @@
             <div class="shop-stat">
               <div class="k">今日任务</div>
               <div class="v" style="color:var(--primary-2);">18</div>
-              <div class="s">今天需要在车间执行和反馈的任务总数。</div>
+              <div class="s">示例数据：今天需要核对的任务总数。</div>
             </div>
             <div class="shop-stat">
               <div class="k">未开工</div>
@@ -2586,12 +2531,12 @@
             <div class="shop-stat">
               <div class="k">生产中</div>
               <div class="v" style="color:var(--success);">7</div>
-              <div class="s">按钮应优先显示“完工 / 暂停 / 报异常”。</div>
+              <div class="s">当前阶段按钮优先显示“完工”。</div>
             </div>
             <div class="shop-stat">
-              <div class="k">暂停中</div>
+              <div class="k">待完工</div>
               <div class="v" style="color:var(--warning);">3</div>
-              <div class="s">需要“继续生产”或“完工”。</div>
+              <div class="s">这些任务正在生产，下一步等现场确认完工。</div>
             </div>
             <div class="shop-stat">
               <div class="k">已完工</div>
@@ -2618,11 +2563,9 @@
                     <div class="task-detail"><div class="k">预计完成</div><div class="v">05-24 18:42</div></div>
                   </div>
                   <div class="progress warning"><span style="width: 58%"></span></div>
-                  <div class="small">已加工 58% · 发生过一次停顿，原因待确认。</div>
+                  <div class="small">已加工 58% · 当前阶段只演示完工按钮。</div>
                   <div class="task-actions">
-                    <button class="btn btn-secondary btn-sm" disabled aria-disabled="true">示例：暂停</button>
                     <button class="btn btn-primary btn-sm" disabled aria-disabled="true">示例：完工</button>
-                    <button class="btn btn-secondary btn-sm" disabled aria-disabled="true">示例：报异常</button>
                   </div>
                 </div>
                 <div class="task-card">
@@ -2637,35 +2580,32 @@
                     <div class="task-detail"><div class="k">计划开始</div><div class="v">05-24 13:00</div></div>
                     <div class="task-detail"><div class="k">计划结束</div><div class="v">05-24 20:00</div></div>
                     <div class="task-detail"><div class="k">交期</div><div class="v">05-25 08:00</div></div>
-                    <div class="task-detail"><div class="k">异常原因</div><div class="v">暂无</div></div>
+                    <div class="task-detail"><div class="k">反馈记录</div><div class="v">暂无</div></div>
                   </div>
                   <div class="progress"><span style="width: 0%"></span></div>
                   <div class="small">未开工任务应先显示“开工”。</div>
                   <div class="task-actions">
                     <button class="btn btn-primary btn-sm" disabled aria-disabled="true">示例：开工</button>
-                    <button class="btn btn-secondary btn-sm" disabled aria-disabled="true">示例：报异常</button>
                   </div>
                 </div>
                 <div class="task-card">
                   <div class="head">
                     <div>
                       <h5>B202605-017 · 10 下料</h5>
-                      <div class="meta">外协 A-02 · 当前状态：暂停中</div>
+                      <div class="meta">外协 A-02 · 当前状态：生产中</div>
                     </div>
-                    <span class="chip chip-warning">暂停 1h20m</span>
+                    <span class="chip chip-warning">等待完工</span>
                   </div>
                   <div class="task-detail-grid">
-                    <div class="task-detail"><div class="k">暂停原因</div><div class="v">缺料</div></div>
-                    <div class="task-detail"><div class="k">预计恢复</div><div class="v">15:10</div></div>
+                    <div class="task-detail"><div class="k">计划资源</div><div class="v">外协 A-02</div></div>
+                    <div class="task-detail"><div class="k">当前动作</div><div class="v">等待完工</div></div>
                     <div class="task-detail"><div class="k">已完成量</div><div class="v">40%</div></div>
-                    <div class="task-detail"><div class="k">计划偏差</div><div class="v">晚 1h20m</div></div>
+                    <div class="task-detail"><div class="k">计划偏差</div><div class="v">晚 1 小时 20 分钟</div></div>
                   </div>
                   <div class="progress warning"><span style="width: 40%"></span></div>
-                  <div class="small">暂停中任务应先显示“继续生产”。</div>
+                  <div class="small">当前阶段只显示完工相关动作。</div>
                   <div class="task-actions">
-                    <button class="btn btn-primary btn-sm" disabled aria-disabled="true">示例：继续生产</button>
                     <button class="btn btn-secondary btn-sm" disabled aria-disabled="true">示例：完工</button>
-                    <button class="btn btn-secondary btn-sm" disabled aria-disabled="true">示例：报异常</button>
                   </div>
                 </div>
                 <div class="task-card">
@@ -2693,38 +2633,27 @@
             </div>
 
             <div class="event-log">
-              <h4>现场事件与原因预设</h4>
+              <h4>现场反馈记录</h4>
               <div class="chip-row">
-                <span class="chip chip-danger">设备故障</span>
-                <span class="chip chip-warning">缺料</span>
-                <span class="chip chip-warning">质量问题</span>
-                <span class="chip chip-info">换型等待</span>
-                <span class="chip chip-soft">人员问题</span>
-                <span class="chip chip-soft">其他</span>
+                <span class="chip chip-success">开工记录</span>
+                <span class="chip chip-info">完工记录</span>
+                <span class="chip chip-soft">反馈人</span>
+                <span class="chip chip-soft">完成数量</span>
               </div>
               <div class="time-track">
                 <div class="time-event success">
                   <div class="top"><strong>开工</strong><span class="time">08:32</span></div>
-                  <div class="desc">B202605-018 已由张三在 M-03 开工。计划员侧会同步看到实际开始时间。</div>
-                </div>
-                <div class="time-event warning">
-                  <div class="top"><strong>暂停</strong><span class="time">10:14</span></div>
-                  <div class="desc">设备异常，已选择“设备故障”原因。恢复后可继续生产或直接完工。</div>
+                  <div class="desc">B202605-018 已由张三在 M-03 开工。后续再集中展示计划和现场反馈的差距。</div>
                 </div>
                 <div class="time-event info">
-                  <div class="top"><strong>恢复</strong><span class="time">10:58</span></div>
-                  <div class="desc">任务恢复后继续计时，暂停时长会回写给计划与分析页。</div>
-                </div>
-                <div class="time-event danger">
-                  <div class="top"><strong>异常上报</strong><span class="time">11:20</span></div>
-                  <div class="desc">人员补充备注，计划员可直接看到异常类型和影响范围。</div>
+                  <div class="top"><strong>完工</strong><span class="time">16:58</span></div>
+                  <div class="desc">B202605-019 已记录完工时间和完成数量。</div>
                 </div>
               </div>
               <div class="reason-chips">
-                <span class="chip chip-primary">一键开工</span>
-                <span class="chip chip-secondary" style="background:#fff;border:1px solid var(--border);color:#32516d;">暂停后可继续</span>
+                <span class="chip chip-primary">确认开工</span>
                 <span class="chip chip-secondary" style="background:#fff;border:1px solid var(--border);color:#32516d;">完工需填完成量</span>
-                <span class="chip chip-secondary" style="background:#fff;border:1px solid var(--border);color:#32516d;">异常先选原因</span>
+                <span class="chip chip-secondary" style="background:#fff;border:1px solid var(--border);color:#32516d;">现场少填字段</span>
               </div>
             </div>
           </div>
@@ -2735,19 +2664,19 @@
         <div class="panel-header">
           <div>
             <h3>06 · 报表中心</h3>
-            <p>报表中心更像风险复盘入口，不是孤立的数字仓库。每张卡都要告诉用户：这张表帮你看什么，点进去会去哪里。</p>
+            <p>报表中心更像风险查看入口，不是孤立的数字仓库。每张卡都要告诉用户：这张表帮你看什么，点进去会去哪里。</p>
           </div>
           <div class="chip-row">
             <span class="chip chip-danger">超期清单</span>
             <span class="chip chip-info">资源负荷</span>
             <span class="chip chip-warning">停机影响</span>
-            <span class="chip chip-success">计划 vs 实际</span>
+            <span class="chip chip-success">导出说明</span>
           </div>
         </div>
         <div class="panel-body">
           <div class="context-bar">
             <div class="context-item"><div class="k">报表版本</div><div class="v">v12 · 2026-05-23 18:40</div></div>
-            <div class="context-item"><div class="k">方案口径</div><div class="v">最终采用</div></div>
+            <div class="context-item"><div class="k">方案口径</div><div class="v">正式采用</div></div>
             <div class="context-item"><div class="k">时间范围</div><div class="v">05-23 ～ 05-29</div></div>
             <div class="context-item"><div class="k">更新时间</div><div class="v">5 分钟前</div></div>
           </div>
@@ -2755,8 +2684,8 @@
           <div class="report-grid">
             <div class="report-card">
               <div class="title"><h5>超期清单</h5><span class="tag">3 条风险</span></div>
-              <p>按批次列出交期、计划完成、超期时长、第一卡点和主要原因，适合直接进入异常解释。</p>
-              <div class="report-foot"><span class="chip chip-danger">看晚了多久</span><span class="chip chip-primary">看第一卡点</span></div>
+              <p>按批次列出交期、计划完成、超期时长、建议先复核的工序和可能线索，适合直接进入延期说明。</p>
+              <div class="report-foot"><span class="chip chip-danger">看晚了多久</span><span class="chip chip-primary">看建议先复核哪里</span></div>
               <button class="btn btn-primary btn-sm">查看清单</button>
             </div>
             <div class="report-card">
@@ -2772,10 +2701,10 @@
               <button class="btn btn-secondary btn-sm">查看停机影响</button>
             </div>
             <div class="report-card">
-              <div class="title"><h5>计划 vs 实际</h5><span class="tag">18 条反馈</span></div>
-              <p>把现场实际开始 / 完成与计划差距展示给计划员，用于复盘是否计划排得太紧。</p>
-              <div class="report-foot"><span class="chip chip-success">执行反馈</span><span class="chip chip-primary">看偏差</span></div>
-              <button class="btn btn-secondary btn-sm">查看偏差</button>
+              <div class="title"><h5>报表说明</h5><span class="tag">当前说明</span></div>
+              <p>说明每张报表适合回答什么问题，避免计划员打开表格后还要猜数字含义。</p>
+              <div class="report-foot"><span class="chip chip-success">说明口径</span><span class="chip chip-primary">方便交接</span></div>
+              <button class="btn btn-secondary btn-sm">查看说明</button>
             </div>
           </div>
 
@@ -2812,9 +2741,9 @@
                     <td><span class="link-button">打开</span></td>
                   </tr>
                   <tr>
-                    <td><strong>计划 vs 实际</strong></td>
-                    <td>现场执行和排产计划差了多少。</td>
-                    <td><span class="link-button">打开</span></td>
+                    <td><strong>报表说明</strong></td>
+                    <td>每张报表怎么读，导出后怎么交接。</td>
+                    <td><span class="link-button">说明</span></td>
                   </tr>
                 </tbody>
               </table>
@@ -2827,19 +2756,19 @@
               </div>
               <div class="detail-grid">
                 <div class="detail-item"><div class="k">版本</div><div class="v">v12</div></div>
-                <div class="detail-item"><div class="k">方案</div><div class="v">最终采用</div></div>
+                <div class="detail-item"><div class="k">方案</div><div class="v">正式采用</div></div>
                 <div class="detail-item"><div class="k">范围</div><div class="v">05-23 ～ 05-29</div></div>
                 <div class="detail-item"><div class="k">更新时间</div><div class="v">5 分钟前</div></div>
               </div>
               <div class="hint-box">
                 报表中心的定位不是“放更多数字”，而是“把风险页做得更明确”。<br>
-                用户应该从这里再回到：<strong>甘特图、资源派工、异常解释、方案对比</strong>。
+                用户应该从这里再回到：<strong>甘特图、资源派工、延期说明、方案对比</strong>。
               </div>
               <div style="height:12px"></div>
               <div class="action-row">
                 <button class="btn btn-primary btn-lg">导出报表</button>
                 <button class="btn btn-secondary btn-lg">进入甘特图</button>
-                <button class="btn btn-secondary btn-lg">进入异常解释</button>
+                <button class="btn btn-secondary btn-lg">进入延期说明</button>
               </div>
             </div>
           </div>

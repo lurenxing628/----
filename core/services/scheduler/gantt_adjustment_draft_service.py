@@ -26,22 +26,22 @@ def _text(value: Any) -> str:
 
 def _base_version(value: Any) -> int:
     if value is None or isinstance(value, bool) or isinstance(value, float):
-        raise ValidationError("基准版本不正确。", field="base_version")
+        raise ValidationError("调整依据版本不正确。", field="base_version")
     try:
         version = int(value)
     except (TypeError, ValueError) as exc:
-        raise ValidationError("基准版本不正确。", field="base_version") from exc
+        raise ValidationError("调整依据版本不正确。", field="base_version") from exc
     if version <= 0:
-        raise ValidationError("基准版本必须大于 0。", field="base_version")
+        raise ValidationError("调整依据版本必须大于 0。", field="base_version")
     return version
 
 
 def _plan_role(value: Any) -> str:
     role = _text(value)
     if not role:
-        raise ValidationError("基准方案角色不能为空。", field="base_plan_role")
+        raise ValidationError("请选择调整依据方案。", field="base_plan_role")
     if role not in VALID_PLAN_ROLES:
-        raise ValidationError("基准方案角色不正确。", field="base_plan_role")
+        raise ValidationError("调整依据方案不正确。", field="base_plan_role")
     return role
 
 
@@ -184,7 +184,7 @@ class GanttAdjustmentDraftService:
 
     def _require_base_plan(self, *, base_version: int, base_plan_role: str) -> None:
         if self.history_repo.get_by_version(base_version) is None:
-            raise ValidationError("基准版本不存在，不能创建调整草稿。", field="base_version")
+            raise ValidationError("调整依据版本不存在，不能创建调整草稿。", field="base_version")
         try:
             self.plan_service.resolve_existing_plan(base_version, base_plan_role)
         except ValueError as exc:

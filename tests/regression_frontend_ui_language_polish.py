@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
+from typing import Tuple
 
 import openpyxl
 import pytest
@@ -120,6 +121,8 @@ def test_scheduler_analysis_gantt_and_logs_do_not_surface_internal_terms() -> No
     assert "dispatch_rule_zh" in analysis
     assert "attempts / 优化曲线 / 超期明细" not in analysis
     assert "r.dispatch_mode }}/{{ r.dispatch_rule" not in analysis
+    assert "{{ r.score }}" not in analysis
+    assert 'data-col-key="score"' not in analysis
     assert "algo_config.get('algo_mode') or algo.mode" in analysis
     assert "mode_zh.get(algo.mode" not in analysis
 
@@ -504,6 +507,51 @@ def test_ensure_excel_templates_refreshes_known_stale_generated_template(tmp_pat
             workbook.close()
 
 
+def test_ensure_excel_templates_refreshes_known_legacy_id_headers(tmp_path) -> None:
+    from core.services.common.excel_templates import build_xlsx_bytes, ensure_excel_templates
+
+    op_type_path = tmp_path / "工种配置.xlsx"
+    op_type_path.write_bytes(
+        build_xlsx_bytes(
+            ["工种ID", "工种名称", "归属"],
+            [["OT001", "数车", "自制"]],
+            format_spec={"text_cols": [0, 1], "enum_cols": {2: ["自制", "外协"]}},
+        ).getvalue()
+    )
+    supplier_path = tmp_path / "供应商配置.xlsx"
+    supplier_path.write_bytes(
+        build_xlsx_bytes(
+            ["供应商ID", "名称", "对应工种", "默认周期", "状态", "备注"],
+            [["S001", "外协-标印厂", "标印", 1, "启用", "保留数据"]],
+            format_spec={"text_cols": [0, 1, 2, 4, 5], "float_cols": [3], "enum_cols": {4: ["启用", "停用"]}},
+        ).getvalue()
+    )
+
+    stats = ensure_excel_templates(str(tmp_path))
+
+    assert "工种配置.xlsx" in stats["created"]
+    assert "供应商配置.xlsx" in stats["created"]
+    workbook = None
+    try:
+        workbook = openpyxl.load_workbook(filename=op_type_path, data_only=True)
+        ws = workbook.active
+        assert [ws.cell(1, col).value for col in range(1, 4)] == ["工种编号", "工种名称", "归属"]
+        assert [ws.cell(2, col).value for col in range(1, 4)] == ["OT001", "数车", "自制"]
+    finally:
+        if workbook is not None:
+            workbook.close()
+
+    workbook = None
+    try:
+        workbook = openpyxl.load_workbook(filename=supplier_path, data_only=True)
+        ws = workbook.active
+        assert [ws.cell(1, col).value for col in range(1, 7)] == ["供应商编号", "名称", "对应工种", "默认周期", "状态", "备注"]
+        assert [ws.cell(2, col).value for col in range(1, 7)] == ["S001", "外协-标印厂", "标印", 1, "启用", "保留数据"]
+    finally:
+        if workbook is not None:
+            workbook.close()
+
+
 def test_template_download_preserves_existing_disk_file_when_headers_match(tmp_path) -> None:
     from flask import Flask
 
@@ -631,7 +679,7 @@ def test_frontend_scripts_keep_internal_details_out_of_user_messages() -> None:
     assert "甘特图装饰刷新失败" in gantt_decorations
     assert "Gantt decorate failed" not in gantt_render + gantt_decorations
     assert "加工方式：" in gantt_popup
-    assert "前面影响它的工序编号：" in gantt_popup
+    assert "前面影响它的工序：" in gantt_popup
     assert "为什么影响总工期：" in gantt_popup
     assert "中间等待：" in gantt_popup
     assert "间隔（分钟）" not in gantt_render + gantt_popup
@@ -713,7 +761,7 @@ def test_scheduler_analysis_hides_internal_schema_and_attempt_tags() -> None:
     assert "这个历史版本缺少新的分析字段，页面只展示能确认的内容。" in analysis_compat
     assert "新 schema 字段" not in analysis_vm + analysis_compat
     assert '"comparison_metric": "优化对比指标"' in analysis_compat
-    assert '"best_score_schema": "评分顺序"' in analysis_compat
+    assert '"best_score_schema": "系统比较顺序"' in analysis_compat
 
     analysis_template = _read_analysis_template()
     assert "compat_fallback.missing_field_labels" in analysis_template
@@ -782,8 +830,8 @@ def test_reports_and_v2_batch_templates_match_public_manual_contracts() -> None:
 )
 def test_known_garbled_error_messages_are_repaired(
     rel_path: str,
-    bad_tokens: tuple[str, ...],
-    good_tokens: tuple[str, ...],
+    bad_tokens: Tuple[str, ...],
+    good_tokens: Tuple[str, ...],
 ) -> None:
     source = _read(rel_path)
     for token in bad_tokens:

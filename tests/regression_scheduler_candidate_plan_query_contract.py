@@ -8,6 +8,7 @@ import pytest
 
 from core.infrastructure.database import ensure_schema, get_connection
 from core.models.schedule_candidate import ScheduleCandidate, ScheduleCandidateRows, ScheduleCandidateSelection
+from core.models.schedule_plan_role import plan_candidate_label
 from core.services.scheduler.plan_overdue_markers import build_overdue_meta_for_plan
 from core.services.scheduler.schedule_plan_query_service import (
     ROLE_ADOPTED,
@@ -54,6 +55,12 @@ DISPATCH_DETAIL_KEYS = COMMON_DETAIL_KEYS | {
     "operator_team_id",
     "operator_team_name",
 }
+
+
+def test_plan_candidate_label_does_not_duplicate_adopted_plan_suffix() -> None:
+    assert plan_candidate_label("最终采用") == "正式采用方案"
+    assert plan_candidate_label("最终采用方案") == "正式采用方案"
+    assert "正式采用方案方案" not in plan_candidate_label("最终采用方案")
 
 
 def _connect_fresh_schema(tmp_path: Path) -> sqlite3.Connection:
@@ -301,7 +308,7 @@ def test_plan_query_has_visible_legacy_fallback_and_rejects_unknown_role(tmp_pat
         assert fallback.requested_role == ROLE_CRITICAL_BEST
         assert fallback.selected_role == ROLE_ADOPTED
         assert fallback.status == "fallback_to_adopted"
-        assert "最终采用方案" in fallback.message
+        assert "正式采用方案" in fallback.message
 
         fallback_rows = service.list_plan_detail_rows_all(version=VERSION, role=ROLE_CRITICAL_BEST)
         assert fallback_rows[0].get("machine_id") == "M-ADOPTED"
@@ -485,7 +492,7 @@ def test_plan_query_rejects_candidate_selection_set_without_adopted_role(tmp_pat
         conn.commit()
 
         service = SchedulePlanQueryService(conn)
-        with pytest.raises(ValueError, match="缺少 adopted|最终采用"):
+        with pytest.raises(ValueError, match="缺少 adopted|正式采用"):
             service.resolve_plan(VERSION, ROLE_ADOPTED)
     finally:
         conn.close()

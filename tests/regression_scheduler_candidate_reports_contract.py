@@ -12,6 +12,7 @@ from urllib.parse import unquote
 import openpyxl
 
 from core.infrastructure.database import ensure_schema, get_connection
+from web.routes.report_plan_preview import default_plan_resolution
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
@@ -189,6 +190,20 @@ def _assert_number(actual: Any, expected: float) -> None:
     assert round(float(actual), 2) == round(float(expected), 2)
 
 
+def test_report_default_plan_resolution_uses_common_fallback_fields() -> None:
+    resolution = default_plan_resolution(version=VERSION, raw_role="baseline_best")
+
+    assert resolution["version"] == VERSION
+    assert resolution["requested_role"] == "baseline_best"
+    assert resolution["selected_role"] == "adopted"
+    assert resolution["source_table"] == "schedule"
+    assert resolution["candidate_id"] is None
+    assert resolution["candidate_key"] is None
+    assert resolution["status"] == "fallback_to_adopted"
+    assert resolution["is_fallback"] is True
+    assert resolution["is_comparison"] is True
+
+
 def test_candidate_report_pages_receive_plan_role_and_keep_export_links_on_same_plan(tmp_path, monkeypatch) -> None:
     app = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
@@ -196,14 +211,14 @@ def test_candidate_report_pages_receive_plan_role_and_keep_export_links_on_same_
     overdue_resp = client.get("/reports/overdue?version=17&plan_role=baseline_best")
     _assert_status(overdue_resp, "candidate overdue page")
     overdue_html = overdue_resp.get_data(as_text=True)
-    assert "原算法最好" in overdue_html
+    assert "原算法代表方案" in overdue_html
     assert "2026-01-03 12:00:00" in overdue_html
     assert "plan_role=baseline_best" in overdue_html
 
     utilization_resp = client.get("/reports/utilization?version=17&plan_role=baseline_best&start_date=2026-01-03&end_date=2026-01-03")
     _assert_status(utilization_resp, "candidate utilization page")
     utilization_html = utilization_resp.get_data(as_text=True)
-    assert "原算法最好" in utilization_html
+    assert "原算法代表方案" in utilization_html
     assert "MC_CANDIDATE" in utilization_html
     assert "候选方案设备" in utilization_html
     assert "MC_ADOPTED" not in utilization_html
@@ -212,7 +227,7 @@ def test_candidate_report_pages_receive_plan_role_and_keep_export_links_on_same_
     downtime_resp = client.get("/reports/downtime?version=17&plan_role=baseline_best&start_date=2026-01-03&end_date=2026-01-03")
     _assert_status(downtime_resp, "candidate downtime page")
     downtime_html = downtime_resp.get_data(as_text=True)
-    assert "原算法最好" in downtime_html
+    assert "原算法代表方案" in downtime_html
     assert "MC_CANDIDATE" in downtime_html
     assert "2.0" in downtime_html
     assert "plan_role=baseline_best" in downtime_html
@@ -224,30 +239,30 @@ def test_candidate_report_exports_use_selected_plan_rows_and_filename_label(tmp_
 
     overdue_resp = client.get("/reports/overdue/export?version=17&plan_role=baseline_best")
     _assert_status(overdue_resp, "candidate overdue export")
-    assert "原算法最好" in _content_disposition(overdue_resp)
+    assert "原算法代表方案" in _content_disposition(overdue_resp)
     overdue_filters = _latest_report_export_filters(tmp_path, "overdue")
     assert overdue_filters.get("requested_plan_role") == "baseline_best"
     assert overdue_filters.get("effective_plan_role") == "baseline_best"
-    assert overdue_filters.get("plan_role_status") == "selected"
+    assert overdue_filters.get("plan_role_status") == "resolved_comparison"
     assert overdue_filters.get("candidate_key") == "baseline_best"
     wb = _load_xlsx(overdue_resp)
     try:
-        ws = wb["overdue"]
+        ws = wb["超期清单"]
         assert ws["G2"].value == "2026-01-03 12:00:00"
     finally:
         wb.close()
 
     utilization_resp = client.get("/reports/utilization/export?version=17&plan_role=baseline_best&start_date=2026-01-03&end_date=2026-01-03")
     _assert_status(utilization_resp, "candidate utilization export")
-    assert "原算法最好" in _content_disposition(utilization_resp)
+    assert "原算法代表方案" in _content_disposition(utilization_resp)
     utilization_filters = _latest_report_export_filters(tmp_path, "utilization")
     assert utilization_filters.get("requested_plan_role") == "baseline_best"
     assert utilization_filters.get("effective_plan_role") == "baseline_best"
-    assert utilization_filters.get("plan_role_status") == "selected"
+    assert utilization_filters.get("plan_role_status") == "resolved_comparison"
     assert utilization_filters.get("candidate_key") == "baseline_best"
     wb = _load_xlsx(utilization_resp)
     try:
-        ws = wb["machines"]
+        ws = wb["设备负荷"]
         assert ws["A2"].value == "MC_CANDIDATE"
         _assert_number(ws["C2"].value, 4.0)
     finally:
@@ -255,11 +270,11 @@ def test_candidate_report_exports_use_selected_plan_rows_and_filename_label(tmp_
 
     downtime_resp = client.get("/reports/downtime/export?version=17&plan_role=baseline_best&start_date=2026-01-03&end_date=2026-01-03")
     _assert_status(downtime_resp, "candidate downtime export")
-    assert "原算法最好" in _content_disposition(downtime_resp)
+    assert "原算法代表方案" in _content_disposition(downtime_resp)
     downtime_filters = _latest_report_export_filters(tmp_path, "downtime")
     assert downtime_filters.get("requested_plan_role") == "baseline_best"
     assert downtime_filters.get("effective_plan_role") == "baseline_best"
-    assert downtime_filters.get("plan_role_status") == "selected"
+    assert downtime_filters.get("plan_role_status") == "resolved_comparison"
     assert downtime_filters.get("candidate_key") == "baseline_best"
     wb = _load_xlsx(downtime_resp)
     try:
@@ -277,8 +292,8 @@ def test_candidate_report_missing_role_falls_back_to_adopted_with_visible_status
     page_resp = client.get("/reports/overdue?version=17&plan_role=critical_best")
     _assert_status(page_resp, "candidate fallback page")
     html = page_resp.get_data(as_text=True)
-    assert "当前版本没有保存这套方案明细，已显示最终采用方案。" in html
-    assert "最终采用" in html
+    assert "当前版本没有保存这套方案明细，已显示正式采用方案。" in html
+    assert "正式采用方案" in html
     assert "plan_role=critical_best" in html
     assert "2026-01-02 10:00:00" in html
     assert "2026-01-03 12:00:00" not in html
@@ -286,21 +301,21 @@ def test_candidate_report_missing_role_falls_back_to_adopted_with_visible_status
     utilization_page = client.get("/reports/utilization?version=17&plan_role=critical_best&start_date=2026-01-02&end_date=2026-01-02")
     _assert_status(utilization_page, "candidate fallback utilization page")
     utilization_html = utilization_page.get_data(as_text=True)
-    assert "当前版本没有保存这套方案明细，已显示最终采用方案。" in utilization_html
+    assert "当前版本没有保存这套方案明细，已显示正式采用方案。" in utilization_html
     assert "plan_role=critical_best" in utilization_html
 
     downtime_page = client.get("/reports/downtime?version=17&plan_role=critical_best&start_date=2026-01-02&end_date=2026-01-02")
     _assert_status(downtime_page, "candidate fallback downtime page")
     downtime_html = downtime_page.get_data(as_text=True)
-    assert "当前版本没有保存这套方案明细，已显示最终采用方案。" in downtime_html
+    assert "当前版本没有保存这套方案明细，已显示正式采用方案。" in downtime_html
     assert "plan_role=critical_best" in downtime_html
 
     export_resp = client.get("/reports/overdue/export?version=17&plan_role=critical_best")
     _assert_status(export_resp, "candidate fallback export")
-    assert "最终采用" in _content_disposition(export_resp)
+    assert "正式采用方案" in _content_disposition(export_resp)
     wb = _load_xlsx(export_resp)
     try:
-        ws = wb["overdue"]
+        ws = wb["超期清单"]
         assert ws["G2"].value == "2026-01-02 10:00:00"
     finally:
         wb.close()

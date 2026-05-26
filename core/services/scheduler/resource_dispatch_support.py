@@ -121,13 +121,7 @@ def build_dispatch_summary(
     for item in detail_rows:
         marker = item.get("schedule_id")
         if marker is None:
-            marker = (
-                item.get("op_id"),
-                item.get("start_time"),
-                item.get("end_time"),
-                item.get("current_resource_id"),
-                item.get("counterpart_resource_id"),
-            )
+            marker = item.get("_row_identity")
         if marker in seen:
             continue
         seen.add(marker)
@@ -159,7 +153,37 @@ def build_dispatch_summary(
 
 
 def count_unique_schedule_ids(rows: Sequence[Dict[str, Any]]) -> int:
-    return len({row.get("schedule_id") for row in rows if row.get("schedule_id") is not None})
+    markers = set()
+    for row in rows:
+        marker = row.get("schedule_id")
+        if marker is None:
+            marker = row.get("_row_identity")
+        if marker is not None:
+            markers.add(marker)
+    return len(markers)
+
+
+def _public_row(row: Dict[str, Any]) -> Dict[str, Any]:
+    public = dict(row)
+    for key in ("schedule_id", "op_id", "_row_identity"):
+        public.pop(key, None)
+    return public
+
+
+def _public_rows(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [_public_row(row) for row in rows]
+
+
+def _public_tasks(tasks: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for task in tasks:
+        item = dict(task)
+        item.pop("schedule_id", None)
+        meta = item.get("meta")
+        if isinstance(meta, dict):
+            item["meta"] = _public_row(meta)
+        out.append(item)
+    return out
 
 
 def build_team_cross_rows(
@@ -197,18 +221,12 @@ def build_team_cross_rows(
         item = normalized.value[0]
         marker = item.get("schedule_id")
         if marker is None:
-            marker = (
-                item.get("op_id"),
-                item.get("start_time"),
-                item.get("end_time"),
-                item.get("current_resource_id"),
-                item.get("counterpart_resource_id"),
-            )
+            marker = item.get("_row_identity")
         if marker in seen:
             continue
         seen.add(marker)
         out.append(item)
-    out.sort(key=lambda item: (_text(item.get("start_time")), _text(item.get("schedule_id"))))
+    out.sort(key=lambda item: (_text(item.get("start_time")), _text(item.get("_row_identity"))))
     empty_reason = None
     if not out and collector.to_counters().get("bad_time_row_skipped", 0) > 0:
         empty_reason = _BAD_TIME_EMPTY_REASON
@@ -363,13 +381,13 @@ def build_team_scope_payload(
     summary["cross_team_sheet_count"] = len(cross_team_rows.value)
     return {
         "summary": summary,
-        "tasks": axis_scope["tasks"],
-        "detail_rows": axis_scope["detail_rows"],
+        "tasks": _public_tasks(axis_scope["tasks"]),
+        "detail_rows": _public_rows(axis_scope["detail_rows"]),
         "calendar_headers": axis_scope["calendar_headers"],
         "calendar_rows": axis_scope["calendar_rows"],
-        "operator_rows": operator_rows,
-        "machine_rows": machine_rows,
-        "cross_team_rows": cross_team_rows.value,
+        "operator_rows": _public_rows(operator_rows),
+        "machine_rows": _public_rows(machine_rows),
+        "cross_team_rows": _public_rows(cross_team_rows.value),
         "operator_calendar_headers": operator_payload["calendar_headers"],
         "operator_calendar_rows": operator_payload["calendar_rows"],
         "machine_calendar_headers": machine_payload["calendar_headers"],
@@ -405,8 +423,8 @@ def build_single_scope_payload(
             collector=summary_collector,
             empty_reason=prepared_rows.empty_reason or scope_result.empty_reason or "",
         ),
-        "tasks": scope_payload["tasks"],
-        "detail_rows": scope_payload["detail_rows"],
+        "tasks": _public_tasks(scope_payload["tasks"]),
+        "detail_rows": _public_rows(scope_payload["detail_rows"]),
         "calendar_headers": scope_payload["calendar_headers"],
         "calendar_rows": scope_payload["calendar_rows"],
         "operator_rows": [],

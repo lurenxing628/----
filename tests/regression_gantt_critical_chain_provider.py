@@ -70,7 +70,7 @@ def _plan_resolution(role: str, *, candidate_id=None, source_table: str = SOURCE
         "source_table": source_table,
         "candidate_id": candidate_id,
         "candidate_key": None,
-        "status": "selected",
+        "status": "resolved_adopted" if role == ROLE_ADOPTED else "resolved_comparison",
         "message": "",
     }
 

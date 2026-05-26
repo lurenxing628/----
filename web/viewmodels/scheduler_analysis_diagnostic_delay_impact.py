@@ -193,7 +193,7 @@ def _format_graph_score_sample(value: Any) -> str:
         details.append(f"后续关键时长 {safe_int(downstream_minutes)} 分钟")
     bonus = item.get("bonus")
     if bonus is not None:
-        details.append(f"评分加成 {bonus}")
+        details.append(f"排法参考值 {bonus}")
     if details:
         return f"工序 {op_id}（{'，'.join(details)}）"
     return f"工序 {op_id}"
@@ -304,10 +304,10 @@ def _impact_items(samples: Dict[str, Any], sample_note: str) -> List[Dict[str, A
         items.append(
             build_item(
                 key="graph_score_sample",
-                label="评分样本",
+                label="排法参考样本",
                 value=format_count(len(graph_score_samples), "条"),
                 level="notice",
-                message="这些只是图评分采样，不代表完整排序清单。",
+                message="这里只展示部分系统参考信息，不代表完整排序清单。",
                 details=graph_score_samples,
             )
         )

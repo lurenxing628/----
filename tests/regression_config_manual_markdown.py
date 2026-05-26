@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from typing import Dict, List, Set, Tuple
 
 from flask import url_for
 
@@ -63,8 +64,8 @@ def _slugify_heading(text: str) -> str:
     return t or "section"
 
 
-def _extract_heading_ids(markdown_text: str) -> set[str]:
-    ids: set[str] = set()
+def _extract_heading_ids(markdown_text: str) -> Set[str]:
+    ids: Set[str] = set()
     for line in markdown_text.splitlines():
         m = re.match(r"^(#{2,4})\s+(.+)$", line.strip())
         if not m:
@@ -73,8 +74,8 @@ def _extract_heading_ids(markdown_text: str) -> set[str]:
     return ids
 
 
-def _extract_internal_hashes(markdown_text: str) -> list[str]:
-    refs: list[str] = []
+def _extract_internal_hashes(markdown_text: str) -> List[str]:
+    refs: List[str] = []
     for _label, href in re.findall(r"\[([^\]]+)\]\(([^)]+)\)", markdown_text):
         link = (href or "").strip()
         if link.startswith("#"):
@@ -82,8 +83,8 @@ def _extract_internal_hashes(markdown_text: str) -> list[str]:
     return refs
 
 
-def _find_legacy_excel_entry_terms(markdown_text: str) -> list[str]:
-    hits: list[str] = []
+def _find_legacy_excel_entry_terms(markdown_text: str) -> List[str]:
+    hits: List[str] = []
     for line_no, line in enumerate(markdown_text.splitlines(), start=1):
         for term in LEGACY_EXCEL_ENTRY_TERMS:
             if _is_historical_legacy_entry_note(line, term):
@@ -365,7 +366,7 @@ def _load_app(repo_root: str):
     return app_mod.create_app()
 
 
-def _mode_headers(ui_mode: str) -> dict[str, str]:
+def _mode_headers(ui_mode: str) -> Dict[str, str]:
     return {"Cookie": f"aps_ui_mode={ui_mode}"}
 
 
@@ -401,7 +402,7 @@ def _extract_section(markdown_text: str, heading: str) -> str:
     heading_level = len(heading) - len(heading.lstrip("#"))
     rest = markdown_text[start + len(heading) :]
 
-    def _same_or_higher_heading(match: re.Match[str]) -> bool:
+    def _same_or_higher_heading(match: re.Match) -> bool:
         return len(match.group(1)) <= heading_level
 
     next_heading = None
@@ -413,7 +414,7 @@ def _extract_section(markdown_text: str, heading: str) -> str:
     return markdown_text[start:end]
 
 
-def _assert_ordered_phrases(markdown_text: str, label: str, phrases: tuple[str, ...]) -> None:
+def _assert_ordered_phrases(markdown_text: str, label: str, phrases: Tuple[str, ...]) -> None:
     cursor = -1
     for phrase in phrases:
         idx = markdown_text.find(phrase, cursor + 1)
@@ -481,7 +482,8 @@ def _assert_scheduler_manual_closeout_contracts(markdown_text: str, label: str) 
         assert forbidden not in scheduler_section, f"{label} 截止日期说明写得过死或写反：{forbidden}"
 
     gantt_section = _extract_section(markdown_text, "### 6.4 甘特图")
-    assert "`latest` 是英文，意思就是“最新”" in gantt_section, f"{label} 甘特图章节缺少 latest 大白话解释"
+    assert "版本留空或版本为空字符串，都表示看最新排产历史" in gantt_section, f"{label} 甘特图章节缺少版本留空口径"
+    assert "`latest` 是英文，意思就是“最新”" not in gantt_section, f"{label} 甘特图章节不能再教用户填写 latest"
 
 
 def _assert_scheduler_manual_required_content(markdown_text: str, label: str) -> None:
@@ -494,7 +496,7 @@ def _assert_scheduler_manual_required_content(markdown_text: str, label: str) ->
         "批次自动生成工序时的模板提醒，是当前页局部提醒",
         "正式排产或模拟排产成功后的排产结果提醒",
         "可以到排产历史查看这次排产的详细提醒",
-        "不填版本、版本为空，或版本填 `latest`",
+        "版本留空或版本为空字符串，都表示看最新排产历史",
         "输入不存在的数字版本时",
         "输入 `abc` 这类不是数字的版本号",
         "空工时按 0 小时处理",

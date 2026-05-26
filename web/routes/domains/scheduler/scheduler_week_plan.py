@@ -7,7 +7,8 @@ from flask import current_app, flash, g, redirect, request, send_file, url_for
 
 from core.infrastructure.errors import AppError, BusinessError, ErrorCode, ValidationError
 from core.services.common.excel_audit import log_excel_export
-from core.services.scheduler.schedule_plan_query_service import ROLE_ADOPTED, plan_role_label
+from core.services.scheduler.schedule_plan_query_service import ROLE_ADOPTED
+from core.services.scheduler.schedule_result_view_context import default_plan_resolution_dict
 from core.services.scheduler.summary.schedule_summary_types import ScheduleResultStatus
 from core.services.scheduler.week_plan_excel import build_week_plan_export_workbook
 from core.shared.strict_parse import parse_required_int
@@ -56,29 +57,18 @@ def _get_scenario_id_arg() -> Optional[str]:
     return text or None
 
 
-def _fallback_plan_context(plan_role: Optional[str]) -> Dict[str, Any]:
-    requested_role = str(plan_role or "").strip() or ROLE_ADOPTED
-    selected_label = plan_role_label(ROLE_ADOPTED)
-    return {
-        "requested_role": requested_role,
-        "requested_label": plan_role_label(requested_role),
-        "selected_role": ROLE_ADOPTED,
-        "selected_label": selected_label,
-        "message": "" if requested_role == ROLE_ADOPTED else "当前版本没有保存这套方案明细，已显示最终采用方案。",
-        "available_roles": [{"role": ROLE_ADOPTED, "label": selected_label, "is_comparison": False}],
-        "is_fallback": requested_role != ROLE_ADOPTED,
-        "is_comparison": False,
-        "is_scenario_preview": False,
-        "scenario_id": None,
-        "scenario_name": None,
-    }
+def _fallback_plan_context(plan_role: Optional[str], version: Any = None) -> Dict[str, Any]:
+    resolution = default_plan_resolution_dict(plan_role)
+    resolution["version"] = version
+    return resolution
 
 
 def _plan_context_from_data(data: Dict[str, Any], plan_role: Optional[str]) -> Dict[str, Any]:
     plan_resolution = data.get("plan_role_resolution") if isinstance(data, dict) else None
     if isinstance(plan_resolution, dict):
         return plan_resolution
-    return _fallback_plan_context(plan_role)
+    version = data.get("version") if isinstance(data, dict) else None
+    return _fallback_plan_context(plan_role, version=version)
 
 
 def _week_plan_data_kwargs(
@@ -245,18 +235,22 @@ def _safe_filename_part(value: Any) -> str:
     return text.strip()
 
 
+def _scenario_display_name(plan_resolution: Dict[str, Any]) -> str:
+    return str(
+        plan_resolution.get("scenario_display_name") or plan_resolution.get("scenario_name") or "模拟预览（未命名）"
+    ).strip()
+
+
 def _send_week_plan_export_file(output, *, version: int, week_start: Any, week_end: Any, plan_resolution: Dict[str, Any]):
     selected_role = str(plan_resolution.get("selected_role") or ROLE_ADOPTED)
     requested_role = str(plan_resolution.get("requested_role") or ROLE_ADOPTED)
     if bool(plan_resolution.get("is_scenario_preview")):
-        scenario_id = _safe_filename_part(plan_resolution.get("scenario_id"))
-        scenario_name = _safe_filename_part(plan_resolution.get("scenario_name"))
-        plan_label = "_".join(part for part in ("模拟方案", scenario_id, scenario_name) if part)
+        plan_label = _safe_filename_part(_scenario_display_name(plan_resolution))
     else:
         include_plan_label = selected_role != ROLE_ADOPTED or requested_role != selected_role
         plan_label = _safe_filename_part(plan_resolution.get("selected_label")) if include_plan_label else ""
     plan_suffix = f"_{plan_label}" if plan_label else ""
-    filename = f"周计划表_v{version}_{week_start}_to_{week_end}{plan_suffix}.xlsx"
+    filename = f"周计划表_v{version}_{week_start}至{week_end}{plan_suffix}.xlsx"
     return send_file(
         output,
         as_attachment=True,

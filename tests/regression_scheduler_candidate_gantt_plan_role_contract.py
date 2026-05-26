@@ -323,12 +323,26 @@ def test_gantt_missing_valid_plan_role_falls_back_to_adopted(tmp_path, monkeypat
     assert data.get("requested_plan_role") == ROLE_CRITICAL_BEST
     assert data.get("effective_plan_role") == ROLE_ADOPTED
     assert (data.get("plan_role_resolution") or {}).get("is_fallback") is True
-    assert "最终采用方案" in str(data.get("plan_role_message") or "")
+    assert "正式采用方案" in str(data.get("plan_role_message") or "")
     assert len(tasks) == 1
     assert (tasks[0].get("meta") or {}).get("machine_id") == "M-ADOPTED"
 
 
-def test_plan_role_same_as_adopted_is_not_marked_as_comparison(tmp_path) -> None:
+def test_gantt_missing_valid_plan_role_page_only_shows_fallback_notice(tmp_path, monkeypatch) -> None:
+    app = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+
+    resp = client.get(f"/scheduler/gantt?version={VERSION}&plan_role={ROLE_CRITICAL_BEST}")
+    html = resp.get_data(as_text=True)
+
+    assert resp.status_code == 200
+    assert "你原本选择的是“重点工序优先代表方案”" in html
+    assert "已显示正式采用方案" in html
+    assert "这套结果只用来对照查看" not in html
+    assert "这是一套对比参考方案" not in html
+
+
+def test_plan_role_same_as_adopted_still_keeps_comparison_identity(tmp_path) -> None:
     db_path = tmp_path / "aps_test.db"
     ensure_schema(str(db_path), logger=None, schema_path=str(SCHEMA_PATH), backup_dir=None)
     conn = get_connection(str(db_path))
@@ -364,7 +378,7 @@ def test_plan_role_same_as_adopted_is_not_marked_as_comparison(tmp_path) -> None
 
         assert resolution["selected_role"] == ROLE_BASELINE_BEST
         assert resolution["source_table"] == SOURCE_SCHEDULE
-        assert resolution["is_comparison"] is False
+        assert resolution["is_comparison"] is True
     finally:
         conn.close()
 
@@ -381,7 +395,8 @@ def test_gantt_page_and_boot_preserve_plan_role(tmp_path, monkeypatch) -> None:
     assert 'name="plan_role"' in html
     assert 'data-plan-role="baseline_best"' in html
     assert "plan_role=baseline_best" in html
-    assert "对比方案" in html
+    assert "当前查看的是“原算法代表方案”" in html
+    assert "这是一套对比参考方案" in html
     assert "planRole: ds.planRole" in boot_js
     assert 'url.searchParams.set("plan_role", String(cfg.planRole))' in boot_js
 
@@ -446,7 +461,7 @@ def test_gantt_non_adopted_schedule_source_overdue_markers_use_adopted_history(t
     assert resp.status_code == 200
     assert data.get("effective_plan_role") == ROLE_BASELINE_BEST
     assert plan_resolution.get("source_table") == SOURCE_SCHEDULE
-    assert plan_resolution.get("is_comparison") is False
+    assert plan_resolution.get("is_comparison") is True
     assert data.get("overdue_markers_degraded") is False
     assert len(tasks) == 1
     assert (tasks[0].get("meta") or {}).get("machine_id") == "M-ADOPTED"

@@ -341,7 +341,7 @@ def test_validate_draft_requires_original_plan_role_without_adopted_fallback(tmp
         conn.commit()
         before = _snapshot(conn)
 
-        with pytest.raises(ValidationError, match="基准方案不存在"):
+        with pytest.raises(ValidationError, match="所选方案不存在"):
             GanttAdjustmentValidationService(conn).validate_draft(draft_id=draft_id)
         assert _snapshot(conn) == before
     finally:

@@ -6,7 +6,7 @@ from .scheduler_analysis_labels import objective_label_for
 
 _COMPAT_FALLBACK_FIELD_LABELS = {
     "comparison_metric": "优化对比指标",
-    "best_score_schema": "评分顺序",
+    "best_score_schema": "系统比较顺序",
 }
 
 

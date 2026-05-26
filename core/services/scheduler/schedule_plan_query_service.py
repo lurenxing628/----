@@ -12,13 +12,11 @@ from core.models.schedule_plan_role import (
     SOURCE_CANDIDATE_ROWS,
     SOURCE_SCHEDULE,
     VALID_PLAN_ROLES,
-    is_comparison_source,
+    is_comparison_plan,
     plan_candidate_label,
     plan_role_label,
 )
-from data.repositories.schedule_plan_query_repo import (
-    SchedulePlanQueryRepository,
-)
+from data.repositories.schedule_plan_query_repo import SchedulePlanQueryRepository
 from data.repositories.schedule_rows import ScheduleDetailRow, ScheduleDispatchRow, ScheduleTimeSpanRow
 
 
@@ -50,7 +48,7 @@ class SchedulePlanRoleOption:
             "candidate_status": self.candidate_status,
             "detail_saved": self.detail_saved,
             "candidate_missing": self.candidate_missing,
-            "is_comparison": is_comparison_source(self.source_table),
+            "is_comparison": is_comparison_plan(role=self.role, source_table=self.source_table),
         }
 
 
@@ -69,6 +67,12 @@ class SchedulePlanResolution:
     scenario_name: Optional[str] = None
     is_scenario_preview: bool = False
 
+    @property
+    def scenario_display_name(self) -> str:
+        if not self.is_scenario_preview:
+            return ""
+        return str(self.scenario_name or "").strip() or "模拟预览（未命名）"
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "version": self.version,
@@ -81,11 +85,17 @@ class SchedulePlanResolution:
             "candidate_key": self.candidate_key,
             "scenario_id": self.scenario_id,
             "scenario_name": self.scenario_name,
+            "scenario_display_name": self.scenario_display_name,
             "status": self.status,
             "message": self.message,
             "available_roles": [item.to_dict() for item in self.available_roles],
             "is_fallback": self.status == "fallback_to_adopted",
-            "is_comparison": is_comparison_source(self.source_table),
+            "is_comparison": is_comparison_plan(
+                requested_role=self.requested_role,
+                selected_role=self.selected_role,
+                source_table=self.source_table,
+                is_scenario_preview=self.is_scenario_preview,
+            ),
             "is_scenario_preview": self.is_scenario_preview,
         }
 
@@ -95,13 +105,19 @@ def _normalize_role(role: Optional[str]) -> str:
     return text or ROLE_ADOPTED
 
 
+def _resolution_status(role: Optional[str], *, source_table: Optional[str] = None) -> str:
+    if is_comparison_plan(role=role, source_table=source_table):
+        return "resolved_comparison"
+    return "resolved_adopted"
+
+
 def _default_adopted_option() -> SchedulePlanRoleOption:
     return SchedulePlanRoleOption(
         role=ROLE_ADOPTED,
         source_table=SOURCE_SCHEDULE,
         candidate_id=None,
         candidate_key=None,
-        candidate_label="最终采用",
+        candidate_label=plan_role_label(ROLE_ADOPTED),
         candidate_kind=None,
         candidate_status=None,
         detail_saved=None,
@@ -144,7 +160,7 @@ class SchedulePlanQueryService:
                 source_table=option.source_table,
                 candidate_id=option.candidate_id,
                 candidate_key=option.candidate_key,
-                status="selected",
+                status=_resolution_status(option.role, source_table=option.source_table),
                 message="",
                 available_roles=available_roles,
             )
@@ -159,14 +175,14 @@ class SchedulePlanQueryService:
             candidate_id=adopted.candidate_id,
             candidate_key=adopted.candidate_key,
             status="fallback_to_adopted",
-            message="当前版本没有保存这套方案明细，已显示最终采用方案。",
+            message=f"你原本选择的是“{plan_role_label(requested_role)}”，但当前版本没有保存这套方案明细，已显示正式采用方案。",
             available_roles=available_roles,
         )
 
     def resolve_existing_plan(self, version: int, role: str) -> SchedulePlanResolution:
         requested_role = str(role or "").strip()
         if not requested_role:
-            raise ValueError("基准方案角色不能为空。")
+            raise ValueError("请选择要查看的方案。")
         if requested_role not in VALID_PLAN_ROLES:
             raise ValueError(f"未知的排产方案角色：{requested_role}")
 
@@ -174,18 +190,18 @@ class SchedulePlanQueryService:
         roles_by_name = {option.role: option for option in available_roles}
         option = roles_by_name.get(requested_role)
         if option is None:
-            raise ValueError("基准方案不存在。")
+            raise ValueError("所选方案不存在。")
 
         try:
             self._validate_resolution_option(int(version), option)
         except ValueError as exc:
-            raise ValueError("基准方案明细不存在。") from exc
+            raise ValueError("所选方案没有可查看的明细。") from exc
         if self.repo.get_plan_time_span(
             version=int(version),
             source_table=option.source_table,
             candidate_id=option.candidate_id,
         ) is None:
-            raise ValueError("基准方案明细不存在。")
+            raise ValueError("所选方案没有可查看的明细。")
         return SchedulePlanResolution(
             version=int(version),
             requested_role=requested_role,
@@ -193,7 +209,7 @@ class SchedulePlanQueryService:
             source_table=option.source_table,
             candidate_id=option.candidate_id,
             candidate_key=option.candidate_key,
-            status="selected",
+            status=_resolution_status(option.role, source_table=option.source_table),
             message="",
             available_roles=available_roles,
         )
@@ -427,7 +443,7 @@ class SchedulePlanQueryService:
 
         roles = {option.role for option in options}
         if ROLE_ADOPTED not in roles:
-            raise ValueError(f"方案对比记录不完整：version={version} 缺少最终采用方案。")
+            raise ValueError(f"方案对比记录不完整：version={version} 缺少正式采用方案。")
 
     def _validate_resolution_option(self, version: int, option: SchedulePlanRoleOption) -> None:
         if option.role not in VALID_PLAN_ROLES:

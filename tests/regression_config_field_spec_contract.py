@@ -172,7 +172,7 @@ def test_config_field_spec_registry_contract() -> None:
     assert "图评分" not in metadata["graph_analysis_mode"].hint
     assert metadata["graph_candidate_weight_count"].label == "重点工序方案档数"
     assert metadata["graph_candidate_weight_count"].choices[1]["label"] == "5 档（默认）"
-    assert metadata["graph_selection_policy"].label == "最终方案选择方式"
+    assert metadata["graph_selection_policy"].label == "正式方案选择方式"
     assert metadata["graph_selection_policy"].choices[0]["value"] == "balanced"
     assert metadata["graph_overdue_tolerance_count"].choices[0]["value"] == "0"
     assert metadata["graph_tardiness_tolerance_ratio"].choices[1]["value"] == "0.1"

@@ -36,7 +36,7 @@ def _build_secondary_output_app(tmp_path: Path, monkeypatch):
     return _build_app(tmp_path, monkeypatch)
 
 
-def _save_secondary_output_scenario(conn) -> str:
+def _save_secondary_output_scenario(conn, scenario_name="二级页模拟", clear_name=False) -> str:
     conn.execute("UPDATE Batches SET due_date = '2026-05-05' WHERE batch_id = 'B2'")
     conn.commit()
     draft_id = _draft_with_change(
@@ -46,9 +46,14 @@ def _save_secondary_output_scenario(conn) -> str:
     )
     scenario = GanttAdjustmentScenarioService(conn).save_scenario(
         draft_id=draft_id,
-        scenario_name="二级页模拟",
+        scenario_name=scenario_name,
         created_by="pytest",
     )
+    if clear_name:
+        conn.execute(
+            "UPDATE ScheduleAdjustmentScenario SET scenario_name = NULL WHERE scenario_id = ?",
+            (scenario.scenario_id,),
+        )
     conn.execute(
         """
         INSERT INTO MachineDowntimes(machine_id, start_time, end_time, reason_code, reason_detail, status)
@@ -170,14 +175,16 @@ def test_secondary_output_pages_keep_scenario_context(tmp_path: Path, monkeypatc
     week_export = client.get(f"/scheduler/week-plan/export?week_start=2026-05-04&{scenario_query}")
     assert week_export.status_code == 200
     week_disposition = unquote(str(week_export.headers.get("Content-Disposition") or ""))
-    assert scenario_id in week_disposition
+    assert scenario_id not in week_disposition
     assert "二级页模拟" in week_disposition
     week_summary = _workbook_summary_values(week_export.data)
     assert week_summary is not None
     assert week_summary["导出类型"] == "模拟方案预览"
     assert week_summary["提示"] == "这是模拟方案预览，正式计划还没有改变。"
-    assert week_summary["模拟方案编号"] == scenario_id
-    assert week_summary["模拟方案名称"] == "二级页模拟"
+    assert week_summary["模拟方案"] == "二级页模拟"
+    assert "模拟方案编号" not in week_summary
+    assert "模拟方案名称" not in week_summary
+    assert scenario_id not in "\n".join(str(value or "") for value in week_summary.values())
 
     formal_week_export = client.get(f"/scheduler/week-plan/export?week_start=2026-05-04&version={VERSION}&plan_role=adopted")
     assert formal_week_export.status_code == 200
@@ -196,7 +203,9 @@ def test_secondary_output_pages_keep_scenario_context(tmp_path: Path, monkeypatc
     )
     assert resource_data.status_code == 200
     data = _json_data(resource_data)
-    assert data["filters"]["scenario_id"] == scenario_id
+    assert "scenario_id" not in data["filters"]
+    assert data["filters"]["is_scenario_preview"] is True
+    assert data["filters"]["scenario_display_name"] == "二级页模拟"
     assert data["detail_rows"][0]["start_time"] == "2026-05-06 11:00:00"
 
     resource_export = client.get(
@@ -204,9 +213,9 @@ def test_secondary_output_pages_keep_scenario_context(tmp_path: Path, monkeypatc
     )
     assert resource_export.status_code == 200
     resource_disposition = unquote(str(resource_export.headers.get("Content-Disposition") or ""))
-    assert scenario_id in resource_disposition
+    assert scenario_id not in resource_disposition
     assert "二级页模拟" in resource_disposition
-    assert "最终采用" not in resource_disposition
+    assert "正式采用方案" not in resource_disposition
 
     overdue_html = client.get(f"/reports/overdue?{scenario_query}").get_data(as_text=True)
     assert "当前超期清单正在预览" in overdue_html
@@ -236,6 +245,50 @@ def test_secondary_output_pages_keep_scenario_context(tmp_path: Path, monkeypatc
     export_resp = client.get(f"/reports/overdue/export?{scenario_query}")
     assert export_resp.status_code == 400
     assert "模拟方案预览暂不支持导出" in export_resp.get_data(as_text=True)
+
+
+def test_secondary_output_pages_use_plain_fallback_for_unnamed_scenario(tmp_path: Path, monkeypatch) -> None:
+    conn = _connect(tmp_path)
+    try:
+        _seed_base(conn)
+        scenario_id = _save_secondary_output_scenario(conn, scenario_name="", clear_name=True)
+    finally:
+        conn.close()
+
+    app = _build_secondary_output_app(tmp_path, monkeypatch)
+    client = app.test_client()
+    scenario_query = f"version={VERSION}&plan_role=adopted&scenario_id={scenario_id}"
+
+    page_urls = [
+        f"/scheduler/week-plan?week_start=2026-05-04&{scenario_query}",
+        f"/scheduler/resource-dispatch?scope_type=operator&operator_id=O2&period_preset=week&query_date=2026-05-06&{scenario_query}",
+        f"/scheduler/gantt?view=machine&start_date=2026-05-04&end_date=2026-05-10&{scenario_query}",
+        f"/reports/overdue?{scenario_query}",
+        f"/reports/utilization?start_date=2026-05-06&end_date=2026-05-06&{scenario_query}",
+        f"/reports/downtime?start_date=2026-05-06&end_date=2026-05-06&{scenario_query}",
+    ]
+    for url in page_urls:
+        html = client.get(url).get_data(as_text=True)
+        assert "模拟预览（未命名）" in html, url
+
+    week_export = client.get(f"/scheduler/week-plan/export?week_start=2026-05-04&{scenario_query}")
+    assert week_export.status_code == 200
+    week_disposition = unquote(str(week_export.headers.get("Content-Disposition") or ""))
+    assert scenario_id not in week_disposition
+    assert "模拟预览（未命名）" in week_disposition
+    week_summary = _workbook_summary_values(week_export.data)
+    assert week_summary is not None
+    assert week_summary["模拟方案"] == "模拟预览（未命名）"
+    assert scenario_id not in "\n".join(str(value or "") for value in week_summary.values())
+
+    resource_export = client.get(
+        f"/scheduler/resource-dispatch/export?scope_type=operator&operator_id=O2&period_preset=week&query_date=2026-05-06&{scenario_query}"
+    )
+    assert resource_export.status_code == 200
+    resource_disposition = unquote(str(resource_export.headers.get("Content-Disposition") or ""))
+    assert scenario_id not in resource_disposition
+    assert "模拟预览（未命名）" in resource_disposition
+    assert "正式采用方案" not in resource_disposition
 
 
 def test_secondary_output_pages_reject_bad_scenario_without_showing_official_plan(tmp_path: Path, monkeypatch) -> None:

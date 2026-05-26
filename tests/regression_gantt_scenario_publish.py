@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Set
 
 import pytest
 from regression_gantt_draft_save_and_preview import _build_app
@@ -33,7 +34,7 @@ def _connect(tmp_path: Path):
     return get_connection(str(db_path))
 
 
-def _table_columns(conn, table: str) -> set[str]:
+def _table_columns(conn, table: str) -> Set[str]:
     return {str(row["name"]) for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
 
 
@@ -110,6 +111,68 @@ def _saved_scenario(conn):
         draft_id=draft.draft_id,
         scenario_name="单日模拟",
         created_by="planner",
+    )
+
+
+def _seed_baseline_best_selection(conn) -> None:
+    conn.execute(
+        """
+        INSERT INTO ScheduleCandidate(version, candidate_key, candidate_label, candidate_kind, status, graph_enabled, detail_saved)
+        VALUES (?, 'adopted', '正式采用', 'baseline', 'completed', 'no', 'no')
+        """,
+        (VERSION,),
+    )
+    adopted_candidate_id = int(conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"])
+    conn.execute(
+        """
+        INSERT INTO ScheduleCandidate(version, candidate_key, candidate_label, candidate_kind, status, graph_enabled, detail_saved)
+        VALUES (?, 'baseline_best', '原算法代表方案', 'baseline', 'completed', 'no', 'yes')
+        """,
+        (VERSION,),
+    )
+    baseline_candidate_id = int(conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"])
+    conn.execute(
+        """
+        INSERT INTO ScheduleCandidateSelection(version, role, candidate_id, source_table)
+        VALUES (?, 'adopted', ?, 'schedule')
+        """,
+        (VERSION, adopted_candidate_id),
+    )
+    conn.execute(
+        """
+        INSERT INTO ScheduleCandidateSelection(version, role, candidate_id, source_table)
+        VALUES (?, 'baseline_best', ?, 'candidate_rows')
+        """,
+        (VERSION, baseline_candidate_id),
+    )
+    conn.execute(
+        """
+        INSERT INTO ScheduleCandidateRows(version, candidate_id, op_id, machine_id, operator_id, start_time, end_time, lock_status)
+        SELECT version, ?, op_id, machine_id, operator_id, start_time, end_time, lock_status
+          FROM Schedule
+         WHERE version = ?
+        """,
+        (baseline_candidate_id, VERSION),
+    )
+    conn.commit()
+
+
+def _saved_baseline_best_scenario(conn):
+    _seed_baseline_best_selection(conn)
+    draft_service = GanttAdjustmentDraftService(conn)
+    draft = draft_service.create_draft(base_version=VERSION, base_plan_role="baseline_best", created_by="pytest")
+    draft_service.record_time_change(
+        draft_id=draft.draft_id,
+        op_id=30,
+        to_start="2026-05-04 11:00:00",
+        to_end="2026-05-04 12:00:00",
+    )
+    return GanttAdjustmentScenarioService(conn).save_scenario(
+        draft_id=draft.draft_id,
+        scenario_name="对比方案模拟",
+        created_by="planner",
+        expected_base_version=VERSION,
+        expected_base_plan_role="baseline_best",
     )
 
 
@@ -215,6 +278,43 @@ def test_publish_scenario_creates_new_formal_version_and_audit_log(tmp_path: Pat
         assert log["target_id"] == str(result.new_version)
         assert log["operator"] == "planner"
         assert json.loads(log["detail"])["scenario_id"] == scenario.scenario_id
+    finally:
+        conn.close()
+
+
+def test_publish_rejects_scenario_based_on_comparison_plan(tmp_path: Path) -> None:
+    conn = _connect(tmp_path)
+    try:
+        _seed_base(conn)
+        scenario = _saved_baseline_best_scenario(conn)
+        before = _snapshot_formal(conn)
+
+        with pytest.raises(ValidationError, match="正式采用方案"):
+            GanttAdjustmentPublishService(conn, op_logger=OperationLogger(conn)).publish_scenario(
+                scenario_id=scenario.scenario_id,
+                confirm_text="正式采用",
+                reason="客户要求",
+                published_by="planner",
+                expected_base_version=VERSION,
+                expected_base_plan_role="baseline_best",
+            )
+
+        assert _snapshot_formal(conn) == before
+        scenario_row = conn.execute(
+            """
+            SELECT status, published_version, published_by, published_reason, published_at
+            FROM ScheduleAdjustmentScenario
+            WHERE scenario_id=?
+            """,
+            (scenario.scenario_id,),
+        ).fetchone()
+        assert dict(scenario_row) == {
+            "status": "active",
+            "published_version": None,
+            "published_by": None,
+            "published_reason": None,
+            "published_at": None,
+        }
     finally:
         conn.close()
 
@@ -402,7 +502,7 @@ def test_publish_rejects_stale_base_version(tmp_path: Path) -> None:
         conn.commit()
         before = _snapshot_formal(conn)
 
-        with pytest.raises(ValidationError, match="基准版本"):
+        with pytest.raises(ValidationError, match="调整依据版本"):
             GanttAdjustmentPublishService(conn).publish_scenario(
                 scenario_id=scenario.scenario_id,
                 confirm_text="正式采用",

@@ -4,17 +4,18 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 
 from core.infrastructure.errors import ValidationError
-from data.repositories.schedule_plan_query_repo import SOURCE_SCHEDULE
-
-from .schedule_plan_query_service import (
+from core.models.schedule_plan_role import (
     ROLE_ADOPTED,
     VALID_PLAN_ROLES,
+    is_comparison_plan,
     is_comparison_source,
     plan_role_label,
 )
+from data.repositories.schedule_plan_query_repo import SOURCE_SCHEDULE
+
 from .version_resolution import VersionResolution, require_selected_version, resolve_version_or_latest
 
-_PLAN_ROLE_COMPARE_HINT = "当前查看的是对比方案，只用来和最终采用方案比一比；现场执行仍以“最终采用”为准。"
+_PLAN_ROLE_COMPARE_HINT = "当前查看的是对比方案，只用来和正式采用方案比一比；现场执行仍以“正式采用方案”为准。"
 
 
 @dataclass(frozen=True)
@@ -35,6 +36,7 @@ class ScheduleResultViewContext:
     is_scenario_preview: bool
     scenario_id: Any
     scenario_name: Any
+    scenario_display_name: Any
     plan_role_notice: str
 
     def to_dict(self) -> Dict[str, Any]:
@@ -55,6 +57,7 @@ class ScheduleResultViewContext:
             "is_scenario_preview": self.is_scenario_preview,
             "scenario_id": self.scenario_id,
             "scenario_name": self.scenario_name,
+            "scenario_display_name": self.scenario_display_name,
             "plan_role_notice": self.plan_role_notice,
         }
 
@@ -70,6 +73,7 @@ def normalize_plan_role(value: Any) -> str:
 def default_plan_resolution_dict(plan_role: Optional[str] = None) -> Dict[str, Any]:
     requested_role = normalize_plan_role(plan_role)
     selected_label = plan_role_label(ROLE_ADOPTED)
+    is_fallback = requested_role != ROLE_ADOPTED
     return {
         "version": None,
         "requested_role": requested_role,
@@ -79,8 +83,10 @@ def default_plan_resolution_dict(plan_role: Optional[str] = None) -> Dict[str, A
         "source_table": SOURCE_SCHEDULE,
         "candidate_id": None,
         "candidate_key": None,
-        "status": "selected" if requested_role == ROLE_ADOPTED else "fallback_to_adopted",
-        "message": "" if requested_role == ROLE_ADOPTED else "当前版本没有保存这套方案明细，已显示最终采用方案。",
+        "status": "fallback_to_adopted" if is_fallback else "resolved_adopted",
+        "message": ""
+        if not is_fallback
+        else f"你原本选择的是“{plan_role_label(requested_role)}”，但当前版本没有保存这套方案明细，已显示正式采用方案。",
         "available_roles": [
             {
                 "role": ROLE_ADOPTED,
@@ -95,11 +101,16 @@ def default_plan_resolution_dict(plan_role: Optional[str] = None) -> Dict[str, A
                 "is_comparison": False,
             }
         ],
-        "is_fallback": requested_role != ROLE_ADOPTED,
-        "is_comparison": False,
+        "is_fallback": is_fallback,
+        "is_comparison": is_comparison_plan(
+            requested_role=requested_role,
+            selected_role=ROLE_ADOPTED,
+            source_table=SOURCE_SCHEDULE,
+        ),
         "is_scenario_preview": False,
         "scenario_id": None,
         "scenario_name": None,
+        "scenario_display_name": None,
     }
 
 
@@ -118,6 +129,7 @@ def _resolution_to_dict(resolution: Any) -> Dict[str, Any]:
     source_table = getattr(resolution, "source_table", None)
     requested_role = getattr(resolution, "requested_role", ROLE_ADOPTED)
     selected_role = getattr(resolution, "selected_role", ROLE_ADOPTED)
+    is_scenario_preview = bool(getattr(resolution, "is_scenario_preview", False))
     return {
         "version": getattr(resolution, "version", None),
         "requested_role": requested_role,
@@ -127,14 +139,20 @@ def _resolution_to_dict(resolution: Any) -> Dict[str, Any]:
         "source_table": source_table,
         "candidate_id": getattr(resolution, "candidate_id", None),
         "candidate_key": getattr(resolution, "candidate_key", None),
-        "status": getattr(resolution, "status", "selected"),
+        "status": getattr(resolution, "status", "resolved_adopted"),
         "message": getattr(resolution, "message", ""),
         "available_roles": serialize_plan_role_options(getattr(resolution, "available_roles", None)),
         "is_fallback": getattr(resolution, "status", "") == "fallback_to_adopted",
-        "is_comparison": is_comparison_source(source_table),
-        "is_scenario_preview": bool(getattr(resolution, "is_scenario_preview", False)),
+        "is_comparison": is_comparison_plan(
+            requested_role=requested_role,
+            selected_role=selected_role,
+            source_table=source_table,
+            is_scenario_preview=is_scenario_preview,
+        ),
+        "is_scenario_preview": is_scenario_preview,
         "scenario_id": getattr(resolution, "scenario_id", None),
         "scenario_name": getattr(resolution, "scenario_name", None),
+        "scenario_display_name": getattr(resolution, "scenario_display_name", ""),
     }
 
 
@@ -165,6 +183,7 @@ def attach_plan_metadata(data: Dict[str, Any], plan_resolution: Dict[str, Any]) 
         is_scenario_preview=bool(plan_resolution.get("is_scenario_preview")),
         scenario_id=plan_resolution.get("scenario_id"),
         scenario_name=plan_resolution.get("scenario_name"),
+        scenario_display_name=plan_resolution.get("scenario_display_name"),
     )
 
 
@@ -196,7 +215,21 @@ def _plan_role_message(overrides: Dict[str, Any], data: Dict[str, Any]) -> str:
     return str(data.get("message") or "")
 
 
-def _plan_role_is_comparison(overrides: Dict[str, Any], data: Dict[str, Any], source_table: Any) -> bool:
+def _plan_role_is_comparison(
+    overrides: Dict[str, Any],
+    data: Dict[str, Any],
+    source_table: Any,
+    requested_role: str,
+    effective_role: str,
+    is_scenario_preview: bool,
+) -> bool:
+    if is_comparison_plan(
+        requested_role=requested_role,
+        selected_role=effective_role,
+        source_table=source_table,
+        is_scenario_preview=is_scenario_preview,
+    ):
+        return True
     if "is_comparison" in overrides:
         return bool(overrides.get("is_comparison"))
     return bool(data.get("is_comparison") or is_comparison_source(source_table))
@@ -208,15 +241,29 @@ def plan_role_filter_fields(plan_resolution_or_context: Any = None, **overrides:
     effective_role = str(
         _truthy_override_or_data(overrides, data, "effective_role", ("selected_role", "effective_plan_role"), ROLE_ADOPTED)
     )
-    status = str(_truthy_override_or_data(overrides, data, "status", ("status", "plan_role_status"), "selected"))
     message = _plan_role_message(overrides, data)
     candidate_id = _override_or_data(overrides, data, "candidate_id")
     candidate_key = _override_or_data(overrides, data, "candidate_key")
     source_table = _override_or_data(overrides, data, "source_table")
-    is_comparison = _plan_role_is_comparison(overrides, data, source_table)
+    if effective_role == ROLE_ADOPTED and requested_role != ROLE_ADOPTED:
+        default_status = "fallback_to_adopted"
+    elif effective_role != ROLE_ADOPTED or is_comparison_source(source_table):
+        default_status = "resolved_comparison"
+    else:
+        default_status = "resolved_adopted"
+    status = str(_truthy_override_or_data(overrides, data, "status", ("status", "plan_role_status"), default_status))
     scenario_id = _override_or_data(overrides, data, "scenario_id")
     scenario_name = _override_or_data(overrides, data, "scenario_name")
+    scenario_display_name = _override_or_data(overrides, data, "scenario_display_name")
     is_scenario_preview = bool(_override_or_data(overrides, data, "is_scenario_preview"))
+    is_comparison = _plan_role_is_comparison(
+        overrides,
+        data,
+        source_table,
+        requested_role,
+        effective_role,
+        is_scenario_preview,
+    )
 
     return {
         "plan_role": requested_role,
@@ -234,6 +281,7 @@ def plan_role_filter_fields(plan_resolution_or_context: Any = None, **overrides:
         "is_scenario_preview": is_scenario_preview,
         "scenario_id": scenario_id,
         "scenario_name": scenario_name,
+        "scenario_display_name": scenario_display_name,
     }
 
 
@@ -260,11 +308,14 @@ def serialize_plan_role_options(options: Any) -> List[Dict[str, Any]]:
                 "candidate_status": getattr(option, "candidate_status", None),
                 "detail_saved": getattr(option, "detail_saved", None),
                 "candidate_missing": getattr(option, "candidate_missing", False),
-                "is_comparison": is_comparison_source(source_table),
+                "is_comparison": is_comparison_plan(role=role, source_table=source_table),
             }
         role = str(item.get("role") or "").strip()
         if not role:
             continue
+        item["is_comparison"] = bool(
+            item.get("is_comparison") or is_comparison_plan(role=role, source_table=item.get("source_table"))
+        )
         out.append(item)
     if out:
         return out
@@ -272,11 +323,14 @@ def serialize_plan_role_options(options: Any) -> List[Dict[str, Any]]:
 
 
 def plan_role_notice_from_fields(fields: Dict[str, Any]) -> str:
+    if bool(fields.get("is_scenario_preview")):
+        return "当前正在预览模拟方案，正式计划还没有改变。"
+    message = str(fields.get("plan_role_message") or "").strip()
+    if message:
+        return message
     if bool(fields.get("is_comparison")):
-        if bool(fields.get("is_scenario_preview")):
-            return "当前正在预览模拟方案，正式计划还没有改变。"
         return _PLAN_ROLE_COMPARE_HINT
-    return str(fields.get("plan_role_message") or "").strip()
+    return ""
 
 
 def plan_role_notice_from_context(context: ScheduleResultViewContext) -> str:
@@ -307,6 +361,7 @@ def _build_view_context(
         is_scenario_preview=bool(plan_resolution.get("is_scenario_preview")),
         scenario_id=plan_resolution.get("scenario_id"),
         scenario_name=plan_resolution.get("scenario_name"),
+        scenario_display_name=plan_resolution.get("scenario_display_name"),
         plan_role_notice=plan_role_notice_from_fields(fields),
     )
 

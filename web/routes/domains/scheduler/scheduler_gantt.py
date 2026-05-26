@@ -194,6 +194,7 @@ def gantt_page():
         gantt_zoom=gantt_zoom,
         scenario_id=plan_resolution.get("scenario_id"),
         scenario_name=plan_resolution.get("scenario_name"),
+        scenario_display_name=plan_resolution.get("scenario_display_name"),
         is_scenario_preview=bool(plan_resolution.get("is_scenario_preview")),
     )
 

@@ -1,10 +1,48 @@
 from __future__ import annotations
 
+import json
+from typing import Any, Set
+
 from web.viewmodels.scheduler_resource_dispatch import (
     build_resource_dispatch_filename,
     decorate_resource_dispatch_context,
     decorate_resource_dispatch_payload,
 )
+
+FORBIDDEN_PLAN_ROLE_OPTION_KEYS = (
+    "source_table",
+    "candidate_id",
+    "selection_candidate_id",
+    "resolved_candidate_id",
+    "candidate_key",
+    "candidate_kind",
+    "candidate_status",
+    "detail_saved",
+    "scenario_id",
+)
+
+FORBIDDEN_PUBLIC_FILTER_KEYS = FORBIDDEN_PLAN_ROLE_OPTION_KEYS + (
+    "plan_role",
+    "requested_plan_role",
+    "effective_plan_role",
+    "plan_role_status",
+)
+
+FORBIDDEN_PUBLIC_ROW_KEYS = {"schedule_id", "op_id", "_row_identity"}
+
+
+def _json_keys(value: Any) -> Set[str]:
+    if isinstance(value, dict):
+        keys = set(value)
+        for child in value.values():
+            keys.update(_json_keys(child))
+        return keys
+    if isinstance(value, list):
+        keys: Set[str] = set()
+        for child in value:
+            keys.update(_json_keys(child))
+        return keys
+    return set()
 
 
 def test_resource_dispatch_context_decorates_filters_and_options_without_mutation() -> None:
@@ -33,6 +71,73 @@ def test_resource_dispatch_context_decorates_filters_and_options_without_mutatio
     assert out["team_options"][0]["label"] == "TEAM-01 装配一组"
     assert "scope_type_label" not in context["filters"]
     assert "label" not in context["operator_options"][0]
+
+
+def test_resource_dispatch_plan_role_options_hide_internal_fields_from_public_json() -> None:
+    payload = {
+        "filters": {
+            "scope_type": "operator",
+            "scope_id": "OP001",
+            "scope_name": "张三",
+            "team_axis": "operator",
+            "period_preset": "week",
+            "version": 7,
+            "plan_role": "baseline_best",
+            "requested_plan_role": "baseline_best",
+            "effective_plan_role": "baseline_best",
+            "plan_role_status": "resolved_comparison",
+            "source_table": "scheduler_candidate_selection",
+            "candidate_id": 12,
+            "selection_candidate_id": 13,
+            "resolved_candidate_id": 14,
+            "candidate_key": "internal-key",
+            "candidate_kind": "baseline",
+            "candidate_status": "ready",
+            "detail_saved": True,
+            "scenario_id": "scenario-001",
+        },
+        "plan_role_options": [
+            {
+                "role": "baseline_best",
+                "label": "原算法代表方案",
+                "is_comparison": True,
+                "source_table": "scheduler_candidate_selection",
+                "candidate_id": 12,
+                "selection_candidate_id": 13,
+                "resolved_candidate_id": 14,
+                "candidate_key": "internal-key",
+                "candidate_kind": "baseline",
+                "candidate_status": "ready",
+                "detail_saved": True,
+                "scenario_id": "scenario-001",
+            }
+        ]
+    }
+    expected = [{"role": "baseline_best", "label": "原算法代表方案", "is_comparison": True}]
+
+    payload_out = decorate_resource_dispatch_payload(payload)
+    context_out = decorate_resource_dispatch_context(payload)
+
+    assert payload_out["plan_role_options"] == expected
+    assert context_out["plan_role_options"] == expected
+    assert payload_out["filters"]["scope_type"] == "operator"
+    assert payload_out["filters"]["scope_type_label"] == "人员"
+    assert context_out["client_filters"]["scope_type"] == "operator"
+    assert context_out["client_filters"]["scope_type_label"] == "人员"
+    for key in FORBIDDEN_PUBLIC_FILTER_KEYS:
+        assert key not in payload_out["filters"]
+        assert key not in context_out["client_filters"]
+    public_json = json.dumps(
+        {
+            "payload": payload_out,
+            "client_filters": context_out["client_filters"],
+            "plan_role_options": context_out["plan_role_options"],
+        },
+        ensure_ascii=False,
+    )
+    public_keys = _json_keys(json.loads(public_json))
+    for key in FORBIDDEN_PUBLIC_FILTER_KEYS:
+        assert key not in public_keys
 
 
 def test_resource_dispatch_payload_decorates_detail_tasks_and_calendar_text() -> None:

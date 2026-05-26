@@ -5,7 +5,8 @@ from typing import Any, Dict, Optional
 
 from core.infrastructure.errors import ValidationError
 from core.services.report import ReportEngine
-from core.services.scheduler.schedule_plan_query_service import ROLE_ADOPTED, VALID_PLAN_ROLES, plan_role_label
+from core.services.scheduler.schedule_plan_query_service import ROLE_ADOPTED
+from core.services.scheduler.schedule_result_view_context import default_plan_resolution_dict
 
 
 def default_date_range(days: int = 7):
@@ -33,42 +34,9 @@ def request_scenario_id(args: Any) -> Optional[str]:
 
 
 def default_plan_resolution(version=None, raw_role=None) -> Dict[str, Any]:
-    requested_role = str(raw_role or "").strip() or ROLE_ADOPTED
-    if requested_role not in VALID_PLAN_ROLES:
-        valid_labels = " / ".join(plan_role_label(role) for role in VALID_PLAN_ROLES)
-        raise ValidationError(f"排产方案不正确，请选择：{valid_labels}。", field="plan_role")
-    selected_label = plan_role_label(ROLE_ADOPTED)
-    return {
-        "version": version,
-        "requested_role": requested_role,
-        "requested_label": plan_role_label(requested_role),
-        "selected_role": ROLE_ADOPTED,
-        "selected_label": selected_label,
-        "source_table": "schedule",
-        "candidate_id": None,
-        "candidate_key": None,
-        "status": "selected",
-        "message": "",
-        "available_roles": [
-            {
-                "role": ROLE_ADOPTED,
-                "label": selected_label,
-                "source_table": "schedule",
-                "candidate_id": None,
-                "candidate_key": None,
-                "candidate_label": selected_label,
-                "candidate_kind": None,
-                "candidate_status": None,
-                "detail_saved": None,
-                "is_comparison": False,
-            }
-        ],
-        "is_fallback": False,
-        "is_comparison": False,
-        "is_scenario_preview": False,
-        "scenario_id": None,
-        "scenario_name": None,
-    }
+    resolution = default_plan_resolution_dict(raw_role)
+    resolution["version"] = version
+    return resolution
 
 
 def page_plan_resolution(plan_query_service, version, raw_role, scenario_id=None) -> Dict[str, Any]:
