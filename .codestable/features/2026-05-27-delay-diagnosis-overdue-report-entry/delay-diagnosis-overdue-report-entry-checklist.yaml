@@ -1,0 +1,38 @@
+feature: 2026-05-27-delay-diagnosis-overdue-report-entry
+status: done
+roadmap: aps-three-gap-directions
+roadmap_item: delay-diagnosis-overdue-report-entry
+
+steps:
+  - slug: reference-chain-investigation
+    title: 下钻超期清单、导出、模拟预览和说明链路
+    status: done
+    exit_signal: 已确认页面入口、诊断数据来源、导出路径、模拟预览拒绝、用户手册和现有回归测试。
+
+  - slug: overdue-page-entry
+    title: 超期清单接入延期解释入口
+    status: done
+    exit_signal: 超期行能展开“查看为什么晚了”，页面只展示晚了多久、建议复核、证据等级、证据缺口和下一步。
+
+  - slug: overdue-export-trace
+    title: 超期导出增加诊断依据
+    status: done
+    exit_signal: 原有超期导出保留“超期清单”工作表，并新增“诊断依据”工作表，表头全部为中文大白话。
+
+  - slug: manual-and-preview-copy
+    title: 同步用户说明和模拟预览拒绝文案
+    status: done
+    exit_signal: 页面说明、总手册、镜像手册和模拟预览二级导出拒绝文案保持一致。
+
+  - slug: regression-tests
+    title: 增加回归测试、Python 3.8 扫描和 YAML 校验
+    status: done
+    exit_signal: 精准 pytest、相关导出/说明测试、Python 3.8 扫描、YAML 校验和 diff 检查通过。
+
+checks:
+  - 超期清单能用中文大白话说明晚了多久、建议先核对哪里、证据够不够、还缺什么数据和下一步建议。
+  - 页面不把“根因”“主要原因”“critical_chain”“trace_meta”等内部口径展示给普通用户。
+  - 没有现场执行数据时不判断“现场做慢了”，没有物料明细或齐套状态时不编造“物料不够导致延期”。
+  - 导出仍走现有 /reports/overdue/export，不新增独立导出路由。
+  - 模拟预览二级导出继续拒绝，并使用统一中文提示。
+  - 大范围导出拒绝要先发生，不能为了生成诊断依据提前跑完整诊断。

@@ -181,9 +181,15 @@ def overdue_page():
         if version is not None
         else {"version": None, "items": [], "count": 0, "scheduled_count": 0, "unscheduled_count": 0, "as_of_time": None}
     )
+    has_overdue_rows = int(rep.get("count") or 0) > 0
+    delay_diagnosis = (
+        engine.overdue_delay_diagnosis_context(int(version), plan_role=raw_plan_role, scenario_id=scenario_id)
+        if version is not None and has_overdue_rows
+        else {"generated_at": None, "warnings": [], "items_by_batch": {}}
+    )
     has_history = bool(versions)
     empty_reason = None
-    if int(rep.get("count") or 0) <= 0:
+    if not has_overdue_rows:
         empty_reason = "no_history" if not has_history else "no_overdue"
     return render_template(
         "reports/overdue.html",
@@ -200,6 +206,7 @@ def overdue_page():
         scheduled_count=int(rep.get("scheduled_count") or 0),
         unscheduled_count=int(rep.get("unscheduled_count") or 0),
         as_of_time=rep.get("as_of_time"),
+        delay_diagnosis=delay_diagnosis,
         has_history=has_history,
         empty_reason=empty_reason,
     )

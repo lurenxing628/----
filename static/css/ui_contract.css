@@ -1663,6 +1663,28 @@ table td {
   margin-top: 4px;
 }
 
+.aps-inline-details {
+  min-width: 0;
+  color: var(--ui-text);
+}
+
+.aps-inline-details > summary {
+  cursor: pointer;
+  color: var(--ui-primary);
+  font-weight: 600;
+}
+
+.aps-inline-details-body {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.aps-inline-details-body p {
+  margin: 0;
+  white-space: normal;
+}
+
 .aps-table--actions-nowrap .table-actions,
 .aps-table--actions-nowrap .table-actions * {
   white-space: nowrap;

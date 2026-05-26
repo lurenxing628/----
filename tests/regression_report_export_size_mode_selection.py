@@ -137,6 +137,7 @@ def main() -> None:
     original_direct_max = ReportEngine.EXPORT_DIRECT_MAX_ROWS
     original_stream_max = ReportEngine.EXPORT_STREAM_MAX_ROWS
     original_overdue_batches = ReportEngine.overdue_batches
+    original_overdue_diagnosis_export_rows = ReportEngine._overdue_diagnosis_export_rows
     original_utilization = ReportEngine.utilization
 
     try:
@@ -167,7 +168,21 @@ def main() -> None:
                 "operators": [],
             }
 
+        def fake_overdue_diagnosis_export_rows(self, *, version: int, resolution) -> List[Dict[str, Any]]:
+            return [
+                {
+                    "diagnosis_id": f"延期诊断-v{int(version)}-B001",
+                    "summary": "计划完成已经晚了 8.00 小时。建议先复核：测试诊断。",
+                    "check_info": "测试用诊断依据。",
+                    "evidence_sources": "超期清单：测试证据",
+                    "data_gaps": "当前没有明显证据缺口。",
+                    "generated_at": "2026-01-02 08:00:00",
+                    "filters": f"排产版本：v{int(version)}；排产方案：正式采用方案",
+                }
+            ]
+
         ReportEngine.overdue_batches = fake_overdue_batches
+        ReportEngine._overdue_diagnosis_export_rows = fake_overdue_diagnosis_export_rows
         ReportEngine.utilization = fake_utilization
 
         overdue_resp = client.get("/reports/overdue/export?version=7")
@@ -195,6 +210,7 @@ def main() -> None:
         ReportEngine.EXPORT_DIRECT_MAX_ROWS = original_direct_max
         ReportEngine.EXPORT_STREAM_MAX_ROWS = original_stream_max
         ReportEngine.overdue_batches = original_overdue_batches
+        ReportEngine._overdue_diagnosis_export_rows = original_overdue_diagnosis_export_rows
         ReportEngine.utilization = original_utilization
 
 

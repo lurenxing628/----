@@ -48,7 +48,7 @@
         {% if not has_history %}
           <div class="aps-filter-note">暂无排产历史，请先执行排产后再查看报表。</div>
         {% elif plan_resolution and plan_resolution.is_scenario_preview %}
-          <div class="aps-filter-note">当前正在预览模拟方案，正式计划还没有改变。模拟方案预览暂不支持导出报表。</div>
+          <div class="aps-filter-note">当前正在预览模拟方案，正式计划还没有改变。模拟预览暂不支持导出，请切换到正式采用方案。</div>
         {% elif not rows %}
           <div class="aps-filter-note">当前版本没有可导出的超期结果，请换一个排产版本后再试。</div>
         {% endif %}
@@ -85,7 +85,7 @@
       {% endif %}
     {% else %}
       <div class="aps-table-scroll">
-      <table id="overdueTable" class="table-sticky table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v2_overdueTable">
+      <table id="overdueTable" class="table-sticky table-layout-fixed aps-table-wide aps-table--multiline" data-col-resize="1" data-table-key="v2_overdueTable">
         <thead>
           <tr>
             <th class="w-120" data-col-key="bucket" data-default-w="120" data-min-w="100">类别</th>
@@ -97,10 +97,12 @@
             <th class="w-200" data-col-key="finish_time" data-default-w="200" data-min-w="160">完工/截至时间</th>
             <th class="w-120" data-col-key="delay_days" data-default-w="120" data-min-w="100">超期(天)</th>
             <th class="w-120" data-col-key="delay_hours" data-default-w="120" data-min-w="100">超期(小时)</th>
+            <th class="w-280" data-col-key="delay_diagnosis" data-default-w="280" data-min-w="220">延期解释</th>
           </tr>
         </thead>
         <tbody>
           {% for r in rows %}
+            {% set diagnosis = (delay_diagnosis.items_by_batch or {}).get(r.batch_id) if delay_diagnosis else none %}
             <tr>
               <td>{{ r.bucket_label or '-' }}</td>
               <td><a class="aps-col-code" href="{{ url_for('scheduler.batch_detail', batch_id=r.batch_id) }}" title="{{ r.batch_id }}">{{ r.batch_id }}</a></td>
@@ -111,6 +113,36 @@
               <td>{{ r.finish_time or r.as_of_time or '-' }}</td>
               <td>{{ r.delay_days }}</td>
               <td>{{ r.delay_hours }}</td>
+              <td>
+                {% if diagnosis %}
+                  <details class="aps-inline-details">
+                    <summary>查看为什么晚了</summary>
+                    <div class="aps-inline-details-body">
+                      <p><strong>晚了多久：</strong>{{ diagnosis.delay_text }}</p>
+                      <p><strong>建议先复核：</strong>{{ diagnosis.leading_clue_label }}</p>
+                      <p><strong>证据等级：</strong>{{ diagnosis.confidence_label }}</p>
+                      {% if diagnosis.data_gaps %}
+                        <p><strong>证据缺口：</strong>{{ diagnosis.data_gaps|join('；') }}</p>
+                      {% else %}
+                        <p><strong>证据缺口：</strong>当前没有明显证据缺口。</p>
+                      {% endif %}
+                      {% if diagnosis.suggested_actions %}
+                        <p><strong>下一步：</strong>
+                          {% for action in diagnosis.suggested_actions %}
+                            {% if action.link %}
+                              <a href="{{ action.link }}">{{ action.label }}</a>{% if action.reason %}（{{ action.reason }}）{% endif %}{% if not loop.last %}；{% endif %}
+                            {% else %}
+                              {{ action.label }}{% if action.reason %}（{{ action.reason }}）{% endif %}{% if not loop.last %}；{% endif %}
+                            {% endif %}
+                          {% endfor %}
+                        </p>
+                      {% endif %}
+                    </div>
+                  </details>
+                {% else %}
+                  <span class="muted">当前数据不足，不能确定唯一原因。</span>
+                {% endif %}
+              </td>
             </tr>
           {% endfor %}
         </tbody>

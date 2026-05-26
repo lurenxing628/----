@@ -221,7 +221,7 @@ def test_secondary_output_pages_keep_scenario_context(tmp_path: Path, monkeypatc
     assert "当前超期清单正在预览" in overdue_html
     assert f'name="scenario_id" value="{scenario_id}"' in overdue_html
     assert f"/reports/utilization?version={VERSION}&amp;plan_role=adopted&amp;scenario_id={scenario_id}" in overdue_html
-    assert "模拟方案预览暂不支持导出报表" in overdue_html
+    assert "模拟预览暂不支持导出，请切换到正式采用方案" in overdue_html
     assert "B2" in overdue_html
 
     utilization_html = client.get(
@@ -244,7 +244,19 @@ def test_secondary_output_pages_keep_scenario_context(tmp_path: Path, monkeypatc
 
     export_resp = client.get(f"/reports/overdue/export?{scenario_query}")
     assert export_resp.status_code == 400
-    assert "模拟方案预览暂不支持导出" in export_resp.get_data(as_text=True)
+    assert "模拟预览暂不支持导出，请切换到正式采用方案" in export_resp.get_data(as_text=True)
+
+    utilization_export = client.get(
+        f"/reports/utilization/export?start_date=2026-05-06&end_date=2026-05-06&{scenario_query}"
+    )
+    assert utilization_export.status_code == 400
+    assert "模拟预览暂不支持导出，请切换到正式采用方案" in utilization_export.get_data(as_text=True)
+
+    downtime_export = client.get(
+        f"/reports/downtime/export?start_date=2026-05-06&end_date=2026-05-06&{scenario_query}"
+    )
+    assert downtime_export.status_code == 400
+    assert "模拟预览暂不支持导出，请切换到正式采用方案" in downtime_export.get_data(as_text=True)
 
 
 def test_secondary_output_pages_use_plain_fallback_for_unnamed_scenario(tmp_path: Path, monkeypatch) -> None:

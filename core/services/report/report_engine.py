@@ -5,7 +5,12 @@ from datetime import datetime, timedelta
 from typing import Any, BinaryIO, Callable, ClassVar, Dict, List, Optional
 
 from core.infrastructure.errors import AppError, ErrorCode, ValidationError
+from core.services.report.delay_diagnosis_presentation import (
+    build_delay_diagnosis_export_rows,
+    build_delay_diagnosis_page_context,
+)
 from core.services.scheduler.calendar_service import CalendarService
+from core.services.scheduler.schedule_delay_diagnosis_service import ScheduleDelayDiagnosisService
 from core.services.scheduler.schedule_plan_query_service import (
     SchedulePlanQueryService,
     SchedulePlanResolution,
@@ -50,6 +55,7 @@ class ReportEngine:
         self.schedule_repo = ScheduleRepository(conn, logger=logger)
         self.history_repo = ScheduleHistoryRepository(conn, logger=logger)
         self.plan_query_service = SchedulePlanQueryService(conn, logger=logger)
+        self.delay_diagnosis_service = ScheduleDelayDiagnosisService(conn, logger=logger)
         self.calendar = CalendarService(conn, logger=logger)
 
     def _sanitize_export_threshold(self, value: Any, *, default: int) -> int:
@@ -180,6 +186,14 @@ class ReportEngine:
             label = label.replace(old, new)
         return label.strip() or resolution.selected_role
 
+    def _public_plan_label(self, resolution: SchedulePlanResolution) -> str:
+        if resolution.is_scenario_preview:
+            return resolution.scenario_display_name
+        identity = resolution.plan_identity
+        if identity is not None:
+            return identity.user_label or identity.label or plan_role_label(resolution.selected_role)
+        return plan_role_label(resolution.selected_role)
+
     def version_date_range(
         self,
         version: int,
@@ -267,18 +281,51 @@ class ReportEngine:
             "unscheduled_items": list(unscheduled),
         }
 
+    def overdue_delay_diagnosis_context(
+        self,
+        version: int,
+        plan_role: Optional[str] = None,
+        scenario_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        resolution = self._resolve_plan(int(version), plan_role, scenario_id)
+        report = self.delay_diagnosis_service.diagnose_plan_overdue(
+            int(version),
+            plan_role=resolution.selected_role,
+            scenario_id=scenario_id,
+        )
+        return build_delay_diagnosis_page_context(report)
+
+    def _overdue_diagnosis_export_rows(
+        self,
+        *,
+        version: int,
+        resolution: SchedulePlanResolution,
+    ) -> List[Dict[str, Any]]:
+        diagnosis_report = self.delay_diagnosis_service.diagnose_plan_overdue(
+            int(version),
+            plan_role=resolution.selected_role,
+        )
+        return build_delay_diagnosis_export_rows(
+            diagnosis_report,
+            filters={"version": int(version), "plan_label": self._public_plan_label(resolution)},
+        )
+
     def export_overdue_xlsx(self, version: int, plan_role: Optional[str] = None) -> ReportExport:
         rep = self.overdue_batches(version) if plan_role is None else self.overdue_batches(version, plan_role=plan_role)
         items = list(rep.get("items") or [])
         if not items:
             raise ValidationError("当前版本没有可导出的超期结果，请换一个排产版本后再试。", field="导出")
         resolution = self._resolve_plan(int(rep["version"]), plan_role)
+        def build_overdue_export(*, write_only: bool = False):
+            diagnosis_rows = self._overdue_diagnosis_export_rows(version=int(rep["version"]), resolution=resolution)
+            return export_overdue_xlsx(items, diagnosis_rows=diagnosis_rows, write_only=write_only)
+
         return self._build_xlsx_export(
             report_name="超期清单",
             filename=f"超期清单_{self._filename_plan_label(resolution)}_v{int(rep['version'])}.xlsx",
             estimated_rows=len(items),
-            build_direct=lambda: export_overdue_xlsx(items),
-            build_stream=lambda: export_overdue_xlsx(items, write_only=True),
+            build_direct=lambda: build_overdue_export(),
+            build_stream=lambda: build_overdue_export(write_only=True),
         )
 
     # -------------------------

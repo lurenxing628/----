@@ -28,7 +28,7 @@ def test_report_pages_use_stable_filter_grid_and_preserve_contracts() -> None:
         assert "aps-result-summary-grid" in source
         assert "ui.version_option_label" in source
         assert "导出 Excel" in source
-        assert "模拟方案预览暂不支持导出报表" in source
+        assert "模拟预览暂不支持导出，请切换到正式采用方案" in source
         assert "正式计划还没有改变" in source
         for field_name in field_names:
             assert f'name="{field_name}"' in source

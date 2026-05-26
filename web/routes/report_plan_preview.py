@@ -87,7 +87,7 @@ def export_date_range_or_version_span(engine: ReportEngine, version: int, plan_r
 
 def reject_scenario_export(scenario_id: Optional[str]) -> None:
     if scenario_id:
-        raise ValidationError("模拟方案预览暂不支持导出。请先正式采用生成新版本后，再导出报表。", field="导出")
+        raise ValidationError("模拟预览暂不支持导出，请切换到正式采用方案。", field="导出")
 
 
 def report_export_filters(engine: ReportEngine, version: int, raw_plan_role) -> dict:

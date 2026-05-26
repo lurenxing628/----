@@ -28,6 +28,24 @@ def _make_downtime_rows(count: int) -> List[Dict[str, Any]]:
     ]
 
 
+def _make_overdue_items(count: int) -> List[Dict[str, Any]]:
+    return [
+        {
+            "bucket_label": "已排程逾期",
+            "batch_id": f"B{i:03d}",
+            "part_no": f"P{i:03d}",
+            "part_name": f"零件{i}",
+            "quantity": 1,
+            "due_date": "2026-01-01",
+            "finish_time": "2026-01-02 08:00:00",
+            "as_of_time": None,
+            "delay_hours": 8.0,
+            "delay_days": 0.33,
+        }
+        for i in range(1, count + 1)
+    ]
+
+
 def main() -> None:
     repo_root = find_repo_root()
     if repo_root not in sys.path:
@@ -75,12 +93,32 @@ def main() -> None:
 
     original_direct_max = ReportEngine.EXPORT_DIRECT_MAX_ROWS
     original_stream_max = ReportEngine.EXPORT_STREAM_MAX_ROWS
+    original_overdue_batches = ReportEngine.overdue_batches
+    original_overdue_diagnosis_export_rows = ReportEngine._overdue_diagnosis_export_rows
     original_downtime_impact = ReportEngine.downtime_impact
+    diagnosis_call_count = {"value": 0}
 
     try:
         report_engine_cls = cast(Any, ReportEngine)
         report_engine_cls.EXPORT_DIRECT_MAX_ROWS = 2
         report_engine_cls.EXPORT_STREAM_MAX_ROWS = 4
+
+        def fake_overdue_batches(self, version: int) -> Dict[str, Any]:
+            items = _make_overdue_items(5)
+            return {
+                "version": int(version),
+                "count": len(items),
+                "scheduled_count": len(items),
+                "unscheduled_count": 0,
+                "as_of_time": "2026-01-02 08:00:00",
+                "items": items,
+                "scheduled_items": list(items),
+                "unscheduled_items": [],
+            }
+
+        def fake_overdue_diagnosis_export_rows(self, *, version: int, resolution) -> List[Dict[str, Any]]:
+            diagnosis_call_count["value"] += 1
+            raise RuntimeError("超期导出超出范围时不应生成诊断依据")
 
         def fake_downtime_impact(self, version: int, start_date: Any, end_date: Any) -> Dict[str, Any]:
             return {
@@ -90,7 +128,28 @@ def main() -> None:
                 "machines": _make_downtime_rows(5),
             }
 
+        ReportEngine.overdue_batches = fake_overdue_batches
+        ReportEngine._overdue_diagnosis_export_rows = fake_overdue_diagnosis_export_rows
         ReportEngine.downtime_impact = fake_downtime_impact
+
+        overdue_resp = client.get(
+            "/reports/overdue/export?version=7",
+            headers={"Accept": "application/json"},
+        )
+        if overdue_resp.status_code != 400:
+            body = overdue_resp.data.decode("utf-8", errors="ignore") if getattr(overdue_resp, "data", None) else ""
+            raise RuntimeError(f"超期大范围导出未被拒绝：status={overdue_resp.status_code} body={body[:500]}")
+        if int(diagnosis_call_count["value"]) != 0:
+            raise RuntimeError(f"超期大范围导出拒绝前不应生成诊断依据：{diagnosis_call_count!r}")
+        overdue_payload = overdue_resp.get_json(silent=True) or {}
+        overdue_error = overdue_payload.get("error") or {}
+        overdue_details = overdue_error.get("details") or {}
+        if overdue_details.get("mode") != "reject_need_async":
+            raise RuntimeError(f"超期拒绝模式未透出：{overdue_details!r}")
+        if int(overdue_details.get("estimated_rows") or 0) != 5:
+            raise RuntimeError(f"超期拒绝行数估计异常：{overdue_details!r}")
+        if overdue_details.get("report_name") != "超期清单":
+            raise RuntimeError(f"超期拒绝报表名异常：{overdue_details!r}")
 
         resp = client.get(
             "/reports/downtime/export?version=7&start_date=2026-01-01&end_date=2026-01-07",
@@ -119,6 +178,8 @@ def main() -> None:
     finally:
         ReportEngine.EXPORT_DIRECT_MAX_ROWS = original_direct_max
         ReportEngine.EXPORT_STREAM_MAX_ROWS = original_stream_max
+        ReportEngine.overdue_batches = original_overdue_batches
+        ReportEngine._overdue_diagnosis_export_rows = original_overdue_diagnosis_export_rows
         ReportEngine.downtime_impact = original_downtime_impact
 
 

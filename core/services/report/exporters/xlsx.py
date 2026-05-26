@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import io
 import tempfile
-from typing import Any, BinaryIO, Dict, List, cast
+from typing import Any, BinaryIO, Dict, List, Optional, cast
 
 import openpyxl
 from openpyxl.cell import WriteOnlyCell
@@ -65,7 +65,16 @@ def _utilization_percent(value: Any) -> Any:
         return value
 
 
-def export_overdue_xlsx(items: List[Dict[str, Any]], *, write_only: bool = False) -> BinaryIO:
+_OVERDUE_HEADERS = ["类别", "批次号", "图号", "名称", "数量", "交期", "完工/截至时间", "超期(天)", "超期(小时)"]
+_DIAGNOSIS_HEADERS = ["本次诊断编号", "生成依据摘要", "核对信息", "证据来源", "证据缺口", "生成时间", "筛选条件"]
+
+
+def export_overdue_xlsx(
+    items: List[Dict[str, Any]],
+    *,
+    diagnosis_rows: Optional[List[Dict[str, Any]]] = None,
+    write_only: bool = False,
+) -> BinaryIO:
     wb = openpyxl.Workbook(write_only=write_only)
     try:
         ws = wb.create_sheet("超期清单") if write_only else wb.active
@@ -73,7 +82,7 @@ def export_overdue_xlsx(items: List[Dict[str, Any]], *, write_only: bool = False
             raise RuntimeError("无法创建超期清单工作表")
         if not write_only:
             ws.title = "超期清单"
-            _append_row(ws, ["类别", "批次号", "图号", "名称", "数量", "交期", "完工/截至时间", "超期(天)", "超期(小时)"])
+            _append_row(ws, _OVERDUE_HEADERS)
             for it in items:
                 _append_row(
                     ws,
@@ -90,12 +99,10 @@ def export_overdue_xlsx(items: List[Dict[str, Any]], *, write_only: bool = False
                     ],
                 )
             _format_sheet(ws)
+
+            _append_diagnosis_sheet(wb, list(diagnosis_rows or []), write_only=False)
         else:
-            _append_write_only_row(
-                ws,
-                ["类别", "批次号", "图号", "名称", "数量", "交期", "完工/截至时间", "超期(天)", "超期(小时)"],
-                is_header=True,
-            )
+            _append_write_only_row(ws, _OVERDUE_HEADERS, is_header=True)
             for it in items:
                 _append_write_only_row(
                     ws,
@@ -111,6 +118,7 @@ def export_overdue_xlsx(items: List[Dict[str, Any]], *, write_only: bool = False
                         it.get("delay_hours"),
                     ],
                 )
+            _append_diagnosis_sheet(wb, list(diagnosis_rows or []), write_only=True)
 
         buf = _make_output_buffer(write_only=write_only)
         wb.save(buf)
@@ -121,6 +129,32 @@ def export_overdue_xlsx(items: List[Dict[str, Any]], *, write_only: bool = False
             wb.close()
         except Exception:
             pass
+
+
+def _append_diagnosis_sheet(wb, diagnosis_rows: List[Dict[str, Any]], *, write_only: bool) -> None:
+    ws = wb.create_sheet("诊断依据")
+    if write_only:
+        _append_write_only_row(ws, _DIAGNOSIS_HEADERS, is_header=True)
+        for row in diagnosis_rows:
+            _append_write_only_row(ws, _diagnosis_values(row))
+        return
+
+    _append_row(ws, _DIAGNOSIS_HEADERS)
+    for row in diagnosis_rows:
+        _append_row(ws, _diagnosis_values(row))
+    _format_sheet(ws)
+
+
+def _diagnosis_values(row: Dict[str, Any]) -> List[Any]:
+    return [
+        row.get("diagnosis_id"),
+        row.get("summary"),
+        row.get("check_info"),
+        row.get("evidence_sources"),
+        row.get("data_gaps"),
+        row.get("generated_at"),
+        row.get("filters"),
+    ]
 
 
 def export_utilization_xlsx(

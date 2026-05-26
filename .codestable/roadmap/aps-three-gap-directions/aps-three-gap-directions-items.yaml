@@ -102,8 +102,8 @@ items:
     depends_on: [delay-diagnosis-core-service]
     depends_on_reasons:
       delay-diagnosis-core-service: 超期清单入口只负责展示和导出，必须先有只读诊断服务提供事实、线索、证据和缺口，页面不能自己临时拼原因。
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-27-delay-diagnosis-overdue-report-entry
     minimal_loop: true
     primary_paths:
       - templates/reports/overdue.html
