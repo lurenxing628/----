@@ -1,0 +1,32 @@
+feature: 2026-05-27-delay-diagnosis-core-service
+status: done
+roadmap: aps-three-gap-directions
+roadmap_item: delay-diagnosis-core-service
+
+steps:
+  - slug: reference-chain-investigation
+    title: 下钻延期诊断引用链
+    status: done
+    exit_signal: 已确认超期分桶、计划身份、物料、停机、关键链、测试和不可写入边界。
+
+  - slug: readonly-diagnosis-service
+    title: 新增只读延期诊断服务
+    status: done
+    exit_signal: diagnose_plan_overdue 和 diagnose_batch 能输出事实、线索、证据、缺口、建议动作和 trace_meta。
+
+  - slug: evidence-and-data-gap-contract
+    title: 锁住证据和缺数据口径
+    status: done
+    exit_signal: 行级、汇总、缺数据证据都能追溯，缺物料数据不会被说成物料不足导致延期。
+
+  - slug: regression-tests
+    title: 增加回归测试和 Python 3.8 扫描
+    status: done
+    exit_signal: 精准 pytest、Python 3.8 扫描、YAML 校验和 diff 检查通过。
+
+checks:
+  - 诊断服务只读，不写正式排程、历史、候选、模拟预览、物料、停机或执行事件相关表。
+  - 候选方案和模拟预览必须读对应明细，缺明细直接报错，不回退正式采用方案。
+  - 已确认事实必须带 EvidenceLink；候选线索也必须有证据或缺数据证据。
+  - trace_meta 包含计划身份、证据数量、证据来源、规则版本、排序输入、线索选择过程和输入指纹。
+  - 用户可见文案只说可能线索和建议复核，不出现根因、critical_chain 或 primary_reason。

@@ -9,6 +9,9 @@ _TRUSTED_ROW_SOURCE_TABLES = frozenset(
         "schedule",
         "candidate_rows",
         "adjustment_scenario_rows",
+        "batches",
+        "batch_materials",
+        "machine_downtimes",
     )
 )
 

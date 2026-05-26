@@ -51,8 +51,8 @@ items:
     depends_on: [shared-plan-identity-evidence-contract]
     depends_on_reasons:
       shared-plan-identity-evidence-contract: 延期诊断必须先知道自己诊断的是正式采用方案、对比参考方案还是模拟预览，否则证据链接和页面跳转会串到另一套计划。
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-27-delay-diagnosis-core-service
     minimal_loop: false
     primary_paths:
       - core/services/scheduler/schedule_delay_diagnosis_service.py

@@ -17,6 +17,16 @@ class BatchRepository(BaseRepository):
         )
         return Batch.from_row(row) if row else None
 
+    def get_ready_snapshot(self, batch_id: str) -> Optional[Dict[str, Any]]:
+        return self.fetchone(
+            """
+            SELECT batch_id, ready_status, ready_date
+            FROM Batches
+            WHERE batch_id = ?
+            """,
+            (str(batch_id),),
+        )
+
     def list(
         self,
         status: Optional[str] = None,
@@ -125,4 +135,3 @@ class BatchRepository(BaseRepository):
 
     def has_any(self) -> bool:
         return self.fetchvalue("SELECT 1 FROM Batches LIMIT 1", default=None) is not None
-
