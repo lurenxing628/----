@@ -110,12 +110,13 @@ def main() -> None:
     preview_baseline = _extract_hidden_input(html, "preview_baseline")
     decoded_rows = _decode_preview_payload(raw_payload)
     assert len(decoded_rows) == 1
-    assert decoded_rows[0]["工种ID"] == "OT_PAYLOAD"
+    assert decoded_rows[0]["工种编号"] == "OT_PAYLOAD"
+    assert "工种ID" not in decoded_rows[0]
     assert decoded_rows[0]["工种名称"] == "隐藏数据检查工种"
     assert decoded_rows[0]["归属"] == "internal"
 
     tampered_rows = [dict(decoded_rows[0])]
-    tampered_rows[0]["工种ID"] = "OT_TAMPERED"
+    tampered_rows[0]["工种编号"] = "OT_TAMPERED"
     tampered_rows[0]["工种名称"] = "篡改后的工种"
 
     with app.test_client() as client:

@@ -9,7 +9,12 @@ from flask import Flask
 from core.infrastructure.errors import ValidationError
 from core.services.common.excel_service import ImportMode
 from web.routes import excel_utils as excel_utils_mod
-from web.routes.excel_utils import build_preview_baseline_token, parse_preview_rows_json, preview_baseline_matches
+from web.routes.excel_utils import (
+    build_preview_baseline_token,
+    load_confirm_payload,
+    parse_preview_rows_json,
+    preview_baseline_matches,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -60,7 +65,7 @@ def test_preview_baseline_matches_returns_false_when_compare_digest_raises(monke
     with app.app_context():
         assert preview_baseline_matches(token, **kwargs) is False
 
-    assert logged == ["预览基线签名比较失败"]
+    assert logged == ["检查结果状态比较失败"]
 
 
 def test_preview_baseline_requires_rows() -> None:
@@ -74,6 +79,15 @@ def test_preview_baseline_requires_rows() -> None:
 def test_parse_preview_rows_json_rejects_plain_json_payload() -> None:
     with pytest.raises(ValidationError, match="检查数据解析失败|检查数据格式不正确"):
         parse_preview_rows_json('[{"编号": "A001"}]')
+
+
+def test_load_confirm_payload_missing_baseline_uses_plain_language() -> None:
+    with pytest.raises(ValidationError) as excinfo:
+        load_confirm_payload("aps-preview-json-b64:W10=", "")
+
+    message = str(excinfo.value)
+    assert "检查结果已失效" in message
+    assert "检查基线" not in message
 
 
 def _call_name(node: ast.AST) -> str:

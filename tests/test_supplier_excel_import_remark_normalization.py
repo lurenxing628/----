@@ -4,6 +4,8 @@ import os
 import sqlite3
 from typing import Any, Dict
 
+import pytest
+
 from core.services.common.excel_service import ImportMode, ImportPreviewRow, RowStatus
 from core.services.process.supplier_excel_import_service import SupplierExcelImportService
 
@@ -19,6 +21,30 @@ def _load_schema(conn: sqlite3.Connection) -> None:
 
 def _pr(data: Dict[str, Any], *, status: RowStatus = RowStatus.NEW, row_num: int = 2) -> ImportPreviewRow:
     return ImportPreviewRow(row_num=row_num, status=status, data=dict(data or {}), message="")
+
+
+@pytest.mark.parametrize("id_column", ["供应商编号", "供应商ID"])
+def test_supplier_excel_import_does_not_treat_zero_id_as_blank(id_column: str) -> None:
+    conn = sqlite3.connect(":memory:")
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON;")
+        _load_schema(conn)
+
+        svc = SupplierExcelImportService(conn)
+        stats = svc.apply_preview_rows(
+            [_pr({id_column: 0, "名称": "零号供应商", "默认周期": 1, "状态": "启用"}, row_num=2)],
+            mode=ImportMode.OVERWRITE,
+            existing_ids=set(),
+        )
+
+        row = conn.execute("SELECT supplier_id, name FROM Suppliers WHERE supplier_id = ?", ("0",)).fetchone()
+        assert row is not None
+        assert dict(row) == {"supplier_id": "0", "name": "零号供应商"}
+        assert stats["new_count"] == 1
+        assert stats["error_count"] == 0
+    finally:
+        conn.close()
 
 
 def test_supplier_excel_import_normalizes_remark_text() -> None:
@@ -131,4 +157,3 @@ def test_supplier_excel_import_rejects_blank_default_days() -> None:
         assert row is not None and int(row["cnt"] or 0) == 0
     finally:
         conn.close()
-

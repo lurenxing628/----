@@ -207,7 +207,7 @@ class SupplierService:
         for s in self.repo.list():
             ot = op_types.get(s.op_type_id or "")
             existing[s.supplier_id] = {
-                "供应商ID": s.supplier_id,
+                "供应商编号": s.supplier_id,
                 "名称": s.name,
                 "对应工种": (ot.name if ot else None),
                 "默认周期": s.default_days,

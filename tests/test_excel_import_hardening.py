@@ -130,7 +130,8 @@ def test_blank_helper_does_not_treat_zero_as_blank() -> None:
     assert is_blank_value("   ") is True
 
 
-def test_import_service_does_not_treat_zero_id_as_blank(tmp_path) -> None:
+@pytest.mark.parametrize("id_column", ["工种ID", "工种编号"])
+def test_import_service_does_not_treat_zero_id_as_blank(tmp_path, id_column: str) -> None:
     conn, _db_path = _new_conn(tmp_path)
     try:
         service = OpTypeExcelImportService(conn)
@@ -139,7 +140,7 @@ def test_import_service_does_not_treat_zero_id_as_blank(tmp_path) -> None:
                 ImportPreviewRow(
                     row_num=2,
                     status=RowStatus.NEW,
-                    data={"工种ID": 0, "工种名称": "零号工种", "归属": "internal"},
+                    data={id_column: 0, "工种名称": "零号工种", "归属": "internal"},
                     message="新增",
                 )
             ],
@@ -360,6 +361,7 @@ def test_op_type_preview_and_confirm_reject_duplicate_name_conflict(tmp_path, mo
 
     preview_html = preview_resp.get_data(as_text=True)
     assert preview_resp.status_code == 200
+    assert "已识别旧列“工种ID”，本次按“工种编号”处理" in preview_html
     assert "工种名称“数车”已被工种编号“OT001”使用，名称不能重复。" in preview_html
 
     raw_rows_json = _extract_raw_rows_json(preview_html)

@@ -105,10 +105,7 @@ def _build_source_xlsx(path: str) -> None:
         )
         wb.save(path)
     finally:
-        try:
-            wb.close()
-        except Exception:
-            pass
+        wb.close()
 
 
 def _read_headers(path: str):
@@ -119,6 +116,27 @@ def _read_headers(path: str):
 
         first_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True), None)
         return list(first_row or [])
+    finally:
+        try:
+            wb.close()
+        except Exception:
+            pass
+
+
+def _assert_op_type_output_layout(path: str) -> None:
+    wb = openpyxl.load_workbook(path, data_only=True)
+    try:
+        ws = wb.active
+        assert ws is not None
+        assert ws.freeze_panes == "A2", "工种配置输出应冻结首行"
+        assert ws["A1"].font.bold is True and ws["A1"].alignment.horizontal == "center"
+        assert ws["A2"].number_format == "@"
+        assert ws["B2"].number_format == "@"
+        assert ws["A500"].number_format == "@"
+        assert ws["B500"].number_format == "@"
+        assert ws.column_dimensions["A"].width == 14
+        assert ws.column_dimensions["B"].width == 16
+        assert ws.column_dimensions["C"].width == 12
     finally:
         try:
             wb.close()
@@ -178,7 +196,7 @@ def main() -> None:
     # 3.1) 供应商配置输出对齐主模板 6 列（补默认状态/备注）
     assert converted.suppliers_rows, "供应商配置输出为空"
     for row in converted.suppliers_rows:
-        assert set(row.keys()) == {"供应商ID", "名称", "对应工种", "默认周期", "状态", "备注"}, f"供应商配置列不符合预期：{row.keys()}"
+        assert set(row.keys()) == {"供应商编号", "名称", "对应工种", "默认周期", "状态", "备注"}, f"供应商配置列不符合预期：{row.keys()}"
         assert row["状态"] == "启用", f"供应商默认状态异常：{row!r}"
         assert row["备注"] is None, f"供应商默认备注异常：{row!r}"
 
@@ -234,7 +252,8 @@ def main() -> None:
     for fn in expected_files:
         assert os.path.exists(output_paths[fn]), f"输出文件缺失：{fn}"
     assert _read_headers(output_paths["人员设备关联.xlsx"]) == ["工号", "设备编号", "技能等级", "主操设备"]
-    assert _read_headers(output_paths["供应商配置.xlsx"]) == ["供应商ID", "名称", "对应工种", "默认周期", "状态", "备注"]
+    assert _read_headers(output_paths["供应商配置.xlsx"]) == ["供应商编号", "名称", "对应工种", "默认周期", "状态", "备注"]
+    _assert_op_type_output_layout(output_paths["工种配置.xlsx"])
 
     print("OK")
 

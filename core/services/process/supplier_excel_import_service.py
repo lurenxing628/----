@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Set
 from core.infrastructure.errors import ValidationError
 from core.models.enums import SUPPLIER_STATUS_VALUES
 from core.services.common.enum_normalizers import normalize_supplier_status
+from core.services.common.excel_column_renames import renamed_column_conflict_message
 from core.services.common.excel_import_executor import execute_preview_rows_transactional
 from core.services.common.excel_service import ImportMode
 from core.services.common.normalize import normalize_text, to_str_or_blank
@@ -12,6 +13,14 @@ from core.services.common.strict_parse import parse_required_float
 from core.services.process.op_type_service import OpTypeService
 from core.services.process.supplier_service import SupplierService
 from data.repositories import SupplierRepository
+
+
+def _supplier_id(data: Dict[str, Any]) -> str:
+    conflict = renamed_column_conflict_message(data, current_column="供应商编号", legacy_column="供应商ID")
+    if conflict:
+        raise ValidationError(conflict, field="供应商编号")
+    current_id = to_str_or_blank(data.get("供应商编号"))
+    return current_id if current_id else to_str_or_blank(data.get("供应商ID"))
 
 
 class SupplierExcelImportService:
@@ -59,13 +68,13 @@ class SupplierExcelImportService:
             self.repo.delete_all()
 
         def _row_id_getter(pr: Any) -> str:
-            return to_str_or_blank((getattr(pr, "data", None) or {}).get("供应商ID"))
+            return _supplier_id(getattr(pr, "data", None) or {})
 
         def _apply_row_no_tx(pr: Any, existed: bool) -> None:
             data = getattr(pr, "data", None) or {}
-            sid = to_str_or_blank(data.get("供应商ID"))
+            sid = _supplier_id(data)
             if not sid:
-                raise ValidationError("“供应商编号（模板列名：供应商ID）”不能为空", field="供应商ID")
+                raise ValidationError("“供应商编号”不能为空", field="供应商编号")
             name = to_str_or_blank(data.get("名称"))
             if not name:
                 raise ValidationError("“名称”不能为空", field="名称")

@@ -21,7 +21,7 @@ def build_op_types_rows(op_records: Sequence[Dict[str, Any]]) -> List[Dict[str, 
     for idx, op_name in enumerate(sorted(op_type_states.keys()), start=1):
         cat = SourceType.INTERNAL.value if SourceType.INTERNAL.value in op_type_states[op_name] else SourceType.EXTERNAL.value
         cat_label = source_type_label(cat)
-        op_types_rows.append({"工种ID": f"OT{idx:03d}", "工种名称": op_name, "归属": cat_label})
+        op_types_rows.append({"工种编号": f"OT{idx:03d}", "工种名称": op_name, "归属": cat_label})
     return op_types_rows
 
 
@@ -71,7 +71,7 @@ def _supplier_row(
     default_days = _supplier_default_days(op_name, days_list, collector=collector, samples=samples)
     _record_supplier_defaults(op_name, collector=collector, samples=samples)
     return {
-        "供应商ID": f"S{idx:03d}",
+        "供应商编号": f"S{idx:03d}",
         "名称": f"外协-{op_name}",
         "对应工种": op_name,
         "默认周期": default_days,

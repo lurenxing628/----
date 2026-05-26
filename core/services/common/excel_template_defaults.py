@@ -58,7 +58,8 @@ def get_default_templates() -> List[Dict[str, Any]]:
         # 工艺
         {
             "filename": "工种配置.xlsx",
-            "headers": ["工种ID", "工种名称", "归属"],
+            "headers": ["工种编号", "工种名称", "归属"],
+            "legacy_headers": [["工种ID", "工种名称", "归属"]],
             "sample_rows": [["OT001", "数车", "自制"], ["OT002", "标印", "外协"]],
             "format_spec": {
                 "text_cols": [0, 1],
@@ -68,7 +69,8 @@ def get_default_templates() -> List[Dict[str, Any]]:
         },
         {
             "filename": "供应商配置.xlsx",
-            "headers": ["供应商ID", "名称", "对应工种", "默认周期", "状态", "备注"],
+            "headers": ["供应商编号", "名称", "对应工种", "默认周期", "状态", "备注"],
+            "legacy_headers": [["供应商ID", "名称", "对应工种", "默认周期", "状态", "备注"]],
             "sample_rows": [["S001", "外协-标印厂", "标印", 1, "启用", "示例备注"]],
             "format_spec": {
                 "text_cols": [0, 1, 2, 4, 5],

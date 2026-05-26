@@ -162,7 +162,7 @@ class OpTypeService:
         existing: Dict[str, Dict[str, Any]] = {}
         for ot in self.repo.list():
             existing[ot.op_type_id] = {
-                "工种ID": ot.op_type_id,
+                "工种编号": ot.op_type_id,
                 "工种名称": ot.name,
                 "归属": ot.category,
                 "归属显示": source_type_label(ot.category),

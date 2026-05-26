@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import io
 import os
-from typing import Any, Dict, Iterable, List, Mapping, Sequence, Set
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set
 
 import openpyxl
 from openpyxl.styles import Alignment, Font
@@ -71,7 +71,7 @@ def _apply_enum_validations(ws, enum_cols: Mapping[int, Sequence[str]], max_row:
         ws.add_data_validation(dv)
 
 
-def _auto_width(ws, *, explicit_widths: Mapping[int, int] | None = None) -> None:
+def _auto_width(ws, *, explicit_widths: Optional[Mapping[int, int]] = None) -> None:
     widths: Dict[int, int] = {}
     for row in ws.iter_rows():
         for cell in row:
@@ -93,7 +93,7 @@ def _auto_width(ws, *, explicit_widths: Mapping[int, int] | None = None) -> None
 def _apply_sheet_layout(
     ws,
     *,
-    format_spec: Mapping[str, Any] | None,
+    format_spec: Optional[Mapping[str, Any]],
     data_row_count: int,
 ) -> None:
     ws.freeze_panes = "A2"
@@ -111,7 +111,9 @@ def _apply_sheet_layout(
     _apply_number_format(ws, _iter_column_indices(spec, "float_cols"), "0.00", max_row)
     _apply_number_format(ws, _iter_column_indices(spec, "date_cols"), "yyyy-mm-dd", max_row)
     _apply_number_format(ws, _iter_column_indices(spec, "time_cols"), "hh:mm", max_row)
-    _apply_enum_validations(ws, spec.get("enum_cols", {}) or {}, max_row)
+    enum_cols = spec.get("enum_cols", {}) or {}
+    _remove_enum_validations(ws, enum_cols)
+    _apply_enum_validations(ws, enum_cols, max_row)
     _auto_width(ws, explicit_widths=spec.get("column_widths", {}) or {})
 
 
@@ -119,7 +121,7 @@ def build_xlsx_bytes(
     headers: Sequence[str],
     rows: Sequence[Sequence[Any]] = (),
     *,
-    format_spec: Mapping[str, Any] | None = None,
+    format_spec: Optional[Mapping[str, Any]] = None,
     sheet_title: str = "Sheet1",
     sanitize_formula: bool = False,
 ) -> io.BytesIO:
@@ -145,7 +147,7 @@ def _write_xlsx(
     headers: Sequence[str],
     sample_rows: Sequence[Sequence[Any]] = (),
     *,
-    format_spec: Mapping[str, Any] | None = None,
+    format_spec: Optional[Mapping[str, Any]] = None,
 ) -> None:
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     output = build_xlsx_bytes(headers, sample_rows, format_spec=format_spec)
@@ -244,14 +246,29 @@ def _inline_validation_texts(ws: Any) -> Set[str]:
     return texts
 
 
-def _validation_overlaps_column(dv: Any, one_based_col_idx: int) -> bool:
-    for cell_range in getattr(getattr(dv, "sqref", None), "ranges", []) or []:
-        if (
-            cell_range.min_col <= one_based_col_idx <= cell_range.max_col
-            and cell_range.max_row >= 2
-        ):
-            return True
-    return False
+def _cell_range_ref(min_col: int, min_row: int, max_col: int, max_row: int) -> str:
+    start = f"{get_column_letter(min_col)}{min_row}"
+    end = f"{get_column_letter(max_col)}{max_row}"
+    return start if start == end else f"{start}:{end}"
+
+
+def _range_refs_without_columns(cell_range: Any, removed_columns: Set[int]) -> List[str]:
+    if cell_range.max_row < 2 or not any(cell_range.min_col <= col <= cell_range.max_col for col in removed_columns):
+        return [str(cell_range)]
+
+    refs: List[str] = []
+    run_start: Optional[int] = None
+    for col_idx in range(cell_range.min_col, cell_range.max_col + 1):
+        if col_idx in removed_columns:
+            if run_start is not None:
+                refs.append(_cell_range_ref(run_start, cell_range.min_row, col_idx - 1, cell_range.max_row))
+                run_start = None
+            continue
+        if run_start is None:
+            run_start = col_idx
+    if run_start is not None:
+        refs.append(_cell_range_ref(run_start, cell_range.min_row, cell_range.max_col, cell_range.max_row))
+    return refs
 
 
 def _remove_enum_validations(ws: Any, enum_col_indices: Iterable[int]) -> None:
@@ -261,15 +278,21 @@ def _remove_enum_validations(ws: Any, enum_col_indices: Iterable[int]) -> None:
     enum_columns = {col_idx + 1 for col_idx in enum_col_indices if isinstance(col_idx, int) and col_idx >= 0}
     if not enum_columns:
         return
-    ws.data_validations.dataValidation = [
-        dv
-        for dv in validation_list
-        if getattr(dv, "type", None) != "list"
-        or not any(_validation_overlaps_column(dv, col_idx) for col_idx in enum_columns)
-    ]
+    kept_validations = []
+    for dv in validation_list:
+        if getattr(dv, "type", None) != "list":
+            kept_validations.append(dv)
+            continue
+        kept_ranges: List[str] = []
+        for cell_range in getattr(getattr(dv, "sqref", None), "ranges", []) or []:
+            kept_ranges.extend(_range_refs_without_columns(cell_range, enum_columns))
+        if kept_ranges:
+            dv.sqref = " ".join(kept_ranges)
+            kept_validations.append(dv)
+    ws.data_validations.dataValidation = kept_validations
 
 
-def _template_layout_repair_plan(template_def: Mapping[str, Any]) -> Dict[str, Any] | None:
+def _template_layout_repair_plan(template_def: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
     if str(template_def.get("filename") or "") not in _EXTRA_ROW_LAYOUT_REPAIR_TEMPLATES:
         return None
     format_spec = template_def.get("format_spec", {}) or {}
@@ -312,6 +335,40 @@ def _template_needs_layout_repair(ws: Any, repair_plan: Mapping[str, Any]) -> bo
 def _rewrite_template_headers(ws: Any, headers: Sequence[str]) -> None:
     for col_idx, header in enumerate(headers, start=1):
         ws.cell(1, col_idx).value = header
+
+
+def _legacy_header_sets(template_def: Mapping[str, Any]) -> List[List[str]]:
+    header_sets: List[List[str]] = []
+    for headers in template_def.get("legacy_headers", []) or []:
+        normalized = [str(header).strip() for header in (headers or [])]
+        if normalized:
+            header_sets.append(normalized)
+    return header_sets
+
+
+def _refresh_existing_template_headers(path: str, template_def: Mapping[str, Any]) -> bool:
+    expected_headers = [str(header).strip() for header in (template_def.get("headers") or [])]
+    legacy_header_sets = _legacy_header_sets(template_def)
+    if not expected_headers or not legacy_header_sets:
+        return False
+    try:
+        wb = openpyxl.load_workbook(path)
+    except Exception as exc:
+        raise ExcelTemplateError(f"打开待修复 Excel 模板失败：{os.path.basename(path)}") from exc
+    try:
+        ws = _require_active_sheet(wb)
+        if _current_header_row(ws) not in legacy_header_sets:
+            return False
+        _rewrite_template_headers(ws, expected_headers)
+        _apply_sheet_layout(ws, format_spec=template_def.get("format_spec"), data_row_count=ws.max_row - 1)
+        wb.save(path)
+        return True
+    except ExcelTemplateError:
+        raise
+    except Exception as exc:
+        raise ExcelTemplateError(f"修复 Excel 模板表头失败：{os.path.basename(path)}") from exc
+    finally:
+        _close_workbook_quietly(wb)
 
 
 def _refresh_existing_template_layout(path: str, template_def: Mapping[str, Any]) -> bool:
@@ -411,6 +468,9 @@ def ensure_excel_templates(template_dir: str) -> Dict[str, Any]:
                     created.append(filename)
                     continue
                 raise ExcelTemplateError(f"已有 Excel 模板内容需要刷新，但不能安全自动覆盖：{filename}")
+            if actual_headers in _legacy_header_sets(t) and _refresh_existing_template_headers(path, t):
+                created.append(filename)
+                continue
             raise ExcelTemplateError(f"已有 Excel 模板表头和当前定义不一致，不能自动覆盖：{filename}")
 
         _write_xlsx(path, headers=t["headers"], sample_rows=t.get("sample_rows") or [], format_spec=t.get("format_spec"))

@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from core.models.enums import SourceType
 from core.services.common.safe_logging import safe_info
-from core.services.process.route_parser_constraints import SupplierConstraintResolver
+from core.services.process.route_parser_constraints import SupplierConstraintResolver, SupplierGlobalIssue
 from core.services.process.route_parser_errors import (
     EMPTY_ROUTE_ERROR,
     GENERIC_FORMAT_ERROR,
@@ -126,14 +126,16 @@ class RouteParser:
         errors.extend(route_format_errors(normalized))
         op_types = {ot.name: ot for ot in (self.op_types_repo.list() or [])}
         suppliers, supplier_issues, supplier_global_issues = self._build_supplier_map_with_global_issues()
-        if supplier_global_issues:
-            if strict_mode:
-                errors.extend(supplier_global_issues)
-            else:
-                warnings.extend(supplier_global_issues)
         matches = route_tokens(normalized)
 
         if not matches:
+            self._apply_supplier_global_issues(
+                supplier_global_issues=supplier_global_issues,
+                operations=[],
+                warnings=warnings,
+                errors=errors,
+                strict_mode=strict_mode,
+            )
             final_errors = list(errors or [])
             if GENERIC_FORMAT_ERROR not in final_errors:
                 final_errors.append(GENERIC_FORMAT_ERROR)
@@ -141,7 +143,7 @@ class RouteParser:
                 status=ParseStatus.FAILED,
                 operations=[],
                 external_groups=[],
-                warnings=[],
+                warnings=warnings,
                 errors=final_errors,
                 stats={"total": 0, SourceType.INTERNAL.value: 0, SourceType.EXTERNAL.value: 0, "unknown": 0},
                 original_input=original_input,
@@ -158,6 +160,13 @@ class RouteParser:
             strict_mode=strict_mode,
         )
         operations.sort(key=lambda x: x.seq)
+        self._apply_supplier_global_issues(
+            supplier_global_issues=supplier_global_issues,
+            operations=operations,
+            warnings=warnings,
+            errors=errors,
+            strict_mode=strict_mode,
+        )
         external_groups = self._identify_external_groups(operations, part_no)
 
         if errors:
@@ -195,7 +204,7 @@ class RouteParser:
 
     def _build_supplier_map_with_global_issues(
         self,
-    ) -> Tuple[Dict[str, Tuple[str, float]], Dict[str, List[str]], List[str]]:
+    ) -> Tuple[Dict[str, Tuple[str, float]], Dict[str, List[str]], List[SupplierGlobalIssue]]:
         resolver = SupplierConstraintResolver(
             self.op_types_repo,
             self.suppliers_repo,
@@ -203,6 +212,30 @@ class RouteParser:
         )
         supplier_map, supplier_issues = resolver.build_supplier_map()
         return supplier_map, supplier_issues, list(resolver.global_issues)
+
+    def _apply_supplier_global_issues(
+        self,
+        *,
+        supplier_global_issues: List[SupplierGlobalIssue],
+        operations: List[ParsedOperation],
+        warnings: List[str],
+        errors: List[str],
+        strict_mode: bool,
+    ) -> None:
+        referenced_external_op_type_ids = {
+            str(op.op_type_id or "").strip()
+            for op in operations
+            if op.source == SourceType.EXTERNAL.value and str(op.op_type_id or "").strip()
+        }
+        for issue in supplier_global_issues:
+            message = str(issue.message or "").strip()
+            if not message:
+                continue
+            op_type_id = str(issue.op_type_id or "").strip()
+            if strict_mode and op_type_id in referenced_external_op_type_ids:
+                errors.append(message)
+            else:
+                warnings.append(message)
 
     def _parse_operations(
         self,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.models.enums import SupplierStatus
@@ -14,12 +15,18 @@ from core.services.process.route_parser_errors import (
 )
 
 
+@dataclass(frozen=True)
+class SupplierGlobalIssue:
+    op_type_id: str
+    message: str
+
+
 class SupplierConstraintResolver:
     def __init__(self, op_types_repo, suppliers_repo, logger=None) -> None:
         self.op_types_repo = op_types_repo
         self.suppliers_repo = suppliers_repo
         self.logger = logger
-        self.global_issues: List[str] = []
+        self.global_issues: List[SupplierGlobalIssue] = []
 
     def build_supplier_map(self) -> Tuple[Dict[str, Tuple[str, float]], Dict[str, List[str]]]:
         """
@@ -65,11 +72,12 @@ class SupplierConstraintResolver:
         return supplier_map, issues
 
     def _resolve_supplier_op_type_name(self, supplier: Any, supplier_id: str) -> Optional[str]:
+        op_type_id = str(getattr(supplier, "op_type_id", "") or "").strip()
         try:
             op_type = self.op_types_repo.get(supplier.op_type_id)
         except Exception as exc:
             message = f"供应商“{supplier_id}”工种映射加载失败（op_type_id={supplier.op_type_id!r}），请检查供应商对应工种。"
-            self.global_issues.append(message)
+            self.global_issues.append(SupplierGlobalIssue(op_type_id=op_type_id, message=message))
             safe_warning(self.logger, f"{message} 原因：{exc}")
             return None
         name = getattr(op_type, "name", None) if op_type else None
@@ -78,7 +86,7 @@ class SupplierConstraintResolver:
                 f"供应商“{supplier_id}”工种映射加载失败（op_type_id={supplier.op_type_id!r}），"
                 "没有找到对应工种，请检查供应商对应工种。"
             )
-            self.global_issues.append(message)
+            self.global_issues.append(SupplierGlobalIssue(op_type_id=op_type_id, message=message))
             safe_warning(self.logger, message)
             return None
         return str(name)

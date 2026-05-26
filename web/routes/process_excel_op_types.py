@@ -27,8 +27,10 @@ from .excel_utils import (
     extract_import_stats,
     flash_import_result,
     load_confirm_payload,
+    normalize_renamed_column,
     preview_baseline_is_stale,
     project_preview_rows_for_display,
+    renamed_column_conflict_message,
     send_excel_template_file,
 )
 from .process_bp import _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx, bp
@@ -36,6 +38,15 @@ from .process_bp import _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx, bp
 # ============================================================
 # Excel：工种配置（OpTypes）
 # ============================================================
+
+OP_TYPE_ID_COLUMN = "工种编号"
+LEGACY_OP_TYPE_ID_COLUMN = "工种ID"
+
+
+def _normalize_op_type_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    for row in rows:
+        normalize_renamed_column(row, current_column=OP_TYPE_ID_COLUMN, legacy_column=LEGACY_OP_TYPE_ID_COLUMN)
+    return rows
 
 
 def _render_excel_op_type_page(
@@ -94,10 +105,18 @@ def _build_op_type_row_validator(
                 existing_name_to_id[name] = normalized_id
 
     def validate_row(row: Dict[str, Any]) -> Optional[str]:
-        ot_id = normalize_text(row.get("工种ID")) or ""
+        column_conflict = renamed_column_conflict_message(
+            row,
+            current_column=OP_TYPE_ID_COLUMN,
+            legacy_column=LEGACY_OP_TYPE_ID_COLUMN,
+        )
+        if column_conflict:
+            return column_conflict
+
+        ot_id = normalize_text(row.get(OP_TYPE_ID_COLUMN)) or ""
         if not ot_id:
-            return "“工种编号（模板列名：工种ID）”不能为空"
-        row["工种ID"] = ot_id
+            return "“工种编号”不能为空"
+        row[OP_TYPE_ID_COLUMN] = ot_id
 
         name = _normalize_op_type_name(row.get("工种名称"))
         if not name:
@@ -144,7 +163,9 @@ def excel_op_type_preview():
         raise ValidationError("请先选择要上传的 Excel 文件", field="file")
 
     rows = _read_uploaded_xlsx(file)
-    _ensure_unique_ids(rows, id_column="工种ID")
+    used_legacy_column = any(LEGACY_OP_TYPE_ID_COLUMN in row for row in rows)
+    rows = _normalize_op_type_rows(rows)
+    _ensure_unique_ids(rows, id_column=OP_TYPE_ID_COLUMN)
 
     svc = OpTypeService(g.db, op_logger=getattr(g, "op_logger", None))
     existing = svc.build_existing_for_excel()
@@ -154,12 +175,12 @@ def excel_op_type_preview():
     excel_svc = ExcelService(backend=get_excel_backend(), logger=None, op_logger=getattr(g, "op_logger", None))
     preview_rows = excel_svc.preview_import(
         rows=rows,
-        id_column="工种ID",
+        id_column=OP_TYPE_ID_COLUMN,
         existing_data=existing,
         validators=[validate_row],
         mode=mode,
     )
-    preview_baseline = build_preview_baseline_token(existing_data=existing, mode=mode, id_column="工种ID", rows=rows)
+    preview_baseline = build_preview_baseline_token(existing_data=existing, mode=mode, id_column=OP_TYPE_ID_COLUMN, rows=rows)
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_import(
@@ -171,6 +192,8 @@ def excel_op_type_preview():
         preview_or_result=preview_rows,
         time_cost_ms=time_cost_ms,
     )
+    if used_legacy_column:
+        flash("已识别旧列“工种ID”，本次按“工种编号”处理。建议下载新模板后再维护。", "warning")
 
     return _render_excel_op_type_page(
         existing=existing,
@@ -188,13 +211,13 @@ def excel_op_type_confirm():
     mode = _parse_mode(request.form.get("mode", ImportMode.OVERWRITE.value))
     filename = request.form.get("filename") or "unknown.xlsx"
     payload = load_confirm_payload(request.form.get("raw_rows_json"), request.form.get("preview_baseline"))
-    rows = payload.rows
+    rows = _normalize_op_type_rows(payload.rows)
 
-    _ensure_unique_ids(rows, id_column="工种ID")
+    _ensure_unique_ids(rows, id_column=OP_TYPE_ID_COLUMN)
 
     op_type_svc = OpTypeService(g.db, op_logger=getattr(g, "op_logger", None))
     existing = op_type_svc.build_existing_for_excel()
-    if preview_baseline_is_stale(payload.preview_baseline, existing_data=existing, mode=mode, id_column="工种ID", rows=rows):
+    if preview_baseline_is_stale(payload.preview_baseline, existing_data=existing, mode=mode, id_column=OP_TYPE_ID_COLUMN, rows=rows):
         flash("导入被拒绝：数据已变化，请重新上传 Excel 并检查后再确认写入。", "error")
         return _render_excel_op_type_page(
             existing=existing,
@@ -210,7 +233,7 @@ def excel_op_type_confirm():
     excel_svc = ExcelService(backend=get_excel_backend(), logger=None, op_logger=getattr(g, "op_logger", None))
     preview_rows = excel_svc.preview_import(
         rows=rows,
-        id_column="工种ID",
+        id_column=OP_TYPE_ID_COLUMN,
         existing_data=existing,
         validators=[validate_row],
         mode=mode,

@@ -28,8 +28,10 @@ from .excel_utils import (
     extract_import_stats,
     flash_import_result,
     load_confirm_payload,
+    normalize_renamed_column,
     preview_baseline_is_stale,
     project_preview_rows_for_display,
+    renamed_column_conflict_message,
     send_excel_template_file,
 )
 from .process_bp import _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx, bp
@@ -37,6 +39,15 @@ from .process_bp import _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx, bp
 # ============================================================
 # Excel：供应商配置（Suppliers）
 # ============================================================
+
+SUPPLIER_ID_COLUMN = "供应商编号"
+LEGACY_SUPPLIER_ID_COLUMN = "供应商ID"
+
+
+def _normalize_supplier_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    for row in rows:
+        normalize_renamed_column(row, current_column=SUPPLIER_ID_COLUMN, legacy_column=LEGACY_SUPPLIER_ID_COLUMN)
+    return rows
 
 
 def _render_excel_supplier_page(
@@ -131,15 +142,25 @@ def excel_supplier_preview():
         raise ValidationError("请先选择要上传的 Excel 文件", field="file")
 
     rows = _read_uploaded_xlsx(file)
-    _ensure_unique_ids(rows, id_column="供应商ID")
+    used_legacy_column = any(LEGACY_SUPPLIER_ID_COLUMN in row for row in rows)
+    rows = _normalize_supplier_rows(rows)
+    _ensure_unique_ids(rows, id_column=SUPPLIER_ID_COLUMN)
 
     svc = SupplierService(g.db, op_logger=getattr(g, "op_logger", None))
     existing = svc.build_existing_for_excel()
     op_type_svc = OpTypeService(g.db, op_logger=getattr(g, "op_logger", None))
 
     def validate_row(row: Dict[str, Any]) -> Optional[str]:
-        if is_blank_value(row.get("供应商ID")):
-            return "“供应商编号（模板列名：供应商ID）”不能为空"
+        column_conflict = renamed_column_conflict_message(
+            row,
+            current_column=SUPPLIER_ID_COLUMN,
+            legacy_column=LEGACY_SUPPLIER_ID_COLUMN,
+        )
+        if column_conflict:
+            return column_conflict
+
+        if is_blank_value(row.get(SUPPLIER_ID_COLUMN)):
+            return "“供应商编号”不能为空"
         if is_blank_value(row.get("名称")):
             return "“名称”不能为空"
 
@@ -165,7 +186,7 @@ def excel_supplier_preview():
     excel_svc = ExcelService(backend=get_excel_backend(), logger=None, op_logger=getattr(g, "op_logger", None))
     preview_rows = excel_svc.preview_import(
         rows=rows,
-        id_column="供应商ID",
+        id_column=SUPPLIER_ID_COLUMN,
         existing_data=existing,
         validators=[validate_row],
         mode=mode,
@@ -173,7 +194,7 @@ def excel_supplier_preview():
     preview_baseline = build_preview_baseline_token(
         existing_data=existing,
         mode=mode,
-        id_column="供应商ID",
+        id_column=SUPPLIER_ID_COLUMN,
         extra_state=_supplier_op_type_snapshot(op_type_svc),
         rows=rows,
     )
@@ -188,6 +209,8 @@ def excel_supplier_preview():
         preview_or_result=preview_rows,
         time_cost_ms=time_cost_ms,
     )
+    if used_legacy_column:
+        flash("已识别旧列“供应商ID”，本次按“供应商编号”处理。建议下载新模板后再维护。", "warning")
 
     return _render_excel_supplier_page(
         existing=existing,
@@ -205,9 +228,9 @@ def excel_supplier_confirm():
     mode = _parse_mode(request.form.get("mode", ImportMode.OVERWRITE.value))
     filename = request.form.get("filename") or "unknown.xlsx"
     payload = load_confirm_payload(request.form.get("raw_rows_json"), request.form.get("preview_baseline"))
-    rows = payload.rows
+    rows = _normalize_supplier_rows(payload.rows)
 
-    _ensure_unique_ids(rows, id_column="供应商ID")
+    _ensure_unique_ids(rows, id_column=SUPPLIER_ID_COLUMN)
 
     supplier_svc = SupplierService(g.db, op_logger=getattr(g, "op_logger", None))
     op_type_svc = OpTypeService(g.db, op_logger=getattr(g, "op_logger", None))
@@ -216,7 +239,7 @@ def excel_supplier_confirm():
         payload.preview_baseline,
         existing_data=existing,
         mode=mode,
-        id_column="供应商ID",
+        id_column=SUPPLIER_ID_COLUMN,
         extra_state=_supplier_op_type_snapshot(op_type_svc),
         rows=rows,
     ):
@@ -229,9 +252,18 @@ def excel_supplier_confirm():
             mode_value=mode.value,
             filename=filename,
         )
+
     def validate_row(row: Dict[str, Any]) -> Optional[str]:
-        if is_blank_value(row.get("供应商ID")):
-            return "“供应商编号（模板列名：供应商ID）”不能为空"
+        column_conflict = renamed_column_conflict_message(
+            row,
+            current_column=SUPPLIER_ID_COLUMN,
+            legacy_column=LEGACY_SUPPLIER_ID_COLUMN,
+        )
+        if column_conflict:
+            return column_conflict
+
+        if is_blank_value(row.get(SUPPLIER_ID_COLUMN)):
+            return "“供应商编号”不能为空"
         if is_blank_value(row.get("名称")):
             return "“名称”不能为空"
         default_days_error = _normalize_supplier_default_days(row)
@@ -251,7 +283,7 @@ def excel_supplier_confirm():
     excel_svc = ExcelService(backend=get_excel_backend(), logger=None, op_logger=getattr(g, "op_logger", None))
     preview_rows = excel_svc.preview_import(
         rows=rows,
-        id_column="供应商ID",
+        id_column=SUPPLIER_ID_COLUMN,
         existing_data=existing,
         validators=[validate_row],
         mode=mode,

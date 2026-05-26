@@ -16,6 +16,7 @@ from openpyxl import load_workbook
 
 from core.infrastructure.errors import AppError, ErrorCode, ValidationError
 from core.services.common.excel_backend_factory import get_excel_backend
+from core.services.common.excel_column_renames import normalize_renamed_column, renamed_column_conflict_message
 from core.services.common.excel_service import ImportMode, RowStatus
 from core.services.common.excel_templates import get_template_definition
 
@@ -87,7 +88,7 @@ def preview_baseline_matches(
     try:
         return hmac.compare_digest(provided, expected)
     except Exception:
-        current_app.logger.exception("预览基线签名比较失败")
+        current_app.logger.exception("检查结果状态比较失败")
         return False
 
 
@@ -171,7 +172,7 @@ def load_confirm_payload(
         raise ValidationError("缺少检查数据，请重新上传 Excel 并检查后再确认写入。")
     token = str(preview_baseline or "").strip()
     if not token:
-        raise ValidationError("缺少检查基线，请重新上传 Excel 并检查后再确认写入。")
+        raise ValidationError("检查结果已失效，请重新上传 Excel 并检查后再确认写入。")
     return ConfirmPayload(rows=parse_preview_rows_json(raw_rows_json), preview_baseline=token)
 
 

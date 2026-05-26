@@ -5,11 +5,20 @@ from typing import Any, Dict, List, Optional, Set
 from core.infrastructure.errors import ValidationError
 from core.models.enums import SOURCE_TYPE_VALUES
 from core.services.common.enum_normalizers import normalize_op_type_category
+from core.services.common.excel_column_renames import renamed_column_conflict_message
 from core.services.common.excel_import_executor import execute_preview_rows_transactional
 from core.services.common.excel_service import ImportMode
 from core.services.common.normalize import to_str_or_blank
 from core.services.process.op_type_service import OpTypeService
 from data.repositories import OpTypeRepository
+
+
+def _op_type_id(data: Dict[str, Any]) -> str:
+    conflict = renamed_column_conflict_message(data, current_column="工种编号", legacy_column="工种ID")
+    if conflict:
+        raise ValidationError(conflict, field="工种编号")
+    current_id = to_str_or_blank(data.get("工种编号"))
+    return current_id if current_id else to_str_or_blank(data.get("工种ID"))
 
 
 class OpTypeExcelImportService:
@@ -43,13 +52,13 @@ class OpTypeExcelImportService:
             self.repo.delete_all()
 
         def _row_id_getter(pr: Any) -> str:
-            return to_str_or_blank((getattr(pr, "data", None) or {}).get("工种ID"))
+            return _op_type_id(getattr(pr, "data", None) or {})
 
         def _apply_row_no_tx(pr: Any, existed: bool) -> None:
             data = getattr(pr, "data", None) or {}
-            ot_id = to_str_or_blank(data.get("工种ID"))
+            ot_id = _op_type_id(data)
             if not ot_id:
-                raise ValidationError("“工种编号（模板列名：工种ID）”不能为空", field="工种ID")
+                raise ValidationError("“工种编号”不能为空", field="工种编号")
             name = to_str_or_blank(data.get("工种名称"))
             if not name:
                 raise ValidationError("“工种名称”不能为空", field="工种名称")

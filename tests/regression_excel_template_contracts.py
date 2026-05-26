@@ -5,7 +5,7 @@ import re
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Dict, List, Mapping, Match, Sequence, Tuple
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.worksheet.datavalidation import DataValidation
@@ -242,10 +242,10 @@ def _assert_dropdown_copy_distinguishes_recommended_and_compatible(
             )
 
 
-def _definition_enum_values_by_header(definition: Mapping[str, Any]) -> dict[str, list[str]]:
+def _definition_enum_values_by_header(definition: Mapping[str, Any]) -> Dict[str, List[str]]:
     headers = [str(item) for item in (definition.get("headers") or [])]
     enum_cols = ((definition.get("format_spec") or {}).get("enum_cols") or {})
-    out: dict[str, list[str]] = {}
+    out: Dict[str, List[str]] = {}
     for raw_col_idx, values in enum_cols.items():
         col_idx = int(raw_col_idx)
         header = headers[col_idx]
@@ -253,14 +253,20 @@ def _definition_enum_values_by_header(definition: Mapping[str, Any]) -> dict[str
     return out
 
 
-def _inline_validation_values(formula1: Any) -> list[str]:
+def _inline_validation_values(formula1: Any) -> List[str]:
     raw = str(formula1 or "").strip()
     if raw.startswith('"') and raw.endswith('"'):
         raw = raw[1:-1]
     return [item.strip() for item in raw.split(",") if item.strip()]
 
 
-def _validation_values_for_column(ws: Any, one_based_col_idx: int) -> list[str]:
+def _validation_values_for_column(ws: Any, one_based_col_idx: int) -> List[str]:
+    value_lists = _validation_value_lists_for_column(ws, one_based_col_idx)
+    return value_lists[0] if value_lists else []
+
+
+def _validation_value_lists_for_column(ws: Any, one_based_col_idx: int) -> List[List[str]]:
+    out: List[List[str]] = []
     for data_validation in ws.data_validations.dataValidation:
         if data_validation.type != "list":
             continue
@@ -269,12 +275,13 @@ def _validation_values_for_column(ws: Any, one_based_col_idx: int) -> list[str]:
                 cell_range.min_col <= one_based_col_idx <= cell_range.max_col
                 and cell_range.min_row <= 2 <= cell_range.max_row
             ):
-                return _inline_validation_values(data_validation.formula1)
-    return []
+                out.append(_inline_validation_values(data_validation.formula1))
+                break
+    return out
 
 
-def _actual_enum_values_by_header(ws: Any, headers: Sequence[str]) -> dict[str, list[str]]:
-    out: dict[str, list[str]] = {}
+def _actual_enum_values_by_header(ws: Any, headers: Sequence[str]) -> Dict[str, List[str]]:
+    out: Dict[str, List[str]] = {}
     for one_based_col_idx, header in enumerate(headers, start=1):
         values = _validation_values_for_column(ws, one_based_col_idx)
         if values:
@@ -282,10 +289,81 @@ def _actual_enum_values_by_header(ws: Any, headers: Sequence[str]) -> dict[str, 
     return out
 
 
+def _assert_enum_validations_match_exactly(template_path: Path, definition: Mapping[str, Any]) -> None:
+    expected_headers = [str(item) for item in definition.get("headers") or []]
+    expected_enums = _definition_enum_values_by_header(definition)
+    workbook = load_workbook(template_path, data_only=True)
+    try:
+        ws = workbook.active
+        for one_based_col_idx, header in enumerate(expected_headers, start=1):
+            expected_values = expected_enums.get(header)
+            if not expected_values:
+                continue
+            actual_value_lists = _validation_value_lists_for_column(ws, one_based_col_idx)
+            assert actual_value_lists == [expected_values], (
+                f"{template_path.name} 的 {header} 下拉规则必须只有一条且只包含当前选项；"
+                f"期望 {[expected_values]}，实际 {actual_value_lists}"
+            )
+    finally:
+        workbook.close()
+
+
+def _assert_enum_validation_refresh_keeps_other_columns() -> None:
+    _ensure_repo_on_path()
+    excel_templates = importlib.import_module("core.services.common.excel_templates")
+
+    workbook = Workbook()
+    try:
+        ws = workbook.active
+        shared_validation = DataValidation(type="list", formula1='"自制,外协"', allow_blank=True)
+        shared_validation.add("C2:C500")
+        shared_validation.add("F2:F500")
+        ws.add_data_validation(shared_validation)
+        other_validation = DataValidation(type="list", formula1='"是,否"', allow_blank=True)
+        other_validation.add("G2:G500")
+        ws.add_data_validation(other_validation)
+
+        excel_templates._apply_sheet_layout(
+            ws,
+            format_spec={"enum_cols": {2: ["自制", "外协"]}},
+            data_row_count=1,
+        )
+
+        assert _validation_value_lists_for_column(ws, 3) == [["自制", "外协"]]
+        assert _validation_value_lists_for_column(ws, 6) == [["自制", "外协"]]
+        assert _validation_value_lists_for_column(ws, 7) == [["是", "否"]]
+    finally:
+        workbook.close()
+
+
+def _assert_enum_validation_refresh_splits_contiguous_ranges() -> None:
+    _ensure_repo_on_path()
+    excel_templates = importlib.import_module("core.services.common.excel_templates")
+
+    workbook = Workbook()
+    try:
+        ws = workbook.active
+        shared_validation = DataValidation(type="list", formula1='"旧一,旧二"', allow_blank=True)
+        shared_validation.add("C2:F500")
+        ws.add_data_validation(shared_validation)
+
+        excel_templates._apply_sheet_layout(
+            ws,
+            format_spec={"enum_cols": {2: ["自制", "外协"]}},
+            data_row_count=1,
+        )
+
+        assert _validation_value_lists_for_column(ws, 3) == [["自制", "外协"]]
+        assert _validation_value_lists_for_column(ws, 4) == [["旧一", "旧二"]]
+        assert _validation_value_lists_for_column(ws, 6) == [["旧一", "旧二"]]
+    finally:
+        workbook.close()
+
+
 def _normalize_help_column_label(raw: str) -> str:
     text = re.sub(r"[`*]", "", str(raw or "")).strip().rstrip("。.")
 
-    def _replace_note(match: re.Match[str]) -> str:
+    def _replace_note(match: Match[str]) -> str:
         inner = str(match.group(1) or match.group(2) or "").strip()
         return "(h)" if inner.lower() == "h" else ""
 
@@ -294,9 +372,9 @@ def _normalize_help_column_label(raw: str) -> str:
     return text.strip()
 
 
-def _split_help_columns(column_text: str) -> list[str]:
-    columns: list[str] = []
-    current: list[str] = []
+def _split_help_columns(column_text: str) -> List[str]:
+    columns: List[str] = []
+    current: List[str] = []
     depth = 0
     for char in column_text:
         if char in "（(":
@@ -313,7 +391,7 @@ def _split_help_columns(column_text: str) -> list[str]:
     return columns
 
 
-def _extract_help_card_columns(payload: Mapping[str, Any]) -> list[str]:
+def _extract_help_card_columns(payload: Mapping[str, Any]) -> List[str]:
     help_card = payload.get("help_card") or {}
     for item in help_card.get("items") or []:
         text = str(item or "").strip()
@@ -329,18 +407,21 @@ def _extract_help_card_columns(payload: Mapping[str, Any]) -> list[str]:
     raise AssertionError(f"{payload.get('title')} 页面帮助卡缺少“列：...”说明")
 
 
-def _read_sample_rows(ws: Any, *, width: int, count: int) -> list[list[Any]]:
-    rows: list[list[Any]] = []
+def _read_sample_rows(ws: Any, *, width: int, count: int) -> List[List[Any]]:
+    rows: List[List[Any]] = []
     for row_idx in range(2, 2 + count):
         rows.append([ws.cell(row_idx, col_idx).value for col_idx in range(1, width + 1)])
     return rows
 
 
-def _read_header_row(ws: Any) -> list[Any]:
+def _read_header_row(ws: Any) -> List[Any]:
     return [ws.cell(1, col_idx).value for col_idx in range(1, ws.max_column + 1)]
 
 
-def _read_template_snapshot(template_path: Path, definition: Mapping[str, Any]) -> tuple[list[Any], list[list[Any]], dict[str, list[str]]]:
+def _read_template_snapshot(
+    template_path: Path,
+    definition: Mapping[str, Any],
+) -> Tuple[List[Any], List[List[Any]], Dict[str, List[str]]]:
     expected_headers = [str(item) for item in definition.get("headers") or []]
     expected_sample_rows = list(definition.get("sample_rows") or [])
     workbook = load_workbook(template_path, data_only=True)
@@ -590,6 +671,7 @@ def _assert_process_excel_template_files_match_registered_definitions() -> None:
         assert actual_headers == expected_headers, f"{filename} 表头和模板定义不一致"
         assert actual_sample_rows == expected_sample_rows, f"{filename} 示例行和模板定义不一致"
         assert actual_enums == expected_enums, f"{filename} 下拉值和模板定义不一致"
+        _assert_enum_validations_match_exactly(template_path, definition)
 
 
 def _assert_page_manual_excel_template_files_match_registered_definitions() -> None:
@@ -618,6 +700,7 @@ def _assert_supplier_conversion_output_matches_current_template_contract() -> No
 
     assert actual_headers == expected_headers, "供应商配置转换输出仍是旧列，必须补齐状态和备注"
     assert actual_enums == expected_enums, "供应商配置转换输出的状态下拉必须和正式模板一致"
+    _assert_enum_validations_match_exactly(template_path, definition)
 
     workbook = load_workbook(template_path, data_only=True)
     try:
@@ -738,6 +821,8 @@ def _assert_relation_reverse_header_copy_matches_templates() -> None:
 
 
 def main() -> None:
+    _assert_enum_validation_refresh_keeps_other_columns()
+    _assert_enum_validation_refresh_splits_contiguous_ranges()
     _assert_process_excel_template_files_match_registered_definitions()
     _assert_page_manual_excel_template_files_match_registered_definitions()
     _assert_supplier_conversion_output_matches_current_template_contract()
