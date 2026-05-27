@@ -84,7 +84,7 @@ def main():
         cfg_svc.set_dispatch("batch_order", "slack")
 
         sch_svc = ScheduleService(conn, logger=None, op_logger=None)
-        r = sch_svc.run_schedule(batch_ids=["B001"], start_dt="2026-02-01 08:00:00", simulate=True, created_by="regression")
+        r = sch_svc.run_schedule(batch_ids=["B001"], start_dt="2026-02-01 08:00:00", simulate=False, created_by="regression")
         assert int(r["summary"]["failed_ops"]) == 0, f"预期 failed_ops=0，实际 {r['summary']}"
 
         ver = int(r["version"])
@@ -108,4 +108,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

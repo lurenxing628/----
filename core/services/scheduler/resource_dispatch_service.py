@@ -3,13 +3,17 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.infrastructure.errors import ValidationError
-from core.models.operation_execution_labels import suggest_reschedule_label
 from core.services.equipment.machine_service import MachineService
 from core.services.personnel import ResourceTeamService
 from core.services.personnel.operator_service import OperatorService
 
 from .operation_execution_feedback_service import OperationExecutionFeedbackService
 from .plan_overdue_markers import build_overdue_meta_for_plan
+from .resource_dispatch_execution_enrichment import (
+    apply_execution_state_to_row,
+    positive_row_op_ids,
+    row_op_id,
+)
 from .resource_dispatch_range import resolve_dispatch_range
 from .resource_dispatch_support import (
     build_dispatch_filters,
@@ -234,46 +238,18 @@ class ResourceDispatchService:
             raise ValidationError(str(exc), field="plan_role") from exc
 
     def _enrich_rows_with_execution_state(self, rows: List[Dict[str, Any]]) -> None:
-        op_ids = []
-        seen = set()
-        for row in rows:
-            try:
-                op_id = int(row.get("op_id") or 0)
-            except (TypeError, ValueError):
-                op_id = 0
-            if op_id <= 0 or op_id in seen:
-                continue
-            seen.add(op_id)
-            op_ids.append(op_id)
+        op_ids = positive_row_op_ids(rows)
         if not op_ids:
             return
         states = self.feedback_service.get_execution_state(op_ids)
         for row in rows:
-            try:
-                op_id = int(row.get("op_id") or 0)
-            except (TypeError, ValueError):
+            op_id = row_op_id(row)
+            if op_id is None:
                 continue
             state = states.get(op_id)
             if state is None:
                 continue
-            has_exception = bool(state.latest_exception_event_id)
-            row["execution_status_label"] = state.current_status_label or "待开工"
-            row["latest_exception_reason_label"] = state.latest_exception_reason_label if has_exception else "暂无异常"
-            row["latest_exception_severity_label"] = state.latest_exception_severity_label if has_exception else ""
-            row["latest_exception_impact_minutes_label"] = (
-                state.latest_exception_impact_minutes_label if has_exception else ""
-            ) or ("暂时不知道影响多久" if has_exception else "")
-            row["latest_exception_affected_machine_label"] = (
-                state.latest_exception_affected_machine_label if has_exception else ""
-            ) or ("未填写影响设备" if has_exception else "")
-            row["latest_exception_affected_operator_label"] = (
-                state.latest_exception_affected_operator_label if has_exception else ""
-            ) or ("未填写影响人员" if has_exception else "")
-            row["latest_exception_handling_status_label"] = state.latest_exception_handling_status_label if has_exception else ""
-            row["latest_exception_suggest_reschedule_label"] = (
-                suggest_reschedule_label(state.latest_exception_suggest_reschedule) if has_exception else ""
-            )
-            row["latest_exception_remark"] = state.latest_exception_remark if has_exception else ""
+            apply_execution_state_to_row(row, state)
 
     def build_page_context(
         self,

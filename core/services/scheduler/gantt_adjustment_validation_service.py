@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from core.infrastructure.errors import ValidationError
 from core.models.schedule_adjustment import DRAFT_STATUS_EDITING
-from data.repositories import ScheduleAdjustmentRepository
+from data.repositories import BatchRepository, MachineDowntimeRepository, ScheduleAdjustmentRepository
 
 from .calendar_service import CalendarService
 from .gantt_adjustment_projection import (
@@ -54,6 +54,8 @@ class GanttAdjustmentValidationService:
         self.conn = conn
         self.logger = logger
         self.draft_repo = ScheduleAdjustmentRepository(conn, logger=logger)
+        self.batch_repo = BatchRepository(conn, logger=logger)
+        self.downtime_repo = MachineDowntimeRepository(conn, logger=logger)
         self.plan_service = SchedulePlanQueryService(conn, logger=logger)
         self.calendar_service = CalendarService(conn, logger=logger)
 
@@ -134,19 +136,11 @@ class GanttAdjustmentValidationService:
         for row in rows:
             if not row.machine_id:
                 continue
-            hit = self.conn.execute(
-                """
-                SELECT 1
-                FROM MachineDowntimes
-                WHERE machine_id = ?
-                  AND status = 'active'
-                  AND start_time < ?
-                  AND end_time > ?
-                LIMIT 1
-                """,
-                (row.machine_id, row.end.strftime("%Y-%m-%d %H:%M:%S"), row.start.strftime("%Y-%m-%d %H:%M:%S")),
-            ).fetchone()
-            if hit is not None:
+            if self.downtime_repo.has_overlap(
+                row.machine_id,
+                row.start.strftime("%Y-%m-%d %H:%M:%S"),
+                row.end.strftime("%Y-%m-%d %H:%M:%S"),
+            ):
                 issues.append(_issue("blocker", "machine_downtime", row, f"设备 {row.machine_id} 在目标时间段有停机记录。"))
         return issues
 
@@ -154,14 +148,7 @@ class GanttAdjustmentValidationService:
         batch_ids = sorted({row.batch_id for row in rows if row.batch_id})
         if not batch_ids:
             return []
-        placeholders = ", ".join("?" for _ in batch_ids)
-        status_by_batch = {
-            str(row["batch_id"]): str(row["ready_status"] or "").strip()
-            for row in self.conn.execute(
-                f"SELECT batch_id, ready_status FROM Batches WHERE batch_id IN ({placeholders})",
-                tuple(batch_ids),
-            ).fetchall()
-        }
+        status_by_batch = self.batch_repo.list_ready_status_by_batch_ids(batch_ids)
         issues: List[AdjustmentIssue] = []
         for row in rows:
             ready = status_by_batch.get(row.batch_id)

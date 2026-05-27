@@ -388,10 +388,7 @@ def export_execution_review_xlsx(
         buf.seek(0)
         return buf
     finally:
-        try:
-            wb.close()
-        except Exception:
-            pass
+        wb.close()
 
 
 def _execution_review_values(row: Dict[str, Any]) -> List[Any]:

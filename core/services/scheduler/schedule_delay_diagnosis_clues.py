@@ -186,7 +186,7 @@ class ScheduleDelayDiagnosisClueBuilder:
             source_row_id=row.get("id"),
             evidence_scope="row",
             source_page="物料明细",
-            link=plan_link(plan_identity, "/materials/batches", scenario_id=plan_identity.scenario_id),
+            link=plan_link(plan_identity, "/material/batches", scenario_id=plan_identity.scenario_id),
             confidence="likely",
             metric_name="material_readiness",
             metric_value={
@@ -249,7 +249,7 @@ class ScheduleDelayDiagnosisClueBuilder:
                 source_row_id=downtime.id,
                 evidence_scope="row",
                 source_page="停机记录",
-                link=plan_link(plan_identity, "/reports/downtime-impact", scenario_id=plan_identity.scenario_id),
+                link=plan_link(plan_identity, "/reports/downtime", scenario_id=plan_identity.scenario_id),
                 confidence="likely",
                 time_range_start=downtime.start_time,
                 time_range_end=downtime.end_time,

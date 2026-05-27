@@ -225,6 +225,53 @@ def _merge_summary_warnings(summary: Any, algo_warnings: List[str]) -> Dict[str,
     return warning_merge_status
 
 
+def _run_plan_selection(
+    svc: Any,
+    *,
+    schedule_input: ScheduleRunInput,
+    strict_mode: bool,
+    optimize_schedule_fn: Any,
+) -> Tuple[_NormalizedOptimizerOutcome, Optional[Dict[str, Any]], Optional[Dict[str, Any]], Any]:
+    if not _candidate_comparison_enabled(schedule_input.cfg):
+        optimizer_outcome, graph_public, graph_diagnostics = _run_optimizer_once(
+            schedule_input=schedule_input,
+            optimize_schedule_fn=optimize_schedule_fn,
+            strict_mode=bool(strict_mode),
+            logger=svc.logger,
+        )
+        return optimizer_outcome, graph_public, graph_diagnostics, None
+    candidate_comparison = run_candidate_comparison(
+        schedule_input=schedule_input,
+        optimize_schedule_fn=optimize_schedule_fn,
+        run_time_budget_seconds=getattr(schedule_input, "run_time_budget_seconds", None),
+        weight_count=_candidate_weight_count(schedule_input.cfg),
+        selection_policy=_candidate_selection_policy(schedule_input.cfg),
+        graph_overdue_tolerance_count=_candidate_overdue_tolerance_count(schedule_input.cfg),
+        graph_tardiness_tolerance_ratio=_candidate_tardiness_tolerance_ratio(schedule_input.cfg),
+        strict_mode=bool(strict_mode),
+        logger=svc.logger,
+    )
+    adopted_plan = candidate_comparison.selection.selected_plan
+    graph_public, graph_diagnostics = _graph_analysis_for_summary(candidate_comparison, adopted_plan)
+    return _normalize_candidate_plan(adopted_plan), graph_public, graph_diagnostics, candidate_comparison
+
+
+def _allowed_schedule_output_op_ids(schedule_input: ScheduleRunInput):
+    allowed_op_ids = getattr(schedule_input, "schedule_output_allowed_op_ids", None)
+    if allowed_op_ids is not None:
+        return allowed_op_ids
+    return getattr(schedule_input, "reschedulable_op_ids", None)
+
+
+def _payload_validation_operations(schedule_input: ScheduleRunInput) -> List[Any]:
+    return list(
+        getattr(schedule_input, "payload_validation_operations", None)
+        or getattr(schedule_input, "reschedulable_operations", None)
+        or getattr(schedule_input, "operations", None)
+        or []
+    )
+
+
 def orchestrate_schedule_run(
     svc: Any,
     *,
@@ -238,46 +285,17 @@ def orchestrate_schedule_run(
     version_override: Any = None,
     persist_schedule_fn: Any = None,
 ) -> ScheduleOrchestrationOutcome:
-    candidate_comparison = None
-    if _candidate_comparison_enabled(schedule_input.cfg):
-        candidate_comparison = run_candidate_comparison(
-            schedule_input=schedule_input,
-            optimize_schedule_fn=optimize_schedule_fn,
-            run_time_budget_seconds=getattr(schedule_input, "run_time_budget_seconds", None),
-            weight_count=_candidate_weight_count(schedule_input.cfg),
-            selection_policy=_candidate_selection_policy(schedule_input.cfg),
-            graph_overdue_tolerance_count=_candidate_overdue_tolerance_count(schedule_input.cfg),
-            graph_tardiness_tolerance_ratio=_candidate_tardiness_tolerance_ratio(schedule_input.cfg),
-            strict_mode=bool(strict_mode),
-            logger=svc.logger,
-        )
-        adopted_plan = candidate_comparison.selection.selected_plan
-        optimizer_outcome = _normalize_candidate_plan(adopted_plan)
-        graph_analysis_public, graph_analysis_diagnostics = _graph_analysis_for_summary(candidate_comparison, adopted_plan)
-    else:
-        optimizer_outcome, graph_analysis_public, graph_analysis_diagnostics = _run_optimizer_once(
-            schedule_input=schedule_input,
-            optimize_schedule_fn=optimize_schedule_fn,
-            strict_mode=bool(strict_mode),
-            logger=svc.logger,
-        )
-
-    allowed_op_ids_raw = getattr(schedule_input, "schedule_output_allowed_op_ids", None)
-    if allowed_op_ids_raw is None:
-        allowed_op_ids_raw = getattr(schedule_input, "reschedulable_op_ids", None)
+    optimizer_outcome, graph_analysis_public, graph_analysis_diagnostics, candidate_comparison = _run_plan_selection(
+        svc,
+        schedule_input=schedule_input,
+        strict_mode=bool(strict_mode),
+        optimize_schedule_fn=optimize_schedule_fn,
+    )
+    allowed_op_ids_raw = _allowed_schedule_output_op_ids(schedule_input)
     validated_schedule_payload = build_validated_schedule_payload(
         optimizer_outcome.results,
-        allowed_op_ids=(
-            set(allowed_op_ids_raw)
-            if allowed_op_ids_raw is not None
-            else None
-        ),
-        operations=list(
-            getattr(schedule_input, "payload_validation_operations", None)
-            or getattr(schedule_input, "reschedulable_operations", None)
-            or getattr(schedule_input, "operations", None)
-            or []
-        ),
+        allowed_op_ids=set(allowed_op_ids_raw) if allowed_op_ids_raw is not None else None,
+        operations=_payload_validation_operations(schedule_input),
         missing_internal_resource_op_ids=set(getattr(schedule_input, "missing_internal_resource_op_ids", None) or set()),
         schedule_errors=list(getattr(optimizer_outcome.summary, "errors", None) or []),
     )

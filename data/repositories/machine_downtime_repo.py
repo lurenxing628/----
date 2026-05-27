@@ -54,6 +54,21 @@ class MachineDowntimeRepository(BaseRepository):
         )
         return [MachineDowntime.from_row(r) for r in rows]
 
+    def list_active_overlaps_with_machine_names(self, start_time: str, end_time: str) -> List[Dict[str, Any]]:
+        rows = self.fetchall(
+            """
+            SELECT md.machine_id, m.name AS machine_name, md.start_time, md.end_time, md.reason_code, md.reason_detail
+            FROM MachineDowntimes md
+            LEFT JOIN Machines m ON m.machine_id = md.machine_id
+            WHERE md.status = 'active'
+              AND md.start_time < ?
+              AND md.end_time > ?
+            ORDER BY md.machine_id, md.start_time, md.id
+            """,
+            (end_time, start_time),
+        )
+        return [dict(row) for row in rows]
+
     def has_overlap(
         self,
         machine_id: str,
@@ -140,4 +155,3 @@ class MachineDowntimeRepository(BaseRepository):
             "UPDATE MachineDowntimes SET status='cancelled', updated_at=CURRENT_TIMESTAMP WHERE id=?",
             (int(downtime_id),),
         )
-

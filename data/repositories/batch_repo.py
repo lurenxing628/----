@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Sequence, Union
 
 from core.models import Batch
 
@@ -26,6 +26,17 @@ class BatchRepository(BaseRepository):
             """,
             (str(batch_id),),
         )
+
+    def list_ready_status_by_batch_ids(self, batch_ids: Sequence[str]) -> Dict[str, str]:
+        ids = sorted({str(batch_id or "").strip() for batch_id in batch_ids if str(batch_id or "").strip()})
+        if not ids:
+            return {}
+        placeholders = ", ".join("?" for _ in ids)
+        rows = self.fetchall(
+            f"SELECT batch_id, ready_status FROM Batches WHERE batch_id IN ({placeholders})",
+            tuple(ids),
+        )
+        return {str(row.get("batch_id") or ""): str(row.get("ready_status") or "").strip() for row in rows}
 
     def list(
         self,

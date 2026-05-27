@@ -62,6 +62,61 @@ def _identity_user_label(
     return "对比参考方案"
 
 
+def _is_preview_plan(*, scenario_id: Optional[str], source_table: str, status: str) -> bool:
+    return bool(scenario_id) or source_table == SOURCE_ADJUSTMENT_SCENARIO_ROWS or status == "scenario_preview"
+
+
+def _is_current_version(version: Optional[int], latest_version: Optional[int]) -> bool:
+    return bool(version is not None and latest_version is not None and version == latest_version)
+
+
+def _is_superseded_version(version: Optional[int], latest_version: Optional[int]) -> bool:
+    return bool(version is not None and latest_version is not None and version < latest_version)
+
+
+def _is_official_plan(
+    *,
+    source_table: str,
+    requested_role: str,
+    effective_role: str,
+    status: str,
+    is_preview: bool,
+    is_simulation: bool,
+) -> bool:
+    return (
+        source_table == SOURCE_SCHEDULE
+        and requested_role == ROLE_ADOPTED
+        and effective_role == ROLE_ADOPTED
+        and status == "resolved_adopted"
+        and not is_preview
+        and not is_simulation
+    )
+
+
+def _can_write_feedback(
+    *,
+    requested_role: str,
+    effective_role: str,
+    status: str,
+    source_table: str,
+    is_preview: bool,
+    is_current_official: bool,
+    is_superseded: bool,
+) -> bool:
+    if not is_current_official or is_superseded:
+        return False
+    if source_table == SOURCE_CANDIDATE_ROWS:
+        return False
+    if is_comparison_plan(
+        requested_role=requested_role,
+        selected_role=effective_role,
+        source_table=source_table,
+        is_scenario_preview=is_preview,
+    ):
+        return False
+    return status not in ("fallback_to_adopted", "missing_detail", "not_found", "historical_version")
+
+
 def build_plan_identity(
     *,
     version: Optional[int],
@@ -88,22 +143,21 @@ def build_plan_identity(
         raise ValueError("计划身份缺少有效的数据来源，不能当作正式排程。")
     version_value = int(version) if version is not None else None
     latest_version = int(latest_official_version) if latest_official_version is not None else None
-    is_preview = bool(scenario_id) or source == SOURCE_ADJUSTMENT_SCENARIO_ROWS or resolution_status == "scenario_preview"
+    is_preview = _is_preview_plan(scenario_id=scenario_id, source_table=source, status=resolution_status)
     is_simulation = is_preview or _bool_from_summary(result_summary, "is_simulation")
-    is_current = bool(version_value is not None and latest_version is not None and version_value == latest_version)
-    is_superseded = bool(version_value is not None and latest_version is not None and version_value < latest_version)
-    is_official = (
-        source == SOURCE_SCHEDULE
-        and requested == ROLE_ADOPTED
-        and effective == ROLE_ADOPTED
-        and resolution_status == "resolved_adopted"
-        and not is_preview
-        and not is_simulation
+    is_current = _is_current_version(version_value, latest_version)
+    is_superseded = _is_superseded_version(version_value, latest_version)
+    is_official = _is_official_plan(
+        source_table=source,
+        requested_role=requested,
+        effective_role=effective,
+        status=resolution_status,
+        is_preview=is_preview,
+        is_simulation=is_simulation,
     )
     result_status = _text(schedule_result_status).lower() or None
     result_ok = result_status not in _BLOCKED_RESULT_STATUSES
     is_current_official = bool(is_official and is_current and result_ok)
-    can_write = bool(is_current_official and not is_superseded)
     user_label = _identity_user_label(
         requested_role=requested,
         status=resolution_status,
@@ -112,15 +166,15 @@ def build_plan_identity(
         scenario_display_name=scenario_display_name,
     )
     label = plan_role_label(effective) if not is_preview else user_label
-    if source == SOURCE_CANDIDATE_ROWS or is_comparison_plan(
+    can_write = _can_write_feedback(
         requested_role=requested,
-        selected_role=effective,
+        effective_role=effective,
+        status=resolution_status,
         source_table=source,
-        is_scenario_preview=is_preview,
-    ):
-        can_write = False
-    if resolution_status in ("fallback_to_adopted", "missing_detail", "not_found", "historical_version"):
-        can_write = False
+        is_preview=is_preview,
+        is_current_official=is_current_official,
+        is_superseded=is_superseded,
+    )
     return PlanIdentity(
         version=version_value,
         requested_plan_role=requested,

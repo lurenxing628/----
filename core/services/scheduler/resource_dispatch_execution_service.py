@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Mapping, Optional
+from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 from core.infrastructure.errors import ValidationError
 from core.models.operation_execution_state import OperationExecutionState
@@ -160,7 +160,7 @@ class ResourceDispatchExecutionService:
         }
 
     @staticmethod
-    def _op_ids(rows: List[Mapping[str, Any]]) -> List[int]:
+    def _op_ids(rows: Sequence[Mapping[str, Any]]) -> List[int]:
         out: List[int] = []
         seen = set()
         for row in rows:
@@ -172,7 +172,7 @@ class ResourceDispatchExecutionService:
         return out
 
     @staticmethod
-    def _matching_row(rows: List[Mapping[str, Any]], schedule_id: int, op_id: int) -> Optional[Dict[str, Any]]:
+    def _matching_row(rows: Sequence[Mapping[str, Any]], schedule_id: int, op_id: int) -> Optional[Dict[str, Any]]:
         for row in rows:
             if _positive_int(row.get("schedule_id")) == schedule_id and _positive_int(row.get("op_id")) == op_id:
                 return dict(row)

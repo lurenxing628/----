@@ -25,6 +25,29 @@ class ExecutionFact:
     latest_exception_suggest_reschedule: bool = False
 
 
+def _state_value(state, attr: str):
+    return None if state is None else getattr(state, attr)
+
+
+def _fact_from_state(op_id: int, state, latest) -> ExecutionFact:
+    status = EXECUTION_STATUS_NOT_STARTED if state is None else str(state.current_status or EXECUTION_STATUS_NOT_STARTED)
+    return ExecutionFact(
+        op_id=int(op_id),
+        batch_id=_state_value(state, "batch_id"),
+        actual_status=status,
+        actual_start_time=_parse_execution_time(_state_value(state, "actual_start_time")),
+        actual_end_time=_parse_execution_time(_state_value(state, "actual_end_time")),
+        actual_machine_id=_state_value(state, "actual_machine_id"),
+        actual_operator_id=_state_value(state, "actual_operator_id"),
+        last_event_schedule_version=None if latest is None else int(latest.schedule_version),
+        last_event_schedule_id=None if latest is None else int(latest.schedule_id),
+        state_revision=f"{int(op_id)}:0:0" if state is None else state.state_revision,
+        latest_exception_impact_minutes=_state_value(state, "latest_exception_impact_minutes"),
+        latest_exception_handling_status=_state_value(state, "latest_exception_handling_status"),
+        latest_exception_suggest_reschedule=False if state is None else bool(state.latest_exception_suggest_reschedule),
+    )
+
+
 def _positive_op_ids(values: Sequence[int]) -> List[int]:
     seen = set()
     out: List[int] = []
@@ -75,33 +98,7 @@ class ExecutionFactProvider:
         for op_id in ids:
             state = states.get(int(op_id))
             latest = latest_events.get(int(op_id))
-            facts.append(
-                ExecutionFact(
-                    op_id=int(op_id),
-                    batch_id=None if state is None else state.batch_id,
-                    actual_status=(
-                        EXECUTION_STATUS_NOT_STARTED
-                        if state is None
-                        else str(state.current_status or EXECUTION_STATUS_NOT_STARTED)
-                    ),
-                    actual_start_time=None if state is None else _parse_execution_time(state.actual_start_time),
-                    actual_end_time=None if state is None else _parse_execution_time(state.actual_end_time),
-                    actual_machine_id=None if state is None else state.actual_machine_id,
-                    actual_operator_id=None if state is None else state.actual_operator_id,
-                    last_event_schedule_version=None if latest is None else int(latest.schedule_version),
-                    last_event_schedule_id=None if latest is None else int(latest.schedule_id),
-                    state_revision=f"{int(op_id)}:0:0" if state is None else state.state_revision,
-                    latest_exception_impact_minutes=None
-                    if state is None
-                    else state.latest_exception_impact_minutes,
-                    latest_exception_handling_status=None
-                    if state is None
-                    else state.latest_exception_handling_status,
-                    latest_exception_suggest_reschedule=False
-                    if state is None
-                    else bool(state.latest_exception_suggest_reschedule),
-                )
-            )
+            facts.append(_fact_from_state(int(op_id), state, latest))
         return facts
 
     def facts_by_op_id(self, op_ids: Sequence[int]) -> Dict[int, ExecutionFact]:

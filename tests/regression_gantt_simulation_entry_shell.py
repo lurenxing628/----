@@ -34,7 +34,8 @@ def test_simulation_entry_shell_is_disabled_in_both_templates() -> None:
         assert 'id="ganttSimulationEntryShell"' in text, path
         assert 'data-simulation-state="disabled"' in text, path
         assert 'id="ganttSimulationEntry"' in text, path
-        assert "模拟调整（后续开放）" in text, path
+        assert "模拟调整" in text, path
+        assert "模拟调整（后续开放）" not in text, path
         assert "disabled" in text, path
         assert 'aria-disabled="true"' in text, path
         assert "aps_gantt_simulation.css" in text, path
@@ -72,7 +73,8 @@ def test_manuals_explain_entry_is_placeholder_only() -> None:
     help_model = _read(REPO_ROOT / "web/viewmodels/page_manuals_scheduler_outputs.py")
 
     for text in (manual, help_model):
-        assert "模拟调整（后续开放）" in text
+        assert "模拟调整" in text
+        assert "模拟调整（后续开放）" not in text
         assert "不能点击" in text
         assert "不会产生草稿" in text
         assert "正式新版本" in text

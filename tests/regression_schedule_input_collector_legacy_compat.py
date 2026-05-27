@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import sqlite3
 from datetime import datetime
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -12,13 +14,89 @@ from core.services.scheduler.schedule_input_collector import collect_schedule_ru
 # 说明：本文件保留原命名以延续审查上下文，
 # 但当前约束已经从“legacy compat”收紧为“legacy signature 必须显式拒绝”。
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
 
 class _FakeSvc:
-    conn = None
     logger = None
     op_logger = None
 
     def __init__(self, ops):
+        self.conn = sqlite3.connect(":memory:")
+        self.conn.row_factory = sqlite3.Row
+        self.conn.executescript((REPO_ROOT / "schema.sql").read_text(encoding="utf-8"))
+        part_rows = {}
+        machine_ids = set()
+        operator_ids = set()
+        supplier_ids = set()
+        for op in ops:
+            batch_id = str(op.batch_id)
+            part_no = "PART-" + batch_id
+            part_rows[batch_id] = part_no
+            if op.machine_id:
+                machine_ids.add(str(op.machine_id))
+            if op.operator_id:
+                operator_ids.add(str(op.operator_id))
+            if op.supplier_id:
+                supplier_ids.add(str(op.supplier_id))
+        for part_no in sorted(set(part_rows.values())):
+            self.conn.execute(
+                "INSERT OR IGNORE INTO Parts(part_no, part_name) VALUES (?, ?)",
+                (part_no, part_no),
+            )
+        for batch_id, part_no in sorted(part_rows.items()):
+            self.conn.execute(
+                """
+                INSERT OR IGNORE INTO Batches(
+                    batch_id, part_no, part_name, quantity, due_date,
+                    priority, ready_status, status
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (batch_id, part_no, part_no, 1, "2026-01-10", "normal", "yes", "pending"),
+            )
+        for machine_id in sorted(machine_ids):
+            self.conn.execute(
+                "INSERT OR IGNORE INTO Machines(machine_id, name, status) VALUES (?, ?, ?)",
+                (machine_id, machine_id, "active"),
+            )
+        for operator_id in sorted(operator_ids):
+            self.conn.execute(
+                "INSERT OR IGNORE INTO Operators(operator_id, name, status) VALUES (?, ?, ?)",
+                (operator_id, operator_id, "active"),
+            )
+        for supplier_id in sorted(supplier_ids):
+            self.conn.execute(
+                "INSERT OR IGNORE INTO Suppliers(supplier_id, name, status) VALUES (?, ?, ?)",
+                (supplier_id, supplier_id, "active"),
+            )
+        for op in ops:
+            self.conn.execute(
+                """
+                INSERT INTO BatchOperations(
+                    id, op_code, batch_id, seq, source,
+                    machine_id, operator_id, supplier_id,
+                    setup_hours, unit_hours, ext_days, status, op_type_name
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    int(op.id),
+                    str(op.op_code),
+                    str(op.batch_id),
+                    int(op.seq),
+                    str(op.source),
+                    op.machine_id,
+                    op.operator_id,
+                    op.supplier_id,
+                    float(op.setup_hours or 0),
+                    float(op.unit_hours or 0),
+                    op.ext_days,
+                    str(op.status),
+                    str(op.op_type_name),
+                ),
+            )
+        self.conn.commit()
         self.history_repo = SimpleNamespace(get_latest_version=lambda: 5)
         self.op_repo = SimpleNamespace(list_by_batch=lambda _batch_id: list(ops))
 

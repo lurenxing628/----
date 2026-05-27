@@ -48,6 +48,46 @@ def _resource_label(resource_id: Any, resource_name: Any) -> str:
     return f"{rid} {name}".strip() if rid else name
 
 
+def _latest_exception_resource_labels(
+    *,
+    event: Any,
+    state: Any,
+    machine_labels: Mapping[str, str],
+    operator_labels: Mapping[str, str],
+    is_exception_event: bool,
+) -> Dict[str, Optional[str]]:
+    affected_machine_id = _text(getattr(event, "affected_machine_id", None))
+    affected_operator_id = _text(getattr(event, "affected_operator_id", None))
+    affected_machine_label = machine_labels.get(affected_machine_id) if affected_machine_id else None
+    affected_operator_label = operator_labels.get(affected_operator_id) if affected_operator_id else None
+    current_state = state if isinstance(state, OperationExecutionState) else None
+    if (
+        is_exception_event
+        and current_state is not None
+        and getattr(event, "id", None) == current_state.latest_exception_event_id
+    ):
+        affected_machine_label = affected_machine_label or current_state.latest_exception_affected_machine_label
+        affected_operator_label = affected_operator_label or current_state.latest_exception_affected_operator_label
+    return {
+        "affected_machine_label": affected_machine_label if is_exception_event else None,
+        "affected_operator_label": affected_operator_label if is_exception_event else None,
+    }
+
+
+def _exception_payload_fields(event: Any, *, is_exception_event: bool) -> Dict[str, Optional[str]]:
+    if not is_exception_event:
+        return {
+            "impact_minutes_label": None,
+            "handling_status_label": None,
+            "suggest_reschedule_label": None,
+        }
+    return {
+        "impact_minutes_label": _impact_minutes_label(getattr(event, "impact_minutes", None)),
+        "handling_status_label": handling_status_label(getattr(event, "handling_status", None)),
+        "suggest_reschedule_label": suggest_reschedule_label(getattr(event, "suggest_reschedule", None)),
+    }
+
+
 def _execution_action_label(value: Any) -> str:
     return _ACTION_LABELS.get(_text(value), "操作未识别")
 
@@ -206,7 +246,8 @@ def build_task_card(row: Mapping[str, Any], state: Any, *, can_write_feedback: b
 def build_execution_payload(context: Mapping[str, Any]) -> Dict[str, Any]:
     can_write = bool(context.get("can_write_feedback"))
     feedback_write_enabled = bool(context.get("feedback_write_enabled"))
-    states = context.get("states") if isinstance(context.get("states"), dict) else {}
+    states_value = context.get("states")
+    states = states_value if isinstance(states_value, dict) else {}
     tasks: List[Dict[str, Any]] = []
     for row in context.get("rows") or []:
         if not isinstance(row, Mapping):
@@ -240,8 +281,8 @@ def event_payload(
     event: Any,
     state: Any = None,
     *,
-    machine_labels: Mapping[str, str] = None,
-    operator_labels: Mapping[str, str] = None,
+    machine_labels: Optional[Mapping[str, str]] = None,
+    operator_labels: Optional[Mapping[str, str]] = None,
 ) -> Dict[str, Any]:
     event_type = _text(getattr(event, "event_type", ""))
     action = _event_type_to_action(event_type)
@@ -249,19 +290,14 @@ def event_payload(
     remark = getattr(event, "remark", None) or getattr(event, "reason_detail", None)
     machines = machine_labels or {}
     operators = operator_labels or {}
-    affected_machine_id = _text(getattr(event, "affected_machine_id", None))
-    affected_operator_id = _text(getattr(event, "affected_operator_id", None))
-    current_state = state if isinstance(state, OperationExecutionState) else None
-    is_latest_exception = bool(
-        is_exception_event
-        and current_state is not None
-        and getattr(event, "id", None) == current_state.latest_exception_event_id
+    resource_labels = _latest_exception_resource_labels(
+        event=event,
+        state=state,
+        machine_labels=machines,
+        operator_labels=operators,
+        is_exception_event=is_exception_event,
     )
-    affected_machine_label = machines.get(affected_machine_id) if affected_machine_id else None
-    affected_operator_label = operators.get(affected_operator_id) if affected_operator_id else None
-    if is_latest_exception:
-        affected_machine_label = affected_machine_label or current_state.latest_exception_affected_machine_label
-        affected_operator_label = affected_operator_label or current_state.latest_exception_affected_operator_label
+    exception_fields = _exception_payload_fields(event, is_exception_event=is_exception_event)
     return {
         "event_id": getattr(event, "id", None),
         "op_id": getattr(event, "op_id", None),
@@ -280,13 +316,11 @@ def event_payload(
         "severity": getattr(event, "severity", None),
         "severity_label": severity_label(getattr(event, "severity", None)) if getattr(event, "severity", None) else None,
         "impact_minutes": getattr(event, "impact_minutes", None),
-        "impact_minutes_label": _impact_minutes_label(getattr(event, "impact_minutes", None)) if is_exception_event else None,
-        "affected_machine_label": affected_machine_label if is_exception_event else None,
-        "affected_operator_label": affected_operator_label if is_exception_event else None,
-        "handling_status_label": handling_status_label(getattr(event, "handling_status", None)) if is_exception_event else None,
-        "suggest_reschedule_label": (
-            suggest_reschedule_label(getattr(event, "suggest_reschedule", None)) if is_exception_event else None
-        ),
+        "impact_minutes_label": exception_fields["impact_minutes_label"],
+        "affected_machine_label": resource_labels["affected_machine_label"],
+        "affected_operator_label": resource_labels["affected_operator_label"],
+        "handling_status_label": exception_fields["handling_status_label"],
+        "suggest_reschedule_label": exception_fields["suggest_reschedule_label"],
     }
 
 

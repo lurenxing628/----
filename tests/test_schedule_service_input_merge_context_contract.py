@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import sqlite3
 from datetime import datetime
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
 from core.services.scheduler.config.config_field_spec import default_snapshot_values
 from core.services.scheduler.config.config_snapshot import ScheduleConfigSnapshot
 from core.services.scheduler.summary.optimizer_public_summary import project_public_algo_summary
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 class _SummaryContract:
@@ -88,6 +91,8 @@ def test_schedule_service_returns_merge_context_degraded_summary_without_input_f
 
     conn = sqlite3.connect(":memory:", check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    conn.executescript((REPO_ROOT / "schema.sql").read_text(encoding="utf-8"))
+    conn.commit()
 
     def _stub_orchestrate(svc, *, schedule_input, simulate, strict_mode, **kwargs):
         assert schedule_input.algo_input_outcome.has_events

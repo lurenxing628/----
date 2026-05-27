@@ -245,7 +245,7 @@ def main() -> None:
         svc1._get_batch_or_raise = lambda bid: _batch_stub(bid, "pending")  # type: ignore[assignment]
         svc1.op_repo = SimpleNamespace(list_by_batch=lambda bid: list(ops_by_batch.get(bid, [])))  # type: ignore[assignment]
 
-        ret = svc1.run_schedule(batch_ids=["B001"], start_dt="2026-01-01 08:00:00", simulate=True, enforce_ready=True)
+        ret = svc1.run_schedule(batch_ids=["B001"], start_dt="2026-01-01 08:00:00", simulate=False, enforce_ready=True)
         assert captured.get("algo_input_ids") == [1, 2], f"算法输入不应包含 completed/skipped：{captured!r}"
         assert captured.get("freeze_reschedulable_ids") == [1, 2], f"freeze seed 应与可重排集合一致：{captured!r}"
         assert captured.get("persist_scheduled_op_ids") == {1, 2}, f"persist 契约收口异常：{captured!r}"
@@ -294,7 +294,7 @@ def main() -> None:
         captured.pop("persist_results_op_ids", None)
         rejected_out_of_scope = False
         try:
-            svc1.run_schedule(batch_ids=["B001"], start_dt="2026-01-01 08:00:00", simulate=True, enforce_ready=True)
+            svc1.run_schedule(batch_ids=["B001"], start_dt="2026-01-01 08:00:00", simulate=False, enforce_ready=True)
         except ValidationError as e:
             details = dict(getattr(e, "details", {}) or {})
             rejected_out_of_scope = details.get("reason") == "out_of_scope_schedule_rows"

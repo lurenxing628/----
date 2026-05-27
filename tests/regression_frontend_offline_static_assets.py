@@ -18,6 +18,14 @@ FRONTEND_ROOTS = [
 
 FRONTEND_SUFFIXES = {".html", ".css", ".js", ".md"}
 WORKBENCH_MOCKUP = REPO_ROOT / "docs" / "aps_frontend_workbench_mockup.html"
+USER_VISIBLE_DOC_ROOTS = [
+    REPO_ROOT / "docs",
+    REPO_ROOT / "static" / "docs",
+    REPO_ROOT / "web_new_test" / "static" / "docs",
+]
+USER_VISIBLE_DOC_EXCLUDED_DIRS = {
+    (REPO_ROOT / "docs" / "dev").resolve(),
+}
 
 WORKBENCH_MOCKUP_FORBIDDEN_TEXT = [
     "异常解释",
@@ -57,11 +65,41 @@ WORKBENCH_MOCKUP_FORBIDDEN_TEXT = [
     "车间待开工 / 暂停 / 完工",
     "开工 / 暂停 / 完工",
     "当前阶段不展示暂停或继续生产按钮",
-    "计划和现场实际",
     "查看偏差",
     "后续复盘视图",
     "分析复盘",
     "风险复盘入口",
+]
+
+USER_VISIBLE_LEGACY_DRAFT_TEXT = [
+    "第一版",
+    "后续版本再补",
+    "如果进入正式实现",
+    "后续开放",
+    "静态 HTML 原型",
+    "设计讨论材料",
+    "当前阶段",
+    "第一阶段",
+    "后续再补",
+]
+
+USER_VISIBLE_INTERNAL_TERMS = [
+    "plan_role",
+    "scenario_id",
+    "source_table",
+    "candidate_id",
+    "event_type",
+    "ReasonCode",
+    "score tuple",
+    "score_tuple",
+    "PlanIdentity",
+    "EvidenceLink",
+    "ExecutionEvent",
+    "ExecutionState",
+    "OperationExecutionEvents",
+    "OperationExecutionState",
+    "state_revision",
+    "dirty_fields",
 ]
 
 WORKBENCH_MOCKUP_FORBIDDEN_PATTERNS = [
@@ -110,6 +148,18 @@ def _frontend_files() -> Iterable[Path]:
             if path.is_file() and path.suffix.lower() in FRONTEND_SUFFIXES:
                 seen.add(path)
                 yield path
+    for root in USER_VISIBLE_DOC_ROOTS:
+        if not root.exists():
+            continue
+        for path in root.rglob("*"):
+            if not path.is_file() or path.suffix.lower() not in FRONTEND_SUFFIXES:
+                continue
+            resolved_parent = path.parent.resolve()
+            if any(excluded == resolved_parent or excluded in resolved_parent.parents for excluded in USER_VISIBLE_DOC_EXCLUDED_DIRS):
+                continue
+            if path not in seen:
+                seen.add(path)
+                yield path
     if WORKBENCH_MOCKUP.exists() and WORKBENCH_MOCKUP not in seen:
         yield WORKBENCH_MOCKUP
 
@@ -142,6 +192,26 @@ def _collect_external_resource_violations() -> List[str]:
         violations.extend(_collect_external_resource_violations_from_text(str(rel), text))
 
     return violations
+
+
+def _user_visible_text_files() -> Iterable[Path]:
+    seen: Set[Path] = set()
+    for root in USER_VISIBLE_DOC_ROOTS:
+        if not root.exists():
+            continue
+        for path in root.rglob("*"):
+            if not path.is_file() or path.suffix.lower() not in {".html", ".md"}:
+                continue
+            resolved_parent = path.parent.resolve()
+            if any(excluded == resolved_parent or excluded in resolved_parent.parents for excluded in USER_VISIBLE_DOC_EXCLUDED_DIRS):
+                continue
+            if path not in seen:
+                seen.add(path)
+                yield path
+    for path in (REPO_ROOT / "web" / "viewmodels").glob("page_manuals_*.py"):
+        if path not in seen:
+            seen.add(path)
+            yield path
 
 
 def test_frontend_static_assets_are_offline_local() -> None:
@@ -190,3 +260,17 @@ def test_workbench_mockup_uses_plain_language_for_users() -> None:
         violations.extend(match.group(0) for match in pattern.finditer(text))
 
     assert not violations, "原型页面仍有不适合直接给用户看的旧词：" + "、".join(violations)
+
+
+def test_user_visible_docs_do_not_use_internal_or_draft_terms() -> None:
+    violations: List[str] = []
+    forbidden_terms = tuple(USER_VISIBLE_LEGACY_DRAFT_TEXT + USER_VISIBLE_INTERNAL_TERMS)
+    for path in _user_visible_text_files():
+        rel = str(path.relative_to(REPO_ROOT))
+        text = path.read_text(encoding="utf-8")
+        for term in forbidden_terms:
+            index = text.find(term)
+            if index >= 0:
+                violations.append(f"{rel}:{_line_no(text, index)}: 用户可见说明不能出现 {term}")
+
+    assert not violations, "\n".join(violations)

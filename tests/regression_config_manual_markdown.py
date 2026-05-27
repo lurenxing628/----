@@ -8,7 +8,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import Dict, List, Set, Tuple
+from typing import Any, Dict, List, Set, Tuple
 
 from flask import url_for
 
@@ -370,7 +370,7 @@ def _mode_headers(ui_mode: str) -> Dict[str, str]:
     return {"Cookie": f"aps_ui_mode={ui_mode}"}
 
 
-def _build_url(app, endpoint: str, **values: str) -> str:
+def _build_url(app, endpoint: str, **values: Any) -> str:
     with app.test_request_context():
         return url_for(endpoint, **values)
 
@@ -516,7 +516,12 @@ def _assert_scheduler_manual_required_content(markdown_text: str, label: str) ->
         "正式排产和模拟排产都算",
         "按这个最新版本的超期清单口径重新计算",
         "查询结果表包含 10 列",
-        "任务明细表有 11 列",
+        "任务明细表有 14 列",
+        "| 现场状态 | 显示待开工、生产中、暂停中、异常中、已完工等现场反馈状态 |",
+        "| 最近异常 | 显示最近一次异常的中文摘要；没有异常时显示暂无异常 |",
+        "| 影响资源 | 显示异常影响到的设备或人员；没有填写时显示未填写 |",
+        "任务明细/日历矩阵/甘特图/现场反馈",
+        "页面里有任务明细、日历矩阵、甘特图和现场反馈四个视图",
         "| 查询对象 | 当前视角正在看的人员、设备或班组 |",
         "| 日志序号 | 当前查询结果里的顺序，不是固定不变的数据库编号 |",
         "导入批次时“自动生成工序”覆盖了手工补的数据怎么办？",
@@ -531,6 +536,8 @@ def _assert_scheduler_manual_required_content(markdown_text: str, label: str) ->
     ):
         assert needle in markdown_text, f"{label} 缺少说明书必备内容：{needle}"
     assert "用来查看、导出、恢复这些版本" not in markdown_text, f"{label} 不应再写排产历史可以导出或恢复版本"
+    assert "模拟方案报表只能在页面上查看" not in markdown_text, f"{label} 不应再写模拟方案报表不能导出"
+    assert "导出的 Excel 也会按这个模拟方案生成" in markdown_text, f"{label} 缺少模拟预览导出口径"
     for forbidden in (
         "备份与恢复",
         "默认是全部",

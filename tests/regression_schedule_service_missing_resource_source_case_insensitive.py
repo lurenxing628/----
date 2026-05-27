@@ -149,7 +149,7 @@ def main() -> None:
         svc.op_repo = _StubOpRepo()  # type: ignore[assignment]
 
         try:
-            svc.run_schedule(batch_ids=["B001"], start_dt="2026-01-01 08:00:00", simulate=True, enforce_ready=True)
+            svc.run_schedule(batch_ids=["B001"], start_dt="2026-01-01 08:00:00", simulate=False, enforce_ready=True)
         finally:
             conn.close()
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List, Set
+from typing import Any, Callable, Dict, List, Optional, Set
 
 from .schedule_candidate_persistence import persist_candidate_comparison
 
@@ -16,7 +16,11 @@ def _operation_ids(reschedulable_operations: List[Any]) -> Set[int]:
     }
 
 
-def _candidate_allowed_operations(*, payload_validation_operations: List[Any], reschedulable_operations: List[Any]) -> List[Any]:
+def _candidate_allowed_operations(
+    *,
+    payload_validation_operations: Optional[List[Any]],
+    reschedulable_operations: List[Any],
+) -> List[Any]:
     if payload_validation_operations is not None:
         return list(payload_validation_operations or [])
     return list(reschedulable_operations or [])
@@ -46,13 +50,13 @@ def persist_schedule_run_with_candidates(
     overdue_items: List[Dict[str, Any]],
     time_cost_ms: int,
     candidate_comparison: Any,
-    execution_fixed_op_ids: Set[int] = None,
-    execution_completed_op_ids: Set[int] = None,
-    execution_guard_state_revisions: Dict[int, str] = None,
-    execution_snapshot_revision: str = None,
-    execution_snapshot_op_ids: List[int] = None,
-    execution_facts: Dict[int, Any] = None,
-    payload_validation_operations: List[Any] = None,
+    execution_fixed_op_ids: Optional[Set[int]] = None,
+    execution_completed_op_ids: Optional[Set[int]] = None,
+    execution_guard_state_revisions: Optional[Dict[int, str]] = None,
+    execution_snapshot_revision: Optional[str] = None,
+    execution_snapshot_op_ids: Optional[List[int]] = None,
+    execution_facts: Optional[Dict[int, Any]] = None,
+    payload_validation_operations: Optional[List[Any]] = None,
 ) -> None:
     with svc.tx_manager.transaction():
         persist_schedule_core_in_tx(

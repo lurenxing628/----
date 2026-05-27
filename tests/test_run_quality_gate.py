@@ -1042,6 +1042,12 @@ def test_pyright_tools_coverage_rejects_config_that_does_not_match_tool_paths(mo
         module._assert_pyright_tools_coverage()
 
 
+def test_repository_pyright_tools_config_matches_quality_gate_tool_paths():
+    module = _import_run_quality_gate()
+
+    module._assert_pyright_tools_config_matches_tool_paths()
+
+
 def test_pyright_tools_reused_cache_validates_config_without_rerunning_pyright(monkeypatch, tmp_path):
     module = _import_run_quality_gate()
     repo_root = tmp_path / "repo"

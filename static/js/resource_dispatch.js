@@ -335,6 +335,24 @@
     return code;
   }
 
+  function executionPromptStartResource(button) {
+    const plannedMachine = button.getAttribute("data-machine-id") || "";
+    const plannedOperator = button.getAttribute("data-operator-id") || "";
+    const machine = executionPrompt("请确认实际设备编号（需与当前计划设备一致）", plannedMachine);
+    if (machine === null) return null;
+    if (!trim(machine)) {
+      executionNotice("请填写实际设备编号。");
+      return null;
+    }
+    const operator = executionPrompt("请填写实际人员工号（默认当前计划人员）", plannedOperator);
+    if (operator === null) return null;
+    if (!trim(operator)) {
+      executionNotice("请填写实际人员工号。");
+      return null;
+    }
+    return { machine_id: trim(machine), operator_id: trim(operator) };
+  }
+
   function renderExecutionExceptionDetails(task) {
     if (!trim(task && task.latest_exception_reason_label)) return "";
     const impact = trim(task.latest_exception_impact_minutes_label) || "暂时不知道影响多久";
@@ -492,8 +510,10 @@
     ].join("-");
     payload.remark = "";
     if (action === "start") {
-      payload.machine_id = button.getAttribute("data-machine-id") || "";
-      payload.operator_id = button.getAttribute("data-operator-id") || "";
+      const actualResource = executionPromptStartResource(button);
+      if (actualResource === null) return null;
+      payload.machine_id = actualResource.machine_id;
+      payload.operator_id = actualResource.operator_id;
     } else if (action === "pause") {
       const reason = executionPromptReason();
       if (reason === null) return null;

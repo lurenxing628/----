@@ -201,6 +201,8 @@ items:
       - templates/scheduler/analysis_parts/_candidate_comparison.html
       - core/services/scheduler/run/schedule_candidate_summary.py
       - tests/regression_scheduler_candidate_analysis_contract.py
+      - tests/regression_scheduler_candidate_summary_contract.py
+      - tests/regression_scheduler_graph_auto_selection_contract.py
       - tests/regression_scheduler_candidate_plain_language.py
       - tests/regression_frontend_offline_static_assets.py
     entrypoints:
@@ -208,7 +210,7 @@ items:
       - "在 templates/scheduler/analysis_parts/_candidate_comparison.html 固定展示三张摘要卡"
       - "差值固定相对正式采用方案计算，不做任意两方案自由比较"
     test_commands:
-      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_analysis_contract.py tests/regression_scheduler_candidate_plain_language.py tests/regression_frontend_offline_static_assets.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_analysis_contract.py tests/regression_scheduler_candidate_plain_language.py tests/regression_frontend_offline_static_assets.py tests/regression_scheduler_candidate_summary_contract.py tests/regression_scheduler_graph_auto_selection_contract.py"
     forbidden_paths:
       - core/algorithms/
       - schema.sql
@@ -224,7 +226,7 @@ items:
       - 页面、按钮、空状态、错误提示、导出内容都使用中文大白话，不显示内部英文枚举、数据库字段名、函数名
       - 新前端资源不走 CDN、外链字体、外链脚本、外链样式，不引入新前端框架或 Chrome 109 不支持能力
       - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
-      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_analysis_contract.py tests/regression_scheduler_candidate_plain_language.py tests/regression_frontend_offline_static_assets.py
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_analysis_contract.py tests/regression_scheduler_candidate_plain_language.py tests/regression_frontend_offline_static_assets.py tests/regression_scheduler_candidate_summary_contract.py tests/regression_scheduler_graph_auto_selection_contract.py
     notes: 只做代表方案总指标差值，不扩大落库范围。
 
   - slug: candidate-drilldown-empty-states
@@ -749,8 +751,8 @@ items:
       candidate-drilldown-empty-states: 文档收口必须覆盖方案对比的跳转、空状态、周计划、资源负荷和停机影响导出，避免用户说明漏掉二级页面。
       plan-vs-actual-review: 文档收口必须覆盖计划和现场实际复盘的页面、导出列和无现场反馈状态，否则用户不知道怎么核对现场结果。
       reschedule-respects-execution-facts: 文档收口必须等重排完整尊重现场事实后再写验收手册，避免说明书承诺了系统还没保护的行为。
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-27-aps-three-gap-docs-quality-gate
     minimal_loop: false
     primary_paths:
       - static/docs/
@@ -769,9 +771,10 @@ items:
       - "先跑每条已完成 feature 的精准测试，再跑 YAML 校验和质量门禁"
       - "用户说明只写中文大白话；内部字段名只允许出现在开发专用说明里"
     test_commands:
-      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_frontend_offline_static_assets.py tests/test_codestable_tools_contract.py tests/test_scan_py38plus_syntax.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_frontend_offline_static_assets.py tests/regression_frontend_ui_language_polish.py tests/regression_config_manual_markdown.py tests/regression_page_manual_registry.py tests/regression_reports_layout_contract.py tests/regression_gantt_simulation_entry_shell.py tests/test_codestable_tools_contract.py tests/test_scan_py38plus_syntax.py tests/regression_aps_three_gap_docs_quality_gate.py tests/test_run_quality_gate.py"
       - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .codestable/tools/validate-yaml.py --file .codestable/roadmap/aps-three-gap-directions/aps-three-gap-directions-items.yaml --yaml-only --require roadmap --require created --require items"
-      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tests/regression_frontend_offline_static_assets.py tests/regression_config_manual_markdown.py tests/regression_page_manual_registry.py tests/regression_scheduler_resource_dispatch_invalid_query_cleanup.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_aps_three_gap_py38_scope.py --base-ref d4589d77"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tools/scan_aps_three_gap_py38_scope.py tests/regression_frontend_offline_static_assets.py tests/regression_frontend_ui_language_polish.py tests/regression_config_manual_markdown.py tests/regression_page_manual_registry.py tests/regression_gantt_simulation_entry_shell.py tests/regression_scheduler_resource_dispatch_invalid_query_cleanup.py tests/regression_aps_three_gap_docs_quality_gate.py tests/test_run_quality_gate.py"
       - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache"
     forbidden_paths:
       - vendor/
@@ -788,11 +791,11 @@ items:
       - Win7 x64、Python 3.8、Chrome 109、离线静态资源验收手册存在，并写清楚本地怎么验收
       - 新前端资源不走 CDN、外链字体、外链脚本、外链样式，不引入新前端框架或 Chrome 109 不支持能力
       - Python 3.8 语法约束测试覆盖新增代码，不升级破坏 Win7 x64 的依赖
-      - 必须运行 Python 3.8 语法风险扫描；如果全仓旧代码仍有历史风险，本条至少要对质量门禁入口、质量门禁 helper、本 roadmap 改动和本条新增测试运行 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tests/regression_frontend_offline_static_assets.py tests/regression_config_manual_markdown.py tests/regression_page_manual_registry.py tests/regression_scheduler_resource_dispatch_invalid_query_cleanup.py；实施 docs-quality-gate 时如果新增了测试文件，也要把新增文件加入扫描
+      - 必须运行 Python 3.8 语法风险扫描；如果全仓旧代码仍有历史风险，本条至少要对质量门禁入口、质量门禁 helper、本 roadmap 改动和本条新增测试运行 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_aps_three_gap_py38_scope.py --base-ref d4589d77，以及 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tools/scan_aps_three_gap_py38_scope.py tests/regression_frontend_offline_static_assets.py tests/regression_frontend_ui_language_polish.py tests/regression_config_manual_markdown.py tests/regression_page_manual_registry.py tests/regression_gantt_simulation_entry_shell.py tests/regression_scheduler_resource_dispatch_invalid_query_cleanup.py tests/regression_aps_three_gap_docs_quality_gate.py tests/test_run_quality_gate.py；实施 docs-quality-gate 时如果新增了测试文件，也要把新增文件加入扫描
       - 上面固定命令只是当前路线图已有测试和工具的示例，不能当作最终完整扫描范围；docs-quality-gate 收口时必须汇总本 roadmap 所有已完成 feature 新增或修改过的 Python 文件，再一起运行 Python 3.8 语法风险扫描
       - 如果实施时有稳定的 roadmap 起点提交，推荐用 git diff --name-only <roadmap-start-ref>...HEAD -- '*.py' 收集 Python 文件后传给 tools/scan_py38plus_syntax.py；如果没有稳定起点，就按每个已完成 feature acceptance 记录里的 changed Python files 汇总，不能只照抄固定几个测试文件
       - YAML 校验通过
-      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_frontend_offline_static_assets.py tests/test_codestable_tools_contract.py tests/test_scan_py38plus_syntax.py；如果实施时新增 tests/regression_aps_three_gap_docs_quality_gate.py，再把它加入本命令
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_frontend_offline_static_assets.py tests/regression_frontend_ui_language_polish.py tests/regression_config_manual_markdown.py tests/regression_page_manual_registry.py tests/regression_reports_layout_contract.py tests/regression_gantt_simulation_entry_shell.py tests/test_codestable_tools_contract.py tests/test_scan_py38plus_syntax.py tests/regression_aps_three_gap_docs_quality_gate.py tests/test_run_quality_gate.py
       - 实施本条 feature 时必须运行并通过 YAML 校验：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .codestable/tools/validate-yaml.py --file .codestable/roadmap/aps-three-gap-directions/aps-three-gap-directions-items.yaml --yaml-only --require roadmap --require created --require items
       - 实施本条 feature 收尾时必须运行质量门禁；若工作区干净，用 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache；若本地还有无关改动，只能用 --allow-dirty-worktree 作为反馈，不能宣称 clean proof
-    notes: 收尾项不能替代每条 feature 自己的精准测试。若工作区不干净，只能用 --allow-dirty-worktree 作为本地反馈，不能宣称 clean proof。
+    notes: 已完成用户说明、开发测试说明、回归清单、Win7 离线验收手册、文档质量测试、YAML 校验和 Python 3.8 扫描；clean-worktree 质量门禁需在提交后工作区干净时作为最终证明运行。

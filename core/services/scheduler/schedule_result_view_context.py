@@ -276,7 +276,8 @@ def _identity_bool(plan_identity: Dict[str, Any], data: Dict[str, Any], key: str
 
 def plan_role_filter_fields(plan_resolution_or_context: Any = None, **overrides: Any) -> Dict[str, Any]:
     data = {} if plan_resolution_or_context is None else _resolution_to_dict(plan_resolution_or_context)
-    plan_identity = data.get("plan_identity") if isinstance(data.get("plan_identity"), dict) else {}
+    raw_plan_identity = data.get("plan_identity")
+    plan_identity: Dict[str, Any] = dict(raw_plan_identity) if isinstance(raw_plan_identity, dict) else {}
     requested_role = str(_truthy_override_or_data(overrides, data, "requested_role", ("requested_role",), ROLE_ADOPTED))
     effective_role = str(
         _truthy_override_or_data(overrides, data, "effective_role", ("selected_role", "effective_plan_role"), ROLE_ADOPTED)

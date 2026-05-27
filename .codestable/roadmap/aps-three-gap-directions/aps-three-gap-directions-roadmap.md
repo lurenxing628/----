@@ -1,7 +1,7 @@
 ---
 doc_type: roadmap
 slug: aps-three-gap-directions
-status: active
+status: completed
 created: 2026-05-25
 last_reviewed: 2026-05-27
 tags: [aps, scheduler, delay-diagnosis, candidate-comparison, shop-floor-feedback, execution-facts, win7]
@@ -1444,9 +1444,9 @@ execution_snapshot_op_ids
 14. **aps-three-gap-docs-quality-gate**：补用户说明、开发说明、回归测试清单和 Win7/offline 验收手册。
     - 所属模块：测试和 Win7 约束。
     - 依赖：`delay-diagnosis-overdue-report-entry`、`candidate-drilldown-empty-states`、`plan-vs-actual-review`、`reschedule-respects-execution-facts`。
-    - 状态：planned。
-    - 对应 feature：未启动。
-    - 备注：收尾项，不能替代每条 feature 自己的测试。
+    - 状态：done。
+    - 对应 feature：`2026-05-27-aps-three-gap-docs-quality-gate`。
+    - 备注：已完成用户说明、开发测试说明、回归清单、Win7/offline 验收手册和文档质量门禁收口；每条 feature 的精准测试仍保留为事实源。
 
 **最小闭环**：第 3 条 `delay-diagnosis-overdue-report-entry` 做完后，用户可以从超期清单看到某个超期批次为什么晚、证据是什么、下一步去哪里看。这是风险低、能立即提升信任的第一条端到端路径。
 
@@ -1522,3 +1522,4 @@ execution_snapshot_op_ids
 - 2026-05-27：完成 `reschedule-minimum-execution-guardrails`。普通重排会读取开工/完工执行事实，已完工工序不再进待排集合，生产中工序保留实际开始和实际资源，落库前复查现场状态版本；如果最终校验失败，`Schedule`、`ScheduleHistory` 和 `ScheduleVersionSeq` 一起回滚；最新正式方案普通用户开工/完工按钮和直接 POST 已放开，候选、模拟预览、历史正式和非最新正式仍拒绝写入。
 - 2026-05-27：完成 `plan-vs-actual-review`。报表中心新增计划和现场实际复盘页面及 Excel 导出，支持按版本、日期和批次筛选；导出固定使用“计划和现场实际”工作表和中文列名；实际开始、实际结束、暂停时长、异常信息和实际资源均来自执行事件读模型。
 - 2026-05-27：完成 `reschedule-respects-execution-facts`。普通重排、候选比较、多起点、局部搜索、图排程 ready queue、scenario 保存和 scenario 发布统一接入执行事实快照；生产中和暂停中工序默认固定，已完工工序保留真实时间并约束下游，异常中阻止普通自动重排；普通模拟只校验不写正式版本；保存或发布后现场状态变化会返回中文冲突提示并回滚。
+- 2026-05-27：完成 `aps-three-gap-docs-quality-gate`，并将本 roadmap 状态改为 completed。用户说明、开发测试说明、回归测试清单、关键 Python 文件清单、Win7 x64 / Python 3.8 / Chrome 109 / 离线静态资源验收手册和质量门禁命令已收口；第 14 项复审发现的手册入口数量、用户可见内部英文名、旧草稿话术和第 5 项测试清单不一致问题已修复。

@@ -102,8 +102,16 @@ def main() -> None:
         report_engine_cls = cast(Any, ReportEngine)
         report_engine_cls.EXPORT_DIRECT_MAX_ROWS = 2
         report_engine_cls.EXPORT_STREAM_MAX_ROWS = 4
+        overdue_calls: List[Dict[str, Any]] = []
+        downtime_calls: List[Dict[str, Any]] = []
 
-        def fake_overdue_batches(self, version: int) -> Dict[str, Any]:
+        def fake_overdue_batches(
+            self,
+            version: int,
+            plan_role: Any = None,
+            scenario_id: Any = None,
+        ) -> Dict[str, Any]:
+            overdue_calls.append({"version": int(version), "plan_role": plan_role, "scenario_id": scenario_id})
             items = _make_overdue_items(5)
             return {
                 "version": int(version),
@@ -120,7 +128,15 @@ def main() -> None:
             diagnosis_call_count["value"] += 1
             raise RuntimeError("超期导出超出范围时不应生成诊断依据")
 
-        def fake_downtime_impact(self, version: int, start_date: Any, end_date: Any) -> Dict[str, Any]:
+        def fake_downtime_impact(
+            self,
+            version: int,
+            start_date: Any,
+            end_date: Any,
+            plan_role: Any = None,
+            scenario_id: Any = None,
+        ) -> Dict[str, Any]:
+            downtime_calls.append({"version": int(version), "plan_role": plan_role, "scenario_id": scenario_id})
             return {
                 "version": int(version),
                 "start_date": str(start_date),
@@ -150,6 +166,8 @@ def main() -> None:
             raise RuntimeError(f"超期拒绝行数估计异常：{overdue_details!r}")
         if overdue_details.get("report_name") != "超期清单":
             raise RuntimeError(f"超期拒绝报表名异常：{overdue_details!r}")
+        if overdue_calls != [{"version": 7, "plan_role": None, "scenario_id": None}]:
+            raise RuntimeError(f"超期导出计划身份参数未透传：{overdue_calls!r}")
 
         resp = client.get(
             "/reports/downtime/export?version=7&start_date=2026-01-01&end_date=2026-01-07",
@@ -173,6 +191,8 @@ def main() -> None:
             raise RuntimeError(f"拒绝行数估计异常：{details!r}")
         if details.get("report_name") != "停机影响统计":
             raise RuntimeError(f"拒绝报表名异常：{details!r}")
+        if downtime_calls != [{"version": 7, "plan_role": None, "scenario_id": None}]:
+            raise RuntimeError(f"停机影响导出计划身份参数未透传：{downtime_calls!r}")
 
         print("OK")
     finally:

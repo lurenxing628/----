@@ -509,6 +509,7 @@ def main() -> None:
         "reports.index",
         "reports.overdue_page",
         "reports.utilization_page",
+        "reports.execution_review_page",
         "reports.downtime_page",
         "system.backup_page",
         "system.logs_page",

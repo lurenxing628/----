@@ -109,7 +109,7 @@ def main():
         r1 = sch_svc.run_schedule(
             batch_ids=["B_OUT", "B_IN", "B_TERM"],
             start_dt="2026-02-01 08:00:00",
-            simulate=True,
+            simulate=False,
             created_by="regression",
         )
         ver1 = int(r1["version"])
@@ -158,7 +158,7 @@ def main():
         r2 = sch_svc.run_schedule(
             batch_ids=["B_OUT", "B_IN", "B_TERM"],
             start_dt=_fmt(start_dt),
-            simulate=True,
+            simulate=False,
             created_by="regression",
         )
         ver2 = int(r2["version"])
@@ -205,4 +205,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>APS 前端工作台原型 · 首页 / 甘特 / 方案对比 / 延期说明 / 车间反馈 / 报表中心</title>
+  <title>APS 前端工作台示例 · 首页 / 甘特 / 方案对比 / 延期说明 / 车间反馈 / 报表中心</title>
   <style>
     :root {
       --bg: #f3f6fb;
@@ -1582,7 +1582,7 @@
       <div class="brand">
         <div class="brand-mark">A</div>
         <div>
-          <h1>APS 前端工作台原型</h1>
+          <h1>APS 前端工作台示例</h1>
           <p>把首页、甘特、方案对比、延期说明、车间反馈和报表中心做成一套连贯的工作台。</p>
         </div>
       </div>
@@ -1637,7 +1637,7 @@
         <div class="sidebar-title">与当前前端的对照</div>
         <div class="sidebar-note">
           当前系统已经有首页卡片、甘特图、方案表、诊断区、资源派工和报表。<br>
-          这个原型主要把它们从“分散入口”改成“工作台 + 解释层 + 反馈层”。
+          这个页面主要把它们从“分散入口”整理成“工作台 + 解释层 + 反馈层”。
         </div>
       </div>
     </aside>
@@ -1647,7 +1647,7 @@
         <div class="topbar-left">
           <div class="topbar-badge">离线 · Win7 兼容 · 中文动作</div>
           <div>
-            <h2>APS 前端工作台原型</h2>
+            <h2>APS 前端工作台示例</h2>
             <div class="desc">首页不只是看数字；甘特不只是看条；方案不只是看表；延期要讲清楚；车间必须能反馈。</div>
           </div>
         </div>
@@ -1660,8 +1660,8 @@
         </div>
       </header>
 
-      <div class="footer-note" aria-label="原型边界">
-        这是静态 HTML 原型，所有数字、版本、风险和状态都是示例；它只用于讨论布局方向，不是正式页面，也不是用户说明书。
+      <div class="footer-note" aria-label="页面边界">
+        本页面使用示例数据，所有数字、版本、风险和状态都不代表真实生产结果；正式使用时请以系统页面里的实时数据为准。
       </div>
 
       <section id="home" class="panel">
@@ -2259,16 +2259,16 @@
             <div class="subpanel">
               <div class="subpanel-title">
                 <h4>批次后续明细</h4>
-                <span class="meta">后续版本再补</span>
+                <span class="meta">明细暂不展示</span>
               </div>
-              <div class="empty-state">第一版先看三套方案的总指标和跳转入口；批次、设备、人员这些更细明细后续版本再补。</div>
+              <div class="empty-state">这里先看三套方案的总指标和跳转入口；批次、设备、人员这些更细明细暂不展示。</div>
             </div>
             <div class="subpanel">
               <div class="subpanel-title">
                 <h4>资源后续明细</h4>
-                <span class="meta">后续版本再补</span>
+                <span class="meta">明细暂不展示</span>
               </div>
-              <div class="empty-state">第一版先看三套方案的总指标和跳转入口；具体哪台设备、哪个人、哪个批次受影响，等后续版本补齐后再展示。</div>
+              <div class="empty-state">这里先看三套方案的总指标和跳转入口；具体哪台设备、哪个人、哪个批次受影响，在明细页面查看。</div>
             </div>
           </div>
 
@@ -2420,7 +2420,7 @@
               </div>
               <div style="height:14px"></div>
               <div class="hint-box">
-                第一版只做可解释规则，不做自动改计划。<br>
+                这里用于看懂延期线索，不自动改计划。<br>
                 先让用户知道：<strong>晚了多久、建议先复核哪道工序、受影响谁、下一步能点哪里。</strong>
               </div>
             </div>
@@ -2497,7 +2497,7 @@
               </div>
 
               <div class="footnote">
-                第一版不做自动重排，不做 AI 改计划，不做复杂关键路径图。先把“看懂”做好。
+                这里不自动重排，不做 AI 改计划，不展示复杂关键路径图。先把“看懂”做好。
               </div>
             </div>
           </div>
@@ -2508,12 +2508,12 @@
         <div class="panel-header">
           <div>
             <h3>05 · 车间反馈</h3>
-            <p>车间端要更简单：大按钮、少字段、明确状态。当前阶段只展示开工和完工，让现场先能把进度反馈回来。</p>
+            <p>车间端要更简单：大按钮、少字段、明确状态。现场可以记录开工、暂停、继续生产、报异常和完工，计划员再用复盘页核对计划和实际差距。</p>
           </div>
           <div class="chip-row">
-            <span class="chip chip-success">当前阶段：开工 / 完工</span>
+            <span class="chip chip-success">开工 / 暂停 / 继续 / 报异常 / 完工</span>
             <span class="chip chip-info">重点：少填字段</span>
-            <span class="chip chip-soft">先不展示复杂操作</span>
+            <span class="chip chip-soft">异常会提醒是否建议重排</span>
           </div>
         </div>
         <div class="panel-body">
@@ -2531,7 +2531,7 @@
             <div class="shop-stat">
               <div class="k">生产中</div>
               <div class="v" style="color:var(--success);">7</div>
-              <div class="s">当前阶段按钮优先显示“完工”。</div>
+              <div class="s">按钮优先显示“暂停、报异常、完工”。</div>
             </div>
             <div class="shop-stat">
               <div class="k">待完工</div>
@@ -2563,7 +2563,7 @@
                     <div class="task-detail"><div class="k">预计完成</div><div class="v">05-24 18:42</div></div>
                   </div>
                   <div class="progress warning"><span style="width: 58%"></span></div>
-                  <div class="small">已加工 58% · 当前阶段只演示完工按钮。</div>
+                  <div class="small">已加工 58% · 这张示例卡显示完工动作。</div>
                   <div class="task-actions">
                     <button class="btn btn-primary btn-sm" disabled aria-disabled="true">示例：完工</button>
                   </div>
@@ -2603,7 +2603,7 @@
                     <div class="task-detail"><div class="k">计划偏差</div><div class="v">晚 1 小时 20 分钟</div></div>
                   </div>
                   <div class="progress warning"><span style="width: 40%"></span></div>
-                  <div class="small">当前阶段只显示完工相关动作。</div>
+                  <div class="small">这张示例卡显示完工相关动作。</div>
                   <div class="task-actions">
                     <button class="btn btn-secondary btn-sm" disabled aria-disabled="true">示例：完工</button>
                   </div>
@@ -2643,7 +2643,7 @@
               <div class="time-track">
                 <div class="time-event success">
                   <div class="top"><strong>开工</strong><span class="time">08:32</span></div>
-                  <div class="desc">B202605-018 已由张三在 M-03 开工。后续再集中展示计划和现场反馈的差距。</div>
+                  <div class="desc">B202605-018 已由张三在 M-03 开工。计划员可以在计划和现场实际报表里查看开工偏差、完工偏差、暂停时长和异常处理状态。</div>
                 </div>
                 <div class="time-event info">
                   <div class="top"><strong>完工</strong><span class="time">16:58</span></div>
@@ -2762,7 +2762,7 @@
               </div>
               <div class="hint-box">
                 报表中心的定位不是“放更多数字”，而是“把风险页做得更明确”。<br>
-                用户应该从这里再回到：<strong>甘特图、资源派工、延期说明、方案对比</strong>。
+                用户应该从这里再回到：<strong>甘特图、资源排班、延期说明、方案对比</strong>。
               </div>
               <div style="height:12px"></div>
               <div class="action-row">
@@ -2776,7 +2776,7 @@
       </section>
 
       <div class="footer-note">
-        本原型只作为设计讨论材料保留；如果进入正式实现，需要重新拆进真实模板、真实 CSS 和真实数据链路。
+        本页面作为工作台样式参考保留；正式使用时以系统实际页面和真实数据为准。
       </div>
     </main>
   </div>

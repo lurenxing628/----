@@ -1,3 +1,12 @@
+---
+doc_type: feature-acceptance
+feature: 2026-05-27-reschedule-respects-execution-facts
+status: accepted
+roadmap: aps-three-gap-directions
+roadmap_item: reschedule-respects-execution-facts
+accepted_at: 2026-05-27
+---
+
 # 重排尊重现场执行事实验收报告
 
 > 阶段：阶段 3（验收闭环）

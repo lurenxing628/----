@@ -646,6 +646,10 @@ def test_resource_dispatch_frontend_posts_execution_button_clicks() -> None:
     assert "请先填写反馈人。" in source
     assert "payload.created_by = createdBy" in source
     assert 'payload.created_by = "现场反馈"' not in source
+    assert "executionPromptStartResource" in source
+    assert "请确认实际设备编号" in source
+    assert "请填写实际人员工号" in source
+    assert "第一版" not in source
     assert 'id="rdExecutionCreatedBy"' in template
     assert "反馈人" in template
     assert 'method: "POST"' in source

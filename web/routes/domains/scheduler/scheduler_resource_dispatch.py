@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import Any, Dict, Optional, cast
 
 from flask import current_app, flash, g, jsonify, redirect, request, send_file
 
@@ -63,7 +63,7 @@ def _feedback_svc() -> Any:
     return g.services.operation_execution_feedback_service
 
 
-def _execution_error_response(exc: AppError, *, action: str = None):
+def _execution_error_response(exc: AppError, *, action: Optional[str] = None):
     details = dict(exc.details or {})
     if "field" in details:
         details.setdefault("field_label", display_field_label(details.get("field")))
@@ -212,25 +212,25 @@ def resource_dispatch_execution_events(op_id: int):
         return jsonify(error_response(ErrorCode.UNKNOWN_ERROR, "现场反馈记录加载失败，请稍后重试。")), 500
 
 
-def _json_payload() -> dict:
+def _json_payload() -> Dict[str, Any]:
     data = request.get_json(silent=True)
     if isinstance(data, dict):
         return dict(data)
     return {}
 
 
-def _feedback_context(op_id: int, payload: dict) -> ExecutionFeedbackContext:
+def _feedback_context(op_id: int, payload: Dict[str, Any]) -> ExecutionFeedbackContext:
     return ExecutionFeedbackContext(
-        schedule_version=payload.get("version") or payload.get("schedule_version"),
-        schedule_id=payload.get("schedule_id"),
+        schedule_version=cast(int, payload.get("version") or payload.get("schedule_version")),
+        schedule_id=cast(int, payload.get("schedule_id")),
         op_id=op_id,
-        batch_id=payload.get("batch_id"),
-        expected_state_revision=payload.get("expected_state_revision"),
-        created_by=payload.get("created_by"),
-        idempotency_key=payload.get("idempotency_key"),
-        requested_plan_role=payload.get("requested_plan_role") or payload.get("plan_role"),
-        source_table=payload.get("source_table"),
-        effective_plan_role=payload.get("effective_plan_role"),
+        batch_id=cast(str, payload.get("batch_id")),
+        expected_state_revision=cast(str, payload.get("expected_state_revision")),
+        created_by=cast(str, payload.get("created_by")),
+        idempotency_key=cast(str, payload.get("idempotency_key")),
+        requested_plan_role=cast(str, payload.get("requested_plan_role") or payload.get("plan_role")),
+        source_table=cast(str, payload.get("source_table")),
+        effective_plan_role=cast(str, payload.get("effective_plan_role")),
         scenario_id=payload.get("scenario_id"),
     )
 

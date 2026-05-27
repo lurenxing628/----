@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, cast
 
 from core.models.schedule_delay_diagnosis import (
     ConfirmedFact,
@@ -242,6 +242,7 @@ class ScheduleDelayDiagnosisService:
                 link=plan_link(plan_identity, "/reports/overdue", scenario_id=plan_identity.scenario_id),
             )
         else:
+            last_row = cast(Mapping[str, Any], last_row)
             evidence = EvidenceLink(
                 evidence_type="schedule_row",
                 evidence_label="计划排程明细",
@@ -320,7 +321,7 @@ class ScheduleDelayDiagnosisService:
             SuggestedAction(
                 label="核对物料明细",
                 target_page="物料明细",
-                link=f"/materials/batches?batch_id={batch_id}",
+                link=f"/material/batches?batch_id={batch_id}",
                 reason="第一版只能按批次物料明细给线索。",
                 priority="medium",
             ),

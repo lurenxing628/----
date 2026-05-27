@@ -1,0 +1,215 @@
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+from tools import quality_gate_shared
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+USER_GUIDE = REPO_ROOT / "static" / "docs" / "aps_three_gap_user_guide.md"
+DEV_GUIDE = REPO_ROOT / "docs" / "dev" / "aps_three_gap_quality_gate.md"
+
+ROADMAP_FEATURES = (
+    "2026-05-27-shared-plan-identity-evidence-contract",
+    "2026-05-27-delay-diagnosis-core-service",
+    "2026-05-27-delay-diagnosis-overdue-report-entry",
+    "2026-05-27-candidate-recommendation-card",
+    "2026-05-27-candidate-summary-delta-cards",
+    "2026-05-27-candidate-drilldown-empty-states",
+    "2026-05-27-dispatch-plan-identity-guardrails",
+    "2026-05-27-operation-execution-event-foundation",
+    "2026-05-27-resource-dispatch-start-finish-feedback",
+    "2026-05-27-reschedule-minimum-execution-guardrails",
+    "2026-05-27-shop-exception-feedback",
+    "2026-05-27-plan-vs-actual-review",
+    "2026-05-27-reschedule-respects-execution-facts",
+)
+
+USER_REQUIRED_PHRASES = (
+    "方案对比更好懂",
+    "延期解释更可查",
+    "现场反馈能进系统",
+    "计划和现场实际",
+    "重排时现场事实怎么保护",
+    "Win7 x64",
+    "Chrome 109",
+    "不依赖外部网站",
+)
+
+USER_FORBIDDEN_TERMS = (
+    "plan_role",
+    "scenario_id",
+    "source_table",
+    "candidate_id",
+    "event_type",
+    "ReasonCode",
+    "score tuple",
+    "ExecutionSnapshot",
+    "OperationExecutionEvents",
+    "state_revision",
+    "数据库字段",
+    "函数名",
+)
+
+DEV_REQUIRED_TERMS = (
+    "仅给开发和测试使用，不给用户看",
+    "PlanIdentity",
+    "EvidenceLink",
+    "OperationExecutionEvents",
+    "OperationExecutionState",
+    "state_revision",
+    "execution_snapshot_revision",
+    "execution_snapshot_op_ids",
+    "原 `.codestable/compound/2026-05-23-explore-aps-three-gap-directions.md` 后半段旧路线草案已经被本 roadmap 覆盖",
+    "git diff --name-only d4589d77 -- 'tests/*.py'",
+    "git diff --name-only d4589d77 -- '*.py'",
+    "tools/scan_aps_three_gap_py38_scope.py --base-ref d4589d77",
+)
+
+REGRESSION_TESTS = (
+    "tests/regression_freeze_window_bounds.py",
+    "tests/regression_scheduler_plan_identity_evidence_contract.py",
+    "tests/regression_scheduler_delay_diagnosis_contract.py",
+    "tests/regression_due_exclusive_consistency.py",
+    "tests/regression_gantt_adjustment_validate_simulate.py",
+    "tests/regression_report_delay_diagnosis_plain_language.py",
+    "tests/regression_gantt_partial_overdue_summary_surfaces_warning.py",
+    "tests/regression_dashboard_overdue_count_tolerance.py",
+    "tests/regression_scheduler_candidate_analysis_contract.py",
+    "tests/regression_scheduler_candidate_summary_contract.py",
+    "tests/regression_scheduler_candidate_week_plan_contract.py",
+    "tests/regression_scheduler_dispatch_plan_identity_guardrails.py",
+    "tests/regression_operation_execution_event_foundation.py",
+    "tests/regression_operation_execution_feedback_routes.py",
+    "tests/regression_resource_dispatch_partial_overdue_summary_surfaces_warning.py",
+    "tests/regression_scheduler_reschedule_execution_minimum_guardrails.py",
+    "tests/regression_operation_execution_exception_feedback.py",
+    "tests/regression_plan_vs_actual_review.py",
+    "tests/regression_scheduler_reschedule_execution_facts.py",
+    "tests/regression_gantt_adjustment_publish_execution_revision.py",
+    "tests/regression_frontend_offline_static_assets.py",
+    "tests/regression_frontend_ui_language_polish.py",
+    "tests/regression_config_manual_markdown.py",
+    "tests/regression_page_manual_registry.py",
+    "tests/regression_reports_layout_contract.py",
+    "tests/regression_gantt_simulation_entry_shell.py",
+    "tests/regression_schedule_input_collector_legacy_compat.py",
+    "tests/regression_schedule_service_missing_resource_source_case_insensitive.py",
+    "tests/regression_schedule_service_reschedulable_contract.py",
+    "tests/regression_scheduler_graph_report_mode_service_contract.py",
+    "tests/regression_scheduler_resource_dispatch_invalid_query_cleanup.py",
+    "tests/regression_skill_rank_mapping.py",
+    "tests/test_architecture_fitness.py",
+    "tests/test_codestable_tools_contract.py",
+    "tests/test_scan_py38plus_syntax.py",
+    "tests/regression_aps_three_gap_docs_quality_gate.py",
+    "tests/test_run_quality_gate.py",
+    "tests/test_schedule_service_input_merge_context_contract.py",
+)
+
+KEY_PYTHON_FILES = (
+    "core/models/schedule_plan_identity.py",
+    "core/models/schedule_delay_diagnosis.py",
+    "core/models/operation_execution_event.py",
+    "core/infrastructure/migration_operation_execution_contract.py",
+    "core/services/scheduler/schedule_plan_query_service.py",
+    "core/services/scheduler/schedule_delay_diagnosis_service.py",
+    "core/services/scheduler/schedule_delay_diagnosis_clues.py",
+    "core/services/scheduler/gantt_adjustment_validation_service.py",
+    "core/services/scheduler/operation_execution_feedback_actions.py",
+    "core/services/scheduler/operation_execution_feedback_service.py",
+    "core/services/scheduler/operation_execution_feedback_support.py",
+    "core/services/scheduler/operation_execution_labels.py",
+    "core/services/scheduler/execution_snapshot.py",
+    "core/services/scheduler/resource_dispatch_execution_enrichment.py",
+    "core/services/scheduler/run/schedule_execution_guardrails.py",
+    "core/services/scheduler/run/schedule_execution_persistence_guard.py",
+    "core/services/scheduler/run/schedule_candidate_persistence_helpers.py",
+    "core/services/scheduler/run/schedule_input_collector.py",
+    "core/services/scheduler/run/schedule_persistence.py",
+    "core/services/scheduler/gantt_adjustment_publish_service.py",
+    "core/services/report/execution_review.py",
+    "core/services/report/report_plan_helpers.py",
+    "data/repositories/batch_repo.py",
+    "data/repositories/machine_downtime_repo.py",
+    "data/repositories/operation_execution_event_repo.py",
+    "data/repositories/operation_execution_state_builder.py",
+    "data/repositories/schedule_adjustment_scenario_repo.py",
+    "web/routes/reports.py",
+    "web/routes/domains/scheduler/scheduler_resource_dispatch.py",
+    "web/viewmodels/scheduler_analysis_candidates.py",
+    "web/viewmodels/scheduler_analysis_candidate_helpers.py",
+    ".codestable/tools/validate-yaml.py",
+    "tools/quality_gate_shared.py",
+    "tools/scan_py38plus_syntax.py",
+    "tools/scan_aps_three_gap_py38_scope.py",
+)
+
+
+def _read(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
+
+
+def test_user_guide_exists_and_uses_plain_business_language() -> None:
+    text = _read(USER_GUIDE)
+
+    for phrase in USER_REQUIRED_PHRASES:
+        assert phrase in text
+
+    offenders = [term for term in USER_FORBIDDEN_TERMS if term in text]
+    assert offenders == []
+
+
+def test_developer_guide_is_marked_as_developer_only_and_keeps_internal_contracts() -> None:
+    text = _read(DEV_GUIDE)
+
+    for term in DEV_REQUIRED_TERMS:
+        assert term in text
+
+
+def test_developer_guide_lists_all_completed_roadmap_features() -> None:
+    text = _read(DEV_GUIDE)
+
+    missing = [feature for feature in ROADMAP_FEATURES if feature not in text]
+    assert missing == []
+
+
+def test_developer_guide_lists_regression_tests_and_key_python_files() -> None:
+    text = _read(DEV_GUIDE)
+
+    missing_tests = [path for path in REGRESSION_TESTS if path not in text]
+    missing_python = [path for path in KEY_PYTHON_FILES if path not in text]
+
+    assert missing_tests == []
+    assert missing_python == []
+
+
+def test_developer_guide_mentions_every_item_test_command_file() -> None:
+    items_text = _read(REPO_ROOT / ".codestable" / "roadmap" / "aps-three-gap-directions" / "aps-three-gap-directions-items.yaml")
+    dev_text = _read(DEV_GUIDE)
+    test_files = sorted(set(re.findall(r"tests/[A-Za-z0-9_./:-]+\.py", items_text)))
+
+    assert "tests/regression_aps_three_gap_docs_quality_gate.py" in test_files
+    missing = [path for path in test_files if path not in dev_text]
+    assert missing == []
+
+
+def test_developer_guide_contains_win7_offline_quality_gate_manual() -> None:
+    text = _read(DEV_GUIDE)
+
+    for phrase in (
+        "Win7 x64",
+        "Python 3.8",
+        "Chrome 109",
+        "离线静态资源",
+        "scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache",
+    ):
+        assert phrase in text
+
+
+def test_quality_gate_plan_runs_codestable_yaml_and_py38_scan() -> None:
+    displays = [command["display"] for command in quality_gate_shared.build_quality_gate_command_plan()]
+
+    assert any("validate-yaml.py --file .codestable/roadmap/aps-three-gap-directions" in item for item in displays)
+    assert any("scan_aps_three_gap_py38_scope.py --base-ref d4589d77" in item for item in displays)
+    assert any("scan_py38plus_syntax.py --fail-on-hit" in item for item in displays)

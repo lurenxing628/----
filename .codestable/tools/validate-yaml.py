@@ -49,9 +49,10 @@ from typing import Any, Dict, List, Optional, Tuple
 # through some IDEs) raise io.UnsupportedOperation — a ValueError + OSError
 # subclass — and we just leave the original encoding in place.
 for _stream in (sys.stdout, sys.stderr):
-    if hasattr(_stream, "reconfigure"):
+    _reconfigure = getattr(_stream, "reconfigure", None)
+    if callable(_reconfigure):
         try:
-            _stream.reconfigure(encoding="utf-8")
+            _reconfigure(encoding="utf-8")
         except (OSError, ValueError):
             pass
 

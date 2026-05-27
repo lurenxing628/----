@@ -131,7 +131,7 @@ def _run_case(tmp_path: Path, mode: str) -> Dict[str, Any]:
         result = ScheduleService(conn, logger=None, op_logger=None).run_schedule(
             batch_ids=["B001"],
             start_dt="2026-02-01 08:00:00",
-            simulate=True,
+            simulate=False,
             enforce_ready=False,
             created_by="regression",
         )
@@ -158,7 +158,7 @@ def _run_frozen_seed_case(tmp_path: Path, mode: str) -> Dict[str, Any]:
         svc.run_schedule(
             batch_ids=["B001"],
             start_dt="2026-02-01 08:00:00",
-            simulate=True,
+            simulate=False,
             enforce_ready=False,
             created_by="regression",
         )
@@ -168,7 +168,7 @@ def _run_frozen_seed_case(tmp_path: Path, mode: str) -> Dict[str, Any]:
         result = svc.run_schedule(
             batch_ids=["B001", "B002"],
             start_dt="2026-02-01 08:00:00",
-            simulate=True,
+            simulate=False,
             enforce_ready=False,
             created_by="regression",
         )

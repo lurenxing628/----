@@ -1,34 +1,16 @@
 from __future__ import annotations
 
-from datetime import datetime
 from decimal import Decimal
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Union
 
 from core.models.operation_execution_event import (
     EXECUTION_EVENT_EXCEPTION,
-    EXECUTION_EVENT_FINISH,
-    EXECUTION_EVENT_PAUSE,
-    EXECUTION_EVENT_RESUME,
-    EXECUTION_EVENT_START,
-    EXECUTION_STATUS_COMPLETED,
-    EXECUTION_STATUS_EXCEPTION,
-    EXECUTION_STATUS_NOT_STARTED,
-    EXECUTION_STATUS_PAUSED,
-    EXECUTION_STATUS_PROCESSING,
     OperationExecutionEvent,
-)
-from core.models.operation_execution_labels import (
-    event_type_to_action,
-    exception_reason_label,
-    execution_action_label,
-    execution_status_label,
-    handling_status_label,
-    severity_label,
-    suggest_reschedule_label,
 )
 from core.models.operation_execution_state import OperationExecutionState
 
 from .base_repo import BaseRepository
+from .operation_execution_state_builder import build_operation_execution_state
 
 _EVENT_COLUMNS = (
     "id",
@@ -73,15 +55,6 @@ _REQUIRED_TEXT_FIELDS = (
     "previous_state_revision",
 )
 
-_REPORTED_STATUS_BY_EVENT_TYPE = {
-    EXECUTION_EVENT_START: EXECUTION_STATUS_PROCESSING,
-    EXECUTION_EVENT_RESUME: EXECUTION_STATUS_PROCESSING,
-    EXECUTION_EVENT_PAUSE: EXECUTION_STATUS_PAUSED,
-    EXECUTION_EVENT_EXCEPTION: EXECUTION_STATUS_EXCEPTION,
-    EXECUTION_EVENT_FINISH: EXECUTION_STATUS_COMPLETED,
-}
-
-
 def _columns_sql() -> str:
     return ", ".join(_EVENT_COLUMNS)
 
@@ -116,8 +89,11 @@ def _required_text(payload: Dict[str, Any], field: str) -> str:
 
 
 def _required_positive_int(payload: Dict[str, Any], field: str) -> int:
+    raw_value = payload.get(field)
+    if raw_value is None:
+        raise ValueError(f"{field} is required")
     try:
-        value = int(payload.get(field))
+        value = int(raw_value)
     except (TypeError, ValueError):
         raise ValueError(f"{field} is required")  # noqa: B904
     if value <= 0:
@@ -150,40 +126,6 @@ def _event_payload(event_row: Union[OperationExecutionEvent, Dict[str, Any]]) ->
     return dict(event_row)
 
 
-def _parse_time(value: Optional[str]) -> Optional[datetime]:
-    text = str(value or "").strip()
-    if not text:
-        return None
-    try:
-        return datetime.fromisoformat(text)
-    except ValueError:
-        pass
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
-        try:
-            return datetime.strptime(text, fmt)
-        except ValueError:
-            continue
-    return None
-
-
-def _duration_minutes(start: Optional[str], end: Optional[str]) -> Optional[float]:
-    start_dt = _parse_time(start)
-    end_dt = _parse_time(end)
-    if start_dt is None or end_dt is None or end_dt < start_dt:
-        return None
-    return round((end_dt - start_dt).total_seconds() / 60.0, 6)
-
-
-def _impact_minutes_label(value: Optional[int]) -> str:
-    if value is None:
-        return "暂时不知道影响多久"
-    return f"预计影响 {int(value)} 分钟"
-
-
-def _suggest_reschedule_bool(value: Any) -> bool:
-    return str(value or "").strip().lower() in ("1", "yes", "true")
-
-
 def _suggest_reschedule_value(value: Any) -> int:
     text = str(value or "").strip().lower()
     if text in ("", "0", "no", "false"):
@@ -194,6 +136,7 @@ def _suggest_reschedule_value(value: Any) -> int:
     if parsed in (0, 1):
         return int(parsed)
     raise ValueError("suggest_reschedule must be 0 or 1")
+
 
 
 class OperationExecutionEventRepo(BaseRepository):
@@ -419,140 +362,14 @@ class OperationExecutionEventRepo(BaseRepository):
         machine_labels: Dict[str, str],
         operator_labels: Dict[str, str],
     ) -> OperationExecutionState:
-        if not events:
-            return OperationExecutionState(
-                op_id=int(op_id),
-                batch_id=batch_id,
-                state_revision=f"{int(op_id)}:0:0",
-            )
-
-        last_event = events[-1]
-        latest_exception = self._latest_exception(events)
-        actual_start_time = self._first_event_time(events, EXECUTION_EVENT_START)
-        actual_end_time = self._last_event_time(events, EXECUTION_EVENT_FINISH)
-        actual_machine_id = self._last_text(events, "actual_machine_id")
-        actual_operator_id = self._last_text(events, "actual_operator_id")
-        current_status = last_event.reported_status or _REPORTED_STATUS_BY_EVENT_TYPE.get(
-            last_event.event_type, EXECUTION_STATUS_NOT_STARTED
-        )
-        return OperationExecutionState(
-            op_id=int(op_id),
-            batch_id=last_event.batch_id or batch_id,
-            current_status=current_status,
-            current_status_label=execution_status_label(current_status),
-            actual_start_time=actual_start_time,
-            actual_end_time=actual_end_time,
-            actual_duration_minutes=_duration_minutes(actual_start_time, actual_end_time),
-            pause_duration_minutes=self._pause_duration_minutes(events),
-            actual_machine_id=actual_machine_id,
-            actual_machine_label=machine_labels.get(actual_machine_id or "") if actual_machine_id else None,
-            actual_operator_id=actual_operator_id,
-            actual_operator_label=operator_labels.get(actual_operator_id or "") if actual_operator_id else None,
-            last_event_id=last_event.id,
-            last_event_type=last_event.event_type,
-            last_event_time=last_event.event_time,
-            last_event_action_label=execution_action_label(event_type_to_action(last_event.event_type)),
-            last_event_remark=self._event_remark(last_event),
-            latest_exception_event_id=None if latest_exception is None else latest_exception.id,
-            latest_exception_time=None if latest_exception is None else latest_exception.event_time,
-            latest_exception_reason_code=None if latest_exception is None else latest_exception.reason_code,
-            latest_exception_reason_label=None
-            if latest_exception is None
-            else exception_reason_label(latest_exception.reason_code),
-            latest_exception_severity=None if latest_exception is None else latest_exception.severity,
-            latest_exception_severity_label=None
-            if latest_exception is None
-            else severity_label(latest_exception.severity),
-            latest_exception_impact_minutes=None if latest_exception is None else latest_exception.impact_minutes,
-            latest_exception_impact_minutes_label=None
-            if latest_exception is None
-            else _impact_minutes_label(latest_exception.impact_minutes),
-            latest_exception_affected_machine_id=None
-            if latest_exception is None
-            else latest_exception.affected_machine_id,
-            latest_exception_affected_machine_label=self._label(
-                machine_labels,
-                None if latest_exception is None else latest_exception.affected_machine_id,
-            ),
-            latest_exception_affected_operator_id=None
-            if latest_exception is None
-            else latest_exception.affected_operator_id,
-            latest_exception_affected_operator_label=self._label(
-                operator_labels,
-                None if latest_exception is None else latest_exception.affected_operator_id,
-            ),
-            latest_exception_handling_status=None if latest_exception is None else latest_exception.handling_status,
-            latest_exception_handling_status_label=None
-            if latest_exception is None
-            else handling_status_label(latest_exception.handling_status),
-            latest_exception_suggest_reschedule=False
-            if latest_exception is None
-            else _suggest_reschedule_bool(latest_exception.suggest_reschedule),
-            latest_exception_suggest_reschedule_label=None
-            if latest_exception is None
-            else suggest_reschedule_label(latest_exception.suggest_reschedule),
-            latest_exception_remark=None if latest_exception is None else self._event_remark(latest_exception),
-            state_revision=f"{int(op_id)}:{len(events)}:{int(last_event.id or 0)}",
-            updated_at=last_event.event_time,
+        return build_operation_execution_state(
+            op_id=op_id,
+            batch_id=batch_id,
+            events=events,
+            machine_labels=machine_labels,
+            operator_labels=operator_labels,
         )
 
-    @staticmethod
-    def _event_remark(event: OperationExecutionEvent) -> Optional[str]:
-        return event.remark or event.reason_detail
-
-    @staticmethod
-    def _latest_exception(events: Sequence[OperationExecutionEvent]) -> Optional[OperationExecutionEvent]:
-        for event in reversed(events):
-            if event.event_type == EXECUTION_EVENT_EXCEPTION:
-                return event
-        return None
-
-    @staticmethod
-    def _first_event_time(events: Sequence[OperationExecutionEvent], event_type: str) -> Optional[str]:
-        for event in events:
-            if event.event_type == event_type:
-                return event.event_time
-        return None
-
-    @staticmethod
-    def _last_event_time(events: Sequence[OperationExecutionEvent], event_type: str) -> Optional[str]:
-        for event in reversed(events):
-            if event.event_type == event_type:
-                return event.event_time
-        return None
-
-    @staticmethod
-    def _last_text(events: Sequence[OperationExecutionEvent], field: str) -> Optional[str]:
-        for event in reversed(events):
-            value = getattr(event, field)
-            if value:
-                return str(value)
-        return None
-
-    @staticmethod
-    def _pause_duration_minutes(events: Sequence[OperationExecutionEvent]) -> float:
-        total = 0.0
-        pause_started_at: Optional[str] = None
-        for event in events:
-            if event.event_type == EXECUTION_EVENT_PAUSE:
-                pause_started_at = event.event_time
-                continue
-            if pause_started_at and event.event_type in (
-                EXECUTION_EVENT_RESUME,
-                EXECUTION_EVENT_FINISH,
-                EXECUTION_EVENT_EXCEPTION,
-            ):
-                minutes = _duration_minutes(pause_started_at, event.event_time)
-                if minutes is not None:
-                    total += float(minutes)
-                pause_started_at = None
-        return total
-
-    @staticmethod
-    def _label(labels: Dict[str, str], value: Optional[str]) -> Optional[str]:
-        if not value:
-            return None
-        return labels.get(str(value), str(value))
 
 
 OperationExecutionEventRepository = OperationExecutionEventRepo

@@ -6,7 +6,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Dict, List
+from typing import Any, Dict, List, cast
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -75,6 +75,8 @@ def _build_client(tmp_path, monkeypatch):
             "INSERT INTO BatchOperations (op_code, batch_id, piece_id, seq, op_type_name, source, machine_id, operator_id, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             ("OP-B001-10", "B001", "P1", 10, "车削", "internal", "MC001", "OP001", "scheduled"),
         )
+        if cur.lastrowid is None:
+            raise RuntimeError("BatchOperations insert did not return row id")
         op_id = int(cur.lastrowid)
         conn.execute(
             "INSERT INTO Schedule (op_id, machine_id, operator_id, start_time, end_time, lock_status, version) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -345,7 +347,7 @@ def test_resource_dispatch_service_validation_errors_use_machine_field_keys() ->
 
 def test_resource_dispatch_service_version_latest_contract_matches_scheduler_routes() -> None:
     svc = object.__new__(ResourceDispatchService)
-    svc.history_service = type(
+    cast(Any, svc).history_service = type(
         "_HistoryService",
         (),
         {
@@ -421,7 +423,10 @@ def _is_data_like_route(path: str) -> bool:
 
 
 def _is_app_error_handler(handler: ast.ExceptHandler) -> bool:
-    return any(name == "AppError" for name in _exception_type_names(handler.type))
+    target = handler.type
+    if target is None:
+        return False
+    return any(name == "AppError" for name in _exception_type_names(target))
 
 
 def _is_generic_exception_handler(handler: ast.ExceptHandler) -> bool:

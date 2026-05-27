@@ -1,0 +1,41 @@
+feature: 2026-05-27-aps-three-gap-docs-quality-gate
+status: done
+roadmap: aps-three-gap-directions
+roadmap_item: aps-three-gap-docs-quality-gate
+steps:
+  - id: user-guide
+    title: 补用户说明
+    status: done
+    exit_signal: 用户说明用中文大白话覆盖方案对比、延期解释、现场反馈、复盘和重排保护。
+  - id: dev-quality-guide
+    title: 补开发测试收口说明
+    status: done
+    exit_signal: 开发说明标注仅给开发测试使用，并列出第 1-13 项测试、关键 Python 文件和门禁命令。
+  - id: docs-regression
+    title: 新增文档质量回归测试
+    status: done
+    exit_signal: 回归测试锁住用户说明不泄漏内部字段、开发说明有专用标识、测试清单覆盖第 1-13 项。
+  - id: adversarial-review
+    title: SubAgent 对抗审查和复审
+    status: done
+    exit_signal: 同阶段整体复审阻塞项为 0。
+  - id: quality-gate
+    title: 提交前收尾检查和提交后 clean proof
+    status: done
+    exit_signal: YAML、精准测试、Python 3.8 扫描、ruff、git diff --check 和长门禁自检已通过；clean-worktree 长门禁必须提交后在干净工作区验证。
+checks:
+  - id: user-visible-plain-language
+    title: 用户说明只用中文大白话，不显示内部字段
+    status: done
+  - id: developer-only-marker
+    title: 开发说明标注仅给开发和测试使用
+    status: done
+  - id: regression-list
+    title: 第 1-13 项测试和关键 Python 文件清单完整
+    status: done
+  - id: win7-offline
+    title: Win7、Python 3.8、Chrome 109、离线静态资源验收手册完整
+    status: done
+  - id: final-gates
+    title: 提交前收尾检查通过，clean proof 提交后验证
+    status: done

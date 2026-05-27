@@ -233,8 +233,9 @@ def _has_future_annotations(tree: ast.AST) -> bool:
     if not isinstance(tree, ast.Module):
         return False
     for stmt in tree.body:
-        if isinstance(stmt, ast.Expr) and isinstance(getattr(stmt, "value", None), ast.Constant):
-            if isinstance(stmt.value.value, str):
+        value = stmt.value if isinstance(stmt, ast.Expr) else None
+        if isinstance(value, ast.Constant):
+            if isinstance(value.value, str):
                 continue
         if isinstance(stmt, ast.ImportFrom) and stmt.module == "__future__":
             for alias in stmt.names:

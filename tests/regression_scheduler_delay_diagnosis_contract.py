@@ -301,6 +301,11 @@ def test_delay_diagnosis_reports_overdue_clues_and_stays_readonly(tmp_path) -> N
         assert "根因" not in str(scheduled.to_dict())
         assert "critical_chain" not in str(scheduled.to_dict())
         assert "primary_reason" not in str(scheduled.to_dict())
+        rendered_links = "\n".join(str(evidence.link or "") for clue in scheduled.candidate_clues for evidence in clue.evidences)
+        assert "/material/batches" in rendered_links
+        assert "/reports/downtime" in rendered_links
+        assert "/materials/batches" not in rendered_links
+        assert "/reports/downtime-impact" not in rendered_links
 
         unscheduled = _item_by_batch(report, "B_UNSCHEDULED")
         assert unscheduled.bucket == "unscheduled_overdue"
