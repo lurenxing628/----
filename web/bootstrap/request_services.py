@@ -21,6 +21,7 @@ from core.services.scheduler import (
     GanttAdjustmentValidationService,
     GanttService,
     OperationExecutionFeedbackService,
+    ResourceDispatchExecutionService,
     ResourceDispatchService,
     ScheduleService,
 )
@@ -47,6 +48,7 @@ REQUEST_SERVICES_PUBLIC_ATTRS = (
     "gantt_adjustment_scenario_service",
     "gantt_adjustment_publish_service",
     "resource_dispatch_service",
+    "resource_dispatch_execution_service",
     "operation_execution_feedback_service",
     "part_service",
     "part_operation_query_service",
@@ -201,6 +203,13 @@ class RequestServices:
         return self._construct(
             "resource_dispatch_service",
             lambda: ResourceDispatchService(self._db, logger=self._app_logger, op_logger=self._op_logger),
+        )
+
+    @cached_property
+    def resource_dispatch_execution_service(self) -> ResourceDispatchExecutionService:
+        return self._construct(
+            "resource_dispatch_execution_service",
+            lambda: ResourceDispatchExecutionService(self._db, logger=self._app_logger, op_logger=self._op_logger),
         )
 
     @cached_property

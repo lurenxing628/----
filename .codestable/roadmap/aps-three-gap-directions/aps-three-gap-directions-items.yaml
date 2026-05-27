@@ -1,6 +1,6 @@
 roadmap: aps-three-gap-directions
 created: 2026-05-25
-last_reviewed: 2026-05-25
+last_reviewed: 2026-05-27
 
 # 说明：primary_paths 和 test_commands 里的 tests/regression_*.py 是对应子 feature 实施后要新增或更新的验收测试，
 # 不表示 roadmap 当前已经拥有这些未来测试文件。当前 roadmap 产物只要求本文件、主文档和已存在测试能通过校验。
@@ -402,8 +402,8 @@ items:
     depends_on: [operation-execution-event-foundation]
     depends_on_reasons:
       operation-execution-event-foundation: 开工和完工按钮必须写入正式执行事件并读取状态版本，没有事件表、repository 和聚合状态就无法安全提交。
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-27-resource-dispatch-start-finish-feedback
     minimal_loop: false
     primary_paths:
       - templates/scheduler/resource_dispatch.html

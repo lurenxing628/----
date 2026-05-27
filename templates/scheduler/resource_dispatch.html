@@ -24,6 +24,7 @@
     data-has-history="{{ '1' if has_history else '0' }}"
     data-can-query="{{ '1' if can_query else '0' }}"
     data-export-url="{{ export_url or '' }}"
+    data-execution-url="{{ execution_data_url or '' }}"
   >
 
   {% set resource_dispatch_actions %}
@@ -232,6 +233,7 @@
     <div class="aps-resource-result-toolbar">
       <div class="aps-resource-result-tabs" id="rdTabBar">
         {{ ui.button('任务明细', 'primary', 'md', class='rd-tab-btn', type_attr='button', element_id='rdTabDetail') }}
+        {{ ui.button('现场反馈', 'secondary', 'md', class='rd-tab-btn', type_attr='button', element_id='rdTabExecution') }}
         {{ ui.button('日历矩阵', 'secondary', 'md', class='rd-tab-btn', type_attr='button', element_id='rdTabCalendar') }}
         {{ ui.button('甘特图', 'secondary', 'md', class='rd-tab-btn', type_attr='button', element_id='rdTabGantt') }}
       </div>
@@ -272,6 +274,13 @@
             </tr>
           </tbody>
         </table>
+      </div>
+    </div>
+
+    <div id="rdExecutionPanel" class="mt-3 is-hidden">
+      <div id="rdExecutionNotice" class="flash-card flash-warning is-hidden" role="status"></div>
+      <div id="rdExecutionCards" class="aps-execution-card-grid mt-2">
+        <div class="muted">现场反馈任务卡加载中...</div>
       </div>
     </div>
 

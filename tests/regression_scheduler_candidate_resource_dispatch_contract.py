@@ -139,12 +139,30 @@ def _build_route_app() -> Flask:
     app.secret_key = "test"
     app.add_url_rule("/scheduler/resource-dispatch", endpoint="scheduler.resource_dispatch_page", view_func=lambda: "")
     app.add_url_rule("/scheduler/resource-dispatch/data", endpoint="scheduler.resource_dispatch_data", view_func=lambda: "")
+    app.add_url_rule(
+        "/scheduler/resource-dispatch/execution/data",
+        endpoint="scheduler.resource_dispatch_execution_data",
+        view_func=lambda: "",
+    )
     app.add_url_rule("/scheduler/resource-dispatch/export", endpoint="scheduler.resource_dispatch_export", view_func=lambda: "")
     return app
 
 
 def _json_data(resp) -> Dict[str, Any]:
     return json.loads(resp.data.decode("utf-8") or "{}").get("data") or {}
+
+
+def _json_key_hits(value: Any, forbidden_keys: set) -> List[str]:
+    hits: List[str] = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if key in forbidden_keys:
+                hits.append(key)
+            hits.extend(_json_key_hits(child, forbidden_keys))
+    elif isinstance(value, list):
+        for child in value:
+            hits.extend(_json_key_hits(child, forbidden_keys))
+    return hits
 
 
 def test_resource_dispatch_service_reads_requested_candidate_plan_and_falls_back_to_adopted(tmp_path: Path) -> None:
@@ -349,6 +367,7 @@ def test_resource_dispatch_page_data_and_export_keep_plan_role_in_urls_and_log(t
         assert "requested_plan_role" not in filters
         assert "effective_plan_role" not in filters
         assert "plan_role_status" not in filters
+        assert _json_key_hits(data, {"schedule_id", "op_id", "_row_identity", "source_table"}) == []
         assert (data.get("detail_rows") or [])[0].get("current_resource_label") == "O-CANDIDATE 候选人员"
 
         export_logs: List[Dict[str, Any]] = []

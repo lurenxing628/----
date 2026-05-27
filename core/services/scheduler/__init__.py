@@ -25,6 +25,7 @@ _EXPORTS = {
     "GanttAdjustmentValidationService": ".gantt_adjustment_validation_service",
     "GanttService": ".gantt_service",
     "OperationExecutionFeedbackService": ".operation_execution_feedback_service",
+    "ResourceDispatchExecutionService": ".resource_dispatch_execution_service",
     "ResourceDispatchService": ".resource_dispatch_service",
     "ScheduleService": ".schedule_service",
 }
@@ -48,6 +49,7 @@ __all__ = [
     "GanttAdjustmentValidationService",
     "GanttService",
     "OperationExecutionFeedbackService",
+    "ResourceDispatchExecutionService",
     "ResourceDispatchService",
     "ScheduleService",
 ]

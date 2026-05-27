@@ -25,7 +25,10 @@ from core.models.operation_execution_state import OperationExecutionState
 from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
 from core.shared.field_labels import display_field_label
 from data.repositories.batch_operation_repo import BatchOperationRepository
+from data.repositories.batch_repo import BatchRepository
+from data.repositories.machine_repo import MachineRepository
 from data.repositories.operation_execution_event_repo import OperationExecutionEventRepo
+from data.repositories.operator_repo import OperatorRepository
 from data.repositories.schedule_repo import ScheduleRepository
 
 from .operation_execution_labels import action_to_event_type, event_type_to_action, execution_action_label
@@ -120,10 +123,11 @@ def _optional_text(value: Any) -> Optional[str]:
 def _required_text(value: Any, field: str) -> str:
     text = _text(value)
     if not text:
+        field_label = _feedback_field_label(field)
         raise ValidationError(
-            f"{display_field_label(field)}不能为空，请填写后再提交。",
+            f"{field_label}不能为空，请填写后再提交。",
             field=field,
-            details={"reason": "missing_required_field", "field": field, "field_label": display_field_label(field)},
+            details={"reason": "missing_required_field", "field": field, "field_label": field_label},
         )
     return text
 
@@ -157,6 +161,43 @@ def _optional_int(value: Any, field: str) -> Optional[int]:
             field=field,
             details={"reason": "invalid_field_value", "field": field, "field_label": display_field_label(field)},
         ) from None
+    return parsed
+
+
+def _feedback_field_label(field: str) -> str:
+    if field == "operator_id":
+        return "操作人员"
+    return display_field_label(field)
+
+
+def _required_non_negative_int(value: Any, field: str) -> int:
+    if value is None or _text(value) == "":
+        field_label = _feedback_field_label(field)
+        raise ValidationError(
+            f"{field_label}不能为空，请填写后再提交。",
+            field=field,
+            details={"reason": "missing_required_field", "field": field, "field_label": field_label},
+        )
+    return _non_negative_int(value, field)
+
+
+def _non_negative_int(value: Any, field: str) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        field_label = _feedback_field_label(field)
+        raise ValidationError(
+            f"{field_label}填写不正确，请检查后重试。",
+            field=field,
+            details={"reason": "invalid_field_value", "field": field, "field_label": field_label},
+        ) from None
+    if parsed < 0:
+        field_label = _feedback_field_label(field)
+        raise ValidationError(
+            f"{field_label}填写不正确，请检查后重试。",
+            field=field,
+            details={"reason": "invalid_field_value", "field": field, "field_label": field_label},
+        )
     return parsed
 
 
@@ -212,6 +253,9 @@ class OperationExecutionFeedbackService:
         self.event_repo = OperationExecutionEventRepo(conn, logger=logger)
         self.schedule_repo = ScheduleRepository(conn, logger=logger)
         self.batch_operation_repo = BatchOperationRepository(conn, logger=logger)
+        self.batch_repo = BatchRepository(conn, logger=logger)
+        self.machine_repo = MachineRepository(conn, logger=logger)
+        self.operator_repo = OperatorRepository(conn, logger=logger)
         self.plan_query_service = SchedulePlanQueryService(conn, logger=logger)
 
     def get_execution_state(self, op_ids: Sequence[int]) -> Dict[int, OperationExecutionState]:
@@ -326,6 +370,12 @@ class OperationExecutionFeedbackService:
                     },
                 )
             self._validate_state_transition(current_state, normalized_action)
+            self._validate_payload_against_plan(
+                action=normalized_action,
+                payload=normalized_payload,
+                schedule=schedule,
+                batch_op=batch_op,
+            )
             event_payload = self._build_event_payload(
                 context=normalized_context,
                 schedule=schedule,
@@ -469,8 +519,15 @@ class OperationExecutionFeedbackService:
         out["handling_status"] = _optional_text(out.get("handling_status"))
         out["suggest_reschedule"] = self._normalize_suggest_reschedule(out.get("suggest_reschedule"))
         out["remark"] = _optional_text(out.get("remark"))
-        out["quantity_done"] = _optional_int(out.get("quantity_done"), "quantity_done")
-        out["quantity_scrapped"] = _optional_int(out.get("quantity_scrapped"), "quantity_scrapped")
+        if action == EXECUTION_EVENT_FINISH:
+            out["quantity_done"] = _required_non_negative_int(out.get("quantity_done"), "quantity_done")
+            out["quantity_scrapped"] = (
+                0 if out.get("quantity_scrapped") is None or _text(out.get("quantity_scrapped")) == ""
+                else _non_negative_int(out.get("quantity_scrapped"), "quantity_scrapped")
+            )
+        else:
+            out["quantity_done"] = _optional_int(out.get("quantity_done"), "quantity_done")
+            out["quantity_scrapped"] = _optional_int(out.get("quantity_scrapped"), "quantity_scrapped")
         out["impact_minutes"] = _optional_int(out.get("impact_minutes"), "impact_minutes")
         if action == EXECUTION_EVENT_START:
             _required_text(out.get("actual_operator_id"), "operator_id")
@@ -550,6 +607,56 @@ class OperationExecutionFeedbackService:
         if schedule_mismatch:
             raise _conflict("schedule_mismatch")
         return schedule, batch_op
+
+    def _validate_payload_against_plan(self, *, action: str, payload: Dict[str, Any], schedule: Any, batch_op: Any) -> None:
+        if action == EXECUTION_EVENT_START:
+            self._validate_start_payload_against_plan(payload=payload, schedule=schedule)
+            return
+        if action == EXECUTION_EVENT_FINISH:
+            self._validate_finish_payload_against_plan(payload=payload, batch_op=batch_op)
+
+    def _validate_start_payload_against_plan(self, *, payload: Dict[str, Any], schedule: Any) -> None:
+        operator_id = _required_text(payload.get("actual_operator_id"), "operator_id")
+        machine_id = _required_text(payload.get("actual_machine_id"), "machine_id")
+        if not self.operator_repo.exists(operator_id):
+            raise AppError(
+                ErrorCode.NOT_FOUND,
+                "操作人员不存在，请刷新后重试。",
+                details={"reason": "not_found", "field": "operator_id", "field_label": _feedback_field_label("operator_id")},
+            )
+        if not self.machine_repo.exists(machine_id):
+            raise AppError(
+                ErrorCode.NOT_FOUND,
+                "设备不存在，请刷新后重试。",
+                details={"reason": "not_found", "field": "machine_id", "field_label": display_field_label("machine_id")},
+            )
+        planned_machine_id = _text(getattr(schedule, "machine_id", ""))
+        if not planned_machine_id or machine_id != planned_machine_id:
+            raise _conflict(
+                "schedule_mismatch",
+                details={"field": "machine_id", "field_label": display_field_label("machine_id")},
+                message="设备和当前正式排程记录对不上，请刷新后重试。",
+            )
+
+    def _validate_finish_payload_against_plan(self, *, payload: Dict[str, Any], batch_op: Any) -> None:
+        quantity_done = int(payload.get("quantity_done") or 0)
+        quantity_scrapped = int(payload.get("quantity_scrapped") or 0)
+        batch_id = _text(getattr(batch_op, "batch_id", ""))
+        batch = self.batch_repo.get(batch_id) if batch_id else None
+        if batch is None:
+            raise AppError(ErrorCode.NOT_FOUND, "批次不存在，请刷新后重试。", details={"reason": "not_found"})
+        planned_quantity = int(getattr(batch, "quantity", 0) or 0)
+        if quantity_done + quantity_scrapped > planned_quantity:
+            raise ValidationError(
+                "完成数量和报废数量加起来不能超过批次数量，请检查后再提交。",
+                field="quantity_done",
+                details={
+                    "reason": "invalid_field_value",
+                    "field": "quantity_done",
+                    "field_label": display_field_label("quantity_done"),
+                    "planned_quantity": planned_quantity,
+                },
+            )
 
     def _build_event_payload(
         self,

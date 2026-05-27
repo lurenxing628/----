@@ -1,0 +1,52 @@
+feature: 2026-05-27-resource-dispatch-start-finish-feedback
+status: done
+roadmap: aps-three-gap-directions
+roadmap_item: resource-dispatch-start-finish-feedback
+
+steps:
+  - slug: reference-chain-investigation
+    title: 下钻资源派工任务卡、执行反馈服务、route、viewmodel、模板、JS 和测试链路
+    status: done
+    exit_signal: 已确认普通资源派工 data 继续脱敏，现场反馈任务卡单独走 execution/data，不提前放开普通用户写入。
+
+  - slug: execution-task-card-read-model
+    title: 新增资源派工现场反馈任务卡读取服务
+    status: done
+    exit_signal: execution/data 返回计划身份、中文禁用原因、任务卡、状态版本、实际时间、实际资源、最近反馈和服务端动作可用性。
+
+  - slug: controlled-start-finish-routes
+    title: 新增受控开工和完工写入 route
+    status: done
+    exit_signal: start 和 finish 只在测试专用受控 header 且 TESTING=True 时写入，普通用户默认 409/6003 拒绝。
+
+  - slug: frontend-task-card-preview
+    title: 资源派工页新增现场反馈入口和任务卡预备 UI
+    status: done
+    exit_signal: 页面新增“现场反馈”标签页，按钮可用性完全按后端 available_actions 渲染，默认禁用。
+
+  - slug: validation-and-regression-tests
+    title: 补开工完工校验、脱敏和中文错误测试
+    status: done
+    exit_signal: 测试覆盖普通 POST 拒绝、受控写入、候选/模拟/历史版本拒绝、中文字段名、数量边界、设备匹配和普通 data 递归脱敏。
+
+  - slug: adversarial-review-loop
+    title: 对抗性审核和阻塞修复
+    status: done
+    exit_signal: 初审发现计划设备为空可绕过匹配校验，已修复并经复审确认无阻塞。
+
+checks:
+  - 资源派工页出现“现场反馈”入口和任务卡。
+  - GET /scheduler/resource-dispatch/execution/data 返回 success/data，data 包含 plan_identity、plan_identity_label、can_write_feedback、disabled_reason 和 tasks。
+  - 每张任务卡包含 op_id、schedule_id、batch_id、op_name、current_status、current_status_label、state_revision、实际时间、实际资源、最近反馈、updated_at、available_actions 和 unavailable_reasons。
+  - 普通 /scheduler/resource-dispatch/data 继续递归隐藏 schedule_id、op_id、_row_identity 和 source_table。
+  - available_actions 每项包含 action、label、enabled、disabled_reason，页面只显示中文 label 和 disabled_reason。
+  - 普通用户直接 POST 开工或完工默认返回 6003/409，中文提示“现场反馈保护还没开启，暂不能提交开工或完工”，不写事件。
+  - 测试专用 header 只有在 TESTING=True 时放行，生产/非测试配置下即使带 header 也不写入。
+  - 候选方案、模拟预览和历史正式方案即使带测试 header 也被拒绝，reason 为 not_current_official_plan。
+  - 开工校验操作人员和设备必填、必须存在，设备必须匹配当前正式排程记录；正式排程缺计划设备时也拒绝写入。
+  - 完工校验完成数量必填且非负，报废数量可空且空值按 0，完成数量加报废数量不能超过批次数量。
+  - POST 成功返回 event、current_status、current_status_label、state_revision、idempotency_reused 和完整 task_card。
+  - POST 失败保留 details.reason、details.action、details.action_label、details.field 和 details.field_label。
+  - 未提前新增 pause、resume、report-exception 页面入口或资源派工 route。
+  - 未提前接入第 10 项最小重排护栏或第 13 项完整执行事实重排。
+  - 新增 Python 代码通过 Python 3.8 语法风险扫描。

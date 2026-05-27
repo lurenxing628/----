@@ -6,7 +6,10 @@ from typing import Any
 from flask import current_app, flash, g, jsonify, redirect, request, send_file
 
 from core.infrastructure.errors import AppError, BusinessError, ErrorCode, error_response
+from core.models.operation_execution_event import EXECUTION_EVENT_FINISH, EXECUTION_EVENT_START
+from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
 from core.services.common.excel_audit import log_excel_export
+from core.services.scheduler.operation_execution_feedback_service import ExecutionFeedbackContext
 from core.services.scheduler.resource_dispatch_excel import build_resource_dispatch_workbook
 from web.error_boundary import json_error_response, user_visible_app_error_message
 from web.routes.history_summary_logging import log_history_version_option_parse_warnings
@@ -17,12 +20,20 @@ from web.viewmodels.scheduler_resource_dispatch import (
     decorate_resource_dispatch_context,
     decorate_resource_dispatch_payload,
 )
+from web.viewmodels.scheduler_resource_dispatch_execution import (
+    build_execution_payload,
+    build_task_card,
+    execution_result_payload,
+    feedback_not_enabled_payload,
+    preserve_execution_error_response,
+)
 
 from .scheduler_bp import bp
 from .scheduler_resource_dispatch_query import (
     _current_request_args,
     _data_url,
     _error_payload_with_invalid_query_keys,
+    _execution_data_url,
     _export_url,
     _is_missing_history_version_error,
     _page_url,
@@ -35,6 +46,14 @@ _EXCEL_MIMETYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.s
 
 def _svc() -> Any:
     return g.services.resource_dispatch_service
+
+
+def _execution_svc() -> Any:
+    return g.services.resource_dispatch_execution_service
+
+
+def _feedback_svc() -> Any:
+    return g.services.operation_execution_feedback_service
 
 
 def _is_scenario_id_error(exc: AppError) -> bool:
@@ -80,6 +99,7 @@ def resource_dispatch_page():
         title="资源排班",
         data_url=_data_url(filters),
         export_url=export_url,
+        execution_data_url=_execution_data_url(filters),
         **context,
     )
 
@@ -94,6 +114,140 @@ def resource_dispatch_data():
     except Exception:
         current_app.logger.exception("资源排班数据生成失败")
         return jsonify(error_response(ErrorCode.UNKNOWN_ERROR, "资源排班数据生成失败，请稍后重试。")), 500
+
+
+@bp.get("/resource-dispatch/execution/data")
+def resource_dispatch_execution_data():
+    try:
+        payload = build_execution_payload(_execution_svc().get_execution_context(**_request_kwargs()))
+        return jsonify({"success": True, "data": payload})
+    except AppError as exc:
+        payload, status = preserve_execution_error_response(exc)
+        return jsonify(payload), status
+    except Exception:
+        current_app.logger.exception("资源排班现场反馈任务卡生成失败")
+        return jsonify(error_response(ErrorCode.UNKNOWN_ERROR, "现场反馈任务卡生成失败，请稍后重试。")), 500
+
+
+def _execution_feedback_write_allowed() -> bool:
+    if not bool(current_app.config.get("TESTING")):
+        return False
+    return request.headers.get("X-APS-Test-Execution-Feedback", "").strip().lower() == "allow"
+
+
+def _json_payload() -> dict:
+    data = request.get_json(silent=True)
+    if isinstance(data, dict):
+        return dict(data)
+    return {}
+
+
+def _feedback_context(op_id: int, payload: dict) -> ExecutionFeedbackContext:
+    return ExecutionFeedbackContext(
+        schedule_version=payload.get("version") or payload.get("schedule_version"),
+        schedule_id=payload.get("schedule_id"),
+        op_id=op_id,
+        expected_state_revision=payload.get("expected_state_revision"),
+        created_by=payload.get("created_by"),
+        idempotency_key=payload.get("idempotency_key"),
+        requested_plan_role=payload.get("requested_plan_role") or payload.get("plan_role") or ROLE_ADOPTED,
+        source_table=payload.get("source_table") or SOURCE_SCHEDULE,
+        effective_plan_role=payload.get("effective_plan_role") or ROLE_ADOPTED,
+        scenario_id=payload.get("scenario_id"),
+    )
+
+
+def _feedback_recheck_context(context: ExecutionFeedbackContext):
+    return _execution_svc().get_execution_context(
+        version=context.schedule_version,
+        plan_role=context.requested_plan_role,
+        scenario_id=context.scenario_id,
+    )
+
+
+def _ensure_current_official_feedback_context(context: ExecutionFeedbackContext, *, action: str) -> None:
+    if (
+        context.requested_plan_role != ROLE_ADOPTED
+        or context.effective_plan_role != ROLE_ADOPTED
+        or context.source_table != SOURCE_SCHEDULE
+        or context.scenario_id is not None
+    ):
+        raise AppError(
+            ErrorCode.SCHEDULE_CONFLICT,
+            "当前不是最新正式采用方案，不能提交现场反馈。",
+            details={"reason": "not_current_official_plan", "action": action},
+        )
+    view_context = _feedback_recheck_context(context)
+    identity = view_context.get("plan_identity") if isinstance(view_context, dict) else {}
+    if not bool((identity or {}).get("can_write_feedback")):
+        raise AppError(
+            ErrorCode.SCHEDULE_CONFLICT,
+            "当前不是最新正式采用方案，不能提交现场反馈。",
+            details={"reason": "not_current_official_plan", "action": action},
+        )
+
+
+def _reject_if_feedback_disabled(action: str):
+    if _execution_feedback_write_allowed():
+        return None
+    return jsonify(feedback_not_enabled_payload(action)), 409
+
+
+def _task_card_for_result(context: ExecutionFeedbackContext, result: Any) -> dict:
+    card_context = _execution_svc().task_card_for_feedback_context(context, result.state, feedback_write_enabled=True)
+    cards = build_execution_payload(card_context).get("tasks") or []
+    if cards:
+        return cards[0]
+    return build_task_card(
+        {"op_id": context.op_id, "schedule_id": context.schedule_id, "batch_id": result.state.batch_id},
+        result.state,
+        can_write_feedback=True,
+        feedback_write_enabled=True,
+    )
+
+
+def _record_execution_feedback(op_id: int, action: str):
+    payload = _json_payload()
+    try:
+        context = _feedback_context(op_id, payload)
+        _ensure_current_official_feedback_context(context, action=action)
+        rejected = _reject_if_feedback_disabled(action)
+        if rejected is not None:
+            return rejected
+        if action == EXECUTION_EVENT_START:
+            result = _feedback_svc().start_operation(
+                context,
+                event_time=payload.get("event_time"),
+                operator_id=payload.get("operator_id"),
+                machine_id=payload.get("machine_id"),
+                remark=payload.get("remark"),
+            )
+        else:
+            result = _feedback_svc().finish_operation(
+                context,
+                event_time=payload.get("event_time"),
+                quantity_done=payload.get("quantity_done"),
+                quantity_scrapped=payload.get("quantity_scrapped"),
+                remark=payload.get("remark"),
+            )
+        task_card = _task_card_for_result(context, result)
+        return jsonify({"success": True, "data": execution_result_payload(result, task_card)})
+    except AppError as exc:
+        payload, status = preserve_execution_error_response(exc, action=action)
+        return jsonify(payload), status
+    except Exception:
+        current_app.logger.exception("现场反馈提交失败")
+        return jsonify(error_response(ErrorCode.UNKNOWN_ERROR, "现场反馈提交失败，请稍后重试。")), 500
+
+
+@bp.post("/resource-dispatch/execution/<int:op_id>/start")
+def resource_dispatch_execution_start(op_id: int):
+    return _record_execution_feedback(op_id, EXECUTION_EVENT_START)
+
+
+@bp.post("/resource-dispatch/execution/<int:op_id>/finish")
+def resource_dispatch_execution_finish(op_id: int):
+    return _record_execution_feedback(op_id, EXECUTION_EVENT_FINISH)
 
 
 @bp.get("/resource-dispatch/export")

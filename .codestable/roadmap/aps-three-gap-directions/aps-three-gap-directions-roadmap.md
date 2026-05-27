@@ -3,7 +3,7 @@ doc_type: roadmap
 slug: aps-three-gap-directions
 status: active
 created: 2026-05-25
-last_reviewed: 2026-05-25
+last_reviewed: 2026-05-27
 tags: [aps, scheduler, delay-diagnosis, candidate-comparison, shop-floor-feedback, execution-facts, win7]
 related_requirements:
   - gantt-readonly-result-view
@@ -1401,8 +1401,8 @@ execution_snapshot_op_ids
 9. **resource-dispatch-start-finish-feedback**：资源派工页增加车间反馈任务卡，先支持开工和完工。
    - 所属模块：车间反馈页面。
    - 依赖：`operation-execution-event-foundation`。
-   - 状态：planned。
-   - 对应 feature：未启动。
+   - 状态：done。
+   - 对应 feature：`2026-05-27-resource-dispatch-start-finish-feedback`。
    - 备注：先跑通受控写入和页面预备，不把异常塞进同一条；最小重排护栏完成前，普通用户直接 POST 也不能写入。
 
 10. **reschedule-minimum-execution-guardrails**：开工和完工反馈上线后，先让重排尊重最基本现场事实。
@@ -1510,3 +1510,4 @@ execution_snapshot_op_ids
 - 2026-05-25：按第二十轮 2 个同范围最终复审 Subagent 结果确认：用户可见大白话、路线图/items/账本/旧 explore 一致性、接口字段、错误码、依赖和测试命令均无阻塞项；当前路线图可进入后续 feature-design。
 - 2026-05-25：补齐三类差距方向的 draft requirement 引用，并同步刷新 `ui-gantt` 架构文档里的模拟预览用户可见口径；路线图实施拆解不变。
 - 2026-05-27：完成 `dispatch-plan-identity-guardrails`。资源派工页、data 和 Excel 导出会用中文标清当前正式、历史正式、对比参考和模拟预览，并锁住本阶段不新增确认派工写入、不新增确认派工表、不产生确认派工副作用。
+- 2026-05-27：完成 `resource-dispatch-start-finish-feedback`。资源派工页新增现场反馈任务卡和受控开工/完工写入；普通用户在最小重排护栏完成前仍默认不能提交，直接 POST 返回中文 409/6003；测试专用开关只在 TESTING=True 下生效，并补普通 data 递归脱敏、设备匹配、数量边界和成功返回结构测试。

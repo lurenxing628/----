@@ -94,11 +94,13 @@
     cfg: {
       filters: parseJson(pageEl.getAttribute("data-filters"), {}),
       dataUrl: trim(pageEl.getAttribute("data-url")),
+      executionUrl: trim(pageEl.getAttribute("data-execution-url")),
       hasHistory: pageEl.getAttribute("data-has-history") === "1",
       canQuery: pageEl.getAttribute("data-can-query") === "1",
       exportUrl: trim(pageEl.getAttribute("data-export-url"))
     },
     data: null,
+    execution: null,
     gantt: null,
     activeTab: "detail"
   };
@@ -225,6 +227,73 @@
     show(crossWrap, Array.isArray(data.cross_team_rows) && data.cross_team_rows.length > 0);
   }
 
+  function renderExecutionActions(actions) {
+    const list = Array.isArray(actions) ? actions : [];
+    if (!list.length) return '<span class="muted">暂无可用操作</span>';
+    const html = [];
+    for (let i = 0; i < list.length; i++) {
+      const action = list[i] || {};
+      const disabledReason = trim(action.disabled_reason);
+      const disabledAttr = action.enabled ? "" : " disabled";
+      const titleAttr = disabledReason ? ' title="' + escapeHtml(disabledReason) + '"' : "";
+      html.push(
+        '<button type="button" class="btn btn-secondary btn-sm aps-execution-action" data-action="' +
+          escapeHtml(action.action || "") + '"' + disabledAttr + titleAttr + '>' +
+          escapeHtml(action.label || "操作") +
+        '</button>'
+      );
+    }
+    return html.join(" ");
+  }
+
+  function renderExecutionCards(payload) {
+    const wrap = $("rdExecutionCards");
+    const notice = $("rdExecutionNotice");
+    if (!wrap) return;
+    const data = payload || {};
+    const tasks = Array.isArray(data.tasks) ? data.tasks : [];
+    const disabledReason = trim(data.disabled_reason);
+    if (notice) {
+      notice.textContent = disabledReason;
+      show(notice, !!disabledReason);
+    }
+    if (!tasks.length) {
+      wrap.innerHTML = '<div class="muted">当前查询范围内暂无现场反馈任务卡。</div>';
+      return;
+    }
+    const cards = [];
+    for (let i = 0; i < tasks.length; i++) {
+      const task = tasks[i] || {};
+      const reasons = Array.isArray(task.unavailable_reasons) ? task.unavailable_reasons : [];
+      const reasonText = reasons.length ? reasons.map(escapeHtml).join("；") : "";
+      cards.push(
+        '<section class="aps-execution-card">' +
+          '<div class="aps-execution-card-head">' +
+            '<div>' +
+              '<div class="aps-execution-title">' + escapeHtml(task.op_name || "未命名工序") + '</div>' +
+              '<div class="text-meta">批次：' + escapeHtml(task.batch_id || "-") + '</div>' +
+            '</div>' +
+            '<span class="badge badge-skip">' + escapeHtml(task.current_status_label || "待开工") + '</span>' +
+          '</div>' +
+          '<div class="aps-execution-facts">' +
+            '<div><span>计划开始</span><strong>' + escapeHtml(task.planned_start_time || "-") + '</strong></div>' +
+            '<div><span>实际开始</span><strong>' + escapeHtml(task.actual_start_time || "暂无") + '</strong></div>' +
+            '<div><span>计划结束</span><strong>' + escapeHtml(task.planned_end_time || "-") + '</strong></div>' +
+            '<div><span>实际结束</span><strong>' + escapeHtml(task.actual_end_time || "暂无") + '</strong></div>' +
+            '<div><span>计划设备</span><strong>' + escapeHtml(task.planned_machine_label || "-") + '</strong></div>' +
+            '<div><span>实际设备</span><strong>' + escapeHtml(task.actual_machine_label || "暂无") + '</strong></div>' +
+            '<div><span>计划人员</span><strong>' + escapeHtml(task.planned_operator_label || "-") + '</strong></div>' +
+            '<div><span>实际人员</span><strong>' + escapeHtml(task.actual_operator_label || "暂无") + '</strong></div>' +
+          '</div>' +
+          (task.last_event_action_label ? '<div class="text-meta mt-1">最近反馈：' + escapeHtml(task.last_event_action_label) + (task.last_event_remark ? '，' + escapeHtml(task.last_event_remark) : '') + '</div>' : '') +
+          (reasonText ? '<div class="text-meta mt-1">' + reasonText + '</div>' : '') +
+          '<div class="aps-execution-actions mt-2">' + renderExecutionActions(task.available_actions) + '</div>' +
+        '</section>'
+      );
+    }
+    wrap.innerHTML = cards.join("");
+  }
+
   function renderCalendar(headers, rows) {
     const wrap = $("rdCalendarWrap");
     if (!wrap) return;
@@ -327,17 +396,20 @@
   function activateTab(name) {
     state.activeTab = name;
     const detail = $("rdDetailPanel");
+    const execution = $("rdExecutionPanel");
     const calendar = $("rdCalendarPanel");
     const gantt = $("rdGanttPanel");
     const ganttModeField = $("rdGanttModeField");
     const teamBlocks = $("rdTeamBlocks");
     const isTeam = !!(state.data && state.data.filters && state.data.filters.scope_type === "team");
     show(detail, name === "detail" && !isTeam);
+    show(execution, name === "execution");
     show(calendar, name === "calendar");
     show(gantt, name === "gantt");
     show(ganttModeField, name === "gantt");
     show(teamBlocks, name === "detail" && isTeam);
     setButtonActive($("rdTabDetail"), name === "detail");
+    setButtonActive($("rdTabExecution"), name === "execution");
     setButtonActive($("rdTabCalendar"), name === "calendar");
     setButtonActive($("rdTabGantt"), name === "gantt");
     if (name === "gantt" && state.data) {
@@ -347,10 +419,12 @@
 
   function bindTabs() {
     const detailBtn = $("rdTabDetail");
+    const executionBtn = $("rdTabExecution");
     const calendarBtn = $("rdTabCalendar");
     const ganttBtn = $("rdTabGantt");
     const ganttMode = $("rdGanttMode");
     if (detailBtn) detailBtn.addEventListener("click", function () { activateTab("detail"); });
+    if (executionBtn) executionBtn.addEventListener("click", function () { activateTab("execution"); });
     if (calendarBtn) calendarBtn.addEventListener("click", function () { activateTab("calendar"); });
     if (ganttBtn) ganttBtn.addEventListener("click", function () { activateTab("gantt"); });
     if (ganttMode) {
@@ -446,6 +520,32 @@
     return url.indexOf("?") >= 0 ? url : url + currentQueryString();
   }
 
+  function executionRequestUrl() {
+    const url = state.cfg.executionUrl || "";
+    if (!url) return "";
+    return url.indexOf("?") >= 0 ? url : url + currentQueryString();
+  }
+
+  async function loadExecutionData() {
+    if (!state.cfg.hasHistory || !state.cfg.canQuery || !state.cfg.executionUrl) {
+      renderExecutionCards(null);
+      return;
+    }
+    try {
+      const resp = await fetch(executionRequestUrl(), { headers: { Accept: "application/json" } });
+      const payload = await resp.json();
+      if (!resp.ok || !payload || payload.success !== true) {
+        const errorMessage = payload && payload.error && payload.error.message ? payload.error.message : "现场反馈任务卡加载失败，请稍后重试。";
+        throw new Error(errorMessage);
+      }
+      state.execution = payload.data || {};
+      renderExecutionCards(state.execution);
+    } catch (err) {
+      state.execution = null;
+      renderExecutionCards({ disabled_reason: err && err.message ? err.message : "现场反馈任务卡加载失败，请稍后重试。", tasks: [] });
+    }
+  }
+
   async function loadData() {
     if (!state.cfg.hasHistory || !state.cfg.canQuery || !state.cfg.dataUrl) return;
     renderDetailRows([]);
@@ -479,6 +579,7 @@
       if (state.activeTab === "gantt") {
         renderGantt(state.data.tasks || []);
       }
+      loadExecutionData();
     } catch (err) {
       setError(err && err.message ? err.message : "资源排班数据加载失败，请稍后重试。");
       renderDetailRows([]);
@@ -487,6 +588,7 @@
       renderCalendar([], []);
       setOverdueWarning("");
       setDegradationSummary(null);
+      renderExecutionCards(null);
     }
   }
 
