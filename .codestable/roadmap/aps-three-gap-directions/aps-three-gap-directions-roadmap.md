@@ -158,21 +158,24 @@ scenario 后端能力已经比较完整：
 
 ### 3.4 车间反馈现状
 
-当前没有独立的车间执行事件。
+第 8 项完成后，当前已经有独立的车间执行事件基础，但计划行和现场事实仍然要分开看。
 
 - `core/models/schedule.py:10` 的 `Schedule` 是计划排程行，没有实际开始/结束。
 - `schema.sql:235` 的 `Schedule` 只有计划开始、计划结束、锁定状态、版本。
 - `schema.sql:211` 的 `BatchOperations.status` 没有实际时间、反馈人、异常原因。
-- `core/services/scheduler/run/schedule_persistence.py:52` 正式排程会把已排上工序写成 `scheduled`。
+- `schema.sql:250` 的 `OperationExecutionEvents` 是现场执行事件表，只追加记录开工、完工、暂停、继续生产和报异常等现场动作。
+- `data/repositories/operation_execution_event_repo.py:319` 会从执行事件聚合当前执行状态和 `state_revision`。
+- `core/services/scheduler/operation_execution_feedback_service.py:284` 的 `OperationExecutionFeedbackService` 负责正式计划身份、幂等键、状态版本和合法状态流转校验。
+- `core/services/scheduler/run/schedule_persistence.py:78` 正式排程会把已排上工序写成 `scheduled`。
 - `web/routes/domains/scheduler/scheduler_ops.py:12` 批次工序保存路由没有传 `status`。
-- `templates/scheduler/resource_dispatch.html:242` 资源派工页只有状态展示，没有开工、完工、暂停、报异常按钮。
+- `templates/scheduler/resource_dispatch.html:280` 已有资源派工现场反馈任务卡容器；第 10 项开始前，普通用户开工/完工写入仍由反馈保护开关控制，暂停、继续生产、报异常还没有作为普通用户按钮完整开放。
 
 这意味着：
 
 - `Schedule.start_time/end_time` 不能改成实际开工/完工。
 - `Schedule.lock_status` 不能当作生产中、暂停、已完工。
 - `BatchOperations.status` 不能单独承担现场事实，因为它没有事件、时间、反馈人、原因，而且正式排程也会写 `scheduled`。
-- 需要新增执行事件表，再聚合出当前执行状态。
+- 当前执行状态必须从 `OperationExecutionEvents` 聚合，后续重排护栏和复盘视图不能回头把 `Schedule` 或 `BatchOperations.status` 当作现场事实源。
 
 ### 3.5 重排现状
 
@@ -775,8 +778,8 @@ OperationExecutionEvents
 - event_type TEXT NOT NULL
 - event_time DATETIME NOT NULL
 - reported_status TEXT NOT NULL
-- machine_id TEXT
-- operator_id TEXT
+- actual_machine_id TEXT
+- actual_operator_id TEXT
 - reason_code TEXT
 - reason_detail TEXT
 - severity TEXT
@@ -792,7 +795,7 @@ OperationExecutionEvents
 - request_fingerprint TEXT NOT NULL
 - previous_state_revision TEXT NOT NULL
 - created_by TEXT NOT NULL
-- created_at DATETIME NOT NULL
+- created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ```
 
 **约束**：
@@ -802,9 +805,11 @@ OperationExecutionEvents
 - 数据库必须有 `CHECK(event_type IN ('start', 'pause', 'resume', 'finish', 'exception'))`。
 - 数据库必须有 `CHECK(reported_status IN ('processing', 'paused', 'exception', 'completed'))`。
 - 数据库必须有 `CHECK(source_table = 'schedule')`、`CHECK(effective_plan_role = 'adopted')`、`CHECK(scenario_id IS NULL)`。
+- 数据库必须有 `CHECK(suggest_reschedule IN (0, 1))`；`suggest_reschedule` 入库用 `0 / 1`，页面和接口展示时再映射成“暂不建议重新排程 / 建议重新排程”。
+- 数据库必须约束 `pause / exception` 的 `reason_code` 不能为空；`exception` 的 `severity` 不能为空。
 - 数据库必须有 `UNIQUE(idempotency_key)`，同一个请求重复提交只能产生一条事件。
 - 数据库必须有 `UNIQUE(op_id, previous_state_revision)`，或在同一事务内用等价行锁方案保证同一旧状态只会被消费一次。
-- 索引至少包含 `idx_operation_execution_events_op_time(op_id, event_time)`、`idx_operation_execution_events_schedule(schedule_id)`、`idx_operation_execution_events_schedule_op(schedule_id, op_id)`、`idx_operation_execution_events_batch(batch_id)`、`idx_operation_execution_events_previous_revision(op_id, previous_state_revision)`。
+- 索引至少包含 `idx_operation_execution_events_op(op_id, event_time)`、`idx_operation_execution_events_schedule(schedule_id)`、`idx_operation_execution_events_schedule_op(schedule_id, op_id)`、`idx_operation_execution_events_batch(batch_id)`、`idx_operation_execution_events_op_revision_unique(op_id, previous_state_revision)`。
 - `event_type` 允许：`start / pause / resume / finish / exception`。
 - `reported_status` 允许：`processing / paused / exception / completed`。
 - `pause / exception` 必须有 `reason_code`。
@@ -816,7 +821,8 @@ OperationExecutionEvents
 - 新版本不能复制旧事件，也不能把旧事件改写到新 `schedule_id`。如果同一个 `op_id` 在新版本里继续存在，读取执行状态时跨版本按 `op_id` 聚合；如果工序不存在，则作为数据异常用中文提示。
 - `created_by` 第一版来自页面必填的“反馈人”输入；空值直接拒绝。后续接登录体系时再替换来源，不允许默认写假用户。
 - 执行事件只允许追加，不允许更新或删除。纠错、撤销、反冲都必须另起 correction/reversal 设计。
-- 暂停、继续、异常相关字段可以在 foundation 表结构里预留，但 `operation-execution-event-foundation` 的业务验收只验证字段、约束、幂等、状态聚合边界；暂停和异常业务含义由 `shop-exception-feedback` 验收。
+- `actual_machine_id / actual_operator_id` 是事件落库后的实际资源字段。前端开工提交仍使用 `machine_id / operator_id`，由 service 校验后转换成实际资源字段写入事件表。
+- 暂停、继续、异常相关字段可以在 foundation 表结构里预留，但 `operation-execution-event-foundation` 的业务验收只验证字段、约束、幂等、状态聚合边界；暂停和异常完整业务入口由 `shop-exception-feedback` 验收。
 - `request_fingerprint` 必须由服务端按稳定规则重新计算，前端可以不传，传了也只能当调试信息，不能信任。指纹输入必须包含完整计划身份、`schedule_id / schedule_version / op_id / batch_id`、`expected_state_revision`、动作类型和动作载荷。
 - 服务端写入顺序必须固定为：第一步先用 `idempotency_key` 查已有事件；如果同 key 已存在，并且服务端指纹、计划身份、`op_id`、动作和载荷都和本次重算一致，直接返回已有事件，哪怕这时当前状态版本已经被这条事件消费过，也不能误报 `stale_state_revision`；如果同 key 但任何一项不一致，返回 `409 idempotency_conflict` 且不写。第二步只有在 key 不存在时，才读取当前执行状态、比较 `expected_state_revision`。第三步状态版本没过期才写入事件；插入后重新聚合得到新的 `state_revision` 并随响应返回，不把新 `state_revision` 更新回事件行。
 - 只要插入时捕获到任何唯一约束冲突，处理顺序也必须先回到 `idempotency_key`：重新按本次 key 查询已有事件；如果查到同 key 且服务端指纹、计划身份、`op_id`、动作和载荷都一致，返回已有事件；如果查到同 key 但内容不一致，返回 `409 idempotency_conflict`；只有查不到同 key 时，才按 `UNIQUE(op_id, previous_state_revision)` 这类状态版本冲突处理，重新聚合当前状态并返回 `409 stale_state_revision`。
@@ -936,6 +942,7 @@ ExecutionFeedbackContext
 - requested_plan_role: adopted | baseline_best | critical_best
 - schedule_id: int
 - op_id: int
+- batch_id: str
 - source_table: schedule
 - effective_plan_role: adopted
 - scenario_id: None
@@ -954,7 +961,7 @@ list_execution_events(op_id) -> List[OperationExecutionEvent]
 
 服务端不能信任前端传来的 `schedule_id`。写入前必须用 `version + requested_plan_role + scenario_id + op_id + schedule_id` 重新解析 `PlanIdentity`，再查询正式 `Schedule` 行，并确认 `PlanIdentity.can_write_feedback=true`。这个校验必须放在 service 层，route 层只负责收参和返回；即使有别的入口绕过 route 调 service，也不能写入候选方案、模拟预览或历史正式方案。
 
-`request_fingerprint` 由服务端根据完整计划身份、`op_id / schedule_id / schedule_version / expected_state_revision / action / event_time / created_by / machine_id / operator_id / quantity_done / quantity_scrapped / reason_code / severity / impact_minutes / affected_machine_id / affected_operator_id / handling_status / suggest_reschedule / remark` 等请求关键字段按稳定顺序生成。它只用于判断“同一个幂等键是不是同一次请求”，不能当权限或状态判断。
+`request_fingerprint` 由服务端根据完整计划身份、`op_id / schedule_id / schedule_version / batch_id / expected_state_revision / action / event_time / created_by / machine_id / operator_id / quantity_done / quantity_scrapped / reason_code / severity / impact_minutes / affected_machine_id / affected_operator_id / handling_status / suggest_reschedule / remark` 等请求关键字段按稳定顺序生成。它只用于判断“同一个幂等键是不是同一次请求”，不能当权限或状态判断。
 
 开工/完工字段校验必须固定，后续 feature-design 不能临时决定：
 
@@ -1131,6 +1138,7 @@ GET  /scheduler/resource-dispatch/execution/<op_id>/events
 version: int
 requested_plan_role: adopted | baseline_best | critical_best
 schedule_id: int
+batch_id: str
 source_table: schedule
 effective_plan_role: adopted
 scenario_id: null
@@ -1317,7 +1325,7 @@ execution_snapshot_op_ids
 - 候选比较、多起点、局部搜索、优化器和图排程 ready queue 都必须使用同一批执行事实，不能只让主流程尊重现场事实而让候选或图排程继续移动现场已经发生的工序。
 - `execution_seed_results` 是执行事实进入算法的统一合并点：来源包含现场已开工/暂停的固定任务，以及必要时从 freeze window 继承的冻结任务；每条 seed 都必须带 `seed_source=execution_fact | freeze_window` 或等价来源标记，避免后续排查时分不清“现场已经发生”和“排程冻结”。
 - freeze seed 和 execution seed 合并后必须按同一套冲突规则检查：如果同一个 `op_id` 同时来自现场事实和冻结窗口，以现场事实为准；如果两边时间或资源冲突，返回中文错误并拒绝落库，不静默择一。
-- `simulate=True` 的校验也必须读取执行快照，但只做冲突提示和返回校验结果，不写 `Schedule / ScheduleHistory`，也不更新 scenario 的执行快照。scenario save/publish 和普通落库才需要保存或复算快照。
+- `simulate=True` 的校验也必须读取执行快照，但只做冲突提示和返回校验结果，不写 `Schedule / ScheduleHistory / ScheduleVersionSeq`，也不更新 scenario 的执行快照。scenario save/publish 和普通落库才需要保存或复算快照。
 - 排程开始时记录 `execution_snapshot_revision` 和同一批 `execution_snapshot_op_ids`，并把它们写入 `ScheduleHistory.result_summary`。`result_summary` 里还要写 `execution_snapshot_op_count`，以及 op_id 清单摘要或完整清单位置，不能只写一个 hash。
 - scenario 保存时也要保存 `execution_snapshot_revision`、`execution_snapshot_op_ids` 和 op_id 数量。发布 scenario 时必须用保存时同一批 op_id 重新复算；如果现场状态变化，返回 409，不写 `Schedule / ScheduleHistory`。
 - 所有生成新正式计划的入口都要检查 `execution_snapshot_revision`，包括普通重排和 scenario publish。落库或发布前重新检查 revision；如果现场状态变化，本次排程或发布失败，返回 409，不写 `Schedule / ScheduleHistory`。
@@ -1345,43 +1353,43 @@ execution_snapshot_op_ids
 1. **shared-plan-identity-evidence-contract**：统一读取排程结果时必须带的计划身份、证据来源和中文显示口径。
    - 所属模块：公共计划身份与证据协议。
    - 依赖：无。
-   - 状态：planned。
-   - 对应 feature：未启动。
+   - 状态：done。
+   - 对应 feature：`2026-05-27-shared-plan-identity-evidence-contract`。
    - 备注：只做公共读取协议，不提前实现派工确认或现场反馈写入。
 
 2. **delay-diagnosis-core-service**：新增延期诊断核心服务，只读生成事实、可能线索、证据、缺口和建议动作。
    - 所属模块：延期诊断模块。
    - 依赖：`shared-plan-identity-evidence-contract`。
-   - 状态：planned。
-   - 对应 feature：未启动。
+   - 状态：done。
+   - 对应 feature：`2026-05-27-delay-diagnosis-core-service`。
    - 备注：不改算法，不写排程结果。
 
 3. **delay-diagnosis-overdue-report-entry**：把延期诊断接到超期清单，给用户第一条能端到端看到的解释闭环。
    - 所属模块：延期诊断模块。
    - 依赖：`delay-diagnosis-core-service`。
-   - 状态：planned。
-   - 对应 feature：未启动。
+   - 状态：done。
+   - 对应 feature：`2026-05-27-delay-diagnosis-overdue-report-entry`。
    - 备注：这是本 roadmap 的最小闭环。
 
 4. **candidate-recommendation-card**：在方案对比区域增加推荐结论卡和中文推荐原因。
    - 所属模块：方案对比模块。
    - 依赖：`shared-plan-identity-evidence-contract`。
-   - 状态：planned。
-   - 对应 feature：未启动。
+   - 状态：done。
+   - 对应 feature：`2026-05-27-candidate-recommendation-card`。
    - 备注：只做推荐结论壳和中文解释；差值卡在下一条做。
 
 5. **candidate-summary-delta-cards**：把代表三方案做成摘要卡，并计算相对正式采用方案的总指标差值。
    - 所属模块：方案对比模块。
    - 依赖：`candidate-recommendation-card`。
-   - 状态：planned。
-   - 对应 feature：未启动。
+   - 状态：done。
+   - 对应 feature：`2026-05-27-candidate-summary-delta-cards`。
    - 备注：不做批次级明细，不做资源级明细。
 
 6. **candidate-drilldown-empty-states**：补跳转、空状态、失败候选提示和 plan_role 不丢失验证。
    - 所属模块：方案对比模块。
    - 依赖：`candidate-summary-delta-cards`。
-   - 状态：planned。
-   - 对应 feature：未启动。
+   - 状态：done。
+   - 对应 feature：`2026-05-27-candidate-drilldown-empty-states`。
    - 备注：保留现有甘特、周计划、资源派工跳转。
 
 7. **dispatch-plan-identity-guardrails**：资源派工页标清正式计划、对比参考方案、模拟预览，并阻止候选和模拟预览写现场反馈。
@@ -1408,9 +1416,9 @@ execution_snapshot_op_ids
 10. **reschedule-minimum-execution-guardrails**：开工和完工反馈上线后，先让重排尊重最基本现场事实。
     - 所属模块：重排执行事实接入。
     - 依赖：`resource-dispatch-start-finish-feedback`。
-    - 状态：planned。
-    - 对应 feature：未启动。
-    - 备注：避免现场反馈上线后，系统仍随意移动已开工或已完工工序。
+    - 状态：done。
+    - 对应 feature：`2026-05-27-reschedule-minimum-execution-guardrails`。
+    - 备注：普通重排已尊重开工/完工事实，并同批放开最新正式方案的普通用户开工/完工；完整执行快照和异常重排仍留给后续条目。
 
 11. **shop-exception-feedback**：单独支持暂停、继续、报异常、异常原因、严重程度、影响时间、影响资源、处理状态和是否建议重排。
     - 所属模块：异常反馈模块。
@@ -1511,3 +1519,4 @@ execution_snapshot_op_ids
 - 2026-05-25：补齐三类差距方向的 draft requirement 引用，并同步刷新 `ui-gantt` 架构文档里的模拟预览用户可见口径；路线图实施拆解不变。
 - 2026-05-27：完成 `dispatch-plan-identity-guardrails`。资源派工页、data 和 Excel 导出会用中文标清当前正式、历史正式、对比参考和模拟预览，并锁住本阶段不新增确认派工写入、不新增确认派工表、不产生确认派工副作用。
 - 2026-05-27：完成 `resource-dispatch-start-finish-feedback`。资源派工页新增现场反馈任务卡和受控开工/完工写入；普通用户在最小重排护栏完成前仍默认不能提交，直接 POST 返回中文 409/6003；测试专用开关只在 TESTING=True 下生效，并补普通 data 递归脱敏、设备匹配、数量边界和成功返回结构测试。
+- 2026-05-27：完成 `reschedule-minimum-execution-guardrails`。普通重排会读取开工/完工执行事实，已完工工序不再进待排集合，生产中工序保留实际开始和实际资源，落库前复查现场状态版本；如果最终校验失败，`Schedule`、`ScheduleHistory` 和 `ScheduleVersionSeq` 一起回滚；最新正式方案普通用户开工/完工按钮和直接 POST 已放开，候选、模拟预览、历史正式和非最新正式仍拒绝写入。

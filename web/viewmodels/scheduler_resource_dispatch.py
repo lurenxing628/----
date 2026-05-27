@@ -95,8 +95,35 @@ def _scenario_filename_label(filters: Dict[str, Any]) -> str:
     return _safe_filename_part(_scenario_public_label(filters)) or "模拟预览（未命名）"
 
 
-def _plan_role_filename_label(filters: Dict[str, Any]) -> str:
-    return _safe_filename_part(filters.get("effective_plan_role_label")) or _safe_filename_part(filters.get("plan_role_label"))
+def _public_plan_view_label(filters: Dict[str, Any], plan_identity: Dict[str, Any]) -> str:
+    if filters.get("is_scenario_preview"):
+        return _scenario_public_label(filters)
+    has_identity_context = any(
+        bool(filters.get(key))
+        for key in (
+            "plan_identity_label",
+            "requested_plan_role_label",
+            "effective_plan_role_label",
+            "plan_role_label",
+            "is_official_plan",
+            "is_preview_plan",
+            "is_comparison",
+        )
+    )
+    kind_label = _text(plan_identity.get("kind_label"))
+    if not has_identity_context and kind_label == "只能查看的方案":
+        return ""
+    if kind_label == "对比参考方案":
+        role_label = _text(filters.get("requested_plan_role_label") or filters.get("effective_plan_role_label"))
+        if role_label and role_label not in ("正式采用方案", kind_label):
+            return f"{kind_label}-{role_label}"
+    if kind_label:
+        return kind_label
+    return _public_plan_identity_label(filters) or _text(filters.get("effective_plan_role_label") or filters.get("plan_role_label"))
+
+
+def _plan_view_filename_label(filters: Dict[str, Any]) -> str:
+    return _safe_filename_part(filters.get("plan_view_label"))
 
 
 def _public_plan_identity_label(filters: Dict[str, Any]) -> str:
@@ -384,7 +411,9 @@ def decorate_resource_dispatch_payload(payload: Dict[str, Any]) -> Dict[str, Any
     filters = out.get("filters")
     if isinstance(filters, MutableMapping):
         _decorate_filters(filters)
-        out["plan_identity"] = _public_plan_identity(filters)
+        plan_identity = _public_plan_identity(filters)
+        filters["plan_view_label"] = _public_plan_view_label(dict(filters), plan_identity)
+        out["plan_identity"] = plan_identity
         out["filters"] = _public_filters(filters)
     out["plan_role_options"] = _public_plan_role_options(out.get("plan_role_options"))
     for key in _row_collection_names():
@@ -400,7 +429,9 @@ def decorate_resource_dispatch_context(context: Dict[str, Any]) -> Dict[str, Any
     filters = out.get("filters")
     if isinstance(filters, MutableMapping):
         _decorate_filters(filters)
-        out["plan_identity"] = _public_plan_identity(filters)
+        plan_identity = _public_plan_identity(filters)
+        filters["plan_view_label"] = _public_plan_view_label(dict(filters), plan_identity)
+        out["plan_identity"] = plan_identity
         out["client_filters"] = _public_filters(filters)
     out["plan_role_options"] = _public_plan_role_options(out.get("plan_role_options"))
     _decorate_options(out)
@@ -425,10 +456,7 @@ def build_resource_dispatch_filename(payload: Dict[str, Any]) -> str:
         filename += f"_{_safe_filename_part(filters.get('start_date'))}_{_safe_filename_part(filters.get('end_date'))}"
     if _text(filters.get("version")):
         filename += f"_v{_safe_filename_part(filters.get('version'))}"
-    if filters.get("is_scenario_preview"):
-        filename += f"_{_scenario_filename_label(filters)}"
-        return f"{filename}.xlsx"
-    plan_role_label = _plan_role_filename_label(filters)
-    if plan_role_label:
-        filename += f"_{plan_role_label}"
+    plan_view_label = _plan_view_filename_label(filters)
+    if plan_view_label:
+        filename += f"_{plan_view_label}"
     return f"{filename}.xlsx"

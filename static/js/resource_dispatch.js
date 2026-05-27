@@ -227,10 +227,11 @@
     show(crossWrap, Array.isArray(data.cross_team_rows) && data.cross_team_rows.length > 0);
   }
 
-  function renderExecutionActions(actions) {
+  function renderExecutionActions(actions, task) {
     const list = Array.isArray(actions) ? actions : [];
     if (!list.length) return '<span class="muted">暂无可用操作</span>';
     const html = [];
+    const row = task || {};
     for (let i = 0; i < list.length; i++) {
       const action = list[i] || {};
       const disabledReason = trim(action.disabled_reason);
@@ -238,12 +239,34 @@
       const titleAttr = disabledReason ? ' title="' + escapeHtml(disabledReason) + '"' : "";
       html.push(
         '<button type="button" class="btn btn-secondary btn-sm aps-execution-action" data-action="' +
-          escapeHtml(action.action || "") + '"' + disabledAttr + titleAttr + '>' +
+          escapeHtml(action.action || "") + '" data-op-id="' + escapeHtml(row.op_id || "") +
+          '" data-schedule-id="' + escapeHtml(row.schedule_id || "") +
+          '" data-batch-id="' + escapeHtml(row.batch_id || "") +
+          '" data-state-revision="' + escapeHtml(row.state_revision || "") +
+          '" data-machine-id="' + escapeHtml(row.planned_machine_id || "") +
+          '" data-operator-id="' + escapeHtml(row.planned_operator_id || "") + '"' + disabledAttr + titleAttr + '>' +
           escapeHtml(action.label || "操作") +
         '</button>'
       );
     }
     return html.join(" ");
+  }
+
+  function executionUnavailableReasonText(reasons) {
+    if (Array.isArray(reasons)) {
+      return reasons.length ? reasons.map(escapeHtml).join("；") : "";
+    }
+    if (!reasons || typeof reasons !== "object") return "";
+    const seen = {};
+    const lines = [];
+    Object.keys(reasons).forEach(function (key) {
+      const item = trim(reasons[key]);
+      if (item && !seen[item]) {
+        seen[item] = true;
+        lines.push(escapeHtml(item));
+      }
+    });
+    return lines.join("；");
   }
 
   function renderExecutionCards(payload) {
@@ -264,8 +287,7 @@
     const cards = [];
     for (let i = 0; i < tasks.length; i++) {
       const task = tasks[i] || {};
-      const reasons = Array.isArray(task.unavailable_reasons) ? task.unavailable_reasons : [];
-      const reasonText = reasons.length ? reasons.map(escapeHtml).join("；") : "";
+      const reasonText = executionUnavailableReasonText(task.unavailable_reasons);
       cards.push(
         '<section class="aps-execution-card">' +
           '<div class="aps-execution-card-head">' +
@@ -287,11 +309,145 @@
           '</div>' +
           (task.last_event_action_label ? '<div class="text-meta mt-1">最近反馈：' + escapeHtml(task.last_event_action_label) + (task.last_event_remark ? '，' + escapeHtml(task.last_event_remark) : '') + '</div>' : '') +
           (reasonText ? '<div class="text-meta mt-1">' + reasonText + '</div>' : '') +
-          '<div class="aps-execution-actions mt-2">' + renderExecutionActions(task.available_actions) + '</div>' +
+          '<div class="aps-execution-actions mt-2">' + renderExecutionActions(task.available_actions, task) + '</div>' +
         '</section>'
       );
     }
     wrap.innerHTML = cards.join("");
+  }
+
+  function executionNotice(message) {
+    const notice = $("rdExecutionNotice");
+    if (!notice) return;
+    notice.textContent = trim(message);
+    show(notice, !!trim(message));
+  }
+
+  function localDateTimeText(date) {
+    const d = date || new Date();
+    function pad(v) {
+      return String(v).padStart(2, "0");
+    }
+    return (
+      d.getFullYear() + "-" +
+      pad(d.getMonth() + 1) + "-" +
+      pad(d.getDate()) + " " +
+      pad(d.getHours()) + ":" +
+      pad(d.getMinutes()) + ":" +
+      pad(d.getSeconds())
+    );
+  }
+
+  function executionIdentityPayload() {
+    const identity = (state.execution && state.execution.plan_identity) || {};
+    const filters = state.cfg.filters || {};
+    return {
+      version: identity.version || filters.version || "",
+      requested_plan_role: identity.requested_plan_role || filters.plan_role || "adopted",
+      effective_plan_role: identity.effective_plan_role || "adopted",
+      source_table: identity.source_table || "schedule",
+      scenario_id: identity.scenario_id || null
+    };
+  }
+
+  function executionCreatedBy() {
+    const input = $("rdExecutionCreatedBy");
+    const createdBy = input ? trim(input.value) : "";
+    if (!createdBy) {
+      executionNotice("请先填写反馈人。");
+      if (input && input.focus) input.focus();
+      return null;
+    }
+    return createdBy;
+  }
+
+  function executionPayload(button, action, createdBy) {
+    const payload = executionIdentityPayload();
+    payload.schedule_id = button.getAttribute("data-schedule-id") || "";
+    payload.batch_id = button.getAttribute("data-batch-id") || "";
+    payload.expected_state_revision = button.getAttribute("data-state-revision") || "";
+    payload.event_time = localDateTimeText(new Date());
+    payload.created_by = createdBy;
+    payload.idempotency_key = [
+      "resource-dispatch",
+      action,
+      button.getAttribute("data-op-id") || "",
+      String(Date.now())
+    ].join("-");
+    payload.remark = "";
+    if (action === "start") {
+      payload.machine_id = button.getAttribute("data-machine-id") || "";
+      payload.operator_id = button.getAttribute("data-operator-id") || "";
+    } else if (action === "finish") {
+      const qty = window.prompt ? window.prompt("请填写完成数量", "") : "";
+      if (qty === null) return null;
+      payload.quantity_done = qty;
+      payload.quantity_scrapped = "";
+    }
+    return payload;
+  }
+
+  function replaceExecutionTask(taskCard) {
+    if (!state.execution) state.execution = { tasks: [] };
+    const tasks = Array.isArray(state.execution.tasks) ? state.execution.tasks.slice() : [];
+    const opId = String((taskCard && taskCard.op_id) || "");
+    let replaced = false;
+    for (let i = 0; i < tasks.length; i++) {
+      if (String((tasks[i] && tasks[i].op_id) || "") === opId) {
+        tasks[i] = taskCard;
+        replaced = true;
+        break;
+      }
+    }
+    if (!replaced && taskCard) {
+      tasks.push(taskCard);
+    }
+    state.execution.tasks = tasks;
+    state.execution.disabled_reason = "";
+    renderExecutionCards(state.execution);
+  }
+
+  async function postExecutionAction(button) {
+    if (!button || button.disabled) return;
+    const action = trim(button.getAttribute("data-action"));
+    const opId = trim(button.getAttribute("data-op-id"));
+    if (action !== "start" && action !== "finish") return;
+    const actionLabel = action === "start" ? "开工" : "完工";
+    const createdBy = executionCreatedBy();
+    if (createdBy === null) return;
+    if (window.confirm && !window.confirm("确认提交" + actionLabel + "反馈吗？")) return;
+    const payload = executionPayload(button, action, createdBy);
+    if (payload === null) return;
+    button.disabled = true;
+    executionNotice("正在提交" + actionLabel + "反馈，请稍候。");
+    try {
+      const resp = await fetch("/scheduler/resource-dispatch/execution/" + encodeURIComponent(opId) + "/" + action, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const responsePayload = await resp.json();
+      if (!resp.ok || !responsePayload || responsePayload.success !== true) {
+        const errorMessage = responsePayload && responsePayload.error && responsePayload.error.message ? responsePayload.error.message : actionLabel + "反馈提交失败，请刷新后重试。";
+        throw new Error(errorMessage);
+      }
+      replaceExecutionTask(responsePayload.data && responsePayload.data.task_card);
+      executionNotice(actionLabel + "反馈已提交。");
+    } catch (err) {
+      button.disabled = false;
+      executionNotice(err && err.message ? err.message : actionLabel + "反馈提交失败，请刷新后重试。");
+    }
+  }
+
+  function bindExecutionActionClicks() {
+    const wrap = $("rdExecutionCards");
+    if (!wrap) return;
+    wrap.addEventListener("click", function (event) {
+      const target = event.target && event.target.closest ? event.target.closest(".aps-execution-action") : null;
+      if (!target || !wrap.contains(target)) return;
+      event.preventDefault();
+      postExecutionAction(target);
+    });
   }
 
   function renderCalendar(headers, rows) {
@@ -594,5 +750,6 @@
 
   bindFieldToggles();
   bindTabs();
+  bindExecutionActionClicks();
   loadData();
 })();

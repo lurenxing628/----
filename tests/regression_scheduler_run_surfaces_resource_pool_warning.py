@@ -181,6 +181,60 @@ def test_scheduler_simulate_redirects_to_generated_schedule_start_range() -> Non
         route_mod.url_for = old_url_for
 
 
+def test_scheduler_simulate_with_execution_facts_does_not_redirect_to_missing_version() -> None:
+    repo_root = str(REPO_ROOT)
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+    _reset_scheduler_route_modules()
+
+    import web.routes.scheduler_week_plan as route_mod
+
+    class _StubScheduleService:
+        def run_schedule(self, **_kwargs):
+            return {
+                "is_simulation": True,
+                "version": None,
+                "result_persisted": False,
+                "can_open_result_version": False,
+                "user_message": "现场已经有开工或完工记录，这次模拟只做安全检查，没有生成新的排程版本，也没有改动正式排程。",
+                "result_status": "simulated",
+                "summary": {
+                    "completion_status": "success",
+                    "counts": {"op_count": 1, "scheduled_ops": 1, "failed_ops": 0},
+                    "warnings": [],
+                },
+            }
+
+    captured = []
+    old_url_for = route_mod.url_for
+
+    def _fake_url_for(endpoint, **kwargs):
+        captured.append((endpoint, dict(kwargs)))
+        return f"/{endpoint}?{urlencode(kwargs)}"
+
+    route_mod.url_for = _fake_url_for
+    try:
+        app = Flask(__name__)
+        app.secret_key = "aps-test-simulate-execution-facts"
+        with app.test_request_context("/scheduler/simulate", method="POST", data={"batch_ids": ["B001"]}):
+            g.services = SimpleNamespace(
+                schedule_service=_StubScheduleService(),
+                gantt_service=SimpleNamespace(get_version_time_span_dates=lambda _version: None),
+            )
+            g.app_logger = app.logger
+            g.op_logger = None
+            resp = route_mod.simulate_schedule()
+            flashes = get_flashed_messages(with_categories=True)
+
+        assert getattr(resp, "status_code", 0) in (301, 302)
+        assert captured[-1][0] == "scheduler.batches_page"
+        assert not any(endpoint == "scheduler.gantt_page" for endpoint, _kwargs in captured)
+        assert any(cat == "warning" and "没有生成新的排程版本" in msg for cat, msg in flashes), flashes
+        assert not any("生成版本" in msg for _cat, msg in flashes), flashes
+    finally:
+        route_mod.url_for = old_url_for
+
+
 def test_scheduler_simulate_failed_result_stays_on_batches_page() -> None:
     repo_root = str(REPO_ROOT)
     if repo_root not in sys.path:

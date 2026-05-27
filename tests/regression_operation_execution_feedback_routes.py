@@ -10,6 +10,8 @@ from core.infrastructure.database import ensure_schema, get_connection
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
+RESOURCE_DISPATCH_JS = REPO_ROOT / "static" / "js" / "resource_dispatch.js"
+RESOURCE_DISPATCH_TEMPLATE = REPO_ROOT / "templates" / "scheduler" / "resource_dispatch.html"
 
 
 def _build_app(tmp_path, monkeypatch):
@@ -157,6 +159,7 @@ def _base_payload(card: Dict[str, Any], **overrides: Any) -> Dict[str, Any]:
     payload = {
         "version": 2,
         "schedule_id": card["schedule_id"],
+        "batch_id": card["batch_id"],
         "requested_plan_role": "adopted",
         "effective_plan_role": "adopted",
         "source_table": "schedule",
@@ -191,7 +194,7 @@ def test_execution_data_returns_task_card_contract(tmp_path, monkeypatch) -> Non
     data = payload["data"]
     assert data["plan_identity_label"] == "正式采用方案"
     assert data["can_write_feedback"] is True
-    assert "现场反馈保护还没开启" in data["disabled_reason"]
+    assert data["disabled_reason"] == ""
     assert len(data["tasks"]) == 1
     card = data["tasks"][0]
     for key in (
@@ -206,36 +209,47 @@ def test_execution_data_returns_task_card_contract(tmp_path, monkeypatch) -> Non
     ):
         assert key in card
     assert card["current_status_label"] == "待开工"
+    assert isinstance(card["unavailable_reasons"], dict)
     assert card["available_actions"][0]["label"] == "开工"
-    assert card["available_actions"][0]["enabled"] is False
-    assert "现场反馈保护还没开启" in card["available_actions"][0]["disabled_reason"]
+    assert card["available_actions"][0]["enabled"] is True
+    assert card["available_actions"][0]["disabled_reason"] == ""
+    assert "start" not in card["unavailable_reasons"]
+    assert "不能完工" in card["unavailable_reasons"]["finish"]
 
 
-def test_plain_user_start_finish_posts_are_rejected_before_guardrail(tmp_path, monkeypatch) -> None:
+def test_plain_user_start_finish_posts_write_after_guardrail(tmp_path, monkeypatch) -> None:
     app, db_path = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
     card = _current_card(client)
 
     start_resp = client.post(f"/scheduler/resource-dispatch/execution/{card['op_id']}/start", json=_base_payload(card))
-    start_payload = _json(start_resp)
+    start_data = _json(start_resp)["data"]
 
-    assert start_resp.status_code == 409
-    assert start_payload["error"]["code"] == "6003"
-    assert start_payload["error"]["message"] == "现场反馈保护还没开启，暂不能提交开工或完工。"
-    assert start_payload["error"]["details"]["reason"] == "feedback_not_enabled"
-    assert start_payload["error"]["details"]["action_label"] == "开工"
-    assert _event_count(db_path) == 0
+    assert start_resp.status_code == 200
+    assert start_data["event"]["action_label"] == "开工"
+    assert start_data["current_status_label"] == "生产中"
+    assert start_data["task_card"]["current_status_label"] == "生产中"
+    assert start_data["state_revision"] != card["state_revision"]
+    assert _event_count(db_path) == 1
 
     finish_resp = client.post(
         f"/scheduler/resource-dispatch/execution/{card['op_id']}/finish",
-        json=_base_payload(card, idempotency_key="route-key-finish", quantity_done=10),
+        json=_base_payload(
+            card,
+            expected_state_revision=start_data["state_revision"],
+            idempotency_key="route-key-finish",
+            event_time="2026-05-01 09:00:00",
+            quantity_done=10,
+        ),
     )
-    finish_payload = _json(finish_resp)
+    finish_data = _json(finish_resp)["data"]
 
-    assert finish_resp.status_code == 409
-    assert finish_payload["error"]["details"]["reason"] == "feedback_not_enabled"
-    assert finish_payload["error"]["details"]["action_label"] == "完工"
-    assert _event_count(db_path) == 0
+    assert finish_resp.status_code == 200
+    assert finish_data["event"]["action_label"] == "完工"
+    assert finish_data["current_status_label"] == "已完工"
+    assert finish_data["task_card"]["current_status_label"] == "已完工"
+    assert finish_data["state_revision"] != start_data["state_revision"]
+    assert _event_count(db_path) == 2
 
 
 def test_controlled_start_finish_posts_return_refresh_contract(tmp_path, monkeypatch) -> None:
@@ -284,6 +298,13 @@ def test_controlled_start_finish_posts_return_refresh_contract(tmp_path, monkeyp
         "actual_operator_label",
         "last_event_action_label",
         "last_event_remark",
+        "latest_exception_reason_label",
+        "latest_exception_severity_label",
+        "latest_exception_impact_minutes_label",
+        "latest_exception_affected_machine_label",
+        "latest_exception_affected_operator_label",
+        "latest_exception_handling_status_label",
+        "latest_exception_suggest_reschedule_label",
         "updated_at",
         "available_actions",
         "unavailable_reasons",
@@ -311,18 +332,18 @@ def test_controlled_start_finish_posts_return_refresh_contract(tmp_path, monkeyp
     assert _event_count(db_path) == 2
 
 
-def test_controlled_write_header_is_ignored_outside_testing(tmp_path, monkeypatch) -> None:
+def test_plain_write_does_not_depend_on_testing_header(tmp_path, monkeypatch) -> None:
     app, db_path = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
     card = _current_card(client)
 
     app.config["TESTING"] = False
     resp = _post_controlled(client, f"/scheduler/resource-dispatch/execution/{card['op_id']}/start", _base_payload(card))
-    payload = _json(resp)
+    payload = _json(resp)["data"]
 
-    assert resp.status_code == 409
-    assert payload["error"]["details"]["reason"] == "feedback_not_enabled"
-    assert _event_count(db_path) == 0
+    assert resp.status_code == 200
+    assert payload["event"]["action_label"] == "开工"
+    assert _event_count(db_path) == 1
 
 
 def test_direct_post_rejects_candidate_preview_and_history(tmp_path, monkeypatch) -> None:
@@ -346,6 +367,37 @@ def test_direct_post_rejects_candidate_preview_and_history(tmp_path, monkeypatch
         assert payload["error"]["code"] == "6003"
         assert payload["error"]["details"]["reason"] == "not_current_official_plan"
         assert payload["error"]["details"]["action_label"] == "开工"
+        assert payload["error"]["details"]["can_retry"] is False
+    assert _event_count(db_path) == 0
+
+
+def test_direct_post_requires_complete_plan_identity_and_batch_match(tmp_path, monkeypatch) -> None:
+    app, db_path = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+    card = _current_card(client)
+
+    missing_identity_payload = _base_payload(card, idempotency_key="missing-identity")
+    missing_identity_payload.pop("requested_plan_role")
+    resp = _post_controlled(
+        client,
+        f"/scheduler/resource-dispatch/execution/{card['op_id']}/start",
+        missing_identity_payload,
+    )
+    payload = _json(resp)
+    assert resp.status_code == 400
+    assert payload["error"]["details"]["reason"] == "missing_required_field"
+    assert payload["error"]["details"]["field"] == "requested_plan_role"
+    assert payload["error"]["details"]["can_retry"] is True
+
+    wrong_batch = _post_controlled(
+        client,
+        f"/scheduler/resource-dispatch/execution/{card['op_id']}/start",
+        _base_payload(card, idempotency_key="wrong-batch", batch_id="B-other"),
+    )
+    wrong_batch_payload = _json(wrong_batch)
+    assert wrong_batch.status_code == 409
+    assert wrong_batch_payload["error"]["details"]["reason"] == "schedule_mismatch"
+    assert wrong_batch_payload["error"]["details"]["can_retry"] is True
     assert _event_count(db_path) == 0
 
 
@@ -370,6 +422,7 @@ def test_validation_errors_use_chinese_field_label(tmp_path, monkeypatch) -> Non
         payload = _json(resp)
         assert resp.status_code == 400
         assert payload["error"]["details"]["field_label"] == field_label
+        assert payload["error"]["details"]["can_retry"] is True
         assert raw_field not in payload["error"]["message"]
 
 
@@ -387,9 +440,29 @@ def test_conflicts_return_reason_and_action_label(tmp_path, monkeypatch) -> None
     assert finish_before_start.status_code == 409
     assert finish_error["details"]["reason"] == "invalid_state_transition"
     assert finish_error["details"]["action_label"] == "完工"
+    assert finish_error["details"]["can_retry"] is False
+    assert "刷新页面查看最新状态" in finish_error["message"]
+    assert "联系计划员处理" in finish_error["message"]
 
     start_resp = _post_controlled(client, f"/scheduler/resource-dispatch/execution/{card['op_id']}/start", _base_payload(card))
     state_revision = _json(start_resp)["data"]["state_revision"]
+
+    early_finish = _post_controlled(
+        client,
+        f"/scheduler/resource-dispatch/execution/{card['op_id']}/finish",
+        _base_payload(
+            card,
+            expected_state_revision=state_revision,
+            idempotency_key="early-finish",
+            event_time="2026-05-01 08:05:00",
+            quantity_done=10,
+        ),
+    )
+    early_finish_error = _json(early_finish)["error"]
+    assert early_finish.status_code == 409
+    assert early_finish_error["details"]["reason"] == "invalid_state_transition"
+    assert early_finish_error["details"]["action_label"] == "完工"
+    assert early_finish_error["details"]["can_retry"] is False
 
     stale_resp = _post_controlled(
         client,
@@ -400,6 +473,7 @@ def test_conflicts_return_reason_and_action_label(tmp_path, monkeypatch) -> None
     assert stale_resp.status_code == 409
     assert stale_error["details"]["reason"] == "stale_state_revision"
     assert stale_error["details"]["action_label"] == "完工"
+    assert stale_error["details"]["can_retry"] is True
 
     conflict_resp = _post_controlled(
         client,
@@ -410,6 +484,7 @@ def test_conflicts_return_reason_and_action_label(tmp_path, monkeypatch) -> None
     assert conflict_resp.status_code == 409
     assert conflict_error["details"]["reason"] == "idempotency_conflict"
     assert conflict_error["details"]["action_label"] == "开工"
+    assert conflict_error["details"]["can_retry"] is True
 
     finish_resp = _post_controlled(
         client,
@@ -426,6 +501,9 @@ def test_conflicts_return_reason_and_action_label(tmp_path, monkeypatch) -> None
     assert restart_resp.status_code == 409
     assert restart_error["details"]["reason"] == "invalid_state_transition"
     assert restart_error["details"]["action_label"] == "开工"
+    assert restart_error["details"]["can_retry"] is False
+    assert "刷新页面查看最新状态" in restart_error["message"]
+    assert "联系计划员处理" in restart_error["message"]
 
 
 def test_start_finish_business_validation_is_user_facing(tmp_path, monkeypatch) -> None:
@@ -438,9 +516,9 @@ def test_start_finish_business_validation_is_user_facing(tmp_path, monkeypatch) 
         f"/scheduler/resource-dispatch/execution/{card['op_id']}/start",
         _base_payload(card, machine_id="M2"),
     )
-    assert wrong_machine.status_code == 409
+    assert wrong_machine.status_code == 400
     wrong_machine_error = _json(wrong_machine)["error"]
-    assert wrong_machine_error["details"]["reason"] == "schedule_mismatch"
+    assert wrong_machine_error["details"]["reason"] == "invalid_field_value"
     assert wrong_machine_error["details"]["field_label"] == "设备"
 
     start_resp = _post_controlled(client, f"/scheduler/resource-dispatch/execution/{card['op_id']}/start", _base_payload(card))
@@ -460,6 +538,8 @@ def test_start_finish_business_validation_is_user_facing(tmp_path, monkeypatch) 
     assert too_many.status_code == 400
     assert too_many_error["details"]["reason"] == "invalid_field_value"
     assert too_many_error["details"]["field_label"] == "完成数量"
+    assert too_many_error["details"]["can_retry"] is True
+    assert "计划数量" in too_many_error["message"]
     assert "quantity_done" not in too_many_error["message"]
 
 
@@ -492,8 +572,8 @@ def test_start_rejects_schedule_without_planned_machine(tmp_path, monkeypatch) -
     )
     payload = _json(resp)
 
-    assert resp.status_code == 409
-    assert payload["error"]["details"]["reason"] == "schedule_mismatch"
+    assert resp.status_code == 400
+    assert payload["error"]["details"]["reason"] == "invalid_field_value"
     assert payload["error"]["details"]["field_label"] == "设备"
     assert _event_count_for_op(db_path, 11) == 0
 
@@ -508,8 +588,12 @@ def test_finish_quantity_boundaries_use_chinese_field_labels(tmp_path, monkeypat
     cases = [
         ({"quantity_done": -1}, "完成数量"),
         ({"quantity_done": "abc"}, "完成数量"),
+        ({"quantity_done": 1.5}, "完成数量"),
+        ({"quantity_done": "1.5"}, "完成数量"),
+        ({"quantity_done": True}, "完成数量"),
         ({"quantity_done": 8, "quantity_scrapped": -1}, "报废数量"),
         ({"quantity_done": 8, "quantity_scrapped": "abc"}, "报废数量"),
+        ({"quantity_done": 8, "quantity_scrapped": 1.5}, "报废数量"),
     ]
 
     for index, (overrides, field_label) in enumerate(cases):
@@ -527,10 +611,11 @@ def test_finish_quantity_boundaries_use_chinese_field_labels(tmp_path, monkeypat
         assert resp.status_code == 400
         assert payload["error"]["details"]["reason"] == "invalid_field_value"
         assert payload["error"]["details"]["field_label"] == field_label
+        assert payload["error"]["details"]["can_retry"] is True
         assert "quantity_" not in payload["error"]["message"]
 
 
-def test_resource_dispatch_page_has_execution_tab_but_plain_buttons_disabled(tmp_path, monkeypatch) -> None:
+def test_resource_dispatch_page_has_execution_tab_without_feedback_protection_copy(tmp_path, monkeypatch) -> None:
     app, _db_path = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
 
@@ -542,4 +627,28 @@ def test_resource_dispatch_page_has_execution_tab_but_plain_buttons_disabled(tmp
     assert resp.status_code == 200
     assert "现场反馈" in body
     assert "data-execution-url=" in body
+    assert 'id="rdExecutionCreatedBy"' in body
+    assert "反馈人" in body
     assert "现场反馈保护还没开启，暂不能提交开工或完工" not in body
+
+
+def test_resource_dispatch_frontend_posts_execution_button_clicks() -> None:
+    source = RESOURCE_DISPATCH_JS.read_text(encoding="utf-8")
+    template = RESOURCE_DISPATCH_TEMPLATE.read_text(encoding="utf-8")
+
+    assert "bindExecutionActionClicks" in source
+    assert "postExecutionAction" in source
+    assert "executionCreatedBy" in source
+    assert "rdExecutionCreatedBy" in source
+    assert "请先填写反馈人。" in source
+    assert "payload.created_by = createdBy" in source
+    assert 'payload.created_by = "现场反馈"' not in source
+    assert 'id="rdExecutionCreatedBy"' in template
+    assert "反馈人" in template
+    assert 'method: "POST"' in source
+    assert 'data-op-id="' in source
+    assert 'data-state-revision="' in source
+    assert 'data-machine-id="' in source
+    assert 'data-operator-id="' in source
+    assert "/scheduler/resource-dispatch/execution/" in source
+    assert "idempotency_key" in source

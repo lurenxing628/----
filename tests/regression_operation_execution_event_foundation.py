@@ -189,6 +189,58 @@ def test_operation_execution_repository_appends_and_aggregates_state(tmp_path: P
         conn.close()
 
 
+def test_operation_execution_state_keeps_fractional_minutes(tmp_path: Path) -> None:
+    conn = _connect(tmp_path)
+    try:
+        _seed_plan(conn)
+        repo = OperationExecutionEventRepo(conn)
+        start = repo.insert_event(
+            _event(
+                event_time="2026-05-01 08:00:30",
+            )
+        )
+        paused = repo.insert_event(
+            _event(
+                event_type="pause",
+                reported_status="paused",
+                event_time="2026-05-01 08:01:00",
+                reason_code="equipment",
+                idempotency_key="key-pause-fractional",
+                request_fingerprint="fingerprint-pause-fractional",
+                previous_state_revision=f"10:1:{start.id}",
+            )
+        )
+        resumed = repo.insert_event(
+            _event(
+                event_type="resume",
+                reported_status="processing",
+                event_time="2026-05-01 08:01:30",
+                idempotency_key="key-resume-fractional",
+                request_fingerprint="fingerprint-resume-fractional",
+                previous_state_revision=f"10:2:{paused.id}",
+            )
+        )
+        finish = repo.insert_event(
+            _event(
+                event_type=EXECUTION_EVENT_FINISH,
+                reported_status="completed",
+                event_time="2026-05-01 08:02:00",
+                quantity_done=10,
+                idempotency_key="key-finish-fractional",
+                request_fingerprint="fingerprint-finish-fractional",
+                previous_state_revision=f"10:3:{resumed.id}",
+            )
+        )
+        conn.commit()
+
+        state = repo.aggregate_states_by_op_ids([10])[10]
+        assert state.last_event_id == finish.id
+        assert state.actual_duration_minutes == 1.5
+        assert state.pause_duration_minutes == 0.5
+    finally:
+        conn.close()
+
+
 def test_operation_execution_repository_alias_is_exported() -> None:
     assert OperationExecutionEventRepository is OperationExecutionEventRepo
 

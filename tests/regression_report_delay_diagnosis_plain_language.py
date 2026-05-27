@@ -4,6 +4,7 @@ import sys
 from io import BytesIO
 from pathlib import Path
 from typing import Iterable
+from urllib.parse import unquote
 
 from openpyxl import load_workbook
 
@@ -120,11 +121,15 @@ def test_overdue_export_contains_trace_sheet_without_internal_terms(tmp_path: Pa
     _assert_no_internal_terms(values)
 
 
-def test_overdue_export_rejects_scenario_preview_with_plain_message(tmp_path: Path, monkeypatch) -> None:
+def test_overdue_export_supports_scenario_preview_without_internal_terms(tmp_path: Path, monkeypatch) -> None:
     app, scenario_id = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
 
     response = client.get(f"/reports/overdue/export?version={VERSION}&plan_role=adopted&scenario_id={scenario_id}")
-    assert response.status_code == 400
-    body = response.get_data(as_text=True)
-    assert "模拟预览暂不支持导出，请切换到正式采用方案" in body
+    assert response.status_code == 200
+    disposition = unquote(str(response.headers.get("Content-Disposition") or ""))
+    values = "\n".join(_workbook_texts(response.data))
+    assert "延期诊断预览" in disposition
+    assert scenario_id not in disposition
+    assert scenario_id not in values
+    _assert_no_internal_terms(values)

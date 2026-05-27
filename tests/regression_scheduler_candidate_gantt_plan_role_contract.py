@@ -395,6 +395,7 @@ def test_gantt_page_and_boot_preserve_plan_role(tmp_path, monkeypatch) -> None:
     assert 'name="plan_role"' in html
     assert 'data-plan-role="baseline_best"' in html
     assert "plan_role=baseline_best" in html
+    assert f"/scheduler/analysis?version={VERSION}&amp;plan_role={ROLE_BASELINE_BEST}" in html
     assert "当前查看的是“原算法代表方案”" in html
     assert "这是一套对比参考方案" in html
     assert "planRole: ds.planRole" in boot_js

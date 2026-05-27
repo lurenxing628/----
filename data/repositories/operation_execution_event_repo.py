@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Union
 
 from core.models.operation_execution_event import (
@@ -16,8 +17,7 @@ from core.models.operation_execution_event import (
     EXECUTION_STATUS_PROCESSING,
     OperationExecutionEvent,
 )
-from core.models.operation_execution_state import OperationExecutionState
-from core.services.scheduler.operation_execution_labels import (
+from core.models.operation_execution_labels import (
     event_type_to_action,
     exception_reason_label,
     execution_action_label,
@@ -26,6 +26,7 @@ from core.services.scheduler.operation_execution_labels import (
     severity_label,
     suggest_reschedule_label,
 )
+from core.models.operation_execution_state import OperationExecutionState
 
 from .base_repo import BaseRepository
 
@@ -127,7 +128,20 @@ def _required_positive_int(payload: Dict[str, Any], field: str) -> int:
 def _optional_int(value: Any) -> Optional[int]:
     if value is None or str(value).strip() == "":
         return None
-    return int(value)
+    if isinstance(value, bool):
+        raise ValueError("integer value is required")
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        text = value.strip()
+        sign = text[0] if text and text[0] in ("+", "-") else ""
+        digits = text[1:] if sign else text
+        if digits.isdigit():
+            return int(text)
+        raise ValueError("integer value is required")
+    if isinstance(value, Decimal) and value == value.to_integral_value():
+        return int(value)
+    raise ValueError("integer value is required")
 
 
 def _event_payload(event_row: Union[OperationExecutionEvent, Dict[str, Any]]) -> Dict[str, Any]:
@@ -152,12 +166,12 @@ def _parse_time(value: Optional[str]) -> Optional[datetime]:
     return None
 
 
-def _duration_minutes(start: Optional[str], end: Optional[str]) -> Optional[int]:
+def _duration_minutes(start: Optional[str], end: Optional[str]) -> Optional[float]:
     start_dt = _parse_time(start)
     end_dt = _parse_time(end)
     if start_dt is None or end_dt is None or end_dt < start_dt:
         return None
-    return int((end_dt - start_dt).total_seconds() // 60)
+    return round((end_dt - start_dt).total_seconds() / 60.0, 6)
 
 
 def _impact_minutes_label(value: Optional[int]) -> str:
@@ -167,7 +181,19 @@ def _impact_minutes_label(value: Optional[int]) -> str:
 
 
 def _suggest_reschedule_bool(value: Any) -> bool:
-    return str(value or "").strip().lower() in ("yes", "true", "1")
+    return str(value or "").strip().lower() in ("1", "yes", "true")
+
+
+def _suggest_reschedule_value(value: Any) -> int:
+    text = str(value or "").strip().lower()
+    if text in ("", "0", "no", "false"):
+        return 0
+    if text in ("1", "yes", "true"):
+        return 1
+    parsed = _optional_int(value)
+    if parsed in (0, 1):
+        return int(parsed)
+    raise ValueError("suggest_reschedule must be 0 or 1")
 
 
 class OperationExecutionEventRepo(BaseRepository):
@@ -231,7 +257,7 @@ class OperationExecutionEventRepo(BaseRepository):
                 _text_or_none(payload.get("affected_machine_id")),
                 _text_or_none(payload.get("affected_operator_id")),
                 _text_or_none(payload.get("handling_status")),
-                _text_or_none(payload.get("suggest_reschedule")),
+                _suggest_reschedule_value(payload.get("suggest_reschedule")),
                 _text_or_none(payload.get("remark")),
                 required_text["created_by"],
                 required_text["idempotency_key"],
@@ -438,7 +464,7 @@ class OperationExecutionEventRepo(BaseRepository):
             if latest_exception is None
             else severity_label(latest_exception.severity),
             latest_exception_impact_minutes=None if latest_exception is None else latest_exception.impact_minutes,
-            latest_exception_impact_minutes_label="暂时不知道影响多久"
+            latest_exception_impact_minutes_label=None
             if latest_exception is None
             else _impact_minutes_label(latest_exception.impact_minutes),
             latest_exception_affected_machine_id=None
@@ -462,7 +488,7 @@ class OperationExecutionEventRepo(BaseRepository):
             latest_exception_suggest_reschedule=False
             if latest_exception is None
             else _suggest_reschedule_bool(latest_exception.suggest_reschedule),
-            latest_exception_suggest_reschedule_label="暂不建议重新排程"
+            latest_exception_suggest_reschedule_label=None
             if latest_exception is None
             else suggest_reschedule_label(latest_exception.suggest_reschedule),
             latest_exception_remark=None if latest_exception is None else latest_exception.remark,
@@ -500,17 +526,21 @@ class OperationExecutionEventRepo(BaseRepository):
         return None
 
     @staticmethod
-    def _pause_duration_minutes(events: Sequence[OperationExecutionEvent]) -> int:
-        total = 0
+    def _pause_duration_minutes(events: Sequence[OperationExecutionEvent]) -> float:
+        total = 0.0
         pause_started_at: Optional[str] = None
         for event in events:
             if event.event_type == EXECUTION_EVENT_PAUSE:
                 pause_started_at = event.event_time
                 continue
-            if pause_started_at and event.event_type in (EXECUTION_EVENT_RESUME, EXECUTION_EVENT_FINISH):
+            if pause_started_at and event.event_type in (
+                EXECUTION_EVENT_RESUME,
+                EXECUTION_EVENT_FINISH,
+                EXECUTION_EVENT_EXCEPTION,
+            ):
                 minutes = _duration_minutes(pause_started_at, event.event_time)
                 if minutes is not None:
-                    total += int(minutes)
+                    total += float(minutes)
                 pause_started_at = None
         return total
 

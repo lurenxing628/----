@@ -1,0 +1,51 @@
+feature: 2026-05-27-reschedule-minimum-execution-guardrails
+status: done
+roadmap: aps-three-gap-directions
+roadmap_item: reschedule-minimum-execution-guardrails
+
+steps:
+  - slug: execution-fact-provider
+    title: 新增执行事实只读 provider
+    status: done
+    exit_signal: 可以按 op_id 批量读取 actual_status、实际时间、实际资源、最后事件版本和 state_revision。
+
+  - slug: schedule-input-guardrails
+    title: 在普通重排输入阶段接入开工完工事实
+    status: done
+    exit_signal: 已完工移出待排集合，生产中生成 execution seed，freeze seed 和 execution seed 分开来源并做冲突检查。
+
+  - slug: persistence-final-guard
+    title: 落库前复查执行事实并保护现场状态
+    status: done
+    exit_signal: 现场事实变化或结果移动已开工/已完工工序时拒绝写入，且不把现场状态覆盖为 scheduled。
+
+  - slug: feedback-unlock
+    title: 放开普通用户最新正式方案开工完工
+    status: done
+    exit_signal: 页面按钮和直接 POST 对最新正式采用方案可写入，候选、历史、模拟预览、非最新正式方案仍拒绝。
+
+  - slug: regression-tests
+    title: 补第 10 项精准回归测试
+    status: done
+    exit_signal: 覆盖重排最小护栏、普通 POST 放开、任务卡刷新、state_revision 更新和离线前端资源。
+
+  - slug: adversarial-review
+    title: 整阶段对抗性审核和复审
+    status: done
+    exit_signal: 子代理按重排链路、反馈入口、执行事实读模型、CodeStable 事实源和横向分层/兼容边界整体复审；本轮接手后再次完成 5 个中性只读子代理复审，阻塞项为 0。
+
+checks:
+  - 已读取 roadmap 第 5 节契约和 items.yaml 第 10 项路径、入口、测试、禁区。
+  - 执行事实不复用 freeze window 变量表达。
+  - 已完工工序不进入待排算法。
+  - 生产中工序固定实际开工时间、设备和人员。
+  - 同一 op 同时有 execution seed 和 freeze seed 且冲突时拒绝落库。
+  - simulate=True 在有执行事实冲突时不写 Schedule、ScheduleHistory 或 ScheduleVersionSeq。
+  - simulate=True 有执行事实且只做安全校验时，页面不提示生成版本，也不跳到不存在的甘特版本。
+  - 执行事实缺少实际设备或人员时拒绝本次重排，不拿计划资源冒充现场实际。
+  - 冻结窗口 seed 不能让后续工序早于已完工前道工序的真实完工时间。
+  - 落库前复查现场状态变化；最终校验失败时 Schedule、ScheduleHistory 和 ScheduleVersionSeq 一起回滚。
+  - 普通用户开工/完工最新正式采用方案可写入。
+  - 候选、历史、模拟预览、非最新正式方案仍拒绝写入。
+  - 资源派工页开工/完工按钮提交时 created_by 来自页面必填“反馈人”，不能默认写 system 或固定假用户。
+  - 精准测试、YAML 校验、Python 3.8 扫描和 git diff --check 通过。

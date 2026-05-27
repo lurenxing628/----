@@ -238,28 +238,39 @@ items:
     minimal_loop: false
     primary_paths:
       - web/routes/domains/scheduler/scheduler_analysis_links.py
+      - web/routes/domains/scheduler/scheduler_analysis_read.py
+      - templates/components/ui_macros.html
       - templates/scheduler/week_plan.html
       - web/routes/domains/scheduler/scheduler_week_plan.py
       - core/services/scheduler/week_plan_excel.py
+      - core/services/scheduler/schedule_plan_query_service.py
+      - templates/reports/overdue.html
       - templates/reports/utilization.html
       - templates/reports/downtime.html
+      - web/routes/report_plan_preview.py
       - web/routes/reports.py
       - core/services/report/report_engine.py
       - core/services/report/exporters/xlsx.py
       - web/viewmodels/scheduler_analysis_candidates.py
       - templates/scheduler/analysis_parts/_candidate_comparison.html
       - tests/regression_scheduler_analysis_candidate_links_and_roles.py
+      - tests/regression_scheduler_candidate_week_plan_contract.py
+      - tests/regression_scheduler_candidate_plan_query_contract.py
       - tests/regression_scheduler_candidate_reports_contract.py
+      - tests/regression_scenario_preview_secondary_outputs.py
+      - tests/regression_report_delay_diagnosis_plain_language.py
+      - tests/regression_report_export_size_mode_selection.py
+      - tests/regression_reports_layout_contract.py
       - tests/regression_scheduler_candidate_plain_language.py
       - tests/regression_frontend_offline_static_assets.py
     entrypoints:
       - "从 web/routes/domains/scheduler/scheduler_analysis_links.py 保留并增强跳转"
       - "周计划入口看 templates/scheduler/week_plan.html、web/routes/domains/scheduler/scheduler_week_plan.py、core/services/scheduler/week_plan_excel.py"
-      - "资源负荷和停机影响入口看 templates/reports/utilization.html、templates/reports/downtime.html"
-      - "资源负荷和停机影响导出路径继续看 web/routes/reports.py、core/services/report/report_engine.py 和 core/services/report/exporters/xlsx.py"
+      - "超期清单、资源负荷和停机影响入口看 templates/reports/overdue.html、templates/reports/utilization.html、templates/reports/downtime.html"
+      - "超期清单、资源负荷和停机影响导出路径继续看 web/routes/report_plan_preview.py、web/routes/reports.py、core/services/report/report_engine.py 和 core/services/report/exporters/xlsx.py"
       - "导出工作簿需要检查 core/services/report/exporters/xlsx.py，确认工作表名、列名和空状态都用中文大白话"
     test_commands:
-      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_analysis_candidate_links_and_roles.py tests/regression_scheduler_candidate_reports_contract.py tests/regression_scheduler_candidate_plain_language.py tests/regression_frontend_offline_static_assets.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_analysis_candidate_links_and_roles.py tests/regression_scheduler_candidate_week_plan_contract.py tests/regression_scheduler_candidate_plan_query_contract.py tests/regression_scheduler_candidate_reports_contract.py tests/regression_scheduler_candidate_plain_language.py tests/regression_frontend_offline_static_assets.py tests/regression_scenario_preview_secondary_outputs.py tests/regression_report_export_size_mode_selection.py tests/regression_scheduler_candidate_gantt_plan_role_contract.py tests/regression_scheduler_candidate_resource_dispatch_contract.py tests/regression_report_delay_diagnosis_plain_language.py tests/regression_reports_layout_contract.py"
     forbidden_paths:
       - core/algorithms/
       - schema.sql
@@ -270,15 +281,20 @@ items:
       - detail_saved=false 时不展示假跳转，要用中文解释“这套对比参考方案没有保存明细”
       - 老历史缺 candidates 时页面显示“不完整，无法查看明细”这类大白话提示
       - 跳转后仍查看同一方案身份，不悄悄回到 adopted
+      - 手工访问周计划、甘特图、资源排班、资源负荷、停机影响或导出接口时，也不能绕过未完成候选方案状态读取残留明细
+      - 对比方案即使读取正式 Schedule，也要先确认对应候选已完成；历史摘要和数据库方案选项任一边显示未完成或缺状态，分析页都不生成跳转
+      - 排产主导航在普通候选方案没有 scenario_id 时，也必须保留 version 和 plan_role
+      - 甘特图、周计划、资源排班点回排产优化分析时，也必须保留 version 和 plan_role，不能回到默认版本
       - 候选方案和模拟预览缺名称时显示中文兜底，例如“模拟预览（未命名）”，不显示 scenario_id 或 candidate_id
       - 周计划页面、周计划导出工作簿内容、周计划导出文件名都不能显示 scenario_id；没有模拟方案名称时统一显示“模拟预览（未命名）”
       - 资源负荷页和停机影响页也必须修掉 scenario_id 兜底显示；没有模拟方案名称时显示“模拟预览（未命名）”
-      - 资源负荷和停机影响的导出入口、导出文件名、导出工作簿摘要也不能显示 source_table、scenario_id、candidate_id、plan_role；没有模拟方案名称时统一写“模拟预览（未命名）”
+      - 超期清单、资源负荷和停机影响的模拟预览导出必须继续读取同一个 scenario_id 对应的模拟明细，不能导出正式采用方案数据
+      - 超期清单、资源负荷和停机影响的模拟预览导出文件名、工作表名、表头、查询摘要和工作簿内容都不能显示 source_table、scenario_id、candidate_id、plan_role；没有模拟方案名称时统一写“模拟预览（未命名）”
       - 导出文件名用用户能看懂的中文方案名、日期范围和报表名，不拼内部编号；例如“资源负荷-模拟预览（未命名）-2026-05-01 至 2026-05-07.xlsx”
       - 页面、按钮、空状态、错误提示、导出内容都使用中文大白话，不显示内部英文枚举、数据库字段名、函数名
       - 新前端资源不走 CDN、外链字体、外链脚本、外链样式，不引入新前端框架或 Chrome 109 不支持能力
       - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
-      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_analysis_candidate_links_and_roles.py tests/regression_scheduler_candidate_reports_contract.py tests/regression_scheduler_candidate_plain_language.py tests/regression_frontend_offline_static_assets.py
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_analysis_candidate_links_and_roles.py tests/regression_scheduler_candidate_week_plan_contract.py tests/regression_scheduler_candidate_plan_query_contract.py tests/regression_scheduler_candidate_reports_contract.py tests/regression_scheduler_candidate_plain_language.py tests/regression_frontend_offline_static_assets.py tests/regression_scenario_preview_secondary_outputs.py tests/regression_report_export_size_mode_selection.py tests/regression_scheduler_candidate_gantt_plan_role_contract.py tests/regression_scheduler_candidate_resource_dispatch_contract.py tests/regression_report_delay_diagnosis_plain_language.py tests/regression_reports_layout_contract.py
     notes: 这条是安全收口，避免页面增强后把旧版本或失败候选处理坏。
 
   - slug: dispatch-plan-identity-guardrails
@@ -338,13 +354,16 @@ items:
       - schema.sql
       - core/infrastructure/migration_state.py
       - core/infrastructure/migrations/__init__.py
-      - core/infrastructure/migrations/v{next}.py
+      - core/infrastructure/migrations/v15.py
+      - core/infrastructure/migrations/v16.py
       - data/repositories/operation_execution_event_repo.py
       - data/repositories/__init__.py
       - core/models/operation_execution_event.py
+      - core/models/operation_execution_labels.py
       - core/models/operation_execution_state.py
       - core/services/scheduler/__init__.py
       - core/services/scheduler/operation_execution_feedback_service.py
+      - core/services/scheduler/operation_execution_labels.py
       - web/bootstrap/request_services.py
       - tests/regression_operation_execution_event_foundation.py
       - tests/regression_operation_execution_state_revision.py
@@ -409,7 +428,9 @@ items:
       - templates/scheduler/resource_dispatch.html
       - static/js/resource_dispatch.js
       - web/routes/domains/scheduler/scheduler_resource_dispatch.py
+      - core/services/scheduler/resource_dispatch_execution_service.py
       - core/services/scheduler/operation_execution_feedback_service.py
+      - web/viewmodels/scheduler_resource_dispatch_execution.py
       - web/bootstrap/request_services.py
       - tests/regression_scheduler_candidate_resource_dispatch_contract.py
       - tests/regression_operation_execution_feedback_routes.py
@@ -437,7 +458,7 @@ items:
       - 每张任务卡至少返回 op_id、schedule_id、batch_id、op_name、current_status、current_status_label、state_revision、actual_start_time、actual_end_time、actual_machine_label、actual_operator_label、last_event_action_label、last_event_remark、updated_at、available_actions 和 unavailable_reasons
       - available_actions 每项必须包含 action、label、enabled、disabled_reason；action 是程序内部动作值，页面只能显示 label；label 和 disabled_reason 必须是中文大白话，按钮能不能点必须由服务端返回，前端不能自己猜
       - 按钮能不能点必须由服务端返回，不允许前端自己猜状态字符串
-      - POST 请求体里的 version、requested_plan_role、schedule_id、source_table、effective_plan_role、scenario_id、expected_state_revision、event_time、created_by、idempotency_key 都是程序内部提交字段，不能当页面文案展示；request_fingerprint 由服务端重算，不由前端填写
+      - POST 请求体里的 version、requested_plan_role、schedule_id、batch_id、source_table、effective_plan_role、scenario_id、expected_state_revision、event_time、created_by、idempotency_key 都是程序内部提交字段，不能当页面文案展示；request_fingerprint 由服务端重算，不由前端填写
       - start_operation 的 operator_id 和 machine_id 必填，页面字段名分别是“操作人员”和“设备”；缺失、找不到或设备不匹配当前正式排程记录时返回 1001/400，details.field_label 用中文字段名，message 用中文大白话
       - finish_operation 的 quantity_done 必填且必须是大于等于 0 的整数；quantity_scrapped 可空，空值按 0，填写时也必须是大于等于 0 的整数；完成数量加报废数量不能超过任务计划数量
       - 开工/完工的 remark 页面只叫“备注”，允许为空；如果填写，服务端去掉前后空格后保存
@@ -448,7 +469,7 @@ items:
       - POST 失败返回必须包含 error.code、中文 message 和 details；details.reason 至少覆盖 not_current_official_plan、stale_state_revision、invalid_state_transition、idempotency_conflict、feedback_not_enabled、schedule_mismatch、missing_required_field、invalid_field_value、permission_denied、not_found
       - POST 失败 details.field 是给前端判断用的程序字段，details.field_label 是给页面显示的中文字段名；缺少字段或字段值不合法时必须同时返回 field 和 field_label，页面只能显示 field_label
       - POST 失败如果和具体动作有关，details.action 是给前端判断用的程序动作，details.action_label 是给页面显示的中文动作名；页面只能显示 action_label，例如“开工”“完工”“报异常”，不能显示 start、finish、report_exception
-      - 现场反馈字段中文名映射必须至少覆盖：created_by=反馈人、reason_code=原因、severity=严重程度、impact_minutes=预计影响时间、expected_state_revision=页面状态、event_time=反馈时间、idempotency_key=重复提交标记、quantity_done=完成数量、quantity_scrapped=报废数量、affected_machine_id=影响设备、affected_operator_id=影响人员、handling_status=处理状态、suggest_reschedule=是否建议重新排程、remark=情况说明、requested_plan_role=当前方案、effective_plan_role=实际使用的方案、schedule_id=排程记录、schedule_version=排程版本、source_table=计划来源、scenario_id=模拟预览、op_id=工序编号、plan_role=方案
+      - 现场反馈字段中文名映射必须至少覆盖：created_by=反馈人、reason_code=原因、severity=严重程度、impact_minutes=预计影响时间、expected_state_revision=页面状态、event_time=反馈时间、idempotency_key=重复提交标记、quantity_done=完成数量、quantity_scrapped=报废数量、affected_machine_id=影响设备、affected_operator_id=影响人员、handling_status=处理状态、suggest_reschedule=是否建议重新排程、remark=情况说明、requested_plan_role=当前方案、effective_plan_role=实际使用的方案、schedule_id=排程记录、schedule_version=排程版本、batch_id=批次号、source_table=计划来源、scenario_id=模拟预览、op_id=工序编号、plan_role=方案
       - POST 失败 reason 到 error.code/http 状态必须固定测试：missing_required_field 和 invalid_field_value 是 1001/400，not_found 是 1002/404，permission_denied 是 1004/403，其余计划身份、状态、幂等和写入保护冲突都是 6003/409
       - 服务端重新查询正式 Schedule 行并确认 can_write_feedback=true，不信任前端传来的 schedule_id、source_table、effective_plan_role 或 scenario_id
       - 页面显示计划时间和现场实际时间两套字段
@@ -469,25 +490,32 @@ items:
     depends_on: [resource-dispatch-start-finish-feedback]
     depends_on_reasons:
       resource-dispatch-start-finish-feedback: 最小现场护栏只保护开工和完工这两类已经能写入的事实，因此必须等开工/完工受控写入和任务卡预备完成后再做。
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-27-reschedule-minimum-execution-guardrails
     minimal_loop: false
     primary_paths:
       - core/services/scheduler/run/schedule_input_collector.py
+      - core/services/scheduler/run/schedule_input_runtime_support.py
       - core/services/scheduler/run/freeze_window.py
       - core/services/scheduler/run/schedule_optimizer.py
       - core/services/scheduler/run/schedule_optimizer_steps.py
+      - core/services/scheduler/run/schedule_orchestrator.py
       - core/services/scheduler/run/schedule_persistence.py
+      - core/services/scheduler/run/schedule_candidate_persistence_helpers.py
       - core/services/scheduler/schedule_service.py
       - core/services/scheduler/operation_execution_feedback_service.py
+      - core/services/scheduler/resource_dispatch_execution_service.py
       - core/services/scheduler/execution_fact_provider.py
       - core/models/schedule_adjustment.py
       - data/repositories/operation_execution_event_repo.py
       - templates/scheduler/resource_dispatch.html
       - static/js/resource_dispatch.js
       - web/routes/domains/scheduler/scheduler_resource_dispatch.py
+      - web/routes/domains/scheduler/scheduler_week_plan.py
+      - web/viewmodels/scheduler_resource_dispatch_execution.py
       - tests/regression_operation_execution_feedback_routes.py
       - tests/regression_scheduler_reschedule_execution_minimum_guardrails.py
+      - tests/regression_scheduler_run_surfaces_resource_pool_warning.py
       - tests/regression_frontend_offline_static_assets.py
     entrypoints:
       - "从 core/services/scheduler/run/schedule_input_collector.py 接入已开工/已完工工序"
@@ -495,7 +523,7 @@ items:
       - "本条不做候选比较、多起点、局部搜索、图排程 ready queue、scenario 保存或 scenario 发布；这些统一放到 reschedule-respects-execution-facts"
       - "同批解除上一条开工/完工按钮保护：资源派工模板、static/js/resource_dispatch.js、反馈 POST route 和直接 POST 测试都要一起验收"
     test_commands:
-      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_reschedule_execution_minimum_guardrails.py tests/regression_operation_execution_feedback_routes.py tests/regression_frontend_offline_static_assets.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_reschedule_execution_minimum_guardrails.py tests/regression_operation_execution_feedback_routes.py tests/regression_frontend_offline_static_assets.py tests/regression_scheduler_run_surfaces_resource_pool_warning.py"
     forbidden_paths:
       - installer/
       - vendor/
@@ -503,13 +531,14 @@ items:
       - 回归测试先证明旧逻辑会把已开工或已完工工序重新移动，再证明新逻辑不再移动；最终退出条件以新行为为准
       - 已完工工序在 input collector 阶段从 reschedulable_operations 删除，不再进入待排算法
       - 已完工工序的实际完工时间必须写成下游最早开始约束，后续工序不能早于真实完工时间
+      - 冻结窗口生成的 seed_result 也必须服从已完工工序的真实完工时间；如果旧冻结排程让后续工序早于真实完工时间，必须拒绝写入并用中文提示刷新后重排
       - 生产中工序默认固定，不改已发生开始时间和资源
       - 生产中工序通过 execution_fixed_op_ids 和 execution_seed_results 传给算法，不能复用 freeze window 的冻结含义
       - 本条只要求普通重排主链路读取开工/完工事实；候选比较、多起点、局部搜索、图排程 ready queue、scenario save/publish 的统一执行快照留给 reschedule-respects-execution-facts
       - execution_seed_results 在本条只用于开工/完工最小护栏，必须标明来源是 execution_fact 还是 freeze_window；同一 op_id 同时来自两边时以现场事实为准，冲突时拒绝落库并返回中文提示
-      - simulate=True 校验只做开工/完工最小冲突提示，不写 Schedule 或 ScheduleHistory；不保存或更新 scenario 执行快照
+      - simulate=True 校验只做开工/完工最小冲突提示，不写 Schedule、ScheduleHistory 或 ScheduleVersionSeq；不保存或更新 scenario 执行快照；页面不能提示生成版本，也不能跳到不存在的甘特版本
       - freeze window 仍只表示排程冻结；execution fixed seed 才表示现场已经发生，两者变量和测试要分开
-      - 普通重排落库前如果发现已开工/已完工事实和当前排程结果冲突，返回 409，不写 Schedule 或 ScheduleHistory，并用中文提示重新排
+      - 普通重排落库前如果发现已开工/已完工事实和当前排程结果冲突，返回 409，不写 Schedule、ScheduleHistory 或 ScheduleVersionSeq，并用中文提示重新排
       - 本条不新增 execution_snapshot_revision、execution_snapshot_op_ids、scenario 保存快照或 scenario 发布复算；这些由 reschedule-respects-execution-facts 统一设计和验收
       - persistence 不把 processing 或 completed 的现场状态覆盖成 scheduled
       - 本条只处理开工和完工造成的最小安全补洞：已开工默认固定、已完工不再排、后续工序不能早于真实完工时间
@@ -519,10 +548,11 @@ items:
       - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
       - 本条通过后才能把上一条预备好的开工/完工按钮对普通用户放开
       - 本条完成后必须解除 resource-dispatch-start-finish-feedback 里普通用户开工/完工按钮隐藏或禁用的保护；按钮放开、页面可点击、直接 POST 可写入必须同批验收
+      - 资源派工页按钮提交开工/完工时，created_by 必须来自页面必填“反馈人”；空值直接拒绝，不能默认写 system 或固定假用户
       - 普通用户直接 POST 开工/完工从“保护拒绝”变为“最新正式采用方案可写入”时，必须有回归测试证明事件写入、任务卡刷新、state_revision 更新都正确
       - 候选方案、模拟预览、历史正式方案、非最新正式采用方案仍然拒绝开工/完工 POST，不能因为放开普通用户按钮把计划身份护栏一起放松
       - 必须有页面按钮放开测试和绕过页面直接 POST 放开测试；只测算法最小护栏不算完成
-      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_reschedule_execution_minimum_guardrails.py tests/regression_operation_execution_feedback_routes.py tests/regression_frontend_offline_static_assets.py
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_reschedule_execution_minimum_guardrails.py tests/regression_operation_execution_feedback_routes.py tests/regression_frontend_offline_static_assets.py tests/regression_scheduler_run_surfaces_resource_pool_warning.py
     notes: 这是安全补洞条目，避免现场反馈上线后到完整重排接入前出现危险空窗；本条完成后开工/完工反馈才算可对普通用户放开。
 
   - slug: shop-exception-feedback

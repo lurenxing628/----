@@ -121,6 +121,28 @@ def test_candidate_recommendation_card_is_not_faked_when_comparison_is_missing()
     assert "本次没有开启方案对比" in display["notice"]
 
 
+def test_candidate_recommendation_card_is_not_faked_when_adopted_candidate_did_not_complete() -> None:
+    for status, status_label in (("failed", "失败"), ("skipped", "已跳过")):
+        summary = _comparison_summary()
+        comparison = summary["algo"]["candidate_comparison"]
+        adopted_key = comparison["adopted_candidate_key"]
+        for candidate in comparison["candidates"]:
+            if candidate["candidate_key"] == adopted_key:
+                candidate["status"] = status
+
+        display = build_candidate_comparison_display(
+            summary,
+            selected_ver=7,
+            plan_role_options=_plan_role_options(),
+        )
+
+        assert display["recommendation_card"] is None
+        assert display["selection_reason_label"] == ""
+        status_text = " ".join(message["text"] for message in display["status_messages"])
+        assert status_label in status_text
+        assert "系统不展示推荐结论" in status_text
+
+
 def test_candidate_comparison_incomplete_history_uses_plain_notice_without_fake_cards() -> None:
     display = build_candidate_comparison_display(
         _comparison_summary(incomplete=True),

@@ -254,6 +254,9 @@ def _load_selected_plan_role_options(services: Any, selected_ver: Optional[int])
         detail_saved = str(option.get("detail_saved") or "").strip().lower()
         if source_table == "candidate_rows" and detail_saved != "yes":
             return
+        candidate_status = str(option.get("candidate_status") or "").strip().lower()
+        if source_table == "candidate_rows" and candidate_status != "completed":
+            return
         role = str(option.get("role") or getattr(item, "role", "") or "").strip()
         if role:
             resolution = resolve_plan(int(selected_ver), role)

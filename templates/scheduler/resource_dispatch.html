@@ -57,7 +57,7 @@
         {'label': '班组轴', 'value': filters.team_axis_label if filters.scope_type == 'team' else None},
         {'label': '区间', 'value': filters.start_date ~ ' ～ ' ~ filters.end_date},
         {'label': '版本', 'value': 'v' ~ filters.version},
-        {'label': '方案', 'value': (filters.scenario_display_name or filters.scenario_name or '模拟预览（未命名）') if filters.is_scenario_preview else (filters.effective_plan_role_label or filters.plan_role_label)}
+        {'label': '方案', 'value': filters.plan_view_label or ((filters.scenario_display_name or filters.scenario_name or '模拟预览（未命名）') if filters.is_scenario_preview else (filters.effective_plan_role_label or filters.plan_role_label))}
       ]) }}
     {% endif %}
     <form method="get" action="{{ url_for('scheduler.resource_dispatch_page') }}" class="aps-query-form-grid aps-resource-query-grid">
@@ -167,7 +167,7 @@
         {{ ui.summary_item('时间', selected_version_row.item.schedule_time_display or selected_version_row.item.schedule_time) }}
         {{ ui.summary_item('排产方式', selected_version_row.item.strategy_label or strategy_zh.get(selected_version_row.item.strategy, '未知排产方式')) }}
         {{ ui.summary_item('结果', selected_version_row.item.result_status_label or status_zh.get(selected_version_row.item.result_status, '结果状态未知')) }}
-        {{ ui.summary_item('查看方案', (filters.scenario_display_name or filters.scenario_name or '模拟预览（未命名）') if filters.is_scenario_preview else (filters.effective_plan_role_label or filters.plan_role_label)) }}
+        {{ ui.summary_item('查看方案', filters.plan_view_label or ((filters.scenario_display_name or filters.scenario_name or '模拟预览（未命名）') if filters.is_scenario_preview else (filters.effective_plan_role_label or filters.plan_role_label))) }}
         {% if plan_identity %}
           {{ ui.summary_item('计划身份', plan_identity.kind_label) }}
           {{ ui.summary_item('派工反馈', plan_identity.dispatch_feedback_label) }}
@@ -278,6 +278,12 @@
     </div>
 
     <div id="rdExecutionPanel" class="mt-3 is-hidden">
+      <div class="aps-query-form-grid aps-resource-query-grid">
+        <div class="form-field">
+          <label for="rdExecutionCreatedBy">反馈人</label>
+          <input type="text" id="rdExecutionCreatedBy" class="w-180" autocomplete="off" required>
+        </div>
+      </div>
       <div id="rdExecutionNotice" class="flash-card flash-warning is-hidden" role="status"></div>
       <div id="rdExecutionCards" class="aps-execution-card-grid mt-2">
         <div class="muted">现场反馈任务卡加载中...</div>

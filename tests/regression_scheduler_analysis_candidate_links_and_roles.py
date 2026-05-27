@@ -135,3 +135,123 @@ def test_analysis_candidate_links_are_hidden_when_candidate_detail_is_not_saved(
     assert "这套对比参考方案没有保存明细" in rows[ROLE_BASELINE_BEST]["link_unavailable_reason"]
     assert rows[ROLE_ADOPTED]["links"]
     assert rows[ROLE_CRITICAL_BEST]["links"]
+
+
+def test_analysis_candidate_links_are_hidden_when_representative_candidate_did_not_complete() -> None:
+    summary = _comparison_summary()
+    comparison = summary["algo"]["candidate_comparison"]
+    for candidate in comparison["candidates"]:
+        if candidate["candidate_key"] == comparison["baseline_best_candidate_key"]:
+            candidate["status"] = "failed"
+        if candidate["candidate_key"] == comparison["critical_best_candidate_key"]:
+            candidate["status"] = "skipped"
+    history_service = _HistoryServiceStub(summary)
+    plan_role_service = _PlanRoleServiceStub(_plan_role_options())
+    app, route_mod = _build_app()
+
+    payload = _call_analysis_page(
+        app,
+        route_mod,
+        history_service=history_service,
+        plan_role_service=plan_role_service,
+    )
+
+    rows = {row["role"]: row for row in payload["candidate_comparison_display"]["rows"]}
+    assert rows[ROLE_BASELINE_BEST]["links"] == {}
+    assert rows[ROLE_BASELINE_BEST]["can_open_detail"] is False
+    assert "状态是失败" in rows[ROLE_BASELINE_BEST]["link_unavailable_reason"]
+    assert rows[ROLE_CRITICAL_BEST]["links"] == {}
+    assert rows[ROLE_CRITICAL_BEST]["can_open_detail"] is False
+    assert "状态是已跳过" in rows[ROLE_CRITICAL_BEST]["link_unavailable_reason"]
+
+
+def test_analysis_candidate_links_use_plan_option_status_when_summary_is_stale() -> None:
+    options = [
+        option
+        if option.role != ROLE_BASELINE_BEST
+        else type(option)(
+            role=option.role,
+            source_table=option.source_table,
+            candidate_id=option.candidate_id,
+            candidate_key=option.candidate_key,
+            candidate_label=option.candidate_label,
+            candidate_kind=option.candidate_kind,
+            candidate_status="failed",
+            detail_saved=option.detail_saved,
+        )
+        for option in _plan_role_options()
+    ]
+    history_service = _HistoryServiceStub(_comparison_summary())
+    plan_role_service = _PlanRoleServiceStub(options)
+    app, route_mod = _build_app()
+
+    payload = _call_analysis_page(
+        app,
+        route_mod,
+        history_service=history_service,
+        plan_role_service=plan_role_service,
+    )
+
+    rows = {row["role"]: row for row in payload["candidate_comparison_display"]["rows"]}
+    assert rows[ROLE_BASELINE_BEST]["links"] == {}
+    assert rows[ROLE_BASELINE_BEST]["can_open_detail"] is False
+    assert rows[ROLE_BASELINE_BEST]["status"] == "failed"
+    assert "状态是失败" in rows[ROLE_BASELINE_BEST]["link_unavailable_reason"]
+
+
+def test_analysis_candidate_links_are_hidden_when_plan_option_status_is_missing() -> None:
+    options = [
+        option
+        if option.role != ROLE_BASELINE_BEST
+        else type(option)(
+            role=option.role,
+            source_table=option.source_table,
+            candidate_id=option.candidate_id,
+            candidate_key=option.candidate_key,
+            candidate_label=option.candidate_label,
+            candidate_kind=option.candidate_kind,
+            candidate_status=None,
+            detail_saved=option.detail_saved,
+        )
+        for option in _plan_role_options()
+    ]
+    history_service = _HistoryServiceStub(_comparison_summary())
+    plan_role_service = _PlanRoleServiceStub(options)
+    app, route_mod = _build_app()
+
+    payload = _call_analysis_page(
+        app,
+        route_mod,
+        history_service=history_service,
+        plan_role_service=plan_role_service,
+    )
+
+    rows = {row["role"]: row for row in payload["candidate_comparison_display"]["rows"]}
+    assert rows[ROLE_BASELINE_BEST]["links"] == {}
+    assert rows[ROLE_BASELINE_BEST]["can_open_detail"] is False
+    assert rows[ROLE_BASELINE_BEST]["status"] == ""
+    assert "状态没有确认" in rows[ROLE_BASELINE_BEST]["link_unavailable_reason"]
+
+
+def test_analysis_candidate_links_are_hidden_when_summary_status_is_missing() -> None:
+    summary = _comparison_summary()
+    comparison = summary["algo"]["candidate_comparison"]
+    for candidate in comparison["candidates"]:
+        if candidate["candidate_key"] == comparison["baseline_best_candidate_key"]:
+            candidate["status"] = ""
+    history_service = _HistoryServiceStub(summary)
+    plan_role_service = _PlanRoleServiceStub(_plan_role_options())
+    app, route_mod = _build_app()
+
+    payload = _call_analysis_page(
+        app,
+        route_mod,
+        history_service=history_service,
+        plan_role_service=plan_role_service,
+    )
+
+    rows = {row["role"]: row for row in payload["candidate_comparison_display"]["rows"]}
+    assert rows[ROLE_BASELINE_BEST]["links"] == {}
+    assert rows[ROLE_BASELINE_BEST]["can_open_detail"] is False
+    assert rows[ROLE_BASELINE_BEST]["status"] == ""
+    assert "状态没有确认" in rows[ROLE_BASELINE_BEST]["link_unavailable_reason"]

@@ -5,7 +5,7 @@ scope: 项目架构总入口，覆盖 APS 整体结构、核心模块索引、�
 summary: APS 在 Win7 x64、Python 3.8、离线交付约束下的系统地图入口
 status: current
 created: 2026-04-27
-last_reviewed: 2026-05-26
+last_reviewed: 2026-05-27
 tags: [aps, codestable, architecture, win7]
 depends_on: []
 implements: []
@@ -42,6 +42,7 @@ implements: []
 - `tools/`、`scripts/`：质量门禁、治理台账、辅助检查脚本。
 - `开发文档/`、`audit/`、`evidence/`：开发说明、审计记录和验证证据。
 - `.codestable/architecture/ui-gantt.md`：甘特图结果查看页面、缩放协议、只读边界、模拟预览身份传递和本地 Frappe 补丁治理现状。
+- 车间执行事件基础：`OperationExecutionEvents`、执行事件仓储、执行反馈服务和执行状态读模型记录现场开工、暂停、继续、完工、报异常这些事实。
 
 ## 4. 关键架构决定
 
@@ -64,3 +65,12 @@ implements: []
 - `graph_analysis_mode=report` 已作为旁路报告接入 `core/services/scheduler/run/schedule_orchestrator.py`。接入点在原排产算法已经算完、`validated_schedule_payload` 已经生成之后，图报告判断、错误投影和采样投影收在 `core/services/scheduler/run/schedule_graph_report.py`，只读取 `ScheduleRunInput.cfg`、`algo_ops_to_schedule`、`batches` 和 `resource_pool`。
 - report 模式只把公开小摘要写进 `result_summary["algo"]["graph_analysis"]`，把采样诊断写进 `result_summary["diagnostics"]["graph_analysis"]`。OperationLogs 沿用现有 `detail["algo"]` 小摘要路径，因此只能看到 `algo.graph_analysis`，不能看到完整 nodes、edges、node_metrics、topological_order 或 raw 对象。
 - `graph_analysis_mode=on` 当前已经接入 PR-5 ready 队列和 PR-6 图评分：可用 DAG 会在 optimizer 前生成 plain `graph_ready_context`，SGS 候选集合只从图 ready 工序里取；当 `graph_critical_weight` 或 `graph_impact_weight` 大于 0 时，图模块会计算 full `node_metrics`，在 service 层预先转成 `graph_priority_key_by_op_id`，算法层只拼普通 tuple，不反向依赖 scheduler service。`on + 有环 + graph_block_on_cycle=yes` 会在 version 分配前阻止排产；`on + 有环 + graph_block_on_cycle=no` 会继续旧 SGS 逻辑，但 public 摘要会写明图增强和图评分未启用。候选方案链路已经接入 3/5/7 档权重试跑、自动选择、候选落库和代表三方案页面切换；第一版只承诺正式采用方案、原算法代表方案和重点工序优先代表方案的查看与对比，不承诺全候选明细大屏、任意两方案自由对比、批次级或资源级差异清单。
+
+## 7. 车间执行事件基础现状
+
+- `OperationExecutionEvents` 是现场事实表，记录工序、批次、正式计划身份、动作、反馈时间、实际设备、实际人员、异常信息、幂等键、服务端指纹、写入前状态版本和反馈人。
+- 执行事件只追加。`schedule_id` 和 `op_id` 仍保留外键用于审计对齐，但不使用级联删除，避免删除计划行时把现场事实一起带走。
+- `data/repositories/operation_execution_event_repo.py` 负责执行事件的全部 SQL，并按 `op_id` 聚合 `OperationExecutionState`。service 不直接拼写事件表 SQL。
+- `core/services/scheduler/operation_execution_feedback_service.py` 负责正式计划身份校验、幂等键优先判断、状态版本校验、合法状态流转和事件写入。
+- 状态读模型按事件流聚合：`last_event_*` 表示最后一条现场事件，`latest_exception_*` 表示最近一次报异常；两组字段分开计算。
+- 程序动作 `report_exception` 入库为 `event_type=exception`，页面和返回值显示“报异常”；现场状态 `exception` 显示“异常中”，两套中文映射分开维护。

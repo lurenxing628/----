@@ -69,15 +69,52 @@ _OVERDUE_HEADERS = ["类别", "批次号", "图号", "名称", "数量", "交期
 _DIAGNOSIS_HEADERS = ["本次诊断编号", "生成依据摘要", "核对信息", "证据来源", "证据缺口", "生成时间", "筛选条件"]
 
 
+def _append_summary_sheet(wb, summary_rows: Optional[List[List[Any]]], *, write_only: bool) -> None:
+    rows = list(summary_rows or [])
+    if not rows:
+        return
+    if write_only:
+        ws = wb.create_sheet("查询摘要")
+        _append_write_only_row(ws, ["项目", "内容"], is_header=True)
+        for row in rows:
+            _append_write_only_row(ws, row)
+        return
+
+    if (
+        len(wb.worksheets) == 1
+        and wb.active is not None
+        and wb.active.title == "Sheet"
+        and wb.active.max_row == 1
+        and wb.active.max_column == 1
+        and wb.active["A1"].value is None
+    ):
+        ws = wb.active
+        ws.title = "查询摘要"
+    else:
+        ws = wb.create_sheet("查询摘要")
+    _append_row(ws, ["项目", "内容"])
+    for row in rows:
+        _append_row(ws, row)
+    ws.freeze_panes = "A2"
+    ws.column_dimensions["A"].width = 18
+    ws.column_dimensions["B"].width = 42
+    for row in ws.iter_rows():
+        row[0].font = Font(bold=True)
+        for cell in row:
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+
+
 def export_overdue_xlsx(
     items: List[Dict[str, Any]],
     *,
     diagnosis_rows: Optional[List[Dict[str, Any]]] = None,
+    summary_rows: Optional[List[List[Any]]] = None,
     write_only: bool = False,
 ) -> BinaryIO:
     wb = openpyxl.Workbook(write_only=write_only)
     try:
-        ws = wb.create_sheet("超期清单") if write_only else wb.active
+        _append_summary_sheet(wb, summary_rows, write_only=write_only)
+        ws = wb.create_sheet("超期清单") if (write_only or summary_rows) else wb.active
         if ws is None:
             raise RuntimeError("无法创建超期清单工作表")
         if not write_only:
@@ -161,10 +198,12 @@ def export_utilization_xlsx(
     machines: List[Dict[str, Any]],
     operators: List[Dict[str, Any]],
     *,
+    summary_rows: Optional[List[List[Any]]] = None,
     write_only: bool = False,
 ) -> BinaryIO:
     wb = openpyxl.Workbook(write_only=write_only)
     try:
+        _append_summary_sheet(wb, summary_rows, write_only=write_only)
         if write_only:
             ws1 = wb.create_sheet("设备负荷")
             _append_write_only_row(ws1, ["设备编号", "设备名称", "负荷(小时)", "任务数", "可用工时(小时)", "利用率(%)"], is_header=True)
@@ -196,7 +235,7 @@ def export_utilization_xlsx(
                     ],
                 )
         else:
-            ws1 = wb.active
+            ws1 = wb.create_sheet("设备负荷") if summary_rows else wb.active
             if ws1 is None:
                 raise RuntimeError("无法创建设备负荷工作表")
             ws1.title = "设备负荷"
@@ -242,10 +281,16 @@ def export_utilization_xlsx(
             pass
 
 
-def export_downtime_impact_xlsx(machines: List[Dict[str, Any]], *, write_only: bool = False) -> BinaryIO:
+def export_downtime_impact_xlsx(
+    machines: List[Dict[str, Any]],
+    *,
+    summary_rows: Optional[List[List[Any]]] = None,
+    write_only: bool = False,
+) -> BinaryIO:
     wb = openpyxl.Workbook(write_only=write_only)
     try:
-        ws = wb.create_sheet("停机影响") if write_only else wb.active
+        _append_summary_sheet(wb, summary_rows, write_only=write_only)
+        ws = wb.create_sheet("停机影响") if (write_only or summary_rows) else wb.active
         if ws is None:
             raise RuntimeError("无法创建停机影响工作表")
         if not write_only:

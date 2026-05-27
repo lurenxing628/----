@@ -165,7 +165,8 @@ def _summary_filter_value(filters: Dict[str, Any], key: str) -> Any:
 
 def _summary_plan_label(filters: Dict[str, Any]) -> Any:
     return (
-        filters.get("scenario_display_name")
+        filters.get("plan_view_label")
+        or filters.get("scenario_display_name")
         or filters.get("scenario_name")
         or filters.get("effective_plan_role_label")
         or filters.get("plan_role_label")

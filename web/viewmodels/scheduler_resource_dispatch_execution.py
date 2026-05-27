@@ -125,11 +125,18 @@ def build_task_card(row: Mapping[str, Any], state: Any, *, can_write_feedback: b
     current_state = _as_state(state, op_id, batch_id)
     status = _text(current_state.current_status) or "not_started"
     status_label = _text(current_state.current_status_label) or "待开工"
-    unavailable_reasons: List[str] = []
-    if not can_write_feedback:
-        unavailable_reasons.append(_NOT_CURRENT_OFFICIAL_REASON)
-    if can_write_feedback and not feedback_write_enabled:
-        unavailable_reasons.append(_FEEDBACK_DISABLED_REASON)
+    available_actions = build_available_actions(
+        can_write=can_write_feedback,
+        feedback_write_enabled=feedback_write_enabled,
+        status=status,
+        status_label=status_label,
+    )
+    unavailable_reasons = {}
+    for action in available_actions:
+        action_key = str(action.get("action") or "")
+        disabled_reason = _text(action.get("disabled_reason"))
+        if action_key and disabled_reason:
+            unavailable_reasons[action_key] = disabled_reason
     return {
         "op_id": op_id,
         "schedule_id": schedule_id,
@@ -137,7 +144,9 @@ def build_task_card(row: Mapping[str, Any], state: Any, *, can_write_feedback: b
         "op_name": _op_name(row),
         "planned_start_time": _text(row.get("start_time")),
         "planned_end_time": _text(row.get("end_time")),
+        "planned_machine_id": _text(row.get("machine_id")),
         "planned_machine_label": _resource_label(row.get("machine_id"), row.get("machine_name")),
+        "planned_operator_id": _text(row.get("operator_id")),
         "planned_operator_label": _resource_label(row.get("operator_id"), row.get("operator_name")),
         "current_status": status,
         "current_status_label": status_label,
@@ -148,13 +157,15 @@ def build_task_card(row: Mapping[str, Any], state: Any, *, can_write_feedback: b
         "actual_operator_label": current_state.actual_operator_label,
         "last_event_action_label": current_state.last_event_action_label,
         "last_event_remark": current_state.last_event_remark,
+        "latest_exception_reason_label": current_state.latest_exception_reason_label,
+        "latest_exception_severity_label": current_state.latest_exception_severity_label,
+        "latest_exception_impact_minutes_label": current_state.latest_exception_impact_minutes_label,
+        "latest_exception_affected_machine_label": current_state.latest_exception_affected_machine_label,
+        "latest_exception_affected_operator_label": current_state.latest_exception_affected_operator_label,
+        "latest_exception_handling_status_label": current_state.latest_exception_handling_status_label,
+        "latest_exception_suggest_reschedule_label": current_state.latest_exception_suggest_reschedule_label,
         "updated_at": current_state.updated_at,
-        "available_actions": build_available_actions(
-            can_write=can_write_feedback,
-            feedback_write_enabled=feedback_write_enabled,
-            status=status,
-            status_label=status_label,
-        ),
+        "available_actions": available_actions,
         "unavailable_reasons": unavailable_reasons,
     }
 

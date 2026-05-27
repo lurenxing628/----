@@ -14,8 +14,8 @@ class OperationExecutionState:
     current_status_label: str = "待开工"
     actual_start_time: Optional[str] = None
     actual_end_time: Optional[str] = None
-    actual_duration_minutes: Optional[int] = None
-    pause_duration_minutes: int = 0
+    actual_duration_minutes: Optional[float] = None
+    pause_duration_minutes: float = 0.0
     actual_machine_id: Optional[str] = None
     actual_machine_label: Optional[str] = None
     actual_operator_id: Optional[str] = None
@@ -32,7 +32,7 @@ class OperationExecutionState:
     latest_exception_severity: Optional[str] = None
     latest_exception_severity_label: Optional[str] = None
     latest_exception_impact_minutes: Optional[int] = None
-    latest_exception_impact_minutes_label: str = "暂时不知道影响多久"
+    latest_exception_impact_minutes_label: Optional[str] = None
     latest_exception_affected_machine_id: Optional[str] = None
     latest_exception_affected_machine_label: Optional[str] = None
     latest_exception_affected_operator_id: Optional[str] = None
@@ -40,7 +40,7 @@ class OperationExecutionState:
     latest_exception_handling_status: Optional[str] = None
     latest_exception_handling_status_label: Optional[str] = None
     latest_exception_suggest_reschedule: bool = False
-    latest_exception_suggest_reschedule_label: str = "暂不建议重新排程"
+    latest_exception_suggest_reschedule_label: Optional[str] = None
     latest_exception_remark: Optional[str] = None
     state_revision: str = ""
     updated_at: Optional[str] = None

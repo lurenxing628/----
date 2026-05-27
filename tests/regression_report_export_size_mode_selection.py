@@ -119,9 +119,11 @@ def _make_utilization_rows(count: int) -> List[Dict[str, Any]]:
 
 
 class _FakePlanResolution:
-    def __init__(self, selected_role: str) -> None:
+    def __init__(self, version: int, selected_role: str) -> None:
+        self.version = int(version)
         self.selected_role = selected_role
         self.scenario_display_name = ""
+        self.is_scenario_preview = False
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -190,7 +192,7 @@ def main() -> None:
         report_engine_cls.EXPORT_DIRECT_MAX_ROWS = 2
         report_engine_cls.EXPORT_STREAM_MAX_ROWS = 4
 
-        def fake_overdue_batches(self, version: int) -> Dict[str, Any]:
+        def fake_overdue_batches(self, version: int, plan_role: Any = None, scenario_id: Any = None) -> Dict[str, Any]:
             items = _make_overdue_items(2)
             return {
                 "version": int(version),
@@ -215,7 +217,7 @@ def main() -> None:
 
         def fake_resolve_plan(self, version: int, plan_role: Any, scenario_id: Any = None):
             selected_role = "baseline_best" if str(plan_role or "").strip() == "baseline_best" else "adopted"
-            return _FakePlanResolution(selected_role)
+            return _FakePlanResolution(int(version), selected_role)
 
         def fake_overdue_diagnosis_export_rows(self, *, version: int, resolution) -> List[Dict[str, Any]]:
             return [

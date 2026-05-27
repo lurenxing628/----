@@ -72,7 +72,7 @@ class OperationExecutionEvent:
     affected_machine_id: Optional[str] = None
     affected_operator_id: Optional[str] = None
     handling_status: Optional[str] = None
-    suggest_reschedule: Optional[str] = None
+    suggest_reschedule: int = 0
     remark: Optional[str] = None
     created_by: Optional[str] = None
     idempotency_key: Optional[str] = None
@@ -105,7 +105,7 @@ class OperationExecutionEvent:
             affected_machine_id=_text_or_none(get(row, "affected_machine_id")),
             affected_operator_id=_text_or_none(get(row, "affected_operator_id")),
             handling_status=_text_or_none(get(row, "handling_status")),
-            suggest_reschedule=_text_or_none(get(row, "suggest_reschedule")),
+            suggest_reschedule=parse_int(get(row, "suggest_reschedule"), default=0) or 0,
             remark=_text_or_none(get(row, "remark")),
             created_by=_text_or_none(get(row, "created_by")),
             idempotency_key=_text_or_none(get(row, "idempotency_key")),

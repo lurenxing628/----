@@ -47,6 +47,19 @@ class ScheduleDelayDiagnosisService:
         as_of_time: Optional[Any] = None,
     ) -> OverdueDiagnosisReport:
         resolution = self._resolve_strict_plan(version, plan_role, scenario_id)
+        return self.diagnose_resolved_plan_overdue(
+            version=version,
+            resolution=resolution,
+            as_of_time=as_of_time,
+        )
+
+    def diagnose_resolved_plan_overdue(
+        self,
+        *,
+        version: int,
+        resolution: Any,
+        as_of_time: Optional[Any] = None,
+    ) -> OverdueDiagnosisReport:
         identity = resolution.plan_identity
         if identity is None:
             raise ValueError("延期诊断缺少计划身份。")

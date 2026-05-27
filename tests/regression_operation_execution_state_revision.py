@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -22,6 +24,17 @@ def _connect(tmp_path: Path) -> sqlite3.Connection:
     db_path = tmp_path / "aps.db"
     ensure_schema(str(db_path), schema_path=str(SCHEMA_PATH), backup_dir=str(tmp_path / "backups"))
     return get_connection(str(db_path))
+
+
+def _prepare_db(tmp_path: Path, name: str = "aps.db") -> Path:
+    db_path = tmp_path / name
+    ensure_schema(str(db_path), schema_path=str(SCHEMA_PATH), backup_dir=str(tmp_path / "backups"))
+    conn = get_connection(str(db_path))
+    try:
+        _seed_plan(conn)
+    finally:
+        conn.close()
+    return db_path
 
 
 def _seed_plan(conn: sqlite3.Connection) -> None:
@@ -59,6 +72,7 @@ def _context(**overrides) -> ExecutionFeedbackContext:
         "schedule_version": 1,
         "schedule_id": 100,
         "op_id": 10,
+        "batch_id": "B1",
         "expected_state_revision": "10:0:0",
         "created_by": "张三",
         "idempotency_key": "start-key",
@@ -76,6 +90,14 @@ def _event_count(conn: sqlite3.Connection) -> int:
     return int(row["count"])
 
 
+def _event_count_from_path(db_path: Path) -> int:
+    conn = get_connection(str(db_path))
+    try:
+        return _event_count(conn)
+    finally:
+        conn.close()
+
+
 def test_start_operation_uses_previous_revision_and_reuses_same_idempotency_key(tmp_path: Path) -> None:
     conn = _connect(tmp_path)
     try:
@@ -84,6 +106,10 @@ def test_start_operation_uses_previous_revision_and_reuses_same_idempotency_key(
 
         initial = service.get_execution_state([10])[10]
         assert initial.state_revision == "10:0:0"
+        assert initial.latest_exception_event_id is None
+        assert initial.latest_exception_impact_minutes_label is None
+        assert initial.latest_exception_suggest_reschedule is False
+        assert initial.latest_exception_suggest_reschedule_label is None
 
         result = service.start_operation(
             _context(expected_state_revision=initial.state_revision),
@@ -98,6 +124,10 @@ def test_start_operation_uses_previous_revision_and_reuses_same_idempotency_key(
         assert result.state.current_status == "processing"
         assert result.state.current_status_label == "生产中"
         assert result.state_revision == f"10:1:{result.event.id}"
+        assert result.state.latest_exception_event_id is None
+        assert result.state.latest_exception_impact_minutes_label is None
+        assert result.state.latest_exception_suggest_reschedule is False
+        assert result.state.latest_exception_suggest_reschedule_label is None
         assert _event_count(conn) == 1
 
         reused = service.start_operation(
@@ -113,6 +143,131 @@ def test_start_operation_uses_previous_revision_and_reuses_same_idempotency_key(
         assert _event_count(conn) == 1
     finally:
         conn.close()
+
+
+def test_idempotency_is_rechecked_inside_transaction_before_revision_check(tmp_path: Path, monkeypatch) -> None:
+    conn = _connect(tmp_path)
+    try:
+        _seed_plan(conn)
+        service = OperationExecutionFeedbackService(conn)
+        first = service.start_operation(
+            _context(),
+            event_time="2026-05-01 08:10:00",
+            operator_id="O1",
+            machine_id="M1",
+            remark="开始加工",
+        )
+
+        original_lookup = service.event_repo.get_by_idempotency_key
+        calls = {"count": 0}
+
+        def lookup_with_first_miss(idempotency_key: str):
+            calls["count"] += 1
+            if calls["count"] == 1:
+                return None
+            return original_lookup(idempotency_key)
+
+        monkeypatch.setattr(service.event_repo, "get_by_idempotency_key", lookup_with_first_miss)
+
+        reused = service.start_operation(
+            _context(expected_state_revision="10:0:0"),
+            event_time="2026-05-01 08:10:00",
+            operator_id="O1",
+            machine_id="M1",
+            remark="开始加工",
+        )
+
+        assert reused.idempotency_reused is True
+        assert reused.event.id == first.event.id
+        assert reused.state_revision == first.state_revision
+        assert calls["count"] >= 2
+        assert _event_count(conn) == 1
+    finally:
+        conn.close()
+
+
+def _record_start_from_new_connection(db_path: Path, context: ExecutionFeedbackContext, out: list) -> None:
+    conn = get_connection(str(db_path))
+    try:
+        service = OperationExecutionFeedbackService(conn)
+        result = service.start_operation(
+            context,
+            event_time="2026-05-01 08:10:00",
+            operator_id="O1",
+            machine_id="M1",
+            remark="开始加工",
+        )
+        out.append(("ok", result.idempotency_reused, result.state_revision))
+    except AppError as exc:
+        out.append(("error", exc.code.value, (exc.details or {}).get("reason")))
+    finally:
+        conn.close()
+
+
+def test_concurrent_same_idempotency_waits_and_reuses_existing_event(tmp_path: Path) -> None:
+    db_path = _prepare_db(tmp_path, "concurrent_same_key.db")
+    holder = get_connection(str(db_path))
+    try:
+        holder.execute("BEGIN IMMEDIATE")
+        holder_service = OperationExecutionFeedbackService(holder)
+        first = holder_service.start_operation(
+            _context(idempotency_key="concurrent-same-key"),
+            event_time="2026-05-01 08:10:00",
+            operator_id="O1",
+            machine_id="M1",
+            remark="开始加工",
+        )
+
+        results = []
+        thread = threading.Thread(
+            target=_record_start_from_new_connection,
+            args=(db_path, _context(idempotency_key="concurrent-same-key"), results),
+        )
+        thread.start()
+        time.sleep(0.1)
+        holder.commit()
+        thread.join(timeout=3)
+
+        assert not thread.is_alive()
+        assert results == [("ok", True, first.state_revision)]
+        assert _event_count_from_path(db_path) == 1
+    finally:
+        if holder.in_transaction:
+            holder.rollback()
+        holder.close()
+
+
+def test_concurrent_different_idempotency_reports_stale_state_revision(tmp_path: Path) -> None:
+    db_path = _prepare_db(tmp_path, "concurrent_different_key.db")
+    holder = get_connection(str(db_path))
+    try:
+        holder.execute("BEGIN IMMEDIATE")
+        holder_service = OperationExecutionFeedbackService(holder)
+        holder_service.start_operation(
+            _context(idempotency_key="concurrent-winner"),
+            event_time="2026-05-01 08:10:00",
+            operator_id="O1",
+            machine_id="M1",
+            remark="开始加工",
+        )
+
+        results = []
+        thread = threading.Thread(
+            target=_record_start_from_new_connection,
+            args=(db_path, _context(idempotency_key="concurrent-loser"), results),
+        )
+        thread.start()
+        time.sleep(0.1)
+        holder.commit()
+        thread.join(timeout=3)
+
+        assert not thread.is_alive()
+        assert results == [("error", "6003", "stale_state_revision")]
+        assert _event_count_from_path(db_path) == 1
+    finally:
+        if holder.in_transaction:
+            holder.rollback()
+        holder.close()
 
 
 def test_same_idempotency_key_with_different_payload_is_conflict_before_revision_check(tmp_path: Path) -> None:
@@ -343,6 +498,213 @@ def test_pause_resume_exception_and_finish_state_flow_is_aggregated(tmp_path: Pa
         assert finished.state.latest_exception_event_id == exception.event.id
         assert finished.state.latest_exception_remark == "设备突然停了"
         assert _event_count(conn) == 6
+    finally:
+        conn.close()
+
+
+def test_exception_while_paused_closes_pause_duration(tmp_path: Path) -> None:
+    conn = _connect(tmp_path)
+    try:
+        _seed_plan(conn)
+        service = OperationExecutionFeedbackService(conn)
+        started = service.start_operation(
+            _context(),
+            event_time="2026-05-01 08:00:00",
+            operator_id="O1",
+            machine_id="M1",
+        )
+        paused = service.pause_operation(
+            _context(idempotency_key="pause-before-exception", expected_state_revision=started.state_revision),
+            event_time="2026-05-01 08:20:00",
+            reason_code="equipment",
+        )
+
+        exception = service.report_exception(
+            _context(idempotency_key="exception-while-paused", expected_state_revision=paused.state_revision),
+            event_time="2026-05-01 08:30:00",
+            reason_code="equipment",
+            severity="high",
+            impact_minutes=30,
+            handling_status=None,
+        )
+        assert exception.state.current_status == "exception"
+        assert exception.state.pause_duration_minutes == 10
+        assert exception.state.latest_exception_handling_status is None
+        assert exception.state.latest_exception_handling_status_label == "刚上报"
+
+        resumed = service.resume_operation(
+            _context(idempotency_key="resume-after-paused-exception", expected_state_revision=exception.state_revision),
+            event_time="2026-05-01 09:00:00",
+        )
+        assert resumed.state.current_status == "processing"
+        assert resumed.state.pause_duration_minutes == 10
+        assert _event_count(conn) == 4
+    finally:
+        conn.close()
+
+
+def test_finish_without_exception_keeps_exception_fields_empty(tmp_path: Path) -> None:
+    conn = _connect(tmp_path)
+    try:
+        _seed_plan(conn)
+        service = OperationExecutionFeedbackService(conn)
+        started = service.start_operation(
+            _context(),
+            event_time="2026-05-01 08:00:00",
+            operator_id="O1",
+            machine_id="M1",
+        )
+        finished = service.finish_operation(
+            _context(idempotency_key="finish-without-exception", expected_state_revision=started.state_revision),
+            event_time="2026-05-01 09:00:00",
+            quantity_done=10,
+        )
+
+        assert finished.state.current_status == "completed"
+        assert finished.state.latest_exception_event_id is None
+        assert finished.state.latest_exception_reason_label is None
+        assert finished.state.latest_exception_impact_minutes_label is None
+        assert finished.state.latest_exception_suggest_reschedule is False
+        assert finished.state.latest_exception_suggest_reschedule_label is None
+        assert _event_count(conn) == 2
+    finally:
+        conn.close()
+
+
+def test_execution_feedback_requires_pause_and_exception_details_before_write(tmp_path: Path) -> None:
+    conn = _connect(tmp_path)
+    try:
+        _seed_plan(conn)
+        service = OperationExecutionFeedbackService(conn)
+        started = service.start_operation(
+            _context(),
+            event_time="2026-05-01 08:00:00",
+            operator_id="O1",
+            machine_id="M1",
+        )
+
+        with pytest.raises(AppError) as missing_pause_reason:
+            service.pause_operation(
+                _context(idempotency_key="pause-missing-reason", expected_state_revision=started.state_revision),
+                event_time="2026-05-01 08:10:00",
+                reason_code="",
+            )
+        assert missing_pause_reason.value.code.value == "1001"
+        assert missing_pause_reason.value.details["reason"] == "missing_required_field"
+        assert missing_pause_reason.value.details["field"] == "reason_code"
+
+        with pytest.raises(AppError) as missing_exception_reason:
+            service.report_exception(
+                _context(idempotency_key="exception-missing-reason", expected_state_revision=started.state_revision),
+                event_time="2026-05-01 08:15:00",
+                reason_code="",
+                severity="high",
+            )
+        assert missing_exception_reason.value.code.value == "1001"
+        assert missing_exception_reason.value.details["reason"] == "missing_required_field"
+        assert missing_exception_reason.value.details["field"] == "reason_code"
+
+        with pytest.raises(AppError) as missing_exception_severity:
+            service.report_exception(
+                _context(idempotency_key="exception-missing-severity", expected_state_revision=started.state_revision),
+                event_time="2026-05-01 08:20:00",
+                reason_code="equipment",
+                severity="",
+            )
+        assert missing_exception_severity.value.code.value == "1001"
+        assert missing_exception_severity.value.details["reason"] == "missing_required_field"
+        assert missing_exception_severity.value.details["field"] == "severity"
+        assert _event_count(conn) == 1
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize(
+    "override,field",
+    [
+        ({"reason_code": "bad_reason"}, "reason_code"),
+        ({"severity": "bad_severity"}, "severity"),
+        ({"impact_minutes": -1}, "impact_minutes"),
+        ({"affected_machine_id": "NO_SUCH_MACHINE"}, "affected_machine_id"),
+        ({"affected_operator_id": "NO_SUCH_OPERATOR"}, "affected_operator_id"),
+        ({"handling_status": "bad_handling"}, "handling_status"),
+        ({"suggest_reschedule": "maybe"}, "suggest_reschedule"),
+    ],
+)
+def test_exception_feedback_rejects_invalid_fields_before_database_write(tmp_path: Path, override, field: str) -> None:
+    conn = _connect(tmp_path)
+    try:
+        _seed_plan(conn)
+        service = OperationExecutionFeedbackService(conn)
+        started = service.start_operation(
+            _context(),
+            event_time="2026-05-01 08:00:00",
+            operator_id="O1",
+            machine_id="M1",
+        )
+        payload = {
+            "event_time": "2026-05-01 08:15:00",
+            "reason_code": "equipment",
+            "severity": "high",
+            "impact_minutes": 10,
+            "affected_machine_id": "M2",
+            "affected_operator_id": "O2",
+            "handling_status": "new",
+            "suggest_reschedule": 0,
+        }
+        payload.update(override)
+
+        with pytest.raises(AppError) as exc_info:
+            service.report_exception(
+                _context(
+                    idempotency_key=f"invalid-exception-{field}",
+                    expected_state_revision=started.state_revision,
+                ),
+                **payload,
+            )
+
+        assert exc_info.value.code.value == "1001"
+        assert exc_info.value.details["reason"] == "invalid_field_value"
+        assert exc_info.value.details["field"] == field
+        assert exc_info.value.details["field_label"]
+        assert "db_message" not in exc_info.value.details
+        assert _event_count(conn) == 1
+    finally:
+        conn.close()
+
+
+def test_execution_feedback_rejects_event_time_before_last_feedback(tmp_path: Path) -> None:
+    conn = _connect(tmp_path)
+    try:
+        _seed_plan(conn)
+        service = OperationExecutionFeedbackService(conn)
+        started = service.start_operation(
+            _context(),
+            event_time="2026-05-01 08:20:00",
+            operator_id="O1",
+            machine_id="M1",
+        )
+
+        with pytest.raises(AppError) as pause_error:
+            service.pause_operation(
+                _context(idempotency_key="pause-before-start-time", expected_state_revision=started.state_revision),
+                event_time="2026-05-01 08:10:00",
+                reason_code="equipment",
+            )
+        assert pause_error.value.code.value == "6003"
+        assert pause_error.value.details["reason"] == "invalid_state_transition"
+        assert pause_error.value.details["action_label"] == "暂停"
+
+        with pytest.raises(AppError) as finish_error:
+            service.finish_operation(
+                _context(idempotency_key="finish-before-start-time", expected_state_revision=started.state_revision),
+                event_time="2026-05-01 08:15:00",
+                quantity_done=10,
+            )
+        assert finish_error.value.code.value == "6003"
+        assert finish_error.value.details["reason"] == "invalid_state_transition"
+        assert finish_error.value.details["action_label"] == "完工"
+        assert _event_count(conn) == 1
     finally:
         conn.close()
 

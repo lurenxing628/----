@@ -512,6 +512,42 @@ def test_plan_query_rejects_candidate_rows_selection_without_saved_details(tmp_p
         conn.close()
 
 
+def test_plan_query_rejects_candidate_rows_selection_when_candidate_not_completed(tmp_path: Path) -> None:
+    conn = _seed_db(tmp_path)
+    try:
+        conn.execute(
+            "UPDATE ScheduleCandidate SET status = 'failed' WHERE version = ? AND candidate_key = ?",
+            (VERSION, "baseline_best"),
+        )
+        conn.commit()
+
+        service = SchedulePlanQueryService(conn)
+        with pytest.raises(ValueError, match="不是已完成状态"):
+            service.resolve_plan(VERSION, ROLE_BASELINE_BEST)
+    finally:
+        conn.close()
+
+
+def test_plan_query_rejects_non_adopted_schedule_selection_when_candidate_not_completed(tmp_path: Path) -> None:
+    conn = _seed_db(tmp_path)
+    try:
+        conn.execute(
+            "UPDATE ScheduleCandidateSelection SET source_table = ? WHERE version = ? AND role = ?",
+            (SOURCE_SCHEDULE, VERSION, ROLE_BASELINE_BEST),
+        )
+        conn.execute(
+            "UPDATE ScheduleCandidate SET status = 'skipped' WHERE version = ? AND candidate_key = ?",
+            (VERSION, "baseline_best"),
+        )
+        conn.commit()
+
+        service = SchedulePlanQueryService(conn)
+        with pytest.raises(ValueError, match="不是已完成状态"):
+            service.resolve_plan(VERSION, ROLE_BASELINE_BEST)
+    finally:
+        conn.close()
+
+
 def test_plan_query_rejects_candidate_rows_selection_without_actual_rows(tmp_path: Path) -> None:
     conn = _connect_fresh_schema(tmp_path)
     try:

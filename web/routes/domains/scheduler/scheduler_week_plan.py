@@ -170,6 +170,19 @@ def _simulate_result_version(result: Any) -> int:
     return parse_required_int(raw_version, field="排产版本", min_value=1)
 
 
+def _simulate_result_without_viewable_version(result: Any) -> bool:
+    if not isinstance(result, dict):
+        return False
+    return bool(result.get("is_simulation")) and result.get("can_open_result_version") is False
+
+
+def _flash_simulate_validated_only(result: Dict[str, Any]) -> None:
+    message = str(result.get("user_message") or "").strip()
+    if not message:
+        message = "现场已经有开工或完工记录，这次模拟只做安全检查，没有生成新的排程版本，也没有改动正式排程。"
+    flash(message, "warning")
+
+
 def _result_summary_dict(result: Any) -> dict:
     if not isinstance(result, dict):
         return {}
@@ -451,7 +464,6 @@ def simulate_schedule():
             strict_mode=strict_mode,
             run_time_budget_seconds=run_time_budget_seconds,
         )
-        ver = _simulate_result_version(result)
         result_dict = result if isinstance(result, dict) else {}
         summary = _result_summary_dict(result_dict)
         summary_display = build_summary_display_state(
@@ -459,6 +471,12 @@ def simulate_schedule():
             result_status=result_dict.get("result_status") or ScheduleResultStatus.SIMULATED.value,
         )
         completion_status = str(summary_display.get("completion_status") or "success")
+        if _simulate_result_without_viewable_version(result_dict):
+            _flash_simulate_validated_only(result_dict)
+            _flash_simulate_summary(summary, summary_display, completion_status=completion_status)
+            return redirect(url_for("scheduler.batches_page"))
+
+        ver = _simulate_result_version(result)
         _flash_simulate_completion(version=ver, completion_status=completion_status)
         _flash_simulate_summary(summary, summary_display, completion_status=completion_status)
         if completion_status not in {ScheduleResultStatus.SUCCESS.value, ScheduleResultStatus.PARTIAL.value}:

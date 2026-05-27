@@ -64,8 +64,19 @@ def _execution_error_response(exc: AppError, *, action: str = None):
         details["action"] = action
     if "action" in details:
         details.setdefault("action_label", execution_action_label(details.get("action")))
+    details.setdefault("can_retry", _execution_error_can_retry(details.get("reason")))
     payload = error_response(exc.code, exc.message, details=details or None)
     return payload, app_error_http_status(exc.code)
+
+
+def _execution_error_can_retry(reason: Any) -> bool:
+    return str(reason or "").strip() in {
+        "stale_state_revision",
+        "idempotency_conflict",
+        "schedule_mismatch",
+        "missing_required_field",
+        "invalid_field_value",
+    }
 
 
 def _feedback_not_enabled_payload(action: str) -> dict:
@@ -76,6 +87,7 @@ def _feedback_not_enabled_payload(action: str) -> dict:
             "reason": "feedback_not_enabled",
             "action": action,
             "action_label": execution_action_label(action),
+            "can_retry": False,
         },
     )
 
@@ -153,12 +165,6 @@ def resource_dispatch_execution_data():
         return jsonify(error_response(ErrorCode.UNKNOWN_ERROR, "现场反馈任务卡生成失败，请稍后重试。")), 500
 
 
-def _execution_feedback_write_allowed() -> bool:
-    if not bool(current_app.config.get("TESTING")):
-        return False
-    return request.headers.get("X-APS-Test-Execution-Feedback", "").strip().lower() == "allow"
-
-
 def _json_payload() -> dict:
     data = request.get_json(silent=True)
     if isinstance(data, dict):
@@ -171,12 +177,13 @@ def _feedback_context(op_id: int, payload: dict) -> ExecutionFeedbackContext:
         schedule_version=payload.get("version") or payload.get("schedule_version"),
         schedule_id=payload.get("schedule_id"),
         op_id=op_id,
+        batch_id=payload.get("batch_id"),
         expected_state_revision=payload.get("expected_state_revision"),
         created_by=payload.get("created_by"),
         idempotency_key=payload.get("idempotency_key"),
-        requested_plan_role=payload.get("requested_plan_role") or payload.get("plan_role") or ROLE_ADOPTED,
-        source_table=payload.get("source_table") or SOURCE_SCHEDULE,
-        effective_plan_role=payload.get("effective_plan_role") or ROLE_ADOPTED,
+        requested_plan_role=payload.get("requested_plan_role") or payload.get("plan_role"),
+        source_table=payload.get("source_table"),
+        effective_plan_role=payload.get("effective_plan_role"),
         scenario_id=payload.get("scenario_id"),
     )
 
@@ -190,6 +197,8 @@ def _feedback_recheck_context(context: ExecutionFeedbackContext):
 
 
 def _ensure_current_official_feedback_context(context: ExecutionFeedbackContext, *, action: str) -> None:
+    if not (context.requested_plan_role and context.effective_plan_role and context.source_table):
+        return
     if (
         context.requested_plan_role != ROLE_ADOPTED
         or context.effective_plan_role != ROLE_ADOPTED
@@ -211,12 +220,6 @@ def _ensure_current_official_feedback_context(context: ExecutionFeedbackContext,
         )
 
 
-def _reject_if_feedback_disabled(action: str):
-    if _execution_feedback_write_allowed():
-        return None
-    return jsonify(_feedback_not_enabled_payload(action)), 409
-
-
 def _task_card_for_result(context: ExecutionFeedbackContext, result: Any) -> dict:
     card_context = _execution_svc().task_card_for_feedback_context(context, result.state, feedback_write_enabled=True)
     cards = build_execution_payload(card_context).get("tasks") or []
@@ -235,9 +238,6 @@ def _record_execution_feedback(op_id: int, action: str):
     try:
         context = _feedback_context(op_id, payload)
         _ensure_current_official_feedback_context(context, action=action)
-        rejected = _reject_if_feedback_disabled(action)
-        if rejected is not None:
-            return rejected
         if action == EXECUTION_EVENT_START:
             result = _feedback_svc().start_operation(
                 context,

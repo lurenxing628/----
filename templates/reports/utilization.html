@@ -45,18 +45,15 @@
         </div>
         <div class="aps-form-actions aps-report-actions">
           {{ ui.button('查询', 'primary', 'md', type_attr='submit') }}
-          {% if plan_resolution and plan_resolution.is_scenario_preview %}
-            {{ ui.button('导出 Excel', 'secondary', 'md', type_attr='button', disabled=True, class='aps-disabled-button') }}
-          {% elif machine_rows or operator_rows %}
-            {{ ui.link_button('导出 Excel', url_for('reports.utilization_export', version=version, plan_role=requested_plan_role, start_date=start_date, end_date=end_date), 'secondary', 'md') }}
+          {% if machine_rows or operator_rows %}
+            {% set export_url = url_for('reports.utilization_export', version=version, plan_role=requested_plan_role, scenario_id=scenario_id, start_date=start_date, end_date=end_date) if scenario_id else url_for('reports.utilization_export', version=version, plan_role=requested_plan_role, start_date=start_date, end_date=end_date) %}
+            {{ ui.link_button('导出 Excel', export_url, 'secondary', 'md') }}
           {% else %}
             {{ ui.button('导出 Excel', 'secondary', 'md', type_attr='button', disabled=True, class='aps-disabled-button') }}
           {% endif %}
         </div>
         {% if not has_history %}
           <div class="aps-filter-note">暂无排产历史，请先执行排产后再查看报表。</div>
-        {% elif plan_resolution and plan_resolution.is_scenario_preview %}
-          <div class="aps-filter-note">当前正在预览模拟方案，正式计划还没有改变。模拟预览暂不支持导出，请切换到正式采用方案。</div>
         {% elif not machine_rows and not operator_rows %}
           <div class="aps-filter-note">当前版本和日期范围内没有可导出的结果。请换一个排产版本或调整日期后再试。</div>
         {% endif %}
@@ -70,7 +67,7 @@
       </div>
       {% if plan_resolution and plan_resolution.is_scenario_preview %}
         <div class="flash-card flash-warning mt-2" role="status">
-          当前资源负荷与利用率正在预览“{{ plan_resolution.scenario_display_name or plan_resolution.scenario_name or '模拟预览（未命名）' }}”，正式计划还没有改变。
+          当前资源负荷与利用率正在预览“{{ plan_resolution.scenario_display_name or plan_resolution.scenario_name or '模拟预览（未命名）' }}”，正式计划还没有改变。导出的 Excel 也会按这个模拟方案生成。
         </div>
       {% endif %}
       <div class="aps-filter-note aps-report-plan-source">

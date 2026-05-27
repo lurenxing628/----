@@ -206,6 +206,11 @@ def test_week_plan_page_uses_candidate_rows_and_export_url_preserves_plan_role(t
     assert "候选设备" in html
     assert "候选人员" in html
     assert "plan_role=baseline_best" in html
+    assert f"/scheduler/resource-dispatch?version={VERSION}&amp;plan_role={ROLE_BASELINE_BEST}" in html
+    assert f"/scheduler/gantt?view=machine&amp;version={VERSION}&amp;plan_role={ROLE_BASELINE_BEST}" in html
+    assert f"/scheduler/gantt?view=operator&amp;version={VERSION}&amp;plan_role={ROLE_BASELINE_BEST}" in html
+    assert f"/scheduler/analysis?version={VERSION}&amp;plan_role={ROLE_BASELINE_BEST}" in html
+    assert f"/scheduler/week-plan?version={VERSION}&amp;plan_role={ROLE_BASELINE_BEST}" in html
     assert "当前查看的是“原算法代表方案”" in html
     assert "这是一套对比参考方案" in html
     assert "当前周计划正在预览" not in html

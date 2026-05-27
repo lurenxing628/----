@@ -19,7 +19,12 @@ from .run.schedule_input_builder import build_algo_operations
 from .run.schedule_input_collector import collect_schedule_run_input
 from .run.schedule_optimizer import optimize_schedule
 from .run.schedule_orchestrator import orchestrate_schedule_run
-from .run.schedule_persistence import persist_schedule_run_with_candidates as persist_schedule
+from .run.schedule_persistence import (
+    persist_schedule_run_with_candidates as persist_schedule,
+)
+from .run.schedule_persistence import (
+    validate_execution_guard_before_persist,
+)
 from .run.schedule_template_lookup import get_template_and_group_for_op
 from .summary.schedule_summary import build_result_summary
 
@@ -245,7 +250,8 @@ class ScheduleService:
         - Schedule 写入、状态更新、ScheduleHistory 写入：**单事务原子**
         - OperationLogs：由于 OperationLogger 内部会 commit()，因此放到事务提交后写入，避免破坏原子性
         - simulate=True 时：用于“插单模拟/模拟排产”
-          - 仍会落库到新版本（Schedule + ScheduleHistory），确保可追溯
+          - 默认仍会落库到新版本（Schedule + ScheduleHistory），确保可追溯
+          - 已有开工/完工事实时只做安全校验，不生成可查看版本
           - 但不会更新 Batches/BatchOperations 的状态（避免污染正式状态）
         - enforce_ready 取值规则：
           - 显式传入 True/False：按传入值执行
@@ -274,6 +280,48 @@ class ScheduleService:
             extend_downtime_map_for_resource_pool_fn=extend_downtime_map_for_resource_pool,
         )
 
+        simulation_validated_only = bool(simulate and schedule_input.execution_has_guarded_facts)
+
+        def _validate_execution_guard_before_version(validated_schedule_payload):
+            validate_execution_guard_before_persist(
+                self,
+                validated_schedule_payload=validated_schedule_payload,
+                execution_guard_state_revisions=dict(schedule_input.execution_guard_state_revisions or {}),
+                execution_facts=dict(schedule_input.execution_facts or {}),
+                execution_fixed_op_ids=set(schedule_input.execution_fixed_op_ids or set()),
+                execution_completed_op_ids=set(schedule_input.execution_completed_op_ids or set()),
+                payload_validation_operations=list(schedule_input.payload_validation_operations or []),
+            )
+
+        def _persist_orchestration(orchestration):
+            persist_schedule(
+                self,
+                cfg=schedule_input.cfg,
+                version=orchestration.version,
+                validated_schedule_payload=orchestration.validated_schedule_payload,
+                summary=orchestration.summary,
+                used_strategy=orchestration.used_strategy,
+                used_params=orchestration.used_params,
+                batches=schedule_input.batches,
+                reschedulable_operations=schedule_input.reschedulable_operations,
+                normalized_batch_ids=schedule_input.normalized_batch_ids,
+                created_by=schedule_input.created_by_text,
+                simulate=simulate,
+                frozen_op_ids=set(schedule_input.frozen_op_ids),
+                execution_fixed_op_ids=set(schedule_input.execution_fixed_op_ids),
+                execution_completed_op_ids=set(schedule_input.execution_completed_op_ids),
+                execution_guard_state_revisions=dict(schedule_input.execution_guard_state_revisions),
+                execution_facts=dict(schedule_input.execution_facts),
+                payload_validation_operations=list(schedule_input.payload_validation_operations),
+                result_status=orchestration.result_status,
+                result_summary_json=orchestration.result_summary_json,
+                result_summary_obj=orchestration.result_summary_obj,
+                missing_internal_resource_op_ids=schedule_input.missing_internal_resource_op_ids,
+                overdue_items=orchestration.overdue_items,
+                time_cost_ms=orchestration.time_cost_ms,
+                candidate_comparison=orchestration.candidate_comparison,
+            )
+
         orchestration = orchestrate_schedule_run(
             self,
             schedule_input=schedule_input,
@@ -281,34 +329,28 @@ class ScheduleService:
             strict_mode=bool(strict_mode),
             optimize_schedule_fn=optimize_schedule,
             build_result_summary_fn=build_result_summary,
+            before_version_allocate_fn=_validate_execution_guard_before_version,
+            allocate_version=not simulation_validated_only,
+            version_override=schedule_input.prev_version,
+            persist_schedule_fn=None if simulation_validated_only else _persist_orchestration,
         )
 
-        persist_schedule(
-            self,
-            cfg=schedule_input.cfg,
-            version=orchestration.version,
-            validated_schedule_payload=orchestration.validated_schedule_payload,
-            summary=orchestration.summary,
-            used_strategy=orchestration.used_strategy,
-            used_params=orchestration.used_params,
-            batches=schedule_input.batches,
-            reschedulable_operations=schedule_input.reschedulable_operations,
-            normalized_batch_ids=schedule_input.normalized_batch_ids,
-            created_by=schedule_input.created_by_text,
-            simulate=simulate,
-            frozen_op_ids=set(schedule_input.frozen_op_ids),
-            result_status=orchestration.result_status,
-            result_summary_json=orchestration.result_summary_json,
-            result_summary_obj=orchestration.result_summary_obj,
-            missing_internal_resource_op_ids=schedule_input.missing_internal_resource_op_ids,
-            overdue_items=orchestration.overdue_items,
-            time_cost_ms=orchestration.time_cost_ms,
-            candidate_comparison=orchestration.candidate_comparison,
-        )
+        if simulation_validated_only:
+            validate_execution_guard_before_persist(
+                self,
+                validated_schedule_payload=orchestration.validated_schedule_payload,
+                execution_guard_state_revisions=dict(schedule_input.execution_guard_state_revisions or {}),
+                execution_facts=dict(schedule_input.execution_facts or {}),
+                execution_fixed_op_ids=set(schedule_input.execution_fixed_op_ids or set()),
+                execution_completed_op_ids=set(schedule_input.execution_completed_op_ids or set()),
+                payload_validation_operations=list(schedule_input.payload_validation_operations or []),
+            )
 
-        return {
+        result: Dict[str, Any] = {
             "is_simulation": bool(simulate),
-            "version": int(orchestration.version),
+            "version": None if simulation_validated_only else int(orchestration.version),
+            "result_persisted": not simulation_validated_only,
+            "can_open_result_version": not simulation_validated_only,
             "strategy": orchestration.used_strategy.value,
             "strategy_params": orchestration.used_params or {},
             "result_status": orchestration.result_status,
@@ -316,3 +358,6 @@ class ScheduleService:
             "overdue_batches": orchestration.overdue_items,
             "time_cost_ms": int(orchestration.time_cost_ms),
         }
+        if simulation_validated_only:
+            result["user_message"] = "现场已经有开工或完工记录，这次模拟只做安全检查，没有生成新的排程版本，也没有改动正式排程。"
+        return result

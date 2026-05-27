@@ -274,6 +274,7 @@ def _build_route_app() -> Flask:
     for path, endpoint in (
         ("/scheduler/resource-dispatch", "scheduler.resource_dispatch_page"),
         ("/scheduler/resource-dispatch/data", "scheduler.resource_dispatch_data"),
+        ("/scheduler/resource-dispatch/execution/data", "scheduler.resource_dispatch_execution_data"),
         ("/scheduler/resource-dispatch/export", "scheduler.resource_dispatch_export"),
     ):
         app.add_url_rule(path, endpoint=endpoint, view_func=lambda: "")
@@ -348,6 +349,14 @@ def test_history_comparison_and_scenario_plans_are_read_only_with_plain_reasons(
         )
         assert critical_data["plan_identity"]["kind_label"] == "对比参考方案"
         assert critical_data["plan_identity"]["can_write_feedback"] is False
+        assert (critical_data.get("filters") or {}).get("plan_view_label") == "对比参考方案-重点工序优先代表方案"
+        critical_filename = build_resource_dispatch_filename(critical_data)
+        assert "对比参考方案" in critical_filename
+        assert "重点工序优先代表方案" in critical_filename
+        assert "正式采用方案" not in critical_filename
+        critical_summary = _summary_values(critical_data)
+        assert critical_summary["查看方案"] == "对比参考方案-重点工序优先代表方案"
+        assert "正式采用方案" not in str(critical_summary["查看方案"])
 
         scenario_id = "scenario-guardrail"
         scenario_data = _dispatch_payload(

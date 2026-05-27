@@ -5,7 +5,7 @@ from typing import List, Optional
 
 from .migrations.common import MigrationOutcome, column_exists, fallback_log, table_exists
 
-CURRENT_SCHEMA_VERSION = 15
+CURRENT_SCHEMA_VERSION = 16
 
 
 class MigrationContractError(RuntimeError):
@@ -154,6 +154,7 @@ def detect_schema_is_current(conn: sqlite3.Connection) -> bool:
         ("ScheduleAdjustmentScenario", "published_reason"),
         ("ScheduleAdjustmentScenario", "published_at"),
         ("ScheduleAdjustmentScenarioRow", "scenario_id"),
+        ("OperationExecutionEvents", "id"),
         ("OperationExecutionEvents", "schedule_version"),
         ("OperationExecutionEvents", "schedule_id"),
         ("OperationExecutionEvents", "op_id"),
@@ -319,7 +320,19 @@ def _table_sql(conn: sqlite3.Connection, table_name: str) -> str:
     return str(row["sql"] if isinstance(row, sqlite3.Row) else row[0] or "")
 
 
-def _index_columns(conn: sqlite3.Connection, index_name: str) -> List[str]:
+def _index_table(conn: sqlite3.Connection, index_name: str) -> str:
+    row = conn.execute(
+        "SELECT tbl_name FROM sqlite_master WHERE type='index' AND name=?",
+        (index_name,),
+    ).fetchone()
+    if not row:
+        return ""
+    return str(row["tbl_name"] if isinstance(row, sqlite3.Row) else row[0] or "")
+
+
+def _index_columns(conn: sqlite3.Connection, index_name: str, *, table_name: Optional[str] = None) -> List[str]:
+    if table_name is not None and _index_table(conn, index_name) != table_name:
+        return []
     try:
         rows = conn.execute(f"PRAGMA index_info({index_name})").fetchall()
     except sqlite3.OperationalError:
@@ -351,7 +364,7 @@ def _unique_index_has_columns(conn: sqlite3.Connection, table_name: str, columns
         unique = row["unique"] if isinstance(row, sqlite3.Row) else row[2]
         if int(unique or 0) != 1:
             continue
-        if _index_columns(conn, name) == expected:
+        if _index_columns(conn, name, table_name=table_name) == expected:
             return True
     return False
 
@@ -376,6 +389,22 @@ def _foreign_key_pairs(conn: sqlite3.Connection, table_name: str) -> List[tuple]
         else:
             pairs.append((str(row[3]), str(row[2]), str(row[4])))
     return pairs
+
+
+def _foreign_key_delete_actions(conn: sqlite3.Connection, table_name: str) -> dict:
+    try:
+        rows = conn.execute(f"PRAGMA foreign_key_list({table_name})").fetchall()
+    except sqlite3.OperationalError:
+        return {}
+    actions = {}
+    for row in rows:
+        if isinstance(row, sqlite3.Row):
+            key = (str(row["from"]), str(row["table"]), str(row["to"]))
+            actions[key] = str(row["on_delete"] or "").upper()
+        else:
+            key = (str(row[3]), str(row[2]), str(row[4]))
+            actions[key] = str(row[6] or "").upper()
+    return actions
 
 
 def _table_columns_info(conn: sqlite3.Connection, table_name: str) -> dict:
@@ -420,7 +449,9 @@ def _has_operation_execution_event_contract(conn: sqlite3.Connection) -> bool:
         "reason_code is null or reason_code in ('equipment', 'person', 'material', 'quality', 'process', 'external', 'other')",
         "severity is null or severity in ('low', 'medium', 'high', 'critical')",
         "handling_status is null or handling_status in ('new', 'checking', 'waiting', 'handled')",
-        "suggest_reschedule is null or suggest_reschedule in ('yes', 'no')",
+        "check(suggest_reschedule in (0, 1))",
+        "check(event_type not in ('pause', 'exception') or (reason_code is not null and trim(reason_code) <> ''))",
+        "check(event_type <> 'exception' or (severity is not null and trim(severity) <> ''))",
         "source_table = 'schedule'",
         "effective_plan_role = 'adopted'",
         "scenario_id is null",
@@ -458,12 +489,23 @@ def _has_operation_execution_event_contract(conn: sqlite3.Connection) -> bool:
             "idempotency_key",
             "request_fingerprint",
             "previous_state_revision",
+            "suggest_reschedule",
+            "created_at",
         ],
     ):
+        return False
+    id_info = _table_columns_info(conn, "OperationExecutionEvents").get("id") or {}
+    if int(id_info.get("pk") or 0) != 1:
+        return False
+    if "autoincrement" not in normalized_sql:
         return False
     if not _column_default_is(conn, "OperationExecutionEvents", "source_table", "schedule"):
         return False
     if not _column_default_is(conn, "OperationExecutionEvents", "effective_plan_role", "adopted"):
+        return False
+    if not _column_default_is(conn, "OperationExecutionEvents", "suggest_reschedule", "0"):
+        return False
+    if not _column_default_is(conn, "OperationExecutionEvents", "created_at", "current_timestamp"):
         return False
     foreign_targets = set(_foreign_key_targets(conn, "OperationExecutionEvents"))
     if not {"Schedule", "BatchOperations"} <= foreign_targets:
@@ -478,6 +520,11 @@ def _has_operation_execution_event_contract(conn: sqlite3.Connection) -> bool:
         ("affected_operator_id", "Operators", "operator_id"),
     } <= foreign_pairs:
         return False
+    foreign_delete_actions = _foreign_key_delete_actions(conn, "OperationExecutionEvents")
+    if foreign_delete_actions.get(("schedule_id", "Schedule", "id")) == "CASCADE":
+        return False
+    if foreign_delete_actions.get(("op_id", "BatchOperations", "id")) == "CASCADE":
+        return False
     if not _unique_index_has_columns(conn, "OperationExecutionEvents", ["idempotency_key"]):
         return False
     required_indexes = {
@@ -489,7 +536,7 @@ def _has_operation_execution_event_contract(conn: sqlite3.Connection) -> bool:
         "idx_operation_execution_events_latest_exception": ["op_id", "event_type", "id"],
     }
     for name, columns in required_indexes.items():
-        if _index_columns(conn, name) != columns:
+        if _index_columns(conn, name, table_name="OperationExecutionEvents") != columns:
             return False
     if not _index_is_unique(conn, "idx_operation_execution_events_op_revision_unique"):
         return False
@@ -507,10 +554,13 @@ def _operation_execution_rejects_bad_probe_values(conn: sqlite3.Connection) -> b
             {"effective_plan_role": "baseline_best", "idempotency_key": "__probe_bad_role__", "previous_state_revision": "2147483001:0:bad_role"},
             {"scenario_id": "__probe_scenario__", "idempotency_key": "__probe_bad_scenario__", "previous_state_revision": "2147483001:0:bad_scenario"},
             {"reason_code": "bad_reason", "event_type": "exception", "reported_status": "exception", "idempotency_key": "__probe_bad_reason__", "previous_state_revision": "2147483001:0:bad_reason"},
+            {"reason_code": None, "event_type": "pause", "reported_status": "paused", "idempotency_key": "__probe_missing_pause_reason__", "previous_state_revision": "2147483001:0:missing_pause_reason"},
+            {"reason_code": None, "severity": "high", "event_type": "exception", "reported_status": "exception", "idempotency_key": "__probe_missing_exception_reason__", "previous_state_revision": "2147483001:0:missing_exception_reason"},
             {"severity": "bad_severity", "event_type": "exception", "reported_status": "exception", "idempotency_key": "__probe_bad_severity__", "previous_state_revision": "2147483001:0:bad_severity"},
+            {"reason_code": "equipment", "severity": None, "event_type": "exception", "reported_status": "exception", "idempotency_key": "__probe_missing_exception_severity__", "previous_state_revision": "2147483001:0:missing_exception_severity"},
             {"impact_minutes": -1, "event_type": "exception", "reported_status": "exception", "idempotency_key": "__probe_bad_impact__", "previous_state_revision": "2147483001:0:bad_impact"},
             {"handling_status": "bad_handling", "event_type": "exception", "reported_status": "exception", "idempotency_key": "__probe_bad_handling__", "previous_state_revision": "2147483001:0:bad_handling"},
-            {"suggest_reschedule": "maybe", "event_type": "exception", "reported_status": "exception", "idempotency_key": "__probe_bad_suggest__", "previous_state_revision": "2147483001:0:bad_suggest"},
+            {"suggest_reschedule": 2, "event_type": "exception", "reported_status": "exception", "idempotency_key": "__probe_bad_suggest__", "previous_state_revision": "2147483001:0:bad_suggest"},
         ]
         for overrides in probes:
             if _operation_execution_bad_probe_is_accepted(conn, overrides):
@@ -574,7 +624,7 @@ def _operation_execution_bad_probe_is_accepted(conn: sqlite3.Connection, overrid
         "severity": None,
         "impact_minutes": None,
         "handling_status": None,
-        "suggest_reschedule": None,
+        "suggest_reschedule": 0,
     }
     payload.update(overrides)
     try:

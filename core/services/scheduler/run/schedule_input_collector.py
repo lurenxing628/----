@@ -5,10 +5,12 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from core.infrastructure.errors import ValidationError
+from core.infrastructure.errors import AppError, ErrorCode, ValidationError
 from core.models import Batch, BatchOperation
 from core.models.enums import BatchStatus, ReadyStatus, SourceType, YesNo
+from core.models.operation_execution_event import EXECUTION_STATUS_COMPLETED, EXECUTION_STATUS_PROCESSING
 from core.services.common.build_outcome import BuildOutcome
+from core.services.scheduler.execution_fact_provider import ExecutionFact, ExecutionFactProvider
 
 from ..number_utils import parse_finite_float, to_yes_no
 from .schedule_input_contracts import _build_algo_operations_outcome
@@ -39,6 +41,14 @@ class ScheduleRunInput:
     prev_version: int
     frozen_op_ids: Set[int]
     seed_results: List[Dict[str, Any]]
+    execution_facts: Dict[int, ExecutionFact]
+    execution_fixed_op_ids: Set[int]
+    execution_completed_op_ids: Set[int]
+    execution_seed_results: List[Dict[str, Any]]
+    execution_guard_state_revisions: Dict[int, str]
+    execution_has_guarded_facts: bool
+    schedule_output_allowed_op_ids: Set[int]
+    payload_validation_operations: List[BatchOperation]
     algo_warnings: List[str]
     freeze_meta: Dict[str, Any]
     algo_ops_to_schedule: List[Any]
@@ -166,6 +176,165 @@ def _build_reschedulable_state(
     return reschedulable_operations, reschedulable_op_ids, missing_internal_resource_op_ids
 
 
+def _op_id(op: Any) -> int:
+    try:
+        return int(getattr(op, "id", 0) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _schedule_row_op_id(row: Any) -> int:
+    try:
+        return int(getattr(row, "op_id", 0) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _execution_conflict(message: str, *, reason: str, op_id: int) -> AppError:
+    return AppError(
+        ErrorCode.SCHEDULE_CONFLICT,
+        message,
+        details={"reason": reason, "op_id": int(op_id)},
+    )
+
+
+def _schedule_rows_by_op_id(svc: Any, *, version: int, op_ids: Set[int]) -> Dict[int, Any]:
+    rows: Dict[int, Any] = {}
+    duplicates: Set[int] = set()
+    for row in svc.schedule_repo.list_by_version(int(version)):
+        op_id = _schedule_row_op_id(row)
+        if op_id <= 0 or op_id not in op_ids:
+            continue
+        if op_id in rows:
+            duplicates.add(op_id)
+            continue
+        rows[op_id] = row
+    if duplicates:
+        sample = "，".join(str(x) for x in sorted(duplicates)[:10])
+        raise AppError(
+            ErrorCode.SCHEDULE_CONFLICT,
+            f"上一版排程里同一道工序出现了重复记录（示例：{sample}），本次没有写入新排程。请刷新排程数据后重试。",
+            details={"reason": "duplicate_previous_schedule_rows", "sample_op_ids": sorted(duplicates)[:10]},
+        )
+    return rows
+
+
+def _planned_duration(schedule_row: Any, svc: Any, *, op_id: int) -> timedelta:
+    start_time = svc._normalize_datetime(getattr(schedule_row, "start_time", None))
+    end_time = svc._normalize_datetime(getattr(schedule_row, "end_time", None))
+    if start_time is None or end_time is None or end_time <= start_time:
+        raise _execution_conflict(
+            "生产中的工序需要沿用上一版计划时长，但上一版排程时间不完整，本次没有写入新排程。请刷新排程数据后重试。",
+            reason="invalid_previous_schedule_time",
+            op_id=op_id,
+        )
+    return end_time - start_time
+
+
+def _execution_seed_resources(fact: ExecutionFact, *, op_id: int) -> Tuple[str, str]:
+    machine_id = str(fact.actual_machine_id or "").strip()
+    operator_id = str(fact.actual_operator_id or "").strip()
+    if not machine_id or not operator_id:
+        raise _execution_conflict(
+            "生产中或已完工的工序缺少实际设备或人员，本次没有写入新排程。请先核对现场反馈记录。",
+            reason="missing_actual_resource",
+            op_id=op_id,
+        )
+    return machine_id, operator_id
+
+
+def _build_execution_seed_result(
+    svc: Any,
+    *,
+    fact: ExecutionFact,
+    op: BatchOperation,
+    schedule_row: Any,
+) -> Dict[str, Any]:
+    op_id = int(fact.op_id)
+    actual_start_time = fact.actual_start_time
+    if actual_start_time is None:
+        raise _execution_conflict(
+            "生产中或已完工的工序缺少实际开工时间，本次没有写入新排程。请先核对现场反馈记录。",
+            reason="missing_actual_start_time",
+            op_id=op_id,
+        )
+    if fact.actual_status == EXECUTION_STATUS_COMPLETED:
+        actual_end_time = fact.actual_end_time
+        if actual_end_time is None or actual_end_time <= actual_start_time:
+            raise _execution_conflict(
+                "已完工的工序缺少有效完工时间，本次没有写入新排程。请先核对现场反馈记录。",
+                reason="missing_actual_end_time",
+                op_id=op_id,
+            )
+        end_time = actual_end_time
+    else:
+        end_time = actual_start_time + _planned_duration(schedule_row, svc, op_id=op_id)
+
+    machine_id, operator_id = _execution_seed_resources(fact, op_id=op_id)
+    return {
+        "op_id": op_id,
+        "op_code": getattr(op, "op_code", None),
+        "batch_id": getattr(op, "batch_id", None),
+        "seq": int(getattr(op, "seq", 0) or 0),
+        "machine_id": machine_id,
+        "operator_id": operator_id,
+        "start_time": actual_start_time,
+        "end_time": end_time,
+        "source": str(getattr(op, "source", None) or SourceType.INTERNAL.value).strip(),
+        "op_type_name": getattr(op, "op_type_name", None),
+        "seed_source": "execution_fact",
+        "state_revision": fact.state_revision,
+    }
+
+
+def _collect_execution_guardrails(
+    svc: Any,
+    operations: List[BatchOperation],
+    *,
+    prev_version: int,
+) -> Tuple[Dict[int, ExecutionFact], Set[int], Set[int], List[Dict[str, Any]], Dict[int, str]]:
+    op_by_id: Dict[int, BatchOperation] = {_op_id(op): op for op in operations if _op_id(op) > 0}
+    facts = ExecutionFactProvider(svc.conn, logger=getattr(svc, "logger", None)).facts_by_op_id(sorted(op_by_id))
+    fixed_op_ids = {
+        int(op_id)
+        for op_id, fact in facts.items()
+        if str(fact.actual_status or "").strip().lower() == EXECUTION_STATUS_PROCESSING
+    }
+    completed_op_ids = {
+        int(op_id)
+        for op_id, fact in facts.items()
+        if str(fact.actual_status or "").strip().lower() == EXECUTION_STATUS_COMPLETED
+    }
+    guarded_op_ids = set(fixed_op_ids) | set(completed_op_ids)
+    all_revisions = {
+        int(op_id): fact.state_revision
+        for op_id, fact in facts.items()
+    }
+    if not guarded_op_ids:
+        return facts, set(), set(), [], all_revisions
+
+    schedule_rows = _schedule_rows_by_op_id(svc, version=int(prev_version), op_ids=guarded_op_ids)
+    execution_seed_results: List[Dict[str, Any]] = []
+    for op_id in sorted(guarded_op_ids):
+        op = op_by_id.get(int(op_id))
+        row = schedule_rows.get(int(op_id))
+        if op is None or row is None:
+            raise _execution_conflict(
+                "现场已经有开工或完工记录，但上一版正式排程里找不到对应工序，本次没有写入新排程。请刷新后重新排。",
+                reason="missing_previous_schedule_row",
+                op_id=op_id,
+            )
+        execution_seed_results.append(
+            _build_execution_seed_result(
+                svc,
+                fact=facts[int(op_id)],
+                op=op,
+                schedule_row=row,
+            )
+        )
+    return facts, fixed_op_ids, completed_op_ids, execution_seed_results, all_revisions
+
+
 def _is_missing_internal_resource(op: BatchOperation) -> bool:
     if not op or not getattr(op, "id", None):
         return False
@@ -229,6 +398,34 @@ def collect_schedule_run_input(
     if enforce_ready_effective:
         _ensure_ready_batches(svc, batches)
 
+    prev_version = int(svc.history_repo.get_latest_version() or 0)
+    (
+        execution_facts,
+        execution_fixed_op_ids,
+        execution_completed_op_ids,
+        execution_seed_results,
+        execution_guard_state_revisions,
+    ) = _collect_execution_guardrails(
+        svc,
+        operations,
+        prev_version=prev_version,
+    )
+    if execution_completed_op_ids:
+        reschedulable_operations = [
+            op for op in reschedulable_operations if _op_id(op) not in execution_completed_op_ids
+        ]
+        reschedulable_op_ids = {
+            int(op_id) for op_id in reschedulable_op_ids if int(op_id) not in execution_completed_op_ids
+        }
+        missing_internal_resource_op_ids = {
+            int(op_id) for op_id in missing_internal_resource_op_ids if int(op_id) not in execution_completed_op_ids
+        }
+        if not reschedulable_operations:
+            _raise_schedule_empty_result(
+                f"所选批次没有可重排工序，本次未执行{run_label}。",
+                reason="no_reschedulable_operations",
+            )
+
     algo_input_outcome = _build_algo_operations_outcome(
         build_algo_operations_fn,
         svc,
@@ -241,8 +438,6 @@ def collect_schedule_run_input(
             f"所选批次未生成可用于排产的工序输入，本次未执行{run_label}。",
             reason=str(getattr(algo_input_outcome, "empty_reason", "") or "").strip() or "no_algo_operations_built",
         )
-
-    prev_version = int(svc.history_repo.get_latest_version() or 0)
 
     (
         frozen_op_ids,
@@ -264,6 +459,9 @@ def collect_schedule_run_input(
         operations=operations,
         reschedulable_operations=reschedulable_operations,
         algo_ops=algo_ops,
+        execution_fixed_op_ids=execution_fixed_op_ids,
+        execution_completed_op_ids=execution_completed_op_ids,
+        execution_seed_results=execution_seed_results,
         strict_mode=bool(strict_mode),
         build_freeze_window_seed_fn=build_freeze_window_seed_fn,
         load_machine_downtimes_fn=load_machine_downtimes_fn,
@@ -293,6 +491,16 @@ def collect_schedule_run_input(
         prev_version=prev_version,
         frozen_op_ids=set(frozen_op_ids),
         seed_results=list(seed_results or []),
+        execution_facts=dict(execution_facts),
+        execution_fixed_op_ids=set(execution_fixed_op_ids),
+        execution_completed_op_ids=set(execution_completed_op_ids),
+        execution_seed_results=list(execution_seed_results or []),
+        execution_guard_state_revisions=dict(execution_guard_state_revisions),
+        execution_has_guarded_facts=bool(execution_fixed_op_ids or execution_completed_op_ids),
+        schedule_output_allowed_op_ids=set(reschedulable_op_ids)
+        | set(execution_fixed_op_ids)
+        | set(execution_completed_op_ids),
+        payload_validation_operations=list(operations or []),
         algo_warnings=list(algo_warnings or []),
         freeze_meta=freeze_meta,
         algo_ops_to_schedule=algo_ops_to_schedule,

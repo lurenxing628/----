@@ -89,11 +89,11 @@ def _savepoint_name(conn, depth: int) -> str:
     return f"aps_tx_{id(conn)}_{depth}"
 
 
-def _begin_scope(conn, depth: int, owns_tx: bool) -> Optional[str]:
+def _begin_scope(conn, depth: int, owns_tx: bool, begin_sql: str = "BEGIN") -> Optional[str]:
     if depth == 1 and owns_tx:
         # 最外层且由我们负责事务边界：必须显式 BEGIN，避免最外层 SAVEPOINT 在 RELEASE 后已提交，
         # 导致后续 commit() 再失败时来不及回滚。
-        conn.execute("BEGIN")
+        conn.execute(begin_sql)
         return None
 
     sp_name = _savepoint_name(conn, depth)
@@ -183,14 +183,14 @@ def _block_commit_if_poisoned(conn, depth: int, owns_tx: bool, sp_name: Optional
 
 
 @contextmanager
-def _transaction_scope(conn):
+def _transaction_scope(conn, begin_sql: str = "BEGIN"):
     _inc_depth(conn)
     sp_name = None
     depth = 0
     try:
         depth = _current_depth(conn)
         owns_tx = _owns_transaction(conn, depth)
-        sp_name = _begin_scope(conn, depth, owns_tx)
+        sp_name = _begin_scope(conn, depth, owns_tx, begin_sql=begin_sql)
 
         try:
             yield conn
@@ -223,7 +223,7 @@ class TransactionManager:
     def __init__(self, db_connection):
         self.conn = db_connection
 
-    def transaction(self):
+    def transaction(self, *, begin_immediate: bool = False):
         """
         事务上下文管理器：成功提交、异常回滚，并支持“嵌套事务”。
 
@@ -235,7 +235,8 @@ class TransactionManager:
         - 若进入本上下文前连接已处于事务中（conn.in_transaction=True），则不在外层自动 commit/rollback，
           仅负责本层 SAVEPOINT 的 release/rollback（由外层事务边界负责提交/回滚）。
         """
-        return _transaction_scope(self.conn)
+        begin_sql = "BEGIN IMMEDIATE" if begin_immediate else "BEGIN"
+        return _transaction_scope(self.conn, begin_sql=begin_sql)
 
 
 def transactional(func):

@@ -275,9 +275,14 @@ def _role_detail_saved(option: Optional[Dict[str, Any]]) -> bool:
     return str((option or {}).get("detail_saved") or "").strip().lower() == "yes"
 
 
-def _link_unavailable_reason(*, detail_saved: bool, plan_role_available: bool) -> str:
+def _link_unavailable_reason(*, detail_saved: bool, plan_role_available: bool, completed: bool, status_label: str) -> str:
     if not plan_role_available:
         return "这套方案记录不完整，当前无法查看明细。"
+    if not completed:
+        label = str(status_label or "").strip()
+        if label and label != "-":
+            return f"这套方案当前状态是{label}，没有可查看的排程明细。"
+        return "这套方案当前状态没有确认，无法查看明细。"
     if not detail_saved:
         return "这套对比参考方案没有保存明细，当前无法查看明细。"
     return ""
@@ -336,6 +341,21 @@ def _comparison_status_messages(comparison: Dict[str, Any]) -> List[Dict[str, st
     return messages
 
 
+def _candidate_status_completed(status_value: Any) -> bool:
+    return str(status_value or "").strip().lower() == "completed"
+
+
+def _adopted_candidate_status_message(rows: List[Dict[str, Any]]) -> Optional[Dict[str, str]]:
+    adopted = _adopted_row(rows)
+    if not adopted or _candidate_status_completed(adopted.get("status")):
+        return None
+    candidate_label = str(adopted.get("candidate_label") or "正式采用方案").strip()
+    status = str(adopted.get("status") or "").strip()
+    status_label = _candidate_status_label(status)
+    status_text = f"状态是{status_label}" if status_label not in ("", "-") else "状态没有确认"
+    return _warning_message(f"{candidate_label} 当前{status_text}，系统不展示推荐结论，请复核这次方案对比记录。")
+
+
 def _has_complete_comparison_rows(rows: List[Dict[str, Any]]) -> bool:
     roles = {str(row.get("role") or "") for row in list(rows or [])}
     return _REQUIRED_COMPARISON_ROLES <= roles
@@ -356,6 +376,8 @@ def _candidate_recommendation_card(
     adopted = _adopted_row(rows)
     if not adopted:
         return None
+    if not _candidate_status_completed(adopted.get("status")):
+        return None
     candidate_label = str(adopted.get("candidate_label") or adopted.get("role_label") or "").strip()
     if not candidate_label:
         return None
@@ -374,7 +396,15 @@ def _candidate_kind(candidate: Dict[str, Any], option: Optional[Dict[str, Any]])
 
 
 def _candidate_status(candidate: Dict[str, Any], option: Optional[Dict[str, Any]]) -> str:
-    return str(candidate.get("status") or (option or {}).get("candidate_status") or "")
+    option_status = str((option or {}).get("candidate_status") or "").strip()
+    candidate_status = str(candidate.get("status") or "").strip()
+    if not option_status or not candidate_status:
+        return ""
+    if not _candidate_status_completed(option_status):
+        return option_status
+    if not _candidate_status_completed(candidate_status):
+        return candidate_status
+    return option_status
 
 
 def _candidate_display_row(
@@ -402,6 +432,8 @@ def _candidate_display_row(
     is_same_as_adopted = bool(candidate_key and candidate_key == adopted_key)
     plan_role_available = role in options_by_role
     detail_saved = _role_detail_saved(option)
+    completed = _candidate_status_completed(status)
+    status_label = _candidate_status_label(status)
     comparison_note = _comparison_note(
         role=role,
         is_comparison=bool(is_comparison),
@@ -415,7 +447,7 @@ def _candidate_display_row(
         "candidate_label": _candidate_label(candidate, option, candidate_key=candidate_key, role=role),
         "kind": _candidate_kind(candidate, option),
         "status": status,
-        "status_label": _candidate_status_label(status),
+        "status_label": status_label,
         "failed_ops": _candidate_failed_ops(candidate),
         "overdue_count": _candidate_metric(candidate, "overdue_count"),
         "total_tardiness_hours": _candidate_metric(candidate, "total_tardiness_hours"),
@@ -425,10 +457,12 @@ def _candidate_display_row(
         "technical_score_label": _candidate_technical_score_label(candidate),
         "plan_role_available": plan_role_available,
         "detail_saved": detail_saved,
-        "can_open_detail": bool(plan_role_available and detail_saved),
+        "can_open_detail": bool(plan_role_available and detail_saved and completed),
         "link_unavailable_reason": _link_unavailable_reason(
             detail_saved=detail_saved,
             plan_role_available=plan_role_available,
+            completed=completed,
+            status_label=status_label,
         ),
         "is_adopted": role == ROLE_ADOPTED,
         "is_same_as_adopted": is_same_as_adopted,
@@ -505,6 +539,13 @@ def _candidate_comparison_display_payload(
     rows: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
     selection_reason_label = _selection_reason_label(comparison.get("selection_reason_code"))
+    adopted_status_message = _adopted_candidate_status_message(rows)
+    recommendation_card = _candidate_recommendation_card(
+        rows,
+        selection_reason_label=selection_reason_label,
+    )
+    if adopted_status_message:
+        selection_reason_label = ""
     return {
         "version": int(selected_ver),
         "rows": rows,
@@ -526,12 +567,10 @@ def _candidate_comparison_display_payload(
         "baseline_missing_or_failed": bool(comparison.get("baseline_missing_or_failed")),
         "selection_reason_code": comparison.get("selection_reason_code"),
         "selection_reason_label": selection_reason_label,
-        "recommendation_card": _candidate_recommendation_card(
-            rows,
-            selection_reason_label=selection_reason_label,
-        ),
+        "recommendation_card": recommendation_card,
         "summary_cards": _candidate_summary_cards(rows),
-        "status_messages": _comparison_status_messages(comparison),
+        "status_messages": _comparison_status_messages(comparison)
+        + ([adopted_status_message] if adopted_status_message else []),
         "notice": "",
         "has_comparison": True,
     }

@@ -4,6 +4,8 @@ import hashlib
 import json
 import sqlite3
 from dataclasses import dataclass
+from datetime import datetime
+from decimal import Decimal
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from core.infrastructure.errors import AppError, ErrorCode, ValidationError
@@ -31,7 +33,14 @@ from data.repositories.operation_execution_event_repo import OperationExecutionE
 from data.repositories.operator_repo import OperatorRepository
 from data.repositories.schedule_repo import ScheduleRepository
 
-from .operation_execution_labels import action_to_event_type, event_type_to_action, execution_action_label
+from .operation_execution_labels import (
+    HANDLING_STATUS_LABELS,
+    REASON_LABELS,
+    SEVERITY_LABELS,
+    action_to_event_type,
+    event_type_to_action,
+    execution_action_label,
+)
 from .schedule_plan_query_service import SchedulePlanQueryService
 
 
@@ -40,6 +49,7 @@ class ExecutionFeedbackContext:
     schedule_version: int
     schedule_id: int
     op_id: int
+    batch_id: str
     expected_state_revision: str
     created_by: str
     idempotency_key: str
@@ -107,7 +117,7 @@ _PUBLIC_REASON_MESSAGES = {
     "stale_state_revision": "页面上的现场状态已经不是最新，请刷新后再提交。",
     "not_current_official_plan": "当前不是最新正式采用方案，不能提交现场反馈。",
     "schedule_mismatch": "排程记录和当前正式计划对不上，请刷新后重试。",
-    "invalid_state_transition": "当前现场状态不允许执行这个操作。",
+    "invalid_state_transition": "当前现场状态不允许执行这个操作，请刷新页面查看最新状态；如果现场记录有误，请联系计划员处理。",
 }
 
 
@@ -132,21 +142,41 @@ def _required_text(value: Any, field: str) -> str:
     return text
 
 
+def _parse_int(value: Any) -> int:
+    if isinstance(value, bool):
+        raise ValueError
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            raise ValueError
+        sign = text[0] if text[0] in ("+", "-") else ""
+        digits = text[1:] if sign else text
+        if not digits.isdigit():
+            raise ValueError
+        return int(text)
+    if isinstance(value, Decimal) and value == value.to_integral_value():
+        return int(value)
+    raise ValueError
+
+
+def _invalid_field_value(field: str, message: Optional[str] = None) -> ValidationError:
+    field_label = _feedback_field_label(field)
+    return ValidationError(
+        message or f"{field_label}填写不正确，请检查后重试。",
+        field=field,
+        details={"reason": "invalid_field_value", "field": field, "field_label": field_label},
+    )
+
+
 def _positive_int(value: Any, field: str) -> int:
     try:
-        parsed = int(value)
-    except (TypeError, ValueError):
-        raise ValidationError(
-            f"{display_field_label(field)}填写不正确，请检查后重试。",
-            field=field,
-            details={"reason": "invalid_field_value", "field": field, "field_label": display_field_label(field)},
-        ) from None
+        parsed = _parse_int(value)
+    except ValueError:
+        raise _invalid_field_value(field) from None
     if parsed <= 0:
-        raise ValidationError(
-            f"{display_field_label(field)}填写不正确，请检查后重试。",
-            field=field,
-            details={"reason": "invalid_field_value", "field": field, "field_label": display_field_label(field)},
-        )
+        raise _invalid_field_value(field)
     return parsed
 
 
@@ -154,14 +184,16 @@ def _optional_int(value: Any, field: str) -> Optional[int]:
     if value is None or _text(value) == "":
         return None
     try:
-        parsed = int(value)
-    except (TypeError, ValueError):
-        raise ValidationError(
-            f"{display_field_label(field)}填写不正确，请检查后重试。",
-            field=field,
-            details={"reason": "invalid_field_value", "field": field, "field_label": display_field_label(field)},
-        ) from None
+        parsed = _parse_int(value)
+    except ValueError:
+        raise _invalid_field_value(field) from None
     return parsed
+
+
+def _optional_non_negative_int(value: Any, field: str) -> Optional[int]:
+    if value is None or _text(value) == "":
+        return None
+    return _non_negative_int(value, field)
 
 
 def _feedback_field_label(field: str) -> str:
@@ -183,21 +215,11 @@ def _required_non_negative_int(value: Any, field: str) -> int:
 
 def _non_negative_int(value: Any, field: str) -> int:
     try:
-        parsed = int(value)
-    except (TypeError, ValueError):
-        field_label = _feedback_field_label(field)
-        raise ValidationError(
-            f"{field_label}填写不正确，请检查后重试。",
-            field=field,
-            details={"reason": "invalid_field_value", "field": field, "field_label": field_label},
-        ) from None
+        parsed = _parse_int(value)
+    except ValueError:
+        raise _invalid_field_value(field) from None
     if parsed < 0:
-        field_label = _feedback_field_label(field)
-        raise ValidationError(
-            f"{field_label}填写不正确，请检查后重试。",
-            field=field,
-            details={"reason": "invalid_field_value", "field": field, "field_label": field_label},
-        )
+        raise _invalid_field_value(field)
     return parsed
 
 
@@ -210,6 +232,23 @@ def _conflict(reason: str, *, details: Optional[Dict[str, Any]] = None, message:
         message or _PUBLIC_REASON_MESSAGES.get(reason) or "现场反馈提交失败，请刷新后重试。",
         details=payload,
     )
+
+
+def _parse_feedback_datetime(value: Any, field: str = "event_time") -> datetime:
+    text = _text(value).replace("/", "-").replace("T", " ").replace("：", ":")
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(text, fmt)
+        except ValueError:
+            continue
+    raise _invalid_field_value(field, "反馈时间格式不正确，请检查后再提交。")
+
+
+def _validate_known_value(value: Optional[str], field: str, labels: Dict[str, str]) -> None:
+    if value is None:
+        return
+    if value not in labels:
+        raise _invalid_field_value(field)
 
 
 def _event_public_tuple(event: OperationExecutionEvent) -> Tuple[Any, ...]:
@@ -358,7 +397,16 @@ class OperationExecutionFeedbackService:
                 fingerprint=fingerprint,
             )
 
-        with self.tx_manager.transaction():
+        with self.tx_manager.transaction(begin_immediate=True):
+            existing = self.event_repo.get_by_idempotency_key(normalized_context.idempotency_key)
+            if existing is not None:
+                return self._resolve_idempotent_existing(
+                    existing,
+                    context=normalized_context,
+                    action=normalized_action,
+                    payload=normalized_payload,
+                    fingerprint=fingerprint,
+                )
             schedule, batch_op = self._load_current_official_schedule(normalized_context)
             current_state = self.event_repo.aggregate_states_by_op_ids([normalized_context.op_id])[normalized_context.op_id]
             if current_state.state_revision != normalized_context.expected_state_revision:
@@ -370,6 +418,7 @@ class OperationExecutionFeedbackService:
                     },
                 )
             self._validate_state_transition(current_state, normalized_action)
+            self._validate_event_time_sequence(current_state, normalized_action, normalized_payload.get("event_time"))
             self._validate_payload_against_plan(
                 action=normalized_action,
                 payload=normalized_payload,
@@ -479,19 +528,24 @@ class OperationExecutionFeedbackService:
         schedule_version = _positive_int(context.schedule_version, "schedule_version")
         schedule_id = _positive_int(context.schedule_id, "schedule_id")
         op_id = _positive_int(context.op_id, "op_id")
+        batch_id = _required_text(context.batch_id, "batch_id")
         created_by = _required_text(context.created_by, "created_by")
         idempotency_key = _required_text(context.idempotency_key, "idempotency_key")
         expected_state_revision = _required_text(context.expected_state_revision, "expected_state_revision")
+        requested_plan_role = _required_text(context.requested_plan_role, "requested_plan_role")
+        source_table = _required_text(context.source_table, "source_table")
+        effective_plan_role = _required_text(context.effective_plan_role, "effective_plan_role")
         return ExecutionFeedbackContext(
             schedule_version=schedule_version,
             schedule_id=schedule_id,
             op_id=op_id,
+            batch_id=batch_id,
             expected_state_revision=expected_state_revision,
             created_by=created_by,
             idempotency_key=idempotency_key,
-            requested_plan_role=_text(context.requested_plan_role) or ROLE_ADOPTED,
-            source_table=_text(context.source_table) or SOURCE_SCHEDULE,
-            effective_plan_role=_text(context.effective_plan_role) or ROLE_ADOPTED,
+            requested_plan_role=requested_plan_role,
+            source_table=source_table,
+            effective_plan_role=effective_plan_role,
             scenario_id=_optional_text(context.scenario_id),
         )
 
@@ -519,6 +573,13 @@ class OperationExecutionFeedbackService:
         out["handling_status"] = _optional_text(out.get("handling_status"))
         out["suggest_reschedule"] = self._normalize_suggest_reschedule(out.get("suggest_reschedule"))
         out["remark"] = _optional_text(out.get("remark"))
+        if action in (EXECUTION_EVENT_PAUSE, EXECUTION_ACTION_REPORT_EXCEPTION):
+            out["reason_code"] = _required_text(out.get("reason_code"), "reason_code")
+        if action == EXECUTION_ACTION_REPORT_EXCEPTION:
+            out["severity"] = _required_text(out.get("severity"), "severity")
+        _validate_known_value(out.get("reason_code"), "reason_code", REASON_LABELS)
+        _validate_known_value(out.get("severity"), "severity", SEVERITY_LABELS)
+        _validate_known_value(out.get("handling_status"), "handling_status", HANDLING_STATUS_LABELS)
         if action == EXECUTION_EVENT_FINISH:
             out["quantity_done"] = _required_non_negative_int(out.get("quantity_done"), "quantity_done")
             out["quantity_scrapped"] = (
@@ -528,20 +589,20 @@ class OperationExecutionFeedbackService:
         else:
             out["quantity_done"] = _optional_int(out.get("quantity_done"), "quantity_done")
             out["quantity_scrapped"] = _optional_int(out.get("quantity_scrapped"), "quantity_scrapped")
-        out["impact_minutes"] = _optional_int(out.get("impact_minutes"), "impact_minutes")
+        out["impact_minutes"] = _optional_non_negative_int(out.get("impact_minutes"), "impact_minutes")
         if action == EXECUTION_EVENT_START:
             _required_text(out.get("actual_operator_id"), "operator_id")
             _required_text(out.get("actual_machine_id"), "machine_id")
         return out
 
-    def _normalize_suggest_reschedule(self, value: Any) -> Optional[str]:
+    def _normalize_suggest_reschedule(self, value: Any) -> int:
         if value is None or _text(value) == "":
-            return None
+            return 0
         text = _text(value).lower()
         if text in ("yes", "true", "1"):
-            return "yes"
+            return 1
         if text in ("no", "false", "0"):
-            return "no"
+            return 0
         raise ValidationError(
             f"{display_field_label('suggest_reschedule')}填写不正确，请检查后重试。",
             field="suggest_reschedule",
@@ -563,6 +624,7 @@ class OperationExecutionFeedbackService:
                 "schedule_version": int(context.schedule_version),
                 "schedule_id": int(context.schedule_id),
                 "op_id": int(context.op_id),
+                "batch_id": context.batch_id,
                 "expected_state_revision": context.expected_state_revision,
                 "created_by": context.created_by,
                 "requested_plan_role": context.requested_plan_role,
@@ -602,11 +664,41 @@ class OperationExecutionFeedbackService:
             int(schedule.version) != int(context.schedule_version)
             or int(schedule.id or 0) != int(context.schedule_id)
             or int(schedule.op_id or 0) != int(context.op_id)
-            or str(batch_op.batch_id or "").strip() == ""
+            or _text(batch_op.batch_id) != context.batch_id
         )
         if schedule_mismatch:
             raise _conflict("schedule_mismatch")
         return schedule, batch_op
+
+    def _validate_event_time_sequence(self, state: OperationExecutionState, action: str, event_time: Any) -> None:
+        event_dt = _parse_feedback_datetime(event_time)
+        last_event_time = _optional_text(state.last_event_time)
+        if last_event_time:
+            last_event_dt = _parse_feedback_datetime(last_event_time)
+            if event_dt < last_event_dt:
+                raise _conflict(
+                    "invalid_state_transition",
+                    details={
+                        "current_status": state.current_status,
+                        "current_status_label": state.current_status_label,
+                        "action": action,
+                        "action_label": execution_action_label(action),
+                    },
+                    message="反馈时间不能早于上一条现场反馈时间，请刷新后重试。",
+                )
+        if action == EXECUTION_EVENT_FINISH and state.actual_start_time:
+            start_dt = _parse_feedback_datetime(state.actual_start_time)
+            if event_dt < start_dt:
+                raise _conflict(
+                    "invalid_state_transition",
+                    details={
+                        "current_status": state.current_status,
+                        "current_status_label": state.current_status_label,
+                        "action": action,
+                        "action_label": execution_action_label(action),
+                    },
+                    message="完工时间不能早于实际开工时间，请检查后再提交。",
+                )
 
     def _validate_payload_against_plan(self, *, action: str, payload: Dict[str, Any], schedule: Any, batch_op: Any) -> None:
         if action == EXECUTION_EVENT_START:
@@ -614,29 +706,20 @@ class OperationExecutionFeedbackService:
             return
         if action == EXECUTION_EVENT_FINISH:
             self._validate_finish_payload_against_plan(payload=payload, batch_op=batch_op)
+            return
+        if action == EXECUTION_ACTION_REPORT_EXCEPTION:
+            self._validate_exception_payload_against_plan(payload=payload)
 
     def _validate_start_payload_against_plan(self, *, payload: Dict[str, Any], schedule: Any) -> None:
         operator_id = _required_text(payload.get("actual_operator_id"), "operator_id")
         machine_id = _required_text(payload.get("actual_machine_id"), "machine_id")
         if not self.operator_repo.exists(operator_id):
-            raise AppError(
-                ErrorCode.NOT_FOUND,
-                "操作人员不存在，请刷新后重试。",
-                details={"reason": "not_found", "field": "operator_id", "field_label": _feedback_field_label("operator_id")},
-            )
+            raise _invalid_field_value("operator_id", "请选择有效的操作人员。")
         if not self.machine_repo.exists(machine_id):
-            raise AppError(
-                ErrorCode.NOT_FOUND,
-                "设备不存在，请刷新后重试。",
-                details={"reason": "not_found", "field": "machine_id", "field_label": display_field_label("machine_id")},
-            )
+            raise _invalid_field_value("machine_id", "请选择有效的设备。")
         planned_machine_id = _text(getattr(schedule, "machine_id", ""))
         if not planned_machine_id or machine_id != planned_machine_id:
-            raise _conflict(
-                "schedule_mismatch",
-                details={"field": "machine_id", "field_label": display_field_label("machine_id")},
-                message="设备和当前正式排程记录对不上，请刷新后重试。",
-            )
+            raise _invalid_field_value("machine_id", "请选择当前正式排程记录里的设备。")
 
     def _validate_finish_payload_against_plan(self, *, payload: Dict[str, Any], batch_op: Any) -> None:
         quantity_done = int(payload.get("quantity_done") or 0)
@@ -648,7 +731,7 @@ class OperationExecutionFeedbackService:
         planned_quantity = int(getattr(batch, "quantity", 0) or 0)
         if quantity_done + quantity_scrapped > planned_quantity:
             raise ValidationError(
-                "完成数量和报废数量加起来不能超过批次数量，请检查后再提交。",
+                "完成数量和报废数量加起来不能超过计划数量，请检查后再提交。",
                 field="quantity_done",
                 details={
                     "reason": "invalid_field_value",
@@ -657,6 +740,14 @@ class OperationExecutionFeedbackService:
                     "planned_quantity": planned_quantity,
                 },
             )
+
+    def _validate_exception_payload_against_plan(self, *, payload: Dict[str, Any]) -> None:
+        affected_machine_id = _optional_text(payload.get("affected_machine_id"))
+        affected_operator_id = _optional_text(payload.get("affected_operator_id"))
+        if affected_machine_id and not self.machine_repo.exists(affected_machine_id):
+            raise _invalid_field_value("affected_machine_id", "请选择有效的影响设备。")
+        if affected_operator_id and not self.operator_repo.exists(affected_operator_id):
+            raise _invalid_field_value("affected_operator_id", "请选择有效的影响人员。")
 
     def _build_event_payload(
         self,

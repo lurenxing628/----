@@ -28,6 +28,18 @@ from core.services.scheduler.gantt_adjustment_scenario_service import GanttAdjus
 from core.services.scheduler.gantt_service import GanttService  # noqa: E402
 from core.services.scheduler.resource_dispatch_service import ResourceDispatchService  # noqa: E402
 
+EXPORT_INTERNAL_TERMS = (
+    "plan_role",
+    "candidate_key",
+    "candidate_id",
+    "source_table",
+    "baseline_best",
+    "critical_best",
+    "scenario_id",
+    "candidate_rows",
+    "adjustment_scenario_rows",
+)
+
 
 def _build_secondary_output_app(tmp_path: Path, monkeypatch):
     for name in list(sys.modules):
@@ -78,6 +90,47 @@ def _workbook_summary_values(xlsx_bytes):
         return {str(row[0] or ""): row[1] for row in ws.iter_rows(values_only=True) if row and row[0]}
     finally:
         wb.close()
+
+
+def _workbook_text(xlsx_bytes) -> str:
+    wb = load_workbook(BytesIO(xlsx_bytes), read_only=True, data_only=True)
+    values = []
+    try:
+        for ws in wb.worksheets:
+            values.append(ws.title)
+            for row in ws.iter_rows(values_only=True):
+                values.extend(str(cell or "") for cell in row)
+    finally:
+        wb.close()
+    return "\n".join(values)
+
+
+def _workbook_sheetnames(xlsx_bytes):
+    wb = load_workbook(BytesIO(xlsx_bytes), read_only=True, data_only=True)
+    try:
+        return list(wb.sheetnames)
+    finally:
+        wb.close()
+
+
+def _assert_report_export_uses_public_scenario_name(response, *, scenario_id: str, expected_name: str) -> str:
+    disposition = unquote(str(response.headers.get("Content-Disposition") or ""))
+    sheetnames = _workbook_sheetnames(response.data)
+    workbook_text = _workbook_text(response.data)
+    summary = _workbook_summary_values(response.data)
+    assert summary is not None
+    assert summary["导出类型"] == "模拟方案预览"
+    assert summary["提示"] == "这是模拟方案预览，正式计划还没有改变。"
+    assert summary["模拟方案"] == expected_name
+    assert "Sheet" not in sheetnames
+    assert all(str(name or "").strip() for name in sheetnames)
+    assert scenario_id not in disposition
+    assert scenario_id not in workbook_text
+    assert expected_name in disposition
+    for forbidden in EXPORT_INTERNAL_TERMS:
+        assert forbidden not in disposition
+        assert forbidden not in workbook_text
+    return workbook_text
 
 
 def test_secondary_output_services_read_scenario_rows_and_do_not_fallback(tmp_path: Path) -> None:
@@ -221,7 +274,8 @@ def test_secondary_output_pages_keep_scenario_context(tmp_path: Path, monkeypatc
     assert "当前超期清单正在预览" in overdue_html
     assert f'name="scenario_id" value="{scenario_id}"' in overdue_html
     assert f"/reports/utilization?version={VERSION}&amp;plan_role=adopted&amp;scenario_id={scenario_id}" in overdue_html
-    assert "模拟预览暂不支持导出，请切换到正式采用方案" in overdue_html
+    assert "模拟预览暂不支持导出" not in overdue_html
+    assert f"/reports/overdue/export?version={VERSION}&amp;plan_role=adopted&amp;scenario_id={scenario_id}" in overdue_html
     assert "B2" in overdue_html
 
     utilization_html = client.get(
@@ -233,10 +287,15 @@ def test_secondary_output_pages_keep_scenario_context(tmp_path: Path, monkeypatc
         f"/reports/downtime?version={VERSION}&amp;plan_role=adopted&amp;scenario_id={scenario_id}"
         "&amp;start_date=2026-05-06&amp;end_date=2026-05-06"
     ) in utilization_html
+    assert (
+        f"/reports/utilization/export?version={VERSION}&amp;plan_role=adopted&amp;scenario_id={scenario_id}"
+        "&amp;start_date=2026-05-06&amp;end_date=2026-05-06"
+    ) in utilization_html
     assert "M2" in utilization_html
     assert '<div class="aps-summary-label">排产方案</div>' in utilization_html
     assert '<div class="aps-summary-value">二级页模拟</div>' in utilization_html
     assert "当前方案：二级页模拟" in utilization_html
+    assert "模拟预览暂不支持导出" not in utilization_html
 
     downtime_html = client.get(
         f"/reports/downtime?start_date=2026-05-06&end_date=2026-05-06&{scenario_query}"
@@ -247,22 +306,43 @@ def test_secondary_output_pages_keep_scenario_context(tmp_path: Path, monkeypatc
     assert '<div class="aps-summary-label">排产方案</div>' in downtime_html
     assert '<div class="aps-summary-value">二级页模拟</div>' in downtime_html
     assert "当前方案：二级页模拟" in downtime_html
+    assert (
+        f"/reports/downtime/export?version={VERSION}&amp;plan_role=adopted&amp;scenario_id={scenario_id}"
+        "&amp;start_date=2026-05-06&amp;end_date=2026-05-06"
+    ) in downtime_html
+    assert "模拟预览暂不支持导出" not in downtime_html
 
     export_resp = client.get(f"/reports/overdue/export?{scenario_query}")
-    assert export_resp.status_code == 400
-    assert "模拟预览暂不支持导出，请切换到正式采用方案" in export_resp.get_data(as_text=True)
+    assert export_resp.status_code == 200
+    overdue_export_text = _assert_report_export_uses_public_scenario_name(
+        export_resp,
+        scenario_id=scenario_id,
+        expected_name="二级页模拟",
+    )
+    assert "B2" in overdue_export_text
 
     utilization_export = client.get(
         f"/reports/utilization/export?start_date=2026-05-06&end_date=2026-05-06&{scenario_query}"
     )
-    assert utilization_export.status_code == 400
-    assert "模拟预览暂不支持导出，请切换到正式采用方案" in utilization_export.get_data(as_text=True)
+    assert utilization_export.status_code == 200
+    utilization_export_text = _assert_report_export_uses_public_scenario_name(
+        utilization_export,
+        scenario_id=scenario_id,
+        expected_name="二级页模拟",
+    )
+    assert "M2" in utilization_export_text
 
     downtime_export = client.get(
         f"/reports/downtime/export?start_date=2026-05-06&end_date=2026-05-06&{scenario_query}"
     )
-    assert downtime_export.status_code == 400
-    assert "模拟预览暂不支持导出，请切换到正式采用方案" in downtime_export.get_data(as_text=True)
+    assert downtime_export.status_code == 200
+    downtime_export_text = _assert_report_export_uses_public_scenario_name(
+        downtime_export,
+        scenario_id=scenario_id,
+        expected_name="二级页模拟",
+    )
+    assert "M2" in downtime_export_text
+    assert "0.5" in downtime_export_text
 
 
 def test_secondary_output_pages_use_plain_fallback_for_unnamed_scenario(tmp_path: Path, monkeypatch) -> None:
@@ -317,6 +397,19 @@ def test_secondary_output_pages_use_plain_fallback_for_unnamed_scenario(tmp_path
     assert "模拟预览（未命名）" in resource_disposition
     assert "正式采用方案" not in resource_disposition
 
+    report_exports = [
+        client.get(f"/reports/overdue/export?{scenario_query}"),
+        client.get(f"/reports/utilization/export?start_date=2026-05-06&end_date=2026-05-06&{scenario_query}"),
+        client.get(f"/reports/downtime/export?start_date=2026-05-06&end_date=2026-05-06&{scenario_query}"),
+    ]
+    for response in report_exports:
+        assert response.status_code == 200
+        _assert_report_export_uses_public_scenario_name(
+            response,
+            scenario_id=scenario_id,
+            expected_name="模拟预览（未命名）",
+        )
+
 
 def test_secondary_output_pages_reject_bad_scenario_without_showing_official_plan(tmp_path: Path, monkeypatch) -> None:
     conn = _connect(tmp_path)
@@ -357,3 +450,14 @@ def test_secondary_output_pages_reject_bad_scenario_without_showing_official_pla
     )
     assert export_resp.status_code == 400
     assert "模拟方案不存在" in export_resp.get_data(as_text=True)
+
+    for url in (
+        f"/reports/overdue/export?{bad_query}",
+        f"/reports/utilization/export?start_date=2026-05-04&end_date=2026-05-04&{bad_query}",
+        f"/reports/downtime/export?start_date=2026-05-04&end_date=2026-05-04&{bad_query}",
+    ):
+        response = client.get(url, follow_redirects=False)
+        html = response.get_data(as_text=True)
+        assert response.status_code == 400, url
+        assert "模拟方案不存在" in html, url
+        assert "scenario_id" not in html, url

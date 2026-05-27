@@ -194,6 +194,26 @@ class ReportEngine:
             return identity.user_label or identity.label or plan_role_label(resolution.selected_role)
         return plan_role_label(resolution.selected_role)
 
+    def _scenario_export_summary_rows(
+        self,
+        resolution: SchedulePlanResolution,
+        *,
+        date_range: Optional[str] = None,
+    ) -> List[List[Any]]:
+        if not resolution.is_scenario_preview:
+            return []
+        rows: List[List[Any]] = [
+            ["导出类型", "模拟方案预览"],
+            ["提示", "这是模拟方案预览，正式计划还没有改变。"],
+            ["模拟方案", resolution.scenario_display_name],
+            ["预览依据版本", f"v{int(resolution.version)}"],
+            ["预览依据方案", plan_role_label(resolution.selected_role)],
+        ]
+        if date_range:
+            rows.append(["查询日期", date_range])
+        rows.append(["导出时间", datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
+        return rows
+
     def version_date_range(
         self,
         version: int,
@@ -288,10 +308,9 @@ class ReportEngine:
         scenario_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         resolution = self._resolve_plan(int(version), plan_role, scenario_id)
-        report = self.delay_diagnosis_service.diagnose_plan_overdue(
-            int(version),
-            plan_role=resolution.selected_role,
-            scenario_id=scenario_id,
+        report = self.delay_diagnosis_service.diagnose_resolved_plan_overdue(
+            version=int(version),
+            resolution=resolution,
         )
         return build_delay_diagnosis_page_context(report)
 
@@ -301,24 +320,34 @@ class ReportEngine:
         version: int,
         resolution: SchedulePlanResolution,
     ) -> List[Dict[str, Any]]:
-        diagnosis_report = self.delay_diagnosis_service.diagnose_plan_overdue(
-            int(version),
-            plan_role=resolution.selected_role,
+        diagnosis_report = self.delay_diagnosis_service.diagnose_resolved_plan_overdue(
+            version=int(version),
+            resolution=resolution,
         )
         return build_delay_diagnosis_export_rows(
             diagnosis_report,
             filters={"version": int(version), "plan_label": self._public_plan_label(resolution)},
         )
 
-    def export_overdue_xlsx(self, version: int, plan_role: Optional[str] = None) -> ReportExport:
-        rep = self.overdue_batches(version) if plan_role is None else self.overdue_batches(version, plan_role=plan_role)
+    def export_overdue_xlsx(
+        self,
+        version: int,
+        plan_role: Optional[str] = None,
+        scenario_id: Optional[str] = None,
+    ) -> ReportExport:
+        rep = self.overdue_batches(version, plan_role=plan_role, scenario_id=scenario_id)
         items = list(rep.get("items") or [])
         if not items:
             raise ValidationError("当前版本没有可导出的超期结果，请换一个排产版本后再试。", field="导出")
-        resolution = self._resolve_plan(int(rep["version"]), plan_role)
+        resolution = self._resolve_plan(int(rep["version"]), plan_role, scenario_id)
         def build_overdue_export(*, write_only: bool = False):
             diagnosis_rows = self._overdue_diagnosis_export_rows(version=int(rep["version"]), resolution=resolution)
-            return export_overdue_xlsx(items, diagnosis_rows=diagnosis_rows, write_only=write_only)
+            return export_overdue_xlsx(
+                items,
+                diagnosis_rows=diagnosis_rows,
+                summary_rows=self._scenario_export_summary_rows(resolution),
+                write_only=write_only,
+            )
 
         return self._build_xlsx_export(
             report_name="超期清单",
@@ -380,23 +409,41 @@ class ReportEngine:
             "operators": operator_rows,
         }
 
-    def export_utilization_xlsx(self, version: int, start_date: Any, end_date: Any, plan_role: Optional[str] = None) -> ReportExport:
-        rep = (
-            self.utilization(version, start_date, end_date)
-            if plan_role is None
-            else self.utilization(version, start_date, end_date, plan_role=plan_role)
-        )
+    def export_utilization_xlsx(
+        self,
+        version: int,
+        start_date: Any,
+        end_date: Any,
+        plan_role: Optional[str] = None,
+        scenario_id: Optional[str] = None,
+    ) -> ReportExport:
+        rep = self.utilization(version, start_date, end_date, plan_role=plan_role, scenario_id=scenario_id)
         machines = list(rep.get("machines") or [])
         operators = list(rep.get("operators") or [])
         if not machines and not operators:
             raise ValidationError("暂无数据，不能导出。请调整版本或日期范围后再试。", field="导出")
-        resolution = self._resolve_plan(int(rep["version"]), plan_role)
+        resolution = self._resolve_plan(int(rep["version"]), plan_role, scenario_id)
         return self._build_xlsx_export(
             report_name="资源负荷与利用率",
             filename=f"资源负荷与利用率_{self._filename_plan_label(resolution)}_v{int(rep['version'])}_{rep['start_date']}至{rep['end_date']}.xlsx",
             estimated_rows=len(machines) + len(operators),
-            build_direct=lambda: export_utilization_xlsx(machines, operators),
-            build_stream=lambda: export_utilization_xlsx(machines, operators, write_only=True),
+            build_direct=lambda: export_utilization_xlsx(
+                machines,
+                operators,
+                summary_rows=self._scenario_export_summary_rows(
+                    resolution,
+                    date_range=f"{rep['start_date']} 至 {rep['end_date']}",
+                ),
+            ),
+            build_stream=lambda: export_utilization_xlsx(
+                machines,
+                operators,
+                summary_rows=self._scenario_export_summary_rows(
+                    resolution,
+                    date_range=f"{rep['start_date']} 至 {rep['end_date']}",
+                ),
+                write_only=True,
+            ),
         )
 
     # -------------------------
@@ -446,20 +493,36 @@ class ReportEngine:
             "machines": machines,
         }
 
-    def export_downtime_impact_xlsx(self, version: int, start_date: Any, end_date: Any, plan_role: Optional[str] = None) -> ReportExport:
-        rep = (
-            self.downtime_impact(version, start_date, end_date)
-            if plan_role is None
-            else self.downtime_impact(version, start_date, end_date, plan_role=plan_role)
-        )
+    def export_downtime_impact_xlsx(
+        self,
+        version: int,
+        start_date: Any,
+        end_date: Any,
+        plan_role: Optional[str] = None,
+        scenario_id: Optional[str] = None,
+    ) -> ReportExport:
+        rep = self.downtime_impact(version, start_date, end_date, plan_role=plan_role, scenario_id=scenario_id)
         machines = list(rep.get("machines") or [])
         if not machines:
             raise ValidationError("暂无数据，不能导出。请调整版本或日期范围后再试。", field="导出")
-        resolution = self._resolve_plan(int(rep["version"]), plan_role)
+        resolution = self._resolve_plan(int(rep["version"]), plan_role, scenario_id)
         return self._build_xlsx_export(
             report_name="停机影响统计",
             filename=f"停机影响统计_{self._filename_plan_label(resolution)}_v{int(rep['version'])}_{rep['start_date']}至{rep['end_date']}.xlsx",
             estimated_rows=len(machines),
-            build_direct=lambda: export_downtime_impact_xlsx(machines),
-            build_stream=lambda: export_downtime_impact_xlsx(machines, write_only=True),
+            build_direct=lambda: export_downtime_impact_xlsx(
+                machines,
+                summary_rows=self._scenario_export_summary_rows(
+                    resolution,
+                    date_range=f"{rep['start_date']} 至 {rep['end_date']}",
+                ),
+            ),
+            build_stream=lambda: export_downtime_impact_xlsx(
+                machines,
+                summary_rows=self._scenario_export_summary_rows(
+                    resolution,
+                    date_range=f"{rep['start_date']} 至 {rep['end_date']}",
+                ),
+                write_only=True,
+            ),
         )

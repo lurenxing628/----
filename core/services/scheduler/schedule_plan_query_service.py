@@ -407,6 +407,8 @@ class SchedulePlanQueryService:
             raise ValueError(f"未知的排产方案角色：{option.role}")
         if option.source_table not in (SOURCE_SCHEDULE, SOURCE_CANDIDATE_ROWS):
             raise ValueError(f"未知的排产方案数据来源：{option.source_table}")
+        if option.role != ROLE_ADOPTED and str(option.candidate_status or "").strip().lower() != "completed":
+            raise ValueError("这套对比参考方案当前不是已完成状态，不能查看明细。")
         if option.source_table == SOURCE_CANDIDATE_ROWS:
             if option.candidate_id is None:
                 raise ValueError("方案对比明细缺少编号。")

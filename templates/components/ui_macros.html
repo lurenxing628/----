@@ -327,21 +327,31 @@
 {% set nav_scenario_id = (request.args.get('scenario_id') or '') | trim %}
 {% set nav_version = (request.args.get('version') or '') | trim %}
 {% set nav_plan_role = (request.args.get('plan_role') or '') | trim %}
-{% set scenario_query = '' %}
-{% set scenario_amp_query = '' %}
+{% set scheduler_context = namespace(query='', amp_query='') %}
+{% set analysis_context = namespace(query='') %}
+{% if nav_version %}
+  {% set scheduler_context.query = scheduler_context.query ~ ('?' if not scheduler_context.query else '&') ~ 'version=' ~ (nav_version | urlencode) %}
+  {% set scheduler_context.amp_query = scheduler_context.amp_query ~ '&version=' ~ (nav_version | urlencode) %}
+  {% set analysis_context.query = analysis_context.query ~ ('?' if not analysis_context.query else '&') ~ 'version=' ~ (nav_version | urlencode) %}
+{% endif %}
+{% if nav_plan_role %}
+  {% set scheduler_context.query = scheduler_context.query ~ ('?' if not scheduler_context.query else '&') ~ 'plan_role=' ~ (nav_plan_role | urlencode) %}
+  {% set scheduler_context.amp_query = scheduler_context.amp_query ~ '&plan_role=' ~ (nav_plan_role | urlencode) %}
+  {% set analysis_context.query = analysis_context.query ~ ('?' if not analysis_context.query else '&') ~ 'plan_role=' ~ (nav_plan_role | urlencode) %}
+{% endif %}
 {% if nav_scenario_id %}
-  {% set scenario_query = '?version=' ~ (nav_version | urlencode) ~ '&plan_role=' ~ (nav_plan_role | urlencode) ~ '&scenario_id=' ~ (nav_scenario_id | urlencode) %}
-  {% set scenario_amp_query = '&version=' ~ (nav_version | urlencode) ~ '&plan_role=' ~ (nav_plan_role | urlencode) ~ '&scenario_id=' ~ (nav_scenario_id | urlencode) %}
+  {% set scheduler_context.query = scheduler_context.query ~ ('?' if not scheduler_context.query else '&') ~ 'scenario_id=' ~ (nav_scenario_id | urlencode) %}
+  {% set scheduler_context.amp_query = scheduler_context.amp_query ~ '&scenario_id=' ~ (nav_scenario_id | urlencode) %}
 {% endif %}
 <div class="scheduler-subnav scheduler-subnav-main {{ class }}">
   {{ link_button('执行排产', url_for('scheduler.batches_page'), 'primary' if active == 'batches' else 'secondary', size) }}
   {{ link_button('批次管理', url_for('scheduler.batches_manage_page'), 'primary' if active == 'batches_manage' else 'secondary', size) }}
   {{ link_button('高级设置/模板', url_for('scheduler.config_page'), 'primary' if active == 'config' else 'secondary', size) }}
-  {{ link_button('资源排班', url_for('scheduler.resource_dispatch_page') ~ scenario_query, 'primary' if active == 'resource_dispatch' else 'secondary', size) }}
-  {{ link_button('设备甘特图', url_for('scheduler.gantt_page', view='machine') ~ scenario_amp_query, 'primary' if active == 'gantt_machine' else 'secondary', size) }}
-  {{ link_button('人员甘特图', url_for('scheduler.gantt_page', view='operator') ~ scenario_amp_query, 'primary' if active == 'gantt_operator' else 'secondary', size) }}
-  {{ link_button('排产优化分析', url_for('scheduler.analysis_page'), 'primary' if active == 'analysis' else 'secondary', size) }}
-  {{ link_button('周计划', url_for('scheduler.week_plan_page') ~ scenario_query, 'primary' if active == 'week_plan' else 'secondary', size) }}
+  {{ link_button('资源排班', url_for('scheduler.resource_dispatch_page') ~ scheduler_context.query, 'primary' if active == 'resource_dispatch' else 'secondary', size) }}
+  {{ link_button('设备甘特图', url_for('scheduler.gantt_page', view='machine') ~ scheduler_context.amp_query, 'primary' if active == 'gantt_machine' else 'secondary', size) }}
+  {{ link_button('人员甘特图', url_for('scheduler.gantt_page', view='operator') ~ scheduler_context.amp_query, 'primary' if active == 'gantt_operator' else 'secondary', size) }}
+  {{ link_button('排产优化分析', url_for('scheduler.analysis_page') ~ analysis_context.query, 'primary' if active == 'analysis' else 'secondary', size) }}
+  {{ link_button('周计划', url_for('scheduler.week_plan_page') ~ scheduler_context.query, 'primary' if active == 'week_plan' else 'secondary', size) }}
   {{ link_button('工作日历配置', url_for('scheduler.calendar_page'), 'primary' if active == 'calendar' else 'secondary', size) }}
 </div>
 {% endmacro %}
@@ -413,18 +423,24 @@
 {% set nav_plan_role = (request.args.get('plan_role') or '') | trim %}
 {% set nav_start_date = (request.args.get('start_date') or '') | trim %}
 {% set nav_end_date = (request.args.get('end_date') or '') | trim %}
-{% set report_scenario_query = '' %}
+{% set report_context = namespace(query='') %}
+{% if nav_version %}
+  {% set report_context.query = report_context.query ~ ('?' if not report_context.query else '&') ~ 'version=' ~ (nav_version | urlencode) %}
+{% endif %}
+{% if nav_plan_role %}
+  {% set report_context.query = report_context.query ~ ('?' if not report_context.query else '&') ~ 'plan_role=' ~ (nav_plan_role | urlencode) %}
+{% endif %}
 {% if nav_scenario_id %}
-  {% set report_scenario_query = '?version=' ~ (nav_version | urlencode) ~ '&plan_role=' ~ (nav_plan_role | urlencode) ~ '&scenario_id=' ~ (nav_scenario_id | urlencode) %}
-  {% if nav_start_date and nav_end_date %}
-    {% set report_scenario_query = report_scenario_query ~ '&start_date=' ~ (nav_start_date | urlencode) ~ '&end_date=' ~ (nav_end_date | urlencode) %}
-  {% endif %}
+  {% set report_context.query = report_context.query ~ ('?' if not report_context.query else '&') ~ 'scenario_id=' ~ (nav_scenario_id | urlencode) %}
+{% endif %}
+{% if nav_start_date and nav_end_date %}
+  {% set report_context.query = report_context.query ~ ('?' if not report_context.query else '&') ~ 'start_date=' ~ (nav_start_date | urlencode) ~ '&end_date=' ~ (nav_end_date | urlencode) %}
 {% endif %}
 <div class="scheduler-subnav scheduler-subnav-main {{ class }}">
   {{ link_button('报表中心', url_for('reports.index'), 'primary' if active == 'index' else 'secondary', size) }}
-  {{ link_button('超期清单', url_for('reports.overdue_page') ~ report_scenario_query, 'primary' if active == 'overdue' else 'secondary', size) }}
-  {{ link_button('资源负荷与利用率', url_for('reports.utilization_page') ~ report_scenario_query, 'primary' if active == 'utilization' else 'secondary', size) }}
-  {{ link_button('停机影响统计', url_for('reports.downtime_page') ~ report_scenario_query, 'primary' if active == 'downtime' else 'secondary', size) }}
+  {{ link_button('超期清单', url_for('reports.overdue_page') ~ report_context.query, 'primary' if active == 'overdue' else 'secondary', size) }}
+  {{ link_button('资源负荷与利用率', url_for('reports.utilization_page') ~ report_context.query, 'primary' if active == 'utilization' else 'secondary', size) }}
+  {{ link_button('停机影响统计', url_for('reports.downtime_page') ~ report_context.query, 'primary' if active == 'downtime' else 'secondary', size) }}
 </div>
 {% endmacro %}
 

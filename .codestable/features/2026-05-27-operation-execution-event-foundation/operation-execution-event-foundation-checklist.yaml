@@ -10,9 +10,9 @@ steps:
     exit_signal: 已确认现场事实不能复用 Schedule 或 BatchOperations.status，必须新增只追加事件表、仓储和状态读模型。
 
   - slug: schema-and-migration
-    title: 新增 OperationExecutionEvents 表和 v15 迁移
+    title: 新增 OperationExecutionEvents 表和 v15/v16 迁移
     status: done
-    exit_signal: schema.sql、v15 迁移、CURRENT_SCHEMA_VERSION、迁移注册和 detect_schema_is_current 已同步，并锁住字段、外键、CHECK、UNIQUE 和索引。
+    exit_signal: schema.sql、v15/v16 迁移、CURRENT_SCHEMA_VERSION、迁移注册和 detect_schema_is_current 已同步，并锁住字段、外键、CHECK、UNIQUE、索引和早期 v15 修复路径。
 
   - slug: repository-and-models
     title: 新增执行事件模型、状态模型和仓储
@@ -32,11 +32,11 @@ steps:
   - slug: adversarial-review-loop
     title: 对抗性审核和阻塞修复
     status: done
-    exit_signal: 多轮复审发现并修复合法状态流转测试不足、资源外键检测不足、状态流转覆盖不足；最终复审无阻塞。
+    exit_signal: 多轮复审发现并修复合法状态流转测试不足、资源外键检测不足、状态流转覆盖不足、早期 v15 迁移修复、无异常读模型空值、异常字段 service 校验、索引归属检测、执行事件非级联删除、错误 can_retry、架构回写、早期 v15 脏数据升级、旧资源空字符串清理、浮点分钟读模型、并发反馈写锁、事件 id 主键结构检测、严重程度迁移留痕、暂停中报异常时长聚合、空处理状态中文展示和 roadmap 当前事实回写；最新整项复审 5 个子代理均为 OK，阻塞项为 0。
 
 checks:
-  - OperationExecutionEvents 已加入 schema.sql 和 v15 迁移。
-  - CURRENT_SCHEMA_VERSION 已递增到 15，并在 migrations 注册。
+  - OperationExecutionEvents 已加入 schema.sql 和 v15/v16 迁移。
+  - CURRENT_SCHEMA_VERSION 已递增到 16，并在 migrations 注册。
   - detect_schema_is_current 能识别缺表、错外键、缺设备/人员外键、放宽 CHECK、索引错列和唯一性丢失。
   - OperationExecutionEventRepo 已导出并包含按事件、幂等键、工序、批量工序、最近事件、最近异常和状态聚合的读取能力。
   - service 不裸写 OperationExecutionEvents SQL，写入统一经 repository。
@@ -47,6 +47,21 @@ checks:
   - state_revision 使用 op_id:event_count:last_committed_event_id 口径。
   - 程序动作 report_exception 入库为 event_type=exception，读取动作显示为“报异常”。
   - 状态“异常中”和动作“报异常”分开映射。
+  - 异常处理状态为空时页面读模型按“刚上报”展示，不显示“未填写处理状态”。
+  - 没有异常时 latest_exception_* 为空或默认 false，不显示异常字段默认文案。
+  - 异常字段的非法值先由 service 返回 1001 中文字段错误，不漏出数据库约束信息。
+  - 已经跑过早期 v15 的老库可通过 v16 迁移修复为当前执行事件契约。
+  - v16 会有痕修正早期 v15 允许但当前约束不允许的暂停/异常旧行，并清空旧资源空字符串或失效资源引用，避免老库升级被历史脏数据卡死。
+  - v16 对仅缺严重程度、资源引用正常的早期异常旧行，也会补中等严重程度并写入迁移说明。
+  - OperationExecutionState 的实际耗时和暂停耗时按浮点分钟聚合，不把带秒事件向下截断成整数分钟。
+  - 暂停中报异常会关闭当前暂停段，之后继续生产不会把异常处理时间计入暂停时长。
+  - 并发写同一工序旧状态时先拿写锁；同幂等键复用已有事件，不同幂等键返回 stale_state_revision，不漏出数据库锁错误。
+  - OperationExecutionEvents 的父表外键不使用级联删除，删除 Schedule 父行会被数据库阻止，现场事实不会被带走。
+  - detect_schema_is_current 会确认执行事件索引归属 OperationExecutionEvents，不把假表同名索引误判为当前结构。
+  - detect_schema_is_current 会确认 OperationExecutionEvents.id 是 INTEGER PRIMARY KEY AUTOINCREMENT，不把普通 id 字段误判为当前结构。
+  - 现场反馈失败 JSON 会带 can_retry 布尔值。
+  - ".codestable/architecture/ARCHITECTURE.md 已回写执行事件、事件仓储、反馈服务和状态读模型现状。"
+  - roadmap 第 3.4 节已回写第 8 项完成后的执行事件现状，不再写“当前没有独立的车间执行事件”。
   - 未开工不能直接完工，已完工不能再次开工。
   - 暂停、继续、报异常基础流转和状态聚合边界有测试锁住，但不新增普通用户页面入口。
   - 未提前新增第 9 的 execution/data、start/finish route 或普通用户按钮。

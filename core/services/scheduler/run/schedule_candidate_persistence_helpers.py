@@ -16,6 +16,12 @@ def _operation_ids(reschedulable_operations: List[Any]) -> Set[int]:
     }
 
 
+def _candidate_allowed_operations(*, payload_validation_operations: List[Any], reschedulable_operations: List[Any]) -> List[Any]:
+    if payload_validation_operations is not None:
+        return list(payload_validation_operations or [])
+    return list(reschedulable_operations or [])
+
+
 def persist_schedule_run_with_candidates(
     svc: Any,
     *,
@@ -40,6 +46,11 @@ def persist_schedule_run_with_candidates(
     overdue_items: List[Dict[str, Any]],
     time_cost_ms: int,
     candidate_comparison: Any,
+    execution_fixed_op_ids: Set[int] = None,
+    execution_completed_op_ids: Set[int] = None,
+    execution_guard_state_revisions: Dict[int, str] = None,
+    execution_facts: Dict[int, Any] = None,
+    payload_validation_operations: List[Any] = None,
 ) -> None:
     with svc.tx_manager.transaction():
         persist_schedule_core_in_tx(
@@ -54,6 +65,11 @@ def persist_schedule_run_with_candidates(
             created_by=created_by,
             simulate=simulate,
             frozen_op_ids=frozen_op_ids,
+            execution_fixed_op_ids=set(execution_fixed_op_ids or set()),
+            execution_completed_op_ids=set(execution_completed_op_ids or set()),
+            execution_guard_state_revisions=dict(execution_guard_state_revisions or {}),
+            execution_facts=dict(execution_facts or {}),
+            payload_validation_operations=payload_validation_operations,
             result_status=result_status,
             result_summary_json=result_summary_json,
             missing_internal_resource_op_ids=missing_internal_resource_op_ids,
@@ -64,7 +80,12 @@ def persist_schedule_run_with_candidates(
                 version=int(version),
                 candidate_comparison=candidate_comparison,
                 frozen_op_ids=frozen_op_ids,
-                allowed_op_ids=_operation_ids(reschedulable_operations),
+                allowed_op_ids=_operation_ids(
+                    _candidate_allowed_operations(
+                        payload_validation_operations=payload_validation_operations,
+                        reschedulable_operations=reschedulable_operations,
+                    )
+                ),
             )
         svc.candidate_repo.delete_without_schedule_history()
 

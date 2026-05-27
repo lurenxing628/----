@@ -17,7 +17,7 @@ steps:
   - slug: controlled-start-finish-routes
     title: 新增受控开工和完工写入 route
     status: done
-    exit_signal: start 和 finish 只在测试专用受控 header 且 TESTING=True 时写入，普通用户默认 409/6003 拒绝。
+    exit_signal: 第 9 项独立完成时 start 和 finish 只在测试专用受控 header 且 TESTING=True 时写入，普通用户默认 409/6003 拒绝；第 10 项完成后已按路线图解除普通用户写入保护。
 
   - slug: frontend-task-card-preview
     title: 资源派工页新增现场反馈入口和任务卡预备 UI
@@ -27,12 +27,12 @@ steps:
   - slug: validation-and-regression-tests
     title: 补开工完工校验、脱敏和中文错误测试
     status: done
-    exit_signal: 测试覆盖普通 POST 拒绝、受控写入、候选/模拟/历史版本拒绝、中文字段名、数量边界、设备匹配和普通 data 递归脱敏。
+    exit_signal: 测试覆盖第 9 项独立阶段的普通 POST 拒绝、受控写入、候选/模拟/历史版本拒绝、中文字段名、数量边界、设备匹配和普通 data 递归脱敏；第 10 项完成后另由普通 POST 可写入测试覆盖保护解除。
 
   - slug: adversarial-review-loop
     title: 对抗性审核和阻塞修复
     status: done
-    exit_signal: 初审发现计划设备为空可绕过匹配校验，已修复并经复审确认无阻塞；推送前架构门禁发现 viewmodel 越界依赖，已移回 route 层并完成同范围复审。
+    exit_signal: 初审发现计划设备为空可绕过匹配校验，已修复并经复审确认无阻塞；推送前架构门禁发现 viewmodel 越界依赖，已移回 route 层并完成同范围复审；本轮回溯复审补清第 9/10 当前事实边界、items 主路径、状态错误下一步提示、batch_id 契约和测试记录数字，最终第五轮整项复审无阻塞项。
 
 checks:
   - 资源派工页出现“现场反馈”入口和任务卡。
@@ -40,13 +40,16 @@ checks:
   - 每张任务卡包含 op_id、schedule_id、batch_id、op_name、current_status、current_status_label、state_revision、实际时间、实际资源、最近反馈、updated_at、available_actions 和 unavailable_reasons。
   - 普通 /scheduler/resource-dispatch/data 继续递归隐藏 schedule_id、op_id、_row_identity 和 source_table。
   - available_actions 每项包含 action、label、enabled、disabled_reason，页面只显示中文 label 和 disabled_reason。
-  - 普通用户直接 POST 开工或完工默认返回 6003/409，中文提示“现场反馈保护还没开启，暂不能提交开工或完工”，不写事件。
-  - 测试专用 header 只有在 TESTING=True 时放行，生产/非测试配置下即使带 header 也不写入。
+  - 第 9 项独立完成时，普通用户直接 POST 开工或完工默认返回 6003/409，中文提示“现场反馈保护还没开启，暂不能提交开工或完工”，不写事件。
+  - 第 10 项完成后，普通用户直接 POST 开工或完工已经按路线图解除保护，并由最小现场护栏和状态版本校验承接；第 9 项文档不能再把当前工作区描述成仍然拒绝普通写入。
+  - 第 9 项独立完成时测试专用 header 只有在 TESTING=True 时放行，生产/非测试配置下即使带 header 也不写入；第 10 项完成后普通写入不再依赖测试 header。
   - 候选方案、模拟预览和历史正式方案即使带测试 header 也被拒绝，reason 为 not_current_official_plan。
   - 开工校验操作人员和设备必填、必须存在，设备必须匹配当前正式排程记录；正式排程缺计划设备时也拒绝写入。
   - 完工校验完成数量必填且非负，报废数量可空且空值按 0，完成数量加报废数量不能超过批次数量。
   - POST 成功返回 event、current_status、current_status_label、state_revision、idempotency_reused 和完整 task_card。
   - POST 失败保留 details.reason、details.action、details.action_label、details.field 和 details.field_label。
+  - 状态不允许操作时，错误提示会告诉用户刷新页面查看最新状态；如果现场记录有误，联系计划员处理。
   - 未提前新增 pause、resume、report-exception 页面入口或资源派工 route。
-  - 未提前接入第 10 项最小重排护栏或第 13 项完整执行事实重排。
+  - 第 9 项独立完成时未提前接入第 10 项最小重排护栏或第 13 项完整执行事实重排；当前工作区第 10 项已完成，普通写入放开属于第 10 项范围。
   - 新增 Python 代码通过 Python 3.8 语法风险扫描。
+  - 本轮回溯复审不做第 9 项单独提交；当前工作区同时包含第 10 项和其他条目改动，最终提交前必须重新分拣暂存区和未暂存内容，不能把混合工作区当成第 9 项独立提交证据。

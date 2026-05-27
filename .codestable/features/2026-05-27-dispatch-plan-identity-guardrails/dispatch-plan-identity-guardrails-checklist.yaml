@@ -32,7 +32,7 @@ steps:
   - slug: adversarial-review-loop
     title: 对抗性审核和阻塞修复
     status: done
-    exit_signal: 第一轮复审发现计划身份布尔值覆盖、CodeStable 回写和提交隔离风险；已修复并进入第二轮复审。
+    exit_signal: 历史复审发现计划身份布尔值覆盖、CodeStable 回写和提交隔离风险；回溯复审又发现对比参考方案回退读取正式排程表时页面和 Excel 文案可能误导用户。现已修复并补测试，后续复审以阻塞项归零为准。
 
 checks:
   - 当前可执行的正式采用方案显示“可以用于派工和现场反馈”。

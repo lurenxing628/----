@@ -12,6 +12,8 @@ from urllib.parse import unquote
 import openpyxl
 
 from core.infrastructure.database import ensure_schema, get_connection
+from core.services.report import ReportEngine
+from data.repositories.schedule_plan_query_repo import SOURCE_SCHEDULE
 from web.routes.report_plan_preview import default_plan_resolution
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -252,6 +254,10 @@ def test_candidate_report_pages_receive_plan_role_and_keep_export_links_on_same_
     assert "候选方案设备" in utilization_html
     assert "MC_ADOPTED" not in utilization_html
     assert "plan_role=baseline_best" in utilization_html
+    assert (
+        "/reports/downtime?version=17&amp;plan_role=baseline_best&amp;start_date=2026-01-03&amp;end_date=2026-01-03"
+        in utilization_html
+    )
 
     downtime_resp = client.get("/reports/downtime?version=17&plan_role=baseline_best&start_date=2026-01-03&end_date=2026-01-03")
     _assert_status(downtime_resp, "candidate downtime page")
@@ -260,6 +266,10 @@ def test_candidate_report_pages_receive_plan_role_and_keep_export_links_on_same_
     assert "MC_CANDIDATE" in downtime_html
     assert "2.0" in downtime_html
     assert "plan_role=baseline_best" in downtime_html
+    assert (
+        "/reports/utilization?version=17&amp;plan_role=baseline_best&amp;start_date=2026-01-03&amp;end_date=2026-01-03"
+        in downtime_html
+    )
 
 
 def test_candidate_report_exports_use_selected_plan_rows_and_filename_label(tmp_path, monkeypatch) -> None:
@@ -317,6 +327,68 @@ def test_candidate_report_exports_use_selected_plan_rows_and_filename_label(tmp_
     _assert_export_public_text(downtime_resp)
 
 
+def test_candidate_report_pages_reject_non_completed_candidate_rows(tmp_path, monkeypatch) -> None:
+    app = _build_app(tmp_path, monkeypatch)
+    conn = get_connection(str(tmp_path / "aps_test.db"))
+    try:
+        conn.execute(
+            "UPDATE ScheduleCandidate SET status = 'failed' WHERE version = ? AND candidate_key = ?",
+            (VERSION, "baseline_best"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    client = app.test_client()
+    urls = (
+        "/reports/overdue?version=17&plan_role=baseline_best",
+        "/reports/utilization?version=17&plan_role=baseline_best&start_date=2026-01-03&end_date=2026-01-03",
+        "/reports/downtime?version=17&plan_role=baseline_best&start_date=2026-01-03&end_date=2026-01-03",
+        "/reports/overdue/export?version=17&plan_role=baseline_best",
+        "/reports/utilization/export?version=17&plan_role=baseline_best&start_date=2026-01-03&end_date=2026-01-03",
+        "/reports/downtime/export?version=17&plan_role=baseline_best&start_date=2026-01-03&end_date=2026-01-03",
+    )
+
+    for url in urls:
+        resp = client.get(url)
+        html = resp.get_data(as_text=True)
+        assert resp.status_code == 400, url
+        assert "这套对比参考方案当前不是已完成状态，不能查看明细。" in html
+        assert "candidate_rows" not in html
+        assert "MC_CANDIDATE" not in html
+        assert "候选方案设备" not in html
+
+
+def test_candidate_report_pages_reject_non_completed_schedule_source_comparison(tmp_path, monkeypatch) -> None:
+    app = _build_app(tmp_path, monkeypatch)
+    conn = get_connection(str(tmp_path / "aps_test.db"))
+    try:
+        conn.execute(
+            "UPDATE ScheduleCandidateSelection SET source_table = ? WHERE version = ? AND role = ?",
+            (SOURCE_SCHEDULE, VERSION, "baseline_best"),
+        )
+        conn.execute(
+            "UPDATE ScheduleCandidate SET status = 'skipped' WHERE version = ? AND candidate_key = ?",
+            (VERSION, "baseline_best"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    client = app.test_client()
+    for url in (
+        "/reports/utilization?version=17&plan_role=baseline_best&start_date=2026-01-02&end_date=2026-01-02",
+        "/reports/downtime/export?version=17&plan_role=baseline_best&start_date=2026-01-02&end_date=2026-01-02",
+    ):
+        resp = client.get(url)
+        html = resp.get_data(as_text=True)
+        assert resp.status_code == 400, url
+        assert "这套对比参考方案当前不是已完成状态，不能查看明细。" in html
+        assert "source_table" not in html
+        assert "candidate_id" not in html
+        assert "MC_ADOPTED" not in html
+
+
 def test_candidate_report_missing_role_falls_back_to_adopted_with_visible_status(tmp_path, monkeypatch) -> None:
     app = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
@@ -362,19 +434,33 @@ def test_candidate_report_missing_role_falls_back_to_adopted_with_visible_status
     assert "正式采用方案" in _content_disposition(downtime_export)
     _assert_export_public_text(downtime_export)
 
+    conn = get_connection(str(tmp_path / "aps_test.db"))
+    try:
+        diagnosis = ReportEngine(conn).overdue_delay_diagnosis_context(VERSION, plan_role="critical_best")
+        links = [
+            str(action.get("link") or "")
+            for item in diagnosis["items_by_batch"].values()
+            for action in item.get("suggested_actions") or []
+        ]
+        assert any("plan_role=critical_best" in link for link in links)
+        assert all("plan_role=adopted" not in link for link in links if "/scheduler/gantt" in link)
+    finally:
+        conn.close()
 
-def test_report_pages_reject_scenario_export_with_plain_message(tmp_path, monkeypatch) -> None:
+
+def test_report_exports_reject_unknown_scenario_without_internal_field_name(tmp_path, monkeypatch) -> None:
     app = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
 
     for url in (
+        "/reports/overdue/export?version=17&scenario_id=scenario-1",
         "/reports/utilization/export?version=17&scenario_id=scenario-1&start_date=2026-01-02&end_date=2026-01-02",
         "/reports/downtime/export?version=17&scenario_id=scenario-1&start_date=2026-01-02&end_date=2026-01-02",
     ):
         resp = client.get(url)
         html = resp.get_data(as_text=True)
         assert resp.status_code == 400
-        assert "模拟预览暂不支持导出，请切换到正式采用方案" in html
+        assert "模拟方案不存在" in html
         assert "scenario_id" not in html
 
 

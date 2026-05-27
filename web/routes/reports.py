@@ -18,7 +18,6 @@ from web.routes.report_plan_preview import (
     export_date_range_or_version_span,
     page_date_range_or_version_span,
     page_plan_resolution,
-    reject_scenario_export,
     report_export_filters,
     request_scenario_id,
 )
@@ -110,6 +109,7 @@ def _log_report_export(
     export_type: str,
     version: int,
     raw_plan_role,
+    scenario_id=None,
     time_range=None,
     started_at: float,
 ) -> None:
@@ -118,7 +118,7 @@ def _log_report_export(
         module="reports",
         target_type=target_type,
         template_or_export_type=export_type,
-        filters=report_export_filters(engine, int(version), raw_plan_role),
+        filters=report_export_filters(engine, int(version), raw_plan_role, scenario_id),
         row_count=_report_nonnegative_int(getattr(report_export, "estimated_rows", 0), field="导出行数"),
         time_range=time_range or {},
         time_cost_ms=int((time.time() - started_at) * 1000),
@@ -218,8 +218,8 @@ def overdue_export():
     engine = ReportEngine(g.db)
     version = _export_version_or_latest(engine)
     plan_role = _request_plan_role()
-    reject_scenario_export(_request_scenario_id())
-    x = engine.export_overdue_xlsx(version, plan_role=plan_role)
+    scenario_id = _request_scenario_id()
+    x = engine.export_overdue_xlsx(version, plan_role=plan_role, scenario_id=scenario_id)
     _log_report_export(
         engine=engine,
         report_export=x,
@@ -227,6 +227,7 @@ def overdue_export():
         export_type="超期清单.xlsx",
         version=version,
         raw_plan_role=plan_role,
+        scenario_id=scenario_id,
         started_at=started_at,
     )
     return _send_report_export_file(x)
@@ -294,15 +295,16 @@ def utilization_export():
     engine = ReportEngine(g.db)
     version = _export_version_or_latest(engine)
     plan_role = _request_plan_role()
-    reject_scenario_export(_request_scenario_id())
+    scenario_id = _request_scenario_id()
     start_date, end_date = export_date_range_or_version_span(
         engine,
         int(version or 0),
         plan_role,
+        scenario_id,
         request.args.get("start_date") or "",
         request.args.get("end_date") or "",
     )
-    x = engine.export_utilization_xlsx(version, start_date, end_date, plan_role=plan_role)
+    x = engine.export_utilization_xlsx(version, start_date, end_date, plan_role=plan_role, scenario_id=scenario_id)
     _log_report_export(
         engine=engine,
         report_export=x,
@@ -310,6 +312,7 @@ def utilization_export():
         export_type="资源负荷与利用率.xlsx",
         version=version,
         raw_plan_role=plan_role,
+        scenario_id=scenario_id,
         time_range={"start": start_date, "end": end_date},
         started_at=started_at,
     )
@@ -385,15 +388,16 @@ def downtime_export():
     engine = ReportEngine(g.db)
     version = _export_version_or_latest(engine)
     plan_role = _request_plan_role()
-    reject_scenario_export(_request_scenario_id())
+    scenario_id = _request_scenario_id()
     start_date, end_date = export_date_range_or_version_span(
         engine,
         int(version or 0),
         plan_role,
+        scenario_id,
         request.args.get("start_date") or "",
         request.args.get("end_date") or "",
     )
-    x = engine.export_downtime_impact_xlsx(version, start_date, end_date, plan_role=plan_role)
+    x = engine.export_downtime_impact_xlsx(version, start_date, end_date, plan_role=plan_role, scenario_id=scenario_id)
     _log_report_export(
         engine=engine,
         report_export=x,
@@ -401,6 +405,7 @@ def downtime_export():
         export_type="停机影响统计.xlsx",
         version=version,
         raw_plan_role=plan_role,
+        scenario_id=scenario_id,
         time_range={"start": start_date, "end": end_date},
         started_at=started_at,
     )

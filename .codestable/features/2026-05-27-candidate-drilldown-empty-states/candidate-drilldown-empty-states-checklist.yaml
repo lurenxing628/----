@@ -24,10 +24,15 @@ steps:
     status: done
     exit_signal: 页面摘要和“当前方案”优先使用 scenario_display_name，没有名称时统一显示“模拟预览（未命名）”，不显示 None、内部编号或空白名称。
 
+  - slug: scenario-report-export-context
+    title: 模拟预览报表导出保留同一套方案
+    status: done
+    exit_signal: 超期清单、资源负荷和停机影响导出会把 scenario_id 传到服务层，按模拟明细生成 Excel；文件名和查询摘要只显示中文方案名，不显示内部编号。
+
   - slug: export-and-page-regression-tests
     title: 增加跳转、空状态、导出和离线资源回归测试
     status: done
-    exit_signal: 测试覆盖 detail_saved=false 不出假跳转、旧历史不完整提示、模拟预览未命名兜底、导出文件名和工作簿内容不泄露内部字段、候选方案 stream 导出防泄漏。
+    exit_signal: 测试覆盖 detail_saved=false 不出假跳转、旧历史不完整提示、模拟预览未命名兜底、导出文件名和工作簿内容不泄露内部字段、候选方案 stream 导出防泄漏、模拟预览报表导出按模拟明细取数。
 
   - slug: adversarial-review-loop
     title: 对抗性审核和阻塞修复
@@ -37,9 +42,17 @@ steps:
 checks:
   - 设备甘特图、人员甘特图、周计划、资源排班跳转继续带 version 和 plan_role。
   - detail_saved=false 的候选对比方案不显示假跳转，页面用中文说明“这套对比参考方案没有保存明细”。
+  - 候选失败、跳过、状态缺失或状态未识别时不显示假跳转，页面用中文说明当前状态无法查看明细。
+  - 候选失败、跳过、状态缺失或状态未识别时，即使手工访问周计划、甘特图、资源排班、资源负荷、停机影响或导出接口，也不能读出残留候选明细。
+  - 对比方案即使读取正式 Schedule，也要先确认对应候选已完成；历史摘要和数据库方案选项任一边显示未完成或缺状态，分析页都不生成跳转。
   - 正式采用方案来源为 Schedule 时，即使候选摘要里的 detail_saved 不是 yes，也继续允许查看正式明细。
   - 旧历史缺 candidates 或记录不完整时，不伪造推荐卡、摘要卡或跳转。
+  - 排产主导航在普通候选方案没有 scenario_id 时，也继续保留 version 和 plan_role。
+  - 从甘特图、周计划、资源排班点回排产优化分析时，也继续保留 version 和 plan_role。
   - 周计划、资源负荷、停机影响在未命名模拟预览时统一显示“模拟预览（未命名）”。
+  - 资源负荷和停机影响页顶部导航互跳时保留 version、plan_role、scenario_id、start_date、end_date，不悄悄切回 adopted。
+  - 超期清单、资源负荷和停机影响模拟预览导出按模拟明细取数，不能导出正式采用方案数据。
+  - 模拟预览报表导出的查询摘要只显示中文方案名、提示、版本和日期范围，不显示 scenario_id。
   - 报表导出文件名、工作表名、表头和工作簿内容不显示 plan_role、scenario_id、source_table、candidate_id、candidate_rows 等内部字段。
   - URL、hidden input 和 select value 只作为程序传参保留，用户可见文案不展示这些内部字段名。
   - 不改排程算法、不改数据库、不改迁移、不做派工确认和现场反馈。

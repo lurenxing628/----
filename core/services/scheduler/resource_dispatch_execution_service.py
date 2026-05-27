@@ -110,7 +110,7 @@ class ResourceDispatchExecutionService:
             "can_write_feedback": bool(plan_role_fields.get("can_write_feedback")),
             "rows": prepared.value,
             "states": states,
-            "feedback_write_enabled": False,
+            "feedback_write_enabled": bool(plan_role_fields.get("can_write_feedback")),
             "degradation_events": prepared.events,
         }
 
