@@ -1,0 +1,55 @@
+feature: 2026-05-27-operation-execution-event-foundation
+status: done
+roadmap: aps-three-gap-directions
+roadmap_item: operation-execution-event-foundation
+
+steps:
+  - slug: reference-chain-investigation
+    title: 下钻执行事件表、迁移、仓储、服务、状态聚合和测试链路
+    status: done
+    exit_signal: 已确认现场事实不能复用 Schedule 或 BatchOperations.status，必须新增只追加事件表、仓储和状态读模型。
+
+  - slug: schema-and-migration
+    title: 新增 OperationExecutionEvents 表和 v15 迁移
+    status: done
+    exit_signal: schema.sql、v15 迁移、CURRENT_SCHEMA_VERSION、迁移注册和 detect_schema_is_current 已同步，并锁住字段、外键、CHECK、UNIQUE 和索引。
+
+  - slug: repository-and-models
+    title: 新增执行事件模型、状态模型和仓储
+    status: done
+    exit_signal: OperationExecutionEventRepo 负责所有 OperationExecutionEvents SQL，并能按工序聚合 OperationExecutionState。
+
+  - slug: feedback-service-foundation
+    title: 新增执行反馈基础服务
+    status: done
+    exit_signal: 服务层完成正式计划身份校验、幂等键、状态版本、合法状态流转和事件写入，不新增普通用户页面入口。
+
+  - slug: regression-tests
+    title: 新增 schema、迁移、仓储、状态聚合、幂等和状态版本测试
+    status: done
+    exit_signal: 第 8 精准测试覆盖新库结构、老库迁移、仓储聚合、幂等冲突、状态过期、非正式方案拒绝和合法状态流转。
+
+  - slug: adversarial-review-loop
+    title: 对抗性审核和阻塞修复
+    status: done
+    exit_signal: 多轮复审发现并修复合法状态流转测试不足、资源外键检测不足、状态流转覆盖不足；最终复审无阻塞。
+
+checks:
+  - OperationExecutionEvents 已加入 schema.sql 和 v15 迁移。
+  - CURRENT_SCHEMA_VERSION 已递增到 15，并在 migrations 注册。
+  - detect_schema_is_current 能识别缺表、错外键、缺设备/人员外键、放宽 CHECK、索引错列和唯一性丢失。
+  - OperationExecutionEventRepo 已导出并包含按事件、幂等键、工序、批量工序、最近事件、最近异常和状态聚合的读取能力。
+  - service 不裸写 OperationExecutionEvents SQL，写入统一经 repository。
+  - idempotency_key 优先于状态版本判断，同 key 同内容复用，同 key 不同内容返回 idempotency_conflict。
+  - expected_state_revision 过期返回 stale_state_revision，不写事件。
+  - 非最新正式采用方案不能写现场反馈。
+  - OperationExecutionEvents 只保存 previous_state_revision，不保存写入后的新 revision。
+  - state_revision 使用 op_id:event_count:last_committed_event_id 口径。
+  - 程序动作 report_exception 入库为 event_type=exception，读取动作显示为“报异常”。
+  - 状态“异常中”和动作“报异常”分开映射。
+  - 未开工不能直接完工，已完工不能再次开工。
+  - 暂停、继续、报异常基础流转和状态聚合边界有测试锁住，但不新增普通用户页面入口。
+  - 未提前新增第 9 的 execution/data、start/finish route 或普通用户按钮。
+  - 未提前新增第 10/13 的重排护栏、执行快照或算法接入。
+  - 未提前新增第 11 的暂停、继续、报异常页面入口。
+  - 新增 Python 代码通过 Python 3.8 语法风险扫描。

@@ -1,0 +1,600 @@
+from __future__ import annotations
+
+import hashlib
+import json
+import sqlite3
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Sequence, Tuple
+
+from core.infrastructure.errors import AppError, ErrorCode, ValidationError
+from core.infrastructure.transaction import TransactionManager
+from core.models.operation_execution_event import (
+    EXECUTION_ACTION_REPORT_EXCEPTION,
+    EXECUTION_EVENT_EXCEPTION,
+    EXECUTION_EVENT_FINISH,
+    EXECUTION_EVENT_PAUSE,
+    EXECUTION_EVENT_RESUME,
+    EXECUTION_EVENT_START,
+    EXECUTION_STATUS_COMPLETED,
+    EXECUTION_STATUS_EXCEPTION,
+    EXECUTION_STATUS_PAUSED,
+    EXECUTION_STATUS_PROCESSING,
+    OperationExecutionEvent,
+)
+from core.models.operation_execution_state import OperationExecutionState
+from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
+from core.shared.field_labels import display_field_label
+from data.repositories.batch_operation_repo import BatchOperationRepository
+from data.repositories.operation_execution_event_repo import OperationExecutionEventRepo
+from data.repositories.schedule_repo import ScheduleRepository
+
+from .operation_execution_labels import action_to_event_type, event_type_to_action, execution_action_label
+from .schedule_plan_query_service import SchedulePlanQueryService
+
+
+@dataclass(frozen=True)
+class ExecutionFeedbackContext:
+    schedule_version: int
+    schedule_id: int
+    op_id: int
+    expected_state_revision: str
+    created_by: str
+    idempotency_key: str
+    requested_plan_role: str = ROLE_ADOPTED
+    source_table: str = SOURCE_SCHEDULE
+    effective_plan_role: str = ROLE_ADOPTED
+    scenario_id: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class ExecutionFeedbackResult:
+    event: OperationExecutionEvent
+    state: OperationExecutionState
+    idempotency_reused: bool
+    state_revision: str
+
+
+_REPORTED_STATUS_BY_ACTION = {
+    EXECUTION_EVENT_START: EXECUTION_STATUS_PROCESSING,
+    EXECUTION_EVENT_RESUME: EXECUTION_STATUS_PROCESSING,
+    EXECUTION_EVENT_PAUSE: EXECUTION_STATUS_PAUSED,
+    EXECUTION_ACTION_REPORT_EXCEPTION: EXECUTION_STATUS_EXCEPTION,
+    EXECUTION_EVENT_EXCEPTION: EXECUTION_STATUS_EXCEPTION,
+    EXECUTION_EVENT_FINISH: EXECUTION_STATUS_COMPLETED,
+}
+
+_ALLOWED_ACTIONS_BY_STATUS = {
+    "not_started": {EXECUTION_EVENT_START},
+    EXECUTION_STATUS_PROCESSING: {
+        EXECUTION_EVENT_PAUSE,
+        EXECUTION_EVENT_FINISH,
+        EXECUTION_ACTION_REPORT_EXCEPTION,
+    },
+    EXECUTION_STATUS_PAUSED: {
+        EXECUTION_EVENT_RESUME,
+        EXECUTION_EVENT_FINISH,
+        EXECUTION_ACTION_REPORT_EXCEPTION,
+    },
+    EXECUTION_STATUS_EXCEPTION: {
+        EXECUTION_EVENT_RESUME,
+        EXECUTION_EVENT_FINISH,
+    },
+    EXECUTION_STATUS_COMPLETED: set(),
+}
+
+_ACTION_PAYLOAD_FIELDS = (
+    "event_time",
+    "actual_machine_id",
+    "actual_operator_id",
+    "quantity_done",
+    "quantity_scrapped",
+    "reason_code",
+    "reason_detail",
+    "severity",
+    "impact_minutes",
+    "affected_machine_id",
+    "affected_operator_id",
+    "handling_status",
+    "suggest_reschedule",
+    "remark",
+)
+
+_PUBLIC_REASON_MESSAGES = {
+    "idempotency_conflict": "这次提交和刚才的重复提交标记不一致，系统已拒绝写入，请刷新后重试。",
+    "stale_state_revision": "页面上的现场状态已经不是最新，请刷新后再提交。",
+    "not_current_official_plan": "当前不是最新正式采用方案，不能提交现场反馈。",
+    "schedule_mismatch": "排程记录和当前正式计划对不上，请刷新后重试。",
+    "invalid_state_transition": "当前现场状态不允许执行这个操作。",
+}
+
+
+def _text(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def _optional_text(value: Any) -> Optional[str]:
+    text = _text(value)
+    return text or None
+
+
+def _required_text(value: Any, field: str) -> str:
+    text = _text(value)
+    if not text:
+        raise ValidationError(
+            f"{display_field_label(field)}不能为空，请填写后再提交。",
+            field=field,
+            details={"reason": "missing_required_field", "field": field, "field_label": display_field_label(field)},
+        )
+    return text
+
+
+def _positive_int(value: Any, field: str) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        raise ValidationError(
+            f"{display_field_label(field)}填写不正确，请检查后重试。",
+            field=field,
+            details={"reason": "invalid_field_value", "field": field, "field_label": display_field_label(field)},
+        ) from None
+    if parsed <= 0:
+        raise ValidationError(
+            f"{display_field_label(field)}填写不正确，请检查后重试。",
+            field=field,
+            details={"reason": "invalid_field_value", "field": field, "field_label": display_field_label(field)},
+        )
+    return parsed
+
+
+def _optional_int(value: Any, field: str) -> Optional[int]:
+    if value is None or _text(value) == "":
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        raise ValidationError(
+            f"{display_field_label(field)}填写不正确，请检查后重试。",
+            field=field,
+            details={"reason": "invalid_field_value", "field": field, "field_label": display_field_label(field)},
+        ) from None
+    return parsed
+
+
+def _conflict(reason: str, *, details: Optional[Dict[str, Any]] = None, message: Optional[str] = None) -> AppError:
+    payload = {"reason": reason}
+    if details:
+        payload.update(details)
+    return AppError(
+        ErrorCode.SCHEDULE_CONFLICT,
+        message or _PUBLIC_REASON_MESSAGES.get(reason) or "现场反馈提交失败，请刷新后重试。",
+        details=payload,
+    )
+
+
+def _event_public_tuple(event: OperationExecutionEvent) -> Tuple[Any, ...]:
+    return (
+        event.schedule_version,
+        event.schedule_id,
+        event.op_id,
+        event.batch_id,
+        event.source_table,
+        event.effective_plan_role,
+        event.scenario_id,
+        event.event_type,
+        event.reported_status,
+        event.event_time,
+        event.actual_machine_id,
+        event.actual_operator_id,
+        event.quantity_done,
+        event.quantity_scrapped,
+        event.reason_code,
+        event.reason_detail,
+        event.severity,
+        event.impact_minutes,
+        event.affected_machine_id,
+        event.affected_operator_id,
+        event.handling_status,
+        event.suggest_reschedule,
+        event.remark,
+        event.created_by,
+        event.previous_state_revision,
+    )
+
+
+class OperationExecutionFeedbackService:
+    """现场执行反馈服务：负责身份校验、幂等、状态版本和事件写入。"""
+
+    def __init__(self, conn: sqlite3.Connection, logger=None, op_logger=None):
+        self.conn = conn
+        self.logger = logger
+        self.op_logger = op_logger
+        self.tx_manager = TransactionManager(conn)
+        self.event_repo = OperationExecutionEventRepo(conn, logger=logger)
+        self.schedule_repo = ScheduleRepository(conn, logger=logger)
+        self.batch_operation_repo = BatchOperationRepository(conn, logger=logger)
+        self.plan_query_service = SchedulePlanQueryService(conn, logger=logger)
+
+    def get_execution_state(self, op_ids: Sequence[int]) -> Dict[int, OperationExecutionState]:
+        return self.event_repo.aggregate_states_by_op_ids(op_ids)
+
+    def list_execution_events(self, op_id: int) -> List[OperationExecutionEvent]:
+        return self.event_repo.list_events_by_op_id(int(op_id))
+
+    def start_operation(
+        self,
+        context: ExecutionFeedbackContext,
+        *,
+        event_time: Any,
+        operator_id: Any,
+        machine_id: Any,
+        remark: Any = None,
+    ) -> ExecutionFeedbackResult:
+        return self.record_event(
+            context,
+            action=EXECUTION_EVENT_START,
+            event_time=event_time,
+            actual_operator_id=operator_id,
+            actual_machine_id=machine_id,
+            remark=remark,
+        )
+
+    def finish_operation(
+        self,
+        context: ExecutionFeedbackContext,
+        *,
+        event_time: Any,
+        quantity_done: Any = None,
+        quantity_scrapped: Any = None,
+        remark: Any = None,
+    ) -> ExecutionFeedbackResult:
+        return self.record_event(
+            context,
+            action=EXECUTION_EVENT_FINISH,
+            event_time=event_time,
+            quantity_done=quantity_done,
+            quantity_scrapped=quantity_scrapped,
+            remark=remark,
+        )
+
+    def pause_operation(self, context: ExecutionFeedbackContext, *, event_time: Any, reason_code: Any, remark: Any = None):
+        return self.record_event(
+            context,
+            action=EXECUTION_EVENT_PAUSE,
+            event_time=event_time,
+            reason_code=reason_code,
+            remark=remark,
+        )
+
+    def resume_operation(self, context: ExecutionFeedbackContext, *, event_time: Any, remark: Any = None):
+        return self.record_event(context, action=EXECUTION_EVENT_RESUME, event_time=event_time, remark=remark)
+
+    def report_exception(
+        self,
+        context: ExecutionFeedbackContext,
+        *,
+        event_time: Any,
+        reason_code: Any,
+        severity: Any,
+        impact_minutes: Any = None,
+        affected_machine_id: Any = None,
+        affected_operator_id: Any = None,
+        handling_status: Any = "new",
+        suggest_reschedule: Any = None,
+        remark: Any = None,
+        reason_detail: Any = None,
+    ) -> ExecutionFeedbackResult:
+        return self.record_event(
+            context,
+            action=EXECUTION_ACTION_REPORT_EXCEPTION,
+            event_time=event_time,
+            reason_code=reason_code,
+            reason_detail=reason_detail,
+            severity=severity,
+            impact_minutes=impact_minutes,
+            affected_machine_id=affected_machine_id,
+            affected_operator_id=affected_operator_id,
+            handling_status=handling_status,
+            suggest_reschedule=suggest_reschedule,
+            remark=remark,
+        )
+
+    def record_event(self, context: ExecutionFeedbackContext, *, action: str, **payload: Any) -> ExecutionFeedbackResult:
+        normalized_context = self._normalize_context(context)
+        normalized_action = self._normalize_action(action)
+        normalized_payload = self._normalize_payload(normalized_action, payload)
+        fingerprint = self._request_fingerprint(normalized_context, normalized_action, normalized_payload)
+
+        existing = self.event_repo.get_by_idempotency_key(normalized_context.idempotency_key)
+        if existing is not None:
+            return self._resolve_idempotent_existing(
+                existing,
+                context=normalized_context,
+                action=normalized_action,
+                payload=normalized_payload,
+                fingerprint=fingerprint,
+            )
+
+        with self.tx_manager.transaction():
+            schedule, batch_op = self._load_current_official_schedule(normalized_context)
+            current_state = self.event_repo.aggregate_states_by_op_ids([normalized_context.op_id])[normalized_context.op_id]
+            if current_state.state_revision != normalized_context.expected_state_revision:
+                raise _conflict(
+                    "stale_state_revision",
+                    details={
+                        "expected_state_revision": normalized_context.expected_state_revision,
+                        "current_state_revision": current_state.state_revision,
+                    },
+                )
+            self._validate_state_transition(current_state, normalized_action)
+            event_payload = self._build_event_payload(
+                context=normalized_context,
+                schedule=schedule,
+                batch_id=str(batch_op.batch_id or ""),
+                action=normalized_action,
+                payload=normalized_payload,
+                fingerprint=fingerprint,
+            )
+            try:
+                event = self.event_repo.insert_event(event_payload)
+            except AppError as exc:
+                return self._handle_unique_insert_error(
+                    exc,
+                    context=normalized_context,
+                    action=normalized_action,
+                    payload=normalized_payload,
+                    fingerprint=fingerprint,
+                )
+            state = self.event_repo.aggregate_states_by_op_ids([normalized_context.op_id])[normalized_context.op_id]
+            return ExecutionFeedbackResult(
+                event=event,
+                state=state,
+                idempotency_reused=False,
+                state_revision=state.state_revision,
+            )
+
+    def _validate_state_transition(self, state: OperationExecutionState, action: str) -> None:
+        current_status = state.current_status
+        allowed_actions = _ALLOWED_ACTIONS_BY_STATUS.get(current_status, set())
+        if action in allowed_actions:
+            return
+        raise _conflict(
+            "invalid_state_transition",
+            details={
+                "current_status": current_status,
+                "current_status_label": state.current_status_label,
+                "action": action,
+                "action_label": execution_action_label(action),
+            },
+        )
+
+    def _handle_unique_insert_error(
+        self,
+        exc: AppError,
+        *,
+        context: ExecutionFeedbackContext,
+        action: str,
+        payload: Dict[str, Any],
+        fingerprint: str,
+    ) -> ExecutionFeedbackResult:
+        if exc.code != ErrorCode.DUPLICATE_ENTRY:
+            raise exc
+        existing = self.event_repo.get_by_idempotency_key(context.idempotency_key)
+        if existing is not None:
+            return self._resolve_idempotent_existing(
+                existing,
+                context=context,
+                action=action,
+                payload=payload,
+                fingerprint=fingerprint,
+            )
+        current_revision = self.event_repo.state_revision_for_op(context.op_id)
+        raise _conflict(
+            "stale_state_revision",
+            details={
+                "expected_state_revision": context.expected_state_revision,
+                "current_state_revision": current_revision,
+            },
+        )
+
+    def _resolve_idempotent_existing(
+        self,
+        existing: OperationExecutionEvent,
+        *,
+        context: ExecutionFeedbackContext,
+        action: str,
+        payload: Dict[str, Any],
+        fingerprint: str,
+    ) -> ExecutionFeedbackResult:
+        expected_event = OperationExecutionEvent.from_row(
+            self._build_event_payload(
+                context=context,
+                schedule=self.schedule_repo.get(context.schedule_id),
+                batch_id=existing.batch_id,
+                action=action,
+                payload=payload,
+                fingerprint=fingerprint,
+            )
+        )
+        if existing.request_fingerprint != fingerprint or _event_public_tuple(existing) != _event_public_tuple(expected_event):
+            raise _conflict("idempotency_conflict")
+        state = self.event_repo.aggregate_states_by_op_ids([existing.op_id])[existing.op_id]
+        return ExecutionFeedbackResult(
+            event=existing,
+            state=state,
+            idempotency_reused=True,
+            state_revision=state.state_revision,
+        )
+
+    def _normalize_context(self, context: ExecutionFeedbackContext) -> ExecutionFeedbackContext:
+        schedule_version = _positive_int(context.schedule_version, "schedule_version")
+        schedule_id = _positive_int(context.schedule_id, "schedule_id")
+        op_id = _positive_int(context.op_id, "op_id")
+        created_by = _required_text(context.created_by, "created_by")
+        idempotency_key = _required_text(context.idempotency_key, "idempotency_key")
+        expected_state_revision = _required_text(context.expected_state_revision, "expected_state_revision")
+        return ExecutionFeedbackContext(
+            schedule_version=schedule_version,
+            schedule_id=schedule_id,
+            op_id=op_id,
+            expected_state_revision=expected_state_revision,
+            created_by=created_by,
+            idempotency_key=idempotency_key,
+            requested_plan_role=_text(context.requested_plan_role) or ROLE_ADOPTED,
+            source_table=_text(context.source_table) or SOURCE_SCHEDULE,
+            effective_plan_role=_text(context.effective_plan_role) or ROLE_ADOPTED,
+            scenario_id=_optional_text(context.scenario_id),
+        )
+
+    def _normalize_action(self, action: Any) -> str:
+        text = _text(action)
+        normalized = event_type_to_action(action_to_event_type(text))
+        if normalized not in _REPORTED_STATUS_BY_ACTION:
+            raise ValidationError(
+                "现场反馈操作不正确，请刷新后重试。",
+                field="action",
+                details={"reason": "invalid_field_value", "action": text, "action_label": execution_action_label(text)},
+            )
+        return normalized
+
+    def _normalize_payload(self, action: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        out = {field: payload.get(field) for field in _ACTION_PAYLOAD_FIELDS}
+        out["event_time"] = _required_text(out.get("event_time"), "event_time")
+        out["actual_machine_id"] = _optional_text(out.get("actual_machine_id"))
+        out["actual_operator_id"] = _optional_text(out.get("actual_operator_id"))
+        out["reason_code"] = _optional_text(out.get("reason_code"))
+        out["reason_detail"] = _optional_text(out.get("reason_detail"))
+        out["severity"] = _optional_text(out.get("severity"))
+        out["affected_machine_id"] = _optional_text(out.get("affected_machine_id"))
+        out["affected_operator_id"] = _optional_text(out.get("affected_operator_id"))
+        out["handling_status"] = _optional_text(out.get("handling_status"))
+        out["suggest_reschedule"] = self._normalize_suggest_reschedule(out.get("suggest_reschedule"))
+        out["remark"] = _optional_text(out.get("remark"))
+        out["quantity_done"] = _optional_int(out.get("quantity_done"), "quantity_done")
+        out["quantity_scrapped"] = _optional_int(out.get("quantity_scrapped"), "quantity_scrapped")
+        out["impact_minutes"] = _optional_int(out.get("impact_minutes"), "impact_minutes")
+        if action == EXECUTION_EVENT_START:
+            _required_text(out.get("actual_operator_id"), "operator_id")
+            _required_text(out.get("actual_machine_id"), "machine_id")
+        return out
+
+    def _normalize_suggest_reschedule(self, value: Any) -> Optional[str]:
+        if value is None or _text(value) == "":
+            return None
+        text = _text(value).lower()
+        if text in ("yes", "true", "1"):
+            return "yes"
+        if text in ("no", "false", "0"):
+            return "no"
+        raise ValidationError(
+            f"{display_field_label('suggest_reschedule')}填写不正确，请检查后重试。",
+            field="suggest_reschedule",
+            details={
+                "reason": "invalid_field_value",
+                "field": "suggest_reschedule",
+                "field_label": display_field_label("suggest_reschedule"),
+            },
+        )
+
+    def _request_fingerprint(
+        self,
+        context: ExecutionFeedbackContext,
+        action: str,
+        payload: Dict[str, Any],
+    ) -> str:
+        raw = {
+            "context": {
+                "schedule_version": int(context.schedule_version),
+                "schedule_id": int(context.schedule_id),
+                "op_id": int(context.op_id),
+                "expected_state_revision": context.expected_state_revision,
+                "created_by": context.created_by,
+                "requested_plan_role": context.requested_plan_role,
+                "source_table": context.source_table,
+                "effective_plan_role": context.effective_plan_role,
+                "scenario_id": context.scenario_id,
+            },
+            "action": action,
+            "payload": payload,
+        }
+        text = json.dumps(raw, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+    def _load_current_official_schedule(self, context: ExecutionFeedbackContext):
+        if (
+            context.requested_plan_role != ROLE_ADOPTED
+            or context.effective_plan_role != ROLE_ADOPTED
+            or context.source_table != SOURCE_SCHEDULE
+            or context.scenario_id is not None
+        ):
+            raise _conflict("not_current_official_plan")
+        resolution = self.plan_query_service.resolve_plan_view(
+            int(context.schedule_version),
+            context.requested_plan_role,
+            context.scenario_id,
+        )
+        plan_identity = resolution.plan_identity
+        if plan_identity is None or not bool(plan_identity.can_write_feedback):
+            raise _conflict("not_current_official_plan")
+        schedule = self.schedule_repo.get(context.schedule_id)
+        if schedule is None:
+            raise AppError(ErrorCode.NOT_FOUND, "排程记录不存在，请刷新后重试。", details={"reason": "not_found"})
+        batch_op = self.batch_operation_repo.get(context.op_id)
+        if batch_op is None:
+            raise AppError(ErrorCode.NOT_FOUND, "工序记录不存在，请刷新后重试。", details={"reason": "not_found"})
+        schedule_mismatch = (
+            int(schedule.version) != int(context.schedule_version)
+            or int(schedule.id or 0) != int(context.schedule_id)
+            or int(schedule.op_id or 0) != int(context.op_id)
+            or str(batch_op.batch_id or "").strip() == ""
+        )
+        if schedule_mismatch:
+            raise _conflict("schedule_mismatch")
+        return schedule, batch_op
+
+    def _build_event_payload(
+        self,
+        *,
+        context: ExecutionFeedbackContext,
+        schedule: Any,
+        batch_id: str,
+        action: str,
+        payload: Dict[str, Any],
+        fingerprint: str,
+    ) -> Dict[str, Any]:
+        event_type = action_to_event_type(action)
+        return {
+            "schedule_version": context.schedule_version,
+            "schedule_id": context.schedule_id,
+            "op_id": context.op_id,
+            "batch_id": batch_id,
+            "source_table": SOURCE_SCHEDULE,
+            "effective_plan_role": ROLE_ADOPTED,
+            "scenario_id": None,
+            "event_type": event_type,
+            "reported_status": _REPORTED_STATUS_BY_ACTION[action],
+            "event_time": payload.get("event_time"),
+            "actual_machine_id": payload.get("actual_machine_id"),
+            "actual_operator_id": payload.get("actual_operator_id"),
+            "quantity_done": payload.get("quantity_done"),
+            "quantity_scrapped": payload.get("quantity_scrapped"),
+            "reason_code": payload.get("reason_code"),
+            "reason_detail": payload.get("reason_detail"),
+            "severity": payload.get("severity"),
+            "impact_minutes": payload.get("impact_minutes"),
+            "affected_machine_id": payload.get("affected_machine_id"),
+            "affected_operator_id": payload.get("affected_operator_id"),
+            "handling_status": payload.get("handling_status"),
+            "suggest_reschedule": payload.get("suggest_reschedule"),
+            "remark": payload.get("remark"),
+            "created_by": context.created_by,
+            "idempotency_key": context.idempotency_key,
+            "request_fingerprint": fingerprint,
+            "previous_state_revision": context.expected_state_revision,
+        }
+
+
+__all__ = [
+    "ExecutionFeedbackContext",
+    "ExecutionFeedbackResult",
+    "OperationExecutionFeedbackService",
+]

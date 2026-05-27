@@ -35,6 +35,8 @@ from .machine import Machine
 from .machine_downtime import MachineDowntime
 from .material import Material
 from .op_type import OpType
+from .operation_execution_event import OperationExecutionEvent
+from .operation_execution_state import OperationExecutionState
 from .operation_log import OperationLog
 from .operator import Operator
 from .operator_machine import OperatorMachine
@@ -97,6 +99,8 @@ __all__ = [
     "ScheduleConfig",
     "SystemConfig",
     "OperationLog",
+    "OperationExecutionEvent",
+    "OperationExecutionState",
     "ScheduleHistory",
     "SystemJobState",
     "Material",

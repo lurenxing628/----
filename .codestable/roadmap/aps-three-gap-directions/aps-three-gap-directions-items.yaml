@@ -331,8 +331,8 @@ items:
     depends_on: [dispatch-plan-identity-guardrails]
     depends_on_reasons:
       dispatch-plan-identity-guardrails: 执行事件会写现场事实，必须先完成派工身份护栏，保证只有最新正式采用方案能进入后续写入链路。
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-27-operation-execution-event-foundation
     minimal_loop: false
     primary_paths:
       - schema.sql

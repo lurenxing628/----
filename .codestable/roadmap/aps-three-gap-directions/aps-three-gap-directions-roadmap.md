@@ -1394,9 +1394,9 @@ execution_snapshot_op_ids
 8. **operation-execution-event-foundation**：新增执行事件表、repository、状态聚合服务、幂等写入和状态版本规则。
    - 所属模块：执行事件基础。
    - 依赖：`dispatch-plan-identity-guardrails`。
-   - 状态：planned。
-   - 对应 feature：未启动。
-   - 备注：不改历史 `Schedule` 计划行。
+   - 状态：done。
+   - 对应 feature：`2026-05-27-operation-execution-event-foundation`。
+   - 备注：不改历史 `Schedule` 计划行；本条只完成执行事件基础，不开放普通用户现场反馈入口。
 
 9. **resource-dispatch-start-finish-feedback**：资源派工页增加车间反馈任务卡，先支持开工和完工。
    - 所属模块：车间反馈页面。

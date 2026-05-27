@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from .machine_repo import MachineRepository
     from .material_repo import MaterialRepository
     from .op_type_repo import OpTypeRepository
+    from .operation_execution_event_repo import OperationExecutionEventRepo, OperationExecutionEventRepository
     from .operation_log_repo import OperationLogRepository
     from .operator_calendar_repo import OperatorCalendarRepository
     from .operator_machine_repo import OperatorMachineRepository
@@ -52,6 +53,8 @@ _EXPORTS = {
     "MaterialRepository": ".material_repo",
     "OpTypeRepository": ".op_type_repo",
     "OperationLogRepository": ".operation_log_repo",
+    "OperationExecutionEventRepo": ".operation_execution_event_repo",
+    "OperationExecutionEventRepository": ".operation_execution_event_repo",
     "OperatorCalendarRepository": ".operator_calendar_repo",
     "OperatorMachineRepository": ".operator_machine_repo",
     "OperatorRepository": ".operator_repo",
@@ -81,6 +84,8 @@ __all__ = [
     "MaterialRepository",
     "OpTypeRepository",
     "OperationLogRepository",
+    "OperationExecutionEventRepo",
+    "OperationExecutionEventRepository",
     "OperatorCalendarRepository",
     "OperatorMachineRepository",
     "OperatorRepository",
