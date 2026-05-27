@@ -21,6 +21,8 @@ class ScheduleResult:
     end_time: Optional[datetime] = None
     source: str = INTERNAL  # internal/external
     op_type_name: Optional[str] = None
+    seed_source: Optional[str] = None
+    state_revision: Optional[str] = None
 
 
 @dataclass
@@ -34,4 +36,3 @@ class ScheduleSummary:
     warnings: List[str]
     errors: List[str]
     duration_seconds: float
-

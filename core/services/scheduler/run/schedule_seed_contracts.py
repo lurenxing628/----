@@ -74,6 +74,8 @@ def coerce_seed_result_item(item: Any, *, idx: int) -> ScheduleResult:
         end_time=end_time,
         source=str(item.get("source") or INTERNAL),
         op_type_name=(str(item.get("op_type_name") or "") or None),
+        seed_source=(str(item.get("seed_source") or "") or None),
+        state_revision=(str(item.get("state_revision") or "") or None),
     )
 
 

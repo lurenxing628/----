@@ -16,6 +16,7 @@ from core.models.operation_execution_event import (
 )
 from core.services.common.build_outcome import BuildOutcome
 from core.services.scheduler.execution_fact_provider import ExecutionFact, ExecutionFactProvider
+from core.services.scheduler.execution_snapshot import ExecutionSnapshot, build_execution_snapshot
 
 from ..number_utils import parse_finite_float, to_yes_no
 from .schedule_input_contracts import _build_algo_operations_outcome
@@ -51,6 +52,9 @@ class ScheduleRunInput:
     execution_completed_op_ids: Set[int]
     execution_seed_results: List[Dict[str, Any]]
     execution_guard_state_revisions: Dict[int, str]
+    execution_snapshot_revision: str
+    execution_snapshot_op_ids: List[int]
+    execution_snapshot_op_count: int
     execution_has_guarded_facts: bool
     schedule_output_allowed_op_ids: Set[int]
     payload_validation_operations: List[BatchOperation]
@@ -297,9 +301,10 @@ def _collect_execution_guardrails(
     operations: List[BatchOperation],
     *,
     prev_version: int,
-) -> Tuple[Dict[int, ExecutionFact], Set[int], Set[int], List[Dict[str, Any]], Dict[int, str]]:
+) -> Tuple[Dict[int, ExecutionFact], Set[int], Set[int], List[Dict[str, Any]], Dict[int, str], ExecutionSnapshot]:
     op_by_id: Dict[int, BatchOperation] = {_op_id(op): op for op in operations if _op_id(op) > 0}
     facts = ExecutionFactProvider(svc.conn, logger=getattr(svc, "logger", None)).facts_by_op_id(sorted(op_by_id))
+    execution_snapshot = build_execution_snapshot(facts, sorted(op_by_id))
     fixed_op_ids = {
         int(op_id)
         for op_id, fact in facts.items()
@@ -327,7 +332,7 @@ def _collect_execution_guardrails(
         for op_id, fact in facts.items()
     }
     if not guarded_op_ids:
-        return facts, set(), set(), [], all_revisions
+        return facts, set(), set(), [], all_revisions, execution_snapshot
 
     schedule_rows = _schedule_rows_by_op_id(svc, version=int(prev_version), op_ids=guarded_op_ids)
     execution_seed_results: List[Dict[str, Any]] = []
@@ -348,7 +353,7 @@ def _collect_execution_guardrails(
                 schedule_row=row,
             )
         )
-    return facts, fixed_op_ids, completed_op_ids, execution_seed_results, all_revisions
+    return facts, fixed_op_ids, completed_op_ids, execution_seed_results, all_revisions, execution_snapshot
 
 
 def _is_missing_internal_resource(op: BatchOperation) -> bool:
@@ -421,6 +426,7 @@ def collect_schedule_run_input(
         execution_completed_op_ids,
         execution_seed_results,
         execution_guard_state_revisions,
+        execution_snapshot,
     ) = _collect_execution_guardrails(
         svc,
         operations,
@@ -512,6 +518,9 @@ def collect_schedule_run_input(
         execution_completed_op_ids=set(execution_completed_op_ids),
         execution_seed_results=list(execution_seed_results or []),
         execution_guard_state_revisions=dict(execution_guard_state_revisions),
+        execution_snapshot_revision=execution_snapshot.revision,
+        execution_snapshot_op_ids=list(execution_snapshot.op_ids),
+        execution_snapshot_op_count=int(execution_snapshot.op_count),
         execution_has_guarded_facts=bool(execution_fixed_op_ids or execution_completed_op_ids),
         schedule_output_allowed_op_ids=set(reschedulable_op_ids)
         | set(execution_fixed_op_ids)

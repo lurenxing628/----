@@ -2,9 +2,9 @@
 doc_type: requirement
 slug: shop-floor-execution-feedback
 pitch: 让现场实际开工、完工和异常反馈独立记录，不混进原来的计划时间
-status: draft
-last_reviewed: 2026-05-25
-implemented_by: []
+status: current
+last_reviewed: 2026-05-27
+implemented_by: [ARCHITECTURE, ui-gantt]
 tags: [aps, scheduler, shop-floor, execution-feedback]
 ---
 
@@ -22,7 +22,7 @@ tags: [aps, scheduler, shop-floor, execution-feedback]
 
 ## 怎么解决
 
-现场反馈作为独立事实记录，先从资源派工上下文进入，让用户按任务提交开工、完工和后续异常信息。系统再把这些现场事实汇总成当前执行状态，给复盘和重排使用。
+现场反馈作为独立事实记录，从资源派工上下文进入。用户可以按任务提交开工、完工、暂停、继续生产和报异常；计划员可以在复盘里看到计划和现场实际的差别。重新排程时，系统会尊重已经发生的现场事实：已经开工或暂停的工序不随便移动，已经完工的工序保留真实时间，异常中的工序先提示处理异常。
 
 ## 边界
 
@@ -30,3 +30,7 @@ tags: [aps, scheduler, shop-floor, execution-feedback]
 - 不允许候选方案、模拟预览或历史正式方案写入现场反馈。
 - 第一版不做完整 MES，不做扫码枪依赖、IoT 实时采集、电子签名、工资计件或完整质量追溯。
 - 撤销开工、撤销完工、纠错和反冲要单独设计，不在第一版里静默覆盖历史事件。
+
+## 变更日志
+
+- 2026-05-27：从 draft 升级为 current。现场开工、完工、暂停、继续生产、报异常、计划和现场实际复盘，以及重排尊重现场事实已经形成闭环；撤销和纠错仍保留为后续单独能力。

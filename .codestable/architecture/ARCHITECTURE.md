@@ -43,6 +43,7 @@ implements: []
 - `开发文档/`、`audit/`、`evidence/`：开发说明、审计记录和验证证据。
 - `.codestable/architecture/ui-gantt.md`：甘特图结果查看页面、缩放协议、只读边界、模拟预览身份传递和本地 Frappe 补丁治理现状。
 - 车间执行事件基础：`OperationExecutionEvents`、执行事件仓储、执行反馈服务和执行状态读模型记录现场开工、暂停、继续、完工、报异常这些事实。
+- 重排执行事实快照：普通重排和甘特模拟方案发布在写新正式计划前，都会按同一批工序复算现场状态，现场状态变化时拒绝写入。
 
 ## 4. 关键架构决定
 
@@ -74,3 +75,12 @@ implements: []
 - `core/services/scheduler/operation_execution_feedback_service.py` 负责正式计划身份校验、幂等键优先判断、状态版本校验、合法状态流转和事件写入。
 - 状态读模型按事件流聚合：`last_event_*` 表示最后一条现场事件，`latest_exception_*` 表示最近一次报异常；两组字段分开计算。
 - 程序动作 `report_exception` 入库为 `event_type=exception`，页面和返回值显示“报异常”；现场状态 `exception` 显示“异常中”，两套中文映射分开维护。
+
+## 8. 重排执行事实快照现状
+
+- `core/services/scheduler/execution_snapshot.py` 负责把一批工序的执行状态版本整理成可复算快照。快照包含 `execution_snapshot_revision`、`execution_snapshot_op_ids` 和 `execution_snapshot_op_count`。
+- 普通重排在 `schedule_input_collector.py` 读取执行事实：生产中和暂停中工序作为现场固定 seed，已完工工序保留真实时间并从待排输入剔除，异常中工序阻止普通自动重排。
+- 候选比较、多起点、局部搜索、优化器和图排程 ready queue 复用同一批执行 seed；执行 seed 的来源标记为 `execution_fact`，和冻结窗口 seed 分开。
+- 普通重排写正式计划前会在 `schedule_persistence.py` 复算执行快照并校验固定工序、已完工工序和下游时间。现场状态变化时返回中文冲突提示，不写 `Schedule`、`ScheduleHistory` 或版本号。
+- 甘特模拟方案保存时会在 `ScheduleAdjustmentScenario` 里记录执行快照；正式采用模拟方案前会用保存时同一批工序复算，现场状态变化时拒绝发布并回滚发布状态。
+- 执行快照字段是开发和测试追溯信息，不直接给普通用户看；页面和普通接口只返回中文消息、名称、预览或查看链接等用户需要的信息。

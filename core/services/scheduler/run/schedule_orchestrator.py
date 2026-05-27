@@ -326,6 +326,9 @@ def orchestrate_schedule_run(
                 if candidate_comparison is not None
                 else None
             ),
+            execution_snapshot_revision=getattr(schedule_input, "execution_snapshot_revision", None),
+            execution_snapshot_op_ids=list(getattr(schedule_input, "execution_snapshot_op_ids", None) or []),
+            execution_snapshot_op_count=int(getattr(schedule_input, "execution_snapshot_op_count", 0) or 0),
             simulate=simulate,
             t0=schedule_input.t0,
         )

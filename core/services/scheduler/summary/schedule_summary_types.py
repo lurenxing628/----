@@ -50,6 +50,9 @@ class SummaryBuildContext:
     graph_analysis_public: Optional[Dict[str, Any]] = None
     graph_analysis_diagnostics: Optional[Dict[str, Any]] = None
     candidate_comparison_public: Optional[Dict[str, Any]] = None
+    execution_snapshot_revision: Optional[str] = None
+    execution_snapshot_op_ids: Optional[List[int]] = None
+    execution_snapshot_op_count: int = 0
     simulate: bool = False
     t0: float = 0.0
 

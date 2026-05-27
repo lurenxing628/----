@@ -331,8 +331,8 @@ def test_save_scenario_route_uses_server_operator_not_json_created_by(tmp_path: 
     verify_conn = get_connection(str(tmp_path / "aps.db"))
     try:
         scenario = verify_conn.execute(
-            "SELECT created_by FROM ScheduleAdjustmentScenario WHERE scenario_id = ?",
-            (payload["data"]["scenario_id"],),
+            "SELECT created_by FROM ScheduleAdjustmentScenario WHERE source_draft_id = ?",
+            (draft_id,),
         ).fetchone()
         assert scenario["created_by"] == "web"
     finally:

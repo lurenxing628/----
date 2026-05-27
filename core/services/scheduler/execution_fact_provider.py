@@ -20,6 +20,9 @@ class ExecutionFact:
     last_event_schedule_version: Optional[int]
     last_event_schedule_id: Optional[int]
     state_revision: str
+    latest_exception_impact_minutes: Optional[int] = None
+    latest_exception_handling_status: Optional[str] = None
+    latest_exception_suggest_reschedule: bool = False
 
 
 def _positive_op_ids(values: Sequence[int]) -> List[int]:
@@ -88,6 +91,15 @@ class ExecutionFactProvider:
                     last_event_schedule_version=None if latest is None else int(latest.schedule_version),
                     last_event_schedule_id=None if latest is None else int(latest.schedule_id),
                     state_revision=f"{int(op_id)}:0:0" if state is None else state.state_revision,
+                    latest_exception_impact_minutes=None
+                    if state is None
+                    else state.latest_exception_impact_minutes,
+                    latest_exception_handling_status=None
+                    if state is None
+                    else state.latest_exception_handling_status,
+                    latest_exception_suggest_reschedule=False
+                    if state is None
+                    else bool(state.latest_exception_suggest_reschedule),
                 )
             )
         return facts

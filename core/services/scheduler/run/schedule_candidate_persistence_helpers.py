@@ -49,6 +49,8 @@ def persist_schedule_run_with_candidates(
     execution_fixed_op_ids: Set[int] = None,
     execution_completed_op_ids: Set[int] = None,
     execution_guard_state_revisions: Dict[int, str] = None,
+    execution_snapshot_revision: str = None,
+    execution_snapshot_op_ids: List[int] = None,
     execution_facts: Dict[int, Any] = None,
     payload_validation_operations: List[Any] = None,
 ) -> None:
@@ -68,6 +70,8 @@ def persist_schedule_run_with_candidates(
             execution_fixed_op_ids=set(execution_fixed_op_ids or set()),
             execution_completed_op_ids=set(execution_completed_op_ids or set()),
             execution_guard_state_revisions=dict(execution_guard_state_revisions or {}),
+            execution_snapshot_revision=execution_snapshot_revision,
+            execution_snapshot_op_ids=list(execution_snapshot_op_ids or []),
             execution_facts=dict(execution_facts or {}),
             payload_validation_operations=payload_validation_operations,
             result_status=result_status,
@@ -79,7 +83,9 @@ def persist_schedule_run_with_candidates(
                 svc,
                 version=int(version),
                 candidate_comparison=candidate_comparison,
-                frozen_op_ids=frozen_op_ids,
+                frozen_op_ids=set(frozen_op_ids or set())
+                | set(execution_fixed_op_ids or set())
+                | set(execution_completed_op_ids or set()),
                 allowed_op_ids=_operation_ids(
                     _candidate_allowed_operations(
                         payload_validation_operations=payload_validation_operations,

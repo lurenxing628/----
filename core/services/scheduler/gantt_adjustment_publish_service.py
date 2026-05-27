@@ -2,16 +2,28 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any, Dict, Sequence
+from datetime import datetime
+from types import SimpleNamespace
+from typing import Any, Dict, List, Sequence, Set
 
 from core.infrastructure.errors import AppError, ErrorCode, ValidationError
 from core.models import Schedule
+from core.models.enums import SourceType
+from core.models.operation_execution_event import (
+    EXECUTION_STATUS_COMPLETED,
+    EXECUTION_STATUS_EXCEPTION,
+    EXECUTION_STATUS_PAUSED,
+    EXECUTION_STATUS_PROCESSING,
+)
 from core.models.schedule_adjustment import (
     DRAFT_STATUS_PUBLISHED,
     DRAFT_STATUS_SAVED_SCENARIO,
     SCENARIO_STATUS_ACTIVE,
 )
 from core.models.schedule_plan_role import ROLE_ADOPTED
+from core.services.scheduler.execution_fact_provider import ExecutionFactProvider
+from core.services.scheduler.run.schedule_payload_contract import ValidatedSchedulePayload, ValidatedScheduleRow
+from core.services.scheduler.run.schedule_persistence import validate_execution_guard_before_persist
 from data.repositories import (
     ScheduleAdjustmentRepository,
     ScheduleAdjustmentScenarioRepository,
@@ -19,6 +31,7 @@ from data.repositories import (
     ScheduleRepository,
 )
 
+from .execution_snapshot import collect_execution_snapshot
 from .gantt_adjustment_validation_service import GanttAdjustmentEvaluation, GanttAdjustmentValidationService
 
 PUBLISH_CONFIRM_TEXT = "正式采用"
@@ -92,10 +105,13 @@ class GanttAdjustmentPublishService:
         _check_scenario_rows(scenario_rows, evaluation)
 
         with self.conn:
-            new_version = self.history_repo.allocate_next_version()
+            self.conn.execute("BEGIN IMMEDIATE")
             latest_version = self.history_repo.get_latest_version()
             if latest_version != scenario.base_version:
                 raise ValidationError("模拟方案的调整依据版本已经不是最新正式版本，请重新模拟后再正式采用。", field="base_version")
+            _check_execution_snapshot_current(self, scenario)
+            _validate_scenario_execution_guard(self, scenario=scenario, evaluation=evaluation, scenario_rows=scenario_rows)
+            new_version = self.history_repo.allocate_next_version()
             claimed = self.scenario_repo.mark_published(
                 scenario_id=scenario.scenario_id,
                 new_version=new_version,
@@ -209,6 +225,155 @@ def _check_scenario_rows(rows: Sequence[Any], evaluation: GanttAdjustmentEvaluat
         raise ValidationError("模拟方案明细和草稿重新校验结果不一致，请重新保存模拟方案。", field="scenario_id")
 
 
+def _scenario_snapshot_op_ids(scenario: Any) -> List[int]:
+    text = str(getattr(scenario, "execution_snapshot_op_ids", "") or "").strip()
+    if not text:
+        raise AppError(
+            ErrorCode.SCHEDULE_CONFLICT,
+            "模拟方案缺少现场状态快照，请重新保存模拟方案后再正式采用。",
+            details={"reason": "missing_execution_snapshot"},
+        )
+    try:
+        raw = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise AppError(
+            ErrorCode.SCHEDULE_CONFLICT,
+            "模拟方案的现场状态快照已损坏，请重新保存模拟方案后再正式采用。",
+            details={"reason": "invalid_execution_snapshot"},
+            cause=exc,
+        ) from exc
+    if not isinstance(raw, list):
+        raise AppError(
+            ErrorCode.SCHEDULE_CONFLICT,
+            "模拟方案的现场状态快照已损坏，请重新保存模拟方案后再正式采用。",
+            details={"reason": "invalid_execution_snapshot"},
+        )
+    op_ids: List[int] = []
+    for value in raw:
+        try:
+            op_id = int(value)
+        except (TypeError, ValueError) as exc:
+            raise AppError(
+                ErrorCode.SCHEDULE_CONFLICT,
+                "模拟方案的现场状态快照已损坏，请重新保存模拟方案后再正式采用。",
+                details={"reason": "invalid_execution_snapshot"},
+                cause=exc,
+            ) from exc
+        if op_id > 0:
+            op_ids.append(int(op_id))
+    if not op_ids:
+        raise AppError(
+            ErrorCode.SCHEDULE_CONFLICT,
+            "模拟方案缺少现场状态快照，请重新保存模拟方案后再正式采用。",
+            details={"reason": "missing_execution_snapshot"},
+        )
+    return sorted(set(op_ids))
+
+
+def _check_execution_snapshot_current(service: GanttAdjustmentPublishService, scenario: Any) -> None:
+    expected_revision = str(getattr(scenario, "execution_snapshot_revision", "") or "").strip()
+    if not expected_revision:
+        raise AppError(
+            ErrorCode.SCHEDULE_CONFLICT,
+            "模拟方案缺少现场状态快照，请重新保存模拟方案后再正式采用。",
+            details={"reason": "missing_execution_snapshot"},
+        )
+    op_ids = _scenario_snapshot_op_ids(scenario)
+    current = collect_execution_snapshot(service.conn, op_ids, logger=service.logger)
+    if current.revision != expected_revision:
+        raise AppError(
+            ErrorCode.SCHEDULE_CONFLICT,
+            "现场状态刚刚变了，这个模拟方案没有正式采用。请刷新后重新模拟。",
+            details={
+                "reason": "execution_snapshot_changed",
+                "execution_snapshot_op_count": int(len(op_ids)),
+            },
+        )
+
+
+def _parse_schedule_time(value: Any, *, field: str) -> datetime:
+    text = str(value or "").strip()
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(text, fmt)
+        except ValueError:
+            continue
+    raise ValidationError(f"{field}写法不对，请重新保存模拟方案。", field=field)
+
+
+def _scenario_validated_payload(rows: Sequence[Any]) -> ValidatedSchedulePayload:
+    schedule_rows = [
+        ValidatedScheduleRow(
+            op_id=int(row.op_id),
+            machine_id=row.machine_id,
+            operator_id=row.operator_id,
+            start_time=_parse_schedule_time(row.start_time, field="开始时间"),
+            end_time=_parse_schedule_time(row.end_time, field="结束时间"),
+            source=SourceType.INTERNAL.value,
+        )
+        for row in rows
+    ]
+    return ValidatedSchedulePayload(
+        schedule_rows=schedule_rows,
+        scheduled_op_ids={int(row.op_id) for row in schedule_rows},
+        assigned_by_op_id={
+            int(row.op_id): {"machine_id": row.machine_id, "operator_id": row.operator_id}
+            for row in schedule_rows
+        },
+    )
+
+
+def _scenario_validation_operations(evaluation: GanttAdjustmentEvaluation) -> List[Any]:
+    return [
+        SimpleNamespace(id=int(row.op_id), batch_id=row.batch_id, seq=int(row.seq or 0))
+        for row in list(evaluation.adjusted_rows or [])
+    ]
+
+
+def _validate_scenario_execution_guard(
+    service: GanttAdjustmentPublishService,
+    *,
+    scenario: Any,
+    evaluation: GanttAdjustmentEvaluation,
+    scenario_rows: Sequence[Any],
+) -> None:
+    op_ids = _scenario_snapshot_op_ids(scenario)
+    facts = ExecutionFactProvider(service.conn, logger=service.logger).facts_by_op_id(op_ids)
+    exception_op_ids = {
+        int(op_id)
+        for op_id, fact in facts.items()
+        if str(fact.actual_status or "").strip().lower() == EXECUTION_STATUS_EXCEPTION
+    }
+    if exception_op_ids:
+        raise AppError(
+            ErrorCode.SCHEDULE_CONFLICT,
+            "存在异常中的工序，请先处理现场异常后再正式采用模拟方案。",
+            details={"reason": "execution_exception_blocks_scenario_publish", "op_ids": sorted(exception_op_ids)},
+        )
+
+    fixed_op_ids: Set[int] = {
+        int(op_id)
+        for op_id, fact in facts.items()
+        if str(fact.actual_status or "").strip().lower() in (EXECUTION_STATUS_PROCESSING, EXECUTION_STATUS_PAUSED)
+    }
+    completed_op_ids: Set[int] = {
+        int(op_id)
+        for op_id, fact in facts.items()
+        if str(fact.actual_status or "").strip().lower() == EXECUTION_STATUS_COMPLETED
+    }
+    validate_execution_guard_before_persist(
+        service,
+        validated_schedule_payload=_scenario_validated_payload(scenario_rows),
+        execution_guard_state_revisions={int(op_id): fact.state_revision for op_id, fact in facts.items()},
+        execution_facts=facts,
+        execution_fixed_op_ids=fixed_op_ids,
+        execution_completed_op_ids=completed_op_ids,
+        execution_snapshot_revision=scenario.execution_snapshot_revision,
+        execution_snapshot_op_ids=op_ids,
+        payload_validation_operations=_scenario_validation_operations(evaluation),
+    )
+
+
 def _schedule_rows(rows: Sequence[Any], *, version: int) -> Sequence[Schedule]:
     return [
         Schedule(
@@ -245,6 +410,11 @@ def _history_payload(
         "validation_status": evaluation.status,
         "issue_count": len(evaluation.issues),
         "reason": reason,
+        "execution_snapshot": {
+            "execution_snapshot_revision": scenario.execution_snapshot_revision,
+            "execution_snapshot_op_ids": _scenario_snapshot_op_ids(scenario),
+            "execution_snapshot_op_count": int(scenario.execution_snapshot_op_count or 0),
+        },
     }
     return {
         "version": int(new_version),

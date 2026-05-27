@@ -250,9 +250,7 @@ class ScheduleService:
         - Schedule 写入、状态更新、ScheduleHistory 写入：**单事务原子**
         - OperationLogs：由于 OperationLogger 内部会 commit()，因此放到事务提交后写入，避免破坏原子性
         - simulate=True 时：用于“插单模拟/模拟排产”
-          - 默认仍会落库到新版本（Schedule + ScheduleHistory），确保可追溯
-          - 已有开工/完工事实时只做安全校验，不生成可查看版本
-          - 但不会更新 Batches/BatchOperations 的状态（避免污染正式状态）
+          - 只做安全校验和试算返回，不写 Schedule、ScheduleHistory 或正式状态
         - enforce_ready 取值规则：
           - 显式传入 True/False：按传入值执行
           - 传入 None：回退读取配置 `enforce_ready_default`
@@ -280,7 +278,7 @@ class ScheduleService:
             extend_downtime_map_for_resource_pool_fn=extend_downtime_map_for_resource_pool,
         )
 
-        simulation_validated_only = bool(simulate and schedule_input.execution_has_guarded_facts)
+        simulation_validated_only = bool(simulate)
 
         def _validate_execution_guard_before_version(validated_schedule_payload):
             validate_execution_guard_before_persist(
@@ -290,6 +288,8 @@ class ScheduleService:
                 execution_facts=dict(schedule_input.execution_facts or {}),
                 execution_fixed_op_ids=set(schedule_input.execution_fixed_op_ids or set()),
                 execution_completed_op_ids=set(schedule_input.execution_completed_op_ids or set()),
+                execution_snapshot_revision=schedule_input.execution_snapshot_revision,
+                execution_snapshot_op_ids=list(schedule_input.execution_snapshot_op_ids),
                 payload_validation_operations=list(schedule_input.payload_validation_operations or []),
             )
 
@@ -311,6 +311,8 @@ class ScheduleService:
                 execution_fixed_op_ids=set(schedule_input.execution_fixed_op_ids),
                 execution_completed_op_ids=set(schedule_input.execution_completed_op_ids),
                 execution_guard_state_revisions=dict(schedule_input.execution_guard_state_revisions),
+                execution_snapshot_revision=schedule_input.execution_snapshot_revision,
+                execution_snapshot_op_ids=list(schedule_input.execution_snapshot_op_ids),
                 execution_facts=dict(schedule_input.execution_facts),
                 payload_validation_operations=list(schedule_input.payload_validation_operations),
                 result_status=orchestration.result_status,
@@ -343,6 +345,8 @@ class ScheduleService:
                 execution_facts=dict(schedule_input.execution_facts or {}),
                 execution_fixed_op_ids=set(schedule_input.execution_fixed_op_ids or set()),
                 execution_completed_op_ids=set(schedule_input.execution_completed_op_ids or set()),
+                execution_snapshot_revision=schedule_input.execution_snapshot_revision,
+                execution_snapshot_op_ids=list(schedule_input.execution_snapshot_op_ids),
                 payload_validation_operations=list(schedule_input.payload_validation_operations or []),
             )
 
@@ -359,5 +363,5 @@ class ScheduleService:
             "time_cost_ms": int(orchestration.time_cost_ms),
         }
         if simulation_validated_only:
-            result["user_message"] = "现场已经有开工或完工记录，这次模拟只做安全检查，没有生成新的排程版本，也没有改动正式排程。"
+            result["user_message"] = "这次模拟只做安全检查，没有生成新的排程版本，也没有改动正式排程。"
         return result

@@ -23,6 +23,9 @@ _SCENARIO_COLUMNS = (
     "issue_count",
     "issues_json",
     "row_count",
+    "execution_snapshot_revision",
+    "execution_snapshot_op_ids",
+    "execution_snapshot_op_count",
     "created_by",
     "published_version",
     "published_by",
@@ -91,9 +94,11 @@ class ScheduleAdjustmentScenarioRepository(BaseRepository):
                 scenario_id, source_draft_id, base_version, base_plan_role,
                 base_source_table, base_candidate_id, base_candidate_key,
                 scenario_name, status, validation_status, issue_count,
-                issues_json, row_count, created_by
+                issues_json, row_count, execution_snapshot_revision,
+                execution_snapshot_op_ids, execution_snapshot_op_count,
+                created_by
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 item.scenario_id,
@@ -109,6 +114,9 @@ class ScheduleAdjustmentScenarioRepository(BaseRepository):
                 int(item.issue_count),
                 item.issues_json,
                 len(row_items),
+                item.execution_snapshot_revision,
+                item.execution_snapshot_op_ids,
+                int(item.execution_snapshot_op_count or len(row_items)),
                 item.created_by,
             ),
         )

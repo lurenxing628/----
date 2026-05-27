@@ -1,0 +1,45 @@
+feature: 2026-05-27-reschedule-respects-execution-facts
+status: done
+roadmap: aps-three-gap-directions
+roadmap_item: reschedule-respects-execution-facts
+steps:
+  - id: execution-snapshot-chain
+    title: 建立执行快照和普通重排传递链
+    status: done
+    exit_signal: ScheduleRunInput 能携带 execution_snapshot_revision、execution_snapshot_op_ids、execution_snapshot_op_count。
+  - id: persist-recheck-summary
+    title: 普通重排落库前复算快照并写历史摘要
+    status: done
+    exit_signal: 现场状态变化时返回 6003/409 且不写 ScheduleHistory，成功时 result_summary 有快照。
+  - id: scenario-snapshot
+    title: scenario 保存和发布接入执行快照
+    status: done
+    exit_signal: scenario 保存字段、v17 迁移、发布前复算和冲突回滚全部落地。
+  - id: seed-source-candidate-graph
+    title: 补执行 seed 来源追溯和候选锁定来源
+    status: done
+    exit_signal: execution_fact 与 freeze_window 来源可追溯，候选明细把执行固定/完工也标为锁定。
+  - id: regression-tests
+    title: 补第 13 项精准回归测试
+    status: done
+    exit_signal: 第 13 项 test_commands 通过，覆盖普通重排、快照、scenario 保存/发布和 simulate 反向核对。
+  - id: adversarial-review
+    title: SubAgent 对抗审查和复审
+    status: done
+    exit_signal: 同阶段整体复审阻塞项为 0。
+checks:
+  - id: design-contract
+    title: 实现未偏离 roadmap 5.10 和 5.11 契约
+    status: passed
+  - id: ordinary-reschedule
+    title: 普通重排尊重 processing、paused、exception、completed
+    status: passed
+  - id: scenario-publish
+    title: scenario save/publish 保存并复算执行快照
+    status: passed
+  - id: no-formal-write-on-conflict
+    title: 冲突时不写 Schedule、ScheduleHistory 或发布状态
+    status: passed
+  - id: py38-offline
+    title: Python 3.8、Win7 离线约束未被破坏
+    status: passed

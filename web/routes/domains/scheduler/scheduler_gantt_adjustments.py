@@ -133,11 +133,12 @@ def save_gantt_adjustment_scenario():
             scenario_id=scenario.scenario_id,
             gantt_zoom="day",
         )
-        data = scenario.to_dict()
-        data.update(
-            preview_url=preview_url,
-            message="已保存为模拟方案，正式计划还没有改变。",
-        )
+        data = {
+            "scenario_name": scenario.scenario_name,
+            "created_by": scenario.created_by,
+            "preview_url": preview_url,
+            "message": "已保存为模拟方案，正式计划还没有改变。",
+        }
         return jsonify({"success": True, "data": data})
     except AppError as exc:
         return json_error_response(exc)
@@ -159,16 +160,18 @@ def publish_gantt_adjustment_scenario():
             expected_base_version=payload.get("base_version"),
             expected_base_plan_role=payload.get("base_plan_role"),
         )
-        result_data = result.to_dict()
-        result_data.update(
-            view_url=url_for(
+        result_data = {
+            "new_version": result.new_version,
+            "published_by": result.published_by,
+            "reason": result.reason,
+            "view_url": url_for(
                 "scheduler.gantt_page",
                 version=result.new_version,
                 plan_role="adopted",
                 gantt_zoom="day",
             ),
-            message="已正式采用模拟方案，并生成新的正式排产版本。",
-        )
+            "message": "已正式采用模拟方案，并生成新的正式排产版本。",
+        }
         return jsonify({"success": True, "data": result_data})
     except AppError as exc:
         return json_error_response(exc)

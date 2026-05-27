@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional, Set
 from core.infrastructure.errors import AppError, ErrorCode
 from core.models.enums import BatchOperationStatus, BatchStatus, YesNo
 from core.services.scheduler.execution_fact_provider import ExecutionFact, ExecutionFactProvider
+from core.services.scheduler.execution_snapshot import collect_execution_snapshot
 
 from .schedule_candidate_persistence_helpers import persist_schedule_run_with_candidates as _persist_with_candidates
 from .schedule_candidate_persistence_models import operation_log_algo_summary as _operation_log_algo_summary
@@ -198,6 +199,23 @@ def _validate_execution_revisions(
             )
 
 
+def _validate_execution_snapshot(
+    svc: Any,
+    *,
+    expected_revision: Optional[str],
+    expected_op_ids: Optional[List[int]],
+) -> None:
+    op_ids = [int(op_id) for op_id in list(expected_op_ids or []) if int(op_id) > 0]
+    if not expected_revision or not op_ids:
+        return
+    current = collect_execution_snapshot(svc.conn, op_ids, logger=getattr(svc, "logger", None))
+    if current.revision != str(expected_revision or ""):
+        raise _execution_guard_conflict(
+            "现场状态刚刚变了，这次重排没有写入。请刷新后重新排。",
+            reason="execution_state_changed",
+        )
+
+
 def _validate_processing_seed_row(
     *,
     row: ValidatedScheduleRow,
@@ -284,10 +302,17 @@ def validate_execution_guard_before_persist(
     execution_facts: Dict[int, ExecutionFact],
     execution_fixed_op_ids: Set[int],
     execution_completed_op_ids: Set[int],
+    execution_snapshot_revision: Optional[str] = None,
+    execution_snapshot_op_ids: Optional[List[int]] = None,
     payload_validation_operations: Optional[List[Any]] = None,
 ) -> None:
     if not execution_guard_state_revisions:
         return
+    _validate_execution_snapshot(
+        svc,
+        expected_revision=execution_snapshot_revision,
+        expected_op_ids=execution_snapshot_op_ids,
+    )
     _validate_execution_revisions(svc, expected_revisions=execution_guard_state_revisions)
     rows = _rows_by_op_id(validated_schedule_payload)
     for op_id in sorted(set(execution_fixed_op_ids or set())):
@@ -379,6 +404,8 @@ def persist_schedule_core_in_tx(
     execution_fixed_op_ids: Optional[Set[int]] = None,
     execution_completed_op_ids: Optional[Set[int]] = None,
     execution_guard_state_revisions: Optional[Dict[int, str]] = None,
+    execution_snapshot_revision: Optional[str] = None,
+    execution_snapshot_op_ids: Optional[List[int]] = None,
     execution_facts: Optional[Dict[int, ExecutionFact]] = None,
     payload_validation_operations: Optional[List[Any]] = None,
 ) -> None:
@@ -401,6 +428,8 @@ def persist_schedule_core_in_tx(
         execution_facts=dict(execution_facts or {}),
         execution_fixed_op_ids=set(execution_fixed_op_ids or set()),
         execution_completed_op_ids=set(execution_completed_op_ids or set()),
+        execution_snapshot_revision=execution_snapshot_revision,
+        execution_snapshot_op_ids=list(execution_snapshot_op_ids or []),
         payload_validation_operations=payload_validation_operations
         if payload_validation_operations is not None
         else reschedulable_operations,
@@ -476,6 +505,8 @@ def persist_schedule(
     execution_fixed_op_ids: Optional[Set[int]] = None,
     execution_completed_op_ids: Optional[Set[int]] = None,
     execution_guard_state_revisions: Optional[Dict[int, str]] = None,
+    execution_snapshot_revision: Optional[str] = None,
+    execution_snapshot_op_ids: Optional[List[int]] = None,
     execution_facts: Optional[Dict[int, ExecutionFact]] = None,
     payload_validation_operations: Optional[List[Any]] = None,
 ) -> None:
@@ -495,6 +526,8 @@ def persist_schedule(
             execution_fixed_op_ids=set(execution_fixed_op_ids or set()),
             execution_completed_op_ids=set(execution_completed_op_ids or set()),
             execution_guard_state_revisions=dict(execution_guard_state_revisions or {}),
+            execution_snapshot_revision=execution_snapshot_revision,
+            execution_snapshot_op_ids=list(execution_snapshot_op_ids or []),
             execution_facts=dict(execution_facts or {}),
             payload_validation_operations=payload_validation_operations,
             result_status=result_status,

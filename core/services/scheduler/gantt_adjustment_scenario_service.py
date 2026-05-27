@@ -13,6 +13,7 @@ from core.models.schedule_adjustment import (
 )
 from data.repositories import ScheduleAdjustmentRepository, ScheduleAdjustmentScenarioRepository
 
+from .execution_snapshot import ExecutionSnapshot, collect_execution_snapshot
 from .gantt_adjustment_validation_service import GanttAdjustmentValidationService
 
 
@@ -55,7 +56,17 @@ class GanttAdjustmentScenarioService:
         if not evaluation.can_apply:
             raise ValidationError("草稿还有阻塞问题，不能保存为模拟方案。", field="draft_id")
 
-        scenario = self._scenario_header(evaluation, scenario_name=scenario_name, created_by=created_by)
+        execution_snapshot = collect_execution_snapshot(
+            self.conn,
+            [row.op_id for row in evaluation.adjusted_rows],
+            logger=self.logger,
+        )
+        scenario = self._scenario_header(
+            evaluation,
+            scenario_name=scenario_name,
+            created_by=created_by,
+            execution_snapshot=execution_snapshot,
+        )
         rows = [
             ScheduleAdjustmentScenarioRow(
                 id=None,
@@ -86,6 +97,7 @@ class GanttAdjustmentScenarioService:
         *,
         scenario_name: Optional[str],
         created_by: Optional[str],
+        execution_snapshot: ExecutionSnapshot,
     ) -> ScheduleAdjustmentScenario:
         resolution = evaluation.plan_resolution
         scenario_id = "scenario-" + uuid.uuid4().hex[:16]
@@ -103,5 +115,8 @@ class GanttAdjustmentScenarioService:
             validation_status=evaluation.status,
             issue_count=len(evaluation.issues),
             issues_json=json.dumps([issue.to_dict() for issue in evaluation.issues], ensure_ascii=False),
+            execution_snapshot_revision=execution_snapshot.revision,
+            execution_snapshot_op_ids=json.dumps(list(execution_snapshot.op_ids), ensure_ascii=False),
+            execution_snapshot_op_count=int(execution_snapshot.op_count),
             created_by=_text(created_by) or evaluation.draft.created_by,
         )

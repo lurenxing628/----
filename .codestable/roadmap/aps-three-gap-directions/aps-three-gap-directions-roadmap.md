@@ -1437,9 +1437,9 @@ execution_snapshot_op_ids
 13. **reschedule-respects-execution-facts**：重排输入完整接入执行事实，已完工不再排，生产中默认固定，异常中阻止自动重排，落库前检查状态版本。
     - 所属模块：重排执行事实接入。
     - 依赖：`reschedule-minimum-execution-guardrails`、`shop-exception-feedback`。
-    - 状态：planned。
-    - 对应 feature：未启动。
-    - 备注：不再被复盘页面阻塞，但必须等执行事件、状态读模型、最小重排护栏和异常反馈完成。
+    - 状态：done。
+    - 对应 feature：`2026-05-27-reschedule-respects-execution-facts`。
+    - 备注：普通重排、候选比较、多起点、局部搜索、图排程 ready queue、scenario 保存和 scenario 发布均已接入执行事实快照；现场状态变化时拒绝写入正式计划。
 
 14. **aps-three-gap-docs-quality-gate**：补用户说明、开发说明、回归测试清单和 Win7/offline 验收手册。
     - 所属模块：测试和 Win7 约束。
@@ -1521,3 +1521,4 @@ execution_snapshot_op_ids
 - 2026-05-27：完成 `resource-dispatch-start-finish-feedback`。资源派工页新增现场反馈任务卡和受控开工/完工写入；普通用户在最小重排护栏完成前仍默认不能提交，直接 POST 返回中文 409/6003；测试专用开关只在 TESTING=True 下生效，并补普通 data 递归脱敏、设备匹配、数量边界和成功返回结构测试。
 - 2026-05-27：完成 `reschedule-minimum-execution-guardrails`。普通重排会读取开工/完工执行事实，已完工工序不再进待排集合，生产中工序保留实际开始和实际资源，落库前复查现场状态版本；如果最终校验失败，`Schedule`、`ScheduleHistory` 和 `ScheduleVersionSeq` 一起回滚；最新正式方案普通用户开工/完工按钮和直接 POST 已放开，候选、模拟预览、历史正式和非最新正式仍拒绝写入。
 - 2026-05-27：完成 `plan-vs-actual-review`。报表中心新增计划和现场实际复盘页面及 Excel 导出，支持按版本、日期和批次筛选；导出固定使用“计划和现场实际”工作表和中文列名；实际开始、实际结束、暂停时长、异常信息和实际资源均来自执行事件读模型。
+- 2026-05-27：完成 `reschedule-respects-execution-facts`。普通重排、候选比较、多起点、局部搜索、图排程 ready queue、scenario 保存和 scenario 发布统一接入执行事实快照；生产中和暂停中工序默认固定，已完工工序保留真实时间并约束下游，异常中阻止普通自动重排；普通模拟只校验不写正式版本；保存或发布后现场状态变化会返回中文冲突提示并回滚。

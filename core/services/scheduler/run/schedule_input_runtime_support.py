@@ -63,10 +63,17 @@ def _build_runtime_support_inputs(
     fixed_seed_op_ids = set(frozen_op_ids) | set(execution_fixed_op_ids or set())
     algo_ops_to_schedule = [op for op in algo_ops if int(getattr(op, "id", 0) or 0) not in fixed_seed_op_ids]
     if not algo_ops_to_schedule:
-        raise_schedule_empty_result_fn(
-            f"冻结窗口内无可调整工序，本次未执行{run_label}。",
-            reason="all_operations_frozen",
-        )
+        algo_op_ids = {int(getattr(op, "id", 0) or 0) for op in list(algo_ops or []) if int(getattr(op, "id", 0) or 0) > 0}
+        if algo_op_ids and algo_op_ids <= set(execution_fixed_op_ids or set()):
+            raise_schedule_empty_result_fn(
+                f"所选工序都已经开工或暂停，不能自动移动，本次未执行{run_label}。请先按现场情况处理。",
+                reason="all_operations_fixed_by_execution_facts",
+            )
+        else:
+            raise_schedule_empty_result_fn(
+                f"冻结窗口内无可调整工序，本次未执行{run_label}。",
+                reason="all_operations_frozen",
+            )
 
     downtime_meta: Dict[str, Any] = {}
     resource_pool_meta: Dict[str, Any] = {}

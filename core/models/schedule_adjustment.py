@@ -155,6 +155,9 @@ class ScheduleAdjustmentScenario:
     issue_count: int = 0
     issues_json: Optional[str] = None
     row_count: int = 0
+    execution_snapshot_revision: Optional[str] = None
+    execution_snapshot_op_ids: Optional[str] = None
+    execution_snapshot_op_count: int = 0
     created_by: Optional[str] = None
     published_version: Optional[int] = None
     published_by: Optional[str] = None
@@ -179,6 +182,9 @@ class ScheduleAdjustmentScenario:
             issue_count=parse_int(get(row, "issue_count"), default=0) or 0,
             issues_json=_text_or_none(get(row, "issues_json")),
             row_count=parse_int(get(row, "row_count"), default=0) or 0,
+            execution_snapshot_revision=_text_or_none(get(row, "execution_snapshot_revision")),
+            execution_snapshot_op_ids=_text_or_none(get(row, "execution_snapshot_op_ids")),
+            execution_snapshot_op_count=parse_int(get(row, "execution_snapshot_op_count"), default=0) or 0,
             created_by=_text_or_none(get(row, "created_by")),
             published_version=parse_int(get(row, "published_version"), default=None),
             published_by=_text_or_none(get(row, "published_by")),

@@ -680,8 +680,8 @@ items:
     depends_on_reasons:
       reschedule-minimum-execution-guardrails: 完整重排要复用最小护栏已经落地的开工固定、完工剔除、普通重排输入读取和落库前最小冲突检查；完整执行事实快照、scenario 保存快照和 scenario 发布冲突检查在本条新增，不能提前塞进最小护栏。
       shop-exception-feedback: 完整重排要处理暂停、异常、影响时间和建议重排，必须等这些现场事实已经能被记录和聚合。
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-27-reschedule-respects-execution-facts
     minimal_loop: false
     primary_paths:
       - core/services/scheduler/run/schedule_input_collector.py
@@ -738,7 +738,7 @@ items:
       - 图排程 fixed_op_ids 也尊重执行事实
       - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
       - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_reschedule_execution_facts.py tests/regression_scheduler_reschedule_execution_minimum_guardrails.py tests/regression_gantt_adjustment_publish_execution_revision.py
-    notes: 这条依赖执行事件、状态读模型、最小重排护栏和异常反馈；不再被复盘页面阻塞。
+    notes: 已完成完整执行事实接入；普通重排、候选比较、多起点、局部搜索、图排程 ready queue、scenario 保存和 scenario 发布均使用执行事实快照，冲突时不写正式计划。
 
   - slug: aps-three-gap-docs-quality-gate
     title: 文档、测试和 Win7 离线验收收口

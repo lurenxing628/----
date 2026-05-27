@@ -3,7 +3,7 @@ doc_type: architecture
 slug: ui-gantt
 status: current
 created: 2026-05-22
-last_reviewed: 2026-05-25
+last_reviewed: 2026-05-27
 tags: [scheduler, gantt, frontend, readonly, vendor, scenario-preview]
 ---
 
@@ -84,7 +84,7 @@ tags: [scheduler, gantt, frontend, readonly, vendor, scenario-preview]
 - 不写 `ScheduleCandidate*`。
 - 不改变默认甘特图、周计划、资源排班和报表的正式结果口径。
 
-`POST /scheduler/gantt/adjustments/save-scenario` 会重新执行 Draft 校验。只有 `valid` 和 `warning` 可以保存；`blocked` 会被拒绝。保存成功后 Draft 状态变成 `saved_scenario`，返回 `scenario_id` 和只读甘特图预览链接。
+`POST /scheduler/gantt/adjustments/save-scenario` 会重新执行 Draft 校验。只有 `valid` 和 `warning` 可以保存；`blocked` 会被拒绝。保存成功后 Draft 状态变成 `saved_scenario`，接口只返回模拟方案名称、服务端确认的保存人、中文消息和只读甘特图预览链接；`scenario_id` 只保留在预览链接里作为程序传参，不作为普通 JSON 字段直接暴露。
 
 只读甘特图支持显式 `scenario_id` 预览：
 
@@ -112,11 +112,13 @@ tags: [scheduler, gantt, frontend, readonly, vendor, scenario-preview]
 - 必须填写正式采用原因。
 - 发布前重新校验来源 Draft，且只允许 `saved_scenario` 状态。
 - 发布前要求 Scenario 的基准版本仍然是当前最新正式版本。
+- 发布前用保存 Scenario 时的同一批工序复算执行快照；现场状态已经变化时，拒绝发布并回滚。
 - 同一事务里分配新版本号、复制 Scenario 行到 `Schedule`、写 `ScheduleHistory`、把 Scenario 和 Draft 标为 `published`。
 - 同一事务里写 `OperationLogs`，记录基准版本、新版本、Scenario、Draft、发布人、原因、调整数量和校验结果。
-- 发布人来自服务端可信上下文；当前没有登录/权限体系时使用 `system`，不会接受客户端自报姓名作为审计身份。
+- 发布人来自服务端可信上下文；不会接受客户端自报姓名作为审计身份。
 - `OperationLogs` 写入属于发布事务；日志失败时整次发布回滚。
 - 不原地修改旧 `Schedule` 版本，不复用版本号，不写 `ScheduleCandidate*`。
+- 成功响应只返回新正式版本、服务端确认的发布人、采用原因、中文消息和正式版本查看链接，不返回 `scenario_id`、`source_draft_id` 或执行快照字段。
 
 当前页面仍不开放可点击的正式采用按钮；接口只作为后端能力存在，页面没有正式采用按钮。正式采用成功后调用方应跳转到 `/scheduler/gantt?version=<new_version>&plan_role=adopted`，不要继续携带 `scenario_id`。
 
@@ -127,3 +129,4 @@ tags: [scheduler, gantt, frontend, readonly, vendor, scenario-preview]
 ## 9. 变更日志
 
 - 2026-05-25：刷新 Scenario 预览的用户可见口径，明确 `scenario_id / plan_role` 等字段只作为 URL、隐藏字段和服务端参数使用；页面、导出文件名、工作簿摘要和提示语使用模拟预览名称或“模拟预览（未命名）”，不直接展示内部编号。
+- 2026-05-27：补充 Scenario 保存和正式采用的执行快照边界；保存和发布成功响应改为用户可见白名单字段，内部追踪字段只留在链接、日志和开发测试追溯里。

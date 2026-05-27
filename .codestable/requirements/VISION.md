@@ -1,6 +1,6 @@
 ---
 doc_type: requirements-index
-last_reviewed: 2026-05-25
+last_reviewed: 2026-05-27
 ---
 
 # APS 能力愿景索引
@@ -10,12 +10,12 @@ last_reviewed: 2026-05-25
 ## 当前有效
 
 - [只读甘特图结果查看能力](gantt-readonly-result-view.md) — 调度员可以安全查看正式排产结果，不会误以为拖动任务条已经改了计划。
+- [记录车间实际开工完工和异常](shop-floor-execution-feedback.md) — 让现场实际开工、完工和异常反馈独立记录，不混进原来的计划时间。
 
 ## 未来愿景
 
 - [看懂排产为什么晚了](schedule-delay-diagnosis.md) — 让计划员看懂哪些批次晚了、证据是什么、下一步该先查哪里。
 - [把几套排程方案讲成人能看懂的对比](candidate-comparison-business-view.md) — 把多套排程候选方案翻成业务能看懂的推荐、差值和查看入口。
-- [记录车间实际开工完工和异常](shop-floor-execution-feedback.md) — 让现场实际开工、完工和异常反馈独立记录，不混进原来的计划时间。
 
 ## 已过时
 
