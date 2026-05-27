@@ -32,7 +32,7 @@ steps:
   - slug: adversarial-review-loop
     title: 对抗性审核和阻塞修复
     status: done
-    exit_signal: 初审发现计划设备为空可绕过匹配校验，已修复并经复审确认无阻塞。
+    exit_signal: 初审发现计划设备为空可绕过匹配校验，已修复并经复审确认无阻塞；推送前架构门禁发现 viewmodel 越界依赖，已移回 route 层并完成同范围复审。
 
 checks:
   - 资源派工页出现“现场反馈”入口和任务卡。

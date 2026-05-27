@@ -32,7 +32,7 @@ steps:
   - slug: adversarial-review-loop
     title: 对抗性审核和阻塞修复
     status: done
-    exit_signal: 第一轮复审发现 CodeStable 回写缺失、提交隔离风险和两个测试缺口；已补回写、补测试，后续进入第二轮复审。
+    exit_signal: 第一轮复审发现 CodeStable 回写缺失、提交隔离风险和两个测试缺口；已补回写、补测试，并完成同范围第二轮复审，结论无阻塞。
 
 checks:
   - 设备甘特图、人员甘特图、周计划、资源排班跳转继续带 version 和 plan_role。

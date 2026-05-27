@@ -32,6 +32,9 @@ created: 2026-05-27
 - 第一轮发现 1 个阻塞项：正式 `Schedule.machine_id` 为空时，开工校验会跳过设备匹配。已修复为计划设备为空也返回 `schedule_mismatch`，并补回归测试。
 - 第一轮还给出若干非阻塞增强，已补成功返回结构、数量非法值、测试 header 只在测试环境有效、普通 data 递归脱敏等测试。
 - 修复后复审使用 2 个子代理，分别复查开工/完工校验和普通 data 脱敏/页面边界；结论均为 OK，无阻塞项。
+- 第一次推送前门禁又发现 1 个架构阻塞：`web/viewmodels` 层不应导入 service、错误基础设施或共享字段映射；上一版把现场反馈错误响应包装、HTTP 状态码和字段中文名放进了 viewmodel，越过了 ViewModel 只整理页面数据的边界。
+- 该架构阻塞已在提交 `673bb066 修复第9项现场反馈视图层边界` 中修复：错误响应包装移回 `scheduler_resource_dispatch` route 层，`scheduler_resource_dispatch_execution` viewmodel 只保留任务卡、动作标签和成功返回数据整理。
+- 架构阻塞修复后已再次派子代理 `019e6724-4211-7bb1-b73b-6d76b3a23265` 做同范围复审，重点检查 viewmodel 边界、反馈 route、资源派工契约和页面数据脱敏；结论 OK，无阻塞项。
 
 ## 验证
 
@@ -41,6 +44,8 @@ created: 2026-05-27
   - 结果：`5 passed`
 - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_resource_dispatch_contract.py tests/regression_operation_execution_feedback_routes.py tests/regression_frontend_offline_static_assets.py tests/regression_resource_dispatch_partial_overdue_summary_surfaces_warning.py`
   - 结果：`21 passed`
+- `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_architecture_fitness.py::test_viewmodels_do_not_import_flask_or_services_or_repositories_or_routes tests/regression_scheduler_candidate_resource_dispatch_contract.py tests/regression_operation_execution_feedback_routes.py tests/regression_frontend_offline_static_assets.py tests/regression_resource_dispatch_partial_overdue_summary_surfaces_warning.py`
+  - 结果：`22 passed`
 - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_py38plus_syntax.py --fail-on-hit core/services/scheduler/resource_dispatch_execution_service.py core/services/scheduler/operation_execution_feedback_service.py web/routes/domains/scheduler/scheduler_resource_dispatch.py web/routes/domains/scheduler/scheduler_resource_dispatch_query.py web/bootstrap/request_services.py web/viewmodels/scheduler_resource_dispatch_execution.py tests/regression_operation_execution_feedback_routes.py tests/regression_scheduler_candidate_resource_dispatch_contract.py`
   - 结果：未发现 Python 3.8.10 之后才支持的语法或注解风险。
 
