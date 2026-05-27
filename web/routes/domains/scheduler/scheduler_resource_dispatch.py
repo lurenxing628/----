@@ -5,12 +5,14 @@ from typing import Any
 
 from flask import current_app, flash, g, jsonify, redirect, request, send_file
 
-from core.infrastructure.errors import AppError, BusinessError, ErrorCode, error_response
+from core.infrastructure.errors import AppError, BusinessError, ErrorCode, app_error_http_status, error_response
 from core.models.operation_execution_event import EXECUTION_EVENT_FINISH, EXECUTION_EVENT_START
 from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
 from core.services.common.excel_audit import log_excel_export
 from core.services.scheduler.operation_execution_feedback_service import ExecutionFeedbackContext
+from core.services.scheduler.operation_execution_labels import execution_action_label
 from core.services.scheduler.resource_dispatch_excel import build_resource_dispatch_workbook
+from core.shared.field_labels import display_field_label
 from web.error_boundary import json_error_response, user_visible_app_error_message
 from web.routes.history_summary_logging import log_history_version_option_parse_warnings
 from web.ui_mode import render_ui_template as render_template
@@ -24,8 +26,6 @@ from web.viewmodels.scheduler_resource_dispatch_execution import (
     build_execution_payload,
     build_task_card,
     execution_result_payload,
-    feedback_not_enabled_payload,
-    preserve_execution_error_response,
 )
 
 from .scheduler_bp import bp
@@ -54,6 +54,30 @@ def _execution_svc() -> Any:
 
 def _feedback_svc() -> Any:
     return g.services.operation_execution_feedback_service
+
+
+def _execution_error_response(exc: AppError, *, action: str = None):
+    details = dict(exc.details or {})
+    if "field" in details:
+        details.setdefault("field_label", display_field_label(details.get("field")))
+    if action and "action" not in details:
+        details["action"] = action
+    if "action" in details:
+        details.setdefault("action_label", execution_action_label(details.get("action")))
+    payload = error_response(exc.code, exc.message, details=details or None)
+    return payload, app_error_http_status(exc.code)
+
+
+def _feedback_not_enabled_payload(action: str) -> dict:
+    return error_response(
+        ErrorCode.SCHEDULE_CONFLICT,
+        "现场反馈保护还没开启，暂不能提交开工或完工。",
+        details={
+            "reason": "feedback_not_enabled",
+            "action": action,
+            "action_label": execution_action_label(action),
+        },
+    )
 
 
 def _is_scenario_id_error(exc: AppError) -> bool:
@@ -122,7 +146,7 @@ def resource_dispatch_execution_data():
         payload = build_execution_payload(_execution_svc().get_execution_context(**_request_kwargs()))
         return jsonify({"success": True, "data": payload})
     except AppError as exc:
-        payload, status = preserve_execution_error_response(exc)
+        payload, status = _execution_error_response(exc)
         return jsonify(payload), status
     except Exception:
         current_app.logger.exception("资源排班现场反馈任务卡生成失败")
@@ -190,7 +214,7 @@ def _ensure_current_official_feedback_context(context: ExecutionFeedbackContext,
 def _reject_if_feedback_disabled(action: str):
     if _execution_feedback_write_allowed():
         return None
-    return jsonify(feedback_not_enabled_payload(action)), 409
+    return jsonify(_feedback_not_enabled_payload(action)), 409
 
 
 def _task_card_for_result(context: ExecutionFeedbackContext, result: Any) -> dict:
@@ -233,7 +257,7 @@ def _record_execution_feedback(op_id: int, action: str):
         task_card = _task_card_for_result(context, result)
         return jsonify({"success": True, "data": execution_result_payload(result, task_card)})
     except AppError as exc:
-        payload, status = preserve_execution_error_response(exc, action=action)
+        payload, status = _execution_error_response(exc, action=action)
         return jsonify(payload), status
     except Exception:
         current_app.logger.exception("现场反馈提交失败")

@@ -2,18 +2,26 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Mapping, Optional
 
-from core.infrastructure.errors import AppError, ErrorCode, app_error_http_status, error_response
 from core.models.operation_execution_event import (
     EXECUTION_ACTION_REPORT_EXCEPTION,
+    EXECUTION_EVENT_EXCEPTION,
     EXECUTION_EVENT_FINISH,
+    EXECUTION_EVENT_PAUSE,
+    EXECUTION_EVENT_RESUME,
     EXECUTION_EVENT_START,
 )
 from core.models.operation_execution_state import OperationExecutionState
-from core.services.scheduler.operation_execution_labels import event_type_to_action, execution_action_label
-from core.shared.field_labels import display_field_label
 
 _FEEDBACK_DISABLED_REASON = "现场反馈保护还没开启，暂不能提交开工或完工。"
 _NOT_CURRENT_OFFICIAL_REASON = "当前不是最新正式采用方案，不能提交现场反馈。"
+_ACTION_LABELS = {
+    EXECUTION_EVENT_START: "开工",
+    EXECUTION_EVENT_PAUSE: "暂停",
+    EXECUTION_EVENT_RESUME: "继续生产",
+    EXECUTION_EVENT_FINISH: "完工",
+    EXECUTION_EVENT_EXCEPTION: "报异常",
+    EXECUTION_ACTION_REPORT_EXCEPTION: "报异常",
+}
 
 
 def _text(value: Any) -> str:
@@ -32,6 +40,17 @@ def _resource_label(resource_id: Any, resource_name: Any) -> str:
     rid = _text(resource_id)
     name = _text(resource_name)
     return f"{rid} {name}".strip() if rid else name
+
+
+def _execution_action_label(value: Any) -> str:
+    return _ACTION_LABELS.get(_text(value), "操作未识别")
+
+
+def _event_type_to_action(value: Any) -> str:
+    text = _text(value)
+    if text == EXECUTION_EVENT_EXCEPTION:
+        return EXECUTION_ACTION_REPORT_EXCEPTION
+    return text
 
 
 def _op_name(row: Mapping[str, Any]) -> str:
@@ -85,7 +104,7 @@ def build_available_actions(*, can_write: bool, feedback_write_enabled: bool, st
         actions.append(
             {
                 "action": action,
-                "label": execution_action_label(action),
+                "label": _execution_action_label(action),
                 "enabled": enabled,
                 "disabled_reason": _action_disabled_reason(
                     enabled=enabled,
@@ -175,13 +194,13 @@ def build_execution_payload(context: Mapping[str, Any]) -> Dict[str, Any]:
 
 def event_payload(event: Any) -> Dict[str, Any]:
     event_type = _text(getattr(event, "event_type", ""))
-    action = event_type_to_action(event_type)
+    action = _event_type_to_action(event_type)
     return {
         "event_id": getattr(event, "id", None),
         "op_id": getattr(event, "op_id", None),
         "schedule_id": getattr(event, "schedule_id", None),
         "action": action,
-        "action_label": execution_action_label(action),
+        "action_label": _execution_action_label(action),
         "event_time": getattr(event, "event_time", None),
         "created_by": getattr(event, "created_by", None),
         "remark": getattr(event, "remark", None),
@@ -209,35 +228,9 @@ def execution_result_payload(result: Any, task_card: Dict[str, Any]) -> Dict[str
     }
 
 
-def feedback_not_enabled_payload(action: str) -> Dict[str, Any]:
-    return error_response(
-        ErrorCode.SCHEDULE_CONFLICT,
-        "现场反馈保护还没开启，暂不能提交开工或完工。",
-        details={
-            "reason": "feedback_not_enabled",
-            "action": action,
-            "action_label": execution_action_label(action),
-        },
-    )
-
-
-def preserve_execution_error_response(exc: AppError, *, action: Optional[str] = None):
-    details = dict(exc.details or {})
-    if "field" in details:
-        details.setdefault("field_label", display_field_label(details.get("field")))
-    if action and "action" not in details:
-        details["action"] = action
-    if "action" in details:
-        details.setdefault("action_label", execution_action_label(details.get("action")))
-    payload = error_response(exc.code, exc.message, details=details or None)
-    return payload, app_error_http_status(exc.code)
-
-
 __all__ = [
     "build_execution_payload",
     "build_task_card",
     "event_payload",
     "execution_result_payload",
-    "feedback_not_enabled_payload",
-    "preserve_execution_error_response",
 ]
