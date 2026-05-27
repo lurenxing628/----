@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from core.infrastructure.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager
@@ -21,7 +21,7 @@ _DIRTY_FIELD_LABELS = {
 
 
 def _dirty_field_label(field: str) -> str:
-    return _DIRTY_FIELD_LABELS.get(str(field or "").strip(), str(field or "").strip())
+    return _DIRTY_FIELD_LABELS.get(str(field or "").strip(), "系统配置项")
 
 
 def _normalize_yes_no(value: Any) -> str:
@@ -58,7 +58,7 @@ class SystemConfigSnapshot:
     auto_log_cleanup_enabled: str
     auto_log_cleanup_keep_days: int
     auto_log_cleanup_interval_minutes: int
-    dirty_fields: list[str]
+    dirty_fields: List[str]
     dirty_reasons: Dict[str, str]
 
     def to_dict(self) -> Dict[str, Any]:
@@ -104,7 +104,7 @@ class SystemConfigService:
         self.repo = SystemConfigRepository(conn, logger=logger)
 
     def _read_snapshot(self, backup_keep_days_default: int) -> SystemConfigSnapshot:
-        dirty_fields: list[str] = []
+        dirty_fields: List[str] = []
         dirty_reasons: Dict[str, str] = {}
 
         def _mark_dirty(key: str, reason: str) -> None:

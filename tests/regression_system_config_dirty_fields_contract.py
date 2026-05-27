@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
+from pathlib import Path
 
 
 def find_repo_root() -> str:
@@ -19,7 +20,7 @@ def main() -> None:
         sys.path.insert(0, repo_root)
 
     from core.infrastructure.database import ensure_schema, get_connection
-    from core.services.system.system_config_service import SystemConfigService
+    from core.services.system.system_config_service import SystemConfigService, _dirty_field_label
 
     tmpdir = tempfile.mkdtemp(prefix="aps_reg_system_cfg_dirty_")
     db_path = os.path.join(tmpdir, "aps_test.db")
@@ -74,6 +75,12 @@ def main() -> None:
     assert "本次先按最小值 1 处理" in str(dirty_reasons.get("auto_backup_interval_minutes") or ""), dirty_reasons
     assert "本次先按最大值 365 处理" in str(dirty_reasons.get("auto_backup_keep_days") or ""), dirty_reasons
     assert "本次先按 60 处理" in str(dirty_reasons.get("auto_log_cleanup_interval_minutes") or ""), dirty_reasons
+    assert _dirty_field_label("new_internal_config_key") == "系统配置项"
+
+    for rel_path in ("templates/system/backup.html", "templates/system/logs.html"):
+        text = Path(repo_root, rel_path).read_text(encoding="utf-8")
+        assert "settings.dirty_field_labels or settings.dirty_fields" not in text, rel_path
+        assert "dirty_labels | join" in text, rel_path
 
     print("OK")
 
