@@ -204,6 +204,15 @@ def normalize_dispatch_row(
         "is_cross_team": is_cross_team,
         "is_cross_day": st.date() != et.date(),
         "is_overdue": bool(batch_id and batch_id in overdue_set),
+        "execution_status_label": _text(row.get("execution_status_label")) or "待开工",
+        "latest_exception_reason_label": _text(row.get("latest_exception_reason_label")) or "暂无异常",
+        "latest_exception_severity_label": _text(row.get("latest_exception_severity_label")),
+        "latest_exception_impact_minutes_label": _text(row.get("latest_exception_impact_minutes_label")),
+        "latest_exception_affected_machine_label": _text(row.get("latest_exception_affected_machine_label")),
+        "latest_exception_affected_operator_label": _text(row.get("latest_exception_affected_operator_label")),
+        "latest_exception_handling_status_label": _text(row.get("latest_exception_handling_status_label")),
+        "latest_exception_suggest_reschedule_label": _text(row.get("latest_exception_suggest_reschedule_label")),
+        "latest_exception_remark": _text(row.get("latest_exception_remark")),
     }
     return BuildOutcome.from_collector(normalized, collector)
 

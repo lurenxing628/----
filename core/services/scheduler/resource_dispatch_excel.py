@@ -70,6 +70,15 @@ def _detail_headers() -> List[str]:
         "锁定状态",
         "是否跨天",
         "是否超期",
+        "现场状态",
+        "最近异常原因",
+        "严重程度",
+        "预计影响时间",
+        "影响设备",
+        "影响人员",
+        "处理状态",
+        "是否建议重排",
+        "情况说明",
     ]
 
 
@@ -113,6 +122,15 @@ def _build_detail_row(row: Dict[str, Any]) -> List[Any]:
         _lock_status_label(row),
         _yes_no_label(row.get("is_cross_day")),
         _yes_no_label(row.get("is_overdue")),
+        _first_present(row, "execution_status_label", default="待开工"),
+        _first_present(row, "latest_exception_reason_label", default="暂无异常"),
+        _first_present(row, "latest_exception_severity_label", default=""),
+        _first_present(row, "latest_exception_impact_minutes_label", default=""),
+        _first_present(row, "latest_exception_affected_machine_label", default=""),
+        _first_present(row, "latest_exception_affected_operator_label", default=""),
+        _first_present(row, "latest_exception_handling_status_label", default=""),
+        _first_present(row, "latest_exception_suggest_reschedule_label", default=""),
+        _first_present(row, "latest_exception_remark", default=""),
     ]
 
 

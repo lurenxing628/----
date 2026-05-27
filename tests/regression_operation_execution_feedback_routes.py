@@ -305,13 +305,16 @@ def test_controlled_start_finish_posts_return_refresh_contract(tmp_path, monkeyp
         "latest_exception_affected_operator_label",
         "latest_exception_handling_status_label",
         "latest_exception_suggest_reschedule_label",
+        "latest_exception_remark",
         "updated_at",
         "available_actions",
         "unavailable_reasons",
     ):
         assert key in start_data["task_card"]
     assert start_data["task_card"]["current_status_label"] == "生产中"
-    assert start_data["task_card"]["available_actions"][1]["label"] == "完工"
+    action_by_name = {item["action"]: item for item in start_data["task_card"]["available_actions"]}
+    assert action_by_name["finish"]["label"] == "完工"
+    assert action_by_name["finish"]["enabled"] is True
 
     finish_payload = _base_payload(
         card,

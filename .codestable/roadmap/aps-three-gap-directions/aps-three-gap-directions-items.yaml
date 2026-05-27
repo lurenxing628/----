@@ -561,8 +561,8 @@ items:
     depends_on: [reschedule-minimum-execution-guardrails]
     depends_on_reasons:
       reschedule-minimum-execution-guardrails: 暂停和异常会影响后续重排，必须先有开工/完工的最小护栏，避免异常反馈上线后普通排程仍随意移动现场事实。
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-27-shop-exception-feedback
     minimal_loop: false
     primary_paths:
       - templates/scheduler/resource_dispatch.html

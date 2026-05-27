@@ -6,7 +6,13 @@ from typing import Any
 from flask import current_app, flash, g, jsonify, redirect, request, send_file
 
 from core.infrastructure.errors import AppError, BusinessError, ErrorCode, app_error_http_status, error_response
-from core.models.operation_execution_event import EXECUTION_EVENT_FINISH, EXECUTION_EVENT_START
+from core.models.operation_execution_event import (
+    EXECUTION_ACTION_REPORT_EXCEPTION,
+    EXECUTION_EVENT_FINISH,
+    EXECUTION_EVENT_PAUSE,
+    EXECUTION_EVENT_RESUME,
+    EXECUTION_EVENT_START,
+)
 from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
 from core.services.common.excel_audit import log_excel_export
 from core.services.scheduler.operation_execution_feedback_service import ExecutionFeedbackContext
@@ -25,6 +31,7 @@ from web.viewmodels.scheduler_resource_dispatch import (
 from web.viewmodels.scheduler_resource_dispatch_execution import (
     build_execution_payload,
     build_task_card,
+    event_payload,
     execution_result_payload,
 )
 
@@ -82,7 +89,7 @@ def _execution_error_can_retry(reason: Any) -> bool:
 def _feedback_not_enabled_payload(action: str) -> dict:
     return error_response(
         ErrorCode.SCHEDULE_CONFLICT,
-        "现场反馈保护还没开启，暂不能提交开工或完工。",
+        "现场反馈保护还没开启，暂不能提交现场反馈。",
         details={
             "reason": "feedback_not_enabled",
             "action": action,
@@ -163,6 +170,46 @@ def resource_dispatch_execution_data():
     except Exception:
         current_app.logger.exception("资源排班现场反馈任务卡生成失败")
         return jsonify(error_response(ErrorCode.UNKNOWN_ERROR, "现场反馈任务卡生成失败，请稍后重试。")), 500
+
+
+@bp.get("/resource-dispatch/execution/<int:op_id>/events")
+def resource_dispatch_execution_events(op_id: int):
+    try:
+        card_payload = build_execution_payload(_execution_svc().get_execution_context(**_request_kwargs()))
+        task_card = None
+        for item in card_payload.get("tasks") or []:
+            if int(item.get("op_id") or 0) == int(op_id):
+                task_card = item
+                break
+        if task_card is None:
+            raise AppError(
+                ErrorCode.NOT_FOUND,
+                "当前查询条件下找不到这道工序的现场反馈记录，请刷新后重试。",
+                details={"reason": "not_found"},
+            )
+        states = _feedback_svc().get_execution_state([int(op_id)])
+        state = states.get(int(op_id))
+        events = _feedback_svc().list_execution_events(int(op_id))
+        machine_labels, operator_labels = _feedback_svc().resource_labels_for_events(events)
+        return jsonify(
+            {
+                "success": True,
+                "data": {
+                    "op_id": int(op_id),
+                    "task_card": task_card,
+                    "events": [
+                        event_payload(event, state, machine_labels=machine_labels, operator_labels=operator_labels)
+                        for event in events
+                    ],
+                },
+            }
+        )
+    except AppError as exc:
+        payload, status = _execution_error_response(exc)
+        return jsonify(payload), status
+    except Exception:
+        current_app.logger.exception("现场反馈记录加载失败")
+        return jsonify(error_response(ErrorCode.UNKNOWN_ERROR, "现场反馈记录加载失败，请稍后重试。")), 500
 
 
 def _json_payload() -> dict:
@@ -246,13 +293,40 @@ def _record_execution_feedback(op_id: int, action: str):
                 machine_id=payload.get("machine_id"),
                 remark=payload.get("remark"),
             )
-        else:
+        elif action == EXECUTION_EVENT_FINISH:
             result = _feedback_svc().finish_operation(
                 context,
                 event_time=payload.get("event_time"),
                 quantity_done=payload.get("quantity_done"),
                 quantity_scrapped=payload.get("quantity_scrapped"),
                 remark=payload.get("remark"),
+            )
+        elif action == EXECUTION_EVENT_PAUSE:
+            result = _feedback_svc().pause_operation(
+                context,
+                event_time=payload.get("event_time"),
+                reason_code=payload.get("reason_code"),
+                remark=payload.get("remark"),
+            )
+        elif action == EXECUTION_EVENT_RESUME:
+            result = _feedback_svc().resume_operation(
+                context,
+                event_time=payload.get("event_time"),
+                remark=payload.get("remark"),
+            )
+        else:
+            result = _feedback_svc().report_exception(
+                context,
+                event_time=payload.get("event_time"),
+                reason_code=payload.get("reason_code"),
+                severity=payload.get("severity"),
+                impact_minutes=payload.get("impact_minutes"),
+                affected_machine_id=payload.get("affected_machine_id"),
+                affected_operator_id=payload.get("affected_operator_id"),
+                handling_status=payload.get("handling_status") or "new",
+                suggest_reschedule=payload.get("suggest_reschedule"),
+                remark=payload.get("remark"),
+                reason_detail=payload.get("reason_detail"),
             )
         task_card = _task_card_for_result(context, result)
         return jsonify({"success": True, "data": execution_result_payload(result, task_card)})
@@ -272,6 +346,21 @@ def resource_dispatch_execution_start(op_id: int):
 @bp.post("/resource-dispatch/execution/<int:op_id>/finish")
 def resource_dispatch_execution_finish(op_id: int):
     return _record_execution_feedback(op_id, EXECUTION_EVENT_FINISH)
+
+
+@bp.post("/resource-dispatch/execution/<int:op_id>/pause")
+def resource_dispatch_execution_pause(op_id: int):
+    return _record_execution_feedback(op_id, EXECUTION_EVENT_PAUSE)
+
+
+@bp.post("/resource-dispatch/execution/<int:op_id>/resume")
+def resource_dispatch_execution_resume(op_id: int):
+    return _record_execution_feedback(op_id, EXECUTION_EVENT_RESUME)
+
+
+@bp.post("/resource-dispatch/execution/<int:op_id>/report-exception")
+def resource_dispatch_execution_report_exception(op_id: int):
+    return _record_execution_feedback(op_id, EXECUTION_ACTION_REPORT_EXCEPTION)
 
 
 @bp.get("/resource-dispatch/export")

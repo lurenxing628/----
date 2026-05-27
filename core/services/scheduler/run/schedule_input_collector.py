@@ -8,7 +8,12 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from core.infrastructure.errors import AppError, ErrorCode, ValidationError
 from core.models import Batch, BatchOperation
 from core.models.enums import BatchStatus, ReadyStatus, SourceType, YesNo
-from core.models.operation_execution_event import EXECUTION_STATUS_COMPLETED, EXECUTION_STATUS_PROCESSING
+from core.models.operation_execution_event import (
+    EXECUTION_STATUS_COMPLETED,
+    EXECUTION_STATUS_EXCEPTION,
+    EXECUTION_STATUS_PAUSED,
+    EXECUTION_STATUS_PROCESSING,
+)
 from core.services.common.build_outcome import BuildOutcome
 from core.services.scheduler.execution_fact_provider import ExecutionFact, ExecutionFactProvider
 
@@ -298,13 +303,24 @@ def _collect_execution_guardrails(
     fixed_op_ids = {
         int(op_id)
         for op_id, fact in facts.items()
-        if str(fact.actual_status or "").strip().lower() == EXECUTION_STATUS_PROCESSING
+        if str(fact.actual_status or "").strip().lower() in (EXECUTION_STATUS_PROCESSING, EXECUTION_STATUS_PAUSED)
     }
     completed_op_ids = {
         int(op_id)
         for op_id, fact in facts.items()
         if str(fact.actual_status or "").strip().lower() == EXECUTION_STATUS_COMPLETED
     }
+    exception_op_ids = {
+        int(op_id)
+        for op_id, fact in facts.items()
+        if str(fact.actual_status or "").strip().lower() == EXECUTION_STATUS_EXCEPTION
+    }
+    if exception_op_ids:
+        raise AppError(
+            ErrorCode.SCHEDULE_CONFLICT,
+            "存在异常中的工序，请先处理现场异常后再重新排程。本次没有写入新排程。",
+            details={"reason": "execution_exception_blocks_auto_reschedule", "op_ids": sorted(exception_op_ids)},
+        )
     guarded_op_ids = set(fixed_op_ids) | set(completed_op_ids)
     all_revisions = {
         int(op_id): fact.state_revision

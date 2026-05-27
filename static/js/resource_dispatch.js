@@ -87,6 +87,31 @@
     return items.length ? items.join(" ") : '<span class="muted">-</span>';
   }
 
+  function latestExceptionSummary(row) {
+    const reason = trim(row && row.latest_exception_reason_label);
+    if (!reason || reason === "暂无异常") return "暂无异常";
+    const parts = [reason];
+    const severity = trim(row && row.latest_exception_severity_label);
+    const impact = trim(row && row.latest_exception_impact_minutes_label);
+    const handling = trim(row && row.latest_exception_handling_status_label);
+    const suggest = trim(row && row.latest_exception_suggest_reschedule_label);
+    const remark = trim(row && row.latest_exception_remark);
+    if (severity) parts.push(severity);
+    if (impact) parts.push(impact);
+    if (handling) parts.push(handling);
+    if (suggest) parts.push(suggest);
+    if (remark) parts.push(remark);
+    return parts.join("；");
+  }
+
+  function affectedResourceSummary(row) {
+    const reason = trim(row && row.latest_exception_reason_label);
+    if (!reason || reason === "暂无异常") return "暂无异常";
+    const machine = trim(row && row.latest_exception_affected_machine_label) || "未填写影响设备";
+    const operator = trim(row && row.latest_exception_affected_operator_label) || "未填写影响人员";
+    return machine + "；" + operator;
+  }
+
   const pageEl = $("rdPage");
   if (!pageEl) return;
 
@@ -175,7 +200,7 @@
   function buildDetailRowsHtml(rows, emptyText) {
     const list = Array.isArray(rows) ? rows : [];
     if (!list.length) {
-      return '<tr><td colspan="11" class="muted">' + escapeHtml(emptyText || "暂无排班任务。") + '</td></tr>';
+      return '<tr><td colspan="14" class="muted">' + escapeHtml(emptyText || "暂无排班任务。") + '</td></tr>';
     }
     const html = [];
     for (let i = 0; i < list.length; i++) {
@@ -193,6 +218,9 @@
           '<td>' + relationBadge(row.team_relation_label) + '</td>' +
           '<td>' + escapeHtml(sourceLabel(row.source, row.source_label)) + '</td>' +
           '<td>' + renderFlags(row) + '</td>' +
+          '<td>' + escapeHtml(row.execution_status_label || "待开工") + '</td>' +
+          fullTextCell(latestExceptionSummary(row), "aps-resource-cell") +
+          fullTextCell(affectedResourceSummary(row), "aps-resource-cell") +
         '</tr>'
       );
     }
@@ -252,6 +280,88 @@
     return html.join(" ");
   }
 
+  const EXECUTION_REASON_CODES = {
+    "设备问题": "equipment",
+    "人员问题": "person",
+    "物料问题": "material",
+    "质量问题": "quality",
+    "工艺问题": "process",
+    "外协问题": "external",
+    "其他": "other"
+  };
+  const EXECUTION_SEVERITY_CODES = {
+    "轻微": "low",
+    "一般": "medium",
+    "严重": "high",
+    "紧急": "critical"
+  };
+  const EXECUTION_HANDLING_CODES = {
+    "刚上报": "new",
+    "处理中": "checking",
+    "等待条件": "waiting",
+    "已处理": "handled"
+  };
+
+  function executionCodeFromChinese(input, mapping) {
+    const text = trim(input);
+    return mapping[text] || "";
+  }
+
+  function executionPrompt(message, defaultValue) {
+    if (!window.prompt) return "";
+    const value = window.prompt(message, defaultValue || "");
+    return value === null ? null : trim(value);
+  }
+
+  function executionPromptReason() {
+    const value = executionPrompt("请选择原因：设备问题、人员问题、物料问题、质量问题、工艺问题、外协问题、其他", "");
+    if (value === null) return null;
+    const code = executionCodeFromChinese(value, EXECUTION_REASON_CODES);
+    if (!code) {
+      executionNotice("请选择有效原因，例如设备问题、人员问题、物料问题。");
+      return null;
+    }
+    return code;
+  }
+
+  function executionPromptSeverity() {
+    const value = executionPrompt("请选择严重程度：轻微、一般、严重、紧急", "一般");
+    if (value === null) return null;
+    const code = executionCodeFromChinese(value, EXECUTION_SEVERITY_CODES);
+    if (!code) {
+      executionNotice("请选择有效严重程度，例如一般、严重。");
+      return null;
+    }
+    return code;
+  }
+
+  function renderExecutionExceptionDetails(task) {
+    if (!trim(task && task.latest_exception_reason_label)) return "";
+    const impact = trim(task.latest_exception_impact_minutes_label) || "暂时不知道影响多久";
+    const machine = trim(task.latest_exception_affected_machine_label) || "未填写影响设备";
+    const operator = trim(task.latest_exception_affected_operator_label) || "未填写影响人员";
+    const handling = trim(task.latest_exception_handling_status_label) || "刚上报";
+    const suggest = trim(task.latest_exception_suggest_reschedule_label) || "暂不建议重新排程";
+    const remark = trim(task.latest_exception_remark) || "未填写情况说明";
+    const criticalNotice = trim(task.latest_exception_severity_label) === "紧急"
+      ? '<div class="flash-card flash-warning mt-2">紧急异常，请计划员尽快处理。</div>'
+      : "";
+    return (
+      '<div class="text-meta mt-2">最近异常</div>' +
+      criticalNotice +
+      '<div class="aps-execution-facts aps-execution-exception-facts">' +
+        '<div><span>异常原因</span><strong>' + escapeHtml(task.latest_exception_reason_label || "暂无异常") + '</strong></div>' +
+        '<div><span>严重程度</span><strong>' + escapeHtml(task.latest_exception_severity_label || "未填写严重程度") + '</strong></div>' +
+        '<div><span>预计影响时间</span><strong>' + escapeHtml(impact) + '</strong></div>' +
+        '<div><span>影响设备</span><strong>' + escapeHtml(machine) + '</strong></div>' +
+        '<div><span>影响人员</span><strong>' + escapeHtml(operator) + '</strong></div>' +
+        '<div><span>处理状态</span><strong>' + escapeHtml(handling) + '</strong></div>' +
+        '<div><span>是否建议重排</span><strong>' + escapeHtml(suggest) + '</strong></div>' +
+        '<div><span>情况说明</span><strong>' + escapeHtml(remark) + '</strong></div>' +
+      '</div>'
+    );
+  }
+
   function executionUnavailableReasonText(reasons) {
     if (Array.isArray(reasons)) {
       return reasons.length ? reasons.map(escapeHtml).join("；") : "";
@@ -308,6 +418,7 @@
             '<div><span>实际人员</span><strong>' + escapeHtml(task.actual_operator_label || "暂无") + '</strong></div>' +
           '</div>' +
           (task.last_event_action_label ? '<div class="text-meta mt-1">最近反馈：' + escapeHtml(task.last_event_action_label) + (task.last_event_remark ? '，' + escapeHtml(task.last_event_remark) : '') + '</div>' : '') +
+          renderExecutionExceptionDetails(task) +
           (reasonText ? '<div class="text-meta mt-1">' + reasonText + '</div>' : '') +
           '<div class="aps-execution-actions mt-2">' + renderExecutionActions(task.available_actions, task) + '</div>' +
         '</section>'
@@ -336,6 +447,11 @@
       pad(d.getMinutes()) + ":" +
       pad(d.getSeconds())
     );
+  }
+
+  function executionActionPath(action) {
+    if (action === "report_exception") return "report-exception";
+    return action;
   }
 
   function executionIdentityPayload() {
@@ -378,11 +494,52 @@
     if (action === "start") {
       payload.machine_id = button.getAttribute("data-machine-id") || "";
       payload.operator_id = button.getAttribute("data-operator-id") || "";
+    } else if (action === "pause") {
+      const reason = executionPromptReason();
+      if (reason === null) return null;
+      const detail = executionPrompt("请填写情况说明", "");
+      if (detail === null) return null;
+      payload.reason_code = reason;
+      payload.remark = detail;
+    } else if (action === "resume") {
+      const detail = executionPrompt("请填写情况说明（可留空）", "");
+      if (detail === null) return null;
+      payload.remark = detail;
     } else if (action === "finish") {
       const qty = window.prompt ? window.prompt("请填写完成数量", "") : "";
       if (qty === null) return null;
       payload.quantity_done = qty;
       payload.quantity_scrapped = "";
+    } else if (action === "report_exception") {
+      const reason = executionPromptReason();
+      if (reason === null) return null;
+      const severity = executionPromptSeverity();
+      if (severity === null) return null;
+      const impact = executionPrompt("预计影响多少分钟？不确定可留空", "");
+      if (impact === null) return null;
+      const handling = executionPrompt("请选择处理状态：刚上报、处理中、等待条件、已处理", "刚上报");
+      if (handling === null) return null;
+      const handlingCode = executionCodeFromChinese(handling || "刚上报", EXECUTION_HANDLING_CODES);
+      if (!handlingCode) {
+        executionNotice("请选择有效处理状态，例如刚上报、处理中。");
+        return null;
+      }
+      const affectedMachine = executionPrompt("请填写影响设备编号（可留空）", "");
+      if (affectedMachine === null) return null;
+      const affectedOperator = executionPrompt("请填写影响人员工号（可留空）", "");
+      if (affectedOperator === null) return null;
+      const suggest = executionPrompt("是否建议重新排程？请输入 是 或 否", "否");
+      if (suggest === null) return null;
+      const detail = executionPrompt("请填写情况说明", "");
+      if (detail === null) return null;
+      payload.reason_code = reason;
+      payload.severity = severity;
+      payload.impact_minutes = impact;
+      payload.affected_machine_id = affectedMachine;
+      payload.affected_operator_id = affectedOperator;
+      payload.handling_status = handlingCode;
+      payload.suggest_reschedule = trim(suggest) === "是";
+      payload.remark = detail;
     }
     return payload;
   }
@@ -411,8 +568,15 @@
     if (!button || button.disabled) return;
     const action = trim(button.getAttribute("data-action"));
     const opId = trim(button.getAttribute("data-op-id"));
-    if (action !== "start" && action !== "finish") return;
-    const actionLabel = action === "start" ? "开工" : "完工";
+    const actionLabels = {
+      start: "开工",
+      pause: "暂停",
+      resume: "继续生产",
+      finish: "完工",
+      report_exception: "报异常"
+    };
+    if (!actionLabels[action]) return;
+    const actionLabel = actionLabels[action];
     const createdBy = executionCreatedBy();
     if (createdBy === null) return;
     if (window.confirm && !window.confirm("确认提交" + actionLabel + "反馈吗？")) return;
@@ -421,7 +585,7 @@
     button.disabled = true;
     executionNotice("正在提交" + actionLabel + "反馈，请稍候。");
     try {
-      const resp = await fetch("/scheduler/resource-dispatch/execution/" + encodeURIComponent(opId) + "/" + action, {
+      const resp = await fetch("/scheduler/resource-dispatch/execution/" + encodeURIComponent(opId) + "/" + executionActionPath(action), {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify(payload)
@@ -509,6 +673,9 @@
       '<div>结束：' + escapeHtml(task.end || "") + '</div>',
       '<div>对应资源：' + escapeHtml(meta.counterpart_resource_label || "-") + '</div>',
       '<div>班组关系：' + escapeHtml(meta.team_relation_label || "-") + '</div>',
+      '<div>现场状态：' + escapeHtml(meta.execution_status_label || "待开工") + '</div>',
+      '<div>最近异常：' + escapeHtml(latestExceptionSummary(meta)) + '</div>',
+      '<div>影响资源：' + escapeHtml(affectedResourceSummary(meta)) + '</div>',
       '</div>'
     ];
     return lines.join("");

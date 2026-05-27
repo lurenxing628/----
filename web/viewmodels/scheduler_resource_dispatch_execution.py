@@ -10,9 +10,15 @@ from core.models.operation_execution_event import (
     EXECUTION_EVENT_RESUME,
     EXECUTION_EVENT_START,
 )
+from core.models.operation_execution_labels import (
+    exception_reason_label,
+    handling_status_label,
+    severity_label,
+    suggest_reschedule_label,
+)
 from core.models.operation_execution_state import OperationExecutionState
 
-_FEEDBACK_DISABLED_REASON = "现场反馈保护还没开启，暂不能提交开工或完工。"
+_FEEDBACK_DISABLED_REASON = "现场反馈保护还没开启，暂不能提交现场反馈。"
 _NOT_CURRENT_OFFICIAL_REASON = "当前不是最新正式采用方案，不能提交现场反馈。"
 _ACTION_LABELS = {
     EXECUTION_EVENT_START: "开工",
@@ -53,6 +59,14 @@ def _event_type_to_action(value: Any) -> str:
     return text
 
 
+def _impact_minutes_label(value: Any) -> Optional[str]:
+    try:
+        minutes = int(value)
+    except (TypeError, ValueError):
+        return "暂时不知道影响多久"
+    return f"预计影响 {minutes} 分钟" if minutes >= 0 else "暂时不知道影响多久"
+
+
 def _op_name(row: Mapping[str, Any]) -> str:
     op_code = _text(row.get("op_code"))
     if op_code:
@@ -73,8 +87,14 @@ def _action_enabled(*, action: str, can_write: bool, feedback_write_enabled: boo
         return False
     if action == EXECUTION_EVENT_START:
         return status == "not_started"
+    if action == EXECUTION_EVENT_PAUSE:
+        return status == "processing"
+    if action == EXECUTION_EVENT_RESUME:
+        return status in {"paused", "exception"}
     if action == EXECUTION_EVENT_FINISH:
         return status in {"processing", "paused", "exception"}
+    if action == EXECUTION_ACTION_REPORT_EXCEPTION:
+        return status in {"processing", "paused"}
     return False
 
 
@@ -87,14 +107,26 @@ def _action_disabled_reason(*, enabled: bool, can_write: bool, feedback_write_en
         return _FEEDBACK_DISABLED_REASON
     if action == EXECUTION_EVENT_START:
         return f"当前状态是{status_label}，不能开工。"
+    if action == EXECUTION_EVENT_PAUSE:
+        return f"当前状态是{status_label}，不能暂停。"
+    if action == EXECUTION_EVENT_RESUME:
+        return f"当前状态是{status_label}，不能继续生产。"
     if action == EXECUTION_EVENT_FINISH:
         return f"当前状态是{status_label}，不能完工。"
+    if action == EXECUTION_ACTION_REPORT_EXCEPTION:
+        return f"当前状态是{status_label}，不能报异常。"
     return "当前不能执行这个操作。"
 
 
 def build_available_actions(*, can_write: bool, feedback_write_enabled: bool, status: str, status_label: str) -> List[Dict[str, Any]]:
     actions: List[Dict[str, Any]] = []
-    for action in (EXECUTION_EVENT_START, EXECUTION_EVENT_FINISH):
+    for action in (
+        EXECUTION_EVENT_START,
+        EXECUTION_EVENT_PAUSE,
+        EXECUTION_EVENT_RESUME,
+        EXECUTION_EVENT_FINISH,
+        EXECUTION_ACTION_REPORT_EXCEPTION,
+    ):
         enabled = _action_enabled(
             action=action,
             can_write=can_write,
@@ -164,6 +196,7 @@ def build_task_card(row: Mapping[str, Any], state: Any, *, can_write_feedback: b
         "latest_exception_affected_operator_label": current_state.latest_exception_affected_operator_label,
         "latest_exception_handling_status_label": current_state.latest_exception_handling_status_label,
         "latest_exception_suggest_reschedule_label": current_state.latest_exception_suggest_reschedule_label,
+        "latest_exception_remark": current_state.latest_exception_remark,
         "updated_at": current_state.updated_at,
         "available_actions": available_actions,
         "unavailable_reasons": unavailable_reasons,
@@ -203,9 +236,32 @@ def build_execution_payload(context: Mapping[str, Any]) -> Dict[str, Any]:
     }
 
 
-def event_payload(event: Any) -> Dict[str, Any]:
+def event_payload(
+    event: Any,
+    state: Any = None,
+    *,
+    machine_labels: Mapping[str, str] = None,
+    operator_labels: Mapping[str, str] = None,
+) -> Dict[str, Any]:
     event_type = _text(getattr(event, "event_type", ""))
     action = _event_type_to_action(event_type)
+    is_exception_event = action == EXECUTION_ACTION_REPORT_EXCEPTION
+    remark = getattr(event, "remark", None) or getattr(event, "reason_detail", None)
+    machines = machine_labels or {}
+    operators = operator_labels or {}
+    affected_machine_id = _text(getattr(event, "affected_machine_id", None))
+    affected_operator_id = _text(getattr(event, "affected_operator_id", None))
+    current_state = state if isinstance(state, OperationExecutionState) else None
+    is_latest_exception = bool(
+        is_exception_event
+        and current_state is not None
+        and getattr(event, "id", None) == current_state.latest_exception_event_id
+    )
+    affected_machine_label = machines.get(affected_machine_id) if affected_machine_id else None
+    affected_operator_label = operators.get(affected_operator_id) if affected_operator_id else None
+    if is_latest_exception:
+        affected_machine_label = affected_machine_label or current_state.latest_exception_affected_machine_label
+        affected_operator_label = affected_operator_label or current_state.latest_exception_affected_operator_label
     return {
         "event_id": getattr(event, "id", None),
         "op_id": getattr(event, "op_id", None),
@@ -214,23 +270,29 @@ def event_payload(event: Any) -> Dict[str, Any]:
         "action_label": _execution_action_label(action),
         "event_time": getattr(event, "event_time", None),
         "created_by": getattr(event, "created_by", None),
-        "remark": getattr(event, "remark", None),
+        "remark": remark,
         "reason_code": getattr(event, "reason_code", None),
-        "reason_label": None,
+        "reason_label": (
+            exception_reason_label(getattr(event, "reason_code", None))
+            if getattr(event, "reason_code", None)
+            else None
+        ),
         "severity": getattr(event, "severity", None),
-        "severity_label": None,
+        "severity_label": severity_label(getattr(event, "severity", None)) if getattr(event, "severity", None) else None,
         "impact_minutes": getattr(event, "impact_minutes", None),
-        "impact_minutes_label": None,
-        "affected_machine_label": None,
-        "affected_operator_label": None,
-        "handling_status_label": None,
-        "suggest_reschedule_label": None,
+        "impact_minutes_label": _impact_minutes_label(getattr(event, "impact_minutes", None)) if is_exception_event else None,
+        "affected_machine_label": affected_machine_label if is_exception_event else None,
+        "affected_operator_label": affected_operator_label if is_exception_event else None,
+        "handling_status_label": handling_status_label(getattr(event, "handling_status", None)) if is_exception_event else None,
+        "suggest_reschedule_label": (
+            suggest_reschedule_label(getattr(event, "suggest_reschedule", None)) if is_exception_event else None
+        ),
     }
 
 
 def execution_result_payload(result: Any, task_card: Dict[str, Any]) -> Dict[str, Any]:
     return {
-        "event": event_payload(result.event),
+        "event": event_payload(result.event, result.state),
         "current_status": result.state.current_status,
         "current_status_label": result.state.current_status_label,
         "state_revision": result.state_revision,

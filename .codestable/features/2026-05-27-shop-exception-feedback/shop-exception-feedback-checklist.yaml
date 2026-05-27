@@ -1,0 +1,51 @@
+feature: 2026-05-27-shop-exception-feedback
+status: done
+roadmap: aps-three-gap-directions
+roadmap_item: shop-exception-feedback
+
+steps:
+  - slug: feedback-action-surface
+    title: 开放暂停、继续生产、报异常任务卡动作和路由入口
+    status: done
+    exit_signal: execution/data 返回五类动作，资源派工页能提交 pause/resume/report-exception，事件列表 GET 可读，成功响应返回完整 task_card。
+
+  - slug: exception-field-contract
+    title: 补异常字段中文 label、校验和成功响应
+    status: done
+    exit_signal: 原因、情况说明、严重程度、预计影响时间、影响资源、处理状态、是否建议重排都有固定校验和中文展示。
+
+  - slug: exception-blocks-auto-reschedule
+    title: 异常中阻止普通自动重排
+    status: done
+    exit_signal: 普通排程输入阶段遇到 exception 状态直接 409 中文拒绝，不写 Schedule、ScheduleHistory 或 ScheduleVersionSeq。
+
+  - slug: regression-tests
+    title: 补第 11 项精准回归测试
+    status: done
+    exit_signal: 覆盖暂停、继续生产、报异常、并发状态版本、异常任务卡展示、异常中拒绝普通重排和离线前端资源。
+
+  - slug: adversarial-review
+    title: 整阶段对抗性审核和复审
+    status: done
+    exit_signal: 子代理按第 11 项整阶段做中性复审，修复所有阻塞项，并复审到阻塞项为 0。
+
+checks:
+  - 已读取 roadmap 第 5 节契约和 items.yaml 第 11 项路径、入口、测试、禁区。
+  - processing 状态允许 pause、finish、report_exception。
+  - paused 状态允许 resume、finish、report_exception。
+  - exception 状态允许 resume、finish。
+  - not_started 状态不允许 report_exception。
+  - pause 和 report_exception 必须有原因和情况说明。
+  - remark / reason_detail 都按“情况说明”展示，不能写了看不到。
+  - report_exception 必须有严重程度。
+  - impact_minutes 为空显示“暂时不知道影响多久”，填写时必须是非负整数。
+  - affected_machine_id / affected_operator_id 填写时必须存在。
+  - 任务卡、任务明细、甘特弹窗和导出都只显示中文异常信息，不显示内部字段名。
+  - handling_status 第一版只记录上报当时状态，不做更新路由。
+  - suggest_reschedule 只作为人工提示，不自动触发重排。
+  - event_type=exception 返回给前端时 action=report_exception、action_label=报异常；现场状态 exception 显示“异常中”。
+  - GET /scheduler/resource-dispatch/execution/<op_id>/events 返回事件列表，并把 exception 事件动作转成“报异常”。
+  - 页面和错误提示不显示内部字段名、内部枚举或函数名。
+  - 异常中普通自动重排返回 409 且不写 Schedule、ScheduleHistory、ScheduleVersionSeq。
+  - 候选、模拟预览、历史正式、非最新正式方案仍拒绝现场反馈写入。
+  - 精准测试、YAML 校验、Python 3.8 扫描和 git diff --check 通过。

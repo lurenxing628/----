@@ -1423,9 +1423,9 @@ execution_snapshot_op_ids
 11. **shop-exception-feedback**：单独支持暂停、继续、报异常、异常原因、严重程度、影响时间、影响资源、处理状态和是否建议重排。
     - 所属模块：异常反馈模块。
     - 依赖：`reschedule-minimum-execution-guardrails`。
-    - 状态：planned。
-    - 对应 feature：未启动。
-    - 备注：异常不是开工完工的附赠字段，要独立验收。
+    - 状态：done。
+    - 对应 feature：`2026-05-27-shop-exception-feedback`。
+    - 备注：已开放暂停、继续生产、报异常、异常字段展示、事件列表和异常中阻止普通自动重排；第 13 项继续做完整重排尊重执行事实。
 
 12. **plan-vs-actual-review**：新增计划和现场实际复盘视图，展示开工偏差、完工偏差、暂停时长、异常原因和资源变化。
     - 所属模块：计划和现场实际复盘。

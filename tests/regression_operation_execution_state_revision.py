@@ -517,6 +517,7 @@ def test_exception_while_paused_closes_pause_duration(tmp_path: Path) -> None:
             _context(idempotency_key="pause-before-exception", expected_state_revision=started.state_revision),
             event_time="2026-05-01 08:20:00",
             reason_code="equipment",
+            remark="设备需要检查",
         )
 
         exception = service.report_exception(
@@ -526,6 +527,7 @@ def test_exception_while_paused_closes_pause_duration(tmp_path: Path) -> None:
             severity="high",
             impact_minutes=30,
             handling_status=None,
+            remark="设备异常",
         )
         assert exception.state.current_status == "exception"
         assert exception.state.pause_duration_minutes == 10
@@ -593,6 +595,16 @@ def test_execution_feedback_requires_pause_and_exception_details_before_write(tm
         assert missing_pause_reason.value.details["reason"] == "missing_required_field"
         assert missing_pause_reason.value.details["field"] == "reason_code"
 
+        with pytest.raises(AppError) as missing_pause_detail:
+            service.pause_operation(
+                _context(idempotency_key="pause-missing-detail", expected_state_revision=started.state_revision),
+                event_time="2026-05-01 08:12:00",
+                reason_code="equipment",
+            )
+        assert missing_pause_detail.value.code.value == "1001"
+        assert missing_pause_detail.value.details["reason"] == "missing_required_field"
+        assert missing_pause_detail.value.details["field"] == "remark"
+
         with pytest.raises(AppError) as missing_exception_reason:
             service.report_exception(
                 _context(idempotency_key="exception-missing-reason", expected_state_revision=started.state_revision),
@@ -610,10 +622,22 @@ def test_execution_feedback_requires_pause_and_exception_details_before_write(tm
                 event_time="2026-05-01 08:20:00",
                 reason_code="equipment",
                 severity="",
+                remark="设备异常",
             )
         assert missing_exception_severity.value.code.value == "1001"
         assert missing_exception_severity.value.details["reason"] == "missing_required_field"
         assert missing_exception_severity.value.details["field"] == "severity"
+
+        with pytest.raises(AppError) as missing_exception_detail:
+            service.report_exception(
+                _context(idempotency_key="exception-missing-detail", expected_state_revision=started.state_revision),
+                event_time="2026-05-01 08:25:00",
+                reason_code="equipment",
+                severity="high",
+            )
+        assert missing_exception_detail.value.code.value == "1001"
+        assert missing_exception_detail.value.details["reason"] == "missing_required_field"
+        assert missing_exception_detail.value.details["field"] == "remark"
         assert _event_count(conn) == 1
     finally:
         conn.close()
@@ -651,6 +675,7 @@ def test_exception_feedback_rejects_invalid_fields_before_database_write(tmp_pat
             "affected_operator_id": "O2",
             "handling_status": "new",
             "suggest_reschedule": 0,
+            "remark": "设备异常",
         }
         payload.update(override)
 
@@ -690,6 +715,7 @@ def test_execution_feedback_rejects_event_time_before_last_feedback(tmp_path: Pa
                 _context(idempotency_key="pause-before-start-time", expected_state_revision=started.state_revision),
                 event_time="2026-05-01 08:10:00",
                 reason_code="equipment",
+                remark="设备需要检查",
             )
         assert pause_error.value.code.value == "6003"
         assert pause_error.value.details["reason"] == "invalid_state_transition"
@@ -712,11 +738,11 @@ def test_execution_feedback_rejects_event_time_before_last_feedback(tmp_path: Pa
 @pytest.mark.parametrize(
     "method_name,kwargs,action_label",
     [
-        ("pause_operation", {"event_time": "2026-05-01 08:10:00", "reason_code": "equipment"}, "暂停"),
+        ("pause_operation", {"event_time": "2026-05-01 08:10:00", "reason_code": "equipment", "remark": "设备需要检查"}, "暂停"),
         ("resume_operation", {"event_time": "2026-05-01 08:10:00"}, "继续生产"),
         (
             "report_exception",
-            {"event_time": "2026-05-01 08:10:00", "reason_code": "equipment", "severity": "high"},
+            {"event_time": "2026-05-01 08:10:00", "reason_code": "equipment", "severity": "high", "remark": "设备异常"},
             "报异常",
         ),
     ],

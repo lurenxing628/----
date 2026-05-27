@@ -303,6 +303,31 @@ class OperationExecutionFeedbackService:
     def list_execution_events(self, op_id: int) -> List[OperationExecutionEvent]:
         return self.event_repo.list_events_by_op_id(int(op_id))
 
+    def resource_labels_for_events(self, events: Sequence[OperationExecutionEvent]) -> Tuple[Dict[str, str], Dict[str, str]]:
+        machine_ids = sorted(
+            {
+                _text(getattr(event, "affected_machine_id", None))
+                for event in events
+                if _text(getattr(event, "affected_machine_id", None))
+            }
+        )
+        operator_ids = sorted(
+            {
+                _text(getattr(event, "affected_operator_id", None))
+                for event in events
+                if _text(getattr(event, "affected_operator_id", None))
+            }
+        )
+        machine_labels: Dict[str, str] = {}
+        operator_labels: Dict[str, str] = {}
+        for machine_id in machine_ids:
+            machine = self.machine_repo.get(machine_id)
+            machine_labels[machine_id] = str(getattr(machine, "name", "") or machine_id) if machine else machine_id
+        for operator_id in operator_ids:
+            operator = self.operator_repo.get(operator_id)
+            operator_labels[operator_id] = str(getattr(operator, "name", "") or operator_id) if operator else operator_id
+        return machine_labels, operator_labels
+
     def start_operation(
         self,
         context: ExecutionFeedbackContext,
@@ -575,6 +600,10 @@ class OperationExecutionFeedbackService:
         out["remark"] = _optional_text(out.get("remark"))
         if action in (EXECUTION_EVENT_PAUSE, EXECUTION_ACTION_REPORT_EXCEPTION):
             out["reason_code"] = _required_text(out.get("reason_code"), "reason_code")
+            if not out.get("remark") and out.get("reason_detail"):
+                out["remark"] = out.get("reason_detail")
+            if not (_optional_text(out.get("reason_detail")) or _optional_text(out.get("remark"))):
+                _required_text(out.get("remark"), "remark")
         if action == EXECUTION_ACTION_REPORT_EXCEPTION:
             out["severity"] = _required_text(out.get("severity"), "severity")
         _validate_known_value(out.get("reason_code"), "reason_code", REASON_LABELS)

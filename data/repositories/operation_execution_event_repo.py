@@ -452,7 +452,7 @@ class OperationExecutionEventRepo(BaseRepository):
             last_event_type=last_event.event_type,
             last_event_time=last_event.event_time,
             last_event_action_label=execution_action_label(event_type_to_action(last_event.event_type)),
-            last_event_remark=last_event.remark,
+            last_event_remark=self._event_remark(last_event),
             latest_exception_event_id=None if latest_exception is None else latest_exception.id,
             latest_exception_time=None if latest_exception is None else latest_exception.event_time,
             latest_exception_reason_code=None if latest_exception is None else latest_exception.reason_code,
@@ -491,10 +491,14 @@ class OperationExecutionEventRepo(BaseRepository):
             latest_exception_suggest_reschedule_label=None
             if latest_exception is None
             else suggest_reschedule_label(latest_exception.suggest_reschedule),
-            latest_exception_remark=None if latest_exception is None else latest_exception.remark,
+            latest_exception_remark=None if latest_exception is None else self._event_remark(latest_exception),
             state_revision=f"{int(op_id)}:{len(events)}:{int(last_event.id or 0)}",
             updated_at=last_event.event_time,
         )
+
+    @staticmethod
+    def _event_remark(event: OperationExecutionEvent) -> Optional[str]:
+        return event.remark or event.reason_detail
 
     @staticmethod
     def _latest_exception(events: Sequence[OperationExecutionEvent]) -> Optional[OperationExecutionEvent]:
