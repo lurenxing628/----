@@ -1,0 +1,48 @@
+feature: 2026-05-27-plan-vs-actual-review
+status: done
+roadmap: aps-three-gap-directions
+roadmap_item: plan-vs-actual-review
+
+steps:
+  - slug: report-data
+    title: 组装计划和现场实际复盘数据
+    status: done
+    exit_signal: ReportEngine 能按版本、日期范围和批次返回正式计划复盘行，实际字段来自执行状态读模型。
+
+  - slug: page-entry
+    title: 新增报表页面和入口
+    status: done
+    exit_signal: /reports/execution-review 可访问，报表首页、报表导航和资源派工页能跳转，页面中文展示筛选条件和空状态。
+
+  - slug: export-workbook
+    title: 新增计划和现场实际 Excel 导出
+    status: done
+    exit_signal: /reports/execution-review/export 返回固定中文文件名、工作表名和列名，支持普通和 write_only 导出。
+
+  - slug: regression-tests
+    title: 补第 12 项精准回归测试
+    status: done
+    exit_signal: 覆盖页面、筛选、导出、无现场反馈空状态、实际资源来源和离线静态资源。
+
+  - slug: adversarial-review
+    title: 整阶段对抗性审核和复审
+    status: done
+    exit_signal: 子代理按第 12 项整阶段做中性复审，修复所有阻塞项，并复审到阻塞项为 0。
+
+checks:
+  - 已读取 roadmap 第 5 节契约和 items.yaml 第 12 项路径、入口、测试、禁区。
+  - 只新增 /reports/execution-review 和 /reports/execution-review/export。
+  - 复盘视图能按版本、日期、批次筛选。
+  - 明细显示计划开始、实际开始、开工偏差、计划结束、实际结束、完工偏差。
+  - 明细显示暂停时长、异常原因、计划资源、实际资源。
+  - 实际资源来自执行事件或执行状态读模型，不能从 Schedule 计划资源冒充。
+  - 没有执行事件时显示暂无现场反馈，不报错。
+  - 不修改 Schedule 计划行。
+  - 资源派工页只能跳转到报表入口，不新增 /scheduler/execution-review。
+  - 导出内容标清计划版本和筛选条件，但不显示内部字段名。
+  - 导出文件名和工作表名使用 roadmap 固定中文格式。
+  - 导出列名使用 roadmap 固定中文列名。
+  - 页面、按钮、空状态、错误提示、导出文件名、导出列名和导出内容都使用中文大白话。
+  - 新前端资源不走 CDN、外链字体、外链脚本、外链样式。
+  - 新增 Python 代码保持 Python 3.8 语法。
+  - 精准测试、YAML 校验、Python 3.8 扫描和 git diff --check 通过。

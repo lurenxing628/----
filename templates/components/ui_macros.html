@@ -415,7 +415,7 @@
 
 {#
   报表导航
-  active: index | overdue | utilization | downtime
+  active: index | overdue | utilization | execution_review | downtime
 #}
 {% macro reports_nav(active='', size='sm', class='') %}
 {% set nav_scenario_id = (request.args.get('scenario_id') or '') | trim %}
@@ -423,9 +423,14 @@
 {% set nav_plan_role = (request.args.get('plan_role') or '') | trim %}
 {% set nav_start_date = (request.args.get('start_date') or '') | trim %}
 {% set nav_end_date = (request.args.get('end_date') or '') | trim %}
+{% set nav_date_from = (request.args.get('date_from') or '') | trim %}
+{% set nav_date_to = (request.args.get('date_to') or '') | trim %}
+{% set nav_batch_id = (request.args.get('batch_id') or '') | trim %}
 {% set report_context = namespace(query='') %}
+{% set execution_review_context = namespace(query='') %}
 {% if nav_version %}
   {% set report_context.query = report_context.query ~ ('?' if not report_context.query else '&') ~ 'version=' ~ (nav_version | urlencode) %}
+  {% set execution_review_context.query = execution_review_context.query ~ ('?' if not execution_review_context.query else '&') ~ 'version=' ~ (nav_version | urlencode) %}
 {% endif %}
 {% if nav_plan_role %}
   {% set report_context.query = report_context.query ~ ('?' if not report_context.query else '&') ~ 'plan_role=' ~ (nav_plan_role | urlencode) %}
@@ -436,10 +441,18 @@
 {% if nav_start_date and nav_end_date %}
   {% set report_context.query = report_context.query ~ ('?' if not report_context.query else '&') ~ 'start_date=' ~ (nav_start_date | urlencode) ~ '&end_date=' ~ (nav_end_date | urlencode) %}
 {% endif %}
+{% if nav_date_from and nav_date_to %}
+  {% set report_context.query = report_context.query ~ ('?' if not report_context.query else '&') ~ 'date_from=' ~ (nav_date_from | urlencode) ~ '&date_to=' ~ (nav_date_to | urlencode) %}
+  {% set execution_review_context.query = execution_review_context.query ~ ('?' if not execution_review_context.query else '&') ~ 'date_from=' ~ (nav_date_from | urlencode) ~ '&date_to=' ~ (nav_date_to | urlencode) %}
+{% endif %}
+{% if nav_batch_id %}
+  {% set execution_review_context.query = execution_review_context.query ~ ('?' if not execution_review_context.query else '&') ~ 'batch_id=' ~ (nav_batch_id | urlencode) %}
+{% endif %}
 <div class="scheduler-subnav scheduler-subnav-main {{ class }}">
   {{ link_button('报表中心', url_for('reports.index'), 'primary' if active == 'index' else 'secondary', size) }}
   {{ link_button('超期清单', url_for('reports.overdue_page') ~ report_context.query, 'primary' if active == 'overdue' else 'secondary', size) }}
   {{ link_button('资源负荷与利用率', url_for('reports.utilization_page') ~ report_context.query, 'primary' if active == 'utilization' else 'secondary', size) }}
+  {{ link_button('计划和现场实际', url_for('reports.execution_review_page') ~ execution_review_context.query, 'primary' if active == 'execution_review' else 'secondary', size) }}
   {{ link_button('停机影响统计', url_for('reports.downtime_page') ~ report_context.query, 'primary' if active == 'downtime' else 'secondary', size) }}
 </div>
 {% endmacro %}

@@ -626,8 +626,8 @@ items:
     depends_on: [shop-exception-feedback]
     depends_on_reasons:
       shop-exception-feedback: 复盘要展示暂停、异常、影响时间、影响资源和处理状态，必须等异常反馈字段稳定后再做报表和导出。
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-27-plan-vs-actual-review
     minimal_loop: false
     primary_paths:
       - core/services/report/report_engine.py

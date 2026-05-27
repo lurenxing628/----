@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
+{% block content %}
+  {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'simulated': '模拟排产', 'ok': '成功', 'fail': '失败', 'ok2': '成功'} %}
+  {{ ui.aps_page_hero(
+    '报表 - 计划和现场实际',
+    '把正式计划里的开始结束时间和现场反馈的实际结果放在一起，方便核对开工、完工、暂停和异常影响。',
+    nav_html=ui.reports_nav('execution_review')
+  ) }}
+
+  <div class="card aps-report-filter-card">
+    {{ ui.aps_card_header('筛选', '选择排产版本、日期范围和批次后查看现场复盘，需要时导出 Excel。') }}
+    <form method="get" action="{{ url_for('reports.execution_review_page') }}">
+      <div class="aps-report-filter-grid">
+        <div class="form-field aps-report-version-field">
+          <label>排产版本</label>
+          <select name="version">
+            {% for it in versions %}
+              <option value="{{ it.version }}" {% if version == it.version %}selected{% endif %}>
+                {{ ui.version_option_label(it, status_zh.get(it.result_status, '结果状态未知')) }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-field aps-report-start-date">
+          <label>开始日期</label>
+          <input type="date" name="date_from" value="{{ date_from }}">
+        </div>
+        <div class="form-field aps-report-end-date">
+          <label>结束日期</label>
+          <input type="date" name="date_to" value="{{ date_to }}">
+        </div>
+        <div class="form-field">
+          <label>批次</label>
+          <input name="batch_id" value="{{ batch_id }}" placeholder="全部批次">
+        </div>
+        <div class="aps-form-actions aps-report-actions">
+          {{ ui.button('查询', 'primary', 'md', type_attr='submit') }}
+          {% if rows %}
+            {{ ui.link_button('导出 Excel', url_for('reports.execution_review_export', version=version, date_from=date_from, date_to=date_to, batch_id=batch_id), 'secondary', 'md') }}
+          {% else %}
+            {{ ui.button('导出 Excel', 'secondary', 'md', type_attr='button', disabled=True, class='aps-disabled-button') }}
+          {% endif %}
+        </div>
+        {% if not has_history %}
+          <div class="aps-filter-note">暂无排产历史，请先执行排产后再查看报表。</div>
+        {% elif not rows %}
+          <div class="aps-filter-note">当前筛选条件下暂无计划任务，请换一个版本、日期或批次后再试。</div>
+        {% endif %}
+      </div>
+    </form>
+    {% if has_history %}
+      <div class="aps-result-summary-grid mt-3">
+        {{ ui.summary_item('排产方案', '正式采用方案') }}
+        {{ ui.summary_item('查询日期', date_range_label or '全部日期') }}
+        {{ ui.summary_item('批次', batch_filter_label or '全部批次') }}
+        {{ ui.summary_item('任务数', count) }}
+      </div>
+      <div class="aps-filter-note aps-report-plan-source">这张表只复盘正式采用方案；模拟预览和对比参考方案不在这里写入或复盘现场事实。</div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h3>计划和现场实际</h3>
+    {% if not rows %}
+      {% if empty_reason == "no_history" %}
+        <div class="muted">暂无排产历史，当前无法复盘现场实际。</div>
+      {% else %}
+        <div class="muted">当前筛选条件下暂无计划任务，请换一个版本、日期或批次后再试。</div>
+      {% endif %}
+    {% else %}
+      <div class="aps-table-scroll">
+        <table id="executionReviewTable" class="table-sticky table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v1_executionReviewTable">
+          <thead>
+            <tr>
+              <th class="w-140" data-col-key="batch" data-default-w="140" data-min-w="120">批次</th>
+              <th class="w-180" data-col-key="operation" data-default-w="180" data-min-w="140">工序</th>
+              <th class="w-180" data-col-key="planned_start" data-default-w="180" data-min-w="150">计划开始</th>
+              <th class="w-180" data-col-key="actual_start" data-default-w="180" data-min-w="150">实际开始</th>
+              <th class="w-140" data-col-key="start_deviation" data-default-w="140" data-min-w="120">开工偏差</th>
+              <th class="w-180" data-col-key="planned_end" data-default-w="180" data-min-w="150">计划结束</th>
+              <th class="w-180" data-col-key="actual_end" data-default-w="180" data-min-w="150">实际结束</th>
+              <th class="w-140" data-col-key="end_deviation" data-default-w="140" data-min-w="120">完工偏差</th>
+              <th class="w-140" data-col-key="pause_duration" data-default-w="140" data-min-w="120">暂停时长</th>
+              <th class="w-150" data-col-key="exception_reason" data-default-w="150" data-min-w="120">异常原因</th>
+              <th class="w-120" data-col-key="exception_severity" data-default-w="120" data-min-w="100">严重程度</th>
+              <th class="w-160" data-col-key="impact" data-default-w="160" data-min-w="130">预计影响时间</th>
+              <th class="w-160" data-col-key="affected_machine" data-default-w="160" data-min-w="130">影响设备</th>
+              <th class="w-160" data-col-key="affected_operator" data-default-w="160" data-min-w="130">影响人员</th>
+              <th class="w-130" data-col-key="handling" data-default-w="130" data-min-w="110">处理状态</th>
+              <th class="w-170" data-col-key="suggest" data-default-w="170" data-min-w="140">是否建议重新排程</th>
+              <th class="w-220" data-col-key="planned_resource" data-default-w="220" data-min-w="160">计划资源</th>
+              <th class="w-220" data-col-key="actual_resource" data-default-w="220" data-min-w="160">实际资源</th>
+              <th class="w-150" data-col-key="feedback_status" data-default-w="150" data-min-w="120">现场反馈状态</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in rows %}
+              <tr>
+                <td>{{ r.batch_id_label }}</td>
+                <td>{{ r.operation_label }}</td>
+                <td>{{ r.planned_start_time_label }}</td>
+                <td>{{ r.actual_start_time_label }}</td>
+                <td>{{ r.start_deviation_label }}</td>
+                <td>{{ r.planned_end_time_label }}</td>
+                <td>{{ r.actual_end_time_label }}</td>
+                <td>{{ r.end_deviation_label }}</td>
+                <td>{{ r.pause_duration_label }}</td>
+                <td>{{ r.exception_reason_label }}</td>
+                <td>{{ r.exception_severity_label }}</td>
+                <td>{{ r.exception_impact_minutes_label }}</td>
+                <td>{{ r.exception_affected_machine_label }}</td>
+                <td>{{ r.exception_affected_operator_label }}</td>
+                <td>{{ r.exception_handling_status_label }}</td>
+                <td>{{ r.exception_suggest_reschedule_label }}</td>
+                <td>{{ r.planned_resource_label }}</td>
+                <td>{{ r.actual_resource_label }}</td>
+                <td>{{ r.feedback_status_label }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+  </div>
+{% endblock %}

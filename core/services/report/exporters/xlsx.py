@@ -67,6 +67,27 @@ def _utilization_percent(value: Any) -> Any:
 
 _OVERDUE_HEADERS = ["类别", "批次号", "图号", "名称", "数量", "交期", "完工/截至时间", "超期(天)", "超期(小时)"]
 _DIAGNOSIS_HEADERS = ["本次诊断编号", "生成依据摘要", "核对信息", "证据来源", "证据缺口", "生成时间", "筛选条件"]
+_EXECUTION_REVIEW_HEADERS = [
+    "批次",
+    "工序",
+    "计划开始",
+    "实际开始",
+    "开工偏差",
+    "计划结束",
+    "实际结束",
+    "完工偏差",
+    "暂停时长",
+    "异常原因",
+    "严重程度",
+    "预计影响时间",
+    "影响设备",
+    "影响人员",
+    "处理状态",
+    "是否建议重新排程",
+    "计划资源",
+    "实际资源",
+    "现场反馈状态",
+]
 
 
 def _append_summary_sheet(wb, summary_rows: Optional[List[List[Any]]], *, write_only: bool) -> None:
@@ -337,3 +358,61 @@ def export_downtime_impact_xlsx(
             wb.close()
         except Exception:
             pass
+
+
+def export_execution_review_xlsx(
+    rows: List[Dict[str, Any]],
+    *,
+    summary_rows: Optional[List[List[Any]]] = None,
+    write_only: bool = False,
+) -> BinaryIO:
+    wb = openpyxl.Workbook(write_only=write_only)
+    try:
+        _append_summary_sheet(wb, summary_rows, write_only=write_only)
+        ws = wb.create_sheet("计划和现场实际") if (write_only or summary_rows) else wb.active
+        if ws is None:
+            raise RuntimeError("无法创建计划和现场实际工作表")
+        if not write_only:
+            ws.title = "计划和现场实际"
+            _append_row(ws, _EXECUTION_REVIEW_HEADERS)
+            for row in rows:
+                _append_row(ws, _execution_review_values(row))
+            _format_sheet(ws)
+        else:
+            _append_write_only_row(ws, _EXECUTION_REVIEW_HEADERS, is_header=True)
+            for row in rows:
+                _append_write_only_row(ws, _execution_review_values(row))
+
+        buf = _make_output_buffer(write_only=write_only)
+        wb.save(buf)
+        buf.seek(0)
+        return buf
+    finally:
+        try:
+            wb.close()
+        except Exception:
+            pass
+
+
+def _execution_review_values(row: Dict[str, Any]) -> List[Any]:
+    return [
+        row.get("batch_id_label"),
+        row.get("operation_label"),
+        row.get("planned_start_time_label"),
+        row.get("actual_start_time_label"),
+        row.get("start_deviation_label"),
+        row.get("planned_end_time_label"),
+        row.get("actual_end_time_label"),
+        row.get("end_deviation_label"),
+        row.get("pause_duration_label"),
+        row.get("exception_reason_label"),
+        row.get("exception_severity_label"),
+        row.get("exception_impact_minutes_label"),
+        row.get("exception_affected_machine_label"),
+        row.get("exception_affected_operator_label"),
+        row.get("exception_handling_status_label"),
+        row.get("exception_suggest_reschedule_label"),
+        row.get("planned_resource_label"),
+        row.get("actual_resource_label"),
+        row.get("feedback_status_label"),
+    ]

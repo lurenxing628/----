@@ -319,6 +319,73 @@ def utilization_export():
     return _send_report_export_file(x)
 
 
+@bp.get("/execution-review")
+def execution_review_page():
+    engine = ReportEngine(g.db)
+    versions = decorate_history_version_options(engine.list_versions(limit=30))
+    log_history_version_option_parse_warnings(versions, log_label="报表页")
+    resolution = _page_version_or_latest(engine)
+    version = resolution.selected_version
+    date_from = request.args.get("date_from") or ""
+    date_to = request.args.get("date_to") or ""
+    batch_id = request.args.get("batch_id") or ""
+    rep = (
+        engine.execution_review(int(version), date_from=date_from, date_to=date_to, batch_id=batch_id)
+        if version is not None
+        else {
+            "version": None,
+            "rows": [],
+            "count": 0,
+            "date_from": date_from,
+            "date_to": date_to,
+            "batch_id": batch_id,
+            "date_range_label": "全部日期",
+            "batch_filter_label": batch_id or "全部批次",
+        }
+    )
+    has_history = bool(versions)
+    empty_reason = None
+    if not rep.get("rows"):
+        empty_reason = "no_history" if not has_history else "no_data"
+    return render_template(
+        "reports/execution_review.html",
+        title="报表 - 计划和现场实际",
+        versions=versions,
+        version=rep.get("version"),
+        date_from=rep.get("date_from") or "",
+        date_to=rep.get("date_to") or "",
+        batch_id=rep.get("batch_id") or "",
+        date_range_label=rep.get("date_range_label") or "全部日期",
+        batch_filter_label=rep.get("batch_filter_label") or "全部批次",
+        rows=list(rep.get("rows") or []),
+        count=int(rep.get("count") or 0),
+        has_history=has_history,
+        empty_reason=empty_reason,
+    )
+
+
+@bp.get("/execution-review/export")
+def execution_review_export():
+    started_at = time.time()
+    engine = ReportEngine(g.db)
+    version = _export_version_or_latest(engine)
+    date_from = request.args.get("date_from") or ""
+    date_to = request.args.get("date_to") or ""
+    batch_id = request.args.get("batch_id") or ""
+    x = engine.export_execution_review_xlsx(version, date_from=date_from, date_to=date_to, batch_id=batch_id)
+    _log_report_export(
+        engine=engine,
+        report_export=x,
+        target_type="execution_review",
+        export_type="计划和现场实际.xlsx",
+        version=version,
+        raw_plan_role="adopted",
+        time_range={"date_from": date_from, "date_to": date_to, "batch_id": batch_id},
+        started_at=started_at,
+    )
+    return _send_report_export_file(x)
+
+
 @bp.get("/downtime")
 def downtime_page():
     engine = ReportEngine(g.db)

@@ -1430,9 +1430,9 @@ execution_snapshot_op_ids
 12. **plan-vs-actual-review**：新增计划和现场实际复盘视图，展示开工偏差、完工偏差、暂停时长、异常原因和资源变化。
     - 所属模块：计划和现场实际复盘。
     - 依赖：`shop-exception-feedback`。
-    - 状态：planned。
-    - 对应 feature：未启动。
-    - 备注：做完后延期解释可以升级为区分计划问题和现场问题。
+    - 状态：done。
+    - 对应 feature：`2026-05-27-plan-vs-actual-review`。
+    - 备注：已新增计划和现场实际复盘页面与导出；实际时间和实际资源来自执行事件读模型，不从计划行冒充。
 
 13. **reschedule-respects-execution-facts**：重排输入完整接入执行事实，已完工不再排，生产中默认固定，异常中阻止自动重排，落库前检查状态版本。
     - 所属模块：重排执行事实接入。
@@ -1520,3 +1520,4 @@ execution_snapshot_op_ids
 - 2026-05-27：完成 `dispatch-plan-identity-guardrails`。资源派工页、data 和 Excel 导出会用中文标清当前正式、历史正式、对比参考和模拟预览，并锁住本阶段不新增确认派工写入、不新增确认派工表、不产生确认派工副作用。
 - 2026-05-27：完成 `resource-dispatch-start-finish-feedback`。资源派工页新增现场反馈任务卡和受控开工/完工写入；普通用户在最小重排护栏完成前仍默认不能提交，直接 POST 返回中文 409/6003；测试专用开关只在 TESTING=True 下生效，并补普通 data 递归脱敏、设备匹配、数量边界和成功返回结构测试。
 - 2026-05-27：完成 `reschedule-minimum-execution-guardrails`。普通重排会读取开工/完工执行事实，已完工工序不再进待排集合，生产中工序保留实际开始和实际资源，落库前复查现场状态版本；如果最终校验失败，`Schedule`、`ScheduleHistory` 和 `ScheduleVersionSeq` 一起回滚；最新正式方案普通用户开工/完工按钮和直接 POST 已放开，候选、模拟预览、历史正式和非最新正式仍拒绝写入。
+- 2026-05-27：完成 `plan-vs-actual-review`。报表中心新增计划和现场实际复盘页面及 Excel 导出，支持按版本、日期和批次筛选；导出固定使用“计划和现场实际”工作表和中文列名；实际开始、实际结束、暂停时长、异常信息和实际资源均来自执行事件读模型。

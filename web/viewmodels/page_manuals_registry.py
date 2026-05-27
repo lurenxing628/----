@@ -44,6 +44,7 @@ ENDPOINT_TO_MANUAL_ID: Dict[str, str] = {
     "reports.index": "reports_index",
     "reports.overdue_page": "reports_overdue",
     "reports.utilization_page": "reports_utilization",
+    "reports.execution_review_page": "reports_execution_review",
     "reports.downtime_page": "reports_downtime",
     "system.backup_page": "system_backup",
     "system.logs_page": "system_logs",

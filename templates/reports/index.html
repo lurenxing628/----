@@ -4,7 +4,7 @@
   {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'simulated': '模拟排产', 'ok': '成功', 'fail': '失败', 'ok2': '成功'} %}
   {{ ui.aps_page_hero(
     '报表中心',
-    '根据排产历史版本查看超期、资源负荷和停机影响；没有排产结果时页面会显示为空，也不会导出空 Excel。',
+    '根据排产历史版本查看超期、资源负荷、计划和现场实际、停机影响；没有排产结果时页面会显示为空，也不会导出空 Excel。',
     nav_html=ui.reports_nav('index')
   ) }}
 
@@ -40,6 +40,10 @@
       <a href="{{ url_for('reports.utilization_page') }}" class="nav-card">
         <div class="nav-card-title"><svg class="icon"><use href="{{ url_for('static', filename='icons.svg') }}#icon-chart"/></svg> 资源负荷与利用率</div>
         <div class="nav-card-desc">设备和人员的排产负荷与利用率统计。</div>
+      </a>
+      <a href="{{ url_for('reports.execution_review_page') }}" class="nav-card">
+        <div class="nav-card-title"><svg class="icon"><use href="{{ url_for('static', filename='icons.svg') }}#icon-chart"/></svg> 计划和现场实际</div>
+        <div class="nav-card-desc">核对正式计划的开始结束时间、现场实际开工完工、暂停和异常影响。</div>
       </a>
       <a href="{{ url_for('reports.downtime_page') }}" class="nav-card">
         <div class="nav-card-title"><svg class="icon"><use href="{{ url_for('static', filename='icons.svg') }}#icon-device"/></svg> 停机影响统计</div>
