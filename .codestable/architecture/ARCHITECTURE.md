@@ -5,7 +5,7 @@ scope: 项目架构总入口，覆盖 APS 整体结构、核心模块索引、�
 summary: APS 在 Win7 x64、Python 3.8、离线交付约束下的系统地图入口
 status: current
 created: 2026-04-27
-last_reviewed: 2026-05-27
+last_reviewed: 2026-05-28
 tags: [aps, codestable, architecture, win7]
 depends_on: []
 implements: []
@@ -56,6 +56,7 @@ implements: []
 - 面向用户默认使用简体中文。
 - Win7 x64、Python 3.8、离线交付是长期约束。
 - 页面、导出、文件名、提示语和帮助文档不能直接展示 `scenario_id`、`plan_role`、`source_table`、`candidate_id` 这类程序内部字段；这些字段可以留在 URL、隐藏字段、请求参数和日志里用于对齐同一套计划，但用户可见位置必须转成中文大白话。
+- 资源派工导出当前同时提供矩阵表和日历明细表：矩阵表用于看资源与日期的大盘，`日历明细` 按一条日历任务一行展开，继续只展示中文业务字段，不展示 `op_id`、`schedule_id`、`state_revision`、`execution_snapshot_revision` 等内部追踪字段。当前证据在 `core/services/scheduler/resource_dispatch_excel.py` 和 `tests/regression_resource_dispatch_public_output_contract.py`。
 - 质量门禁入口仍以仓库现有 `scripts/run_quality_gate.py` 为准。
 - 旧 `.limcode/plans/`、`.limcode/review/` 里有大量历史上下文，迁移初期不得批量删除或搬动。
 

@@ -185,6 +185,150 @@ def test_resource_dispatch_excel_summary_uses_plain_bad_time_label() -> None:
     assert "bad_time_row_skipped" not in labels
 
 
+def test_resource_dispatch_excel_adds_calendar_detail_sheet_from_structured_items() -> None:
+    payload = _base_payload()
+    payload["calendar_rows"] = [
+        {
+            "scope_type": "operator",
+            "scope_id": "OP001",
+            "scope_name": "张三",
+            "current_resource_id": "OP001",
+            "current_resource_name": "张三",
+            "operator_id": "OP001",
+            "operator_name": "张三",
+            "cells": [
+                {
+                    "date": "2026-05-04",
+                    "items": [
+                        {
+                            "schedule_id": "S-INTERNAL-1",
+                            "op_id": "OP-INTERNAL-1",
+                            "_row_identity": "ROW-INTERNAL-1",
+                            "source_table": "ScheduleSecret",
+                            "state_revision": "STATE-INTERNAL-1",
+                            "execution_snapshot_revision": "SNAPSHOT-INTERNAL-1",
+                            "start": "2026-05-04 08:00:00",
+                            "end": "2026-05-04 10:00:00",
+                            "time_label": "08:00-10:00",
+                            "scope_type": "operator",
+                            "batch_id": "B001",
+                            "op_code": "OP10",
+                            "seq": 10,
+                            "part_no": "P001",
+                            "part_name": "回转壳体",
+                            "machine_id": "MC001",
+                            "machine_name": "数控车床1",
+                            "operator_id": "OP001",
+                            "operator_name": "张三",
+                            "is_overdue": True,
+                        }
+                    ],
+                }
+            ],
+        }
+    ]
+
+    buffer = build_resource_dispatch_workbook(decorate_resource_dispatch_payload(payload))
+    wb = openpyxl.load_workbook(io.BytesIO(buffer.getvalue()))
+
+    assert "日历排班" in wb.sheetnames
+    assert "日历明细" in wb.sheetnames
+    ws = wb["日历明细"]
+    headers = [ws.cell(1, idx).value for idx in range(1, ws.max_column + 1)]
+    assert headers == [
+        "日历来源",
+        "查询对象",
+        "日期",
+        "时间",
+        "批次",
+        "工序",
+        "图号 / 物料",
+        "计划设备",
+        "计划人员",
+        "对应资源",
+        "是否超期",
+        "任务说明",
+    ]
+    assert ws.max_row == 2
+    row = [ws.cell(2, idx).value for idx in range(1, ws.max_column + 1)]
+    assert row[:9] == [
+        "日历排班",
+        "张三\n完整身份：OP001 张三",
+        "2026-05-04",
+        "08:00-10:00",
+        "B001",
+        "OP10",
+        "P001 回转壳体",
+        "MC001 数控车床1",
+        "OP001 张三",
+    ]
+    assert row[10] == "是"
+    assert "08:00-10:00 OP10 数控车床1 P001" in str(row[11] or "")
+
+    all_values = "\n".join(_workbook_cell_values(wb))
+    for forbidden in (
+        "S-INTERNAL-1",
+        "OP-INTERNAL-1",
+        "ROW-INTERNAL-1",
+        "ScheduleSecret",
+        "STATE-INTERNAL-1",
+        "SNAPSHOT-INTERNAL-1",
+        "schedule_id",
+        "op_id",
+        "_row_identity",
+        "source_table",
+        "state_revision",
+        "execution_snapshot_revision",
+    ):
+        assert forbidden not in all_values
+
+
+def test_resource_dispatch_team_calendar_detail_sheet_marks_calendar_source() -> None:
+    payload = _base_payload()
+    payload["filters"]["scope_type"] = "team"
+    calendar_item = {
+        "time_label": "08:00-10:00",
+        "scope_type": "operator",
+        "batch_id": "B001",
+        "op_code": "OP10",
+        "part_no": "P001",
+        "machine_id": "MC001",
+        "machine_name": "数控车床1",
+        "operator_id": "OP001",
+        "operator_name": "张三",
+        "is_overdue": False,
+    }
+    calendar_row = {
+        "scope_type": "operator",
+        "scope_id": "OP001",
+        "scope_name": "张三",
+        "current_resource_id": "OP001",
+        "current_resource_name": "张三",
+        "operator_id": "OP001",
+        "operator_name": "张三",
+        "cells": [{"date": "2026-05-04", "items": [calendar_item]}],
+    }
+    payload["operator_calendar_rows"] = [calendar_row]
+    payload["machine_calendar_rows"] = [dict(calendar_row, current_resource_id="MC001", current_resource_name="数控车床1")]
+
+    buffer = build_resource_dispatch_workbook(decorate_resource_dispatch_payload(payload))
+    wb = openpyxl.load_workbook(io.BytesIO(buffer.getvalue()))
+    ws = wb["日历明细"]
+    source_values = [str(ws.cell(row, 1).value or "") for row in range(2, ws.max_row + 1)]
+
+    assert source_values == ["班组人员日历", "班组设备日历"]
+
+
+def test_resource_dispatch_calendar_detail_sheet_handles_empty_calendar_rows() -> None:
+    payload = _base_payload()
+    buffer = build_resource_dispatch_workbook(decorate_resource_dispatch_payload(payload))
+    wb = openpyxl.load_workbook(io.BytesIO(buffer.getvalue()))
+    ws = wb["日历明细"]
+
+    assert ws.max_row == 1
+    assert [ws.cell(1, idx).value for idx in range(1, ws.max_column + 1)][0] == "日历来源"
+
+
 def test_resource_dispatch_template_version_summary_prefers_public_schedule_time() -> None:
     template = (REPO_ROOT / "templates" / "scheduler" / "resource_dispatch.html").read_text(encoding="utf-8")
 

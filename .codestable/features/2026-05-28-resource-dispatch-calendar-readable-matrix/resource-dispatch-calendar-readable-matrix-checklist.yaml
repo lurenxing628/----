@@ -1,0 +1,91 @@
+feature: 2026-05-28-resource-dispatch-calendar-readable-matrix
+status: in-progress
+created: 2026-05-28
+
+steps:
+  - slug: codestable-design-checklist
+    title: 落 CodeStable design 和执行清单
+    status: done
+    exit_signal: feature 目录包含 design 和 checklist，checklist 通过 YAML 校验。
+
+  - slug: calendar-task-block-ui
+    title: 将日历矩阵格子渲染为独立任务块
+    status: done
+    exit_signal: 前端合同能看到 aps-calendar-task、超期中文标记、字段分行和固定左列 class。
+
+  - slug: calendar-detail-excel-sheet
+    title: 新增 Excel 日历明细 Sheet
+    status: done
+    exit_signal: workbook 测试确认原矩阵 Sheet 保留，日历明细中文表头、一条日历任务一行、空数据不报错。
+
+  - slug: public-calendar-data-fields
+    title: 补齐页面和 Excel 所需的公开日历字段
+    status: done
+    exit_signal: 日历 item 可展示图号/物料，普通公开输出继续不泄露内部字段。
+
+  - slug: tests-and-docs
+    title: 更新测试和页面帮助说明
+    status: done
+    exit_signal: 相关 pytest、静态合同和帮助文案与新增日历明细一致。
+
+  - slug: browser-acceptance
+    title: 浏览器验收并完成 acceptance
+    status: done
+    exit_signal: 用户当前页面完成浏览器检查，acceptance 报告落盘，checks 全部 passed。
+
+checks:
+  - item: 日历 item 继续使用公开白名单字段，页面和 Excel 不直接消费内部字段。
+    source: 名词契约
+    status: passed
+
+  - item: 每条日历任务在页面中渲染为独立 aps-calendar-task。
+    source: 验收场景
+    status: passed
+
+  - item: 日历任务块按时间、批次、工序、计划设备、计划人员、图号/物料分行显示。
+    source: 验收场景
+    status: passed
+
+  - item: 超期任务块直接显示中文“超期”，不是只靠颜色。
+    source: 验收场景
+    status: passed
+
+  - item: 日历矩阵保留横向滚动和列宽拖拽合同，并增加固定左列能力。
+    source: 编排骨架
+    status: passed
+
+  - item: Excel 继续保留原矩阵 Sheet。
+    source: 验收场景
+    status: passed
+
+  - item: Excel 新增“日历明细” Sheet，表头为中文，一条日历任务一行。
+    source: 验收场景
+    status: passed
+
+  - item: 班组视角“日历明细”用“日历来源”区分人员日历和设备日历。
+    source: 验收场景
+    status: passed
+
+  - item: 空日历数据导出“日历明细”只有表头且不报错。
+    source: 验收场景
+    status: passed
+
+  - item: 页面和 Excel 不出现 op_id、schedule_id、_row_identity、source_table、state_revision、execution_snapshot_revision 等内部字段名。
+    source: 范围守护
+    status: passed
+
+  - item: 不新增热力图、拖拽排程、复杂折叠交互、外部 CDN 或依赖升级。
+    source: 范围守护
+    status: passed
+
+  - item: 不修改资源派工 repository SQL 查询口径。
+    source: 范围守护
+    status: passed
+
+  - item: 护眼模式下日历任务块和超期标记有深色主题规则。
+    source: 流程级约束
+    status: passed
+
+  - item: 浏览器打开用户当前 URL 能看到任务块和固定左列；当前数据没有超期任务，超期中文标记由回归测试夹具覆盖。
+    source: 验收场景
+    status: passed

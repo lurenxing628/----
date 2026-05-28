@@ -123,6 +123,111 @@
     );
   }
 
+  function namedResourceInfo(row, idKey, nameKey, emptyText, supplierKey) {
+    const source = row || {};
+    const resourceId = trim(source[idKey]);
+    const resourceName = trim(source[nameKey]);
+    const supplierName = supplierKey ? trim(source[supplierKey]) : "";
+    if (resourceId || resourceName) {
+      const display = resourceName || resourceId;
+      const identity = resourceId && resourceName ? resourceId + " " + resourceName : display;
+      return {
+        display: display,
+        identity: identity,
+        id: resourceId,
+        name: resourceName,
+        supplier: supplierName,
+        hasIdentityDetail: identity !== display
+      };
+    }
+    if (supplierName) {
+      const supplier = "外协供应商：" + supplierName;
+      return { display: supplier, identity: supplier, id: "", name: "", supplier: supplierName, hasIdentityDetail: false };
+    }
+    const empty = trim(emptyText);
+    return { display: empty, identity: empty, id: "", name: "", supplier: "", hasIdentityDetail: false };
+  }
+
+  function resourceInfoHtml(info) {
+    const title = escapeHtml(info.identity || info.display);
+    const detail = [];
+    if (info.name && info.id) {
+      detail.push('<span class="aps-resource-display-sub">编号：' + escapeHtml(info.id) + '</span>');
+    }
+    if (info.supplier && (info.id || info.name)) {
+      detail.push('<span class="aps-resource-display-sub">供应商：' + escapeHtml(info.supplier) + '</span>');
+    }
+    return (
+      '<span class="aps-resource-display" title="' + title + '">' +
+        '<span class="aps-resource-display-main">' + escapeHtml(info.display) + '</span>' +
+        detail.join("") +
+      '</span>'
+    );
+  }
+
+  function calendarOperationText(item) {
+    const opCode = trim(item && item.op_code);
+    if (opCode) return opCode;
+    const seq = trim(item && item.seq);
+    if (seq) return "工序" + seq;
+    return "工序未维护";
+  }
+
+  function calendarPartText(item) {
+    const partNo = trim(item && item.part_no);
+    const partName = trim(item && item.part_name);
+    return [partNo, partName].filter(Boolean).join(" ") || "未维护";
+  }
+
+  function calendarTaskField(label, value) {
+    const textValue = trim(value) || "-";
+    return (
+      '<div class="aps-calendar-task-field">' +
+        '<span class="aps-calendar-task-label">' + escapeHtml(label) + '</span>' +
+        '<strong class="aps-calendar-task-value">' + escapeHtml(textValue) + '</strong>' +
+      '</div>'
+    );
+  }
+
+  function calendarTaskFieldHtml(label, html) {
+    return (
+      '<div class="aps-calendar-task-field aps-calendar-task-resource">' +
+        '<span class="aps-calendar-task-label">' + escapeHtml(label) + '</span>' +
+        '<strong class="aps-calendar-task-value">' + html + '</strong>' +
+      '</div>'
+    );
+  }
+
+  function calendarTaskHtml(item) {
+    const task = item || {};
+    const overdue = !!task.is_overdue;
+    const taskClass = "aps-calendar-task" + (overdue ? " aps-calendar-task--overdue" : "");
+    const title = trim(task.text) || [
+      trim(task.time_label),
+      trim(task.batch_id),
+      calendarOperationText(task),
+      calendarPartText(task)
+    ].filter(Boolean).join(" ");
+    const machineInfo = namedResourceInfo(task, "machine_id", "machine_name", "未维护计划设备", "supplier_name");
+    const operatorInfo = namedResourceInfo(task, "operator_id", "operator_name", "未维护计划人员", "");
+    const timeText = trim(task.time_label) || "时间未维护";
+    return (
+      '<div class="' + taskClass + '" title="' + escapeHtml(title) + '">' +
+        '<div class="aps-calendar-task-time">' +
+          '<span>' + escapeHtml(timeText) + '</span>' +
+          (overdue ? badge("超期", "error") : "") +
+        '</div>' +
+        '<div class="aps-calendar-task-grid">' +
+          calendarTaskField("批次", task.batch_id) +
+          calendarTaskField("工序", calendarOperationText(task)) +
+          calendarTaskFieldHtml("计划设备", resourceInfoHtml(machineInfo)) +
+          calendarTaskFieldHtml("计划人员", resourceInfoHtml(operatorInfo)) +
+          calendarTaskField("图号 / 物料", calendarPartText(task)) +
+        '</div>' +
+      '</div>'
+    );
+  }
+
   function renderFlags(row) {
     const items = [];
     const lockLabel = lockStatusLabel(row && row.lock_status, row && row.lock_status_label);
@@ -953,7 +1058,7 @@
     }
 
     const html = [];
-    html.push('<table id="rdCalendarTable" class="table-sticky table-layout-fixed aps-table-xwide" data-col-resize="1" data-table-key="v1_resourceDispatchCalendar"><thead><tr><th class="w-200" data-col-key="scope" data-default-w="200" data-min-w="160">查询对象</th>');
+    html.push('<table id="rdCalendarTable" class="table-sticky table-sticky-col table-layout-fixed aps-table-xwide aps-resource-calendar-table" data-col-resize="1" data-table-key="v1_resourceDispatchCalendar"><thead><tr><th class="w-200 aps-calendar-scope-head" data-col-key="scope" data-default-w="200" data-min-w="160">查询对象</th>');
     for (let i = 0; i < headerList.length; i++) {
       const d = trim(headerList[i]);
       html.push('<th class="w-180" data-col-key="day_' + escapeHtml(String(i)) + '" data-default-w="180" data-min-w="150">' + escapeHtml(d) + '</th>');
@@ -962,24 +1067,20 @@
     for (let r = 0; r < rowList.length; r++) {
       const row = rowList[r] || {};
       html.push('<tr>');
-      html.push(resourceCell(row, "current_resource", "", row.scope_label || ""));
+      html.push(resourceCell(row, "current_resource", "aps-resource-cell aps-calendar-scope-cell", row.scope_label || ""));
       const cells = Array.isArray(row.cells) ? row.cells : [];
       for (let c = 0; c < cells.length; c++) {
         const cell = cells[c] || {};
         const items = Array.isArray(cell.items) ? cell.items : [];
         if (!items.length) {
-          html.push('<td class="muted">-</td>');
+          html.push('<td class="muted aps-calendar-empty-cell">-</td>');
           continue;
         }
         const lines = [];
         for (let j = 0; j < items.length; j++) {
-          const item = items[j] || {};
-          const cls = item.is_overdue ? ' style="color:#b91c1c;font-weight:600;"' : "";
-          const title = resourceInfo(item, "counterpart_resource", "").identity;
-          const titleAttr = title ? ' title="' + escapeHtml(title) + '"' : "";
-          lines.push('<div' + cls + titleAttr + '>' + escapeHtml(item.text || "") + '</div>');
+          lines.push(calendarTaskHtml(items[j] || {}));
         }
-        html.push('<td style="white-space:normal;min-width:140px;">' + lines.join("") + '</td>');
+        html.push('<td class="aps-calendar-cell">' + lines.join("") + '</td>');
       }
       html.push('</tr>');
     }

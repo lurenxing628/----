@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from io import BytesIO
-from typing import Any, Dict, List, Sequence, cast
+from typing import Any, Dict, List, Sequence, Tuple, cast
 
 from openpyxl import Workbook
 from openpyxl.cell.cell import Cell
@@ -165,6 +165,99 @@ def _calendar_table_rows(calendar_rows: Sequence[Dict[str, Any]]) -> List[List[A
     return table
 
 
+def _calendar_detail_headers() -> List[str]:
+    return [
+        "日历来源",
+        "查询对象",
+        "日期",
+        "时间",
+        "批次",
+        "工序",
+        "图号 / 物料",
+        "计划设备",
+        "计划人员",
+        "对应资源",
+        "是否超期",
+        "任务说明",
+    ]
+
+
+def _resource_pair_text(row: Dict[str, Any], id_key: str, name_key: str, *, supplier_key: str = "", default: str = "") -> str:
+    resource_id = str(row.get(id_key) or "").strip()
+    resource_name = str(row.get(name_key) or "").strip()
+    if resource_id and resource_name:
+        return f"{resource_id} {resource_name}"
+    if resource_name:
+        return resource_name
+    if resource_id:
+        return resource_id
+    if supplier_key:
+        supplier_name = str(row.get(supplier_key) or "").strip()
+        if supplier_name:
+            return f"外协供应商：{supplier_name}"
+    return default
+
+
+def _operation_text(row: Dict[str, Any]) -> str:
+    op_code = str(row.get("op_code") or "").strip()
+    if op_code:
+        return op_code
+    seq = row.get("seq")
+    if seq not in (None, ""):
+        return f"工序{seq}"
+    return ""
+
+
+def _part_text(row: Dict[str, Any]) -> str:
+    part_no = str(row.get("part_no") or "").strip()
+    part_name = str(row.get("part_name") or "").strip()
+    return " ".join(part for part in (part_no, part_name) if part)
+
+
+def _calendar_detail_table_rows(
+    calendar_sources: Sequence[Tuple[str, Sequence[Dict[str, Any]]]]
+) -> List[List[Any]]:
+    table: List[List[Any]] = []
+    for source_label, calendar_rows in calendar_sources:
+        for row in calendar_rows:
+            query_target = _resource_export_text(row, "current_resource", "scope_label")
+            cells = row.get("cells") or []
+            for cell in cells:
+                date_text = cell.get("date") or ""
+                items = cell.get("items") or []
+                for item in items:
+                    if not isinstance(item, dict):
+                        continue
+                    table.append(
+                        [
+                            source_label,
+                            query_target,
+                            date_text,
+                            item.get("time_label") or "",
+                            item.get("batch_id") or "",
+                            _operation_text(item),
+                            _part_text(item),
+                            _resource_pair_text(
+                                item,
+                                "machine_id",
+                                "machine_name",
+                                supplier_key="supplier_name",
+                                default="未维护计划设备",
+                            ),
+                            _resource_pair_text(
+                                item,
+                                "operator_id",
+                                "operator_name",
+                                default="未维护计划人员",
+                            ),
+                            _resource_export_text(item, "counterpart_resource", "counterpart_resource_label"),
+                            _yes_no_label(item.get("is_overdue")),
+                            item.get("text") or "",
+                        ]
+                    )
+    return table
+
+
 def _empty_reason_text(value: Any) -> str:
     text = str(value or "").strip()
     if not text:
@@ -281,6 +374,14 @@ def _write_calendar_sheet(wb: Workbook, title: str, headers: Sequence[str], rows
     _write_table(ws, ["查询对象"] + list(headers), _calendar_table_rows(rows))
 
 
+def _write_calendar_detail_sheet(
+    wb: Workbook,
+    calendar_sources: Sequence[Tuple[str, Sequence[Dict[str, Any]]]],
+) -> None:
+    ws = cast(Worksheet, wb.create_sheet("日历明细"))
+    _write_table(ws, _calendar_detail_headers(), _calendar_detail_table_rows(calendar_sources))
+
+
 def _write_detail_sheet(wb: Workbook, title: str, rows: Sequence[Dict[str, Any]]) -> None:
     ws = cast(Worksheet, wb.create_sheet(title))
     _write_table(ws, _detail_headers(), _detail_table_rows(rows))
@@ -301,6 +402,13 @@ def _write_team_scope_sheets(wb: Workbook, payload: Dict[str, Any]) -> None:
         list(payload.get("machine_calendar_headers") or []),
         list(payload.get("machine_calendar_rows") or []),
     )
+    _write_calendar_detail_sheet(
+        wb,
+        [
+            ("班组人员日历", list(payload.get("operator_calendar_rows") or [])),
+            ("班组设备日历", list(payload.get("machine_calendar_rows") or [])),
+        ],
+    )
     cross_team_rows = list(payload.get("cross_team_rows") or [])
     if cross_team_rows:
         _write_detail_sheet(wb, "跨班组", cross_team_rows)
@@ -314,6 +422,7 @@ def _write_resource_scope_sheets(wb: Workbook, payload: Dict[str, Any]) -> None:
         list(payload.get("calendar_headers") or []),
         list(payload.get("calendar_rows") or []),
     )
+    _write_calendar_detail_sheet(wb, [("日历排班", list(payload.get("calendar_rows") or []))])
 
 
 def build_resource_dispatch_workbook(payload: Dict[str, Any]) -> BytesIO:

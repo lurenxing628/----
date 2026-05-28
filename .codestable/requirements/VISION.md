@@ -1,6 +1,6 @@
 ---
 doc_type: requirements-index
-last_reviewed: 2026-05-27
+last_reviewed: 2026-05-28
 ---
 
 # APS 能力愿景索引
@@ -11,6 +11,7 @@ last_reviewed: 2026-05-27
 
 - [只读甘特图结果查看能力](gantt-readonly-result-view.md) — 调度员可以安全查看正式排产结果，不会误以为拖动任务条已经改了计划。
 - [记录车间实际开工完工和异常](shop-floor-execution-feedback.md) — 让现场实际开工、完工和异常反馈独立记录，不混进原来的计划时间。
+- [看清资源派工和日历明细](resource-dispatch-calendar-readable-output.md) — 让计划员在资源派工里看清每天每个人和每台设备的任务，并能导出明细查问题。
 
 ## 未来愿景
 

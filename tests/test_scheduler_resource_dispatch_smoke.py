@@ -165,7 +165,7 @@ def test_scheduler_resource_dispatch_page_data_export_and_dashboard_entry(tmp_pa
     resp_export = client.get(f"/scheduler/resource-dispatch/export?{query}")
     _assert_status(resp_export, "GET /scheduler/resource-dispatch/export")
     wb = openpyxl.load_workbook(io.BytesIO(resp_export.data))
-    assert wb.sheetnames == ["查询摘要", "任务明细", "日历排班"]
+    assert wb.sheetnames == ["查询摘要", "任务明细", "日历排班", "日历明细"]
     ws_detail = cast(Worksheet, wb["任务明细"])
     max_column = int(ws_detail.max_column)
     headers = [str(ws_detail.cell(1, idx).value or "").strip() for idx in range(1, max_column + 1)]
@@ -203,6 +203,7 @@ def test_scheduler_resource_dispatch_page_data_export_and_dashboard_entry(tmp_pa
         "班组设备任务明细",
         "班组人员日历",
         "班组设备日历",
+        "日历明细",
         "跨班组",
     ]
 

@@ -90,6 +90,7 @@ def test_fixed_table_rules_keep_scroll_or_readability_escape_hatches() -> None:
 def test_resource_dispatch_calendar_table_keeps_scroll_and_table_key_contract() -> None:
     template_source = _read("templates/scheduler/resource_dispatch.html")
     script_source = _read("static/js/resource_dispatch.js")
+    css_source = _read("static/css/ui_contract.css")
 
     calendar_panel = template_source[
         template_source.index('id="rdCalendarPanel"') : template_source.index('id="rdGanttPanel"')
@@ -99,10 +100,24 @@ def test_resource_dispatch_calendar_table_keeps_scroll_and_table_key_contract() 
     assert 'id="rdCalendarTable"' in script_source
     assert "table-layout-fixed" in script_source
     assert "aps-table-xwide" in script_source
+    assert "table-sticky-col" in script_source
+    assert "aps-resource-calendar-table" in script_source
     assert 'data-col-resize="1"' in script_source
     assert 'data-table-key="v1_resourceDispatchCalendar"' in script_source
     assert "data-default-w" in script_source
     assert "data-min-w" in script_source
+    assert "aps-calendar-task" in script_source
+    assert "aps-calendar-task--overdue" in script_source
+    assert 'badge("超期", "error")' in script_source
+    assert "calendarTaskField(\"批次\"" in script_source
+    assert "calendarTaskField(\"工序\"" in script_source
+    assert "calendarTaskFieldHtml(\"计划设备\"" in script_source
+    assert "calendarTaskFieldHtml(\"计划人员\"" in script_source
+    assert "calendarTaskField(\"图号 / 物料\"" in script_source
+    assert "编号：" in script_source
+    assert "完整身份：" not in script_source[script_source.index("function namedResourceInfo") : script_source.index("function renderFlags")]
+    assert ".aps-calendar-task + .aps-calendar-task" in css_source
+    assert 'html[data-theme="dark"] .aps-calendar-task' in css_source
 
 
 def test_truncate_cell_helpers_are_not_used_by_active_templates_or_js() -> None:
