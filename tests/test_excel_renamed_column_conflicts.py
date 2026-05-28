@@ -207,3 +207,113 @@ def test_supplier_preview_and_confirm_reject_renamed_id_column_conflict(tmp_path
         assert rows == []
     finally:
         verify_conn.close()
+
+
+def test_machine_preview_and_confirm_accept_legacy_machine_headers(tmp_path, monkeypatch) -> None:
+    app, db_path = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+    file_bytes = _make_xlsx(["机器编号", "机器名称", "状态"], [["MC_ALIAS_001", "旧列名设备", "可用"]])
+
+    preview_resp = client.post(
+        "/equipment/excel/machines/preview",
+        data={"mode": ImportMode.OVERWRITE.value, "file": (io.BytesIO(file_bytes), "machines_alias.xlsx")},
+        content_type="multipart/form-data",
+    )
+    preview_html = preview_resp.get_data(as_text=True)
+    assert preview_resp.status_code == 200
+    assert "已识别旧列“机器编号/机器名称”，本次按“设备编号/设备名称”处理" in preview_html
+    assert "“设备编号”不能为空" not in preview_html
+
+    confirm_resp = client.post(
+        "/equipment/excel/machines/confirm",
+        data={
+            "mode": ImportMode.OVERWRITE.value,
+            "filename": "machines_alias.xlsx",
+            "raw_rows_json": _extract_raw_rows_json(preview_html),
+            "preview_baseline": _extract_hidden_input(preview_html, "preview_baseline"),
+        },
+        follow_redirects=True,
+    )
+    confirm_html = confirm_resp.get_data(as_text=True)
+    assert confirm_resp.status_code == 200
+    assert "导入完成" in confirm_html
+
+    verify_conn = get_connection(db_path)
+    try:
+        row = verify_conn.execute(
+            "SELECT machine_id, name, status FROM Machines WHERE machine_id=?",
+            ("MC_ALIAS_001",),
+        ).fetchone()
+        assert row is not None
+        assert row["name"] == "旧列名设备"
+        assert row["status"] == "active"
+    finally:
+        verify_conn.close()
+
+
+def test_machine_preview_and_confirm_reject_legacy_machine_header_conflicts(tmp_path, monkeypatch) -> None:
+    app, db_path = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+    file_bytes = _make_xlsx(
+        ["设备编号", "机器编号", "设备名称", "机器名称", "状态"],
+        [["MC_NEW", "MC_OLD", "新设备名", "旧设备名", "可用"]],
+    )
+    expected_id_message = (
+        "“设备编号”和旧列“机器编号”不能同时填写不同值："
+        "当前“设备编号”为“MC_NEW”，“机器编号”为“MC_OLD”。"
+        "请保留一个编号列，或把两个值改成一致后重新导入。"
+    )
+
+    preview_resp = client.post(
+        "/equipment/excel/machines/preview",
+        data={"mode": ImportMode.OVERWRITE.value, "file": (io.BytesIO(file_bytes), "machines_conflict.xlsx")},
+        content_type="multipart/form-data",
+    )
+    preview_html = preview_resp.get_data(as_text=True)
+    assert preview_resp.status_code == 200
+    assert expected_id_message in preview_html
+
+    confirm_resp = client.post(
+        "/equipment/excel/machines/confirm",
+        data={
+            "mode": ImportMode.OVERWRITE.value,
+            "filename": "machines_conflict.xlsx",
+            "raw_rows_json": _extract_raw_rows_json(preview_html),
+            "preview_baseline": _extract_hidden_input(preview_html, "preview_baseline"),
+        },
+        follow_redirects=True,
+    )
+    confirm_html = confirm_resp.get_data(as_text=True)
+    assert confirm_resp.status_code == 200
+    assert "导入被拒绝：Excel 存在 1 行错误。" in confirm_html
+    assert expected_id_message in confirm_html
+
+    verify_conn = get_connection(db_path)
+    try:
+        rows = verify_conn.execute("SELECT machine_id FROM Machines WHERE machine_id IN (?, ?)", ("MC_NEW", "MC_OLD")).fetchall()
+        assert rows == []
+    finally:
+        verify_conn.close()
+
+
+def test_machine_preview_reports_name_header_conflict_with_name_hint(tmp_path, monkeypatch) -> None:
+    app, _db_path = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+    file_bytes = _make_xlsx(
+        ["设备编号", "机器编号", "设备名称", "机器名称", "状态"],
+        [["MC001", "MC001", "新设备名", "旧设备名", "可用"]],
+    )
+    expected_name_message = (
+        "“设备名称”和旧列“机器名称”不能同时填写不同值："
+        "当前“设备名称”为“新设备名”，“机器名称”为“旧设备名”。"
+        "请保留一个名称列，或把两个值改成一致后重新导入。"
+    )
+
+    preview_resp = client.post(
+        "/equipment/excel/machines/preview",
+        data={"mode": ImportMode.OVERWRITE.value, "file": (io.BytesIO(file_bytes), "machines_name_conflict.xlsx")},
+        content_type="multipart/form-data",
+    )
+    preview_html = preview_resp.get_data(as_text=True)
+    assert preview_resp.status_code == 200
+    assert expected_name_message in preview_html

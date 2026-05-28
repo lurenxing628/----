@@ -30,8 +30,10 @@ from .excel_utils import (
     extract_import_stats,
     flash_import_result,
     load_confirm_payload,
+    normalize_renamed_column,
     preview_baseline_is_stale,
     project_preview_rows_for_display,
+    renamed_column_conflict_message,
     send_excel_template_file,
 )
 
@@ -40,11 +42,47 @@ from .excel_utils import (
 # （Phase4-03 会在此基础上完善；先占位，避免后续拆文件）
 # ============================================================
 
+MACHINE_ID_COLUMN = "设备编号"
+LEGACY_MACHINE_ID_COLUMN = "机器编号"
+MACHINE_NAME_COLUMN = "设备名称"
+LEGACY_MACHINE_NAME_COLUMN = "机器名称"
+
+
+def _normalize_machine_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    for row in rows:
+        normalize_renamed_column(row, current_column=MACHINE_ID_COLUMN, legacy_column=LEGACY_MACHINE_ID_COLUMN)
+        normalize_renamed_column(row, current_column=MACHINE_NAME_COLUMN, legacy_column=LEGACY_MACHINE_NAME_COLUMN)
+    return rows
+
+
+def _machine_name_conflict_message(row: Dict[str, Any]) -> Optional[str]:
+    current_text = "" if is_blank_value(row.get(MACHINE_NAME_COLUMN)) else str(row.get(MACHINE_NAME_COLUMN)).strip()
+    legacy_text = "" if is_blank_value(row.get(LEGACY_MACHINE_NAME_COLUMN)) else str(row.get(LEGACY_MACHINE_NAME_COLUMN)).strip()
+    if not current_text or not legacy_text or current_text == legacy_text:
+        return None
+    return (
+        f"“{MACHINE_NAME_COLUMN}”和旧列“{LEGACY_MACHINE_NAME_COLUMN}”不能同时填写不同值："
+        f"当前“{MACHINE_NAME_COLUMN}”为“{current_text}”，“{LEGACY_MACHINE_NAME_COLUMN}”为“{legacy_text}”。"
+        "请保留一个名称列，或把两个值改成一致后重新导入。"
+    )
+
 
 def _validate_machine_excel_row(row: Dict[str, Any]) -> Optional[str]:
-    if is_blank_value(row.get("设备编号")):
+    id_conflict = renamed_column_conflict_message(
+        row,
+        current_column=MACHINE_ID_COLUMN,
+        legacy_column=LEGACY_MACHINE_ID_COLUMN,
+    )
+    if id_conflict:
+        return id_conflict
+
+    name_conflict = _machine_name_conflict_message(row)
+    if name_conflict:
+        return name_conflict
+
+    if is_blank_value(row.get(MACHINE_ID_COLUMN)):
         return "设备编号不能为空"
-    if is_blank_value(row.get("设备名称")):
+    if is_blank_value(row.get(MACHINE_NAME_COLUMN)):
         return "设备名称不能为空"
 
     status = row.get("状态")
@@ -164,7 +202,9 @@ def excel_machine_preview():
         raise ValidationError("请先选择要上传的 Excel 文件", field="file")
 
     rows = _read_uploaded_xlsx(file)
-    _ensure_unique_ids(rows, id_column="设备编号")
+    used_legacy_column = any(LEGACY_MACHINE_ID_COLUMN in row or LEGACY_MACHINE_NAME_COLUMN in row for row in rows)
+    rows = _normalize_machine_rows(rows)
+    _ensure_unique_ids(rows, id_column=MACHINE_ID_COLUMN)
 
     op_type_svc = OpTypeService(g.db, op_logger=getattr(g, "op_logger", None))
     team_svc = ResourceTeamService(g.db, op_logger=getattr(g, "op_logger", None))
@@ -213,7 +253,7 @@ def excel_machine_preview():
     svc = ExcelService(backend=get_excel_backend(), logger=None, op_logger=getattr(g, "op_logger", None))
     preview_rows = svc.preview_import(
         rows=normalized_rows,
-        id_column="设备编号",
+        id_column=MACHINE_ID_COLUMN,
         existing_data=existing,
         validators=[validate_row],
         mode=mode,
@@ -221,7 +261,7 @@ def excel_machine_preview():
     preview_baseline = build_preview_baseline_token(
         existing_data=existing,
         mode=mode,
-        id_column="设备编号",
+        id_column=MACHINE_ID_COLUMN,
         extra_state=_machine_reference_snapshot(op_type_svc=op_type_svc, team_svc=team_svc),
         rows=normalized_rows,
     )
@@ -236,6 +276,8 @@ def excel_machine_preview():
         preview_or_result=preview_rows,
         time_cost_ms=time_cost_ms,
     )
+    if used_legacy_column:
+        flash("已识别旧列“机器编号/机器名称”，本次按“设备编号/设备名称”处理。建议下载新模板后再维护。", "warning")
 
     return _render_excel_machine_page(
         existing=existing,
@@ -253,9 +295,9 @@ def excel_machine_confirm():
     mode = _parse_mode(request.form.get("mode", ImportMode.OVERWRITE.value))
     filename = request.form.get("filename") or "unknown.xlsx"
     payload = load_confirm_payload(request.form.get("raw_rows_json"), request.form.get("preview_baseline"))
-    rows = payload.rows
+    rows = _normalize_machine_rows(payload.rows)
 
-    _ensure_unique_ids(rows, id_column="设备编号")
+    _ensure_unique_ids(rows, id_column=MACHINE_ID_COLUMN)
 
     op_type_svc = OpTypeService(g.db, op_logger=getattr(g, "op_logger", None))
     team_svc = ResourceTeamService(g.db, op_logger=getattr(g, "op_logger", None))
@@ -265,7 +307,7 @@ def excel_machine_confirm():
         payload.preview_baseline,
         existing_data=existing,
         mode=mode,
-        id_column="设备编号",
+        id_column=MACHINE_ID_COLUMN,
         extra_state=_machine_reference_snapshot(op_type_svc=op_type_svc, team_svc=team_svc),
         rows=rows,
     ):
@@ -301,7 +343,7 @@ def excel_machine_confirm():
     excel_svc = ExcelService(backend=get_excel_backend(), logger=None, op_logger=getattr(g, "op_logger", None))
     preview_rows = excel_svc.preview_import(
         rows=rows,
-        id_column="设备编号",
+        id_column=MACHINE_ID_COLUMN,
         existing_data=existing,
         validators=[validate_row],
         mode=mode,
