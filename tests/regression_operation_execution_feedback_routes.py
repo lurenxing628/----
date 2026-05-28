@@ -12,6 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 RESOURCE_DISPATCH_JS = REPO_ROOT / "static" / "js" / "resource_dispatch.js"
 RESOURCE_DISPATCH_TEMPLATE = REPO_ROOT / "templates" / "scheduler" / "resource_dispatch.html"
+UI_CONTRACT_CSS = REPO_ROOT / "static" / "css" / "ui_contract.css"
 
 
 def _build_app(tmp_path, monkeypatch):
@@ -294,8 +295,16 @@ def test_controlled_start_finish_posts_return_refresh_contract(tmp_path, monkeyp
         "state_revision",
         "actual_start_time",
         "actual_end_time",
+        "planned_machine_display_label",
+        "planned_machine_identity_label",
         "actual_machine_label",
+        "actual_machine_display_label",
+        "actual_machine_identity_label",
+        "planned_operator_display_label",
+        "planned_operator_identity_label",
         "actual_operator_label",
+        "actual_operator_display_label",
+        "actual_operator_identity_label",
         "last_event_action_label",
         "last_event_remark",
         "latest_exception_reason_label",
@@ -312,6 +321,18 @@ def test_controlled_start_finish_posts_return_refresh_contract(tmp_path, monkeyp
     ):
         assert key in start_data["task_card"]
     assert start_data["task_card"]["current_status_label"] == "生产中"
+    assert start_data["task_card"]["planned_machine_label"] == "M1 一号设备"
+    assert start_data["task_card"]["planned_machine_display_label"] == "一号设备"
+    assert start_data["task_card"]["planned_machine_identity_label"] == "M1 一号设备"
+    assert start_data["task_card"]["actual_machine_label"] == "M1 一号设备"
+    assert start_data["task_card"]["actual_machine_display_label"] == "一号设备"
+    assert start_data["task_card"]["actual_machine_identity_label"] == "M1 一号设备"
+    assert start_data["task_card"]["planned_operator_label"] == "O1 张三"
+    assert start_data["task_card"]["planned_operator_display_label"] == "张三"
+    assert start_data["task_card"]["planned_operator_identity_label"] == "O1 张三"
+    assert start_data["task_card"]["actual_operator_label"] == "O1 张三"
+    assert start_data["task_card"]["actual_operator_display_label"] == "张三"
+    assert start_data["task_card"]["actual_operator_identity_label"] == "O1 张三"
     action_by_name = {item["action"]: item for item in start_data["task_card"]["available_actions"]}
     assert action_by_name["finish"]["label"] == "完工"
     assert action_by_name["finish"]["enabled"] is True
@@ -638,6 +659,7 @@ def test_resource_dispatch_page_has_execution_tab_without_feedback_protection_co
 def test_resource_dispatch_frontend_posts_execution_button_clicks() -> None:
     source = RESOURCE_DISPATCH_JS.read_text(encoding="utf-8")
     template = RESOURCE_DISPATCH_TEMPLATE.read_text(encoding="utf-8")
+    css = UI_CONTRACT_CSS.read_text(encoding="utf-8")
 
     assert "bindExecutionActionClicks" in source
     assert "postExecutionAction" in source
@@ -646,9 +668,23 @@ def test_resource_dispatch_frontend_posts_execution_button_clicks() -> None:
     assert "请先填写反馈人。" in source
     assert "payload.created_by = createdBy" in source
     assert 'payload.created_by = "现场反馈"' not in source
-    assert "executionPromptStartResource" in source
-    assert "请确认实际设备编号" in source
-    assert "请填写实际人员工号" in source
+    assert "window.confirm" not in source
+    assert "executionPromptStartResource" not in source
+    assert "请确认实际设备编号" not in source
+    assert "请填写实际人员工号" not in source
+    assert 'payload.machine_id = machine' in source
+    assert 'payload.operator_id = operator' in source
+    assert "renderFinishInlineForm" in source
+    assert "aps-execution-finish-qty" in source
+    assert "请填写完成数量。" in source
+    assert "aps-execution-inline-form" in css
+    assert "background: var(--ui-surface-muted" in css
+    assert "--ui-bg-subtle" not in css
+    assert "normalizedUnavailableReasonTexts" in source
+    assert "statusUnavailableReasonSummary" in source
+    assert '"start", "pause", "resume", "finish", "report_exception"' in source
+    assert 'actions.join("、")' in source
+    assert 'map(escapeHtml).join("；")' not in source
     assert "第一版" not in source
     assert 'id="rdExecutionCreatedBy"' in template
     assert "反馈人" in template

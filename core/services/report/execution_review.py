@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, List, Optional, Protocol, cast
 
 from core.infrastructure.errors import ValidationError
+from core.models.resource_identity import ResourceIdentity, build_resource_identity
 from core.models.schedule_plan_role import ROLE_ADOPTED
 from core.services.scheduler.schedule_plan_query_service import plan_role_label
 
@@ -183,6 +184,60 @@ class ExecutionReviewMixin:
         planned_end = self._display_time(row.get("end_time"))
         actual_start = getattr(state, "actual_start_time", None) if state is not None else None
         actual_end = getattr(state, "actual_end_time", None) if state is not None else None
+        planned_resource = self._planned_resource_identity(row)
+        actual_resource = self._actual_resource_identity(state, has_feedback)
+        affected_machine = self._state_resource_identity(
+            state,
+            "latest_exception_affected_machine",
+            empty_label="未填写影响设备",
+        )
+        affected_operator = self._state_resource_identity(
+            state,
+            "latest_exception_affected_operator",
+            empty_label="未填写影响人员",
+        )
+        affected_machine_label = self._exception_value_label(
+            affected_machine.display_label,
+            has_feedback,
+            has_exception,
+            empty_text="未填写影响设备",
+        )
+        affected_operator_label = self._exception_value_label(
+            affected_operator.display_label,
+            has_feedback,
+            has_exception,
+            empty_text="未填写影响人员",
+        )
+        affected_machine_identity_label = (
+            self._exception_value_label(
+                affected_machine.identity_label,
+                has_feedback,
+                has_exception,
+                empty_text="未填写影响设备",
+            )
+            if has_feedback and has_exception
+            else affected_machine_label
+        )
+        affected_operator_identity_label = (
+            self._exception_value_label(
+                affected_operator.identity_label,
+                has_feedback,
+                has_exception,
+                empty_text="未填写影响人员",
+            )
+            if has_feedback and has_exception
+            else affected_operator_label
+        )
+        affected_machine_export_label = (
+            self._resource_export_label(affected_machine, affected_machine_label)
+            if has_feedback and has_exception
+            else affected_machine_label
+        )
+        affected_operator_export_label = (
+            self._resource_export_label(affected_operator, affected_operator_label)
+            if has_feedback and has_exception
+            else affected_operator_label
+        )
         return {
             "batch_id_label": str(row.get("batch_id") or ""),
             "operation_label": self._operation_label(row),
@@ -208,18 +263,12 @@ class ExecutionReviewMixin:
                 has_feedback,
                 has_exception,
             ),
-            "exception_affected_machine_label": self._exception_value_label(
-                getattr(state, "latest_exception_affected_machine_label", None),
-                has_feedback,
-                has_exception,
-                empty_text="未填写影响设备",
-            ),
-            "exception_affected_operator_label": self._exception_value_label(
-                getattr(state, "latest_exception_affected_operator_label", None),
-                has_feedback,
-                has_exception,
-                empty_text="未填写影响人员",
-            ),
+            "exception_affected_machine_label": affected_machine_label,
+            "exception_affected_machine_identity_label": affected_machine_identity_label,
+            "exception_affected_machine_export_label": affected_machine_export_label,
+            "exception_affected_operator_label": affected_operator_label,
+            "exception_affected_operator_identity_label": affected_operator_identity_label,
+            "exception_affected_operator_export_label": affected_operator_export_label,
             "exception_handling_status_label": self._exception_value_label(
                 getattr(state, "latest_exception_handling_status_label", None),
                 has_feedback,
@@ -230,8 +279,12 @@ class ExecutionReviewMixin:
                 has_feedback,
                 has_exception,
             ),
-            "planned_resource_label": self._planned_resource_label(row),
-            "actual_resource_label": self._actual_resource_label(state, has_feedback),
+            "planned_resource_label": planned_resource["display_label"],
+            "planned_resource_identity_label": planned_resource["identity_label"],
+            "planned_resource_export_label": planned_resource["export_label"],
+            "actual_resource_label": actual_resource["display_label"],
+            "actual_resource_identity_label": actual_resource["identity_label"],
+            "actual_resource_export_label": actual_resource["export_label"],
             "feedback_status_label": getattr(state, "current_status_label", None) if has_feedback else "暂无现场反馈",
         }
 
@@ -256,30 +309,66 @@ class ExecutionReviewMixin:
         return op_name or op_code or "未命名工序"
 
     @staticmethod
-    def _planned_resource_label(row: Dict[str, Any]) -> str:
-        machine = str(row.get("machine_name") or row.get("machine_id") or "").strip()
-        operator = str(row.get("operator_name") or row.get("operator_id") or "").strip()
-        if machine and operator:
-            return f"{machine} / {operator}"
-        if machine:
-            return f"{machine} / 未安排人员"
-        if operator:
-            return f"未安排设备 / {operator}"
-        return "未安排计划资源"
+    def _resource_pair_payload(machine: ResourceIdentity, operator: ResourceIdentity, *, empty_label: str) -> Dict[str, str]:
+        machine_display = machine.display_label
+        operator_display = operator.display_label
+        machine_identity = machine.identity_label
+        operator_identity = operator.identity_label
+        if machine_display and operator_display:
+            display = f"{machine_display} / {operator_display}"
+        elif machine_display:
+            display = f"{machine_display} / 未安排人员"
+        elif operator_display:
+            display = f"未安排设备 / {operator_display}"
+        else:
+            display = empty_label
+        if machine_identity and operator_identity:
+            identity = f"{machine_identity} / {operator_identity}"
+        elif machine_identity:
+            identity = f"{machine_identity} / 未安排人员"
+        elif operator_identity:
+            identity = f"未安排设备 / {operator_identity}"
+        else:
+            identity = display
+        export = display
+        if identity and identity != display:
+            export = f"{display}\n完整身份：{identity}"
+        return {"display_label": display, "identity_label": identity, "export_label": export}
 
     @staticmethod
-    def _actual_resource_label(state, has_feedback: bool) -> str:
+    def _resource_export_label(identity: ResourceIdentity, display_label: str) -> str:
+        display = str(display_label or "").strip()
+        identity_label = identity.identity_label
+        if display and identity_label and identity_label != display:
+            return f"{display}\n完整身份：{identity_label}"
+        return display or identity_label
+
+    @staticmethod
+    def _planned_resource_identity(row: Dict[str, Any]) -> Dict[str, str]:
+        machine = build_resource_identity(row.get("machine_id"), row.get("machine_name"))
+        operator = build_resource_identity(row.get("operator_id"), row.get("operator_name"))
+        return ExecutionReviewMixin._resource_pair_payload(machine, operator, empty_label="未安排计划资源")
+
+    @staticmethod
+    def _state_resource_identity(state, prefix: str, *, empty_label: str = "") -> ResourceIdentity:
+        return build_resource_identity(
+            getattr(state, f"{prefix}_id", None),
+            getattr(state, f"{prefix}_name", None),
+            display_label=getattr(state, f"{prefix}_display_label", None) or empty_label,
+            identity_label=getattr(state, f"{prefix}_identity_label", None) or getattr(state, f"{prefix}_label", None),
+        )
+
+    @staticmethod
+    def _actual_resource_identity(state, has_feedback: bool) -> Dict[str, str]:
         if not has_feedback:
-            return "暂无现场反馈"
-        machine = str(getattr(state, "actual_machine_label", None) or "").strip()
-        operator = str(getattr(state, "actual_operator_label", None) or "").strip()
-        if machine and operator:
-            return f"{machine} / {operator}"
-        if machine:
-            return f"{machine} / 未填写实际人员"
-        if operator:
-            return f"未填写实际设备 / {operator}"
-        return "未填写实际资源"
+            return {
+                "display_label": "暂无现场反馈",
+                "identity_label": "暂无现场反馈",
+                "export_label": "暂无现场反馈",
+            }
+        machine = ExecutionReviewMixin._state_resource_identity(state, "actual_machine")
+        operator = ExecutionReviewMixin._state_resource_identity(state, "actual_operator")
+        return ExecutionReviewMixin._resource_pair_payload(machine, operator, empty_label="未填写实际资源")
 
     @staticmethod
     def _pause_duration_label(value: Any, has_feedback: bool) -> str:

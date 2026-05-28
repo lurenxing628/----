@@ -26,6 +26,7 @@ from core.models.operation_execution_labels import (
     suggest_reschedule_label,
 )
 from core.models.operation_execution_state import OperationExecutionState
+from core.models.resource_identity import ResourceIdentity, build_resource_identity
 
 _REPORTED_STATUS_BY_EVENT_TYPE = {
     EXECUTION_EVENT_START: EXECUTION_STATUS_PROCESSING,
@@ -134,6 +135,22 @@ def _label(labels: Dict[str, str], value: Optional[str]) -> Optional[str]:
     return labels.get(str(value), str(value))
 
 
+def _resource_identity(resources: Dict[str, ResourceIdentity], value: Optional[str]) -> ResourceIdentity:
+    text = str(value or "").strip()
+    if not text:
+        return build_resource_identity()
+    return resources.get(text) or build_resource_identity(resource_id=text)
+
+
+def _resource_fields(prefix: str, identity: ResourceIdentity) -> Dict[str, Optional[str]]:
+    return {
+        f"{prefix}_name": identity.name or None,
+        f"{prefix}_display_label": identity.display_label or None,
+        f"{prefix}_identity_label": identity.identity_label or None,
+        f"{prefix}_label": identity.label or None,
+    }
+
+
 def _empty_exception_fields() -> Dict[str, Any]:
     return {
         "latest_exception_event_id": None,
@@ -145,8 +162,14 @@ def _empty_exception_fields() -> Dict[str, Any]:
         "latest_exception_impact_minutes": None,
         "latest_exception_impact_minutes_label": None,
         "latest_exception_affected_machine_id": None,
+        "latest_exception_affected_machine_name": None,
+        "latest_exception_affected_machine_display_label": None,
+        "latest_exception_affected_machine_identity_label": None,
         "latest_exception_affected_machine_label": None,
         "latest_exception_affected_operator_id": None,
+        "latest_exception_affected_operator_name": None,
+        "latest_exception_affected_operator_display_label": None,
+        "latest_exception_affected_operator_identity_label": None,
         "latest_exception_affected_operator_label": None,
         "latest_exception_handling_status": None,
         "latest_exception_handling_status_label": None,
@@ -159,11 +182,13 @@ def _empty_exception_fields() -> Dict[str, Any]:
 def _exception_fields(
     latest_exception: Optional[OperationExecutionEvent],
     *,
-    machine_labels: Dict[str, str],
-    operator_labels: Dict[str, str],
+    machine_resources: Dict[str, ResourceIdentity],
+    operator_resources: Dict[str, ResourceIdentity],
 ) -> Dict[str, Any]:
     if latest_exception is None:
         return _empty_exception_fields()
+    affected_machine = _resource_identity(machine_resources, latest_exception.affected_machine_id)
+    affected_operator = _resource_identity(operator_resources, latest_exception.affected_operator_id)
     return {
         "latest_exception_event_id": latest_exception.id,
         "latest_exception_time": latest_exception.event_time,
@@ -174,9 +199,9 @@ def _exception_fields(
         "latest_exception_impact_minutes": latest_exception.impact_minutes,
         "latest_exception_impact_minutes_label": _impact_minutes_label(latest_exception.impact_minutes),
         "latest_exception_affected_machine_id": latest_exception.affected_machine_id,
-        "latest_exception_affected_machine_label": _label(machine_labels, latest_exception.affected_machine_id),
+        **_resource_fields("latest_exception_affected_machine", affected_machine),
         "latest_exception_affected_operator_id": latest_exception.affected_operator_id,
-        "latest_exception_affected_operator_label": _label(operator_labels, latest_exception.affected_operator_id),
+        **_resource_fields("latest_exception_affected_operator", affected_operator),
         "latest_exception_handling_status": latest_exception.handling_status,
         "latest_exception_handling_status_label": handling_status_label(latest_exception.handling_status),
         "latest_exception_suggest_reschedule": _suggest_reschedule_bool(latest_exception.suggest_reschedule),
@@ -190,8 +215,8 @@ def build_operation_execution_state(
     op_id: int,
     batch_id: Optional[str],
     events: List[OperationExecutionEvent],
-    machine_labels: Dict[str, str],
-    operator_labels: Dict[str, str],
+    machine_resources: Dict[str, ResourceIdentity],
+    operator_resources: Dict[str, ResourceIdentity],
 ) -> OperationExecutionState:
     if not events:
         return OperationExecutionState(
@@ -205,6 +230,8 @@ def build_operation_execution_state(
     actual_end_time = _last_event_time(events, EXECUTION_EVENT_FINISH)
     actual_machine_id = _last_text(events, "actual_machine_id")
     actual_operator_id = _last_text(events, "actual_operator_id")
+    actual_machine = _resource_identity(machine_resources, actual_machine_id)
+    actual_operator = _resource_identity(operator_resources, actual_operator_id)
     current_status = _current_status(last_event)
     return OperationExecutionState(
         op_id=int(op_id),
@@ -216,9 +243,15 @@ def build_operation_execution_state(
         actual_duration_minutes=_duration_minutes(actual_start_time, actual_end_time),
         pause_duration_minutes=_pause_duration_minutes(events),
         actual_machine_id=actual_machine_id,
-        actual_machine_label=machine_labels.get(actual_machine_id or "") if actual_machine_id else None,
+        actual_machine_name=actual_machine.name or None,
+        actual_machine_display_label=actual_machine.display_label or None,
+        actual_machine_identity_label=actual_machine.identity_label or None,
+        actual_machine_label=actual_machine.label or None,
         actual_operator_id=actual_operator_id,
-        actual_operator_label=operator_labels.get(actual_operator_id or "") if actual_operator_id else None,
+        actual_operator_name=actual_operator.name or None,
+        actual_operator_display_label=actual_operator.display_label or None,
+        actual_operator_identity_label=actual_operator.identity_label or None,
+        actual_operator_label=actual_operator.label or None,
         last_event_id=last_event.id,
         last_event_type=last_event.event_type,
         last_event_time=last_event.event_time,
@@ -226,8 +259,8 @@ def build_operation_execution_state(
         last_event_remark=_event_remark(last_event),
         **_exception_fields(
             latest_exception,
-            machine_labels=machine_labels,
-            operator_labels=operator_labels,
+            machine_resources=machine_resources,
+            operator_resources=operator_resources,
         ),
         state_revision=f"{int(op_id)}:{len(events)}:{int(last_event.id or 0)}",
         updated_at=last_event.event_time,

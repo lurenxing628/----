@@ -234,13 +234,19 @@ def test_resource_dispatch_payload_decorates_detail_tasks_and_calendar_text() ->
 
     assert row["current_resource_label"] == "OP001 张三"
     assert row["counterpart_resource_label"] == "MC001 数控车床1"
+    assert row["current_resource_display_label"] == "张三"
+    assert row["counterpart_resource_display_label"] == "数控车床1"
+    assert row["counterpart_resource_identity_label"] == "MC001 数控车床1"
     assert row["team_relation_label"] == "跨班组"
-    assert task["name"] == "OP10 MC001 数控车床1"
+    assert task["name"] == "OP10 数控车床1"
     assert task["meta"]["counterpart_resource_label"] == "MC001 数控车床1"
+    assert task["meta"]["counterpart_resource_display_label"] == "数控车床1"
     assert calendar_row["scope_label"] == "OP001 张三"
+    assert calendar_row["scope_display_label"] == "张三"
     assert calendar_item["counterpart_resource_label"] == "MC001 数控车床1"
-    assert calendar_item["text"] == "08:00-10:00 OP10 MC001 数控车床1 P001"
-    assert calendar_row["cells"][0]["text"] == "08:00-10:00 OP10 MC001 数控车床1 P001"
+    assert calendar_item["counterpart_resource_display_label"] == "数控车床1"
+    assert calendar_item["text"] == "08:00-10:00 OP10 数控车床1 P001"
+    assert calendar_row["cells"][0]["text"] == "08:00-10:00 OP10 数控车床1 P001"
 
 
 def test_resource_dispatch_payload_keeps_calendar_day_segment_label() -> None:
@@ -279,7 +285,7 @@ def test_resource_dispatch_payload_keeps_calendar_day_segment_label() -> None:
     out = decorate_resource_dispatch_payload(payload)
 
     item_text = out["calendar_rows"][0]["cells"][0]["items"][0]["text"]
-    assert item_text == "全天 OP10 MC001 数控车床1"
+    assert item_text == "全天 OP10 数控车床1"
     assert "00:00-00:00" not in item_text
 
 

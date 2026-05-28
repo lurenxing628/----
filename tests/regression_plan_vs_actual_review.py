@@ -292,12 +292,12 @@ def test_execution_review_uses_execution_state_for_actual_times_and_resources(tm
         assert ws["J2"].value == "设备问题"
         assert ws["K2"].value == "严重"
         assert ws["L2"].value == "预计影响 30 分钟"
-        assert ws["M2"].value == "二号设备"
-        assert ws["N2"].value == "李四"
+        assert ws["M2"].value == "二号设备\n完整身份：M2 二号设备"
+        assert ws["N2"].value == "李四\n完整身份：O2 李四"
         assert ws["O2"].value == "处理中"
         assert ws["P2"].value == "建议重新排程"
-        assert ws["Q2"].value == "一号设备 / 张三"
-        assert ws["R2"].value == "二号设备 / 李四"
+        assert ws["Q2"].value == "一号设备 / 张三\n完整身份：M1 一号设备 / O1 张三"
+        assert ws["R2"].value == "二号设备 / 李四\n完整身份：M2 二号设备 / O2 李四"
         assert ws["S2"].value == "已完工"
         all_values = _all_workbook_values(wb)
         for token in ("plan_role", "source_table", "event_type", "report_exception", "schedule_id"):
@@ -368,7 +368,7 @@ def test_execution_review_entry_boundaries_and_stream_export(tmp_path, monkeypat
             assert "计划和现场实际" in wb.sheetnames
             ws = wb["计划和现场实际"]
             assert [cell.value for cell in ws[1]] == EXPECTED_HEADERS
-            assert ws["R2"].value == "二号设备 / 李四"
+            assert ws["R2"].value == "二号设备 / 李四\n完整身份：M2 二号设备 / O2 李四"
         finally:
             wb.close()
     finally:

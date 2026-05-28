@@ -10,6 +10,7 @@ from core.models.operation_execution_event import (
     EXECUTION_EVENT_START,
     OperationExecutionEvent,
 )
+from core.models.resource_identity import ResourceIdentity, build_resource_identity
 
 from .operation_execution_feedback_support import ExecutionFeedbackContext, ExecutionFeedbackResult, _text
 
@@ -23,30 +24,52 @@ class _FeedbackActionsHost(Protocol):
 
 
 class OperationExecutionFeedbackActionsMixin:
-    def resource_labels_for_events(self, events: Sequence[OperationExecutionEvent]) -> Tuple[Dict[str, str], Dict[str, str]]:
+    def _resource_identity(self, resource_id: str, resource_name: Any) -> ResourceIdentity:
+        return build_resource_identity(resource_id=resource_id, resource_name=resource_name)
+
+    def resource_labels_for_events(
+        self,
+        events: Sequence[OperationExecutionEvent],
+    ) -> Tuple[Dict[str, ResourceIdentity], Dict[str, ResourceIdentity]]:
         machine_ids = sorted(
             {
-                _text(getattr(event, "affected_machine_id", None))
+                value
                 for event in events
-                if _text(getattr(event, "affected_machine_id", None))
+                for value in (
+                    _text(getattr(event, "actual_machine_id", None)),
+                    _text(getattr(event, "affected_machine_id", None)),
+                )
+                if value
             }
         )
         operator_ids = sorted(
             {
-                _text(getattr(event, "affected_operator_id", None))
+                value
                 for event in events
-                if _text(getattr(event, "affected_operator_id", None))
+                for value in (
+                    _text(getattr(event, "actual_operator_id", None)),
+                    _text(getattr(event, "affected_operator_id", None)),
+                )
+                if value
             }
         )
-        machine_labels: Dict[str, str] = {}
-        operator_labels: Dict[str, str] = {}
+        machine_labels: Dict[str, ResourceIdentity] = {}
+        operator_labels: Dict[str, ResourceIdentity] = {}
         host = cast(_FeedbackActionsHost, self)
         for machine_id in machine_ids:
             machine = host.machine_repo.get(machine_id)
-            machine_labels[machine_id] = str(getattr(machine, "name", "") or machine_id) if machine else machine_id
+            machine_labels[machine_id] = (
+                self._resource_identity(machine_id, getattr(machine, "name", ""))
+                if machine
+                else build_resource_identity(resource_id=machine_id)
+            )
         for operator_id in operator_ids:
             operator = host.operator_repo.get(operator_id)
-            operator_labels[operator_id] = str(getattr(operator, "name", "") or operator_id) if operator else operator_id
+            operator_labels[operator_id] = (
+                self._resource_identity(operator_id, getattr(operator, "name", ""))
+                if operator
+                else build_resource_identity(resource_id=operator_id)
+            )
         return machine_labels, operator_labels
 
     def start_operation(

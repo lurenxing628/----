@@ -64,8 +64,13 @@ def test_resource_dispatch_payload_uses_public_business_title_when_op_code_missi
 
     out = decorate_resource_dispatch_payload(payload)
 
-    assert out["tasks"][0]["name"] == "B001 工序10 MC001 数控车床1"
-    assert out["calendar_rows"][0]["cells"][0]["items"][0]["text"] == "08:00-10:00 B001 工序10 MC001 数控车床1"
+    assert out["tasks"][0]["name"] == "B001 工序10 数控车床1"
+    assert out["tasks"][0]["meta"]["counterpart_resource_identity_label"] == "MC001 数控车床1"
+    assert out["calendar_rows"][0]["cells"][0]["items"][0]["text"] == "08:00-10:00 B001 工序10 数控车床1"
+    assert (
+        out["calendar_rows"][0]["cells"][0]["items"][0]["counterpart_resource_identity_label"]
+        == "MC001 数控车床1"
+    )
     assert "task_B001_deadbeef" not in out["tasks"][0]["name"]
     public_json = json.dumps(out, ensure_ascii=False)
     assert "INTERNAL-OP-ID-987654" not in public_json

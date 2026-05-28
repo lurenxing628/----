@@ -4,6 +4,7 @@ from copy import deepcopy
 from typing import Any, Dict, Iterable, List, MutableMapping
 
 from core.models.resource_dispatch_public_labels import lock_status_public_label, source_public_label
+from core.models.resource_identity import ResourceIdentity, build_resource_identity
 
 _PERIOD_PRESET_LABELS = {
     "week": "按周",
@@ -201,7 +202,10 @@ def team_axis_label(value: Any) -> str:
 def _id_name_label(item: MutableMapping[str, Any]) -> None:
     item_id = _text(item.get("id"))
     name = _text(item.get("name"))
-    item["label"] = f"{item_id} {name}".strip()
+    identity = build_resource_identity(resource_id=item_id, resource_name=name)
+    item["display_label"] = identity.display_label
+    item["identity_label"] = identity.identity_label
+    item["label"] = identity.label
 
 
 def _decorate_options(context: MutableMapping[str, Any]) -> None:
@@ -228,7 +232,10 @@ def _decorate_filters(filters: MutableMapping[str, Any]) -> None:
     if period_preset:
         filters["period_preset_label"] = period_preset_label(period_preset)
     if scope_id or scope_name:
-        filters["scope_label"] = f"{scope_id} {scope_name}".strip()
+        identity = build_resource_identity(resource_id=scope_id, resource_name=scope_name)
+        filters["scope_display_label"] = identity.display_label
+        filters["scope_identity_label"] = identity.identity_label
+        filters["scope_label"] = identity.label
     if filters.get("is_scenario_preview"):
         filters["scenario_display_name"] = _scenario_public_label(dict(filters))
 
@@ -253,19 +260,26 @@ def _public_plan_role_options(options: Any) -> List[Dict[str, Any]]:
     return out
 
 
-def _display_machine(machine_id: Any, machine_name: Any, supplier_name: Any = None) -> str:
+def _machine_identity(machine_id: Any, machine_name: Any, supplier_name: Any = None) -> ResourceIdentity:
     machine_id_text = _text(machine_id)
     if machine_id_text:
-        return f"{machine_id_text} {_text(machine_name)}".strip()
+        return build_resource_identity(resource_id=machine_id_text, resource_name=machine_name)
     supplier_text = _text(supplier_name)
-    return f"外协供应商：{supplier_text}".strip() if supplier_text else "外协未分配"
+    display = f"外协供应商：{supplier_text}".strip() if supplier_text else "外协未分配"
+    return build_resource_identity(display_label=display, identity_label=display)
 
 
-def _display_operator(operator_id: Any, operator_name: Any) -> str:
+def _operator_identity(operator_id: Any, operator_name: Any) -> ResourceIdentity:
     operator_id_text = _text(operator_id)
     if not operator_id_text:
-        return "外协未分配"
-    return f"{operator_id_text} {_text(operator_name)}".strip()
+        return build_resource_identity(display_label="外协未分配", identity_label="外协未分配")
+    return build_resource_identity(resource_id=operator_id_text, resource_name=operator_name)
+
+
+def _resource_export_fields(row: MutableMapping[str, Any], prefix: str, identity: ResourceIdentity) -> None:
+    row[f"{prefix}_display_label"] = identity.display_label
+    row[f"{prefix}_identity_label"] = identity.identity_label
+    row[f"{prefix}_label"] = identity.label
 
 
 def _team_relation_label(current_team_id: Any, counterpart_team_id: Any) -> str:
@@ -278,26 +292,29 @@ def _team_relation_label(current_team_id: Any, counterpart_team_id: Any) -> str:
     return "班组归属未维护"
 
 
-def _current_resource_label(row: MutableMapping[str, Any]) -> str:
+def _current_resource_identity(row: MutableMapping[str, Any]) -> ResourceIdentity:
     scope_type = _text(row.get("scope_type")).lower()
     if scope_type == "operator":
-        return _display_operator(row.get("current_resource_id") or row.get("operator_id"), row.get("current_resource_name") or row.get("operator_name"))
-    return _display_machine(
+        return _operator_identity(
+            row.get("current_resource_id") or row.get("operator_id"),
+            row.get("current_resource_name") or row.get("operator_name"),
+        )
+    return _machine_identity(
         row.get("current_resource_id") or row.get("machine_id"),
         row.get("current_resource_name") or row.get("machine_name"),
         row.get("supplier_name"),
     )
 
 
-def _counterpart_resource_label(row: MutableMapping[str, Any]) -> str:
+def _counterpart_resource_identity(row: MutableMapping[str, Any]) -> ResourceIdentity:
     scope_type = _text(row.get("scope_type")).lower()
     if scope_type == "operator":
-        return _display_machine(
+        return _machine_identity(
             row.get("machine_id") or row.get("counterpart_resource_id"),
             row.get("machine_name") or row.get("counterpart_resource_name"),
             row.get("supplier_name"),
         )
-    return _display_operator(
+    return _operator_identity(
         row.get("operator_id") or row.get("counterpart_resource_id"),
         row.get("operator_name") or row.get("counterpart_resource_name"),
     )
@@ -305,13 +322,15 @@ def _counterpart_resource_label(row: MutableMapping[str, Any]) -> str:
 
 def _decorate_detail_row(row: MutableMapping[str, Any]) -> None:
     scope_type = _text(row.get("scope_type")).lower()
+    current_identity = _current_resource_identity(row)
+    counterpart_identity = _counterpart_resource_identity(row)
     row["scope_type_label"] = scope_type_label(scope_type)
     row["counterpart_type_label"] = "设备" if scope_type == "operator" else "人员"
     row["scope_label"] = f"{_text(row.get('scope_id'))} {_text(row.get('scope_name'))}".strip()
     row["source_label"] = source_public_label(row.get("source"))
     row["lock_status_label"] = lock_status_public_label(row.get("lock_status"))
-    row["current_resource_label"] = _current_resource_label(row)
-    row["counterpart_resource_label"] = _counterpart_resource_label(row)
+    _resource_export_fields(row, "current_resource", current_identity)
+    _resource_export_fields(row, "counterpart_resource", counterpart_identity)
     row["team_relation_label"] = _team_relation_label(row.get("current_team_id"), row.get("counterpart_team_id"))
     _drop_internal_row_keys(row)
 
@@ -334,7 +353,7 @@ def _calendar_item_text(item: MutableMapping[str, Any]) -> str:
     title = _operation_title(item)
     if title:
         parts.append(title)
-    counterpart = _text(item.get("counterpart_resource_label"))
+    counterpart = _text(item.get("counterpart_resource_display_label") or item.get("counterpart_resource_label"))
     if counterpart:
         parts.append(counterpart)
     part_no = _text(item.get("part_no"))
@@ -344,16 +363,20 @@ def _calendar_item_text(item: MutableMapping[str, Any]) -> str:
 
 
 def _decorate_calendar_item(item: MutableMapping[str, Any]) -> None:
-    item["counterpart_resource_label"] = _counterpart_resource_label(item)
+    counterpart_identity = _counterpart_resource_identity(item)
+    _resource_export_fields(item, "counterpart_resource", counterpart_identity)
     item["text"] = _calendar_item_text(item)
     _drop_internal_row_keys(item)
 
 
 def _decorate_calendar_row(row: MutableMapping[str, Any]) -> None:
     scope_type = _text(row.get("scope_type")).lower()
+    current_identity = _current_resource_identity(row)
     row["scope_type_label"] = scope_type_label(scope_type)
-    row["current_resource_label"] = _current_resource_label(row)
+    _resource_export_fields(row, "current_resource", current_identity)
     row["scope_label"] = _text(row.get("current_resource_label")) or f"{_text(row.get('scope_id'))} {_text(row.get('scope_name'))}".strip()
+    row["scope_display_label"] = _text(row.get("current_resource_display_label")) or row["scope_label"]
+    row["scope_identity_label"] = _text(row.get("current_resource_identity_label")) or row["scope_label"]
     cells = row.get("cells")
     if not isinstance(cells, list):
         return
@@ -382,7 +405,7 @@ def _decorate_task(task: MutableMapping[str, Any]) -> None:
         _decorate_detail_row(meta)
         task_id = _text(task.get("id"))
         title = _operation_title(meta) or _text(task.get("name")) or task_id
-        counterpart = _text(meta.get("counterpart_resource_label"))
+        counterpart = _text(meta.get("counterpart_resource_display_label") or meta.get("counterpart_resource_label"))
     else:
         title = _text(task.get("name")) or _text(task.get("id"))
         counterpart = ""

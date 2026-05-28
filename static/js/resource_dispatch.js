@@ -77,6 +77,52 @@
     return '<td' + classAttr + ' title="' + safe + '" data-full-text="' + safe + '">' + safe + '</td>';
   }
 
+  function resourceInfo(row, prefix, emptyText) {
+    const source = row || {};
+    const display = (
+      trim(source[prefix + "_display_label"]) ||
+      trim(source[prefix + "_name"]) ||
+      trim(source[prefix + "_label"]) ||
+      trim(source[prefix + "_id"]) ||
+      trim(emptyText)
+    );
+    const identity = (
+      trim(source[prefix + "_identity_label"]) ||
+      trim(source[prefix + "_label"]) ||
+      display
+    );
+    return {
+      display: display,
+      identity: identity,
+      hasIdentityDetail: !!(identity && display && identity !== display)
+    };
+  }
+
+  function resourceDisplayHtml(row, prefix, emptyText) {
+    const info = resourceInfo(row, prefix, emptyText);
+    const title = escapeHtml(info.identity || info.display);
+    const detail = info.hasIdentityDetail
+      ? '<span class="aps-resource-display-sub">完整身份：' + escapeHtml(info.identity) + '</span>'
+      : "";
+    return (
+      '<span class="aps-resource-display" title="' + title + '">' +
+        '<span class="aps-resource-display-main">' + escapeHtml(info.display) + '</span>' +
+        detail +
+      '</span>'
+    );
+  }
+
+  function resourceCell(row, prefix, className, emptyText) {
+    const info = resourceInfo(row, prefix, emptyText);
+    const safeTitle = escapeHtml(info.identity || info.display);
+    const cls = className ? ' class="' + escapeHtml(className) + '"' : "";
+    return (
+      '<td' + cls + ' title="' + safeTitle + '" data-full-text="' + safeTitle + '">' +
+        resourceDisplayHtml(row, prefix, emptyText) +
+      '</td>'
+    );
+  }
+
   function renderFlags(row) {
     const items = [];
     const lockLabel = lockStatusLabel(row && row.lock_status, row && row.lock_status_label);
@@ -107,9 +153,38 @@
   function affectedResourceSummary(row) {
     const reason = trim(row && row.latest_exception_reason_label);
     if (!reason || reason === "暂无异常") return "暂无异常";
-    const machine = trim(row && row.latest_exception_affected_machine_label) || "未填写影响设备";
-    const operator = trim(row && row.latest_exception_affected_operator_label) || "未填写影响人员";
+    const machine = resourceInfo(row, "latest_exception_affected_machine", "未填写影响设备").display;
+    const operator = resourceInfo(row, "latest_exception_affected_operator", "未填写影响人员").display;
     return machine + "；" + operator;
+  }
+
+  function affectedResourceCell(row) {
+    const reason = trim(row && row.latest_exception_reason_label);
+    if (!reason || reason === "暂无异常") return fullTextCell("暂无异常", "aps-resource-cell");
+    const machine = resourceInfo(row, "latest_exception_affected_machine", "未填写影响设备");
+    const operator = resourceInfo(row, "latest_exception_affected_operator", "未填写影响人员");
+    const display = machine.display + "；" + operator.display;
+    const identities = [];
+    if (machine.identity && machine.identity !== machine.display) identities.push(machine.identity);
+    if (operator.identity && operator.identity !== operator.display) identities.push(operator.identity);
+    const title = identities.length ? identities.join("；") : display;
+    return (
+      '<td class="aps-resource-cell" title="' + escapeHtml(title) + '" data-full-text="' + escapeHtml(title) + '">' +
+        '<span class="aps-resource-display">' +
+          '<span class="aps-resource-display-main">' + escapeHtml(display) + '</span>' +
+          (identities.length ? '<span class="aps-resource-display-sub">完整身份：' + escapeHtml(identities.join("；")) + '</span>' : "") +
+        '</span>' +
+      '</td>'
+    );
+  }
+
+  function affectedResourcePopupHtml(row) {
+    const reason = trim(row && row.latest_exception_reason_label);
+    if (!reason || reason === "暂无异常") return '<div>影响资源：暂无异常</div>';
+    return (
+      '<div>影响设备：' + resourceDisplayHtml(row, "latest_exception_affected_machine", "未填写影响设备") + '</div>' +
+      '<div>影响人员：' + resourceDisplayHtml(row, "latest_exception_affected_operator", "未填写影响人员") + '</div>'
+    );
   }
 
   const pageEl = $("rdPage");
@@ -213,14 +288,14 @@
           '<td>' + codeCell(row.part_no || "") + '</td>' +
           '<td>' + codeCell(row.op_code || "") + '</td>' +
           '<td>' + escapeHtml(row.seq) + '</td>' +
-          fullTextCell(row.current_resource_label || "", "aps-resource-cell") +
-          fullTextCell(row.counterpart_resource_label || "", "aps-resource-cell") +
+          resourceCell(row, "current_resource", "aps-resource-cell", "") +
+          resourceCell(row, "counterpart_resource", "aps-resource-cell", "") +
           '<td>' + relationBadge(row.team_relation_label) + '</td>' +
           '<td>' + escapeHtml(sourceLabel(row.source, row.source_label)) + '</td>' +
           '<td>' + renderFlags(row) + '</td>' +
           '<td>' + escapeHtml(row.execution_status_label || "待开工") + '</td>' +
           fullTextCell(latestExceptionSummary(row), "aps-resource-cell") +
-          fullTextCell(affectedResourceSummary(row), "aps-resource-cell") +
+          affectedResourceCell(row) +
         '</tr>'
       );
     }
@@ -335,29 +410,9 @@
     return code;
   }
 
-  function executionPromptStartResource(button) {
-    const plannedMachine = button.getAttribute("data-machine-id") || "";
-    const plannedOperator = button.getAttribute("data-operator-id") || "";
-    const machine = executionPrompt("请确认实际设备编号（需与当前计划设备一致）", plannedMachine);
-    if (machine === null) return null;
-    if (!trim(machine)) {
-      executionNotice("请填写实际设备编号。");
-      return null;
-    }
-    const operator = executionPrompt("请填写实际人员工号（默认当前计划人员）", plannedOperator);
-    if (operator === null) return null;
-    if (!trim(operator)) {
-      executionNotice("请填写实际人员工号。");
-      return null;
-    }
-    return { machine_id: trim(machine), operator_id: trim(operator) };
-  }
-
   function renderExecutionExceptionDetails(task) {
     if (!trim(task && task.latest_exception_reason_label)) return "";
     const impact = trim(task.latest_exception_impact_minutes_label) || "暂时不知道影响多久";
-    const machine = trim(task.latest_exception_affected_machine_label) || "未填写影响设备";
-    const operator = trim(task.latest_exception_affected_operator_label) || "未填写影响人员";
     const handling = trim(task.latest_exception_handling_status_label) || "刚上报";
     const suggest = trim(task.latest_exception_suggest_reschedule_label) || "暂不建议重新排程";
     const remark = trim(task.latest_exception_remark) || "未填写情况说明";
@@ -371,8 +426,8 @@
         '<div><span>异常原因</span><strong>' + escapeHtml(task.latest_exception_reason_label || "暂无异常") + '</strong></div>' +
         '<div><span>严重程度</span><strong>' + escapeHtml(task.latest_exception_severity_label || "未填写严重程度") + '</strong></div>' +
         '<div><span>预计影响时间</span><strong>' + escapeHtml(impact) + '</strong></div>' +
-        '<div><span>影响设备</span><strong>' + escapeHtml(machine) + '</strong></div>' +
-        '<div><span>影响人员</span><strong>' + escapeHtml(operator) + '</strong></div>' +
+        '<div><span>影响设备</span><strong>' + resourceDisplayHtml(task, "latest_exception_affected_machine", "未填写影响设备") + '</strong></div>' +
+        '<div><span>影响人员</span><strong>' + resourceDisplayHtml(task, "latest_exception_affected_operator", "未填写影响人员") + '</strong></div>' +
         '<div><span>处理状态</span><strong>' + escapeHtml(handling) + '</strong></div>' +
         '<div><span>是否建议重排</span><strong>' + escapeHtml(suggest) + '</strong></div>' +
         '<div><span>情况说明</span><strong>' + escapeHtml(remark) + '</strong></div>' +
@@ -380,21 +435,56 @@
     );
   }
 
-  function executionUnavailableReasonText(reasons) {
-    if (Array.isArray(reasons)) {
-      return reasons.length ? reasons.map(escapeHtml).join("；") : "";
-    }
-    if (!reasons || typeof reasons !== "object") return "";
+  function executionReasonText(value) {
+    return trim(value).replace(/[。；;,.，、\s]+$/g, "");
+  }
+
+  function normalizedUnavailableReasonTexts(reasons) {
     const seen = {};
     const lines = [];
-    Object.keys(reasons).forEach(function (key) {
-      const item = trim(reasons[key]);
+    function addReason(value) {
+      const item = executionReasonText(value);
       if (item && !seen[item]) {
         seen[item] = true;
-        lines.push(escapeHtml(item));
+        lines.push(item);
+      }
+    }
+    if (Array.isArray(reasons)) {
+      reasons.forEach(addReason);
+      return lines;
+    }
+    if (!reasons || typeof reasons !== "object") return lines;
+    ["start", "pause", "resume", "finish", "report_exception"].forEach(function (key) {
+      if (Object.prototype.hasOwnProperty.call(reasons, key)) {
+        addReason(reasons[key]);
       }
     });
-    return lines.join("；");
+    Object.keys(reasons).forEach(function (key) {
+      if (["start", "pause", "resume", "finish", "report_exception"].indexOf(key) >= 0) return;
+      addReason(reasons[key]);
+    });
+    return lines;
+  }
+
+  function statusUnavailableReasonSummary(lines) {
+    if (!Array.isArray(lines) || !lines.length) return "";
+    let status = "";
+    const actions = [];
+    for (let i = 0; i < lines.length; i++) {
+      const match = /^当前状态是(.+)，不能(.+)$/.exec(lines[i]);
+      if (!match) return "";
+      if (!status) status = match[1];
+      if (status !== match[1]) return "";
+      actions.push(match[2]);
+    }
+    return status && actions.length ? ("当前状态是" + status + "，不能" + actions.join("、") + "。") : "";
+  }
+
+  function executionUnavailableReasonText(reasons) {
+    const lines = normalizedUnavailableReasonTexts(reasons);
+    if (!lines.length) return "";
+    const summary = statusUnavailableReasonSummary(lines) || (lines.join("；") + "。");
+    return escapeHtml(summary);
   }
 
   function renderExecutionCards(payload) {
@@ -430,10 +520,10 @@
             '<div><span>实际开始</span><strong>' + escapeHtml(task.actual_start_time || "暂无") + '</strong></div>' +
             '<div><span>计划结束</span><strong>' + escapeHtml(task.planned_end_time || "-") + '</strong></div>' +
             '<div><span>实际结束</span><strong>' + escapeHtml(task.actual_end_time || "暂无") + '</strong></div>' +
-            '<div><span>计划设备</span><strong>' + escapeHtml(task.planned_machine_label || "-") + '</strong></div>' +
-            '<div><span>实际设备</span><strong>' + escapeHtml(task.actual_machine_label || "暂无") + '</strong></div>' +
-            '<div><span>计划人员</span><strong>' + escapeHtml(task.planned_operator_label || "-") + '</strong></div>' +
-            '<div><span>实际人员</span><strong>' + escapeHtml(task.actual_operator_label || "暂无") + '</strong></div>' +
+            '<div><span>计划设备</span><strong>' + resourceDisplayHtml(task, "planned_machine", "-") + '</strong></div>' +
+            '<div><span>实际设备</span><strong>' + resourceDisplayHtml(task, "actual_machine", "暂无") + '</strong></div>' +
+            '<div><span>计划人员</span><strong>' + resourceDisplayHtml(task, "planned_operator", "-") + '</strong></div>' +
+            '<div><span>实际人员</span><strong>' + resourceDisplayHtml(task, "actual_operator", "暂无") + '</strong></div>' +
           '</div>' +
           (task.last_event_action_label ? '<div class="text-meta mt-1">最近反馈：' + escapeHtml(task.last_event_action_label) + (task.last_event_remark ? '，' + escapeHtml(task.last_event_remark) : '') + '</div>' : '') +
           renderExecutionExceptionDetails(task) +
@@ -495,8 +585,74 @@
     return createdBy;
   }
 
-  function executionPayload(button, action, createdBy) {
+  function actionDataAttributes(source) {
+    return [
+      "data-action",
+      "data-op-id",
+      "data-schedule-id",
+      "data-batch-id",
+      "data-state-revision",
+      "data-machine-id",
+      "data-operator-id"
+    ].map(function (name) {
+      return name + '="' + escapeHtml(source.getAttribute(name) || "") + '"';
+    }).join(" ");
+  }
+
+  function clearExecutionInlineForms(card) {
+    const scope = card || document;
+    scope.querySelectorAll(".aps-execution-inline-form").forEach(function (el) {
+      if (el.parentNode) el.parentNode.removeChild(el);
+    });
+  }
+
+  function renderFinishInlineForm(button) {
+    const card = button && button.closest ? button.closest(".aps-execution-card") : null;
+    if (!card) return;
+    clearExecutionInlineForms(card);
+    const actions = button.closest(".aps-execution-actions");
+    const form = document.createElement("div");
+    form.className = "aps-execution-inline-form mt-2";
+    form.setAttribute("role", "group");
+    form.setAttribute("aria-label", "填写完工反馈");
+    form.innerHTML =
+      '<div class="aps-execution-inline-title">填写完工反馈</div>' +
+      '<div class="aps-execution-inline-grid">' +
+        '<label>完成数量<input type="number" min="0" step="1" class="aps-execution-finish-qty" inputmode="numeric"></label>' +
+        '<label>报废数量<input type="number" min="0" step="1" class="aps-execution-scrap-qty" inputmode="numeric" value="0"></label>' +
+      '</div>' +
+      '<div class="aps-inline-form-actions mt-2">' +
+        '<button type="button" class="btn btn-primary btn-sm aps-execution-inline-submit" ' + actionDataAttributes(button) + '>提交完工</button>' +
+        '<button type="button" class="btn btn-secondary btn-sm aps-execution-inline-cancel">取消</button>' +
+      '</div>';
+    if (actions && actions.parentNode) {
+      actions.parentNode.insertBefore(form, actions.nextSibling);
+    } else {
+      card.appendChild(form);
+    }
+    const qtyInput = form.querySelector(".aps-execution-finish-qty");
+    if (qtyInput && qtyInput.focus) qtyInput.focus();
+  }
+
+  function inlineFinishPayload(button) {
+    const form = button && button.closest ? button.closest(".aps-execution-inline-form") : null;
+    const qtyInput = form ? form.querySelector(".aps-execution-finish-qty") : null;
+    const scrapInput = form ? form.querySelector(".aps-execution-scrap-qty") : null;
+    const qty = trim(qtyInput && qtyInput.value);
+    if (!qty) {
+      executionNotice("请填写完成数量。");
+      if (qtyInput && qtyInput.focus) qtyInput.focus();
+      return null;
+    }
+    return {
+      quantity_done: qty,
+      quantity_scrapped: trim(scrapInput && scrapInput.value)
+    };
+  }
+
+  function executionPayload(button, action, createdBy, extraPayload) {
     const payload = executionIdentityPayload();
+    const extra = extraPayload || {};
     payload.schedule_id = button.getAttribute("data-schedule-id") || "";
     payload.batch_id = button.getAttribute("data-batch-id") || "";
     payload.expected_state_revision = button.getAttribute("data-state-revision") || "";
@@ -510,10 +666,18 @@
     ].join("-");
     payload.remark = "";
     if (action === "start") {
-      const actualResource = executionPromptStartResource(button);
-      if (actualResource === null) return null;
-      payload.machine_id = actualResource.machine_id;
-      payload.operator_id = actualResource.operator_id;
+      const machine = trim(button.getAttribute("data-machine-id"));
+      const operator = trim(button.getAttribute("data-operator-id"));
+      if (!machine) {
+        executionNotice("这张任务卡没有计划设备，不能提交开工。");
+        return null;
+      }
+      if (!operator) {
+        executionNotice("这张任务卡没有计划人员，不能提交开工。");
+        return null;
+      }
+      payload.machine_id = machine;
+      payload.operator_id = operator;
     } else if (action === "pause") {
       const reason = executionPromptReason();
       if (reason === null) return null;
@@ -526,10 +690,8 @@
       if (detail === null) return null;
       payload.remark = detail;
     } else if (action === "finish") {
-      const qty = window.prompt ? window.prompt("请填写完成数量", "") : "";
-      if (qty === null) return null;
-      payload.quantity_done = qty;
-      payload.quantity_scrapped = "";
+      payload.quantity_done = trim(extra.quantity_done);
+      payload.quantity_scrapped = trim(extra.quantity_scrapped);
     } else if (action === "report_exception") {
       const reason = executionPromptReason();
       if (reason === null) return null;
@@ -599,8 +761,9 @@
     const actionLabel = actionLabels[action];
     const createdBy = executionCreatedBy();
     if (createdBy === null) return;
-    if (window.confirm && !window.confirm("确认提交" + actionLabel + "反馈吗？")) return;
-    const payload = executionPayload(button, action, createdBy);
+    const extraPayload = action === "finish" ? inlineFinishPayload(button) : null;
+    if (action === "finish" && extraPayload === null) return;
+    const payload = executionPayload(button, action, createdBy, extraPayload || {});
     if (payload === null) return;
     button.disabled = true;
     executionNotice("正在提交" + actionLabel + "反馈，请稍候。");
@@ -616,6 +779,7 @@
         throw new Error(errorMessage);
       }
       replaceExecutionTask(responsePayload.data && responsePayload.data.task_card);
+      clearExecutionInlineForms();
       executionNotice(actionLabel + "反馈已提交。");
     } catch (err) {
       button.disabled = false;
@@ -627,9 +791,26 @@
     const wrap = $("rdExecutionCards");
     if (!wrap) return;
     wrap.addEventListener("click", function (event) {
+      const cancelTarget = event.target && event.target.closest ? event.target.closest(".aps-execution-inline-cancel") : null;
+      if (cancelTarget && wrap.contains(cancelTarget)) {
+        event.preventDefault();
+        clearExecutionInlineForms(cancelTarget.closest(".aps-execution-card"));
+        return;
+      }
+      const submitTarget = event.target && event.target.closest ? event.target.closest(".aps-execution-inline-submit") : null;
+      if (submitTarget && wrap.contains(submitTarget)) {
+        event.preventDefault();
+        postExecutionAction(submitTarget);
+        return;
+      }
       const target = event.target && event.target.closest ? event.target.closest(".aps-execution-action") : null;
       if (!target || !wrap.contains(target)) return;
       event.preventDefault();
+      const action = trim(target.getAttribute("data-action"));
+      if (action === "finish") {
+        renderFinishInlineForm(target);
+        return;
+      }
       postExecutionAction(target);
     });
   }
@@ -654,7 +835,7 @@
     for (let r = 0; r < rowList.length; r++) {
       const row = rowList[r] || {};
       html.push('<tr>');
-      html.push('<td>' + escapeHtml(row.scope_label || "") + '</td>');
+      html.push(resourceCell(row, "current_resource", "", row.scope_label || ""));
       const cells = Array.isArray(row.cells) ? row.cells : [];
       for (let c = 0; c < cells.length; c++) {
         const cell = cells[c] || {};
@@ -667,7 +848,9 @@
         for (let j = 0; j < items.length; j++) {
           const item = items[j] || {};
           const cls = item.is_overdue ? ' style="color:#b91c1c;font-weight:600;"' : "";
-          lines.push('<div' + cls + '>' + escapeHtml(item.text || "") + '</div>');
+          const title = resourceInfo(item, "counterpart_resource", "").identity;
+          const titleAttr = title ? ' title="' + escapeHtml(title) + '"' : "";
+          lines.push('<div' + cls + titleAttr + '>' + escapeHtml(item.text || "") + '</div>');
         }
         html.push('<td style="white-space:normal;min-width:140px;">' + lines.join("") + '</td>');
       }
@@ -691,11 +874,11 @@
       '<div>图号：' + escapeHtml(meta.part_no || "-") + '</div>',
       '<div>开始：' + escapeHtml(task.start || "") + '</div>',
       '<div>结束：' + escapeHtml(task.end || "") + '</div>',
-      '<div>对应资源：' + escapeHtml(meta.counterpart_resource_label || "-") + '</div>',
+      '<div>对应资源：' + resourceDisplayHtml(meta, "counterpart_resource", "-") + '</div>',
       '<div>班组关系：' + escapeHtml(meta.team_relation_label || "-") + '</div>',
       '<div>现场状态：' + escapeHtml(meta.execution_status_label || "待开工") + '</div>',
       '<div>最近异常：' + escapeHtml(latestExceptionSummary(meta)) + '</div>',
-      '<div>影响资源：' + escapeHtml(affectedResourceSummary(meta)) + '</div>',
+      affectedResourcePopupHtml(meta),
       '</div>'
     ];
     return lines.join("");

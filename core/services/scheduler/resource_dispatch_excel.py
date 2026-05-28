@@ -90,6 +90,14 @@ def _first_present(row: Dict[str, Any], *keys: str, default: Any = "") -> Any:
     return default
 
 
+def _resource_export_text(row: Dict[str, Any], prefix: str, *fallback_keys: str) -> Any:
+    display = str(_first_present(row, f"{prefix}_display_label", *fallback_keys, default="") or "").strip()
+    identity = str(_first_present(row, f"{prefix}_identity_label", f"{prefix}_label", default="") or "").strip()
+    if display and identity and display != identity:
+        return f"{display}\n完整身份：{identity}"
+    return display or identity
+
+
 def _yes_no_label(value: Any) -> str:
     return "是" if value else "否"
 
@@ -113,8 +121,8 @@ def _build_detail_row(row: Dict[str, Any]) -> List[Any]:
         _first_present(row, "start_time"),
         _first_present(row, "end_time"),
         _first_present(row, "duration_minutes", default=0),
-        _first_present(row, "current_resource_label", "scope_label"),
-        _first_present(row, "counterpart_resource_label"),
+        _resource_export_text(row, "current_resource", "current_resource_label", "scope_label"),
+        _resource_export_text(row, "counterpart_resource", "counterpart_resource_label"),
         _first_present(row, "current_team_name", "current_team_id"),
         _first_present(row, "counterpart_team_name", "counterpart_team_id"),
         _first_present(row, "team_relation_label"),
@@ -126,8 +134,16 @@ def _build_detail_row(row: Dict[str, Any]) -> List[Any]:
         _first_present(row, "latest_exception_reason_label", default="暂无异常"),
         _first_present(row, "latest_exception_severity_label", default=""),
         _first_present(row, "latest_exception_impact_minutes_label", default=""),
-        _first_present(row, "latest_exception_affected_machine_label", default=""),
-        _first_present(row, "latest_exception_affected_operator_label", default=""),
+        _resource_export_text(
+            row,
+            "latest_exception_affected_machine",
+            "latest_exception_affected_machine_label",
+        ),
+        _resource_export_text(
+            row,
+            "latest_exception_affected_operator",
+            "latest_exception_affected_operator_label",
+        ),
         _first_present(row, "latest_exception_handling_status_label", default=""),
         _first_present(row, "latest_exception_suggest_reschedule_label", default=""),
         _first_present(row, "latest_exception_remark", default=""),
@@ -141,7 +157,7 @@ def _detail_table_rows(detail_rows: Sequence[Dict[str, Any]]) -> List[List[Any]]
 def _calendar_table_rows(calendar_rows: Sequence[Dict[str, Any]]) -> List[List[Any]]:
     table: List[List[Any]] = []
     for row in calendar_rows:
-        line = [row.get("scope_label") or ""]
+        line = [_resource_export_text(row, "current_resource", "scope_label")]
         cells = row.get("cells") or []
         for cell in cells:
             line.append(cell.get("text") or "")

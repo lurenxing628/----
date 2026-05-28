@@ -470,8 +470,12 @@ def test_pause_resume_exception_and_finish_state_flow_is_aggregated(tmp_path: Pa
         assert exception.state.last_event_action_label == "报异常"
         assert exception.state.latest_exception_reason_label == "设备问题"
         assert exception.state.latest_exception_severity_label == "严重"
-        assert exception.state.latest_exception_affected_machine_label == "二号设备"
-        assert exception.state.latest_exception_affected_operator_label == "李四"
+        assert exception.state.latest_exception_affected_machine_label == "M2 二号设备"
+        assert exception.state.latest_exception_affected_machine_display_label == "二号设备"
+        assert exception.state.latest_exception_affected_machine_identity_label == "M2 二号设备"
+        assert exception.state.latest_exception_affected_operator_label == "O2 李四"
+        assert exception.state.latest_exception_affected_operator_display_label == "李四"
+        assert exception.state.latest_exception_affected_operator_identity_label == "O2 李四"
         assert exception.state.latest_exception_suggest_reschedule_label == "建议重新排程"
 
         resumed_after_exception = service.resume_operation(

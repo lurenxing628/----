@@ -17,6 +17,7 @@ from core.models.operation_execution_labels import (
     suggest_reschedule_label,
 )
 from core.models.operation_execution_state import OperationExecutionState
+from core.models.resource_identity import ResourceIdentity, build_resource_identity
 
 _FEEDBACK_DISABLED_REASON = "现场反馈保护还没开启，暂不能提交现场反馈。"
 _NOT_CURRENT_OFFICIAL_REASON = "当前不是最新正式采用方案，不能提交现场反馈。"
@@ -42,35 +43,83 @@ def _positive_int(value: Any) -> Optional[int]:
     return parsed if parsed > 0 else None
 
 
-def _resource_label(resource_id: Any, resource_name: Any) -> str:
+def _resource_identity(resource_id: Any = None, resource_name: Any = None) -> ResourceIdentity:
+    return build_resource_identity(resource_id=resource_id, resource_name=resource_name)
+
+
+def _resource_payload(prefix: str, identity: ResourceIdentity) -> Dict[str, Optional[str]]:
+    payload = identity.to_dict(prefix)
+    return {key: (value or None) for key, value in payload.items()}
+
+
+def _resource_from_mapping(resources: Mapping[str, Any], resource_id: Any) -> ResourceIdentity:
     rid = _text(resource_id)
-    name = _text(resource_name)
-    return f"{rid} {name}".strip() if rid else name
+    if not rid:
+        return build_resource_identity()
+    value = resources.get(rid)
+    if isinstance(value, ResourceIdentity):
+        return value
+    if isinstance(value, Mapping):
+        return build_resource_identity(
+            resource_id=value.get("id") or rid,
+            resource_name=value.get("name"),
+            display_label=value.get("display_label"),
+            identity_label=value.get("identity_label") or value.get("label"),
+        )
+    if value:
+        label = _text(value)
+        return build_resource_identity(resource_id=rid, display_label=label, identity_label=label)
+    return build_resource_identity(resource_id=rid)
 
 
-def _latest_exception_resource_labels(
+def _resource_from_state(state: Any, prefix: str) -> ResourceIdentity:
+    current_state = state if isinstance(state, OperationExecutionState) else None
+    if current_state is None:
+        return build_resource_identity()
+    return build_resource_identity(
+        resource_id=getattr(current_state, f"{prefix}_id", None),
+        resource_name=getattr(current_state, f"{prefix}_name", None),
+        display_label=getattr(current_state, f"{prefix}_display_label", None),
+        identity_label=getattr(current_state, f"{prefix}_identity_label", None)
+        or getattr(current_state, f"{prefix}_label", None),
+    )
+
+
+def _prefer_state_identity(identity: ResourceIdentity, state_identity: ResourceIdentity) -> ResourceIdentity:
+    if identity.name or identity.display_label != identity.id or not state_identity.label:
+        return identity
+    return state_identity
+
+
+def _latest_exception_resource_identities(
     *,
     event: Any,
     state: Any,
-    machine_labels: Mapping[str, str],
-    operator_labels: Mapping[str, str],
+    machine_labels: Mapping[str, Any],
+    operator_labels: Mapping[str, Any],
     is_exception_event: bool,
-) -> Dict[str, Optional[str]]:
+) -> Dict[str, ResourceIdentity]:
     affected_machine_id = _text(getattr(event, "affected_machine_id", None))
     affected_operator_id = _text(getattr(event, "affected_operator_id", None))
-    affected_machine_label = machine_labels.get(affected_machine_id) if affected_machine_id else None
-    affected_operator_label = operator_labels.get(affected_operator_id) if affected_operator_id else None
+    affected_machine = _resource_from_mapping(machine_labels, affected_machine_id)
+    affected_operator = _resource_from_mapping(operator_labels, affected_operator_id)
     current_state = state if isinstance(state, OperationExecutionState) else None
     if (
         is_exception_event
         and current_state is not None
         and getattr(event, "id", None) == current_state.latest_exception_event_id
     ):
-        affected_machine_label = affected_machine_label or current_state.latest_exception_affected_machine_label
-        affected_operator_label = affected_operator_label or current_state.latest_exception_affected_operator_label
+        affected_machine = _prefer_state_identity(
+            affected_machine,
+            _resource_from_state(current_state, "latest_exception_affected_machine"),
+        )
+        affected_operator = _prefer_state_identity(
+            affected_operator,
+            _resource_from_state(current_state, "latest_exception_affected_operator"),
+        )
     return {
-        "affected_machine_label": affected_machine_label if is_exception_event else None,
-        "affected_operator_label": affected_operator_label if is_exception_event else None,
+        "affected_machine": affected_machine if is_exception_event else build_resource_identity(),
+        "affected_operator": affected_operator if is_exception_event else build_resource_identity(),
     }
 
 
@@ -197,6 +246,12 @@ def build_task_card(row: Mapping[str, Any], state: Any, *, can_write_feedback: b
     current_state = _as_state(state, op_id, batch_id)
     status = _text(current_state.current_status) or "not_started"
     status_label = _text(current_state.current_status_label) or "待开工"
+    planned_machine = _resource_identity(row.get("machine_id"), row.get("machine_name"))
+    planned_operator = _resource_identity(row.get("operator_id"), row.get("operator_name"))
+    actual_machine = _resource_from_state(current_state, "actual_machine")
+    actual_operator = _resource_from_state(current_state, "actual_operator")
+    affected_machine = _resource_from_state(current_state, "latest_exception_affected_machine")
+    affected_operator = _resource_from_state(current_state, "latest_exception_affected_operator")
     available_actions = build_available_actions(
         can_write=can_write_feedback,
         feedback_write_enabled=feedback_write_enabled,
@@ -216,24 +271,22 @@ def build_task_card(row: Mapping[str, Any], state: Any, *, can_write_feedback: b
         "op_name": _op_name(row),
         "planned_start_time": _text(row.get("start_time")),
         "planned_end_time": _text(row.get("end_time")),
-        "planned_machine_id": _text(row.get("machine_id")),
-        "planned_machine_label": _resource_label(row.get("machine_id"), row.get("machine_name")),
-        "planned_operator_id": _text(row.get("operator_id")),
-        "planned_operator_label": _resource_label(row.get("operator_id"), row.get("operator_name")),
+        **_resource_payload("planned_machine_", planned_machine),
+        **_resource_payload("planned_operator_", planned_operator),
         "current_status": status,
         "current_status_label": status_label,
         "state_revision": current_state.state_revision or f"{op_id}:0:0",
         "actual_start_time": current_state.actual_start_time,
         "actual_end_time": current_state.actual_end_time,
-        "actual_machine_label": current_state.actual_machine_label,
-        "actual_operator_label": current_state.actual_operator_label,
+        **_resource_payload("actual_machine_", actual_machine),
+        **_resource_payload("actual_operator_", actual_operator),
         "last_event_action_label": current_state.last_event_action_label,
         "last_event_remark": current_state.last_event_remark,
         "latest_exception_reason_label": current_state.latest_exception_reason_label,
         "latest_exception_severity_label": current_state.latest_exception_severity_label,
         "latest_exception_impact_minutes_label": current_state.latest_exception_impact_minutes_label,
-        "latest_exception_affected_machine_label": current_state.latest_exception_affected_machine_label,
-        "latest_exception_affected_operator_label": current_state.latest_exception_affected_operator_label,
+        **_resource_payload("latest_exception_affected_machine_", affected_machine),
+        **_resource_payload("latest_exception_affected_operator_", affected_operator),
         "latest_exception_handling_status_label": current_state.latest_exception_handling_status_label,
         "latest_exception_suggest_reschedule_label": current_state.latest_exception_suggest_reschedule_label,
         "latest_exception_remark": current_state.latest_exception_remark,
@@ -281,8 +334,8 @@ def event_payload(
     event: Any,
     state: Any = None,
     *,
-    machine_labels: Optional[Mapping[str, str]] = None,
-    operator_labels: Optional[Mapping[str, str]] = None,
+    machine_labels: Optional[Mapping[str, Any]] = None,
+    operator_labels: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, Any]:
     event_type = _text(getattr(event, "event_type", ""))
     action = _event_type_to_action(event_type)
@@ -290,7 +343,17 @@ def event_payload(
     remark = getattr(event, "remark", None) or getattr(event, "reason_detail", None)
     machines = machine_labels or {}
     operators = operator_labels or {}
-    resource_labels = _latest_exception_resource_labels(
+    actual_machine_id = _text(getattr(event, "actual_machine_id", None))
+    actual_operator_id = _text(getattr(event, "actual_operator_id", None))
+    actual_machine = _resource_from_mapping(machines, actual_machine_id)
+    actual_operator = _resource_from_mapping(operators, actual_operator_id)
+    state_actual_machine = _resource_from_state(state, "actual_machine")
+    state_actual_operator = _resource_from_state(state, "actual_operator")
+    if actual_machine_id and state_actual_machine.id == actual_machine_id:
+        actual_machine = _prefer_state_identity(actual_machine, state_actual_machine)
+    if actual_operator_id and state_actual_operator.id == actual_operator_id:
+        actual_operator = _prefer_state_identity(actual_operator, state_actual_operator)
+    resource_identities = _latest_exception_resource_identities(
         event=event,
         state=state,
         machine_labels=machines,
@@ -298,6 +361,8 @@ def event_payload(
         is_exception_event=is_exception_event,
     )
     exception_fields = _exception_payload_fields(event, is_exception_event=is_exception_event)
+    affected_machine = resource_identities["affected_machine"]
+    affected_operator = resource_identities["affected_operator"]
     return {
         "event_id": getattr(event, "id", None),
         "op_id": getattr(event, "op_id", None),
@@ -317,8 +382,10 @@ def event_payload(
         "severity_label": severity_label(getattr(event, "severity", None)) if getattr(event, "severity", None) else None,
         "impact_minutes": getattr(event, "impact_minutes", None),
         "impact_minutes_label": exception_fields["impact_minutes_label"],
-        "affected_machine_label": resource_labels["affected_machine_label"],
-        "affected_operator_label": resource_labels["affected_operator_label"],
+        **_resource_payload("actual_machine_", actual_machine),
+        **_resource_payload("actual_operator_", actual_operator),
+        **_resource_payload("affected_machine_", affected_machine),
+        **_resource_payload("affected_operator_", affected_operator),
         "handling_status_label": exception_fields["handling_status_label"],
         "suggest_reschedule_label": exception_fields["suggest_reschedule_label"],
     }

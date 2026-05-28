@@ -4895,6 +4895,36 @@ html[data-theme="dark"] .aps-danger-zone {
   overflow-wrap: anywhere;
 }
 
+.aps-resource-cell {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+}
+
+.aps-resource-display {
+  display: block;
+  min-width: 0;
+}
+
+.aps-resource-display-main,
+.aps-resource-display-sub {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.aps-resource-display-main {
+  color: var(--ui-text, #0f172a);
+  font-weight: 600;
+}
+
+.aps-resource-display-sub {
+  color: var(--ui-muted, #64748b);
+  font-size: 12px;
+  font-weight: 500;
+  margin-top: 2px;
+}
+
 .aps-execution-actions {
   display: flex;
   gap: 8px;
@@ -4904,6 +4934,41 @@ html[data-theme="dark"] .aps-danger-zone {
 .aps-execution-action:disabled {
   cursor: not-allowed;
   opacity: 0.65;
+}
+
+.aps-execution-inline-form {
+  border: 1px solid var(--ui-border, #e2e8f0);
+  border-radius: 6px;
+  background: var(--ui-surface-muted, #f8fafc);
+  color: var(--ui-text, #0f172a);
+  padding: 10px;
+}
+
+.aps-execution-inline-title {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--ui-text-strong, #0f172a);
+}
+
+.aps-execution-inline-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.aps-execution-inline-grid label {
+  display: block;
+  color: var(--ui-muted, #64748b);
+  font-size: 12px;
+  min-width: 0;
+}
+
+.aps-execution-inline-grid input,
+.aps-execution-inline-grid select,
+.aps-execution-inline-grid textarea {
+  margin-top: 4px;
+  width: 100%;
 }
 
 @media (max-width: 760px) {

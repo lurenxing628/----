@@ -8,6 +8,7 @@ from core.models.operation_execution_event import (
     OperationExecutionEvent,
 )
 from core.models.operation_execution_state import OperationExecutionState
+from core.models.resource_identity import ResourceIdentity, build_resource_identity
 
 from .base_repo import BaseRepository
 from .operation_execution_state_builder import build_operation_execution_state
@@ -79,6 +80,10 @@ def _text_or_none(value: Any) -> Optional[str]:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _resource_identity(resource_id: Any, resource_name: Any) -> ResourceIdentity:
+    return build_resource_identity(resource_id=resource_id, resource_name=resource_name)
 
 
 def _required_text(payload: Dict[str, Any], field: str) -> str:
@@ -266,16 +271,16 @@ class OperationExecutionEventRepo(BaseRepository):
         for event in self.list_events_by_op_ids(ids):
             events_by_op.setdefault(int(event.op_id), []).append(event)
 
-        machine_labels = self._machine_labels(self._machine_ids(events_by_op))
-        operator_labels = self._operator_labels(self._operator_ids(events_by_op))
+        machine_resources = self._machine_resources(self._machine_ids(events_by_op))
+        operator_resources = self._operator_resources(self._operator_ids(events_by_op))
         states: Dict[int, OperationExecutionState] = {}
         for op_id in ids:
             states[op_id] = self._aggregate_single_state(
                 op_id=op_id,
                 batch_id=batch_ids.get(op_id),
                 events=events_by_op.get(op_id) or [],
-                machine_labels=machine_labels,
-                operator_labels=operator_labels,
+                machine_resources=machine_resources,
+                operator_resources=operator_resources,
             )
         return states
 
@@ -299,11 +304,11 @@ class OperationExecutionEventRepo(BaseRepository):
                 out[int(row.get("id") or 0)] = str(row.get("batch_id") or "")
         return out
 
-    def _machine_labels(self, machine_ids: Sequence[str]) -> Dict[str, str]:
+    def _machine_resources(self, machine_ids: Sequence[str]) -> Dict[str, ResourceIdentity]:
         ids = [item for item in dict.fromkeys(str(x or "").strip() for x in machine_ids) if item]
         if not ids:
             return {}
-        out: Dict[str, str] = {}
+        out: Dict[str, ResourceIdentity] = {}
         for i in range(0, len(ids), 900):
             chunk = ids[i : i + 900]
             placeholders = ",".join(["?"] * len(chunk))
@@ -313,14 +318,14 @@ class OperationExecutionEventRepo(BaseRepository):
             )
             for row in rows:
                 machine_id = str(row.get("machine_id") or "")
-                out[machine_id] = str(row.get("name") or machine_id)
+                out[machine_id] = _resource_identity(machine_id, row.get("name"))
         return out
 
-    def _operator_labels(self, operator_ids: Sequence[str]) -> Dict[str, str]:
+    def _operator_resources(self, operator_ids: Sequence[str]) -> Dict[str, ResourceIdentity]:
         ids = [item for item in dict.fromkeys(str(x or "").strip() for x in operator_ids) if item]
         if not ids:
             return {}
-        out: Dict[str, str] = {}
+        out: Dict[str, ResourceIdentity] = {}
         for i in range(0, len(ids), 900):
             chunk = ids[i : i + 900]
             placeholders = ",".join(["?"] * len(chunk))
@@ -330,7 +335,7 @@ class OperationExecutionEventRepo(BaseRepository):
             )
             for row in rows:
                 operator_id = str(row.get("operator_id") or "")
-                out[operator_id] = str(row.get("name") or operator_id)
+                out[operator_id] = _resource_identity(operator_id, row.get("name"))
         return out
 
     @staticmethod
@@ -359,15 +364,15 @@ class OperationExecutionEventRepo(BaseRepository):
         op_id: int,
         batch_id: Optional[str],
         events: List[OperationExecutionEvent],
-        machine_labels: Dict[str, str],
-        operator_labels: Dict[str, str],
+        machine_resources: Dict[str, ResourceIdentity],
+        operator_resources: Dict[str, ResourceIdentity],
     ) -> OperationExecutionState:
         return build_operation_execution_state(
             op_id=op_id,
             batch_id=batch_id,
             events=events,
-            machine_labels=machine_labels,
-            operator_labels=operator_labels,
+            machine_resources=machine_resources,
+            operator_resources=operator_resources,
         )
 
 

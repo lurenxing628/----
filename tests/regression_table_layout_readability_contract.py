@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import List
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -57,10 +58,16 @@ def test_resource_dispatch_resource_labels_keep_full_text_path() -> None:
 
     rows_start = source.index("function buildDetailRowsHtml")
     rows_block = source[rows_start : source.index("function renderDetailRows", rows_start)]
-    assert 'fullTextCell(row.current_resource_label || "", "aps-resource-cell")' in rows_block
-    assert 'fullTextCell(row.counterpart_resource_label || "", "aps-resource-cell")' in rows_block
+    assert 'resourceCell(row, "current_resource", "aps-resource-cell", "")' in rows_block
+    assert 'resourceCell(row, "counterpart_resource", "aps-resource-cell", "")' in rows_block
+    assert "affectedResourceCell(row)" in rows_block
     assert "'<td>' + escapeHtml(row.current_resource_label || \"\") + '</td>'" not in rows_block
     assert "'<td>' + escapeHtml(row.counterpart_resource_label || \"\") + '</td>'" not in rows_block
+
+    popup_start = source.index("function ganttPopup")
+    popup_block = source[popup_start : source.index("function installResourceGanttPopupAutoFit", popup_start)]
+    assert "affectedResourcePopupHtml(meta)" in popup_block
+    assert "escapeHtml(affectedResourceSummary(meta))" not in popup_block
 
 
 def test_fixed_table_rules_keep_scroll_or_readability_escape_hatches() -> None:
@@ -100,7 +107,7 @@ def test_resource_dispatch_calendar_table_keeps_scroll_and_table_key_contract() 
 
 def test_truncate_cell_helpers_are_not_used_by_active_templates_or_js() -> None:
     active_suffixes = (".html", ".js")
-    offenders: list[str] = []
+    offenders: List[str] = []
     for root in ("templates", "web_new_test/templates", "static/js"):
         for path in (REPO_ROOT / root).rglob("*"):
             if path.is_file() and path.suffix in active_suffixes:

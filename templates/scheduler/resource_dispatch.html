@@ -79,21 +79,21 @@
           <select name="operator_id" id="rdOperatorSelect" class="w-240 {% if filters.scope_type != 'operator' %}is-hidden{% endif %}" data-scope-target="operator" {% if filters.scope_type != 'operator' %}disabled{% endif %}>
             <option value="">全部人员</option>
             {% for item in operator_options %}
-              <option value="{{ item.id }}" {% if filters.operator_id == item.id %}selected{% endif %}>{{ item.label }}</option>
+              <option value="{{ item.id }}" title="{{ item.identity_label or item.label }}" {% if filters.operator_id == item.id %}selected{% endif %}>{{ item.display_label or item.label }}</option>
             {% endfor %}
           </select>
 
           <select name="machine_id" id="rdMachineSelect" class="w-240 {% if filters.scope_type != 'machine' %}is-hidden{% endif %}" data-scope-target="machine" {% if filters.scope_type != 'machine' %}disabled{% endif %}>
             <option value="">全部设备</option>
             {% for item in machine_options %}
-              <option value="{{ item.id }}" {% if filters.machine_id == item.id %}selected{% endif %}>{{ item.label }}</option>
+              <option value="{{ item.id }}" title="{{ item.identity_label or item.label }}" {% if filters.machine_id == item.id %}selected{% endif %}>{{ item.display_label or item.label }}</option>
             {% endfor %}
           </select>
 
           <select name="team_id" id="rdTeamSelect" class="w-240 {% if filters.scope_type != 'team' %}is-hidden{% endif %}" data-scope-target="team" {% if filters.scope_type != 'team' %}disabled{% endif %}>
             <option value="">请选择班组</option>
             {% for item in team_options %}
-              <option value="{{ item.id }}" {% if filters.team_id == item.id %}selected{% endif %}>{{ item.label }}</option>
+              <option value="{{ item.id }}" title="{{ item.identity_label or item.label }}" {% if filters.team_id == item.id %}selected{% endif %}>{{ item.display_label or item.label }}</option>
             {% endfor %}
           </select>
         </div>
