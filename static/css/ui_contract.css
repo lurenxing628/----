@@ -4964,11 +4964,20 @@ html[data-theme="dark"] .aps-danger-zone {
   min-width: 0;
 }
 
+.aps-execution-inline-field-wide {
+  grid-column: 1 / -1;
+}
+
 .aps-execution-inline-grid input,
 .aps-execution-inline-grid select,
 .aps-execution-inline-grid textarea {
   margin-top: 4px;
   width: 100%;
+}
+
+.aps-execution-inline-grid textarea {
+  min-height: 76px;
+  resize: vertical;
 }
 
 @media (max-width: 760px) {

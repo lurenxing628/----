@@ -376,39 +376,13 @@
     "等待条件": "waiting",
     "已处理": "handled"
   };
-
-  function executionCodeFromChinese(input, mapping) {
-    const text = trim(input);
-    return mapping[text] || "";
-  }
-
-  function executionPrompt(message, defaultValue) {
-    if (!window.prompt) return "";
-    const value = window.prompt(message, defaultValue || "");
-    return value === null ? null : trim(value);
-  }
-
-  function executionPromptReason() {
-    const value = executionPrompt("请选择原因：设备问题、人员问题、物料问题、质量问题、工艺问题、外协问题、其他", "");
-    if (value === null) return null;
-    const code = executionCodeFromChinese(value, EXECUTION_REASON_CODES);
-    if (!code) {
-      executionNotice("请选择有效原因，例如设备问题、人员问题、物料问题。");
-      return null;
-    }
-    return code;
-  }
-
-  function executionPromptSeverity() {
-    const value = executionPrompt("请选择严重程度：轻微、一般、严重、紧急", "一般");
-    if (value === null) return null;
-    const code = executionCodeFromChinese(value, EXECUTION_SEVERITY_CODES);
-    if (!code) {
-      executionNotice("请选择有效严重程度，例如一般、严重。");
-      return null;
-    }
-    return code;
-  }
+  const EXECUTION_ACTION_LABELS = {
+    start: "开工",
+    pause: "暂停",
+    resume: "继续生产",
+    finish: "完工",
+    report_exception: "报异常"
+  };
 
   function renderExecutionExceptionDetails(task) {
     if (!trim(task && task.latest_exception_reason_label)) return "";
@@ -634,6 +608,133 @@
     if (qtyInput && qtyInput.focus) qtyInput.focus();
   }
 
+  function executionOptionsHtml(mapping, blankLabel, selectedValue) {
+    const html = [];
+    if (blankLabel) {
+      html.push('<option value="">' + escapeHtml(blankLabel) + '</option>');
+    }
+    Object.keys(mapping).forEach(function (label) {
+      const value = mapping[label];
+      const selected = selectedValue === value ? " selected" : "";
+      html.push('<option value="' + escapeHtml(value) + '"' + selected + '>' + escapeHtml(label) + '</option>');
+    });
+    return html.join("");
+  }
+
+  function inlineFormActionsHtml(button, submitLabel) {
+    return (
+      '<div class="aps-inline-form-actions mt-2">' +
+        '<button type="button" class="btn btn-primary btn-sm aps-execution-inline-submit" ' + actionDataAttributes(button) + '>' +
+          escapeHtml(submitLabel) +
+        '</button>' +
+        '<button type="button" class="btn btn-secondary btn-sm aps-execution-inline-cancel">取消</button>' +
+      '</div>'
+    );
+  }
+
+  function renderExecutionInlineForm(button, ariaLabel, title, bodyHtml, submitLabel) {
+    const card = button && button.closest ? button.closest(".aps-execution-card") : null;
+    if (!card) return null;
+    clearExecutionInlineForms(card);
+    const actions = button.closest(".aps-execution-actions");
+    const form = document.createElement("div");
+    form.className = "aps-execution-inline-form mt-2";
+    form.setAttribute("role", "group");
+    form.setAttribute("aria-label", ariaLabel);
+    form.innerHTML =
+      '<div class="aps-execution-inline-title">' + escapeHtml(title) + '</div>' +
+      bodyHtml +
+      inlineFormActionsHtml(button, submitLabel);
+    if (actions && actions.parentNode) {
+      actions.parentNode.insertBefore(form, actions.nextSibling);
+    } else {
+      card.appendChild(form);
+    }
+    return form;
+  }
+
+  function renderPauseInlineForm(button) {
+    const form = renderExecutionInlineForm(
+      button,
+      "填写暂停反馈",
+      "填写暂停反馈",
+      '<div class="aps-execution-inline-grid">' +
+        '<label>暂停原因<select class="aps-execution-reason-code">' +
+          executionOptionsHtml(EXECUTION_REASON_CODES, "请选择原因", "") +
+        '</select></label>' +
+        '<label class="aps-execution-inline-field-wide">情况说明<textarea class="aps-execution-remark" rows="3" placeholder="例如：设备需要检查"></textarea></label>' +
+      '</div>',
+      "提交暂停"
+    );
+    const reason = form ? form.querySelector(".aps-execution-reason-code") : null;
+    if (reason && reason.focus) reason.focus();
+  }
+
+  function renderResumeInlineForm(button) {
+    const form = renderExecutionInlineForm(
+      button,
+      "填写继续生产反馈",
+      "填写继续生产反馈",
+      '<div class="aps-execution-inline-grid">' +
+        '<label class="aps-execution-inline-field-wide">情况说明<textarea class="aps-execution-remark" rows="3" placeholder="可填写恢复生产情况，也可以留空"></textarea></label>' +
+      '</div>',
+      "提交继续生产"
+    );
+    const remark = form ? form.querySelector(".aps-execution-remark") : null;
+    if (remark && remark.focus) remark.focus();
+  }
+
+  function renderExceptionInlineForm(button) {
+    const form = renderExecutionInlineForm(
+      button,
+      "填写异常反馈",
+      "填写异常反馈",
+      '<div class="aps-execution-inline-grid">' +
+        '<label>异常原因<select class="aps-execution-reason-code">' +
+          executionOptionsHtml(EXECUTION_REASON_CODES, "请选择原因", "") +
+        '</select></label>' +
+        '<label>严重程度<select class="aps-execution-severity">' +
+          executionOptionsHtml(EXECUTION_SEVERITY_CODES, "请选择严重程度", "medium") +
+        '</select></label>' +
+        '<label>预计影响分钟<input type="number" min="0" step="1" class="aps-execution-impact-minutes" inputmode="numeric"></label>' +
+        '<label>处理状态<select class="aps-execution-handling-status">' +
+          executionOptionsHtml(EXECUTION_HANDLING_CODES, "", "new") +
+        '</select></label>' +
+        '<label>影响设备编号<input type="text" class="aps-execution-affected-machine" autocomplete="off"></label>' +
+        '<label>影响人员工号<input type="text" class="aps-execution-affected-operator" autocomplete="off"></label>' +
+        '<label>是否建议重排<select class="aps-execution-suggest-reschedule">' +
+          '<option value="no" selected>否</option>' +
+          '<option value="yes">是</option>' +
+        '</select></label>' +
+        '<label class="aps-execution-inline-field-wide">情况说明<textarea class="aps-execution-remark" rows="3" placeholder="例如：主轴异常，已通知维修"></textarea></label>' +
+      '</div>',
+      "提交异常"
+    );
+    const reason = form ? form.querySelector(".aps-execution-reason-code") : null;
+    if (reason && reason.focus) reason.focus();
+  }
+
+  function inlineFormField(button, selector) {
+    const form = button && button.closest ? button.closest(".aps-execution-inline-form") : null;
+    return form ? form.querySelector(selector) : null;
+  }
+
+  function inlineFieldValue(button, selector) {
+    const field = inlineFormField(button, selector);
+    return trim(field && field.value);
+  }
+
+  function requiredInlineField(button, selector, message) {
+    const field = inlineFormField(button, selector);
+    const value = trim(field && field.value);
+    if (!value) {
+      executionNotice(message);
+      if (field && field.focus) field.focus();
+      return null;
+    }
+    return value;
+  }
+
   function inlineFinishPayload(button) {
     const form = button && button.closest ? button.closest(".aps-execution-inline-form") : null;
     const qtyInput = form ? form.querySelector(".aps-execution-finish-qty") : null;
@@ -648,6 +749,53 @@
       quantity_done: qty,
       quantity_scrapped: trim(scrapInput && scrapInput.value)
     };
+  }
+
+  function inlinePausePayload(button) {
+    const reason = requiredInlineField(button, ".aps-execution-reason-code", "请选择暂停原因。");
+    if (reason === null) return null;
+    const remark = requiredInlineField(button, ".aps-execution-remark", "请填写暂停情况说明。");
+    if (remark === null) return null;
+    return {
+      reason_code: reason,
+      remark: remark
+    };
+  }
+
+  function inlineResumePayload(button) {
+    return {
+      remark: inlineFieldValue(button, ".aps-execution-remark")
+    };
+  }
+
+  function inlineExceptionPayload(button) {
+    const reason = requiredInlineField(button, ".aps-execution-reason-code", "请选择异常原因。");
+    if (reason === null) return null;
+    const severity = requiredInlineField(button, ".aps-execution-severity", "请选择严重程度。");
+    if (severity === null) return null;
+    const handling = requiredInlineField(button, ".aps-execution-handling-status", "请选择处理状态。");
+    if (handling === null) return null;
+    const remark = requiredInlineField(button, ".aps-execution-remark", "请填写异常情况说明。");
+    if (remark === null) return null;
+    return {
+      reason_code: reason,
+      severity: severity,
+      impact_minutes: inlineFieldValue(button, ".aps-execution-impact-minutes"),
+      affected_machine_id: inlineFieldValue(button, ".aps-execution-affected-machine"),
+      affected_operator_id: inlineFieldValue(button, ".aps-execution-affected-operator"),
+      handling_status: handling,
+      suggest_reschedule: inlineFieldValue(button, ".aps-execution-suggest-reschedule") === "yes",
+      remark: remark,
+      reason_detail: remark
+    };
+  }
+
+  function inlineActionPayload(button, action) {
+    if (action === "finish") return inlineFinishPayload(button);
+    if (action === "pause") return inlinePausePayload(button);
+    if (action === "resume") return inlineResumePayload(button);
+    if (action === "report_exception") return inlineExceptionPayload(button);
+    return {};
   }
 
   function executionPayload(button, action, createdBy, extraPayload) {
@@ -679,49 +827,23 @@
       payload.machine_id = machine;
       payload.operator_id = operator;
     } else if (action === "pause") {
-      const reason = executionPromptReason();
-      if (reason === null) return null;
-      const detail = executionPrompt("请填写情况说明", "");
-      if (detail === null) return null;
-      payload.reason_code = reason;
-      payload.remark = detail;
+      payload.reason_code = trim(extra.reason_code);
+      payload.remark = trim(extra.remark);
     } else if (action === "resume") {
-      const detail = executionPrompt("请填写情况说明（可留空）", "");
-      if (detail === null) return null;
-      payload.remark = detail;
+      payload.remark = trim(extra.remark);
     } else if (action === "finish") {
       payload.quantity_done = trim(extra.quantity_done);
       payload.quantity_scrapped = trim(extra.quantity_scrapped);
     } else if (action === "report_exception") {
-      const reason = executionPromptReason();
-      if (reason === null) return null;
-      const severity = executionPromptSeverity();
-      if (severity === null) return null;
-      const impact = executionPrompt("预计影响多少分钟？不确定可留空", "");
-      if (impact === null) return null;
-      const handling = executionPrompt("请选择处理状态：刚上报、处理中、等待条件、已处理", "刚上报");
-      if (handling === null) return null;
-      const handlingCode = executionCodeFromChinese(handling || "刚上报", EXECUTION_HANDLING_CODES);
-      if (!handlingCode) {
-        executionNotice("请选择有效处理状态，例如刚上报、处理中。");
-        return null;
-      }
-      const affectedMachine = executionPrompt("请填写影响设备编号（可留空）", "");
-      if (affectedMachine === null) return null;
-      const affectedOperator = executionPrompt("请填写影响人员工号（可留空）", "");
-      if (affectedOperator === null) return null;
-      const suggest = executionPrompt("是否建议重新排程？请输入 是 或 否", "否");
-      if (suggest === null) return null;
-      const detail = executionPrompt("请填写情况说明", "");
-      if (detail === null) return null;
-      payload.reason_code = reason;
-      payload.severity = severity;
-      payload.impact_minutes = impact;
-      payload.affected_machine_id = affectedMachine;
-      payload.affected_operator_id = affectedOperator;
-      payload.handling_status = handlingCode;
-      payload.suggest_reschedule = trim(suggest) === "是";
-      payload.remark = detail;
+      payload.reason_code = trim(extra.reason_code);
+      payload.severity = trim(extra.severity);
+      payload.impact_minutes = trim(extra.impact_minutes);
+      payload.affected_machine_id = trim(extra.affected_machine_id);
+      payload.affected_operator_id = trim(extra.affected_operator_id);
+      payload.handling_status = trim(extra.handling_status);
+      payload.suggest_reschedule = extra.suggest_reschedule === true;
+      payload.remark = trim(extra.remark);
+      payload.reason_detail = trim(extra.reason_detail);
     }
     return payload;
   }
@@ -750,19 +872,12 @@
     if (!button || button.disabled) return;
     const action = trim(button.getAttribute("data-action"));
     const opId = trim(button.getAttribute("data-op-id"));
-    const actionLabels = {
-      start: "开工",
-      pause: "暂停",
-      resume: "继续生产",
-      finish: "完工",
-      report_exception: "报异常"
-    };
-    if (!actionLabels[action]) return;
-    const actionLabel = actionLabels[action];
+    if (!EXECUTION_ACTION_LABELS[action]) return;
+    const actionLabel = EXECUTION_ACTION_LABELS[action];
     const createdBy = executionCreatedBy();
     if (createdBy === null) return;
-    const extraPayload = action === "finish" ? inlineFinishPayload(button) : null;
-    if (action === "finish" && extraPayload === null) return;
+    const extraPayload = inlineActionPayload(button, action);
+    if (extraPayload === null) return;
     const payload = executionPayload(button, action, createdBy, extraPayload || {});
     if (payload === null) return;
     button.disabled = true;
@@ -809,6 +924,18 @@
       const action = trim(target.getAttribute("data-action"));
       if (action === "finish") {
         renderFinishInlineForm(target);
+        return;
+      }
+      if (action === "pause") {
+        renderPauseInlineForm(target);
+        return;
+      }
+      if (action === "resume") {
+        renderResumeInlineForm(target);
+        return;
+      }
+      if (action === "report_exception") {
+        renderExceptionInlineForm(target);
         return;
       }
       postExecutionAction(target);

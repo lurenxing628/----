@@ -669,15 +669,35 @@ def test_resource_dispatch_frontend_posts_execution_button_clicks() -> None:
     assert "payload.created_by = createdBy" in source
     assert 'payload.created_by = "现场反馈"' not in source
     assert "window.confirm" not in source
+    assert "window.prompt" not in source
     assert "executionPromptStartResource" not in source
     assert "请确认实际设备编号" not in source
     assert "请填写实际人员工号" not in source
     assert 'payload.machine_id = machine' in source
     assert 'payload.operator_id = operator' in source
     assert "renderFinishInlineForm" in source
+    assert "renderPauseInlineForm" in source
+    assert "renderResumeInlineForm" in source
+    assert "renderExceptionInlineForm" in source
+    assert "inlinePausePayload" in source
+    assert "inlineResumePayload" in source
+    assert "inlineExceptionPayload" in source
+    assert "填写暂停反馈" in source
+    assert "填写继续生产反馈" in source
+    assert "填写异常反馈" in source
     assert "aps-execution-finish-qty" in source
+    assert "aps-execution-reason-code" in source
+    assert "aps-execution-severity" in source
+    assert "aps-execution-handling-status" in source
+    assert "aps-execution-suggest-reschedule" in source
     assert "请填写完成数量。" in source
+    assert "请选择暂停原因。" in source
+    assert "请填写暂停情况说明。" in source
+    assert "请选择异常原因。" in source
+    assert "请填写异常情况说明。" in source
     assert "aps-execution-inline-form" in css
+    assert "aps-execution-inline-field-wide" in css
+    assert "resize: vertical" in css
     assert "background: var(--ui-surface-muted" in css
     assert "--ui-bg-subtle" not in css
     assert "normalizedUnavailableReasonTexts" in source
@@ -688,6 +708,12 @@ def test_resource_dispatch_frontend_posts_execution_button_clicks() -> None:
     assert "第一版" not in source
     assert 'id="rdExecutionCreatedBy"' in template
     assert "反馈人" in template
+    assert 'if (action === "pause")' in source
+    assert "renderPauseInlineForm(target)" in source
+    assert 'if (action === "resume")' in source
+    assert "renderResumeInlineForm(target)" in source
+    assert 'if (action === "report_exception")' in source
+    assert "renderExceptionInlineForm(target)" in source
     assert 'method: "POST"' in source
     assert 'data-op-id="' in source
     assert 'data-state-revision="' in source

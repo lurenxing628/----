@@ -442,13 +442,15 @@ def test_frontend_static_contract_for_exception_feedback() -> None:
     template = RESOURCE_DISPATCH_TEMPLATE.read_text(encoding="utf-8")
 
     assert "report-exception" in source
-    assert "请选择原因：设备问题、人员问题、物料问题、质量问题、工艺问题、外协问题、其他" in source
-    assert "请选择严重程度：轻微、一般、严重、紧急" in source
-    assert "请填写影响设备编号（可留空）" in source
-    assert "请填写影响人员工号（可留空）" in source
-    assert "payload.affected_machine_id = affectedMachine" in source
-    assert "payload.affected_operator_id = affectedOperator" in source
-    assert "是否建议重新排程？请输入 是 或 否" in source
+    assert "填写异常反馈" in source
+    assert "异常原因" in source
+    assert "严重程度" in source
+    assert "影响设备编号" in source
+    assert "影响人员工号" in source
+    assert 'payload.affected_machine_id = trim(extra.affected_machine_id)' in source
+    assert 'payload.affected_operator_id = trim(extra.affected_operator_id)' in source
+    assert "是否建议重排" in source
+    assert "window.prompt" not in source
     assert "最近异常" in source
     assert "影响设备" in source
     assert "影响人员" in source
