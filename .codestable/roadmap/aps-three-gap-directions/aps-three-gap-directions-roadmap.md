@@ -971,7 +971,7 @@ list_execution_events(op_id) -> List[OperationExecutionEvent]
 | `machine_id` | 设备 | 开工 | 必填 | 必须能匹配到已有设备，且要和当前正式排程记录允许的设备一致；找不到或不匹配时返回 `1001 / 400`，`details.field_label=设备` |
 | `quantity_done` | 完成数量 | 完工 | 必填 | 必须是大于等于 0 的整数；不能为空、不能是小数、不能是负数、不能是文字 |
 | `quantity_scrapped` | 报废数量 | 完工 | 选填 | 不填按 0；填写时必须是大于等于 0 的整数，不能是小数、负数或文字 |
-| `quantity_done + quantity_scrapped` | 完成数量和报废数量合计 | 完工 | 必须校验 | 合计不能超过任务计划数量；超过时返回 `1001 / 400`，message 用“完成数量和报废数量加起来不能超过计划数量” |
+| `quantity_done + quantity_scrapped` | 完成数量和报废数量合计 | 完工 | 不设上限 | 合计允许超过任务计划数量：报废后为凑够良品会补投零件，产出总量超计划属正常生产，不再拦截 |
 | `remark` | 备注 | 开工/完工 | 选填 | 允许为空；如果填写，去掉前后空格后保存，页面只叫“备注” |
 
 以上字段的程序名只给前端和测试判断用。页面、弹窗、错误提示和用户手册只能显示中文名，例如“操作人员”“设备”“完成数量”“报废数量”，不能显示 `operator_id / machine_id / quantity_done / quantity_scrapped`。
@@ -1014,7 +1014,7 @@ list_execution_events(op_id) -> List[OperationExecutionEvent]
 - `affected_machine_id / affected_operator_id` 可空；如果填写，服务端必须确认对应设备或人员存在，不能只信任前端字符串。
 - `remark / reason_detail` 面向用户时叫“情况说明”，不能叫字段名。
 - 开工时 `operator_id / machine_id` 必填，分别对应“操作人员 / 设备”；缺失或找不到时返回 `1001 / 400` 和中文字段名。
-- 完工时 `quantity_done` 必填且为大于等于 0 的整数；`quantity_scrapped` 可空，空值按 0；两者相加不能超过计划数量。
+- 完工时 `quantity_done` 必填且为大于等于 0 的整数；`quantity_scrapped` 可空，空值按 0；两者相加不设上限（报废补投会让产出总量超过计划数量，属正常生产）。
 
 **错误规则**：
 

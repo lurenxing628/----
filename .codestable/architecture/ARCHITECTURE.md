@@ -43,6 +43,7 @@ implements: []
 - `开发文档/`、`audit/`、`evidence/`：开发说明、审计记录和验证证据。
 - `.codestable/architecture/ui-gantt.md`：甘特图结果查看页面、缩放协议、只读边界、模拟预览身份传递和本地 Frappe 补丁治理现状。
 - 车间执行事件基础：`OperationExecutionEvents`、执行事件仓储、执行反馈服务和执行状态读模型记录现场开工、暂停、继续、完工、报异常这些事实。
+- 资源派工现场记录：资源派工页用户入口叫“现场记录”，支持单条填写实际情况、下载填写模板、导入实际情况 Excel；普通页面是一键导入，后台先整批检查，有错不写库并返回错误明细，无错才事务写入；route 拆在 `scheduler_resource_dispatch_execution_routes.py`，业务编排拆在 `resource_dispatch_actual_*` service 文件。
 - 重排执行事实快照：普通重排和甘特模拟方案发布在写新正式计划前，都会按同一批工序复算现场状态，现场状态变化时拒绝写入。
 
 ## 4. 关键架构决定
@@ -74,6 +75,11 @@ implements: []
 - 执行事件只追加。`schedule_id` 和 `op_id` 仍保留外键用于审计对齐，但不使用级联删除，避免删除计划行时把现场事实一起带走。
 - `data/repositories/operation_execution_event_repo.py` 负责执行事件的全部 SQL，并按 `op_id` 聚合 `OperationExecutionState`。service 不直接拼写事件表 SQL。
 - `core/services/scheduler/operation_execution_feedback_service.py` 负责正式计划身份校验、幂等键优先判断、状态版本校验、合法状态流转和事件写入。
+- 资源派工页的用户入口叫“现场记录”，普通操作区使用“填写实际情况”“下载填写模板”“导入实际情况 Excel”“查看计划和实际”“暂停时间”“异常记录”这些说法，不把 `op_id`、`schedule_id`、`state_revision`、`execution_snapshot_revision` 等内部追踪字段放到用户可见模板和普通页面里。
+- 单条填写和 Excel 导入最终都追加 `OperationExecutionEvents`。单条填写由 `ResourceDispatchActualRecordService.record_actual_situation()` 编排；Excel 模板和读取在 `resource_dispatch_actual_excel.py`，预览校验在 `resource_dispatch_actual_import.py`，共享值对象和字段解析在 `resource_dispatch_actual_records.py`。
+- Excel 普通页面采用一键导入。后端先做任务匹配、时间格式、完工早于开工、暂停重叠、可能重复等检查；有错误就返回行级错误并且不写数据库，整批无错误才在同一事务里追加事件。预览 / 确认写入接口保留为兼容入口，但不作为普通页面主流程。
+- 反馈人对用户可空。写入事件时 service 使用内部兜底值满足数据库非空约束，但页面不强迫用户填写。
+- 暂停/继续生产在页面上不作为醒目的实时控制按钮展示；用户填写的是暂停开始、暂停结束或暂停时长，系统仍按事件模型追加暂停和继续生产事件。
 - 状态读模型按事件流聚合：`last_event_*` 表示最后一条现场事件，`latest_exception_*` 表示最近一次报异常；两组字段分开计算。
 - 程序动作 `report_exception` 入库为 `event_type=exception`，页面和返回值显示“报异常”；现场状态 `exception` 显示“异常中”，两套中文映射分开维护。
 

@@ -1,0 +1,84 @@
+feature: 2026-05-28-resource-dispatch-site-records
+created: 2026-05-28
+
+steps:
+  - action: "结构拆分：把现场记录 service 的 Excel 模板/读取、预览校验从主 service 拆出，并把现场记录 route 从资源派工主页 route 拆出"
+    exit_signal: "拆分后对外 route 和 service 入口不变，各新增 Python 文件不超过 500 行，现有现场记录测试仍能运行"
+    status: done
+  - action: "编排骨架：新增现场记录 service、route 和 ViewModel 输出，让模板下载、导入预览、单条填写接口形状跑通"
+    exit_signal: "新接口返回中文 payload，旧 execution/data 和资源排班导出仍可用"
+    status: done
+  - action: "单条填写：支持空反馈人、手填实际开工/完工、异常记录和暂停时间段"
+    exit_signal: "路由与 service 测试覆盖空反馈人、手填时间、完工早于开工、暂停时长换算和矛盾校验"
+    status: done
+  - action: "Excel 模板和导入检查：生成不含内部字段的模板，上传后一键导入前先检查匹配、时间、重复和冲突"
+    exit_signal: "测试证明有错误时不写库，模板列名不含内部字段，导入结果有新增/跳过/冲突/错误"
+    status: done
+  - action: "Excel 一键导入写入：整批无错误才直接写入，有错误直接返回行级错误"
+    exit_signal: "测试覆盖成功整批写入、错误整批拒绝、非最新正式方案拒绝"
+    status: done
+  - action: "前端文案和交互：资源派工页改成现场记录口径，隐藏显眼实时暂停/继续按钮"
+    exit_signal: "静态测试锁住页面大白话文案，不出现禁用抽象词和设备自动采集提醒"
+    status: done
+  - action: "回归验证：跑相关测试、Python 3.8 语法扫描、浏览器检查当前资源派工页"
+    exit_signal: "自动化测试通过，浏览器打开用户给定 URL 能看到新现场记录入口"
+    status: done
+
+checks:
+  - item: "页面显示现场记录、填写实际情况、导入实际情况 Excel、下载填写模板、查看计划和实际等大白话"
+    source: 验收场景
+    status: passed
+  - item: "普通页面不显示执行事实补录、执行事件、事件底座、生产事实、事实台账、执行状态读模型"
+    source: 范围守护
+    status: passed
+  - item: "普通页面不显示不代表设备自动采集这类提示"
+    source: 范围守护
+    status: passed
+  - item: "反馈人为空时后端允许写入，并使用内部兜底值满足数据库约束"
+    source: 名词契约
+    status: passed
+  - item: "单条填写实际开工和实际完工使用用户填写时间，不只取当前时间"
+    source: 编排骨架
+    status: passed
+  - item: "完工时间早于开工时间返回中文错误，不写完工事件"
+    source: 流程级约束
+    status: passed
+  - item: "异常记录支持异常时间、异常原因、严重程度、异常说明"
+    source: 名词契约
+    status: passed
+  - item: "暂停开始加暂停结束能写入暂停时间段"
+    source: 验收场景
+    status: passed
+  - item: "暂停开始加暂停时长能自动计算结束时间"
+    source: 验收场景
+    status: passed
+  - item: "暂停结束和暂停时长同时填写但不一致会报错"
+    source: 流程级约束
+    status: passed
+  - item: "暂停时间段明显重叠会报错"
+    source: 流程级约束
+    status: passed
+  - item: "Excel 模板不包含 op_id、schedule_id、state_revision、execution_snapshot_revision"
+    source: 名词契约
+    status: passed
+  - item: "Excel 一键导入有错误时不写 OperationExecutionEvents"
+    source: 流程级约束
+    status: passed
+  - item: "Excel 导入检查展示匹配成功、找不到任务、时间格式错、完工早于开工、暂停重叠、可能重复和汇总"
+    source: 验收场景
+    status: passed
+  - item: "Excel 一键导入整批无错误才写入，有错误整批拒绝"
+    source: 流程级约束
+    status: passed
+  - item: "候选方案、模拟预览、历史正式方案、非最新正式方案仍不能写现场记录"
+    source: 范围守护
+    status: passed
+  - item: "OperationExecutionEvents 仍然只追加，不更新、不删除旧事件"
+    source: 范围守护
+    status: passed
+  - item: "不新增 MES/DNC、设备控制、异常后自动重排"
+    source: 范围守护
+    status: passed
+  - item: "新增 Python 代码通过 Python 3.8 语法扫描"
+    source: 验收场景
+    status: passed

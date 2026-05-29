@@ -462,7 +462,7 @@ items:
       - 按钮能不能点必须由服务端返回，不允许前端自己猜状态字符串
       - POST 请求体里的 version、requested_plan_role、schedule_id、batch_id、source_table、effective_plan_role、scenario_id、expected_state_revision、event_time、created_by、idempotency_key 都是程序内部提交字段，不能当页面文案展示；request_fingerprint 由服务端重算，不由前端填写
       - start_operation 的 operator_id 和 machine_id 必填，页面字段名分别是“操作人员”和“设备”；缺失、找不到或设备不匹配当前正式排程记录时返回 1001/400，details.field_label 用中文字段名，message 用中文大白话
-      - finish_operation 的 quantity_done 必填且必须是大于等于 0 的整数；quantity_scrapped 可空，空值按 0，填写时也必须是大于等于 0 的整数；完成数量加报废数量不能超过任务计划数量
+      - finish_operation 的 quantity_done 必填且必须是大于等于 0 的整数；quantity_scrapped 可空，空值按 0，填写时也必须是大于等于 0 的整数；完成数量加报废数量不设上限（报废补投会让产出总量超过任务计划数量，属正常生产）
       - 开工/完工的 remark 页面只叫“备注”，允许为空；如果填写，服务端去掉前后空格后保存
       - 服务端必须重新解析 PlanIdentity；只要 requested_plan_role 不是 adopted，或者 can_write_feedback 不是 true，即使 source_table=schedule 也必须拒绝写入
       - POST 成功返回必须包含 event、current_status、current_status_label、state_revision、idempotency_reused、task_card，便于前端局部刷新任务卡；event.action 给程序用，页面只能显示 event.action_label

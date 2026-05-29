@@ -45,7 +45,7 @@ checks:
   - 第 9 项独立完成时测试专用 header 只有在 TESTING=True 时放行，生产/非测试配置下即使带 header 也不写入；第 10 项完成后普通写入不再依赖测试 header。
   - 候选方案、模拟预览和历史正式方案即使带测试 header 也被拒绝，reason 为 not_current_official_plan。
   - 开工校验操作人员和设备必填、必须存在，设备必须匹配当前正式排程记录；正式排程缺计划设备时也拒绝写入。
-  - 完工校验完成数量必填且非负，报废数量可空且空值按 0，完成数量加报废数量不能超过批次数量。
+  - 完工校验完成数量必填且非负，报废数量可空且空值按 0；完成数量加报废数量不设上限（报废补投会让产出总量超过批次数量，属正常生产）。
   - POST 成功返回 event、current_status、current_status_label、state_revision、idempotency_reused 和完整 task_card。
   - POST 失败保留 details.reason、details.action、details.action_label、details.field 和 details.field_label。
   - 状态不允许操作时，错误提示会告诉用户刷新页面查看最新状态；如果现场记录有误，联系计划员处理。

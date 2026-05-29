@@ -24,7 +24,7 @@ created: 2026-05-27
 - 资源派工页新增“现场反馈”标签页和任务卡容器，前端只按后端 `available_actions` 渲染按钮状态。
 - 新增 `GET /scheduler/resource-dispatch/execution/data`，返回任务卡、状态版本、实际时间、实际资源和服务端可用动作。
 - 新增 `POST /scheduler/resource-dispatch/execution/<op_id>/start` 和 `/finish`。第 9 项独立完成时普通用户默认 409/6003 拒绝，只有 `TESTING=True` 且带测试专用 header 时才允许写入回归验证；第 10 项完成后普通用户写入已按路线图解除保护。
-- `OperationExecutionFeedbackService` 补开工和完工业务校验：操作人员、设备、设备和正式排程匹配、完成数量、报废数量和批次数量上限。
+- `OperationExecutionFeedbackService` 补开工和完工业务校验：操作人员、设备、设备和正式排程匹配、完成数量和报废数量格式（非负整数）；完工合计不设上限，允许报废补投后产出超过批次数量。
 - 普通资源派工 data 增加递归脱敏测试，锁住 `schedule_id / op_id / _row_identity / source_table` 不回流到普通公开 JSON。
 
 ## 对抗性审核闭环
