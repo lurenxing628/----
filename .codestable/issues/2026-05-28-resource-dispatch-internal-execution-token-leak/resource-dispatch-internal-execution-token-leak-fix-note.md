@@ -56,6 +56,16 @@ tags:
 
 但不会再看到孤零零的 `exception` 作为“情况说明”。
 
+> 订正（2026-05-29）：上面描述的第一版清洗用的是“五张 label 字典全部键合成的全局黑名单”，
+> 后续 review 发现它有三个问题：会误杀跨记录的合法说明（比如在设备异常里写 `person` 也被清空）、
+> 只 `strip` 不归一大小写导致 `Exception` 能绕过、命中清洗无任何日志。已改为按“本条记录自己的
+> 结构化码”精准判定：`public_execution_remark(value, internal_tokens=...)` 只在说明等于本记录的
+> `event_type / reported_status / reason_code / severity / handling_status` 之一时才清空，判定用
+> `casefold` 归一大小写；新增 `internal_remark_tokens_from_event` 供读取侧传入本行码集合。
+> 写入 / 汇总 / 展示三段链路改用这套精准判定，既保留对 `exception` 等脏数据的清洗，又不再误杀
+> 跨记录的合法英文说明。相关核实与修复留档见
+> `.codestable/compound/2026-05-29-verification-resource-dispatch-site-records-review-repair.md`。
+
 ## 改动文件
 
 - `core/models/operation_execution_labels.py`

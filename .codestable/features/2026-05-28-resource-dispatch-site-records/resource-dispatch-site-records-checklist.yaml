@@ -23,6 +23,9 @@ steps:
   - action: "回归验证：跑相关测试、Python 3.8 语法扫描、浏览器检查当前资源派工页"
     exit_signal: "自动化测试通过，浏览器打开用户给定 URL 能看到新现场记录入口"
     status: done
+  - action: "深度 review 后修复发现的缺陷：前端预填导致补完工被整单拒绝、预览→确认幂等 token datetime 往返不稳定、复用 idempotency_key 整体跳过校验，并清理 event_time 死字段、未接线 URL helper、冗余判空、上传统一 16MB 校验、复用已装配服务实例（详见 compound 复盘）"
+    exit_signal: "每处修复有能区分新旧行为的回归测试，全量 3772 passed，ruff 与 Python 3.8 扫描通过"
+    status: done
 
 checks:
   - item: "页面显示现场记录、填写实际情况、导入实际情况 Excel、下载填写模板、查看计划和实际等大白话"
@@ -81,4 +84,19 @@ checks:
     status: passed
   - item: "新增 Python 代码通过 Python 3.8 语法扫描"
     source: 验收场景
+    status: passed
+  - item: "已记录实际开工/完工的任务，填写表单时这两项只读展示、不预填进可编辑输入，补完工/加暂停不被整单拒绝"
+    source: review 修复
+    status: passed
+  - item: "情况说明里被错灌的内部码按本条记录自己的结构化码精准清洗，大写也清洗，不误杀跨记录的合法英文说明"
+    source: review 修复
+    status: passed
+  - item: "Excel 日期单元格为真实 datetime 时，预览→确认两步的幂等 token 一致，不误报内容已变化"
+    source: review 修复
+    status: passed
+  - item: "复用同一 idempotency_key 追加新内容时，新增事件仍走完整跨字段校验，仅全部事件已写过的纯重放才跳过"
+    source: review 修复
+    status: passed
+  - item: "现场记录导入超过 16MB 时返回友好中文提示，不绕过上限校验"
+    source: review 修复
     status: passed
