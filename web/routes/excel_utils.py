@@ -316,12 +316,11 @@ def ensure_unique_ids(rows: List[Dict[str, Any]], id_column: str) -> None:
         raise ValidationError(f"Excel 中存在重复的“{id_column}”：{sample}。请去重后再导入。", field=id_column)
 
 
-def read_uploaded_xlsx(file_storage) -> List[Dict[str, Any]]:
-    """
-    把上传的 Excel（.xlsx）解析为 List[Dict]（key 为表头字符串）。
-    - 跳过空行
-    - 单元格字符串自动 strip；空串视为 None
-    - 统一走 backend.read(file_path)，以支持可选 pandas 后端
+def read_uploaded_excel_bytes(file_storage) -> bytes:
+    """读取上传的 Excel 字节，并统一做空文件 / 16MB 上限校验。
+
+    各导入入口共用同一套友好的中文校验。需要自定义解析（如多工作表结构）的调用方拿到字节后
+    自行解析；走标准单表解析的调用方用 ``read_uploaded_xlsx``。
     """
     data = file_storage.read()
     if not data:
@@ -332,6 +331,17 @@ def read_uploaded_xlsx(file_storage) -> List[Dict[str, Any]]:
             ErrorCode.FILE_TOO_LARGE,
             f"上传文件超过 {max_bytes // (1024 * 1024)}MB，请缩小文件后重试。",
         )
+    return data
+
+
+def read_uploaded_xlsx(file_storage) -> List[Dict[str, Any]]:
+    """
+    把上传的 Excel（.xlsx）解析为 List[Dict]（key 为表头字符串）。
+    - 跳过空行
+    - 单元格字符串自动 strip；空串视为 None
+    - 统一走 backend.read(file_path)，以支持可选 pandas 后端
+    """
+    data = read_uploaded_excel_bytes(file_storage)
 
     fd, tmp_path = tempfile.mkstemp(prefix="aps_upload_", suffix=".xlsx")
     try:

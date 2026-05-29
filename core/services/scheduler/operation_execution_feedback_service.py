@@ -19,7 +19,6 @@ from core.models.operation_execution_state import OperationExecutionState
 from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
 from core.shared.field_labels import display_field_label
 from data.repositories.batch_operation_repo import BatchOperationRepository
-from data.repositories.batch_repo import BatchRepository
 from data.repositories.machine_repo import MachineRepository
 from data.repositories.operation_execution_event_repo import OperationExecutionEventRepo
 from data.repositories.operator_repo import OperatorRepository
@@ -53,6 +52,7 @@ from .operation_execution_labels import (
     action_to_event_type,
     event_type_to_action,
     execution_action_label,
+    public_execution_remark,
 )
 from .schedule_plan_query_service import SchedulePlanQueryService
 
@@ -66,7 +66,6 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
         self.event_repo = OperationExecutionEventRepo(conn, logger=logger)
         self.schedule_repo = ScheduleRepository(conn, logger=logger)
         self.batch_operation_repo = BatchOperationRepository(conn, logger=logger)
-        self.batch_repo = BatchRepository(conn, logger=logger)
         self.machine_repo = MachineRepository(conn, logger=logger)
         self.operator_repo = OperatorRepository(conn, logger=logger)
         self.plan_query_service = SchedulePlanQueryService(conn, logger=logger)
@@ -76,7 +75,6 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
 
     def list_execution_events(self, op_id: int) -> List[OperationExecutionEvent]:
         return self.event_repo.list_events_by_op_id(int(op_id))
-
 
     def record_event(self, context: ExecutionFeedbackContext, *, action: str, **payload: Any) -> ExecutionFeedbackResult:
         normalized_context = self._normalize_context(context)
@@ -120,7 +118,6 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
                 action=normalized_action,
                 payload=normalized_payload,
                 schedule=schedule,
-                batch_op=batch_op,
             )
             event_payload = self._build_event_payload(
                 context=normalized_context,
@@ -226,7 +223,7 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
         schedule_id = _positive_int(context.schedule_id, "schedule_id")
         op_id = _positive_int(context.op_id, "op_id")
         batch_id = _required_text(context.batch_id, "batch_id")
-        created_by = _required_text(context.created_by, "created_by")
+        created_by = _optional_text(context.created_by) or "未填写反馈人"
         idempotency_key = _required_text(context.idempotency_key, "idempotency_key")
         expected_state_revision = _required_text(context.expected_state_revision, "expected_state_revision")
         requested_plan_role = _required_text(context.requested_plan_role, "requested_plan_role")
@@ -269,7 +266,15 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
         out["affected_operator_id"] = _optional_text(out.get("affected_operator_id"))
         out["handling_status"] = _optional_text(out.get("handling_status"))
         out["suggest_reschedule"] = self._normalize_suggest_reschedule(out.get("suggest_reschedule"))
-        out["remark"] = _optional_text(out.get("remark"))
+        internal_tokens = {
+            action,
+            action_to_event_type(action),
+            out.get("reason_code"),
+            out.get("severity"),
+            out.get("handling_status"),
+        }
+        out["remark"] = public_execution_remark(out.get("remark"), internal_tokens=internal_tokens) or None
+        out["reason_detail"] = public_execution_remark(out.get("reason_detail"), internal_tokens=internal_tokens) or None
         if action in (EXECUTION_EVENT_PAUSE, EXECUTION_ACTION_REPORT_EXCEPTION):
             out["reason_code"] = _required_text(out.get("reason_code"), "reason_code")
             if not out.get("remark") and out.get("reason_detail"):
@@ -401,12 +406,9 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
                     message="完工时间不能早于实际开工时间，请检查后再提交。",
                 )
 
-    def _validate_payload_against_plan(self, *, action: str, payload: Dict[str, Any], schedule: Any, batch_op: Any) -> None:
+    def _validate_payload_against_plan(self, *, action: str, payload: Dict[str, Any], schedule: Any) -> None:
         if action == EXECUTION_EVENT_START:
             self._validate_start_payload_against_plan(payload=payload, schedule=schedule)
-            return
-        if action == EXECUTION_EVENT_FINISH:
-            self._validate_finish_payload_against_plan(payload=payload, batch_op=batch_op)
             return
         if action == EXECUTION_ACTION_REPORT_EXCEPTION:
             self._validate_exception_payload_against_plan(payload=payload)
@@ -421,26 +423,6 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
         planned_machine_id = _text(getattr(schedule, "machine_id", ""))
         if not planned_machine_id or machine_id != planned_machine_id:
             raise _invalid_field_value("machine_id", "请选择当前正式排程记录里的设备。")
-
-    def _validate_finish_payload_against_plan(self, *, payload: Dict[str, Any], batch_op: Any) -> None:
-        quantity_done = int(payload.get("quantity_done") or 0)
-        quantity_scrapped = int(payload.get("quantity_scrapped") or 0)
-        batch_id = _text(getattr(batch_op, "batch_id", ""))
-        batch = self.batch_repo.get(batch_id) if batch_id else None
-        if batch is None:
-            raise AppError(ErrorCode.NOT_FOUND, "批次不存在，请刷新后重试。", details={"reason": "not_found"})
-        planned_quantity = int(getattr(batch, "quantity", 0) or 0)
-        if quantity_done + quantity_scrapped > planned_quantity:
-            raise ValidationError(
-                "完成数量和报废数量加起来不能超过计划数量，请检查后再提交。",
-                field="quantity_done",
-                details={
-                    "reason": "invalid_field_value",
-                    "field": "quantity_done",
-                    "field_label": display_field_label("quantity_done"),
-                    "planned_quantity": planned_quantity,
-                },
-            )
 
     def _validate_exception_payload_against_plan(self, *, payload: Dict[str, Any]) -> None:
         affected_machine_id = _optional_text(payload.get("affected_machine_id"))

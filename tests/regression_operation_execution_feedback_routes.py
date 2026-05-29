@@ -1,184 +1,17 @@
 from __future__ import annotations
 
-import importlib
-import json
-import sys
-from pathlib import Path
 from typing import Any, Dict, Tuple
 
-from core.infrastructure.database import ensure_schema, get_connection
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
-SCHEMA_PATH = REPO_ROOT / "schema.sql"
-RESOURCE_DISPATCH_JS = REPO_ROOT / "static" / "js" / "resource_dispatch.js"
-RESOURCE_DISPATCH_TEMPLATE = REPO_ROOT / "templates" / "scheduler" / "resource_dispatch.html"
-UI_CONTRACT_CSS = REPO_ROOT / "static" / "css" / "ui_contract.css"
-
-
-def _build_app(tmp_path, monkeypatch):
-    repo_root = str(REPO_ROOT)
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-
-    db_path = tmp_path / "aps_execution_feedback_routes.db"
-    log_dir = tmp_path / "logs"
-    backup_dir = tmp_path / "backups"
-    template_dir = tmp_path / "templates_excel"
-    log_dir.mkdir(parents=True, exist_ok=True)
-    backup_dir.mkdir(parents=True, exist_ok=True)
-    template_dir.mkdir(parents=True, exist_ok=True)
-
-    monkeypatch.setenv("APS_ENV", "development")
-    monkeypatch.setenv("APS_DB_PATH", str(db_path))
-    monkeypatch.setenv("APS_LOG_DIR", str(log_dir))
-    monkeypatch.setenv("APS_BACKUP_DIR", str(backup_dir))
-    monkeypatch.setenv("APS_EXCEL_TEMPLATE_DIR", str(template_dir))
-
-    ensure_schema(str(db_path), logger=None, schema_path=str(SCHEMA_PATH), backup_dir=None)
-    conn = get_connection(str(db_path))
-    try:
-        _seed_execution_feedback_context(conn)
-        conn.commit()
-    finally:
-        conn.close()
-
-    for name in list(sys.modules):
-        if name.startswith("web.routes.scheduler") or name.startswith("web.routes.domains.scheduler"):
-            sys.modules.pop(name, None)
-    sys.modules.pop("app", None)
-    app_mod = importlib.import_module("app")
-    app = app_mod.create_app()
-    app.config["TESTING"] = True
-    return app, str(db_path)
-
-
-def _seed_execution_feedback_context(conn) -> None:
-    conn.executescript(
-        """
-        INSERT INTO ResourceTeams(team_id, name, status)
-        VALUES ('T1', '一组', 'active');
-
-        INSERT INTO Machines(machine_id, name, status, team_id)
-        VALUES ('M1', '一号设备', 'active', 'T1'), ('M2', '二号设备', 'active', 'T1');
-
-        INSERT INTO Operators(operator_id, name, status, team_id)
-        VALUES ('O1', '张三', 'active', 'T1'), ('O2', '李四', 'active', 'T1');
-
-        INSERT INTO Parts(part_no, part_name)
-        VALUES ('P001', '零件一');
-
-        INSERT INTO Batches(batch_id, part_no, part_name, quantity, due_date, priority, ready_status, status)
-        VALUES ('B1', 'P001', '零件一', 10, '2026-05-10', 'normal', 'yes', 'scheduled');
-
-        INSERT INTO BatchOperations(id, op_code, batch_id, piece_id, seq, op_type_name, source, status)
-        VALUES (10, 'OP10', 'B1', 'piece-a', 10, '车削', 'internal', 'scheduled');
-
-        INSERT INTO ScheduleVersionSeq(version) VALUES (1);
-        INSERT INTO ScheduleVersionSeq(version) VALUES (2);
-
-        INSERT INTO Schedule(id, op_id, machine_id, operator_id, start_time, end_time, lock_status, version)
-        VALUES
-            (100, 10, 'M1', 'O1', '2026-05-01 08:00:00', '2026-05-01 09:00:00', 'unlocked', 2),
-            (101, 10, 'M1', 'O1', '2026-04-30 08:00:00', '2026-04-30 09:00:00', 'unlocked', 1);
-
-        INSERT INTO ScheduleHistory(version, strategy, batch_count, op_count, result_status, result_summary, created_by)
-        VALUES
-            (1, 'priority_first', 1, 1, 'success', '{}', 'pytest'),
-            (2, 'priority_first', 1, 1, 'success', '{}', 'pytest');
-
-        INSERT INTO ScheduleCandidate(version, candidate_key, candidate_label, candidate_kind, status, graph_enabled, detail_saved)
-        VALUES
-            (2, 'adopted', '正式采用', 'baseline', 'completed', 'no', 'no'),
-            (2, 'baseline_best', '原算法代表', 'baseline', 'completed', 'no', 'yes');
-
-        INSERT INTO ScheduleCandidateRows(version, candidate_id, op_id, machine_id, operator_id, start_time, end_time, lock_status)
-        VALUES (
-            2,
-            (SELECT id FROM ScheduleCandidate WHERE version = 2 AND candidate_key = 'baseline_best'),
-            10,
-            'M2',
-            'O2',
-            '2026-05-01 10:00:00',
-            '2026-05-01 11:00:00',
-            'unlocked'
-        );
-
-        INSERT INTO ScheduleCandidateSelection(version, role, candidate_id, source_table)
-        VALUES
-            (2, 'adopted', (SELECT id FROM ScheduleCandidate WHERE version = 2 AND candidate_key = 'adopted'), 'schedule'),
-            (2, 'baseline_best', (SELECT id FROM ScheduleCandidate WHERE version = 2 AND candidate_key = 'baseline_best'), 'candidate_rows');
-
-        INSERT INTO ScheduleAdjustmentDraft(draft_id, base_version, base_plan_role, status, created_by)
-        VALUES ('draft-1', 2, 'adopted', 'saved_scenario', 'pytest');
-
-        INSERT INTO ScheduleAdjustmentScenario(
-            scenario_id, source_draft_id, base_version, base_plan_role, base_source_table,
-            scenario_name, status, validation_status, row_count, created_by
-        )
-        VALUES ('scenario-plain', 'draft-1', 2, 'adopted', 'schedule', '', 'active', 'valid', 1, 'pytest');
-
-        INSERT INTO ScheduleAdjustmentScenarioRow(
-            scenario_id, source_table, source_row_id, op_id, machine_id, operator_id, start_time, end_time, lock_status
-        )
-        VALUES ('scenario-plain', 'schedule', 100, 10, 'M1', 'O1', '2026-05-01 12:00:00', '2026-05-01 13:00:00', 'unlocked');
-        """
-    )
-
-
-def _json(resp) -> Dict[str, Any]:
-    return json.loads(resp.get_data(as_text=True) or "{}")
-
-
-def _event_count(db_path: str) -> int:
-    conn = get_connection(db_path)
-    try:
-        row = conn.execute("SELECT COUNT(1) AS count FROM OperationExecutionEvents").fetchone()
-        return int(row["count"])
-    finally:
-        conn.close()
-
-
-def _event_count_for_op(db_path: str, op_id: int) -> int:
-    conn = get_connection(db_path)
-    try:
-        row = conn.execute("SELECT COUNT(1) AS count FROM OperationExecutionEvents WHERE op_id = ?", (op_id,)).fetchone()
-        return int(row["count"])
-    finally:
-        conn.close()
-
-
-def _current_card(client) -> Dict[str, Any]:
-    resp = client.get(
-        "/scheduler/resource-dispatch/execution/data?scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01&version=2&plan_role=adopted"
-    )
-    assert resp.status_code == 200
-    data = _json(resp)["data"]
-    return data["tasks"][0]
-
-
-def _base_payload(card: Dict[str, Any], **overrides: Any) -> Dict[str, Any]:
-    payload = {
-        "version": 2,
-        "schedule_id": card["schedule_id"],
-        "batch_id": card["batch_id"],
-        "requested_plan_role": "adopted",
-        "effective_plan_role": "adopted",
-        "source_table": "schedule",
-        "scenario_id": None,
-        "expected_state_revision": card["state_revision"],
-        "event_time": "2026-05-01 08:10:00",
-        "created_by": "张三",
-        "idempotency_key": "route-key-start",
-        "operator_id": "O1",
-        "machine_id": "M1",
-        "remark": "开始加工",
-    }
-    payload.update(overrides)
-    return payload
-
-
-def _post_controlled(client, url: str, payload: Dict[str, Any]):
-    return client.post(url, json=payload, headers={"X-APS-Test-Execution-Feedback": "allow"})
+from core.infrastructure.database import get_connection
+from tests.operation_execution_feedback_test_support import (
+    _base_payload,
+    _build_app,
+    _current_card,
+    _event_count,
+    _event_count_for_op,
+    _json,
+    _post_controlled,
+)
 
 
 def test_execution_data_returns_task_card_contract(tmp_path, monkeypatch) -> None:
@@ -211,11 +44,16 @@ def test_execution_data_returns_task_card_contract(tmp_path, monkeypatch) -> Non
         assert key in card
     assert card["current_status_label"] == "待开工"
     assert isinstance(card["unavailable_reasons"], dict)
-    assert card["available_actions"][0]["label"] == "开工"
-    assert card["available_actions"][0]["enabled"] is True
-    assert card["available_actions"][0]["disabled_reason"] == ""
-    assert "start" not in card["unavailable_reasons"]
-    assert "不能完工" in card["unavailable_reasons"]["finish"]
+    action_by_name = {item["action"]: item for item in card["available_actions"]}
+    assert list(action_by_name) == ["fill_actual", "view_records"]
+    assert action_by_name["fill_actual"]["label"] == "填写实际情况"
+    assert action_by_name["fill_actual"]["enabled"] is True
+    assert action_by_name["fill_actual"]["disabled_reason"] == ""
+    assert action_by_name["view_records"]["label"] == "查看计划和实际"
+    assert action_by_name["view_records"]["enabled"] is True
+    for realtime_action in ("start", "pause", "resume", "finish", "report_exception"):
+        assert realtime_action not in action_by_name
+        assert realtime_action not in card["unavailable_reasons"]
 
 
 def test_plain_user_start_finish_posts_write_after_guardrail(tmp_path, monkeypatch) -> None:
@@ -334,8 +172,8 @@ def test_controlled_start_finish_posts_return_refresh_contract(tmp_path, monkeyp
     assert start_data["task_card"]["actual_operator_display_label"] == "张三"
     assert start_data["task_card"]["actual_operator_identity_label"] == "O1 张三"
     action_by_name = {item["action"]: item for item in start_data["task_card"]["available_actions"]}
-    assert action_by_name["finish"]["label"] == "完工"
-    assert action_by_name["finish"]["enabled"] is True
+    assert list(action_by_name) == ["fill_actual", "view_records"]
+    assert action_by_name["fill_actual"]["enabled"] is True
 
     finish_payload = _base_payload(
         card,
@@ -547,24 +385,20 @@ def test_start_finish_business_validation_is_user_facing(tmp_path, monkeypatch) 
 
     start_resp = _post_controlled(client, f"/scheduler/resource-dispatch/execution/{card['op_id']}/start", _base_payload(card))
     state_revision = _json(start_resp)["data"]["state_revision"]
-    too_many = _post_controlled(
+    over_planned = _post_controlled(
         client,
         f"/scheduler/resource-dispatch/execution/{card['op_id']}/finish",
         _base_payload(
             card,
             expected_state_revision=state_revision,
-            idempotency_key="too-many-finish",
+            idempotency_key="over-planned-finish",
             quantity_done=9,
             quantity_scrapped=2,
         ),
     )
-    too_many_error = _json(too_many)["error"]
-    assert too_many.status_code == 400
-    assert too_many_error["details"]["reason"] == "invalid_field_value"
-    assert too_many_error["details"]["field_label"] == "完成数量"
-    assert too_many_error["details"]["can_retry"] is True
-    assert "计划数量" in too_many_error["message"]
-    assert "quantity_done" not in too_many_error["message"]
+    assert over_planned.status_code == 200
+    finish_event = _json(over_planned)["data"]["event"]
+    assert finish_event["action_label"] == "完工"
 
 
 def test_start_rejects_schedule_without_planned_machine(tmp_path, monkeypatch) -> None:
@@ -637,87 +471,3 @@ def test_finish_quantity_boundaries_use_chinese_field_labels(tmp_path, monkeypat
         assert payload["error"]["details"]["field_label"] == field_label
         assert payload["error"]["details"]["can_retry"] is True
         assert "quantity_" not in payload["error"]["message"]
-
-
-def test_resource_dispatch_page_has_execution_tab_without_feedback_protection_copy(tmp_path, monkeypatch) -> None:
-    app, _db_path = _build_app(tmp_path, monkeypatch)
-    client = app.test_client()
-
-    resp = client.get(
-        "/scheduler/resource-dispatch?scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01&version=2&plan_role=adopted"
-    )
-    body = resp.get_data(as_text=True)
-
-    assert resp.status_code == 200
-    assert "现场反馈" in body
-    assert "data-execution-url=" in body
-    assert 'id="rdExecutionCreatedBy"' in body
-    assert "反馈人" in body
-    assert "现场反馈保护还没开启，暂不能提交开工或完工" not in body
-
-
-def test_resource_dispatch_frontend_posts_execution_button_clicks() -> None:
-    source = RESOURCE_DISPATCH_JS.read_text(encoding="utf-8")
-    template = RESOURCE_DISPATCH_TEMPLATE.read_text(encoding="utf-8")
-    css = UI_CONTRACT_CSS.read_text(encoding="utf-8")
-
-    assert "bindExecutionActionClicks" in source
-    assert "postExecutionAction" in source
-    assert "executionCreatedBy" in source
-    assert "rdExecutionCreatedBy" in source
-    assert "请先填写反馈人。" in source
-    assert "payload.created_by = createdBy" in source
-    assert 'payload.created_by = "现场反馈"' not in source
-    assert "window.confirm" not in source
-    assert "window.prompt" not in source
-    assert "executionPromptStartResource" not in source
-    assert "请确认实际设备编号" not in source
-    assert "请填写实际人员工号" not in source
-    assert 'payload.machine_id = machine' in source
-    assert 'payload.operator_id = operator' in source
-    assert "renderFinishInlineForm" in source
-    assert "renderPauseInlineForm" in source
-    assert "renderResumeInlineForm" in source
-    assert "renderExceptionInlineForm" in source
-    assert "inlinePausePayload" in source
-    assert "inlineResumePayload" in source
-    assert "inlineExceptionPayload" in source
-    assert "填写暂停反馈" in source
-    assert "填写继续生产反馈" in source
-    assert "填写异常反馈" in source
-    assert "aps-execution-finish-qty" in source
-    assert "aps-execution-reason-code" in source
-    assert "aps-execution-severity" in source
-    assert "aps-execution-handling-status" in source
-    assert "aps-execution-suggest-reschedule" in source
-    assert "请填写完成数量。" in source
-    assert "请选择暂停原因。" in source
-    assert "请填写暂停情况说明。" in source
-    assert "请选择异常原因。" in source
-    assert "请填写异常情况说明。" in source
-    assert "aps-execution-inline-form" in css
-    assert "aps-execution-inline-field-wide" in css
-    assert "resize: vertical" in css
-    assert "background: var(--ui-surface-muted" in css
-    assert "--ui-bg-subtle" not in css
-    assert "normalizedUnavailableReasonTexts" in source
-    assert "statusUnavailableReasonSummary" in source
-    assert '"start", "pause", "resume", "finish", "report_exception"' in source
-    assert 'actions.join("、")' in source
-    assert 'map(escapeHtml).join("；")' not in source
-    assert "第一版" not in source
-    assert 'id="rdExecutionCreatedBy"' in template
-    assert "反馈人" in template
-    assert 'if (action === "pause")' in source
-    assert "renderPauseInlineForm(target)" in source
-    assert 'if (action === "resume")' in source
-    assert "renderResumeInlineForm(target)" in source
-    assert 'if (action === "report_exception")' in source
-    assert "renderExceptionInlineForm(target)" in source
-    assert 'method: "POST"' in source
-    assert 'data-op-id="' in source
-    assert 'data-state-revision="' in source
-    assert 'data-machine-id="' in source
-    assert 'data-operator-id="' in source
-    assert "/scheduler/resource-dispatch/execution/" in source
-    assert "idempotency_key" in source

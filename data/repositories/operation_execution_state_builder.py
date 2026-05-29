@@ -22,6 +22,8 @@ from core.models.operation_execution_labels import (
     execution_action_label,
     execution_status_label,
     handling_status_label,
+    internal_remark_tokens_from_event,
+    public_execution_remark,
     severity_label,
     suggest_reschedule_label,
 )
@@ -78,7 +80,12 @@ def _current_status(last_event: OperationExecutionEvent) -> str:
 
 
 def _event_remark(event: OperationExecutionEvent) -> Optional[str]:
-    return event.remark or event.reason_detail
+    tokens = internal_remark_tokens_from_event(event)
+    return (
+        public_execution_remark(event.remark, internal_tokens=tokens)
+        or public_execution_remark(event.reason_detail, internal_tokens=tokens)
+        or None
+    )
 
 
 def _latest_exception(events: Sequence[OperationExecutionEvent]) -> Optional[OperationExecutionEvent]:

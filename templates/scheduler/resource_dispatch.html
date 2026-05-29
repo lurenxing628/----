@@ -25,11 +25,13 @@
     data-can-query="{{ '1' if can_query else '0' }}"
     data-export-url="{{ export_url or '' }}"
     data-execution-url="{{ execution_data_url or '' }}"
+    data-actual-template-url="{{ actual_template_url or '' }}"
+    data-actual-import-url="{{ actual_import_url or '' }}"
   >
 
   {% set resource_dispatch_actions %}
     {{ ui.link_button('去执行排产', url_for('scheduler.batches_page'), 'primary', 'md') }}
-    {{ ui.link_button('查看计划和现场实际', url_for('reports.execution_review_page', version=filters.version, date_from=filters.start_date, date_to=filters.end_date), 'secondary', 'md') }}
+    {{ ui.link_button('查看计划和实际', url_for('reports.execution_review_page', version=filters.version, date_from=filters.start_date, date_to=filters.end_date), 'secondary', 'md') }}
     {% if export_url %}
       {{ ui.link_button('导出资源排班.xlsx', export_url, 'secondary', 'md', 'download') }}
     {% else %}
@@ -234,7 +236,7 @@
     <div class="aps-resource-result-toolbar">
       <div class="aps-resource-result-tabs" id="rdTabBar">
         {{ ui.button('任务明细', 'primary', 'md', class='rd-tab-btn', type_attr='button', element_id='rdTabDetail') }}
-        {{ ui.button('现场反馈', 'secondary', 'md', class='rd-tab-btn', type_attr='button', element_id='rdTabExecution') }}
+        {{ ui.button('现场记录', 'secondary', 'md', class='rd-tab-btn', type_attr='button', element_id='rdTabExecution') }}
         {{ ui.button('日历矩阵', 'secondary', 'md', class='rd-tab-btn', type_attr='button', element_id='rdTabCalendar') }}
         {{ ui.button('甘特图', 'secondary', 'md', class='rd-tab-btn', type_attr='button', element_id='rdTabGantt') }}
       </div>
@@ -285,12 +287,33 @@
       <div class="aps-query-form-grid aps-resource-query-grid">
         <div class="form-field">
           <label for="rdExecutionCreatedBy">反馈人</label>
-          <input type="text" id="rdExecutionCreatedBy" class="w-180" autocomplete="off" required>
+          <input type="text" id="rdExecutionCreatedBy" class="w-180" autocomplete="off" placeholder="可不填">
+        </div>
+        <div class="form-field">
+          <label>实际情况 Excel</label>
+          <div class="aps-inline-form-actions">
+            {% if actual_template_url %}
+              {{ ui.link_button('下载填写模板', actual_template_url, 'secondary', 'sm', 'download') }}
+            {% else %}
+              {{ ui.button('下载填写模板', 'secondary', 'sm', type_attr='button', disabled=True, class='aps-disabled-button') }}
+            {% endif %}
+          </div>
+        </div>
+        <div class="form-field aps-execution-import-field">
+          <label for="rdActualImportFile">导入实际情况 Excel</label>
+          <input type="file" id="rdActualImportFile" accept=".xlsx,.xlsm" {% if not actual_import_url %}disabled{% endif %}>
+        </div>
+        <div class="form-field">
+          <label>&nbsp;</label>
+          <div class="aps-inline-form-actions">
+            {{ ui.button('导入实际情况 Excel', 'primary', 'sm', type_attr='button', element_id='rdActualImportSubmit', disabled=(not actual_import_url)) }}
+          </div>
         </div>
       </div>
       <div id="rdExecutionNotice" class="flash-card flash-warning is-hidden" role="status"></div>
+      <div id="rdActualImportPreviewWrap" class="mt-2 is-hidden"></div>
       <div id="rdExecutionCards" class="aps-execution-card-grid mt-2">
-        <div class="muted">现场反馈任务卡加载中...</div>
+        <div class="muted">现场记录任务卡加载中...</div>
       </div>
     </div>
 

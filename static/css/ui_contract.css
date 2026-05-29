@@ -5055,6 +5055,56 @@ html[data-theme="dark"] .aps-calendar-task-label {
   color: var(--ui-text-strong, #0f172a);
 }
 
+.aps-execution-record-item {
+  border-top: 1px solid var(--ui-border, #e2e8f0);
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+.aps-execution-record-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 3px;
+  min-width: 0;
+}
+
+.aps-execution-record-head strong {
+  color: var(--ui-text-strong, #0f172a);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.aps-execution-record-head span {
+  color: var(--ui-muted, #64748b);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.aps-execution-record-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 10px;
+  margin-top: 8px;
+}
+
+.aps-execution-record-grid span {
+  display: block;
+  color: var(--ui-muted, #64748b);
+  font-size: 12px;
+}
+
+.aps-execution-record-grid strong {
+  display: block;
+  color: var(--ui-text-strong, #0f172a);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.aps-execution-record-wide {
+  grid-column: 1 / -1;
+}
+
 .aps-execution-inline-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -5071,6 +5121,25 @@ html[data-theme="dark"] .aps-calendar-task-label {
 
 .aps-execution-inline-field-wide {
   grid-column: 1 / -1;
+}
+
+.aps-execution-inline-readonly {
+  display: block;
+  color: var(--ui-muted, #64748b);
+  font-size: 12px;
+  min-width: 0;
+}
+
+.aps-execution-inline-readonly strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--ui-text, #0f172a);
+  font-size: 13px;
+}
+
+.aps-execution-inline-readonly span {
+  display: block;
+  margin-top: 2px;
 }
 
 .aps-execution-inline-grid input,

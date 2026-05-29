@@ -14,6 +14,7 @@ _ROUTE_MODULES = (
     "scheduler_gantt_adjustments",
     "scheduler_ops",
     "scheduler_resource_dispatch",
+    "scheduler_resource_dispatch_execution_routes",
     "scheduler_run",
     "scheduler_week_plan",
 )

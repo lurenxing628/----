@@ -144,6 +144,16 @@ def _build_route_app() -> Flask:
         endpoint="scheduler.resource_dispatch_execution_data",
         view_func=lambda: "",
     )
+    app.add_url_rule(
+        "/scheduler/resource-dispatch/execution/actual-template",
+        endpoint="scheduler.resource_dispatch_actual_template",
+        view_func=lambda: "",
+    )
+    app.add_url_rule(
+        "/scheduler/resource-dispatch/execution/import",
+        endpoint="scheduler.resource_dispatch_actual_import",
+        view_func=lambda: "",
+    )
     app.add_url_rule("/scheduler/resource-dispatch/export", endpoint="scheduler.resource_dispatch_export", view_func=lambda: "")
     return app
 

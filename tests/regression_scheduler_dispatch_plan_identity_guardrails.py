@@ -275,6 +275,8 @@ def _build_route_app() -> Flask:
         ("/scheduler/resource-dispatch", "scheduler.resource_dispatch_page"),
         ("/scheduler/resource-dispatch/data", "scheduler.resource_dispatch_data"),
         ("/scheduler/resource-dispatch/execution/data", "scheduler.resource_dispatch_execution_data"),
+        ("/scheduler/resource-dispatch/execution/actual-template", "scheduler.resource_dispatch_actual_template"),
+        ("/scheduler/resource-dispatch/execution/import", "scheduler.resource_dispatch_actual_import"),
         ("/scheduler/resource-dispatch/export", "scheduler.resource_dispatch_export"),
     ):
         app.add_url_rule(path, endpoint=endpoint, view_func=lambda: "")

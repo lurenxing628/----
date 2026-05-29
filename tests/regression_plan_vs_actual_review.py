@@ -9,7 +9,7 @@ from core.infrastructure.database import get_connection
 from core.services.report import ReportEngine
 from core.services.scheduler.operation_execution_labels import action_to_event_type
 from data.repositories.operation_execution_event_repo import OperationExecutionEventRepo
-from tests.regression_operation_execution_feedback_routes import _build_app
+from tests.operation_execution_feedback_test_support import _build_app
 
 EXPECTED_HEADERS = [
     "批次",

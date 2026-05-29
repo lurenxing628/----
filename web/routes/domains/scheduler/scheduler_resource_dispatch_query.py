@@ -108,6 +108,14 @@ def _execution_data_url(filters: Dict[str, Any]) -> str:
     return _url_with_query("scheduler.resource_dispatch_execution_data", _query_from_filters(filters))
 
 
+def _actual_template_url(filters: Dict[str, Any]) -> str:
+    return _url_with_query("scheduler.resource_dispatch_actual_template", _query_from_filters(filters))
+
+
+def _actual_import_url(filters: Dict[str, Any]) -> str:
+    return _url_with_query("scheduler.resource_dispatch_actual_import", _query_from_filters(filters))
+
+
 def _export_url(filters: Dict[str, Any]) -> str:
     query = _query_from_filters(filters)
     return _url_with_query("scheduler.resource_dispatch_export", query)

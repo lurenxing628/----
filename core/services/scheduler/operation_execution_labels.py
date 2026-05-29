@@ -10,6 +10,8 @@ from core.models.operation_execution_labels import (
     execution_action_label,
     execution_status_label,
     handling_status_label,
+    internal_remark_tokens_from_event,
+    public_execution_remark,
     severity_label,
     suggest_reschedule_label,
 )
@@ -26,6 +28,8 @@ __all__ = [
     "execution_action_label",
     "execution_status_label",
     "handling_status_label",
+    "internal_remark_tokens_from_event",
+    "public_execution_remark",
     "severity_label",
     "suggest_reschedule_label",
 ]

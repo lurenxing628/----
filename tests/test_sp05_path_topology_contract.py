@@ -162,6 +162,7 @@ SCHEDULER_REAL_ROUTE_FILES = (
     "scheduler_pages.py",
     "scheduler_route_registrar.py",
     "scheduler_resource_dispatch.py",
+    "scheduler_resource_dispatch_execution_routes.py",
     "scheduler_run.py",
     "scheduler_utils.py",
     "scheduler_week_plan.py",
@@ -511,6 +512,7 @@ def test_sp05_route_topology_and_compatibility_matrix() -> None:
         "scheduler_gantt_adjustments",
         "scheduler_ops",
         "scheduler_resource_dispatch",
+        "scheduler_resource_dispatch_execution_routes",
         "scheduler_run",
         "scheduler_week_plan",
     }

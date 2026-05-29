@@ -34,7 +34,10 @@
     if (!value) return fallback;
     try {
       return JSON.parse(value);
-    } catch (_err) {
+    } catch (err) {
+      if (window.console && typeof window.console.warn === "function") {
+        window.console.warn("资源派工 JSON 配置解析失败", err);
+      }
       return fallback;
     }
   }
@@ -300,6 +303,8 @@
       filters: parseJson(pageEl.getAttribute("data-filters"), {}),
       dataUrl: trim(pageEl.getAttribute("data-url")),
       executionUrl: trim(pageEl.getAttribute("data-execution-url")),
+      actualTemplateUrl: trim(pageEl.getAttribute("data-actual-template-url")),
+      actualImportUrl: trim(pageEl.getAttribute("data-actual-import-url")),
       hasHistory: pageEl.getAttribute("data-has-history") === "1",
       canQuery: pageEl.getAttribute("data-can-query") === "1",
       exportUrl: trim(pageEl.getAttribute("data-export-url"))
@@ -436,28 +441,26 @@
   }
 
   function renderExecutionActions(actions, task) {
-    const list = Array.isArray(actions) ? actions : [];
-    if (!list.length) return '<span class="muted">暂无可用操作</span>';
-    const html = [];
     const row = task || {};
-    for (let i = 0; i < list.length; i++) {
-      const action = list[i] || {};
-      const disabledReason = trim(action.disabled_reason);
-      const disabledAttr = action.enabled ? "" : " disabled";
-      const titleAttr = disabledReason ? ' title="' + escapeHtml(disabledReason) + '"' : "";
-      html.push(
-        '<button type="button" class="btn btn-secondary btn-sm aps-execution-action" data-action="' +
-          escapeHtml(action.action || "") + '" data-op-id="' + escapeHtml(row.op_id || "") +
-          '" data-schedule-id="' + escapeHtml(row.schedule_id || "") +
-          '" data-batch-id="' + escapeHtml(row.batch_id || "") +
-          '" data-state-revision="' + escapeHtml(row.state_revision || "") +
-          '" data-machine-id="' + escapeHtml(row.planned_machine_id || "") +
-          '" data-operator-id="' + escapeHtml(row.planned_operator_id || "") + '"' + disabledAttr + titleAttr + '>' +
-          escapeHtml(action.label || "操作") +
-        '</button>'
-      );
-    }
-    return html.join(" ");
+    const opId = trim(row.op_id);
+    const fillAction = Array.isArray(actions)
+      ? actions.find(function (item) { return trim(item && item.action) === "fill_actual"; })
+      : null;
+    const disabledReason = trim(fillAction && fillAction.disabled_reason);
+    const disabledAttr = fillAction && fillAction.enabled ? "" : " disabled";
+    const titleAttr = disabledReason ? ' title="' + escapeHtml(disabledReason) + '"' : "";
+    const recordsDisabledAttr = opId ? "" : " disabled";
+    const recordsTitleAttr = opId ? "" : ' title="缺少任务识别码，无法查看计划和实际"';
+    return (
+      '<button type="button" class="btn btn-primary btn-sm aps-execution-action" data-action="fill_actual" data-op-id="' +
+        escapeHtml(row.op_id || "") + '" data-schedule-id="' + escapeHtml(row.schedule_id || "") +
+        '" data-batch-id="' + escapeHtml(row.batch_id || "") +
+        '" data-state-revision="' + escapeHtml(row.state_revision || "") +
+        '" data-machine-id="' + escapeHtml(row.planned_machine_id || "") +
+        '" data-operator-id="' + escapeHtml(row.planned_operator_id || "") + '"' + disabledAttr + titleAttr + '>填写实际情况</button> ' +
+      '<button type="button" class="btn btn-secondary btn-sm aps-execution-events" data-op-id="' +
+        escapeHtml(row.op_id || "") + '" data-loaded="0"' + recordsDisabledAttr + recordsTitleAttr + '>查看计划和实际</button>'
+    );
   }
 
   const EXECUTION_REASON_CODES = {
@@ -475,18 +478,8 @@
     "严重": "high",
     "紧急": "critical"
   };
-  const EXECUTION_HANDLING_CODES = {
-    "刚上报": "new",
-    "处理中": "checking",
-    "等待条件": "waiting",
-    "已处理": "handled"
-  };
   const EXECUTION_ACTION_LABELS = {
-    start: "开工",
-    pause: "暂停",
-    resume: "继续生产",
-    finish: "完工",
-    report_exception: "报异常"
+    fill_actual: "填写实际情况"
   };
 
   function renderExecutionExceptionDetails(task) {
@@ -533,15 +526,9 @@
       return lines;
     }
     if (!reasons || typeof reasons !== "object") return lines;
-    ["start", "pause", "resume", "finish", "report_exception"].forEach(function (key) {
-      if (Object.prototype.hasOwnProperty.call(reasons, key)) {
-        addReason(reasons[key]);
-      }
-    });
-    Object.keys(reasons).forEach(function (key) {
-      if (["start", "pause", "resume", "finish", "report_exception"].indexOf(key) >= 0) return;
-      addReason(reasons[key]);
-    });
+    if (Object.prototype.hasOwnProperty.call(reasons, "fill_actual")) {
+      addReason(reasons.fill_actual);
+    }
     return lines;
   }
 
@@ -574,11 +561,13 @@
     const tasks = Array.isArray(data.tasks) ? data.tasks : [];
     const disabledReason = trim(data.disabled_reason);
     if (notice) {
-      notice.textContent = disabledReason;
+      if (disabledReason) {
+        notice.textContent = disabledReason;
+      }
       show(notice, !!disabledReason);
     }
     if (!tasks.length) {
-      wrap.innerHTML = '<div class="muted">当前查询范围内暂无现场反馈任务卡。</div>';
+      wrap.innerHTML = '<div class="muted">当前查询范围内暂无现场记录任务卡。</div>';
       return;
     }
     const cards = [];
@@ -586,7 +575,8 @@
       const task = tasks[i] || {};
       const reasonText = executionUnavailableReasonText(task.unavailable_reasons);
       cards.push(
-        '<section class="aps-execution-card">' +
+        '<section class="aps-execution-card" data-actual-start-time="' + escapeHtml(task.actual_start_time || "") +
+          '" data-actual-end-time="' + escapeHtml(task.actual_end_time || "") + '">' +
           '<div class="aps-execution-card-head">' +
             '<div>' +
               '<div class="aps-execution-title">' + escapeHtml(task.op_name || "未命名工序") + '</div>' +
@@ -596,15 +586,16 @@
           '</div>' +
           '<div class="aps-execution-facts">' +
             '<div><span>计划开始</span><strong>' + escapeHtml(task.planned_start_time || "-") + '</strong></div>' +
-            '<div><span>实际开始</span><strong>' + escapeHtml(task.actual_start_time || "暂无") + '</strong></div>' +
+            '<div><span>实际开工</span><strong>' + escapeHtml(task.actual_start_time || "暂无开工记录") + '</strong></div>' +
             '<div><span>计划结束</span><strong>' + escapeHtml(task.planned_end_time || "-") + '</strong></div>' +
-            '<div><span>实际结束</span><strong>' + escapeHtml(task.actual_end_time || "暂无") + '</strong></div>' +
+            '<div><span>实际完工</span><strong>' + escapeHtml(task.actual_end_time || "未填写实际完工") + '</strong></div>' +
             '<div><span>计划设备</span><strong>' + resourceDisplayHtml(task, "planned_machine", "-") + '</strong></div>' +
             '<div><span>实际设备</span><strong>' + resourceDisplayHtml(task, "actual_machine", "暂无") + '</strong></div>' +
             '<div><span>计划人员</span><strong>' + resourceDisplayHtml(task, "planned_operator", "-") + '</strong></div>' +
             '<div><span>实际人员</span><strong>' + resourceDisplayHtml(task, "actual_operator", "暂无") + '</strong></div>' +
           '</div>' +
-          (task.last_event_action_label ? '<div class="text-meta mt-1">最近反馈：' + escapeHtml(task.last_event_action_label) + (task.last_event_remark ? '，' + escapeHtml(task.last_event_remark) : '') + '</div>' : '') +
+          (task.actual_start_time ? '<div class="text-meta mt-1">已记录实际开工。</div>' : '') +
+          (task.last_event_action_label ? '<div class="text-meta mt-1">最近记录：' + escapeHtml(task.last_event_action_label) + (task.last_event_remark ? '，' + escapeHtml(task.last_event_remark) : '') + '</div>' : '') +
           renderExecutionExceptionDetails(task) +
           (reasonText ? '<div class="text-meta mt-1">' + reasonText + '</div>' : '') +
           '<div class="aps-execution-actions mt-2">' + renderExecutionActions(task.available_actions, task) + '</div>' +
@@ -621,26 +612,6 @@
     show(notice, !!trim(message));
   }
 
-  function localDateTimeText(date) {
-    const d = date || new Date();
-    function pad(v) {
-      return String(v).padStart(2, "0");
-    }
-    return (
-      d.getFullYear() + "-" +
-      pad(d.getMonth() + 1) + "-" +
-      pad(d.getDate()) + " " +
-      pad(d.getHours()) + ":" +
-      pad(d.getMinutes()) + ":" +
-      pad(d.getSeconds())
-    );
-  }
-
-  function executionActionPath(action) {
-    if (action === "report_exception") return "report-exception";
-    return action;
-  }
-
   function executionIdentityPayload() {
     const identity = (state.execution && state.execution.plan_identity) || {};
     const filters = state.cfg.filters || {};
@@ -655,13 +626,7 @@
 
   function executionCreatedBy() {
     const input = $("rdExecutionCreatedBy");
-    const createdBy = input ? trim(input.value) : "";
-    if (!createdBy) {
-      executionNotice("请先填写反馈人。");
-      if (input && input.focus) input.focus();
-      return null;
-    }
-    return createdBy;
+    return input ? trim(input.value) : "";
   }
 
   function actionDataAttributes(source) {
@@ -678,6 +643,12 @@
     }).join(" ");
   }
 
+  function dateTimeTextFromInput(value) {
+    const raw = trim(value);
+    if (!raw) return "";
+    return raw.replace("T", " ") + (raw.length === 16 ? ":00" : "");
+  }
+
   function clearExecutionInlineForms(card) {
     const scope = card || document;
     scope.querySelectorAll(".aps-execution-inline-form").forEach(function (el) {
@@ -685,23 +656,62 @@
     });
   }
 
-  function renderFinishInlineForm(button) {
+  function clearExecutionRecords(card) {
+    const scope = card || document;
+    scope.querySelectorAll(".aps-execution-records").forEach(function (el) {
+      if (el.parentNode) el.parentNode.removeChild(el);
+    });
+  }
+
+  function renderActualInlineForm(button) {
     const card = button && button.closest ? button.closest(".aps-execution-card") : null;
     if (!card) return;
     clearExecutionInlineForms(card);
     const actions = button.closest(".aps-execution-actions");
+    const recordedStart = trim(card.getAttribute("data-actual-start-time") || "");
+    const recordedEnd = trim(card.getAttribute("data-actual-end-time") || "");
+    // 已记录的实际开工/完工只读展示，不渲染成可编辑输入、也不进入提交内容——后端只追加、不覆盖，
+    // 预填可编辑值会让“补完工/加暂停”被整单拒绝。仅未记录时才给出可填写的输入框。
+    const startField = recordedStart
+      ? '<div class="aps-execution-inline-readonly">实际开工时间<strong>' + escapeHtml(recordedStart) + '</strong><span class="text-meta">已记录，不可修改</span></div>'
+      : '<label>实际开工时间<input type="datetime-local" class="aps-actual-start-time"></label>';
+    const finishField = recordedEnd
+      ? '<div class="aps-execution-inline-readonly">实际完工时间<strong>' + escapeHtml(recordedEnd) + '</strong><span class="text-meta">已记录，不可修改</span></div>'
+      : '<label>实际完工时间<input type="datetime-local" class="aps-actual-finish-time"></label>';
+    const finishQtyFields = recordedEnd
+      ? ''
+      : '<label>完成数量<input type="number" min="0" step="1" class="aps-actual-finish-qty" inputmode="numeric"></label>' +
+        '<label>报废数量<input type="number" min="0" step="1" class="aps-actual-scrap-qty" inputmode="numeric"></label>';
     const form = document.createElement("div");
     form.className = "aps-execution-inline-form mt-2";
     form.setAttribute("role", "group");
-    form.setAttribute("aria-label", "填写完工反馈");
+    form.setAttribute("aria-label", "填写实际情况");
     form.innerHTML =
-      '<div class="aps-execution-inline-title">填写完工反馈</div>' +
+      '<div class="aps-execution-inline-title">填写实际情况</div>' +
       '<div class="aps-execution-inline-grid">' +
-        '<label>完成数量<input type="number" min="0" step="1" class="aps-execution-finish-qty" inputmode="numeric"></label>' +
-        '<label>报废数量<input type="number" min="0" step="1" class="aps-execution-scrap-qty" inputmode="numeric" value="0"></label>' +
+        startField +
+        finishField +
+        finishQtyFields +
+        '<label>暂停开始时间<input type="datetime-local" class="aps-actual-pause-start"></label>' +
+        '<label>暂停结束时间<input type="datetime-local" class="aps-actual-pause-end"></label>' +
+        '<label>暂停时长分钟<input type="number" min="0" step="1" class="aps-actual-pause-duration" inputmode="numeric"></label>' +
+        '<label>暂停原因<select class="aps-actual-pause-reason">' +
+          executionOptionsHtml(EXECUTION_REASON_CODES, "请选择原因", "") +
+        '</select></label>' +
+        '<label class="aps-execution-inline-field-wide">暂停说明<textarea class="aps-actual-pause-remark" rows="2" placeholder="例如：设备需要检查"></textarea></label>' +
+        '<div class="aps-execution-inline-title aps-execution-inline-field-wide">新增异常记录</div>' +
+        '<label>异常时间<input type="datetime-local" class="aps-actual-exception-time"></label>' +
+        '<label>异常原因<select class="aps-actual-exception-reason">' +
+          executionOptionsHtml(EXECUTION_REASON_CODES, "请选择原因", "") +
+        '</select></label>' +
+        '<label>异常严重程度<select class="aps-actual-exception-severity">' +
+          executionOptionsHtml(EXECUTION_SEVERITY_CODES, "请选择严重程度", "") +
+        '</select></label>' +
+        '<label class="aps-execution-inline-field-wide">异常说明<textarea class="aps-actual-exception-remark" rows="2" placeholder="例如：主轴异常，已通知维修"></textarea></label>' +
+        '<label class="aps-execution-inline-field-wide">备注<textarea class="aps-actual-remark" rows="2" placeholder="可填写班次、补充说明等"></textarea></label>' +
       '</div>' +
       '<div class="aps-inline-form-actions mt-2">' +
-        '<button type="button" class="btn btn-primary btn-sm aps-execution-inline-submit" ' + actionDataAttributes(button) + '>提交完工</button>' +
+        '<button type="button" class="btn btn-primary btn-sm aps-execution-inline-submit" ' + actionDataAttributes(button) + '>保存实际情况</button>' +
         '<button type="button" class="btn btn-secondary btn-sm aps-execution-inline-cancel">取消</button>' +
       '</div>';
     if (actions && actions.parentNode) {
@@ -709,8 +719,8 @@
     } else {
       card.appendChild(form);
     }
-    const qtyInput = form.querySelector(".aps-execution-finish-qty");
-    if (qtyInput && qtyInput.focus) qtyInput.focus();
+    const first = form.querySelector("input, select, textarea");
+    if (first && first.focus) first.focus();
   }
 
   function executionOptionsHtml(mapping, blankLabel, selectedValue) {
@@ -726,181 +736,52 @@
     return html.join("");
   }
 
-  function inlineFormActionsHtml(button, submitLabel) {
-    return (
-      '<div class="aps-inline-form-actions mt-2">' +
-        '<button type="button" class="btn btn-primary btn-sm aps-execution-inline-submit" ' + actionDataAttributes(button) + '>' +
-          escapeHtml(submitLabel) +
-        '</button>' +
-        '<button type="button" class="btn btn-secondary btn-sm aps-execution-inline-cancel">取消</button>' +
-      '</div>'
-    );
-  }
-
-  function renderExecutionInlineForm(button, ariaLabel, title, bodyHtml, submitLabel) {
-    const card = button && button.closest ? button.closest(".aps-execution-card") : null;
-    if (!card) return null;
-    clearExecutionInlineForms(card);
-    const actions = button.closest(".aps-execution-actions");
-    const form = document.createElement("div");
-    form.className = "aps-execution-inline-form mt-2";
-    form.setAttribute("role", "group");
-    form.setAttribute("aria-label", ariaLabel);
-    form.innerHTML =
-      '<div class="aps-execution-inline-title">' + escapeHtml(title) + '</div>' +
-      bodyHtml +
-      inlineFormActionsHtml(button, submitLabel);
-    if (actions && actions.parentNode) {
-      actions.parentNode.insertBefore(form, actions.nextSibling);
-    } else {
-      card.appendChild(form);
-    }
-    return form;
-  }
-
-  function renderPauseInlineForm(button) {
-    const form = renderExecutionInlineForm(
-      button,
-      "填写暂停反馈",
-      "填写暂停反馈",
-      '<div class="aps-execution-inline-grid">' +
-        '<label>暂停原因<select class="aps-execution-reason-code">' +
-          executionOptionsHtml(EXECUTION_REASON_CODES, "请选择原因", "") +
-        '</select></label>' +
-        '<label class="aps-execution-inline-field-wide">情况说明<textarea class="aps-execution-remark" rows="3" placeholder="例如：设备需要检查"></textarea></label>' +
-      '</div>',
-      "提交暂停"
-    );
-    const reason = form ? form.querySelector(".aps-execution-reason-code") : null;
-    if (reason && reason.focus) reason.focus();
-  }
-
-  function renderResumeInlineForm(button) {
-    const form = renderExecutionInlineForm(
-      button,
-      "填写继续生产反馈",
-      "填写继续生产反馈",
-      '<div class="aps-execution-inline-grid">' +
-        '<label class="aps-execution-inline-field-wide">情况说明<textarea class="aps-execution-remark" rows="3" placeholder="可填写恢复生产情况，也可以留空"></textarea></label>' +
-      '</div>',
-      "提交继续生产"
-    );
-    const remark = form ? form.querySelector(".aps-execution-remark") : null;
-    if (remark && remark.focus) remark.focus();
-  }
-
-  function renderExceptionInlineForm(button) {
-    const form = renderExecutionInlineForm(
-      button,
-      "填写异常反馈",
-      "填写异常反馈",
-      '<div class="aps-execution-inline-grid">' +
-        '<label>异常原因<select class="aps-execution-reason-code">' +
-          executionOptionsHtml(EXECUTION_REASON_CODES, "请选择原因", "") +
-        '</select></label>' +
-        '<label>严重程度<select class="aps-execution-severity">' +
-          executionOptionsHtml(EXECUTION_SEVERITY_CODES, "请选择严重程度", "medium") +
-        '</select></label>' +
-        '<label>预计影响分钟<input type="number" min="0" step="1" class="aps-execution-impact-minutes" inputmode="numeric"></label>' +
-        '<label>处理状态<select class="aps-execution-handling-status">' +
-          executionOptionsHtml(EXECUTION_HANDLING_CODES, "", "new") +
-        '</select></label>' +
-        '<label>影响设备编号<input type="text" class="aps-execution-affected-machine" autocomplete="off"></label>' +
-        '<label>影响人员工号<input type="text" class="aps-execution-affected-operator" autocomplete="off"></label>' +
-        '<label>是否建议重排<select class="aps-execution-suggest-reschedule">' +
-          '<option value="no" selected>否</option>' +
-          '<option value="yes">是</option>' +
-        '</select></label>' +
-        '<label class="aps-execution-inline-field-wide">情况说明<textarea class="aps-execution-remark" rows="3" placeholder="例如：主轴异常，已通知维修"></textarea></label>' +
-      '</div>',
-      "提交异常"
-    );
-    const reason = form ? form.querySelector(".aps-execution-reason-code") : null;
-    if (reason && reason.focus) reason.focus();
-  }
-
-  function inlineFormField(button, selector) {
-    const form = button && button.closest ? button.closest(".aps-execution-inline-form") : null;
-    return form ? form.querySelector(selector) : null;
-  }
-
-  function inlineFieldValue(button, selector) {
-    const field = inlineFormField(button, selector);
-    return trim(field && field.value);
-  }
-
-  function requiredInlineField(button, selector, message) {
-    const field = inlineFormField(button, selector);
-    const value = trim(field && field.value);
-    if (!value) {
-      executionNotice(message);
-      if (field && field.focus) field.focus();
-      return null;
-    }
-    return value;
-  }
-
-  function inlineFinishPayload(button) {
-    const form = button && button.closest ? button.closest(".aps-execution-inline-form") : null;
-    const qtyInput = form ? form.querySelector(".aps-execution-finish-qty") : null;
-    const scrapInput = form ? form.querySelector(".aps-execution-scrap-qty") : null;
-    const qty = trim(qtyInput && qtyInput.value);
-    if (!qty) {
-      executionNotice("请填写完成数量。");
-      if (qtyInput && qtyInput.focus) qtyInput.focus();
-      return null;
-    }
-    return {
-      quantity_done: qty,
-      quantity_scrapped: trim(scrapInput && scrapInput.value)
-    };
-  }
-
-  function inlinePausePayload(button) {
-    const reason = requiredInlineField(button, ".aps-execution-reason-code", "请选择暂停原因。");
-    if (reason === null) return null;
-    const remark = requiredInlineField(button, ".aps-execution-remark", "请填写暂停情况说明。");
-    if (remark === null) return null;
-    return {
-      reason_code: reason,
-      remark: remark
-    };
-  }
-
-  function inlineResumePayload(button) {
-    return {
-      remark: inlineFieldValue(button, ".aps-execution-remark")
-    };
-  }
-
-  function inlineExceptionPayload(button) {
-    const reason = requiredInlineField(button, ".aps-execution-reason-code", "请选择异常原因。");
-    if (reason === null) return null;
-    const severity = requiredInlineField(button, ".aps-execution-severity", "请选择严重程度。");
-    if (severity === null) return null;
-    const handling = requiredInlineField(button, ".aps-execution-handling-status", "请选择处理状态。");
-    if (handling === null) return null;
-    const remark = requiredInlineField(button, ".aps-execution-remark", "请填写异常情况说明。");
-    if (remark === null) return null;
-    return {
-      reason_code: reason,
-      severity: severity,
-      impact_minutes: inlineFieldValue(button, ".aps-execution-impact-minutes"),
-      affected_machine_id: inlineFieldValue(button, ".aps-execution-affected-machine"),
-      affected_operator_id: inlineFieldValue(button, ".aps-execution-affected-operator"),
-      handling_status: handling,
-      suggest_reschedule: inlineFieldValue(button, ".aps-execution-suggest-reschedule") === "yes",
-      remark: remark,
-      reason_detail: remark
-    };
-  }
-
   function inlineActionPayload(button, action) {
-    if (action === "finish") return inlineFinishPayload(button);
-    if (action === "pause") return inlinePausePayload(button);
-    if (action === "resume") return inlineResumePayload(button);
-    if (action === "report_exception") return inlineExceptionPayload(button);
+    if (action === "fill_actual") return inlineActualPayload(button);
     return {};
+  }
+
+  function inlineActualPayload(button) {
+    const form = button && button.closest ? button.closest(".aps-execution-inline-form") : null;
+    if (!form) return null;
+    const payload = {
+      actual_start_time: dateTimeTextFromInput(form.querySelector(".aps-actual-start-time") && form.querySelector(".aps-actual-start-time").value),
+      actual_finish_time: dateTimeTextFromInput(form.querySelector(".aps-actual-finish-time") && form.querySelector(".aps-actual-finish-time").value),
+      quantity_done: trim(form.querySelector(".aps-actual-finish-qty") && form.querySelector(".aps-actual-finish-qty").value),
+      quantity_scrapped: trim(form.querySelector(".aps-actual-scrap-qty") && form.querySelector(".aps-actual-scrap-qty").value),
+      pause_start_time: dateTimeTextFromInput(form.querySelector(".aps-actual-pause-start") && form.querySelector(".aps-actual-pause-start").value),
+      pause_end_time: dateTimeTextFromInput(form.querySelector(".aps-actual-pause-end") && form.querySelector(".aps-actual-pause-end").value),
+      pause_duration_minutes: trim(form.querySelector(".aps-actual-pause-duration") && form.querySelector(".aps-actual-pause-duration").value),
+      pause_reason: trim(form.querySelector(".aps-actual-pause-reason") && form.querySelector(".aps-actual-pause-reason").value),
+      pause_remark: trim(form.querySelector(".aps-actual-pause-remark") && form.querySelector(".aps-actual-pause-remark").value),
+      exception_time: dateTimeTextFromInput(form.querySelector(".aps-actual-exception-time") && form.querySelector(".aps-actual-exception-time").value),
+      exception_reason: trim(form.querySelector(".aps-actual-exception-reason") && form.querySelector(".aps-actual-exception-reason").value),
+      exception_severity: trim(form.querySelector(".aps-actual-exception-severity") && form.querySelector(".aps-actual-exception-severity").value),
+      exception_remark: trim(form.querySelector(".aps-actual-exception-remark") && form.querySelector(".aps-actual-exception-remark").value),
+      remark: trim(form.querySelector(".aps-actual-remark") && form.querySelector(".aps-actual-remark").value)
+    };
+    const hasAny = Object.keys(payload).some(function (key) { return trim(payload[key]); });
+    if (!hasAny) {
+      executionNotice("请至少填写一项实际情况。");
+      return null;
+    }
+    if (payload.actual_finish_time && !payload.quantity_done) {
+      executionNotice("填写实际完工时，请填写完成数量。");
+      const qty = form.querySelector(".aps-actual-finish-qty");
+      if (qty && qty.focus) qty.focus();
+      return null;
+    }
+    const hasPause = payload.pause_start_time || payload.pause_end_time || payload.pause_duration_minutes || payload.pause_reason || payload.pause_remark;
+    if (hasPause && (!payload.pause_start_time || (!payload.pause_end_time && !payload.pause_duration_minutes) || !payload.pause_reason || !payload.pause_remark)) {
+      executionNotice("新增暂停时间时，请填写暂停开始、暂停结束或时长、暂停原因和暂停说明。");
+      return null;
+    }
+    const hasException = payload.exception_time || payload.exception_reason || payload.exception_severity || payload.exception_remark;
+    if (hasException && (!payload.exception_time || !payload.exception_reason || !payload.exception_severity || !payload.exception_remark)) {
+      executionNotice("新增异常记录时，请填写异常时间、异常原因、严重程度和异常说明。");
+      return null;
+    }
+    return payload;
   }
 
   function executionPayload(button, action, createdBy, extraPayload) {
@@ -909,47 +790,29 @@
     payload.schedule_id = button.getAttribute("data-schedule-id") || "";
     payload.batch_id = button.getAttribute("data-batch-id") || "";
     payload.expected_state_revision = button.getAttribute("data-state-revision") || "";
-    payload.event_time = localDateTimeText(new Date());
     payload.created_by = createdBy;
+    payload.feedback_person = createdBy;
     payload.idempotency_key = [
       "resource-dispatch",
-      action,
+      "actual",
       button.getAttribute("data-op-id") || "",
       String(Date.now())
     ].join("-");
     payload.remark = "";
-    if (action === "start") {
-      const machine = trim(button.getAttribute("data-machine-id"));
-      const operator = trim(button.getAttribute("data-operator-id"));
-      if (!machine) {
-        executionNotice("这张任务卡没有计划设备，不能提交开工。");
-        return null;
-      }
-      if (!operator) {
-        executionNotice("这张任务卡没有计划人员，不能提交开工。");
-        return null;
-      }
-      payload.machine_id = machine;
-      payload.operator_id = operator;
-    } else if (action === "pause") {
-      payload.reason_code = trim(extra.reason_code);
-      payload.remark = trim(extra.remark);
-    } else if (action === "resume") {
-      payload.remark = trim(extra.remark);
-    } else if (action === "finish") {
-      payload.quantity_done = trim(extra.quantity_done);
-      payload.quantity_scrapped = trim(extra.quantity_scrapped);
-    } else if (action === "report_exception") {
-      payload.reason_code = trim(extra.reason_code);
-      payload.severity = trim(extra.severity);
-      payload.impact_minutes = trim(extra.impact_minutes);
-      payload.affected_machine_id = trim(extra.affected_machine_id);
-      payload.affected_operator_id = trim(extra.affected_operator_id);
-      payload.handling_status = trim(extra.handling_status);
-      payload.suggest_reschedule = extra.suggest_reschedule === true;
-      payload.remark = trim(extra.remark);
-      payload.reason_detail = trim(extra.reason_detail);
-    }
+    payload.actual_start_time = trim(extra.actual_start_time);
+    payload.actual_finish_time = trim(extra.actual_finish_time);
+    payload.quantity_done = trim(extra.quantity_done);
+    payload.quantity_scrapped = trim(extra.quantity_scrapped);
+    payload.pause_start_time = trim(extra.pause_start_time);
+    payload.pause_end_time = trim(extra.pause_end_time);
+    payload.pause_duration_minutes = trim(extra.pause_duration_minutes);
+    payload.pause_reason = trim(extra.pause_reason);
+    payload.pause_remark = trim(extra.pause_remark);
+    payload.exception_time = trim(extra.exception_time);
+    payload.exception_reason = trim(extra.exception_reason);
+    payload.exception_severity = trim(extra.exception_severity);
+    payload.exception_remark = trim(extra.exception_remark);
+    payload.remark = trim(extra.remark);
     return payload;
   }
 
@@ -980,30 +843,104 @@
     if (!EXECUTION_ACTION_LABELS[action]) return;
     const actionLabel = EXECUTION_ACTION_LABELS[action];
     const createdBy = executionCreatedBy();
-    if (createdBy === null) return;
     const extraPayload = inlineActionPayload(button, action);
     if (extraPayload === null) return;
     const payload = executionPayload(button, action, createdBy, extraPayload || {});
     if (payload === null) return;
     button.disabled = true;
-    executionNotice("正在提交" + actionLabel + "反馈，请稍候。");
+    executionNotice("正在保存" + actionLabel + "，请稍候。");
     try {
-      const resp = await fetch("/scheduler/resource-dispatch/execution/" + encodeURIComponent(opId) + "/" + executionActionPath(action), {
+      const resp = await fetch("/scheduler/resource-dispatch/execution/" + encodeURIComponent(opId) + "/actual", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify(payload)
       });
       const responsePayload = await resp.json();
       if (!resp.ok || !responsePayload || responsePayload.success !== true) {
-        const errorMessage = responsePayload && responsePayload.error && responsePayload.error.message ? responsePayload.error.message : actionLabel + "反馈提交失败，请刷新后重试。";
+        const errorMessage = responsePayload && responsePayload.error && responsePayload.error.message ? responsePayload.error.message : actionLabel + "保存失败，请刷新后重试。";
         throw new Error(errorMessage);
       }
       replaceExecutionTask(responsePayload.data && responsePayload.data.task_card);
       clearExecutionInlineForms();
-      executionNotice(actionLabel + "反馈已提交。");
+      executionNotice(actionLabel + "已保存。");
     } catch (err) {
       button.disabled = false;
-      executionNotice(err && err.message ? err.message : actionLabel + "反馈提交失败，请刷新后重试。");
+      executionNotice(err && err.message ? err.message : actionLabel + "保存失败，请刷新后重试。");
+    }
+  }
+
+  function executionEventsUrl(opId) {
+    const base = "/scheduler/resource-dispatch/execution/" + encodeURIComponent(opId) + "/events";
+    return base + currentQueryString();
+  }
+
+  function renderExecutionRecords(button, data) {
+    const card = button && button.closest ? button.closest(".aps-execution-card") : null;
+    if (!card) return;
+    clearExecutionRecords(card);
+    const events = data && Array.isArray(data.events) ? data.events : [];
+    const rows = [];
+    if (!events.length) {
+      rows.push('<div class="muted">暂无现场记录。</div>');
+    } else {
+      events.forEach(function (item) {
+        rows.push(
+          '<div class="aps-execution-record-item">' +
+            '<div class="aps-execution-record-head">' +
+              '<strong>' + escapeHtml(item.action_label || "现场记录") + '</strong>' +
+              '<span>' + escapeHtml(item.event_time || "-") + '</span>' +
+            '</div>' +
+            '<div class="aps-execution-record-grid">' +
+              '<div><span>反馈人</span><strong>' + escapeHtml(item.created_by || "未填写反馈人") + '</strong></div>' +
+              '<div><span>原因</span><strong>' + escapeHtml(item.reason_label || "-") + '</strong></div>' +
+              '<div class="aps-execution-record-wide"><span>说明</span><strong>' + escapeHtml(item.remark || "-") + '</strong></div>' +
+            '</div>' +
+          '</div>'
+        );
+      });
+    }
+    const panel = document.createElement("div");
+    panel.className = "aps-execution-inline-form aps-execution-records mt-2";
+    panel.innerHTML =
+      '<div class="aps-execution-inline-title">查看计划和实际</div>' +
+      rows.join("");
+    const actions = button.closest(".aps-execution-actions");
+    if (actions && actions.parentNode) {
+      actions.parentNode.insertBefore(panel, actions.nextSibling);
+    } else {
+      card.appendChild(panel);
+    }
+    button.setAttribute("data-loaded", "1");
+  }
+
+  async function loadExecutionRecords(button) {
+    if (!button || button.disabled) return;
+    const card = button.closest ? button.closest(".aps-execution-card") : null;
+    if (button.getAttribute("data-loaded") === "1") {
+      clearExecutionRecords(card);
+      button.setAttribute("data-loaded", "0");
+      return;
+    }
+    const opId = trim(button.getAttribute("data-op-id"));
+    if (!opId) {
+      executionNotice("缺少任务识别码，无法查看计划和实际。");
+      return;
+    }
+    button.disabled = true;
+    executionNotice("正在加载计划和实际，请稍候。");
+    try {
+      const resp = await fetch(executionEventsUrl(opId), { headers: { Accept: "application/json" } });
+      const payload = await resp.json();
+      if (!resp.ok || !payload || payload.success !== true) {
+        const message = payload && payload.error && payload.error.message ? payload.error.message : "计划和实际加载失败，请稍后重试。";
+        throw new Error(message);
+      }
+      renderExecutionRecords(button, payload.data || {});
+      executionNotice("");
+    } catch (err) {
+      executionNotice(err && err.message ? err.message : "计划和实际加载失败，请稍后重试。");
+    } finally {
+      button.disabled = false;
     }
   }
 
@@ -1023,28 +960,128 @@
         postExecutionAction(submitTarget);
         return;
       }
+      const eventsTarget = event.target && event.target.closest ? event.target.closest(".aps-execution-events") : null;
+      if (eventsTarget && wrap.contains(eventsTarget)) {
+        event.preventDefault();
+        loadExecutionRecords(eventsTarget);
+        return;
+      }
       const target = event.target && event.target.closest ? event.target.closest(".aps-execution-action") : null;
       if (!target || !wrap.contains(target)) return;
       event.preventDefault();
       const action = trim(target.getAttribute("data-action"));
-      if (action === "finish") {
-        renderFinishInlineForm(target);
+      if (action === "fill_actual") {
+        renderActualInlineForm(target);
         return;
       }
-      if (action === "pause") {
-        renderPauseInlineForm(target);
-        return;
-      }
-      if (action === "resume") {
-        renderResumeInlineForm(target);
-        return;
-      }
-      if (action === "report_exception") {
-        renderExceptionInlineForm(target);
-        return;
-      }
-      postExecutionAction(target);
     });
+  }
+
+  function actualImportUrl() {
+    const url = state.cfg.actualImportUrl || "";
+    if (!url) return "";
+    return url.indexOf("?") >= 0 ? url : url + currentQueryString();
+  }
+
+  function renderActualImportResult(data) {
+    const wrap = $("rdActualImportPreviewWrap");
+    if (!wrap) return;
+    const payload = data || {};
+    const summary = payload.summary || {};
+    const rows = Array.isArray(payload.rows) ? payload.rows : [];
+    if (!rows.length) {
+      wrap.innerHTML = "";
+      show(wrap, false);
+      return;
+    }
+    const lines = [];
+    lines.push(
+      '<div class="aps-execution-inline-form">' +
+        '<div class="aps-execution-inline-title">导入结果</div>' +
+        '<div class="aps-execution-facts">' +
+          '<div><span>匹配成功</span><strong>' + escapeHtml(summary.matched_rows || 0) + '</strong></div>' +
+          '<div><span>可导入</span><strong>' + escapeHtml(summary.add_count || 0) + '</strong></div>' +
+          '<div><span>空白行</span><strong>' + escapeHtml(summary.skip_count || 0) + '</strong></div>' +
+          '<div><span>冲突</span><strong>' + escapeHtml(summary.conflict_count || 0) + '</strong></div>' +
+          '<div><span>错误</span><strong>' + escapeHtml(summary.error_count || 0) + '</strong></div>' +
+        '</div>' +
+        '<div class="aps-table-scroll mt-2">' +
+          '<table class="table-sticky table-layout-fixed aps-table-xwide">' +
+            '<thead><tr><th>Sheet</th><th>行号</th><th>任务识别码</th><th>结果</th><th>说明</th><th>可导入</th><th>空白行</th></tr></thead><tbody>'
+    );
+    rows.forEach(function (row) {
+      const status = trim(row.status);
+      const variant = status === "ok" ? "new" : (status === "skip" ? "skip" : "error");
+      lines.push(
+        '<tr>' +
+          '<td>' + escapeHtml(row.sheet || "") + '</td>' +
+          '<td>' + escapeHtml(row.row_number || "") + '</td>' +
+          '<td>' + escapeHtml(row.task_code || "") + '</td>' +
+          '<td>' + badge(row.status_label || "待处理", variant) + '</td>' +
+          fullTextCell(row.message || "", "aps-resource-cell") +
+          '<td>' + escapeHtml(row.add_count || 0) + '</td>' +
+          '<td>' + escapeHtml(row.skip_count || 0) + '</td>' +
+        '</tr>'
+      );
+    });
+    lines.push('</tbody></table></div></div>');
+    wrap.innerHTML = lines.join("");
+    show(wrap, true);
+  }
+
+  async function submitActualImport() {
+    const fileInput = $("rdActualImportFile");
+    const file = fileInput && fileInput.files && fileInput.files[0];
+    if (!state.cfg.actualImportUrl) {
+      executionNotice("当前查询没有可导入的实际情况。");
+      return;
+    }
+    if (!file) {
+      executionNotice("请先选择要导入的 Excel 文件。");
+      return;
+    }
+    const btn = $("rdActualImportSubmit");
+    const form = new FormData();
+    form.append("file", file);
+    if (btn) btn.disabled = true;
+    renderActualImportResult(null);
+    executionNotice("正在导入实际情况，请稍候。");
+    try {
+      const resp = await fetch(actualImportUrl(), {
+        method: "POST",
+        headers: { Accept: "application/json" },
+        body: form
+      });
+      const payload = await resp.json();
+      if (!resp.ok || !payload || payload.success !== true) {
+        const details = payload && payload.error && payload.error.details ? payload.error.details : {};
+        if (details && Array.isArray(details.rows)) {
+          renderActualImportResult({ rows: details.rows, summary: details.summary || {} });
+        }
+        const message = payload && payload.error && payload.error.message ? payload.error.message : "导入实际情况失败，请修改 Excel 后重试。";
+        throw new Error(message);
+      }
+      executionNotice((payload.data && payload.data.message) || "导入实际情况已完成。");
+      if (fileInput) fileInput.value = "";
+      loadExecutionData();
+      loadData();
+    } catch (err) {
+      executionNotice(err && err.message ? err.message : "导入实际情况失败，请修改 Excel 后重试。");
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  function bindActualImportButtons() {
+    const submitBtn = $("rdActualImportSubmit");
+    const fileInput = $("rdActualImportFile");
+    if (submitBtn) submitBtn.addEventListener("click", submitActualImport);
+    if (fileInput) {
+      fileInput.addEventListener("change", function () {
+        renderActualImportResult(null);
+        executionNotice("");
+      });
+    }
   }
 
   function renderCalendar(headers, rows) {
@@ -1089,7 +1126,11 @@
     if (typeof window.APS_InitResizableTables === "function") {
       try {
         window.APS_InitResizableTables(wrap);
-      } catch (_err) {}
+      } catch (err) {
+        if (window.console && typeof window.console.warn === "function") {
+          window.console.warn("资源派工日历表格列宽初始化失败", err);
+        }
+      }
     }
   }
 
@@ -1141,7 +1182,10 @@
         custom_popup_html: ganttPopup
       });
       installResourceGanttPopupAutoFit(state.gantt);
-    } catch (_err) {
+    } catch (err) {
+      if (window.console && typeof window.console.warn === "function") {
+        window.console.warn("资源派工甘特图渲染失败", err);
+      }
       wrap.innerHTML = '<div class="error">甘特图渲染失败，请稍后重试。</div>';
       state.gantt = null;
     }
@@ -1289,14 +1333,14 @@
       const resp = await fetch(executionRequestUrl(), { headers: { Accept: "application/json" } });
       const payload = await resp.json();
       if (!resp.ok || !payload || payload.success !== true) {
-        const errorMessage = payload && payload.error && payload.error.message ? payload.error.message : "现场反馈任务卡加载失败，请稍后重试。";
+        const errorMessage = payload && payload.error && payload.error.message ? payload.error.message : "现场记录任务卡加载失败，请稍后重试。";
         throw new Error(errorMessage);
       }
       state.execution = payload.data || {};
       renderExecutionCards(state.execution);
     } catch (err) {
       state.execution = null;
-      renderExecutionCards({ disabled_reason: err && err.message ? err.message : "现场反馈任务卡加载失败，请稍后重试。", tasks: [] });
+      renderExecutionCards({ disabled_reason: err && err.message ? err.message : "现场记录任务卡加载失败，请稍后重试。", tasks: [] });
     }
   }
 
@@ -1349,5 +1393,6 @@
   bindFieldToggles();
   bindTabs();
   bindExecutionActionClicks();
+  bindActualImportButtons();
   loadData();
 })();

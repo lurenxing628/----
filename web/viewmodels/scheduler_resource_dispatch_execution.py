@@ -5,30 +5,23 @@ from typing import Any, Dict, List, Mapping, Optional
 from core.models.operation_execution_event import (
     EXECUTION_ACTION_REPORT_EXCEPTION,
     EXECUTION_EVENT_EXCEPTION,
-    EXECUTION_EVENT_FINISH,
-    EXECUTION_EVENT_PAUSE,
-    EXECUTION_EVENT_RESUME,
-    EXECUTION_EVENT_START,
 )
 from core.models.operation_execution_labels import (
+    EXECUTION_ACTION_FILL_ACTUAL,
+    EXECUTION_ACTION_VIEW_RECORDS,
     exception_reason_label,
+    execution_action_label,
     handling_status_label,
+    internal_remark_tokens_from_event,
+    public_execution_remark,
     severity_label,
     suggest_reschedule_label,
 )
 from core.models.operation_execution_state import OperationExecutionState
 from core.models.resource_identity import ResourceIdentity, build_resource_identity
 
-_FEEDBACK_DISABLED_REASON = "现场反馈保护还没开启，暂不能提交现场反馈。"
-_NOT_CURRENT_OFFICIAL_REASON = "当前不是最新正式采用方案，不能提交现场反馈。"
-_ACTION_LABELS = {
-    EXECUTION_EVENT_START: "开工",
-    EXECUTION_EVENT_PAUSE: "暂停",
-    EXECUTION_EVENT_RESUME: "继续生产",
-    EXECUTION_EVENT_FINISH: "完工",
-    EXECUTION_EVENT_EXCEPTION: "报异常",
-    EXECUTION_ACTION_REPORT_EXCEPTION: "报异常",
-}
+_FEEDBACK_DISABLED_REASON = "现场记录保护还没开启，暂不能填写现场记录。"
+_NOT_CURRENT_OFFICIAL_REASON = "当前不是最新正式采用方案，不能填写现场记录。"
 
 
 def _text(value: Any) -> str:
@@ -138,7 +131,7 @@ def _exception_payload_fields(event: Any, *, is_exception_event: bool) -> Dict[s
 
 
 def _execution_action_label(value: Any) -> str:
-    return _ACTION_LABELS.get(_text(value), "操作未识别")
+    return execution_action_label(value)
 
 
 def _event_type_to_action(value: Any) -> str:
@@ -171,72 +164,35 @@ def _as_state(value: Any, op_id: int, batch_id: str) -> OperationExecutionState:
     return OperationExecutionState(op_id=int(op_id), batch_id=batch_id)
 
 
-def _action_enabled(*, action: str, can_write: bool, feedback_write_enabled: bool, status: str) -> bool:
-    if not can_write or not feedback_write_enabled:
-        return False
-    if action == EXECUTION_EVENT_START:
-        return status == "not_started"
-    if action == EXECUTION_EVENT_PAUSE:
-        return status == "processing"
-    if action == EXECUTION_EVENT_RESUME:
-        return status in {"paused", "exception"}
-    if action == EXECUTION_EVENT_FINISH:
-        return status in {"processing", "paused", "exception"}
-    if action == EXECUTION_ACTION_REPORT_EXCEPTION:
-        return status in {"processing", "paused"}
-    return False
-
-
-def _action_disabled_reason(*, enabled: bool, can_write: bool, feedback_write_enabled: bool, status_label: str, action: str) -> str:
-    if enabled:
-        return ""
+def _fill_actual_disabled_reason(*, can_write: bool, feedback_write_enabled: bool, status_label: str) -> str:
     if not can_write:
         return _NOT_CURRENT_OFFICIAL_REASON
     if not feedback_write_enabled:
         return _FEEDBACK_DISABLED_REASON
-    if action == EXECUTION_EVENT_START:
-        return f"当前状态是{status_label}，不能开工。"
-    if action == EXECUTION_EVENT_PAUSE:
-        return f"当前状态是{status_label}，不能暂停。"
-    if action == EXECUTION_EVENT_RESUME:
-        return f"当前状态是{status_label}，不能继续生产。"
-    if action == EXECUTION_EVENT_FINISH:
-        return f"当前状态是{status_label}，不能完工。"
-    if action == EXECUTION_ACTION_REPORT_EXCEPTION:
-        return f"当前状态是{status_label}，不能报异常。"
-    return "当前不能执行这个操作。"
+    return f"当前状态是{status_label}，不能填写实际情况。"
 
 
 def build_available_actions(*, can_write: bool, feedback_write_enabled: bool, status: str, status_label: str) -> List[Dict[str, Any]]:
-    actions: List[Dict[str, Any]] = []
-    for action in (
-        EXECUTION_EVENT_START,
-        EXECUTION_EVENT_PAUSE,
-        EXECUTION_EVENT_RESUME,
-        EXECUTION_EVENT_FINISH,
-        EXECUTION_ACTION_REPORT_EXCEPTION,
-    ):
-        enabled = _action_enabled(
-            action=action,
-            can_write=can_write,
-            feedback_write_enabled=feedback_write_enabled,
-            status=status,
-        )
-        actions.append(
-            {
-                "action": action,
-                "label": _execution_action_label(action),
-                "enabled": enabled,
-                "disabled_reason": _action_disabled_reason(
-                    enabled=enabled,
-                    can_write=can_write,
-                    feedback_write_enabled=feedback_write_enabled,
-                    status_label=status_label,
-                    action=action,
-                ),
-            }
-        )
-    return actions
+    fill_enabled = bool(can_write and feedback_write_enabled and status != "completed")
+    fill_disabled_reason = "" if fill_enabled else _fill_actual_disabled_reason(
+        can_write=can_write,
+        feedback_write_enabled=feedback_write_enabled,
+        status_label=status_label,
+    )
+    return [
+        {
+            "action": EXECUTION_ACTION_FILL_ACTUAL,
+            "label": _execution_action_label(EXECUTION_ACTION_FILL_ACTUAL),
+            "enabled": fill_enabled,
+            "disabled_reason": fill_disabled_reason,
+        },
+        {
+            "action": EXECUTION_ACTION_VIEW_RECORDS,
+            "label": _execution_action_label(EXECUTION_ACTION_VIEW_RECORDS),
+            "enabled": True,
+            "disabled_reason": "",
+        },
+    ]
 
 
 def build_task_card(row: Mapping[str, Any], state: Any, *, can_write_feedback: bool, feedback_write_enabled: bool) -> Dict[str, Any]:
@@ -340,7 +296,12 @@ def event_payload(
     event_type = _text(getattr(event, "event_type", ""))
     action = _event_type_to_action(event_type)
     is_exception_event = action == EXECUTION_ACTION_REPORT_EXCEPTION
-    remark = getattr(event, "remark", None) or getattr(event, "reason_detail", None)
+    internal_tokens = internal_remark_tokens_from_event(event)
+    remark = (
+        public_execution_remark(getattr(event, "remark", None), internal_tokens=internal_tokens)
+        or public_execution_remark(getattr(event, "reason_detail", None), internal_tokens=internal_tokens)
+        or None
+    )
     machines = machine_labels or {}
     operators = operator_labels or {}
     actual_machine_id = _text(getattr(event, "actual_machine_id", None))
