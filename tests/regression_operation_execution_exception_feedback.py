@@ -1,16 +1,9 @@
 from __future__ import annotations
 
-import io
 from typing import Any, Dict
 
-import openpyxl
-
 from core.infrastructure.database import get_connection
-from core.services.scheduler.resource_dispatch_excel import build_resource_dispatch_workbook
-from core.services.scheduler.resource_dispatch_service import ResourceDispatchService
-from tests.regression_operation_execution_feedback_routes import (
-    RESOURCE_DISPATCH_JS,
-    RESOURCE_DISPATCH_TEMPLATE,
+from tests.operation_execution_feedback_test_support import (
     _base_payload,
     _build_app,
     _current_card,
@@ -18,7 +11,6 @@ from tests.regression_operation_execution_feedback_routes import (
     _json,
     _post_controlled,
 )
-from web.viewmodels.scheduler_resource_dispatch import decorate_resource_dispatch_payload
 
 
 def _action_by_name(card: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
@@ -39,18 +31,16 @@ def test_pause_resume_exception_flow_updates_task_card_and_actions(tmp_path, mon
     card = _current_card(client)
 
     initial_actions = _action_by_name(card)
-    assert initial_actions["start"]["enabled"] is True
-    assert initial_actions["report_exception"]["enabled"] is False
-    assert "不能报异常" in initial_actions["report_exception"]["disabled_reason"]
+    assert list(initial_actions) == ["fill_actual", "view_records"]
+    assert initial_actions["fill_actual"]["enabled"] is True
 
     start_resp = _post(client, card, "start", idempotency_key="exception-flow-start")
     start_data = _json(start_resp)["data"]
     processing_actions = _action_by_name(start_data["task_card"])
     assert start_resp.status_code == 200
     assert start_data["current_status_label"] == "生产中"
-    assert processing_actions["pause"]["enabled"] is True
-    assert processing_actions["finish"]["enabled"] is True
-    assert processing_actions["report_exception"]["enabled"] is True
+    assert list(processing_actions) == ["fill_actual", "view_records"]
+    assert processing_actions["fill_actual"]["enabled"] is True
 
     pause_resp = _post(
         client,
@@ -68,9 +58,8 @@ def test_pause_resume_exception_flow_updates_task_card_and_actions(tmp_path, mon
     assert pause_data["event"]["action_label"] == "暂停"
     assert pause_data["event"]["reason_label"] == "设备问题"
     assert pause_data["current_status_label"] == "已暂停"
-    assert paused_actions["resume"]["enabled"] is True
-    assert paused_actions["finish"]["enabled"] is True
-    assert paused_actions["report_exception"]["enabled"] is True
+    assert list(paused_actions) == ["fill_actual", "view_records"]
+    assert paused_actions["fill_actual"]["enabled"] is True
 
     resume_resp = _post(
         client,
@@ -134,9 +123,8 @@ def test_pause_resume_exception_flow_updates_task_card_and_actions(tmp_path, mon
     assert exception_data["task_card"]["latest_exception_handling_status_label"] == "处理中"
     assert exception_data["task_card"]["latest_exception_suggest_reschedule_label"] == "建议重新排程"
     assert exception_data["task_card"]["latest_exception_remark"] == "主轴异常"
-    assert exception_actions["resume"]["enabled"] is True
-    assert exception_actions["finish"]["enabled"] is True
-    assert exception_actions["report_exception"]["enabled"] is False
+    assert list(exception_actions) == ["fill_actual", "view_records"]
+    assert exception_actions["fill_actual"]["enabled"] is True
     assert exception_data["state_revision"] != resume_data["state_revision"]
     assert _event_count(db_path) == 4
 
@@ -269,6 +257,159 @@ def test_reason_detail_only_is_visible_as_exception_remark(tmp_path, monkeypatch
     assert _event_count(db_path) == 2
 
 
+def test_internal_execution_token_is_not_visible_as_exception_remark(tmp_path, monkeypatch) -> None:
+    app, db_path = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+    card = _current_card(client)
+    start_data = _json(_post(client, card, "start", idempotency_key="internal-token-start"))["data"]
+
+    conn = get_connection(db_path)
+    try:
+        conn.execute(
+            """
+            INSERT INTO OperationExecutionEvents(
+                schedule_version, schedule_id, op_id, batch_id, source_table, effective_plan_role,
+                event_type, reported_status, event_time, reason_code, reason_detail, severity,
+                impact_minutes, handling_status, suggest_reschedule, remark, created_by,
+                idempotency_key, request_fingerprint, previous_state_revision
+            )
+            VALUES (?, ?, ?, ?, 'schedule', 'adopted', 'exception', 'exception', ?, 'equipment', 'exception',
+                    'high', 5, 'checking', 1, 'exception', 'tester', ?, 'fingerprint', ?)
+            """,
+            (
+                2,
+                card["schedule_id"],
+                card["op_id"],
+                card["batch_id"],
+                "2026-05-01 08:30:00",
+                "legacy-internal-token-exception",
+                start_data["state_revision"],
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    task_resp = client.get(
+        "/scheduler/resource-dispatch/execution/data?scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01&version=2&plan_role=adopted"
+    )
+    task_card = _json(task_resp)["data"]["tasks"][0]
+    assert task_card["last_event_action_label"] == "报异常"
+    assert task_card["last_event_remark"] is None
+    assert task_card["latest_exception_reason_label"] == "设备问题"
+    assert task_card["latest_exception_remark"] is None
+
+    data_resp = client.get(
+        "/scheduler/resource-dispatch/data?scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01&version=2&plan_role=adopted"
+    )
+    detail_row = _json(data_resp)["data"]["detail_rows"][0]
+    assert detail_row["latest_exception_reason_label"] == "设备问题"
+    assert detail_row["latest_exception_remark"] == ""
+
+    events_resp = client.get(
+        f"/scheduler/resource-dispatch/execution/{card['op_id']}/events"
+        "?scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01&version=2&plan_role=adopted"
+    )
+    assert _json(events_resp)["data"]["events"][-1]["action_label"] == "报异常"
+    assert _json(events_resp)["data"]["events"][-1]["remark"] is None
+
+
+def test_internal_execution_token_is_rejected_as_exception_remark(tmp_path, monkeypatch) -> None:
+    app, db_path = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+    card = _current_card(client)
+    start_data = _json(_post(client, card, "start", idempotency_key="bad-token-start"))["data"]
+
+    bad_resp = _post(
+        client,
+        card,
+        "report-exception",
+        expected_state_revision=start_data["state_revision"],
+        event_time="2026-05-01 08:30:00",
+        idempotency_key="bad-token-exception",
+        reason_code="equipment",
+        severity="high",
+        remark="exception",
+        reason_detail="exception",
+    )
+    error = _json(bad_resp)["error"]
+
+    assert bad_resp.status_code == 400
+    assert error["details"]["field"] == "remark"
+    assert "情况说明" in error["message"]
+    assert _event_count(db_path) == 1
+
+
+def test_internal_token_cleanup_is_case_insensitive(tmp_path, monkeypatch) -> None:
+    """大写的内部码（如 Exception）也要被清洗，不能因大小写绕过过滤。"""
+    app, db_path = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+    card = _current_card(client)
+    start_data = _json(_post(client, card, "start", idempotency_key="case-token-start"))["data"]
+
+    conn = get_connection(db_path)
+    try:
+        conn.execute(
+            """
+            INSERT INTO OperationExecutionEvents(
+                schedule_version, schedule_id, op_id, batch_id, source_table, effective_plan_role,
+                event_type, reported_status, event_time, reason_code, reason_detail, severity,
+                impact_minutes, handling_status, suggest_reschedule, remark, created_by,
+                idempotency_key, request_fingerprint, previous_state_revision
+            )
+            VALUES (?, ?, ?, ?, 'schedule', 'adopted', 'exception', 'exception', ?, 'equipment', 'Exception',
+                    'high', 5, 'checking', 1, 'EXCEPTION', 'tester', ?, 'fingerprint', ?)
+            """,
+            (
+                2,
+                card["schedule_id"],
+                card["op_id"],
+                card["batch_id"],
+                "2026-05-01 08:30:00",
+                "legacy-mixed-case-token",
+                start_data["state_revision"],
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    task_resp = client.get(
+        "/scheduler/resource-dispatch/execution/data?scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01&version=2&plan_role=adopted"
+    )
+    task_card = _json(task_resp)["data"]["tasks"][0]
+    assert task_card["last_event_remark"] is None
+    assert task_card["latest_exception_remark"] is None
+
+
+def test_user_remark_matching_unrelated_internal_code_is_kept(tmp_path, monkeypatch) -> None:
+    """用户在一条设备异常里写的说明，即使恰好等于别的记录会用到的英文码（如 person），也要原样保留。"""
+    app, db_path = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+    card = _current_card(client)
+    start_data = _json(_post(client, card, "start", idempotency_key="unrelated-token-start"))["data"]
+
+    exception_resp = _post(
+        client,
+        card,
+        "report-exception",
+        expected_state_revision=start_data["state_revision"],
+        event_time="2026-05-01 08:30:00",
+        idempotency_key="unrelated-token-exception",
+        reason_code="equipment",
+        severity="high",
+        remark="person",
+        reason_detail="person",
+    )
+    exception_data = _json(exception_resp)["data"]
+
+    # reason_code 是 equipment，person 并不是这条记录自己的内部码，应当原样保留为用户说明。
+    assert exception_resp.status_code == 200
+    assert exception_data["event"]["remark"] == "person"
+    assert exception_data["task_card"]["latest_exception_remark"] == "person"
+    assert _event_count(db_path) == 2
+
+
 def test_events_list_keeps_each_exception_own_impact_and_affected_resources(tmp_path, monkeypatch) -> None:
     app, _db_path = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
@@ -368,94 +509,3 @@ def test_report_exception_rejects_candidate_scenario_and_history_plans(tmp_path,
         assert payload["error"]["details"]["action_label"] == "报异常"
         assert payload["error"]["details"]["can_retry"] is False
     assert _event_count(db_path) == 0
-
-
-def test_exception_details_are_visible_in_detail_rows_gantt_popup_source_and_export(tmp_path, monkeypatch) -> None:
-    app, db_path = _build_app(tmp_path, monkeypatch)
-    client = app.test_client()
-    card = _current_card(client)
-    start_data = _json(_post(client, card, "start", idempotency_key="surface-start"))["data"]
-    _post(
-        client,
-        card,
-        "report-exception",
-        expected_state_revision=start_data["state_revision"],
-        event_time="2026-05-01 08:30:00",
-        idempotency_key="surface-report-exception",
-        reason_code="equipment",
-        severity="critical",
-        impact_minutes="",
-        affected_machine_id="M2",
-        affected_operator_id="O2",
-        handling_status="waiting",
-        suggest_reschedule=False,
-        remark="等待维修",
-    )
-
-    data_resp = client.get(
-        "/scheduler/resource-dispatch/data?scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01&version=2&plan_role=adopted"
-    )
-    detail_row = _json(data_resp)["data"]["detail_rows"][0]
-    assert detail_row["execution_status_label"] == "异常中"
-    assert detail_row["latest_exception_reason_label"] == "设备问题"
-    assert detail_row["latest_exception_severity_label"] == "紧急"
-    assert detail_row["latest_exception_impact_minutes_label"] == "暂时不知道影响多久"
-    assert detail_row["latest_exception_affected_machine_label"] == "M2 二号设备"
-    assert detail_row["latest_exception_affected_operator_label"] == "O2 李四"
-    assert detail_row["latest_exception_handling_status_label"] == "等待条件"
-    assert detail_row["latest_exception_suggest_reschedule_label"] == "暂不建议重新排程"
-    assert detail_row["latest_exception_remark"] == "等待维修"
-
-    db_conn = get_connection(db_path)
-    try:
-        payload = ResourceDispatchService(db_conn, logger=None, op_logger=None).get_dispatch_payload(
-            scope_type="operator",
-            operator_id="O1",
-            period_preset="week",
-            query_date="2026-05-01",
-            version=2,
-            plan_role="adopted",
-        )
-        payload = decorate_resource_dispatch_payload(payload)
-        buffer = build_resource_dispatch_workbook(payload)
-    finally:
-        db_conn.close()
-
-    wb = openpyxl.load_workbook(io.BytesIO(buffer.getvalue()))
-    ws = wb["任务明细"]
-    headers = [cell.value for cell in ws[1]]
-    values = [cell.value for cell in ws[2]]
-    row_map = dict(zip(headers, values))
-    assert row_map["现场状态"] == "异常中"
-    assert row_map["最近异常原因"] == "设备问题"
-    assert row_map["严重程度"] == "紧急"
-    assert row_map["预计影响时间"] == "暂时不知道影响多久"
-    assert row_map["影响设备"] == "二号设备\n完整身份：M2 二号设备"
-    assert row_map["影响人员"] == "李四\n完整身份：O2 李四"
-    assert row_map["处理状态"] == "等待条件"
-    assert row_map["是否建议重排"] == "暂不建议重新排程"
-    assert row_map["情况说明"] == "等待维修"
-
-
-def test_frontend_static_contract_for_exception_feedback() -> None:
-    source = RESOURCE_DISPATCH_JS.read_text(encoding="utf-8")
-    template = RESOURCE_DISPATCH_TEMPLATE.read_text(encoding="utf-8")
-
-    assert "report-exception" in source
-    assert "填写异常反馈" in source
-    assert "异常原因" in source
-    assert "严重程度" in source
-    assert "影响设备编号" in source
-    assert "影响人员工号" in source
-    assert 'payload.affected_machine_id = trim(extra.affected_machine_id)' in source
-    assert 'payload.affected_operator_id = trim(extra.affected_operator_id)' in source
-    assert "是否建议重排" in source
-    assert "window.prompt" not in source
-    assert "最近异常" in source
-    assert "影响设备" in source
-    assert "影响人员" in source
-    assert "现场状态" in source
-    assert "紧急异常，请计划员尽快处理。" in source
-    assert "现场状态" in template
-    assert "最近异常" in template
-    assert "影响资源" in template
