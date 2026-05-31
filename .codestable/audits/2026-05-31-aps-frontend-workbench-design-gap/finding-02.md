@@ -35,5 +35,7 @@ suggested_action: cs-feat-design
 
 - 新增统一链接生成器，例如 `web/viewmodels/scheduler_workbench_links.py`。
 - 明确三组翻译：`date_from/date_to` 对 `start_date/end_date`，`resource_id` 对 `operator_id/machine_id/team_id`，`resource_type` 对 `scope_type`。
+- `required_params` 必须按页面设计稿第 3.4 节逐路线矩阵写进 feature design；资源派工和报表类跳转要覆盖 `query_date`、`period_preset`、`scope_type`，不能只测 `version/date_from/date_to`。
+- `plan_role`、`guardrail_reason_type`、`resource_type/scope_type`、`period_preset`、`view` 要有内部值到中文展示值映射。
 - 所有首页、分析、甘特、资源派工、报表链接都消费同一个 `WorkbenchLink`。
 - 新增 `tests/regression_scheduler_workbench_links_contract.py` 覆盖设计稿第 15.4 的主流程。

@@ -44,3 +44,9 @@ suggested_action: cs-feat-design
 ## 建议
 
 这条进入 `resource-dispatch-execution-lane` feature design 时，直接按上面的已拍板口径收敛动作白名单、字段白名单、Excel 折叠规则和非正式方案写入护栏，不再要求用户重新确认暂停/异常/MES 闭环。
+
+feature design 还要把这些字段级验收写硬：
+
+- 任务卡显示图号或物料信息、计划开始/结束、实际开始/结束和偏差；拿不到字段时显示中文缺口。
+- 执行流水显示来源和记录时间；后端暂未提供时，把缺口写清，不在前端硬编时间。
+- 页面、导出列和公开 payload 都不能直接露内部字段名。

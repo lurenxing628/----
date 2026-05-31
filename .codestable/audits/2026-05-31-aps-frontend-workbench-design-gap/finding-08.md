@@ -41,4 +41,4 @@ suggested_action: cs-feat-design
 ## 阶段归属
 
 - 第一版：把现有延期事实、线索、证据缺口做成更完整的五段式展示；对牵连影响面和现场事实不足给保守中文说明；建议动作使用统一 WorkbenchLink。
-- 第二阶段：延期解释接现场事实；新增牵连批次/订单影响面聚合。
+- 第二阶段：延期解释接现场事实由 `delay-diagnosis-site-facts-bridge` 承接；牵连批次/订单影响面聚合由 `downstream-batch-order-impact` 承接。

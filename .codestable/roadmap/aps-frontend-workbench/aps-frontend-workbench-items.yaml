@@ -5,7 +5,7 @@ last_reviewed: 2026-06-01
 # 阶段口径：
 # - 前 3 条 minimal_loop: true 是第一轮 A/B/C：先把上下文合同、顶层入口、首页值班台跑通。
 # - 第 4-9 条是第一版完整工作台：分析、甘特详情、资源派工、报表回跳、主流程测试和用户指南。
-# - 第 10-11 条是第二阶段增强：延期解释接现场事实、甘特资源负荷摘要。
+# - 第 10-13 条是第二阶段增强：延期解释接现场事实、甘特资源负荷摘要、停机影响任务级明细、牵连批次/订单影响面。
 
 items:
   - slug: workbench-context-link-contract
@@ -25,6 +25,8 @@ items:
     entrypoints:
       - "新建或整理专门负责生成跨页链接的 ViewModel，不让各页面自己拼 URL"
       - "统一 version、plan_role、scenario_id、date_from/date_to、start_date/end_date、resource_type/resource_id、scope_type/scope_id 等参数翻译"
+      - "以页面设计稿第 3.4 节为准，逐路线写清 required_params；资源派工和报表类跳转必须考虑 query_date、period_preset、scope_type"
+      - "补内部值到中文展示值映射：plan_role、guardrail_reason_type、resource_type/scope_type、period_preset、view"
       - "用户可见文本只用中文业务名，内部字段只留在 URL/隐藏字段/日志"
       - "非正式方案不能生成现场记录写入入口，也不能下发写入 API URL、Excel 导入 URL、模板下载 URL、表单 action 或 data-* 写入地址"
     test_commands:
@@ -37,10 +39,12 @@ items:
       - WorkbenchPlanContext 字段包含版本、方案身份、日期范围、批次、资源、可写状态和中文护栏说明
       - WorkbenchLink 包含 label、url、target_page、context_summary、disabled、disabled_reason、required_params
       - target_page 只使用 dashboard、analysis、gantt、resource_dispatch、overdue_report、delay_diagnosis、utilization_report、execution_review、reports_index
-      - 首页到分析、甘特、资源派工、报表的链接都保留版本、方案和日期范围
-      - 分析推荐卡到甘特、超期清单、资源派工的链接不丢 plan_role 和 scenario_id
-      - 甘特任务详情到资源派工和计划实际复盘的链接保留任务定位
-      - 报表明细回甘特或资源派工时保留版本、日期和资源/批次对象
+      - 首页到分析、甘特、资源派工、报表的链接都保留版本、方案、日期范围；资源派工和报表类链接还要保留 query_date、period_preset
+      - 分析推荐卡到甘特、超期清单、资源派工的链接不丢 plan_role、scenario_id、日期范围和目标页需要的 view/scope_type
+      - 甘特任务详情到资源派工和计划实际复盘的链接保留任务定位、资源定位、scope_type 和批次定位
+      - 报表明细回甘特或资源派工时保留版本、方案、日期、query_date、period_preset、资源/批次对象
+      - execution_review 只看正式采用方案；非正式方案入口禁用，不把 plan_role/scenario_id 误传成可复盘上下文
+      - plan_role、guardrail_reason_type、resource_type/scope_type、period_preset、view 都有内部值到中文展示值映射，页面、导出列、公开 payload 不直接露内部值
       - 模拟预览只显示中文预览名，不把 scenario_id 当页面文案
       - 候选方案、模拟预览、对比参考方案、历史正式方案不会输出任何现场记录写入入口或写入 URL
       - 新增 ViewModel 代码保持 Python 3.8 写法，不使用 int | None、list[str] 等新版类型语法
@@ -227,6 +231,8 @@ items:
     exit_checks:
       - 计划员查看排班的入口和计划员代录现场事实入口视觉上分清
       - 查看计划和实际入口清楚说明是复盘，不是写入现场记录
+      - 任务卡显示图号或物料信息、计划开始/结束、实际开始/结束和偏差；拿不到字段时显示中文缺口，不显示内部字段
+      - 执行流水显示来源和记录时间；后端暂未提供时，feature design 要把缺口写清，不在前端硬编时间
       - 模拟预览、候选方案和对比参考方案下，查看计划和实际入口禁用并给出中文原因
       - 页面可见按钮和隐藏地址都必须以后端 available_actions 或后端下发 URL 为准
       - 候选方案、模拟预览、历史正式方案不能写现场记录
@@ -235,7 +241,7 @@ items:
       - 暂停、继续、报异常、撤销、审批、扫码、消息推送全部后移；已有暂停/异常字段只作为事实或备注展示，不进入闭环
       - 反馈人短期保持可空，空了不报错，列表里可显示“未填写反馈人”
       - Excel 导入短期不出现预览 / 确认入口
-      - 页面不泄露内部字段名
+      - 页面、导出列和公开 payload 不泄露内部字段名
       - 页面不引入外部前端资源，不使用破坏 Chrome 109 的语法
       - 新增或调整 ViewModel 代码保持 Python 3.8 写法，不使用 int | None、list[str] 等新版类型语法
 
@@ -275,7 +281,8 @@ items:
       - 资源负荷每行能带版本、方案、日期、资源对象跳回资源派工或甘特
       - 计划和现场实际只复盘正式采用方案，每行能回资源派工、定位甘特或查看现场记录
       - 停机影响没有数据时显示“当前没有停机记录或尚未维护停机数据”，不推断为没有停机
-      - 报表明细操作列不显示内部字段名
+      - 第一版停机影响只做设备级说明和回跳，不要求任务级明细；任务级明细由 downtime-task-impact-detail 承接
+      - 报表页面、明细操作列、导出列和公开 payload 不显示内部字段名
       - 浏览器几何覆盖 /reports/ 和关键报表明细页
       - 页面不引入外部图表库、外链脚本、外链样式或外链字体
       - 新增或调整 ViewModel 代码保持 Python 3.8 写法，不使用 int | None、list[str] 等新版类型语法
@@ -380,7 +387,7 @@ items:
     entrypoints:
       - "按批次和工序关联现场执行事件"
       - "有实际开始/结束时用于解释偏差，没有时显示暂未记录现场实际"
-      - "牵连批次/订单第一版不做精确影响面，不能判断时必须明说"
+      - "本条只做现场事实接线；牵连批次/订单精确影响面由 downstream-batch-order-impact 承接，不能判断时必须明说"
     test_commands:
       - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_delay_diagnosis_contract.py"
     forbidden_paths:
@@ -391,7 +398,7 @@ items:
       - 延期解释不再固定说没有现场执行反馈
       - 有现场事实时能显示实际开始/结束或偏差说明
       - 没有现场事实时显示保守说明
-      - 不能判断牵连批次/订单时明确写“当前不能判断”
+      - 不能判断牵连批次/订单时明确写“当前不能判断”；不在本条硬做精确影响面
       - 不暴露事件 id、op_id、schedule_id、source_table
 
   - slug: gantt-resource-load-summary
@@ -428,3 +435,74 @@ items:
       - 没有可用工时数据时不伪装成正常
       - 提供去资源派工、资源负荷报表或时间轴负荷明细的入口
       - 不引入外部图表库
+
+  - slug: downtime-task-impact-detail
+    title: 停机影响任务级明细
+    description: 第二阶段增强。把停机影响从设备级说明补到受影响任务级明细；能匹配到任务就列出任务，不能匹配就保守说明。
+    depends_on: [workbench-context-link-contract, reports-workbench-backlink]
+    depends_on_reasons:
+      workbench-context-link-contract: 停机影响明细要能回甘特和资源派工，必须复用统一上下文。
+      reports-workbench-backlink: 第一版先把报表入口和回跳稳定下来，再补停机任务级影响。
+    status: planned
+    feature: null
+    minimal_loop: false
+    primary_paths:
+      - core/services/report/downtime_impact.py
+      - templates/reports/downtime.html
+      - web/viewmodels/scheduler_reports_workbench.py
+      - tests/regression_reports_downtime_task_impact_contract.py
+    entrypoints:
+      - "按设备和时间窗口把停机记录关联到排程任务"
+      - "能匹配到任务时显示批次、资源、计划时间和影响说明"
+      - "不能精确匹配时显示当前只能看到设备级停机影响，不硬编任务"
+      - "明细行复用 WorkbenchLink 回甘特或资源派工"
+    test_commands:
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_reports_downtime_task_impact_contract.py"
+    forbidden_paths:
+      - core/algorithms/
+      - schema.sql
+      - vendor/
+    exit_checks:
+      - 停机记录能匹配排程任务时显示受影响任务级明细
+      - 无法匹配任务时显示中文保守说明，不显示 0 影响或空白误导用户
+      - 每行能带版本、日期、批次和资源上下文回甘特或资源派工
+      - 页面、导出列和公开 payload 不暴露内部字段名
+      - 不引入外部图表库、外链脚本、外链样式或外链字体
+      - 新增或调整 ViewModel 代码保持 Python 3.8 写法，不使用 int | None、list[str] 等新版类型语法
+
+  - slug: downstream-batch-order-impact
+    title: 牵连批次和订单影响面
+    description: 第二阶段增强。延期解释和方案对比在数据足够时说明可能牵连哪些批次或订单；数据不足时明确说当前不能判断。
+    depends_on: [workbench-context-link-contract, analysis-action-hub-layout, delay-diagnosis-site-facts-bridge]
+    depends_on_reasons:
+      workbench-context-link-contract: 牵连影响面要能回分析、甘特和超期清单，必须复用统一上下文。
+      analysis-action-hub-layout: 方案影响面先在分析页稳定展示，再扩展到牵连批次/订单。
+      delay-diagnosis-site-facts-bridge: 延期解释先能读取现场事实，再计算更细的牵连影响。
+    status: planned
+    feature: null
+    minimal_loop: false
+    primary_paths:
+      - core/services/scheduler/schedule_delay_diagnosis_service.py
+      - web/viewmodels/scheduler_analysis_candidates.py
+      - core/services/report/delay_diagnosis_presentation.py
+      - templates/scheduler/analysis.html
+      - templates/reports/overdue.html
+      - tests/regression_scheduler_downstream_impact_contract.py
+    entrypoints:
+      - "基于批次、工序顺序、资源占用和订单交期计算可解释的牵连范围"
+      - "只展示当前数据能证明的批次、订单、交期和影响说明"
+      - "数据不足时显示当前不能判断牵连批次/订单，不把空结果包装成无影响"
+      - "牵连明细行复用 WorkbenchLink 回甘特、超期清单或排产分析"
+    test_commands:
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_downstream_impact_contract.py"
+    forbidden_paths:
+      - core/algorithms/
+      - schema.sql
+      - vendor/
+    exit_checks:
+      - 数据足够时能显示牵连批次或订单影响面
+      - 数据不足时显示“当前不能判断牵连批次/订单”，不显示 0 影响或空白误导用户
+      - 明细行能带版本、方案、日期、批次或订单上下文回甘特、超期清单或排产分析
+      - 页面、导出列和公开 payload 不暴露内部字段名
+      - 不引入外部图表库、外链脚本、外链样式或外链字体
+      - 新增或调整 ViewModel 代码保持 Python 3.8 写法，不使用 int | None、list[str] 等新版类型语法

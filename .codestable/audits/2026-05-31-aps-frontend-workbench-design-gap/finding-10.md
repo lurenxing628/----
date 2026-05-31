@@ -23,7 +23,7 @@ suggested_action: cs-roadmap
 - 已补：资源派工明确是计划员代录现场事实，短期不新增现场员工账号、多人权限、“我的任务”、扫码、推送、审批。
 - 已补：Excel 短期直接导入，不做预览或二次确认。
 - 已补：甘特资源负荷摘要、延期解释接现场事实都放到第二阶段增强。
-- 仍建议补强：每个 item 的第一版禁区、空状态、加载失败、数据不足、公开 payload 和导出字段边界。
+- 仍建议补强：每个 feature design 继续把当前 item 里的第一版禁区、空状态、加载失败、数据不足、公开 payload 和导出字段边界写成可测试验收。2026-06-01 已先把上下文链接、资源派工、报表和第二阶段尾项的关键边界补进 roadmap/items，但单条 feature design 不能省略自己的硬验收。
 
 ## 影响
 
@@ -38,3 +38,10 @@ suggested_action: cs-roadmap
 - 对写入类页面，列出按钮、手填、Excel、API、`data-*` URL 五类入口。
 - 对跨页跳转，列出源页面、目标页面、参数名、目标页如何解析。
 - 对普通用户可见字段，把页面、导出列、公开 payload 一起纳入。
+
+当前补强结果：
+
+- `workbench-context-link-contract` 已要求逐路线写 `required_params`，资源派工和报表类跳转要覆盖 `query_date`、`period_preset`、`scope_type`。
+- `resource-dispatch-execution-lane` 已把任务卡图号/物料、计划/实际时间、偏差、执行流水来源/记录时间纳入 exit checks。
+- `reports-workbench-backlink` 已明确停机任务级明细不进第一版，由 `downtime-task-impact-detail` 承接。
+- 第二阶段已补独立条目 `downtime-task-impact-detail` 和 `downstream-batch-order-impact`，避免叙述级能力后续漏掉。

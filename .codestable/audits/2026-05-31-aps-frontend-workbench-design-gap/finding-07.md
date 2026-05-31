@@ -42,7 +42,7 @@ suggested_action: cs-feat-design
 ## 阶段归属
 
 - 第一版：报表中心风险入口、资源负荷行回甘特/资源派工、计划和现场实际行回资源派工/甘特、非正式方案禁用说明。
-- 第二阶段：停机影响任务级明细，以及更细的牵连批次/订单影响面。
+- 第二阶段：停机影响任务级明细由 `downtime-task-impact-detail` 承接；更细的牵连批次/订单影响面由 `downstream-batch-order-impact` 承接。
 
 ## 风险
 

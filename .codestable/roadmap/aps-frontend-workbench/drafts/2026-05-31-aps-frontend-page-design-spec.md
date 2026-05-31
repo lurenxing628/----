@@ -117,6 +117,27 @@ Claude Code 第一轮复核指出：如果只在页面内部加强跳转，Findi
 | 不可写原因 | 当前方案不可写 / 当前任务状态不可写 / 后端动作不可用 / 数据不足 | 不能只显示“不可写”三个字；后续用户已拍板短期不新增多人账号权限 |
 | 容量来源 | 工作日历 / 班次 / 停机扣除情况 / 数据不足 | 资源负荷算得出来时要说明怎么算，算不出来时说明缺什么 |
 
+内部值到中文展示要统一，不能每个页面自己翻：
+
+| 内部值 | 中文展示值 |
+| --- | --- |
+| `plan_role=adopted` | 正式采用方案 |
+| `plan_role=baseline_best` | 原算法代表方案 |
+| `plan_role=critical_best` | 重点工序优先代表方案 |
+| 有 `scenario_id` 但没有可读名称 | 模拟预览（未命名） |
+| `guardrail_reason_type=plan_not_writable` | 当前方案不可写 |
+| `guardrail_reason_type=task_state_blocked` | 当前任务状态不可写 |
+| `guardrail_reason_type=action_unavailable` | 后端暂未开放这个动作 |
+| `guardrail_reason_type=data_gap` | 数据不足，暂时不能判断 |
+| `resource_type/scope_type=operator` | 人员视角 |
+| `resource_type/scope_type=machine` | 设备视角 |
+| `resource_type/scope_type=team` | 班组视角 |
+| `period_preset=week` | 按周 |
+| `period_preset=month` | 按月 |
+| `period_preset=custom` | 自定义 |
+| `view=machine` | 设备甘特 |
+| `view=operator` | 人员甘特 |
+
 ### 3.4 跨页链接参数矩阵
 
 下面这张表是后续实现和测试的硬输入。大白话说：用户从一个页面点到另一个页面时，不能只带版本号；方案、日期、批次或资源对象也要带上，否则用户看到的就可能不是同一套计划。

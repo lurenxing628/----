@@ -160,6 +160,7 @@ WorkbenchPlanContext:
 - 现场记录不可写时，必须显示中文原因，至少区分当前方案不可写、当前任务状态不可写、后端动作不可用、数据缺口；短期不新增多人账号和现场权限模型。
 - 从首页跳到甘特、分析、资源派工、报表时，必须带上能保持同一套计划的上下文参数。
 - 资源派工 URL 里现有视角参数叫 `scope_type`；它和上下文里的 `resource_type` 表达的是同一类“人员 / 设备 / 班组视角”，后续实现可以保留 URL 的 `scope_type`，但 ViewModel 对用户可见处统一显示中文视角。
+- `plan_role`、`guardrail_reason_type`、`resource_type`、`period_preset`、`view` 等内部枚举必须在 feature design 里写成“内部值 -> 中文展示值”映射表；页面、导出列和公开 payload 都不能直接露内部值。
 
 ### 5.2 首页值班台摘要
 
@@ -226,6 +227,8 @@ WorkbenchLink:
 - 链接禁用时必须给中文原因。
 - 链接 label 不能出现内部字段名。
 - `required_params` 只写测试必须锁住的上下文参数，避免跳转时悄悄丢版本、方案、日期、批次或资源。
+- `required_params` 必须按页面设计稿第 3.4 节的逐路线参数矩阵落地；跳资源派工或报表类页面时，能拿到就同时保留 `date_from/date_to`、`query_date`、`period_preset`，跳资源派工还要保留 `scope_type`。
+- 只要当前上下文有 `plan_role` 和 `scenario_id`，除 `execution_review` 这类只看正式采用方案的页面外，跨页链接都要继续携带，页面可见处再翻译成中文。
 - 去甘特图时必须明确 `view=machine` 或 `view=operator`。
 - 去资源派工时必须明确 `scope_type`；没有资源对象时可以默认 `operator` 且展示全部人员。
 
@@ -362,6 +365,8 @@ ResourceDispatchWorkbenchTabs:
 | 9 | `workbench-user-guide-refresh` | 更新用户手册，告诉用户每天该先看哪里、怎么查问题 | 8 | 否 |
 | 10 | `delay-diagnosis-site-facts-bridge` | 延期解释接入已录入的现场事实，不能继续固定说没有现场事实 | 1, 6 | 否 |
 | 11 | `gantt-resource-load-summary` | 甘特附近显示最忙设备/人员和资源负荷入口 | 1, 5 | 否 |
+| 12 | `downtime-task-impact-detail` | 停机影响从设备级说明补到受影响任务级明细 | 1, 7 | 否 |
+| 13 | `downstream-batch-order-impact` | 延期和方案解释在数据足够时说明牵连批次/订单影响面 | 1, 4, 10 | 否 |
 
 ## 7. 排期建议
 
@@ -378,7 +383,7 @@ ResourceDispatchWorkbenchTabs:
    - 资源派工执行分层。
    - 报表中心和报表明细回跳。
 5. 第一版页面完成后，先补主流程测试和用户指南；这一步只依赖第一版阶段 1-7，不等待第二阶段增强。
-6. 甘特资源负荷摘要和延期解释接现场事实放在第二阶段增强，避免第一轮和第一版范围过大。
+6. 甘特资源负荷摘要、延期解释接现场事实、停机影响任务级明细、牵连批次/订单影响面放在第二阶段增强，避免第一轮和第一版范围过大。
 
 产品优先级可以由用户调整；技术依赖只要求跨页上下文在后续页面大改前先稳定。
 
@@ -408,3 +413,4 @@ ResourceDispatchWorkbenchTabs:
 - 2026-05-31：追加 Exa MCP 外部对标结论，补强方案差异、资源容量来源和现场写入禁用原因；保留第二阶段能力边界，避免第一版扩大成完整 APS/MES 平台。
 - 2026-05-31：根据用户补充口径，短期不做反馈人必填、多人现场账号、Excel 导入预览 / 二次确认；现场记录按计划员单人代录现场事实处理。
 - 2026-05-31：根据开工总方案对抗复核，把执行顺序调整为“上下文链接合同先行”，新增 `delay-diagnosis-site-facts-bridge` 条目，并明确非正式方案下不得输出任何写入 URL 或 `data-*` 写入地址。
+- 2026-06-01：根据只读审查补强 `required_params` 逐路线矩阵口径、内部值到中文展示映射要求，并把停机影响任务级明细、牵连批次/订单影响面补成第二阶段独立条目。
