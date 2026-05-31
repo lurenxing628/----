@@ -20,7 +20,7 @@ suggested_action: cs-feat-design
 
 ## 证据
 
-- 设计稿要求非正式方案下，手填、Excel 模板、Excel 导入、导入预览和页面 `data-*` 写入 URL 都不可用。
+- 当前短期不新建导入预览/确认流程；如果历史页面残留任何预览/确认入口，非正式方案下也必须和手填、Excel 模板、Excel 导入、页面 `data-*` 写入 URL 一样不可用。
 - 当前写入服务会拒绝非当前正式方案：`core/services/scheduler/resource_dispatch_actual_record_service.py:129-142`。
 - 当前资源派工路由只按 `has_history and can_query` 下发 Excel 模板/导入 URL：`web/routes/domains/scheduler/scheduler_resource_dispatch.py:77-89`。
 - 当前模板把这些 URL 写入页面 `data-*`：`templates/scheduler/resource_dispatch.html:20-29`、`:291-305`。

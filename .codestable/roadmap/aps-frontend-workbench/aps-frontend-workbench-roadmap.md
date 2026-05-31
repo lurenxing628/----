@@ -3,7 +3,7 @@ doc_type: roadmap
 slug: aps-frontend-workbench
 status: active
 created: 2026-05-31
-last_reviewed: 2026-05-31
+last_reviewed: 2026-06-01
 tags: [aps, frontend, workbench, scheduler, gantt, resource-dispatch, win7]
 related_requirements:
   - gantt-readonly-result-view
@@ -45,7 +45,7 @@ related_audits:
 - **首页值班台**：首页不再只放统计卡和入口宫格，要能显示“今日待处理”和最新排程风险。
 - **顶层计划工作台入口**：顶层导航必须有核心作业入口，不能只靠页面内部按钮把用户带到分析、甘特、资源派工和复盘。
 - **跨页计划上下文**：从首页、分析、甘特、资源派工、报表互相跳转时，必须带着同一个版本、方案、日期范围和业务对象，不能悄悄掉回默认正式计划。
-- **甘特工作台增强**：甘特图继续保持只读，但要增加稳定的任务详情区和靠近甘特的资源负荷摘要。
+- **甘特工作台增强**：甘特图继续保持只读，第一版先增加稳定的任务详情区；靠近甘特的资源负荷摘要放到第二阶段增强。
 - **排产分析行动入口**：已有推荐方案卡、三方案摘要、诊断区继续复用，但页面层级要更像“先看异常和推荐，再看技术过程”。
 - **资源派工和现场记录分层**：资源派工继续承担“看排班、看日历、看甘特、填现场记录”，但后续要把现场记录动作和计划员查看动作分清。
 - **报表回跳**：报表中心、资源负荷、超期清单、计划和现场实际不能是死胡同，看完必须能带上下文回到甘特、资源派工或复盘；计划和现场实际只复盘正式采用方案。
@@ -89,7 +89,7 @@ related_audits:
 
 ### 3.4 资源派工现状
 
-`templates/scheduler/resource_dispatch.html` 已有任务明细、现场记录、日历矩阵、甘特图四个标签，也有计划身份提示、导出资源排班、查看计划和实际。
+`templates/scheduler/resource_dispatch.html` 已有任务明细、现场记录、日历矩阵、甘特图四个标签，也有计划身份提示、导出资源派工、查看计划和实际。
 
 短板是资源派工同时承担计划员查看、现场情况沟通、现场记录填写和 Excel 导入，页面越来越重。后续需要把“计划员看排班”和“计划员代录现场事实”在布局上分清。
 
@@ -102,9 +102,9 @@ related_audits:
 ```text
 APS 前端工作台
 ├── 顶层计划工作台入口：让计划员从顶层一跳进入首页值班台、分析、甘特、资源派工和复盘
-├── 首页值班台：把最新排产、超期、资源风险、方案待确认、现场反馈缺口收成待处理列表
+├── 首页值班台：把最新排产、超期、资源风险、方案待确认、现场情况待确认收成待处理列表
 ├── 工作台上下文协议：统一版本、方案、日期范围、批次/资源等跨页跳转参数
-├── 甘特工作台层：在只读甘特旁边补任务详情区、超期说明入口、资源负荷摘要
+├── 甘特工作台层：第一版在只读甘特旁边补任务详情区和超期说明入口；第二阶段再补资源负荷摘要
 ├── 排产分析行动层：把方案推荐、延期解释、诊断建议放到技术过程之前
 ├── 资源派工执行层：把看排班、看现场记录、导入实际情况、计划和现场实际分出清楚入口
 ├── 报表回跳层：让超期、资源负荷、计划和现场实际、停机影响都能回到甘特或资源派工继续处理
@@ -177,7 +177,7 @@ SchedulerWorkbenchSummary:
 
 ```text
 WorkbenchRiskCard:
-  kind: str  # pending_batches / scheduled_batches / overdue_batches / latest_version / site_record_gap
+  kind: str  # pending_batches / scheduled_batches / overdue_batches / resource_overload / latest_version / site_record_gap
   label: str
   value: str
   helper_text: str
@@ -214,16 +214,18 @@ WorkbenchTodoItem:
 WorkbenchLink:
   label: str
   url: str
-  target_page: str  # dashboard / analysis / gantt / resource_dispatch / overdue_report / execution_review
+  target_page: str  # dashboard / analysis / gantt / resource_dispatch / overdue_report / delay_diagnosis / utilization_report / execution_review / reports_index
   context_summary: str
   disabled: bool
   disabled_reason: str
+  required_params: List[str]
 ```
 
 约束：
 
 - 链接禁用时必须给中文原因。
 - 链接 label 不能出现内部字段名。
+- `required_params` 只写测试必须锁住的上下文参数，避免跳转时悄悄丢版本、方案、日期、批次或资源。
 - 去甘特图时必须明确 `view=machine` 或 `view=operator`。
 - 去资源派工时必须明确 `scope_type`；没有资源对象时可以默认 `operator` 且展示全部人员。
 
@@ -255,9 +257,9 @@ GanttTaskDetailPanel:
 - 详情区必须能被清空，清空后显示“点击甘特条查看任务详情”。
 - 移动端或窄屏可以放到甘特下方，宽屏可以放右侧。
 
-### 5.5 甘特资源负荷摘要
+### 5.5 甘特资源负荷摘要（第二阶段增强）
 
-甘特附近新增资源负荷摘要，但第一版不做复杂直方图。
+第二阶段在甘特附近新增资源负荷摘要。第一版甘特只要求任务详情区、超期说明入口和去资源负荷报表的上下文链接，不把 Top 资源摘要作为验收项。
 
 ```text
 ResourceLoadSummary:
@@ -283,11 +285,11 @@ ResourceLoadItem:
 
 约束：
 
-- 第一版最多显示最忙设备 5 个、最忙人员 5 个。
+- 第二阶段最多显示最忙设备 5 个、最忙人员 5 个。
 - 阈值必须在 feature-design 里写清，例如超过 90% 显示危险、超过 75% 显示提醒。
 - 没有可用工时或日历数据时，显示“利用率暂时算不了”，不能假装正常。
 - 必须说明容量来源，例如工作日历、班次、是否扣除停机；如果当前只是用全局日历工时估算、没有按单台设备或单个人细分，也要写清楚；算不出来时说明缺什么。
-- 必须提供“去资源排班查看明细”“去资源负荷报表”或“查看这个资源的时间轴负荷”入口。
+- 必须提供“去资源派工查看明细”“去资源负荷报表”或“查看这个资源的时间轴负荷”入口。
 
 ### 5.6 排产分析行动入口
 
@@ -341,7 +343,7 @@ ResourceDispatchWorkbenchTabs:
 
 - 静态合同：页面出现工作台入口、中文文案、跨页链接参数、无内部字段泄露。
 - ViewModel 合同：`SchedulerWorkbenchSummary`、`WorkbenchTodoItem`、`WorkbenchLink` 字段完整，空数据和异常数据都有中文解释。
-- 前端合同：甘特详情区、资源负荷摘要、资源派工 tab 不互相遮挡；按钮可用性由后端数据驱动。
+- 前端合同：甘特详情区、第二阶段资源负荷摘要、资源派工 tab 不互相遮挡；按钮可用性由后端数据驱动。
 - 浏览器几何：关键页面在本地浏览器里不出现主内容重叠、按钮文字挤出、表格撑破。
 - Win7 / Chrome 109：不使用需要新版浏览器才支持的前端能力，不引入外链资源。
 
@@ -358,7 +360,7 @@ ResourceDispatchWorkbenchTabs:
 | 7 | `reports-workbench-backlink` | 报表中心和报表明细能带上下文回到甘特、资源派工和复盘 | 1 | 否 |
 | 8 | `workbench-flow-regression-suite` | 用测试证明第一版“首页 → 异常/方案/甘特/派工/报表/复盘”的主流程存在 | 1-7 | 否 |
 | 9 | `workbench-user-guide-refresh` | 更新用户手册，告诉用户每天该先看哪里、怎么查问题 | 8 | 否 |
-| 10 | `delay-diagnosis-site-facts-bridge` | 延期解释接入已录入的现场事实，不能继续固定说没有现场反馈 | 1, 6 | 否 |
+| 10 | `delay-diagnosis-site-facts-bridge` | 延期解释接入已录入的现场事实，不能继续固定说没有现场事实 | 1, 6 | 否 |
 | 11 | `gantt-resource-load-summary` | 甘特附近显示最忙设备/人员和资源负荷入口 | 1, 5 | 否 |
 
 ## 7. 排期建议

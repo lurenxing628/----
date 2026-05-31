@@ -2,7 +2,7 @@
 doc_type: roadmap-start-plan
 roadmap: aps-frontend-workbench
 created: 2026-05-31
-last_reviewed: 2026-05-31
+last_reviewed: 2026-06-01
 status: current
 source_docs:
   - aps-frontend-workbench-roadmap.md
@@ -94,6 +94,45 @@ source_docs:
 - 普通用户可见文案都是中文业务话，不显示内部字段。
 - 页面改动不破坏 Win7 离线交付。
 
+## 2.1 下一位执行 Agent 直接开工规则
+
+结论：下一位执行 Agent 可以直接按这份方案开第一轮，不需要再问用户确认产品口径。
+
+它的第一步不是改代码，而是按 CodeStable 进入 `cs-feat-design`，先给 `workbench-context-link-contract` 写 feature design。只有这条 design 被确认后，再进入实现；后续再依次做 `workbench-nav-entry` 和 `dashboard-workbench-risk-todos`。
+
+下一位 Agent 开工前只需要读这几份文件：
+
+1. `.codestable/attention.md`
+2. `.codestable/reference/system-overview.md`
+3. `.codestable/roadmap/aps-frontend-workbench/2026-05-31-aps-frontend-workbench-start-plan.md`
+4. `.codestable/roadmap/aps-frontend-workbench/aps-frontend-workbench-roadmap.md`
+5. `.codestable/roadmap/aps-frontend-workbench/aps-frontend-workbench-items.yaml`
+6. `.codestable/roadmap/aps-frontend-workbench/drafts/2026-05-31-aps-frontend-page-design-spec.md`
+
+开工时按这个顺序推进：
+
+1. 先开 `workbench-context-link-contract` 的 feature design。
+2. design 必须使用第 5.2 节的 9 个固定 `target_page`，不能自己另起名字。
+3. design 必须把 `WorkbenchPlanContext`、`WorkbenchLink`、参数翻译表、关键跳转清单、非正式方案写入护栏写进验收。
+4. design 不新增页面、不改算法、不做 Excel 预览、不做现场员工账号。
+5. 设计确认后实现包 A，并跑 `tests/regression_scheduler_workbench_links_contract.py`。
+6. 包 A 验收后再做包 B；包 B 验收后再做包 C。
+
+如果下一位 Agent 发现文档和代码不一致，处理规则是：
+
+- 代码里已有路由或字段名和文档名字不同：优先在 feature design 里写清翻译关系，不直接改业务路由。
+- 文档内部再出现合同冲突：先回到本 roadmap 做 update，不在 feature 里悄悄绕开。
+- 缺数据时：用中文说明“当前数据不足”，不能编影响面。
+- 非正式方案下：不能输出写入按钮、表单 action、API URL、Excel 导入 URL、模板下载 URL 或 `data-*` 写入地址。
+
+下一位 Agent 做完第一轮后，至少要能证明：
+
+- 顶层有“计划工作台”或等价入口。
+- 首页有今日待处理。
+- 首页能跳分析、甘特、资源派工、报表。
+- 跳转不丢版本、方案、日期。
+- 页面正文不显示 `plan_role`、`scenario_id`、`op_id`、`schedule_id`、`source_table` 这类内部字段。
+
 ## 3. 开工顺序总览
 
 建议按“阶段 0 + 11 个实施阶段”推进。阶段 0 是本文档前置，已经在本轮文档修正中完成，不进入 `items.yaml`。表里的“第一轮”才是马上开工范围，“第一版”是后续第一批可上线范围，“第二阶段”是增强项。
@@ -170,8 +209,12 @@ source_docs:
 | `resource_type` | operator / machine / team | 可转人员/设备/班组 |
 | `resource_id` | 资源内部 id | 不直接显示 |
 | `resource_label` | 资源中文名 | 可见 |
+| `is_preview` | 当前上下文是否只是预览或候选方案 | 不直接显示布尔值 |
 | `can_write_feedback` | 当前上下文能否写现场实际 | 不直接显示布尔值 |
 | `guardrail_text` | 不可写中文原因 | 可见 |
+| `guardrail_reason_type` | plan_not_writable / task_state_blocked / action_unavailable / data_gap | 不直接显示，转成中文原因 |
+| `capacity_source_label` | 容量来源，比如工作日历、班次、停机扣除情况 | 可见 |
+| `capacity_gap_text` | 容量算不出来时缺什么数据 | 可见 |
 
 `WorkbenchLink` 至少包含这些字段：
 
@@ -452,7 +495,7 @@ source_docs:
   - 任务明细
   - 日历矩阵
   - 甘特图
-  - 导出资源排班
+  - 导出资源派工
 
 现场事实
   - 现场记录任务卡
@@ -612,7 +655,7 @@ source_docs:
 
 ### 14.1 目标
 
-如果计划员已经录了现场实际，第二阶段的延期解释就不能还说“没有现场反馈”。延期解释要尽量利用已有现场事实。
+如果计划员已经录了现场实际，第二阶段的延期解释就不能还说“没有现场事实”。延期解释要尽量利用已有现场事实。
 
 ### 14.2 要做什么
 

@@ -1,6 +1,11 @@
 roadmap: aps-frontend-workbench
 created: 2026-05-31
-last_reviewed: 2026-05-31
+last_reviewed: 2026-06-01
+
+# 阶段口径：
+# - 前 3 条 minimal_loop: true 是第一轮 A/B/C：先把上下文合同、顶层入口、首页值班台跑通。
+# - 第 4-9 条是第一版完整工作台：分析、甘特详情、资源派工、报表回跳、主流程测试和用户指南。
+# - 第 10-11 条是第二阶段增强：延期解释接现场事实、甘特资源负荷摘要。
 
 items:
   - slug: workbench-context-link-contract
@@ -231,6 +236,8 @@ items:
       - 反馈人短期保持可空，空了不报错，列表里可显示“未填写反馈人”
       - Excel 导入短期不出现预览 / 确认入口
       - 页面不泄露内部字段名
+      - 页面不引入外部前端资源，不使用破坏 Chrome 109 的语法
+      - 新增或调整 ViewModel 代码保持 Python 3.8 写法，不使用 int | None、list[str] 等新版类型语法
 
   - slug: reports-workbench-backlink
     title: 报表中心和报表明细回跳入口
@@ -270,6 +277,8 @@ items:
       - 停机影响没有数据时显示“当前没有停机记录或尚未维护停机数据”，不推断为没有停机
       - 报表明细操作列不显示内部字段名
       - 浏览器几何覆盖 /reports/ 和关键报表明细页
+      - 页面不引入外部图表库、外链脚本、外链样式或外链字体
+      - 新增或调整 ViewModel 代码保持 Python 3.8 写法，不使用 int | None、list[str] 等新版类型语法
 
   - slug: workbench-flow-regression-suite
     title: 工作台主流程回归测试
@@ -303,7 +312,7 @@ items:
       - "不要只检查网页里有没有某个样式名；要测用户主流程和关键中文文案"
       - "这是第一版完整主流程测试，不依赖第二阶段的延期解释接现场事实，也不依赖甘特资源负荷摘要"
       - "浏览器几何测试只覆盖关键页面，不把整站都塞进慢测试"
-      - "新增 aps_frontend_workbench 或等价质量门禁分组，并登记必跑测试"
+      - "优先只改 tools/test_registry.py 登记 aps_frontend_workbench 或等价质量门禁分组；只有现有门禁入口不能识别新分组时，才改 scripts/run_quality_gate.py"
     test_commands:
       - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_aps_workbench_flow_contract.py"
       - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py"
@@ -354,7 +363,7 @@ items:
 
   - slug: delay-diagnosis-site-facts-bridge
     title: 延期解释接现场事实
-    description: 第二阶段增强。让延期解释读取已经录入的现场事实；有实际开始/结束时用于解释偏差，没有时用保守中文说明，不再固定说没有现场反馈。
+    description: 第二阶段增强。让延期解释读取已经录入的现场事实；有实际开始/结束时用于解释偏差，没有时用保守中文说明，不再固定说没有现场事实。
     depends_on: [workbench-context-link-contract, resource-dispatch-execution-lane]
     depends_on_reasons:
       workbench-context-link-contract: 延期解释里的建议动作和回跳要复用统一上下文。
