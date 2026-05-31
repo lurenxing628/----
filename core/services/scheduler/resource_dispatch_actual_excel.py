@@ -57,7 +57,7 @@ def _style_table(ws: Worksheet) -> None:
             cell = cast(Cell, cell_obj)
             cell.alignment = Alignment(vertical="top", wrap_text=True)
     for column_cells in ws.columns:
-        first = column_cells[0]
+        first = cast(Cell, column_cells[0])
         col = first.column_letter
         width = max(len(str(cell.value or "")) for cell in column_cells) + 2
         ws.column_dimensions[col].width = min(max(width, 12), 34)

@@ -1,0 +1,104 @@
+doc_type: feature-checklist
+feature: 2026-05-29-resource-dispatch-execution-page-extraction
+created: 2026-05-29
+status: superseded
+execution_allowed: false
+superseded_by: .codestable/refactors/2026-05-29-resource-dispatch-js-split/resource-dispatch-js-split-refactor-design.md
+superseded_reason: "多轮对抗评审确认本清单仍按拆独立现场记录页推进，已与最终结论冲突；仅保留备查，不得执行。"
+
+steps:
+  - action: "微重构（只搬不改行为）：把 resource_dispatch.js 拆成 shared/core/execution 三文件，模板用 include 切片"
+    exit_signal: "排班页 URL/UI/交互零变化；全部既有测试未修改即通过；行为相关 diff 为零（仅文件拆分与 script 引入顺序）"
+    status: blocked
+  - action: "静态结构：新增 scheduler_resource_execution.py 路由 + resource_execution.html（筛选表单 + #rePage data-*），注册进 _ROUTE_MODULES"
+    exit_signal: "访问 /scheduler/resource-execution 返回 200，看到筛选表单与占位区；test_sp05 路由拓扑测试更新后通过"
+    status: blocked
+  - action: "交互接入：现场记录页引入 shared.js + execution.js，接通任务卡 / 单条填写 / Excel 导入"
+    exit_signal: "录入操作命中的 endpoint 与拆分前逐字一致；API 层测试无需改仍通过；手工录入闭环成功"
+    status: blocked
+  - action: "双向跳转：排班页任务行加去现场记录链接（透传筛选），现场记录页加看计划链接"
+    exit_signal: "两页互跳且筛选参数透传，URL 携带 version/scope_type/日期等"
+    status: blocked
+  - action: "摘除排班页执行 UI（唯一删除型改动，放最后）：移除现场记录 tab 与 execution 逻辑，保留只读现场状态列"
+    exit_signal: "排班页只剩看计划内容 + 只读状态列 + 跳转入口；前端合约测试更新后通过"
+    status: blocked
+  - action: "回归与浏览器验收：跑 scheduler/dispatch/execution 相关测试 + Python 3.8 扫描 + 浏览器双页验收"
+    exit_signal: "自动化与浏览器证据均通过"
+    status: blocked
+
+checks:
+  - item: "新页面 endpoint scheduler.resource_execution_page 已注册并可 200 访问"
+    source: 挂载点
+    status: blocked
+  - item: "_ROUTE_MODULES 新增 scheduler_resource_execution 一行"
+    source: 挂载点
+    status: blocked
+  - item: "scheduler_nav 宏新增现场记录入口，active 枚举含 resource_execution"
+    source: 挂载点
+    status: blocked
+  - item: "page_manuals_registry 新增 scheduler.resource_execution_page 手册条目"
+    source: 挂载点
+    status: blocked
+  - item: "排班页任务行新增去现场记录跳转链接（透传筛选参数）"
+    source: 挂载点
+    status: blocked
+  - item: "新增 _execution_page_url helper，复用既有 _execution_data_url/_actual_template_url/_actual_import_url"
+    source: 名词契约
+    status: blocked
+  - item: "现场记录页不渲染 version/scenario_id 选择控件"
+    source: 名词契约
+    status: blocked
+  - item: "保留 _enrich_rows_with_execution_state，排班页只读显示现场状态列"
+    source: 编排骨架
+    status: blocked
+  - item: "移除 loadData→loadExecutionData 级联调用，两类数据分页加载"
+    source: 编排骨架
+    status: blocked
+  - item: "执行类操作命中的 endpoint 名与 URL 路径拆分前后逐字一致"
+    source: 流程级约束
+    status: blocked
+  - item: "摘除执行 UI 放在最后阶段；之前阶段只新增文件，可删新文件回滚"
+    source: 流程级约束
+    status: blocked
+  - item: "代码中不出现新的 /resource-execution/execution/* 或 /actual* 路由"
+    source: 范围守护
+    status: blocked
+  - item: "不出现 import/export ES module 语法或新增打包配置"
+    source: 范围守护
+    status: blocked
+  - item: "不新增 localStorage 轮询 / postMessage 跨页同步代码"
+    source: 范围守护
+    status: blocked
+  - item: "不改 OperationExecutionEvents schema 与 feedback/execution service 对外签名"
+    source: 范围守护
+    status: blocked
+  - item: "访问现场记录页返回 200，显示任务卡区与筛选表单"
+    source: 验收场景
+    status: blocked
+  - item: "现场记录页单条填写命中 /execution/<op_id>/actual，写入成功并刷新任务卡"
+    source: 验收场景
+    status: blocked
+  - item: "现场记录页 Excel 一键导入命中 /execution/import，整批无错才写库、有错返回 400"
+    source: 验收场景
+    status: blocked
+  - item: "现场记录页筛选无结果显示空态，不白屏"
+    source: 验收场景
+    status: blocked
+  - item: "排班页 URL 不变，保留只读现场状态列与去现场记录链接"
+    source: 验收场景
+    status: blocked
+  - item: "排班页摘除写入控件后不再出现 data-actual-import-url"
+    source: 验收场景
+    status: blocked
+  - item: "现场记录页看计划链接跳回排班页并透传筛选"
+    source: 验收场景
+    status: blocked
+  - item: "API 层测试 regression_operation_execution_feedback_routes / actual_import 未修改即通过"
+    source: 验收场景
+    status: blocked
+  - item: "第 1 步微重构完成时全部既有测试未修改即通过（行为不变证据）"
+    source: 验收场景
+    status: blocked
+  - item: "新增 Python 代码通过 Python 3.8 语法扫描"
+    source: 验收场景
+    status: blocked

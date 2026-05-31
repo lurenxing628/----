@@ -291,24 +291,28 @@ def test_current_official_dispatch_surfaces_write_guardrail_in_page_data_and_exc
     try:
         page = _page_context(conn)
         assert page["plan_identity"]["kind_label"] == "正式采用方案"
-        assert page["plan_identity"]["dispatch_feedback_label"] == "可用于派工和现场反馈"
-        assert "可以用于派工和现场反馈" in page["plan_identity"]["guardrail_text"]
+        assert page["plan_identity"]["dispatch_feedback_label"] == "可以填写现场实际"
+        assert "可以查看资源排班" in page["plan_identity"]["guardrail_text"]
+        assert "填写现场实际" in page["plan_identity"]["guardrail_text"]
 
         data = _dispatch_payload(conn, version=VERSION)
         identity = data["plan_identity"]
         assert identity["label"] == "正式采用方案"
         assert identity["can_dispatch"] is True
         assert identity["can_write_feedback"] is True
-        assert "可以用于派工和现场反馈" in identity["guardrail_text"]
+        assert "可以查看资源排班" in identity["guardrail_text"]
+        assert "填写现场实际" in identity["guardrail_text"]
 
         summary = _summary_values(data)
-        assert summary["计划身份"] == "正式采用方案；可用于派工和现场反馈"
-        assert summary["派工反馈说明"] == "这套是当前可执行的正式采用方案，可以用于派工和现场反馈。"
+        assert summary["计划身份"] == "正式采用方案；可以填写现场实际"
+        assert summary["现场记录说明"] == "这套是当前可执行的正式采用方案，可以查看资源排班，并按规则填写现场实际。"
 
         template_source = (REPO_ROOT / "templates/scheduler/resource_dispatch.html").read_text(encoding="utf-8")
         assert "plan_identity.guardrail_text" in template_source
-        assert "计划身份" in template_source
-        assert "派工反馈" in template_source
+        assert "ui.summary_item('查看方案'" in template_source
+        assert "ui.summary_item('计划身份'" not in template_source
+        assert "ui.summary_item('现场记录'" not in template_source
+        assert "ui.summary_item('派工反馈'" not in template_source
     finally:
         conn.close()
 
@@ -340,7 +344,8 @@ def test_history_comparison_and_scenario_plans_are_read_only_with_plain_reasons(
         assert baseline_identity["kind_label"] == "对比参考方案"
         assert baseline_identity["can_dispatch"] is False
         assert baseline_identity["can_write_feedback"] is False
-        assert "不能确认派工或写现场反馈" in baseline_identity["guardrail_text"]
+        assert "只能查看" in baseline_identity["guardrail_text"]
+        assert "不能提交现场反馈" in baseline_identity["guardrail_text"]
 
         critical_data = _dispatch_payload(
             conn,
@@ -374,7 +379,8 @@ def test_history_comparison_and_scenario_plans_are_read_only_with_plain_reasons(
         assert scenario_identity["can_dispatch"] is False
         assert scenario_identity["can_write_feedback"] is False
         assert "正式计划还没有改变" in scenario_identity["guardrail_text"]
-        assert "不能确认派工或写现场反馈" in scenario_identity["guardrail_text"]
+        assert "只能查看" in scenario_identity["guardrail_text"]
+        assert "不能提交现场反馈" in scenario_identity["guardrail_text"]
     finally:
         conn.close()
 
@@ -467,7 +473,9 @@ def test_resource_dispatch_get_data_and_export_do_not_write_schedule_or_executio
 
         def _capture_template(template_name: str, **kwargs: Any) -> str:
             assert template_name == "scheduler/resource_dispatch.html"
-            assert "可以用于派工和现场反馈" in (kwargs.get("plan_identity") or {}).get("guardrail_text", "")
+            guardrail_text = (kwargs.get("plan_identity") or {}).get("guardrail_text", "")
+            assert "可以查看资源排班" in guardrail_text
+            assert "填写现场实际" in guardrail_text
             return "OK"
 
         monkeypatch.setattr(rd_routes, "render_template", _capture_template)

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Sequence, cast
 
 from core.infrastructure.errors import ValidationError
 from core.models.operation_execution_labels import REASON_LABELS, SEVERITY_LABELS
@@ -272,7 +272,7 @@ class ResourceDispatchActualImportPreviewer:
                 # status=="ok" 必有 add_count>0，而 add_count 来自 planned_event_count(plan)，
                 # plan 为 None 时恒为 0，所以走到这里 plan 一定非空，无需再判空。
                 add_total += add_count
-                clean_plans.append(plan)
+                clean_plans.append(cast(TaskPlan, plan))
             preview_rows.append(self._preview_row(item.row, status=status, messages=item.messages, add_count=add_count))
 
         summary = {

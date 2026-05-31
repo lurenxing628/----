@@ -63,11 +63,11 @@
         {'label': '方案', 'value': filters.plan_view_label or ((filters.scenario_display_name or filters.scenario_name or '模拟预览（未命名）') if filters.is_scenario_preview else (filters.effective_plan_role_label or filters.plan_role_label))}
       ]) }}
     {% endif %}
-    <form method="get" action="{{ url_for('scheduler.resource_dispatch_page') }}" class="aps-query-form-grid aps-resource-query-grid">
+    <form method="get" action="{{ url_for('scheduler.resource_dispatch_page') }}" class="aps-query-form-grid aps-resource-query-grid dispatch-query {% if filters.scope_type == 'team' %}has-team-axis{% endif %} {% if filters.period_preset == 'custom' %}has-custom-period{% endif %}">
       {% if filters.scenario_id %}
         <input type="hidden" name="scenario_id" value="{{ filters.scenario_id }}">
       {% endif %}
-      <div class="form-field">
+      <div class="form-field aps-resource-filter-scope dq-view">
         <label>视角</label>
         <select name="scope_type" id="rdScopeType" class="w-140">
           <option value="operator" {% if filters.scope_type == 'operator' %}selected{% endif %}>人员</option>
@@ -75,7 +75,7 @@
           <option value="team" {% if filters.scope_type == 'team' %}selected{% endif %}>班组</option>
         </select>
       </div>
-      <div class="form-field aps-resource-target-field" id="rdScopeTargetField">
+      <div class="form-field aps-resource-target-field dq-object" id="rdScopeTargetField">
         <label id="rdScopeTargetLabel">{{ filters.scope_type_label or '人员' }}</label>
         <div class="aps-resource-target-selects">
           <select name="operator_id" id="rdOperatorSelect" class="w-240 {% if filters.scope_type != 'operator' %}is-hidden{% endif %}" data-scope-target="operator" {% if filters.scope_type != 'operator' %}disabled{% endif %}>
@@ -100,14 +100,14 @@
           </select>
         </div>
       </div>
-      <div class="form-field aps-resource-team-axis-field {% if filters.scope_type != 'team' %}is-disabled{% endif %}" id="rdTeamAxisField">
+      <div class="form-field aps-resource-team-axis-field aps-resource-filter-team-axis dq-team {% if filters.scope_type != 'team' %}is-disabled{% endif %}" id="rdTeamAxisField" {% if filters.scope_type != 'team' %}hidden{% endif %}>
         <label>班组轴</label>
         <select name="team_axis" class="w-140" {% if filters.scope_type != 'team' %}disabled{% endif %}>
           <option value="operator" {% if filters.team_axis == 'operator' %}selected{% endif %}>人员轴</option>
           <option value="machine" {% if filters.team_axis == 'machine' %}selected{% endif %}>设备轴</option>
         </select>
       </div>
-      <div class="form-field">
+      <div class="form-field aps-resource-filter-period dq-range">
         <label>区间类型</label>
         <select name="period_preset" id="rdPeriodPreset" class="w-140">
           <option value="week" {% if filters.period_preset == 'week' %}selected{% endif %}>按周</option>
@@ -115,19 +115,19 @@
           <option value="custom" {% if filters.period_preset == 'custom' %}selected{% endif %}>自定义</option>
         </select>
       </div>
-      <div class="form-field {% if filters.period_preset == 'custom' %}is-hidden{% endif %}" id="rdQueryDateField">
+      <div class="form-field aps-resource-filter-date dq-date {% if filters.period_preset == 'custom' %}is-hidden{% endif %}" id="rdQueryDateField">
         <label>查询日期</label>
         <input type="date" name="query_date" value="{{ filters.query_date }}" class="w-160">
       </div>
-      <div class="form-field {% if filters.period_preset != 'custom' %}is-hidden{% endif %}" id="rdStartField">
+      <div class="form-field aps-resource-filter-date dq-start {% if filters.period_preset != 'custom' %}is-hidden{% endif %}" id="rdStartField">
         <label>开始日期</label>
         <input type="date" name="start_date" value="{{ filters.start_date }}" class="w-160">
       </div>
-      <div class="form-field {% if filters.period_preset != 'custom' %}is-hidden{% endif %}" id="rdEndField">
+      <div class="form-field aps-resource-filter-date dq-end {% if filters.period_preset != 'custom' %}is-hidden{% endif %}" id="rdEndField">
         <label>结束日期</label>
         <input type="date" name="end_date" value="{{ filters.end_date }}" class="w-160">
       </div>
-      <div class="form-field">
+      <div class="form-field aps-resource-filter-version dq-version">
         <label>版本</label>
         {% if versions and versions|length > 0 %}
           <select name="version" class="w-140">
@@ -141,7 +141,7 @@
           <input name="version" value="{{ filters.version or '' }}" class="w-160">
         {% endif %}
       </div>
-      <div class="form-field">
+      <div class="form-field aps-resource-filter-plan dq-plan">
         <label>方案</label>
         <select name="plan_role" class="w-180">
           {% for option in plan_role_options or [] %}
@@ -151,7 +151,7 @@
           {% endfor %}
         </select>
       </div>
-      <div class="aps-query-form-actions aps-resource-query-actions">
+      <div class="aps-query-form-actions aps-resource-query-actions dq-actions">
         {{ ui.button('查询', 'primary', 'md', type_attr='submit') }}
         {{ ui.link_button('重置', url_for('scheduler.resource_dispatch_page'), 'secondary', 'md') }}
       </div>
@@ -171,10 +171,6 @@
         {{ ui.summary_item('排产方式', selected_version_row.item.strategy_label or strategy_zh.get(selected_version_row.item.strategy, '未知排产方式')) }}
         {{ ui.summary_item('结果', selected_version_row.item.result_status_label or status_zh.get(selected_version_row.item.result_status, '结果状态未知')) }}
         {{ ui.summary_item('查看方案', filters.plan_view_label or ((filters.scenario_display_name or filters.scenario_name or '模拟预览（未命名）') if filters.is_scenario_preview else (filters.effective_plan_role_label or filters.plan_role_label))) }}
-        {% if plan_identity %}
-          {{ ui.summary_item('计划身份', plan_identity.kind_label) }}
-          {{ ui.summary_item('派工反馈', plan_identity.dispatch_feedback_label) }}
-        {% endif %}
       </div>
     {% endif %}
     {% if plan_identity and plan_identity.guardrail_text %}
@@ -424,5 +420,8 @@
     <script src="{{ url_for('static', filename='js/frappe-gantt.min.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/gantt_popup_fit.js') }}" defer></script>
   {% endif %}
-  <script src="{{ url_for('static', filename='js/resource_dispatch.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/resource_dispatch_shared.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/resource_dispatch_core.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/resource_execution.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/resource_dispatch_boot.js') }}" defer></script>
 {% endblock %}

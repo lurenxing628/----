@@ -7,12 +7,14 @@ from pathlib import Path
 from typing import Any, Dict
 
 from core.infrastructure.database import ensure_schema, get_connection
+from tests.resource_dispatch_frontend_support import (
+    RESOURCE_DISPATCH_TEMPLATE,
+    UI_CONTRACT_CSS,
+    read_resource_dispatch_script_bundle,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
-RESOURCE_DISPATCH_JS = REPO_ROOT / "static" / "js" / "resource_dispatch.js"
-RESOURCE_DISPATCH_TEMPLATE = REPO_ROOT / "templates" / "scheduler" / "resource_dispatch.html"
-UI_CONTRACT_CSS = REPO_ROOT / "static" / "css" / "ui_contract.css"
 
 
 def _build_app(tmp_path, monkeypatch):

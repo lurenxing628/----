@@ -7,6 +7,8 @@ from typing import Tuple
 import openpyxl
 import pytest
 
+from tests.resource_dispatch_frontend_support import read_resource_dispatch_script_bundle
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -729,7 +731,7 @@ def test_frontend_scripts_keep_internal_details_out_of_user_messages() -> None:
     assert "不能放进下载文件名的符号" in manual
     assert "不能放进下载文件名的符号" in manual_mirror
 
-    resource_dispatch = _read("static/js/resource_dispatch.js")
+    resource_dispatch = read_resource_dispatch_script_bundle()
     assert "有一条排班提示没有完整说明" in resource_dispatch
     for phrase in ("自制", "外协", "来源未识别", "已锁定", "未锁定", "锁定状态未识别"):
         assert phrase in resource_dispatch

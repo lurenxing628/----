@@ -3,6 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import List
 
+from tests.resource_dispatch_frontend_support import (
+    extract_js_function,
+    read_resource_dispatch_script_bundle,
+)
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -48,7 +53,7 @@ def test_materials_table_uses_editable_table_protection() -> None:
 
 
 def test_resource_dispatch_resource_labels_keep_full_text_path() -> None:
-    source = _read("static/js/resource_dispatch.js")
+    source = read_resource_dispatch_script_bundle()
 
     helper_start = source.index("function fullTextCell")
     helper_block = source[helper_start : source.index("function renderFlags", helper_start)]
@@ -89,7 +94,7 @@ def test_fixed_table_rules_keep_scroll_or_readability_escape_hatches() -> None:
 
 def test_resource_dispatch_calendar_table_keeps_scroll_and_table_key_contract() -> None:
     template_source = _read("templates/scheduler/resource_dispatch.html")
-    script_source = _read("static/js/resource_dispatch.js")
+    script_source = read_resource_dispatch_script_bundle()
     css_source = _read("static/css/ui_contract.css")
 
     calendar_panel = template_source[
@@ -115,7 +120,8 @@ def test_resource_dispatch_calendar_table_keeps_scroll_and_table_key_contract() 
     assert "calendarTaskFieldHtml(\"计划人员\"" in script_source
     assert "calendarTaskField(\"图号 / 物料\"" in script_source
     assert "编号：" in script_source
-    assert "完整身份：" not in script_source[script_source.index("function namedResourceInfo") : script_source.index("function renderFlags")]
+    for function_name in ("namedResourceInfo", "resourceInfoHtml", "calendarTaskHtml"):
+        assert "完整身份：" not in extract_js_function(script_source, function_name)
     assert ".aps-calendar-task + .aps-calendar-task" in css_source
     assert 'html[data-theme="dark"] .aps-calendar-task' in css_source
 

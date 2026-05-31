@@ -89,7 +89,11 @@ def test_scheduler_query_controls_use_page_specific_layouts() -> None:
         ".aps-version-picker-form",
         ".aps-week-plan-query-grid",
         ".aps-resource-query-grid",
-        ".aps-query-card .aps-resource-query-grid > .aps-resource-query-actions",
+        ".dispatch-query",
+        ".dq-view",
+        ".dq-object",
+        ".dq-actions",
+        ".aps-query-card .aps-resource-query-grid > .dq-plan",
         ".aps-summary-grid--version-overview",
         "@container (min-width: 900px)",
     ):
@@ -97,18 +101,23 @@ def test_scheduler_query_controls_use_page_specific_layouts() -> None:
 
     resource_source = _read("templates/scheduler/resource_dispatch.html")
     resource_form_start = resource_source.index(
-        '<form method="get" action="{{ url_for(\'scheduler.resource_dispatch_page\') }}" class="aps-query-form-grid aps-resource-query-grid">'
+        '<form method="get" action="{{ url_for(\'scheduler.resource_dispatch_page\') }}" class="aps-query-form-grid aps-resource-query-grid'
     )
     resource_form_end = resource_source.index("</form>", resource_form_start)
     resource_form = resource_source[resource_form_start:resource_form_end]
 
-    actions_start = resource_form.index('class="aps-query-form-actions aps-resource-query-actions"')
+    actions_start = resource_form.index('class="aps-query-form-actions aps-resource-query-actions dq-actions"')
     assert actions_start > resource_form.index('name="version"')
     assert "{{ ui.button('查询', 'primary', 'md', type_attr='submit') }}" in resource_form
     assert "{{ ui.link_button('重置', url_for('scheduler.resource_dispatch_page'), 'secondary', 'md') }}" in resource_form
     assert "aps-filter-bar" not in resource_form
     assert "inline-flex-wrap" not in resource_form
     assert "form-row" not in resource_form
+    assert "dispatch-query" in resource_form
+    for token in ("dq-view", "dq-object", "dq-range", "dq-date", "dq-version", "dq-plan", "dq-actions"):
+        assert token in resource_form
+    assert "has-team-axis" in resource_form
+    assert "has-custom-period" in resource_form
 
 
 def test_scheduler_batch_manage_query_uses_batch_query_grid() -> None:

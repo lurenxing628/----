@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from tests.resource_dispatch_frontend_support import (
+    read_resource_dispatch_script_bundle,
+    resource_dispatch_script_tags,
+)
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -25,7 +30,7 @@ def test_batch_ops_table_has_stable_width_and_ellipsis_contract() -> None:
 
 def test_resource_dispatch_keeps_single_target_field_and_disabled_inactive_selects() -> None:
     html = _read("templates/scheduler/resource_dispatch.html")
-    js = _read("static/js/resource_dispatch.js")
+    js = read_resource_dispatch_script_bundle()
     css = _read("static/css/ui_contract.css")
 
     assert 'id="rdScopeTargetField"' in html
@@ -36,8 +41,55 @@ def test_resource_dispatch_keeps_single_target_field_and_disabled_inactive_selec
         assert f'data-scope-target="{target}"' in html
     assert "el.disabled = !active;" in js
     assert 'teamAxisField.classList.toggle("is-disabled", value !== "team")' in js
+    assert 'teamAxisField.hidden = value !== "team";' in js
+    assert 'queryForm.classList.toggle("has-team-axis", value === "team")' in js
+    assert 'queryForm.classList.toggle("has-custom-period", isCustom)' in js
     assert ".aps-resource-team-axis-field.is-disabled" in css
+    team_axis_rule = css[css.index(".aps-resource-team-axis-field.is-disabled") : css.index("}", css.index(".aps-resource-team-axis-field.is-disabled"))]
+    assert "display: none;" in team_axis_rule
+    assert "visibility: hidden;" not in team_axis_rule
+    resource_rule = css[css.index(".aps-query-card .aps-resource-query-grid") : css.index("}", css.index(".aps-query-card .aps-resource-query-grid"))]
+    assert "grid-template-columns: 1fr;" in resource_rule
+    assert "auto-fit" not in resource_rule
+    desktop_rule = css[css.index("@container (min-width: 720px)") : css.index("@container (min-width: 900px)")]
+    assert "grid-template-columns: repeat(4, minmax(0, 1fr));" in desktop_rule
+    assert ".aps-query-card .aps-resource-query-grid > .dq-plan" in desktop_rule
+    assert "grid-column: span 2;" in desktop_rule
+    assert ".aps-query-card .aps-resource-query-grid.has-custom-period > .dq-start" in desktop_rule
+    assert "grid-column-start: 1;" in desktop_rule
+    assert "dispatch-query" in html
+    assert "dq-actions" in html
     assert "待选择" in html
+    assert ".aps-query-card .aps-resource-query-grid .aps-resource-target-selects > select" in css
+    assert "align-self: end;" in css
+
+
+def test_resource_dispatch_script_bundle_is_unconditional_and_ordered() -> None:
+    html = _read("templates/scheduler/resource_dispatch.html")
+    block_start = html.index("{% block extra_scripts %}")
+    block_end = html.index("{% endblock %}", block_start)
+    script_block = html[block_start:block_end]
+
+    gantt_start = script_block.index("js/frappe-gantt.min.js")
+    gantt_fit_start = script_block.index("js/gantt_popup_fit.js")
+    endif_start = script_block.index("{% endif %}")
+    shared_start = script_block.index("js/resource_dispatch_shared.js")
+    core_start = script_block.index("js/resource_dispatch_core.js")
+    execution_start = script_block.index("js/resource_execution.js")
+    boot_start = script_block.index("js/resource_dispatch_boot.js")
+
+    assert gantt_start < gantt_fit_start < endif_start
+    assert endif_start < shared_start < core_start < execution_start < boot_start
+    assert "js/resource_dispatch.js" not in script_block
+    assert [name for name, _tag in resource_dispatch_script_tags()] == [
+        "resource_dispatch_shared.js",
+        "resource_dispatch_core.js",
+        "resource_execution.js",
+        "resource_dispatch_boot.js",
+    ]
+    for _script_name, script_tag in resource_dispatch_script_tags():
+        assert " defer" in script_tag
+        assert " async" not in script_tag
 
 
 def test_scheduler_preset_switch_uses_page_script_without_public_auto_submit() -> None:

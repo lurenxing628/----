@@ -340,7 +340,7 @@ def _summary_pairs(payload: Dict[str, Any]) -> List[List[Any]]:
         ["排产版本", _summary_filter_value(filters, "version")],
         ["查看方案", _summary_plan_label(filters)],
         ["计划身份", _summary_plan_identity_value(payload)],
-        ["派工反馈说明", _summary_plan_guardrail_value(payload)],
+        ["现场记录说明", _summary_plan_guardrail_value(payload)],
         ["模拟方案说明", _summary_scenario_note(filters)],
         ["任务数量", summary.get("total_tasks") or 0],
         ["总工时（小时）", summary.get("total_hours") or 0],

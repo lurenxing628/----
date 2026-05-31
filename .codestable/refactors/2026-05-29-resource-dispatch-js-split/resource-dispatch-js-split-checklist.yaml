@@ -1,0 +1,117 @@
+doc_type: refactor-checklist
+refactor: 2026-05-29-resource-dispatch-js-split
+created: 2026-05-29
+status: applied
+source_plan: .codestable/refactors/2026-05-29-resource-dispatch-js-split/resource-dispatch-js-split-refactor-design.md
+
+steps:
+  - action: "先改测试读取口径：新增资源排班脚本束 helper，覆盖 RESOURCE_DISPATCH_JS 和直接读取 static/js/resource_dispatch.js 的测试入口"
+    exit_signal: "拆分前相关前端合约测试仍通过；测试不再要求执行函数必须存在于 resource_dispatch.js 单文件；日历资源展示链路断言改为逐函数体提取，未降级成全文搜索"
+    status: done
+  - action: "建立 shared 命名空间和 boot 启动边界：新增 window.__APS_RESOURCE_DISPATCH__、pageEl 早退守卫和 resource_dispatch_boot.js"
+    exit_signal: "模板 script 顺序为 has_history 内的 frappe-gantt/gantt_popup_fit 之后，在条件块外 defer 加载 shared -> core -> execution -> boot；boot 之前不触发首轮加载；无 rdPage 时安静退出"
+    status: done
+  - action: "拆出 execution 子域：现场记录任务卡、填写、查看记录、实际导入迁入 resource_execution.js"
+    exit_signal: "现场记录前端合约测试通过；导入成功仍双刷新 loadExecutionData + loadData；loadData 成功/失败联动保持；loadExecutionData 早退和失败提示分支保持"
+    status: done
+  - action: "拆出 core 子域并收束原入口：排班查询/汇总/明细/日历/甘特逻辑迁入 resource_dispatch_core.js，原 resource_dispatch.js 不再作为模板主入口"
+    exit_signal: "排班页 URL/UI/交互不变；currentQueryString 仍优先使用 window.location.search，空时再从 state.cfg.filters 重建既有参数"
+    status: done
+  - action: "回归验证和范围守护：跑聚焦测试、grep 禁止拆页/路由/打包/数据库误改，并对资源排班页做浏览器点验"
+    exit_signal: "聚焦测试通过；未新增路由、导航、Win7 hidden-import、OperationExecutionEvents schema 改动；资源排班页浏览器点验通过后才收尾或继续"
+    status: done
+
+checks:
+  - item: "不新增 /scheduler/resource-execution 路由或 scheduler_resource_execution.py"
+    source: 范围守护
+    status: passed
+  - item: "不新增排产主导航现场记录入口"
+    source: 范围守护
+    status: passed
+  - item: "不摘除资源排班页现有现场记录 UI"
+    source: 范围守护
+    status: passed
+  - item: "不拆 resource_dispatch.html 的业务 DOM include，只允许改 script 引入顺序"
+    source: 范围守护
+    status: passed
+  - item: "不改执行 API URL 与 endpoint 名"
+    source: 范围守护
+    status: passed
+  - item: "不改 OperationExecutionEvents schema 与 can_write_feedback 语义"
+    source: 范围守护
+    status: passed
+  - item: "模板移除旧 resource_dispatch.js 主入口引用，只按顺序引入 shared/core/execution/boot 四个新文件"
+    source: 前端契约
+    status: passed
+  - item: "shared/core/execution/boot 四个新业务脚本位于 {% if has_history %} 条件块外，继续使用 defer，禁止 async"
+    source: 前端契约
+    status: passed
+  - item: "旧 resource_dispatch.js 若保留，不被模板引用，且不再承载主启动逻辑"
+    source: 前端契约
+    status: passed
+  - item: "使用明确命名空间 window.__APS_RESOURCE_DISPATCH__，不使用短名 window.RD"
+    source: 前端契约
+    status: passed
+  - item: "shared 导出 pageEl、state、escapeHtml、trim、text、show、$、badge、parseJson、resourceInfo、resourceDisplayHtml、resourceCell、namedResourceInfo、resourceInfoHtml、fullTextCell、latestExceptionSummary 等共享工具"
+    source: 前端契约
+    status: passed
+  - item: "core 至少导出 loadData、currentQueryString、bindFieldToggles、bindTabs"
+    source: 前端契约
+    status: passed
+  - item: "execution 至少导出 loadExecutionData、renderExecutionCards、bindExecutionActionClicks、bindActualImportButtons"
+    source: 前端契约
+    status: passed
+  - item: "跨域互调通过 window.__APS_RESOURCE_DISPATCH__ 晚绑定读取，不在文件加载时捕获另一个子文件函数"
+    source: 前端契约
+    status: passed
+  - item: "boot 启动顺序保持 bindFieldToggles、bindTabs、bindExecutionActionClicks、bindActualImportButtons、loadData"
+    source: 前端契约
+    status: passed
+  - item: "shared -> core -> execution -> boot 加载顺序稳定，且排在 frappe-gantt.min.js 和 gantt_popup_fit.js 后"
+    source: 前端契约
+    status: passed
+  - item: "no_history 页面仍加载 shared/core/execution/boot，视角和区间下拉联动保持正常"
+    source: 前端契约
+    status: passed
+  - item: "无 rdPage 时 boot 安静退出，shared/core/execution 不因页面根节点缺失报错"
+    source: 前端契约
+    status: passed
+  - item: "shared 读取 pageEl.getAttribute(...) 之前先判空，缺少 rdPage 时只设置安全空状态"
+    source: 前端契约
+    status: passed
+  - item: "跨文件调用点已逐项改写：executionEventsUrl/actualImportUrl/executionRequestUrl -> currentQueryString，loadData -> loadExecutionData/renderExecutionCards，submitActualImport -> loadExecutionData/loadData，buildDetailRowsHtml/ganttPopup -> latestExceptionSummary"
+    source: 前端契约
+    status: passed
+  - item: "loadData 成功后仍刷新现场记录任务卡"
+    source: 行为等价
+    status: passed
+  - item: "loadData 失败后仍 renderExecutionCards(null)，避免旧任务卡残留"
+    source: 行为等价
+    status: passed
+  - item: "loadExecutionData 无历史/不可查询/无执行 URL 时仍 renderExecutionCards(null)，请求失败时仍 state.execution = null 并渲染带 disabled_reason 的空任务卡"
+    source: 行为等价
+    status: passed
+  - item: "实际情况导入成功后仍刷新现场记录任务卡和排班表"
+    source: 行为等价
+    status: passed
+  - item: "currentQueryString 保留 window.location.search 优先，并保留 version/plan_role/scenario_id 等既有参数语义"
+    source: 行为等价
+    status: passed
+  - item: "operation_execution_feedback_test_support.py 的 RESOURCE_DISPATCH_JS 单文件常量已改造为脚本束 helper 或等价接口"
+    source: 测试适配
+    status: passed
+  - item: "regression_resource_dispatch_site_records_frontend_contract.py 不再直接假设执行逻辑在 resource_dispatch.js 单文件"
+    source: 测试适配
+    status: passed
+  - item: "regression_table_layout_readability_contract.py:118 改为逐个提取 namedResourceInfo、resourceInfoHtml、calendarTaskHtml 函数体断言，不再依赖 [namedResourceInfo, renderFlags] 跨文件区间，未降级成全文 in 搜索"
+    source: 测试适配
+    status: passed
+  - item: "regression_scheduler_ui_range_feedback_contract.py、regression_scheduler_resource_dispatch_invalid_query_cleanup.py、regression_frontend_ui_language_polish.py 已改为脚本束读取或明确子文件读取"
+    source: 测试适配
+    status: passed
+  - item: "资源排班/现场记录相关前端合约测试通过"
+    source: 验收场景
+    status: passed
+  - item: "资源排班页浏览器确认查询、tab、现场记录任务卡、实际情况导入入口仍在原页"
+    source: 验收场景
+    status: passed

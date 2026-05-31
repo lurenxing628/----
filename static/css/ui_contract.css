@@ -757,14 +757,76 @@ button.aps-theme-switch:focus-visible {
   justify-content: flex-start;
 }
 
+.aps-query-card .aps-resource-query-grid,
+.aps-query-card .dispatch-query {
+  display: grid;
+  grid-template-columns: 1fr;
+  column-gap: 16px;
+  row-gap: 10px;
+  align-items: start;
+}
+
+.aps-query-card .aps-resource-query-grid > * {
+  min-width: 0;
+}
+
+.aps-query-card .aps-resource-query-grid .form-field > select,
+.aps-query-card .aps-resource-query-grid .form-field > input[type="date"],
+.aps-query-card .aps-resource-query-grid .form-field > input[type="text"],
+.aps-query-card .aps-resource-query-grid .aps-resource-target-selects > select {
+  width: 100%;
+  min-width: 0;
+}
+
+.aps-query-card .aps-resource-query-grid > :where(.dq-view, .dq-object, .dq-team, .dq-range, .dq-date, .dq-start, .dq-end, .dq-version, .dq-plan),
+.aps-query-card .aps-resource-query-actions,
+.aps-query-card .dispatch-query > .dq-actions {
+  grid-column: 1 / -1;
+}
+
+.aps-query-card .aps-resource-query-actions {
+  align-self: end;
+  justify-content: flex-start;
+  gap: 12px;
+  margin-top: 0;
+}
+
 @container (min-width: 720px) {
   .aps-form-card .aps-edit-form-grid,
   .aps-query-card .aps-query-form-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
-  .aps-query-card .aps-resource-query-grid > .aps-resource-query-actions {
+  .aps-query-card .aps-resource-query-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .aps-query-card .aps-resource-query-grid > .dq-view,
+  .aps-query-card .aps-resource-query-grid > .dq-object,
+  .aps-query-card .aps-resource-query-grid > .dq-team,
+  .aps-query-card .aps-resource-query-grid > .dq-range,
+  .aps-query-card .aps-resource-query-grid > .dq-date,
+  .aps-query-card .aps-resource-query-grid > .dq-start,
+  .aps-query-card .aps-resource-query-grid > .dq-end,
+  .aps-query-card .aps-resource-query-grid > .dq-version,
+  .aps-query-card .aps-resource-query-grid.has-team-axis > .dq-plan,
+  .aps-query-card .aps-resource-query-grid.has-custom-period > .dq-plan,
+  .aps-query-card .aps-resource-query-actions,
+  .aps-query-card .dispatch-query > .dq-actions {
+    grid-column: span 1;
+  }
+
+  .aps-query-card .aps-resource-query-grid > .dq-plan {
     grid-column: span 2;
+  }
+
+  .aps-query-card .aps-resource-query-grid.has-custom-period > .dq-start {
+    grid-column-start: 1;
+  }
+
+  .aps-query-card .aps-resource-query-actions,
+  .aps-query-card .dispatch-query > .dq-actions {
+    justify-content: flex-start;
   }
 
   .aps-query-card .aps-version-picker-form {
@@ -775,10 +837,6 @@ button.aps-theme-switch:focus-visible {
 @container (min-width: 900px) {
   .aps-query-card .aps-week-plan-query-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
-  }
-
-  .aps-query-card .aps-resource-query-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .aps-scheduler-batches-query-grid {
@@ -798,6 +856,14 @@ button.aps-theme-switch:focus-visible {
 
   .aps-version-link-actions .btn {
     width: 100%;
+  }
+
+  .aps-query-card .aps-resource-query-actions {
+    justify-content: flex-start;
+  }
+
+  .aps-query-card .aps-resource-query-actions .btn {
+    flex: 1 1 0;
   }
 }
 
@@ -1754,7 +1820,7 @@ table td {
 }
 
 .aps-resource-team-axis-field.is-disabled {
-  visibility: hidden;
+  display: none;
   pointer-events: none;
 }
 

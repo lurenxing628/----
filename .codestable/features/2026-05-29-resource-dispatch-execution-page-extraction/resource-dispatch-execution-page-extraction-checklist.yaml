@@ -1,0 +1,13 @@
+doc_type: feature-checklist
+feature: 2026-05-29-resource-dispatch-execution-page-extraction
+created: 2026-05-29
+status: superseded
+execution_allowed: false
+superseded_by: .codestable/refactors/2026-05-29-resource-dispatch-js-split/resource-dispatch-js-split-refactor-design.md
+superseded_artifact: resource-dispatch-execution-page-extraction-checklist.superseded.yaml
+reason: "旧 feature 方案已被对抗评审重定向；不要新增 /scheduler/resource-execution，不要新增主导航，不要摘除资源排班页执行 UI。"
+blocked_reason: "本文件是防误执行占位，不承载可执行步骤；只拆 JS 的正确入口是 resource-dispatch-js-split refactor。"
+
+steps: []
+
+checks: []

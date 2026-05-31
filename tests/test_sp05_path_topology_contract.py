@@ -6,6 +6,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from typing import Dict, List, Optional, Set, Tuple
 
 from flask import Flask
 
@@ -175,14 +176,14 @@ def _assert_init_has_no_imports(path: Path) -> None:
     assert imports == []
 
 
-def _module_context_from_rel_path(rel: str) -> tuple[str, bool]:
+def _module_context_from_rel_path(rel: str) -> Tuple[str, bool]:
     module_name = rel[:-3].replace("/", ".")
     if module_name.endswith(".__init__"):
         return module_name[: -len(".__init__")], True
     return module_name, False
 
 
-def _resolve_import_from_module(node: ast.ImportFrom, current_module: str, *, is_package: bool) -> str | None:
+def _resolve_import_from_module(node: ast.ImportFrom, current_module: str, *, is_package: bool) -> Optional[str]:
     if node.level <= 0:
         return node.module
     package_parts = current_module.split(".")
@@ -197,8 +198,8 @@ def _resolve_import_from_module(node: ast.ImportFrom, current_module: str, *, is
     return base or None
 
 
-def _import_module_aliases(module_ast: ast.Module) -> set[str]:
-    aliases: set[str] = set()
+def _import_module_aliases(module_ast: ast.Module) -> Set[str]:
+    aliases: Set[str] = set()
     for node in module_ast.body:
         if not isinstance(node, ast.ImportFrom):
             continue
@@ -215,9 +216,9 @@ def _legacy_import_modules(
     current_module: str,
     *,
     is_package: bool,
-    import_module_aliases: set[str],
-) -> list[str]:
-    modules: list[str] = []
+    import_module_aliases: Set[str],
+) -> List[str]:
+    modules: List[str] = []
     if isinstance(node, ast.Import):
         modules.extend(alias.name for alias in node.names)
     elif isinstance(node, ast.ImportFrom) and node.module:
@@ -244,18 +245,18 @@ def _legacy_import_modules(
     return modules
 
 
-def _matches_legacy_compat_module(module_name: str) -> str | None:
+def _matches_legacy_compat_module(module_name: str) -> Optional[str]:
     for legacy_module in sorted(LEGACY_COMPAT_MODULES):
         if module_name == legacy_module or module_name.startswith(f"{legacy_module}."):
             return legacy_module
     return None
 
 
-def _legacy_import_violations_for_source(rel: str, source: str) -> list[str]:
+def _legacy_import_violations_for_source(rel: str, source: str) -> List[str]:
     current_module, is_package = _module_context_from_rel_path(rel)
     module_ast = ast.parse(source, filename=rel)
     import_module_aliases = _import_module_aliases(module_ast)
-    violations: list[str] = []
+    violations: List[str] = []
     for node in ast.walk(module_ast):
         matched_legacy_modules = set()
         for module_name in _legacy_import_modules(
@@ -273,7 +274,7 @@ def _legacy_import_violations_for_source(rel: str, source: str) -> list[str]:
     return violations
 
 
-def _import_module_isolation_probe(module_name: str) -> dict[str, object]:
+def _import_module_isolation_probe(module_name: str) -> Dict[str, object]:
     probe = """
 import importlib
 import json
@@ -386,7 +387,7 @@ def test_sp05_legacy_import_scan_catches_dynamic_import_strings() -> None:
 
 
 def test_sp05_production_code_does_not_grow_legacy_wrapper_imports() -> None:
-    violations: list[str] = []
+    violations: List[str] = []
     for root in PRODUCTION_LEGACY_IMPORT_SCAN_ROOTS:
         for path in (REPO_ROOT / root).rglob("*.py"):
             rel = path.relative_to(REPO_ROOT).as_posix()
@@ -414,7 +415,7 @@ def test_sp05_route_topology_and_compatibility_matrix() -> None:
     lingering_root_files = [path for path in ROUTE_ROOTS_REMOVED if (REPO_ROOT / path).exists()]
     assert lingering_root_files == []
 
-    root_domain_hijacks: list[str] = []
+    root_domain_hijacks: List[str] = []
     for root_name in ("process.py", "personnel.py", "equipment.py", "system.py"):
         root_path = REPO_ROOT / "web/routes" / root_name
         if not root_path.exists():

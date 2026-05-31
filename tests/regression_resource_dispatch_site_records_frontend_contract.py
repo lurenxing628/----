@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from tests.operation_execution_feedback_test_support import (
-    RESOURCE_DISPATCH_JS,
     RESOURCE_DISPATCH_TEMPLATE,
     UI_CONTRACT_CSS,
     _build_app,
+    read_resource_dispatch_script_bundle,
 )
+from tests.resource_dispatch_frontend_support import extract_js_function
 
 
 def test_resource_dispatch_page_has_site_records_words_and_excel_entries(tmp_path, monkeypatch) -> None:
@@ -21,7 +22,7 @@ def test_resource_dispatch_page_has_site_records_words_and_excel_entries(tmp_pat
     body = resp.get_data(as_text=True)
 
     assert resp.status_code == 200
-    source = RESOURCE_DISPATCH_JS.read_text(encoding="utf-8")
+    source = read_resource_dispatch_script_bundle()
     page_contract = body + "\n" + source
     for expected in ("现场记录", "填写实际情况", "导入实际情况 Excel", "下载填写模板", "查看计划和实际"):
         assert expected in page_contract
@@ -53,7 +54,7 @@ def test_resource_dispatch_page_has_site_records_words_and_excel_entries(tmp_pat
 
 
 def test_resource_dispatch_frontend_uses_actual_record_form_and_one_click_import() -> None:
-    source = RESOURCE_DISPATCH_JS.read_text(encoding="utf-8")
+    source = read_resource_dispatch_script_bundle()
     template = RESOURCE_DISPATCH_TEMPLATE.read_text(encoding="utf-8")
     css = UI_CONTRACT_CSS.read_text(encoding="utf-8")
 
@@ -151,3 +152,27 @@ def test_resource_dispatch_frontend_uses_actual_record_form_and_one_click_import
         "执行状态读模型",
     ):
         assert forbidden not in source
+
+
+def test_resource_dispatch_execution_buttons_follow_available_actions_contract() -> None:
+    source = read_resource_dispatch_script_bundle()
+    render_actions = extract_js_function(source, "renderExecutionActions")
+
+    assert 'executionAction(actions, "fill_actual")' in render_actions
+    assert 'executionAction(actions, "view_records")' in render_actions
+    assert "fillAction && fillAction.enabled === true" in render_actions
+    assert "viewAction && viewAction.enabled === true" in render_actions
+    assert "fillAction && fillAction.label" in render_actions
+    assert "viewAction && viewAction.label" in render_actions
+    assert "viewAction && viewAction.disabled_reason" in render_actions
+    assert 'recordsDisabledAttr = opId ? "" : " disabled"' not in render_actions
+    assert 'recordsTitleAttr = opId ? ""' not in render_actions
+
+
+def test_manual_actual_save_refreshes_dispatch_views_after_updating_task_card() -> None:
+    source = read_resource_dispatch_script_bundle()
+    post_action = extract_js_function(source, "postExecutionAction")
+
+    assert "replaceExecutionTask(responsePayload.data && responsePayload.data.task_card);" in post_action
+    assert "loadData();" in post_action
+    assert post_action.index("replaceExecutionTask(") < post_action.index("loadData();")

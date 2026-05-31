@@ -750,14 +750,14 @@ result_summary.is_simulation is not true
 - `source_table=candidate_rows`：这是候选代表方案，只能查看或对比。
 - `source_table=adjustment_scenario_rows`：这是模拟方案预览，必须先发布成正式版本。
 - 计划版本不是最新正式采用方案、是模拟预览、是失败结果、是回退查看、是缺明细查看、是对比参考方案：提示用户切换到最新正式采用方案。
-- 历史正式方案：只能查看，不能提交派工或现场反馈。
+- 历史正式方案：只能查看，不能提交现场反馈。
 
 **页面文案**：
 
-- 正式计划：`当前查看的是正式采用方案，可用于派工和现场反馈。`
-- 候选方案：`当前查看的是对比参考方案，不能直接派工。`
+- 正式计划：`这套是当前可执行的正式采用方案，可以查看资源排班，并按规则填写现场实际。`
+- 候选方案：`这是对比参考方案，只用来和正式采用方案比一比，只能查看，不能提交现场反馈。`
 - 模拟方案：`当前查看的是模拟预览，正式计划还没有改变。`
-- 历史正式方案：`当前查看的是历史正式方案，只能查看，不能提交开工或完工。请切换到最新正式采用方案。`
+- 历史正式方案：`这是历史正式方案，只能查看计划和实际，不能提交现场反馈。请切换到最新正式采用方案。`
 
 ### 5.6 执行事件表契约
 
@@ -1109,18 +1109,15 @@ GET  /scheduler/resource-dispatch/execution/<op_id>/events
         updated_at: datetime,
         available_actions: [
           {
-            action: start | pause | resume | finish | report_exception,
-            label: 开工 | 暂停 | 继续生产 | 完工 | 报异常,
+            action: fill_actual | view_records,
+            label: 填写实际情况 | 查看计划和实际,
             enabled: bool,
             disabled_reason: Optional[str]
           }
         ],
         unavailable_reasons: {
-          start: Optional[str],
-          pause: Optional[str],
-          resume: Optional[str],
-          finish: Optional[str],
-          report_exception: Optional[str]
+          fill_actual: Optional[str],
+          view_records: Optional[str]
         }
       }
     ]
@@ -1128,7 +1125,7 @@ GET  /scheduler/resource-dispatch/execution/<op_id>/events
 }
 ```
 
-`available_actions` 是唯一允许前端用来画按钮的数据源，旧字段名 `actions` 不再使用。`available_actions[].action` 是程序内部动作值，页面只能显示 `label`；`disabled_reason` 和 `unavailable_reasons` 必须是中文大白话，例如“当前是模拟预览，只能查看，不能提交现场反馈”或“这道工序还没开工，不能完工”。
+`available_actions` 是唯一允许前端用来画按钮的数据源，旧字段名 `actions` 不再使用。当前资源派工普通页面只用 `fill_actual` 和 `view_records` 两个动作；`start`、`pause`、`resume`、`finish`、`report_exception` 属于更早的完整车间反馈设想，除非对应功能重新打开，否则不能再作为普通页面按钮契约。`available_actions[].action` 是程序内部动作值，页面只能显示 `label`；`disabled_reason` 和 `unavailable_reasons` 必须是中文大白话，例如“当前是模拟预览，只能查看，不能提交现场反馈”或“这道工序还没有可填写的现场实际”。
 
 **车间反馈 POST 基础请求体**：
 
@@ -1523,3 +1520,4 @@ execution_snapshot_op_ids
 - 2026-05-27：完成 `plan-vs-actual-review`。报表中心新增计划和现场实际复盘页面及 Excel 导出，支持按版本、日期和批次筛选；导出固定使用“计划和现场实际”工作表和中文列名；实际开始、实际结束、暂停时长、异常信息和实际资源均来自执行事件读模型。
 - 2026-05-27：完成 `reschedule-respects-execution-facts`。普通重排、候选比较、多起点、局部搜索、图排程 ready queue、scenario 保存和 scenario 发布统一接入执行事实快照；生产中和暂停中工序默认固定，已完工工序保留真实时间并约束下游，异常中阻止普通自动重排；普通模拟只校验不写正式版本；保存或发布后现场状态变化会返回中文冲突提示并回滚。
 - 2026-05-27：完成 `aps-three-gap-docs-quality-gate`，并将本 roadmap 状态改为 completed。用户说明、开发测试说明、回归测试清单、关键 Python 文件清单、Win7 x64 / Python 3.8 / Chrome 109 / 离线静态资源验收手册和质量门禁命令已收口；第 14 项复审发现的手册入口数量、用户可见内部英文名、旧草稿话术和第 5 项测试清单不一致问题已修复。
+- 2026-05-31：按 APS 前端工作台复审发现的契约漂移，补齐当前现场记录任务卡的 `available_actions` 示例：普通页面使用 `fill_actual` / `view_records`，前端必须读取 `label`、`enabled` 和 `disabled_reason`。

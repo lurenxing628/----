@@ -1,0 +1,421 @@
+roadmap: aps-frontend-workbench
+created: 2026-05-31
+last_reviewed: 2026-05-31
+
+items:
+  - slug: workbench-context-link-contract
+    title: 工作台上下文和跨页链接合同
+    description: 建立 WorkbenchPlanContext 和 WorkbenchLink 口径，让首页、甘特、分析、资源派工、报表之间跳转时保持同一版本、方案、日期范围和业务对象。
+    depends_on: []
+    depends_on_reasons: {}
+    status: planned
+    feature: null
+    minimal_loop: true
+    primary_paths:
+      - web/viewmodels/scheduler_workbench_links.py
+      - web/viewmodels/dashboard_workbench.py
+      - web/viewmodels/scheduler_analysis_candidates.py
+      - web/viewmodels/page_manuals_scheduler_outputs.py
+      - tests/regression_scheduler_workbench_links_contract.py
+    entrypoints:
+      - "新建或整理专门负责生成跨页链接的 ViewModel，不让各页面自己拼 URL"
+      - "统一 version、plan_role、scenario_id、date_from/date_to、start_date/end_date、resource_type/resource_id、scope_type/scope_id 等参数翻译"
+      - "用户可见文本只用中文业务名，内部字段只留在 URL/隐藏字段/日志"
+      - "非正式方案不能生成现场记录写入入口，也不能下发写入 API URL、Excel 导入 URL、模板下载 URL、表单 action 或 data-* 写入地址"
+    test_commands:
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_workbench_links_contract.py"
+    forbidden_paths:
+      - core/algorithms/
+      - schema.sql
+      - vendor/
+    exit_checks:
+      - WorkbenchPlanContext 字段包含版本、方案身份、日期范围、批次、资源、可写状态和中文护栏说明
+      - WorkbenchLink 包含 label、url、target_page、context_summary、disabled、disabled_reason、required_params
+      - target_page 只使用 dashboard、analysis、gantt、resource_dispatch、overdue_report、delay_diagnosis、utilization_report、execution_review、reports_index
+      - 首页到分析、甘特、资源派工、报表的链接都保留版本、方案和日期范围
+      - 分析推荐卡到甘特、超期清单、资源派工的链接不丢 plan_role 和 scenario_id
+      - 甘特任务详情到资源派工和计划实际复盘的链接保留任务定位
+      - 报表明细回甘特或资源派工时保留版本、日期和资源/批次对象
+      - 模拟预览只显示中文预览名，不把 scenario_id 当页面文案
+      - 候选方案、模拟预览、对比参考方案、历史正式方案不会输出任何现场记录写入入口或写入 URL
+      - 新增 ViewModel 代码保持 Python 3.8 写法，不使用 int | None、list[str] 等新版类型语法
+
+  - slug: workbench-nav-entry
+    title: 顶层计划工作台入口
+    description: 把顶层导航里的首页升级为计划工作台入口，让计划员能一跳进入首页值班台、排产分析、甘特图、资源派工、计划和现场实际，承接“前端布局审计第 8 条：顶层入口不清楚”。
+    depends_on: [workbench-context-link-contract]
+    depends_on_reasons:
+      workbench-context-link-contract: 顶层入口需要复用统一链接，避免导航先各自手拼 URL。
+    status: planned
+    feature: null
+    minimal_loop: true
+    primary_paths:
+      - templates/base.html
+      - templates/components/ui_macros.html
+      - static/css/ui_contract.css
+      - tests/regression_workbench_nav_entry_contract.py
+      - tests/regression_frontend_ui_language_polish.py
+    entrypoints:
+      - "读取 base.html 当前首页、排产、报表等顶层导航"
+      - "用本地 HTML/CSS 做计划工作台一跳入口或轻量下拉，不引入外部菜单库"
+      - "入口文案使用中文业务名，不显示 plan_role、scenario_id 等内部字段"
+    test_commands:
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_workbench_nav_entry_contract.py tests/regression_frontend_ui_language_polish.py"
+    forbidden_paths:
+      - core/algorithms/
+      - vendor/
+      - installer/
+    exit_checks:
+      - 顶层导航出现“计划工作台”或等价的一跳作业入口
+      - 计划工作台入口能到首页值班台、排产分析、设备甘特、人员甘特、资源派工、计划和现场实际
+      - 菜单或入口使用本地静态样式，键盘可达，不依赖外部 JS 库
+      - 顶层入口不显示内部字段名
+
+  - slug: dashboard-workbench-risk-todos
+    title: 首页值班台和今日待处理
+    description: 把首页从静态统计卡和入口宫格升级为计划员值班台，显示最新排产风险、今日待处理和下一步入口。
+    depends_on: [workbench-context-link-contract, workbench-nav-entry]
+    depends_on_reasons:
+      workbench-context-link-contract: 首页待处理要生成跨页入口，必须先有统一链接合同。
+      workbench-nav-entry: 先确保计划员从顶层能进入工作台，再升级首页内容。
+    status: planned
+    feature: null
+    minimal_loop: true
+    primary_paths:
+      - templates/dashboard.html
+      - web/viewmodels/dashboard_workbench.py
+      - web/routes/dashboard.py
+      - tests/regression_dashboard_workbench_contract.py
+      - tests/regression_aps_workbench_first_round_flow_contract.py
+      - tests/regression_frontend_ui_language_polish.py
+      - tests/regression_manual_entry_scope.py
+    entrypoints:
+      - "读取 dashboard.html 当前四张统计卡和最近排产区域"
+      - "复用排产历史、超期数量、候选方案、现场记录现状，不在模板里临时猜业务规则"
+      - "第一版最多展示 6 条今日待处理"
+      - "现场情况待确认只统计正式采用方案、当前日期范围内已到计划开始时间且 actual_start_time、actual_end_time、current_status 都还不能说明现场进展的任务，不统计未来任务"
+      - "资源负荷阈值固定为 warning >= 75%、danger >= 90%"
+    test_commands:
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_dashboard_workbench_contract.py tests/regression_aps_workbench_first_round_flow_contract.py tests/regression_frontend_ui_language_polish.py tests/regression_manual_entry_scope.py"
+    forbidden_paths:
+      - core/algorithms/
+      - vendor/
+      - installer/
+    exit_checks:
+      - 首页出现今日待处理区域
+      - 待处理类型至少覆盖超期批次、方案需要确认、资源负荷偏高、现场情况待确认、基础数据缺口
+      - 每类待处理都有默认动作和备用动作，且动作使用 WorkbenchLink 生成
+      - 每条待处理都有中文标题、影响说明、证据说明和可点击入口
+      - 同一类型多条时按总方案规则只挑最重要一条，并在影响说明里写明数量
+      - 资源高负荷待处理说明受影响对象和数据来源；算不出来时显示数据不足，不显示成 0%
+      - 反馈人为空不阻断保存、不阻断报表、不作为首页红色风险
+      - 首页文案使用“现场情况待确认”或“暂未收到/录入现场情况”，不写成必须补录
+      - 第一轮小烟测覆盖顶层进首页、首页跳分析/甘特/资源派工/报表且上下文不丢
+      - 第一版如果不保存处理状态，页面明确说明待处理项是实时生成
+      - 空状态用中文说明当前没有必须马上处理的风险
+      - 页面不显示 plan_role、scenario_id、source_table、candidate_id、op_id、schedule_id
+      - 不引入外部前端资源，不使用破坏 Chrome 109 的语法
+      - 新增 ViewModel 代码保持 Python 3.8 写法，不使用 int | None、list[str] 等新版类型语法
+
+  - slug: analysis-action-hub-layout
+    title: 排产分析行动入口布局
+    description: 调整排产分析页层级，把方案推荐、延期解释和诊断建议提到技术过程之前，让用户先看到结论和下一步。
+    depends_on: [workbench-context-link-contract]
+    depends_on_reasons:
+      workbench-context-link-contract: 分析页要生成跳甘特、资源派工、报表的入口，必须先保证跨页上下文不会丢。
+    status: planned
+    feature: null
+    minimal_loop: false
+    primary_paths:
+      - templates/scheduler/analysis.html
+      - templates/scheduler/analysis_parts/_candidate_comparison.html
+      - templates/scheduler/analysis_parts/_diagnostic_sections.html
+      - web/viewmodels/scheduler_analysis_candidates.py
+      - web/viewmodels/scheduler_analysis_candidate_helpers.py
+      - tests/regression_scheduler_analysis_workbench_layout.py
+      - tests/regression_scheduler_candidate_analysis_contract.py
+    entrypoints:
+      - "保留已有推荐方案卡和三方案摘要，不重算业务规则"
+      - "把诊断行动和方案推荐组织成第一屏主信息"
+      - "优化过程和趋势图保留但放后面，不抢主入口"
+      - "影响面拆清已有字段和新增字段；已有字段先复用，算不出来的新增字段用数据不足说明"
+    test_commands:
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_analysis_workbench_layout.py tests/regression_scheduler_candidate_plain_language.py tests/regression_scheduler_candidate_analysis_contract.py"
+    forbidden_paths:
+      - core/algorithms/
+      - schema.sql
+      - vendor/
+    exit_checks:
+      - 选中版本后，页面先显示版本身份、推荐结论、主要风险和下一步按钮
+      - 没有候选方案时，显示清楚空状态
+      - 推荐方案卡复用已有超期、拖期、工期、换型指标，并对新增影响面字段显示数据不足或补水结果
+      - 诊断区继续区分事实、线索和证据不足
+      - 链接到甘特、资源派工、超期清单时保留版本和方案上下文
+      - 页面不显示内部字段名和内部英文枚举
+      - 页面不引入外部前端资源，不使用破坏 Chrome 109 的语法
+      - 新增或调整 ViewModel 代码保持 Python 3.8 写法，不使用 int | None、list[str] 等新版类型语法
+
+  - slug: gantt-task-detail-panel
+    title: 甘特任务详情区
+    description: 在只读甘特图旁边或下方增加稳定任务详情区，点击任务后显示公开字段、超期提示和下一步链接。
+    depends_on: [workbench-context-link-contract]
+    depends_on_reasons:
+      workbench-context-link-contract: 详情区里的下一步入口要跳到同一版本和方案，不能在甘特页局部临时拼 URL。
+    status: planned
+    feature: null
+    minimal_loop: false
+    primary_paths:
+      - templates/scheduler/gantt.html
+      - static/js/gantt_render.js
+      - static/js/gantt_popup.js
+      - static/css/aps_gantt.css
+      - tests/regression_gantt_task_detail_panel_contract.py
+      - tests/regression_ui_browser_geometry_smoke.py
+    entrypoints:
+      - "复用甘特 task meta 公开字段；实际开始/结束必须从现场执行状态或事件 provider 接入，不能从 task meta 硬猜"
+      - "保留现有弹窗，新详情区作为稳定阅读区域"
+      - "窄屏放下方，宽屏可放右侧"
+    test_commands:
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_gantt_task_detail_panel_contract.py"
+    forbidden_paths:
+      - core/algorithms/
+      - static/js/frappe-gantt.min.js
+      - vendor/
+    exit_checks:
+      - 点击甘特任务后，详情区显示批次、图号或物料、工序、资源、计划时间、状态和超期提示
+      - 详情区显示计划和实际小结；没有现场记录时用中文说明“暂未记录现场实际”
+      - 未选任务时显示“点击甘特条查看任务详情”
+      - 详情区不展示 op_id、schedule_id、source_table、scenario_id
+      - 当前仍是只读甘特，不开放拖拽写库
+      - 页面布局在 1280、1024、768 宽度下不遮挡甘特和筛选控件
+      - 页面不引入外部前端资源，不使用破坏 Chrome 109 的语法
+      - 新增 ViewModel 代码保持 Python 3.8 写法，不使用 int | None、list[str] 等新版类型语法
+
+  - slug: resource-dispatch-execution-lane
+    title: 资源派工执行入口分层
+    description: 梳理资源派工页的任务明细、日历矩阵、甘特图、现场记录、计划和现场实际入口，让计划员查看和计划员代录现场事实不互相挤。
+    depends_on: [workbench-context-link-contract]
+    depends_on_reasons:
+      workbench-context-link-contract: 资源派工、计划和现场实际都依赖同一计划上下文，先统一链接后再动页面层级。
+    status: planned
+    feature: null
+    minimal_loop: false
+    primary_paths:
+      - templates/scheduler/resource_dispatch.html
+      - static/js/resource_dispatch_core.js
+      - static/js/resource_execution.js
+      - web/viewmodels/scheduler_resource_dispatch.py
+      - web/viewmodels/scheduler_resource_dispatch_execution.py
+      - tests/regression_resource_dispatch_workbench_lane_contract.py
+    entrypoints:
+      - "先确认 2026-05-29-resource-dispatch-execution-page-extraction 这份未提交设计是否继续作为输入"
+      - "保留任务明细、日历矩阵、甘特图、现场记录四个现有入口"
+      - "把查看计划和实际作为正式采用方案的复盘入口，不和填写实际情况混在一起"
+      - "现场事实区是计划员代录，不是现场员工登录填写"
+      - "Excel 继续直接导入，短期不做预览 / 二次确认；导入后只显示新增、失败、跳过数量和错误说明"
+    test_commands:
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_resource_dispatch_workbench_lane_contract.py tests/regression_resource_dispatch_site_records_frontend_contract.py"
+    forbidden_paths:
+      - core/algorithms/
+      - schema.sql
+      - vendor/
+    exit_checks:
+      - 计划员查看排班的入口和计划员代录现场事实入口视觉上分清
+      - 查看计划和实际入口清楚说明是复盘，不是写入现场记录
+      - 模拟预览、候选方案和对比参考方案下，查看计划和实际入口禁用并给出中文原因
+      - 页面可见按钮和隐藏地址都必须以后端 available_actions 或后端下发 URL 为准
+      - 候选方案、模拟预览、历史正式方案不能写现场记录
+      - 非正式方案下不输出写入按钮、表单 action、API URL、Excel 导入 URL、模板下载 URL 或任何 data-* 写入地址
+      - 短期不新增“我的任务”、现场员工账号、班组权限、多人权限模型
+      - 暂停、继续、报异常、撤销、审批、扫码、消息推送全部后移；已有暂停/异常字段只作为事实或备注展示，不进入闭环
+      - 反馈人短期保持可空，空了不报错，列表里可显示“未填写反馈人”
+      - Excel 导入短期不出现预览 / 确认入口
+      - 页面不泄露内部字段名
+
+  - slug: reports-workbench-backlink
+    title: 报表中心和报表明细回跳入口
+    description: 把报表中心从报表列表升级为风险入口，并在超期清单、资源负荷、计划和现场实际、停机影响明细里补回甘特、资源派工和复盘的上下文入口。
+    depends_on: [workbench-context-link-contract]
+    depends_on_reasons:
+      workbench-context-link-contract: 报表回跳必须带同一版本、方案、日期范围和资源/批次对象，先统一上下文再补入口。
+    status: planned
+    feature: null
+    minimal_loop: false
+    primary_paths:
+      - templates/reports/index.html
+      - templates/reports/overdue.html
+      - templates/reports/utilization.html
+      - templates/reports/execution_review.html
+      - templates/reports/downtime.html
+      - web/viewmodels/scheduler_workbench_links.py
+      - web/viewmodels/scheduler_reports_workbench.py
+      - tests/regression_reports_workbench_backlink_contract.py
+      - tests/regression_ui_browser_geometry_smoke.py
+    entrypoints:
+      - "报表中心入口卡简短说明每张报表回答什么问题，详情页再展开不能证明什么"
+      - "资源负荷设备/人员明细行提供查看排班、定位甘特、查看相关超期入口"
+      - "计划和现场实际明细行只按正式采用方案复盘，并提供回资源派工、定位甘特、查看现场记录入口"
+      - "超期清单和停机影响继续给上下文回跳，不把报表做成死胡同"
+    test_commands:
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_reports_workbench_backlink_contract.py"
+    forbidden_paths:
+      - core/algorithms/
+      - schema.sql
+      - vendor/
+    exit_checks:
+      - 报表中心能按当前上下文进入超期、资源负荷、计划和现场实际、停机影响
+      - 报表入口卡显示能回答的问题，详情页显示不能证明的事情
+      - 资源负荷每行能带版本、方案、日期、资源对象跳回资源派工或甘特
+      - 计划和现场实际只复盘正式采用方案，每行能回资源派工、定位甘特或查看现场记录
+      - 停机影响没有数据时显示“当前没有停机记录或尚未维护停机数据”，不推断为没有停机
+      - 报表明细操作列不显示内部字段名
+      - 浏览器几何覆盖 /reports/ 和关键报表明细页
+
+  - slug: workbench-flow-regression-suite
+    title: 工作台主流程回归测试
+    description: 新增能证明主流程存在的回归测试，覆盖首页跳异常、跳方案、跳甘特、跳资源派工、跳计划和现场实际。
+    depends_on:
+      - workbench-context-link-contract
+      - workbench-nav-entry
+      - dashboard-workbench-risk-todos
+      - analysis-action-hub-layout
+      - gantt-task-detail-panel
+      - resource-dispatch-execution-lane
+      - reports-workbench-backlink
+    depends_on_reasons:
+      workbench-context-link-contract: 测试要断言跨页上下文不丢。
+      workbench-nav-entry: 主流程必须能从顶层计划工作台入口进入。
+      dashboard-workbench-risk-todos: 主流程起点在首页。
+      analysis-action-hub-layout: 测试要覆盖分析页行动入口。
+      gantt-task-detail-panel: 测试要覆盖甘特详情区。
+      resource-dispatch-execution-lane: 测试要覆盖资源派工和现场记录入口。
+      reports-workbench-backlink: 测试要覆盖报表不是死胡同，能回甘特、资源派工和复盘。
+    status: planned
+    feature: null
+    minimal_loop: false
+    primary_paths:
+      - tests/regression_aps_workbench_flow_contract.py
+      - tests/regression_ui_browser_geometry_smoke.py
+      - tests/ui_geometry_contract_data.py
+      - tools/test_registry.py
+      - scripts/run_quality_gate.py
+    entrypoints:
+      - "不要只检查网页里有没有某个样式名；要测用户主流程和关键中文文案"
+      - "这是第一版完整主流程测试，不依赖第二阶段的延期解释接现场事实，也不依赖甘特资源负荷摘要"
+      - "浏览器几何测试只覆盖关键页面，不把整站都塞进慢测试"
+      - "新增 aps_frontend_workbench 或等价质量门禁分组，并登记必跑测试"
+    test_commands:
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_aps_workbench_flow_contract.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py"
+    forbidden_paths:
+      - core/algorithms/
+      - schema.sql
+      - vendor/
+    exit_checks:
+      - 首页到超期解释、方案对比、甘特图、资源派工、计划和现场实际入口都有测试
+      - 测试断言版本、方案、日期范围不会跳丢
+      - 测试断言从首页待办进入目标页后，目标页自动定位或高亮同一批次/资源；无法定位时显示中文原因
+      - 测试断言非正式方案里的计划和现场实际入口禁用，并显示中文原因
+      - 测试断言普通页面不显示内部字段名
+      - 浏览器几何覆盖 /、/scheduler/analysis、/scheduler/gantt?view=machine、/scheduler/gantt?view=operator、/scheduler/resource-dispatch、/reports/、/reports/overdue、/reports/utilization、/reports/execution-review
+      - 几何测试覆盖 1280、1024、768 三档宽度，检查主内容不重叠、按钮不被遮挡、文字不挤出、关键操作入口可见
+      - 新工作台测试已注册到 tools/test_registry.py 所使用的质量门禁清单
+      - 最终浏览器兼容证明面向 Chrome 109；如果只用更新版 Chrome，只能标记为布局烟测
+
+  - slug: workbench-user-guide-refresh
+    title: 工作台用户指南刷新
+    description: 更新用户手册和页面帮助，说明计划员每天打开系统先看什么、发现延期怎么查、方案怎么比、现场记录怎么复盘。
+    depends_on: [workbench-flow-regression-suite]
+    depends_on_reasons:
+      workbench-flow-regression-suite: 指南必须跟已经测试锁住的流程一致，避免文档写的路线和真实页面不一致。
+    status: planned
+    feature: null
+    minimal_loop: false
+    primary_paths:
+      - web/viewmodels/page_manuals_scheduler_outputs.py
+      - static/docs/aps_three_gap_user_guide.md
+      - docs/dev/aps-browser-scheduler-qa-replay.md
+      - tests/regression_frontend_manual_blueprint_contract.py
+    entrypoints:
+      - "用中文大白话写早上打开系统的推荐操作顺序"
+      - "说明哪些页面只是查看，哪些页面会写现场记录"
+      - "说明模拟预览和正式采用方案的区别"
+    test_commands:
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_frontend_manual_blueprint_contract.py"
+    forbidden_paths:
+      - core/algorithms/
+      - schema.sql
+      - vendor/
+    exit_checks:
+      - 用户指南覆盖首页值班台、甘特详情、方案对比、延期解释、资源派工、计划和现场实际
+      - 文档不使用内部字段名解释普通操作
+      - 明确只读查看和写入现场记录的边界
+      - 指南里的入口名和页面真实中文文案一致
+
+  - slug: delay-diagnosis-site-facts-bridge
+    title: 延期解释接现场事实
+    description: 第二阶段增强。让延期解释读取已经录入的现场事实；有实际开始/结束时用于解释偏差，没有时用保守中文说明，不再固定说没有现场反馈。
+    depends_on: [workbench-context-link-contract, resource-dispatch-execution-lane]
+    depends_on_reasons:
+      workbench-context-link-contract: 延期解释里的建议动作和回跳要复用统一上下文。
+      resource-dispatch-execution-lane: 必须先稳定现场事实入口和正式方案写入边界，再把事实接入诊断。
+    status: planned
+    feature: null
+    minimal_loop: false
+    primary_paths:
+      - core/services/scheduler/schedule_delay_diagnosis_service.py
+      - core/services/scheduler/operation_execution_feedback_service.py
+      - core/services/report/delay_diagnosis_presentation.py
+      - templates/reports/overdue.html
+      - tests/regression_scheduler_delay_diagnosis_contract.py
+    entrypoints:
+      - "按批次和工序关联现场执行事件"
+      - "有实际开始/结束时用于解释偏差，没有时显示暂未记录现场实际"
+      - "牵连批次/订单第一版不做精确影响面，不能判断时必须明说"
+    test_commands:
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_delay_diagnosis_contract.py"
+    forbidden_paths:
+      - core/algorithms/
+      - schema.sql
+      - vendor/
+    exit_checks:
+      - 延期解释不再固定说没有现场执行反馈
+      - 有现场事实时能显示实际开始/结束或偏差说明
+      - 没有现场事实时显示保守说明
+      - 不能判断牵连批次/订单时明确写“当前不能判断”
+      - 不暴露事件 id、op_id、schedule_id、source_table
+
+  - slug: gantt-resource-load-summary
+    title: 甘特资源负荷摘要
+    description: 第二阶段增强。在甘特图附近显示最忙设备和最忙人员摘要，让计划员不用先跳报表也能看到资源压力。
+    depends_on: [workbench-context-link-contract, gantt-task-detail-panel]
+    depends_on_reasons:
+      workbench-context-link-contract: 资源负荷摘要要能跳资源派工和资源负荷报表，必须复用统一上下文。
+      gantt-task-detail-panel: 甘特详情区先稳定，避免同一轮同时重排甘特旁边多个区域。
+    status: planned
+    feature: null
+    minimal_loop: false
+    primary_paths:
+      - templates/scheduler/gantt.html
+      - web/viewmodels/scheduler_gantt_workbench.py
+      - core/services/report/utilization.py
+      - static/css/aps_gantt.css
+      - tests/regression_gantt_resource_load_summary_contract.py
+    entrypoints:
+      - "复用现有资源负荷计算或报表服务"
+      - "第二阶段只展示 Top 5，不做复杂直方图"
+      - "利用率不可算时必须显示数据缺口"
+    test_commands:
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_gantt_resource_load_summary_contract.py"
+    forbidden_paths:
+      - core/algorithms/
+      - schema.sql
+      - static/js/frappe-gantt.min.js
+      - vendor/
+    exit_checks:
+      - 甘特附近显示最忙设备和最忙人员摘要
+      - 每项包含资源名、负荷小时、利用率、任务数和状态色
+      - 每项说明容量来源，包含工作日历、班次、停机扣除情况或数据缺口
+      - 没有可用工时数据时不伪装成正常
+      - 提供去资源派工、资源负荷报表或时间轴负荷明细的入口
+      - 不引入外部图表库
