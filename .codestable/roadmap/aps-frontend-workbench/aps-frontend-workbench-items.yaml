@@ -92,12 +92,13 @@ items:
     depends_on_reasons:
       workbench-context-link-contract: 首页待处理要生成跨页入口，必须先有统一链接合同。
       workbench-nav-entry: 先确保计划员从顶层能进入工作台，再升级首页内容。
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-06-01-dashboard-workbench-risk-todos
     minimal_loop: true
     primary_paths:
       - templates/dashboard.html
       - web/viewmodels/dashboard_workbench.py
+      - web/viewmodels/dashboard_workbench_cards.py
       - web/routes/dashboard.py
       - tests/regression_dashboard_workbench_contract.py
       - tests/regression_aps_workbench_first_round_flow_contract.py

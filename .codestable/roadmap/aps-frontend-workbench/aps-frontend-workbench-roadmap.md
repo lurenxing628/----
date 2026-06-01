@@ -358,7 +358,7 @@ ResourceDispatchWorkbenchTabs:
 |---|---|---|---|---|---|
 | 1 | `workbench-context-link-contract` | 统一跨页链接和计划上下文，防止跳转丢版本、丢方案、丢日期 | 无 | 否 | done |
 | 2 | `workbench-nav-entry` | 顶层出现计划工作台一跳入口，分析、甘特、资源派工、复盘不再藏得太深 | 1 | 否 | done |
-| 3 | `dashboard-workbench-risk-todos` | 首页显示最新排产风险和今日待处理，用户能从首页进入正确下一步 | 1, 2 | 是 | planned |
+| 3 | `dashboard-workbench-risk-todos` | 首页显示最新排产风险和今日待处理，用户能从首页进入正确下一步 | 1, 2 | 是 | done |
 | 4 | `analysis-action-hub-layout` | 排产分析页把方案推荐、延期解释、诊断行动提到技术过程之前 | 1 | 否 | planned |
 | 5 | `gantt-task-detail-panel` | 甘特图增加稳定任务详情区和下一步链接 | 1 | 否 | planned |
 | 6 | `resource-dispatch-execution-lane` | 资源派工把看排班、现场记录、计划和现场实际入口分清 | 1 | 否 | planned |
@@ -418,3 +418,4 @@ ResourceDispatchWorkbenchTabs:
 - 2026-06-01：根据只读审查补强 `required_params` 逐路线矩阵口径、内部值到中文展示映射要求，并把停机影响任务级明细、牵连批次/订单影响面补成第二阶段独立条目。
 - 2026-06-01：完成 `workbench-context-link-contract`，新增统一工作台上下文链接 ViewModel，分析页候选方案链接开始复用统一合同；所有工作台目标页按矩阵保留查询日、周期、批次和资源上下文；资源派工非可写或不可查询场景不再下发现场记录 Excel 模板和导入地址，直连写入也不能靠请求体方案身份绕过后端护栏。
 - 2026-06-01：完成 `workbench-nav-entry`，经典顶层导航新增“计划工作台”原生菜单，可一跳到首页值班台、排产分析、设备甘特图、人员甘特图、资源派工、计划和现场实际；菜单只包含只读页面 GET 链接，不下发现场记录写入、Excel 导入或模板下载地址。
+- 2026-06-01：完成 `dashboard-workbench-risk-todos`，首页新增计划员值班台、风险卡、今日待处理和快捷入口；待处理覆盖超期批次、方案需要确认、资源负荷偏高、现场情况待确认和基础数据缺口，所有动作复用统一 WorkbenchLink，并明确待处理项实时生成、不保存已处理状态。至此第一轮最小闭环已经跑通：顶层进入首页，再从首页跳分析、甘特、资源派工和计划现场复盘且不丢上下文。

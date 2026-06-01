@@ -1,0 +1,71 @@
+feature: 2026-06-01-dashboard-workbench-risk-todos
+roadmap: aps-frontend-workbench
+roadmap_item: dashboard-workbench-risk-todos
+created: 2026-06-01
+steps:
+  - id: step-1
+    title: 设计与清单落盘
+    action: 写入 design/checklist，并把 roadmap item 标成 in-progress。
+    exit_signal: feature 文档和 roadmap items YAML 校验通过。
+    status: done
+  - id: step-2
+    title: 首页值班台 ViewModel
+    action: 新增 dashboard_workbench.py 和 dashboard_workbench_cards.py，统一生成风险卡、今日待处理、快速入口和实时生成说明。
+    exit_signal: 纯函数测试覆盖五类待处理、最多 6 条和同类聚合。
+    status: done
+  - id: step-3
+    title: 路由数据接线
+    action: dashboard 路由读取最新正式计划范围、今日计划任务和现场事实，并传入 workbench_summary。
+    exit_signal: 首页请求能在有/无历史、有/无明细场景下稳定返回。
+    status: done
+  - id: step-4
+    title: 模板和样式
+    action: V1/V2 首页新增值班台区域，补本地 CSS，保留旧统计和常用工作区。
+    exit_signal: 页面出现今日待处理、风险卡、实时生成说明和中文空状态，V1/V2 模板同步。
+    status: done
+  - id: step-5
+    title: 回归测试
+    action: 新增首页值班台合同测试和第一轮工作台小烟测，运行本阶段指定回归。
+    exit_signal: 指定测试全部通过。
+    status: done
+checks:
+  - id: check-1
+    title: 今日待处理区域
+    source: design 第 3 节关键场景
+    expect: 首页出现今日待处理区域，最多展示 6 条。
+    status: passed
+  - id: check-2
+    title: 五类待处理
+    source: roadmap exit_checks
+    expect: 覆盖超期批次、方案需要确认、资源负荷偏高、现场情况待确认、基础数据缺口。
+    status: passed
+  - id: check-3
+    title: 工作台链接
+    source: design 第 1 节需求摘要
+    expect: 每类待处理都有默认动作和备用动作，动作使用 WorkbenchLink 生成。
+    status: passed
+  - id: check-4
+    title: 现场情况口径
+    source: roadmap entrypoints
+    expect: 只统计正式采用方案、当天范围内已到计划开始时间且现场事实不能说明进展的任务，不统计未来任务。
+    status: passed
+  - id: check-5
+    title: 资源负荷口径
+    source: roadmap entrypoints
+    expect: warning >= 75%，danger >= 90%；算不出时显示数据不足，不显示成 0%。
+    status: passed
+  - id: check-6
+    title: 实时生成说明
+    source: roadmap exit_checks
+    expect: 页面说明待处理项根据当前数据实时生成，暂不保存已处理状态。
+    status: passed
+  - id: check-7
+    title: 不露内部字段
+    source: roadmap exit_checks
+    expect: 页面不显示 plan_role、scenario_id、source_table、candidate_id、op_id、schedule_id。
+    status: passed
+  - id: check-8
+    title: 本地兼容
+    source: design 明确不做
+    expect: 不引入外部资源，不使用破坏 Chrome 109 或 Python 3.8 的语法。
+    status: passed

@@ -1,6 +1,106 @@
 {% extends "base.html" %}
 {% import "components/ui_macros.html" as ui %}
 {% block content %}
+  {% if workbench_summary %}
+    <section class="aps-dashboard-workbench" aria-labelledby="dashboard-workbench-title">
+      <div class="aps-dashboard-workbench-header">
+        <div>
+          <div class="aps-section-eyebrow">计划员值班台</div>
+          <h3 id="dashboard-workbench-title">今日待处理</h3>
+          <div class="muted">
+            {{ workbench_summary.generated_at_label }} · {{ workbench_summary.latest_plan.version_label }} · {{ workbench_summary.latest_plan.plan_role_label }}
+          </div>
+        </div>
+        <div class="aps-dashboard-workbench-note">{{ workbench_summary.realtime_note }}</div>
+      </div>
+
+      <div class="aps-dashboard-risk-grid" aria-label="最新排产风险概览">
+        {% for card in workbench_summary.risk_cards %}
+          {% if card.link and not card.link.disabled and card.link.url %}
+            <a class="aps-dashboard-risk-card severity-{{ card.severity }}" href="{{ card.link.url }}">
+              <span class="aps-dashboard-risk-label">{{ card.label }}</span>
+              <span class="aps-dashboard-risk-value">{{ card.value }}</span>
+              <span class="aps-dashboard-risk-helper">{{ card.helper_text }}</span>
+            </a>
+          {% else %}
+            <div class="aps-dashboard-risk-card severity-{{ card.severity }} is-disabled">
+              <span class="aps-dashboard-risk-label">{{ card.label }}</span>
+              <span class="aps-dashboard-risk-value">{{ card.value }}</span>
+              <span class="aps-dashboard-risk-helper">{{ card.helper_text }}</span>
+              {% if card.link and card.link.disabled_reason %}
+                <span class="aps-dashboard-link-disabled-reason">{{ card.link.disabled_reason }}</span>
+              {% endif %}
+            </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+
+      <div class="aps-dashboard-todo-layout">
+        <div class="aps-dashboard-todo-panel">
+          {% if workbench_summary.todo_items %}
+            <div class="aps-dashboard-todo-list">
+              {% for todo in workbench_summary.todo_items %}
+                <article class="aps-dashboard-todo-item severity-{{ todo.severity }}">
+                  <div class="aps-dashboard-todo-meta">
+                    <span>{{ todo.handling_state_label }}</span>
+                  </div>
+                  <h4>{{ todo.title }}</h4>
+                  <p class="aps-dashboard-todo-impact">{{ todo.impact_text }}</p>
+                  <p class="aps-dashboard-todo-evidence">{{ todo.evidence_text }}</p>
+                  <div class="aps-dashboard-todo-actions">
+                    {% set primary = todo.primary_action %}
+                    {% if primary.disabled or not primary.url %}
+                      <span class="btn btn-primary btn-sm aps-dashboard-disabled-action" aria-disabled="true" title="{{ primary.disabled_reason }}">
+                        <span>{{ primary.label }}</span>
+                      </span>
+                    {% else %}
+                      <a class="btn btn-primary btn-sm" href="{{ primary.url }}"><span>{{ primary.label }}</span></a>
+                    {% endif %}
+                    {% set secondary = todo.secondary_action %}
+                    {% if secondary.disabled or not secondary.url %}
+                      <span class="btn btn-secondary btn-sm aps-dashboard-disabled-action" aria-disabled="true" title="{{ secondary.disabled_reason }}">
+                        <span>{{ secondary.label }}</span>
+                      </span>
+                    {% else %}
+                      <a class="btn btn-secondary btn-sm" href="{{ secondary.url }}"><span>{{ secondary.label }}</span></a>
+                    {% endif %}
+                  </div>
+                  {% if primary.context_summary %}
+                    <div class="aps-dashboard-action-context">{{ primary.context_summary }}</div>
+                  {% endif %}
+                  {% if primary.disabled_reason %}
+                    <div class="aps-dashboard-link-disabled-reason">{{ primary.disabled_reason }}</div>
+                  {% endif %}
+                </article>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="aps-dashboard-empty-state">{{ workbench_summary.empty_state }}</div>
+          {% endif %}
+        </div>
+
+        <div class="aps-dashboard-quick-panel" aria-label="工作台下一步入口">
+          <div class="aps-dashboard-quick-title">下一步入口</div>
+          <div class="aps-dashboard-quick-links">
+            {% for link in workbench_summary.quick_links %}
+              {% if link.disabled or not link.url %}
+                <span class="aps-dashboard-quick-link is-disabled" aria-disabled="true" title="{{ link.disabled_reason }}">
+                  <span>{{ link.label }}</span>
+                  <small>{{ link.disabled_reason }}</small>
+                </span>
+              {% else %}
+                <a class="aps-dashboard-quick-link" href="{{ link.url }}">
+                  <span>{{ link.label }}</span>
+                  <small>{{ link.context_summary }}</small>
+                </a>
+              {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </section>
+  {% endif %}
+
   <div class="stat-grid">
     <div class="stat-card type-primary">
       <div class="stat-card-label">待排批次</div>
