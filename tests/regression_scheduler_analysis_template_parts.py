@@ -9,6 +9,7 @@ ANALYSIS_TEMPLATE = "templates/scheduler/analysis.html"
 ANALYSIS_PARTS = (
     "templates/scheduler/analysis_parts/_version_picker.html",
     "templates/scheduler/analysis_parts/_selected_overview.html",
+    "templates/scheduler/analysis_parts/_action_hub.html",
     "templates/scheduler/analysis_parts/_summary_warnings.html",
     "templates/scheduler/analysis_parts/_metric_cards.html",
     "templates/scheduler/analysis_parts/_candidate_comparison.html",
@@ -55,6 +56,7 @@ def test_analysis_template_parts_preserve_existing_contract_markers() -> None:
         "aps-version-picker-form",
         "aps-version-link-actions",
         "aps-summary-grid--version-overview",
+        "aps-analysis-action-hub",
         "selected_summary_display.error_total",
         "selected_summary_display.display_secondary_degradation_messages",
         "analysisCandidateComparisonTable",
@@ -101,7 +103,10 @@ def test_analysis_template_diagnostic_part_shows_explicit_empty_state() -> None:
 def test_analysis_template_places_diagnostics_before_metrics() -> None:
     source = _read(ANALYSIS_TEMPLATE)
 
+    assert source.index('_selected_overview.html') < source.index('_action_hub.html')
+    assert source.index('_action_hub.html') < source.index('_summary_warnings.html')
     assert source.index('_summary_warnings.html') < source.index('_diagnostic_sections.html')
+    assert source.index('_candidate_comparison.html') < source.index('_diagnostic_sections.html')
     assert source.index('_diagnostic_sections.html') < source.index('_metric_cards.html')
     assert source.index('_candidate_comparison.html') < source.index('_optimization_process.html')
 

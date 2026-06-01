@@ -1,0 +1,107 @@
+{% if analysis_action_hub %}
+  <section class="aps-analysis-action-hub" aria-label="排产分析行动入口">
+    <div class="aps-analysis-action-hub-header">
+      <div>
+        <p class="aps-section-eyebrow">结论和下一步</p>
+        <h3>{{ analysis_action_hub.title }}</h3>
+        <p class="muted">{{ analysis_action_hub.subtitle }}</p>
+      </div>
+      {% if analysis_action_hub.notice and not (analysis_action_hub.empty_state and not analysis_action_hub.recommendation_card) %}
+        <div class="aps-analysis-action-hub-note" role="status">
+          {{ analysis_action_hub.notice }}
+        </div>
+      {% endif %}
+    </div>
+
+    {% if analysis_action_hub.status_messages %}
+      <div class="aps-analysis-action-hub-messages">
+        {% for message in analysis_action_hub.status_messages %}
+          <div class="{{ message.class_name }}" role="status">{{ message.text }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {% if analysis_action_hub.recommendation_card %}
+      {% set recommendation_card = analysis_action_hub.recommendation_card %}
+      <div class="aps-analysis-recommendation" role="status">
+        <p class="aps-summary-label">{{ recommendation_card.eyebrow }}</p>
+        <div class="aps-summary-value">
+          {{ recommendation_card.title }}：{{ recommendation_card.candidate_label }}
+        </div>
+        <p class="aps-summary-desc">{{ recommendation_card.reason }}</p>
+        <p class="aps-summary-desc">{{ recommendation_card.note }}</p>
+      </div>
+    {% elif analysis_action_hub.empty_state %}
+      <div class="aps-analysis-action-empty" role="status">
+        {{ analysis_action_hub.empty_state }}
+      </div>
+    {% endif %}
+
+    {% if analysis_action_hub.summary_cards %}
+      <div class="aps-summary-grid aps-analysis-action-summary" aria-label="代表方案摘要">
+        {% for card in analysis_action_hub.summary_cards %}
+          <div class="aps-summary-item {{ card.tone_class }}" role="group" aria-label="{{ card.role_label }}">
+            <p class="aps-summary-label">{{ card.role_label }}</p>
+            <div class="aps-summary-value">{{ card.candidate_label }}</div>
+            <p class="aps-summary-desc">{{ card.comparison_note }}</p>
+            {% for metric in card.metrics %}
+              <p class="aps-summary-desc">
+                {{ metric.label }}：{{ metric.value }}，{{ metric.comparison_text }}
+              </p>
+            {% endfor %}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {% if analysis_action_hub.diagnostic_cards %}
+      <div class="aps-analysis-diagnostic-actions" aria-label="主要诊断">
+        {% for card in analysis_action_hub.diagnostic_cards %}
+          <div class="aps-summary-item {{ card.tone_class }}" role="group" aria-label="{{ card.title }}">
+            <div class="aps-analysis-diagnostic-title">
+              <span>{{ card.title }}</span>
+              {% if card.status_label %}
+                <span class="muted text-xs">{{ card.status_label }}</span>
+              {% endif %}
+            </div>
+            <p class="aps-summary-desc">{{ card.summary }}</p>
+            <p class="aps-summary-desc">
+              {{ card.item_label }}：{{ card.item_value }}
+            </p>
+            {% if card.item_message %}
+              <p class="aps-summary-desc">{{ card.item_message }}</p>
+            {% endif %}
+            {% if card.degraded %}
+              <p class="aps-summary-desc">这块信息不完整，请结合后面的完整诊断一起看。</p>
+            {% endif %}
+            {% if card.links %}
+              <div class="aps-analysis-diagnostic-links">
+                {% for link in card.links %}
+                  {{ ui.link_button(link.label, link.url, 'secondary', 'sm') }}
+                {% endfor %}
+              </div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {% if analysis_action_hub.next_links %}
+      <div class="aps-analysis-action-links" aria-label="下一步入口">
+        {% for link in analysis_action_hub.next_links %}
+          {% if link.disabled %}
+            <span class="table-action-link is-disabled" aria-disabled="true" title="{{ link.disabled_reason }}">{{ link.label }}</span>
+          {% else %}
+            <a class="table-action-link" href="{{ link.url }}">{{ link.label }}</a>
+          {% endif %}
+        {% endfor %}
+      </div>
+      {% set disabled_reasons = analysis_action_hub.next_links | selectattr('disabled') | map(attribute='disabled_reason') | list %}
+      {% if disabled_reasons %}
+        <div class="muted text-xs mt-1">{{ disabled_reasons[0] }}</div>
+      {% endif %}
+    {% elif analysis_action_hub.empty_state and analysis_action_hub.recommendation_card %}
+      <div class="muted mt-1">{{ analysis_action_hub.empty_state }}</div>
+    {% endif %}
+  </section>
+{% endif %}

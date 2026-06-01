@@ -138,8 +138,8 @@ items:
     depends_on: [workbench-context-link-contract]
     depends_on_reasons:
       workbench-context-link-contract: 分析页要生成跳甘特、资源派工、报表的入口，必须先保证跨页上下文不会丢。
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-06-01-analysis-action-hub-layout
     minimal_loop: false
     primary_paths:
       - templates/scheduler/analysis.html

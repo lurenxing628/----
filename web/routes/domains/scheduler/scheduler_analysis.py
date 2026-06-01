@@ -3,6 +3,7 @@ from __future__ import annotations
 from flask import g, request
 
 from web.ui_mode import render_ui_template as render_template
+from web.viewmodels.scheduler_analysis_action_hub import build_analysis_action_hub
 from web.viewmodels.scheduler_analysis_vm import build_analysis_context, build_candidate_comparison_display
 from web.viewmodels.scheduler_summary_display import build_summary_display_state
 
@@ -78,6 +79,11 @@ def analysis_page():
         result_status=(ctx.get("selected") or {}).get("result_status"),
         parse_state=(ctx.get("selected") or {}).get("result_summary_parse_state"),
     )
+    if ctx.get("selected"):
+        ctx["analysis_action_hub"] = build_analysis_action_hub(
+            ctx.get("candidate_comparison_display"),
+            ctx.get("diagnostic_sections"),
+        )
 
     return render_template(
         "scheduler/analysis.html",

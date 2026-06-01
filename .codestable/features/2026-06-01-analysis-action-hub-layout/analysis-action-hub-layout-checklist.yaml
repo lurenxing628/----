@@ -1,0 +1,66 @@
+feature: 2026-06-01-analysis-action-hub-layout
+roadmap: aps-frontend-workbench
+roadmap_item: analysis-action-hub-layout
+created: 2026-06-01
+steps:
+  - id: step-1
+    title: 设计与清单落盘
+    action: 写入 design/checklist，并把 roadmap item 标成 in-progress。
+    exit_signal: feature 文档和 roadmap items YAML 校验通过。
+    status: done
+  - id: step-2
+    title: 分析行动区 ViewModel
+    action: 新增 scheduler_analysis_action_hub.py，从已有候选方案展示数据和诊断数据整理首屏推荐、摘要、诊断行动、下一步入口和中文空状态。
+    exit_signal: ViewModel 不重算业务规则，只复用公开展示字段和 WorkbenchLink。
+    status: done
+  - id: step-3
+    title: 路由和模板接线
+    action: 在候选方案链接绑定后生成 analysis_action_hub，新增 _action_hub.html，并调整 analysis.html 的 include 顺序。
+    exit_signal: 选中版本后先看到版本身份、行动区、告警/空状态，再看到详细对比、完整诊断、指标和技术过程。
+    status: done
+  - id: step-4
+    title: 样式和首屏层级
+    action: 补本地 CSS，让行动区、摘要卡、诊断行动和按钮在宽窄屏都稳定显示。
+    exit_signal: 不引入外链资源，不遮挡按钮和正文。
+    status: done
+  - id: step-5
+    title: 回归测试
+    action: 新增 regression_scheduler_analysis_workbench_layout.py，并运行本阶段指定测试。
+    exit_signal: 指定测试全部通过。
+    status: done
+checks:
+  - id: check-1
+    title: 首屏顺序
+    source: roadmap exit_checks
+    expect: 选中版本后，页面先显示版本身份、推荐结论、主要风险和下一步按钮。
+    status: passed
+  - id: check-2
+    title: 候选空状态
+    source: roadmap exit_checks
+    expect: 没有候选方案时，显示清楚中文空状态。
+    status: passed
+  - id: check-3
+    title: 推荐卡复用指标
+    source: roadmap exit_checks
+    expect: 推荐方案卡复用已有超期、拖期、工期、换型指标，新增影响面算不出时显示数据不足或暂时不能判断。
+    status: passed
+  - id: check-4
+    title: 诊断表达
+    source: roadmap exit_checks
+    expect: 诊断区继续区分事实、线索和证据不足。
+    status: passed
+  - id: check-5
+    title: 工作台链接上下文
+    source: roadmap exit_checks
+    expect: 链接到甘特、资源派工、超期清单时保留版本和方案上下文。
+    status: passed
+  - id: check-6
+    title: 不露内部字段
+    source: roadmap exit_checks
+    expect: 页面不显示内部字段名和内部英文枚举。
+    status: passed
+  - id: check-7
+    title: 本地兼容
+    source: roadmap exit_checks
+    expect: 不引入外部前端资源，不使用破坏 Chrome 109 或 Python 3.8 的语法。
+    status: passed

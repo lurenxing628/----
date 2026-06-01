@@ -2,9 +2,13 @@
 doc_type: requirement
 slug: candidate-comparison-business-view
 pitch: 把多套排程候选方案翻成业务能看懂的推荐、差值和查看入口
-status: draft
-last_reviewed: 2026-05-25
-implemented_by: []
+status: current
+last_reviewed: 2026-06-01
+implemented_by:
+  - 2026-05-19-scheduler-graph-candidate-config-closeout
+  - 2026-05-27-candidate-summary-delta-cards
+  - 2026-06-01-workbench-context-link-contract
+  - 2026-06-01-analysis-action-hub-layout
 tags: [aps, scheduler, candidate-comparison]
 ---
 
@@ -30,3 +34,14 @@ tags: [aps, scheduler, candidate-comparison]
 - 不支持任意两套候选自由对比。
 - 不把候选方案当成已经下发给现场的正式计划。
 - 页面、导出和文件名不直接显示 `candidate_id`、`source_table`、内部评分串或英文原因码。
+
+## 当前实现
+
+- 排产分析页已经能在选中版本后展示推荐结论、代表三方案摘要、详细方案对比表和中文空状态。
+- 推荐结论和三方案摘要使用中文业务话，指标包含失败工序、超期批次、总拖期、加权拖期、总工期和换型次数；缺数据时显示“暂无数据 / 暂无对比数据”，不把未知值当成 0。
+- 方案跳转入口复用统一 `WorkbenchLink`，能带着同一版本、方案身份、日期范围、资源和批次上下文跳到甘特、周计划、资源排班和超期清单。
+- `analysis-action-hub-layout` 已把推荐结论、代表方案摘要、主要诊断和下一步入口提到排产分析页首屏，详细对比表和优化过程保留在后面。
+
+## 变更日志
+
+- 2026-06-01：状态从 `draft` 更新为 `current`。代表三方案推荐、中文摘要、差值说明、清楚空状态和跨页查看入口已落地；分析页首屏行动区已把这些内容放到技术过程之前。

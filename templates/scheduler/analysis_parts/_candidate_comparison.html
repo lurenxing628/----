@@ -18,35 +18,39 @@
           这里对比同一次排产里的三类结果：正式采用方案、原算法代表方案、重点工序优先代表方案。只有正式采用方案会写入正式排程。
         </div>
         {% if candidate_comparison_display.recommendation_card %}
-          {% set recommendation_card = candidate_comparison_display.recommendation_card %}
-          <div class="aps-summary-item aps-summary-item-success mt-2" role="status">
-            <p class="aps-summary-label">{{ recommendation_card.eyebrow }}</p>
-            <div class="aps-summary-value">
-              {{ recommendation_card.title }}：{{ recommendation_card.candidate_label }}
+          {% if not (analysis_action_hub and analysis_action_hub.has_recommendation) %}
+            {% set recommendation_card = candidate_comparison_display.recommendation_card %}
+            <div class="aps-summary-item aps-summary-item-success mt-2" role="status">
+              <p class="aps-summary-label">{{ recommendation_card.eyebrow }}</p>
+              <div class="aps-summary-value">
+                {{ recommendation_card.title }}：{{ recommendation_card.candidate_label }}
+              </div>
+              <p class="aps-summary-desc">{{ recommendation_card.reason }}</p>
+              <p class="aps-summary-desc">{{ recommendation_card.note }}</p>
             </div>
-            <p class="aps-summary-desc">{{ recommendation_card.reason }}</p>
-            <p class="aps-summary-desc">{{ recommendation_card.note }}</p>
-          </div>
+          {% endif %}
         {% elif candidate_comparison_display.selection_reason_label %}
           <div class="flash-card mt-2" role="status">
             {{ candidate_comparison_display.selection_reason_label }}
           </div>
         {% endif %}
         {% if candidate_comparison_display.summary_cards %}
-          <div class="aps-summary-grid mt-2" aria-label="代表方案摘要">
-            {% for card in candidate_comparison_display.summary_cards %}
-              <div class="aps-summary-item {{ card.tone_class }}" role="group" aria-label="{{ card.role_label }}">
-                <p class="aps-summary-label">{{ card.role_label }}</p>
-                <div class="aps-summary-value">{{ card.candidate_label }}</div>
-                <p class="aps-summary-desc">{{ card.comparison_note }}</p>
-                {% for metric in card.metrics %}
-                  <p class="aps-summary-desc">
-                    {{ metric.label }}：{{ metric.value }}，{{ metric.comparison_text }}
-                  </p>
-                {% endfor %}
-              </div>
-            {% endfor %}
-          </div>
+          {% if not (analysis_action_hub and analysis_action_hub.has_candidate_summary) %}
+            <div class="aps-summary-grid mt-2" aria-label="代表方案摘要">
+              {% for card in candidate_comparison_display.summary_cards %}
+                <div class="aps-summary-item {{ card.tone_class }}" role="group" aria-label="{{ card.role_label }}">
+                  <p class="aps-summary-label">{{ card.role_label }}</p>
+                  <div class="aps-summary-value">{{ card.candidate_label }}</div>
+                  <p class="aps-summary-desc">{{ card.comparison_note }}</p>
+                  {% for metric in card.metrics %}
+                    <p class="aps-summary-desc">
+                      {{ metric.label }}：{{ metric.value }}，{{ metric.comparison_text }}
+                    </p>
+                  {% endfor %}
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
         {% endif %}
         <div class="aps-table-scroll mt-2">
           <table id="analysisCandidateComparisonTable" class="table-sticky table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v1_analysisCandidateComparisonTable">
