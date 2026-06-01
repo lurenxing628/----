@@ -53,6 +53,7 @@
   <div class="container">
     <header class="no-print">
       <nav>
+        {{ ui.workbench_nav_menu() }}
         <a href="{{ url_for('dashboard.index') }}"><svg class="icon"><use href="{{ url_for('static', filename='icons.svg') }}#icon-schedule"/></svg> 首页</a>
         <a href="{{ url_for('scheduler.batches_page') }}"><svg class="icon"><use href="{{ url_for('static', filename='icons.svg') }}#icon-schedule"/></svg> 排产</a>
         <a href="{{ url_for('process.list_parts') }}"><svg class="icon"><use href="{{ url_for('static', filename='icons.svg') }}#icon-process"/></svg> 工艺</a>

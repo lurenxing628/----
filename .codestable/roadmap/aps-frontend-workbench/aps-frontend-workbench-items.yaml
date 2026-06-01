@@ -60,8 +60,8 @@ items:
     depends_on: [workbench-context-link-contract]
     depends_on_reasons:
       workbench-context-link-contract: 顶层入口需要复用统一链接，避免导航先各自手拼 URL。
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-06-01-workbench-nav-entry
     minimal_loop: false
     primary_paths:
       - templates/base.html

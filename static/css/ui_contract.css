@@ -3428,6 +3428,108 @@ header.no-print > .header-info.aps-header-controls {
   justify-content: flex-end;
 }
 
+.aps-workbench-nav {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  color: var(--aps-nav-text);
+}
+
+.aps-workbench-nav-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 44px;
+  padding: 10px 14px;
+  border-radius: 4px;
+  color: var(--aps-nav-text);
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: nowrap;
+  cursor: pointer;
+  list-style: none;
+}
+
+.aps-workbench-nav-summary::-webkit-details-marker {
+  display: none;
+}
+
+.aps-workbench-nav-summary:hover,
+.aps-workbench-nav-summary:focus,
+.aps-workbench-nav[open] > .aps-workbench-nav-summary {
+  outline: none;
+  background: #334155;
+  color: #ffffff;
+}
+
+.aps-workbench-nav-caret {
+  font-size: 11px;
+  color: currentColor;
+}
+
+.aps-workbench-nav[open] .aps-workbench-nav-caret {
+  transform: rotate(180deg);
+}
+
+.aps-workbench-nav-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  width: 300px;
+  max-width: calc(100vw - 48px);
+  padding: 8px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-md);
+  background: var(--ui-surface);
+  box-shadow: var(--ui-shadow-md);
+}
+
+nav .aps-workbench-nav-link {
+  display: block;
+  padding: 9px 10px;
+  border-radius: 4px;
+  color: var(--ui-text);
+  text-decoration: none;
+  white-space: normal;
+}
+
+nav .aps-workbench-nav-link:hover,
+nav .aps-workbench-nav-link:focus {
+  background: var(--ui-surface-soft);
+  color: var(--ui-primary);
+  text-decoration: none;
+  outline: none;
+}
+
+.aps-workbench-nav-title {
+  display: block;
+  font-size: 13px;
+  line-height: 1.35;
+  font-weight: 600;
+}
+
+.aps-workbench-nav-desc {
+  display: block;
+  margin-top: 2px;
+  color: var(--ui-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+@media (max-width: 720px) {
+  .aps-workbench-nav {
+    position: static;
+  }
+
+  .aps-workbench-nav-menu {
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-width: none;
+  }
+}
+
 /* 主题切换瞬间：禁用全站 transition，避免大量声明同时进入动画管线 */
 html.aps-theme-switching *,
 html.aps-theme-switching *::before,

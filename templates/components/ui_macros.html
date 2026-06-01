@@ -317,6 +317,46 @@
 {% endmacro %}
 
 {#
+  顶层计划工作台入口。
+  只放只读页面入口，不放现场写入、Excel 导入或模板下载地址。
+#}
+{% macro workbench_nav_menu(class='') %}
+<details class="aps-workbench-nav {{ class }}">
+  <summary class="aps-workbench-nav-summary">
+    <svg class="icon" aria-hidden="true"><use href="{{ url_for('static', filename='icons.svg') }}#icon-schedule"/></svg>
+    <span>计划工作台</span>
+    <span class="aps-workbench-nav-caret" aria-hidden="true">▾</span>
+  </summary>
+  <div class="aps-workbench-nav-menu" aria-label="计划工作台快捷入口">
+    <a href="{{ url_for('dashboard.index') }}" class="aps-workbench-nav-link">
+      <span class="aps-workbench-nav-title">首页值班台</span>
+      <span class="aps-workbench-nav-desc">先看今天需要处理什么</span>
+    </a>
+    <a href="{{ url_for('scheduler.analysis_page') }}" class="aps-workbench-nav-link">
+      <span class="aps-workbench-nav-title">排产分析</span>
+      <span class="aps-workbench-nav-desc">看推荐方案和排产诊断</span>
+    </a>
+    <a href="{{ url_for('scheduler.gantt_page', view='machine') }}" class="aps-workbench-nav-link">
+      <span class="aps-workbench-nav-title">设备甘特图</span>
+      <span class="aps-workbench-nav-desc">按设备查看排产结果</span>
+    </a>
+    <a href="{{ url_for('scheduler.gantt_page', view='operator') }}" class="aps-workbench-nav-link">
+      <span class="aps-workbench-nav-title">人员甘特图</span>
+      <span class="aps-workbench-nav-desc">按人员查看排产结果</span>
+    </a>
+    <a href="{{ url_for('scheduler.resource_dispatch_page') }}" class="aps-workbench-nav-link">
+      <span class="aps-workbench-nav-title">资源派工</span>
+      <span class="aps-workbench-nav-desc">看排班和现场记录入口</span>
+    </a>
+    <a href="{{ url_for('reports.execution_review_page') }}" class="aps-workbench-nav-link">
+      <span class="aps-workbench-nav-title">计划和现场实际</span>
+      <span class="aps-workbench-nav-desc">复盘正式计划和现场事实</span>
+    </a>
+  </div>
+</details>
+{% endmacro %}
+
+{#
   排产主导航（唯一跨页主导航）
   active:
     batches | batches_manage | config |
