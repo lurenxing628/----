@@ -1,0 +1,91 @@
+feature: 2026-06-01-resource-dispatch-execution-lane
+roadmap: aps-frontend-workbench
+roadmap_item: resource-dispatch-execution-lane
+created: 2026-06-01
+steps:
+  - id: step-1
+    title: 设计与清单落盘
+    action: 写入 design/checklist，并把 roadmap item 标成 in-progress。
+    exit_signal: feature 文档和 roadmap items YAML 校验通过。
+    status: done
+  - id: step-2
+    title: ViewModel 公开字段
+    action: 在 scheduler_resource_dispatch_execution.py 中补任务卡图号/物料、计划/实际时间偏差、执行流水来源和记录时间。
+    exit_signal: 任务卡和事件 payload 都由后端给出公开中文字段，前端不硬编来源和时间。
+    status: done
+  - id: step-3
+    title: 前端页面分层
+    action: 调整 resource_dispatch.html、resource_execution_*.js 和 resource_dispatch.css，把计划员查看、现场事实、只读复盘分清。
+    exit_signal: 任务卡先于 Excel 批量维护；卡内按钮看现场记录，顶部按钮进计划和实际复盘。
+    status: done
+  - id: step-4
+    title: 合同测试
+    action: 新增 regression_resource_dispatch_workbench_lane_contract.py，并更新既有现场记录前端合同。
+    exit_signal: 第 6 项指定测试通过。
+    status: done
+  - id: step-5
+    title: 复审和验收落档
+    action: 本地 SubAgent 与 Claude Code 对抗复审，修到无阻塞后写 acceptance，回写 roadmap、checklist、architecture 和 requirement。
+    exit_signal: 复审无阻塞，质量门禁通过，stage commit 并 push。
+    status: done
+checks:
+  - id: check-1
+    title: 两个区域
+    source: roadmap exit_checks
+    expect: 计划员查看排班的入口和计划员代录现场事实入口视觉上分清。
+    status: passed
+  - id: check-2
+    title: 复盘入口
+    source: roadmap exit_checks
+    expect: 查看计划和实际入口清楚说明是复盘，不是写入现场记录；禁用时显示中文原因。
+    status: passed
+  - id: check-3
+    title: 任务卡字段
+    source: roadmap exit_checks
+    expect: 任务卡显示图号或物料信息、计划开始/结束、实际开始/结束和偏差；拿不到字段时显示中文缺口。
+    status: passed
+  - id: check-4
+    title: 执行流水来源
+    source: roadmap exit_checks
+    expect: 执行流水显示来源和记录时间；记录时间来自后端 created_at。
+    status: passed
+  - id: check-5
+    title: 非正式方案边界
+    source: roadmap exit_checks
+    expect: 模拟预览、候选方案和对比参考方案下，查看计划和实际入口禁用并给出中文原因，且不能写现场记录。
+    status: passed
+  - id: check-6
+    title: 后端控制写入口
+    source: roadmap exit_checks
+    expect: 页面可见按钮和隐藏地址都以后端 available_actions 或后端下发 URL 为准。
+    status: passed
+  - id: check-7
+    title: 无写入地址外泄
+    source: roadmap exit_checks
+    expect: 非正式方案下不输出写入按钮、表单 action、API URL、Excel 导入 URL、模板下载 URL 或任何 data-* 写入地址。
+    status: passed
+  - id: check-8
+    title: 后移能力不新增
+    source: roadmap exit_checks
+    expect: 不新增我的任务、现场员工账号、权限模型、撤销、审批、扫码、消息推送。
+    status: passed
+  - id: check-9
+    title: 反馈人可空
+    source: roadmap exit_checks
+    expect: 反馈人短期保持可空，空了不报错，列表里可显示“未填写反馈人”。
+    status: passed
+  - id: check-10
+    title: Excel 直接导入
+    source: roadmap exit_checks
+    expect: Excel 导入短期不出现预览 / 确认入口。
+    status: passed
+  - id: check-11
+    title: 内部字段边界
+    source: roadmap exit_checks
+    expect: 页面、导出列和公开 payload 不泄露内部身份字段；写入任务卡定位字段不做用户可见文案。
+    status: passed
+  - id: check-12
+    title: 本地兼容
+    source: roadmap exit_checks
+    expect: 页面不引入外部前端资源，不使用破坏 Chrome 109 或 Python 3.8 的语法。
+    status: passed

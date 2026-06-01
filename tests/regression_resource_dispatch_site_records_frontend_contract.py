@@ -6,7 +6,10 @@ from tests.operation_execution_feedback_test_support import (
     _build_app,
     read_resource_dispatch_script_bundle,
 )
-from tests.resource_dispatch_frontend_support import extract_js_function
+from tests.resource_dispatch_frontend_support import (
+    RESOURCE_DISPATCH_CSS,
+    extract_js_function,
+)
 
 
 def test_resource_dispatch_page_has_site_records_words_and_excel_entries(tmp_path, monkeypatch) -> None:
@@ -24,7 +27,7 @@ def test_resource_dispatch_page_has_site_records_words_and_excel_entries(tmp_pat
     assert resp.status_code == 200
     source = read_resource_dispatch_script_bundle()
     page_contract = body + "\n" + source
-    for expected in ("现场记录", "填写实际情况", "导入实际情况 Excel", "下载填写模板", "查看计划和实际"):
+    for expected in ("现场记录", "填写实际情况", "导入实际情况 Excel", "下载填写模板", "查看计划和实际", "查看现场记录"):
         assert expected in page_contract
     assert "data-execution-url=" in body
     assert "data-actual-record-url-template=" in body
@@ -75,8 +78,14 @@ def test_resource_dispatch_read_only_page_does_not_emit_actual_write_urls(tmp_pa
 
     assert resp.status_code == 200
     assert "只能查看" in body
-    assert "不能提交现场反馈" in body
+    assert "不能写现场记录" in body
     assert 'href="/reports/execution-review' not in body
+    for attr in (
+        "data-actual-record-url-template=",
+        "data-actual-template-url=",
+        "data-actual-import-url=",
+    ):
+        assert attr not in body
     for forbidden in (
         "/scheduler/resource-dispatch/execution/__OP_ID__/actual",
         "/scheduler/resource-dispatch/execution/actual-template?",
@@ -102,9 +111,9 @@ def test_resource_dispatch_unqueryable_write_page_does_not_render_none_links(tmp
     assert resp.status_code == 200
     assert 'href="None"' not in body
     assert 'href=""' not in body
-    assert 'data-actual-record-url-template=""' in body
-    assert 'data-actual-template-url=""' in body
-    assert 'data-actual-import-url=""' in body
+    assert 'data-actual-record-url-template=' not in body
+    assert 'data-actual-template-url=' not in body
+    assert 'data-actual-import-url=' not in body
     assert "下载填写模板" in body
     assert "/scheduler/resource-dispatch/execution/__OP_ID__/actual" not in body
     assert "/scheduler/resource-dispatch/execution/actual-template?" not in body
@@ -129,6 +138,12 @@ def test_resource_dispatch_history_and_scenario_pages_do_not_emit_review_or_writ
 
         assert resp.status_code == 200
         assert 'href="/reports/execution-review' not in body
+        for attr in (
+            "data-actual-record-url-template=",
+            "data-actual-template-url=",
+            "data-actual-import-url=",
+        ):
+            assert attr not in body
         for forbidden in (
             "/scheduler/resource-dispatch/execution/__OP_ID__/actual",
             "/scheduler/resource-dispatch/execution/actual-template?",
@@ -201,6 +216,7 @@ def test_resource_dispatch_frontend_uses_actual_record_form_and_one_click_import
     source = read_resource_dispatch_script_bundle()
     template = RESOURCE_DISPATCH_TEMPLATE.read_text(encoding="utf-8")
     css = UI_CONTRACT_CSS.read_text(encoding="utf-8")
+    page_css = RESOURCE_DISPATCH_CSS.read_text(encoding="utf-8")
 
     assert "bindExecutionActionClicks" in source
     assert "postExecutionAction" in source
@@ -268,6 +284,8 @@ def test_resource_dispatch_frontend_uses_actual_record_form_and_one_click_import
     assert "aps-execution-record-wide" in css
     assert "aps-execution-inline-form" in css
     assert "aps-execution-inline-field-wide" in css
+    assert "aps-resource-lane-tabs" in page_css
+    assert "aps-execution-bulk-maintenance" in page_css
     assert "resize: vertical" in css
     assert "background: var(--ui-surface-muted" in css
     assert "--ui-bg-subtle" not in css

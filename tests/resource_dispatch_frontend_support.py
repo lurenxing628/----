@@ -7,12 +7,17 @@ from typing import Tuple
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RESOURCE_DISPATCH_TEMPLATE = REPO_ROOT / "templates" / "scheduler" / "resource_dispatch.html"
 UI_CONTRACT_CSS = REPO_ROOT / "static" / "css" / "ui_contract.css"
+RESOURCE_DISPATCH_CSS = REPO_ROOT / "static" / "css" / "resource_dispatch.css"
 
 _SCRIPT_RE = re.compile(r"filename='js/([^']+)'")
 _SCRIPT_TAG_RE = re.compile(r"(<script\b[^>]*filename='js/([^']+)'[^>]*>\s*</script>)")
 _RESOURCE_DISPATCH_SCRIPTS = {
     "resource_dispatch_shared.js",
     "resource_dispatch_core.js",
+    "resource_execution_context.js",
+    "resource_execution_cards.js",
+    "resource_execution_actual.js",
+    "resource_execution_import.js",
     "resource_execution.js",
     "resource_dispatch_boot.js",
 }

@@ -440,6 +440,34 @@ def _assert_history_section_does_not_claim_export_or_restore(markdown_text: str,
         assert phrase not in section, f"{label} 排产历史章节仍像是在承诺导出/恢复能力：{phrase}"
 
 
+def _assert_resource_dispatch_site_record_section(markdown_text: str, label: str) -> None:
+    section = _extract_section(markdown_text, "### 6.6 资源排班")
+    for needle in (
+        "任务明细/日历矩阵/甘特图/现场记录",
+        "页面里有任务明细、日历矩阵、甘特图和现场记录四个视图",
+        "资源排班里的现场记录只对当前最新的正式采用方案开放",
+        "填写实际情况",
+        "下载填写模板",
+        "导入实际情况 Excel",
+        "查看现场记录",
+        "查看计划和实际",
+        "当前是直接导入，不走预览/二次确认",
+    ):
+        assert needle in section, f"{label} 资源排班章节缺少现场记录当前口径：{needle}"
+
+    for forbidden in (
+        "现场反馈常用动作",
+        "| 开工 |",
+        "| 暂停 |",
+        "| 继续生产 |",
+        "| 报异常 |",
+        "| 完工 |",
+        "继续生产",
+        "报异常",
+    ):
+        assert forbidden not in section, f"{label} 资源排班章节不应继续误导旧实时动作：{forbidden}"
+
+
 def _assert_scheduler_manual_closeout_contracts(markdown_text: str, label: str) -> None:
     for needle in (
         "页面上的 **本页说明** 按钮",
@@ -517,11 +545,14 @@ def _assert_scheduler_manual_required_content(markdown_text: str, label: str) ->
         "按这个最新版本的超期清单口径重新计算",
         "查询结果表包含 10 列",
         "任务明细表有 14 列",
-        "| 现场状态 | 显示待开工、生产中、暂停中、异常中、已完工等现场反馈状态 |",
+        "| 现场状态 | 显示待开工、生产中、暂停中、异常中、已完工等现场记录状态 |",
         "| 最近异常 | 显示最近一次异常的中文摘要；没有异常时显示暂无异常 |",
         "| 影响资源 | 显示异常影响到的设备或人员；没有填写时显示未填写 |",
-        "任务明细/日历矩阵/甘特图/现场反馈",
-        "页面里有任务明细、日历矩阵、甘特图和现场反馈四个视图",
+        "任务明细/日历矩阵/甘特图/现场记录",
+        "页面里有任务明细、日历矩阵、甘特图和现场记录四个视图",
+        "填写实际情况",
+        "导入实际情况 Excel",
+        "查看现场记录",
         "| 查询对象 | 当前视角正在看的人员、设备或班组 |",
         "| 日志序号 | 当前查询结果里的顺序，不是固定不变的数据库编号 |",
         "导入批次时“自动生成工序”覆盖了手工补的数据怎么办？",
@@ -552,6 +583,7 @@ def _assert_scheduler_manual_required_content(markdown_text: str, label: str) ->
     ):
         assert forbidden not in markdown_text, f"{label} 不应继续出现旧说明口径：{forbidden}"
     _assert_scheduler_manual_closeout_contracts(markdown_text, label)
+    _assert_resource_dispatch_site_record_section(markdown_text, label)
 
     batch_warning_paragraph = _extract_paragraph_containing(markdown_text, "自动生成批次工序时产生提醒")
     assert "当前页面确认写入后只会展示去重后的前 3 条提醒" in batch_warning_paragraph

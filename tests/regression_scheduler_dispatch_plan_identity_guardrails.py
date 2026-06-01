@@ -345,7 +345,7 @@ def test_history_comparison_and_scenario_plans_are_read_only_with_plain_reasons(
         assert baseline_identity["can_dispatch"] is False
         assert baseline_identity["can_write_feedback"] is False
         assert "只能查看" in baseline_identity["guardrail_text"]
-        assert "不能提交现场反馈" in baseline_identity["guardrail_text"]
+        assert "不能写现场记录" in baseline_identity["guardrail_text"]
 
         critical_data = _dispatch_payload(
             conn,
@@ -380,7 +380,7 @@ def test_history_comparison_and_scenario_plans_are_read_only_with_plain_reasons(
         assert scenario_identity["can_write_feedback"] is False
         assert "正式计划还没有改变" in scenario_identity["guardrail_text"]
         assert "只能查看" in scenario_identity["guardrail_text"]
-        assert "不能提交现场反馈" in scenario_identity["guardrail_text"]
+        assert "不能写现场记录" in scenario_identity["guardrail_text"]
     finally:
         conn.close()
 

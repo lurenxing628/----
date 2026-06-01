@@ -104,7 +104,7 @@ _ACTION_PAYLOAD_FIELDS = (
 _PUBLIC_REASON_MESSAGES = {
     "idempotency_conflict": "这次提交和刚才的重复提交标记不一致，系统已拒绝写入，请刷新后重试。",
     "stale_state_revision": "页面上的现场状态已经不是最新，请刷新后再提交。",
-    "not_current_official_plan": "当前不是最新正式采用方案，不能提交现场反馈。",
+    "not_current_official_plan": "当前不是最新正式采用方案，不能写现场记录。",
     "schedule_mismatch": "排程记录和当前正式计划对不上，请刷新后重试。",
     "invalid_state_transition": "当前现场状态不允许执行这个操作，请刷新页面查看最新状态；如果现场记录有误，请联系计划员处理。",
 }

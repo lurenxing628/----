@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence
 from core.infrastructure.errors import AppError, ErrorCode, ValidationError
 from core.models.operation_execution_labels import REASON_LABELS, SEVERITY_LABELS
 from core.models.operation_execution_state import OperationExecutionState
+from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
 from data.repositories.batch_operation_repo import BatchOperationRepository
 from data.repositories.schedule_repo import ScheduleRepository
 
@@ -134,14 +135,18 @@ class ResourceDispatchActualRecordService:
         context = self.execution_service.get_execution_context(**query_kwargs)
         identity = context.get("plan_identity") if isinstance(context, dict) else {}
         if not bool((identity or {}).get("can_write_feedback")):
-            raise AppError(
-                ErrorCode.SCHEDULE_CONFLICT,
-                "当前不是最新正式采用方案，不能填写现场记录。",
-                details={"reason": "not_current_official_plan", "can_retry": False},
-            )
+            raise AppError(ErrorCode.SCHEDULE_CONFLICT, "当前不是最新正式采用方案，不能填写现场记录。", details={"reason": "not_current_official_plan", "can_retry": False})
         return context
 
     def _ensure_context_can_write(self, context: ExecutionFeedbackContext) -> None:
+        is_official_schedule = (
+            text(context.requested_plan_role) == ROLE_ADOPTED
+            and text(context.effective_plan_role) == ROLE_ADOPTED
+            and text(context.source_table) == SOURCE_SCHEDULE
+            and not text(context.scenario_id)
+        )
+        if not is_official_schedule:
+            raise AppError(ErrorCode.SCHEDULE_CONFLICT, "当前不是最新正式采用方案，不能填写现场记录。", details={"reason": "not_current_official_plan", "can_retry": False})
         self._execution_context_for_write(
             version=context.schedule_version,
             plan_role=context.requested_plan_role,

@@ -43,7 +43,7 @@ implements: []
 - `开发文档/`、`audit/`、`evidence/`：开发说明、审计记录和验证证据。
 - `.codestable/architecture/ui-gantt.md`：甘特图结果查看页面、缩放协议、只读边界、模拟预览身份传递和本地 Frappe 补丁治理现状。
 - 车间执行事件基础：`OperationExecutionEvents`、执行事件仓储、执行反馈服务和执行状态读模型记录现场开工、暂停、继续、完工、报异常这些事实。
-- 资源派工现场记录：资源派工页用户入口叫“现场记录”，支持单条填写实际情况、下载填写模板、导入实际情况 Excel；普通页面是一键导入，后台先整批检查，有错不写库并返回错误明细，无错才事务写入；route 拆在 `scheduler_resource_dispatch_execution_routes.py`，业务编排拆在 `resource_dispatch_actual_*` service 文件。
+- 资源派工现场记录：资源派工页用户入口叫“现场记录”，支持单条填写实际情况、下载填写模板、导入实际情况 Excel；普通页面是一键导入，后台先整批检查，有错不写库并返回错误明细，无错才事务写入；route 拆在 `scheduler_resource_dispatch_execution_routes.py`，业务编排拆在 `resource_dispatch_actual_*` service 文件。页面把计划员查看排班和计划员代录现场事实分成两个区域；执行区 JS 按 context、cards、actual、import 和 coordinator 拆分，任务卡公开图号/物料、计划/实际时间偏差，执行流水把 `created_at/source_table` 转成中文记录时间和来源。
 - 重排执行事实快照：普通重排和甘特模拟方案发布在写新正式计划前，都会按同一批工序复算现场状态，现场状态变化时拒绝写入。
 - APS 工作台上下文链接合同：`web/viewmodels/scheduler_workbench_links.py` 统一封装工作台计划上下文、跨页链接、中文标签映射和现场写入地址护栏；`web/viewmodels/scheduler_workbench_link_query.py` 集中维护各目标页要带的版本、方案、日期、批次和资源参数矩阵；`core/services/scheduler/resource_dispatch_page_context.py` 装配资源派工页面的版本、方案身份、筛选条件和可查询状态等只读查询上下文；`web/routes/domains/scheduler/scheduler_resource_dispatch.py` 接线资源派工只读复盘入口和写入入口状态。第 1 阶段已用于排产分析候选方案跳转、周计划入口、资源派工现场记录写入口控制和现场记录二级接口公开身份脱敏，避免这些页面各自拼 URL 时丢版本、方案、日期、批次或资源对象，也避免把内部计划身份交给前端当作写入凭证。
 - 顶层计划工作台入口：经典界面 `templates/base.html` 顶层导航最左侧挂载 `ui.workbench_nav_menu()`；宏定义在 `templates/components/ui_macros.html`，样式在 `static/css/ui_contract.css`。它用原生 `<details>/<summary>` 展开“计划工作台”快捷菜单，提供首页值班台、排产分析、设备甘特图、人员甘特图、资源派工、计划和现场实际 6 个只读页面入口；不新增独立工作台页面，不依赖外部 JS/CSS，不输出现场记录写入、Excel 导入、模板下载或表单写入地址。

@@ -61,7 +61,7 @@ def test_execution_data_returns_task_card_contract(tmp_path, monkeypatch) -> Non
     assert action_by_name["fill_actual"]["label"] == "填写实际情况"
     assert action_by_name["fill_actual"]["enabled"] is True
     assert action_by_name["fill_actual"]["disabled_reason"] == ""
-    assert action_by_name["view_records"]["label"] == "查看计划和实际"
+    assert action_by_name["view_records"]["label"] == "查看现场记录"
     assert action_by_name["view_records"]["enabled"] is True
     for realtime_action in ("start", "pause", "resume", "finish", "report_exception"):
         assert realtime_action not in action_by_name

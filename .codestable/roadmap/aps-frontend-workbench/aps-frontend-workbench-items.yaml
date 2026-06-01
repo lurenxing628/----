@@ -212,13 +212,17 @@ items:
     depends_on: [workbench-context-link-contract]
     depends_on_reasons:
       workbench-context-link-contract: 资源派工、计划和现场实际都依赖同一计划上下文，先统一链接后再动页面层级。
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-06-01-resource-dispatch-execution-lane
     minimal_loop: false
     primary_paths:
       - templates/scheduler/resource_dispatch.html
-      - static/js/resource_dispatch_core.js
+      - static/css/resource_dispatch.css
+      - static/js/resource_execution_context.js
       - static/js/resource_execution.js
+      - static/js/resource_execution_cards.js
+      - static/js/resource_execution_actual.js
+      - static/js/resource_execution_import.js
       - web/viewmodels/scheduler_resource_dispatch.py
       - web/viewmodels/scheduler_resource_dispatch_execution.py
       - tests/regression_resource_dispatch_workbench_lane_contract.py
@@ -229,7 +233,7 @@ items:
       - "现场事实区是计划员代录，不是现场员工登录填写"
       - "Excel 继续直接导入，短期不做预览 / 二次确认；导入后只显示新增、失败、跳过数量和错误说明"
     test_commands:
-      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_resource_dispatch_workbench_lane_contract.py tests/regression_resource_dispatch_site_records_frontend_contract.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_resource_dispatch_workbench_lane_contract.py tests/regression_resource_dispatch_site_records_frontend_contract.py tests/regression_operation_execution_feedback_routes.py tests/regression_resource_dispatch_actual_records.py tests/regression_config_manual_markdown.py"
     forbidden_paths:
       - core/algorithms/
       - schema.sql

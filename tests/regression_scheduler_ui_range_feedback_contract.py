@@ -75,15 +75,33 @@ def test_resource_dispatch_script_bundle_is_unconditional_and_ordered() -> None:
     endif_start = script_block.index("{% endif %}")
     shared_start = script_block.index("js/resource_dispatch_shared.js")
     core_start = script_block.index("js/resource_dispatch_core.js")
+    execution_context_start = script_block.index("js/resource_execution_context.js")
+    execution_cards_start = script_block.index("js/resource_execution_cards.js")
+    execution_actual_start = script_block.index("js/resource_execution_actual.js")
+    execution_import_start = script_block.index("js/resource_execution_import.js")
     execution_start = script_block.index("js/resource_execution.js")
     boot_start = script_block.index("js/resource_dispatch_boot.js")
 
     assert gantt_start < gantt_fit_start < endif_start
-    assert endif_start < shared_start < core_start < execution_start < boot_start
+    assert (
+        endif_start
+        < shared_start
+        < core_start
+        < execution_context_start
+        < execution_cards_start
+        < execution_actual_start
+        < execution_import_start
+        < execution_start
+        < boot_start
+    )
     assert "js/resource_dispatch.js" not in script_block
     assert [name for name, _tag in resource_dispatch_script_tags()] == [
         "resource_dispatch_shared.js",
         "resource_dispatch_core.js",
+        "resource_execution_context.js",
+        "resource_execution_cards.js",
+        "resource_execution_actual.js",
+        "resource_execution_import.js",
         "resource_execution.js",
         "resource_dispatch_boot.js",
     ]

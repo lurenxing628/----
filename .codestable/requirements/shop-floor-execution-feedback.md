@@ -4,7 +4,7 @@ slug: shop-floor-execution-feedback
 pitch: 让现场实际开工、完工、暂停时间和异常记录独立保存，并支持人工填写和 Excel 导入
 status: current
 last_reviewed: 2026-06-01
-implemented_by: [ARCHITECTURE, ui-gantt, resource-dispatch-site-records]
+implemented_by: [ARCHITECTURE, ui-gantt, resource-dispatch-site-records, resource-dispatch-execution-lane]
 tags: [aps, scheduler, shop-floor, execution-feedback]
 ---
 
@@ -49,3 +49,4 @@ Excel 导入在后台会先检查整份文件：哪些行能匹配任务，哪�
 - 2026-05-28：资源派工页把用户入口调整为“现场记录 / 填写实际情况 / 导入实际情况 Excel”。实际开工、实际完工、暂停时间和异常记录都支持手填；反馈人可空；Excel 普通页面采用一键导入，后台先检查整份文件，有错误不写库并展示错误明细，整批无错误才写入；暂停/继续不再作为醒目的实时动作，而是填写暂停时间段。
 - 2026-05-27：从 draft 升级为 current。现场开工、完工、暂停、继续生产、报异常、计划和现场实际复盘，以及重排尊重现场事实已经形成闭环；撤销和纠错仍保留为后续单独能力。
 - 2026-06-01：甘特任务详情区接入现场执行事实；点击任务后能看到计划和实际小结，没有现场记录时显示“暂未记录现场实际”，但甘特页仍只读，不负责写现场记录。
+- 2026-06-01：资源派工页把“计划员查看”和“现场事实”分成两个视觉区域；顶部“查看计划和实际”只作为复盘入口，卡片内按钮改为“查看现场记录”；现场记录任务卡显示图号/物料、计划/实际时间和偏差，执行流水显示记录来源和落库时间。非正式方案、历史方案和模拟预览不输出现场记录写入 URL 或空的 `data-*` 写入地址。

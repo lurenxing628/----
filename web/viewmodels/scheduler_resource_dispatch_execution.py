@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Dict, List, Mapping, Optional
 
 from core.models.operation_execution_event import (
@@ -158,6 +159,61 @@ def _op_name(row: Mapping[str, Any]) -> str:
     return " ".join(part for part in (batch_id, f"工序{seq}" if seq else "工序") if part) or "未命名工序"
 
 
+def _part_label(row: Mapping[str, Any]) -> str:
+    part_no = _text(row.get("part_no"))
+    part_name = _text(row.get("part_name"))
+    label = " ".join(part for part in (part_no, part_name) if part).strip()
+    return label or "未填写图号或物料"
+
+
+def _time_range_label(start: Any, end: Any, *, empty_label: str) -> str:
+    start_text = _text(start)
+    end_text = _text(end)
+    if start_text and end_text:
+        return f"{start_text} ～ {end_text}"
+    return start_text or end_text or empty_label
+
+
+def _parse_datetime(value: Any) -> Optional[datetime]:
+    text = _text(value).replace("T", " ")
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(text)
+    except ValueError:
+        pass
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+        try:
+            return datetime.strptime(text, fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _delta_label(planned: Any, actual: Any) -> str:
+    if not _text(actual):
+        return "暂未记录现场实际"
+    if not _text(planned):
+        return "计划时间不完整"
+    planned_dt = _parse_datetime(planned)
+    actual_dt = _parse_datetime(actual)
+    if planned_dt is None or actual_dt is None:
+        return "时间格式暂不能计算偏差"
+    minutes = int(round((actual_dt - planned_dt).total_seconds() / 60.0))
+    if minutes == 0:
+        return "准时"
+    direction = "晚" if minutes > 0 else "早"
+    return f"{direction} {abs(minutes)} 分钟"
+
+
+def _delta_summary(*, start_delta: str, end_delta: str, actual_start: Any, actual_end: Any) -> str:
+    if not _text(actual_start) and not _text(actual_end):
+        return "暂未记录现场实际"
+    start_text = f"开工{start_delta}" if _text(actual_start) else "开工暂未记录现场实际"
+    end_text = f"完工{end_delta}" if _text(actual_end) else "完工暂未记录现场实际"
+    return f"{start_text}；{end_text}"
+
+
 def _as_state(value: Any, op_id: int, batch_id: str) -> OperationExecutionState:
     if isinstance(value, OperationExecutionState):
         return value
@@ -209,6 +265,12 @@ def build_task_card(row: Mapping[str, Any], state: Any, *, can_write_feedback: b
     actual_operator = _resource_from_state(current_state, "actual_operator")
     affected_machine = _resource_from_state(current_state, "latest_exception_affected_machine")
     affected_operator = _resource_from_state(current_state, "latest_exception_affected_operator")
+    planned_start = _text(row.get("start_time"))
+    planned_end = _text(row.get("end_time"))
+    actual_start = current_state.actual_start_time
+    actual_end = current_state.actual_end_time
+    actual_start_delta = _delta_label(planned_start, actual_start)
+    actual_end_delta = _delta_label(planned_end, actual_end)
     available_actions = build_available_actions(
         can_write=can_write_feedback,
         feedback_write_enabled=feedback_write_enabled,
@@ -226,15 +288,28 @@ def build_task_card(row: Mapping[str, Any], state: Any, *, can_write_feedback: b
         "schedule_id": schedule_id,
         "batch_id": batch_id,
         "op_name": _op_name(row),
-        "planned_start_time": _text(row.get("start_time")),
-        "planned_end_time": _text(row.get("end_time")),
+        "part_no": _text(row.get("part_no")),
+        "part_name": _text(row.get("part_name")),
+        "part_label": _part_label(row),
+        "planned_start_time": planned_start,
+        "planned_end_time": planned_end,
+        "planned_time_label": _time_range_label(planned_start, planned_end, empty_label="计划时间不完整"),
         **_resource_payload("planned_machine_", planned_machine),
         **_resource_payload("planned_operator_", planned_operator),
         "current_status": status,
         "current_status_label": status_label,
         "state_revision": current_state.state_revision or f"{op_id}:0:0",
-        "actual_start_time": current_state.actual_start_time,
-        "actual_end_time": current_state.actual_end_time,
+        "actual_start_time": actual_start,
+        "actual_end_time": actual_end,
+        "actual_time_label": _time_range_label(actual_start, actual_end, empty_label="暂未记录现场实际"),
+        "actual_start_delta_label": actual_start_delta,
+        "actual_end_delta_label": actual_end_delta,
+        "actual_delta_summary": _delta_summary(
+            start_delta=actual_start_delta,
+            end_delta=actual_end_delta,
+            actual_start=actual_start,
+            actual_end=actual_end,
+        ),
         **_resource_payload("actual_machine_", actual_machine),
         **_resource_payload("actual_operator_", actual_operator),
         "last_event_action_label": current_state.last_event_action_label,
@@ -336,6 +411,7 @@ def event_payload(
     exception_fields = _exception_payload_fields(event, is_exception_event=is_exception_event)
     affected_machine = resource_identities["affected_machine"]
     affected_operator = resource_identities["affected_operator"]
+    record_time = getattr(event, "created_at", None)
     return {
         "event_id": getattr(event, "id", None),
         "op_id": getattr(event, "op_id", None),
@@ -343,6 +419,9 @@ def event_payload(
         "action": action,
         "action_label": _execution_action_label(action),
         "event_time": getattr(event, "event_time", None),
+        "record_time": record_time,
+        "record_time_label": _text(record_time) or "暂未记录落库时间",
+        "record_source_label": "正式排程现场记录" if _text(getattr(event, "source_table", None)) == "schedule" else "现场记录",
         "created_by": getattr(event, "created_by", None),
         "remark": remark,
         "reason_code": getattr(event, "reason_code", None),

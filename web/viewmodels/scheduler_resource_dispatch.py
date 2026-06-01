@@ -149,16 +149,16 @@ def _public_plan_kind_label(filters: Dict[str, Any], *, can_dispatch: bool, can_
 
 def _public_plan_guardrail_text(filters: Dict[str, Any], *, can_dispatch: bool, can_write_feedback: bool) -> str:
     if filters.get("is_scenario_preview"):
-        return "这是模拟预览，正式计划还没有改变，只能查看，不能提交现场反馈。"
+        return "这是模拟预览，正式计划还没有改变，只能查看，不能写现场记录。"
     if can_dispatch and can_write_feedback:
         return "这套是当前可执行的正式采用方案，可以查看资源排班，并按规则填写现场实际。"
     if filters.get("is_comparison"):
-        return "这是对比参考方案，只用来和正式采用方案比一比，只能查看，不能提交现场反馈。"
+        return "这是对比参考方案，只用来和正式采用方案比一比，只能查看，不能写现场记录。"
     if filters.get("is_official_plan") and filters.get("is_superseded_by_newer_version"):
-        return "这是历史正式方案，只能查看，不能提交现场反馈。"
+        return "这是历史正式方案，只能查看，不能写现场记录。"
     if filters.get("is_official_plan"):
-        return "这套正式方案暂时只能查看，不能提交现场反馈。"
-    return "当前方案只能查看，不能提交现场反馈。"
+        return "这套正式方案暂时只能查看，不能写现场记录。"
+    return "当前方案只能查看，不能写现场记录。"
 
 
 def _public_plan_identity(filters: MutableMapping[str, Any]) -> Dict[str, Any]:

@@ -4,6 +4,7 @@
 {% block extra_head %}
   <link rel="stylesheet" href="{{ url_for('static', filename='css/frappe-gantt.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/aps_gantt.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/resource_dispatch.css') }}">
 {% endblock %}
 
 {% block content %}
@@ -25,9 +26,9 @@
     data-can-query="{{ '1' if can_query else '0' }}"
     data-export-url="{{ export_url or '' }}"
     data-execution-url="{{ execution_data_url or '' }}"
-    data-actual-record-url-template="{{ actual_record_url_template or '' }}"
-    data-actual-template-url="{{ actual_template_url or '' }}"
-    data-actual-import-url="{{ actual_import_url or '' }}"
+    {% if actual_record_url_template %}data-actual-record-url-template="{{ actual_record_url_template }}"{% endif %}
+    {% if actual_template_url %}data-actual-template-url="{{ actual_template_url }}"{% endif %}
+    {% if actual_import_url %}data-actual-import-url="{{ actual_import_url }}"{% endif %}
   >
 
   {% set resource_dispatch_actions %}
@@ -36,6 +37,9 @@
       {{ ui.link_button('查看计划和实际', execution_review_link.url, 'secondary', 'md') }}
     {% else %}
       {{ ui.button('查看计划和实际', 'secondary', 'md', type_attr='button', disabled=True, class='aps-disabled-button') }}
+      {% if execution_review_link and execution_review_link.disabled_reason %}
+        <span class="aps-action-disabled-reason">{{ execution_review_link.disabled_reason }}</span>
+      {% endif %}
     {% endif %}
     {% if export_url %}
       {{ ui.link_button('导出资源排班.xlsx', export_url, 'secondary', 'md', 'download') }}
@@ -235,11 +239,17 @@
 
   <div id="rdResultCard" class="card {% if not has_history or not can_query %}is-hidden{% endif %}">
     <div class="aps-resource-result-toolbar">
-      <div class="aps-resource-result-tabs" id="rdTabBar">
-        {{ ui.button('任务明细', 'primary', 'md', class='rd-tab-btn', type_attr='button', element_id='rdTabDetail') }}
-        {{ ui.button('现场记录', 'secondary', 'md', class='rd-tab-btn', type_attr='button', element_id='rdTabExecution') }}
-        {{ ui.button('日历矩阵', 'secondary', 'md', class='rd-tab-btn', type_attr='button', element_id='rdTabCalendar') }}
-        {{ ui.button('甘特图', 'secondary', 'md', class='rd-tab-btn', type_attr='button', element_id='rdTabGantt') }}
+      <div class="aps-resource-result-tabs aps-resource-lane-tabs" id="rdTabBar">
+        <div class="aps-resource-lane-group" aria-label="计划员查看">
+          <span class="aps-resource-lane-label">计划员查看</span>
+          {{ ui.button('任务明细', 'primary', 'md', class='rd-tab-btn', type_attr='button', element_id='rdTabDetail') }}
+          {{ ui.button('日历矩阵', 'secondary', 'md', class='rd-tab-btn', type_attr='button', element_id='rdTabCalendar') }}
+          {{ ui.button('甘特图', 'secondary', 'md', class='rd-tab-btn', type_attr='button', element_id='rdTabGantt') }}
+        </div>
+        <div class="aps-resource-lane-group aps-resource-lane-group-facts" aria-label="现场事实">
+          <span class="aps-resource-lane-label">现场事实</span>
+          {{ ui.button('现场记录', 'secondary', 'md', class='rd-tab-btn', type_attr='button', element_id='rdTabExecution') }}
+        </div>
       </div>
       <div class="form-field" id="rdGanttModeField">
         <label>甘特粒度</label>
@@ -285,43 +295,46 @@
     </div>
 
     <div id="rdExecutionPanel" class="mt-3 is-hidden">
-      {% if plan_identity and plan_identity.can_write_feedback %}
-        <div class="aps-query-form-grid aps-resource-query-grid">
-          <div class="form-field">
-            <label for="rdExecutionCreatedBy">反馈人</label>
-            <input type="text" id="rdExecutionCreatedBy" class="w-180" autocomplete="off" placeholder="可不填">
-          </div>
-          <div class="form-field">
-            <label>实际情况 Excel</label>
-            <div class="aps-inline-form-actions">
-              {% if actual_template_url %}
-                {{ ui.link_button('下载填写模板', actual_template_url, 'secondary', 'sm', 'download') }}
-              {% else %}
-                {{ ui.button('下载填写模板', 'secondary', 'sm', type_attr='button', disabled=True, class='aps-disabled-button') }}
-              {% endif %}
-            </div>
-          </div>
-          <div class="form-field aps-execution-import-field">
-            <label for="rdActualImportFile">导入实际情况 Excel</label>
-            <input type="file" id="rdActualImportFile" accept=".xlsx,.xlsm" {% if not actual_import_url %}disabled{% endif %}>
-          </div>
-          <div class="form-field">
-            <label>&nbsp;</label>
-            <div class="aps-inline-form-actions">
-              {{ ui.button('导入实际情况 Excel', 'primary', 'sm', type_attr='button', element_id='rdActualImportSubmit', disabled=(not actual_import_url)) }}
-            </div>
-          </div>
-        </div>
-      {% else %}
-        <div class="flash-card flash-warning" role="status">
-          {{ plan_identity.guardrail_text if plan_identity and plan_identity.guardrail_text else '当前方案只能查看，不能写现场记录。' }}
-        </div>
-      {% endif %}
       <div id="rdExecutionNotice" class="flash-card flash-warning is-hidden" role="status"></div>
-      <div id="rdActualImportPreviewWrap" class="mt-2 is-hidden"></div>
       <div id="rdExecutionCards" class="aps-execution-card-grid mt-2">
         <div class="muted">现场记录任务卡加载中...</div>
       </div>
+      {% if plan_identity and plan_identity.can_write_feedback %}
+        <details class="aps-execution-bulk-maintenance mt-3">
+          <summary>填写人和批量维护</summary>
+          <div class="aps-query-form-grid aps-resource-query-grid mt-2">
+            <div class="form-field">
+              <label for="rdExecutionCreatedBy">反馈人</label>
+              <input type="text" id="rdExecutionCreatedBy" class="w-180" autocomplete="off" placeholder="可不填">
+            </div>
+            <div class="form-field">
+              <label>实际情况 Excel</label>
+              <div class="aps-inline-form-actions">
+                {% if actual_template_url %}
+                  {{ ui.link_button('下载填写模板', actual_template_url, 'secondary', 'sm', 'download') }}
+                {% else %}
+                  {{ ui.button('下载填写模板', 'secondary', 'sm', type_attr='button', disabled=True, class='aps-disabled-button') }}
+                {% endif %}
+              </div>
+            </div>
+            <div class="form-field aps-execution-import-field">
+              <label for="rdActualImportFile">导入实际情况 Excel</label>
+              <input type="file" id="rdActualImportFile" accept=".xlsx,.xlsm" {% if not actual_import_url %}disabled{% endif %}>
+            </div>
+            <div class="form-field">
+              <label>&nbsp;</label>
+              <div class="aps-inline-form-actions">
+                {{ ui.button('导入实际情况 Excel', 'primary', 'sm', type_attr='button', element_id='rdActualImportSubmit', disabled=(not actual_import_url)) }}
+              </div>
+            </div>
+            <div id="rdActualImportPreviewWrap" class="mt-2 is-hidden"></div>
+          </div>
+        </details>
+      {% else %}
+        <div class="flash-card flash-warning mt-3" role="status">
+          {{ plan_identity.guardrail_text if plan_identity and plan_identity.guardrail_text else '当前方案只能查看，不能写现场记录。' }}
+        </div>
+      {% endif %}
     </div>
 
     <div id="rdCalendarPanel" class="mt-3 is-hidden">
@@ -433,6 +446,10 @@
   {% endif %}
   <script src="{{ url_for('static', filename='js/resource_dispatch_shared.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/resource_dispatch_core.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/resource_execution_context.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/resource_execution_cards.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/resource_execution_actual.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/resource_execution_import.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/resource_execution.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/resource_dispatch_boot.js') }}" defer></script>
 {% endblock %}
