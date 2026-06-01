@@ -389,6 +389,98 @@ def test_write_post_requires_query_plan_identity_and_batch_match(tmp_path, monke
     assert _event_count(db_path) == 0
 
 
+def test_write_post_rejects_task_outside_current_dispatch_query(tmp_path, monkeypatch) -> None:
+    app, db_path = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+    current_card = _current_card(client)
+    conn = get_connection(db_path)
+    try:
+        conn.execute(
+            """
+            INSERT INTO Batches(batch_id, part_no, part_name, quantity, due_date, priority, ready_status, status)
+            VALUES ('B2', 'P001', '零件一', 5, '2026-05-10', 'normal', 'yes', 'scheduled')
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO BatchOperations(id, op_code, batch_id, piece_id, seq, op_type_name, source, status)
+            VALUES (12, 'OP12', 'B2', 'piece-c', 30, '钻孔', 'internal', 'scheduled')
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO Schedule(id, op_id, machine_id, operator_id, start_time, end_time, lock_status, version)
+            VALUES (103, 12, 'M1', 'O2', '2026-05-01 08:30:00', '2026-05-01 09:30:00', 'unlocked', 2)
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    resp = _post_controlled(
+        client,
+        "/scheduler/resource-dispatch/execution/12/start",
+        _base_payload(
+            current_card,
+            schedule_id=103,
+            batch_id="B2",
+            operator_id="O2",
+            expected_state_revision="12:0:0",
+            idempotency_key="outside-current-query",
+        ),
+    )
+    payload = _json(resp)
+
+    assert resp.status_code == 409
+    assert payload["error"]["details"]["reason"] == "schedule_mismatch"
+    assert _event_count(db_path) == 0
+
+
+def test_actual_post_rejects_outside_query_even_when_batch_id_is_missing(tmp_path, monkeypatch) -> None:
+    app, db_path = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+    current_card = _current_card(client)
+    conn = get_connection(db_path)
+    try:
+        conn.execute(
+            """
+            INSERT INTO Batches(batch_id, part_no, part_name, quantity, due_date, priority, ready_status, status)
+            VALUES ('B2', 'P001', '零件一', 5, '2026-05-10', 'normal', 'yes', 'scheduled')
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO BatchOperations(id, op_code, batch_id, piece_id, seq, op_type_name, source, status)
+            VALUES (12, 'OP12', 'B2', 'piece-c', 30, '钻孔', 'internal', 'scheduled')
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO Schedule(id, op_id, machine_id, operator_id, start_time, end_time, lock_status, version)
+            VALUES (103, 12, 'M1', 'O2', '2026-05-01 08:30:00', '2026-05-01 09:30:00', 'unlocked', 2)
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    payload = _base_payload(
+        current_card,
+        schedule_id=103,
+        operator_id="O2",
+        actual_start_time="2026-05-01 08:35:00",
+        idempotency_key="outside-query-actual-no-batch",
+    )
+    payload.pop("batch_id", None)
+    resp = _post_controlled(client, "/scheduler/resource-dispatch/execution/12/actual", payload)
+    data = _json(resp)
+
+    assert resp.status_code == 400
+    assert data["error"]["details"]["field"] == "batch_id"
+    assert data["error"]["details"]["reason"] == "missing_required_field"
+    assert _event_count(db_path) == 0
+
+
 def test_validation_errors_use_chinese_field_label(tmp_path, monkeypatch) -> None:
     app, _db_path = _build_app(tmp_path, monkeypatch)
     client = app.test_client()

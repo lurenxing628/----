@@ -330,6 +330,7 @@ def _data_gap_todo(
     latest_summary: Optional[Dict[str, Any]],
     latest_summary_parse_state: Optional[Dict[str, Any]],
     plan_time_span: Optional[Dict[str, Any]],
+    today_rows_load_error: str,
     execution_facts_load_error: str,
 ) -> Optional[Dict[str, Any]]:
     if latest_history is None:
@@ -348,6 +349,10 @@ def _data_gap_todo(
         title = "最新计划缺少日期范围"
         impact = "需要日期的甘特、资源派工和报表入口会先禁用，避免跳到不确定的范围。"
         evidence = "当前版本没有读到有效的计划开始和结束时间。"
+    elif _text(today_rows_load_error):
+        title = "今日计划暂时读不到"
+        impact = "首页暂时不能判断今天哪些任务现场情况待确认，避免把读取失败误当成没有待确认。"
+        evidence = _text(today_rows_load_error)
     elif _text(execution_facts_load_error):
         title = "现场情况暂时读不到"
         impact = "首页暂时不能判断哪些任务现场情况待确认，避免把读取失败误当成现场没有反馈。"
@@ -375,6 +380,7 @@ def _todo_items(
     latest_summary_parse_state: Optional[Dict[str, Any]],
     plan_time_span: Optional[Dict[str, Any]],
     site_gap_rows: Iterable[Dict[str, Any]],
+    today_rows_load_error: str,
     execution_facts_load_error: str,
 ) -> List[Dict[str, Any]]:
     candidates = [
@@ -391,6 +397,7 @@ def _todo_items(
             latest_summary=latest_summary,
             latest_summary_parse_state=latest_summary_parse_state,
             plan_time_span=plan_time_span,
+            today_rows_load_error=today_rows_load_error,
             execution_facts_load_error=execution_facts_load_error,
         ),
     ]
@@ -409,6 +416,7 @@ def build_dashboard_workbench_summary(
     latest_summary_parse_state: Optional[Dict[str, Any]] = None,
     plan_time_span: Optional[Dict[str, Any]] = None,
     today_rows: Optional[List[Dict[str, Any]]] = None,
+    today_rows_load_error: str = "",
     execution_facts_by_op_id: Optional[Dict[int, Any]] = None,
     execution_facts_load_error: str = "",
     now: Optional[datetime] = None,
@@ -416,10 +424,11 @@ def build_dashboard_workbench_summary(
     current_now = now or datetime.now()
     rows = list(today_rows or [])
     facts = dict(execution_facts_by_op_id or {})
+    rows_load_error = _text(today_rows_load_error)
     facts_load_error = _text(execution_facts_load_error)
     context = _latest_plan_context(latest_history=latest_history, plan_time_span=plan_time_span)
     site_gap_rows = []
-    if not facts_load_error:
+    if not rows_load_error and not facts_load_error:
         site_gap_rows = _site_record_gap_rows(
             today_rows=rows,
             execution_facts_by_op_id=facts,
@@ -433,6 +442,7 @@ def build_dashboard_workbench_summary(
         latest_summary_parse_state=latest_summary_parse_state,
         plan_time_span=plan_time_span,
         site_gap_rows=site_gap_rows,
+        today_rows_load_error=rows_load_error,
         execution_facts_load_error=facts_load_error,
     )
     return {

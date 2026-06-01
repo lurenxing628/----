@@ -184,6 +184,25 @@ def test_dashboard_workbench_execution_fact_failure_does_not_fake_site_gap() -> 
     assert "避免把读取失败误当成现场没有反馈" in todos["data_gap"]["impact_text"]
 
 
+def test_dashboard_workbench_today_rows_failure_does_not_fake_empty_site_gap() -> None:
+    summary = _build_summary(
+        overdue_count=0,
+        latest_summary={
+            "overdue_batches": {"count": 0},
+            "algo": {"metrics": {"machine_util_avg": 0.2}},
+        },
+        today_rows=[],
+        execution_facts_by_op_id={},
+        today_rows_load_error="今日正式计划读取失败，首页暂时不能判断哪些任务现场情况待确认。",
+    )
+    todos = _todo_by_kind(summary)
+
+    assert "site_record_gap" not in todos
+    assert set(todos) == {"data_gap"}
+    assert todos["data_gap"]["title"] == "今日计划暂时读不到"
+    assert "避免把读取失败误当成没有待确认" in todos["data_gap"]["impact_text"]
+
+
 def test_visible_text_parser_helper_ignores_href_query_internal_fields() -> None:
     parser = _VisibleTextParser()
     parser.feed('<a href="/x?plan_role=adopted&op_id=1"><span>查看排产分析</span></a>')

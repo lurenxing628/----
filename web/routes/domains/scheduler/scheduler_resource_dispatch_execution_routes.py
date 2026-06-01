@@ -34,6 +34,14 @@ def _text(value: Any) -> str:
     return str(value or "").strip()
 
 
+def _positive_int(value: Any) -> Optional[int]:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
 def _execution_svc() -> Any:
     return g.services.resource_dispatch_execution_service
 
@@ -97,12 +105,55 @@ def _write_request_kwargs() -> Dict[str, Any]:
     return _request_kwargs()
 
 
-def _request_plan_identity_payload() -> Dict[str, Any]:
+def _row_matches_feedback_target(row: Mapping[str, Any], *, op_id: int, schedule_id: int, batch_id: str) -> bool:
+    if _positive_int(row.get("op_id")) != int(op_id):
+        return False
+    if _positive_int(row.get("schedule_id")) != int(schedule_id):
+        return False
+    return _text(row.get("batch_id")) == batch_id
+
+
+def _ensure_feedback_target_in_query(context: Mapping[str, Any], op_id: int, payload: Mapping[str, Any]) -> None:
+    schedule_id = _positive_int(payload.get("schedule_id"))
+    batch_id = _text(payload.get("batch_id"))
+    if schedule_id is None or not batch_id:
+        raise ValidationError(
+            "现场记录写入缺少任务定位信息，请刷新资源排班页面后重试。",
+            field="schedule_id" if schedule_id is None else "batch_id",
+            details={"reason": "missing_required_field"},
+        )
+    rows = context.get("rows") if isinstance(context, Mapping) else None
+    if any(
+        isinstance(row, Mapping)
+        and _row_matches_feedback_target(row, op_id=int(op_id), schedule_id=int(schedule_id), batch_id=batch_id)
+        for row in (rows or [])
+    ):
+        return
+    raise AppError(
+        ErrorCode.SCHEDULE_CONFLICT,
+        "当前查询条件下找不到这道工序的现场记录，请刷新资源排班页面后重试。",
+        details={"reason": "schedule_mismatch"},
+    )
+
+
+def _identity_allows_query_membership_check(identity: Mapping[str, Any]) -> bool:
+    return (
+        _text(identity.get("requested_plan_role")) == "adopted"
+        and _text(identity.get("effective_plan_role")) == "adopted"
+        and _text(identity.get("source_table")) == "schedule"
+        and not _text(identity.get("scenario_id"))
+        and bool(identity.get("can_write_feedback"))
+    )
+
+
+def _request_plan_identity_payload(op_id: int, payload: Mapping[str, Any]) -> Dict[str, Any]:
     query_kwargs = _write_request_kwargs()
     context = _execution_svc().get_execution_context(**query_kwargs)
     identity = context.get("plan_identity") if isinstance(context, dict) else None
     if not isinstance(identity, dict) or not identity:
         raise ValidationError("当前计划身份不完整，请刷新资源排班页面后重试。", field="plan_identity")
+    if _identity_allows_query_membership_check(identity):
+        _ensure_feedback_target_in_query(context, op_id, payload)
     return {
         "version": identity.get("version"),
         "requested_plan_role": identity.get("requested_plan_role"),
@@ -113,7 +164,7 @@ def _request_plan_identity_payload() -> Dict[str, Any]:
 
 
 def _feedback_context(op_id: int, payload: Dict[str, Any]) -> ExecutionFeedbackContext:
-    identity_payload = _request_plan_identity_payload()
+    identity_payload = _request_plan_identity_payload(op_id, payload)
     return ExecutionFeedbackContext(
         schedule_version=cast(int, identity_payload.get("version")),
         schedule_id=cast(int, payload.get("schedule_id")),
