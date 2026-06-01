@@ -46,6 +46,8 @@ tags: [aps, workbench, dashboard, resource-dispatch, execution-feedback]
 - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_py38plus_syntax.py --fail-on-hit web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py web/routes/dashboard.py web/viewmodels/dashboard_workbench.py tests/regression_operation_execution_feedback_routes.py tests/regression_dashboard_workbench_contract.py`：0 findings。
 - `git diff --check`：通过。
 - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --allow-dirty-worktree`：16/16 步完成，功能检查通过；因为当前工作区未提交，manifest 标记为 `passed_but_unbound`，不能当作 clean-worktree 最终证明。
+- 提交 `dcbb9607 fix: harden workbench first-round context checks` 后，`PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree`：16/16 步通过，collected_count=3833，得到 clean-worktree 最终证明。
+- `git push`：通过，远端分支 `codex/aps-three-gap-directions` 已更新；push 前置 APS daily fast gate 通过。本条为文档补记，不改变代码行为。
 
 ## 5.1 SubAgent 复审
 
