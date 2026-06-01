@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Tuple
+from typing import Tuple
 
 from core.infrastructure.database import get_connection
 from tests.operation_execution_feedback_test_support import (
     _base_payload,
     _build_app,
     _current_card,
+    _current_query,
     _event_count,
     _event_count_for_op,
     _json,
@@ -27,6 +28,17 @@ def test_execution_data_returns_task_card_contract(tmp_path, monkeypatch) -> Non
     assert payload["success"] is True
     data = payload["data"]
     assert data["plan_identity_label"] == "正式采用方案"
+    identity_json = str(data["plan_identity"])
+    for forbidden in (
+        "requested_plan_role",
+        "effective_plan_role",
+        "source_table",
+        "scenario_id",
+        "candidate_id",
+        "candidate_key",
+    ):
+        assert forbidden not in data["plan_identity"]
+        assert forbidden not in identity_json
     assert data["can_write_feedback"] is True
     assert data["disabled_reason"] == ""
     assert len(data["tasks"]) == 1
@@ -56,12 +68,46 @@ def test_execution_data_returns_task_card_contract(tmp_path, monkeypatch) -> Non
         assert realtime_action not in card["unavailable_reasons"]
 
 
+def test_execution_data_public_plan_identity_hides_internal_fields_for_read_only_plans(tmp_path, monkeypatch) -> None:
+    app, _db_path = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+
+    urls = [
+        "/scheduler/resource-dispatch/execution/data?scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-04-30&version=1&plan_role=adopted",
+        "/scheduler/resource-dispatch/execution/data?scope_type=operator&operator_id=O2&period_preset=week&query_date=2026-05-01&version=2&plan_role=baseline_best",
+        "/scheduler/resource-dispatch/execution/data?scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01&version=2&plan_role=adopted&scenario_id=scenario-plain",
+    ]
+
+    for url in urls:
+        resp = client.get(url)
+        payload = _json(resp)
+
+        assert resp.status_code == 200
+        identity = payload["data"]["plan_identity"]
+        identity_json = str(identity)
+        assert identity["can_write_feedback"] is False
+        for forbidden in (
+            "requested_plan_role",
+            "effective_plan_role",
+            "source_table",
+            "scenario_id",
+            "candidate_id",
+            "candidate_key",
+            "scenario-plain",
+        ):
+            assert forbidden not in identity
+            assert forbidden not in identity_json
+
+
 def test_plain_user_start_finish_posts_write_after_guardrail(tmp_path, monkeypatch) -> None:
     app, db_path = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
     card = _current_card(client)
 
-    start_resp = client.post(f"/scheduler/resource-dispatch/execution/{card['op_id']}/start", json=_base_payload(card))
+    start_resp = client.post(
+        f"/scheduler/resource-dispatch/execution/{card['op_id']}/start?{_current_query()}",
+        json=_base_payload(card),
+    )
     start_data = _json(start_resp)["data"]
 
     assert start_resp.status_code == 200
@@ -72,7 +118,7 @@ def test_plain_user_start_finish_posts_write_after_guardrail(tmp_path, monkeypat
     assert _event_count(db_path) == 1
 
     finish_resp = client.post(
-        f"/scheduler/resource-dispatch/execution/{card['op_id']}/finish",
+        f"/scheduler/resource-dispatch/execution/{card['op_id']}/finish?{_current_query()}",
         json=_base_payload(
             card,
             expected_state_revision=start_data["state_revision"],
@@ -208,21 +254,100 @@ def test_plain_write_does_not_depend_on_testing_header(tmp_path, monkeypatch) ->
     assert _event_count(db_path) == 1
 
 
-def test_direct_post_rejects_candidate_preview_and_history(tmp_path, monkeypatch) -> None:
+def test_actual_post_uses_server_side_plan_identity_from_query(tmp_path, monkeypatch) -> None:
     app, db_path = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
     card = _current_card(client)
-    cases: Tuple[Dict[str, Any], ...] = (
-        {"requested_plan_role": "baseline_best", "effective_plan_role": "adopted", "source_table": "schedule"},
-        {"requested_plan_role": "adopted", "scenario_id": "scenario-plain"},
-        {"version": 1},
+    payload = _base_payload(
+        card,
+        idempotency_key="actual-query-identity",
+        actual_start_time="2026-05-01 08:20:00",
+    )
+    for key in ("version", "requested_plan_role", "effective_plan_role", "source_table", "scenario_id"):
+        payload.pop(key, None)
+
+    resp = client.post(
+        (
+            f"/scheduler/resource-dispatch/execution/{card['op_id']}/actual"
+            "?scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01"
+            "&date_from=2026-05-01&date_to=2026-05-07&version=2&plan_role=adopted"
+        ),
+        json=payload,
+    )
+    data = _json(resp)["data"]
+
+    assert resp.status_code == 200
+    assert data["task_card"]["actual_start_time"] == "2026-05-01 08:20:00"
+    assert _event_count(db_path) == 1
+
+
+def test_actual_post_without_query_rejects_body_plan_identity(tmp_path, monkeypatch) -> None:
+    app, db_path = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+    card = _current_card(client)
+
+    resp = client.post(
+        f"/scheduler/resource-dispatch/execution/{card['op_id']}/actual",
+        json=_base_payload(
+            card,
+            idempotency_key="actual-no-query-identity",
+            requested_plan_role="adopted",
+            effective_plan_role="adopted",
+            source_table="schedule",
+            actual_start_time="2026-05-01 08:20:00",
+        ),
+    )
+    payload = _json(resp)
+
+    assert resp.status_code == 400
+    assert payload["error"]["details"]["field"] == "plan_identity"
+    assert _event_count(db_path) == 0
+
+
+def test_write_post_rejects_incomplete_query_plan_identity(tmp_path, monkeypatch) -> None:
+    app, db_path = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+    card = _current_card(client)
+    partial_queries: Tuple[str, ...] = (
+        "version=2",
+        "plan_role=adopted",
+        "version=2&plan_role=adopted",
+        "scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01&version=2&plan_role=adopted",
+        "operator_id=O1&period_preset=week&query_date=2026-05-01&date_from=2026-05-01&date_to=2026-05-07&version=2&plan_role=adopted",
+        "scope_type=operator&operator_id=O1&query_date=2026-05-01&date_from=2026-05-01&date_to=2026-05-07&version=2&plan_role=adopted",
     )
 
-    for index, overrides in enumerate(cases):
+    for index, query in enumerate(partial_queries):
+        resp = client.post(
+            f"/scheduler/resource-dispatch/execution/{card['op_id']}/actual?{query}",
+            json=_base_payload(
+                card,
+                idempotency_key=f"incomplete-query-{index}",
+                actual_start_time="2026-05-01 08:20:00",
+            ),
+        )
+        payload = _json(resp)
+        assert resp.status_code == 400
+        assert payload["error"]["details"]["field"] == "plan_identity"
+        assert "missing_fields" in payload["error"]["details"]
+    assert _event_count(db_path) == 0
+
+
+def test_write_post_rejects_candidate_preview_and_history_query_context(tmp_path, monkeypatch) -> None:
+    app, db_path = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+    card = _current_card(client)
+    cases: Tuple[str, ...] = (
+        "scope_type=operator&operator_id=O2&period_preset=week&query_date=2026-05-01&date_from=2026-05-01&date_to=2026-05-07&version=2&plan_role=baseline_best",
+        "scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01&date_from=2026-05-01&date_to=2026-05-07&version=2&plan_role=adopted&scenario_id=scenario-plain",
+        "scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-04-30&date_from=2026-04-27&date_to=2026-05-03&version=1&plan_role=adopted",
+    )
+
+    for index, query in enumerate(cases):
         resp = _post_controlled(
             client,
-            f"/scheduler/resource-dispatch/execution/{card['op_id']}/start",
-            _base_payload(card, idempotency_key=f"reject-key-{index}", **overrides),
+            f"/scheduler/resource-dispatch/execution/{card['op_id']}/start?{query}",
+            _base_payload(card, idempotency_key=f"reject-key-{index}"),
         )
         payload = _json(resp)
         assert resp.status_code == 409
@@ -233,23 +358,24 @@ def test_direct_post_rejects_candidate_preview_and_history(tmp_path, monkeypatch
     assert _event_count(db_path) == 0
 
 
-def test_direct_post_requires_complete_plan_identity_and_batch_match(tmp_path, monkeypatch) -> None:
+def test_write_post_requires_query_plan_identity_and_batch_match(tmp_path, monkeypatch) -> None:
     app, db_path = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
     card = _current_card(client)
 
-    missing_identity_payload = _base_payload(card, idempotency_key="missing-identity")
-    missing_identity_payload.pop("requested_plan_role")
-    resp = _post_controlled(
-        client,
-        f"/scheduler/resource-dispatch/execution/{card['op_id']}/start",
-        missing_identity_payload,
+    no_query_payload = _base_payload(
+        card,
+        idempotency_key="no-query-identity",
+        requested_plan_role="adopted",
+        effective_plan_role="adopted",
+        source_table="schedule",
     )
+    resp = client.post(f"/scheduler/resource-dispatch/execution/{card['op_id']}/start", json=no_query_payload)
     payload = _json(resp)
     assert resp.status_code == 400
-    assert payload["error"]["details"]["reason"] == "missing_required_field"
-    assert payload["error"]["details"]["field"] == "requested_plan_role"
-    assert payload["error"]["details"]["can_retry"] is True
+    assert payload["error"]["details"]["field"] == "plan_identity"
+    assert payload["error"]["details"]["can_retry"] is False
+    assert _event_count(db_path) == 0
 
     wrong_batch = _post_controlled(
         client,

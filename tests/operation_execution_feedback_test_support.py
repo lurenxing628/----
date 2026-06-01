@@ -197,8 +197,13 @@ def _base_payload(card: Dict[str, Any], **overrides: Any) -> Dict[str, Any]:
 
 
 def _post_controlled(client, url: str, payload: Dict[str, Any]):
+    if "/scheduler/resource-dispatch/execution/" in url and "?" not in url:
+        url = f"{url}?{_current_query()}"
     return client.post(url, json=payload, headers={"X-APS-Test-Execution-Feedback": "allow"})
 
 
 def _current_query() -> str:
-    return "scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01&version=2&plan_role=adopted"
+    return (
+        "scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01"
+        "&date_from=2026-05-01&date_to=2026-05-07&version=2&plan_role=adopted"
+    )

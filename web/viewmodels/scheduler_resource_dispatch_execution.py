@@ -173,26 +173,27 @@ def _fill_actual_disabled_reason(*, can_write: bool, feedback_write_enabled: boo
 
 
 def build_available_actions(*, can_write: bool, feedback_write_enabled: bool, status: str, status_label: str) -> List[Dict[str, Any]]:
+    actions: List[Dict[str, Any]] = []
     fill_enabled = bool(can_write and feedback_write_enabled and status != "completed")
-    fill_disabled_reason = "" if fill_enabled else _fill_actual_disabled_reason(
-        can_write=can_write,
-        feedback_write_enabled=feedback_write_enabled,
-        status_label=status_label,
-    )
-    return [
-        {
+    if can_write:
+        fill_disabled_reason = "" if fill_enabled else _fill_actual_disabled_reason(
+            can_write=can_write,
+            feedback_write_enabled=feedback_write_enabled,
+            status_label=status_label,
+        )
+        actions.append({
             "action": EXECUTION_ACTION_FILL_ACTUAL,
             "label": _execution_action_label(EXECUTION_ACTION_FILL_ACTUAL),
             "enabled": fill_enabled,
             "disabled_reason": fill_disabled_reason,
-        },
-        {
-            "action": EXECUTION_ACTION_VIEW_RECORDS,
-            "label": _execution_action_label(EXECUTION_ACTION_VIEW_RECORDS),
-            "enabled": True,
-            "disabled_reason": "",
-        },
-    ]
+        })
+    actions.append({
+        "action": EXECUTION_ACTION_VIEW_RECORDS,
+        "label": _execution_action_label(EXECUTION_ACTION_VIEW_RECORDS),
+        "enabled": True,
+        "disabled_reason": "",
+    })
+    return actions
 
 
 def build_task_card(row: Mapping[str, Any], state: Any, *, can_write_feedback: bool, feedback_write_enabled: bool) -> Dict[str, Any]:
@@ -255,6 +256,13 @@ def build_task_card(row: Mapping[str, Any], state: Any, *, can_write_feedback: b
 def build_execution_payload(context: Mapping[str, Any]) -> Dict[str, Any]:
     can_write = bool(context.get("can_write_feedback"))
     feedback_write_enabled = bool(context.get("feedback_write_enabled"))
+    plan_identity_value = context.get("plan_identity")
+    plan_identity: Mapping[str, Any] = plan_identity_value if isinstance(plan_identity_value, Mapping) else {}
+    plan_identity_label = (
+        _text(context.get("plan_identity_label"))
+        or _text(plan_identity.get("user_label") or plan_identity.get("label"))
+        or "正式采用方案"
+    )
     states_value = context.get("states")
     states = states_value if isinstance(states_value, dict) else {}
     tasks: List[Dict[str, Any]] = []
@@ -278,8 +286,12 @@ def build_execution_payload(context: Mapping[str, Any]) -> Dict[str, Any]:
     elif not feedback_write_enabled:
         disabled_reason = _FEEDBACK_DISABLED_REASON
     return {
-        "plan_identity": dict(context.get("plan_identity") or {}),
-        "plan_identity_label": _text(context.get("plan_identity_label")) or "正式采用方案",
+        "plan_identity": {
+            "label": plan_identity_label,
+            "can_write_feedback": can_write,
+            "guardrail_text": "" if can_write else disabled_reason,
+        },
+        "plan_identity_label": plan_identity_label,
         "can_write_feedback": can_write,
         "disabled_reason": disabled_reason,
         "tasks": tasks,

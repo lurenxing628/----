@@ -3,7 +3,8 @@ created: 2026-05-31
 last_reviewed: 2026-06-01
 
 # 阶段口径：
-# - 前 3 条 minimal_loop: true 是第一轮 A/B/C：先把上下文合同、顶层入口、首页值班台跑通。
+# - 前 3 条是第一轮 A/B/C：先把上下文合同、顶层入口、首页值班台跑通。
+# - 第 3 条 minimal_loop: true，表示做完首页值班台后系统能跑通最窄的端到端工作台路径。
 # - 第 4-9 条是第一版完整工作台：分析、甘特详情、资源派工、报表回跳、主流程测试和用户指南。
 # - 第 10-13 条是第二阶段增强：延期解释接现场事实、甘特资源负荷摘要、停机影响任务级明细、牵连批次/订单影响面。
 
@@ -13,14 +14,18 @@ items:
     description: 建立 WorkbenchPlanContext 和 WorkbenchLink 口径，让首页、甘特、分析、资源派工、报表之间跳转时保持同一版本、方案、日期范围和业务对象。
     depends_on: []
     depends_on_reasons: {}
-    status: planned
-    feature: null
-    minimal_loop: true
+    status: done
+    feature: 2026-06-01-workbench-context-link-contract
+    minimal_loop: false
     primary_paths:
       - web/viewmodels/scheduler_workbench_links.py
-      - web/viewmodels/dashboard_workbench.py
-      - web/viewmodels/scheduler_analysis_candidates.py
-      - web/viewmodels/page_manuals_scheduler_outputs.py
+      - web/viewmodels/scheduler_workbench_link_query.py
+      - web/routes/domains/scheduler/scheduler_analysis_links.py
+      - web/routes/domains/scheduler/scheduler_resource_dispatch.py
+      - web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py
+      - core/services/scheduler/resource_dispatch_page_context.py
+      - web/viewmodels/scheduler_resource_dispatch.py
+      - web/viewmodels/scheduler_resource_dispatch_execution.py
       - tests/regression_scheduler_workbench_links_contract.py
     entrypoints:
       - "新建或整理专门负责生成跨页链接的 ViewModel，不让各页面自己拼 URL"
@@ -38,11 +43,11 @@ items:
     exit_checks:
       - WorkbenchPlanContext 字段包含版本、方案身份、日期范围、批次、资源、可写状态和中文护栏说明
       - WorkbenchLink 包含 label、url、target_page、context_summary、disabled、disabled_reason、required_params
-      - target_page 只使用 dashboard、analysis、gantt、resource_dispatch、overdue_report、delay_diagnosis、utilization_report、execution_review、reports_index
-      - 首页到分析、甘特、资源派工、报表的链接都保留版本、方案、日期范围；资源派工和报表类链接还要保留 query_date、period_preset
+      - target_page 只使用 dashboard、analysis、gantt、week_plan、resource_dispatch、overdue_report、delay_diagnosis、utilization_report、execution_review、reports_index
+      - 合同层支持首页到分析、甘特、资源派工、报表的链接保留版本、方案、日期范围；资源派工和报表类链接还要保留 query_date、period_preset，页面接线按后续阶段继续
       - 分析推荐卡到甘特、超期清单、资源派工的链接不丢 plan_role、scenario_id、日期范围和目标页需要的 view/scope_type
-      - 甘特任务详情到资源派工和计划实际复盘的链接保留任务定位、资源定位、scope_type 和批次定位
-      - 报表明细回甘特或资源派工时保留版本、方案、日期、query_date、period_preset、资源/批次对象
+      - 合同层支持甘特任务详情到资源派工和计划实际复盘的链接保留任务定位、资源定位、scope_type 和批次定位，甘特详情接线按后续阶段继续
+      - 合同层支持报表明细回甘特或资源派工时保留版本、方案、日期、query_date、period_preset、资源/批次对象，报表回跳入口按后续阶段继续
       - execution_review 只看正式采用方案；非正式方案入口禁用，不把 plan_role/scenario_id 误传成可复盘上下文
       - plan_role、guardrail_reason_type、resource_type/scope_type、period_preset、view 都有内部值到中文展示值映射，页面、导出列、公开 payload 不直接露内部值
       - 模拟预览只显示中文预览名，不把 scenario_id 当页面文案
@@ -57,7 +62,7 @@ items:
       workbench-context-link-contract: 顶层入口需要复用统一链接，避免导航先各自手拼 URL。
     status: planned
     feature: null
-    minimal_loop: true
+    minimal_loop: false
     primary_paths:
       - templates/base.html
       - templates/components/ui_macros.html

@@ -215,7 +215,7 @@ WorkbenchTodoItem:
 WorkbenchLink:
   label: str
   url: str
-  target_page: str  # dashboard / analysis / gantt / resource_dispatch / overdue_report / delay_diagnosis / utilization_report / execution_review / reports_index
+  target_page: str  # dashboard / analysis / gantt / week_plan / resource_dispatch / overdue_report / delay_diagnosis / utilization_report / execution_review / reports_index
   context_summary: str
   disabled: bool
   disabled_reason: str
@@ -229,6 +229,8 @@ WorkbenchLink:
 - `required_params` 只写测试必须锁住的上下文参数，避免跳转时悄悄丢版本、方案、日期、批次或资源。
 - `required_params` 必须按页面设计稿第 3.4 节的逐路线参数矩阵落地；跳资源派工或报表类页面时，能拿到就同时保留 `date_from/date_to`、`query_date`、`period_preset`，跳资源派工还要保留 `scope_type`。
 - 只要当前上下文有 `plan_role` 和 `scenario_id`，除 `execution_review` 这类只看正式采用方案的页面外，跨页链接都要继续携带，页面可见处再翻译成中文。
+- 第一版里 `overdue_report` 和 `delay_diagnosis` 复用同一个 `/reports/overdue` 路由，但 `target_page` 和中文文案必须区分：前者是“看超期清单”，后者是“解释为什么晚”。两者都要保留版本、方案、模拟预览、日期和批次上下文。
+- `execution_review` 可以携带 `plan_role=adopted` 作为正式采用方案口径，但不能携带非 adopted 的 `plan_role` 或 `scenario_id`；非正式方案入口必须禁用。
 - 去甘特图时必须明确 `view=machine` 或 `view=operator`。
 - 去资源派工时必须明确 `scope_type`；没有资源对象时可以默认 `operator` 且展示全部人员。
 
@@ -352,21 +354,21 @@ ResourceDispatchWorkbenchTabs:
 
 ## 6. 子 feature 清单
 
-| 顺序 | 子 feature | 目标 | 依赖 | 最小闭环 |
-|---|---|---|---|---|
-| 1 | `workbench-context-link-contract` | 统一跨页链接和计划上下文，防止跳转丢版本、丢方案、丢日期 | 无 | 是 |
-| 2 | `workbench-nav-entry` | 顶层出现计划工作台一跳入口，分析、甘特、资源派工、复盘不再藏得太深 | 1 | 是 |
-| 3 | `dashboard-workbench-risk-todos` | 首页显示最新排产风险和今日待处理，用户能从首页进入正确下一步 | 1, 2 | 是 |
-| 4 | `analysis-action-hub-layout` | 排产分析页把方案推荐、延期解释、诊断行动提到技术过程之前 | 1 | 否 |
-| 5 | `gantt-task-detail-panel` | 甘特图增加稳定任务详情区和下一步链接 | 1 | 否 |
-| 6 | `resource-dispatch-execution-lane` | 资源派工把看排班、现场记录、计划和现场实际入口分清 | 1 | 否 |
-| 7 | `reports-workbench-backlink` | 报表中心和报表明细能带上下文回到甘特、资源派工和复盘 | 1 | 否 |
-| 8 | `workbench-flow-regression-suite` | 用测试证明第一版“首页 → 异常/方案/甘特/派工/报表/复盘”的主流程存在 | 1-7 | 否 |
-| 9 | `workbench-user-guide-refresh` | 更新用户手册，告诉用户每天该先看哪里、怎么查问题 | 8 | 否 |
-| 10 | `delay-diagnosis-site-facts-bridge` | 延期解释接入已录入的现场事实，不能继续固定说没有现场事实 | 1, 6 | 否 |
-| 11 | `gantt-resource-load-summary` | 甘特附近显示最忙设备/人员和资源负荷入口 | 1, 5 | 否 |
-| 12 | `downtime-task-impact-detail` | 停机影响从设备级说明补到受影响任务级明细 | 1, 7 | 否 |
-| 13 | `downstream-batch-order-impact` | 延期和方案解释在数据足够时说明牵连批次/订单影响面 | 1, 4, 10 | 否 |
+| 顺序 | 子 feature | 目标 | 依赖 | 最小闭环 | 状态 |
+|---|---|---|---|---|---|
+| 1 | `workbench-context-link-contract` | 统一跨页链接和计划上下文，防止跳转丢版本、丢方案、丢日期 | 无 | 否 | done |
+| 2 | `workbench-nav-entry` | 顶层出现计划工作台一跳入口，分析、甘特、资源派工、复盘不再藏得太深 | 1 | 否 | planned |
+| 3 | `dashboard-workbench-risk-todos` | 首页显示最新排产风险和今日待处理，用户能从首页进入正确下一步 | 1, 2 | 是 | planned |
+| 4 | `analysis-action-hub-layout` | 排产分析页把方案推荐、延期解释、诊断行动提到技术过程之前 | 1 | 否 | planned |
+| 5 | `gantt-task-detail-panel` | 甘特图增加稳定任务详情区和下一步链接 | 1 | 否 | planned |
+| 6 | `resource-dispatch-execution-lane` | 资源派工把看排班、现场记录、计划和现场实际入口分清 | 1 | 否 | planned |
+| 7 | `reports-workbench-backlink` | 报表中心和报表明细能带上下文回到甘特、资源派工和复盘 | 1 | 否 | planned |
+| 8 | `workbench-flow-regression-suite` | 用测试证明第一版“首页 → 异常/方案/甘特/派工/报表/复盘”的主流程存在 | 1-7 | 否 | planned |
+| 9 | `workbench-user-guide-refresh` | 更新用户手册，告诉用户每天该先看哪里、怎么查问题 | 8 | 否 | planned |
+| 10 | `delay-diagnosis-site-facts-bridge` | 延期解释接入已录入的现场事实，不能继续固定说没有现场事实 | 1, 6 | 否 | planned |
+| 11 | `gantt-resource-load-summary` | 甘特附近显示最忙设备/人员和资源负荷入口 | 1, 5 | 否 | planned |
+| 12 | `downtime-task-impact-detail` | 停机影响从设备级说明补到受影响任务级明细 | 1, 7 | 否 | planned |
+| 13 | `downstream-batch-order-impact` | 延期和方案解释在数据足够时说明牵连批次/订单影响面 | 1, 4, 10 | 否 | planned |
 
 ## 7. 排期建议
 
@@ -402,9 +404,9 @@ ResourceDispatchWorkbenchTabs:
 - 接口契约：已写到 viewmodel 字段、链接字段和页面层级约束。
 - 子 feature 粒度：每条都能单独进入 `cs-feat-design`。
 - 依赖关系：DAG，无循环。
-- 最小闭环：`workbench-context-link-contract` + `workbench-nav-entry` + `dashboard-workbench-risk-todos` 三项完成后，才能演示从顶层进入首页、从首页待处理跳到目标页且不丢上下文。
+- 最小闭环：`workbench-context-link-contract` + `workbench-nav-entry` + `dashboard-workbench-risk-todos` 三项完成后，才能演示从顶层进入首页、从首页待处理跳到目标页且不丢上下文；机器可读的 `minimal_loop: true` 标在第 3 条闭环收口项。
 - 明确不做：已写。
-- 与现有 req / arch：不改 requirements / architecture，只引用现状和观察项。
+- 与现有 req / arch：roadmap 本身只规划能力；每个子 feature 验收时按实际改动决定是否回写 requirements / architecture。
 
 ## 10. 变更日志
 
@@ -414,3 +416,4 @@ ResourceDispatchWorkbenchTabs:
 - 2026-05-31：根据用户补充口径，短期不做反馈人必填、多人现场账号、Excel 导入预览 / 二次确认；现场记录按计划员单人代录现场事实处理。
 - 2026-05-31：根据开工总方案对抗复核，把执行顺序调整为“上下文链接合同先行”，新增 `delay-diagnosis-site-facts-bridge` 条目，并明确非正式方案下不得输出任何写入 URL 或 `data-*` 写入地址。
 - 2026-06-01：根据只读审查补强 `required_params` 逐路线矩阵口径、内部值到中文展示映射要求，并把停机影响任务级明细、牵连批次/订单影响面补成第二阶段独立条目。
+- 2026-06-01：完成 `workbench-context-link-contract`，新增统一工作台上下文链接 ViewModel，分析页候选方案链接开始复用统一合同；所有工作台目标页按矩阵保留查询日、周期、批次和资源上下文；资源派工非可写或不可查询场景不再下发现场记录 Excel 模板和导入地址，直连写入也不能靠请求体方案身份绕过后端护栏。

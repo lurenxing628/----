@@ -75,6 +75,7 @@ def test_analysis_candidate_links_and_roles_stay_stable() -> None:
         route_mod,
         history_service=history_service,
         plan_role_service=plan_role_service,
+        path="/scheduler/analysis?version=7&date_from=2026-05-25&date_to=2026-05-31",
     )
 
     rows = list(payload["candidate_comparison_display"]["rows"])
@@ -92,14 +93,17 @@ def test_analysis_candidate_links_and_roles_stay_stable() -> None:
     for row in rows:
         role = row["role"]
         links = list(row["links"])
-        assert [link["label"] for link in links] == ["设备甘特图", "人员甘特图", "周计划", "资源排班"]
+        assert [link["label"] for link in links] == ["设备甘特图", "人员甘特图", "周计划", "资源排班", "超期清单"]
         urls = [link["url"] for link in links]
         assert all("version=7" in url for url in urls)
         assert all(f"plan_role={role}" in url for url in urls)
         assert "/scheduler/gantt?view=machine" in urls[0]
         assert "/scheduler/gantt?view=operator" in urls[1]
         assert "/scheduler/week-plan?" in urls[2]
+        assert "week_start=2026-05-25" in urls[2]
         assert "/scheduler/resource-dispatch?" in urls[3]
+        assert "/reports/overdue?" in urls[4]
+        assert links[4]["target_page"] == "overdue_report"
 
 
 def test_analysis_candidate_links_are_hidden_when_candidate_detail_is_not_saved() -> None:

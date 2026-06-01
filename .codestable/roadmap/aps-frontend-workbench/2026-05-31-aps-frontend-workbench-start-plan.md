@@ -98,6 +98,8 @@ source_docs:
 
 结论：下一位执行 Agent 可以直接按这份方案开第一轮，不需要再问用户确认产品口径。
 
+进度更新：截至 2026-06-01，包 A `workbench-context-link-contract` 已完成并验收。后续继续第一轮时，应从包 B `workbench-nav-entry` 开始；本节下面保留包 A 的原始开工规则，作为已完成阶段的历史依据。
+
 它的第一步不是改代码，而是按 CodeStable 进入 `cs-feat-design`，先给 `workbench-context-link-contract` 写 feature design。只有这条 design 被确认后，再进入实现；后续再依次做 `workbench-nav-entry` 和 `dashboard-workbench-risk-todos`。
 
 下一位 Agent 开工前只需要读这几份文件：
@@ -112,7 +114,7 @@ source_docs:
 开工时按这个顺序推进：
 
 1. 先开 `workbench-context-link-contract` 的 feature design。
-2. design 必须使用第 5.2 节的 9 个固定 `target_page`，不能自己另起名字。
+2. design 必须使用第 5.2 节的 10 个固定 `target_page`，不能自己另起名字。
 3. design 必须把 `WorkbenchPlanContext`、`WorkbenchLink`、参数翻译表、关键跳转清单、非正式方案写入护栏写进验收。
 4. design 里的 `required_params` 必须按页面设计稿第 3.4 节逐路线矩阵来写；第 5.2 节里的关键跳转清单只是开工摘要，不能偷懒照抄成粗粒度测试。
 5. design 不新增页面、不改算法、不做 Excel 预览、不做现场员工账号。
@@ -225,7 +227,7 @@ source_docs:
 |---|---|
 | `label` | 按钮或链接文案，比如“查看甘特图” |
 | `url` | 目标地址；禁用时可以为空字符串 |
-| `target_page` | dashboard / analysis / gantt / resource_dispatch / overdue_report / delay_diagnosis / utilization_report / execution_review / reports_index |
+| `target_page` | dashboard / analysis / gantt / week_plan / resource_dispatch / overdue_report / delay_diagnosis / utilization_report / execution_review / reports_index |
 | `context_summary` | 中文说明，比如“第 12 版，正式采用方案，本周” |
 | `disabled` | 是否禁用 |
 | `disabled_reason` | 禁用中文原因 |
@@ -238,6 +240,7 @@ source_docs:
 | `dashboard` | 计划工作台首页 | `/` | 能拿到就带 `version`、`plan_role`、日期范围 | 顶层入口默认落点 |
 | `analysis` | 排产分析 | `/scheduler/analysis` | `version`；候选方案带 `plan_role`、`scenario_id` | 看方案推荐和风险 |
 | `gantt` | 甘特图 | `/scheduler/gantt` | `version`、`view`；能定位时带 `batch_id`、`resource_type/resource_id` | 看任务位置和详情 |
+| `week_plan` | 周计划 | `/scheduler/week-plan` | `version`、`week_start`、日期范围；能定位时带资源或批次 | 看周计划，不再作为分析页手写特殊链接 |
 | `resource_dispatch` | 资源派工 | `/scheduler/resource-dispatch` | `version`、日期范围；能定位时带资源或批次 | 看排班，正式方案下由计划员代录现场事实 |
 | `overdue_report` | 超期清单 | `/reports/overdue` | `version`；候选方案带 `plan_role`、`scenario_id` | 看哪些批次晚了 |
 | `delay_diagnosis` | 延期解释 | `/reports/overdue` | `version`、`batch_id` 如果有 | 第一版复用超期清单里的延期解释列，不新增独立页面 |

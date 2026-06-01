@@ -314,6 +314,7 @@ def test_analysis_route_builds_candidate_comparison_rows_with_shared_role_labels
         route_mod,
         history_service=history_service,
         plan_role_service=plan_role_service,
+        path="/scheduler/analysis?version=7&date_from=2026-05-25&date_to=2026-05-31",
     )
 
     display = payload["candidate_comparison_display"]
@@ -348,17 +349,126 @@ def test_analysis_route_builds_candidate_comparison_rows_with_shared_role_labels
             assert row["can_open_detail"] is True
             assert row["link_unavailable_reason"] == ""
         links = list(row["links"])
-        assert [link["label"] for link in links] == ["设备甘特图", "人员甘特图", "周计划", "资源排班"]
+        assert [link["label"] for link in links] == ["设备甘特图", "人员甘特图", "周计划", "资源排班", "超期清单"]
         urls = [link["url"] for link in links]
         assert "/scheduler/gantt?view=machine" in urls[0]
         assert "/scheduler/gantt?view=operator" in urls[1]
         assert "/scheduler/week-plan?" in urls[2]
         assert "/scheduler/resource-dispatch?" in urls[3]
+        assert "/reports/overdue?" in urls[4]
         assert all("version=7" in url for url in urls)
         assert all(f"plan_role={role}" in url for url in urls)
+        assert links[2]["target_page"] == "week_plan"
+        assert links[2]["disabled"] is False
+        assert "week_start=2026-05-25" in links[2]["url"]
+        assert "required_params" in links[2]
+        assert links[4]["target_page"] == "overdue_report"
 
     assert plan_role_service.version_queries == [7]
     json.dumps(payload, ensure_ascii=False)
+
+
+def test_analysis_candidate_links_keep_resource_and_date_context() -> None:
+    history_service = _HistoryServiceStub(_comparison_summary())
+    plan_role_service = _PlanRoleServiceStub(_plan_role_options())
+    app, route_mod = _build_app()
+
+    payload = _call_analysis_page(
+        app,
+        route_mod,
+        history_service=history_service,
+        plan_role_service=plan_role_service,
+        path=(
+            "/scheduler/analysis?version=7&date_from=2026-05-25&date_to=2026-05-31"
+            "&query_date=2026-05-28&period_preset=week&resource_type=machine&resource_id=M1&batch_id=B-001"
+        ),
+    )
+
+    row = {item["role"]: item for item in payload["candidate_comparison_display"]["rows"]}[ROLE_ADOPTED]
+    links = {link["label"]: link for link in row["links"]}
+
+    for label in ("设备甘特图", "人员甘特图"):
+        assert "start_date=2026-05-25" in links[label]["url"]
+        assert "end_date=2026-05-31" in links[label]["url"]
+        assert "resource_type=machine" in links[label]["url"]
+        assert "resource_id=M1" in links[label]["url"]
+
+    assert "date_from=2026-05-25" in links["周计划"]["url"]
+    assert "date_to=2026-05-31" in links["周计划"]["url"]
+    assert "week_start=2026-05-25" in links["周计划"]["url"]
+    assert "resource_type=machine" in links["周计划"]["url"]
+    assert "resource_id=M1" in links["周计划"]["url"]
+    assert "batch_id=B-001" in links["周计划"]["url"]
+
+    dispatch_url = links["资源排班"]["url"]
+    assert "date_from=2026-05-25" in dispatch_url
+    assert "date_to=2026-05-31" in dispatch_url
+    assert "scope_type=machine" in dispatch_url
+    assert "scope_id=M1" in dispatch_url
+    assert "machine_id=M1" in dispatch_url
+    assert "period_preset=week" in dispatch_url
+    assert "query_date=2026-05-28" in dispatch_url
+    assert "batch_id=B-001" in dispatch_url
+    assert "batch_id=B-001" in links["超期清单"]["url"]
+
+
+def test_analysis_candidate_links_accept_start_end_date_aliases() -> None:
+    history_service = _HistoryServiceStub(_comparison_summary())
+    plan_role_service = _PlanRoleServiceStub(_plan_role_options())
+    app, route_mod = _build_app()
+
+    payload = _call_analysis_page(
+        app,
+        route_mod,
+        history_service=history_service,
+        plan_role_service=plan_role_service,
+        path=(
+            "/scheduler/analysis?version=7&start_date=2026-05-25&end_date=2026-05-31"
+            "&period_preset=custom&resource_type=machine&resource_id=M1"
+        ),
+    )
+
+    row = {item["role"]: item for item in payload["candidate_comparison_display"]["rows"]}[ROLE_ADOPTED]
+    links = {link["label"]: link for link in row["links"]}
+
+    assert "start_date=2026-05-25" in links["设备甘特图"]["url"]
+    assert "end_date=2026-05-31" in links["人员甘特图"]["url"]
+    assert "date_from=2026-05-25" in links["超期清单"]["url"]
+    assert "date_to=2026-05-31" in links["超期清单"]["url"]
+    assert "date_from=2026-05-25" in links["周计划"]["url"]
+    assert "date_to=2026-05-31" in links["周计划"]["url"]
+    assert "week_start=2026-05-25" in links["周计划"]["url"]
+    assert "scope_type=machine" in links["资源排班"]["url"]
+    assert "machine_id=M1" in links["资源排班"]["url"]
+    assert "date_from=2026-05-25" in links["资源排班"]["url"]
+    assert "date_to=2026-05-31" in links["资源排班"]["url"]
+    assert "period_preset=custom" in links["资源排班"]["url"]
+
+
+def test_analysis_candidate_links_without_date_are_disabled_with_reason() -> None:
+    history_service = _HistoryServiceStub(_comparison_summary())
+    plan_role_service = _PlanRoleServiceStub(_plan_role_options())
+    app, route_mod = _build_app()
+
+    payload = _call_analysis_page(
+        app,
+        route_mod,
+        history_service=history_service,
+        plan_role_service=plan_role_service,
+        path="/scheduler/analysis?version=7",
+    )
+
+    row = {item["role"]: item for item in payload["candidate_comparison_display"]["rows"]}[ROLE_ADOPTED]
+    links = {link["label"]: link for link in row["links"]}
+
+    for label in ("设备甘特图", "人员甘特图", "资源排班", "超期清单"):
+        assert links[label]["disabled"] is True
+        assert links[label]["url"] == ""
+        assert "日期范围" in links[label]["disabled_reason"]
+
+    assert links["周计划"]["disabled"] is True
+    assert links["周计划"]["url"] == ""
+    assert "日期范围" in links["周计划"]["disabled_reason"]
 
 
 def test_analysis_route_hides_candidate_links_when_detail_was_not_saved() -> None:
@@ -704,6 +814,9 @@ def test_analysis_template_uses_viewmodel_candidate_rows_and_route_built_links()
     assert "candidate_comparison_display.rows" in source
     assert "row.comparison_note" in source
     assert "row.links" in source
+    assert "link.disabled" in source
+    assert "aria-disabled" in source
+    assert "disabled_reason" in source
     assert "candidate_comparison_display.status_messages" in source
     assert "message.class_name" in source
     assert "message.text" in source

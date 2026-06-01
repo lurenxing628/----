@@ -180,7 +180,7 @@ def _public_plan_identity(filters: MutableMapping[str, Any]) -> Dict[str, Any]:
             can_write_feedback=can_write_feedback,
         ),
         "can_dispatch": can_dispatch,
-        "can_write_feedback": can_write_feedback,
+        "can_write_feedback": can_write,
     }
 
 

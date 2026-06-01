@@ -14,6 +14,12 @@ from .resource_dispatch_execution_enrichment import (
     positive_row_op_ids,
     row_op_id,
 )
+from .resource_dispatch_page_context import (
+    build_page_filters,
+    can_query_page,
+    latest_page_version,
+    plan_role_context_for_page,
+)
 from .resource_dispatch_range import resolve_dispatch_range
 from .resource_dispatch_support import (
     build_dispatch_filters,
@@ -83,6 +89,12 @@ class ResourceDispatchService:
         if scope_type == "machine":
             return self._text(machine_id)
         return self._text(team_id)
+
+    def _filter_rows_by_batch(self, rows: List[Dict[str, Any]], batch_id: Any) -> List[Dict[str, Any]]:
+        normalized_batch_id = self._text(batch_id)
+        if not normalized_batch_id:
+            return rows
+        return [row for row in rows if self._text(row.get("batch_id")) == normalized_batch_id]
 
     def _latest_version(self) -> int:
         return int(self.history_service.get_latest_version() or 0)
@@ -267,13 +279,14 @@ class ResourceDispatchService:
         version: Any = None,
         plan_role: Any = None,
         scenario_id: Any = None,
+        batch_id: Any = None,
     ) -> Dict[str, Any]:
         normalized_scope_type = self._normalize_scope_type(scope_type)
         normalized_team_axis = self._normalize_team_axis(team_axis)
         normalized_plan_role = normalize_plan_role(plan_role)
         normalized_scenario_id = self._text(scenario_id)
         versions = self._list_versions(limit=50)
-        latest_version = int(versions[0].get("version") or 0) if versions else self._latest_version()
+        latest_version = latest_page_version(self.history_service, versions)
         dr = resolve_dispatch_range(
             period_preset=period_preset or "week",
             query_date=query_date,
@@ -299,30 +312,25 @@ class ResourceDispatchService:
         if version_resolution.status == "missing_history":
             require_selected_version(version_resolution)
         selected_version = version_resolution.selected_version
-        if selected_version:
-            plan_role_fields = plan_role_filter_fields(view_context)
-            plan_role_options = serialize_plan_role_options(view_context.available_roles)
-        else:
-            plan_role_fields = plan_role_filter_fields(
-                requested_role=normalized_plan_role,
-                effective_role=ROLE_ADOPTED,
-            )
-            plan_role_options = serialize_plan_role_options([])
-        filters = {
-            "scope_type": normalized_scope_type,
-            "scope_id": selected_scope_id or "",
-            "scope_name": selected_scope_name,
-            "operator_id": selected_scope_id if normalized_scope_type == "operator" else self._text(operator_id) or "",
-            "machine_id": selected_scope_id if normalized_scope_type == "machine" else self._text(machine_id) or "",
-            "team_id": selected_scope_id if normalized_scope_type == "team" else self._text(team_id) or "",
-            "team_axis": normalized_team_axis,
-            "period_preset": dr.period_preset,
-            "query_date": dr.query_date.isoformat(),
-            "start_date": dr.start_date.isoformat(),
-            "end_date": dr.end_date.isoformat(),
-            "version": selected_version,
-        }
-        filters.update(plan_role_fields)
+        plan_role_fields, plan_role_options = plan_role_context_for_page(
+            view_context=view_context,
+            selected_version=selected_version,
+            normalized_plan_role=normalized_plan_role,
+        )
+        filters = build_page_filters(
+            text_value=self._text,
+            normalized_scope_type=normalized_scope_type,
+            normalized_team_axis=normalized_team_axis,
+            selected_scope_id=selected_scope_id,
+            selected_scope_name=selected_scope_name,
+            operator_id=operator_id,
+            machine_id=machine_id,
+            team_id=team_id,
+            dr=dr,
+            selected_version=selected_version,
+            batch_id=batch_id,
+            plan_role_fields=plan_role_fields,
+        )
         return {
             "filters": filters,
             "versions": versions,
@@ -332,7 +340,11 @@ class ResourceDispatchService:
             "operator_options": operator_options,
             "machine_options": machine_options,
             "team_options": team_options,
-            "can_query": bool(selected_version) and (normalized_scope_type != "team" or bool(selected_scope_id)),
+            "can_query": can_query_page(
+                selected_version=selected_version,
+                scope_type=normalized_scope_type,
+                scope_id=selected_scope_id,
+            ),
         }
 
     def get_dispatch_payload(
@@ -351,6 +363,7 @@ class ResourceDispatchService:
         version: Any = None,
         plan_role: Any = None,
         scenario_id: Any = None,
+        batch_id: Any = None,
     ) -> Dict[str, Any]:
         normalized_scope_type = self._normalize_scope_type(scope_type)
         normalized_team_axis = self._normalize_team_axis(team_axis)
@@ -419,6 +432,7 @@ class ResourceDispatchService:
             scope_id=selected_scope_id,
         )
         rows = [dict(row) for row in rows]
+        rows = self._filter_rows_by_batch(rows, batch_id)
         self._enrich_rows_with_execution_state(rows)
 
         if normalized_scope_type == "team":
@@ -446,6 +460,7 @@ class ResourceDispatchService:
             normalized_team_axis=normalized_team_axis,
             dr=dr,
             selected_version=selected_version,
+            batch_id=batch_id,
         )
         payload["filters"].update(plan_role_fields)
         payload["plan_role_options"] = serialize_plan_role_options(view_context.available_roles)

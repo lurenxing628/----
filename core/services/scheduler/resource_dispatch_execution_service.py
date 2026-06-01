@@ -60,6 +60,7 @@ class ResourceDispatchExecutionService:
         version: Any = None,
         plan_role: Any = None,
         scenario_id: Any = None,
+        batch_id: Any = None,
     ) -> Dict[str, Any]:
         normalized_scope_type = self.dispatch_service._normalize_scope_type(scope_type)
         normalized_plan_role = normalize_plan_role(plan_role)
@@ -101,6 +102,12 @@ class ResourceDispatchExecutionService:
             scope_type=normalized_scope_type,
             scope_id=selected_scope_id,
         )
+        normalized_batch_id = _text(batch_id)
+        rows = [
+            dict(row)
+            for row in rows
+            if not normalized_batch_id or _text((row or {}).get("batch_id")) == normalized_batch_id
+        ]
         prepared = prepare_dispatch_rows(rows, scope="resource_dispatch.execution")
         op_ids = self._op_ids(prepared.value)
         states = self.feedback_service.get_execution_state(op_ids)

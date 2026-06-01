@@ -8,7 +8,7 @@ from flask import request, url_for
 from core.infrastructure.errors import AppError
 from web.error_boundary import build_user_visible_app_error_payload, get_user_visible_field_label
 
-_DATE_ARG_KEYS = ("period_preset", "query_date", "start_date", "end_date")
+_DATE_ARG_KEYS = ("period_preset", "query_date", "start_date", "end_date", "date_from", "date_to")
 _SCOPE_ARG_KEYS = ("scope_id", "operator_id", "machine_id", "team_id")
 _EXPORT_ARG_KEYS = (
     "scope_type",
@@ -21,9 +21,12 @@ _EXPORT_ARG_KEYS = (
     "query_date",
     "start_date",
     "end_date",
+    "date_from",
+    "date_to",
     "version",
     "plan_role",
     "scenario_id",
+    "batch_id",
 )
 _FIELD_QUERY_KEY_DROPS = {
     "scope_type": ("scope_type", *_SCOPE_ARG_KEYS),
@@ -36,6 +39,8 @@ _FIELD_QUERY_KEY_DROPS = {
     "query_date": _DATE_ARG_KEYS,
     "start_date": _DATE_ARG_KEYS,
     "end_date": _DATE_ARG_KEYS,
+    "date_from": _DATE_ARG_KEYS,
+    "date_to": _DATE_ARG_KEYS,
     "date_range": _DATE_ARG_KEYS,
     "version": ("version",),
     "plan_role": ("plan_role",),
@@ -60,11 +65,12 @@ def _request_kwargs() -> Dict[str, Any]:
         "team_axis": _arg_text("team_axis", default="operator"),
         "period_preset": _arg_text("period_preset", default="week"),
         "query_date": _arg_text("query_date"),
-        "start_date": _arg_text("start_date"),
-        "end_date": _arg_text("end_date"),
+        "start_date": _arg_text("start_date") or _arg_text("date_from"),
+        "end_date": _arg_text("end_date") or _arg_text("date_to"),
         "version": _arg_text("version"),
         "plan_role": _arg_text("plan_role"),
         "scenario_id": _arg_text("scenario_id"),
+        "batch_id": _arg_text("batch_id"),
     }
 
 

@@ -17,6 +17,11 @@ from web.viewmodels.scheduler_resource_dispatch import (
     decorate_resource_dispatch_context,
     decorate_resource_dispatch_payload,
 )
+from web.viewmodels.scheduler_workbench_links import (
+    build_workbench_link,
+    build_workbench_plan_context,
+    can_emit_feedback_write_urls,
+)
 
 from .scheduler_bp import bp
 from .scheduler_resource_dispatch_query import (
@@ -40,53 +45,143 @@ def _svc() -> Any:
     return g.services.resource_dispatch_service
 
 
+def _text(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def _resource_id_from_filters(filters: Any) -> str:
+    scope_type = _text(filters.get("scope_type")) if isinstance(filters, dict) else ""
+    if scope_type == "machine":
+        return _text(filters.get("machine_id"))
+    if scope_type == "team":
+        return _text(filters.get("team_id"))
+    return _text(filters.get("operator_id"))
+
+
+def _copy_plan_guard_fields(context: dict, identity: dict) -> None:
+    for key in (
+        "requested_plan_role",
+        "effective_plan_role",
+        "is_scenario_preview",
+        "is_comparison",
+        "is_superseded_by_newer_version",
+        "can_dispatch",
+    ):
+        if key in identity:
+            context[key] = identity.get(key)
+
+
+def _execution_review_link(filters: Any, plan_identity: Any) -> dict:
+    filters_dict = dict(filters or {})
+    identity = plan_identity if isinstance(plan_identity, dict) else {}
+    context = build_workbench_plan_context(
+        version=filters_dict.get("version"),
+        plan_role=filters_dict.get("plan_role") or identity.get("plan_role") or "adopted",
+        scenario_id=filters_dict.get("scenario_id") or identity.get("scenario_id"),
+        date_from=filters_dict.get("start_date"),
+        date_to=filters_dict.get("end_date"),
+        query_date=filters_dict.get("query_date"),
+        period_preset=filters_dict.get("period_preset"),
+        batch_id=filters_dict.get("batch_id"),
+        resource_type=filters_dict.get("scope_type"),
+        resource_id=_resource_id_from_filters(filters_dict),
+        can_write_feedback=identity.get("can_write_feedback") if "can_write_feedback" in identity else None,
+    )
+    _copy_plan_guard_fields(context, identity)
+    extra_params = {}
+    if filters_dict.get("team_axis"):
+        extra_params["team_axis"] = filters_dict.get("team_axis")
+    return build_workbench_link(context, "execution_review", extra_params=extra_params)
+
+
 def _is_scenario_id_error(exc: AppError) -> bool:
     details = getattr(exc, "details", None)
     return isinstance(details, dict) and str(details.get("field") or "").strip() == "scenario_id"
 
 
+def _redirect_for_sanitized_dispatch_query(exc: AppError):
+    current_args = _current_request_args()
+    if not current_args:
+        return None
+    safe_args = _sanitize_dispatch_args_from_error(exc)
+    if safe_args == current_args:
+        return None
+    flash(user_visible_app_error_message(exc), "error")
+    return redirect(_page_url(safe_args))
+
+
+def _context_after_app_error(svc: Any, exc: AppError):
+    if _is_missing_history_version_error(exc) or _is_scenario_id_error(exc):
+        raise exc
+    sanitized_redirect = _redirect_for_sanitized_dispatch_query(exc)
+    if sanitized_redirect is not None:
+        return sanitized_redirect
+    flash(user_visible_app_error_message(exc), "error")
+    return svc.build_page_context()
+
+
+def _context_after_unexpected_error(svc: Any):
+    current_app.logger.exception("加载资源排班页面失败")
+    flash("加载资源排班页面失败，请稍后重试。", "error")
+    if request.args:
+        return redirect(_page_url())
+    return svc.build_page_context()
+
+
+def _load_resource_dispatch_context(svc: Any):
+    try:
+        return svc.build_page_context(**_request_kwargs())
+    except AppError as exc:
+        return _context_after_app_error(svc, exc)
+    except Exception:
+        return _context_after_unexpected_error(svc)
+
+
+def _decorate_page_context(context: dict) -> dict:
+    decorated_context = dict(context)
+    decorated_context["versions"] = decorate_history_version_options(decorated_context.get("versions") or [])
+    log_history_version_option_parse_warnings(decorated_context["versions"], log_label="资源排班页")
+    return decorate_resource_dispatch_context(decorated_context)
+
+
+def _execution_write_urls(filters: Any, *, can_use_current_query: bool, can_write_feedback: bool) -> dict:
+    if not (can_use_current_query and can_write_feedback):
+        return {
+            "actual_record_url_template": None,
+            "actual_template_url": None,
+            "actual_import_url": None,
+        }
+    return {
+        "actual_record_url_template": "/scheduler/resource-dispatch/execution/__OP_ID__/actual",
+        "actual_template_url": _actual_template_url(filters),
+        "actual_import_url": _actual_import_url(filters),
+    }
+
+
 @bp.get("/resource-dispatch")
 def resource_dispatch_page():
-    svc = _svc()
-    try:
-        context = svc.build_page_context(**_request_kwargs())
-    except AppError as exc:
-        if _is_missing_history_version_error(exc) or _is_scenario_id_error(exc):
-            raise
-        current_args = _current_request_args()
-        if current_args:
-            safe_args = _sanitize_dispatch_args_from_error(exc)
-            if safe_args != current_args:
-                flash(user_visible_app_error_message(exc), "error")
-                return redirect(_page_url(safe_args))
-        flash(user_visible_app_error_message(exc), "error")
-        context = svc.build_page_context()
-    except Exception:
-        current_app.logger.exception("加载资源排班页面失败")
-        if request.args:
-            flash("加载资源排班页面失败，请稍后重试。", "error")
-            return redirect(_page_url())
-        flash("加载资源排班页面失败，请稍后重试。", "error")
-        context = svc.build_page_context()
+    loaded_context = _load_resource_dispatch_context(_svc())
+    if not isinstance(loaded_context, dict):
+        return loaded_context
 
-    context = dict(context)
-    context["versions"] = decorate_history_version_options(context.get("versions") or [])
-    log_history_version_option_parse_warnings(context["versions"], log_label="资源排班页")
-    context = decorate_resource_dispatch_context(context)
+    context = _decorate_page_context(loaded_context)
     filters = context.get("filters") or {}
-    export_url = None
     can_use_current_query = bool(context.get("has_history") and context.get("can_query"))
-    if can_use_current_query:
-        export_url = _export_url(filters)
+    can_write_feedback = can_emit_feedback_write_urls(filters)
+    write_urls = _execution_write_urls(
+        filters,
+        can_use_current_query=can_use_current_query,
+        can_write_feedback=can_write_feedback,
+    )
 
     return render_template(
         "scheduler/resource_dispatch.html",
         title="资源排班",
         data_url=_data_url(filters),
-        export_url=export_url,
+        export_url=_export_url(filters) if can_use_current_query else None,
+        execution_review_link=_execution_review_link(filters, filters),
         execution_data_url=_execution_data_url(filters),
-        actual_template_url=_actual_template_url(filters) if can_use_current_query else None,
-        actual_import_url=_actual_import_url(filters) if can_use_current_query else None,
+        **write_urls,
         **context,
     )
 

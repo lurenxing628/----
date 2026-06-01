@@ -83,11 +83,19 @@
                   <td>{{ row.changeover_count if row.changeover_count is not none else '-' }}</td>
                   <td>
                     {% if row.links and row.links|length > 0 %}
-                      <div class="aps-form-actions">
-                        {% for link in row.links %}
-                          <a class="table-action-link" href="{{ link.url }}">{{ link.label }}</a>
-                        {% endfor %}
-                      </div>
+	                      <div class="aps-form-actions">
+	                        {% for link in row.links %}
+	                          {% if link.disabled %}
+	                            <span class="table-action-link is-disabled" aria-disabled="true" title="{{ link.disabled_reason }}">{{ link.label }}</span>
+	                          {% else %}
+	                            <a class="table-action-link" href="{{ link.url }}">{{ link.label }}</a>
+	                          {% endif %}
+	                        {% endfor %}
+	                      </div>
+	                      {% set disabled_reasons = row.links | selectattr('disabled') | map(attribute='disabled_reason') | list %}
+	                      {% if disabled_reasons %}
+	                        <div class="muted text-xs mt-1">{{ disabled_reasons[0] }}</div>
+	                      {% endif %}
                     {% else %}
                       <span class="muted">{{ row.link_unavailable_reason or '暂无可跳转明细' }}</span>
                     {% endif %}

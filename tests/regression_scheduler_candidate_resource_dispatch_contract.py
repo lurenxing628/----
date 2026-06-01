@@ -134,6 +134,26 @@ def _seed_db(tmp_path: Path) -> sqlite3.Connection:
     return conn
 
 
+def _add_second_adopted_task(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        INSERT INTO Batches(batch_id, part_no, part_name, quantity, due_date, priority, ready_status, status)
+        VALUES ('B2', 'P001', '零件一', 1, '2026-05-04', 'normal', 'yes', 'scheduled');
+
+        INSERT INTO BatchOperations(
+            id, op_code, batch_id, piece_id, seq, op_type_name, source, status
+        )
+        VALUES (20, 'OP20', 'B2', 'piece-b', 1, '铣削', 'internal', 'scheduled');
+
+        INSERT INTO Schedule(
+            id, op_id, machine_id, operator_id, start_time, end_time, lock_status, version
+        )
+        VALUES (2, 20, 'M-ADOPTED', 'O-ADOPTED', '2026-05-01 11:00', '2026-05-01 12:00', 'unlocked', 7);
+        """
+    )
+    conn.commit()
+
+
 def _build_route_app() -> Flask:
     app = Flask(__name__)
     app.secret_key = "test"
@@ -332,6 +352,43 @@ def test_resource_dispatch_non_adopted_schedule_source_overdue_markers_use_adopt
         assert detail_rows[0].get("batch_id") == "B1"
         assert detail_rows[0].get("is_overdue") is True
         assert (payload.get("summary") or {}).get("overdue_count") == 1
+    finally:
+        conn.close()
+
+
+def test_resource_dispatch_batch_id_filters_dispatch_and_execution_rows(tmp_path: Path) -> None:
+    conn = _seed_db(tmp_path)
+    try:
+        _add_second_adopted_task(conn)
+
+        from core.services.scheduler.resource_dispatch_execution_service import ResourceDispatchExecutionService
+        from core.services.scheduler.resource_dispatch_service import ResourceDispatchService
+
+        dispatch_payload = ResourceDispatchService(conn, logger=None, op_logger=None).get_dispatch_payload(
+            scope_type="operator",
+            operator_id="O-ADOPTED",
+            period_preset="week",
+            query_date="2026-05-01",
+            version=VERSION,
+            plan_role=ROLE_ADOPTED,
+            batch_id="B1",
+        )
+
+        detail_rows = dispatch_payload.get("detail_rows") or []
+        assert (dispatch_payload.get("filters") or {}).get("batch_id") == "B1"
+        assert [row.get("batch_id") for row in detail_rows] == ["B1"]
+        assert (dispatch_payload.get("summary") or {}).get("total_tasks") == 1
+
+        execution_context = ResourceDispatchExecutionService(conn, logger=None, op_logger=None).get_execution_context(
+            scope_type="operator",
+            operator_id="O-ADOPTED",
+            period_preset="week",
+            query_date="2026-05-01",
+            version=VERSION,
+            plan_role=ROLE_ADOPTED,
+            batch_id="B1",
+        )
+        assert [row.get("batch_id") for row in execution_context.get("rows") or []] == ["B1"]
     finally:
         conn.close()
 

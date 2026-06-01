@@ -5,7 +5,7 @@ scope: 项目架构总入口，覆盖 APS 整体结构、核心模块索引、�
 summary: APS 在 Win7 x64、Python 3.8、离线交付约束下的系统地图入口
 status: current
 created: 2026-04-27
-last_reviewed: 2026-05-28
+last_reviewed: 2026-06-01
 tags: [aps, codestable, architecture, win7]
 depends_on: []
 implements: []
@@ -13,7 +13,7 @@ implements: []
 
 # 回转壳体单元智能排产系统（APS）架构总入口
 
-> 状态：CodeStable 接入骨架，待后续按 `cs-arch` 补全
+> 状态：CodeStable 现状索引
 > 创建日期：2026-04-27
 
 ## 1. 项目简介
@@ -45,6 +45,7 @@ implements: []
 - 车间执行事件基础：`OperationExecutionEvents`、执行事件仓储、执行反馈服务和执行状态读模型记录现场开工、暂停、继续、完工、报异常这些事实。
 - 资源派工现场记录：资源派工页用户入口叫“现场记录”，支持单条填写实际情况、下载填写模板、导入实际情况 Excel；普通页面是一键导入，后台先整批检查，有错不写库并返回错误明细，无错才事务写入；route 拆在 `scheduler_resource_dispatch_execution_routes.py`，业务编排拆在 `resource_dispatch_actual_*` service 文件。
 - 重排执行事实快照：普通重排和甘特模拟方案发布在写新正式计划前，都会按同一批工序复算现场状态，现场状态变化时拒绝写入。
+- APS 工作台上下文链接合同：`web/viewmodels/scheduler_workbench_links.py` 统一封装工作台计划上下文、跨页链接、中文标签映射和现场写入地址护栏；`web/viewmodels/scheduler_workbench_link_query.py` 集中维护各目标页要带的版本、方案、日期、批次和资源参数矩阵；`core/services/scheduler/resource_dispatch_page_context.py` 装配资源派工页面的版本、方案身份、筛选条件和可查询状态等只读查询上下文；`web/routes/domains/scheduler/scheduler_resource_dispatch.py` 接线资源派工只读复盘入口和写入入口状态。第 1 阶段已用于排产分析候选方案跳转、周计划入口、资源派工现场记录写入口控制和现场记录二级接口公开身份脱敏，避免这些页面各自拼 URL 时丢版本、方案、日期、批次或资源对象，也避免把内部计划身份交给前端当作写入凭证。
 
 ## 4. 关键架构决定
 
@@ -57,6 +58,7 @@ implements: []
 - 面向用户默认使用简体中文。
 - Win7 x64、Python 3.8、离线交付是长期约束。
 - 页面、导出、文件名、提示语和帮助文档不能直接展示 `scenario_id`、`plan_role`、`source_table`、`candidate_id` 这类程序内部字段；这些字段可以留在 URL、隐藏字段、请求参数和日志里用于对齐同一套计划，但用户可见位置必须转成中文大白话。
+- 非正式方案、候选方案、模拟预览和历史正式方案不能下发现场记录写入入口、Excel 导入地址或模板下载地址。后端校验仍是最后防线，但页面层也要避免让用户看到“好像能写”的入口。
 - 资源派工导出当前同时提供矩阵表和日历明细表：矩阵表用于看资源与日期的大盘，`日历明细` 按一条日历任务一行展开，继续只展示中文业务字段，不展示 `op_id`、`schedule_id`、`state_revision`、`execution_snapshot_revision` 等内部追踪字段。当前证据在 `core/services/scheduler/resource_dispatch_excel.py` 和 `tests/regression_resource_dispatch_public_output_contract.py`。
 - 质量门禁入口仍以仓库现有 `scripts/run_quality_gate.py` 为准。
 - 旧 `.limcode/plans/`、`.limcode/review/` 里有大量历史上下文，迁移初期不得批量删除或搬动。

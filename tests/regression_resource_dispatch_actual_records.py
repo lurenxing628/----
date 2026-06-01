@@ -4,10 +4,15 @@ from tests.operation_execution_feedback_test_support import (
     _base_payload,
     _build_app,
     _current_card,
+    _current_query,
     _event_count,
     _events_for_op,
     _json,
 )
+
+
+def _actual_url(card) -> str:
+    return f"/scheduler/resource-dispatch/execution/{card['op_id']}/actual?{_current_query()}"
 
 
 def test_actual_record_allows_blank_feedback_person_and_manual_times(tmp_path, monkeypatch) -> None:
@@ -16,7 +21,7 @@ def test_actual_record_allows_blank_feedback_person_and_manual_times(tmp_path, m
     card = _current_card(client)
 
     resp = client.post(
-        f"/scheduler/resource-dispatch/execution/{card['op_id']}/actual",
+        _actual_url(card),
         json=_base_payload(
             card,
             created_by="",
@@ -48,7 +53,7 @@ def test_actual_record_allows_total_quantity_over_planned_for_rework(tmp_path, m
     card = _current_card(client)
 
     resp = client.post(
-        f"/scheduler/resource-dispatch/execution/{card['op_id']}/actual",
+        _actual_url(card),
         json=_base_payload(
             card,
             idempotency_key="actual-rework-over-planned",
@@ -71,7 +76,7 @@ def test_actual_record_validation_error_uses_fill_actual_label(tmp_path, monkeyp
     card = _current_card(client)
 
     resp = client.post(
-        f"/scheduler/resource-dispatch/execution/{card['op_id']}/actual",
+        _actual_url(card),
         json=_base_payload(
             card,
             idempotency_key="actual-finish-before-start",
@@ -102,8 +107,8 @@ def test_actual_record_same_idempotency_reuses_existing_events(tmp_path, monkeyp
         quantity_scrapped=1,
     )
 
-    first = client.post(f"/scheduler/resource-dispatch/execution/{card['op_id']}/actual", json=payload)
-    retry = client.post(f"/scheduler/resource-dispatch/execution/{card['op_id']}/actual", json=payload)
+    first = client.post(_actual_url(card), json=payload)
+    retry = client.post(_actual_url(card), json=payload)
 
     assert first.status_code == 200
     assert retry.status_code == 200
@@ -122,7 +127,7 @@ def test_actual_record_reused_idempotency_key_with_new_content_still_validates(t
     card = _current_card(client)
 
     first = client.post(
-        f"/scheduler/resource-dispatch/execution/{card['op_id']}/actual",
+        _actual_url(card),
         json=_base_payload(
             card,
             idempotency_key="reused-key",
@@ -136,7 +141,7 @@ def test_actual_record_reused_idempotency_key_with_new_content_still_validates(t
     # 旧逻辑“任一派生 key 命中就整体跳过校验”会让这次提交绕过 service 层校验，最终落到
     # record_event 层报底层 409 冲突；修复后必须在 service 层用清晰的中文校验前置拦下（400）。
     illegal_finish = client.post(
-        f"/scheduler/resource-dispatch/execution/{card['op_id']}/actual",
+        _actual_url(card),
         json=_base_payload(
             fresh_card,
             idempotency_key="reused-key",
@@ -168,11 +173,11 @@ def test_actual_record_without_client_idempotency_key_can_append_new_pause_and_e
         pause_remark="设备点检",
     )
 
-    first = client.post(f"/scheduler/resource-dispatch/execution/{card['op_id']}/actual", json=first_payload)
-    retry = client.post(f"/scheduler/resource-dispatch/execution/{card['op_id']}/actual", json=first_payload)
+    first = client.post(_actual_url(card), json=first_payload)
+    retry = client.post(_actual_url(card), json=first_payload)
     fresh_card = _json(first)["data"]["task_card"]
     second = client.post(
-        f"/scheduler/resource-dispatch/execution/{card['op_id']}/actual",
+        _actual_url(card),
         json=_base_payload(
             fresh_card,
             idempotency_key="",
@@ -185,7 +190,7 @@ def test_actual_record_without_client_idempotency_key_can_append_new_pause_and_e
     )
     fresh_card = _json(second)["data"]["task_card"]
     exception = client.post(
-        f"/scheduler/resource-dispatch/execution/{card['op_id']}/actual",
+        _actual_url(card),
         json=_base_payload(
             fresh_card,
             idempotency_key="",
@@ -219,7 +224,7 @@ def test_actual_record_rejects_overwrite_existing_start_and_finish(tmp_path, mon
     client = app.test_client()
     card = _current_card(client)
     first = client.post(
-        f"/scheduler/resource-dispatch/execution/{card['op_id']}/actual",
+        _actual_url(card),
         json=_base_payload(
             card,
             idempotency_key="actual-existing-first",
@@ -231,7 +236,7 @@ def test_actual_record_rejects_overwrite_existing_start_and_finish(tmp_path, mon
     fresh_card = _json(first)["data"]["task_card"]
 
     overwrite_start = client.post(
-        f"/scheduler/resource-dispatch/execution/{card['op_id']}/actual",
+        _actual_url(card),
         json=_base_payload(
             fresh_card,
             idempotency_key="actual-existing-start",
@@ -239,7 +244,7 @@ def test_actual_record_rejects_overwrite_existing_start_and_finish(tmp_path, mon
         ),
     )
     overwrite_finish = client.post(
-        f"/scheduler/resource-dispatch/execution/{card['op_id']}/actual",
+        _actual_url(card),
         json=_base_payload(
             fresh_card,
             idempotency_key="actual-existing-finish",
@@ -264,7 +269,7 @@ def test_actual_record_rejects_finish_before_start(tmp_path, monkeypatch) -> Non
     card = _current_card(client)
 
     resp = client.post(
-        f"/scheduler/resource-dispatch/execution/{card['op_id']}/actual",
+        _actual_url(card),
         json=_base_payload(
             card,
             idempotency_key="actual-finish-before-start",
@@ -286,7 +291,7 @@ def test_actual_record_pause_range_and_duration_write_pause_events(tmp_path, mon
     card = _current_card(client)
 
     resp = client.post(
-        f"/scheduler/resource-dispatch/execution/{card['op_id']}/actual",
+        _actual_url(card),
         json=_base_payload(
             card,
             idempotency_key="actual-pause-duration",
@@ -316,7 +321,7 @@ def test_actual_record_rejects_pause_duration_mismatch_and_overlap(tmp_path, mon
     card = _current_card(client)
 
     mismatch = client.post(
-        f"/scheduler/resource-dispatch/execution/{card['op_id']}/actual",
+        _actual_url(card),
         json=_base_payload(
             card,
             idempotency_key="actual-pause-mismatch",
@@ -333,7 +338,7 @@ def test_actual_record_rejects_pause_duration_mismatch_and_overlap(tmp_path, mon
     assert _event_count(db_path) == 0
 
     first = client.post(
-        f"/scheduler/resource-dispatch/execution/{card['op_id']}/actual",
+        _actual_url(card),
         json=_base_payload(
             card,
             idempotency_key="actual-pause-first",
@@ -354,7 +359,7 @@ def test_actual_record_rejects_pause_duration_mismatch_and_overlap(tmp_path, mon
     ]
     fresh_card = _json(first)["data"]["task_card"]
     overlap = client.post(
-        f"/scheduler/resource-dispatch/execution/{card['op_id']}/actual",
+        _actual_url(card),
         json=_base_payload(
             fresh_card,
             idempotency_key="actual-pause-overlap",
@@ -376,7 +381,7 @@ def test_actual_record_supports_exception_record_fields(tmp_path, monkeypatch) -
     card = _current_card(client)
 
     resp = client.post(
-        f"/scheduler/resource-dispatch/execution/{card['op_id']}/actual",
+        _actual_url(card),
         json=_base_payload(
             card,
             idempotency_key="actual-exception",
@@ -394,5 +399,4 @@ def test_actual_record_supports_exception_record_fields(tmp_path, monkeypatch) -
     assert events[-1]["reason_code"] == "equipment"
     assert events[-1]["severity"] == "high"
     assert events[-1]["remark"] == "主轴异常"
-
 

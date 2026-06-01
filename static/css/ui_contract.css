@@ -2163,6 +2163,14 @@ body.aps-col-resize-active {
   box-shadow: var(--ui-shadow-md);
 }
 
+.table-action-link.is-disabled {
+  color: var(--ui-text-muted);
+  background: var(--ui-surface-muted);
+  border-color: var(--ui-border);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
 /* table actions contract: single-line, aligned, no manual separators */
 .table-actions {
   display: inline-flex;

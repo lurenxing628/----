@@ -487,21 +487,22 @@ def test_report_exception_rejects_candidate_scenario_and_history_plans(tmp_path,
     client = app.test_client()
     card = _current_card(client)
     cases = (
-        {"requested_plan_role": "baseline_best", "effective_plan_role": "adopted", "source_table": "schedule"},
-        {"requested_plan_role": "adopted", "scenario_id": "scenario-plain"},
-        {"version": 1},
+        "scope_type=operator&operator_id=O2&period_preset=week&query_date=2026-05-01&date_from=2026-05-01&date_to=2026-05-07&version=2&plan_role=baseline_best",
+        "scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01&date_from=2026-05-01&date_to=2026-05-07&version=2&plan_role=adopted&scenario_id=scenario-plain",
+        "scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-04-30&date_from=2026-04-27&date_to=2026-05-03&version=1&plan_role=adopted",
     )
 
-    for index, overrides in enumerate(cases):
-        resp = _post(
+    for index, query in enumerate(cases):
+        resp = _post_controlled(
             client,
-            card,
-            "report-exception",
-            idempotency_key=f"reject-report-exception-{index}",
-            reason_code="equipment",
-            severity="high",
-            remark="设备异常",
-            **overrides,
+            f"/scheduler/resource-dispatch/execution/{card['op_id']}/report-exception?{query}",
+            _base_payload(
+                card,
+                idempotency_key=f"reject-report-exception-{index}",
+                reason_code="equipment",
+                severity="high",
+                remark="设备异常",
+            ),
         )
         payload = _json(resp)
         assert resp.status_code == 409

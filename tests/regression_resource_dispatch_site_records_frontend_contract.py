@@ -27,12 +27,20 @@ def test_resource_dispatch_page_has_site_records_words_and_excel_entries(tmp_pat
     for expected in ("现场记录", "填写实际情况", "导入实际情况 Excel", "下载填写模板", "查看计划和实际"):
         assert expected in page_contract
     assert "data-execution-url=" in body
+    assert "data-actual-record-url-template=" in body
     assert "data-actual-template-url=" in body
     assert "data-actual-import-url=" in body
+    assert 'data-actual-record-url-template="/scheduler/resource-dispatch/execution/__OP_ID__/actual"' in body
     assert 'data-actual-template-url="/scheduler/resource-dispatch/execution/actual-template?' in body
     assert 'data-actual-import-url="/scheduler/resource-dispatch/execution/import?' in body
     assert "data-actual-import-preview-url=" not in body
     assert "data-actual-import-confirm-url=" not in body
+    assert 'href="/reports/execution-review?version=2' in body
+    assert "plan_role=adopted" in body
+    assert "query_date=2026-05-01" in body
+    assert "period_preset=week" in body
+    assert "scope_type=operator" in body
+    assert "scope_id=O1" in body
     assert 'id="rdExecutionCreatedBy"' in body
     assert "反馈人" in body
     assert 'id="rdExecutionCreatedBy" class="w-180" autocomplete="off" placeholder="可不填"' in body
@@ -51,6 +59,142 @@ def test_resource_dispatch_page_has_site_records_words_and_excel_entries(tmp_pat
         "检查 Excel",
     ):
         assert forbidden not in body
+
+
+def test_resource_dispatch_read_only_page_does_not_emit_actual_write_urls(tmp_path, monkeypatch) -> None:
+    app, _db_path = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+    from web.routes.domains.scheduler import scheduler_resource_dispatch as rd_routes
+
+    monkeypatch.setattr(rd_routes, "_export_url", lambda _filters: "")
+
+    resp = client.get(
+        "/scheduler/resource-dispatch?scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01&version=2&plan_role=baseline_best"
+    )
+    body = resp.get_data(as_text=True)
+
+    assert resp.status_code == 200
+    assert "只能查看" in body
+    assert "不能提交现场反馈" in body
+    assert 'href="/reports/execution-review' not in body
+    for forbidden in (
+        "/scheduler/resource-dispatch/execution/__OP_ID__/actual",
+        "/scheduler/resource-dispatch/execution/actual-template?",
+        "/scheduler/resource-dispatch/execution/import?",
+        'id="rdExecutionCreatedBy"',
+        'id="rdActualImportSubmit"',
+    ):
+        assert forbidden not in body
+
+
+def test_resource_dispatch_unqueryable_write_page_does_not_render_none_links(tmp_path, monkeypatch) -> None:
+    app, _db_path = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+    from web.routes.domains.scheduler import scheduler_resource_dispatch as rd_routes
+
+    monkeypatch.setattr(rd_routes, "_export_url", lambda _filters: "")
+
+    resp = client.get(
+        "/scheduler/resource-dispatch?scope_type=team&period_preset=week&query_date=2026-05-01&version=2&plan_role=adopted"
+    )
+    body = resp.get_data(as_text=True)
+
+    assert resp.status_code == 200
+    assert 'href="None"' not in body
+    assert 'href=""' not in body
+    assert 'data-actual-record-url-template=""' in body
+    assert 'data-actual-template-url=""' in body
+    assert 'data-actual-import-url=""' in body
+    assert "下载填写模板" in body
+    assert "/scheduler/resource-dispatch/execution/__OP_ID__/actual" not in body
+    assert "/scheduler/resource-dispatch/execution/actual-template?" not in body
+    assert "/scheduler/resource-dispatch/execution/import?" not in body
+
+
+def test_resource_dispatch_history_and_scenario_pages_do_not_emit_review_or_write_urls(tmp_path, monkeypatch) -> None:
+    app, _db_path = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+    from web.routes.domains.scheduler import scheduler_resource_dispatch as rd_routes
+
+    monkeypatch.setattr(rd_routes, "_export_url", lambda _filters: "")
+
+    readonly_urls = [
+        "/scheduler/resource-dispatch?scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-04-30&version=1&plan_role=adopted",
+        "/scheduler/resource-dispatch?scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01&version=2&plan_role=adopted&scenario_id=scenario-plain",
+    ]
+
+    for url in readonly_urls:
+        resp = client.get(url)
+        body = resp.get_data(as_text=True)
+
+        assert resp.status_code == 200
+        assert 'href="/reports/execution-review' not in body
+        for forbidden in (
+            "/scheduler/resource-dispatch/execution/__OP_ID__/actual",
+            "/scheduler/resource-dispatch/execution/actual-template?",
+            "/scheduler/resource-dispatch/execution/import?",
+            'id="rdExecutionCreatedBy"',
+            'id="rdActualImportSubmit"',
+        ):
+            assert forbidden not in body
+
+
+def test_execution_review_link_keeps_server_side_guard_fields() -> None:
+    from web.routes.domains.scheduler.scheduler_resource_dispatch import _execution_review_link
+
+    base_filters = {
+        "version": 2,
+        "plan_role": "adopted",
+        "start_date": "2026-05-01",
+        "end_date": "2026-05-07",
+        "batch_id": "B-001",
+        "query_date": "2026-05-01",
+        "period_preset": "week",
+        "scope_type": "operator",
+        "operator_id": "O1",
+        "can_write_feedback": True,
+        "can_dispatch": True,
+    }
+    blocked_fields = [
+        {"effective_plan_role": "baseline_best"},
+        {"requested_plan_role": "baseline_best"},
+        {"is_scenario_preview": True},
+        {"is_superseded_by_newer_version": True},
+        {"is_comparison": True},
+    ]
+
+    for override in blocked_fields:
+        link = _execution_review_link(dict(base_filters, **override), dict(base_filters, **override))
+        assert link["disabled"] is True
+        assert link["url"] == ""
+        assert "只复盘正式采用方案" in link["disabled_reason"]
+
+    link = _execution_review_link(base_filters, base_filters)
+    assert link["disabled"] is False
+    assert "batch_id=B-001" in link["url"]
+
+    read_only_link = _execution_review_link(
+        dict(base_filters, can_write_feedback=False, can_dispatch=False),
+        dict(base_filters, can_write_feedback=False, can_dispatch=False),
+    )
+    assert read_only_link["disabled"] is False
+    assert "plan_role=adopted" in read_only_link["url"]
+    assert "scenario_id" not in read_only_link["url"]
+
+
+def test_resource_dispatch_request_kwargs_preserve_batch_id(tmp_path, monkeypatch) -> None:
+    app, _db_path = _build_app(tmp_path, monkeypatch)
+    from web.routes.domains.scheduler.scheduler_resource_dispatch_query import _request_kwargs
+
+    with app.test_request_context(
+        "/scheduler/resource-dispatch/data?scope_type=operator&operator_id=O1"
+        "&period_preset=week&query_date=2026-05-01&version=2&plan_role=adopted&batch_id=B-001"
+        "&date_from=2026-05-01&date_to=2026-05-07"
+    ):
+        kwargs = _request_kwargs()
+        assert kwargs["batch_id"] == "B-001"
+        assert kwargs["start_date"] == "2026-05-01"
+        assert kwargs["end_date"] == "2026-05-07"
 
 
 def test_resource_dispatch_frontend_uses_actual_record_form_and_one_click_import() -> None:
@@ -97,6 +241,8 @@ def test_resource_dispatch_frontend_uses_actual_record_form_and_one_click_import
     assert "正在导入实际情况" in source
     assert "导入结果" in source
     assert "导入检查结果" not in source
+    assert "<th>工作表</th>" in source
+    assert "<th>Sheet</th>" not in source
     assert "待检查" not in source
     assert "将新增" not in source
     assert "将跳过" not in source
@@ -105,7 +251,14 @@ def test_resource_dispatch_frontend_uses_actual_record_form_and_one_click_import
     assert "renderActualImportResult" in source
     assert "aps-execution-record-item" in source
     assert "aps-execution-record-grid" in source
-    assert "/actual" in source
+    assert "actualRecordUrlTemplate" in source
+    assert "actualRecordUrl(opId)" in source
+    assert "path + query" in source
+    assert "requested_plan_role: identity.requested_plan_role" not in source
+    assert "effective_plan_role: identity.effective_plan_role" not in source
+    assert "source_table: identity.source_table" not in source
+    assert "scenario_id: identity.scenario_id" not in source
+    assert "当前方案不能填写实际情况。" in source
     assert "loadExecutionRecords" in source
     assert "renderExecutionRecords" in source
     assert "/events" in source
@@ -135,7 +288,7 @@ def test_resource_dispatch_frontend_uses_actual_record_form_and_one_click_import
     assert 'data-state-revision="' in source
     assert 'data-machine-id="' in source
     assert 'data-operator-id="' in source
-    assert "/scheduler/resource-dispatch/execution/" in source
+    assert 'const base = "/scheduler/resource-dispatch/execution/" + encodeURIComponent(opId) + "/events";' in source
     assert "idempotency_key" in source
     for forbidden in (
         "请先填写反馈人",
@@ -160,9 +313,10 @@ def test_resource_dispatch_execution_buttons_follow_available_actions_contract()
 
     assert 'executionAction(actions, "fill_actual")' in render_actions
     assert 'executionAction(actions, "view_records")' in render_actions
-    assert "fillAction && fillAction.enabled === true" in render_actions
+    assert "if (fillAction)" in render_actions
+    assert "fillAction.enabled === true" in render_actions
     assert "viewAction && viewAction.enabled === true" in render_actions
-    assert "fillAction && fillAction.label" in render_actions
+    assert "trim(fillAction.label)" in render_actions
     assert "viewAction && viewAction.label" in render_actions
     assert "viewAction && viewAction.disabled_reason" in render_actions
     assert 'recordsDisabledAttr = opId ? "" : " disabled"' not in render_actions

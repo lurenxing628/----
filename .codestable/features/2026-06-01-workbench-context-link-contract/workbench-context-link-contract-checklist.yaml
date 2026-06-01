@@ -1,0 +1,42 @@
+feature: 2026-06-01-workbench-context-link-contract
+created: 2026-06-01
+
+steps:
+  - action: "合同骨架：新增工作台计划上下文、工作台链接和中文映射函数"
+    exit_signal: "纯函数测试能构造固定 target_page 的基础链接对象"
+    status: done
+  - action: "参数矩阵：补齐目标页必带参数、日期翻译和复盘禁用规则"
+    exit_signal: "测试覆盖关键跳转 required_params，不丢版本、方案、日期、视角和对象"
+    status: done
+  - action: "页面接线：分析页候选方案链接和资源派工写入 URL 下发护栏接入统一合同"
+    exit_signal: "模拟预览链接保留查看上下文，非正式方案不下发现场记录写入地址"
+    status: done
+  - action: "回归测试：新增工作台链接合同 focused 测试"
+    exit_signal: "本阶段指定 pytest 通过"
+    status: done
+
+checks:
+  - item: "WorkbenchPlanContext 包含版本、方案身份、日期范围、批次、资源、可写状态和中文护栏说明"
+    source: 名词契约
+    status: passed
+  - item: "WorkbenchLink 包含 label、url、target_page、context_summary、disabled、disabled_reason、required_params"
+    source: 名词契约
+    status: passed
+  - item: "target_page 只使用 roadmap 固定 10 个值"
+    source: 流程级约束
+    status: passed
+  - item: "跨页链接保留版本、方案、日期范围；资源派工和报表类链接保留 query_date、period_preset、scope_type"
+    source: 验收场景
+    status: passed
+  - item: "execution_review 只看正式采用方案；非正式方案入口禁用并给中文原因"
+    source: 验收场景
+    status: passed
+  - item: "候选方案、模拟预览、对比参考方案和历史正式方案不会输出现场记录写入入口或写入 URL"
+    source: 验收场景
+    status: passed
+  - item: "plan_role、guardrail_reason_type、resource_type/scope_type、period_preset、view 都有内部值到中文展示值映射"
+    source: 名词契约
+    status: passed
+  - item: "不改排程算法、不改数据库、不引入外部前端资源"
+    source: 范围守护
+    status: passed

@@ -22,10 +22,21 @@
     const opId = trim(row.op_id);
     const fillAction = executionAction(actions, "fill_actual");
     const viewAction = executionAction(actions, "view_records");
-    const fillDisabledReason = trim(fillAction && fillAction.disabled_reason);
-    const fillDisabledAttr = fillAction && fillAction.enabled === true ? "" : " disabled";
-    const fillTitleAttr = fillDisabledReason ? ' title="' + escapeHtml(fillDisabledReason) + '"' : "";
-    const fillLabel = trim(fillAction && fillAction.label) || "填写实际情况";
+    let fillButton = "";
+    if (fillAction) {
+      const fillDisabledReason = trim(fillAction.disabled_reason);
+      const fillDisabledAttr = fillAction.enabled === true ? "" : " disabled";
+      const fillTitleAttr = fillDisabledReason ? ' title="' + escapeHtml(fillDisabledReason) + '"' : "";
+      const fillLabel = trim(fillAction.label) || "填写实际情况";
+      fillButton = (
+        '<button type="button" class="btn btn-primary btn-sm aps-execution-action" data-action="fill_actual" data-op-id="' +
+          escapeHtml(row.op_id || "") + '" data-schedule-id="' + escapeHtml(row.schedule_id || "") +
+          '" data-batch-id="' + escapeHtml(row.batch_id || "") +
+          '" data-state-revision="' + escapeHtml(row.state_revision || "") +
+          '" data-machine-id="' + escapeHtml(row.planned_machine_id || "") +
+          '" data-operator-id="' + escapeHtml(row.planned_operator_id || "") + '"' + fillDisabledAttr + fillTitleAttr + '>' + escapeHtml(fillLabel) + '</button> '
+      );
+    }
     let recordsDisabledReason = trim(viewAction && viewAction.disabled_reason);
     let recordsDisabledAttr = viewAction && viewAction.enabled === true ? "" : " disabled";
     if (!viewAction) {
@@ -38,12 +49,7 @@
     const recordsTitleAttr = recordsDisabledReason ? ' title="' + escapeHtml(recordsDisabledReason) + '"' : "";
     const recordsLabel = trim(viewAction && viewAction.label) || "查看计划和实际";
     return (
-      '<button type="button" class="btn btn-primary btn-sm aps-execution-action" data-action="fill_actual" data-op-id="' +
-        escapeHtml(row.op_id || "") + '" data-schedule-id="' + escapeHtml(row.schedule_id || "") +
-        '" data-batch-id="' + escapeHtml(row.batch_id || "") +
-        '" data-state-revision="' + escapeHtml(row.state_revision || "") +
-        '" data-machine-id="' + escapeHtml(row.planned_machine_id || "") +
-        '" data-operator-id="' + escapeHtml(row.planned_operator_id || "") + '"' + fillDisabledAttr + fillTitleAttr + '>' + escapeHtml(fillLabel) + '</button> ' +
+      fillButton +
       '<button type="button" class="btn btn-secondary btn-sm aps-execution-events" data-op-id="' +
         escapeHtml(row.op_id || "") + '" data-loaded="0"' + recordsDisabledAttr + recordsTitleAttr + '>' + escapeHtml(recordsLabel) + '</button>'
     );
@@ -74,6 +80,15 @@
   const EXECUTION_ACTION_LABELS = {
     fill_actual: "填写实际情况"
   };
+
+  function actualRecordUrl(opId) {
+    const template = trim(state && state.cfg && state.cfg.actualRecordUrlTemplate);
+    if (!template || !opId) return "";
+    const path = template.replace("__OP_ID__", encodeURIComponent(opId));
+    const query = currentQueryString();
+    if (!query) return path;
+    return path.indexOf("?") >= 0 ? path + "&" + query.slice(1) : path + query;
+  }
 
   function renderExecutionExceptionDetails(task) {
     if (!trim(task && task.latest_exception_reason_label)) return "";
@@ -206,15 +221,7 @@
   }
 
   function executionIdentityPayload() {
-    const identity = (state.execution && state.execution.plan_identity) || {};
-    const filters = state.cfg.filters || {};
-    return {
-      version: identity.version || filters.version || "",
-      requested_plan_role: identity.requested_plan_role || filters.plan_role || "adopted",
-      effective_plan_role: identity.effective_plan_role || "adopted",
-      source_table: identity.source_table || "schedule",
-      scenario_id: identity.scenario_id || null
-    };
+    return {};
   }
 
   function executionCreatedBy() {
@@ -440,10 +447,15 @@
     if (extraPayload === null) return;
     const payload = executionPayload(button, action, createdBy, extraPayload || {});
     if (payload === null) return;
+    const postUrl = actualRecordUrl(opId);
+    if (!postUrl) {
+      executionNotice("当前方案不能填写实际情况。");
+      return;
+    }
     button.disabled = true;
     executionNotice("正在保存" + actionLabel + "，请稍候。");
     try {
-      const resp = await fetch("/scheduler/resource-dispatch/execution/" + encodeURIComponent(opId) + "/actual", {
+      const resp = await fetch(postUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify(payload)
@@ -602,7 +614,7 @@
         '</div>' +
         '<div class="aps-table-scroll mt-2">' +
           '<table class="table-sticky table-layout-fixed aps-table-xwide">' +
-            '<thead><tr><th>Sheet</th><th>行号</th><th>任务识别码</th><th>结果</th><th>说明</th><th>可导入</th><th>空白行</th></tr></thead><tbody>'
+            '<thead><tr><th>工作表</th><th>行号</th><th>任务识别码</th><th>结果</th><th>说明</th><th>可导入</th><th>空白行</th></tr></thead><tbody>'
     );
     rows.forEach(function (row) {
       const status = trim(row.status);

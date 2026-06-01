@@ -13,7 +13,7 @@ import importlib.util
 import os
 import re
 import sys
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 from tools.quality_gate_support import (
     COMPLEXITY_THRESHOLD,
@@ -122,7 +122,7 @@ def _dynamic_import_target(
     *,
     import_module_aliases: Set[str],
     importlib_aliases: Set[str],
-) -> str | None:
+) -> Optional[str]:
     if not isinstance(node, ast.Call) or not node.args:
         return None
     first_arg = node.args[0]
@@ -388,7 +388,7 @@ def test_no_wildcard_imports():
     assert not violations, "import * 违反:\n" + "\n".join(violations)
 
 
-def _string_constant(node: ast.AST | None) -> str | None:
+def _string_constant(node: Optional[ast.AST]) -> Optional[str]:
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return str(node.value)
     return None

@@ -303,6 +303,7 @@
       filters: parseJson(pageEl.getAttribute("data-filters"), {}),
       dataUrl: trim(pageEl.getAttribute("data-url")),
       executionUrl: trim(pageEl.getAttribute("data-execution-url")),
+      actualRecordUrlTemplate: trim(pageEl.getAttribute("data-actual-record-url-template")),
       actualTemplateUrl: trim(pageEl.getAttribute("data-actual-template-url")),
       actualImportUrl: trim(pageEl.getAttribute("data-actual-import-url")),
       hasHistory: pageEl.getAttribute("data-has-history") === "1",

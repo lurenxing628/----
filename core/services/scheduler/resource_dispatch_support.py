@@ -445,8 +445,9 @@ def build_dispatch_filters(
     normalized_team_axis: str,
     dr: DispatchRange,
     selected_version: int,
+    batch_id: Any = None,
 ) -> Dict[str, Any]:
-    return {
+    filters = {
         "scope_type": normalized_scope_type,
         "scope_id": selected_scope_id,
         "scope_name": selected_scope_name,
@@ -460,6 +461,10 @@ def build_dispatch_filters(
         "end_date": dr.end_date.isoformat(),
         "version": selected_version,
     }
+    batch_id_text = _text(batch_id)
+    if batch_id_text:
+        filters["batch_id"] = batch_id_text
+    return filters
 
 
 def build_empty_dispatch_message(

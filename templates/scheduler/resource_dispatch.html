@@ -25,13 +25,18 @@
     data-can-query="{{ '1' if can_query else '0' }}"
     data-export-url="{{ export_url or '' }}"
     data-execution-url="{{ execution_data_url or '' }}"
+    data-actual-record-url-template="{{ actual_record_url_template or '' }}"
     data-actual-template-url="{{ actual_template_url or '' }}"
     data-actual-import-url="{{ actual_import_url or '' }}"
   >
 
   {% set resource_dispatch_actions %}
     {{ ui.link_button('去执行排产', url_for('scheduler.batches_page'), 'primary', 'md') }}
-    {{ ui.link_button('查看计划和实际', url_for('reports.execution_review_page', version=filters.version, date_from=filters.start_date, date_to=filters.end_date), 'secondary', 'md') }}
+    {% if execution_review_link and not execution_review_link.disabled %}
+      {{ ui.link_button('查看计划和实际', execution_review_link.url, 'secondary', 'md') }}
+    {% else %}
+      {{ ui.button('查看计划和实际', 'secondary', 'md', type_attr='button', disabled=True, class='aps-disabled-button') }}
+    {% endif %}
     {% if export_url %}
       {{ ui.link_button('导出资源排班.xlsx', export_url, 'secondary', 'md', 'download') }}
     {% else %}
@@ -280,32 +285,38 @@
     </div>
 
     <div id="rdExecutionPanel" class="mt-3 is-hidden">
-      <div class="aps-query-form-grid aps-resource-query-grid">
-        <div class="form-field">
-          <label for="rdExecutionCreatedBy">反馈人</label>
-          <input type="text" id="rdExecutionCreatedBy" class="w-180" autocomplete="off" placeholder="可不填">
-        </div>
-        <div class="form-field">
-          <label>实际情况 Excel</label>
-          <div class="aps-inline-form-actions">
-            {% if actual_template_url %}
-              {{ ui.link_button('下载填写模板', actual_template_url, 'secondary', 'sm', 'download') }}
-            {% else %}
-              {{ ui.button('下载填写模板', 'secondary', 'sm', type_attr='button', disabled=True, class='aps-disabled-button') }}
-            {% endif %}
+      {% if plan_identity and plan_identity.can_write_feedback %}
+        <div class="aps-query-form-grid aps-resource-query-grid">
+          <div class="form-field">
+            <label for="rdExecutionCreatedBy">反馈人</label>
+            <input type="text" id="rdExecutionCreatedBy" class="w-180" autocomplete="off" placeholder="可不填">
+          </div>
+          <div class="form-field">
+            <label>实际情况 Excel</label>
+            <div class="aps-inline-form-actions">
+              {% if actual_template_url %}
+                {{ ui.link_button('下载填写模板', actual_template_url, 'secondary', 'sm', 'download') }}
+              {% else %}
+                {{ ui.button('下载填写模板', 'secondary', 'sm', type_attr='button', disabled=True, class='aps-disabled-button') }}
+              {% endif %}
+            </div>
+          </div>
+          <div class="form-field aps-execution-import-field">
+            <label for="rdActualImportFile">导入实际情况 Excel</label>
+            <input type="file" id="rdActualImportFile" accept=".xlsx,.xlsm" {% if not actual_import_url %}disabled{% endif %}>
+          </div>
+          <div class="form-field">
+            <label>&nbsp;</label>
+            <div class="aps-inline-form-actions">
+              {{ ui.button('导入实际情况 Excel', 'primary', 'sm', type_attr='button', element_id='rdActualImportSubmit', disabled=(not actual_import_url)) }}
+            </div>
           </div>
         </div>
-        <div class="form-field aps-execution-import-field">
-          <label for="rdActualImportFile">导入实际情况 Excel</label>
-          <input type="file" id="rdActualImportFile" accept=".xlsx,.xlsm" {% if not actual_import_url %}disabled{% endif %}>
+      {% else %}
+        <div class="flash-card flash-warning" role="status">
+          {{ plan_identity.guardrail_text if plan_identity and plan_identity.guardrail_text else '当前方案只能查看，不能写现场记录。' }}
         </div>
-        <div class="form-field">
-          <label>&nbsp;</label>
-          <div class="aps-inline-form-actions">
-            {{ ui.button('导入实际情况 Excel', 'primary', 'sm', type_attr='button', element_id='rdActualImportSubmit', disabled=(not actual_import_url)) }}
-          </div>
-        </div>
-      </div>
+      {% endif %}
       <div id="rdExecutionNotice" class="flash-card flash-warning is-hidden" role="status"></div>
       <div id="rdActualImportPreviewWrap" class="mt-2 is-hidden"></div>
       <div id="rdExecutionCards" class="aps-execution-card-grid mt-2">

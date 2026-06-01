@@ -145,20 +145,27 @@ Claude Code 第一轮复核指出：如果只在页面内部加强跳转，Findi
 | 来源 | 目标 | 必带上下文参数 | 页面可见中文上下文 | 禁用条件 | 测试断言 |
 | --- | --- | --- | --- | --- | --- |
 | 首页值班台晚交待处理 | 超期清单 | `version`、`plan_role`、`scenario_id`、`date_from`、`date_to`、`batch_id` 可选 | 第 N 版、方案中文名、日期范围、批次号 | 没有排产版本 | 跳转后版本、方案、日期不丢；页面正文不显示内部字段名 |
+| 首页值班台查看甘特 | 甘特图 | `version`、`plan_role`、`scenario_id`、`start_date`、`end_date`、`view=machine/operator`、`batch_id` 可选 | 第 N 版、方案中文名、日期范围、甘特视图 | 没有排产版本或没有日期范围 | 甘特上下文条和首页一致，视图明确 |
 | 首页方案待复核 | 排产分析 | `version`、`plan_role`、`scenario_id` | 第 N 版、方案中文名 | 没有候选方案 | 推荐卡和三方案摘要仍指向同一版本 |
-| 首页现场情况待确认 / 资源高负荷 | 资源派工 | `version`、`plan_role`、`scenario_id`、`date_from`、`date_to`、`query_date`、`period_preset`、`scope_type` 可选、`resource_id` 可选 | 第 N 版、方案中文名、日期范围、当前资源或全部资源、写入状态 | 没有排产版本或没有可定位资源 | 资源派工上下文条和首页一致；正式采用方案可写，模拟/候选方案不可写现场记录 |
+| 首页现场情况待确认 | 资源派工 | `version`、`plan_role=adopted`、`date_from`、`date_to`、`query_date`、`period_preset`、`scope_type` 可选、`resource_id` 可选、`batch_id` 可选 | 第 N 版、正式采用方案、日期范围、当前资源或全部资源、写入状态 | 没有排产版本或没有日期范围 | 资源派工上下文条和首页一致；只允许正式采用方案下发现场记录写入口 |
+| 首页资源高负荷 | 资源派工 | `version`、`plan_role`、`scenario_id`、`date_from`、`date_to`、`query_date`、`period_preset`、`scope_type`、`resource_id` 可选 | 第 N 版、方案中文名、日期范围、当前资源或全部资源、写入状态 | 没有排产版本或没有日期范围 | 资源派工上下文条和首页一致；模拟/候选方案不可写现场记录 |
 | 首页风险汇总 / 常用工作区 | 报表中心 | `version`、`plan_role`、`scenario_id`、`date_from`、`date_to`、`query_date`、`period_preset` | 第 N 版、方案中文名、日期范围、查询区间 | 没有排产版本 | 报表中心入口卡保持同一版本、方案和日期范围，能继续进超期、资源负荷、计划和现场实际 |
 | 排产分析推荐卡 | 甘特图 | `version`、`plan_role`、`scenario_id`、`start_date`、`end_date`、`view=machine/operator` | 当前查看方案、显示范围、视图 | 没有可查看排程 | 甘特上下文条和分析页一致 |
 | 排产分析诊断卡 | 超期清单 | `version`、`plan_role`、`scenario_id`、`batch_id` 可选 | 当前方案、批次或风险类型 | 没有诊断数据 | 详情区显示事实、线索、缺口、建议动作 |
+| 排产分析诊断卡 | 延期说明 | `version`、`plan_role`、`scenario_id`、`date_from`、`date_to`、`batch_id` 可选 | 当前方案、批次或风险类型 | 没有诊断数据或没有日期范围 | 第一版复用超期清单路由，但 `target_page=delay_diagnosis`，用于区分“解释原因”的入口意图 |
 | 甘特任务详情 | 资源派工 | `version`、`plan_role`、`scenario_id`、`date_from`、`date_to`、`query_date`、`period_preset`、`scope_type`、`resource_id`、`batch_id` 可选 | 当前资源、当前方案、写入状态 | 任务没有资源对象 | 资源派工自动选中对应视角和资源；模拟/候选方案显示不可写 |
-| 甘特任务详情 | 计划和现场实际 | `version`、`date_from`、`date_to`、`batch_id` | 正式采用方案、批次、日期范围 | 当前方案不是正式采用方案 | 非正式方案入口禁用，并显示“计划和现场实际只复盘正式采用方案，请切换到正式采用方案后查看” |
+| 甘特任务详情 | 计划和现场实际 | `version`、`plan_role=adopted`、`date_from`、`date_to`、`batch_id` | 正式采用方案、批次、日期范围 | 当前方案不是正式采用方案 | 非正式方案入口禁用，并显示“计划和现场实际只复盘正式采用方案，请切换到正式采用方案后查看” |
 | 资源派工任务明细 | 报表中心 | `version`、`plan_role`、`scenario_id`、`date_from`、`date_to`、`query_date`、`period_preset`、`scope_type`、`resource_id` 可选 | 当前视角、资源、方案、日期 | 没有查询结果 | 报表入口卡按同一上下文生成 |
-| 资源派工现场记录 | 计划和现场实际 | `version`、`date_from`、`date_to`、`query_date`、`period_preset`、`batch_id`、`resource_id` 可选 | 正式采用方案、批次、资源 | 当前方案不是正式采用方案 | 只有正式采用方案能进入复盘页；复盘行能回到资源派工任务 |
+| 资源派工现场记录 | 计划和现场实际 | `version`、`plan_role=adopted`、`date_from`、`date_to`、`query_date`、`period_preset`、`batch_id`、`scope_type`、`scope_id` 可选 | 正式采用方案、批次、资源 | 当前方案不是正式采用方案 | 只有正式采用方案能进入复盘页；复盘行能回到资源派工任务 |
 | 报表中心资源负荷 | 资源派工 | `version`、`plan_role`、`scenario_id`、`date_from`、`date_to`、`query_date`、`period_preset`、`scope_type`、`resource_id` | 最忙资源、当前方案、日期 | 无资源行 | 点击“查看排班”后资源对象不丢 |
 | 报表中心超期清单 | 甘特图 | `version`、`plan_role`、`scenario_id`、`start_date`、`end_date`、`batch_id`、`view=machine/operator` | 超期批次、方案、范围 | 无甘特数据 | 甘特进入后自动保留仅超期或定位对象 |
-| 计划和现场实际 | 资源派工 | `version`、`date_from`、`date_to`、`batch_id`、`scope_type`、`resource_id` 可选 | 正式采用方案、批次、资源、日期 | 无现场记录 | 回到资源派工后同一任务仍可定位，并继续显示正式采用方案 |
+| 计划和现场实际 | 资源派工 | `version`、`plan_role=adopted`、`date_from`、`date_to`、`batch_id`、`scope_type`、`resource_id` 可选 | 正式采用方案、批次、资源、日期 | 无现场记录 | 回到资源派工后同一任务仍可定位，并继续显示正式采用方案 |
 
 如果某个目标页只能通过 URL 传 `scenario_id`、`plan_role`、`scope_type` 等内部参数，这些参数可以存在于 URL 或隐藏域；但页面上必须用“正式采用方案”“模拟预览”“人员视角”“设备视角”等中文业务词解释。
+
+第一版里，`overdue_report` 和 `delay_diagnosis` 都落到现有 `/reports/overdue` 路由。区别不靠 URL 路径判断，而靠 `WorkbenchLink.target_page` 和按钮文案判断：`overdue_report` 表示“看超期清单”，`delay_diagnosis` 表示“解释为什么晚”。两者都要保留版本、方案、模拟预览、日期和批次上下文，不能因为同路由就漏掉参数。
+
+`execution_review` 是正式采用方案的只读复盘入口。URL 可以带 `plan_role=adopted` 作为明确口径，但不能带非 adopted 的 `plan_role` 或 `scenario_id`；当前上下文不是正式采用方案时，入口必须禁用并给中文原因。
 
 ## 4. 通用页面骨架
 
@@ -675,12 +682,12 @@ Excel 导入仍然属于现场事实写入通道，但它不能抢现场记录�
 | 超期清单 | 下一步 | 查看为什么晚了 / 定位甘特 / 查看资源派工 | `version`、`plan_role`、`scenario_id`、`batch_id`、`date_from`、`date_to` |
 | 资源负荷：设备表 | 下一步 | 查看排班 / 定位甘特 / 查看相关超期 | `version`、`plan_role`、`scenario_id`、`scope_type=machine`、`resource_id`、`date_from`、`date_to` |
 | 资源负荷：人员表 | 下一步 | 查看排班 / 定位甘特 / 查看相关超期 | `version`、`plan_role`、`scenario_id`、`scope_type=operator`、`resource_id`、`date_from`、`date_to` |
-| 计划和现场实际 | 下一步 | 回资源派工 / 定位甘特 / 查看现场记录 | `version`、`batch_id`、`resource_id` 可选、`date_from`、`date_to`；固定正式采用方案口径，不传 `plan_role` 和 `scenario_id` |
+| 计划和现场实际 | 下一步 | 回资源派工 / 定位甘特 / 查看现场记录 | `version`、`plan_role=adopted`、`batch_id`、`resource_id` 可选、`date_from`、`date_to`；固定正式采用方案口径，不传 `scenario_id` |
 | 停机影响 | 下一步 | 定位甘特 / 查看受影响任务 / 查看资源派工 | `version`、`plan_role`、`scenario_id`、停机 `date_from`、停机 `date_to`、资源对象可选 |
 
 导出 Excel 是次要动作，不要放成唯一显眼动作。
 
-“计划和现场实际”明细页是一个例外：它不承接模拟预览、候选方案和对比参考方案，只看正式采用方案。后续测试不要因为它没有 `plan_role`、`scenario_id` 就判定上下文丢失；正确断言是页面明确显示“正式采用方案”，且非正式方案入口被禁用并给中文原因。
+“计划和现场实际”明细页是一个例外：它不承接模拟预览、候选方案和对比参考方案，只看正式采用方案。后续测试不要要求它携带 `scenario_id` 或非 adopted 的 `plan_role`；正确断言是 URL 最多携带 `plan_role=adopted`，页面明确显示“正式采用方案”，且非正式方案入口被禁用并给中文原因。
 
 ## 11. 跨页流程设计
 
@@ -718,7 +725,7 @@ Excel 导入仍然属于现场事实写入通道，但它不能抢现场记录�
 
 ```text
 资源派工：任务卡或任务明细
-  -> 查看计划和实际：只在正式采用方案下可用；复盘页保留 version、date range、query_date、period_preset、batch_id、resource_id 可选
+  -> 查看计划和实际：只在正式采用方案下可用；复盘页保留 version、plan_role=adopted、date range、query_date、period_preset、batch_id、scope_type/scope_id 可选
   -> 打开报表中心：报表中心保留 version、plan_role、scenario_id、date range、query_date、period_preset、scope_type、resource_id 可选
   -> 复盘页每行可回到资源派工或甘特
 ```
@@ -727,7 +734,7 @@ Excel 导入仍然属于现场事实写入通道，但它不能抢现场记录�
 
 ```text
 报表中心：计划和现场实际
-  -> 复盘页：只进入正式采用方案口径，保留 version、date_from、date_to、batch_id 可选
+  -> 复盘页：只进入正式采用方案口径，保留 version、plan_role=adopted、date_from、date_to、batch_id 可选
   -> 选择偏差行
   -> 回资源派工、定位甘特或查看现场记录
 ```
@@ -865,12 +872,14 @@ Excel 导入仍然属于现场事实写入通道，但它不能抢现场记录�
 | --- | --- | --- | --- |
 | 首页到超期说明 | 首页晚交待处理 | `version`、`plan_role`、`scenario_id`、日期、`batch_id` 可选 | 超期清单上下文条一致，详情区有事实、线索、缺口、建议动作 |
 | 首页到方案对比 | 首页方案待复核 | `version`、`plan_role`、`scenario_id` | 排产分析推荐卡和三方案摘要是同一版本 |
-| 首页到资源派工 | 首页现场情况待确认或资源高负荷 | `version`、`plan_role`、`scenario_id`、日期、`query_date`、`period_preset`、资源对象可选 | 资源派工上下文条一致；正式采用方案可写，模拟/候选方案不可写 |
+| 首页到甘特 | 首页查看排程或待处理定位 | `version`、`plan_role`、`scenario_id`、日期、`view`、`batch_id` 可选 | 甘特上下文条一致，设备/人员视图明确 |
+| 首页到资源派工 | 首页现场情况待确认 | `version`、`plan_role=adopted`、日期、`query_date`、`period_preset`、资源对象可选、`batch_id` 可选 | 资源派工上下文条一致；正式采用方案可写 |
+| 首页到资源派工 | 首页资源高负荷 | `version`、`plan_role`、`scenario_id`、日期、`query_date`、`period_preset`、资源对象可选 | 资源派工上下文条一致；模拟/候选方案不可写 |
 | 首页到报表中心 | 首页风险汇总或常用工作区 | `version`、`plan_role`、`scenario_id`、日期、`query_date`、`period_preset` | 报表中心入口卡保持同一上下文 |
 | 分析到甘特 | 推荐卡“查看甘特” | `version`、`plan_role`、`scenario_id`、日期、`view` | 甘特只读，详情区不显示内部字段 |
 | 甘特到资源派工 | 任务详情“查看资源派工” | `version`、`plan_role`、`scenario_id`、日期、`scope_type`、`resource_id` | 资源派工自动选视角；模拟/候选方案不可写现场记录 |
 | 资源派工到报表 | “打开报表中心” | `version`、`plan_role`、`scenario_id`、日期、资源对象可选 | 报表入口卡保持同一上下文 |
-| 报表到计划和现场实际 | 报表中心“计划和现场实际” | `version`、日期、`batch_id` 可选 | 复盘页是只读对账，能回资源派工和甘特 |
+| 报表到计划和现场实际 | 报表中心“计划和现场实际” | `version`、`plan_role=adopted`、日期、`batch_id` 可选 | 复盘页是只读对账，能回资源派工和甘特 |
 | 非正式方案到计划和现场实际 | 甘特、资源派工、报表里的复盘入口 | `plan_role`、`scenario_id`、方案中文名 | 入口禁用，显示“计划和现场实际只复盘正式采用方案，请切换到正式采用方案后查看” |
 | 现场记录写入护栏 | 现场记录页签和批量维护区 | 正式/模拟/候选/历史方案 | 非正式采用方案下开工、完工、手填、Excel 模板下载、Excel 导入、对应 API 和 `data-*` 写入 URL 都不可用 |
 | 首页定位目标页 | 首页任一待处理项 | 批次或资源对象 | 目标页自动定位或高亮同一批次 / 资源；如果无法定位，显示中文原因 |

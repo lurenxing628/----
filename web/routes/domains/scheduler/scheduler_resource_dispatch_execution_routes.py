@@ -27,6 +27,11 @@ from .scheduler_bp import bp
 from .scheduler_resource_dispatch_query import _request_kwargs
 
 _EXCEL_MIMETYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+_WRITE_QUERY_REQUIRED_FIELDS = ("version", "plan_role", "period_preset", "query_date", "start_date", "end_date", "scope_type")
+
+
+def _text(value: Any) -> str:
+    return str(value or "").strip()
 
 
 def _execution_svc() -> Any:
@@ -72,19 +77,55 @@ def _json_payload() -> Dict[str, Any]:
     raise ValidationError("提交内容不是有效 JSON，请刷新后重试。", field="payload")
 
 
+def _write_request_kwargs() -> Dict[str, Any]:
+    raw_query = {
+        "version": request.args.get("version"),
+        "plan_role": request.args.get("plan_role"),
+        "period_preset": request.args.get("period_preset"),
+        "query_date": request.args.get("query_date"),
+        "start_date": request.args.get("start_date") or request.args.get("date_from"),
+        "end_date": request.args.get("end_date") or request.args.get("date_to"),
+        "scope_type": request.args.get("scope_type"),
+    }
+    missing = [key for key in _WRITE_QUERY_REQUIRED_FIELDS if not _text(raw_query.get(key))]
+    if missing:
+        raise ValidationError(
+            "现场记录写入缺少完整计划上下文，请从资源排班页面重新进入。",
+            field="plan_identity",
+            details={"missing_fields": missing},
+        )
+    return _request_kwargs()
+
+
+def _request_plan_identity_payload() -> Dict[str, Any]:
+    query_kwargs = _write_request_kwargs()
+    context = _execution_svc().get_execution_context(**query_kwargs)
+    identity = context.get("plan_identity") if isinstance(context, dict) else None
+    if not isinstance(identity, dict) or not identity:
+        raise ValidationError("当前计划身份不完整，请刷新资源排班页面后重试。", field="plan_identity")
+    return {
+        "version": identity.get("version"),
+        "requested_plan_role": identity.get("requested_plan_role"),
+        "effective_plan_role": identity.get("effective_plan_role"),
+        "source_table": identity.get("source_table"),
+        "scenario_id": identity.get("scenario_id"),
+    }
+
+
 def _feedback_context(op_id: int, payload: Dict[str, Any]) -> ExecutionFeedbackContext:
+    identity_payload = _request_plan_identity_payload()
     return ExecutionFeedbackContext(
-        schedule_version=cast(int, payload.get("version") or payload.get("schedule_version")),
+        schedule_version=cast(int, identity_payload.get("version")),
         schedule_id=cast(int, payload.get("schedule_id")),
         op_id=op_id,
         batch_id=cast(str, payload.get("batch_id")),
         expected_state_revision=cast(str, payload.get("expected_state_revision")),
         created_by=cast(str, payload.get("created_by")),
         idempotency_key=cast(str, payload.get("idempotency_key")),
-        requested_plan_role=cast(str, payload.get("requested_plan_role") or payload.get("plan_role")),
-        source_table=cast(str, payload.get("source_table")),
-        effective_plan_role=cast(str, payload.get("effective_plan_role")),
-        scenario_id=payload.get("scenario_id"),
+        requested_plan_role=cast(str, identity_payload.get("requested_plan_role")),
+        source_table=cast(str, identity_payload.get("source_table")),
+        effective_plan_role=cast(str, identity_payload.get("effective_plan_role")),
+        scenario_id=identity_payload.get("scenario_id"),
     )
 
 
@@ -262,7 +303,7 @@ def resource_dispatch_execution_report_exception(op_id: int):
 @bp.get("/resource-dispatch/execution/actual-template")
 def resource_dispatch_actual_template():
     try:
-        buf = _actual_record_svc().build_template_workbook(**_request_kwargs())
+        buf = _actual_record_svc().build_template_workbook(**_write_request_kwargs())
         return send_file(
             buf,
             as_attachment=True,
@@ -287,7 +328,7 @@ def _uploaded_excel_bytes() -> bytes:
 @bp.post("/resource-dispatch/execution/import/preview")
 def resource_dispatch_actual_import_preview():
     try:
-        payload = _actual_record_svc().preview_import_workbook(_uploaded_excel_bytes(), **_request_kwargs())
+        payload = _actual_record_svc().preview_import_workbook(_uploaded_excel_bytes(), **_write_request_kwargs())
         return jsonify({"success": True, "data": payload})
     except AppError as exc:
         payload, status = _execution_error_response(exc)
@@ -300,7 +341,7 @@ def resource_dispatch_actual_import_preview():
 @bp.post("/resource-dispatch/execution/import")
 def resource_dispatch_actual_import():
     try:
-        result = _actual_record_svc().import_workbook(_uploaded_excel_bytes(), **_request_kwargs())
+        result = _actual_record_svc().import_workbook(_uploaded_excel_bytes(), **_write_request_kwargs())
         return jsonify({"success": True, "data": result})
     except AppError as exc:
         payload, status = _execution_error_response(exc)
@@ -317,7 +358,7 @@ def resource_dispatch_actual_import_confirm():
         result = _actual_record_svc().confirm_import(
             payload.get("raw_rows") or payload.get("rows") or [],
             payload.get("preview_token"),
-            **_request_kwargs(),
+            **_write_request_kwargs(),
         )
         return jsonify({"success": True, "data": result})
     except AppError as exc:
