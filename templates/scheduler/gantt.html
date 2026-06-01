@@ -258,29 +258,36 @@
   </div>
 
   <div class="card">
-    <div id="ganttEmpty" class="muted is-hidden">这个星期、这个版本没有可显示的排程。可以换一周或换一个版本看看。</div>
-    <div id="ganttError" class="error is-hidden" role="alert" aria-live="assertive"></div>
-    <div
-      id="gantt"
-      data-url="{{ data_url }}"
-      data-view="{{ view }}"
-      data-week-start="{{ week_start }}"
-      data-start-date="{{ start_date }}"
-      data-end-date="{{ end_date }}"
-      data-offset="{{ offset }}"
-      data-version="{{ version or '' }}"
-      data-plan-role="{{ current_plan_role }}"
-      data-scenario-id="{{ current_scenario_id }}"
-      data-scenario-preview="{{ '1' if is_scenario_preview else '0' }}"
-      data-scenario-label="{{ current_scenario_label or '' }}"
-      data-gantt-mode="view"
-      data-zoom-level="{{ gantt_zoom or 'day' }}"
-      data-has-history="{{ '1' if has_history else '0' }}"
-      data-version-span-start="{{ version_span.start_date if version_span else '' }}"
-      data-version-span-end="{{ version_span.end_date if version_span else '' }}"
-      data-range-source="{{ range_source or '' }}"
-      data-fetch-timeout-ms="12000"
-    ></div>
+    <div class="aps-gantt-workbench">
+      <div class="aps-gantt-chart-shell">
+        <div id="ganttEmpty" class="muted is-hidden">这个星期、这个版本没有可显示的排程。可以换一周或换一个版本看看。</div>
+        <div id="ganttError" class="error is-hidden" role="alert" aria-live="assertive"></div>
+        <div
+          id="gantt"
+          data-url="{{ data_url }}"
+          data-view="{{ view }}"
+          data-week-start="{{ week_start }}"
+          data-start-date="{{ start_date }}"
+          data-end-date="{{ end_date }}"
+          data-offset="{{ offset }}"
+          data-version="{{ version or '' }}"
+          data-plan-role="{{ current_plan_role }}"
+          data-scenario-id="{{ current_scenario_id }}"
+          data-scenario-preview="{{ '1' if is_scenario_preview else '0' }}"
+          data-scenario-label="{{ current_scenario_label or '' }}"
+          data-gantt-mode="view"
+          data-zoom-level="{{ gantt_zoom or 'day' }}"
+          data-has-history="{{ '1' if has_history else '0' }}"
+          data-version-span-start="{{ version_span.start_date if version_span else '' }}"
+          data-version-span-end="{{ version_span.end_date if version_span else '' }}"
+          data-range-source="{{ range_source or '' }}"
+          data-fetch-timeout-ms="12000"
+        ></div>
+      </div>
+      <aside id="ganttTaskDetail" class="aps-gantt-task-detail" role="region" aria-label="甘特任务详情" aria-live="polite">
+        <div class="aps-gantt-task-detail-empty">点击甘特条查看任务详情</div>
+      </aside>
+    </div>
   </div>
   {% endif %}
 {% endblock %}

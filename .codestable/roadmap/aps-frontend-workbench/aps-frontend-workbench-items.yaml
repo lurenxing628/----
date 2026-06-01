@@ -176,8 +176,8 @@ items:
     depends_on: [workbench-context-link-contract]
     depends_on_reasons:
       workbench-context-link-contract: 详情区里的下一步入口要跳到同一版本和方案，不能在甘特页局部临时拼 URL。
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-06-01-gantt-task-detail-panel
     minimal_loop: false
     primary_paths:
       - templates/scheduler/gantt.html

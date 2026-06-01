@@ -6,6 +6,7 @@ from core.infrastructure.errors import ValidationError
 from core.services.common.degradation import DegradationCollector, DegradationEvent, degradation_events_to_dicts
 from data.repositories import ScheduleHistoryRepository, ScheduleRepository
 
+from .execution_fact_provider import ExecutionFactProvider
 from .gantt_contract import build_gantt_contract
 from .gantt_critical_chain_provider import GanttCriticalChainProvider
 from .gantt_plan_query import (
@@ -253,6 +254,22 @@ class GanttService:
         hist = self.history_repo.get_by_version(version)
         return hist.to_dict() if hist else None
 
+    def _execution_facts_by_op_id(self, rows) -> Dict[int, Any]:
+        op_ids = []
+        seen = set()
+        for row in rows or []:
+            try:
+                op_id = int((row or {}).get("op_id") or 0)
+            except (TypeError, ValueError):
+                continue
+            if op_id <= 0 or op_id in seen:
+                continue
+            seen.add(op_id)
+            op_ids.append(op_id)
+        if not op_ids:
+            return {}
+        return ExecutionFactProvider(self.conn, logger=self.logger).facts_by_op_id(op_ids)
+
     @staticmethod
     def _collect_gantt_degradation_events(
         *,
@@ -356,7 +373,14 @@ class GanttService:
             raise ValidationError(str(exc), field="plan_role") from exc
         overdue_set = set(overdue_meta.get("ids") or [])
 
-        tasks_outcome = build_tasks(view=view, wr=wr, rows=rows, overdue_set=overdue_set)
+        execution_facts_by_op_id = self._execution_facts_by_op_id(rows)
+        tasks_outcome = build_tasks(
+            view=view,
+            wr=wr,
+            rows=rows,
+            overdue_set=overdue_set,
+            execution_facts_by_op_id=execution_facts_by_op_id,
+        )
         empty_reason = tasks_outcome.empty_reason or calendar_days_outcome.empty_reason
 
         critical_chain = self._get_critical_chain_provider().get_critical_chain(

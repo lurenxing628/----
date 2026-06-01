@@ -143,7 +143,7 @@ def _insert_first_round_data(db_path: str) -> int:
     return 12
 
 
-def _collector_for_home() -> _LinkCollector:
+def _collector_for_home():
     tmpdir = tempfile.mkdtemp(prefix="aps_workbench_first_round_")
     db_path = _prepare_env(tmpdir)
     ensure_schema(db_path, logger=None, schema_path=str(SCHEMA_PATH), backup_dir=None)
@@ -160,7 +160,13 @@ def _collector_for_home() -> _LinkCollector:
     assert f"v{version}" in body
     parser = _LinkCollector()
     parser.feed(body)
-    return parser
+    return client, parser
+
+
+def _visible_text(body: str) -> str:
+    parser = _LinkCollector()
+    parser.feed(body)
+    return "\n".join(parser.visible_parts)
 
 
 def _href_for_label(parser: _LinkCollector, label: str) -> str:
@@ -175,7 +181,7 @@ def _query(href: str) -> Dict[str, List[str]]:
 
 
 def test_first_round_workbench_flow_preserves_context_from_homepage_links() -> None:
-    parser = _collector_for_home()
+    client, parser = _collector_for_home()
     visible_text = "\n".join(parser.visible_parts)
 
     assert "计划工作台" in visible_text
@@ -215,6 +221,37 @@ def test_first_round_workbench_flow_preserves_context_from_homepage_links() -> N
     assert execution["plan_role"] == ["adopted"]
     assert execution["date_from"]
     assert execution["date_to"]
+
+    overdue = _query(_href_for_label(parser, "查看超期清单"))
+    assert overdue["version"] == ["12"]
+    assert overdue["plan_role"] == ["adopted"]
+    assert overdue["date_from"]
+    assert overdue["date_to"]
+
+    utilization = _query(_href_for_label(parser, "查看资源负荷"))
+    assert utilization["version"] == ["12"]
+    assert utilization["plan_role"] == ["adopted"]
+    assert utilization["start_date"]
+    assert utilization["end_date"]
+
+    target_pages = (
+        ("排产分析", "排产分析"),
+        ("设备甘特图", "甘特图"),
+        ("资源派工", "资源排班"),
+        ("查看超期清单", "超期"),
+        ("查看资源负荷", "资源负荷"),
+        ("计划和现场实际", "计划和现场实际"),
+    )
+    for label, expected_text in target_pages:
+        href = _href_for_label(parser, label)
+        resp = client.get(href)
+        assert resp.status_code == 200, f"{label} -> {href} 返回 {resp.status_code}"
+        target_visible_text = _visible_text(resp.get_data(as_text=True))
+        assert "计划工作台" in target_visible_text
+        assert "首页值班台" in target_visible_text
+        assert expected_text in target_visible_text
+        for token in INTERNAL_VISIBLE_TOKENS:
+            assert token not in target_visible_text
 
 
 if __name__ == "__main__":

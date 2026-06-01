@@ -14,6 +14,7 @@ from web.routes.history_summary_logging import (
     log_history_version_option_parse_warnings,
 )
 from web.ui_mode import render_ui_template as render_template
+from web.viewmodels.scheduler_gantt_task_detail import decorate_gantt_task_detail_payload
 from web.viewmodels.scheduler_history_summary import (
     build_history_summary_display,
     decorate_history_version_options,
@@ -231,6 +232,7 @@ def gantt_data():
         if plan_query_service is not None:
             data_kwargs["plan_query_service"] = plan_query_service
         data: Dict[str, Any] = svc.get_gantt_tasks(**data_kwargs)
+        decorate_gantt_task_detail_payload(data)
         return jsonify({"success": True, "data": data})
     except AppError as exc:
         return json_error_response(exc)

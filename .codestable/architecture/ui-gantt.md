@@ -3,8 +3,8 @@ doc_type: architecture
 slug: ui-gantt
 status: current
 created: 2026-05-22
-last_reviewed: 2026-05-28
-tags: [scheduler, gantt, frontend, readonly, vendor, scenario-preview]
+last_reviewed: 2026-06-01
+tags: [scheduler, gantt, frontend, readonly, vendor, scenario-preview, task-detail]
 ---
 
 # 甘特图结果查看架构现状
@@ -27,7 +27,7 @@ tags: [scheduler, gantt, frontend, readonly, vendor, scenario-preview]
 - `static/js/gantt_ui.js`：读取页面控件、读取 URL、把当前状态写回 URL，并同步加载表单和视图切换链接。
 - `static/js/gantt_contract.js`：集中维护甘特图数据合同、关键链状态、公开标签、任务数据转换和降级提示。
 - `static/js/gantt_help.js`：生成页面帮助列表，只负责用户能直接看到的查看说明。
-- `static/js/gantt_popup.js`：生成任务弹窗 HTML，只拼接已经转义后的公开字段。
+- `static/js/gantt_popup.js`：生成任务弹窗和稳定任务详情区 HTML，只拼接已经转义后的公开字段。
 - `static/js/gantt_legend.js`：生成图例、关键工序状态、配色说明和假期背景说明。
 - `static/js/gantt_holidays.js`：管理后端日历或周末弱兜底的假期/停工背景标注，并保证周、月视图下单日背景只占一天宽度。
 - `static/js/gantt_decorations.js`：管理条形圆角、外协虚线、超期红框、关键工序外框、聚焦高亮和装饰缓存。
@@ -36,6 +36,25 @@ tags: [scheduler, gantt, frontend, readonly, vendor, scenario-preview]
 - `static/css/aps_gantt_simulation.css`：只放模拟调整入口壳样式，避免继续扩大主甘特图样式文件职责。
 
 脚本加载顺序必须保持为 `gantt.js`、`gantt_zoom.js`、`gantt_adapter.js`、`gantt_color.js`、`gantt_outline.js`、`gantt_contract.js`、`gantt_help.js`、`gantt_popup_fit.js`、`gantt_popup.js`、`gantt_legend.js`、`gantt_holidays.js`、`gantt_decorations.js`、`gantt_render.js`、`gantt_ui.js`、`gantt_boot.js`。`gantt_boot.js` 负责请求数据和阻塞式错误展示：HTTP 错误会优先显示后端 JSON 里的业务错误，成功响应必须满足 `success=true` 且 `data.tasks` 是数组；渲染前准备、渲染或适配层异常会显示到页面错误区，不再伪装成空数据，也不会把内部英文错误直接展示给用户。
+
+### 2.1 稳定任务详情区
+
+甘特图现在除了原有弹窗，还在图表旁边或下方有稳定任务详情区。模板里的挂载点是 `#ganttTaskDetail`，经典模板和现代模板镜像都要保留这个容器。
+
+详情区的数据链是：
+
+1. `/scheduler/gantt/data` 收到版本、方案和日期范围。
+2. `GanttService.get_gantt_tasks()` 读取排程明细行，并按明细里的 `op_id` 批量读取 `ExecutionFactProvider`。
+3. `core/services/scheduler/gantt_tasks.py` 把计划时间、公开任务标题、图号或物料、工序、资源、超期提示和现场实际小结整理到 task meta。
+4. `web/viewmodels/scheduler_gantt_task_detail.py` 只在 Web 层追加下一步链接，包括资源派工、计划和现场实际、超期清单；非正式方案下“计划和现场实际”入口禁用并给中文原因。
+5. `static/js/gantt_render.js` 在用户点击任务条时保留原有批次聚焦，同时刷新 `#ganttTaskDetail`。
+6. `static/js/gantt_popup.js` 输出详情区 HTML，所有动态文本都先转义。
+
+详情区只显示用户看得懂的公开字段。`op_id`、`schedule_id`、`source_table`、`scenario_id` 可以留在 JSON、URL 参数、隐藏字段或服务端日志里做程序定位，但不能作为详情区正文、弹窗正文、按钮文案、链接标签展示。
+
+现场实际只能从 `OperationExecutionEvents` 聚合出来的执行事实读取。没有现场事件时，详情区显示“暂未记录现场实际”，不能把计划开始/结束冒充成实际开工/完工。
+
+关键链内部仍使用 `task.id` 和 edge 的 `from/to` 做高亮与连线。为了避免缺少 `op_code` 时把 `op_<op_id>` 显示给用户，关键链 edge 同时下发 `from_label/to_label` 这类公开名称；前端弹窗里的“前面影响它的工序”优先显示公开名称，旧数据缺公开名称且只有 `op_<数字>` 时显示“未命名工序”。
 
 ## 3. 时间和缩放合同
 
@@ -131,3 +150,4 @@ tags: [scheduler, gantt, frontend, readonly, vendor, scenario-preview]
 - 2026-05-25：刷新 Scenario 预览的用户可见口径，明确 `scenario_id / plan_role` 等字段只作为 URL、隐藏字段和服务端参数使用；页面、导出文件名、工作簿摘要和提示语使用模拟预览名称或“模拟预览（未命名）”，不直接展示内部编号。
 - 2026-05-27：补充 Scenario 保存和正式采用的执行快照边界；保存和发布成功响应改为用户可见白名单字段，内部追踪字段只留在链接、日志和开发测试追溯里。
 - 2026-05-28：补充资源排班日历矩阵和 `日历明细` 导出的现状口径，明确页面与 Excel 都从同一份装饰后的公开日历任务读取，不把内部追踪字段展示给普通用户。
+- 2026-06-01：补充甘特稳定任务详情区现状，记录详情区执行事实来源、下一步链接职责、只读边界和关键链/旧弹窗内部编号防漏口径。

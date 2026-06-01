@@ -1,0 +1,81 @@
+feature: 2026-06-01-gantt-task-detail-panel
+roadmap: aps-frontend-workbench
+roadmap_item: gantt-task-detail-panel
+created: 2026-06-01
+steps:
+  - id: step-1
+    title: 设计与清单落盘
+    action: 写入 design/checklist，并把 roadmap item 标成 in-progress。
+    exit_signal: feature 文档和 roadmap items YAML 校验通过。
+    status: done
+  - id: step-2
+    title: 后端执行事实接入
+    action: 在甘特服务中按 op_id 读取 ExecutionFactProvider，并把公开现场状态、实际开工、实际完工、计划和实际小结写入 task meta。
+    exit_signal: 实际时间只来自执行事实；没有事件时输出“暂未记录现场实际”。
+    status: done
+  - id: step-3
+    title: 详情链接 ViewModel
+    action: 新增 scheduler_gantt_task_detail.py，为任务 meta 追加资源派工、计划和现场实际、超期清单 WorkbenchLink。
+    exit_signal: 链接保留版本、方案、日期范围、批次和资源上下文，非正式方案禁用计划和现场实际入口。
+    status: done
+  - id: step-4
+    title: 模板和前端详情区
+    action: 在甘特模板增加详情区容器，前端点击任务时刷新详情区并保留原批次聚焦和弹窗。
+    exit_signal: 未选任务显示空状态，点击任务显示公开字段，不展示内部字段。
+    status: done
+  - id: step-5
+    title: 响应式样式
+    action: 补本地 CSS，让 1280 宽屏右侧显示详情区，1024 和 768 宽度下放到甘特下方。
+    exit_signal: 不遮挡甘特、筛选控件和告警，不引入外链资源。
+    status: done
+  - id: step-6
+    title: 回归测试
+    action: 新增 regression_gantt_task_detail_panel_contract.py，并运行本阶段指定测试和相关甘特回归。
+    exit_signal: 指定测试全部通过。
+    status: done
+checks:
+  - id: check-1
+    title: 详情区空状态
+    source: roadmap exit_checks
+    expect: 未选任务时显示“点击甘特条查看任务详情”。
+    status: passed
+  - id: check-2
+    title: 任务公开字段
+    source: roadmap exit_checks
+    expect: 点击任务后显示批次、图号或物料、工序、资源、计划时间、状态和超期提示。
+    status: passed
+  - id: check-3
+    title: 计划和实际小结
+    source: roadmap exit_checks
+    expect: 详情区显示计划和实际小结；没有现场记录时用中文说明“暂未记录现场实际”。
+    status: passed
+  - id: check-4
+    title: 执行事实来源
+    source: design 关键决策
+    expect: 实际开工和实际完工来自 ExecutionFactProvider，不从计划字段或前端 task 字段硬猜。
+    status: passed
+  - id: check-5
+    title: 下一步链接上下文
+    source: roadmap 5.4
+    expect: 资源派工、计划和现场实际、超期清单链接保留版本、方案、日期范围、批次和资源上下文。
+    status: passed
+  - id: check-6
+    title: 不露内部字段
+    source: roadmap exit_checks
+    expect: 详情区不展示 op_id、schedule_id、source_table、scenario_id。
+    status: passed
+  - id: check-7
+    title: 只读边界
+    source: roadmap exit_checks
+    expect: 当前仍是只读甘特，不开放拖拽写库。
+    status: passed
+  - id: check-8
+    title: 响应式布局
+    source: roadmap exit_checks
+    expect: 页面布局在 1280、1024、768 宽度下不遮挡甘特和筛选控件。
+    status: passed
+  - id: check-9
+    title: 本地兼容
+    source: roadmap exit_checks
+    expect: 页面不引入外部前端资源，不使用破坏 Chrome 109 或 Python 3.8 的语法。
+    status: passed

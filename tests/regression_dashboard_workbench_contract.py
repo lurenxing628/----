@@ -166,6 +166,24 @@ def test_dashboard_workbench_parse_failure_becomes_data_gap_without_crashing() -
     assert "页面仅展示基础历史信息" in todos["data_gap"]["evidence_text"]
 
 
+def test_dashboard_workbench_execution_fact_failure_does_not_fake_site_gap() -> None:
+    summary = _build_summary(
+        overdue_count=0,
+        latest_summary={
+            "overdue_batches": {"count": 0},
+            "algo": {"metrics": {"machine_util_avg": 0.2}},
+        },
+        execution_facts_by_op_id={},
+        execution_facts_load_error="现场执行事实读取失败，首页暂时不能判断哪些任务现场情况待确认。",
+    )
+    todos = _todo_by_kind(summary)
+
+    assert "site_record_gap" not in todos
+    assert set(todos) == {"data_gap"}
+    assert todos["data_gap"]["title"] == "现场情况暂时读不到"
+    assert "避免把读取失败误当成现场没有反馈" in todos["data_gap"]["impact_text"]
+
+
 def test_visible_text_parser_helper_ignores_href_query_internal_fields() -> None:
     parser = _VisibleTextParser()
     parser.feed('<a href="/x?plan_role=adopted&op_id=1"><span>查看排产分析</span></a>')

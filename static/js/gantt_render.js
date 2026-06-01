@@ -35,6 +35,8 @@
   var currentZoomLevel = zoomApi.currentZoomLevel;
   var createGantt = adapterApi.createGantt;
   var buildTaskPopupHtml = popupApi.buildTaskPopupHtml;
+  var renderTaskDetail = popupApi.renderTaskDetail;
+  var renderTaskDetailEmpty = popupApi.renderTaskDetailEmpty;
   var beginRenderPass = decorationApi.beginRenderPass;
   var buildTaskMapById = decorationApi.buildTaskMapById;
   var decorateStaticAfterRender = decorationApi.decorateStaticAfterRender;
@@ -48,6 +50,8 @@
   if (typeof currentZoomLevel !== "function") return;
   if (typeof createGantt !== "function") return;
   if (typeof buildTaskPopupHtml !== "function") return;
+  if (typeof renderTaskDetail !== "function") return;
+  if (typeof renderTaskDetailEmpty !== "function") return;
   if (typeof beginRenderPass !== "function") return;
   if (typeof buildTaskMapById !== "function") return;
   if (typeof decorateStaticAfterRender !== "function") return;
@@ -61,6 +65,10 @@
 
   function safeDecorateDynamic(opts) {
     ns.safeDecorateDynamic(opts);
+  }
+
+  function resetTaskDetail() {
+    renderTaskDetailEmpty($("ganttTaskDetail"));
   }
 
   function applyFilters(all) {
@@ -271,6 +279,7 @@
       state.currentTasks = [];
       resetDecorCache();
       updateLegend();
+      resetTaskDetail();
       return;
     }
     show(emptyEl, false);
@@ -287,6 +296,7 @@
       state.gantt = null;
       resetDecorCache();
       updateLegend();
+      resetTaskDetail();
       return;
     }
     const zoomSpec = getZoomSpec(currentZoomLevel(state.ui));
@@ -303,6 +313,7 @@
       fallbackViewMode: state.ui && state.ui.viewMode ? state.ui.viewMode : "Day",
       onClick: function (task) {
         const meta = task && task.meta ? task.meta : {};
+        renderTaskDetail($("ganttTaskDetail"), task, state.critical);
         const bid = norm(meta.batch_id);
         if (!bid) return;
         state.focusBatch = state.focusBatch === bid ? "" : bid;
@@ -315,6 +326,7 @@
     });
 
     state.gantt = gantt;
+    resetTaskDetail();
     installPopupAutoFit(gantt);
     installCriticalOutlineSyncAdapter(gantt);
     scrollToAnchor(gantt);

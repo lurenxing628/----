@@ -417,6 +417,173 @@
   opacity: 0.6;
 }
 
+/* ---- stable task detail panel ---- */
+.aps-gantt-workbench {
+  display: grid;
+  gap: 16px;
+  align-items: start;
+  min-width: 0;
+}
+
+.aps-gantt-chart-shell {
+  min-width: 0;
+}
+
+.aps-gantt-task-detail {
+  min-width: 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 14px;
+  color: #0f172a;
+  overflow-wrap: anywhere;
+}
+
+.aps-gantt-task-detail-empty {
+  min-height: 140px;
+  display: grid;
+  place-items: center;
+  color: #64748b;
+  text-align: center;
+  font-weight: 700;
+}
+
+.aps-gantt-task-detail-content {
+  display: grid;
+  gap: 12px;
+}
+
+.aps-gantt-task-detail-head {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.aps-gantt-task-detail-kicker {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.aps-gantt-task-detail-head h3 {
+  margin: 2px 0 0;
+  font-size: 18px;
+  line-height: 1.3;
+}
+
+.aps-gantt-task-detail-badge {
+  flex: 0 0 auto;
+  border: 1px solid #bbf7d0;
+  border-radius: 999px;
+  background: #ecfdf5;
+  color: #166534;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+
+.aps-gantt-task-detail-badge.is-overdue {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.aps-gantt-task-detail-summary,
+.aps-gantt-task-detail-note {
+  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  padding: 10px;
+  color: #334155;
+  line-height: 1.55;
+}
+
+.aps-gantt-task-detail-grid {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.aps-gantt-task-detail-row {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+}
+
+.aps-gantt-task-detail-row dt {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.aps-gantt-task-detail-row dd {
+  margin: 0;
+  color: #0f172a;
+}
+
+.aps-gantt-task-detail-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.aps-gantt-task-detail-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #0f172a;
+  font-weight: 700;
+  line-height: 1.2;
+  padding: 6px 10px;
+  text-decoration: none;
+}
+
+.aps-gantt-task-detail-link:hover {
+  border-color: #38bdf8;
+  color: #075985;
+}
+
+.aps-gantt-task-detail-link.is-disabled {
+  background: #f1f5f9;
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
+@media (min-width: 1180px) {
+  .aps-gantt-workbench {
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  }
+
+  .aps-gantt-task-detail {
+    position: sticky;
+    top: 12px;
+  }
+}
+
+@media (max-width: 1179px) {
+  .aps-gantt-workbench {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 560px) {
+  .aps-gantt-task-detail-row {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+
+  .aps-gantt-task-detail-link {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
 /* ---- legend / help ---- */
 .aps-gantt-legend {
   color: #64748b;
@@ -614,4 +781,38 @@ html[data-theme="dark"] .aps-gantt-help {
 }
 html[data-theme="dark"] .aps-gantt-help summary {
   color: var(--ui-text, #f1f5f9);
+}
+
+html[data-theme="dark"] .aps-gantt-task-detail {
+  border-color: var(--ui-border, #334155);
+  background: #162032;
+  color: var(--ui-text, #f1f5f9);
+}
+
+html[data-theme="dark"] .aps-gantt-task-detail-empty,
+html[data-theme="dark"] .aps-gantt-task-detail-kicker,
+html[data-theme="dark"] .aps-gantt-task-detail-row dt {
+  color: var(--ui-muted, #94a3b8);
+}
+
+html[data-theme="dark"] .aps-gantt-task-detail-summary,
+html[data-theme="dark"] .aps-gantt-task-detail-note,
+html[data-theme="dark"] .aps-gantt-task-detail-link {
+  border-color: var(--ui-border, #334155);
+  background: var(--ui-card-bg, #1e293b);
+  color: var(--ui-text, #f1f5f9);
+}
+
+html[data-theme="dark"] .aps-gantt-task-detail-row dd {
+  color: var(--ui-text, #f1f5f9);
+}
+
+html[data-theme="dark"] .aps-gantt-task-detail-link:hover {
+  border-color: var(--ui-primary, #3b82f6);
+  color: #bae6fd;
+}
+
+html[data-theme="dark"] .aps-gantt-task-detail-link.is-disabled {
+  background: #0f172a;
+  color: #64748b;
 }

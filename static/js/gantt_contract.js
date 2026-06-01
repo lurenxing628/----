@@ -49,6 +49,15 @@
     return text.replace(/（\s*）/g, "").replace(/\s{2,}/g, " ").trim();
   }
 
+  function publicCriticalPredecessorLabel(meta) {
+    var label = norm(meta && (meta.from_label || meta.fromLabel));
+    if (label) return label;
+    var raw = norm(meta && meta.from);
+    if (!raw) return "-";
+    if (/^op_\d+$/i.test(raw)) return "未命名工序";
+    return raw;
+  }
+
   function normalizeCriticalChain(raw) {
     var src = raw && raw.__apsNormalizedCriticalChain === true ? raw : (raw || {});
     var idsRaw = Array.isArray(src.ids) ? src.ids : [];
@@ -74,6 +83,8 @@
       var meta = {
         from: from,
         to: to,
+        from_label: norm(edge.from_label || edge.fromLabel),
+        to_label: norm(edge.to_label || edge.toLabel),
         edge_type: norm(edge.edge_type) || "unknown",
         reason: norm(edge.reason) || "控制前驱",
         gap_minutes: edge.gap_minutes,
@@ -450,7 +461,7 @@
       unavailableMessage: unavailableMessage,
       isCritical: isCritical,
       statusLabel: cc.available === false ? "暂时看不了" : (isCritical ? "是" : "否"),
-      predecessorText: isCritical && meta ? meta.from : "-",
+      predecessorText: isCritical && meta ? publicCriticalPredecessorLabel(meta) : "-",
       edgeTypeText: isCritical && meta ? getCriticalEdgeTypeLabel(meta.edge_type) : "-",
       reasonText: cc.available === false
         ? (publicCriticalChainReason(cc.reason, cc.reason_code) || "-")
@@ -465,6 +476,7 @@
   api.norm = norm;
   api.escapeHtml = escapeHtml;
   api.normalizeCriticalChain = normalizeCriticalChain;
+  api.publicCriticalPredecessorLabel = publicCriticalPredecessorLabel;
   api.applyCriticalChainToState = applyCriticalChainToState;
   api.dedupeCriticalReason = dedupeCriticalReason;
   api.getCriticalChainUnavailableMessage = getCriticalChainUnavailableMessage;

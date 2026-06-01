@@ -4,6 +4,8 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
 from core.models.enums import CalendarDayType, YesNo
+from core.models.operation_execution_event import EXECUTION_STATUS_NOT_STARTED
+from core.models.operation_execution_labels import execution_status_label
 from core.services.common.build_outcome import BuildOutcome
 from core.services.common.degradation import DegradationCollector
 from core.services.scheduler.calendar_service import CalendarService
@@ -105,19 +107,103 @@ def _clamp_to_week(st: datetime, et: datetime, *, wr: WeekRange) -> Optional[Tup
 def _task_name_and_group(
     *,
     view: str,
-    task_id: str,
+    task_label: str,
     machine_disp: str,
     operator_disp: str,
     machine_id: Optional[str],
     operator_id: Optional[str],
 ) -> Tuple[str, str]:
     if view == "machine":
-        name = f"{task_id} {machine_disp} {operator_disp}".strip()
+        name = f"{task_label} {machine_disp} {operator_disp}".strip()
         group_key = (machine_id or "").strip() or "外协/未分配"
     else:
-        name = f"{task_id} {operator_disp} {machine_disp}".strip()
+        name = f"{task_label} {operator_disp} {machine_disp}".strip()
         group_key = (operator_id or "").strip() or "外协/未分配"
     return name, group_key
+
+
+def _fmt_fact_dt(value: Any) -> str:
+    if isinstance(value, datetime):
+        return _fmt_dt(value)
+    parsed = _parse_dt(value)
+    return _fmt_dt(parsed) if parsed else ""
+
+
+def _fact_has_site_record(fact: Any) -> bool:
+    if fact is None:
+        return False
+    if getattr(fact, "actual_start_time", None) is not None:
+        return True
+    if getattr(fact, "actual_end_time", None) is not None:
+        return True
+    status = str(getattr(fact, "actual_status", "") or "").strip()
+    return bool(status and status != EXECUTION_STATUS_NOT_STARTED)
+
+
+def _execution_detail_meta(fact: Any) -> Dict[str, Any]:
+    status = str(getattr(fact, "actual_status", "") or "").strip() or EXECUTION_STATUS_NOT_STARTED
+    status_label = execution_status_label(status)
+    actual_start = _fmt_fact_dt(getattr(fact, "actual_start_time", None))
+    actual_end = _fmt_fact_dt(getattr(fact, "actual_end_time", None))
+    has_record = _fact_has_site_record(fact)
+    if not has_record:
+        summary = "暂未记录现场实际"
+    else:
+        parts = [f"现场状态：{status_label}"]
+        if actual_start:
+            parts.append(f"实际开工：{actual_start}")
+        if actual_end:
+            parts.append(f"实际完工：{actual_end}")
+        if not actual_start and not actual_end:
+            parts.append("暂未填写实际开工和完工")
+        summary = "；".join(parts)
+    return {
+        "execution_status_label": status_label,
+        "actual_start_time": actual_start,
+        "actual_end_time": actual_end,
+        "actual_start_time_label": actual_start or "暂无实际开工",
+        "actual_end_time_label": actual_end or "暂无实际完工",
+        "actual_summary_label": summary,
+        "has_execution_record": has_record,
+    }
+
+
+def _detail_part_label(row: Mapping[str, Any]) -> str:
+    part_no = str(row.get("part_no") or "").strip()
+    part_name = str(row.get("part_name") or "").strip()
+    piece_id = str(row.get("piece_id") or "").strip()
+    label = " ".join(item for item in (part_no, part_name) if item).strip()
+    return label or piece_id or "-"
+
+
+def _detail_operation_label(row: Mapping[str, Any]) -> str:
+    seq = row.get("seq")
+    op_type = str(row.get("op_type_name") or "").strip()
+    if seq is not None and str(seq).strip() and op_type:
+        return f"{seq}（{op_type}）"
+    if op_type:
+        return op_type
+    return str(seq or "").strip() or "-"
+
+
+def _detail_resource_label(machine_disp: str, operator_disp: str) -> str:
+    return f"设备：{machine_disp or '-'}；人员：{operator_disp or '-'}"
+
+
+def _public_task_label(row: Mapping[str, Any]) -> str:
+    op_code = str(row.get("op_code") or "").strip()
+    if op_code:
+        return op_code
+    operation_label = _detail_operation_label(row)
+    if operation_label and operation_label != "-":
+        return operation_label
+    part_label = _detail_part_label(row)
+    if part_label and part_label != "-":
+        return part_label
+    batch_id = str(row.get("batch_id") or "").strip()
+    if batch_id:
+        return f"{batch_id} 工序"
+    return "未命名工序"
 
 
 def _build_one_task(
@@ -126,6 +212,7 @@ def _build_one_task(
     wr: WeekRange,
     row: Mapping[str, Any],
     overdue_set: Set[str],
+    execution_facts_by_op_id: Optional[Mapping[int, Any]] = None,
 ) -> BuildOutcome[Optional[Dict[str, Any]]]:
     collector = DegradationCollector()
     st = _parse_dt(row.get("start_time"))
@@ -145,9 +232,10 @@ def _build_one_task(
 
     machine_disp = _display_machine(row.get("machine_id"), row.get("machine_name"), row.get("supplier_name"))
     operator_disp = _display_operator(row.get("operator_id"), row.get("operator_name"))
+    task_label = _public_task_label(row)
     name, group_key = _task_name_and_group(
         view=view,
-        task_id=task_id,
+        task_label=task_label,
         machine_disp=machine_disp,
         operator_disp=operator_disp,
         machine_id=row.get("machine_id"),
@@ -160,6 +248,18 @@ def _build_one_task(
         css.append("overdue")
 
     duration = _duration_minutes(st2, et2)
+    execution_fact = None
+    try:
+        execution_fact = (execution_facts_by_op_id or {}).get(int(row.get("op_id") or 0))
+    except (TypeError, ValueError):
+        execution_fact = None
+    execution_meta = _execution_detail_meta(execution_fact)
+    overdue_label = "已标记超期" if is_overdue else "未标记超期"
+    delay_hint = (
+        "该批次已被标记为超期，建议查看超期清单或排产诊断。"
+        if is_overdue
+        else "当前未被标记为超期。"
+    )
     task = {
         "id": task_id,
         "schedule_id": row.get("schedule_id"),
@@ -179,10 +279,13 @@ def _build_one_task(
             "batch_id": batch_id,
             "piece_id": row.get("piece_id"),
             "part_no": row.get("part_no"),
+            "part_name": row.get("part_name"),
             "seq": row.get("seq"),
             "op_type_name": row.get("op_type_name"),
             "source": row.get("source"),
             "status": row.get("op_status"),
+            "task_label": task_label,
+            "detail_title": name,
             "machine_id": row.get("machine_id"),
             "operator_id": row.get("operator_id"),
             "machine": machine_disp,
@@ -191,8 +294,17 @@ def _build_one_task(
             "priority": row.get("priority"),
             "lock_status": row.get("lock_status"),
             "duration_minutes": duration,
+            "plan_start_time": _fmt_dt(st),
+            "plan_end_time": _fmt_dt(et),
+            "planned_time_label": f"{_fmt_dt(st)} ～ {_fmt_dt(et)}",
+            "part_label": _detail_part_label(row),
+            "operation_label": _detail_operation_label(row),
+            "resource_label": _detail_resource_label(machine_disp, operator_disp),
             "due_date": row.get("due_date"),
             "is_overdue": is_overdue,
+            "overdue_label": overdue_label,
+            "delay_hint": delay_hint,
+            **execution_meta,
         },
     }
     return BuildOutcome.from_collector(task, collector)
@@ -243,6 +355,7 @@ def build_tasks(
     wr: WeekRange,
     rows: Sequence[Mapping[str, Any]],
     overdue_set: Set[str],
+    execution_facts_by_op_id: Optional[Mapping[int, Any]] = None,
 ) -> BuildOutcome[List[Dict[str, Any]]]:
     """
     构建甘特 tasks（供 Frappe Gantt 渲染）。
@@ -250,7 +363,13 @@ def build_tasks(
     collector = DegradationCollector()
     tasks: List[Dict[str, Any]] = []
     for row in rows:
-        outcome = _build_one_task(view=view, wr=wr, row=row, overdue_set=overdue_set)
+        outcome = _build_one_task(
+            view=view,
+            wr=wr,
+            row=row,
+            overdue_set=overdue_set,
+            execution_facts_by_op_id=execution_facts_by_op_id,
+        )
         collector.extend(outcome.events)
         if outcome.value is not None:
             tasks.append(outcome.value)

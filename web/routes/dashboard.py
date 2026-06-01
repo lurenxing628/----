@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from flask import Blueprint, current_app, g
 
@@ -74,15 +74,15 @@ def _load_today_rows(services: Any, version: int, now: datetime) -> List[Dict[st
     return [dict(row) for row in rows]
 
 
-def _load_execution_facts(rows: List[Dict[str, Any]]) -> Dict[int, Any]:
+def _load_execution_facts(rows: List[Dict[str, Any]]) -> Tuple[Dict[int, Any], str]:
     op_ids = _row_op_ids(rows)
     if not op_ids:
-        return {}
+        return {}, ""
     try:
-        return ExecutionFactProvider(g.db, logger=current_app.logger).facts_by_op_id(op_ids)
+        return ExecutionFactProvider(g.db, logger=current_app.logger).facts_by_op_id(op_ids), ""
     except Exception as exc:  # pragma: no cover - 防止首页被坏现场记录阻断
         current_app.logger.warning("首页值班台读取现场情况失败：%s", exc)
-        return {}
+        return {}, "现场执行事实读取失败，首页暂时不能判断哪些任务现场情况待确认。"
 
 
 @bp.get("/")
@@ -123,7 +123,7 @@ def index():
     latest_version = _positive_version(getattr(latest, "version", None) if latest is not None else None)
     plan_time_span = _load_plan_time_span(services, latest_version)
     today_rows = _load_today_rows(services, latest_version, now)
-    execution_facts_by_op_id = _load_execution_facts(today_rows)
+    execution_facts_by_op_id, execution_facts_load_error = _load_execution_facts(today_rows)
     workbench_summary = build_dashboard_workbench_summary(
         pending_count=pending_count,
         scheduled_count=scheduled_count,
@@ -134,6 +134,7 @@ def index():
         plan_time_span=plan_time_span,
         today_rows=today_rows,
         execution_facts_by_op_id=execution_facts_by_op_id,
+        execution_facts_load_error=execution_facts_load_error,
         now=now,
     )
 

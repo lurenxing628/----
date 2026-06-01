@@ -27,6 +27,45 @@ def _fmt_dt(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _clean_text(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def _detail_operation_label(row: Dict[str, Any]) -> str:
+    seq = _clean_text(row.get("seq"))
+    op_type = _clean_text(row.get("op_type_name"))
+    if seq and op_type:
+        return f"{seq}（{op_type}）"
+    return seq or op_type
+
+
+def _detail_part_label(row: Dict[str, Any]) -> str:
+    part_no = _clean_text(row.get("part_no"))
+    part_name = _clean_text(row.get("part_name"))
+    return " ".join(part for part in (part_no, part_name) if part)
+
+
+def _public_task_label(row: Dict[str, Any]) -> str:
+    op_code = _clean_text(row.get("op_code"))
+    if op_code:
+        return op_code
+    operation_label = _detail_operation_label(row)
+    if operation_label:
+        return operation_label
+    part_label = _detail_part_label(row)
+    if part_label:
+        return part_label
+    batch_id = _clean_text(row.get("batch_id"))
+    if batch_id:
+        return f"{batch_id} 工序"
+    return "未命名工序"
+
+
+def _public_node_label(nodes: Dict[str, Dict[str, Any]], node_id: str) -> str:
+    node = nodes.get(str(node_id or "")) or {}
+    return _clean_text(node.get("label")) or "未命名工序"
+
+
 def _node_dt(node: Dict[str, Any], key: str) -> Optional[datetime]:
     value = node.get(key)
     return value if isinstance(value, datetime) else None
@@ -85,6 +124,7 @@ def _build_nodes(rows: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
             "seq": _safe_int(r.get("seq"), default=0),
             "machine_id": str(r.get("machine_id") or "").strip(),
             "operator_id": str(r.get("operator_id") or "").strip(),
+            "label": _public_task_label(r),
         }
     return nodes
 
@@ -161,6 +201,8 @@ def _process_prev_candidate(
         return None
     return {
         "from": pid_proc,
+        "from_label": _public_node_label(nodes, pid_proc),
+        "to_label": _public_node_label(nodes, tid),
         "edge_type": "process",
         "reason": "工艺前驱",
         "from_end": pn.get("end"),
@@ -184,6 +226,8 @@ def _resource_prev_candidate(
         return None
     return {
         "from": pid,
+        "from_label": _public_node_label(nodes, pid),
+        "to_label": _public_node_label(nodes, tid),
         "edge_type": edge_type,
         "reason": "资源前驱（设备）" if edge_type == "machine" else "资源前驱（人员）",
         "from_end": pn.get("end"),
@@ -233,6 +277,8 @@ def _choose_control_prev(
         ctrl_prev_edge[tid] = {
             "from": from_id,
             "to": tid,
+            "from_label": _clean_text(chosen.get("from_label")) or _public_node_label(nodes, from_id),
+            "to_label": _clean_text(chosen.get("to_label")) or _public_node_label(nodes, tid),
             "edge_type": str(chosen.get("edge_type") or "unknown"),
             "reason": str(chosen.get("reason") or "控制前驱"),
             "gap_minutes": _minutes_between(chosen.get("from_end"), chosen.get("to_start")),
@@ -270,6 +316,8 @@ def _backtrace_chain(
                 {
                     "from": pred,
                     "to": cur,
+                    "from_label": _clean_text(edge_meta.get("from_label")) or _public_node_label(nodes, pred),
+                    "to_label": _clean_text(edge_meta.get("to_label")) or _public_node_label(nodes, cur),
                     "edge_type": str(edge_meta.get("edge_type") or "unknown"),
                     "reason": str(edge_meta.get("reason") or "控制前驱"),
                     "gap_minutes": edge_meta.get("gap_minutes"),
