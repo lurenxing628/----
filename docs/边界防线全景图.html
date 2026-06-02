@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>APS 项目边界防线全景图</title>
+<style>
+  /* 离线自包含，不依赖任何外部资源，可直接双击打开 */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #0f1420; color: #e6e9ef; line-height: 1.6;
+    padding: 24px; max-width: 1280px; margin: 0 auto;
+  }
+  h1 { font-size: 26px; margin-bottom: 4px; }
+  .sub { color: #8b95a7; font-size: 14px; margin-bottom: 24px; }
+  .legend { display: flex; gap: 20px; flex-wrap: wrap; margin: 16px 0 28px; font-size: 13px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .dot { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  .dot.guard { background: #2ecc71; }
+  .dot.noguard { background: #e67e22; }
+  .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+
+  /* 同心圈层 */
+  .rings { position: relative; }
+  .ring {
+    border-radius: 16px; padding: 18px 20px; margin: 0 auto 0; position: relative;
+    border: 2px solid; transition: transform .15s;
+  }
+  .ring:hover { transform: scale(1.01); }
+  .ring-outer { background: rgba(52,152,219,.08); border-color: #3498db; }
+  .ring-mid   { background: rgba(155,89,182,.08); border-color: #9b59b6; margin-top: 14px; }
+  .ring-inner { background: rgba(231,76,60,.10);  border-color: #e74c3c; margin-top: 14px; }
+  .ring h2 { font-size: 17px; margin-bottom: 2px; }
+  .ring .what { font-size: 12.5px; color: #aab3c5; margin-bottom: 12px; }
+  .ring .nest { margin: 0 8px; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 7px; }
+  .chip {
+    font-size: 12px; padding: 4px 9px; border-radius: 6px; cursor: pointer;
+    border: 1px solid #2a3344; background: #1a2030; position: relative;
+    border-left: 4px solid #2ecc71;
+  }
+  .chip.noguard { border-left-color: #e67e22; }
+  .chip:hover { background: #232b3d; }
+  .chip .id { color: #6fb3e0; font-weight: 600; }
+
+  /* 右侧闸门 */
+  .gate {
+    border: 2px dashed #f1c40f; border-radius: 16px; padding: 18px 20px;
+    background: rgba(241,196,15,.07);
+  }
+  .gate h2 { font-size: 17px; color: #f1c40f; }
+  .gate .what { font-size: 12.5px; color: #d8c089; margin: 2px 0 14px; }
+  .gate .chip { border-left-color: #e67e22; }
+
+  .arrow-note {
+    margin-top: 18px; font-size: 13px; color: #8b95a7; border-left: 3px solid #f1c40f;
+    padding-left: 12px;
+  }
+
+  /* 详情面板 */
+  #detail {
+    margin-top: 26px; background: #161c2a; border: 1px solid #2a3344;
+    border-radius: 12px; padding: 20px; min-height: 90px;
+  }
+  #detail.empty { color: #6b7488; font-style: italic; }
+  #detail h3 { font-size: 16px; margin-bottom: 8px; }
+  #detail .seg { margin-bottom: 8px; font-size: 14px; }
+  #detail .seg b { color: #6fb3e0; }
+  #detail .guardline { font-size: 13px; padding: 6px 10px; border-radius: 6px; display: inline-block; margin-top: 4px; }
+  #detail .guardline.g { background: rgba(46,204,113,.15); color: #6fe09a; }
+  #detail .guardline.n { background: rgba(230,126,34,.15); color: #f0a868; }
+
+  .summary-box {
+    margin-top: 26px; background: #11192a; border: 1px solid #2a3344;
+    border-radius: 12px; padding: 20px 24px;
+  }
+  .summary-box h2 { font-size: 18px; margin-bottom: 10px; }
+  .summary-box p { font-size: 14px; margin-bottom: 8px; color: #c4ccda; }
+  .summary-box .big { color: #2ecc71; font-weight: 700; }
+  .summary-box .warn { color: #f1c40f; font-weight: 700; }
+  .core { background: #1a2030; border-radius: 8px; padding: 12px 16px; margin-top: 12px; font-size: 13.5px; }
+</style>
+</head>
+<body>
+  <h1>APS 项目边界防线全景图</h1>
+  <div class="sub">这不是一堆孤立的规矩，而是三道纵深防线 + 一道横插的闸门。点任意一块看它挡的是什么。</div>
+
+  <div class="legend">
+    <span><i class="dot guard"></i> 🛡️ 有自动哨兵（门禁/测试焊死，违反会自动报错，你破坏不了）</span>
+    <span><i class="dot noguard"></i> ⚠️ 无哨兵（只能靠你自己留神 —— 这些才是你真正要操心的）</span>
+  </div>
+
+  <div class="layout">
+    <!-- 左：三道同心防线 -->
+    <div class="rings">
+      <div class="ring ring-outer">
+        <h2>① 最外圈 · 交付闸门</h2>
+        <div class="what">挡的坏事：「软件根本到不了客户机器上」。引新东西第一个撞这层，穿不过后面全白搭。</div>
+        <div class="ring-mid ring nest" style="margin-top:0;">
+          <h2>② 中间圈 · 结构承重墙</h2>
+          <div class="what">挡的坏事：「代码自己慢慢烂成一团，再也改不动」。保证项目能长期迭代不散架。</div>
+          <div class="ring-inner ring nest">
+            <h2>③ 最内圈 · 数据安全底线</h2>
+            <div class="what">挡的坏事：「泄密、用户乱改、把真实生产数据搞坏」。最靠近用户和真实数据，错了后果最重。</div>
+            <div class="chips" id="ring-inner"></div>
+          </div>
+          <div class="chips" id="ring-mid" style="margin-top:12px;"></div>
+        </div>
+        <div class="chips" id="ring-outer" style="margin-top:12px;"></div>
+      </div>
+      <div class="arrow-note">
+        读法：一个错误要造成真损害，得从外往里穿透三层。越往里越致命，但也守得越严。
+      </div>
+    </div>
+
+    <!-- 右：范围闸门 -->
+    <div>
+      <div class="gate">
+        <h2>⊥ 横插的闸门 · 范围纪律</h2>
+        <div class="what">
+          这道不是"圈"，是横插进来的一道闸门。前三道挡「做<b>错</b>」，这道挡「做<b>太多</b>」——功能越做越大、把小工具做成大平台。
+          <br><b style="color:#f1c40f;">注意：这整道闸门几乎没有自动哨兵。这就是为什么你最容易在"功能失控"上栽跟头——它是唯一没人自动拦你的方向。</b>
+        </div>
+        <div class="chips" id="gate"></div>
+      </div>
+
+      <div class="summary-box">
+        <h2>这道防线整体长啥样</h2>
+        <p>共 <b>~40 条边界</b>，其中 <span class="big">约 33 条有自动哨兵</span>（焊死，你破坏不了），<span class="warn">仅 ~7 条靠你自己</span>。</p>
+        <p>三道同心防线（交付/结构/安全）<span class="big">几乎全副武装</span>；唯独"范围纪律"这道闸门基本是<span class="warn">徒手把守</span>。</p>
+        <div class="core">
+          🎯 <b>所以你做决定时，真正要主动盯的只有两处：</b><br>
+          1. 引新库/新工具/新前端效果 → 撞「交付闸门」：Win7 离线装得上吗？老 Chrome 支持吗？<br>
+          2. 想加新功能 → 撞「范围闸门」：对照"说好不做的事"，确认没在把小工具做成大平台。<br>
+          <span style="color:#8b95a7;">其余全有哨兵，违反了会自动报错。你不用记。</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="detail" class="empty">👆 点上面任意一块边界，这里显示：它挡什么坏事、谁在守、你做决定时要注意啥。</div>
+
+<script>
+// 全部边界数据：id, 名称, 圈层, 是否有哨兵, 啥意思, 谁守, 决定时注意
+const B = {
+  // 外圈 交付
+  D1:{layer:'ring-outer',guard:1,name:'Win7 离线能跑',what:'客户机是 Win7 64位、没装Python、不联网。软件得在这种机器自己跑起来，不能运行时去网上下东西。',who:'test_win7_launcher_runtime_paths + 装包检查依赖打全了没',dec:'引入任何新库/工具，第一问永远是"它能在 Win7+Python3.8 离线装上吗"。不能就别用，再好也不用。这是技术选型的天花板。'},
+  D2:{layer:'ring-outer',guard:1,name:'只用 Py3.8 语法',what:'Python 3.9+ 的新写法不能用（开发打包都卡3.8）。用了打包机直接报错。',who:'scan_py38plus_syntax 扫描器在门禁里跑',dec:'基本不用操心——手滑用了新语法门禁会红。放心写。'},
+  D3:{layer:'ring-outer',guard:1,name:'页面不依赖外网',what:'网页不能外链字体/脚本，所有静态资源打包进软件。客户机没网，外链全死。',who:'regression_frontend_offline_static_assets',dec:'想用新前端效果/图标，先确认能下载下来打进包。只能在线用的放弃。'},
+  D4:{layer:'ring-outer',guard:0,name:'兼容老Chrome109',what:'客户浏览器是老Chrome，新浏览器才有的网页功能它打不开。',who:'⚠️ 没硬哨兵，只有"页面别错位"的粗略检查兜底，不锁版本',dec:'要你自己留神！前端大改、用炫酷新效果时，自己确认老Chrome支持吗。门禁帮不了你。'},
+  D5:{layer:'ring-outer',guard:0,name:'用户界面用中文',what:'给用户看的文字、提示、报错都用中文大白话，不蹦英文术语。',who:'⚠️ 没哨兵，靠你自己和review',dec:'加新页面/提示时自己把关用中文。问题不大，但门禁不管。'},
+  // 中圈 结构
+  L1:{layer:'ring-mid',guard:1,name:'算法层不碰service',what:'排产算法是最底层，只能被上面调用，不许反过来去碰业务层。地基不能伸手抓二楼家具。',who:'codemap AST全量扫描 0违规',dec:'在算法层写代码不要import上层service。真想这么写说明设计反了，停下想想。门禁会拦。'},
+  L2:{layer:'ring-mid',guard:1,name:'模型层不碰上层',what:'数据模型只是数据载体，不依赖services/data/web。',who:'codemap AST 0违规',dec:'models里只放数据结构，别塞业务逻辑和数据库调用。'},
+  L3:{layer:'ring-mid',guard:1,name:'数据准备层要干净',what:'viewmodel（给页面摆盘的）只整理数据，不查数据库、不调业务服务。摆盘的不下厨不进仓库。',who:'test_viewmodels_do_not_import_...',dec:'写viewmodel只整理已拿到的数据，要查让上游查好传进来。违反门禁会红。'},
+  L4:{layer:'ring-mid',guard:1,name:'路由不直连数据库仓库',what:'处理网页请求的代码不能直接调数据库仓库，必须经service。前台不能直接进仓库搬货。',who:'test_routes_do_not_import_repository',dec:'加新接口时数据操作丢给service，route只收请求返结果。'},
+  L5:{layer:'ring-mid',guard:1,name:'路由不写裸SQL',what:'route里不能直接写SELECT/INSERT这种数据库语句。',who:'test_routes_do_not_execute_sql_directly',dec:'同L4，数据操作经service→repository。'},
+  L6:{layer:'ring-mid',guard:1,name:'service不碰网页对象',what:'业务逻辑层不该知道自己被网页调用，不许读flask.request。厨师只管做菜，不跑前台问客人点啥。',who:'test_services_do_not_import_flask_request',dec:'想在service读request.args说明分工错了——在route取出参数当普通参数传进service。这样service能脱离网页单独测试复用。'},
+  L7:{layer:'ring-mid',guard:1,name:'service间无循环依赖',what:'A调B、B又调A（或绕一圈A→B→C→A）成死结，焊死再也拆不开，是腐烂典型起点。',who:'test_no_circular_service_dependencies（能查多节点环）',dec:'想让A调B但B已调A时不要硬连——把公共逻辑抽到更底层，让A、B都依赖那个底层。门禁拦新环。'},
+  L8:{layer:'ring-mid',guard:1,name:'SQL只在数据库层',what:'所有SQL只能待在repositories里，service业务层一句裸SQL都没有。库管才进库房取货，业务员只开单子。',who:'第一轮grep全层验证成立 + L5',dec:'service想顺手查数据库时停——去repository加查询方法。SQL全集中一处，将来换库改表只动一层。'},
+  L9:{layer:'ring-mid',guard:1,name:'service不用assert保护',what:'assert在上线优化模式(python -O)会被整个删掉——你以为有防线，上线后根本不存在。保护输入要用if...raise。',who:'test_services_do_not_use_assert_for_runtime_guards',dec:'凡"数据非法该报错给用户"的地方老实写if非法:raise。assert只用于开发期自查。门禁拦service里的assert。'},
+  L10:{layer:'ring-mid',guard:1,name:'核心不用import*',what:'import *把一个模块所有东西一股脑导进来，看不清用了啥、名字哪来的，时间长变糨糊。',who:'test_no_wildcard_imports',dec:'正常写代码碰不到，手滑用了门禁会红。让每个文件依赖关系清清楚楚。'},
+  // 内圈 安全
+  S1:{layer:'ring-inner',guard:1,name:'内部编号不给用户看',what:'方案ID、计划角色、工序ID、数据库行号这些只在背后对齐数据用，绝不能出现在用户页面/按钮/导出Excel。用户看的是"3号车床"不是"op_1078"。',who:'excel_hidden_payload_contract + resource_dispatch_public_output_contract + domain_model_internal_source_contract',dec:'加任何"给用户看"或"导出"的东西，确认没漏内部编号。这几个哨兵很灵，漏了会红。'},
+  S2:{layer:'ring-inner',guard:1,name:'工序定位字段不外露',what:'op_id/schedule_id/版本号这类内部定位字段不进用户可见处。跨页定位用批次/设备/人员/日期这些业务对象。',who:'resource_dispatch_public_output_contract + viewmodel_public_output_contract',dec:'同S1，跨页传递用业务对象不用内部ID。'},
+  S3:{layer:'ring-inner',guard:1,name:'甘特图只读不可拖',what:'甘特图任务条不能拖不能拉，不能让用户以为"拖一下就改了计划"。',who:'gantt_readonly_mode_contract',dec:'给甘特加交互时这是红线——可加"点击看详情"，不能加"拖拽改计划"。想做拖拽改计划是大决定(req明确说第一版不做)，要做先回去改边界。'},
+  S4:{layer:'ring-inner',guard:1,name:'只有正式方案能写现场',what:'候选方案/模拟预览/历史方案的页面上，连写入按钮、Excel导入入口都不能出现。只有当前正式采用方案能填现场实际。',who:'scheduler_workbench_link_guardrails + dispatch_plan_identity_guardrails',dec:'做"现场记录、方案切换"相关功能时记住：写入权限只跟着正式方案走。逻辑绕但有哨兵，写错会红。'},
+  S5:{layer:'ring-inner',guard:1,name:'现场记录只写正式方案',what:'同S4，现场实际数据只能落在当前正式采用方案上。',who:'reschedule_execution_minimum_guardrails + S4',dec:'同S4。'},
+  S6:{layer:'ring-inner',guard:1,name:'导出Excel只放中文字段',what:'导出的矩阵表+日历明细只展示中文业务字段，不放内部追踪字段。',who:'4个 excel contract 测试',dec:'改导出格式时别把内部字段塞进去，会被拦。'},
+  S7:{layer:'ring-inner',guard:1,name:'现场在干就不许偷偷重排',what:'某些工序现场已开工/暂停，重排时不能冲掉这些现场事实，冲突要停下来用中文提示，不硬写。',who:'reschedule_execution_minimum_guardrails + freeze_window_fail_closed_contract',dec:'动重排逻辑时这是安全底线，有哨兵守着。'},
+  // 闸门 范围
+  C1:{layer:'gate',guard:0,name:'不重写排产算法',what:'算法是核心，别动它的根。',who:'⚠️ 产品范围承诺，无哨兵',dec:'想优化算法可以，想推翻重写=大决定，先停。'},
+  C2:{layer:'gate',guard:0,name:'不做完整MES/IoT',what:'不做扫码枪、设备实时采集、电子签名、工资计件、质量追溯。',who:'⚠️ 无哨兵',dec:'这些是"另一个产品"。需求往这飘立刻警惕——这是你最容易越界的方向。'},
+  C3:{layer:'gate',guard:0,name:'不做甘特拖拽改计划',what:'见S3。',who:'⚠️ 范围承诺',dec:'想做先改边界。'},
+  C4:{layer:'gate',guard:0,name:'候选方案只比三个代表',what:'不展示全部3/5/7档，不做任意两方案自由对比。',who:'⚠️ 无哨兵',dec:'用户要"全都能比"，先想清楚是不是真要扩这个。'},
+  C5:{layer:'gate',guard:0,name:'延期诊断不瞎编原因',what:'没数据就说"缺数据"，不猜根因，不承诺自动找唯一原因。',who:'⚠️ 无哨兵',dec:'别被"能不能自动告诉我为啥晚了"带跑偏。'},
+  C6:{layer:'gate',guard:0,name:'报表只按设备和人员筛',what:'班组、半截资源条件直接拒绝，不假装支持。',who:'⚠️ 无哨兵',dec:'要加新筛选维度是明确扩张，对照这条。'},
+  C7:{layer:'gate',guard:0,name:'停机影响只到设备级',what:'第一版不做"具体哪个任务受影响"。',who:'⚠️ 无哨兵',dec:'任务级是第二阶段的事，别提前塞进来。'},
+  C8:{layer:'gate',guard:0,name:'资源派工不做大屏热力图',what:'不做花哨可视化。',who:'⚠️ 无哨兵',dec:'想加炫酷图表前对照这条。'},
+  C9:{layer:'gate',guard:0,name:'短期押后的几件事',what:'反馈人必填、多人现场账号、Excel导入预览/二次确认——明确押后。',who:'⚠️ 无哨兵',dec:'这些明确押后了，别顺手做了。'},
+  C10:{layer:'gate',guard:0,name:'复盘只看正式方案',what:'模拟/候选方案不进"计划vs实际"复盘。',who:'⚠️ 范围承诺',dec:'同S4逻辑。'},
+};
+
+const detail = document.getElementById('detail');
+function show(id){
+  const b = B[id];
+  detail.classList.remove('empty');
+  detail.innerHTML =
+    '<h3>'+id+' · '+b.name+'</h3>'+
+    '<div class="seg"><b>挡什么坏事：</b>'+b.what+'</div>'+
+    '<div class="seg"><b>你做决定时注意：</b>'+b.dec+'</div>'+
+    '<div class="guardline '+(b.guard?'g':'n')+'">'+(b.guard?'🛡️ 谁在守：':'⚠️ 没自动哨兵，靠你自己：')+' '+b.who+'</div>';
+}
+
+// 渲染各圈层的 chip
+const groups = { 'ring-outer':[], 'ring-mid':[], 'ring-inner':[], 'gate':[] };
+for (const id in B){ groups[B[id].layer].push(id); }
+for (const g in groups){
+  const el = document.getElementById(g);
+  el.innerHTML = groups[g].map(id=>{
+    const b=B[id];
+    return '<span class="chip '+(b.guard?'':'noguard')+'" onclick="show(\''+id+'\')"><span class="id">'+id+'</span> '+b.name+'</span>';
+  }).join('');
+}
+</script>
+</body>
+</html>

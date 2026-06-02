@@ -1,0 +1,33 @@
+{
+ "verdicts": [
+  {
+   "location": "core/models/schedule_plan_identity.py:172 (EvidenceLink.to_dict)",
+   "is_real_bleed": false,
+   "finding": "假阳性(健康)。被标的 :172 是 EvidenceLink.to_dict,不是 :44 的 PlanIdentity.to_dict。它非但没有抹平/冒充预览身份,反而是一个主动防冒充的收口岗哨:进入序列化前先在 :173 调 self.validate(),其中 _validate_link_identity(:133-154) 强制要求证据链接里的 scenario_id 查询参数与 self.plan_identity.scenario_id 逐字一致,否则抛 '证据链接必须带当前模拟预览'。:179 把完整的 self.plan_identity.to_dict() 原样嵌入(含 is_preview/is_superseded/scenario_id),:195 原样序列化 scenario_id。这正是灵魂暗线'宁可暴露错误也不自欺'的体现——预览/错版本的链接会被拒绝而非被冒充成正式。",
+   "evidence": [
+    "core/models/schedule_plan_identity.py:173 — def to_dict 第一行就 self.validate(),先校验后序列化",
+    "core/models/schedule_plan_identity.py:149-154 — _validate_link_identity 强制 link 的 scenario_id 必须等于 plan_identity.scenario_id,否则抛'证据链接必须带当前模拟预览'",
+    "core/models/schedule_plan_identity.py:179 — 'plan_identity': self.plan_identity.to_dict() 原样嵌套完整身份(不丢弃任何布尔)",
+    "core/models/schedule_plan_identity.py:195 — 'scenario_id': self.scenario_id 如实序列化",
+    "tests/regression_scheduler_plan_identity_evidence_contract.py:553-565 — 正式身份的 link 混入 scenario_id 即抛错(防冒充)",
+    "tests/regression_scheduler_plan_identity_evidence_contract.py:587-599 — 预览(scenario)身份的 link 缺 scenario_id 即抛错(防漂白)"
+   ]
+  },
+  {
+   "location": "core/models/schedule_plan_resolution.py:64 (SchedulePlanResolution.to_dict)",
+   "is_real_bleed": false,
+   "finding": "假阳性(健康)。这是一个忠实的序列化器,把预览/被替代身份如实带出,没有写死也没有丢弃。:102 的 is_scenario_preview 直接取自 self.is_scenario_preview(分辨率层权威预览旗),:85 的 is_preview、:90 的 is_superseded_by_newer_version 从嵌套 plan_identity 字典 .get 取出,:75-77 如实带出 scenario_id/scenario_name/scenario_display_name。这些布尔的真值在上游 build_plan_identity 里由真实比较推导(is_superseded = version<latest,is_preview = 有 scenario_id 或来源为 adjustment_scenario_rows),并非硬编码。生产中每个 SchedulePlanResolution 构造都经 _with_plan_identity 包裹,plan_identity 必被填充;即便走 :65 的 else {} 兜底,顶层 is_scenario_preview 仍来自 self 而非字典,预览身份不会丢。",
+   "evidence": [
+    "core/models/schedule_plan_resolution.py:102 — 'is_scenario_preview': self.is_scenario_preview 直接如实带出(不经字典,兜底也不丢)",
+    "core/models/schedule_plan_resolution.py:90 — 'is_superseded_by_newer_version': bool(plan_identity.get(...)) 如实透传",
+    "core/models/schedule_plan_resolution.py:85 — 'is_preview': bool(plan_identity.get('is_preview')) 如实透传",
+    "core/services/scheduler/schedule_plan_identity_builder.py:149 — is_preview = _is_preview_plan(...) 由 scenario_id/来源表/状态真实推导,非写死",
+    "core/services/scheduler/schedule_plan_identity_builder.py:152,200 — is_superseded = _is_superseded_version(version<latest) 真实推导后原样塞入 PlanIdentity",
+    "core/services/scheduler/schedule_plan_query_service.py:103,115,129,164,482 — 所有 SchedulePlanResolution 均经 _with_plan_identity 包裹,plan_identity 不为 None",
+    "tests/regression_scheduler_plan_identity_evidence_contract.py:286 — v6 被 v7 替代时 to_dict 的 is_superseded_by_newer_version 如实为 True",
+    "tests/regression_scheduler_plan_identity_evidence_contract.py:329-331 — 预览方案 to_dict 后 user_label='模拟预览(未命名)'、is_preview=True、is_official=False,身份未被漂白成正式"
+   ]
+  }
+ ],
+ "overall": "两处均为假阳性(健康的 to_dict 序列化),不构成出血。机械标记的 'preview→render' 信号之所以触发,只是因为 scenario_id/预览身份字段确实流入了 to_dict——但它们被如实序列化,身份布尔(is_preview/is_scenario_preview/is_superseded_by_newer_version)既未被写死也未被丢弃。\n\n逐处核验:\n1) schedule_plan_identity.py:172 实为 EvidenceLink.to_dict(非 :44 的 PlanIdentity.to_dict)。它在序列化前先 self.validate(),强制证据链接的 scenario_id 必须与 plan_identity.scenario_id 逐字相符,否则抛错——这是主动防冒充的收口岗哨,与已知 execution_review 出血(预览冒充正式)正好相反方向。\n2) schedule_plan_resolution.py:64 是忠实序列化器,is_scenario_preview 直取自 self,其余预览/替代布尔从嵌套 plan_identity 透传;真值由上游 build_plan_identity 经真实比较推导(已收口于已知收口点 build_plan_identity),非硬编码。\n\n与已知出血的对照:真正的 'preview→render 冒充' 出血在 core/services/report/execution_review.py:199 与 :225——那里把导出文件名和汇总行的方案标签写死成 '正式采用方案',不论 resolution 是否为模拟预览/旧版本(此处不在本次核验范围内,但可作为对照锚点)。而本次两处 model 层 to_dict 不存在该模式;report_plan_helpers._public_plan_label(report_plan_helpers.py:126-132)走预览时也正确改用 scenario_display_name。\n\n结论:两处都不是 P1/P2 出血,是函数级数据流追踪在正常 to_dict 上的预期假阳性。建议在调用图规则上把'同一 to_dict 内 self.validate() 先行校验 + 身份布尔逐字段透传'识别为收口模式以降噪。\""
+}

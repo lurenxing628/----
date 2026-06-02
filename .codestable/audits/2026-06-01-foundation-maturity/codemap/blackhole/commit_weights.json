@@ -1,0 +1,2135 @@
+[
+ {
+  "h": "7609a300",
+  "d": "2026-04-26",
+  "msg": "同步技术债务台账，移除已还掉的优化器规模登记",
+  "files": 1,
+  "churn": 49,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "cf81d518",
+  "d": "2026-04-26",
+  "msg": "把排产优化器拆成清楚边界，并补齐摘要、门禁和测试保护",
+  "files": 29,
+  "churn": 4599,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "8ec5b40b",
+  "d": "2026-04-25",
+  "msg": "拆分配置服务并收紧运行配置边界",
+  "files": 73,
+  "churn": 14096,
+  "core": true,
+  "msg_simple": true
+ },
+ {
+  "h": "522a4cb0",
+  "d": "2026-04-25",
+  "msg": "修复前后端说明书公开契约漂移",
+  "files": 80,
+  "churn": 1441,
+  "core": true,
+  "msg_simple": true
+ },
+ {
+  "h": "4dd4ff1d",
+  "d": "2026-04-25",
+  "msg": "修复前端中文文案与 Excel 合同一致性",
+  "files": 82,
+  "churn": 1594,
+  "core": true,
+  "msg_simple": true
+ },
+ {
+  "h": "41ad409c",
+  "d": "2026-04-25",
+  "msg": "把这轮长期修复收成一个能交接的版本",
+  "files": 149,
+  "churn": 18214,
+  "core": true,
+  "msg_simple": true
+ },
+ {
+  "h": "bd55ac5e",
+  "d": "2026-04-23",
+  "msg": "把 .limcode 里的规则、plan、review 和进度留痕一起收进版本库",
+  "files": 267,
+  "churn": 138789,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "7e6a5ee2",
+  "d": "2026-04-23",
+  "msg": "把这轮验证证据、审计留痕和开发文档补齐到能交接的程度",
+  "files": 33,
+  "churn": 14107,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "2c3a9124",
+  "d": "2026-04-23",
+  "msg": "把配置真相链、摘要告警和非甘特页面一起收口",
+  "files": 148,
+  "churn": 15470,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "e02cb914",
+  "d": "2026-04-23",
+  "msg": "先把排产配置口径、报错页面底子和自动检查补齐",
+  "files": 70,
+  "churn": 11026,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "33dc91b8",
+  "d": "2026-04-18",
+  "msg": "移除误提交的用户测试文件",
+  "files": 2,
+  "churn": 577,
+  "core": false,
+  "msg_simple": true
+ },
+ {
+  "h": "0562b0c7",
+  "d": "2026-04-18",
+  "msg": "修复甘特图关键链外框拖拽不同步",
+  "files": 10,
+  "churn": 1474,
+  "core": false,
+  "msg_simple": true
+ },
+ {
+  "h": "24f4c93e",
+  "d": "2026-04-15",
+  "msg": "Implement SP05 path topology guardrails",
+  "files": 91,
+  "churn": 13952,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "68216197",
+  "d": "2026-04-15",
+  "msg": "写了交接文档、更新了欠债台账和各种检查报告，让后面的人看得懂",
+  "files": 6,
+  "churn": 4608,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "64691437",
+  "d": "2026-04-15",
+  "msg": "加了 24 个新测试 + 改了 14 个旧测试，确保这次大改不会把东西搞坏",
+  "files": 38,
+  "churn": 3509,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "4fc905fb",
+  "d": "2026-04-15",
+  "msg": "自动检查工具新增两项扫描：揪出“绕过服务管家自己创建服务”的代码",
+  "files": 5,
+  "churn": 404,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "33c41af2",
+  "d": "2026-04-15",
+  "msg": "多个底层服务改进：能分清“没写过配置”和“写了但是空的”了，出错也不再装看不见",
+  "files": 8,
+  "churn": 251,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "2abc9557",
+  "d": "2026-04-15",
+  "msg": "排产输入采集那个大文件拆成三个小的，配置校验逻辑也整理了",
+  "files": 7,
+  "churn": 831,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "ee25e5ff",
+  "d": "2026-04-15",
+  "msg": "所有页面统一从“服务管家”取服务了，删掉了几百行重复的创建代码",
+  "files": 18,
+  "churn": 571,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "e25f1750",
+  "d": "2026-04-15",
+  "msg": "把“创建服务”这件事集中管理，不再各处各自创建",
+  "files": 5,
+  "churn": 425,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "0875805d",
+  "d": "2026-04-15",
+  "msg": "把工具产生的临时文件加到忽略列表",
+  "files": 1,
+  "churn": 6,
+  "core": false,
+  "msg_simple": true
+ },
+ {
+  "h": "15c919c2",
+  "d": "2026-04-11",
+  "msg": "工具链让它认识新函数 + 问题账本刷新 + SP03 审计交接文档",
+  "files": 7,
+  "churn": 2720,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "d08476cc",
+  "d": "2026-04-11",
+  "msg": "加了一批回归测试：验证启动链出错时真的有日志、而不是装没看见",
+  "files": 8,
+  "churn": 825,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "7ff0ec3e",
+  "d": "2026-04-11",
+  "msg": "启动过程 7 个文件里的 except:pass 全部改成写日志，出错不再装没看见",
+  "files": 7,
+  "churn": 232,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "ddaa0ca3",
+  "d": "2026-04-11",
+  "msg": "加了一个“不会自己炸”的日志函数 safe_log，给后面改启动链打底",
+  "files": 2,
+  "churn": 19,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "a1e89168",
+  "d": "2026-04-10",
+  "msg": "加了 GitHub 自动检查，更新了项目文档和审查报告（SP02 收尾）",
+  "files": 5,
+  "churn": 1787,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "426c4889",
+  "d": "2026-04-10",
+  "msg": "接口文档对照检查升级了：以前用土办法猜，现在真正启动程序来扫描",
+  "files": 3,
+  "churn": 161,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "ff8dc9b4",
+  "d": "2026-04-10",
+  "msg": "启动器加了几个对外查询函数，让其他脚本能查“现在有没有程序在跑”",
+  "files": 2,
+  "churn": 60,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "07429587",
+  "d": "2026-04-10",
+  "msg": "把测试代码里写死的“这些文件可以豁免”名单，搏到了统一的问题账本里",
+  "files": 1,
+  "churn": 336,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "8611c30c",
+  "d": "2026-04-10",
+  "msg": "加了两个一键运行的脚本：一个跑全部质量检查，一个管理问题清单",
+  "files": 5,
+  "churn": 744,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "76615579",
+  "d": "2026-04-10",
+  "msg": "加了一套自动检查代码质量的工具，还有一个记录“哪些代码有问题但还没修”的账本",
+  "files": 8,
+  "churn": 5412,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "c8a5a49c",
+  "d": "2026-04-09",
+  "msg": "算法层拆分与优化器改进：SGS 内部工序估算独立模块 + 局部搜索邻域去重 + 日期解析收敛",
+  "files": 39,
+  "churn": 6206,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "cc073dda",
+  "d": "2026-04-07",
+  "msg": "收紧启动器浏览器判活和安装器卸载匹配，消除两类假成功",
+  "files": 7,
+  "churn": 541,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "457fc757",
+  "d": "2026-04-07",
+  "msg": "合并 review/full_scope：184 个提交，涵盖架构重构、BUG 修复、安全加固、前端优化与测试文档完善",
+  "files": 790,
+  "churn": 119126,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "7918789f",
+  "d": "2026-04-07",
+  "msg": "文案：全站模板和前端提示语去技术黑话——用户可读优先",
+  "files": 24,
+  "churn": 108,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "0d5f81df",
+  "d": "2026-04-05",
+  "msg": "审计：深度审查引用链追踪报告刷新 + 各阶段测试报告重跑更新",
+  "files": 5,
+  "churn": 1940,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "c1f4689f",
+  "d": "2026-04-05",
+  "msg": "文档：用户手册和页面帮助补充非法值拒绝说明",
+  "files": 4,
+  "churn": 28,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "635a9c77",
+  "d": "2026-04-05",
+  "msg": "重构：排产结果汇总模块拆分类型定义、精简组装逻辑、删除冗余兼容函数",
+  "files": 9,
+  "churn": 762,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "fd4b6a9c",
+  "d": "2026-04-05",
+  "msg": "加固：排产配置校验全链路——参数读取容错、严格模式拒绝无效值、预设校验完善",
+  "files": 12,
+  "churn": 746,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "cc2001c4",
+  "d": "2026-04-05",
+  "msg": "重构：Excel 导入路由统一去重——公共逻辑提取到 excel_utils.py，12 个路由文件瘦身",
+  "files": 19,
+  "churn": 1146,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "66915e78",
+  "d": "2026-04-05",
+  "msg": "重构：app.py 和 app_new_ui.py 两个入口文件消重，启动逻辑统一提取到 entrypoint.py",
+  "files": 6,
+  "churn": 915,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "0aa3cd16",
+  "d": "2026-04-05",
+  "msg": "排产说明页与开发文档同步更新：对齐本轮重构的实际变化",
+  "files": 7,
+  "churn": 459,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "62aff4a5",
+  "d": "2026-04-05",
+  "msg": "架构适应度函数改用函数名匹配替代行号匹配，大幅降低维护成本",
+  "files": 1,
+  "churn": 257,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "13800560",
+  "d": "2026-04-05",
+  "msg": "测试套件规范化修补：消除全套测试的类型警告和旧式写法",
+  "files": 30,
+  "churn": 175,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "d7ca5181",
+  "d": "2026-04-05",
+  "msg": "openpyxl wb.active 类型安全加固：所有 Workbook.active 调用点增加 None 检查",
+  "files": 4,
+  "churn": 15,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "4122c6c7",
+  "d": "2026-04-05",
+  "msg": "SGS 评分阶段自动分配探测隔离 + 外协周期零值兜底",
+  "files": 19,
+  "churn": 263,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "213ae7f4",
+  "d": "2026-04-05",
+  "msg": "Excel 数值校验严格化：统一拒绝 bool/NaN/Inf 等非法数值输入",
+  "files": 9,
+  "churn": 364,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "99c8e9c4",
+  "d": "2026-04-05",
+  "msg": "拆分批次服务模块：提取写入规则、集中模板探测逻辑，削减 batch_service 复杂度",
+  "files": 8,
+  "churn": 1030,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "f5cdffd0",
+  "d": "2026-04-05",
+  "msg": "拆分排产摘要模块：schedule_summary 拆为4个子模块，降低单文件复杂度",
+  "files": 7,
+  "churn": 1837,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "32448602",
+  "d": "2026-04-05",
+  "msg": "项目基础设施+架构适应度测试+开发文档同步更新",
+  "files": 11,
+  "churn": 457,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "c2a42b78",
+  "d": "2026-04-05",
+  "msg": "Excel行号溯源统一+排产分析页面重做+日历导入重构+甘特前端增强",
+  "files": 25,
+  "churn": 1210,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "5d666567",
+  "d": "2026-04-05",
+  "msg": "备份恢复结构化+插件系统增强：RestoreResult/能力冲突检测/启动遥测改进",
+  "files": 10,
+  "churn": 827,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "14f2f60b",
+  "d": "2026-04-05",
+  "msg": "报表引擎重构：大数据量感知导出+异步降级+导出模式自动选择",
+  "files": 5,
+  "churn": 684,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "8761a8d1",
+  "d": "2026-04-05",
+  "msg": "人员设备+排产服务层改进：规范化增强/配置校验简化/汇总警告合并优化",
+  "files": 20,
+  "churn": 652,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "2b4fae21",
+  "d": "2026-04-05",
+  "msg": "通用服务层增强：字段解析/构建产出/退化追踪/Excel后端等多模块改进",
+  "files": 14,
+  "churn": 523,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "78879ec1",
+  "d": "2026-04-05",
+  "msg": "schedule_service.py 拆分重构：600行大文件拆为输入收集+编排+薄门面三层",
+  "files": 6,
+  "churn": 1561,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "dbd31d24",
+  "d": "2026-04-05",
+  "msg": "抽取归一化矩阵模块，统一全项目枚举值归一化的唯一事实源",
+  "files": 4,
+  "churn": 524,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "6ad41b96",
+  "d": "2026-04-04",
+  "msg": "冷启动验收脚本错误处理改进 + 回归测试补充",
+  "files": 3,
+  "churn": 89,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "cc8f5e80",
+  "d": "2026-04-04",
+  "msg": "构建脚本加固：vendor 缺失容错 + 启动器路径硬编码 + 清理失败检查",
+  "files": 2,
+  "churn": 67,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "918a96cd",
+  "d": "2026-04-04",
+  "msg": "Chrome 启动器脚本全面加固：环境检测、锁文件、端口校验、契约文件读取",
+  "files": 1,
+  "churn": 268,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "5f3a9b6d",
+  "d": "2026-04-04",
+  "msg": "新增安装脚本同步清单和自动漂移检测脚本",
+  "files": 2,
+  "churn": 200,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "d66312d0",
+  "d": "2026-04-04",
+  "msg": "安装脚本：迁移流程安全重构 + 静默卸载失败关闭 + 部分清理回滚",
+  "files": 3,
+  "churn": 357,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "268534c9",
+  "d": "2026-04-04",
+  "msg": "说明书二次补充：补全早期提交中新增的严格模式、告警摘要、假期效率降级、超期标记降级等功能",
+  "files": 3,
+  "churn": 21,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "d21d26cd",
+  "d": "2026-04-04",
+  "msg": "说明书联动更新：补充所有页面因本次退化可见性改造而新增的功能描述",
+  "files": 5,
+  "churn": 82,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "fe85a7ce",
+  "d": "2026-04-04",
+  "msg": "工具脚本 + 安装包验证 + 核心目录全面审查提示词文档",
+  "files": 13,
+  "churn": 1903,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "33868331",
+  "d": "2026-04-04",
+  "msg": "Web路由+前端模板/JS适配：让服务层的退化事件和脏字段能在页面上真正显示出来",
+  "files": 21,
+  "churn": 357,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "21d5239c",
+  "d": "2026-04-04",
+  "msg": "系统/工艺/人员服务层退化可见性改造：备份恢复、系统配置、供应商、转换器、人机关联",
+  "files": 18,
+  "churn": 1069,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "9afe597b",
+  "d": "2026-04-04",
+  "msg": "排产展示侧退化可见性改造：甘特/周计划/资源调度统一走 BuildOutcome + 退化事件",
+  "files": 16,
+  "churn": 1320,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "08c70113",
+  "d": "2026-04-04",
+  "msg": "排产服务层配置/冻结/持久化/摘要严格化改造：封堂全部内部兜底，透传退化事件",
+  "files": 22,
+  "churn": 2068,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "b1fe3ee9",
+  "d": "2026-04-04",
+  "msg": "排产算法层+输入/优化链严格化改造：消除散落的 _safe_*/_cfg_* 局部兜底",
+  "files": 17,
+  "churn": 1274,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "5ab57494",
+  "d": "2026-04-04",
+  "msg": "新增通用服务底座模块：严格解析/兼容解析/退化事件/结果封套/字段策略矩阵",
+  "files": 13,
+  "churn": 1246,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "622ec537",
+  "d": "2026-04-03",
+  "msg": "证据文档更新：reference_trace 精简重写 + web_smoke 报告刷新",
+  "files": 2,
+  "churn": 2397,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "d03598c9",
+  "d": "2026-04-03",
+  "msg": "新UI补全：排产表单和批次管理新增 strict_mode 控件 + 告警摘要展示",
+  "files": 3,
+  "churn": 44,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "4e1d1aab",
+  "d": "2026-04-03",
+  "msg": "收敛：版本号解析统一归 normalize_version_or_latest + 排产告警函数抽取 + 过度防御清理",
+  "files": 12,
+  "churn": 502,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "4f558e06",
+  "d": "2026-04-03",
+  "msg": "告警上浮：零件创建/批次创建/外部工序回退时的服务层警告透传到前端页面",
+  "files": 12,
+  "churn": 561,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "27490cc6",
+  "d": "2026-04-03",
+  "msg": "超期降级感知：甘特图和资源调度页面对超期摘要格式异常不再静默吞掉，改为降级告警",
+  "files": 18,
+  "churn": 740,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "3bc6a87f",
+  "d": "2026-04-03",
+  "msg": "基础设施：新增 append_unique_text_messages 去重追加工具 + 请求级 g.app_logger 绑定",
+  "files": 4,
+  "churn": 136,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "9847fdeb",
+  "d": "2026-04-03",
+  "msg": "docs: 更新测试报告和审计文档",
+  "files": 22,
+  "churn": 7282,
+  "core": false,
+  "msg_simple": true
+ },
+ {
+  "h": "28b3139f",
+  "d": "2026-04-03",
+  "msg": "chore: 辅助工具和工程配置更新",
+  "files": 3,
+  "churn": 92,
+  "core": false,
+  "msg_simple": true
+ },
+ {
+  "h": "4fd961f5",
+  "d": "2026-04-03",
+  "msg": "test: 新增和更新回归测试 —— 覆盖严格模式、算法统计、排产拦截等新行为",
+  "files": 41,
+  "churn": 4139,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "b9d9c0c1",
+  "d": "2026-04-03",
+  "msg": "feat: 前端模板改进 —— 严格模式控件、环境检测标记、页面增强",
+  "files": 13,
+  "churn": 170,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "ebfcfbd9",
+  "d": "2026-04-03",
+  "msg": "feat: Web 路由层改进 —— 严格模式透传、错误日志可观测性、模板下载统一",
+  "files": 25,
+  "churn": 1045,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "14df9196",
+  "d": "2026-04-03",
+  "msg": "feat: 排产服务层多项增强 —— 配置严格校验、空排产拦截、摘要增强、资源池降级",
+  "files": 15,
+  "churn": 923,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "9a6d100a",
+  "d": "2026-04-03",
+  "msg": "feat: 工序服务引入严格模式，加强供应商和工艺路线解析校验",
+  "files": 4,
+  "churn": 278,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "670c1606",
+  "d": "2026-04-03",
+  "msg": "feat: 排产算法新增算法统计跟踪模块，提升可观测性",
+  "files": 6,
+  "churn": 235,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "e2cdbe15",
+  "d": "2026-04-03",
+  "msg": "refactor: 基础设施层增强 —— 错误处理、日志、数值工具统一整理",
+  "files": 6,
+  "churn": 215,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "01a7f9e2",
+  "d": "2026-04-03",
+  "msg": "chore: 更新提交忽略名单，排除测试产生的原始控制台输出",
+  "files": 1,
+  "churn": 6,
+  "core": false,
+  "msg_simple": true
+ },
+ {
+  "h": "33070031",
+  "d": "2026-04-01",
+  "msg": "开发文档同步刷新：开发文档主文件大幅整理章节结构、ADR补充迁移和并发决策记录、速查表和接口清单同步最新代码",
+  "files": 5,
+  "churn": 332,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "8212cfde",
+  "d": "2026-04-01",
+  "msg": "审计与证据：新增core层静默回退行为审计（992行报告+2301项方法清单），更新Phase0/8/9冒烟测试证据",
+  "files": 6,
+  "churn": 3432,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "8d98da32",
+  "d": "2026-04-01",
+  "msg": "新增14个回归测试 + 更新7个已有测试：覆盖维护窗口互斥、迁移失败快速中止、事务嵌套SAVEPOINT、排程持久化跳过已完工工序、Win7启动器路径解析等场景",
+  "files": 21,
+  "churn": 2392,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "d0bba8e6",
+  "d": "2026-04-01",
+  "msg": "Win7安装器大幅扩充：支持共享数据目录迁移、运行时锁清理、旧版本数据自动搬迁",
+  "files": 5,
+  "churn": 889,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "a12d6860",
+  "d": "2026-04-01",
+  "msg": "Web层与应用启动改进：打包后数据目录改为共享路径、启动器区分reloader父子进程避免重复注册资源、备份路由增加维护窗口拦截",
+  "files": 5,
+  "churn": 366,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "b0ba5476",
+  "d": "2026-04-01",
+  "msg": "排产服务与系统维护改进：排程持久化只更新可重排工序状态、维护任务的操作日志和job_state写入拆分为独立步骤",
+  "files": 6,
+  "churn": 538,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "c3ced1e2",
+  "d": "2026-04-01",
+  "msg": "基础设施层加固：备份模块加入维护窗口互斥锁、数据库初始化支持自动补表补索引、事务管理改为最外层BEGIN内层SAVEPOINT",
+  "files": 12,
+  "churn": 1305,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "d792737b",
+  "d": "2026-03-18",
+  "msg": "共享安装与单活用户保护——从 per-user 安装迁移到机器级共享数据 + 运行时锁",
+  "files": 16,
+  "churn": 1479,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "a6d5c2e3",
+  "d": "2026-03-18",
+  "msg": "﻿.gitignore 补充——忽略本地提示词存档目录",
+  "files": 1,
+  "churn": 3,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "3cbe6e60",
+  "d": "2026-03-18",
+  "msg": "﻿Phase8 冒烟测试报告刷新——重跑后更新时间戳和耗时",
+  "files": 1,
+  "churn": 8,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "dcb90a13",
+  "d": "2026-03-18",
+  "msg": "﻿清理 Windsurf IDE 配置——项目已全面迁移到 Cursor，删除 .windsurf 目录并移除代码和文档中的相关引用",
+  "files": 46,
+  "churn": 6174,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "218094dd",
+  "d": "2026-03-17",
+  "msg": "运行时契约与优雅停机——让卸载器和外部工具能发现并安全关闭正在运行的 APS 实例",
+  "files": 19,
+  "churn": 1318,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "d55db159",
+  "d": "2026-03-17",
+  "msg": "证据报告刷新、开发文档同步与审计记录归档",
+  "files": 22,
+  "churn": 6154,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "7206bc95",
+  "d": "2026-03-17",
+  "msg": "测试增强——12 个新回归脚本覆盖本轮核心变更 + 22 个已有测试适配",
+  "files": 34,
+  "churn": 3529,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "399abb9e",
+  "d": "2026-03-17",
+  "msg": "前端模板、系统使用说明书与页面帮助文案更新",
+  "files": 18,
+  "churn": 757,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "eaee652d",
+  "d": "2026-03-17",
+  "msg": "Excel 导入路由统一重构——模板下载、预览确认、结果提示全对齐",
+  "files": 14,
+  "churn": 2125,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "72ecf53a",
+  "d": "2026-03-17",
+  "msg": "Excel 导入加固——公共层防御与 Service 层规范化增强",
+  "files": 20,
+  "churn": 291,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "289c8e42",
+  "d": "2026-03-17",
+  "msg": "Excel 模板引擎升级——格式规范、下拉校验、自动列宽",
+  "files": 8,
+  "churn": 344,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "e900777e",
+  "d": "2026-03-17",
+  "msg": "运行时探测与健康检查基础设施",
+  "files": 14,
+  "churn": 798,
+  "core": false,
+  "msg_simple": true
+ },
+ {
+  "h": "0a2bc9f7",
+  "d": "2026-03-16",
+  "msg": "审计记录归档 + .gitignore 补充 playwright-mcp 忽略",
+  "files": 11,
+  "churn": 1363,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "6dbae6b1",
+  "d": "2026-03-16",
+  "msg": "证据报告刷新：全量自测后更新各阶段冒烟报告、E2E 报告和复杂用例报告",
+  "files": 17,
+  "churn": 3040,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "6009b8a8",
+  "d": "2026-03-16",
+  "msg": "开发文档联动更新：同步摘要 v1.1、加权拖期目标、due_exclusive 口径等变更",
+  "files": 4,
+  "churn": 25,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "d095dc71",
+  "d": "2026-03-16",
+  "msg": "回归测试：14 个新回归脚本覆盖本轮核心变更 + 2 个已有测试适配 due_exclusive",
+  "files": 16,
+  "churn": 1793,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "8bb03562",
+  "d": "2026-03-16",
+  "msg": "使用说明书更新：新增加权拖期目标函数说明、分析页增强功能描述和场景推荐",
+  "files": 2,
+  "churn": 34,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "178c1f20",
+  "d": "2026-03-16",
+  "msg": "前端层：加权拖期目标选项 + 分析页增强（评分顺序/配置快照/降级与裁剪提示）",
+  "files": 7,
+  "churn": 95,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "e38c9e75",
+  "d": "2026-03-16",
+  "msg": "服务层：配置大小写归一化 + 新增加权拖期目标 + 多起点搜索扩维 + 摘要 schema v1.1",
+  "files": 8,
+  "churn": 592,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "ca418b3d",
+  "d": "2026-03-16",
+  "msg": "算法层：交期截止口径统一为 due_exclusive + SGS 间隙感知派工 + 自动分配早停优化",
+  "files": 7,
+  "churn": 157,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "1e3bcfd9",
+  "d": "2026-03-16",
+  "msg": "﻿开发文档联动对齐：同步配置项描述到开发文档、速查表、接口清单",
+  "files": 3,
+  "churn": 12,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "905c4a7b",
+  "d": "2026-03-16",
+  "msg": "﻿使用说明书修正：自动分配、主操推荐、深度优化三处描述纠错",
+  "files": 2,
+  "churn": 40,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "8143b6e8",
+  "d": "2026-03-16",
+  "msg": "﻿排产配置页面 UI 重构：卡片式开关、网格布局、响应式适配",
+  "files": 2,
+  "churn": 552,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "92912f4e",
+  "d": "2026-03-16",
+  "msg": "﻿新增网站图标：添加 SVG favicon 并在主模板中引入",
+  "files": 3,
+  "churn": 6,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "f7dab8bb",
+  "d": "2026-03-15",
+  "msg": "辅助脚本与审计记录归档：说明书布局验证工具 + 深度审查记录",
+  "files": 4,
+  "churn": 533,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "587124ca",
+  "d": "2026-03-15",
+  "msg": "开发文档联动更新 + 证据刷新 + Win7 部署同步 + Windsurf 技能适配",
+  "files": 13,
+  "churn": 1512,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "32f2947c",
+  "d": "2026-03-15",
+  "msg": "测试增强：说明书双模式回归 + 规范化覆盖 + 架构适应度 + 4 个新回归脚本",
+  "files": 11,
+  "churn": 1243,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "466e89e7",
+  "d": "2026-03-15",
+  "msg": "系统使用说明扩写：从\"排产说明书\"升级为覆盖全系统的使用指南",
+  "files": 2,
+  "churn": 593,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "beba30de",
+  "d": "2026-03-15",
+  "msg": "前端模板与样式升级：悬浮按钮弹窗 + 说明书双模式 + 导入引导 + 文案修正",
+  "files": 13,
+  "churn": 766,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "10261d4d",
+  "d": "2026-03-15",
+  "msg": "Web 路由层重构：说明书双模式 + 设备列表提取 + URL 安全加固",
+  "files": 4,
+  "churn": 535,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "60f14243",
+  "d": "2026-03-15",
+  "msg": "新增页面级说明书 ViewModel 层：为每个功能模块注册帮助内容",
+  "files": 11,
+  "churn": 2135,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "6d526705",
+  "d": "2026-03-15",
+  "msg": "Core 层重构：人员设备规范化抽取 + 资源派工 Excel 拆分 + SystemConfig 读取",
+  "files": 4,
+  "churn": 315,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "59b6b3be",
+  "d": "2026-03-13",
+  "msg": "Win7 启动器增强与排障指引：新增 launcher.log 日志、Chrome 工作目录修正、安装后提示",
+  "files": 4,
+  "churn": 161,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "43897b0e",
+  "d": "2026-03-13",
+  "msg": "架构审计脚本改进：把\"跳过\"项从问题数中分离，不再虚增 FAIL 计数，重跑刷新报告",
+  "files": 5,
+  "churn": 136,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "89c0e893",
+  "d": "2026-03-13",
+  "msg": "开发文档联动更新与项目配置完善：同步最新功能到文档，新增开发依赖清单",
+  "files": 7,
+  "churn": 194,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "9d6e7cac",
+  "d": "2026-03-13",
+  "msg": "Win7 双包打包流程升级：拆分主程序包与 Chrome 运行时包，新增 legacy 全量包应急回退",
+  "files": 14,
+  "churn": 1083,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "4d2b452e",
+  "d": "2026-03-13",
+  "msg": "测试框架增强与验收证据刷新：pytest 自动收集 regression 脚本，重跑后更新各阶段报告",
+  "files": 20,
+  "churn": 2687,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "181c01a7",
+  "d": "2026-03-13",
+  "msg": "排产操作手册全面扩写：从 200 行基础说明扩展到 1800+ 行完整用户手册",
+  "files": 2,
+  "churn": 3765,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "b53b9662",
+  "d": "2026-03-13",
+  "msg": "模板层策略映射扩展与 UI 组件增强：新排产策略中文名、悬浮说明书按钮、错误页友好化",
+  "files": 32,
+  "churn": 373,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "f4b4c8d8",
+  "d": "2026-03-13",
+  "msg": "排产配置服务与页面重构：策略名和术语统一为中文，配置页面布局和交互优化",
+  "files": 8,
+  "churn": 699,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "cc1d197d",
+  "d": "2026-03-13",
+  "msg": "全局校验消息中文化：把错误提示从英文代码术语改成中文大白话，方便用户直接看懂",
+  "files": 27,
+  "churn": 94,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "b7886fa1",
+  "d": "2026-03-13",
+  "msg": "数据库迁移脚本防御性增强：表不存在时优雅跳过，避免空库或部分建库场景下报错",
+  "files": 5,
+  "churn": 160,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "f6ccc65a",
+  "d": "2026-03-13",
+  "msg": "V1.2 完整方案联动章节重构：从通用检查清单改为具体联动判断表格",
+  "files": 1,
+  "churn": 18,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "4a27bbb7",
+  "d": "2026-03-13",
+  "msg": "V1.2 排产优化文档微修：修正交叉引用锚点、章节编号和数据模型字段补充",
+  "files": 6,
+  "churn": 81,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "e8eaf54c",
+  "d": "2026-03-13",
+  "msg": "重跑全量测试后刷新各阶段测试报告和证据文件",
+  "files": 17,
+  "churn": 1007,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "d84aeaeb",
+  "d": "2026-03-13",
+  "msg": "开发文档联动更新：同步班组管理和资源派工功能，V1.2 排产优化方案拆分为独立章节文档",
+  "files": 16,
+  "churn": 6747,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "60eeb9ff",
+  "d": "2026-03-13",
+  "msg": "新增班组和资源派工相关测试，扩展 Excel 导入班组防御测试，新增应用工厂环境变量刷新测试",
+  "files": 9,
+  "churn": 982,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "9714daa6",
+  "d": "2026-03-13",
+  "msg": "新增资源排班中心：按人员、设备、班组三种视角查看排班，支持明细/日历/甘特图展示和 Excel 导出",
+  "files": 11,
+  "churn": 2310,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "0bc120c9",
+  "d": "2026-03-13",
+  "msg": "新增班组管理页面，设备和人员列表增加按班组筛选，导航栏和仪表盘增加入口",
+  "files": 20,
+  "churn": 882,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "1e64713e",
+  "d": "2026-03-13",
+  "msg": "新增班组业务服务，设备和人员的增删改查及 Excel 导入导出均支持班组字段",
+  "files": 8,
+  "churn": 477,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "63a6f3ea",
+  "d": "2026-03-13",
+  "msg": "新增资源班组数据层：ResourceTeams 表、v6 迁移、班组模型与仓储，人员设备增加 team_id 字段",
+  "files": 14,
+  "churn": 376,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "4807c1fa",
+  "d": "2026-03-08",
+  "msg": "﻿新增 2026-03 审计记录：漂移检测复审报告",
+  "files": 1,
+  "churn": 95,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "9628b4bb",
+  "d": "2026-03-08",
+  "msg": "﻿新增 .windsurf 配置目录：镜像 rules/skills/workflows 供 Windsurf IDE 使用",
+  "files": 44,
+  "churn": 5829,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "fd79eec1",
+  "d": "2026-03-08",
+  "msg": "﻿evidence 测试报告全量刷新：重跑全部冒烟/E2E/审计/合规/基准测试后更新报告",
+  "files": 20,
+  "churn": 5489,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "24459b06",
+  "d": "2026-03-08",
+  "msg": "﻿开发文档联动更新：退出备份行为变更、备份文件命名约定同步到四份文档",
+  "files": 4,
+  "churn": 24,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "fa23c86e",
+  "d": "2026-03-08",
+  "msg": "﻿移除系统管理三个页面的预取白名单，修复\"系统管理按钮慢\"的问题",
+  "files": 1,
+  "churn": 3,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "93e16bce",
+  "d": "2026-03-08",
+  "msg": "﻿退出备份受 auto_backup_enabled 配置开关控制，文件后缀从 auto 改为 exit",
+  "files": 7,
+  "churn": 212,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "d9af92c1",
+  "d": "2026-03-08",
+  "msg": "﻿日历页面和 Excel 导入导出的读侧归一化：确保页面展示和导出数据干净一致",
+  "files": 8,
+  "churn": 311,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "db10e491",
+  "d": "2026-03-08",
+  "msg": "﻿CalendarAdmin 服务层重构：提取公共构建方法，消除重复的校验和归一化逻辑",
+  "files": 3,
+  "churn": 632,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "0c3c7f92",
+  "d": "2026-03-08",
+  "msg": "﻿注册数据库迁移 v5 + 新增空库 fast-forward 和 v5 迁移回归测试",
+  "files": 3,
+  "churn": 254,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "d4429163",
+  "d": "2026-03-08",
+  "msg": "﻿枚举值常量化：enum_normalizers 和 enums.py 消除裸字符串",
+  "files": 2,
+  "churn": 28,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "aa5574bd",
+  "d": "2026-03-08",
+  "msg": "﻿日历模型 shift_hours 读侧防御修正：保留 0 值、负值归零",
+  "files": 2,
+  "churn": 136,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "a44cb31f",
+  "d": "2026-03-08",
+  "msg": "修复迁移链和人机服务的静默吞异常问题，统一日志降级机制",
+  "files": 15,
+  "churn": 916,
+  "core": false,
+  "msg_simple": true
+ },
+ {
+  "h": "05660bd7",
+  "d": "2026-03-02",
+  "msg": "修复 conformance 脚本误报：退出自动备份检测跟随启动入口拆分",
+  "files": 24,
+  "churn": 2304,
+  "core": false,
+  "msg_simple": true
+ },
+ {
+  "h": "3a095d08",
+  "d": "2026-03-02",
+  "msg": "刷新一致性对标报告时间戳",
+  "files": 1,
+  "churn": 2,
+  "core": false,
+  "msg_simple": true
+ },
+ {
+  "h": "28cea672",
+  "d": "2026-03-02",
+  "msg": "防御性修复：闭包变量捕获 + 异常链 raise...from e",
+  "files": 4,
+  "churn": 20,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "ae9cdb2f",
+  "d": "2026-03-02",
+  "msg": "移除 _create_app_legacy 死代码，入口收敛到 create_app_core",
+  "files": 2,
+  "churn": 488,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "d323d6ce",
+  "d": "2026-03-02",
+  "msg": "收敛 active_preset 写入路径，避免逻辑分叉",
+  "files": 2,
+  "churn": 31,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "b8fe31e4",
+  "d": "2026-03-02",
+  "msg": "删除 5 个无调用者的死代码方法，清理废弃 import，同步开发文档",
+  "files": 7,
+  "churn": 67,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "7c2ed9c5",
+  "d": "2026-03-02",
+  "msg": "Model 层 from_row() 返回类型注解现代化",
+  "files": 6,
+  "churn": 12,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "ec8c6553",
+  "d": "2026-03-02",
+  "msg": "全局 import 排序与代码风格统一",
+  "files": 27,
+  "churn": 87,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "bc7f5a3a",
+  "d": "2026-03-02",
+  "msg": "新增回归/契约/一致性测试，补入基准测试留痕",
+  "files": 12,
+  "churn": 678,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "2962fec1",
+  "d": "2026-03-02",
+  "msg": "Route 层枚举展示集中化，蓝图精简，Excel 校验去重",
+  "files": 13,
+  "churn": 232,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "2d480481",
+  "d": "2026-03-02",
+  "msg": "Service 层枚举收敛 + Excel 导入落库归一化缺陷修复",
+  "files": 24,
+  "churn": 366,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "5f1770d9",
+  "d": "2026-03-02",
+  "msg": "扩展枚举定义，新增值域常量，Model 和算法层全面消除裸字符串",
+  "files": 26,
+  "churn": 308,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "ed0b9b6a",
+  "d": "2026-03-01",
+  "msg": "补入 Phase3~5 + 最终收口审计留痕：业务域服务、Route 边界、数据层闭环与里程碑终审",
+  "files": 10,
+  "churn": 424,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "d2867a19",
+  "d": "2026-03-01",
+  "msg": "补入 Phase1b + Phase2 审计留痕：Scheduler 残余闭环、Excel 导入链路全链治理、枚举映射表",
+  "files": 6,
+  "churn": 339,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "761a30ed",
+  "d": "2026-03-01",
+  "msg": "补入 Phase0 审计留痕：基线刷新、工具预检、SQL 盘点、future annotations 收口",
+  "files": 4,
+  "churn": 153,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "74520127",
+  "d": "2026-03-01",
+  "msg": "补入体检基线快照（evidence），为后续架构治理提供可对比的起点",
+  "files": 7,
+  "churn": 4094,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "7d1e961d",
+  "d": "2026-03-01",
+  "msg": "evidence: 刷新自检/冒烟/复杂 Excel/一致性报告，和当前实现保持同步",
+  "files": 18,
+  "churn": 709,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "af80de1f",
+  "d": "2026-03-01",
+  "msg": "二次修复：补齐门禁覆盖，收敛状态枚举，补强导入回归",
+  "files": 76,
+  "churn": 4255,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "bd1c31f2",
+  "d": "2026-03-01",
+  "msg": "新增归一化回归、契约和工时导入防御测试",
+  "files": 3,
+  "churn": 328,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "09762a37",
+  "d": "2026-03-01",
+  "msg": "Route 层消除重复归一化函数，统一委托 enum_normalizers 和 web/routes/normalizers",
+  "files": 8,
+  "churn": 277,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "2dba3f0e",
+  "d": "2026-03-01",
+  "msg": "Service 层 Excel 导入和排产服务统一委托 enum_normalizers，消除重复归一化代码",
+  "files": 7,
+  "churn": 231,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "d8c6c99a",
+  "d": "2026-03-01",
+  "msg": "新增集中化枚举归一化模块 enum_normalizers，excel_validators 改用枚举引用 + .lower()",
+  "files": 2,
+  "churn": 171,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "4eb20f30",
+  "d": "2026-03-01",
+  "msg": "修复 4 个 Service 的 list() 查询参数未归一化导致 mixed-case 静默查不到",
+  "files": 5,
+  "churn": 220,
+  "core": false,
+  "msg_simple": true
+ },
+ {
+  "h": "450cf033",
+  "d": "2026-02-28",
+  "msg": "修复 Excel 导入 UNCHANGED 行跳过未计数，补齐统计闭合",
+  "files": 9,
+  "churn": 191,
+  "core": true,
+  "msg_simple": true
+ },
+ {
+  "h": "48474eb1",
+  "d": "2026-02-28",
+  "msg": "evidence: 刷新自检/冒烟/复杂 Excel/一致性报告，和当前实现保持同步",
+  "files": 18,
+  "churn": 1850,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "ea3e0f62",
+  "d": "2026-02-28",
+  "msg": "docs(audit): 补审计/回归留痕（drift detect + scheduler review + 变更范围说明）",
+  "files": 6,
+  "churn": 726,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "c386449c",
+  "d": "2026-02-28",
+  "msg": "补测试工具：复杂 Excel 用例适配 preview_baseline，新增跨午夜回归/真实库回放/FJSP benchmark",
+  "files": 6,
+  "churn": 2371,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "c0427f47",
+  "d": "2026-02-28",
+  "msg": "加固质量门禁：新增架构适应度函数 + conformance 用 AST 校验关键不变量",
+  "files": 6,
+  "churn": 1000,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "c3affe18",
+  "d": "2026-02-28",
+  "msg": "前端脚本拆分：common/gantt 模块化，页面按需加载，回归把关键交互锁住",
+  "files": 26,
+  "churn": 5328,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "3fd61cd3",
+  "d": "2026-02-28",
+  "msg": "重构 scheduler：拆分优化器步骤/配置预设/批次操作，补查询服务与回归",
+  "files": 32,
+  "churn": 2993,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "ae739046",
+  "d": "2026-02-28",
+  "msg": "重构 Excel 导入链路：统一事务执行器 + 各域 ImportService，Route 不再直连 Repo",
+  "files": 55,
+  "churn": 2527,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "335d2c58",
+  "d": "2026-02-27",
+  "msg": "补齐开发文档：新增 ADR 决策记录 + 排产优化方案审计意见",
+  "files": 9,
+  "churn": 631,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "4f7c841e",
+  "d": "2026-02-27",
+  "msg": "补一套“实现一致性/架构合规”自检工具，方便验收对账",
+  "files": 4,
+  "churn": 248,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "b61199d3",
+  "d": "2026-02-27",
+  "msg": "批量整理页面模板：表单更规整，表格更不怕挤",
+  "files": 29,
+  "churn": 664,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "2c972534",
+  "d": "2026-02-27",
+  "msg": "新增表格列宽拖拽+密度切换，让列表页更好用",
+  "files": 5,
+  "churn": 981,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "542673cf",
+  "d": "2026-02-27",
+  "msg": "修复冻结窗口漏冻结，提升排产稳定性与可复现性",
+  "files": 7,
+  "churn": 133,
+  "core": true,
+  "msg_simple": true
+ },
+ {
+  "h": "3d801f0c",
+  "d": "2026-02-26",
+  "msg": "统一列表“查看/编辑”按钮样式，修复经典/现代切换高亮不可见",
+  "files": 8,
+  "churn": 31,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "e0627ef6",
+  "d": "2026-02-26",
+  "msg": "加固 UI 模板安全与操作栏布局，补齐 v2 overlay 文档与回归",
+  "files": 25,
+  "churn": 1265,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "8162c510",
+  "d": "2026-02-26",
+  "msg": "优化护眼切换响应，统一界面开关样式契约",
+  "files": 2,
+  "churn": 547,
+  "core": false,
+  "msg_simple": true
+ },
+ {
+  "h": "5b248d52",
+  "d": "2026-02-26",
+  "msg": "修复护眼模式下表单与甘特图的深色可读性问题",
+  "files": 4,
+  "churn": 271,
+  "core": false,
+  "msg_simple": true
+ },
+ {
+  "h": "466d0391",
+  "d": "2026-02-26",
+  "msg": "修复 Excel Yes/No 混合大小写归一化，避免导入校验误报",
+  "files": 2,
+  "churn": 54,
+  "core": false,
+  "msg_simple": true
+ },
+ {
+  "h": "e0805561",
+  "d": "2026-02-26",
+  "msg": "加锁关键链缓存并补并发回归，避免多线程请求下甘特关键链缓存读写竞态导致数据异常",
+  "files": 2,
+  "churn": 214,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "9c715592",
+  "d": "2026-02-26",
+  "msg": "统一前端交互与暗色打印契约，降低多场景回归风险",
+  "files": 15,
+  "churn": 997,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "ae477d77",
+  "d": "2026-02-26",
+  "msg": "统一分页与静态资源版本化，降低大批量页面卡顿与缓存错配风险",
+  "files": 35,
+  "churn": 1042,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "8143f9d2",
+  "d": "2026-02-25",
+  "msg": "修复 REPLACE 导入跳过 UNCHANGED 导致静默丢数",
+  "files": 2,
+  "churn": 28,
+  "core": false,
+  "msg_simple": true
+ },
+ {
+  "h": "43414451",
+  "d": "2026-02-25",
+  "msg": "修复表头 sticky 误伤并优化甘特聚焦，减少前端交互卡顿",
+  "files": 24,
+  "churn": 207,
+  "core": false,
+  "msg_simple": true
+ },
+ {
+  "h": "e52dcde1",
+  "d": "2026-02-25",
+  "msg": "修复 Excel 导入预览统计口径并补齐回归用例，避免误写库与漏计数",
+  "files": 5,
+  "churn": 204,
+  "core": false,
+  "msg_simple": true
+ },
+ {
+  "h": "60d176c4",
+  "d": "2026-02-25",
+  "msg": "收口经典页导航与按钮契约，降低跨模块交互割裂",
+  "files": 37,
+  "churn": 3893,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "67bc6b92",
+  "d": "2026-02-25",
+  "msg": "统一前端界面文案并清理英文术语，降低一线使用门槛",
+  "files": 23,
+  "churn": 2141,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "fe8d0a82",
+  "d": "2026-02-24",
+  "msg": "修复排产与报表页面在 v2 下的布局断裂，统一导航与中文文案",
+  "files": 17,
+  "churn": 575,
+  "core": false,
+  "msg_simple": true
+ },
+ {
+  "h": "ad6ae2ec",
+  "d": "2026-02-24",
+  "msg": "优化前端排版与文案一致性，提升离线场景可用性",
+  "files": 21,
+  "churn": 435,
+  "core": false,
+  "msg_simple": true
+ },
+ {
+  "h": "f289e7fb",
+  "d": "2026-02-24",
+  "msg": "修复统计报表默认时间窗错位导致空数据误判",
+  "files": 19,
+  "churn": 2838,
+  "core": true,
+  "msg_simple": true
+ },
+ {
+  "h": "0c55f061",
+  "d": "2026-02-24",
+  "msg": "清理甘特调试埋点并收敛空库回归口径",
+  "files": 11,
+  "churn": 560,
+  "core": true,
+  "msg_simple": true
+ },
+ {
+  "h": "ce77a3c6",
+  "d": "2026-02-24",
+  "msg": "修复甘特筛选布局并改为下拉选择",
+  "files": 3,
+  "churn": 319,
+  "core": false,
+  "msg_simple": true
+ },
+ {
+  "h": "18afe51c",
+  "d": "2026-02-24",
+  "msg": "同步冒烟脚本与证据快照，保证回归结果可追溯",
+  "files": 15,
+  "churn": 1958,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "e97b2abe",
+  "d": "2026-02-24",
+  "msg": "收敛排产与导入链路契约，降低跨端语义回退风险",
+  "files": 21,
+  "churn": 1916,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "16883129",
+  "d": "2026-02-24",
+  "msg": "补齐前端优化回归与页面可达性冒烟，提前阻断高频回归点",
+  "files": 5,
+  "churn": 631,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "1ca864c0",
+  "d": "2026-02-24",
+  "msg": "优化甘特图渲染热点与请求稳定性，降低大规模排程交互卡顿风险",
+  "files": 3,
+  "churn": 524,
+  "core": false,
+  "msg_simple": true
+ },
+ {
+  "h": "f329faff",
+  "d": "2026-02-24",
+  "msg": "收敛前端基础交互与可访问性，降低多页面行为分叉风险",
+  "files": 49,
+  "churn": 4087,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "745b1e3c",
+  "d": "2026-02-24",
+  "msg": "修复甘特空数据契约并增强首页脏值容错",
+  "files": 6,
+  "churn": 607,
+  "core": true,
+  "msg_simple": true
+ },
+ {
+  "h": "4dd40ff3",
+  "d": "2026-02-23",
+  "msg": "收敛新 UI 安全与导入编排边界，减少后续改动回归风险",
+  "files": 11,
+  "churn": 628,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "29e1359c",
+  "d": "2026-02-14",
+  "msg": "按契约拆分启动链路与核心编排边界，降低高风险耦合回归面",
+  "files": 39,
+  "churn": 4438,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "475a00ad",
+  "d": "2026-02-14",
+  "msg": "新增多个 Excel 模板文件，支持零件工序工时导入与导出功能，提升工时管理的便捷性与准确性。更新文档以反映新功能的实现细节与使用说明。",
+  "files": 13,
+  "churn": 44,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "acc14a78",
+  "d": "2026-02-13",
+  "msg": "修复：统一排产齐套回退、工时导入语义与边界防护，消除跨入口行为分叉",
+  "files": 13,
+  "churn": 822,
+  "core": true,
+  "msg_simple": true
+ },
+ {
+  "h": "e38818e7",
+  "d": "2026-02-13",
+  "msg": "完善：新增回转壳体单元 Excel 转换与零件工序工时导入链路，打通工步时间累计到排产使用。",
+  "files": 33,
+  "churn": 4150,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "8d9b61e3",
+  "d": "2026-02-13",
+  "msg": "修复：收敛调度入参与齐套默认策略，阻断非法状态与非有限数引发的排产异常。",
+  "files": 11,
+  "churn": 473,
+  "core": true,
+  "msg_simple": true
+ },
+ {
+  "h": "db065e9c",
+  "d": "2026-02-10",
+  "msg": "修复：收口报表导出、系统日志与排产边界问题，补齐回归测试和留痕文档。",
+  "files": 14,
+  "churn": 903,
+  "core": true,
+  "msg_simple": true
+ },
+ {
+  "h": "0e4c0c13",
+  "d": "2026-02-10",
+  "msg": "修复：收敛排产与评估链路对 NaN/Inf 的处理，避免派工评分异常、零时长工序与指标 JSON 不可序列化；同步文档健壮性口径并补齐回归测试。",
+  "files": 11,
+  "churn": 699,
+  "core": true,
+  "msg_simple": true
+ },
+ {
+  "h": "27e3b7d8",
+  "d": "2026-02-07",
+  "msg": "修复：排产版本号原子分配与冻结/停机降级可见",
+  "files": 9,
+  "churn": 263,
+  "core": true,
+  "msg_simple": true
+ },
+ {
+  "h": "48fa6c45",
+  "d": "2026-02-07",
+  "msg": "更新：刷新 FullE2E 与多阶段冒烟报告",
+  "files": 5,
+  "churn": 52,
+  "core": false,
+  "msg_simple": true
+ },
+ {
+  "h": "ae05e9bf",
+  "d": "2026-02-07",
+  "msg": "文档：修正 due_score 逾期处理口径",
+  "files": 1,
+  "churn": 2,
+  "core": false,
+  "msg_simple": false
+ },
+ {
+  "h": "773eee2c",
+  "d": "2026-02-07",
+  "msg": "回归：补齐自动分配与参数防御用例",
+  "files": 3,
+  "churn": 375,
+  "core": false,
+  "msg_simple": true
+ },
+ {
+  "h": "02a4a188",
+  "d": "2026-02-07",
+  "msg": "修复：Greedy 排产稳健性与 seed 结果清洗",
+  "files": 4,
+  "churn": 144,
+  "core": true,
+  "msg_simple": true
+ },
+ {
+  "h": "1e3750dd",
+  "d": "2026-02-07",
+  "msg": "修复：甘特范围与排产起始时间参数校验",
+  "files": 2,
+  "churn": 31,
+  "core": true,
+  "msg_simple": true
+ },
+ {
+  "h": "98167936",
+  "d": "2026-02-07",
+  "msg": "修复：周计划外协显示并澄清关键链口径",
+  "files": 4,
+  "churn": 29,
+  "core": true,
+  "msg_simple": true
+ },
+ {
+  "h": "95f645c7",
+  "d": "2026-02-07",
+  "msg": "修复：核心稳健性加固与回归补齐",
+  "files": 82,
+  "churn": 3128,
+  "core": true,
+  "msg_simple": true
+ },
+ {
+  "h": "cf83b8ca",
+  "d": "2026-02-07",
+  "msg": "修复：模板安全与交互稳定性",
+  "files": 34,
+  "churn": 459,
+  "core": false,
+  "msg_simple": true
+ },
+ {
+  "h": "5370c906",
+  "d": "2026-02-06",
+  "msg": "优化：更新应用程序配置和增强调度功能",
+  "files": 5,
+  "churn": 104,
+  "core": true,
+  "msg_simple": true
+ },
+ {
+  "h": "2bccb617",
+  "d": "2026-02-06",
+  "msg": "622 重构：集中处理优先级并提升调度算法的容错能力",
+  "files": 24,
+  "churn": 964,
+  "core": true,
+  "msg_simple": false
+ },
+ {
+  "h": "057af79f",
+  "d": "2026-02-06",
+  "msg": "599 任务：更新 .gitignore 文件并增强应用程序启动配置",
+  "files": 99,
+  "churn": 8006,
+  "core": true,
+  "msg_simple": false
+ }
+]

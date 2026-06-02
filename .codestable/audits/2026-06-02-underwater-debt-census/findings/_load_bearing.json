@@ -1,0 +1,720 @@
+{
+ "findings": [
+  {
+   "pathology": "P2",
+   "title": "现场反馈写侧 adopted-only 护栏:硬拒 scenario/非正式方案 + 强制写死计划身份常量,但无注释保护",
+   "location": "core/services/scheduler/operation_execution_feedback_service.py:347-354 + 451-453",
+   "reference_chain": "ExecutionFeedbackContext(support.py:45-48) 携带 requested_plan_role/source_table/effective_plan_role/scenario_id 四个看似通用的字段。但 record_event 链路上:_load_current_official_schedule:348-354 刻意硬拒 `requested_plan_role!=ROLE_ADOPTED or effective_plan_role!=ROLE_ADOPTED or source_table!=SOURCE_SCHEDULE or scenario_id is not None` → raise not_current_official_plan;随后 _build_event_payload:451-453 又无视 context 同名字段,把持久化行强制写成 source_table=SOURCE_SCHEDULE / effective_plan_role=ROLE_ADOPTED / scenario_id=None。对照延期诊断读服务 _resolve_strict_plan(schedule_delay_diagnosis_service.py:137-138)是 resolve_plan_view 接受 scenario_key 的——读可带 scenario,写禁带 scenario,这是刻意的不对称。三重护栏(路由 _identity_allows_query_membership_check + 此处校验 + schema CHECK source_table='schedule'/effective_plan_role='adopted'/scenario_id is null)。sed 扫 347-378 与 435-456 均无任何 # 注释说明为何忽略 context、为何写死。",
+   "why_debt": "这正是 prompt 点名的护栏范式(现场反馈只能写在当前正式采用方案上,禁止预览/scenario 冒充正式现场记录)。_build_event_payload 写死常量是 defense-in-depth:即便上游校验被绕过,持久化层也绝不会落下一条带 candidate/scenario 身份的现场事件。但代码里没有一句注释标注'我是故意写死、故意忽略 context 的',未来 LLM 以'context 都有这些字段了为何不透传'为由把 SOURCE_SCHEDULE/ROLE_ADOPTED/None 改成 context.source_table/effective_plan_role/scenario_id,就会在校验被改动时打穿护栏。",
+   "load_bearing": true,
+   "needs_adversarial": false,
+   "severity": "high",
+   "blast_radius": "若把 _build_event_payload 的三个写死常量改成透传 context、或删除 _load_current_official_schedule 的 scenario/role 拒绝分支:现场反馈可被写到候选方案/scenario 预览上,污染'正式采用方案'的现场执行事实,下游重排护栏(schedule_execution_guardrails 读 ExecutionFact)会把预览态当成真实现场,坏数据进入排产决策。属于数据完整性事故。",
+   "_partition": "scheduler-exec-diag",
+   "_source": "pass1",
+   "_adv_verdict": "load_bearing",
+   "_adv_refuted": false,
+   "_adv_precondition": "唯一安全的动作是补一条保护性注释(这才是该 P2 的真实债),严禁把 451-453 三个写死常量改成透传 context——它们是保证官方写入恒满足 schema CHECK、且上游被绕过时仍无法落下非 adopted 身份的消毒层。若仍要改逻辑,必须同时满足:(a) 保留 348-354 的硬拒或等价 can_write_feedback 硬门;(b) schema.sql:256-258 的三条 CHECK 与 migration_operation_execution_contract 启动探针保持不变(它们是最终承重底);(c) 新增 record_event 端到端(非仅 repo 级)回归,证明 scenario/candidate 上下文在任何持久化之前被拒。任何一层被'统一'掉而缺上述前置,都会把这道数据完整性不变量上的纵深防御打穿。",
+   "_adv_evidence": [
+    "operation_execution_feedback_service.py:348-354 — guard A 硬拒 requested/effective_plan_role!=adopted、source_table!=schedule、scenario_id is not None；355-362 其后又独立校验 can_write_feedback。两道是独立重述,产出业务语义错误 not_current_official_plan,而非依赖 DB 约束",
+    "operation_execution_feedback_service.py:451-453 — _build_event_payload 写死 source_table=SOURCE_SCHEDULE/effective_plan_role=ROLE_ADOPTED/scenario_id=None,是把官方写入归一化的'消毒层'",
+    "data/repositories/operation_execution_event_repo.py:191-193 — insert_event 用 payload.get('source_table') or 'schedule' 透传,并不强制常量;若 451-453 改成透传 context,仓库会忠实落下 scenario/candidate 身份,只剩 schema CHECK 兜底。证明写死常量非冗余而是承重",
+    "schema.sql:256-258 — 无条件 CHECK(source_table='schedule')/CHECK(effective_plan_role='adopted')/CHECK(scenario_id IS NULL);migrations/v15.py:14-16 同款,v16.py:51-54 整表重建保留该 CHECK(部署库也有此底)",
+    "core/infrastructure/migration_operation_execution_contract.py:258-280 — 启动期 contract probe 主动 INSERT source_table='candidate_rows'/effective_plan_role='baseline_best'/scenario_id='__probe_scenario__' 三条坏行,CHECK 不拒就拒绝把库判为已迁移。证明该不变量是被刻意强制的承重底,非偶然",
+    "core/services/scheduler/execution_fact_provider.py:91-102 — 下游 list_by_op_ids 纯按 op_id 读事件、无 source_table/role/scenario 过滤(注释 82-83 言明以 op_id 为主线信任写侧);run/schedule_execution_guardrails.py:186 消费这些 ExecutionFact 进重排护栏。任何混入的 scenario/candidate 行会被当成真实现场事实",
+    "data/repositories/base_repo.py:42-43,108-113 — CHECK 违约→IntegrityError→AppError(DB_INTEGRITY_ERROR) 暴露不静默兜底(契合灵魂暗线);反过来意味着把写死改透传会把本应成功的合法反馈变成用户侧 DB 报错",
+    "schedule_delay_diagnosis_service.py:134-139 — 读侧 resolve_plan_view 接受 scenario_key(读可带 scenario),与写侧硬拒形成刻意不对称,印证写禁 scenario 是设计而非疏漏",
+    "tests/regression_operation_execution_event_foundation.py:272 — 回归断言 insert_event(source_table='candidate_rows') 必 raise,锁死该写入禁线"
+   ]
+  },
+  {
+   "pathology": "P2",
+   "title": "execution_review 服务方法写死 ROLE_ADOPTED/scenario_id=None 的承重不对称,在方法本体无注释保护",
+   "location": "core/services/report/execution_review.py:141-176 (153,112,123,167)",
+   "reference_chain": "同属 ReportEngine 的 overdue_batches(report_engine.py:157)/utilization(:267)/downtime_impact(:371) 全部签名带 plan_role+scenario_id 并透传;唯独 execution_review(:141) 形参不收 plan_role/scenario_id,内部恒 host._resolve_plan(v, ROLE_ADOPTED, None) 且 _execution_review_plan_rows 恒传 plan_role=ROLE_ADOPTED/scenario_id=None。护栏的'理由'分布在远处:navigation_context.py:80-82 对 execution_review 请求强制 plan_role=ADOPTED/scenario_id='';workbench_links.py:310-311 _is_formal_adopted_context 失败即禁用入口、:267 context_summary 追加'只复盘正式采用方案';scheduler_reports_workbench.py:210 用户文案'只复盘正式采用方案,不复盘模拟预览和对比参考方案';合同测试 regression_reports_workbench_backlink_contract.py 的 test_execution_review_stays_formal_and_links_to_site_record_entry / test_non_adopted_report_nav_disables_execution_review_link 钉住。",
+   "why_debt": "这是任务点名的 canonical P2:刻意拒带 plan_role/scenario_id 以防预览/对比方案冒充正式复盘——承重(删了会让模拟预览数据混入正式现场复盘)。护栏在UI/导航/测试三层都有,但 execution_review.py 这个发生不对称的服务方法本体没有任何 inline 注释说明'我故意和 overdue/utilization/downtime 不一样'。未来 LLM 以'与同类报表方法保持一致'名义给 execution_review 补 plan_role 形参时,在改动点本地看不到任何阻止信号。",
+   "load_bearing": true,
+   "needs_adversarial": false,
+   "severity": "medium",
+   "blast_radius": "若给 execution_review 补 plan_role/scenario_id 透传:模拟预览/对比参考方案的计划时间会和正式现场反馈拼成'计划vs实际'复盘并可导出,污染唯一可信的正式复盘口径;合同测试会拦住一部分,但服务层契约已被破坏。",
+   "_partition": "scheduler-plan-identity",
+   "_source": "pass1",
+   "_adv_verdict": "load_bearing",
+   "_adv_refuted": false,
+   "_adv_precondition": "若要给 execution_review 补 plan_role/scenario_id 形参(与同类对齐),动手前必须三件全做:(1) 在取数边界保留强制 adopted——要么继续写死,要么加 service 层断言:execution_review 收到非 adopted role 或任何 scenario_id 时 raise ValidationError(loud,不静默回退),并在返回前校验 resolution.is_scenario_preview 为 False;(2) 新增请求级合同测试:client.get('/reports/execution-review?version=..&plan_role=baseline_best&scenario_id=..') 断言返回 rows 与 plan_role 仍为正式采用方案、导出 xlsx 不含预览/对比数据(此测试当前不存在,是最大缺口);(3) 在 execution_review.py:141 签名处加 inline 注释,写明'本方法故意只复盘 ROLE_ADOPTED,不收/不透传 plan_role/scenario_id,以防模拟预览与对比参考方案冒充正式现场复盘',把分散在 navigation_context/workbench_links/reports_workbench 的理由钉回改动点本地。",
+   "_adv_evidence": [
+    "core/services/report/execution_review.py:153 — execution_review() hardcodes host._resolve_plan(v, ROLE_ADOPTED, None); :112/:123 _execution_review_plan_rows hardcodes plan_role=ROLE_ADOPTED, scenario_id=None; :167 返回 plan_role=ROLE_ADOPTED。形参(:141-150)不收 plan_role/scenario_id，本体无任何 inline 注释说明此处故意与 overdue/utilization/downtime 不对称。",
+    "core/services/scheduler/schedule_plan_query_service.py:176-185 resolve_plan_view：scenario_id 非空即转 _resolve_scenario_plan;:460-496 返回 source_table=SOURCE_ADJUSTMENT_SCENARIO_ROWS、is_scenario_preview=True;非 adopted role(:112-139)选不同 candidate_id/source_table。证明 role/scenario 一旦透传就改变取数源表——预览/对比方案行会真实流入。",
+    "core/services/report/report_plan_helpers.py:56-106 _list_plan_rows_between/all 把 plan_role/scenario_id 透传进 list_detail_rows_between/all,FROM 解析出的 source_table/candidate_id 取数;execution_review 因此是数据层最后一道把关,不是装饰。",
+    "core/services/report/execution_review.py:164-176 返回 dict 不携带/不拦截 is_scenario_preview——预览行会静默拼进'计划vs实际'并经 export_execution_review_xlsx(:178-219)导出,无任何 loud failure,违背灵魂暗线(预览不可静默冒充正式)。",
+    "web/routes/reports_page_support.py:366-368 与 reports_export_routes.py:115 执行复盘路由自身也写死 adopted,从不读 request 的 plan_role/scenario_id;但 sibling 路由 reports_page_support.py:56 用 request_plan_role()——证明'与同类对齐'的统一压力真实存在,统一时会同时给 service 加形参并把路由接上请求值。",
+    "tests/regression_reports_workbench_backlink_contract.py:347-359 / regression_reports_workbench_navigation_contract.py:84-102 / regression_scheduler_workbench_link_guardrails.py:149-165 / regression_plan_vs_actual_review.py:358-359 全是链接生成/导航上下文断言;唯一带 plan_role 的执行复盘 URL 出现在 backlink:355 的负向 assert(... not in html_text)。全仓无任何测试 GET /reports/execution-review?plan_role=<非adopted>&scenario_id=X 并断言服务端回退 adopted——service 层契约无请求级回归护栏。"
+   ]
+  },
+  {
+   "pathology": "P4",
+   "title": "_bool_from_summary 静默吞掉损坏的 result_summary JSON,影响 is_official/可执行版本/可派工判定",
+   "location": "core/services/scheduler/schedule_plan_identity_builder.py:24-29 (except (TypeError, ValueError): return False)",
+   "reference_chain": "_bool_from_summary 被 _history_is_executable(:36) 与 build_plan_identity(:150) 调用判 is_simulation → is_simulation 喂入 _is_official_plan(:87-95 not is_simulation) 与 latest_executable_official_version(:41) → 进而决定 is_current_executable_official_version、can_dispatch、can_write_feedback(identity_builder:163,173)。写入侧 result_summary 恒由 schedule_orchestrator.py:354 的 build_result_summary_fn 产 json.dumps;schema.sql:586 result_summary TEXT(可空)。读回 ScheduleHistory.result_summary 为原文本。",
+   "why_debt": "项目灵魂线是'坏数据不准静默兜底、宁可暴露错误'。此处对损坏 JSON 直接 except→return False,把'这条历史的 summary 解析失败'当成'不是模拟'安全默认,使一条 summary 损坏的记录可能通过 _history_is_executable 被选为 latest_executable_official_version、并被判 is_official。错误被吞,不会让用户/运维看见数据缺口。",
+   "load_bearing": true,
+   "needs_adversarial": true,
+   "severity": "low",
+   "blast_radius": "改成抛错可能让历史含 NULL/legacy 非JSON summary 的老库在版本身份解析处直接报错(影响面=身份解析全链);保持吞错则牺牲'坏数据可见性'。低危因 result_summary 正常恒为机器写 JSON、损坏罕见。需怀疑者判:是合理的 NULL/legacy 容忍,还是该暴露的损坏吞噬。",
+   "_partition": "scheduler-plan-identity",
+   "_source": "pass1",
+   "_adv_verdict": "real_debt",
+   "_adv_refuted": true,
+   "_adv_precondition": "承重的不是这处 summary 解析，而是 result_status='simulated'（由同一 ctx.simulate 原子同写、且在两个消费者里都先于/独立于 summary 被检），所以删/统一不会让模拟冒充正式或可派工——该安全护栏断言被推翻。但要动它有两条硬前提：(1) 绝不可原地改成 raise——latest_executable_official_version 全量扫历史行，任何一条 legacy/NULL 邻接的损坏 summary 都会让当前方案的 is_current_executable_official_version/can_dispatch/can_write_feedback 整链抛错，这是可用性放大事故而非安全收益；(2) 若要移除这处冗余的 summary-based is_simulation 判定，先确认没有任何写入方会在不同写 result_status 的情况下单独写 result_summary.is_simulation（当前 INSERT 是原子同写，成立）。若确实要落实灵魂线'坏数据可见'，应在读边界加一条非致命的完整性日志/计数标记出无法解析的 result_summary，而不是让版本身份解析崩溃。",
+   "_adv_evidence": [
+    "schedule_plan_identity_builder.py:24-29 — flagged silent `except (TypeError, ValueError): return False` in _bool_from_summary",
+    "schedule_plan_identity_builder.py:32-38 — _history_is_executable checks Gate1 `result_status in _BLOCKED_RESULT_STATUSES {failed,simulated}` (lines 33-35) BEFORE the summary gate (line 36); every real simulation is blocked by Gate1 first",
+    "summary/schedule_summary_freeze.py:82-86 — _compute_result_status: `if simulate: return ScheduleResultStatus.SIMULATED.value` → every simulate run is forced to result_status='simulated'",
+    "summary/schedule_summary_assembly.py:437 — `\"is_simulation\": bool(ctx.simulate)` — derived from the SAME ctx.simulate flag as result_status (redundant copy)",
+    "summary/schedule_summary.py:216 — result_summary always = json.dumps(result_summary_obj); never hand-written, so corruption is a should-never-happen DB-tamper/legacy case",
+    "run/schedule_persistence.py:309-318 + data/repositories/schedule_history_repo.py:133-150 — result_status and result_summary written together in one INSERT (atomic co-write; they cannot diverge via the normal path)",
+    "data/repositories/schedule_plan_query_repo.py:75-118 — both list_history_identity_rows and get_history_identity_row SELECT h.result_status AND h.result_summary from the same row",
+    "schedule_plan_identity_builder.py:161-163 — `result_ok = result_status not in _BLOCKED_RESULT_STATUSES`; `is_current_official = is_official and is_current and result_ok` → result_status independently backstops the dangerous-action gate, not the summary flag",
+    "core/services/scheduler/resource_dispatch_actual_record_service.py:137,142-149 — the actual dangerous dispatch/feedback write gates on can_write_feedback + role/source/scenario recheck (requires is_current_official => result_ok), never on summary is_simulation alone",
+    "schedule_plan_identity_builder.py:41-45 — latest_executable_official_version iterates ALL history rows; converting return False -> raise would let ONE corrupt legacy row break version resolution for the CURRENT plan (availability amplification, zero safety gain)"
+   ]
+  },
+  {
+   "pathology": "P5",
+   "title": "normalize_yes_no_wide 在 core/shared 与归一化矩阵各有一套语义全等实现, 无任何测试绑定二者(可静默漂移)",
+   "location": "core/shared/boolean_normalize.py:33",
+   "reference_chain": "core/shared/boolean_normalize.py:33 normalize_yes_no_wide 与 core/services/common/normalization_matrix.py:168 normalize_yes_no_wide_value 逐行同义: 同 wide 别名集(boolean_normalize.py:7-8 ('y','yes','true','1','on')/('n','no','false','0','off','') 对 normalization_matrix.py:40-41 由 NARROW+('on')/+('off','') 拼出同集), 同 是/否 短路, 同 unknown_policy default/passthrough/raise 分支。matrix 的提交 dbd31d24 自称'统一全项目枚举值归一化的唯一事实源'(git --reverse #194) 早于 boolean_normalize 8ec5b40b(#248)。消费侧: boolean_normalize 被 core/models/schedule_config_runtime_coercion.py:6 与 core/algorithms/greedy 经 scheduler/number_utils.to_yes_no 引用; matrix 被 core/services/* 经 enum_normalizers.py:172 引用。layer_edges.json 实证 core.models 只有 ->core.infrastructure/->core.models/->core.shared 三条出边, 无 ->core.services, 且 core.shared 无 ->core.models 边(故 boolean_normalize 不能用 YesNo 枚举, 只能硬编码 'yes'/'no')",
+   "why_debt": "同一'宽松是否归一'概念两套独立实现, 绕开已声明的唯一收口点 normalization_matrix。当前逐行同义但 grep 全仓无任何测试同时 import 两者断言等价 — YesNo 枚举值或别名集若单边改动, 两套会静默漂移而无人发现。这正是 P5 第N套私有实现的漂移风险面",
+   "load_bearing": true,
+   "needs_adversarial": true,
+   "severity": "medium",
+   "blast_radius": "boolean_normalize 被 core.models/core.algorithms 等下层模块引用, 若以'统一到矩阵'名义删除它改指 core.services.common, 会立刻撞 AST 分层红线(下层 import 上层), 破坏当前 0 违规结构。故它的存在是分层承重的; 真正该补的是一条绑定两套 wide 归一等价的契约测试, 而非删除任一方",
+   "_partition": "core-infra-shared",
+   "_source": "pass1",
+   "_adv_verdict": "load_bearing",
+   "_adv_refuted": false,
+   "_adv_precondition": "先加一条等价契约测试，断言 core.shared.boolean_normalize.normalize_yes_no_wide 与 core.services.common.normalization_matrix.normalize_yes_no_wide_value 在全 wide 别名集 + 是/否 + default/passthrough/raise/no 全部 unknown_policy 分支上逐一同值（YesNo 枚举值或别名集任一单边改动即触发红灯）。绝不允许删除 boolean_normalize 让 core.models 改指 core.services（会立刻产生 core.models->core.services 越层 + core.models<->core.services 导入环，破坏 AST 0 违规结构）。若确要消重，唯一合法方向是让上层 normalization_matrix.normalize_yes_no_wide_value 反过来 delegate 到下层 boolean_normalize（services->shared 是合法下行边），即保留 shared 模块为唯一事实源、删除 matrix 内的重复逻辑——而非相反。",
+   "_adv_evidence": [
+    "core/models/schedule_config_runtime_coercion.py:6 — LIVE core.models consumer: `from core.shared.boolean_normalize import normalize_yes_no_wide` (used at lines 192/201/230), reachable from core/models/schedule_config_runtime.py",
+    "core/services/common/normalization_matrix.py:5 — the proposed unify-target itself imports `from core.models.enums import ... YesNo`; merging models->matrix would create a core.models<->core.services import cycle",
+    "core/services/common/normalization_matrix.py:168 normalize_yes_no_wide_value — sits in core.services (upper layer); cannot be imported by core.models without breaking layering",
+    ".codestable/checkup/latest/codemap/layer_edges.json — core.models out-edges = {core.infrastructure, core.models, core.shared} ONLY; no core.models->core.services edge exists anywhere; core.shared out-edges = {core.infrastructure, core.shared} (shared cannot import core.models, hence boolean_normalize hardcodes 'yes'/'no')",
+    "grep `from core.services` core/models/ = empty — the lower-imports-upper invariant holds repo-wide, so routing the coercion module up to the matrix would be the first violation",
+    "core/models/enums.py:7-8 YES='yes' NO='no' — confirms current line-by-line equivalence with boolean_normalize.py:7-8 hardcoded tuples and matrix.py:40-41 NARROW+('on')/('off','')",
+    "tests/ grep for both `boolean_normalize` and `normalize_yes_no_wide` = empty — NO contract test binds the two (drift risk is real, but remedy is a test, not deletion)",
+    "core/services/common/enum_normalizers.py:172 normalize_yes_no_wide is only a thin shim delegating to normalize_yes_no_wide_value (not a true 3rd impl), and also lives in core.services so models cannot route through it either",
+    "FINDING ERROR: grep core/algorithms/ for number_utils/to_yes_no/boolean_normalize = empty — the 'greedy 经 number_utils' claim is false; real to_yes_no consumers are core.services.scheduler (resource_pool_builder.py:89/280/340, config/, run/*)",
+    "core/shared/boolean_normalize.py is the ONLY wide yes/no normalizer at core.shared layer or below — no alternative exists for core.models/core.algorithms to call"
+   ]
+  },
+  {
+   "pathology": "P2",
+   "title": "execution_review 固定正式采用方案的承重不对称——服务层文件内零注释保护",
+   "location": "core/services/report/execution_review.py:141",
+   "reference_chain": "定义点:ExecutionReviewMixin.execution_review(self, version, *, date_from, date_to, batch_id, resource_type, resource_id) [execution_review.py:141] 与 export_execution_review_xlsx [:178] 刻意不收 plan_role/scenario_id;内部 5 处硬钉 ROLE_ADOPTED/scenario_id=None(:112 plan_role=ROLE_ADOPTED, :123 同, :153 _resolve_plan(v, ROLE_ADOPTED, None), :166-167)。对照同文件兄弟报表 report_engine.py:157 overdue_batches(version, plan_role=None, scenario_id=None,...)、:267 utilization、:371 downtime_impact 三者全部接收并透传 plan_role/scenario_id。护栏的保护证据全在别处:web/viewmodels/scheduler_workbench_link_query.py:5 _EXECUTION_REVIEW_FORBIDDEN_EXTRA_PARAMS={...} 与 :266 拦截、设计文档 .codestable/features/2026-06-01-reports-workbench-backlink/reports-workbench-backlink-design.md:28/71/164 明文'计划和现场实际只复盘正式采用方案'。但 execution_review.py 文件本身对'为何独缺 plan_role/scenario_id'零注释。",
+   "why_debt": "这是故意的承重不对称:计划和现场实际复盘=拿正式采用方案对账现场事实,若放开 plan_role/scenario_id,模拟方案预览(is_scenario_preview)或历史非采用方案会冒充'现场实际复盘'展示给车间,把没发生的预览当成既成事实。承重点(对 ROLE_ADOPTED 的钉死)散在服务层 5 行里却无一行注释说明'这是故意的、不要为了统一四个报表签名而加 plan_role',护栏只活在 web 层守卫和 roadmap 文档里——未来 LLM 以'统一四个报表入参'名义重构服务层时会无声抹掉它。",
+   "load_bearing": true,
+   "needs_adversarial": false,
+   "severity": "high",
+   "blast_radius": "若被'统一报表签名'重构加回 plan_role/scenario_id:模拟方案预览/历史方案的明细会以'计划和现场实际'(正式复盘)身份呈现给现场,数据完整性事故;且 web 层 forbidden-params 守卫会与放开后的服务层产生认知错位。删/统一这个不对称=直接踩中灵魂红线'宁可暴露错误也不自欺'的反面。",
+   "_partition": "core-svc-domain",
+   "_source": "pass1",
+   "_adv_verdict": "load_bearing",
+   "_adv_refuted": false,
+   "_adv_precondition": "动它=确认承重护栏，默认不可删/不可统一。若未来确有需求（如允许复盘历史正式版本），必须先：(1) 在 execution_review 服务内对任何非 ROLE_ADOPTED 角色 / 非 None scenario_id 显式 raise ValidationError（硬拒，而非默默回退 adopted），把不变量的执行点留在服务层本身；(2) 给下游 aggregate_states_by_op_ids 增加 role/scenario 作用域过滤，让 join 能自卫，之后才允许任何非采用行流入；(3) 在路由入站层加 plan_role/scenario_id 闸门，并保留/扩展 web 层 forbidden-params 守卫，消除两层认知错位；(4) 用 regression_plan_vs_actual_review / reports_workbench_navigation_contract 锁死。最低成本的即时动作：在 :112/:123/:153 三处硬钉旁补一行中文注释，说明'计划和现场实际只对账正式采用方案，禁止为统一四报表签名而加 plan_role/scenario_id'，把散在别处的不变量可见化到执行现场。",
+   "_adv_evidence": [
+    "core/services/report/execution_review.py:141,178 - 签名刻意不收 plan_role/scenario_id；:112/:123 _list_plan_rows_* 硬钉 plan_role=ROLE_ADOPTED,scenario_id=None；:153 _resolve_plan(v,ROLE_ADOPTED,None)；:166-167 输出固定 ROLE_ADOPTED 标签。全文件零注释说明此不对称是故意的。",
+    "core/services/report/report_plan_helpers.py:29-106 - 宿主方法 _resolve_plan/_list_plan_rows_between/_list_plan_rows_all 完整透传并尊重任意 plan_role/scenario_id（:37 resolve_plan_view、:70/:96 按 role/scenario 取明细）。证明 execution_review 的硬钉是唯一的钉死点，host 层不设防。",
+    "web/routes/reports_page_support.py:404-412 - 兄弟报表 downtime 路由从请求读 raw_plan_role/scenario_id 并透传给 downtime_impact；overdue/utilization 同构。统一压力真实存在且'路由读请求方案再透传'的范式已在同文件落地，统一签名只差 execution_review 一处。",
+    "data/repositories/operation_execution_event_repo.py:267 - aggregate_states_by_op_ids 仅按 op_id 聚合现场反馈，无 role/scenario 过滤。下游 join 无法自卫：喂进任何 op_id 它都照配。",
+    "core/services/scheduler/operation_execution_feedback_service.py:347-362 - _load_current_official_schedule：requested/effective_plan_role!=ROLE_ADOPTED 或 source_table!=SOURCE_SCHEDULE 或 scenario_id 非空 一律 raise not_current_official_plan。即现场反馈只对正式采用方案存在；拿非采用/模拟方案行去配 op_id 反馈=拿真实施工事实去给一个从未执行的假设方案贴'实际开始/偏差'列，预览冒充既成事实。",
+    "web/viewmodels/scheduler_workbench_link_query.py:5-16,266-267 与 tests/regression_plan_vs_actual_review.py:350-359 - 护栏只活在链接生成/导航层（禁 extra_params 追加 plan_role/scenario_id、非采用上下文不生成可点入口），不在服务/路由入参路径上设防。服务签名一旦统一，入站请求路径无任何 plan_role 拒绝逻辑，且会与 web 层 forbidden-params 产生认知错位。",
+    ".codestable/features/2026-06-01-reports-workbench-backlink/reports-workbench-backlink-design.md:28,71,234,253 - 明文决定'计划和现场实际只复盘正式采用方案''不把模拟预览和对比参考方案纳入复盘口径'，确认此不对称是设计决定而非疏漏。"
+   ]
+  },
+  {
+   "pathology": "P2",
+   "title": "execution-review 报表页写死 plan_role='adopted'/scenario_id=None 的承重护栏,代码处无保护性注释",
+   "location": "web/routes/reports_page_support.py:366,368 + web/navigation_context.py:80-82",
+   "reference_chain": "reports_page_support.py:366 plan_resolution=page_plan_resolution(...,'adopted',None);:368 page_date_range_or_version_span(...,'adopted',None,...)——而同文件所有兄弟页(overdue:56-58、utilization、downtime 经 _standard_request_context:56-58)全部 raw_plan_role=request_plan_role()/scenario_id=request_scenario_id() 从 request 读。navigation_context.py:42-47 _is_execution_review_request() 专门识别该端点,:80-82 is_execution_review 时强制 plan_role=ROLE_ADOPTED、scenario_id=''。底层 core/services/report/execution_review.py:141 execution_review() 签名根本不接受 plan_role/scenario_id,:153 host._resolve_plan(v,ROLE_ADOPTED,None) 结构性写死——证明这是有意的'只复盘正式采用方案,绝不让 preview/对比方案冒充正式复盘'护栏。viewmodel 侧用户文案 scheduler_reports_workbench.py:210 '只复盘正式采用方案,不复盘模拟预览和对比参考方案' 印证意图。",
+   "why_debt": "刻意和同类不一致(别处都从 request 读 plan_role/scenario_id,就它写死 adopted/None),这个不一致是承重的——删了/统一了会让模拟预览或对比参考方案通过 ?plan_role=&scenario_id= 冒充正式复盘,造成现场实际复盘对错方案。但在写死的两个 route 入口(reports_page_support.py:366/368)和 navigation_context.py:80-82 强制点都没有任何 # 注释说明'这里故意忽略 request 的 plan_role 是护栏'。保护意图只散落在 viewmodel 用户文案和 core 签名里。",
+   "load_bearing": true,
+   "needs_adversarial": false,
+   "severity": "high",
+   "blast_radius": "未来 LLM 以'消除参数方言、统一所有报表页都从 request 读 plan_role'的名义,把这两处的 'adopted',None 改成 request_plan_role()/request_scenario_id(),护栏即被抹掉——预览/对比方案能冒充正式采用方案进入计划-现场实际复盘,污染复盘结论。改动看起来是无害的一致性清理,实为安全回退。",
+   "_partition": "web-all",
+   "_source": "pass1",
+   "_adv_verdict": "load_bearing",
+   "_adv_refuted": false,
+   "_adv_precondition": "不能用 request_plan_role()/request_scenario_id() 替换 :367/:369 的 'adopted',None。若要动：(1) 绝不给 core 的 execution_review() 加 plan_role/scenario_id 入参——行数据的承重护栏在 core，必须原样保留；(2) 先补一条缺失的页面级回归：GET /reports/execution-review?plan_role=baseline_best&scenario_id=xxx，断言渲染出的「排产方案」标签仍为正式采用方案、source_text 不出现预览/对比文案、且发布的 nav context plan_role=adopted/无 scenario_id（覆盖当前测试盲区）；(3) 若目的是消除魔法字面量方言，应抽一个具名收口（如 execution_review_plan_context()，内部强制 adopted/None）替换两处字面量，并补上现在缺的「此处故意忽略 request 的 plan_role 是护栏」注释，而不是改成从 request 读；(4) 保留 navigation_context.py:80-82 的 is_execution_review 强制分支（它守的是未发布 context 的回退路径）。",
+   "_adv_evidence": [
+    "REFUTES THE STATED HARM: core/services/report/execution_review.py:141-150 — execution_review() signature has NO plan_role/scenario_id parameter; rows are fetched with plan_role=ROLE_ADOPTED, scenario_id=None hardwired at :112-114 and :123-124, and :153 _resolve_plan(v, ROLE_ADOPTED, None). The actual plan-vs-actual ROW DATA is structurally adopted-only.",
+    "reports_page_support.py:327-334 — the page's engine.execution_review(int(version), date_from=, date_to=, batch_id=, resource_type=, resource_id=) call passes NO plan_role/scenario_id. So even if :367/:369 were unified to read request, preview/comparison ROWS still cannot enter the review — the finding's '污染复盘结论' is overstated.",
+    "BUT LOAD-BEARING FOR LABEL IDENTITY: reports_page_support.py:367 page_plan_resolution(...,'adopted',None) is the SOLE source of the displayed plan identity — it feeds plan_resolution -> report_plan_template_fields (:388) -> report_plan_status.label/source_text rendered at templates/reports/execution_review.html:56,61. Unifying to request_plan_role()/request_scenario_id() routes through resolve_plan_view -> _resolve_scenario_plan (schedule_plan_query_service.py:182-185) and would DISPLAY '模拟方案甲'/preview over adopted rows, directly contradicting the static template guarantee '这张表只复盘正式排产结果' — a self-deceptive header≠body mislabel that violates the soul-line 不自欺.",
+    "NAV-CONTEXT LEAK: reports_page_support.py:373 _publish_report_context -> set_current_workbench_navigation_context. navigation_context.py:77-79 reads this published override FIRST, bypassing the :80-82 is_execution_review force. So if :367 carries a preview resolution, build_report_navigation_links leaks plan_role/scenario_id into onward links. navigation_context.py:80-82 only guards the non-published fallback path — :367 and :80-82 are two distinct load-bearing guards for two code paths, not redundant.",
+    "DATE-WINDOW: reports_page_support.py:369 page_date_range_or_version_span(...,'adopted',None,...) -> version_date_range(plan_role, scenario_id) (report_plan_helpers.py:154-181) derives the DEFAULT date window from the resolved plan's span; unifying would compute the default filter from a preview plan's span.",
+    "TEST GAP (matches the 'harmless cleanup' risk): grep of tests/ shows NO test GETs /reports/execution-review with an explicit ?plan_role=/scenario_id= param — only no-param or superseded-adopted cases (regression_reports_workbench_navigation_contract.py:84,130). The guardrail tests (regression_scheduler_workbench_link_guardrails.py:131,149; regression_scheduler_workbench_links_contract.py:281) only pin the VIEWMODEL link-builder, not the page route's :367/:369. A naive unification would pass CI green while breaking the label/nav invariant."
+   ]
+  },
+  {
+   "pathology": "P3",
+   "title": "ScheduleConfigSnapshot 配置快照/校正引擎整栈双实现,锁步手工同步",
+   "location": "core/models/schedule_config_runtime_snapshot.py / schedule_config_runtime_coercion.py / schedule_config_runtime_fields.py / schedule_config_runtime_read.py / schedule_config_runtime_weights.py (整组 5 文件)",
+   "reference_chain": "core/models/schedule_config_runtime_snapshot.py:8-38 ScheduleConfigSnapshot(27字段) == core/services/scheduler/config/config_snapshot.py:24-55 逐字节相同;core/models/schedule_config_runtime_coercion.py:409 ensure_schedule_config_snapshot(499行) ≈ config_snapshot.py:336(494行);core/models/schedule_config_runtime_weights.py:48 normalize_weight_triplet == config_weight_policy.py 仅形参改名;字段键 model 27 == service 23+4(经_candidate_option_spec) 全在册;消费侧: greedy/config_adapter.py:6 + greedy/schedule_params.py:98 走 model 栈,config/summary/run 走 service 栈",
+   "why_debt": "同一概念(运行期配置快照+严格/降级校正+权重归一)两套近乎逐字节相同的实现并存,各约 500 行。表面理由是算法层不能 import 服务层(layer_edges 证实 core.algorithms→core.services 不存在),需要一个'中性投影';但 core.services→core.models 是合法边(42 条),服务栈完全可以反过来复用 model 栈而非另起炉灶。两份靠人工锁步维护(git 证据:b82c9a4d/ef244b9e 两个 commit 同时改两份字段表)。当前 27 字段在册无漂移,故是潜伏债:任何人给配置页(service 栈)加一个字段而忘了同步 model 栈,算法看到的就是旧默认值,而用户在配置页校验/保存的是新值——两边对'同一份配置'各执一词,且算法侧的回落是静默的(踩中灵魂暗线:坏/缺数据静默兜成默认)。codemap 自身已把 coercion.py:409 ensure_schedule_config_snapshot 标记为'hardcoded->render/resolve(P1假冒嫌疑)'。",
+   "load_bearing": true,
+   "needs_adversarial": false,
+   "severity": "medium",
+   "blast_radius": "排产正确性:算法实际使用的配置可能与配置页校验/保存的不一致;任一栈新增字段未同步即静默分叉。当前未漂移,影响为潜伏。",
+   "_partition": "core-models",
+   "_source": "pass2"
+  },
+  {
+   "pathology": "P3",
+   "title": "legacy 错误串正则重解析:把已渲染中文串反解回 code,两代错误体制并存",
+   "location": "core/models/scheduler_public_errors.py:62-103,218-290",
+   "reference_chain": "LEGACY_PUBLIC_PATTERNS(:62)/_LEGACY_CODE_PREFIXES(:94)/legacy_public_error_message(:218)/infer_legacy_public_code(:284) ← 活消费 core/services/scheduler/run/auto_assign_resource_errors.py:42,157 + web/viewmodels/scheduler_summary_display.py:63;同文件 make_public_error(:175) 产结构化 dict+code 是另一代",
+   "why_debt": "老排产路径发出渲染好的中文错误串,下游再用一组正则(infer_legacy_public_code)把串反解回结构化 code——从'渲染输出'倒推'结构化身份',绕过了本应端到端携带 code 的结构化错误收口(make_public_error)。两代错误体制(结构化 dict vs 串重解析)并存,'legacy_/LEGACY_' 命名本身是过渡桥的自供。正则与一长串中文模板字面强耦合,任一文案改字就断。",
+   "load_bearing": true,
+   "needs_adversarial": true,
+   "severity": "medium",
+   "blast_radius": "用户可见错误信息的脱敏与归类;改任一中文错误文案会静默使 legacy 正则失配,错误降级为通用文案。",
+   "_partition": "core-models",
+   "_source": "pass2"
+  }
+ ],
+ "verdicts": [
+  {
+   "refuted": false,
+   "verdict": "load_bearing",
+   "evidence": [
+    "core/services/scheduler/run/schedule_payload_contract.py:50-56 — _strict_positive_int rejects None/bool/float/<=0 and is the op_id gate for _iter_actionable_results and _build_validated_schedule_row (the path to DB persist)",
+    "core/services/scheduler/run/schedule_payload_contract.py:72-73,149-150,198-199,308-309,324-325,372-373 — ALL 6 call sites catch its raise as `except (TypeError, ValueError)` and convert to skip/field-ized error; the raise is an internal sentinel, not a real abort",
+    "core/infrastructure/errors.py:63,97 — class AppError(Exception) / class ValidationError(AppError): ValidationError is NOT a ValueError/TypeError subclass, so parse_finite_int's ValidationError would ESCAPE all 6 local except blocks → turns count/has_actionable_schedule_rows from tolerant skip into a crasher",
+    "core/shared/number_utils.py:39 — parse_finite_int(value,*,field,allow_none) facade has NO min_value param: it cannot express '>0', so it cannot faithfully replace _strict_positive_int",
+    "core/shared/strict_parse.py:46-58,81-84 — parse_required_int accepts integer-valued floats (3.0→3, abs(parsed-int)<=1e-9) and defaults min_value=None; strictly WEAKER than _strict_positive_int which rejects every float and any <=0",
+    "core/services/scheduler/run/schedule_payload_contract.py:33-47 — to_repo_rows does int(row.op_id) for the DB write with op_id as linkage/lock_status key; no further bool/float guard downstream, so True->1 / 3.0->3 would corrupt op↔row mapping silently (in Python isinstance(True,int) and 3.0 in {3} both True)",
+    "core/services/scheduler/run/auto_assign_resource_errors.py:85-86,114-119 — _positive_int(seq)->0 is a deliberate sentinel for fall-through (if batch_id and seq>0) on the error-message-parsing path, not the same concept as a DB gate",
+    "core/services/scheduler/run/schedule_persistence_errors.py:13-18 — _positive_int->None is a deliberate id-dropping sentinel used WHILE building raise_no_actionable_schedule_error; making it raise would mask the primary error with a secondary crash"
+   ],
+   "precondition_to_change": "前置条件（缺一不可）：1) 扩展收口点——给 parse_finite_int 增加 min_value 形参，并加一个'拒绝任何 float（含整值 3.0）'的严格模式，否则收口点根本表达不出 op_id 的契约（>0 且非 float）；2) 保契约迁移每个调用点：_strict_positive_int 的 raise 必须仍能被原地的 except 捕获（迁移后要么把 except 改成捕获 ValidationError，要么保留 ValueError 语义），否则 count/has_actionable_schedule_rows 会从'跳过脏行'变成'抛错'；3) 不得把 auto_assign(_positive_int→0) 与 schedule_persistence_errors(_positive_int→None) 改成抛错——它们在错误处理路径上，抛错会用二次异常掩盖真正诊断，违背'坏数据不准静默兜底但也不自欺'的暗线。三者契约是按上下文（落库闸门 / 解析不可信错误文本 / 装配错误响应）刻意分化的，非偶然漂移，不可裸合并。",
+   "_title": "三套私有正整数强制器与统一收口点 parse_finite_int 并存(契约各异:raise/→0/→None)",
+   "_location": "core/services/scheduler/run/schedule_payload_contract.py:50",
+   "_pathology": "P5",
+   "_partition": "scheduler-run",
+   "_bucket": "load_bearing_confirmed"
+  },
+  {
+   "refuted": false,
+   "verdict": "load_bearing",
+   "evidence": [
+    "core/models/schedule_resource_filter.py:8 — SUPPORTED_SCHEDULE_RESOURCE_TYPES={machine,operator}: collar has no team axis by design",
+    "core/models/schedule_resource_filter.py:19-24 — column_name returns '' for team (single-column property cannot express team's double-join)",
+    "core/models/schedule_resource_filter.py:59-70 — collar RAISES on unsupported type AND on missing id (proven: normalize_schedule_resource_filter('team','T1') -> ValidationError 资源筛选只支持设备或人员维度; ('operator','') -> 资源筛选缺少资源编号)",
+    "PROVEN TRAP: column_name('team')=='' while has_filter('team')==True — routing team through collar either errors (loud) or silently drops the WHERE clause returning all-teams data (坏数据静默兜底, soul-line violation)",
+    "data/repositories/schedule_plan_query_repo.py:451-463 — dispatch inline mapping: operator->s.operator_id, machine->s.machine_id (incl. empty-id '<> ''' all-resource branches), team->((o.team_id=?) OR (m.team_id=?)); team double-join is structurally inexpressible by column_name",
+    "data/repositories/schedule_plan_query_repo.py:391-406 + data/repositories/schedule_resource_sql_filters.py:34-37 — the OTHER rail (overdue/detail) goes through collar column_name, confirming the two-rail divergence for operator/machine literals (the only genuinely reducible part)",
+    "core/services/scheduler/resource_dispatch_service.py:63-67 — _normalize_scope_type validates {operator,machine,team}: a SUPERSET validator, not a duplicate of the collar; cannot be swapped for the collar without losing team + the all-resource (empty-id) view",
+    "tests/test_scheduler_resource_dispatch_smoke.py:177-191 — scope_type=team&team_id=TEAM-OP is live, tested production behavior (asserts 班组轴 / 跨班组), so a naive validator swap is a real regression not theoretical"
+   ],
+   "precondition_to_change": "先扩容收口点再谈统一，不能反向把派工塞进现状收口点。具体顺序：(1) 给 ScheduleResourceFilter/normalize_schedule_resource_filter 增加 team 轴表达能力——column_name 单列属性不够，需要一个能产出 ((o.team_id=?) OR (m.team_id=?)) 双 join 谓词的接口；并放开'类型有、id 空=全量'语义（当前 collar 强制非空 id 会打断派工的全部人员/全部设备视图）。(2) 先补一条回归断言：scope_type=team 只返回该 team 的行而非全量（钉死静默丢谓词的反例），以及全部人员/全部设备空 id 视图仍可查。(3) 仅在 collar 同时覆盖 team 双轴 join + 空 id 全量语义后，才可把 repo 的 operator/machine 列字面量(s.operator_id/s.machine_id)和 _normalize_scope_type 收敛进去。在此之前两轨必须并存——派工链路对 team 的列映射是收口点表达不了的承重逻辑，删/统一会让班组筛选静默失效(返回全量坏数据)或团队/全量视图整页 500。test_scheduler_resource_dispatch_smoke.py 的 team 用例须全程保持绿。",
+   "_title": "派工 scope_type 归一与 operator/machine→列映射绕开 ScheduleResourceFilter 收口点(双轨漂移)",
+   "_location": "core/services/scheduler/resource_dispatch_service.py:63 + data/repositories/schedule_plan_query_repo.py:447-463",
+   "_pathology": "P5",
+   "_partition": "scheduler-dispatch",
+   "_bucket": "load_bearing_confirmed"
+  },
+  {
+   "refuted": false,
+   "verdict": "load_bearing",
+   "evidence": [
+    "operation_execution_feedback_service.py:348-354 — guard A 硬拒 requested/effective_plan_role!=adopted、source_table!=schedule、scenario_id is not None；355-362 其后又独立校验 can_write_feedback。两道是独立重述,产出业务语义错误 not_current_official_plan,而非依赖 DB 约束",
+    "operation_execution_feedback_service.py:451-453 — _build_event_payload 写死 source_table=SOURCE_SCHEDULE/effective_plan_role=ROLE_ADOPTED/scenario_id=None,是把官方写入归一化的'消毒层'",
+    "data/repositories/operation_execution_event_repo.py:191-193 — insert_event 用 payload.get('source_table') or 'schedule' 透传,并不强制常量;若 451-453 改成透传 context,仓库会忠实落下 scenario/candidate 身份,只剩 schema CHECK 兜底。证明写死常量非冗余而是承重",
+    "schema.sql:256-258 — 无条件 CHECK(source_table='schedule')/CHECK(effective_plan_role='adopted')/CHECK(scenario_id IS NULL);migrations/v15.py:14-16 同款,v16.py:51-54 整表重建保留该 CHECK(部署库也有此底)",
+    "core/infrastructure/migration_operation_execution_contract.py:258-280 — 启动期 contract probe 主动 INSERT source_table='candidate_rows'/effective_plan_role='baseline_best'/scenario_id='__probe_scenario__' 三条坏行,CHECK 不拒就拒绝把库判为已迁移。证明该不变量是被刻意强制的承重底,非偶然",
+    "core/services/scheduler/execution_fact_provider.py:91-102 — 下游 list_by_op_ids 纯按 op_id 读事件、无 source_table/role/scenario 过滤(注释 82-83 言明以 op_id 为主线信任写侧);run/schedule_execution_guardrails.py:186 消费这些 ExecutionFact 进重排护栏。任何混入的 scenario/candidate 行会被当成真实现场事实",
+    "data/repositories/base_repo.py:42-43,108-113 — CHECK 违约→IntegrityError→AppError(DB_INTEGRITY_ERROR) 暴露不静默兜底(契合灵魂暗线);反过来意味着把写死改透传会把本应成功的合法反馈变成用户侧 DB 报错",
+    "schedule_delay_diagnosis_service.py:134-139 — 读侧 resolve_plan_view 接受 scenario_key(读可带 scenario),与写侧硬拒形成刻意不对称,印证写禁 scenario 是设计而非疏漏",
+    "tests/regression_operation_execution_event_foundation.py:272 — 回归断言 insert_event(source_table='candidate_rows') 必 raise,锁死该写入禁线"
+   ],
+   "precondition_to_change": "唯一安全的动作是补一条保护性注释(这才是该 P2 的真实债),严禁把 451-453 三个写死常量改成透传 context——它们是保证官方写入恒满足 schema CHECK、且上游被绕过时仍无法落下非 adopted 身份的消毒层。若仍要改逻辑,必须同时满足:(a) 保留 348-354 的硬拒或等价 can_write_feedback 硬门;(b) schema.sql:256-258 的三条 CHECK 与 migration_operation_execution_contract 启动探针保持不变(它们是最终承重底);(c) 新增 record_event 端到端(非仅 repo 级)回归,证明 scenario/candidate 上下文在任何持久化之前被拒。任何一层被'统一'掉而缺上述前置,都会把这道数据完整性不变量上的纵深防御打穿。",
+   "_title": "现场反馈写侧 adopted-only 护栏:硬拒 scenario/非正式方案 + 强制写死计划身份常量,但无注释保护",
+   "_location": "core/services/scheduler/operation_execution_feedback_service.py:347-354 + 451-453",
+   "_pathology": "P2",
+   "_partition": "scheduler-exec-diag",
+   "_bucket": "load_bearing_confirmed"
+  },
+  {
+   "refuted": false,
+   "verdict": "load_bearing",
+   "evidence": [
+    "core/services/report/execution_review.py:153 — execution_review() hardcodes host._resolve_plan(v, ROLE_ADOPTED, None); :112/:123 _execution_review_plan_rows hardcodes plan_role=ROLE_ADOPTED, scenario_id=None; :167 返回 plan_role=ROLE_ADOPTED。形参(:141-150)不收 plan_role/scenario_id，本体无任何 inline 注释说明此处故意与 overdue/utilization/downtime 不对称。",
+    "core/services/scheduler/schedule_plan_query_service.py:176-185 resolve_plan_view：scenario_id 非空即转 _resolve_scenario_plan;:460-496 返回 source_table=SOURCE_ADJUSTMENT_SCENARIO_ROWS、is_scenario_preview=True;非 adopted role(:112-139)选不同 candidate_id/source_table。证明 role/scenario 一旦透传就改变取数源表——预览/对比方案行会真实流入。",
+    "core/services/report/report_plan_helpers.py:56-106 _list_plan_rows_between/all 把 plan_role/scenario_id 透传进 list_detail_rows_between/all,FROM 解析出的 source_table/candidate_id 取数;execution_review 因此是数据层最后一道把关,不是装饰。",
+    "core/services/report/execution_review.py:164-176 返回 dict 不携带/不拦截 is_scenario_preview——预览行会静默拼进'计划vs实际'并经 export_execution_review_xlsx(:178-219)导出,无任何 loud failure,违背灵魂暗线(预览不可静默冒充正式)。",
+    "web/routes/reports_page_support.py:366-368 与 reports_export_routes.py:115 执行复盘路由自身也写死 adopted,从不读 request 的 plan_role/scenario_id;但 sibling 路由 reports_page_support.py:56 用 request_plan_role()——证明'与同类对齐'的统一压力真实存在,统一时会同时给 service 加形参并把路由接上请求值。",
+    "tests/regression_reports_workbench_backlink_contract.py:347-359 / regression_reports_workbench_navigation_contract.py:84-102 / regression_scheduler_workbench_link_guardrails.py:149-165 / regression_plan_vs_actual_review.py:358-359 全是链接生成/导航上下文断言;唯一带 plan_role 的执行复盘 URL 出现在 backlink:355 的负向 assert(... not in html_text)。全仓无任何测试 GET /reports/execution-review?plan_role=<非adopted>&scenario_id=X 并断言服务端回退 adopted——service 层契约无请求级回归护栏。"
+   ],
+   "precondition_to_change": "若要给 execution_review 补 plan_role/scenario_id 形参(与同类对齐),动手前必须三件全做:(1) 在取数边界保留强制 adopted——要么继续写死,要么加 service 层断言:execution_review 收到非 adopted role 或任何 scenario_id 时 raise ValidationError(loud,不静默回退),并在返回前校验 resolution.is_scenario_preview 为 False;(2) 新增请求级合同测试:client.get('/reports/execution-review?version=..&plan_role=baseline_best&scenario_id=..') 断言返回 rows 与 plan_role 仍为正式采用方案、导出 xlsx 不含预览/对比数据(此测试当前不存在,是最大缺口);(3) 在 execution_review.py:141 签名处加 inline 注释,写明'本方法故意只复盘 ROLE_ADOPTED,不收/不透传 plan_role/scenario_id,以防模拟预览与对比参考方案冒充正式现场复盘',把分散在 navigation_context/workbench_links/reports_workbench 的理由钉回改动点本地。",
+   "_title": "execution_review 服务方法写死 ROLE_ADOPTED/scenario_id=None 的承重不对称,在方法本体无注释保护",
+   "_location": "core/services/report/execution_review.py:141-176 (153,112,123,167)",
+   "_pathology": "P2",
+   "_partition": "scheduler-plan-identity",
+   "_bucket": "load_bearing_confirmed"
+  },
+  {
+   "refuted": false,
+   "verdict": "load_bearing",
+   "evidence": [
+    "core/models/schedule_config_runtime_coercion.py:6 — LIVE core.models consumer: `from core.shared.boolean_normalize import normalize_yes_no_wide` (used at lines 192/201/230), reachable from core/models/schedule_config_runtime.py",
+    "core/services/common/normalization_matrix.py:5 — the proposed unify-target itself imports `from core.models.enums import ... YesNo`; merging models->matrix would create a core.models<->core.services import cycle",
+    "core/services/common/normalization_matrix.py:168 normalize_yes_no_wide_value — sits in core.services (upper layer); cannot be imported by core.models without breaking layering",
+    ".codestable/checkup/latest/codemap/layer_edges.json — core.models out-edges = {core.infrastructure, core.models, core.shared} ONLY; no core.models->core.services edge exists anywhere; core.shared out-edges = {core.infrastructure, core.shared} (shared cannot import core.models, hence boolean_normalize hardcodes 'yes'/'no')",
+    "grep `from core.services` core/models/ = empty — the lower-imports-upper invariant holds repo-wide, so routing the coercion module up to the matrix would be the first violation",
+    "core/models/enums.py:7-8 YES='yes' NO='no' — confirms current line-by-line equivalence with boolean_normalize.py:7-8 hardcoded tuples and matrix.py:40-41 NARROW+('on')/('off','')",
+    "tests/ grep for both `boolean_normalize` and `normalize_yes_no_wide` = empty — NO contract test binds the two (drift risk is real, but remedy is a test, not deletion)",
+    "core/services/common/enum_normalizers.py:172 normalize_yes_no_wide is only a thin shim delegating to normalize_yes_no_wide_value (not a true 3rd impl), and also lives in core.services so models cannot route through it either",
+    "FINDING ERROR: grep core/algorithms/ for number_utils/to_yes_no/boolean_normalize = empty — the 'greedy 经 number_utils' claim is false; real to_yes_no consumers are core.services.scheduler (resource_pool_builder.py:89/280/340, config/, run/*)",
+    "core/shared/boolean_normalize.py is the ONLY wide yes/no normalizer at core.shared layer or below — no alternative exists for core.models/core.algorithms to call"
+   ],
+   "precondition_to_change": "先加一条等价契约测试，断言 core.shared.boolean_normalize.normalize_yes_no_wide 与 core.services.common.normalization_matrix.normalize_yes_no_wide_value 在全 wide 别名集 + 是/否 + default/passthrough/raise/no 全部 unknown_policy 分支上逐一同值（YesNo 枚举值或别名集任一单边改动即触发红灯）。绝不允许删除 boolean_normalize 让 core.models 改指 core.services（会立刻产生 core.models->core.services 越层 + core.models<->core.services 导入环，破坏 AST 0 违规结构）。若确要消重，唯一合法方向是让上层 normalization_matrix.normalize_yes_no_wide_value 反过来 delegate 到下层 boolean_normalize（services->shared 是合法下行边），即保留 shared 模块为唯一事实源、删除 matrix 内的重复逻辑——而非相反。",
+   "_title": "normalize_yes_no_wide 在 core/shared 与归一化矩阵各有一套语义全等实现, 无任何测试绑定二者(可静默漂移)",
+   "_location": "core/shared/boolean_normalize.py:33",
+   "_pathology": "P5",
+   "_partition": "core-infra-shared",
+   "_bucket": "load_bearing_confirmed"
+  },
+  {
+   "evidence": [
+    "core/services/common/number_utils.py:5-10,23,40 — parse_finite_float/int 的完整函数体在本模块内定义，其全局名 parse_required_float/parse_optional_float/parse_required_int/parse_optional_int 由 core.shared.strict_parse import 进本模块命名空间；正因函数体在此定义，其 __globals__ 指向 common.number_utils.__dict__",
+    "core/shared/number_utils.py:23,39 — 声明的 canonical，与 common 版逐行相同(仅 common 多了中文 docstring)",
+    "core/services/common/compat_parse.py:3 / value_policies.py:3 / degradation.py:3 / field_parse.py:3 — 4 个兄弟确为纯 re-export 薄壳(grep def=0)，已实证",
+    "tests/regression_number_utils_facade_delegates_strict_parse.py:19,23-26,45-48,62 — 活跃测试 import common.number_utils，monkeypatch 其模块级 parse_required/optional_* 并断言 parse_finite_* 转调它们；改成薄壳后 line23 立即 AttributeError，line62 断言失败(patch 变空操作)。line69-84 钉住灵魂不变量:空白+allow_none→None，否则抛 ValidationError(field 正确)",
+    ".codestable/refactors/2026-06-01-test-gate-cleanup/L3_verdicts.csv:174 — 该测试 verdict=KEEP value=high，2026-06-01 刚复核保留→不对称是有意而非漏改",
+    "tests/regression_config_service_component_contract.py:375-411 — 4 兄弟各有 *_reexports_shared_identity 的 is-同一性测试(透明壳契约)；number_utils 故意不走这条而用 delegation-facade 测试，是两种不同的设计契约",
+    "core/services/common/excel_validators.py:26 与 web/routes/domains/scheduler/scheduler_excel_calendar_rows.py:8 — 唯二生产消费方都只 import parse_finite_*，薄壳化后行为字节级一致，运行期灵魂不变量(strict_parse 不静默吞坏数据)不受影响",
+    "实测属性面:common.number_utils 暴露 parse_required_float/parse_optional_float/parse_required_int/parse_optional_int(因函数体 import 进来)，而薄壳兄弟 field_parse 只暴露其 2 个 re-export 名 → 证实薄壳化会丢失这些属性、击穿 monkeypatch",
+    "tests/regression_number_utils_facade_delegates_strict_parse.py 当前运行=OK(green)，且出现在 audit/2026-04 全量 p0 基线与开发文档验收记录的必跑清单中"
+   ],
+   "precondition_to_change": "不能像普查员设想的那样\"对齐 4 兄弟、单边改成 re-export 薄壳\"——那会立刻击穿一个活跃 KEEP/high 门禁。若确要统一，必须做协调式改动:(1) 先重写 tests/regression_number_utils_facade_delegates_strict_parse.py:它现在 monkeypatch common.number_utils 的模块级 parse_required/optional_*(int/float) 并断言 parse_finite_* 转调它们(line23-26/45-48/62);薄壳后这些名不再存在、且 parse_finite_* 的 __globals__ 变成 shared.number_utils，patch 失效→line23 AttributeError、line62 断言失败。需把它改写成与 4 兄弟一致的 *_reexports_shared_identity 同一性测试。(2) 必须有意识地推翻该测试在 .codestable/refactors/2026-06-01-test-gate-cleanup/L3_verdicts.csv:174 的 KEEP/high 裁定——那是 2026-06-01 刚做出的、把它定性为'delegation-facade 而非透明壳'的明确决定。生产消费方(excel_validators.py:26、scheduler_excel_calendar_rows.py:8)只用 parse_finite_*，两种形态等价，不需改动。结论:普查员'半截迁移残渣、可安全单边收口'的前提被证伪——不对称是有意设计,单边收口非安全债。",
+   "refuted": false,
+   "verdict": "depends",
+   "_title": "common/number_utils.py 是 core/shared/number_utils.py 的全量函数体拷贝, 而同目录 4 个兄弟模块都已是薄 re-export 壳(半截收口)",
+   "_location": "core/services/common/number_utils.py:23",
+   "_pathology": "P3",
+   "_partition": "core-infra-shared",
+   "_bucket": "load_bearing_confirmed"
+  },
+  {
+   "refuted": false,
+   "verdict": "load_bearing",
+   "evidence": [
+    "core/services/report/execution_review.py:141,178 - 签名刻意不收 plan_role/scenario_id；:112/:123 _list_plan_rows_* 硬钉 plan_role=ROLE_ADOPTED,scenario_id=None；:153 _resolve_plan(v,ROLE_ADOPTED,None)；:166-167 输出固定 ROLE_ADOPTED 标签。全文件零注释说明此不对称是故意的。",
+    "core/services/report/report_plan_helpers.py:29-106 - 宿主方法 _resolve_plan/_list_plan_rows_between/_list_plan_rows_all 完整透传并尊重任意 plan_role/scenario_id（:37 resolve_plan_view、:70/:96 按 role/scenario 取明细）。证明 execution_review 的硬钉是唯一的钉死点，host 层不设防。",
+    "web/routes/reports_page_support.py:404-412 - 兄弟报表 downtime 路由从请求读 raw_plan_role/scenario_id 并透传给 downtime_impact；overdue/utilization 同构。统一压力真实存在且'路由读请求方案再透传'的范式已在同文件落地，统一签名只差 execution_review 一处。",
+    "data/repositories/operation_execution_event_repo.py:267 - aggregate_states_by_op_ids 仅按 op_id 聚合现场反馈，无 role/scenario 过滤。下游 join 无法自卫：喂进任何 op_id 它都照配。",
+    "core/services/scheduler/operation_execution_feedback_service.py:347-362 - _load_current_official_schedule：requested/effective_plan_role!=ROLE_ADOPTED 或 source_table!=SOURCE_SCHEDULE 或 scenario_id 非空 一律 raise not_current_official_plan。即现场反馈只对正式采用方案存在；拿非采用/模拟方案行去配 op_id 反馈=拿真实施工事实去给一个从未执行的假设方案贴'实际开始/偏差'列，预览冒充既成事实。",
+    "web/viewmodels/scheduler_workbench_link_query.py:5-16,266-267 与 tests/regression_plan_vs_actual_review.py:350-359 - 护栏只活在链接生成/导航层（禁 extra_params 追加 plan_role/scenario_id、非采用上下文不生成可点入口），不在服务/路由入参路径上设防。服务签名一旦统一，入站请求路径无任何 plan_role 拒绝逻辑，且会与 web 层 forbidden-params 产生认知错位。",
+    ".codestable/features/2026-06-01-reports-workbench-backlink/reports-workbench-backlink-design.md:28,71,234,253 - 明文决定'计划和现场实际只复盘正式采用方案''不把模拟预览和对比参考方案纳入复盘口径'，确认此不对称是设计决定而非疏漏。"
+   ],
+   "precondition_to_change": "动它=确认承重护栏，默认不可删/不可统一。若未来确有需求（如允许复盘历史正式版本），必须先：(1) 在 execution_review 服务内对任何非 ROLE_ADOPTED 角色 / 非 None scenario_id 显式 raise ValidationError（硬拒，而非默默回退 adopted），把不变量的执行点留在服务层本身；(2) 给下游 aggregate_states_by_op_ids 增加 role/scenario 作用域过滤，让 join 能自卫，之后才允许任何非采用行流入；(3) 在路由入站层加 plan_role/scenario_id 闸门，并保留/扩展 web 层 forbidden-params 守卫，消除两层认知错位；(4) 用 regression_plan_vs_actual_review / reports_workbench_navigation_contract 锁死。最低成本的即时动作：在 :112/:123/:153 三处硬钉旁补一行中文注释，说明'计划和现场实际只对账正式采用方案，禁止为统一四报表签名而加 plan_role/scenario_id'，把散在别处的不变量可见化到执行现场。",
+   "_title": "execution_review 固定正式采用方案的承重不对称——服务层文件内零注释保护",
+   "_location": "core/services/report/execution_review.py:141",
+   "_pathology": "P2",
+   "_partition": "core-svc-domain",
+   "_bucket": "load_bearing_confirmed"
+  },
+  {
+   "refuted": false,
+   "verdict": "load_bearing",
+   "evidence": [
+    "REFUTES THE STATED HARM: core/services/report/execution_review.py:141-150 — execution_review() signature has NO plan_role/scenario_id parameter; rows are fetched with plan_role=ROLE_ADOPTED, scenario_id=None hardwired at :112-114 and :123-124, and :153 _resolve_plan(v, ROLE_ADOPTED, None). The actual plan-vs-actual ROW DATA is structurally adopted-only.",
+    "reports_page_support.py:327-334 — the page's engine.execution_review(int(version), date_from=, date_to=, batch_id=, resource_type=, resource_id=) call passes NO plan_role/scenario_id. So even if :367/:369 were unified to read request, preview/comparison ROWS still cannot enter the review — the finding's '污染复盘结论' is overstated.",
+    "BUT LOAD-BEARING FOR LABEL IDENTITY: reports_page_support.py:367 page_plan_resolution(...,'adopted',None) is the SOLE source of the displayed plan identity — it feeds plan_resolution -> report_plan_template_fields (:388) -> report_plan_status.label/source_text rendered at templates/reports/execution_review.html:56,61. Unifying to request_plan_role()/request_scenario_id() routes through resolve_plan_view -> _resolve_scenario_plan (schedule_plan_query_service.py:182-185) and would DISPLAY '模拟方案甲'/preview over adopted rows, directly contradicting the static template guarantee '这张表只复盘正式排产结果' — a self-deceptive header≠body mislabel that violates the soul-line 不自欺.",
+    "NAV-CONTEXT LEAK: reports_page_support.py:373 _publish_report_context -> set_current_workbench_navigation_context. navigation_context.py:77-79 reads this published override FIRST, bypassing the :80-82 is_execution_review force. So if :367 carries a preview resolution, build_report_navigation_links leaks plan_role/scenario_id into onward links. navigation_context.py:80-82 only guards the non-published fallback path — :367 and :80-82 are two distinct load-bearing guards for two code paths, not redundant.",
+    "DATE-WINDOW: reports_page_support.py:369 page_date_range_or_version_span(...,'adopted',None,...) -> version_date_range(plan_role, scenario_id) (report_plan_helpers.py:154-181) derives the DEFAULT date window from the resolved plan's span; unifying would compute the default filter from a preview plan's span.",
+    "TEST GAP (matches the 'harmless cleanup' risk): grep of tests/ shows NO test GETs /reports/execution-review with an explicit ?plan_role=/scenario_id= param — only no-param or superseded-adopted cases (regression_reports_workbench_navigation_contract.py:84,130). The guardrail tests (regression_scheduler_workbench_link_guardrails.py:131,149; regression_scheduler_workbench_links_contract.py:281) only pin the VIEWMODEL link-builder, not the page route's :367/:369. A naive unification would pass CI green while breaking the label/nav invariant."
+   ],
+   "precondition_to_change": "不能用 request_plan_role()/request_scenario_id() 替换 :367/:369 的 'adopted',None。若要动：(1) 绝不给 core 的 execution_review() 加 plan_role/scenario_id 入参——行数据的承重护栏在 core，必须原样保留；(2) 先补一条缺失的页面级回归：GET /reports/execution-review?plan_role=baseline_best&scenario_id=xxx，断言渲染出的「排产方案」标签仍为正式采用方案、source_text 不出现预览/对比文案、且发布的 nav context plan_role=adopted/无 scenario_id（覆盖当前测试盲区）；(3) 若目的是消除魔法字面量方言，应抽一个具名收口（如 execution_review_plan_context()，内部强制 adopted/None）替换两处字面量，并补上现在缺的「此处故意忽略 request 的 plan_role 是护栏」注释，而不是改成从 request 读；(4) 保留 navigation_context.py:80-82 的 is_execution_review 强制分支（它守的是未发布 context 的回退路径）。",
+   "_title": "execution-review 报表页写死 plan_role='adopted'/scenario_id=None 的承重护栏,代码处无保护性注释",
+   "_location": "web/routes/reports_page_support.py:366,368 + web/navigation_context.py:80-82",
+   "_pathology": "P2",
+   "_partition": "web-all",
+   "_bucket": "load_bearing_confirmed"
+  },
+  {
+   "refuted": true,
+   "verdict": "real_debt",
+   "evidence": [
+    "core/services/scheduler/run/schedule_graph_dispatch_context.py:461-475 — 包装器函数体是纯懒导入转发(return _impl(...)),无任何校验/版本闸/预览-正式守卫/坏数据检查,删它不移除任何不变量",
+    "core/services/scheduler/run/schedule_graph_dispatch_context.py:468 — 懒 import 真 impl;且 dispatch_context 全文无 __all__(grep 仅命中 def/import 行),包装器不属于任何已声明的门面契约",
+    "core/services/scheduler/run/schedule_graph_resource_matching_context.py:48-69 — 真实现在此;灵魂暗线守卫(:28-45 _ready_context_predecessor_map 对非法 op_id 抛 GraphInputContractError)也在此,删包装器不动这些守卫",
+    "core/services/scheduler/run/schedule_graph_resource_matching_context.py:115 — 唯一生产调用方,裸名调用绑定到本模块 :48 的 local def,完全不经过 dispatch_context 包装器",
+    "core/services/scheduler/run/schedule_graph_resource_matching_context.py:131-134 — __all__ 同时声明两个 builder,这里才是真正的公开门面/home",
+    "core/services/scheduler/run/schedule_graph_report.py:19,180 — 生产仅从 dispatch_context import 兄弟 build_graph_resource_matching_projection 并调用(确活跃),从不 import build_first_wave_ready_nodes;两包装器互不耦合",
+    "tests/scheduler_graph/test_graph_dispatch_context.py:11(import),:55,:66(调用)— 全仓唯一从 dispatch_context 导入该包装器的地方,就是测试本身",
+    "tests/regression_scheduler_candidate_py38_contract.py:30,78 — 仅对 dispatch_context 做 banned-import/py38 语法检查,未 pin 其公开导出面,删包装器不破契约测试",
+    "全仓 grep build_first_wave_ready_nodes:无通配 import、无 __init__.py 转出、无 getattr/字符串动态引用;且懒 import 仅为规避 matching→dispatch 模块级环(:5),删包装器只会移除 dispatch→matching 边,改善而非破坏 import 图"
+   ],
+   "precondition_to_change": "先把 tests/scheduler_graph/test_graph_dispatch_context.py:11 的 import 从 schedule_graph_dispatch_context 改为从 schedule_graph_resource_matching_context 导入 build_first_wave_ready_nodes(其真实 __all__ home;:55,:66 调用不变),再删除 dispatch_context.py:461-475 的转发包装器。删前确认无 __init__.py 转出该符号(已 grep 验证无),删后跑 scheduler_graph 测试套件 + regression_scheduler_candidate_py38_contract 自证。生产路径(resource_matching_context:115 本地调用 + report.py:180 走兄弟包装器)不受影响。注意:兄弟 build_graph_resource_matching_projection 是真承重(report.py:180 经 dispatch_context 消费),不可一并删。",
+   "_title": "schedule_graph_dispatch_context.build_first_wave_ready_nodes 是test-only re-export包装器(兄弟包装器是活的,唯独它没有生产调用方)",
+   "_location": "core/services/scheduler/run/schedule_graph_dispatch_context.py:461-475",
+   "_pathology": "P6",
+   "_partition": "scheduler-run",
+   "_bucket": "real_debt_confirmed"
+  },
+  {
+   "refuted": true,
+   "verdict": "real_debt",
+   "evidence": [
+    "core/services/scheduler/resource_dispatch_execution_service.py:131-141 — the disputed silent fallback: if schedule_repo.get is None, returns can_write_feedback=True / plan_identity_label='正式采用方案' card.",
+    "web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py:264-265,278-279,200-201 — the ONLY production callers; the card is built strictly AFTER the write step returns successfully.",
+    "core/services/scheduler/operation_execution_feedback_service.py:105,347-365 — legacy-action write path: _load_current_official_schedule does schedule_repo.get and raise AppError(NOT_FOUND) if None, INSIDE the write tx before any insert. So by the time the card is built, the row is proven to exist on the same connection.",
+    "core/services/scheduler/resource_dispatch_actual_record_service.py:117-119,214-218 — actual-record write path: _task_ref_from_feedback_context raises NOT_FOUND if schedule_repo.get is None before any result is returned; the card branch is therefore unreachable.",
+    "web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py:149-163,166-180 + core/services/scheduler/resource_dispatch_actual_record_service.py:141-154 — every subsequent write re-derives plan identity server-side and re-runs the official/existence gate, so the card's can_write_feedback flag authorizes nothing (UI hint only); a lying card cannot let a bad write commit.",
+    "tests/regression_operation_execution_feedback_routes.py:336-358 — confirms preview/candidate/stale-version contexts are rejected at the write gate with not_current_official_plan, independent of this display card; no preview-as-official or stale-version write can slip through."
+   ],
+   "precondition_to_change": "不要裸删 131-141：直接删会让控制落到 142/147-148 的 schedule.start_time，在写入已提交后抛 AttributeError→500，谎报写失败。正确做法是把该分支改成显式 raise AppError(NOT_FOUND)（与灵魂线一致），并先确认/锁定两个调用点(routes:264-265、278-279)始终在调用本方法前已经历 schedule 存在性写门禁；补一条该分支转 raise 的回归测试。改完不影响 happy path（分支本就不可达），且不削弱任何写门禁。",
+   "_title": "写后任务卡对 schedule 行缺失静默兜底为'正式采用方案/可写'卡片",
+   "_location": "core/services/scheduler/resource_dispatch_execution_service.py:131-141",
+   "_pathology": "P4",
+   "_partition": "scheduler-dispatch",
+   "_bucket": "real_debt_confirmed"
+  },
+  {
+   "refuted": true,
+   "verdict": "real_debt",
+   "evidence": [
+    "core/services/scheduler/resource_dispatch_execution_service.py:117,120 — can_write_feedback 与 feedback_write_enabled 同设为 bool(plan_role_fields.get('can_write_feedback'))，同源恒等；:204 _empty_context 两者皆 False。主路径只产 (True,True)/(False,False)，(True,False) 不可达",
+    "core/services/scheduler/resource_dispatch_execution_service.py:124-139,159,163 + web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py:184,192,201 — task_card 路径 can_write_feedback 恒为 True、三处调用方恒传 feedback_write_enabled=True，故只产 (True,True)，同样不可达 (True,False)",
+    "web/viewmodels/scheduler_resource_dispatch_execution.py:24,226-227,361-362 — _FEEDBACK_DISABLED_REASON 分支仅在 can_write=True 且 feedback_write_enabled=False 时返回，纯展示用 disabled_reason 文案，不参与任何写入决策",
+    "core/services/scheduler/operation_execution_feedback_service.py:361 — 真正写入护栏 raise 在 not plan_identity.can_write_feedback；不读 feedback_write_enabled",
+    "core/services/scheduler/resource_dispatch_actual_record_service.py:137-138 与 141-149 — 服务端写入守卫 (_execution_context_for_write / _ensure_context_can_write) 均基于 can_write_feedback 与 plan_role/source_table/scenario，全程不消费 feedback_write_enabled；删该展示分支不削弱任何写入不变量",
+    "grep 全仓 .py/.html/.json/.md 无任何 config/settings/特性开关 读取 feedback_write_enabled（唯一旁系命中 web/viewmodels/scheduler_workbench_links.py:379 can_emit_feedback_write_urls 是 URL 发射另一关注点）。证实它不是已接线的未来 toggle，'还没开启'是死面包屑",
+    "tests/regression_resource_dispatch_workbench_lane_contract.py:164-179 — 传 (can_write_feedback=False, feedback_write_enabled=False)，因 can_write=False 在 build_available_actions:234 与 _fill_actual_disabled_reason:224 双重短路，feedback_write_enabled 分支根本未被执行；断言只覆盖 part_label/actual_time_label/actual_delta_summary，grep 确认无任何对 '现场记录保护'/FEEDBACK_DISABLED/disabled_reason 的断言。删分支+文案不破任何测试"
+   ],
+   "precondition_to_change": "两条收法二选一：(A) 只删死分支+死文案——删除 viewmodel:226-227 与 361-362 的 feedback_write_enabled 分支及 :24 的 _FEEDBACK_DISABLED_REASON 常量，保留参数即可，无测试会断（已 grep 确认无人断言该字符串）。(B) 彻底收口把 feedback_write_enabled 参数整体并入 can_write_feedback——须同步改 4 处调用签名：service:129 默认参、routes:184/192/201 三处 kwarg、test:164-175 的 build_task_card 调用，去掉该 kwarg 后再删 viewmodel 分支。两种做法前都应向刚落地的 ‘resource dispatch execution lane’ roadmap（commit 65870e47）owner 确认：近期不计划在此接缝上线真正的‘现场记录保护总开关’配置；若确无该规划，按默认立场收为普通债。",
+   "_title": "feedback_write_enabled 休眠开关 + 生产不可达的'保护未开启'提示",
+   "_location": "web/viewmodels/scheduler_resource_dispatch_execution.py:24,226-227,361-362",
+   "_pathology": "P6",
+   "_partition": "scheduler-dispatch",
+   "_bucket": "real_debt_confirmed"
+  },
+  {
+   "refuted": true,
+   "verdict": "real_debt",
+   "evidence": [
+    "三处 def 字节相同(garbage→None, ≤0→None): core/services/scheduler/resource_dispatch_execution_service.py:23 / web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py:37 / web/viewmodels/scheduler_resource_dispatch_execution.py:32",
+    "调用点全是对【可信 DB 行/已校验路由整数】做显示与归属判定,跳过坏行语义: service 174/184/187(_op_ids、_matching_row),viewmodel 256/257/347(build_task_card、任务列表),routes 109/111(_row_matches_feedback_target 比对可信行)",
+    "真正的安全不变量由别处 RAISE 守住,非本助手的静默 None: 反冒充归属校验在无匹配行时抛 SCHEDULE_CONFLICT(routes 132-136);用户输入 schedule_id 为 None 时抛 ValidationError(routes 117-124,fail-closed)",
+    "写入/持久化边界用 STRICT 变体重新校验并抛错(灵魂暗线满足): core/services/scheduler/operation_execution_feedback_support.py:162 _positive_int(value,field) raise;data/repositories/operation_execution_event_repo.py:96 _required_positive_int raise;写路径在 core/services/scheduler/operation_execution_feedback_service.py:222-224 调用 STRICT 变体",
+    "op_id 经 Flask <int:op_id> 路由转换器已是合法整数,本助手不是其唯一闸门: routes 258/329-351 的 POST 处理器",
+    "收口点 parse_finite_int 契约不同,不能直接套: core/shared/number_utils.py:39 allow_none 仅短路空白,垃圾仍 raise(core/shared/strict_parse.py:87 parse_optional_int→81 parse_required_int→46 _parse_finite_int 对非数字 raise),套用会把'跳过坏行'变成'抛错中断整页'"
+   ],
+   "precondition_to_change": "先在 core/shared 新增一个 canonical 的【可空正整数】收口(契约必须保持:垃圾→None、非正→None,即 parse_finite_int 的兄弟,如 parse_optional_positive_int),再把这 3 处(及全仓其余 nullable 同体)迁移过去。严禁改用 parse_finite_int / parse_optional_int(allow_none=True)——它们对垃圾值 raise,会把 _op_ids、viewmodel 任务列表、_matching_row 的'跳过坏行'退化为'整页渲染崩溃',并改变 routes:117 用户输入 schedule_id 的拒绝路径。同时不要动 STRICT 变体(operation_execution_feedback_support.py:162、repo _required_positive_int:96、scheduler_public_errors.py:167)——它们契约是 raise,是真正的写入闸门,不在本簇收口范围。",
+   "_title": "_positive_int 可空正整数助手在执行车道三处逐字节复制",
+   "_location": "core/services/scheduler/resource_dispatch_execution_service.py:23 / web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py:37 / web/viewmodels/scheduler_resource_dispatch_execution.py:32",
+   "_pathology": "P5",
+   "_partition": "scheduler-dispatch",
+   "_bucket": "real_debt_confirmed"
+  },
+  {
+   "refuted": true,
+   "verdict": "real_debt",
+   "evidence": [
+    "core/services/scheduler/gantt_service_support.py:32-51 与 core/services/scheduler/gantt_critical_chain_provider.py:104-128 两份 _normalize_critical_chain_result 逐字段语义相同：is_available 默认 True、available 时清空 reason/reason_code、edge_type_stats 四键默认、edge_count int 兜底、reason_code or 'unknown' 兜底完全一致。support 的 _text(x)=str(x or '').strip() 即 provider 的 str(x or '').strip()，无差异",
+    "support 版 available 用 bool(is_available)、provider 用裸 is_available——但 is_available 必为 bool（要么通过 isinstance(bool) 校验、要么硬编码 True），bool() 是 no-op，输出无差",
+    "两条路径汇入同一出口：gantt_service.py:375 critical_chain_for_plan_detail_filter（有 detail_filters）/ :377 provider.get_critical_chain（无 filter），都流入 :389 build_gantt_contract → gantt_contract.py:19 _public_critical_chain 再统一按 _ALLOWED_CRITICAL_REASON_CODES 白名单复核 reason_code 并映射中文标签——下游对两路产物一视同仁",
+    "两文件都已 import from .gantt_critical_chain（support.py:7、provider.py:10），存在天然的公共 helper 落点，统一为单份零风险",
+    "重复本身不护任何不变量：归一调用对 support 路径确实承重（raw compute_critical_chain_from_rows 缺 available/edge_type_stats 默认，collect_gantt_degradation_events 与 _public_critical_chain 依赖），但一份共享实现即可满足，第二份物理副本不提供任何额外保证",
+    "git status 证 gantt_service_support.py 为新增未提交(A)，provider 版属 3be4757f(2026-04)已提交——属在途新代码绕过既有实现重写，是 P5 真债而非承重设计"
+   ],
+   "precondition_to_change": "动它的唯一安全做法=抽取单份 _normalize_critical_chain_result 到两文件共享的 core/services/scheduler/gantt_critical_chain.py，让 support 与 provider 两路都改调它（或 support import provider 的版本），保留归一调用本身。绝不可把 critical_chain_for_plan_detail_filter 简化为直接 return compute_critical_chain_from_rows 的 raw——那会丢掉 available 默认/edge_type_stats 四键/reason_code 兜底，使坏数据/空结果以缺字段形态流入 _public_critical_chain（违反灵魂暗线'坏数据不准静默兜底'，且可能让 collect_gantt_degradation_events 漏报降级）。统一后须跑 tests/regression_gantt_contract_snapshot.py、tests/regression_gantt_critical_chain_unavailable.py、tests/regression_gantt_critical_chain_provider.py 验证 filtered/unfiltered 两路契约逐字不变。又因该文件 uncommitted(A) 疑为在途中间态，落手前先与在途作者确认避免冲掉其后续合并计划",
+   "_title": "关键链结果归一函数 _normalize_critical_chain_result 被逐字复制成第二份私有实现",
+   "_location": "core/services/scheduler/gantt_service_support.py:32-51",
+   "_pathology": "P5",
+   "_partition": "scheduler-gantt",
+   "_bucket": "real_debt_confirmed"
+  },
+  {
+   "refuted": true,
+   "verdict": "real_debt",
+   "evidence": [
+    "core/services/scheduler/gantt_critical_chain.py:84 — `if not st or not et or not (st < et): continue` 丢行无任何 collector/counter/flag;全文件 grep 无 partial/dropped/skipped/degraded",
+    "core/services/scheduler/gantt_critical_chain.py:312-334 — _compute_critical_chain_from_loaded_rows 丢行后返回正常结果(无 partial/dropped 字段),经 _normalize 包成 available:True",
+    "core/services/scheduler/gantt_tasks.py:192,351 — 同款 if not st/et/(st<et) 检查在兄弟路径走 _record_bad_time_row 入 DegradationCollector,并在 bad_time_row_skipped>0 时给 empty_reason:已确立的'丢行但留痕'范式",
+    "core/services/scheduler/gantt_critical_chain.py:150-152,159-161 + tests/regression_gantt_critical_chain_unavailable.py:215-248 — 本模块边级 _eligible_*_edge 对缺时间字段 raise ValueError,且回归测试断言'关键链边时间异常不应静默',证明节点级 :84 的静默是已立政策的缺口而非被接受的设计",
+    "core/services/scheduler/gantt_critical_chain.py:114,262 — 删掉 :84 过滤后 start/end=None 流入 _build_process_prev 排序与 _sink_id 的 max 比较→TypeError→被 :338/:352 try/except 接住→available:False:过滤本身是'丢一行坏数据仍出有用链'的刻意韧性,不可裸删",
+    "schema.sql:240-241(Schedule start_time/end_time NOT NULL);ScheduleCandidateRows、ScheduleAdjustmentScenarioRow 同为 NOT NULL — 采纳/候选为引擎写入且 st<et 几乎恒成立,丢行分支接近死代码;唯一现实触发点是人工 scenario 调整路径",
+    "core/services/scheduler/gantt_service_support.py:32-51 + gantt_critical_chain_provider.py:104-128 + gantt_contract.py:19-40 — 三道 whitelist 归一化,新增 partial/dropped_count 键若不同步三处会被静默剥离"
+   ],
+   "precondition_to_change": "这是真债(灵魂'坏数据不准静默兜底'的已知缺口),可安全收口为兄弟范式,但不是裸删:1) 必须保留 :84 的过滤条件本身——删了会让 start/end=None 进入 :114 排序与 :262 max 触发 TypeError,使整条关键链被一行坏数据降为 available:False(过度激进且功能回归);正确做法是'丢行+留痕',照搬 gantt_tasks 的 _record_bad_time_row/DegradationCollector,并新增 critical_chain_partial + dropped_count。2) 任何新增信号键必须同时穿过三道 whitelist:gantt_service_support._normalize_critical_chain_result、provider._normalize_critical_chain_result、gantt_contract._public_critical_chain,否则在归一化层被静默剥离=换了个地方自欺。3) 优先级评估:采纳/候选源 NOT NULL+引擎写入,丢行分支近死;真正能产坏时间的是人工 scenario 调整,更应在 scenario 调整的写入校验源头堵 st<et,而非只在只读关键链读侧补 partial 标志——先确认源头是否已校验,再决定补防御的投入。",
+   "_title": "关键链 _build_nodes 静默丢弃坏时间行却仍报 available:True,无 partial/缺口信号",
+   "_location": "core/services/scheduler/gantt_critical_chain.py:84",
+   "_pathology": "P4",
+   "_partition": "scheduler-gantt",
+   "_bucket": "real_debt_confirmed"
+  },
+  {
+   "refuted": true,
+   "verdict": "real_debt",
+   "evidence": [
+    "core/services/scheduler/schedule_delay_diagnosis_service.py:42-54,114-139 — diagnose_plan_overdue/diagnose_batch/_resolve_strict_plan form a self-contained subgraph: diagnose_batch->diagnose_plan_overdue->_resolve_strict_plan, with no external entry.",
+    "Whole-repo grep (web/core/data/tests + non-.py): diagnose_plan_overdue has ZERO prod callers (only self-loop at schedule_delay_diagnosis_service.py:122 + tests/regression_scheduler_delay_diagnosis_contract.py:262/332/349/362/382); diagnose_batch ZERO prod callers (only tests :397/405); _resolve_strict_plan only caller is :49.",
+    "Production door is diagnose_resolved_plan_overdue, called at core/services/report/report_engine.py:200 and :213, fed by report_plan_helpers._resolve_plan (report_plan_helpers.py:29-39 -> resolve_plan_view). Live web route: web/routes/reports_page_support.py:230 -> overdue_delay_diagnosis_context.",
+    "Resolver divergence: dead door _resolve_strict_plan (schedule_delay_diagnosis_service.py:134-139) routes no-scenario through resolve_existing_plan (STRICT, raises 所选方案没有可查看的明细, schedule_plan_query_service.py:141-163), while production _resolve_plan->resolve_plan SILENTLY falls back to ROLE_ADOPTED (schedule_plan_query_service.py:127-139, status=fallback_to_adopted). Deleting the dead door removes no live strictness because production already uses the lenient path.",
+    "resolve_existing_plan (the strict resolver the dead door wraps) is NOT orphaned: live prod callers at gantt_adjustment_validation_service.py:93 and gantt_adjustment_draft_service.py:189, so strict-resolution capability survives deletion.",
+    "Preview-vs-official + version safety lives in shared _resolve_scenario_plan/_with_plan_identity (schedule_plan_query_service.py:460-495: is_scenario_preview, status=scenario_preview), reached identically by the production door via resolve_plan_view(scenario_id); not housed in the dead door.",
+    "Roadmap governance: signatures cited at .codestable/roadmap/aps-three-gap-directions/aps-three-gap-directions-roadmap.md:485-498 and items.yaml:83, but consuming features are all status: done (items.yaml:48-55 delay-diagnosis-core-service, :99-106 overdue-report-entry, :745-754 docs-quality-gate). Acceptance doc delay-diagnosis-core-service-acceptance.md:21 records them as delivered surface — completed-roadmap doc-lag, not an active forward/external contract.",
+    "Soul-line test risk: tests/regression_scheduler_delay_diagnosis_contract.py:328 (reads_candidate_rows_without_fallback, expects ValueError 所选方案没有可查看的明细) and :358 (reads_scenario_rows_without_fallback, expects 模拟方案明细不存在) assert no-fallback on the DEAD path; the scenario assertion is also preserved on the prod path via _resolve_scenario_plan, but the candidate-role assertion is unique to the strict door."
+   ],
+   "precondition_to_change": "删除前必做三件事，否则会悄悄丢测试覆盖、留下生产 resolve_plan 的静默回退兜底无人把守：(1) 把 regression_scheduler_delay_diagnosis_contract.py:328/358 这两条\"无静默回退/不预览冒充正式\"的灵魂线用例改指到生产门(diagnose_resolved_plan_overdue 经 report_engine 喂入，或直接对 resolve_existing_plan/resolve_plan_view 断言)，让严格语义在真实路径上仍被验证——绝不能随死门一起删掉；(2) 更新 roadmap 5.3 函数签名与 items.yaml:83 exit_checks，把对外门改写为 diagnose_resolved_plan_overdue，消除文档滞后；(3) 向人确认无树外/外部调用方(roadmap 把它框为\"对报表/分析页/甘特详情\"的公开 API，但本项目是 Win7 离线单体应用无对外 API 面，风险低)。注意:本删除不修复生产 resolve_plan 候选角色未列出时静默回退 adopted 的灵魂线隐患——那是 resolve_plan 自身的独立问题，与本死门无关，应另行裁决。",
+   "_title": "延期诊断公开 API 三件套 prod-unwired:diagnose_plan_overdue/diagnose_batch/_resolve_strict_plan 仅契约测试+roadmap 续命",
+   "_location": "core/services/scheduler/schedule_delay_diagnosis_service.py:42-54,114-139",
+   "_pathology": "P3",
+   "_partition": "scheduler-exec-diag",
+   "_bucket": "real_debt_confirmed"
+  },
+  {
+   "refuted": true,
+   "verdict": "real_debt",
+   "evidence": [
+    "core/services/scheduler/operation_execution_labels.py:1-36 — 全文件仅 from core.models.operation_execution_labels import 15 符号并在 __all__ 原样转出，无任何新定义/封装/适配，纯 re-export 垫片",
+    "AST 校验：shim __all__(15) 减 model __all__(17) = 空集，model 是严格超集；5 个导入方改连 model 行为字节级一致",
+    "core/models/operation_execution_labels.py 仅 import core.models.operation_execution_event 常量与 typing，未 import core.services——删垫片不破任何 import 循环（垫片非解环用）",
+    "tests/test_architecture_fitness.py 的分层规则只禁 routes→repo / services→flask.request / viewmodels→services|repos，无一条限制 service→model；且同分区已有 6 处直连 model(gantt_tasks.py:8, operation_execution_state_builder.py:19, scheduler_resource_dispatch_execution.py:10, resource_dispatch_actual_import.py:9, resource_dispatch_actual_record_service.py:9, resource_dispatch_execution_enrichment.py:5)，'service 不直连 model 标签'约定客观上未被贯彻",
+    "灵魂暗线(坏数据不静默兜底)由 model 函数实现(execution_status_label→\"状态未识别\" 等暴露错误)，删垫片无法削弱；feedback_service.py:48 与 feedback_support.py:26 走相对导入 .operation_execution_labels，确证分区内一半经垫片一半直连的半截迁移",
+    "无 DI/patch 缝：tests/ 下无 monkeypatch/mock.patch 指向 services.scheduler.operation_execution_labels 路径；line252 测试虽经垫片导入但只断言纯标签行为，两模块等价",
+    ".codestable/features/2026-05-27-operation-execution-event-foundation/operation-execution-event-foundation-design.md:37 只列 model 文件，从未声明 service 标签门面为设计边界",
+    "tests/regression_aps_three_gap_docs_quality_gate.py:122 把该路径字符串放进 KEY_PYTHON_FILES 元组并在 line181-184 断言其出现在开发者指南——这是文档同步记账门禁(删文件不同步会红)，非安全不变量"
+   ],
+   "precondition_to_change": "两条路线任选其一，均行为安全：(A)删除垫片——把 5 个导入方(web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py:16、operation_execution_feedback_service.py:48、operation_execution_feedback_support.py:26、tests/regression_operation_execution_event_foundation.py:17、tests/regression_plan_vs_actual_review.py:10)的 import 由 services.scheduler/相对 .operation_execution_labels 改为 core.models.operation_execution_labels；同时把该路径从 tests/regression_aps_three_gap_docs_quality_gate.py:122 的 KEY_PYTHON_FILES 元组移除并从开发者指南删对应条目，否则该文档同步测试会红(记账失败，非安全失守)。(B)收编为统一门面——若团队确立'service 标签经门面'约定，则把现有 6 处直连 model 的导入一并改走垫片以贯彻一致性。任一方向前都应跑 tests/regression_operation_execution_event_foundation.py 与 regression_plan_vs_actual_review.py 自证行为不变。",
+   "_title": "service 层 operation_execution_labels.py 是 model 同名模块的纯转出垫片,零新增",
+   "_location": "core/services/scheduler/operation_execution_labels.py:1-36",
+   "_pathology": "P3",
+   "_partition": "scheduler-exec-diag",
+   "_bucket": "real_debt_confirmed"
+  },
+  {
+   "refuted": true,
+   "verdict": "real_debt",
+   "evidence": [
+    "schedule_result_view_context.py:77-100 手搓 plan_identity 23 键，:101-147 外层 dict；关键：source_table 写死为 SOURCE_SCHEDULE=\"schedule\"（行82/107），并非空来源",
+    "schedule_plan_identity_builder.py:145-146 是发现声称的'无法委托'理由（空 source_table 抛错），但只在 source∉{schedule,candidate_rows,adjustment_scenario_rows} 时触发；占位用的是 'schedule'→通过。实测 build_plan_identity(version=None, source_table='schedule', ...) 成功，且 .to_dict() 与手搓 plan_identity 对 adopted 与 baseline_best 两角色 0 键漂移、0 值漂移——委托今日即可零差异替换",
+    "schedule_plan_identity.py:44-68 canonical PlanIdentity.to_dict 23 键已逐键比对一致",
+    "schedule_plan_resolution.py:64-103 canonical 外层 to_dict 是手搓外层的超集，手搓反而缺 schedule_result_status/schedule_lock_status/detail_saved 三键——它已非忠实第二实现，靠'缺键'先一步偏离",
+    "决定性安全证据：写/派工变更不信任该视图 dict——operation_execution_feedback_service.py:355-362 重新 resolve_plan_view(...) 读真 plan_identity.can_write_feedback；resource_dispatch_actual_record_service.py:134-139 同样以 can_write_feedback 为闸。手搓 dict 仅供只读的无历史页",
+    "schedule_result_view_context.py:91-99 占位中 can_dispatch/can_write_feedback/is_current_executable_official_version 全部硬编码 False；:271-274 _identity_bool 用 .get()，未来缺键→False=拒绝=安全方向，符合灵魂暗线",
+    "无 parity 测试实证：tests/regression_schedule_result_view_context.py 导入 default_plan_resolution_dict 但 build_plan_identity 出现 0 次；:294-301 只断言 gantt_plan_query 的遗留报错文案",
+    "gantt_plan_query.py:32-38 包装层把错误重抛为遗留文案'未知的排产方案角色：{role}'，收口时须保留"
+   ],
+   "precondition_to_change": "先补发现正确指出缺失的 parity 测试：对 VALID_PLAN_ROLES 全集，断言 default_plan_resolution_dict(role)['plan_identity'] 的键集+取值 == build_plan_identity(无历史输入,source_table='schedule').to_dict()，并断言外层 dict ⊆ SchedulePlanResolution.to_dict。然后把占位委托给 build_plan_identity + SchedulePlanResolution.to_dict（无历史时多出的 schedule_result_status/lock_status/detail_saved 三键下游均 .get() 读取，无害）。务必保留 gantt_plan_query.py:32-38 的遗留错误文案包装。最后跑 regression_schedule_result_view_context.py 与派工/反馈契约测试自证行为不变。注意外层 :142 is_official 用方括号取值（非 .get()），收口后改走 .get() 反而更稳。",
+   "_title": "default_plan_resolution_dict 手搓 plan_identity(23键)+resolution(45键)双私有实现,绕过 build_plan_identity 与 SchedulePlanResolution.to_dict,且无 parity 测试",
+   "_location": "core/services/scheduler/schedule_result_view_context.py:73-147 (plan_identity dict @77, 外层 dict @101)",
+   "_pathology": "P5",
+   "_partition": "scheduler-plan-identity",
+   "_bucket": "real_debt_confirmed"
+  },
+  {
+   "refuted": true,
+   "verdict": "real_debt",
+   "evidence": [
+    "schedule_plan_identity_builder.py:24-29 — flagged silent `except (TypeError, ValueError): return False` in _bool_from_summary",
+    "schedule_plan_identity_builder.py:32-38 — _history_is_executable checks Gate1 `result_status in _BLOCKED_RESULT_STATUSES {failed,simulated}` (lines 33-35) BEFORE the summary gate (line 36); every real simulation is blocked by Gate1 first",
+    "summary/schedule_summary_freeze.py:82-86 — _compute_result_status: `if simulate: return ScheduleResultStatus.SIMULATED.value` → every simulate run is forced to result_status='simulated'",
+    "summary/schedule_summary_assembly.py:437 — `\"is_simulation\": bool(ctx.simulate)` — derived from the SAME ctx.simulate flag as result_status (redundant copy)",
+    "summary/schedule_summary.py:216 — result_summary always = json.dumps(result_summary_obj); never hand-written, so corruption is a should-never-happen DB-tamper/legacy case",
+    "run/schedule_persistence.py:309-318 + data/repositories/schedule_history_repo.py:133-150 — result_status and result_summary written together in one INSERT (atomic co-write; they cannot diverge via the normal path)",
+    "data/repositories/schedule_plan_query_repo.py:75-118 — both list_history_identity_rows and get_history_identity_row SELECT h.result_status AND h.result_summary from the same row",
+    "schedule_plan_identity_builder.py:161-163 — `result_ok = result_status not in _BLOCKED_RESULT_STATUSES`; `is_current_official = is_official and is_current and result_ok` → result_status independently backstops the dangerous-action gate, not the summary flag",
+    "core/services/scheduler/resource_dispatch_actual_record_service.py:137,142-149 — the actual dangerous dispatch/feedback write gates on can_write_feedback + role/source/scenario recheck (requires is_current_official => result_ok), never on summary is_simulation alone",
+    "schedule_plan_identity_builder.py:41-45 — latest_executable_official_version iterates ALL history rows; converting return False -> raise would let ONE corrupt legacy row break version resolution for the CURRENT plan (availability amplification, zero safety gain)"
+   ],
+   "precondition_to_change": "承重的不是这处 summary 解析，而是 result_status='simulated'（由同一 ctx.simulate 原子同写、且在两个消费者里都先于/独立于 summary 被检），所以删/统一不会让模拟冒充正式或可派工——该安全护栏断言被推翻。但要动它有两条硬前提：(1) 绝不可原地改成 raise——latest_executable_official_version 全量扫历史行，任何一条 legacy/NULL 邻接的损坏 summary 都会让当前方案的 is_current_executable_official_version/can_dispatch/can_write_feedback 整链抛错，这是可用性放大事故而非安全收益；(2) 若要移除这处冗余的 summary-based is_simulation 判定，先确认没有任何写入方会在不同写 result_status 的情况下单独写 result_summary.is_simulation（当前 INSERT 是原子同写，成立）。若确实要落实灵魂线'坏数据可见'，应在读边界加一条非致命的完整性日志/计数标记出无法解析的 result_summary，而不是让版本身份解析崩溃。",
+   "_title": "_bool_from_summary 静默吞掉损坏的 result_summary JSON,影响 is_official/可执行版本/可派工判定",
+   "_location": "core/services/scheduler/schedule_plan_identity_builder.py:24-29 (except (TypeError, ValueError): return False)",
+   "_pathology": "P4",
+   "_partition": "scheduler-plan-identity",
+   "_bucket": "real_debt_confirmed"
+  },
+  {
+   "refuted": true,
+   "verdict": "real_debt",
+   "evidence": [
+    "仅1个测试引用,生产importer=0:grep全仓 schedule_diagnostic_contract 唯一命中 tests/regression_scheduler_analysis_diagnostic_contract.py:10;orphan_refined.json:347 列其为零引用候选;rev_deps.json 无该模块条目",
+    "活渲染路径绕开它:web/viewmodels/scheduler_analysis_diagnostics.py:5-45 的 build_item/build_section 只 import 自 web 兄弟模块 scheduler_analysis_diagnostic_helpers.py:41/:62,从不 import core 合同;链路 helpers→diagnostics.build_diagnostic_sections→scheduler_analysis_vm.py:122→analysis.html 全程不碰 core",
+    "core 合同无任何安全逻辑:schedule_diagnostic_contract.py:12-70 纯 dict 形状拼装+str(x or \"\") 强转;真正的灵魂暗线护栏(NonFiniteDiagnosticNumber、safe_int/safe_float 拒非有限、status 缺失返回'unknown'不猜 ok)只在 web helper scheduler_analysis_diagnostic_helpers.py:101-152,171-179,core 版一条都没有",
+    "测试未把 core 当 web 的形状锚:web 键集断言 regression_scheduler_analysis_diagnostic_contract.py:229-240 是硬编码字面量,与 core builder 解耦;:21-82 三个 core-only 测试独立验 core 形状,因 core 无生产消费而是自证空转",
+    "是被架空的废稿而非在途脚手架:虽 networkx-scheduler-graph-introduction-items.yaml:424-435 的 PR-9 项(status:planned)把该文件列为 primary_path,但同项 notes 自述诊断合同+模板 parts 已在前序分支完成,分析页今天已通过 web twin 实际渲染;git 显示 core 单提交 45c222a0(2026-05-21)此后从未改动,web helper 晚2天落地(ed695e79)且获追加修复(184121ff)——core 冻结、活路径继续演进",
+    "删除爆炸半径=仅破 regression_scheduler_analysis_diagnostic_contract 1 个测试,零生产页面、零安全不变量;web twin(承载活渲染+非有限护栏)原封不动"
+   ],
+   "precondition_to_change": "动手前先调和过时的 PR-9 roadmap,而非盲删:在 networkx-scheduler-graph-introduction-items.yaml 的 scheduler-graph-analysis-diagnostic-sections 项里,把 schedule_diagnostic_contract.py 从 primary_paths(:435)及 ruff/pyright exit_checks(:480-481)移除并标注该收口已被 web 路径取代;随后删掉 core 文件并清理 tests/regression_scheduler_analysis_diagnostic_contract.py:10-14 的 core import 与 :21-82 三个 core-only 测试用例。切记删的是 core 这份(零消费),绝不能反向删 web twin——它承载活渲染路径与非有限数字安全护栏。若团队仍坚持让 core 成为规范收口点(走 PR-9 本意),那必须作为整体重构:把 web helper 的 build_item/build_section 改指向 core 并把灵魂暗线护栏一并下沉,再连同测试一次性迁移,而不是单点删改任一侧。",
+   "_title": "analysis/schedule_diagnostic_contract.py 是 web 侧 LIVE 诊断构造器的零生产消费孪生副本",
+   "_location": "core/services/scheduler/analysis/schedule_diagnostic_contract.py:13-79",
+   "_pathology": "P3",
+   "_partition": "scheduler-config-summary-graph",
+   "_bucket": "real_debt_confirmed"
+  },
+  {
+   "refuted": true,
+   "verdict": "real_debt",
+   "evidence": [
+    "core/services/scheduler/graph/ready_queue.py:1-11 — 整文件仅 re-export ReadyQueueContractError/get_ready_operation_ids，自述桥意图但无生产引用",
+    "grep get_ready_operation_ids( 全仓：唯一调用点是 tests/scheduler_graph/test_ready_queue.py（6 处），生产 0 调用",
+    "grep 该 shim 的 import：仅 tests/regression_scheduler_graph_lazy_runtime_contract.py:27 与 tests/scheduler_graph/test_metrics_topology.py:140，二者只把模块名放进枚举数组断言其保持懒加载/不反向 import，并不调用其函数",
+    "LIVE 路径独立：core/algorithms/greedy/dispatch/sgs.py:16-25 from .sgs_graph import _prepare_graph_ready_state（非 shim、非 get_ready_operation_ids）",
+    "sgs_graph.py:33 _prepare_graph_ready_state + _initialize_graph_ready_frontier 自带完整校验套件，抛 ValidationError(field=graph_ready_context)（项目标准错误），与死函数抛的 ReadyQueueContractError 是不同异常类，生产无人捕获后者",
+    "core/services/scheduler/run/schedule_graph_dispatch_context.py 只 import graph.input_adapter/scoring，从不 import ready_queue shim",
+    "core/algorithms/greedy/dispatch/__init__.py:13-19 仅导出 dispatch_batch_order/dispatch_sgs，不导出 ready 符号；全仓无 getattr/字符串动态引用 get_ready_operation_ids",
+    "roadmap items.yaml:178 PR-5(done) 记录 helper 下沉算法层+service 层保留兼容导出；:232 PR-6 记录‘图 ready 上下文校验下沉到 sgs_graph.py’即被取代；:507-521 PR-11(planned 候选续跑) 讲输入快照续跑，未把此接口列为预留；:380-422 PR-8 资源匹配(done) 用自有 first-wave ready 口径不走此 shim"
+   ],
+   "precondition_to_change": "同一改动内三处测试耦合必须一起处理，否则会破测试模块枚举/导入：1) 删除专属功能测试 tests/scheduler_graph/test_ready_queue.py（否则其 import 失败）；2) 从 tests/regression_scheduler_graph_lazy_runtime_contract.py:27 与 tests/scheduler_graph/test_metrics_topology.py:140 的模块名数组里摘掉 \"core.services.scheduler.graph.ready_queue\"；3) 在 PR-5 决定/roadmap 备忘里补一句‘ready_queue helper 已被 sgs_graph._prepare_graph_ready_state 取代、连同 service 层兼容 shim 一并下线’，避免历史失忆。删除前确认 sgs_graph 的 ValidationError 校验语义已覆盖原 helper 的合同点（坏 op_id/前后置/排序 key/图对象误传），以保灵魂暗线‘坏数据不静默兜底’不退化——经核对 sgs_graph.py:20-160 已等价或更严，无需迁移逻辑。\"",
+   "_title": "graph/ready_queue.py 兼容导出 + 底层 get_ready_operation_ids 是被 sgs_graph.py 取代的未接线并行实现",
+   "_location": "core/services/scheduler/graph/ready_queue.py:1-12",
+   "_pathology": "P3",
+   "_partition": "scheduler-config-summary-graph",
+   "_bucket": "real_debt_confirmed"
+  },
+  {
+   "refuted": true,
+   "verdict": "depends",
+   "evidence": [
+    "core/services/scheduler/config_service.py:1-5 (+config_snapshot.py/config_validator.py/schedule_summary.py:1-29/schedule_summary_types.py): all 5 verified pure re-export, 0 logic lines — no fallback/validation/version-gate. Deleting removes zero behavior; the only failure mode is a loud ImportError, which honors the soul line rather than breaking any safety invariant (no preview-as-official / stale-version / swallowed-bad-data / cross-layer). Therefore NOT a load-bearing safety guardrail.",
+    "Production bypasses the shims entirely: web/error_boundary.py:104 + scheduler_config_display_state.py:5 -> '.config'; scheduler_config.py:11 / personnel_calendar_pages.py:7 -> scheduler/__init__.py:19,34-40 __getattr__ mapping 'ConfigService' to '.config.config_service'; schedule_service.py:259 -> '.config.config_service'. No production importer hits the top-level shim.",
+    "CENSUS EVIDENCE CORRECTION — not '0 production / only 53 self-referential tests'. Two LIVE non-test consumers exist on the old path: tools/capture_networkx_phase0_baseline.py:17 ('from core.services.scheduler.config_service import ConfigService'; also the ONLY rev_dep in rev_deps.json for the config_service shim) and audit/2026-03/20260316_schedule_audit_probes.py:87 ('from core.services.scheduler.schedule_summary import build_overdue_items'). Both are offline operational/diagnostic scripts OUTSIDE SP05 scan roots (core, web) — exactly the 'offline script on old path' the arbitration worried about. So it is not pure test ceremony; deletion as-is breaks real tooling.",
+    "SP05 is the governance guard pinning the shim, not the shim itself: tests/test_sp05_path_topology_contract.py:20-31 lists all 5 as behavior-compat aliases; :329-337 asserts old.__all__ == expected and getattr(old,sym) IS getattr(new,sym) (shared identity -> no isinstance/dual-class hazard); :390-399 forbids core/web production growth; :642-658 expects config_service.py documented as '兼容薄门面'. A unilateral delete breaks this contract test plus 53 test imports.",
+    "Soul-line check (foundation invariant): breakage on delete is a loud ImportError, never a silent bad-data fallback or version masquerade — confirms the shim guards no safety invariant; the system fails loudly with or without it."
+   ],
+   "precondition_to_change": "它不是承重安全护栏(纯转出,删了只会响亮 ImportError,不破任何安全不变量),本质=半截迁移的冻结兼容残渣,可收;但普查\"0生产/纯自指测试\"的证据是错的,故不能直接 rm。动它前必须: (1) 把两个非测试在用消费者迁到深路径——tools/capture_networkx_phase0_baseline.py:17 与 audit/2026-03/20260316_schedule_audit_probes.py:87 改为 .config.config_service / .summary.schedule_summary; (2) 重指 53 处测试 import 到深路径; (3) 从 test_sp05_path_topology_contract.py 的 SERVICE_BEHAVIOR_COMPAT_SYMBOLS/PUBLIC_SYMBOLS(:20-82)删这 5 条并改文档树断言(:642-658 期望 config_service.py 标注\"兼容薄门面\")。三步做完再删 shim。SP05 冻结是有意决定,删除是一次需协调的迁移而非自由删除。",
+   "_title": "顶层 5 个 config/summary shim:生产已迁走、仅 53 处测试经它进、被 SP05 钉死为冻结兼容面",
+   "_location": "core/services/scheduler/config_service.py:1-6 (+config_snapshot.py/config_validator.py/schedule_summary.py/schedule_summary_types.py)",
+   "_pathology": "P3",
+   "_partition": "scheduler-config-summary-graph",
+   "_bucket": "real_debt_confirmed"
+  },
+  {
+   "refuted": true,
+   "verdict": "real_debt",
+   "evidence": [
+    "core/services/scheduler/calendar/__init__.py + batch/__init__.py: 空(0字节), 目录内无任何模块——'包'里没有可被 import 的东西",
+    "grep 全树: scheduler.(calendar|batch|dispatch|gantt) 作为包的生产引用=0; 'from . import calendar/batch'=0; importlib 动态字符串引用=0——零运行时消费者",
+    "tests/test_greedy_refactor_contracts.py:81 `assert \"scheduler.calendar\" not in text` 是反向断言(dispatch 算法禁止耦合它), 不是依赖",
+    "core/services/scheduler/resource_dispatch_range.py:3 `import calendar` 经运行时确认解析到 Python 标准库(.../python3.x/calendar.py), 非本空包; 且无 `from .` 相对导入, 不存在遮蔽标准库的陷阱",
+    "真实日历/批次逻辑在顶层 calendar_engine.py/batch_service.py 等(18+ 活跃 importer 如 tests/regression_calendar_invalid_shift_window_contract.py:10, regression_batch_template_autobuild_same_tx.py:26), 空包内零模块",
+    "tests/test_sp05_path_topology_contract.py:309-316 是唯一钉死这4个空包存在+__init__无导入的测试; 而 SP05 真正护住迁移正确性的 strong-alias/behavior-compat 断言只覆盖 config/run/summary(:321-340), 从不涉及这4个空包——空包的 pin 是自指的(包只为过测试而存在, 测试只为护包而存在)",
+    ".limcode/plans/core目录系统性修复/05_后续结构债治理与文档同步.plan.md:226,230-233 明确把批次逻辑保留为顶层文件(batch_service/batch_template_ops/batch_write_rules), 不规划 batch/ 包下沉——无任何 active roadmap 需要这些预留位",
+    "删除不触碰任何安全不变量: 纯目录拓扑, 不会造成预览冒充正式/旧版本冒充现行/坏数据静默吞没/跨层违规; 灵魂暗线与P5收口点均无关"
+   ],
+   "precondition_to_change": "同一提交里两件事一起做, 缺一不可: (1) 删除4个空占位目录 core/services/scheduler/{batch,calendar,dispatch,gantt}/; (2) 同步修改 tests/test_sp05_path_topology_contract.py:309-316——把 batch/dispatch/gantt/calendar 从第310行的存在性元组和第315行的 delayed-package 无导入循环里移除, 否则该测试失败。已实证无需额外动作: 无 importlib 动态引用、无 `from . import calendar/batch` 相对导入遮蔽标准库、无 active roadmap 把它们当作待下沉预留位。若团队日后真要分包, 届时重建包目录即可——不必现在留空壳。",
+   "_title": "空 delayed 包 calendar/ 与 batch/:SP05 强制存在却始终未填充",
+   "_location": "core/services/scheduler/calendar/__init__.py (0字节) + core/services/scheduler/batch/__init__.py (1字节)",
+   "_pathology": "P3",
+   "_partition": "scheduler-config-summary-graph",
+   "_bucket": "real_debt_confirmed"
+  },
+  {
+   "refuted": true,
+   "verdict": "real_debt",
+   "evidence": [
+    "core/infrastructure/backup.py:334-337 — PRAGMA integrity_check 执行抛异常时只 warning('已忽略')，控制流落到 :343 os.replace 把未校验的 .tmp 升为正式备份，并返回路径+记 info '数据库已备份'（自欺：报成功却可能是坏库）",
+    "core/infrastructure/backup.py:340-342 — else 分支(返回非 ok 行)却 raise 阻断；同一校验块内 except(执行失败=更严重的损坏迹象 database disk image is malformed)反而放行，严重度被倒挂——这是 bug 的核心",
+    "core/infrastructure/backup.py:354-372 + :387 — _auto_rollback→_copy_db_file 用 source.backup(dest) 把 before_restore 快照盖回活库，全程无 integrity 复检；restore() :415 正是用这条 backup() 造该快照",
+    "core/infrastructure/migration_backup.py:52-58 — 迁移回滚 restore_db_file_from_backup 用 shutil.copy2(backup, db) 裸文件拷贝盖活库，零完整性校验，完全信任备份文件可信",
+    "core/infrastructure/migration_runner.py:61,188-189 — 迁移前备份走同一 backup()；若改为 raise，则 :189 重抛并按 :61 文档契约'必须取得可用备份否则阻断迁移'直接阻断——更正确，而非破坏不变量(无法运行 integrity_check 的库不算'可用备份')",
+    "消费方均能优雅承接 backup() 抛错：backup_task.py:149 / factory.py:142 均 except Exception 记错不崩；手动路由 system_backup.py:107-113 仅捕 MaintenanceWindowError，但 RuntimeError→500 这条路径今天已因 else 分支存在，统一只是多一个触发器经过既有路径",
+    "git 1d5987b8 与 c3ced1e2 仅改过提示文案字符串；except 吞/else 抛的不对称从未作为契约化'保留'决定确立；tests 下无任何用例钉死这条宽松吞咽行为(regression_restore_success_condition.py 全程 mock manager，不触达本校验)"
+   ],
+   "precondition_to_change": "修法=把 :335 except 分支改为与 :340 else 一致 raise(校验执行失败即视为不可信备份，不落地)。动手前置：(1) 收口手动备份路由 system_backup.py:107-113，让其捕获通用备份失败并 flash 清晰错误而非裸 500——注意该 500 路径今天已因 else 分支存在，属顺手收尾非阻塞项；(2) 确认 finally :346-352 的 .tmp 清理仍在(已在)，使抛错不残留半成品；(3) 顺带在回滚消费方 _copy_db_file(:354-372)与 restore_db_file_from_backup(migration_backup.py:52-58)补一次 integrity 复检，封堵旧版遗留的未校验备份文件被当救命快照盲拷的残口(独立加固，可后续)。已核验：无任何业务流依赖 backup() 在校验失败时仍返回路径，故 raise 不丢任何安全不变量。",
+   "_title": "备份完整性校验(PRAGMA integrity_check)执行本身失败时, 只 warning 不阻断, 仍把未通过校验的 .db 提升为正式备份",
+   "_location": "core/infrastructure/backup.py:333",
+   "_pathology": "P4",
+   "_partition": "core-infra-shared",
+   "_bucket": "real_debt_confirmed"
+  },
+  {
+   "refuted": true,
+   "verdict": "real_debt",
+   "evidence": [
+    "core/services/common/compat_parse.py:1-13 — 纯 re-export，仅 from core.shared.compat_parse import parse_compat_date/float/int 再 __all__ 转发，无任何逻辑",
+    "core/services/common/field_parse.py:1-5 — 纯 re-export，仅转发 core.shared.field_parse 的 parse_field_float/int",
+    "core/services/common/value_policies.py:1-39 — 纯 re-export，仅转发 core.shared.value_policies 的 13 个符号",
+    "grep core/ web/ data/ scripts/ (排除三文件自身):三者生产引用全部=0;全部引用仅来自 tests/(regression_config_service_component_contract.py:14/16/19/394/403、regression_compat_parse_emits_degradation.py:18、regression_value_policies_matrix_contract.py:18)",
+    "codemap rev_deps.json:core.services.common.{compat_parse,field_parse,value_policies} 均不是 key(零生产被引用);而 core.shared.field_parse 的 dependents 含 greedy/external_groups、schedule_config_runtime_coercion、config_field_coercion、run/schedule_input_builder 等真生产消费——生产直连 shared,绕过 facade",
+    "core/services/common/__init__.py 为空(1 字节),无包级再导出;setup.py/pyproject 等无打包公开面;无 importlib/__import__ 动态引用",
+    "tests/regression_config_service_component_contract.py:352-359 test_scheduler_run_uses_shared_parse_and_degradation_helpers:把 _SERVICE_COMMON_NEUTRAL_HELPERS(含这三者)列为 run 层的 FORBIDDEN imports,断言主排产链必须直连 core.shared——证明不存在'必须经 services.common facade'的强制约定,反而对热路径强制反向",
+    "对照真兄弟 facade:services.common.strict_parse 有 operation_edit_service/supplier_service 等 4 处生产消费、services.common.degradation 有 14 处生产消费——它们是被采纳的约定;这三者是同一约定下零采纳的空壳",
+    "两个行为测试(regression_compat_parse_emits_degradation.py:18、regression_value_policies_matrix_contract.py:18)虽经 facade 导入,但断言的是 core.shared 底层的降级发射/策略矩阵行为,非 facade 特有行为,可平移到 core.shared",
+    "contract 测试 test_services_common_value_policies_reexports_shared_identity / test_services_common_parse_core_reexports_shared_identity(:394/:403)只断言 service.X is shared.X——纯自循环'转发身份正确',正是反向续命这三个空壳的唯一来源"
+   ],
+   "precondition_to_change": "删除安全,但需按序保护灵魂暗线(坏数据必须经降级暴露、不静默兜底)的测试覆盖,不能连测一起删光:(1) 先把两个行为测试 regression_compat_parse_emits_degradation.py:18 与 regression_value_policies_matrix_contract.py:18 的 import 从 core.services.common.* 改指 core.shared.compat_parse / core.shared.value_policies——保住降级发射与策略矩阵覆盖(这部分是承重的,但承重点在 core.shared,不在 facade);(2) 从 regression_config_service_component_contract.py 删除三处身份断言(行 14/16/19 在 _SERVICE_COMMON_NEUTRAL_HELPERS 元组内的条目、行 394 起 service_value_policies、行 403 起 service_compat_parse 的 is-identity 断言)。注意:从 _SERVICE_COMMON_NEUTRAL_HELPERS 删条目是安全的——该元组用于 run 层'禁止导入'白名单,把一个即将不存在的模块从禁止清单里移除只会放松对不存在模块的检查,且无任何生产文件导入它;(3) 最后删三个 .py。完成后生产运行期零影响、灵魂暗线覆盖无损失。",
+   "_title": "三个零生产消费的 re-export facade 残渣(compat_parse/field_parse/value_policies),仅测试续命",
+   "_location": "core/services/common/compat_parse.py:1（同类 field_parse.py、value_policies.py）",
+   "_pathology": "P3",
+   "_partition": "core-svc-domain",
+   "_bucket": "real_debt_confirmed"
+  },
+  {
+   "refuted": true,
+   "verdict": "real_debt",
+   "evidence": [
+    "data/repositories/schedule_repo.py:36,114,128 — the three flagged version-only methods (get_version_time_span / list_overlapping_with_details / list_dispatch_rows_with_resource_context)",
+    "grep core/web/data: list_overlapping_with_details 与 list_dispatch_rows_with_resource_context 全仓零生产调用,仅 tests/test_schedule_repository_detail_queries.py + 类型断言 + 一处 monkeypatch;bare get_version_time_span 仅 tests/benchmark_fjsp.py:503 + 类型断言",
+    "data/repositories/schedule_plan_query_repo.py:257(get_plan_time_span)/311(list_detail_rows_between)/430(list_dispatch_rows) — 带 source_table+candidate_id+scenario_id 的活孪生,且 :447-463 的 scope_type 过滤与 schedule_repo.py:137-158 逐行相同",
+    "data/repositories/schedule_detail_query.py:106-112 — 孪生 SOURCE_SCHEDULE 分支把 'SELECT...FROM Schedule WHERE version=?' 包成 CTE 后套用完全相同的列/JOIN/where,是旧方法的忠实超集",
+    "core/services/scheduler/gantt_critical_chain.py:68 — 生产 compute_critical_chain 实际调 list_by_version_with_details(另一活方法),不调被标记的 list_overlapping_with_details",
+    "tests/regression_gantt_critical_chain_unavailable.py:59 vs :60 — :59 把 list_overlapping_with_details 桩成 [] 但生产不调它(由 :60 把真正被调的 list_by_version_with_details 设为 raise 反证),:59 是无效残留脚手架",
+    "core/services/scheduler/schedule_plan_query_service.py:218/281/399 — 活服务全部走孪生 repo.get_plan_time_span/list_detail_rows_between/list_dispatch_rows",
+    "core/services/scheduler/gantt_plan_query.py:50-56 + gantt_service.py:187 — 活 get_version_time_span_dates 走 plan_query 孪生,不碰 schedule_repo.get_version_time_span",
+    "core/services/scheduler/resource_dispatch_service.py:424 + resource_dispatch_execution_service.py:95,142 — 孪生 dispatch 路径的活生产消费者(最新提交 65870e47 正在扩建此 lane)",
+    "tests/regression_schedule_service_facade_delegation.py:31,36,38-41 — 仅 get_type_hints 返回类型断言,从不执行 SQL/行为,即'续命'机制本体;该测试同时覆盖 2 个真活方法(:33 list_version_rows_by_op_ids_start_range→freeze_window.py:177、:37 list_by_version_with_details→gantt_critical_chain.py:68),证明它是'dict 行命名返回类型'契约而非'保留这3个API'的设计意图",
+    ".codestable/checkup/latest/codemap/dynamic_refs.json 三名皆无;core/web/data 无按字符串 getattr/setattr 派发;roadmap 无任何重新接线计划",
+    "安全方向相反:旧方法是 version-only/plan-role 盲,孪生带 source_table+candidate_id+scenario_id 且 _require_candidate_id/_require_scenario_id/未知 source raise ValueError —— 防'候选/情景方案冒充 adopted'的护栏在活孪生里,删旧方法是去掉更不安全的路径,不破坏任何不变量"
+   ],
+   "precondition_to_change": "删除三个旧方法前需同步:(1) 删 regression_schedule_service_facade_delegation.py:31/36/38-41 三条类型断言,保留 :33(list_version_rows_by_op_ids_start_range)和 :37(list_by_version_with_details)两个仍活方法的断言;(2) 删 test_schedule_repository_detail_queries.py 中 list_overlapping_with_details(~:168)与 list_dispatch_rows_with_resource_context(:198-288)用例,保留 list_by_version_with_details(:188);(3) 删 regression_gantt_critical_chain_unavailable.py:59 那行无效 monkeypatch(保留 :60,生产真实路径);(4) 把 benchmark_fjsp.py:503 改调孪生 SchedulePlanQueryService.get_plan_time_span_for_resolution(version, ROLE_ADOPTED)(benchmark 为非生产 harness,低风险但须改以免基准脚本报错)。注意:list_by_version_with_details 与 list_version_rows_by_op_ids_start_range 是同文件里仍被生产调用的活方法,不在删除范围。",
+   "_title": "schedule_repo 版本-only 查询方法群:plan-role 迁移残渣,仅测试/类型契约续命",
+   "_location": "data/repositories/schedule_repo.py:114 (list_overlapping_with_details), :128 (list_dispatch_rows_with_resource_context), :36 (get_version_time_span)",
+   "_pathology": "P3",
+   "_partition": "data-repos",
+   "_bucket": "real_debt_confirmed"
+  },
+  {
+   "refuted": true,
+   "verdict": "real_debt",
+   "evidence": [
+    "web/routes/scheduler_run.py:7-8 — wrapper is `sys.modules[__name__] = _impl` strong alias of domains leaf; runtime proof: `web.routes.scheduler_run is web.routes.domains.scheduler.scheduler_run` == True, and importing it loads neither web.routes.scheduler nor the registrar (no side effect).",
+    "grep web/ core/ data/ for *.py/*.html/config/json refs to top-level scheduler_* wrapper paths → ZERO non-test hits (exit 1); web/routes/__init__.py empty (no re-export). Wrappers are off the production path.",
+    "web/routes/scheduler.py:6-7 + web/bootstrap/factory.py:449 — production entrypoint is `web.routes.scheduler` importing domains.scheduler.scheduler_bp + scheduler_route_registrar; registrar (scheduler_route_registrar.py:5-20) imports the 14 domains leaves directly, never the wrappers.",
+    "tests/test_sp05_path_topology_contract.py:559-571 (leaf imports pull no registrar side-effects), :551-556 (domains pkg passive), :484-529 (registrar AST _REGISTERED=False, no side-effect imports) — the startup-chain passivity invariant is guarded at the REAL production path, independent of the wrappers; deleting wrappers does not unguard it.",
+    "_scheduler_compat.load_scheduler_route_module raises ModuleNotFoundError on a missing target (runtime-verified) — no silent fallback; soul-invariant intact whether kept or removed.",
+    "Only consumers are 22 test files (regression_scheduler_wrapper_import_order_contract.py names them LEGACY_SCHEDULER_WRAPPERS and asserts the wrappers' OWN passivity; ~20 route-contract regressions + test_sp05 import them out of convenience). No production code, no external legacy importer (offline internal APS).",
+    "scheduler_excel_batches.py:8-28 is a per-symbol re-export (not sys.modules alias), sp05:438 asserts `old is not new` but :440 asserts every symbol `getattr(old,s) is getattr(new,s)` — still pure re-export residue, no distinct behavior."
+   ],
+   "precondition_to_change": "删除是安全的(无任何生产安全不变量失守:无预览冒充/无旧版冒充——wrapper就是现行leaf本身/无坏数据吞噬/无跨层违规),但动手前必须:(1)先认账或修订 roadmap p1-scheduler-debt-cleanup-roadmap.md:522 明示的\"先保留旧 wrapper 避免冲击启动链\"延期决定——现在删属抢跑该决定,非安全问题;(2)把 22 个 test-only 消费者的 `import web.routes.scheduler_xxx` 迁到 domains leaf 路径(web.routes.domains.scheduler.scheduler_xxx);(3)同步删除/改写两处 wrapper 专属契约:regression_scheduler_wrapper_import_order_contract.py 整文件,以及 test_sp05_path_topology_contract.py 的 ROUTE_COMPAT_MODULES/ROUTE_BEHAVIOR_COMPAT_SYMBOLS 区块与 SCHEDULER_REAL_ROUTE_FILES 清单。三步做完即可安全收口,启动链 passivity 仍由 domains leaf+registrar 级测试独立守护。",
+   "_title": "顶层 9 个 scheduler_*.py wrapper 是迁移到 domains/scheduler 后的别名残渣,仅测试续命,roadmap 有意延期清理",
+   "_location": "web/routes/scheduler_run.py:7-8 / scheduler_config.py / scheduler_batches.py / scheduler_analysis.py 等 9 个 + web/routes/_scheduler_compat.py",
+   "_pathology": "P3",
+   "_partition": "web-all",
+   "_bucket": "real_debt_confirmed"
+  },
+  {
+   "refuted": true,
+   "verdict": "real_debt",
+   "evidence": [
+    "web/routes/domains/scheduler/scheduler_navigation_publish.py:28-29 web getter = str(plan_resolution.get('selected_role') or ROLE_ADOPTED)",
+    "core/services/scheduler/schedule_result_view_context.py:201-202 core getter = str((plan_resolution or {}).get('selected_role') or ROLE_ADOPTED) — BOTH have 'or ROLE_ADOPTED'; core is STRICTLY MORE defensive (also handles None). Finding's claim '只是 web 版多加 or ROLE_ADOPTED 兜底' is factually inverted, and its worry about diverging fallback on missing selected_role is therefore unfounded — both return 'adopted' identically",
+    "core/models/schedule_plan_role.py:5 ROLE_ADOPTED='adopted'; web (scheduler_navigation_publish.py:6) and core both import the same constant → no value drift on unify",
+    "web/routes/domains/scheduler/scheduler_week_plan.py:337 and scheduler_gantt.py:293 — the ONLY consumers pass it as effective_plan_role= template DISPLAY kwarg, not into any gate",
+    "web/routes/domains/scheduler/scheduler_navigation_publish.py:12-21,72-85 — the real safety guards (can_dispatch/can_write_feedback/is_scenario_preview/is_superseded_by_newer_version/plan_role_status) flow through a SEPARATE _PLAN_GUARD_FIELD_NAMES/_plan_guard_fields path; selected_plan_role is NOT the preview/version/dispatch gate",
+    "tests/regression_reports_workbench_navigation_contract.py:409-413 — sole test touching this module imports the publish_* functions, NOT selected_plan_role; no test pins the local getter implementation",
+    "core/services/scheduler/gantt_plan_query.py:46-47 — re-export of core's selected_plan_role already exists as a proven precedent for exactly this unification"
+   ],
+   "precondition_to_change": "收口方式:把 web 的 selected_plan_role 改为 re-export core schedule_result_view_context.selected_plan_role(完全照搬 gantt_plan_query.py:46 已有写法)。等价性已实证无需再担心:两版都 'or ROLE_ADOPTED'、同一 ROLE_ADOPTED 常量、仅供 effective_plan_role 显示 kwarg、不碰任何安全闸门(闸门走独立 _plan_guard_fields 路径),且 core 版对 None 更稳——统一只会保持或增强行为,绝不改变缺 selected_role 时的角色。改后跑 tests/regression_reports_workbench_navigation_contract.py 及 week_plan/gantt 回归即可。附:requested_plan_role(:24-25,core 无同名,等价逻辑内联在 core:406)可选地一并提一个 core 共享 helper 承载,但这是清洁度优化、非安全必需。",
+   "_title": "scheduler_navigation_publish.selected_plan_role 是 core schedule_result_view_context.selected_plan_role 的副本",
+   "_location": "web/routes/domains/scheduler/scheduler_navigation_publish.py:28-29",
+   "_pathology": "P5",
+   "_partition": "web-all",
+   "_bucket": "real_debt_confirmed"
+  }
+ ]
+}

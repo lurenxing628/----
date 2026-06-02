@@ -1,0 +1,135 @@
+{
+ "key": "web-boot-ui",
+ "partition": "web启动与UI模式 (web/bootstrap/ 26文件 + web/ 顶层8文件 + app.py/app_new_ui.py + web_new_test/)",
+ "score": 4,
+ "design": "这块是整个系统的启动骨架与渲染门面，函数级看下来质量明显高于第一轮给 web 层的 3/5。两条清晰主线：(1) 启动链 app.py/app_new_ui.py → entrypoint.create_app_with_mode → factory.create_app_core，工厂负责配置/日志/SECRET_KEY/schema/插件/蓝图注册与请求级容器装配；app_main 负责锁/端口/契约/serve。依赖注入做得很扎实：EntryPointDeps(entrypoint.py:42) 把全部启动副作用收口为可注入函数，RequestServices(request_services.py:64) 用 cached_property 装配 28 个 service 形成 g.services registry，launcher 子系统按 contracts/paths/network/health/stop 拆成 23 个单一职责文件 + 一组 *Result dataclass(to_capability)。(2) UI 模式：存在两套同名但完全解耦的 \"ui_mode\" 概念——启动级 ui_mode∈{default,new_ui}→APP_UI_MODE，请求级 get_ui_mode()∈{v1,v2}（默认 v2）。render_ui_template(render_bridge.py:158) 按 v1/v2 选择 Jinja env：v2 用 overlay ChoiceLoader([v2_loader, base_loader])，因此 v2 base.html（真正的现代侧边栏 chrome）对所有页面生效，v1 则走经典顶栏。错误边界(error_boundary/error_handlers)与静态版本化(static_versioning)也都设计得当。职责边界总体干净，扣分集中在 UI 模式这块的命名陷阱与遥测语义，而非结构腐烂。",
+ "chains": [
+  "v2 overlay 装配链: factory.py:258 init_ui_mode → render_bridge.py:35 注册 /static-v2 蓝图 + render_bridge.py:59-62 v2_loader=FileSystemLoader(web_new_test/templates), overlay_loader=ChoiceLoader([v2_loader, base_loader]) → app.extensions[_EXT_KEY_V2_ENV]",
+  "渲染分流链: web/routes/*.py 用 render_ui_template as render_template(35处) → render_bridge.py:165 get_ui_mode() → ui_mode_request.py:44 cookie优先→ui_mode_store.py:29 _read_ui_mode_from_db(g.services.system_config_service)→ render_bridge.py:182-198 选 v2_env/jinja_env → :218 get_or_select_template → :219 _resolve_template_source 判 v2/base_fallback",
+  "启动主链: app.py:47 create_app→entrypoint.py:65 create_app_with_mode→factory.py:211 create_app_core；app.py:64 main→entrypoint.py:181 app_main(注入 _default_deps)→ :219 create_app → :243 pick_port → :257 acquire_runtime_lock → :271 configure_runtime_contract → :293 serve_runtime_app(factory.py:176 make_server)",
+  "请求级容器装配链: factory.py:297 @before_request _open_db → :309 白名单短路(/static,/system/health) → :318 is_maintenance_window_active 维护门 → :355 get_connection → :375 RequestServices(request_services.py:64) → g.db/g.op_logger/g.services；teardown factory.py:399 _close_db",
+  "停止运行时链: entrypoint.py:192 --runtime-stop → launcher_stop.py:422 stop_runtime_from_dir → :430 _classify_runtime_state → :435 _request_runtime_shutdown(POST /system/runtime/shutdown) → :436 _wait_for_runtime_stop → :440 _try_force_kill_runtime → :397 _finalize_stopped_runtime",
+  "ui_mode 门面转发链: web/ui_mode.py(facade) re-export render_bridge.render_ui_template / ui_mode_request.get_ui_mode / ui_mode_store._read_ui_mode_from_db / manual_src_security.safe_url_for，被 web/routes 与 factory 经 from web.ui_mode import 消费"
+ ],
+ "good": [
+  "启动依赖注入是全系统标杆：EntryPointDeps(entrypoint.py:42-62) 把锁/端口/契约/serve 等全部启动副作用收口为可注入函数，app_main 因此完全可测；create_app_core 也按 enable_* 开关参数化。",
+  "g.services registry 设计干净：RequestServices(request_services.py:64) 用 cached_property 懒构造 28 个 service、统一 _construct 包 AttributeError，before_request 装配/teardown 关闭(factory.py:375-406) 配 _open_db 的 g.db↔g.services 完整性自检(factory.py:350)。",
+  "launcher 子系统拆解质量高（非第一轮担心的 484 行巨石）：launcher_stop.py 用 _classify_runtime_state/_wait/_try_force_kill/_finalize 等小函数组成清晰状态机，*Result dataclass 统一 to_capability()，错误与降级一律 launcher_log_warning 可观测。",
+  "渲染/错误边界防御到位：safe_url_for 对 BuildError 返回 None 且 per-request warn-once(manual_src_security.py:88-128)，error_boundary 把内部错误文案脱敏成中文、render_error_template 失败再兜底 render_minimal_error_page，static_versioning 以 mtime 派生版本且 warn-once。"
+ ],
+ "findings": [
+  {
+   "severity": "high",
+   "category": "命名混乱/设计冲突",
+   "title": "两套同名 ui_mode 概念完全解耦，导致 app_new_ui 名不副实并已误导第一轮审计得出错误结论",
+   "evidence": [
+    "ui_mode_request.py:12 DEFAULT_UI_MODE=\"v2\"；ui_mode_request.py:32 get_ui_mode 只读 cookie/DB，从不读 APP_UI_MODE",
+    "factory.py:233 app.config[\"APP_UI_MODE\"]=ui_mode（启动级 default/new_ui）",
+    "APP_UI_MODE 的全部读取点仅 2 处：entrypoint.py:170（写运行时契约）、system_health.py:21（健康遥测）——均不影响渲染",
+    "app.py:47 create_app→\"default\"；app_new_ui.py:9 create_app→\"new_ui\"；factory.py:472-475 \"new_ui\" 唯一行为差异是日志加后缀 (UI Test Mode)",
+    "README.md:34/120 称 app_new_ui.py 为\"现代界面程序入口\"，实为错误：app.py 同样默认渲染 v2 现代 UI"
+   ],
+   "problem": "启动级 ui_mode(default/new_ui→APP_UI_MODE) 与请求级 get_ui_mode(v1/v2) 字面同名、值域不相交、零交互。读 create_app_with_mode(\"new_ui\") 的人会以为这让应用切到新版/v2 界面，事实上 v2 是两个入口共同的默认值，\"new_ui\" 只多打一行日志。app_new_ui.py 因此是纯冗余入口，且它顶层 import entrypoint 无 app.py 那样的 prelaunch 失败兜底(对比 app.py:51-55)，import 失败会丢失友好提示。",
+   "impact": "这个命名陷阱已造成实际损害：第一轮 §4.2 据此把\"v1/v2 overlay\"判为\"疑似搁置、需确认废弃\"，但真正可能冗余的是启动级 app_new_ui/new_ui，而 v1/v2 请求级 overlay 是在途活跃路（见下条）。若按错误结论去\"回收\"，会误删正在被前端 roadmap 建设的 v2 基础设施。",
+   "fix_hint": "把启动级概念改名以打破碰撞：ui_mode/APP_UI_MODE→app_profile/APP_PROFILE（entrypoint.create_app_with_mode、factory:233、entrypoint:170、system_health:21、相关测试同步）；评估直接删除 app_new_ui.py 改由 app.py 加 --profile 标志（需先改 README/long_gate_manifest/test_registry 等引用）。修 README:34/120 与开发文档的\"现代界面入口\"错误描述。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "medium",
+   "category": "设计冲突/注释错误",
+   "title": "v2 默认下 60 页被标记 degraded 并打\"运行期回退\"告警，但这些页其实正常以 v2 chrome 渲染——遥测语义错误且告警误导",
+   "evidence": [
+    "render_bridge.py:60 overlay=ChoiceLoader([v2_loader, base_loader])，故所有页 {% extends \"base.html\" %} 经 v2_env 先命中 web_new_test/templates/base.html（v2 现代侧边栏 chrome）",
+    "diff 确认 v2 base.html 与 base 真有差异（sidebar-nav + ui_v2_static/style.css）；6 个 per-page 模板与 base 逐字节相同",
+    "render_bridge.py:129-144 _resolve_template_source：页面 body 来自 base_loader 即返回 \"base_fallback\"（只描述 body 来源，不代表 chrome 缺失）",
+    "render_bridge.py:225-232 base_fallback 时强制 ui_template_env_degraded=True 并调用 _warn_v2_render_fallback_once",
+    "render_bridge.py:122 告警文案：\"可能原因：未重新打包/overlay创建失败/V2单页模板缺失/运行旧版本\"——对 60 页的稳态属正常，却描述成故障"
+   ],
+   "problem": "ui_template_source=base_fallback 仅说明\"页面正文模板来自基础 loader\"，但这些页的 chrome 仍由 v2 base.html 提供，渲染完全正常。把它判为 degraded 并打出暗示\"配置坏了\"的 warning，是把设计内的稳态当异常。这正是第一轮\"7/67覆盖、60页静默回退、疑似搁置\"误读的源头：7 指的是 body 镜像数，不是 chrome 覆盖。",
+   "impact": "维护者每次新装/重启后只要访问 personnel/equipment 等任一非镜像页，日志就出现一条吓人的\"V2 模板运行期回退\"warning，引导去排查根本不存在的打包/overlay 故障；base.html meta aps-ui-template-env-degraded 对 60 页恒为 1，污染前端可观测信号。",
+   "fix_hint": "区分\"chrome 来源\"与\"body 来源\"两个维度：当 v2_env 存在且 chrome 走 v2 base 时不应置 ui_template_env_degraded=True；把 base_fallback 重命名为 base_body（或加 ui_chrome_source 字段），并将 _warn_v2_render_fallback_once 仅在 v2_env 真正缺失(v2_env_missing)时触发，正常的 base-body 路径降为 debug 或不记。",
+   "in_flight_conflict": true
+  },
+  {
+   "severity": "medium",
+   "category": "重复/临时拼凑",
+   "title": "6 个 v2 page 模板与 base 逐字节相同且被门禁强制同步，今天对渲染零贡献，只为翻转遥测——是双写税",
+   "evidence": [
+    "tests/regression_mirror_template_sync.py:12-22 强制 6 对(dashboard/batches/batches_manage/config/config_manual/gantt) templates ↔ web_new_test/templates 逐字节相等",
+    "diff 实测：除 base.html 外 6 对全部 SAME（dashboard/batches/config/gantt 等行数一致且内容等同）",
+    "因 v2 chrome 已由 v2 base.html overlay 提供，per-page 镜像存在与否的渲染输出完全一致，唯一差别是 _resolve_template_source 返回 v2 vs base_fallback（render_bridge.py:129-144）",
+    "ui_template_source/ui_template_env_degraded 的唯一消费点是 templates/base.html:6-7 两个 <meta>，无任何逻辑分支消费"
+   ],
+   "problem": "per-page 镜像 + 同步门禁构成\"改一处必改两处否则门禁红\"的双写税，而其当下唯一功能性回报（让那 6 页遥测显示 v2 而非 base_fallback）本身又只喂给两个无人消费的 meta。",
+   "impact": "每次改这 6 个共享页都要在两处同步落地，前端 roadmap 在途特性已实际为此付费（见下证据），增加改动面与门禁红概率，却换不到任何用户可见或逻辑可用的收益。",
+   "fix_hint": "与前端 owner 确认后：要么明确镜像是\"未来 v2 专属页正文\"的脚手架（保留并文档化意图），要么删除 6 个 per-page 镜像与 regression_mirror_template_sync.py，让正文统一走 base loader、chrome 统一走 v2 base.html overlay（配合上一条遥测修正即可无损）。务必先确认，不要当死代码单方删除。",
+   "in_flight_conflict": true
+  },
+  {
+   "severity": "low",
+   "category": "死代码",
+   "title": "_PYINSTALLER_IMPORT_ANCHORS 是 write-only 死元组，从不被读取",
+   "evidence": [
+    "factory.py:55 _PYINSTALLER_IMPORT_ANCHORS = (_scheduler_import_anchor,)",
+    "全仓 grep 仅此一处定义、零读取点（无其他引用）",
+    "真正起 PyInstaller hidden-import 锚定作用的是 factory.py:30 的 module 级 from web.routes import scheduler as _scheduler_import_anchor，与该元组无关"
+   ],
+   "problem": "元组定义后再无任何引用，提供不了它注释暗示的\"打包锚定\"作用——锚定效果完全来自 line 30 的实际 import。",
+   "impact": "误导读者以为存在一套显式锚定机制；纯噪音。",
+   "fix_hint": "删除 factory.py:55 该元组；保留 line 30 的 import 即可（建议加 # noqa/注释说明是 PyInstaller 锚点）。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "low",
+   "category": "死代码/临时拼凑",
+   "title": "runtime_probe.resolve_healthy_endpoint 内两处 health_result.to_capability() 返回值被丢弃，要么 no-op 要么与紧随的日志重复",
+   "evidence": [
+    "runtime_probe.py:191 health_result.to_capability()（返回值未赋值未使用）",
+    "runtime_probe.py:209 health_result.to_capability()（同上）",
+    "to_capability(runtime_probe.py:25-33)：ok 时走 available()（runtime_capabilities.py:34 不记日志）→ 纯丢弃；非 ok 时走 degraded()（runtime_capabilities.py:38-42 记 warning），但紧接着 191/208 又各有一条 launcher_log_warning 记录同类信息"
+   ],
+   "problem": "这两行像是要计算一个 CapabilityResult 但结果被丢，唯一副作用是 degraded() 内的 warning，且与下文显式 launcher_log_warning 重复；ok 路径上则完全是空操作。",
+   "impact": "失败时双重告警，成功时无效语句；显示出 capability 遥测在此处接入了一半就停了。",
+   "fix_hint": "若需要 capability 遥测就把返回值接出去用（如汇总到启动能力面板）；否则删除 runtime_probe.py:191 和 :209 两行，依赖现有 launcher_log_warning 即可。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "low",
+   "category": "过度拆分/职责不清",
+   "title": "web/ui_mode.py 门面 __all__ 重导出 19 个私有符号，外部基本无人消费",
+   "evidence": [
+    "ui_mode.py:44-77 __all__ 含 19 个下划线私有名（_BP_NAME_V2_STATIC/_EXT_KEY_*/_describe_template_name/_resolve_template_source/_read_ui_mode_from_db/_normalize_relative_manual_src 等）",
+    "门面 pin 测试 test_ui_mode.py:88-106 只断言 11 个公开名，不涉及任何私有名",
+    "经 ui_mode_mod.<private> 实际消费的私有名只有 3 个且全在测试：_read_ui_mode_from_db、_EXT_KEY_V2_ENV、_EXT_KEY_V2_RENDER_FALLBACK_WARNED（test_ui_mode.py / regression_ui_mode_startup_guard_observability.py）",
+    "这些测试同时已 import web.render_bridge as render_bridge_mod / web.ui_mode_store，可直接从源模块取"
+   ],
+   "problem": "门面把 render_bridge/ui_mode_request/ui_mode_store/manual_src_security 的 19 个内部符号都通过 __all__ 对外重导出，扩大了\"公开面\"，但生产零消费、测试也只经模块别名碰了 3 个（且可改从源模块取）。",
+   "impact": "公开 API 表面虚胖，掩盖真实契约（11 个公开名），增加后续改私有实现时的顾虑。",
+   "fix_hint": "把 ui_mode.py 的 import 块与 __all__ 收敛到 11 个公开名；将测试里的 ui_mode_mod._read_ui_mode_from_db / _EXT_KEY_* 改为从 web.ui_mode_store / web.render_bridge 直接取。注意 manual_src_security 的公开函数(safe_url_for/get_manual_url 等)仍需保留转发。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "low",
+   "category": "其他",
+   "title": "render_ui_template 每请求向共享 Jinja env.globals 重复写入 url_for 等回调",
+   "evidence": [
+    "render_bridge.py:201-205 每次渲染都 env.globals.setdefault/赋值 url_for/get_help_card/get_manual_url 等",
+    "init_ui_mode 已在启动期对 app.jinja_env 与 v2_env 注入同一批 globals（render_bridge.py:68-93）"
+   ],
+   "problem": "进程级共享的 env.globals 在每个请求被重复写入相同回调（v1 模式写共享 app.jinja_env），属启动期一次性工作的请求期重复，且对共享对象的逐请求写入略有竞态味道（值稳定故无害）。",
+   "impact": "微小性能浪费与可读性噪音；让人误以为这些 globals 必须每请求刷新。",
+   "fix_hint": "依赖 init_ui_mode 的启动期注入，删除/精简 render_bridge.py:201-205 的请求期重复注入；若是为 with-context 宏防御，加注释说明并仅 setdefault 一次。",
+   "in_flight_conflict": false
+  }
+ ],
+ "cleanup": [
+  "删除 factory.py:55 死元组 _PYINSTALLER_IMPORT_ANCHORS（保留 line 30 的 import 锚点并加注释）。",
+  "删除 runtime_probe.py:191 与 :209 两处被丢弃的 health_result.to_capability() 调用（或将 capability 接出真正使用）。",
+  "收敛 web/ui_mode.py 的 __all__ 与重导入到 11 个公开名，删除 19 个私有重导出；把测试里经 ui_mode_mod 访问的 _read_ui_mode_from_db/_EXT_KEY_V2_ENV/_EXT_KEY_V2_RENDER_FALLBACK_WARNED 改为从 web.ui_mode_store / web.render_bridge 直接取。",
+  "破除启动级 ui_mode 与请求级 v1/v2 的命名碰撞：ui_mode/APP_UI_MODE→app_profile/APP_PROFILE（entrypoint/factory:233/entrypoint:170/system_health:21 同步）；评估把 app_new_ui.py 折叠进 app.py 加 --profile 标志（先处理 README/long_gate_manifest/test_registry 引用）。",
+  "修正文档错误：README.md:34/120 及开发文档把 app_new_ui.py 称\"现代界面入口\"是错的——v2 现代 UI 是 app.py 的默认渲染结果。",
+  "[需前端 owner 确认，勿当死代码删] 修正 v2 遥测语义：base-body 页不再置 ui_template_env_degraded=True、_warn_v2_render_fallback_once 仅在 v2_env 真缺失时触发，避免 60 页正常路径打误导告警。",
+  "[需前端 owner 确认，勿当死代码删] 评估去掉 6 个 per-page v2 镜像与 regression_mirror_template_sync.py 的双写税（chrome 已由 v2 base.html overlay 覆盖，删后配合遥测修正可无损）。",
+  "精简 render_bridge.py:201-205 的请求期 env.globals 重复注入，依赖 init_ui_mode 启动期注入。"
+ ]
+}

@@ -1,0 +1,217 @@
+{
+ "key": "web-viewmodels",
+ "partition": "web/viewmodels",
+ "score": 4,
+ "design": "Web 展示装配层，57 文件 ~14.6k 行，把 service/repo 输出转成模板可直接渲染的 dict/dataclass。分层红线确属硬：实测 0 裸 SQL、0 import data.repositories、仅 18 条边指向 core.models（纯标签/解析模型）。两大子族：(1) page_manuals_*（18 文件，约占一半 LOC）——静态帮助内容注册表，所有域文件统一从 page_manuals_common 取 _card/_section/_topic 等共享构造器，由 page_manuals.py 经 page_manuals_registry 的 ENDPOINT_TO_MANUAL_ID 分发，零 helper 复制，是教科书式共享构造器模式。(2) scheduler_/dashboard_/workbench 装配族——在途前端工作台 roadmap 的产物（feature 1-7 已 done）。核心枢纽是 scheduler_workbench_links.py（build_workbench_plan_context + build_workbench_link）+ scheduler_workbench_link_query.py（_TARGET_QUERY_SPECS 数据驱动的 URL 查询装配），被 dashboard/navigation/reports/gantt-detail/resource-dispatch 五处装饰器复用。另有 analysis VM 聚合（scheduler_analysis_vm 编排 12 个子模块）、摘要展示链、降级提示器、资源派工装饰器。整体职责边界清楚、装配逻辑数据驱动，债主要在迁移/横向新建留下的复制与命名漂移，非结构性腐烂。",
+ "chains": [
+  "路由 → build_analysis_context (scheduler_analysis_vm.py:71) → 扇出到 candidates/diagnostics/metrics/trends/freeze/degradation_presenter/summary_display 七个子 VM，最后组成模板上下文 dict",
+  "build_workbench_plan_context (scheduler_workbench_links.py:177) ← dashboard_workbench/scheduler_gantt_task_detail/scheduler_reports_workbench/scheduler_resource_dispatch_execution 四处装配入口；→ build_workbench_link (links.py:301) → query_for_target (link_query.py:264) 按 _TARGET_QUERY_SPECS 拼 URL",
+  "current_workbench_navigation_context (scheduler_navigation_links.py:74) 直接读 flask.request.args → build_workbench_plan_context → build_workbench_navigation_links/build_scheduler_navigation_links/build_report_navigation_links",
+  "build_summary_display_state (scheduler_summary_display.py:315) → build_result_state+counts_from_summary (scheduler_summary_result_state) + build_primary_degradation/build_summary_degradation_messages (scheduler_degradation_presenter.py:147/151)",
+  "build_latest_schedule_history_panel_state (scheduler_batches_page.py:374) → build_summary_display_state + _latest_algo_items + latest_*_notice_items (scheduler_batches_notices) → 装进 SchedulerBatchesPageViewModel.as_template_context",
+  "build_page_manual_bundle (page_manuals.py:89) → build_manual_for_endpoint → resolve_manual_id(registry) → build_manual_payload_from_topic (page_manuals_common.py:236) → _clone_sections/_expand_fragments(SHARED_FRAGMENTS)"
+ ],
+ "good": [
+  "分层红线在本层真实成立：实测 57 文件 0 裸 SQL、0 import data.repositories，仅 18 条边指向 core.models（纯标签/解析模型）——除 scheduler_reports_workbench 一处 service 泄漏外，层职责干净度极高",
+  "page_manuals 子族（18 文件）是教科书式共享构造器模式：所有域文件统一从 page_manuals_common import _card/_section/_topic/build_manual_payload_from_topic，零 helper 复制，由 registry 表驱动分发，新增页面只需加一条 topic + 一行 endpoint 映射",
+  "scheduler_workbench_link_query.py 的 _TARGET_QUERY_SPECS 设计优雅：把 11 个目标页的 URL 参数差异（plan_style/date_style/batch_position/resource_style）抽成声明式规格表，11 页共用一套 _append_query_from_spec 装配，扩展新目标页只改数据不改逻辑",
+  "_text 的 9 份复制虽是噪声，但经逐一比对全部字节级同体（return str(value or '').strip()），合并为公共 util 零行为风险——是安全去重而非危险分叉，比派工区那种 4 种名字的复制已收敛得多"
+ ],
+ "findings": [
+  {
+   "severity": "high",
+   "category": "跨层违规",
+   "title": "viewmodel 直接 import core.services（突破零 import service 红线，codemap 漏抓）",
+   "evidence": [
+    "web/viewmodels/scheduler_reports_workbench.py:6: from core.services.report.report_number_parsing import parse_optional_report_float",
+    "core/services/report/report_number_parsing.py:1（被引函数所在层）",
+    "scheduler_reports_workbench.py:404 实际调用点 _optional_number"
+   ],
+   "problem": "第一轮审计与 codemap layering.json 都断言 viewmodel 零 import service（57 文件全净）。但 scheduler_reports_workbench.py 第 6 行确凿 import 了 core.services.report 下的解析函数。codemap 的 import_edges.json 对这条边漏抓（只记录了 core.infrastructure.errors 与 workbench_links 两条），导致静态底座给出 0 违规 的假阴性。被引的 parse_optional_report_float 本身是纯解析（无 DB/IO），运行无害，但它打破了 viewmodel 只依赖 models/infra、不依赖 service 这条地基红线。",
+   "impact": "红线一旦有一个真实缺口，后续 LLM 会照此先例继续从 service 往 viewmodel 拉东西，分层约束逐步失效；且暴露 codemap 静态边抓取在 viewmodels 上有盲点，不能仅凭 layering.json=0 就认定该层绝对干净。",
+   "fix_hint": "把 report_number_parsing.py 从 core/services/report 下移到 core/shared 或 core/models（它只依赖 core.shared.strict_parse + core.infrastructure.errors，本就不该在 service 层）；另两个消费者 report_engine.py:28、reports_export_support.py:10 同步改 import。或退一步在 viewmodel 内联这一个 float 解析、删掉跨层 import。修完让 codemap 重新校验确认 viewmodels→services 边为 0。",
+   "in_flight_conflict": true
+  },
+  {
+   "severity": "medium",
+   "category": "命名混乱",
+   "title": "同名 public safe_float/safe_int 三套、行为分叉（静默降级 vs 抛异常）",
+   "evidence": [
+    "web/viewmodels/scheduler_analysis_trends.py:9 safe_float / :52 safe_int —— try/except 静默返回 default",
+    "web/viewmodels/scheduler_analysis_diagnostic_helpers.py:142 safe_float / :127 safe_int —— 非有限值时 raise NonFiniteDiagnosticNumber",
+    "web/viewmodels/scheduler_analysis_metrics.py:13 safe_float —— 直接委托 trends 版",
+    "scheduler_analysis_vm.py:14,177-178 把 trends 版 safe_float/safe_int 列入 __all__ 再导出"
+   ],
+   "problem": "三个文件各有 public safe_float/safe_int，名字一字不差但语义相反：trends/metrics 遇到坏数据静默吞成默认值，diagnostic_helpers 遇到非有限数字主动抛 NonFiniteDiagnosticNumber。它们又都通过 scheduler_analysis_vm 的 __all__ 对外导出（测试已 import safe_float）。",
+   "impact": "调用方按名字 import 时无法预期是坏数据变 0 还是坏数据炸，跨文件复制粘贴极易拿错版本；这正是审计主旋律 3 同名函数静默漂移在本层的复现。",
+   "fix_hint": "保留一个静默版作为 safe_float/safe_int 公共实现（落到公共 util），把会抛异常的版本显式改名（如 strict_diagnostic_float / require_finite_float）让分叉在名字上可见；diagnostic_helpers 内部仍用 strict 版，其余复用静默版。",
+   "in_flight_conflict": true
+  },
+  {
+   "severity": "medium",
+   "category": "重复",
+   "title": "_text(9 份)/_has_value(4 份)/_safe_int(2 份)/_parse_datetime(2 份) 私有 helper 复制",
+   "evidence": [
+    "_text 同体 9 份：dashboard_workbench.py:21、scheduler_analysis_action_hub.py:21、scheduler_gantt_task_detail.py:8、scheduler_navigation_links.py:33、scheduler_reports_workbench.py:13、scheduler_resource_dispatch.py:66、scheduler_resource_dispatch_execution.py:28、scheduler_workbench_link_query.py:93、scheduler_workbench_links.py:93",
+    "_has_value 同体 4 份：navigation_links.py:37、reports_workbench.py:17、workbench_link_query.py:97、workbench_links.py:97",
+    "_safe_int 分叉 2 份：dashboard_workbench.py:25 (int(value or default)) vs scheduler_degradation_presenter.py:29 (int(value or 0))",
+    "_parse_datetime 分叉 2 份：dashboard_workbench.py:70（失败 raise ValueError）vs scheduler_resource_dispatch_execution.py:177（失败 return None）"
+   ],
+   "problem": "workbench/dispatch 族横向新建时每个文件各自重抄微型 helper。_text(9)/_has_value(4) 是字节级同体（合并零风险）；_safe_int 两份默认值处理细微不同；_parse_datetime 两份失败语义相反（一个抛一个返 None）。",
+   "impact": "_text/_has_value 纯噪声，拖累改一处要改九处；_safe_int/_parse_datetime 的分叉属隐性正确性风险——复制时拿错会改变失败行为。是 codemap dup_bodies 簇 768f9341/1493b9d4 的实证。",
+   "fix_hint": "建 web/viewmodels/_view_helpers.py（或复用 core/shared）放 canonical _text/_has_value/_positive_int，9+4 份一次替换（同体零行为变化）；_safe_int 统一一份；_parse_datetime 两个语义不同，保留两份但分别改名 parse_datetime_or_raise / parse_datetime_or_none 让差异显式。",
+   "in_flight_conflict": true
+  },
+  {
+   "severity": "medium",
+   "category": "重复",
+   "title": "period_preset_label/resource_type_label/scope_type_label 标签函数与字典重复且大小写策略分叉",
+   "evidence": [
+    "period_preset_label 两份：scheduler_workbench_links.py:118（不 lower）vs scheduler_resource_dispatch.py:187（.lower()）",
+    "_PERIOD_PRESET_LABELS 字典各一份：workbench_links.py:57、resource_dispatch.py:9（内容相同）",
+    "resource_type_label (workbench_links.py:113，值带视角后缀) vs scope_type_label (resource_dispatch.py:192，值无后缀)，配 _RESOURCE_TYPE_LABELS vs _SCOPE_TYPE_LABELS 两份字典"
+   ],
+   "problem": "period_preset_label 同名同义两份，但一份对入参 .lower() 一份不 lower——传入 Week 时两处结果不同（一处命中按周一处回退原值）。resource_type_label / scope_type_label 是同一 operator/machine/team 域的两套标签函数+两套字典，仅展示后缀不同。",
+   "impact": "period_preset_label 的大小写分叉是潜在显示 bug；两套 type-label 字典并存，新增资源类型时易漏改。",
+   "fix_hint": "period_preset_label 合并一份并统一大小写策略（建议 .lower()）；resource_type_label/scope_type_label 合并为带 style 参数的函数或共用一份基础字典 + 加视角后缀的薄封装。",
+   "in_flight_conflict": true
+  },
+  {
+   "severity": "medium",
+   "category": "重复",
+   "title": "排产策略/模式/状态标签表三处重复定义",
+   "evidence": [
+    "mode 标签：scheduler_batches_page.py:23 _ALGO_MODE_LABELS、scheduler_analysis_overview.py:26 build_analysis_labels[mode]（improve/greedy/single 同义）",
+    "strategy 标签：scheduler_history_summary.py:19 _STRATEGY_LABELS、scheduler_analysis_overview.py:8 build_analysis_labels[strategy]",
+    "status 标签：scheduler_history_summary.py:29 _VERSION_OPTION_STATUS_LABELS 与 overview[status] 部分重叠"
+   ],
+   "problem": "排产策略、模式、状态的中文标签表在 batches_page、history_summary、analysis_overview 里各抄一份，2-3 份并存。",
+   "impact": "标签文案改一处忘改另一处会让批次页、历史页、分析页对同一策略显示不同中文，属审计主旋律 4 命名/文案漂移。",
+   "fix_hint": "把这些标签表收口到单一标签模块（扩展现有 scheduler_analysis_labels.py 或新建 scheduler_label_tables.py），各 VM 统一引用；strict 校验逻辑保留各自文件，只共享数据表。",
+   "in_flight_conflict": true
+  },
+  {
+   "severity": "medium",
+   "category": "命名混乱",
+   "title": "workbench plan_role_label 与 core 权威 plan_role_label 同名遮蔽",
+   "evidence": [
+    "web/viewmodels/scheduler_workbench_links.py:101 def plan_role_label(...)，其 _PLAN_ROLE_LABELS(:38) 三标签",
+    "core/models/schedule_plan_role.py:51 def plan_role_label(role)，PLAN_ROLE_LABELS(:14) 三标签与上完全一致",
+    "candidate_helpers.py:5 从 core.models.schedule_plan_role import plan_role_label（用 core 版）；workbench 版仅在 links 内部 _public_plan_role_label 用"
+   ],
+   "problem": "两个 plan_role_label 同名、标签字典内容一字不差，分处 core/models 与 web/viewmodels；workbench 版是 core 版超集封装（多了预览/场景名处理）却没复用 core 字典而是又抄一份。同一文件群里 candidate_helpers 用 core 版、workbench_links 用自己版。",
+   "impact": "读者无法判断哪个权威；三标签表两处独立维护，改文案会分叉。",
+   "fix_hint": "workbench 版改名 workbench_plan_role_label（或 public_plan_role_label）消除遮蔽，其基础映射改为复用 core 的 PLAN_ROLE_LABELS，删本地副本。",
+   "in_flight_conflict": true
+  },
+  {
+   "severity": "low",
+   "category": "死代码",
+   "title": "dashboard_workbench._risk_card 定义后无调用（抽取到 _cards 后的残骸）",
+   "evidence": [
+    "web/viewmodels/dashboard_workbench.py:148 def _risk_card(...) 定义",
+    "grep 全仓：dashboard_workbench.py 内仅第 148 行出现，无任何调用点",
+    "真正在用的是 dashboard_workbench_cards.py:15 _risk_card（被 build_dashboard_risk_cards 多次调用）",
+    "附带 _LOAD_WARNING_RATIO/_LOAD_DANGER_RATIO 在两文件各定义一份"
+   ],
+   "problem": "风险卡构造逻辑已抽到 dashboard_workbench_cards.py，但 dashboard_workbench.py 里旧的 _risk_card 函数（18 行）忘删，纯死代码；两个负荷阈值常量也在两文件各留一份。",
+   "impact": "死函数误导读者以为父文件还自己造卡；阈值双份将来调参易只改一处。",
+   "fix_hint": "删除 dashboard_workbench.py:148-165 _risk_card；_LOAD_*_RATIO 只保留 cards 文件那份。",
+   "in_flight_conflict": true
+  },
+  {
+   "severity": "low",
+   "category": "死代码",
+   "title": "page_manuals.py 导入 SHARED_FRAGMENTS 但从未使用",
+   "evidence": [
+    "web/viewmodels/page_manuals.py:6 from .page_manuals_common import (SHARED_FRAGMENTS, ...)",
+    "page_manuals.py 全文 grep SHARED_FRAGMENTS 仅第 6 行（import），无使用点；文件无 __all__ 故非有意 re-export"
+   ],
+   "problem": "page_manuals.py 把 SHARED_FRAGMENTS 一起导进来却没用到（真正使用者是 page_manuals_common 内部的 _expand_fragments）。",
+   "impact": "无害但属噪声 import，且让人误以为 page_manuals 对外暴露 SHARED_FRAGMENTS。",
+   "fix_hint": "从 page_manuals.py:6 的 import 列表删掉 SHARED_FRAGMENTS。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "low",
+   "category": "命名混乱",
+   "title": "文件后缀漂移：_vm/_page/_panel/_presenter/_display 混用表达同一页面 VM 角色",
+   "evidence": [
+    "scheduler_analysis_vm.py(_vm) / scheduler_batches_page.py(_page) / system_logs_vm.py(_vm) / system_backup_page.py(_page) / scheduler_summary_display.py(_display) / scheduler_config_panel.py(_panel) / scheduler_degradation_presenter.py(_presenter)",
+    "ls 统计：_vm×2、_page×2、_links×2、_helpers×2、_cards×2，其余 _display/_panel/_presenter/_state 各 1"
+   ],
+   "problem": "文件名后缀无统一约定：analysis 走 _vm、batches/backup 走 _page、logs 又走 _vm，summary 走 _display，degradation 走 _presenter，语义重叠。",
+   "impact": "看文件名无法稳定推断职责，新文件落点全凭手感，长期加剧目录熵——审计主旋律 4 本层表现。",
+   "fix_hint": "定后缀约定（页面顶层统一 _page 或 _vm，子区块 _panel/_section，纯格式化 _presenter）并落档 ARCHITECTURE，存量逐步改名（无行为变化）。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "low",
+   "category": "命名混乱",
+   "title": "类名后缀 State/PanelState/ViewModel/ViewResult/PageState 五套并存",
+   "evidence": [
+    "scheduler_batches_page.py:40 BatchesFilterState / :47 LatestScheduleHistoryPanelState / :70 SchedulerBatchesPageViewModel",
+    "scheduler_run_view_result.py:18 RunScheduleViewResult",
+    "scheduler_config_panel.py:16 SchedulerConfigPanelState、system_logs_vm.py:72 SystemLogsPageState、system_backup_page.py:77 SystemBackupPageState"
+   ],
+   "problem": "承担相近模板数据载体角色的 dataclass 后缀有 State/PanelState/ViewModel/ViewResult/PageState 五种，同一文件 batches_page 同时出现 FilterState、PanelState、PageViewModel 三种。",
+   "impact": "后缀不再传达页面级还是子面板级的信息，读者要逐个点进去看；与审计主旋律 4 一致。",
+   "fix_hint": "约定：页面级聚合 *PageViewModel，子面板 *PanelState，筛选参数 *FilterState，一次性结果 *Result；存量重命名（影响 import 与测试需同步）。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "low",
+   "category": "职责不清",
+   "title": "navigation_links 在 viewmodel 内直接读 flask.request（57 文件中唯一请求耦合）",
+   "evidence": [
+    "web/viewmodels/scheduler_navigation_links.py:6 from flask import has_request_context, request",
+    ":52 _request_arg 直接 request.args.get；:74 current_workbench_navigation_context、:220 preserved_report_context_fields 都依赖请求上下文",
+    "对比：其余 56 个 viewmodel 全部纯函数，grep 无 flask/request/g"
+   ],
+   "problem": "navigation_links 把从 request.args 取参数这层职责放进了 viewmodel，使该 VM 只能在请求上下文内运行、难以纯函数测试，与本层其余 56 文件参数由 route 传入的范式不一致。",
+   "impact": "破坏 viewmodel 层无框架耦合、可独立测试的一致性；render_bridge.py 直接 import 它也把请求耦合带进渲染桥。属在途 workbench-nav 产物。",
+   "fix_hint": "把 request.args 读取上移到 route，navigation 的 build_* 函数改为接收 context dict 入参；或保留薄 request 适配但把核心 build 逻辑拆成纯函数。需与在途 workbench-nav 协调，勿当独立债强改。",
+   "in_flight_conflict": true
+  },
+  {
+   "severity": "low",
+   "category": "命名混乱",
+   "title": "下划线私有函数被列入 __all__ 且仅测试消费",
+   "evidence": [
+    "scheduler_analysis_vm.py:171-172 __all__ 含 _comparison_metric_from_algo、_objective_key_from_algo_objective",
+    "_objective_key_from_algo_objective 生产无调用（仅 vm 内定义+__all__+测试），grep web/core 非测试零引用",
+    "_comparison_metric_from_algo 仅作参数传给 build_selected_details + 4 个 regression import",
+    "scheduler_analysis_compat.py:48-51 __all__ 同样导出 _best_score_schema_display/_compat_fallback_state（带下划线）"
+   ],
+   "problem": "带下划线的私有函数被显式放进 __all__ 公开，唯一外部消费者是测试。_objective_key_from_algo_objective 更是连测试都只间接用、生产零调用的薄封装（仅 return objective_key_from_objective(value)）。",
+   "impact": "私有/公有约定失效（下划线不再表示私有）；测试钉死内部函数阻碍重构——主旋律 1/4 本层表现。",
+   "fix_hint": "要么去下划线转正为公有 API，要么把测试改测公有入口 build_analysis_context 后从 __all__ 移除；_objective_key_from_algo_objective 这种纯转发薄封装可直接删、调用点改用 objective_key_from_objective。",
+   "in_flight_conflict": true
+  },
+  {
+   "severity": "low",
+   "category": "死代码",
+   "title": "ENDPOINT_OVERRIDES 永久空 dict，全链路穿透仅靠测试守护",
+   "evidence": [
+    "web/viewmodels/page_manuals_registry.py:60 ENDPOINT_OVERRIDES: Dict[str, Dict[str, Any]] = {}（空）",
+    "page_manuals.py:64 build_manual_for_endpoint 用 ENDPOINT_OVERRIDES.get(key) 传给 build_manual_payload",
+    "tests/regression_page_manual_registry.py:467,580 有针对它的契约测试"
+   ],
+   "problem": "ENDPOINT_OVERRIDES 是从未被填充的空字典，但 build_manual_for_endpoint→build_manual_payload→_apply_payload_overrides 整条 overrides 链路都为它存在且有测试守护。属预留扩展点。",
+   "impact": "轻微：空扩展点+穿透参数让 build 链路比实际需要复杂；但有测试契约、属有意预留，不算硬债。",
+   "fix_hint": "若近期无 per-endpoint override 需求，可删除 ENDPOINT_OVERRIDES 与 overrides 参数链以简化；若保留作扩展点则维持现状，优先级最低。",
+   "in_flight_conflict": false
+  }
+ ],
+ "cleanup": [
+  "新建 web/viewmodels/_view_helpers.py（或复用 core/shared），放 canonical _text/_has_value/_positive_int，替换 _text×9、_has_value×4 等同体副本（零行为变化，先做最安全）",
+  "修复唯一跨层泄漏：把 core/services/report/report_number_parsing.py 下移到 core/shared 或 core/models（只依赖 strict_parse+errors），同步改 scheduler_reports_workbench.py:6 / report_engine.py:28 / reports_export_support.py:10 三处 import",
+  "删除死代码 dashboard_workbench.py:148-165 _risk_card；移除 page_manuals.py:6 未使用的 SHARED_FRAGMENTS import；_LOAD_*_RATIO 阈值去掉 dashboard_workbench.py 重复份",
+  "统一同名 safe_float/safe_int 策略：保留一个静默降级版作公共实现，把 scheduler_analysis_diagnostic_helpers 的抛异常版显式改名（如 require_finite_float），让坏数据炸 vs 变默认值在名字上可见",
+  "合并标签表：period_preset_label 两份合一并统一 .lower()；resource_type_label/scope_type_label 合并；strategy/mode/status 三处标签表收口到单一标签模块",
+  "消除 plan_role_label 同名遮蔽：workbench_links 版改名 workbench_plan_role_label 并复用 core.models 的 PLAN_ROLE_LABELS，删掉本地三标签副本",
+  "建立并落档后缀约定（文件 _page/_panel/_presenter；类 *PageViewModel/*PanelState/*FilterState/*Result），存量按约定逐步改名（纯命名收口）",
+  "清理私有/公有约定：删除纯转发的 _objective_key_from_algo_objective，把测试改测公有入口后从 scheduler_analysis_vm/__all__ 与 scheduler_analysis_compat/__all__ 移除带下划线的导出名",
+  "注：以上多数文件属在途前端工作台 roadmap（feature 1-7 已 done）产物，清理需与在途线协调节奏，去重/改名可做但勿把在途结构当债务推倒"
+ ]
+}

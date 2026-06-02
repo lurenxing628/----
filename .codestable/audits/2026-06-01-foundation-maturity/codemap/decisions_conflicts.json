@@ -1,0 +1,926 @@
+{
+ "verified_boundaries": [
+  {
+   "id": "L1",
+   "decision_statement": "决定：排产算法是纯计算内核，只能被上层调用，绝不反向依赖业务服务层——保证算法可独立测试/替换、不被 Flask/DB/请求上下文污染。",
+   "guard_status": "无守护",
+   "guard_evidence": [
+    "tests/test_architecture_fitness.py: 全文件无任何函数扫描 core/algorithms 的 import；最接近的 test_no_circular_service_dependencies(:349-376) 只在 core/services 内部建依赖图，根本不看 algorithms 层",
+    "BOUNDARY-CHARTER.md:40 自称『codemap AST 全量 0 违规 + fitness 隐含』，但 codemap 只是一次性审计产物 .codestable/audits/2026-06-01-foundation-maturity/codemap/layering.json，grep 证实未被任何 gate/test/pre-commit/.pre-commit-config.yaml 引用，是快照不是持续门禁；『fitness 隐含』在 test_architecture_fitness.py 里查无对应 assert"
+   ],
+   "code_enforced": true,
+   "code_evidence": [
+    "独立 AST 全量扫描 core/algorithms → 0 处 import core.services（生产现状成立）",
+    "方向正确反证：core/services/scheduler/graph/ready_queue.py:9、core/services/scheduler/run/optimizer_config.py:6-7 由 service 向下 import algorithms",
+    "core/algorithms/greedy/scheduler.py:18-31 仅 import core.algorithms.* 与 core.infrastructure.errors，无任何 core.services"
+   ],
+   "decision_locations": [
+    "core/algorithms/（整层，AST 实证不含 core.services 依赖）",
+    "core/services/scheduler/run/optimizer_config.py、core/services/scheduler/graph/ready_queue.py（上层向下单向调用算法）",
+    ".codestable/audits/2026-06-01-foundation-maturity/codemap/layering.json（一次性快照声明 0 违规）"
+   ],
+   "notes": "生产代码当前 0 违规，但完全靠自觉——没有任何持续运行的门禁守这条线。一旦某个算法文件 import 了 service，跑 pytest/质量门禁不会变红。这是 L1-L10 里『代码干净但岗哨缺位』的典型，与 L8『代码已脏且岗哨缺位』形成对比。"
+  },
+  {
+   "id": "L2",
+   "decision_statement": "决定：领域模型是最底层数据契约，只依赖标准库与模型内部，绝不依赖 services/data/web——任何层都能安全 import 模型而不引入循环或副作用。",
+   "guard_status": "无守护",
+   "guard_evidence": [
+    "tests/test_architecture_fitness.py: 无任何函数扫描 core/models 的 import 方向（与 L3 viewmodels 守护对比鲜明——viewmodels 有 test_viewmodels_do_not_import_... 而 models 没有对等物）",
+    "BOUNDARY-CHARTER.md:41 自称『codemap AST 0 违规』，同 L1：依据是一次性 codemap 快照（.codestable/audits/.../codemap/layering.json），未接入持续门禁"
+   ],
+   "code_enforced": true,
+   "code_evidence": [
+    "独立 AST 全量扫描 core/models → 0 处 import core.services / data / web（生产现状成立）",
+    "core/models/batch.py 非标准库 import 过滤后为空（不引用任何上层）",
+    "方向正确反证：core/services/scheduler/gantt_adjustment_validation_service.py:7、core/services/scheduler/batch_write_rules.py:6 由 service 向下 import core.models"
+   ],
+   "decision_locations": [
+    "core/models/（整层，AST 实证不含 services/data/web 依赖）",
+    "core/services/* 向下 import core.models.*（依赖方向正确）",
+    ".codestable/audits/2026-06-01-foundation-maturity/codemap/layering.json"
+   ],
+   "notes": "同 L1：生产 0 违规但无持续岗哨。models 是被最广泛 import 的底座，一旦它反向依赖 service 极易引入循环，却恰恰没有门禁。建议与 L1/L8 一起补一个 AST 分层方向门禁。"
+  },
+  {
+   "id": "L3",
+   "decision_statement": "决定：ViewModel 必须是纯数据变换层，只允许依赖标准库与领域模型(core.models*)及同层相对导入，不得碰 flask/service/repository/routes——保证视图模型可脱离 Web/DB 单测、不下沉业务逻辑。",
+   "guard_status": "在岗-强",
+   "guard_evidence": [
+    "tests/test_architecture_fitness.py:225-314 test_viewmodels_do_not_import_flask_or_services_or_repositories_or_routes，assert 在 :314。基于 AST（非正则）：白名单语义只放行 stdlib + core.models* + 相对导入；拦截 flask/web/data/core.*；覆盖 ast.Import / ast.ImportFrom / 动态 __import__/import_module / from x import *",
+    "实测此 assert 当前为 RED：捕获 3 处真实越界——web/viewmodels/scheduler_reports_workbench.py:5 (core.infrastructure.errors)、:6 (core.services.report.report_number_parsing)、web/viewmodels/scheduler_navigation_links.py:6 (from flask import g, has_request_context, request)"
+   ],
+   "code_enforced": true,
+   "code_evidence": [
+    "web/viewmodels/ 有 57 个 .py（门禁非空跑）",
+    "越界文件是本分支新增(git status: A)，HEAD 提交态 0 违规（git show HEAD 各 viewmodel 文件无 flask/core.services 导入）——即门禁基线干净、当前工作树被新代码破坏",
+    "越界文件是真生产件：web/routes/reports.py:28-29 import scheduler_navigation_links / scheduler_reports_workbench"
+   ],
+   "decision_locations": [
+    "tests/test_architecture_fitness.py:225-314（岗哨本体）",
+    "web/viewmodels/（57 文件受管层）",
+    "web/viewmodels/scheduler_reports_workbench.py:5-6、web/viewmodels/scheduler_navigation_links.py:6（当前违例点）"
+   ],
+   "notes": "这是本组最重要的发现：岗哨被实证证明是『强且在岗』——它此刻正拦着 3 处新写的越界 import。但同时戳穿了 BOUNDARY-CHARTER §2『AST 全量验证 0 违规』对当前工作树是假的（仅对 HEAD 成立）。结论双向：门禁可信，charter 的『0 违规』结论已过期。新代码 scheduler_navigation_links 把 flask request/g 写进了 viewmodel 层，需回退到路由解析后传参。"
+  },
+  {
+   "id": "L4",
+   "decision_statement": "决定：路由层禁止直连 Repository，数据访问必须经 Service 中转——历史白名单已全部清零，新增路由一律不得越层 import 数据仓储。",
+   "guard_status": "在岗-强",
+   "guard_evidence": [
+    "tests/test_architecture_fitness.py:169-194 test_routes_do_not_import_repository（assert :191）+ :197-222 test_web_helpers_do_not_import_repository（assert :219）。known_imports 白名单已置空集(:177, :199)——历史豁免全部清理，任何 Route/web 顶层模块 import *Repository 都会红",
+    "判定逻辑：行以 from/import 开头 且 含子串 'repositories' 且 正则 \\b(\\w+Repository)\\b 命中"
+   ],
+   "code_enforced": true,
+   "code_evidence": [
+    "生产实测：web/routes/ 全目录 grep 'repositories' → 0 命中（连子串都没有），白名单空集下 0 违规",
+    "部件 PartService 等经 g.services / 直接 Service 构造进入路由（web/routes/process_excel_routes.py:189 svc=PartService(g.db,...)），未见 Repository 直连"
+   ],
+   "decision_locations": [
+    "tests/test_architecture_fitness.py:169-222（两个岗哨 + 空白名单）",
+    "web/routes/（受管层，0 命中）"
+   ],
+   "notes": "岗哨强、白名单已清零是加分项。唯一盲点：判定要求同一行同时出现子串 'repositories' 与类名 *Repository——若有人写 from data.repositories.foo import some_lower_symbol（小写符号、无 Repository 类名）可绕过；但生产中 routes 连 'repositories' 子串都为 0，盲点未被触发。"
+  },
+  {
+   "id": "L5",
+   "decision_statement": "决定：路由层禁止直接执行 SQL，数据库游标/连接的 execute/fetch 不得出现在路由——路由只编排，数据访问下沉到 Repository。",
+   "guard_status": "在岗-弱",
+   "guard_evidence": [
+    "tests/test_architecture_fitness.py:143-153 test_routes_do_not_execute_sql_directly，assert :153。正则 \\b(cursor|conn)\\.(execute|fetchone|fetchall)\\b",
+    "弱点：只认字面量名为 cursor 或 conn 的变量。db/g.db/self.conn/connection/handle 等其它命名的句柄调用 execute 全部漏网；也不拦裸 SQL 字符串字面量（无对应 cursor/conn.execute 时）；executemany 未列入"
+   ],
+   "code_enforced": true,
+   "code_evidence": [
+    "生产实测：web/routes/ 全目录 0 处 .execute/.fetchone/.fetchall 调用、0 处 SELECT/INSERT/UPDATE/DELETE 关键字",
+    "因此该边界今日成立——但成立靠的是路由本就没写 SQL，而非靠这条正则把得严"
+   ],
+   "decision_locations": [
+    "tests/test_architecture_fitness.py:143-153（岗哨本体）",
+    "web/routes/（受管层，0 SQL）"
+   ],
+   "notes": "岗哨在岗但强度弱：正则把守面窄，换个连接变量名即可绕过。今日绿是因生产路由零 SQL（L4 已把仓储/数据访问挡在路由外），不是因为这条正则严密。与 L4 联防尚可，单独看 L5 是脆的。"
+  },
+  {
+   "id": "L6",
+   "decision_statement": "决定：Service 层不得感知 Web 请求对象(flask.request)——请求数据必须由路由解析后以普通参数传入服务，保证服务可脱离 HTTP 上下文被调用/测试。",
+   "guard_status": "在岗-弱",
+   "guard_evidence": [
+    "tests/test_architecture_fitness.py:156-166 test_services_do_not_import_flask_request，assert :166。正则 from\\s+flask\\s+import\\s+.*\\brequest\\b",
+    "弱点：只拦『from flask import ... request』这一种写法。漏 import flask + flask.request、漏 from flask import current_app/g/has_request_context、漏 from flask import request as r 别名。边界名号称『不导入 flask.request』，实际只焊死了一种语法形态"
+   ],
+   "code_enforced": true,
+   "code_evidence": [
+    "生产实测 core/services/ 全目录：import flask=0、flask.request/request.args等=0、from flask import=0、current_app/has_request_context/g=0——Service 层对 flask 完全零接触",
+    "故边界今日成立，但成立面远宽于正则把守面"
+   ],
+   "decision_locations": [
+    "tests/test_architecture_fitness.py:156-166（岗哨本体）",
+    "core/services/（受管层，零 flask 接触）"
+   ],
+   "notes": "岗哨在岗但强度弱：只堵一种 import 形态。讽刺的是真正危险的 from flask import g / current_app / has_request_context（同样把请求上下文下沉到 service）反而不拦。今日绿靠生产 service 对 flask 零接触，而非正则严密。注意 L3 刚发现的新文件已把 from flask import g, has_request_context, request 写进 viewmodel——若类似写法漏到 service，L6 这条正则只在写成 import request 时才会红。"
+  },
+  {
+   "id": "L7",
+   "decision_statement": "决定：Service 子包之间禁止循环依赖(含 A→B→C→A 多节点环)——保持服务层为有向无环依赖图，可分层加载、独立演进。",
+   "guard_status": "在岗-强",
+   "guard_evidence": [
+    "tests/test_architecture_fitness.py:349-376 test_no_circular_service_dependencies，assert :376。检测算法 _find_dependency_cycles 由专门单测 test_dependency_cycle_detector_covers_two_node_and_multi_node_cycles(:343-346) 验证能抓 2 节点环与 a→b→c→a 多节点环",
+    "known_cycles 硬编码为空集(:374)——0 基线豁免，任何环都会红"
+   ],
+   "code_enforced": true,
+   "code_evidence": [
+    "实跑该检测器于当前 core/services：8 个子包 common/equipment/material/personnel/process/report/scheduler/system → cycles=[]，0 环",
+    "依赖边由各文件向下 import core.services.* 真实构成（如 batch_write_rules.py:6 等），非空图"
+   ],
+   "decision_locations": [
+    "tests/test_architecture_fitness.py:319-376（检测器 + 岗哨 + 检测器自测）",
+    "core/services/（8 子包构成的依赖图，0 环）"
+   ],
+   "notes": "算法本身有单测背书、0 基线豁免，判定为强。两点工程性弱点（不影响今日结论）：(1) 依赖抽取用正则 core\\.services\\.(\\w+) 扫描，仅剥除以 # 开头的整行注释，行内注释/字符串里出现该串会被误记为依赖边（偏保守、只会多报不会漏报环）；(2) 粒度为顶层子包，子包内部模块级环不被识别。"
+  },
+  {
+   "id": "L8",
+   "decision_statement": "决定：SQL 只允许写在 repository/infrastructure 层，service 层零裸 SQL——数据访问集中可控，便于换库/加索引/审计。",
+   "guard_status": "无守护",
+   "guard_evidence": [
+    "tests/test_architecture_fitness.py: 无任何函数扫描 core/services 内的 SQL/execute。唯一相关的 test_routes_do_not_execute_sql_directly(:143) 只扫 web/routes，不碰 service 层",
+    "BOUNDARY-CHARTER.md:47 自称『第一轮审计 grep 验证成立 + L5』——但 L5 仅覆盖 routes；grep 是一次性动作。全仓 grep 确认：无任何 os.walk(core/services)+SQL 关键字 的持续门禁测试"
+   ],
+   "code_enforced": false,
+   "code_evidence": [
+    "生产违例(真业务 SQL，岗哨缺位下已渗入 service 层)：core/services/process/part_service.py:218 self.conn.execute(\"SELECT 1 FROM Batches WHERE part_no=? LIMIT 1\")，在 delete() 删除校验路径，经 web/routes/process_excel_routes.py:189 PartService(g.db) 真实触达",
+    "core/services/system/maintenance/cleanup_task.py:129 SELECT COUNT(1) FROM OperationLogs、:136 SELECT...WHERE log_time<?、:146-157 DELETE FROM OperationLogs（业务 DML），经 system_maintenance_service.py:124 maybe_run_auto_backup_cleanup → cleanup_task.py:290 真实触达",
+    "另两处属边界控制非业务 DML：gantt_adjustment_publish_service.py:108 conn.execute('BEGIN IMMEDIATE')(事务控制)、gantt_critical_chain_provider.py:68 conn.execute('PRAGMA database_list')(库自省)"
+   ],
+   "decision_locations": [
+    "BOUNDARY-CHARTER.md:47（决定的文字声明）",
+    "core/services/process/part_service.py:218、core/services/system/maintenance/cleanup_task.py:129/136/146（决定被打破的现场——真业务 SQL 留在 service 层）",
+    "tests/test_architecture_fitness.py（应有却缺失的岗哨位置）"
+   ],
+   "notes": "本组最严重发现：边界既无持续门禁、生产代码又已实打实违反。part_service 与 cleanup_task 在 service 层直接写 SELECT/DELETE 业务 SQL，并都在真实生产调用链上。charter『service 层零裸 SQL』结论对当前代码为假。L5 完全管不到 service 层却被 charter 拿来当 L8 的依据，是映射错位。建议补一个 AST 门禁：扫 core/services 的 conn/cursor.execute 业务 SQL（可白名单豁免 BEGIN/PRAGMA 这类事务/自省控制）。"
+  },
+  {
+   "id": "L9",
+   "decision_statement": "决定：Service 层禁止用 assert 做运行期校验（python -O 会移除 assert 致防线失效）——业务输入/契约校验必须用显式 raise ValidationError/BusinessError。",
+   "guard_status": "在岗-强",
+   "guard_evidence": [
+    "tests/test_architecture_fitness.py:478-497 test_services_do_not_use_assert_for_runtime_guards，assert :497。基于 AST：ast.walk 整个 core/services，命中任何 ast.Assert 即记违例——非正则，无法靠换行/格式绕过",
+    "docstring(:483-485) 明确写出 python -O 移除 assert 的理由，意图与实现一致"
+   ],
+   "code_enforced": true,
+   "code_evidence": [
+    "独立 AST 扫描 core/services → 0 处 assert（生产现状成立，岗哨有效）"
+   ],
+   "decision_locations": [
+    "tests/test_architecture_fitness.py:478-497（岗哨本体）",
+    "core/services/（受管层，0 assert）"
+   ],
+   "notes": "AST 实现，判定强。盲点：扫描范围仅 core/services，不含 core/algorithms（实测 algorithms 当前也 0 assert，故未触发）。若希望算法层同样禁 assert，需扩范围；但就 L9 字面（Service 层）而言守护到位。"
+  },
+  {
+   "id": "L10",
+   "decision_statement": "决定：核心目录(web/routes, core/services, data/repositories, core/models, core/infrastructure, web/viewmodels)禁止 from X import *——保持导入显式可追溯，避免命名空间污染与符号来源不明。",
+   "guard_status": "在岗-强",
+   "guard_evidence": [
+    "tests/test_architecture_fitness.py:381-388 test_no_wildcard_imports，assert :388。正则 \\s*from\\s+\\S+\\s+import\\s+\\* 逐行扫 NO_WILDCARD_DIRS",
+    "NO_WILDCARD_DIRS = CORE_DIRS（:42），实测值=['web/routes','core/services','data/repositories','core/models','core/infrastructure','web/viewmodels']"
+   ],
+   "code_enforced": true,
+   "code_evidence": [
+    "扫描范围内 0 处 import *（生产现状成立）",
+    "范围盲点实证：core/algorithms 不在 CORE_DIRS，独立扫描其 import * → 当前 0 处（盲点存在但未被触发）"
+   ],
+   "decision_locations": [
+    "tests/test_architecture_fitness.py:381-388（岗哨本体）",
+    "tools/quality_gate_shared.py:181 CORE_DIRS 定义（决定了把守范围）",
+    "core/algorithms/（charter 口径下的『核心』但被排除在 CORE_DIRS 外）"
+   ],
+   "notes": "在受管 6 个目录内守护强且 0 违规。范围口径有缺口：BOUNDARY-CHARTER.md:49 说『核心目录禁止 import *』，但 core/algorithms（最大算法内核、charter §2 明确视为地基核心）不在 CORE_DIRS，其 import * 不被扫描——今日恰好 0 处故未暴露。同样的范围口径也影响 L9(只扫 services) 与 R1/R2/R3 等所有以 CORE_DIRS 为界的门禁。"
+  },
+  {
+   "id": "S1",
+   "decision_statement": "决定：内部身份字段（scenario_id/candidate_id/plan_role/source_table 及行级 schedule_id/op_id/_row_identity）一律不进公开输出（页面正文 data-filters JSON / JSON 接口 / 导出列 / 公开 payload），但允许留在服务端 URL/隐藏表单字段（如 resource_dispatch.html 的 scenario_id 隐藏 input）和日志里——脱敏分两层兜底：上游服务按白名单显式构造行字典，下游 viewmodel 再按黑名单兜底删键。",
+   "guard_status": "在岗-强",
+   "guard_evidence": [
+    "tests/regression_resource_dispatch_viewmodel_public_output_contract.py:75-79 断言 json.dumps(out) 里不含 'INTERNAL-OP-ID-987654'，且递归收集的 _json_keys 不含 {schedule_id, op_id, _row_identity}",
+    "tests/regression_resource_dispatch_viewmodel_public_output_contract.py:67-69 断言 op_code 缺失时回退到中文业务标题 'B001 工序10 数控车床1' 而非内部 op_id",
+    "tests/regression_resource_dispatch_public_output_contract.py:122-124 断言整本 workbook 单元格不含 internal/external/locked/unlocked/future_source/future_lock",
+    "tests/regression_resource_dispatch_public_output_contract.py:268-283 断言注入的 source_table='ScheduleSecret'、state_revision、execution_snapshot_revision、_row_identity 等键与值都不出现在导出",
+    "tests/regression_page_header_plain_purpose_contract.py:23-26 断言六个优先页用 ui.aps_page_hero 且不含 aps-scenario-strip（顶部不再挂场景身份条）"
+   ],
+   "code_enforced": true,
+   "code_evidence": [
+    "web/viewmodels/scheduler_resource_dispatch.py:38-60 _PUBLIC_FILTER_DROP_KEYS 含 source_table/candidate_id/scenario_id/plan_role 等；:244 _public_filters 按此黑名单过滤 filters",
+    "web/viewmodels/scheduler_resource_dispatch.py:63 _PUBLIC_ROW_DROP_KEYS={schedule_id,op_id,_row_identity}；:79-81 _drop_internal_row_keys 在 :335/:369/:413 对每个 detail_row/calendar_item/task 执行",
+    "web/viewmodels/scheduler_resource_dispatch.py:432-447 decorate_resource_dispatch_payload 是公开出口；:440 out['filters']=_public_filters(...)；:441 plan_role_options 按 _PUBLIC_PLAN_ROLE_OPTION_KEYS={role,label,is_comparison} 白名单重建",
+    "web/routes/domains/scheduler/scheduler_resource_dispatch.py:192 /data 接口 jsonify(decorate_resource_dispatch_payload(...))；:144 页面 _decorate_page_context 经 decorate_resource_dispatch_context（生产路径真调用，非孤立函数）",
+    "core/services/scheduler/resource_dispatch_rows.py:165-234 normalize_dispatch_row 显式白名单构造行：内部键只有 schedule_id/op_id/_row_identity，从不写入 source_table/state_revision/scenario_id（与 _drop 黑名单恰好对齐，构成第二层兜底）",
+    "运行期实证：执行 decorate_resource_dispatch_payload 注入 scenario_id/candidate_id/source_table/op_id 后 json.dumps 均 present=False，filters 仅剩 6 个公开键"
+   ],
+   "decision_locations": [
+    "web/viewmodels/scheduler_resource_dispatch.py",
+    "web/routes/domains/scheduler/scheduler_resource_dispatch.py",
+    "core/services/scheduler/resource_dispatch_rows.py",
+    "templates/scheduler/resource_dispatch.html",
+    "templates/components/ui_macros.html"
+   ],
+   "notes": "潜在弱点（当前不构成漏洞）：JSON /data 与页面 data-filters 路径的行级脱敏只靠 3 键黑名单 _PUBLIC_ROW_DROP_KEYS，而 source_table/state_revision/execution_snapshot_revision 只在 filters 字典层被删（_PUBLIC_FILTER_DROP_KEYS），不在行层删。excel 合同里对这些键的拦截是用「注入到 calendar item」的方式测的，而生产 normalize_dispatch_row/_append_calendar_segments 根本不产出这些键，所以现在安全；若将来有人把 state_revision 加进展示行字典，JSON 路径不会兜住。建议把行级黑名单与 filters 黑名单合并或改成行级白名单。另：charter 把 test_domain_model_internal_source_contract.py 列在 S1 名下属错配——该测试断言的是写入可编辑性（『只能编辑内部工序』/『来源无效』），与字段不泄露无关，实际守的是 S4/S5 写入范围。"
+  },
+  {
+   "id": "S2",
+   "decision_statement": "决定：工序内部定位字段 op_id/schedule_id（及 _row_identity/state_revision/execution_snapshot_revision）绝不外露给用户；跨页/导出定位一律改用批次号+工序号+设备/人员+日期拼成的可读业务标识与 sha1 哈希 task_id，即使 op_code 缺失也用『批次 工序N 设备』回退，决不退回裸 op_id。",
+   "guard_status": "在岗-强",
+   "guard_evidence": [
+    "tests/regression_resource_dispatch_public_output_contract.py:127-141 test_..._never_uses_internal_op_id_when_op_code_missing：op_code='' 且 op_id='INTERNAL-OP-ID-987654' 时，断言导出不含该 op_id、不含 'op_INTERNAL'、不含派生 'OPID-987654'",
+    "tests/regression_resource_dispatch_viewmodel_public_output_contract.py:8 FORBIDDEN_PUBLIC_ROW_KEYS={schedule_id,op_id,_row_identity}；:74 断言 task name 不含内部 'task_B001_deadbeef'；:67 断言回退标题为业务串",
+    "tests/regression_resource_dispatch_public_output_contract.py:274-283 断言 schedule_id/op_id/_row_identity/state_revision/execution_snapshot_revision 键名与值都不进 workbook"
+   ],
+   "code_enforced": true,
+   "code_evidence": [
+    "core/services/scheduler/resource_dispatch_task_ids.py:65-76 public_task_id 用 op_code/batch_id/seq/时间/资源拼可读前缀 + sha1 哈希，op_id 仅参与哈希不外显",
+    "web/viewmodels/scheduler_resource_dispatch.py:70-76 _operation_title：op_code 缺失时回退『batch_id 工序{seq}』而非 op_id；:402-413 _decorate_task 用该标题重写 task['name'] 后 _drop_internal_row_keys",
+    "core/services/scheduler/resource_dispatch_excel.py:113-130 _build_detail_row 显式取 op_code/batch_id/part_no/seq 等中文业务列，不取 op_id/schedule_id",
+    "运行期实证：经 build_resource_dispatch_workbook 导出注入 op_id='OPID-SECRET'/schedule_id='S9' 的行，全簿单元格 leaked=False"
+   ],
+   "decision_locations": [
+    "core/services/scheduler/resource_dispatch_task_ids.py",
+    "web/viewmodels/scheduler_resource_dispatch.py",
+    "core/services/scheduler/resource_dispatch_excel.py",
+    "core/services/scheduler/resource_dispatch_rows.py"
+   ],
+   "notes": "S2 与 S1 共用同一套 _drop_internal_row_keys + 白名单构造，岗哨强。同样继承 S1 的潜在弱点：state_revision/execution_snapshot_revision 在 JSON 行级路径仅因生产不产出而安全，非被黑名单显式拦截。"
+  },
+  {
+   "id": "S6",
+   "decision_statement": "决定：Excel 导出只呈现中文业务字段（工序编码/批次号/图号/来源/锁定状态/班组关系等中文表头与中文枚举值），内部枚举（internal/external/locked/unlocked）必须翻成中文标签（自制/外协/已锁定/未锁定，未识别值给『来源未识别』兜底），内部追踪键一律不写入；且单元格做防公式注入与非法控制符清洗。",
+   "guard_status": "在岗-强",
+   "guard_evidence": [
+    "tests/regression_resource_dispatch_public_output_contract.py:115-120 断言导出『来源』列=自制/外协/来源未识别、『锁定状态』列=已锁定/未锁定/锁定状态未识别",
+    "tests/regression_resource_dispatch_public_output_contract.py:144-159 班组三表（人员/设备/跨班组明细）均断言出现中文标签、不出现 internal/external/locked/unlocked",
+    "tests/regression_resource_dispatch_public_output_contract.py:170-172 断言 _sanitize_export_cell('=公式\\x00\\x08')==\"'=公式\"（首字符注入加单引号、控制符剥离）",
+    "tests/regression_excel_hidden_payload_contract.py:106-116 断言工种导入预览页 html 不含 'internal'/'external'，可见值是中文，且 raw_rows_json 用 aps-preview-json-b64 base64 编码使内部值 internal 不出现在页面源码",
+    "tests/regression_excel_hidden_payload_contract.py:136-145 断言篡改 raw_rows_json 后 baseline 失效拒写，DB 无 OT_TAMPERED"
+   ],
+   "code_enforced": true,
+   "code_evidence": [
+    "core/models/resource_dispatch_public_labels.py:5-31 _SOURCE_LABELS/_LOCK_STATUS_LABELS 中文映射 + source_public_label/lock_status_public_label 兜底『来源未识别』『锁定状态未识别』",
+    "core/services/scheduler/resource_dispatch_excel.py:54-82 _detail_headers 全中文表头；:105-110 _source_label/_lock_status_label 走公开标签；:34-35 _append_row 对每格调 _sanitize_export_cell",
+    "core/services/common/excel_templates.py:40-45 _sanitize_export_cell 剥离 <0x20 控制符并对 =+-@ 开头单元格前置单引号防注入",
+    "web/routes/process_excel_op_types.py:65 项目预览页 project_preview_rows_for_display 把『归属』经 source_type_label 投影成中文显示；:66 raw_rows_json 经 encode_preview_rows_payload base64 编码",
+    "web/routes/excel_utils.py:111-116 encode_preview_rows_payload 加 aps-preview-json-b64 前缀 base64，使 internal 等内部值不出现在页面文本",
+    "运行期实证：build_resource_dispatch_workbook 导出含『自制』『已锁定』，internal/external/locked/unlocked/op_id 全 leaked=False"
+   ],
+   "decision_locations": [
+    "core/models/resource_dispatch_public_labels.py",
+    "core/services/scheduler/resource_dispatch_excel.py",
+    "core/services/common/excel_templates.py",
+    "web/routes/process_excel_op_types.py",
+    "web/routes/excel_utils.py",
+    "core/services/common/enum_normalizers.py"
+   ],
+   "notes": "S6 岗哨最完整：中文标签映射、表头白名单、单元格注入清洗、预览页 base64 隐藏内部值四道都有断言且生产路径真执行。注意 _sanitize_export_cell 既在资源排班导出（resource_dispatch_excel._append_row）也在通用模板导出复用，覆盖面广。工种预览的隐藏 payload 还叠加了 HMAC baseline 防篡改写入（excel_utils.build_preview_baseline_token），超出 S6 字段脱敏本身、兼顾写入完整性。"
+  },
+  {
+   "id": "S3",
+   "decision_statement": "决定：甘特图永远是只读结果视图——任务条不能拖动/拉伸/改进度写库；查看模式下 readonly 与 readonly_dates 全开、readonly_progress 恒为 true，且生产链从不进入 simulate 写回模式（模拟按钮硬 disabled、dataset 恒为 view）。",
+   "guard_status": "在岗-强",
+   "guard_evidence": [
+    "tests/regression_gantt_readonly_mode_contract.py:87-95 真实加载 vendored frappe-gantt 并派发 mousedown/mousemove(+200px)/mouseup 后，断言 bar 的 x/width/progressWidth 三个属性与拖前完全相等、handles==0、dateChanges==0、progressChanges==0、clicks==1（点击详情仍可用）——是真行为比对而非看 flag",
+    "tests/regression_gantt_readonly_mode_contract.py:196-201 走真实生产渲染链(gantt_render.js 等十余个脚本)，断言 render 实际下发给 Gantt 的 options 是 readonly=True/readonly_dates=True/readonly_progress=True，且渲染后 handleCount==0、afterX==beforeX",
+    "tests/regression_gantt_readonly_mode_contract.py:208-211 断言模板含 '当前为查看模式'、data-gantt-mode=\"view\"、data-zoom-level"
+   ],
+   "code_enforced": true,
+   "code_evidence": [
+    "static/js/gantt_adapter.js:43-45 buildGanttOptions 设 readonly: isViewMode、readonly_dates: isViewMode、readonly_progress: true(恒真)",
+    "static/js/gantt_render.js:308-311 createGantt 实际以 state.ui.mode 构造甘特(生产恒 'view')",
+    "static/js/gantt_boot.js:341,351 ganttMode 恒 fallback 'view'，无路径置 simulate",
+    "templates/scheduler/gantt.html:278 data-gantt-mode=\"view\"；:169-176 模拟调整按钮 disabled/aria-disabled"
+   ],
+   "decision_locations": [
+    "static/js/gantt_adapter.js",
+    "static/js/gantt_render.js",
+    "static/js/gantt_boot.js",
+    "templates/scheduler/gantt.html",
+    ".codestable/architecture/BOUNDARY-CHARTER.md (S3/C3)"
+   ],
+   "notes": "岗哨强：真派发拖拽事件并比对 SVG 坐标，不是检查布尔旗标。readonly_progress 恒 true 比 readonly_dates(随模式) 更严。adapter.js:51-55 的 onDraftChange 拖拽草稿分支为潜伏死路——生产无任何路径把 mode 置为 simulate（模拟按钮 disabled、boot 恒 view），故连草稿态都进不去。"
+  },
+  {
+   "id": "S4",
+   "decision_statement": "决定：写入入口（现场记录写入地址、Excel 导入地址、模板下载地址、派工反馈 URL）只对'当前正式采用方案'下发；候选/对比/重点工序代表/历史正式/模拟预览/比较态/被新版本取代 一律判读为只读、不下发任何写入 URL，且 disabled 标志不可被 enabled=False/True 反向覆盖。",
+   "guard_status": "在岗-强",
+   "guard_evidence": [
+    "tests/regression_scheduler_workbench_link_guardrails.py:23-39 can_emit_feedback_write_urls：adopted+can_dispatch+can_write_feedback 才 True；缺 can_dispatch、baseline_best、scenario_id、effective_plan_role≠requested 等十余种组合全部断言 False",
+    "tests/regression_scheduler_workbench_link_guardrails.py:83-105 execution_review 链接即便显式传 disabled=False 仍被强制 disabled=True、url==''、理由含'只复盘正式采用方案'（守护不可被 enabled 旗标覆盖）",
+    "tests/regression_scheduler_workbench_link_guardrails.py:108-128 用完整身份(effective/requested_plan_role/is_scenario_preview/superseded/comparison)逐一判读为禁用",
+    "tests/regression_scheduler_dispatch_plan_identity_guardrails.py:320-385 历史正式/对比参考/critical/scenario 方案断言 can_dispatch=False 且 can_write_feedback=False、中文只读理由",
+    "tests/regression_scheduler_dispatch_plan_identity_guardrails.py:429-455 plan_role_filter_fields：外层 can_dispatch/can_write_feedback=True 不能覆盖内层 plan_identity 的 False"
+   ],
+   "code_enforced": true,
+   "code_evidence": [
+    "web/viewmodels/scheduler_workbench_links.py:360-366 can_emit_feedback_write_urls；:265-281 _is_formal_adopted_context(校验三种 role 字段+scenario+preview+comparison+superseded)；:291-292 execution_review 自动强制禁用",
+    "web/routes/domains/scheduler/scheduler_resource_dispatch.py:170-175 调 can_emit_feedback_write_urls(filters) 决定 write_urls；:147-158 _execution_write_urls 仅 can_write_feedback 为真才返回 actual_template_url/actual_import_url，否则全 None",
+    "core/services/scheduler/schedule_result_view_context.py:277 plan_role_filter_fields(生产计算 can_write_feedback/can_dispatch)"
+   ],
+   "decision_locations": [
+    "web/viewmodels/scheduler_workbench_links.py",
+    "web/routes/domains/scheduler/scheduler_resource_dispatch.py",
+    "core/services/scheduler/schedule_result_view_context.py",
+    "core/services/scheduler/schedule_plan_identity_builder.py",
+    ".codestable/architecture/BOUNDARY-CHARTER.md (S4)"
+   ],
+   "notes": "双测试覆盖且都读到真断言。这是'不下发入口'的 UI/URL 层；真正阻止写库由 S5 服务层兜底，二者构成防御纵深。"
+  },
+  {
+   "id": "S5",
+   "decision_statement": "决定：现场记录写入（开工/完工/暂停/恢复/异常/Excel 实际导入）只能落到当前正式采用方案——服务层硬校验 requested_plan_role=adopted 且 effective_plan_role=adopted 且 source_table=schedule 且 scenario_id 为空，并在 resolve_plan_view 后二次复核 can_write_feedback，任一不满足即抛 not_current_official_plan(409) 且不写库。",
+   "guard_status": "在岗-强",
+   "guard_evidence": [
+    "tests/regression_resource_dispatch_actual_import.py:484-493 旧版/非当前正式方案对 actual/template/preview/import/confirm 五个写端点全部断言 409 且 details.reason=='not_current_official_plan'，并 _event_count(db)==0（确无写库）",
+    "tests/regression_resource_dispatch_actual_import.py:496-551 candidate(baseline_best) 与 scenario 两类方案同样五端点全部 409 not_current_official_plan",
+    "tests/regression_operation_execution_feedback_routes.py:355 路由层断言 payload.error.details.reason=='not_current_official_plan'"
+   ],
+   "code_enforced": true,
+   "code_evidence": [
+    "core/services/scheduler/operation_execution_feedback_service.py:347-362 _load_current_official_schedule 四条件硬校验(role/role/source_table/scenario)+resolve 后复核 plan_identity.can_write_feedback，均抛 not_current_official_plan；:105 写事件路径实际调用它",
+    "core/services/scheduler/resource_dispatch_actual_record_service.py:141-149 _ensure_context_can_write 同样四条件硬校验；:134-139 _execution_context_for_write 再复核 can_write_feedback；:117-128 record_actual_situation/:81-94 confirm_import/:66 import_workbook 均前置该校验"
+   ],
+   "decision_locations": [
+    "core/services/scheduler/operation_execution_feedback_service.py",
+    "core/services/scheduler/resource_dispatch_actual_record_service.py",
+    "web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py",
+    ".codestable/architecture/BOUNDARY-CHARTER.md (S5)"
+   ],
+   "notes": "本组最硬的一条：feedback 服务层与 actual-record 导入服务层双重硬校验(防御纵深)，且不信任 S4 的 URL 隐藏(即便有人手凑 URL/绕过前端也拒)。校验同时检查四个身份字段又复核 can_write_feedback。注意 charter 把 S5 映到 reschedule_execution_minimum 测试并不准确——S5 的真正岗哨是 regression_resource_dispatch_actual_import.py 与 regression_operation_execution_feedback_routes.py；reschedule 测试守的是 S7。"
+  },
+  {
+   "id": "S7",
+   "decision_statement": "决定：重排(run_schedule)写库前必须按执行快照复算现场状态；若现场状态在输入采集后变化、或现场事实与冻结窗口种子冲突、或已完工前道工序的下游被排到其真实完工时间之前、或在产/完工工序缺实际设备人员，则抛 6003(SCHEDULE_CONFLICT) 中文提示、回滚已分配版本、绝不写 Schedule/ScheduleHistory；simulate 同样只校验不写并给'请刷新后重新排'提示。",
+   "guard_status": "在岗-强",
+   "guard_evidence": [
+    "tests/regression_scheduler_reschedule_execution_minimum_guardrails.py:306-340 在 optimize 阶段 monkeypatch 注入现场开工事件，断言抛 6003 reason=='execution_state_changed'、消息含'现场状态刚刚变了'、_counts(conn)==before、OperationExecutionEvents 计数==1(没多写)",
+    "tests/regression_scheduler_reschedule_execution_minimum_guardrails.py:343-383 在 persist 校验阶段注入变化，断言 6003 execution_state_changed、_counts==before、事件表==0(已分配版本被回滚)、service/persist 校验各被调 1 次",
+    "tests/regression_scheduler_reschedule_execution_minimum_guardrails.py:171-196 冻结窗口与现场事实冲突 6003 reason=='execution_seed_conflict' 且 _counts==before；:199-241 已完工下游早于完工 6003 reason=='execution_completed_downstream_before_actual_finish'(带 completed_op_id/op_id)；:244-274 缺实际资源 6003 'missing_actual_resource'；:386-421 simulate 冲突 6003+'请刷新后重新排' 不写",
+    "tests/regression_freeze_window_fail_closed_contract.py:493-507/473-491/532-548 strict_mode 下种子构建失败/配置降级/上一版数据非法 均断言 raises ValidationError(field=='freeze_window')，relaxed 模式则 meta.freeze_state=='degraded' 不静默成功"
+   ],
+   "code_enforced": true,
+   "code_evidence": [
+    "core/services/scheduler/run/schedule_execution_persistence_guard.py:55-90 快照+revision 复算(execution_state_changed)；:193-239 validate_execution_guard_before_persist 校验在产/完工种子行与下游约束",
+    "core/services/scheduler/schedule_service.py:283-294 版本分配前校验、:341-351 simulate 路径校验；core/services/scheduler/run/schedule_persistence.py:209-219 持久化前再次校验(三处叠加)",
+    "core/services/scheduler/run/schedule_execution_guardrails.py:74-83 missing_actual_resource；core/services/scheduler/run/schedule_input_runtime_support.py:287-292 execution_seed_conflict、:231-240 已完工下游冲突",
+    "core/services/scheduler/run/freeze_window.py:116-129 strict_mode 下种子不可用即 raise ValidationError(fail-closed)；经 web/routes/domains/scheduler/scheduler_run.py:49,57(strict_mode 取自表单)→run_schedule→collect_schedule_run_input→build_freeze_window_seed 真实串到生产"
+   ],
+   "decision_locations": [
+    "core/services/scheduler/run/schedule_execution_persistence_guard.py",
+    "core/services/scheduler/schedule_service.py",
+    "core/services/scheduler/run/schedule_persistence.py",
+    "core/services/scheduler/run/schedule_execution_guardrails.py",
+    "core/services/scheduler/run/schedule_input_runtime_support.py",
+    "core/services/scheduler/run/freeze_window.py",
+    ".codestable/architecture/BOUNDARY-CHARTER.md (S7)"
+   ],
+   "notes": "S7 集成守护强：guard 在版本分配前/持久化前/simulate 三处生产层叠加，所有冲突分支测试都用 _counts(conn)==before 实证'没写库'。需指出 charter 的映射混淆：regression_freeze_window_fail_closed_contract 实际守的是另一条决定——'冻结窗口配置/数据降级在 strict_mode 下必须 fail-closed 抛错而非静默跳过'，它用 stub svc+假 repo 测孤立函数 build_freeze_window_seed，并不直接测 S7 的'现场状态变化拒绝重排写入'的集成路径(那来自 reschedule 测试)。该 fail-closed 函数本身确经 scheduler_run 真实串到生产，故其自身边界亦为在岗-强。"
+  },
+  {
+   "id": "D1",
+   "decision_statement": "决定：系统按 Win7 x64 单机离线交付——目标机不装 Python、不联网；运行期一切数据/日志/锁/Chrome 画像路径都由打包后的启动器自己解析到共享数据根，绝不假设开发机布局。",
+   "guard_status": "在岗-弱",
+   "guard_evidence": [
+    "tests/test_win7_launcher_runtime_paths.py:88-168 共77个 test_ 函数，import 真生产模块 web.bootstrap.launcher/factory/paths/launcher_paths；断言 resolve_shared_data_root frozen 时走注册表(:118-119)、_apply_runtime_config 把 db/logs/backups/templates_excel 全锚到 shared_root(:165-168)、runtime_log_mirror_dir frozen 时禁用(:140)",
+    "tests/test_win7_launcher_runtime_paths.py:259-359 锁文件 fail-closed：空/坏锁不被清理、release 只删匹配 PID(:355-359)",
+    "tests/verify_installer_vendor_dir.py:19-103 是 def main() 独立诊断脚本(0个 test_ 函数)，未被任何 gate/CI/pytest 收集；且 vendor 缺失时仅 return 1 打印告警，不在质量门禁里跑 —— charter 把它列为 D1 保镖属名不副实"
+   ],
+   "code_enforced": true,
+   "code_evidence": [
+    "app.py:64 main() -> entrypoint.app_main(\"default\", anchor_file=__file__) 是生产启动入口",
+    "web/bootstrap/factory.py:228-230 templates_dir=os.path.join(base_dir,\"templates\"); Flask(template_folder=templates_dir) 用仓库内 templates/",
+    "web/bootstrap/launcher_paths.py:214-216 Chrome 画像目录解析到 %LOCALAPPDATA%\\APS\\Chrome109Profile（frozen）或 runtime/chrome109_profile"
+   ],
+   "decision_locations": [
+    ".codestable/architecture/ARCHITECTURE.md (§5)",
+    "tests/test_win7_launcher_runtime_paths.py",
+    "web/bootstrap/launcher.py / factory.py / paths.py / launcher_paths.py",
+    "app.py",
+    "build_win7_onedir.bat / installer/aps_win7*.iss",
+    "开发文档/ADR/0001-win7-单机单用户运行环境.md"
+   ],
+   "notes": "运行期路径层守护强且进门禁（full-test-debt 跑全 tests/）；但 charter 列的第二个保镖 verify_installer_vendor_dir.py 是独立诊断、未接门禁，打包/安装器层实际无自动门禁。故 D1 整条边界判为在岗-弱：运行时强、交付打包层弱。"
+  },
+  {
+   "id": "D2",
+   "decision_statement": "决定：全部 Python 代码必须落在 3.8.10 语法内，不用 3.9+ 的 list[X]/X|Y/X|None、dict |/|=、match-case、except* 等；用 AST 扫描器而非 ruff 自动改写来守这条线（ruff UP006/UP007/UP045 反而关掉，避免它把代码改成 3.9 写法）。",
+   "guard_status": "在岗-弱",
+   "guard_evidence": [
+    "tests/test_scan_py38plus_syntax.py:15-138 真测扫描器检出能力：match-case 报 PY38_PARSE_REJECTED(:29-33)、list[str]|Seq 报 PEP585×4+PEP604×2(:52-53)、dict |/|= 报 PEP584(:70-74)、except*/PEP695/t-string(:95-108)、CLI --fail-on-hit 退出码1(:132-137)",
+    "tools/quality_gate_shared.py:811-831 门禁运行 scan_py38plus_syntax.py --fail-on-hit 但只覆盖固定~11个文件(门禁入口+helper+几个测试)，非全仓",
+    "tools/scan_aps_three_gap_py38_scope.py:21-56 + quality_gate_shared.py:801-809 门禁另跑 --base-ref d4589d77 的 git-diff 增量扫描，覆盖 roadmap 起点以来改过的 .py"
+   ],
+   "code_enforced": true,
+   "code_evidence": [
+    "tools/scan_py38plus_syntax.py:1-56 真实 ast.parse(feature_version=(3,8)) + PEP585/604/584/646 显式 AST 检查",
+    "pyproject.toml:10 target-version=\"py38\"；:32-38 ignore 含 UP006/UP007/UP045（即 ruff 不强制、不自动升级语法，真正门禁靠扫描器）"
+   ],
+   "decision_locations": [
+    "tools/scan_py38plus_syntax.py",
+    "tools/scan_aps_three_gap_py38_scope.py",
+    "tools/quality_gate_shared.py:801-831",
+    "pyproject.toml:10,32-41",
+    ".codestable/architecture/ARCHITECTURE.md (§5)"
+   ],
+   "notes": "扫描器与单测都很强，但门禁内强制是“范围化”的（固定文件清单 + 自 d4589d77 的 git-diff 增量），不是每次全仓重扫。新增/改动代码会被增量扫到，故对在途开发有效；但历史旧代码不在每轮全量校验里。判在岗-弱（强工具+范围化执行）。"
+  },
+  {
+   "id": "D3",
+   "decision_statement": "决定：所有前端页面/样式/脚本/字体一律本地随应用交付，绝不引 CDN、外链脚本样式、外链字体或任何 http(s):////协议外部资源。",
+   "guard_status": "在岗-强",
+   "guard_evidence": [
+    "tests/regression_frontend_offline_static_assets.py:217-219 test_frontend_static_assets_are_offline_local 扫 templates/ static/ web_new_test/ docs/ 全部 .html/.css/.js/.md，发现外链即 assert 失败",
+    "tests/regression_frontend_offline_static_assets.py:110-139 19条 EXTERNAL_RESOURCE_PATTERNS(script/link/img/srcset/@import/@font-face/url())+8个 CDN_MARKERS(jsdelivr/cloudflare/unpkg/googleapis 等)",
+    "tests/regression_frontend_offline_static_assets.py:222-237 反向自测 test_external_resource_patterns_cover_... 用9个外链样本证明每条都能被抓到"
+   ],
+   "code_enforced": true,
+   "code_evidence": [
+    "tests/regression_frontend_offline_static_assets.py:12-25 FRONTEND_ROOTS 直接指向生产 templates/、static/ 目录（非孤立 fixture）",
+    "tools/quality_gate_shared.py:147 该测试在 QUALITY_GATE_REQUIRED_TESTS 必跑清单内；:820 还被 py38 扫描器纳入"
+   ],
+   "decision_locations": [
+    "tests/regression_frontend_offline_static_assets.py",
+    "templates/ static/（被扫描的生产资源）",
+    ".codestable/architecture/ARCHITECTURE.md (§2)",
+    ".codestable/requirements/gantt-readonly-result-view.md:29"
+   ],
+   "notes": "断言真读生产模板/静态目录并有反向覆盖自测，且进必跑门禁。守护到位。"
+  },
+  {
+   "id": "D4",
+   "decision_statement": "决定：前端只用 Chrome 109 能跑的能力，不依赖更新浏览器才支持的 API（交付绑定 Chrome 109 离线包）。",
+   "guard_status": "在岗-弱",
+   "guard_evidence": [
+    "tests/ui_geometry_runtime_support.py:200-345 _resolve_chrome 只执行 chrome --version 校验 returncode==0，从不把版本号和 109 比较；无任何最低版本门禁",
+    "tests/regression_ui_browser_geometry_smoke.py:19-91 真浏览器探针只校验 body 不溢出/对比度/多行表格/期望 DOM，用的是本机任意 Chrome，不锁 109",
+    "全仓 grep 确认 109 仅出现在 Chrome109Profile 路径串(launcher_paths.py:214、测试若干处)，无 MIN_CHROME/版本比较逻辑"
+   ],
+   "code_enforced": false,
+   "code_evidence": [
+    "tests/ui_geometry_runtime_support.py:316-324 默认候选 Chrome returncode==0 即采用，无版本下限判断",
+    "tests/test_ui_browser_geometry_env.py:39-48 required 模式下缺 Chrome 才 fail，但不校验版本"
+   ],
+   "decision_locations": [
+    ".codestable/roadmap/aps-frontend-workbench (§5.8)",
+    "tests/regression_ui_browser_geometry_smoke.py",
+    "tests/ui_geometry_runtime_support.py",
+    "installer/aps_win7_chrome.iss（绑定 Chrome109 离线包）"
+   ],
+   "notes": "与 charter 一致：无硬版本门禁。几何 smoke 能抓“某个 Chrome 下布局崩坏”，但不锁 109、也不检测是否误用了 >109 的新 API。对“不用新浏览器能力”这条边界本身实为无版本守护，仅靠布局 smoke 兜底，故判在岗-弱。"
+  },
+  {
+   "id": "D5",
+   "decision_statement": "决定：所有面向用户的页面/文案默认简体中文，不把英文术语、内部字段、含糊旧说法暴露给用户。",
+   "guard_status": "在岗-弱",
+   "guard_evidence": [
+    "tests/regression_frontend_ui_language_polish.py:30-116 针对特定模板断言：必须含指定中文短语(:44,:53,:57,:116)、不得含指定英文/含糊词(:58-60,:64,:96 dispatch_mode/auto_assign_enabled 等)",
+    "断言是“点名页面+白/黑名单短语”式精确校验，非系统性“所有用户可见文本必须中文”的全量门禁"
+   ],
+   "code_enforced": false,
+   "code_evidence": [
+    "无任何运行期代码强制中文；纯靠上述测试对已知页面逐条点名校验"
+   ],
+   "decision_locations": [
+    "tests/regression_frontend_ui_language_polish.py",
+    "tests/regression_frontend_offline_static_assets.py:86-103,265-276（USER_VISIBLE_INTERNAL_TERMS 禁内部字段进用户文案）",
+    "AGENTS.md / .codestable/architecture/ARCHITECTURE.md (§5)"
+   ],
+   "notes": "与 charter 一致：无系统性自动中文门禁。已有针对已知页面的精确短语断言 + 一条“用户可见文档不得出现内部术语”的横切检查，能挡已知回退；但新增页面用英文不会被自动拦。判在岗-弱。"
+  },
+  {
+   "id": "C1",
+   "decision_statement": "决定：不重写排产算法，前端工作台只做结果可视化与解读，算法内核保持不动。",
+   "guard_status": "无守护",
+   "guard_evidence": [
+    "全仓 grep 无任何测试断言“不重写算法”，core/algorithms 无 golden/frozen 输出契约测试守该承诺"
+   ],
+   "code_enforced": false,
+   "code_evidence": [
+    "无对应生产代码门禁；属范围承诺，不是代码规则"
+   ],
+   "decision_locations": [
+    ".codestable/roadmap/aps-frontend-workbench (§2)"
+   ],
+   "notes": "仅文档约束、无代码守护。与 charter 第四部分定性一致。"
+  },
+  {
+   "id": "C2",
+   "decision_statement": "决定：第一版不做完整 MES/ERP/WMS/PLM/IoT 实时采集、扫码枪、电子签名、工资计件、质量追溯——现场数据只靠人工填写或 Excel 导入。",
+   "guard_status": "无守护",
+   "guard_evidence": [
+    "全仓 grep 无测试断言这些“明确不做”项；‘MES/扫码枪/电子签名’等词不作为任何 assert 出现"
+   ],
+   "code_enforced": false,
+   "code_evidence": [
+    "grep 'MES' 命中仅为 _SCHEDULE_OPERATION_FAILED_MESSAGE 等变量名子串(core/algorithms/greedy/dispatch/sgs.py:35 等)，无真实 MES/IoT 代码，也无门禁"
+   ],
+   "decision_locations": [
+    ".codestable/requirements/shop-floor-execution-feedback.md:41-42"
+   ],
+   "notes": "仅文档约束、无代码守护。"
+  },
+  {
+   "id": "C3",
+   "decision_statement": "决定：甘特图只读——拖动/拉伸任务条不改计划、不提供保存入口、不写 Schedule/ScheduleHistory、不动正式版本指针。",
+   "guard_status": "在岗-强",
+   "guard_evidence": [
+    "tests/regression_gantt_readonly_mode_contract.py:20-95 真跑 JS：拖拽/拉伸/改进度后 assert x/width/progressWidth 不变、dateChanges==0、progressChanges==0，但 clicks==1 且 popup 仍可见(:88-95)",
+    "tests/regression_gantt_readonly_mode_contract.py:98-198 正式渲染路径 assert readonly/readonly_dates/readonly_progress 全 True、handleCount==0、afterX==beforeX",
+    "tests/regression_gantt_readonly_mode_contract.py:204-211 模板含 '当前为查看模式'、data-gantt-mode=\"view\""
+   ],
+   "code_enforced": true,
+   "code_evidence": [
+    "正式渲染路径向甘特库传 readonly/readonly_dates/readonly_progress 选项（由 :185-198 断言验证其确被传入并阻断拖拽）",
+    "templates 含 data-gantt-mode=\"view\"（:210）"
+   ],
+   "decision_locations": [
+    ".codestable/requirements/gantt-readonly-result-view.md (§3 明确不做)",
+    "tests/regression_gantt_readonly_mode_contract.py",
+    "BOUNDARY-CHARTER 同时记为 S3"
+   ],
+   "notes": "C-class 中的强守护例外（与 S3 同源）。charter 第四部分笼统说 C 类多无保镖，但 C3 实为真 JS 行为契约，应纠正为在岗-强。"
+  },
+  {
+   "id": "C4",
+   "decision_statement": "决定：候选方案对比第一版只对外承诺“代表三方案”，不展示全部 3/5/7 档明细、不支持任意两套候选自由对比、不把候选当成已下发的正式计划，页面/导出/文件名不露 candidate_id/source_table/内部评分串/英文原因码。",
+   "guard_status": "在岗-弱",
+   "guard_evidence": [
+    "tests/regression_scheduler_candidate_summary_contract.py:163-181 断言公开摘要精简：不含 results/nodes/edges/node_metrics/graph_analysis_diagnostics/attempts/improvement_trace（守‘不展示内部明细’）",
+    "无测试断言‘只三方案/不可自由两两对比’的硬上限；‘代表三方案’更多是展示约定而非数量门禁"
+   ],
+   "code_enforced": false,
+   "code_evidence": [
+    "core/services/scheduler/run/schedule_candidate_specs.py:11-12 DEFAULT_CANDIDATE_WEIGHT_COUNT=5、SUPPORTED_CANDIDATE_WEIGHT_COUNTS=(3,5,7)：生成档数其实支持3/5/7，并非锁死3，说明‘只三方案’是前端呈现层约定",
+    "schedule_candidate_specs.py:33-39 _require_supported_weight_count 仅校验∈(3,5,7)，不限制为3"
+   ],
+   "decision_locations": [
+    ".codestable/requirements/candidate-comparison-business-view.md:32-36",
+    "tests/regression_scheduler_candidate_summary_contract.py",
+    "core/services/scheduler/run/schedule_candidate_specs.py"
+   ],
+   "notes": "‘内部字段不外露’这一面有摘要契约守护（且与 S1 重叠，强）；但‘只代表三方案/不自由对比’本身无数量门禁，底层实际支持 3/5/7 档。该子承诺仅文档约束。整条判在岗-弱。"
+  },
+  {
+   "id": "C5",
+   "decision_statement": "决定：延期诊断只讲已确认事实+可能线索+证据+数据缺口，绝不编造根因、不写“AI 已定位根因”、不承诺唯一根因；缺数据时只说缺口。",
+   "guard_status": "在岗-强",
+   "guard_evidence": [
+    "tests/regression_scheduler_delay_diagnosis_contract.py:301 assert \"根因\" not in str(scheduled.to_dict()) —— 直接断言禁词不出现在诊断输出",
+    "tests/regression_scheduler_delay_diagnosis_contract.py:300 断言缺数据走 evidence_scope==\"missing_data\"；:286 线索码集合含 material_status_missing/downtime_impact 等",
+    "tests/regression_scheduler_delay_diagnosis_contract.py:269 assert after==before（诊断只读不改库）"
+   ],
+   "code_enforced": true,
+   "code_evidence": [
+    "core/services/scheduler/schedule_delay_diagnosis_clues.py:68 data_gaps=[\"这只是排程顺序线索，不代表已经确认原因。\"] —— 生产代码主动以缺口/线索措辞、不下根因结论"
+   ],
+   "decision_locations": [
+    ".codestable/requirements/schedule-delay-diagnosis.md:28-32",
+    "core/services/scheduler/schedule_delay_diagnosis_clues.py",
+    "tests/regression_scheduler_delay_diagnosis_contract.py"
+   ],
+   "notes": "有真断言守禁词+缺口语义，代码也按线索/缺口措辞，属在岗-强。注意：需求文档 schedule-delay-diagnosis.md status 仍为 draft 且 implemented_by:[]，但代码+契约测试已落地，文档状态落后于实现。"
+  },
+  {
+   "id": "C6",
+   "decision_statement": "决定：报表只支持设备(machine)和人员(operator)两种资源维度筛选；班组/未知维度、只有编号没类型、只有类型没编号、主参数与别名冲突的半截资源筛选一律直接报错拒绝，不静默放大成全量。",
+   "guard_status": "在岗-强",
+   "guard_evidence": [
+    "tests/regression_reports_workbench_navigation_contract.py:150-152 pytest.raises(ValidationError,'当前报表暂不支持班组维度筛选')；:159-165 缺设备/人员编号报错；:173-196 设备/人员混入、编号冲突、类型冲突均 raises",
+    "tests/regression_reports_workbench_navigation_contract.py:262-304 超期查询同样 raises‘只支持设备或人员维度/缺资源类型/缺资源编号’"
+   ],
+   "code_enforced": true,
+   "code_evidence": [
+    "core/models/schedule_resource_filter.py:8 SUPPORTED_SCHEDULE_RESOURCE_TYPES={machine,operator}；:48-72 normalize_schedule_resource_filter 对缺类型/不支持类型/缺编号分别 raise ValidationError",
+    "core/services/report/report_context_filters.py:119-153 normalize_report_resource_filter 处理别名冲突并 raise；report_engine.py:146,167,279,383 四处生产路径调用它",
+    "web/routes/reports_request_support.py:54 路由层入口也调用 normalize_report_resource_filter"
+   ],
+   "decision_locations": [
+    ".codestable/requirements/scheduler-daily-workbench.md:39",
+    "core/models/schedule_resource_filter.py",
+    "core/services/report/report_context_filters.py",
+    "web/routes/reports_request_support.py / reports.py / reports_export_routes.py",
+    "tests/regression_reports_workbench_navigation_contract.py"
+   ],
+   "notes": "强力代码门禁 + 真 raises 断言，且生产报表引擎与路由均经过它。直接反驳 charter‘C 类多为仅文档约束’——C6 是硬代码边界。"
+  },
+  {
+   "id": "C7",
+   "decision_statement": "决定：停机影响第一版只做设备级——只说明设备级停机影响和设备级回跳，不推断/不展开任务级受影响明细。",
+   "guard_status": "在岗-弱",
+   "guard_evidence": [
+    "tests/test_machine_downtime_repository_contract.py:15-49 表 MachineDowntimes 只有 machine_id/start_time/end_time/status 列，无 op_id/task_id；list_active_after 按 machine_id 查",
+    "tests/regression_equipment_downtime_batch_layout_contract.py:30-45 断言页面用 scope_type/scope_value（设备级）布局；但无测试显式断言‘拒绝任务级明细’"
+   ],
+   "code_enforced": true,
+   "code_evidence": [
+    "core/services/scheduler/resource_pool_builder.py:181,206-228 load_machine_downtimes 按 machine_ids 加载停机区间（设备粒度）",
+    "core/services/scheduler/schedule_delay_diagnosis_clues.py:237 downtime_repo.list_active_after(machine_id,...) 按设备查停机"
+   ],
+   "decision_locations": [
+    ".codestable/requirements/scheduler-daily-workbench.md:40",
+    "data 层 MachineDowntimes 表结构（machine_id 主键维度）",
+    "core/services/scheduler/resource_pool_builder.py"
+   ],
+   "notes": "‘只设备级’由数据模型(停机表只有 machine_id 维度)结构性保证，生产代码全按设备粒度处理；但这是结构性约束，无一条测试主动断言‘任务级明细被拒绝’。判在岗-弱（结构守护强、显式契约缺位）。"
+  },
+  {
+   "id": "C8",
+   "decision_statement": "决定：资源派工不做热力图、不做复杂折叠、不做新的大屏分析，只做可读的日历明细块和 Excel 矩阵+明细。",
+   "guard_status": "无守护",
+   "guard_evidence": [
+    "全仓(core/web/data/templates/tests) grep 热力图/heatmap 命中数为 0——既无实现也无任何测试守该‘不做’承诺"
+   ],
+   "code_enforced": false,
+   "code_evidence": [
+    "无相关代码（功能根本未实现），故无生产路径可执行边界；纯范围承诺"
+   ],
+   "decision_locations": [
+    ".codestable/requirements/resource-dispatch-calendar-readable-output.md:31"
+   ],
+   "notes": "仅文档约束、无代码守护。"
+  },
+  {
+   "id": "C9",
+   "decision_statement": "决定：短期不做反馈人必填（反馈人可空）、不做多人现场账号、不做 Excel 导入预览/二次确认（普通页采用一键直接导入、后台整批校验）。",
+   "guard_status": "在岗-弱",
+   "guard_evidence": [
+    "tests/regression_config_manual_markdown.py:454 断言说明书含‘当前是直接导入，不走预览/二次确认’——但这是对文档内容的断言，非对导入行为的契约",
+    "无测试断言‘多人现场账号未做’；‘反馈人可空’无专门 raises/optional 断言"
+   ],
+   "code_enforced": true,
+   "code_evidence": [
+    "core/services/scheduler/operation_execution_feedback_service.py:226 created_by=_optional_text(context.created_by) or \"未填写反馈人\"——反馈人确为可空、缺省占位，生产代码体现‘不必填’"
+   ],
+   "decision_locations": [
+    ".codestable/requirements/shop-floor-execution-feedback.md:49",
+    ".codestable/roadmap/aps-frontend-workbench 变更日志",
+    "core/services/scheduler/operation_execution_feedback_service.py:226"
+   ],
+   "notes": "三个子承诺守护不均：‘反馈人可空’有弱代码体现(缺省占位)；‘一键导入不二次确认’只有说明书内容断言(doc-content)；‘多人账号未做’纯文档。整条判在岗-弱、以文档约束为主。"
+  },
+  {
+   "id": "C10",
+   "decision_statement": "决定：计划与现场实际复盘只对照当前正式采用方案(adopted)，模拟/候选/历史方案一律不进复盘口径。",
+   "guard_status": "在岗-强",
+   "guard_evidence": [
+    "tests/regression_plan_vs_actual_review.py:56 断言 effective_plan_role==\"adopted\"；:220 导出文件名‘计划和现场实际-正式采用方案-v2.xlsx’",
+    "tests/regression_plan_vs_actual_review.py:204-255 复盘页/导出只读取执行事实并以 adopted 计划行对照（actual_machine_id/event_type 不外露）"
+   ],
+   "code_enforced": true,
+   "code_evidence": [
+    "core/services/report/execution_review.py:141-167 execution_review() 函数签名不接受 plan_role 参数，内部全程硬编码 ROLE_ADOPTED(:112,:123,:153,:166,:167)，结构上无法对候选/模拟方案复盘",
+    "core/services/report/execution_review.py:199 导出文件名固定‘正式采用方案’"
+   ],
+   "decision_locations": [
+    ".codestable/requirements/shop-floor-execution-feedback.md (复盘口径)",
+    "core/services/report/execution_review.py",
+    "tests/regression_plan_vs_actual_review.py"
+   ],
+   "notes": "复盘服务从入参就锁死 ROLE_ADOPTED（连 plan_role 参数都不开放），属结构性硬边界 + 契约断言双守护。与 charter‘C 类多仅文档’定性相反，应纠正为在岗-强。"
+  }
+ ],
+ "guard_status_dist": {
+  "无守护": 6,
+  "在岗-强": 17,
+  "在岗-弱": 9
+ },
+ "verify_failed": [],
+ "decision_inventory": [
+  {
+   "id": "D1",
+   "decision": "Win7 x64 单机离线交付：目标机不装 Python、不联网，运行期路径由启动器自解析到共享数据根。",
+   "category": "交付约束",
+   "how_enforced": "门禁测试(test_win7_launcher_runtime_paths,偏路径解析,弱)"
+  },
+  {
+   "id": "D2",
+   "decision": "全部代码限 3.8.10 语法，不用 3.9+ 写法；用自研 AST 扫描器而非 ruff 自动改写来守(ruff UP006/UP007/UP045 故意关掉)。",
+   "category": "交付约束",
+   "how_enforced": "门禁AST扫描(scan_py38plus_syntax,但跑在指定文件清单上,范围有限)"
+  },
+  {
+   "id": "D3",
+   "decision": "前端资源全部本地随应用交付，绝不引 CDN/外链脚本样式字体/任何 http(s) 外部资源。",
+   "category": "交付约束",
+   "how_enforced": "门禁测试(regression_frontend_offline_static_assets,强)"
+  },
+  {
+   "id": "D4",
+   "decision": "前端只用 Chrome 109 能跑的能力，不依赖更新浏览器 API。",
+   "category": "交付约束",
+   "how_enforced": "仅浏览器几何 smoke,不锁版本、找不到 Chrome 会跳过(弱,实质近乎无)"
+  },
+  {
+   "id": "D5",
+   "decision": "面向用户页面/文案默认简体中文，不把英文术语/内部字段/旧说法暴露给用户。",
+   "category": "交付约束",
+   "how_enforced": "部分门禁(language_polish + USER_VISIBLE_INTERNAL_TERMS 禁内部字段进文案,弱;中文措辞本身靠 review)"
+  },
+  {
+   "id": "L1",
+   "decision": "排产算法是纯计算内核，只能被上层调用，绝不反向依赖 core.services。",
+   "category": "分层架构",
+   "how_enforced": "无(只有一次性 codemap 快照,且 layering.json 当前为空[];fitness 无对应测试)"
+  },
+  {
+   "id": "L2",
+   "decision": "领域模型是最底层数据契约，只依赖标准库与模型内部，不依赖 services/data/web。",
+   "category": "分层架构",
+   "how_enforced": "无(同 L1,无 fitness 测试,快照为空)"
+  },
+  {
+   "id": "L3",
+   "decision": "ViewModel 必须是纯数据变换，只许依赖标准库+core.models+同层相对导入，不碰 flask/service/repository/routes。",
+   "category": "分层架构",
+   "how_enforced": "门禁AST白名单(test_viewmodels_do_not_import...,强)"
+  },
+  {
+   "id": "L4",
+   "decision": "路由层禁止直连 Repository，数据访问必须经 Service 中转，历史白名单已清零。",
+   "category": "分层架构",
+   "how_enforced": "门禁(两个测试+空白名单 known_imports=set(),强)"
+  },
+  {
+   "id": "L5",
+   "decision": "路由层禁止直接执行 SQL(cursor/conn 的 execute/fetch 不得现身路由)。",
+   "category": "分层架构",
+   "how_enforced": "门禁正则(只匹配 cursor|conn.execute/fetch* 的文本行,弱:换变量名即漏)"
+  },
+  {
+   "id": "L6",
+   "decision": "Service 层不得 import flask.request，请求数据须由路由解析后以普通参数传入。",
+   "category": "分层架构",
+   "how_enforced": "门禁正则(只匹配 from flask import ... request,弱:别名/import flask 形式会漏)"
+  },
+  {
+   "id": "L7",
+   "decision": "Service 子包之间禁止循环依赖(含多节点环 A→B→C→A)。",
+   "category": "分层架构",
+   "how_enforced": "门禁(环检测器+岗哨+检测器自测,强)"
+  },
+  {
+   "id": "L8",
+   "decision": "SQL 只许写在 repository/infrastructure 层，service 层零裸 SQL。",
+   "category": "分层架构",
+   "how_enforced": "无,且决定已被代码违反(part_service/cleanup_task 内有真业务 SQL)"
+  },
+  {
+   "id": "L9",
+   "decision": "Service 层禁止用 assert 做运行期校验(python -O 会移除)，必须显式 raise。",
+   "category": "分层架构",
+   "how_enforced": "门禁AST(test_services_do_not_use_assert...,强)"
+  },
+  {
+   "id": "L10",
+   "decision": "核心目录禁止 from X import *。",
+   "category": "分层架构",
+   "how_enforced": "门禁正则(强,但 CORE_DIRS 范围不含 core/algorithms——charter 口径的'核心'被排除)"
+  },
+  {
+   "id": "S1",
+   "decision": "内部身份字段(scenario_id/candidate_id/plan_role/source_table/op_id/schedule_id/_row_identity)不进公开输出(页面正文 JSON/接口/导出列/payload)，但允许留在服务端 URL/隐藏表单字段/日志;两层兜底:上游白名单构造+下游黑名单删键。",
+   "category": "安全",
+   "how_enforced": "门禁(public_output + viewmodel_public_output 两个 contract,强)"
+  },
+  {
+   "id": "S2",
+   "decision": "工序定位字段 op_id/schedule_id 绝不外露给用户;跨页/导出定位改用'批次+工序+设备/人员+日期'可读标识与 sha1 哈希 task_id，op_code 缺失也回退可读串不退裸 op_id。",
+   "category": "安全",
+   "how_enforced": "门禁contract(强,但仅覆盖 decorate_resource_dispatch_payload 读视图,未覆盖现场记录写入路径)"
+  },
+  {
+   "id": "S3/C3",
+   "decision": "甘特图永远只读结果视图:任务条不能拖动/拉伸/改进度写库，模拟按钮硬 disabled、dataset 恒为 view，readonly/readonly_dates/readonly_progress 全开。(S3 与 C3 为同一决定)",
+   "category": "安全",
+   "how_enforced": "门禁(regression_gantt_readonly_mode_contract,运行时 JS 探针实测拖拽 0 位移、点击仍通,强)"
+  },
+  {
+   "id": "S4",
+   "decision": "写入入口(现场记录/Excel 导入/模板下载/派工反馈 URL)只对当前正式采用方案下发;候选/对比/历史正式/模拟/被取代版本一律只读，disabled 不可被 enabled 反向覆盖。",
+   "category": "安全",
+   "how_enforced": "门禁(workbench_link_guardrails;automatic_reason 在 workbench_links.py:318 强制 disabled,强)"
+  },
+  {
+   "id": "S5",
+   "decision": "现场记录写入只能落当前正式采用方案:服务层硬校验 requested=adopted∧effective=adopted∧source_table=schedule∧scenario_id 为空，resolve 后二次复核 can_write_feedback，任一不满足抛冲突不写库。",
+   "category": "安全",
+   "how_enforced": "门禁(reschedule guardrails)+服务层硬校验(feedback_service:347-362,强)"
+  },
+  {
+   "id": "S6",
+   "decision": "Excel 导出只呈现中文业务字段，内部枚举翻中文标签(自制/外协/已锁定等,未识别给兜底)，内部追踪键不写入，单元格防公式注入+清洗控制符。",
+   "category": "安全",
+   "how_enforced": "门禁(excel contract×4 + public_output,强)"
+  },
+  {
+   "id": "S7",
+   "decision": "重排(run_schedule)写库前按执行快照复算现场状态;状态漂移/与冻结窗口冲突/已完工下游被前置/在产缺设备人员则抛 6003 中文提示、回滚、绝不写库;simulate 只校验不写。",
+   "category": "安全",
+   "how_enforced": "门禁(reschedule guardrails + freeze_window_fail_closed,强)"
+  },
+  {
+   "id": "C1",
+   "decision": "不重写排产算法，前端工作台只做结果可视化与解读。",
+   "category": "能力范围",
+   "how_enforced": "仅文档(roadmap)"
+  },
+  {
+   "id": "C2",
+   "decision": "第一版不做完整 MES/ERP/WMS/PLM/IoT 实时采集、扫码枪、电子签名、计件、质量追溯;现场数据只靠人工填或 Excel 导入。",
+   "category": "能力范围",
+   "how_enforced": "仅文档(requirements)"
+  },
+  {
+   "id": "C4",
+   "decision": "候选方案对比第一版只承诺'代表三方案'，不展全部 3/5/7 档、不支持任意两套自由对比、不露 candidate_id/内部评分/英文原因码。",
+   "category": "能力范围",
+   "how_enforced": "门禁(candidate_summary_contract,弱:主要管脱敏,'不自由对比'靠产品纪律)"
+  },
+  {
+   "id": "C5",
+   "decision": "延期诊断只讲已确认事实+可能线索+证据+数据缺口，绝不编造根因、不承诺唯一根因，缺数据只说缺口。",
+   "category": "能力范围",
+   "how_enforced": "门禁(delay_diagnosis_contract,强)"
+  },
+  {
+   "id": "C6",
+   "decision": "报表只支持设备(machine)和人员(operator)两种资源维度;班组/未知/半截(有号无类/有类无号)/主参数与别名冲突的筛选一律报错拒绝，不静默放大成全量。",
+   "category": "能力范围",
+   "how_enforced": "门禁+模型层硬 raise(schedule_resource_filter.py:53-70 + report_context_filters.py:38-50,强)"
+  },
+  {
+   "id": "C7",
+   "decision": "停机影响第一版只做设备级，不推断/不展开任务级受影响明细。",
+   "category": "能力范围",
+   "how_enforced": "仅文档+表结构约束(MachineDowntimes 以 machine_id 为维度,弱)"
+  },
+  {
+   "id": "C8",
+   "decision": "资源派工不做热力图/复杂折叠/新大屏分析，只做日历明细块和 Excel 矩阵+明细。",
+   "category": "能力范围",
+   "how_enforced": "仅文档(requirements)"
+  },
+  {
+   "id": "C9",
+   "decision": "短期不做反馈人必填(可空)、不做多人现场账号、不做 Excel 导入预览/二次确认(普通页一键直接导入、后台整批校验)。",
+   "category": "能力范围",
+   "how_enforced": "仅文档+代码(feedback_service:226 反馈人可空;但 /import/preview、/import/confirm 路由存在,只是未接线,弱)"
+  },
+  {
+   "id": "C10",
+   "decision": "计划与现场实际复盘只对照当前正式采用方案(adopted)，模拟/候选/历史方案不进复盘口径。",
+   "category": "能力范围",
+   "how_enforced": "门禁(plan_vs_actual_review)+代码硬编码 ROLE_ADOPTED(execution_review.py:112-153,强)"
+  }
+ ],
+ "conflicts": [
+  {
+   "severity": "张力(不算冲突但需注意)",
+   "decision_a": "S1：内部 id(含 op_id/schedule_id)允许留在服务端 URL/隐藏表单字段/日志，只是不进公开输出。",
+   "decision_b": "S2：op_id/schedule_id 绝不外露给用户，跨页定位一律改用可读标识+sha1 task_id，决不退回裸 op_id。",
+   "why": "两条决定对同一批字段(op_id/schedule_id)设了不同的红线高度:S1 说放 URL/隐藏字段 OK，S2 说这俩字段任何地方都别用裸值、定位要用 task_id。代码里被拆成两条路各守一条:只读/导出视图严格走 S2(把 op_id 哈希进 task_id、删裸键)，但现场记录【写入路径】走 S1(op_id 进 POST URL 路径、schedule_id/op_id 进 DOM 的 data-* 属性)。S2 的契约测试只盖了读视图(decorate_resource_dispatch_payload)，根本没测写入路径——所以这层张力目前没有任何岗哨在盯。不是 bug、也不危险(写入路径只对 adopted 方案开放，且确实需要一个稳定的服务端键来定位工序)，但 S2 的'绝不/一律'措辞比代码实际做到的更绝对。",
+   "evidence": [
+    "web/viewmodels/scheduler_resource_dispatch.py:63 (_PUBLIC_ROW_DROP_KEYS 删 op_id/schedule_id)",
+    "core/services/scheduler/resource_dispatch_task_ids.py:65-76 (op_id 哈希进 task_id,从不裸用)",
+    "web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py:258 (@bp.post .../execution/<int:op_id>/actual 裸 op_id 进 URL)",
+    "static/js/resource_execution_cards.js:34,55 (data-op-id/data-schedule-id 写进 DOM 属性)",
+    "tests/regression_resource_dispatch_viewmodel_public_output_contract.py:6,65 (契约只覆盖读视图 decorate_*，未覆盖写入路径)"
+   ],
+   "recommendation": "改措辞、别改代码:把 S2 收窄为'面向用户的展示/导出口径里 op_id/schedule_id 不外露'，明确把'写入路径的服务端 URL/data-* 定位键'划入 S1 的既有豁免。若想更稳，可给写入路径补一个契约测试，断言它不把 op_id 当作可读内容渲染给用户(而非禁止它作 URL 键)。当前不构成需要动代码的冲突。"
+  },
+  {
+   "severity": "张力(不算冲突但需注意)",
+   "decision_a": "L1/L2：core/algorithms 与 core/models 是最底层'核心'，分层红线最硬的一块。",
+   "decision_b": "L10/L9：'核心目录禁止 import */Service 禁 assert'等岗哨的把守范围 CORE_DIRS 不含 core/algorithms。",
+   "why": "'核心/core'这个词在不同决定里指的不是同一块地方。BOUNDARY-CHARTER 把 algorithms 当成地基里最神圣的层(L1)，但工具侧 CORE_DIRS(quality_gate_shared.py:181)只列了 web/routes、core/services、data/repositories、core/models、core/infrastructure、web/viewmodels——把 core/algorithms 排在门禁之外。叠加事实:L1/L2 本身就没有 fitness 测试在守(只有一份一次性 codemap 快照，而 layering.json 当前内容就是空的 [])。结果是'被宣称为最核心、最该锁死的层'反而是门禁覆盖最薄的层。维护时容易踩坑:有人以为 algorithms 受 import*/分层岗哨保护，其实没有。",
+   "evidence": [
+    "tools/quality_gate_shared.py:181-189 (CORE_DIRS 六项,不含 core/algorithms)",
+    "tests/test_architecture_fitness.py (全文 test_ 函数无一扫描 core/algorithms 或 core/models 分层)",
+    ".codestable/audits/2026-06-01-foundation-maturity/codemap/layering.json (3 字节,内容为空数组 [])",
+    "tests/test_architecture_fitness.py:42 NO_WILDCARD_DIRS=list(LEDGER_CORE_DIRS) (import* 范围继承 CORE_DIRS,同样不含 algorithms)"
+   ],
+   "recommendation": "二选一并写清:要么把 core/algorithms 纳入 CORE_DIRS/NO_WILDCARD_DIRS 让 L1/L10 名实相符;要么在 charter 注明 algorithms 的分层目前靠人工+一次性快照、无运行期门禁。顺带把空的 layering.json 重新生成或删除——空数组会让人误以为'0 违规已验证'，实际是没数据。"
+  },
+  {
+   "severity": "疑似",
+   "decision_a": "C9：第一版不做 Excel 导入预览/二次确认，普通页一键直接导入、后台整批校验。",
+   "decision_b": "代码现状:存在 /resource-dispatch/execution/import/preview 与 .../import/confirm 两个后端路由。",
+   "why": "看名字像是 C9 被打破了(明明说不做预览/二次确认，却有 preview/confirm 端点)。但实测这两个路由没有被任何前端接线:在 static/ 与 templates/ 全量 grep 'import/preview''import/confirm' 零命中;普通页 JS(resource_execution_import.js)只 fetch 直连的 /import，页面上的 rdActualImportPreviewWrap 渲染的是导入【结果/错误明细】而不是导入前预览。所以 C9 这条决定在用户实际能走的路径上是被遵守的，preview/confirm 属于未启用的服务端残骸或预留能力，不是活冲突——这正属于'活儿没干完/脚手架还在'，不是决定打架。",
+   "evidence": [
+    "web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py:379,405 (/import/preview、/import/confirm 路由存在)",
+    "static/js/resource_execution_import.js:20-99 (普通页只调 actualImportUrl 直连 /import,无 preview/confirm 调用)",
+    "templates/scheduler/resource_dispatch.html:330 (rdActualImportPreviewWrap 渲染导入结果而非预览)",
+    "grep static/ templates/ 'import/preview|import/confirm' 零命中 (未接线)",
+    ".codestable/requirements/shop-floor-execution-feedback.md 变更日志 2026-05-28 (普通页一键导入、后台整批校验)"
+   ],
+   "recommendation": "二选一收尾:若确定不做预览，删掉 preview/confirm 路由+对应服务方法，消除'决定与代码字面打架'的观感;若打算保留为后续能力，在 C9 决定里加一句'preview/confirm 端点为预留、当前未启用'。当前不影响交付，按低优先处理即可。"
+  }
+ ],
+ "conflict_summary": "结论先说:你这套决定整体是自洽的，没有发现真冲突。逐条翻了岗哨断言和生产代码后，绝大多数决定要么彼此独立、要么互相补强(典型:S4 前端不下发写入 URL + S5 后端硬校验 adopted + S7 重排按现场快照复算，三层防写是同一套'只对正式方案落库'哲学的接力，不打架;D5 中文优先与 S1/S2 不泄露内部字段也是同向加固)。你担心的'每天想法在变、定的东西互相打架自己不知道'——目前没成真，至少在边界这一层没有。\n\n需要你知道的是另一类问题，不是冲突，是'有决定但没人守/守歪了':最突出的是 L8(service 层零裸 SQL)——这条已经被代码违反，part_service.py:218 和 cleanup_task.py 里都有真业务 SQL 留在 service 层，而且根本没有对应门禁。它不是两个决定打架，是一条决定在烂尾，建议优先补岗哨或显式降级这条边界。另外 L1/L2(算法/模型层最核心)其实没有任何运行期门禁，只有一份内容为空的 layering.json 快照在'假装已验证'。\n\n真正提请你注意的是三处张力/疑似(都不必动代码、主要是措辞和收尾):一是 S1 与 S2 对 op_id/schedule_id 设了不同高度的红线，读视图按 S2 哈希脱敏、写入路径按 S1 把裸 op_id 放进 URL/DOM，且 S2 的契约测试没盖写入路径——建议把 S2 措辞收窄到'用户可见展示/导出'。二是'核心'一词歧义:charter 把 algorithms 当最核心，但门禁的 CORE_DIRS 偏偏不含 algorithms，名实不符。三是 C9 说不做导入预览，却有未接线的 preview/confirm 路由(实测前端没调，属脚手架)。把这三处的文字对齐、把 L8 补上守护，你的决定备忘录就既自洽又有岗哨兜底了。"
+}

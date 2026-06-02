@@ -1,0 +1,110 @@
+{
+ "partition": "scheduler-plan-identity",
+ "health": "有残渣(非重灾)。任务预设的两大重灾点已被治理:被点名的 P1(reports_page_support.py:36 ADOPTED_PLAN_RESOLUTION 常量假冒)已彻底删除、execution_review 改走真解析;canonical P2(execution_review 只复盘adopted的承重不对称)已被UI文案+disabled原因+导航强制+两条合同测试三层护住。真正水下的剩余债是:(a)gantt_plan_query 收口迁移完成后遗留的死兼容shim(P3);(b)default_plan_resolution_dict 手搓 plan_identity/resolution 双dict私实现且无parity测试(P5,漂移隐患);(c)_bool_from_summary 在身份计算里静默吞坏JSON(P4,低危);(d)_normalize_role 双字节级副本(P5小)。核心解析链(query_service/identity_builder/repo)本身干净:plan_id 全链零真实消费,坏数据多处主动抛错(build_plan_identity 空source即抛、repo _require_candidate_id/_require_scenario_id 抛、_validate_resolution_option 抛)。",
+ "findings": [
+  {
+   "pathology": "P3",
+   "title": "gantt_plan_query 收口迁移后遗留的死兼容 shim(resolve_plan/selected_plan_role/default_plan_resolution_dict/_has_explicit_gantt_range)",
+   "location": "core/services/scheduler/gantt_plan_query.py:42,46,32,59",
+   "reference_chain": "git 4428c75a:resolve_plan/selected_plan_role 原定义在 gantt_plan_query → git 35b3c138 提交说明明写'把…解析规则收口到 schedule_result_view_context。保留 gantt_plan_query 的兼容 wrapper，老调用方不用一次性迁移' → 这4个符号变成纯透传 _resolve_plan/_selected_plan_role/_default_plan_resolution_dict。grep 实证迁移已完成、wrapper 已死:gantt_plan_query.resolve_plan 与 .selected_plan_role 全仓(含tests)0 引用;default_plan_resolution_dict wrapper 仅 tests/regression_schedule_result_view_context.py:298 一条测试续命;_has_explicit_gantt_range 0 caller。真正存活调用方(gantt_service.py:12-17 仅import attach_gantt_range_metadata/build_empty_week_plan_payload/get_version_time_span_dates/resolve_gantt_range_for_version;scheduler_gantt.py:29 的 selected_plan_role 来自 scheduler_navigation_publish 而非此处)均绕过这些 wrapper 直引 schedule_result_view_context。",
+   "why_debt": "迁移做了一半:'收口'+'迁移老调用方'两步都完成了,但收口后空壳 shim 没删,留下4个零生产消费的假在用符号(其中1个靠测试人工续命),制造 gantt_plan_query 仍是解析入口的假象。",
+   "load_bearing": false,
+   "needs_adversarial": false,
+   "severity": "medium",
+   "blast_radius": "删除这4个死符号(及那条仅测wrapper透传行为的测试)安全;但 gantt_plan_query.py 文件整体不可删——它还有4个被 gantt_service 真用的 range 辅助函数。若误判'整模块死'而删文件会直接打断甘特周计划范围解析。",
+   "_partition": "scheduler-plan-identity",
+   "_source": "pass1"
+  },
+  {
+   "pathology": "P2",
+   "title": "execution_review 服务方法写死 ROLE_ADOPTED/scenario_id=None 的承重不对称,在方法本体无注释保护",
+   "location": "core/services/report/execution_review.py:141-176 (153,112,123,167)",
+   "reference_chain": "同属 ReportEngine 的 overdue_batches(report_engine.py:157)/utilization(:267)/downtime_impact(:371) 全部签名带 plan_role+scenario_id 并透传;唯独 execution_review(:141) 形参不收 plan_role/scenario_id,内部恒 host._resolve_plan(v, ROLE_ADOPTED, None) 且 _execution_review_plan_rows 恒传 plan_role=ROLE_ADOPTED/scenario_id=None。护栏的'理由'分布在远处:navigation_context.py:80-82 对 execution_review 请求强制 plan_role=ADOPTED/scenario_id='';workbench_links.py:310-311 _is_formal_adopted_context 失败即禁用入口、:267 context_summary 追加'只复盘正式采用方案';scheduler_reports_workbench.py:210 用户文案'只复盘正式采用方案,不复盘模拟预览和对比参考方案';合同测试 regression_reports_workbench_backlink_contract.py 的 test_execution_review_stays_formal_and_links_to_site_record_entry / test_non_adopted_report_nav_disables_execution_review_link 钉住。",
+   "why_debt": "这是任务点名的 canonical P2:刻意拒带 plan_role/scenario_id 以防预览/对比方案冒充正式复盘——承重(删了会让模拟预览数据混入正式现场复盘)。护栏在UI/导航/测试三层都有,但 execution_review.py 这个发生不对称的服务方法本体没有任何 inline 注释说明'我故意和 overdue/utilization/downtime 不一样'。未来 LLM 以'与同类报表方法保持一致'名义给 execution_review 补 plan_role 形参时,在改动点本地看不到任何阻止信号。",
+   "load_bearing": true,
+   "needs_adversarial": false,
+   "severity": "medium",
+   "blast_radius": "若给 execution_review 补 plan_role/scenario_id 透传:模拟预览/对比参考方案的计划时间会和正式现场反馈拼成'计划vs实际'复盘并可导出,污染唯一可信的正式复盘口径;合同测试会拦住一部分,但服务层契约已被破坏。",
+   "_partition": "scheduler-plan-identity",
+   "_source": "pass1",
+   "_adv_verdict": "load_bearing",
+   "_adv_refuted": false,
+   "_adv_precondition": "若要给 execution_review 补 plan_role/scenario_id 形参(与同类对齐),动手前必须三件全做:(1) 在取数边界保留强制 adopted——要么继续写死,要么加 service 层断言:execution_review 收到非 adopted role 或任何 scenario_id 时 raise ValidationError(loud,不静默回退),并在返回前校验 resolution.is_scenario_preview 为 False;(2) 新增请求级合同测试:client.get('/reports/execution-review?version=..&plan_role=baseline_best&scenario_id=..') 断言返回 rows 与 plan_role 仍为正式采用方案、导出 xlsx 不含预览/对比数据(此测试当前不存在,是最大缺口);(3) 在 execution_review.py:141 签名处加 inline 注释,写明'本方法故意只复盘 ROLE_ADOPTED,不收/不透传 plan_role/scenario_id,以防模拟预览与对比参考方案冒充正式现场复盘',把分散在 navigation_context/workbench_links/reports_workbench 的理由钉回改动点本地。",
+   "_adv_evidence": [
+    "core/services/report/execution_review.py:153 — execution_review() hardcodes host._resolve_plan(v, ROLE_ADOPTED, None); :112/:123 _execution_review_plan_rows hardcodes plan_role=ROLE_ADOPTED, scenario_id=None; :167 返回 plan_role=ROLE_ADOPTED。形参(:141-150)不收 plan_role/scenario_id，本体无任何 inline 注释说明此处故意与 overdue/utilization/downtime 不对称。",
+    "core/services/scheduler/schedule_plan_query_service.py:176-185 resolve_plan_view：scenario_id 非空即转 _resolve_scenario_plan;:460-496 返回 source_table=SOURCE_ADJUSTMENT_SCENARIO_ROWS、is_scenario_preview=True;非 adopted role(:112-139)选不同 candidate_id/source_table。证明 role/scenario 一旦透传就改变取数源表——预览/对比方案行会真实流入。",
+    "core/services/report/report_plan_helpers.py:56-106 _list_plan_rows_between/all 把 plan_role/scenario_id 透传进 list_detail_rows_between/all,FROM 解析出的 source_table/candidate_id 取数;execution_review 因此是数据层最后一道把关,不是装饰。",
+    "core/services/report/execution_review.py:164-176 返回 dict 不携带/不拦截 is_scenario_preview——预览行会静默拼进'计划vs实际'并经 export_execution_review_xlsx(:178-219)导出,无任何 loud failure,违背灵魂暗线(预览不可静默冒充正式)。",
+    "web/routes/reports_page_support.py:366-368 与 reports_export_routes.py:115 执行复盘路由自身也写死 adopted,从不读 request 的 plan_role/scenario_id;但 sibling 路由 reports_page_support.py:56 用 request_plan_role()——证明'与同类对齐'的统一压力真实存在,统一时会同时给 service 加形参并把路由接上请求值。",
+    "tests/regression_reports_workbench_backlink_contract.py:347-359 / regression_reports_workbench_navigation_contract.py:84-102 / regression_scheduler_workbench_link_guardrails.py:149-165 / regression_plan_vs_actual_review.py:358-359 全是链接生成/导航上下文断言;唯一带 plan_role 的执行复盘 URL 出现在 backlink:355 的负向 assert(... not in html_text)。全仓无任何测试 GET /reports/execution-review?plan_role=<非adopted>&scenario_id=X 并断言服务端回退 adopted——service 层契约无请求级回归护栏。"
+   ]
+  },
+  {
+   "pathology": "P5",
+   "title": "default_plan_resolution_dict 手搓 plan_identity(23键)+resolution(45键)双私有实现,绕过 build_plan_identity 与 SchedulePlanResolution.to_dict,且无 parity 测试",
+   "location": "core/services/scheduler/schedule_result_view_context.py:73-147 (plan_identity dict @77, 外层 dict @101)",
+   "reference_chain": "canonical 身份产出口是 build_plan_identity(identity_builder.py:123)→PlanIdentity.to_dict(plan_identity.py:44);canonical resolution 产出是 SchedulePlanResolution.to_dict(resolution.py:64)。default_plan_resolution_dict 在 no_history/missing_history 路径(view_context.py:437-449 调用)手工拼出同形状两个 dict。无法直接委托 build_plan_identity 的原因实锤:identity_builder.py:145-146 对空 source_table 主动抛'计划身份缺少有效的数据来源',而无历史时 version=None/无 source 行。键集核验:PlanIdentity.to_dict 的23键与手搓 plan_identity 键集 0 漂移(今日);但 grep 实证 tests/ 下无任何断言两者键集/取值一致的 parity 测试。",
+   "why_debt": "同一'计划身份/解析结果'概念的第二套私有构造,与统一收口点(build_plan_identity)并存。今日键集恰好对齐属侥幸——一旦 PlanIdentity 增删字段,canonical 侧自动跟随、手搓侧不会,且无测试报警,下游(plan_role_filter_fields 的 _identity_bool 读 plan_identity.get(key))会对缺失键静默取 False,在'无历史'页面悄悄给出错误的 is_official/can_dispatch 等。",
+   "load_bearing": false,
+   "needs_adversarial": true,
+   "severity": "medium",
+   "blast_radius": "误删/改坏这个手搓 dict 会让 no_history/missing_history 的资源派工与报表页 plan_role 过滤字段崩塌(KeyError 或全 False 误判);反之放任不管则承担未来字段漂移时的静默错值风险。需怀疑者裁定:是'无数据合法占位'(本就不该有真实身份)还是'第二套该收口的实现'。",
+   "_partition": "scheduler-plan-identity",
+   "_source": "pass1",
+   "_adv_verdict": "real_debt",
+   "_adv_refuted": true,
+   "_adv_precondition": "先补发现正确指出缺失的 parity 测试：对 VALID_PLAN_ROLES 全集，断言 default_plan_resolution_dict(role)['plan_identity'] 的键集+取值 == build_plan_identity(无历史输入,source_table='schedule').to_dict()，并断言外层 dict ⊆ SchedulePlanResolution.to_dict。然后把占位委托给 build_plan_identity + SchedulePlanResolution.to_dict（无历史时多出的 schedule_result_status/lock_status/detail_saved 三键下游均 .get() 读取，无害）。务必保留 gantt_plan_query.py:32-38 的遗留错误文案包装。最后跑 regression_schedule_result_view_context.py 与派工/反馈契约测试自证行为不变。注意外层 :142 is_official 用方括号取值（非 .get()），收口后改走 .get() 反而更稳。",
+   "_adv_evidence": [
+    "schedule_result_view_context.py:77-100 手搓 plan_identity 23 键，:101-147 外层 dict；关键：source_table 写死为 SOURCE_SCHEDULE=\"schedule\"（行82/107），并非空来源",
+    "schedule_plan_identity_builder.py:145-146 是发现声称的'无法委托'理由（空 source_table 抛错），但只在 source∉{schedule,candidate_rows,adjustment_scenario_rows} 时触发；占位用的是 'schedule'→通过。实测 build_plan_identity(version=None, source_table='schedule', ...) 成功，且 .to_dict() 与手搓 plan_identity 对 adopted 与 baseline_best 两角色 0 键漂移、0 值漂移——委托今日即可零差异替换",
+    "schedule_plan_identity.py:44-68 canonical PlanIdentity.to_dict 23 键已逐键比对一致",
+    "schedule_plan_resolution.py:64-103 canonical 外层 to_dict 是手搓外层的超集，手搓反而缺 schedule_result_status/schedule_lock_status/detail_saved 三键——它已非忠实第二实现，靠'缺键'先一步偏离",
+    "决定性安全证据：写/派工变更不信任该视图 dict——operation_execution_feedback_service.py:355-362 重新 resolve_plan_view(...) 读真 plan_identity.can_write_feedback；resource_dispatch_actual_record_service.py:134-139 同样以 can_write_feedback 为闸。手搓 dict 仅供只读的无历史页",
+    "schedule_result_view_context.py:91-99 占位中 can_dispatch/can_write_feedback/is_current_executable_official_version 全部硬编码 False；:271-274 _identity_bool 用 .get()，未来缺键→False=拒绝=安全方向，符合灵魂暗线",
+    "无 parity 测试实证：tests/regression_schedule_result_view_context.py 导入 default_plan_resolution_dict 但 build_plan_identity 出现 0 次；:294-301 只断言 gantt_plan_query 的遗留报错文案",
+    "gantt_plan_query.py:32-38 包装层把错误重抛为遗留文案'未知的排产方案角色：{role}'，收口时须保留"
+   ]
+  },
+  {
+   "pathology": "P4",
+   "title": "_bool_from_summary 静默吞掉损坏的 result_summary JSON,影响 is_official/可执行版本/可派工判定",
+   "location": "core/services/scheduler/schedule_plan_identity_builder.py:24-29 (except (TypeError, ValueError): return False)",
+   "reference_chain": "_bool_from_summary 被 _history_is_executable(:36) 与 build_plan_identity(:150) 调用判 is_simulation → is_simulation 喂入 _is_official_plan(:87-95 not is_simulation) 与 latest_executable_official_version(:41) → 进而决定 is_current_executable_official_version、can_dispatch、can_write_feedback(identity_builder:163,173)。写入侧 result_summary 恒由 schedule_orchestrator.py:354 的 build_result_summary_fn 产 json.dumps;schema.sql:586 result_summary TEXT(可空)。读回 ScheduleHistory.result_summary 为原文本。",
+   "why_debt": "项目灵魂线是'坏数据不准静默兜底、宁可暴露错误'。此处对损坏 JSON 直接 except→return False,把'这条历史的 summary 解析失败'当成'不是模拟'安全默认,使一条 summary 损坏的记录可能通过 _history_is_executable 被选为 latest_executable_official_version、并被判 is_official。错误被吞,不会让用户/运维看见数据缺口。",
+   "load_bearing": true,
+   "needs_adversarial": true,
+   "severity": "low",
+   "blast_radius": "改成抛错可能让历史含 NULL/legacy 非JSON summary 的老库在版本身份解析处直接报错(影响面=身份解析全链);保持吞错则牺牲'坏数据可见性'。低危因 result_summary 正常恒为机器写 JSON、损坏罕见。需怀疑者判:是合理的 NULL/legacy 容忍,还是该暴露的损坏吞噬。",
+   "_partition": "scheduler-plan-identity",
+   "_source": "pass1",
+   "_adv_verdict": "real_debt",
+   "_adv_refuted": true,
+   "_adv_precondition": "承重的不是这处 summary 解析，而是 result_status='simulated'（由同一 ctx.simulate 原子同写、且在两个消费者里都先于/独立于 summary 被检），所以删/统一不会让模拟冒充正式或可派工——该安全护栏断言被推翻。但要动它有两条硬前提：(1) 绝不可原地改成 raise——latest_executable_official_version 全量扫历史行，任何一条 legacy/NULL 邻接的损坏 summary 都会让当前方案的 is_current_executable_official_version/can_dispatch/can_write_feedback 整链抛错，这是可用性放大事故而非安全收益；(2) 若要移除这处冗余的 summary-based is_simulation 判定，先确认没有任何写入方会在不同写 result_status 的情况下单独写 result_summary.is_simulation（当前 INSERT 是原子同写，成立）。若确实要落实灵魂线'坏数据可见'，应在读边界加一条非致命的完整性日志/计数标记出无法解析的 result_summary，而不是让版本身份解析崩溃。",
+   "_adv_evidence": [
+    "schedule_plan_identity_builder.py:24-29 — flagged silent `except (TypeError, ValueError): return False` in _bool_from_summary",
+    "schedule_plan_identity_builder.py:32-38 — _history_is_executable checks Gate1 `result_status in _BLOCKED_RESULT_STATUSES {failed,simulated}` (lines 33-35) BEFORE the summary gate (line 36); every real simulation is blocked by Gate1 first",
+    "summary/schedule_summary_freeze.py:82-86 — _compute_result_status: `if simulate: return ScheduleResultStatus.SIMULATED.value` → every simulate run is forced to result_status='simulated'",
+    "summary/schedule_summary_assembly.py:437 — `\"is_simulation\": bool(ctx.simulate)` — derived from the SAME ctx.simulate flag as result_status (redundant copy)",
+    "summary/schedule_summary.py:216 — result_summary always = json.dumps(result_summary_obj); never hand-written, so corruption is a should-never-happen DB-tamper/legacy case",
+    "run/schedule_persistence.py:309-318 + data/repositories/schedule_history_repo.py:133-150 — result_status and result_summary written together in one INSERT (atomic co-write; they cannot diverge via the normal path)",
+    "data/repositories/schedule_plan_query_repo.py:75-118 — both list_history_identity_rows and get_history_identity_row SELECT h.result_status AND h.result_summary from the same row",
+    "schedule_plan_identity_builder.py:161-163 — `result_ok = result_status not in _BLOCKED_RESULT_STATUSES`; `is_current_official = is_official and is_current and result_ok` → result_status independently backstops the dangerous-action gate, not the summary flag",
+    "core/services/scheduler/resource_dispatch_actual_record_service.py:137,142-149 — the actual dangerous dispatch/feedback write gates on can_write_feedback + role/source/scenario recheck (requires is_current_official => result_ok), never on summary is_simulation alone",
+    "schedule_plan_identity_builder.py:41-45 — latest_executable_official_version iterates ALL history rows; converting return False -> raise would let ONE corrupt legacy row break version resolution for the CURRENT plan (availability amplification, zero safety gain)"
+   ]
+  },
+  {
+   "pathology": "P5",
+   "title": "_normalize_role 在 schedule_plan_role 与 schedule_plan_query_service 字节级重复,且无 plan_role 归一收口点",
+   "location": "core/models/schedule_plan_role.py:21-23 与 core/services/scheduler/schedule_plan_query_service.py:28-30",
+   "reference_chain": "两处 def _normalize_role(role) 函数体逐字符相同(text=str(role or '').strip(); return text or ROLE_ADOPTED)。dup_symbols.json 未单列(均为模块私有 _ 前缀)。view_context.py:65 另有 normalize_plan_role 是带校验的第三变体。已知收口点 enum_normalizers/normalization_matrix grep 实证不含任何 plan_role 归一逻辑(无该收口点)。query_service._normalize_role 完全可 import 自 schedule_plan_role。",
+   "why_debt": "同一'role 归一(空→adopted)'职责的两份完全相同私有副本;schedule_plan_role 作为 model 已是天然归口,query_service 重复造一遍而非复用。属轻度 P5,改一处易漏另一处。",
+   "load_bearing": false,
+   "needs_adversarial": false,
+   "severity": "low",
+   "blast_radius": "极小:让 query_service 复用 schedule_plan_role._normalize_role 即可;两者今日行为一致,合并无语义风险。",
+   "_partition": "scheduler-plan-identity",
+   "_source": "pass1"
+  }
+ ]
+}

@@ -1,0 +1,269 @@
+{
+ "narrative": "一句话先给结论：你这半年，地基几乎没动过，但\"房子盖成什么样给人住\"这层，你跟自己打了几十架。而且越打到后面，你越不是凭感觉改，而是被自己立的规矩（对抗评审、质量门禁、交叉验证）逼着改。\n\n1月奠基期，你其实已经在跟\"更早的你\"打架了。最早的策划方案v1/v2里写过 pandas+DataFrame、写过一整套 ResourceLock 并发控制表、写过布尔字段 is_active/is_internal、写过后台定时备份线程——到了正式定稿，你把这些全推翻了：pandas 换成 openpyxl-only、业务层只传 List[Dict]；删掉整套锁表，改用事务管理+运行时单活锁；布尔全改成字符串枚举；定时备份改成退出时备份。这说明一件事：你从一开始就有判断标准——单机离线、Win7、能简化就别上重家伙。这套判断后面半年一次没松过。\n\n然后你定下了真正的脊梁：四层架构（routes→services→repositories→models）、batch_id 当核心标识、双重资源约束贪心排产、整批拒绝的 Excel 导入、SchemaVersion 轻量迁移不上 Alembic、所有操作写 OperationLogs 留痕。这些到今天还在——我翻了代码，四层目录原样在，requirements 里还是 Flask2.3.3/openpyxl/没有 pandas，迁移脚本一路手写到了 v17，贪心算法被拆过但对外调用没变。地基一脉相承，这是你最该有安全感的地方。\n\n中间2到4月初这段先不表（另一路在考古）。\n\n4月底是个明显的换挡。你做了两件大事：一是把 AI 协作的默认入口从旧的 superpowers/.limcode 整个切到 CodeStable；二是确立了后面反复出现的总原则——\"坏数据不准再静默兜底\"。以前排产遇到坏数据会偷偷跳过、用默认值、甚至伪造一个能排序的分数糊弄过去；从这时起一律改成\"直接说清楚坏在哪\"。同期你把一千多行的单体 GreedyScheduler 拆成小模块、建了能机器验证的测试债务台账、开了 P1 排产债务清理 roadmap。主旋律就俩字：拆解 + 不自欺。\n\n5月初，这条\"不自欺\"的线铺满了整个系统。对外错误改成 fail-closed（结构化公开错误+白名单，不再靠黑名单猜）、排产成功状态不再靠数量猜、表单开关不再靠浏览器提交顺序猜、维护锁读不出来不再当没锁放行。同时你干了件影响很大的事：把\"齐套\"从默认的硬门槛翻成默认关闭——这是产品判断的大转向。UI 也统一成了 presenter 设计语言，不再让模板各自翻译状态。还有个很你的细节：pre-push 门禁同一天里改了两回，先绑成完整门禁、嫌慢马上又改成快速预检。\n\n5月底是自我推翻最密集的一个月，但也是你最成熟的一个月——因为这些推翻基本不是拍脑袋，是被你自己的机制逼出来的。NetworkX 图分析落地，你死死按住它\"只做体检医生、不当第二个排产大脑\"。多方案对比上线时，你一度让所有图模式都去跑候选比较，结果6笔提交后干净门禁报了15个失败，你立刻回滚——门禁替你拦住了方向跑偏。甘特图你发现\"看着能拖、其实不保存\"是在骗调度员，果断关掉假拖动改成只读。最大的一次反转在车间反馈：原计划做成实时按钮+必填反馈人+取浏览器时间，你想清楚\"现场根本没接 MES\"，直接改成\"填实际情况+Excel 导入、反馈人可空、时间可手填\"。explore 阶段一堆旧草案（根因定位、自由 A/B 对比、独立 /exception 路由、system 假用户）也在这时被整体作废。\n\n6月收口到一个主题：把散落的首页/甘特/分析/报表/资源派工，织成\"计划员一条做事路线\"——工作台。你建了 WorkbenchLink 统一管跨页跳转（明令不让模板自己拼 URL，跳哪都得带着版本/方案/日期/对象，不能偷偷掉回默认计划），首页升级成值班台，分析页改成\"先看异常和推荐再看技术过程\"。又一次大反转：5月29号刚定的\"抽独立现场记录页+新路由+新导航\"，6月被对抗评审推翻，改成\"在原页面内分层+只拆 JS 文件\"——我确认了代码就是这么落的（resource_execution.js 变薄，拆成 context/cards/actual/import 四个）。\n\n所以回答你的问题：方向漂移过，而且漂得不少，但漂的全是\"皮\"——产品长什么样、入口怎么摆、某个开关默认开还是关。\"骨\"一次没动：Win7 离线、四层架构、openpyxl-only、贪心排产、不自欺式报错、留痕可追溯。而且有条暗线越来越清楚：你从\"能跑就行\"一路走到\"宁可暴露错误、也不骗自己和用户\"，到6月甚至连\"读取失败返回空列表\"都不许了，必须把\"读不到\"明明白白显示出来。这不是方向变了，这是同一个方向越扎越深。",
+ "eras": [
+  {
+   "era": "1月 · 奠基期",
+   "theme": "先把骨架和硬约束钉死：单机离线、四层架构、能简化绝不上重家伙——并且当场否掉了更早草案里的重方案。",
+   "key_decisions": [
+    "运行环境锁死 Win7 SP1 单机本地 Web（Flask+浏览器），Python 3.8 + Flask2.3.3/openpyxl3.0.10/dateutil2.8.2 + PyInstaller4.10 离线交付",
+    "四层分层架构 routes→services→repositories→models + infrastructure，层间单向调用、单文件超500行拆分",
+    "openpyxl-only、业务层统一 List[Dict] 不绑 pandas，TabularBackend 抽象预留扩展点",
+    "双重资源约束贪心排产（设备+人员两条时间线）+ 可插拔算法/四种排序策略 + batch_id 当核心标识",
+    "事务管理规范(@transactional) + 统一错误码/AppError/{success,data,meta} + SchemaVersion 轻量迁移不上 Alembic",
+    "Excel 整批拒绝（任一 ERROR 整批退回）+ 中文精确到行号字段，预览→确认两步",
+    "OperationLogs/ScheduleHistory 全程留痕，作为未来 ReportEngine 报表的事实来源"
+   ],
+   "turning_point": "定稿即推翻自己更早的策划方案：pandas+DataFrame、整套 ResourceLock 并发表、布尔字段、后台定时备份线程全被否掉——确立了'离线单机优先、能简化就简化'的判断标准，这把尺子后面半年没换过。"
+  },
+  {
+   "era": "2月–4月初 · 技术债总清算期",
+   "theme": "不是加功能，是给能跑但到处\"静默兜底\"的系统做一次彻底地基重灌——这段曾是记录黑洞，现已考古补全（172条决定，112条靠扒diff才挖到）。",
+   "key_decisions": [
+    "消灭静默回退全栈运动：从单点(冻结窗口/非法时间/auto_assign缺工种)升级成 DegradationEvent+BuildOutcome封套+strict_mode+fail-closed，让\"我填的被改了\"能在页面横幅显示",
+    "立单一事实源：枚举归一化散写→priority_constants→enum_normalizers→收敛到 normalization_matrix 唯一源；配置收敛到 config_field_spec",
+    "拆巨石立分层红线：app/巨型service拆小抽到web/bootstrap，建RequestServices服务管家+ScheduleRepositoryBundle，SP05拆子包用契约测试钉死拓扑",
+    "把决定变成门禁(最聪明一招)：给每条重要边界配契约测试，建起182契约测试+22架构规则+AST分层0违规，不再靠记忆守边界",
+    "Win7离线硬化：双包打包、数据目录迁机器级共享、运行时锁/健康检查/优雅停机/动态端口"
+   ],
+   "turning_point": "事务模型自我修正：早期\"全用SAVEPOINT模拟嵌套\"，后发现最外层SAVEPOINT在RELEASE后事务已提交、再commit失败来不及回滚，改成\"最外层显式BEGIN、只嵌套层SAVEPOINT\"(现存代码已是后者)。这是\"想清楚后的修正\"典型，非反复横跳。"
+  },
+  {
+   "era": "4月底 · 换轨 + 反静默兜底治理期",
+   "theme": "工作流整体切到 CodeStable，同时立下贯穿后半年的总原则——坏数据不准再偷偷兜底，一律报清原因。",
+   "key_decisions": [
+    "AI 协作默认入口从 superpowers/.limcode 切到 CodeStable，新建标准骨架，.limcode 降级为归档",
+    "确立'贪心排产坏数据直接报原因、不再静默跳过/默认值续算/伪造分数'总原则，旧'兜底继续跑'断言全改写",
+    "拆开单体 GreedyScheduler（ordering/run_state/run_context/sgs_scoring 等），对外调用与返回结构保持不变",
+    "建机器可验证的 full-pytest 测试债务台账（collector+baseline+strict xfail+只减不增 ratchet）",
+    "切断 main-style 回归同进程污染：改子进程隔离运行（隔离前36失败→隔离后5个真实失败）",
+    "schema v7 唯一索引 idx_schedule_version_op_unique，历史重复行 fail-fast 不静默挑一行",
+    "插件整体加载失败 reset_plugin_state 重置状态，不沿用旧 registry/旧 Excel backend",
+    "开 P1 排产债务清理 roadmap，定全局停止条件'不新增 if/fallback/兜底/静默回退'"
+   ],
+   "turning_point": "从'能凑合就凑合'正式转向'宁可暴露错误也不自欺'——这是整个项目工程价值观的分水岭，后面每一期都在加深它。"
+  },
+  {
+   "era": "5月初 · 对外契约硬化期",
+   "theme": "把'不自欺'从排产内核铺满整个系统的对外边界，全线 fail-closed；同时做了一次大产品转向。",
+   "key_decisions": [
+    "齐套 readiness 从'默认开启的硬门槛'翻成'默认关闭、保留能力但不卡排产'（配 v8 迁移）——重大产品判断转向",
+    "排产对外错误改 fail-closed：结构化 public_error_details + input_contract 白名单重组，杜绝路径/堆栈/库名外泄",
+    "完成状态判定 fail-closed：缺 completion_status 不再按数量猜成功，按'需检查'处理",
+    "表单开关解析改严格白名单 fail-closed，不再靠浏览器字段提交顺序猜",
+    "Phase-6 把 json 解析/版本归一/错误整形从 routes 下沉 core，源码扫描测试守门",
+    "统一 UI presenter 设计语言（UiToggleRow/UiNotice + ui_contract.css），模板只渲染不再各自翻译状态",
+    "新增 core/shared 共享层 field_labels（内部字段→中文业务名），long gate cache 缓存体系起步"
+   ],
+   "turning_point": "齐套门槛默认关闭，是第一次大规模'听现场说话、改默认行为'；同时 pre-push 门禁同一天内二次翻转（先绑完整门禁、嫌慢又改快速预检），暴露出'又要严谨又要顺手'的拉扯。"
+  },
+  {
+   "era": "5月底 · 信任底座 + 自我推翻高发期",
+   "theme": "上信任底座（图分析诊断/多方案对比/车间执行事件），但这个月自我推翻最密集——而且大多是被门禁和对抗评审逼着改，不是拍脑袋。",
+   "key_decisions": [
+    "NetworkX 图分析落地：可选依赖/懒加载/锁 3.1/默认关，三态 off/report/on，死守'只做体检医生不当第二个排产大脑'",
+    "PR7 多方案对比：新增3张候选表，正式 Schedule 只存最终采用，候选不混入",
+    "车间执行事件基础 v15：OperationExecutionEvents 只追加事实表 + 状态聚合，计划行与现场事实分离",
+    "甘特图定为'只读可信查看页'，关掉假拖动，缩放扩到月/周/日/12h…1min，模拟调整走 Draft→Scenario→正式版本三层",
+    "开 APS 三差距方向 roadmap（延期诊断/方案对比业务化/车间执行反馈），默认顺序改为'先补信任底座'",
+    "系统性收紧静默回退（坏日历工时/坏摘要/NaN-Inf 一律报错或可见降级），新增 Py3.8 语法扫描进门禁",
+    "CodeStable 目录迁到隐藏 .codestable，启动入口改 attention.md→system-overview.md"
+   ],
+   "turning_point": "多方案对比一度让所有图模式都跑候选比较，6笔提交后干净门禁报15个失败——你立刻回滚。这一刻证明：你立的质量门禁真的能替你拦住方向跑偏，'机制约束'开始替代'个人判断'兜底。"
+  },
+  {
+   "era": "6月 · 工作台收口期",
+   "theme": "把散落的首页/甘特/分析/报表/资源派工织成'计划员一条做事路线'——工作台；跨页不丢上下文，写入处处加护栏。",
+   "key_decisions": [
+    "新建 scheduler_workbench_links 专职跨页链接 ViewModel，统一带版本/方案/日期/对象，明令不让模板自己拼 URL、不偷偷掉回默认计划",
+    "首页升级成'计划员值班台'（今日待处理5类），分析页改'先看异常和推荐、再看技术过程'",
+    "甘特任务详情区'现场实际'只从 OperationExecutionEvents 经 ExecutionFactProvider 聚合，无事件显示'暂未记录'绝不拿计划时间冒充",
+    "资源派工执行车道：同页三类入口视觉分层（计划员查看/现场事实/复盘），现场记录写入加'任务归属当前查询结果'校验堵直连绕过",
+    "顶层'计划工作台'菜单定性为无上下文只读 GET 入口，不下发写入/Excel/模板/表单",
+    "第二阶段增强补成独立 roadmap item（停机任务级影响、牵连批次影响），数据不足必须说'当前不能判断'"
+   ],
+   "turning_point": "5月29号刚定的'抽独立现场记录页+新路由+新导航'，6月被6个 subagent 对抗评审推翻，改成'同页内分层+只拆 JS 文件'（resource_execution.js 变薄拆成 context/cards/actual/import 四个，已在代码确认）。又一次靠评审机制把'范围过大、证据不足'的方案摁住。"
+  }
+ ],
+ "reversals": [
+  {
+   "when": "1月 · 奠基期",
+   "from": "策划方案v2：pandas==2.0.3 + 业务层用 DataFrame",
+   "to": "openpyxl-only + 业务层统一 List[Dict]，禁止 DataFrame",
+   "why": "目标是 Win7 离线单机，不上重依赖；为后续可换 PandasBackend 留抽象但 V1 不引入"
+  },
+  {
+   "when": "1月 · 奠基期",
+   "from": "策划方案v2：整套 ResourceLock 表 + locking.py 业务级并发控制",
+   "to": "删除锁表，数据一致性靠事务管理，单活靠运行时 aps_runtime.lock",
+   "why": "单机单用户场景下整套并发控制是过度设计，简化掉"
+  },
+  {
+   "when": "1月 · 奠基期",
+   "from": "策划方案v1：BOOLEAN 字段 is_active/is_internal/is_ready + op_id TEXT 主键(批次号_工序号)",
+   "to": "字符串枚举 status/source/priority + 自增 id 技术主键 + op_code + 复合唯一约束",
+   "why": "便于扩展、Excel 导入导出、单件追溯铺路"
+  },
+  {
+   "when": "2月–4月初 · 技术债清算",
+   "from": "TransactionManager 全层级都用 SAVEPOINT 模拟嵌套、最外层无显式 BEGIN",
+   "to": "分层事务：最外层(depth==1 且自有事务)显式 BEGIN/COMMIT，只有嵌套层或外部已开事务才用 SAVEPOINT，按 uses_savepoint 区分回滚",
+   "why": "最外层 SAVEPOINT 在 RELEASE 后事务其实已提交，后续 commit() 再失败时来不及回滚——这是黑洞期内一次真正的自我推翻，现存 transaction.py:_begin_scope 已是后者"
+  },
+  {
+   "when": "2月–4月初 · 技术债清算",
+   "from": "枚举/优先级归一化在各 Service、各 Route 各自内联一套(逻辑雷同但细节不一致、有的漏 .lower()，大小写容错 bug 根源)",
+   "to": "先收到 priority_constants/enum_normalizers，最终抽 normalization_matrix 作为全项目唯一事实源，enum_normalizers 与路由 normalizers 全部改委托",
+   "why": "重复实现口径不一导致 SQLite 无 COLLATE NOCASE 时静默查空；这是一条三级演进的收敛链，越收越紧"
+  },
+  {
+   "when": "2月–4月初 · 技术债清算",
+   "from": "通用解析/降级工具(number_utils 等)放在 core.services 层，导致 model/algorithm 反向依赖服务层(分层违规)",
+   "to": "下沉到 core/shared(field_parse/strict_parse/compat_parse/degradation/number_utils/boolean_normalize/value_policies)，旧 core.services.common 入口留兼容",
+   "why": "先有了 number_utils 旧入口把'解析+兼容+留痕'混在一起，发现造成反向依赖后才下沉拆分；现 core/shared/ 已落地"
+  },
+  {
+   "when": "2月–4月初 · 技术债清算",
+   "from": "碰到数据问题一律静默降级（工种缺→当外部工序、供应商缺→默认1天、配置异常→回默认值、freeze 解析失败→全解冻），只写一行日志",
+   "to": "消除静默回退全栈运动：发 DegradationEvent+脏字段+计数，路由 consume 后 flash 降级横幅；引入 strict_mode 让用户可选报错；确立 fail-closed(freeze 解析失败→全冻结)",
+   "why": "用户根本看不见'我填的被改了/只恢复了一半'；由 8212cfde 的2301项静默回退审计清单驱动的系统性翻案"
+  },
+  {
+   "when": "2月–4月初 · 技术债清算",
+   "from": "app.py/app_new_ui.py 各 ~350行，legacy 与 factory 两套启动逻辑长期共存(legacy 缺 secret_key/session/security headers，误调用即安全降级)",
+   "to": "删 _create_app_legacy 死代码，启动链抽到 web/bootstrap，create_app 一行委托 create_app_core()，两文件降到~85行",
+   "why": "两套并存且 legacy 版本缺安全加固；现 app.py 仅68行 + app_new_ui.py 22行"
+  },
+  {
+   "when": "2月–4月初 · 技术债清算",
+   "from": "每个路由各自 new 服务 XxxService(g.db, logger=..., op_logger=...)，几十处复制粘贴、参数易写漏；排产服务内部手动 new 10个 repo",
+   "to": "RequestServices 服务管家(cached_property 懒加载请求内复用) + frozen ScheduleRepositoryBundle + 18页面统一 g.services.xxx，并加 AST 门禁禁止再散装建服务",
+   "why": "重复装配代码易出错难维护；现 web/bootstrap/request_services.py + repository_bundle.py 落地，门禁守着"
+  },
+  {
+   "when": "2月–4月初 · 技术债清算",
+   "from": "scheduler 服务/路由全部平铺单层目录；旧导入路径是真实文件",
+   "to": "SP05 拆 scheduler 子包 + web/routes/domains 五域，旧路径降级为强别名(sys.modules 同对象)+行为兼容垫片，用 regression_sp05_path_topology_contract 钉死",
+   "why": "单层堆积难维护；用契约测试把新拓扑+兼容矩阵焊死"
+  },
+  {
+   "when": "2月–4月初 · 技术债清算",
+   "from": "due_date 23:59:59 判超期(边界秒漏判)；UNCHANGED 跳过不计数；REPLACE 也跳过 UNCHANGED(丢数)；shift_hours<=0 一律回落8.0",
+   "to": "due_exclusive=交期次日00:00:00；UNCHANGED 计入 skip_count；REPLACE 不跳过 UNCHANGED；shift_hours 仅 None 回落、0 原样保留",
+   "why": "一组口径修正，都是'旧默认行为会悄悄算错/丢数据'，逐一翻案"
+  },
+  {
+   "when": "4月底 · 换轨期",
+   "from": "默认起点 .limcode/skills/using-superpowers + 旧流程",
+   "to": "CodeStable 工作流（codestable 标准骨架，AGENTS.md 先看 system-overview）",
+   "why": "统一开放式诉求/新功能/bug/重构的分流入口，旧流程降级为归档"
+  },
+  {
+   "when": "4月底 · 反兜底治理",
+   "from": "贪心链路'能凑合就凑合'：静默跳过坏数据/默认值续算/伪造可排序分数",
+   "to": "坏数据一律直接抛清楚原因，旧'兜底继续跑'断言改写成'直接说明坏在哪'",
+   "why": "立项目总原则——坏数据不应被伪装成正常数据，短期暴露更多错误但长期安全"
+  },
+  {
+   "when": "4月底 · 反兜底治理",
+   "from": "落库结果校验里 row is None 静默跳过分支",
+   "to": "移除静默跳过，异常组合直接暴露问题不再悄悄丢行",
+   "why": "对抗性复审下，静默丢行会掩盖真实数据问题"
+  },
+  {
+   "when": "5月初 · 契约硬化",
+   "from": "齐套/齐套日期默认就是排产硬门槛，未齐套或未来日期卡住排产",
+   "to": "readiness_gate_enabled 默认 False，不勾选就不卡，排序时全当已齐套",
+   "why": "现场实际是计调员只排齐套的、齐套门槛默认开会误卡——重大产品判断转向"
+  },
+  {
+   "when": "5月初 · 契约硬化",
+   "from": "公开摘要靠'错误前缀+敏感词黑名单'判断能否展示，原样透传 input_contract",
+   "to": "结构化 public_error_details + input_contract 白名单重组",
+   "why": "黑名单边界脆弱且会泄露路径/堆栈/库名，改成只放行已知安全字段"
+  },
+  {
+   "when": "5月初 · 契约硬化",
+   "from": "pre-push 绑成完整 clean gate（--require-clean-worktree --long-gate-cache）",
+   "to": "同一天又改成 pre-push 只跑 daily 快速预检（约2.3秒，明确非 clean proof）",
+   "why": "完整门禁每次 push 太慢，日常被拖住；完整证明退到独立入口——同日二次翻转，体现严谨与顺手的拉扯"
+  },
+  {
+   "when": "5月初 · 契约硬化",
+   "from": "缺 completion_status 时纯按 error_count 数量猜成功/部分/失败",
+   "to": "fail-closed：缺状态但带 error 信息按'结果有问题需检查'处理",
+   "why": "按数量猜会把带错误或未知的结果显示成成功"
+  },
+  {
+   "when": "5月底 · 信任底座",
+   "from": "正式排产默认在所有图模式都跑候选比较（改动了 off/report/on 既有合同）",
+   "to": "回滚为'仅显式开关打开才进候选比较'，默认仍单次排产",
+   "why": "6笔提交后 clean 门禁报15个失败——门禁拦住了方向跑偏，默认启用顺延到 PR7e"
+  },
+  {
+   "when": "5月底 · 信任底座",
+   "from": "对比方案判定按 candidate_key/role 猜、health 从展示用截断 sample 反推",
+   "to": "按 source_table 精确判定；health 改用完整 graph_health_context",
+   "why": "猜来源会误标同源方案；截断样本只适合展示、不能当决策依据"
+  },
+  {
+   "when": "5月底 · 信任底座",
+   "from": "甘特图'看似可拖动编辑'（实际不保存的假象）",
+   "to": "明确只读可信查看页，关掉假拖动，缩放扩到月…1分钟",
+   "why": "假拖动会让调度员误以为已改计划，是在骗用户"
+  },
+  {
+   "when": "5月底 · 信任底座",
+   "from": "车间反馈做成实时按钮 + 反馈人必填 + 开工取浏览器时间",
+   "to": "重构为'现场记录'：填实际情况 + Excel 导入，反馈人可空，实际时间可手填",
+   "why": "现场根本没接 MES/DNC，实时按钮+必填与真实工况不符——最大一次产品反转"
+  },
+  {
+   "when": "5月底 · 信任底座",
+   "from": "explore 旧草案：主原因/根因/任意A-B自由对比 / /exception 路由 / created_by 默认 system / 页面直显 scenario_id 等内部字段",
+   "to": "整体作废，后续以三差距 roadmap §5 接口契约为准",
+   "why": "旧草案口径与'不显示内部值、不承诺唯一根因、不默认假用户'的边界冲突"
+  },
+  {
+   "when": "5月底 · 信任底座",
+   "from": "完工数量+报废数量不能超过计划数量的上限校验",
+   "to": "删除上限校验，预览与写入两侧都不拦",
+   "why": "报废后补投零件、产出超计划属正常生产；此前一度误判'设上限'经交叉验证纠正"
+  },
+  {
+   "when": "6月 · 工作台收口",
+   "from": "2026-05-29 方案：抽独立现场记录页（新 URL /scheduler/resource-execution + 新路由 + 新 ViewModel + 新导航）",
+   "to": "在现有 /scheduler/resource-dispatch 页内分层 + 只按子域拆 JS（697行拆成 context/cards/actual/import 四个）",
+   "why": "6个 subagent 对抗评审认定'把开发减负和用户体验绑一起、证据不足、范围过大'，已在代码确认落地"
+  },
+  {
+   "when": "6月 · 工作台收口",
+   "from": "首页今日正式计划读取失败时返回空列表（伪装成'今天没有现场情况待确认'）",
+   "to": "把中文原因当数据缺口卡渲染出来（'今日计划暂时读不到'）",
+   "why": "读取失败被静默吞成'无待确认'是误导——把反静默兜底原则贯彻到了首页"
+  },
+  {
+   "when": "6月 · 工作台收口",
+   "from": "'现场反馈缺口'措辞，语义='任务还没有现场状态'",
+   "to": "改名'现场情况待确认'，语义校正为'已到计划开始时间但暂未录入现场情况'",
+   "why": "没到开工时间的任务不该算缺口，触发条件应是计划开始时间"
+  }
+ ],
+ "spine": [
+  "Win7 SP1 x64 离线单机交付是最硬的约束：1月锁定 Python 3.8 + Flask2.3.3/openpyxl3.0.10/dateutil2.8.2 + PyInstaller4.10，CS 期反复重申'不引入 CDN/外链/外部前端框架、不破坏 Py3.8/Win7/Chrome109'，5月底还专门加了 Py3.8 语法扫描进门禁。已核：requirements.txt 至今原样，无 pandas，PyInstaller 注明不可用 5.x/6.x。（唯一软化：'单机单用户'定位后来略偏向'共享数据场景'，但离线交付口径从未松动）",
+  "四层分层架构（web/routes→core/services→data/repositories→core/models + core/infrastructure，层间单向调用、超500行拆分）是项目脊梁：04c 大规模拆分实践、05a Phase-6 把解析/错误整形下沉 core、05b/06 反复把 error 包装/状态码/字段映射从 viewmodel 退回 route 层守红线。已核：六个分层目录原样存在。",
+  "openpyxl-only、业务层只收发 List[Dict]、绝不让 DataFrame/nx.Graph 等流到对外层：从 1月的 TabularBackend 抽象，到 ReportEngine 永远只收发 List[Dict]，再到 NetworkX nx.Graph/DiGraph 只准留在图模块内部，这条'对外只用普通 dict/list/标量'的边界从没破过。",
+  "贪心排产核心算法从未被替换：1月定的双重资源约束贪心（设备+人员两条时间线）+ 可插拔算法/四种排序策略一直是排产大脑；04c 把单体 GreedyScheduler 拆成小模块时明确'对外调用/返回结构/统计字段不变'，NetworkX 上线时死守'只做诊断体检医生、不当第二个排产大脑'。",
+  "SchemaVersion 轻量迁移、不引入 Alembic：1月定调，CS 期要求新增持久化必须按 ADR-0008 加迁移脚本、schema.sql 保持最新。已核：迁移脚本一路手写到 v1…v17，全是顺序递增的轻量脚本，没上重型迁移框架。",
+  "batch_id 作为核心业务标识、Batches 以 batch_id 为主键：1月确立后一直是跨页定位和现场记录归属的锚点，6月 WorkbenchLink 跨页跳转也强调优先用批次/设备/人员/日期对齐，而非内部技术 id。",
+  "事务管理规范（TransactionManager + @transactional）+ 统一错误码体系（ErrorCode/AppError + {success,data/error,meta}）+ 分级日志/OperationLogs/ScheduleHistory 留痕：1月一次性立好，04c 拆分事务基础设施时只动实现不动规范，留痕至今是报表和现场事实的事实来源。",
+  "'坏数据不准静默兜底、宁可暴露错误也不自欺'：4月底正式立为总原则后只增不减——5月初全线 fail-closed（错误/完成状态/表单开关/维护锁），5月底系统性收紧静默回退，6月连首页'读取失败返回空列表'都被禁掉改成显式数据缺口卡。这是越扎越深、从未回头的价值观主线。",
+  "Excel 整批拒绝精神：1月定'任一 ERROR 整批退回、中文精确到行号字段、预览→确认'，到6月车间记录 Excel 导入仍是'整批校验有错一条不写'，一脉相承。",
+  "Frappe Gantt 本地静态资源、不替换不上 CDN：1月选定 0.6.1 本地化部署，CS 期明确'第一版不替换 Frappe、继续本地静态资源以符合离线交付边界'，只在外面加 gantt_adapter.js 适配层而非散改压缩版。"
+ ],
+ "conflicts": [
+  "文档大重组决定与现状矛盾：当年决定'删除《实现计划表》《开发文档》《系统速查表》三份旧文档、合并为单一1937行《排产优化完整方案》'，但实测三份文档全部仍在（开发文档/实现计划表.md 42KB、开发文档.md 211KB 改到5-28、系统速查表.md 63KB 改到6-1），且不存在单一1937行大文档——排产优化完整方案.md 仅299行，相关内容已被拆成8个 V1.2 子文档(共2277行)。即这条决定后来被整个推翻/取代。",
+  "IDE 工作流配置决定与现状矛盾：'.windsurf 镜像 .cursor'→'删 .windsurf 单一化到 .cursor'→AGENTS.md 称'.cursor 仅旧宿主兼容层保留'，但当前 .windsurf 和 .cursor 两个目录都已不存在，只剩 .codestable + .limcode。AGENTS.md:52 仍保留'.cursor/ 仅作为旧宿主兼容层保留'的过期表述，指向一个已不存在的目录。",
+  "插件能力冲突策略 message 与代码长期矛盾(此矛盾输入已标注，本次确认仍在)：当年 commit message 写的是冲突时'选择后注册的'(last-wins)，但代码实为 conflict_policy='first_loaded_wins' 且仅在能力未存在时注册(先注册者胜)。实测 core/plugins/registry.py:24 当前分支代码仍是 first_loaded_wins，message 仍错，以代码为准。",
+  "边界总册口径说明(非冲突，澄清):31条边界一说对应 .codestable/architecture/BOUNDARY-CHARTER.md 实为 D1-5+L1-10+S1-7+C1-10+R1-7 共约39条；总册自述'30+条已有门禁焊死、仅 D4(Chrome109)/D5(中文)/C1-C10 无硬门禁靠自觉'。打捞出的黑洞期决定绝大多数正是这些边界的来源与底座，与现行边界一致、互为印证，未发现黑洞决定违反当前任一焊死边界(L1-L10 AST 全量0违规、S1-S7 现场写入与内部字段脱敏均有契约测试守护)。"
+ ]
+}

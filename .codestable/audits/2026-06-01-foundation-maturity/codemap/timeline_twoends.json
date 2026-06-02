@@ -1,0 +1,2642 @@
+{
+ "raw_decisions": [
+  {
+   "period": "early",
+   "statement": "运行环境锁定 Windows 7 SP1 单机，以本地 Web 形式运行（Flask + 浏览器），不部署为在线服务；项目初始定位为『单机单用户』。",
+   "category": "部署交付",
+   "evidence": [
+    "开发文档/ADR/0001-win7-单机单用户运行环境.md：状态『已采纳』，日期『2026-01-10（项目启动）』",
+    "原文『项目初始假设是\"单机单用户\"』『目标环境仍锁定 Windows 7 SP1 单机』『应用仍以本地 Web 形式运行（Flask + 浏览器），不部署为在线服务』",
+    "被拒绝替代：多用户在线 Web、原生桌面应用(tkinter/PyQt)"
+   ],
+   "found_via": "文档",
+   "is_reversal": false,
+   "still_holds_guess": "可能已再次改变",
+   "why": "同一份 ADR 标注 2026-03-18 做了『边界修订』，把『单机单用户』改为『单机共享数据、仅允许单活用户』（允许不同域账户轮流用同一套数据、运行时单活用户锁阻止并发进入）。即 1 月这条决定的『单用户』部分在 3 月被自己推翻一次。"
+  },
+  {
+   "period": "early",
+   "statement": "锁定 Python 3.8.x，并固定核心依赖版本：Flask 2.3.3 / Werkzeug 2.3.7 / openpyxl 3.0.10 / python-dateutil 2.8.2；打包工具锁定 PyInstaller 4.10（5.x/6.x 不兼容 Win7）。",
+   "category": "依赖选型",
+   "evidence": [
+    "开发文档/ADR/0002-python38-依赖锁定.md：状态『已采纳』，日期 2026-01-10",
+    "原文『锁定 Python 3.8.x』『核心依赖固定版本：Flask 2.3.3、Werkzeug 2.3.7、openpyxl 3.0.10、python-dateutil 2.8.2』『打包工具锁定 PyInstaller 4.10』",
+    "后果：禁用 3.9+ 语法（dict|dict、match-case、X|Y）"
+   ],
+   "found_via": "文档",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "README.md 仍以 py -3.8 建 .venv、Python 3.8 作为依赖 hash 维度，开发基线未变。"
+  },
+  {
+   "period": "early",
+   "statement": "Excel 处理采用 openpyxl-only（V1 不引入 pandas/numpy），业务层统一用 List[Dict[str,Any]] 交换数据，禁止出现 DataFrame；通过 TabularBackend 抽象解耦，V1 实现 OpenpyxlBackend，预留 PandasBackend 扩展点。",
+   "category": "依赖选型",
+   "evidence": [
+    "开发文档/ADR/0003-openpyxl-only-excel处理.md：状态『已采纳』，日期 2026-01-10，『V1 仅使用 openpyxl 3.0.10…不引入 pandas/numpy』『业务代码禁止出现 import pandas、DataFrame』",
+    "初步策划方案修改意见v2.md:11『Excel：openpyxl-only（不依赖 pandas/numpy）』+ TabularBackend 抽象接口",
+    "初步策划方案v2.md:3748『pandas==2.0.3 / openpyxl==3.1.2』(被推翻的原方案依赖清单)"
+   ],
+   "found_via": "文档",
+   "is_reversal": true,
+   "reversed_what": "初步策划方案v2.md 的依赖清单 pandas==2.0.3 + 业务层用 DataFrame 的设计",
+   "still_holds_guess": "看起来仍有效",
+   "why": "修改意见v1 先要求 pandas 2.0.3→1.3.5/或移除，修改意见v2 进一步定为 openpyxl-only；ADR 把它固化。当前 core/services/report/ 仍走纯 Python/List[Dict] 路线。"
+  },
+  {
+   "period": "early",
+   "statement": "甘特图选用 Frappe Gantt 0.6.1（MIT 许可），JS/CSS 静态资源本地化部署到 static/，不使用 CDN（目标环境离线）。",
+   "category": "依赖选型",
+   "evidence": [
+    "开发文档/ADR/0004-frappe-gantt-本地化.md：状态『已采纳』，日期 2026-01-10",
+    "原文『选用 Frappe Gantt 0.6.1（MIT 许可）』『不使用 CDN 加载』；被拒绝：dhtmlxGantt(商用费用高)、自研",
+    "初步策划方案修改意见.md:43『方案v2未明确甘特图库，必须补充』"
+   ],
+   "found_via": "文档",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "属于补缺口决定（v2 策划未指定甘特库），由修改意见v1 写死后立 ADR。"
+  },
+  {
+   "period": "early",
+   "statement": "采用四层分层架构：web/routes（参数校验/调 Service）→ core/services（业务/事务协调）→ data/repositories（SQL/返回模型）→ core/models（纯数据结构），辅以 core/infrastructure（事务/错误/迁移）；层间只能单向调用，单文件超 500 行按职责拆分。",
+   "category": "架构分层",
+   "evidence": [
+    "开发文档/ADR/0005-四层分层架构.md：状态『已采纳』，日期 2026-01-10",
+    "原文『层间只能单向调用（route -> service -> repository），禁止反向依赖』『单文件超过 500 行时按职责拆分（已有 scheduler 拆分先例）』"
+   ],
+   "found_via": "文档",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "README 的 pyrightconfig.gate.json 仍只覆盖 app/config/core/data/web 主链；实现计划表确认 scheduler 已按 run/summary 子包拆分，分层红线延续。"
+  },
+  {
+   "period": "early",
+   "statement": "V1 明确不实现业务级并发控制：删除 ResourceLocks 表与 core/infrastructure/locking.py，数据一致性靠事务管理（TransactionManager+@transactional）；排产用 threading.Lock 仅防重复触发；安装包口径改用运行时单活用户锁 aps_runtime.lock。",
+   "category": "架构分层",
+   "evidence": [
+    "开发文档/ADR/0006-v1-不实现并发控制.md：状态『已采纳』，日期 2026-01-10，『V1 明确删除所有业务级并发控制代码：不包含 ResourceLocks 表、不实现资源锁』",
+    "初步策划方案v2.md:1965-2064 含 class ResourceLock + CREATE TABLE ResourceLocks（被删除的原设计）",
+    "初步策划方案修改意见.md:57『删除并发控制代码…core/infrastructure/locking.py（整个文件）、ResourceLocks 表、LOCK_TIMEOUT_SECONDS』『保留事务管理』"
+   ],
+   "found_via": "文档",
+   "is_reversal": true,
+   "reversed_what": "初步策划方案v2.md 第八章的 ResourceLock 类 / ResourceLocks 表 / locking.py 完整并发控制方案",
+   "still_holds_guess": "看起来仍有效",
+   "why": "开发文档.md §14 仍写『并发控制（V1 删除，不实现）』；后续仅新增 maintenance_window/单活用户锁等基础设施级保护，未回退为业务资源锁。"
+  },
+  {
+   "period": "early",
+   "statement": "Excel 导入采用整批拒绝策略：预览阶段发现任一 ERROR 行即整批拒绝（不做部分导入、不静默修正）；错误必须中文且精确到行号/字段/期望格式；导入流程为预览→确认两步。",
+   "category": "错误处理",
+   "evidence": [
+    "开发文档/ADR/0007-excel导入整批拒绝策略.md：状态『已采纳』，日期『2026-01-15（Excel 导入模块开发）』",
+    "原文『若预览阶段发现 ERROR 行，整批拒绝导入』『错误信息格式统一：第 {行号} 行 \"{字段名}\"：{错误描述}（期望：{格式}）』",
+    "被拒绝：部分导入（跳过错误行）、静默修正（自动填默认值）"
+   ],
+   "found_via": "文档",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "开发文档 §11 通用导入仍保留 preview_import + RowStatus(NEW/UPDATE/ERROR/SKIP) + 预览/确认两步。"
+  },
+  {
+   "period": "early",
+   "statement": "数据库演进采用 SchemaVersion 轻量迁移：SchemaVersion 表记录版本，启动时自动检测并按序执行迁移脚本；迁移前自动备份、失败时文件级回滚；不引入 Alembic 等重型框架。",
+   "category": "数据建模",
+   "evidence": [
+    "开发文档/ADR/0008-schema-version-轻量迁移.md：状态『已采纳』，日期『2026-01-12（数据库设计阶段）』",
+    "原文『使用 SchemaVersion 表记录当前版本号』『迁移前自动备份数据库文件；迁移失败时使用该备份执行文件级回滚』；被拒绝：无版本管理全量重建、Alembic 重型框架"
+   ],
+   "found_via": "文档",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "机制延续并扩充：开发文档 §6.2.1 记 CURRENT_SCHEMA_VERSION=7、迁移脚本 v1~v6、MigrationOutcome(APPLIED/SKIPPED/PARTIAL) 与『仅 APPLIED 才推进版本』；是同一决定的细化而非推翻。"
+  },
+  {
+   "period": "early",
+   "statement": "Web 排产异步执行模型作为待决策占位写入 ADR（后台线程池 vs 任务队列 vs WebSocket、轮询 vs 推送、能否取消），约束为兼容 Win7+py3.8 单机、不引入外部消息队列，预计 Phase 3 启动前决策。",
+   "category": "其他",
+   "evidence": [
+    "开发文档/ADR/0009-web-排产异步执行模型.md：状态『待决策（占位）』，日期 2026-03-12",
+    "原文『当前 Web 排产为同步 POST，长耗时排产(>1分钟)会阻塞 Flask 请求线程』『不引入外部消息队列(Redis/RabbitMQ)』"
+   ],
+   "found_via": "文档",
+   "is_reversal": false,
+   "still_holds_guess": "不确定",
+   "why": "严格说不是 1 月决定（日期 2026-03-12，且状态为占位/未拍板）。它记录的是『把异步架构推迟到 Phase 3』这一推迟意图，是 1 月最早期之外的留白项，特此标注以免误判为已定型决定。"
+  },
+  {
+   "period": "early",
+   "statement": "外协工序 ext_group_id 快照策略作为待决策占位写入 ADR：是否在 BatchOperations 创建时固化 ext_group_id、模板修改是否级联、或继续回查并在排产结果记快照；涉及 Schema 变更，预计 Phase 1 数据转换层实现时决策。",
+   "category": "数据建模",
+   "evidence": [
+    "开发文档/ADR/0010-ext-group-id-快照策略.md：状态『待决策（占位）』，日期 2026-03-12",
+    "原文『BatchOperations 不存储 ext_group_id，排产时动态回查 PartOperations 模板』『若创建批次后模板被修改，历史批次的外协分组关系可能漂移』"
+   ],
+   "found_via": "文档",
+   "is_reversal": false,
+   "still_holds_guess": "不确定",
+   "why": "同 0009，日期 3 月、状态占位，非 1 月最早期已拍板决定；记录的是一个被识别但悬置的数据漂移风险点。"
+  },
+  {
+   "period": "early",
+   "statement": "以批次号(batch_id)替代工单号作为核心业务标识，Batches 以 batch_id 为主键；齐套状态初版简化为布尔（计调员只排齐套的）。",
+   "category": "数据建模",
+   "evidence": [
+    "初步策划方案.md:759『批次号替代工单号作为核心标识』『齐套状态简化为布尔值，计调员只排齐套的』",
+    "初步策划方案.md Batches 表 batch_id TEXT PK / is_ready BOOLEAN"
+   ],
+   "found_via": "文档",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "batch_id 主键延续至今；但『齐套布尔』随后被 v2 改为字符串枚举 ready_status(yes/no/partial)（见枚举推翻条）。"
+  },
+  {
+   "period": "early",
+   "statement": "核心输入是『工序号+工种名』连写的工艺路线字符串，由 RouteParser 用正则 (\\d+)([^\\d]+) 自动拆分为工序列表；后续增强为预处理（去空格/统一分隔符/全角转半角）+容错（未识别工种默认 external 并告警）+解析报告（success/partial/failed + stats + warnings）。",
+   "category": "算法策略",
+   "evidence": [
+    "初空策划方案.md『\"5数铣10钳20数车…\" → 工序列表』，core/services/route_parser.py 正则 r'(\\d+)([^\\d]+)'",
+    "初步策划方案v2.md:625-975 RouteParser 增加 _preprocess、未识别工种『已默认标记为外部工序』、ParseResult(status/warnings/errors/stats)",
+    "开发文档.md §7.2 保留同一份解析器代码"
+   ],
+   "found_via": "文档",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "v2 相对 v1 是在同一解析思路上加预处理/容错/报告（增强而非推翻），开发文档把它列为『必须保留的核心实现』。"
+  },
+  {
+   "period": "early",
+   "statement": "基于『单元能力』自动识别内/外部工序（OpTypes 标 internal/external，本单元工种=internal，其余=external 走外协供应商），并允许计调员手动调整工序内外部归属。",
+   "category": "算法策略",
+   "evidence": [
+    "初步策划方案.md『基于单元能力自动识别内外部』『计调员可手动调整归属：某道数铣本次想外协→改成外部』",
+    "回转壳体单元能力配置 [数车,数铣,钳]，标印/总检/表处理/热处理=外部"
+   ],
+   "found_via": "文档",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "early",
+   "statement": "排产核心采用双重资源约束贪心：内部工序同时占用『设备 + 人员』两条时间线（取前道完工/设备可用/人员可用三者最晚开工），外部工序不占内部资源只占外协周期(天)，同批次工序按工序号串行推进，叠加工作日历/效率系数约束。",
+   "category": "算法策略",
+   "evidence": [
+    "初步策划方案.md『双重资源约束（设备+人员）← 核心』，§6.1 排产核心逻辑伪码 earliest=max(prev_end, machine_available, operator_available)",
+    "初步策划方案v2.md:1532-1794 GreedyScheduler._schedule_internal/_schedule_external",
+    "开发文档.md §10.3 保留同一贪心算法"
+   ],
+   "found_via": "文档",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "是项目最核心的算法初心；后续在其上叠加 sgs 派工/objective/ortools warm-start/freeze window 等增强（开发文档 §10.5），但贪心+双资源约束的底座未被推翻。"
+  },
+  {
+   "period": "early",
+   "statement": "排产算法可插拔：算法通过接口定义可替换，排序策略可配置。",
+   "category": "算法策略",
+   "evidence": [
+    "初步策划方案.md『算法可插拔，后续可换遗传算法等』，项目结构 core/algorithms/{base.py,greedy.py,registry.py}"
+   ],
+   "found_via": "文档",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "v2 进一步落为 StrategyFactory + 4 种排序策略（见多策略排序条）。"
+  },
+  {
+   "period": "early",
+   "statement": "连续外部工序可成组并支持合并周期：识别连续 external 工序为 ExternalGroups(EXT_n)，周期模式 separate（逐道计时）/ merged（整组一个总周期 total_days）。",
+   "category": "数据建模",
+   "evidence": [
+    "初步策划方案.md V12 新增『连续外部工序合并时间』+ ExternalGroups 表(start_seq/end_seq/total_days)",
+    "初步策划方案v2.md:430-443 CREATE TABLE ExternalGroups + merge_mode separate/merged",
+    "开发文档.md §9 连续外部工序合并周期"
+   ],
+   "found_via": "文档",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "属 V11→V12 迭代时按用户反馈新增（不是推翻，是补能力）。"
+  },
+  {
+   "period": "early",
+   "statement": "外部工序删除规则：首部/尾部连续外部工序可删，中间孤立或中间连续外部工序不可删（会导致内部工序断档），由 DeletionValidator 校验并给中文断档提示。",
+   "category": "算法策略",
+   "evidence": [
+    "初步策划方案.md V12『外部工序删除规则：首尾可删、中间不可删（否则断档）』+ can_delete_external_ops 伪码",
+    "初步策划方案v2.md:1024-1213 DeletionValidator.can_delete / get_deletion_groups",
+    "开发文档.md §8 保留删除验证器代码"
+   ],
+   "found_via": "文档",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "early",
+   "statement": "人员管理独立成模块，人员-设备关联用共享表 OperatorMachine 双向联动（人员侧/设备侧都能编辑、底层同一张表），并预留人员-工种能力(OperatorSkill)与技能等级/主操标记为后续技能矩阵铺路。",
+   "category": "架构分层",
+   "evidence": [
+    "初步策划方案.md V12『人员管理独立模块…为技能矩阵铺路』",
+    "初步策划方案v2.md:175-233 人员-设备关联联动机制『底层同一张表，界面双向同步』；OperatorMachine/OperatorSkill 表 skill_level/is_primary 标注『预留』"
+   ],
+   "found_via": "文档",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "early",
+   "statement": "全部布尔概念字段统一改为字符串枚举：is_active/is_internal/is_ready 等 → status(active/inactive/maintain)、source/category(internal/external)、priority(normal/urgent/critical)、ready_status(yes/no/partial) 等，便于扩展与 Excel 导入导出。",
+   "category": "数据建模",
+   "evidence": [
+    "初步策划方案v2.md:5『状态字段：用户希望统一使用字符串枚举。需要调整 is_active, is_internal 等布尔字段为字符串枚举』+ §3.1 枚举值定义",
+    "初步策划方案.md 原表用 is_active/is_internal/is_ready BOOLEAN（被推翻的原设计）",
+    "开发文档.md §6.1.2『原方案中 is_active/is_internal/... 等布尔概念字段统一替换为字符串枚举』"
+   ],
+   "found_via": "文档",
+   "is_reversal": true,
+   "reversed_what": "初步策划方案.md 第一版数据模型里的 BOOLEAN 字段（is_active/is_internal/is_ready）",
+   "still_holds_guess": "看起来仍有效",
+   "why": "开发文档与 core/services/common/normalization_matrix.py 仍以字符串枚举为统一事实源（含大小写/中文别名归一化）。"
+  },
+  {
+   "period": "early",
+   "statement": "工序主键策略由『TEXT 主键 op_id=批次号_工序号』改为『自增 id 技术主键 + 可读 op_code(batch_id+seq) + 预留 piece_id + 复合唯一约束 UNIQUE(batch_id,seq,piece_id)』，为单件追溯扩展铺路。",
+   "category": "数据建模",
+   "evidence": [
+    "初步策划方案.md Operations 表 op_id TEXT PK『批次号_工序号(如 B001_05)』(被推翻)",
+    "初步策划方案v2.md:1『同意用图号+批次号+工序号确定唯一性，同时给每个零件赋一个号用于未来扩展』；BatchOperations id AUTOINCREMENT + op_code + piece_id + UNIQUE(batch_id,seq,piece_id)",
+    "开发文档.md §6.1.1 唯一标识策略"
+   ],
+   "found_via": "文档",
+   "is_reversal": true,
+   "reversed_what": "初步策划方案.md 的 op_id TEXT PK（批次号_工序号）主键设计",
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "early",
+   "statement": "排产排序形式化为多策略可插拔系统：priority_first / due_date_first / weighted / fifo 四种策略 + StrategyFactory，策略与权重由 ScheduleConfig 配置、可切换。",
+   "category": "算法策略",
+   "evidence": [
+    "初步策划方案v2.md 修订说明『新增多种排序策略（优先级优先/交期优先/权重混合）…策略可配置、可切换』+ §7.2 StrategyFactory",
+    "开发文档.md §10.1-10.2 四策略代码"
+   ],
+   "found_via": "文档",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "相对 v1『多维优先级』是形式化/扩展。注意后续 V1.1 又从 weighted 公式中去掉了 ready_weight（齐套权重预留不参与排序），并新增 dispatch_mode(sgs)/objective/ortools/freeze_window 等开关——这部分是 1 月之后的再调整。"
+  },
+  {
+   "period": "early",
+   "statement": "确立事务管理规范：TransactionManager.transaction() 上下文 + @transactional 装饰器，并圈定关键原子事务边界（批次创建=批次+工序、批次删除=排程+工序+批次、排产执行=多条排程、模板保存=零件+工序+外部组、Excel 批量导入）。",
+   "category": "架构分层",
+   "evidence": [
+    "初步策划方案v2.md:1843-1950 transaction.py + @transactional + §十四『关键事务边界』",
+    "开发文档.md §13 事务管理规范（必须保留）；修改意见v1『保留事务管理（@transactional）』"
+   ],
+   "found_via": "文档",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "early",
+   "statement": "确立统一错误处理规范：分段错误码体系 ErrorCode(1xxx 通用/2xxx DB/3xxx-6xxx 各业务域/7xxx 导入导出) + AppError 异常基类 + 统一 API 响应格式 {success, data/error, meta} + Flask error handlers。",
+   "category": "错误处理",
+   "evidence": [
+    "初步策划方案v2.md:2095-2261 errors.py ErrorCode/AppError/ApiResponse/register_error_handlers",
+    "初步策划方案v2.md:3713 API 响应格式 success/data/error 示例",
+    "开发文档.md §15 错误处理规范"
+   ],
+   "found_via": "文档",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "early",
+   "statement": "确立分级日志与留痕策略：滚动文件日志(aps.log + 单独 aps_error.log，RotatingFileHandler) + 操作日志入库 OperationLogs + 排产历史 ScheduleHistory。",
+   "category": "其他",
+   "evidence": [
+    "初步策划方案v2.md:2263-2422 AppLogger + OperationLogger（写库）",
+    "初步策划方案v2.md:579-619 OperationLogs / ScheduleHistory 表",
+    "开发文档.md §12 日志与留痕"
+   ],
+   "found_via": "文档",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "early",
+   "statement": "备份机制从『后台定时线程定时备份(BackupScheduler + schedule 库 + daemon 线程)』改为『程序退出时 atexit 自动备份』，避免后台线程/定时任务复杂度（受 auto_backup_enabled 控制，生成 *_exit.db）。",
+   "category": "部署交付",
+   "evidence": [
+    "初步策划方案v2.md:2581-2632 class BackupScheduler + schedule.every().day.at(...).do(...) + daemon 线程（被推翻）",
+    "初步策划方案修改意见.md:77『原方案：定时备份…修改为：退出时自动备份』+ atexit.register(backup_on_exit)",
+    "开发文档.md §1.3 + 实现计划表 P0-11 退出自动备份"
+   ],
+   "found_via": "文档",
+   "is_reversal": true,
+   "reversed_what": "初步策划方案v2.md 的 BackupScheduler 后台定时备份方案（schedule 库 + 后台 daemon 线程）",
+   "still_holds_guess": "可能已再次改变",
+   "why": "开发文档 §6.9/§16 后来又补了 SystemConfig/SystemJobState 支撑『按请求触发的分钟级自动备份/自动清理』，等于在 atexit 之外又部分恢复了定时类能力（只是改成请求驱动而非后台线程）。"
+  },
+  {
+   "period": "early",
+   "statement": "交付方式写死：用 PyInstaller 4.10 打包为 exe（--onedir --windowed），必须在 Win7 实机/虚拟机环境打包，交付物为自包含目录（exe + db/logs/backups/templates_excel/static/templates）。",
+   "category": "部署交付",
+   "evidence": [
+    "初步策划方案修改意见.md:95『推荐：打包为 exe…工具 PyInstaller 4.10…必须在 Win7 实机或 Win7 虚拟机打包』+ pyinstaller --onedir --windowed 命令",
+    "开发文档.md §1.3(5) 交付方式明确"
+   ],
+   "found_via": "文档",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "开发文档 §2.2 已扩展为『--onedir 目录 + Win7 双包安装器 APS_Main_Setup.exe + APS_Chrome109_Runtime.exe』，是在该决定上加装安装器/浏览器运行时，PyInstaller 4.10/Win7 打包口径未变。"
+  },
+  {
+   "period": "early",
+   "statement": "未来报表统计通过 ReportEngine 接口接入（V1 留空或纯 Python 简单实现，数据量/复杂度上来后只换 engine 为 pandas 版），前端/接口永远只收发 List[Dict]，不绑定 pandas。",
+   "category": "架构分层",
+   "evidence": [
+    "初步策划方案修改意见v2.md:120『未来报表统计如何接入 pandas（不返工路线）』+ class ReportEngine(ABC) calc_machine_utilization",
+    "开发文档.md §3.2『报表统计通过 ReportEngine 接口接入：V1 可先留空或纯 Python 简单实现』"
+   ],
+   "found_via": "文档",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "当前仓库已存在 core/services/report/（report_engine.py 等），与该接口边界一致。"
+  },
+  {
+   "period": "early",
+   "statement": "打通『可追溯』四类操作留痕规范：导入/导出/排产/报表统一写 OperationLogs.detail(JSON 标准字段，如 filename/mode/total_rows/new_count/error_count/time_cost_ms) + 排产写 ScheduleHistory.result_summary 事实摘要，作为未来报表统计的事实来源。",
+   "category": "其他",
+   "evidence": [
+    "初步策划方案修改意见v2.md:72『四类关键留痕…Excel 导入/导出/排产/报表』+ detail JSON 字段建议",
+    "开发文档.md §1.4 + §12『当前已接入数据库留痕的主链是：导入/导出/排产；报表导出 OperationLogs 仍待接入（action=report 保持预留）』"
+   ],
+   "found_via": "文档",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "导入/导出/排产留痕已落地；报表 action=report 仍为预留未接入，属同一决定下尚未完成的尾巴。"
+  },
+  {
+   "period": "early",
+   "statement": "所有管理界面统一支持 Excel 导入/导出，并提供统一导入组件：上传→预览(差异对比 NEW/UPDATE/UNCHANGED/SKIP/ERROR)→确认，三种导入模式 APPEND/OVERWRITE/REPLACE，附下载模板。",
+   "category": "UI产品",
+   "evidence": [
+    "初步策划方案.md V12『所有管理界面支持 Excel 导入导出』+ 统一导入组件草图(追加/覆盖/清空后导入 + 导入预览差异)",
+    "初步策划方案v2.md:2465-2495 ImportMode(APPEND/OVERWRITE/REPLACE)/RowStatus/ImportPreviewRow/ImportResult",
+    "开发文档.md §11.5 通用导入 + 实现计划表 P1-05 templates/components/excel_import.html"
+   ],
+   "found_via": "文档",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "early",
+   "statement": "物料管理模块在 V1 仅作结构/表预留（Materials、BatchMaterials），不实现界面，后续拓展。",
+   "category": "架构分层",
+   "evidence": [
+    "初步策划方案v2.md §3.6『物料管理模块 (Material Module) - 预留』",
+    "开发文档.md §4.2 能力预留『物料管理：模块结构预留，后续拓展』"
+   ],
+   "found_via": "文档",
+   "is_reversal": false,
+   "still_holds_guess": "可能已再次改变",
+   "why": "开发文档 §6.7 已注明『V1.1 已落地基础版：当前仓库已提供 /material/*（物料信息、批次物料需求、齐套状态/齐套日期回写）』——即 1 月定的『仅预留』后来被实际建出基础版，预留决定被推进落地。"
+  },
+  {
+   "period": "early",
+   "statement": "实施按固定顺序推进并设阻断式里程碑：先基础设施→再业务模块→再排产与可视化→最后交付打包；定义 M0(空项目可运行)~M5(系统管理+Win7 exe 交付)，阻断步骤未过验收不得进入下一阶段；并以『证明 ResourceLocks 表与 locking.py 不存在』作为 M0 硬性验收。",
+   "category": "测试门禁",
+   "evidence": [
+    "实现计划表.md §0『若步骤标记为阻断，未通过验收不得进入下一阶段』+ §2 里程碑 M0-M5",
+    "实现计划表.md Phase0 阻断验收『证明并发锁未实现：项目中不存在 ResourceLocks 表与 core/infrastructure/locking.py（此条为硬性约束）』"
+   ],
+   "found_via": "文档",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "实现计划表顶部 2026-04-04 状态更新声明 Phase04 结构收口已完成、对外入口不变，里程碑基线被保留未回滚。"
+  },
+  {
+   "period": "cs",
+   "statement": "从 2026-04-27 起本仓库默认使用 CodeStable 工作流，开放式诉求/新功能/bug/重构/探索/决定一律先从 cs 根入口分流；旧 .limcode/skills 通用流程退出默认入口。",
+   "category": "其他",
+   "evidence": [
+    "compound/2026-04-27-decision-codestable-default-workflow.md（doc_type:decision 决定节）",
+    "architecture/ARCHITECTURE.md §4 关键架构决定"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": true,
+   "reversed_what": "原 .limcode/skills/using-superpowers + brainstorming/systematic-debugging/writing-plans/TDD 作为会话起步入口",
+   "still_holds_guess": "看起来仍有效",
+   "why": "用户明确表示更想用 CodeStable，且两套流程职责重合需切换默认入口"
+  },
+  {
+   "period": "cs",
+   "statement": ".limcode/ 暂不删除，保留为旧工作流归档、历史计划、历史审查与 APS 专项技能/子代理资料库；只有需引用历史资料或 APS 专项技能时才回看。",
+   "category": "其他",
+   "evidence": [
+    "compound/2026-04-27-decision-codestable-default-workflow.md 处理方式",
+    "architecture/ARCHITECTURE.md §4、§5",
+    "roadmap/p1-scheduler-debt-cleanup §范围（不删 .limcode）"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "新功能/修复/重构/知识沉淀默认落到 .codestable/ 下；不批量搬动 .limcode/plans、review、design 等旧资料，避免打乱历史证据。",
+   "category": "架构分层",
+   "evidence": [
+    "compound/2026-04-27-decision-codestable-default-workflow.md",
+    "architecture/ARCHITECTURE.md §4、§6 硬边界（迁移初期不得批量删除搬动）"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "仓库垃圾文件清理口径：plugins/.gitkeep 高置信可删、__pycache__/运行日志/secret 可清理；但 vendor/db/logs/backups 的 .gitkeep、web_new_test/、evidence 证据产物不能因被 gitignore 就直接删，需先确认验收/复现价值或归档后再删。",
+   "category": "其他",
+   "evidence": [
+    "compound/2026-04-27-explore-repo-garbage-files.md（高置信可清理候选表 + 明确应保留的易误判项 + 对抗审查收紧点）"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "对抗审查后把 FullSelfTest/QualityGate/ComplexExcelCases 从'高置信可删'降级为'需确认/可重建后清理'"
+  },
+  {
+   "period": "cs",
+   "statement": "APS 前端工作台只解决一个横向问题：把已有首页/甘特/分析/报表/资源派工组织成'计划员工作台'（一条做事路线），不推翻重做前端、不换皮。",
+   "category": "UI产品",
+   "evidence": [
+    "roadmap/aps-frontend-workbench §1 背景、§2 覆盖、§4 模块拆分职责边界"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "首页值班台只展示实时生成的'今日待处理'与排程风险，不保存已处理状态、不直接写现场记录、不新增数据库表、不改排产算法；现场事实读不到时显示'现场情况暂时读不到'而非误判'待确认'。",
+   "category": "UI产品",
+   "evidence": [
+    "roadmap/aps-frontend-workbench §2、§5.2",
+    "architecture/ARCHITECTURE.md §3 首页计划员值班台索引"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "跨页跳转（首页/分析/甘特/资源派工/报表互跳）必须带同一版本、方案、日期范围、批次/资源对象，由 WorkbenchLink/scheduler_workbench_links 统一封装，不能悄悄掉回默认正式计划，模板不再手拼 URL。",
+   "category": "架构分层",
+   "evidence": [
+    "roadmap/aps-frontend-workbench §2、§5.1、§5.3",
+    "architecture/ARCHITECTURE.md §3 工作台上下文链接合同索引"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "甘特工作台第一版保持只读、先做稳定任务详情区；靠近甘特的资源负荷摘要推迟到第二阶段增强。",
+   "category": "UI产品",
+   "evidence": [
+    "roadmap/aps-frontend-workbench §2、§5.4、§5.5"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "报表中心/超期/资源负荷/计划和现场实际/停机影响不能是死胡同，看完必须能带上下文回到甘特/资源派工/复盘；计划和现场实际只复盘正式采用方案；停机影响第一版只做设备级说明与设备级回跳。",
+   "category": "UI产品",
+   "evidence": [
+    "roadmap/aps-frontend-workbench §2",
+    "architecture/ARCHITECTURE.md §3 报表工作台回跳索引"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "工作台新增的测试要能证明'主流程存在'，而不是只测某个表格 class 或按钮文案。",
+   "category": "测试门禁",
+   "evidence": [
+    "roadmap/aps-frontend-workbench §2、§5.8 测试契约"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "前端工作台边界：不重写排程算法、不做完整 MES/ERP/WMS/PLM/IoT、不把资源派工改成自由拖拽排程编辑器、不在本 roadmap 开放甘特拖拽正式写库、不把 dashboard 做成营销首页。",
+   "category": "UI产品",
+   "evidence": [
+    "roadmap/aps-frontend-workbench §2 明确不做"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "明确不做即划范围边界"
+  },
+  {
+   "period": "cs",
+   "statement": "全线交付边界：不引入外部 CDN/外链字体/外链脚本/外部前端框架，不升级破坏 Python 3.8、Win7 x64、Chrome 109 的语法或依赖（长期硬约束）。",
+   "category": "部署交付",
+   "evidence": [
+    "roadmap/aps-frontend-workbench §2 明确不做",
+    "roadmap/aps-three-gap-directions §2 明确不做",
+    "architecture/ARCHITECTURE.md §5 硬边界"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "scenario_id/plan_role/source_table/candidate_id/op_id/schedule_id 等内部字段不直接显示给普通用户：可留在 URL/隐藏字段/请求参数/日志用于对齐同一套计划，但页面/导出/按钮/普通 HTML 属性/公开 payload 必须转成中文大白话；跨页定位优先用批次/设备/人员/日期。",
+   "category": "UI产品",
+   "evidence": [
+    "architecture/ARCHITECTURE.md §5 硬边界",
+    "roadmap/aps-three-gap-directions §5.0 用户可见文案总规则",
+    "roadmap/aps-frontend-workbench §2"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "非正式方案/候选方案/模拟预览/历史正式方案不能下发现场记录写入入口、Excel 导入地址或模板下载地址；现场记录只能写当前可执行的最新正式采用方案，后端校验仍是最后防线，页面层也要避免出现'好像能写'的入口。",
+   "category": "错误处理",
+   "evidence": [
+    "architecture/ARCHITECTURE.md §5 硬边界",
+    "roadmap/aps-frontend-workbench §2",
+    "roadmap/aps-three-gap-directions §5.5 派工确认护栏契约",
+    "compound/2026-05-28-explore-shop-floor-feedback-usage.md 关键证据"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "短期不做反馈人必填、多人现场账号、Excel 导入预览/二次确认；按'计划员一个人操作、其他人把现场情况汇报给计划员'处理。",
+   "category": "UI产品",
+   "evidence": [
+    "roadmap/aps-frontend-workbench §2 明确不做"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "可能已再次改变",
+   "why": "与 created_by 必填'反馈人'决定相关，后续若引入登录体系可能调整"
+  },
+  {
+   "period": "cs",
+   "statement": "三个差距方向（多方案对比业务化、延期原因诊断、车间实际开工/完工/异常反馈）作为局部 roadmap 推进，且声明它不是全项目最高优先级——全局优先级仍以 2026-05-23-aps-market-gap 审计为准（甘特调整与物料闭环更靠前）。",
+   "category": "其他",
+   "evidence": [
+    "roadmap/aps-three-gap-directions §1 背景",
+    "compound/2026-05-23-explore-aps-three-gap-directions.md 速答"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "第一版多方案对比只承诺代表三方案 adopted/baseline_best/critical_best，不把全部 3/5/7 档候选铺成大屏、不做全候选明细甘特对比；先给推荐结论再给指标证据表。",
+   "category": "算法策略",
+   "evidence": [
+    "roadmap/aps-three-gap-directions §2、§3.1、§5.4",
+    "compound/2026-05-23-explore-aps-three-gap-directions.md Exa 修正判断1 + 共同不要做的事",
+    "architecture/ARCHITECTURE.md §6 末段"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "延期解释统一写成'已确认事实/可能原因/证据/缺口/建议动作'，不承诺自动判断唯一根因；证据不足必须明确写'证据不足'，不能硬猜成设备或物料问题。",
+   "category": "错误处理",
+   "evidence": [
+    "roadmap/aps-three-gap-directions §2、§3.2、§5.3",
+    "compound/2026-05-23-explore-aps-three-gap-directions.md Exa 修正判断2 + 共同不要做的事"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "派工身份护栏：资源派工页可看正式计划/候选代表方案/模拟场景预览三类，但'确认派工'和'现场反馈'只能基于最新正式 adopted 计划；现场反馈状态流转固定（待开工→开工；生产中→暂停/完工/报异常；暂停中→继续/完工/报异常；异常中→继续/完工；已完工为终态）。",
+   "category": "错误处理",
+   "evidence": [
+    "roadmap/aps-three-gap-directions §2、§3.3、§5.5",
+    "compound/2026-05-28-explore-shop-floor-feedback-usage.md 速答 + operation_execution_feedback_support 状态映射"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "新增 OperationExecutionEvents 现场执行事件表作为现场事实唯一来源（只追加记录开工/暂停/继续/完工/报异常）+ 执行状态读模型按事件流聚合；计划行代表'计划怎么排'，事件代表'现场怎么做'，两者分离。",
+   "category": "数据建模",
+   "evidence": [
+    "roadmap/aps-three-gap-directions §3.4、§5.6、§5.7",
+    "architecture/ARCHITECTURE.md §7 车间执行事件基础现状",
+    "compound/2026-05-23-explore-aps-three-gap-directions.md Exa 修正判断3"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "现场事实数据建模硬边界：Schedule.start_time/end_time 不能改成实际开工/完工，lock_status 不能当生产中/暂停/完工，BatchOperations.status 不能单独承担现场事实；执行事件只追加、schedule_id/op_id 保留外键审计但不级联删除；当前执行状态必须从事件聚合。",
+   "category": "数据建模",
+   "evidence": [
+    "roadmap/aps-three-gap-directions §3.4、§3.5",
+    "architecture/ARCHITECTURE.md §7"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "异常反馈（异常原因/严重程度/影响时间/影响资源/是否建议重排）单独拆成一条功能，不塞进开工完工最小闭环；'是否建议重排'只是提示不自动触发重新排程。",
+   "category": "UI产品",
+   "evidence": [
+    "roadmap/aps-three-gap-directions §2、异常反馈模块",
+    "compound/2026-05-28-explore-shop-floor-feedback-usage.md 细节展开"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "重排尊重执行事实：已完工保留真实时间并从待排剔除，生产中/暂停中作为现场固定 seed，异常中阻止普通自动重排；普通重排和 scenario 发布写正式计划前都按同一批工序复算执行快照，现场状态变化时返回 409/冲突提示，不写 Schedule/ScheduleHistory/版本号。",
+   "category": "算法策略",
+   "evidence": [
+    "roadmap/aps-three-gap-directions §3.3、§3.5、§5.10",
+    "architecture/ARCHITECTURE.md §8 重排执行事实快照现状"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "手工 scenario 不直接下发给现场；scenario 只有发布成新正式版本后才能进入派工和反馈，且车间反馈不能直接覆盖历史 Schedule 计划行。",
+   "category": "数据建模",
+   "evidence": [
+    "roadmap/aps-three-gap-directions §2 明确不做、§3.3"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "车间反馈 created_by 第一版用页面必填的'反馈人'，不能为空、不能默认写本机用户或 system 这类假用户（在无登录体系前）。",
+   "category": "数据建模",
+   "evidence": [
+    "roadmap/aps-three-gap-directions §1（旧 created_by 可默认 system 作废）",
+    "compound/2026-05-23-explore-aps-three-gap-directions.md 未决问题（roadmap 已拍板）"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": true,
+   "reversed_what": "原 explore 草案里 created_by 可默认 system",
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "新增持久化能力不能只改 schema.sql，必须按 ADR-0008 轻量迁移新增迁移脚本（当时 schema 版本 14，下一次改动应新增 v15，或按当时版本递增），schema.sql 保持最新完整定义；统一走 repository 数据访问层。",
+   "category": "数据建模",
+   "evidence": [
+    "roadmap/aps-three-gap-directions §3.6、§5.11"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "原 explore 后半段旧路线草案整体废止：'主要原因/主原因/根因/primary_reason/任意 A/B 方案自由对比/`/exception` 路由/created_by 可默认 system/页面直接显示 scenario_id、candidate_id、score tuple、event_type、source_table' 等说法全部作废，后续以本 roadmap §5 接口契约为准。",
+   "category": "其他",
+   "evidence": [
+    "roadmap/aps-three-gap-directions §1 背景（迁移声明）"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": true,
+   "reversed_what": "原 explore 文档后半段的旧路线草案与字段/路由口径",
+   "still_holds_guess": "看起来仍有效",
+   "why": "explore 同时承担研究证据与路线草案，迁到 roadmap 后旧草案降级为历史研究材料"
+  },
+  {
+   "period": "cs",
+   "statement": "三方向默认实施顺序从'最快见效'改为'先补信任底座'：延期解释最小层 → 方案对比业务化 → 车间反馈最小闭环（仅当目标是快速改善观感时才把方案对比提前，非默认路线）。",
+   "category": "其他",
+   "evidence": [
+    "compound/2026-05-23-explore-aps-three-gap-directions.md Exa 修正判断4 + 后续建议",
+    "roadmap/aps-three-gap-directions §7 排期思路"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": true,
+   "reversed_what": "原内部草稿默认'先做最快见效的方案对比'",
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "完成数量上限校验删除（有决策背书的故意行为反转）：原'完成数量+报废数量不能超过计划数量'上限校验已删除，预览与写入两侧均不再拦截；因报废后为凑足良品会补投零件，产出总量超计划属正常生产。",
+   "category": "算法策略",
+   "evidence": [
+    "compound/2026-05-28-explore-shop-floor-feedback-usage.md 订正(2026-05-29)块",
+    "compound/2026-05-29-verification-resource-dispatch-site-records-review-repair.md §1.1（roadmap 字段表/items.yaml 背书）"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": true,
+   "reversed_what": "原 _validate_finish_payload_against_plan 完工数量上限护栏",
+   "still_holds_guess": "看起来仍有效",
+   "why": "交叉验证确认是 roadmap 既定决策落地而非搭便车删护栏；但决策文档与代码同批未提交，git 历史无法独立证明决策先于代码"
+  },
+  {
+   "period": "cs",
+   "statement": "三方向共同范围排除：不做完整 MES/MRP/ERP/MES/WMS/PLM 集成、IoT 实时采集、扫码枪/电子签名/工资计件/完整质量追溯、PowerBI/外部 BI 嵌入、云端多人协同/消息推送/在线审批流、AI 自动根因。",
+   "category": "UI产品",
+   "evidence": [
+    "roadmap/aps-three-gap-directions §2 明确不做",
+    "compound/2026-05-23-explore-aps-three-gap-directions.md 第一版坚决不要照搬 + 共同不要做的事"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "明确不做即划范围边界"
+  },
+  {
+   "period": "cs",
+   "statement": "甘特图第一版定位为'可信、可缩放、可点击、不卡死的只读排产结果图'而非'能拖动的甘特图'；推进顺序固定为 查看模式收口 → 时间缩放 → 缩放后视觉标记对齐 → 范围保护和性能压测 → 说明书/帮助/QA，最后才另开模拟调整主线。",
+   "category": "UI产品",
+   "evidence": [
+    "roadmap/gantt-result-view-and-manual-adjustment §1、§2 阶段总览 + 本轮拍板口径"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "问题不是'用户不能拖'而是'能拖但系统没保存'，假交互必须先关掉"
+  },
+  {
+   "period": "cs",
+   "statement": "关掉甘特假拖动：默认查看模式禁用无效拖拽/拉伸，只保留点击详情、筛选、配色、关键链、依赖线等查看能力。",
+   "category": "UI产品",
+   "evidence": [
+    "roadmap/gantt-result-view-and-manual-adjustment §2 拍板口径、§3 覆盖、§5 阶段1"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "第一版时间缩放支持 月/周/日/12小时/6小时/小时/15分钟/5分钟/1分钟；明确不做秒级、0.1秒、精细拖动模式、拖动保存、模拟调整正式发布。",
+   "category": "UI产品",
+   "evidence": [
+    "roadmap/gantt-result-view-and-manual-adjustment §2 拍板口径、§3 明确不做"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "甘特时间口径全部使用本地时间，页面日期范围按本地自然日解释（起始日 00:00:00、结束日 23:59:59）。",
+   "category": "其他",
+   "evidence": [
+    "roadmap/gantt-result-view-and-manual-adjustment §2 拍板口径3"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "后续模拟调整采用 Draft → Scenario → Official Version 三层版本模型：草稿和模拟方案不能直接写正式 Schedule/ScheduleHistory；只有正式发布才分配新正式版本、复制方案行、写正式历史和审计记录，旧正式版本不可原地改。",
+   "category": "数据建模",
+   "evidence": [
+    "roadmap/gantt-result-view-and-manual-adjustment §2 拍板口径5、§6.4",
+    "architecture/ARCHITECTURE.md §8（scenario publish 复算快照）"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "甘特权限与审计口径：第一版只读不新增复杂权限、查看/缩放/筛选不产生审计事件；后续模拟调整必须分权（gantt.view/simulation.create/save/publish/override_locked/admin），正式采用是发布动作需二次确认+原因必填+重新校验+确认基准版本未过期，并记录 created_by/published_by/base_version/new_version/change_count/reason。",
+   "category": "其他",
+   "evidence": [
+    "roadmap/gantt-result-view-and-manual-adjustment §2 权限与审计拍板口径"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "第一版不替换 Frappe Gantt，继续使用本地静态资源以符合 Win7 离线交付边界；本地压缩版 Frappe 补丁要先治理边界再做适配层，不再在压缩版里散修。",
+   "category": "依赖选型",
+   "evidence": [
+    "roadmap/gantt-result-view-and-manual-adjustment §3 明确不做、§2 阶段0、§5 后续路线适配层",
+    "architecture/ARCHITECTURE.md §3 ui-gantt 索引"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "草稿不混进默认正式报表：草稿只能预览，默认报表和车间执行口径仍读正式版本；1 分钟视图第一版不做虚拟滚动，用范围保护+节点数保护+浏览器压测守住。",
+   "category": "UI产品",
+   "evidence": [
+    "roadmap/gantt-result-view-and-manual-adjustment §3 明确不做、§5 阶段4"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "引入 networkx==3.1 作为可选依赖，不马上进主 requirements.txt、不安装 networkx[default]；不引入 NumPy/SciPy/Pandas/Matplotlib/pydot/pygraphviz，不使用 NetworkX drawing/layout；近期不引入 PyTorch/Gym/Graphviz 等重依赖，坚持 Win7/Python 3.8.10/离线 wheel/PyInstaller 4.10 交付口径。",
+   "category": "依赖选型",
+   "evidence": [
+    "roadmap/networkx-scheduler-graph-introduction §范围、技术边界清单 §8"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "图分析分四级目标（构建依赖图→环检测/拓扑/关键路径/影响分析→ready 队列参与排产→关键路径/影响/资源匹配进评分），三档模式 off（默认关闭）/report（旁路报告，只写小摘要+采样诊断不改结果）/on（受控参与排产）。",
+   "category": "算法策略",
+   "evidence": [
+    "roadmap/networkx-scheduler-graph-introduction §总目标、§默认行为",
+    "architecture/ARCHITECTURE.md §6 排产工序图分析现状"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "正式交付给业务用户时关键链排产默认开启，off/report 仅保留给开发验证/回滚/排障，不作为普通用户默认入口。",
+   "category": "算法策略",
+   "evidence": [
+    "roadmap/networkx-scheduler-graph-introduction §已确认产品口径-默认行为"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "不确定",
+   "why": "与 ARCHITECTURE §6 记录的'graph_analysis_mode=off 是默认关闭模式'存在张力——roadmap 说的是交付业务用户时默认开，ARCHITECTURE 记录的是当前代码默认值仍 off；二者口径可能分别指交付配置与代码默认，需核实当前实际默认值"
+  },
+  {
+   "period": "cs",
+   "statement": "候选方案池口径：原算法候选必须先跑作兜底/对照，关键链候选默认跑 5 档权重（高级设置可改 3/5/7），每档权重由系统给不让普通用户手填，第一版只在当前排序/派工规则下调关键链权重、不做排序×派工×权重笛卡尔积暴力全跑。",
+   "category": "算法策略",
+   "evidence": [
+    "roadmap/networkx-scheduler-graph-introduction §候选方案池"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "自动择优默认展示最终采用方案，评分复用现有 objective_score/metrics 不另起新评分；balanced 平衡规则：failed_ops 不能变差、超期批次默认最多多 1 个、总拖期默认允许 10% 容差，关键链健康只作补充判断展示成'更健康/差不多/更差'。",
+   "category": "算法策略",
+   "evidence": [
+    "roadmap/networkx-scheduler-graph-introduction §自动择优",
+    "compound/2026-05-23-explore-aps-three-gap-directions.md 关键证据3"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "候选结果保存口径：所有候选方案都保存摘要，完整排产明细只保存代表方案（最终采用/原算法最好/关键链最好），三者重复只存一份明细并建引用关系；代表方案不伪装成多条正式排产历史版本。",
+   "category": "数据建模",
+   "evidence": [
+    "roadmap/networkx-scheduler-graph-introduction §候选结果保存"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "NetworkX 后续定位写死为'只读辅助解释层/排产诊断层/影响分析层'，是排产结果体检医生不是第二套排产大脑；不得描述成新排产器/优化器/自动派工大脑/局部重排引擎，不能偷偷替代现有排产算法或自动改结果。判断标准：能回答'哪里有问题/为什么有风险/影响谁'可进路线，开始自动改派工/顺序/建议重排就放 future/backlog。",
+   "category": "算法策略",
+   "evidence": [
+    "roadmap/networkx-scheduler-graph-introduction §后续产品边界收敛、§后续统一定位"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "PR-0..PR-7e 已证明方向可行但复杂度已不低，后续不再'有价值就加'"
+  },
+  {
+   "period": "cs",
+   "statement": "诊断后续路线分批：第一批做'看清当前这版排产'（体检报告/瓶颈雷达/资源覆盖/交期风险），第二批做'看清异常会影响谁'（停机影响/缺料影响/版本差异影响），第三批（加急插单模拟/自动调度建议卡/小窗口局部重排/min_cost_flow 自动改派工/自动换设备/加班/调顺序）暂缓为 future/backlog，要做先单独开 roadmap，不允许开发 Agent 顺手实现；PR-9 先在排产分析页填诊断摘要不造新页面，诊断按业务问题组织不按算法名分散。",
+   "category": "算法策略",
+   "evidence": [
+    "roadmap/networkx-scheduler-graph-introduction §第一批/第二批/第三批先暂缓、§推荐产品形态"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "第三批涉及系统参与改排产/责任边界/测试矩阵爆炸，复杂度明显更高"
+  },
+  {
+   "period": "cs",
+   "statement": "图分析不做静默兜底（NetworkX 不可用/资源为空/有环/指标算不出/匹配失败都必须显式可见，不能假装成功或填 0）；资源匹配状态固定为 available/empty/skipped/error 内部合同；没有候选资源时不能默默塞全量资源（硬边界），只记为资源覆盖风险。",
+   "category": "错误处理",
+   "evidence": [
+    "roadmap/networkx-scheduler-graph-introduction 技术边界 §4、§5、§6",
+    "compound/2026-05-20-explore-current-silent-fallback-inventory.md 修复口径"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "nx.Graph/nx.DiGraph 只留在图模块内部，不流到 Controller/页面/数据库/Excel/OperationLogs/候选表/result_summary public 摘要，对外必须转成普通 dict/list/str/int/float/bool/None；diagnostics sample 只做采样排障不当业务决策依据，要带采样数量和截断标记。",
+   "category": "架构分层",
+   "evidence": [
+    "roadmap/networkx-scheduler-graph-introduction 技术边界 §2、§3",
+    "architecture/ARCHITECTURE.md §6"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "min_cost_flow 不进当前主线（只能放后续研究，需先解决成本定义/失败解释/与 SGS 对齐）；不改变 readiness_gate_enabled=False 时齐套与齐套日期不影响排产的语义；不把冻结窗口 seed_results 工序重新放回待排候选队列；不把 gantt_critical_chain 展示链路误当排产评分链路。",
+   "category": "算法策略",
+   "evidence": [
+    "roadmap/networkx-scheduler-graph-introduction §范围明确不做、技术边界 §7"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "P1 排产合同清理定位为'在最新 main 上把已拆开的边界用测试和门禁固定下来'，不重新发明排产系统、不再把'大拆优化器'放在最前（优化器大拆/贪心拆分/坏数据说明已完成）。",
+   "category": "架构分层",
+   "evidence": [
+    "roadmap/p1-scheduler-debt-cleanup §背景、§范围明确不做"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "full-test-debt 口径：不能出现未登记的 full pytest 失败、已登记债务只能减少；复杂度台账/静默兜底台账/页面合同/启动链测试的减少不等于 full-test-debt 减少（只有关闭 active xfail 并通过同步脚本才算）；不新增 full-test-debt 登记来'消化'失败。",
+   "category": "测试门禁",
+   "evidence": [
+    "roadmap/p1-scheduler-debt-cleanup §背景、§范围明确不做、M0"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "P1 PR 顺序按真实数据流固定（PR-0 事实源/债务编号映射 → 输入 → 冻结窗口 → 停机资源 → 优化器补证 → PR-5 summary → 落库 → 展示 → batches_page → PR-9 支线），其中 PR-5 summary 放在落库之前；不把页面问题提前插到排产输入/冻结/资源合同之前。",
+   "category": "架构分层",
+   "evidence": [
+    "roadmap/p1-scheduler-debt-cleanup §背景总顺序、§主链顺序、§范围明确不做"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "落库会把 result_summary 写进历史，summary 形状不稳会误导落库和页面"
+  },
+  {
+   "period": "cs",
+   "statement": "CodeStable roadmap 是执行路线，不写成 requirements 或 architecture（落地后由 feature acceptance 回写现状档案）；旧 P1 编号若只有路线图自引用，只能写'当前工作树未找到独立来源'，不能写成'已确认存在'或'客观不存在'。",
+   "category": "其他",
+   "evidence": [
+    "roadmap/p1-scheduler-debt-cleanup §范围明确不做、M0",
+    "roadmap/quality-gate-long-cache §10 观察项"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "长耗时质量门禁做成功缓存复用，遵循'先整项后增量、默认谨慎（本地可显式启用，CI 默认是否启用单独评估）、可回滚（移出 enabled 或 --no-long-gate-cache 即回全量）'；命令身份必须来自真实 build_quality_gate_command_plan()，证据不完整就重跑，不为提高命中率加宽松兜底，explain 与 CI cache hit 都不是 proof。",
+   "category": "测试门禁",
+   "evidence": [
+    "roadmap/quality-gate-long-cache §2 总体原则、§9 注意事项"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "统一质量门禁入口为 scripts/run_quality_gate.py（--require-clean-worktree --long-gate-cache 为最终完整门禁 proof）；pre-push 已从'接完整 clean gate'改为运行 scripts/run_daily_quality_gate.py，避免日常 push 每次被完整 full-test-debt 拖住。",
+   "category": "测试门禁",
+   "evidence": [
+    "roadmap/quality-gate-long-cache §1 当前状态确认",
+    "architecture/ARCHITECTURE.md §5（门禁以 run_quality_gate.py 为准）"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": true,
+   "reversed_what": "pre-push 原先接完整 clean gate + long gate cache",
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "当前已 enable 成功缓存复用的 long gate entry 固定为 9 个（pytest_collect_all/full_test_debt/ruff_check_full/pyright_gate_full/pyright_tools_full/required_regressions/debt_ledger_sync/startup_runtime_regressions/quickref_vs_routes）；architecture_fitness 仍保持 planned，若要启用应另起新的 feature/roadmap。",
+   "category": "测试门禁",
+   "evidence": [
+    "roadmap/quality-gate-long-cache §1、§4.1、§9 注意事项9"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "cs",
+   "statement": "静默回退治理口径：会改变排产业务事实的坏数据不再悄悄变成 0/1/空值/默认值，必须兼容旧数据处要么留 warning/降级/页面提示/OperationLogs 要么明确登记为可接受展示兼容；Excel 模板表头不一致直接报可见错误不自动覆盖；分析/历史/周计划遇坏摘要数字显示'记录异常'不画成 0；算法统计计数不把坏值/小数/布尔截成正常整数。严格门禁边界为'启动链四类全量冻结 + 非启动链历史 silent_swallow 续管'，不证明全仓清零。",
+   "category": "错误处理",
+   "evidence": [
+    "compound/2026-05-20-explore-current-silent-fallback-inventory.md 速答+验收表",
+    "compound/2026-05-21-p1-silent-fallback-verification-repair-plan.md §0.1、§1 总体结论"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "原 inventory 采保守静态口径，人工沿调用链核实后分为真 P1/需可观测治理/误报或已可观测三类，只修真 P1"
+  },
+  {
+   "period": "cs",
+   "statement": "现场反馈时间第一版用浏览器当前时间（'现场当下点一下确认'），不做补录任意历史时间；撤销开工/撤销完工、纠错、反冲列为后续单独能力，不在第一版范围；如需补录昨天开工时间应单独设计'现场反馈补录和纠错'能力。",
+   "category": "UI产品",
+   "evidence": [
+    "compound/2026-05-28-explore-shop-floor-feedback-usage.md 细节展开+未决问题+后续建议",
+    "compound/2026-05-23-explore-aps-three-gap-directions.md 未决问题"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "04c-apr-late",
+   "statement": "把仓库默认 AI 协作入口从旧的 superpowers/.limcode 流程切换到 CodeStable：新增 codestable/ 标准骨架(requirements/architecture/roadmap/features/issues 等)，AGENTS.md 改为默认先看 codestable/reference/system-overview.md，.limcode 从『默认事实源』降级为旧流程归档+APS专项资料库，using-superpowers 加迁移说明但不再当默认起点。",
+   "category": "其他",
+   "evidence": [
+    "4da3fe6c: 接入 CodeStable 默认工作流，新增 codestable/ 全套目录+tools(search-yaml/validate-yaml)，1575 insertions",
+    "同提交新增 2026-04-27-decision-codestable-default-workflow.md 记录『为什么默认切到 CodeStable、.limcode 为什么暂时不删』"
+   ],
+   "found_via": "message直读",
+   "is_reversal": true,
+   "reversed_what": "此前默认起点是 .limcode/skills/using-superpowers + brainstorming/systematic-debugging/writing-plans 旧流程；本次把默认事实源从 .limcode 改为 codestable/",
+   "still_holds_guess": "看起来仍有效",
+   "why": "这是元层面的工作方式改向，影响其后每一个 feature/issue/refactor 的落档位置；后续 4-30 所有提交都已在 codestable/roadmap、codestable/features 下落档，证明该决定被持续执行。"
+  },
+  {
+   "period": "04c-apr-late",
+   "statement": "确立贪心排产链路『坏数据直接报原因、不再静默兜底』的总原则：批次顺序重复/空/越界、SGS 缺机器缺人员、外协天数为0、工时无限大、日历效率非法等，过去会悄悄跳过/用默认值继续/造一个可排序的备用分数，现在一律直接抛清楚原因；旧测试里期待『兜底继续跑』的断言被改写成期待『直接说明坏数据在哪』。",
+   "category": "错误处理",
+   "evidence": [
+    "92ad5b31: 让贪心排产遇到坏数据时直接说明原因，改 sgs_scoring/seed/ordering/auto_assign 等18文件，msg明列『SGS评分阶段不再给无法评分的候选造备用排序分数』",
+    "旧测试 regression_sgs_scoring_fallback_unscorable.py 等被反向改写：『原本期待兜底继续跑的地方，也改成期待直接说明坏数据在哪里』"
+   ],
+   "found_via": "message直读",
+   "is_reversal": true,
+   "reversed_what": "此前贪心链路存在多处『能凑合就凑合』——静默跳过、默认值续算、伪造可排序分数掩盖问题",
+   "still_holds_guess": "看起来仍有效",
+   "why": "这是排产核心算法的错误处理哲学反转，且配套大量回归测试锁住，属于不易回退的方向决定；与同期 P1 roadmap 全局『不新增 fallback/兜底/静默吞错』停止条件一致。"
+  },
+  {
+   "period": "04c-apr-late",
+   "statement": "拆开单体 GreedyScheduler：把排序、单次运行临时状态、运行上下文(稳定能力+旧回调)、内部工序执行、SGS评分各自拆成独立模块(ordering/run_state/run_context/internal_operation/internal_slot/sgs_scoring)，主文件降到500行以下；对外 schedule 调用方式/返回结构/导出/strict 调用/统计字段名/旧私有入口兼容全部保持不变。",
+   "category": "架构分层",
+   "evidence": [
+    "fb0387d3: 拆开贪心排产器，6194行/23文件，GreedyScheduler 主文件降到500行以下，internal_slot 最重函数复杂度21→7",
+    "msg明确『不是机械拆文件，而是把不同职责放回应该待的位置』，并把新拆文件纳入架构门禁行数/复杂度检查"
+   ],
+   "found_via": "message直读",
+   "is_reversal": false,
+   "reversed_what": "",
+   "still_holds_guess": "看起来仍有效",
+   "why": "这是排产主链的结构性决定(职责归位+对外不变契约)，属同方向(技术债治理)下的一次重大新结构落地；后续 P1 roadmap 多个里程碑都建立在这个拆分之上。"
+  },
+  {
+   "period": "04c-apr-late",
+   "statement": "优化器被拒方案与公开摘要分离：新增统一记录入口保存被拒方案的名称/排产方式/规则/失败原因，对外摘要只展示真正算出分数的方案，被拒原因只进 diagnostics 排查信息；多起点非主方案失败记录后跳过、严格模式仍直接报错，OR-Tools 预热严格模式遇候选数据错误直接抛真正原因而非当普通预热失败。",
+   "category": "算法策略",
+   "evidence": [
+    "e7d0d5e4: 记录优化器被拒方案的原因，新增 optimizer_attempt_records.py(108行)，改 local_search/search_state/public_summary，893 insertions",
+    "ba65d6cc/6bf9679e(PR-4/PR-5): 加严公开 attempts 不带 source/tag/used_params/algo_stats/origin，rejected diagnostics 压缩后仍只进 diagnostics"
+   ],
+   "found_via": "message直读",
+   "is_reversal": true,
+   "reversed_what": "此前被拒方案要么被当成普通失败、要么可能混进摘要显示成没有分数的失败方案",
+   "still_holds_guess": "看起来仍有效",
+   "why": "明确区分『算过但不够好』与『一开始数据不对被拒』，并通过 PR-4/PR-5 合同测试把『公开 attempts 不泄漏内部字段』锁死，是被多轮强化的方向决定。"
+  },
+  {
+   "period": "04c-apr-late",
+   "statement": "建立机器可验证的 full-pytest 测试债务治理体系：新增 collector 结构化采集器、正式可导入 baseline(隔离后/带机器块)、治理台账 schema v2 的 test_debt 区块、pytest 收集阶段按精确 nodeid 给已登记项加 strict xfail、quality gate 统一命令清单单次遍历+必需证明检查、台账『只减不增』ratchet(active xfail 数必须等于 max_registered_xfail，修好须 mark-test-debt-fixed 并下调上限)。",
+   "category": "测试门禁",
+   "evidence": [
+    "b41c9372/f6cae284/19f743fc/33341f93/7055a355/682633d6/8b4d5dcd/a2ac0b44/6167f6a6/d6ef40a8/68fedde9: 04-27 整组任务一~任务十一",
+    "33341f93: 台账升级第2版增 test_debt 区块登记5条；7055a355: pytest 按 nodeid 加 strict xfail，XPASS 红灯提醒清账；8b4d5dcd: 新增 mark-test-debt-fixed 实现只减不增"
+   ],
+   "found_via": "message直读",
+   "is_reversal": false,
+   "reversed_what": "",
+   "still_holds_guess": "看起来仍有效",
+   "why": "这是一个全新的质量治理方向(把『口头说有失败』变成机器可重复证据)，整组11个任务围绕同一目标推进；属新方向但内部多提交是同方向推进。该体系后续被 P1/phase4/phase5 反复引用(sync_debt_ledger check/check_full_test_debt)。"
+  },
+  {
+   "period": "04c-apr-late",
+   "statement": "确认并切断 main-style 回归测试的同进程污染：旧 conftest 在同一测试进程内 import 回归脚本并调用 main()，导致前一个测试改坏 subprocess.Popen 后批量污染后续测试(隔离前36失败)。改为通过新增 main_style_regression_runner.py 在子进程运行每个 main-style 回归脚本，隔离后稳定为5个真实失败(全在 operator-machine 相关)。",
+   "category": "测试门禁",
+   "evidence": [
+    "f6cae284: 隔离会互相污染的回归测试，改 conftest.py，新增 main_style_regression_runner.py + test_regression_main_isolation_contract.py，msg明列污染链 regression_start_and_rerun_route_resolution 改假 Popen 泄漏",
+    "结果『隔离后全量测试从36个失败稳定变成5个失败，27个 required/proof 失败消失』"
+   ],
+   "found_via": "message直读",
+   "is_reversal": true,
+   "reversed_what": "此前 conftest 在同一进程内导入并运行 main-style 回归脚本，造成全局状态跨测试污染",
+   "still_holds_guess": "看起来仍有效",
+   "why": "这是测试执行模型的根因级反转(同进程→子进程隔离)，直接决定了后续『哪些算真债务』；若回退则测试债务计数会再次失真。"
+  },
+  {
+   "period": "04c-apr-late",
+   "statement": "开启 P1 排产债务清理 roadmap(M0-M7/PR-1~PR-9)，并确立关键边界：P1-8..P1-25 编号经全仓搜索确认并非已存在的旧编号、仅存在于该 roadmap 自身，故先落 M0 事实源/source-map 再开修；设全局停止条件『不新增 if/fallback/兜底/静默回退』；坚持『复杂度/测试覆盖改善 ≠ full-test-debt 减少』(full-test-debt 全程保持5条旧登记不动)。",
+   "category": "其他",
+   "evidence": [
+    "c520fb8a: 细化并落盘排产债务清理 M0 事实源，954 insertions，msg『P1-8到P1-25在当前工作树找不到独立来源…把不新增 if/fallback/兜底/静默回退写成全局停止条件』",
+    "贯穿 b5685d57/c7c7d884/3f7dd7f6/506a13d9/ba9a3340/e4d7aff5/dee8053a 每条都声明『本次没有减少 full-test-debt，active xfail 仍是5条』"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "reversed_what": "",
+   "still_holds_guess": "看起来仍有效",
+   "why": "这是一个大型事前规划方向(M0先把事实边界打好再动代码)，其下 M1-M7 多个里程碑都是同方向推进；『编号不是旧证据』『复杂度≠测试债减少』两条口径是反复被对抗审查强化的边界。"
+  },
+  {
+   "period": "04c-apr-late",
+   "statement": "schema v7 数据建模硬化：新增唯一索引 idx_schedule_version_op_unique(version, op_id)，并在迁移时若历史库已存在重复 Schedule(version,op_id) 直接 fail-fast 抛错(列出样本)而非静默挑一行继续；同步把 duplicate_schedule_rows 加入落库公共拒绝原因，优先级 out_of_scope > duplicate > invalid > no_actionable。",
+   "category": "数据建模",
+   "evidence": [
+    "a94d3ac0: 收口 P1 排产债务合同，新增 core/infrastructure/migrations/v7.py",
+    "v7.py 实证：_duplicate_schedule_rows 查重后 raise RuntimeError『存在同一版本同一工序的重复排程，请先人工清理后再迁移』，否则 CREATE UNIQUE INDEX IF NOT EXISTS"
+   ],
+   "found_via": "diff深挖",
+   "is_reversal": false,
+   "reversed_what": "",
+   "still_holds_guess": "看起来仍有效",
+   "why": "这是数据库层的强约束新增(唯一性从应用层兜底升级为 DB 级约束+迁移 fail-fast)，与冻结窗口读上一版排程时不再静默挑重复 op_id 一行的改动配套，属不易回退的数据建模决定。"
+  },
+  {
+   "period": "04c-apr-late",
+   "statement": "插件整体加载失败必须重置进程内状态：新增并导出 reset_plugin_state(base_dir) 清空 registry/statuses/冲突能力/旧 vendor 状态并返回空快照；PluginManager.load_from_base_dir 整体失败时改为调用它，避免沿用上一轮插件能力或旧 Excel backend(回到 OpenpyxlBackend)。配套收窄插件开关来源合同：真实插件无配置时默认关闭、不注册能力、Excel 仍走 openpyxl，系统页留痕展示为何启用/未启用。",
+   "category": "错误处理",
+   "evidence": [
+    "a94d3ac0: 新增 reset_plugin_state，web/bootstrap/plugins.py 整体失败改调 reset_plugin_state，msg『避免沿用上一轮插件能力或旧 Excel backend』",
+    "8f58910f: 收窄插件开关来源合同，新增 test_plugin_enabled_source_contract.py(95行)，系统页 backup.html 补留痕状态"
+   ],
+   "found_via": "message直读",
+   "is_reversal": true,
+   "reversed_what": "此前插件整体加载失败后可能继续沿用上一轮 registry 快照/旧 Excel backend",
+   "still_holds_guess": "看起来仍有效",
+   "why": "失败后状态清零是 fail-closed 哲学在插件子系统的落地，配套回归测试(先注册 pandas backend 再模拟整体失败验证回退 OpenpyxlBackend)锁住，属方向决定。"
+  },
+  {
+   "period": "04c-apr-late",
+   "statement": "确立『展示标签/页面装配逻辑下沉到 web/viewmodel、移出 core 服务与路由』的分层红线：资源排班展示标签(人员/设备/同班组/跨班组借调)从 core/services/scheduler/resource_dispatch_rows 移到 web/viewmodels；/scheduler/run 新增 RunScheduleViewResult 让路由不再自己拆 summary 拼提示；批次首页筛选/批次行/配置面板/最近历史搬到 scheduler_batches_page viewmodel；ui_mode 拆出 render_bridge/ui_mode_request/ui_mode_store。",
+   "category": "架构分层",
+   "evidence": [
+    "3dc47bc2(diff实证): resource_dispatch_rows.py 删除 _scope_type_label/_counterpart_type_label/_team_relation_label/display_machine/display_operator，新增 web/viewmodels/scheduler_resource_dispatch.py(257行)承接 label",
+    "9b118f82: 把排产运行页提示搬出路由→RunScheduleViewResult(116行)；e953d335/c04265ab: scheduler_batches_page viewmodel(252行)+配置装配移到 config_display_state helper；14703daf: ui_mode 584行拆成多文件"
+   ],
+   "found_via": "diff深挖",
+   "is_reversal": false,
+   "reversed_what": "",
+   "still_holds_guess": "看起来仍有效",
+   "why": "这是一条贯穿多个提交的分层方向决定(core/route 不组装展示串)，且每次都附页面 viewmodel 合同测试；与当前分支在途的 reports-workbench/scheduler_run lane 前端工作直接相关，应仍在沿用。"
+  },
+  {
+   "period": "04c-apr-late",
+   "statement": "建立『核心业务模型补判断方法、用模型方法替换散落的字符串状态判断』模式：给 BatchOperation 加 is_external/is_internal/is_pending/is_scheduled/is_processing/is_completed/is_skipped/has_supplier/processing_hours，给 Schedule 加 is_locked/is_unlocked/has_machine/has_operator/has_any_resource，然后把 external_group_service/part_service/operation_edit_service 等处低风险状态判断替换为这些方法。",
+   "category": "数据建模",
+   "evidence": [
+    "a68b3ba2(diff实证): batch_operation.py/part_operation.py/schedule.py 新增判断方法，test_domain_model_methods.py(106行)",
+    "4fa13862: 用模型方法替换低风险状态判断；8ad583bb: 修复阶段三合并前阻断，补 test_domain_model_internal_source_contract"
+   ],
+   "found_via": "diff深挖",
+   "is_reversal": false,
+   "reversed_what": "",
+   "still_holds_guess": "看起来仍有效",
+   "why": "这是领域模型表达力的模式决定(状态判断收敛到模型自身)，属阶段三/四技术债治理同方向推进，低风险但确立了后续写法。"
+  },
+  {
+   "period": "04c-apr-late",
+   "statement": "Win7 启动链/Chrome 停止链多处硬化(phase5 startup fallback 治理)：Chrome 进程匹配从『在整条命令行里搜文本』改为先拆真实参数、只认真正的 --user-data-dir(防伪造文本/反斜杠转义误判)；legacy 打包从『全局 taskkill 所有 Chrome』改为只按 APS 自己的 Chrome 路径定点清理；runtime 强杀必须先经系统进程表确认 pid 真实可执行文件才杀；Win7 bat/卸载/停机脚本去掉旧系统不稳的 IsNullOrWhiteSpace，改用 PowerShell 解析 runtime contract JSON 替代脆弱 findstr。",
+   "category": "错误处理",
+   "evidence": [
+    "d9f74b14: 收紧 Chrome 停止链和 M7 回填，msg明列上述每条反转，改 launcher_processes/launcher_stop/package_win7.ps1/installer",
+    "e8a756b5: launcher.py 1339行拆成 contracts/network/paths/processes/stop；6c512bbd/9a25efdf/d355cce6/0ef6e089/a24a6549/af8265ff/1f51a31d/45b3f586: phase5 启动链 fallback 逐项收口+基线"
+   ],
+   "found_via": "message直读",
+   "is_reversal": true,
+   "reversed_what": "Chrome 匹配旧靠整条命令行模糊搜索；legacy 打包旧全局 taskkill 所有 Chrome；旧脚本用 IsNullOrWhiteSpace/findstr 在 Win7 不稳",
+   "still_holds_guess": "看起来仍有效",
+   "why": "针对 Win7 离线交付目标机的多处误杀/误判反转，配套 test_win7_launcher_runtime_paths 大量断言锁住，是交付安全方向决定。"
+  },
+  {
+   "period": "04c-apr-late",
+   "statement": "数据库/事务基础设施拆分与失败闭合：database.py 把迁移逻辑委托给 migration_runner(主文件减471行)，迁移备份/事务/v4 sanitizer 拆成 migration_runner/migration_state/v4_sanitizers；transaction.py 重构出统一 _transaction_scope contextmanager 复用 savepoint，且事务上下文读取失败时改为 logger.warning 并按『处于事务内』保守处理(返回 True)而非吞掉；迁移回滚失败、初始化失败、事务回滚失败均补失败闭合测试。",
+   "category": "错误处理",
+   "evidence": [
+    "76f78aab: 让数据库迁移入口委托迁移执行器(database.py -267行)；b3268c94: 拆分迁移备份与事务基础设施，新增 migration_runner(259)/migration_state(150)/v4_sanitizers(159)",
+    "a84c014c(diff实证): transaction.py 抽 _transaction_scope，_owns_transaction 读取失败 except 改 logger.warning+return True；a857a60c/597178eb: 迁移回滚/db/tx 失败闭合"
+   ],
+   "found_via": "diff深挖",
+   "is_reversal": false,
+   "reversed_what": "",
+   "still_holds_guess": "看起来仍有效",
+   "why": "phase4/5 基础设施同方向推进(拆分+fail-close)，事务上下文『读不出就当在事务内』是保守安全选择，配套 test_transaction_boundary/test_database_migration_runner_delegation 锁住。"
+  },
+  {
+   "period": "04c-apr-late",
+   "statement": "落库结果校验删除 row is None 静默跳过分支：按对抗性复审，移除排产结果校验里的 `row is None` 静默跳过，让 helper 若返回异常组合时直接暴露问题、不再悄悄丢行；并把 PR-6 专项测试改名为默认门禁会自动收集的 test_*.py，补『模拟排产不改批次状态、外协结果即使进 missing set 也不写内部资源』断言。",
+   "category": "错误处理",
+   "evidence": [
+    "21d36976: 修正排产落库合同复审问题，schedule_persistence.py 删 row is None 静默跳过，msg『不再悄悄丢行』，测试文件改名进默认收集，当前默认收集748",
+    "5a593db6/506a13d9: PR-6 收口排产落库和自动分配写回合同，自动分配资源只补空字段、模拟排产不改真实状态"
+   ],
+   "found_via": "message直读",
+   "is_reversal": true,
+   "reversed_what": "此前落库结果校验存在 row is None 的静默跳过分支会悄悄丢行",
+   "still_holds_guess": "看起来仍有效",
+   "why": "与全局『不新增/清除静默回退』停止条件一致的一次具体反转，属落库合同方向决定。"
+  },
+  {
+   "period": "04c-apr-late",
+   "statement": "冻结窗口不生效原因显式化：新增 freeze_disabled_reason 区分『用户关了/天数为0/没有上一版本/上一版本无可用排程』几种正常不启用原因；配置读坏时保持 degraded 而非伪装成 disabled，strict 模式直接报 freeze_window 错，summary 只在真正 disabled 时透传安全原因；并把 build_freeze_window_seed 拆成准备范围/读上一版/套批次前缀/整理结果四步(复杂度收口)。",
+   "category": "错误处理",
+   "evidence": [
+    "8c23c94e: 讲清冻结窗口不生效的原因，freeze_window.py +51，msg『不把配置坏掉伪装成 disabled』，regression_freeze_window_fail_closed_contract +262",
+    "7897ac54: 收口冻结窗口种子复杂度，build_freeze_window_seed 拆四步，对外名字/参数/三段返回不变"
+   ],
+   "found_via": "message直读",
+   "is_reversal": true,
+   "reversed_what": "此前冻结窗口只笼统说 disabled，且配置读坏可能被当成普通关闭",
+   "still_holds_guess": "看起来仍有效",
+   "why": "把『不可信配置』与『正常关闭』区分开是 fail-closed 方向决定的一部分，配套合同测试锁住状态说明。"
+  },
+  {
+   "period": "04c-apr-late",
+   "statement": "外协组合并上下文判断收紧：不再只看模板工序和外部组能否查到，新增确认模板是否仍有效、外部组是否属于当前图号、当前工序号是否落在外部组范围内，三类不满足走已有可见降级通道、strict 模式直接报错；并把排产输入构造与模板组查找原本堆在入口的判断拆成小函数(签名/输出字段/提示事件/strict 行为不变)。",
+   "category": "错误处理",
+   "evidence": [
+    "cac455b7: 收紧外协组合并上下文判断，schedule_template_lookup.py +278，msg『让已经不该使用的组合并信息不再进入排产』，落 issue fix-note",
+    "d1dc88da: 收口排产输入和外协组合并合同，input_builder/template_lookup 拆小函数，高复杂度登记44→42"
+   ],
+   "found_via": "message直读",
+   "is_reversal": true,
+   "reversed_what": "此前组合并只校验能否查到，未校验模板有效性/图号归属/工序号范围，会让失效组合并信息进入排产",
+   "still_holds_guess": "看起来仍有效",
+   "why": "排产输入正确性的方向收紧，与坏数据 fail-fast 总原则一致。"
+  },
+  {
+   "period": "04c-apr-late",
+   "statement": "拆分 schedule_summary 与 config 字段校验巨型文件：schedule_summary.py(535行)拆出 summary_runtime_state/summary_size_guard，config_field_spec 拆出 config_field_coercion；同期拆分工艺报表/相关路由(scheduler_excel_calendar_rows/personnel_detail_context/system_backup_actions)以收口阶段4超长文件与复杂度台账。",
+   "category": "架构分层",
+   "evidence": [
+    "c5dd84bf: 拆分排产 summary 与配置字段校验逻辑，新增 config_field_coercion(285)/summary_runtime_state(286)/summary_size_guard(239)",
+    "01e629db: 拆分工艺报表和相关路由复杂逻辑，3084行/27文件；2b98b134: 记录阶段4/5技术债治理基线"
+   ],
+   "found_via": "message直读",
+   "is_reversal": false,
+   "reversed_what": "",
+   "still_holds_guess": "看起来仍有效",
+   "why": "阶段4 超长文件/复杂度治理同方向推进，属结构拆分而非新业务方向。"
+  },
+  {
+   "period": "04c-apr-late",
+   "statement": "仓储查询分层收敛：排程明细 JOIN 构造拆到 schedule_detail_query，设备/人员引用检查抽到共享 reference_checks 模块(machine_repo/operator_repo 复用)，并新增 schedule_rows 明确排程仓库明细行返回合同(gantt_tasks/week_plan/resource_dispatch_rows 等改用)。",
+   "category": "架构分层",
+   "evidence": [
+    "f1b580ae: 收敛排程明细查询 JOIN 构造，schedule_repo -140，新增 schedule_detail_query(112)",
+    "f4b9eee7: 收敛设备与人员引用检查查询，新增 reference_checks(52)；5204cac4: 明确排程仓库明细行返回合同，新增 schedule_rows(50)"
+   ],
+   "found_via": "message直读",
+   "is_reversal": false,
+   "reversed_what": "",
+   "still_holds_guess": "看起来仍有效",
+   "why": "data/repositories 层的去重+返回合同明确化，属同方向技术债治理。"
+  },
+  {
+   "period": "04c-apr-late",
+   "statement": "重写根 README 并修复 GitHub 首页乱码：项目定位从『APS 测试系统』正式改为『回转壳体单元智能排产系统(APS)』，面向 Win7 x64 离线单机/共享数据场景；乱码根因确认为中文内容写入文件前已被错误转码再当 UTF-8 提交(非 GitHub 读错)，本次重写为正确 UTF-8 并补主要能力概览；同时让 GitHub 自动检查统一按 UTF-8 读取中文。",
+   "category": "UI产品",
+   "evidence": [
+    "b8df4d20: 重写项目 README，README.md 146行改动，msg详述乱码根因与定位升级",
+    "493ad690: 让 GitHub 自动检查统一按 UTF-8 读取中文"
+   ],
+   "found_via": "message直读",
+   "is_reversal": true,
+   "reversed_what": "旧 README 标题/定位为『APS 测试系统』且更像开发入口备忘录，并含历史错误转码乱码",
+   "still_holds_guess": "看起来仍有效",
+   "why": "对外项目定位/门面决定，一次性落定，不易再改。"
+  },
+  {
+   "period": "05a-may-early",
+   "statement": "齐套(readiness)功能从『默认开启的硬门槛』翻转为『默认关闭、保留能力但不影响排产』：排产输入统一加 readiness_gate_enabled 开关，默认 False；不开时算法不用 ready_date 推迟开工、排序阶段把所有批次当已齐套；只有用户本次明确勾选才恢复未齐套拦截。配 v8 迁移把历史批次改齐套、齐套日期清空、enforce_ready_default 改 no。",
+   "category": "算法策略",
+   "evidence": [
+    "4583a2a8 『让齐套功能默认不再卡住排产』message直读+diff：core 新增 readiness_gate_enabled: bool=False 一路透传；core/infrastructure/migrations/v8.py 新增 _migrate_enforce_ready_default 把 config 与各方案 JSON 的 enforce_ready_default 改 no",
+    "diff见 schema.sql 批次物料底层默认改回 no，服务层新增物料仍默认到齐，避免裸写DB出现『数量0但状态yes』矛盾",
+    "启用齐套但调度器不支持新参数时改为硬报错(不再被兼容层悄悄丢弃)",
+    "NetworkX roadmap(15e43afa)第267行把『readiness_gate_enabled=False 时齐套不影响排产』列为既定不可破坏语义"
+   ],
+   "found_via": "diff深挖",
+   "is_reversal": true,
+   "reversed_what": "此前齐套状态/齐套日期默认就是排产硬门槛，未齐套或未来齐套日期会卡住排产",
+   "still_holds_guess": "看起来仍有效",
+   "why": "这是本段最大的业务行为翻转，直接改变默认排产结果，且用迁移固化历史数据、被后续roadmap当作基线引用"
+  },
+  {
+   "period": "05a-may-early",
+   "statement": "pre-push 门禁策略在同一天(5/14)内二次翻转：先把 pre-push 接成完整 clean gate(--require-clean-worktree --long-gate-cache)，随即又改为 pre-push 只跑 run_daily_quality_gate.py 快速预检(约2.3秒、明确不是clean proof)，完整门禁退到独立 run-final-quality-gate 入口。",
+   "category": "测试门禁",
+   "evidence": [
+    "a7e2e59e diff：git_hook_checks.py 把 command 从 [run_quality_gate.py --require-clean-worktree] 追加 --long-gate-cache",
+    "8b5c9134 diff：同文件改成 command=[run_daily_quality_gate.py]，并新增 run_final_quality_gate 子命令；message『日常pre-push挂完整clean gate会被200秒级full-test-debt拖住』",
+    "README/开发文档同步写清『日常快门禁不是clean proof』"
+   ],
+   "found_via": "diff深挖",
+   "is_reversal": true,
+   "reversed_what": "a7e2e59e 刚把 pre-push 绑成完整 clean gate + 长门禁缓存复用",
+   "still_holds_guess": "看起来仍有效",
+   "why": "段内自我修正，最终落点(快预检+独立final入口)是当前策略，把前一个决定推翻了"
+  },
+  {
+   "period": "05a-may-early",
+   "statement": "长耗时质量门禁缓存(long gate cache)体系——全新基础设施与主线方向：识别慢命令→对输入(文件内容/Python/pytest版本/环境/输出文件/日志hash)生成稳定指纹→只有上次成功且指纹完全一致才复用，任何证据缺失/损坏/路径逃逸/repo外symlink/工具版本变化一律重跑。按 NEXT-1..NEXT-13 分阶段，从只启用 collect-only 逐步扩到 full-test-debt/startup/required。",
+   "category": "测试门禁",
+   "evidence": [
+    "907de9d4 落roadmap(只增规划)，6bf4b6f5 新增 long_gate_manifest/fingerprint/cache/collect 基础工具，da4eddad 接入 collect-only",
+    "adb4cc92 新增 long_gate_paths.py/long_gate_schema.py 统一schema+repo identity+不可信路径，坏证据宁可重跑也不冒充proof",
+    "e49c8976/865cab07/f82499dc/d52ef26a/1881ff95 逐组接 full-test-debt整项→nodeid增量、startup、required分组缓存",
+    "每步都明确『当前只启用X，其余仍planned』并给回滚方式"
+   ],
+   "found_via": "message直读",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "5月中后段绝对主线，新增近20个工具/测试文件，奠定门禁加速地基"
+  },
+  {
+   "period": "05a-may-early",
+   "statement": "Phase-6 合同清理：把解析/版本归一化/错误整形逻辑从 web/routes 收敛进 core/(core/models/scheduler_history_parser.py、core/services/scheduler/version_resolution),路由只调用；并用 test_phase6_no_* 源码扫描测试守门(断言 routes 里不再出现 json.loads / 版本解析函数 / except Exception 吞错)。",
+   "category": "架构分层",
+   "evidence": [
+    "3ff5111d diff：新增 core/models/scheduler_history_parser.py(parse_result_summary_payload)，normalizers.py 删解析改调用，新增 test_phase6_no_result_summary_route_parser.py 断言 routes/viewmodel 无 json.loads",
+    "8c8e59e6 diff：删 normalizers 里 default_version_to_latest 等5个版本函数，新增 test_phase6_no_route_version_parser.py 守门",
+    "1e05f649/76476835 同向收敛历史摘要解析与调用链(均空message靠diff确认)",
+    "均为空commit message，纯靠diff判定方向"
+   ],
+   "found_via": "diff深挖",
+   "is_reversal": true,
+   "reversed_what": "此前路由层自己 json.loads 解析 result_summary、自己做版本归一化与错误兜底",
+   "still_holds_guess": "看起来仍有效",
+   "why": "分层红线决定，且用源码扫描测试固化『routes不准持有解析逻辑』，属结构方向定调"
+  },
+  {
+   "period": "05a-may-early",
+   "statement": "排产对外错误改为 fail-closed 公开合同：新增 schedule_public_errors.py 的 public_error_details 结构化公开错误，result_summary 只存 public-safe message+raw_error_count；展示层优先读 public_error_details，旧数据才走严格 legacy 正则;input_contract 改为白名单重组(只留 degraded/degradation_events/counters/empty_reason)，杜绝路径/堆栈/token/数据库名外泄。",
+   "category": "错误处理",
+   "evidence": [
+    "7790b38c『收紧排产错误公开摘要合同』message直读：新增 schedule_public_errors.py，SummaryBuildContext 增 scheduled_op_ids 绑定 ValidatedSchedulePayload",
+    "8efa88d5 新增 public_error_message_from_detail/public_safe_identifier/label 统一清洗",
+    "4f17a7bc input_contract 白名单重组；e1e102b3 收紧公开错误合同；bf5d3b72 文档固化 fail-closed 口径"
+   ],
+   "found_via": "message直读",
+   "is_reversal": true,
+   "reversed_what": "此前公开摘要靠『错误前缀+敏感词黑名单』判断能否展示并原样透传 input_contract，边界脆且会泄露内部信息",
+   "still_holds_guess": "看起来仍有效",
+   "why": "安全边界从展示层前移到摘要生成阶段，改为白名单/结构化，是错误处理范式转变"
+  },
+  {
+   "period": "05a-may-early",
+   "statement": "排产完成状态判定改为 fail-closed：展示层优先认服务层写入的 completion_status；缺状态但摘要带 error_count/errors/public_error_details 时按『结果有问题，需检查』处理，不再按数量推断成功；error_count 为非数字等不可信形态也按有问题处理。模拟排产路由统一整理 summary，非 dict 一律当空摘要(不再 500、不跳甘特、不泄露)。",
+   "category": "错误处理",
+   "evidence": [
+    "13c1ffc7『收紧排产完成状态缺失时的展示推断』、f7b5ef4c『加固模拟排产摘要类型边界』、5a3e0d1e(原 push 被 test_no_silent_exception_swallow 拦下后改明确分支)",
+    "message直读：内部状态值仍保留 unknown 兼容旧数据，仅改用户可见文案为『有问题，需检查』"
+   ],
+   "found_via": "message直读",
+   "is_reversal": true,
+   "reversed_what": "旧逻辑缺 completion_status 时纯按数量猜成功/部分/失败，会把带错误或未知的结果显示成成功",
+   "still_holds_guess": "看起来仍有效",
+   "why": "把『静默推断成功』改成『可疑即报问题』，是结果可信度的方向性收紧"
+  },
+  {
+   "period": "05a-may-early",
+   "statement": "前端统一 UI 设计语言：从『模板里自己翻译状态(status_zh/strategy_zh)、手写开关、页面ID表格特例』改为统一 UI presenter 对象(UiToggleRow/UiSummaryItem/UiNotice/UiDetailsNotice)+语义token+ui_contract.css+表格type(multiline)，模板只渲染presenter产出，并用大量合同测试守门。",
+   "category": "UI产品",
+   "evidence": [
+    "1d6e00f8『收口前端UI设计语言』message直读：新增UI合同文档/语义token/presenter基础对象，迁移系统日志/备份/排产等低风险展示",
+    "37b69c10/ed4b712c 一致性治理与宽表格保护;后续7a9807b0/6fa49da9/4ac35a2a/9c4b9a7a/2fce703c/59f6f6d8/669d959a等十余commit为同方向逐块收紧",
+    "系统历史页删模板 status_zh，改 viewmodel 字段并加测试锁死『不准再写本地状态字典』"
+   ],
+   "found_via": "message直读",
+   "is_reversal": true,
+   "reversed_what": "此前各页面在模板内各自翻译状态、手写checkbox、靠页面ID特判表格样式，规则分散",
+   "still_holds_guess": "看起来仍有效",
+   "why": "前端展示层范式重定调，配套合同测试固化边界,是5月上前端主线"
+  },
+  {
+   "period": "05a-may-early",
+   "statement": "表单开关(checkbox+hidden同名字段)解析改为严格 fail-closed：统一走 web/routes/form_values.py，字段未提交才用默认值，提交了但值不在 yes/no/on/1/true/off/0/false 白名单则直接抛中文校验错误，不再靠浏览器字段提交顺序猜、也不静默按默认值;UiToggleRow 底层宏自算 disabled+checked 的 hidden 提交值,避免『页面显示开着、提交被当关掉』。",
+   "category": "错误处理",
+   "evidence": [
+    "8281fbb2『收紧开关表单取值解析』、690b8735、d553aa96、c7f8dc95 message直读",
+    "排产高级设置5个开关(freeze_window_enabled/prefer_primary_skill/enforce_ready_default/auto_assign_enabled/ortools_enabled)统一走解析器，不再 form.get() 读第一个值",
+    "测试用反序MultiDict模拟hidden在前checkbox在后仍按yes优先"
+   ],
+   "found_via": "message直读",
+   "is_reversal": true,
+   "reversed_what": "此前用 form.get() 读同名字段第一个值，依赖浏览器提交顺序，非法值静默按默认处理",
+   "still_holds_guess": "看起来仍有效",
+   "why": "表单取值语义从『顺序依赖+静默兜底』改成『白名单+显式报错』，影响所有开关入口"
+  },
+  {
+   "period": "05a-may-early",
+   "statement": "新增真实 Chrome 浏览器几何 smoke 测试作为门禁项：用隔离DB+本地服务真打开关键页面，读浏览器算出的样式，检查 body 横向溢出、toggle 重叠、暗色对比、多行表格未被fixed压成单行;并修正它要真访问排产执行页(/scheduler/?status=pending)而非批次页，覆盖success/failure等降级数据。",
+   "category": "测试门禁",
+   "evidence": [
+    "669d959a 新增真实Chrome几何smoke;2fce703c 加硬为还检查HTTP200/最终路径/主站壳/关键DOM id;c0567702 修正烟测打开的是真正排产执行页并锁死(改回batches会失败)",
+    "CI固定Chrome路径+安装Node.js 24",
+    ""
+   ],
+   "found_via": "message直读",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "测试手段升级——从『扫模板源码字符串』改为真浏览器几何验证，防止『源码看着对但页面没渲染』的假安全"
+  },
+  {
+   "period": "05a-may-early",
+   "statement": "新增 core/shared/ 共享层：field_labels.py 建立内部字段名→中文业务名统一映射(setup_hours→换型时间、unit_hours→单件工时、priority_weight→优先级权重等)，程序内部保留机器字段定位、用户可见message改业务名;field_parse 也下沉到 core/shared。",
+   "category": "架构分层",
+   "evidence": [
+    "100b4bd6『把排产提示和说明改成现场能看懂的话』diff深挖：新增 core/shared/field_labels.py(70行)，core/services/common/field_parse.py 大幅瘦身(-146行)转调 core/shared",
+    "git log确认 core/shared/ 该提交首次出现该用途文件",
+    "同提交新增 static/js/gantt_popup_fit.js 统一甘特弹窗适配"
+   ],
+   "found_via": "diff深挖",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "新增一层 core/shared 承载跨域共享(字段标签/解析)，是分层结构的新增决定"
+  },
+  {
+   "period": "05a-may-early",
+   "statement": "NetworkX 工序图分析——事前 roadmap 决定(规划非实现)：明确第一版只写报告不改排产结果、不替代现有贪心算法、不进主requirements.txt(轻依赖Flask+openpyxl+dateutil)、锁定 networkx==3.1(最后支持Py3.8的版本)、DAG前置校验、分0-4级渐进落地。",
+   "category": "算法策略",
+   "evidence": [
+    "15e43afa 新增 roadmap 正文(3295行)+items.yaml(167行)，diff/文档确认",
+    "roadmap明确『不动现在的排产结果』『不使用NetworkX drawing/layout』『不改 readiness_gate_enabled=False 语义』",
+    "已核对NetworkX官方资料(3.1 release notes/install docs/topological_sort)"
+   ],
+   "found_via": "文档",
+   "is_reversal": false,
+   "still_holds_guess": "不确定",
+   "why": "是方向性事前规划，划定了引图的边界与约束，但属未来工作，当前未落地实现"
+  },
+  {
+   "period": "05a-may-early",
+   "statement": "排产性能缓存(scheduler-perf-cache)：在单次排产运行内缓存可信派生值——SGS自制工序total_hours、scheduler.schedule的strict_mode签名判断、冻结窗口批次前缀、compute_metrics改单遍历(复杂度F62→A3)，只缓存合法值、非法工时仍走原校验、不跨运行复用。",
+   "category": "算法策略",
+   "evidence": [
+    "56230f8e建基线、8e6a8f4f缓存strict_mode签名、009867a2冻结窗口前缀、59d1be47缓存SGS工时、880021f7收口metrics重复遍历 message直读",
+    "e0e25f81 SGS工时缓存只接受正整数工序编号(id为0/负/布尔不缓存，避免共用key0串用工时)"
+   ],
+   "found_via": "message直读",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "性能优化新方向，明确边界为『仅单次运行内派生缓存、行为不变』，独立成PR#6"
+  },
+  {
+   "period": "05a-may-early",
+   "statement": "full-test-debt 增量化新方向：在不放宽证明强度前提下，对安全的纯测试文件改动做 nodeid 级增量(865cab07)，再扩到 declared helper 增量(527411a0)；并引入标准库 sharded collector 灰度(serial/parallel拆分，默认关、仅APS_FULL_TEST_DEBT_SHARDED=1启用，高风险测试保持serial)。任何跨文件影响/动态import/conftest/生产代码变化一律回退整跑。",
+   "category": "测试门禁",
+   "evidence": [
+    "865cab07 新增 tools/long_gate_full_test_debt.py + node_cache;527411a0 AST import反查声明helper;296c4ff7 新增 tools/full_test_debt_shards.py 灰度",
+    "对抗审查抓到字符串拼接动态导入漏口后改保守fallback",
+    "f536d4a9 登记债务保护：变更文件命中已登记债务nodeid必须整跑"
+   ],
+   "found_via": "message直读",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "门禁加速的增量/分片新能力，安全边界设计完整，属长门禁缓存主线下的实质新方向"
+  },
+  {
+   "period": "05a-may-early",
+   "statement": "质量门禁支持从上次失败命令续跑：--allow-dirty-worktree 下读上次失败记录、跳过已成功命令从失败点继续，但续跑结果强制标 passed_but_unbound(本地反馈，不能当clean proof);加 --no-resume 强制完整重跑;失败提示从笼统分类改为列出具体失败nodeid。",
+   "category": "测试门禁",
+   "evidence": [
+    "727f8e25『让质量门禁失败后能看清问题并从失败处继续』message直读：manifest记录resume信息;check_full_test_debt/test_debt_registry列出具体失败测试名",
+    "实测识别上次失败在第10命令、跳过前9个继续"
+   ],
+   "found_via": "message直读",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "门禁可用性新能力，且确立 passed_but_unbound 这一『本地反馈≠最终证明』的语义约定"
+  },
+  {
+   "period": "05a-may-early",
+   "statement": "引入本地 git hook + pre-commit 体系并收紧证据链：full_test_debt 的 current payload 必须证明在干净工作区生成(记录git status --short为空)，当前工作区脏则拒绝复用旧证据;命令回执记录 stdout/stderr hash+日志路径并回放校验;candidate_test_debt 必须有真实failed报告才入台账。",
+   "category": "测试门禁",
+   "evidence": [
+    "3c8ce50e『收紧质量门禁续跑和测试债务证据链』message直读",
+    "562ce4f9 本地hook固定用项目.venv、拦截运行产物;da4eddad 把long gate缓存目录/collect_nodeids.json 加入.gitignore和hook拦截"
+   ],
+   "found_via": "message直读",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "证据可信度方向性收紧，杜绝『提交号没变但文件已变』的假通过"
+  },
+  {
+   "period": "05a-may-early",
+   "statement": "scheduler 路由注册去除导入副作用：从 import web/routes/scheduler.py 即触发 register_scheduler_routes() 的导入副作用，改为经独立 scheduler_route_registrar 显式注册;_scheduler_compat 不再在导入leaf模块时强制加载整张路由图。配 test_scheduler_route_registration_contract 守门。",
+   "category": "架构分层",
+   "evidence": [
+    "df29f836 diff深挖(空message)：scheduler.py 删 register_scheduler_routes() 顶层调用，改 from ...scheduler_route_registrar import;_scheduler_compat 删 importlib+register 副作用",
+    "新增 test_scheduler_route_registration_contract.py(101行)与 routes_still_registered_by_factory 测试"
+   ],
+   "found_via": "diff深挖",
+   "is_reversal": true,
+   "reversed_what": "此前导入 scheduler 路由模块就会触发副作用式自动注册，导致测试按导入顺序不同时蓝图重复注册报错",
+   "still_holds_guess": "看起来仍有效",
+   "why": "修掉导入即注册的脆弱耦合(8c743aa6也记录了蓝图重复注册问题)，属注册时序的结构决定"
+  },
+  {
+   "period": "05a-may-early",
+   "statement": "Win7 启动链修复：启动脚本去掉触发Win7命令窗口误判的括号失败提示;端口/进程号读取不带管道前空格;打包程序运行状态镜像从安装目录logs改写到 ProgramData 共享目录(避免Program Files写权限失败);主+legacy安装包增加『启动诊断』快捷方式(窗口停住看失败原因)。",
+   "category": "部署交付",
+   "evidence": [
+    "b9c517e6『修复Win7启动脚本解析和运行目录问题』message直读：根因是Win7命令窗口先读完整段括号、未处理右括号提前报『. was unexpected at this time.』",
+    "回归测试固定文案/端口写法/日志落点/安装器诊断入口"
+   ],
+   "found_via": "message直读",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "部署侧实质修复，改变运行状态落盘位置以适配普通用户权限，影响交付稳定性"
+  },
+  {
+   "period": "05a-may-early",
+   "statement": "甘特/周计划排产范围来源统一：周计划与导出只保留 week_start/offset/version 单套入口(旧start_date/end_date不再生效);甘特新增按版本读最早开始/最晚结束;起止日期与offset并存时以起止日期为准不二次偏移;正式排产成功/部分成功跳甘特图(失败留批次页),且必须拿到合法版本号才跳(坏版本报错不静默跳最新)。",
+   "category": "UI产品",
+   "evidence": [
+    "906fa455『修复周计划和甘特图的排产范围来源』、771574a6、fb02f036 message直读",
+    "7abd67d0 收口：甘特主查询删指定周输入只留起止日期;坏版本号(空/0/非数字)不跳甘特且不误报成功",
+    "40cfc6b4 diff：_result_start_week_span 加version参数+缺可解析范围时warning日志(同方向加固)"
+   ],
+   "found_via": "message直读",
+   "is_reversal": true,
+   "reversed_what": "此前甘特默认看明天所在周、周计划被旧起止日期盖住指定周，新版本排在别的日期就看不到;正式排产坏版本号会被当没有、静默跳最新",
+   "still_holds_guess": "看起来仍有效",
+   "why": "改变用户查看排产结果的默认范围与跳转规则，是面向现场的行为决定"
+  },
+  {
+   "period": "05a-may-early",
+   "statement": "模板刷新安全策略翻转：旧 Excel 模板若已有数据行，不再整表重建覆盖用户数据，只在安全范围内原地改表头/格式/下拉;工种归属下拉值对齐到『自制/外协』，后端仍兼容旧『内部/外部』写法，不强迫历史数据立即改写。",
+   "category": "数据建模",
+   "evidence": [
+    "8c7fe474『修正模板刷新和批次提醒口径』message直读",
+    "851d81f4 把模板刷新判断拆成『是否允许安全修复→是否真需修复→改表头刷下拉保存』三步",
+    "新增Excel模板合同测试直接打开真实xlsx核对表头/示例/下拉,并比对页面帮助卡『列:...』与真实模板表头"
+   ],
+   "found_via": "message直读",
+   "is_reversal": true,
+   "reversed_what": "旧逻辑刷新模板可能整表重建、覆盖用户已填数据,且模板下拉用旧『内部/外部』值",
+   "still_holds_guess": "看起来仍有效",
+   "why": "避免自动刷新误删用户资料，是数据安全的方向修正"
+  },
+  {
+   "period": "05a-may-early",
+   "statement": "Excel 导入导出入口从二级导航收拢到各业务页的『批量维护』卡片(工艺/工种/供应商/设备/人员/批次)，Excel页加『返回X管理』按钮、进入后二级导航仍高亮原业务页;入口卡片用统一模板+页面入口数据集中管理(但入口数据文件不得直接用Flask url_for,只存page名、模板渲染时转链接,以过viewmodel不依赖框架的架构检查)。",
+   "category": "UI产品",
+   "evidence": [
+    "2335a12f『整理批量维护入口和返回路径』、19c31a82『统一APS工作区页面和导入文案』 message直读",
+    "aaeff1d3 diff深挖：入口数据文件改为只存按钮目标page名，url_for移回模板,以过 test_viewmodels_do_not_import_flask 检查",
+    "新增 regression_excel_entry_consolidation.py 守门"
+   ],
+   "found_via": "message直读",
+   "is_reversal": true,
+   "reversed_what": "此前Excel入口散在二级导航一长排按钮里、进Excel页无明确返回",
+   "still_holds_guess": "看起来仍有效",
+   "why": "信息架构重组(主页面管理/Excel页批量处理),并暴露出viewmodel不准依赖Flask的分层红线"
+  },
+  {
+   "period": "05a-may-early",
+   "statement": "维护锁读失败改为 fail-closed：备份/恢复/迁移/普通请求入口在维护锁状态读不出来时不再当作『无锁』放行，而是写warning并抛 lock_state_unavailable 让调用方停下;普通请求遇此返回500且不挂 g.db/g.services。事务poison经复核确认现有代码已在提交前阻止,仅收紧测试断言。",
+   "category": "错误处理",
+   "evidence": [
+    "fb31b416『修复维护锁检测失败时错误放行』message直读(阶段四五合并前review补丁)",
+    "该入口回归加入质量门禁必跑清单"
+   ],
+   "found_via": "message直读",
+   "is_reversal": true,
+   "reversed_what": "旧逻辑维护锁读失败被当成没有维护锁、继续往下备份/恢复/挂请求DB",
+   "still_holds_guess": "看起来仍有效",
+   "why": "安全关键的fail-open→fail-closed修正,虽改动小但属明确的旧决定推翻"
+  },
+  {
+   "period": "05a-may-early",
+   "statement": "Win7 停止程序的强制结束判定翻转：不再把『健康检查地址是否还通』当作能否结束进程的前提，改为只看运行记录有效+进程号存在+进程身份匹配当前运行记录;旧清理入口被替换成空操作时不再当成清理成功(先跑能返回结果的真清理再调旧入口兼容)。整数转换兜底收窄为只吞空值/坏字符串,不再吞inf和运行错误。",
+   "category": "错误处理",
+   "evidence": [
+    "75eb9961『修复阶段5启动链合并前问题』message直读(862行)",
+    "台账收紧:仍被扫描命中的问题不能标fixed;若刷新台账会把某接受风险下问题全清空则直接失败"
+   ],
+   "found_via": "message直读",
+   "is_reversal": true,
+   "reversed_what": "旧逻辑健康检查地址不通时反而不敢结束仍存活的旧进程;旧清理函数不报错就当清理成功",
+   "still_holds_guess": "看起来仍有效",
+   "why": "停止/清理可靠性的判定依据被替换,避免旧进程/旧文件残留,属行为决定修正"
+  },
+  {
+   "period": "05a-may-early",
+   "statement": "报表与系统页展示合同稳定化：报表导出Excel工作表名固定为 overdue/machines/operators(不随中文展示语言变化);报表过大时提示改走后台导出、无可导出数据直接报错;插件加载失败统一展示『请查看系统日志』不暴露内部细节;Excel确认写入前必须确认预览基线未过期。",
+   "category": "UI产品",
+   "evidence": [
+    "f5a0ae76『统一报表系统配置页面展示合同』、9f1bfeb7『加固Excel确认和报表导出合同』 message直读",
+    "f1a20267 统一OR-Tools预热失败/BASE_DIR缺失/外协周期回退等口径,日志留raw排查信息但用户页不暴露内部字眼"
+   ],
+   "found_via": "message直读",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "导出/展示稳定性合同,工作表名脱离展示语言是明确的数据契约决定"
+  },
+  {
+   "period": "05b-may-late",
+   "statement": "引入 NetworkX 做工序图分析，但定为「可选依赖、懒加载、版本锁死 3.1、默认关闭」——只有真正调用图分析时才 import networkx，缺装/版本不符抛 NetworkXUnavailable 中文提示；默认环境绝不强制安装，普通排产/启动/测试收集都不受影响。",
+   "category": "依赖选型",
+   "evidence": [
+    "87d0fcca 新建 core/services/scheduler/graph/ 骨架 + nx_runtime.py import_networkx() 仅接受 3.1",
+    "graph/__init__.py 保持被动不导入子模块，避免误触发 networkx 加载",
+    "1e40d571 stat 含 nx_runtime.py 26 行懒加载入口"
+   ],
+   "found_via": "message直读",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "这是 5 月下最大的依赖/架构方向决定，确立了「核心排产零侵入、新能力旁路接入」的引入范式"
+  },
+  {
+   "period": "05b-may-late",
+   "statement": "graph_analysis_mode 定为三态 off/report/on：off 不导入图模块不写分析；report 只生成报告不改排产；只有 on 且图是 DAG、权重>0 时才把关键路径/影响范围指标接进 SGS 候选排序。off/report/有环/权重0 一律保持原排产行为。",
+   "category": "算法策略",
+   "evidence": [
+    "b82c9a4d 新增 graph_analysis_mode 等 5 配置项默认关闭",
+    "6aba4627 接入 on 模式图评分排序，只在 DAG+权重>0 时生效",
+    "306eaf5e report_only 默认用 basic metrics 不算全量 node_metrics"
+   ],
+   "found_via": "message直读",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "图分析能否影响真实排产结果的总开关语义，是后续所有图工作的边界基准"
+  },
+  {
+   "period": "05b-may-late",
+   "statement": "图节点编号策略 id_policy：工序节点优先用真实数据库行号生成 op:123；无有效行号时退回 op:批次号:工序编码（如 op:B001:B001_10）让未入库/测试数据也能稳定对齐；明确拒绝 0/None/布尔/小数当主键。",
+   "category": "数据建模",
+   "evidence": [
+    "7fe964c6 补全 id_policy.py，工序/设备/人员节点固定前缀 + display_id",
+    "251a0016 收紧 seq 只接整数文本，1.5/1.0/科学计数法/布尔直接报错"
+   ],
+   "found_via": "message直读",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "稳定节点编号是图分析跨模块一致性的地基，避免同一工序在不同地方叫法不一"
+  },
+  {
+   "period": "05b-may-late",
+   "statement": "PR7 多方案对比：新增 3 张候选表（摘要/代表明细/角色映射），正式 Schedule 表只存最终采用方案，候选不混入。统一方案查询服务里 adopted 固定读 Schedule，baseline_best/critical_best 读候选明细；旧历史无候选明细时明确返回「只能显示最终采用」，请求不存在角色直接报错不静默。",
+   "category": "数据建模",
+   "evidence": [
+    "a8ee4934 PR7a 新增候选表+v10迁移+统一方案查询服务",
+    "d2ee6461 PR7b 候选只在内存跑不写库",
+    "207c5285 PR7c 选中方案+候选摘要同事务写历史，失败回滚"
+   ],
+   "found_via": "message直读",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "把「候选/正式」两套数据来源彻底分层，是方案对比业务化的核心数据建模决定"
+  },
+  {
+   "period": "05b-may-late",
+   "statement": "【推翻】候选比较接入过早被回滚：6 笔提交后 clean 门禁发现 15 个失败，根因是主链在所有图模式下都尝试候选试跑，改变了 off/report/旧 on 的既有合同。改回「只有明确开关打开才进候选比较」，默认仍走单次排产；默认启用与配置字段顺延到 PR7e。",
+   "category": "算法策略",
+   "evidence": [
+    "f2f5b2cf 修正PR7候选比较接入边界，恢复旧排产合同",
+    "commit body：『候选比较接入得太早…导致 off、report、旧 on 模式既有合同被改变』",
+    "ef244b9e PR7e 才正式收口默认跑方案比较"
+   ],
+   "found_via": "message直读",
+   "is_reversal": true,
+   "reversed_what": "把「正式排产默认在所有图模式下跑候选比较」回退为「仅显式开关开启时才跑」，默认启用推迟到 PR7e",
+   "still_holds_guess": "看起来仍有效",
+   "why": "明确的方向回退：先接入再发现破坏既有 off/report/on 合同，是典型「从 X 改回 Y」"
+  },
+  {
+   "period": "05b-may-late",
+   "statement": "【推翻】方案是否「对比方案」的判定改为依据 source_table 而非 role：原来分析页用 candidate_key/adopted_key 猜、甘特/派工超期标记用 role 判断读哪张表；改为只看 source_table——schedule 读正式历史、candidate_rows 才按候选行重算，未知来源直接报错。baseline_best/critical_best 与 adopted 同源时不再被误标为对比方案。",
+   "category": "错误处理",
+   "evidence": [
+    "a1daa71b 收口PR7方案来源展示合同，超期标记 helper 改收已解析的 source_table",
+    "4b221e07 方案角色对比判断统一改为依据 source_table 是否为 candidate_rows",
+    "commit body：『避免 baseline_best 或 critical_best 与 adopted 同源时被误标为对比方案』"
+   ],
+   "found_via": "message直读",
+   "is_reversal": true,
+   "reversed_what": "对比方案判定从「按 candidate_key/role 猜」改为「按 source_table 精确判定」",
+   "still_holds_guess": "看起来仍有效",
+   "why": "修正了页面文案与实际读取数据来源「各说各话」的语义偏差"
+  },
+  {
+   "period": "05b-may-late",
+   "statement": "【推翻】关键链健康度（自动择优依据）禁止从页面展示用的截断 sample 取数：原 health 从 critical_path_sample/graph_score_sample 反推结论，但 sample 会被截断只适合展示。改为 graph report 额外产出完整 graph_health_context 专供 runner 决策，health 删掉所有从 sample 反推的逻辑。",
+   "category": "算法策略",
+   "evidence": [
+    "d5ed6890 graph report 保留截断 sample 同时产出完整 graph_health_context",
+    "884b09bc health 函数删掉从 critical_path_sample 等反推结论",
+    "commit body：『关键链很长时系统可能拿不完整的数据判断候选方案更好』"
+   ],
+   "found_via": "message直读",
+   "is_reversal": true,
+   "reversed_what": "自动择优从「用展示截断样本判断」改为「必须用完整 op_ids 数据判断」",
+   "still_holds_guess": "看起来仍有效",
+   "why": "展示数据被误用于决策会导致选错方案，是隐蔽但关键的算法策略修正"
+  },
+  {
+   "period": "05b-may-late",
+   "statement": "【推翻】甘特图第一版定为「只读可信查看页」，关掉假拖动：原页面看起来能拖动任务条但实际不保存，会让调度员误以为已改计划。第一版明确不做正式调整，先把假拖动关掉，缩放扩到月/周/日/12h/6h/小时/15min/5min/1min，新增 gantt_zoom URL 参数（兼容旧 gantt_vm）。",
+   "category": "UI产品",
+   "evidence": [
+    "ce54f6df 完成只读甘特图第一版，默认进查看模式任务条不能拖",
+    "064496e8 roadmap：先做查看模式关掉假拖动再做缩放",
+    "commit body：『会让调度员误以为自己已经改了计划，风险很高』"
+   ],
+   "found_via": "message直读",
+   "is_reversal": true,
+   "reversed_what": "甘特图从「看似可拖动编辑（但不保存的假象）」改为「明确只读查看 + 后续分阶段做真模拟调整」",
+   "still_holds_guess": "看起来仍有效",
+   "why": "消除「假按钮误导用户已改计划」的产品风险，并确立甘特后续分阶段路线"
+  },
+  {
+   "period": "05b-may-late",
+   "statement": "甘特图模拟调整分阶段落地且 scenario 只有发布后才算正式：草稿模型(v12)→校验试算→保存场景(v13,可预览)→正式采用发布新版本(v14)。保存/发布统一从服务端取操作者，禁止前端伪造 created_by 或落成 system；scenario 预览绝不写 Schedule/改版本指针；手工 scenario 不发布不能进派工和现场反馈。",
+   "category": "数据建模",
+   "evidence": [
+    "b83407fe(v12草稿) 531e0530(校验试算) 92e83177(v13保存预览) 244fbb7e(v14发布)",
+    "0646c3b6 commit body：『统一从服务端拿操作者，避免前端伪造 created_by，也避免正式采用落成 system』",
+    "stat 显示 v12/v13/v14 三个迁移文件依次新增"
+   ],
+   "found_via": "diff深挖",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "确立「预览只读、发布才生效、操作者服务端权威」的模拟调整数据安全模型"
+  },
+  {
+   "period": "05b-may-late",
+   "statement": "新增 gantt_adapter.js 适配层，把 APS 模式/缩放/回调翻译成 Frappe Gantt 参数；业务逻辑（筛选/弹窗/关键工序/假期背景）留在 render 不塞进 adapter，且不复制第二套缩放映射。目的是后续加模拟调整时不让渲染代码继续与 Frappe 内部参数绑死成补丁堆。",
+   "category": "架构分层",
+   "evidence": [
+    "73e7f3d9 收口甘特图 Frappe 适配层，新增 static/js/gantt_adapter.js",
+    "commit body：『不能继续让业务渲染代码直接和 Frappe 的内部参数、只读开关、缩放名称绑在一起』"
+   ],
+   "found_via": "message直读",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "为后续模拟调整预先解耦第三方库，避免补丁式膨胀"
+  },
+  {
+   "period": "05b-may-late",
+   "statement": "Frappe Gantt 短工序宽度计算从「整小时差向下取整」改为「真实毫秒差」：36/51 分钟工序原被取整成 0 小时导致 SVG 宽度 0 几乎不可见；并给极短条加透明命中区保证可点中。",
+   "category": "算法策略",
+   "evidence": [
+    "d37df6dc 修复甘特图短工序空条",
+    "commit body 根因：『本地 Frappe Gantt 用整小时差来算条形宽度…向下取整成 0 小时』"
+   ],
+   "found_via": "message直读",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "明确根因的渲染算法修正，影响最小粒度缩放可用性"
+  },
+  {
+   "period": "05b-may-late",
+   "statement": "静默回退治理（PR#7 大合并）：把坏日历工时/坏排程摘要数量/坏指标 NaN-Inf/降级统计坏值等「悄悄改成 0/1/空/默认」的地方全部收紧——能判错的明确报错，历史展示处给「数量记录异常」类可见提示。确立原则「坏数据不应被伪装成正常数据」，短期暴露更多错误但长期更安全。",
+   "category": "错误处理",
+   "evidence": [
+    "e2e4bf7c 完成静默回退清单治理；eeaae7b7 Merge PR#7",
+    "37daf5fc 修复日历坏数值静默默认化；b4aa4d39 修复排程摘要坏值静默归零",
+    "合并说明：『以前可能把坏值当成 0 继续跑，现在会尽量告诉你这里有问题』"
+   ],
+   "found_via": "message直读",
+   "is_reversal": true,
+   "reversed_what": "系统性推翻早期「遇坏数据静默给默认值/跳过」的容错做法，改为明确报错或可见降级",
+   "still_holds_guess": "看起来仍有效",
+   "why": "跨整个代码库的错误处理哲学转向，是 5 月下最大的横切治理决定之一"
+  },
+  {
+   "period": "05b-may-late",
+   "statement": "新增 Python 3.8 语法兼容扫描工具，纳入质量门禁：检查代码里有没有 3.8 不支持的较新语法，防止「开发机能跑、Win7/Python3.8 跑不起来」。强化 Win7 离线交付约束。",
+   "category": "部署交付",
+   "evidence": [
+    "c657e59c 新增 Python 3.8 语法兼容扫描工具",
+    "合并说明第6节：『项目仍然要兼容 Win7 和 Python 3.8』"
+   ],
+   "found_via": "message直读",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "把 Win7/3.8 约束从口头约定变成自动门禁，是部署交付红线的固化"
+  },
+  {
+   "period": "05b-may-late",
+   "statement": "开启 APS 三差距方向局部 roadmap（延期诊断/方案对比业务化/车间执行反馈），14 阶段，从市场差距审计拆出。明确不做完整 MES/MRP/ERP、IoT、扫码枪、AI 自动根因；证据不足必须写「证据不足」。",
+   "category": "其他",
+   "evidence": [
+    "d8d3f859 补齐 APS 三差距规划档案（roadmap 1511行 + items 768行）",
+    "b4b75464 docs 记录 APS 市场差距审计；f156b4c0 梳理后续差距专题",
+    "roadmap 第2节明确不做清单"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "5 月下后半段的总纲领，后续 10+ 提交都是它的阶段落地"
+  },
+  {
+   "period": "05b-may-late",
+   "statement": "【推翻】三差距 roadmap 建立时明确作废原 explore 草案里的多个旧口径：『主原因/根因/primary_reason、任意 A/B 方案对比、/exception 路由、created_by 可默认 system、页面直接显示 scenario_id/candidate_id/score tuple/event_type/source_table』全部废弃。",
+   "category": "UI产品",
+   "evidence": [
+    "aps-three-gap-directions-roadmap.md 第1节：上述说法『全部作废』",
+    "以本文件第5节接口契约和 items.yaml 为准，原 explore 后半段旧路线草案不再作为实现口径"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": true,
+   "reversed_what": "把早期 explore 文档里的根因定位、自由 A/B 对比、独立 /exception 路由、system 默认操作者、内部字段直显等草案口径全部废弃",
+   "still_holds_guess": "看起来仍有效",
+   "why": "明确列出一批被推翻的旧设计假设，是考古价值最高的「从 X 改成 Y」记录"
+  },
+  {
+   "period": "05b-may-late",
+   "statement": "车间执行事件基础(v15)：新增 OperationExecutionEvents 只追加事实表 + 执行状态聚合。计划行=系统计划，事件=真实执行，二者分离。写入顺序固定为「幂等键判断 → 状态版本 → 状态流转」；state_revision 用写入前已提交事件聚合（不能依赖刚插入才知道的事件id）；未开工不能直接完工。",
+   "category": "数据建模",
+   "evidence": [
+    "5e1617ec 完成第8项车间执行事件基础，v15迁移+OperationExecutionEvent/State模型+仓储",
+    "commit body：『幂等键判断排在状态版本和状态流转之前』",
+    "items.yaml：state_revision 用 op_id:event_count:last_committed_event_id 口径"
+   ],
+   "found_via": "diff深挖",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "把现场实际从「混进计划行」改为「独立只追加事件源」，是车间反馈的核心数据建模决定"
+  },
+  {
+   "period": "05b-may-late",
+   "statement": "现场写入分阶段放开 + 测试开关隔离：第9项只做开工/完工预备能力，普通用户直接 POST 开工/完工默认返回 6003/409「现场反馈保护还没开启」；测试专用 header 只在 TESTING=True 放行；候选/模拟/历史正式方案即使带测试 header 也拒绝写入。重排护栏完成前不真实放开按钮。",
+   "category": "错误处理",
+   "evidence": [
+    "2031a963 完成第9项资源派工开工完工反馈",
+    "commit body：『避免重排护栏完成前把现场事实写进去后又被排程移动』",
+    "c844df0a 资源派工计划身份护栏：只有最新正式 adopted 才能派工和现场反馈"
+   ],
+   "found_via": "message直读",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "确立「能力分阶段落地、写入受 TESTING 开关与方案身份双重护栏」的安全推进节奏"
+  },
+  {
+   "period": "05b-may-late",
+   "statement": "【推翻】ViewModel 层红线收回：第9项一度把错误响应包装、HTTP 状态码、字段中文名放进 scheduler_resource_dispatch_execution viewmodel，被 pre-push 架构门禁拦截。改回——route 层负责 error_response/状态码/field_label/action_label，viewmodel 只做任务卡和成功数据整理，只导入 core.models 允许范围。",
+   "category": "架构分层",
+   "evidence": [
+    "673bb066 修复第9项现场反馈视图层边界",
+    "commit body：『违反项目对 ViewModel 层的边界要求，push 前的架构测试已经明确拦住』"
+   ],
+   "found_via": "message直读",
+   "is_reversal": true,
+   "reversed_what": "把放进 viewmodel 的错误包装/状态码/字段映射职责退回 route 层",
+   "still_holds_guess": "看起来仍有效",
+   "why": "架构分层红线被门禁实证拦截并回退，记录了一次明确的层职责纠偏"
+  },
+  {
+   "period": "05b-may-late",
+   "statement": "异常中工序阻止普通自动重排：现场报异常后 ScheduleService.run_schedule 直接抛 6003，reason=execution_exception_blocks_auto_reschedule，带 op_ids，提示「异常中」先处理异常——不做异常工序智能重排。",
+   "category": "算法策略",
+   "evidence": [
+    "02fd1027 完成 APS 车间异常反馈闭环",
+    "regression_scheduler_exception_blocks_auto_reschedule.py 断言 code=6003、reason、op_ids=[10]、消息含『异常中』"
+   ],
+   "found_via": "diff深挖",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "确立「异常先阻止重排而非智能绕过」的保守策略"
+  },
+  {
+   "period": "05b-may-late",
+   "statement": "重排尊重现场执行事实：所有产生新排程的链路（普通重排/候选比较/图排程/甘特模拟发布）共用同一批执行快照——execution_snapshot_revision 用按 op_id 排序的 op_id=state_revision 稳定 hash + 完整 op_id 清单。保存时记录基于哪批现场状态，发布/落库前发现状态变了返回 6003/409 拒绝写入。现场实际资源不冒充成 Schedule 计划资源。",
+   "category": "数据建模",
+   "evidence": [
+    "afcf9e7e 完成 APS 重排执行事实接入，新增 execution_snapshot.py + v17迁移",
+    "reschedule-respects-execution-facts-design.md 关键决策：快照覆盖全部计划工序、hash+完整清单、状态不一致返回6003/409"
+   ],
+   "found_via": "文档",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "跨四条排程链路统一的并发安全护栏，防止重排抹掉已发生的现场事实"
+  },
+  {
+   "period": "05b-may-late",
+   "statement": "计划-实际复盘报表定为只读：新增 /reports/execution-review，只复盘正式采用方案（不支持候选/模拟/任意对比），不改 Schedule 计划行、不冒充实际资源；无执行事件时显示「暂无现场反馈」不报错、不写成现场做慢了。",
+   "category": "UI产品",
+   "evidence": [
+    "f7e764a5 完成 APS 计划现场复盘报表",
+    "plan-vs-actual-review-design.md：不新增 /scheduler/execution-review 路由、不修改 Schedule.start_time/end_time/machine_id"
+   ],
+   "found_via": "文档",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "明确复盘只读、空数据不污蔑现场，约束清晰"
+  },
+  {
+   "period": "05b-may-late",
+   "statement": "【推翻】车间「现场反馈」从实时按钮重构为「现场记录」：原来是开工/暂停/继续/完工/报异常实时按钮、反馈人必填、开工取浏览器时间——与当前未接 MES/DNC 的现场不符。改为「填写实际情况 + Excel 一键导入」，反馈人可空（兜底未填写）、实际时间可手填、Excel 整批校验有错一条不写。",
+   "category": "UI产品",
+   "evidence": [
+    "e6aef139 资源派工现场记录与 Excel 一键导入",
+    "37961aa6 commit body：『入口口径从现场反馈实时动作改为现场记录/填写实际情况/Excel一键导入』"
+   ],
+   "found_via": "message直读",
+   "is_reversal": true,
+   "reversed_what": "把实时按钮+必填反馈人+浏览器时间的现场反馈，改为可手填/可空反馈人/Excel导入的现场记录",
+   "still_holds_guess": "看起来仍有效",
+   "why": "承认「未接 MES/DNC」现实，从实时采集设想退回离线手填/导入"
+  },
+  {
+   "period": "05b-may-late",
+   "statement": "完工/报废数量不设上限：finish 的 quantity_done 必填≥0 整数，quantity_scrapped 可空按0、填写≥0；完成+报废合计不设上限（报废补投会让产出超过计划数量，属正常生产）。此前一度误判「完工数量设上限」，经交叉验证纠正。",
+   "category": "数据建模",
+   "evidence": [
+    "items.yaml：『完成数量加报废数量不设上限（报废补投会让产出总量超过任务计划数量，属正常生产）』",
+    "ad98172a compound 复盘记录『被交叉验证纠正的完工数量上限误判』"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": true,
+   "reversed_what": "把「完工数量设上限」的初始判断纠正为「不设上限」",
+   "still_holds_guess": "看起来仍有效",
+   "why": "一次被审查交叉验证推翻的字段约束误判，有明确纠错留痕"
+  },
+  {
+   "period": "05b-may-late",
+   "statement": "【推翻】内部值外露清洗从「全局黑名单」改为「按本条记录自己的结构化码精准判定 + casefold 大小写归一」：原方案过宽会误杀跨记录合法说明（设备异常里写 person 被误清空）。写入/汇总/展示三段链路统一清洗，不误杀。",
+   "category": "错误处理",
+   "evidence": [
+    "ad98172a 订正 internal-token fix-note：旧全局黑名单清洗订正为按本条记录精准判定",
+    "e6aef139 commit body：『public_execution_remark 改为按本条记录自己的结构化码精准判定+casefold』"
+   ],
+   "found_via": "message直读",
+   "is_reversal": true,
+   "reversed_what": "内部英文值清洗从「全局黑名单过滤」改为「逐记录结构化码精准匹配」",
+   "still_holds_guess": "看起来仍有效",
+   "why": "过宽黑名单误杀合法说明，是一次明确的清洗策略收窄"
+  },
+  {
+   "period": "05b-may-late",
+   "statement": "统一排产二级输出公开口径：PLAN_ROLE_LABELS 文案改名（最终采用→正式采用方案、原算法最好→原算法代表方案、重点工序优先方案最好→重点工序优先代表方案）；新增 is_comparison_role/is_comparison_plan 按 source_table 判定；新增 resource_dispatch_task_ids 公开任务id 用 hash 既不暴露 schedule_id/op_id 又保唯一。",
+   "category": "UI产品",
+   "evidence": [
+    "bf3a0a64 统一排产二级输出公开口径（84文件）",
+    "diff 显示 PLAN_ROLE_LABELS 三个标签改名 + 新增 is_comparison_plan",
+    "新文件 resource_dispatch_task_ids.py row_identity 用 schedule:/op: 前缀 hash"
+   ],
+   "found_via": "diff深挖",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "统一对外文案与内部字段隔离口径，是公开输出层的规约收口"
+  },
+  {
+   "period": "05b-may-late",
+   "statement": "质量门禁缓存按影响面增量：pre-push 按本次 push 真实 from/to 范围算影响面选 required regression；full_test_debt 引入函数体级 diff 选择器——能证明只改了测试函数内普通本地赋值时只重跑对应 nodeid，证明不了退回文件级；严格失败缓存只缓存真实完整命令失败。required 步骤改读 full-test-debt 产物做覆盖证明，不再重复跑 101 个 required 测试。",
+   "category": "测试门禁",
+   "evidence": [
+    "d4589d77 优化质量门禁缓存复用（ff-note 详述函数体级 diff 选择器）",
+    "e70597e9 提速 hook 和 long gate 缓存链路",
+    "1133f804 required 步骤改读 full-test-debt 产物不再重复跑"
+   ],
+   "found_via": "文档",
+   "is_reversal": false,
+   "still_holds_guess": "可能已再次改变",
+   "why": "门禁缓存是 5月下高频迭代区，多笔提交连续调缓存粒度，后续可能继续演进"
+  },
+  {
+   "period": "05b-may-late",
+   "statement": "long gate 分片数经实测保持 3：新增 full_test_debt shard benchmark 工具实测，4 分片真实耗时未优于 3 分片，故默认 shard-count 保持 3。",
+   "category": "测试门禁",
+   "evidence": [
+    "33e39062 commit body：『本轮 4 分片真实耗时没有优于 3 分片，所以默认 shard-count 保持 3』"
+   ],
+   "found_via": "message直读",
+   "is_reversal": false,
+   "still_holds_guess": "不确定",
+   "why": "用基准实测而非拍脑袋定分片数，记录了一个数据驱动的门禁配置决定"
+  },
+  {
+   "period": "05b-may-late",
+   "statement": "CodeStable 工作流目录迁到隐藏目录 .codestable，启动入口改为 .codestable/attention.md → reference/system-overview.md；同步更新质量门禁路径、long gate 作用域和工具脚本。",
+   "category": "其他",
+   "evidence": [
+    "9f48797c 迁移 CodeStable 到 .codestable",
+    "同步 README/AGENTS/质量门禁路径/long gate 作用域"
+   ],
+   "found_via": "message直读",
+   "is_reversal": true,
+   "reversed_what": "CodeStable 从旧可见目录迁到隐藏 .codestable 目录",
+   "still_holds_guess": "看起来仍有效",
+   "why": "工作流基础设施的目录约定变更，影响所有后续工具路径"
+  },
+  {
+   "period": "05b-may-late",
+   "statement": "非 Win7 技术债收口，但 Win7/launcher accepted risks 与 silent fallback debt entries 本身明确不在本轮处理：修周计划导出回跳参数丢失、补排产历史版本跳号不复用合同测试、拆工艺路线 Excel 大函数。同时确立未登记文件 500 行上限门禁（process_excel_routes 超限被拆）。",
+   "category": "测试门禁",
+   "evidence": [
+    "5c15f8ec 收口非 Win7 技术债，commit body：『未处理 Win7/launcher accepted risks』",
+    "8e842ee9 commit body：『process_excel_routes.py 还有 579 行，超过未登记文件 500 行限制』"
+   ],
+   "found_via": "message直读",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "明确划定本轮治理边界（非Win7）并固化文件大小门禁规则"
+  },
+  {
+   "period": "05b-may-late",
+   "statement": "工艺路线 strict 模式供应商错误延后判定：原来 strict_mode 在逐工序解析前就把所有 supplier_global_issues 加入 errors，导致无关供应商脏数据卡死当前路线。改为等当前路线外协工序识别完成后，只把「当前路线实际引用到的 op_type_id」对应的供应商问题升级成 strict error，无关问题仍作 warning 透出。",
+   "category": "错误处理",
+   "evidence": [
+    "be00009d 兼容 Excel 编号列改名（含 route-parser-supplier-global-scope fix-note）",
+    "fix-note 根因：『供应商映射加载阶段只产出全局错误文字，没有保留对应 op_type_id』"
+   ],
+   "found_via": "文档",
+   "is_reversal": true,
+   "reversed_what": "strict 供应商校验从「全局问题一律卡死」改为「只卡当前路线实际引用的」",
+   "still_holds_guess": "看起来仍有效",
+   "why": "修正过度严格导致无关脏数据误伤当前路线"
+  },
+  {
+   "period": "05b-may-late",
+   "statement": "配置/页面文案系统性去术语化：排产配置「计算时间上限/关键路径权重」改为「找更好排法先试多久/重点工序提前权重」；分析页历史 min_makespan 显示为「最短总工期」；删除 V2 侧栏「Win7单机版/离线运行」脚注和标题后缀；首波 ready 工序→第一批可排工序。页面不再露 off/report/on、DAG、networkx、score tuple 等内部词。",
+   "category": "UI产品",
+   "evidence": [
+    "07b4faf0 调整排产配置和方案对比的业务口径",
+    "0d16b3d1 优化排产配置页前端文案，删除 Win7 脚注",
+    "64323d6e 收口分析页诊断和导入预览展示，ready→第一批可排工序"
+   ],
+   "found_via": "message直读",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "贯穿多笔提交的对外文案规约：内部英文/算法词一律翻成计划员能懂的中文"
+  },
+  {
+   "period": "05b-may-late",
+   "statement": "资源派工日历矩阵改为可读任务块 + Excel 新增日历明细表（独立 design 文档驱动，requirement: resource-dispatch-calendar-readable-output）。",
+   "category": "UI产品",
+   "evidence": [
+    "4df39282 Improve resource dispatch calendar matrix（无 body 但带 design 文档）",
+    "design summary：『把资源派工日历矩阵改成可读任务块，并在 Excel 增加日历明细表』"
+   ],
+   "found_via": "文档",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效",
+   "why": "消息为英文一行无 body，靠同提交 design 文档还原意图"
+  },
+  {
+   "period": "05b-may-late",
+   "statement": "【推翻+新方向】资源派工执行页：原计划「拆成独立现场记录页（新 URL /scheduler/resource-execution + 新导航）」经 6 subagent 对抗评审被推翻——理由是把开发者减负和用户体验改动绑在一起、证据不足范围过大。重定向为「只按子域拆前端 JS（shared/core/execution/boot 进 window.RD 命名空间，不用 ES module 保 Win7/Chrome109），不拆页面、不新增 URL、不新增导航」。同时启动新 aps-frontend-workbench roadmap。",
+   "category": "架构分层",
+   "evidence": [
+    "23fb7ca4 拆分资源派工执行页并补齐前端工作台文档（当前 HEAD）",
+    "execution-page-extraction-design.md 标 superseded-by-refactor，redirect 到 resource-dispatch-js-split",
+    "新增 aps-frontend-workbench-roadmap.md(408行)+items.yaml(421行)+start-plan(818行)"
+   ],
+   "found_via": "文档",
+   "is_reversal": true,
+   "reversed_what": "把「拆独立现场记录页（新URL+新导航）」推翻为「仅前端JS按子域拆分、页面/URL/导航不动」",
+   "still_holds_guess": "可能已再次改变",
+   "why": "5月下最后、也是当前分支正在推进的方向；前端工作台 roadmap 刚起步，在途中很可能继续调整"
+  },
+  {
+   "period": "06-jun",
+   "statement": "新建专职跨页链接 ViewModel：scheduler_workbench_links.py + scheduler_workbench_link_query.py 统一生成跨页链接和参数矩阵，明令\"不让各页面自己拼 URL\"。这是整个前端工作台第一阶段的地基决定。",
+   "category": "架构分层",
+   "evidence": [
+    "commit 6fa5b575「完成工作台上下文链接合同」core/2955行/37文件，message详细",
+    "新增 web/viewmodels/scheduler_workbench_links.py(372行)、scheduler_workbench_link_query.py(270行)",
+    "entrypoint原文：\"新建或整理专门负责生成跨页链接的 ViewModel，不让各页面自己拼 URL\"",
+    "新增 tests/regression_scheduler_workbench_links_contract.py(533行)锁合同"
+   ],
+   "found_via": "message直读",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "06-jun",
+   "statement": "代码实际落地的 target_page 是 10 个（含 week_plan），比 roadmap 文档里写的 9 个白名单多一个——TARGET_PAGE_PATHS 把 week_plan 也纳入统一链接合同。文档与实现存在一处口径差(文档第5.2节说9个固定target_page)。",
+   "category": "数据建模",
+   "evidence": [
+    "6fa5b575 commit message自述\"统一生成 10 个目标页链接\"",
+    "scheduler_workbench_links.py 的 TARGET_PAGE_PATHS 实含 dashboard/analysis/gantt/week_plan/resource_dispatch/overdue_report/delay_diagnosis/utilization_report/execution_review/reports_index 共10项",
+    "对比 efb53a82 文档 target_page 枚举只列9项(无week_plan)"
+   ],
+   "found_via": "diff深挖",
+   "is_reversal": false,
+   "still_holds_guess": "不确定"
+  },
+  {
+   "period": "06-jun",
+   "statement": "拆出 resource_dispatch_page_context.py 作为资源派工\"只读查询上下文\"单元，并把现场记录写入/模板下载/实际情况导入三个接口都改成强制要求完整资源派工查询上下文（不再允许残缺上下文直连写入）。",
+   "category": "错误处理",
+   "evidence": [
+    "6fa5b575 新增 core/services/scheduler/resource_dispatch_page_context.py(79行)",
+    "message：\"写入、模板下载和实际情况导入接口要求完整资源派工查询上下文\"",
+    "can_query_page() 要求 selected_version 且 team 视角必须有 scope_id"
+   ],
+   "found_via": "message直读",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "06-jun",
+   "statement": "顶层导航\"计划工作台\"菜单被定性为【无上下文的只读 GET 入口】：6 个一跳入口（值班台/分析/设备甘特/人员甘特/资源派工/计划现场实际）只输出只读页面链接，明令不下发写入、Excel导入、模板下载、表单、脚本或 data-* 地址。",
+   "category": "UI产品",
+   "evidence": [
+    "commit 09d60e35「完成顶层计划工作台入口」message详细",
+    "新增 tests/regression_workbench_nav_entry_contract.py(153行)锁定六个白名单链接+内部字段脱敏+本地资源+无JS依赖",
+    "改 templates/base.html、ui_macros.html 加 workbench_nav_menu()",
+    "dcbb9607 fix-note 复审确认\"顶层菜单按设计是无上下文只读入口\"为有意决定而非缺陷"
+   ],
+   "found_via": "message直读",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "06-jun",
+   "statement": "首页从\"统计卡+宫格\"升级为\"计划员值班台\"：新增 dashboard_workbench ViewModel，今日待处理固定覆盖5类——超期批次/方案待确认/资源负荷偏高/现场情况待确认/基础数据缺口，所有跳转复用 WorkbenchLink。并同步改了经典模板与 web_new_test 现代模板两套。",
+   "category": "UI产品",
+   "evidence": [
+    "commit bd777aa9「完成首页值班台和今日待处理」1935行/16文件 message详细",
+    "新增 web/viewmodels/dashboard_workbench.py(445行)、dashboard_workbench_cards.py(131行)",
+    "同时改 templates/dashboard.html 与 web_new_test/templates/dashboard.html(各100行)",
+    "新增 .codestable/requirements/scheduler-daily-workbench.md 当前需求"
+   ],
+   "found_via": "message直读",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "06-jun",
+   "statement": "排产分析页确立\"先看异常和推荐、再看技术过程\"的信息层级：新增 analysis_action_hub ViewModel 把推荐结论/代表方案摘要/主要诊断/下一步入口放首屏，把详细方案对比、完整诊断、指标、优化过程整体后置。",
+   "category": "UI产品",
+   "evidence": [
+    "commit 0230f805「完成排产分析行动入口布局」1031行/15文件 message详细",
+    "新增 web/viewmodels/scheduler_analysis_action_hub.py(172行)、templates/.../_action_hub.html(107行)",
+    "build_analysis_action_hub subtitle=\"本次排产的推荐结论、主要风险和后续查看入口\"",
+    "新增 regression_scheduler_analysis_workbench_layout.py(247行)"
+   ],
+   "found_via": "message直读",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "06-jun",
+   "statement": "甘特任务详情区的\"现场实际\"只从 OperationExecutionEvents 事件表经 ExecutionFactProvider 聚合得来，明令不从计划行、task meta 旧字段或前端展示字段猜；没有事件时必须显示\"暂未记录现场实际\"，绝不把计划开始/结束冒充成实际开工/完工。",
+   "category": "数据建模",
+   "evidence": [
+    "commit 7590cf5f「完成甘特任务详情区」core/1809行 msg简，diff深挖",
+    "新增 web/viewmodels/scheduler_gantt_task_detail.py(112行)，actual_start/end 只来自 ExecutionFactProvider",
+    "design 明确不做项：\"不在前端硬算延期根因；数据不足时只提示去看超期清单或排产诊断\"",
+    "gantt_tasks.py 新增 _execution_detail_meta/_fact_has_site_record"
+   ],
+   "found_via": "diff深挖",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "06-jun",
+   "statement": "甘特新增关键链回溯算法 gantt_critical_chain.py：用工艺前驱+资源前驱(设备/人员)回溯关键路径。算法口径决定——工艺前驱允许 merged 外协组导致的同起止时间(start==start 且 end==end)，资源前驱必须 pn.end<=n.start 不允许重叠；时间字段缺失直接 raise ValueError 而非静默跳过。",
+   "category": "算法策略",
+   "evidence": [
+    "7590cf5f 新增 core/services/scheduler/gantt_critical_chain.py(48行新文件，实际含完整回溯逻辑)",
+    "_eligible_process_edge 注释：\"工艺前驱：允许 merged 外协组导致的同起止时间\"",
+    "_eligible_resource_edge：\"资源前驱：必须满足 pn.end <= n.start（不允许重叠）\"",
+    "缺字段处 raise ValueError(\"关键链工艺/资源前驱时间字段缺失\")"
+   ],
+   "found_via": "diff深挖",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "06-jun",
+   "statement": "甘特保持只读、明确不做资源负荷摘要：详情区第一版下一步入口只给资源派工/计划现场实际/超期清单三条，非正式方案下\"计划和现场实际\"链接由 WorkbenchLink 禁用并给中文原因，详情区不能自行绕开。资源负荷摘要被显式推迟到 gantt-resource-load-summary。",
+   "category": "UI产品",
+   "evidence": [
+    "7590cf5f design「明确不做」：\"不做甘特资源负荷摘要；这是后续 gantt-resource-load-summary\"",
+    "回写 requirements/gantt-readonly-result-view.md：\"甘特任务详情区只是查看现场实际小结，不在甘特页写现场记录，也不开放拖拽改计划\"",
+    "退出信号：非正式方案禁用复盘链接"
+   ],
+   "found_via": "diff深挖",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "06-jun",
+   "statement": "资源派工执行车道：把同一资源派工页内的三类入口在视觉上分层——计划员查看(任务明细/日历/甘特/导出)、现场事实(任务卡/填实际/Excel导入)、计划现场实际复盘(跳execution-review只读)。现场记录tab内强制任务卡优先于Excel控件，Excel导入收进\"批量维护\"折叠区，不让Excel控件抢首屏。",
+   "category": "UI产品",
+   "evidence": [
+    "commit 65870e47「Implement resource dispatch execution lane」core/2447行/28文件 msg简，diff深挖",
+    "design summary：\"把计划员查看排班、计划员代录现场事实、计划和现场实际复盘三个入口分清\"",
+    "退出信号：\"任务卡先于批量 Excel 控件\"",
+    "新增 regression_resource_dispatch_workbench_lane_contract.py(293行)"
+   ],
+   "found_via": "diff深挖",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "06-jun",
+   "statement": "【方向反转】放弃 2026-05-29 的\"独立现场记录页提取\"方案，改为在现有 /scheduler/resource-dispatch 页面内做分层。明令不复活独立页、不新增 /scheduler/resource-execution 路由、不新增 scheduler_resource_execution.py、不新增主导航\"现场记录\"入口。配套把 697行的巨型 resource_execution.js 拆成 context/cards/actual/import 四个文件(编排层只剩极薄)。",
+   "category": "架构分层",
+   "evidence": [
+    "65870e47 design「明确不做」：\"不复活 .codestable/features/2026-05-29-resource-dispatch-execution-page-extraction/ 里的独立现场记录页方案\"",
+    "design：\"旧拆页设计已被 resource-dispatch-js-split 取代，本阶段只在现有页面内做分层\"",
+    "diff: static/js/resource_execution.js -697行，新增 resource_execution_actual.js(244)/cards.js(270)/context.js(39)/import.js(128)",
+    "旧feature目录 2026-05-29-resource-dispatch-execution-page-extraction 仍在但被取代"
+   ],
+   "found_via": "diff深挖",
+   "is_reversal": true,
+   "reversed_what": "推翻 2026-05-29 资源派工独立现场记录页提取方案（新建独立页/新路由/新ViewModel），改为同页JS分层+JS文件拆分",
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "06-jun",
+   "statement": "现场记录来源/时间用真实字段不改库：执行流水的记录时间用 OperationExecutionEvents.created_at；source_table 当前受表约束只能是 'schedule'，翻译展示为\"正式排程现场记录\"。明确本阶段不改 schema，未来若接 Excel 来源字段再单独扩展表结构或事件payload。",
+   "category": "数据建模",
+   "evidence": [
+    "65870e47 design：\"执行流水有真实字段：created_at 是记录落库时间，source_table 当前受表约束只能是 schedule…所以本阶段不需要改库\"",
+    "改 core/models/operation_execution_labels.py 的 event_payload() 补记录来源和时间",
+    "forbidden_paths 含 schema.sql"
+   ],
+   "found_via": "diff深挖",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "06-jun",
+   "statement": "【安全加固/收紧】现场记录写入接口增加\"任务归属当前查询结果\"校验：确认是最新正式可写方案后，再校验提交的 op_id+schedule_id+batch_id 确实存在于当前资源派工查询返回的 rows，否则返回 schedule_mismatch 拒绝写入，堵住 /actual 直连绕过查询归属校验。",
+   "category": "错误处理",
+   "evidence": [
+    "commit dcbb9607「fix: harden workbench first-round context checks」263行 msg简，diff深挖",
+    "新增 _ensure_feedback_target_in_query/_row_matches_feedback_target/_identity_allows_query_membership_check",
+    "fix-note根因：\"已要求完整查询上下文，但没确认 op_id+schedule_id+batch_id 真的属于当前查询结果\"",
+    "新增测试 test_write_post_rejects_task_outside_current_dispatch_query"
+   ],
+   "found_via": "diff深挖",
+   "is_reversal": true,
+   "reversed_what": "收紧此前\"schedule_id/batch_id 缺失可放行给服务层补齐\"的做法：现在路由层直接拒绝缺 batch_id/schedule_id 的 /actual 请求，不再下放补齐",
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "06-jun",
+   "statement": "【失败不静默】首页今日正式计划读取失败时，不再返回空列表伪装成\"今天没有现场情况待确认\"，而是把中文原因(\"今日计划暂时读不到\"/\"今日正式计划读取失败\")作为数据缺口卡渲染出来，避免把读取失败误当成无待确认。",
+   "category": "错误处理",
+   "evidence": [
+    "dcbb9607 改 web/routes/dashboard.py 的 _load_today_rows 返回值从 List 改为 Tuple[List,str] 携带错误原因",
+    "dashboard_workbench.py 新增 today_rows_load_error 分支渲染数据缺口",
+    "fix-note：\"原来只返回空列表，会让页面看起来像今天没有现场情况待确认\"",
+    "测试 test_dashboard_workbench_today_rows_failure_does_not_fake_empty_site_gap"
+   ],
+   "found_via": "diff深挖",
+   "is_reversal": true,
+   "reversed_what": "推翻\"读取失败返回空列表\"的旧行为(静默吞错)，改为显式数据缺口提示",
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "06-jun",
+   "statement": "【方向反转】甘特\"资源负荷摘要\"从第一版验收项降级为第二阶段增强：roadmap 把它从\"甘特工作台增强(第一版要做)\"改写为\"第一版只做任务详情区和超期说明入口+去资源负荷报表的上下文链接，Top资源摘要放第二阶段\"，并把\"最多显示最忙设备5/人员5\"的约束从第一版移到第二阶段。",
+   "category": "UI产品",
+   "evidence": [
+    "commit 69a820af「docs(aps): 对齐前端工作台开工路线图」365行/14文件",
+    "roadmap diff：\"甘特图继续保持只读，第一版先增加稳定的任务详情区；靠近甘特的资源负荷摘要放到第二阶段增强\"",
+    "spec：\"### 5.5 甘特资源负荷摘要\"→\"（第二阶段增强）\"",
+    "\"第一版最多显示最忙设备5个\"改为\"第二阶段最多显示\""
+   ],
+   "found_via": "文档",
+   "is_reversal": true,
+   "reversed_what": "把甘特资源负荷摘要从第一版范围推翻为第二阶段增强，缩小第一版甘特范围",
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "06-jun",
+   "statement": "【术语反转+概念校正】全线把\"现场反馈缺口\"改名为\"现场情况待确认\"，并把语义从\"任务还没有现场状态\"校正为\"已到计划开始时间的任务暂未收到/录入现场情况\"；同时把\"现场反馈\"残留统一改为\"现场事实/现场情况\"，把误写的\"导出资源排班\"改回\"导出资源派工\"。",
+   "category": "UI产品",
+   "evidence": [
+    "69a820af spec diff：风险卡\"现场反馈缺口\"→\"现场情况待确认\"，helper从\"有任务还没有现场状态\"→\"已到计划开始时间的任务暂未收到/录入现场情况\"",
+    "WorkbenchRiskCard.kind 新增 resource_overload",
+    "efb53a82 fix-note：\"把现场反馈类残留改成现场事实/现场情况\""
+   ],
+   "found_via": "文档",
+   "is_reversal": true,
+   "reversed_what": "推翻\"现场反馈缺口\"措辞及其\"无现场状态=缺口\"语义，改为\"现场情况待确认\"且以计划开始时间为触发条件",
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "06-jun",
+   "statement": "【门禁登记口径反转】质量门禁分组登记方式从\"新增 aps_frontend_workbench 或等价分组\"收紧为\"优先只改 tools/test_registry.py 登记，只有现有门禁入口不能识别新分组时才改 scripts/run_quality_gate.py\"——倾向最小化改门禁脚本。",
+   "category": "测试门禁",
+   "evidence": [
+    "69a820af items.yaml diff：entrypoint 从\"新增 aps_frontend_workbench 或等价质量门禁分组，并登记必跑测试\"改为\"优先只改 tools/test_registry.py 登记…只有现有门禁入口不能识别新分组时，才改 scripts/run_quality_gate.py\""
+   ],
+   "found_via": "文档",
+   "is_reversal": true,
+   "reversed_what": "推翻\"可直接新建门禁分组\"的宽口径，改为优先只在 test_registry.py 登记、尽量不动 run_quality_gate.py",
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "06-jun",
+   "statement": "WorkbenchLink 合同补强：新增 required_params 字段，并要求按页面设计稿第3.4节\"逐路线参数矩阵\"落地——跳资源派工/报表类页面时能拿到就同时带 date_from/date_to、query_date、period_preset，跳资源派工还要带 scope_type；只要有 plan_role+scenario_id 除 execution_review(只看正式采用方案)外都要继续携带。配套建立 plan_role/guardrail_reason_type/resource_type/scope_type/period_preset/view 的\"内部值→中文展示值\"统一映射表，禁止各模板自行翻译、禁止页面/导出列/公开payload露内部值。",
+   "category": "数据建模",
+   "evidence": [
+    "69a820af 给 WorkbenchLink 加 required_params",
+    "commit efb53a82「docs(aps): 细化工作台链接验收边界」279行/11文件",
+    "efb53a82 在 spec 和 start-plan 补完整\"内部值→中文展示值\"映射表(plan_role=adopted→正式采用方案 等)",
+    "实现侧 scheduler_workbench_links.py 已落地 _PLAN_ROLE_LABELS/_GUARDRAIL_REASON_LABELS/_RESOURCE_TYPE_LABELS/_PERIOD_PRESET_LABELS/_VIEW_LABELS 与此对应"
+   ],
+   "found_via": "文档",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  },
+  {
+   "period": "06-jun",
+   "statement": "第二阶段增强项从\"叙述级残项\"补成两个独立 roadmap item：downtime-task-impact-detail(停机影响从设备级补到任务级明细) 和 downstream-batch-order-impact(牵连批次/订单影响面)。同时明确 delay-diagnosis-site-facts-bridge 本条只做现场事实接线、不做精确影响面；两者都强调数据不足时必须保守说\"当前不能判断\"，不得把空结果包装成无影响。",
+   "category": "其他",
+   "evidence": [
+    "efb53a82 items.yaml 新增第12/13条 downtime-task-impact-detail、downstream-batch-order-impact(各带完整 exit_checks/forbidden_paths)",
+    "阶段口径注释从\"第10-11条第二阶段\"改为\"第10-13条\"",
+    "start-plan 新增第16/17节并把\"每个feature开工前检查\"顺延到第18节",
+    "roadmap 变更日志2026-06-01条目记录此次补强"
+   ],
+   "found_via": "roadmap/记录",
+   "is_reversal": false,
+   "still_holds_guess": "看起来仍有效"
+  }
+ ],
+ "failed": [],
+ "timeline": {
+  "narrative": "一句话先给结论：你这半年，地基几乎没动过，但\"房子盖成什么样给人住\"这层，你跟自己打了几十架。而且越打到后面，你越不是凭感觉改，而是被自己立的规矩（对抗评审、质量门禁、交叉验证）逼着改。\n\n1月奠基期，你其实已经在跟\"更早的你\"打架了。最早的策划方案v1/v2里写过 pandas+DataFrame、写过一整套 ResourceLock 并发控制表、写过布尔字段 is_active/is_internal、写过后台定时备份线程——到了正式定稿，你把这些全推翻了：pandas 换成 openpyxl-only、业务层只传 List[Dict]；删掉整套锁表，改用事务管理+运行时单活锁；布尔全改成字符串枚举；定时备份改成退出时备份。这说明一件事：你从一开始就有判断标准——单机离线、Win7、能简化就别上重家伙。这套判断后面半年一次没松过。\n\n然后你定下了真正的脊梁：四层架构（routes→services→repositories→models）、batch_id 当核心标识、双重资源约束贪心排产、整批拒绝的 Excel 导入、SchemaVersion 轻量迁移不上 Alembic、所有操作写 OperationLogs 留痕。这些到今天还在——我翻了代码，四层目录原样在，requirements 里还是 Flask2.3.3/openpyxl/没有 pandas，迁移脚本一路手写到了 v17，贪心算法被拆过但对外调用没变。地基一脉相承，这是你最该有安全感的地方。\n\n中间2到4月初这段先不表（另一路在考古）。\n\n4月底是个明显的换挡。你做了两件大事：一是把 AI 协作的默认入口从旧的 superpowers/.limcode 整个切到 CodeStable；二是确立了后面反复出现的总原则——\"坏数据不准再静默兜底\"。以前排产遇到坏数据会偷偷跳过、用默认值、甚至伪造一个能排序的分数糊弄过去；从这时起一律改成\"直接说清楚坏在哪\"。同期你把一千多行的单体 GreedyScheduler 拆成小模块、建了能机器验证的测试债务台账、开了 P1 排产债务清理 roadmap。主旋律就俩字：拆解 + 不自欺。\n\n5月初，这条\"不自欺\"的线铺满了整个系统。对外错误改成 fail-closed（结构化公开错误+白名单，不再靠黑名单猜）、排产成功状态不再靠数量猜、表单开关不再靠浏览器提交顺序猜、维护锁读不出来不再当没锁放行。同时你干了件影响很大的事：把\"齐套\"从默认的硬门槛翻成默认关闭——这是产品判断的大转向。UI 也统一成了 presenter 设计语言，不再让模板各自翻译状态。还有个很你的细节：pre-push 门禁同一天里改了两回，先绑成完整门禁、嫌慢马上又改成快速预检。\n\n5月底是自我推翻最密集的一个月，但也是你最成熟的一个月——因为这些推翻基本不是拍脑袋，是被你自己的机制逼出来的。NetworkX 图分析落地，你死死按住它\"只做体检医生、不当第二个排产大脑\"。多方案对比上线时，你一度让所有图模式都去跑候选比较，结果6笔提交后干净门禁报了15个失败，你立刻回滚——门禁替你拦住了方向跑偏。甘特图你发现\"看着能拖、其实不保存\"是在骗调度员，果断关掉假拖动改成只读。最大的一次反转在车间反馈：原计划做成实时按钮+必填反馈人+取浏览器时间，你想清楚\"现场根本没接 MES\"，直接改成\"填实际情况+Excel 导入、反馈人可空、时间可手填\"。explore 阶段一堆旧草案（根因定位、自由 A/B 对比、独立 /exception 路由、system 假用户）也在这时被整体作废。\n\n6月收口到一个主题：把散落的首页/甘特/分析/报表/资源派工，织成\"计划员一条做事路线\"——工作台。你建了 WorkbenchLink 统一管跨页跳转（明令不让模板自己拼 URL，跳哪都得带着版本/方案/日期/对象，不能偷偷掉回默认计划），首页升级成值班台，分析页改成\"先看异常和推荐再看技术过程\"。又一次大反转：5月29号刚定的\"抽独立现场记录页+新路由+新导航\"，6月被对抗评审推翻，改成\"在原页面内分层+只拆 JS 文件\"——我确认了代码就是这么落的（resource_execution.js 变薄，拆成 context/cards/actual/import 四个）。\n\n所以回答你的问题：方向漂移过，而且漂得不少，但漂的全是\"皮\"——产品长什么样、入口怎么摆、某个开关默认开还是关。\"骨\"一次没动：Win7 离线、四层架构、openpyxl-only、贪心排产、不自欺式报错、留痕可追溯。而且有条暗线越来越清楚：你从\"能跑就行\"一路走到\"宁可暴露错误、也不骗自己和用户\"，到6月甚至连\"读取失败返回空列表\"都不许了，必须把\"读不到\"明明白白显示出来。这不是方向变了，这是同一个方向越扎越深。",
+  "eras": [
+   {
+    "era": "1月 · 奠基期",
+    "theme": "先把骨架和硬约束钉死：单机离线、四层架构、能简化绝不上重家伙——并且当场否掉了更早草案里的重方案。",
+    "key_decisions": [
+     "运行环境锁死 Win7 SP1 单机本地 Web（Flask+浏览器），Python 3.8 + Flask2.3.3/openpyxl3.0.10/dateutil2.8.2 + PyInstaller4.10 离线交付",
+     "四层分层架构 routes→services→repositories→models + infrastructure，层间单向调用、单文件超500行拆分",
+     "openpyxl-only、业务层统一 List[Dict] 不绑 pandas，TabularBackend 抽象预留扩展点",
+     "双重资源约束贪心排产（设备+人员两条时间线）+ 可插拔算法/四种排序策略 + batch_id 当核心标识",
+     "事务管理规范(@transactional) + 统一错误码/AppError/{success,data,meta} + SchemaVersion 轻量迁移不上 Alembic",
+     "Excel 整批拒绝（任一 ERROR 整批退回）+ 中文精确到行号字段，预览→确认两步",
+     "OperationLogs/ScheduleHistory 全程留痕，作为未来 ReportEngine 报表的事实来源"
+    ],
+    "turning_point": "定稿即推翻自己更早的策划方案：pandas+DataFrame、整套 ResourceLock 并发表、布尔字段、后台定时备份线程全被否掉——确立了'离线单机优先、能简化就简化'的判断标准，这把尺子后面半年没换过。"
+   },
+   {
+    "era": "[2月–4月初 · 考古缺口]",
+    "theme": "这一段由另一路考古，本次清单暂不含，时间线上留空，不臆测。",
+    "key_decisions": [
+     "（此期决定本次未纳入，作为已知缺口标注，避免把'没考据'写成'没发生'）"
+    ],
+    "turning_point": ""
+   },
+   {
+    "era": "4月底 · 换轨 + 反静默兜底治理期",
+    "theme": "工作流整体切到 CodeStable，同时立下贯穿后半年的总原则——坏数据不准再偷偷兜底，一律报清原因。",
+    "key_decisions": [
+     "AI 协作默认入口从 superpowers/.limcode 切到 CodeStable，新建标准骨架，.limcode 降级为归档",
+     "确立'贪心排产坏数据直接报原因、不再静默跳过/默认值续算/伪造分数'总原则，旧'兜底继续跑'断言全改写",
+     "拆开单体 GreedyScheduler（ordering/run_state/run_context/sgs_scoring 等），对外调用与返回结构保持不变",
+     "建机器可验证的 full-pytest 测试债务台账（collector+baseline+strict xfail+只减不增 ratchet）",
+     "切断 main-style 回归同进程污染：改子进程隔离运行（隔离前36失败→隔离后5个真实失败）",
+     "schema v7 唯一索引 idx_schedule_version_op_unique，历史重复行 fail-fast 不静默挑一行",
+     "插件整体加载失败 reset_plugin_state 重置状态，不沿用旧 registry/旧 Excel backend",
+     "开 P1 排产债务清理 roadmap，定全局停止条件'不新增 if/fallback/兜底/静默回退'"
+    ],
+    "turning_point": "从'能凑合就凑合'正式转向'宁可暴露错误也不自欺'——这是整个项目工程价值观的分水岭，后面每一期都在加深它。"
+   },
+   {
+    "era": "5月初 · 对外契约硬化期",
+    "theme": "把'不自欺'从排产内核铺满整个系统的对外边界，全线 fail-closed；同时做了一次大产品转向。",
+    "key_decisions": [
+     "齐套 readiness 从'默认开启的硬门槛'翻成'默认关闭、保留能力但不卡排产'（配 v8 迁移）——重大产品判断转向",
+     "排产对外错误改 fail-closed：结构化 public_error_details + input_contract 白名单重组，杜绝路径/堆栈/库名外泄",
+     "完成状态判定 fail-closed：缺 completion_status 不再按数量猜成功，按'需检查'处理",
+     "表单开关解析改严格白名单 fail-closed，不再靠浏览器字段提交顺序猜",
+     "Phase-6 把 json 解析/版本归一/错误整形从 routes 下沉 core，源码扫描测试守门",
+     "统一 UI presenter 设计语言（UiToggleRow/UiNotice + ui_contract.css），模板只渲染不再各自翻译状态",
+     "新增 core/shared 共享层 field_labels（内部字段→中文业务名），long gate cache 缓存体系起步"
+    ],
+    "turning_point": "齐套门槛默认关闭，是第一次大规模'听现场说话、改默认行为'；同时 pre-push 门禁同一天内二次翻转（先绑完整门禁、嫌慢又改快速预检），暴露出'又要严谨又要顺手'的拉扯。"
+   },
+   {
+    "era": "5月底 · 信任底座 + 自我推翻高发期",
+    "theme": "上信任底座（图分析诊断/多方案对比/车间执行事件），但这个月自我推翻最密集——而且大多是被门禁和对抗评审逼着改，不是拍脑袋。",
+    "key_decisions": [
+     "NetworkX 图分析落地：可选依赖/懒加载/锁 3.1/默认关，三态 off/report/on，死守'只做体检医生不当第二个排产大脑'",
+     "PR7 多方案对比：新增3张候选表，正式 Schedule 只存最终采用，候选不混入",
+     "车间执行事件基础 v15：OperationExecutionEvents 只追加事实表 + 状态聚合，计划行与现场事实分离",
+     "甘特图定为'只读可信查看页'，关掉假拖动，缩放扩到月/周/日/12h…1min，模拟调整走 Draft→Scenario→正式版本三层",
+     "开 APS 三差距方向 roadmap（延期诊断/方案对比业务化/车间执行反馈），默认顺序改为'先补信任底座'",
+     "系统性收紧静默回退（坏日历工时/坏摘要/NaN-Inf 一律报错或可见降级），新增 Py3.8 语法扫描进门禁",
+     "CodeStable 目录迁到隐藏 .codestable，启动入口改 attention.md→system-overview.md"
+    ],
+    "turning_point": "多方案对比一度让所有图模式都跑候选比较，6笔提交后干净门禁报15个失败——你立刻回滚。这一刻证明：你立的质量门禁真的能替你拦住方向跑偏，'机制约束'开始替代'个人判断'兜底。"
+   },
+   {
+    "era": "6月 · 工作台收口期",
+    "theme": "把散落的首页/甘特/分析/报表/资源派工织成'计划员一条做事路线'——工作台；跨页不丢上下文，写入处处加护栏。",
+    "key_decisions": [
+     "新建 scheduler_workbench_links 专职跨页链接 ViewModel，统一带版本/方案/日期/对象，明令不让模板自己拼 URL、不偷偷掉回默认计划",
+     "首页升级成'计划员值班台'（今日待处理5类），分析页改'先看异常和推荐、再看技术过程'",
+     "甘特任务详情区'现场实际'只从 OperationExecutionEvents 经 ExecutionFactProvider 聚合，无事件显示'暂未记录'绝不拿计划时间冒充",
+     "资源派工执行车道：同页三类入口视觉分层（计划员查看/现场事实/复盘），现场记录写入加'任务归属当前查询结果'校验堵直连绕过",
+     "顶层'计划工作台'菜单定性为无上下文只读 GET 入口，不下发写入/Excel/模板/表单",
+     "第二阶段增强补成独立 roadmap item（停机任务级影响、牵连批次影响），数据不足必须说'当前不能判断'"
+    ],
+    "turning_point": "5月29号刚定的'抽独立现场记录页+新路由+新导航'，6月被6个 subagent 对抗评审推翻，改成'同页内分层+只拆 JS 文件'（resource_execution.js 变薄拆成 context/cards/actual/import 四个，已在代码确认）。又一次靠评审机制把'范围过大、证据不足'的方案摁住。"
+   }
+  ],
+  "reversals_timeline": [
+   {
+    "when": "1月 · 奠基期",
+    "from": "策划方案v2：pandas==2.0.3 + 业务层用 DataFrame",
+    "to": "openpyxl-only + 业务层统一 List[Dict]，禁止 DataFrame",
+    "why": "目标是 Win7 离线单机，不上重依赖；为后续可换 PandasBackend 留抽象但 V1 不引入"
+   },
+   {
+    "when": "1月 · 奠基期",
+    "from": "策划方案v2：整套 ResourceLock 表 + locking.py 业务级并发控制",
+    "to": "删除锁表，数据一致性靠事务管理，单活靠运行时 aps_runtime.lock",
+    "why": "单机单用户场景下整套并发控制是过度设计，简化掉"
+   },
+   {
+    "when": "1月 · 奠基期",
+    "from": "策划方案v1：BOOLEAN 字段 is_active/is_internal/is_ready + op_id TEXT 主键(批次号_工序号)",
+    "to": "字符串枚举 status/source/priority + 自增 id 技术主键 + op_code + 复合唯一约束",
+    "why": "便于扩展、Excel 导入导出、单件追溯铺路"
+   },
+   {
+    "when": "4月底 · 换轨期",
+    "from": "默认起点 .limcode/skills/using-superpowers + 旧流程",
+    "to": "CodeStable 工作流（codestable 标准骨架，AGENTS.md 先看 system-overview）",
+    "why": "统一开放式诉求/新功能/bug/重构的分流入口，旧流程降级为归档"
+   },
+   {
+    "when": "4月底 · 反兜底治理",
+    "from": "贪心链路'能凑合就凑合'：静默跳过坏数据/默认值续算/伪造可排序分数",
+    "to": "坏数据一律直接抛清楚原因，旧'兜底继续跑'断言改写成'直接说明坏在哪'",
+    "why": "立项目总原则——坏数据不应被伪装成正常数据，短期暴露更多错误但长期安全"
+   },
+   {
+    "when": "4月底 · 反兜底治理",
+    "from": "落库结果校验里 row is None 静默跳过分支",
+    "to": "移除静默跳过，异常组合直接暴露问题不再悄悄丢行",
+    "why": "对抗性复审下，静默丢行会掩盖真实数据问题"
+   },
+   {
+    "when": "5月初 · 契约硬化",
+    "from": "齐套/齐套日期默认就是排产硬门槛，未齐套或未来日期卡住排产",
+    "to": "readiness_gate_enabled 默认 False，不勾选就不卡，排序时全当已齐套",
+    "why": "现场实际是计调员只排齐套的、齐套门槛默认开会误卡——重大产品判断转向"
+   },
+   {
+    "when": "5月初 · 契约硬化",
+    "from": "公开摘要靠'错误前缀+敏感词黑名单'判断能否展示，原样透传 input_contract",
+    "to": "结构化 public_error_details + input_contract 白名单重组",
+    "why": "黑名单边界脆弱且会泄露路径/堆栈/库名，改成只放行已知安全字段"
+   },
+   {
+    "when": "5月初 · 契约硬化",
+    "from": "pre-push 绑成完整 clean gate（--require-clean-worktree --long-gate-cache）",
+    "to": "同一天又改成 pre-push 只跑 daily 快速预检（约2.3秒，明确非 clean proof）",
+    "why": "完整门禁每次 push 太慢，日常被拖住；完整证明退到独立入口——同日二次翻转，体现严谨与顺手的拉扯"
+   },
+   {
+    "when": "5月初 · 契约硬化",
+    "from": "缺 completion_status 时纯按 error_count 数量猜成功/部分/失败",
+    "to": "fail-closed：缺状态但带 error 信息按'结果有问题需检查'处理",
+    "why": "按数量猜会把带错误或未知的结果显示成成功"
+   },
+   {
+    "when": "5月底 · 信任底座",
+    "from": "正式排产默认在所有图模式都跑候选比较（改动了 off/report/on 既有合同）",
+    "to": "回滚为'仅显式开关打开才进候选比较'，默认仍单次排产",
+    "why": "6笔提交后 clean 门禁报15个失败——门禁拦住了方向跑偏，默认启用顺延到 PR7e"
+   },
+   {
+    "when": "5月底 · 信任底座",
+    "from": "对比方案判定按 candidate_key/role 猜、health 从展示用截断 sample 反推",
+    "to": "按 source_table 精确判定；health 改用完整 graph_health_context",
+    "why": "猜来源会误标同源方案；截断样本只适合展示、不能当决策依据"
+   },
+   {
+    "when": "5月底 · 信任底座",
+    "from": "甘特图'看似可拖动编辑'（实际不保存的假象）",
+    "to": "明确只读可信查看页，关掉假拖动，缩放扩到月…1分钟",
+    "why": "假拖动会让调度员误以为已改计划，是在骗用户"
+   },
+   {
+    "when": "5月底 · 信任底座",
+    "from": "车间反馈做成实时按钮 + 反馈人必填 + 开工取浏览器时间",
+    "to": "重构为'现场记录'：填实际情况 + Excel 导入，反馈人可空，实际时间可手填",
+    "why": "现场根本没接 MES/DNC，实时按钮+必填与真实工况不符——最大一次产品反转"
+   },
+   {
+    "when": "5月底 · 信任底座",
+    "from": "explore 旧草案：主原因/根因/任意A-B自由对比 / /exception 路由 / created_by 默认 system / 页面直显 scenario_id 等内部字段",
+    "to": "整体作废，后续以三差距 roadmap §5 接口契约为准",
+    "why": "旧草案口径与'不显示内部值、不承诺唯一根因、不默认假用户'的边界冲突"
+   },
+   {
+    "when": "5月底 · 信任底座",
+    "from": "完工数量+报废数量不能超过计划数量的上限校验",
+    "to": "删除上限校验，预览与写入两侧都不拦",
+    "why": "报废后补投零件、产出超计划属正常生产；此前一度误判'设上限'经交叉验证纠正"
+   },
+   {
+    "when": "6月 · 工作台收口",
+    "from": "2026-05-29 方案：抽独立现场记录页（新 URL /scheduler/resource-execution + 新路由 + 新 ViewModel + 新导航）",
+    "to": "在现有 /scheduler/resource-dispatch 页内分层 + 只按子域拆 JS（697行拆成 context/cards/actual/import 四个）",
+    "why": "6个 subagent 对抗评审认定'把开发减负和用户体验绑一起、证据不足、范围过大'，已在代码确认落地"
+   },
+   {
+    "when": "6月 · 工作台收口",
+    "from": "首页今日正式计划读取失败时返回空列表（伪装成'今天没有现场情况待确认'）",
+    "to": "把中文原因当数据缺口卡渲染出来（'今日计划暂时读不到'）",
+    "why": "读取失败被静默吞成'无待确认'是误导——把反静默兜底原则贯彻到了首页"
+   },
+   {
+    "when": "6月 · 工作台收口",
+    "from": "'现场反馈缺口'措辞，语义='任务还没有现场状态'",
+    "to": "改名'现场情况待确认'，语义校正为'已到计划开始时间但暂未录入现场情况'",
+    "why": "没到开工时间的任务不该算缺口，触发条件应是计划开始时间"
+   }
+  ],
+  "through_lines": [
+   "Win7 SP1 x64 离线单机交付是最硬的约束：1月锁定 Python 3.8 + Flask2.3.3/openpyxl3.0.10/dateutil2.8.2 + PyInstaller4.10，CS 期反复重申'不引入 CDN/外链/外部前端框架、不破坏 Py3.8/Win7/Chrome109'，5月底还专门加了 Py3.8 语法扫描进门禁。已核：requirements.txt 至今原样，无 pandas，PyInstaller 注明不可用 5.x/6.x。（唯一软化：'单机单用户'定位后来略偏向'共享数据场景'，但离线交付口径从未松动）",
+   "四层分层架构（web/routes→core/services→data/repositories→core/models + core/infrastructure，层间单向调用、超500行拆分）是项目脊梁：04c 大规模拆分实践、05a Phase-6 把解析/错误整形下沉 core、05b/06 反复把 error 包装/状态码/字段映射从 viewmodel 退回 route 层守红线。已核：六个分层目录原样存在。",
+   "openpyxl-only、业务层只收发 List[Dict]、绝不让 DataFrame/nx.Graph 等流到对外层：从 1月的 TabularBackend 抽象，到 ReportEngine 永远只收发 List[Dict]，再到 NetworkX nx.Graph/DiGraph 只准留在图模块内部，这条'对外只用普通 dict/list/标量'的边界从没破过。",
+   "贪心排产核心算法从未被替换：1月定的双重资源约束贪心（设备+人员两条时间线）+ 可插拔算法/四种排序策略一直是排产大脑；04c 把单体 GreedyScheduler 拆成小模块时明确'对外调用/返回结构/统计字段不变'，NetworkX 上线时死守'只做诊断体检医生、不当第二个排产大脑'。",
+   "SchemaVersion 轻量迁移、不引入 Alembic：1月定调，CS 期要求新增持久化必须按 ADR-0008 加迁移脚本、schema.sql 保持最新。已核：迁移脚本一路手写到 v1…v17，全是顺序递增的轻量脚本，没上重型迁移框架。",
+   "batch_id 作为核心业务标识、Batches 以 batch_id 为主键：1月确立后一直是跨页定位和现场记录归属的锚点，6月 WorkbenchLink 跨页跳转也强调优先用批次/设备/人员/日期对齐，而非内部技术 id。",
+   "事务管理规范（TransactionManager + @transactional）+ 统一错误码体系（ErrorCode/AppError + {success,data/error,meta}）+ 分级日志/OperationLogs/ScheduleHistory 留痕：1月一次性立好，04c 拆分事务基础设施时只动实现不动规范，留痕至今是报表和现场事实的事实来源。",
+   "'坏数据不准静默兜底、宁可暴露错误也不自欺'：4月底正式立为总原则后只增不减——5月初全线 fail-closed（错误/完成状态/表单开关/维护锁），5月底系统性收紧静默回退，6月连首页'读取失败返回空列表'都被禁掉改成显式数据缺口卡。这是越扎越深、从未回头的价值观主线。",
+   "Excel 整批拒绝精神：1月定'任一 ERROR 整批退回、中文精确到行号字段、预览→确认'，到6月车间记录 Excel 导入仍是'整批校验有错一条不写'，一脉相承。",
+   "Frappe Gantt 本地静态资源、不替换不上 CDN：1月选定 0.6.1 本地化部署，CS 期明确'第一版不替换 Frappe、继续本地静态资源以符合离线交付边界'，只在外面加 gantt_adapter.js 适配层而非散改压缩版。"
+  ]
+ }
+}

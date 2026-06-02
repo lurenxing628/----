@@ -1,0 +1,85 @@
+{
+ "partition": "scheduler-run",
+ "health": "有残渣(偏干净)。这是经过'静默回退治理'(e2e4bf7c)与 p1-scheduler-debt-cleanup 全 roadmap(PR-1~PR-8 全done)双重打磨的成熟主链:输入收集层全程 fail-fast(坏批次/空工序/坏种子立即 raise),冻结窗口与执行落库护栏在每个数据缺口处 raise 或经 DegradationCollector 显式上报降级,strict_mode 一律抛错,灵魂原则(坏数据不静默兜底)落实得很彻底——未发现活的 P1/P3/P4。残渣集中在 P6 死面包屑:(1)拆分重构后失去生产调用方却靠两层re-export+拓扑测试续命的 count/has_actionable_schedule_rows(中等);(2)test-only 的 build_first_wave_ready_nodes 转发包装器(低);(3)b81f8b3f 故意收窄 except 后变得不可达、却仍铺到 UI 死分支的候选'失败'态脚手架(低,需注意相邻窄except是承重护栏不能动)。另有一处边界 P5(三套私有正整数强制器 vs parse_finite_int)。无重灾区,2 条 P6 可直接收,2 条标 needs_adversarial 交裁决。",
+ "findings": [
+  {
+   "pathology": "P6",
+   "title": "count_actionable_schedule_rows / has_actionable_schedule_rows 是拆分重构后遗留的死函数,靠两层re-export+拓扑测试续命",
+   "location": "core/services/scheduler/run/schedule_payload_contract.py:90-95",
+   "reference_chain": "定义 count_actionable_schedule_rows(schedule_payload_contract.py:90) 与 has_actionable_schedule_rows(:94),后者内部调前者(:95);_iter_actionable_results(:67) 是它们唯一的私有依赖(静默跳过无 op_id/坏时间的结果行,只计数不报错)。两者经 run/schedule_persistence.py:16-17 import 再经 scheduler/schedule_persistence.py:3 二次 import 并列入 __all__(:5),payload_contract 自身 __all__ 也导出(:414-415)。grep 全仓:除 has() 内部调用 count()(:95) 外,core/web/data 无任何 `has_actionable_schedule_rows(` / `count_actionable_schedule_rows(` 调用点,只有 tests/test_sp05_path_topology_contract.py:54-55 断言其作为公开符号存在。git -S 证明历史生产调用点 `has_actionable_schedule_rows_fn=...` 在 78879ec1(schedule_service 600行拆分为输入收集+编排+薄门面)时被删除,函数本体留下未清。",
+   "why_debt": "本应判断'是否有可落库排程行'的计数/布尔函数,在 schedule_service 拆分后生产侧改用 build_validated_schedule_payload→_validate_persist_inputs(schedule_persistence.py:201 not validated_schedule_payload.schedule_rows→raise)做严格校验,这对老函数失去所有生产消费方。两层 re-export 链 + __all__ + 拓扑契约测试共同营造'仍在用'的假象,_iter_actionable_results 的静默跳过逻辑也随之成为零生产价值的孤儿。",
+   "load_bearing": false,
+   "needs_adversarial": false,
+   "severity": "medium",
+   "blast_radius": "纯死代码,删除 count/has_actionable + _iter_actionable_results + 两处 re-export + payload_contract/persistence __all__ 条目,需同步删 test_sp05_path_topology_contract.py:54-55 的断言(否则该拓扑契约测试会红——这正是它在做的事)。无生产路径受影响。误判风险极低:已 grep 实证 + git 考古确认删除时点。",
+   "_partition": "scheduler-run",
+   "_source": "pass1"
+  },
+  {
+   "pathology": "P6",
+   "title": "schedule_graph_dispatch_context.build_first_wave_ready_nodes 是test-only re-export包装器(兄弟包装器是活的,唯独它没有生产调用方)",
+   "location": "core/services/scheduler/run/schedule_graph_dispatch_context.py:461-475",
+   "reference_chain": "dispatch_context.py:461 定义 build_first_wave_ready_nodes,函数体懒 import 真 impl(:468 from .schedule_graph_resource_matching_context import build_first_wave_ready_nodes as _impl)并转调。真 impl 在 resource_matching_context.py:48,其内部调用方(:115)用的是模块本地 def 而非绕回 dispatch_context。生产消费:schedule_graph_report.py 只从 dispatch_context import 了兄弟包装器 build_graph_resource_matching_projection(:18-19,确实活跃,见 report.py:180 调用),但全 partition/web/data 无人从 dispatch_context import build_first_wave_ready_nodes;唯一导入方是 tests/scheduler_graph/test_graph_dispatch_context.py:11。",
+   "why_debt": "同文件两个并排的 re-export 包装器(build_first_wave_ready_nodes 与 build_graph_resource_matching_projection)给人'对称的公开 seam'印象,但只有后者有生产调用方,前者纯粹被测试导入,造成'在用'假象。真逻辑在 resource_matching_context,该包装器是冗余转发层。",
+   "load_bearing": false,
+   "needs_adversarial": true,
+   "severity": "low",
+   "blast_radius": "删除需同步改 test_graph_dispatch_context.py:11 的 import(改为直接从 resource_matching_context 导入,测试 :55,:66 调用不变)。但因兄弟包装器是刻意保留的公开 seam,作者可能有意把两个 builder 都从 dispatch_context 暴露做统一门面——标 needs_adversarial 让怀疑者裁断是'冗余转发该删'还是'故意对称门面留着'。",
+   "_partition": "scheduler-run",
+   "_source": "pass1",
+   "_adv_verdict": "real_debt",
+   "_adv_refuted": true,
+   "_adv_precondition": "先把 tests/scheduler_graph/test_graph_dispatch_context.py:11 的 import 从 schedule_graph_dispatch_context 改为从 schedule_graph_resource_matching_context 导入 build_first_wave_ready_nodes(其真实 __all__ home;:55,:66 调用不变),再删除 dispatch_context.py:461-475 的转发包装器。删前确认无 __init__.py 转出该符号(已 grep 验证无),删后跑 scheduler_graph 测试套件 + regression_scheduler_candidate_py38_contract 自证。生产路径(resource_matching_context:115 本地调用 + report.py:180 走兄弟包装器)不受影响。注意:兄弟 build_graph_resource_matching_projection 是真承重(report.py:180 经 dispatch_context 消费),不可一并删。",
+   "_adv_evidence": [
+    "core/services/scheduler/run/schedule_graph_dispatch_context.py:461-475 — 包装器函数体是纯懒导入转发(return _impl(...)),无任何校验/版本闸/预览-正式守卫/坏数据检查,删它不移除任何不变量",
+    "core/services/scheduler/run/schedule_graph_dispatch_context.py:468 — 懒 import 真 impl;且 dispatch_context 全文无 __all__(grep 仅命中 def/import 行),包装器不属于任何已声明的门面契约",
+    "core/services/scheduler/run/schedule_graph_resource_matching_context.py:48-69 — 真实现在此;灵魂暗线守卫(:28-45 _ready_context_predecessor_map 对非法 op_id 抛 GraphInputContractError)也在此,删包装器不动这些守卫",
+    "core/services/scheduler/run/schedule_graph_resource_matching_context.py:115 — 唯一生产调用方,裸名调用绑定到本模块 :48 的 local def,完全不经过 dispatch_context 包装器",
+    "core/services/scheduler/run/schedule_graph_resource_matching_context.py:131-134 — __all__ 同时声明两个 builder,这里才是真正的公开门面/home",
+    "core/services/scheduler/run/schedule_graph_report.py:19,180 — 生产仅从 dispatch_context import 兄弟 build_graph_resource_matching_projection 并调用(确活跃),从不 import build_first_wave_ready_nodes;两包装器互不耦合",
+    "tests/scheduler_graph/test_graph_dispatch_context.py:11(import),:55,:66(调用)— 全仓唯一从 dispatch_context 导入该包装器的地方,就是测试本身",
+    "tests/regression_scheduler_candidate_py38_contract.py:30,78 — 仅对 dispatch_context 做 banned-import/py38 语法检查,未 pin 其公开导出面,删包装器不破契约测试",
+    "全仓 grep build_first_wave_ready_nodes:无通配 import、无 __init__.py 转出、无 getattr/字符串动态引用;且懒 import 仅为规避 matching→dispatch 模块级环(:5),删包装器只会移除 dispatch→matching 边,改善而非破坏 import 图"
+   ]
+  },
+  {
+   "pathology": "P6",
+   "title": "候选'失败'态全套机制(CANDIDATE_STATUS_FAILED/_failed_plan/failed_candidate_count/baseline_missing_or_failed)在生产中不可达,一路铺到死UI分支",
+   "location": "core/services/scheduler/run/schedule_candidate_runner.py:216",
+   "reference_chain": "CandidateTrialFailure 类(runner.py:28)→唯一 catch 点(:216 except CandidateTrialFailure→_failed_plan:470 产出 status=CANDIDATE_STATUS_FAILED)。grep 全仓:`raise CandidateTrialFailure` 仅出现在 tests/regression_scheduler_candidate_runner_contract.py:470,576,生产代码零 raise。git b81f8b3f 明确记载'移除未知异常转 failed candidate 的宽泛捕获,只保留明确的 CandidateTrialFailure'——即故意把 except Exception 收窄。failed_count=_count_candidates(...FAILED)(:241) 与 _baseline_missing_or_failed(:263) 流入 candidate_comparison_public_summary(schedule_candidate_summary.py:135,140)→web/viewmodels/dashboard_workbench.py:207 `if comparison.get('baseline_missing_or_failed')` 与 scheduler_analysis_candidate_helpers.py:324,329 的展示分支。baseline 在 specs.py:62 恒为 sequence=0 首跑,runner.py:172 的 `if now()>=deadline` 在首个 spec 时(deadline=started+budget,budget>0)不成立,故 baseline 永不被 skip;加上 FAILED 不可达→baseline_missing_or_failed 生产恒 False、failed_candidate_count 恒 0。",
+   "why_debt": "这是一组'为不可达状态铺设的下游管道':生产中候选要么 completed、要么 skipped(时间预算,可达)、要么真异常直接 propagate(b81f8b3f 后的正确行为),FAILED 这一态只有测试能造。failed_candidate_count/baseline_missing_or_failed 一路传到 viewmodel 的 if 分支,这些 UI 分支生产永不触发。同时 ScheduleCandidate.status 模型枚举里的 'not_run' 在整个 run/ 也零产出点。注意:收窄后的 `except CandidateTrialFailure` 本身是承重护栏(防止 b81f8b3f 删掉的静默吞错复活),绝不能以'统一/简化'名义改回 except Exception——真正算债的只是其下游那套不可达的 _failed_plan/计数/UI 脚手架。",
+   "load_bearing": false,
+   "needs_adversarial": true,
+   "severity": "low",
+   "blast_radius": "相邻的窄 except(:216)是承重的,误改成宽捕获=重新引入已被治理掉的静默吞错(高危,但那不是本条要动的)。本条指向的下游计数+UI分支:若清理,牵动已落库的 ScheduleCandidate.status 枚举契约(completed/failed/skipped/not_run)+ 两个 viewmodel + 候选公开摘要字段,blast 半径中等。需怀疑者裁断:这是'为持久化schema枚举保留的防御性契约面'(留着),还是'不可达状态的死脚手架'(收)。倾向:窄except留,下游计数管道按债登记但低优先。",
+   "_partition": "scheduler-run",
+   "_source": "pass1"
+  },
+  {
+   "pathology": "P5",
+   "title": "三套私有正整数强制器与统一收口点 parse_finite_int 并存(契约各异:raise/→0/→None)",
+   "location": "core/services/scheduler/run/schedule_payload_contract.py:50",
+   "reference_chain": "_strict_positive_int(payload_contract.py:50,bool/float/<=0 全 raise ValueError,用于 _iter_actionable_results 与 _build_validated_schedule_row 的 op_id 强制) / _positive_int(auto_assign_resource_errors.py:114,except→0) / _positive_int(schedule_persistence_errors.py:13,except→None)。统一收口点 core/shared/number_utils.py:39 parse_finite_int(value,*,field,allow_none) 的 allow_none 重载恰好覆盖'返回None'与'raise'两种语义(:40-42 转 parse_optional_int/parse_required_int)。dup_symbols.json 亦标记 _positive_int 在本 partition 出现 2 次(+全仓 6 处)。同 partition 的 optimizer_config.py:72-85 则正确走 core.shared.strict_parse。",
+   "why_debt": "已有覆盖'可空/必需'两态的 parse_finite_int 收口点,本 partition 仍各处私造正整数强制器,三者语义已漂移(异常 vs 0 vs None),且 _strict_positive_int 抛裸 ValueError 而非 field 化的 ValidationError。属同一概念(正整数强制)的第N套私有实现,绕过收口点。",
+   "load_bearing": false,
+   "needs_adversarial": true,
+   "severity": "low",
+   "blast_radius": "统一到 parse_finite_int 风险点:三个调用点期望的契约不同(落库校验要 raise、错误消息解析要静默→0/None 以容忍脏 error 文本),naive 替换会改变行为(把容错点变成抛错点)。需逐调用点保契约迁移。需怀疑者裁断:这些是'对已加载DB op.id的紧循环防御性coerce(可接受局部helper)'还是'真该收口的第N套'——边界案例,故标 needs_adversarial。",
+   "_partition": "scheduler-run",
+   "_source": "pass1",
+   "_adv_verdict": "load_bearing",
+   "_adv_refuted": false,
+   "_adv_precondition": "前置条件（缺一不可）：1) 扩展收口点——给 parse_finite_int 增加 min_value 形参，并加一个'拒绝任何 float（含整值 3.0）'的严格模式，否则收口点根本表达不出 op_id 的契约（>0 且非 float）；2) 保契约迁移每个调用点：_strict_positive_int 的 raise 必须仍能被原地的 except 捕获（迁移后要么把 except 改成捕获 ValidationError，要么保留 ValueError 语义），否则 count/has_actionable_schedule_rows 会从'跳过脏行'变成'抛错'；3) 不得把 auto_assign(_positive_int→0) 与 schedule_persistence_errors(_positive_int→None) 改成抛错——它们在错误处理路径上，抛错会用二次异常掩盖真正诊断，违背'坏数据不准静默兜底但也不自欺'的暗线。三者契约是按上下文（落库闸门 / 解析不可信错误文本 / 装配错误响应）刻意分化的，非偶然漂移，不可裸合并。",
+   "_adv_evidence": [
+    "core/services/scheduler/run/schedule_payload_contract.py:50-56 — _strict_positive_int rejects None/bool/float/<=0 and is the op_id gate for _iter_actionable_results and _build_validated_schedule_row (the path to DB persist)",
+    "core/services/scheduler/run/schedule_payload_contract.py:72-73,149-150,198-199,308-309,324-325,372-373 — ALL 6 call sites catch its raise as `except (TypeError, ValueError)` and convert to skip/field-ized error; the raise is an internal sentinel, not a real abort",
+    "core/infrastructure/errors.py:63,97 — class AppError(Exception) / class ValidationError(AppError): ValidationError is NOT a ValueError/TypeError subclass, so parse_finite_int's ValidationError would ESCAPE all 6 local except blocks → turns count/has_actionable_schedule_rows from tolerant skip into a crasher",
+    "core/shared/number_utils.py:39 — parse_finite_int(value,*,field,allow_none) facade has NO min_value param: it cannot express '>0', so it cannot faithfully replace _strict_positive_int",
+    "core/shared/strict_parse.py:46-58,81-84 — parse_required_int accepts integer-valued floats (3.0→3, abs(parsed-int)<=1e-9) and defaults min_value=None; strictly WEAKER than _strict_positive_int which rejects every float and any <=0",
+    "core/services/scheduler/run/schedule_payload_contract.py:33-47 — to_repo_rows does int(row.op_id) for the DB write with op_id as linkage/lock_status key; no further bool/float guard downstream, so True->1 / 3.0->3 would corrupt op↔row mapping silently (in Python isinstance(True,int) and 3.0 in {3} both True)",
+    "core/services/scheduler/run/auto_assign_resource_errors.py:85-86,114-119 — _positive_int(seq)->0 is a deliberate sentinel for fall-through (if batch_id and seq>0) on the error-message-parsing path, not the same concept as a DB gate",
+    "core/services/scheduler/run/schedule_persistence_errors.py:13-18 — _positive_int->None is a deliberate id-dropping sentinel used WHILE building raise_no_actionable_schedule_error; making it raise would mask the primary error with a secondary crash"
+   ]
+  }
+ ]
+}

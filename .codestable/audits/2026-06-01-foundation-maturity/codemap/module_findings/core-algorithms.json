@@ -1,0 +1,148 @@
+{
+ "key": "core-algorithms",
+ "partition": "core/algorithms",
+ "score": 4,
+ "design": "可插拔贪心 APS 排产引擎，分两层。顶层 core/algorithms/ 放共享原语：值域常量 value_domains(INTERNAL/EXTERNAL/MERGED/SEPARATE)、数据契约 types(ScheduleResult/ScheduleSummary)、优先级常量、排序策略 sort_strategies(策略模式+工厂)、派工规则 dispatch_rules(SLACK/CR/ATC 生成越小越优的可排序 key)、批次工序排序 ordering、指标评估 evaluation、可选 OR-Tools 暖启动 ortools_bottleneck(瓶颈工种单机 CP-SAT 求 batch_order 起点)。greedy/ 子包是引擎本体：scheduler.py 是 GreedyScheduler 对外门面，编排 解析参数→批次定序→seed 归一→建运行态→派工→汇总。greedy/dispatch/ 有两套派工：batch_order(全排序后逐条排入，V1 行为)与 sgs(Serial SGS 动态就绪集合派工，可叠加图拓扑就绪门控)。资源时槽估算 internal_slot、设备加人员自动配对 auto_assign、外协合并组 external_groups、时间线占用 downtime、续排种子 seed、每轮可变状态 run_state/run_context 构成支撑。职责边界清晰：算法层零反向依赖 services(已 grep 验证)，只向下依赖 infra 的 logging/errors 与 shared 的 parse/degradation 工具。错误与降级纪律分明：硬契约违例抛 ValidationError，软回退走 DegradationCollector 加 algo_stats 计数，strict_mode 全链路一致传递。主债是迁移尾巴：一套并行就绪队列实现、op_id 解析分叉成 5 份、几处死 helper 与别名，而非腐烂。",
+ "chains": [
+  "主链：GreedyScheduler.schedule (scheduler.py:70) -> resolve_schedule_params (schedule_params.py:359) -> _build_batch_order (scheduler.py:302) -> _normalize_seed_inputs->normalize_seed_results (seed.py:12) -> _prepare_run_state (scheduler.py:365) -> _run_dispatch (scheduler.py:427) -> dispatch_batch_order|dispatch_sgs -> _build_summary (scheduler.py:461)",
+  "SGS 主循环：dispatch_sgs (sgs.py:53) -> _run_sgs_loop (sgs.py:183) -> _collect_candidates (sgs_graph.py:244) -> _score_candidates -> _score_candidate (sgs.py:295) -> _score_internal/external_candidate -> _dispatch_key->build_dispatch_key (dispatch_rules.py:55) -> _pick_best_candidate=min (sgs.py:46) -> _dispatch_selected (sgs.py:354) -> _schedule_op (batch_order.py:167) -> ctx.schedule_internal/external",
+  "内部时槽评分：_score_internal_candidate (sgs_scoring.py:140) -> _scoring_resources (sgs_scoring.py:289) -> _auto_assign_attempt_for_scoring -> ctx.auto_assign_internal_resources_attempt (run_context.py:74) -> auto_assign_internal_resources_attempt (auto_assign.py:95) -> _choose_best_pair (auto_assign.py:270) -> _pair_score -> estimate_internal_slot (internal_slot.py:267)",
+  "内部正式派工：ctx.schedule_internal (run_context.py:51) -> schedule_internal_operation (internal_operation.py:21) -> _resolve_internal_resources(auto_assign) 加 _estimate_internal->estimate_internal_slot -> occupy_resource (downtime.py:22)",
+  "图就绪前沿：_prepare_graph_ready_state (sgs_graph.py:33) -> _validate_graph_ready_links (sgs_graph.py:181) 加 _initialize_graph_ready_frontier (sgs_graph.py:226)；派工时 _mark_graph_operation_completed (sgs_graph.py:305)/_block_graph_operation (sgs_graph.py:283) 增量更新 ready_op_ids",
+  "参数配置收口：resolve_schedule_params (schedule_params.py:359) -> _snapshot_value 闭包 -> _build_runtime_snapshot->ensure_schedule_config_snapshot(core.models.schedule_config_runtime)；评分 key 由 build_dispatch_key._safe_positive 守 NaN/Inf/<=0 (dispatch_rules.py:73)"
+ ],
+ "good": [
+  "分层红线在本区完全成立：grep 实证 core/algorithms 零 import core.services，只向下依赖 infra(logging/errors)与 shared(strict_parse/field_parse/degradation/field_labels)，向上对接靠注入而非反向引用。",
+  "依赖注入接缝干净可测：GreedyScheduler 注入 calendar 与 config；ScheduleRunContext.from_legacy_scheduler 把 4 个调度回调装配成数据类；estimate_slot 与 dispatch_key_builder 作为可注入默认参数，让评分与时槽估算可独立替身测试。",
+  "错误与降级纪律分明且数值边界硬：build_dispatch_key._safe_positive 显式过滤 NaN/Inf/<=0 避免 ATC 极端值错排(dispatch_rules.py:73-87)；estimate_internal_slot 用 _max_shift_count 设显式避让上界防死循环(internal_slot.py:192,324)；图上下文校验拒绝传图对象、自检前置后继映射一致性(sgs_graph.py:181-211)。",
+  "SGS 与 batch_order 的缺资源行为差异是有意设计且有回归钉住：SGS 评分阶段缺资源直接抛 ValidationError(无法公平排序就不排，sgs_scoring.py:188 经 sgs.py:404 重抛)，batch_order 则逐工序降级(internal_operation.py:120)；tests/regression_sgs_atc_penalize_missing_resources.py 明确断言此分歧，勿误当 bug 去统一。"
+ ],
+ "findings": [
+  {
+   "severity": "high",
+   "category": "重复",
+   "title": "两套并行的图就绪前沿实现，被测试的那套在生产里是死的",
+   "evidence": [
+    "core/algorithms/greedy/dispatch/ready_queue.py:103 (get_ready_operation_ids 整批计算)",
+    "core/algorithms/greedy/dispatch/sgs_graph.py:33,226,244 (_prepare_graph_ready_state 加 _initialize_graph_ready_frontier 加 _collect_candidates 增量计算)",
+    "core/services/scheduler/graph/ready_queue.py:9 (仅 re-export ready_queue.py)",
+    "tests/scheduler_graph/test_ready_queue.py:16,31 (唯一调用 get_ready_operation_ids 的地方，全是测试)",
+    "grep 实证：get_ready_operation_ids 在 core/web/data 非测试非 shim 代码中零调用"
+   ],
+   "problem": "ready_queue.py(138行)与 sgs_graph.py 各实现一遍 取所有前置已完成或固定的待排工序、按 sort_key 三元组排序 的就绪集合逻辑，并各自重写了 op_id 归一化、拒绝图对象、前置作用域校验、sort_key 三元组校验，连中文报错文案都近乎一字不差。生产 SGS 走 sgs_graph.py 的增量前沿(_collect_candidates 在 graph_state 非空时按 ready_op_ids 取)，而 ready_queue.py 的整批函数只被它自己的单元测试调用，即被测试钉住的那套不是生产真正跑的那套。",
+   "impact": "改一处校验或排序规则不会同步另一处，两条路径静默分叉；ready_queue.py 加其 service shim 是测试续命的死并行实现(主旋律2)。后续若修就绪判定逻辑，极易只改到没人用的那份。",
+   "fix_hint": "二选一：(a) 让生产 SGS 经 get_ready_operation_ids 走单一实现，sgs_graph 只保留增量维护；或 (b) 删除 ready_queue.py 加 core/services/scheduler/graph/ready_queue.py shim，把 test_ready_queue.py 改测 sgs_graph 的前沿函数。需与图派工回归(tests/scheduler_graph/*, regression_scheduler_graph_*)协调。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "high",
+   "category": "重复",
+   "title": "op_id 解析提取分叉成 5 个不同名、行为不一致的私有函数",
+   "evidence": [
+    "core/algorithms/greedy/dispatch/sgs_graph.py:12 _op_id (parse_required_int，非法即抛)",
+    "core/algorithms/greedy/dispatch/sgs_scoring.py:94 _positive_op_id (返回 Optional，非法或 <=0 返回 None)",
+    "core/algorithms/greedy/scheduler.py:357 _operation_op_id (<=0 抛 ValidationError)",
+    "core/algorithms/greedy/seed.py:139 _identity_int (非法返回 0，自写十进制解析；bool->0；非整 float->0)",
+    "内联 parse_required_int(getattr(op,id,0)) 散见 ordering.py:118, sgs.py:143-145, sgs_scoring.py:225"
+   ],
+   "problem": "四个具名函数都在做 把 op.id 取成正整数，但对 bool、非整 float、空串、负值、出错的处理各不相同：有的抛异常、有的返回 0、有的返回 None。seed.py 还自写了 isdecimal 解析，与 sgs_graph 用的 parse_required_int 语义不同。",
+   "impact": "同一个边界 op.id 在 seed 归一阶段(_identity_int 容忍返回 0 被丢)与 SGS 派工阶段(_op_id 严格抛错)可能命运不同；跨阶段对 什么是合法工序号 判定不一致，是静默数据分叉的温床(主旋律3)。",
+   "fix_hint": "在算法层落一个公共 op_id 解析模块，提供两个明确变体：parse_op_id_strict(非法抛 ValidationError) 与 try_op_id(非法返回 None)。逐处替换 _op_id/_positive_op_id/_operation_op_id/_identity_int，对返回 0 与 None 与抛错的差异点标注人工确认。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "medium",
+   "category": "死代码",
+   "title": "config_adapter.py 整文件三个符号零生产调用",
+   "evidence": [
+    "core/algorithms/greedy/config_adapter.py:10 CriticalConfigReadResult / :16 read_schedule_config_value / :26 read_critical_schedule_config",
+    "全仓 grep(含非 .py)：仅 codemap orphan 名单、审计 md、tests/regression_sp06_no_duplicate_defs.py:15(只把路径列进登记表，未调用)引用，零真实调用方"
+   ],
+   "problem": "整个 config_adapter 模块(读配置快照某字段，封装成 missing 或 error 三态结果)从未被任何生产或测试代码调用。真实配置读取走 schedule_params.py 的 _snapshot_value 加 _snapshot_attr 直接 getattr。",
+   "impact": "纯死代码，且被列入 silent_fallback 台账增加门禁噪音；让读者误以为算法层有一条独立的配置读取适配路径。",
+   "fix_hint": "删除 core/algorithms/greedy/config_adapter.py，并从 tests/regression_sp06_no_duplicate_defs.py:15 的登记表中移除该路径。删前确认 silent_fallback 台账对应条目同步关闭。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "medium",
+   "category": "死代码",
+   "title": "downtime.py 两个时间线 helper 死掉，与现役避让逻辑职责重叠",
+   "evidence": [
+    "core/algorithms/greedy/downtime.py:9 get_resource_available / :34 find_earliest_available_start：grep 全仓零调用(仅 开发文档、策划方案、audit 的 md 提及旧设计)",
+    "现役者：occupy_resource(downtime.py:22) 与 find_overlap_shift_end(downtime.py:65) 在 internal_slot/internal_operation/scheduler 有 3 加 2 处真实调用"
+   ],
+   "problem": "get_resource_available(取资源占用最大结束时刻)和 find_earliest_available_start(带 guard 循环找最早可用)是早期设计残留，现役资源避让已由 internal_slot.estimate_internal_slot 的 _latest_overlap_shift_end 移位循环承担(internal_slot.py:309-328)。",
+   "impact": "死函数让 资源可用时间怎么算 出现两种看似可用的入口，find_earliest_available_start 自带的 guard 循环与 internal_slot 的 max_shifts 上界是两套防死循环逻辑，误导维护者。",
+   "fix_hint": "删除 downtime.py 的 get_resource_available 与 find_earliest_available_start，保留 occupy_resource/find_overlap_shift_end。删前确认无测试直接 import(已 grep 确认无)。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "medium",
+   "category": "临时拼凑",
+   "title": "sgs.py 本地 _score_internal_candidate 包装器是多余的同名遮蔽，仅为测试 monkeypatch 而存在",
+   "evidence": [
+    "core/algorithms/greedy/dispatch/sgs.py:31-43 (import ... as _score_internal_candidate_impl 后又定义同名本地函数，只注入 estimate_slot=estimate_internal_slot, dispatch_key_builder=build_dispatch_key)",
+    "core/algorithms/greedy/dispatch/sgs_scoring.py:156-157 (这两个注入值恰好就是 _score_internal_candidate 的默认参数)",
+    "tests/test_greedy_refactor_contracts.py:699 (mock.patch.object(sgs,_score_internal_candidate))",
+    "对比：外部候选 sgs.py:314 直接调 _score_external_candidate 并显式传 dispatch_key_builder=build_dispatch_key(同样是默认值)"
+   ],
+   "problem": "sgs.py 把 sgs_scoring._score_internal_candidate 以 _impl 别名导入，再定义一个同名本地壳，注入的全是被包装函数本就有的默认参数，壳没改变任何行为，纯粹是给测试一个可 patch 的 sgs 级符号。内外部候选处理不对称(外部无壳)，且显式重传默认值制造 这些参数很重要 的错觉。",
+   "impact": "同名遮蔽加 _impl 后缀正是私有公有命名漂移(主旋律4)；读者难判断生产到底走哪个 _score_internal_candidate；冗余注入掩盖了默认值语义。",
+   "fix_hint": "删除 sgs.py:38-43 的本地包装与 _impl 别名，直接 from .sgs_scoring import _score_internal_candidate；测试改为 patch sgs_scoring._score_internal_candidate 或通过 _score_candidate 的注入点。同步去掉 sgs.py:314/325 对默认值的显式重传。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "medium",
+   "category": "重复",
+   "title": "due_date 解析在算法层分叉成三个近义私有函数",
+   "evidence": [
+    "core/algorithms/ordering.py:59 _parse_due_date_for_sort(strict 用 parse_optional_date 否则 parse_date)",
+    "core/algorithms/greedy/dispatch/sgs_scoring.py:34 _parse_due_date(strict 用 parse_optional_date 否则 parse_date)，与前者逻辑一字不差",
+    "core/algorithms/evaluation.py:26 _parse_due_date_state(返回 (date, invalid_flag) 二元组)"
+   ],
+   "problem": "ordering 与 sgs_scoring 的两个 due 解析函数实现完全相同(strict 用 parse_optional_date 否则 parse_date)，只是名字不同；evaluation 的版本多返回 是否非法 标志。三处都在解析同一业务字段。",
+   "impact": "改 due 解析容错策略要同步两到三处，遗漏即静默不一致；属琐碎 helper 复制(主旋律3)的算法层实例。",
+   "fix_hint": "把 ordering._parse_due_date_for_sort 与 sgs_scoring._parse_due_date 合并为一个共享函数(放 date_parsers 或新 algo util)；evaluation 的带 invalid 标志版本可在其上薄封装，不再独立解析。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "low",
+   "category": "死代码",
+   "title": "模块级别名 _due_exclusive 与 _parse_due_date 是无人引用的兼容残留",
+   "evidence": [
+    "core/algorithms/evaluation.py:40-41 (_parse_due_date=parse_date; _due_exclusive=due_exclusive，但同文件 257 用裸 due_exclusive)",
+    "core/algorithms/ortools_bottleneck.py:24-25 (同样两个别名，文件内用裸 parse_date/due_exclusive)",
+    "core/algorithms/dispatch_rules.py:25 (_due_exclusive=due_exclusive，文件内 67 用裸 due_exclusive)",
+    "grep 实证：带下划线的 _due_exclusive 与 _parse_due_date 别名在这三文件外零引用，文件内也只用无下划线原名"
+   ],
+   "problem": "三个文件顶部各自定义 _parse_due_date 或 _due_exclusive 指向 date_parsers 的同名函数，但模块内外都直接用无下划线的原函数，别名从未被引用。",
+   "impact": "死赋值，制造 这里有个私有定制版 的错觉(实际就是原函数)；与主旋律4(私有公有命名漂移)同源。",
+   "fix_hint": "删除 evaluation.py:40-41、ortools_bottleneck.py:24-25、dispatch_rules.py:25 的别名行(注意 sgs_scoring.py:34 的 _parse_due_date 是带 strict_mode 的真实函数，勿删)。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "low",
+   "category": "过度拆分",
+   "title": "run_context 的 callback 回退分支与 _ScheduleFacade 仅测试可达",
+   "evidence": [
+    "core/algorithms/greedy/run_context.py:32-33 (from_legacy_scheduler 同时挂 auto_assign_callback 与 auto_assign_attempt_callback)",
+    "run_context.py:74-82 (attempt 优先取 attempt_callback，:77-78 的 auto_assign_callback 回退与 :82 裸函数回退生产不可达)",
+    "run_context.py:45-64,97-100 (schedule_external/internal 的 callable 检查加 _ScheduleFacade 兜底，生产经 from_legacy_scheduler 时 callback 恒在)",
+    "auto_assign.py:53 非 attempt 版 auto_assign_internal_resources 仅由 scheduler.py:238 的 callback 包装可达，生产恒走 attempt 路径"
+   ],
+   "problem": "ScheduleRunContext 为兼容传入非 ScheduleRunContext 对象提供了多层 callable else 回退(_ScheduleFacade、裸函数 fallback)。生产经 from_legacy_scheduler 时 external/internal/auto_assign 三组 callback 必被设置，故这些 else 分支与非 attempt 版 auto_assign_internal_resources 仅在测试合成上下文中执行。",
+   "impact": "DI 接缝本身是优点(便于测试)，但多条死兜底分支增加阅读面，掩盖生产唯一路径；非 attempt 版 auto_assign 与 attempt 版近似重复维护。",
+   "fix_hint": "保留 DI 接缝结构(在途及可测性价值)，但可收敛：把 auto_assign_internal_resources(非 attempt)标注为兼容包装生产不走，或让其直接委托 attempt 版避免逻辑重复；评估 _ScheduleFacade 兜底是否仍被任何测试需要。低优先，勿在前端在途期大动。",
+   "in_flight_conflict": false
+  }
+ ],
+ "cleanup": [
+  "删除 core/algorithms/greedy/config_adapter.py 整文件(3 符号零调用)，并从 tests/regression_sp06_no_duplicate_defs.py:15 登记表移除该路径。",
+  "删除 core/algorithms/greedy/downtime.py 的 get_resource_available(:9)与 find_earliest_available_start(:34)，保留 occupy_resource/find_overlap_shift_end。",
+  "删除死别名：evaluation.py:40-41、ortools_bottleneck.py:24-25、dispatch_rules.py:25 的 _parse_due_date/_due_exclusive 赋值行(勿动 sgs_scoring.py:34 的真实 _parse_due_date)。",
+  "裁决 ready_queue.py 去留：要么让生产 SGS 经 get_ready_operation_ids 单一实现，要么删 ready_queue.py 加 core/services/scheduler/graph/ready_queue.py shim 并把 tests/scheduler_graph/test_ready_queue.py 改测 sgs_graph 前沿(需与 regression_scheduler_graph_* 协调)。",
+  "统一 op_id 提取：落一个算法层公共解析模块(strict 抛错与 try 返回 None 两变体)，替换 _op_id(sgs_graph.py:12)、_positive_op_id(sgs_scoring.py:94)、_operation_op_id(scheduler.py:357)、_identity_int(seed.py:139)，标注返回 0 与 None 与抛错差异点。",
+  "移除 sgs.py:38-43 本地 _score_internal_candidate 包装与 _impl 别名，直接 import 真函数；测试改 patch sgs_scoring._score_internal_candidate。",
+  "合并 ordering._parse_due_date_for_sort(:59)与 sgs_scoring._parse_due_date(:34)为单一共享 due 解析函数，evaluation._parse_due_date_state 在其上薄封装。"
+ ]
+}

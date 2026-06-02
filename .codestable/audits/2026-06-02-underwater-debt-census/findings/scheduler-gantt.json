@@ -1,0 +1,68 @@
+{
+ "partition": "scheduler-gantt",
+ "health": "有残渣但整体偏干净。调整闭环(publish/draft/scenario/validation/projection)是全分区最成熟的一块:严格 strict_parse、ValidationError 主动暴露、快照 revision/异常工序多重承重护栏、DegradationCollector 统一透出降级,完全贴合灵魂暗线。水下残渣仅三处且均非承重:1 个已提交死方法(名字还撒谎)、1 个在途未提交的逐字重复归一、1 个只读关键链覆盖层的轻度静默丢行盲点。无 P1/P2/P3。",
+ "findings": [
+  {
+   "pathology": "P6",
+   "title": "get_latest_version_or_1 零生产消费的死方法,且名字与实现自相矛盾",
+   "location": "core/services/scheduler/gantt_service.py:60-62",
+   "reference_chain": "定义点 gantt_service.py:60 def get_latest_version_or_1。grep 全仓 'get_latest_version_or_1(' 调用点:唯一命中 tests/regression_scheduler_week_plan_summary_observability.py:59 的 _GanttServiceStub.get_latest_version_or_1 —— 那是 stub 定义而非调用,通读该测试该 stub 方法从不被 invoke。真实周计划路由 web/routes/domains/scheduler/scheduler_week_plan.py:278/284/377 只调用 svc.resolve_week_range 和 svc.get_week_plan_rows,从不碰此方法。函数体 `v = int(history_repo.get_latest_version() or 0); return v if v>0 else 0` —— 名字承诺 'or_1' 实际无历史时返回 0。",
+   "why_debt": "定义后零真实 caller(Flask 路由/registry 已排除,确为静态非盲区),纯死代码;更坏的是测试 stub 镜像了它,造成 GanttService 对外 API 仍在用此方法的假象(P6 典型的'散布多处造成看起来在用')。名字 or_1 与返回 0 的矛盾会误导未来读者以为空态有 version=1 兜底。",
+   "load_bearing": false,
+   "needs_adversarial": false,
+   "severity": "low",
+   "blast_radius": "删方法+删测试 stub 第59行该方法,无生产影响(零 caller)。唯一风险是若未来有人凭名字以为它返回 1 来写新代码——删掉反而消除误导。",
+   "_partition": "scheduler-gantt",
+   "_source": "pass1"
+  },
+  {
+   "pathology": "P5",
+   "title": "关键链结果归一函数 _normalize_critical_chain_result 被逐字复制成第二份私有实现",
+   "location": "core/services/scheduler/gantt_service_support.py:32-51",
+   "reference_chain": "support 版 gantt_service_support.py:32 def _normalize_critical_chain_result,与 provider 版 gantt_critical_chain_provider.py:104 同名 staticmethod 经 diff 语义逐字相同(available 布尔判定、available 时清空 reason/reason_code、edge_type_stats 默认四键、reason_code or 'unknown' 兜底完全一致)。两份都活:gantt_service.py:375 critical_chain=critical_chain_for_plan_detail_filter(rows,filters)(support 路径,有 detail_filters 时)、:377 provider.get_critical_chain(...)(provider 路径,无 filter 时),二者都流入同一 build_gantt_contract(:389)→gantt_contract.py:19 _public_critical_chain 再做一次中文标签映射。git status 证 gantt_service_support.py 为新增未提交(A),provider 版属 2026-04 已提交 3be4757f。即新代码在已有 provider 归一实现存在的情况下,私自又写了一份而非 import/抽公共 helper。",
+   "why_debt": "同一概念(关键链结果归一)的第 2 套私有实现,两份逐字同义但物理分离,已具备语义漂移温床:任何一处改 reason_code 兜底规则或新增字段,另一处不会同步,前端契约会在两条路径下不一致。属 P5 绕过已有实现重写。",
+   "load_bearing": false,
+   "needs_adversarial": true,
+   "severity": "low",
+   "blast_radius": "若改:把 support 路径改为复用 provider 的归一(或抽到 gantt_critical_chain 公共函数)。风险低但需同时覆盖 filtered/unfiltered 两条路径的快照测试。因属未提交在途工作,可能开发者本就打算后续合并——需怀疑者裁决是否当下债 vs 在途中间态。",
+   "_partition": "scheduler-gantt",
+   "_source": "pass1",
+   "_adv_verdict": "real_debt",
+   "_adv_refuted": true,
+   "_adv_precondition": "动它的唯一安全做法=抽取单份 _normalize_critical_chain_result 到两文件共享的 core/services/scheduler/gantt_critical_chain.py，让 support 与 provider 两路都改调它（或 support import provider 的版本），保留归一调用本身。绝不可把 critical_chain_for_plan_detail_filter 简化为直接 return compute_critical_chain_from_rows 的 raw——那会丢掉 available 默认/edge_type_stats 四键/reason_code 兜底，使坏数据/空结果以缺字段形态流入 _public_critical_chain（违反灵魂暗线'坏数据不准静默兜底'，且可能让 collect_gantt_degradation_events 漏报降级）。统一后须跑 tests/regression_gantt_contract_snapshot.py、tests/regression_gantt_critical_chain_unavailable.py、tests/regression_gantt_critical_chain_provider.py 验证 filtered/unfiltered 两路契约逐字不变。又因该文件 uncommitted(A) 疑为在途中间态，落手前先与在途作者确认避免冲掉其后续合并计划",
+   "_adv_evidence": [
+    "core/services/scheduler/gantt_service_support.py:32-51 与 core/services/scheduler/gantt_critical_chain_provider.py:104-128 两份 _normalize_critical_chain_result 逐字段语义相同：is_available 默认 True、available 时清空 reason/reason_code、edge_type_stats 四键默认、edge_count int 兜底、reason_code or 'unknown' 兜底完全一致。support 的 _text(x)=str(x or '').strip() 即 provider 的 str(x or '').strip()，无差异",
+    "support 版 available 用 bool(is_available)、provider 用裸 is_available——但 is_available 必为 bool（要么通过 isinstance(bool) 校验、要么硬编码 True），bool() 是 no-op，输出无差",
+    "两条路径汇入同一出口：gantt_service.py:375 critical_chain_for_plan_detail_filter（有 detail_filters）/ :377 provider.get_critical_chain（无 filter），都流入 :389 build_gantt_contract → gantt_contract.py:19 _public_critical_chain 再统一按 _ALLOWED_CRITICAL_REASON_CODES 白名单复核 reason_code 并映射中文标签——下游对两路产物一视同仁",
+    "两文件都已 import from .gantt_critical_chain（support.py:7、provider.py:10），存在天然的公共 helper 落点，统一为单份零风险",
+    "重复本身不护任何不变量：归一调用对 support 路径确实承重（raw compute_critical_chain_from_rows 缺 available/edge_type_stats 默认，collect_gantt_degradation_events 与 _public_critical_chain 依赖），但一份共享实现即可满足，第二份物理副本不提供任何额外保证",
+    "git status 证 gantt_service_support.py 为新增未提交(A)，provider 版属 3be4757f(2026-04)已提交——属在途新代码绕过既有实现重写，是 P5 真债而非承重设计"
+   ]
+  },
+  {
+   "pathology": "P4",
+   "title": "关键链 _build_nodes 静默丢弃坏时间行却仍报 available:True,无 partial/缺口信号",
+   "location": "core/services/scheduler/gantt_critical_chain.py:84",
+   "reference_chain": "_build_nodes(gantt_critical_chain.py:79) 对 `if not st or not et or not (st<et): continue`(:84)静默跳过坏时间行。链路:provider.get_critical_chain→compute_critical_chain(provider.py:155)→_load_rows=schedule_repo.list_by_version_with_details(全版本,:67-68)→_build_nodes 丢行后,_compute_critical_chain_from_loaded_rows(:312)仍返回 available:True 的正常结果。grep 全文件无 partial/dropped/skipped/degraded 字样——丢了多少行无任何记录。对照同分区:gantt_service.py:402-404 overdue_markers 有 overdue_markers_partial 标志;gantt_tasks.py:191-193 build_tasks 对坏时间行用 _record_bad_time_row 入 DegradationCollector 透出。唯独关键链丢行无声。",
+   "why_debt": "项目灵魂是坏数据不准静默兜底、宁可暴露。关键链已有 available:False+reason 的异常级降级通道,却对'部分行坏时间被剔除'这种数据缺口零信号:用户看到一条 available:True 的关键链,以为是完整的,实际真正的瓶颈工序可能因时间损坏被悄悄排除,链路结论被污染而无人知。这是吞掉了本应让用户看见的数据缺口。",
+   "load_bearing": false,
+   "needs_adversarial": true,
+   "severity": "low",
+   "blast_radius": "若改:_build_nodes 计丢弃行数,经 reason/新增 partial 字段透到契约。风险点:schedule 表时间由持久化层上游校验,正常态几乎不触发,改动主要是补防御性可观测;但 candidate/scenario 明细路径数据来源更松。需怀疑者裁决:只读解释性覆盖层、且数据源已上游校验,是否值得加 partial 标志 vs 接受现状。",
+   "_partition": "scheduler-gantt",
+   "_source": "pass1",
+   "_adv_verdict": "real_debt",
+   "_adv_refuted": true,
+   "_adv_precondition": "这是真债(灵魂'坏数据不准静默兜底'的已知缺口),可安全收口为兄弟范式,但不是裸删:1) 必须保留 :84 的过滤条件本身——删了会让 start/end=None 进入 :114 排序与 :262 max 触发 TypeError,使整条关键链被一行坏数据降为 available:False(过度激进且功能回归);正确做法是'丢行+留痕',照搬 gantt_tasks 的 _record_bad_time_row/DegradationCollector,并新增 critical_chain_partial + dropped_count。2) 任何新增信号键必须同时穿过三道 whitelist:gantt_service_support._normalize_critical_chain_result、provider._normalize_critical_chain_result、gantt_contract._public_critical_chain,否则在归一化层被静默剥离=换了个地方自欺。3) 优先级评估:采纳/候选源 NOT NULL+引擎写入,丢行分支近死;真正能产坏时间的是人工 scenario 调整,更应在 scenario 调整的写入校验源头堵 st<et,而非只在只读关键链读侧补 partial 标志——先确认源头是否已校验,再决定补防御的投入。",
+   "_adv_evidence": [
+    "core/services/scheduler/gantt_critical_chain.py:84 — `if not st or not et or not (st < et): continue` 丢行无任何 collector/counter/flag;全文件 grep 无 partial/dropped/skipped/degraded",
+    "core/services/scheduler/gantt_critical_chain.py:312-334 — _compute_critical_chain_from_loaded_rows 丢行后返回正常结果(无 partial/dropped 字段),经 _normalize 包成 available:True",
+    "core/services/scheduler/gantt_tasks.py:192,351 — 同款 if not st/et/(st<et) 检查在兄弟路径走 _record_bad_time_row 入 DegradationCollector,并在 bad_time_row_skipped>0 时给 empty_reason:已确立的'丢行但留痕'范式",
+    "core/services/scheduler/gantt_critical_chain.py:150-152,159-161 + tests/regression_gantt_critical_chain_unavailable.py:215-248 — 本模块边级 _eligible_*_edge 对缺时间字段 raise ValueError,且回归测试断言'关键链边时间异常不应静默',证明节点级 :84 的静默是已立政策的缺口而非被接受的设计",
+    "core/services/scheduler/gantt_critical_chain.py:114,262 — 删掉 :84 过滤后 start/end=None 流入 _build_process_prev 排序与 _sink_id 的 max 比较→TypeError→被 :338/:352 try/except 接住→available:False:过滤本身是'丢一行坏数据仍出有用链'的刻意韧性,不可裸删",
+    "schema.sql:240-241(Schedule start_time/end_time NOT NULL);ScheduleCandidateRows、ScheduleAdjustmentScenarioRow 同为 NOT NULL — 采纳/候选为引擎写入且 st<et 几乎恒成立,丢行分支接近死代码;唯一现实触发点是人工 scenario 调整路径",
+    "core/services/scheduler/gantt_service_support.py:32-51 + gantt_critical_chain_provider.py:104-128 + gantt_contract.py:19-40 — 三道 whitelist 归一化,新增 partial/dropped_count 键若不同步三处会被静默剥离"
+   ]
+  }
+ ]
+}

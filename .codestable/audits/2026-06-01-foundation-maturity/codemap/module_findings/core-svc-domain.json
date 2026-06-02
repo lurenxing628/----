@@ -1,0 +1,185 @@
+{
+ "key": "core-svc-domain",
+ "partition": "业务域service+report (process/common/system/personnel/equipment/material/report, 88文件)",
+ "score": 4,
+ "design": "本分区两半。(1) 业务域服务(process/personnel/equipment/material/system)是一套高度统一的\"薄服务包仓储\"模板：每个实体服务持有 conn/logger/op_logger/tx_manager/repo，CRUD(list/get/get_optional/create/update/delete)统一用 TransactionManager.transaction() 包写、靠 _validate_fields+_get_or_raise+_normalize_text 三件套校验，Excel 导入拆成 *_excel_import_service.apply_preview_rows 委托给 common.execute_preview_rows_transactional，导出存量靠实体服务的 build_existing_for_excel/ensure_replace_allowed。(2) common/ 是真正被全项目复用的共享层：归一化(normalize/normalization_matrix/enum_normalizers/datetime_normalize)、Excel 基础设施(excel_service/excel_import_executor/excel_templates/openpyxl|pandas backend/factory)、降级(build_outcome+degradation)、解析门面(compat_parse/strict_parse/field_parse/value_policies/number_utils 转发 core.shared.*)。(3) report/ 用 ReportEngine 经 ReportPlanMixin+ExecutionReviewMixin 组合，关键是复用 SchedulePlanQueryService 取数而非重造查询，纯计算拆 calculations/utilization/downtime_impact/calculation_helpers，导出走 exporters/xlsx 并按行数 direct/stream/reject_need_async 三态决策。report 层正处于 reports-workbench-backlink 在途改造中(report_context_filters.py 为新增文件)。职责边界清晰，分层无倒挂(仅向下依赖 models/infrastructure/data.repositories/common)。",
+ "chains": [
+  "Excel导入: route → XxxExcelImportService.apply_preview_rows(op_type_excel_import_service.py:40) → common.execute_preview_rows_transactional(excel_import_executor.py:121) → 逐行 apply_row_no_tx → XxxService.create/update(op_type_service.py:98)",
+  "超期报表: ReportEngine.overdue_batches(report_engine.py:156) → ReportPlanMixin._resolve_plan(report_plan_helpers.py:29) → SchedulePlanQueryService.resolve_plan_view + list_plan_overdue_base_rows_for_resolution → calculations.compute_overdue_buckets(calculations.py via common/overdue_calculations.py:36)",
+  "报表导出: ReportEngine.export_overdue_xlsx(report_engine.py:222) → _build_xlsx_export 大小决策(report_engine.py:111) → exporters.export_overdue_xlsx(exporters/xlsx.py:128) → common._sanitize_export_cell(excel_templates.py:40)",
+  "计划现场复盘: ReportEngine.execution_review(execution_review.py:141) → _execution_review_plan_rows → ReportPlanMixin._list_plan_rows_between/all → SchedulePlanQueryService; 并发 execution_feedback_service.get_execution_state(op_ids) → _execution_review_row 装配(execution_review.py:231)",
+  "工艺路线: PartService.reparse_and_save(part_service.py:254) → _parse_route_or_raise → RouteParser.parse(route_parser.py:108) → route_parser_tokens/constraints/segments/errors 子模块",
+  "资源筛选归一(在途已收口): report_engine/report_context_filters.normalize_report_resource_filter(report_context_filters.py:16) → core/models/schedule_resource_filter.normalize_schedule_resource_filter(schedule_resource_filter.py:43)"
+ ],
+ "good": [
+  "report 层确实复用 SchedulePlanQueryService 取数、不重复造排产查询(report_engine.py:65 注入、report_plan_helpers.py 全程 host.plan_query_service 委托)——第一轮该优点经函数级复核成立。",
+  "7 个实体 CRUD 服务共享一套高度一致的模板(_validate_fields→_get_or_raise→TransactionManager 包写→build_existing_for_excel/ensure_replace_allowed)，op_type/supplier/part/operator/machine/material 读起来几乎同构，可维护性强。",
+  "common Excel 基础设施真正消除了重复：execute_preview_rows_transactional(excel_import_executor.py:121) 把 NEW/UPDATE/SKIP/ERROR 计数+事务+错误采样收口，5 个 *_excel_import_service 仅注入 3 个回调即可复用，路由不再各写导入循环。",
+  "导出大小三态决策(report_engine.py:79 _build_export_decision: direct/stream/reject_need_async)集中实现且有回归测试钉住，write_only 流式分支在每个 exporter 一致处理。",
+  "第一轮标记的'资源筛选归一化三处近重复'已在途收口：现统一走 core/models/schedule_resource_filter.normalize_schedule_resource_filter，report 端 normalize_report_resource_filter 只做上游消歧后委托，repo/service 两份逐字符重复已消除。",
+  "get_excel_backend(excel_backend_factory.py:22) 降级显式可控：prefer=pandas 不可用时 raise、auto 时 warning+回退 openpyxl，非静默吞错；符合第一轮'显式抛错优于静默'的好样板。"
+ ],
+ "findings": [
+  {
+   "severity": "high",
+   "category": "死代码",
+   "title": "ReportEngine.schedule_repo 实例化后从未被使用",
+   "evidence": [
+    "core/services/report/report_engine.py:62",
+    "core/services/report/report_engine.py:18"
+   ],
+   "problem": "构造函数 self.schedule_repo = ScheduleRepository(conn, logger) 建好后，全 report 层(report_engine.py + 4 个 mixin/helper 文件)零调用 self.schedule_repo.xxx——grep 实证：除第 62 行实例化外无任何引用。history_repo/machine_downtime_repo/plan_query_service 均有真实调用，唯独 schedule_repo 是僵尸。这正是第一轮主旋律2'ScheduleRepository 明细查询生产已死'在 report 层的落地证据：report 早已全面改用 SchedulePlanQueryService，旧 ScheduleRepository 注入被忘了删。",
+   "impact": "误导维护者以为 report 仍依赖旧 ScheduleRepository，是 ScheduleRepository 整体退役(专题B)的隐藏阻碍点之一；每次构造 ReportEngine 都多 new 一个无用 repo。",
+   "fix_hint": "删除 report_engine.py:62 的 self.schedule_repo 行，并从第 18 行 import 中移除 ScheduleRepository(若该 import 仅为此用)。需先 grep 确认无测试断言该属性存在。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "medium",
+   "category": "重复",
+   "title": "_normalize_text 静态包装在 9 个域服务逐份复制(+material 2 个 _norm_text 变体)",
+   "evidence": [
+    "core/services/process/op_type_service.py:25",
+    "core/services/process/part_service.py:61",
+    "core/services/process/supplier_service.py:27",
+    "core/services/process/external_group_service.py:26",
+    "core/services/personnel/operator_service.py:28",
+    "core/services/personnel/resource_team_service.py:22",
+    "core/services/personnel/operator_machine_service.py:38",
+    "core/services/equipment/machine_service.py:30",
+    "core/services/equipment/machine_downtime_service.py:39",
+    "core/services/material/material_service.py:25",
+    "core/services/material/batch_material_service.py:24"
+   ],
+   "problem": "9 个服务各写一份 @staticmethod def _normalize_text(value): return normalize_text(value) 的纯转发包装(第一轮 _normalize_text(13)主旋律的本分区实锤)；material 两个服务则另起 _norm_text 名字、内联实现同义逻辑(material_service.py:25 / batch_material_service.py:24)，与其余分区命名口径漂移。",
+   "impact": "纯样板噪声；material 的 _norm_text 与全分区 _normalize_text 命名不一致，新人易误以为语义不同。属低风险但拉低一致性。",
+   "fix_hint": "域服务可直接在调用点用 common.normalize.normalize_text，删掉 9 份 _normalize_text 静态包装(行为完全等价，零风险)；material 的 _norm_text 同样替换为 normalize_text，_norm_float 收敛到 common.number_utils.parse_finite_float。属一致性收口，建议与专题C 合并执行。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "medium",
+   "category": "死代码",
+   "title": "common 三个解析门面(compat_parse/field_parse/value_policies)生产零引用，仅契约测试在养",
+   "evidence": [
+    "core/services/common/compat_parse.py:1",
+    "core/services/common/field_parse.py:1",
+    "core/services/common/value_policies.py:1",
+    "tests/regression_config_service_component_contract.py:13",
+    "tests/regression_config_service_component_contract.py:393"
+   ],
+   "problem": "这三个文件是 core.shared.* 的纯 re-export 门面。grep 实证：compat_parse/field_parse/value_policies 在 core/web/data 生产代码消费数=0，唯一引用来自 regression_config_service_component_contract.py(断言 service 门面与 shared 身份一致)。对照同目录 strict_parse/degradation/number_utils 门面是真有生产消费者的。即第一轮主旋律1'门面仅测试在养'在 common 层的实例。",
+   "impact": "测试把空门面钉死，删不掉；维护者难判断这层门面是设计意图还是迁移残骸。生产实际都直接 import core.shared.*(如 report_number_parsing.py:6 直连 core.shared.strict_parse)。",
+   "fix_hint": "二选一：(a) 若设计上要求服务层不得直接 import core.shared，应让生产代码改用这些门面、补齐消费者；(b) 若允许直连 core.shared(现状如此)，则删除这 3 个无消费门面 + 同步删 regression_config_service_component_contract.py 对应断言。需先与门禁/架构约定确认 service↛shared 是否是红线。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "medium",
+   "category": "死代码",
+   "title": "compute_overdue_items 全仓零调用 + report/calculations 死 import",
+   "evidence": [
+    "core/services/common/overdue_calculations.py:31",
+    "core/services/report/calculations.py:7"
+   ],
+   "problem": "compute_overdue_items(overdue_calculations.py:31) 全仓(core/web/tests/scripts/tools)唯一出现是被 report/calculations.py:7 import 进来，但 report 层只用 calculations.compute_overdue_buckets(report_engine.py:176)，从不调用 compute_overdue_items。同行 import 的 due_exclusive 也未在 report 内部使用，但它被 regression_due_exclusive_guard_contract.py 经 calculations.due_exclusive 再导出钉住(属保留)。",
+   "impact": "compute_overdue_items 是真死函数+死 import(无任何调用方且无测试钉)；放着让 overdue_calculations 看起来比实际更宽。",
+   "fix_hint": "删除 overdue_calculations.py:31 的 compute_overdue_items 函数，并从 report/calculations.py:7 import 列表移除 compute_overdue_items。due_exclusive 保留(有测试经 calculations 再导出)。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "medium",
+   "category": "跨层违规",
+   "title": "下划线'私有'函数被跨模块 import + 近重复(_sanitize_export_cell / _auto_width)",
+   "evidence": [
+    "core/services/common/excel_templates.py:40",
+    "core/services/report/exporters/xlsx.py:12",
+    "core/services/scheduler/resource_dispatch_excel.py:13",
+    "core/services/scheduler/resource_dispatch_actual_excel.py:14",
+    "core/services/common/excel_templates.py:74",
+    "core/services/report/exporters/xlsx.py:15"
+   ],
+   "problem": "_sanitize_export_cell 名义私有(下划线前缀)却被 3 个外部模块跨包 import(report/exporters/xlsx、scheduler/resource_dispatch_excel、resource_dispatch_actual_excel) + 1 测试——这是第一轮主旋律4'下划线私有被跨文件 import'在导出链的复现。同时 _auto_width 在 excel_templates.py:74 与 report/exporters/xlsx.py:15 各存一份(report 版无 explicit_widths 分支)，属近重复。",
+   "impact": "私有契约失真：改 _sanitize_export_cell 签名会静默打断 3 个消费者；_auto_width 两份易分叉(导出列宽口径不一致)。",
+   "fix_hint": "把 _sanitize_export_cell 提升为公开 API(去下划线，如 sanitize_export_cell)并在 excel_templates 显式 __all__ 导出，3 个消费者改引用公开名；_auto_width 抽到 common 单一实现(带可选 explicit_widths 参数)，report exporters 改调用它。属一致性收口，与专题C 同批。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "medium",
+   "category": "重复",
+   "title": "_normalize_cell_value 在 openpyxl_backend 与 pandas_backend 字节级相同",
+   "evidence": [
+    "core/services/common/openpyxl_backend.py:19",
+    "core/services/common/pandas_backend.py:18"
+   ],
+   "problem": "diff 实证两份 _normalize_cell_value 函数体完全一致(strip 字符串、空串转 None、其余原样)。两个 backend 还各有 _normalize_header_cell/_normalize_header_key、_is_blank_* 的同义实现。",
+   "impact": "改一处单元格归一规则忘改另一处，会让两个 Excel 后端读出的数据静默分叉(尤其 pandas 插件启用时)。",
+   "fix_hint": "把 _normalize_cell_value(及 header/blank 同义函数)抽到 tabular_backend.py 作为模块级共享 helper，两个 backend 共用同一份。零行为变化。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "medium",
+   "category": "设计冲突",
+   "title": "service 层存在裸 SQL(与第一轮'service层零裸SQL'断言冲突)",
+   "evidence": [
+    "core/services/process/part_service.py:218",
+    "core/services/system/maintenance/cleanup_task.py:129",
+    "core/services/system/maintenance/cleanup_task.py:136",
+    "core/services/system/maintenance/cleanup_task.py:146"
+   ],
+   "problem": "第一轮结论称'service 层零裸 SQL'，但实证存在反例：part_service.py:218 直接 self.conn.execute(\"SELECT 1 FROM Batches WHERE part_no=? LIMIT 1\") 做删除前引用检查；system/maintenance/cleanup_task.py 三处直接 conn.execute 对 OperationLogs 做 COUNT 与 DELETE。这是删除/清理逻辑绕过 repository 直连 SQL。",
+   "impact": "属地基基准校准点(第一轮断言需修正)。part_service 的 Batches 引用查询绕过了 BatchRepository，与同文件其他引用检查(走 repo.has_xxx_reference)风格不一；cleanup_task 的 OperationLogs 裁剪 SQL 散落在 service 而非 repo，违反'repo 只管数据访问'约定。",
+   "fix_hint": "part_service.py:218 改调 BatchRepository.exists_by_part(pn) 之类的 repo 方法(若无则新增)；cleanup_task 的 COUNT/DELETE OperationLogs 收口到 OperationLogRepository。属分层归属修正，风险低(SQL 简单)。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "medium",
+   "category": "临时拼凑",
+   "title": "execution_review 每个资源字段输出三份同值键(_label/_identity_label/_export_label)",
+   "evidence": [
+    "core/services/report/execution_review.py:287",
+    "core/services/report/execution_review.py:303",
+    "core/services/report/execution_review.py:310",
+    "core/services/report/execution_review.py:337"
+   ],
+   "problem": "_execution_review_row 对 affected_machine/affected_operator/planned_resource/actual_resource 每个都吐 3 个键(xxx_label / xxx_identity_label / xxx_export_label)且三者被赋成完全相同的值(_resource_pair_payload 也是 display==identity==export)。导出端 _execution_review_values(exporters/xlsx.py:408) 再用 export_label or label 兜底。这是预留了'展示名/身份名/导出名可不同'的扩展位但当前三者恒等的拼凑。",
+   "impact": "行字典臃肿(每资源 3 倍键)、调用方需记忆三选一；当前无差异，纯冗余。该文件在途改造中(execution_review.py 本轮 +149/-? 行)。",
+   "fix_hint": "在途改造确认稳定后，若三者确无分化需求，收敛为单键 xxx_label，导出端直接取它。因属在途文件，建议并入 reports-workbench-backlink 收尾而非单独清理。",
+   "in_flight_conflict": true
+  },
+  {
+   "severity": "low",
+   "category": "死代码",
+   "title": "RouteParser._build_supplier_map 仅测试调用",
+   "evidence": [
+    "core/services/process/route_parser.py:201",
+    "tests/regression_supplier_effective_selection_contract.py:130"
+   ],
+   "problem": "_build_supplier_map(route_parser.py:201) 只是 _build_supplier_map_with_global_issues 丢弃第三返回值的薄包装。grep 实证：生产代码全部调 _build_supplier_map_with_global_issues(route_parser.py:128/202)，_build_supplier_map 唯一调用方是 regression_supplier_effective_selection_contract.py 三处。",
+   "impact": "测试钉死一个生产无用的兼容包装，是'测试养着旧接口'的小型实例。",
+   "fix_hint": "把测试三处改调 _build_supplier_map_with_global_issues(取前两个返回值)，然后删除 route_parser.py:201-203 的 _build_supplier_map。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "low",
+   "category": "命名混乱",
+   "title": "material 域 _norm_float vs _norm_float_required 近重复且行为微差",
+   "evidence": [
+    "core/services/material/material_service.py:32",
+    "core/services/material/batch_material_service.py:31"
+   ],
+   "problem": "MaterialService._norm_float(空白→返回0.0) 与 BatchMaterialService._norm_float_required(空白→抛ValidationError) 是同源近重复，差异仅在空值策略，靠函数名后缀(_required)区分。两者都内联了 float 解析+min_v 校验，未用 common.number_utils。",
+   "impact": "两份解析逻辑微妙不同(0.0 兜底 vs 抛错)，散在两个文件易漂移；与分区其余用 common 解析的风格不一致。",
+   "fix_hint": "统一到 common.number_utils.parse_finite_float(已有 allow_none 形态)+ 显式 min_v 校验，material 两服务复用同一 helper，用参数表达 required 与否，消除 _norm_float/_norm_float_required 两名。",
+   "in_flight_conflict": false
+  }
+ ],
+ "cleanup": [
+  "删 report_engine.py:62 self.schedule_repo 死实例化(+ 视情况清 ScheduleRepository import)——report 已全面改用 SchedulePlanQueryService。",
+  "删 overdue_calculations.py:31 compute_overdue_items 死函数 + report/calculations.py:7 对应死 import(保留 due_exclusive，有测试钉)。",
+  "消灭 9 份 _normalize_text 静态转发包装(直接用 common.normalize.normalize_text) + material 的 _norm_text/_norm_float 收敛到 common——并入第二轮专题C helper 去重，零行为变化。",
+  "_normalize_cell_value(及 header/blank 同义函数)从 openpyxl_backend/pandas_backend 抽到 tabular_backend 共享，消除字节级重复。",
+  "_sanitize_export_cell 提升为公开 API(去下划线+__all__)，3 个跨包消费者改公开名；_auto_width 抽 common 单一实现，report exporters 改调。",
+  "决策 common 三个零消费门面(compat_parse/field_parse/value_policies)：要么补齐生产消费者，要么删门面+删契约测试断言(需先定 service↛shared 是否红线)。",
+  "part_service.py:218 Batches 引用查询改走 BatchRepository；cleanup_task.py OperationLogs 的 COUNT/DELETE 收口到 OperationLogRepository——消除 service 层裸 SQL(同时修正第一轮基准断言)。",
+  "_build_supplier_map(route_parser.py:201)测试改调 _build_supplier_map_with_global_issues 后删除该包装。",
+  "在途收尾后再评估 execution_review 三份同值键(_label/_identity_label/_export_label)是否收敛为单键——属 reports-workbench-backlink 在途范围，勿当独立债清理。"
+ ]
+}

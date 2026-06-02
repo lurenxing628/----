@@ -1,0 +1,59 @@
+{
+ "partition": "core-svc-domain",
+ "health": "基本干净,与\"不自欺\"灵魂一致:report 子域全部错误路径都抛 ValidationError/BusinessError 暴露给用户,六个业务域子包的 except/兜底逐条核验均为\"暴露非吞\"。codemap 的 orphan 标记在本分区几乎全是假阳性(排除了 web/routes/plugin/scripts 消费方)。真正水下债只有两处:一处承重护栏缺注释(高危,需保护),一处零生产消费的测试续命 facade 残渣(低危,可收)。",
+ "findings": [
+  {
+   "pathology": "P2",
+   "title": "execution_review 固定正式采用方案的承重不对称——服务层文件内零注释保护",
+   "location": "core/services/report/execution_review.py:141",
+   "reference_chain": "定义点:ExecutionReviewMixin.execution_review(self, version, *, date_from, date_to, batch_id, resource_type, resource_id) [execution_review.py:141] 与 export_execution_review_xlsx [:178] 刻意不收 plan_role/scenario_id;内部 5 处硬钉 ROLE_ADOPTED/scenario_id=None(:112 plan_role=ROLE_ADOPTED, :123 同, :153 _resolve_plan(v, ROLE_ADOPTED, None), :166-167)。对照同文件兄弟报表 report_engine.py:157 overdue_batches(version, plan_role=None, scenario_id=None,...)、:267 utilization、:371 downtime_impact 三者全部接收并透传 plan_role/scenario_id。护栏的保护证据全在别处:web/viewmodels/scheduler_workbench_link_query.py:5 _EXECUTION_REVIEW_FORBIDDEN_EXTRA_PARAMS={...} 与 :266 拦截、设计文档 .codestable/features/2026-06-01-reports-workbench-backlink/reports-workbench-backlink-design.md:28/71/164 明文'计划和现场实际只复盘正式采用方案'。但 execution_review.py 文件本身对'为何独缺 plan_role/scenario_id'零注释。",
+   "why_debt": "这是故意的承重不对称:计划和现场实际复盘=拿正式采用方案对账现场事实,若放开 plan_role/scenario_id,模拟方案预览(is_scenario_preview)或历史非采用方案会冒充'现场实际复盘'展示给车间,把没发生的预览当成既成事实。承重点(对 ROLE_ADOPTED 的钉死)散在服务层 5 行里却无一行注释说明'这是故意的、不要为了统一四个报表签名而加 plan_role',护栏只活在 web 层守卫和 roadmap 文档里——未来 LLM 以'统一四个报表入参'名义重构服务层时会无声抹掉它。",
+   "load_bearing": true,
+   "needs_adversarial": false,
+   "severity": "high",
+   "blast_radius": "若被'统一报表签名'重构加回 plan_role/scenario_id:模拟方案预览/历史方案的明细会以'计划和现场实际'(正式复盘)身份呈现给现场,数据完整性事故;且 web 层 forbidden-params 守卫会与放开后的服务层产生认知错位。删/统一这个不对称=直接踩中灵魂红线'宁可暴露错误也不自欺'的反面。",
+   "_partition": "core-svc-domain",
+   "_source": "pass1",
+   "_adv_verdict": "load_bearing",
+   "_adv_refuted": false,
+   "_adv_precondition": "动它=确认承重护栏，默认不可删/不可统一。若未来确有需求（如允许复盘历史正式版本），必须先：(1) 在 execution_review 服务内对任何非 ROLE_ADOPTED 角色 / 非 None scenario_id 显式 raise ValidationError（硬拒，而非默默回退 adopted），把不变量的执行点留在服务层本身；(2) 给下游 aggregate_states_by_op_ids 增加 role/scenario 作用域过滤，让 join 能自卫，之后才允许任何非采用行流入；(3) 在路由入站层加 plan_role/scenario_id 闸门，并保留/扩展 web 层 forbidden-params 守卫，消除两层认知错位；(4) 用 regression_plan_vs_actual_review / reports_workbench_navigation_contract 锁死。最低成本的即时动作：在 :112/:123/:153 三处硬钉旁补一行中文注释，说明'计划和现场实际只对账正式采用方案，禁止为统一四报表签名而加 plan_role/scenario_id'，把散在别处的不变量可见化到执行现场。",
+   "_adv_evidence": [
+    "core/services/report/execution_review.py:141,178 - 签名刻意不收 plan_role/scenario_id；:112/:123 _list_plan_rows_* 硬钉 plan_role=ROLE_ADOPTED,scenario_id=None；:153 _resolve_plan(v,ROLE_ADOPTED,None)；:166-167 输出固定 ROLE_ADOPTED 标签。全文件零注释说明此不对称是故意的。",
+    "core/services/report/report_plan_helpers.py:29-106 - 宿主方法 _resolve_plan/_list_plan_rows_between/_list_plan_rows_all 完整透传并尊重任意 plan_role/scenario_id（:37 resolve_plan_view、:70/:96 按 role/scenario 取明细）。证明 execution_review 的硬钉是唯一的钉死点，host 层不设防。",
+    "web/routes/reports_page_support.py:404-412 - 兄弟报表 downtime 路由从请求读 raw_plan_role/scenario_id 并透传给 downtime_impact；overdue/utilization 同构。统一压力真实存在且'路由读请求方案再透传'的范式已在同文件落地，统一签名只差 execution_review 一处。",
+    "data/repositories/operation_execution_event_repo.py:267 - aggregate_states_by_op_ids 仅按 op_id 聚合现场反馈，无 role/scenario 过滤。下游 join 无法自卫：喂进任何 op_id 它都照配。",
+    "core/services/scheduler/operation_execution_feedback_service.py:347-362 - _load_current_official_schedule：requested/effective_plan_role!=ROLE_ADOPTED 或 source_table!=SOURCE_SCHEDULE 或 scenario_id 非空 一律 raise not_current_official_plan。即现场反馈只对正式采用方案存在；拿非采用/模拟方案行去配 op_id 反馈=拿真实施工事实去给一个从未执行的假设方案贴'实际开始/偏差'列，预览冒充既成事实。",
+    "web/viewmodels/scheduler_workbench_link_query.py:5-16,266-267 与 tests/regression_plan_vs_actual_review.py:350-359 - 护栏只活在链接生成/导航层（禁 extra_params 追加 plan_role/scenario_id、非采用上下文不生成可点入口），不在服务/路由入参路径上设防。服务签名一旦统一，入站请求路径无任何 plan_role 拒绝逻辑，且会与 web 层 forbidden-params 产生认知错位。",
+    ".codestable/features/2026-06-01-reports-workbench-backlink/reports-workbench-backlink-design.md:28,71,234,253 - 明文决定'计划和现场实际只复盘正式采用方案''不把模拟预览和对比参考方案纳入复盘口径'，确认此不对称是设计决定而非疏漏。"
+   ]
+  },
+  {
+   "pathology": "P3",
+   "title": "三个零生产消费的 re-export facade 残渣(compat_parse/field_parse/value_policies),仅测试续命",
+   "location": "core/services/common/compat_parse.py:1（同类 field_parse.py、value_policies.py）",
+   "reference_chain": "三个文件均为纯 re-export:compat_parse.py 仅 from core.shared.compat_parse import parse_compat_*; field_parse.py 仅 from core.shared.field_parse import parse_field_*; value_policies.py 仅 from core.shared.value_policies import 13 个符号。grep 生产引用(core/ web/ data/ scripts/ 排除 tests):三者全部=0。生产实际走 core.shared.* 直连:core.shared.field_parse 被 core/algorithms/greedy/external_groups.py、schedule_params.py、core/models/schedule_config_runtime_coercion.py、core/services/scheduler/run/schedule_input_builder.py 等直接 import。唯一续命者是测试:tests/regression_config_service_component_contract.py:14/16/19 断言这三个 services.common 别名 re-export shared identity,外加 regression_compat_parse_emits_degradation.py、regression_value_policies_matrix_contract.py。对照同目录有真实生产消费的兄弟 facade:strict_parse.py(4 个生产消费)、degradation.py(14 个生产消费)、number_utils.py(2 个生产消费)——它们是被使用的 services 层 re-export 约定;而这三个是约定的空壳。",
+   "why_debt": "'通用服务底座模块'(commit 5ab57494)迁移后,生产侧对这三个概念要么直连 core.shared、要么根本没用 services.common 入口,留下三个无人(生产)消费的 facade,只靠一个'断言 facade 转发身份正确'的契约测试反向续命——典型的迁移收尾未清+测试自我循环。删掉这三个 .py 及对应测试断言即可,生产零影响。",
+   "load_bearing": false,
+   "needs_adversarial": true,
+   "severity": "low",
+   "blast_radius": "保留的运行期爆炸半径=0(无人调用)。删除的爆炸半径=仅需同步删 regression_config_service_component_contract.py 等 3 处测试断言;若误以为是'services 层必须经 facade'的强制约定而保留,则继续误导后人。判定 needs_adversarial:拿不准这是'有意保留的分层 API 表面约定'还是'纯残渣'——但生产侧已大面积绕过该约定(直连 core.shared)是其偏残渣的实证。",
+   "_partition": "core-svc-domain",
+   "_source": "pass1",
+   "_adv_verdict": "real_debt",
+   "_adv_refuted": true,
+   "_adv_precondition": "删除安全,但需按序保护灵魂暗线(坏数据必须经降级暴露、不静默兜底)的测试覆盖,不能连测一起删光:(1) 先把两个行为测试 regression_compat_parse_emits_degradation.py:18 与 regression_value_policies_matrix_contract.py:18 的 import 从 core.services.common.* 改指 core.shared.compat_parse / core.shared.value_policies——保住降级发射与策略矩阵覆盖(这部分是承重的,但承重点在 core.shared,不在 facade);(2) 从 regression_config_service_component_contract.py 删除三处身份断言(行 14/16/19 在 _SERVICE_COMMON_NEUTRAL_HELPERS 元组内的条目、行 394 起 service_value_policies、行 403 起 service_compat_parse 的 is-identity 断言)。注意:从 _SERVICE_COMMON_NEUTRAL_HELPERS 删条目是安全的——该元组用于 run 层'禁止导入'白名单,把一个即将不存在的模块从禁止清单里移除只会放松对不存在模块的检查,且无任何生产文件导入它;(3) 最后删三个 .py。完成后生产运行期零影响、灵魂暗线覆盖无损失。",
+   "_adv_evidence": [
+    "core/services/common/compat_parse.py:1-13 — 纯 re-export，仅 from core.shared.compat_parse import parse_compat_date/float/int 再 __all__ 转发，无任何逻辑",
+    "core/services/common/field_parse.py:1-5 — 纯 re-export，仅转发 core.shared.field_parse 的 parse_field_float/int",
+    "core/services/common/value_policies.py:1-39 — 纯 re-export，仅转发 core.shared.value_policies 的 13 个符号",
+    "grep core/ web/ data/ scripts/ (排除三文件自身):三者生产引用全部=0;全部引用仅来自 tests/(regression_config_service_component_contract.py:14/16/19/394/403、regression_compat_parse_emits_degradation.py:18、regression_value_policies_matrix_contract.py:18)",
+    "codemap rev_deps.json:core.services.common.{compat_parse,field_parse,value_policies} 均不是 key(零生产被引用);而 core.shared.field_parse 的 dependents 含 greedy/external_groups、schedule_config_runtime_coercion、config_field_coercion、run/schedule_input_builder 等真生产消费——生产直连 shared,绕过 facade",
+    "core/services/common/__init__.py 为空(1 字节),无包级再导出;setup.py/pyproject 等无打包公开面;无 importlib/__import__ 动态引用",
+    "tests/regression_config_service_component_contract.py:352-359 test_scheduler_run_uses_shared_parse_and_degradation_helpers:把 _SERVICE_COMMON_NEUTRAL_HELPERS(含这三者)列为 run 层的 FORBIDDEN imports,断言主排产链必须直连 core.shared——证明不存在'必须经 services.common facade'的强制约定,反而对热路径强制反向",
+    "对照真兄弟 facade:services.common.strict_parse 有 operation_edit_service/supplier_service 等 4 处生产消费、services.common.degradation 有 14 处生产消费——它们是被采纳的约定;这三者是同一约定下零采纳的空壳",
+    "两个行为测试(regression_compat_parse_emits_degradation.py:18、regression_value_policies_matrix_contract.py:18)虽经 facade 导入,但断言的是 core.shared 底层的降级发射/策略矩阵行为,非 facade 特有行为,可平移到 core.shared",
+    "contract 测试 test_services_common_value_policies_reexports_shared_identity / test_services_common_parse_core_reexports_shared_identity(:394/:403)只断言 service.X is shared.X——纯自循环'转发身份正确',正是反向续命这三个空壳的唯一来源"
+   ]
+  }
+ ]
+}

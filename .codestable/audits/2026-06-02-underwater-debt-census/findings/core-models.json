@@ -1,0 +1,71 @@
+{
+ "partition": "core-models",
+ "health": "分区地基总体健康,收口点本身干净自律。本分区的两个真护栏——EvidenceLink.validate()(严格校验可信来源表+缺数据强制标记+链接三键一致)和 coercion 引擎(strict_mode 抛错、否则记可见 degradation 事件而非静默吞)——恰恰是灵魂暗线'不自欺'的正面实现,非债。47 文件里大量 from_row 模型映射规整一致;_helpers 宽松解析与 core.shared 严格解析契约分明,不是绕过收口。orphan_refined 列的 20 个 model 经核全是 __init__ 再导出+repo 映射的静态盲区假阳性。主病只有一处分量级的 P3:ScheduleConfigSnapshot 整栈(快照/校正/字段表/权重)与服务层 config/ 子包近乎逐字节双实现、靠人工锁步同步——当前 27 字段未漂移故属潜伏,但分层并未强制此重复(services→models 合法),codemap 自身已对其报 P1 嫌疑;另有一处活的 legacy 错误串往返桥(P3,needs_adversarial)和三处 grep 实证的死代码/死参数(P6)。建议优先盯 P3 双配置栈的收敛(让 service 栈复用 model 栈)以消除潜伏分叉。",
+ "findings": [
+  {
+   "pathology": "P3",
+   "title": "ScheduleConfigSnapshot 配置快照/校正引擎整栈双实现,锁步手工同步",
+   "location": "core/models/schedule_config_runtime_snapshot.py / schedule_config_runtime_coercion.py / schedule_config_runtime_fields.py / schedule_config_runtime_read.py / schedule_config_runtime_weights.py (整组 5 文件)",
+   "reference_chain": "core/models/schedule_config_runtime_snapshot.py:8-38 ScheduleConfigSnapshot(27字段) == core/services/scheduler/config/config_snapshot.py:24-55 逐字节相同;core/models/schedule_config_runtime_coercion.py:409 ensure_schedule_config_snapshot(499行) ≈ config_snapshot.py:336(494行);core/models/schedule_config_runtime_weights.py:48 normalize_weight_triplet == config_weight_policy.py 仅形参改名;字段键 model 27 == service 23+4(经_candidate_option_spec) 全在册;消费侧: greedy/config_adapter.py:6 + greedy/schedule_params.py:98 走 model 栈,config/summary/run 走 service 栈",
+   "why_debt": "同一概念(运行期配置快照+严格/降级校正+权重归一)两套近乎逐字节相同的实现并存,各约 500 行。表面理由是算法层不能 import 服务层(layer_edges 证实 core.algorithms→core.services 不存在),需要一个'中性投影';但 core.services→core.models 是合法边(42 条),服务栈完全可以反过来复用 model 栈而非另起炉灶。两份靠人工锁步维护(git 证据:b82c9a4d/ef244b9e 两个 commit 同时改两份字段表)。当前 27 字段在册无漂移,故是潜伏债:任何人给配置页(service 栈)加一个字段而忘了同步 model 栈,算法看到的就是旧默认值,而用户在配置页校验/保存的是新值——两边对'同一份配置'各执一词,且算法侧的回落是静默的(踩中灵魂暗线:坏/缺数据静默兜成默认)。codemap 自身已把 coercion.py:409 ensure_schedule_config_snapshot 标记为'hardcoded->render/resolve(P1假冒嫌疑)'。",
+   "load_bearing": true,
+   "needs_adversarial": false,
+   "severity": "medium",
+   "blast_radius": "排产正确性:算法实际使用的配置可能与配置页校验/保存的不一致;任一栈新增字段未同步即静默分叉。当前未漂移,影响为潜伏。",
+   "_partition": "core-models",
+   "_source": "pass2"
+  },
+  {
+   "pathology": "P3",
+   "title": "legacy 错误串正则重解析:把已渲染中文串反解回 code,两代错误体制并存",
+   "location": "core/models/scheduler_public_errors.py:62-103,218-290",
+   "reference_chain": "LEGACY_PUBLIC_PATTERNS(:62)/_LEGACY_CODE_PREFIXES(:94)/legacy_public_error_message(:218)/infer_legacy_public_code(:284) ← 活消费 core/services/scheduler/run/auto_assign_resource_errors.py:42,157 + web/viewmodels/scheduler_summary_display.py:63;同文件 make_public_error(:175) 产结构化 dict+code 是另一代",
+   "why_debt": "老排产路径发出渲染好的中文错误串,下游再用一组正则(infer_legacy_public_code)把串反解回结构化 code——从'渲染输出'倒推'结构化身份',绕过了本应端到端携带 code 的结构化错误收口(make_public_error)。两代错误体制(结构化 dict vs 串重解析)并存,'legacy_/LEGACY_' 命名本身是过渡桥的自供。正则与一长串中文模板字面强耦合,任一文案改字就断。",
+   "load_bearing": true,
+   "needs_adversarial": true,
+   "severity": "medium",
+   "blast_radius": "用户可见错误信息的脱敏与归类;改任一中文错误文案会静默使 legacy 正则失配,错误降级为通用文案。",
+   "_partition": "core-models",
+   "_source": "pass2"
+  },
+  {
+   "pathology": "P6",
+   "title": "死壳 config_adapter:包在本分区配置收口点外、零功能调用方",
+   "location": "core/algorithms/greedy/config_adapter.py:10-27 (相邻文件,经本分区 facade 追出)",
+   "reference_chain": "CriticalConfigReadResult(:10)/read_schedule_config_value(:16)/read_critical_schedule_config(:26) 包裹 core.models.schedule_config_runtime.ensure_schedule_config_snapshot;全仓 grep 三个符号 → 仅 tests/regression_sp06_no_duplicate_defs.py:15 把文件路径列入查重清单,零功能调用方",
+   "why_debt": "这是包在本分区收口点 ensure_schedule_config_snapshot 外面的一层薄封装(读快照+getattr+吞异常成 error 字段),没有任何生产或测试代码真正调用它的函数;唯一引用是一个查重守护测试把它的'路径'列进清单。该 facade 本身(schedule_config_runtime)仍活(schedule_params.py 用),故死的只是这层 adapter 壳。属本分区收口点对外暴露面上的死消费者。",
+   "load_bearing": false,
+   "needs_adversarial": false,
+   "severity": "low",
+   "blast_radius": "无运行期影响;仅是死代码,徒增'本分区收口点有此用法'的假象。",
+   "_partition": "core-models",
+   "_source": "pass2"
+  },
+  {
+   "pathology": "P6",
+   "title": "死别名 _safe_identifier:注释自称内部用,实则零调用",
+   "location": "core/models/scheduler_public_errors.py:163-164",
+   "reference_chain": "def _safe_identifier(:163) 仅转发 public_safe_identifier;词边界 grep 全仓 _safe_identifier(排除 public_/v4_sanitizers) → 仅命中 def 自身;不在 __all__(:349 只有 public_safe_identifier);模块内 :197/:200 全用 public_safe_identifier",
+   "why_debt": "上方注释写'Backward-compatible private alias for callers inside this module',但 grep 实证模块内外均无任何调用方,模块内部也一律直接用 public_safe_identifier。是 8efa88d5 收口改名后遗留的死面包屑,注释还在误导'有内部调用方'。",
+   "load_bearing": false,
+   "needs_adversarial": false,
+   "severity": "low",
+   "blast_radius": "无;纯死函数+误导性注释。",
+   "_partition": "core-models",
+   "_source": "pass2"
+  },
+  {
+   "pathology": "P6",
+   "title": "死参数 raw_value:_record_blank_choice_degradation 收了不用",
+   "location": "core/models/schedule_config_runtime_coercion.py:83-98",
+   "reference_chain": "def _record_blank_choice_degradation(...,raw_value:Any,...)(:88) 函数体(:91-98)只用 field_name/fallback 拼消息,从不引用 raw_value;两个调用点(:155,:210)仍传 raw_value=raw_value",
+   "why_debt": "形参 raw_value 被声明并由两处调用方传入,但函数体内从未被读取(空白值降级消息里只报 fallback)。服务侧孪生函数甚至没有这个参数。是签名上的死参数,徒增调用噪音。",
+   "load_bearing": false,
+   "needs_adversarial": false,
+   "severity": "trivial",
+   "blast_radius": "无;仅签名冗余。",
+   "_partition": "core-models",
+   "_source": "pass2"
+  }
+ ]
+}

@@ -1,0 +1,118 @@
+{
+ "partition": "scheduler-dispatch",
+ "health": "有残渣(轻):本分区主体是 5 月底刚落地的执行车道,roadmap 全 done,降级处理(超期标记 degraded/partial 上抛+日志)忠实贯彻不自欺灵魂线,绝大多数 except 是 anti-P4(重抛或记 degradation)。水下债集中在边角:一个误建空包、资源 scope 列映射在派工链路与超期链路的双轨漂移(派工绕开 column_name 收口点)、一个写后卡片对 schedule 缺失的静默兜底、以及一个生产不可达的休眠反馈开关。无两套并行生产实现,无 plan_id 式死透传。",
+ "findings": [
+  {
+   "pathology": "P5",
+   "title": "派工 scope_type 归一与 operator/machine→列映射绕开 ScheduleResourceFilter 收口点(双轨漂移)",
+   "location": "core/services/scheduler/resource_dispatch_service.py:63 + data/repositories/schedule_plan_query_repo.py:447-463",
+   "reference_chain": "_normalize_scope_type:63 自校验 {operator,machine,team} 并自报错,不调用 core/models/schedule_resource_filter.normalize_schedule_resource_filter(收口点,仅 {machine,operator})。scope_type 经 get_dispatch_payload:431→schedule_plan_query_service.list_plan_dispatch_rows_for_resolution:387→repo.list_dispatch_rows:447-463 内联展开 operator→s.operator_id、machine→s.machine_id、team→o.team_id/m.team_id。同一 repo 文件 list_overdue_base_rows:391-406 走 overdue_resource_filter→ScheduleResourceFilter.column_name(收口点)。即派工读取与超期读取对 operator/machine 的列映射各写一套,已漂移。canonical normalizer 经 grep 在派工链路零引用。",
+   "why_debt": "资源类型→列名这件事项目已有统一收口点(column_name 属性 + normalize_schedule_resource_filter),但派工读取链路私自实现第 N 套:自校验类型 + repo 内联列映射。后果是 operator/machine 列名规则散在两处,改一处忘另一处会让派工和超期对同一资源筛选口径不一致。注:'team'(班组,join 双 team_id)是收口点 {machine,operator} 表达不了的真实第三轴,这是派工不能整体塌缩到收口点的合理原因,但 operator/machine 那部分列映射是可复用却没复用的债。",
+   "load_bearing": false,
+   "needs_adversarial": true,
+   "severity": "medium",
+   "blast_radius": "若有人'统一'把 _normalize_scope_type 直接换成 normalize_schedule_resource_filter,会丢掉 team 轴导致班组视角整页 500;反之若强行让 repo.list_dispatch_rows 复用 column_name 而漏处理 team 分支,team 筛选静默失效返回全量。改动需同时保留 team 特例。",
+   "_partition": "scheduler-dispatch",
+   "_source": "pass1",
+   "_adv_verdict": "load_bearing",
+   "_adv_refuted": false,
+   "_adv_precondition": "先扩容收口点再谈统一，不能反向把派工塞进现状收口点。具体顺序：(1) 给 ScheduleResourceFilter/normalize_schedule_resource_filter 增加 team 轴表达能力——column_name 单列属性不够，需要一个能产出 ((o.team_id=?) OR (m.team_id=?)) 双 join 谓词的接口；并放开'类型有、id 空=全量'语义（当前 collar 强制非空 id 会打断派工的全部人员/全部设备视图）。(2) 先补一条回归断言：scope_type=team 只返回该 team 的行而非全量（钉死静默丢谓词的反例），以及全部人员/全部设备空 id 视图仍可查。(3) 仅在 collar 同时覆盖 team 双轴 join + 空 id 全量语义后，才可把 repo 的 operator/machine 列字面量(s.operator_id/s.machine_id)和 _normalize_scope_type 收敛进去。在此之前两轨必须并存——派工链路对 team 的列映射是收口点表达不了的承重逻辑，删/统一会让班组筛选静默失效(返回全量坏数据)或团队/全量视图整页 500。test_scheduler_resource_dispatch_smoke.py 的 team 用例须全程保持绿。",
+   "_adv_evidence": [
+    "core/models/schedule_resource_filter.py:8 — SUPPORTED_SCHEDULE_RESOURCE_TYPES={machine,operator}: collar has no team axis by design",
+    "core/models/schedule_resource_filter.py:19-24 — column_name returns '' for team (single-column property cannot express team's double-join)",
+    "core/models/schedule_resource_filter.py:59-70 — collar RAISES on unsupported type AND on missing id (proven: normalize_schedule_resource_filter('team','T1') -> ValidationError 资源筛选只支持设备或人员维度; ('operator','') -> 资源筛选缺少资源编号)",
+    "PROVEN TRAP: column_name('team')=='' while has_filter('team')==True — routing team through collar either errors (loud) or silently drops the WHERE clause returning all-teams data (坏数据静默兜底, soul-line violation)",
+    "data/repositories/schedule_plan_query_repo.py:451-463 — dispatch inline mapping: operator->s.operator_id, machine->s.machine_id (incl. empty-id '<> ''' all-resource branches), team->((o.team_id=?) OR (m.team_id=?)); team double-join is structurally inexpressible by column_name",
+    "data/repositories/schedule_plan_query_repo.py:391-406 + data/repositories/schedule_resource_sql_filters.py:34-37 — the OTHER rail (overdue/detail) goes through collar column_name, confirming the two-rail divergence for operator/machine literals (the only genuinely reducible part)",
+    "core/services/scheduler/resource_dispatch_service.py:63-67 — _normalize_scope_type validates {operator,machine,team}: a SUPERSET validator, not a duplicate of the collar; cannot be swapped for the collar without losing team + the all-resource (empty-id) view",
+    "tests/test_scheduler_resource_dispatch_smoke.py:177-191 — scope_type=team&team_id=TEAM-OP is live, tested production behavior (asserts 班组轴 / 跨班组), so a naive validator swap is a real regression not theoretical"
+   ]
+  },
+  {
+   "pathology": "P3",
+   "title": "空包 core/services/scheduler/dispatch/ 为无关提交误建、零引用残渣",
+   "location": "core/services/scheduler/dispatch/__init__.py",
+   "reference_chain": "ls 确认目录仅含 0 字节 __init__.py、无兄弟模块;git log -- 该路径显示唯一提交 24f4c93e 'Implement SP05 path topology guardrails'(SP05 是图拓扑护栏,与资源派工域无关);grep scheduler.dispatch / 'scheduler/dispatch' / importlib 全仓(排除 resource_dispatch、greedy/dispatch、run/schedule_graph_dispatch)零命中。",
+   "why_debt": "迁移/脚手架残渣:一个无关 feature 顺手建的空 package 命名恰好撞上'dispatch'域,既无内容也无引用,制造'派工还有个 dispatch 子包'的假象,误导后来者去找根本不存在的模块。",
+   "load_bearing": false,
+   "needs_adversarial": false,
+   "severity": "low",
+   "blast_radius": "删除无任何运行时影响(零 import)。唯一风险是若未来有人误以为它是命名空间锚点,但当前无证据。",
+   "_partition": "scheduler-dispatch",
+   "_source": "pass1"
+  },
+  {
+   "pathology": "P4",
+   "title": "写后任务卡对 schedule 行缺失静默兜底为'正式采用方案/可写'卡片",
+   "location": "core/services/scheduler/resource_dispatch_execution_service.py:131-141",
+   "reference_chain": "task_card_for_feedback_context:131 self.schedule_repo.get(context.schedule_id) → 若 None,132-141 返回 plan_identity={}、plan_identity_label='正式采用方案'、can_write_feedback=True 的正常卡片。context.schedule_id 来源:routes._feedback_context:171 取自 payload,且 _ensure_feedback_target_in_query:116 已验证 op_id+schedule_id+batch_id 在当前计划查询行内。两条查询路径(计划行 vs schedule_repo.get)对同一 id 给出不一致(行内有、get 返 None)正是真数据缺口,却被兜成普通官方卡。",
+   "why_debt": "项目灵魂线是坏数据不准静默兜底、宁可暴露错误。这里 schedule 行查不到(真缺口/真不一致)时,不抛错也不降级提示,直接返回 can_write=True 的'正式采用方案'卡,把缺口吞掉。虽是写入成功后的展示路径(写门禁在别处已强校验,不构成越权写),但用户看到的'实际/计划对比卡'建立在已不存在的 schedule 行上,属于自欺式兜底。",
+   "load_bearing": false,
+   "needs_adversarial": true,
+   "severity": "low",
+   "blast_radius": "仅影响单条写入成功后的回显卡片正确性;不影响写入门禁(门禁独立强校验)。若改为抛错需确认不会把正常写后回显也误判失败。怀疑者需裁断这是防御性回显还是真该暴露的缺口。",
+   "_partition": "scheduler-dispatch",
+   "_source": "pass1",
+   "_adv_verdict": "real_debt",
+   "_adv_refuted": true,
+   "_adv_precondition": "不要裸删 131-141：直接删会让控制落到 142/147-148 的 schedule.start_time，在写入已提交后抛 AttributeError→500，谎报写失败。正确做法是把该分支改成显式 raise AppError(NOT_FOUND)（与灵魂线一致），并先确认/锁定两个调用点(routes:264-265、278-279)始终在调用本方法前已经历 schedule 存在性写门禁；补一条该分支转 raise 的回归测试。改完不影响 happy path（分支本就不可达），且不削弱任何写门禁。",
+   "_adv_evidence": [
+    "core/services/scheduler/resource_dispatch_execution_service.py:131-141 — the disputed silent fallback: if schedule_repo.get is None, returns can_write_feedback=True / plan_identity_label='正式采用方案' card.",
+    "web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py:264-265,278-279,200-201 — the ONLY production callers; the card is built strictly AFTER the write step returns successfully.",
+    "core/services/scheduler/operation_execution_feedback_service.py:105,347-365 — legacy-action write path: _load_current_official_schedule does schedule_repo.get and raise AppError(NOT_FOUND) if None, INSIDE the write tx before any insert. So by the time the card is built, the row is proven to exist on the same connection.",
+    "core/services/scheduler/resource_dispatch_actual_record_service.py:117-119,214-218 — actual-record write path: _task_ref_from_feedback_context raises NOT_FOUND if schedule_repo.get is None before any result is returned; the card branch is therefore unreachable.",
+    "web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py:149-163,166-180 + core/services/scheduler/resource_dispatch_actual_record_service.py:141-154 — every subsequent write re-derives plan identity server-side and re-runs the official/existence gate, so the card's can_write_feedback flag authorizes nothing (UI hint only); a lying card cannot let a bad write commit.",
+    "tests/regression_operation_execution_feedback_routes.py:336-358 — confirms preview/candidate/stale-version contexts are rejected at the write gate with not_current_official_plan, independent of this display card; no preview-as-official or stale-version write can slip through."
+   ]
+  },
+  {
+   "pathology": "P6",
+   "title": "feedback_write_enabled 休眠开关 + 生产不可达的'保护未开启'提示",
+   "location": "web/viewmodels/scheduler_resource_dispatch_execution.py:24,226-227,361-362",
+   "reference_chain": "唯一数据路径生产者 execution_service.get_execution_context:117,120 把 can_write_feedback 与 feedback_write_enabled 设为同一来源(plan_role_fields.can_write_feedback)。viewmodel build_execution_payload:333 读 context.feedback_write_enabled;_fill_actual_disabled_reason:226 与 build_execution_payload:361 仅当 can_write=True 且 feedback_write_enabled=False 时返回 _FEEDBACK_DISABLED_REASON:24='现场记录保护还没开启'。该 (True,False) 组合在生产数据路径不可达(两者同源恒等);仅 task_card_for_feedback_context 调用方恒传 True、及测试 regression_..._workbench_lane_contract.py:174 显式传 False 才能进。",
+   "why_debt": "参数本身被消费(非纯死参),但它守护的状态组合在生产永不出现,'现场记录保护还没开启'这句用户可见文案真实用户永远看不到。文案口吻('还没开启')像是为未来'反馈保护总开关'预埋的 toggle,却从未接到任何配置/特性开关,成了散布在 viewmodel 多处的死面包屑,制造'有个保护开关在用'的假象。",
+   "load_bearing": false,
+   "needs_adversarial": true,
+   "severity": "low",
+   "blast_radius": "删除该分支与文案不影响任何生产行为(状态不可达),但会破坏 lane_contract 测试(显式造了 False)。怀疑者需裁断这是计划中的未来开关(保留)还是该收的死代码。",
+   "_partition": "scheduler-dispatch",
+   "_source": "pass1",
+   "_adv_verdict": "real_debt",
+   "_adv_refuted": true,
+   "_adv_precondition": "两条收法二选一：(A) 只删死分支+死文案——删除 viewmodel:226-227 与 361-362 的 feedback_write_enabled 分支及 :24 的 _FEEDBACK_DISABLED_REASON 常量，保留参数即可，无测试会断（已 grep 确认无人断言该字符串）。(B) 彻底收口把 feedback_write_enabled 参数整体并入 can_write_feedback——须同步改 4 处调用签名：service:129 默认参、routes:184/192/201 三处 kwarg、test:164-175 的 build_task_card 调用，去掉该 kwarg 后再删 viewmodel 分支。两种做法前都应向刚落地的 ‘resource dispatch execution lane’ roadmap（commit 65870e47）owner 确认：近期不计划在此接缝上线真正的‘现场记录保护总开关’配置；若确无该规划，按默认立场收为普通债。",
+   "_adv_evidence": [
+    "core/services/scheduler/resource_dispatch_execution_service.py:117,120 — can_write_feedback 与 feedback_write_enabled 同设为 bool(plan_role_fields.get('can_write_feedback'))，同源恒等；:204 _empty_context 两者皆 False。主路径只产 (True,True)/(False,False)，(True,False) 不可达",
+    "core/services/scheduler/resource_dispatch_execution_service.py:124-139,159,163 + web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py:184,192,201 — task_card 路径 can_write_feedback 恒为 True、三处调用方恒传 feedback_write_enabled=True，故只产 (True,True)，同样不可达 (True,False)",
+    "web/viewmodels/scheduler_resource_dispatch_execution.py:24,226-227,361-362 — _FEEDBACK_DISABLED_REASON 分支仅在 can_write=True 且 feedback_write_enabled=False 时返回，纯展示用 disabled_reason 文案，不参与任何写入决策",
+    "core/services/scheduler/operation_execution_feedback_service.py:361 — 真正写入护栏 raise 在 not plan_identity.can_write_feedback；不读 feedback_write_enabled",
+    "core/services/scheduler/resource_dispatch_actual_record_service.py:137-138 与 141-149 — 服务端写入守卫 (_execution_context_for_write / _ensure_context_can_write) 均基于 can_write_feedback 与 plan_role/source_table/scenario，全程不消费 feedback_write_enabled；删该展示分支不削弱任何写入不变量",
+    "grep 全仓 .py/.html/.json/.md 无任何 config/settings/特性开关 读取 feedback_write_enabled（唯一旁系命中 web/viewmodels/scheduler_workbench_links.py:379 can_emit_feedback_write_urls 是 URL 发射另一关注点）。证实它不是已接线的未来 toggle，'还没开启'是死面包屑",
+    "tests/regression_resource_dispatch_workbench_lane_contract.py:164-179 — 传 (can_write_feedback=False, feedback_write_enabled=False)，因 can_write=False 在 build_available_actions:234 与 _fill_actual_disabled_reason:224 双重短路，feedback_write_enabled 分支根本未被执行；断言只覆盖 part_label/actual_time_label/actual_delta_summary，grep 确认无任何对 '现场记录保护'/FEEDBACK_DISABLED/disabled_reason 的断言。删分支+文案不破任何测试"
+   ]
+  },
+  {
+   "pathology": "P5",
+   "title": "_positive_int 可空正整数助手在执行车道三处逐字节复制",
+   "location": "core/services/scheduler/resource_dispatch_execution_service.py:23 / web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py:37 / web/viewmodels/scheduler_resource_dispatch_execution.py:32",
+   "reference_chain": "dup_bodies 簇 1c82ac645a6b5466 标出三处函数体完全相同(int→None 兜底+>0 过滤)。dup_symbols 进一步显示 _positive_int 还散在 scheduler_public_errors.py:167、operation_execution_feedback_support.py:162、run/auto_assign_resource_errors.py:114 等 5+ 处。对照收口点 core/shared/number_utils.parse_finite_int:39:allow_none=True 时也只对 None 返 None、对垃圾值 raise;_positive_int 对垃圾值返 None 并过滤非正,语义是'可空跳过'而非'严格解析'。",
+   "why_debt": "同一个'解析正整数'诉求在一个 feature 内复制三份(且全仓十余份),项目有 parse_finite_int 统一解析收口。但 _positive_int 的契约(垃圾静默成 None、过滤非正,用于遍历行时跳过无 op_id 的行)与 parse_finite_int(垃圾抛错)确有差异,故严格说不是直接绕开同一职责,介于 P5(第 N 套私有解析)与可接受的层内小助手之间。",
+   "load_bearing": false,
+   "needs_adversarial": true,
+   "severity": "low",
+   "blast_radius": "若强行换成 parse_finite_int,遍历行收集 op_id 处会从'跳过坏行'变成'抛错中断整页',行为变化。需新增一个 canonical 的'可空正整数'收口而非套用 parse_finite_int。怀疑者裁断是真 P5 还是允许的层内重复。",
+   "_partition": "scheduler-dispatch",
+   "_source": "pass1",
+   "_adv_verdict": "real_debt",
+   "_adv_refuted": true,
+   "_adv_precondition": "先在 core/shared 新增一个 canonical 的【可空正整数】收口(契约必须保持:垃圾→None、非正→None,即 parse_finite_int 的兄弟,如 parse_optional_positive_int),再把这 3 处(及全仓其余 nullable 同体)迁移过去。严禁改用 parse_finite_int / parse_optional_int(allow_none=True)——它们对垃圾值 raise,会把 _op_ids、viewmodel 任务列表、_matching_row 的'跳过坏行'退化为'整页渲染崩溃',并改变 routes:117 用户输入 schedule_id 的拒绝路径。同时不要动 STRICT 变体(operation_execution_feedback_support.py:162、repo _required_positive_int:96、scheduler_public_errors.py:167)——它们契约是 raise,是真正的写入闸门,不在本簇收口范围。",
+   "_adv_evidence": [
+    "三处 def 字节相同(garbage→None, ≤0→None): core/services/scheduler/resource_dispatch_execution_service.py:23 / web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py:37 / web/viewmodels/scheduler_resource_dispatch_execution.py:32",
+    "调用点全是对【可信 DB 行/已校验路由整数】做显示与归属判定,跳过坏行语义: service 174/184/187(_op_ids、_matching_row),viewmodel 256/257/347(build_task_card、任务列表),routes 109/111(_row_matches_feedback_target 比对可信行)",
+    "真正的安全不变量由别处 RAISE 守住,非本助手的静默 None: 反冒充归属校验在无匹配行时抛 SCHEDULE_CONFLICT(routes 132-136);用户输入 schedule_id 为 None 时抛 ValidationError(routes 117-124,fail-closed)",
+    "写入/持久化边界用 STRICT 变体重新校验并抛错(灵魂暗线满足): core/services/scheduler/operation_execution_feedback_support.py:162 _positive_int(value,field) raise;data/repositories/operation_execution_event_repo.py:96 _required_positive_int raise;写路径在 core/services/scheduler/operation_execution_feedback_service.py:222-224 调用 STRICT 变体",
+    "op_id 经 Flask <int:op_id> 路由转换器已是合法整数,本助手不是其唯一闸门: routes 258/329-351 的 POST 处理器",
+    "收口点 parse_finite_int 契约不同,不能直接套: core/shared/number_utils.py:39 allow_none 仅短路空白,垃圾仍 raise(core/shared/strict_parse.py:87 parse_optional_int→81 parse_required_int→46 _parse_finite_int 对非数字 raise),套用会把'跳过坏行'变成'抛错中断整页'"
+   ]
+  }
+ ]
+}

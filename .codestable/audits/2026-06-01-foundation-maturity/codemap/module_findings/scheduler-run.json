@@ -1,0 +1,198 @@
+{
+ "key": "scheduler-run",
+ "partition": "排产主链 core/services/scheduler/run/ (37 文件 / 9140 行)",
+ "score": 4,
+ "design": "这是从 ScheduleService 到算法核心之间的\"服务侧编排层\"，职责是把一次排产请求收口成单一数据契约、跑优化/候选对比、校验并落库。组织上分六簇：input_*（收集批次/工序/执行事实/冻结种子，产出 ScheduleRunInput 不可变契约）、optimizer_*+schedule_optimizer_steps/signature_support（OR-Tools 预热→多起点→局部搜索三段式，全程依赖注入 OptimizerRuntime 可测试）、candidate_*（图分析候选对比+健康度评估+选择策略+落库）、schedule_payload_contract/persistence*（结果校验→事务落库，含执行守卫）、execution_guardrails/persistence_guard（已开工/完工工序的双边界保护）、graph_*（工序图 ready 队列与评分投影）。设计意图明确、单一职责拆分到位，编排层注入 optimize/summary/persist/before_allocate 四个函数，是全系统依赖注入与契约化的标杆。但\"重构开了头没收尾\"的签名也最密集：最优解三元组三套命名靠映射桥接、persist 双入口、已完工下游规则双实现、helper 二十余份复制散落其中。",
+ "chains": [
+  "入口收口：schedule_service.py:261 collect_schedule_run_input → run/schedule_input_collector.py:258（_load_batches_and_operations→_build_reschedulable_state→_collect_execution_guardrails→_build_runtime_support_inputs）→ 返回单一契约 ScheduleRunInput(:31)",
+  "编排分流：schedule_service.py:327 orchestrate_schedule_run → run/schedule_orchestrator.py:275 → _run_plan_selection(:228) 按 cfg.graph_analysis_mode 二选一：optimize_schedule(run/schedule_optimizer.py:71) 或 run_candidate_comparison(run/schedule_candidate_runner.py:101)",
+  "优化三段式：schedule_optimizer.py:71 → runtime.run_ortools_warmstart(schedule_optimizer_steps.py:183) → run_multi_start(:352) → run_local_search(optimizer_local_search.py:217)，全部经 _schedule_with_optional_strict_mode(schedule_signature_support.py:151) 探测签名后调度",
+  "落库主路：schedule_service.py:297 persist_schedule(实为别名 persist_schedule_run_with_candidates) → schedule_candidate_persistence_helpers.py:29 → persist_schedule_core_in_tx(run/schedule_persistence.py:251) + persist_candidate_comparison(run/schedule_candidate_persistence.py:230)",
+  "执行双边界守卫：输入侧 run/schedule_input_runtime_support.py:243 _validate_completed_downstream_seed_constraints；落库侧 run/schedule_execution_persistence_guard.py:168 _validate_completed_downstream_constraints（同 ErrorCode/同 reason）",
+  "图派工链：candidate_runner.py:311 prepare_graph_fn → schedule_graph_report.py:prepare_schedule_graph_for_dispatch → schedule_graph_dispatch_context.py:428 build_graph_ready_context / :260 build_graph_score_projection → 注入 optimize_schedule 的 graph_ready_context"
+ ],
+ "good": [
+  "编排层依赖注入是全系统标杆：orchestrate_schedule_run(schedule_orchestrator.py:275) 注入 optimize_schedule_fn/build_result_summary_fn/before_version_allocate_fn/persist_schedule_fn 四个函数，optimize_schedule(schedule_optimizer.py:89) 再注入 OptimizerRuntime，真正做到核心逻辑可单测",
+  "输入彻底收口为单一不可变契约 ScheduleRunInput(schedule_input_collector.py:31)，所有下游只读这一个 dataclass，消除了参数长列表到处传的典型病",
+  "strict_mode 兼容垫片用 inspect.signature 探测调度器能力(schedule_signature_support.py:27/52)，不支持时显式 raise_unsupported_schedule_keyword 而非静默吞参，且带缓存",
+  "执行守卫与候选健康度是干净的纯计算引擎：schedule_candidate_health.py 全文无 I/O、纯 ScheduleResult 比较；payload 校验做了输入边界+落库边界双重防御(payload_contract.py:238 与 :382)，对'优化结果越界/重复/source 不符'逐条 raise，落库前不留模糊空间"
+ ],
+ "findings": [
+  {
+   "severity": "high",
+   "category": "命名混乱/设计冲突",
+   "title": "最优解三元组三套命名靠两个 getattr 映射函数桥接，字段错配会静默串数据",
+   "evidence": [
+    "run/schedule_optimizer.py:41-44 OptimizationOutcome 用 metrics/best_score/best_order",
+    "run/schedule_candidate_runner.py:39,45,51 CandidatePlan 用 score（非 best_score）/metrics/best_order",
+    "run/schedule_orchestrator.py:62-69 _NormalizedOptimizerOutcome 用 best_metrics/best_score/best_order",
+    "run/schedule_orchestrator.py:88 best_metrics=optimizer_outcome.metrics（metrics→best_metrics 重映射）",
+    "run/schedule_orchestrator.py:100-114 _normalize_candidate_plan 全用 getattr 字符串键，:107 best_score=getattr(candidate_plan,'score')（score→best_score 重映射）"
+   ],
+   "problem": "同一个'最优解(指标/评分/顺序)'概念在三个 dataclass 里三套字段名，靠 _normalize_optimizer_outcome 与 _normalize_candidate_plan 两个逐字段映射函数桥接。其中 candidate 侧的 normalize 用 getattr(obj,'字符串') 取值，把 .score 映到 .best_score、.metrics 映到 .best_metrics。",
+   "impact": "两条来源路径（直接优化 vs 候选对比）字段名不一致，全靠人工记忆映射；getattr 字符串键改错或源 dataclass 改名不会报错，score 可能被映到 best_order 之类，导致评分/顺序静默串位，且因 best_score 是排序依据，错配会让选出的'最优解'其实不是最优。",
+   "fix_hint": "统一三个 dataclass 字段命名（建议都用 metrics/best_score/best_order），删除 _normalize_optimizer_outcome/_normalize_candidate_plan 两个桥接函数，让 orchestrator 直接消费统一契约；过渡期至少把 _normalize_candidate_plan 的 getattr 字符串键改成对 CandidatePlan 的属性直引用，使改名时静态可查。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "high",
+   "category": "重复/死代码",
+   "title": "persist_schedule(独立分支) 与 persist_schedule_run_with_candidates 近似重复，生产只走后者，前者已死",
+   "evidence": [
+    "core/services/scheduler/schedule_service.py:23 persist_schedule_run_with_candidates as persist_schedule（生产实际入口是带候选版）",
+    "core/services/scheduler/schedule_service.py:297 调用的是上面的别名，非独立 persist_schedule",
+    "run/schedule_persistence.py:322 def persist_schedule（独立分支：开 tx→persist_schedule_core_in_tx→_log_schedule_operation）",
+    "run/schedule_candidate_persistence_helpers.py:29 def persist_schedule_run_with_candidates（开 tx→同一个 persist_schedule_core_in_tx→额外 persist_candidate_comparison+delete_without_schedule_history→_log_schedule_operation）",
+    "grep 实证：core/web/data 中独立 persist_schedule 仅经顶层 shim core/services/scheduler/schedule_persistence.py:3 再导出，真实 import 全在 tests/（regression_schedule_persistence_reschedulable_contract.py:34 等 2 处）"
+   ],
+   "problem": "persist_schedule(322) 与 persist_schedule_run_with_candidates(helpers:29) 都做'开事务→调用共享 persist_schedule_core_in_tx(251) 用完全相同的 kwargs→调用 _log_schedule_operation'，后者只是多了候选落库两步。persist_schedule 是后者的严格子集，生产零调用（被 as persist_schedule 别名误导成像在用）。",
+   "impact": "两条落库路径并行，改一处忘改另一处不报错（两者都手写同一长串 kwargs 转发，已是复制粘贴）；命名别名让代码读起来像走 persist_schedule，实际走候选版，误导维护者。",
+   "fix_hint": "删除 run/schedule_persistence.py:322 的独立 persist_schedule 与顶层 re-export shim schedule_persistence.py，把 tests 的 2 处旧导入改到 persist_schedule_run_with_candidates；保留 persist_schedule_core_in_tx 作为唯一共享核。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "medium",
+   "category": "重复/设计冲突",
+   "title": "'已完工前道→下游不能早于实际完工'规则在输入侧与落库侧各实现一遍，遍历逻辑平行拷贝",
+   "evidence": [
+    "run/schedule_input_runtime_support.py:243 _validate_completed_downstream_seed_constraints（基于 seed_results 的 start_time<completed end_time 判定）",
+    "run/schedule_input_runtime_support.py:205 _downstream_operations（按 batch_id+seq>completed_seq 找下游）",
+    "run/schedule_execution_persistence_guard.py:168 _validate_completed_downstream_constraints（基于 ValidatedScheduleRow.start_time<fact.actual_end_time 判定）",
+    "run/schedule_execution_persistence_guard.py:134 _completed_downstream_rows（同样 batch_id+seq>completed_seq 找下游）",
+    "两处抛错完全相同：input_runtime_support.py:231-240 与 execution_persistence_guard.py:157-166 同 ErrorCode.SCHEDULE_CONFLICT 同 reason 'execution_completed_downstream_before_actual_finish'"
+   ],
+   "problem": "同一业务规则在 seed 输入边界和 payload 落库边界各写一遍下游工序遍历+时间比较，错误码与文案逐字相同。这是有意的双边界防御（输入早失败 vs 落库兜底），但两份遍历代码（_downstream_operations vs _completed_downstream_rows）几乎一致，比较口径却微妙不同（一个比 seed.start vs seed.end，一个比 row.start vs fact.actual_end）。",
+   "impact": "规则演进时需同步改两处，漏改一处会让两边界口径分叉且不报错；下游定位逻辑（batch+seq）重复实现，是 bug 易发面。",
+   "fix_hint": "抽一个共享的 downstream_op_finder(operations, completed_op_id, batch_id, seq) 供两侧复用；比较语义保持各自边界但显式注释为何输入侧比 seed、落库侧比 fact，避免被误当成可合并。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "medium",
+   "category": "重复",
+   "title": "op-id/op-seq 取值与正整数解析 helper 在分区内复制 ~9 份、4+ 种命名，且 codemap dup_bodies 因结构漂移漏报",
+   "evidence": [
+    "run/schedule_execution_guardrails.py:19 _op_id 与 run/schedule_input_runtime_support.py:12 _algo_op_id 函数体逐字相同",
+    "run/schedule_input_runtime_support.py:19 _op_seq 与 run/schedule_execution_persistence_guard.py:48 _op_seq 函数体逐字相同（已 sed 比对一致）",
+    "run/schedule_candidate_health.py:173 _op_id_set、schedule_graph_dispatch_context.py:147 positive_op_id_set、schedule_candidate_persistence_helpers.py:11 _operation_ids 都是'取正 op_id 集合'的同义实现",
+    "run/schedule_payload_contract.py:50 _strict_positive_int 与 schedule_persistence_errors.py:13 _positive_int、auto_assign_resource_errors.py:114 _positive_int 三套正整数解析口径不一（一个 raise 一个返回 None 一个返回 0）",
+    "codemap dup_bodies.json 对整个 run/ 零命中——这些复制因细节漂移已逃过结构指纹"
+   ],
+   "problem": "从对象/字典取 op_id、seq、正整数集合的微 helper 散落在分区内近十处，命名分 _op_id/_algo_op_id/_op_seq/_seed_op_id/_op_id_set/positive_op_id_set/_operation_ids/_strict_positive_int/_positive_int，行为有的 raise 有的吞错有的兜 0。",
+   "impact": "取值口径不统一（尤其正整数：raise vs None vs 0）会让边界 bug 表现因调用点而异；复制份数多，统一校验规则时易漏；codemap 盲区证明这类漂移复制无法靠静态工具发现，只能靠人。",
+   "fix_hint": "在 run/ 下建一个 op_identity.py 收口 op_id(op)->int、op_seq(op)->int、positive_op_id_set(values)->Set[int]、strict_positive_int(value)->int 四个函数，逐处替换；正整数三种语义保留为三个显式命名函数（strict_positive_int 抛错 / positive_int_or_none / positive_int_or_zero），消灭就地复制。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "medium",
+   "category": "死代码",
+   "title": "count_actionable_schedule_rows / has_actionable_schedule_rows 生产零真实调用，仅靠 re-export 链与 1 个拓扑测试养活",
+   "evidence": [
+    "run/schedule_payload_contract.py:90 def count_actionable_schedule_rows、:94 def has_actionable_schedule_rows",
+    "唯一内部引用是 :95 has_ 调用 count_，二者无任何业务调用方",
+    "run/schedule_persistence.py:16-17 再导入 + 顶层 schedule_persistence.py:3 再导出，纯转发",
+    "grep 实证：core/web/data 无业务调用，仅 tests/test_sp05_path_topology_contract.py:54-55 在断言它们'存在于导出清单'"
+   ],
+   "problem": "这两个公开函数是历史落库前置检查的残留，现已被 build_validated_schedule_payload 内的 raise_no_actionable_schedule_error 取代，没有任何生产代码调用，仅通过 payload_contract→persistence→顶层 shim 三级 __all__ 转发链保留，并被一个'检查导出符号存在'的拓扑测试钉死。",
+   "impact": "死代码占用阅读预算并制造'还在用'的假象；拓扑测试把它锁死，形成测试养死代码的典型回路。",
+   "fix_hint": "删除 count_actionable_schedule_rows/has_actionable_schedule_rows 及其在 schedule_persistence.py 与顶层 shim 的 re-export，同步删掉 test_sp05_path_topology_contract.py 对应断言项。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "medium",
+   "category": "命名混乱/过度拆分",
+   "title": "schedule_graph_report.py 用 14 条 import X as _X 仅为给跨文件公有函数加下划线伪私有",
+   "evidence": [
+    "run/schedule_graph_report.py:9-50 连续 14 条 from .schedule_graph_dispatch_context import foo as _foo / from .schedule_graph_projection_helpers import bar as _bar",
+    "逐一 grep 实证 14 个别名在本文件均 import+body 各用一次（非死导入），即纯粹为加前缀",
+    "对比真身 schedule_graph_dispatch_context.py 中这些函数都是公有名（build_graph_ready_context 等）"
+   ],
+   "problem": "graph_report 把从兄弟模块导入的公有函数统统 as 成下划线前缀（_build_graph_ready_context 等），制造'本文件私有'的错觉，但它们在 dispatch_context 里是公有 API 且被多处调用。",
+   "impact": "读者看到 _foo 会以为是本模块私有实现，实际是跨文件公有依赖，误导职责边界判断；14 行噪声 import 拖累可读性。这是命名约定漂移（私有/公有语义被 alias 模糊）。",
+   "fix_hint": "去掉 as _ 别名，直接 import 公有名；若担心命名空间污染，改为 import 模块再 module.func 调用。属纯机械改动，无行为风险。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "medium",
+   "category": "重复",
+   "title": "_normalized_status_text 与 _TERMINAL_OPERATION_STATUSES 在三处各定义一份且签名漂移",
+   "evidence": [
+    "core/services/scheduler/schedule_service.py:32 _TERMINAL_OPERATION_STATUSES + :38 def _normalized_status_text(value)（无 default 参数）",
+    "run/schedule_persistence.py:24 _TERMINAL_OPERATION_STATUSES + :27 def _normalized_status_text(value,*,default)（带 default）",
+    "run/schedule_input_collector.py:75 def _normalized_status_text(value)（又一份，无 default）"
+   ],
+   "problem": "'工序终态集合'常量与'状态文本归一化'函数在调用方 schedule_service 与被调方 run/schedule_persistence、run/schedule_input_collector 中各存一份，且三处签名不一致（persistence 版多了 *,default 关键字参数）。",
+   "impact": "终态判定口径分散在三处，BatchOperationStatus 枚举调整时需同步三份；同名函数签名不同，跨文件阅读时易误判行为。",
+   "fix_hint": "把 _TERMINAL_OPERATION_STATUSES 与 normalize_status_text(value,*,default=PENDING) 收口到 core/services/scheduler 下已有的 number_utils 或新建 status_utils，三处统一引用带 default 的版本。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "low",
+   "category": "重复",
+   "title": "评分元组的 float 强转 helper 在 4 个文件各写一遍，读 .score 与 .best_score 两种属性",
+   "evidence": [
+    "run/schedule_candidate_runner.py:375 _candidate_score 读 outcome.best_score",
+    "run/schedule_candidate_selection.py:131 _score 读 candidate.score",
+    "run/schedule_candidate_summary.py:15 _score_list 读 candidate.score",
+    "run/schedule_candidate_persistence_models.py:25 _score_json 读 candidate.score"
+   ],
+   "problem": "'把评分序列逐项 float() 成 tuple/list'的逻辑在四处复制，且因第一项发现（三元组命名不统一）导致它们读的属性名分 .score 与 .best_score 两种。",
+   "impact": "评分序列化口径分散，配合命名不统一放大了'读错字段'的风险；属轻度复制债。",
+   "fix_hint": "随第一项命名统一后，抽一个 score_as_floats(candidate)->Tuple[float,...] 共享；在命名未统一前不要单独动，以免固化错误属性名。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "low",
+   "category": "过度拆分",
+   "title": "optimizer_runtime.py(15 行) 与 freeze_window_prefixes.py(30 行) 等微模块拆分过细",
+   "evidence": [
+    "run/optimizer_runtime.py 全文 15 行仅一个 OptimizerRuntime dataclass",
+    "run/freeze_window_prefixes.py 全文 30 行仅 3 个被 freeze_window.py 独占调用的函数",
+    "grep 实证：OptimizerRuntime 仅 schedule_optimizer.py + 2 个测试用，freeze_window_prefixes 仅 freeze_window.py 用"
+   ],
+   "problem": "OptimizerRuntime 这个测试注入 seam 的 dataclass 单独成 15 行文件；freeze_window_prefixes 的 3 个 helper 仅被 freeze_window.py 独占使用却单独成文件。",
+   "impact": "分区文件数虚高（37 个），跳转成本增加；但因 OptimizerRuntime 确实是被测试独立 import 的注入点，拆分有其合理性，故仅低优。",
+   "fix_hint": "freeze_window_prefixes.py 的 3 个函数可内联回 freeze_window.py（唯一调用方）；optimizer_runtime.py 因被测试单独引用为注入 seam，建议保留。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "low",
+   "category": "注释错误/校准",
+   "title": "[校准纠偏] 第一轮称 schedule_with_optional_strict_mode 被改名成私有，实证为不准确",
+   "evidence": [
+    "run/schedule_signature_support.py:151 def schedule_with_optional_strict_mode 定义处是公有名（无下划线）",
+    "run/schedule_optimizer.py:30 与 schedule_optimizer_steps.py:22 是 import ... as _schedule_with_optional_strict_mode，仅导入处加下划线",
+    "对比 _run_multi_start/_run_ortools_warmstart：schedule_optimizer_steps.py:183/352 定义处即私有，确属跨文件 import 私有函数"
+   ],
+   "problem": "第一轮 §3.1 把 schedule_with_optional_strict_mode→_schedule_with_optional_strict_mode 列为'公有被改私有'，但实证其定义是公有，只是两个消费者在 import 时 as 加了下划线（与第 6 项 graph_report 同类 alias 习惯）。真正'定义即私有却跨文件 import'的只有 _run_multi_start/_run_ortools_warmstart。",
+   "impact": "避免后续把一个本就公有的函数当成'被错误私有化'去改定义；真正该处理的是消费者侧的 as _ 别名习惯，以及 _run_multi_start 等的私有跨文件 import。",
+   "fix_hint": "统一约定：跨文件 import 不加 as _ 前缀；把 schedule_optimizer_steps.py 中 _run_multi_start/_run_ortools_warmstart 去掉定义处下划线（它们本就跨文件被 schedule_optimizer.py import），使'下划线=模块私有'约定恢复可信。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "low",
+   "category": "职责不清",
+   "title": "schedule_graph_dispatch_context.py 中函数名 node_metrics_by_op_id 与 graph_score_sample 的同名形参遮蔽",
+   "evidence": [
+    "run/schedule_graph_dispatch_context.py:205 def node_metrics_by_op_id(...)（模块级函数）",
+    "run/schedule_graph_dispatch_context.py:240 graph_score_sample 的形参也叫 node_metrics_by_op_id",
+    "run/schedule_graph_dispatch_context.py:352 调用处 metrics_by_op_id = node_metrics_by_op_id(...) 用函数，:391 又把结果以 node_metrics_by_op_id=metrics_by_op_id 传入"
+   ],
+   "problem": "模块级函数 node_metrics_by_op_id 与 graph_score_sample 的形参重名，在 graph_score_sample 作用域内函数被形参遮蔽。当前调用顺序正确所以无 bug，但命名遮蔽降低可读性。",
+   "impact": "读者在 graph_score_sample 内看到 node_metrics_by_op_id 会误以为是那个函数；维护时若在该作用域内想调用同名函数会踩坑。属可读性债，无现存 bug。",
+   "fix_hint": "把 graph_score_sample 的形参更名为 metrics_by_op_id（与调用处局部变量一致），消除遮蔽。",
+   "in_flight_conflict": false
+  }
+ ],
+ "cleanup": [
+  "统一最优解三元组命名：把 OptimizationOutcome/CandidatePlan/_NormalizedOptimizerOutcome 三个 dataclass 字段都改为 metrics/best_score/best_order，删除 schedule_orchestrator.py:78 _normalize_optimizer_outcome 与 :100 _normalize_candidate_plan 两个映射函数（删前先把 _normalize_candidate_plan 的 getattr 字符串键改成属性直引用以便静态校验）",
+  "删除死代码 persist_schedule(run/schedule_persistence.py:322) 与顶层 re-export shim core/services/scheduler/schedule_persistence.py，tests 的 2 处旧导入改到 persist_schedule_run_with_candidates",
+  "删除死代码 count_actionable_schedule_rows/has_actionable_schedule_rows(payload_contract.py:90/94) 及其在 schedule_persistence.py:16-17 与顶层 shim 的 re-export，删 test_sp05_path_topology_contract.py:54-55 断言项",
+  "新建 run/op_identity.py 收口 op_id/op_seq/positive_op_id_set/strict_positive_int(+_or_none/_or_zero 变体)，替换 schedule_execution_guardrails.py:19、schedule_input_runtime_support.py:12/19、schedule_execution_persistence_guard.py:48、schedule_candidate_health.py:173、schedule_graph_dispatch_context.py:147、schedule_candidate_persistence_helpers.py:11、payload_contract.py:50、schedule_persistence_errors.py:13 等约九处复制",
+  "抽共享 downstream_op_finder 供 schedule_input_runtime_support.py:205 与 schedule_execution_persistence_guard.py:134 复用，消除已完工下游遍历的平行拷贝",
+  "去掉 schedule_graph_report.py:9-50 的 14 条 import...as _ 下划线别名，改直引用公有名；并把 schedule_optimizer_steps.py:183/352 的 _run_multi_start/_run_ortools_warmstart 去私有化，恢复'下划线=模块私有'约定可信度",
+  "把 _TERMINAL_OPERATION_STATUSES 与 normalize_status_text(带 default) 收口到 scheduler 公共 util，统一 schedule_service.py:32/38、run/schedule_persistence.py:24/27、run/schedule_input_collector.py:75 三处",
+  "退役顶层 run/ 转发 shim（schedule_optimizer.py/schedule_orchestrator.py/schedule_input_builder.py/schedule_input_collector.py/freeze_window.py，三种写法 sys.modules 替换/__getattr__/直接 from import），先把 tests 中约 18 处旧扁平导入批量改到 run.* 新路径，再删 shim；此动作纯后端、不触前端 roadmap",
+  "graph_score_sample(schedule_graph_dispatch_context.py:235) 的形参 node_metrics_by_op_id 改名为 metrics_by_op_id，消除与模块级同名函数的遮蔽",
+  "freeze_window_prefixes.py 的 3 个函数内联回唯一调用方 freeze_window.py（optimizer_runtime.py 因是测试注入 seam 保留）"
+ ]
+}

@@ -1,0 +1,118 @@
+{
+ "partition": "scheduler-config-summary-graph",
+ "health": "有残渣(非重灾区)。config/ 与 summary/ 两个子系统极干净——except 全部 re-raise ValidationError、解析失败一律 append warning + record degradation event + summary_count_parse_failed 标记,是\"坏数据不准静默兜底\"灵魂原则的范本。残渣集中在三处:(1) SP05 半截包拆分的兼容尾巴(5 个顶层 shim + 4 个空 delayed 包),被 test_sp05_path_topology_contract 钉死、生产已迁走只剩测试用,rot 风险低但确属残渣;(2) analysis/schedule_diagnostic_contract.py 是 web 侧 LIVE 诊断 helper 的零生产消费孪生副本;(3) graph/ready_queue.py 兼容导出 + 其底层 get_ready_operation_ids(PR-5 标 done)是被 sgs_graph.py 取代的未接线并行实现。无 P1 写死假冒、无未注释的 P2 隐藏护栏。",
+ "findings": [
+  {
+   "pathology": "P3",
+   "title": "analysis/schedule_diagnostic_contract.py 是 web 侧 LIVE 诊断构造器的零生产消费孪生副本",
+   "location": "core/services/scheduler/analysis/schedule_diagnostic_contract.py:13-79",
+   "reference_chain": "定义点:schedule_diagnostic_contract.py:13 build_diagnostic_link / :24 build_diagnostic_item / :45 build_diagnostic_section,产出 dict 键 key/label/value/level/message/details/links(item)与 key/title/status/status_label/summary/items/links/degraded/degradation_events/empty_reason(section)。唯一引用:tests/regression_scheduler_analysis_diagnostic_contract.py:10,生产 importer=0(grep 全仓 scheduler.analysis 仅此一条 test)。LIVE 孪生:web/viewmodels/scheduler_analysis_diagnostic_helpers.py:41 build_item / :62 build_section 逐键相同形状,被 scheduler_analysis_diagnostics.py:54,98、scheduler_analysis_diagnostic_delay_impact.py、_health.py 真实消费渲染分析页。git:core 合同 2026-05-21(45c222a0 '增加排产分析诊断块合同')早于 web 落地 2026-05-23(ed695e79 '添加排产分析页诊断摘要')——页面落地时没 import core 合同而是在 web 层另写了一份本地副本,把 core 合同晾了 12 天。",
+   "why_debt": "同一职责(诊断 section/item 构造契约)两套实现:core 版语义完整但零生产消费,web 版是实际渲染用的活路径。core 合同被绕过,沦为只靠 1 个测试续命的悬空副本。",
+   "load_bearing": false,
+   "needs_adversarial": true,
+   "severity": "medium",
+   "blast_radius": "误删 core 合同:破 1 个 test(regression_scheduler_analysis_diagnostic_contract),不影响任何生产页面(web 用自己的 helper)。但若 PR-9 本意是让 web 改用 core 合同收口,删了会让在途计划落空——这正是怀疑者要裁决的:它是 PR-9 的预埋脚手架(networkx items.yaml:435 与 web helpers 并列为 PR-9 primary_paths,PR-9 status:planned 未开工)还是被 web 本地副本架空的废稿。",
+   "_partition": "scheduler-config-summary-graph",
+   "_source": "pass1",
+   "_adv_verdict": "real_debt",
+   "_adv_refuted": true,
+   "_adv_precondition": "动手前先调和过时的 PR-9 roadmap,而非盲删:在 networkx-scheduler-graph-introduction-items.yaml 的 scheduler-graph-analysis-diagnostic-sections 项里,把 schedule_diagnostic_contract.py 从 primary_paths(:435)及 ruff/pyright exit_checks(:480-481)移除并标注该收口已被 web 路径取代;随后删掉 core 文件并清理 tests/regression_scheduler_analysis_diagnostic_contract.py:10-14 的 core import 与 :21-82 三个 core-only 测试用例。切记删的是 core 这份(零消费),绝不能反向删 web twin——它承载活渲染路径与非有限数字安全护栏。若团队仍坚持让 core 成为规范收口点(走 PR-9 本意),那必须作为整体重构:把 web helper 的 build_item/build_section 改指向 core 并把灵魂暗线护栏一并下沉,再连同测试一次性迁移,而不是单点删改任一侧。",
+   "_adv_evidence": [
+    "仅1个测试引用,生产importer=0:grep全仓 schedule_diagnostic_contract 唯一命中 tests/regression_scheduler_analysis_diagnostic_contract.py:10;orphan_refined.json:347 列其为零引用候选;rev_deps.json 无该模块条目",
+    "活渲染路径绕开它:web/viewmodels/scheduler_analysis_diagnostics.py:5-45 的 build_item/build_section 只 import 自 web 兄弟模块 scheduler_analysis_diagnostic_helpers.py:41/:62,从不 import core 合同;链路 helpers→diagnostics.build_diagnostic_sections→scheduler_analysis_vm.py:122→analysis.html 全程不碰 core",
+    "core 合同无任何安全逻辑:schedule_diagnostic_contract.py:12-70 纯 dict 形状拼装+str(x or \"\") 强转;真正的灵魂暗线护栏(NonFiniteDiagnosticNumber、safe_int/safe_float 拒非有限、status 缺失返回'unknown'不猜 ok)只在 web helper scheduler_analysis_diagnostic_helpers.py:101-152,171-179,core 版一条都没有",
+    "测试未把 core 当 web 的形状锚:web 键集断言 regression_scheduler_analysis_diagnostic_contract.py:229-240 是硬编码字面量,与 core builder 解耦;:21-82 三个 core-only 测试独立验 core 形状,因 core 无生产消费而是自证空转",
+    "是被架空的废稿而非在途脚手架:虽 networkx-scheduler-graph-introduction-items.yaml:424-435 的 PR-9 项(status:planned)把该文件列为 primary_path,但同项 notes 自述诊断合同+模板 parts 已在前序分支完成,分析页今天已通过 web twin 实际渲染;git 显示 core 单提交 45c222a0(2026-05-21)此后从未改动,web helper 晚2天落地(ed695e79)且获追加修复(184121ff)——core 冻结、活路径继续演进",
+    "删除爆炸半径=仅破 regression_scheduler_analysis_diagnostic_contract 1 个测试,零生产页面、零安全不变量;web twin(承载活渲染+非有限护栏)原封不动"
+   ]
+  },
+  {
+   "pathology": "P3",
+   "title": "graph/ready_queue.py 兼容导出 + 底层 get_ready_operation_ids 是被 sgs_graph.py 取代的未接线并行实现",
+   "location": "core/services/scheduler/graph/ready_queue.py:1-12",
+   "reference_chain": "ready_queue.py:9 re-export get_ready_operation_ids、ReadyQueueContractError ← core/algorithms/greedy/dispatch/ready_queue.py:103。该 shim 自述用途'so SGS does not import the scheduler service layer'(意图当 SGS 的 ready 桥)。grep get_ready_operation_ids( 全仓:只有 tests/scheduler_graph/test_ready_queue.py 6 处调用,生产 0。grep 该 shim 被谁 import:只有 tests/regression_scheduler_graph_lazy_runtime_contract.py:27 与 tests/scheduler_graph/test_metrics_topology.py:140(都是断言其保持懒加载)。LIVE 的 SGS ready 排序实际走 sgs.py:16 from .sgs_graph import _prepare_graph_ready_state(定义 sgs_graph.py:33)→ schedule_graph_dispatch_context.py 构造 graph_ready_context 喂给 sgs_graph,全程不碰 ready_queue/get_ready_operation_ids。",
+   "why_debt": "PR-5(roadmap 标 done '让 ready 队列参与 SGS 候选')留下的早期抽象:get_ready_operation_ids 这套带完整契约校验的纯函数 + graph/ready_queue.py 桥,最终被 sgs_graph.py 的 _prepare_graph_ready_state 取代,自己沦为只有测试调用的死路径。lazy-runtime 合同只是顺带枚举它('若存在则必须懒'),并不证明它活。",
+   "load_bearing": false,
+   "needs_adversarial": true,
+   "severity": "medium",
+   "blast_radius": "误删 graph/ready_queue.py:破 regression_scheduler_graph_lazy_runtime_contract、test_metrics_topology 两个 test 的模块枚举断言,不影响任何排产产出(SGS 不调它)。需怀疑者裁决:get_ready_operation_ids 是 networkx roadmap 后续增强(候选续跑/最小费用流 PR-11)的预留接口,还是 sgs_graph 上位后该收的旧抽象。",
+   "_partition": "scheduler-config-summary-graph",
+   "_source": "pass1",
+   "_adv_verdict": "real_debt",
+   "_adv_refuted": true,
+   "_adv_precondition": "同一改动内三处测试耦合必须一起处理，否则会破测试模块枚举/导入：1) 删除专属功能测试 tests/scheduler_graph/test_ready_queue.py（否则其 import 失败）；2) 从 tests/regression_scheduler_graph_lazy_runtime_contract.py:27 与 tests/scheduler_graph/test_metrics_topology.py:140 的模块名数组里摘掉 \"core.services.scheduler.graph.ready_queue\"；3) 在 PR-5 决定/roadmap 备忘里补一句‘ready_queue helper 已被 sgs_graph._prepare_graph_ready_state 取代、连同 service 层兼容 shim 一并下线’，避免历史失忆。删除前确认 sgs_graph 的 ValidationError 校验语义已覆盖原 helper 的合同点（坏 op_id/前后置/排序 key/图对象误传），以保灵魂暗线‘坏数据不静默兜底’不退化——经核对 sgs_graph.py:20-160 已等价或更严，无需迁移逻辑。\"",
+   "_adv_evidence": [
+    "core/services/scheduler/graph/ready_queue.py:1-11 — 整文件仅 re-export ReadyQueueContractError/get_ready_operation_ids，自述桥意图但无生产引用",
+    "grep get_ready_operation_ids( 全仓：唯一调用点是 tests/scheduler_graph/test_ready_queue.py（6 处），生产 0 调用",
+    "grep 该 shim 的 import：仅 tests/regression_scheduler_graph_lazy_runtime_contract.py:27 与 tests/scheduler_graph/test_metrics_topology.py:140，二者只把模块名放进枚举数组断言其保持懒加载/不反向 import，并不调用其函数",
+    "LIVE 路径独立：core/algorithms/greedy/dispatch/sgs.py:16-25 from .sgs_graph import _prepare_graph_ready_state（非 shim、非 get_ready_operation_ids）",
+    "sgs_graph.py:33 _prepare_graph_ready_state + _initialize_graph_ready_frontier 自带完整校验套件，抛 ValidationError(field=graph_ready_context)（项目标准错误），与死函数抛的 ReadyQueueContractError 是不同异常类，生产无人捕获后者",
+    "core/services/scheduler/run/schedule_graph_dispatch_context.py 只 import graph.input_adapter/scoring，从不 import ready_queue shim",
+    "core/algorithms/greedy/dispatch/__init__.py:13-19 仅导出 dispatch_batch_order/dispatch_sgs，不导出 ready 符号；全仓无 getattr/字符串动态引用 get_ready_operation_ids",
+    "roadmap items.yaml:178 PR-5(done) 记录 helper 下沉算法层+service 层保留兼容导出；:232 PR-6 记录‘图 ready 上下文校验下沉到 sgs_graph.py’即被取代；:507-521 PR-11(planned 候选续跑) 讲输入快照续跑，未把此接口列为预留；:380-422 PR-8 资源匹配(done) 用自有 first-wave ready 口径不走此 shim"
+   ]
+  },
+  {
+   "pathology": "P3",
+   "title": "顶层 5 个 config/summary shim:生产已迁走、仅 53 处测试经它进、被 SP05 钉死为冻结兼容面",
+   "location": "core/services/scheduler/config_service.py:1-6 (+config_snapshot.py/config_validator.py/schedule_summary.py/schedule_summary_types.py)",
+   "reference_chain": "5 个 shim 各 6-30 行,纯 from .config.X / .summary.X 转出。grep 生产 importer(排除 tests):0——生产一律走深路径 .config.config_service / .summary.schedule_summary,或经 scheduler/__init__.py:21 __getattr__ 映射到 .config.config_service;web 侧 web/error_boundary.py:104、scheduler_config.py:11 等也走 core.services.scheduler.config / scheduler import ConfigService(__init__ 收口),无人走顶层 shim。grep 测试 importer:53 处 from core.services.scheduler.config_service/schedule_summary import …。钉死点:tests/test_sp05_path_topology_contract.py:20-31 SERVICE_BEHAVIOR_COMPAT_SYMBOLS 把这 5 个列为'behavior-compat 别名',:300-339 断言旧模块 __all__ 与符号 is 新模块,且 PRODUCTION_LEGACY_IMPORT_SCAN_ROOTS(:135)禁止 core/web 生产代码 import 它们。",
+   "why_debt": "config→config/、summary→summary/ 包拆分(地基体检记载的'主病=半截迁移')留下的兼容尾巴:生产已全量迁到深路径,旧顶层路径只作为冻结兼容面保留,真实外部消费者=0(只有未迁移的 53 个测试还在经它进)。属典型迁移残渣,只是被 SP05 锁住不会悄悄烂。",
+   "load_bearing": false,
+   "needs_adversarial": true,
+   "severity": "low",
+   "blast_radius": "误删任一 shim:破 test_sp05_path_topology_contract + 53 个 test 的 import。但这些测试是自指的(测兼容面本身/尚未迁移),非真实外部脚本。怀疑者需裁决:保留一个只有测试在用的冻结兼容层是承重(防某离线脚本 import 旧路径)还是纯仪式残渣——若确认无外部消费者,应连同 53 测试一起迁到深路径再删 shim。",
+   "_partition": "scheduler-config-summary-graph",
+   "_source": "pass1",
+   "_adv_verdict": "depends",
+   "_adv_refuted": true,
+   "_adv_precondition": "它不是承重安全护栏(纯转出,删了只会响亮 ImportError,不破任何安全不变量),本质=半截迁移的冻结兼容残渣,可收;但普查\"0生产/纯自指测试\"的证据是错的,故不能直接 rm。动它前必须: (1) 把两个非测试在用消费者迁到深路径——tools/capture_networkx_phase0_baseline.py:17 与 audit/2026-03/20260316_schedule_audit_probes.py:87 改为 .config.config_service / .summary.schedule_summary; (2) 重指 53 处测试 import 到深路径; (3) 从 test_sp05_path_topology_contract.py 的 SERVICE_BEHAVIOR_COMPAT_SYMBOLS/PUBLIC_SYMBOLS(:20-82)删这 5 条并改文档树断言(:642-658 期望 config_service.py 标注\"兼容薄门面\")。三步做完再删 shim。SP05 冻结是有意决定,删除是一次需协调的迁移而非自由删除。",
+   "_adv_evidence": [
+    "core/services/scheduler/config_service.py:1-5 (+config_snapshot.py/config_validator.py/schedule_summary.py:1-29/schedule_summary_types.py): all 5 verified pure re-export, 0 logic lines — no fallback/validation/version-gate. Deleting removes zero behavior; the only failure mode is a loud ImportError, which honors the soul line rather than breaking any safety invariant (no preview-as-official / stale-version / swallowed-bad-data / cross-layer). Therefore NOT a load-bearing safety guardrail.",
+    "Production bypasses the shims entirely: web/error_boundary.py:104 + scheduler_config_display_state.py:5 -> '.config'; scheduler_config.py:11 / personnel_calendar_pages.py:7 -> scheduler/__init__.py:19,34-40 __getattr__ mapping 'ConfigService' to '.config.config_service'; schedule_service.py:259 -> '.config.config_service'. No production importer hits the top-level shim.",
+    "CENSUS EVIDENCE CORRECTION — not '0 production / only 53 self-referential tests'. Two LIVE non-test consumers exist on the old path: tools/capture_networkx_phase0_baseline.py:17 ('from core.services.scheduler.config_service import ConfigService'; also the ONLY rev_dep in rev_deps.json for the config_service shim) and audit/2026-03/20260316_schedule_audit_probes.py:87 ('from core.services.scheduler.schedule_summary import build_overdue_items'). Both are offline operational/diagnostic scripts OUTSIDE SP05 scan roots (core, web) — exactly the 'offline script on old path' the arbitration worried about. So it is not pure test ceremony; deletion as-is breaks real tooling.",
+    "SP05 is the governance guard pinning the shim, not the shim itself: tests/test_sp05_path_topology_contract.py:20-31 lists all 5 as behavior-compat aliases; :329-337 asserts old.__all__ == expected and getattr(old,sym) IS getattr(new,sym) (shared identity -> no isinstance/dual-class hazard); :390-399 forbids core/web production growth; :642-658 expects config_service.py documented as '兼容薄门面'. A unilateral delete breaks this contract test plus 53 test imports.",
+    "Soul-line check (foundation invariant): breakage on delete is a loud ImportError, never a silent bad-data fallback or version masquerade — confirms the shim guards no safety invariant; the system fails loudly with or without it."
+   ]
+  },
+  {
+   "pathology": "P3",
+   "title": "空 delayed 包 calendar/ 与 batch/:SP05 强制存在却始终未填充",
+   "location": "core/services/scheduler/calendar/__init__.py (0字节) + core/services/scheduler/batch/__init__.py (1字节)",
+   "reference_chain": "两目录仅含空 __init__.py(calendar/ 0 字节、batch/ 1 字节),无任何模块。grep .calendar/.batch 子模块 import=0(命中的 core/models/__init__.py:11/14 from .batch/.calendar 是 core.models 同名包,非本包)。SP05 test:311-316 显式断言 ('config','run','summary','batch','dispatch','gantt','calendar') 七包目录+__init__ 存在,且 batch/dispatch/gantt/calendar 四个 delayed 包的 __init__ 必须无 import(_assert_init_has_no_imports)。对照:config/run/summary 已填满迁移完成,batch/calendar(及 dispatch/gantt)只搭了空壳。日历/批次逻辑实际仍在顶层 calendar_*.py、batch_*.py(calendar_admin/engine/service、batch_service/copy/excel_import/template_ops/write_rules)。",
+   "why_debt": "包拆分计划只完成 config/run/summary 三块,batch/calendar/dispatch/gantt 预建了空包目录就停下,顶层文件从未下沉进去。SP05 把空壳钉死保证它不被误删也不被误填,但空包本身是搁置的迁移脚手架。",
+   "load_bearing": false,
+   "needs_adversarial": true,
+   "severity": "low",
+   "blast_radius": "误删空包目录:破 SP05 test:311-316 的存在断言。需怀疑者裁决属性:是'待下沉 batch_*/calendar_* 的预留位'(在途计划,但无 active roadmap 项支撑下沉)还是'拆了一半放弃的脚手架'——前者该补 roadmap 项,后者该连同 SP05 断言一起拆除。",
+   "_partition": "scheduler-config-summary-graph",
+   "_source": "pass1",
+   "_adv_verdict": "real_debt",
+   "_adv_refuted": true,
+   "_adv_precondition": "同一提交里两件事一起做, 缺一不可: (1) 删除4个空占位目录 core/services/scheduler/{batch,calendar,dispatch,gantt}/; (2) 同步修改 tests/test_sp05_path_topology_contract.py:309-316——把 batch/dispatch/gantt/calendar 从第310行的存在性元组和第315行的 delayed-package 无导入循环里移除, 否则该测试失败。已实证无需额外动作: 无 importlib 动态引用、无 `from . import calendar/batch` 相对导入遮蔽标准库、无 active roadmap 把它们当作待下沉预留位。若团队日后真要分包, 届时重建包目录即可——不必现在留空壳。",
+   "_adv_evidence": [
+    "core/services/scheduler/calendar/__init__.py + batch/__init__.py: 空(0字节), 目录内无任何模块——'包'里没有可被 import 的东西",
+    "grep 全树: scheduler.(calendar|batch|dispatch|gantt) 作为包的生产引用=0; 'from . import calendar/batch'=0; importlib 动态字符串引用=0——零运行时消费者",
+    "tests/test_greedy_refactor_contracts.py:81 `assert \"scheduler.calendar\" not in text` 是反向断言(dispatch 算法禁止耦合它), 不是依赖",
+    "core/services/scheduler/resource_dispatch_range.py:3 `import calendar` 经运行时确认解析到 Python 标准库(.../python3.x/calendar.py), 非本空包; 且无 `from .` 相对导入, 不存在遮蔽标准库的陷阱",
+    "真实日历/批次逻辑在顶层 calendar_engine.py/batch_service.py 等(18+ 活跃 importer 如 tests/regression_calendar_invalid_shift_window_contract.py:10, regression_batch_template_autobuild_same_tx.py:26), 空包内零模块",
+    "tests/test_sp05_path_topology_contract.py:309-316 是唯一钉死这4个空包存在+__init__无导入的测试; 而 SP05 真正护住迁移正确性的 strong-alias/behavior-compat 断言只覆盖 config/run/summary(:321-340), 从不涉及这4个空包——空包的 pin 是自指的(包只为过测试而存在, 测试只为护包而存在)",
+    ".limcode/plans/core目录系统性修复/05_后续结构债治理与文档同步.plan.md:226,230-233 明确把批次逻辑保留为顶层文件(batch_service/batch_template_ops/batch_write_rules), 不规划 batch/ 包下沉——无任何 active roadmap 需要这些预留位",
+    "删除不触碰任何安全不变量: 纯目录拓扑, 不会造成预览冒充正式/旧版本冒充现行/坏数据静默吞没/跨层违规; 灵魂暗线与P5收口点均无关"
+   ]
+  },
+  {
+   "pathology": "P4",
+   "title": "batch_service._safe_float 重造浮点解析并静默吞错,绕过 parse_finite_float",
+   "location": "core/services/scheduler/batch_service.py:56-65",
+   "reference_chain": "_safe_float:value 为 None/空串 return None,否则 try float(value) except Exception: return None——坏值悄悄变 None,不抛不记。这绕过了收口点 core/shared/number_utils.py:23 parse_finite_float(会 raise ValidationError 并校验有限性)。消费点:batch_template_ops.py:172 'ext_days': svc._safe_float(tmpl.ext_days)、batch_copy.py:72 'ext_days': svc._safe_float(op.ext_days)。但 ext_days 来源已被严格校验:core/models/batch_operation.py:92 ext_days=parse_optional_float(ext_days, field='ext_days')、part_operation.py:75 同理——即模型加载时已是合法 float/None,_safe_float 看到的几乎不可能是坏值。tests/test_architecture_fitness.py:77 已把 batch_service.py:_safe_float 列入 LOCAL_PARSE_HELPER_ALLOWLIST。",
+   "why_debt": "同一概念(浮点解析)的私有第 N 套实现 + 静默兜底死角:理论上若 ext_days 是坏值会被悄悄吞成 None 而非暴露,违背不自欺原则。但因上游模型已严格解析,实际是冗余防御;且已被 fitness 注册表显式 allowlist 承认。",
+   "load_bearing": false,
+   "needs_adversarial": false,
+   "severity": "low",
+   "blast_radius": "极小。替换为 parse_finite_float 仅在 ext_days 真为坏值时改变行为(从静默 None→抛 ValidationError,反而更符合灵魂原则);但因上游已校验,几乎触发不到。需先核对模板/复制路径是否真要拒绝坏 ext_days 再动,且需同步移除 allowlist 条目。",
+   "_partition": "scheduler-config-summary-graph",
+   "_source": "pass1"
+  }
+ ]
+}

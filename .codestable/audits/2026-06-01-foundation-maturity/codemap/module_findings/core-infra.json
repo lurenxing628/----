@@ -1,0 +1,147 @@
+{
+ "key": "core-infra",
+ "partition": "core/infrastructure",
+ "score": 4,
+ "design": "本分区是全系统地基层，五套机制清晰分工：①连接管理（database.py 单一 sqlite3.connect 出口 + ensure_schema 编排器）；②事务（transaction.py 线程局部 depth_map/poison_map + SAVEPOINT 嵌套 + TransactionManager）；③迁移（migration_runner/state/database_bootstrap/operation_execution_contract + migrations/ 17 个版本脚本，target_version→run 注册表）；④备份（backup.py 在线 backup API + 维护窗口锁 vs migration_backup.py 文件 replace + winerror 重试，两套机制）；⑤日志与错误（logging.py AppLogger/OperationLogger/safe_log + errors.py ErrorCode/AppError）。迁移安全设计是亮点：先在探针副本上 preflight 预检（migration_runner.py:27），迁移前强制备份+维护窗口，失败回滚备份，连回滚都失败抛 MigrationRollbackError；契约校验甚至用 SAVEPOINT 试插坏数据验证 CHECK 约束真生效。地基机制本身是全项目最用心的部分；扣分源于\"迁移做了一半\"的残留：database.py facade 里一批 underscore 别名导入已死、transactional 装饰器全仓零引用、备份双实现的 Win7 锁检测分叉。",
+ "chains": [
+  "启动建表/迁移主链：web/bootstrap/factory.py:456 → database.ensure_schema() database.py:93 → load_schema_sql/build_schema_exec_script(database_bootstrap) database.py:133-134 → ensure_schema_version(migration_state) database.py:144 →（version<17 时）preflight_migration_contract database.py:164 → migrate_with_backup database.py:173",
+  "迁移强制备份+应用链：migration_runner.migrate_with_backup migration_runner.py:48 → maintenance_window migration_runner.py:69 → BackupManager.backup migration_runner.py:188 → _apply_migrations migration_runner.py:79 → migrations.run_migration migration_runner.py:278 → migrations/__init__.py:47 MIGRATIONS[v].run",
+  "迁移失败回滚链（文件级）：_apply_migrations 抛错 → _rollback_from_backup migration_runner.py:88 → migration_backup.restore_db_file_from_backup migration_runner.py:257（shutil.copy2+os.replace + is_windows_lock_error 重试 + 清 WAL/SHM）",
+  "手动恢复链（在线级，web）：web/routes/system_backup_actions.py:26 maintenance_window → BackupManager.restore backup.py:406 → self.backup('before_restore') backup.py:415 → _copy_db_file（在线 backup API + 'locked'/'busy' 字符串重试）backup.py:417 → 失败 _auto_rollback backup.py:430",
+  "事务作用域：service → TransactionManager.transaction() transaction.py:226 → _transaction_scope transaction.py:185 → _inc_depth/_owns_transaction/_begin_scope（depth==1 用 BEGIN，否则 SAVEPOINT）transaction.py:92-101，提交前 _block_commit_if_poisoned transaction.py:174",
+  "OperationLogger 提交协调：OperationLogger.log logging.py:149 → 读 conn.in_transaction + in_transaction_context(conn) transaction.py:58（线程局部 depth）→ 仅当两者皆否才自动 commit logging.py:200",
+  "新空库版本快进：migration_state.ensure_schema_version migration_state.py:54 → detect_schema_is_current migration_state.py:127（58 项 column_exists + 5 组 _has_*_indexes + has_operation_execution_event_contract）→ set_schema_version(CURRENT) migration_state.py:75"
+ ],
+ "good": [
+  "迁移安全设计是全项目标杆：先在 tempfile 探针副本上 preflight 预检（migration_runner.py:27-45），真库迁移前强制 maintenance_window+BackupManager 备份，失败 _rollback_from_backup，连回滚都失败抛 MigrationRollbackError；仅 APPLIED 推进版本号，SKIPPED/PARTIAL 一律 build_contract_error 阻断（migration_runner.py:226-231），绝不静默吞残缺库。",
+  "事务管理器并发处理细致且正确：poison_map 防止回滚失败后仍提交（transaction.py:174-182,201-212），SAVEPOINT 模拟嵌套，靠 conn.in_transaction 判断事务所有权，RELEASE 失败有完整的回滚后再释放兜底（transaction.py:134-150）。",
+  "契约校验做到'验证 DB 真在强约束'而非只查列存在：has_operation_execution_event_contract 用 SAVEPOINT 试插 13 组坏数据再回滚（migration_operation_execution_contract.py:258-289），确认 CHECK 约束真正拒绝非法值。",
+  "连接管理高度统一：全分区唯一 sqlite3.connect 在 database.py:67，统一开启 PARSE_DECLTYPES/foreign_keys=ON/Row factory；maintenance_window 用 O_CREAT|O_EXCL 锁文件 + 基于 pid 存活的陈旧锁自愈（backup.py:146-184，Win7 走 ctypes OpenProcess、POSIX 走 os.kill），跨平台兜底周全。"
+ ],
+ "findings": [
+  {
+   "severity": "medium",
+   "category": "设计冲突",
+   "title": "backup.py 与 migration_backup.py 双备份机制，Win7 文件锁检测逻辑分叉（在线恢复路径检测更弱）",
+   "evidence": [
+    "core/infrastructure/backup.py:354 _copy_db_file（在线 sqlite source.backup(dest)，靠 str(exc).lower() 含 'locked'/'busy' 判定可重试，6 次 sleep 0.2*(i+1)）",
+    "core/infrastructure/migration_backup.py:38 restore_db_file_from_backup（shutil.copy2+os.replace，靠 is_windows_lock_error 判 winerror 32/33/5 或 PermissionError，额外 gc.collect()+清 WAL/SHM）",
+    "core/infrastructure/migration_backup.py:14 is_windows_lock_error",
+    "调用方分离：backup._copy_db_file 仅服务 BackupManager.restore/_auto_rollback；migration_backup 仅服务 migration_runner.py:257 迁移回滚"
+   ],
+   "problem": "同为'把备份文件内容写回 DB'，存在两套实现且锁重试判定不一致：迁移回滚走文件 replace 并用 winerror 精确识别 Windows 文件锁；用户手动恢复走在线 backup API 且只用 'locked'/'busy' 字符串匹配。后者遇到 PermissionError 式的 Windows 文件锁（不带这两个英文子串）不会被识别为可重试。",
+   "impact": "目标平台正是 Win7 离线。同一类 OS 文件锁在两条恢复路径上韧性不同——迁移回滚能重试、用户手动恢复可能直接失败。改一条锁检测逻辑忘了另一条不会报错，两路静默分叉，是第一轮主旋律2在地基层的实例。",
+   "fix_hint": "抽 _is_retryable_db_lock(exc) 单一判定函数同时覆盖 'locked'/'busy' 字符串与 winerror 32/33/5/PermissionError，backup._copy_db_file 与 migration_backup 共用；保留两条写回机制（在线 vs 文件 replace 各有适用场景）但统一锁重试判定与重试参数。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "medium",
+   "category": "死代码",
+   "title": "database.py facade 残留多个已死的 underscore 别名导入 + 1 个仅测试钉死的转发壳",
+   "evidence": [
+    "core/infrastructure/database.py:24-26 detect_schema_is_current as _detect_schema_is_current（文件内仅出现在 import 行，零调用）",
+    "core/infrastructure/database.py:39-41 is_truly_empty_db as _is_truly_empty_db（同上零调用）",
+    "core/infrastructure/database.py:42-44 list_user_tables as _list_user_tables（同上零调用）",
+    "core/infrastructure/database.py:77 def _bootstrap_missing_tables_from_schema 纯转发 _impl，唯一消费者是 tests/test_database_migration_runner_delegation.py:45（ensure_schema 内部并不调用它，真实补表在 migration_runner 内走 _impl）",
+    "__all__ 仅暴露 4 个符号 database.py:49-54，这些别名根本不在公开面"
+   ],
+   "problem": "database.py 作为迁移子系统的门面，把整个子系统按 _xxx 别名重新导入，但其中 _detect_schema_is_current/_is_truly_empty_db/_list_user_tables 三个别名在本文件零引用；_bootstrap_missing_tables_from_schema 转发壳只为一条测试断言存在。这是迁移逻辑迁入 migration_state/migration_runner 后没回收的旧门面残渣。",
+   "impact": "读者要追'谁用了这些别名'才发现是死的，徒增地基层认知负担；测试钉死转发壳使其删不掉，是主旋律1（shim 靠测试续命）在 infra 的复现。",
+   "fix_hint": "删除 database.py:24-26/39-41/42-44 三个未引用别名导入；把 test_database_migration_runner_delegation.py:45 的断言目标改为直接调用 database_bootstrap.bootstrap_missing_tables_from_schema，随后删除 database.py:77 转发壳。保留 get_connection/ensure_schema/CURRENT_SCHEMA_VERSION/MigrationContractError 公开面不动。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "medium",
+   "category": "死代码",
+   "title": "transaction.transactional 装饰器全仓零引用（grep 实证，非 codemap orphan）",
+   "evidence": [
+    "core/infrastructure/transaction.py:242 def transactional(func)",
+    "全仓 grep '\\\\btransactional\\\\b' 排除 execute_preview_rows_transactional 后仅命中该定义行，core/web/data/tests 均无 import 或 @transactional 使用",
+    "生产实际用法是 with self.tx_manager.transaction(): 上下文形式，如 operation_execution_feedback_service.py:95、resource_dispatch_actual_record_service.py:94"
+   ],
+   "problem": "transactional 装饰器（要求 self.tx_manager）是早期事务 API，全项目（含测试）零引用，已被 with tx_manager.transaction() 上下文写法完全取代。",
+   "impact": "地基最核心的'事务'概念里并存一个看似可用实则死掉的公开 API，误导后来者'到底该用装饰器还是上下文管理器'。blast radius 小（9 行），但属高确定性可删。",
+   "fix_hint": "直接删除 transaction.py:242-250 transactional 函数及 functools.wraps import（若无其他用途）。无调用方，无需改测试。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "low",
+   "category": "重复",
+   "title": "_load_preset_payload 在 v8.py 与 v9.py 逐字节重复（迁移脚本属冻结代码，需谨慎）",
+   "evidence": [
+    "core/infrastructure/migrations/v8.py:57 def _load_preset_payload",
+    "core/infrastructure/migrations/v9.py:36 def _load_preset_payload",
+    "diff 确认两处函数体逐字节一致"
+   ],
+   "problem": "两个版本迁移各自复制了一份解析 ScheduleConfig preset JSON 的 helper，逻辑完全相同（损坏即抛 RuntimeError）。",
+   "impact": "复制本身是去重靶子，但迁移脚本是一次性历史快照、应当冻结不可改——抽公共函数后若有人误改会同时改变 v8/v9 已发布行为。属'可接受的冻结重复'，价值有限。",
+   "fix_hint": "两种取舍：(a) 维持现状并在两处加注释'迁移脚本冻结，刻意不抽公共函数'；(b) 若团队接受触碰冻结迁移，则抽到 migrations/common.py 且严禁改变行为并补回归。倾向 (a)。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "low",
+   "category": "命名混乱",
+   "title": "migration_operation_execution_contract._index_is_unique 名为通用实则硬编码 OperationExecutionEvents 表",
+   "evidence": [
+    "core/infrastructure/migration_operation_execution_contract.py:39-49 _index_is_unique(conn, index_name) 内部写死 PRAGMA index_list(OperationExecutionEvents)，完全忽略调用语境的表名",
+    "对比同文件 core/infrastructure/migration_operation_execution_contract.py:52 _unique_index_has_columns 正确参数化 table_name",
+    "唯一调用点 migration_operation_execution_contract.py:242 确实只查该表，故当前无活 bug"
+   ],
+   "problem": "函数签名 (conn, index_name) 暗示通用，实现却把表名钉死，与同文件另一个正确参数化的 helper 风格不一致。",
+   "impact": "当前无 bug（只在该表用），但名字说谎，未来若复用到别的表会静默查错表返回错误结果。该契约支撑已发布的执行事件子系统（v15/v16/v17 schema 稳定），改名安全。",
+   "fix_hint": "重命名为 _operation_execution_index_is_unique，或将 table_name 提为显式参数与 _unique_index_has_columns 对齐；行为不变。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "low",
+   "category": "命名错误",
+   "title": "database_bootstrap.py 与两个 backup 文件同目录，名字诱导误读为备份/初始化工具",
+   "evidence": [
+    "core/infrastructure/database_bootstrap.py:44 bootstrap_missing_tables_from_schema 实为'用正则解析 schema.sql、仅补缺失整表/索引'",
+    "core/infrastructure/database_bootstrap.py:12-17 _CREATE_TABLE_RE/_CREATE_INDEX_RE 正则解析 DDL",
+    "与 backup.py/migration_backup.py 同处 core/infrastructure/ 根目录"
+   ],
+   "problem": "'bootstrap' + 紧邻两个 backup 文件，易被误读为'从零初始化数据库'或备份相关；实际职责是迁移期的 schema 缺表补齐（regex 抽 CREATE TABLE/INDEX）。第一轮已点出命名邻接误导，此处确认并补充其 regex-解析-SQL 的脆弱实现细节（虽有 IF NOT EXISTS 与标识符白名单兜底）。",
+   "impact": "地基层文件名不传达职责，增加误联想成本；regex 解析 schema.sql 在 schema 写法变化时存在脆性（但目前受 detect_schema_is_current 测试间接覆盖）。",
+   "fix_hint": "考虑改名为 schema_table_backfill.py（或 schema_gapfill.py）以与 backup 语义脱钩；内部 regex 解析维持现状但建议在模块 docstring 标注'仅支持 CREATE TABLE/INDEX IF NOT EXISTS 形式'。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "low",
+   "category": "重复",
+   "title": "safe_log 与 fallback_log 两个'记日志否则回退'helper，None-logger 行为不一致",
+   "evidence": [
+    "core/infrastructure/logging.py:31 safe_log（logger=None 时仍 print 到 stderr）",
+    "core/infrastructure/migrations/common.py:89 fallback_log（if not logger: return 直接静默，否则懒导入并调用 safe_log）",
+    "调用面：safe_log 25 文件、fallback_log 15 文件"
+   ],
+   "problem": "fallback_log 本质是 safe_log 加了个'无 logger 就静默返回'的前置，两者目的重叠但边界行为相反：safe_log(None,...) 会打印到 stderr，fallback_log(None,...) 完全静默。",
+   "impact": "同一概念两套名字、相反的空 logger 语义，调用者难判断该用哪个；在无 logger 场景下一个有可观测输出一个完全吞掉，可能掩盖问题。属主旋律3（helper 同义漂移）的 infra 实例。",
+   "fix_hint": "明确二者语义分工并在 docstring 写清，或让 fallback_log 直接成为 safe_log 的薄包装并统一 None 行为；若保留差异需注释说明'迁移期刻意静默'。",
+   "in_flight_conflict": false
+  },
+  {
+   "severity": "low",
+   "category": "职责不清",
+   "title": "detect_schema_is_current 硬编码 58 项列清单，构成 schema 的第三处真相源",
+   "evidence": [
+    "core/infrastructure/migration_state.py:132-190 needed 列出 58 个 (表,列) 字面量 + migration_state.py:194-202 五组 _has_*_indexes + has_operation_execution_event_contract",
+    "schema 真相还存在于 schema.sql 与 migrations/v1..v17 两处"
+   ],
+   "problem": "新空库'版本快进'依赖一份手写的结构特征清单，任何 schema 变更都需同步编辑此清单，否则快进静默不触发（回落到逐版本跑迁移，安全但慢）。这是第一轮'schema 版本双真相'的加深：实为三真相（schema.sql / 迁移脚本 / 此特征清单）。",
+   "impact": "维护税：schema 演进必须三处同步；遗漏不报错只是性能/语义退化。当前 regression_migrations.py 等 20+ 断言能捕获漂移，故风险被测试压住。",
+   "fix_hint": "短期维持（有测试守门）；中期可考虑由 declared_schema_tables + PRAGMA 对比自动推导'结构是否齐全'，减少手写清单，但需确保不弱化对 CHECK 约束的探测校验。",
+   "in_flight_conflict": false
+  }
+ ],
+ "cleanup": [
+  "删除 transaction.py:242-250 transactional 装饰器（grep 实证全仓零引用，含测试）",
+  "删除 database.py:24-26/39-41/42-44 三个零引用的 underscore 别名导入（_detect_schema_is_current/_is_truly_empty_db/_list_user_tables）",
+  "移除 database.py:77 _bootstrap_missing_tables_from_schema 转发壳，并把 tests/test_database_migration_runner_delegation.py:45 改为直接断言 database_bootstrap.bootstrap_missing_tables_from_schema",
+  "抽 _is_retryable_db_lock 单一锁判定函数，让 backup._copy_db_file（backup.py:366）与 migration_backup.is_windows_lock_error（migration_backup.py:14）共用，消除 Win7 锁检测分叉",
+  "重命名 migration_operation_execution_contract.py:39 _index_is_unique 为 _operation_execution_index_is_unique 或参数化 table_name，与同文件 _unique_index_has_columns 对齐",
+  "评估将 database_bootstrap.py 改名为 schema_table_backfill.py，打断与 backup 文件的语义邻接误读（第一轮候选）",
+  "为 v8.py:57 / v9.py:36 重复的 _load_preset_payload 两处加'迁移冻结、刻意不抽公共函数'注释（不建议实际抽取，避免改动已发布迁移行为）",
+  "统一 safe_log（logging.py:31）与 fallback_log（migrations/common.py:89）的 None-logger 行为或在 docstring 写清差异"
+ ]
+}

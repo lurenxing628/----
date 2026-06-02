@@ -1,0 +1,112 @@
+{
+ "partition": "core-infra-shared",
+ "health": "基本干净, 少量残渣, 无重灾区。core/infrastructure 整条地基(连接/事务poison机制/迁移回滚/备份维护窗/日志安全降级/errors)做工极扎实且灵魂对齐——except 要么向上抛、要么只降级到 stderr 不丢数据、要么被 regression_infra_silent_fallback_contract.py 等契约测试钉死; orphan_refined 把 migrations v1..v17 标孤儿系 registry 静态盲区(已证活)。core/shared 解析脊梁(strict_parse/field_parse/compat_parse/value_policies/degradation)是真正的唯一收口点且正确处于最深层, compat 回退刻意发 DegradationEvent 留痕而非静默兜底, 完全符合灵魂。残渣集中在: (1)boolean_normalize 与归一矩阵的双实现漂移面(分层承重但缺等价测试); (2)compat 日期分支整条 prod 死(测试续命); (3)WRITE_INTERNAL_ONLY 死常量; (4)common/number_utils 半截薄壳化遗漏; (5)backup integrity_check 执行失败的轻度兜底存疑。无 P1 写死假冒计算值, 无承重不对称护栏被埋。",
+ "findings": [
+  {
+   "pathology": "P5",
+   "title": "normalize_yes_no_wide 在 core/shared 与归一化矩阵各有一套语义全等实现, 无任何测试绑定二者(可静默漂移)",
+   "location": "core/shared/boolean_normalize.py:33",
+   "reference_chain": "core/shared/boolean_normalize.py:33 normalize_yes_no_wide 与 core/services/common/normalization_matrix.py:168 normalize_yes_no_wide_value 逐行同义: 同 wide 别名集(boolean_normalize.py:7-8 ('y','yes','true','1','on')/('n','no','false','0','off','') 对 normalization_matrix.py:40-41 由 NARROW+('on')/+('off','') 拼出同集), 同 是/否 短路, 同 unknown_policy default/passthrough/raise 分支。matrix 的提交 dbd31d24 自称'统一全项目枚举值归一化的唯一事实源'(git --reverse #194) 早于 boolean_normalize 8ec5b40b(#248)。消费侧: boolean_normalize 被 core/models/schedule_config_runtime_coercion.py:6 与 core/algorithms/greedy 经 scheduler/number_utils.to_yes_no 引用; matrix 被 core/services/* 经 enum_normalizers.py:172 引用。layer_edges.json 实证 core.models 只有 ->core.infrastructure/->core.models/->core.shared 三条出边, 无 ->core.services, 且 core.shared 无 ->core.models 边(故 boolean_normalize 不能用 YesNo 枚举, 只能硬编码 'yes'/'no')",
+   "why_debt": "同一'宽松是否归一'概念两套独立实现, 绕开已声明的唯一收口点 normalization_matrix。当前逐行同义但 grep 全仓无任何测试同时 import 两者断言等价 — YesNo 枚举值或别名集若单边改动, 两套会静默漂移而无人发现。这正是 P5 第N套私有实现的漂移风险面",
+   "load_bearing": true,
+   "needs_adversarial": true,
+   "severity": "medium",
+   "blast_radius": "boolean_normalize 被 core.models/core.algorithms 等下层模块引用, 若以'统一到矩阵'名义删除它改指 core.services.common, 会立刻撞 AST 分层红线(下层 import 上层), 破坏当前 0 违规结构。故它的存在是分层承重的; 真正该补的是一条绑定两套 wide 归一等价的契约测试, 而非删除任一方",
+   "_partition": "core-infra-shared",
+   "_source": "pass1",
+   "_adv_verdict": "load_bearing",
+   "_adv_refuted": false,
+   "_adv_precondition": "先加一条等价契约测试，断言 core.shared.boolean_normalize.normalize_yes_no_wide 与 core.services.common.normalization_matrix.normalize_yes_no_wide_value 在全 wide 别名集 + 是/否 + default/passthrough/raise/no 全部 unknown_policy 分支上逐一同值（YesNo 枚举值或别名集任一单边改动即触发红灯）。绝不允许删除 boolean_normalize 让 core.models 改指 core.services（会立刻产生 core.models->core.services 越层 + core.models<->core.services 导入环，破坏 AST 0 违规结构）。若确要消重，唯一合法方向是让上层 normalization_matrix.normalize_yes_no_wide_value 反过来 delegate 到下层 boolean_normalize（services->shared 是合法下行边），即保留 shared 模块为唯一事实源、删除 matrix 内的重复逻辑——而非相反。",
+   "_adv_evidence": [
+    "core/models/schedule_config_runtime_coercion.py:6 — LIVE core.models consumer: `from core.shared.boolean_normalize import normalize_yes_no_wide` (used at lines 192/201/230), reachable from core/models/schedule_config_runtime.py",
+    "core/services/common/normalization_matrix.py:5 — the proposed unify-target itself imports `from core.models.enums import ... YesNo`; merging models->matrix would create a core.models<->core.services import cycle",
+    "core/services/common/normalization_matrix.py:168 normalize_yes_no_wide_value — sits in core.services (upper layer); cannot be imported by core.models without breaking layering",
+    ".codestable/checkup/latest/codemap/layer_edges.json — core.models out-edges = {core.infrastructure, core.models, core.shared} ONLY; no core.models->core.services edge exists anywhere; core.shared out-edges = {core.infrastructure, core.shared} (shared cannot import core.models, hence boolean_normalize hardcodes 'yes'/'no')",
+    "grep `from core.services` core/models/ = empty — the lower-imports-upper invariant holds repo-wide, so routing the coercion module up to the matrix would be the first violation",
+    "core/models/enums.py:7-8 YES='yes' NO='no' — confirms current line-by-line equivalence with boolean_normalize.py:7-8 hardcoded tuples and matrix.py:40-41 NARROW+('on')/('off','')",
+    "tests/ grep for both `boolean_normalize` and `normalize_yes_no_wide` = empty — NO contract test binds the two (drift risk is real, but remedy is a test, not deletion)",
+    "core/services/common/enum_normalizers.py:172 normalize_yes_no_wide is only a thin shim delegating to normalize_yes_no_wide_value (not a true 3rd impl), and also lives in core.services so models cannot route through it either",
+    "FINDING ERROR: grep core/algorithms/ for number_utils/to_yes_no/boolean_normalize = empty — the 'greedy 经 number_utils' claim is false; real to_yes_no consumers are core.services.scheduler (resource_pool_builder.py:89/280/340, config/, run/*)",
+    "core/shared/boolean_normalize.py is the ONLY wide yes/no normalizer at core.shared layer or below — no alternative exists for core.models/core.algorithms to call"
+   ]
+  },
+  {
+   "pathology": "P3",
+   "title": "common/number_utils.py 是 core/shared/number_utils.py 的全量函数体拷贝, 而同目录 4 个兄弟模块都已是薄 re-export 壳(半截收口)",
+   "location": "core/services/common/number_utils.py:23",
+   "reference_chain": "core/shared/number_utils.py 是任务声明的 parse_finite_int/float 唯一收口点(canonical), 被 core/models/schedule_config_runtime_weights.py:7 与 core/services/scheduler/number_utils.py:6 引用。其镜像 core/services/common/number_utils.py:23,40 是 parse_finite_float/int 的完整函数体复制(dup_symbols.json 实证两处各自定义同名函数), 仅底层同样 import core.shared.strict_parse。对照同目录 common/compat_parse.py:3 / value_policies.py:3 / degradation.py:3 / field_parse.py:3 — 这 4 个全是 'from core.shared.X import ...; __all__=[...]' 的纯 re-export 薄壳(grep def 计数=0)。唯独 number_utils 保留全量体拷。消费方 common/number_utils 被 excel_validators.py:26 / scheduler_excel_calendar_rows.py:8 引用",
+   "why_debt": "core/services/common 显然在做'统一回落到 core.shared'的薄壳化迁移(4/5 兄弟已完成), number_utils 这一个没改成 re-export, 留了重复函数体。当前两份体拷逐行相同, 但和 4 个已收口的兄弟形成不对称, 是迁移没做完的残渣 — 重复体可随时单边漂移",
+   "load_bearing": false,
+   "needs_adversarial": true,
+   "severity": "medium",
+   "blast_radius": "该重复文件物理上属相邻 core-svc-domain 分区, 但重复的源头是本分区 canonical。改成 re-export 薄壳(对齐 4 兄弟)风险极低; 误判为'故意保留'则放任与 canonical 漂移。需怀疑者裁定: 是漏改的半截迁移(P3)还是有意双份",
+   "_partition": "core-infra-shared",
+   "_source": "pass1",
+   "_adv_verdict": "depends",
+   "_adv_refuted": false,
+   "_adv_precondition": "不能像普查员设想的那样\"对齐 4 兄弟、单边改成 re-export 薄壳\"——那会立刻击穿一个活跃 KEEP/high 门禁。若确要统一，必须做协调式改动:(1) 先重写 tests/regression_number_utils_facade_delegates_strict_parse.py:它现在 monkeypatch common.number_utils 的模块级 parse_required/optional_*(int/float) 并断言 parse_finite_* 转调它们(line23-26/45-48/62);薄壳后这些名不再存在、且 parse_finite_* 的 __globals__ 变成 shared.number_utils，patch 失效→line23 AttributeError、line62 断言失败。需把它改写成与 4 兄弟一致的 *_reexports_shared_identity 同一性测试。(2) 必须有意识地推翻该测试在 .codestable/refactors/2026-06-01-test-gate-cleanup/L3_verdicts.csv:174 的 KEEP/high 裁定——那是 2026-06-01 刚做出的、把它定性为'delegation-facade 而非透明壳'的明确决定。生产消费方(excel_validators.py:26、scheduler_excel_calendar_rows.py:8)只用 parse_finite_*，两种形态等价，不需改动。结论:普查员'半截迁移残渣、可安全单边收口'的前提被证伪——不对称是有意设计,单边收口非安全债。",
+   "_adv_evidence": [
+    "core/services/common/number_utils.py:5-10,23,40 — parse_finite_float/int 的完整函数体在本模块内定义，其全局名 parse_required_float/parse_optional_float/parse_required_int/parse_optional_int 由 core.shared.strict_parse import 进本模块命名空间；正因函数体在此定义，其 __globals__ 指向 common.number_utils.__dict__",
+    "core/shared/number_utils.py:23,39 — 声明的 canonical，与 common 版逐行相同(仅 common 多了中文 docstring)",
+    "core/services/common/compat_parse.py:3 / value_policies.py:3 / degradation.py:3 / field_parse.py:3 — 4 个兄弟确为纯 re-export 薄壳(grep def=0)，已实证",
+    "tests/regression_number_utils_facade_delegates_strict_parse.py:19,23-26,45-48,62 — 活跃测试 import common.number_utils，monkeypatch 其模块级 parse_required/optional_* 并断言 parse_finite_* 转调它们；改成薄壳后 line23 立即 AttributeError，line62 断言失败(patch 变空操作)。line69-84 钉住灵魂不变量:空白+allow_none→None，否则抛 ValidationError(field 正确)",
+    ".codestable/refactors/2026-06-01-test-gate-cleanup/L3_verdicts.csv:174 — 该测试 verdict=KEEP value=high，2026-06-01 刚复核保留→不对称是有意而非漏改",
+    "tests/regression_config_service_component_contract.py:375-411 — 4 兄弟各有 *_reexports_shared_identity 的 is-同一性测试(透明壳契约)；number_utils 故意不走这条而用 delegation-facade 测试，是两种不同的设计契约",
+    "core/services/common/excel_validators.py:26 与 web/routes/domains/scheduler/scheduler_excel_calendar_rows.py:8 — 唯二生产消费方都只 import parse_finite_*，薄壳化后行为字节级一致，运行期灵魂不变量(strict_parse 不静默吞坏数据)不受影响",
+    "实测属性面:common.number_utils 暴露 parse_required_float/parse_optional_float/parse_required_int/parse_optional_int(因函数体 import 进来)，而薄壳兄弟 field_parse 只暴露其 2 个 re-export 名 → 证实薄壳化会丢失这些属性、击穿 monkeypatch",
+    "tests/regression_number_utils_facade_delegates_strict_parse.py 当前运行=OK(green)，且出现在 audit/2026-04 全量 p0 基线与开发文档验收记录的必跑清单中"
+   ]
+  },
+  {
+   "pathology": "P6",
+   "title": "compat 解析的整条'日期'分支(parse_compat_date + value_policies 三个日期策略 + VALUE_DATETIME/READ_FILTER_ONLY)生产零消费, 只靠测试续命",
+   "location": "core/shared/compat_parse.py:198",
+   "reference_chain": "core/shared/compat_parse.py:198 parse_compat_date(VALUE_DATE 分支)在 core/web/data 全仓的调用点(call 形态)=0, 仅 core/services/common/compat_parse.py:4 re-export 与 tests/regression_compat_parse_emits_degradation.py:39 一处测试调用; git -S 'parse_compat_date(' 实证它从 5ab57494/8ec5b40b 出生起就只被定义+测试, 从未接生产 caller。其上游 value_policies.py:180/190/200 的 due_date(VALUE_DATE)、start_time/end_time(VALUE_DATETIME, READ_FILTER_ONLY)策略项: get_field_policy 唯一调用方是 compat_parse._resolve_compat_policy, 而 VALUE_DATE 分支(parse_compat_date)已死。生产里真实的坏时间留痕走 core/services/scheduler/_sched_display_utils.py:84 record_bad_time_row 手搓 collector.add(code='bad_time_row_skipped'), 完全绕开 value_policies start_time/end_time。对照: 同文件的 float/int compat 分支(parse_compat_float/int)经 field_parse.py:85,137 活跃消费, 仅 date 分支死",
+   "why_debt": "compat 读取子系统按 float/int/date 全矩阵搭建, 但 date 能力(parse_compat_date + 3 个日期策略 + VALUE_DATETIME 常量 + READ_FILTER_ONLY 常量)从未接到任何生产读链 — 是预建却没连线的脚手架。matrix 契约测试 regression_value_policies_matrix_contract.py:94-95 还在 pin start_time/end_time, 属'测试活、生产死'",
+   "load_bearing": false,
+   "needs_adversarial": false,
+   "severity": "low",
+   "blast_radius": "纯增生的未消费切片, 删除只需同步退掉 regression_compat_parse_emits_degradation.py 的 date 用例与矩阵契约的 start_time/end_time 断言; 不删则长期作为'看着像在用'的设计噪音存在, 误导后人以为历史日期导入走这条路。爆炸半径小",
+   "_partition": "core-infra-shared",
+   "_source": "pass1"
+  },
+  {
+   "pathology": "P6",
+   "title": "WRITE_INTERNAL_ONLY 写模式常量定义+re-export+__all__ 白名单齐全, 但无任何 FieldPolicy 使用、无任何消费方分支判断",
+   "location": "core/shared/value_policies.py:9",
+   "reference_chain": "core/shared/value_policies.py:9 定义 WRITE_INTERNAL_ONLY='write_internal_only', 经 core/services/common/value_policies.py:11 import + :29 列入 __all__。全仓唯一读取 policy.write_mode 的地方是 compat_parse.py:165/188/208, 三处都只判 '== WRITE_OPTIONAL else ...', 从不与 WRITE_INTERNAL_ONLY 比较; value_policies.py 内 16 个 FieldPolicy 的 write_mode= 赋值统计只用到 WRITE_REQUIRED/WRITE_OPTIONAL/WRITE_NOT_APPLICABLE, 无一用 WRITE_INTERNAL_ONLY。git -S 'write_internal_only' 实证它在 8ec5b40b/5ab57494 出生即无消费",
+   "why_debt": "定义后无人真正消费的死常量, 却散布在定义点+re-export+__all__ 三处制造'在用'假象 — 符合 P6 死面包屑定义。它是设计时预留但从未落地的写模式词槽",
+   "load_bearing": false,
+   "needs_adversarial": false,
+   "severity": "low",
+   "blast_radius": "删除仅触及 value_policies.py:9 与 common/value_policies.py:11,29 两文件三行, 无运行期消费方, 风险极低",
+   "_partition": "core-infra-shared",
+   "_source": "pass1"
+  },
+  {
+   "pathology": "P4",
+   "title": "备份完整性校验(PRAGMA integrity_check)执行本身失败时, 只 warning 不阻断, 仍把未通过校验的 .db 提升为正式备份",
+   "location": "core/infrastructure/backup.py:333",
+   "reference_chain": "core/infrastructure/backup.py:328-343: source.backup(dest) 写完临时库后, 试 dest.execute('PRAGMA integrity_check')(:334)。若 PRAGMA 执行抛异常(:335 except)走 :337 fallback_log warning '已忽略' 后落到 :343 os.replace(tmp_path, backup_path) — 临时库照样升正式备份。只有当 PRAGMA 成功返回且首行!='ok' 时(:340 else 分支)才 raise 阻断。下游 restore() :415 self.backup(suffix='before_restore') 与自动回滚 _auto_rollback :387 都信任这些备份文件作为回滚源",
+   "why_debt": "项目灵魂是'坏数据不准静默兜底、宁可暴露错误'。这里完整性校验的执行失败(IO/锁/库损坏迹象)被吞成 warning, 一个无法被验证完整性的备份仍被当成可信备份落地, 后续 restore 自动回滚会拿它当救命快照。吞掉的恰是'这份备份是否可信'这一本应暴露的缺口",
+   "load_bearing": false,
+   "needs_adversarial": true,
+   "severity": "low",
+   "blast_radius": "影响备份/恢复可信度: 极端场景下用一个未验证的备份做自动回滚可能放大数据损坏。但注释明写'不阻断备份'(:336)是刻意的——'有个备份好过没有'也是合理护栏立场, 且校验返回非 ok 的正常失败路径(:340-342)确实 raise。需怀疑者裁定: 是'尽力产出备份'的护栏, 还是吞掉校验失败的 P4 死角",
+   "_partition": "core-infra-shared",
+   "_source": "pass1",
+   "_adv_verdict": "real_debt",
+   "_adv_refuted": true,
+   "_adv_precondition": "修法=把 :335 except 分支改为与 :340 else 一致 raise(校验执行失败即视为不可信备份，不落地)。动手前置：(1) 收口手动备份路由 system_backup.py:107-113，让其捕获通用备份失败并 flash 清晰错误而非裸 500——注意该 500 路径今天已因 else 分支存在，属顺手收尾非阻塞项；(2) 确认 finally :346-352 的 .tmp 清理仍在(已在)，使抛错不残留半成品；(3) 顺带在回滚消费方 _copy_db_file(:354-372)与 restore_db_file_from_backup(migration_backup.py:52-58)补一次 integrity 复检，封堵旧版遗留的未校验备份文件被当救命快照盲拷的残口(独立加固，可后续)。已核验：无任何业务流依赖 backup() 在校验失败时仍返回路径，故 raise 不丢任何安全不变量。",
+   "_adv_evidence": [
+    "core/infrastructure/backup.py:334-337 — PRAGMA integrity_check 执行抛异常时只 warning('已忽略')，控制流落到 :343 os.replace 把未校验的 .tmp 升为正式备份，并返回路径+记 info '数据库已备份'（自欺：报成功却可能是坏库）",
+    "core/infrastructure/backup.py:340-342 — else 分支(返回非 ok 行)却 raise 阻断；同一校验块内 except(执行失败=更严重的损坏迹象 database disk image is malformed)反而放行，严重度被倒挂——这是 bug 的核心",
+    "core/infrastructure/backup.py:354-372 + :387 — _auto_rollback→_copy_db_file 用 source.backup(dest) 把 before_restore 快照盖回活库，全程无 integrity 复检；restore() :415 正是用这条 backup() 造该快照",
+    "core/infrastructure/migration_backup.py:52-58 — 迁移回滚 restore_db_file_from_backup 用 shutil.copy2(backup, db) 裸文件拷贝盖活库，零完整性校验，完全信任备份文件可信",
+    "core/infrastructure/migration_runner.py:61,188-189 — 迁移前备份走同一 backup()；若改为 raise，则 :189 重抛并按 :61 文档契约'必须取得可用备份否则阻断迁移'直接阻断——更正确，而非破坏不变量(无法运行 integrity_check 的库不算'可用备份')",
+    "消费方均能优雅承接 backup() 抛错：backup_task.py:149 / factory.py:142 均 except Exception 记错不崩；手动路由 system_backup.py:107-113 仅捕 MaintenanceWindowError，但 RuntimeError→500 这条路径今天已因 else 分支存在，统一只是多一个触发器经过既有路径",
+    "git 1d5987b8 与 c3ced1e2 仅改过提示文案字符串；except 吞/else 抛的不对称从未作为契约化'保留'决定确立；tests 下无任何用例钉死这条宽松吞咽行为(regression_restore_success_condition.py 全程 mock manager，不触达本校验)"
+   ]
+  }
+ ]
+}

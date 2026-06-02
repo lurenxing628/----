@@ -1,0 +1,18 @@
+{
+ "ambiguous_edges": 14814,
+ "confident_edges": 7973,
+ "dataflow_flagged_funcs": 1052,
+ "dynamic_unresolved_sites": 576,
+ "graph_metrics": {
+  "articulation_count": 772,
+  "cycle_count": 13,
+  "edge_count": 7973,
+  "island_count": 615,
+  "node_count": 5874
+ },
+ "high_fan_in_count": 60,
+ "parse_errors": [],
+ "risk_dataflow_count": 66,
+ "total_edges": 22787,
+ "total_functions": 5874
+}

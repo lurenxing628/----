@@ -1,0 +1,106 @@
+{
+ "partition": "web-all",
+ "health": "有残渣（非重灾区）。地基整体健康：P1 exemplar(ADOPTED_PLAN_RESOLUTION) 已修、资源/版本/数值收口点基本被尊重、P4 静默兜底被 regression_web_silent_fallback_contract 钉死、路由 except 全部 log+flash 可见。水下债集中在三处：一处真 P5(enum 中文标签两套实现且语义漂移、被测试钉死)、一处真 P6(plan_id 死面包屑被在途 roadmap 制度化保留却零消费)、一处承重 P2(execution-review 只认正式采用方案的护栏写死且无保护注释)。另有一组有意延期的 P3 顶层 wrapper(roadmap 明示保留)。",
+ "findings": [
+  {
+   "pathology": "P5",
+   "title": "enum_display.py + process_bp 中文枚举标签是 enum_normalizers 收口点的第二套私有实现,且语义已漂移",
+   "location": "web/routes/enum_display.py:13-79 (machine_status_zh/operator_status_zh/batch_status_zh/priority_zh/ready_zh/day_type_zh) + web/routes/process_bp.py:16-25 (_merge_mode_zh/_source_zh)",
+   "reference_chain": "收口点 core/services/common/enum_normalizers.py 已有 machine_status_label:124 / operator_status_label:82 / ready_status_label:220 / batch_priority_label:209 / calendar_day_type_label:231 / source_type_label:159,且每个先 normalize_*(归一别名)再贴标签。enum_display 这套不归一(裸 .strip() 直比 enum.value)。两套同时活在生产: web/routes/scheduler_bp.py:9 import ready_zh→scheduler_batches.py:150 'ready_status_label':_ready_zh(b.ready_status) 渲染排产批次页;而 web/routes/material.py:9 import 收口点 ready_status_label→:124 row['ready_status_zh']=ready_status_label(row.get('ready_status')) 渲染物料批次页——同一个批次齐套状态,两套标签函数。equipment_bp.py:9/personnel_bp.py:9 import machine_status_zh/operator_status_zh→equipment_pages.py:111/personnel_pages 渲染,而 equipment_excel_machines.py:161/personnel_excel_operators.py:71 用收口点 machine_status_label/operator_status_label。",
+   "why_debt": "同一概念(枚举→中文)绕开已存在的收口点又实现一遍,且两者语义已漂移: (1) operator 停用 enum_display→'停用/休假' 收口点→'停用'; (2) ready_zh 对未知/None 静默归为 '未齐套'(test_enum_display_consistency.py:59-61 钉死 ready_zh('weird')==ready_zh(None)=='未齐套'),收口点 ready_status_label 则 passthrough 返回 'v or 未知';(3) process_bp._source_zh 不调 normalize_op_type_category,任何未归一的中文别名('外协'/'外')会落到 else 误判为'自制'。坏的齐套/工种值被悄悄贴成确定状态,违背不自欺。",
+   "load_bearing": false,
+   "needs_adversarial": false,
+   "severity": "medium",
+   "blast_radius": "若把 enum_display 这套删掉统一到收口点:scheduler 批次页/设备页/人员页/日历页的状态列文案会改变(停用/休假→停用),且坏数据从'未齐套/自制'变为'未知/原值暴露';需同步改 test_enum_display_consistency.py 的钉死断言。若反向(以为两套等价而随意改其一)会造成同一状态在不同页面显示不一致。",
+   "_partition": "web-all",
+   "_source": "pass1"
+  },
+  {
+   "pathology": "P6",
+   "title": "plan_id 是死面包屑:从 request 读入、存进工作台上下文、回吐进所有导航/导出 URL,却从不进任何 resolver/query,且被在途 roadmap 制度化保留",
+   "location": "web/navigation_context.py:86 + web/routes/reports_page_support.py:97,134 (读) → web/viewmodels/scheduler_workbench_links.py:229 (存) → web/viewmodels/scheduler_workbench_link_query.py:118,154 (回吐URL)",
+   "reference_chain": "request 读入: navigation_context.py:86 plan_id=_request_arg('plan_id'),reports_page_support.py:97 plan_id=_request_text('plan_id')。流入收口点 build_workbench_plan_context(scheduler_workbench_links.py:187 形参,:229 'plan_id':_text(plan_id) or None 仅存进 context dict)。去向只有回吐 URL: scheduler_workbench_link_query.py:118/154 _append_param(query,'plan_id',context.get('plan_id'));并在透传白名单旅行 scheduler_navigation_links.py:12、reports_export_support.py:14。grep 'plan_id' 整个 core/ 和 data/ 仅命中 resource_dispatch_actual_record_service.py:397/405 的 _plan_idempotency_keys(完全无关的 import_token 幂等键)。即 request 来的 plan_id 零 resolver 消费。对比同行 back_to:确实驱动跳转(scheduler_resource_dispatch.py:184 _current_back_to→_page_url redirect)。",
+   "why_debt": "典型死面包屑:定义后散布在 16+ 处透传白名单/URL 拼装里制造'在用'假象,实际没有任何查询/解析/计算读它。更隐蔽的是 aps-frontend-workbench-items.yaml:289 exit_check 和 reports-workbench-backlink/acceptance.md:52 把 plan_id 与真正承重的 back_to 并列写成'必须保留的返回上下文',把一个零消费参数制度化成了验收项,未来 LLM 看 roadmap 会以为它承重而永久供养。",
+   "load_bearing": false,
+   "needs_adversarial": false,
+   "severity": "medium",
+   "blast_radius": "删除 plan_id 传递链需同时修改 aps-frontend-workbench-items.yaml:289、reports-workbench-backlink-acceptance.md:52、reports-workbench-backlink-checklist.yaml:82 三处验收项,以及 regression_reports_workbench_backlink/navigation_contract 测试断言。误删风险低(无功能依赖),但会触碰 in-progress feature 的契约测试,需先和 roadmap 对齐再动。",
+   "_partition": "web-all",
+   "_source": "pass1"
+  },
+  {
+   "pathology": "P2",
+   "title": "execution-review 报表页写死 plan_role='adopted'/scenario_id=None 的承重护栏,代码处无保护性注释",
+   "location": "web/routes/reports_page_support.py:366,368 + web/navigation_context.py:80-82",
+   "reference_chain": "reports_page_support.py:366 plan_resolution=page_plan_resolution(...,'adopted',None);:368 page_date_range_or_version_span(...,'adopted',None,...)——而同文件所有兄弟页(overdue:56-58、utilization、downtime 经 _standard_request_context:56-58)全部 raw_plan_role=request_plan_role()/scenario_id=request_scenario_id() 从 request 读。navigation_context.py:42-47 _is_execution_review_request() 专门识别该端点,:80-82 is_execution_review 时强制 plan_role=ROLE_ADOPTED、scenario_id=''。底层 core/services/report/execution_review.py:141 execution_review() 签名根本不接受 plan_role/scenario_id,:153 host._resolve_plan(v,ROLE_ADOPTED,None) 结构性写死——证明这是有意的'只复盘正式采用方案,绝不让 preview/对比方案冒充正式复盘'护栏。viewmodel 侧用户文案 scheduler_reports_workbench.py:210 '只复盘正式采用方案,不复盘模拟预览和对比参考方案' 印证意图。",
+   "why_debt": "刻意和同类不一致(别处都从 request 读 plan_role/scenario_id,就它写死 adopted/None),这个不一致是承重的——删了/统一了会让模拟预览或对比参考方案通过 ?plan_role=&scenario_id= 冒充正式复盘,造成现场实际复盘对错方案。但在写死的两个 route 入口(reports_page_support.py:366/368)和 navigation_context.py:80-82 强制点都没有任何 # 注释说明'这里故意忽略 request 的 plan_role 是护栏'。保护意图只散落在 viewmodel 用户文案和 core 签名里。",
+   "load_bearing": true,
+   "needs_adversarial": false,
+   "severity": "high",
+   "blast_radius": "未来 LLM 以'消除参数方言、统一所有报表页都从 request 读 plan_role'的名义,把这两处的 'adopted',None 改成 request_plan_role()/request_scenario_id(),护栏即被抹掉——预览/对比方案能冒充正式采用方案进入计划-现场实际复盘,污染复盘结论。改动看起来是无害的一致性清理,实为安全回退。",
+   "_partition": "web-all",
+   "_source": "pass1",
+   "_adv_verdict": "load_bearing",
+   "_adv_refuted": false,
+   "_adv_precondition": "不能用 request_plan_role()/request_scenario_id() 替换 :367/:369 的 'adopted',None。若要动：(1) 绝不给 core 的 execution_review() 加 plan_role/scenario_id 入参——行数据的承重护栏在 core，必须原样保留；(2) 先补一条缺失的页面级回归：GET /reports/execution-review?plan_role=baseline_best&scenario_id=xxx，断言渲染出的「排产方案」标签仍为正式采用方案、source_text 不出现预览/对比文案、且发布的 nav context plan_role=adopted/无 scenario_id（覆盖当前测试盲区）；(3) 若目的是消除魔法字面量方言，应抽一个具名收口（如 execution_review_plan_context()，内部强制 adopted/None）替换两处字面量，并补上现在缺的「此处故意忽略 request 的 plan_role 是护栏」注释，而不是改成从 request 读；(4) 保留 navigation_context.py:80-82 的 is_execution_review 强制分支（它守的是未发布 context 的回退路径）。",
+   "_adv_evidence": [
+    "REFUTES THE STATED HARM: core/services/report/execution_review.py:141-150 — execution_review() signature has NO plan_role/scenario_id parameter; rows are fetched with plan_role=ROLE_ADOPTED, scenario_id=None hardwired at :112-114 and :123-124, and :153 _resolve_plan(v, ROLE_ADOPTED, None). The actual plan-vs-actual ROW DATA is structurally adopted-only.",
+    "reports_page_support.py:327-334 — the page's engine.execution_review(int(version), date_from=, date_to=, batch_id=, resource_type=, resource_id=) call passes NO plan_role/scenario_id. So even if :367/:369 were unified to read request, preview/comparison ROWS still cannot enter the review — the finding's '污染复盘结论' is overstated.",
+    "BUT LOAD-BEARING FOR LABEL IDENTITY: reports_page_support.py:367 page_plan_resolution(...,'adopted',None) is the SOLE source of the displayed plan identity — it feeds plan_resolution -> report_plan_template_fields (:388) -> report_plan_status.label/source_text rendered at templates/reports/execution_review.html:56,61. Unifying to request_plan_role()/request_scenario_id() routes through resolve_plan_view -> _resolve_scenario_plan (schedule_plan_query_service.py:182-185) and would DISPLAY '模拟方案甲'/preview over adopted rows, directly contradicting the static template guarantee '这张表只复盘正式排产结果' — a self-deceptive header≠body mislabel that violates the soul-line 不自欺.",
+    "NAV-CONTEXT LEAK: reports_page_support.py:373 _publish_report_context -> set_current_workbench_navigation_context. navigation_context.py:77-79 reads this published override FIRST, bypassing the :80-82 is_execution_review force. So if :367 carries a preview resolution, build_report_navigation_links leaks plan_role/scenario_id into onward links. navigation_context.py:80-82 only guards the non-published fallback path — :367 and :80-82 are two distinct load-bearing guards for two code paths, not redundant.",
+    "DATE-WINDOW: reports_page_support.py:369 page_date_range_or_version_span(...,'adopted',None,...) -> version_date_range(plan_role, scenario_id) (report_plan_helpers.py:154-181) derives the DEFAULT date window from the resolved plan's span; unifying would compute the default filter from a preview plan's span.",
+    "TEST GAP (matches the 'harmless cleanup' risk): grep of tests/ shows NO test GETs /reports/execution-review with an explicit ?plan_role=/scenario_id= param — only no-param or superseded-adopted cases (regression_reports_workbench_navigation_contract.py:84,130). The guardrail tests (regression_scheduler_workbench_link_guardrails.py:131,149; regression_scheduler_workbench_links_contract.py:281) only pin the VIEWMODEL link-builder, not the page route's :367/:369. A naive unification would pass CI green while breaking the label/nav invariant."
+   ]
+  },
+  {
+   "pathology": "P3",
+   "title": "顶层 9 个 scheduler_*.py wrapper 是迁移到 domains/scheduler 后的别名残渣,仅测试续命,roadmap 有意延期清理",
+   "location": "web/routes/scheduler_run.py:7-8 / scheduler_config.py / scheduler_batches.py / scheduler_analysis.py 等 9 个 + web/routes/_scheduler_compat.py",
+   "reference_chain": "scheduler_run.py:8 sys.modules[__name__]=_impl(=load_scheduler_route_module('.domains.scheduler.scheduler_run')),即整模块替换为 domains 实现的别名;scheduler_excel_batches.py 是逐符号 re-export 变体。生产引用: grep web/core/data 仅 web/bootstrap/factory.py:449 importlib.import_module('web.routes.scheduler')(根入口,非这些 wrapper);路由注册实际由 domains/scheduler/scheduler_route_registrar.py:_ROUTE_MODULES 直接 import domains 叶子完成。9 个 wrapper 的唯一引用方是 tests/(test_scheduler_run_view_result_contract 等)+ regression_scheduler_wrapper_import_order_contract.py(把它们命名为 LEGACY_SCHEDULER_WRAPPERS 并断言 import 旁路无副作用)。roadmap p1-scheduler-debt-cleanup-roadmap.md:522 明示'先保留旧 wrapper,避免一次改动冲击启动链'。",
+   "why_debt": "同一职责两套路径(顶层 wrapper 别名 vs domains 真身),迁移做了一半:真身已搬到 domains 并由 registrar 注册,顶层只剩 sys.modules 别名,生产代码已不走它们,靠测试续命。属迁移残渣,但 roadmap 明确记录为有意延期(降低启动链风险),非失忆搁置。",
+   "load_bearing": false,
+   "needs_adversarial": true,
+   "severity": "low",
+   "blast_radius": "删除这 9 个 wrapper + _scheduler_compat 需同步删/改 regression_scheduler_wrapper_import_order_contract.py、test_sp05_path_topology_contract.py 及十余个 import web.routes.scheduler_xxx 的测试。误删会让仍按旧路径 import 的测试与任何外部 legacy 引用断裂。因 roadmap 标注'先保留',现在动属于抢跑;需怀疑者确认是该收的债还是仍需供养的启动链护栏。",
+   "_partition": "web-all",
+   "_source": "pass1",
+   "_adv_verdict": "real_debt",
+   "_adv_refuted": true,
+   "_adv_precondition": "删除是安全的(无任何生产安全不变量失守:无预览冒充/无旧版冒充——wrapper就是现行leaf本身/无坏数据吞噬/无跨层违规),但动手前必须:(1)先认账或修订 roadmap p1-scheduler-debt-cleanup-roadmap.md:522 明示的\"先保留旧 wrapper 避免冲击启动链\"延期决定——现在删属抢跑该决定,非安全问题;(2)把 22 个 test-only 消费者的 `import web.routes.scheduler_xxx` 迁到 domains leaf 路径(web.routes.domains.scheduler.scheduler_xxx);(3)同步删除/改写两处 wrapper 专属契约:regression_scheduler_wrapper_import_order_contract.py 整文件,以及 test_sp05_path_topology_contract.py 的 ROUTE_COMPAT_MODULES/ROUTE_BEHAVIOR_COMPAT_SYMBOLS 区块与 SCHEDULER_REAL_ROUTE_FILES 清单。三步做完即可安全收口,启动链 passivity 仍由 domains leaf+registrar 级测试独立守护。",
+   "_adv_evidence": [
+    "web/routes/scheduler_run.py:7-8 — wrapper is `sys.modules[__name__] = _impl` strong alias of domains leaf; runtime proof: `web.routes.scheduler_run is web.routes.domains.scheduler.scheduler_run` == True, and importing it loads neither web.routes.scheduler nor the registrar (no side effect).",
+    "grep web/ core/ data/ for *.py/*.html/config/json refs to top-level scheduler_* wrapper paths → ZERO non-test hits (exit 1); web/routes/__init__.py empty (no re-export). Wrappers are off the production path.",
+    "web/routes/scheduler.py:6-7 + web/bootstrap/factory.py:449 — production entrypoint is `web.routes.scheduler` importing domains.scheduler.scheduler_bp + scheduler_route_registrar; registrar (scheduler_route_registrar.py:5-20) imports the 14 domains leaves directly, never the wrappers.",
+    "tests/test_sp05_path_topology_contract.py:559-571 (leaf imports pull no registrar side-effects), :551-556 (domains pkg passive), :484-529 (registrar AST _REGISTERED=False, no side-effect imports) — the startup-chain passivity invariant is guarded at the REAL production path, independent of the wrappers; deleting wrappers does not unguard it.",
+    "_scheduler_compat.load_scheduler_route_module raises ModuleNotFoundError on a missing target (runtime-verified) — no silent fallback; soul-invariant intact whether kept or removed.",
+    "Only consumers are 22 test files (regression_scheduler_wrapper_import_order_contract.py names them LEGACY_SCHEDULER_WRAPPERS and asserts the wrappers' OWN passivity; ~20 route-contract regressions + test_sp05 import them out of convenience). No production code, no external legacy importer (offline internal APS).",
+    "scheduler_excel_batches.py:8-28 is a per-symbol re-export (not sys.modules alias), sp05:438 asserts `old is not new` but :440 asserts every symbol `getattr(old,s) is getattr(new,s)` — still pure re-export residue, no distinct behavior."
+   ]
+  },
+  {
+   "pathology": "P5",
+   "title": "scheduler_navigation_publish.selected_plan_role 是 core schedule_result_view_context.selected_plan_role 的副本",
+   "location": "web/routes/domains/scheduler/scheduler_navigation_publish.py:28-29",
+   "reference_chain": "web 版 selected_plan_role(:28) return str(plan_resolution.get('selected_role') or ROLE_ADOPTED);core/services/scheduler/schedule_result_view_context.py:201 已有 selected_plan_role,且 gantt_plan_query.py:46 已做过一次 re-export 包装 _selected_plan_role。web 版被 scheduler_week_plan.py:337、scheduler_gantt.py:293 真实调用(activeForm 非死代码),但与 core 版同名同义,只是 web 版多加 'or ROLE_ADOPTED' 兜底。同文件 requested_plan_role:24 同理(core 无此名,但语义是 selected 的镜像)。",
+   "why_debt": "已有收口点(core schedule_result_view_context.selected_plan_role)的取值职责在 web 层又私实现一遍,绕过了已存在的统一点。属轻量 P5——3 行 getter,语义尚未严重漂移(仅多一层 ROLE_ADOPTED 兜底),但确实是同概念第三处落地(core 原版 + gantt_plan_query re-export + 这里)。",
+   "load_bearing": false,
+   "needs_adversarial": true,
+   "severity": "low",
+   "blast_radius": "改动小:让 web 版直接 from core...schedule_result_view_context import selected_plan_role 即可,但 web 版的 'or ROLE_ADOPTED' 兜底语义要确认 core 版是否等价(core:201 是否对 None/缺失也回 adopted),否则统一会改变 week_plan/gantt 在 plan_resolution 缺 selected_role 时的角色。需怀疑者确认两者兜底语义一致再合并。",
+   "_partition": "web-all",
+   "_source": "pass1",
+   "_adv_verdict": "real_debt",
+   "_adv_refuted": true,
+   "_adv_precondition": "收口方式:把 web 的 selected_plan_role 改为 re-export core schedule_result_view_context.selected_plan_role(完全照搬 gantt_plan_query.py:46 已有写法)。等价性已实证无需再担心:两版都 'or ROLE_ADOPTED'、同一 ROLE_ADOPTED 常量、仅供 effective_plan_role 显示 kwarg、不碰任何安全闸门(闸门走独立 _plan_guard_fields 路径),且 core 版对 None 更稳——统一只会保持或增强行为,绝不改变缺 selected_role 时的角色。改后跑 tests/regression_reports_workbench_navigation_contract.py 及 week_plan/gantt 回归即可。附:requested_plan_role(:24-25,core 无同名,等价逻辑内联在 core:406)可选地一并提一个 core 共享 helper 承载,但这是清洁度优化、非安全必需。",
+   "_adv_evidence": [
+    "web/routes/domains/scheduler/scheduler_navigation_publish.py:28-29 web getter = str(plan_resolution.get('selected_role') or ROLE_ADOPTED)",
+    "core/services/scheduler/schedule_result_view_context.py:201-202 core getter = str((plan_resolution or {}).get('selected_role') or ROLE_ADOPTED) — BOTH have 'or ROLE_ADOPTED'; core is STRICTLY MORE defensive (also handles None). Finding's claim '只是 web 版多加 or ROLE_ADOPTED 兜底' is factually inverted, and its worry about diverging fallback on missing selected_role is therefore unfounded — both return 'adopted' identically",
+    "core/models/schedule_plan_role.py:5 ROLE_ADOPTED='adopted'; web (scheduler_navigation_publish.py:6) and core both import the same constant → no value drift on unify",
+    "web/routes/domains/scheduler/scheduler_week_plan.py:337 and scheduler_gantt.py:293 — the ONLY consumers pass it as effective_plan_role= template DISPLAY kwarg, not into any gate",
+    "web/routes/domains/scheduler/scheduler_navigation_publish.py:12-21,72-85 — the real safety guards (can_dispatch/can_write_feedback/is_scenario_preview/is_superseded_by_newer_version/plan_role_status) flow through a SEPARATE _PLAN_GUARD_FIELD_NAMES/_plan_guard_fields path; selected_plan_role is NOT the preview/version/dispatch gate",
+    "tests/regression_reports_workbench_navigation_contract.py:409-413 — sole test touching this module imports the publish_* functions, NOT selected_plan_role; no test pins the local getter implementation",
+    "core/services/scheduler/gantt_plan_query.py:46-47 — re-export of core's selected_plan_role already exists as a proven precedent for exactly this unification"
+   ]
+  }
+ ]
+}
