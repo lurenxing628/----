@@ -1,0 +1,51 @@
+{#
+  系统使用说明悬浮按钮：
+  - 仅在白名单页面显示
+  - 在说明书页自身隐藏，避免渲染“跳回当前页”的冗余入口
+#}
+{% macro floating_manual_button(current_endpoint, manual_url, help) %}
+{% if manual_url %}
+  {% set popover_id = 'manual-popover-' ~ (current_endpoint | replace('.', '-') | replace('_', '-')) %}
+  {% set title_id = popover_id ~ '-title' %}
+  <div class="floating-manual-wrapper no-print">
+    {% if help %}
+      <div class="manual-popover"
+           id="{{ popover_id }}"
+           role="dialog"
+           aria-labelledby="{{ title_id }}"
+           hidden>
+        <div class="manual-popover__header">
+          <strong class="manual-popover__title" id="{{ title_id }}">{{ help['title'] }}</strong>
+          <button type="button" class="manual-popover__close" aria-label="关闭本页速览">&times;</button>
+        </div>
+        <ul class="manual-popover__list">
+          {% for item in help['items'] %}
+            <li>{{ item }}</li>
+          {% endfor %}
+        </ul>
+        {% if help['manual_url'] %}
+          <div class="manual-popover__footer">
+            <a href="{{ help['manual_url'] }}" class="btn btn-secondary btn-sm">查看本页详细说明</a>
+          </div>
+        {% endif %}
+      </div>
+    {% endif %}
+    <a href="{{ manual_url }}"
+       class="floating-manual-btn"
+       {% if help %}
+       data-manual-popover="1"
+       aria-haspopup="dialog"
+       aria-expanded="false"
+       aria-controls="{{ popover_id }}"
+       {% endif %}
+       title="查看本页说明"
+       aria-label="查看本页说明">
+      <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" class="floating-manual-btn__icon" aria-hidden="true">
+        <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+        <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+      </svg>
+      <span class="floating-manual-btn__text">本页说明</span>
+    </a>
+  </div>
+{% endif %}
+{% endmacro %}

@@ -1,16 +1,18 @@
 {% extends "base.html" %}
-{% import "components/ui_macros.html" as ui %}
+{% import "components/ui_macros.html" as ui with context %}
+{% import "components/reports_nav_macros.html" as reports_ui with context %}
 {% block content %}
   {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'simulated': '模拟排产', 'ok': '成功', 'fail': '失败', 'ok2': '成功'} %}
   {{ ui.aps_page_hero(
     '报表 - 计划和现场实际',
     '把正式计划里的开始结束时间和现场反馈的实际结果放在一起，方便核对开工、完工、暂停和异常影响。',
-    nav_html=ui.reports_nav('execution_review')
+    nav_html=reports_ui.reports_nav('execution_review')
   ) }}
 
   <div class="card aps-report-filter-card">
     {{ ui.aps_card_header('筛选', '选择排产版本、日期范围和批次后查看现场复盘，需要时导出 Excel。') }}
     <form method="get" action="{{ url_for('reports.execution_review_page') }}">
+      {{ reports_ui.preserved_report_context_inputs(exclude=('version', 'plan_role', 'scenario_id', 'date_from', 'date_to', 'start_date', 'end_date', 'batch_id')) }}
       <div class="aps-report-filter-grid">
         <div class="form-field aps-report-version-field">
           <label>排产版本</label>
@@ -37,7 +39,7 @@
         <div class="aps-form-actions aps-report-actions">
           {{ ui.button('查询', 'primary', 'md', type_attr='submit') }}
           {% if rows %}
-            {{ ui.link_button('导出 Excel', url_for('reports.execution_review_export', version=version, date_from=date_from, date_to=date_to, batch_id=batch_id), 'secondary', 'md') }}
+            {{ ui.link_button('导出 Excel', execution_review_export_url, 'secondary', 'md') }}
           {% else %}
             {{ ui.button('导出 Excel', 'secondary', 'md', type_attr='button', disabled=True, class='aps-disabled-button') }}
           {% endif %}
@@ -51,12 +53,28 @@
     </form>
     {% if has_history %}
       <div class="aps-result-summary-grid mt-3">
-        {{ ui.summary_item('排产方案', '正式采用方案') }}
+        {{ ui.summary_item('排产方案', report_plan_status.label) }}
         {{ ui.summary_item('查询日期', date_range_label or '全部日期') }}
         {{ ui.summary_item('批次', batch_filter_label or '全部批次') }}
         {{ ui.summary_item('任务数', count) }}
       </div>
-      <div class="aps-filter-note aps-report-plan-source">这张表只复盘正式采用方案；模拟预览和对比参考方案不在这里写入或复盘现场事实。</div>
+      <div class="aps-filter-note aps-report-plan-source">{{ report_plan_status.source_text }} 这张表只复盘正式排产结果；模拟预览和对比参考方案不在这里写入或复盘现场事实。</div>
+      {% if report_limits %}
+        <div class="aps-filter-note">
+          能回答：{{ report_limits.answer_text }} 不能证明：{{ report_limits.limitation_text }}
+        </div>
+      {% endif %}
+      {% if report_links %}
+        <div class="scheduler-subnav scheduler-subnav-main mt-2">
+          {% for link in report_links %}
+            {% if link.disabled or not link.url %}
+              <span class="table-action-link is-disabled" aria-disabled="true" title="{{ link.disabled_reason }}">{{ link.label }}</span>
+            {% else %}
+              <a class="table-action-link" href="{{ link.url }}">{{ link.label }}</a>
+            {% endif %}
+          {% endfor %}
+        </div>
+      {% endif %}
     {% endif %}
   </div>
 
@@ -92,6 +110,7 @@
               <th class="w-220" data-col-key="planned_resource" data-default-w="220" data-min-w="160">计划资源</th>
               <th class="w-220" data-col-key="actual_resource" data-default-w="220" data-min-w="160">实际资源</th>
               <th class="w-150" data-col-key="feedback_status" data-default-w="150" data-min-w="120">现场反馈状态</th>
+              <th class="w-220" data-col-key="workbench_actions" data-default-w="220" data-min-w="180">继续处理</th>
             </tr>
           </thead>
           <tbody>
@@ -116,6 +135,16 @@
                 <td title="{{ r.planned_resource_identity_label }}">{{ r.planned_resource_label }}{% if r.planned_resource_identity_label and r.planned_resource_identity_label != r.planned_resource_label %}<div class="text-meta">{{ r.planned_resource_identity_label }}</div>{% endif %}</td>
                 <td title="{{ r.actual_resource_identity_label }}">{{ r.actual_resource_label }}{% if r.actual_resource_identity_label and r.actual_resource_identity_label != r.actual_resource_label %}<div class="text-meta">{{ r.actual_resource_identity_label }}</div>{% endif %}</td>
                 <td>{{ r.feedback_status_label }}</td>
+                <td>
+                  {% for link in r.workbench_links %}
+                    {% if link.disabled or not link.url %}
+                      <span class="table-action-link is-disabled" aria-disabled="true" title="{{ link.disabled_reason }}">{{ link.label }}</span>
+                    {% else %}
+                      <a class="table-action-link" href="{{ link.url }}">{{ link.label }}</a>
+                    {% endif %}
+                    {% if not loop.last %}<br>{% endif %}
+                  {% endfor %}
+                </td>
               </tr>
             {% endfor %}
           </tbody>

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, BinaryIO, Callable, ClassVar, Dict, List, Optional
+from typing import Any, BinaryIO, Callable, ClassVar, Dict, Iterable, List, Optional
 
 from core.infrastructure.errors import AppError, ErrorCode, ValidationError
 from core.services.report.delay_diagnosis_presentation import (
@@ -25,6 +25,8 @@ from .exporters import (
     export_overdue_xlsx,
     export_utilization_xlsx,
 )
+from .report_context_filters import filter_downtime_rows_for_report_context, normalize_report_resource_filter
+from .report_number_parsing import parse_report_nonnegative_int
 from .report_plan_helpers import ReportPlanMixin
 
 
@@ -66,22 +68,28 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
         self.execution_feedback_service = OperationExecutionFeedbackService(conn, logger=logger)
         self.calendar = CalendarService(conn, logger=logger)
 
-    def _sanitize_export_threshold(self, value: Any, *, default: int) -> int:
-        try:
-            parsed = int(value)
-        except Exception:
-            parsed = int(default)
-        return max(0, parsed)
+    def _export_nonnegative_int(self, value: Any, *, field: str, default: Optional[int] = None) -> int:
+        return parse_report_nonnegative_int(
+            value,
+            field=field,
+            label=field,
+            source_label="导出配置",
+            blank_default=int(default or 0),
+        )
 
     def _build_export_decision(self, estimated_rows: int) -> ReportExportDecision:
-        rows = max(0, int(estimated_rows or 0))
-        direct_max = self._sanitize_export_threshold(getattr(self, "EXPORT_DIRECT_MAX_ROWS", 0), default=0)
-        stream_max = self._sanitize_export_threshold(
+        rows = self._export_nonnegative_int(estimated_rows, field="导出行数")
+        direct_max = self._export_nonnegative_int(
+            getattr(self, "EXPORT_DIRECT_MAX_ROWS", 0),
+            field="直接导出行数上限",
+        )
+        stream_max = self._export_nonnegative_int(
             getattr(self, "EXPORT_STREAM_MAX_ROWS", direct_max),
+            field="流式导出行数上限",
             default=direct_max,
         )
         if stream_max < direct_max:
-            stream_max = direct_max
+            raise ValidationError("流式导出行数上限不能小于直接导出行数上限。", field="流式导出行数上限")
 
         if rows <= direct_max:
             return ReportExportDecision(mode="direct", estimated_rows=rows)
@@ -130,13 +138,20 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
         version: int,
         plan_role: Optional[str],
         scenario_id: Optional[str] = None,
+        resource_type: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        batch_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         resolution = self._resolve_plan(version, plan_role, scenario_id)
+        resource_type, resource_id = normalize_report_resource_filter(resource_type, resource_id)
         return self.plan_query_service.list_plan_overdue_base_rows_for_resolution(
             version=int(version),
             source_table=resolution.source_table,
             candidate_id=resolution.candidate_id,
             scenario_id=resolution.scenario_id,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            batch_id=batch_id,
         )
 
     def overdue_batches(
@@ -144,10 +159,21 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
         version: int,
         plan_role: Optional[str] = None,
         scenario_id: Optional[str] = None,
+        resource_type: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        batch_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         v = int(version or 0)
+        resource_type, resource_id = normalize_report_resource_filter(resource_type, resource_id)
         resolution = self._resolve_plan(v, plan_role, scenario_id)
-        rows = self._fetch_overdue_base_rows_for_plan(v, plan_role, scenario_id)
+        rows = self._fetch_overdue_base_rows_for_plan(
+            v,
+            plan_role,
+            scenario_id,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            batch_id=batch_id,
+        )
         scheduled, unscheduled, as_of = calculations.compute_overdue_buckets(rows)
         items = list(scheduled) + list(unscheduled)
         return {
@@ -182,6 +208,7 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
         *,
         version: int,
         resolution: SchedulePlanResolution,
+        batch_ids: Optional[Iterable[Any]] = None,
     ) -> List[Dict[str, Any]]:
         diagnosis_report = self.delay_diagnosis_service.diagnose_resolved_plan_overdue(
             version=int(version),
@@ -190,6 +217,7 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
         return build_delay_diagnosis_export_rows(
             diagnosis_report,
             filters={"version": int(version), "plan_label": self._public_plan_label(resolution)},
+            allowed_batch_ids=batch_ids,
         )
 
     def export_overdue_xlsx(
@@ -197,14 +225,27 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
         version: int,
         plan_role: Optional[str] = None,
         scenario_id: Optional[str] = None,
+        resource_type: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        batch_id: Optional[str] = None,
     ) -> ReportExport:
-        rep = self.overdue_batches(version, plan_role=plan_role, scenario_id=scenario_id)
+        overdue_kwargs: Dict[str, Any] = {"plan_role": plan_role, "scenario_id": scenario_id}
+        if resource_type or resource_id:
+            overdue_kwargs.update({"resource_type": resource_type, "resource_id": resource_id})
+        if batch_id:
+            overdue_kwargs["batch_id"] = batch_id
+        rep = self.overdue_batches(version, **overdue_kwargs)
         items = list(rep.get("items") or [])
         if not items:
             raise ValidationError("当前版本没有可导出的超期结果，请换一个排产版本后再试。", field="导出")
         resolution = self._resolve_plan(int(rep["version"]), plan_role, scenario_id)
+        exported_batch_ids = [item.get("batch_id") for item in items]
         def build_overdue_export(*, write_only: bool = False):
-            diagnosis_rows = self._overdue_diagnosis_export_rows(version=int(rep["version"]), resolution=resolution)
+            diagnosis_rows = self._overdue_diagnosis_export_rows(
+                version=int(rep["version"]),
+                resolution=resolution,
+                batch_ids=exported_batch_ids,
+            )
             return export_overdue_xlsx(
                 items,
                 diagnosis_rows=diagnosis_rows,
@@ -230,8 +271,12 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
         end_date: Any,
         plan_role: Optional[str] = None,
         scenario_id: Optional[str] = None,
+        resource_type: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        batch_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         v = int(version or 0)
+        resource_type, resource_id = normalize_report_resource_filter(resource_type, resource_id)
         resolution = self._resolve_plan(v, plan_role, scenario_id)
         sd = calculations.parse_date(start_date, field="start_date")
         ed = calculations.parse_date(end_date, field="end_date")
@@ -249,6 +294,9 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
             scenario_id=scenario_id,
             start_time=start_s,
             end_time=end_s,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            batch_id=batch_id,
         )
 
         cap_hours = calculations.capacity_hours(self.calendar, sd, ed)
@@ -279,8 +327,16 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
         end_date: Any,
         plan_role: Optional[str] = None,
         scenario_id: Optional[str] = None,
+        resource_type: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        batch_id: Optional[str] = None,
     ) -> ReportExport:
-        rep = self.utilization(version, start_date, end_date, plan_role=plan_role, scenario_id=scenario_id)
+        utilization_kwargs: Dict[str, Any] = {"plan_role": plan_role, "scenario_id": scenario_id}
+        if resource_type or resource_id:
+            utilization_kwargs.update({"resource_type": resource_type, "resource_id": resource_id})
+        if batch_id:
+            utilization_kwargs["batch_id"] = batch_id
+        rep = self.utilization(version, start_date, end_date, **utilization_kwargs)
         machines = list(rep.get("machines") or [])
         operators = list(rep.get("operators") or [])
         if not machines and not operators:
@@ -319,8 +375,12 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
         end_date: Any,
         plan_role: Optional[str] = None,
         scenario_id: Optional[str] = None,
+        resource_type: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        batch_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         v = int(version or 0)
+        resource_type, resource_id = normalize_report_resource_filter(resource_type, resource_id)
         resolution = self._resolve_plan(v, plan_role, scenario_id)
         sd = calculations.parse_date(start_date, field="start_date")
         ed = calculations.parse_date(end_date, field="end_date")
@@ -339,6 +399,16 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
             scenario_id=scenario_id,
             start_time=start_s,
             end_time=end_s,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            batch_id=batch_id,
+        )
+        downtime_rows = filter_downtime_rows_for_report_context(
+            downtime_rows,
+            sch_rows,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            batch_id=batch_id,
         )
 
         machines = calculations.compute_downtime_impact(
@@ -363,8 +433,16 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
         end_date: Any,
         plan_role: Optional[str] = None,
         scenario_id: Optional[str] = None,
+        resource_type: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        batch_id: Optional[str] = None,
     ) -> ReportExport:
-        rep = self.downtime_impact(version, start_date, end_date, plan_role=plan_role, scenario_id=scenario_id)
+        downtime_kwargs: Dict[str, Any] = {"plan_role": plan_role, "scenario_id": scenario_id}
+        if resource_type or resource_id:
+            downtime_kwargs.update({"resource_type": resource_type, "resource_id": resource_id})
+        if batch_id:
+            downtime_kwargs["batch_id"] = batch_id
+        rep = self.downtime_impact(version, start_date, end_date, **downtime_kwargs)
         machines = list(rep.get("machines") or [])
         if not machines:
             raise ValidationError("暂无数据，不能导出。请调整版本或日期范围后再试。", field="导出")

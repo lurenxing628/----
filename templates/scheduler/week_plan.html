@@ -40,6 +40,15 @@
       {% if scenario_id %}
         <input type="hidden" name="scenario_id" value="{{ scenario_id }}">
       {% endif %}
+      {% if batch_id %}
+        <input type="hidden" name="batch_id" value="{{ batch_id }}">
+      {% endif %}
+      {% if resource_type %}
+        <input type="hidden" name="resource_type" value="{{ resource_type }}">
+      {% endif %}
+      {% if resource_id %}
+        <input type="hidden" name="resource_id" value="{{ resource_id }}">
+      {% endif %}
       <div class="form-field">
         <label title="任意日期，系统会自动归到周一">指定周</label>
         <input type="date" name="week_start" value="{{ week_start }}" class="w-160">
@@ -47,7 +56,7 @@
       <div class="form-field">
         <label>版本</label>
         {% if versions and versions|length > 0 %}
-          <select name="version" class="w-140">
+          <select name="version" class="w-140" data-report-plan-version-select data-initial-version="{{ version or '' }}">
             {% for v in versions %}
               <option value="{{ v.version }}" {% if v.version == version %}selected{% endif %}>
                 {{ ui.version_option_label(v, status_zh.get(v.result_status, v.result_status or '-')) }}
@@ -55,12 +64,12 @@
             {% endfor %}
           </select>
         {% else %}
-          <input name="version" value="{{ version or '' }}" class="w-160">
+          <input name="version" value="{{ version or '' }}" class="w-160" data-report-plan-version-select data-initial-version="{{ version or '' }}">
         {% endif %}
       </div>
       <div class="form-field">
         <label>方案</label>
-        <select name="plan_role" class="w-160">
+        <select name="plan_role" class="w-160" data-report-plan-role-select data-initial-plan-role="{{ effective_plan_role }}">
           {% for option in plan_role_options or [] %}
             <option value="{{ option.role }}" {% if option.role == effective_plan_role %}selected{% endif %}>
               {{ option.label }}{% if option.candidate_label %} · {{ option.candidate_label }}{% endif %}
@@ -275,4 +284,8 @@
       <div class="muted">{{ empty_message }}</div>
     {% endif %}
   </div>
+{% endblock %}
+{% block extra_scripts %}
+  {{ super() }}
+  <script src="{{ url_for('static', filename='js/report_plan_filter.js') }}" defer></script>
 {% endblock %}

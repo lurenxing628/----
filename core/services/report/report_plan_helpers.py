@@ -61,6 +61,9 @@ class ReportPlanMixin:
         scenario_id: Optional[str] = None,
         start_time: str,
         end_time: str,
+        resource_type: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        batch_id: Optional[str] = None,
     ):
         host = cast(_ReportPlanHost, self)
         try:
@@ -70,6 +73,9 @@ class ReportPlanMixin:
                 scenario_id=scenario_id,
                 start_time=start_time,
                 end_time=end_time,
+                resource_type=resource_type,
+                resource_id=resource_id,
+                batch_id=batch_id,
             )
         except ValueError as exc:
             raise ValidationError(str(exc), field="scenario_id" if scenario_id else "plan_role") from exc
@@ -80,6 +86,9 @@ class ReportPlanMixin:
         version: int,
         plan_role: Optional[str],
         scenario_id: Optional[str] = None,
+        resource_type: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        batch_id: Optional[str] = None,
     ):
         host = cast(_ReportPlanHost, self)
         try:
@@ -89,6 +98,9 @@ class ReportPlanMixin:
                 source_table=resolution.source_table,
                 candidate_id=resolution.candidate_id,
                 scenario_id=resolution.scenario_id,
+                resource_type=resource_type,
+                resource_id=resource_id,
+                batch_id=batch_id,
             )
         except ValueError as exc:
             raise ValidationError(str(exc), field="scenario_id" if scenario_id else "plan_role") from exc

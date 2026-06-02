@@ -85,11 +85,11 @@
         <label>视图</label>
         <div class="aps-form-actions">
           {% if view == 'machine' %}
-            {{ ui.link_button('设备视图', url_for('scheduler.gantt_page', view='machine', version=version, start_date=base_start_date, end_date=base_end_date, plan_role=current_plan_role, scenario_id=current_scenario_id, gantt_zoom=gantt_zoom or 'day'), 'primary', 'sm') }}
-            {{ ui.link_button('人员视图', url_for('scheduler.gantt_page', view='operator', version=version, start_date=base_start_date, end_date=base_end_date, plan_role=current_plan_role, scenario_id=current_scenario_id, gantt_zoom=gantt_zoom or 'day'), 'secondary', 'sm') }}
+            {{ ui.link_button('设备视图', gantt_view_urls.machine, 'primary', 'sm') }}
+            {{ ui.link_button('人员视图', gantt_view_urls.operator, 'secondary', 'sm') }}
           {% else %}
-            {{ ui.link_button('设备视图', url_for('scheduler.gantt_page', view='machine', version=version, start_date=base_start_date, end_date=base_end_date, plan_role=current_plan_role, scenario_id=current_scenario_id, gantt_zoom=gantt_zoom or 'day'), 'secondary', 'sm') }}
-            {{ ui.link_button('人员视图', url_for('scheduler.gantt_page', view='operator', version=version, start_date=base_start_date, end_date=base_end_date, plan_role=current_plan_role, scenario_id=current_scenario_id, gantt_zoom=gantt_zoom or 'day'), 'primary', 'sm') }}
+            {{ ui.link_button('设备视图', gantt_view_urls.machine, 'secondary', 'sm') }}
+            {{ ui.link_button('人员视图', gantt_view_urls.operator, 'primary', 'sm') }}
           {% endif %}
         </div>
       </div>
@@ -97,9 +97,9 @@
       <div class="aps-gantt-control-group">
         <label>周切换</label>
         <div class="aps-form-actions">
-          {{ ui.link_button('上周', url_for('scheduler.gantt_page', view=view, week_start=base_week_start, offset=offset-1, version=version, plan_role=current_plan_role, scenario_id=current_scenario_id, gantt_zoom=gantt_zoom or 'day'), 'secondary', 'sm') }}
-          {{ ui.link_button('回到本周', url_for('scheduler.gantt_page', view=view, week_start=base_week_start, offset=0, version=version, plan_role=current_plan_role, scenario_id=current_scenario_id, gantt_zoom=gantt_zoom or 'day'), 'secondary', 'sm') }}
-          {{ ui.link_button('下周', url_for('scheduler.gantt_page', view=view, week_start=base_week_start, offset=offset+1, version=version, plan_role=current_plan_role, scenario_id=current_scenario_id, gantt_zoom=gantt_zoom or 'day'), 'secondary', 'sm') }}
+          {{ ui.link_button('上周', gantt_week_urls.prev, 'secondary', 'sm') }}
+          {{ ui.link_button('回到本周', gantt_week_urls.current, 'secondary', 'sm') }}
+          {{ ui.link_button('下周', gantt_week_urls.next, 'secondary', 'sm') }}
         </div>
       </div>
       </div>
@@ -109,6 +109,12 @@
         <input type="hidden" id="ganttZoomFormValue" name="gantt_zoom" value="{{ gantt_zoom or 'day' }}">
         {% if current_scenario_id %}
           <input type="hidden" name="scenario_id" value="{{ current_scenario_id }}">
+        {% endif %}
+        {% if gantt_form_scope.gantt_batch %}
+          <input type="hidden" name="gantt_batch" value="{{ gantt_form_scope.gantt_batch }}">
+        {% endif %}
+        {% if gantt_form_scope.gantt_resource %}
+          <input type="hidden" name="gantt_resource" value="{{ gantt_form_scope.gantt_resource }}">
         {% endif %}
         <div class="form-field">
           <label>排产区间（起）</label>
@@ -121,7 +127,7 @@
         <div class="form-field">
           <label>版本</label>
           {% if versions and versions|length > 0 %}
-            <select name="version" class="w-140">
+            <select name="version" class="w-140" data-report-plan-version-select data-initial-version="{{ version or '' }}">
               {% for v in versions %}
                 <option value="{{ v.version }}" {% if v.version == version %}selected{% endif %}>
                   {% set option_status_label = v.result_status_label or (selected_result_status_label if v.version == version and selected_result_status_label else status_zh.get(v.result_status, '结果状态未知')) %}
@@ -130,12 +136,12 @@
               {% endfor %}
             </select>
           {% else %}
-            <input name="version" value="{{ version or '' }}" class="w-160">
+            <input name="version" value="{{ version or '' }}" class="w-160" data-report-plan-version-select data-initial-version="{{ version or '' }}">
           {% endif %}
         </div>
         <div class="form-field">
           <label>方案</label>
-          <select name="plan_role" class="w-160">
+          <select name="plan_role" class="w-160" data-report-plan-role-select data-initial-plan-role="{{ effective_plan_role }}">
             {% for option in plan_role_options or [] %}
               <option value="{{ option.role }}" {% if option.role == effective_plan_role %}selected{% endif %}>
                 {{ option.label }}{% if option.candidate_label %} · {{ option.candidate_label }}{% endif %}
@@ -308,6 +314,7 @@
     <script src="{{ url_for('static', filename='js/gantt_holidays.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/gantt_decorations.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/gantt_render.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/report_plan_filter.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/gantt_ui.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/gantt_boot.js') }}" defer></script>
   {% endif %}

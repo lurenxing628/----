@@ -144,19 +144,8 @@ def _seed_scenario(conn: sqlite3.Connection) -> None:
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
-            scenario_id,
-            "draft-guardrail",
-            VERSION,
-            ROLE_ADOPTED,
-            SOURCE_SCHEDULE,
-            None,
-            "adopted",
-            "",
-            "active",
-            "valid",
-            0,
-            1,
-            "pytest",
+            scenario_id, "draft-guardrail", VERSION, ROLE_ADOPTED, SOURCE_SCHEDULE, None, "adopted",
+            "", "active", "valid", 0, 1, "pytest",
         ),
     )
     conn.execute(
@@ -168,16 +157,8 @@ def _seed_scenario(conn: sqlite3.Connection) -> None:
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
-            scenario_id,
-            SOURCE_SCHEDULE,
-            70,
-            10,
-            "M-CANDIDATE",
-            "O-CANDIDATE",
-            "2026-05-06 08:00:00",
-            "2026-05-06 09:00:00",
-            "unlocked",
-            "yes",
+            scenario_id, SOURCE_SCHEDULE, 70, 10, "M-CANDIDATE", "O-CANDIDATE",
+            "2026-05-06 08:00:00", "2026-05-06 09:00:00", "unlocked", "yes",
         ),
     )
 
@@ -275,12 +256,17 @@ def _build_route_app() -> Flask:
         ("/scheduler/resource-dispatch", "scheduler.resource_dispatch_page"),
         ("/scheduler/resource-dispatch/data", "scheduler.resource_dispatch_data"),
         ("/scheduler/resource-dispatch/execution/data", "scheduler.resource_dispatch_execution_data"),
+        ("/scheduler/resource-dispatch/execution/<int:op_id>/actual", "scheduler.resource_dispatch_execution_actual"),
         ("/scheduler/resource-dispatch/execution/actual-template", "scheduler.resource_dispatch_actual_template"),
         ("/scheduler/resource-dispatch/execution/import", "scheduler.resource_dispatch_actual_import"),
         ("/scheduler/resource-dispatch/export", "scheduler.resource_dispatch_export"),
     ):
-        app.add_url_rule(path, endpoint=endpoint, view_func=lambda: "")
+        app.add_url_rule(path, endpoint=endpoint, view_func=lambda **_: "")
     return app
+
+def _route_services(conn: sqlite3.Connection) -> SimpleNamespace:
+    return SimpleNamespace(resource_dispatch_service=ResourceDispatchService(conn, logger=None, op_logger=None))
+
 
 def _json_data(resp: Any) -> Dict[str, Any]:
     return json.loads(resp.data.decode("utf-8") or "{}").get("data") or {}
@@ -428,14 +414,9 @@ def test_public_payload_and_export_never_show_internal_plan_identity_fields(tmp_
 
 def test_plan_identity_write_flags_cannot_be_overridden_by_outer_fields() -> None:
     plan_identity = {
-        "user_label": "正式采用方案",
-        "can_dispatch": False,
-        "can_write_feedback": False,
-        "is_official": True,
-        "is_preview": False,
-        "is_current_executable_version": True,
-        "is_current_executable_official_version": False,
-        "is_superseded_by_newer_version": True,
+        "user_label": "正式采用方案", "can_dispatch": False, "can_write_feedback": False,
+        "is_official": True, "is_preview": False, "is_current_executable_version": True,
+        "is_current_executable_official_version": False, "is_superseded_by_newer_version": True,
     }
     fields = plan_role_filter_fields({
         "requested_role": ROLE_ADOPTED,
@@ -482,17 +463,17 @@ def test_resource_dispatch_get_data_and_export_do_not_write_schedule_or_executio
         monkeypatch.setattr(rd_routes, "log_excel_export", lambda **_: None)
 
         with app.test_request_context(f"/scheduler/resource-dispatch?{query}"):
-            g.services = SimpleNamespace(resource_dispatch_service=ResourceDispatchService(conn, logger=None, op_logger=None))
+            g.services = _route_services(conn)
             assert rd_routes.resource_dispatch_page() == "OK"
 
         with app.test_request_context(f"/scheduler/resource-dispatch/data?{query}"):
-            g.services = SimpleNamespace(resource_dispatch_service=ResourceDispatchService(conn, logger=None, op_logger=None))
+            g.services = _route_services(conn)
             data_resp = rd_routes.resource_dispatch_data()
             assert data_resp.status_code == 200
             assert _json_data(data_resp)["plan_identity"]["can_write_feedback"] is True
 
         with app.test_request_context(f"/scheduler/resource-dispatch/export?{query}"):
-            g.services = SimpleNamespace(resource_dispatch_service=ResourceDispatchService(conn, logger=None, op_logger=None))
+            g.services = _route_services(conn)
             g.op_logger = None
             export_resp = rd_routes.resource_dispatch_export()
             assert export_resp.status_code == 200

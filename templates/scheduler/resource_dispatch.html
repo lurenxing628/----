@@ -139,7 +139,7 @@
       <div class="form-field aps-resource-filter-version dq-version">
         <label>版本</label>
         {% if versions and versions|length > 0 %}
-          <select name="version" class="w-140">
+          <select name="version" class="w-140" data-report-plan-version-select data-initial-version="{{ filters.version or '' }}">
             {% for v in versions %}
               <option value="{{ v.version }}" {% if v.version == filters.version %}selected{% endif %}>
                 {{ ui.version_option_label(v, status_zh.get(v.result_status, '结果状态未知')) }}
@@ -147,12 +147,12 @@
             {% endfor %}
           </select>
         {% else %}
-          <input name="version" value="{{ filters.version or '' }}" class="w-160">
+          <input name="version" value="{{ filters.version or '' }}" class="w-160" data-report-plan-version-select data-initial-version="{{ filters.version or '' }}">
         {% endif %}
       </div>
       <div class="form-field aps-resource-filter-plan dq-plan">
         <label>方案</label>
-        <select name="plan_role" class="w-180">
+        <select name="plan_role" class="w-180" data-report-plan-role-select data-initial-plan-role="{{ filters.plan_role }}">
           {% for option in plan_role_options or [] %}
             <option value="{{ option.role }}" {% if option.role == filters.plan_role %}selected{% endif %}>
               {{ option.label }}
@@ -447,6 +447,7 @@
   <script src="{{ url_for('static', filename='js/resource_dispatch_shared.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/resource_dispatch_core.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/resource_execution_context.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/report_plan_filter.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/resource_execution_cards.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/resource_execution_actual.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/resource_execution_import.js') }}" defer></script>

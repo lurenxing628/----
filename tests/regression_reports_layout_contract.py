@@ -30,8 +30,12 @@ def test_report_pages_use_stable_filter_grid_and_preserve_contracts() -> None:
         assert "导出 Excel" in source
         assert "导出的 Excel 也会按这个模拟方案生成" in source
         assert "正式计划还没有改变" in source
+        assert "reports_ui.preserved_report_context_inputs" in source
         for field_name in field_names:
-            assert f'name="{field_name}"' in source
+            if field_name == "scenario_id":
+                assert f'name="{field_name}"' in source or "preserved_report_context_inputs" in source
+            else:
+                assert f'name="{field_name}"' in source
         for table_id in table_ids:
             assert f'id="{table_id}"' in source
             table_tag = re.search(rf'<table[^>]*id="{table_id}"[^>]*>', source)

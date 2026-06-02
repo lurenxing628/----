@@ -1,0 +1,25 @@
+{% import "components/ui_macros.html" as ui with context %}
+
+{#
+  报表导航
+  active: index | overdue | utilization | execution_review | downtime
+#}
+
+{% macro preserved_report_context_inputs(exclude=()) %}
+{% for field in preserved_report_context_fields(exclude) %}
+  <input type="hidden" name="{{ field.name }}" value="{{ field.value }}">
+{% endfor %}
+{% endmacro %}
+
+{% macro reports_nav(active='', size='sm', class='') %}
+{% set nav_links = build_report_navigation_links(active) %}
+<div class="scheduler-subnav scheduler-subnav-main {{ class }}">
+  {% for link in nav_links %}
+    {% if link.disabled or not link.url %}
+      <span class="btn btn-secondary btn-{{ size }} is-disabled" aria-disabled="true" title="{{ link.disabled_reason }}">{{ link.label }}</span>
+    {% else %}
+      {{ ui.link_button(link.label, link.url, 'primary' if link.active else 'secondary', size) }}
+    {% endif %}
+  {% endfor %}
+</div>
+{% endmacro %}

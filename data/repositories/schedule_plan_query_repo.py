@@ -10,6 +10,7 @@ from core.models.schedule_plan_role import (
 
 from .base_repo import BaseRepository
 from .schedule_detail_query import build_schedule_detail_sql
+from .schedule_resource_sql_filters import append_detail_filters, overdue_resource_filter
 from .schedule_rows import ScheduleDetailRow, ScheduleDispatchRow, ScheduleTimeSpanRow
 
 _SCHEDULE_PLAN_ROWS_SQL = """
@@ -54,7 +55,6 @@ FROM ScheduleAdjustmentScenarioRow r
 JOIN ScheduleAdjustmentScenario s ON s.scenario_id = r.scenario_id
 WHERE s.base_version = ? AND r.scenario_id = ? AND s.status = 'active'
 """
-
 
 def _require_candidate_id(source_table: str, candidate_id: Optional[int]) -> Optional[int]:
     if source_table == SOURCE_CANDIDATE_ROWS and candidate_id is None:
@@ -317,17 +317,28 @@ class SchedulePlanQueryRepository(BaseRepository):
         scenario_id: Optional[str] = None,
         start_time: str,
         end_time: str,
+        resource_type: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        batch_id: Optional[str] = None,
     ) -> List[ScheduleDetailRow]:
         plan_sql, extra_params = self._plan_rows_sql(
             source_table=source_table,
             candidate_id=candidate_id,
             scenario_id=scenario_id,
         )
+        params: List[Any] = [int(version)] + extra_params + [end_time, start_time]
+        where_clauses = ["s.start_time < ?", "s.end_time > ?"]
+        append_detail_filters(
+            where_clauses,
+            params,
+            batch_id=batch_id,
+            resource_type=resource_type,
+            resource_id=resource_id,
+        )
         sql = build_schedule_detail_sql(
-            where_clauses=("s.start_time < ?", "s.end_time > ?"),
+            where_clauses=where_clauses,
             plan_rows_cte_sql=plan_sql,
         )
-        params: List[Any] = [int(version)] + extra_params + [end_time, start_time]
         return cast(List[ScheduleDetailRow], self.fetchall(sql, tuple(params)))
 
     def list_detail_rows_all(
@@ -337,17 +348,28 @@ class SchedulePlanQueryRepository(BaseRepository):
         source_table: str,
         candidate_id: Optional[int],
         scenario_id: Optional[str] = None,
+        resource_type: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        batch_id: Optional[str] = None,
     ) -> List[ScheduleDetailRow]:
         plan_sql, extra_params = self._plan_rows_sql(
             source_table=source_table,
             candidate_id=candidate_id,
             scenario_id=scenario_id,
         )
+        params: List[Any] = [int(version)] + extra_params
+        where_clauses = ["1 = 1"]
+        append_detail_filters(
+            where_clauses,
+            params,
+            batch_id=batch_id,
+            resource_type=resource_type,
+            resource_id=resource_id,
+        )
         sql = build_schedule_detail_sql(
-            where_clauses=("1 = 1",),
+            where_clauses=where_clauses,
             plan_rows_cte_sql=plan_sql,
         )
-        params: List[Any] = [int(version)] + extra_params
         return cast(List[ScheduleDetailRow], self.fetchall(sql, tuple(params)))
 
     def list_overdue_base_rows(
@@ -357,12 +379,31 @@ class SchedulePlanQueryRepository(BaseRepository):
         source_table: str,
         candidate_id: Optional[int],
         scenario_id: Optional[str] = None,
+        resource_type: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        batch_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         plan_sql, extra_params = self._plan_rows_sql(
             source_table=source_table,
             candidate_id=candidate_id,
             scenario_id=scenario_id,
         )
+        resource_scope = overdue_resource_filter(resource_type, resource_id)
+        batch_id_text = str(batch_id or "").strip()
+        resource_filter_sql = ""
+        resource_params: List[Any] = []
+        if resource_scope.has_filter:
+            resource_column = resource_scope.column_name
+            resource_filter_sql = f"""
+              AND EXISTS (
+                SELECT 1
+                FROM BatchOperations bo2
+                JOIN plan_rows sr ON sr.op_id = bo2.id
+                WHERE bo2.batch_id = b.batch_id
+                  AND TRIM(COALESCE(sr.{resource_column}, '')) = ?
+              )
+            """
+            resource_params.append(resource_scope.resource_id)
         sql = f"""
             WITH plan_rows AS (
                 {plan_sql.strip()}
@@ -378,10 +419,12 @@ class SchedulePlanQueryRepository(BaseRepository):
             LEFT JOIN BatchOperations bo ON bo.batch_id = b.batch_id
             LEFT JOIN plan_rows s ON s.op_id = bo.id
             WHERE b.due_date IS NOT NULL AND TRIM(CAST(b.due_date AS TEXT)) <> ''
+              AND (? = '' OR TRIM(CAST(b.batch_id AS TEXT)) = ?)
+            {resource_filter_sql}
             GROUP BY b.batch_id
             ORDER BY b.due_date ASC, b.batch_id ASC
         """
-        params: List[Any] = [int(version)] + extra_params
+        params: List[Any] = [int(version)] + extra_params + [batch_id_text, batch_id_text] + resource_params
         return self.fetchall(sql, tuple(params))
 
     def list_dispatch_rows(

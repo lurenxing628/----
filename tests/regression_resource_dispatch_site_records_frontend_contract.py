@@ -33,7 +33,7 @@ def test_resource_dispatch_page_has_site_records_words_and_excel_entries(tmp_pat
     assert "data-actual-record-url-template=" in body
     assert "data-actual-template-url=" in body
     assert "data-actual-import-url=" in body
-    assert 'data-actual-record-url-template="/scheduler/resource-dispatch/execution/__OP_ID__/actual"' in body
+    assert 'data-actual-record-url-template="/scheduler/resource-dispatch/execution/__OP_ID__/actual?' in body
     assert 'data-actual-template-url="/scheduler/resource-dispatch/execution/actual-template?' in body
     assert 'data-actual-import-url="/scheduler/resource-dispatch/execution/import?' in body
     assert "data-actual-import-preview-url=" not in body
@@ -62,6 +62,26 @@ def test_resource_dispatch_page_has_site_records_words_and_excel_entries(tmp_pat
         "检查 Excel",
     ):
         assert forbidden not in body
+
+
+def test_resource_dispatch_actual_record_url_uses_normalized_filters_when_query_date_missing(tmp_path, monkeypatch) -> None:
+    app, _db_path = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+    from web.routes.domains.scheduler import scheduler_resource_dispatch as rd_routes
+
+    monkeypatch.setattr(rd_routes, "_export_url", lambda _filters: "")
+
+    resp = client.get(
+        "/scheduler/resource-dispatch?scope_type=operator&operator_id=O1&period_preset=custom"
+        "&date_from=2026-05-01&date_to=2026-05-07&version=2&plan_role=adopted"
+    )
+    body = resp.get_data(as_text=True)
+
+    assert resp.status_code == 200
+    assert 'data-actual-record-url-template="/scheduler/resource-dispatch/execution/__OP_ID__/actual?' in body
+    assert "query_date=2026-05-01" in body
+    assert "start_date=2026-05-01" in body
+    assert "end_date=2026-05-07" in body
 
 
 def test_resource_dispatch_read_only_page_does_not_emit_actual_write_urls(tmp_path, monkeypatch) -> None:
@@ -269,6 +289,7 @@ def test_resource_dispatch_frontend_uses_actual_record_form_and_one_click_import
     assert "aps-execution-record-grid" in source
     assert "actualRecordUrlTemplate" in source
     assert "actualRecordUrl(opId)" in source
+    assert 'if (path.indexOf("?") >= 0) return path;' in source
     assert "path + query" in source
     assert "requested_plan_role: identity.requested_plan_role" not in source
     assert "effective_plan_role: identity.effective_plan_role" not in source

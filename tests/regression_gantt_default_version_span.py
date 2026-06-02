@@ -131,7 +131,7 @@ def test_gantt_page_and_data_ignore_offset_when_explicit_dates_present(tmp_path,
     assert 'data-end-date="2026-05-10"' in html
     assert 'data-range-source="request"' in html
     assert (
-        "view=operator&amp;version=3&amp;start_date=2026-05-04&amp;end_date=2026-05-10"
+        "view=operator&amp;version=3&amp;plan_role=adopted&amp;start_date=2026-05-04&amp;end_date=2026-05-10"
     ) in html
     assert "view=operator&amp;week_start=" not in html
     assert "week_start=2026-05-04&amp;offset=1&amp;version=3" in html

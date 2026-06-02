@@ -51,12 +51,15 @@ def _identity_user_label(
     status: str,
     source_table: str,
     is_scenario_preview: bool,
+    is_superseded: bool,
     scenario_display_name: str,
 ) -> str:
     if is_scenario_preview:
         return scenario_display_name or "模拟预览（未命名）"
     if requested_role != ROLE_ADOPTED or status in ("resolved_comparison", "fallback_to_adopted", "missing_detail"):
         return "对比参考方案"
+    if is_superseded and source_table == SOURCE_SCHEDULE:
+        return "历史正式方案（已被新版本替代）"
     if source_table == SOURCE_SCHEDULE:
         return plan_role_label(ROLE_ADOPTED)
     return "对比参考方案"
@@ -163,6 +166,7 @@ def build_plan_identity(
         status=resolution_status,
         source_table=source,
         is_scenario_preview=is_preview,
+        is_superseded=is_superseded,
         scenario_display_name=scenario_display_name,
     )
     label = plan_role_label(effective) if not is_preview else user_label

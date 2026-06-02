@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from ._sched_utils import _safe_int
+from .gantt_task_labels import public_task_label as _public_task_label
 
 
 def _parse_dt(value: Any) -> Optional[datetime]:
@@ -29,36 +30,6 @@ def _fmt_dt(dt: datetime) -> str:
 
 def _clean_text(value: Any) -> str:
     return str(value or "").strip()
-
-
-def _detail_operation_label(row: Dict[str, Any]) -> str:
-    seq = _clean_text(row.get("seq"))
-    op_type = _clean_text(row.get("op_type_name"))
-    if seq and op_type:
-        return f"{seq}（{op_type}）"
-    return seq or op_type
-
-
-def _detail_part_label(row: Dict[str, Any]) -> str:
-    part_no = _clean_text(row.get("part_no"))
-    part_name = _clean_text(row.get("part_name"))
-    return " ".join(part for part in (part_no, part_name) if part)
-
-
-def _public_task_label(row: Dict[str, Any]) -> str:
-    op_code = _clean_text(row.get("op_code"))
-    if op_code:
-        return op_code
-    operation_label = _detail_operation_label(row)
-    if operation_label:
-        return operation_label
-    part_label = _detail_part_label(row)
-    if part_label:
-        return part_label
-    batch_id = _clean_text(row.get("batch_id"))
-    if batch_id:
-        return f"{batch_id} 工序"
-    return "未命名工序"
 
 
 def _public_node_label(nodes: Dict[str, Dict[str, Any]], node_id: str) -> str:

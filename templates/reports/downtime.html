@@ -1,23 +1,22 @@
 {% extends "base.html" %}
-{% import "components/ui_macros.html" as ui %}
+{% import "components/ui_macros.html" as ui with context %}
+{% import "components/reports_nav_macros.html" as reports_ui with context %}
 {% block content %}
   {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'simulated': '模拟排产', 'ok': '成功', 'fail': '失败', 'ok2': '成功'} %}
   {{ ui.aps_page_hero(
     '报表 - 停机影响统计',
     '查看各设备在指定日期范围内的停机时长、停机次数，以及是否和排产任务冲突。',
-    nav_html=ui.reports_nav('downtime')
+    nav_html=reports_ui.reports_nav('downtime')
   ) }}
 
   <div class="card aps-report-filter-card">
     {{ ui.aps_card_header('筛选', '选择排产版本和日期范围后查看停机影响，需要时导出 Excel。') }}
     <form method="get" action="{{ url_for('reports.downtime_page') }}">
-      {% if scenario_id %}
-        <input type="hidden" name="scenario_id" value="{{ scenario_id }}">
-      {% endif %}
+      {{ reports_ui.preserved_report_context_inputs(exclude=('version', 'plan_role', 'start_date', 'end_date')) }}
       <div class="aps-report-filter-grid">
         <div class="form-field aps-report-version-field">
           <label>排产版本</label>
-          <select name="version">
+          <select name="version" data-report-plan-version-select data-initial-version="{{ version or '' }}">
             {% for it in versions %}
               <option value="{{ it.version }}" {% if version == it.version %}selected{% endif %}>
                 {{ ui.version_option_label(it, status_zh.get(it.result_status, '结果状态未知')) }}
@@ -27,7 +26,7 @@
         </div>
         <div class="form-field aps-report-plan-field">
           <label>排产方案</label>
-          <select name="plan_role">
+          <select name="plan_role" data-report-plan-role-select data-initial-plan-role="{{ selected_plan_role }}">
             {% for it in plan_options %}
               <option value="{{ it.role }}" {% if selected_plan_role == it.role %}selected{% endif %}>
                 {{ it.label }}
@@ -46,8 +45,7 @@
         <div class="aps-form-actions aps-report-actions">
           {{ ui.button('查询', 'primary', 'md', type_attr='submit') }}
           {% if rows %}
-            {% set export_url = url_for('reports.downtime_export', version=version, plan_role=requested_plan_role, scenario_id=scenario_id, start_date=start_date, end_date=end_date) if scenario_id else url_for('reports.downtime_export', version=version, plan_role=requested_plan_role, start_date=start_date, end_date=end_date) %}
-            {{ ui.link_button('导出 Excel', export_url, 'secondary', 'md') }}
+            {{ ui.link_button('导出 Excel', downtime_export_url, 'secondary', 'md') }}
           {% else %}
             {{ ui.button('导出 Excel', 'secondary', 'md', type_attr='button', disabled=True, class='aps-disabled-button') }}
           {% endif %}
@@ -60,22 +58,40 @@
       </div>
     </form>
     {% if has_history %}
+      {% set date_source_label = '已按所选版本的排程范围自动带入日期' if date_source == 'version_span' else ('未识别到该版本的排程范围，已自动显示最近 7 天' if date_source == 'default_7d' else '已按你填写的日期范围查询') %}
+      {% if rows %}
       <div class="aps-result-summary-grid mt-3">
-        {% set date_source_label = '已按所选版本的排程范围自动带入日期' if date_source == 'version_span' else ('未识别到该版本的排程范围，已自动显示最近 7 天' if date_source == 'default_7d' else '已按你填写的日期范围查询') %}
-        {{ ui.summary_item('排产方案', (plan_resolution.scenario_display_name or plan_resolution.selected_label) if plan_resolution else '正式采用方案') }}
+        {{ ui.summary_item('排产方案', report_plan_status.label) }}
         {{ ui.summary_item('涉及设备', (downtime_summary.machine_count if downtime_summary else 0) ~ ' 台') }}
         {{ ui.summary_item('停机时长', (downtime_summary.downtime_hours if downtime_summary else 0) ~ ' 小时') }}
         {{ ui.summary_item('与排程重叠', (downtime_summary.schedule_overlap_hours if downtime_summary else 0) ~ ' 小时') }}
       </div>
-      {% if plan_resolution and plan_resolution.is_scenario_preview %}
+      {% endif %}
+      {% if report_plan_status.is_preview %}
         <div class="flash-card flash-warning mt-2" role="status">
-          当前停机影响统计正在预览“{{ plan_resolution.scenario_display_name or plan_resolution.scenario_name or '模拟预览（未命名）' }}”，正式计划还没有改变。导出的 Excel 也会按这个模拟方案生成。
+          当前停机影响统计正在预览“{{ report_plan_status.preview_label }}”，正式计划还没有改变。导出的 Excel 也会按这个模拟方案生成。
         </div>
       {% endif %}
       <div class="aps-filter-note aps-report-plan-source">
-        当前方案：{{ plan_resolution.scenario_display_name or plan_resolution.selected_label }}{% if plan_resolution.is_fallback and plan_resolution.message %}。{{ plan_resolution.message }}{% endif %}
+        {{ report_plan_status.source_text }}
       </div>
       <div class="aps-filter-note aps-report-date-source">日期来源：{{ date_source_label }}。</div>
+      {% if report_limits %}
+        <div class="aps-filter-note">
+          能回答：{{ report_limits.answer_text }} 不能证明：{{ report_limits.limitation_text }}
+        </div>
+      {% endif %}
+      {% if report_links %}
+        <div class="scheduler-subnav scheduler-subnav-main mt-2">
+          {% for link in report_links %}
+            {% if link.disabled or not link.url %}
+              <span class="table-action-link is-disabled" aria-disabled="true" title="{{ link.disabled_reason }}">{{ link.label }}</span>
+            {% else %}
+              <a class="table-action-link" href="{{ link.url }}">{{ link.label }}</a>
+            {% endif %}
+          {% endfor %}
+        </div>
+      {% endif %}
     {% endif %}
   </div>
 
@@ -83,15 +99,9 @@
     <h3 class="section-title">结果明细</h3>
     {% if not rows %}
       {% if empty_reason == "no_history" %}
-        <div class="muted">暂无排产历史，当前无法统计停机影响。</div>
-      {% elif empty_reason == "no_data_in_query_range" %}
-        <div class="muted">当前筛选日期范围内没有停机记录，请调整日期或版本。</div>
-      {% elif empty_reason == "no_data_in_version_span" %}
-        <div class="muted">所选版本的排程范围内没有停机记录，请切换版本或调整日期。</div>
-      {% elif empty_reason == "no_data_default_7d" %}
-        <div class="muted">最近 7 天内没有停机记录，请调整日期范围。</div>
+        <div class="muted">{{ downtime_empty_message }}</div>
       {% else %}
-        <div class="muted">当前范围内没有停机记录。</div>
+        <div class="muted">{{ downtime_empty_message }}</div>
       {% endif %}
     {% else %}
       <div class="aps-table-scroll">
@@ -104,6 +114,7 @@
             <th class="w-120 text-right" data-col-key="downtime_count" data-default-w="120" data-min-w="90">停机次数</th>
             <th class="w-180 text-right" data-col-key="overlap_hours" data-default-w="180" data-min-w="150">与排程重叠(小时)</th>
             <th class="w-120 text-right" data-col-key="overlap_count" data-default-w="120" data-min-w="90">重叠次数</th>
+            <th class="w-220" data-col-key="workbench_actions" data-default-w="220" data-min-w="180">继续处理</th>
           </tr>
         </thead>
         <tbody>
@@ -115,6 +126,16 @@
               <td class="text-right">{{ r.downtime_count }}</td>
               <td class="text-right">{{ r.schedule_overlap_hours }}</td>
               <td class="text-right">{{ r.schedule_overlap_count }}</td>
+              <td>
+                {% for link in r.workbench_links %}
+                  {% if link.disabled or not link.url %}
+                    <span class="table-action-link is-disabled" aria-disabled="true" title="{{ link.disabled_reason }}">{{ link.label }}</span>
+                  {% else %}
+                    <a class="table-action-link" href="{{ link.url }}">{{ link.label }}</a>
+                  {% endif %}
+                  {% if not loop.last %}<br>{% endif %}
+                {% endfor %}
+              </td>
             </tr>
           {% endfor %}
         </tbody>
@@ -122,4 +143,8 @@
       </div>
     {% endif %}
   </div>
+{% endblock %}
+{% block extra_scripts %}
+  {{ super() }}
+  <script src="{{ url_for('static', filename='js/report_plan_filter.js') }}" defer></script>
 {% endblock %}

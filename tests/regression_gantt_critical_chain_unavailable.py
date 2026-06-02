@@ -6,7 +6,9 @@ from pathlib import Path
 
 from core.services.scheduler import gantt_critical_chain
 from core.services.scheduler.gantt_critical_chain_provider import GanttCriticalChainProvider
+from core.services.scheduler.gantt_range import resolve_week_range
 from core.services.scheduler.gantt_service import GanttService
+from core.services.scheduler.gantt_tasks import build_tasks
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -111,6 +113,39 @@ def test_gantt_public_contract_preserves_rows_exception_reason_code() -> None:
     assert "raw_rows" not in critical_chain
     assert "traceback" not in critical_chain
     assert "sqlite SECRET" not in str(data)
+
+
+def test_critical_chain_labels_match_gantt_task_public_labels_for_piece_fallback() -> None:
+    rows = [
+        {
+            "op_id": 1,
+            "batch_id": "B1",
+            "piece_id": "PIECE-A",
+            "machine_id": "MC1",
+            "operator_id": "O1",
+            "start_time": "2026-01-01 08:00:00",
+            "end_time": "2026-01-01 09:00:00",
+        },
+        {
+            "op_id": 2,
+            "batch_id": "B2",
+            "piece_id": "PIECE-B",
+            "machine_id": "MC1",
+            "operator_id": "O2",
+            "start_time": "2026-01-01 09:00:00",
+            "end_time": "2026-01-01 10:00:00",
+        },
+    ]
+
+    wr = resolve_week_range(week_start="2026-01-01")
+    tasks = build_tasks(view="machine", wr=wr, rows=rows, overdue_set=set()).value
+    task_labels = {str((task.get("meta") or {}).get("task_label") or "") for task in tasks}
+    critical_chain = gantt_critical_chain.compute_critical_chain_from_rows(rows)
+    edge = (critical_chain.get("edges") or [])[0]
+
+    assert task_labels == {"PIECE-A", "PIECE-B"}
+    assert edge["from_label"] == "PIECE-A"
+    assert edge["to_label"] == "PIECE-B"
 
 
 def test_critical_chain_unavailable_result_is_not_cached(monkeypatch) -> None:

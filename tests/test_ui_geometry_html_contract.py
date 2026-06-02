@@ -3,7 +3,7 @@ from __future__ import annotations
 from html.parser import HTMLParser
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
-from tests.regression_ui_browser_geometry_smoke import _build_app
+from tests.ui_geometry_browser_support import _build_app
 from tests.ui_geometry_contract_data import ERROR_PAGE_KEYWORDS, EXPECTED_PAGE_SIGNALS, FULL_UI_CONTRACT_PATHS
 
 SMOKE_PATHS = FULL_UI_CONTRACT_PATHS
@@ -101,6 +101,18 @@ def test_error_keyword_detector_flags_error_page_title() -> None:
     parsed = _parse_html(html)
 
     assert _matched_error_keyword(html, parsed, 200) == "Internal Server Error"
+
+
+def test_ui_geometry_contract_includes_report_workbench_pages() -> None:
+    report_paths = {
+        "/reports/?version=1&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-06&batch_id=B_UI_GEOMETRY&resource_type=machine&resource_id=M_UI_GEOMETRY",
+        "/reports/overdue?version=1&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-06&batch_id=B_UI_GEOMETRY&resource_type=machine&resource_id=M_UI_GEOMETRY",
+        "/reports/utilization?version=1&plan_role=adopted&start_date=2026-05-06&end_date=2026-05-06&resource_type=operator&resource_id=O_UI_GEOMETRY",
+        "/reports/execution-review?version=1&date_from=2026-05-06&date_to=2026-05-06&batch_id=B_UI_GEOMETRY&resource_type=machine&resource_id=M_UI_GEOMETRY",
+        "/reports/downtime?version=1&plan_role=adopted&start_date=2026-05-06&end_date=2026-05-06&resource_type=machine&resource_id=M_UI_GEOMETRY",
+    }
+
+    assert report_paths.issubset(set(SMOKE_PATHS))
 
 
 def test_ui_smoke_pages_render_expected_html_contract(tmp_path, monkeypatch) -> None:

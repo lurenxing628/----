@@ -14,6 +14,12 @@ from web.manual_src_security import (
     get_manual_url,
     safe_url_for,
 )
+from web.navigation_context import (
+    build_report_navigation_links,
+    build_scheduler_navigation_links,
+    build_workbench_navigation_links,
+    preserved_report_context_fields,
+)
 from web.ui_mode_request import get_ui_mode
 
 _EXT_KEY_V2_ENV = "ui_mode.v2_env"
@@ -64,6 +70,10 @@ def init_ui_mode(app, base_dir: str) -> None:
         app.jinja_env.globals["get_help_card"] = get_help_card
         app.jinja_env.globals["get_manual_url"] = get_manual_url
         app.jinja_env.globals["get_full_manual_section_url"] = get_full_manual_section_url
+        app.jinja_env.globals["build_workbench_navigation_links"] = build_workbench_navigation_links
+        app.jinja_env.globals["build_report_navigation_links"] = build_report_navigation_links
+        app.jinja_env.globals["build_scheduler_navigation_links"] = build_scheduler_navigation_links
+        app.jinja_env.globals["preserved_report_context_fields"] = preserved_report_context_fields
     except Exception as exc:
         _log_startup_warning(
             app, "初始化主模板环境全局函数注入失败：%s；不带 with context 的模板宏将依赖后续渲染期二次注入。", exc
@@ -75,6 +85,10 @@ def init_ui_mode(app, base_dir: str) -> None:
             v2_env.globals["get_help_card"] = get_help_card
             v2_env.globals["get_manual_url"] = get_manual_url
             v2_env.globals["get_full_manual_section_url"] = get_full_manual_section_url
+            v2_env.globals["build_workbench_navigation_links"] = build_workbench_navigation_links
+            v2_env.globals["build_report_navigation_links"] = build_report_navigation_links
+            v2_env.globals["build_scheduler_navigation_links"] = build_scheduler_navigation_links
+            v2_env.globals["preserved_report_context_fields"] = preserved_report_context_fields
     except Exception as exc:
         _log_startup_warning(app, "初始化 V2 模板环境全局函数注入失败：%s；V2 overlay 将依赖后续渲染期桥接继续工作。", exc)
 

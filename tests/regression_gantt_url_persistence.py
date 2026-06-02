@@ -58,6 +58,27 @@ function makeControl(tag, id, value) {{
   return el;
 }}
 
+function makeHidden(form, name, value) {{
+  const el = document.createElement("input");
+  el.setAttribute("type", "hidden");
+  el.setAttribute("name", name);
+  el.value = value || "";
+  form.appendChild(el);
+  return el;
+}}
+
+function formValue(form, name) {{
+  const inputs = form.querySelectorAll("input");
+  for (let index = 0; index < inputs.length; index += 1) {{
+    if (inputs[index].getAttribute("name") === name) return inputs[index].value;
+  }}
+  return null;
+}}
+
+function queryValue(href, name) {{
+  return new URL(href, window.location.origin).searchParams.get(name);
+}}
+
 makeControl("select", "ganttZoomLevel", "day");
 makeControl("select", "ganttColorMode", "batch");
 makeControl("select", "ganttFilterBatch", "");
@@ -68,9 +89,26 @@ makeControl("select", "ganttDepsMode", "critical");
 makeControl("input", "ganttHighlightCC", "").checked = true;
 makeControl("input", "ganttZoomFormValue", "day");
 createHost("ganttZoomWarning");
+const rangeForm = document.createElement("form");
+rangeForm.setAttribute("class", "aps-gantt-range-form");
+makeHidden(rangeForm, "gantt_batch", "OLD");
+makeHidden(rangeForm, "gantt_resource", "OLD-M");
+document.body.appendChild(rangeForm);
 const link = document.createElement("a");
 link.setAttribute("href", "/scheduler/gantt?view=operator&version=1");
 document.body.appendChild(link);
+const machineLink = document.createElement("a");
+machineLink.setAttribute("href", "/scheduler/gantt?view=machine&version=1&gantt_batch=OLD&gantt_resource=OLD-M");
+document.body.appendChild(machineLink);
+const operatorLink = document.createElement("a");
+operatorLink.setAttribute("href", "/scheduler/gantt?view=operator&version=1&gantt_batch=OLD&gantt_resource=OLD-M");
+document.body.appendChild(operatorLink);
+const operatorSameLink = document.createElement("a");
+operatorSameLink.setAttribute("href", "/scheduler/gantt?view=operator&version=1&gantt_batch=OLD&gantt_resource=OLD-O");
+document.body.appendChild(operatorSameLink);
+const machineOtherLink = document.createElement("a");
+machineOtherLink.setAttribute("href", "/scheduler/gantt?view=machine&version=1&gantt_batch=OLD&gantt_resource=OLD-O");
+document.body.appendChild(machineOtherLink);
 
 window.location.href = "http://local.test/scheduler/gantt?gantt_zoom=fifteen-minute&gantt_color=status&gantt_batch=B001&gantt_resource=MC01&gantt_overdue=1&gantt_external=1&gantt_deps=process&gantt_hcc=0";
 window.history = {{
@@ -86,6 +124,7 @@ loadScript({json.dumps(os.path.join(repo_root, "static", "js", "gantt_zoom.js"))
 loadScript({json.dumps(os.path.join(repo_root, "static", "js", "gantt_ui.js"))});
 
 const ns = window.__APS_GANTT__;
+ns.state.cfg = {{ view: "machine" }};
 ns.applyUiFromUrl();
 ns.readUi();
 const fromNewUrl = {{
@@ -105,6 +144,31 @@ const fromNewUrl = {{
 
 ns.persistUiToUrl();
 const persisted = window.location.href;
+
+document.getElementById("ganttFilterBatch").value = "B002";
+document.getElementById("ganttFilterResource").value = "MC02";
+ns.readUi();
+ns.persistUiToUrl();
+const scopeLinks = {{
+  machineBatch: queryValue(machineLink.getAttribute("href"), "gantt_batch"),
+  machineResource: queryValue(machineLink.getAttribute("href"), "gantt_resource"),
+  operatorBatch: queryValue(operatorLink.getAttribute("href"), "gantt_batch"),
+  operatorResource: queryValue(operatorLink.getAttribute("href"), "gantt_resource"),
+  formBatch: formValue(rangeForm, "gantt_batch"),
+  formResource: formValue(rangeForm, "gantt_resource"),
+}};
+
+ns.state.cfg = {{ view: "operator" }};
+document.getElementById("ganttFilterBatch").value = "B003";
+document.getElementById("ganttFilterResource").value = "OP02";
+ns.readUi();
+ns.persistUiToUrl();
+const operatorScopeLinks = {{
+  operatorBatch: queryValue(operatorSameLink.getAttribute("href"), "gantt_batch"),
+  operatorResource: queryValue(operatorSameLink.getAttribute("href"), "gantt_resource"),
+  machineBatch: queryValue(machineOtherLink.getAttribute("href"), "gantt_batch"),
+  machineResource: queryValue(machineOtherLink.getAttribute("href"), "gantt_resource"),
+}};
 
 window.location.href = "http://local.test/scheduler/gantt?gantt_vm=Week";
 document.getElementById("ganttZoomLevel").value = "day";
@@ -134,7 +198,7 @@ const fromDataState = {{
   viewMode: ns.state.ui.viewMode,
 }};
 
-process.stdout.write(JSON.stringify({{ fromNewUrl, persisted, legacyWeek, invalid, fromDataState }}));
+process.stdout.write(JSON.stringify({{ fromNewUrl, persisted, scopeLinks, operatorScopeLinks, legacyWeek, invalid, fromDataState }}));
 """
     result = helpers._run_node_json(node_code)
     _assert_true(result["fromNewUrl"]["zoomControl"] == "fifteen-minute", "gantt_zoom 没有写入缩放控件")
@@ -154,6 +218,16 @@ process.stdout.write(JSON.stringify({{ fromNewUrl, persisted, legacyWeek, invali
     _assert_true(result["fromNewUrl"]["hcc"] is False, "gantt_hcc 没有进入 state")
     _assert_true("gantt_zoom=fifteen-minute" in result["persisted"], "persistUiToUrl 没有保留新 zoom")
     _assert_true("gantt_vm=" not in result["persisted"], "persistUiToUrl 没有清理旧 gantt_vm")
+    _assert_true(result["scopeLinks"]["machineBatch"] == "B002", "同视角链接没有同步新 gantt_batch")
+    _assert_true(result["scopeLinks"]["machineResource"] == "MC02", "同视角链接没有同步新 gantt_resource")
+    _assert_true(result["scopeLinks"]["operatorBatch"] == "B002", "跨视角链接没有同步新 gantt_batch")
+    _assert_true(result["scopeLinks"]["operatorResource"] is None, "跨视角链接没有删除旧 gantt_resource")
+    _assert_true(result["scopeLinks"]["formBatch"] == "B002", "加载表单没有同步新 gantt_batch")
+    _assert_true(result["scopeLinks"]["formResource"] == "MC02", "加载表单没有同步新 gantt_resource")
+    _assert_true(result["operatorScopeLinks"]["operatorBatch"] == "B003", "人员同视角链接没有同步新 gantt_batch")
+    _assert_true(result["operatorScopeLinks"]["operatorResource"] == "OP02", "人员同视角链接没有同步新 gantt_resource")
+    _assert_true(result["operatorScopeLinks"]["machineBatch"] == "B003", "人员跨设备视角链接没有同步新 gantt_batch")
+    _assert_true(result["operatorScopeLinks"]["machineResource"] is None, "人员跨设备视角链接没有删除旧 gantt_resource")
     _assert_true(result["legacyWeek"]["zoomLevel"] == "week", "旧 gantt_vm=Week 没有兼容到 week")
     _assert_true(result["legacyWeek"]["viewMode"] == "Week", "旧 gantt_vm=Week 没有兼容到 Frappe Week")
     _assert_true(result["invalid"]["zoomLevel"] == "day", "非法 gantt_zoom 没有回到 day")

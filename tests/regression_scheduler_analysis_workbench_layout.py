@@ -137,14 +137,15 @@ def test_analysis_action_hub_next_links_keep_resource_batch_and_date_context() -
     for label in ("设备甘特图", "人员甘特图"):
         assert "start_date=2026-05-25" in links[label]["url"]
         assert "end_date=2026-05-31" in links[label]["url"]
-        assert "resource_type=machine" in links[label]["url"]
-        assert "resource_id=M1" in links[label]["url"]
+        assert "gantt_batch=B-001" in links[label]["url"]
+    assert "gantt_resource=M1" in links["设备甘特图"]["url"]
+    assert "gantt_resource" not in links["人员甘特图"]["url"]
 
     dispatch_url = links["资源排班"]["url"]
     assert "date_from=2026-05-25" in dispatch_url
     assert "date_to=2026-05-31" in dispatch_url
     assert "query_date=2026-05-28" in dispatch_url
-    assert "period_preset=week" in dispatch_url
+    assert "period_preset=custom" in dispatch_url
     assert "scope_type=machine" in dispatch_url
     assert "scope_id=M1" in dispatch_url
     assert "machine_id=M1" in dispatch_url

@@ -26,9 +26,10 @@
     const template = trim(state && state.cfg && state.cfg.actualRecordUrlTemplate);
     if (!template || !opId) return "";
     const path = template.replace("__OP_ID__", encodeURIComponent(opId));
+    if (path.indexOf("?") >= 0) return path;
     const query = currentQueryString();
     if (!query) return path;
-    return path.indexOf("?") >= 0 ? path + "&" + query.slice(1) : path + query;
+    return path + query;
   }
 
   Object.assign(ns.execution, {

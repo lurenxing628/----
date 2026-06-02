@@ -54,10 +54,33 @@ def _read(rel_path: str) -> str:
     return (REPO_ROOT / rel_path).read_text(encoding="utf-8")
 
 
-def _render_workbench_menu() -> str:
+def _render_workbench_menu(path: str = "/") -> str:
     app_mod = importlib.import_module("app")
     app = app_mod.create_app()
-    with app.test_request_context("/"):
+    with app.test_request_context(path):
+        return render_template_string(
+            '{% import "components/ui_macros.html" as ui %}{{ ui.workbench_nav_menu() }}'
+        )
+
+
+def _render_workbench_menu_with_team_context() -> str:
+    app_mod = importlib.import_module("app")
+    app = app_mod.create_app()
+    from web.navigation_context import set_current_workbench_navigation_context
+    from web.viewmodels.scheduler_workbench_links import build_workbench_plan_context
+
+    with app.test_request_context("/scheduler/resource-dispatch"):
+        set_current_workbench_navigation_context(
+            build_workbench_plan_context(
+                version=12,
+                plan_role="adopted",
+                date_from="2026-05-06",
+                date_to="2026-05-07",
+                resource_type="team",
+                resource_id="T-RPT",
+                can_write_feedback=True,
+            )
+        )
         return render_template_string(
             '{% import "components/ui_macros.html" as ui %}{{ ui.workbench_nav_menu() }}'
         )
@@ -76,6 +99,7 @@ def test_workbench_menu_renders_six_core_destinations() -> None:
 
     expected_pairs = [
         ("首页值班台", "/"),
+        ("报表中心", "/reports/"),
         ("排产分析", "/scheduler/analysis"),
         ("设备甘特图", "/scheduler/gantt?view=machine"),
         ("人员甘特图", "/scheduler/gantt?view=operator"),
@@ -84,10 +108,71 @@ def test_workbench_menu_renders_six_core_destinations() -> None:
     ]
     assert "计划工作台" in html
     assert parser.anchor_hrefs == [href for _label, href in expected_pairs]
-    assert len(parser.links) == len(expected_pairs), "计划工作台菜单只能有这 6 个只读入口"
+    assert len(parser.links) == len(expected_pairs), "计划工作台菜单只能有这 7 个只读入口"
     assert [href for href, _text in parser.links] == [href for _label, href in expected_pairs]
     for (label, _href), (_actual_href, text) in zip(expected_pairs, parser.links):
         assert label in text
+
+
+def test_workbench_menu_preserves_report_workbench_context() -> None:
+    html = _render_workbench_menu(
+        "/reports/overdue?version=12&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-07"
+        "&query_date=2026-05-06&period_preset=week&batch_id=B-RPT&resource_type=machine&resource_id=M-RPT"
+    )
+    parser = _parse_workbench_menu(html)
+    links = {text: href for href, text in parser.links}
+
+    assert links["首页值班台 先看今天需要处理什么"].startswith("/?version=12&plan_role=adopted")
+    assert "batch_id=B-RPT" in links["首页值班台 先看今天需要处理什么"]
+    assert "resource_type=machine" in links["首页值班台 先看今天需要处理什么"]
+    assert links["报表中心 从风险报表继续追踪问题"].startswith("/reports/?version=12&plan_role=adopted")
+    assert "batch_id=B-RPT" in links["报表中心 从风险报表继续追踪问题"]
+    assert "resource_type=machine" in links["报表中心 从风险报表继续追踪问题"]
+    assert "start_date=2026-05-06" in links["设备甘特图 按设备查看排产结果"]
+    assert "gantt_batch=B-RPT" in links["设备甘特图 按设备查看排产结果"]
+    assert "gantt_resource=M-RPT" in links["设备甘特图 按设备查看排产结果"]
+    assert "period_preset=custom" in links["资源派工 看排班和现场记录入口"]
+    assert "scope_type=machine" in links["资源派工 看排班和现场记录入口"]
+    assert "machine_id=M-RPT" in links["资源派工 看排班和现场记录入口"]
+    assert "plan_role=adopted" in links["计划和现场实际 复盘正式计划和现场事实"]
+    assert "resource_type=machine" in links["计划和现场实际 复盘正式计划和现场事实"]
+    assert "resource_id=M-RPT" in links["计划和现场实际 复盘正式计划和现场事实"]
+
+
+def test_workbench_menu_disables_team_context_links_that_would_400() -> None:
+    html = _render_workbench_menu_with_team_context()
+    parser = _parse_workbench_menu(html)
+    links = {text: href for href, text in parser.links}
+
+    assert "当前页面暂不支持班组维度筛选" in html
+    for label in (
+        "首页值班台 先看今天需要处理什么",
+        "报表中心 从风险报表继续追踪问题",
+        "排产分析 看推荐方案和排产诊断",
+        "计划和现场实际 复盘正式计划和现场事实",
+    ):
+        assert label not in links
+
+    assert "gantt_resource=T-RPT" not in links["设备甘特图 按设备查看排产结果"]
+    assert "gantt_resource=T-RPT" not in links["人员甘特图 按人员查看排产结果"]
+    dispatch = links["资源派工 看排班和现场记录入口"]
+    assert "scope_type=team" in dispatch
+    assert "scope_id=T-RPT" in dispatch
+    assert "team_id=T-RPT" in dispatch
+    assert "resource_type=team" not in dispatch
+
+
+def test_workbench_menu_disables_execution_review_for_non_formal_context() -> None:
+    html = _render_workbench_menu(
+        "/reports/utilization?version=12&plan_role=baseline_best&scenario_id=SCN-1"
+        "&start_date=2026-05-06&end_date=2026-05-07"
+    )
+    parser = _parse_workbench_menu(html)
+
+    assert "计划和现场实际只复盘正式采用方案" in html
+    assert 'aria-disabled="true"' in html
+    assert "/reports/execution-review" not in parser.anchor_hrefs
+    assert not any("计划和现场实际" in text for _href, text in parser.links)
 
 
 def test_workbench_menu_is_readonly_and_hides_internal_fields() -> None:
@@ -140,7 +225,7 @@ def test_workbench_menu_is_readonly_and_hides_internal_fields() -> None:
 
 
 def test_workbench_menu_uses_local_css_and_no_javascript_dependency() -> None:
-    macro = _read("templates/components/ui_macros.html")
+    macro = _read("templates/components/ui_macros.html") + _read("templates/components/workbench_nav_macros.html")
     css = _read("static/css/ui_contract.css")
 
     assert "<details class=\"aps-workbench-nav" in macro

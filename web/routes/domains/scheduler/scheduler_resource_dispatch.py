@@ -9,6 +9,7 @@ from core.infrastructure.errors import AppError, BusinessError, ErrorCode, error
 from core.services.common.excel_audit import log_excel_export
 from core.services.scheduler.resource_dispatch_excel import build_resource_dispatch_workbook
 from web.error_boundary import json_error_response, user_visible_app_error_message
+from web.navigation_context import set_current_workbench_navigation_context
 from web.routes.history_summary_logging import log_history_version_option_parse_warnings
 from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.scheduler_history_summary import decorate_history_version_options
@@ -26,6 +27,7 @@ from web.viewmodels.scheduler_workbench_links import (
 from .scheduler_bp import bp
 from .scheduler_resource_dispatch_query import (
     _actual_import_url,
+    _actual_record_url_template,
     _actual_template_url,
     _current_request_args,
     _data_url,
@@ -71,9 +73,15 @@ def _copy_plan_guard_fields(context: dict, identity: dict) -> None:
             context[key] = identity.get(key)
 
 
-def _execution_review_link(filters: Any, plan_identity: Any) -> dict:
+def _current_back_to() -> str:
+    return _text(request.args.get("back_to"))
+
+
+def _workbench_context(filters: Any, plan_identity: Any, *, back_to: Any = None) -> dict:
     filters_dict = dict(filters or {})
     identity = plan_identity if isinstance(plan_identity, dict) else {}
+    resource_id = _resource_id_from_filters(filters_dict)
+    resource_type = filters_dict.get("scope_type") if resource_id else None
     context = build_workbench_plan_context(
         version=filters_dict.get("version"),
         plan_role=filters_dict.get("plan_role") or identity.get("plan_role") or "adopted",
@@ -83,11 +91,18 @@ def _execution_review_link(filters: Any, plan_identity: Any) -> dict:
         query_date=filters_dict.get("query_date"),
         period_preset=filters_dict.get("period_preset"),
         batch_id=filters_dict.get("batch_id"),
-        resource_type=filters_dict.get("scope_type"),
-        resource_id=_resource_id_from_filters(filters_dict),
+        resource_type=resource_type,
+        resource_id=resource_id,
         can_write_feedback=identity.get("can_write_feedback") if "can_write_feedback" in identity else None,
+        back_to=back_to,
     )
     _copy_plan_guard_fields(context, identity)
+    return context
+
+
+def _execution_review_link(filters: Any, plan_identity: Any, *, back_to: Any = None) -> dict:
+    filters_dict = dict(filters or {})
+    context = _workbench_context(filters_dict, plan_identity, back_to=back_to)
     extra_params = {}
     if filters_dict.get("team_axis"):
         extra_params["team_axis"] = filters_dict.get("team_axis")
@@ -152,7 +167,7 @@ def _execution_write_urls(filters: Any, *, can_use_current_query: bool, can_writ
             "actual_import_url": None,
         }
     return {
-        "actual_record_url_template": "/scheduler/resource-dispatch/execution/__OP_ID__/actual",
+        "actual_record_url_template": _actual_record_url_template(filters),
         "actual_template_url": _actual_template_url(filters),
         "actual_import_url": _actual_import_url(filters),
     }
@@ -166,6 +181,8 @@ def resource_dispatch_page():
 
     context = _decorate_page_context(loaded_context)
     filters = context.get("filters") or {}
+    back_to = _current_back_to()
+    set_current_workbench_navigation_context(_workbench_context(filters, filters, back_to=back_to))
     can_use_current_query = bool(context.get("has_history") and context.get("can_query"))
     can_write_feedback = can_emit_feedback_write_urls(filters)
     write_urls = _execution_write_urls(
@@ -179,7 +196,7 @@ def resource_dispatch_page():
         title="资源排班",
         data_url=_data_url(filters),
         export_url=_export_url(filters) if can_use_current_query else None,
-        execution_review_link=_execution_review_link(filters, filters),
+        execution_review_link=_execution_review_link(filters, filters, back_to=back_to),
         execution_data_url=_execution_data_url(filters),
         **write_urls,
         **context,

@@ -2,6 +2,8 @@
   ui_macros.html: 全站统一 UI 组件宏
   Win 7 / Chrome 109 兼容，零依赖 SVG 图标
 #}
+{% import "components/manual_macros.html" as manual_component %}
+{% import "components/workbench_nav_macros.html" as workbench_component %}
 
 {# 
   按钮组件
@@ -268,6 +270,19 @@
 {{ get_manual_url(endpoint=endpoint, src=src) or '' }}
 {%- endmacro %}
 
+{% macro floating_manual_button() %}
+{% set current_endpoint = request.endpoint or '' %}
+{% if current_endpoint != 'scheduler.config_manual_page' %}
+  {% set manual_url = manual_entry_url(endpoint=current_endpoint)|trim %}
+  {% set help = get_help_card(endpoint=current_endpoint) %}
+  {{ manual_component.floating_manual_button(current_endpoint, manual_url, help) }}
+{% endif %}
+{% endmacro %}
+
+{% macro workbench_nav_menu(class='') %}
+{{ workbench_component.workbench_nav_menu(class) }}
+{% endmacro %}
+
 {% macro excel_import_option_value(opt) -%}
 {{ opt.value if opt is mapping else opt[0] }}
 {%- endmacro %}
@@ -317,46 +332,6 @@
 {% endmacro %}
 
 {#
-  顶层计划工作台入口。
-  只放只读页面入口，不放现场写入、Excel 导入或模板下载地址。
-#}
-{% macro workbench_nav_menu(class='') %}
-<details class="aps-workbench-nav {{ class }}">
-  <summary class="aps-workbench-nav-summary">
-    <svg class="icon" aria-hidden="true"><use href="{{ url_for('static', filename='icons.svg') }}#icon-schedule"/></svg>
-    <span>计划工作台</span>
-    <span class="aps-workbench-nav-caret" aria-hidden="true">▾</span>
-  </summary>
-  <div class="aps-workbench-nav-menu" aria-label="计划工作台快捷入口">
-    <a href="{{ url_for('dashboard.index') }}" class="aps-workbench-nav-link">
-      <span class="aps-workbench-nav-title">首页值班台</span>
-      <span class="aps-workbench-nav-desc">先看今天需要处理什么</span>
-    </a>
-    <a href="{{ url_for('scheduler.analysis_page') }}" class="aps-workbench-nav-link">
-      <span class="aps-workbench-nav-title">排产分析</span>
-      <span class="aps-workbench-nav-desc">看推荐方案和排产诊断</span>
-    </a>
-    <a href="{{ url_for('scheduler.gantt_page', view='machine') }}" class="aps-workbench-nav-link">
-      <span class="aps-workbench-nav-title">设备甘特图</span>
-      <span class="aps-workbench-nav-desc">按设备查看排产结果</span>
-    </a>
-    <a href="{{ url_for('scheduler.gantt_page', view='operator') }}" class="aps-workbench-nav-link">
-      <span class="aps-workbench-nav-title">人员甘特图</span>
-      <span class="aps-workbench-nav-desc">按人员查看排产结果</span>
-    </a>
-    <a href="{{ url_for('scheduler.resource_dispatch_page') }}" class="aps-workbench-nav-link">
-      <span class="aps-workbench-nav-title">资源派工</span>
-      <span class="aps-workbench-nav-desc">看排班和现场记录入口</span>
-    </a>
-    <a href="{{ url_for('reports.execution_review_page') }}" class="aps-workbench-nav-link">
-      <span class="aps-workbench-nav-title">计划和现场实际</span>
-      <span class="aps-workbench-nav-desc">复盘正式计划和现场事实</span>
-    </a>
-  </div>
-</details>
-{% endmacro %}
-
-{#
   排产主导航（唯一跨页主导航）
   active:
     batches | batches_manage | config |
@@ -364,136 +339,15 @@
     analysis | week_plan | calendar
 #}
 {% macro scheduler_nav(active='', size='sm', class='') %}
-{% set nav_scenario_id = (request.args.get('scenario_id') or '') | trim %}
-{% set nav_version = (request.args.get('version') or '') | trim %}
-{% set nav_plan_role = (request.args.get('plan_role') or '') | trim %}
-{% set scheduler_context = namespace(query='', amp_query='') %}
-{% set analysis_context = namespace(query='') %}
-{% if nav_version %}
-  {% set scheduler_context.query = scheduler_context.query ~ ('?' if not scheduler_context.query else '&') ~ 'version=' ~ (nav_version | urlencode) %}
-  {% set scheduler_context.amp_query = scheduler_context.amp_query ~ '&version=' ~ (nav_version | urlencode) %}
-  {% set analysis_context.query = analysis_context.query ~ ('?' if not analysis_context.query else '&') ~ 'version=' ~ (nav_version | urlencode) %}
-{% endif %}
-{% if nav_plan_role %}
-  {% set scheduler_context.query = scheduler_context.query ~ ('?' if not scheduler_context.query else '&') ~ 'plan_role=' ~ (nav_plan_role | urlencode) %}
-  {% set scheduler_context.amp_query = scheduler_context.amp_query ~ '&plan_role=' ~ (nav_plan_role | urlencode) %}
-  {% set analysis_context.query = analysis_context.query ~ ('?' if not analysis_context.query else '&') ~ 'plan_role=' ~ (nav_plan_role | urlencode) %}
-{% endif %}
-{% if nav_scenario_id %}
-  {% set scheduler_context.query = scheduler_context.query ~ ('?' if not scheduler_context.query else '&') ~ 'scenario_id=' ~ (nav_scenario_id | urlencode) %}
-  {% set scheduler_context.amp_query = scheduler_context.amp_query ~ '&scenario_id=' ~ (nav_scenario_id | urlencode) %}
-{% endif %}
+{% set nav_links = build_scheduler_navigation_links(active) %}
 <div class="scheduler-subnav scheduler-subnav-main {{ class }}">
-  {{ link_button('执行排产', url_for('scheduler.batches_page'), 'primary' if active == 'batches' else 'secondary', size) }}
-  {{ link_button('批次管理', url_for('scheduler.batches_manage_page'), 'primary' if active == 'batches_manage' else 'secondary', size) }}
-  {{ link_button('高级设置/模板', url_for('scheduler.config_page'), 'primary' if active == 'config' else 'secondary', size) }}
-  {{ link_button('资源排班', url_for('scheduler.resource_dispatch_page') ~ scheduler_context.query, 'primary' if active == 'resource_dispatch' else 'secondary', size) }}
-  {{ link_button('设备甘特图', url_for('scheduler.gantt_page', view='machine') ~ scheduler_context.amp_query, 'primary' if active == 'gantt_machine' else 'secondary', size) }}
-  {{ link_button('人员甘特图', url_for('scheduler.gantt_page', view='operator') ~ scheduler_context.amp_query, 'primary' if active == 'gantt_operator' else 'secondary', size) }}
-  {{ link_button('排产优化分析', url_for('scheduler.analysis_page') ~ analysis_context.query, 'primary' if active == 'analysis' else 'secondary', size) }}
-  {{ link_button('周计划', url_for('scheduler.week_plan_page') ~ scheduler_context.query, 'primary' if active == 'week_plan' else 'secondary', size) }}
-  {{ link_button('工作日历配置', url_for('scheduler.calendar_page'), 'primary' if active == 'calendar' else 'secondary', size) }}
-</div>
-{% endmacro %}
-
-{#
-  系统使用说明悬浮按钮：
-  - 仅在白名单页面显示
-  - 在说明书页自身隐藏，避免渲染“跳回当前页”的冗余入口
-#}
-{% macro floating_manual_button() %}
-{% set current_endpoint = request.endpoint or '' %}
-{% if current_endpoint != 'scheduler.config_manual_page' %}
-  {% set manual_url = manual_entry_url(endpoint=current_endpoint)|trim %}
-  {% set help = get_help_card(endpoint=current_endpoint) %}
-  {% if manual_url %}
-    {% set popover_id = 'manual-popover-' ~ (current_endpoint | replace('.', '-') | replace('_', '-')) %}
-    {% set title_id = popover_id ~ '-title' %}
-    <div class="floating-manual-wrapper no-print">
-      {% if help %}
-        <div class="manual-popover"
-             id="{{ popover_id }}"
-             role="dialog"
-             aria-labelledby="{{ title_id }}"
-             hidden>
-          <div class="manual-popover__header">
-            <strong class="manual-popover__title" id="{{ title_id }}">{{ help['title'] }}</strong>
-            <button type="button" class="manual-popover__close" aria-label="关闭本页速览">&times;</button>
-          </div>
-          <ul class="manual-popover__list">
-            {% for item in help['items'] %}
-              <li>{{ item }}</li>
-            {% endfor %}
-          </ul>
-          {% if help['manual_url'] %}
-            <div class="manual-popover__footer">
-              {{ link_button('查看本页详细说明', help['manual_url'], 'secondary', 'sm') }}
-            </div>
-          {% endif %}
-        </div>
-      {% endif %}
-      <a href="{{ manual_url }}"
-         class="floating-manual-btn"
-         {% if help %}
-         data-manual-popover="1"
-         aria-haspopup="dialog"
-         aria-expanded="false"
-         aria-controls="{{ popover_id }}"
-         {% endif %}
-         title="查看本页说明"
-         aria-label="查看本页说明">
-        <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" class="floating-manual-btn__icon" aria-hidden="true">
-          <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
-          <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
-        </svg>
-        <span class="floating-manual-btn__text">本页说明</span>
-      </a>
-    </div>
-  {% endif %}
-{% endif %}
-{% endmacro %}
-
-{#
-  报表导航
-  active: index | overdue | utilization | execution_review | downtime
-#}
-{% macro reports_nav(active='', size='sm', class='') %}
-{% set nav_scenario_id = (request.args.get('scenario_id') or '') | trim %}
-{% set nav_version = (request.args.get('version') or '') | trim %}
-{% set nav_plan_role = (request.args.get('plan_role') or '') | trim %}
-{% set nav_start_date = (request.args.get('start_date') or '') | trim %}
-{% set nav_end_date = (request.args.get('end_date') or '') | trim %}
-{% set nav_date_from = (request.args.get('date_from') or '') | trim %}
-{% set nav_date_to = (request.args.get('date_to') or '') | trim %}
-{% set nav_batch_id = (request.args.get('batch_id') or '') | trim %}
-{% set report_context = namespace(query='') %}
-{% set execution_review_context = namespace(query='') %}
-{% if nav_version %}
-  {% set report_context.query = report_context.query ~ ('?' if not report_context.query else '&') ~ 'version=' ~ (nav_version | urlencode) %}
-  {% set execution_review_context.query = execution_review_context.query ~ ('?' if not execution_review_context.query else '&') ~ 'version=' ~ (nav_version | urlencode) %}
-{% endif %}
-{% if nav_plan_role %}
-  {% set report_context.query = report_context.query ~ ('?' if not report_context.query else '&') ~ 'plan_role=' ~ (nav_plan_role | urlencode) %}
-{% endif %}
-{% if nav_scenario_id %}
-  {% set report_context.query = report_context.query ~ ('?' if not report_context.query else '&') ~ 'scenario_id=' ~ (nav_scenario_id | urlencode) %}
-{% endif %}
-{% if nav_start_date and nav_end_date %}
-  {% set report_context.query = report_context.query ~ ('?' if not report_context.query else '&') ~ 'start_date=' ~ (nav_start_date | urlencode) ~ '&end_date=' ~ (nav_end_date | urlencode) %}
-{% endif %}
-{% if nav_date_from and nav_date_to %}
-  {% set report_context.query = report_context.query ~ ('?' if not report_context.query else '&') ~ 'date_from=' ~ (nav_date_from | urlencode) ~ '&date_to=' ~ (nav_date_to | urlencode) %}
-  {% set execution_review_context.query = execution_review_context.query ~ ('?' if not execution_review_context.query else '&') ~ 'date_from=' ~ (nav_date_from | urlencode) ~ '&date_to=' ~ (nav_date_to | urlencode) %}
-{% endif %}
-{% if nav_batch_id %}
-  {% set execution_review_context.query = execution_review_context.query ~ ('?' if not execution_review_context.query else '&') ~ 'batch_id=' ~ (nav_batch_id | urlencode) %}
-{% endif %}
-<div class="scheduler-subnav scheduler-subnav-main {{ class }}">
-  {{ link_button('报表中心', url_for('reports.index'), 'primary' if active == 'index' else 'secondary', size) }}
-  {{ link_button('超期清单', url_for('reports.overdue_page') ~ report_context.query, 'primary' if active == 'overdue' else 'secondary', size) }}
-  {{ link_button('资源负荷与利用率', url_for('reports.utilization_page') ~ report_context.query, 'primary' if active == 'utilization' else 'secondary', size) }}
-  {{ link_button('计划和现场实际', url_for('reports.execution_review_page') ~ execution_review_context.query, 'primary' if active == 'execution_review' else 'secondary', size) }}
-  {{ link_button('停机影响统计', url_for('reports.downtime_page') ~ report_context.query, 'primary' if active == 'downtime' else 'secondary', size) }}
+  {% for link in nav_links %}
+    {% if link.disabled or not link.url %}
+      <span class="btn btn-secondary btn-{{ size }} is-disabled" aria-disabled="true" title="{{ link.disabled_reason }}">{{ link.label }}</span>
+    {% else %}
+      {{ link_button(link.label, link.url, 'primary' if link.active else 'secondary', size) }}
+    {% endif %}
+  {% endfor %}
 </div>
 {% endmacro %}
 

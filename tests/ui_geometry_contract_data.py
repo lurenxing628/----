@@ -13,6 +13,11 @@ UI_GEOMETRY_PAGE_PATHS: Tuple[str, ...] = (
     "/system/history?version=2",
     "/process/",
     "/material/batches",
+    "/reports/?version=1&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-06&batch_id=B_UI_GEOMETRY&resource_type=machine&resource_id=M_UI_GEOMETRY",
+    "/reports/overdue?version=1&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-06&batch_id=B_UI_GEOMETRY&resource_type=machine&resource_id=M_UI_GEOMETRY",
+    "/reports/utilization?version=1&plan_role=adopted&start_date=2026-05-06&end_date=2026-05-06&resource_type=operator&resource_id=O_UI_GEOMETRY",
+    "/reports/execution-review?version=1&date_from=2026-05-06&date_to=2026-05-06&batch_id=B_UI_GEOMETRY&resource_type=machine&resource_id=M_UI_GEOMETRY",
+    "/reports/downtime?version=1&plan_role=adopted&start_date=2026-05-06&end_date=2026-05-06&resource_type=machine&resource_id=M_UI_GEOMETRY",
 )
 
 CORE_BROWSER_SMOKE_PATHS: Tuple[str, ...] = (
@@ -90,6 +95,36 @@ EXPECTED_PAGE_SIGNALS: Dict[str, Dict[str, object]] = {
         "stable_texts": ["批次物料需求"],
         "diagnostic_texts": [],
         "ids": ["batchMaterialBatchSelect"],
+    },
+    "/reports/?version=1&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-06&batch_id=B_UI_GEOMETRY&resource_type=machine&resource_id=M_UI_GEOMETRY": {
+        "path": "/reports/?version=1&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-06&batch_id=B_UI_GEOMETRY&resource_type=machine&resource_id=M_UI_GEOMETRY",
+        "stable_texts": ["报表中心", "超期清单", "资源负荷与利用率", "计划和现场实际", "停机影响统计"],
+        "diagnostic_texts": [],
+        "ids": ["reportsOverview", "reportsEntryCards"],
+    },
+    "/reports/overdue?version=1&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-06&batch_id=B_UI_GEOMETRY&resource_type=machine&resource_id=M_UI_GEOMETRY": {
+        "path": "/reports/overdue?version=1&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-06&batch_id=B_UI_GEOMETRY&resource_type=machine&resource_id=M_UI_GEOMETRY",
+        "stable_texts": ["报表 - 超期清单", "结果明细", "不能证明", "继续处理"],
+        "diagnostic_texts": [],
+        "ids": ["overdueTable"],
+    },
+    "/reports/utilization?version=1&plan_role=adopted&start_date=2026-05-06&end_date=2026-05-06&resource_type=operator&resource_id=O_UI_GEOMETRY": {
+        "path": "/reports/utilization?version=1&plan_role=adopted&start_date=2026-05-06&end_date=2026-05-06&resource_type=operator&resource_id=O_UI_GEOMETRY",
+        "stable_texts": ["报表 - 资源负荷与利用率", "设备负荷", "人员负荷", "继续处理"],
+        "diagnostic_texts": [],
+        "ids": ["utilizationMachineTable", "utilizationOperatorTable"],
+    },
+    "/reports/execution-review?version=1&date_from=2026-05-06&date_to=2026-05-06&batch_id=B_UI_GEOMETRY&resource_type=machine&resource_id=M_UI_GEOMETRY": {
+        "path": "/reports/execution-review?version=1&date_from=2026-05-06&date_to=2026-05-06&batch_id=B_UI_GEOMETRY&resource_type=machine&resource_id=M_UI_GEOMETRY",
+        "stable_texts": ["报表 - 计划和现场实际", "正式采用方案", "计划和现场实际", "继续处理"],
+        "diagnostic_texts": [],
+        "ids": ["executionReviewTable"],
+    },
+    "/reports/downtime?version=1&plan_role=adopted&start_date=2026-05-06&end_date=2026-05-06&resource_type=machine&resource_id=M_UI_GEOMETRY": {
+        "path": "/reports/downtime?version=1&plan_role=adopted&start_date=2026-05-06&end_date=2026-05-06&resource_type=machine&resource_id=M_UI_GEOMETRY",
+        "stable_texts": ["报表 - 停机影响统计", "设备级停机", "几何测试设备", "继续处理"],
+        "diagnostic_texts": [],
+        "ids": ["downtimeTable"],
     },
 }
 

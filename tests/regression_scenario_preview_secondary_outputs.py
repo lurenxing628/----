@@ -133,6 +133,15 @@ def _assert_report_export_uses_public_scenario_name(response, *, scenario_id: st
     return workbook_text
 
 
+def _assert_scenario_filter_resets_when_plan_identity_changes(html: str) -> None:
+    assert 'name="scenario_id"' in html
+    assert "data-report-plan-version-select" in html
+    assert "data-report-plan-role-select" in html
+    assert "data-initial-version" in html
+    assert "data-initial-plan-role" in html
+    assert "report_plan_filter.js" in html
+
+
 def test_secondary_output_services_read_scenario_rows_and_do_not_fallback(tmp_path: Path) -> None:
     conn = _connect(tmp_path)
     try:
@@ -221,9 +230,15 @@ def test_secondary_output_pages_keep_scenario_context(tmp_path: Path, monkeypatc
     assert f"scenario_id={scenario_id}" in week_html
     assert f"/scheduler/resource-dispatch?version={VERSION}&amp;plan_role=adopted&amp;scenario_id={scenario_id}" in week_html
     assert f"/scheduler/gantt?view=machine&amp;version={VERSION}&amp;plan_role=adopted&amp;scenario_id={scenario_id}" in week_html
+    _assert_scenario_filter_resets_when_plan_identity_changes(week_html)
     assert "这套方案只用于对比，不代表最终采用的排产结果" not in week_html
     assert "2026-05-06" in week_html
     assert "11:00" in week_html
+
+    gantt_html = client.get(
+        f"/scheduler/gantt?view=machine&start_date=2026-05-04&end_date=2026-05-10&{scenario_query}"
+    ).get_data(as_text=True)
+    _assert_scenario_filter_resets_when_plan_identity_changes(gantt_html)
 
     week_export = client.get(f"/scheduler/week-plan/export?week_start=2026-05-04&{scenario_query}")
     assert week_export.status_code == 200
@@ -250,6 +265,7 @@ def test_secondary_output_pages_keep_scenario_context(tmp_path: Path, monkeypatc
     assert f'name="scenario_id" value="{scenario_id}"' in resource_html
     assert f"scenario_id={scenario_id}" in resource_html
     assert f"/scheduler/week-plan?version={VERSION}&amp;plan_role=adopted&amp;scenario_id={scenario_id}" in resource_html
+    _assert_scenario_filter_resets_when_plan_identity_changes(resource_html)
 
     resource_data = client.get(
         f"/scheduler/resource-dispatch/data?scope_type=operator&operator_id=O2&period_preset=week&query_date=2026-05-06&{scenario_query}"
@@ -273,6 +289,7 @@ def test_secondary_output_pages_keep_scenario_context(tmp_path: Path, monkeypatc
     overdue_html = client.get(f"/reports/overdue?{scenario_query}").get_data(as_text=True)
     assert "当前超期清单正在预览" in overdue_html
     assert f'name="scenario_id" value="{scenario_id}"' in overdue_html
+    _assert_scenario_filter_resets_when_plan_identity_changes(overdue_html)
     assert f"/reports/utilization?version={VERSION}&amp;plan_role=adopted&amp;scenario_id={scenario_id}" in overdue_html
     assert "模拟预览暂不支持导出" not in overdue_html
     assert f"/reports/overdue/export?version={VERSION}&amp;plan_role=adopted&amp;scenario_id={scenario_id}" in overdue_html
@@ -283,6 +300,7 @@ def test_secondary_output_pages_keep_scenario_context(tmp_path: Path, monkeypatc
     ).get_data(as_text=True)
     assert "当前资源负荷与利用率正在预览" in utilization_html
     assert f'name="scenario_id" value="{scenario_id}"' in utilization_html
+    _assert_scenario_filter_resets_when_plan_identity_changes(utilization_html)
     assert (
         f"/reports/downtime?version={VERSION}&amp;plan_role=adopted&amp;scenario_id={scenario_id}"
         "&amp;start_date=2026-05-06&amp;end_date=2026-05-06"
@@ -302,6 +320,7 @@ def test_secondary_output_pages_keep_scenario_context(tmp_path: Path, monkeypatc
     ).get_data(as_text=True)
     assert "当前停机影响统计正在预览" in downtime_html
     assert f'name="scenario_id" value="{scenario_id}"' in downtime_html
+    _assert_scenario_filter_resets_when_plan_identity_changes(downtime_html)
     assert "0.5" in downtime_html
     assert '<div class="aps-summary-label">排产方案</div>' in downtime_html
     assert '<div class="aps-summary-value">二级页模拟</div>' in downtime_html

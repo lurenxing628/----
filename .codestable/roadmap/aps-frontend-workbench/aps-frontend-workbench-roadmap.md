@@ -362,7 +362,7 @@ ResourceDispatchWorkbenchTabs:
 | 4 | `analysis-action-hub-layout` | 排产分析页把方案推荐、延期解释、诊断行动提到技术过程之前 | 1 | 否 | done |
 | 5 | `gantt-task-detail-panel` | 甘特图增加稳定任务详情区和下一步链接 | 1 | 否 | done |
 | 6 | `resource-dispatch-execution-lane` | 资源派工把看排班、现场记录、计划和现场实际入口分清 | 1 | 否 | done |
-| 7 | `reports-workbench-backlink` | 报表中心和报表明细能带上下文回到甘特、资源派工和复盘 | 1 | 否 | planned |
+| 7 | `reports-workbench-backlink` | 报表中心和报表明细能带上下文回到甘特、资源派工和复盘 | 1 | 否 | done |
 | 8 | `workbench-flow-regression-suite` | 用测试证明第一版“首页 → 异常/方案/甘特/派工/报表/复盘”的主流程存在 | 1-7 | 否 | planned |
 | 9 | `workbench-user-guide-refresh` | 更新用户手册，告诉用户每天该先看哪里、怎么查问题 | 8 | 否 | planned |
 | 10 | `delay-diagnosis-site-facts-bridge` | 延期解释接入已录入的现场事实，不能继续固定说没有现场事实 | 1, 6 | 否 | planned |
@@ -422,3 +422,4 @@ ResourceDispatchWorkbenchTabs:
 - 2026-06-01：完成 `analysis-action-hub-layout`，排产分析页选中版本后先显示版本身份、首屏行动区、告警，再显示详细方案对比、完整诊断、指标和优化过程；行动区复用已有推荐结论、代表三方案摘要、诊断区和 WorkbenchLink，不重算候选方案、不改算法、不新增数据库，缺候选或缺诊断证据时使用中文空状态和“暂时不能判断”。
 - 2026-06-01：完成 `gantt-task-detail-panel`，甘特图新增稳定任务详情区，点击任务后展示批次、图号或物料、工序、资源、计划时间、现场实际小结、超期提示和下一步入口；实际开工/完工只来自现场执行事实，关键链和旧弹窗也使用公开名称，避免把 `op_<数字>` 这类内部编号露到正文。
 - 2026-06-01：完成 `resource-dispatch-execution-lane`，资源派工页把计划员查看和现场事实分组展示，现场记录卡展示图号/物料、计划/实际时间、偏差和执行流水来源；非正式方案不下发写入 URL，手册同步改为“现场记录 / 填写实际情况 / 导入实际情况 Excel / 查看现场记录”当前口径。
+- 2026-06-02：完成 `reports-workbench-backlink` 验收，报表中心四张入口卡和超期、资源负荷、计划和现场实际、停机影响明细都能保留同一版本、方案、计划身份、返回地址、日期、批次和资源上下文回到甘特、资源派工、首页值班台或正式方案复盘；页面和 Excel 导出共享真实过滤链，未知、冲突别名或半截资源筛选不会静默放大全量，坏数字和坏导出行数不会悄悄按 0 展示，旧正式版本明示历史身份，旧模拟编号不会误绑新方案；完整质量门禁通过后 roadmap item 标为 done。

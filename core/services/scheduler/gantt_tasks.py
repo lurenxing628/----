@@ -36,6 +36,15 @@ from ._sched_display_utils import (
 )
 from ._sched_utils import _safe_int
 from .gantt_range import WeekRange
+from .gantt_task_labels import (
+    detail_operation_label as _detail_operation_label,
+)
+from .gantt_task_labels import (
+    detail_part_label as _detail_part_label,
+)
+from .gantt_task_labels import (
+    public_task_label as _public_task_label,
+)
 
 _CALENDAR_LOAD_EMPTY_REASON = "calendar_load_failed"
 
@@ -168,42 +177,8 @@ def _execution_detail_meta(fact: Any) -> Dict[str, Any]:
     }
 
 
-def _detail_part_label(row: Mapping[str, Any]) -> str:
-    part_no = str(row.get("part_no") or "").strip()
-    part_name = str(row.get("part_name") or "").strip()
-    piece_id = str(row.get("piece_id") or "").strip()
-    label = " ".join(item for item in (part_no, part_name) if item).strip()
-    return label or piece_id or "-"
-
-
-def _detail_operation_label(row: Mapping[str, Any]) -> str:
-    seq = row.get("seq")
-    op_type = str(row.get("op_type_name") or "").strip()
-    if seq is not None and str(seq).strip() and op_type:
-        return f"{seq}（{op_type}）"
-    if op_type:
-        return op_type
-    return str(seq or "").strip() or "-"
-
-
 def _detail_resource_label(machine_disp: str, operator_disp: str) -> str:
     return f"设备：{machine_disp or '-'}；人员：{operator_disp or '-'}"
-
-
-def _public_task_label(row: Mapping[str, Any]) -> str:
-    op_code = str(row.get("op_code") or "").strip()
-    if op_code:
-        return op_code
-    operation_label = _detail_operation_label(row)
-    if operation_label and operation_label != "-":
-        return operation_label
-    part_label = _detail_part_label(row)
-    if part_label and part_label != "-":
-        return part_label
-    batch_id = str(row.get("batch_id") or "").strip()
-    if batch_id:
-        return f"{batch_id} 工序"
-    return "未命名工序"
 
 
 def _build_one_task(

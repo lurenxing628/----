@@ -10,6 +10,15 @@ from core.services.scheduler.schedule_plan_query_service import plan_role_label
 
 from . import calculations
 from .exporters import export_execution_review_xlsx
+from .report_number_parsing import parse_report_float, parse_report_int
+
+
+def _finite_number(value: Any, *, field: str, label: str, default: float = 0.0) -> float:
+    return parse_report_float(value, field=field, label=label, source_label="现场反馈数据", blank_default=default)
+
+
+def _operation_id(value: Any) -> int:
+    return parse_report_int(value, field="op_id", label="工序编号", source_label="计划数据", blank_default=0)
 
 
 class _ExecutionReviewHost(Protocol):
@@ -23,10 +32,22 @@ class _ExecutionReviewHost(Protocol):
         scenario_id: Optional[str],
         start_time: str,
         end_time: str,
+        resource_type: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        batch_id: Optional[str] = None,
     ) -> Any:
         ...
 
-    def _list_plan_rows_all(self, *, version: int, plan_role: Optional[str], scenario_id: Optional[str]) -> Any:
+    def _list_plan_rows_all(
+        self,
+        *,
+        version: int,
+        plan_role: Optional[str],
+        scenario_id: Optional[str],
+        resource_type: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        batch_id: Optional[str] = None,
+    ) -> Any:
         ...
 
     def _resolve_plan(self, version: int, plan_role: Optional[str], scenario_id: Optional[str] = None) -> Any:
@@ -75,7 +96,15 @@ class ExecutionReviewMixin:
             "date_range_label": f"{start_date.isoformat()} 至 {end_date.isoformat()}",
         }
 
-    def _execution_review_plan_rows(self, *, version: int, date_bounds: Dict[str, Any], batch_filter: str):
+    def _execution_review_plan_rows(
+        self,
+        *,
+        version: int,
+        date_bounds: Dict[str, Any],
+        batch_filter: str,
+        resource_type: Any = None,
+        resource_id: Any = None,
+    ):
         host = cast(_ExecutionReviewHost, self)
         if date_bounds["start_time"] and date_bounds["end_time"]:
             plan_rows = host._list_plan_rows_between(
@@ -84,20 +113,29 @@ class ExecutionReviewMixin:
                 scenario_id=None,
                 start_time=str(date_bounds["start_time"]),
                 end_time=str(date_bounds["end_time"]),
+                resource_type=str(resource_type or "").strip(),
+                resource_id=str(resource_id or "").strip(),
+                batch_id=batch_filter,
             )
         else:
-            plan_rows = host._list_plan_rows_all(version=version, plan_role=ROLE_ADOPTED, scenario_id=None)
-        if not batch_filter:
-            return plan_rows
-        return [row for row in plan_rows if str((row or {}).get("batch_id") or "").strip() == batch_filter]
+            plan_rows = host._list_plan_rows_all(
+                version=version,
+                plan_role=ROLE_ADOPTED,
+                scenario_id=None,
+                resource_type=str(resource_type or "").strip(),
+                resource_id=str(resource_id or "").strip(),
+                batch_id=batch_filter,
+            )
+        return plan_rows
 
     def _execution_review_rows(self, plan_rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         host = cast(_ExecutionReviewHost, self)
-        op_ids = [int((row or {}).get("op_id") or 0) for row in plan_rows if int((row or {}).get("op_id") or 0) > 0]
+        rows_with_op_ids = [(dict(row or {}), _operation_id((row or {}).get("op_id"))) for row in plan_rows]
+        op_ids = [op_id for _row, op_id in rows_with_op_ids if op_id > 0]
         states = host.execution_feedback_service.get_execution_state(op_ids)
         return [
-            self._execution_review_row(dict(row or {}), states.get(int((row or {}).get("op_id") or 0)))
-            for row in plan_rows
+            self._execution_review_row(row, states.get(op_id))
+            for row, op_id in rows_with_op_ids
         ]
 
     def execution_review(
@@ -107,6 +145,8 @@ class ExecutionReviewMixin:
         date_from: Any = None,
         date_to: Any = None,
         batch_id: Any = None,
+        resource_type: Any = None,
+        resource_id: Any = None,
     ) -> Dict[str, Any]:
         host = cast(_ExecutionReviewHost, self)
         v = int(version or 0)
@@ -117,6 +157,8 @@ class ExecutionReviewMixin:
             version=v,
             date_bounds=date_bounds,
             batch_filter=batch_filter,
+            resource_type=resource_type,
+            resource_id=resource_id,
         )
         rows = self._execution_review_rows(list(plan_rows or []))
         return {
@@ -140,8 +182,17 @@ class ExecutionReviewMixin:
         date_from: Any = None,
         date_to: Any = None,
         batch_id: Any = None,
+        resource_type: Any = None,
+        resource_id: Any = None,
     ) -> Any:
-        rep = self.execution_review(version, date_from=date_from, date_to=date_to, batch_id=batch_id)
+        rep = self.execution_review(
+            version,
+            date_from=date_from,
+            date_to=date_to,
+            batch_id=batch_id,
+            resource_type=resource_type,
+            resource_id=resource_id,
+        )
         rows = list(rep.get("rows") or [])
         if not rows:
             raise ValidationError("暂无数据，不能导出。请调整版本、日期或批次后再试。", field="导出")
@@ -208,36 +259,6 @@ class ExecutionReviewMixin:
             has_exception,
             empty_text="未填写影响人员",
         )
-        affected_machine_identity_label = (
-            self._exception_value_label(
-                affected_machine.identity_label,
-                has_feedback,
-                has_exception,
-                empty_text="未填写影响设备",
-            )
-            if has_feedback and has_exception
-            else affected_machine_label
-        )
-        affected_operator_identity_label = (
-            self._exception_value_label(
-                affected_operator.identity_label,
-                has_feedback,
-                has_exception,
-                empty_text="未填写影响人员",
-            )
-            if has_feedback and has_exception
-            else affected_operator_label
-        )
-        affected_machine_export_label = (
-            self._resource_export_label(affected_machine, affected_machine_label)
-            if has_feedback and has_exception
-            else affected_machine_label
-        )
-        affected_operator_export_label = (
-            self._resource_export_label(affected_operator, affected_operator_label)
-            if has_feedback and has_exception
-            else affected_operator_label
-        )
         return {
             "batch_id_label": str(row.get("batch_id") or ""),
             "operation_label": self._operation_label(row),
@@ -264,11 +285,11 @@ class ExecutionReviewMixin:
                 has_exception,
             ),
             "exception_affected_machine_label": affected_machine_label,
-            "exception_affected_machine_identity_label": affected_machine_identity_label,
-            "exception_affected_machine_export_label": affected_machine_export_label,
+            "exception_affected_machine_identity_label": affected_machine_label,
+            "exception_affected_machine_export_label": affected_machine_label,
             "exception_affected_operator_label": affected_operator_label,
-            "exception_affected_operator_identity_label": affected_operator_identity_label,
-            "exception_affected_operator_export_label": affected_operator_export_label,
+            "exception_affected_operator_identity_label": affected_operator_label,
+            "exception_affected_operator_export_label": affected_operator_label,
             "exception_handling_status_label": self._exception_value_label(
                 getattr(state, "latest_exception_handling_status_label", None),
                 has_feedback,
@@ -280,11 +301,15 @@ class ExecutionReviewMixin:
                 has_exception,
             ),
             "planned_resource_label": planned_resource["display_label"],
-            "planned_resource_identity_label": planned_resource["identity_label"],
-            "planned_resource_export_label": planned_resource["export_label"],
+            "planned_resource_identity_label": planned_resource["display_label"],
+            "planned_resource_export_label": planned_resource["display_label"],
+            "planned_machine_id": str(row.get("machine_id") or ""),
+            "planned_machine_name": str(row.get("machine_name") or ""),
+            "planned_operator_id": str(row.get("operator_id") or ""),
+            "planned_operator_name": str(row.get("operator_name") or ""),
             "actual_resource_label": actual_resource["display_label"],
-            "actual_resource_identity_label": actual_resource["identity_label"],
-            "actual_resource_export_label": actual_resource["export_label"],
+            "actual_resource_identity_label": actual_resource["display_label"],
+            "actual_resource_export_label": actual_resource["display_label"],
             "feedback_status_label": getattr(state, "current_status_label", None) if has_feedback else "暂无现场反馈",
         }
 
@@ -312,8 +337,6 @@ class ExecutionReviewMixin:
     def _resource_pair_payload(machine: ResourceIdentity, operator: ResourceIdentity, *, empty_label: str) -> Dict[str, str]:
         machine_display = machine.display_label
         operator_display = operator.display_label
-        machine_identity = machine.identity_label
-        operator_identity = operator.identity_label
         if machine_display and operator_display:
             display = f"{machine_display} / {operator_display}"
         elif machine_display:
@@ -322,26 +345,7 @@ class ExecutionReviewMixin:
             display = f"未安排设备 / {operator_display}"
         else:
             display = empty_label
-        if machine_identity and operator_identity:
-            identity = f"{machine_identity} / {operator_identity}"
-        elif machine_identity:
-            identity = f"{machine_identity} / 未安排人员"
-        elif operator_identity:
-            identity = f"未安排设备 / {operator_identity}"
-        else:
-            identity = display
-        export = display
-        if identity and identity != display:
-            export = f"{display}\n完整身份：{identity}"
-        return {"display_label": display, "identity_label": identity, "export_label": export}
-
-    @staticmethod
-    def _resource_export_label(identity: ResourceIdentity, display_label: str) -> str:
-        display = str(display_label or "").strip()
-        identity_label = identity.identity_label
-        if display and identity_label and identity_label != display:
-            return f"{display}\n完整身份：{identity_label}"
-        return display or identity_label
+        return {"display_label": display, "identity_label": display, "export_label": display}
 
     @staticmethod
     def _planned_resource_identity(row: Dict[str, Any]) -> Dict[str, str]:
@@ -374,10 +378,7 @@ class ExecutionReviewMixin:
     def _pause_duration_label(value: Any, has_feedback: bool) -> str:
         if not has_feedback:
             return "暂无现场反馈"
-        try:
-            minutes = float(value or 0.0)
-        except (TypeError, ValueError):
-            minutes = 0.0
+        minutes = _finite_number(value, field="pause_duration_minutes", label="暂停时长")
         if minutes.is_integer():
             return f"{int(minutes)} 分钟"
         return f"{round(minutes, 2)} 分钟"

@@ -9,11 +9,18 @@
 from __future__ import annotations
 
 import ast
-import importlib.util
 import os
 import re
-import sys
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Set
+
+from architecture_fitness_support import (
+    REPO_ROOT,
+    collect_py_files,
+    find_dependency_cycles,
+    read_text,
+    used_stable_degradation_codes,
+    viewmodel_import_violations,
+)
 
 from tools.quality_gate_support import (
     COMPLEXITY_THRESHOLD,
@@ -34,8 +41,6 @@ from tools.quality_gate_support import (
     scan_oversize_entries,
 )
 
-REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-
 LEDGER_CORE_DIRS = CORE_DIRS
 
 CORE_DIRS = list(LEDGER_CORE_DIRS)
@@ -53,25 +58,6 @@ GREEDY_REFACTOR_QUALITY_FILES = (
     "core/algorithms/greedy/dispatch/sgs.py",
     "core/algorithms/greedy/dispatch/sgs_scoring.py",
 )
-
-
-def _collect_py_files(*rel_dirs: str) -> List[str]:
-    """收集指定目录下所有 .py 文件的相对路径。"""
-    files = []
-    for rd in rel_dirs:
-        base = os.path.join(REPO_ROOT, rd)
-        if not os.path.isdir(base):
-            continue
-        for dirpath, _, filenames in os.walk(base):
-            for fn in filenames:
-                if fn.endswith(".py") and (fn == "__init__.py" or not fn.startswith("__")):
-                    files.append(os.path.relpath(os.path.join(dirpath, fn), REPO_ROOT).replace("\\", "/"))
-    return files
-
-
-def _read(rel_path: str) -> str:
-    with open(os.path.join(REPO_ROOT, rel_path), "r", encoding="utf-8", errors="replace") as f:
-        return f.read()
 
 
 LOCAL_PARSE_HELPER_NAMES = {
@@ -93,58 +79,13 @@ LOCAL_PARSE_HELPER_ALLOWLIST = {
 }
 
 
-def _import_module_function_aliases(module_ast: ast.Module) -> Set[str]:
-    aliases: Set[str] = set()
-    for node in module_ast.body:
-        if not isinstance(node, ast.ImportFrom):
-            continue
-        if node.level != 0 or node.module != "importlib":
-            continue
-        for alias in node.names:
-            if alias.name == "import_module":
-                aliases.add(alias.asname or alias.name)
-    return aliases
-
-
-def _importlib_module_aliases(module_ast: ast.Module) -> Set[str]:
-    aliases: Set[str] = set()
-    for node in module_ast.body:
-        if not isinstance(node, ast.Import):
-            continue
-        for alias in node.names:
-            if alias.name == "importlib":
-                aliases.add(alias.asname or alias.name)
-    return aliases
-
-
-def _dynamic_import_target(
-    node: ast.AST,
-    *,
-    import_module_aliases: Set[str],
-    importlib_aliases: Set[str],
-) -> Optional[str]:
-    if not isinstance(node, ast.Call) or not node.args:
-        return None
-    first_arg = node.args[0]
-    if not isinstance(first_arg, ast.Constant) or not isinstance(first_arg.value, str):
-        return None
-    if isinstance(node.func, ast.Name):
-        if node.func.id == "__import__" or node.func.id in import_module_aliases:
-            return first_arg.value
-        return None
-    if isinstance(node.func, ast.Attribute) and node.func.attr == "import_module":
-        if isinstance(node.func.value, ast.Name) and node.func.value.id in importlib_aliases:
-            return first_arg.value
-    return None
-
-
 # ─── Fitness 1: 分层依赖方向 ───────────────────────────────────
 
 def test_routes_do_not_execute_sql_directly():
     """Route 层禁止直接执行 SQL（必须通过 Service → Repository）。"""
     violations = []
-    for fp in _collect_py_files("web/routes"):
-        for i, line in enumerate(_read(fp).splitlines(), 1):
+    for fp in collect_py_files("web/routes"):
+        for i, line in enumerate(read_text(fp).splitlines(), 1):
             s = line.strip()
             if s.startswith("#"):
                 continue
@@ -156,8 +97,8 @@ def test_routes_do_not_execute_sql_directly():
 def test_services_do_not_import_flask_request():
     """Service 层禁止导入 flask.request（Web 层对象）。"""
     violations = []
-    for fp in _collect_py_files("core/services"):
-        for i, line in enumerate(_read(fp).splitlines(), 1):
+    for fp in collect_py_files("core/services"):
+        for i, line in enumerate(read_text(fp).splitlines(), 1):
             s = line.strip()
             if s.startswith("#"):
                 continue
@@ -177,8 +118,8 @@ def test_routes_do_not_import_repository():
     known_imports = set()
     violations = []
     repo_re = re.compile(r"\b(\w+Repository)\b")
-    for fp in _collect_py_files("web/routes"):
-        for line in _read(fp).splitlines():
+    for fp in collect_py_files("web/routes"):
+        for line in read_text(fp).splitlines():
             s = line.strip()
             if not (s.startswith("from ") or s.startswith("import ")):
                 continue
@@ -206,7 +147,7 @@ def test_web_helpers_do_not_import_repository():
         if not fn.endswith(".py"):
             continue
         fp = f"web/{fn}"
-        for line in _read(fp).splitlines():
+        for line in read_text(fp).splitlines():
             s = line.strip()
             if not (s.startswith("from ") or s.startswith("import ")):
                 continue
@@ -231,119 +172,16 @@ def test_viewmodels_do_not_import_flask_or_services_or_repositories_or_routes():
     - 禁止：flask*、core.*（除 core.models*）、data.*、web.*
     """
 
-    def _is_stdlib_root_module(root: str) -> bool:
-        if not root:
-            return False
-        if root in sys.builtin_module_names:
-            return True
-        try:
-            spec = importlib.util.find_spec(root)
-        except Exception:
-            return False
-        if spec is None:
-            return False
-        origin = getattr(spec, "origin", None)
-        if origin in ("built-in", "frozen"):
-            return True
-        if not origin:
-            return False
-        origin_path = os.path.normcase(os.path.abspath(str(origin)))
-        lower = origin_path.lower()
-        if ("site-packages" in lower) or ("dist-packages" in lower):
-            return False
-        for bp in (getattr(sys, "base_prefix", None), getattr(sys, "prefix", None)):
-            if not bp:
-                continue
-            bp_path = os.path.normcase(os.path.abspath(str(bp)))
-            if origin_path.startswith(bp_path + os.sep):
-                return True
-        return False
-
-    def _is_allowed_viewmodel_import(mod: str) -> bool:
-        m = str(mod or "").strip()
-        if not m:
-            return False
-        if m == "core.models" or m.startswith("core.models."):
-            return True
-        root = m.split(".", 1)[0]
-        if root in ("flask", "web", "data"):
-            return False
-        if root == "core":
-            return False
-        return _is_stdlib_root_module(root)
-
-    violations: List[str] = []
-    for fp in _collect_py_files("web/viewmodels"):
-        src = _read(fp)
-        try:
-            tree = ast.parse(src, filename=fp)
-        except SyntaxError as e:
-            violations.append(f"{fp}:{getattr(e, 'lineno', 0) or 0}: SyntaxError: {e}")
-            continue
-
-        import_module_aliases = _import_module_function_aliases(tree)
-        importlib_aliases = _importlib_module_aliases(tree)
-
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                for alias in node.names:
-                    mod = str(alias.name or "")
-                    if not _is_allowed_viewmodel_import(mod):
-                        violations.append(f"{fp}:{node.lineno}: import {mod}")
-            elif isinstance(node, ast.ImportFrom):
-                # 禁止 viewmodels 内使用 import *
-                if any(a.name == "*" for a in node.names or []):
-                    violations.append(f"{fp}:{node.lineno}: from {node.module} import *")
-
-                # 相对导入（from .foo import bar）允许
-                if int(getattr(node, "level", 0) or 0) > 0:
-                    continue
-
-                mod = str(node.module or "")
-                if mod and not _is_allowed_viewmodel_import(mod):
-                    violations.append(f"{fp}:{node.lineno}: from {mod} import ...")
-            else:
-                mod = _dynamic_import_target(
-                    node,
-                    import_module_aliases=import_module_aliases,
-                    importlib_aliases=importlib_aliases,
-                )
-                if mod and not _is_allowed_viewmodel_import(mod):
-                    violations.append(f"{fp}:{getattr(node, 'lineno', 0) or 0}: dynamic import {mod}")
-
+    violations = viewmodel_import_violations(collect_py_files("web/viewmodels"))
     assert not violations, "ViewModel 导入越界:\n" + "\n".join(violations)
 
 
 # ─── Fitness 2: 循环依赖 ──────────────────────────────────────
 
-def _canonical_dependency_cycle(cycle: List[str]) -> Tuple[str, ...]:
-    body = tuple(cycle[:-1])
-    rotations = [body[index:] + body[:index] for index in range(len(body))]
-    return min(rotations)
-
-
-def _find_dependency_cycles(pkg_deps: Dict[str, Set[str]]) -> List[str]:
-    cycles: Set[Tuple[str, ...]] = set()
-
-    def visit(start: str, current: str, path: List[str]) -> None:
-        for dep in sorted(pkg_deps.get(current, set())):
-            if dep not in pkg_deps:
-                continue
-            if dep == start:
-                cycles.add(_canonical_dependency_cycle(path + [dep]))
-            elif dep not in path:
-                visit(start, dep, path + [dep])
-
-    for pkg in sorted(pkg_deps):
-        visit(pkg, pkg, [pkg])
-
-    return [" -> ".join(list(cycle) + [cycle[0]]) for cycle in sorted(cycles)]
-
-
 def test_dependency_cycle_detector_covers_two_node_and_multi_node_cycles():
-    assert _find_dependency_cycles({"a": {"b"}, "b": {"a"}}) == ["a -> b -> a"]
-    assert _find_dependency_cycles({"a": {"b"}, "b": {"c"}, "c": {"a"}}) == ["a -> b -> c -> a"]
-    assert _find_dependency_cycles({"a": {"b"}, "b": {"c"}, "c": set()}) == []
+    assert find_dependency_cycles({"a": {"b"}, "b": {"a"}}) == ["a -> b -> a"]
+    assert find_dependency_cycles({"a": {"b"}, "b": {"c"}, "c": {"a"}}) == ["a -> b -> c -> a"]
+    assert find_dependency_cycles({"a": {"b"}, "b": {"c"}, "c": set()}) == []
 
 
 def test_no_circular_service_dependencies():
@@ -362,14 +200,14 @@ def test_no_circular_service_dependencies():
             if pkg == ".":
                 pkg = fn[:-3]
             deps = pkg_deps.setdefault(pkg, set())
-            for line in _read(os.path.relpath(fpath, REPO_ROOT).replace("\\", "/")).splitlines():
+            for line in read_text(os.path.relpath(fpath, REPO_ROOT).replace("\\", "/")).splitlines():
                 m = re.search(r"core\.services\.(\w+)", line.strip())
                 if m:
                     target_pkg = m.group(1)
                     if target_pkg != pkg:
                         deps.add(target_pkg)
 
-    cycles = _find_dependency_cycles(pkg_deps)
+    cycles = find_dependency_cycles(pkg_deps)
 
     known_cycles: Set[str] = set()
     new_cycles = [c for c in cycles if c not in known_cycles]
@@ -381,17 +219,11 @@ def test_no_circular_service_dependencies():
 def test_no_wildcard_imports():
     """核心目录禁止 import *。"""
     violations = []
-    for fp in _collect_py_files(*NO_WILDCARD_DIRS):
-        for i, line in enumerate(_read(fp).splitlines(), 1):
+    for fp in collect_py_files(*NO_WILDCARD_DIRS):
+        for i, line in enumerate(read_text(fp).splitlines(), 1):
             if re.match(r"\s*from\s+\S+\s+import\s+\*", line):
                 violations.append(f"{fp}:{i}")
     assert not violations, "import * 违反:\n" + "\n".join(violations)
-
-
-def _string_constant(node: Optional[ast.AST]) -> Optional[str]:
-    if isinstance(node, ast.Constant) and isinstance(node.value, str):
-        return str(node.value)
-    return None
 
 
 def test_no_new_local_parse_helpers():
@@ -399,8 +231,8 @@ def test_no_new_local_parse_helpers():
     violations: List[str] = []
     found_allowlist: Set[str] = set()
 
-    for fp in _collect_py_files("core"):
-        src = _read(fp)
+    for fp in collect_py_files("core"):
+        src = read_text(fp)
         try:
             tree = ast.parse(src, filename=fp)
         except SyntaxError as e:
@@ -428,49 +260,7 @@ def test_stable_degradation_codes_cover_actual_usages():
     """稳定退化原因码清单必须覆盖当前实际使用。"""
     from core.services.common.degradation import STABLE_DEGRADATION_CODES
 
-    used_codes: Set[str] = set()
-    for fp in _collect_py_files("core", "web/bootstrap"):
-        src = _read(fp)
-        try:
-            tree = ast.parse(src, filename=fp)
-        except SyntaxError as e:
-            raise AssertionError(f"无法解析 {fp}: {e}") from e
-
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call):
-                continue
-            func_name = None
-            if isinstance(node.func, ast.Name):
-                func_name = node.func.id
-            elif isinstance(node.func, ast.Attribute):
-                func_name = node.func.attr
-
-            keywords = {kw.arg: kw.value for kw in node.keywords if kw.arg}
-            if func_name == "FieldPolicy":
-                for key in ("strict_reason_code", "compat_reason_code", "blank_reason_code"):
-                    code = _string_constant(keywords.get(key))
-                    if code:
-                        used_codes.add(code)
-                continue
-
-            if func_name in {"add", "DegradationEvent"} and "code" in keywords and (
-                func_name == "DegradationEvent" or "scope" in keywords or "message" in keywords
-            ):
-                code = _string_constant(keywords.get("code"))
-                if code:
-                    used_codes.add(code)
-                continue
-
-            if func_name in {"_add_state_event", "_add_counted_event"} and "code" in keywords:
-                code = _string_constant(keywords.get("code"))
-                if code:
-                    used_codes.add(code)
-
-            if func_name == "public_degradation_event_message" and node.args:
-                code = _string_constant(node.args[0])
-                if code:
-                    used_codes.add(code)
-
+    used_codes = used_stable_degradation_codes(collect_py_files("core", "web/bootstrap"))
     missing = sorted(code for code in used_codes if code not in set(STABLE_DEGRADATION_CODES))
     assert not missing, "存在未纳入 STABLE_DEGRADATION_CODES 的退化原因码:\n" + "\n".join(missing)
 
@@ -484,8 +274,8 @@ def test_services_do_not_use_assert_for_runtime_guards():
     - assert 更适合开发期不变量，而不是业务输入/契约保障
     """
     violations: List[str] = []
-    for fp in _collect_py_files("core/services"):
-        src = _read(fp)
+    for fp in collect_py_files("core/services"):
+        src = read_text(fp)
         try:
             tree = ast.parse(src, filename=fp)
         except SyntaxError as e:
@@ -666,7 +456,7 @@ def test_known_complexity_entries_still_exceed_threshold():
 def test_file_naming_snake_case():
     """核心目录文件名必须是 snake_case。"""
     violations = []
-    for fp in _collect_py_files(*CORE_DIRS):
+    for fp in collect_py_files(*CORE_DIRS):
         fname = os.path.basename(fp)[:-3]
         if fname != fname.lower():
             violations.append(fp)

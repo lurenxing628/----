@@ -124,7 +124,13 @@ def main() -> None:
                 "unscheduled_items": [],
             }
 
-        def fake_overdue_diagnosis_export_rows(self, *, version: int, resolution) -> List[Dict[str, Any]]:
+        def fake_overdue_diagnosis_export_rows(
+            self,
+            *,
+            version: int,
+            resolution,
+            batch_ids: Any = None,
+        ) -> List[Dict[str, Any]]:
             diagnosis_call_count["value"] += 1
             raise RuntimeError("超期导出超出范围时不应生成诊断依据")
 

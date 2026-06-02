@@ -60,6 +60,60 @@
     });
   }
 
+  function syncGanttScopeCarriers() {
+    const ui = state.ui || {};
+    const batch = norm(ui.filterBatch || "");
+    const resource = norm(ui.filterResource || "");
+    const currentView = norm((state.cfg && state.cfg.view) || "");
+
+    document.querySelectorAll("form.aps-gantt-range-form").forEach(function (form) {
+      setHiddenField(form, "gantt_batch", batch);
+      setHiddenField(form, "gantt_resource", resource);
+    });
+
+    document.querySelectorAll("a").forEach(function (link) {
+      let url;
+      try {
+        url = new URL(link.getAttribute("href") || "", window.location.origin);
+      } catch (_) {
+        return;
+      }
+      if (url.pathname !== "/scheduler/gantt") return;
+      const targetView = norm(url.searchParams.get("view") || currentView);
+      if (batch) url.searchParams.set("gantt_batch", batch);
+      else url.searchParams.delete("gantt_batch");
+      if (resource && (!targetView || targetView === currentView)) {
+        url.searchParams.set("gantt_resource", resource);
+      } else {
+        url.searchParams.delete("gantt_resource");
+      }
+      link.setAttribute("href", url.pathname + url.search + url.hash);
+    });
+  }
+
+  function findHiddenField(form, name) {
+    const inputs = form.querySelectorAll("input");
+    for (let index = 0; index < inputs.length; index += 1) {
+      if (inputs[index].getAttribute("name") === name) return inputs[index];
+    }
+    return null;
+  }
+
+  function setHiddenField(form, name, value) {
+    let input = findHiddenField(form, name);
+    if (!value) {
+      if (input) input.remove();
+      return;
+    }
+    if (!input) {
+      input = document.createElement("input");
+      input.setAttribute("type", "hidden");
+      input.setAttribute("name", name);
+      form.appendChild(input);
+    }
+    input.value = value;
+  }
+
   function zoomControl() {
     return $("ganttZoomLevel") || $("ganttViewMode");
   }
@@ -185,6 +239,7 @@
     } catch (_) {
       // ignore
     }
+    syncGanttScopeCarriers();
   }
 
   function bindUi() {

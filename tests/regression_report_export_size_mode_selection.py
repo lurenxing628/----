@@ -219,7 +219,13 @@ def main() -> None:
             selected_role = "baseline_best" if str(plan_role or "").strip() == "baseline_best" else "adopted"
             return _FakePlanResolution(int(version), selected_role)
 
-        def fake_overdue_diagnosis_export_rows(self, *, version: int, resolution) -> List[Dict[str, Any]]:
+        def fake_overdue_diagnosis_export_rows(
+            self,
+            *,
+            version: int,
+            resolution,
+            batch_ids: Any = None,
+        ) -> List[Dict[str, Any]]:
             return [
                 {
                     "diagnosis_id": f"延期诊断-v{int(version)}-B001",

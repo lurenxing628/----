@@ -1,0 +1,29 @@
+{#
+  顶层计划工作台入口。
+  链接由 Python ViewModel 统一生成，模板只负责渲染。
+#}
+{% macro workbench_nav_menu(class='') %}
+{% set nav_links = build_workbench_navigation_links() %}
+<details class="aps-workbench-nav {{ class }}">
+  <summary class="aps-workbench-nav-summary">
+    <svg class="icon" aria-hidden="true"><use href="{{ url_for('static', filename='icons.svg') }}#icon-schedule"/></svg>
+    <span>计划工作台</span>
+    <span class="aps-workbench-nav-caret" aria-hidden="true">▾</span>
+  </summary>
+  <div class="aps-workbench-nav-menu" aria-label="计划工作台快捷入口">
+    {% for link in nav_links %}
+      {% if link.disabled or not link.url %}
+        <span class="aps-workbench-nav-link is-disabled" aria-disabled="true" title="{{ link.disabled_reason }}">
+          <span class="aps-workbench-nav-title">{{ link.label }}</span>
+          <span class="aps-workbench-nav-desc">{{ link.desc }}</span>
+        </span>
+      {% else %}
+        <a href="{{ link.url }}" class="aps-workbench-nav-link">
+          <span class="aps-workbench-nav-title">{{ link.label }}</span>
+          <span class="aps-workbench-nav-desc">{{ link.desc }}</span>
+        </a>
+      {% endif %}
+    {% endfor %}
+  </div>
+</details>
+{% endmacro %}

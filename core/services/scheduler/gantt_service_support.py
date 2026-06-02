@@ -1,0 +1,87 @@
+from __future__ import annotations
+
+from typing import Any, Dict, Optional
+
+from core.services.common.degradation import DegradationCollector, DegradationEvent
+
+from .gantt_critical_chain import compute_critical_chain_from_rows
+
+
+def _text(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def plan_detail_filter_kwargs(
+    *,
+    resource_type: Optional[str] = None,
+    resource_id: Optional[str] = None,
+    batch_id: Optional[str] = None,
+) -> Dict[str, str]:
+    filters: Dict[str, str] = {}
+    resource_type_text = _text(resource_type)
+    resource_id_text = _text(resource_id)
+    if resource_type_text or resource_id_text:
+        filters["resource_type"] = resource_type_text
+        filters["resource_id"] = resource_id_text
+    batch_id_text = _text(batch_id)
+    if batch_id_text:
+        filters["batch_id"] = batch_id_text
+    return filters
+
+
+def _normalize_critical_chain_result(raw: Any) -> Dict[str, Any]:
+    if not isinstance(raw, dict):
+        raw = {}
+    available = raw.get("available")
+    is_available = available if isinstance(available, bool) else True
+    reason = _text(raw.get("reason"))
+    reason_code = _text(raw.get("reason_code") or raw.get("reason"))
+    if is_available:
+        reason = ""
+        reason_code = ""
+    return {
+        "ids": list(raw.get("ids") or []),
+        "edges": [dict(edge) if isinstance(edge, dict) else edge for edge in list(raw.get("edges") or [])],
+        "makespan_end": raw.get("makespan_end"),
+        "edge_type_stats": dict(raw.get("edge_type_stats") or {"process": 0, "machine": 0, "operator": 0, "unknown": 0}),
+        "edge_count": int(raw.get("edge_count") or 0),
+        "available": bool(is_available),
+        "reason": reason,
+        "reason_code": reason_code or ("unknown" if not is_available else ""),
+    }
+
+
+def critical_chain_for_plan_detail_filter(rows: Any, filters: Dict[str, str]) -> Optional[Dict[str, Any]]:
+    if not filters:
+        return None
+    raw = compute_critical_chain_from_rows([dict(row) for row in list(rows or [])])
+    return _normalize_critical_chain_result(raw)
+
+
+def collect_gantt_degradation_events(
+    *,
+    calendar_days_outcome: Any,
+    tasks_outcome: Any,
+    critical_chain: Dict[str, Any],
+) -> DegradationCollector:
+    collector = DegradationCollector()
+    collector.extend(calendar_days_outcome.events)
+    collector.extend(tasks_outcome.events)
+    if critical_chain.get("available") is False:
+        reason = _text(critical_chain.get("reason_code") or critical_chain.get("reason")) or "unknown"
+        collector.add(
+            DegradationEvent(
+                code="critical_chain_unavailable",
+                scope="scheduler.gantt",
+                field="critical_chain",
+                message=f"关键工序关系暂时看不了（reason={reason}）。",
+            )
+        )
+    return collector
+
+
+__all__ = [
+    "collect_gantt_degradation_events",
+    "critical_chain_for_plan_detail_filter",
+    "plan_detail_filter_kwargs",
+]

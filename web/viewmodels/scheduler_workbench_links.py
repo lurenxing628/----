@@ -3,7 +3,13 @@ from __future__ import annotations
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 from urllib.parse import urlencode
 
-from .scheduler_workbench_link_query import ordered_required_params, query_for_target
+from core.models.schedule_resource_filter import SUPPORTED_SCHEDULE_RESOURCE_TYPES
+
+from .scheduler_workbench_link_query import (
+    ordered_required_params,
+    query_for_target,
+    target_uses_primary_resource_filter,
+)
 
 ROLE_ADOPTED = "adopted"
 
@@ -17,6 +23,7 @@ TARGET_PAGE_PATHS = {
     "delay_diagnosis": "/reports/overdue",
     "utilization_report": "/reports/utilization",
     "execution_review": "/reports/execution-review",
+    "downtime_report": "/reports/downtime",
     "reports_index": "/reports/",
 }
 
@@ -30,6 +37,7 @@ _TARGET_DEFAULT_LABELS = {
     "delay_diagnosis": "查看延期说明",
     "utilization_report": "查看资源负荷",
     "execution_review": "查看计划和现场实际",
+    "downtime_report": "查看停机影响",
     "reports_index": "查看报表中心",
 }
 
@@ -72,6 +80,7 @@ _VERSION_REQUIRED_TARGETS = {
     "delay_diagnosis",
     "utilization_report",
     "execution_review",
+    "downtime_report",
     "reports_index",
 }
 
@@ -83,6 +92,7 @@ _DATE_RANGE_REQUIRED_TARGETS = {
     "delay_diagnosis",
     "utilization_report",
     "execution_review",
+    "downtime_report",
     "reports_index",
 }
 
@@ -174,6 +184,7 @@ def build_workbench_plan_context(
     *,
     version: Any = None,
     version_label: str = "",
+    plan_id: Any = None,
     plan_role: Any = ROLE_ADOPTED,
     plan_role_label_value: str = "",
     scenario_id: Any = None,
@@ -192,6 +203,7 @@ def build_workbench_plan_context(
     guardrail_reason_type: str = "",
     capacity_source_label: str = "",
     capacity_gap_text: str = "",
+    back_to: Any = None,
 ) -> Dict[str, Any]:
     plan_role_text = _text(plan_role) or ROLE_ADOPTED
     scenario_text, preview, scenario_label = _preview_context(is_preview, scenario_id, scenario_display_label)
@@ -214,6 +226,7 @@ def build_workbench_plan_context(
     return {
         "version": version,
         "version_label": public_version_label,
+        "plan_id": _text(plan_id) or None,
         "plan_role": plan_role_text,
         "plan_role_label": public_plan_role_label,
         "scenario_id": scenario_text,
@@ -234,6 +247,7 @@ def build_workbench_plan_context(
         "guardrail_reason_label": guardrail_reason_label(reason_type) if reason_type else "",
         "capacity_source_label": _text(capacity_source_label),
         "capacity_gap_text": _text(capacity_gap_text),
+        "back_to": _text(back_to) or None,
     }
 
 
@@ -273,13 +287,26 @@ def _is_formal_adopted_context(context: Dict[str, Any]) -> bool:
     return True
 
 
-def _disabled_reason_for_target(context: Dict[str, Any], target_page: str) -> str:
+def _unsupported_primary_resource_reason(context: Dict[str, Any], target_page: str, resource_type: Optional[str]) -> str:
+    if not target_uses_primary_resource_filter(target_page):
+        return ""
+    resource_type_text = _text(resource_type or context.get("resource_type"))
+    if not resource_type_text or resource_type_text in SUPPORTED_SCHEDULE_RESOURCE_TYPES:
+        return ""
+    label = "班组" if resource_type_text == "team" else resource_type_text
+    return f"当前页面暂不支持{label}维度筛选，请切换到设备或人员后再查看。"
+
+
+def _disabled_reason_for_target(context: Dict[str, Any], target_page: str, *, resource_type: Optional[str] = None) -> str:
     if target_page in _VERSION_REQUIRED_TARGETS and not _has_value(context.get("version")):
         return "还没有排产版本，先执行一次排产后再查看。"
     if target_page in _DATE_RANGE_REQUIRED_TARGETS and (
         not _has_value(context.get("date_from")) or not _has_value(context.get("date_to"))
     ):
         return "还没有确认日期范围，先选择开始日期和结束日期后再查看。"
+    resource_reason = _unsupported_primary_resource_reason(context, target_page, resource_type)
+    if resource_reason:
+        return resource_reason
     if target_page == "execution_review" and not _is_formal_adopted_context(context):
         return "计划和现场实际只复盘正式采用方案，请切换到正式采用方案后查看。"
     return ""
@@ -305,7 +332,7 @@ def build_workbench_link(
 ) -> Dict[str, Any]:
     if target_page not in TARGET_PAGE_PATHS:
         raise ValueError(f"未知工作台目标页：{target_page}")
-    automatic_reason = _disabled_reason_for_target(context, target_page)
+    automatic_reason = _disabled_reason_for_target(context, target_page, resource_type=resource_type)
     reason = _text(disabled_reason) or automatic_reason
     is_disabled = bool(automatic_reason) or (bool(disabled) if disabled is not None else bool(reason))
     if is_disabled and not reason:

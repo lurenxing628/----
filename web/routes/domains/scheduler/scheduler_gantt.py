@@ -5,8 +5,6 @@ from typing import Any, Dict, Optional
 from flask import current_app, g, jsonify, request, url_for
 
 from core.infrastructure.errors import AppError, BusinessError, ErrorCode, ValidationError, error_response
-from core.services.scheduler.schedule_plan_query_service import ROLE_ADOPTED
-from core.services.scheduler.schedule_result_view_context import default_plan_resolution_dict
 from core.services.scheduler.schedule_result_view_range import normalize_week_offset_for_explicit_range
 from web.error_boundary import json_error_response
 from web.routes.history_summary_logging import (
@@ -22,6 +20,14 @@ from web.viewmodels.scheduler_history_summary import (
 )
 
 from .scheduler_bp import bp
+from .scheduler_navigation_publish import (
+    is_plan_preview,
+    publish_gantt_navigation_context,
+    requested_plan_role,
+    resolve_navigation_plan_context,
+    resolved_scenario_id,
+    selected_plan_role,
+)
 
 
 def _get_int_arg(name: str, default: int = 0) -> int:
@@ -53,6 +59,66 @@ def _get_raw_arg(name: str, default: str = "0") -> str:
     return str(raw).strip()
 
 
+def _get_optional_arg(name: str) -> Optional[str]:
+    text = str(request.args.get(name) or "").strip()
+    return text or None
+
+
+def _gantt_data_scope_query() -> Dict[str, str]:
+    query: Dict[str, str] = {}
+    batch_id = _get_optional_arg("gantt_batch")
+    resource_id = _get_optional_arg("gantt_resource")
+    if batch_id:
+        query["gantt_batch"] = batch_id
+    if resource_id:
+        query["gantt_resource"] = resource_id
+    return query
+
+
+def _gantt_page_scope_query(*, current_view: str, target_view: str) -> Dict[str, str]:
+    query: Dict[str, str] = {}
+    batch_id = _get_optional_arg("gantt_batch")
+    resource_id = _get_optional_arg("gantt_resource")
+    if batch_id:
+        query["gantt_batch"] = batch_id
+    if resource_id and str(current_view or "").strip() == str(target_view or "").strip():
+        query["gantt_resource"] = resource_id
+    return query
+
+
+def _gantt_data_url() -> str:
+    query: Dict[str, Any] = dict(_gantt_data_scope_query())
+    return url_for("scheduler.gantt_data", **query)
+
+
+def _gantt_page_url(
+    *,
+    current_view: str,
+    target_view: str,
+    version: Any,
+    plan_role: Optional[str],
+    scenario_id: Optional[str],
+    gantt_zoom: str,
+    week_start: Optional[str] = None,
+    offset: Optional[int] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> str:
+    args: Dict[str, Any] = {
+        "view": target_view,
+        "week_start": week_start,
+        "offset": offset,
+        "start_date": start_date,
+        "end_date": end_date,
+        "version": version,
+        "plan_role": plan_role,
+        "scenario_id": scenario_id,
+        "gantt_zoom": gantt_zoom,
+    }
+    args.update(_gantt_page_scope_query(current_view=current_view, target_view=target_view))
+    return url_for("scheduler.gantt_page", **{key: value for key, value in args.items() if str(value or "").strip()})
+
+
 def _get_effective_offset_for_display_range(*, start_date: Optional[str], end_date: Optional[str]) -> int:
     try:
         return normalize_week_offset_for_explicit_range(
@@ -82,30 +148,6 @@ def _get_scenario_id_arg() -> Optional[str]:
     return text or None
 
 
-def _resolve_plan_context(
-    services,
-    version: Optional[int],
-    plan_role: Optional[str],
-    scenario_id: Optional[str] = None,
-) -> Dict[str, Any]:
-    plan_query_service = getattr(services, "schedule_plan_query_service", None)
-    if plan_query_service is not None and version is not None:
-        try:
-            return plan_query_service.resolve_plan_view(int(version), plan_role, scenario_id).to_dict()
-        except ValueError as exc:
-            field = "scenario_id" if scenario_id else "plan_role"
-            raise ValidationError(str(exc), field=field) from exc
-    gantt_service = getattr(services, "gantt_service", None)
-    if gantt_service is not None and hasattr(gantt_service, "resolve_plan_context"):
-        return gantt_service.resolve_plan_context(
-            version,
-            plan_role,
-            scenario_id=scenario_id,
-            plan_query_service=plan_query_service,
-        )
-    return default_plan_resolution_dict(plan_role)
-
-
 def _selected_version_result_status_label(services, version: Optional[int]) -> str:
     if version is None:
         return ""
@@ -131,13 +173,13 @@ def gantt_page():
     """
     甘特图页面（Phase 8）。
     """
-    view = (request.args.get("view") or "machine").strip()
-    week_start = (request.args.get("week_start") or "").strip() or None
-    start_date = (request.args.get("start_date") or "").strip() or None
-    end_date = (request.args.get("end_date") or "").strip() or None
+    view = _get_raw_arg("view", "machine")
+    week_start = _get_optional_arg("week_start")
+    start_date = _get_optional_arg("start_date")
+    end_date = _get_optional_arg("end_date")
     plan_role = _get_plan_role_arg()
     scenario_id = _get_scenario_id_arg()
-    gantt_zoom = (request.args.get("gantt_zoom") or "day").strip() or "day"
+    gantt_zoom = _get_raw_arg("gantt_zoom", "day")
     services = g.services
     effective_offset = _get_effective_offset_for_display_range(start_date=start_date, end_date=end_date)
     svc = services.gantt_service
@@ -153,7 +195,7 @@ def gantt_page():
             },
         )
     ver = version_resolution.selected_version
-    plan_resolution = _resolve_plan_context(services, ver, plan_role, scenario_id)
+    plan_resolution = resolve_navigation_plan_context(services, ver, plan_role, scenario_id)
     plan_query_service = getattr(services, "schedule_plan_query_service", None)
     wr, version_span, range_source = svc.resolve_gantt_range_for_version(
         version=ver,
@@ -169,6 +211,73 @@ def gantt_page():
     versions = decorate_history_version_options(services.schedule_history_query_service.list_versions(limit=30))
     log_history_version_option_parse_warnings(versions, log_label="甘特图页")
     selected_result_status_label = _selected_version_result_status_label(services, ver)
+    gantt_resource = (request.args.get("gantt_resource") or "").strip()
+    gantt_zoom_value = gantt_zoom or "day"
+    publish_gantt_navigation_context(
+        version=ver,
+        plan_resolution=plan_resolution,
+        date_from=wr.week_start_date.isoformat(),
+        date_to=wr.week_end_date.isoformat(),
+        view=view,
+        gantt_resource=gantt_resource,
+        batch_id=_get_optional_arg("gantt_batch"),
+        back_to=_get_optional_arg("back_to"),
+    )
+    gantt_view_urls = {
+        "machine": _gantt_page_url(
+            current_view=view,
+            target_view="machine",
+            version=ver,
+            start_date=wr.week_start_date.isoformat(),
+            end_date=wr.week_end_date.isoformat(),
+            plan_role=requested_plan_role(plan_resolution),
+            scenario_id=resolved_scenario_id(plan_resolution),
+            gantt_zoom=gantt_zoom_value,
+        ),
+        "operator": _gantt_page_url(
+            current_view=view,
+            target_view="operator",
+            version=ver,
+            start_date=wr.week_start_date.isoformat(),
+            end_date=wr.week_end_date.isoformat(),
+            plan_role=requested_plan_role(plan_resolution),
+            scenario_id=resolved_scenario_id(plan_resolution),
+            gantt_zoom=gantt_zoom_value,
+        ),
+    }
+    gantt_week_urls = {
+        "prev": _gantt_page_url(
+            current_view=view,
+            target_view=view,
+            version=ver,
+            week_start=wr.week_start_date.isoformat(),
+            offset=effective_offset - 1,
+            plan_role=requested_plan_role(plan_resolution),
+            scenario_id=resolved_scenario_id(plan_resolution),
+            gantt_zoom=gantt_zoom_value,
+        ),
+        "current": _gantt_page_url(
+            current_view=view,
+            target_view=view,
+            version=ver,
+            week_start=wr.week_start_date.isoformat(),
+            offset=0,
+            plan_role=requested_plan_role(plan_resolution),
+            scenario_id=resolved_scenario_id(plan_resolution),
+            gantt_zoom=gantt_zoom_value,
+        ),
+        "next": _gantt_page_url(
+            current_view=view,
+            target_view=view,
+            version=ver,
+            week_start=wr.week_start_date.isoformat(),
+            offset=effective_offset + 1,
+            plan_role=requested_plan_role(plan_resolution),
+            scenario_id=resolved_scenario_id(plan_resolution),
+            gantt_zoom=gantt_zoom_value,
+        ),
+    }
+    gantt_form_scope = _gantt_page_scope_query(current_view=view, target_view=view)
     return render_template(
         "scheduler/gantt.html",
         title="甘特图（排程可视化）",
@@ -185,18 +294,21 @@ def gantt_page():
         versions=versions,
         selected_result_status_label=selected_result_status_label,
         has_history=bool(versions),
-        plan_role=plan_resolution.get("requested_role") or ROLE_ADOPTED,
-        effective_plan_role=plan_resolution.get("selected_role") or ROLE_ADOPTED,
+        plan_role=requested_plan_role(plan_resolution),
+        effective_plan_role=selected_plan_role(plan_resolution),
         plan_resolution=plan_resolution,
         plan_role_options=plan_resolution.get("available_roles") or [],
         version_span=version_span,
         range_source=range_source,
-        data_url=url_for("scheduler.gantt_data"),
+        data_url=_gantt_data_url(),
+        gantt_view_urls=gantt_view_urls,
+        gantt_week_urls=gantt_week_urls,
+        gantt_form_scope=gantt_form_scope,
         gantt_zoom=gantt_zoom,
-        scenario_id=plan_resolution.get("scenario_id"),
+        scenario_id=resolved_scenario_id(plan_resolution),
         scenario_name=plan_resolution.get("scenario_name"),
         scenario_display_name=plan_resolution.get("scenario_display_name"),
-        is_scenario_preview=bool(plan_resolution.get("is_scenario_preview")),
+        is_scenario_preview=is_plan_preview(plan_resolution),
     )
 
 
@@ -228,6 +340,13 @@ def gantt_data():
             data_kwargs["plan_role"] = plan_role
         if scenario_id is not None:
             data_kwargs["scenario_id"] = scenario_id
+        gantt_batch = _get_optional_arg("gantt_batch")
+        gantt_resource = _get_optional_arg("gantt_resource")
+        if gantt_batch:
+            data_kwargs["batch_id"] = gantt_batch
+        if gantt_resource:
+            data_kwargs["resource_type"] = view
+            data_kwargs["resource_id"] = gantt_resource
         plan_query_service = getattr(g.services, "schedule_plan_query_service", None)
         if plan_query_service is not None:
             data_kwargs["plan_query_service"] = plan_query_service

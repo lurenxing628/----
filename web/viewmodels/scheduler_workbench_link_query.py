@@ -32,7 +32,8 @@ _TARGET_QUERY_SPECS: Dict[str, Dict[str, Any]] = {
         "plan_style": "standard",
         "date_style": "start_end",
         "batch_position": "before_resource",
-        "resource_style": "resource",
+        "batch_param": "gantt_batch",
+        "resource_style": "gantt_filter",
         "include_gantt_view": True,
     },
     "week_plan": {
@@ -48,6 +49,7 @@ _TARGET_QUERY_SPECS: Dict[str, Dict[str, Any]] = {
         "batch_position": "after_resource",
         "resource_style": "scope",
         "default_resource_type": "operator",
+        "period_preset": "custom",
     },
     "overdue_report": {
         "plan_style": "standard",
@@ -65,19 +67,25 @@ _TARGET_QUERY_SPECS: Dict[str, Dict[str, Any]] = {
         "plan_style": "standard",
         "date_style": "start_end",
         "batch_position": "before_resource",
-        "resource_style": "scope",
+        "resource_style": "resource",
+    },
+    "downtime_report": {
+        "plan_style": "standard",
+        "date_style": "start_end",
+        "batch_position": "before_resource",
+        "resource_style": "resource",
     },
     "execution_review": {
         "plan_style": "execution_review",
         "date_style": "date_from_to",
         "batch_position": "before_resource",
-        "resource_style": "scope",
+        "resource_style": "resource",
     },
     "reports_index": {
         "plan_style": "standard",
         "date_style": "date_from_to",
         "batch_position": "before_resource",
-        "resource_style": "scope",
+        "resource_style": "resource",
     },
 }
 
@@ -107,17 +115,18 @@ def _append_date_range_as_date_from_to(query: List[Tuple[str, str]], context: Di
 
 def _append_plan_query(query: List[Tuple[str, str]], context: Dict[str, Any]) -> None:
     _append_param(query, "version", context.get("version"))
+    _append_param(query, "plan_id", context.get("plan_id"))
     _append_param(query, "plan_role", context.get("plan_role"))
     _append_param(query, "scenario_id", context.get("scenario_id"))
 
 
-def _append_period_query(query: List[Tuple[str, str]], context: Dict[str, Any]) -> None:
+def _append_period_query(query: List[Tuple[str, str]], context: Dict[str, Any], *, period_preset: Optional[str] = None) -> None:
     _append_param(query, "query_date", context.get("query_date"))
-    _append_param(query, "period_preset", context.get("period_preset"))
+    _append_param(query, "period_preset", period_preset or context.get("period_preset"))
 
 
-def _append_batch_query(query: List[Tuple[str, str]], batch_value: Any) -> None:
-    _append_param(query, "batch_id", batch_value)
+def _append_batch_query(query: List[Tuple[str, str]], batch_value: Any, *, key: str = "batch_id") -> None:
+    _append_param(query, key, batch_value)
 
 
 def ordered_required_params(query: Iterable[Tuple[str, str]]) -> List[str]:
@@ -128,9 +137,21 @@ def ordered_required_params(query: Iterable[Tuple[str, str]]) -> List[str]:
     return out
 
 
+def _target_spec(target_page: str) -> Dict[str, Any]:
+    spec = _TARGET_QUERY_SPECS.get(target_page)
+    if spec is None:
+        raise ValueError(f"未知工作台目标页：{target_page}")
+    return spec
+
+
+def target_uses_primary_resource_filter(target_page: str) -> bool:
+    return str(_target_spec(target_page)["resource_style"]) == "resource"
+
+
 def _append_target_plan_query(query: List[Tuple[str, str]], context: Dict[str, Any], plan_style: str) -> None:
     if plan_style == "execution_review":
         _append_param(query, "version", context.get("version"))
+        _append_param(query, "plan_id", context.get("plan_id"))
         _append_param(query, "plan_role", context.get("plan_role"))
         return
     _append_plan_query(query, context)
@@ -174,7 +195,9 @@ def _append_resource_query(
     *,
     style: str,
     default_type: Optional[str] = None,
+    view: Optional[str] = None,
 ) -> None:
+    effective_type = _text(resource_type or context.get("resource_type") or default_type)
     for key, value in _resource_query_value(context, resource_type, resource_id, default_type=default_type):
         if style == "resource":
             if key == "scope_type":
@@ -183,6 +206,9 @@ def _append_resource_query(
                 _append_param(query, "resource_id", value)
         elif style == "scope":
             _append_param(query, key, value)
+        elif style == "gantt_filter":
+            if key == "scope_id" and (not view or effective_type == _text(view)):
+                _append_param(query, "gantt_resource", value)
         else:
             raise ValueError(f"未知资源上下文格式：{style}")
 
@@ -193,6 +219,7 @@ def _append_target_resource_query(
     spec: Dict[str, Any],
     resource_type: Optional[str],
     resource_id: Any,
+    view: Optional[str],
 ) -> None:
     _append_resource_query(
         query,
@@ -201,6 +228,7 @@ def _append_target_resource_query(
         resource_id,
         style=str(spec["resource_style"]),
         default_type=spec.get("default_resource_type"),
+        view=view,
     )
 
 
@@ -220,12 +248,13 @@ def _append_query_from_spec(
     if spec.get("include_week_start"):
         _append_param(query, "week_start", context.get("date_from"))
     _append_target_date_query(query, context, str(spec["date_style"]))
-    _append_period_query(query, context)
+    _append_period_query(query, context, period_preset=spec.get("period_preset"))
+    batch_param = str(spec.get("batch_param") or "batch_id")
     if spec["batch_position"] == "before_resource":
-        _append_batch_query(query, batch_value)
-    _append_target_resource_query(query, context, spec, resource_type, resource_id)
+        _append_batch_query(query, batch_value, key=batch_param)
+    _append_target_resource_query(query, context, spec, resource_type, resource_id, view)
     if spec["batch_position"] == "after_resource":
-        _append_batch_query(query, batch_value)
+        _append_batch_query(query, batch_value, key=batch_param)
 
 
 def _append_extra_params(
@@ -239,6 +268,10 @@ def _append_extra_params(
         _append_param(query, key, value)
 
 
+def _append_return_query(query: List[Tuple[str, str]], context: Dict[str, Any]) -> None:
+    _append_param(query, "back_to", context.get("back_to"))
+
+
 def query_for_target(
     context: Dict[str, Any],
     target_page: str,
@@ -249,9 +282,7 @@ def query_for_target(
     batch_id: Any = None,
     extra_params: Optional[Dict[str, Any]] = None,
 ) -> List[Tuple[str, str]]:
-    spec = _TARGET_QUERY_SPECS.get(target_page)
-    if spec is None:
-        raise ValueError(f"未知工作台目标页：{target_page}")
+    spec = _target_spec(target_page)
     query: List[Tuple[str, str]] = []
     batch_value = batch_id if _has_value(batch_id) else context.get("batch_id")
     _append_query_from_spec(
@@ -264,7 +295,8 @@ def query_for_target(
         batch_value=batch_value,
     )
     _append_extra_params(query, target_page, extra_params)
+    _append_return_query(query, context)
     return query
 
 
-__all__ = ["ordered_required_params", "query_for_target"]
+__all__ = ["ordered_required_params", "query_for_target", "target_uses_primary_resource_filter"]

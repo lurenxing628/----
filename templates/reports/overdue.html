@@ -1,23 +1,22 @@
 {% extends "base.html" %}
-{% import "components/ui_macros.html" as ui %}
+{% import "components/ui_macros.html" as ui with context %}
+{% import "components/reports_nav_macros.html" as reports_ui with context %}
 {% block content %}
   {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'simulated': '模拟排产', 'ok': '成功', 'fail': '失败', 'ok2': '成功'} %}
   {{ ui.aps_page_hero(
     '报表 - 超期清单',
     '查看哪些批次已经超过交货日期。已排产超期是完工时间晚于交期；未排产超期是到现在还没完工，也已经过了交期。',
-    nav_html=ui.reports_nav('overdue')
+    nav_html=reports_ui.reports_nav('overdue')
   ) }}
 
   <div class="card aps-report-filter-card">
     {{ ui.aps_card_header('筛选', '选择排产版本后查看超期批次，需要时导出 Excel。') }}
     <form method="get" action="{{ url_for('reports.overdue_page') }}">
-      {% if scenario_id %}
-        <input type="hidden" name="scenario_id" value="{{ scenario_id }}">
-      {% endif %}
+      {{ reports_ui.preserved_report_context_inputs(exclude=('version', 'plan_role')) }}
       <div class="aps-report-filter-grid aps-report-filter-grid--single">
         <div class="form-field aps-report-version-field">
           <label>排产版本</label>
-          <select name="version">
+          <select name="version" data-report-plan-version-select data-initial-version="{{ version or '' }}">
             {% for it in versions %}
               <option value="{{ it.version }}" {% if version == it.version %}selected{% endif %}>
                 {{ ui.version_option_label(it, status_zh.get(it.result_status, '结果状态未知')) }}
@@ -27,7 +26,7 @@
         </div>
         <div class="form-field aps-report-plan-field">
           <label>排产方案</label>
-          <select name="plan_role">
+          <select name="plan_role" data-report-plan-role-select data-initial-plan-role="{{ selected_plan_role }}">
             {% for it in plan_options %}
               <option value="{{ it.role }}" {% if selected_plan_role == it.role %}selected{% endif %}>
                 {{ it.label }}
@@ -38,8 +37,7 @@
         <div class="aps-form-actions aps-report-actions">
           {{ ui.button('查询', 'primary', 'md', type_attr='submit') }}
           {% if rows %}
-            {% set export_url = url_for('reports.overdue_export', version=version, plan_role=requested_plan_role, scenario_id=scenario_id) if scenario_id else url_for('reports.overdue_export', version=version, plan_role=requested_plan_role) %}
-            {{ ui.link_button('导出 Excel', export_url, 'secondary', 'md') }}
+            {{ ui.link_button('导出 Excel', overdue_export_url, 'secondary', 'md') }}
           {% else %}
             {{ ui.button('导出 Excel', 'secondary', 'md', type_attr='button', disabled=True, class='aps-disabled-button') }}
           {% endif %}
@@ -51,14 +49,30 @@
         {% endif %}
       </div>
     </form>
-    {% if has_history and plan_resolution and plan_resolution.is_scenario_preview %}
+    {% if has_history and report_plan_status.is_preview %}
       <div class="flash-card flash-warning mt-2" role="status">
-        当前超期清单正在预览“{{ plan_resolution.scenario_display_name or plan_resolution.scenario_name or '模拟预览（未命名）' }}”，正式计划还没有改变。导出的 Excel 也会按这个模拟方案生成。
+        当前超期清单正在预览“{{ report_plan_status.preview_label }}”，正式计划还没有改变。导出的 Excel 也会按这个模拟方案生成。
       </div>
     {% endif %}
-    {% if has_history and plan_resolution %}
+    {% if has_history %}
       <div class="aps-filter-note aps-report-plan-source">
-        当前方案：{{ plan_resolution.scenario_display_name or plan_resolution.scenario_name or plan_resolution.selected_label }}{% if plan_resolution.is_fallback and plan_resolution.message %}。{{ plan_resolution.message }}{% endif %}
+        {{ report_plan_status.source_text }}
+      </div>
+    {% endif %}
+    {% if report_limits %}
+      <div class="aps-filter-note">
+        能回答：{{ report_limits.answer_text }} 不能证明：{{ report_limits.limitation_text }}
+      </div>
+    {% endif %}
+    {% if report_links %}
+      <div class="scheduler-subnav scheduler-subnav-main mt-2">
+        {% for link in report_links %}
+          {% if link.disabled or not link.url %}
+            <span class="table-action-link is-disabled" aria-disabled="true" title="{{ link.disabled_reason }}">{{ link.label }}</span>
+          {% else %}
+            <a class="table-action-link" href="{{ link.url }}">{{ link.label }}</a>
+          {% endif %}
+        {% endfor %}
       </div>
     {% endif %}
   </div>
@@ -66,7 +80,7 @@
   <div class="card">
     <h3 class="section-title">结果明细</h3>
     <div class="aps-result-summary-grid">
-      {{ ui.summary_item('排产方案', (plan_resolution.scenario_display_name or plan_resolution.scenario_name or plan_resolution.selected_label) if plan_resolution else '正式采用方案') }}
+      {{ ui.summary_item('排产方案', report_plan_status.label) }}
       {{ ui.summary_item('总数', count ~ ' 个') }}
       {{ ui.summary_item('已排程', scheduled_count ~ ' 个') }}
       {{ ui.summary_item('未排程', unscheduled_count ~ ' 个') }}
@@ -95,6 +109,7 @@
             <th class="w-120" data-col-key="delay_days" data-default-w="120" data-min-w="100">超期(天)</th>
             <th class="w-120" data-col-key="delay_hours" data-default-w="120" data-min-w="100">超期(小时)</th>
             <th class="w-280" data-col-key="delay_diagnosis" data-default-w="280" data-min-w="220">延期解释</th>
+            <th class="w-220" data-col-key="workbench_actions" data-default-w="220" data-min-w="180">继续处理</th>
           </tr>
         </thead>
         <tbody>
@@ -140,6 +155,16 @@
                   <span class="muted">当前数据不足，不能确定唯一原因。</span>
                 {% endif %}
               </td>
+              <td>
+                {% for link in r.workbench_links %}
+                  {% if link.disabled or not link.url %}
+                    <span class="table-action-link is-disabled" aria-disabled="true" title="{{ link.disabled_reason }}">{{ link.label }}</span>
+                  {% else %}
+                    <a class="table-action-link" href="{{ link.url }}">{{ link.label }}</a>
+                  {% endif %}
+                  {% if not loop.last %}<br>{% endif %}
+                {% endfor %}
+              </td>
             </tr>
           {% endfor %}
         </tbody>
@@ -147,4 +172,8 @@
       </div>
     {% endif %}
   </div>
+{% endblock %}
+{% block extra_scripts %}
+  {{ super() }}
+  <script src="{{ url_for('static', filename='js/report_plan_filter.js') }}" defer></script>
 {% endblock %}

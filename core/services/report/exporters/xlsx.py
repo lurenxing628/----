@@ -10,6 +10,7 @@ from openpyxl.styles import Alignment, Font
 from openpyxl.utils import get_column_letter
 
 from core.services.common.excel_templates import _sanitize_export_cell
+from core.services.report.report_number_parsing import parse_optional_report_float
 
 
 def _auto_width(ws) -> None:
@@ -56,13 +57,14 @@ def _make_output_buffer(*, write_only: bool) -> BinaryIO:
     return io.BytesIO()
 
 
-def _utilization_percent(value: Any) -> Any:
-    if value is None:
-        return None
-    try:
-        return round(float(value) * 100.0, 2)
-    except Exception:
-        return value
+def _utilization_percent(value: Any) -> Optional[float]:
+    number = parse_optional_report_float(
+        value,
+        field="utilization",
+        label="利用率",
+        source_label="资源负荷导出数据",
+    )
+    return round(number * 100.0, 2) if number is not None else None
 
 
 _OVERDUE_HEADERS = ["类别", "批次号", "图号", "名称", "数量", "交期", "完工/截至时间", "超期(天)", "超期(小时)"]

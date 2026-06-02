@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional, Tuple
 
 from core.infrastructure.errors import ValidationError
-from core.services.common.degradation import DegradationCollector, DegradationEvent, degradation_events_to_dicts
+from core.services.common.degradation import degradation_events_to_dicts
 from data.repositories import ScheduleHistoryRepository, ScheduleRepository
 
 from .execution_fact_provider import ExecutionFactProvider
@@ -16,6 +16,11 @@ from .gantt_plan_query import (
     resolve_gantt_range_for_version,
 )
 from .gantt_range import WeekRange, resolve_week_range
+from .gantt_service_support import (
+    collect_gantt_degradation_events,
+    critical_chain_for_plan_detail_filter,
+    plan_detail_filter_kwargs,
+)
 from .gantt_tasks import build_calendar_days, build_tasks
 from .gantt_week_plan import build_week_plan_rows
 from .plan_overdue_markers import build_overdue_meta_for_plan
@@ -270,28 +275,6 @@ class GanttService:
             return {}
         return ExecutionFactProvider(self.conn, logger=self.logger).facts_by_op_id(op_ids)
 
-    @staticmethod
-    def _collect_gantt_degradation_events(
-        *,
-        calendar_days_outcome: Any,
-        tasks_outcome: Any,
-        critical_chain: Dict[str, Any],
-    ) -> DegradationCollector:
-        collector = DegradationCollector()
-        collector.extend(calendar_days_outcome.events)
-        collector.extend(tasks_outcome.events)
-        if critical_chain.get("available") is False:
-            reason = str(critical_chain.get("reason_code") or critical_chain.get("reason") or "").strip() or "unknown"
-            collector.add(
-                DegradationEvent(
-                    code="critical_chain_unavailable",
-                    scope="scheduler.gantt",
-                    field="critical_chain",
-                    message=f"关键工序关系暂时看不了（reason={reason}）。",
-                )
-            )
-        return collector
-
     def get_gantt_tasks(
         self,
         *,
@@ -304,6 +287,9 @@ class GanttService:
         include_history: bool = False,
         plan_role: Optional[str] = None,
         scenario_id: Optional[str] = None,
+        resource_type: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        batch_id: Optional[str] = None,
         plan_query_service=None,
     ) -> Dict[str, Any]:
         """返回甘特图数据（tasks + 元信息）。"""
@@ -346,6 +332,7 @@ class GanttService:
         )
 
         calendar_days_outcome = build_calendar_days(self.conn, wr=wr, logger=self.logger, op_logger=self.op_logger)
+        detail_filters = plan_detail_filter_kwargs(resource_type=resource_type, resource_id=resource_id, batch_id=batch_id)
         rows = plan_query.list_plan_detail_rows_between_for_resolution(
             version=ver,
             source_table=str(plan_resolution.get("source_table") or ""),
@@ -353,6 +340,7 @@ class GanttService:
             scenario_id=plan_resolution.get("scenario_id"),
             start_time=wr.start_str,
             end_time=wr.end_exclusive_str,
+            **detail_filters,
         )
         effective_role = selected_plan_role(plan_resolution)
         try:
@@ -365,6 +353,7 @@ class GanttService:
                     source_table=str(plan_resolution.get("source_table") or ""),
                     candidate_id=plan_resolution.get("candidate_id"),
                     scenario_id=plan_resolution.get("scenario_id"),
+                    **detail_filters,
                 ),
                 load_adopted_meta=self._overdue_batch_ids_from_history,
                 log_degraded=self._log_overdue_marker_degraded,
@@ -383,12 +372,14 @@ class GanttService:
         )
         empty_reason = tasks_outcome.empty_reason or calendar_days_outcome.empty_reason
 
-        critical_chain = self._get_critical_chain_provider().get_critical_chain(
-            ver,
-            plan_resolution=plan_resolution,
-            plan_query_service=plan_query,
-        )
-        degradation_collector = self._collect_gantt_degradation_events(
+        critical_chain = critical_chain_for_plan_detail_filter(rows, detail_filters)
+        if critical_chain is None:
+            critical_chain = self._get_critical_chain_provider().get_critical_chain(
+                ver,
+                plan_resolution=plan_resolution,
+                plan_query_service=plan_query,
+            )
+        degradation_collector = collect_gantt_degradation_events(
             calendar_days_outcome=calendar_days_outcome,
             tasks_outcome=tasks_outcome,
             critical_chain=critical_chain,
@@ -434,6 +425,9 @@ class GanttService:
         version: Optional[int] = None,
         plan_role: Optional[str] = None,
         scenario_id: Optional[str] = None,
+        resource_type: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        batch_id: Optional[str] = None,
         plan_query_service=None,
     ) -> Dict[str, Any]:
         """
@@ -465,6 +459,7 @@ class GanttService:
         ver = require_selected_version(resolution)
         plan_resolution = view_context.plan_resolution
 
+        detail_filters = plan_detail_filter_kwargs(resource_type=resource_type, resource_id=resource_id, batch_id=batch_id)
         rows = plan_query.list_plan_detail_rows_between_for_resolution(
             version=ver,
             source_table=str(plan_resolution.get("source_table") or ""),
@@ -472,6 +467,7 @@ class GanttService:
             scenario_id=plan_resolution.get("scenario_id"),
             start_time=wr.start_str,
             end_time=wr.end_exclusive_str,
+            **detail_filters,
         )
         outcome = build_week_plan_rows(rows=rows, wr=wr)
 

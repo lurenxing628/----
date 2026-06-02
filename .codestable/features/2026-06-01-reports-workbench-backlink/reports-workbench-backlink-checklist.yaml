@@ -1,0 +1,263 @@
+feature: 2026-06-01-reports-workbench-backlink
+roadmap: aps-frontend-workbench
+roadmap_item: reports-workbench-backlink
+created: 2026-06-01
+steps:
+  - id: step-1
+    title: 设计与清单落盘
+    action: 写入 design/checklist，并把 roadmap item 标成 in-progress。
+    exit_signal: feature 文档和 roadmap items YAML 校验通过。
+    status: done
+  - id: step-2
+    title: 报表工作台 ViewModel
+    action: 新增 scheduler_reports_workbench.py，集中生成报表入口卡、页面链接、行级动作和保守空状态。
+    exit_signal: 报表工作台链接都复用 WorkbenchLink，内部字段不进入公开行。
+    status: done
+  - id: step-3
+    title: 报表路由接线
+    action: 在 reports.py 中接入新 ViewModel，并移走少量展示 helper，保持路由低于 500 行。
+    exit_signal: reports.py 不超过 500 行，路由只负责筛选、服务调用和模板参数。
+    status: done
+  - id: step-4
+    title: 报表模板渲染
+    action: 调整报表中心和四个详情页，展示能回答/不能证明说明和上下文回跳入口。
+    exit_signal: 报表页不再是死胡同，行级动作带版本、方案、日期和业务对象。
+    status: done
+  - id: step-5
+    title: 测试与几何登记
+    action: 新增 regression_reports_workbench_backlink_contract.py，登记几何路径和质量门禁分组。
+    exit_signal: 第 7 项指定测试通过，几何清单包含报表中心和关键详情页。
+    status: done
+  - id: step-6
+    title: 复审和验收落档
+    action: 本地 SubAgent 与 Claude Code 对抗复审，修到无阻塞后写 acceptance，回写 roadmap、checklist、architecture 和 requirement。
+    exit_signal: 复审无阻塞，质量门禁通过，验收报告、架构、需求和 roadmap 都已回写。
+    status: done
+post_acceptance:
+  - stage、commit、push 作为验收无阻塞后的收尾动作执行。
+checks:
+  - id: check-design-1
+    title: 范围守护
+    source: design 明确不做
+    expect: 不改排程算法、数据库结构、外部前端依赖、停机任务级明细或现场事实写入能力。
+    status: passed
+  - id: check-design-2
+    title: 名词和接口契约
+    source: design 2.1
+    expect: 报表入口卡、行级动作和工作台链接只使用批次、设备、人员、日期这些业务对象，内部字段不公开。
+    status: passed
+  - id: check-design-3
+    title: 编排链路
+    source: design 2.2
+    expect: 路由读请求上下文，ReportEngine 负责报表数据，scheduler_reports_workbench 负责展示入口和回跳。
+    status: passed
+  - id: check-design-4
+    title: 挂载点反向核对
+    source: design 2.3
+    expect: 本 feature 所有代码、模板、测试、登记和文档改动都落在挂载点清单内，拔除时没有暗处残留。
+    status: passed
+  - id: check-design-5
+    title: 停机批次过滤
+    source: review_round_8 blocker
+    expect: 停机影响带 batch_id 时，只统计和当前批次计划行发生时间重叠的停机段。
+    status: passed
+  - id: check-design-6
+    title: 非正式复盘禁用
+    source: review_round_8 blocker
+    expect: 全局工作台导航和报表导航在非 adopted 或 scenario 上下文中不生成可点击计划实际复盘入口。
+    status: passed
+  - id: check-design-7
+    title: 文件尺寸和复杂度
+    source: project quality gate
+    expect: 本轮新增或修改的实现、模板、测试入口和 registry 拆分文件均不超过 500 行，复杂度扫描无阻塞。
+    status: passed
+  - id: check-design-8
+    title: 未支持资源维度拒绝
+    source: design 3
+    expect: 报表当前只支持设备和人员筛选；班组、未知资源维度、只有资源编号没类型、只有资源类型没编号都直接报错，service 和 repository 底层也不能静默放大全量。
+    status: passed
+  - id: check-design-9
+    title: 计划身份和返回上下文
+    source: review_round_11 blocker
+    expect: 报表导航、页面级回跳、全局工作台首页值班台、导出链接和筛选隐藏字段保留 plan_id 与 back_to。
+    status: passed
+  - id: check-design-10
+    title: 真实浏览器 smoke 单独验收
+    source: review_round_11 blocker
+    expect: regression_ui_browser_geometry_smoke.py 作为本轮单独浏览器验收运行；默认质量门禁保留较快的 UI 几何环境和 HTML 合同测试。
+    status: passed
+  - id: check-design-11
+    title: 甘特跨视角资源不串号
+    source: Claude Code round10 nonblocking finding
+    expect: 机器上下文切到人员甘特图、人员上下文切到设备甘特图时，不携带不匹配的 gantt_resource。
+    status: passed
+  - id: check-design-12
+    title: 报表数字错误可见
+    source: review_round_12 blocker
+    expect: 报表展示、执行复盘和延期诊断遇到坏数字、无限值或非数字时抛 ValidationError，不按 0 静默汇总。
+    status: passed
+  - id: check-design-13
+    title: registry 拆分进入门禁影响范围
+    source: Claude Code round12 blocker
+    expect: pyrightconfig.tools.json include 与 QUALITY_GATE_TOOL_PATHS 继续同步；registry 拆分文件进入 registry scope 和质量门禁分组，不改历史大文件。
+    status: passed
+  - id: check-design-14
+    title: 冲突资源别名和导出行数坏值拒绝
+    source: review_round_13 blocker
+    expect: resource/scope/machine/operator 参数互相冲突时直接报错；导出行数和导出阈值遇到负数、小数或坏字符串时抛 ValidationError，不静默按 0 处理。
+    status: passed
+  - id: check-design-15
+    title: 排产页导航上下文不丢
+    source: review_round_17 blocker
+    expect: 排产分析、甘特、资源排班、周计划这些页面只要带 version、plan_role、scenario_id、back_to 等工作台上下文，就走统一 WorkbenchLink 护栏，不退回普通裸链接；非正式方案不能生成可点击计划实际复盘入口。
+    status: passed
+  - id: check-design-16
+    title: 模板不依赖方案解析内部结构
+    source: review_round_17 blocker
+    expect: 报表模板只读取 report_plan_status 这类公开展示字段，不直接读取 plan_resolution 的内部键。
+    status: passed
+  - id: check-design-17
+    title: 架构测试文件拆分
+    source: review_round_17 blocker
+    expect: tests/test_architecture_fitness.py 和 tests/architecture_fitness_support.py 均低于 500 行；原高复杂度扫描逻辑拆成小函数，架构门禁仍 21 passed。
+    status: passed
+  - id: check-design-18
+    title: 资源派工复盘链接边界
+    source: quality gate blocker before review_round_18
+    expect: 资源派工页只在路由入口读取 back_to；_workbench_context 和 _execution_review_link 不直接依赖 Flask request，单独调用也能保留服务端计划身份护栏。
+    status: passed
+  - id: check-design-19
+    title: 资源负荷导出坏数字可见
+    source: review_round_18 blocker
+    expect: 资源负荷 Excel 导出的利用率复用严格数字解析，坏字符串、无限值或非数字直接抛 ValidationError，不原样写进 Excel。
+    status: passed
+  - id: check-design-20
+    title: 班组上下文不生成不可用报表链接
+    source: review_round_18 blocker
+    expect: 工作台链接在报表目标遇到 team 资源上下文时显示禁用原因，不生成会跳到 400 的可点击报表 URL；资源派工仍可保留班组上下文。
+    status: passed
+  - id: check-design-21
+    title: 资源派工顶导使用完整计划身份
+    source: Claude Code review_round_18 blocker
+    expect: 资源派工页发布全局工作台导航上下文时使用完整 filters 里的服务端计划身份字段，不用公开剥离版 plan_identity 触发 execution_review fail-open。
+    status: passed
+  - id: check-design-22
+    title: 新拆合同测试进入质量门禁登记
+    source: review_round_18 blocker
+    expect: report_context、导出模式、大范围导出拒绝、候选分析链接和候选展示这些新拆合同测试进入 QUALITY_GATE_GUARD_TESTS 与 scheduler required regression group。
+    status: passed
+  - id: check-design-23
+    title: 模拟预览筛选表单保留上下文
+    source: review_round_19 blocker
+    expect: 超期、资源负荷、停机影响、甘特、周计划和资源派工的筛选表单在同一排产方案身份下保留 scenario_id，重新查询和导出仍使用同一模拟方案；用户切换排产版本或排产方案时清掉旧 scenario_id，避免旧模拟方案误绑新版本或新方案。
+    status: passed
+  - id: check-design-24
+    title: 班组上下文不生成主资源筛选跳转
+    source: Claude Code review_round_19 blocker
+    expect: 首页值班台、排产分析、周计划和所有报表类目标遇到 team 资源上下文时显示禁用原因，不生成 resource_type=team 的可点击 URL；资源派工继续保留 scope_type=team/scope_id/team_id；甘特图不携带班组筛选。
+    status: passed
+  - id: check-design-25
+    title: 排产页导航发布完整方案护栏
+    source: Claude Code review_round_19 blocker
+    expect: 排产分析、甘特和周计划发布全局导航上下文时保留 requested/effective 方案角色、对比方案标记、模拟预览标记、被新版本顶替标记和写入权限护栏；历史正式方案不能误生成计划和现场实际可点击入口。
+    status: passed
+  - id: check-design-26
+    title: 门禁证据不依赖 ignored 运行产物
+    source: review_round_19 blocker
+    expect: 验收报告用可提交文字记录最终质量门禁命令和关键断言；仓库根目录 ignored 的 evidence/QualityGate 运行产物不作为本轮最终证据。
+    status: passed
+  - id: check-design-27
+    title: 资源派工写入地址使用归一化上下文
+    source: review_round_20 blocker
+    expect: 现场实际写入地址由后端按服务端 filters 生成，缺 query_date 的外部入口也会补齐查询日和日期范围，不靠前端原始地址栏查询串兜底。
+    status: passed
+  - id: check-design-28
+    title: 排产页导航保留批次和资源
+    source: review_round_20 blocker
+    expect: 从报表行进入甘特、排产分析或周计划后，顶部导航继续保留 batch_id、resource_type 和 resource_id，不扩大成全量范围。
+    status: passed
+  - id: check-design-29
+    title: 测试 helper 和运行产物边界登记
+    source: review_round_20 blocker
+    expect: 报表回跳 helper 按 test-only helper 影响范围登记；silent_fallback_inventory_acceptance 运行产物同时被 .gitignore 和 git hook 拦住。
+    status: passed
+  - id: check-design-30
+    title: 甘特和周计划后台按上下文取数
+    source: review_round_21 blocker
+    expect: 甘特 JSON、筛选后关键链、周计划页面预览和周计划 Excel 导出都按 batch_id/resource_type/resource_id 传到底层查询，不只靠链接或前端显示层保留上下文。
+    status: passed
+  - id: check-design-31
+    title: 甘特和周计划二次操作不丢上下文
+    source: review_round_21 blind blocker
+    expect: 甘特视图切换、周切换、查询表单和周计划查询表单继续保留当前批次/资源范围；关键链边和甘特任务条共用同一公开任务名称规则。
+    status: passed
+  - id: check-design-32
+    title: 甘特页面内链接同步当前筛选
+    source: review_round_22 blocker
+    expect: 用户在甘特页内改批次或资源筛选后，页面上的甘特视图链接和加载表单隐藏字段同步当前范围；同视角保留资源，跨视角只保留批次。
+    status: passed
+  - id: check-design-33
+    title: 半截资源筛选不静默放大全量
+    source: review_round_22 blind blocker
+    expect: 周计划页面和导出遇到只有 scope_type、没有 scope_id 的坏资源入口时直接报错，不当成无筛选后查全量。
+    status: passed
+  - id: check-design-34
+    title: 旧正式版本展示为历史方案
+    source: user_insight_round_22
+    expect: 计划和现场实际页用真实 PlanIdentity 展示旧正式版本身份，被新版本替代时明示历史正式方案和只读状态，不硬写成现行正式采用方案。
+    status: passed
+  - id: check-design-35
+    title: 旧模拟编号切换方案身份时清理
+    source: review_round_22 blind blocker
+    expect: 带 scenario_id 的筛选表单只在同一版本和方案下延续模拟预览；用户切换版本或方案时统一清掉旧 scenario_id，切回初始版本和方案时恢复旧 scenario_id，避免页面提交坏组合后由后端报错或静默变成正式方案。
+    status: passed
+  - id: check-1
+    title: 报表中心上下文入口
+    source: roadmap exit_checks
+    expect: 报表中心能按当前上下文进入超期、资源负荷、计划和现场实际、停机影响。
+    status: passed
+  - id: check-2
+    title: 报表能答与不能证明
+    source: roadmap exit_checks
+    expect: 报表入口卡显示能回答的问题，详情页显示不能证明的事情。
+    status: passed
+  - id: check-overdue-batch-link
+    title: 超期清单批次级回跳
+    source: design 2.2
+    expect: 超期清单批次行带批次、版本、方案和日期回甘特、资源派工、正式方案复盘或延期说明。
+    status: passed
+  - id: check-3
+    title: 资源负荷行级回跳
+    source: roadmap exit_checks
+    expect: 资源负荷每行能带版本、方案、日期、资源对象跳回资源派工、甘特、相关超期或正式方案复盘。
+    status: passed
+  - id: check-4
+    title: 正式方案复盘
+    source: roadmap exit_checks
+    expect: 计划和现场实际只复盘正式采用方案，每行能回资源派工、定位甘特或查看现场记录。
+    status: passed
+  - id: check-5
+    title: 停机空状态
+    source: roadmap exit_checks
+    expect: 停机影响没有数据时显示“当前没有停机记录或尚未维护停机数据”，不推断为没有停机。
+    status: passed
+  - id: check-6
+    title: 停机第一版边界
+    source: roadmap exit_checks
+    expect: 第一版停机影响只做设备级说明和回跳，不要求任务级明细。
+    status: passed
+  - id: check-7
+    title: 内部字段边界
+    source: roadmap exit_checks
+    expect: 报表页面、明细操作列、导出列和公开 payload 不显示内部字段名。
+    status: passed
+  - id: check-8
+    title: 浏览器几何覆盖
+    source: roadmap exit_checks
+    expect: 浏览器几何覆盖 /reports/ 和关键报表明细页。
+    status: passed
+  - id: check-9
+    title: 本地兼容
+    source: roadmap exit_checks
+    expect: 页面不引入外部图表库、外链脚本、外链样式或外链字体，Python 保持 3.8 写法。
+    status: passed

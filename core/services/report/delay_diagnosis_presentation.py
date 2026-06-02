@@ -4,12 +4,17 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
 
 from core.models.schedule_delay_diagnosis import OverdueDiagnosisItem, OverdueDiagnosisReport
 from core.models.schedule_plan_identity import EvidenceLink
+from core.services.report.report_number_parsing import parse_report_float
 
 _CONFIDENCE_LABELS = {
     "likely": "证据较充分",
     "weak": "证据较少",
     "missing_data": "当前数据不足",
 }
+
+
+def _finite_number(value: Any, *, field: str, label: str) -> float:
+    return parse_report_float(value, field=field, label=label, source_label="延期诊断数据", blank_default=0.0)
 
 
 def build_delay_diagnosis_page_context(report: OverdueDiagnosisReport) -> Dict[str, Any]:
@@ -25,10 +30,15 @@ def build_delay_diagnosis_export_rows(
     report: OverdueDiagnosisReport,
     *,
     filters: Optional[Mapping[str, Any]] = None,
+    allowed_batch_ids: Optional[Iterable[Any]] = None,
 ) -> List[Dict[str, Any]]:
     filter_summary = _filter_summary(filters or {})
+    allowed_batches = {str(value or "").strip() for value in allowed_batch_ids or []}
+    allowed_batches = {value for value in allowed_batches if value}
     rows: List[Dict[str, Any]] = []
     for item in report.items:
+        if allowed_batches and str(item.batch_id or "").strip() not in allowed_batches:
+            continue
         public_item = _public_item(item)
         rows.append(
             {
@@ -66,8 +76,8 @@ def _public_item(item: OverdueDiagnosisItem) -> Dict[str, Any]:
 
 
 def _delay_text(item: OverdueDiagnosisItem) -> str:
-    hours = round(float(item.delay_hours or 0.0), 2)
-    days = round(float(item.delay_days or 0.0), 2)
+    hours = round(_finite_number(item.delay_hours, field="delay_hours", label="延期小时"), 2)
+    days = round(_finite_number(item.delay_days, field="delay_days", label="延期天数"), 2)
     if item.bucket == "scheduled_overdue":
         return f"计划完成已经晚了 {hours:.2f} 小时（约 {days:.2f} 天）。"
     return f"还没有计划完成时间，截至当前已经晚了 {hours:.2f} 小时（约 {days:.2f} 天）。"

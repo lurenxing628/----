@@ -472,8 +472,7 @@
     };
   }
 
-  api.str = str;
-  api.norm = norm;
+  api.str = str; api.norm = norm;
   api.escapeHtml = escapeHtml;
   api.normalizeCriticalChain = normalizeCriticalChain;
   api.publicCriticalPredecessorLabel = publicCriticalPredecessorLabel;
@@ -497,6 +496,5 @@
   api.shouldUseFallbackCalendarDays = shouldUseFallbackCalendarDays;
   api.buildDegradationMessages = buildDegradationMessages;
   api.getOverdueWarningMessage = getOverdueWarningMessage;
-  api.getCriticalTooltip = getCriticalTooltip;
-  ns.contract = api;
+  api.getCriticalTooltip = getCriticalTooltip; ns.contract = api;
 })();

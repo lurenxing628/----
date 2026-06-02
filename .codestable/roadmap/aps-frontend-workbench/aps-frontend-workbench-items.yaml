@@ -2,12 +2,6 @@ roadmap: aps-frontend-workbench
 created: 2026-05-31
 last_reviewed: 2026-06-01
 
-# 阶段口径：
-# - 前 3 条是第一轮 A/B/C：先把上下文合同、顶层入口、首页值班台跑通。
-# - 第 3 条 minimal_loop: true，表示做完首页值班台后系统能跑通最窄的端到端工作台路径。
-# - 第 4-9 条是第一版完整工作台：分析、甘特详情、资源派工、报表回跳、主流程测试和用户指南。
-# - 第 10-13 条是第二阶段增强：延期解释接现场事实、甘特资源负荷摘要、停机影响任务级明细、牵连批次/订单影响面。
-
 items:
   - slug: workbench-context-link-contract
     title: 工作台上下文和跨页链接合同
@@ -36,10 +30,7 @@ items:
       - "非正式方案不能生成现场记录写入入口，也不能下发写入 API URL、Excel 导入 URL、模板下载 URL、表单 action 或 data-* 写入地址"
     test_commands:
       - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_workbench_links_contract.py"
-    forbidden_paths:
-      - core/algorithms/
-      - schema.sql
-      - vendor/
+    forbidden_paths: [core/algorithms/, schema.sql, vendor/]
     exit_checks:
       - WorkbenchPlanContext 字段包含版本、方案身份、日期范围、批次、资源、可写状态和中文护栏说明
       - WorkbenchLink 包含 label、url、target_page、context_summary、disabled、disabled_reason、required_params
@@ -75,10 +66,7 @@ items:
       - "入口文案使用中文业务名，不显示 plan_role、scenario_id 等内部字段"
     test_commands:
       - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_workbench_nav_entry_contract.py tests/regression_frontend_ui_language_polish.py"
-    forbidden_paths:
-      - core/algorithms/
-      - vendor/
-      - installer/
+    forbidden_paths: [core/algorithms/, vendor/, installer/]
     exit_checks:
       - 顶层导航出现“计划工作台”或等价的一跳作业入口
       - 计划工作台入口能到首页值班台、排产分析、设备甘特、人员甘特、资源派工、计划和现场实际
@@ -112,10 +100,7 @@ items:
       - "资源负荷阈值固定为 warning >= 75%、danger >= 90%"
     test_commands:
       - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_dashboard_workbench_contract.py tests/regression_aps_workbench_first_round_flow_contract.py tests/regression_frontend_ui_language_polish.py tests/regression_manual_entry_scope.py"
-    forbidden_paths:
-      - core/algorithms/
-      - vendor/
-      - installer/
+    forbidden_paths: [core/algorithms/, vendor/, installer/]
     exit_checks:
       - 首页出现今日待处理区域
       - 待处理类型至少覆盖超期批次、方案需要确认、资源负荷偏高、现场情况待确认、基础数据缺口
@@ -156,10 +141,7 @@ items:
       - "影响面拆清已有字段和新增字段；已有字段先复用，算不出来的新增字段用数据不足说明"
     test_commands:
       - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_analysis_workbench_layout.py tests/regression_scheduler_candidate_plain_language.py tests/regression_scheduler_candidate_analysis_contract.py"
-    forbidden_paths:
-      - core/algorithms/
-      - schema.sql
-      - vendor/
+    forbidden_paths: [core/algorithms/, schema.sql, vendor/]
     exit_checks:
       - 选中版本后，页面先显示版本身份、推荐结论、主要风险和下一步按钮
       - 没有候选方案时，显示清楚空状态
@@ -192,10 +174,7 @@ items:
       - "窄屏放下方，宽屏可放右侧"
     test_commands:
       - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_gantt_task_detail_panel_contract.py"
-    forbidden_paths:
-      - core/algorithms/
-      - static/js/frappe-gantt.min.js
-      - vendor/
+    forbidden_paths: [core/algorithms/, static/js/frappe-gantt.min.js, vendor/]
     exit_checks:
       - 点击甘特任务后，详情区显示批次、图号或物料、工序、资源、计划时间、状态和超期提示
       - 详情区显示计划和实际小结；没有现场记录时用中文说明“暂未记录现场实际”
@@ -234,10 +213,7 @@ items:
       - "Excel 继续直接导入，短期不做预览 / 二次确认；导入后只显示新增、失败、跳过数量和错误说明"
     test_commands:
       - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_resource_dispatch_workbench_lane_contract.py tests/regression_resource_dispatch_site_records_frontend_contract.py tests/regression_operation_execution_feedback_routes.py tests/regression_resource_dispatch_actual_records.py tests/regression_config_manual_markdown.py"
-    forbidden_paths:
-      - core/algorithms/
-      - schema.sql
-      - vendor/
+    forbidden_paths: [core/algorithms/, schema.sql, vendor/]
     exit_checks:
       - 计划员查看排班的入口和计划员代录现场事实入口视觉上分清
       - 查看计划和实际入口清楚说明是复盘，不是写入现场记录
@@ -261,8 +237,8 @@ items:
     depends_on: [workbench-context-link-contract]
     depends_on_reasons:
       workbench-context-link-contract: 报表回跳必须带同一版本、方案、日期范围和资源/批次对象，先统一上下文再补入口。
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-06-01-reports-workbench-backlink
     minimal_loop: false
     primary_paths:
       - templates/reports/index.html
@@ -270,10 +246,36 @@ items:
       - templates/reports/utilization.html
       - templates/reports/execution_review.html
       - templates/reports/downtime.html
+      - static/js/report_plan_filter.js
+      - web/routes/reports.py
+      - web/routes/reports_export_routes.py
+      - web/routes/reports_export_support.py
+      - web/routes/reports_request_support.py
+      - core/services/report/report_context_filters.py
+      - core/services/report/report_engine.py
+      - core/services/report/report_plan_helpers.py
+      - core/services/report/execution_review.py
+      - core/services/report/exporters/xlsx.py
+      - core/services/scheduler/schedule_plan_query_service.py
+      - data/repositories/schedule_plan_query_repo.py
       - web/viewmodels/scheduler_workbench_links.py
+      - web/viewmodels/scheduler_workbench_link_query.py
       - web/viewmodels/scheduler_reports_workbench.py
+      - web/viewmodels/scheduler_navigation_links.py
       - tests/regression_reports_workbench_backlink_contract.py
+      - tests/regression_reports_workbench_navigation_contract.py
+      - tests/regression_report_context_filters_contract.py
+      - tests/regression_report_export_size_mode_selection.py
+      - tests/regression_report_export_large_scope_rejects_need_async.py
+      - tests/regression_web_silent_fallback_contract.py
+      - tests/regression_scenario_preview_secondary_outputs.py
+      - tests/regression_scheduler_candidate_analysis_links_contract.py
+      - tests/regression_scheduler_candidate_display_contract.py
+      - tools/test_registry_groups_scheduler.py
       - tests/regression_ui_browser_geometry_smoke.py
+      - tests/regression_quality_gate_registry_split_scope_contract.py
+      - tools/test_registry_data.py
+      - tools/test_registry_groups_misc.py
     entrypoints:
       - "报表中心入口卡简短说明每张报表回答什么问题，详情页再展开不能证明什么"
       - "资源负荷设备/人员明细行提供查看排班、定位甘特、查看相关超期入口"
@@ -281,15 +283,14 @@ items:
       - "超期清单和停机影响继续给上下文回跳，不把报表做成死胡同"
     test_commands:
       - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_reports_workbench_backlink_contract.py"
-    forbidden_paths:
-      - core/algorithms/
-      - schema.sql
-      - vendor/
+    forbidden_paths: [core/algorithms/, schema.sql, vendor/]
     exit_checks:
       - 报表中心能按当前上下文进入超期、资源负荷、计划和现场实际、停机影响
+      - 报表导航、页面级回跳、全局工作台首页值班台、导出链接和筛选隐藏字段保留 plan_id 与 back_to
       - 报表入口卡显示能回答的问题，详情页显示不能证明的事情
       - 资源负荷每行能带版本、方案、日期、资源对象跳回资源派工或甘特
       - 计划和现场实际只复盘正式采用方案，每行能回资源派工、定位甘特或查看现场记录
+      - 班组、未知维度、冲突别名和半截资源筛选直接报错，报表坏数字和坏导出行数不按 0 静默展示
       - 停机影响没有数据时显示“当前没有停机记录或尚未维护停机数据”，不推断为没有停机
       - 第一版停机影响只做设备级说明和回跳，不要求任务级明细；任务级明细由 downtime-task-impact-detail 承接
       - 报表页面、明细操作列、导出列和公开 payload 不显示内部字段名
@@ -333,10 +334,7 @@ items:
     test_commands:
       - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_aps_workbench_flow_contract.py"
       - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py"
-    forbidden_paths:
-      - core/algorithms/
-      - schema.sql
-      - vendor/
+    forbidden_paths: [core/algorithms/, schema.sql, vendor/]
     exit_checks:
       - 首页到超期解释、方案对比、甘特图、资源派工、计划和现场实际入口都有测试
       - 测试断言版本、方案、日期范围不会跳丢
@@ -368,10 +366,7 @@ items:
       - "说明模拟预览和正式采用方案的区别"
     test_commands:
       - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_frontend_manual_blueprint_contract.py"
-    forbidden_paths:
-      - core/algorithms/
-      - schema.sql
-      - vendor/
+    forbidden_paths: [core/algorithms/, schema.sql, vendor/]
     exit_checks:
       - 用户指南覆盖首页值班台、甘特详情、方案对比、延期解释、资源派工、计划和现场实际
       - 文档不使用内部字段名解释普通操作
@@ -400,10 +395,7 @@ items:
       - "本条只做现场事实接线；牵连批次/订单精确影响面由 downstream-batch-order-impact 承接，不能判断时必须明说"
     test_commands:
       - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_delay_diagnosis_contract.py"
-    forbidden_paths:
-      - core/algorithms/
-      - schema.sql
-      - vendor/
+    forbidden_paths: [core/algorithms/, schema.sql, vendor/]
     exit_checks:
       - 延期解释不再固定说没有现场执行反馈
       - 有现场事实时能显示实际开始/结束或偏差说明
@@ -433,11 +425,7 @@ items:
       - "利用率不可算时必须显示数据缺口"
     test_commands:
       - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_gantt_resource_load_summary_contract.py"
-    forbidden_paths:
-      - core/algorithms/
-      - schema.sql
-      - static/js/frappe-gantt.min.js
-      - vendor/
+    forbidden_paths: [core/algorithms/, schema.sql, static/js/frappe-gantt.min.js, vendor/]
     exit_checks:
       - 甘特附近显示最忙设备和最忙人员摘要
       - 每项包含资源名、负荷小时、利用率、任务数和状态色
@@ -468,10 +456,7 @@ items:
       - "明细行复用 WorkbenchLink 回甘特或资源派工"
     test_commands:
       - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_reports_downtime_task_impact_contract.py"
-    forbidden_paths:
-      - core/algorithms/
-      - schema.sql
-      - vendor/
+    forbidden_paths: [core/algorithms/, schema.sql, vendor/]
     exit_checks:
       - 停机记录能匹配排程任务时显示受影响任务级明细
       - 无法匹配任务时显示中文保守说明，不显示 0 影响或空白误导用户
@@ -505,10 +490,7 @@ items:
       - "牵连明细行复用 WorkbenchLink 回甘特、超期清单或排产分析"
     test_commands:
       - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_downstream_impact_contract.py"
-    forbidden_paths:
-      - core/algorithms/
-      - schema.sql
-      - vendor/
+    forbidden_paths: [core/algorithms/, schema.sql, vendor/]
     exit_checks:
       - 数据足够时能显示牵连批次或订单影响面
       - 数据不足时显示“当前不能判断牵连批次/订单”，不显示 0 影响或空白误导用户

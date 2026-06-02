@@ -1,0 +1,254 @@
+from __future__ import annotations
+
+import pytest
+
+from core.infrastructure.errors import ValidationError
+from core.services.report.report_context_filters import (
+    filter_downtime_rows_for_report_context,
+    filter_plan_rows_for_report_context,
+    normalize_report_resource_filter,
+)
+from core.services.scheduler.schedule_plan_query_service import SchedulePlanQueryService
+from data.repositories.schedule_plan_query_repo import SchedulePlanQueryRepository
+from tests.reports_workbench_backlink_helpers import _client, _xlsx_text
+
+
+def test_downtime_batch_filter_keeps_only_real_schedule_overlap() -> None:
+    rows = [
+        {"machine_id": "M1", "start_time": "2026-05-01 08:00", "end_time": "2026-05-01 09:00"},
+        {"machine_id": "M2", "start_time": "2026-05-01 08:00", "end_time": "2026-05-01 09:00"},
+        {"machine_id": "M3", "start_time": "bad", "end_time": "2026-05-01 09:00"},
+    ]
+    schedule_rows = [
+        {"machine_id": "M1", "start_time": "2026-05-01 08:30", "end_time": "2026-05-01 10:00"},
+        {"machine_id": "M2", "start_time": "2026-05-01 09:00", "end_time": "2026-05-01 10:00"},
+        {"machine_id": "M3", "start_time": "2026-05-01 08:30", "end_time": "2026-05-01 10:00"},
+    ]
+
+    filtered = filter_downtime_rows_for_report_context(rows, schedule_rows, batch_id="B1")
+
+    assert [row["machine_id"] for row in filtered] == ["M1"]
+
+
+def test_downtime_machine_filter_without_batch_does_not_need_schedule_overlap() -> None:
+    rows = [
+        {"machine_id": "M1", "start_time": "2026-05-01 08:00", "end_time": "2026-05-01 09:00"},
+        {"machine_id": "M2", "start_time": "2026-05-01 08:00", "end_time": "2026-05-01 09:00"},
+    ]
+
+    filtered = filter_downtime_rows_for_report_context(rows, [], resource_type="machine", resource_id="M2")
+
+    assert [row["machine_id"] for row in filtered] == ["M2"]
+
+
+def test_downtime_operator_filter_uses_schedule_machine_scope() -> None:
+    rows = [
+        {"machine_id": "M1", "start_time": "2026-05-01 08:00", "end_time": "2026-05-01 09:00"},
+        {"machine_id": "M2", "start_time": "2026-05-01 08:00", "end_time": "2026-05-01 09:00"},
+    ]
+    schedule_rows = [{"machine_id": "M2", "operator_id": "O1"}]
+
+    filtered = filter_downtime_rows_for_report_context(rows, schedule_rows, resource_type="operator", resource_id="O1")
+
+    assert [row["machine_id"] for row in filtered] == ["M2"]
+
+
+def test_downtime_operator_filter_empty_schedule_scope_returns_empty_rows() -> None:
+    rows = [{"machine_id": "M1", "start_time": "2026-05-01 08:00", "end_time": "2026-05-01 09:00"}]
+
+    filtered = filter_downtime_rows_for_report_context(rows, [], resource_type="operator", resource_id="O1")
+
+    assert filtered == []
+
+
+def test_report_core_filter_rejects_unsupported_resource_type() -> None:
+    with pytest.raises(ValidationError, match="当前报表暂不支持班组维度筛选"):
+        filter_plan_rows_for_report_context(
+            [{"batch_id": "B-RPT", "machine_id": "M-RPT", "operator_id": "O-RPT"}],
+            resource_type="team",
+            resource_id="T-RPT",
+        )
+
+
+def test_report_core_filter_rejects_resource_type_without_resource_id() -> None:
+    with pytest.raises(ValidationError, match="缺少设备编号"):
+        filter_plan_rows_for_report_context(
+            [{"batch_id": "B-RPT", "machine_id": "M-RPT", "operator_id": "O-RPT"}],
+            resource_type="machine",
+        )
+
+    with pytest.raises(ValidationError, match="缺少人员编号"):
+        filter_plan_rows_for_report_context(
+            [{"batch_id": "B-RPT", "machine_id": "M-RPT", "operator_id": "O-RPT"}],
+            resource_type="operator",
+        )
+
+
+def test_report_core_filter_rejects_conflicting_resource_aliases() -> None:
+    with pytest.raises(ValidationError, match="同时收到了人员编号"):
+        normalize_report_resource_filter(resource_type="machine", resource_id="M-RPT", operator_id="O-RPT")
+
+    with pytest.raises(ValidationError, match="设备编号冲突"):
+        normalize_report_resource_filter(resource_type="machine", resource_id="M-RPT", machine_id="M-OTHER")
+
+    with pytest.raises(ValidationError, match="资源筛选类型冲突"):
+        normalize_report_resource_filter(
+            resource_type="machine",
+            resource_id="M-RPT",
+            scope_type="operator",
+            scope_id="M-RPT",
+        )
+
+    with pytest.raises(ValidationError, match="资源筛选编号冲突"):
+        normalize_report_resource_filter(
+            resource_type="machine",
+            resource_id="M-RPT",
+            scope_type="machine",
+            scope_id="M-OTHER",
+        )
+
+
+def test_report_request_rejects_resource_type_without_resource_id() -> None:
+    client = _client()
+
+    page_response = client.get(
+        "/reports/utilization?version=12&plan_role=adopted"
+        "&start_date=2026-05-06&end_date=2026-05-06&resource_type=machine"
+    )
+    export_response = client.get(
+        "/reports/utilization/export?version=12&plan_role=adopted"
+        "&start_date=2026-05-06&end_date=2026-05-06&resource_type=machine"
+    )
+
+    assert page_response.status_code == 400
+    assert export_response.status_code == 400
+    assert "缺少设备编号" in page_response.get_data(as_text=True)
+    assert "缺少设备编号" in export_response.get_data(as_text=True)
+
+
+def test_report_request_rejects_conflicting_resource_aliases() -> None:
+    client = _client()
+
+    page_response = client.get(
+        "/reports/utilization?version=12&plan_role=adopted"
+        "&start_date=2026-05-06&end_date=2026-05-06"
+        "&resource_type=machine&resource_id=M-RPT&operator_id=O-RPT"
+    )
+    export_response = client.get(
+        "/reports/utilization/export?version=12&plan_role=adopted"
+        "&start_date=2026-05-06&end_date=2026-05-06"
+        "&resource_type=machine&resource_id=M-RPT&machine_id=M-OTHER"
+    )
+
+    assert page_response.status_code == 400
+    assert export_response.status_code == 400
+    assert "同时收到了人员编号" in page_response.get_data(as_text=True)
+    assert "设备编号冲突" in export_response.get_data(as_text=True)
+
+
+def test_report_request_infers_machine_resource_without_silent_broad_export() -> None:
+    client = _client()
+    response = client.get(
+        "/reports/utilization/export?version=12&plan_role=adopted"
+        "&start_date=2026-05-06&end_date=2026-05-06&machine_id=M-RPT"
+    )
+
+    assert response.status_code == 200
+    export_text = _xlsx_text(response.data)
+    assert "M-RPT" in export_text
+    assert "M-OTHER" not in export_text
+
+
+def test_overdue_query_service_rejects_unsupported_or_half_resource_filter() -> None:
+    class _Repo:
+        def list_overdue_base_rows(self, **_kwargs):
+            raise AssertionError("资源筛选没通过 service 校验前，不应该下探到 repository。")
+
+    service = SchedulePlanQueryService(None, repo=_Repo())  # type: ignore[arg-type]
+
+    with pytest.raises(ValidationError, match="超期查询只支持设备或人员维度"):
+        service.list_plan_overdue_base_rows_for_resolution(
+            version=12,
+            source_table="schedule",
+            candidate_id=None,
+            resource_type="team",
+            resource_id="T-RPT",
+        )
+    with pytest.raises(ValidationError, match="超期查询缺少资源类型"):
+        service.list_plan_overdue_base_rows_for_resolution(
+            version=12,
+            source_table="schedule",
+            candidate_id=None,
+            resource_id="M-RPT",
+        )
+    with pytest.raises(ValidationError, match="超期查询缺少资源编号"):
+        service.list_plan_overdue_base_rows_for_resolution(
+            version=12,
+            source_table="schedule",
+            candidate_id=None,
+            resource_type="machine",
+        )
+
+
+def test_overdue_query_repository_rejects_unsupported_resource_filter_at_bottom() -> None:
+    repo = SchedulePlanQueryRepository.__new__(SchedulePlanQueryRepository)
+
+    with pytest.raises(ValidationError, match="超期查询只支持设备或人员维度"):
+        repo.list_overdue_base_rows(
+            version=12,
+            source_table="schedule",
+            candidate_id=None,
+            resource_type="team",
+            resource_id="T-RPT",
+        )
+    with pytest.raises(ValidationError, match="超期查询缺少资源类型"):
+        repo.list_overdue_base_rows(
+            version=12,
+            source_table="schedule",
+            candidate_id=None,
+            resource_id="M-RPT",
+        )
+    with pytest.raises(ValidationError, match="超期查询缺少资源编号"):
+        repo.list_overdue_base_rows(
+            version=12,
+            source_table="schedule",
+            candidate_id=None,
+            resource_type="machine",
+        )
+
+
+def test_plan_detail_repository_pushes_batch_and_resource_filters_to_bottom_sql() -> None:
+    repo = SchedulePlanQueryRepository.__new__(SchedulePlanQueryRepository)
+    captured = {}
+
+    def fake_fetchall(sql, params):
+        captured["sql"] = sql
+        captured["params"] = params
+        return []
+
+    repo.fetchall = fake_fetchall  # type: ignore[method-assign]
+    repo.list_detail_rows_between(
+        version=12,
+        source_table="schedule",
+        candidate_id=None,
+        start_time="2026-05-06 00:00:00",
+        end_time="2026-05-07 00:00:00",
+        batch_id="B-RPT",
+        resource_type="machine",
+        resource_id="M-RPT",
+    )
+
+    assert "TRIM(CAST(bo.batch_id AS TEXT)) = ?" in captured["sql"]
+    assert "TRIM(COALESCE(s.machine_id, '')) = ?" in captured["sql"]
+    assert captured["params"][-2:] == ("B-RPT", "M-RPT")
+
+    repo.list_detail_rows_all(
+        version=12,
+        source_table="schedule",
+        candidate_id=None,
+        batch_id="B-RPT",
+        resource_type="operator",
+        resource_id="O-RPT",
+    )
+    assert "TRIM(COALESCE(s.operator_id, '')) = ?" in captured["sql"]
+    assert captured["params"][-2:] == ("B-RPT", "O-RPT")

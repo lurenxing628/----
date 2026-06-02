@@ -122,6 +122,13 @@ def _actual_import_url(filters: Dict[str, Any]) -> str:
     return _url_with_query("scheduler.resource_dispatch_actual_import", _query_from_filters(filters))
 
 
+def _actual_record_url_template(filters: Dict[str, Any]) -> str:
+    base_url = url_for("scheduler.resource_dispatch_execution_actual", op_id=0).replace("/0/actual", "/__OP_ID__/actual", 1)
+    query = _query_from_filters(filters)
+    encoded = urlencode(query)
+    return f"{base_url}?{encoded}" if encoded else base_url
+
+
 def _export_url(filters: Dict[str, Any]) -> str:
     query = _query_from_filters(filters)
     return _url_with_query("scheduler.resource_dispatch_export", query)

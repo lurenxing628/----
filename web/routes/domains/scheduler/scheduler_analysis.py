@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from flask import g, request
 
+from web.request_resource_context import request_report_resource_context
 from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.scheduler_analysis_action_hub import build_analysis_action_hub
 from web.viewmodels.scheduler_analysis_vm import build_analysis_context, build_candidate_comparison_display
@@ -10,6 +11,7 @@ from web.viewmodels.scheduler_summary_display import build_summary_display_state
 from .scheduler_analysis_links import attach_candidate_plan_links
 from .scheduler_analysis_read import build_analysis_read_context
 from .scheduler_bp import bp
+from .scheduler_navigation_publish import publish_analysis_navigation_context, resolve_navigation_plan_context
 
 
 def _request_arg_text(*names: str) -> str:
@@ -21,26 +23,41 @@ def _request_arg_text(*names: str) -> str:
 
 
 def _request_resource_context() -> dict:
-    resource_type = _request_arg_text("resource_type", "scope_type")
-    resource_id = _request_arg_text("resource_id", "scope_id")
-    if not resource_type:
-        for key, value in (
-            ("operator", request.args.get("operator_id")),
-            ("machine", request.args.get("machine_id")),
-            ("team", request.args.get("team_id")),
-        ):
-            if str(value or "").strip():
-                resource_type = key
-                resource_id = str(value or "").strip()
-                break
-    if resource_type and not resource_id:
-        resource_id = str(request.args.get(f"{resource_type}_id") or "").strip()
+    resource = request_report_resource_context()
     return {
-        "resource_type": resource_type or None,
-        "resource_id": resource_id or None,
+        "resource_type": resource["resource_type"] or None,
+        "resource_id": resource["resource_id"] or None,
+        "resource_label": resource["resource_label"] or None,
         "query_date": _request_arg_text("query_date") or None,
         "period_preset": _request_arg_text("period_preset") or None,
     }
+
+
+def _request_candidate_link_context() -> dict:
+    resource = _request_resource_context()
+    return {
+        "resource_type": resource.get("resource_type"),
+        "resource_id": resource.get("resource_id"),
+        "query_date": resource.get("query_date"),
+        "period_preset": resource.get("period_preset"),
+    }
+
+
+def _publish_analysis_navigation_context(selected_version) -> None:
+    if selected_version is None:
+        return
+    plan_role = _request_arg_text("plan_role") or "adopted"
+    scenario_id = _request_arg_text("scenario_id") or None
+    plan_resolution = resolve_navigation_plan_context(g.services, selected_version, plan_role, scenario_id)
+    publish_analysis_navigation_context(
+        version=selected_version,
+        plan_resolution=plan_resolution,
+        date_from=_request_arg_text("date_from", "start_date"),
+        date_to=_request_arg_text("date_to", "end_date"),
+        resource_context=_request_resource_context(),
+        batch_id=_request_arg_text("batch_id") or None,
+        back_to=_request_arg_text("back_to") or None,
+    )
 
 
 @bp.get("/analysis")
@@ -71,7 +88,7 @@ def analysis_page():
             date_from=_request_arg_text("date_from", "start_date"),
             date_to=_request_arg_text("date_to", "end_date"),
             batch_id=_request_arg_text("batch_id"),
-            **_request_resource_context(),
+            **_request_candidate_link_context(),
         )
 
     selected_summary_display = build_summary_display_state(
@@ -84,6 +101,7 @@ def analysis_page():
             ctx.get("candidate_comparison_display"),
             ctx.get("diagnostic_sections"),
         )
+    _publish_analysis_navigation_context(read_ctx.selected_version)
 
     return render_template(
         "scheduler/analysis.html",

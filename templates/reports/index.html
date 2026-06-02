@@ -1,11 +1,12 @@
 {% extends "base.html" %}
-{% import "components/ui_macros.html" as ui %}
+{% import "components/ui_macros.html" as ui with context %}
+{% import "components/reports_nav_macros.html" as reports_ui with context %}
 {% block content %}
   {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'simulated': '模拟排产', 'ok': '成功', 'fail': '失败', 'ok2': '成功'} %}
   {{ ui.aps_page_hero(
     '报表中心',
     '根据排产历史版本查看超期、资源负荷、计划和现场实际、停机影响；没有排产结果时页面会显示为空，也不会导出空 Excel。',
-    nav_html=ui.reports_nav('index')
+    nav_html=reports_ui.reports_nav('index')
   ) }}
 
   {% if has_history %}
@@ -22,7 +23,7 @@
     </div>
   {% endif %}
 
-  <section class="reports-overview">
+  <section id="reportsOverview" class="reports-overview">
     <div class="page-header">
       <div class="page-title-group">
         <h3 class="section-title">报表总览</h3>
@@ -32,23 +33,34 @@
     {% if not has_history %}
       <div class="muted mb-2">暂无排产历史，请先执行排产后再查看报表。</div>
     {% endif %}
-    <div class="nav-grid">
-      <a href="{{ url_for('reports.overdue_page') }}" class="nav-card">
-        <div class="nav-card-title"><svg class="icon"><use href="{{ url_for('static', filename='icons.svg') }}#icon-warn"/></svg> 超期清单</div>
-        <div class="nav-card-desc">进入后可按版本查看交期风险：已排但晚于交期的批次、交期已过还没排上的批次。{% if has_history %}当前最新版本 {{ overdue_count }} 个超期。{% endif %}</div>
-      </a>
-      <a href="{{ url_for('reports.utilization_page') }}" class="nav-card">
-        <div class="nav-card-title"><svg class="icon"><use href="{{ url_for('static', filename='icons.svg') }}#icon-chart"/></svg> 资源负荷与利用率</div>
-        <div class="nav-card-desc">设备和人员的排产负荷与利用率统计。</div>
-      </a>
-      <a href="{{ url_for('reports.execution_review_page') }}" class="nav-card">
-        <div class="nav-card-title"><svg class="icon"><use href="{{ url_for('static', filename='icons.svg') }}#icon-chart"/></svg> 计划和现场实际</div>
-        <div class="nav-card-desc">核对正式计划的开始结束时间、现场实际开工完工、暂停和异常影响。</div>
-      </a>
-      <a href="{{ url_for('reports.downtime_page') }}" class="nav-card">
-        <div class="nav-card-title"><svg class="icon"><use href="{{ url_for('static', filename='icons.svg') }}#icon-device"/></svg> 停机影响统计</div>
-        <div class="nav-card-desc">停机计划对排产结果的影响分析。</div>
-      </a>
+    {% if has_history and reports_workbench.workbench_links %}
+      <div id="reportsWorkbenchLinks" class="scheduler-subnav scheduler-subnav-main mb-2">
+        {% for link in reports_workbench.workbench_links %}
+          {% if link.disabled or not link.url %}
+            <span class="table-action-link is-disabled" aria-disabled="true" title="{{ link.disabled_reason }}">{{ link.label }}</span>
+          {% else %}
+            <a class="table-action-link" href="{{ link.url }}">{{ link.label }}</a>
+          {% endif %}
+        {% endfor %}
+      </div>
+    {% endif %}
+    <div id="reportsEntryCards" class="nav-grid">
+      {% for card in reports_workbench.entry_cards %}
+        {% set link = card.link %}
+        {% if link and not link.disabled and link.url %}
+          <a href="{{ link.url }}" class="nav-card" data-report-card="{{ card.key or card.title }}">
+            <div class="nav-card-title"><svg class="icon"><use href="{{ url_for('static', filename='icons.svg') }}#{{ card.icon_id }}"/></svg> {{ card.title }}</div>
+            <div class="nav-card-desc">{{ card.question_text }}</div>
+            <div class="text-meta mt-1">{{ card.limitation_text }}</div>
+          </a>
+        {% else %}
+          <div class="nav-card is-disabled" data-report-card="{{ card.key or card.title }}" aria-disabled="true" title="{{ link.disabled_reason if link else '' }}">
+            <div class="nav-card-title"><svg class="icon"><use href="{{ url_for('static', filename='icons.svg') }}#{{ card.icon_id }}"/></svg> {{ card.title }}</div>
+            <div class="nav-card-desc">{{ card.question_text }}</div>
+            <div class="text-meta mt-1">{{ link.disabled_reason if link and link.disabled_reason else card.limitation_text }}</div>
+          </div>
+        {% endif %}
+      {% endfor %}
     </div>
   </section>
 {% endblock %}

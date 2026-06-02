@@ -4,6 +4,7 @@ import sqlite3
 from dataclasses import replace
 from typing import Any, Dict, List, Optional
 
+from core.infrastructure.errors import ValidationError
 from core.models.schedule_plan_resolution import SchedulePlanResolution, SchedulePlanRoleOption
 from core.models.schedule_plan_role import (
     ROLE_ADOPTED,
@@ -17,6 +18,7 @@ from core.models.schedule_plan_role import (
     plan_candidate_label,
     plan_role_label,
 )
+from core.models.schedule_resource_filter import normalize_overdue_resource_filter
 from data.repositories.schedule_plan_query_repo import SchedulePlanQueryRepository
 from data.repositories.schedule_rows import ScheduleDetailRow, ScheduleDispatchRow, ScheduleTimeSpanRow
 
@@ -246,6 +248,9 @@ class SchedulePlanQueryService:
         scenario_id: Optional[str] = None,
         start_time: str,
         end_time: str,
+        resource_type: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        batch_id: Optional[str] = None,
     ) -> List[ScheduleDetailRow]:
         resolution = self.resolve_plan_view(version, role, scenario_id)
         return self.list_plan_detail_rows_between_for_resolution(
@@ -255,6 +260,9 @@ class SchedulePlanQueryService:
             scenario_id=resolution.scenario_id,
             start_time=start_time,
             end_time=end_time,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            batch_id=batch_id,
         )
 
     def list_plan_detail_rows_between_for_resolution(
@@ -266,6 +274,9 @@ class SchedulePlanQueryService:
         scenario_id: Optional[str] = None,
         start_time: str,
         end_time: str,
+        resource_type: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        batch_id: Optional[str] = None,
     ) -> List[ScheduleDetailRow]:
         return self.repo.list_detail_rows_between(
             version=int(version),
@@ -274,15 +285,29 @@ class SchedulePlanQueryService:
             scenario_id=scenario_id,
             start_time=start_time,
             end_time=end_time,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            batch_id=batch_id,
         )
 
-    def list_plan_detail_rows_all(self, *, version: int, role: Optional[str]) -> List[ScheduleDetailRow]:
+    def list_plan_detail_rows_all(
+        self,
+        *,
+        version: int,
+        role: Optional[str],
+        resource_type: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        batch_id: Optional[str] = None,
+    ) -> List[ScheduleDetailRow]:
         resolution = self.resolve_plan(version, role)
         return self.list_plan_detail_rows_all_for_resolution(
             version=int(version),
             source_table=resolution.source_table,
             candidate_id=resolution.candidate_id,
             scenario_id=resolution.scenario_id,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            batch_id=batch_id,
         )
 
     def list_plan_detail_rows_all_for_resolution(
@@ -292,12 +317,18 @@ class SchedulePlanQueryService:
         source_table: str,
         candidate_id: Optional[int],
         scenario_id: Optional[str] = None,
+        resource_type: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        batch_id: Optional[str] = None,
     ) -> List[ScheduleDetailRow]:
         return self.repo.list_detail_rows_all(
             version=int(version),
             source_table=source_table,
             candidate_id=candidate_id,
             scenario_id=scenario_id,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            batch_id=batch_id,
         )
 
     def list_plan_overdue_base_rows(self, *, version: int, role: Optional[str]) -> List[Dict[str, Any]]:
@@ -316,12 +347,19 @@ class SchedulePlanQueryService:
         source_table: str,
         candidate_id: Optional[int],
         scenario_id: Optional[str] = None,
+        resource_type: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        batch_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
+        resource_filter = normalize_overdue_resource_filter(resource_type, resource_id)
         return self.repo.list_overdue_base_rows(
             version=int(version),
             source_table=source_table,
             candidate_id=candidate_id,
             scenario_id=scenario_id,
+            resource_type=resource_filter.resource_type,
+            resource_id=resource_filter.resource_id,
+            batch_id=batch_id,
         )
 
     def list_plan_dispatch_rows(

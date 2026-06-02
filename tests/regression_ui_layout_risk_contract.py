@@ -62,7 +62,7 @@ class _FloatingManualParser(HTMLParser):
 
 
 def _floating_manual_macro_block(source: str) -> str:
-    start = source.index("{% macro floating_manual_button() %}")
+    start = source.index("{% macro floating_manual_button")
     end = source.index("{% endmacro %}", start)
     return source[start:end]
 
@@ -167,10 +167,11 @@ def test_floating_manual_button_is_fixed_outside_sidebar() -> None:
 
     base_template = _read("templates/base.html")
     macro_source = _read("templates/components/ui_macros.html")
+    manual_macro_source = _read("templates/components/manual_macros.html")
     assert "ui.floating_manual_button()" in base_template
     assert "macro floating_manual_button" in macro_source
-    assert "floating-manual-wrapper no-print" in macro_source
-    assert _popover_is_inside_floating_wrapper(macro_source)
+    assert "floating-manual-wrapper no-print" in manual_macro_source
+    assert _popover_is_inside_floating_wrapper(manual_macro_source)
 
 
 def test_v2_sidebar_turns_into_top_nav_on_narrow_screens() -> None:

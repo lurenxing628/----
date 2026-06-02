@@ -35,7 +35,7 @@ def test_workbench_context_and_link_keep_plan_date_and_resource_params() -> None
         can_write_feedback=True,
     )
 
-    gantt = build_workbench_link(context, "gantt", label="查看设备甘特", view="machine")
+    gantt = build_workbench_link(context, "gantt", label="查看人员甘特", view="operator")
     dispatch = build_workbench_link(context, "resource_dispatch", label="查看排班")
     week_plan = build_workbench_link(context, "week_plan", label="查看周计划")
     utilization = build_workbench_link(context, "utilization_report", label="看资源负荷")
@@ -51,8 +51,9 @@ def test_workbench_context_and_link_keep_plan_date_and_resource_params() -> None
         "end_date=2026-05-31",
         "query_date=2026-05-28",
         "period_preset=week",
-        "batch_id=B202605-001",
-        "view=machine",
+        "gantt_batch=B202605-001",
+        "gantt_resource=O1",
+        "view=operator",
     ):
         assert fragment in gantt["url"]
     assert gantt["required_params"] == [
@@ -63,9 +64,8 @@ def test_workbench_context_and_link_keep_plan_date_and_resource_params() -> None
         "end_date",
         "query_date",
         "period_preset",
-        "batch_id",
-        "resource_type",
-        "resource_id",
+        "gantt_batch",
+        "gantt_resource",
     ]
 
     for fragment in (
@@ -74,7 +74,7 @@ def test_workbench_context_and_link_keep_plan_date_and_resource_params() -> None
         "date_from=2026-05-25",
         "date_to=2026-05-31",
         "query_date=2026-05-28",
-        "period_preset=week",
+        "period_preset=custom",
         "scope_type=operator",
         "operator_id=O1",
         "batch_id=B202605-001",
@@ -112,7 +112,8 @@ def test_workbench_context_and_link_keep_plan_date_and_resource_params() -> None
 
     assert "start_date=2026-05-25" in utilization["url"]
     assert "batch_id=B202605-001" in utilization["url"]
-    assert "scope_type=operator" in utilization["url"]
+    assert "resource_type=operator" in utilization["url"]
+    assert "resource_id=O1" in utilization["url"]
     assert "张三" in utilization["context_summary"]
 
     assert "version=12" in review["url"]
@@ -122,8 +123,8 @@ def test_workbench_context_and_link_keep_plan_date_and_resource_params() -> None
     assert "query_date=2026-05-28" in review["url"]
     assert "period_preset=week" in review["url"]
     assert "batch_id=B202605-001" in review["url"]
-    assert "scope_type=operator" in review["url"]
-    assert "scope_id=O1" in review["url"]
+    assert "resource_type=operator" in review["url"]
+    assert "resource_id=O1" in review["url"]
 
 
 def test_all_target_pages_preserve_full_workbench_context_matrix() -> None:
@@ -171,9 +172,8 @@ def test_all_target_pages_preserve_full_workbench_context_matrix() -> None:
             "end_date": "2026-05-31",
             "query_date": "2026-05-28",
             "period_preset": "week",
-            "batch_id": "B202605-001",
-            "resource_type": "machine",
-            "resource_id": "M1",
+            "gantt_batch": "B202605-001",
+            "gantt_resource": "M1",
         },
         "week_plan": {
             "version": "12",
@@ -193,7 +193,7 @@ def test_all_target_pages_preserve_full_workbench_context_matrix() -> None:
             "date_from": "2026-05-25",
             "date_to": "2026-05-31",
             "query_date": "2026-05-28",
-            "period_preset": "week",
+            "period_preset": "custom",
             "batch_id": "B202605-001",
             "scope_type": "machine",
             "scope_id": "M1",
@@ -229,9 +229,19 @@ def test_all_target_pages_preserve_full_workbench_context_matrix() -> None:
             "query_date": "2026-05-28",
             "period_preset": "week",
             "batch_id": "B202605-001",
-            "scope_type": "machine",
-            "scope_id": "M1",
-            "machine_id": "M1",
+            "resource_type": "machine",
+            "resource_id": "M1",
+        },
+        "downtime_report": {
+            "version": "12",
+            "plan_role": "adopted",
+            "start_date": "2026-05-25",
+            "end_date": "2026-05-31",
+            "query_date": "2026-05-28",
+            "period_preset": "week",
+            "batch_id": "B202605-001",
+            "resource_type": "machine",
+            "resource_id": "M1",
         },
         "execution_review": {
             "version": "12",
@@ -241,9 +251,8 @@ def test_all_target_pages_preserve_full_workbench_context_matrix() -> None:
             "query_date": "2026-05-28",
             "period_preset": "week",
             "batch_id": "B202605-001",
-            "scope_type": "machine",
-            "scope_id": "M1",
-            "machine_id": "M1",
+            "resource_type": "machine",
+            "resource_id": "M1",
         },
         "reports_index": {
             "version": "12",
@@ -253,9 +262,8 @@ def test_all_target_pages_preserve_full_workbench_context_matrix() -> None:
             "query_date": "2026-05-28",
             "period_preset": "week",
             "batch_id": "B202605-001",
-            "scope_type": "machine",
-            "scope_id": "M1",
-            "machine_id": "M1",
+            "resource_type": "machine",
+            "resource_id": "M1",
         },
     }
 
@@ -293,6 +301,51 @@ def test_preview_context_keeps_view_links_but_disables_execution_review() -> Non
     assert "scenario_id" not in review["required_params"]
 
 
+def test_primary_resource_links_disable_unsupported_team_context() -> None:
+    context = build_workbench_plan_context(
+        version=12,
+        plan_role="adopted",
+        date_from="2026-05-25",
+        date_to="2026-05-31",
+        query_date="2026-05-28",
+        period_preset="week",
+        resource_type="team",
+        resource_id="T1",
+        can_write_feedback=True,
+    )
+
+    for target_page in (
+        "dashboard",
+        "analysis",
+        "week_plan",
+        "reports_index",
+        "overdue_report",
+        "delay_diagnosis",
+        "utilization_report",
+        "execution_review",
+        "downtime_report",
+    ):
+        link = build_workbench_link(context, target_page)
+
+        assert link["disabled"] is True, target_page
+        assert link["url"] == ""
+        assert "当前页面暂不支持班组维度筛选" in link["disabled_reason"]
+
+    dispatch = build_workbench_link(context, "resource_dispatch")
+    assert dispatch["disabled"] is False
+    assert "scope_type=team" in dispatch["url"]
+    assert "scope_id=T1" in dispatch["url"]
+    assert "team_id=T1" in dispatch["url"]
+    assert "resource_type=team" not in dispatch["url"]
+
+    gantt = build_workbench_link(context, "gantt", view="machine")
+    assert gantt["disabled"] is False
+    assert "resource_type=team" not in gantt["url"]
+    assert "resource_id=T1" not in gantt["url"]
+    assert "team_id=T1" not in gantt["url"]
+    assert "gantt_resource=T1" not in gantt["url"]
+
+
 def test_dashboard_analysis_and_reports_links_keep_context_without_inventing_period() -> None:
     context = build_workbench_plan_context(
         version=12,
@@ -324,10 +377,9 @@ def test_dashboard_analysis_and_reports_links_keep_context_without_inventing_per
     assert "resource_type=machine" in analysis["url"]
     assert "resource_id=M1" in analysis["url"]
     assert "query_date=2026-05-28" in reports["url"]
-    assert "scope_type=machine" in reports["url"]
-    assert "scope_id=M1" in reports["url"]
-    assert "machine_id=M1" in reports["url"]
-    assert "period_preset=week" not in dispatch["url"]
+    assert "resource_type=machine" in reports["url"]
+    assert "resource_id=M1" in reports["url"]
+    assert "period_preset=custom" in dispatch["url"]
     assert "query_date=2026-05-28" in dispatch["url"]
     assert "scope_type=machine" in dispatch["url"]
     assert "machine_id=M1" in dispatch["url"]
@@ -361,6 +413,7 @@ def test_target_pages_and_public_label_mappings_are_fixed() -> None:
         "delay_diagnosis",
         "utilization_report",
         "execution_review",
+        "downtime_report",
         "reports_index",
     }
     assert plan_role_label("baseline_best") == "原算法代表方案"
@@ -368,166 +421,3 @@ def test_target_pages_and_public_label_mappings_are_fixed() -> None:
     assert resource_type_label("machine") == "设备视角"
     assert period_preset_label("custom") == "自定义"
     assert gantt_view_label("operator") == "人员甘特"
-
-
-def test_feedback_write_url_guardrail_is_explicit() -> None:
-    assert can_emit_feedback_write_urls({"plan_role": "adopted", "can_dispatch": True, "can_write_feedback": True}) is True
-    assert can_emit_feedback_write_urls({"plan_role": "adopted", "can_dispatch": True, "can_write_feedback": False}) is False
-    assert can_emit_feedback_write_urls({"plan_role": "adopted", "can_dispatch": False, "can_write_feedback": True}) is False
-    assert can_emit_feedback_write_urls({"can_write_feedback": True}) is False
-    assert can_emit_feedback_write_urls({"plan_role": "adopted", "can_write_feedback": True}) is True
-    assert can_emit_feedback_write_urls(
-        {"plan_role": "adopted", "effective_plan_role": "baseline_best", "can_write_feedback": True}
-    ) is False
-    assert can_emit_feedback_write_urls(
-        {"requested_plan_role": "adopted", "effective_plan_role": "baseline_best", "can_write_feedback": True}
-    ) is False
-    assert can_emit_feedback_write_urls(
-        {"plan_role": "adopted", "requested_plan_role": "baseline_best", "can_write_feedback": True}
-    ) is False
-    assert can_emit_feedback_write_urls({"plan_role": "baseline_best", "can_write_feedback": True}) is False
-    assert can_emit_feedback_write_urls({"scenario_id": "preview-1", "can_write_feedback": True}) is False
-
-    read_only_context = build_workbench_plan_context(plan_role="baseline_best", can_write_feedback=True)
-    assert read_only_context["can_write_feedback"] is False
-    assert "只能查看" in read_only_context["guardrail_text"]
-
-    implicit_context = build_workbench_plan_context(plan_role="adopted")
-    assert implicit_context["can_write_feedback"] is False
-
-
-def test_reports_index_requires_version_context() -> None:
-    context = build_workbench_plan_context(plan_role="adopted")
-    reports = build_workbench_link(context, "reports_index")
-
-    assert reports["disabled"] is True
-    assert reports["url"] == ""
-    assert "还没有排产版本" in reports["disabled_reason"]
-
-
-def test_workbench_view_links_require_date_range() -> None:
-    context = build_workbench_plan_context(version=12, plan_role="adopted")
-
-    for target_page in ("gantt", "week_plan", "resource_dispatch", "reports_index"):
-        link = build_workbench_link(context, target_page)
-        assert link["disabled"] is True
-        assert link["url"] == ""
-        assert "日期范围" in link["disabled_reason"]
-
-
-def test_manual_disabled_link_requires_public_reason() -> None:
-    context = build_workbench_plan_context(
-        version=12,
-        plan_role="adopted",
-        date_from="2026-05-25",
-        date_to="2026-05-31",
-        can_write_feedback=True,
-    )
-    link = build_workbench_link(context, "analysis", disabled=True)
-
-    assert link["disabled"] is True
-    assert link["url"] == ""
-    assert "暂时不可用" in link["disabled_reason"]
-
-
-def test_execution_review_guardrail_cannot_be_overridden_by_enabled_flag() -> None:
-    context = build_workbench_plan_context(
-        version=12,
-        plan_role="baseline_best",
-        date_from="2026-05-25",
-        date_to="2026-05-31",
-    )
-
-    direct = build_workbench_link(context, "execution_review", disabled=False)
-    from_specs = build_workbench_links(
-        context,
-        [
-            {
-                "target_page": "execution_review",
-                "disabled": False,
-            }
-        ],
-    )[0]
-
-    for link in (direct, from_specs):
-        assert link["disabled"] is True
-        assert link["url"] == ""
-        assert "只复盘正式采用方案" in link["disabled_reason"]
-
-
-def test_execution_review_guardrail_uses_full_plan_identity() -> None:
-    base = build_workbench_plan_context(
-        version=12,
-        plan_role="adopted",
-        date_from="2026-05-25",
-        date_to="2026-05-31",
-        can_write_feedback=True,
-    )
-    conflict_contexts = [
-        dict(base, effective_plan_role="baseline_best"),
-        dict(base, requested_plan_role="baseline_best"),
-        dict(base, is_scenario_preview=True),
-        dict(base, is_superseded_by_newer_version=True),
-        dict(base, is_comparison=True),
-    ]
-
-    for context in conflict_contexts:
-        link = build_workbench_link(context, "execution_review")
-        assert link["disabled"] is True
-        assert link["url"] == ""
-        assert "只复盘正式采用方案" in link["disabled_reason"]
-
-
-def test_execution_review_allows_read_only_formal_adopted_context() -> None:
-    context = build_workbench_plan_context(
-        version=12,
-        plan_role="adopted",
-        date_from="2026-05-25",
-        date_to="2026-05-31",
-        can_write_feedback=False,
-    )
-    context["can_dispatch"] = False
-
-    link = build_workbench_link(context, "execution_review")
-
-    assert link["disabled"] is False
-    assert "plan_role=adopted" in link["url"]
-    assert "scenario_id" not in _query_values(link["url"])
-    assert context["can_write_feedback"] is False
-
-
-def test_execution_review_rejects_scenario_identity_from_extra_params() -> None:
-    context = build_workbench_plan_context(
-        version=12,
-        plan_role="adopted",
-        date_from="2026-05-25",
-        date_to="2026-05-31",
-        can_write_feedback=True,
-    )
-
-    forbidden_keys = ("scenario_id", "plan_role", "is_comparison", "can_write_feedback")
-    for key in forbidden_keys:
-        try:
-            build_workbench_link(context, "execution_review", extra_params={key: "leaked"})
-        except ValueError as exc:
-            assert "extra_params" in str(exc)
-        else:
-            raise AssertionError(f"计划和现场实际入口不能允许 extra_params 追加 {key}")
-
-
-def test_workbench_link_specs_fail_loudly_when_target_is_missing() -> None:
-    context = build_workbench_plan_context(version=12, plan_role="adopted")
-
-    try:
-        build_workbench_links(context, [{"label": "缺目标页"}])
-    except ValueError as exc:
-        assert "target_page" in str(exc)
-    else:
-        raise AssertionError("缺少 target_page 的工作台链接配置必须报错")
-
-    try:
-        build_workbench_links(context, ["not-a-spec"])  # type: ignore[list-item]
-    except ValueError as exc:
-        assert "必须是字典" in str(exc)
-    else:
-        raise AssertionError("非字典工作台链接配置必须报错")

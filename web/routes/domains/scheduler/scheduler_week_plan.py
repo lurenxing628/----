@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from typing import Any, Dict, Optional
 
-from flask import current_app, flash, g, redirect, request, send_file, url_for
+from flask import current_app, flash, g, redirect, request, url_for
 
 from core.infrastructure.errors import AppError, BusinessError, ErrorCode, ValidationError
 from core.services.common.excel_audit import log_excel_export
@@ -30,8 +30,21 @@ from .scheduler_bp import (
 )
 from .scheduler_gantt_redirect import build_success_gantt_redirect_kwargs
 from .scheduler_history_resolution import build_requested_history_resolution
+from .scheduler_navigation_publish import (
+    publish_week_plan_navigation_context,
+    requested_plan_role,
+    resolved_scenario_id,
+    selected_plan_role,
+)
 from .scheduler_user_messages import scheduler_user_visible_app_error_message
 from .scheduler_utils import _current_scheduler_operator
+from .scheduler_week_plan_query import (
+    request_week_plan_batch_id,
+    request_week_plan_resource_context,
+    week_plan_data_kwargs,
+    week_plan_export_url,
+)
+from .scheduler_week_plan_response import send_week_plan_export_file
 
 
 def _get_int_arg(name: str, default: int = 0) -> int:
@@ -69,31 +82,6 @@ def _plan_context_from_data(data: Dict[str, Any], plan_role: Optional[str]) -> D
         return plan_resolution
     version = data.get("version") if isinstance(data, dict) else None
     return _fallback_plan_context(plan_role, version=version)
-
-
-def _week_plan_data_kwargs(
-    *,
-    week_start: Optional[str],
-    offset_weeks: int,
-    version: Any,
-    plan_role: Optional[str],
-    scenario_id: Optional[str],
-    services: Any,
-) -> Dict[str, Any]:
-    data_kwargs = {
-        "week_start": week_start,
-        "offset_weeks": offset_weeks,
-        "version": version,
-    }
-    if plan_role is not None:
-        data_kwargs["plan_role"] = plan_role
-    if scenario_id is not None:
-        data_kwargs["scenario_id"] = scenario_id
-    if plan_role is not None or scenario_id is not None:
-        plan_query_service = getattr(services, "schedule_plan_query_service", None)
-        if plan_query_service is not None:
-            data_kwargs["plan_query_service"] = plan_query_service
-    return data_kwargs
 
 
 def _load_selected_week_plan_summary(services, version: int):
@@ -241,37 +229,6 @@ def _log_week_plan_export(
     )
 
 
-def _safe_filename_part(value: Any) -> str:
-    text = str(value or "").strip()
-    for old, new in (("/", "-"), ("\\", "-"), (":", "-"), ("*", ""), ("?", ""), ('"', ""), ("<", ""), (">", ""), ("|", "-")):
-        text = text.replace(old, new)
-    return text.strip()
-
-
-def _scenario_display_name(plan_resolution: Dict[str, Any]) -> str:
-    return str(
-        plan_resolution.get("scenario_display_name") or plan_resolution.get("scenario_name") or "模拟预览（未命名）"
-    ).strip()
-
-
-def _send_week_plan_export_file(output, *, version: int, week_start: Any, week_end: Any, plan_resolution: Dict[str, Any]):
-    selected_role = str(plan_resolution.get("selected_role") or ROLE_ADOPTED)
-    requested_role = str(plan_resolution.get("requested_role") or ROLE_ADOPTED)
-    if bool(plan_resolution.get("is_scenario_preview")):
-        plan_label = _safe_filename_part(_scenario_display_name(plan_resolution))
-    else:
-        include_plan_label = selected_role != ROLE_ADOPTED or requested_role != selected_role
-        plan_label = _safe_filename_part(plan_resolution.get("selected_label")) if include_plan_label else ""
-    plan_suffix = f"_{plan_label}" if plan_label else ""
-    filename = f"周计划表_v{version}_{week_start}至{week_end}{plan_suffix}.xlsx"
-    return send_file(
-        output,
-        as_attachment=True,
-        download_name=filename,
-        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
-
-
 def _week_plan_page_redirect(
     *,
     week_start: Optional[str],
@@ -279,6 +236,8 @@ def _week_plan_page_redirect(
     version: Optional[str],
     plan_role: Optional[str],
     scenario_id: Optional[str],
+    resource_context: Optional[Dict[str, Any]] = None,
+    batch_id: Optional[str] = None,
 ):
     args: Dict[str, Any] = {
         "offset": str(int(offset)),
@@ -286,6 +245,9 @@ def _week_plan_page_redirect(
         "version": version,
         "plan_role": plan_role,
         "scenario_id": scenario_id,
+        "batch_id": batch_id,
+        "resource_type": (resource_context or {}).get("resource_type"),
+        "resource_id": (resource_context or {}).get("resource_id"),
     }
     return redirect(
         url_for(
@@ -314,17 +276,21 @@ def week_plan_page():
     offset = _get_int_arg("offset", 0)
     svc = services.gantt_service
     wr = svc.resolve_week_range(week_start=week_start, offset_weeks=offset)
+    resource_context = request_week_plan_resource_context()
+    batch_id = request_week_plan_batch_id()
 
     versions = decorate_history_version_options(services.schedule_history_query_service.list_versions(limit=30))
     log_history_version_option_parse_warnings(versions, log_label="周计划页")
     data = svc.get_week_plan_rows(
-        **_week_plan_data_kwargs(
+        **week_plan_data_kwargs(
             week_start=wr.week_start_date.isoformat(),
             offset_weeks=0,
             version=request.args.get("version"),
             plan_role=plan_role,
             scenario_id=scenario_id,
             services=services,
+            resource_context=resource_context,
+            batch_id=batch_id,
         )
     )
     plan_resolution = _plan_context_from_data(data, plan_role)
@@ -340,6 +306,16 @@ def week_plan_page():
         missing_message=f"v{ver} 无对应排产历史，当前仅展示排程明细，历史摘要不可用。",
     )
     preview_state = _build_week_plan_preview_state(data)
+    publish_week_plan_navigation_context(
+        version=ver,
+        plan_resolution=plan_resolution,
+        fallback_scenario_id=scenario_id,
+        date_from=wr.week_start_date.isoformat(),
+        date_to=wr.week_end_date.isoformat(),
+        resource_context=resource_context,
+        batch_id=batch_id,
+        back_to=(request.args.get("back_to") or "").strip() or None,
+    )
 
     return render_template(
         "scheduler/week_plan.html",
@@ -357,23 +333,22 @@ def week_plan_page():
         selected_history_resolution=selected_history_resolution,
         selected_summary=selected_summary,
         selected_summary_display=selected_summary_display,
-        plan_role=plan_resolution.get("requested_role") or ROLE_ADOPTED,
-        effective_plan_role=plan_resolution.get("selected_role") or ROLE_ADOPTED,
+        plan_role=requested_plan_role(plan_resolution),
+        effective_plan_role=selected_plan_role(plan_resolution),
         plan_resolution=plan_resolution,
-        scenario_id=plan_resolution.get("scenario_id") or scenario_id,
+        scenario_id=resolved_scenario_id(plan_resolution, scenario_id),
+        batch_id=batch_id,
+        resource_type=(resource_context or {}).get("resource_type"),
+        resource_id=(resource_context or {}).get("resource_id"),
         plan_role_options=plan_resolution.get("available_roles") or [],
         preview_rows=preview_state["preview_rows"],
         total_rows=len(preview_state["rows"]),
-        export_url=(
-            url_for(
-                "scheduler.week_plan_export",
-                week_start=wr.week_start_date.isoformat(),
-                version=ver,
-                plan_role=plan_resolution.get("requested_role") or ROLE_ADOPTED,
-                scenario_id=plan_resolution.get("scenario_id") or None,
-            )
-            if ver is not None
-            else None
+        export_url=week_plan_export_url(
+            version=ver,
+            week_start=wr.week_start_date.isoformat(),
+            plan_resolution=plan_resolution,
+            resource_context=resource_context,
+            batch_id=batch_id,
         ),
     )
 
@@ -385,24 +360,30 @@ def week_plan_export():
     plan_role = _get_plan_role_arg()
     scenario_id = _get_scenario_id_arg()
     offset = _get_int_arg("offset", 0)
+    resource_context = request_week_plan_resource_context()
+    batch_id = request_week_plan_batch_id()
     redirect_context = {
         "week_start": week_start,
         "offset": offset,
         "version": request.args.get("version"),
         "plan_role": plan_role,
         "scenario_id": scenario_id,
+        "resource_context": resource_context,
+        "batch_id": batch_id,
     }
 
     svc = g.services.gantt_service
     try:
         data = svc.get_week_plan_rows(
-            **_week_plan_data_kwargs(
+            **week_plan_data_kwargs(
                 week_start=week_start,
                 offset_weeks=offset,
                 version=request.args.get("version"),
                 plan_role=plan_role,
                 scenario_id=scenario_id,
                 services=g.services,
+                resource_context=resource_context,
+                batch_id=batch_id,
             )
         )
         plan_resolution = _plan_context_from_data(data, plan_role)
@@ -426,7 +407,7 @@ def week_plan_export():
             time_cost_ms=time_cost_ms,
         )
 
-        return _send_week_plan_export_file(output, version=ver, week_start=ws, week_end=we, plan_resolution=plan_resolution)
+        return send_week_plan_export_file(output, version=ver, week_start=ws, week_end=we, plan_resolution=plan_resolution)
     except AppError as e:
         return _handle_week_plan_export_app_error(e, redirect_context=redirect_context)
     except Exception:
