@@ -1,0 +1,80 @@
+{
+  "graph_analysis_mode": {
+    "choices": [
+      "off",
+      "report",
+      "on"
+    ],
+    "default": "on",
+    "field_type": "enum",
+    "label": "工序图分析",
+    "page_label": "工序图分析"
+  },
+  "graph_block_on_cycle": {
+    "choices": [
+      "yes",
+      "no"
+    ],
+    "default": "no",
+    "field_type": "yes_no",
+    "label": "工序关系互相卡住时停止排产",
+    "page_label": "工序关系互相卡住时停止排产"
+  },
+  "graph_candidate_weight_count": {
+    "choices": [
+      "3",
+      "5",
+      "7"
+    ],
+    "default": 5,
+    "field_type": "int",
+    "label": "重点工序方案档数",
+    "page_label": "重点工序方案档数"
+  },
+  "graph_critical_weight": {
+    "choices": [],
+    "default": 500,
+    "field_type": "int",
+    "label": "重点工序提前权重",
+    "page_label": "重点工序提前权重"
+  },
+  "graph_impact_weight": {
+    "choices": [],
+    "default": 10,
+    "field_type": "int",
+    "label": "后续影响权重",
+    "page_label": "后续影响权重"
+  },
+  "graph_overdue_tolerance_count": {
+    "choices": [
+      "0",
+      "1",
+      "2"
+    ],
+    "default": 1,
+    "field_type": "int",
+    "label": "允许多超期批次数",
+    "page_label": "允许多超期批次数"
+  },
+  "graph_selection_policy": {
+    "choices": [
+      "balanced",
+      "score_only"
+    ],
+    "default": "balanced",
+    "field_type": "enum",
+    "label": "正式方案选择方式",
+    "page_label": "正式方案选择方式"
+  },
+  "graph_tardiness_tolerance_ratio": {
+    "choices": [
+      "0.05",
+      "0.1",
+      "0.2"
+    ],
+    "default": 0.1,
+    "field_type": "float",
+    "label": "允许多拖期比例",
+    "page_label": "允许多拖期比例"
+  }
+}

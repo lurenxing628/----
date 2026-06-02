@@ -1,0 +1,290 @@
+{
+  "_meta": {
+    "source": "drift-analyzer 2.51.1 MDS signal",
+    "baseline": "clean audit text excluding §14 self (avoids self-pollution)",
+    "total_mds_groups": 28,
+    "file_level_blindspot": 15,
+    "symbol_level_blindspot": 25,
+    "note": "全部组已逐行亲核两侧源码;此前 _meta 曾被§14文本自污染成4/2,本版用干净基线重算,权威值28/15/25"
+  },
+  "groups": [
+    {
+      "title": "Exact duplicates (2×): BatchMaterialService._norm_text, MaterialService._norm_text",
+      "files": [
+        "core/services/material/batch_material_service.py",
+        "core/services/material/material_service.py"
+      ],
+      "file_level_blindspot": false,
+      "symbol_level_blindspot": true,
+      "verified": "read-both-sides"
+    },
+    {
+      "title": "Exact duplicates (2×): _coerce_degradation_event",
+      "files": [
+        "core/models/schedule_config_runtime_read.py",
+        "core/services/scheduler/config/config_snapshot.py"
+      ],
+      "file_level_blindspot": false,
+      "symbol_level_blindspot": true,
+      "verified": "read-both-sides"
+    },
+    {
+      "title": "Exact duplicates (2×): _float_matches_choice",
+      "files": [
+        "core/models/schedule_config_runtime_coercion.py",
+        "core/services/scheduler/config/config_field_coercion.py"
+      ],
+      "file_level_blindspot": false,
+      "symbol_level_blindspot": true,
+      "verified": "read-both-sides"
+    },
+    {
+      "title": "Exact duplicates (2×): _get_plan_role_arg",
+      "files": [
+        "web/routes/domains/scheduler/scheduler_gantt.py",
+        "web/routes/domains/scheduler/scheduler_week_plan.py"
+      ],
+      "file_level_blindspot": false,
+      "symbol_level_blindspot": true,
+      "verified": "read-both-sides"
+    },
+    {
+      "title": "Exact duplicates (2×): _load_payload",
+      "files": [
+        "codex/hooks/pre_tool_use_policy.py",
+        "codex/hooks/user_prompt_submit_context.py"
+      ],
+      "file_level_blindspot": true,
+      "symbol_level_blindspot": true,
+      "verified": "read-both-sides"
+    },
+    {
+      "title": "Exact duplicates (2×): _load_preset_payload",
+      "files": [
+        "core/infrastructure/migrations/v8.py",
+        "core/infrastructure/migrations/v9.py"
+      ],
+      "file_level_blindspot": true,
+      "symbol_level_blindspot": true,
+      "verified": "read-both-sides"
+    },
+    {
+      "title": "Exact duplicates (2×): _merge_aliases",
+      "files": [
+        "core/services/common/normalization_matrix.py",
+        "core/shared/boolean_normalize.py"
+      ],
+      "file_level_blindspot": false,
+      "symbol_level_blindspot": true,
+      "verified": "read-both-sides"
+    },
+    {
+      "title": "Exact duplicates (2×): _meta_bool_state",
+      "files": [
+        "core/services/scheduler/summary/schedule_summary_degradation.py",
+        "core/services/scheduler/summary/schedule_summary_downtime_degradation.py"
+      ],
+      "file_level_blindspot": true,
+      "symbol_level_blindspot": true,
+      "verified": "read-both-sides"
+    },
+    {
+      "title": "Exact duplicates (2×): _normalize_cell_value",
+      "files": [
+        "core/services/common/openpyxl_backend.py",
+        "core/services/common/pandas_backend.py"
+      ],
+      "file_level_blindspot": true,
+      "symbol_level_blindspot": true,
+      "verified": "read-both-sides"
+    },
+    {
+      "title": "Exact duplicates (2×): _normalize_db_path",
+      "files": [
+        "validate_dist_exe.py",
+        "web/bootstrap/runtime_probe.py"
+      ],
+      "file_level_blindspot": true,
+      "symbol_level_blindspot": true,
+      "verified": "read-both-sides"
+    },
+    {
+      "title": "Exact duplicates (2×): _normalize_env_overlay",
+      "files": [
+        "tools/long_gate_fingerprint.py",
+        "tools/quality_gate_shared.py"
+      ],
+      "file_level_blindspot": true,
+      "symbol_level_blindspot": true,
+      "verified": "read-both-sides"
+    },
+    {
+      "title": "Exact duplicates (2×): _normalize_valid_texts",
+      "files": [
+        "core/models/schedule_config_runtime_coercion.py",
+        "core/services/scheduler/config/config_field_coercion.py"
+      ],
+      "file_level_blindspot": false,
+      "symbol_level_blindspot": true,
+      "verified": "read-both-sides"
+    },
+    {
+      "title": "Exact duplicates (2×): _op_seq",
+      "files": [
+        "core/services/scheduler/run/schedule_execution_persistence_guard.py",
+        "core/services/scheduler/run/schedule_input_runtime_support.py"
+      ],
+      "file_level_blindspot": true,
+      "symbol_level_blindspot": true,
+      "verified": "read-both-sides"
+    },
+    {
+      "title": "Exact duplicates (2×): _operator_machine_reference_snapshot",
+      "files": [
+        "web/routes/equipment_excel_links.py",
+        "web/routes/personnel_excel_links.py"
+      ],
+      "file_level_blindspot": true,
+      "symbol_level_blindspot": true,
+      "verified": "read-both-sides"
+    },
+    {
+      "title": "Exact duplicates (2×): _optional_text",
+      "files": [
+        "core/services/scheduler/graph/input_adapter.py",
+        "core/services/scheduler/summary/schedule_summary_degradation.py"
+      ],
+      "file_level_blindspot": true,
+      "symbol_level_blindspot": true,
+      "verified": "read-both-sides"
+    },
+    {
+      "title": "Exact duplicates (2×): _positive_int",
+      "files": [
+        "core/models/scheduler_public_errors.py",
+        "core/services/scheduler/run/auto_assign_resource_errors.py"
+      ],
+      "file_level_blindspot": false,
+      "symbol_level_blindspot": false,
+      "verified": "read-both-sides"
+    },
+    {
+      "title": "Exact duplicates (2×): _raise_schedule_empty_result",
+      "files": [
+        "core/services/scheduler/run/schedule_input_collector.py",
+        "core/services/scheduler/schedule_service.py"
+      ],
+      "file_level_blindspot": true,
+      "symbol_level_blindspot": true,
+      "verified": "read-both-sides"
+    },
+    {
+      "title": "Exact duplicates (2×): _required_text",
+      "files": [
+        "core/services/scheduler/gantt_adjustment_publish_service.py",
+        "core/services/scheduler/gantt_adjustment_scenario_service.py"
+      ],
+      "file_level_blindspot": true,
+      "symbol_level_blindspot": true,
+      "verified": "read-both-sides"
+    },
+    {
+      "title": "Exact duplicates (2×): _risk_card",
+      "files": [
+        "web/viewmodels/dashboard_workbench.py",
+        "web/viewmodels/dashboard_workbench_cards.py"
+      ],
+      "file_level_blindspot": false,
+      "symbol_level_blindspot": true,
+      "verified": "read-both-sides"
+    },
+    {
+      "title": "Exact duplicates (2×): _strict_non_negative_int",
+      "files": [
+        "data/repositories/config_repo.py",
+        "data/repositories/schedule_history_repo.py"
+      ],
+      "file_level_blindspot": false,
+      "symbol_level_blindspot": true,
+      "verified": "read-both-sides"
+    },
+    {
+      "title": "Exact duplicates (2×): _unpack_due_info",
+      "files": [
+        "core/services/system/maintenance/backup_task.py",
+        "core/services/system/maintenance/cleanup_task.py"
+      ],
+      "file_level_blindspot": false,
+      "symbol_level_blindspot": true,
+      "verified": "read-both-sides"
+    },
+    {
+      "title": "Exact duplicates (2×): validate_row",
+      "files": [
+        "web/routes/personnel_excel_operators.py"
+      ],
+      "file_level_blindspot": true,
+      "symbol_level_blindspot": true,
+      "verified": "read-both-sides"
+    },
+    {
+      "title": "Exact duplicates (3×): _positive_int",
+      "files": [
+        "core/services/scheduler/resource_dispatch_execution_service.py",
+        "web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py",
+        "web/viewmodels/scheduler_resource_dispatch_execution.py"
+      ],
+      "file_level_blindspot": false,
+      "symbol_level_blindspot": false,
+      "verified": "read-both-sides"
+    },
+    {
+      "title": "Exact duplicates (3×): _sha256_file",
+      "files": [
+        "tools/long_gate_full_test_debt.py",
+        "tools/long_gate_schema.py",
+        "tools/quality_gate_shared.py"
+      ],
+      "file_level_blindspot": true,
+      "symbol_level_blindspot": true,
+      "verified": "read-both-sides"
+    },
+    {
+      "title": "Near-duplicate (80%): get_operator_calendar_row_validate_and_normalize ↔ _validate_and_normalize",
+      "files": [
+        "core/services/common/excel_validators.py"
+      ],
+      "file_level_blindspot": false,
+      "symbol_level_blindspot": true,
+      "verified": "read-both-sides"
+    },
+    {
+      "title": "Near-duplicate (82%): evaluate_reuse ↔ evaluate_failure_reuse",
+      "files": [
+        "tools/long_gate_cache.py"
+      ],
+      "file_level_blindspot": true,
+      "symbol_level_blindspot": true,
+      "verified": "read-both-sides"
+    },
+    {
+      "title": "Near-duplicate (83%): maybe_run_auto_backup_cleanup ↔ maybe_run_auto_log_cleanup",
+      "files": [
+        "core/services/system/maintenance/cleanup_task.py"
+      ],
+      "file_level_blindspot": true,
+      "symbol_level_blindspot": true,
+      "verified": "read-both-sides"
+    },
+    {
+      "title": "Near-duplicate (84%): ensure_schedule_config_snapshot ↔ _build_schedule_config_snapshot_from_runtime_cfg",
+      "files": [
+        "core/models/schedule_config_runtime_coercion.py",
+        "core/services/scheduler/config/config_snapshot.py"
+      ],
+      "file_level_blindspot": false,
+      "symbol_level_blindspot": false,
+      "verified": "read-both-sides"
+    }
+  ]
+}

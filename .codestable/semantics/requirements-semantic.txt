@@ -1,0 +1,5 @@
+# 语义债务审计工具 —— 只装进隔离的 .venv-semantic(Python 3.14),绝不进 requirements.txt。
+# 交付运行环境(Win7/Python 3.8)不依赖任何下列工具。
+hypothesis>=6.112
+syrupy>=4
+drift-analyzer>=2.5    # 需 Python >=3.11,故只能在 .venv-semantic 跑

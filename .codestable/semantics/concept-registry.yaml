@@ -1,0 +1,79 @@
+schema_version: 1
+updated_at: "2026-06-02"
+# 概念身份证中心 —— 关键概念的“规范定义 + 行为合同 + 真理之源 + 禁止含义”。
+# 用途：LLM/人改这些概念前先读这里；工具(drift/property/snapshot)以此为基线判漂移。
+# 注意：source_of_truth 全部经真代码核验(2026-06-02, python3.14 import 通过)。
+
+concepts:
+  - id: plan_role
+    canonical_name: 结果方案角色
+    status: current
+    owner_area: scheduler_result_view
+    definition: >
+      用户查看排产结果时选择的方案角色。它是内部 URL/查询参数，不是用户可见文案。
+      标签映射、合法值集、比较判定全部由 core/models/schedule_plan_role.py 单一承载。
+    allowed_values:
+      adopted:    { user_label: 正式采用方案,           source_table: schedule }
+      baseline_best: { user_label: 原算法代表方案,        source_table: candidate_rows }
+      critical_best: { user_label: 重点工序优先代表方案,  source_table: candidate_rows }
+    failure_policy:
+      # 实测：模型层 plan_role_label() 对未知值返回原值(容忍，纯展示)；
+      # 缺失/空值经 _normalize_role 回落 adopted。
+      # 严格校验发生在 schedule_plan_query_service.resolve_plan_view(ValueError→ValidationError)。
+      missing_value: adopted_at_model_layer
+      unknown_value_strict_resolution: raise_at_resolve_plan_view
+    user_visible_rule: >
+      页面/导出/报表标题/错误消息不得直接展示 plan_role / source_table / candidate_id / scenario_id，
+      必须转中文大白话(ARCHITECTURE.md:65 明文)。
+    canonical_resolver:
+      labels: core/models/schedule_plan_role.py::PLAN_ROLE_LABELS / plan_role_label
+      valid_set: core/models/schedule_plan_role.py::VALID_PLAN_ROLES
+      comparison: core/models/schedule_plan_role.py::is_comparison_role / is_comparison_plan
+      strict_view: core/services/scheduler/schedule_plan_query_service.py::resolve_plan_view
+    source_of_truth:
+      - core/models/schedule_plan_role.py
+      - core/services/scheduler/schedule_plan_query_service.py
+    forbidden_meanings:
+      - "在 core/services/scheduler/ 下新建第二个 plan_role 标签模块(那是 P5 第N套私有实现)"
+      - "把 adopted 之外的角色当成可写现场记录入口(ARCHITECTURE.md:67)"
+
+  - id: graph_analysis_mode
+    canonical_name: 工序图分析模式
+    status: current
+    owner_area: scheduler
+    definition: >
+      调度配置项，控制工序图分析关闭/只报告/参与排产。当前默认 on；
+      on 模式在图可用时参与 ready 队列、图评分和候选方案选择。
+    allowed_values:
+      "off":
+        meaning: 关闭图分析，不导入图模块，不写 graph_analysis 摘要，不要求 NetworkX。
+      report:
+        meaning: 只生成分析摘要，不改变排产结果(只写 result_summary.algo/diagnostics.graph_analysis)。
+      "on":
+        meaning: 图可用时参与排产(ready 队列 + 图评分 + 候选方案自动选择)。
+    runtime_truth: >
+      实测 config_field_spec：field_type=enum, default='on', choices=('off','report','on')。
+      coerce_config_field 对未知值在 strict_mode 下 raise ValidationError[1001]。
+    source_of_truth:
+      - core/services/scheduler/config/config_field_spec.py   # spec/choices/labels
+      - core/services/scheduler/config/config_snapshot.py      # default 'on' (:43)
+      - .codestable/architecture/ARCHITECTURE.md               # 第6节 排产工序图分析现状(:72-78)
+    stale_or_historical_sources:
+      - 开发文档/ADR/0012-networkx-graph-foundation-boundary.md  # 见 SEM-0001：旧口径"不改变排产结果"
+    forbidden_meanings:
+      - "on 只保存配置不执行图分析"
+      - "report/on 永远不改变排产结果(on 已改变；见 ARCHITECTURE.md:78)"
+
+  - id: fallback_degradation
+    canonical_name: 失败、回退与降级语义
+    status: current
+    owner_area: platform
+    soul_line: 坏数据不准静默兜底；宁可暴露错误也不自欺。
+    allowed_classes:
+      silent_swallow:           { meaning: 不可接受的静默吞异常，必须登记并清理 }
+      silent_default_fallback:  { meaning: 无可观测证据回退默认值，必须登记并清理 }
+      observable_degrade:       { meaning: 有日志/事件记录的可观测降级，可接受 }
+      cleanup_best_effort:      { meaning: 清理/关闭类尽力而为失败，可接受但边界须明确 }
+    source_of_truth:
+      - 开发文档/技术债务治理台账.md
+      - tools/quality_gate_scan.py
