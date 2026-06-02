@@ -127,6 +127,40 @@ def test_dashboard_workbench_summary_covers_required_todo_types_and_links() -> N
     assert "必须补录" not in visible_text
 
 
+def test_dashboard_workbench_summary_links_keep_request_batch_and_resource_context() -> None:
+    summary = _build_summary(
+        navigation_context={
+            "date_from": "2026-05-06",
+            "date_to": "2026-05-06",
+            "batch_id": "B-RPT",
+            "resource_type": "machine",
+            "resource_id": "M-RPT",
+            "resource_label": "一号设备",
+        }
+    )
+    todos = _todo_by_kind(summary)
+
+    overdue_url = todos["overdue"]["primary_action"]["url"]
+    utilization_url = todos["resource_overload"]["secondary_action"]["url"]
+    dispatch_url = todos["resource_overload"]["primary_action"]["url"]
+    review_url = todos["site_record_gap"]["primary_action"]["url"]
+
+    assert "version=12" in overdue_url
+    assert "date_from=2026-05-06" in overdue_url
+    assert "batch_id=B-RPT" in overdue_url
+    assert "resource_type=machine" in overdue_url
+    assert "resource_id=M-RPT" in overdue_url
+    assert "resource_type=machine" in utilization_url
+    assert "resource_id=M-RPT" in utilization_url
+    assert "scope_type=machine" in dispatch_url
+    assert "machine_id=M-RPT" in dispatch_url
+    assert "batch_id=B-RPT" in dispatch_url
+    assert "plan_role=adopted" in review_url
+    assert "batch_id=B-RPT" in review_url
+    assert "resource_type=machine" in review_url
+    assert "resource_id=M-RPT" in review_url
+
+
 def test_dashboard_workbench_data_gap_and_resource_load_empty_state_are_plain_chinese() -> None:
     summary = _build_summary(
         overdue_count=0,

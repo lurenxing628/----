@@ -1,0 +1,86 @@
+feature: 2026-06-02-workbench-flow-regression-suite
+roadmap: aps-frontend-workbench
+roadmap_item: workbench-flow-regression-suite
+created: 2026-06-02
+steps:
+  - id: step-1
+    title: 测试骨架
+    action: 新增主流程测试文件，复用首页建库和 HTML 解析思路跑通一条“首页到目标页”路径。
+    exit_signal: 测试能打开首页并访问至少一个目标页。
+    status: done
+  - id: step-2
+    title: 主流程断言
+    action: 补齐分析、甘特、资源派工、超期清单、资源负荷、计划和现场实际的上下文和中文信号断言。
+    exit_signal: 第一版主流程所有路线都有版本、方案、日期、批次或资源上下文证据。
+    status: done
+  - id: step-3
+    title: 护栏断言
+    action: 补非正式方案复盘禁用、内部字段不可见和无法定位中文原因的断言。
+    exit_signal: 非正式入口不会生成可点击复盘，页面可见文本不露内部字段。
+    status: done
+  - id: step-4
+    title: 几何登记
+    action: 补工作台关键页面路径和稳定信号，保持真实浏览器探针职责不变。
+    exit_signal: 几何合同测试能证明关键路径已登记。
+    status: done
+  - id: step-5
+    title: 门禁登记
+    action: 把新测试加入 required registry 和 scheduler required regression group。
+    exit_signal: registry 合同测试证明新测试会被质量门禁覆盖。
+    status: done
+  - id: step-6
+    title: 验证收口
+    action: 运行本 feature 指定 pytest、registry 合同、几何 HTML 合同和质量门禁入口。
+    exit_signal: 指定测试通过，后续 acceptance 能用这些证据逐条核对。
+    status: pending
+checks:
+  - id: check-1
+    title: 范围守护
+    source: 范围守护
+    expect: 不改算法、schema、外部前端依赖，不实现第二阶段增强，不把真实浏览器烟测塞进默认 required tests。
+    status: pending
+  - id: check-2
+    title: 主流程起点
+    source: 验收场景
+    expect: 首页显示计划工作台、首页值班台和今日待处理，并能找到第一版主流程入口。
+    status: pending
+  - id: check-3
+    title: 上下文不丢
+    source: 编排骨架
+    expect: 首页到分析、甘特、资源派工、报表和复盘时保留版本、方案、日期、批次或资源上下文。
+    status: pending
+  - id: check-4
+    title: 甘特双视角
+    source: 验收场景
+    expect: 设备甘特使用 view=machine，人员甘特使用 view=operator，并显示任务详情区。
+    status: pending
+  - id: check-5
+    title: 报表明细回跳
+    source: 验收场景
+    expect: 报表明细行回甘特或资源派工时保留批次或资源上下文，不扩大成全量。
+    status: pending
+  - id: check-6
+    title: 非正式复盘禁用
+    source: 流程级约束
+    expect: 非正式方案上下文下计划和现场实际入口禁用，并给中文原因。
+    status: pending
+  - id: check-7
+    title: 内部字段不可见
+    source: 流程级约束
+    expect: 普通页面可见文本不包含 plan_role、scenario_id、source_table、candidate_id、op_id、schedule_id。
+    status: pending
+  - id: check-8
+    title: 几何路径覆盖
+    source: 验收场景
+    expect: 首页、分析、设备甘特、人员甘特、资源派工、报表中心、超期、资源负荷、计划和现场实际都在几何清单中。
+    status: pending
+  - id: check-9
+    title: 门禁登记
+    source: 挂载点
+    expect: 新主流程测试被 QUALITY_GATE_GUARD_TESTS 和 scheduler required regression group 收录。
+    status: pending
+  - id: check-10
+    title: 文件尺寸
+    source: 流程级约束
+    expect: 本 feature 新增和修改的代码、测试、文档文件不超过 500 行。
+    status: pending

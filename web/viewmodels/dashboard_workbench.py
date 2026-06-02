@@ -104,14 +104,23 @@ def _latest_plan_context(
     *,
     latest_history: Any,
     plan_time_span: Optional[Dict[str, Any]],
+    navigation_context: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     date_from, date_to = _plan_dates(plan_time_span)
     version = _version_value(latest_history)
+    filters = dict(navigation_context or {})
     return build_workbench_plan_context(
         version=version,
         plan_role=ROLE_ADOPTED,
-        date_from=date_from or None,
-        date_to=date_to or None,
+        date_from=_text(filters.get("date_from")) or date_from or None,
+        date_to=_text(filters.get("date_to")) or date_to or None,
+        query_date=_text(filters.get("query_date")) or None,
+        period_preset=_text(filters.get("period_preset")) or None,
+        batch_id=_text(filters.get("batch_id")) or None,
+        resource_type=_text(filters.get("resource_type")) or None,
+        resource_id=_text(filters.get("resource_id")) or None,
+        resource_label=_text(filters.get("resource_label")),
+        back_to=_text(filters.get("back_to")) or None,
         can_write_feedback=True if version else False,
     )
 
@@ -419,6 +428,7 @@ def build_dashboard_workbench_summary(
     today_rows_load_error: str = "",
     execution_facts_by_op_id: Optional[Dict[int, Any]] = None,
     execution_facts_load_error: str = "",
+    navigation_context: Optional[Dict[str, Any]] = None,
     now: Optional[datetime] = None,
 ) -> Dict[str, Any]:
     current_now = now or datetime.now()
@@ -426,7 +436,11 @@ def build_dashboard_workbench_summary(
     facts = dict(execution_facts_by_op_id or {})
     rows_load_error = _text(today_rows_load_error)
     facts_load_error = _text(execution_facts_load_error)
-    context = _latest_plan_context(latest_history=latest_history, plan_time_span=plan_time_span)
+    context = _latest_plan_context(
+        latest_history=latest_history,
+        plan_time_span=plan_time_span,
+        navigation_context=navigation_context,
+    )
     site_gap_rows = []
     if not rows_load_error and not facts_load_error:
         site_gap_rows = _site_record_gap_rows(

@@ -3,7 +3,12 @@ from __future__ import annotations
 from typing import Dict, Tuple
 
 UI_GEOMETRY_PAGE_PATHS: Tuple[str, ...] = (
+    "/?version=1&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-06&batch_id=B_UI_GEOMETRY&resource_type=machine&resource_id=M_UI_GEOMETRY",
     "/scheduler/?status=pending",
+    "/scheduler/analysis?version=1&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-06&batch_id=B_UI_GEOMETRY&resource_type=machine&resource_id=M_UI_GEOMETRY",
+    "/scheduler/gantt?view=machine&version=1&plan_role=adopted&start_date=2026-05-06&end_date=2026-05-06&gantt_batch=B_UI_GEOMETRY&gantt_resource=M_UI_GEOMETRY",
+    "/scheduler/gantt?view=operator&version=1&plan_role=adopted&start_date=2026-05-06&end_date=2026-05-06&gantt_batch=B_UI_GEOMETRY&gantt_resource=O_UI_GEOMETRY",
+    "/scheduler/resource-dispatch?version=1&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-06&scope_type=machine&machine_id=M_UI_GEOMETRY&batch_id=B_UI_GEOMETRY",
     "/scheduler/config",
     "/scheduler/batches",
     "/scheduler/excel/batches",
@@ -36,6 +41,12 @@ ERROR_PAGE_KEYWORDS: Tuple[str, ...] = (
 )
 
 EXPECTED_PAGE_SIGNALS: Dict[str, Dict[str, object]] = {
+    "/?version=1&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-06&batch_id=B_UI_GEOMETRY&resource_type=machine&resource_id=M_UI_GEOMETRY": {
+        "path": "/?version=1&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-06&batch_id=B_UI_GEOMETRY&resource_type=machine&resource_id=M_UI_GEOMETRY",
+        "stable_texts": ["首页值班台", "今日待处理"],
+        "diagnostic_texts": [],
+        "ids": ["dashboard-workbench-title"],
+    },
     "/scheduler/?status=pending": {
         "path": "/scheduler/?status=pending",
         "stable_texts": ["排产调度", "批次列表", "排产操作"],
@@ -47,6 +58,30 @@ EXPECTED_PAGE_SIGNALS: Dict[str, Dict[str, object]] = {
         "stable_texts": ["排产高级设置", "保存当前设置"],
         "diagnostic_texts": [],
         "ids": ["freezeWindowEnabled", "preferPrimarySkill", "enforceReadyDefault", "autoAssignEnabled", "orToolsEnabled"],
+    },
+    "/scheduler/analysis?version=1&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-06&batch_id=B_UI_GEOMETRY&resource_type=machine&resource_id=M_UI_GEOMETRY": {
+        "path": "/scheduler/analysis?version=1&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-06&batch_id=B_UI_GEOMETRY&resource_type=machine&resource_id=M_UI_GEOMETRY",
+        "stable_texts": ["排产优化分析", "方案对比", "排产分析行动入口"],
+        "diagnostic_texts": [],
+        "ids": ["schedulerAnalysisWorkbench"],
+    },
+    "/scheduler/gantt?view=machine&version=1&plan_role=adopted&start_date=2026-05-06&end_date=2026-05-06&gantt_batch=B_UI_GEOMETRY&gantt_resource=M_UI_GEOMETRY": {
+        "path": "/scheduler/gantt?view=machine&version=1&plan_role=adopted&start_date=2026-05-06&end_date=2026-05-06&gantt_batch=B_UI_GEOMETRY&gantt_resource=M_UI_GEOMETRY",
+        "stable_texts": ["甘特图", "任务详情", "点击甘特条查看任务详情"],
+        "diagnostic_texts": [],
+        "ids": ["ganttTaskDetail"],
+    },
+    "/scheduler/gantt?view=operator&version=1&plan_role=adopted&start_date=2026-05-06&end_date=2026-05-06&gantt_batch=B_UI_GEOMETRY&gantt_resource=O_UI_GEOMETRY": {
+        "path": "/scheduler/gantt?view=operator&version=1&plan_role=adopted&start_date=2026-05-06&end_date=2026-05-06&gantt_batch=B_UI_GEOMETRY&gantt_resource=O_UI_GEOMETRY",
+        "stable_texts": ["甘特图", "任务详情", "点击甘特条查看任务详情"],
+        "diagnostic_texts": [],
+        "ids": ["ganttTaskDetail"],
+    },
+    "/scheduler/resource-dispatch?version=1&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-06&scope_type=machine&machine_id=M_UI_GEOMETRY&batch_id=B_UI_GEOMETRY": {
+        "path": "/scheduler/resource-dispatch?version=1&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-06&scope_type=machine&machine_id=M_UI_GEOMETRY&batch_id=B_UI_GEOMETRY",
+        "stable_texts": ["资源排班", "任务明细", "现场记录"],
+        "diagnostic_texts": [],
+        "ids": ["rdTabExecution"],
     },
     "/scheduler/batches": {
         "path": "/scheduler/batches",

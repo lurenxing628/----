@@ -3,10 +3,11 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Tuple
 
-from flask import Blueprint, current_app, g
+from flask import Blueprint, current_app, g, request
 
 from core.models.schedule_plan_role import ROLE_ADOPTED
 from core.services.scheduler.execution_fact_provider import ExecutionFactProvider
+from web.request_resource_context import request_report_resource_context
 from web.routes.history_summary_logging import log_history_summary_parse_warning
 from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.dashboard_workbench import build_dashboard_workbench_summary
@@ -85,6 +86,25 @@ def _load_execution_facts(rows: List[Dict[str, Any]]) -> Tuple[Dict[int, Any], s
         return {}, "现场执行事实读取失败，首页暂时不能判断哪些任务现场情况待确认。"
 
 
+def _request_arg(name: str) -> str:
+    return str(request.args.get(name) or "").strip()
+
+
+def _workbench_navigation_context_from_request() -> Dict[str, Any]:
+    resource = request_report_resource_context()
+    return {
+        "date_from": _request_arg("date_from") or _request_arg("start_date"),
+        "date_to": _request_arg("date_to") or _request_arg("end_date"),
+        "query_date": _request_arg("query_date"),
+        "period_preset": _request_arg("period_preset"),
+        "batch_id": _request_arg("batch_id"),
+        "resource_type": resource["resource_type"],
+        "resource_id": resource["resource_id"],
+        "resource_label": resource["resource_label"],
+        "back_to": _request_arg("back_to"),
+    }
+
+
 @bp.get("/")
 def index():
     services = g.services
@@ -136,6 +156,7 @@ def index():
         today_rows_load_error=today_rows_load_error,
         execution_facts_by_op_id=execution_facts_by_op_id,
         execution_facts_load_error=execution_facts_load_error,
+        navigation_context=_workbench_navigation_context_from_request(),
         now=now,
     )
 
