@@ -55,6 +55,16 @@ def test_reports_and_geometry_split_files_are_group_scopes() -> None:
     assert GEOMETRY_SPLIT_SCOPES <= set(ui_group["input_file_scopes"])
 
 
+def test_workbench_flow_regression_is_required_and_grouped() -> None:
+    from tools import quality_gate_shared
+
+    test_path = "tests/regression_aps_workbench_flow_contract.py"
+    scheduler_group = _group("scheduler_analysis_gantt_reports_week_plan")
+
+    assert test_path in quality_gate_shared.QUALITY_GATE_REQUIRED_TESTS
+    assert test_path in set(scheduler_group["target_paths"])
+
+
 def test_quality_gate_ignored_runtime_outputs_are_blocked_by_git_hook() -> None:
     gitignore_source = Path(".gitignore").read_text(encoding="utf-8")
     blocked = git_hook_checks._blocked_paths(

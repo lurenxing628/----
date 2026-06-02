@@ -96,6 +96,7 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/regression_reports_layout_contract.py",
     "tests/regression_web_silent_fallback_contract.py",
     "tests/regression_plan_vs_actual_review.py",
+    "tests/regression_aps_workbench_flow_contract.py",
     "tests/regression_scheduler_workbench_links_contract.py",
     "tests/regression_scheduler_workbench_link_guardrails.py",
     "tests/regression_workbench_nav_entry_contract.py",
@@ -198,6 +199,7 @@ TEST_ONLY_HELPER_IMPACT = {
     ),
     "tests/reports_workbench_backlink_helpers.py": (
         "tests/regression_report_context_filters_contract.py",
+        "tests/regression_aps_workbench_flow_contract.py",
         "tests/regression_reports_workbench_backlink_contract.py",
         "tests/regression_reports_workbench_navigation_contract.py",
     ),

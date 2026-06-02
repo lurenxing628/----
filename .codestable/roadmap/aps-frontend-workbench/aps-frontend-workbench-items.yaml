@@ -317,8 +317,8 @@ items:
       gantt-task-detail-panel: 测试要覆盖甘特详情区。
       resource-dispatch-execution-lane: 测试要覆盖资源派工和现场记录入口。
       reports-workbench-backlink: 测试要覆盖报表不是死胡同，能回甘特、资源派工和复盘。
-    status: planned
-    feature: null
+    status: in-progress
+    feature: 2026-06-02-workbench-flow-regression-suite
     minimal_loop: false
     primary_paths:
       - tests/regression_aps_workbench_flow_contract.py
