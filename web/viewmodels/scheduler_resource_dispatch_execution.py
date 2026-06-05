@@ -19,8 +19,8 @@ from core.models.operation_execution_labels import (
     suggest_reschedule_label,
 )
 from core.models.operation_execution_state import OperationExecutionState
+from core.models.resource_dispatch_execution_tokens import execution_state_key, execution_task_key
 from core.models.resource_identity import ResourceIdentity, build_resource_identity
-from core.services.scheduler.resource_dispatch_execution_tokens import execution_state_key, execution_task_key
 
 _FEEDBACK_DISABLED_REASON = "现场记录保护还没开启，暂不能填写现场记录。"
 _NOT_CURRENT_OFFICIAL_REASON = "当前不是最新正式采用方案，不能填写现场记录。"

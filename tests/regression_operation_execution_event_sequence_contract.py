@@ -13,8 +13,8 @@ from core.models.operation_execution_event import (
     OperationExecutionEvent,
     validate_operation_execution_event_sequence,
 )
+from core.models.resource_dispatch_execution_tokens import execution_task_key
 from core.services.scheduler.operation_execution_scope_read import scope_from_plan_row
-from core.services.scheduler.resource_dispatch_execution_tokens import execution_task_key
 from data.repositories import OperationExecutionEventRepo
 from data.repositories.operation_execution_state_builder import build_operation_execution_state
 from tests.regression_operation_execution_event_foundation import (

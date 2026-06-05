@@ -139,6 +139,38 @@ def _metric_points(rows: List[Dict[str, Any]], key: str) -> List[Tuple[int, floa
     return points
 
 
+def _trend_history_dict(h: Any) -> Dict[str, Any]:
+    return h.to_dict() if hasattr(h, "to_dict") else (h if isinstance(h, dict) else {})
+
+
+def _trend_row_state(
+    d: Dict[str, Any],
+    *,
+    extract_metrics_from_summary,
+) -> Optional[Tuple[int, Dict[str, Any]]]:
+    ver, ver_parse_failed = _int_state(d.get("version"))
+    if ver_parse_failed:
+        return None
+    ver = int(ver or 0)
+    if ver <= 0:
+        return None
+    summary = safe_load_json(d.get("result_summary") or "")
+    metrics = extract_metrics_from_summary(summary) or None
+    if not metrics:
+        return None
+    algo = summary.get("algo") if isinstance(summary, dict) else None
+    algo = algo if isinstance(algo, dict) else {}
+    return ver, {
+        "version": int(ver),
+        "schedule_time": d.get("schedule_time"),
+        "strategy": d.get("strategy"),
+        "result_status": d.get("result_status"),
+        "algo_mode": algo.get("mode"),
+        "objective": algo.get("objective"),
+        "metrics": metrics,
+    }
+
+
 def build_trend_rows(
     raw_hist: List[Any],
     *,
@@ -146,28 +178,13 @@ def build_trend_rows(
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     by_ver: Dict[int, Dict[str, Any]] = {}
     for h in raw_hist or []:
-        d = h.to_dict() if hasattr(h, "to_dict") else (h if isinstance(h, dict) else {})
-        ver, ver_parse_failed = _int_state(d.get("version"))
-        if ver_parse_failed:
+        state = _trend_row_state(_trend_history_dict(h), extract_metrics_from_summary=extract_metrics_from_summary)
+        if state is None:
             continue
-        ver = int(ver or 0)
-        if ver <= 0 or ver in by_ver:
+        ver, row = state
+        if ver in by_ver:
             continue
-        summary = safe_load_json(d.get("result_summary") or "")
-        metrics = extract_metrics_from_summary(summary) or None
-        if not metrics:
-            continue
-        algo = summary.get("algo") if isinstance(summary, dict) else None
-        algo = algo if isinstance(algo, dict) else {}
-        by_ver[int(ver)] = {
-            "version": int(ver),
-            "schedule_time": d.get("schedule_time"),
-            "strategy": d.get("strategy"),
-            "result_status": d.get("result_status"),
-            "algo_mode": algo.get("mode"),
-            "objective": algo.get("objective"),
-            "metrics": metrics,
-        }
+        by_ver[ver] = row
 
     trend_all = sorted(by_ver.values(), key=lambda x: int(x.get("version") or 0))
     trend_rows = trend_all[-30:] if len(trend_all) > 30 else trend_all
