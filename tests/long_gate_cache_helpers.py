@@ -118,26 +118,6 @@ def _patch_gate_environment(monkeypatch, module, repo_root: Path, *, statuses: S
     monkeypatch.setattr(module, "_assert_pyright_tools_coverage", lambda: None)
     monkeypatch.setattr(module, "_assert_pyright_tools_config_matches_tool_paths", lambda: None)
     monkeypatch.setattr(module, "pytest_distribution_version", lambda strict=False: "pytest 8.3.5")
-    monkeypatch.setattr(
-        fingerprint_mod,
-        "_chrome_executable_resolution",
-        lambda strict=False, environment=None: "/stable/chrome",
-    )
-    monkeypatch.setattr(
-        fingerprint_mod,
-        "_chrome_version",
-        lambda strict=False, environment=None: "Stable Chrome 120.0.0.0",
-    )
-    monkeypatch.setattr(
-        fingerprint_mod,
-        "_chrome_executable_identity",
-        lambda strict=False, environment=None: "stable-chrome-identity",
-    )
-    monkeypatch.setattr(
-        fingerprint_mod,
-        "_chrome_headless_preflight",
-        lambda strict=False, environment=None: "stable-headless-preflight",
-    )
     monkeypatch.setattr(fingerprint_mod, "_git_executable_realpath", lambda environment=None: "/stable/git")
     monkeypatch.setattr(fingerprint_mod, "_git_version", lambda strict=False, environment=None: "git version 2.50.0")
     monkeypatch.setattr(fingerprint_mod, "_node_executable_realpath", lambda environment=None: "/stable/node")

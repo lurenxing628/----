@@ -191,9 +191,9 @@ def test_required_parent_scope_includes_group_specific_scope_union():
     assert "git_executable_realpath" in required_entry["env_keys"]
     assert "git_version" in required_entry["env_keys"]
     assert "APS_BROWSER_SMOKE_REQUIRED" in required_entry["env_keys"]
-    assert "chrome_version" in required_entry["env_keys"]
-    assert "chrome_executable_identity" in required_entry["env_keys"]
-    assert "chrome_headless_preflight" in required_entry["env_keys"]
+    assert "chrome_version" not in required_entry["env_keys"]
+    assert "chrome_executable_identity" not in required_entry["env_keys"]
+    assert "chrome_headless_preflight" not in required_entry["env_keys"]
     assert "tests/ui_geometry_contract_data.py" in required_entry["input_file_scopes"]
     assert ".gitignore" in required_entry["config_file_scopes"]
     assert required_entry["output_result_files"] == ["evidence/QualityGate/required_regressions.json"]
@@ -409,10 +409,6 @@ def test_collect_full_test_debt_static_gate_required_startup_and_quickref_entrie
         "APS_CHROME_PATH",
         "git_executable_realpath",
         "git_version",
-        "chrome_executable_resolution",
-        "chrome_version",
-        "chrome_executable_identity",
-        "chrome_headless_preflight",
         "node_executable_realpath",
         "node_version",
         "node_browser_runtime_capability",

@@ -173,10 +173,6 @@ def test_required_scope_tracks_real_inputs_without_unrelated_markdown(tmp_path):
         "git_version",
         "APS_CHROME_PATH",
         "APS_BROWSER_SMOKE_REQUIRED",
-        "chrome_executable_resolution",
-        "chrome_version",
-        "chrome_executable_identity",
-        "chrome_headless_preflight",
         "node_executable_realpath",
         "node_version",
         "node_browser_runtime_capability",
@@ -417,22 +413,6 @@ def test_required_fingerprint_ignores_irrelevant_path_append(monkeypatch, tmp_pa
     assert before["hash"] == after["hash"]
 
 
-@pytest.mark.parametrize("entry_id", [ENTRY_REQUIRED_REGRESSIONS, "full_test_debt"])
-def test_browser_runtime_fingerprint_changes_update_cache_key(monkeypatch, tmp_path, entry_id):
-    repo_root = tmp_path / "repo"
-    repo_root.mkdir()
-    command_plan = _real_quality_gate_plan()
-    monkeypatch.setattr(fingerprint_mod, "_chrome_version", lambda strict=False, environment=None: "Chrome 1")
-    monkeypatch.setattr(fingerprint_mod, "_chrome_executable_identity", lambda strict=False, environment=None: "identity-1")
-    monkeypatch.setattr(fingerprint_mod, "_chrome_headless_preflight", lambda strict=False, environment=None: "preflight-1")
-    before = _fingerprint_for(command_plan, repo_root, entry_id)
-
-    monkeypatch.setattr(fingerprint_mod, "_chrome_version", lambda strict=False, environment=None: "Chrome 2")
-    monkeypatch.setattr(fingerprint_mod, "_chrome_executable_identity", lambda strict=False, environment=None: "identity-2")
-    monkeypatch.setattr(fingerprint_mod, "_chrome_headless_preflight", lambda strict=False, environment=None: "preflight-2")
-    after = _fingerprint_for(command_plan, repo_root, entry_id)
-
-    assert before["hash"] != after["hash"]
 
 
 def test_required_gitignore_change_reruns_parent(monkeypatch, tmp_path):

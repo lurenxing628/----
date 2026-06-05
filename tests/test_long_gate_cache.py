@@ -260,20 +260,6 @@ def test_fingerprint_entry_uses_env_overlay_for_command_and_environment(tmp_path
     assert changed["hash"] != first["hash"]
 
 
-def test_fingerprint_entry_uses_env_overlay_for_chrome_resolution(tmp_path, monkeypatch):
-    entry = _entry([])
-    entry["env_keys"] = ["APS_CHROME_PATH", "chrome_executable_resolution", "chrome_version"]
-    entry["env_overlay"] = {"APS_CHROME_PATH": sys.executable}
-    entry["command_hash"] = fingerprint_command(entry)
-    monkeypatch.setenv("APS_CHROME_PATH", str(tmp_path / "missing-outer-chrome"))
-
-    fingerprint = fingerprint_entry(entry, str(tmp_path))
-    values = fingerprint["components"]["environment"]["values"]
-
-    assert values["APS_CHROME_PATH"] == sys.executable
-    assert values["chrome_executable_resolution"] == os.path.realpath(sys.executable)
-    assert values["chrome_version"]
-    assert "missing-outer-chrome" not in values["chrome_executable_resolution"]
 
 
 def test_fingerprint_entry_uses_env_overlay_path_for_node(tmp_path, monkeypatch):
@@ -340,50 +326,10 @@ def test_fingerprint_entry_changes_when_runtime_facts_change(tmp_path, monkeypat
     assert changed["hash"] != first["hash"]
 
 
-def test_fingerprint_chrome_explicit_bad_path_does_not_fallback(tmp_path, monkeypatch):
-    fallback = tmp_path / "google-chrome"
-    fallback.write_text("fallback\n", encoding="utf-8")
-    monkeypatch.setenv("APS_CHROME_PATH", str(tmp_path / "missing-chrome"))
-    monkeypatch.setattr(fingerprint_mod.shutil, "which", lambda _name: str(fallback))
-    entry = _entry()
-    entry["env_keys"] = ["chrome_executable_resolution"]
-
-    fingerprint = fingerprint_entry(entry, str(tmp_path))
-
-    assert fingerprint["components"]["environment"]["values"]["chrome_executable_resolution"].startswith(
-        "__bad_aps_chrome_path__"
-    )
-    with pytest.raises(LongGateFingerprintError, match="APS_CHROME_PATH does not exist"):
-        fingerprint_mod._chrome_executable_resolution(strict=True)
 
 
-def test_fingerprint_chrome_version_changes_hash(tmp_path, monkeypatch):
-    source = tmp_path / "tools" / "example.py"
-    source.parent.mkdir()
-    source.write_text("print('ok')\n", encoding="utf-8")
-    entry = _entry(["tools/example.py"])
-    entry["env_keys"] = ["chrome_version"]
-    monkeypatch.setattr(fingerprint_mod, "_chrome_version", lambda strict=False, environment=None: "Chrome 1")
-
-    first = fingerprint_entry(entry, str(tmp_path))
-    monkeypatch.setattr(fingerprint_mod, "_chrome_version", lambda strict=False, environment=None: "Chrome 2")
-    changed = fingerprint_entry(entry, str(tmp_path))
-
-    assert changed["hash"] != first["hash"]
 
 
-def test_fingerprint_chrome_executable_identity_tracks_file_change(tmp_path, monkeypatch):
-    chrome = tmp_path / "fake-chrome"
-    chrome.write_text("one\n", encoding="utf-8")
-    monkeypatch.setenv("APS_CHROME_PATH", str(chrome))
-    entry = _entry()
-    entry["env_keys"] = ["chrome_executable_identity"]
-
-    first = fingerprint_entry(entry, str(tmp_path))
-    chrome.write_text("one plus more bytes\n", encoding="utf-8")
-    changed = fingerprint_entry(entry, str(tmp_path))
-
-    assert changed["hash"] != first["hash"]
 
 
 def test_fingerprint_entry_changes_when_output_result_files_change(tmp_path):
