@@ -2,6 +2,7 @@
 
 > 装配主笔产物（只读不改任何 .py）。HEAD 基线 c2aa7501（部分回炉裁定基线 b08162cd，已在对应处标注）。
 > **✅ 2026-06-05 状态更新：§3 全部 38 条 owner 闸门已逐条裁定**（裁决与落地要点见同目录 `OWNER-DECISIONS-2026-06-05.md`；其中 O23 改裁保留、O26 裁第三选项 C 全收口、O08 随 O07 消解）。裁定单元现可锁 patch、按 §1 批次序列进执行；下文铁律 5 的「待裁」约束对已裁单元解除。
+> **⚠️ 2026-06-05 晚增量：产物入库时另有 3 个门禁修复提交触碰债务锚点**——R09 家 tokens 副本已搬至 `core/models/`（路径级漂移）、LB02/LB05 宿主行号整体上移 ~17。执行前必读同目录 `ANCHOR-DRIFT-2026-06-05-POSTCOMMIT.md`（结论：38 裁定与批次序全部不变）。
 > 本计划的价值不是「怎么修」，而是「按什么顺序修、哪些必须一起改、哪些碰都不能碰、每批修完怎么验证没炸」。
 > 输入：_interference_rebuilt.md（42 原子簇 + 13 H 硬边 + ROOT/A/B/C/D 草案）、_layer3_explosion.md（11 标红债 + 6 硬阻断新爆点 + 12 簇 go-no-go + 23 新爆点）、redteam/verdict_V1..V5.md（12 回炉争议已拍定）、_layer1_corrections.md + _layer2_residual.md、dossiers/{id}.md ×73。
 >
