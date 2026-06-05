@@ -1,9 +1,8 @@
-"""回归测试：architecture_scan_cache 文件级缓存的失效与复用契约——缓存未命中/内容变更/新增文件只重扫受影响文件，未变文件复用 fact（generated_at 不参与命中），元数据(scanner/schema/python/radon 版本)或单文件 sha 或必填字段被篡改即触发重扫；并守护 silent_fallback id 仅在聚合层赋予、ledger 校验按 fact_kinds 分桶取缓存，以及 architecture_fitness 长门禁保持 planned/不可复用且其缓存产物被 git hook 拦截提交。"""
+"""回归测试：architecture_scan_cache 塌缩后的直扫门面契约——scan_files_with_cache 对每个请求路径直扫并保持旧签名（cache_path/force 为无作用遗留参数、绝不再写磁盘缓存文件）、fact 字段齐备且 silent 处理器不带 id（id 仅在聚合层赋予并与直扫结果一致）、architecture_scan_cache_metadata 保持指纹系统依赖的字段集；并守护 ledger 校验/刷新按 fact_kinds 分桶调用扫描门面、architecture_fitness 长门禁保持 planned/不可复用且新旧缓存产物路径仍被 git hook 拦截提交。"""
 
 from __future__ import annotations
 
 import copy
-import json
 from pathlib import Path
 from typing import Dict, List, Tuple
 
@@ -55,14 +54,6 @@ def _context(sources: Dict[str, str]) -> ScanContext:
     )
 
 
-def _read_cache(cache_path: Path) -> dict:
-    return json.loads(cache_path.read_text(encoding="utf-8"))
-
-
-def _write_cache(cache_path: Path, payload: dict) -> None:
-    cache_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-
-
 def _spy_single_file_scan(monkeypatch) -> List[str]:
     calls: List[str] = []
     original = scan_cache.scan_single_file_architecture_fact
@@ -75,187 +66,86 @@ def _spy_single_file_scan(monkeypatch) -> List[str]:
     return calls
 
 
-def test_cache_miss_scans_single_file_and_writes_fact(tmp_path: Path, monkeypatch) -> None:
+def test_scan_returns_valid_fact_and_never_writes_cache_file(tmp_path: Path, monkeypatch) -> None:
     sources = {"core/services/example.py": _source()}
     cache_path = tmp_path / "architecture_scan_cache.json"
     calls = _spy_single_file_scan(monkeypatch)
 
-    facts = scan_cache.scan_files_with_cache(["core/services/example.py"], cache_path=str(cache_path), context=_context(sources))
+    facts = scan_cache.scan_files_with_cache(
+        ["core/services/example.py"], cache_path=str(cache_path), context=_context(sources)
+    )
 
     assert calls == ["core/services/example.py"]
-    assert cache_path.exists()
-    payload = _read_cache(cache_path)
-    assert payload["schema_version"] == scan_cache.ARCHITECTURE_SCAN_CACHE_SCHEMA_VERSION
-    assert payload["scanner_version_hash"]
-    assert payload["scanner_schema_version"] == scan_cache.ARCHITECTURE_SCAN_FACT_SCHEMA_VERSION
-    assert payload["python_version"]
-    assert payload["radon_version_or_behavior_hash"]
-    row = payload["files"]["core/services/example.py"]
-    assert row["file_sha256"]
-    assert row["fact"] == facts[0]
-    assert row["fact"]["silent_fallback_handlers_without_global_id"]
-    assert "id" not in row["fact"]["silent_fallback_handlers_without_global_id"][0]
+    assert not cache_path.exists(), "塌缩后绝不再写磁盘缓存文件"
+    fact = facts[0]
+    assert fact["schema_version"] == scan_cache.ARCHITECTURE_SCAN_FACT_SCHEMA_VERSION
+    assert fact["path"] == "core/services/example.py"
+    assert sorted(fact["fact_kinds"]) == ["complexity", "repository", "request", "silent"]
+    assert fact["line_count"] > 0
+    assert fact["silent_fallback_handlers_without_global_id"]
+    assert "id" not in fact["silent_fallback_handlers_without_global_id"][0]
+    assert fact["request_service_direct_assembly_entries"]
+    assert fact["repository_bundle_drift_entries"]
+
+    # force=True 是塌缩前遗留参数：结果一致，也不产生缓存文件
+    forced = scan_cache.scan_files_with_cache(
+        ["core/services/example.py"], cache_path=str(cache_path), force=True, context=_context(sources)
+    )
+    assert forced == facts
+    assert not cache_path.exists()
 
 
-def test_unchanged_file_reuses_fact_and_generated_at_is_only_record(tmp_path: Path, monkeypatch) -> None:
-    sources = {"core/services/example.py": _source()}
-    cache_path = tmp_path / "architecture_scan_cache.json"
-    first_calls = _spy_single_file_scan(monkeypatch)
-    first_facts = scan_cache.scan_files_with_cache(["core/services/example.py"], cache_path=str(cache_path), context=_context(sources))
-    assert first_calls == ["core/services/example.py"]
-
-    payload = _read_cache(cache_path)
-    payload["generated_at"] = "1999-01-01T00:00:00+08:00"
-    _write_cache(cache_path, payload)
-    second_calls = _spy_single_file_scan(monkeypatch)
-    second_facts = scan_cache.scan_files_with_cache(["core/services/example.py"], cache_path=str(cache_path), context=_context(sources))
-
-    assert second_calls == []
-    assert second_facts == first_facts
-
-
-def test_file_content_change_rescans_only_that_file(tmp_path: Path, monkeypatch) -> None:
+def test_every_call_rescans_each_requested_path(monkeypatch) -> None:
     sources = {
         "core/services/example.py": _source(),
         "core/services/other.py": "def other():\n    return 1\n",
     }
-    cache_path = tmp_path / "architecture_scan_cache.json"
-    scan_cache.scan_files_with_cache(sorted(sources), cache_path=str(cache_path), context=_context(sources))
-    sources["core/services/example.py"] = _source(marker="changed")
     calls = _spy_single_file_scan(monkeypatch)
 
-    scan_cache.scan_files_with_cache(sorted(sources), cache_path=str(cache_path), context=_context(sources))
+    scan_cache.scan_files_with_cache(sorted(sources), context=_context(sources))
+    scan_cache.scan_files_with_cache(["core/services/example.py"], context=_context(sources))
 
-    assert calls == ["core/services/example.py"]
+    assert calls == [
+        "core/services/example.py",
+        "core/services/other.py",
+        "core/services/example.py",
+    ]
 
 
-def test_added_file_enters_aggregate_and_deleted_file_is_ignored(tmp_path: Path, monkeypatch) -> None:
-    sources = {"core/services/example.py": _source()}
-    cache_path = tmp_path / "architecture_scan_cache.json"
-    scan_cache.scan_files_with_cache(["core/services/example.py"], cache_path=str(cache_path), context=_context(sources))
-    sources["core/services/added.py"] = _complex_source()
-    calls = _spy_single_file_scan(monkeypatch)
+def test_scan_scope_controls_aggregate_membership(tmp_path: Path) -> None:
+    sources = {
+        "core/services/example.py": _source(),
+        "core/services/added.py": _complex_source(),
+    }
 
-    facts = scan_cache.scan_files_with_cache(sorted(sources), cache_path=str(cache_path), context=_context(sources))
+    facts = scan_cache.scan_files_with_cache(sorted(sources), context=_context(sources))
     aggregate = scan_cache.aggregate_architecture_scan(facts)
-
-    assert calls == ["core/services/added.py"]
     assert any(str(item.get("path")) == "core/services/added.py" for item in aggregate["complexity_entries"])
 
-    remaining_facts = scan_cache.scan_files_with_cache(
-        ["core/services/example.py"],
-        cache_path=str(cache_path),
-        context=_context(sources),
-    )
+    remaining_facts = scan_cache.scan_files_with_cache(["core/services/example.py"], context=_context(sources))
     remaining_aggregate = scan_cache.aggregate_architecture_scan(remaining_facts, include_all_complexity=True)
     paths = {str(item.get("path")) for item in remaining_aggregate["complexity_entries"]}
     assert "core/services/added.py" not in paths
 
 
-def test_bad_cache_json_missing_fields_and_file_sha_mismatch_rescan(tmp_path: Path, monkeypatch) -> None:
-    sources = {"core/services/example.py": _source()}
-    cache_path = tmp_path / "architecture_scan_cache.json"
+def test_metadata_keeps_fingerprint_fields(tmp_path: Path) -> None:
+    metadata = scan_cache.architecture_scan_cache_metadata()
 
-    cache_path.write_text("{not json", encoding="utf-8")
-    corrupt_calls = _spy_single_file_scan(monkeypatch)
-    scan_cache.scan_files_with_cache(["core/services/example.py"], cache_path=str(cache_path), context=_context(sources))
-    assert corrupt_calls == ["core/services/example.py"]
-
-    payload = _read_cache(cache_path)
-    payload.pop("files")
-    _write_cache(cache_path, payload)
-    missing_top_calls = _spy_single_file_scan(monkeypatch)
-    scan_cache.scan_files_with_cache(["core/services/example.py"], cache_path=str(cache_path), context=_context(sources))
-    assert missing_top_calls == ["core/services/example.py"]
-
-    payload = _read_cache(cache_path)
-    payload.pop("generated_at")
-    _write_cache(cache_path, payload)
-    missing_generated_at_calls = _spy_single_file_scan(monkeypatch)
-    scan_cache.scan_files_with_cache(["core/services/example.py"], cache_path=str(cache_path), context=_context(sources))
-    assert missing_generated_at_calls == ["core/services/example.py"]
-
-    payload = _read_cache(cache_path)
-    payload["files"]["core/services/example.py"]["fact"].pop("line_count")
-    _write_cache(cache_path, payload)
-    missing_fact_calls = _spy_single_file_scan(monkeypatch)
-    scan_cache.scan_files_with_cache(["core/services/example.py"], cache_path=str(cache_path), context=_context(sources))
-    assert missing_fact_calls == ["core/services/example.py"]
-
-    payload = _read_cache(cache_path)
-    payload["files"]["core/services/example.py"]["fact"]["fact_kinds"] = ["not_a_kind"]
-    _write_cache(cache_path, payload)
-    unknown_kind_calls = _spy_single_file_scan(monkeypatch)
-    scan_cache.scan_files_with_cache(["core/services/example.py"], cache_path=str(cache_path), context=_context(sources))
-    assert unknown_kind_calls == ["core/services/example.py"]
-
-    detail_mutations = [
-        ("silent_fallback_handlers_without_global_id", "handler_context_hash"),
-        ("complexity_blocks_all", "current_value"),
-        ("request_service_direct_assembly_entries", "target"),
-        ("repository_bundle_drift_entries", "chain"),
-    ]
-    for field, missing_field in detail_mutations:
-        payload = _read_cache(cache_path)
-        row = payload["files"]["core/services/example.py"]["fact"]
-        assert row[field]
-        row[field][0].pop(missing_field)
-        _write_cache(cache_path, payload)
-        detail_calls = _spy_single_file_scan(monkeypatch)
-        scan_cache.scan_files_with_cache(
-            ["core/services/example.py"],
-            cache_path=str(cache_path),
-            context=_context(sources),
-        )
-        assert detail_calls == ["core/services/example.py"]
-
-    payload = _read_cache(cache_path)
-    payload["files"]["core/services/example.py"]["file_sha256"] = "bad"
-    _write_cache(cache_path, payload)
-    bad_sha_calls = _spy_single_file_scan(monkeypatch)
-    scan_cache.scan_files_with_cache(["core/services/example.py"], cache_path=str(cache_path), context=_context(sources))
-    assert bad_sha_calls == ["core/services/example.py"]
+    assert metadata["schema_version"] == scan_cache.ARCHITECTURE_SCAN_CACHE_SCHEMA_VERSION
+    assert metadata["scanner_schema_version"] == scan_cache.ARCHITECTURE_SCAN_FACT_SCHEMA_VERSION
+    assert metadata["scanner_version_hash"]
+    assert metadata["python_version"]
+    assert metadata["radon_version_or_behavior_hash"]
+    assert set(metadata) == {
+        "schema_version",
+        "scanner_version_hash",
+        "scanner_schema_version",
+        "python_version",
+        "radon_version_or_behavior_hash",
+    }
 
 
-def test_metadata_changes_rescan_all_files(tmp_path: Path, monkeypatch) -> None:
-    sources = {"core/services/example.py": _source()}
-    cache_path = tmp_path / "architecture_scan_cache.json"
-    scan_cache.scan_files_with_cache(["core/services/example.py"], cache_path=str(cache_path), context=_context(sources))
-
-    for field, value in [
-        ("scanner_version_hash", "sha256:old"),
-        ("schema_version", scan_cache.ARCHITECTURE_SCAN_CACHE_SCHEMA_VERSION + 1),
-        ("scanner_schema_version", scan_cache.ARCHITECTURE_SCAN_FACT_SCHEMA_VERSION + 1),
-        ("python_version", "3.8.0-old"),
-        ("radon_version_or_behavior_hash", "version:old"),
-    ]:
-        payload = _read_cache(cache_path)
-        payload[field] = value
-        _write_cache(cache_path, payload)
-        calls = _spy_single_file_scan(monkeypatch)
-        scan_cache.scan_files_with_cache(["core/services/example.py"], cache_path=str(cache_path), context=_context(sources))
-        assert calls == ["core/services/example.py"]
-
-
-def test_ledger_allowlist_change_reaggregates_without_rescanning_ast(tmp_path: Path, monkeypatch) -> None:
-    sources = {"core/services/example.py": _source()}
-    cache_path = tmp_path / "architecture_scan_cache.json"
-    facts = scan_cache.scan_files_with_cache(["core/services/example.py"], cache_path=str(cache_path), context=_context(sources))
-    aggregate = scan_cache.aggregate_architecture_scan(facts)
-    entry_id = str(aggregate["silent_fallback_entries"][0]["id"])
-
-    calls = _spy_single_file_scan(monkeypatch)
-    reused_facts = scan_cache.scan_files_with_cache(["core/services/example.py"], cache_path=str(cache_path), context=_context(sources))
-    reused_aggregate = scan_cache.aggregate_architecture_scan(reused_facts)
-    allowlist_empty = {}
-    allowlist_with_entry = {entry_id: {"id": entry_id}}
-
-    assert calls == []
-    assert [entry["id"] for entry in reused_aggregate["silent_fallback_entries"] if entry["id"] not in allowlist_empty] == [entry_id]
-    assert [entry["id"] for entry in reused_aggregate["silent_fallback_entries"] if entry["id"] not in allowlist_with_entry] == []
-
-
-def test_ledger_validation_and_refresh_use_architecture_scan_cache(monkeypatch) -> None:
+def test_ledger_validation_and_refresh_use_architecture_scan(monkeypatch) -> None:
     silent_path = "web/bootstrap/sample.py"
     silent_handler = {
         "path": silent_path,
@@ -377,9 +267,8 @@ def test_ledger_validation_and_refresh_use_architecture_scan_cache(monkeypatch) 
 def test_silent_fallback_id_assignment_stays_in_aggregate(tmp_path: Path) -> None:
     sources = {"core/services/example.py": _source()}
     context = _context(sources)
-    cache_path = tmp_path / "architecture_scan_cache.json"
 
-    facts = scan_cache.scan_files_with_cache(["core/services/example.py"], cache_path=str(cache_path), context=context)
+    facts = scan_cache.scan_files_with_cache(["core/services/example.py"], context=context)
     raw_handler = facts[0]["silent_fallback_handlers_without_global_id"][0]
     aggregate = scan_cache.aggregate_architecture_scan(facts)
     direct_entries = scan_silent_fallback_entries(["core/services/example.py"], context=context)

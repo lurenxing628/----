@@ -1,10 +1,24 @@
+"""架构扫描门面（P2 已塌缩磁盘缓存层）。
+
+历史上本模块在 evidence/QualityGate/architecture_scan_cache.json 维护按文件
+sha256 的扫描结果磁盘缓存（含 ~250 行缓存校验/合并机器）。实测全新扫描仅
+~3s（577 文件），缓存带来的陈旧/投毒/校验复杂度远大于收益，P2 治理将其
+塌缩为「每次直扫」：
+
+- 公共 API（scan_files_with_cache / aggregate_architecture_scan /
+  scan_single_file_architecture_fact / scan_architecture_paths_with_cache /
+  architecture_scan_cache_metadata）签名与返回结构保持不变；
+  cache_path / force 参数保留但不再有任何作用。
+- 不再读写磁盘缓存文件；进程内复用由 quality_gate_operations 的
+  _cached_architecture_aggregate 内存 memo 承担。
+- architecture_scan_cache_metadata 仍被 long_gate_fingerprint 与
+  run_quality_gate 回执使用，保持原字段。
+"""
+
 from __future__ import annotations
 
-import copy
-import hashlib
 import importlib
 import importlib.metadata
-import json
 import os
 import sys
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, cast
@@ -23,9 +37,9 @@ from .quality_gate_shared import (
     COMPLEXITY_THRESHOLD,
     FILE_SIZE_LIMIT,
     REPO_ROOT,
-    now_shanghai_iso,
 )
 
+# 旧磁盘缓存产物路径：仅用于 clean-worktree 排除与 git hook 拦截（防止旧产物入库），不再读写。
 ARCHITECTURE_SCAN_CACHE_REL = "evidence/QualityGate/architecture_scan_cache.json"
 ARCHITECTURE_SCAN_CACHE_SCHEMA_VERSION = 1
 ARCHITECTURE_SCAN_FACT_SCHEMA_VERSION = 1
@@ -51,41 +65,6 @@ def _normalize_path(path: str) -> str:
     if normalized.startswith("./"):
         normalized = normalized[2:]
     return normalized
-
-
-def _sha256_text(text: str) -> str:
-    return hashlib.sha256(str(text or "").encode("utf-8")).hexdigest()
-
-
-def _cache_abs_path(cache_path: Optional[str]) -> str:
-    rel_or_abs = str(cache_path or ARCHITECTURE_SCAN_CACHE_REL).replace("\\", "/")
-    if os.path.isabs(rel_or_abs):
-        return rel_or_abs
-    return os.path.join(REPO_ROOT, rel_or_abs.replace("/", os.sep))
-
-
-def _json_copy(value: Any) -> Any:
-    return copy.deepcopy(value)
-
-
-def _load_json_object(abs_path: str) -> Optional[Dict[str, Any]]:
-    try:
-        with open(abs_path, encoding="utf-8") as handle:
-            payload = json.load(handle)
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return None
-    if not isinstance(payload, dict):
-        return None
-    return payload
-
-
-def _write_json_object(abs_path: str, payload: Mapping[str, Any]) -> None:
-    parent = os.path.dirname(abs_path)
-    if parent:
-        os.makedirs(parent, exist_ok=True)
-    with open(abs_path, "w", encoding="utf-8", newline="\n") as handle:
-        json.dump(dict(payload), handle, ensure_ascii=False, indent=2, sort_keys=True)
-        handle.write("\n")
 
 
 def _radon_behavior_marker() -> str:
@@ -134,149 +113,6 @@ def architecture_scan_cache_metadata(repo_root: Optional[str] = None) -> Dict[st
     }
 
 
-def _metadata_matches(payload: Mapping[str, Any], metadata: Mapping[str, Any]) -> bool:
-    if not isinstance(payload.get("generated_at"), str) or not payload.get("generated_at"):
-        return False
-    for field in (
-        "schema_version",
-        "scanner_version_hash",
-        "scanner_schema_version",
-        "python_version",
-        "radon_version_or_behavior_hash",
-    ):
-        if payload.get(field) != metadata.get(field):
-            return False
-    return isinstance(payload.get("files"), dict)
-
-
-def _plain_int(value: Any) -> bool:
-    return isinstance(value, int) and not isinstance(value, bool)
-
-
-def _has_text(entry: Mapping[str, Any], field: str) -> bool:
-    return isinstance(entry.get(field), str) and bool(entry.get(field))
-
-
-def _valid_silent_fact_entry(entry: Any, expected_path: str) -> bool:
-    if not isinstance(entry, dict):
-        return False
-    if str(entry.get("path") or "") != expected_path:
-        return False
-    if "id" in entry:
-        return False
-    for field in ("symbol", "handler_fingerprint", "handler_context_hash", "fallback_kind"):
-        if not _has_text(entry, field):
-            return False
-    if not isinstance(entry.get("signature"), dict):
-        return False
-    for field in ("except_ordinal", "line_start", "line_end"):
-        if not _plain_int(entry.get(field)):
-            return False
-    if not isinstance(entry.get("legacy_swallow_hit"), bool):
-        return False
-    if "scope_tag" in entry and not isinstance(entry.get("scope_tag"), str):
-        return False
-    return True
-
-
-def _valid_complexity_fact_entry(entry: Any, expected_path: str) -> bool:
-    if not isinstance(entry, dict):
-        return False
-    if str(entry.get("path") or "") != expected_path:
-        return False
-    for field in ("symbol", "rank"):
-        if not _has_text(entry, field):
-            return False
-    for field in ("current_value", "threshold", "line"):
-        if not _plain_int(entry.get(field)):
-            return False
-    return True
-
-
-def _valid_request_fact_entry(entry: Any, expected_path: str) -> bool:
-    if not isinstance(entry, dict):
-        return False
-    if str(entry.get("path") or "") != expected_path:
-        return False
-    if not _plain_int(entry.get("line")):
-        return False
-    for field in ("symbol", "rule", "target", "excerpt"):
-        if not isinstance(entry.get(field), str):
-            return False
-    return True
-
-
-def _valid_repository_fact_entry(entry: Any, expected_path: str) -> bool:
-    if not isinstance(entry, dict):
-        return False
-    if str(entry.get("path") or "") != expected_path:
-        return False
-    if not _plain_int(entry.get("line")):
-        return False
-    for field in ("symbol", "chain", "excerpt"):
-        if not isinstance(entry.get(field), str):
-            return False
-    if "resolved_chain" in entry and entry.get("resolved_chain") is not None and not isinstance(entry.get("resolved_chain"), str):
-        return False
-    return True
-
-
-def _fact_is_valid(fact: Any, expected_path: str) -> bool:
-    if not isinstance(fact, dict):
-        return False
-    if fact.get("schema_version") != ARCHITECTURE_SCAN_FACT_SCHEMA_VERSION:
-        return False
-    if str(fact.get("path") or "") != expected_path:
-        return False
-    if not _plain_int(fact.get("line_count")):
-        return False
-    fact_kinds = fact.get("fact_kinds")
-    if not isinstance(fact_kinds, list):
-        return False
-    if any(str(kind) not in _FACT_KIND_FIELDS for kind in fact_kinds):
-        return False
-    for field in (
-        "silent_fallback_handlers_without_global_id",
-        "complexity_blocks_all",
-        "request_service_direct_assembly_entries",
-        "repository_bundle_drift_entries",
-    ):
-        if not isinstance(fact.get(field), list):
-            return False
-    if not all(
-        _valid_silent_fact_entry(entry, expected_path)
-        for entry in list(fact.get("silent_fallback_handlers_without_global_id") or [])
-    ):
-        return False
-    if not all(
-        _valid_complexity_fact_entry(entry, expected_path)
-        for entry in list(fact.get("complexity_blocks_all") or [])
-    ):
-        return False
-    if not all(
-        _valid_request_fact_entry(entry, expected_path)
-        for entry in list(fact.get("request_service_direct_assembly_entries") or [])
-    ):
-        return False
-    if not all(
-        _valid_repository_fact_entry(entry, expected_path)
-        for entry in list(fact.get("repository_bundle_drift_entries") or [])
-    ):
-        return False
-    return True
-
-
-def _cached_row_is_valid(row: Any, expected_path: str, requested_kinds: Sequence[str]) -> bool:
-    if not isinstance(row, dict):
-        return False
-    if not isinstance(row.get("file_sha256"), str) or not row.get("file_sha256"):
-        return False
-    if not _fact_is_valid(row.get("fact"), expected_path):
-        return False
-    fact_kinds = {str(item) for item in list(row.get("fact", {}).get("fact_kinds") or [])}
-    return set(requested_kinds) <= fact_kinds
-
-
 def _normalize_fact_kinds(fact_kinds: Optional[Sequence[str]]) -> Tuple[str, ...]:
     if fact_kinds is None:
         return _ALL_FACT_KINDS
@@ -288,22 +124,6 @@ def _normalize_fact_kinds(fact_kinds: Optional[Sequence[str]]) -> Tuple[str, ...
         if kind not in normalized:
             normalized.append(kind)
     return tuple(normalized)
-
-
-def _merge_fact(existing: Mapping[str, Any], scanned: Mapping[str, Any]) -> Dict[str, Any]:
-    merged = dict(existing)
-    merged["schema_version"] = ARCHITECTURE_SCAN_FACT_SCHEMA_VERSION
-    merged["path"] = str(scanned.get("path") or existing.get("path") or "")
-    merged["line_count"] = int(scanned.get("line_count") or existing.get("line_count") or 0)
-    merged_kinds = {str(item) for item in list(existing.get("fact_kinds") or [])}
-    merged_kinds.update(str(item) for item in list(scanned.get("fact_kinds") or []))
-    merged["fact_kinds"] = sorted(merged_kinds)
-    for kind, field in _FACT_KIND_FIELDS.items():
-        if kind in set(scanned.get("fact_kinds") or []):
-            merged[field] = [dict(entry) for entry in list(scanned.get(field) or []) if isinstance(entry, dict)]
-        else:
-            merged.setdefault(field, [])
-    return merged
 
 
 def scan_single_file_architecture_fact(
@@ -346,54 +166,15 @@ def scan_files_with_cache(
     context: Optional[ScanContext] = None,
     fact_kinds: Optional[Sequence[str]] = None,
 ) -> List[Dict[str, Any]]:
+    """对给定路径直扫并返回 facts（cache_path/force 为塌缩前遗留参数，无作用）。"""
+    del cache_path, force  # 塌缩后不再有磁盘缓存
     scan_context = context or ScanContext()
     requested_kinds = _normalize_fact_kinds(fact_kinds)
     normalized_paths = sorted(set(_normalize_path(str(path)) for path in list(paths or [])))
-    metadata = architecture_scan_cache_metadata()
-    abs_cache_path = _cache_abs_path(cache_path)
-    payload = None if force else _load_json_object(abs_cache_path)
-    cache_usable = payload is not None and _metadata_matches(payload, metadata)
-    cached_files = dict(payload.get("files") or {}) if cache_usable and isinstance(payload, dict) else {}
-    next_files = dict(cached_files) if cache_usable else {}
-    facts: List[Dict[str, Any]] = []
-    changed = force or not cache_usable
-
-    for rel_path in normalized_paths:
-        source = scan_context.read_text(rel_path)
-        file_sha256 = _sha256_text(source)
-        cached_row = cached_files.get(rel_path)
-        if (
-            not force
-            and isinstance(cached_row, dict)
-            and _cached_row_is_valid(cached_row, rel_path, requested_kinds)
-            and str(cached_row.get("file_sha256") or "") == file_sha256
-        ):
-            facts.append(_json_copy(cached_row["fact"]))
-            continue
-
-        if (
-            not force
-            and isinstance(cached_row, dict)
-            and _fact_is_valid(cached_row.get("fact"), rel_path)
-            and str(cached_row.get("file_sha256") or "") == file_sha256
-        ):
-            cached_fact = dict(cached_row.get("fact") or {})
-            cached_kinds = {str(item) for item in list(cached_fact.get("fact_kinds") or [])}
-            union_kinds = sorted(cached_kinds | set(requested_kinds))
-            scanned_fact = scan_single_file_architecture_fact(rel_path, context=scan_context, fact_kinds=union_kinds)
-            fact = _merge_fact(cached_fact, scanned_fact)
-        else:
-            fact = scan_single_file_architecture_fact(rel_path, context=scan_context, fact_kinds=requested_kinds)
-        next_files[rel_path] = {"file_sha256": file_sha256, "fact": _json_copy(fact)}
-        facts.append(fact)
-        changed = True
-
-    if changed:
-        output = dict(metadata)
-        output["generated_at"] = now_shanghai_iso()
-        output["files"] = next_files
-        _write_json_object(abs_cache_path, output)
-    return facts
+    return [
+        scan_single_file_architecture_fact(rel_path, context=scan_context, fact_kinds=requested_kinds)
+        for rel_path in normalized_paths
+    ]
 
 
 def aggregate_architecture_scan(
