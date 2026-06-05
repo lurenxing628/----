@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import List
 
 import pytest
 from flask import Flask, g, get_flashed_messages
@@ -20,7 +21,7 @@ def test_safe_next_url_logs_invalid_non_empty_value_once_per_request(monkeypatch
     import web.routes.system_utils as utils_mod
 
     app = _build_app()
-    warnings: list[str] = []
+    warnings: List[str] = []
 
     def _fake_warning(message, *args, **kwargs):
         warnings.append(message % args if args else str(message))
@@ -40,7 +41,7 @@ def test_safe_next_url_does_not_log_when_value_is_missing(monkeypatch) -> None:
     import web.routes.system_utils as utils_mod
 
     app = _build_app()
-    warnings: list[str] = []
+    warnings: List[str] = []
 
     def _fake_warning(message, *args, **kwargs):
         warnings.append(message % args if args else str(message))
@@ -183,7 +184,7 @@ def test_system_ui_mode_flash_level_matches_db_and_cookie_outcome(
     import web.routes.system_ui_mode as system_ui_mode_mod
 
     app = _build_app()
-    warnings: list[str] = []
+    warnings: List[str] = []
 
     def _fake_warning(message, *args, **kwargs):
         warnings.append(message % args if args else str(message))

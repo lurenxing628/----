@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from typing import Dict
+
 from core.services.scheduler.run.optimizer_search_state import compact_attempts
 from core.services.scheduler.summary.optimizer_public_summary import project_public_algo_summary
 
 
-def _scored_attempt(index: int) -> dict[str, object]:
+def _scored_attempt(index: int) -> Dict[str, object]:
     return {
         "tag": f"start:priority_first|batch_order:rule_{index}",
         "strategy": "priority_first",
@@ -16,7 +18,7 @@ def _scored_attempt(index: int) -> dict[str, object]:
     }
 
 
-def _rejected_attempt(index: int) -> dict[str, object]:
+def _rejected_attempt(index: int) -> Dict[str, object]:
     return {
         "tag": f"start:priority_first|sgs:rule_{index}",
         "strategy": "priority_first",

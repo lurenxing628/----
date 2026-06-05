@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import sys
 from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MAIN_ISS = REPO_ROOT / "installer" / "aps_win7.iss"
@@ -58,15 +59,15 @@ def _extract_code_section(text: str) -> str:
     return text[start + len(marker) :].strip()
 
 
-def _extract_routines(code_text: str) -> dict[str, str]:
+def _extract_routines(code_text: str) -> Dict[str, str]:
     lines = code_text.splitlines()
-    starts: list[tuple[int, str]] = []
+    starts: List[Tuple[int, str]] = []
     for idx, line in enumerate(lines):
         match = ROUTINE_START_RE.match(line.strip())
         if match:
             starts.append((idx, match.group(2)))
 
-    routines: dict[str, str] = {}
+    routines: Dict[str, str] = {}
     for pos, (start_idx, name) in enumerate(starts):
         end_idx = starts[pos + 1][0] if pos + 1 < len(starts) else len(lines)
         block = "\n".join(line.rstrip() for line in lines[start_idx:end_idx]).strip()
@@ -74,7 +75,7 @@ def _extract_routines(code_text: str) -> dict[str, str]:
     return routines
 
 
-def _first_diff_line(left: str, right: str) -> tuple[int, str, str] | None:
+def _first_diff_line(left: str, right: str) -> Optional[Tuple[int, str, str]]:
     left_lines = left.splitlines()
     right_lines = right.splitlines()
     max_len = max(len(left_lines), len(right_lines))
@@ -87,7 +88,7 @@ def _first_diff_line(left: str, right: str) -> tuple[int, str, str] | None:
 
 
 def main() -> int:
-    errors: list[str] = []
+    errors: List[str] = []
 
     if not CHECKLIST_MD.exists():
         errors.append(f"缺少同步清单：{CHECKLIST_MD}")

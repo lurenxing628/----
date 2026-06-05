@@ -8,7 +8,7 @@ import os
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Optional, cast
+from typing import Any, Callable, Dict, List, Optional, cast
 
 import pytest
 from flask import Flask, Response, g, request
@@ -132,8 +132,8 @@ def _get_teardown_hook(app: Flask, name: str) -> _TeardownHook:
     return cast(_TeardownHook, next(func for func in funcs if getattr(func, "__name__", "") == name))
 
 
-def _capture_warnings(monkeypatch: pytest.MonkeyPatch, app: Flask) -> list[str]:
-    warnings: list[str] = []
+def _capture_warnings(monkeypatch: pytest.MonkeyPatch, app: Flask) -> List[str]:
+    warnings: List[str] = []
 
     def _warning(message: str, *args: Any, **kwargs: Any) -> None:
         warnings.append(message % args if args else str(message))
@@ -142,8 +142,8 @@ def _capture_warnings(monkeypatch: pytest.MonkeyPatch, app: Flask) -> list[str]:
     return warnings
 
 
-def _capture_errors(monkeypatch: pytest.MonkeyPatch, app: Flask) -> list[str]:
-    errors: list[str] = []
+def _capture_errors(monkeypatch: pytest.MonkeyPatch, app: Flask) -> List[str]:
+    errors: List[str] = []
 
     def _error(message: str, *args: Any, **kwargs: Any) -> None:
         errors.append(message % args if args else str(message))
@@ -153,8 +153,8 @@ def _capture_errors(monkeypatch: pytest.MonkeyPatch, app: Flask) -> list[str]:
 
 
 def _patch_request_services_probe(monkeypatch: pytest.MonkeyPatch):
-    captured: dict[str, Any] = {"count": 0}
-    backend_calls: list[str] = []
+    captured: Dict[str, Any] = {"count": 0}
+    backend_calls: List[str] = []
 
     def _backend_factory() -> object:
         backend_calls.append("called")
@@ -460,7 +460,7 @@ def test_request_services_construction_failure_closes_local_db_and_preserves_err
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     app = _build_app(tmp_path, monkeypatch)
-    captured: dict[str, Any] = {}
+    captured: Dict[str, Any] = {}
 
     def _fake_get_connection(_db_path: str) -> _CloseAwareDb:
         db = _CloseAwareDb()

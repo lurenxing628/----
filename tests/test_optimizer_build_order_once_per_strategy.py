@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 from datetime import datetime
 from types import SimpleNamespace
+from typing import Dict, Optional
 
 import pytest
 
@@ -96,7 +97,7 @@ def test_build_order_is_cached_per_strategy_within_single_multi_start_call():
         build_calls.append((strategy.value, tuple(sorted((params or {}).items()))))
         return [f"{strategy.value}:B1"]
 
-    def _invoke_multi_start() -> dict[str, object] | None:
+    def _invoke_multi_start() -> Optional[Dict[str, object]]:
         return _run_multi_start(
             keys=["priority_first", "due_date_first"],
             dispatch_modes=["batch_order", "sgs"],

@@ -6,6 +6,7 @@ import importlib
 import logging
 import sys
 from pathlib import Path
+from typing import Dict
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -21,7 +22,7 @@ def _reset_aps_logger_handlers() -> None:
                 pass
 
 
-def _apply_env(monkeypatch, root: Path, *, suffix: str) -> dict[str, str]:
+def _apply_env(monkeypatch, root: Path, *, suffix: str) -> Dict[str, str]:
     db_path = root / f"aps_{suffix}.db"
     log_dir = root / f"logs_{suffix}"
     backup_dir = root / f"backups_{suffix}"
@@ -51,7 +52,7 @@ def _import_entry_module(module_name: str):
     return importlib.import_module(module_name)
 
 
-def _assert_runtime_paths(app, expected: dict[str, str]) -> None:
+def _assert_runtime_paths(app, expected: Dict[str, str]) -> None:
     for key, value in expected.items():
         assert app.config.get(key) == value
 

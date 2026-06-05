@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any, Tuple, cast
 
 import pytest
 
@@ -40,7 +40,7 @@ class _DeterministicRandom:
         return a
 
 
-def _first_swap_order(order_length: int) -> tuple[str, ...]:
+def _first_swap_order(order_length: int) -> Tuple[str, ...]:
     return ("B1", "B0", *(f"B{i}" for i in range(2, order_length)))
 
 

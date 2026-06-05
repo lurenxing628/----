@@ -8,6 +8,7 @@ import os
 import re
 import subprocess
 from pathlib import Path
+from typing import List
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -794,7 +795,7 @@ def _load_preview_module():
     return module
 
 
-def _template_static_scripts(template_path: Path) -> list[str]:
+def _template_static_scripts(template_path: Path) -> List[str]:
     text = template_path.read_text(encoding="utf-8")
     return re.findall(r"url_for\('static',\s*filename='([^']+)'\)", text)
 

@@ -9,7 +9,7 @@ import sys
 import time
 import urllib.request
 from pathlib import Path
-from typing import Dict, Iterable, Tuple
+from typing import Dict, Iterable, Optional, Tuple
 
 _RUNTIME_STATE_FILENAMES = (
     "aps_host.txt",
@@ -129,7 +129,7 @@ def _wait_for_process_exit(process: subprocess.Popen, timeout_s: float) -> bool:
     return process.poll() is not None
 
 
-def _repo_runtime_inactive(repo_root: str, expected_pid: int | None = None) -> bool:
+def _repo_runtime_inactive(repo_root: str, expected_pid: Optional[int] = None) -> bool:
     host_file, port_file, _db_file, runtime_file, lock_file, error_file = _contract_paths(repo_root)
     contract = _read_runtime_contract(repo_root)
     host = str(contract.get("host") or "").strip()
@@ -174,14 +174,14 @@ def cleanup_runtime_process(
     entry_script: str,
     process: subprocess.Popen,
     *,
-    env: Dict[str, str] | None = None,
+    env: Optional[Dict[str, str]] = None,
 ) -> None:
     stop_env = dict(os.environ)
     if env:
         stop_env.update({str(key): str(value) for key, value in env.items()})
     stop_env["PYTHONUTF8"] = "1"
     stop_env["PYTHONIOENCODING"] = "utf-8"
-    stop_proc: subprocess.Popen | None = None
+    stop_proc: Optional[subprocess.Popen] = None
 
     try:
         if process.poll() is None:

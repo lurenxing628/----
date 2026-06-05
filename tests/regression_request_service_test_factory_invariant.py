@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Dict
 
 import pytest
 from flask import Flask, g
@@ -115,7 +115,7 @@ def test_custom_test_app_open_db_closes_local_db_when_request_services_mount_fai
     import core.infrastructure.database as db_mod
     import web.bootstrap.request_services as request_services_mod
 
-    captured: dict[str, Any] = {}
+    captured: Dict[str, Any] = {}
 
     class _ExplodingRequestServices:
         def __init__(self, **_kwargs: Any) -> None:

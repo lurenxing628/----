@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import List
 
 import pytest
 from flask import Flask
@@ -13,7 +14,7 @@ from core.services.common.excel_templates import get_template_definition
 from web.routes.excel_utils import send_excel_template_file
 
 
-def _write_workbook(path: Path, headers: list[str]) -> None:
+def _write_workbook(path: Path, headers: List[str]) -> None:
     workbook = Workbook()
     try:
         ws = workbook.active

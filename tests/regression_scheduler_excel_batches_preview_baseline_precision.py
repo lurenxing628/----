@@ -10,6 +10,7 @@ import sys
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from html.parser import HTMLParser
 from pathlib import Path
+from typing import List, Optional, Tuple
 
 TESTS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = TESTS_DIR.parent
@@ -27,12 +28,12 @@ _STALE_PREVIEW_MESSAGE = "导入被拒绝：数据已变化，请重新上传 Ex
 class _FlashMessageParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
-        self.messages: list[tuple[str, str]] = []
-        self._category: str | None = None
+        self.messages: List[Tuple[str, str]] = []
+        self._category: Optional[str] = None
         self._depth = 0
-        self._parts: list[str] = []
+        self._parts: List[str] = []
 
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+    def handle_starttag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
         attrs_dict = dict(attrs)
         if self._category is None and tag == "div" and attrs_dict.get("data-flash"):
             self._category = str(attrs_dict["data-flash"])
@@ -57,7 +58,7 @@ class _FlashMessageParser(HTMLParser):
             self._parts.append(data)
 
 
-def _flash_messages(html: str, category: str) -> list[str]:
+def _flash_messages(html: str, category: str) -> List[str]:
     parser = _FlashMessageParser()
     parser.feed(html)
     return [message for flash_category, message in parser.messages if flash_category == category]
@@ -166,7 +167,7 @@ def _assert_batch_absent(db_path: str, batch_id: str) -> None:
         conn.close()
 
 
-def _decode_preview_rows_payload(raw_rows_json: str) -> list[dict]:
+def _decode_preview_rows_payload(raw_rows_json: str) -> List[dict]:
     prefix = "aps-preview-json-b64:"
     if not raw_rows_json.startswith(prefix):
         raise RuntimeError("raw_rows_json 必须使用 aps-preview-json-b64 编码，不能退回明文 JSON")
@@ -176,7 +177,7 @@ def _decode_preview_rows_payload(raw_rows_json: str) -> list[dict]:
     return rows
 
 
-def _encode_preview_rows_payload(rows: list[dict]) -> str:
+def _encode_preview_rows_payload(rows: List[dict]) -> str:
     raw = json.dumps(rows, ensure_ascii=False)
     encoded = urlsafe_b64encode(raw.encode("utf-8")).decode("ascii")
     return f"aps-preview-json-b64:{encoded}"

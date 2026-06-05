@@ -7,6 +7,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from typing import List
 
 import pytest
 from flask import Flask
@@ -866,7 +867,7 @@ def test_stop_runtime_legacy_cleanup_noop_still_cleans_files(monkeypatch, tmp_pa
         ),
         encoding="utf-8",
     )
-    calls: list[str] = []
+    calls: List[str] = []
 
     monkeypatch.delenv("LOCALAPPDATA", raising=False)
     monkeypatch.setattr(launcher, "_probe_runtime_health", lambda host, port, timeout_s=1.0: False)
@@ -1163,7 +1164,7 @@ def test_windows_pid_state_unknown_when_tasklist_unavailable(monkeypatch, capsys
 def test_stop_aps_chrome_processes_treats_already_gone_pid_as_success_after_final_recheck(monkeypatch):
     launcher = _import_launcher()
     pid_snapshots = iter([[100, 101], []])
-    killed: list[int] = []
+    killed: List[int] = []
 
     monkeypatch.setattr(launcher, "_list_aps_chrome_pids", lambda profile_dir: next(pid_snapshots))
     monkeypatch.setattr(launcher, "_kill_runtime_pid", lambda pid: killed.append(int(pid)) or int(pid) == 100)
@@ -1185,9 +1186,9 @@ def test_stop_aps_chrome_processes_fails_when_final_recheck_still_finds_profile_
 PROFILE_PREFIX = "--user-data-dir="
 
 
-def _split_command_line_args(cmd: str) -> list[str]:
-    tokens: list[str] = []
-    buf: list[str] = []
+def _split_command_line_args(cmd: str) -> List[str]:
+    tokens: List[str] = []
+    buf: List[str] = []
     in_quotes = False
     cmd_text = str(cmd or "")
     for index, ch in enumerate(cmd_text):
@@ -1380,7 +1381,7 @@ def test_force_kill_runtime_requires_confirmed_pid_match(monkeypatch, tmp_path):
     assert launcher_stop._can_force_kill_runtime({**base_status, "pid": "bad", "pid_match": True}) is False
     assert launcher_stop._can_force_kill_runtime({**base_status, "state": "mixed", "endpoint_up": False, "pid_match": True}) is True
 
-    calls: list[int] = []
+    calls: List[int] = []
     status = {**base_status, "pid_match": None}
     monkeypatch.setattr(launcher_stop, "_kill_runtime_pid", lambda pid: calls.append(int(pid)) or True)
     assert launcher_stop._try_force_kill_runtime(str(tmp_path), status) is status
@@ -1408,8 +1409,8 @@ def test_stop_runtime_force_kills_mixed_endpoint_down_confirmed_pid(monkeypatch,
     }
     stopped_status = {**mixed_status, "state": "stale"}
     wait_results = iter([mixed_status, stopped_status])
-    killed: list[int] = []
-    finalized: list[dict] = []
+    killed: List[int] = []
+    finalized: List[dict] = []
 
     monkeypatch.setattr(launcher_stop, "_classify_runtime_state", lambda _state_dir: mixed_status)
     monkeypatch.setattr(launcher_stop, "_runtime_stop_is_complete", lambda status: status.get("state") == "stale")
@@ -1460,7 +1461,7 @@ def test_legacy_cleanup_success_is_verified_by_result_cleanup(tmp_path):
         json.dumps({"contract_version": 1, "data_dirs": {"log_dir": str(mirror_dir)}}),
         encoding="utf-8",
     )
-    legacy_calls: list[str] = []
+    legacy_calls: List[str] = []
 
     def _legacy_cleanup(path: str) -> None:
         legacy_calls.append(path)

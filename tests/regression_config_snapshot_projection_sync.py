@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
+from typing import List
 
 import pytest
 
@@ -70,7 +71,7 @@ def test_registry_keys_match_snapshot_projection_keys() -> None:
     assert built_snapshot_keys == registry_keys
 
 
-def _duplicate_class_annotations(path: Path, class_name: str) -> list[str]:
+def _duplicate_class_annotations(path: Path, class_name: str) -> List[str]:
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     for node in tree.body:
         if not isinstance(node, ast.ClassDef) or node.name != class_name:

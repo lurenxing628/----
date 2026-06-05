@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 import json
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 from tools import (
     architecture_scan_cache as scan_cache,
@@ -329,7 +329,7 @@ def test_ledger_validation_and_refresh_use_architecture_scan_cache(monkeypatch) 
         },
         "accepted_risks": [],
     }
-    calls: List[tuple[str, ...]] = []
+    calls: List[Tuple[str, ...]] = []
 
     def fake_fact(path: str) -> Dict[str, object]:
         if path == "sample_large.py":

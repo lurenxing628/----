@@ -9,6 +9,7 @@ import sys
 from dataclasses import fields
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Dict, List, Optional, Set
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_ROOT = REPO_ROOT / "core/services/scheduler/config"
@@ -22,9 +23,9 @@ _SERVICE_COMMON_NEUTRAL_HELPERS = (
 )
 
 
-def _module_imports(path: Path) -> set[str]:
+def _module_imports(path: Path) -> Set[str]:
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-    imports: set[str] = set()
+    imports: Set[str] = set()
     module_parts = list(path.relative_to(REPO_ROOT).with_suffix("").parts)
     package_parts = module_parts[:-1]
     for node in ast.walk(tree):
@@ -45,7 +46,7 @@ def _module_imports(path: Path) -> set[str]:
     return imports
 
 
-def _run_import_probe(module_name: str, *, attr_name: str | None = None) -> dict[str, bool]:
+def _run_import_probe(module_name: str, *, attr_name: Optional[str] = None) -> Dict[str, bool]:
     probe = """
 import importlib
 import json
@@ -75,7 +76,7 @@ print(json.dumps({
     return json.loads(completed.stdout.strip().splitlines()[-1])
 
 
-def _module_path_for_import(imported: str) -> Path | None:
+def _module_path_for_import(imported: str) -> Optional[Path]:
     parts = str(imported or "").split(".")
     for end in range(len(parts), 0, -1):
         candidate = REPO_ROOT.joinpath(*parts[:end]).with_suffix(".py")
@@ -87,8 +88,8 @@ def _module_path_for_import(imported: str) -> Path | None:
     return None
 
 
-def _scheduler_local_imports(path: Path) -> list[Path]:
-    targets: list[Path] = []
+def _scheduler_local_imports(path: Path) -> List[Path]:
+    targets: List[Path] = []
     for imported in sorted(_module_imports(path)):
         if not (imported == "core.services.scheduler" or imported.startswith("core.services.scheduler.")):
             continue
@@ -98,10 +99,10 @@ def _scheduler_local_imports(path: Path) -> list[Path]:
     return targets
 
 
-def _scheduler_run_reachable_files() -> list[Path]:
+def _scheduler_run_reachable_files() -> List[Path]:
     pending = list(sorted((REPO_ROOT / "core/services/scheduler/run").glob("*.py")))
-    seen: set[Path] = set()
-    ordered: list[Path] = []
+    seen: Set[Path] = set()
+    ordered: List[Path] = []
     while pending:
         path = pending.pop(0)
         if path in seen:
@@ -141,7 +142,7 @@ def test_repository_leaf_import_does_not_load_all_repositories() -> None:
 
 
 def test_config_split_has_no_owner_backref_or_svc_proxy() -> None:
-    violations: list[str] = []
+    violations: List[str] = []
     for path in sorted(CONFIG_ROOT.glob("*.py")):
         rel = path.relative_to(REPO_ROOT).as_posix()
         text = path.read_text(encoding="utf-8")
@@ -160,7 +161,7 @@ def test_config_service_does_not_inject_facade_bound_methods_into_components() -
 
 
 def test_config_components_do_not_import_facade() -> None:
-    violations: list[str] = []
+    violations: List[str] = []
     for path in sorted(CONFIG_ROOT.glob("*.py")):
         if path.name in {"__init__.py", "config_service.py"}:
             continue
@@ -200,7 +201,7 @@ def test_config_pure_leaves_do_not_import_repositories_web_or_algorithms() -> No
         "web",
         "core.algorithms",
     )
-    violations: list[str] = []
+    violations: List[str] = []
     for filename in sorted(pure_leaf_names):
         path = CONFIG_ROOT / filename
         for imported in sorted(_module_imports(path)):
@@ -298,7 +299,7 @@ def test_page_save_provenance_state_is_not_rehydrated_from_legacy_dict() -> None
 
 
 def test_algorithm_domain_does_not_import_scheduler_services_directly() -> None:
-    violations: list[str] = []
+    violations: List[str] = []
     for path in sorted((REPO_ROOT / "core/algorithms").rglob("*.py")):
         rel = path.relative_to(REPO_ROOT).as_posix()
         for imported in sorted(_module_imports(path)):
@@ -309,7 +310,7 @@ def test_algorithm_domain_does_not_import_scheduler_services_directly() -> None:
 
 
 def test_algorithm_domain_does_not_import_service_common() -> None:
-    violations: list[str] = []
+    violations: List[str] = []
     for path in sorted((REPO_ROOT / "core/algorithms").rglob("*.py")):
         rel = path.relative_to(REPO_ROOT).as_posix()
         for imported in sorted(_module_imports(path)):
@@ -337,7 +338,7 @@ def test_runtime_config_projection_matches_service_field_contract() -> None:
 
 
 def test_runtime_config_projection_is_scheduler_config_neutral() -> None:
-    violations: list[str] = []
+    violations: List[str] = []
     for path in sorted((REPO_ROOT / "core/models").glob("schedule_config_runtime*.py")):
         rel = path.relative_to(REPO_ROOT).as_posix()
         violations.extend(
@@ -350,7 +351,7 @@ def test_runtime_config_projection_is_scheduler_config_neutral() -> None:
 
 
 def test_scheduler_run_uses_shared_parse_and_degradation_helpers() -> None:
-    violations: list[str] = []
+    violations: List[str] = []
     for path in _scheduler_run_reachable_files():
         rel = path.relative_to(REPO_ROOT).as_posix()
         for imported in sorted(_module_imports(path)):
@@ -362,7 +363,7 @@ def test_scheduler_run_uses_shared_parse_and_degradation_helpers() -> None:
 
 def test_shared_layer_imports_no_services_data_web_or_algorithms() -> None:
     shared_root = REPO_ROOT / "core/shared"
-    violations: list[str] = []
+    violations: List[str] = []
     if shared_root.exists():
         for path in sorted(shared_root.rglob("*.py")):
             rel = path.relative_to(REPO_ROOT).as_posix()
@@ -414,7 +415,7 @@ def test_services_common_parse_core_reexports_shared_identity() -> None:
 
 
 def test_web_layer_uses_config_facade_instead_of_config_leaves() -> None:
-    violations: list[str] = []
+    violations: List[str] = []
     for path in sorted((REPO_ROOT / "web").rglob("*.py")):
         rel = path.relative_to(REPO_ROOT).as_posix()
         for imported in sorted(_module_imports(path)):

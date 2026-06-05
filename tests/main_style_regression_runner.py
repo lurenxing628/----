@@ -6,6 +6,7 @@ import importlib.util
 import sys
 import uuid
 from pathlib import Path
+from typing import List, Optional
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -44,7 +45,7 @@ def _run_main(script_path: Path) -> int:
         sys.modules.pop(module_name, None)
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: Optional[List[str]] = None) -> int:
     args = list(argv if argv is not None else sys.argv[1:])
     if len(args) != 1:
         raise SystemExit("用法：main_style_regression_runner.py <regression-script-path>")

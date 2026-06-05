@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import List
+
 import pytest
 
 from core.algorithms.evaluation import ScheduleMetrics, objective_score
@@ -31,7 +33,7 @@ from web.viewmodels.scheduler_analysis_vm import _comparison_metric_from_algo, o
         ),
     ],
 )
-def test_objective_score_schema_and_analysis_projection_stay_in_sync(objective_name: str, expected_keys: list[str]) -> None:
+def test_objective_score_schema_and_analysis_projection_stay_in_sync(objective_name: str, expected_keys: List[str]) -> None:
     metrics = ScheduleMetrics(
         overdue_count=1,
         total_tardiness_hours=2.0,

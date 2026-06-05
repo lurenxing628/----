@@ -10,7 +10,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import pytest
 
@@ -332,7 +332,7 @@ def _write_node_cache_output(repo_root: Path, entry: dict, fingerprint: dict, to
     )
 
 
-def _seed_success(repo_root: Path, *, token: str = "seed") -> tuple[dict, dict]:
+def _seed_success(repo_root: Path, *, token: str = "seed") -> Tuple[dict, dict]:
     _write_file(repo_root, "tests/test_a.py", "def test_a():\n    assert True\n")
     _write_collect_nodeids(repo_root)
     outputs = _write_full_outputs(repo_root, token)

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from types import SimpleNamespace
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 import pytest
 
@@ -153,7 +153,7 @@ def test_sgs_average_does_not_cache_non_positive_or_missing_op_ids() -> None:
         ("not-an-id", {7: 99.0}),
     ],
 )
-def test_sgs_scoring_ignores_cache_for_non_positive_or_invalid_op_id(op_id: Any, cached_hours_by_op_id: dict[int, float]) -> None:
+def test_sgs_scoring_ignores_cache_for_non_positive_or_invalid_op_id(op_id: Any, cached_hours_by_op_id: Dict[int, float]) -> None:
     op = _internal_op(7, "B1", 1.0)
     op.id = op_id
     original_cache = dict(cached_hours_by_op_id)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 from types import SimpleNamespace
+from typing import List
 
 import pytest
 
@@ -42,7 +43,7 @@ def test_override_keeps_valid_batch_ids_in_order() -> None:
 
 
 @pytest.mark.parametrize("override", [["B1", "B1"], ["MISSING"], [""]])
-def test_override_rejects_invalid_batch_order_items(override: list[str]) -> None:
+def test_override_rejects_invalid_batch_order_items(override: List[str]) -> None:
     batches = {"B1": object(), "B2": object()}
 
     with pytest.raises(ValidationError) as exc_info:

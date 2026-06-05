@@ -6,7 +6,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
-from typing import Sequence
+from typing import List, Sequence
 
 import pytest
 
@@ -42,7 +42,7 @@ def _seed_startup_success(module, monkeypatch, repo_root: Path, command_plan: Se
     assert _success_path(repo_root, ENTRY_STARTUP_RUNTIME_REGRESSIONS).exists()
 
 
-def _call_displays(calls: Sequence[dict]) -> list[str]:
+def _call_displays(calls: Sequence[dict]) -> List[str]:
     return [str(call["display"]) for call in calls]
 
 
