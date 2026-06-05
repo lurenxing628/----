@@ -1,0 +1,431 @@
+{
+ "C01": {
+  "size": 67,
+  "members": [
+   "LB01",
+   "LB02",
+   "LB03",
+   "LB04",
+   "LB05",
+   "LB06",
+   "LB07",
+   "LB08",
+   "R01",
+   "R02",
+   "R04",
+   "R05",
+   "R07",
+   "R08",
+   "R09",
+   "R10",
+   "R11",
+   "R12",
+   "R13",
+   "R14",
+   "R15",
+   "R16",
+   "R17",
+   "R18",
+   "R19",
+   "R20",
+   "R21",
+   "R22",
+   "R23",
+   "R25",
+   "R26",
+   "R28",
+   "R29",
+   "R30",
+   "R31",
+   "R32",
+   "R33",
+   "R34",
+   "R35",
+   "R37",
+   "R41",
+   "R42",
+   "R43",
+   "R44",
+   "R45",
+   "R46",
+   "R47",
+   "R48",
+   "R49",
+   "R50",
+   "R51",
+   "R52",
+   "R54",
+   "R55",
+   "R56",
+   "R57",
+   "R58",
+   "R60",
+   "R61",
+   "R62",
+   "R63",
+   "R64",
+   "R65",
+   "R66",
+   "R67",
+   "R71",
+   "R72"
+  ],
+  "files": [
+   "_sched_display_utils.py",
+   "_scheduler_compat.py",
+   "auto_assign_resource_errors.py",
+   "backup.py",
+   "batch_copy.py",
+   "batch_operation.py",
+   "batch_service.py",
+   "batch_template_ops.py",
+   "benchmark_fjsp.py",
+   "boolean_normalize.py",
+   "coercion.py",
+   "compat_parse.py",
+   "config_adapter.py",
+   "config_field_coercion.py",
+   "config_service.py",
+   "config_snapshot.py",
+   "config_weight_policy.py",
+   "degradation.py",
+   "dispatch_context.py",
+   "dispatch_rules.py",
+   "enum_display.py",
+   "enum_normalizers.py",
+   "equipment_bp.py",
+   "equipment_excel_machines.py",
+   "equipment_pages.py",
+   "error_boundary.py",
+   "evaluation.py",
+   "excel_validators.py",
+   "execution_fact_provider.py",
+   "execution_review.py",
+   "execution_snapshot.py",
+   "external_groups.py",
+   "factory.py",
+   "feedback_service.py",
+   "feedback_support.py",
+   "field_parse.py",
+   "gantt_contract.py",
+   "gantt_critical_chain.py",
+   "gantt_critical_chain_provider.py",
+   "gantt_plan_query.py",
+   "gantt_service.py",
+   "gantt_service_support.py",
+   "gantt_tasks.py",
+   "identity_builder.py",
+   "labels.py",
+   "material.py",
+   "migration_operation_execution_contract.py",
+   "navigation_context.py",
+   "navigation_links.py",
+   "normalization_matrix.py",
+   "number_utils.py",
+   "operation_execution_event.py",
+   "operation_execution_event_repo.py",
+   "operation_execution_feedback_service.py",
+   "operation_execution_feedback_support.py",
+   "operation_execution_labels.py",
+   "operation_execution_state_builder.py",
+   "operator_machine_query_service.py",
+   "operator_machine_repo.py",
+   "optimizer_config.py",
+   "ortools_bottleneck.py",
+   "part_operation.py",
+   "payload_contract.py",
+   "personnel_bp.py",
+   "personnel_excel_operators.py",
+   "plan_identity.py",
+   "process_bp.py",
+   "provider.py",
+   "ready_queue.py",
+   "regression_..._workbench_lane_contract.py",
+   "regression_compat_parse_emits_degradation.py",
+   "regression_config_service_component_contract.py",
+   "regression_dispatch_rules_nonfinite_proc_hours_safe.py",
+   "regression_gantt_critical_chain_unavailable.py",
+   "regression_operation_execution_event_foundation.py",
+   "regression_report_context_filters_contract.py",
+   "regression_reports_workbench_backlink_contract.py",
+   "regression_schedule_result_view_context.py",
+   "regression_schedule_service_facade_delegation.py",
+   "regression_scheduler_delay_diagnosis_contract.py",
+   "regression_scheduler_graph_lazy_runtime_contract.py",
+   "regression_scheduler_week_plan_summary_observability.py",
+   "regression_scheduler_wrapper_import_order_contract.py",
+   "regression_sp06_no_duplicate_defs.py",
+   "regression_value_policies_matrix_contract.py",
+   "report.py",
+   "report_context_filters.py",
+   "report_engine.py",
+   "reports_export_support.py",
+   "reports_page_support.py",
+   "reports_request_support.py",
+   "request_resource_context.py",
+   "resolution.py",
+   "resource_dispatch_actual_record_service.py",
+   "resource_dispatch_execution_service.py",
+   "resource_dispatch_service.py",
+   "resource_matching_context.py",
+   "schedule_config_runtime_coercion.py",
+   "schedule_config_runtime_fields.py",
+   "schedule_config_runtime_read.py",
+   "schedule_config_runtime_snapshot.py",
+   "schedule_config_runtime_weights.py",
+   "schedule_delay_diagnosis_service.py",
+   "schedule_graph_dispatch_context.py",
+   "schedule_graph_report.py",
+   "schedule_input_builder.py",
+   "schedule_orchestrator.py",
+   "schedule_params.py",
+   "schedule_payload_contract.py",
+   "schedule_persistence.py",
+   "schedule_persistence_errors.py",
+   "schedule_plan_identity_builder.py",
+   "schedule_plan_query_repo.py",
+   "schedule_plan_query_service.py",
+   "schedule_plan_role.py",
+   "schedule_repo.py",
+   "schedule_result_view_context.py",
+   "schedule_summary_types.py",
+   "scheduler_analysis.py",
+   "scheduler_batches.py",
+   "scheduler_bp.py",
+   "scheduler_config.py",
+   "scheduler_excel_batches.py",
+   "scheduler_excel_calendar_rows.py",
+   "scheduler_gantt.py",
+   "scheduler_navigation_links.py",
+   "scheduler_navigation_publish.py",
+   "scheduler_public_errors.py",
+   "scheduler_reports_workbench.py",
+   "scheduler_resource_dispatch.py",
+   "scheduler_resource_dispatch_execution.py",
+   "scheduler_resource_dispatch_execution_routes.py",
+   "scheduler_route_registrar.py",
+   "scheduler_run.py",
+   "scheduler_summary_display.py",
+   "scheduler_week_plan.py",
+   "scheduler_workbench_link_query.py",
+   "scheduler_workbench_links.py",
+   "service.py",
+   "sgs.py",
+   "sgs_graph.py",
+   "sort_strategies.py",
+   "state_builder.py",
+   "strict_parse.py",
+   "support.py",
+   "test_architecture_fitness.py",
+   "test_enum_display_consistency.py",
+   "test_graph_dispatch_context.py",
+   "test_metrics_topology.py",
+   "test_ready_queue.py",
+   "test_schedule_repository_detail_queries.py",
+   "test_sp05_path_topology_contract.py",
+   "value_policies.py",
+   "view_context.py",
+   "workbench_links.py",
+   "xlsx.py"
+  ],
+  "subclusters_by_primary_file": {
+   "backup.py": [
+    "R32"
+   ],
+   "batch_service.py": [
+    "R28"
+   ],
+   "boolean_normalize.py": [
+    "LB04"
+   ],
+   "compat_parse.py": [
+    "R30",
+    "R33"
+   ],
+   "config_adapter.py": [
+    "R45",
+    "R48"
+   ],
+   "config_service.py": [
+    "R26"
+   ],
+   "dispatch_rules.py": [
+    "R49",
+    "R50",
+    "R51"
+   ],
+   "enum_display.py": [
+    "R41"
+   ],
+   "execution_fact_provider.py": [
+    "R13",
+    "R15"
+   ],
+   "execution_review.py": [
+    "LB02",
+    "LB05",
+    "R62"
+   ],
+   "execution_snapshot.py": [
+    "R19"
+   ],
+   "gantt_critical_chain.py": [
+    "R12"
+   ],
+   "gantt_plan_query.py": [
+    "R21"
+   ],
+   "gantt_service.py": [
+    "R10",
+    "R55"
+   ],
+   "gantt_service_support.py": [
+    "R11",
+    "R63"
+   ],
+   "navigation_context.py": [
+    "R42",
+    "R56",
+    "R57"
+   ],
+   "number_utils.py": [
+    "R29"
+   ],
+   "operation_execution_event_repo.py": [
+    "R18"
+   ],
+   "operation_execution_feedback_service.py": [
+    "LB01"
+   ],
+   "operation_execution_feedback_support.py": [
+    "R17"
+   ],
+   "operation_execution_labels.py": [
+    "R20"
+   ],
+   "operation_execution_state_builder.py": [
+    "R16"
+   ],
+   "operator_machine_repo.py": [
+    "R37"
+   ],
+   "ready_queue.py": [
+    "R25",
+    "R52"
+   ],
+   "report_context_filters.py": [
+    "R61"
+   ],
+   "reports_page_support.py": [
+    "LB06"
+   ],
+   "request_resource_context.py": [
+    "R67"
+   ],
+   "resource_dispatch_execution_service.py": [
+    "R07",
+    "R09"
+   ],
+   "resource_dispatch_service.py": [
+    "R05"
+   ],
+   "schedule_config_runtime_coercion.py": [
+    "R47",
+    "R71"
+   ],
+   "schedule_config_runtime_snapshot.py": [
+    "LB07"
+   ],
+   "schedule_delay_diagnosis_service.py": [
+    "R14"
+   ],
+   "schedule_graph_dispatch_context.py": [
+    "R02"
+   ],
+   "schedule_payload_contract.py": [
+    "R01",
+    "R04"
+   ],
+   "schedule_plan_identity_builder.py": [
+    "LB03"
+   ],
+   "schedule_plan_role.py": [
+    "R23"
+   ],
+   "schedule_repo.py": [
+    "R34",
+    "R35"
+   ],
+   "schedule_result_view_context.py": [
+    "R22"
+   ],
+   "scheduler_gantt.py": [
+    "R72"
+   ],
+   "scheduler_navigation_links.py": [
+    "R64",
+    "R65"
+   ],
+   "scheduler_navigation_publish.py": [
+    "R44",
+    "R58"
+   ],
+   "scheduler_public_errors.py": [
+    "LB08",
+    "R46"
+   ],
+   "scheduler_reports_workbench.py": [
+    "R54",
+    "R66"
+   ],
+   "scheduler_resource_dispatch_execution.py": [
+    "R08"
+   ],
+   "scheduler_run.py": [
+    "R43"
+   ],
+   "scheduler_workbench_link_query.py": [
+    "R60"
+   ],
+   "value_policies.py": [
+    "R31"
+   ]
+  }
+ },
+ "C02": {
+  "size": 2,
+  "members": [
+   "R38",
+   "R39"
+  ],
+  "files": [
+   "op_type_repo.py",
+   "operator_repo.py",
+   "part_repo.py"
+  ],
+  "subclusters_by_primary_file": {
+   "op_type_repo.py": [
+    "R38"
+   ],
+   "part_repo.py": [
+    "R39"
+   ]
+  }
+ },
+ "ISOLATED": {
+  "size": 11,
+  "members": [
+   "R59",
+   "R06",
+   "R24",
+   "R36",
+   "R03",
+   "R27",
+   "R68",
+   "R69",
+   "R70",
+   "R40",
+   "R53"
+  ]
+ }
+}
