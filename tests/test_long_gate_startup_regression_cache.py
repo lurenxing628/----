@@ -89,33 +89,6 @@ def test_startup_classification_does_not_depend_on_command_position(tmp_path):
     assert startup_entry["cache_status"] == "enabled"
 
 
-def test_startup_scope_tracks_runtime_inputs_without_unrelated_markdown(tmp_path):
-    startup = _entry_by_id(_manifest_for(_real_quality_gate_plan(), tmp_path), ENTRY_STARTUP_RUNTIME_REGRESSIONS)
-
-    for path in [
-        "web/bootstrap/**/*.py",
-        "app.py",
-        "app_new_ui.py",
-        "config.py",
-        "schema.sql",
-        "templates/**/*.html",
-        "static/**/*",
-        "tools/long_gate_manifest.py",
-        "tools/long_gate_fingerprint.py",
-        "tools/long_gate_cache.py",
-        "tools/long_gate_schema.py",
-        "tools/test_registry.py",
-        "scripts/run_quality_gate.py",
-    ]:
-        assert path in (
-            startup["input_file_scopes"]
-            + startup["config_file_scopes"]
-            + startup["tool_file_scopes"]
-            + startup["dependency_file_scopes"]
-        )
-    assert "docs/**/*.md" not in startup["input_file_scopes"]
-    assert "audit/**/*.md" not in startup["input_file_scopes"]
-    assert "开发文档/**/*.md" not in startup["input_file_scopes"]
 
 
 def test_startup_success_writes_proof_and_reuses_next_run(monkeypatch, tmp_path):

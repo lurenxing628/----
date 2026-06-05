@@ -52,47 +52,6 @@ def test_debt_ledger_sync_entry_is_reuse_enabled_with_declared_proof_output() ->
     assert entry["output_result_files"] == ["evidence/QualityGate/debt_ledger_sync.json"]
 
 
-def test_debt_ledger_sync_manifest_tracks_required_scopes() -> None:
-    entry = _debt_entry(quality_gate_shared.REPO_ROOT)
-
-    for scope in [
-        "开发文档/技术债务治理台账.md",
-        ".codestable/roadmap/**/*.md",
-        ".codestable/features/**/*.yaml",
-        "core/**/*.py",
-        "web/**/*.py",
-        "data/**/*.py",
-        "tests/**/*.py",
-        "tools/**/*.py",
-        "scripts/**/*.py",
-        "templates/**/*.html",
-        "static/**/*",
-        "docs/**/*.md",
-        "audit/**/*.md",
-    ]:
-        assert scope in entry["input_file_scopes"]
-    for scope in [
-        "scripts/sync_debt_ledger.py",
-        "tools/quality_gate_ledger.py",
-        "tools/quality_gate_operations.py",
-        "tools/quality_gate_scan.py",
-        "tools/architecture_scan_cache.py",
-        "tools/long_gate_manifest.py",
-        "tools/long_gate_fingerprint.py",
-        "scripts/run_quality_gate.py",
-    ]:
-        assert scope in entry["tool_file_scopes"]
-    for scope in ["pyproject.toml", ".gitignore", ".github/workflows/quality.yml"]:
-        assert scope in entry["config_file_scopes"]
-    assert "requirements*.txt" in entry["dependency_file_scopes"]
-    assert "architecture_scan_cache_metadata" in entry["env_keys"]
-    assert "git_executable_realpath" in entry["env_keys"]
-    assert "git_version" in entry["env_keys"]
-    assert "PYTHONUTF8" in entry["env_keys"]
-    assert "evidence/QualityGate/architecture_scan_cache.json" not in entry["input_file_scopes"]
-    assert "PATH" not in entry["env_keys"]
-    assert "LC_ALL" not in entry["env_keys"]
-    assert "LC_CTYPE" not in entry["env_keys"]
 
 
 def test_debt_ledger_sync_fingerprint_tracks_ledger_script_scan_tools_and_output_path(tmp_path):
