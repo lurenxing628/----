@@ -30,10 +30,17 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "web/routes/scheduler_excel_batches.py",
             "web/routes/scheduler.py",
             "core/services/scheduler/**/*.py",
-            "data/**/*.py",
-            "templates/**/*.html",
-            "static/**/*",
-            "templates_excel/**/*",
+            # P0.3 收窄：data/templates_excel 由 owner 组（run_core / excel）覆盖故移除；
+            # templates/static 收窄到 batches/material/resource 前端域。
+            "templates/scheduler/batch*.html",
+            "templates/scheduler/resource_dispatch.html",
+            "templates/material/**/*.html",
+            "templates/equipment/**/*.html",
+            "static/js/batch_detail_linkage.js",
+            "static/js/downtime_batch.js",
+            "static/js/resource_dispatch*.js",
+            "static/js/resource_execution*.js",
+            "static/css/resource_dispatch.css",
             "app.py",
             "app_new_ui.py",
             "config.py",
@@ -78,6 +85,10 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "web/ui_mode_store.py",
             "web/render_bridge.py",
             "web/manual_src_security.py",
+            # P0.2：登记 web/ 顶层请求基础设施文件，避免改它们时因「不属任何组」升全量（从 4 降到 1）。
+            "web/__init__.py",
+            "web/navigation_context.py",
+            "web/request_resource_context.py",
             "web/routes/**/*.py",
             "web/bootstrap/*.py",
             "web/routes/__init__.py",
@@ -91,12 +102,18 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "web/routes/system_ui_mode.py",
             "web/routes/domains/scheduler/scheduler_config.py",
             "web/routes/domains/scheduler/scheduler_batches.py",
-            "core/**/*.py",
+            # P0.3 收窄：core 收窄到 request/runtime/migration 相关子域（其余 core 由 run_core owner 覆盖）。
+            # data/** 保留——迁移测试承重，本组是 data 的第二 owner。web/routes/** 与 plugins/** 保留
+            # （本组是其 owner，且 web/routes/** 被契约 :171 PIN）。templates 收窄到 system 页面；
+            # static 由 ui_layout owner 覆盖故移除。
+            "core/infrastructure/**/*.py",
+            "core/models/**/*.py",
+            "core/services/common/**/*.py",
+            "core/services/system/**/*.py",
             "data/**/*.py",
             "tests/operation_execution_migration_support.py",
             "plugins/**/*.py",
-            "templates/**/*.html",
-            "static/**/*",
+            "templates/system/**/*.html",
             "app.py",
             "app_new_ui.py",
             "config.py",
@@ -130,13 +147,17 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
         ),
         "input_file_scopes": (
             "templates_excel/**/*",
+            # P0.3 收窄：本组是 templates_excel 的 owner（保留宽 glob）。docs 三项保留原样
+            # （文档改动本就 skip 门禁、且 test_long_gate_required_regression_cache 契约要求其存在）；
+            # templates 收窄到 excel 导入页面；viewmodels 收窄到 excel 域；core 收窄到导入相关服务子域；
+            # static/web_new_test(非docs) 由 ui_layout owner 覆盖故移除；data 由 run_core owner 覆盖故移除。
             "docs/**/*.md",
             "static/docs/**/*.md",
             "web_new_test/static/docs/**/*.md",
-            "templates/**/*.html",
-            "web_new_test/templates/**/*.html",
-            "static/**/*",
-            "web_new_test/static/**/*",
+            "templates/excel/**/*.html",
+            "templates/scheduler/excel_import*.html",
+            "templates/components/excel*.html",
+            "templates/equipment/excel_import*.html",
             "web/routes/excel_*.py",
             "web/routes/process_excel_*.py",
             "web/routes/personnel_excel_*.py",
@@ -146,9 +167,13 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "web/routes/scheduler_excel*.py",
             "web/manual_src_security.py",
             "web/render_bridge.py",
-            "web/viewmodels/**/*.py",
-            "core/**/*.py",
-            "data/**/*.py",
+            "web/viewmodels/excel_entry_cards.py",
+            "web/viewmodels/page_manuals*.py",
+            "core/services/process/**/*.py",
+            "core/services/common/**/*.py",
+            "core/services/material/**/*.py",
+            "core/services/personnel/**/*.py",
+            "core/services/equipment/**/*.py",
             "app.py",
             "app_new_ui.py",
             "config.py",
@@ -192,7 +217,12 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "web_new_test/templates/**/*.html",
             "static/**/*",
             "web_new_test/static/**/*",
-            "web/viewmodels/**/*.py",
+            # P0.3 收窄：整树 web/viewmodels 由 analysis owner 覆盖、core/data 由 run_core owner 覆盖故移除；
+            # 但保留本组真正测的 system/presenter viewmodels 窄 glob——ui_layout 的整页渲染契约受这些
+            # viewmodel 影响，须随它们变动在 push 时触发（红队 item8）；本组是 templates/static 的 owner
+            # （上方保留宽 glob），不再被无关 core/其他 viewmodel 逻辑改动拖入慢浏览器几何测试。
+            "web/viewmodels/system_*.py",
+            "web/viewmodels/ui_presenters.py",
             "web/routes/system_*.py",
             "web/routes/system_backup.py",
             "web/routes/system_history.py",
@@ -210,8 +240,6 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "web/routes/domains/scheduler/scheduler_batch_detail.py",
             "web/routes/domains/scheduler/scheduler_excel_batches.py",
             "web/routes/domains/scheduler/scheduler_week_plan.py",
-            "core/**/*.py",
-            "data/**/*.py",
             "app.py",
             "app_new_ui.py",
             "config.py",
