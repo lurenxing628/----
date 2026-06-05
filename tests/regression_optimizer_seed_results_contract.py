@@ -1,3 +1,5 @@
+"""回归测试：optimize_schedule 在 seed_results 含非法项（如非 dict 的 "bad-item"）时，无论 strict_mode 真假都须 fail-fast 抛 ValidationError——details.reason="invalid_seed_results"、invalid_seed_count=2、带 invalid_seed_samples，且对外消息只说「无效」不泄露 seed_results/start_time/end_time 等内部字段名。"""
+
 from __future__ import annotations
 
 from datetime import datetime

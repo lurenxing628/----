@@ -1,3 +1,5 @@
+"""回归测试：周计划页 /scheduler/week-plan 的摘要可观测性——优先 week_start 并丢弃过期 start/end 与 offset、暴露 selected_summary_display（完成状态/结果状态/降级原因/告警-错误计数）、摘要 JSON 解析失败时标记 parse_failed 不崩；并守护 build_summary_display_state 对 simulated 原始状态的保留、完成状态优先级、告警管线展示与历史缺失但保留预览行的行为。"""
+
 from __future__ import annotations
 
 import importlib

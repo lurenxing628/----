@@ -1,3 +1,5 @@
+"""回归测试：ConfigService.apply_preset 应用缺失必填字段（如 priority_weight/due_weight）的预设时，必须返回 status=rejected、保持 active_preset 为内置默认、列出 error_fields，并且不覆写当前配置快照。"""
+
 from __future__ import annotations
 
 import json

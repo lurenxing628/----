@@ -1,3 +1,5 @@
+"""回归测试：build_overdue_items 遇到批次的非法 due_date（如 2026-13-40）时不生成超期项，而是把 invalid_due_count、invalid_due_batch_ids_sample、invalid_due_raw_sample 写入 meta，并把"交期写法不对"告警追加写回 summary.warnings（原有告警保留，warnings 被归一化为 list）。"""
+
 import os
 import sys
 from datetime import datetime

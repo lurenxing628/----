@@ -1,3 +1,5 @@
+"""回归测试：run_candidate_comparison 候选对比 runner 的契约——先跑 baseline（graph off）再跑 N 个重点工序优先候选并传入图 ready/health 上下文；试跑时把 sort/dispatch_mode/dispatch_rule/algo_mode 锁死为当前值、内部 downstream 权重在可见权重为零时仍保留；critical 健康只用私有 health_context 不回退诊断样本；超全局 deadline 的未启动候选标记 skipped；仅显式 CandidateTrialFailure 算候选级失败可继续，ValidationError/RuntimeError/TypeError 必须上抛，全部失败时抛 ValidationError(field="candidate_selection")；并标记缺失/失败的 baseline。"""
+
 from __future__ import annotations
 
 from datetime import datetime

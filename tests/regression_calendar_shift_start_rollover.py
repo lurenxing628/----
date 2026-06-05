@@ -1,3 +1,5 @@
+"""回归测试：CalendarService.adjust_to_working_time / add_working_hours 跨天推进时，必须采用下一天自己的 shift_start（如 07:00），不得沿用当天 shift_start，否则会错过次日更早的班次起点。"""
+
 import os
 import sqlite3
 import sys
@@ -70,4 +72,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

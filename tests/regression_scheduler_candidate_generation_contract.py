@@ -1,3 +1,7 @@
+"""回归测试：generate_candidate_specs 候选生成契约——默认产出 baseline + 5 个稳定 graph 候选(critical 权重梯度 250..750、
+impact 5..15、downstream 0/1/2 阶梯)，sequence 从 0 连续编号；只接受已规划的 weight_count(3/5/7)，weight_count=4 抛
+ValidationError(field=candidate_weight_count)，base 权重为 bool 或负数同样拒绝。"""
+
 from __future__ import annotations
 
 import pytest

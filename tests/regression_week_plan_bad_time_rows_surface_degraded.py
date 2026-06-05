@@ -1,3 +1,5 @@
+"""回归测试：GanttService.get_week_plan_rows 遇到无法解析的非法时间（如 start_time 含 99:00:00）排程行时，将其过滤为空并返回 degraded=True、degradation_counters.bad_time_row_skipped=1、empty_reason=all_rows_filtered_by_invalid_time，而非静默吞掉或崩溃。"""
+
 from __future__ import annotations
 
 import json

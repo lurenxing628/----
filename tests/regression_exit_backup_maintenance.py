@@ -1,3 +1,5 @@
+"""回归测试：当维护窗口（maintenance_window）正被其他线程持有时，退出备份 factory._run_exit_backup() 必须 fail-fast 跳过——返回 False、耗时不到 1 秒、且不在 backup_dir 生成任何 *_exit.db。"""
+
 from __future__ import annotations
 
 import os

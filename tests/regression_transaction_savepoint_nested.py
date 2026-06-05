@@ -1,3 +1,5 @@
+"""回归测试：TransactionManager 嵌套事务的 savepoint 语义——内层失败只回滚内层、外层失败整体回滚，且当 RELEASE/ROLLBACK TO SAVEPOINT 或 outer commit 失败、或连接缺失/读 in_transaction 抛错无法判断事务所有权时，必须抛错并整体回滚、绝不在不可信状态下静默写入。"""
+
 import os
 import sqlite3
 import sys

@@ -1,3 +1,5 @@
+"""回归测试：长门禁缓存（tools/long_gate_cache + long_gate_fingerprint）的指纹与复用裁定——fingerprint_files/entry 对文件增改删、dotfile、git tracked/untracked、命令、环境变量(含 overlay)、chrome/node/python/ruff/pyright 运行时事实与声明输出路径敏感且稳定；decide_reuse/evaluate_reuse 只在指纹匹配且日志/输出哈希完好时复用成功结果，对仓外/symlink 越界路径、损坏或缺字段或非 utf-8 缓存、timeout/interrupt/partial_write、schema/runner/tooling/repo 身份变化、reuse_allowed=False 一律改判 run；write_success/write_failure 强校验 returncode、指纹形状、输出文件存在性与路径不越界。"""
+
 from __future__ import annotations
 
 import hashlib

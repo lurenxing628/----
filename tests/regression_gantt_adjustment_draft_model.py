@@ -1,3 +1,5 @@
+"""回归测试：ScheduleAdjustmentDraft/Change 表与索引随 schema 建库/迁移到位，且 GanttAdjustmentDraftService 记录时间/资源调整草稿、废弃、删除时一律不触碰正式 Schedule/ScheduleHistory/版本序列；并校验创建草稿对 base_version、base_plan_role、明细行存在性的各项拒绝规则。"""
+
 from __future__ import annotations
 
 import sqlite3

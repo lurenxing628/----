@@ -1,3 +1,5 @@
+"""回归测试：资源派工"现场记录"页面与前端脚本的契约——可写场景渲染填实际/导入Excel/查看记录入口与 data-actual-* URL 及反馈人输入；只读/历史/场景预览/无 plan 上下文场景必须隐藏写 URL 和 execution-review 链接（避免 href="None"），_execution_review_link 按 plan_role/版本守卫禁用复盘；前端走 available_actions 契约、内联实际记录表单（不预填只读时间）与一键导入，且不出现"执行事实补录/事件底座"等旧术语。"""
+
 from __future__ import annotations
 
 from typing import Tuple

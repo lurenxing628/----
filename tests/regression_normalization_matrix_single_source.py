@@ -1,3 +1,5 @@
+"""守护归一化单一真相源：批次优先级/齐套状态/日历日类型/是否(yes-no)/技能等级的取值口径由 normalization_matrix 统一裁定，路由 normalizers、excel_validators、personnel/operator_machine_normalizers、enum_normalizers 必须与之逐值对齐，且人员/设备详情页直接复用同一个 skill_level_options 函数对象。"""
+
 import os
 import sys
 

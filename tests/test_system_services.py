@@ -1,3 +1,5 @@
+"""回归测试：系统域三个服务的基础读写契约——OperationLogService 的 list_recent（含 module 过滤）与 delete_by_id/delete_by_ids 计数语义；SystemJobStateQueryService.get 命中返回状态、未命中返回 None；SystemConfigService 的 get_value 默认值回退与 set_value 后读回。"""
+
 from __future__ import annotations
 
 import sqlite3

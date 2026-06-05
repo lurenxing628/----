@@ -1,3 +1,5 @@
+"""回归测试：POST /process/parts/create 路由——当 route_raw 无法解析路线时，零件仍创建成功（route_parsed=no、PartOperations 不生成），同时 flash 出 success 已创建 与 warning 工序清单未成功生成 两条提示，自动解析失败不静默吞掉。"""
+
 from __future__ import annotations
 
 import importlib

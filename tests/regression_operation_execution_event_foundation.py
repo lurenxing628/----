@@ -1,3 +1,5 @@
+"""回归测试：OperationExecutionEvents 表/索引/外键的 schema 契约与 OperationExecutionEventRepo 的写入读取——DB 层 CHECK/触发器拒绝身份不一致与事件-状态对不匹配；仓库要求显式完整计划身份（source_table/effective_plan_role），拒绝越权 op_id 读取，按 idempotency_key/scope 回读并聚合出完工/异常状态及中文标签（已完工、报异常、设备问题等）。"""
+
 from __future__ import annotations
 
 import sqlite3

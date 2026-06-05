@@ -1,3 +1,5 @@
+"""回归测试：各 core.models 数据类的 from_row 数字解析——id/version/quantity/seq 等接受 '1.0' 形式、空字符串回落各自旧默认（None 或 0.0），但显式 NaN/Inf/布尔值必须直接 ValueError 并点名字段，绝不静默回落 0 伪装成合法值。"""
+
 import os
 import sys
 

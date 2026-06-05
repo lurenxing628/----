@@ -1,3 +1,5 @@
+"""回归测试：排序策略对批次 priority 的大小写不敏感——PRIORITY_FIRST 与 WEIGHTED 策略都把 priority='Urgent' 的批次正确识别为高优先级排到 normal 之前。"""
+
 import os
 import sys
 from datetime import date

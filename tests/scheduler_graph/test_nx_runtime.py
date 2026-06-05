@@ -1,3 +1,5 @@
+"""回归测试：scheduler.graph 包惰性加载 networkx 的契约——导入 graph 包本身绝不连带导入 networkx；nx_runtime.import_networkx() 成功返回模块，缺依赖时抛 NetworkXUnavailable（缺少可选依赖），版本不在兼容范围时抛 NetworkXUnavailable（版本不兼容）。"""
+
 from __future__ import annotations
 
 import builtins

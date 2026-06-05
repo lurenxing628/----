@@ -1,3 +1,5 @@
+"""回归测试：/scheduler/analysis 页面在 version 缺省/为空/latest 时默认展示最新版本号（v7），version=abc 返回 400 且只给口语化提示不泄露技术细节，version=999 不存在时保留版本趋势且不伪造选中项，并校验下拉用完工状态标签与冻结窗口降级展示。"""
+
 from __future__ import annotations
 
 import importlib

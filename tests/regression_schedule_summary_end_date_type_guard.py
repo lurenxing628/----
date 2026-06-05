@@ -1,3 +1,5 @@
+"""回归测试：build_result_summary 序列化 end_date 时，字符串(如「2026-02-10」)原样保留、date 对象输出 ISO 字符串，均不抛异常。"""
+
 import os
 import sys
 import time

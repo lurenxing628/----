@@ -1,3 +1,5 @@
+"""回归测试：orchestrate_schedule_run 编排契约——空结果先抛 no_actionable_schedule_rows 且不分配版本/不建 summary，越界 op 抛 out_of_scope_schedule_rows、混入非法行抛 invalid_schedule_rows（均在版本分配前失败）；正常路径才分配版本、合并 optimizer/freeze 警告、构造 SummaryBuildContext，并校验 _build_summary_contract 对计数非法/类整数('2.0')值的归一与降级事件。"""
+
 import os
 import sqlite3
 import sys

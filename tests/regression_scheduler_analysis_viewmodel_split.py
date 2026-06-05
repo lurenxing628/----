@@ -1,3 +1,5 @@
+"""回归测试：排产分析 viewmodel 拆分为 freeze/metrics/overview 子模块后，build_analysis_context 仍产出完整且可 JSON 序列化的上下文（含 metric_cards/extra_cards/freeze_display/best_score_schema_display/analysis_labels 等全部键）、对比上一版算 delta，旧 summary 缺字段时 compat_fallback.used=True 并列出缺失标签，且对 Infinity/NaN/1e9999/空串/布尔等不可信数值统一显示无法安全展示而非误转为 0；拆出的 extract_metrics_from_summary/build_extra_cards/build_freeze_display/build_analysis_labels 保持独立可用。"""
+
 from __future__ import annotations
 
 import json

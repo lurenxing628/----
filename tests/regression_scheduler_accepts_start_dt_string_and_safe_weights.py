@@ -1,3 +1,5 @@
+"""回归测试：GreedyScheduler.schedule 的输入防御——start_dt 误传字符串「2026-01-01 08:00」、machine_id/operator_id 为 int（非 str）、strategy_params 里 priority_weight=None 与 due_weight='abc' 等非法权重时，排产仍成功且不崩溃；结果 machine_id/operator_id 安全转成字符串，非法权重回退默认（priority_weight=0.4、due_weight=0.5）而非 NaN。"""
+
 import os
 import sys
 from dataclasses import dataclass

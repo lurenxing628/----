@@ -1,3 +1,5 @@
+"""契约测试：长门禁 required-regressions 父条目的缓存与指纹——父条目须与真实命令计划一致、作用域为分组注册表 scope 并集（无关 markdown 不入指纹）、成功才写父证明并在下次复用、篡改/缺子证明/缺验证器证明一律 fail-closed 重跑、--explain/--no-cache/--force-rerun 各自的缓存语义。"""
+
 from __future__ import annotations
 
 import json

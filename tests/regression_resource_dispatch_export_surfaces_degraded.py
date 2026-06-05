@@ -1,3 +1,5 @@
+"""回归测试：资源排班导出 build_resource_dispatch_workbook 必须在"查询摘要"页透出降级信息——非法开始/结束时间被过滤的记录数、空结果说明（empty_reason=all_rows_filtered_by_invalid_time）、以及 result_summary JSON 损坏导致的超期标记降级（overdue_markers_degraded=True）。"""
+
 from __future__ import annotations
 
 import io

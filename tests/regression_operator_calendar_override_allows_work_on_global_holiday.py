@@ -1,3 +1,5 @@
+"""回归测试：个人工作日历（OperatorCalendar）可覆盖全局 WorkCalendar——当全局把某天设为假期不可排产时内部工序应跳到次日；但若该人把该天个人覆盖为可工作日，则其内部工序应能排入该天。"""
+
 import os
 import sys
 import tempfile

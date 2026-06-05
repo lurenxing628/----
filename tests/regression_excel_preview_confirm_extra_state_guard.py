@@ -1,3 +1,5 @@
+"""回归测试：七类 Excel「预览→确认」入口（工作日历/人员日历/批次/工序工时/设备/供应商/人员设备关联）在预览与确认之间相关主数据漂移时，confirm 一律拒绝并提示「请重新上传 Excel 并检查」，不按陈旧 preview_baseline 落库。"""
+
 import io
 import os
 import re

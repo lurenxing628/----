@@ -1,3 +1,5 @@
+"""回归测试：现场异常工序阻断普通自动重排——某工序 report_exception 后，ScheduleService.run_schedule 应抛 AppError（code 6003、reason=execution_exception_blocks_auto_reschedule、details.op_ids=[10]、提示含「异常中/先处理现场异常」且不泄露原始 op_id），且不写库（计数与 schedule 行不变）；而暂停（pause）工序在最小重排护栏下被锁定固定（保持原 start/machine/operator、lock_status=locked，后继工序顺延）。"""
+
 from __future__ import annotations
 
 from pathlib import Path

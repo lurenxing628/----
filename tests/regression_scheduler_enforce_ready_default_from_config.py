@@ -1,3 +1,5 @@
+"""回归测试：run_schedule 未显式传 enforce_ready 时须回退到配置 enforce_ready_default——默认为 yes 时拒绝未齐套批次（抛 ValidationError），默认为 no 时允许排产（scheduled_ops>0）。"""
+
 import os
 import sys
 import tempfile

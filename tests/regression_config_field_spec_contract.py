@@ -1,3 +1,5 @@
+"""回归测试：config_field_spec 字段注册表契约——list_config_fields/default_for/choices_for/choice_label_map_for/page_metadata_for 必须给出 graph_* 一族与 objective/dispatch 等字段的默认值、选项、中文标签与 hint 文案，且 ConfigService.get_page_metadata 与快照、隐藏字段 auto_assign_persist 默认 yes、strict 模式缺 sort_strategy 必须 ValidationError、被移除的 valid_strategies 等 kwargs 必须 TypeError。"""
+
 from __future__ import annotations
 
 from pathlib import Path

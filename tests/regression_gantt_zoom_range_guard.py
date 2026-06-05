@@ -1,3 +1,5 @@
+"""回归测试：前端甘特图 gantt_zoom.js 的 validateZoomRange 与 gantt_render.js 的渲染守卫，在分钟级缩放下时间格过宽、节点/任务数超硬上限、跨午夜短任务等场景必须拦截（不 new Gantt 并给出「范围太宽/任务太多/页面卡住」中文提示），而恰好落在午夜边界等合法窗口仍正常渲染。"""
+
 from __future__ import annotations
 
 import importlib.util

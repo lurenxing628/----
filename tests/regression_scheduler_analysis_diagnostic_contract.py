@@ -1,3 +1,5 @@
+"""回归测试：排产分析诊断契约与业务诊断板块视图模型（build_diagnostic_section/item/link 与 build_diagnostic_sections）。守护诊断条目固定字段集、缺失集合归一为空列表、状态缺失不臆测 success 而记 unknown；无图分析数据时回 diagnostic_unavailable 可见空态；有数据时产出 schedule_health/resource_bottleneck/delay_risk/impact_explanation 四块并把图分析状态翻成业务级别；诊断采样限量且不泄漏 resource_pool/nodes/edges/raw/priority_key 等内部字段；坏 summary 形状被容错、不污染入参；graph 状态各场景（非 DAG、有环、unavailable、input/build_error、未知状态）映射到正确健康级别。"""
+
 from __future__ import annotations
 
 import json

@@ -1,3 +1,5 @@
+"""单元测试：数据库 bootstrap/迁移委托链的失败传播——补表 commit 失败必须上抛、database 包装层不得重复 commit、初始化失败且回滚失败抛“数据库状态不可信”、migrate_with_backup 在迁移失败后还原失败/备份缺失/还原成功各分支保留正确的原始错误。"""
+
 from __future__ import annotations
 
 import sqlite3

@@ -1,3 +1,5 @@
+"""回归测试：build_algo_operations 处理外部工序时模板缺失（part_op_repo 查不到）——非严格模式下产出 template_missing 事件、标记 algo_op.merge_context_degraded 并回落到工序自带 ext_days；严格模式下直接抛 ValidationError(field=template) 失败。"""
+
 from __future__ import annotations
 
 from types import SimpleNamespace

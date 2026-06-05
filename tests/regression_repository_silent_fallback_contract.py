@@ -1,3 +1,5 @@
+"""回归测试：仓库层禁止把读取失败静默兜底成"零"——ConfigRepository.count_all 和 ScheduleHistoryRepository.get_latest_version 遇到不可解析的标量（非整数/空/负/小数）须抛 AppError 而非返回 0，真空历史才返回 0，且 ExternalGroupRepository.update 命中 0 行须抛 BusinessError 提示不存在。"""
+
 from __future__ import annotations
 
 import sqlite3

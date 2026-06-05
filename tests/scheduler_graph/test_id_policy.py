@@ -1,3 +1,5 @@
+"""回归测试：scheduler.graph.id_policy 图节点 ID 生成策略——normalize_operation_row_id 只接受正整数形态（"001"/"1.0" 归一、0/False/-1/"1.5"/bytes 拒收）；make_operation_node_id 有效 row_id 走 op:<id> 否则回退 op:<batch>:<op_code>（空白/二进制部件抛 GraphNodeIdError）；make_machine/operator_node_id 拒空白与 bytes；display_id 对诊断容错剥前缀。"""
+
 from __future__ import annotations
 
 import pytest

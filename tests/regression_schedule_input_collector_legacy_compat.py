@@ -1,3 +1,5 @@
+"""回归测试：collect_schedule_run_input 强制拒绝旧式注入签名——build_algo_operations_fn/build_freeze_window_seed_fn 的 legacy 签名须抛 TypeError，未返回 BuildOutcome 也须 TypeError；空算法输入须在读冻结窗口/停机/资源池之前就以 ValidationError 暴露（reason=algo_builder_filtered_all），不得被误标成冻结窗口问题。"""
+
 from __future__ import annotations
 
 import sqlite3

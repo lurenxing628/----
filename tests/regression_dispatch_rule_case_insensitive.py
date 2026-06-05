@@ -1,3 +1,5 @@
+"""回归测试：parse_dispatch_rule 对 CR/ATC/SLACK 等派工规则做大小写与首尾空白容错，未知值回退到 default 参数。"""
+
 import os
 import sys
 

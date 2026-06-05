@@ -1,3 +1,5 @@
+"""测试：.codestable/tools 下 search-yaml.py 与 validate-yaml.py CLI 契约——两工具能在当前 Python 启动；validate 支持 --exclude-dir/--exclude-file（按扫描相对路径）排除草稿、排空全部文件时退出码 2、对 md/yaml 分别应用必填字段；search 支持 frontmatter 过滤（~=/=）、JSON 输出序列化 YAML 日期、跳过无 frontmatter 的 md；两工具对坏/未闭合/非整行分隔符的 frontmatter 报错而非回退，且在无 PyYAML 时走内建 fallback 仍能解析 block-list 并拒绝非法嵌套/未闭合引号；并核验 .codestable 实仓文档的 superseded-by 连字符字段与 issue fix-note/roadmap 关联字段可被检索。"""
+
 from __future__ import annotations
 
 import os

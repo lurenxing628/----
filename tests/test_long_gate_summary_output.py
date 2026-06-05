@@ -1,3 +1,5 @@
+"""守护长门禁 summary 产物契约：run_quality_gate 在 explain/成功/缓存复用/失败/脏工作区等场景下，long_gate_summary 写出的 summary.json/summary.md 要正确记录 executed/reused/failed/planned_only/disabled 计数、各条目执行模式与时长、失败时的可复制 nodeid 重跑命令与 stdout/stderr tail，并保证 summary 写盘失败时不落 success 缓存。"""
+
 from __future__ import annotations
 
 import importlib

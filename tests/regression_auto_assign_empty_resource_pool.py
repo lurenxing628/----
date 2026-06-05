@@ -1,3 +1,5 @@
+"""回归测试：GreedyScheduler.schedule 收到显式空 resource_pool={} 时，应将其视为"已提供但为空"而非"未提供"，对缺省 machine_id/operator_id 的内部工序仍进入 auto-assign 分支并失败（failed_ops=1、results 为空），错误信息含"缺少自动派工所需工种信息"。"""
+
 import os
 import sys
 from dataclasses import dataclass

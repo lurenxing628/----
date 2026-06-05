@@ -1,3 +1,5 @@
+"""回归测试：内部工序缺设备/人员时，_score_internal_candidate 抛出的 ValidationError(field="resource") 面向用户的 user_message 必须点名业务上下文（批次/工序/顺序/工种/图号/零件/件号），按缺设备/人员组合给出"缺少设备、人员"等文案，不暴露 op.id；auto-assign 失败给"没有找到可用的自动分配设备和人员组合"且不甩锅批次详情；details.reason 与公开错误码（auto_assign_inputs_missing 等）一一对应；scheduler_run/week_plan 路由把该消息 flash 成单条 error 并清洗 SECRET_TOKEN/Traceback/私有路径。"""
+
 from __future__ import annotations
 
 import sys

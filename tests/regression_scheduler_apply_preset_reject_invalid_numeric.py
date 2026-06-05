@@ -1,3 +1,5 @@
+"""守护 ConfigService.apply_preset 对非法预设的拒绝契约：非数字/NaN/Inf 数值字段、整数字段填小数、choice/yes-no 字段显式空白、以及缺省数值字段都必须抛 ValidationError 或返回 status=rejected，绝不静默回退默认基线；拒绝时不得写入 ACTIVE_PRESET / ACTIVE_PRESET_REASON 行。"""
+
 import json
 import os
 import sys

@@ -1,3 +1,5 @@
+"""回归测试：页面级说明注册表（web.viewmodels.page_manuals）的完整性与文案不漂移——ENDPOINT_TO_MANUAL_ID 与已注册路由、MANUAL_TOPICS/MANUAL_ENTRY_ENDPOINTS 一一对应且无共享 manual_id，各页 title/help_card 标题与 full_manual_anchor 锚点稳定命中 scheduler_manual.md，并守护齐套检查、留空默认值、首次使用路线图等用户纠偏文案的必含/禁含口径。"""
+
 from __future__ import annotations
 
 import importlib

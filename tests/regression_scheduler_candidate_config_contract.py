@@ -1,3 +1,5 @@
+"""回归测试：PR7E 图分析候选方案配置契约——config_field_spec 默认值/选项/快照齐备且数值选项严格校验、旧预设可缺 PR7E 字段但保留已存值、graph_downstream_weight 仅作内部候选参数不暴露给用户、graph_analysis_mode 的 off/report 保持单方案模式、编排器把 PR7E 运行时字段透传给默认候选 runner。"""
+
 from __future__ import annotations
 
 import sqlite3

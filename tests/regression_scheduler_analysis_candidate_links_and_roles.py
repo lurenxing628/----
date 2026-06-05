@@ -1,3 +1,5 @@
+"""回归测试：/scheduler/analysis 候选对比展示的方案角色与跳转链接——三角色(adopted/baseline_best/critical_best)常量须仅在 core/models/schedule_plan_role.py 单点定义无重复，对比行按固定顺序与中文标签呈现并各带 5 个带 version/plan_role 的甘特/周计划/资源排班/超期链接；当候选明细未保存、代表候选状态为 failed/skipped/空/缺失时须隐藏链接并给出对应不可用原因。"""
+
 from __future__ import annotations
 
 import ast

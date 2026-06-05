@@ -1,3 +1,5 @@
+"""回归测试：各 Excel 导入服务在遇到坏行时的失败语义契约——区分"硬失败整批回滚"与"按行计错继续"。守护 machine/operator/batch/operator_calendar 走硬失败（抛 ValidationError、整批不落库），而 supplier/op_type/part_operation_hours/operator_machine 走按行计错（error_count=1、new/update_count=0、该坏行不落库）。"""
+
 import os
 import sys
 import tempfile

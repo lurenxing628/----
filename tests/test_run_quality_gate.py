@@ -1,3 +1,5 @@
+"""回归测试：scripts/run_quality_gate.py 质量门——校验共享命令计划与 tools.quality_gate_shared 一致(QualityGateError 身份不分裂、必跑命令顺序 guard_preflight→collect→ruff→pyright→…、全 collect/ruff/pyright 命令回执齐全)、活动运行时探测的不确定/陈旧判定与提示、缺命令证据时 main 失败并写 failed manifest、REQUIRED/STARTUP 测试集来自 test_debt_registry 且覆盖高风险回归、env_overlay(APS_BROWSER_SMOKE_REQUIRED 等)透传、--require-clean-worktree 重建被忽略回执不弄脏干净工作区、pyright tools 覆盖与 config include 一致性、long_gate 静态证据落盘。"""
+
 from __future__ import annotations
 
 import importlib

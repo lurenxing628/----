@@ -1,3 +1,7 @@
+"""回归测试：UI 契约层的语义 token 与共享组件宏——ui_contract.css 须声明 --ui-* 颜色变量与 .aps-* 布局/语气/表格类；ui_macros.html 提供 notice/details_notice/summary_grid/toggle 等宏，
+notice 默认无 role/aria-live、仅显式传入才注入，toggle 行 checkbox 在 hidden 之前且 hidden value 用 submitted_value；业务模板不得直连低层 _toggle_row_internal，
+presenter 化页面(batches/config/backup)走 summary_grid 而非旧 summary_item，且各 toggle 路由用顺序无关的 form_yes_no_value/form_toggle_bool 解析。"""
+
 from __future__ import annotations
 
 from pathlib import Path

@@ -1,3 +1,5 @@
+"""回归测试：当 batch_order dispatch 的 batch_order_override 含重复 batch_id（如 ["B1","B2","B1","B3"]）时，GreedyScheduler.schedule 必须抛 ValidationError(field="batch_order_override")，不得静默去重保留首次后继续排产。"""
+
 import os
 import sys
 from dataclasses import dataclass

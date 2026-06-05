@@ -1,3 +1,5 @@
+"""回归测试：残缺旧库仅有缺列的 OperatorMachine 表（无 skill_level/is_primary 且缺其它整表）时，ensure_schema() 必须抛 MigrationContractError 快速失败，不得用当前 schema.sql 静默补成“看起来可用”的新库，原有数据保持原样。"""
+
 import os
 import sqlite3
 import sys

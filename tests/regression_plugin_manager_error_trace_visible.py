@@ -1,3 +1,5 @@
+"""回归测试：PluginManager.load_from_base_dir 加载在 register 阶段抛异常的 enabled 插件时不崩溃，状态中 enabled=yes/loaded=no，且 error 字段同时包含异常消息与 Traceback（即使 logger.error 不支持 exc_info）。"""
+
 import os
 import sys
 import tempfile

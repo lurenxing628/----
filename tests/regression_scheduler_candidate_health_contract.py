@@ -1,3 +1,5 @@
+"""回归测试：evaluate_candidate_health 候选方案健康判定契约——以关键链完工/等待小时和 top_impact 工序为信号，需至少两个信号超阈值才判 BETTER/WORSE（否则 SAME），缺关键链 op_ids 或只给 critical_path_sample/graph_score_sample（含截断）时判 UNAVAILABLE 并给出 reason_code，不拿采样冒充全量。"""
+
 from __future__ import annotations
 
 from datetime import datetime

@@ -1,3 +1,5 @@
+"""回归测试：optimize_schedule 在 improve 模式下，当 time.time 显示剩余预算 remaining<1 秒时跳过 OR-Tools warm-start（try_solve_bottleneck_batch_order 被打桩成调用即失败），改走旧贪心路径仍返回完整 OptimizationOutcome（results/summary/used_strategy=priority_first/used_params/best_order/best_score/algo_mode/objective/time_budget 等字段齐全）。"""
+
 import os
 import sys
 from dataclasses import dataclass

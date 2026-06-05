@@ -1,3 +1,6 @@
+"""回归测试：图调度 precedence_builder 的线性前序边构建与图组装契约——build_linear_edges_by_batch 按 batch 分组、按 seq 排序（含乱序输入、同 seq 稳定排序）生成相邻边，
+外协前序节点标 external_lag 边；build_precedence_graph 深拷贝节点/边属性、补 is_frozen/fixed_source 默认值，对重复 node_id、未知端点、非法 kind/负 lag_minutes 抛 GraphBuildContractError；并守护该模块 import 时不触发 networkx 导入。"""
+
 from __future__ import annotations
 
 import builtins

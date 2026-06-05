@@ -1,3 +1,5 @@
+"""单元测试：scheduler.graph.metrics 工序图影响度量——get_downstream/upstream_operations、get_impact_count（含菱形结构不重复计共享后继、多条独立链各算各的）、get_downstream_critical_minutes（含边 lag、缺 lag/duration 时保留 KeyError），以及 build_node_metrics 一次产出全节点 5 字段、只算一次关键路径不逐节点重建、可复用预计算上下文且不改动原图。"""
+
 from __future__ import annotations
 
 import json

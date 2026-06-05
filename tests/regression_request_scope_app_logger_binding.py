@@ -1,3 +1,5 @@
+"""回归测试：preprocess_request 在请求作用域内把 g.app_logger 绑定到 current_app.logger，并准备好 g.db/g.op_logger/g.services；scheduler_batches 路由经请求级容器构造 BatchService/ConfigService/ScheduleHistoryQueryService 时，注入的 logger 全部是 current_app.logger、op_logger 全部是 g.op_logger，且历史查询用 limit=1。"""
+
 from __future__ import annotations
 
 import importlib

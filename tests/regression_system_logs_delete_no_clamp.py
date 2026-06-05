@@ -1,3 +1,5 @@
+"""回归测试：/system/logs/delete 不应把 log_id=0/-1 夹逼成 1 而误删 OperationLogs.id=1；/system/logs/delete-batch 混入非法编号时应整批拒绝并提示「日志编号不合法」，不偷删合法 id；合法 log_id=1 仍能正常删除。"""
+
 from __future__ import annotations
 
 import os

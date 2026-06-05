@@ -1,3 +1,5 @@
+"""回归测试：未捕获的 ValidationError(field=...) 错误页渲染字段标签时，必须取自 config_field_spec 的 field_label_for 注册表（如 objective 渲染成对应中文标签），而不能把内部键名 field_zh 直接漏到页面。"""
+
 from __future__ import annotations
 
 import importlib

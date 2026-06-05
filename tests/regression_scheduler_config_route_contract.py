@@ -1,3 +1,5 @@
+"""回归测试：/scheduler/config 路由契约——GET 经请求级 ConfigService 渲染预设/运行态/toggle 元数据与图分析文案；POST 走原子保存入口，只透传显式提交字段、解析 yesno toggle 不依赖顺序、拒绝非法 toggle，并按 save_outcome 把隐藏修补/被阻断修补/meta 解析告警/校验失败 flash 成不泄露原始字段名的用户文案，成功修补不误报 success；预设 apply/save/delete 的 rejected/adjusted 也走字段标签化文案；legacy wrapper 只加载 scheduler_config 叶子模块。"""
+
 from __future__ import annotations
 
 import importlib

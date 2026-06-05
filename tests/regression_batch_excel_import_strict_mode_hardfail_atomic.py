@@ -1,3 +1,5 @@
+"""回归测试：BatchService.import_from_preview_rows 在 strict_mode=True 且自动补建工序需要 route_parser fallback 时，应抛 BusinessError(ROUTE_PARSE_ERROR) 硬失败，且失败后 Batches/BatchOperations 无残留（原子回滚）。"""
+
 import os
 import sqlite3
 import sys

@@ -1,3 +1,5 @@
+"""回归测试：greedy.algo_stats 计数器契约——increment_counter/merge_algo_stats 只接受整数增量（拒绝 str/float/Decimal/Fraction/bool 及坏的既有值），None sink 静默允许；ensure_algo_stats/snapshot_algo_stats 兼容 _last_algo_stats 旧字段并在快照失败时回退，不可写 sink 抛 RuntimeError；merge/snapshot 对 fallback_samples 深拷贝以防 merge 后被原对象篡改。"""
+
 from __future__ import annotations
 
 import copy

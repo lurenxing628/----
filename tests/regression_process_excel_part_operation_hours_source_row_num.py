@@ -1,3 +1,5 @@
+"""回归测试：/process/excel/part-operation-hours 预览与确认全链路——预览命中「必须是有限数字」校验、raw_rows_json 以 aps-preview-json-b64 编码且保留原始 Excel 行号(__source_row_num=3)/工作表名/行标识，确认阶段拒绝错误数据并把错误示例按原始行号「第3行」显示，不回退到压缩行号「第2行」。"""
+
 import io
 import json
 import os

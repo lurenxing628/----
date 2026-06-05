@@ -1,3 +1,5 @@
+"""回归测试：GET /equipment/ 设备列表页的计划停机覆盖状态——MachineDowntimeQueryService.list_active_machine_ids_at 可用时展示「停机（计划）」且无失败提示；查询抛异常时页面仍 200、改为展示降级提示「计划停机状态读取失败…」、不外泄 Traceback，并通过 app.logger.exception 记录「设备列表页读取计划停机状态失败」。"""
+
 from __future__ import annotations
 
 import importlib

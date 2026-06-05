@@ -1,3 +1,5 @@
+"""回归测试：ensure_secret_key 在 LOG_DIR 配置解析抛异常时仍能兜底生成 SECRET_KEY，并把「LOG_DIR 配置解析失败」告警写进 app.logger.warning；当 logger 本身也抛错时，该告警退回写到 stderr，不静默吞掉。"""
+
 from __future__ import annotations
 
 import os

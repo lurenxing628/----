@@ -1,3 +1,5 @@
+"""回归测试：schema v4→当前版本迁移须把 OperatorMachine 历史值归一化——skill_level 的中文/旧值(熟练/普通/初级/空)转 expert/normal/beginner、is_primary(是/否/主/空)转 yes/no，并在迁移前生成 before_migrate_v4_to_v{N} 备份文件、推进 SchemaVersion 到当前版本。"""
+
 from __future__ import annotations
 
 import os

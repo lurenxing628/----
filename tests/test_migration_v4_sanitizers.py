@@ -1,3 +1,5 @@
+"""单元测试：migrations.v4._sanitize_field 字段清洗——把带空格大小写的枚举值归一化（如 " YES "→"yes"）、空/空值套默认值、已规范值与中文枚举文本保持不变，对非法表名/列名/pk_expr 拒绝执行并记日志返 PARTIAL，缺表或缺列返 SKIPPED。"""
+
 from __future__ import annotations
 
 import sqlite3

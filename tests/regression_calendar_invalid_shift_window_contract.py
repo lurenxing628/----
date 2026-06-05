@@ -1,3 +1,5 @@
+"""回归测试：CalendarEngine.policy_for_datetime 与 WorkCalendar/OperatorCalendar.from_row 对班次时间与日历数值的校验契约——非空非法的 shift_start/shift_end 须按 ValidationError(field=班次开始/结束) 拒绝，空值与 HH:MM:SS、全角冒号格式应正常解析并落到业务默认；shift_hours/efficiency 的负数、NaN、inf、bool、零效率均须拒绝，而空白沿用默认；add_working_hours/add_calendar_days 同样拒绝 NaN/inf/负数/bool。"""
+
 from __future__ import annotations
 
 from datetime import datetime

@@ -1,3 +1,5 @@
+"""FJSP（Brandimarte mk01-mk10）基准评测脚本：解析 .fjs、按 A_shortest/B_balanced 折叠多机为单机绑定后注入 24h 日历，跑 greedy/improve 排产并对照 BKS/UB makespan 计算 gap、产出 evidence/Benchmark 报告；为其它基准提供 load_instance_text/parse_fjsp/run_one_case 等可复用入口。"""
+
 from __future__ import annotations
 
 import argparse

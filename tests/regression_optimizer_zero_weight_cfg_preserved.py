@@ -1,3 +1,5 @@
+"""回归测试：optimize_schedule 在 priority_weight=0.0、due_weight=1.0 时不把 0.0 当假值误回退——传给 GreedyScheduler.schedule 的 strategy_params 与 OptimizationOutcome.used_params 都须如实保留 priority_weight=0.0 和 due_weight=1.0。"""
+
 import os
 import sys
 from datetime import date, datetime, timedelta

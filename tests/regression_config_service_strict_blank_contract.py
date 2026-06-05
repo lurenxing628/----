@@ -1,3 +1,5 @@
+"""回归测试：ConfigService 的各写入入口（set_ortools / set_freeze_window / save_page_config / set_time_budget_seconds）遇到纯空白的时限、冻结天数、优先级权重、交期权重、时间预算时，必须抛 ValidationError 并带正确的中文字段名，且 set_time_budget_seconds 拒绝空白后不得改动配置快照。"""
+
 from __future__ import annotations
 
 from pathlib import Path

@@ -1,3 +1,5 @@
+"""回归测试：当 ScheduleService.run_schedule 抛「所选批次没有可重排工序，本次未执行模拟排产。」的 ValidationError 时，POST /scheduler/simulate 重定向回批次页 /scheduler（不跳转 /scheduler/gantt），并在页面 flash 出该业务错误、不误报「模拟排产完成：生成版本」。"""
+
 import importlib
 import os
 import sys

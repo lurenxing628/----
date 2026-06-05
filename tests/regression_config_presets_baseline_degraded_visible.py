@@ -1,3 +1,5 @@
+"""回归测试：ConfigService 基线探测降级要可见——脏的部分配置不得伪造 active_preset 出处（get_active_preset/reason 返回 None 且 display_state 标记 active_preset_missing/provenance_missing），而 get_snapshot_from_repo 抛异常时 active_preset 应回落 CUSTOM 且 reason 包含 BASELINE_DEGRADED 与 RuntimeError。"""
+
 from __future__ import annotations
 
 import sqlite3

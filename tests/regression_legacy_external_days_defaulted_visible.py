@@ -1,3 +1,5 @@
+"""回归测试：greedy.external_groups.schedule_external 遇到 ext_days=None 的旧数据时，兼容模式(strict_mode=False)按 1 天临时排产、不阻断、不报错，并记 legacy_external_days_defaulted 降级计数；严格模式则抛错不静默回退；build_result_summary 把该降级透出为 legacy_external_days_defaulted_count / degradation_counters 及含「本次先按 1 天计算」的 warning。"""
+
 from __future__ import annotations
 
 import os

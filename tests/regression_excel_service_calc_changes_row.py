@@ -1,3 +1,5 @@
+"""守护 ExcelService.preview_import/_calc_changes 的逐行变更判定：OVERWRITE 模式下文本差异判 UPDATE 且只在 changes 里给出新旧值、数值型(1 vs 1.0)等价不计变更、整行无变化判 UNCHANGED，且读取已有记录时内部异常必须原样抛出而非伪装成普通导入校验失败。"""
+
 import os
 import sqlite3
 import sys

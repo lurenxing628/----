@@ -1,3 +1,5 @@
+"""回归测试：Machine/OperatorRepository 的引用检查包装方法语义不变（是否被 BatchOperations/Schedule 引用、是否存在任意引用），且底层 exists_value_reference/exists_any_nonblank_reference 忽略 NULL 与空白值、对用户值用参数绑定防注入、对非法表名/列名标识符抛 ValueError。"""
+
 from __future__ import annotations
 
 import sqlite3

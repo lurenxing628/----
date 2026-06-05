@@ -1,3 +1,5 @@
+"""回归测试：ScheduleMetrics.to_dict 与 evaluation 负荷统计（_finite_non_negative/_cv）遇到 NaN/Infinity、无法转 float 的坏值或内部计算错误时必须抛错（提示“有限数字”），不得静默归零。"""
+
 import os
 import sys
 

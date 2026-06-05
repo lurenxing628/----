@@ -1,3 +1,5 @@
+"""回归测试：各 Excel 导入（日历/供应商/设备/批次/工序工时/工艺路线）经导出再回灌时，UNCHANGED 行必须计入跳过数且渲染 success 提示（新增=更新=错误=0、跳过>0）；当 error_count>0 时确认页须渲染「导入部分完成」warning 提示并展示错误示例。"""
+
 import importlib
 import io
 import os

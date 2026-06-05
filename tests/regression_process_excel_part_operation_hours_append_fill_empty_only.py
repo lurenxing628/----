@@ -1,3 +1,5 @@
+"""回归测试：零件工序工时 Excel 导入的 append（只补空工时）模式——页面隐藏 replace 仅留 overwrite/append；预览把已维护工时行标记 SKIP、空工时行标记 UPDATE、external 工序与不存在工序标记 ERROR；含 error 行时 confirm 拒绝整批导入，仅 skip/update 时成功写入；确认 DB 中已维护行不被覆盖、空工时行被补齐、external 行保持不变。"""
+
 import io
 import os
 import re

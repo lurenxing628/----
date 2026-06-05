@@ -1,3 +1,5 @@
+"""回归测试：POST /process/suppliers/create 当 default_days 为空字符串时应返回 400 且响应体含「默认周期」提示，并且数据库中不得新建该供应商记录（拒绝空白默认周期、不静默落库）。"""
+
 from __future__ import annotations
 
 import importlib

@@ -1,3 +1,5 @@
+"""回归测试：在 Node DOM shim 下加载 gantt.js/gantt_zoom.js，校验 zoom.ZOOM_SPECS 缩放级别顺序（month..one-minute）与各级 stepMinutes（half-day=720…one-minute=1），normalizeZoomLevel 把旧 Day/Week/Month 映射到新 key；并用 frappe-gantt vendor 验证分钟级 view_mode 生成递增日期且短任务（36 分钟）条形宽度按列宽缩放不丢失。"""
+
 from __future__ import annotations
 
 import importlib.util

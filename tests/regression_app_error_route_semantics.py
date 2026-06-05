@@ -1,3 +1,5 @@
+"""回归测试：路由层统一异常语义——供应商删除被引用时 BusinessError(PERMISSION_DENIED) 返回 403 且页面不泄漏 ErrorCode 值/“错误码”字样；物料创建重复、设备停机批量创建越权时仍走页面 flash + 302 重定向白名单，flash 里带原始业务提示。"""
+
 from __future__ import annotations
 
 import importlib

@@ -1,3 +1,5 @@
+"""回归测试：甘特图关键链描边（aps-cc-outline）与 frappe-gantt 真实 vendor 联动——build_gantt_contract 在 critical_chain 不可用时清空 ids/edges 并给出中文 reason；gantt_outline.js 的 setCriticalOutlineEnabled/installCriticalOutlineSyncAdapter 在拖拽与 Day/Week/Month 视图切换下让描边随条形位置实时同步、几何非法时不渲染；正式页与预览页共享关键边 tooltip/图例/帮助语义并对内部 reason_code、原始事件、任务名做脱敏与转义。"""
+
 from __future__ import annotations
 
 import importlib.util

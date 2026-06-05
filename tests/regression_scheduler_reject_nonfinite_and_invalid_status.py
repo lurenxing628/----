@@ -1,3 +1,5 @@
+"""回归测试：调度相关 Service 拒绝非有限数值与非法状态——ConfigService.set_holiday_default_efficiency/set_weights、CalendarService.upsert(efficiency)、ScheduleService.update_internal/external_operation 对 NaN/Inf/负数工时与周期抛 ValidationError；空白工时清空保存为 0、设备/人员可清空为 None；工序 status 走白名单（archived/unknown 拒绝，scheduled/skipped 放行）。"""
+
 import os
 import sys
 import tempfile

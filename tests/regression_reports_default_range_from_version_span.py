@@ -1,3 +1,5 @@
+"""回归测试：/reports/utilization 与 /reports/downtime 在缺省日期参数时，按所选版本（version=9）的排程范围自动带入 start_date/end_date。守护两个报表页都把日期回填为该版本 Schedule 的最早/最晚日（2099-01-10）、展示"已按所选版本的排程范围自动带入日期。"提示，即使 downtime 结果为空也照常带入范围。"""
+
 from __future__ import annotations
 
 import os

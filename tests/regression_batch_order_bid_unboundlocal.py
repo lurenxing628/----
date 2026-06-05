@@ -1,3 +1,5 @@
+"""回归测试：GreedyScheduler.schedule 在 batch_order 派工模式下，当 bid 赋值首行（读 batch_id）即抛异常时，except 分支不应因 bid 未定义触发 UnboundLocalError；该工序应计入 failed_ops，summary.errors 只暴露含 OP_ERR 的公开文案（请查看系统日志），不泄露原始异常或 UnboundLocalError。"""
+
 import logging
 import os
 import sys

@@ -1,3 +1,5 @@
+"""回归测试：资源排班对外输出契约——decorate_resource_dispatch_payload 与 build_resource_dispatch_workbook 必须把 source/lock_status 翻成中文公开标签（自制/外协/已锁定…）、不外泄 internal/external/locked 等内部枚举和 op_id/source_table 等内部字段，build_resource_dispatch_filename 须清洗 scope_id 中的非法文件名字符，且坏时间过滤用大白话标签呈现。"""
+
 from __future__ import annotations
 
 import io

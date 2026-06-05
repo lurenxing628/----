@@ -1,3 +1,5 @@
+"""回归测试：/scheduler/resource-dispatch 页面/data/export 三端对非法查询参数（坏日期/不存在范围/坏 scope_type/坏 team_axis/坏 period_preset/坏或零 version）的处理——页面与 export 302 重定向到剔除坏键的干净 URL，data 端以 400 返回 invalid/cleanup_query_keys 与中文 labels；而缺失的 history version 一律 fail-closed 返回 404 且不做 query cleanup；并校验版本下拉的合成状态标签、混合非法过滤稳定落地不 500、ResourceDispatchService 的 scope/axis/version/period 校验字段键与 no_history 空载与 critical_best 回退 adopted 的契约。"""
+
 from __future__ import annotations
 
 import importlib

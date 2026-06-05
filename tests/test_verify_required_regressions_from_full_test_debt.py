@@ -1,3 +1,5 @@
+"""回归测试：verify_required_regressions_from_full_test_debt 从 full-test-debt payload 验证必跑回归并产出证明——main 写出 schema_version=4、status=passed 的父证明与按 group 拆分的子证明（required_target_paths/verified_required_nodeids）；当某必跑文件未被 payload 覆盖、存在非通过 report、或阻断分类（candidate_test_debt 等）非空时抛 RequiredRegressionProofError。"""
+
 from __future__ import annotations
 
 import json

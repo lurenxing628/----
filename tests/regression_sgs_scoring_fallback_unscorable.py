@@ -1,3 +1,5 @@
+"""回归测试：GreedyScheduler 的 SGS 评分阶段对不可评分输入直接失败而非造兜底排序 key——外协工序 ext_days<=0 抛 ValidationError(field=ext_days)、缺资源内部工序自动分配 probe 失败抛 ValidationError(field=resource)，且 probe_only 探测不污染 fallback_counts 各计数。"""
+
 import os
 import sys
 from dataclasses import dataclass

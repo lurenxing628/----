@@ -1,3 +1,5 @@
+"""回归测试：detect_schema_is_current 与 operation_execution_event_contract_issues 守护 OperationExecutionEvents 表契约——唯一索引/列顺序、索引须建在本表而非影子表、id 主键、event_time CHECK、外键须为复合组（schedule(id,version,op_id) 与 BatchOperations(id,batch_id)）不可拆分/不可改 CASCADE/不可错配资源外键、CHECK 不可放宽枚举，以及已存在脏数据（不可能日期、状态对不上、各字段越界）都应被判定为 schema 不当前。"""
+
 from __future__ import annotations
 
 import sqlite3

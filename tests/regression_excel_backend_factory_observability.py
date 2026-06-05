@@ -1,3 +1,5 @@
+"""回归测试：excel_backend_factory.get_excel_backend() 在 auto 模式下 pandas provider 抛错时记录 warning 并降级回 OpenpyxlBackend；显式要求 pandas 但缺少 capability 时抛 RuntimeError；prefer 非法值抛 ValueError。"""
+
 from __future__ import annotations
 
 import pytest

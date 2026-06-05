@@ -1,3 +1,5 @@
+"""回归测试：启动期能力探测结果对象（web.bootstrap.runtime_capabilities 的 available/degraded/unavailable）。守护三态标志正确（state 与 available/degraded/unavailable 属性一致）、degraded/unavailable 必须带非空 reason 否则抛 ValueError，且降级与不可用都写出可观测的中文 WARNING 日志（含"启动能力降级"/"启动能力不可用"及 reason 文本）。"""
+
 from __future__ import annotations
 
 import logging

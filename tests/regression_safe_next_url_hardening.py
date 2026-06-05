@@ -1,3 +1,5 @@
+"""回归测试：开放重定向防护——system_utils._safe_next_url 与 ui_mode.normalize_manual_src 只接受站内相对路径，拒绝绝对/协议相对/多斜杠/反斜杠/含换行/回车/空字节的 URL，且 scheduler_config._resolve_manual_back_url 仅消费已过滤的 safe_src、对被拒输入折叠为 None。"""
+
 from __future__ import annotations
 
 import importlib

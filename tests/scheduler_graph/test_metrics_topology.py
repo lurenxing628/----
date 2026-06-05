@@ -1,3 +1,5 @@
+"""契约测试：scheduler.graph.metrics 拓扑排序层——导入时不引入 networkx 也不依赖 validators/analysis_service/exporter 等上层模块；get_topological_order/get_topological_generations/get_generation_index 对线性图、并行同层(按 batch_id+seq+op_code 稳定排序)给出确定顺序，遇环抛 NetworkXUnfeasible、缺 builder 节点字段抛 KeyError。"""
+
 from __future__ import annotations
 
 import builtins

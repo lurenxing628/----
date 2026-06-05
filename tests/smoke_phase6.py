@@ -1,3 +1,5 @@
+"""Phase6 冒烟测试：跑通 Scheduler 基础链路——BatchService 模板缺失时自动解析 route_raw 生成工序、create_batch_from_template 遇 op_code 冲突事务回滚不留脏数据、op_code 命名规则；ScheduleService 内部工序设备/人员校验与清空、merged 外部组禁止逐道设 ext_days；ConfigService 权重总和校验；CalendarService upsert 与跨天 add_working_hours 计算。"""
+
 import os
 import sys
 import tempfile

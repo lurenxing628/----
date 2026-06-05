@@ -1,3 +1,5 @@
+"""回归测试：import 各 legacy scheduler 路由 wrapper（web.routes.scheduler_*）须保持被动——在 app 被 import 前不得触发 register_scheduler_routes()，且 import app 后蓝图正常注册；同时验证 scheduler 根蓝图直挂需显式调用 register_scheduler_routes，重复注册路由表幂等稳定。"""
+
 from __future__ import annotations
 
 import json

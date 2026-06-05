@@ -1,3 +1,5 @@
+"""回归测试：现场执行事件序列契约——validate_operation_execution_event_sequence 与 OperationExecutionEventRepo 拒绝非法流程（finish 不能跟在 start 之前、时间倒退、previous_state_revision 不匹配、跨计划 scope 变更），身份字段拒绝 bool/小数整数，仓库读路径对坏序列/非法 impact_minutes 失败而非静默，且按 schedule scope 分版本聚合并保留小数分钟（actual/pause 时长）。"""
+
 from __future__ import annotations
 
 from pathlib import Path

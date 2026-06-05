@@ -1,3 +1,5 @@
+"""Phase5（工艺管理模块）冒烟测试：端到端验证 RouteParser 解析工艺路线（分隔符兼容、validate_format、重复工序号保留首个、未识别工种默认 external、连续外部组识别）、PartService.reparse_and_save 落库 PartOperations/ExternalGroups、ExternalGroupService.set_merge_mode 的 separate/merged 存储规则，以及外部组删除规则（中间组拒绝、首/尾/全外部组允许并同步清理），结果写入 evidence/Phase5/smoke_phase5_report.md。"""
+
 import os
 import sys
 import tempfile

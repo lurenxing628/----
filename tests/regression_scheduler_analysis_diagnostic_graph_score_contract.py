@@ -1,3 +1,5 @@
+"""回归测试：build_diagnostic_sections 渲染 graph_score_sample 时只输出面向用户的「重点影响样本」白话文案，绝不把内部 op_id（如「工序 1」）、原始键名 op_id、priority_key 等内部字段泄露到诊断展示文本里。"""
+
 from __future__ import annotations
 
 from typing import Any, Iterable

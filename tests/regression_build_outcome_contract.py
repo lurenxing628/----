@@ -1,3 +1,5 @@
+"""回归测试：BuildOutcome 契约——from_collector 正确汇总 value/empty_reason/events/counters，事件按原因码自动去重合并计数，且当传入 counters 与 collector 事件原因码重叠时快速失败抛 ValueError。"""
+
 import os
 import sys
 

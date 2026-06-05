@@ -1,3 +1,5 @@
+"""回归测试：/scheduler/week-plan 周计划页与导出——version 缺省/latest 都规范化为最新版 v7（页面摘要与导出文件名 v7_起至.xlsx 一致），非法 version（abc/0）返回 400 中文提示；无历史时页面显示「暂无版本」、导出 404；导出仅按 week_start 取数（忽略陈旧 start/end_date 范围），导出失败重定向回 week-plan 并保留 week_start/offset/version/plan_role 上下文。"""
+
 from __future__ import annotations
 
 import importlib

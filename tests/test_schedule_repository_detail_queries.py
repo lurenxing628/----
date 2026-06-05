@@ -1,3 +1,5 @@
+"""回归测试：ScheduleRepository 明细查询契约——list_overlapping_with_details / list_by_version_with_details 返回固定的 COMMON_DETAIL_KEYS 行形状、按版本过滤、外协行 machine/operator 为 None 而 supplier_name 仍解析；list_dispatch_rows_with_resource_context 额外带班组上下文（DISPATCH_DETAIL_KEYS），按 operator/machine/team scope（大小写与空白归一）过滤、对全 operator/machine scope 剔除未分配行、并用 LEFT JOIN 保留未分配外协行。"""
+
 from __future__ import annotations
 
 import sqlite3

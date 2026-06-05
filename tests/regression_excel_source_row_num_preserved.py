@@ -1,3 +1,5 @@
+"""回归测试：OperatorMachineService 人员设备关联导入在 preview_import_links/apply_import_links 全程保留源行号与源工作表名（__source_row_num=9、__source_sheet_name），缺工号时报 ERROR 并给出"工号不能为空"提示，且预览行 data 不泄漏 __source_* 保留元数据键。"""
+
 import os
 import sys
 import tempfile

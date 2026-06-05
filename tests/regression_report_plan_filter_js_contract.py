@@ -1,3 +1,5 @@
+"""回归测试：static/js/report_plan_filter.js 的场景保持契约——在 Node 桩里驱动版本/计划角色下拉的 change/submit 事件，验证改动 version 会清空 scenario_id、改回初始 version 才恢复 SCENARIO-RPT；但当 plan-role 也偏离初始值时，恢复 version 不应恢复 scenario，唯有 role 也改回初始并提交后才恢复。"""
+
 from __future__ import annotations
 
 import json

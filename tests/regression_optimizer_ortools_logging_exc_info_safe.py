@@ -1,3 +1,5 @@
+"""回归测试：_record_ortools_failure 记录 OR-Tools 预热失败时，即使 logger.warning 不支持 exc_info 参数也不二次崩溃——只调用一次 warning（含「OR-Tools 预热失败（已忽略）」与异常类型/消息），并把 ortools_warmstart_failed_count 计为 1。"""
+
 import os
 import sys
 from types import SimpleNamespace

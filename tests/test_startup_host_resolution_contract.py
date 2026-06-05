@@ -1,3 +1,5 @@
+"""单元测试：launcher_network 主机解析契约——pick_bind_host 把 None/空/localhost/::1/非法主机统一归一化为 127.0.0.1 而保留合法 IPv4，pick_port 在请求的 IPv4 无法绑定时回退到 127.0.0.1 同端口。"""
+
 from __future__ import annotations
 
 from typing import List, Optional

@@ -1,3 +1,5 @@
+"""回归测试：工作日历 Excel 确认导入路由（/scheduler/excel/calendar/confirm）走通用执行器 execute_preview_rows_transactional——打桩后断言它被调用恰一次、收到的预览行去掉了 __source_row_num/__source_sheet_name 保留元数据、row_num/source_row_num 还原为源行号 2、mode 透传 overwrite，页面用执行器返回的统计渲染新增0/更新0/跳过1/错误0 提示，且执行器不写库时 WorkCalendar 不落库。"""
+
 import importlib
 import io
 import os

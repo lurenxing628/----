@@ -1,3 +1,5 @@
+"""回归测试：图调度 summarize_operation_machine_matching 用最大匹配做工序-设备匹配，每台设备只配一道工序，正确给出 matched/unmatched 工序与瓶颈设备；无 candidate_machine_ids 的 ready 工序记为 unmatched 并发 graph_resource_no_candidate_machine 警告而非回退全量设备；空 ready 集返回 empty 且不导入 NetworkX；重复 node_id 与非 OperationGraphNode 报 GraphResourceMatchingContractError；public 投影只含计数、样本留在 diagnostics，两者 JSON 安全且不暴露 Graph 对象；模块 import 不拉起 networkx。"""
+
 from __future__ import annotations
 
 import importlib

@@ -1,3 +1,5 @@
+"""回归测试：GanttCriticalChainProvider.get_critical_chain 按 plan_resolution 选源——adopted 角色走 schedule_repo、候选角色按 (source_table, candidate_id) 取全量明细行计算关键链；并验证缓存键按 role/candidate_id/source_table/数据库 scope 分桶、命中结果与调用方隔离不被 mutate、unavailable 结果不缓存、clear_cache 阻止 in-flight compute 回填缓存。"""
+
 from __future__ import annotations
 
 import threading

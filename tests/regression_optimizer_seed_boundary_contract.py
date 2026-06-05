@@ -1,3 +1,5 @@
+"""回归测试：种子结果的「类型边界」职责划分——run 层 coerce_seed_results 是原始 dict 入口，负责把合法种子转成强类型 ScheduleResult，并对非法种子/字符串时间/会被截断的非正整数 op_id 与 seq 直接抛 ValidationError(field=seed_results) 并累计 invalid 计数；算法层 normalize_seed_results 不是原始边界，不回填负身份、不忽略坏 seq，遇不匹配则丢弃并产出警告。"""
+
 from __future__ import annotations
 
 from datetime import datetime

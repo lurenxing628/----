@@ -1,3 +1,5 @@
+"""回归测试：超期报表页 /reports/overdue 及其导出（含模拟方案预览 scenario_id 入参）把延期诊断以大白话中文呈现（查看为什么晚了/建议先复核/证据等级/证据缺口/下一步），不下结论式归因（不出现"物料不够导致延期"），且不向用户泄露 trace_meta、rule_version、source_table、scenario_id、根因 等内部术语；导出"诊断依据"sheet 表头固定为七列。"""
+
 from __future__ import annotations
 
 import sys

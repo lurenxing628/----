@@ -1,3 +1,5 @@
+"""回归测试：BatchService.create_batch_from_template 自动补建零件工艺模板与批次工序时，若因 BatchOperations.op_code 唯一约束冲突失败，必须整体回滚——不残留批次头、批次工序、自动补建的 PartOperations 模板，且 Parts.route_parsed 不被提前写成 yes。"""
+
 import os
 import sqlite3
 import sys

@@ -1,3 +1,5 @@
+"""回归测试：graph_analysis_mode 为 report/on 时 ScheduleService.run_schedule 仍走真实图分析，但不改变排产结果——Schedule 行与 counts/freeze_window/resource_pool 等 PR4 签名与 off 模式逐字一致；同时在 summary.algo.graph_analysis 写入 mode/effective_mode/input_scope/算子计数（含冻结种子场景的 frozen_node_count/seed_result_count），report 模式 diagnostics 跳过 node_metrics。"""
+
 from __future__ import annotations
 
 import json

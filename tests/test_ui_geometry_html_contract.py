@@ -1,3 +1,5 @@
+"""回归测试：不依赖真实浏览器，用 HTMLParser 解析各 UI 页面 HTML，断言其满足契约——含 aps-ui-template-env meta、apsThemeToggle id 与 nav/header 即视为正常 app shell（不误报错误页），缺 shell 或标题/正文命中错误关键词则判为错误页；并校验 SMOKE_PATHS 覆盖首版本工作台各页，每页 HTTP 200、含期望文本/id、不含禁止文本。"""
+
 from __future__ import annotations
 
 from html.parser import HTMLParser

@@ -1,3 +1,5 @@
+"""回归测试：greedy 调度的 find_overlap_shift_end 对停机区间做避让时，空区间(end==start)与逆序区间(end<start)不应被误判为重叠返回 shift，只有合法重叠区间才返回其结束时刻。"""
+
 import os
 import sys
 from datetime import datetime

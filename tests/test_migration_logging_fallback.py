@@ -1,3 +1,5 @@
+"""单元测试：数据库迁移 v1-v6 与 ensure_schema 入口在注入会抛异常的 logger 时仍完成迁移，并把进度信息回退打印到 stderr；v5 对已规范值（expert/yes）不产生改动也不打「已修正」日志。"""
+
 from __future__ import annotations
 
 import os

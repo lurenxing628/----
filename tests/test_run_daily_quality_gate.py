@@ -1,3 +1,5 @@
+"""回归测试：scripts/run_daily_quality_gate 的增量门禁选靶逻辑——_run_collect_only 只打印 collected_count 不泄露 nodeid 并在缺计数时判失败；pre-push ref/新分支 diff 能在无 upstream 时算出 changed_paths；_build_impact_plan 按变更路径匹配 required group、公共/未知 scope 跑全量、纯文档(含 .codestable/README/台账例外) 跳过 pytest；_build_ruff_plan 只 lint 变更的 Python 文件、公共配置或未知范围跑全量；_commands 保持 block-artifacts→ruff→impact→focused 的命令顺序。"""
+
 from __future__ import annotations
 
 import subprocess

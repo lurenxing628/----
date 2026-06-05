@@ -1,3 +1,5 @@
+"""守护新合同：try_solve_bottleneck_batch_order 遇到 NaN/Inf 工时(setup_hours)必须抛 OrtoolsWarmstartError(含"有限数字")可见报错、而非静默跳过，且报错发生在建模前——不得有任何 NewIntervalVar 区间被建出来。"""
+
 import os
 import sys
 from datetime import datetime

@@ -1,3 +1,5 @@
+"""回归测试：/excel-demo/preview 上传守卫——超过 EXCEL_MAX_UPLOAD_BYTES(1MB) 的文件须返回 413 并展示统一中文提示「上传文件超过 1MB」且不泄露内部错误码(7005/错误码)；正常 xlsx 须 200 预览出上传内容并带 preview_baseline 隐藏字段。"""
+
 import io
 import os
 import re

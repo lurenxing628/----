@@ -1,3 +1,5 @@
+"""回归测试：当真实 OperationLogger 向 OperationLogs 落库失败时，maybe_run_auto_log_cleanup 主流程仍返回 ran=True、把 job_state 持久化（job_state_persisted=True），但把 oplog_persisted=False 与 telemetry warning 暴露出来，且不留下 logs_cleanup 成功留痕。"""
+
 from __future__ import annotations
 
 import os

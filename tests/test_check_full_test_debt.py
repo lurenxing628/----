@@ -1,3 +1,5 @@
+"""回归测试：tools.check_full_test_debt 的 full pytest 测试债务门禁——build_full_test_debt_summary 只接受已登记且当前真为 strict xfail 的债务并产出稳定 summary，拒绝候选集不一致/exitstatus 非零/ratchet 不匹配/未登记 xfail/fixed 项仍 xfail/历史登记缺失/坏 xfail 证据/required 测试挂 xfail，并校验 collect_current_payload 的分片 CLI/env 透传与 returncode 同 exitstatus 一致性。"""
+
 from __future__ import annotations
 
 import copy

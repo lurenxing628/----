@@ -1,3 +1,5 @@
+"""回归测试：factory._run_exit_backup 退出自动备份受 auto_backup_enabled 开关控制——缺省配置下不执行、不生成 *_exit.db、且只读检查不写入默认 SystemConfig；设为 yes 后执行并恰好生成 1 个 *_exit.db（不再产生 *_auto.db）。"""
+
 from __future__ import annotations
 
 import os

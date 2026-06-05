@@ -1,3 +1,5 @@
+"""回归测试：迁移 v16 对 OperationExecutionEvents 历史脏数据 fail-fast——暂停/异常缺原因、异常缺严重程度、引用不存在设备/人员、suggest_reschedule 非法/缺失/空白、缺创建时间、event_time 格式错、事件类型与上报状态矛盾、事件流缺 start 等情形均应抛 RuntimeError 中止迁移。"""
+
 from __future__ import annotations
 
 import sqlite3

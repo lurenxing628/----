@@ -1,3 +1,7 @@
+"""回归测试：app factory 请求生命周期钩子（_open_db/_close_db/_perf_headers）的可观测性与失败兜底——
+白名单路径(/static、/system/health、/runtime/shutdown)不挂载 RequestServices 也不触发 Excel 后端；维护窗口/锁返回 503、
+检测异常返回 500 且不挂载服务；started 写入、白名单判定、维护响应分类、连接关闭、预取判定等各类失败均记一次日志而不打断主路径。"""
+
 from __future__ import annotations
 
 import os

@@ -1,3 +1,5 @@
+"""回归测试：图调度 ready 队列契约（get_ready_operation_ids 与增量队列）——前置全完成才释放工序、固定工序释放后继但自身不入队、被阻塞工序不释放后继且输入顺序不改变稳定排序；并对缺前置映射/None 前置/blocked 与 completed 重叠/非法 sort_key 形状或类型/传图对象等违约输入抛 ReadyQueueContractError 或 ValidationError，且增量结果与全量扫描一致。"""
+
 from __future__ import annotations
 
 from types import SimpleNamespace

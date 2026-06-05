@@ -1,3 +1,7 @@
+"""回归测试：optimize_schedule 的 multi-start 应按 cfg_svc 的 allowlist 扩展 dispatch_mode——默认收齐 batch_order 与 sgs
+两种模式且 attempts 留痕一致；收窄 VALID_DISPATCH_MODES 后不得越权扩展（只剩 priority_first/batch_order/slack 一次尝试）；
+strict_mode=True 须透传给支持该关键字的 scheduler 并体现在 attempts 留痕。"""
+
 import os
 import sys
 from datetime import date, datetime, timedelta

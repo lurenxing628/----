@@ -1,3 +1,5 @@
+"""回归测试：GreedyScheduler/optimize_schedule 的排序键严格解析边界——batch_order_override 全覆盖时只对 due_date 与 created_at 跳过默认排序、ready_date 仅在 readiness_gate 开启时校验、created_at 严格校验只作用于 FIFO 当前策略；ready_date 调整时日历异常如实冒泡不静默回落，gate 关闭则根本不调用。"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

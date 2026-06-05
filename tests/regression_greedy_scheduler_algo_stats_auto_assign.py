@@ -1,3 +1,5 @@
+"""回归测试：当内部工序缺设备/人员而 auto_assign 失败时，GreedyScheduler._last_algo_stats.fallback_counts 必须如实记录尝试与失败计数——internal_auto_assign_attempt_count=1、internal_auto_assign_failed_count=1、auto_assign_missing_op_type_id_count=1，且 failed_ops=1。"""
+
 import os
 import sys
 from dataclasses import dataclass

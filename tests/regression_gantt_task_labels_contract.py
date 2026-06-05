@@ -1,3 +1,5 @@
+"""回归测试：守护甘特工序标签 detail_operation_label / public_task_label——seq 为 0 时仍显示「0（工种）」而非误判缺失，seq 为 None 时分别回退为「-」和「未命名工序」。"""
+
 from __future__ import annotations
 
 from core.services.scheduler.gantt_task_labels import detail_operation_label, public_task_label

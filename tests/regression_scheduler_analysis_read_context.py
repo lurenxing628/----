@@ -1,3 +1,5 @@
+"""回归测试：build_analysis_read_context 与 /scheduler/analysis 页面的读侧契约——无排产历史时 version_resolution.status=no_history、页面显示「暂无排产历史」；默认与 version=latest 都选中最新版本；显式存在版本保留其它版本于选择器；显式版本缺失时保留趋势区并提示 vN 无对应历史；result_summary 解析失败不崩页只记 warning；候选对比统计缺失时不查询方案角色（plan_role_options 为空）。"""
+
 from __future__ import annotations
 
 import importlib

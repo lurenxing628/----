@@ -1,3 +1,5 @@
+"""回归测试：schedule_service._get_snapshot_with_strict_mode 必须以显式关键字 strict_mode 调用 config_service.get_snapshot；遇到不接受该关键字的旧签名实现应直接抛 TypeError，不得静默退回无参调用。"""
+
 from __future__ import annotations
 
 import pytest

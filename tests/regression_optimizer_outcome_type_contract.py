@@ -1,3 +1,5 @@
+"""回归测试：schedule_orchestrator._normalize_optimizer_outcome 须按真实类型校验，对仅鸭子类型（字段齐全的 SimpleNamespace）但非正式 OptimizerOutcome 的对象抛 TypeError，拒绝裸结构冒充优化结果。"""
+
 from __future__ import annotations
 
 from types import SimpleNamespace

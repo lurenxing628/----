@@ -1,3 +1,5 @@
+"""回归测试（Node DOM 仿真）：甘特图点击任务条后，任务详情面板只展示公开中文标签（批次/图号或物料/工序/资源/计划与现场实际时间/超期提示/跳转链接），不得泄漏内部字段（op_id/schedule_id/source_table/scenario_id 等）；旧弹窗标题回退公开详情标题；后端缺 op_code 的任务也要渲染公开标题并保留工艺依赖连线。"""
+
 from __future__ import annotations
 
 import importlib.util

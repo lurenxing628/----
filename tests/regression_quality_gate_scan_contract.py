@@ -1,3 +1,5 @@
+"""回归测试：质量门禁扫描器（quality_gate_scan/operations/shared）的契约——ScanContext 单次扫描内对源码/AST 做单读快照；request-service 直装配扫描识别 g.db/conn 关键字、import-as 别名、模块别名与 g_db_first_arg_helper 等规则；repository bundle drift 扫描在无 repos token 时跳过 AST、保留 self.repos/self._repos 链并放行 schedule_service 代理；架构层过滤不隐藏已登记 helper 债、覆盖 system/scheduler/error 路由扫描范围与 ui_mode 分裂 scope_tag；strict silent-fallback CLI 成功静默、--json 汇总、漂移走 stderr 退码 2。"""
+
 from __future__ import annotations
 
 import json

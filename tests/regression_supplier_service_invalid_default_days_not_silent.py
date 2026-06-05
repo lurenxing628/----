@@ -1,3 +1,5 @@
+"""回归测试：SupplierService 对非法 default_days 不静默——create 传非数字（"abc"）抛 ValidationError（提示含“默认周期”）且不落库，update 传空串抛 ValidationError（提示含“不能为空”）且不覆盖原有 default_days；合法 default_days=2.5 正常创建并持久化。"""
+
 from __future__ import annotations
 
 import sqlite3

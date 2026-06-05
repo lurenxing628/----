@@ -1,3 +1,5 @@
+"""回归测试：周计划页/导出对候选方案 plan_role 的解析与透传——_plan_context_from_data 在请求 role 不可用时回退 adopted 并标记 fallback、保留既有 plan_role_resolution；/scheduler/week-plan?plan_role=baseline_best 从 ScheduleCandidateRows 取候选设备/人员并在各导航链接保留 plan_role，缺失 role 只显示回退提示；导出文件名按方案命名、非正式方案插“查询摘要”页，并把 requested/effective plan_role 与 candidate_key 写入 OperationLogs。"""
+
 from __future__ import annotations
 
 import importlib

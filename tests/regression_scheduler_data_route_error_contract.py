@@ -1,3 +1,5 @@
+"""回归测试（AST 静态哨兵）：扫描 web/routes 下所有 data/json/api 风格路由的错误处理契约，防止退回到私有 UNKNOWN 码或固定 AppError 400。守护这些 data 路由的 except 块里 AppError 处理不返回写死的 400、通用 Exception 处理不使用私有 "UNKNOWN" 错误码；并确保至少扫到 /gantt/data 与 /resource-dispatch/data 这两条路由，避免哨兵因扫不到目标而失效。"""
+
 from __future__ import annotations
 
 import ast

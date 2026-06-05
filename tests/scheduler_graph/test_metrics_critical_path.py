@@ -1,3 +1,5 @@
+"""回归测试：scheduler.graph.metrics.get_critical_path 对工序优先图求关键路径——线性链累加全部节点工时、分支取最长工时链、边的 lag_minutes 计入总时长、单节点退化；有环时透出 networkx.NetworkXUnfeasible，缺 duration_minutes/lag_minutes 时抛 KeyError 不静默当 0；build_duration_weighted_graph 不污染原图。"""
+
 from __future__ import annotations
 
 from typing import Any, Dict, List

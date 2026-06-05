@@ -1,3 +1,5 @@
+"""回归测试：自动备份与清理任务必须把失败原因可见地记入 detail/OperationLogs/JobState——备份时 os.stat 失败要记 size_mb_status=stat_failed 及错误文本，清理时 getmtime/remove 失败要记 mtime_error_count/delete_error_count 及样本文件名且失败文件不被删，且 _safe_logger_emit 在 logger 不可用时回退到 stderr。"""
+
 from __future__ import annotations
 
 import json

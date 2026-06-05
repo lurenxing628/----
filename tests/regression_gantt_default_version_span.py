@@ -1,3 +1,5 @@
+"""回归测试：甘特页 /scheduler/gantt 与 /scheduler/gantt/data 未给显式日期时，默认采用所选版本的排程时间跨度（range_source=version_span）；给了 start_date/end_date 则用 request 范围并忽略 offset，无效 offset 归零；无排程跨度时回落 request；并校验 gantt_boot.js 只向 data 端点发一种范围模式。"""
+
 from __future__ import annotations
 
 import importlib

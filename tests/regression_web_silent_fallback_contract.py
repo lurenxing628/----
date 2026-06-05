@@ -1,3 +1,5 @@
+"""回归测试：web 视图层的数值/解析容错不得静默吞坏值——分析趋势/候选对比/诊断/报表导出/系统任务等 helper 只对可解析的空值用默认或标 parse_failed，遇坏布尔、NaN/Infinity、非整数导出行数等会显式抛 ValidationError/ReportPresentationValueError 或显示「记录异常/无法安全展示」而不泄漏原始坏值；result_summary 解析失败会关闭 can_dispatch/can_write_feedback 并给出护栏文案；week_plan/分析模板用公开展示标签而非裸 result_status/strategy 回退。"""
+
 from __future__ import annotations
 
 from pathlib import Path

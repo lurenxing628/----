@@ -1,3 +1,5 @@
+"""回归测试：number_utils.parse_finite_float/parse_finite_int 门面必须转调 strict_parse 系列（parse_required/optional_float/int）并透传 field 等参数；allow_none=True 时空白返回 None 保留可空语义，allow_none=False（含缺省）时空白抛 ValidationError 且 field 透传。"""
+
 import os
 import sys
 

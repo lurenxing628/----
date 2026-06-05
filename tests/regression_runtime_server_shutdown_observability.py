@@ -1,3 +1,5 @@
+"""回归测试：factory.request_runtime_server_shutdown 在后台线程关闭运行时 Server 抛异常时仍返回 True，并把"请求运行时 Server 关闭失败"写到 logger.warning（有 logger 时）或 stderr（logger 缺失时），不静默吞掉关闭失败。"""
+
 from __future__ import annotations
 
 import web.bootstrap.factory as factory_mod

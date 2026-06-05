@@ -1,3 +1,5 @@
+"""守护被新版本替代的 adopted 方案在各页面/导出处统一显示为「历史正式方案（已被新版本替代）」：甘特图、周计划页与导出、reports 首页、资源派工、超期清单筛选项均以该历史标签替代「正式采用方案」，public_plan_role_options 不再生成重复候选标签，build_report_context 优先采用 plan_identity 的 user_label，且未知 plan_role 重定向不泄露原始 role。"""
+
 from __future__ import annotations
 
 import json

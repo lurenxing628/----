@@ -1,3 +1,5 @@
+"""回归测试：OperationExecutionFeedbackService 的开工→暂停→继续→报异常→完工状态流聚合——校验暂停时长累计、异常各字段标签（工种/设备/人员身份、严重度、建议重排）、完工后保留最近异常信息；并守护写库前的必填/非法字段校验（AppError 1001）、事件时间倒退与未开工时非开工动作的状态机拒绝（AppError 6003）。"""
+
 from __future__ import annotations
 
 from pathlib import Path

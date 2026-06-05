@@ -1,3 +1,5 @@
+"""回归测试：工序执行事件的 event_time 契约——normalize_operation_event_time / OperationExecutionEvent.from_row / 仓储 insert_event / 状态构建器 / schema CHECK 都必须归一化合法时间（如 2026/05/01T08:10）并拒绝非法日历值（如 2026-02-30）、event_type 与 reported_status 不匹配、以及非当前正式口径（candidate_rows 来源、baseline_best 角色、scenario 预览）的事件。"""
+
 from __future__ import annotations
 
 import sqlite3

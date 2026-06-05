@@ -1,3 +1,5 @@
+"""回归测试：用真实 Chrome 跑 UI 几何冒烟，断言各页面无 body 级横向溢出、无开关重叠、暗色摘要/通知对比度达标、多行表格渲染正确、HTTP 200 且有 app shell 不报错、路径与期望 DOM（文本/id/必需开关）匹配；并守护 SMOKE_PATHS 与 EXPECTED_PAGE_SIGNALS 覆盖 scheduler run、system history(version=2)、reports 各页与探针脚本中的几何检查点。"""
+
 from __future__ import annotations
 
 import json

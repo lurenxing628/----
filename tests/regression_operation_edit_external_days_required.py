@@ -1,3 +1,5 @@
+"""回归测试：ScheduleService.update_external_operation 在 ext_days 传空串时必须抛 ValidationError（提示含"不能为空"），且原有 ext_days 不被改写。"""
+
 from __future__ import annotations
 
 import sqlite3

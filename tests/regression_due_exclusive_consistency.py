@@ -1,3 +1,5 @@
+"""回归测试：交期判定的“排他下界”口径在三处统计中一致——共享的 due_exclusive() 把交期次日 0 点作为边界，使得完工时间正好落在该边界时，evaluation.compute_metrics、schedule_summary.build_result_summary 与 report.compute_overdue_buckets 都判为逾期 1 单且边界拖期为 0。"""
+
 import os
 import sys
 import time

@@ -1,3 +1,5 @@
+"""回归测试：两个插件注册同一 capability 时，PluginManager.load_from_base_dir 按 first_loaded_wins 策略可见地解决冲突——保留先加载的 plugin_a、拒绝 plugin_b，并在 conflicted_capabilities、各插件 statuses（kept/rejected、capabilities/conflicted_capabilities）中如实留痕。"""
+
 import os
 import sys
 import tempfile

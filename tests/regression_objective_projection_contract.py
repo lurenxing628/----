@@ -1,3 +1,5 @@
+"""回归测试：守护各目标（min_overdue/min_tardiness/min_weighted_tardiness/min_changeover）下 objective_score 元组、best_score_schema 键序、comparison_metric 与分析视图模型投影（_comparison_metric_from_algo/objective_label_for）保持一致；无 schema 时标签回退到 objective_specs。"""
+
 from __future__ import annotations
 
 import pytest

@@ -1,3 +1,5 @@
+"""回归测试：资源排班 viewmodel（decorate_resource_dispatch_context/payload、build_resource_dispatch_filename）为筛选/选项/明细行/甘特任务/日历单元补中文展示标签（scope/对应资源/班组关系/全天与时段文本）而不就地改原 context；plan_role_options 与公开 filters 必须剔除 source_table/candidate_id/scenario_id/plan_role 等内部字段，对端资源能标注外协与未分配；导出文件名按解码后的中文标签拼装。"""
+
 from __future__ import annotations
 
 import json

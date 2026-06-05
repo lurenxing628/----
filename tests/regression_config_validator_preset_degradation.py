@@ -1,3 +1,5 @@
+"""回归测试：normalize_preset_snapshot 在非严格模式下把越界/非法/空白的预设字段降级回 base 值并记 degradation_events 与按类计数（number_below_minimum/invalid_number/invalid_choice/blank_required），消息只暴露中文字段名不泄露内部 key；严格模式下空白与非法数字改抛带正确 field 的 ValidationError，但整体缺省（{}）仍允许。"""
+
 from __future__ import annotations
 
 import pytest

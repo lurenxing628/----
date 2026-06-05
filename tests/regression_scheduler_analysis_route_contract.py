@@ -1,3 +1,5 @@
+"""回归测试：/scheduler/analysis 路由契约——须经 g.services.schedule_history_query_service 取版本/汇总并产出 versions/selected/trend_rows，summary 解析失败或趋势指标坏/缺时标记 parse_failed/incomplete 而绝不画成 0，请求的历史版本缺失时给 missing_history 解析态、显式旧版本走 get_by_version 而非 recent 下拉。"""
+
 from __future__ import annotations
 
 import json

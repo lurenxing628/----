@@ -1,3 +1,5 @@
+"""回归测试：CalendarService 的 no_tx 写入路径（upsert_no_tx / upsert_operator_calendar_no_tx）须与事务版 upsert 产出一致归一化结果（day_type=workday、allow_*=yes、shift 08:00-16:00），且对负工时、零效率、bool/NaN/inf 等非法 shift_hours 与 efficiency 抛 ValidationError 并保证非法记录不落 WorkCalendar/OperatorCalendar。"""
+
 from __future__ import annotations
 
 import os

@@ -1,3 +1,5 @@
+"""回归测试：现场报异常接口（/scheduler/resource-dispatch/execution/<op_id>/report-exception）在查询指向非当前正式计划（baseline_best/场景方案/历史版本）时必须 409 拒绝（reason=not_current_official_plan、can_retry=false），且不落任何反馈事件。"""
+
 from __future__ import annotations
 
 from tests.operation_execution_feedback_test_support import (

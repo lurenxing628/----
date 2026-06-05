@@ -1,3 +1,5 @@
+"""回归测试：SGS 派工 strict_mode 下，非有限工时（setup_hours=inf）必须在评分/排序阶段就被 dispatch_sgs 拒绝抛 ValidationError（field='setup_hours'），绝不进入 _schedule_internal（桩里若被调用则断言失败）。"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

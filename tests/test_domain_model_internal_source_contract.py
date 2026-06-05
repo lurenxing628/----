@@ -1,3 +1,5 @@
+"""单元测试：「只能编辑/保留内部工序」的来源契约——PartService.update_internal_hours 与 _ensure_internal_operation_editable 对 source='legacy' 等未知来源在落库前即抛 ValidationError；_normalize_float 拒绝 nan/inf 与 bool 工时；_save_template_no_tx 拒绝未知来源 ParsedOperation；DeletionValidator.can_delete 把未知来源工序判为 DENIED 并清空可删组。"""
+
 from __future__ import annotations
 
 from contextlib import contextmanager

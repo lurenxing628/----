@@ -1,3 +1,5 @@
+"""回归测试：bootstrap_plugins 向 PluginManager.load_from_base_dir 注入的是只读 config_reader 回调（基于 SystemConfigRepository 解析 plugin.<name>.enabled），而非裸 conn；回调能正确读出 plugin.demo_plugin.enabled=yes，且返回的状态字典原样透传 plugins_dir/conflict_policy/statuses/registry。"""
+
 from __future__ import annotations
 
 import os

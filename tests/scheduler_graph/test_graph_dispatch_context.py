@@ -1,3 +1,5 @@
+"""回归测试：schedule_graph_dispatch_context 的图派工上下文构建——build_predecessor_successor_maps 校验边端点存在并拒绝未知/缺失节点字段、build_first_wave_ready_nodes 在 report 与 on 模式下用固定前驱/图就绪上下文挑首波就绪节点、build_graph_resource_matching_projection 在非 DAG 或图增强禁用时跳过资源匹配并投影 skipped/error（契约错误吞掉、未知异常不吞），graph_score_weights 从 cfg 读权重并拒绝非法 downstream_weight。"""
+
 from __future__ import annotations
 
 from types import SimpleNamespace

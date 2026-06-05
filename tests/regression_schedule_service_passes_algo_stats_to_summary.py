@@ -1,3 +1,5 @@
+"""回归测试：ScheduleService.run_schedule 应把 optimize_schedule 返回的 algo_stats（fallback_counts、param_fallbacks）原样透传到 build_result_summary 的 ctx，并把 strict_mode 透传给 optimize_schedule；通过桩替换 schedule_service 模块级协作函数来校验透传不丢数。"""
+
 import os
 import sqlite3
 import sys

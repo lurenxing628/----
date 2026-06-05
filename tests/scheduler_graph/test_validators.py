@@ -1,3 +1,5 @@
+"""回归测试：scheduler.graph.validators 的图校验契约——is_dag/find_cycle_edges 正确识别 DAG 与环（含环边的 from/to/op_code/kind 投影），collect_graph_warnings 产出孤立工序、同批次重复 seq 等 JSON 可序列化告警，缺失节点/边字段时 KeyError 失败；并守护其导入与运行不拉入 networkx、不触碰 phase 8 metrics、不修改原图。"""
+
 from __future__ import annotations
 
 import builtins

@@ -1,3 +1,5 @@
+"""回归测试（性能护栏）：SchedulePlanQueryService.list_plan_roles 不扫描 ScheduleCandidateRows 明细；get_plan_time_span 对 adopted/baseline_best 各只发一条 MIN/MAX 时间跨度查询且分别命中 idx_schedule_version_time 与 idx_schedule_candidate_rows_version_candidate_time 索引、返回值稳定；ScheduleCandidateRepository.delete_without_schedule_history 级联清理孤儿候选而不误删 ScheduleHistory/Schedule。"""
+
 from __future__ import annotations
 
 import sqlite3

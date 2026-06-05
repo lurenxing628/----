@@ -1,3 +1,5 @@
+"""回归测试：长门禁里 debt_ledger_sync 条目的缓存复用——manifest 把它标为 reuse 可用并声明 evidence/QualityGate/debt_ledger_sync.json 产物及台账/脚本/扫描工具/配置等输入与环境 scope，fingerprint 随台账、sync 脚本、扫描工具、输出路径、architecture 扫描元数据变化而变但忽略生成的缓存文件，成功时先写带 ledger_counts/head_sha 的证明再写成功缓存，证明缺失或被篡改则 decide_reuse 改判 run，脏工作区与 explain 决策不写证明，planned 条目写证明但不入 pending_success。"""
+
 from __future__ import annotations
 
 import importlib

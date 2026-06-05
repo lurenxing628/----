@@ -1,3 +1,5 @@
+"""回归测试：optimize_schedule / _run_ortools_warmstart / build_result_summary 对 dict 形态 cfg 与 SimpleNamespace 形态 cfg 行为一致——对带空格大小写的 sort_strategy/algo_mode/objective/dispatch_mode/dispatch_rule 做同样归一化，产出相同的 multi-start 组合、OR-Tools warm-start 路径与 algo 摘要。"""
+
 from __future__ import annotations
 
 import os

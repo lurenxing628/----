@@ -1,3 +1,5 @@
+"""单元测试：图分析输入适配 build_operation_nodes_from_rows——内排/外协/合并外协的时长折算、冻结工序标记 fixed 不改时长、固定资源优先于资源池候选、缺字段/坏 seq/未知 source/缺批次/缺时长或资源池形状非法抛 GraphInputContractError、raw 快照可 JSON 序列化且冻结、适配层不得引入 networkx。"""
+
 from __future__ import annotations
 
 import builtins

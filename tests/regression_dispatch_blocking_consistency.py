@@ -1,3 +1,7 @@
+"""回归测试：GreedyScheduler.schedule 失败阻断语义一致性——batch_order 模式下无效 batch_id 和缺资源工序都计入
+failed_ops（不被静默过滤）且失败即阻断同批后续工序，scheduled+failed==total；sgs 模式缺资源应抛 ValidationError(field=resource)
+而非生成不可评分兜底 key。"""
+
 import os
 import sys
 from dataclasses import dataclass

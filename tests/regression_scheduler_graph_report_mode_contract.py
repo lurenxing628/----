@@ -1,3 +1,5 @@
+"""回归测试：orchestrate_schedule_run 的图分析模式契约——graph_analysis_mode=off 时不导入 graph/networkx 且不写 graph_analysis；report/on 模式只在 result_summary 追加 graph_analysis（report 标 effective_mode=report、on 标 graph_ready_queue+ready_queue_enabled）而绝不改变排产 payload 签名；report 模式按全量 algo_ops 含 frozen 标记走真实图路径；已知图错误（NetworkXUnavailable/输入契约/构建契约）可见降级而未知错误（RuntimeError）不被吞。"""
+
 from __future__ import annotations
 
 import json

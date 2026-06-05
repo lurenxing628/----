@@ -1,3 +1,5 @@
+"""回归测试：ConvertedTemplates.output_specs() 给人员/设备/人员设备关联/工种/供应商各模板输出的表头列序固定（含「班组」列），且 UnitTemplateBuilder 生成的人员行与设备行默认带「班组」键（值为 None）。"""
+
 from __future__ import annotations
 
 from collections import Counter, defaultdict

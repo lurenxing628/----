@@ -1,3 +1,5 @@
+"""回归测试：当日历 get_efficiency 返回非有限值（inf）时，GreedyScheduler.schedule 不回退到效率 1.0 继续排产，而是抛 ValidationError 且 field 定位到 efficiency。"""
+
 import os
 import sys
 from dataclasses import dataclass

@@ -1,3 +1,6 @@
+"""回归测试：OperationExecutionFeedbackService.start/finish 的 state_revision 乐观锁与幂等契约——同一 idempotency_key 复用已有事件不重复写、
+事务内先复查幂等再校验 revision、并发相同 key 等锁后复用/不同 key 报 stale_state_revision(6003)、payload 不同判幂等冲突、过期 revision 与非正式方案(候选行)均不写事件，以及完工前必须先开工、已完工不能再开工等状态机非法转换的可读报错。"""
+
 from __future__ import annotations
 
 import threading

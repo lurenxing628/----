@@ -1,3 +1,5 @@
+"""回归测试：守护系统使用说明书（static/docs/scheduler_manual.md 及其 web_new_test v2 镜像）与 config_manual.js/模板的契约——主副本逐字一致、必备口径与边界说明在场（排产历史不承诺导出/恢复、资源排班现场记录当前直接导入、截止日期是严格限制等）、入口统一叫批量维护、内部锚点全部命中、JS 过滤危险协议并对数字前缀 hash 不崩，且 v1/v2 真实请求下整本/页面级双模式的 JSON 数据块与 noscript 回退正确。"""
+
 from __future__ import annotations
 
 import importlib

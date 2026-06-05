@@ -1,3 +1,5 @@
+"""回归测试：build_algo_operations 对工序数值字段做安全解析——内部工序的空白/非数字 setup_hours、unit_hours 回退为 0.0，外部工序（source 大小写混用仍识别为 external）空白 ext_days 兼容回退为 1.0，全程不抛异常，但会触发真实模板查找并保留 blank_required 等结构化退化事件。"""
+
 import os
 import sys
 from types import SimpleNamespace

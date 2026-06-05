@@ -1,3 +1,6 @@
+"""回归测试：build_result_summary 对冻结窗口(freeze_window)状态的 algo 投影与降级契约——freeze_state 为 active/degraded/disabled 时分别产出
+freeze_application_status(applied/partially_applied/unapplied)、是否进入 hard_constraints、freeze_disabled_reason 仅 disabled 时暴露；降级统一收敛为 freeze_window_degraded 计数与结构化 degradation_event，并优先用结构化 freeze_meta 而非 warning 文本（无 meta 时回退 warning 仍能标记降级）。"""
+
 from __future__ import annotations
 
 import os

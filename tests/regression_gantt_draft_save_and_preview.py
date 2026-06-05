@@ -1,3 +1,5 @@
+"""回归测试：甘特调整草稿存为模拟方案（save_scenario）只写 ScheduleAdjustmentScenario(Row) 不动正式表，被阻塞草稿拒绝保存；ScheduleAdjustmentScenario 表/索引存在且 detect_schema_is_current 依赖之、v12 旧库迁移保留既有数据；scenario_id 预览读模拟行不回退 adopted，save-scenario 路由用服务端操作者 web 覆盖 JSON 里的 created_by。"""
+
 from __future__ import annotations
 
 import importlib

@@ -1,3 +1,5 @@
+"""回归测试：排产优化分析页（scheduler_analysis_vm + analysis.html）的可观测性与兼容口径——旧 summary 缺 dispatch_mode/rule 不合成「-」、不暴露 comparison_metric/best_score_schema/算法方案标签等内部术语而显示中文兼容提示；新 summary 透传裁剪提示/warning 预览与隐藏计数/停机与冻结窗口降级提示/数据异常与未排批次卡片差值；读侧回退场景仍展示卡片值但缺上一版字段时不显差值；含私有路径的内部诊断单列为「维护诊断」不计入业务提醒、不泄露 sqlite 细节。"""
+
 from __future__ import annotations
 
 import json

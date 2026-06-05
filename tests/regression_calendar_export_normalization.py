@@ -1,3 +1,5 @@
+"""回归测试：全局日历 /scheduler/excel/calendar/export 与个人日历 /personnel/excel/operator_calendar/export 导出时，将库内遗留的 Weekend/YES/NO 等枚举与 YesNo 值规范化为中文展示（类型=假期、允许普通件=是、允许急件=否），且可被 normalize_calendar_day_type_value / normalize_yes_no_narrow_value 反解回 HOLIDAY/YES/NO。"""
+
 from __future__ import annotations
 
 import importlib

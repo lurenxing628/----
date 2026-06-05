@@ -1,3 +1,5 @@
+"""回归测试：ScheduleService.run_schedule 判定"内部工序缺资源"时，对 op.source 须大小写与首尾空白不敏感——source=" INTERNAL  " 的缺设备/人员工序仍应被识别为内部并把其 op_id 计入传给 persist_schedule 的 missing_internal_resource_op_ids。"""
+
 import os
 import sqlite3
 import sys

@@ -1,3 +1,5 @@
+"""回归测试：RouteParser.parse 解析外部工序（如「5表处理」）但供应商库为空时，返回 PARTIAL 状态、工序 source=external、default_days 临时按 1 天处理，并透出含「没有找到可用的外协供应商」的 warning 而非静默吞掉。"""
+
 import os
 import sys
 from dataclasses import dataclass

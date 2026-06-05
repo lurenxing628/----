@@ -1,3 +1,5 @@
+"""回归测试：外协组资料缺失时 ScheduleService.run_schedule 的合并上下文降级契约——summary 标记 merge_context_degraded 而非 input_fallback，input_contract 给出 external_group_missing 公开降级事件，且对外摘要不泄露 ext_group_id/内部样本文案；project_public_algo_summary 对非 list 形状的 degradation_events/merge_context_events 直接丢弃为空。"""
+
 from __future__ import annotations
 
 import sqlite3

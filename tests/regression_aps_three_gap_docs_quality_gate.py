@@ -1,3 +1,5 @@
+"""守护 APS 三缺口（方案对比/延期解释/现场反馈）文档质量门禁：用户指南只用业务白话且不泄露 plan_role/event_type 等内部术语，开发者指南标注仅供开发测试、覆盖全部 roadmap feature、列全回归测试与关键 .py 文件及 Win7 离线门禁手册，且质量门禁计划包含 validate-yaml 与 py38 扫描命令。"""
+
 from __future__ import annotations
 
 import re

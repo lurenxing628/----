@@ -1,3 +1,5 @@
+"""回归测试：当估算行数超过 ReportEngine.EXPORT_DIRECT_MAX_ROWS/EXPORT_STREAM_MAX_ROWS 时，/reports/overdue/export 与 /reports/downtime/export 必须以 400 + reject_need_async 拒绝（错误码 1001、消息含“缩小范围/后台”、details 带 estimated_rows 与报表名），且拒绝发生在生成诊断依据之前，同时把 version/plan_role/scenario_id 计划身份参数原样透传给数据查询。"""
+
 from __future__ import annotations
 
 import os

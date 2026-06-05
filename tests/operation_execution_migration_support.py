@@ -1,3 +1,5 @@
+"""为工序执行迁移回归测试提供夹具：在内存 SQLite 上建好父表并按序跑 v13-v17 迁移，造出 legacy v17 执行库结构供被测迁移升级。"""
+
 from __future__ import annotations
 
 import sqlite3

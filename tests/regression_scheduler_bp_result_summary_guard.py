@@ -1,3 +1,5 @@
+"""回归测试：排产历史 result_summary 解析与告警日志——parse_history_summary_state 区分 dict/json/missing/json_decode_error/invalid_structure 等 reason；log_history_summary_parse_warning 对非 dict 结构按 type 报“结构不合法”、对坏 JSON 报“解析失败 + JSONDecodeError”、对 missing 保持安静；log_history_version_option_parse_warnings 仅对坏 summary（带 version/source）告警。"""
+
 from __future__ import annotations
 
 from flask import Flask

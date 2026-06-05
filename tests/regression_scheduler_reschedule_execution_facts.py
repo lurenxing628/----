@@ -1,3 +1,7 @@
+"""回归测试：ScheduleService.run_schedule 重排时如何消化执行事实(execution_fact)——已开工工序作 seed_source=execution_fact 种子并固定(fixed_op_ids/locked)、已完工从优化器输入剔除但保留为种子、暂停固定且保留 paused、
+执行异常且建议重排时整单拦截(6003 execution_exception_blocks_auto_reschedule)、被新版本取代的旧执行事实不再作种子、全部工序被执行事实固定时报 all_operations_fixed；
+还守护重排前后 execution_snapshot 快照与现场状态变更复查(execution_state_changed)、simulate 不落正式版本。"""
+
 from __future__ import annotations
 
 import json

@@ -1,3 +1,5 @@
+"""为 UI 浏览器几何 smoke 测试提供运行时探测与环境失败上报夹具：解析/校验 Chrome（APS_CHROME_PATH 或默认候选，含 --version 探测与显式配置必硬失败）与 Node（含 fetch/WebSocket 能力检查）的 ChromeRuntimeInfo/NodeRuntimeInfo，并按 APS_BROWSER_SMOKE_REQUIRED/CI 决定 _fail_or_skip_env 是 fail 还是 skip，输出带 PATH/版本等上下文的 JSON 诊断。"""
+
 from __future__ import annotations
 
 import json

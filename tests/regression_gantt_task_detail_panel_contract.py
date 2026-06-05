@@ -1,3 +1,5 @@
+"""回归测试：甘特任务详情面板契约——build_tasks/关键链对外用「顺序（工种）」公共标签而不泄露内部 op_id，任务 meta 显示现场实际开完工与执行状态，详情链接保留 version/plan_role/batch 等上下文并在模拟预览或非正式方案时禁用「查看资源排班/计划和现场实际」且不泄露 scenario_id，模板与 aps_gantt.css 维持稳定的详情面板布局。"""
+
 from __future__ import annotations
 
 from pathlib import Path

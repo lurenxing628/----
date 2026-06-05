@@ -1,3 +1,5 @@
+"""回归测试：register_error_handlers 把 BusinessError 按 ErrorCode 映射到对应 HTTP 状态码（400/403/404/409/413），JSON/HTML 错误页只暴露用户可读中文文案、把字段名翻译成中文标签，并隐藏内部诊断（sqlite 路径、internal_details、op_id、invalid_query_keys 等机读细节）；同时校验 web.error_boundary 不连带加载 scheduler 聚合服务。"""
+
 from __future__ import annotations
 
 import json

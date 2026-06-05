@@ -1,3 +1,5 @@
+"""回归测试：OperatorMachine 行存在旧格式/空白的 skill_level、is_primary 时，OperatorMachineQueryService.list_simple_rows 返回正确的 dirty_fields 与中文 dirty_reasons，且 /personnel/<id> 页面把"旧格式已自动修正"提示与受影响字段（技能等级/主操设备）对用户可见。"""
+
 from __future__ import annotations
 
 import importlib

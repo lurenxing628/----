@@ -1,3 +1,5 @@
+"""为工序执行反馈（/scheduler/resource-dispatch/execution）相关回归测试提供共享夹具与桩：_build_app 建库装种子并创建带 schedule/candidate/scenario 的 Flask app，_seed_execution_feedback_context 灌入批次/工序/排产版本/候选/草稿数据，并提供按 scope/card 查询 OperationExecutionEvents、构造 start/finish 反馈 payload 的辅助函数。"""
+
 from __future__ import annotations
 
 import importlib

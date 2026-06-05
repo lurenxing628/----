@@ -1,3 +1,5 @@
+"""回归测试：资源排班「现场实际情况」Excel 导入全链路——模板/预览/确认只暴露公开列(不泄 op_id/schedule_id 等内部字段)，拒绝错误工作簿形状、缺任务识别码列、超体积、重复识别码与残缺 plan_identity 查询；预览只读不落库、按整文件原子校验，确认仅在干净预览后落 start/pause/resume/finish 事件，datetime 单元格往返后幂等 token 仍一致。"""
+
 from __future__ import annotations
 
 import io

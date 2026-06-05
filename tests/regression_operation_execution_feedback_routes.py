@@ -1,3 +1,7 @@
+"""回归测试：现场作业反馈路由（/scheduler/resource-dispatch/execution 的 data/start/finish/actual）契约——
+任务卡只暴露 task_key/state_key 等公开字段、隐藏 op_id/schedule_id/plan_role 等内部标识；只读方案 can_write_feedback=False；
+平民写入(start/finish/actual)不依赖 TESTING 头、actual 仅认 query 中的服务端 plan_identity，body 携带身份则 400(field=plan_identity)。"""
+
 from __future__ import annotations
 
 from tests.operation_execution_feedback_test_support import (

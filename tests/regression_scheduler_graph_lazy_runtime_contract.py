@@ -1,3 +1,5 @@
+"""回归测试：core.services.scheduler.graph 全部子模块（nx_runtime/types/id_policy/input_adapter/precedence_builder/validators/metrics/ready_queue/scoring/resource_matching/exporter/analysis_service）在被 import 时都不得加载 networkx——在剔除 networkx 的子进程里逐个导入后，sys.modules 中仍不应出现 networkx，保证其为惰性运行时依赖。"""
+
 from __future__ import annotations
 
 import json

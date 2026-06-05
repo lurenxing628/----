@@ -1,3 +1,5 @@
+"""pytest 收集插件：把 tests/ 下「只有 main() 没有 def test_」的 regression_*.py 收集为独立用例，经子进程跑 main_style_regression_runner.py 执行；并按 test_debt_registry 把登记的债务节点统一打上 strict xfail。"""
+
 from __future__ import annotations
 
 import re

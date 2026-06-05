@@ -1,3 +1,5 @@
+"""回归测试：资源派工页/数据/导出按 plan_identity 落写护栏——正式采用方案可派工可填现场实际，历史正式/对比参考/模拟预览方案只读不可写并给白话原因；公开 payload、文件名、Excel 绝不泄露 source_table/candidate_id/scenario_id 等内部字段；外层字段不能覆写 plan_identity 的写权限；GET data/export 不写 Schedule 或执行事件，也不存在 confirm 路由。"""
+
 from __future__ import annotations
 
 import io

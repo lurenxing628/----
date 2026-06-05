@@ -1,3 +1,5 @@
+"""回归测试：排产批次页（/scheduler/）的降级信息可见性契约——scheduler_batches 路由复用共享的 build_summary_display_state / scheduler_config_display_state 构建器，模板透出字段级降级提示与"当前配置状态/基线未记录"且不再用旧的 status_zh/strategy_zh 等口径；history 查询异常不被吞、build_summary_display_state 去重主降级并过滤次级降级消息、配置缺 provenance 时只读地标记 degraded。"""
+
 from __future__ import annotations
 
 import importlib

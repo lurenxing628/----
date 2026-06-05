@@ -1,3 +1,5 @@
+"""回归测试：core.algorithms.ordering 的批次/工序排序输入归一化契约——build_normalized_batches_map 须拒绝 trim 后重复或空的 batch_id，normalize_batch_order_override 须按原顺序保留合法 ID 并拒绝重复/缺失/空项；strict 模式下 ready_date 非法仅在 readiness_gate_enabled 时报 ready_date 否则被忽略；normalize_text_id 拒绝 __str__ 抛错的对象，operation_sort_key 对非整数 seq 报 seq——错误均为带正确 field 的 ValidationError。"""
+
 from __future__ import annotations
 
 from datetime import date

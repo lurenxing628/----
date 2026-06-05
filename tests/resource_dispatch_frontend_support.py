@@ -1,3 +1,5 @@
+"""为资源派工前端契约测试提供夹具：从 resource_dispatch.html 模板抽取受管 JS 脚本（resource_dispatch_*/resource_execution_* 等）的路径与 script 标签、拼接脚本 bundle、并按函数名切出指定 JS 函数源码，供各 regression 用例做前端契约断言。"""
+
 from __future__ import annotations
 
 import re

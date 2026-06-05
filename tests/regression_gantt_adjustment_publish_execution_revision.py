@@ -1,3 +1,5 @@
+"""回归测试：甘特调整模拟方案的执行快照契约（schema v17 新增 execution_snapshot_* 列、v16→v17 迁移补列）——保存方案只记录执行快照不写正式表；发布时重核快照，现场状态变更或已开工工序被挪动则报错回滚（code 6003）不写 OperationLogs，正常发布则把快照写入 ScheduleHistory.result_summary；保存/发布路由不向用户暴露 scenario_id/status 等内部字段。"""
+
 from __future__ import annotations
 
 import json

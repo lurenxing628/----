@@ -1,3 +1,5 @@
+"""回归测试：core.services.common.strict_parse 的必填/可选解析器——parse_required_float/int/date 对 None/空白/NaN/小数形整数/低于 min_value/非法日期时间抛带正确中文 field 的 ValidationError，整数形浮点串可解析为 int、2026/03/05 归一化为 ISO；parse_optional_* 遇空白返回 None。"""
+
 import os
 import sys
 

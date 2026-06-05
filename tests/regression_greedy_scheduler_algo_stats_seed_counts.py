@@ -1,3 +1,5 @@
+"""回归测试：GreedyScheduler 处理 seed_results 时，在 _last_algo_stats.fallback_counts 里如实记录被丢弃/过滤的种子计数——重复种子(seed_duplicate_dropped_count)、坏时间种子(seed_bad_time_dropped_count)、重叠过滤(seed_overlap_filtered_count)各为 1。"""
+
 import os
 import sys
 from dataclasses import dataclass

@@ -1,3 +1,5 @@
+"""回归测试：设备详情页 /equipment/<id> 与人员详情页 /personnel/<id> 的读侧归一——把库里 legacy 的 OperatorMachine.skill_level("skilled") 显示为 expert 选中、is_primary 的中文"是"/"off" 归一为勾选/未勾选；link/update 写回后落库为规范值 expert 与 yes/no。"""
+
 from __future__ import annotations
 
 import importlib

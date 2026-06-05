@@ -1,3 +1,5 @@
+"""测试：Excel 导入加固——批次/工序工时/工种/人员日历校验器拒绝小数数量(不截断)、零号 id 不当空、bool/非有限数字单元、重复 id 与日期(规范化后)、重复名称冲突，预览与确认两段一致拒绝且不落库；上传超限按 EXCEL_MAX_UPLOAD_BYTES 返回 413 含「XMB」提示而非裸错误码，恰好等于上限不被 multipart 开销误拒；人员日历预览回退裁掉时间后缀；build_xlsx_bytes 对公式样字符串做防注入转义并冻结首行。"""
+
 from __future__ import annotations
 
 import importlib

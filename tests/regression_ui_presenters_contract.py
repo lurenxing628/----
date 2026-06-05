@@ -1,3 +1,5 @@
+"""回归测试：web.viewmodels.ui_presenters 的展示模型契约——validate_tone 只接受 neutral/info/success/warning/danger 否则报"未知 UI tone"；UiSummaryItem 拒绝空白展示值但接受"0"/"-"/"未记录"；UiNotice/UiDetailsNotice 的 role/aria-live 默认空且枚举受限；checked_attr/disabled_attr 只接受 bool 并仅产出 "checked"/"disabled"/"" 这类 HTML 属性 token；UiToggleRow 的 checked/disabled/value/hidden_value/submitted_value 取值受校验。"""
+
 from __future__ import annotations
 
 import pytest

@@ -1,3 +1,5 @@
+"""回归测试：当所选批次只含 completed/skipped 工序、没有可重排工序时，ScheduleService.run_schedule 须抛 ValidationError(「所选批次没有可重排工序，本次未执行排产。」)且数据库快照前后完全不变——不写 ScheduleHistory/Schedule/排产日志、不推进 latest_version、不占用 ScheduleVersionSeq。"""
+
 import os
 import sqlite3
 import sys

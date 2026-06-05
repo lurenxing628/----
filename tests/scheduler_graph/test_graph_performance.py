@@ -1,3 +1,5 @@
+"""性能回归测试：图模式排产分析在 2000 节点/1900 边规模下的耗时与诊断体积上限——basic（report）路径跳过 impact 指标、full（on+score）路径产出全量 node_metrics，二者平均/最大耗时与 diagnostics/projection 字节数都在阈值内；另校验 5000 节点单链 build_node_metrics 不退化（中位数<1.5s）、2000 节点单链增量就绪队列不退化为全扫描，且已落库的 2000 节点性能证据文件符合 PR4 契约。"""
+
 from __future__ import annotations
 
 import json

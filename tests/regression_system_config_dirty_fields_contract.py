@@ -1,3 +1,5 @@
+"""回归测试：SystemConfigService.get_snapshot 遇到脏配置值（旧写法 on、越界的 0/9999、非数字 abc）时按规则归一（启用/最小1/最大365/默认60）并在 dirty_fields/dirty_reasons 标注白话原因，_dirty_field_label 对未知键回退为「系统配置项」，且 backup.html/logs.html 模板已改用 dirty_labels 渲染而非旧的 dirty_field_labels 表达式。"""
+
 from __future__ import annotations
 
 import os

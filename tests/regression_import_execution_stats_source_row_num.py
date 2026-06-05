@@ -1,3 +1,5 @@
+"""回归测试：execute_preview_rows_transactional 的错误样本以 source_row_num 作为 row（而非 row_num），保留预览阶段/应用阶段原始错误文案、为缺少主键的行套用统一文案，并正确统计 error/new/update/skip 数与实际写库调用。"""
+
 import os
 import sqlite3
 import sys

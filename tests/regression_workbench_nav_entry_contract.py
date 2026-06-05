@@ -1,3 +1,5 @@
+"""回归测试：计划工作台导航宏 workbench_nav_menu 的契约——base.html 只挂载不写文案；菜单恰好渲染 7 个只读入口并按序透传当前页的 version/plan_role/批次/资源等上下文；班组维度与非正式方案上下文下会禁用会 400 的链接和"计划和现场实际"入口；菜单本身保持纯只读（无 form/script/data-*/on*、不外链 CDN、不暴露 plan_role 等内部字段）。"""
+
 from __future__ import annotations
 
 import importlib

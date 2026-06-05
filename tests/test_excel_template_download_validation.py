@@ -1,3 +1,5 @@
+"""回归测试：send_excel_template_file 下发 Excel 模板前校验表头——当模板文件首行表头与 get_template_definition 定义不一致（列名不符或多出额外列）时，抛出含“表头不匹配”的 AppError 而非把错误模板发给用户。"""
+
 from __future__ import annotations
 
 from pathlib import Path

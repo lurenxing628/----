@@ -1,3 +1,5 @@
+"""回归测试：排产链路对外消息必须是中文、面向用户且经脱敏，绝不回显内部字段名/英文原文/敏感细节（SQL、路径、Traceback、SECRET_TOKEN、原始降级码 scope 等）。守护 resolve_schedule_params 归一化告警走中文、版本/偏移等校验错误映射为中文字段标签（派工方式/偏移周数填写不正确…）、降级与错误事件经 public_degradation_events/build_public_error_records/build_summary_display_state 聚合脱敏后只留白名单业务文案，而自制工序缺资源、自动派工失败等可操作错误仍保留完整明细。"""
+
 from __future__ import annotations
 
 import importlib

@@ -1,3 +1,5 @@
+"""回归测试：报表导出（/reports/overdue/export、/reports/utilization/export）按行数在 EXPORT_DIRECT_MAX_ROWS/EXPORT_STREAM_MAX_ROWS 间选 direct 与 stream 模式，并在响应头回写 X-APS-Report-Export-Mode/Estimated-Rows；同时校验超期清单表头与列序、利用率以百分比导出、候选方案 stream 导出文件名用中文方案名且不泄露 plan_role/candidate_id 等内部字段。"""
+
 from __future__ import annotations
 
 import os

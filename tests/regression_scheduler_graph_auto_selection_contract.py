@@ -1,3 +1,5 @@
+"""回归测试：select_candidate_plan 候选方案自动选择策略——score_only 取原始分最小且并列时优先 baseline/生成序；balanced 仅允许「健康度更好」的关键链候选在容差比内覆盖原始分最优，健康度 unavailable 时不覆盖；无任何候选 completed 时抛 candidate_selection 校验错误。"""
+
 from __future__ import annotations
 
 from types import SimpleNamespace

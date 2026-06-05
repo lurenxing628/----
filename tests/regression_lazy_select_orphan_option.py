@@ -1,3 +1,5 @@
+"""回归测试：批次详情页懒加载下拉（lazy_select）下，当工序的 machine_id/operator_id 指向已删除资源（不在懒加载模板 options 中）时，首屏 select 仍渲染带 data-orphan/data-static-disabled 的「（已删除）」回退 option 并强制选中；同时校验 source 大小写不敏感（INTERNAL 识别为内部工序）及 batch_detail_linkage.js 含回插占位项与懒加载失败保护逻辑。"""
+
 import os
 import re
 import sys

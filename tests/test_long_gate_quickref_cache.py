@@ -1,3 +1,5 @@
+"""测试：long-gate 缓存中 quickref_vs_routes 条目的指纹与复用判定——该条目启用且声明输出 evidence/QualityGate/quickref_vs_routes.md；指纹随速查表/app.py/路由/viewmodel/模板/静态资源/config/schema/依赖/check 脚本及 APS_DB_PATH 环境边界变化而变；decide_reuse 仅当输出报告文件存在且 hash 匹配才 reuse，文件缺失或内容改动则改判为 run。"""
+
 from __future__ import annotations
 
 from pathlib import Path

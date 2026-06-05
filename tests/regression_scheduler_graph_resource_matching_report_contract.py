@@ -1,3 +1,5 @@
+"""回归测试：图分析 report/on 模式下的资源匹配只读复盘契约——orchestrate_schedule_run 在 off/report/on 三模式产出的排产 payload 签名完全一致（资源匹配不改动排产结果），report/on 在 summary.algo.graph_analysis 输出 resource_matching 统计（ready/匹配/未匹配/瓶颈数）；public 不含样本/原始图数据、diagnostics 含样本但不含 raw graph/resource_pool；图含环时 resource_matching 标 skipped(graph_not_dag)、networkx 缺失时顶层标 unavailable。"""
+
 from __future__ import annotations
 
 import json

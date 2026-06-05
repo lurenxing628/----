@@ -1,3 +1,5 @@
+"""回归测试：build_result_summary 在输入构建阶段产生降级事件（input_build_outcome 含 invalid_number 等）时，应把顶层 degraded_causes 归并为统一的 input_fallback（而非透传 invalid_number），不污染 warnings，但 degradation_events 中同时保留 input_fallback 与底层 invalid_number 两条明细。"""
+
 from __future__ import annotations
 
 from datetime import datetime

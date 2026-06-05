@@ -1,3 +1,5 @@
+"""回归测试：ScheduleDelayDiagnosisService.diagnose_plan_overdue/diagnose_batch 只读地诊断超期（前后表快照不变），按 plan_role 从 Schedule/候选行/场景行三种来源各自取明细而不互相回退（缺明细时分别抛「所选方案没有可查看的明细」「模拟方案明细不存在」），并产出含物料未齐/停机影响/建议工序线索、证据 link 指向 /material/batches 与 /reports/downtime、trace_meta 指纹与未排程缺数据标记等结构化证据，不输出根因/critical_chain/primary_reason 等内部字段。"""
+
 from __future__ import annotations
 
 from pathlib import Path

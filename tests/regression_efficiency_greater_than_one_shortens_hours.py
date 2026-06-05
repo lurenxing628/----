@@ -1,3 +1,5 @@
+"""回归测试：当日历服务 get_efficiency 返回大于 1（如 1.2）时，GreedyScheduler 应据此缩短实际工时——setup_hours=12 在效率 1.2 下应得 end_time = start + 10 小时，而非按原始工时排程。"""
+
 import os
 import sys
 from dataclasses import dataclass

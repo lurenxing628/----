@@ -1,3 +1,5 @@
+"""回归测试：ensure_schema 对全新空库直接 fast-forward 到 CURRENT_SCHEMA_VERSION 且不产生 before_migrate 备份；而对 version=0 的非空旧库则真正逐版迁移（WorkCalendar/OperatorCalendar 的 day_type、allow_normal/urgent 与 OperatorMachine 的 skill_level/is_primary 归一为 holiday/yes/no/expert）并写出 before_migrate_v0_to_vN 备份。"""
+
 from __future__ import annotations
 
 import os

@@ -1,3 +1,5 @@
+"""回归测试：/scheduler/gantt/data 接口契约——默认不下发 history 但必含 contract_version、tasks、critical_chain 等顶层字段且 task_count 与 tasks 数一致；include_history=1 时下发脱敏 history（不含原始 result_summary）；有历史但无 Schedule 行的空版本仍返回 available 的空 critical_chain（edge_count=0）。"""
+
 from __future__ import annotations
 
 import json

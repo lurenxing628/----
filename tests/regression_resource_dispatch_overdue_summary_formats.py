@@ -1,3 +1,5 @@
+"""回归测试：resource_dispatch_support 从 result_summary 提取超期批次 ID——extract_overdue_batch_ids 支持 {count,items} 规范格式与 list 格式、忽略 legacy mapping key；extract_overdue_batch_ids_with_meta 在部分项有效时标 partial（reason=overdue_item_partial）、全部无效时标 degraded（reason=overdue_item_invalid）、空列表保持正常态。"""
+
 from __future__ import annotations
 
 import json

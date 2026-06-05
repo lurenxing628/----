@@ -1,3 +1,5 @@
+"""为 main() 风格回归脚本提供统一执行器：以独立模块名加载指定脚本、调用其 main()，并把 SystemExit.code 与非零 int 返回值正确归一为进程退出码。"""
+
 from __future__ import annotations
 
 import importlib.util

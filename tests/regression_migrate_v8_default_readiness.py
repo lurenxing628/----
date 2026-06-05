@@ -1,3 +1,5 @@
+"""回归测试：v8 迁移把既有齐套数据默认改为"已齐套"。守护 Batches.ready_status 置 yes 且 ready_date 清空、BatchMaterials.ready_status 全置 yes、enforce_ready_default 配置（含 preset.custom JSON 内嵌值）改为 no；available_qty 缺失时按 required_qty 补齐但不下调已有富余量；preset JSON 损坏时抛 RuntimeError "排产配置方案数据已损坏" 而非静默跳过。"""
+
 from __future__ import annotations
 
 import json

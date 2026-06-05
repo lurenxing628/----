@@ -1,3 +1,5 @@
+"""SGS 大资源池性能基准：用 30 台设备×10 人（候选对>200）与 1200 段 seed 碎片时间线驱动 GreedyScheduler.schedule(dispatch_mode='sgs')，校验 scheduled_ops>0、failed_ops=0、result_count==scheduled_ops，并记录统一估算器 estimate_internal_slot 的调用次数与耗时。"""
+
 from __future__ import annotations
 
 import os

@@ -1,3 +1,5 @@
+"""Phase8（甘特图与周计划 / M4）端到端冒烟：建资源/工艺模板与跨天日历后跑一次正式排产生成版本，验证 /scheduler/gantt 页与 /scheduler/gantt/data 接口返回的契约字段齐全（含 critical_chain、overdue 标记、二次请求关键链缓存命中、耗时<8s）、周计划页与导出 xlsx 表头与导出留痕，以及插单模拟排产（simulate）产出新版本但不改批次/工序状态且写 simulate 留痕，失败时落 evidence/Phase8 报告。"""
+
 import io
 import json
 import os

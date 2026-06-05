@@ -1,3 +1,5 @@
+"""回归测试：守护 benchmark_full_test_debt_shards 的分片基准工具——build_distribution 按 nodeid 统计串行/并行各分片数量与不均衡度，_parse_counts 去重并拒绝空分片数列表，main 按 argv 的 mode/shard-counts 正确驱动每个分片数并透传 allow-dirty-worktree-proof。"""
+
 from __future__ import annotations
 
 import json

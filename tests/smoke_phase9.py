@@ -1,3 +1,5 @@
+"""冒烟测试：Phase9 系统管理（备份/日志/历史）端到端闭环——经 test_client 走 /system/backup 的创建/删除/批量删除/恢复（含 before_restore 与操作日志）、过期备份 cleanup、日志按时间筛选与删除/批量删除、排产历史回看，以及按请求触发的自动备份/自动清理备份/自动清理日志，结果写入 evidence/Phase9 报告。"""
+
 import json
 import os
 import sys

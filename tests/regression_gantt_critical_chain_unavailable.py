@@ -1,3 +1,5 @@
+"""回归测试：甘特图关键链（critical_chain）计算异常时对外降级可见且不泄漏内部细节。守护 repo/rows/calc 异常都返回 available=False、统一中文 reason "关键工序关系计算异常"、对应 reason_code（repo_exception/rows_exception/calc_exception），清空 ids/edges 并隐藏 debug_error/raw_rows/traceback；不可用结果不进缓存、成功结果才缓存；关键链节点标签与甘特任务公开标签一致；边时间字段缺失抛 ValueError 不静默丢边。"""
+
 import sqlite3
 import threading
 from collections import OrderedDict

@@ -1,3 +1,5 @@
+"""回归测试：core.models.schedule_plan_identity.EvidenceLink 守护计划身份与证据 link 的强一致——row/aggregate/missing_data 三种 evidence_scope 各自的必填字段（行级需 source_table+source_row_id、缺数据级需 missing_data_key/confidence 等），并拒绝 source_table 不可信(fake_table)、link 的 version/plan_role/scenario_id 与当前 plan_identity 不符（缺失/空/重复/混入别的版本或方案/正式方案混入模拟编号）等所有越界链接。"""
+
 from __future__ import annotations
 
 import pytest

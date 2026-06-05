@@ -1,3 +1,5 @@
+"""回归测试：/scheduler/analysis 排产分析页的方案对比契约——analysis_page 须按 adopted/baseline_best/critical_best 顺序构建候选对比行，复用共享的 plan_role 标签，标注 is_same_as_adopted/is_comparison/comparison_note，并让设备甘特/人员甘特/周计划/资源排班/超期清单链接保持 version、plan_role 及资源与日期上下文（resource_type/resource_id/batch_id/week_start 等）。"""
+
 from __future__ import annotations
 
 import json

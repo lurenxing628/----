@@ -1,3 +1,5 @@
+"""回归测试：schedule_optimizer.optimize_schedule 对 cfg 三种形态（裸 dict / 普通对象 / ScheduleConfigSnapshot）一视同仁——objective 去空白小写归一；strict_mode 下空白数值（priority_weight/time_budget_seconds）与非法 choice（objective/sort_strategy/dispatch_mode）抛 ValidationError 且 field 精确、提示用现场字段名不泄露内部键、配置校验先于非法 seed_results；ensure_schedule_config_snapshot 保留既有降级事件与计数。"""
+
 from __future__ import annotations
 
 from datetime import datetime

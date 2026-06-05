@@ -1,3 +1,5 @@
+"""回归测试：migrations.v19 收紧 OperationExecutionEvents 计划身份契约——抹掉 source_table/effective_plan_role 默认值、把唯一索引扩展到含 schedule_version/schedule_id/source_table/effective_plan_role/previous_state_revision 的全身份范围（重复触发 IntegrityError、缺身份字段被拒），且 rebuild 前校验事件流顺序合法（finish 先于 start 抛「事件流顺序不合法」）；并验证 ensure_schema/migration_runner 对「SchemaVersion 已是当前版本但残留 v18 默认值/缺表/稀疏壳」的陈旧库 fail-fast 抛 MigrationContractError 而不静默放行或建表。"""
+
 from __future__ import annotations
 
 import sqlite3

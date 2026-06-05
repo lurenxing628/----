@@ -1,3 +1,5 @@
+"""回归测试：DeletionValidator 对工序 source 的判定大小写与空白不敏感——INTERNAL/带空格的 EXTERNAL 等混写仍能正确识别内/外部工序，从而 can_delete 拒删内部工序、get_deletion_groups 正确切出首部连续外部组。"""
+
 import os
 import sys
 
@@ -42,4 +44,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

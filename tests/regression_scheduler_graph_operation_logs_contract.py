@@ -1,3 +1,5 @@
+"""回归测试：守护 persist_schedule 写操作日志时只保留图分析的公开小摘要——graph_analysis 键集严格等于公开白名单（可用态/已知错误态/资源匹配态各一套），剔除 diagnostics 及 nodes/edges/各类 *_sample 等明细键，simulate 与正式排程动作均如此。"""
+
 from __future__ import annotations
 
 from contextlib import contextmanager

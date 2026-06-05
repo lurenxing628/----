@@ -1,3 +1,5 @@
+"""回归测试：DegradationCollector 对同一 (code, scope, field) 的多次 add（含传入 count 与 DegradationEvent 对象）应按 key 合并为一条，正确累加 count（invalid_number 合并为 4）、保留首个非空 sample，且 to_counters() 按原因码汇总计数。"""
+
 import os
 import sys
 

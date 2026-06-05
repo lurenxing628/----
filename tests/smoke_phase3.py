@@ -1,3 +1,5 @@
+"""Phase3 人员管理模块冒烟测试：验证 OperatorService 的创建/更新/清空备注与中文非法状态校验(VALIDATION_ERROR)、OperatorMachineService 复合键关联的预览(UNCHANGED/NEW/ERROR)与导入统计闭合、人员 Excel 预览 UPDATE/NEW/ERROR 分类，以及存在批次引用时禁止 REPLACE 清空人员(OPERATOR_IN_USE)；产出 evidence/Phase3 报告。"""
+
 import os
 import sys
 import tempfile

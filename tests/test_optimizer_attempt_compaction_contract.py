@@ -1,3 +1,5 @@
+"""测试：optimizer_search_state.compact_attempts 压缩尝试列表的契约——超过 limit 时保留全部带 score 的公开尝试、被拒尝试(candidate_rejected)只进 diagnostics 且绝不伪造 score、同 tag 的不同拒绝原因(field)各自保留；配合 project_public_algo_summary 验证 public_algo.attempts 不含被拒项而 diagnostics.optimizer.attempts 保留原始 origin。"""
+
 from __future__ import annotations
 
 from core.services.scheduler.run.optimizer_search_state import compact_attempts

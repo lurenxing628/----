@@ -1,3 +1,7 @@
+"""回归测试：静态资源版本号注入(static_versioning)——build_versioned_url_for 对缺失静态文件回退原始 /static 路径并只记一次
+"静态资源版本号读取失败"告警；install_versioned_url_for 在 jinja globals 注入失败时不崩溃、仍登记扩展并告警；
+但 filename.__str__ 等非预期异常不被吞掉，应原样抛出。"""
+
 from __future__ import annotations
 
 import pytest

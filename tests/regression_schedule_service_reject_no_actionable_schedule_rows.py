@@ -1,3 +1,5 @@
+"""回归测试：当排产结果的内部工序行缺设备/人员（无可落库排程行）时，ScheduleService.run_schedule 抛 ValidationError(reason=no_actionable_schedule_rows)，携带 missing_internal_resource_ops 明细与中文 user_message，并保证 Schedule/ScheduleHistory/ScheduleVersionSeq 零写入、批次与工序状态仍为 pending。"""
+
 from __future__ import annotations
 
 import sqlite3

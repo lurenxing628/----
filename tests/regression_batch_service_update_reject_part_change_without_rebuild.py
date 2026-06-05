@@ -1,3 +1,5 @@
+"""回归测试：BatchService.update 改批次零件号但未开启自动生成工序时，必须抛 ValidationError（提示需开启自动生成工序），且原 Batches 行与 BatchOperations 工序全部保持不变、不被部分写入。"""
+
 from __future__ import annotations
 
 import sqlite3

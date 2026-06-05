@@ -1,3 +1,5 @@
+"""冒烟测试：Phase4 设备管理模块端到端走查（MachineService/OperatorMachineService/MachineDowntimeService 与设备 Excel 预览）。覆盖设备 CRUD 与字段清空（remark/op_type_id 置 None）、非法状态翻译为 VALIDATION_ERROR、设备-人员关联双向一致、Excel 预览的 NEW/UPDATE/ERROR 分类与工种识别、存在批次引用时 REPLACE 保护报 MACHINE_IN_USE、停机计划新增/重叠报 SCHEDULE_CONFLICT/取消后可重建；结果写入 evidence/Phase4/smoke_phase4_report.md。"""
+
 import os
 import sys
 import tempfile

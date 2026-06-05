@@ -1,3 +1,5 @@
+"""Phase0~Phase5 Web+Excel 端到端冒烟：用 Flask test_client 走设备/人员/人员设备关联/工种/供应商/工艺路线 的 Excel 上传->预览->确认->导出全链路，验证严格模式下含错误行时确认导入被拒绝(显示导入被拒绝且不落库)、全合法数据正常写库、工艺路线导入触发解析生成 Parts/PartOperations/ExternalGroups、并核对 OperationLogs 导入/导出留痕的必备字段；产出 evidence/Phase0_to_Phase5/web_smoke_report.md。"""
+
 import io
 import json
 import os

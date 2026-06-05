@@ -1,3 +1,5 @@
+"""回归测试：graph.types 值对象不变量——OperationGraphNode 的 candidate_machine_ids/operator_ids 与 raw 不可变并对源做防御性拷贝（去空格/丢空值、raw 嵌套转 tuple），拒绝空白必填标识符、负 duration 与非整数 seq/duration，且 Node/Edge/GraphWarning/GraphAnalysisSummary 均可 asdict 后 JSON 序列化。"""
+
 from __future__ import annotations
 
 import json

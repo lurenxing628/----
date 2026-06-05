@@ -1,3 +1,5 @@
+"""回归测试：Excel 导入对「编号/名称」旧列名(工种ID/供应商ID/机器编号/机器名称)与新列(工种编号/供应商编号/设备编号/设备名称)的归一与冲突处理——normalize_renamed_column 保留旧列值并在新旧不同值时报「不能同时填写不同值」，op-type/supplier/machine 的 preview+confirm 路由遇冲突按行报错拒绝不落库，纯旧列名设备 Excel 被识别并正常导入。"""
+
 from __future__ import annotations
 
 import importlib

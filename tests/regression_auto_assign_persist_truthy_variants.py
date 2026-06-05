@@ -1,3 +1,5 @@
+"""回归测试：run_schedule 自动分配回写前归一化 auto_assign_persist——配置值为真值变体（如 "1"）时把分配的设备/人员写回 BatchOperations，而当 ConfigService.get_snapshot 返回的 auto_assign_persist 为空白时不回写。"""
+
 from __future__ import annotations
 
 import tempfile

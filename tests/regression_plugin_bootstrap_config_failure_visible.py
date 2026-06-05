@@ -1,3 +1,5 @@
+"""回归测试：bootstrap_plugins 在数据库不可用、配置读取失败、单个插件 register 抛错、PluginManager 加载整体失败时，必须标记 degraded=True、给出可见的 config_source/degradation_counters/对外中文错误，且不泄露内部异常（如 PLUGIN_INTERNAL_SECRET），并在加载失败时不复用旧插件注册表快照、回退到 OpenpyxlBackend。"""
+
 from __future__ import annotations
 
 from pathlib import Path

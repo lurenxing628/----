@@ -1,3 +1,5 @@
+"""守护排产摘要(result_summary)的可观测性：首页/排产页/系统历史页/排产分析页遇到非法 JSON 摘要时记录带 version 与 source 的 warning 并保持页面 200 可用、保留最近快照；同时这些页面与分析 viewmodel 必须接受已预解析的 dict 摘要，正确投影 overdue_count、告警去重预览、降级提示与趋势行。"""
+
 from __future__ import annotations
 
 import importlib

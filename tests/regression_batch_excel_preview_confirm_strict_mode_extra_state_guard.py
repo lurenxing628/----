@@ -1,3 +1,5 @@
+"""回归测试：批次 Excel 预览(/scheduler/excel/batches/preview)与确认(/confirm)的 strict_mode 漂移护栏——预览页须保留 strict_mode/auto_generate_ops/preview_baseline 隐藏字段，确认时 strict_mode 由 yes 改成 no 应被拦截，提示「请重新上传 Excel 并检查」且不写入 Batches。"""
+
 import io
 import os
 import re

@@ -1,3 +1,5 @@
+"""回归测试：报表页 /reports/overdue|utilization|downtime 默认选中最新排产版本（不暴露 v0），version=abc 返 400 用统一版本错误文案、version=999 返 404 提示版本不存在；日期范围需两侧齐全且格式合法否则 400；无排产历史时页面显示「暂无排产历史」且导出 404。"""
+
 from __future__ import annotations
 
 import importlib

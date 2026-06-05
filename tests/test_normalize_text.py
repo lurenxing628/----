@@ -1,3 +1,6 @@
+"""回归测试：normalize_text 把 None/空串/纯空白归一为 None、对非字符串(0/123)与首尾空白做 strip 转字符串；
+append_unique_text_messages 容忍 None 缓冲区，接受单值/列表/集合输入，按首次出现顺序去重并丢弃空与 falsy 文本。"""
+
 from __future__ import annotations
 
 from core.services.common.normalize import append_unique_text_messages, normalize_text

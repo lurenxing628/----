@@ -1,3 +1,5 @@
+"""回归测试：scripts.run_quality_gate 的 long-gate 缓存 CLI 控制项——自定义 --long-gate-cache-dir 读写成功缓存与 summary、不安全目录在跑命令前即拒、--long-gate-force-rerun/-all 强制重跑并刷新缓存、对 planned 条目强制重跑只上报不启用缓存、--long-gate-cache-explain 只打印决策不落证据，未知 entry_id 在执行前报错。"""
+
 from __future__ import annotations
 
 import importlib

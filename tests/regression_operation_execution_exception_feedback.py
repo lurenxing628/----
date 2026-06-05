@@ -1,3 +1,5 @@
+"""守护现场工序的暂停/继续/报异常反馈闭环：经资源派工执行路由的 start→pause→resume→report-exception 流程要更新任务卡状态标签与可用动作、把 reason/severity/impact/影响设备人员等渲染成中文标签，校验失败与状态/版本冲突要给用户可读提示（不泄露 reason_code 等原始字段），并清洗大小写不敏感的内部码 remark，同时保留用户真实填写的说明。"""
+
 from __future__ import annotations
 
 from typing import Any, Dict

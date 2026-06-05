@@ -1,3 +1,5 @@
+"""合成案例基线脚本：不依赖 Excel，用随机种子构造可复现的 APS 合成数据（批次/工序/资源/日历/停机/外协组），直接调用 ScheduleService.run_schedule(simulate=True) 跑 greedy/improve 排产并打印 overdue/tardiness/makespan、机器与人员利用率及负荷均衡指标，可选导出 machine/operator 甘特 JSON 供肉眼基线对比。"""
+
 from __future__ import annotations
 
 """

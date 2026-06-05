@@ -1,3 +1,6 @@
+"""回归测试：自动维护任务(maybe_run_auto_backup/backup_cleanup/log_cleanup)的 telemetry 隔离——当 op_logger.info/error 抛异常时，任务主体仍成功(返回 True)、
+照常生成备份/删过期备份/清旧日志并持久化 SystemJobState，结果 detail 暴露 oplog_persisted=False 与 job_state_persisted=True，且每次失败各记一条 warning（留痕失败不污染主流程）。"""
+
 from __future__ import annotations
 
 import os

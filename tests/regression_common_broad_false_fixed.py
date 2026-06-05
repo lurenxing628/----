@@ -1,3 +1,5 @@
+"""回归测试：迁移公共工具 common.table_exists / column_exists 对非法表名/列名（如 "1-bad-table"）须抛 ValueError 而非误判为不存在，且在连接已关闭时须抛 sqlite3.ProgrammingError 而非静默返回 False。"""
+
 import os
 import sqlite3
 import sys

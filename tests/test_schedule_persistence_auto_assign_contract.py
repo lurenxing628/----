@@ -1,3 +1,5 @@
+"""回归测试：排产落库（build_validated_schedule_payload + persist_schedule）的校验与 auto_assign 持久化契约——落库前按固定优先级拒绝越界/非法/无可执行行/重复 op_id/source 与原工序不一致的 payload 并给出 reason 与样本，且校验失败时 Schedule/ScheduleHistory 零写入；simulate 不改真实 status 与资源、auto_assign_persist=no 只置 scheduled 不填资源、=yes 仅补 internal 缺失的 machine/operator 而不覆盖已有值也不动 external/范围外工序；并验证 Schedule(version,op_id) 唯一索引及从 v6 旧库迁移时拒绝既有重复行、否则建索引并保序保留数据。"""
+
 from __future__ import annotations
 
 import sqlite3

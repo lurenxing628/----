@@ -1,3 +1,5 @@
+"""回归测试：ScheduleCandidate/Rows/Selection 三张候选方案表及其索引随 schema 建库/迁移到位，约束生效（同版本 candidate_key 唯一、status 与 selection.role/source_table 取值受 CHECK 限制、删除候选级联清空 Rows 与 Selection），且候选表外键不指向 ScheduleHistory、与正式历史保持独立。"""
+
 from __future__ import annotations
 
 import sqlite3

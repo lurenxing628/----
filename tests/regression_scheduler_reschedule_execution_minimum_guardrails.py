@@ -1,3 +1,5 @@
+"""回归测试：重排时执行事实的最小护栏——进行中工序按实际开工时间固定并锁定、下游接在其估计完工之后，已完工工序以实际完工时间约束下游；冻结窗口与执行事实冲突、缺少实际设备人员、输入采集后现场状态又变（execution_state_changed）等情形必须以 AppError(6003) 拒绝且不写 Schedule/History/已分配版本回滚；simulate 模式不落库。"""
+
 from __future__ import annotations
 
 import sqlite3

@@ -1,3 +1,5 @@
+"""回归测试：前端甘特 adapter（buildGanttOptions/createGantt）按 zoom 契约从 zoomLevel 派生 view_mode/step_minutes/column_width 与几何，并按 mode（view 只读、simulate 可拖拽）正确设置 readonly/readonly_dates/readonly_progress、on_click/custom_popup_html/on_date_change；render() 复用 adapter 选项、保持只读点击弹窗并按 batch 聚焦，bar 宽度随分钟步长正确缩放。"""
+
 from __future__ import annotations
 
 import importlib.util

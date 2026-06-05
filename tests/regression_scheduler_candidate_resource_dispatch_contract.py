@@ -1,3 +1,5 @@
+"""回归测试：ResourceDispatchService 按请求的 plan_role 读对应候选方案（baseline_best 读候选行、无此角色时回退 adopted 并标记 fallback_to_adopted），超期标记从候选行自身计算而不复用 adopted 历史，且页面/数据/导出接口在 URL 与日志中保留 plan_role、对外 JSON 不泄露 schedule_id/op_id/source_table 等内部键。"""
+
 from __future__ import annotations
 
 import json

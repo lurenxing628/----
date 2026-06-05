@@ -1,3 +1,5 @@
+"""回归测试：run_schedule 的齐套约束开关——enforce_ready=True 时未齐套批次（ready_status!=yes）应被 ValidationError 拒绝排产；enforce_ready=False 时关闭齐套约束，未齐套批次应允许参与并产出排程结果。"""
+
 import os
 import sys
 import tempfile

@@ -1,3 +1,5 @@
+"""守护 resolve_schedule_params 读配置失败可见性：读取 sort_strategy/priority_weight 等字段抛异常时，无论 strict_mode 与否都必须抛出 ValidationError 并带上对应字段名和中文标签(如"排产策略"/"优先级权重")，绝不静默 fallback 到默认值。"""
+
 import os
 import sys
 

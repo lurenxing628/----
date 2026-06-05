@@ -1,3 +1,5 @@
+"""回归测试：build_algo_operations 解析外部工序合并周期上下文的契约——内部工序跳过模板/外部组查询且合并字段为空；外部无组/separate 组用工序 ext_days，merged 组改用 group.total_days 并清空成员 ext_days；模板缺失/外部组缺失/total_days 非法/模板被删/组 part_no 或 seq 区间不匹配等场景，非严格模式记 merge_context 事件并降级回落 ext_days，严格模式按对应 field 抛 ValidationError。"""
+
 from __future__ import annotations
 
 from types import SimpleNamespace

@@ -1,3 +1,5 @@
+"""回归测试：build_schedule_config_snapshot 对配置字段的可观测降级契约——relaxed 模式下显式 None 的可选字段回退默认并记 blank_required，空白选项/yesno 记 blank_required、非法选项记 invalid_choice（counters 与 degradation_events 同步）；strict 模式下显式 None 必填字段抛 ValidationError(field=...)；repo.get 返回缺 config_value 的记录则两种模式都抛 TypeError。"""
+
 from __future__ import annotations
 
 import pytest

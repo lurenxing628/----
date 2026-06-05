@@ -1,3 +1,5 @@
+"""回归测试：当 ensure_schema() 触发旧库迁移、但调用方显式传入 backup_dir=None 时，必须回退到 <db_dir>/backups 并强制生成迁移前备份文件（before_migrate_v4_to_v{CURRENT}），并完成枚举值规范化（熟练→expert、是→yes）升至当前版本。"""
+
 import os
 import sqlite3
 import sys

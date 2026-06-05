@@ -1,3 +1,5 @@
+"""回归测试：build_algo_operations 在 strict_mode 下拒绝内部工序空白 setup_hours / NaN unit_hours、外协工序空白 ext_days，抛 ValidationError 且 field 精确、消息用中文用户标签（换型时间/单件工时/外协周期）而不泄露字段名；不回退到 legacy 私有 _get_template_and_group_for_op（缺失须抛 AttributeError）；return_outcome 时保留 piece_id 供用户可见上下文。"""
+
 from __future__ import annotations
 
 from types import SimpleNamespace

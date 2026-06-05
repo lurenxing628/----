@@ -1,3 +1,5 @@
+"""回归测试：POST /scheduler/ops/<op_id>/update 路由契约——成功分支把表单字段透传 update_internal_operation 后重定向；内排工序允许清空机台/人员（空串转 None）；设备与人员不匹配的 ValidationError 须以用户可见的 flash 文案拒绝。"""
+
 from __future__ import annotations
 
 from types import SimpleNamespace

@@ -1,3 +1,5 @@
+"""回归测试：工艺路线 Excel 预览(/process/excel/routes/preview)到确认(/confirm)之间任何外部状态漂移都应被 preview_baseline 拦截——strict_mode 由 yes 改 no、工种改名、供应商置 inactive、供应商默认周期变化时确认都提示「请重新上传 Excel 并检查」且不写入 Parts。"""
+
 import io
 import os
 import re

@@ -1,3 +1,5 @@
+"""回归测试：init_ui_mode 启动初始化的容错可观测性——V2 静态目录不存在且 logger 也抛错时降级写 stderr；V2 Jinja 环境 overlay 失败时把扩展置 None 并告警；主模板与 V2 模板的全局函数注入失败时分别记录可读中文 warning，不让启动崩溃。"""
+
 from __future__ import annotations
 
 from types import SimpleNamespace

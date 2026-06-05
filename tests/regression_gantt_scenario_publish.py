@@ -1,3 +1,5 @@
+"""回归测试：GanttAdjustmentPublishService.publish_scenario 正式采用调整方案——v13 迁移补齐 published_* 列且按列缺失判定 schema 不达标，发布生成新正式版本并写审计日志/路由用服务端 operator(web)，且拒绝对比方案、操作日志失败回滚、缺确认语/原因、重复采用、陈旧依据版本与发布前需重校验等场景，失败时不留任何正式写入。"""
+
 from __future__ import annotations
 
 import json

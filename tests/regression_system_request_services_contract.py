@@ -1,3 +1,5 @@
+"""回归测试：web.routes.system_* 路由统一从 g.services 取请求级服务而非裸 g.db——system_utils/system_logs/system_backup/system_plugins/system_ui_mode 等正常时用注入的 config/job_state/operation_log 服务渲染（含中文筛选标签回译成 raw code、jobstate 解析状态标注），缺 g.services 或缺某项服务时抛明确 RuntimeError 不吞错；批量删日志先校验非法/缺失 id、op_logger 失败不影响开关保存成功。"""
+
 from __future__ import annotations
 
 from types import SimpleNamespace

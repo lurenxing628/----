@@ -1,3 +1,5 @@
+"""回归测试：POST /process/parts/<part_no>/reparse 重新解析工艺路线时，对没有可用外协供应商的外协工种，既 flash success（解析完成共 1 道工序）又 flash warning（提示按 1 天先安排、建议补供应商和周期），并把工序写入 PartOperations。"""
+
 from __future__ import annotations
 
 import importlib

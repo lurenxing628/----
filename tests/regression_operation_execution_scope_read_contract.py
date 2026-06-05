@@ -1,3 +1,5 @@
+"""回归测试：现场执行事实读取须按完整计划身份(version/schedule_id/source_table/effective_plan_role)收口——ExecutionFactProvider.facts_by_op_id_for_plan_rows 缺字段/重复 op_id 身份/include 越界时报错，旧版本(v1)反馈不污染当前任务卡，事件列表与现场写入接口缺身份时返回 400，超期正式方案导出标注「历史正式方案」。"""
+
 from __future__ import annotations
 
 from io import BytesIO

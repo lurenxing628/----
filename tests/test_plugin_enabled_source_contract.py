@@ -1,3 +1,6 @@
+"""回归测试：可选插件启用来源(enabled_source)契约——无配置时 pandas_excel_backend/ortools_probe 保持 enabled=no、source=default 且默认 Excel 后端仍为 OpenpyxlBackend、能力表不含 pandas/ortools；
+_apply_enabled_sources 保留显式 config 来源、把插件加载错误脱敏为「请联系维护人员」公开文案（不泄露内部堆栈）、config_source 汇总 mixed/default_due_to_config_read_failed；并校验备份页模板/presenter 暴露冲突能力与留痕状态字段。"""
+
 from __future__ import annotations
 
 from pathlib import Path

@@ -1,3 +1,5 @@
+"""回归测试：甘特图各缩放级别下装饰层与真实条对齐——细缩放（hour/15/5/1 分钟）时 bar 宽度按 stepMinutes 精确换算、命中区不小于 12px、临界链外框紧贴真实条、今天高亮与节假日矩形覆盖整天且 x=0、箭头路径无 NaN、overdue/external 样式保留；week/month 缩放时节假日矩形宽度只占一天而非整列。"""
+
 from __future__ import annotations
 
 import importlib.util

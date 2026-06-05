@@ -1,3 +1,5 @@
+"""回归测试：_safe_next_url 对非法 next 跳转参数（绝对 URL、协议相对 URL）每请求只 warning 一次、对缺失/空白值不告警；scheduler config/batches、system ui-mode 路由在 next 非法时回退到本地 url_for 端点（ui-mode 优先同源 referrer 再 dashboard）；ui_mode_set 的 flash 等级随 SystemConfig 写库与 cookie 写入的成败组合给出 success/warning/error。"""
+
 from __future__ import annotations
 
 from types import SimpleNamespace

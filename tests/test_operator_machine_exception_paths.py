@@ -1,3 +1,5 @@
+"""回归测试：OperatorMachineService 与 OperatorMachineQueryService 的技能等级/主操设备归一化只对 ValueError/ValidationError 做兜底（非法值回退 normal 或转成 ERROR 预览行），而对底层 normalize_* 抛出的意外 RuntimeError 一律向上传播不吞掉——覆盖 optional/stored 归一、list_by_operator 读侧、预览解析、写入 resolve 与查询服务 _normalize_row 各路径。"""
+
 from __future__ import annotations
 
 import os

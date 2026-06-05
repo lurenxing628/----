@@ -1,3 +1,5 @@
+"""回归测试：ScheduleHistoryRepository 版本号分配与历史空洞契约。守护 allocate_next_version 通过 ScheduleVersionSeq 单调递增且已分配号不被复用——回滚未落库的版本会留下空洞（历史只剩 [1,3]），get_by_version 对未落库号返回 None，get_latest_version/list_versions 只反映真实历史；新分配器还须对齐到既有历史最大版本之上（历史含 9 时下一个分配为 10、11）。"""
+
 from __future__ import annotations
 
 import sqlite3

@@ -1,3 +1,5 @@
+"""Phase10 冒烟测试：在临时库上端到端验证 SGS 派工/自动分配/停机避让/外协合并周期/冻结窗口/OR-Tools 开关的基本链路——auto_assign 关闭时缺资源应失败、开启后排满且不与 MC_A1 停机区间重叠，SGS 模式机台与人员均无重叠，merged 外协组同起止，第二次冻结排产产生 locked 行，OR-Tools 开关不阻断主流程，结果写入 evidence/Phase10 报告。"""
+
 import os
 import sys
 import tempfile

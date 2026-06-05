@@ -1,3 +1,5 @@
+"""回归测试：bootstrap_plugins 在插件遥测落库失败（OperationLogger.info 返回 False）时必须显式降级——telemetry_persisted=False、degraded=True、计数器 plugin_bootstrap_telemetry_failed=1 并产出不带样本数据的降级事件，插件本身仍正常注册，不得静默吞掉。"""
+
 from __future__ import annotations
 
 import os

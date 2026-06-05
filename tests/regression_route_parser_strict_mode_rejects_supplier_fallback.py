@@ -1,3 +1,6 @@
+"""回归测试：RouteParser strict_mode 对外协供应商缺失/失效的拦截边界——外协工序无可用供应商或 default_days=0 时严格模式判 FAILED 并透出可读错误；
+供应商工种映射加载失败 relaxed 降为 PARTIAL 仅告警、strict 则 FAILED；但与当前路线无关的脏供应商映射只作 warning，不得把纯内部路线或已满足供应商的外协路线误卡成失败。"""
+
 import os
 import sys
 from dataclasses import dataclass

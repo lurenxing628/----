@@ -1,3 +1,5 @@
+"""回归测试：SystemMaintenanceService.run_if_due 的进程级节流短路——首轮 run 不节流并各触发一次配置读取与自动备份/清理备份/清理日志 runner；紧接的第二轮命中节流（throttled=True），不再读配置、不再调用任何 runner（各计数维持为 1）。"""
+
 from __future__ import annotations
 
 import os

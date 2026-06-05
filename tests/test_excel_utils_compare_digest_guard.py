@@ -1,3 +1,7 @@
+"""回归测试：Excel 预览基线令牌(preview_baseline)的比对与确认路由防护——preview_baseline_matches 对相等令牌返 True、不等返 False，
+hmac.compare_digest 抛错时吞异常返 False 并以「检查结果状态比较失败」记日志；build_preview_baseline_token 必须带 rows、load_confirm_payload 缺基线用大白话报「检查结果已失效」；
+并用 AST 静态扫描 web/routes：所有 excel 确认路由须先 load_confirm_payload 再 preview_baseline_is_stale 校验、且写库调用不得早于基线校验、基线令牌调用必须传 rows。"""
+
 from __future__ import annotations
 
 import ast

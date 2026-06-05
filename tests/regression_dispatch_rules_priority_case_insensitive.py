@@ -1,3 +1,5 @@
+"""回归测试：dispatch_rules.build_dispatch_key 对 priority 大小写归一化——SLACK 规则下 Urgent 经 tie-break(pr_rank) 排在 normal 前、ATC 规则下 URGENT 经 PRIORITY_WEIGHT 排在 normal 前，混合/全大写写法均不影响优先级权重。"""
+
 import os
 import sys
 from datetime import date, datetime
@@ -96,4 +98,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

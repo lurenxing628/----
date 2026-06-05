@@ -1,3 +1,5 @@
+"""回归测试：collect_schedule_run_input 在自动派工启用时，会把 downtime_map 从固定设备扩展到资源池候选设备（MC_FIXED 与 MC_POOL 都带各自停机段），并在 downtime_meta 标记 downtime_load_ok/downtime_extend_attempted/downtime_extend_ok 均为 True。"""
+
 from __future__ import annotations
 
 import os

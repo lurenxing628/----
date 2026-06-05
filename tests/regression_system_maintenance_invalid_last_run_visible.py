@@ -1,3 +1,6 @@
+"""回归测试：SystemJobState 里 last_run_time 是坏时间戳、last_run_detail 是坏 JSON 时，/system/logs 与 /system/backup
+页面不应崩溃，而应渲染中文兜底提示（"上次执行时间记录异常，系统会在下次执行后重新记录。"与"上次结果记录异常，详细内容请让维护人员查看日志。"）。"""
+
 from __future__ import annotations
 
 import importlib

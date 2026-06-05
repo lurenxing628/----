@@ -1,3 +1,5 @@
+"""回归测试：当 ScheduleHistory.result_status 为 failed 或 simulated 时，资源派工的 plan_identity 不得被标成正式采用方案——label 为不可执行正式方案、kind_label 为只能查看的方案、can_dispatch 与 can_write_feedback 均为 False，且 guardrail_text 说明排产结果状态。"""
+
 from __future__ import annotations
 
 from pathlib import Path

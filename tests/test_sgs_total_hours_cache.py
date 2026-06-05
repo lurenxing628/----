@@ -1,3 +1,5 @@
+"""守护 SGS 调度内部工时缓存契约：同一 op 的 internal 工时在均值计算与打分阶段只 validate 一次（含开启 graph 评分时），缓存仅对正整数 op_id 生效——非正/缺失/bool/非整型 id 不入缓存也不命中（避免 True 等价 1 误用），且非法工时（inf）必须抛 ValidationError(field=setup_hours) 而不被缓存或吞掉。"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

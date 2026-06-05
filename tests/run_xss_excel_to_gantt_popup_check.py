@@ -1,3 +1,5 @@
+"""端到端安全回归：把含 XSS 载荷（<img src=x onerror=...>）的设备/人员/工艺/批次 Excel 经预览-确认导入，跑排产后取甘特任务，再用 Node 真实执行 gantt.js 的 custom_popup_html/escapeHtml，断言弹窗 HTML 对名称等字段做了转义（无裸 <img>、出现 &lt;img），防止甘特任务详情弹窗 XSS。"""
+
 import io
 import json
 import os

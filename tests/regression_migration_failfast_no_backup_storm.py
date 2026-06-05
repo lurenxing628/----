@@ -1,3 +1,5 @@
+"""回归测试：对不受支持的残缺旧库，ensure_schema() 应立即抛 MigrationContractError 失败，且预检阶段不生成 before_migrate 备份；连续调用两次也不产生备份风暴，并保持原数据与 SchemaVersion 不被部分清洗/升级。"""
+
 import os
 import sqlite3
 import sys

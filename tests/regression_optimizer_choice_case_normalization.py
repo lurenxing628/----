@@ -1,3 +1,5 @@
+"""回归测试：optimize_schedule 对带空格/大小写的算法选项（algo_mode=' IMPROVE '、objective、dispatch_mode=' SGS '、dispatch_rule=' CR '）做归一化——outcome 字段归一为小写无空格，multi-start 据归一化值生成且去重出 {(batch_order,cr),(sgs,cr),(sgs,slack),(sgs,atc)} 共 4 个组合，attempts 留痕同样规范化。"""
+
 import os
 import sys
 from datetime import date, datetime, timedelta

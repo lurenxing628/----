@@ -1,3 +1,5 @@
+"""回归测试：各业务服务的状态/类别字段对混合大小写与中文别名容错并归一化——MachineService._normalize_status、Operator/Supplier/OpType 的 _validate_fields（含 allow_partial 不强制默认）、operation_edit_service 的资源可用性校验，以及 list() 必须用归一化后的值查 repo（避免 mixed-case 静默查不到、空白抛 ValidationError）。"""
+
 import os
 import sys
 from typing import Any, Optional, cast
@@ -190,4 +192,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

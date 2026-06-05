@@ -1,3 +1,5 @@
+"""回归测试：三处 due_exclusive 实现（greedy.date_parsers、report.calculations、scheduler.schedule_summary）对 None 截止时间统一返回 datetime.max，守护「无交期视为最晚」的共享语义不分叉。"""
+
 import os
 import sys
 from datetime import datetime

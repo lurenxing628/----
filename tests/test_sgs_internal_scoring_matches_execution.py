@@ -1,3 +1,5 @@
+"""回归测试：GreedyScheduler 的 SGS 派工——评分阶段必须复用统一的 estimate_internal_slot 估算器且其排序与实际执行顺序一致（含 seed_results 占用资源后 B_B 先于 B_A），with_graph_priority_key 把图评分惩罚作为首位排序分量，且当日历效率探测返回 None 走默认值时只计 internal_efficiency_fallback_count 一次、不污染正式计数。"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

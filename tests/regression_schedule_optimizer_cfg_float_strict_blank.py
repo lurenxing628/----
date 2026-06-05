@@ -1,3 +1,5 @@
+"""回归测试：optimize_schedule 在 strict_mode=True 下遇到 ScheduleConfigSnapshot 里数值字段为纯空白串时抛 ValidationError，并把 field 精确定位到出错字段（weighted/priority_first 策略下的 priority_weight、以及 time_budget_seconds）。"""
+
 from __future__ import annotations
 
 from datetime import datetime

@@ -1,3 +1,5 @@
+"""回归测试：build_scheduler_navigation_links 在请求带未知 plan_role（如 future_role）时，应从生成的导航链接中剔除该未知值并回退为 plan_role=adopted。"""
+
 from __future__ import annotations
 
 from tests.reports_workbench_backlink_helpers import _client

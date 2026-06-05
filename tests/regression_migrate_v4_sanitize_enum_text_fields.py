@@ -1,3 +1,5 @@
+"""回归测试：当库 SchemaVersion=3 且枚举/yesno 文本字段存在大小写与首尾空格混用（如 OpTypes.category=' EXTERNAL '、Batches.priority=' URGENT '、WorkCalendar.day_type=' WORKDAY '）时，ensure_schema 触发 v4 迁移把这些字段统一清洗为 trim+lower，并在迁移前生成 before_migrate_v3_to_v{CURRENT} 备份文件，最终 SchemaVersion>=CURRENT_SCHEMA_VERSION。"""
+
 import os
 import sqlite3
 import sys

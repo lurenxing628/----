@@ -1,3 +1,5 @@
+"""回归测试：dispatch_rules.build_dispatch_key 在 proc_hours 为非有限值（inf）时应退化为 avg_proc_hours（primary 键保持有限、与正常值一致，不把候选错误置顶/置底），且 mean_positive 只统计有限正数、忽略 Inf 与非正值。"""
+
 import math
 import os
 import sys

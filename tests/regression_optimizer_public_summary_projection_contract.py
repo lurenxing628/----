@@ -1,3 +1,5 @@
+"""回归测试：优化器尝试（attempts）公开摘要投影契约（project_public_algo_summary / build_result_summary）。守护公开 algo.attempts 剥离 tag/used_params/algo_stats/source/origin 内部诊断字段并打上 source_label "多起点方案"；内部诊断保留在 diagnostics.optimizer.attempts；无内部字段时省略 diagnostics；candidate_rejected 尝试只进诊断不进公开；尝试压缩后被拒诊断仍存活；超大诊断在落 JSON 前按 SUMMARY_SIZE_LIMIT_BYTES 截断并置 summary_truncated/diagnostics_truncated。"""
+
 from __future__ import annotations
 
 import json

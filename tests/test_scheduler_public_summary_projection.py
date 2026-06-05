@@ -1,3 +1,5 @@
+"""回归测试：守护 project_public_algo_summary 对 input_contract 的脱敏投影——只放行 degraded/降级事件 code/有效计数器/empty_reason 等白名单字段，剔除 raw_path、traceback、debug_payload 等私密键（输出中不得出现 secret/私密路径/Traceback），且 input_contract 非字典时降为空字典。"""
+
 from __future__ import annotations
 
 import json

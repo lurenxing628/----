@@ -1,3 +1,5 @@
+"""回归测试：report.calculations 的 compute_utilization 与 compute_downtime_impact 对调度行的 source 字段（INTERNAL vs internal）须大小写不敏感，设备与人员利用率、停机影响结果不因大小写而改变。"""
+
 import os
 import sys
 from datetime import datetime

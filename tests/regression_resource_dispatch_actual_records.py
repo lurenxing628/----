@@ -1,3 +1,5 @@
+"""回归测试：按任务卡键填实际接口（/scheduler/resource-dispatch/execution/tasks/<task_key>/actual）的写入契约——手填起止时间生成 start/finish 事件并回写任务卡（反馈人空白记“未填写反馈人”）、返工合计数量可超计划、幂等键复用旧事件而换内容仍要重校验、过期 state_key/revision 拒绝、暂停区间与时长一致性校验、异常补录字段、拒绝覆盖已有开完工与完工早于开工。"""
+
 from __future__ import annotations
 
 from tests.operation_execution_feedback_test_support import (

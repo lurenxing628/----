@@ -1,3 +1,5 @@
+"""回归测试：execute_preview_rows_transactional 按行状态闸门写库——ERROR/SKIP/UNCHANGED 不写、UPDATE/NEW 才写并正确判定 existed；并守护 APPEND 命中 existing_row_ids 兜底跳过、REPLACE 下 UNCHANGED 行清空后必重建、row_id 为空计错不写、continue_on_app_error 为真按行降级计错继续/为假遇 AppError 直接中断。"""
+
 import os
 import sqlite3
 import sys
@@ -179,4 +181,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

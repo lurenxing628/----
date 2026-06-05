@@ -1,3 +1,5 @@
+"""回归测试：ExternalGroupService.set_merge_mode 接受大小写混用的 merge_mode（如 "MERGED"），将其规范化为小写 "merged" 并落库到 ExternalGroups；且 merged 模式下组内 PartOperations 的 ext_days 必须被清空为 NULL。"""
+
 import os
 import sqlite3
 import sys
@@ -79,4 +81,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

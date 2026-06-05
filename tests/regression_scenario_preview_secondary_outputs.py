@@ -1,3 +1,5 @@
+"""回归测试：模拟方案（scenario_id）预览贯穿二级页与服务层——周计划/资源排班/超期/利用率/停机的页面、data 接口、Excel 导出都读取场景行而不回退正式计划，页面挂出「正在预览…」横幅且 scenario_id 随翻页保留；导出仅用公开方案名（含未命名时的「模拟预览（未命名）」），不泄露 scenario_id/plan_role/candidate_key 等内部字段；scenario_id 不存在时统一 400「模拟方案不存在」而非展示正式计划。"""
+
 from __future__ import annotations
 
 import json

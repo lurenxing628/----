@@ -1,3 +1,5 @@
+"""回归测试：各领域模型 from_row 对枚举/状态类字段做大小写不敏感与去空白规范化——BatchOperation/PartOperation 的 source(internal/external)、status，Batch 的 priority/ready_status/status，ExternalGroup.merge_mode，WorkCalendar/OperatorCalendar 的 day_type/allow_normal/allow_urgent，BatchMaterial.ready_status，Machine/Operator/Supplier/Material.status，MachineDowntime.scope_type/status，Schedule.lock_status 均落到规范小写值。"""
+
 import os
 import sys
 

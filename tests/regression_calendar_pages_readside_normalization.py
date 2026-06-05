@@ -1,3 +1,5 @@
+"""回归测试：日历读侧归一化——WorkCalendar/OperatorCalendar 存量行混存遗留值（如 day_type=Weekend、allow_normal=Yes/是/NO）时，/scheduler/calendar 与 /personnel/<id>/calendar 页面必须统一渲染成中文口径（假期/是/否），不得把英文或大小写混写原样漏给用户。"""
+
 from __future__ import annotations
 
 import importlib

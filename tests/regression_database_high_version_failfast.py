@@ -1,3 +1,5 @@
+"""回归测试：当数据库 SchemaVersion 高于程序支持版本时，ensure_schema/preflight_migration_contract/_apply_migrations/migrate_with_backup 各入口都必须 fail-fast 抛 MigrationContractError（提示不支持降级迁移），绝不触发 _apply_version_range 或创建 before_migrate 备份；只有 SchemaVersion 空壳库也不得被当成新库静默补齐。"""
+
 from __future__ import annotations
 
 import os

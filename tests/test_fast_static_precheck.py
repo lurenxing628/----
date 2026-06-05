@@ -1,3 +1,5 @@
+"""回归测试：tools.fast_static_precheck 仅对改动的 Python 文件跑 ruff——collect_changed_python_files 正确合并 staged/unstaged/untracked（含空格/中文文件名、重命名、删除排除、base_ref 走 diff 不混入工作区源），filter_python_targets 跳过非文件/build 等运行时路径，run_ruff 用列表参数与项目 cwd 及 UTF-8 环境，main 在无目标返回 0 且不跑 ruff、ruff 失败返回 1 并打印可复制复跑命令、git 采集失败返回 2。"""
+
 from __future__ import annotations
 
 import subprocess

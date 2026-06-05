@@ -1,3 +1,5 @@
+"""回归测试：ExternalGroupService.set_merge_mode 在非严格模式下遇到空/0/非法的 per_op_days 时，按 1.0 天兜底写入 ext_days，并分两路输出——内部 logger.warning 保留 raw=/ext_days/compatible mode fallback 便于诊断，用户提示则脱去技术术语只说本次先按 1 天记录、请尽快补成真实周期。"""
+
 import os
 import sqlite3
 import sys

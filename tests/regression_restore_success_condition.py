@@ -1,3 +1,5 @@
+"""回归测试：POST /system/backup/restore 仅在恢复成功且 ensure_schema 结构校验通过（verified）时才展示成功 flash 并写入一条 restore success 日志（detail 含 restore_code=verified/filename/before_restore_filename）；ensure_schema 失败回滚、回滚也失败、恢复失败已回滚、恢复失败回滚失败这四类结局都展示对应专属提示、不显示成功 flash、且不写 success 日志。"""
+
 from __future__ import annotations
 
 import importlib

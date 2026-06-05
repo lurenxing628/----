@@ -1,3 +1,5 @@
+"""回归测试：scheduler_excel_batches 路由的预览基线辅助函数走服务注入而非直连 conn——_build_parts_cache/_build_template_ops_snapshot/_batch_baseline_extra_state 的签名只收服务与数据参数（baseline 不含 conn）；_batch_baseline_extra_state 只追踪本次上传的零件，仅在 auto_generate_ops 启用时调用 part_svc.build_route_parse_baseline_snapshot 产出 autobuild 路由解析快照，否则跳过自动建工序快照。"""
+
 from __future__ import annotations
 
 import inspect

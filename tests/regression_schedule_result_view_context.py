@@ -1,3 +1,5 @@
+"""回归测试：resolve_schedule_result_view_context 的方案角色解析契约——空 plan_role 默认 ROLE_ADOPTED；显式 baseline_best/critical_best 命中候选行(SOURCE_CANDIDATE_ROWS)时标记为对比方案；缺失时回退采用方案并给可见提示；非法角色抛 plan_role 字段的 ValidationError、缺历史在需要时先抛 version NOT_FOUND；并校验 attach_plan_metadata 与 plan_role_filter_fields 输出一致、serialize_plan_role_options 保留候选诊断字段。"""
+
 from __future__ import annotations
 
 from types import SimpleNamespace

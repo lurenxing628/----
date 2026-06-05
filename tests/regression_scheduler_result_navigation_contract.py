@@ -1,3 +1,5 @@
+"""回归测试：排产后跳转甘特图/资源调度的范围与日期标签契约——build_week_plan_rows 与 build_dispatch_calendar_matrix 跨天分段用清晰日标签（含 08:00-24:00 整点而非 00:00-00:00），build_success_gantt_redirect_kwargs 优先用版本真实跨度、否则回退请求起始日，全部失败时记 WARNING 且不带日期，fmt_day_segment 仅整点零分才用 24:00 标签。"""
+
 from __future__ import annotations
 
 import logging

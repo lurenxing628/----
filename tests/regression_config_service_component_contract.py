@@ -1,3 +1,5 @@
+"""守护 scheduler/config 拆分后的分层契约：config 包/门面延迟导入不连带加载 repositories 与 greedy、纯叶子模块不反向依赖 facade 或 repo/web/algorithms、algorithms 与 shared 层不越界 import services、web 只经 config 门面访问、且 common 对 shared 的 degradation/value_policies/parse 再导出保持同一身份；同时守护类型化状态契约——预设来源（provenance）与 CurrentConfigDisplayState 保持类型化对象及约定字段集（不退化为裸 dict），运行时配置投影与 service 字段契约一致。"""
+
 from __future__ import annotations
 
 import ast

@@ -1,3 +1,5 @@
+"""为架构适应度测试提供共享桩件：扫描 Python 文件、检测 viewmodel 越层 import（只许 core.models 与标准库，禁 flask/web/data/core 其他子包及 import *）、用 AST 找包依赖环、收集已用稳定降级码（FieldPolicy/DegradationEvent 等）。"""
+
 from __future__ import annotations
 
 import ast

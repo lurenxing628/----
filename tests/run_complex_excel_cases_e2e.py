@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """
 复杂排产 Excel 用例 + 全流程 E2E 验证（本脚本会“自己运行 + 自检离谱结果”）。
 
@@ -12,6 +10,8 @@ from __future__ import annotations
 运行示例：
   python tests/run_complex_excel_cases_e2e.py --out evidence/ComplexExcelCases --repeat 3
 """
+
+from __future__ import annotations
 
 import argparse
 import io

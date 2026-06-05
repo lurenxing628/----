@@ -1,3 +1,5 @@
+"""回归测试：build_result_summary 把外部分组合并上下文退化归入专用 merge_context_degraded 通道（degraded_causes/degradation_events/algo.merge_context_*），而通用输入退化（如 setup_hours invalid_number）仍走 input_fallback 通道，两个退化通道互不串扰、且不污染面向用户的 warnings。"""
+
 from __future__ import annotations
 
 from datetime import datetime

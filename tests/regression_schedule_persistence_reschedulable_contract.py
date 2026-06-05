@@ -1,3 +1,5 @@
+"""回归测试：守护 build_validated_schedule_payload 的可重排范围契约——排程结果含 allowed_op_ids 之外的工序时抛 ValidationError（out_of_scope_schedule_rows，报越界条数与样本 op_id）而非静默丢弃；只持久化范围内工序，并校验 persist_schedule 后 Schedule 行、各工序/批次 status 与 ScheduleHistory 版本符合预期。"""
+
 import os
 import sqlite3
 import sys

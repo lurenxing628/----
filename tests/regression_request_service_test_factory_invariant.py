@@ -1,3 +1,5 @@
+"""回归测试：replay 与 complex e2e 两套测试用 create_test_app 的 _open_db before_request 不变量——预置 db 但 g.services 缺失时报含「g.services」的 RuntimeError；RequestServices 构造失败时关闭本请求局部 db 连接（close_calls==1）并清空 g.db/g.services；对 /static、/system/health、/system/runtime/shutdown 等白名单路径短路放行、不挂载 services。"""
+
 from __future__ import annotations
 
 import sys

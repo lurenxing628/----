@@ -1,3 +1,5 @@
+"""回归测试：factory._should_register_exit_backup 在四种场景下的注册判定——非 debug 注册；源码 debug 父进程（无 WERKZEUG_RUN_MAIN）不注册以避免 reloader 重复；源码 debug 子进程（run_main=true）注册；frozen 模式即使 debug 也不走 reloader 故注册。"""
+
 from __future__ import annotations
 
 import os

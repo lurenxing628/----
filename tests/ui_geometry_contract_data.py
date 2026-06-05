@@ -1,3 +1,5 @@
+"""为 UI 几何/浏览器冒烟契约测试提供共享基准数据：待校验页面路径清单（UI_GEOMETRY_PAGE_PATHS / CORE_BROWSER_SMOKE_PATHS / FULL_UI_CONTRACT_PATHS）、错误页关键词（ERROR_PAGE_KEYWORDS）以及每个页面应出现的稳定文案/诊断文案/必含元素 id（EXPECTED_PAGE_SIGNALS，部分页另带 forbidden_texts）。"""
+
 from __future__ import annotations
 
 from typing import Dict, Tuple

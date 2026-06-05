@@ -1,3 +1,5 @@
+"""回归测试：UnitExcelConverter.convert 对含默认补齐、推断字段、兼容行、非法工序序号、非法数字、非有限数字等问题的单元产品 Excel，把这些退化逐项计入 diagnostics.counters 并留有 samples 样本；且 convert_rotary_shell_unit_excel 脚本在带退化成功时返回 0 并把"诊断汇总"逐项打印给用户可见。"""
+
 from __future__ import annotations
 
 import contextlib

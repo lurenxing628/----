@@ -1,3 +1,5 @@
+"""回归测试：个人工作日历 Excel 行校验器（get_operator_calendar_row_validate_and_normalize）由班次起止时间推导可用工时——跨午夜 22:00->06:00 视为次日结束算 8 小时、相等 08:00->08:00 视为 24 小时整班、正常 08:00->16:00 算 8 小时，并覆盖行内填错的可用工时值。"""
+
 from __future__ import annotations
 
 import os

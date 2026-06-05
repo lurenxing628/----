@@ -1,3 +1,5 @@
+"""测试：scheduler_summary_display 完工状态推断契约——derive_completion_status 在缺 completion_status 但有错误/坏 error_count 时判 unknown、显式 completion_status 优先于错误、无错误时回退按 counts 推断；counts 含 bad/bool/小数/非有限/负数时标 summary_count_parse_failed 并把状态压成 unknown（即使 DB/显式为 success），该标志经 size_guard 截断仍存活；坏 error_count/缺资源计数/坏降级事件 count 展示为“记录异常”且绝不泄漏原始脏值。"""
+
 from __future__ import annotations
 
 from core.services.scheduler.summary.summary_size_guard import apply_summary_size_guard

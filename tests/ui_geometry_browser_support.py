@@ -1,3 +1,5 @@
+"""为 UI 几何浏览器契约测试提供支撑设施：用预置零件/批次/工序/排程/停机/历史/日志数据构建并以 werkzeug make_server 起一个真实 app，以及通过 Node + Chrome CDP 运行 ui_geometry_probe.mjs 探针（含超时杀进程树、Chrome profile 清理校验）采集各页面几何信号。无 test_ 用例，供 ui_geometry 浏览器回归调用。"""
+
 from __future__ import annotations
 
 import json

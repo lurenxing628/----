@@ -1,3 +1,5 @@
+"""回归测试：GanttCriticalChainProvider.get_critical_chain 的 LRU 缓存在 10 线程并发访问下不出现底层 OrderedDict 重叠访问（用探针 dict 验证无并发命中），缓存条目数不超过 _CRITICAL_CHAIN_CACHE_MAX，且 cache_hit 契约成立（同 version 首次 miss、二次 hit），返回 dict 含 ids/available/reason/cache_hit 字段。"""
+
 from __future__ import annotations
 
 import contextlib

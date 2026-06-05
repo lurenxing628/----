@@ -1,3 +1,5 @@
+"""为报表工作台回跳（reports workbench backlink）回归测试提供共享夹具与工具：构建带 ScheduleHistory/Schedule/MachineDowntimes/模拟方案 的内存库与 v1 客户端、解析页面链接/输入/可见文本的 HTMLParser，以及断言公开输出（可见文本、JSON 数据块、data-* 属性、链接表单、导出 Excel 表头与单元格）不泄露 plan_role/scenario_id/source_table/candidate_id/op_id/schedule_id 等内部标识的辅助函数。"""
+
 from __future__ import annotations
 
 import html

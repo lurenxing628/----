@@ -1,3 +1,5 @@
+"""回归测试：当 Excel 预览已通过但 apply 阶段引用的工种已被改名失效时，MachineExcelImportService.apply_preview_rows 整批抛 ValidationError（文案含「工种机加工不存在」）不写空设备记录；SupplierExcelImportService 则按行计 error_count=1、new_count/update_count 为 0 并给出错误样本，二者都不静默写入失效引用记录。"""
+
 import os
 import sys
 import tempfile

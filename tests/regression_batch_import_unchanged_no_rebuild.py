@@ -1,3 +1,5 @@
+"""回归测试：BatchService.import_from_preview_rows 处理 RowStatus.UNCHANGED 行时，只计入 skip_count，绝不触发 update_no_tx / create_no_tx / create_batch_from_template_no_tx(rebuild) 等写入或重建调用。"""
+
 import os
 import sqlite3
 import sys

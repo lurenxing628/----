@@ -1,3 +1,5 @@
+"""回归测试：守护 get_connection() 开启 sqlite3 detect_types（PARSE_DECLTYPES|PARSE_COLNAMES）——DATE 列与列名标注 [date] 的查询结果须返回纯 datetime.date（非 str、非 datetime），否则隐式日期转换失效会引入细微行为差异。"""
+
 import os
 import sqlite3
 import sys

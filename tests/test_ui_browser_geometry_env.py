@@ -1,3 +1,5 @@
+"""回归测试：UI 几何 smoke 的浏览器环境探测——_find_chrome/_find_node_with_browser_runtime 对显式坏 APS_CHROME_PATH 不回退默认、本地缺 Chrome/Node 可 skip 但 APS_BROWSER_SMOKE_REQUIRED 下必须 fail、版本/能力探测失败时在消息里带 stdout/stderr 与版本号；Chrome spawn 失败断言含 runtime_context，且探测脚本先发 SIGTERM 优雅退出再 SIGKILL。"""
+
 from __future__ import annotations
 
 import subprocess

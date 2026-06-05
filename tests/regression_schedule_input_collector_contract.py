@@ -1,3 +1,5 @@
+"""回归测试：collect_schedule_run_input 编排契约——去重批次ID、识别 run_label/可重排工序集/缺内部资源工序/冻结工序、prev_version 与 optimizer_seed_version=prev+1，并按序调用 snapshot/build_algo_operations/freeze_seed/load_downtimes/build_resource_pool/extend_downtime 各注入函数，正确串接 strict_mode、累积 algo_warnings 与各阶段 meta、合并 downtime_map。"""
+
 import os
 import sqlite3
 import sys

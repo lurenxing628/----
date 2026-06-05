@@ -1,3 +1,5 @@
+"""冒烟测试：Phase2（Models + Repositories）数据层端到端——在临时库上 ensure_schema 后校验 Phase2 相关表存在，并逐一验证 Operator/Machine/OperatorMachine/Calendar/Config/OperationLog/ScheduleHistory 仓库的 CRUD、upsert、range 查询，且 UNIQUE/FK 冲突被翻译成中文 AppError（DUPLICATE_ENTRY/DB_INTEGRITY_ERROR）；结果写入 evidence/Phase2/smoke_phase2_report.md。"""
+
 import os
 import sys
 import tempfile

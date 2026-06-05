@@ -1,3 +1,5 @@
+"""回归测试：build_dashboard_workbench_summary 生成的首页工作台摘要必须覆盖 overdue/resource_overload/site_record_gap/candidate_review 等待办类型、保持链接携带 version 与 plan_role 等导航上下文、对各类读取失败（摘要解析失败、计划时间范围、现场事实、今日计划）退化为 data_gap 而非伪造 0，且对外可见文本绝不泄露 plan_role/op_id 等内部字段。"""
+
 from __future__ import annotations
 
 from datetime import datetime

@@ -1,3 +1,5 @@
+"""回归测试：multi-start 优化器 _run_multi_start/_run_ortools_warmstart 的 build_order 缓存与 SGS 错误处置——单次 multi-start 内每个 strategy 只 build_order 一次(跨调用不复用本地缓存)；非主候选 SGS ValidationError 在宽松模式被记为 candidate_rejected 不丢主 best、strict 模式直接抛出，主候选 SGS 失败不回退；weighted 局部 cfg 在加权前被归一；strict 配置/候选错误不被吞成 OR-Tools 预热失败。"""
+
 from __future__ import annotations
 
 import time

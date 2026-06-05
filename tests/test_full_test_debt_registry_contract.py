@@ -1,3 +1,5 @@
+"""回归测试：full pytest 测试债务台账与采集器（collect_full_test_debt + test_debt_registry + quality_gate_ledger）的契约——collect_full_test_debt 用结构化 report 而非终端文本记录 nodeid/xfail/strict_xpass、分类 candidate_test_debt / main_style_isolation_candidate / required_or_quality_gate_self_failure，并对 --importable-debt-baseline 强制 after_main_style_isolation + 干净工作树 + 仓内输出 + 正式 full pytest 参数，遇 xfail 信号/必跑失败/污染/采集错误一律拒写基线；台账校验要求 nodeid/owner/root/exit_condition 等必填、拒重复与负 ratchet、拒把 required 测试登记为 active xfail；conftest 按精确 nodeid 打 xfail、未登记失败保持 failed、strict xpass 报错、台账读取失败向上传播；并锁定历史允许的 active-xfail nodeid 清单。"""
+
 from __future__ import annotations
 
 import copy

@@ -1,3 +1,5 @@
+"""回归测试：守护 ScheduleConfigSnapshot 与字段注册表三方对齐——快照投影键、默认值键、build_schedule_config_snapshot 输出键必须与 list_config_fields 一致；config_snapshot 源文件不得重复声明字段；strict 模式拒绝权重三元组不一致与非法 ready_weight；并保留模型运行期降级事件/计数器。"""
+
 from __future__ import annotations
 
 import ast

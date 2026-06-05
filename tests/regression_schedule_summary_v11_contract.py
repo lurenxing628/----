@@ -1,3 +1,5 @@
+"""回归测试：build_result_summary 的 v1.2 结果摘要契约——summary_schema_version=1.2、comparison_metric 与 best_score_schema 随 objective 落盘、analysis_context 用 comparison_metric 选 objective_key 且兼容旧 summary 回退；超大 warnings/trace 截断到 512KB 内并标 summary_truncated；指标/计数解析失败时标 metrics_state.parse_failed 与 degraded_success 而非伪装成 0；停机加载/扩展的部分失败与坏 meta（含坏布尔/坏计数）一律标 downtime_avoid 降级并进入顶层 degradation_events。"""
+
 import json
 import os
 import sys

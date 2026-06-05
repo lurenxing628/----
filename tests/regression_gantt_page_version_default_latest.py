@@ -1,3 +1,5 @@
+"""回归测试：/scheduler/gantt 页面与 /data 接口不带 version 时默认取最新排产版本（第 7 版），version=latest 同义；非法 version（0/-1）返回 400 中文提示、不存在的 version 返回 404、无任何 ScheduleHistory 时即便残留孤儿 Schedule 也不臆造 v1（显示暂无排产版本、不渲染 None）；选中版本标签按 completion_status 显示部分成功，且 GanttService 抛 BusinessError/未预期异常时走统一的 app error HTTP 映射（404/500）。"""
+
 from __future__ import annotations
 
 import importlib

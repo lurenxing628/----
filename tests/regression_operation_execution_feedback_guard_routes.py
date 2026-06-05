@@ -1,3 +1,5 @@
+"""回归测试：工序执行反馈 start/finish/actual 路由的护栏——缺失/不完整的查询态计划身份返 400(plan_identity)、非当前正式计划或被取代的计划返 409(not_current_official_plan / schedule_mismatch)，校验错误用中文字段标签且 can_retry 语义正确，并保证被拒请求不写执行事件。"""
+
 from __future__ import annotations
 
 from typing import Tuple

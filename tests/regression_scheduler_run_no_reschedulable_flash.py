@@ -1,3 +1,5 @@
+"""回归测试：当 ScheduleService.run_schedule 抛 ValidationError(无可重排工序) 时，POST /scheduler/run 跟随重定向后应返回 200 并在正式排产页面回显该业务错误提示，绝不误报“排产完成（版本…”。"""
+
 import importlib
 import os
 import sys

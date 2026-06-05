@@ -1,3 +1,5 @@
+"""回归测试：tools/git_hook_checks 与 git_hook_cache 的 git 钩子行为——_project_python_executable 必须用项目 .venv（缺失则报错不退回系统 Python）、run-quality-gate/run-final-quality-gate/run-fast-static-precheck 用项目 Python 与强制 UTF8 环境调对应脚本、按 pre-push stdin/PRE_COMMIT_* ref 计算范围与每日门禁缓存（命中跳过、成功才写、失败/脏工作区不写）、staged-only ruff 缓存、_blocked_paths 拦截本地启动日志与门禁运行产物（含 Windows 路径归一化），以及 .pre-commit-config.yaml 钩子接线契约。"""
+
 from __future__ import annotations
 
 import io

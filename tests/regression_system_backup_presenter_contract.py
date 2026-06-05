@@ -1,3 +1,5 @@
+"""回归测试：system_backup_page 视图模型的插件状态展示契约——build_plugin_summary_items/build_plugin_status_rows 对未知 config_source、非法 telemetry_persisted/enabled_source/yes-no 值要抛 PluginStatusDisplayContractError，build_system_backup_page_view_model 把这些坏插件状态（含各种坏形状）本地化成「扩展功能状态记录异常」notice 而不拖垮备份主页面，并校验退化事件计数、能力冲突、备份开关切换的 checkbox/hidden 契约。"""
+
 from __future__ import annotations
 
 import pytest

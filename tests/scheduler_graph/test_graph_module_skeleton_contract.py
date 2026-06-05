@@ -1,3 +1,5 @@
+"""守护 graph 调度模块骨架契约：core/services/scheduler/graph 下必须存在 __init__.py/id_policy.py/nx_runtime.py/types.py，且这些 .py 一律不得静态 import networkx（networkx 须留给运行时惰性加载）。"""
+
 from __future__ import annotations
 
 import ast

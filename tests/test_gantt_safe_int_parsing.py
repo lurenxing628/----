@@ -1,3 +1,5 @@
+"""回归测试：_sched_utils._safe_int 把整数/整值浮点/字符串数字解析为 int、对 None/空白/非整值（5.5、5e0、True）回退到 default（默认 0）；并验证甘特依赖装配 gantt_tasks._attach_process_dependencies 与 gantt_critical_chain 的 _build_nodes/_build_process_prev 在 seq 为浮点（如 5.0/10.0）时仍按数值正确排序与建立工序前驱链。"""
+
 from __future__ import annotations
 
 from typing import Any

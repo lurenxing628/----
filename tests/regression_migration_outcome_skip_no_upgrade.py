@@ -1,3 +1,5 @@
+"""回归测试：当 SchemaVersion=1 但 v2 目标表 WorkCalendar 缺失时，ensure_schema() 须判为残缺结构并 fail-fast（不用当前 schema.sql 静默补回整表再迁移成功），且 fail-fast 发生在迁移备份前——版本保持 1、不补回 WorkCalendar、不生成 before_migrate 备份风暴。"""
+
 import os
 import sqlite3
 import sys

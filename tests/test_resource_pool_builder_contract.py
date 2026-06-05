@@ -1,3 +1,5 @@
+"""回归测试：resource_pool_builder 的资源池与停机加载契约——auto_assign 关闭时 build_resource_pool 标 attempted=False，开启时按工序工种过滤出 machines_by_op_type/operators_by_machine 并在失败时给出公开 warning 与 build_ok=False；load_machine_downtimes 成功时按起始时间排序区间，部分/全部查询失败时保留健康设备、记 downtime_partial_fail_count 与样例并发「【停机】」告警；extend_downtime_map_for_resource_pool 同样保留既有 map、对候选设备部分失败可见降级。"""
+
 from __future__ import annotations
 
 from datetime import datetime

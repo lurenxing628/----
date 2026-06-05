@@ -1,3 +1,5 @@
+"""回归测试：对一个 SchemaVersion=1 且 WorkCalendar 含遗留 day_type='weekend' 记录的库调用 ensure_schema()，v2 迁移会把 weekend 统一改写为 holiday，版本号升至 CURRENT_SCHEMA_VERSION，且迁移前生成 before_migrate_v1_to_v{N} 备份文件。"""
+
 import os
 import sqlite3
 import sys

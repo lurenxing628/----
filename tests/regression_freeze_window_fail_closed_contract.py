@@ -1,3 +1,5 @@
+"""回归测试：build_freeze_window_seed 的冻结窗口种子构建契约——配置关闭/0天/无上版本/无可重排工序时静默禁用且不读旧排程；上游配置降级或旧排程行非法/重复/缺前缀时，strict_mode 下 fail-closed 抛 field=freeze_window 的 ValidationError，relaxed 模式下落为 degraded 并记 freeze_application_status 与 freeze_degradation_codes；正常时种子按 start_time 再 op_id 排序并回填字段。"""
+
 from __future__ import annotations
 
 from datetime import datetime

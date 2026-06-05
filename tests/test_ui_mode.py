@@ -1,3 +1,7 @@
+"""回归测试：web.ui_mode 的 UI 模式解析与 v2 模板渲染降级——get_ui_mode 优先读 cookie 再读 DB、非法/空 DB 值回退 default 并每请求只告警一次、cookie 读取失败告警；
+_read_ui_mode_from_db 无 g.db 时短路不碰容器、有 db 但缺 g.services/system_config_service/get_value_with_presence 时抛错；
+normalize_manual_src 接受同源绝对 URL；render_ui_template 在 v2_env 缺失或命中 base loader 时设 ui_template_env_degraded 并各告警一次，命中 v2 模板时不降级，真实渲染错误透传、全局函数注入失败仅告警不崩。"""
+
 from __future__ import annotations
 
 import sqlite3

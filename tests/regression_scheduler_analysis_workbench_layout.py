@@ -1,3 +1,5 @@
+"""回归测试：排产分析页 analysis_action_hub 行动入口的版面与契约——analysis.html 各 part 顺序固定、action_hub 内推荐/汇总/诊断/后续链接先后有序；路由产出推荐卡与设备甘特图/人员甘特图/资源排班/超期清单链接并带 version/plan_role/批次/日期上下文，缺日期范围时链接禁用并提示，可见文案不泄露 plan_role/op_id 等内部术语，且详情区不重复 action_hub 的推荐。"""
+
 from __future__ import annotations
 
 from html.parser import HTMLParser

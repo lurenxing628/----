@@ -1,3 +1,5 @@
+"""回归测试：tools.collect_full_test_debt 分片收集器——_sort_reports 按 collect-only nodeid 顺序及 setup/call/teardown 阶段排序报告，_worker_payload_errors 拒绝落在 collect-only nodeid 之外的 worker 报告，_run_sharded_pytest 把 worker 子进程意外打印的 stdout 记成 collection_error 而非静默丢弃。"""
+
 from __future__ import annotations
 
 import json

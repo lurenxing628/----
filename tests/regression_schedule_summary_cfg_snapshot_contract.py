@@ -1,3 +1,5 @@
+"""回归测试：schedule_summary.build_result_summary 把原始 cfg 归一化为单一 config_snapshot——干净 cfg 经去空白/小写化后产出正确 objective/auto_assign/freeze 字段、comparison_metric 与 best_score_schema、hard_constraints，且 degraded_success=False 无降级事件；脏 cfg（非法 objective/algo_mode/dispatch_mode 等）下 raw dict 与 ScheduleConfigSnapshot 两条入口产出完全一致的 degradation_events/counters/degraded_causes(含 config_fallback)。"""
+
 from __future__ import annotations
 
 from datetime import datetime

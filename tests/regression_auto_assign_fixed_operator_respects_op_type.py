@@ -1,3 +1,5 @@
+"""回归测试：GreedyScheduler 自动选机时，固定 operator_id 而 machine_id 缺省的工序，只能选中 op_type_id 匹配的设备（M_OK），不得选用同人可操作但工种不符的 M_BAD，且 operator_id 保持固定值。"""
+
 import os
 import sys
 from dataclasses import dataclass
@@ -104,4 +106,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

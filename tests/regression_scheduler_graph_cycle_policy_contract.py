@@ -1,3 +1,5 @@
+"""守护 orchestrate_schedule_run 的工序依赖图循环处置策略：report 模式遇环只报 warning 并继续排产、on+block_on_cycle=yes 在分配版本号前抛 ValidationError(field=schedule_graph_cycle)、on+block_on_cycle=no 关闭图增强回退普通 SGS、networkx 缺失/输入/构建等已知图错误按各自 reason 上报而非误判为循环、未知异常不得在排产前被吞掉。"""
+
 from __future__ import annotations
 
 import json

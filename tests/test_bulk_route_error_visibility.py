@@ -1,3 +1,5 @@
+"""回归测试：scheduler/equipment/personnel/process/system-backup 各批量路由的失败可见性——混合结果按“成功 N，失败 M”汇总并逐条给原因：业务错误显示具体原因，意外异常显示“内部错误”并记 app.logger.exception，不得静默吞失败。"""
+
 from __future__ import annotations
 
 import importlib

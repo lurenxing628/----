@@ -1,3 +1,5 @@
+"""回归测试：报表/排产页顶部导航的链接构造契约——build_scheduler_navigation_links 等始终透传 plan_role/plan_id/batch_id/资源筛选与 back_to 上下文，设备甘特图与人员甘特图之间不串线 gantt_resource，被新版本替代的正式方案禁用「计划和现场实际」入口（显示历史正式方案只读提示），上下文不全时导航降级为 disabled，且 scheduler_nav 宏只用 Python 链接构造器、不在模板里读 request.args/url_for。"""
+
 from __future__ import annotations
 
 import json

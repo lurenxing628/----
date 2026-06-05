@@ -1,3 +1,5 @@
+"""回归测试：greedy.external_groups.schedule_external 对 ext_merge_mode 大小写不敏感——"Merged" 等混用大小写仍按合并外协组排产，按 ext_group_total_days 计算 start/end_time、写入 external_group_cache、不被窗口阻断、不产生 errors。"""
+
 import os
 import sys
 from dataclasses import dataclass

@@ -1,3 +1,6 @@
+"""回归测试：批次物料就绪状态的默认与联动契约——Batches.ready_status 默认 yes 而 BatchMaterials.ready_status 默认 no；
+BatchMaterialService.add_requirement 空 available_qty 回填为 required_qty 并整批就绪、显式 0 保持未就绪、update 空值保留旧值、删最后一条需求恢复批次默认就绪（v8 前后行为一致）。"""
+
 from __future__ import annotations
 
 from pathlib import Path

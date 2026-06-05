@@ -1,3 +1,5 @@
+"""回归测试：priority_constants 优先级权重契约——normalize_priority 把 None/空白/未知归一为 normal、大小写不敏感（如 Urgent→urgent），priority_weight_scaled 与 PRIORITY_WEIGHT×100 一致、critical>urgent>normal 严格递减，且 scale 参数按比例生效（如 Urgent,scale=10→20）。"""
+
 import os
 import sys
 

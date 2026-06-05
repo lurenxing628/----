@@ -1,3 +1,5 @@
+"""Phase7（排产算法/M3）端到端冒烟：建工种/资源/模板后跑 run_schedule，验证日历跨天（短班次+停工算到次日）、同一人员冲突自动错开、merged 外部组同起止且合并周期 3 天、超期预警、四种策略（priority_first/due_date_first/weighted/fifo）可切换且各自留痕、冻结窗口部分复用写 locked 与 unlocked 记录及 freeze_window 留痕，并核对 ScheduleHistory.result_summary 与 OperationLogs 写入。"""
+
 import json as _json
 import os
 import sys

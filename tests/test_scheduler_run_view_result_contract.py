@@ -1,3 +1,5 @@
+"""回归测试：build_run_schedule_view_result 与 /scheduler/run 路由的结果分类与脱敏——按 scheduled/total/failed 计数判 success/failed/unknown 不把失败或空结果误判成功，过滤含 Traceback/E_SECRET/私密路径的内部 warning/error 只留口语化公开提示，超期样本至多展示 10 个；路由据此 flash 对应分类、成功/部分跳甘特图版本跨度、坏版本号拦截，ValidationError 类业务错误取 user_message 而意外异常透传到错误边界。"""
+
 from __future__ import annotations
 
 import sys

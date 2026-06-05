@@ -1,3 +1,5 @@
+"""回归测试：strict_mode 下排产配置的 dispatch 相关字段须以正确 field 名抛 ValidationError——build_schedule_config_snapshot 对非法 dispatch_mode、normalize_preset_snapshot 对非法 dispatch_rule、resolve_schedule_params 对空白 sort_strategy/dispatch_mode/dispatch_rule/auto_assign_enabled 及非法 auto_assign_enabled、以及 ConfigService.get_snapshot(strict_mode=True) 对空白 dispatch_mode/auto_assign_enabled，都须报对应字段名。"""
+
 import os
 import sqlite3
 import sys

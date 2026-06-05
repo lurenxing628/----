@@ -1,3 +1,5 @@
+"""回归测试：迁移 v18 把 OperationExecutionEvents 的状态修订唯一约束从 op 级收紧到 plan 级（唯一键改为 schedule_version+schedule_id+op_id+previous_state_revision，同 op 不同计划可共存、同计划同修订被 IntegrityError 拒），且在重建索引前先校验事件流顺序合法性（finish 无 start 时抛 RuntimeError「事件流顺序不合法」）。"""
+
 from __future__ import annotations
 
 import sqlite3

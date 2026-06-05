@@ -1,3 +1,5 @@
+"""单元测试：图调度评分契约 graph_score_bonus / graph_priority_key_component——按 critical/impact/downstream 权重叠加奖励、非关键节点不计关键权重、零权重得 0；缺字段或字段/权重为负数或 bool 时抛 GraphScoringContractError；优先级 key 让大奖励排前、并以 critical_path_rank 作平局裁决。"""
+
 from __future__ import annotations
 
 from typing import Any, Dict

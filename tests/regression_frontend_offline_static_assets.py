@@ -1,3 +1,6 @@
+"""回归测试：前端与用户可见文档必须离线自包含——扫描 templates/static/docs 等资源，禁止外链 script/link/img/srcset/@import/@font-face 及 CDN 域名（jsdelivr、cdnjs、unpkg、googleapis 等），
+并校验工作台原型不残留内部术语/工时数字、用户可见文档不出现 plan_role、scenario_id 等内部字段与草稿措辞；UTF-8 严格读取遇坏字节抛 UnicodeDecodeError。"""
+
 from __future__ import annotations
 
 import re

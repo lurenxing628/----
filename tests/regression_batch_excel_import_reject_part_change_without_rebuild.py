@@ -1,3 +1,5 @@
+"""回归测试：BatchService.import_from_preview_rows 在 auto_generate_ops=False 时遇到「批次改图号但不重建工序」，应抛 ValidationError（提示开启自动生成工序）并回滚——Batches 的 part_no/part_name 与 BatchOperations 行数保持原状不被部分写入。"""
+
 from __future__ import annotations
 
 import sqlite3

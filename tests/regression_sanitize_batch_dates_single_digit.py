@@ -1,3 +1,5 @@
+"""回归测试：旧库（SchemaVersion=0）迁移清洗时，Batches.due_date 等 DATE 字段允许单数字月/日（如 2026-1-1），并稳定归一化为补零 ISO（2026-01-01），同时升级到当前 schema 版本。"""
+
 import os
 import sqlite3
 import sys

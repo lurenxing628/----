@@ -1,3 +1,5 @@
+"""回归测试：optimize_schedule 产出的 outcome.algo_stats 须精确汇总两层降级计数——透传 GreedyScheduler.schedule 返回的 fallback_counts（如 dispatch_key_proc_hours_fallback_count=3）原样保留，并叠加 optimizer 自身对非法 priority_weight/due_weight（NaN/bad）的参数 fallback 计数；同样的 algo_stats 也要落到 outcome.attempts[*] 每次尝试里。"""
+
 import os
 import sys
 from datetime import date, datetime, timedelta

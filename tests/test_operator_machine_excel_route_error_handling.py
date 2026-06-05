@@ -1,3 +1,5 @@
+"""回归测试：POST /personnel/excel/links/preview 路由内部异常时不泄露实现细节——当 normalize_skill_level_optional 抛 RuntimeError，响应应为 500 且页面只显示「服务器内部错误」，绝不把原始异常文案（normalize exploded）透出给用户。"""
+
 from __future__ import annotations
 
 import importlib

@@ -1,3 +1,5 @@
+"""回归测试：甘特图 /scheduler/gantt 数据接口的区间一致性——当请求带 start_date/end_date 时不能因 offset 二次偏移，新前端有有效区间时不发 offset 也应返回同一区间；并校验 gantt_boot.js 中 version_span 判断与 start/end 对 week_start/offset 的二选一分支顺序。"""
+
 from __future__ import annotations
 
 import json

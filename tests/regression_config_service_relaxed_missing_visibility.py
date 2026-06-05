@@ -1,3 +1,5 @@
+"""回归测试：ConfigService 放宽模式（strict_mode=False）下 get_snapshot/get_holiday_default_efficiency/get_preset_display_state 对空库自举默认值且无 degradation，而对脏库缺失必填项只暴露 missing_required 事件、绝不静默回写修复仓库；strict 模式下缺失字段则抛 ValidationError 并定位到字段。"""
+
 from __future__ import annotations
 
 import sqlite3

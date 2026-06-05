@@ -1,3 +1,5 @@
+"""回归测试：parse_compat_float/parse_compat_date 在脏值（非数字、空白、非法日期）下按字段回退到默认值，并向 DegradationCollector 记下 invalid_number/legacy_external_days_defaulted/blank_required/invalid_due_date 退化码、计数各 1，且面向用户的退化文案用业务口径（供应商默认周期/外协周期/优先级权重/交期）而不泄露内部字段名或开发口径。"""
+
 import os
 import sys
 

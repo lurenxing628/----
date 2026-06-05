@@ -1,3 +1,5 @@
+"""单元测试：tools/report_full_test_debt_durations.build_duration_report——按 nodeid 聚合 call 耗时 Top-N、按文件聚合 setup/call/teardown 总耗时并按类别小计的报表口径。"""
+
 from __future__ import annotations
 
 from tools.report_full_test_debt_durations import build_duration_report

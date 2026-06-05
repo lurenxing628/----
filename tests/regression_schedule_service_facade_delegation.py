@@ -1,3 +1,5 @@
+"""守护 ScheduleService 作为门面的委派契约：__init__ 公开签名保持 (self, conn, logger=None, op_logger=None)、仓储 bundle 别名与 _repos 同源、Repository 各取数方法保留命名行返回类型；并验证 _run_schedule_impl 把入参原样转交 collect_schedule_run_input/orchestrate_schedule_run/persist_schedule，对外只暴露 summary_contract（而非裸 summary）拼成的结果字典。"""
+
 import inspect
 import os
 import sqlite3

@@ -1,3 +1,5 @@
+"""回归测试：long_gate_fingerprint._chrome_headless_preflight 的诊断契约——Chrome 在连上 DevTools 前退出时抛 LongGateFingerprintError，details 给出可操作信息（failure_kind=chrome_exited_before_devtools、chrome_path/realpath/version、stdout/stderr_tail 及哈希、profile 可写、脱敏后的 launch_args 含 --headless=new 等）；而成功 preflight 的指纹哈希要稳定可复现且不掺入 profile 目录/进程细节。"""
+
 from __future__ import annotations
 
 import subprocess

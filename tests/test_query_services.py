@@ -1,3 +1,5 @@
+"""回归测试：各只读查询服务的行为契约——BatchQueryService.has_any、PartOperationQueryService 列工时/内部工时/含供应商与外协合并明细、MachineDowntimeQueryService.list_active_machine_ids_at 按时间窗与状态/空白机号过滤、OperatorMachineQueryService 归一化技能等级与主操标记并标 dirty_fields/dirty_reasons、ScheduleHistoryQueryService 取最新版本/按版本取最新一条/列版本与近期记录。"""
+
 from __future__ import annotations
 
 import sqlite3

@@ -1,3 +1,5 @@
+"""回归测试：启动器可观测性——launcher_log_warning 把原始诊断写入 launcher.log（含路径/密钥），但 aps_launch_error.txt 只给脱敏公开文案；正确选择 state_dir/cfg_log_dir/runtime/logs 落点、支持 error 级别、文件或 stderr 写失败时不递归并报告；entrypoint 启动错误不重复写、不向 stderr 泄原文、写失败仍守住返回码契约；app.py 导入失败抛公开 RuntimeError 同时把原文写进 launcher.log；释放运行时锁失败也落 launcher.log。"""
+
 from __future__ import annotations
 
 import importlib.util

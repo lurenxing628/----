@@ -1,3 +1,5 @@
+"""回归测试：ConfigService 的预设来源同步——手工 set_* 后 active_preset 翻成 custom、apply/save_preset 保留具名来源、setter/page_save/restore_default 在 active 来源写入失败时整体原子回滚，以及隐藏字段修复（auto_assign_persist 等）不污染具名/调整态来源、漂移与缺基线判定不为 exact。"""
+
 from __future__ import annotations
 
 import json

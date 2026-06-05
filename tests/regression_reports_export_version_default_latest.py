@@ -1,3 +1,5 @@
+"""回归测试：报表导出路由 /reports/{overdue,utilization,downtime}/export 的版本解析口径——缺省/空/version=latest 都落到最新版本 v7（文件名含 vN），显式 version 按参数取数；无效版本返回 400 统一文案、不存在版本返回 404、缺开始或结束日期与坏日期格式返回 400，且无数据时拒绝导出，version 默认七天停机不得泄漏进无排程版本。"""
+
 from __future__ import annotations
 
 import os

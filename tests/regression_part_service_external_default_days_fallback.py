@@ -1,3 +1,5 @@
+"""回归测试：PartService._save_template_no_tx 保存外协工序时若 default_days 为 0（无真实周期），ext_days 应回退为 1.0，ParseResult 状态降级为 PARTIAL，并透出"本次会先按 1 天记录，请补成真实周期"的 warning。"""
+
 import os
 import sqlite3
 import sys

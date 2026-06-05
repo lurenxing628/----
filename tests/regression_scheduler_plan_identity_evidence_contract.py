@@ -1,3 +1,5 @@
+"""回归测试：SchedulePlanQueryService.resolve_plan/resolve_plan_view 产出的 plan_identity 证据契约——当前 adopted 正式锁定计划可派工可回写反馈；失败/模拟的正式结果、历史旧版本、对比参考候选方案、回退到 adopted 的角色、场景预览方案均按规则禁派工/禁反馈并给出对应 user_label 与来源标记；build_plan_identity 缺 source_table 时抛 ValueError。"""
+
 from __future__ import annotations
 
 from pathlib import Path

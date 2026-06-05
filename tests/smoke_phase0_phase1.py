@@ -1,3 +1,5 @@
+"""Phase0+Phase1 端到端冒烟：在临时目录内验证 ensure_schema 建表（确认无 ResourceLocks、有 SchemaVersion/OperationLogs 并升至当前版本）、旧库缺列迁移会先生成迁移前备份再补列、OpenpyxlBackend 读写与 ExcelService 预览差异判定（UPDATE/row_num）、OperationLogs 留痕、Flask test_client 首页/excel-demo/404 中文提示，以及上传→预览→确认导入写入 Operators 与日志，结论写入 evidence/Phase0_Phase1/smoke_test_report.md。"""
+
 import html as html_module
 import io
 import json

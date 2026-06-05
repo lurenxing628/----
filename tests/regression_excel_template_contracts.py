@@ -1,3 +1,5 @@
+"""为 Excel 模板契约校验提供断言库：核对工艺/页面/转换输出模板文件的表头、示例行、下拉枚举与 get_template_definition 注册定义一致，校验页面说明与总说明书的推荐值/兼容旧写法措辞，并验证 ensure_excel_templates 刷新旧工种模板下拉时不覆盖用户数据、坏模板或表头不匹配时不静默重建。供 main() 与其它回归测试调用。"""
+
 from __future__ import annotations
 
 import importlib

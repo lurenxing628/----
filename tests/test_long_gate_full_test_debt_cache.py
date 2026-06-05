@@ -1,3 +1,5 @@
+"""回归测试：守护 long_gate full_test_debt 增量缓存与复用决策——指纹/节点缓存校验、_classify_incremental_plan 选取改动测试文件与函数体级精确 nodeid（拒绝不安全改动并记录回退原因）、声明式 helper 影响映射、previous_success 返回码校验与缓存命中复用。"""
+
 from __future__ import annotations
 
 import hashlib

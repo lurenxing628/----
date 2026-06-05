@@ -1,3 +1,5 @@
+"""回归测试：批次详情路由 /scheduler/batches/<batch_id> 全程从 g.services 取 batch/schedule/machine/operator/supplier 等请求级服务，组装出含批次信息、工序、设备/人员下拉选项的渲染上下文（machine_options/operator_options 的 value 为对应 id）。"""
+
 from __future__ import annotations
 
 from types import SimpleNamespace

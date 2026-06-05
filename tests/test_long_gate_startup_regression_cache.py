@@ -1,3 +1,5 @@
+"""回归测试：长门禁 startup_runtime_regressions 缓存项——manifest 从真实 quality gate 命令计划取该项参数与 iter_startup_regressions 目标、成功后写带 stdout/stderr sha256 的 proof 并在指纹未变时复用，stdout 为空不写 proof，proof/日志被篡改或被追踪范围（bootstrap/app/config/schema/模板/静态/相关 tools 脚本及 APS_* 环境变量）变化时强制父进程重跑，无关 markdown 改动不失效，--no-cache/--force-rerun/--explain 各自的执行模式正确。"""
+
 from __future__ import annotations
 
 import hashlib

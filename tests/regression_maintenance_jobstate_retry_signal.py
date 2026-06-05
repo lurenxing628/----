@@ -1,3 +1,5 @@
+"""回归测试：自动日志清理 maybe_run_auto_log_cleanup 在 SystemJobStateRepository.set_last_run 持久化失败时，首次仍执行清理但返回 job_state_persisted=False 且不写 last_run 记录，因 last_run 未落库下次仍判定 due 并成功持久化删除结果。"""
+
 from __future__ import annotations
 
 import os

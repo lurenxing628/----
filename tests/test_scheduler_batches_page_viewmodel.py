@@ -1,3 +1,5 @@
+"""回归测试：排产批次页 viewmodel 与 /scheduler/ 路由——build_batches_filter_state/build_batch_rows 维持默认 pending、空状态、only_ready 筛选与中文公共标签口径，页面据状态决定是否显示排产/勾选控件并渲染配置降级提示，build_latest_schedule_history_panel_state 对未知或缺失的 strategy/mode/metrics 抛 ScheduleHistoryDisplayValueError 而不泄露原始坏值，且路由确实经 build_scheduler_batches_page_view_model 出渲染数据。"""
+
 from __future__ import annotations
 
 import importlib

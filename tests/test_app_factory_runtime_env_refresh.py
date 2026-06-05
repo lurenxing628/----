@@ -1,3 +1,5 @@
+"""守护 app / app_new_ui 入口的 create_app() 每次都按当前环境变量(APS_DB_PATH/LOG_DIR/BACKUP_DIR/EXCEL_TEMPLATE_DIR)解析运行时路径：env 改变并重新导入入口模块后，新建 app 的 config 必须反映新路径，不被首次导入的旧值锁死。"""
+
 from __future__ import annotations
 
 import importlib

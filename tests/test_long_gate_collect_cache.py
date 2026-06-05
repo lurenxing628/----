@@ -1,3 +1,5 @@
+"""守护 long-gate collect 缓存：build_collect_nodeids_payload 按文件分组 nodeids 并保留带空格的参数化用例名、规整日志路径分隔符；decide_reuse 在指纹与产物一致时复用，在新增/删除/改动测试文件、conftest、pyproject、依赖清单或 PYTEST_ADDOPTS 环境变化时判定重跑并给出 invalidated_by 原因。"""
+
 from __future__ import annotations
 
 from pathlib import Path

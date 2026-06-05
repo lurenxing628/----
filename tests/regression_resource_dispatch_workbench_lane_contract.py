@@ -1,3 +1,7 @@
+"""回归测试：资源派工页工作台泳道契约——模板把"计划员查看"(rdTabDetail/Calendar/Gantt)与"现场事实"(rdTabExecution)分入不同
+aps-resource-lane-group 且执行脚本按职责顺序加载；前端 renderExecutionCards 对缺图号/工序渲染中文兜底文案；任务卡输出 part_label、
+开完工时间差(晚 N 分钟/早 N 分钟)与现场记录来源标签；非正式方案页面不暴露任何 actual 写入地址。"""
+
 from __future__ import annotations
 
 import json

@@ -1,3 +1,5 @@
+"""回归测试：数据库 schema 迁移与 OperationExecutionEvents 约束——重复 ensure_schema 幂等到当前版本、v14 库迁移补建事件表且不丢业务行、v15 不完整事件数据（缺暂停/异常原因、缺严重程度、引用不存在设备人员）须迁移失败并保留版本号；以及全新库的事件表 CHECK/唯一/外键约束拒绝非法行并阻止删除被引用的父 Schedule 行。"""
+
 from __future__ import annotations
 
 import sqlite3

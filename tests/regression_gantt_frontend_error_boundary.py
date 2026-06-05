@@ -1,3 +1,5 @@
+"""回归测试：甘特图前端 boot（ns.loadAndRender）的错误边界——HTTP 错误时把后端 JSON error.message 原样显示而不暴露 HTTP 状态码、坏数据形状/非数组 tasks 显示「数据格式」错误而非空状态、缺渲染器/弹窗依赖显示「脚本加载不完整」、prepare/装饰阶段内部异常统一收敛为「甘特图显示异常，请刷新后重试。」并隐藏 DOM mismatch 等内部细节，且合法空 tasks 仍走「暂无排程数据」空状态而非报错。"""
+
 from __future__ import annotations
 
 import importlib.util

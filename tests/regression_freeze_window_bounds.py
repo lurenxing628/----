@@ -1,3 +1,5 @@
+"""回归测试：开启冻结窗口重排时，只冻结 start_time 落在 [start_dt, start_dt+freeze_days) 区间内的工序——窗口起点之前的 B_OUT 不锁定、窗口内的 B_IN 被锁定，且 completed 的 B_TERM 不经 freeze seed 回流新版本。"""
+
 import os
 import sys
 import tempfile

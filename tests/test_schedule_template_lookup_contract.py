@@ -1,3 +1,5 @@
+"""回归测试：lookup_template_group_context_for_op 解析批次工序对应的外协模板与连续外协组——非严格模式下模板缺失/模板已删除/外协组缺失/part_no 或 seq 区间不匹配各产出对应的降级事件(template_missing/external_group_missing, merge_context_degraded=True)并填正确 field，无 ext_group_id 或组存在时返回 template/group 且不降级；严格模式下这些缺失路径改为抛 ValidationError（field 正确、可见消息含"已停止排产"且不泄漏单道兜底话术与 SECRET_TOKEN），并按 batch+(part_no,seq)+group 复用缓存只查一次。"""
+
 from __future__ import annotations
 
 from types import SimpleNamespace

@@ -1,3 +1,5 @@
+"""回归测试：ScheduleGraphAnalysisService.analyze_linear_batches 把线性工序节点串成单批 DAG 并算拓扑序/关键路径/关键路径分钟数/节点指标；basic 模式跳过 build_node_metrics、未知 metrics_mode 抛 ValueError、按 batch_id 隔离边、有环图返回 GRAPH_HAS_CYCLE 警告且不调指标、坏输入抛 GraphBuildContractError，并断言导入该模块不会拖入 networkx。"""
+
 from __future__ import annotations
 
 import json

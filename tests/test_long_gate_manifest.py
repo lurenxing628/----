@@ -1,3 +1,5 @@
+"""回归测试：tools.long_gate_manifest 从真实质量门命令计划构建 long-gate manifest 的契约——entry 顺序/哈希与 build_quality_gate_command_plan 一致、含 pytest_collect_all/full_test_debt/ruff/pyright/required_regressions 等条目并带 fingerprint 槽与共享 schema 版本，required/startup 参数取自动态计划且 fingerprint 跟踪 scope 并集，required 分组不进入正式 manifest 契约，version-probe 条目不可复用，并校验 reuse_allowed/cache_status/input_file_scopes/env_keys 及本地 receipt 解析与异常容错。"""
+
 from __future__ import annotations
 
 import json

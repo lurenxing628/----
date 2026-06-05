@@ -1,3 +1,5 @@
+"""回归测试：/reports/execution-review “计划和现场实际”页与 xlsx 导出——按计划身份精确匹配现场反馈，无反馈时显示“暂无现场反馈”，身份不匹配时忽略反馈，匹配时展示实际开工/完工偏差、暂停、异常、计划/实际资源等，且页面与工作簿都不泄漏 event_type/plan_role/source_table/schedule_id 等内部字段；含日期参数校验、报表索引/资源派工入口、场景导航禁用、流式导出与离线模板契约。"""
+
 from __future__ import annotations
 
 from io import BytesIO

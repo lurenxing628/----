@@ -1,3 +1,5 @@
+"""测试：scheduler_graph.exporter 把图与摘要导出为可 JSON 序列化的 plain dict——graph_to_plain_dict 按节点/边稳定排序、只导出承诺字段（不含 raw/due_date）、不修改原图；graph_summary_to_dict 可序列化且返回与原 summary 深拷贝隔离的 payload（改 payload 不影响 summary 的 node_metrics/cycle_edges/topological_order/critical_path）。"""
+
 from __future__ import annotations
 
 import json

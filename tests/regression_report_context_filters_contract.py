@@ -1,3 +1,5 @@
+"""回归测试：报表上下文资源筛选契约——filter_downtime/plan_rows_for_report_context 与 normalize_report_resource_filter 对设备/人员/班组维度的筛选、缺编号、别名冲突的接受与拒绝规则，并经 /reports/utilization(/export) 路由、SchedulePlanQueryService/Repository 三层一致校验（不支持的维度不下探到 repo，明细 SQL 把 batch_id 与资源筛选下推到底层并参数化）。"""
+
 from __future__ import annotations
 
 import pytest

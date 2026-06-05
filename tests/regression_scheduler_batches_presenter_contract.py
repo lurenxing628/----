@@ -1,3 +1,5 @@
+"""回归测试：scheduler_batches_page 的最新排产历史面板构造器 build_latest_schedule_history_panel_state——把 strategy/algo.mode/metrics 翻译成中文标签与展示项、保留真实 0 值指标、缺失 auto_assign_persist 时显示「旧历史未记录」；并严格拒绝未知/空策略、未知/空模式、缺失或非对象 algo/metrics、缺指标 key、空或非数字指标，及降级版构造器对解析异常/警告产生的 notice/detail_notice 文案。"""
+
 from __future__ import annotations
 
 import pytest

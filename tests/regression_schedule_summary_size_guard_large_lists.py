@@ -1,3 +1,5 @@
+"""回归测试：apply_summary_size_guard 把超过 SUMMARY_SIZE_LIMIT_BYTES(512KB) 的排产摘要逐级裁剪到限内——优先裁 selected_batch_ids/overdue items/errors/missing_resource_ops 等大列表并打 *_truncated 标记、保留 readiness 与计数/样本，按需丢弃过大或非 optimizer 的 diagnostics（小诊断不误删），并记录 original_size_bytes。"""
+
 import json
 import os
 import sys

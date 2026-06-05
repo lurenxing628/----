@@ -1,3 +1,5 @@
+"""回归测试：甘特图 /scheduler/gantt[/data] 的 plan_role 契约——baseline_best 等候选角色从 ScheduleCandidateRows 读任务并回传 requested/effective_plan_role 与 source_table，未知/缺失角色回退到 adopted 并提示，关键链异常时走脱敏公共契约（不泄露内部候选 id），逾期标记按候选行而非沿用 adopted 历史，未知 plan_role 且无历史时页面返 400。"""
+
 from __future__ import annotations
 
 import importlib

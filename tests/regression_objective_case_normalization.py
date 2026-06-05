@@ -1,3 +1,5 @@
+"""回归测试：排产策略类字段的大小写归一化贯穿全链路——set_objective 写入与读回都把 MIN_WEIGHTED_TARDINESS 归一为小写，normalize_preset_snapshot 与 build_schedule_config_snapshot 把脏 DB / preset 里带大小写和空格的 sort_strategy/dispatch_mode/dispatch_rule/algo_mode/objective 归一为标准小写值，且 viewmodel 的 objective_key/comparison_metric 能识别大写 objective。"""
+
 import os
 import sqlite3
 import sys

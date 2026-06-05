@@ -1,3 +1,5 @@
+"""回归测试：normalize_skill_level 的归一化输出只能是 beginner/normal/expert 三态，兼容大小写、首尾空白、英文 legacy alias（high/low/skilled）与中文别名（初级/新手/普通/中级/熟练/高级/专家 等）；空/None 在 allow_none=False 时回落 default、allow_none=True 时返回 None；非法值抛 ValueError("invalid skill_level: ...")。"""
+
 from __future__ import annotations
 
 import pytest

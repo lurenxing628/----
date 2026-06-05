@@ -1,3 +1,5 @@
+"""回归测试：排产配置的两套字段规格须始终同步——config_field_spec.list_config_fields() 与 schedule_config_runtime.list_runtime_config_fields() 的 key 集合、field_type/default/min_value/min_inclusive/choices 必须逐项一致，且九个 graph_* 配置字段在两套规格中均按既定契约注册。"""
+
 from __future__ import annotations
 
 from core.models.schedule_config_runtime import list_runtime_config_fields

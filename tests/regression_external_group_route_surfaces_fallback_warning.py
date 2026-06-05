@@ -1,3 +1,5 @@
+"""回归测试：POST /process/parts/<part>/groups/<group>/mode 在外协工序组缺 ext_days、按兼容模式回落为 1 天时，必须向用户 flash 出 success「已更新」+ warning「本次会先按 1 天记录」，且不泄露 compatible mode/raw=/ext_days 等内部细节，同时把 PartOperations.ext_days 落库为 1.0。"""
+
 from __future__ import annotations
 
 import importlib

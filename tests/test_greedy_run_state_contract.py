@@ -1,3 +1,5 @@
+"""回归测试：贪心调度运行态 ScheduleRunState 的记账契约。守护 record_seed_result 在种子结果缺设备/人员时只计 missing_seed_machine_count/operator_count 告警计数而不拉黑批次（seed_count/scheduled_count++、failed_count=0、batch_progress 推进）；record_dispatch_success 推进 batch_progress、按时长累加 machine_busy_hours/operator_busy_hours 并记录 last_op_type_by_machine。"""
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta

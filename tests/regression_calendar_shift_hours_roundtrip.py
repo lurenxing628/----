@@ -1,3 +1,5 @@
+"""回归测试：CalendarService 的 shift_hours 在全局 WorkCalendar 与个人 OperatorCalendar 上写入0小时能原样回读（get/policy_for_datetime/capacity_hours 一致为0.0），且历史负工时在读侧不得静默归零、必须抛出指明 shift_hours 字段的 ValueError。"""
+
 from __future__ import annotations
 
 import os

@@ -1,3 +1,5 @@
+"""回归测试：Excel 预览-确认两步导入的 preview_baseline 并发护栏——批次/人员日历/工作日历/设备/设备人员关联五条 append 链路，在 preview 之后由旁路并发写入同主键，confirm 必须检测基线漂移、拒绝写入并提示「请重新上传 Excel 并检查」，且各表对应主键计数保持为 1（不重复写）。"""
+
 import io
 import os
 import re

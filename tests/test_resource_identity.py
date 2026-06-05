@@ -1,3 +1,5 @@
+"""回归测试：build_resource_identity 在名称以资源 ID 开头重复时剥离出干净 display_label（如“MC-01 一号设备”→name=“一号设备”），但对相似却不同的前缀 ID（MC-01 vs “MC-010 …”）不做误剪，且 identity_label/label 始终保留“ID 名称”全称。"""
+
 from __future__ import annotations
 
 from core.models.resource_identity import build_resource_identity

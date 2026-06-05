@@ -1,3 +1,5 @@
+"""回归测试：/scheduler/run 与 /scheduler/simulate 路由把 run_schedule 的 summary 翻译成给用户看的 flash——首两条降级/规范化告警原样透出、其余折叠为「系统记录了 N 条维护诊断」；partial/failed/unknown/缺版本号等非成功结果不闪 success 且不跳甘特图（停在批次页），错误明细脱敏（不泄露 Traceback/raw_internal_error/E_SECRET/私有路径），并对主次降级消息去重。"""
+
 from __future__ import annotations
 
 import sys

@@ -1,3 +1,5 @@
+"""回归测试：optimize_schedule 通过显式注入的 OptimizerRuntime（scheduler_factory/clock/rng_factory/warmstart/multi_start/local_search 接缝）运行，不依赖全局 monkeypatch；产出 outcome.objective_name 取自 cfg.objective，且工厂收到的 config_service、注入的 clock 都被真实使用。"""
+
 from __future__ import annotations
 
 from datetime import datetime

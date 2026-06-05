@@ -1,3 +1,5 @@
+"""回归测试：守护 /reports/execution-review 现场复盘只对「正式采用方案」开放——baseline_best/未知 plan_role/模拟预览 scenario 等非正式身份会被可见拦截且禁用导出（含 /export 返回 400），不泄露原始 role；历史正式版本只读可见，资源过滤导出仍保留正式行。"""
+
 from __future__ import annotations
 
 import os

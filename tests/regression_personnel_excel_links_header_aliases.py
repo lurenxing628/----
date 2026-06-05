@@ -1,3 +1,5 @@
+"""回归测试：人员-设备关联 Excel 导入（/personnel/excel/links 的 preview→confirm 全链路），别名表头「操作工号/机器编号」与标准表头「工号/设备编号」都被归一化、preview 用 aps-preview-json-b64 编码不退回明文 JSON，confirm 后正确写入 OperatorMachine 的 skill_level 与 is_primary。"""
+
 from __future__ import annotations
 
 import io

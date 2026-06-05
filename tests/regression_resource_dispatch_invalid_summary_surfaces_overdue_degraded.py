@@ -1,3 +1,5 @@
+"""回归测试：当 ScheduleHistory.result_summary 是坏 JSON 时，资源排班页 /scheduler/resource-dispatch 及其 /data 接口仍返回 200 并展示 detail_rows，但把超期标记标为降级——页面含 rdOverdueWarning、data 里 overdue_markers_degraded=True/partial=False 且消息含「超期」，并向 app.logger.warning 记「资源排班超期标记降级」。"""
+
 from __future__ import annotations
 
 import importlib

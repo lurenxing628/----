@@ -1,3 +1,5 @@
+"""回归测试：RouteParser.parse 解析工艺路线时，OpType.category 为大写带空格(如「 INTERNAL 」)仍应归类为 internal 工序，stats 统计 internal=1/external=0。"""
+
 import os
 import sys
 from dataclasses import dataclass

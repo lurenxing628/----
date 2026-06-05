@@ -1,3 +1,5 @@
+"""回归测试：迁移 v9 向 ScheduleConfig 注入 graph_* 默认值——不覆盖已存在的 graph_analysis_mode 及其 description，并把这组 graph 默认键补进各 preset.* 的 JSON（保留原有 sort_strategy 与已设置的 graph 值）；遇到损坏的 preset JSON 时抛 RuntimeError「排产配置方案数据已损坏」而非静默跳过。"""
+
 from __future__ import annotations
 
 import json

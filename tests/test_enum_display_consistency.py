@@ -1,3 +1,5 @@
+"""单元测试：web.routes.enum_display 各枚举中文化包装（machine/operator/batch 状态、day_type、priority、ready）的输出口径——去空格归一、未知值原样保留或回退默认、空/None 回退占位符。"""
+
 from __future__ import annotations
 
 

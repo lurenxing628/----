@@ -1,3 +1,5 @@
+"""回归测试：build_result_summary 输出 algo.fallback_counts / param_fallbacks 时，只保留正整数计数，丢弃 0 值，并拒绝把坏值/布尔/Decimal/Fraction/NaN/Inf/负数伪装成计数；遇到坏值时打 fallback_count_parse_failed 标记、保留错误样例、并向 warnings 和 degradation_events 暴露降级。"""
+
 import os
 import sys
 import time

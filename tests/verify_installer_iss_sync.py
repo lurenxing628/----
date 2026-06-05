@@ -1,3 +1,5 @@
+"""校验脚本：installer/aps_win7.iss 与 installer/aps_win7_legacy.iss 的 [Code] 段中 SHARED_ROUTINES 列出的 33 个共享 Inno Setup 例程逐行完全一致，任一缺失或漂移即逐行 diff 报错并返回非零，防止主安装脚本与 legacy 脚本的共享实现失同步。"""
+
 from __future__ import annotations
 
 import re

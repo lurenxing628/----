@@ -1,3 +1,5 @@
+"""单元测试：tools/long_gate_fingerprint 的进程收尾——_terminate_process_tree 先 SIGTERM 等待、超时才升级 SIGKILL；chrome_headless_preflight 成功后走优雅关闭而非硬杀残留 Chrome。"""
+
 from __future__ import annotations
 
 import signal

@@ -1,3 +1,5 @@
+"""回归测试：ScheduleService.run_schedule 的可重排范围收口契约——completed/skipped 工序不进入算法输入、freeze seed 与持久化结果集，total_ops 只统计可重排工序；优化器结果若逃出可重排范围则抛 ValidationError（out_of_scope_schedule_rows）且不落库；completed/cancelled 批次在服务层 fail-fast（「不允许排产」）不再读取工序。"""
+
 import os
 import sqlite3
 import sys

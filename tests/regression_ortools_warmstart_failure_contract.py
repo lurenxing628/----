@@ -1,3 +1,5 @@
+"""回归测试：try_solve_bottleneck_batch_order 的 OR-Tools 暖启动失败契约——ortools 缺失/模型 MODEL_INVALID/工时或数量为非有限数(NaN,Inf)、布尔值、负数时一律抛 OrtoolsWarmstartError 把失败暴露出来，而 UNKNOWN 状态返回 None 不当作失败上报。"""
+
 from __future__ import annotations
 
 import builtins

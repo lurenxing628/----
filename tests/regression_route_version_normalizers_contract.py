@@ -1,3 +1,5 @@
+"""回归测试：版本号归一化契约——resolve_version_or_latest 把 None/空当 default、latest/LATEST 当 latest、数字当 explicit，对 abc/0/-1 抛 ValidationError(field=version) 中文文案，且无历史(latest_version=0)时不臆造 v1 而返回 no_history/missing_history；parse_optional_version_int 保留 0/-1 原值并对非整数文本报「期望整数」。"""
+
 from __future__ import annotations
 
 import pytest

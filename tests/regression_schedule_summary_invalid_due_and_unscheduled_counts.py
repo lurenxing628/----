@@ -1,3 +1,5 @@
+"""回归测试：build_result_summary 在部分成功（partial）场景下统计非法交期与未排批次——把交期写法不对的批次（如 due_date="2026-02-31"）计入 invalid_due_count 并写入 invalid_due_batch_ids_sample，把未完工批次计入 unscheduled_batch_count/sample（同步进 counts 与 algo.metrics），且对二者各追加一条用户可见 warning（"交期写法不对"/"未形成完工结果"），不生成超期清单。"""
+
 from __future__ import annotations
 
 import os

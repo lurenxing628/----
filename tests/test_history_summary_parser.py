@@ -1,3 +1,5 @@
+"""回归测试：parse_result_summary_payload 解析排产历史 result_summary——dict 原样不拷贝、合法 JSON 转 dict、坏 JSON 报 json_decode_error、非有限数字(NaN/Infinity/超大)报 non_finite_number、JSON 列表报 invalid_structure；并守护历史版本选项装饰（状态/策略中文标签、未知策略标记历史异常）、公开时间格式化与非法时间回落「时间记录异常」。"""
+
 from __future__ import annotations
 
 import pytest

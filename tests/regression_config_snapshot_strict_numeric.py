@@ -1,3 +1,5 @@
+"""回归测试：build_schedule_config_snapshot 在 strict_mode 下对非法数值（priority_weight/due_weight/holiday_default_efficiency/ortools_time_limit_seconds/time_budget_seconds/freeze_window_days/graph_critical_weight/graph_impact_weight 及空白的 sort_strategy/dispatch_mode/dispatch_rule/auto_assign_enabled）抛带正确 field 的 ValidationError 且提示用中文标签不泄露内部字段名；非 strict 下应回退默认或钳到最小值。"""
+
 from __future__ import annotations
 
 import os

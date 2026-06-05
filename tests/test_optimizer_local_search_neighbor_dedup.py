@@ -1,3 +1,5 @@
+"""回归测试：_run_local_search 局部搜索 swap 邻域的去重与拒绝记录契约——长 order 跳过重复邻域只调度一次、短 order 允许重试同一邻域；候选被 ValidationError 拒绝时 relaxed 模式记 source=candidate_rejected 的 attempt（保留 field/message 来源）并保留原 best，strict 模式直接抛 ValidationError；且 compact_attempts/project_public_algo_summary 把 candidate_rejected 仅留在诊断面、不进对外 attempts。"""
+
 from __future__ import annotations
 
 from datetime import datetime

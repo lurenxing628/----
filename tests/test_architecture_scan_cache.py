@@ -1,3 +1,5 @@
+"""回归测试：architecture_scan_cache 文件级缓存的失效与复用契约——缓存未命中/内容变更/新增文件只重扫受影响文件，未变文件复用 fact（generated_at 不参与命中），元数据(scanner/schema/python/radon 版本)或单文件 sha 或必填字段被篡改即触发重扫；并守护 silent_fallback id 仅在聚合层赋予、ledger 校验按 fact_kinds 分桶取缓存，以及 architecture_fitness 长门禁保持 planned/不可复用且其缓存产物被 git hook 拦截提交。"""
+
 from __future__ import annotations
 
 import copy

@@ -1,3 +1,5 @@
+"""回归测试：UnitExcelConverter.convert 解析"单元产品信息统计"表的多工步零件时，工序工时按工步累加（setup=(20+30+40)/60=1.5h、unit=(40+50+30)/60=2.0h）；且第三行重复填写同一图号/工艺路线（而非留空续接）不会覆盖或改变累加结果——重复行与续接行得到相同工时。"""
+
 import os
 import sys
 import tempfile

@@ -1,3 +1,5 @@
+"""回归测试：full_test_debt_shards 的并行分片契约——classify_nodeid 把高风险/启动回归类用例（含全部 iter_startup_regressions）判为 serial、纯 helper 用例判为 parallel，split_nodeids 把 nodeid 切成串行集 + 若干分片且无重复无遗漏，并对重复 nodeid 与非法 shard_count 抛 ValueError。"""
+
 from __future__ import annotations
 
 import pytest

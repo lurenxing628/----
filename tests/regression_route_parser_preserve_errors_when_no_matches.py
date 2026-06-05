@@ -1,3 +1,5 @@
+"""回归测试：RouteParser.parse 解析无法识别的工艺路线串（如 ABC5）时返回 FAILED，并保留全部细粒度错误——“必须以工序号开头”“尾部工序号 5 缺少工种名”以及“无法识别工艺路线格式”通用错误都不被吞掉。"""
+
 import os
 import sys
 from dataclasses import dataclass

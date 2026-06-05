@@ -1,3 +1,5 @@
+"""端到端冒烟测试：真实 create_app 下资源排班全链路——dashboard(v1/v2) 含"资源排班"入口、/scheduler/resource-dispatch 页面与 /data JSON（默认全部人员、单人 operator、按 team 轴）返回正确 filters/detail_rows/tasks/calendar_rows 且跨班组与超期标记正确、/export 导出工作簿 sheet 名与表头契约、以及 /scheduler/gantt/data 任务数与 critical_chain、/scheduler/week-plan/export 工作簿可生成。"""
+
 from __future__ import annotations
 
 import importlib

@@ -1,3 +1,5 @@
+"""回归测试：经 /process/parts/<part>/reparse 重解析工艺路线时，已有内部工序(seq=5)的换型/单件工时(setup_hours/unit_hours)原样保留，新增工序(seq=15)工时回落默认 0，工序归属仍判为 internal。"""
+
 import io
 import os
 import re

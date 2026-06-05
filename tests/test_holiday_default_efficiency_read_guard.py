@@ -1,3 +1,5 @@
+"""回归测试：holiday_default_efficiency 配置无效（NaN/0）时，日历/人员日历/排产参数等读页须显示降级 warning 并临时按 0.8、不泄露内部键名 holiday_default_efficiency；日历 upsert 与 Excel 预览/确认链路须拒绝写入；纯读路由（config/calendar/batch 详情）不得顺手修复脏的部分配置（ScheduleConfig 行数与缺失键不变），Excel 预览首次访问可 bootstrap 出配置；日历行错误文案用纯列名口径，前端 calendar_picker.js 不重建 0.8 本地默认。"""
+
 from __future__ import annotations
 
 import importlib

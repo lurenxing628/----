@@ -1,3 +1,5 @@
+"""回归测试：web.bootstrap.entrypoint.app_main 在 create_app、获取运行时锁、写运行时契约、清理/写启动错误文件、日志器本身等各环节失败时，仍把面向用户的中文提示与原始堆栈分别落到 stderr / launcher.log / aps_launch_error.txt，并返回约定退出码（13/14/15），不向用户泄露内部异常文本。"""
+
 from __future__ import annotations
 
 from pathlib import Path

@@ -1,3 +1,5 @@
+"""为 Excel 导入预览-确认链路测试提供解析夹具：从预览 HTML 抽取 raw_rows_json、preview_baseline 及其他隐藏字段，并据此组装 confirm 阶段的提交 payload。"""
+
 from __future__ import annotations
 
 import re

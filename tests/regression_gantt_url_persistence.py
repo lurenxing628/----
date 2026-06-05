@@ -1,3 +1,5 @@
+"""回归测试：甘特图前端 gantt_ui.js 的 applyUiFromUrl/persistUiToUrl 契约——gantt_zoom/color/batch/resource/overdue/external/deps/hcc 等 URL 参数应正确读入 state.ui、映射 Frappe view mode 并回写控件与查询表单；持久化时清理默认值与旧 gantt_vm，且按当前/跨视角同步范围链接；同时校验 /scheduler/gantt 页面 HTML 含必要控件标记。"""
+
 from __future__ import annotations
 
 import importlib.util

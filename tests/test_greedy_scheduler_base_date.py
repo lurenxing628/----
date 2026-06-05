@@ -1,3 +1,5 @@
+"""回归测试：GreedyScheduler.schedule 把 start_dt 的 date() 作为 base_date 传给排序器（用于 ready/due 等相对日期计算），且 WEIGHTED 策略下用该 base_date 排序——due_weight=1.0 时交期更早的批次（B_early）排在更晚的（A_late）之前。"""
+
 from __future__ import annotations
 
 import os

@@ -1,3 +1,5 @@
+"""回归测试：/scheduler/excel/batches 预览→确认的基线指纹精度——确认时只对影响目标批次的数据变化要求重新预览：无关零件改名、候补供应商或非生效字段变动不触发"数据已变化"拒绝；而被篡改的预览行、生效供应商 default_days 漂移、供应商状态停用须触发拒绝且批次不落库。"""
+
 from __future__ import annotations
 
 import importlib

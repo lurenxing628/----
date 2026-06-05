@@ -1,3 +1,5 @@
+"""回归测试：钉死全仓多个 yes/no 归一化口径的差异契约——to_yes_no 与 system_config 的 _normalize_yes_no 宽口径（未知值按 default/NO）；plugin 的 _normalize_yes_no 未知值跟随 default 参数；excel/route 的 _normalize_yesno 窄口径（缺省默认 yes，接受 true/false/1/0，但 on/off 与未知值原样透传给上层）；CalendarAdmin._normalize_yesno 最严（未知值如 maybe/on 抛带中文字段名的 ValidationError）。"""
+
 from __future__ import annotations
 
 import pytest

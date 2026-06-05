@@ -1,3 +1,5 @@
+"""回归测试：resolve_schedule_params（贪心排产参数解析）对加权策略的数值校验——strict_mode 下 priority_weight 为纯空白须抛 ValidationError 并定位到 priority_weight 字段、用户消息只出现中文"优先级权重"而非裸字段名；非 strict 下若 strategy_params 只给了部分权重，则缺失的 due_weight 仍被拒并定位到 due_weight。"""
+
 from __future__ import annotations
 
 from types import SimpleNamespace

@@ -1,3 +1,5 @@
+"""冒烟测试：班组(ResourceTeams)端到端贯通——人员/设备 Excel 模板及导出表头含「班组」列，/personnel/teams 班组管理页与 /personnel、/equipment 的 team_id 筛选能显示班组名并过滤资源、非法 team_id 重定向回列表页，人员/设备 Excel 预览页与下载模板/导出均带班组列与班组名。"""
+
 from __future__ import annotations
 
 import importlib

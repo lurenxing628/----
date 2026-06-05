@@ -1,3 +1,5 @@
+"""回归测试：贪心调度的资源占用时间线有序性——occupy_resource 乱序插入后段按起始时间保持升序；accumulate_busy_hours 累计设备/人员忙时并对非 datetime 抛 TypeError；update_machine_last_state 在 seed/dispatch 两种模式下正确更新末次结束与工种（seed 不回退已更晚的结束时间）；GreedyScheduler.schedule 对乱序 machine_downtimes 归一化一次后正常排产。"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

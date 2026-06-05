@@ -1,3 +1,5 @@
+"""回归测试：守护批次创建/刷新工序/Excel 批次确认路由把 BatchService 的用户可见告警如实闪现——外协供应商缺失时给出按 1 天安排的 warning；告警超过 3 条时只显示前 3 条并追加「另有 N 条提醒未在当前页显示」当前页文案，不引导去系统历史。"""
+
 from __future__ import annotations
 
 import importlib

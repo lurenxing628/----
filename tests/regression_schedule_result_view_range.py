@@ -1,3 +1,5 @@
+"""回归测试：resolve_schedule_result_week_range 的展示区间解析——无请求区间且 default_to_version_span=True 时回落到版本跨度（range_source=version_span），显式 week_start/offset_weeks 或 start_date+end_date 时用请求区间且对显式起止区间忽略 offset，周计划模式不回落版本跨度；非法 offset_weeks 与非法 plan_role 分别抛带 field 的 ValidationError，并校验 has_explicit_display_range 判定。"""
+
 from __future__ import annotations
 
 from typing import Optional

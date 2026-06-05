@@ -1,3 +1,5 @@
+"""回归测试：守护 PartOperationHoursExcelImportService.apply_preview_rows 的统计口径——UNCHANGED/SKIP 计入 skip_count、ERROR 计入 error_count，四类计数之和等于 total_rows；errors_sample 保留 source_row_num/source_sheet_name/message 等定位字段。"""
+
 import os
 import sqlite3
 import sys

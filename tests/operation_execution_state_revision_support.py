@@ -1,3 +1,5 @@
+"""为工序执行状态修订（state_revision）回归测试提供 SQLite 夹具：建 schema、按 ROLE_ADOPTED/SOURCE_SCHEDULE 播种一条 B1/OP10/Schedule(100) 计划，并构造 ExecutionFeedbackContext 与统计 OperationExecutionEvents 行数的工具。"""
+
 from __future__ import annotations
 
 import sqlite3

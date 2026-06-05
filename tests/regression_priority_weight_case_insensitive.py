@@ -1,3 +1,6 @@
+"""回归测试：compute_metrics 计算加权拖期时，批次 priority 应先小写归一化——priority="Urgent" 须命中 urgent 权重 2.0，
+使 tardiness 10h 得出 weighted_tardiness_hours 20h（total_tardiness_hours 仍为 10h）。"""
+
 import os
 import sys
 from datetime import datetime, timedelta

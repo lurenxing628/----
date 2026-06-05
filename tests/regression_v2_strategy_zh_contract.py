@@ -1,3 +1,5 @@
+"""回归测试：排序策略中文展示已收口到 presenter——strict_strategy_display_label 须把 priority_first/due_date_first/weighted/fifo 映射为「优先级优先/交期优先/综合优先级和交期/先进先出」；web_new_test 的 gantt.html 仍内联该 strategy_zh 映射，而已收口页面（batches.html、system/history.html）的模板里不得再出现 strategy_zh/status_zh/mode_zh 等本地状态映射。"""
+
 import os
 
 from web.viewmodels.scheduler_history_summary import strict_strategy_display_label

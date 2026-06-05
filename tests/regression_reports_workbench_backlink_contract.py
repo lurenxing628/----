@@ -1,3 +1,5 @@
+"""回归测试：报表中心各页（超期/资源利用率/停机影响/计划和现场实际）的卡片与行内回链须保留工作台上下文（version/plan_role/批次/资源/日期范围）并在各回链 URL 携带正确查询参数；导出 Excel 只含筛选目标行、隐藏内部字段表头；非 adopted 方案禁用「计划和现场实际」链接；停机重叠时长只按真实时间交集计数（compute_downtime_impact）。"""
+
 from __future__ import annotations
 
 from datetime import datetime

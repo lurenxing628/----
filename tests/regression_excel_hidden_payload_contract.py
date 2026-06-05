@@ -1,3 +1,5 @@
+"""回归测试：工种 Excel 导入预览页 /process/excel/op-types/preview 不在页面源码明文暴露内部值（raw_rows_json 必须用 aps-preview-json-b64 编码、归属映射为 internal/external 而非明文），且 /confirm 在 raw_rows_json 被篡改、与 preview_baseline 不一致时拒绝写入、不落库未预览过的工种。"""
+
 from __future__ import annotations
 
 import importlib

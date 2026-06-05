@@ -1,3 +1,5 @@
+"""回归测试：estimate_internal_slot 的只读估算与 GreedyScheduler._schedule_internal 的落地排程结果完全一致——起止时间、换型惩罚一致且估算器绝不改入参时间线/停机段；并守护其边角行为：取 prev_end 与 base_time 的较大值再调历、>200 段碎片仍正确、abort_after 在调历后用严格大于判定、efficiency 回退只在正式排程时计数、auto_assign 把 best_end 作为 abort_after 透传、零工时返回 start==end 仍避让占用段，以及 efficiency 为 None/0/负/inf/nan/抛错时的回退与 ValidationError(field='efficiency')。"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

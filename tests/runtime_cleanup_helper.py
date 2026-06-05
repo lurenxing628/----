@@ -1,3 +1,5 @@
+"""为真实启动端到端测试提供仓库根运行态清理工具：定位 logs/ 下的 aps_host/port/db_path/runtime/lock/launch_error 等运行态文件、按 pid 存活与 /system/health 健康探针判定实例是否仍活、并通过 --runtime-stop、terminate、强杀 pid 树等手段确保 APS 进程停止且残留运行态被清空。"""
+
 from __future__ import annotations
 
 import json

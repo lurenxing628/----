@@ -1,3 +1,5 @@
+"""回归测试：PartService.create(strict_mode=True) 因路线解析失败（外协工序缺供应商映射）抛 ROUTE_PARSE_ERROR 后必须原子回滚，Parts 与 PartOperations 均不得残留半截数据。"""
+
 import os
 import sqlite3
 import sys

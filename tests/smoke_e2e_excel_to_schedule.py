@@ -1,3 +1,5 @@
+"""端到端冒烟：在隔离的临时 DB/目录上，用 Flask test_client 把设备/人员/人员设备关联/工种/供应商/工艺路线/批次/工作日历经"Excel 预览→确认导入"全链路导入，自动生成批次工序后补齐人机工时与外协周期，执行 /scheduler/run 并校验 Schedule/ScheduleHistory/OperationLogs 落库与键名、批次转 scheduled、甘特图与周计划导出、报表与物料齐套回写——全程留痕，最后把验收报告写到 evidence/FullE2E/。"""
+
 import io
 import json
 import os

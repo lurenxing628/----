@@ -1,3 +1,5 @@
+"""回归测试：候选方案对比摘要的投影契约——candidate_comparison_public_summary 输出精简、不内嵌 results/start_time/图诊断（nodes/edges/node_metrics）/attempts/improvement_trace；candidate_comparison_log_summary 进一步丢弃候选列表只留计数与选择原因；summary_size_guard 在摘要超限时降级为 minimal 候选摘要但保留 adopted_candidate_key 等关键字段；并保证 baseline 被采纳时仍暴露 critical 方案的图分析 public、以及 skipped_candidate_labels 在 public/minimal/log 三视图一致。"""
+
 from __future__ import annotations
 
 from dataclasses import replace

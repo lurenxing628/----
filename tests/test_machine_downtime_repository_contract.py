@@ -1,3 +1,5 @@
+"""回归测试：MachineDowntimeRepository.list_active_after(machine_id, start) 只返回指定机台、status='active'、且 end_time 晚于 start 的停机段（含跨 start 的段），排除已取消和其他机台，并按 start_time 升序返回。"""
+
 from __future__ import annotations
 
 import sqlite3

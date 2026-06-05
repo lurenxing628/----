@@ -1,3 +1,5 @@
+"""回归测试：min_weighted_tardiness 目标契约——objective_score 在 min_tardiness 下按总拖期、在 min_weighted_tardiness 下按加权拖期比较优劣，且 ConfigService 能落库并回读 objective=min_weighted_tardiness。"""
+
 from __future__ import annotations
 
 import sqlite3

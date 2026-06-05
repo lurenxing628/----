@@ -1,3 +1,5 @@
+"""回归测试：resolve_schedule_params 直接调用契约——非 strict 下缺运行时配置回退默认且把无效 sort_strategy/权重以中文 warning 与 param_fallbacks 计数暴露（不泄露英文字段名），strict 下缺 sort_strategy/非法被消费选项/非法权重三元组/非法 start_dt 与 end_date 须抛 ValidationError 并定位到对应中文字段；strict 仍接受未被消费的非法 objective 并能把百分比权重三元组归一化。"""
+
 from __future__ import annotations
 
 from datetime import datetime

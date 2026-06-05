@@ -1,3 +1,5 @@
+"""回归测试：基础设施层不静默吞错的契约——OperationLogger 在 in_transaction 不可读时不自动 commit 且留警告（logger 自身报错则回退 stderr），AppError 保留 args 并拒绝非 Exception 的 cause，迁移工具 table_exists/column_exists 对非法标识符抛 ValueError 而非静默放过。"""
+
 from __future__ import annotations
 
 import sqlite3

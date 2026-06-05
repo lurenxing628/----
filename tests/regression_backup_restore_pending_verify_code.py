@@ -1,3 +1,6 @@
+"""回归测试：BackupManager.restore() 恢复后应先返回 code=copied_pending_verify（等待后续结构校验），
+保留 before_restore_path 恢复前快照，并把数据库内容回滚到备份时的状态。"""
+
 from __future__ import annotations
 
 import os

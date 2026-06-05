@@ -1,3 +1,5 @@
+"""回归测试：_schedule_with_optional_strict_mode 按调度器签名自适应传参并缓存——支持 strict_mode 的绑定方法只调一次 inspect.signature 并缓存、legacy 调度器不收 strict_mode；readiness_gate_enabled=False 时静默丢弃、=True 时对不支持者抛 ValidationError（含「不支持 readiness_gate_enabled」），graph_ready_context 不支持时抛含「工序图 ready 队列」的错误；签名不可用时按 unexpected keyword 逐步回退试 strict_mode/readiness，但不吞掉调度器函数体自身抛的 TypeError，且不可哈希的可调用 schedule 不进缓存。"""
+
 from __future__ import annotations
 
 import inspect

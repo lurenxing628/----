@@ -1,3 +1,5 @@
+"""回归测试：OR-Tools 预热（_run_ortools_warmstart）抛异常时不崩溃而是降级并对外可见。守护预热失败返回 best=None、累加 fallback_counts.ortools_warmstart_failed_count=1 并写 warning；随后 build_result_summary 把该计数汇成 degradation_counters.ortools_warmstart_failed=1，且 result_status 仍为 success、warnings 含中文"OR-Tools 预热失败"。"""
+
 from __future__ import annotations
 
 import os

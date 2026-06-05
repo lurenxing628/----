@@ -1,3 +1,5 @@
+"""回归测试：MachineService/OperatorService 在设备或人员仅被 Schedule 排程结果引用时，delete()/ensure_replace_allowed() 也应抛 BusinessError（MACHINE_IN_USE / OPERATOR_IN_USE，消息含「排程结果引用」），而删除不存在设备抛 MACHINE_NOT_FOUND。"""
+
 from __future__ import annotations
 
 import os

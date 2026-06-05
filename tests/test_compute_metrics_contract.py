@@ -1,3 +1,5 @@
+"""守护 compute_metrics 的公开字段契约：对含逾期/外协/非法 due/无 due 的排产结果，逐项校验 to_dict 输出的 overdue_count、total_tardiness_hours、makespan、changeover_count、加权拖期、机台/人员利用率与负载 CV、invalid_due/unscheduled 计数及样本，并验证 objective_score('min_weighted_tardiness') 得出预期四元组。"""
+
 from __future__ import annotations
 
 from datetime import datetime

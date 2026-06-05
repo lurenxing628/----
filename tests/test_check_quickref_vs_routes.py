@@ -1,3 +1,5 @@
+"""单元测试：check_quickref_vs_routes 工具——报告使用仓库相对路径与稳定快照元数据（无盘符、无生成时间），_extract_doc_endpoints/_diff_endpoints 能识别速查表与真实路由间的缺失/多余/方法不匹配，main 打印仓库相对报告路径。"""
+
 from __future__ import annotations
 
 import importlib.util

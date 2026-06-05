@@ -1,3 +1,5 @@
+"""守护甘特前端状态语义：gantt.js 依赖开关统一为 depsMode（不得残留 showProcessDeps/onlyCCDeps），且 gantt_color.js 的 statusKeyForTask 优先按 meta.status(completed/processing/blocked)映射为 done/in_progress/blocked，无后端状态时才按时间回退。"""
+
 from __future__ import annotations
 
 import json

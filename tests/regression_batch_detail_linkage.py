@@ -1,3 +1,5 @@
+"""回归测试：批次详情页 batch_detail.html 渲染时注入设备/人员联动契约——data-linkage-row 标记、懒加载模板节点、已删除资源回退占位项、window.__APS_BATCH_DETAIL_LINKAGE__ 双向映射（operatorMachines=None 时以 JSON null 注入由 machineOperators 反推），并校验 batch_detail_linkage.js 保留孤儿选项识别与不匹配提示文案。"""
+
 from __future__ import annotations
 
 import os

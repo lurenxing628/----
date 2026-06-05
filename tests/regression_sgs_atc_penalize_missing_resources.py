@@ -1,3 +1,5 @@
+"""回归测试：SGS 在 ATC 派工规则下对缺资源候选必须直接抛 ValidationError(field=resource)，而不是用惩罚分把缺 machine_id 的更紧急工序排在后面继续排产；且评分阶段失败后绝不进入正式派工（_schedule_internal 不被调用）。"""
+
 import os
 import sys
 from dataclasses import dataclass

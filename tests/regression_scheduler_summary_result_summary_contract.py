@@ -1,3 +1,5 @@
+"""回归测试：build_result_summary 产出的 result_summary 须把公开 attempts 与内部 diagnostics 分离——公开 attempts 剔除 source/tag/used_params/algo_stats/origin，candidate_rejected 与内部 secret 仅留在 diagnostics 且不渲染到任何 /scheduler 与 /reports 公开页面；并验证缺资源面板仅按 validator 的 scheduled_op_ids 过滤、自动派工/工时不合法等失败不误判为缺资源、完整 errors 与 missing_internal_resource_ops 字段口径正确。"""
+
 from __future__ import annotations
 
 import importlib

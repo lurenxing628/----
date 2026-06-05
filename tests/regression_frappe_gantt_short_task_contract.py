@@ -1,3 +1,5 @@
+"""回归测试：定制版 frappe-gantt 在各缩放档（Day/Hour/分钟级/只读全档）下保持短工序（36/51/73 分钟、跨午夜）可见且可点选拖拽——bar 宽度按 step_ms 几何精确、hitbox 宽≥12px、点击短任务能激活并弹窗、resize/move 后起止时间零漂移；并钉死短任务修复只动 vendor min.js 的时间几何、不污染 gantt_render.js。"""
+
 from __future__ import annotations
 
 import importlib.util

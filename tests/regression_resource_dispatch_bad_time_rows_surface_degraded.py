@@ -1,3 +1,5 @@
+"""回归测试：守护 ResourceDispatchService 派工对时间写法不对的排班记录的降级处理——bad_time_row_sample 只保留定位信息不外泄原始坏时间值；含坏时间行时 summary.degraded=True、bad_time_row_skipped 计数为 1、empty_reason=all_rows_filtered_by_invalid_time，且 detail_rows/tasks/calendar_rows 为空、空消息提示已过滤条数。"""
+
 from __future__ import annotations
 
 import json

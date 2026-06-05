@@ -1,3 +1,5 @@
+"""回归测试：SystemMaintenanceService 自动日志清理的 SystemJobState 持久化——run_if_due 写入的 last_run_time 须 commit 后跨连接可读（修复前未提交会丢失）；清理失败时仍提交 job_state（job_state_persisted=True）并记录错误明细到 last_run_detail，oplog 写入异常被隔离（oplog_persisted=False）且留 warning，不影响 job_state 落库。"""
+
 import os
 import sqlite3
 import sys

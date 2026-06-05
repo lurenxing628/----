@@ -1,3 +1,5 @@
+"""回归测试：资源派工任务 id 的哈希契约——非法 Unicode 触发 UnicodeEncodeError；内部 schedule_id/op_id 等隐藏身份不泄漏进公开 payload 与可读前缀；任务 id 在不同可见区间、operator/machine 视图间稳定，但能按资源对区分同工序同时段行；可读前缀剔除分隔符并支撑依赖链。"""
+
 from __future__ import annotations
 
 import json

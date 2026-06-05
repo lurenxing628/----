@@ -1,3 +1,5 @@
+"""回归测试：排产分析诊断的异常与边界口径——safe_int/safe_float/format_hours 对 NaN/Inf/超大值等非有限数抛 ValueError（仅 None 才用 default）；build_diagnostic_sections 把非有限数标成「无法安全展示」并将对应分节置为 error/degraded、不臆造 0，且不吞没真实异常；资源瓶颈与延期风险分节按 resource_matching/summary 输出对应 status 与中文摘要。"""
+
 from __future__ import annotations
 
 import json

@@ -1,3 +1,5 @@
+"""回归测试：build_operation_log_view_rows 展示契约——未知的 log_level/module/action/target_type 码以"其他X（原值）"保留原始值，空码显示为"-"，detail 解析态（empty/ok/invalid_json/non_object）可见且仅 ok 时给出 detail_obj，行 to_dict 抛错时抛 OperationLogViewRowContractError 而非渲染成空白行。"""
+
 from __future__ import annotations
 
 import pytest

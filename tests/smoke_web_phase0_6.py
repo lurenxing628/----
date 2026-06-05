@@ -1,3 +1,5 @@
+"""Phase0~Phase6 Web+Excel 端到端冒烟：用 Flask test_client 走基础页面、设备停机计划、批次/工作日历 Excel 的上传→预览→确认→导出全链路，校验严格模式对错误行拒绝写入、合法数据成功落库并自动生成工序、人机匹配约束拒绝不可操作组合，以及 OperationLogs 导入/导出留痕 detail 含规定键。"""
+
 import io
 import json
 import os

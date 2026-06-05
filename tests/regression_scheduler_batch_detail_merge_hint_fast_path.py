@@ -1,3 +1,5 @@
+"""回归测试：批次详情 _build_view_ops 为每个工序生成外协合并提示时只走必要路径——内部工序直接得到 {is_external: False} 不触发任何外协查询；外协工序优先用 service.get_external_merge_hint_for_op(op) 快路径（避免按 op_id 慢查），服务无快路径方法时才回退 get_external_merge_hint(op_id)。"""
+
 from __future__ import annotations
 
 from types import SimpleNamespace

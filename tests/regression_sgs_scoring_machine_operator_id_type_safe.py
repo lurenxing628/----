@@ -1,3 +1,5 @@
+"""守护 SGS 评分阶段对 machine_id/operator_id 为 int 的类型安全：历史 BUG 会对 int 调 .strip() 抛异常并 continue 导致候选静默跳过、退化为 candidates[0]；本回归用 batch_order_override 把更晚交期排在首位，断言 GreedyScheduler 仍按 dispatch key(交期)优先排出更紧急的 OP_EARLY，两道工序全部成功排产。"""
+
 import os
 import sys
 from dataclasses import dataclass

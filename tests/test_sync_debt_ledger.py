@@ -1,3 +1,5 @@
+"""契约测试：tools/sync_debt_ledger 的 check/refresh 防漂移护栏——silent_fallback 条目仅在处理器指纹一致时允许行号重对齐，序号漂移/上下文哈希变化/kind 静默回退/已修条目仍命中扫描等一律拒绝；已解决条目及其风险引用要被剪除；refresh 各模式正确分派。"""
+
 from __future__ import annotations
 
 import copy

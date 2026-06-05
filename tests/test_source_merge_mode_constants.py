@@ -1,3 +1,5 @@
+"""回归测试：报表计算 compute_utilization / compute_downtime_impact 只统计 INTERNAL 来源的排程行（外包工序不计入设备/人员利用率与停机重叠）；并守护 source/merge_mode 控制值（INTERNAL/EXTERNAL/MERGED/SEPARATE）在五个目标源文件里不再出现带引号裸字面量，防语义漂移。"""
+
 from __future__ import annotations
 
 from datetime import datetime

@@ -1,3 +1,5 @@
+"""回归测试：图分析 on 模式契约——DAG 时 prepare_schedule_graph_for_dispatch 用单次 full metrics 算出 graph_ready_context（schedulable/fixed/前驱后继/评分 key），零权重退化为 basic 报告并禁用评分，有环时回退 sgs_without_graph_ready_queue 不传 graph_ready_context；GreedyScheduler 在 SGS 下据 graph_ready_context 把种子当固定前驱、按图评分排候选、阻塞失败不释放后继，并对非 SGS、缺评分 key、传图对象、非正整数 op_id、前后继不一致等违约抛 ValidationError。"""
+
 from __future__ import annotations
 
 from contextlib import contextmanager

@@ -1,3 +1,5 @@
+"""回归测试：当排产结果只含外协工序（无内部机时）时，compute_metrics 的 makespan_internal_hours 与 internal_horizon_hours 应为 0、util_defined 为 False，且 to_dict() 投影保持同样语义（不把无内部产能误判为已定义利用率）。"""
+
 import os
 import sys
 from datetime import datetime, timedelta

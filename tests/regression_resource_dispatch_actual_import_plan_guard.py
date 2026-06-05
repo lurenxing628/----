@@ -1,3 +1,5 @@
+"""守护实际执行回填的"当前正式计划"护栏：对历史版本、候选(baseline_best)、场景(scenario)等非当前正式计划的查询，单条 actual、actual-template、import preview/import/confirm 全部以 409 + reason=not_current_official_plan 拒绝，且不落任何执行事件(event_count==0)。"""
+
 from __future__ import annotations
 
 import io

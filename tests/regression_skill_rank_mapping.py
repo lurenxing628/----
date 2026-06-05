@@ -1,3 +1,5 @@
+"""回归测试：ScheduleService 构建 resource_pool 时技能等级须按 beginner/normal/expert 正确映射排名——开启 auto-assign 后，对同一设备上两名都设为主操的人员（OP001=beginner、OP002=expert），自动分配必须选中技能更高的 OP002，而非因技能映射失效把两者并列成未知。"""
+
 import os
 import sys
 import tempfile

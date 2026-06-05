@@ -1,3 +1,5 @@
+"""回归测试：甘特图查看模式（readonly）契约——readonly/readonly_dates/readonly_progress 下拖拽、缩放手柄、进度修改均被拦截（bar 的 x/width/progressWidth 不变、handle 数为 0、on_date_change/on_progress_change 不触发），但 on_click 与 popup 仍生效，且正式 render 把 readonly 选项透传给 Gantt、模板含查看模式提示与缩放控件。"""
+
 from __future__ import annotations
 
 import importlib.util

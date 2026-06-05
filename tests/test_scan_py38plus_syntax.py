@@ -1,3 +1,5 @@
+"""回归测试：tools/scan_py38plus_syntax 扫描器能识别 Python 3.8 之上才有的语法/运行期特性——match-case 等无法被 3.8 解析的语法报 PY38_PARSE_REJECTED，PEP585 泛型别名、PEP604 联合类型、PEP584 字典合并/更新、PEP646 变长泛型等各按规则计数并标注 introduced_in/future_annotations；--syntax-only/include_annotation_runtime=False 时压制注解运行期风险；CLI 的 --json/--fail-on-hit 命中时退出码为 1 并输出 by_rule 统计。"""
+
 from __future__ import annotations
 
 import json

@@ -1,3 +1,5 @@
+"""回归测试：排产持久化遇到空的 validated payload 必须当安全熔断，persist_schedule 抛 reason=no_actionable_schedule_rows 的 ValidationError 且不在 Schedule/History/日志/批次状态留下任何痕迹；raise_no_actionable_schedule_error 优先用根因错误而非缺资源提示，并屏蔽含 Traceback/路径/口令的不安全自动派工错误，工时不合法时仍给「批次工序补充页补齐」提示。"""
+
 import os
 import sqlite3
 import sys

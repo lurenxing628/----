@@ -1,3 +1,5 @@
+"""回归测试：当 result_summary 解析失败/缺失或版本被更新版本取代时，仪表盘、资源派工、执行复盘三处页面把它当作可见数据缺口(「当前排产摘要读取失败」等)而非 500，并据 plan_identity 关闭派工/写现场反馈入口；非法或越界 version 请求、缺失/非法/越界 overdue 与利用率指标都呈现「数据不足」而非伪造 0。"""
+
 from __future__ import annotations
 
 import os

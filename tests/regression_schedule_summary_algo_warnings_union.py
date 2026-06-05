@@ -1,3 +1,5 @@
+"""回归测试：schedule_summary.build_result_summary 优先以 freeze_meta 作为冻结窗口降级的事实源（meta 存在时不被 algo_warnings 里的 legacy 文案覆盖、缺 meta 时回退兼容窄 freeze 警告）；并把 freeze_window/resource_pool/warning_pipeline 降级归一成用户友好文案、剔除内部 error 串、汇总 degraded_success/degraded_causes 与降级计数器。"""
+
 from __future__ import annotations
 
 import sys

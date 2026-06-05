@@ -1,3 +1,5 @@
+"""回归测试：ExternalGroupService.set_merge_mode 在 strict_mode=True 且某工序 per_op_days 为空时，应抛出 ValidationError（field=ext_days_10）并保持原 PartOperations.ext_days 不被覆盖。"""
+
 import os
 import sqlite3
 import sys

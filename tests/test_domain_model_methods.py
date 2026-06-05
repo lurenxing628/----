@@ -1,3 +1,5 @@
+"""单元测试：BatchOperation/PartOperation/Schedule 领域模型的判定方法对带空格大小写的字段做归一化——is_internal/is_external（未知 source 两者皆否）、has_supplier、状态判定（scheduled/processing/completed/skipped/pending、active/deleted）、processing_hours 求和，以及 Schedule 的 is_locked/has_machine/has_operator/has_any_resource。"""
+
 from __future__ import annotations
 
 import pytest

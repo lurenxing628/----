@@ -1,3 +1,5 @@
+"""回归测试：_project_graph_analysis_payload 把工序图分析拆成「对外公开」与「诊断」两份——公开摘要只保留计数（node/edge/critical_path/warning/cycle 等）不含 *_sample/nodes/edges/raw，诊断份对 topo/critical_path/node_metrics/warnings 做采样截断并标 *_truncated、深度 JSON-safe；build_result_summary 把两份分别放进 algo.graph_analysis 与 diagnostics.graph_analysis，已知错误（如缺 networkx）转成顶层 warning 而非 errors。"""
+
 from __future__ import annotations
 
 import json

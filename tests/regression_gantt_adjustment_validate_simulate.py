@@ -1,3 +1,5 @@
+"""回归测试：甘特调整草稿的校验/模拟链路——GanttAdjustmentValidationService.validate_draft 对资源重叠、工序先后、停机/日历窗口、交期与备料风险分别给出 blocked/warning/valid 状态且只读不落正式表；create/record/discard 草稿路由与 validate-simulate 路由可用但未接到甘特页，created_by 强制改写为 web。"""
+
 from __future__ import annotations
 
 import importlib

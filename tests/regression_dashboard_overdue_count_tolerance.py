@@ -1,3 +1,5 @@
+"""回归测试：首页“超期批次”统计卡片对脏 result_summary 容错——当 overdue_batches.count 是非整数（如 "2.9"）时显示“数据不足”并提示“排产摘要里的超期批次数不是整数”，绝不把脏值泄漏或伪装成 0；overdue_batches 为 list 结构时仍能正确数出超期数为 1。"""
+
 from __future__ import annotations
 
 import importlib

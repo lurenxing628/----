@@ -1,3 +1,5 @@
+"""回归测试：scheduler_analysis viewmodel 的 legacy summary 兼容桥——_comparison_metric_from_algo 仅在缺 comparison_metric 与 best_score_schema 时才按 objective 推断指标、不覆盖新字段；build_analysis_context 返回纯数据 payload（objective/schema 标签可 JSON 序列化）并标记 compat_fallback.missing_fields；build_summary_display_state 在缺 degradation_events 时桥接 legacy degraded_causes，有事件时则优先用事件。"""
+
 from __future__ import annotations
 
 import json

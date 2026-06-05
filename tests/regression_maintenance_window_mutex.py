@@ -1,3 +1,5 @@
+"""回归测试：维护窗口（maintenance_window/BackupManager）互斥与失败语义——一个维护操作持锁时，外部 backup() 与第二个 maintenance_window 都以 MaintenanceWindowError(code="busy") 被拒；陈旧锁文件被保守自愈清理；锁状态读取失败、metadata 写入失败/短写均 fail-closed（lock_state_unavailable / lock_metadata_write_failed）并记可诊断 warning、不残留锁；backup() 期间激活窗口阻止并发；restore() 后 ensure_schema 的迁移在同一维护窗口内执行。"""
+
 from __future__ import annotations
 
 import os

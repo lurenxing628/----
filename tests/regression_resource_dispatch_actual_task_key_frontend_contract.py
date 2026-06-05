@@ -1,3 +1,5 @@
+"""回归测试：资源派工执行反馈的 task_key 上报实际路由（/scheduler/resource-dispatch/execution/tasks/<task_key>/actual）能接受前端真实 payload——即使省略 version/schedule_id/operator_id/expected_state_revision 等旧身份字段也返回 200，并据 task_key 与 query 推出身份，按序写出 start、finish 两条事件且记下完工/报废数量。"""
+
 from __future__ import annotations
 
 from typing import Any, Dict

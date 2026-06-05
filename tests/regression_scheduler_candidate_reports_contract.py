@@ -1,3 +1,6 @@
+"""回归测试：/reports/overdue|utilization|downtime 及其 export 在带 plan_role 时按所选候选方案(候选行)取数并保持页内导出链接同方案——
+default_plan_resolution 缺失角色回退 adopted 标 is_fallback/is_comparison；候选非 completed 或源不符回 400 提示「不是已完成状态」；导出文件名带方案标签、导出过滤器记 effective_plan_role/candidate_key；页面与导出文本均不泄露 plan_role、candidate_id、scenario_id、source_table 等内部字段。"""
+
 from __future__ import annotations
 
 import importlib

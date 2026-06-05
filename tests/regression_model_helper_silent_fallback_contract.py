@@ -1,3 +1,5 @@
+"""回归测试：模型层数值解析不得静默兜底——_helpers.parse_int 内部 Decimal 异常应原样抛出而非默认为 0；Batch/BatchOperation/WorkCalendar/OperatorCalendar/PartOperation/Supplier 的 from_row 对坏值（如「坏数据」）必须抛 ValueError，但对空字符串仍保留历史默认（quantity=0、shift_hours=8.0、default_days=1.0、ext_days=None 等）。"""
+
 from __future__ import annotations
 
 import pytest

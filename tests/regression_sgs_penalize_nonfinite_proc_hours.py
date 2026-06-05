@@ -1,3 +1,5 @@
+"""回归测试：SGS 派工（dispatch_sgs）在评分排序阶段遇到工时非有限（setup_hours=inf 不可估算）的候选时直接抛 ValidationError 并把 field 定位到 setup_hours，绝不为其生成惩罚排序 key 后继续正式派工（_schedule_internal 不被调用），即便该候选交期更早。"""
+
 import os
 import sys
 from dataclasses import dataclass

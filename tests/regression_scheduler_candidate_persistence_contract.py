@@ -1,3 +1,5 @@
+"""回归测试：persist_schedule_run_with_candidates 候选方案持久化原子性——一次成功运行同事务写入 Schedule/ScheduleHistory/ScheduleCandidate(2)/ScheduleCandidateRows/ScheduleCandidateSelection(adopted/baseline_best/critical_best 各对应 source_table)并只 op_log 一次精简摘要；selection 写入失败、候选明细 op_id 越出可重排范围、选中/最优角色指向不存在的方案编号时，全部整体回滚且无残留、不落 op_log。"""
+
 from __future__ import annotations
 
 import json

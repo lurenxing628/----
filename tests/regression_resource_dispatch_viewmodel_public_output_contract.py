@@ -1,3 +1,5 @@
+"""回归测试：decorate_resource_dispatch_payload 对外输出契约——op_code 缺失时用业务标题（如 "B001 工序10 数控车床1"）命名 task，补 counterpart_resource_identity_label，且对外 JSON 不泄露内部 op_id 与 schedule_id/op_id/_row_identity 等禁出键。"""
+
 from __future__ import annotations
 
 import json

@@ -1,3 +1,5 @@
+"""回归测试：全新库经 ensure_schema 后调用 ConfigService.ensure_defaults()，应把全部 graph_* 图分析配置项以约定默认值写入 ScheduleConfig（如 graph_analysis_mode=on、graph_selection_policy=balanced、graph_critical_weight=500 等），多一项少一项都视为契约破坏。"""
+
 from __future__ import annotations
 
 import sqlite3

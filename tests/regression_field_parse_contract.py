@@ -1,3 +1,5 @@
+"""回归测试：core.shared.field_parse 的 parse_field_float/parse_field_int 契约——非严格模式下解析失败按中文字段名（不泄露英文 field/scope）记一条 invalid_number 降级并回退，最小值违反走 number_below_minimum 且只解析一次（不回流 parse_compat_float），严格模式仍 fail-fast 抛 ValidationError，collector 缺失时抛 TypeError。"""
+
 from __future__ import annotations
 
 from typing import cast

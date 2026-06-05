@@ -1,3 +1,5 @@
+"""回归测试：上报工序执行异常后，异常详情应贯通呈现于资源派工的明细行、甘特弹窗数据源（/scheduler/resource-dispatch/data）与 Excel 导出（任务明细 sheet）——含现场状态、最近异常原因/严重程度/预计影响、影响设备与人员、处理状态、是否建议重排、情况说明等标签均带中文译名。"""
+
 from __future__ import annotations
 
 import io
@@ -77,4 +79,3 @@ def test_exception_details_are_visible_in_detail_rows_gantt_popup_source_and_exp
     assert row_map["处理状态"] == "等待条件"
     assert row_map["是否建议重排"] == "暂不建议重新排程"
     assert row_map["情况说明"] == "等待维修"
-

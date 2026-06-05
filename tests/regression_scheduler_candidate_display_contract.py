@@ -1,3 +1,5 @@
+"""回归测试：build_candidate_comparison_display 渲染候选方案对比的展示契约——按 plan_role 源表标记基线/关键链候选的「是否等同采用版/仅对比参考」、统计并罗列失败候选、把内部失败原因与时间预算用语翻成用户可懂中文、隐藏 graph_w*/关键链最好 等旧内部标签、且不重复采用方案后缀；并核对模板 _candidate_comparison.html 只用 viewmodel 行与路由生成链接。"""
+
 from __future__ import annotations
 
 import json

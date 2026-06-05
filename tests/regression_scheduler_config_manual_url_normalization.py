@@ -1,3 +1,5 @@
+"""回归测试：排产手册路由的 src/page 规范化——手册缺失时 full_manual_section_url 归一为空字符串；_normalize_scheduler_manual_args 接受同源绝对 src（保留末尾问号）、对非法 page 返回 None 并给出告警；get_manual_url 与直传 src 都会从返回链接里剥掉未知 plan_role（如 future_role）但保留 version/date_from。"""
+
 from __future__ import annotations
 
 import pytest

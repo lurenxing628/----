@@ -1,3 +1,5 @@
+"""回归测试：排产目标中文标签来源于 objective registry 投影的契约——objective_label_for 与 choice_label_map_for("objective") 同源、metric 标签走 metric_label_for；且 _comparison_metric_from_algo 优先取 comparison_metric，其次按 best_score_schema 推断，最后才回退 objective 默认 metric。"""
+
 from __future__ import annotations
 
 from core.algorithms.objective_specs import metric_label_for, objective_choice_labels
