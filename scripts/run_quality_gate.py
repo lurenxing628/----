@@ -2690,7 +2690,32 @@ def _print_long_gate_cache_decisions(entries: Sequence[Dict[str, Any]], *, cache
             if len(invalidated_by) > 10:
                 print(f"    - ... {len(invalidated_by) - 10} more", flush=True)
         _print_fingerprint_diff(entry)
-        _print_full_test_debt_incremental_diagnostics(entry)
+
+
+def _format_fingerprint_component(change: Mapping[str, Any]) -> str:
+    component = str(change.get("component") or "fingerprint")
+    reason = str(change.get("reason") or "input fingerprint changed")
+    details: List[str] = []
+    for key in ("path", "key", "field"):
+        if change.get(key):
+            details.append(f"{key}={change.get(key)}")
+    if not details:
+        for key in ("previous", "current"):
+            if key in change:
+                details.append(f"{key}={change.get(key)!r}")
+    suffix = " " + " ".join(details) if details else ""
+    return f"{component}: {reason}{suffix}"
+
+
+def _print_fingerprint_diff(entry: Mapping[str, Any]) -> None:
+    changes = [dict(item) for item in list(entry.get("fingerprint_diff") or []) if isinstance(item, dict)]
+    if not changes:
+        return
+    print("  fingerprint_changed_components:", flush=True)
+    for change in changes[:20]:
+        print(f"    - {_format_fingerprint_component(change)}", flush=True)
+    if len(changes) > 20:
+        print(f"    - ... {len(changes) - 20} more", flush=True)
 
 
 def _format_fingerprint_component(change: Mapping[str, Any]) -> str:

@@ -8,8 +8,9 @@ full_test_debt_node_cache.json 节点缓存（ledger_only 快路同属此机器�
 P2 治理将缓存语义塌缩为「指纹全中→整体复用上次成功；任何 miss→全量重跑」，
 由 long_gate_cache.evaluate_reuse 的通用路径承担，增量机器整体退役：
 - 不再有特殊执行模式与节点缓存（产物文件不再写出）；
-- NODE_CACHE_REL 常量保留，仅用于 clean-worktree 排除与 git hook 拦截
-  （防旧产物入库），不再读写。
+- NODE_CACHE_REL 常量保留为旧产物路径的锚点（门禁契约测试引用）；
+  clean-worktree 排除与 git hook 拦截走 quality_gate_shared 常量与
+  git_hook_blocked_paths 字面量，二者继续防旧产物入库。
 """
 
 from __future__ import annotations

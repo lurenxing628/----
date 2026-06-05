@@ -1121,8 +1121,6 @@ def _verify_receipt_execution_fields(receipt: Dict[str, Any]) -> Optional[str]:
         "executed",
         "reused_success_cache",
         "resumed_success_prefix",
-        "nodeid_incremental",
-        "ledger_only",
     }:
         return "UNBOUND: quality gate command receipt execution_mode mismatch"
     for field_name in ("timed_out", "interrupted", "partial_write"):
@@ -1142,13 +1140,6 @@ def _verify_receipt_execution_fields(receipt: Dict[str, Any]) -> Optional[str]:
             return "UNBOUND: quality gate command receipt reused_from receipt_path missing"
         if not str(reused_from.get("run_id") or "").strip():
             return "UNBOUND: quality gate command receipt reused_from run_id missing"
-    if execution_mode in {"nodeid_incremental", "ledger_only"}:
-        if not str(reused_from.get("node_cache_path") or "").strip():
-            return "UNBOUND: quality gate command receipt reused_from node_cache_path missing"
-        if not str(reused_from.get("previous_result_path") or "").strip():
-            return "UNBOUND: quality gate command receipt reused_from previous_result_path missing"
-        if not str(reused_from.get("fingerprint_hash") or "").strip():
-            return "UNBOUND: quality gate command receipt reused_from fingerprint_hash missing"
     return None
 
 

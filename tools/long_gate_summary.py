@@ -160,7 +160,6 @@ def build_summary_entry(
         "cache_unavailable": bool(decision.get("cache_unavailable")),
         "fingerprint_error": dict(decision.get("fingerprint_error") or {}),
         "fingerprint_diff": [dict(item) for item in list(decision.get("fingerprint_diff") or [])],
-        "full_test_debt_incremental": dict(decision.get("full_test_debt_incremental") or {}),
         "execution_mode": resolved_execution_mode,
         "returncode": returncode,
         "failed": failed_value,
@@ -199,7 +198,7 @@ def _count_entries(entries: Sequence[Mapping[str, Any]]) -> Dict[str, int]:
         decision = str(entry.get("decision") or "")
         if execution_mode == "reused_success_cache" or decision == "reuse":
             counts["reused"] += 1
-        elif execution_mode in {"executed", "nodeid_incremental", "ledger_only"}:
+        elif execution_mode == "executed":
             counts["executed"] += 1
         elif decision == "planned_only" or execution_mode == "planned_only":
             counts["planned_only"] += 1
@@ -216,7 +215,7 @@ def _entry_duration(entry: Mapping[str, Any], key: str = "duration_s") -> float:
 
 
 def _build_duration_summary(entries: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
-    executed_modes = {"executed", "nodeid_incremental", "ledger_only"}
+    executed_modes = {"executed"}
     total_s = sum(_entry_duration(entry) for entry in entries)
     executed_total_s = sum(
         _entry_duration(entry) for entry in entries if str(entry.get("execution_mode") or "") in executed_modes
@@ -369,36 +368,6 @@ def render_summary_markdown(summary: Mapping[str, Any]) -> str:
                 receipt_path=entry.get("receipt_path") or "",
             )
         )
-    incremental_entries = [
-        entry
-        for entry in list(summary.get("entries") or [])
-        if isinstance(entry, Mapping) and isinstance(entry.get("full_test_debt_incremental"), Mapping)
-    ]
-    incremental_entries = [entry for entry in incremental_entries if dict(entry.get("full_test_debt_incremental") or {})]
-    if incremental_entries:
-        lines.extend(["", "## Full-test-debt incremental", ""])
-        for entry in incremental_entries:
-            plan = dict(entry.get("full_test_debt_incremental") or {})
-            lines.append(f"- entry: {entry.get('entry_id') or ''}")
-            lines.append(f"  - available: {bool(plan.get('available'))}")
-            lines.append(f"  - mode: {plan.get('mode') or ''}")
-            lines.append(f"  - fallback_reason: {plan.get('fallback_reason') or plan.get('reason') or ''}")
-            for key in (
-                "changed_helpers",
-                "declared_helper_impacts",
-                "actual_importing_test_files",
-                "affected_test_files",
-            ):
-                if key in plan:
-                    lines.append(f"  - {key}: {json.dumps(plan.get(key), ensure_ascii=False, sort_keys=True)}")
-            selected = [str(item) for item in list(plan.get("selected_nodeids") or [])]
-            if selected or plan.get("selected_nodeid_count"):
-                count = int(plan.get("selected_nodeid_count") or len(selected))
-                sample = list(plan.get("selected_nodeids_sample") or selected[:10])
-                lines.append(f"  - selected_nodeid_count: {count}")
-                if plan.get("selected_nodeids_hash"):
-                    lines.append(f"  - selected_nodeids_hash: {plan.get('selected_nodeids_hash')}")
-                lines.append(f"  - selected_nodeids_sample: {json.dumps(sample, ensure_ascii=False, sort_keys=True)}")
     failure = summary.get("failure")
     if isinstance(failure, Mapping):
         lines.extend(

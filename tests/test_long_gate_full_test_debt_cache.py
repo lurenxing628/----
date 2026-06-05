@@ -15,7 +15,6 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 import pytest
 
 from tools import long_gate_fingerprint as fingerprint_mod
-from tools import long_gate_full_test_debt as full_debt_mod
 from tools.long_gate_cache import decide_reuse, write_success
 from tools.long_gate_collect import build_collect_nodeids_payload, write_collect_nodeids
 from tools.long_gate_fingerprint import fingerprint_entry
