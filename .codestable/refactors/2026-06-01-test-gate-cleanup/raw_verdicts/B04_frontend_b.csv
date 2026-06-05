@@ -1,0 +1,51 @@
+file,verdict,value,reason,merge_cluster
+tests/regression_gantt_url_persistence.py,KEEP_TRIM,high,"node 实跑 applyUiFromUrl/persistUiToUrl 真逻辑(L204-236)有价值,但 main 的 HTML in html 与 needle in src 源码 grep 快照(L266-297)是脆性尾巴",
+tests/regression_gantt_zoom_contract.py,KEEP,high,"node 实跑 zoom.ZOOM_SPECS/normalizeZoomLevel 与 vendor view_mode 步长几何(L41-101)校验真算法非快照",
+tests/regression_gantt_zoom_decoration_sync.py,KEEP,high,"render 后断言 bar/holiday/today/outline 宽度=duration/step*colWidth 几何公式(L145-158)是真布局算法非像素快照",gantt_zoom_render
+tests/regression_gantt_zoom_range_guard.py,KEEP,high,"实跑 validateZoomRange 硬/软节点与任务上限及 render 守卫 constructorCalls=0/1(L52-65,146-149)真守卫逻辑",
+tests/regression_material_batch_info_layout_contract.py,DROP,low,"纯模板HTML快照:断言中文标签/CSS类aps-table--fixed/data-table-key逐字in source(L17-46)无业务逻辑",template_html_snapshot
+tests/regression_mirror_template_sync.py,DROP,low,"纯文件相等快照:断言6对模板 _read(left)==_read(right) 字节同步(L21-22)是同步守卫非逻辑",template_html_snapshot
+tests/regression_new_ui_strict_mode_controls_present.py,DROP,low,"纯源码grep:断言include指令/ui.toggle调用串与中文标签in模板与viewmodel(L14-26)无逻辑",template_html_snapshot
+tests/regression_page_header_plain_purpose_contract.py,DROP,low,"纯模板快照:断言ui.aps_page_hero串存在/旧class不存在/子串顺序(L23-34)无业务逻辑",template_html_snapshot
+tests/regression_reports_default_range_from_version_span.py,KEEP_TRIM,mid,"真DB播种version9排程跨度再验默认日期范围自动取自该版本(L100-114)行为真但经HTML form value与中文hint逐字匹配脆",reports_route_smoke
+tests/regression_reports_export_version_default_latest.py,KEEP,high,"播种v6/v7区分数据验版本解析(missing/empty/latest->7,invalid->400,999->404)+从生成XLSX读算出的超期/负荷/停机小时(L244-419)真业务逻辑",
+tests/regression_reports_layout_contract.py,DROP,low,"纯HTML/CSS快照:断言aps-report-filter-grid等class与容器查询串与中文标签in source(L21-57)无逻辑",template_html_snapshot
+tests/regression_reports_material_weekplan_pages_smoke.py,MERGE:reports_route_smoke,low,"纯冒烟:7条路由GET断言200无逻辑断言(L58-64)可与其它route smoke参数化合并",reports_route_smoke
+tests/regression_reports_page_version_default_latest.py,KEEP_TRIM,mid,"真验版本解析latest->7/invalid->400/999->404/无history不露v0+日期校验(L66-147)逻辑真但夹value=7 selected/aps-disabled-button等HTML快照",
+tests/regression_reports_workbench_backlink_contract.py,KEEP_TRIM,high,"多场景验报表回链URL上下文透传+导出XLSX scope过滤+compute_downtime_impact真重叠算法(L416-439)有价值但夹report_plan_filter.js与模板源码grep(L240-248)脆性尾",workbench_backlink_nav
+tests/regression_reports_workbench_navigation_contract.py,KEEP_TRIM,high,"实跑build_scheduler/report_navigation_links防交叉接线+plan_role守卫+后端scope过滤+冲突400(L151-493)真导航逻辑但夹ui_macros.html源码grep(L142-148)脆性尾",workbench_backlink_nav
+tests/regression_resource_dispatch_actual_import.py,KEEP,high,"端到端验现场实际导入preview/confirm两段管线:工作簿校验/重复任务码/超期/plan_identity守卫/预览不写库/datetime幂等token/事件序列start-pause-resume-finish(L96-445)真领域逻辑",
+tests/regression_resource_dispatch_actual_import_plan_guard.py,KEEP,high,"验plan_identity守卫:非当前正式/candidate/scenario方案在4个actual端点均409 not_current_official_plan且不写库(L55-123)真守卫逻辑",
+tests/regression_resource_dispatch_actual_records.py,KEEP,high,"全状态机:幂等复用/stale_state_revision/覆盖拒绝/完工早于开工/暂停时长不符与重叠/异常reason映射equipment+high(L40-486)真领域逻辑",
+tests/regression_resource_dispatch_actual_task_key_frontend_contract.py,KEEP_TRIM,mid,"验task_key路由从task_key派生身份接受剥离legacy字段的前端payload+事件序列+数量字符串强转(L54-63)真路由逻辑但夹not in payload自验脆性(L58-60)",
+tests/regression_resource_dispatch_bad_time_rows_surface_degraded.py,KEEP,high,"实跑bad_time_row_sample脱敏与get_dispatch_payload降级:坏时间行跳过/counters/empty_reason/不泄露99:00:00(L30-99)真降级逻辑",
+tests/regression_resource_dispatch_export_surfaces_degraded.py,KEEP,high,"坏JSON history+坏时间行经service/viewmodel/build_workbook后导出查询摘要反映降级:过滤数=1/空结果/超期降级(L80-86)真降级逻辑",resource_dispatch_degraded
+tests/regression_resource_dispatch_invalid_summary_surfaces_overdue_degraded.py,KEEP,high,"坏result_summary JSON经路由surface overdue_markers_degraded=True/partial=False且记warning(L96-99)真降级逻辑",resource_dispatch_degraded
+tests/regression_resource_dispatch_overdue_summary_formats.py,KEEP,high,"纯单测extract_overdue_batch_ids/_with_meta跨canonical/list/legacy格式与degraded/partial分类(L25-70)真解析分类算法",
+tests/regression_resource_dispatch_partial_overdue_summary_surfaces_warning.py,MERGE:resource_dispatch_overdue_surface,mid,"与invalid_summary_surfaces_overdue_degraded同一路由surface不同输入(partial分支)共享_build_app应参数化合并(L99-104)",resource_dispatch_overdue_surface
+tests/regression_resource_dispatch_public_output_contract.py,KEEP_TRIM,high,"实跑decorate+build_workbook+filename+sanitizer验公开标签映射/不泄露internal枚举与op_id/非法字符清洗/日历明细构造(L89-329)真公开边界转换但末尾resource_dispatch.html源码grep(L332-336)脆",
+tests/regression_resource_dispatch_result_status_label_contract.py,KEEP,high,"failed/simulated正式结果不标current-official且can_dispatch/can_write_feedback=False(L20-26)真plan_identity守卫逻辑",plan_identity_guardrails
+tests/regression_resource_dispatch_site_records_frontend_contract.py,KEEP_TRIM,mid,"4个测真后端守卫_execution_review_link/_request_kwargs/incomplete-plan 400(L204-294)值得留但主体是JS/CSS/模板逐字串in source海量快照(L41-89,303-463)应删",disguised_js_snapshot
+tests/regression_resource_dispatch_task_id_encoding.py,KEEP,high,"纯单测build_dispatch_tasks/row_identity/build_single_scope_payload:task_id跨范围稳定/不泄露internal_op_id/不同资源可区分/依赖安全前缀(L58-401)真算法",
+tests/regression_resource_dispatch_viewmodel_public_output_contract.py,KEEP,high,"实跑decorate_resource_dispatch_payload:op_code缺失时用业务标题B001工序10/递归校验无schedule_id/op_id泄露(L65-79)真viewmodel边界转换",public_output
+tests/regression_resource_dispatch_workbench_lane_contract.py,KEEP_TRIM,high,"真测build_task_card与node实跑resource_execution_cards.js DOM回退及delta计算晚12分钟/早2分钟(L162-268)有价值但夹template/script顺序/JS源码grep(L100-159,207-215)脆性",disguised_js_snapshot
+tests/regression_schedule_input_builder_template_missing_surfaces_event.py,KEEP,high,"实跑build_algo_operations:template_missing事件surface/merge_context_degraded/ext_days保留/strict模式fail-fast抛ValidationError field=template(L48-64)真算法",
+tests/regression_scheduler_analysis_candidate_links_and_roles.py,KEEP_TRIM,high,"实跑analysis页candidate对比行role/label/links与明细未存/失败/跳过/状态过期时隐藏链接(L68-261)真viewmodel但夹AST验常量单一定义结构守卫(L48-65)",scheduler_analysis_candidate
+tests/regression_scheduler_analysis_template_parts.py,DROP,low,"纯Jinja模板快照:include顺序索引比对+渲染后断言中文文案与CSS类aps-summary-item-danger逐字(L42-199)无业务逻辑",template_html_snapshot
+tests/regression_scheduler_analysis_viewmodel_split.py,KEEP,high,"实跑build_analysis_context/extract_metrics/build_freeze_display:context键集/freeze状态映射/compat_fallback/非有限值与bool判不可信展示无法安全展示(L104-232)真viewmodel算法",
+tests/regression_scheduler_analysis_workbench_layout.py,KEEP_TRIM,high,"实跑analysis_action_hub链接上下文透传/日期缺失禁用/可见文案无内部术语(L102-248)真viewmodel但夹模板include顺序source grep(L79-99)脆性",scheduler_analysis_candidate
+tests/regression_scheduler_batch_template_warning_surface.py,KEEP,high,"真路由:无外协供应商建批surface warning flash且批次/工序真落库+告警截断显示3条与另有N条余数去重(L98-262)真业务逻辑",
+tests/regression_scheduler_batches_presenter_contract.py,KEEP,high,"纯单测build_latest_schedule_history_panel_state:真零指标保留/严格校验未知策略与模式/缺失或非数字或bool或NaN指标各报特定错误/降级与解析提醒构造(L47-458)真校验算法",
+tests/regression_scheduler_candidate_analysis_contract.py,KEEP,high,"共享fixture基且自带真测:candidate对比行role/label/链接与is_comparison标记及资源日期上下文透传(L351-457)真viewmodel被多文件依赖不可删",scheduler_analysis_candidate
+tests/regression_scheduler_candidate_analysis_links_contract.py,KEEP,high,"实跑build_candidate_comparison_display:基准对比算多3少2持平/仅3角色守卫/缺指标暂无数据/多种完整性错误分类(L150-420)真viewmodel算法",scheduler_analysis_candidate
+tests/regression_scheduler_candidate_config_contract.py,KEEP_TRIM,high,"真测config字段默认/choices/严格数字校验/preset归一向后兼容/orchestrator按graph_analysis_mode开关方案对比与runtime字段透传(L195-403)真逻辑但夹模板缺串grep(L306-313)脆性尾",
+tests/regression_scheduler_candidate_display_contract.py,KEEP_TRIM,high,"实跑build_candidate_comparison_display:按source_table判对比态/失败跳过候选surface/内部失败原因译为用户话/隐藏旧标签(L38-182)真viewmodel但夹_candidate_comparison.html源码grep(L17-35)脆性",scheduler_analysis_candidate
+tests/regression_scheduler_candidate_gantt_plan_role_contract.py,KEEP_TRIM,high,"端到端gantt/data plan_role解析读候选行/critical_chain不可用降级公开契约不泄露内部id/无效角色回退adopted/超期标记从候选行算不复用历史(L218-482)真逻辑但夹gantt页HTML与boot.js substring(L386-402)脆性",
+tests/regression_scheduler_candidate_generation_contract.py,KEEP,high,"纯单测generate_candidate_specs:候选key/kind/权重阶梯/下游权重ladder/支持的weight_count/拒绝非法count与bool负权重(L16-80)真算法",
+tests/regression_scheduler_candidate_health_contract.py,KEEP,high,"纯单测evaluate_candidate_health分类better/worse/same/unavailable:关键链完工与等待delta/双信号阈值/sample-only拒绝(L46-195)真算法",
+tests/regression_scheduler_candidate_performance_guard.py,ISOLATE_PERF,mid,"主体用EXPLAIN QUERY PLAN/trace断言用idx_schedule_version_time等索引且不扫ScheduleCandidateRows(L174-192)是性能索引守卫易随SQLite环境抖应隔离;内含时间跨度值与级联清理真correctness",
+tests/regression_scheduler_candidate_persistence_contract.py,KEEP,high,"真事务持久化:候选history+rows一次写入/selection角色与source_table与detail_saved/op_logger摘要去内部候选/失败或越界op_id或缺失key全回滚无残留(L223-404)真逻辑",
+tests/regression_scheduler_candidate_plain_language.py,KEEP_TRIM,high,"实跑build_candidate_comparison_display/build_diagnostic_sections/format_public_datetime:推荐卡白话/未完成不伪造/坏值译公开错误标签/不泄露内部字段(L90-448)真viewmodel但夹_candidate_comparison.html源码grep(L181-256)脆性",scheduler_analysis_candidate
+tests/regression_scheduler_candidate_plan_query_contract.py,KEEP,high,"全面测SchedulePlanQueryService:adopted vs候选行同字段形/legacy回退/未知角色拒/时间跨度与派工scope与超期基行从候选行取/多种完整性拒绝路径(L232-615)真查询解析算法",
+tests/regression_scheduler_candidate_py38_contract.py,DROP,self-ref,"门禁自指源码扫:正则+AST扫硬编码文件列表(含本测自身)查PEP585/X|None与重驱动import与CDN URL(L81-96)纯源码grep无业务逻辑应由CI/linter守",
+tests/regression_scheduler_candidate_reports_contract.py,KEEP,high,"端到端报表plan_role:默认解析回退/页面与导出用候选行MC_CANDIDATE非MC_ADOPTED/导出filters记effective_plan_role与candidate_key/算出超期4.0停机2.0/未完成拒400不泄露内部/缺角色回退adopted且诊断链接带plan_role(L224-475)真逻辑",

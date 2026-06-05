@@ -1,0 +1,39 @@
+file,verdict,value,reason,merge_cluster
+tests/regression_route_parser_strict_mode_rejects_supplier_fallback.py,KEEP,high,"strict_mode 路线解析对缺供应商/零周期/脏映射的 FAILED/PARTIAL/warning 分支真实断言 route_parser.py:68 多分支",
+tests/regression_route_parser_supplier_default_days_zero_trace.py,MERGE:route_parser_supplier_default_days,high,"supplier default_days=0 回退1.0+PARTIAL+warning 与 strict 文件同测 route_parser 供应商周期契约",route_parser_supplier_default_days
+tests/regression_sanitize_batch_dates_single_digit.py,KEEP,high,"真实 ensure_schema 迁移清洗 due_date 单数字日期归一化 ISO database.py:ensure_schema 验证版本升级",
+tests/regression_scheduler_batch_detail_merge_hint_fast_path.py,KEEP,high,"_build_view_ops 真实验证 external-only fast-path merge hint 调用计数+回退路径 scheduler_batch_detail.py:_build_view_ops",
+tests/regression_scheduler_batch_detail_route_contract.py,KEEP,high,"真实 Flask 路由经 g.services 注入渲染 batch detail 校验 operations/options 装配 scheduler_batch_detail.py:bp",
+tests/regression_scheduler_batches_degraded_visibility.py,KEEP_TRIM,mid,"build_summary_display_state/history失败不吞 真逻辑 scheduler_summary_display.py 但夹大量模板字符串/CSS class in-source 快照断言(line119-238 reuse/template surfaces)",
+tests/regression_scheduler_excel_batches_helper_injection_contract.py,KEEP_TRIM,mid,"_batch_baseline_extra_state 真验 autobuild snapshot 委派逻辑 scheduler_excel_batches.py 但 line41-56 inspect.signature 参数名快照属脆性",
+tests/regression_scheduler_excel_batches_preview_baseline_precision.py,KEEP,high,"真实 E2E preview->confirm 校验供应商 default_days/status 漂移触发 stale 重传 scheduler_excel_batches confirm 路由",
+tests/regression_scheduler_excel_calendar_strict_numeric.py,KEEP_TRIM,mid,"真验 calendar preview 拒绝 bool/NaN/Inf parse_finite_float scheduler_excel_calendar.py 但 line101-111 badge-error/badge-new CSS class 计数属 HTML 快照",
+tests/regression_scheduler_excel_calendar_uses_executor.py,KEEP,high,"真验 calendar confirm 路由委派 execute_preview_rows_transactional 校验 preview_rows/mode/源行号清洗+统计提示 scheduler_excel_calendar.py:confirm",
+tests/regression_scheduler_graph_operation_logs_contract.py,KEEP,high,"真验 persist_schedule 操作日志只留 graph public keys 排除 diagnostics/sample 等 _FORBIDDEN_LOG_KEYS schedule_persistence.py:persist_schedule",
+tests/regression_seed_results_dedup.py,MERGE:seed_results_dedup,high,"GreedyScheduler seed_results 与 operations 重叠时 op_id 去重不重复排产 core.algorithms 同 seed dedup 簇",seed_results_dedup
+tests/regression_seed_results_drop_duplicate_op_id_and_bad_time.py,MERGE:seed_results_dedup,high,"GreedyScheduler 去重重复 seed op_id + 忽略坏时间 seed + warnings 透出 core.algorithms 同 seed dedup 簇共享 _StubCalendarService 脚手架",seed_results_dedup
+tests/regression_seed_results_freeze_missing_resource.py,MERGE:seed_results_dedup,high,"GreedyScheduler seed 缺 machine/operator 时按可用字段冻结资源避免重叠 core.algorithms 同 seed dedup 簇",seed_results_dedup
+tests/regression_seed_results_invalid_op_id_dedup.py,MERGE:seed_results_dedup,high,"GreedyScheduler seed op_id<=0 时按 op_code/(batch,seq) 回填真实 id 去重 core.algorithms 同 seed dedup 簇",seed_results_dedup
+tests/regression_sgs_scoring_machine_operator_id_type_safe.py,KEEP,high,"复现历史BUG:SGS评分阶段 machine/operator_id 为 int 时不应崩溃静默回退 candidates[0] 应按交期选更紧急 core.algorithms GreedyScheduler.schedule",
+tests/regression_supplier_effective_selection_contract.py,MERGE:route_parser_supplier_default_days,high,"RouteParser._build_supplier_map 取最大supplier_id为effective+仅active+忽略非effective脏issue route_parser.py 同供应商选择契约簇",route_parser_supplier_default_days
+tests/regression_supplier_service_invalid_default_days_not_silent.py,KEEP,high,"SupplierService create/update 非法 default_days 抛 ValidationError 且不落库 supplier_service.py:create/update 真DB验证",
+tests/regression_unit_excel_converter_diagnostics_visible.py,KEEP_TRIM,mid,"UnitExcelConverter.convert 诊断 counters/samples 真逻辑 unit_excel_converter.py 但 line149-154 断言脚本 stdout 中文整句文案属脆性文本快照",
+tests/regression_unit_excel_converter_duplicate_part_rows_no_override.py,KEEP,high,"UnitExcelConverter 多工步累计工时(setup/unit)且重复图号行不覆盖 unit_excel_converter.py:convert 数值逻辑",
+tests/regression_unit_excel_converter_facade_binding.py,DROP,low,"纯结构守卫:inspect.getsource count class定义=1 + hasattr(_parser/_builder/_exporter) + 旧方法不存在 facade_binding.py:22-37 重构脚手架快照非业务逻辑",
+tests/regression_unit_excel_converter_merge_steps_and_classify.py,KEEP_TRIM,high,"UnitExcelConverter 工步并工序/内外协判定/人员解析/工种改名/工时累计真逻辑 unit_excel_converter.py 但 _assert_op_type_output_layout:126-144 断言xlsx freeze_panes/font/列宽属布局快照",
+tests/run_complex_excel_cases_e2e.py,ISOLATE_PERF,high,"随机fuzz E2E 全链路import->schedule->export 6 case x repeat + sanity(资源冲突/停机避让/merged一致性) 慢且生成evidence/argparse 应隔离非删 line1772 main argparse",
+tests/smoke_e2e_excel_to_schedule.py,ISOLATE_PERF,high,"全链路happy-path smoke:全模块Excel导入->排产->甘特/周计划/报表/物料->OperationLogs键名抽检 慢全app E2E 写evidence line138 main 应隔离非删",
+tests/test_equipment_page_downtime_overlay_degraded.py,KEEP,mid,"设备页计划停机overlay 正常展示 vs 查询失败降级:错误提示surface+logger记录+无traceback equipment_pages.py 真降级行为(断言文案即契约)",
+tests/test_excel_import_hardening.py,KEEP,high,"Excel导入加固群:数量float拒绝/零id非空白/重复id检测/日历bool-NaN-inf拒绝/上传413限额/公式注入防御sanitize excel_validators+excel_templates 多真逻辑",
+tests/test_excel_renamed_column_conflicts.py,KEEP,high,"normalize_renamed_column 旧列归一+冲突拒绝+机器旧列别名兼容+不落库 excel_column_renames.py/op_type/supplier/machine import 真逻辑(冲突文案即契约)",
+tests/test_excel_utils_compare_digest_guard.py,KEEP_TRIM,mid,"preview_baseline_matches token比对/compare_digest异常降级/拒明文json 真wrapper逻辑 excel_utils.py 但 line127-193 AST遍历 web/routes 强制confirm路由调用顺序属结构lint守卫",
+tests/test_machine_excel_import_apply_defense.py,MERGE:excel_import_apply_defense,high,"MachineExcelImportService.apply_preview_rows 状态非法回滚/缺名/trim/班组ID或名/update保留team 真DB契约 同import_apply_defense簇共享_load_schema+_pr脚手架",excel_import_apply_defense
+tests/test_op_type_excel_import_apply_defense.py,MERGE:excel_import_apply_defense,high,"OpTypeExcelImportService.apply_preview_rows 行级error计数+重名create/update拒绝 真DB契约 同import_apply_defense簇",excel_import_apply_defense
+tests/test_operator_excel_import_normalization.py,MERGE:excel_import_apply_defense,high,"OperatorExcelImportService.apply_preview_rows strip姓名/状态归一/备注空白->None/班组ID或名/update保team 真DB契约 同import_apply_defense簇",excel_import_apply_defense
+tests/test_operator_machine_excel_route_error_handling.py,KEEP,mid,"人员设备关联preview内部RuntimeError不泄露到响应体 返回500+通用'服务器内部错误' 真错误处理边界 operator_machine_normalizers via factory create_app_core",
+tests/test_operator_machine_exception_paths.py,KEEP,high,"技能/主操归一化:ValueError->ValidationError/fallback而RuntimeError必须上抛不吞 跨read/preview/write/query operator_machine_service.py 错误分类契约",
+tests/test_part_operation_hours_import_apply_defense.py,MERGE:excel_import_apply_defense,high,"PartOperationHoursExcelImportService _parse_write_row数字形态+apply_preview_rows NaN/Inf转行级error 同import_apply_defense簇",excel_import_apply_defense
+tests/test_part_operation_hours_import_apply_mixed_rows.py,MERGE:excel_import_apply_defense,high,"PartOperationHoursExcelImportService.apply_preview_rows 合法提交+行级错误不回滚+意外异常整体回滚事务 同import_apply_defense簇真DB契约",excel_import_apply_defense
+tests/test_phase6_no_result_summary_route_parser.py,DROP,low,"纯源码grep结构守卫:断言'json.loads'/'parse_result_summary_payload'/'except Exception'在web/routes+core/models若干文件中存在或不存在 line11-57 无运行时行为属重构快照",
+tests/test_supplier_excel_import_remark_normalization.py,MERGE:excel_import_apply_defense,high,"SupplierExcelImportService.apply_preview_rows 零id非空白/备注归一/overwrite缺列保留status+remark/空默认周期拒绝 同import_apply_defense簇",excel_import_apply_defense
+tests/test_team_pages_excel_smoke.py,KEEP_TRIM,mid,"班组列贯通:模板/导出xlsx列头契约+非法team_id重定向302 真行为 team_pages 但夹大量HTML body中文标签('班组管理'/'车工一组'/'班组筛选')页面快照断言",
