@@ -1,4 +1,4 @@
-"""pytest 收集插件：把 tests/ 下「只有 main() 没有 def test_」的 regression_*.py 收集为独立用例，经子进程跑 main_style_regression_runner.py 执行；并按 test_debt_registry 把登记的债务节点统一打上 strict xfail。"""
+"""pytest 收集插件：把 tests/ 下「只有 main() 没有 def test_」的 regression_*.py 收集为独立用例，经子进程跑 main_style_regression_runner.py 执行；按 test_debt_registry 把登记的债务节点统一打上 strict xfail；并按 tools.test_registry 的门禁必跑清单自动给对应文件的用例打 `required` marker（人用入口：pytest -m required）。"""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from tools.test_debt_registry import active_xfail_entries_by_nodeid  # noqa: E402,I001
+from tools.test_registry import iter_required_tests  # noqa: E402
 
 
 _MAIN_DEF_RE = re.compile(r"(?m)^\s*def\s+main\s*\(")
@@ -61,12 +62,20 @@ def _test_debt_xfail_reason(entry) -> str:
     return f"{entry['debt_id']}: {entry['reason']}"
 
 
+def _required_test_paths() -> frozenset:
+    return frozenset(str(path).replace("\\", "/") for path in iter_required_tests())
+
+
 def pytest_collection_modifyitems(items):
     entries_by_nodeid = active_xfail_entries_by_nodeid()
+    required_paths = _required_test_paths()
     for item in items:
         entry = entries_by_nodeid.get(str(item.nodeid))
         if entry is not None:
             item.add_marker(pytest.mark.xfail(reason=_test_debt_xfail_reason(entry), strict=True))
+        nodeid_path = str(item.nodeid).split("::", 1)[0].replace("\\", "/")
+        if nodeid_path in required_paths:
+            item.add_marker(pytest.mark.required)
 
 
 class RegressionMainFile(pytest.File):

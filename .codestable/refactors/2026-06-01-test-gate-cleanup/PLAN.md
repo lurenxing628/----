@@ -30,10 +30,11 @@ cd /Users/lurenxing/Documents/GitHub/----
 ```bash
 .venv/bin/python -m pytest --collect-only -q tests > /dev/null
 .venv/bin/python tools/check_full_test_debt.py --sharded --shard-count 3
-.venv/bin/python tools/verify_required_regressions_from_full_test_debt.py
+.venv/bin/python tools/verify_required_regressions_from_full_test_debt.py  # P2 后为只读核销 CLI(不写文件)
 .venv/bin/python scripts/sync_debt_ledger.py check
 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
 ```
+> P2.2-M4 后人工直跑必跑回归的入口：`pytest -m required`（conftest 按 registry 分组自动打标，1821 个 nodeid）。
 
 ### 1.5 红线
 - 不改 run_quality_gate.py 对外 CLI

@@ -1,4 +1,4 @@
-"""契约测试：长门禁 required-regressions 父条目的缓存与指纹——父条目须与真实命令计划一致、作用域为分组注册表 scope 并集（无关 markdown 不入指纹）、成功才写父证明并在下次复用、篡改/缺子证明/缺验证器证明一律 fail-closed 重跑、--explain/--no-cache/--force-rerun 各自的缓存语义。"""
+"""契约测试：长门禁 required-regressions 条目的缓存与指纹（P2 证明捆绑已退役）——条目须与真实命令计划一致、作用域为分组注册表 scope 并集（无关 markdown 不入指纹）、成功才写标准成功凭证并在下次复用、篡改凭证/日志一律 fail-closed 重跑、required 失败不得刷新成功缓存、--explain/--no-cache/--force-rerun 各自的缓存语义。"""
 
 from __future__ import annotations
 
@@ -237,30 +237,13 @@ def test_required_success_writes_parent_proof_and_reuses_next_run(monkeypatch, t
     assert proof["test_count"] == len(required_targets)
     assert proof["required_target_count"] == len(required_targets)
     assert proof["required_target_paths"] == required_targets
-    assert proof["verified_required_nodeid_count"] == len(required_targets)
-    assert proof["verified_required_nodeids_hash"]
-    assert proof["required_nodeid_count_by_path"] == {path: 1 for path in required_targets}
-    assert proof["source_payload_path"] == "evidence/QualityGate/current_full_test_debt.json"
-    assert proof["source_payload_collected_count"] == len(required_targets)
-    assert proof["source_payload_report_count"] == len(required_targets)
     assert proof["schema_version"] == 4
-    assert proof["group_count"] == len(proof["groups"])
-    assert proof["group_child_proof_count"] == len(proof["groups"])
-    assert proof["required_regression_group_coverage"]["missing"] == []
-    assert proof["required_regression_group_coverage"]["unknown"] == []
-    assert proof["required_regression_group_coverage"]["duplicates"] == []
-    for group in proof["groups"]:
-        child_path = repo_root / str(group["child_proof_path"]).replace("\\", "/")
-        child = json.loads(child_path.read_text(encoding="utf-8"))
-        assert child["parent_schema_version"] == 4
-        assert child["group_id"] == group["group_id"]
-        assert child["required_target_paths"] == group["required_target_paths"]
-        assert child["verified_required_nodeids"] == group["verified_required_nodeids"]
+    assert "groups" not in proof
+    assert "group_child_proof_paths" not in proof
     assert proof["stdout_log_path"] == "evidence/QualityGate/long_gate/logs/required_regressions.stdout.log"
     assert proof["stderr_log_path"] == "evidence/QualityGate/long_gate/logs/required_regressions.stderr.log"
     output_file_paths = {str(row["path"]) for row in success_cache["output_files"]}
-    assert "evidence/QualityGate/required_regressions.json" in output_file_paths
-    assert set(proof["group_child_proof_paths"]).issubset(output_file_paths)
+    assert output_file_paths == {"evidence/QualityGate/required_regressions.json"}
     assert _summary_entry(first_summary, ENTRY_REQUIRED_REGRESSIONS)["execution_mode"] == "executed"
     assert "required_regressions_groups" not in _summary_entry(first_summary, ENTRY_REQUIRED_REGRESSIONS)
 
@@ -283,11 +266,6 @@ def test_required_success_writes_parent_proof_and_reuses_next_run(monkeypatch, t
             "{bad json",
             encoding="utf-8",
         ),
-        lambda repo_root: next((repo_root / "evidence" / "QualityGate" / "required_regressions").glob("*.json")).unlink(),
-        lambda repo_root: next((repo_root / "evidence" / "QualityGate" / "required_regressions").glob("*.json")).write_text(
-            "{bad child json",
-            encoding="utf-8",
-        ),
     ],
 )
 def test_required_tampered_parent_cache_reruns_parent(monkeypatch, tmp_path, mutate):
@@ -305,64 +283,6 @@ def test_required_tampered_parent_cache_reruns_parent(monkeypatch, tmp_path, mut
     assert required_display in _call_displays(calls)
     assert summary_entry["execution_mode"] == "executed"
     assert "required_regressions_groups" not in summary_entry
-
-
-def test_required_success_cache_without_declared_child_proofs_reruns_parent(monkeypatch, tmp_path):
-    ctx = _prepare_gate_run_context(monkeypatch, tmp_path)
-    module = ctx.module
-    repo_root = ctx.repo_root
-    command_plan = ctx.command_plan
-    required_display = _entry_display(command_plan, repo_root, ENTRY_REQUIRED_REGRESSIONS)
-    _seed_required_success(module, monkeypatch, repo_root, command_plan)
-    success_path = _success_path(repo_root, ENTRY_REQUIRED_REGRESSIONS)
-    success_payload = json.loads(success_path.read_text(encoding="utf-8"))
-    success_payload["output_files"] = [
-        row
-        for row in list(success_payload.get("output_files") or [])
-        if str(row.get("path") or "") == "evidence/QualityGate/required_regressions.json"
-    ]
-    success_path.write_text(json.dumps(success_payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
-
-    calls = _run_gate_with_fake_commands(module, monkeypatch, repo_root, command_plan, ["--long-gate-cache"])
-    summary_entry = _summary_entry(_load_summary(repo_root), ENTRY_REQUIRED_REGRESSIONS)
-
-    assert required_display in _call_displays(calls)
-    assert summary_entry["execution_mode"] == "executed"
-
-
-def test_required_verifier_missing_proof_fails_closed(monkeypatch, tmp_path):
-    ctx = _prepare_gate_run_context(monkeypatch, tmp_path)
-    module = ctx.module
-    repo_root = ctx.repo_root
-    command_plan = ctx.command_plan
-    required_display = _entry_display(command_plan, repo_root, ENTRY_REQUIRED_REGRESSIONS)
-    calls: List[Dict[str, object]] = []
-    base_fake = _fake_successful_command(command_plan, repo_root, calls)
-
-    def fake_run_command(display, args, capture_output=False, env_overlay=None):
-        if display == required_display:
-            calls.append(
-                {
-                    "display": str(display),
-                    "args": [str(arg) for arg in list(args or [])],
-                    "capture_output": bool(capture_output),
-                    "env_overlay": dict(env_overlay or {}),
-                }
-            )
-            return {
-                "stdout": "required verifier reported success but did not write proof\n",
-                "stderr": "",
-                "returncode": 0,
-            }
-        return base_fake(display, args, capture_output=capture_output, env_overlay=env_overlay)
-
-    monkeypatch.setattr(module, "_run_command", fake_run_command)
-
-    with pytest.raises(module.QualityGateError, match="required regressions verifier 证明不可用"):
-        module.main(["--long-gate-cache"])
-
-    assert required_display in _call_displays(calls)
-    assert not _success_path(repo_root, ENTRY_REQUIRED_REGRESSIONS).exists()
 
 
 @pytest.mark.parametrize(
@@ -619,7 +539,7 @@ def test_explain_does_not_write_required_proof(monkeypatch, tmp_path, capsys):
     assert not _proof_path_for_entry(repo_root, ENTRY_REQUIRED_REGRESSIONS).exists()
 
 
-def test_no_cache_ignores_existing_required_cache_and_keeps_verifier_proof(monkeypatch, tmp_path):
+def test_no_cache_ignores_existing_required_cache_and_executes_verifier(monkeypatch, tmp_path):
     ctx = _prepare_gate_run_context(monkeypatch, tmp_path)
     module = ctx.module
     repo_root = ctx.repo_root
@@ -636,11 +556,9 @@ def test_no_cache_ignores_existing_required_cache_and_keeps_verifier_proof(monke
     calls = _run_gate_with_fake_commands(module, monkeypatch, repo_root, command_plan, ["--no-long-gate-cache"])
 
     assert required_display in _call_displays(calls)
-    proof_path = _proof_path_for_entry(repo_root, ENTRY_REQUIRED_REGRESSIONS)
-    assert proof_path.exists()
-    proof = json.loads(proof_path.read_text(encoding="utf-8"))
-    assert proof["verification_method"] == "full_test_debt_payload_required_coverage"
-    assert proof["verified_required_nodeid_count"] > 0
+    # P2 证明捆绑退役后：核销器是只读 CLI、缓存凭证只在 --long-gate-cache 模式写出，
+    # 无缓存模式不重建 required_regressions.json。
+    assert not _proof_path_for_entry(repo_root, ENTRY_REQUIRED_REGRESSIONS).exists()
 
 
 def test_force_rerun_required_executes_parent_instead_of_reusing(monkeypatch, tmp_path):

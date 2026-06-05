@@ -439,25 +439,6 @@ def _output_files_cover_declared_paths(repo_root: str, entry: Mapping[str, Any],
     for rel_path in declared:
         if rel_path not in cached_paths:
             return f"previous output files missing required path: {rel_path}"
-    if str(entry.get("entry_id") or "") == "required_regressions":
-        parent_rel = "evidence/QualityGate/required_regressions.json"
-        try:
-            with open(_abs_from_rel(repo_root, parent_rel), encoding="utf-8") as handle:
-                parent_payload = json.load(handle)
-        except (OSError, ValueError):
-            return "previous output files missing required_regressions child proof metadata"
-        if not isinstance(parent_payload, dict):
-            return "previous output files missing required_regressions child proof metadata"
-        child_paths = [
-            str(path or "").replace("\\", "/")
-            for path in list(parent_payload.get("group_child_proof_paths") or [])
-            if str(path or "").strip()
-        ]
-        if not child_paths:
-            return "previous output files missing required_regressions child proofs"
-        for child_path in child_paths:
-            if child_path not in cached_paths:
-                return f"previous output files missing required path: {child_path}"
     return None
 
 

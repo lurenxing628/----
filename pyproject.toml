@@ -5,6 +5,9 @@ requires-python = ">=3.8"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py", "regression_*.py"]
+markers = [
+    "required: 门禁必跑回归(按 tools.test_registry 分组登记自动打标)；人用入口 pytest -m required",
+]
 
 [tool.ruff]
 target-version = "py38"

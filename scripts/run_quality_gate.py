@@ -22,7 +22,6 @@ if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
 from tools import quality_gate_shared  # noqa: E402
-from tools import verify_required_regressions_from_full_test_debt as required_regressions_verifier  # noqa: E402
 from tools.architecture_scan_cache import architecture_scan_cache_metadata  # noqa: E402
 from tools.long_gate_cache import evaluate_failure_reuse, evaluate_reuse  # noqa: E402
 from tools.long_gate_cache import resolve_cache_dir as resolve_long_gate_cache_dir
@@ -1680,41 +1679,6 @@ def _is_required_regressions_verifier_args(args: Sequence[str]) -> bool:
     return list(args)[:2] == ["python", "tools/verify_required_regressions_from_full_test_debt.py"]
 
 
-def _load_required_regressions_verifier_proof(abs_path: str) -> Dict[str, Any]:
-    loaded = _load_json_file(abs_path)
-    if loaded.payload is None:
-        raise QualityGateError(f"required regressions verifier 证明不可用：{loaded.error}")
-
-    payload = dict(loaded.payload)
-    if int(payload.get("schema_version") or 0) != REQUIRED_REGRESSIONS_PROOF_SCHEMA_VERSION:
-        raise QualityGateError(
-            "required regressions verifier 证明 schema_version 不是 "
-            f"{REQUIRED_REGRESSIONS_PROOF_SCHEMA_VERSION}"
-        )
-    if str(payload.get("verification_method") or "") != "full_test_debt_payload_required_coverage":
-        raise QualityGateError("required regressions verifier 证明缺少 full-test-debt 覆盖校验口径")
-    required_fields = (
-        "verified_required_nodeid_count",
-        "verified_required_nodeids_hash",
-        "required_nodeid_count_by_path",
-        "group_count",
-        "groups",
-        "required_regression_group_coverage",
-        "source_payload_path",
-        "source_payload_collected_count",
-        "source_payload_report_count",
-    )
-    missing = [field for field in required_fields if field not in payload]
-    if missing:
-        raise QualityGateError("required regressions verifier 证明缺少字段：" + ", ".join(missing))
-    groups = payload.get("groups")
-    if not isinstance(groups, list) or not groups:
-        raise QualityGateError("required regressions verifier 证明缺少分组 child proof 输入")
-    if int(payload.get("group_count") or 0) != len(groups):
-        raise QualityGateError("required regressions verifier 证明 group_count 与 groups 不一致")
-    return payload
-
-
 def _write_startup_runtime_regressions_proof(
     entry: Dict[str, Any],
     result: Dict[str, Any],
@@ -1849,22 +1813,6 @@ def _write_required_regressions_proof(
             "stderr": stderr_log_row,
         },
     }
-    if uses_full_test_debt_verifier:
-        verifier_payload = _load_required_regressions_verifier_proof(abs_path)
-        merged_payload = dict(verifier_payload)
-        merged_payload.update(payload)
-        payload = merged_payload
-    if uses_full_test_debt_verifier:
-        payload = required_regressions_verifier.write_required_regressions_proof_bundle(
-            abs_path,
-            payload,
-            repo_root=REPO_ROOT,
-        )
-        child_paths = [
-            str(path).replace("\\", "/")
-            for path in list(payload.get("group_child_proof_paths") or [])
-        ]
-        return [rel_path, *child_paths]
     os.makedirs(os.path.dirname(abs_path), exist_ok=True)
     with open(abs_path, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, ensure_ascii=False, indent=2, sort_keys=True)

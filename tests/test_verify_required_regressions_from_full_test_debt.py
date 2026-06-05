@@ -1,4 +1,4 @@
-"""回归测试：verify_required_regressions_from_full_test_debt 从 full-test-debt payload 验证必跑回归并产出证明——main 写出 schema_version=4、status=passed 的父证明与按 group 拆分的子证明（required_target_paths/verified_required_nodeids）；当某必跑文件未被 payload 覆盖、存在非通过 report、或阻断分类（candidate_test_debt 等）非空时抛 RequiredRegressionProofError。"""
+"""回归测试：verify_required_regressions_from_full_test_debt 从 full-test-debt payload 核销必跑回归（P2 证明捆绑已退役）——main 是纯只读 CLI，核销通过只打印摘要、不写任何文件；当某必跑文件未被 payload 覆盖、存在非通过 report、或阻断分类（candidate_test_debt 等）非空时抛 RequiredRegressionProofError（required ⊄ debt 语义）。"""
 
 from __future__ import annotations
 
@@ -57,7 +57,7 @@ def _payload(
     }
 
 
-def test_main_writes_required_regressions_proof_from_full_test_debt(monkeypatch, tmp_path: Path, capsys) -> None:
+def test_main_verifies_required_regressions_without_writing_files(monkeypatch, tmp_path: Path, capsys) -> None:
     required = ["tests/test_required_a.py", "tests/regression_required_b.py"]
     nodeids = [
         "tests/test_required_a.py::test_a",
@@ -111,35 +111,27 @@ def test_main_writes_required_regressions_proof_from_full_test_debt(monkeypatch,
         ],
     )
 
-    assert verifier.main(["--payload", str(payload_path), "--output", str(output_path), "--run-id", "run-1"]) == 0
+    assert verifier.main(["--payload", str(payload_path)]) == 0
 
     stdout = capsys.readouterr().out
-    proof = json.loads(output_path.read_text(encoding="utf-8"))
-    child_dir = output_path.parent / output_path.stem
-    quality_gate_child = json.loads((child_dir / "quality_gate.json").read_text(encoding="utf-8"))
-    scheduler_child = json.loads((child_dir / "scheduler.json").read_text(encoding="utf-8"))
-    assert stdout == "required_regressions verified targets=2 nodeids=2 output=" + str(output_path) + "\n"
-    assert proof["schema_version"] == 4
-    assert proof["status"] == "passed"
-    assert proof["entry_id"] == "required_regressions"
-    assert proof["run_id"] == "run-1"
-    assert proof["required_target_paths"] == required
-    assert proof["verified_required_nodeid_count"] == 2
-    assert proof["source_payload_path"] == str(payload_path)
-    assert proof["execution_mode"] == "verified_from_full_test_debt"
-    assert proof["group_count"] == 2
-    assert proof["group_child_proof_count"] == 2
-    assert [group["group_id"] for group in proof["groups"]] == ["quality_gate", "scheduler"]
-    assert {group["child_proof_path"] for group in proof["groups"]} == {
-        str(child_dir / "quality_gate.json"),
-        str(child_dir / "scheduler.json"),
-    }
-    assert quality_gate_child["parent_schema_version"] == 4
-    assert quality_gate_child["group_id"] == "quality_gate"
-    assert quality_gate_child["required_target_paths"] == [required[0]]
-    assert quality_gate_child["verified_required_nodeids"] == ["tests/test_required_a.py::test_a"]
-    assert scheduler_child["group_id"] == "scheduler"
-    assert scheduler_child["verified_required_nodeids"] == ["tests/regression_required_b.py::regression_b"]
+    assert stdout == "required_regressions verified targets=2 nodeids=2\n"
+    # P2 证明捆绑已退役：核销器是纯只读 CLI，不再写父证明/子证明文件
+    assert not output_path.exists()
+    assert not (output_path.parent / output_path.stem).exists()
+
+    verification = verifier.verify_required_regressions_from_payload(
+        json.loads(payload_path.read_text(encoding="utf-8"))
+    )
+    assert verification["required_target_paths"] == required
+    assert verification["required_nodeids"] == [
+        "tests/regression_required_b.py::regression_b",
+        "tests/test_required_a.py::test_a",
+    ]
+    assert verification["required_nodeid_count_by_path"] == {required[0]: 1, required[1]: 1}
+    assert verification["group_coverage"]["missing"] == []
+    assert verification["group_coverage"]["unknown"] == []
+    assert verification["collected_count"] == 3
+    assert verification["report_count"] == 7
 
 
 def test_verify_rejects_missing_required_file() -> None:
