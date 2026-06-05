@@ -468,7 +468,6 @@ def test_full_test_debt_proof_is_in_shared_quality_gate_plan() -> None:
         "tools/long_gate_paths.py",
         "tools/long_gate_schema.py",
         "tools/long_gate_summary.py",
-        "tools/long_gate_test_body_diff.py",
         "tests/conftest.py",
         "tests/main_style_regression_runner.py",
         "tests/test_check_full_test_debt.py",
@@ -499,7 +498,6 @@ def test_full_test_debt_proof_is_in_shared_quality_gate_plan() -> None:
         "tools/long_gate_paths.py",
         "tools/long_gate_schema.py",
         "tools/long_gate_summary.py",
-        "tools/long_gate_test_body_diff.py",
         "tests/conftest.py",
         "tests/main_style_regression_runner.py",
     ]:
@@ -1294,7 +1292,7 @@ def test_main_writes_quality_gate_manifest_with_git_and_collection_proof(monkeyp
     assert "tools/long_gate_paths.py" in {item["path"] for item in manifest["gate_sources"]}
     assert "tools/long_gate_schema.py" in {item["path"] for item in manifest["gate_sources"]}
     assert "tools/long_gate_summary.py" in {item["path"] for item in manifest["gate_sources"]}
-    assert "tools/long_gate_test_body_diff.py" in {item["path"] for item in manifest["gate_sources"]}
+    assert "tools/long_gate_full_test_debt.py" in {item["path"] for item in manifest["gate_sources"]}
     assert ".github/workflows/quality.yml" in {item["path"] for item in manifest["gate_sources"]}
     assert "pyproject.toml" in {item["path"] for item in manifest["gate_sources"]}
     assert manifest["collection_proof"]["default_collect_nodeids"]

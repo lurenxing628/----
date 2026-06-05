@@ -816,7 +816,6 @@ def _scopes_for_entry(
         output_files = [
             quality_gate_shared.QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL.replace("\\", "/"),
             quality_gate_shared.QUALITY_GATE_FULL_TEST_DEBT_SUMMARY_REL.replace("\\", "/"),
-            quality_gate_shared.QUALITY_GATE_FULL_TEST_DEBT_NODE_CACHE_REL.replace("\\", "/"),
         ]
 
     return (

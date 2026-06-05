@@ -384,7 +384,7 @@ def test_startup_invalidation_keeps_full_test_debt_success_cache_reuse(monkeypat
     assert _success_path(repo_root, "full_test_debt").exists()
     assert (repo_root / "evidence" / "QualityGate" / "current_full_test_debt.json").exists()
     assert (repo_root / "evidence" / "QualityGate" / "full_test_debt_summary.json").exists()
-    assert (repo_root / "evidence" / "QualityGate" / "full_test_debt_node_cache.json").exists()
+    assert not (repo_root / "evidence" / "QualityGate" / "full_test_debt_node_cache.json").exists()
 
 
 def test_explain_does_not_write_startup_proof(monkeypatch, tmp_path, capsys):

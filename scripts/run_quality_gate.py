@@ -37,14 +37,6 @@ from tools.long_gate_fingerprint import (  # noqa: E402
     fingerprint_entry,
     pytest_distribution_version,
 )
-from tools.long_gate_full_test_debt import (  # noqa: E402
-    NODE_CACHE_REL as FULL_TEST_DEBT_NODE_CACHE_REL,
-)
-from tools.long_gate_full_test_debt import (
-    explain_special_full_test_debt_plan,
-    try_run_special_full_test_debt_mode,
-    write_full_test_debt_node_cache_after_success,
-)
 from tools.long_gate_manifest import (  # noqa: E402
     ENTRY_DEBT_LEDGER_SYNC,
     ENTRY_FULL_TEST_DEBT,
@@ -1263,23 +1255,6 @@ def _run_quality_gate_command_plan(
                 )
 
         raw_result: Any = None
-        decision_for_special = dict((long_gate_runtime_entry or {}).get("decision") or {})
-        if (
-            long_gate_runtime_entry is not None
-            and str(long_gate_entry.get("entry_id") or "") == ENTRY_FULL_TEST_DEBT
-            and bool(long_gate_cache_write_success)
-            and str(decision_for_special.get("decision") or "") == "run"
-            and str(decision_for_special.get("reason") or "") == "input fingerprint changed"
-        ):
-            raw_result = try_run_special_full_test_debt_mode(
-                repo_root=REPO_ROOT,
-                entry=long_gate_entry,
-                current_fingerprint=dict(long_gate_fingerprint or {}),
-                decision=decision_for_special,
-                evaluation=dict(long_gate_runtime_entry.get("evaluation") or {}),
-                cache_dir=long_gate_cache_dir,
-                env_overlay=quality_gate_shared._normalize_env_overlay(command.get("env_overlay")),
-            )
         if raw_result is None:
             raw_result = _run_command_with_env_overlay(
                 display,
@@ -2104,15 +2079,6 @@ def _prepare_long_gate_success_output_files(
             collect_stdout_log_path=str(result.get("stdout_log_path") or ""),
         )
         return [write_collect_nodeids(collect_payload, repo_root=REPO_ROOT)]
-    if entry_id == ENTRY_FULL_TEST_DEBT:
-        fingerprint = _strict_long_gate_fingerprint(entry)
-        write_full_test_debt_node_cache_after_success(
-            repo_root=REPO_ROOT,
-            entry=entry,
-            fingerprint=fingerprint,
-            result=result,
-            cache_dir=cache_dir,
-        )
     if entry_id == ENTRY_STARTUP_RUNTIME_REGRESSIONS:
         return [
             _write_startup_runtime_regressions_proof(
@@ -2556,48 +2522,6 @@ def _force_long_gate_decision(entry: Dict[str, Any], decision: Dict[str, Any], *
     }
 
 
-def _annotate_full_test_debt_incremental_decision(
-    decision: Dict[str, Any],
-    *,
-    fingerprint: Dict[str, Any],
-    evaluation: Dict[str, Any],
-) -> Dict[str, Any]:
-    if str(decision.get("decision") or "") != "run":
-        return decision
-    if str(decision.get("reason") or "") != "input fingerprint changed":
-        return decision
-    node_plan = explain_special_full_test_debt_plan(
-        repo_root=REPO_ROOT,
-        current_fingerprint=fingerprint,
-        decision=decision,
-        evaluation=evaluation,
-    )
-    invalidated_by = list(decision.get("invalidated_by") or [])
-    if bool(node_plan.get("available")):
-        if str(node_plan.get("mode") or "") == "ledger_only":
-            note = "full_test_debt ledger-only path available"
-        else:
-            selected = [str(item) for item in list(node_plan.get("selected_nodeids") or [])]
-            selected_count = int(node_plan.get("selected_nodeid_count") or len(selected))
-            selected_hash = str(node_plan.get("selected_nodeids_hash") or "")
-            selected_sample = [str(item) for item in list(node_plan.get("selected_nodeids_sample") or selected[:3])]
-            sample_text = ", ".join(selected_sample[:3])
-            note = f"full_test_debt nodeid incremental available: {selected_count} selected nodeids"
-            if selected_hash:
-                note += f" hash={selected_hash}"
-            if sample_text:
-                note += f" sample={sample_text}"
-    else:
-        note = "full_test_debt nodeid incremental fallback: " + str(node_plan.get("reason") or "")
-    if note not in invalidated_by:
-        invalidated_by.append(note)
-    return {
-        **decision,
-        "invalidated_by": invalidated_by,
-        "full_test_debt_incremental": dict(node_plan),
-    }
-
-
 def _refresh_full_test_debt_reuse_decision(runtime_entry: Dict[str, Any], *, cache_dir: str) -> None:
     entry = dict(runtime_entry.get("entry") or {})
     if str(entry.get("entry_id") or "") != ENTRY_FULL_TEST_DEBT:
@@ -2610,16 +2534,9 @@ def _refresh_full_test_debt_reuse_decision(runtime_entry: Dict[str, Any], *, cac
     runtime_entry["fingerprint"] = dict(fingerprint)
     runtime_entry["evaluation"] = dict(evaluation)
     refreshed_decision = dict(cast(Mapping[str, Any], evaluation["decision"]))
-    refreshed_decision = _annotate_full_test_debt_incremental_decision(
-        refreshed_decision,
-        fingerprint=fingerprint,
-        evaluation=dict(evaluation),
-    )
     runtime_entry["decision"] = refreshed_decision
     if str(refreshed_decision.get("decision") or "") != "reuse":
         for rel_path in list(entry.get("output_result_files") or []):
-            if str(rel_path).replace("\\", "/") == FULL_TEST_DEBT_NODE_CACHE_REL:
-                continue
             abs_path = os.path.join(REPO_ROOT, str(rel_path).replace("\\", "/").replace("/", os.sep))
             if os.path.isfile(abs_path):
                 os.remove(abs_path)
@@ -2704,18 +2621,6 @@ def _prepare_long_gate_cache_decisions(
                         force_reason=f"forced by --long-gate-force-rerun {entry_id}",
                     )
                     evaluation = {}
-                if (
-                    entry_id == ENTRY_FULL_TEST_DEBT
-                    and str(decision.get("decision") or "") == "run"
-                    and str(decision.get("reason") or "") == "input fingerprint changed"
-                    and isinstance(evaluation, dict)
-                    and fingerprint is not None
-                ):
-                    decision = _annotate_full_test_debt_incremental_decision(
-                        decision,
-                        fingerprint=fingerprint,
-                        evaluation=evaluation,
-                    )
         else:
             decision = _planned_long_gate_decision_forced(entry, force_requested=force_requested)
         summary_entry = build_summary_entry(index=index, entry=entry, decision=decision)

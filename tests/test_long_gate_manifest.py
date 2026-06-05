@@ -423,7 +423,6 @@ def test_collect_full_test_debt_static_gate_required_startup_and_quickref_entrie
     assert full_test_debt["output_result_files"] == [
         "evidence/QualityGate/current_full_test_debt.json",
         "evidence/QualityGate/full_test_debt_summary.json",
-        "evidence/QualityGate/full_test_debt_node_cache.json",
     ]
     assert startup["cache_status"] == "enabled"
     assert startup["args"][4:] == iter_startup_regressions()
