@@ -147,6 +147,8 @@ QUALITY_GATE_TOOL_PATHS = [
     "tests/regression_frontend_offline_static_assets.py",
     "tests/regression_page_manual_registry.py",
     "tests/regression_aps_three_gap_docs_quality_gate.py",
+    "tests/regression_operation_execution_event_time_contract.py",
+    "tests/regression_scheduler_data_route_error_contract.py",
     "tests/regression_scheduler_resource_dispatch_invalid_query_cleanup.py",
 ]
 QUALITY_GATE_SOURCE_FILES = tuple(
@@ -364,8 +366,8 @@ STARTUP_SAMPLE_EXPECTATIONS = [
     SilentFallbackSample(
         path="web/manual_src_security.py",
         symbol="safe_url_for",
-        line_start=120,
-        line_end=128,
+        line_start=144,
+        line_end=152,
         fallback_kind="observable_degrade",
         scope_tag="render_bridge",
     ),
