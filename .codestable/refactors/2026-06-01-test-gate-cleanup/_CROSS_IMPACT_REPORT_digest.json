@@ -1,0 +1,985 @@
+[
+ {
+  "dim": "D1-DROP直删",
+  "verdict": "先A后B 在 D1 维度上构成 blocker。A 的 P1「零风险」整删恰好删掉 B 全程依赖的两条反向结构守卫:sp05 是 B 的 Batch-A(G38)与 Batch-D(R26/R43 facade 收敛)的唯一回归门 + 生产代码反回潮拦网,sp06 是 B 的 R45/R48 唯一 loud 回归网 + R68/P5 去重族防回潮守卫——A 先整删,B 起步即失网、facade/去重改完无人拦回潮,直接命中任务定义的 blocker(删掉 B 安全网/守卫导致无法安全还债)。py38 契约属较轻的护栏丢失(medium)。三者 b_dependency 均 verified-real(已读 B 文档确认其被当安全网/锚点/门禁,非文件名撞上)。根本症结:A 把这 3 个文件当\\\"重构残渣快照\\\"独立评估,完全不知 B 把它们当承重安全网——A 的 L3 裁决与 B 的批次门禁是在互不知情下各写各的。处置:sp05/sp06 至少改判 KEEP 或 DEFER 到 B 全部相关债之后;py38 须先有等效 CI/linter 落地再删。",
+  "summary": "A 把三个 DROP 文件按 P1「零风险死代码清除」整删,但其中 sp05 与 sp06 正是 A 自己在 GOVERNANCE.md:104 点名的「反向结构守卫 5」,而 B 把这两个文件当作【最贵的承重安全网】反复使用:B 的 Batch-A 批后门禁直接写「G38 SP05 topology contract 绿」「G16 sp06 退场后无 FileNotFoundError」(PHASE4-SAFE-BATCH-PLAN.md:191),B 的 Batch-D 还要编辑 sp05 的 BEHAVIOR_*/ROUTE 三表(R26/R43)。先整删 A 等于在 B 起步前就抽掉了 B 唯一的回归门和反回潮守卫。py38 契约 B 只当「不得违反的语法护栏」,删它是较轻的护栏丢失。B 计划全程对 A 要删这两个守卫零认知(ANCHOR-DRIFT-2026-06-05-POSTCOMMIT.md 不提)。",
+  "findings": [
+   {
+    "t": "A 整删 sp05(test_sp05_path_topology_contract.py) 抽掉 B 的 G38/R26/R43 唯一回归门 + 生产代码反回潮守卫",
+    "type": "删除B安全网",
+    "sev": "blocker",
+    "dep": "verified-real",
+    "debts": [
+     "R06",
+     "R27",
+     "R26",
+     "R43",
+     "R01",
+     "R09",
+     "R68",
+     "R69",
+     "LB07"
+    ],
+    "files": [
+     "tests/test_sp05_path_topology_contract.py",
+     ".codestable/refactors/2026-06-01-test-gate-cleanup/L3_verdicts.csv",
+     ".codestable/audits/2026-06-02-underwater-debt-census/fix-plan/phase4-dep-safety/PHASE4-SAFE-BATCH-PLAN.md",
+     ".codestable/audits/2026-06-02-underwater-debt-census/fix-plan/phase4-dep-safety/dossiers/R27.md",
+     ".codestable/audits/2026-06-02-underwater-debt-census/fix-plan/phase4-dep-safety/dossiers/R06.md",
+     ".codestable/audits/2026-06-02-underwater-debt-census/fix-plan/phase4-dep-safety/dossiers/R26.md"
+    ],
+    "evi": "A理由(DROP):L3_verdicts.csv:642 verdict=DROP reason=\"refactor-topology snapshot: hardcoded compat-module alias maps + __all__ symbol tuples + AST registrar _ROUTE_MODULES + doc-tree literals ... rots on any restructure\"; GOVERNANCE.md:104 把它列入 P1\"删 DROP 38 个(...反向结构守卫 5...)\"。B依据:PHASE4-SAFE-BATCH-PLAN.md:191 Batch-A 批后门禁\"G38 SP05 topology contract 绿(:173 def/:318 断言 不碰)\";dossiers/R27.md:83/145\"改完测试本身仍通过是唯一的回归门\";dossiers/R06.md:98\"删生产空包必须同提交改其 :310 元组...否则该测试红\";dossiers/R26.md:132\"SP05 契约本体...是冻结面定义者,必须最先改\";dossiers/R43.md:142 改 SP05 三表。读 sp05 本体确认 test_sp05_production_code_does_not_grow_legacy_wrapper_imports(:389) 是拦\"生产代码再长出旧 wrapper import\"的反回潮守卫,test_sp05_route_topology(:401)钉 _ROUTE_MODULES/init无导入,正是B的P5 facade收敛(R26/R43删顶层shim)改完防回潮的唯一拦网。",
+    "mit": "sp05 改判 KEEP(或 DEFER 到 B 之后)。它不是纯快照:除被 A 点名的 alias/__all__/_ROUTE_MODULES 列举段外,还含 test_sp05_production_code_does_not_grow_legacy_wrapper_imports 这条全仓扫描守卫——这正是 B 的 R26/R43 facade 收敛后\"没人拦回潮\"的拦网。若仍要瘦身,只能在 B 全部 facade 债(R26/R43/R31/R33,Batch-D)落地后,把列举型断言段(:15-170 各表)随最后一债同提交清理,而 :173 _assert_init_has_no_imports、:389 production-import-scan、:318 strong/behavior compat 断言须保留为常驻守卫。绝不能在 P1 先整删。"
+   },
+   {
+    "t": "A 整删 sp06(regression_sp06_no_duplicate_defs.py) 抽掉 B 的 R45/R48 loud 回归网 + R68 dedup 反回潮守卫",
+    "type": "删除B安全网",
+    "sev": "blocker",
+    "dep": "verified-real",
+    "debts": [
+     "R45",
+     "R48",
+     "R68"
+    ],
+    "files": [
+     "tests/regression_sp06_no_duplicate_defs.py",
+     ".codestable/refactors/2026-06-01-test-gate-cleanup/L3_verdicts.csv",
+     ".codestable/audits/2026-06-02-underwater-debt-census/fix-plan/phase4-dep-safety/PHASE4-SAFE-BATCH-PLAN.md",
+     ".codestable/audits/2026-06-02-underwater-debt-census/fix-plan/phase4-dep-safety/dossiers/R45.md",
+     ".codestable/audits/2026-06-02-underwater-debt-census/fix-plan/phase4-dep-safety/dossiers/R68.md"
+    ],
+    "evi": "A理由(DROP):L3_verdicts.csv:593 verdict=DROP reason=\"AST guard asserts no duplicate defs + no banned cfg_get helpers in pinned file list (lines 8-95) structural refactor-residue snapshot\"。B依据:PHASE4-SAFE-BATCH-PLAN.md:175 G16=\"整删 + 同提交退 sp06:15(漏退→FileNotFoundError loud)\";:191 Batch-A 批后门禁\"G16 sp06 退场后无 FileNotFoundError\";dossiers/R45.md:36/79/100 把\"漏退 sp06:15 → read_text:73 抛 FileNotFoundError → sp06 红(响亮非静默)\"称为本债\"唯一约束链/唯一回归门\";dossiers/R68.md:135\"F门:收敛 PR 须过...sp06 单文件重复 def...不得引入新单文件重复\"。读 sp06 本体确认它是反向结构守卫:test_sp06_targets_do_not_keep_duplicate_function_definitions(:57)禁重复def、test_sp06_targets_do_not_use_cfg_get_fallback_helpers(:69)禁 banned cfg_get helper——正是 B 大量 P5 去重/cfg 收敛债防回潮所依赖。",
+    "mit": "sp06 改判 KEEP(或 DEFER 到 B 之后)。R45/R48 的修法是\"删 config_adapter.py + 同提交退 sp06:15 一行\"——前提是 sp06 文件存在;A 先整删后,B 既没文件可退,也丢了 FileNotFoundError loud 网。R68(以及更广的 P5 dedup/facade 收敛族)靠 test_sp06_*_no_duplicate_defs / banned cfg_get 守卫拦\"改完回潮\"。保留 sp06,B 按计划退 :15 单行即可;A 若坚持瘦身,只能在 B 的 R45/R48/R68 落地后再评估,且 :57/:69 两条结构断言应保留为常驻守卫。"
+   },
+   {
+    "t": "A 整删 py38 契约(regression_scheduler_candidate_py38_contract.py) 丢掉 B 编辑两栈/config 文件时的 py3.8 语法护栏",
+    "type": "门禁验证破坏",
+    "sev": "medium",
+    "dep": "verified-real",
+    "debts": [
+     "LB07",
+     "R02",
+     "R71"
+    ],
+    "files": [
+     "tests/regression_scheduler_candidate_py38_contract.py",
+     ".codestable/refactors/2026-06-01-test-gate-cleanup/L3_verdicts.csv",
+     ".codestable/audits/2026-06-02-underwater-debt-census/fix-plan/phase4-dep-safety/dossiers/R71.md",
+     ".codestable/audits/2026-06-02-underwater-debt-census/fix-plan/phase4-dep-safety/dossiers/LB07.md",
+     ".codestable/audits/2026-06-02-underwater-debt-census/fix-plan/phase4-dep-safety/dossiers/R02.md"
+    ],
+    "evi": "A理由(DROP):L3_verdicts.csv:153 verdict=DROP reason=\"门禁自指源码扫:正则+AST扫硬编码文件列表(含本测自身)查PEP585/X|None与重驱动import与CDN URL...纯源码grep无业务逻辑应由CI/linter守\"。B依据:dossiers/R71.md:99\"把两栈文件纳入 py38 AST 门禁,只校语法不校 helper 等价(故收敛/parity 改动须保持 py38 合法语法,不得引入 3.9+ 语法)\";:128\"收敛后...须确认该门禁的文件清单/断言不因此失配\";LB07.md:126\"两栈文件须存在 + py38 AST 合规\";R02.md:94/132\"只查语法不 pin 导出面,删一个 def 不会让它红...无需迁\"。读 py38 本体确认 test_pr7e_python_files_keep_python38_type_syntax(:81)扫 ~50 个 B 会改的文件禁 PEP585/X|None,是 B 编辑期的语法护栏而非差分 oracle。",
+    "mit": "B 并不编辑 py38 文件、也不靠它做差分(R02/R71/LB07 均称\"无需迁/不 pin 导出面\"),所以删它不直接卡死任何一条债——故非 blocker。但它是 B 在 R71/LB07/R02 收敛两栈/config 文件时防止误引入 3.9+ 语法的护栏;A 删时既未真正迁到 CI/linter(reason 只说\"应由\"),B 改完会失去这条静默护栏。建议:要么 KEEP 此文件直到 B 完成两栈/config 收敛,要么 A 在删前确实把 PEP585/X|None 扫描落到 CI/linter(ruff target-version=py38)并在 B 起步前生效。"
+   }
+  ],
+  "verifications": [
+   {
+    "t": "A 整删 sp05(test_sp05_path_topology_contract.py) 抽掉 B 的 G38/R26/R43 唯一回归门 + 生产代码反回潮守卫",
+    "holds": false,
+    "sev": "low",
+    "reason": "证伪成立——B 并不把 SP05 当\"须保留的安全网/承重护栏\",恰相反 B 把 SP05 当作【自己要删/改的对象】,且 SP05 被 B 明确判为非承重。逐条对账:\n\n1) B 不依赖 SP05 存活,而是计划亲手掏空它。R26.md:132「SP05 契约本体...必须最先改,否则迁消费者它都会红」+ :52 删 BEHAVIOR_* 5 条;R43.md:52/142 改 SP05 三张 route 表;R27.md:44-45 / R06.md:34-35 从 :310 元组摘 4 项、删 :315-316 循环。SP05 是 B 的编辑标的,不是 B 的护栏。finding 把\"B 要改 SP05\"误读成\"B 要 A 保留 SP05\"。\n\n2) SP05 显式非承重、非灵魂线,故 A 删它不违反 B 承重纪律。R26.md:200「承重误删风险:无;load_bearing=false、lb_no_touch=null」;R27.md:103-104/163 + R06.md:28/84/121 同口径,sev=low,误删只响亮 ImportError(R26.md:35/114、R06.md:76-78),不破任何安全/算法不变量。承重纪律(只补注释+parity、严禁删/合并)只约束承重护栏/灵魂线,SP05 两者都不是。\n\n3) \"唯一回归门\"被引证反了。finding 引 R27.md:83 / R06.md:98 当\"B 的反回潮安全网\",但原文是「改完 SP05 测试本身仍通过=唯一回归门」——这门只在 SP05 仍存在、B 仍要编辑它时才有意义;A 先删后,B 的 shim/空包删除退化为纯删,无契约可维持,B 不需要 SP05 活着才能安全删。\n\n4) A 并非盲删行为约束。PLAN.md:94 + L3_VERDICTS.md §2.2(:64-72)把 sp05/sp06「反向结构守卫」单列,明文「若约束有价值,转 ruff 规则/quality_gate_scan」——:389 test_sp05_production_code_does_not_grow_legacy_wrapper_imports(:255 _legacy_import_violations_for_source 全仓 AST 扫)这条真行为守卫已被 A 计划纳入\"按需转 ruff\",非静默丢失。\n\n仅存的真实残留(故不降到 none)::389 全仓 import-regrowth 扫描确为真行为逻辑(非纯快照),若机械地\"先A后B\"在 B 收敛 facade(R26/R43)之前就删掉 SP05,则在 B 落地前的窗口内仓库暂失这条反回潮扫描——属低severity协调备注,B owner 可用 ruff 回填,非 blocker。B 依赖判定应从 verified-real 改判为 assumed/not-a-dependency。"
+   },
+   {
+    "t": "A 整删 sp06(regression_sp06_no_duplicate_defs.py) 抽掉 B 的 R45/R48 loud 回归网 + R68 dedup 反回潮守卫",
+    "holds": false,
+    "sev": "low",
+    "reason": "前提倒置:B并不把sp06当\"需要保留的回归网\",B的修法恰恰是删它的一行。R45.md:36 / R48.md:37 / clusters/C-CONFIG-DUAL.md:25 一致写明R45/R48修法=删config_adapter.py + 同提交从tests/regression_sp06_no_duplicate_defs.py:15的NO_CFG_GET_TARGETS退一行。所谓\"漏退sp06:15→FileNotFoundError loud网\"是【保留sp06却删config_adapter】才产生的风险;A若已DROP整个sp06,该failure mode结构上不可能发生,R45/R48反而失去其唯一原子提交耦合、变得更简单——这是blocker的反面。R68的守卫不是sp06:R68.md:127/:161明确\"sp06 TARGETS=schedule_summary_assembly/evaluation/calendar_admin,不含R68二文件,只查单文件内重复def,跨文件逐字两份它抓不到,收敛既不会让它变红也不会被它挡,无需改它\";R68.md:133其真正反回潮网是Batch-1 ROOT的parity测试,R68.md:135只把sp06当\"PR不得引入新单文件重复\"的通用F门(B不可违反,非B需保留)。全仓B文档只有R45/R48/R68/R26提到sp06 TARGETS文件,R26(:96)是扫描排除清单的文件名巧合非依赖。实测三个TARGETS当前模块级重复def=NONE、四个NO_CFG_GET_TARGETS文件banned cfg_get helper=零——sp06是守\"已完成清理\"的refactor-residue快照,与A的DROP理由(L3_verdicts.csv:593 structural refactor-residue snapshot)吻合。承重纪律亦不涉及:sp06为load_bearing=false测试残渣,非承重护栏/灵魂线守卫。B依赖判定应为not-a-dependency(R68)/inverted-dependency(R45/R48,B是删它而非靠它)。残余low:若A的DROP先于B落地而执行者仍照dossier字面执行\"退sp06:15\",会遇到no-op/困惑,一行grep现场可解,非安全网损毁。原verified-real/blocker不成立。"
+   }
+  ]
+ },
+ {
+  "dim": "D2-门禁元系统",
+  "verdict": "先A后B 在 D2 维度【安全可行,但必须遵守一条执行纪律 + 修一个机读源埋雷】。结论分三层:(1) 唯一 verified-real 的 B 承重依赖 test_architecture_fitness.py 被 A 三份执行文档(GOVERNANCE/PLAN/L3_VERDICTS)一致保留,B 跨全批次的『fitness 21项全绿+0分层违规』验证门与 R28 白名单对账完好,锚点行号(task#16/#17 改后)仍准——无实质冲突。(2) 残留隐患:L3_verdicts.csv:620 机读字段仍是 DROP_WITH_TOOL 未与裁决修正同步,若执行人裸筛 csv 而不读 PLAN.md:123 的显式排除,会误删 B 的承重 oracle——定 medium(被三份文档显式化解,但真相源不自洽是埋雷),建议执行前就地把 csv:620 改成 KEEP 消雷。(3) 其余6个 DROP_WITH_TOOL 与 check_quickref/selftest/STARTUP_SAMPLE_EXPECTATIONS:B 零引用或数据源在 A 不删的 tools/,门禁验证链不断——none。无 blocker、无 high。",
+  "summary": "D2 核心结论:A 先行对 B 的门禁验证链【实质无冲突,但有一处机读真相源埋雷】。关键事实:test_architecture_fitness.py 在 L3_verdicts.csv:620 机读字段仍标 DROP_WITH_TOOL【未同步修正】,但 A 的三份权威执行文档(GOVERNANCE.md:109/PLAN.md:41,123/L3_VERDICTS.md:91,96)全部一致地把它【例外保留/永久保留】。它是 B 跨 ROOT/A/B/C 全部批次的承重 oracle——B 每批\"批后门禁\"都写\"fitness 21项全绿+0分层违规\"(PHASE4 行146/230/293/334),且 R28/总纲(1) 精确依赖它的 :64/:77 白名单 + :254 stale_entries 断言。只要执行人遵循 PLAN.md(P2.3 显式写\"修正:保留\")而非裸筛 csv DROP_WITH_TOOL 字段,B 的 F-arch 门完好。其余 6 个 DROP_WITH_TOOL(check_quickref/selftest_report_metadata 等)B 零引用,删它们无影响。STARTUP_SAMPLE_EXPECTATIONS 实际承载在 tools/quality_gate_shared|support|scan.py(非 architecture_fitness 本体),A 不删这些 tools。B 门禁清单里的 spec_sync/migrations/migration_schema/execution_review_identity_guardrail 在 csv 全是 KEEP(high),内容不动。",
+  "findings": [
+   {
+    "t": "csv:620 仍标 DROP_WITH_TOOL 与三份执行文档『应KEEP』修正打架——裸筛 csv 会误删 B 的承重 oracle",
+    "type": "删除B安全网",
+    "sev": "medium",
+    "dep": "verified-real",
+    "debts": [
+     "R15",
+     "R28"
+    ],
+    "files": [
+     "/Users/lurenxing/Documents/GitHub/----/.codestable/refactors/2026-06-01-test-gate-cleanup/L3_verdicts.csv",
+     "/Users/lurenxing/Documents/GitHub/----/.codestable/refactors/2026-06-01-test-gate-cleanup/PLAN.md",
+     "/Users/lurenxing/Documents/GitHub/----/.codestable/refactors/2026-06-01-test-gate-cleanup/GOVERNANCE.md",
+     "/Users/lurenxing/Documents/GitHub/----/.codestable/refactors/2026-06-01-test-gate-cleanup/L3_VERDICTS.md",
+     "/Users/lurenxing/Documents/GitHub/----/tests/test_architecture_fitness.py"
+    ],
+    "evi": "A机读真相源未同步修正:L3_verdicts.csv:620 `tests/test_architecture_fitness.py,DROP_WITH_TOOL,self-ref,...gate self-ref`(字段仍是删)。A裁决修正:L3_VERDICTS.md:96 `⚠裁决修正:...执行时应KEEP,不随工具删`、GOVERNANCE.md:109 `test_architecture_fitness.py 例外保留`、PLAN.md:123 `修正:test_architecture_fitness.py 保留`、PLAN.md:41 `永久保留:test_architecture_fitness.py`。B依据(把它当承重oracle):dossiers/R15.md:142/152/162 `收口后须跑此门确认0 AST违规`+`F-arch门:tests/test_architecture_fitness.py 绿(基线)`;PHASE4-SAFE-BATCH-PLAN.md:146/230/293/334 每批批后门禁均`fitness 21项全绿+0分层违规`。",
+    "mit": "执行 A 的 P2.3『随工具删』时,删除清单必须按 PLAN.md:123 的显式修正排除 test_architecture_fitness.py,严禁用 `csv DictReader ... verdict==DROP_WITH_TOOL` 裸筛后 git rm(会连带删掉它)。建议在执行前把 csv:620 的 verdict 字段就地改成 KEEP(或加 keep_override 标记)使机读源与裁决一致,消除埋雷。删除前 grep 确认 core/web/app 对它零引用不等于 B 不依赖——B 是把它当批后验证门用,删了 B 每批 go/no-go 失去 oracle。"
+   },
+   {
+    "t": "R28/总纲(1) 精确依赖 architecture_fitness 的 :77 白名单 + :254 stale_entries 断言,锚点行号当前仍准",
+    "type": "无实质冲突",
+    "sev": "low",
+    "dep": "verified-real",
+    "debts": [
+     "R28",
+     "R15"
+    ],
+    "files": [
+     "/Users/lurenxing/Documents/GitHub/----/tests/test_architecture_fitness.py",
+     "/Users/lurenxing/Documents/GitHub/----/.codestable/audits/2026-06-02-underwater-debt-census/fix-plan/phase4-dep-safety/PHASE4-SAFE-BATCH-PLAN.md",
+     "/Users/lurenxing/Documents/GitHub/----/.codestable/audits/2026-06-02-underwater-debt-census/fix-plan/phase4-dep-safety/dossiers/R28.md"
+    ],
+    "evi": "B依据:PHASE4-SAFE-BATCH-PLAN.md:128 `tests/test_architecture_fitness.py:229 test_no_new_local_parse_helpers...:254-256 stale_entries`+白名单3项;dossiers/R28.md:38-39/65/145 引 `:64 _safe_float∈NAMES`、`:77 batch_service.py:_safe_float∈ALLOWLIST`、`:254 stale 断言`。实代码核验(task#16/#17 改后仍准):tests/test_architecture_fitness.py:64=`\"_safe_float\"`、:75-79=ALLOWLIST 3项(_sched_utils:_safe_int/batch_service:_safe_float/system_config_service:_get_int)、:229=`def test_no_new_local_parse_helpers`、:249=`if entry in LOCAL_PARSE_HELPER_ALLOWLIST`、:254=`stale_entries = sorted(...)`、:256 assert。全部逐行对得上。",
+    "mit": "无需处理。A 保留该文件且 task#16/#17 只动了 tools/ 侧 QUALITY_GATE_TOOL_PATHS 与样本坐标,未撼动 architecture_fitness.py 内 B 依赖的这些行号锚点。B 的 R28 dossier 锚点目前有效;若 A 后续在 P3/P6 对其他文件改写迁目录导致全仓行号漂移,那是 D6 范畴,与本文件无关(本文件不被 A 改写)。"
+   },
+   {
+    "t": "其余6个 DROP_WITH_TOOL(含 check_quickref_vs_routes / test_run_full_selftest_report_metadata)B 零引用,删除不破坏 B 门禁链",
+    "type": "无实质冲突",
+    "sev": "none",
+    "dep": "not-a-dependency",
+    "debts": [],
+    "files": [
+     "/Users/lurenxing/Documents/GitHub/----/.codestable/refactors/2026-06-01-test-gate-cleanup/L3_verdicts.csv"
+    ],
+    "evi": "csv DROP_WITH_TOOL 共7个:check_quickref_vs_routes.py / regression_quality_gate_registry_split_scope_contract.py / test_codestable_architecture_contract.py / test_architecture_fitness.py / test_post_change_check_contract.py / test_regression_main_isolation_contract.py / test_run_full_selftest_report_metadata.py。对 phase4-dep-safety/ 全目录 grep:除 architecture_fitness 外的6个 B引用文件数均=0。B 文档亦零引用 STARTUP_SAMPLE_EXPECTATIONS / aps-full-selftest / check_quickref。",
+    "mit": "无需处理。这6个是 A 的门禁自指工具,B 既不当安全网也不当锚点。A 随工具删它们对 B 还债的验证链没有任何破坏。"
+   },
+   {
+    "t": "STARTUP_SAMPLE_EXPECTATIONS 与 silent/oversize/complexity allowlist 实际承载在 tools/(A 不删),architecture_fitness 仅是消费端守卫",
+    "type": "无实质冲突",
+    "sev": "none",
+    "dep": "verified-real",
+    "debts": [
+     "R28",
+     "R59",
+     "R66"
+    ],
+    "files": [
+     "/Users/lurenxing/Documents/GitHub/----/tools/quality_gate_shared.py",
+     "/Users/lurenxing/Documents/GitHub/----/tools/quality_gate_support.py",
+     "/Users/lurenxing/Documents/GitHub/----/tools/quality_gate_scan.py",
+     "/Users/lurenxing/Documents/GitHub/----/tests/test_architecture_fitness.py"
+    ],
+    "evi": "STARTUP_SAMPLE_EXPECTATIONS 真实位置:grep 命中 tools/quality_gate_shared.py、quality_gate_scan.py、quality_gate_support.py(非测试文件,A 真相源 PLAN.md 第174-189 列的门禁工具链里 quality_gate_* 标『近期task#16/#17刚改』属保留/调整类,不在 DROP 清单)。architecture_fitness.py:30-37 import `architecture_silent_allowlist_map/architecture_oversize_allowlist_map/architecture_complexity_allowlist_map`,:290 test_no_silent_exception_swallow、:333 test_startup_silent_fallback_samples——这正是 B 的 P4 静默吞错灵魂线债(R28/R59/R66)的守卫门。",
+    "mit": "无需处理。A 既保留 architecture_fitness(消费端),又不删 tools/quality_gate_*(数据源端),B 的 P4 灵魂线守卫(test_startup_silent_fallback_samples / test_no_silent_exception_swallow)验证链完整。注意 task#16/#17 已动过 QUALITY_GATE_TOOL_PATHS 与静默样本坐标,B 执行 R28/R59/R66 前应按 dossiers/R28.md:145 先跑 `pytest tests/test_architecture_fitness.py -k allowlist`/`-k silent` 复核当前样本与白名单实盘,再据实退/留条目(这是 B 自身纪律,非 A 冲突)。"
+   },
+   {
+    "t": "B 门禁清单里的全名验证文件(spec_sync/migrations/migration_schema/execution_review_identity_guardrail)在 A csv 全是 KEEP,内容不动",
+    "type": "无实质冲突",
+    "sev": "none",
+    "dep": "verified-real",
+    "debts": [
+     "R56",
+     "R15",
+     "R17",
+     "R22"
+    ],
+    "files": [
+     "/Users/lurenxing/Documents/GitHub/----/.codestable/refactors/2026-06-01-test-gate-cleanup/L3_verdicts.csv"
+    ],
+    "evi": "B依据:PHASE4-SAFE-BATCH-PLAN.md:130 门禁清单写全名 `tests/regression_execution_review_identity_guardrail.py`/`tests/regression_scheduler_config_spec_sync_contract.py`;:131/654 v19 DB CHECK 经 `regression_migrations`+`regression_migration_schema_contract` 机器验证。A裁决:L3_verdicts.csv:393 spec_sync=KEEP(high)、:490 migration_schema_contract=KEEP(high)、:491 migrations=KEEP(high)、:555 execution_review_identity_guardrail=KEEP(high)。",
+    "mit": "无需处理(内容不动)。唯一残留风险是 A 的 P3 改写/P6 迁目录去前缀可能让这些 KEEP 文件的行号锚点漂移,但那属 D6 锚点漂移维度;就 D2 门禁链『验证能不能跑、断言在不在』而言,这些门完好。"
+   }
+  ],
+  "verifications": []
+ },
+ {
+  "dim": "D3-MERGE合并",
+  "verdict": "先A后B 在 D3 维度可行但带 1 个 blocker + 1 个 high，不可裸跑。核心结论：A 的参数化合并不会物理删除 B 依赖的安全网（A 的『断言条数≥合并前之和』纪律反而保住了 R54/LB02/LB05/R57 依赖的具体断言），但会在两处与 B 的还债动作正面冲突。(1) blocker：sort_strategy_case_insensitive 簇——A 守纪律保留 parse_strategy 坏值静默回退断言，恰恰违背 R51『整体退场禁保留 :25』的灵魂线硬序(G24)，且把待删断言焊进一个 R51 不能整删的存活文件，使 R51 无法按计划 git rm，A 与 B 的门禁互判对方违规。必须把该文件从 A 的合并簇剔除（改随 R51 退场）或给 R51 留外科删除单支的例外。(2) high：workbench_link_guardrails 是 R54/LB02/LB05 的 fail-open 逐键四态 parity oracle，合并后 B 的 R54 dossier 全部 :120-162 等行号锚点失效，需按 test 函数名现场 rg 重定位，且 A 合并与 B 的 G04/G05 不可同期改这两文件。(3) route_registration/aps_workbench_flow 为 medium，按符号重定位 + 显式标 PIN 断言即可。(4) real_db_replay 删 check/smoke 对 R32 为 none（raw backup 免疫）。处置前提：A 的合并对账表必须为 sort_strategy 簇与 workbench_links 簇登记『B 例外/B 重定位』标记，否则 A 的合并丢覆盖门禁与 B 的 G24/承重纪律互相误报。",
+  "summary": "D3 涉及 A 的 5 个 MERGE 裁决文件，逐个 Read 真实测试代码 + Read B 的 R54/LB02/LB05/R51/R32/R43/_fixed_confirm dossier 与 C-NAV-GUARD 簇 + PHASE4 主计划核实后：5 个文件里有 1 个 blocker、1 个 high、2 个 medium、1 个 none。最严重的是 sort_strategy_case_insensitive：A 的合并纪律「断言条数≥合并前之和」会强行保留 R51 必须『整体退场禁迁移』的灵魂线违规断言（parse_strategy 坏值静默回退），且把它焊进一个 R51 不能删的存活文件里，直接违背 B 的 G24 显式硬序，导致 R51 无法按计划安全还债。其次 workbench_link_guardrails 被并入 workbench_links_viewmodel 簇——该文件是 R54/LB02/LB05 的 fail-open/fail-closed 逐键四态 parity oracle，合并后 B 需重新定位锚点（按符号而非行号），属 high。route_registration、aps_workbench_flow 为 medium（锚点漂移/PIN 断言需现场重定位）。real_db_replay check/smoke 删除对 R32 为 none（R32 走 BackupManager.backup 的 integrity_check，而这两文件用的是 raw sqlite3.Connection.backup，对 R32 免疫，仅是「跑一遍确认不误红」的弱关注）。先做 A 不会物理塌掉 B 的安全网，但会在两处（R51/R54）制造「合并后 B 还债动作与 A 合并结构冲突」，必须按下列缓解顺序处理。",
+  "findings": [
+   {
+    "t": "A 合并 sort_strategy_case_insensitive 会保留并焊死 R51 必须『整体退场』的灵魂线违规断言",
+    "type": "删除B安全网",
+    "sev": "blocker",
+    "dep": "verified-real",
+    "debts": [
+     "R51"
+    ],
+    "files": [
+     "tests/regression_sort_strategy_case_insensitive.py",
+     "tests/regression_sort_strategies_priority_case_insensitive.py",
+     "core/algorithms/sort_strategies.py"
+    ],
+    "evi": "A裁决(truth表L19 + L3_VERDICTS.md:114 §4.1 + GOVERNANCE.md:59/PLAN.md:205):MERGE:sort_strategy_case_insensitive,把 regression_sort_strategy_case_insensitive.py 与 regression_sort_strategies_priority_case_insensitive.py 参数化合并,纪律=『参数化后断言条数 ≥ 合并前各文件之和(去重)』即必须保留所有断言。B依据:R51.md:40-43/86/99/123 + PHASE4-SAFE-BATCH-PLAN.md:213 G24『R51 两续命测试整体退场,禁迁移禁保留 :25 兜底断言(保留=复活 P4 静默回退)』。实读 tests/regression_sort_strategy_case_insensitive.py:25 `assert parse_strategy(\"unknown\", default=SortStrategy.DUE_DATE_FIRST) == SortStrategy.DUE_DATE_FIRST` 正是 R51 要铲的坏值静默回退;该断言测的 parse_strategy 是 R51 删除目标(sort_strategies.py:161-173)。而合并目标 regression_sort_strategies_priority_case_insensitive.py:25-31 实读根本不调 parse_strategy,只测 StrategyFactory.create+BatchForSort 的 priority 大小写排序(一个 R51 不删、有真价值的算法契约)。A 把两者合并=把 R51 待删断言焊进一个存活文件:R51 后做时无法 `git rm` 整文件(会连带删掉存活的 priority-sort 契约),只能做 A 计划没设计的『从参数化用例里外科摘除 parse_strategy 那一支』——这与 A『断言条数≥之和』纪律正面冲突,A合并者若守纪律就会拒绝删该支。A理由『same case-insensitivity contract』本身是误判:两文件测的是不同契约(string→enum 解析容错 vs 存活算法的优先级串大小写排序)。",
+    "mit": "先A后B在此点必须破例:(1)若A未做——把 regression_sort_strategy_case_insensitive.py 从 sort_strategy_case_insensitive 簇剔除,改判 DROP-with-debt(随 R51 整体退场),只让 priority 文件独立 KEEP,不做合并;(2)若A已合并——R51 执行时不得套用『整删文件』,改为外科删除合并文件里源自 parse_strategy 的那一条 parametrize 用例 + 删 sort_strategies.py:161-173,并在 PR 注明『此处违反 A 的断言条数≥之和纪律是 R51 灵魂线要求,A 合并纪律在此让位』。两种走法都需在 A 的 GOVERNANCE 合并对账表给 sort_strategy 簇打『B-R51 例外』标记,否则 A 的『合并丢覆盖』门禁(PLAN.md:205 断言条数≥之和)与 B 的 G24 互相判对方违规。"
+   },
+   {
+    "t": "workbench_link_guardrails 并入 workbench_links_viewmodel 簇——它是 R54/LB02/LB05 的 fail-open 逐键四态 parity oracle",
+    "type": "锚点路径漂移",
+    "sev": "high",
+    "dep": "verified-real",
+    "debts": [
+     "R54",
+     "LB02",
+     "LB05"
+    ],
+    "files": [
+     "tests/regression_scheduler_workbench_link_guardrails.py",
+     "tests/regression_scheduler_workbench_links_contract.py",
+     "web/viewmodels/scheduler_workbench_links.py",
+     "core/services/report/execution_review.py"
+    ],
+    "evi": "A裁决(truth表L20 + L3_VERDICTS.md:112):MERGE:workbench_links_viewmodel,把 regression_scheduler_workbench_link_guardrails.py 与 ..._links_contract.py 参数化合并 git rm 原文件。B依据:R54.md:76/118 字段7/11 明列『tests/regression_scheduler_workbench_link_guardrails.py 的 _is_formal_adopted_context 下游读端逐键(120-162)必须对三关键键覆盖{缺失/None/False/True}×拦放矩阵』;C-NAV-GUARD redteam explode_r2:58/explode_r3:63『R54 删任一手维面前先迁 regression_scheduler_workbench_link_guardrails.py:120-162...同 commit 避免护栏裸奔窗口』;PHASE4:286『R54:5套 delegate 前后逐键四态拦放一致』。LB02.md:110/143 + LB05.md:112/147 把该文件 :96/121/153/224 列为 execution_review 承重的 must-regress 安全网。实读该文件 test_execution_review_guardrail_uses_full_plan_identity(:121-150) 确为该 parity 矩阵本体(:131 pop missing、:136 =False、:137 is_comparison=True、:147 is_superseded=True),:23-52 can_emit_feedback_write_urls 逐字段,:224 forbidden extra_params。两合并文件确实 import 同一 web.viewmodels.scheduler_workbench_links(实读两文件 import 块一致),簇技术上可合并。",
+    "mit": "A 合并若先行:R54/LB02/LB05 还债时的『先迁该测试改读 collar 输出、删手维面与改测试同 commit』动作必须改为在合并后的新文件里按测试函数名(test_execution_review_guardrail_uses_full_plan_identity 等)而非行号定位——B 的 R54 dossier 现有的 :120-162/:96/:121/:153/:224 行号锚点全部失效需现场 rg 重定位。建议:(1)A 合并 commit 信息记录原 guardrails 各 test 函数迁入后的新位置;(2)B 的 ROOT 阶段(G04 R54 collar 扩 3 键 + 逐键四态 parity)动手前先 rg 合并后文件确认 test_execution_review_guardrail_uses_full_plan_identity 仍在且四态用例齐(A 纪律保证断言不丢,但用例可能被 parametrize 重组);(3)排序上建议 B 的 G04/G05 与 A 的 workbench_links_viewmodel 合并避免交叠窗口——谁先做都要求另一方按符号重定位,不可两边同期改这两文件。属 high(需大面积重定位锚点)不升 blocker:A 合并纪律(断言条数≥之和)保证 R54 依赖的具体断言不会被合并动作删除,只是位置漂移。"
+   },
+   {
+    "t": "route_registration_contract 并入 scheduler_route_registration 簇——R43 需改写的 :88 wrapper import 锚点随之漂移",
+    "type": "锚点路径漂移",
+    "sev": "medium",
+    "dep": "verified-real",
+    "debts": [
+     "R43"
+    ],
+    "files": [
+     "tests/test_scheduler_route_registration_contract.py",
+     "tests/test_scheduler_routes_still_registered_by_factory.py",
+     "web/routes/scheduler_run.py"
+    ],
+    "evi": "A裁决(truth表L47 + L3_VERDICTS.md:115):MERGE:scheduler_route_registration,把 test_scheduler_route_registration_contract.py 与 test_scheduler_routes_still_registered_by_factory.py 合并。B依据:R43.md:104/141 字段8/11『test_scheduler_route_registration_contract.py:88 importlib.import_module(\"web.routes.scheduler_run\") 改为 import 根包或 domains 叶子』(R43 删 scheduler_run 等 9 个顶层 wrapper)。实读该文件 test_legacy_leaf_import_loads_only_requested_leaf(:81-102):88 行确实 import web.routes.scheduler_run 并断言只加载请求的叶子——R43 删 wrapper 后此整个 test 函数失效必须改写。合并 sibling test_scheduler_routes_still_registered_by_factory.py 用的是 monkeypatch+create_app 的不同 scaffold(实读:11-43),与本文件 subprocess _run_probe scaffold 不同,A『structural invariant mergeable』在文件层成立但机制异构。R43 owner_pending=true 且在 PHASE4 Batch-D(line 305),晚于 A 的 P5。",
+    "mit": "R43 还债时(Batch-D)按测试函数名 test_legacy_leaf_import_loads_only_requested_leaf 在合并后文件里定位待改的 :88 import,而非裸行号(合并后两套 scaffold 拼一起行号必漂)。冲突可控:R43 本就是『改写 import 路径/删失效用例』,A 合并只是改变了它的所在文件名与行位;A 合并纪律保证 factory smoke 那两条 /scheduler/run 等断言不丢。建议 A 合并 commit 记录该 test 函数迁入新文件名,B 的 R43 动手前 rg test_legacy_leaf_import 确认位置。注意 R43 同时要改 test_sp05_path_topology_contract.py(A 裁 DROP),那是 D1 的事不在本维度。"
+   },
+   {
+    "t": "aps_workbench_flow_contract 并入 workbench_context_propagation 簇——R57(已fixed)PIN 的 fallback 透传断言所在文件被合并",
+    "type": "合并丢断言",
+    "sev": "medium",
+    "dep": "verified-real",
+    "debts": [
+     "R57"
+    ],
+    "files": [
+     "tests/regression_aps_workbench_flow_contract.py",
+     "tests/regression_aps_workbench_first_round_flow_contract.py",
+     "tests/regression_aps_workbench_report_row_links_contract.py",
+     "web/navigation_context.py"
+    ],
+    "evi": "A裁决(truth表L42 + L3_VERDICTS.md:108 + CSV:60-62):MERGE:workbench_context_propagation,把 aps_workbench_{first_round_flow_contract,flow_contract,report_row_links_contract}.py 三文件合并。B依据:dossiers/_fixed_confirm.md:86『R57 由 tests/regression_aps_workbench_flow_contract.py 锁死::335 test_workbench_non_adopted_review_entry... + :347 计划和现场实际只复盘正式采用方案 + :353 home_query[plan_role]==[baseline_best](fallback 原样透传是有意的,被 PIN)』。实读该文件 :335-356 确证 :346 aria-disabled、:347 中文、:353 plan_role==baseline_best 三断言齐在,是 R57『双路径有意分歧』的差分 oracle。三文件中 flow_contract 与 report_row_links 共用 tests.reports_workbench_backlink_helpers(实读 import 一致),first_round 用异构重 scaffold(importlib/tempfile/HTMLParser)。R57 已是 fixed 债,该 PIN 是防回潮安全网。",
+    "mit": "A 合并 first_round/flow/report_row_links 三文件时,合并纪律(断言条数≥之和)须确保 test_workbench_non_adopted_review_entry_is_disabled_and_plain_chinese 的三条 PIN 断言(:346/:347/:353)逐条保留进参数化用例,尤其 home_query[plan_role]==[baseline_best] 这条『有意透传』的反直觉断言极易在合并去重时被当冗余删掉(它和 first_round 里可能存在的 adopted 正向用例看似矛盾)。建议:A 合并该簇时把此 test 标『R57-PINNED 勿去重』;B 侧 R57 已 fixed 无主动还债动作,只需在 A 合并后跑一次确认该断言仍红线生效。属 medium 而非 high:R57 不再有改代码动作,风险仅是 A 合并误删 PIN(被 A 自身断言条数门禁兜底,但该门禁是『条数』非『语义逐条』,故仍需显式标记)。"
+   },
+   {
+    "t": "real_db_replay check/smoke 删除对 R32 无实质影响（R32 走 BackupManager.backup，check/smoke 用 raw sqlite3.Connection.backup 免疫）",
+    "type": "无实质冲突",
+    "sev": "none",
+    "dep": "not-a-dependency",
+    "debts": [
+     "R32"
+    ],
+    "files": [
+     "tests/run_real_db_replay_check.py",
+     "tests/run_real_db_replay_smoke.py",
+     "tests/run_real_db_replay_e2e.py",
+     "core/infrastructure/backup.py"
+    ],
+    "evi": "A裁决(truth表L35-36 + L3_VERDICTS.md:110):MERGE:real_db_replay_e2e,e2e 是 load-bearing 保留、删 check/smoke。B依据:R32.md:96/117 仅把 run_real_db_replay_{check,smoke} 列为 test_consumers 并注『须确认重放库不会偶发 integrity 失败导致误红』『落地时跑一遍确认』——是弱关注非安全网。实测两文件 :60-73 _sqlite_backup_copy 用的是 raw `src.backup(dst)`(sqlite3.Connection.backup),不是 R32 改的 BackupManager.backup;grep 两文件 integrity_check 零命中。R32.md:82 自己确认『migration_runner src.backup(probe) 实为 raw sqlite3.Connection.backup,对 R32 免疫』——同理 check/smoke 的 raw backup 对 R32 的 integrity_check raise 改动完全免疫。R32 主文件是 core/infrastructure/backup.py:335-337,与这两测试文件无收口/锚点关系。",
+    "mit": "无需缓解。A 删 check/smoke 不触碰 R32 的任何安全网或锚点。唯一遗留:R32 dossier §11 写的『落地时跑 run_real_db_replay_check/smoke 确认不误红』若这两文件已被 A 删,R32 改跑保留的 run_real_db_replay_e2e.py 即可(e2e 同样走真库重放,实读 :165-318 经 create_app 走完整 backup 栈,反而更能覆盖 BackupManager.backup)。建议 R32 dossier §11 的文件名从 check/smoke 更新为 e2e,纯文档订正。"
+   }
+  ],
+  "verifications": [
+   {
+    "t": "A 合并 sort_strategy_case_insensitive 会保留并焊死 R51 必须『整体退场』的灵魂线违规断言",
+    "holds": true,
+    "sev": "blocker",
+    "reason": "证伪未果，发现成立。实读三处全部坐实：(1) A 确实合并——L3_VERDICTS.md:114 + L3_verdicts.csv:431-432(两文件同簇 sort_strategy_case_insensitive/batch B10_sched_b) + _CROSS_IMPACT_TRUTH.md:19,61 把两文件参数化合并为一个存活文件，纪律 GOVERNANCE.md:59 / PLAN.md:205『参数化后断言条数≥合并前各文件之和(去重)』，P5.1 程序 PLAN.md:170『核对断言不丢』。(2) B 确实把该断言当必铲对象——R51.md:40/43/86/99/123 + PHASE4-SAFE-BATCH-PLAN.md:213(G24)逐条要求 regression_sort_strategy_case_insensitive.py『整体退场，禁迁移禁保留 :25 兜底断言(保留=复活 P4 静默回退)』；实读该文件:25 `assert parse_strategy(\"unknown\", default=SortStrategy.DUE_DATE_FIRST)==SortStrategy.DUE_DATE_FIRST` 正是灵魂线禁止的坏值静默回退，测的 parse_strategy 即 R51 删除目标 sort_strategies.py:161-173(已实读确认 except→default 兜底体)。(3) 两文件测不同契约——实读 regression_sort_strategies_priority_case_insensitive.py grep parse_strategy 计数=0，只调 StrategyFactory.create+BatchForSort 测 priority 串大小写排序，是 R51 不删、有真价值的存活算法契约。故 A 合并后 R51 无法 `git rm` 整文件(会连带删存活 priority-sort 契约)，只能外科摘除一支 parametrize——与 A『断言条数≥之和』纪律正面冲突。A 自身真相源 truth:19 已登记该合并与 dossiers/R51.md 交集，但全 A 文档无任何 R51 例外处置(grep 例外/R51/parse_strategy 仅命中登记行，无消解)，即 A 若按现行裁决盲合并，冲突不被化解。判定 verified-real，blocker 维持：先A后B场景下 A 会把 R51 必铲的灵魂线违规断言焊进存活文件，B 的 G24 整体退场无法按 git rm 整文件清洁执行，静默回退语义被钉成契约存活=恰是 B 要根除的灵魂线违例。属删除B安全网/违承重纪律级冲突，非局部锚点漂移。修正建议同发现缓解(1)：把 parse_strategy 文件移出合并簇改判随 R51 退场、priority 文件独立 KEEP，并在 A 合并对账表打 B-R51 例外标记。"
+   },
+   {
+    "t": "workbench_link_guardrails 并入 workbench_links_viewmodel 簇——它是 R54/LB02/LB05 的 fail-open 逐键四态 parity oracle",
+    "holds": true,
+    "sev": "medium",
+    "reason": "冲突真实成立但原始 high 偏高,实证下调为 medium。证据链全部核实通过:(1) A 确实合并删原文件——L3_VERDICTS.md:112『workbench_links_viewmodel(2): regression_scheduler_workbench_{link_guardrails,links_contract}』+ L3_verdicts.csv 两行均 MERGE:workbench_links_viewmodel + 4.3 做法『parametrize 收差异→合并→git rm 原文件』;_CROSS_IMPACT_TRUTH.md:20 该文件 verdict=MERGE 且被 8 条 B 债引用(LB02/LB05/R54/explode_r2_r3)。(2) B 的 R54 确把该文件当 parity oracle 且按行号锚定——R54.md:76『...link_guardrails.py 的 _is_formal_adopted_context 下游读端逐键(120-162)对三关键键 {缺失/None/False/True}×拦放矩阵』、R54.md:118『120-162...missing/pop:131、=False:136/167、is_comparison=True:137、is_superseded=True:147』;redteam explode_r2_C-NAV-GUARD_SOUL.md:58/explode_r3:63『R54 删任一手维面前先迁 ...link_guardrails.py:120-162...同 commit 避免护栏裸奔窗口』;PHASE4:286『R54:5 套 delegate 前后逐键四态拦放一致』——verified-real。(3) 行号锚点精确:实读 tests/regression_scheduler_workbench_link_guardrails.py:121-150 test_execution_review_guardrail_uses_full_plan_identity 确为四态矩阵本体(:131 pop is_current_executable_official_version、:136 =False、:137 is_comparison=True、:147 is_superseded_by_newer_version=True),:23-52 can_emit_feedback_write_urls 逐字段、:233 forbidden_keys——锚点零漂移,全对得上。两合并文件 import 块一致(均 from web.viewmodels.scheduler_workbench_links),簇技术上可合并。【下调 high→medium 的实证理由】(a) 发现自承『A 合并纪律(断言条数≥之和,4.3)保证 R54 依赖的具体断言不被删,只是位置漂移』——A 不删安全网、不违 B 承重纪律(承重纪律约束 B 对 core/web 收口点的改动,不约束 A 的测试参数化合并),故排除 blocker;(b) 重定位非『大面积』:R54 锚点集中在单一文件单一测试函数 test_execution_review_guardrail_uses_full_plan_identity 及邻近 2 个函数,parametrize 合并保留函数名,一次 rg 函数名即可重定位,够不上 high 的『重做依赖分析或大面积重定位』——依赖关系本身完好,仅文件改名;(c) 实读 LB02.md:140『本债不删不改产线行为,无需迁移测试只需回归』+ LB05.md:142『本批=补注释→不需迁测试』——LB02/LB05 仅把该文件当 CI 回归绿灯,A 合并后只需把回归命令里的文件路径改名(机械动作),根本无需锚点重定位,故 LB02/LB05 侧实为 low。综合落在 medium『局部锚点漂移需现场 grep』而非 high。缓解建议(A 合并 commit 记录原 test 函数迁入新位置 + B 的 G04 动手前 rg 确认函数仍在四态齐全 + 排序避免两边同期改这两文件)合理且足以消解 medium 风险。"
+   }
+  ]
+ },
+ {
+  "dim": "D4-KEEP_TRIM剪尾",
+  "verdict": "先A后B在D4维度总体可行,无 blocker。28 个 KEEP_TRIM 中被 B 依赖的文件里,A 的剪尾对象(模板/JS/CSS grep + 文档清单 + 行数/复杂度门快照)与 B 依赖的行为断言(pytest.raises/取值/键集 parity)在 7 个主文件中有 6 个物理分离、无冲突。唯一 high 风险=test_enum_display_consistency.py:整文件单测函数把 A 要剪的精确标签对与 R41 收口前要改写为 loud 的坏值续命行(:59-61/:23)交织,无法函数级切分,A 须行级手术保留行为行或此文件 A 阶段整体 KEEP 推迟到 R41 同批;medium=regression_aps_three_gap_docs_quality_gate.py 的反向 doc-pin 门被 A 剪后 R20 失去记账自证(非安全网,B 可降级 grep 替代)。两者均可通过‘A 交接清单标注 + B 侧自检替换’缓解,不构成承重纪律违规(A 未删 B 标记的承重护栏/灵魂线守卫,silent_fallback/schedule_result_view/invalid_query 的灵魂线续命断言全部落在 A 保留核心区)。",
+  "summary": "实读 5 个点名文件 + enum_display/greedy_refactor 的真实测试代码与对应 B dossier 后,结论:绝大多数 KEEP_TRIM 的剪尾对象与 B 依赖的行为断言在物理上是分离的(A 剪的是 read_text+grep 模板/JS/CSS/文档清单的快照尾,B 依赖的是同文件里的 pytest.raises/取值断言核心区),先 A 后 B 在这些文件上无实质冲突。唯一真冲突是 test_enum_display_consistency.py:整文件就一个测试函数,A 要剪的\"精确标签对(active=可用)\"与 R41 要 REWRITE-to-loud 的坏值续命行(:59/60/61 ready、:23 operator)交织在同一函数体内无法函数级切分,A 若按 L14-61 整体剪尾会连带删掉 R41 的差分oracle/收口前要改写的目标行。次要:R20 把 aps_three_gap 文档门当\"记账自证\"用,A 剪掉后 R20 少一道自检(非安全网)。",
+  "findings": [
+   {
+    "t": "enum_display 整文件单测函数:A剪精确标签对与R41要改写的loud续命行无法切分(真冲突)",
+    "type": "合并丢断言",
+    "sev": "high",
+    "dep": "verified-real",
+    "debts": [
+     "R41"
+    ],
+    "files": [
+     "tests/test_enum_display_consistency.py"
+    ],
+    "evi": "A裁决[KEEP_TRIM]理由(_CROSS_IMPACT_TRUTH.md:54 / L3_verdicts.csv):‘real enum_display_zh wrappers: trim/unknown-passthrough/None-fallback behavior valuable but exact label pairs (active=可用 etc line 14-61) are translation-table snapshot’——即剪 L14-61 的精确标签对。但实读 tests/test_enum_display_consistency.py 全文件仅一个测试函数 test_enum_display_wrappers_expected_outputs(L4-61),A 说‘有价值’的 passthrough/None-fallback 行(:18 weird→weird、:19-20 \"\"/None→\"-\"、:59 ready_zh(\"weird\")==\"未齐套\"、:60 ready_zh(\"\")==\"未齐套\"、:61 ready_zh(None)==\"未齐套\")与 A 要剪的精确标签对(:14 active=可用…)在同一函数体内逐行交织,无函数级切分边界。B 侧 R41.md 字段11/字段4明确:‘test_enum_display_consistency.py:59/:60/:61 必须改为断言 loud 暴露(passthrough 原值或\"未知\"),绝不删了重钉静默口径’,并字段7要‘新增一条专钉空串反转(未齐套↔齐套)的断言’,把 :59-61 当收口前的差分oracle/续命闸。",
+    "mit": "A 执行此文件剪尾时禁止按 L14-61 函数级整删,须行级手术:仅删 active/maintain/inactive 等纯标签映射行,保留 :18/:19-20/:23/:59-61 等 unknown/None/坏值行为行(A 自己理由也说这些‘valuable’)。或更稳:此文件 A 阶段整体 KEEP(不剪),把剪尾推迟到 R41 收口同批做,届时由 R41 把 :59-61 改 loud 并补空串反转断言后再清纯标签对。R41 owner_pending=true 且排 Batch-5,A 全程先行,务必在交接清单标注‘此文件 R41 待改写,A 勿删坏值行’。"
+   },
+   {
+    "t": "regression_web_silent_fallback_contract.py:A剪的3个模板grep尾(L424-456)与R59续命断言(:240-250)物理分离",
+    "type": "无实质冲突",
+    "sev": "none",
+    "dep": "verified-real",
+    "debts": [
+     "R59",
+     "R66"
+    ],
+    "files": [
+     "tests/regression_web_silent_fallback_contract.py"
+    ],
+    "evi": "A裁决理由(_CROSS_IMPACT_TRUTH.md:56):‘core asserts real no-silent-fallback...(line 38-419) but 3 fns grep week_plan/overview templates (line 424-456)’。实读确认 L424/434/448 三函数确为 read_text+‘assert ... in source’的模板源码grep(纯脆性尾)。B 侧 R59.md 字段8/字段11 把 report_nonnegative_int 对 \"1.0\"/1.0 raise 当‘灵魂线续命/唯一回归闸’,实读其断言在 L240-250(test_report_numeric_helpers...,真 pytest.raises),全在 A 保留的核心区(38-419)内;R66.md 字段8 只需 :229/:314 的 import 不破(decorate_utilization_rows/build_report_context),A 完整保留 L223-282 该测试。剪 L424-456 不触 B 任一断言/import。",
+    "mit": "无需缓解。仅提示:A 理由把尾范围写成‘424-456’,但文件 L459-470 另有真行为测试 test_scheduler_analysis_time_budget_labels_reject_bad_values(断坏值→\"记录异常\"),A 若执行成‘删424以后全部’会误伤;务必按理由点名的 3 个 grep 函数精确删,勿删 459+。"
+   },
+   {
+    "t": "regression_scheduler_resource_dispatch_invalid_query_cleanup.py:A剪L26-32模板/JS grep尾,R05续命断言(:340)在保留区",
+    "type": "无实质冲突",
+    "sev": "none",
+    "dep": "verified-real",
+    "debts": [
+     "R05",
+     "R41"
+    ],
+    "files": [
+     "tests/regression_scheduler_resource_dispatch_invalid_query_cleanup.py"
+    ],
+    "evi": "A裁决理由(_CROSS_IMPACT_TRUTH.md:67):‘tests real route invalid-query redirect/sanitization+fail-closed 404+HTTP error mapping 400/500+_resolve_version logic...; L27-32 greps template/js bundle as snippet tail’。实读 L26-32 test_resource_dispatch_page_renders_generic_degradation_channel 确为 _read 模板 + read_resource_dispatch_script_bundle()的 grep。B 侧 R05.md 字段8/11 把 svc._normalize_scope_type(\"bad\") raise 当‘删/改名即红的续命测试’,实读在 L336-345(真 pytest.raises);R05 字段7要新增 team/operator空/machine空 parity 也是落在 A 保留的 route 级测试(L119-413)旁。A 仅剪 L26-32,不碰 :340 及 route 区。",
+    "mit": "无需缓解。R05/R41 owner_pending=true 且 R05 排 Batch-8、R41 Batch-5,均在 A 之后;A 剪掉的 L26-32 与 R05 的 _resolve_version/scope_type 收口无关,交接时无需特别标注。"
+   },
+   {
+    "t": "regression_schedule_result_view_context.py:A剪中文notice子串(:160/183/202)非B锚点;B真锚点在:294-301与:205-275(A保留)",
+    "type": "无实质冲突",
+    "sev": "low",
+    "dep": "verified-real",
+    "debts": [
+     "R21",
+     "R22",
+     "R23",
+     "R54",
+     "R44"
+    ],
+    "files": [
+     "tests/regression_schedule_result_view_context.py"
+    ],
+    "evi": "A裁决理由(_CROSS_IMPACT_TRUTH.md:55):‘real plan-role resolution: adopted/baseline/critical/fallback/comparison + plan metadata field consistency (line:124-291); Chinese notice substrings line:160,183,202 brittle’。实读 :160/183/202 是嵌在 test_context_falls_back/_marks_comparison/_no_history 三个真行为测试体内的‘assert \"正式采用方案\" in context.plan_role_notice’单行(同函数已有 is_fallback/is_comparison/status 结构断言)。B 真锚点:R21.md/R22.md 字段11 反复点 test_gantt_plan_query_wrapper_keeps_legacy_bad_role_message(L294-301,钉‘未知的排产方案角色：bad’文案)为‘不可删/收口须保持绿’的续命闸,R22 还依赖 :205-275 的 plan_identity 键集/metadata 一致性——实读这两段均在 A 保留区,且不是 :160/183/202。",
+    "mit": "low:剪 :160/183/202 不碰 B 锚点。但提示 A:这三行是同函数内验证‘fallback/comparison 会产出用户可见 notice’的唯一断言,剪掉后该函数仅剩结构态断言。建议剪法改为‘把精确中文子串改为断言 plan_role_notice 非空/含 role 字段’而非整行删,保留‘有 notice’这一行为契约。与 B 无冲突,纯 A 内部口径。R23 经核为假撞(真 primary_file=schedule_plan_role.py,不在本文件)。"
+   },
+   {
+    "t": "regression_aps_three_gap_docs_quality_gate.py:A剪文档清单快照(L160-214仅保:217),B依赖正是被剪的反向doc-pin,但仅记账非安全网",
+    "type": "门禁验证破坏",
+    "sev": "medium",
+    "dep": "verified-real",
+    "debts": [
+     "R15",
+     "R20",
+     "R49",
+     "R69"
+    ],
+    "files": [
+     "tests/regression_aps_three_gap_docs_quality_gate.py"
+    ],
+    "evi": "A裁决理由(_CROSS_IMPACT_TRUTH.md:60):‘绝大多数断言为脆性文档快照...仅末 test_quality_gate_plan_runs:217 有真契约价值’,即剪掉 L160-214 全部 doc-snapshot 测试(含 KEY_PYTHON_FILES/REGRESSION_TESTS 路径逐条 pin)。B 对此文件的引用全部落在被剪区:R15.md:114(:136 pin state_builder 路径,‘与 R15 收口无关’)、R20.md:101/136(:128 KEY_PYTHON_FILES pin operation_execution_labels.py,删 shim 须‘摘元组项+删指南’,改完‘再跑 docs_quality_gate 自证记账三同步’)、R49.md:103(:73 仅列入清单‘不直接依赖’)、R69.md:94(:132 列 persistence_guard 路径‘不会红’)。关键:R20.md 字段8 灾难链自评‘漏摘门禁:128...→记账失败,非安全失守——文档同步门禁机制本身在工作’。",
+    "mit": "medium 而非 high:此门是 B 的‘记账一致性自检’,非承重安全网。先 A 剪掉后:R20 删 operation_execution_labels.py shim 时不再需要‘摘元组项+同步指南’这道配套(门没了),反而更简单;R15/R49/R69 本就声明不受波及。唯一损失=R20/R15/R69 的‘改完跑 docs_quality_gate 自证’这步自检失效。缓解:A 交接清单标注此门已删,B 侧 R20 把验收命令里的 docs_quality_gate 自证替换为直接 grep 指南文本一致性;或 A 阶段保留 test_developer_guide_lists_regression_tests_and_key_python_files 这一个反向 pin 测试(它正是 R20 配套门),其余 doc 快照照剪。"
+   },
+   {
+    "t": "regression_value_policies_matrix_contract.py:A=KEEP(不剪尾),B(R30/R31/R33)当策略矩阵行为parity oracle,无剪尾风险",
+    "type": "无实质冲突",
+    "sev": "none",
+    "dep": "verified-real",
+    "debts": [
+     "R30",
+     "R31",
+     "R33"
+    ],
+    "files": [
+     "tests/regression_value_policies_matrix_contract.py"
+    ],
+    "evi": "用户 D4 提示点名此文件,但实查 L3_verdicts.csv:该文件 verdict=KEEP(high,‘real value_policies matrix...domain policy’),落在真相源表2(A=KEEP,内容全保留)而非表1 KEEP_TRIM,A 不剪任何尾。B 侧 R33.md:88 明确把它与 compat_parse 降级测试并列为‘行为 parity 测试’,R30.md:126/R31.md:96 在删 value_policies 常量/facade 时‘退断言+迁 import 到 core.shared’——是 B 自己编辑这个 oracle(在承重纪律允许的‘配套退断言’范围),与 A 剪尾无关。",
+    "mit": "无需缓解(D4 维度)。注意:A 对此文件的唯一潜在影响是 P3 改写/P6 迁目录导致 R30/R31/R33 引用的 :18/:20/:46-48/:53/:88-95 行号漂移——但那属 D6(锚点漂移)管辖,不在 D4。"
+   },
+   {
+    "t": "test_greedy_refactor_contracts.py:A剪L56-101源码grep/行数/复杂度门,R53 parity oracle在保留的算法体(L124+)",
+    "type": "无实质冲突",
+    "sev": "none",
+    "dep": "verified-real",
+    "debts": [
+     "R27",
+     "R50",
+     "R53"
+    ],
+    "files": [
+     "tests/test_greedy_refactor_contracts.py"
+    ],
+    "evi": "A裁决理由(_CROSS_IMPACT_TRUTH.md:59):‘deep algorithm tests...(line 124-1117) but trim source-grep import contracts+line-count<500+function-span<80+radon complexity<15 gate snapshots (line 56-101)’。实读 L56-101 确为 _module_text grep + _line_count<500 + _function_span<=80 + _complexity_violations 门禁快照。B:R53.md 字段7把 :225-258 的 return 契约 (6,2)+副作用断言当‘删 :74 后必须仍绿的回归护栏’,在 A 保留的 L124-1117 内;R27.md:160 提及 :81(scheduler.calendar grep)但明说‘与空包删除无关、不受波及’;R50 经 rg 实证不引用此文件(mean_positive 不在)。A 剪 L56-101 不碰 R53 的 :225-258 oracle。",
+    "mit": "无需缓解。R27 引用的 :81 虽在 A 剪除区,但 R27 自己声明不依赖;A 剪掉后 R27 无影响。"
+   }
+  ],
+  "verifications": [
+   {
+    "t": "enum_display 整文件单测函数:A剪精确标签对与R41要改写的loud续命行无法切分(真冲突)",
+    "holds": false,
+    "sev": "medium",
+    "reason": "证伪要点:A 的裁决并非\"无法切分的真冲突\",而是其自身理由已给出切分判据。A 裁决=KEEP_TRIM(非DROP),理由原文(L3_verdicts.csv:624 / _CROSS_IMPACT_TRUTH.md:54)明写\"real enum_display_zh wrappers: trim/unknown-passthrough/None-fallback behavior VALUABLE but exact label pairs (active=可用 etc line 14-61) are translation-table snapshot\"——即 A 要剪的是\"精确标签对\"(纯映射行,如 tests/test_enum_display_consistency.py:14-16 active/maintain/inactive=可用/维修/停用、:22 active=在岗、:29-31、:37-41、:47-49、:55-57 等 translation-table 行),A 明确把\"unknown-passthrough/None-fallback 行为\"列为 valuable 要保留。而 R41 续命所需的 :59 ready_zh(\"weird\")、:60 ready_zh(\"\")、:61 ready_zh(None) 恰恰就是 A 点名 valuable 的 None-fallback/passthrough 行(:18 weird→weird、:19-20 \"\"/None→\"-\" 同类),不属于 A 要剪的\"精确标签对\"。R41.md(dossiers/R41.md:41/70/98/132/156-157,verified-real)确认 :59-61 是收口前差分oracle/续命闸,且字段1 git diff vs b08162cd 为空、0锚点漂移、整文件为单函数 test_enum_display_wrappers_expected_outputs(L4-61)行号稳定。KEEP_TRIM 按 PLAN.md:172-173 P5.2 定义本就是\"保留真实断言、删脆性尾\"的行级手术,A 裁决文本本身就是\"留 valuable 行为/剪标签对\"的切分指令,与 R41 需求方向一致(都要保住 :59-61)。故\"无法切分/A 会删掉安全网\"不成立——A 的理由已自带切分边界,二者可调和。残余风险仅为执行粒度:本文件无函数级边界,粗心执行者若按\"L14-61\"字面整删函数体会误删 :59-61(R41 的 oracle),属真实但纯程序性隐患,缓解只需交接清单标注\"此文件 R41 待改写,A 勿删 :59-61 坏值/None 行\"——无需 B 重做依赖分析、无锚点漂移需 grep。原始 high 高估:既非裁决级矛盾(A 自己已要求保留),也不需大面积重定位锚点,降为 medium(局部需现场纪律/交接备注,丢失会令 R41 重建续命行)。"
+   }
+  ]
+ },
+ {
+  "dim": "D5-门禁基础设施",
+  "verdict": "先 A 后 B 在门禁工具链维度存在 1 个 blocker + 1 个 high + 2 个 medium 真实破坏,但全部可通过『A 按自己的 PLAN 修正(而非 CSV 字面)执行 + 删工具与重接编排原子化』化解。blocker 是 A 的 L3_verdicts.csv 把 B 每批 go-no-go 唯一安全网 test_architecture_fitness.py(实测恰 21 项,含 0 分层违规 + silent-fallback 台账核对 + parse-helper 白名单核退三类 B 强依赖断言)裁为 DROP_WITH_TOOL,而 A 自己的 PLAN P2.3/GOVERNANCE 红线又写永久保留——这是 A 的内部裁决矛盾;只要落地时认 PLAN(保留该文件)并回填 CSV,blocker 即降为 none。high 是 run_quality_gate.py 内部硬 import 了 P2.2 要删/简化的 verify_required/long_gate,删与重接之间有 ImportError 窗口,但因『先完整执行 A』,该窗口只存在于 A 内部中间态,A 完成且门禁绿后交棒给 B 时门禁已可用,不波及 B 执行期(前提:A 把删工具+重接编排原子化)。medium 是 P3 会重写 B 的 3 个 main-style KEEP 依赖 parity 文件(value_policies_matrix/number_utils_facade/compat_parse)致锚点漂移 + run_daily 的 test_registry 硬 import,B 须开工前按符号重 grep(B 已有重 rg 纪律可吸收)。澄清两点:B 的执行 SOP 不用 A§1.4 那套 check_full_test_debt/verify_required/sync_debt 命令(B 全文 0 引用,A§1.4 自身矛盾是 A 内部待修);B 的语义雷达门在 A 改动范围外无冲突。结论:门禁维度不构成『B 无法安全还债』的硬阻断,但 A 必须把『test_architecture_fitness.py 一个不删』和『删门禁工具与重接编排同原子』当作交棒给 B 前的两条硬前置。",
+  "summary": "A 的 P0/P2 改门禁工具链会从两条路打断 B 的执行流程。最重的一击:B 的每批 go-no-go 门(批后门禁,PHASE4-SAFE-BATCH-PLAN.md 行146/191/230/293/334 逐批写\"fitness 21项全绿+0分层违规\")精确依赖 tests/test_architecture_fitness.py(实测恰 21 个 def test_),而 A 的 L3_verdicts.csv 把它裁为 DROP_WITH_TOOL(直删)——这与 A 自己 PLAN.md P2.3/GOVERNANCE 红线\"永久保留 test_architecture_fitness.py\"直接矛盾;按 CSV 字面执行即抽掉 B 的唯一逐批安全网,按 PLAN 修正执行则保住。第二击:B 的全量兜底命令 run_quality_gate.py --require-clean-worktree 虽 CLI 被红线保护,但其内部硬 import 了 P2.2 M4 要删的 verify_required_regressions_from_full_test_debt(:25)与 P2.2 M2 要简化的 long_gate_full_test_debt(:41/:44)+硬编码路径校验(:1680);A 删工具与重接编排之间存在 ImportError 窗口,该窗口内 B 任何批次验证都 loud 失败。反向澄清:B 自己的 SOP 完全不用 A§1.4 的 check_full_test_debt/verify_required/sync_debt(B 全文 0 命中),且 B 的语义雷达门(run_semantic_guards/run_drift_scan,.codestable/semantics/)在 A 的 tests/+tools/+scripts/ 改动范围之外,无冲突;B 的 ROOT 门禁测试(execution_review_identity_guardrail/spec_sync)已是 pytest 风格,P3 不会重写其结构。B 的 23 条风险 register 无一条预见 A 改门禁工具链,B 是按\"门禁稳定\"假设写的。",
+  "findings": [
+   {
+    "t": "A 删 test_architecture_fitness.py 会抽掉 B 每批 go-no-go 的唯一安全网(CSV vs PLAN 自相矛盾)",
+    "type": "删除B安全网",
+    "sev": "blocker",
+    "dep": "verified-real",
+    "debts": [
+     "R59",
+     "R66",
+     "R09",
+     "R15",
+     "R41",
+     "R54",
+     "R22",
+     "R05"
+    ],
+    "files": [
+     "tests/test_architecture_fitness.py",
+     "/Users/lurenxing/Documents/GitHub/----/.codestable/refactors/2026-06-01-test-gate-cleanup/L3_verdicts.csv",
+     "/Users/lurenxing/Documents/GitHub/----/.codestable/refactors/2026-06-01-test-gate-cleanup/PLAN.md",
+     "/Users/lurenxing/Documents/GitHub/----/.codestable/audits/2026-06-02-underwater-debt-census/fix-plan/phase4-dep-safety/PHASE4-SAFE-BATCH-PLAN.md"
+    ],
+    "evi": "B 依据:PHASE4-SAFE-BATCH-PLAN.md 每批『批后门禁』逐批写『fitness 21 项全绿 + 0 分层违规』(ROOT 行146 / Batch-A 行191 / Batch-B 行230 / Batch-C 行293 / Batch-D 行334),且 §1.1 总纲(1) 行128 显式依赖 test_architecture_fitness.py:229 test_no_new_local_parse_helpers + :254-256 stale_entries 在删/收编 parse helper 时核退白名单。实测 tests/test_architecture_fitness.py 恰 21 个 def test_,含 0 分层违规所依赖的 :166 test_viewmodels_do_not_import_flask_or_services_or_repositories_or_routes / :187 test_no_circular_service_dependencies,以及 B 的 R59/R66/R09/R15/R41 raise-vs-silent 改动唯一被 :290 test_no_silent_exception_swallow + :333 test_startup_silent_fallback_samples 捕获。A 理由:L3_verdicts.csv 对 tests/test_architecture_fitness.py 裁 verdict=DROP_WITH_TOOL,reason『architecture gate driven by tools.quality_gate_support ledger ... gate self-ref』。",
+    "mit": "先做 A 时必须以 PLAN.md:41(永久保留)/PLAN.md:123 P2.3『修正:test_architecture_fitness.py 保留』/GOVERNANCE.md:109(例外保留)为准,绝不按 CSV 字面 DROP_WITH_TOOL 删此文件;并在 A 收尾前修正 L3_verdicts.csv 该行 verdict 与 PLAN 对齐(否则后续脚本化执行者会照 CSV 删)。A 改 quality_gate_support 台账(task#16/#17)时不得破坏 silent-allowlist 结构,否则 :290/:294 load_ledger(required=True) 会让 B 改 silent-fallback 时门禁误红/误绿。"
+   },
+   {
+    "t": "P2.2 M4/M2 删 verify_required/简化 long_gate 会在重接编排前让 run_quality_gate.py 抛 ImportError,打断 B 全量兜底门禁",
+    "type": "门禁验证破坏",
+    "sev": "high",
+    "dep": "verified-real",
+    "debts": [
+     "R09",
+     "R15",
+     "R52",
+     "R04",
+     "R54",
+     "R22",
+     "R05"
+    ],
+    "files": [
+     "scripts/run_quality_gate.py",
+     "tools/verify_required_regressions_from_full_test_debt.py",
+     "tools/long_gate_full_test_debt.py",
+     "/Users/lurenxing/Documents/GitHub/----/.codestable/refactors/2026-06-01-test-gate-cleanup/PLAN.md"
+    ],
+    "evi": "B 依据:B 每批 go-no-go 与 A§1.3 三连验证均以 `scripts/run_quality_gate.py --require-clean-worktree` 为全量兜底门(flag 实测在 run_quality_gate.py:2398/:2462/:3181)。A 理由:PLAN.md:119 P2.2 M4『删 verify_required_regressions_from_full_test_debt.py + test_registry 大半。改门禁编排,双跑验证』、:118 M2『删 long_gate_test_body_diff.py、简化 long_gate_full_test_debt.py』。实测 run_quality_gate.py:25 `from tools import verify_required_regressions_from_full_test_debt as required_regressions_verifier`、:41/:44 `from tools.long_gate_full_test_debt import (...)`、:1680 硬编码 `== ['python','tools/verify_required_regressions_from_full_test_debt.py']`。删模块而未同提交重接 import,则 `import scripts.run_quality_gate` 直接 ImportError,B 在该窗口内跑门禁全 loud 失败。",
+    "mit": "A 的 P2.2 M4/M2 必须把『删工具 + 重接 run_quality_gate.py 的 import/编排 + 删 :1680 硬编码路径校验』放在同一原子提交(PLAN 已写『双跑验证』,但需强制原子化,不得留中间态);A 全程跑完且门禁绿后再交棒给 B。因 B 是『先 A 后 B』,只要 A 完成态门禁可用,该窗口对 B 无残留影响——风险仅在 A 内部中间态,不波及 B 执行期。B 无需改动。"
+   },
+   {
+    "t": "P0.1 改 FOCUSED + P2.2 删 tools.test_registry 触动 run_daily_quality_gate.py 的硬编码节点与硬 import",
+    "type": "门禁验证破坏",
+    "sev": "medium",
+    "dep": "verified-real",
+    "debts": [
+     "R56"
+    ],
+    "files": [
+     "scripts/run_daily_quality_gate.py",
+     "tools/test_registry.py",
+     "tools/test_registry_groups_scheduler.py",
+     "/Users/lurenxing/Documents/GitHub/----/.codestable/refactors/2026-06-01-test-gate-cleanup/PLAN.md"
+    ],
+    "evi": "B 依据:§1.1 总纲(3) 行130 + §1.1 行121/149 规定『核存在用 rg <name> tools/test_registry*』来确认 R56 护栏 regression_execution_review_identity_guardrail.py 注册(B 称 test_registry:289)。实测该行在 tools/test_registry_groups_scheduler.py:289 = `\"tests/regression_execution_review_identity_guardrail.py\"`。A 理由:PLAN.md:65 P0.3『编辑 tools/test_registry_groups_scheduler.py(36 个 **)』+ :53 P0.1『FOCUSED 移除 test_architecture_fitness』+ :119 P2.2 M4『删 test_registry 大半』。run_daily_quality_gate.py:24 `from tools.test_registry import (...)`、:37 硬编码 `tests/test_architecture_fitness.py::test_viewmodels_do_not_import...`。",
+    "mit": "A 的 P0.3 收窄 scope 通配后,B 用的是 `rg <name> tools/test_registry*` 按文件名搜(非按行号),只要 A 不删除 regression_execution_review_identity_guardrail.py 的注册条目,B 仍能核到——但 B 文档写的『test_registry:289』裸行号会漂,B 现场须按符号 rg(B §1.1 已自带重 rg 纪律,可自洽吸收)。A 删 tools.test_registry 大半时须保证 run_daily_quality_gate.py:24 的 import 同步重接,否则 daily 门禁 ImportError(同 high 项,但 daily 非 B 强依赖命令,降 medium)。"
+   },
+   {
+    "t": "P3 main-style→pytest 会重写 B 的 3 个 KEEP 依赖 parity/contract 文件,漂移其锚点",
+    "type": "锚点路径漂移",
+    "sev": "medium",
+    "dep": "verified-real",
+    "debts": [
+     "R30",
+     "R31",
+     "R33",
+     "R29",
+     "R51",
+     "R50",
+     "R49"
+    ],
+    "files": [
+     "tests/regression_value_policies_matrix_contract.py",
+     "tests/regression_number_utils_facade_delegates_strict_parse.py",
+     "tests/regression_compat_parse_emits_degradation.py",
+     "/Users/lurenxing/Documents/GitHub/----/.codestable/refactors/2026-06-01-test-gate-cleanup/PLAN.md"
+    ],
+    "evi": "B 依据:_CROSS_IMPACT_TRUTH.md 表2(A=KEEP 但 P3 改写/P6 迁目录会漂)列 regression_value_policies_matrix_contract.py(B 引 18 次)、regression_number_utils_facade_delegates_strict_parse.py(17 次)、regression_compat_parse_emits_degradation.py(12 次);其中 RK19 行540 明指 R29 真续命点 `regression_number_utils_facade_delegates_strict_parse.py:45-48`。A 理由:PLAN.md:144-148 P3.3『def main()→def test_xxx()、删样板』。实测三文件均 main-style(grep:def main/__name__ 命中、0 个 def test_),P3 会重写其函数结构 → :45-48 等行号锚点系统性漂移。B 的 ROOT 门禁测试 regression_execution_review_identity_guardrail.py/regression_scheduler_config_spec_sync_contract.py 实测已是 pytest 风格(6/2 个 def test_,0 main),P3 不动其结构。",
+    "mit": "先 A 后 B 的情况下,P3 改写发生在 B 开工前,B 的 dossier 锚点(如 RK19 的 :45-48)按 A 改写后的新结构会失效;B 须在开工前对这 3 个 main-style 依赖文件按符号(normalize_number_utils_facade / value_policies matrix 键名 / compat_parse degradation 符号)重新 grep 定位,不可照搬 dossier 裸行号。B §1.1 已有『弃裸行号、按符号重 rg』总纲,可吸收此漂移,故 medium 非 high。"
+   },
+   {
+    "t": "A§1.4 基线刷新 SOP 自身引用了 A 自己 P2.2 M4 要删的工具(A 内部矛盾,但不直接破坏 B)",
+    "type": "无实质冲突",
+    "sev": "low",
+    "dep": "not-a-dependency",
+    "debts": [],
+    "files": [
+     "/Users/lurenxing/Documents/GitHub/----/.codestable/refactors/2026-06-01-test-gate-cleanup/PLAN.md",
+     "/Users/lurenxing/Documents/GitHub/----/.codestable/audits/2026-06-02-underwater-debt-census/fix-plan/phase4-dep-safety/PHASE4-SAFE-BATCH-PLAN.md",
+     "tools/verify_required_regressions_from_full_test_debt.py"
+    ],
+    "evi": "A 理由:PLAN.md:29-36 §1.4 基线刷新 SOP 第 33 行调用 `tools/verify_required_regressions_from_full_test_debt.py`,但同文件 :119 P2.2 M4 又要删该工具——A 自身的 SOP 在 P2 之后会失效(A 内部待修)。B 依据核查:PHASE4-SAFE-BATCH-PLAN.md 全文对 check_full_test_debt/verify_required_regressions/sync_debt_ledger 的引用计数 = 0,即 B 的执行 SOP 根本不用 A§1.4 这套基线刷新命令,B 用的是 architecture_fitness + run_semantic_guards + run_drift_scan + parity/contract + run_quality_gate。",
+    "mit": "此项是 A 计划内部待修(§1.4 SOP 在 P2 后须同步去掉 verify_required 那行),与 B 无依赖关系,对『先 A 后 B』无实质影响。仅提示 A 修自己的 SOP 文档一致性。"
+   },
+   {
+    "t": "B 的语义雷达门(run_semantic_guards/run_drift_scan)在 A 改动范围之外,无冲突",
+    "type": "无实质冲突",
+    "sev": "none",
+    "dep": "verified-real",
+    "debts": [
+     "R54",
+     "R22",
+     "R09",
+     "R41"
+    ],
+    "files": [
+     "/Users/lurenxing/Documents/GitHub/----/.codestable/audits/2026-06-02-underwater-debt-census/fix-plan/phase4-dep-safety/PHASE4-SAFE-BATCH-PLAN.md"
+    ],
+    "evi": "B 依据:PHASE4-SAFE-BATCH-PLAN.md §1.1 总纲(2) 行129 + 批后门禁行147/293 依赖 `.codestable/semantics/run_semantic_guards.py` exit 0(机器门)+ run_drift_scan.py 对比 baseline(人工核)。A 理由:A 的全部改动落在 tests/ + tools/ + scripts/(GOVERNANCE/PLAN 全文未触 .codestable/semantics/)。两者路径不相交。",
+    "mit": "无需缓解。A 不碰 .codestable/semantics/,B 的语义雷达机器门 run_semantic_guards.py 与 drift 基线在 A 执行后原样可用。"
+   }
+  ],
+  "verifications": [
+   {
+    "t": "A 删 test_architecture_fitness.py 会抽掉 B 每批 go-no-go 的唯一安全网(CSV vs PLAN 自相矛盾)",
+    "holds": false,
+    "sev": "medium",
+    "reason": "B依赖=verified-real成立:PHASE4-SAFE-BATCH-PLAN.md 逐批把 fitness 21项+0分层违规当 go/no-go(行146/191/230/293/334),§1.1总纲(1)行128依赖 test_architecture_fitness.py:229/:254-256,实测文件存在(tests/test_architecture_fitness.py)且恰21个 def test_。但 blocker 前提『A会按CSV字面删』被证伪:GOVERNANCE.md:6 明定『本文是唯一权威执行入口,文件级明细见 L3_verdicts.csv』(权威序 GOVERNANCE/PLAN > CSV);三份上层文档全部显式加粗『例外保留』——GOVERNANCE.md:109、PLAN.md:41、PLAN.md:123『修正:保留』、L3_VERDICTS.md:96『执行时应KEEP』、L3_VERDICTS.md:184务必保留锚点;L3_verdicts.csv:620 的 DROP_WITH_TOOL 是 agent 原始误判,已被 L3_VERDICTS.md:91/96 当场裁决修正推翻。故 A 正常执行不会删此文件、不抽B安全网,blocker 不成立。残余真实风险仅:脚本化执行者直接按 CSV verdict==DROP_WITH_TOOL 批量 git rm 而不读上层修正——属台账卫生债,且发现自带的缓解(A收尾前把 CSV:620 改KEEP对齐PLAN)恰好封住,降为 medium(局部需修正的 CSV 残留漂移)。"
+   },
+   {
+    "t": "P2.2 M4/M2 删 verify_required/简化 long_gate 会在重接编排前让 run_quality_gate.py 抛 ImportError,打断 B 全量兜底门禁",
+    "holds": false,
+    "sev": "none",
+    "reason": "代码耦合属实但 A→B 冲突不成立,且发现自证无效。(1)B依赖判定应为 assumed 非 verified-real:遍历整个 B fix-plan 树(PHASE4-SAFE-BATCH-PLAN.md / OWNER-DECISIONS-2026-06-05.md / dossiers/ / clusters/ / _layer*.md)对 run_quality_gate / require-clean-worktree / require_clean_worktree 实测 0 命中(grep -rln 全树空)。B 各批真实 go-no-go 门定义在 PHASE4-SAFE-BATCH-PLAN.md:145/191/230/295/334=「fitness 21 项全绿 + 0 分层违规 + run_semantic_guards.py exit 0 + v19 DB CHECK 不破 + 逐批 parity/contract + 逐锚点 rg/grep」,从不提 scripts/run_quality_gate.py。发现所谓「B 每批 go-no-go 均以 run_quality_gate.py 为全量兜底门」的证据(flag 实测在 run_quality_gate.py:2398/2462/3181)只证明 flag 在 A 的脚本里存在,不证明 B 计划调用它——「全量兜底门」是发现自己的构造,非 B 文档记载的依赖。(2)代码级 ImportError 链属实:run_quality_gate.py:25 from tools import verify_required_regressions_from_full_test_debt、:41/:44 from tools.long_gate_full_test_debt import (...)、:1680 硬编码 ['python','tools/verify_required_regressions_from_full_test_debt.py'];PLAN.md:117(M2 简化 long_gate_full_test_debt.py)/:119(M4 删 verify_required + 改门禁编排,双跑验证)。删模块未同提交重接确会 ImportError——但这是 A 内部原子性卫生问题,PLAN.md:119 已写「改门禁编排,双跑验证」自带兜底。(3)发现的缓解段自我拆台:明言「风险仅在 A 内部中间态,不波及 B 执行期。B 无需改动」。用户场景正是「先完整执行A,再执行B」,A 完成态门禁可用后才交棒,按发现自身逻辑 A→B 跨计划冲突归零。该项属 A 内部中间态,对 A→B 维度无实质冲突,severity=none。"
+   }
+  ]
+ },
+ {
+  "dim": "D6-锚点漂移量化",
+  "verdict": "先A后B 在 D6 维度判定为 high(非 blocker):A 的 P3+P5+P6 会令 B 76 份 dossier 中约 199 个去重 tests/ 锚点(覆盖 105 个文件,其中 89 个 KEEP/KEEP_TRIM 内容保留但路径必迁)在【路径维度】整体失效,B 需大面积重定位锚点并修订 7 条写死 tests/ 路径的核验命令。但三点决定它够不上 blocker:①A 的删/剪/合并与 B 的承重护栏/灵魂线续命断言在【内容上系统性错开】(实测 silent_fallback/schedule_result_view/invalid_query 三例 B 锚均落在 A 保留区,A 专剪脆性快照尾,B 专依赖真断言核心),A 不删 B 的安全网、不违反 B 承重纪律;②P3/P5 仅造成行号漂移,B 的'档案行号一律视为待复核+按符号/按断言串 grep 回盘'机制已被 B 自己用于吸收 +9/+180~190 行的历史漂移、并对 R43vsR01 同文件删表预判了行漂串行化,机制足以兜住行号维度;③对 P6 路径漂移,B 缺通用重映射协议(ANCHOR-DRIFT 备忘只把唯一一次 git mv 当特例),这是真实缺口,但可由'A 输出旧→新路径映射表 + B 在 A 定稿后一次性脚本重 grep'低成本补齐。硬前提:必须等 A 全部 P0-P7 跑完、tests 目录定稿后再启动 B,严禁在 P6 迁移中途穿插 B(半截路径=锚点全乱);且需复核 R29 等引用 A 产物本身的 B 锚点(A 产物状态漂移已有反噬 B 的先例)。",
+  "summary": "实测:B 全部产物含 199 个去重的 tests/xxx.py:line 锚点(431 处出现),覆盖 105 个唯一测试文件。按 A 裁决拆分,B 依赖文件中 62 个 A=KEEP / 27 个 A=KEEP_TRIM / 4 个 DROP|DROP_WITH_TOOL / 7 个 MERGE / 3 个不在A基线(实为已迁 scheduler_graph 子目录)。tests/ 根目录平铺 .py 文件实测正好 626 个 = A 的 P6 迁移面,P6 后这些路径 100% 失效。破坏分三层:P6 改路径(几乎全体 89 个 KEEP/KEEP_TRIM 文件锚点路径整体失效) > P3 改函数名(B依赖文件中 22 个是 main-style,P3 把 def main→def test_xxx 令符号锚点也变) > P5 剪尾改行号(27 个 KEEP_TRIM 内行号上移)。关键裁定:B 的锚点漂移机制(\"档案行号一律视为待复核,动手前独立 grep 回盘\")是为【行号漂移】设计的,实测能兜住 P3/P5 的行号位移(B 已自行处理过 +9/+180~190 行的 registry 漂移、并对 R43vsR01 同文件删表的行位移预判了\"用绝对行号会漂\");但该机制对【路径级漂移】无通用对策——ANCHOR-DRIFT 备忘把唯一一次 git mv 称作\"唯一路径级漂移\"并当一次性特例硬编码新路径,且 B 有 7 条 grep 命令把 tests/<旧文件名>.py 写死(P6 改名后直接落空)。结论:A 先行不会删/违反 B 承重纪律(P5 剪的脆性尾与 B 引的灵魂线续命断言实测不重叠,如 silent_fallback B锚 :241-250 落在 A 保留区、A 剪 :424-456),但会令 B 76 份 dossier 里约 199 个锚点的【路径维度】整体失效,B 现有机制只能逐文件现场重 grep 补救——属 high(需大面积重定位锚点+改 7 条写死路径的核验命令),非 blocker。",
+  "findings": [
+   {
+    "t": "P6 迁移让 B 89 个 KEEP/KEEP_TRIM 依赖文件的锚点路径整体失效——真相源表2的67个'B依赖且A=KEEP'只是冰山,实测达89",
+    "type": "锚点路径漂移",
+    "sev": "high",
+    "dep": "verified-real",
+    "debts": [
+     "全体76债通用",
+     "R05",
+     "R22",
+     "R59",
+     "LB02",
+     "R54"
+    ],
+    "files": [
+     "tests/(626个平铺文件全体迁 tests/<模块>/<子模块>/)",
+     "tests/regression_web_silent_fallback_contract.py",
+     "tests/regression_schedule_result_view_context.py",
+     "tests/regression_scheduler_workbench_link_guardrails.py"
+    ],
+    "evi": "实测:tests/ 根目录平铺 .py 文件 find -maxdepth 1 = 626(与 A PLAN.md 第8章'626 文件迁 tests/<模块>/<子模块>/,文件名去前缀'字字吻合);B 产物去重 tests/xxx.py:line 锚点 199 个、唯一文件 105 个;按 A L3_verdicts.csv 交叉 = 62 KEEP+27 KEEP_TRIM=89 个内容保留但 P6 必迁的文件。真相源 _CROSS_IMPACT_TRUTH.md 表2只列了'B引用次数≥1且A=KEEP'的 67 个(它按 basename 扁平化、漏算 KEEP_TRIM 那一类),实测 KEEP+KEEP_TRIM 合计 89 个文件的 file:line 锚点在 P6 后路径维度全失效。B dossier 锚点形如 R59.md:124 'tests/regression_web_silent_fallback_contract.py:241-250 灵魂线续命测试,不可删'——P6 去前缀+迁子目录后此路径不复存在。",
+    "mit": "A 执行 P6 时产出一份'旧路径→新路径'映射表(git mv 全程可机械生成),交给 B 在每债动手前用它把 dossier 锚点的 tests/ 前缀整体重写;或 B 在 P6 完成后对 76 份 dossier 跑一次性脚本,按文件名(去前缀后)+符号名重新 grep 全部 199 个锚点。务必在 A 全部 P0-P7 跑完、tests 目录定稿后再启动 B,避免迁移中途的半截路径。"
+   },
+   {
+    "t": "B 的锚点漂移机制只为'行号漂移'设计,对 P6'路径级漂移'无通用对策——ANCHOR-DRIFT 备忘把唯一一次 git mv 当特例硬编码,无 P6 级批量重映射协议",
+    "type": "锚点路径漂移",
+    "sev": "high",
+    "dep": "verified-real",
+    "debts": [
+     "机制层(全体债)",
+     "R09",
+     "R08"
+    ],
+    "files": [
+     ".codestable/audits/2026-06-02-underwater-debt-census/fix-plan/phase4-dep-safety/ANCHOR-DRIFT-2026-06-05-POSTCOMMIT.md"
+    ],
+    "evi": "ANCHOR-DRIFT-2026-06-05-POSTCOMMIT.md:13 把 tokens 模块的 git mv 明确标注为'唯一路径级漂移',:37 用一次性特例指令处置('R09 单元执行时按新路径 core/models/resource_dispatch_execution_tokens.py 回盘');:39 的通用指令是'档案行号一律视为待复核,动手前独立 grep 回盘'——只覆盖行号,不覆盖路径。B 全产物'回盘'882 次/'按符号'293 次/'rg 回盘'120 次,机制核心是【在已知文件名内按符号重定位行号】。实测 B 有 7 条 grep 命令把 tests/<文件名>.py 写死(如 rg -n 'report_nonnegative_int|导出行数' tests/regression_web_silent_fallback_contract.py),P6 改名后这些核验命令直接 no-such-file。B 全文零处提及 A 的 P6/去前缀/test-gate-cleanup 重组概念(grep A 计划专有词=空),证明 B 分析时未预判 A 的目录重组。",
+    "mit": "B 的 7 条写死 tests/ 路径的 grep 核验命令需在 P6 后逐条改路径。建议把 B 的 grep 协议从'rg PATTERN tests/具体文件.py'升级为'rg -rn PATTERN tests/'(不写死单文件,跨改名仍命中符号),代价是命中多需人工筛。ANCHOR-DRIFT 备忘需补一节'若 A 的 P6 已落地'的批量路径重映射 SOP。"
+   },
+   {
+    "t": "P3 把 22 个 B 依赖的 main-style 文件 def main→def test_xxx,符号锚点(非仅行号)随之改名,B 按符号 grep 也会落空一部分",
+    "type": "行号漂移",
+    "sev": "medium",
+    "dep": "verified-real",
+    "debts": [
+     "R05",
+     "R32",
+     "R51",
+     "R59旁",
+     "R04",
+     "R70"
+    ],
+    "files": [
+     "tests/test_scheduler_resource_dispatch_smoke.py",
+     "tests/smoke_e2e_excel_to_schedule.py",
+     "tests/run_real_db_replay_check.py",
+     "tests/run_real_db_replay_smoke.py",
+     "tests/regression_value_policies_matrix_contract.py",
+     "tests/regression_schedule_history_not_created_for_empty_schedule.py"
+    ],
+    "evi": "实测 B 依赖的 105 文件中 22 个是 main-style(有 def main 无 def test_),全在 A 的 P3 改写面(197 个 main-style→0)。P3 'def main()→def test_xxx()、删样板、加 docstring'(PLAN.md 第5章)会:①整体上移行号(删 find_repo_root 样板 443 处)②若 B 锚的是测试函数名本身则函数名变。R05 dossier 锚 tests/test_scheduler_resource_dispatch_smoke.py:177-194(team 活用例,实测命中精确),该文件 _smoke 后缀+happy-path client.get=典型 main-style P3 目标。但 B 多数 main-style 锚点指向【被测的生产符号】(如 _normalize_scope_type)而非测试函数名,生产符号 P3 不动,故 B 按生产符号 grep 仍可定位。",
+    "mit": "B 对这 22 个 main-style 文件的锚点,动手前 grep 应锚【生产侧符号或断言字符串(如'班组轴'/'导出行数')】而非测试函数名;P3 改写后函数名变但断言字符串与被测符号不变,B 现有'按符号/按断言串 grep'协议可兜住。需提醒 B:P3 后这些文件行号集中上移(删样板),勿照抄 dossier 绝对行号。"
+   },
+   {
+    "t": "P5 剪 KEEP_TRIM 脆性尾与 B 引的灵魂线续命断言实测不重叠——A 剪的是 B 不依赖的尾巴,无'合并/剪尾丢断言'实质冲突",
+    "type": "无实质冲突",
+    "sev": "low",
+    "dep": "verified-real",
+    "debts": [
+     "R59",
+     "R22",
+     "R05",
+     "LB02",
+     "R54"
+    ],
+    "files": [
+     "tests/regression_web_silent_fallback_contract.py",
+     "tests/regression_schedule_result_view_context.py",
+     "tests/regression_scheduler_resource_dispatch_invalid_query_cleanup.py"
+    ],
+    "evi": "逐文件核实 A 剪除区 vs B 依赖区:①silent_fallback A 裁'KEEP L38-419,TRIM L424-456(3 fns grep templates)',B(R59.md:124)锚 :241-250(灵魂线续命 report_nonnegative_int raise),:241-250 实测落在 A 保留区[38-419]内,A 剪的 424-456 B 不引——不冲突。②schedule_result_view A 标脆性中文串在 :160/:183/:202(实测确为'正式采用方案'等中文 assert),B(R22)锚 :294-301(wrapper 文案续命)+:18(import),B 锚在文件尾、A 剪在中部——删中部令 B 的 294-301 上移~3 行(纯行号漂,B 机制兜得住),无内容丢失。③invalid_query A 剪 L27-32(template/js grep tail,实测确为 template_source/js_source 断言),B(R05)锚 :340(_normalize_scope_type 直调续命)——A 剪头部令 :340 上移~6 行,纯行号漂。结论:A 的 P5 剪尾刀口与 B 的承重/灵魂线安全网在内容上系统性错开(A 专剪脆性快照尾,B 专依赖真断言核心)。",
+    "mit": "无需阻断;但 B 在 P5 之后必须重 grep 行号(剪尾会令同文件后续锚点上移)。建议 A 在 P5 提交信息里标注每文件'剪除行区间',B 据此判断自己的锚点是否在剪除区(实测均不在)还是仅需行号顺移。"
+   },
+   {
+    "t": "R43/R51 与 A 的 DROP/MERGE 在同一批文件上'殊途同删'——B 本就要删这些文件,A 的 MERGE/裁决对它们变成 moot,反而是 B 内部 R43vsR01 同文件删表的行漂需自管",
+    "type": "合并丢断言",
+    "sev": "low",
+    "dep": "verified-real",
+    "debts": [
+     "R43",
+     "R51",
+     "R01",
+     "R32"
+    ],
+    "files": [
+     "tests/regression_scheduler_wrapper_import_order_contract.py",
+     "tests/test_scheduler_route_registration_contract.py",
+     "tests/regression_sort_strategy_case_insensitive.py",
+     "tests/regression_dispatch_rule_case_insensitive.py",
+     "tests/test_sp05_path_topology_contract.py"
+    ],
+    "evi": "R43.md:51 '删 regression_scheduler_wrapper_import_order_contract.py 整文件(其存在意义就是守 wrapper 自身;wrapper 删了契约即失锚)'——该文件 A=KEEP_TRIM(表2,6refs),但 B 自己整删,A 留不留无所谓。R51.md:40 '整体退场 regression_sort_strategy_case_insensitive.py 与 regression_dispatch_rule_case_insensitive.py'——A=MERGE,B 直删,殊途同归(prod_consumers=0 实证)。真正的内部风险是 B 自陈的 R43.md:65:R43 删 SP05 三张表(test_sp05_path_topology_contract.py:94/105/150)会让后续行号上移,'R01 若用绝对行号锚定会漂',B 已开出'R43 先冻结 SP05 表结构→R01 再动,二选一串行'——这证明 B 对绝对行号漂移有成熟自管纪律,同款纪律可平移吸收 A 的 P3/P5 行漂。",
+    "mit": "对 B 计划删除的文件(R43/R51 名下的 wrapper/sort 测试),A 应在排期上让 B 先删(B 在 ROOT/A/B/C/D 批次里删),避免 A 的 P5 MERGE 与 B 的整删撞车做无用功;若 A 先 MERGE 了,B 改为在簇文件里删对应断言。无断言丢失风险(两边都是清理同一坨死代码)。"
+   },
+   {
+    "t": "反向已发生的依赖断裂先例:B 的 R29 曾把 A 的 L3_verdicts.csv:174 当授权依据,分析时该目录 ABSENT 导致'授权链断裂'被迫 owner-pending——证明 A/B 基于不同快照、A 产物状态变化已实际反噬过 B 一条裁决",
+    "type": "其他",
+    "sev": "medium",
+    "dep": "verified-real",
+    "debts": [
+     "R29"
+    ],
+    "files": [
+     ".codestable/audits/2026-06-02-underwater-debt-census/fix-plan/phase4-dep-safety/dossiers/_fixed_confirm.md",
+     ".codestable/audits/2026-06-02-underwater-debt-census/fix-plan/phase4-dep-safety/_registry.json",
+     "common/number_utils.py"
+    ],
+    "evi": "_fixed_confirm.md 与 _registry.json fix_invalidation_risk 实录:'⚠️FINDING-ERROR(影响修法授权):报告引以为据的权威裁定 .codestable/refactors/2026-06-01-test-gate-cleanup/L3_verdicts.csv:174 = KEEP/high 在盘上整目录不存在(test -f 实测 ABSENT)...该 KEEP/high 仅在审计报告自引用,无法回盘复核。结论:此债的保留vs收口授权链断裂——Phase2 须重新独立裁定,不能照搬不存在的 CSV'。注:该目录现已存在(本会话实测 .codestable/refactors/2026-06-01-test-gate-cleanup/ 在,L3_verdicts.csv 165KB 在),系 A 产物后续补入库;但 B 的 R29 分析已把'A 缺席'固化进裁决。这是 A 产物状态漂移已实际反噬 B 的铁证,与 D6 路径漂移同源(A 的存在性/路径/行号任一维度变动都能令 B 的 file:line 引用失锚)。",
+    "mit": "B 启动前应重新核对所有引用 A 产物(L3_verdicts.csv/PLAN.md)的 B 锚点(尤其 R29),按 A 当前定稿状态重判;R29 的'授权链断裂'结论需在 A 落地后复核(目录已补回,KEEP/high 现可回盘)。若先做 A,A 的 P5 会真正动 common/number_utils.py facade 测试,R29 的'先重写 facade 测试为身份测试否则红'precondition 需与 A 的 P5 协调。"
+   }
+  ],
+  "verifications": [
+   {
+    "t": "P6 迁移让 B 89 个 KEEP/KEEP_TRIM 依赖文件的锚点路径整体失效——真相源表2的67个'B依赖且A=KEEP'只是冰山,实测达89",
+    "holds": false,
+    "sev": "medium",
+    "reason": "事实底层基本属实(find tests -maxdepth1 *.py=626 确认；PLAN.md:182 P6'626文件迁tests/<模块>/<子模块>/文件名去前缀'逐字吻合；CSV 交叉得 59 KEEP+27 KEEP_TRIM=86 个内容保留文件,非finding的62+27=89,KEEP 多算约3),但 blocker/high 的定性不成立,三点证伪:(1)『67漏算KEEP_TRIM』是误读——_CROSS_IMPACT_TRUTH.md:91 表2标题已明写『B依赖∩A=KEEP—内容保留但 P3改写/P6迁目录去前缀 会让锚点路径+行号漂移』,P6漂移真相源早已点名;27个KEEP_TRIM不是漏列而是按设计落在表1(A会剪尾,更重风险,归D4),合并两桶凑89属虚构差额。(2)无安全网被毁——A=KEEP/KEEP_TRIM 文件保留,P6是 git mv 内容不变,R59 依赖的断言体(regression_web_silent_fallback_contract.py:241-250『导出行数』raise)逐字幸存,零违反 B承重纪律(无删/合/passthrough/统一任何护栏)。(3)B本就按符号非路径锚定:PHASE4-SAFE-BATCH-PLAN.md:10『所有file:line须按符号重rg回盘...弃裸行号』、:206行号位移总纲、ANCHOR-DRIFT-2026-06-05-POSTCOMMIT.md:39『档案行号一律视为待复核,动手前独立grep回盘』;dossier 自述锚点已漂±190行(R59.md:31/154『勿照抄旧行号』)、R22.md:81/R54.md:120『回盘确认在』已属例行复核。B 自己的 ROOT 批插注释行造成的位移大于 P6;finding 提议的缓解(重grep/路径映射表)恰是 B 既有 SOP 而非新增要求。所有 tests/xxx.py:line 锚点均为文档指针(供按名+符号重跑pytest/重grep),非生产代码/CI硬编码路径,P6(保内容git mv)对其完全可用。残留真问题=按符号重grep后文件落新路径,谁裸抄旧 tests/<oldname>.py 进 pytest 会暂时miss需现场重解析,即『medium:局部锚点漂移需现场grep』,且 B 已规定该grep。务必A全跑完再启B这条仍是稳妥建议但属流程纪律非冲突阻断。"
+   },
+   {
+    "t": "B 的锚点漂移机制只为'行号漂移'设计,对 P6'路径级漂移'无通用对策——ANCHOR-DRIFT 备忘把唯一一次 git mv 当特例硬编码,无 P6 级批量重映射协议",
+    "holds": true,
+    "sev": "medium",
+    "reason": "机械事实经核实成立,但严重度从 high 下调到 medium——发现夸大了\"B 需重做依赖分析\"。\n\n【证实成立的部分】(1) ANCHOR-DRIFT 备忘 §三确实只覆盖行号:§三.4「档案行号一律视为待复核,动手前独立 grep 回盘」(ANCHOR-DRIFT:39)只说行号;唯一路径级处置是 §二.1 把 tokens 的 git mv 当特例(:13/:15)+§三.2 一次性指令「R09按新路径 core/models/resource_dispatch_execution_tokens.py 回盘」(:37),无 P6 批量重映射 SOP。(2) A 的 P6 确是路径级大重组:PLAN.md:182「626 文件迁 tests/<模块>/<子模块>/,文件名去前缀」+后缀词表收敛 3 类。(3) B 写死 tests/<文件>.py 的 grep 命令实测 22 条(发现说 7 条,反而低估),如 R59.md:154 / LB01.md:172 / R31.md:125 / LB04.md:25,P6 改名后这些字面路径命令直接 no-such-file。(4) B 协议核心确是「在已知文件名内按符号重定位行号」:PHASE4-SAFE-BATCH-PLAN.md:10/:348/:486/:666/:758 反复写「所有 file:line 执行时按符号重 rg 回盘」,默认文件路径稳定。\n\n【下调严重度的决定性反证】(a) 发现称「B 分析时未预判 A 的目录重组」属误判责任主体——真正的 A↔B 治理源 _CROSS_IMPACT_TRUTH.md 已显式枚举此风险:表2 标题(:91)「B依赖 ∩ A=KEEP — 内容保留但 P3改写/P6迁目录去前缀 会让锚点路径+行号漂移(67个)」,且 :202 把它列为待核维度 D6「锚点漂移量化(P3改写197+P6迁626去前缀+P5剪123)」。即 P6 路径漂移是【已量化、已认领】的交叉项,不是盲区,B 不需要\"重做依赖分析\"。(b) P6 只 git mv/改名【测试文件】,B 的安全网【内容】(KEEP_TRIM/MERGE 保留的断言)与 B 的【生产修复靶点】(core/web/data 收口点)全不受 P6 触碰——无任何安全网被删、无承重护栏/灵魂线被删合并 passthrough,不违反 B 承重纪律(_CROSS_IMPACT_TRUTH.md:192),故非 blocker。(c) B 的符号定位哲学本就抗改名:LB01.md:172 已实战处理过测试【函数】重命名(「覆盖确在,函数已重命名,执行清单须按盘上真名认账」),把 22 条字面路径升级为 rg -rn PATTERN tests/(发现自己提的缓解)是机械、局部的执行期 grep 命令调整,正对应 medium 标准「局部锚点漂移需现场 grep」,而非 high 的「需重做依赖分析或大面积重定位锚点」。缓解建议(把 file-scoped grep 改 -rn 跨目录;ANCHOR-DRIFT 补一节 P6 落地后的批量路径重映射 SOP)有效且应采纳,但工作量是执行期改 ~22 条核验命令,不是分析返工。"
+   }
+  ]
+ },
+ {
+  "dim": "D7-基线外文件",
+  "verdict": "先A后B 对 D7 这 8 个文件【整体无 blocker 无 high】。核心结论:8 文件无一是 A 会误删的现存测试安全网——3 个是 B 自己要新建的 parity/迁移安全网(A 碰不到未来文件,且其中 test_sgs_graph_ready 的母体 scheduler_graph/test_ready_queue.py A 恰裁 KEEP 保住),2 个语义守卫脚本在 .codestable/semantics/(A 全程不碰),2 个是 B 引为上下文的源码(run_state 只读不动 / scheduler_utils 收口后才建测试,均非 A 范围)。唯一 A实改∩B依赖的真交集是 tools/test_registry_groups_scheduler.py(A P0.3 收窄通配),定级 low:A 不删测试注册项,只改 scope 粒度,B 依赖的『注册表能纳入门禁』能力不受损,但 B 新建的 3 个安全网测试在 P0.3 收窄后需显式登记进门禁组、且执行 B 前应跑 P0.3 验证命令确认 B 的现存锚点测试仍被收集。真相源表3的『✗不在645基线』标注全部解释清楚:要么是未来文件、要么在 tools/、要么在 .codestable/semantics/、要么是 core/web 源码,无一指向\"A 删掉了 B 的现存安全网\"。",
+  "summary": "8 个文件全部查清真身,无一是 A 会误删的现存测试安全网。3 个是 B 计划【动手前必须新建】的 parity/迁移安全网,当前确不存在(test_sgs_graph_ready.py / regression_gantt_critical_chain_normalize_parity.py / regression_boolean_normalize_wide_parity_contract.py),A 的 645 基线只裁现存 tests,不会\"碰\"未来文件——但 test_sgs_graph_ready.py 的真正安全网母体 tests/scheduler_graph/test_ready_queue.py(31 def)A 裁 KEEP,B 走方向A 删 impl 前要从它迁出,A 的 KEEP 恰好保住母体,无冲突。2 个是语义守卫脚本(run_semantic_guards.py / run_drift_scan.py),在 .codestable/semantics/ 下,A 全程不碰该目录,B 把它们当批后机器门禁,完全独立。2 个是 B 引用的源码/上下文(run_state.py 是 R53 只读不动的 ScheduleRunState;scheduler_utils.py 是 R72 收口后才建测试的 web 源),非测试不在 A 范围。最后 1 个 test_registry_groups_scheduler.py 是 tools/ 下门禁注册表——A 的 P0.3 主菜要改它(收窄 36 个 ** 通配),B 把它当\"按全名核存在\"的门禁可判定性依据,这是唯一 A 实改 ∩ B 依赖的真交集,但 B 的依赖是\"它能注册 regression_ 长名测试\"这一能力,A 收窄通配若误伤注册才有风险,需现场验证 scheduler_graph/test_ready_queue 等 B 锚点仍被收集。",
+  "findings": [
+   {
+    "t": "test_sgs_graph_ready.py 是 B(R52方向A)计划新建的迁移安全网,A 碰不到;但其母体 scheduler_graph/test_ready_queue.py A 裁 KEEP 恰好保住",
+    "type": "无实质冲突",
+    "sev": "none",
+    "dep": "verified-real",
+    "debts": [
+     "R52",
+     "R25"
+    ],
+    "files": [
+     "tests/scheduler_graph/test_sgs_graph_ready.py",
+     "tests/scheduler_graph/test_ready_queue.py",
+     "core/algorithms/greedy/dispatch/ready_queue.py",
+     "core/services/scheduler/graph/ready_queue.py"
+    ],
+    "evi": "真相源表3记 test_sgs_graph_ready.py 引21次但 ✗不在645基线。全仓 find 零命中,ls tests/scheduler_graph/ 确认不存在——B 文档逐处坐实它是【方向A须先新建的迁移目标】:dossiers/R52.md:43/100/125「新建 tests/scheduler_graph/test_sgs_graph_ready.py(当前不存在,实测确认)」、PHASE4-SAFE-BATCH-PLAN.md:209「走A先新建...按31用例全量分流」、redteam/verdict_V4.md:14「实测374行/31个def test_,迁移目标确不存在」。关键:B 引用的 import 母体 test_ready_queue.py 真身在 tests/scheduler_graph/test_ready_queue.py(我实测 grep -c '^def test_'=31,:16 from core.services.scheduler.graph.ready_queue import ReadyQueueContractError,get_ready_operation_ids),A 的 L3_verdicts.csv:52 对它裁 KEEP(high,'readiness logic...incremental-vs-full-scan-equivalence');真相源把它放进表2(KEEP)而非表3。A 既不删母体也不可能动还不存在的新文件。",
+    "mit": "无需缓解。提醒执行者:真相源表3把 test_sgs_graph_ready.py 与母体 test_ready_queue.py 混记成两件事易误读——B 的 31 用例(含16个 ReadyQueueContractError 合同+4条 LIVE ValidationError 契约)安全网寄生在 A 裁 KEEP 的 scheduler_graph/test_ready_queue.py 里,先A后B 时这套覆盖完整保留,B 走方向A 时正常从中迁出即可。若 owner 裁方向B(保留作差分oracle)则连新建都不发生。"
+   },
+   {
+    "t": "regression_gantt_critical_chain_normalize_parity.py 是 B(R11/R63)收口前置硬门 parity,当前不存在,A 不创建不触碰",
+    "type": "无实质冲突",
+    "sev": "none",
+    "dep": "verified-real",
+    "debts": [
+     "R11",
+     "R63",
+     "R10"
+    ],
+    "files": [
+     "tests/regression_gantt_critical_chain_normalize_parity.py",
+     "core/services/scheduler/gantt/critical_chain_support.py",
+     "core/services/scheduler/gantt/critical_chain_provider.py"
+    ],
+    "evi": "全仓 find 零命中(含 *critical_chain_normalize* 模糊)。B 多处明写它是【A1收口动手前必须先建的黄金基线 parity,无 parity 不得收口】:clusters/C-GANTT.md:97、dossiers/R11.md:95/136/166「当前不存在,与档案需新建一致」、dossiers/R63.md:90/137「收口前不存在须新建...应在收口同PR内补齐」、redteam/explode_r2_C-GANTT_SOUL.md:79「前置硬门未建...这是本簇唯一会让测试绿但灵魂线静默失效的缺失前置」。是 B 自己要造的安全网,不在 A 的现存 tests 删改集内。",
+    "mit": "无需缓解。这是 B 内部 P5 收口纪律,与 A 正交。先A后B 不影响 B 何时建此门。"
+   },
+   {
+    "t": "regression_boolean_normalize_wide_parity_contract.py 是 B(LB04 承重债)的承重 parity 安全网,当前不存在,A 不碰",
+    "type": "无实质冲突",
+    "sev": "none",
+    "dep": "verified-real",
+    "debts": [
+     "LB04"
+    ],
+    "files": [
+     "tests/regression_boolean_normalize_wide_parity_contract.py",
+     "core/shared/boolean_normalize.py",
+     "core/services/common/normalization_matrix.py"
+    ],
+    "evi": "全仓 find 零命中(boolean_normalize.py 源码在 core/shared/ 存在,但 parity 测试不存在)。B 文档:_registry.json:2734「承重修法要求的 parity 契约测试不存在(grep tests/全仓零 normalize_yes_no_wide 引用)」、dossiers/LB04.md:25/46/141「目标文件不存在...承重唯一合法=补『我是故意的』注释+新建此 parity」、clusters/C-LEAF-DUP-P4.md:70/130。这是 B 承重纪律下【只许加 parity】的产物,A 的 645 基线不含它(确认 csv 零命中 boolean_normalize),A 不创建。",
+    "mit": "无需缓解。属 B 承重债 LB04 的必落前置,与 A 无交集。"
+   },
+   {
+    "t": "run_semantic_guards.py 与 run_drift_scan.py 是 .codestable/semantics/ 语义守卫脚本,A 全程不碰该目录,B 当批后机器门禁",
+    "type": "无实质冲突",
+    "sev": "none",
+    "dep": "verified-real",
+    "debts": [
+     "全批后门禁"
+    ],
+    "files": [
+     ".codestable/semantics/run_semantic_guards.py",
+     ".codestable/semantics/run_drift_scan.py"
+    ],
+    "evi": "两脚本均 EXIST(find 命中 .codestable/semantics/)。实读脚本头:run_drift_scan.py:2-4『只读、不改代码、不直接 fail。drift exit 0/1 都属正常』、run_semantic_guards.py 跑 property+snapshot 守卫。B 把它们正名为批后门禁两半(run_semantic_guards exit0=机器门 / drift 对比 baseline=人工裁断):PHASE4-SAFE-BATCH-PLAN.md:129/147/652、redteam/final_sign2.md:44『两脚本均 EXIST✓』。我核 A 的 L3_verdicts.csv+PLAN.md+GOVERNANCE.md 对 codestable/semantics|run_semantic_guards|run_drift_scan 全部零命中——A 完全不触碰该目录(A 范围=tests/*.py + tools/scripts 门禁链)。",
+    "mit": "无需缓解。两脚本独立于 A。唯一隐性关联:A 的 P2.2 删 long_gate/architecture_scan_cache 等门禁工具不影响语义守卫脚本(不同目录不同工具链),先A后B 时 B 的批后语义门禁照常可用。"
+   },
+   {
+    "t": "run_state.py 是 R53 明确『仅读不动』的 ScheduleRunState 源码,非测试,A 不在范围",
+    "type": "无实质冲突",
+    "sev": "none",
+    "dep": "not-a-dependency",
+    "debts": [
+     "R53"
+    ],
+    "files": [
+     "core/algorithms/greedy/dispatch/run_state.py",
+     "core/algorithms/greedy/dispatch/batch_order.py"
+    ],
+    "evi": "find 命中真身 core/algorithms/greedy/run_state.py(B 引用的是 dispatch 路径下 ScheduleRunState)。B 文档 dossiers/R53.md:6『关联文件 run_state.py(ScheduleRunState,仅读,不动)』、:62/89『修法是纯删 batch_order.py:74 一行弃值行,run_state 不动,零 import 变更』、_registry.json:7145。它是被 R53 引为论证返回值来源的源码上下文,既非测试也非 B 的安全网/锚点。A 只动 tests 与门禁工具,根本不触及此 core 源文件。",
+    "mit": "无需缓解。R53 是 low 风险纯删 1 行,与 A 无任何文件交集。"
+   },
+   {
+    "t": "test_scheduler_utils.py 是 R72 建议『收口后才写』的非阻塞守卫,尚不存在;scheduler_utils.py 源码 A 不碰",
+    "type": "无实质冲突",
+    "sev": "none",
+    "dep": "not-a-dependency",
+    "debts": [
+     "R72"
+    ],
+    "files": [
+     "tests/.../test_scheduler_utils.py",
+     "web/routes/domains/scheduler/scheduler_utils.py"
+    ],
+    "evi": "test_scheduler_utils.py 全仓 find 零命中(不存在);scheduler_utils.py 源码真身在 web/routes/domains/scheduler/scheduler_utils.py(存在)。B 文档仅 dossiers/R72.md:133 一处『建议(非阻塞)随收口新增...或新建 tests/.../test_scheduler_utils.py,断言 get_plan_role_arg 4 边界值;此测试应在收口后写,不是前置迁移』——是 R72 收口后的可选钉桩,非安全网非锚点。我核 A 的 csv 对 scheduler_utils 零命中(A 不动 web 路由源)。",
+    "mit": "无需缓解。非前置依赖、非 A 范围。先A后B 不受影响。"
+   },
+   {
+    "t": "test_registry_groups_scheduler.py 是 tools/ 下门禁注册表——A 的 P0.3 主菜要改它,B 当『按全名核门禁存在』的可判定性依据;唯一 A实改∩B依赖真交集",
+    "type": "门禁验证破坏",
+    "sev": "low",
+    "dep": "verified-real",
+    "debts": [
+     "R56",
+     "spec_sync 等门禁可判定性"
+    ],
+    "files": [
+     "tools/test_registry_groups_scheduler.py",
+     "tests/regression_execution_review_identity_guardrail.py",
+     "tests/regression_scheduler_config_spec_sync_contract.py",
+     "tests/scheduler_graph/test_ready_queue.py"
+    ],
+    "evi": "find 命中真身 tools/test_registry_groups_scheduler.py(注意是 tools/ 不是 tests/,故不在 A 的645 tests 基线,csv 零命中)。真相源第174-176行+A 的 PLAN.md:65 明列 P0.3『编辑 tools/test_registry_groups_scheduler.py(36个**)收窄通配』。B 引用它作门禁可判定性依据:PHASE4-SAFE-BATCH-PLAN.md:130『经 tools/test_registry_groups_scheduler.py 注册...核存在用 rg <name> tools/test_registry* 而非 fd』、redteam/plan_rt2_3.md:34『经注册表 :289 引用,门禁可机器判定✓』。我实读该文件:它含 web/routes/domains/scheduler/scheduler_utils.py 等 target_paths 映射(:221/:364),但 P0.3 改的是 scope 通配粒度(core/**、web/viewmodels/** 拆子目录),非删除测试注册项。B 依赖的是『此注册表能把 regression_ 长名/scheduler_graph 测试纳入门禁组』这一能力,不是其具体通配粒度。",
+    "mit": "先做 A 的 P0.3 后,执行 B 前需现场验证:(1) B 的承重 parity 测试与锚点测试仍被门禁收集——跑真相源给的 P0.3 验证命令 daily_gate_scope_payload,确认 scheduler_graph/test_ready_queue.py、regression_execution_review_identity_guardrail.py、regression_scheduler_config_spec_sync_contract.py 等 B 依赖测试仍在 target 命中集内(P0.3 收窄是『保守档精确到子目录,漏跑风险小』,但 B 新建的 parity 测试若落在被收窄掉的路径需补登记);(2) B 新建 test_sgs_graph_ready.py / 两个 parity 测试后,须按 P0.3 收窄后的注册表规则把它们登记进对应组,否则门禁不跑新安全网。这是 low:A 不删注册项,只是粒度变化可能让 B 新建测试需显式登记,属配置同步非安全网破坏。"
+   }
+  ],
+  "verifications": []
+ },
+ {
+  "dim": "D8-承重纪律违规",
+  "verdict": "先A后B在D8承重纪律维度有2处必须先处置的硬阻断:(1)真违规——A把 regression_scheduler_workbench_link_guardrails.py 整体MERGE合并,直接命中B的R54/LB02/LB05三条load_bearing=true承重护栏的'严禁合并'铁律,且毁掉R54删手维面所需的逐键四态parity安全网落点(:120-162),A必须把该文件剔出合并簇改KEEP;(2)A内部CSV(DROP_WITH_TOOL)与正文(KEEP)对 test_architecture_fitness.py 自相矛盾,而B把它当贯穿全批次go-no-go门禁+分层违规拦截+R28白名单落点,A必须先把CSV对齐为KEEP否则B全批门禁塌。其余8个交集均非B承重护栏:sp05/sp06是B'同提交退断言'的快照契约(A先删反而给B减负,但须交接步骤作废)、sort_strategy是B灵魂线要铲的续命测试(A的MERGE把要铲的兜底反向迁存=medium合并冲突)、route_registration/aps_workbench_flow是B要改/PIN的对象(medium锚点漂移)、real_db_replay check/smoke与candidate_py38是not-a-dependency(low)。反向核对A§8不可删清单与B承重清单无冲突且自洽。结论:D8存在承重纪律违规,先A不安全,须先修正上述2处A裁决(workbench_link_guardrails改KEEP + architecture_fitness CSV对齐KEEP)方可放行先A后B。",
+  "summary": "确定性求交:A的DROP+DROP_WITH_TOOL+MERGE(84文件)与B全文引用的tests/(100文件)交集恰为10个,与真相源表1一致,逐个Read核实完毕。承重纪律真违规1处(blocker):regression_scheduler_workbench_link_guardrails.py被B的R54+LB02+LB05三条load_bearing=true债当护栏证据+R54删手维面的逐键四态parity安全网落点(:120-162已实测存在),A却裁MERGE(git rm并入workbench_links_viewmodel簇)——直接撞B\"承重护栏只许补注释+加parity、严禁删/合并\"铁律。条件性blocker 1处:test_architecture_fitness.py的CSV裁决(DROP_WITH_TOOL)与A正文裁决(修正为KEEP)自相矛盾,B把它当贯穿全批次的\"fitness 21项绿\"go-no-go门禁载体+R28改:77白名单落点+分层违规拦截器,A若听CSV删则B每批门禁与分层守卫塌,听正文KEEP则无冲突。其余8个交集多为方向一致(sp05/sp06是B\"同提交退断言\"的快照契约非承重、sort_strategy是B灵魂线要铲的续命测试、route_registration/aps_workbench_flow是B要改/PIN的对象)或惰性门(candidate_py38)/旁观回归(real_db_replay check/smoke)。反向核对:A§8不可删脚本(run_complex_*/full_test_debt_shards)B零依赖无冲突;A§8把real_db_replay_e2e列不可删且CSV保e2e删check/smoke,与B的R32一致自洽。",
+  "findings": [
+   {
+    "t": "承重纪律违规:A把R54/LB02/LB05三条load_bearing债的护栏测试MERGE合并(撞'严禁合并'铁律)",
+    "type": "承重纪律违规",
+    "sev": "blocker",
+    "dep": "verified-real",
+    "debts": [
+     "R54",
+     "LB02",
+     "LB05",
+     "R58"
+    ],
+    "files": [
+     "tests/regression_scheduler_workbench_link_guardrails.py"
+    ],
+    "evi": "A理由:L3_verdicts.csv裁 regression_scheduler_workbench_link_guardrails.py=MERGE:workbench_links_viewmodel,value=high,L3_VERDICTS.md§4.1合并做法明文'git rm 原文件→抽公共fixture→parametrize收差异→断言条数≥合并前之和(去重)'。B依据:dossiers/R54.md:32载该债load_bearing=true/severity high;R54.md:76+:118明令'对4套各自契约测试增加收口前后逐键四态parity断言,尤其 tests/regression_scheduler_workbench_link_guardrails.py 的 _is_formal_adopted_context 下游读端逐键(120-162)必须对三关键键覆盖{缺失/None/False/True}×拦放矩阵';R54.md:122迁移纪律'删任一手维列表前必须先确认其对应契约测试改读收口点输出,删列表与改测试同commit,避免护栏裸奔窗口';dossiers/LB02.md:34/:110+LB05.md:41/:112把:96/121/153/224 guard系列列为P2承重护栏(load_bearing=true)证据;redteam/explode_r2_C-NAV-GUARD_SOUL.md:58/explode_r3:63'R54删任一手维面前先迁 :120-162 逐键四态…同commit'。实测 tests/regression_scheduler_workbench_link_guardrails.py:121-148 确为 _is_formal_adopted_context 逐键四态拦放矩阵(missing/pop:131、is_comparison=True、is_superseded、=False),:233 forbidden_keys=('scenario_id','plan_role','is_comparison','can_write_feedback')真实存在。B承重铁律(_interference_rebuilt.md:422/PHASE4:11):承重只补注释+绑parity,绝不删/统一/透传——MERGE=合并=git rm+重组断言,正撞红线。",
+    "mit": "先A时必须把 regression_scheduler_workbench_link_guardrails.py 从 workbench_links_viewmodel 合并簇剔除,改裁 KEEP/KEEP_TRIM(最多剪非guard的脆性尾,绝不git rm、绝不与links_contract合并、绝不去重guard断言);若A坚持合并,须等B的R54/LB02/LB05先落(ROOT承重注释+Batch-C的R54逐键四态parity在该文件原地扩成后),再由B裁断是否允许合并——但B承重纪律本身禁合并,故实质应KEEP。A须同步修正L3_verdicts.csv该行verdict。"
+   },
+   {
+    "t": "A内部裁决自相矛盾:architecture_fitness CSV标DROP_WITH_TOOL但正文修正KEEP,B把它当全批次门禁载体",
+    "type": "门禁验证破坏",
+    "sev": "blocker",
+    "dep": "verified-real",
+    "debts": [
+     "R28",
+     "R29",
+     "R19",
+     "R72",
+     "R24",
+     "R40",
+     "R05"
+    ],
+    "files": [
+     "tests/test_architecture_fitness.py"
+    ],
+    "evi": "A理由:L3_verdicts.csv裁 test_architecture_fitness.py=DROP_WITH_TOOL,value=self-ref;但 L3_VERDICTS.md:91+:96'裁决修正'明文'虽列DROP_WITH_TOOL,但它验证业务代码架构合规(route不直连SQL、viewmodel不import flask/service/repo、无循环依赖),执行时应KEEP不随工具删',§8又把它列为'架构守卫务必保留'。机读裁决与正文裁决冲突。B依据:PHASE4-SAFE-BATCH-PLAN.md:146/191/230/293/334把'fitness 21项全绿+0分层违规'作为ROOT/Batch-A/B/C/D每一批的批后门禁判据;redteam/final_sign2.md:42列它为'6个门禁载体测试/脚本'之一、:49把'fitness 21项绿'列为每批go-no-go机器可判组合核心;PHASE4:128 R28须删/收parse helper时同提交核退 :77 白名单(:254-256 stale_entries第二断言),redteam/explode_r2_C-PARSE-INT_LB.md:29确认R28 fitness守卫:64 NAMES/:77 ALLOWLIST/:254 stale_entries;多处分层违规(repo→service越层/core→flask/model→data环)靠它拦截(verdict_V1.md:127、explode_r1_C-EXEC-FACT_LB.md:53)。",
+    "mit": "A执行前必须把CSV该行从DROP_WITH_TOOL改为KEEP(对齐正文裁决),保证执行时不删。先A后B的前置硬门:B开工前确认 test_architecture_fitness.py 在位且21项可跑——它是B每批go-no-go与分层0违规的唯一机器判据,删则B全批次门禁失锚、R28白名单同步落点消失、分层越层拦截器失效。"
+   },
+   {
+    "t": "A把B灵魂线要整体铲除的'续命测试'MERGE迁移保留(把已铲的P4静默兜底反向钉成契约)",
+    "type": "合并丢断言",
+    "sev": "medium",
+    "dep": "verified-real",
+    "debts": [
+     "R51"
+    ],
+    "files": [
+     "tests/regression_sort_strategy_case_insensitive.py"
+    ],
+    "evi": "A理由:L3_verdicts.csv裁 regression_sort_strategy_case_insensitive.py=MERGE:sort_strategy_case_insensitive(与regression_sort_strategies_priority_case_insensitive.py合并),L3_VERDICTS§4.1做法'断言条数≥合并前之和(去重)'=迁移保留断言。B依据:dossiers/R51.md:3(承重false/owner_pending false)、:40/:86/:123明令'整体退场(非保留)…两续命测试:25的兜底断言必须随删除整体退场,不得迁移、不得保留…迁移=续命=违灵魂';redteam/explode_r1_C-COMPAT-DISPATCH_SOUL.md:25'严禁保留续命、严禁迁兜底语义,保留=把已铲的静默回退钉成契约=灵魂线复活';:25实证 assert parse_strategy('unknown',default=...)==... 正是灵魂线禁止的坏值静默回退默认枚举。",
+    "mit": "先A时该文件不应进MERGE簇——它不是要保留合并的高价值测试,而是B灵魂线要随parse_strategy函数整体删除的续命测试;A裁决应改为'随R51删除'或干脆不动等B在Batch-7删。若A已合并,B执行R51须在合并文件 sort_strategy_case_insensitive 内反向定位并删除A迁入的:25兜底断言+连带parse_strategy无人调用后清理,且不得受A'断言条数≥合并前'验收原则阻挡。R51在Batch-7末批,A通常早完成。"
+   },
+   {
+    "t": "A MERGE动了B用PIN锁死'有意fallback透传'的契约断言,锚点漂移+措辞风险",
+    "type": "锚点路径漂移",
+    "sev": "medium",
+    "dep": "verified-real",
+    "debts": [
+     "_fixed_confirm"
+    ],
+    "files": [
+     "tests/regression_aps_workbench_flow_contract.py"
+    ],
+    "evi": "A理由:L3_verdicts.csv裁 regression_aps_workbench_flow_contract.py=MERGE:workbench_context_propagation(3文件合并),做法parametrize重组+可能当脆性尾剪精确中文文案。B依据:dossiers/_fixed_confirm.md:86'由 regression_aps_workbench_flow_contract.py(git=A)锁死::335 test_workbench_non_adopted_review_entry_is_disabled_and_plain_chinese 实测 :346 aria-disabled=true + :347「计划和现场实际只复盘正式采用方案」+ :353 home_query[plan_role]==[baseline_best](fallback原样透传是有意的,被PIN)'。这是B用来锚定'有意fallback'语义决定的差分依据。",
+    "mit": "A合并时MUST保留:335/:346/:347/:353这4条PIN断言原义(中文文案+plan_role==[baseline_best]列表),不得当'精确中文exact-match脆性尾'剪改;合并后给B交接新文件中PIN断言的新位置。B侧凡引该PIN处改用'测试名+断言语义'定位,弃裸行号。"
+   },
+   {
+    "t": "A先MERGE使B的R43要改的route_registration import锚点漂移(方向一致)",
+    "type": "锚点路径漂移",
+    "sev": "medium",
+    "dep": "verified-real",
+    "debts": [
+     "R43"
+    ],
+    "files": [
+     "tests/test_scheduler_route_registration_contract.py"
+    ],
+    "evi": "A理由:L3_verdicts.csv裁=MERGE:scheduler_route_registration(与test_scheduler_routes_still_registered_by_factory.py合并),subprocess验证lazy注册结构不变量可合并。B依据:dossiers/R43.md:104把它列为'3个契约/拓扑治理测试(守wrapper本身,须删/改而非迁)'之一;R43.md:141'tests/test_scheduler_route_registration_contract.py:88(importlib.import_module(web.routes.scheduler_run))改为import根包或domains叶子'。删9顶层wrapper后:88必须改指。R43病理P3+roadmap延期,与A清wrapper方向一致。",
+    "mit": "先A后B:R43(Batch-D,owner_pending)进场前对该合并文件按 importlib.import_module 字符串 rg 重定位:88那行(已漂入新合并文件),弃裸:88;A交接合并后文件名+import语句新位置给R43。冲突仅锚点漂移,无安全网破坏。"
+   },
+   {
+    "t": "A整删sp05拓扑快照契约:对多数B债减负,但夺走R06/R27协同删点与R45/R48的banned-helper扫描确认",
+    "type": "删除B安全网",
+    "sev": "medium",
+    "dep": "assumed",
+    "debts": [
+     "R01",
+     "R06",
+     "R26",
+     "R27",
+     "R43",
+     "R45",
+     "R48",
+     "R68",
+     "R69"
+    ],
+    "files": [
+     "tests/test_sp05_path_topology_contract.py"
+    ],
+    "evi": "A理由:L3_verdicts.csv裁=DROP,value=low,reason'refactor-topology snapshot:硬编码compat-module alias maps+__all__符号元组+AST registrar+doc-tree literals,任何restructure即rot'。B依据:B从不把它标承重/load-bearing/差分oracle(grep承重+差分关键词零命中);dossiers/R01.md:116明确'它是拓扑契约测试(断言公开符号清单),不是行为测试';B多债把它当'删生产符号时同提交摘除断言行'的快照契约:R01.md:50删:54-55、R06/R27改:310/:315(clusters/C-GRAPH-ERR-DIAG.md:23四包同一原子提交)、R26改SERVICE_BEHAVIOR_*段、R43改ROUTE_*段、R68/R69查SERVICE_ROOTS_WITHOUT_COMPAT。A先整删=这些'同提交退断言'步骤变无操作(减负);但R06/R27失去:310/:315协同删除锚点(无害,因文件没了)、R45/R48失去sp05不撞拓扑的确认手段。",
+    "mit": "A先整删sp05本身不破坏B任何承重(它非承重)。但须给B交接:R01/R06/R26/R27/R43/R68/R69的'同提交改sp05'步骤在A删后应整步删除(不再需要),B计划相应章节须标注'sp05已由A删除,本步无操作';避免B执行时按旧dossier去改一个不存在的文件而困惑或新建。"
+   },
+   {
+    "t": "A删sp06 banned-cfg_get扫描门:R45/R48的'退路径成员'步骤变无操作但失去AST残留确认",
+    "type": "删除B安全网",
+    "sev": "low",
+    "dep": "assumed",
+    "debts": [
+     "R45",
+     "R48",
+     "R68"
+    ],
+    "files": [
+     "tests/regression_sp06_no_duplicate_defs.py"
+    ],
+    "evi": "A理由:L3_verdicts.csv裁=DROP,value=low,reason'AST guard断言无重复def+无banned cfg_get helpers,结构refactor残渣快照'。B依据:dossiers/R45.md:36/:79/:106+R48.md:37/:98明确'删config_adapter.py同提交从 regression_sp06_no_duplicate_defs.py:15 的NO_CFG_GET_TARGETS退一行,否则path.read_text抛FileNotFoundError红(响亮非静默)';R45.md:122确认config_adapter只在NO_CFG_GET_TARGETS(:15)不在TARGETS(:8-12);R68.md:127该测试TARGETS不含R68二文件、跨文件抓不到。B不标它承重。A先删=R45/R48的'退:15一行'步骤变无操作(减负),代价是B失去'config_adapter删后无cfg_get残留'的AST门确认。",
+    "mit": "A先删sp06不破坏B承重。交接:R45/R48的'同提交退sp06:15路径成员'步骤在A删后整步删除;B若仍想要banned-cfg_get残留确认,可在R45/R48落地时手工 rg cfg_get 替代(B dossier本已有rg证据)。non-blocking。"
+   },
+   {
+    "t": "A合并删real_db_replay check/smoke(保load-bearing的e2e),R32仅旁观回归不依赖",
+    "type": "合并丢断言",
+    "sev": "low",
+    "dep": "not-a-dependency",
+    "debts": [
+     "R32"
+    ],
+    "files": [
+     "tests/run_real_db_replay_check.py",
+     "tests/run_real_db_replay_smoke.py"
+    ],
+    "evi": "A理由:L3_verdicts.csv裁check/smoke=MERGE:real_db_replay_e2e,§4.1+§8明文'e2e是load-bearing,保留e2e、删check/smoke',e2e列入§8不可删脚本。B依据:dossiers/R32.md:3(load_bearing false/owner_pending true)、:96/:117把check/smoke仅列为'真库重放消费者,须确认重放库不会偶发integrity失败导致误红(预期不会,落地时跑一遍确认)';R32新测试落点是新建 regression_backup_integrity_*(:75),不靠check/smoke断言。A保留的e2e覆盖同契约。",
+    "mit": "无需处置。A保留load-bearing的e2e即保住B真库重放回归路径;R32落地时把'跑一遍确认不误红'的对象从check/smoke改为保留的e2e即可。non-blocking。"
+   },
+   {
+    "t": "A删candidate_py38(纯源码grep门),B仅作py38语法惰性被动门不依赖其断言",
+    "type": "门禁验证破坏",
+    "sev": "low",
+    "dep": "not-a-dependency",
+    "debts": [
+     "LB07",
+     "R02",
+     "R71"
+    ],
+    "files": [
+     "tests/regression_scheduler_candidate_py38_contract.py"
+    ],
+    "evi": "A理由:L3_verdicts.csv裁=DROP,value=self-ref,reason'门禁自指源码扫:正则+AST扫硬编码文件列表(含本测自身)查PEP585/X|None,纯源码grep无业务逻辑应由CI/linter守'。B依据:dossiers/R71.md:99/:128+LB07.md:126+R02.md:94/:132反复确认'只校py38 AST语法不校helper/导出面,删一个def不会让它红,收敛后大概率不动,纯注释行不影响AST'。B把它列LB07测试消费者但明说是惰性门,不依赖其断言保护任何收敛。",
+    "mit": "无需处置。A删它=B失一道py38语法被动检查,但B从不靠它做承重/差分;若B仍需py38语法约束可由ruff/CI替代。non-blocking。"
+   }
+  ],
+  "verifications": [
+   {
+    "t": "承重纪律违规:A把R54/LB02/LB05三条load_bearing债的护栏测试MERGE合并(撞'严禁合并'铁律)",
+    "holds": false,
+    "sev": "high",
+    "reason": "原定性\"撞承重纪律铁律\"证伪——纪律对象错置。B的承重\"严禁删/合并\"铁律约束的是承重【生产代码】,不是测试文件:R54.md:104原文是\"严禁删/合并某套【列表】而不迁下游\"(指生产guard字段列表),PHASE4-SAFE-BATCH-PLAN.md:11第2条\"承重只补注释+绑parity\"针对的是承重宿主代码;LB02.md/LB05.md的load_bearing宿主与禁区行【全在生产代码】(execution_review.py:209/:180-181/:221、report_plan_helpers.py:58/:180-181),该测试文件仅被列为\"测试消费者之一\"。测试文件本就是A计划(test-gate-cleanup,治理tests/)的合法治理对象,B从未声明该测试文件不许重构。故R58=not-a-dependency,LB02/LB05对该文件=assumed(文件名/角色撞上,非承重本体),不应算进\"被合并的承重债\"。但发现指出的【底层冲突真实存在,只是性质不同=锚点漂移而非纪律违规】,故不下调到none:R54→该测试文件=verified-real——R54.md:76/:118精确点名tests/regression_scheduler_workbench_link_guardrails.py并锚到行号(:131 pop、:136 =False、:137 is_comparison=True、:147 is_superseded=True,实测代码121-150逐行吻合),R54 Batch-C要在该具名文件【原地扩】逐键四态parity断言。A的合并做法(L3_VERDICTS.md:128/4.3)=git rm原文件+抽fixture+parametrize+\"断言条数≥合并前之和(去重)\",会让B锚定的:120-162矩阵基础被重组迁移;且guardrails与links_contract两文件都import can_emit_feedback_write_urls、都测execution_review链(links_contract:153/:308/:320),存在断言重叠,\"去重\"有吞掉guard侧断言的真实风险。降为high:A不删护栏本体(guard逻辑在生产viewmodel scheduler_workbench_links.py:300 _is_formal_adopted_context,测试只要不被去重删就随合并迁移),且A自带\"断言条数≥合并前之和\"护栏,故非blocker;但B需把R54 Batch-C锚点重定位到合并后文件并核验guard四态断言未被去重吞掉=需重定位锚点+核验断言完整性。缓解:A合并时强制保留全部guard断言(execution_review四态拦放矩阵121-150、forbidden_keys:233、can_emit逐字段23-52),不对guard断言去重;或B的R54 ROOT承重注释+Batch-C四态parity先在该文件原地落地后,A再合并并核对断言不减。"
+   },
+   {
+    "t": "A内部裁决自相矛盾:architecture_fitness CSV标DROP_WITH_TOOL但正文修正KEEP,B把它当全批次门禁载体",
+    "holds": false,
+    "sev": "low",
+    "reason": "B依赖=verified-real（PHASE4-SAFE-BATCH-PLAN.md:146/191 真把\"fitness 21项全绿+0分层违规\"列为ROOT/A/B批后门禁；文件tests/test_architecture_fitness.py:166/181/188 真含viewmodel/循环/越层分层守卫，:75 LOCAL_PARSE_HELPER_ALLOWLIST + :254-256 stale_entries 真是R28白名单同步落点）。但\"A会删该文件\"这一blocker前提被证伪——A不会删它：(1)GOVERNANCE.md:6 自声明\"唯一权威执行入口\"，其:109 明文'DROP_WITH_TOOL 7个随工具删（test_architecture_fitness.py 例外保留）'；(2)PLAN.md:123 即实际执行步P2.3 明文'修正:test_architecture_fitness.py 保留'；(3)L3_VERDICTS.md:91/96(§3)与:184(§8)均裁KEEP。四份执行治理文档里有三份（含权威入口+执行明细+裁决依据）都带KEEP修正，唯独原始CSV第620行单元格陈旧。(4)关键:全计划中唯一CSV→rm自动化在PLAN.md:91，硬筛 r['verdict'].strip()=='DROP'，结构上排除DROP_WITH_TOOL；P2.3无批量rm脚本、指向带例外的§3。故无任何机械路径会因陈旧CSV值删除该文件，B的门禁锚点不会失锚、R28白名单落点不会消失、越层拦截不失效。冲突实质=文档卫生瑕疵(一格陈旧机读值vs已修正正文)，非执行危害。残余风险仅为粗心执行者只读裸CSV忽略GOVERNANCE/PLAN/L3正文——值得顺手把CSV该行对齐为KEEP，但这是清理项非\"前置硬门\",降为low。"
+   }
+  ]
+ }
+]
