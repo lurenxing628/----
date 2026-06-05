@@ -1,17 +1,12 @@
 from __future__ import annotations
 
-import math
 from typing import Any, Dict, Iterable, List, Optional
 
-from .scheduler_workbench_links import build_workbench_link, build_workbench_plan_context
+from .scheduler_report_limitations import build_report_limitations
+from .scheduler_report_values import ReportPresentationValueError, _optional_number, _sum_number, downtime_summary
+from .scheduler_workbench_links import build_workbench_link, build_workbench_plan_context, can_emit_feedback_write_urls
 
 ROLE_ADOPTED = "adopted"
-
-
-class ReportPresentationValueError(ValueError):
-    def __init__(self, message: str, *, field: str):
-        self.field = field
-        super().__init__(message)
 
 
 def _text(value: Any) -> str:
@@ -30,7 +25,8 @@ def _plan_role(plan_resolution: Optional[Dict[str, Any]]) -> str:
 def _public_plan_label(plan_resolution: Optional[Dict[str, Any]]) -> str:
     data = plan_resolution or {}
     return (
-        _text(data.get("scenario_display_name"))
+        _text(data.get("user_label"))
+        or _text(data.get("scenario_display_name"))
         or _text(data.get("scenario_name"))
         or _text(data.get("selected_label"))
         or "正式采用方案"
@@ -45,7 +41,13 @@ def _copy_plan_guard_fields(context: Dict[str, Any], plan_resolution: Optional[D
         "is_scenario_preview": data.get("is_scenario_preview"),
         "is_comparison": data.get("is_comparison"),
         "is_superseded_by_newer_version": data.get("is_superseded_by_newer_version"),
+        "is_official_plan": data.get("is_official"),
+        "is_preview_plan": data.get("is_preview"),
+        "is_current_executable_official_version": data.get("is_current_executable_official_version"),
         "can_dispatch": data.get("can_dispatch"),
+        "can_write_feedback": data.get("can_write_feedback"),
+        "result_summary_parse_failed": data.get("result_summary_parse_failed"),
+        "result_summary_parse_reason": data.get("result_summary_parse_reason"),
     }
     for key, value in mappings.items():
         if value is not None:
@@ -68,6 +70,10 @@ def build_report_context(
     back_to: Any = None,
 ) -> Dict[str, Any]:
     data = plan_resolution or {}
+    parse_failed = bool(data.get("result_summary_parse_failed"))
+    can_write = data.get("can_write_feedback") if "can_write_feedback" in data else None
+    if parse_failed:
+        can_write = False
     context = build_workbench_plan_context(
         version=version,
         plan_id=plan_id,
@@ -85,9 +91,14 @@ def build_report_context(
         resource_label=resource_label,
         back_to=back_to,
         is_preview=bool(data.get("is_scenario_preview") or data.get("is_preview")),
-        can_write_feedback=data.get("can_write_feedback") if "can_write_feedback" in data else None,
+        can_write_feedback=can_write,
+        guardrail_text="当前排产摘要读取失败，页面仅展示基础历史信息，不能写现场事实。" if parse_failed else "",
+        guardrail_reason_type="data_gap" if parse_failed else "",
     )
     _copy_plan_guard_fields(context, data)
+    if parse_failed:
+        context["can_dispatch"] = False
+        context["can_write_feedback"] = False
     return context
 
 
@@ -111,12 +122,10 @@ def _context_with(
         out["resource_label"] = _text(resource_label)
     return out
 
-
 def _gantt_view_for_context(context: Dict[str, Any]) -> str:
     if _text((context or {}).get("resource_type")) == "operator":
         return "operator"
     return "machine"
-
 
 def _execution_review_row_resource(row: Dict[str, Any]) -> Dict[str, str]:
     machine_id = _text(row.get("planned_machine_id"))
@@ -184,7 +193,7 @@ def build_reports_index_workbench(context: Dict[str, Any], *, overdue_count: int
         "workbench_links": [
             build_workbench_link(context, "gantt", label="定位甘特", view=_gantt_view_for_context(context)),
             build_workbench_link(context, "resource_dispatch", label="回资源派工"),
-            build_workbench_link(context, "execution_review", label="复盘正式方案"),
+            build_workbench_link(context, "execution_review", label="查看计划和现场实际"),
         ],
         "entry_cards": [
             _card(
@@ -206,8 +215,8 @@ def build_reports_index_workbench(context: Dict[str, Any], *, overdue_count: int
             _card(
                 "execution_review",
                 "计划和现场实际",
-                "回答正式采用方案里计划时间和现场实际反馈是否一致。",
-                "只复盘正式采用方案，不复盘模拟预览和对比参考方案。",
+                "回答当前可复盘的正式排产记录里计划时间和现场实际反馈是否一致。",
+                "当前最新正式方案才能写现场记录，历史版本、模拟预览和对比参考方案只能查看。",
                 build_workbench_link(context, "execution_review", label="查看计划和现场实际"),
                 "icon-chart",
             ),
@@ -215,7 +224,7 @@ def build_reports_index_workbench(context: Dict[str, Any], *, overdue_count: int
                 "downtime",
                 "停机影响统计",
                 "回答当前日期范围内哪些设备有停机记录，以及和排程有没有重叠。",
-                "第一版只做设备级说明，不能证明具体影响了哪一道任务。",
+                "当前只做设备级说明，不能证明具体影响了哪一道任务。",
                 build_downtime_report_link(context, label="查看停机影响"),
                 "icon-device",
             ),
@@ -229,31 +238,8 @@ def build_report_page_links(context: Dict[str, Any]) -> List[Dict[str, Any]]:
         build_workbench_link(context, "reports_index", label="回报表中心"),
         build_workbench_link(context, "gantt", label="定位甘特", view=gantt_view),
         build_workbench_link(context, "resource_dispatch", label="回资源派工"),
-        build_workbench_link(context, "execution_review", label="复盘正式方案"),
+        build_workbench_link(context, "execution_review", label="查看计划和现场实际"),
     ]
-
-
-def build_report_limitations(report_key: str) -> Dict[str, str]:
-    data = {
-        "overdue": (
-            "这张表能回答哪些批次晚了。",
-            "它不能单独证明唯一原因；需要结合延期说明、甘特排班和现场事实继续看。",
-        ),
-        "utilization": (
-            "这张表能回答设备和人员在当前范围内有多忙。",
-            "它不能证明资源一定造成延期；需要回资源派工或甘特确认排班细节。",
-        ),
-        "execution_review": (
-            "这张表能回答正式计划和现场实际是否一致。",
-            "它不复盘模拟预览，也不在这里写现场记录。",
-        ),
-        "downtime": (
-            "这张表能回答设备级停机时长和排程重叠情况。",
-            "第一版不能证明具体影响了哪一道任务；任务级影响后续单独实现。",
-        ),
-    }
-    answer, limitation = data.get(report_key, ("这张报表用于继续追踪排产风险。", "它不能替代对应业务页面的明细核查。"))
-    return {"answer_text": answer, "limitation_text": limitation}
 
 
 def _is_gantt_diagnosis_action(action: Dict[str, Any]) -> bool:
@@ -314,7 +300,7 @@ def decorate_overdue_rows(rows: Iterable[Dict[str, Any]], context: Dict[str, Any
         item["workbench_links"] = [
             build_workbench_link(row_context, "gantt", label="定位甘特", view=gantt_view, batch_id=batch_id),
             build_workbench_link(row_context, "resource_dispatch", label="回资源派工", batch_id=batch_id),
-            build_workbench_link(row_context, "execution_review", label="复盘正式方案", batch_id=batch_id),
+            build_workbench_link(row_context, "execution_review", label="查看计划和现场实际", batch_id=batch_id),
             build_workbench_link(row_context, "delay_diagnosis", label="查看为什么晚了", batch_id=batch_id),
         ]
         out.append(item)
@@ -353,7 +339,7 @@ def decorate_utilization_rows(
             build_workbench_link(row_context, "resource_dispatch", label="查看资源排班", resource_type=resource_type, resource_id=resource_id),
             build_workbench_link(row_context, "gantt", label="定位甘特", view=view, resource_type=resource_type, resource_id=resource_id),
             build_workbench_link(row_context, "overdue_report", label="查看相关超期", resource_type=resource_type, resource_id=resource_id),
-            build_workbench_link(row_context, "execution_review", label="复盘正式方案", resource_type=resource_type, resource_id=resource_id),
+            build_workbench_link(row_context, "execution_review", label="查看计划和现场实际", resource_type=resource_type, resource_id=resource_id),
         ]
         out.append(item)
     return out
@@ -372,6 +358,7 @@ def decorate_execution_review_rows(rows: Iterable[Dict[str, Any]], context: Dict
             resource_id=row_resource["resource_id"],
             resource_label=row_resource["resource_label"],
         )
+        can_write_feedback = can_emit_feedback_write_urls(row_context)
         item["workbench_links"] = [
             build_workbench_link(
                 row_context,
@@ -393,7 +380,11 @@ def decorate_execution_review_rows(rows: Iterable[Dict[str, Any]], context: Dict
             build_workbench_link(
                 row_context,
                 "resource_dispatch",
-                label="查看现场记录入口",
+                label="查看现场记录入口" if can_write_feedback else "现场记录入口不可用",
+                disabled=not can_write_feedback,
+                disabled_reason="" if can_write_feedback else _text(
+                    build_workbench_link(row_context, "execution_review").get("disabled_reason")
+                ) or "当前方案只能查看，不能写现场记录。",
                 batch_id=batch_id,
                 resource_type=row_resource["resource_type"],
                 resource_id=row_resource["resource_id"],
@@ -418,8 +409,14 @@ def decorate_downtime_rows(rows: Iterable[Dict[str, Any]], context: Dict[str, An
         item["workbench_links"] = [
             build_workbench_link(row_context, "resource_dispatch", label="查看设备排班", resource_type="machine", resource_id=resource_id),
             build_workbench_link(row_context, "gantt", label="定位设备甘特", view="machine", resource_type="machine", resource_id=resource_id),
-            build_downtime_report_link(row_context, label="继续看停机影响", resource_type="machine", resource_id=resource_id, resource_label=resource_label),
-            build_workbench_link(row_context, "execution_review", label="复盘正式方案", resource_type="machine", resource_id=resource_id),
+            build_downtime_report_link(
+                row_context,
+                label="继续看停机影响",
+                resource_type="machine",
+                resource_id=resource_id,
+                resource_label=resource_label,
+            ),
+            build_workbench_link(row_context, "execution_review", label="查看计划和现场实际", resource_type="machine", resource_id=resource_id),
         ]
         out.append(item)
     return out
@@ -429,40 +426,6 @@ def downtime_empty_message(empty_reason: Any) -> str:
     if empty_reason == "no_history":
         return "暂无排产历史，当前无法统计停机影响。"
     return "当前没有停机记录或尚未维护停机数据，请调整日期、版本，或先维护设备停机信息后再看。"
-
-
-def downtime_summary(rows: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
-    items = list(rows or [])
-    return {
-        "machine_count": len(items),
-        "downtime_hours": _sum_number(items, "downtime_hours"),
-        "downtime_count": int(_sum_number(items, "downtime_count")),
-        "schedule_overlap_hours": _sum_number(items, "schedule_overlap_hours"),
-        "schedule_overlap_count": int(_sum_number(items, "schedule_overlap_count")),
-    }
-
-
-def _sum_number(rows: Iterable[Dict[str, Any]], key: str) -> float:
-    total = 0.0
-    for row in rows or []:
-        number = _optional_number((row or {}).get(key), field=key, label=f"停机影响汇总字段“{key}”")
-        if number is not None:
-            total += number
-    return round(total, 2)
-
-
-def _optional_number(value: Any, *, field: str, label: str) -> Optional[float]:
-    try:
-        if value is None or _text(value) == "":
-            return None
-        if isinstance(value, bool):
-            raise ValueError(label)
-        number = float(value)
-    except (TypeError, ValueError) as exc:
-        raise ReportPresentationValueError(f"{label}不是数字，请检查报表数据。field={field}", field=field) from exc
-    if not math.isfinite(number):
-        raise ReportPresentationValueError(f"{label}不是数字，请检查报表数据。field={field}", field=field)
-    return number
 
 
 __all__ = [

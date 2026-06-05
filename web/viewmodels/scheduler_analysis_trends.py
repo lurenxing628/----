@@ -5,10 +5,13 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from core.models.scheduler_history_parser import parse_result_summary_payload
 
+from .scheduler_analysis_overview import analysis_choice_label, build_analysis_labels
+from .scheduler_history_summary import strategy_display_label
+
 
 def safe_float(v: Any, default: float = 0.0) -> float:
     try:
-        if v is None or (isinstance(v, str) and v.strip() == ""):
+        if v is None or isinstance(v, bool) or (isinstance(v, str) and v.strip() == ""):
             return float(default)
         number = float(v)
     except (TypeError, ValueError, OverflowError):
@@ -19,6 +22,8 @@ def safe_float(v: Any, default: float = 0.0) -> float:
 
 
 def _metric_float_state(v: Any) -> Tuple[Optional[float], bool]:
+    if isinstance(v, bool):
+        return None, True
     if v is None or (isinstance(v, str) and v.strip() == ""):
         return None, False
     try:
@@ -41,6 +46,8 @@ def _int_state(v: Any) -> Tuple[Optional[int], bool]:
 
 def _score_value(v: Any) -> float:
     try:
+        if isinstance(v, bool):
+            return float("inf")
         number = float(v)
     except (TypeError, ValueError, OverflowError):
         return float("inf")
@@ -51,7 +58,7 @@ def _score_value(v: Any) -> float:
 
 def safe_int(v: Any, default: int = 0) -> int:
     try:
-        if v is None or (isinstance(v, str) and v.strip() == ""):
+        if v is None or isinstance(v, bool) or (isinstance(v, str) and v.strip() == ""):
             return int(default)
         return int(float(v))
     except (TypeError, ValueError, OverflowError):
@@ -140,7 +147,10 @@ def build_trend_rows(
     by_ver: Dict[int, Dict[str, Any]] = {}
     for h in raw_hist or []:
         d = h.to_dict() if hasattr(h, "to_dict") else (h if isinstance(h, dict) else {})
-        ver = safe_int(d.get("version"), default=0)
+        ver, ver_parse_failed = _int_state(d.get("version"))
+        if ver_parse_failed:
+            continue
+        ver = int(ver or 0)
         if ver <= 0 or ver in by_ver:
             continue
         summary = safe_load_json(d.get("result_summary") or "")
@@ -188,31 +198,47 @@ def _selected_summary_context(selected: Dict[str, Any], *, extract_metrics_from_
     return selected_summary, selected_metrics, (algo if isinstance(algo, dict) else {})
 
 
+def _attempt_metric_state(attempt: Dict[str, Any], *, objective_key: str) -> Tuple[Dict[str, Any], Optional[float], bool]:
+    raw_metrics = attempt.get("metrics")
+    metrics = raw_metrics if isinstance(raw_metrics, dict) else {}
+    primary_value, primary_value_parse_failed = _metric_float_state(metrics.get(objective_key))
+    return metrics, primary_value, primary_value_parse_failed
+
+
+def _attempt_dispatch_labels(attempt: Dict[str, Any], labels: Dict[str, Dict[str, str]]) -> Tuple[Any, Any, str]:
+    dispatch_mode = attempt.get("dispatch_mode") or ""
+    dispatch_rule = attempt.get("dispatch_rule") or ""
+    dispatch_mode_label = analysis_choice_label(dispatch_mode, labels.get("dispatch_mode", {}), empty_label="-")
+    dispatch_rule_label = analysis_choice_label(dispatch_rule, labels.get("dispatch_rule", {}), empty_label="")
+    dispatch_label = f"{dispatch_mode_label} / {dispatch_rule_label}" if dispatch_rule_label else dispatch_mode_label
+    return dispatch_mode, dispatch_rule, dispatch_label
+
+
 def _build_attempt_rows(algo: Dict[str, Any], *, objective_key: str) -> List[Dict[str, Any]]:
     attempts_rows: List[Dict[str, Any]] = []
     attempts = algo.get("attempts")
     if not isinstance(attempts, list):
         return attempts_rows
+    labels = build_analysis_labels()
     for attempt in attempts:
         if not isinstance(attempt, dict):
             continue
-        metrics = attempt.get("metrics") if isinstance(attempt.get("metrics"), dict) else {}
         public_source_label = str(attempt.get("source_label") or "").strip()
         raw_tag = str(attempt.get("tag") or "").strip()
         source_tag = str(attempt.get("source") or attempt.get("origin") or "").strip()
-        primary_value = None
-        primary_value_parse_failed = False
-        if isinstance(metrics, dict):
-            primary_value, primary_value_parse_failed = _metric_float_state(metrics.get(objective_key))
+        metrics, primary_value, primary_value_parse_failed = _attempt_metric_state(attempt, objective_key=objective_key)
         failed_ops, failed_ops_parse_failed = _int_state(attempt.get("failed_ops"))
+        dispatch_mode, dispatch_rule, dispatch_label = _attempt_dispatch_labels(attempt, labels)
         attempts_rows.append(
             {
                 "tag": raw_tag,
                 "display_tag": public_source_label
                 or _public_attempt_display_label(raw_tag=raw_tag, source_tag=source_tag),
                 "strategy": attempt.get("strategy") or "-",
-                "dispatch_mode": attempt.get("dispatch_mode") or "",
-                "dispatch_rule": attempt.get("dispatch_rule") or "",
+                "strategy_label": strategy_display_label(attempt.get("strategy")),
+                "dispatch_mode": dispatch_mode,
+                "dispatch_rule": dispatch_rule,
+                "dispatch_label": dispatch_label,
                 "failed_ops": failed_ops,
                 "failed_ops_parse_failed": bool(failed_ops_parse_failed),
                 "score": attempt.get("score") if isinstance(attempt.get("score"), list) else [],
@@ -229,12 +255,33 @@ def _public_attempt_display_label(*, raw_tag: str, source_tag: str) -> str:
         label = str(value or "").strip()
         if not label:
             continue
-        if "|" in label or ":" in label or "/" in label or "\\" in label:
-            continue
-        if "_" in label and not any("\u4e00" <= ch <= "\u9fff" for ch in label):
-            continue
-        return label
+        known_label = _known_attempt_display_label(label)
+        if known_label:
+            return known_label
+        if _is_public_attempt_label(label):
+            return label
     return ""
+
+
+def _known_attempt_display_label(label: str) -> str:
+    if label == "baseline":
+        return "原算法方案"
+    if not label.startswith("graph_w") or "_of_" not in label:
+        return ""
+    parts = label.replace("graph_w", "", 1).split("_of_", 1)
+    if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+        return f"重点工序优先方案 {int(parts[0])}/{int(parts[1])}"
+    return ""
+
+
+def _is_public_attempt_label(label: str) -> bool:
+    has_chinese = any("\u4e00" <= ch <= "\u9fff" for ch in label)
+    has_ascii_letter = any(("a" <= ch.lower() <= "z") for ch in label)
+    if any(token in label for token in ("|", ":", "/", "\\")):
+        return False
+    if "_" in label and not has_chinese:
+        return False
+    return not (has_ascii_letter and not has_chinese)
 
 
 def _build_trace_chart(algo: Dict[str, Any], *, objective_key: str) -> Optional[Dict[str, Any]]:

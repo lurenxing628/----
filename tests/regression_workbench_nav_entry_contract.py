@@ -50,6 +50,11 @@ def _parse_workbench_menu(html: str) -> _WorkbenchMenuParser:
     return parser
 
 
+def _assert_link_contains(links: Dict[str, str], label: str, values: Tuple[str, ...]) -> None:
+    for value in values:
+        assert value in links[label]
+
+
 def _read(rel_path: str) -> str:
     return (REPO_ROOT / rel_path).read_text(encoding="utf-8")
 
@@ -122,21 +127,32 @@ def test_workbench_menu_preserves_report_workbench_context() -> None:
     parser = _parse_workbench_menu(html)
     links = {text: href for href, text in parser.links}
 
-    assert links["首页值班台 先看今天需要处理什么"].startswith("/?version=12&plan_role=adopted")
-    assert "batch_id=B-RPT" in links["首页值班台 先看今天需要处理什么"]
-    assert "resource_type=machine" in links["首页值班台 先看今天需要处理什么"]
-    assert links["报表中心 从风险报表继续追踪问题"].startswith("/reports/?version=12&plan_role=adopted")
-    assert "batch_id=B-RPT" in links["报表中心 从风险报表继续追踪问题"]
-    assert "resource_type=machine" in links["报表中心 从风险报表继续追踪问题"]
-    assert "start_date=2026-05-06" in links["设备甘特图 按设备查看排产结果"]
-    assert "gantt_batch=B-RPT" in links["设备甘特图 按设备查看排产结果"]
-    assert "gantt_resource=M-RPT" in links["设备甘特图 按设备查看排产结果"]
-    assert "period_preset=custom" in links["资源派工 看排班和现场记录入口"]
-    assert "scope_type=machine" in links["资源派工 看排班和现场记录入口"]
-    assert "machine_id=M-RPT" in links["资源派工 看排班和现场记录入口"]
-    assert "plan_role=adopted" in links["计划和现场实际 复盘正式计划和现场事实"]
-    assert "resource_type=machine" in links["计划和现场实际 复盘正式计划和现场事实"]
-    assert "resource_id=M-RPT" in links["计划和现场实际 复盘正式计划和现场事实"]
+    expected = {
+        "首页值班台 先看今天需要处理什么": (
+            "/?version=12&plan_role=adopted",
+            "batch_id=B-RPT",
+            "resource_type=machine",
+        ),
+        "报表中心 从风险报表继续追踪问题": (
+            "/reports/?version=12&plan_role=adopted",
+            "batch_id=B-RPT",
+            "resource_type=machine",
+        ),
+        "设备甘特图 按设备查看排产结果": (
+            "start_date=2026-05-06",
+            "gantt_batch=B-RPT",
+            "gantt_resource=M-RPT",
+        ),
+        "资源派工 看排班和现场记录入口": (
+            "period_preset=custom",
+            "scope_type=machine",
+            "machine_id=M-RPT",
+        ),
+    }
+    for label, values in expected.items():
+        _assert_link_contains(links, label, values)
+    assert "计划和现场实际只复盘正式采用方案" in html
+    assert "计划和现场实际 复盘正式计划和现场事实" not in links
 
 
 def test_workbench_menu_disables_team_context_links_that_would_400() -> None:

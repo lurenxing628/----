@@ -39,6 +39,8 @@
     "tests/regression_frontend_offline_static_assets.py",
     "tests/regression_page_manual_registry.py",
     "tests/regression_aps_three_gap_docs_quality_gate.py",
+    "tests/regression_operation_execution_event_time_contract.py",
+    "tests/regression_scheduler_data_route_error_contract.py",
     "tests/regression_scheduler_resource_dispatch_invalid_query_cleanup.py"
   ],
   "exclude": [

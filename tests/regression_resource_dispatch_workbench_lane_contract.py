@@ -11,6 +11,7 @@ from tests.operation_execution_feedback_test_support import (
     _base_payload,
     _build_app,
     _current_query,
+    _events_url,
     _json,
 )
 from tests.resource_dispatch_frontend_support import (
@@ -151,7 +152,7 @@ def test_resource_dispatch_frontend_consumes_execution_lane_fields() -> None:
         "task.actual_delta_summary",
         "item.record_source_label",
         "item.record_time_label",
-        "actualRecordUrl(opId)",
+        "actualRecordUrl(taskKey)",
         "executionCreatedBy",
         "executionNotice",
     ):
@@ -219,7 +220,7 @@ def test_execution_data_contains_part_time_delta_and_record_labels(tmp_path, mon
     client = app.test_client()
 
     resp = client.get(
-        "/scheduler/resource-dispatch/execution/data?scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01&version=2&plan_role=adopted"
+        f"/scheduler/resource-dispatch/execution/data?{_current_query()}"
     )
     payload = _json(resp)
     card = payload["data"]["tasks"][0]
@@ -236,7 +237,7 @@ def test_execution_data_contains_part_time_delta_and_record_labels(tmp_path, mon
     assert actions["view_records"]["label"] == "查看现场记录"
 
     write_resp = client.post(
-        f"/scheduler/resource-dispatch/execution/{card['op_id']}/actual?{_current_query()}",
+        f"/scheduler/resource-dispatch/execution/tasks/{card['task_key']}/actual?{_current_query()}",
         json=_base_payload(
             card,
             actual_start_time="2026-05-01 08:12:00",
@@ -255,7 +256,7 @@ def test_execution_data_contains_part_time_delta_and_record_labels(tmp_path, mon
     assert updated["actual_end_delta_label"] == "早 2 分钟"
     assert updated["actual_delta_summary"] == "开工晚 12 分钟；完工早 2 分钟"
 
-    events_resp = client.get(f"/scheduler/resource-dispatch/execution/{card['op_id']}/events?{_current_query()}")
+    events_resp = client.get(_events_url(card))
     events_payload = _json(events_resp)
     events = events_payload["data"]["events"]
 
@@ -272,9 +273,9 @@ def test_nonformal_resource_dispatch_pages_do_not_emit_write_addresses(tmp_path,
     app, _db_path = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
     urls = [
-        "/scheduler/resource-dispatch?scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-04-30&version=1&plan_role=adopted",
-        "/scheduler/resource-dispatch?scope_type=operator&operator_id=O2&period_preset=week&query_date=2026-05-01&version=2&plan_role=baseline_best",
-        "/scheduler/resource-dispatch?scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01&version=2&plan_role=adopted&scenario_id=scenario-plain",
+        "/scheduler/resource-dispatch?scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-04-30&date_from=2026-04-30&date_to=2026-05-06&version=1&plan_role=adopted",
+        "/scheduler/resource-dispatch?scope_type=operator&operator_id=O2&period_preset=week&query_date=2026-05-01&date_from=2026-05-01&date_to=2026-05-07&version=2&plan_role=baseline_best",
+        "/scheduler/resource-dispatch?scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01&date_from=2026-05-01&date_to=2026-05-07&version=2&plan_role=adopted&scenario_id=scenario-plain",
     ]
 
     for url in urls:
@@ -288,6 +289,6 @@ def test_nonformal_resource_dispatch_pages_do_not_emit_write_addresses(tmp_path,
         assert "data-actual-record-url-template=" not in body
         assert "data-actual-template-url=" not in body
         assert "data-actual-import-url=" not in body
-        assert "/scheduler/resource-dispatch/execution/__OP_ID__/actual" not in body
+        assert "/scheduler/resource-dispatch/execution/tasks/__TASK_KEY__/actual" not in body
         assert "/scheduler/resource-dispatch/execution/actual-template?" not in body
         assert "/scheduler/resource-dispatch/execution/import?" not in body

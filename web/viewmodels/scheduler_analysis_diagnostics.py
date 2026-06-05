@@ -71,7 +71,7 @@ def _non_finite_number_section(
                 value="无法安全展示",
                 level="danger",
                 message="检测到 NaN/Infinity 等非有限数字；已拒绝把它当作 0 或正常值展示。",
-                details=[str(exc)],
+                details=["诊断数据包含无法安全展示的数值，系统已停止本诊断块计算。"],
             )
         ],
     )

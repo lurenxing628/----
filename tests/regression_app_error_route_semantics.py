@@ -53,8 +53,9 @@ def test_process_supplier_delete_uses_global_http_semantics(tmp_path, monkeypatc
 
     body = response.get_data(as_text=True)
     assert response.status_code == 403
-    assert ErrorCode.PERMISSION_DENIED.value in body
     assert "供应商“SUP-LOCK”已被引用，不能删除。" in body
+    assert ErrorCode.PERMISSION_DENIED.value not in body
+    assert "错误码" not in body
 
 
 def test_material_create_keeps_page_flash_redirect_whitelist(tmp_path, monkeypatch) -> None:

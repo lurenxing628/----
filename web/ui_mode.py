@@ -9,6 +9,7 @@ from web.manual_src_security import (
     get_help_card,
     get_manual_url,
     normalize_manual_src,
+    normalize_manual_src_context,
     safe_url_for,
 )
 from web.render_bridge import (
@@ -52,6 +53,7 @@ __all__ = [
     "safe_url_for",
     "render_ui_template",
     "normalize_manual_src",
+    "normalize_manual_src_context",
     "get_manual_url",
     "get_full_manual_section_url",
     "get_help_card",

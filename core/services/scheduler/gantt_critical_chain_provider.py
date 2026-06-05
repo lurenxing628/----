@@ -3,7 +3,16 @@ from __future__ import annotations
 import sqlite3
 import threading
 from collections import OrderedDict
-from typing import Any, Callable, Dict, Optional
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Optional,
+    Tuple,
+)
+from typing import (
+    OrderedDict as OrderedDictType,
+)
 
 from core.models.schedule_plan_role import SOURCE_SCHEDULE
 
@@ -16,7 +25,7 @@ class GanttCriticalChainProvider:
     """Loads and caches critical-chain results for adopted and candidate plans."""
 
     _CRITICAL_CHAIN_CACHE_MAX = 64
-    _CRITICAL_CHAIN_CACHE: OrderedDict[tuple, Dict[str, Any]] = OrderedDict()
+    _CRITICAL_CHAIN_CACHE: OrderedDictType[Tuple[Any, ...], Dict[str, Any]] = OrderedDict()
     _CRITICAL_CHAIN_CACHE_LOCK = threading.Lock()
     _CRITICAL_CHAIN_CACHE_EPOCH = 0
 
@@ -81,7 +90,7 @@ class GanttCriticalChainProvider:
             return row[index]
         return None
 
-    def _critical_chain_cache_key(self, version: int, *, plan_resolution: Dict[str, Any]) -> tuple:
+    def _critical_chain_cache_key(self, version: int, *, plan_resolution: Dict[str, Any]) -> Tuple[Any, ...]:
         return (
             self._database_scope(),
             int(version),

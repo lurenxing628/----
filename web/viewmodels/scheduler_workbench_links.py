@@ -3,8 +3,10 @@ from __future__ import annotations
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 from urllib.parse import urlencode
 
+from core.models.schedule_plan_role import plan_role_label as _core_plan_role_label
 from core.models.schedule_resource_filter import SUPPORTED_SCHEDULE_RESOURCE_TYPES
 
+from .scheduler_plan_guardrail_messages import summary_parse_failure_message
 from .scheduler_workbench_link_query import (
     ordered_required_params,
     query_for_target,
@@ -84,6 +86,8 @@ _VERSION_REQUIRED_TARGETS = {
     "reports_index",
 }
 
+_WORKBENCH_CONTINUATION_TARGETS = _VERSION_REQUIRED_TARGETS - {"analysis"}
+
 _DATE_RANGE_REQUIRED_TARGETS = {
     "gantt",
     "week_plan",
@@ -108,27 +112,27 @@ def plan_role_label(value: Any, *, is_preview: bool = False, scenario_display_la
     if is_preview:
         return _text(scenario_display_label) or "模拟预览（未命名）"
     text = _text(value) or ROLE_ADOPTED
-    return _PLAN_ROLE_LABELS.get(text, text)
+    return _PLAN_ROLE_LABELS.get(text) or _core_plan_role_label(text)
 
 
 def guardrail_reason_label(value: Any) -> str:
     text = _text(value)
-    return _GUARDRAIL_REASON_LABELS.get(text, text)
+    return _GUARDRAIL_REASON_LABELS.get(text, "未知限制原因")
 
 
 def resource_type_label(value: Any) -> str:
     text = _text(value)
-    return _RESOURCE_TYPE_LABELS.get(text, text)
+    return _RESOURCE_TYPE_LABELS.get(text, "未知资源视角")
 
 
 def period_preset_label(value: Any) -> str:
     text = _text(value)
-    return _PERIOD_PRESET_LABELS.get(text, text)
+    return _PERIOD_PRESET_LABELS.get(text, "未知日期范围")
 
 
 def gantt_view_label(value: Any) -> str:
     text = _text(value)
-    return _VIEW_LABELS.get(text, text)
+    return _VIEW_LABELS.get(text, "未知甘特视图")
 
 
 def _preview_context(is_preview: bool, scenario_id: Any, scenario_display_label: str) -> Tuple[Optional[str], bool, str]:
@@ -268,23 +272,40 @@ def _context_summary(context: Dict[str, Any], target_page: str, view: Optional[s
     return "，".join(part for part in parts if part)
 
 
-def _is_formal_adopted_context(context: Dict[str, Any]) -> bool:
-    if not isinstance(context, dict):
-        return False
-    if context.get("is_preview") or context.get("is_scenario_preview"):
-        return False
-    if _text(context.get("scenario_id")):
-        return False
-    role_values = [
+def _has_blocked_plan_identity(context: Dict[str, Any]) -> bool:
+    return bool(context.get("plan_identity_blocking_error") or context.get("result_summary_parse_failed"))
+
+
+def _has_preview_identity(context: Dict[str, Any]) -> bool:
+    return bool(context.get("is_preview") or context.get("is_scenario_preview") or _text(context.get("scenario_id")))
+
+
+def _has_only_adopted_roles(context: Dict[str, Any]) -> bool:
+    roles = [
         _text(context.get(key))
         for key in ("plan_role", "requested_plan_role", "effective_plan_role")
     ]
-    present_roles = [role for role in role_values if role]
-    if not present_roles or any(role != ROLE_ADOPTED for role in present_roles):
+    present_roles = [role for role in roles if role]
+    return bool(present_roles) and all(role == ROLE_ADOPTED for role in present_roles)
+
+
+def _is_current_official_identity(context: Dict[str, Any]) -> bool:
+    return (
+        not context.get("is_comparison")
+        and not context.get("is_superseded_by_newer_version")
+        and context.get("is_current_executable_official_version") is True
+    )
+
+
+def _is_formal_adopted_context(context: Dict[str, Any]) -> bool:
+    if not isinstance(context, dict):
         return False
-    if context.get("is_comparison") or context.get("is_superseded_by_newer_version"):
-        return False
-    return True
+    return (
+        not _has_blocked_plan_identity(context)
+        and not _has_preview_identity(context)
+        and _has_only_adopted_roles(context)
+        and _is_current_official_identity(context)
+    )
 
 
 def _unsupported_primary_resource_reason(context: Dict[str, Any], target_page: str, resource_type: Optional[str]) -> str:
@@ -297,19 +318,82 @@ def _unsupported_primary_resource_reason(context: Dict[str, Any], target_page: s
     return f"当前页面暂不支持{label}维度筛选，请切换到设备或人员后再查看。"
 
 
-def _disabled_reason_for_target(context: Dict[str, Any], target_page: str, *, resource_type: Optional[str] = None) -> str:
-    if target_page in _VERSION_REQUIRED_TARGETS and not _has_value(context.get("version")):
+def _missing_version_reason(target_page: str, context: Dict[str, Any], *, allow_empty_plan_context: bool) -> str:
+    if target_page in _VERSION_REQUIRED_TARGETS and not _has_value(context.get("version")) and not allow_empty_plan_context:
         return "还没有排产版本，先执行一次排产后再查看。"
-    if target_page in _DATE_RANGE_REQUIRED_TARGETS and (
-        not _has_value(context.get("date_from")) or not _has_value(context.get("date_to"))
-    ):
+    return ""
+
+
+def _date_range_reason(context: Dict[str, Any], target_page: str, *, missing_version: bool) -> str:
+    if missing_version or target_page not in _DATE_RANGE_REQUIRED_TARGETS:
+        return ""
+    if _text(context.get("plan_time_span_load_error")):
+        return _text(context.get("plan_time_span_load_error"))
+    if not _has_value(context.get("date_from")) or not _has_value(context.get("date_to")):
         return "还没有确认日期范围，先选择开始日期和结束日期后再查看。"
+    return ""
+
+
+def _preview_without_public_identity_reason(context: Dict[str, Any], target_page: str) -> str:
+    if target_page not in _VERSION_REQUIRED_TARGETS:
+        return ""
+    if not (context.get("is_preview") or context.get("is_scenario_preview")):
+        return ""
+    if _text(context.get("scenario_id")):
+        return ""
+    return "模拟预览不能通过普通链接继续跳转，请回到排产分析查看。"
+
+
+def _plan_identity_blocking_reason(context: Dict[str, Any], target_page: str) -> str:
+    if target_page not in _VERSION_REQUIRED_TARGETS or not context.get("plan_identity_blocking_error"):
+        return ""
+    if (
+        _text(context.get("plan_identity_blocking_scope")) == "workbench_continuation"
+        and target_page not in _WORKBENCH_CONTINUATION_TARGETS
+    ):
+        return ""
+    return _text(context.get("plan_identity_error")) or "请求里的方案身份不可用，请回到排产分析重新选择方案。"
+
+
+def _summary_parse_blocking_reason(context: Dict[str, Any]) -> str:
+    if not context.get("result_summary_parse_failed"):
+        return ""
+    reason = summary_parse_failure_message(context.get("result_summary_parse_reason"))
+    return f"当前排产摘要读取失败：{reason}。页面仅展示基础历史信息，不能写现场记录。"
+
+
+def _execution_review_identity_reason(context: Dict[str, Any]) -> str:
+    parse_reason = _summary_parse_blocking_reason(context)
+    if parse_reason:
+        return parse_reason
+    if context.get("is_superseded_by_newer_version"):
+        return "这是历史正式方案，只能查看；只有当前最新正式方案才能写现场记录。"
+    return "计划和现场实际只复盘正式采用方案，请切换到正式采用方案后查看。"
+
+
+def _disabled_reason_for_target(
+    context: Dict[str, Any],
+    target_page: str,
+    *,
+    resource_type: Optional[str] = None,
+    allow_empty_plan_context: bool = False,
+) -> str:
+    missing_version = target_page in _VERSION_REQUIRED_TARGETS and not _has_value(context.get("version"))
+    version_reason = _missing_version_reason(target_page, context, allow_empty_plan_context=allow_empty_plan_context)
+    if version_reason:
+        return version_reason
+    date_reason = _date_range_reason(context, target_page, missing_version=missing_version)
+    if date_reason:
+        return date_reason
     resource_reason = _unsupported_primary_resource_reason(context, target_page, resource_type)
     if resource_reason:
         return resource_reason
+    identity_reason = _plan_identity_blocking_reason(context, target_page)
+    if identity_reason:
+        return identity_reason
     if target_page == "execution_review" and not _is_formal_adopted_context(context):
-        return "计划和现场实际只复盘正式采用方案，请切换到正式采用方案后查看。"
-    return ""
+        return _execution_review_identity_reason(context)
+    return _preview_without_public_identity_reason(context, target_page)
 
 
 def _default_manual_disabled_reason(target_page: str) -> str:
@@ -329,10 +413,16 @@ def build_workbench_link(
     disabled: Optional[bool] = None,
     disabled_reason: str = "",
     extra_params: Optional[Dict[str, Any]] = None,
+    allow_empty_plan_context: bool = False,
 ) -> Dict[str, Any]:
     if target_page not in TARGET_PAGE_PATHS:
         raise ValueError(f"未知工作台目标页：{target_page}")
-    automatic_reason = _disabled_reason_for_target(context, target_page, resource_type=resource_type)
+    automatic_reason = _disabled_reason_for_target(
+        context,
+        target_page,
+        resource_type=resource_type,
+        allow_empty_plan_context=allow_empty_plan_context,
+    )
     reason = _text(disabled_reason) or automatic_reason
     is_disabled = bool(automatic_reason) or (bool(disabled) if disabled is not None else bool(reason))
     if is_disabled and not reason:
@@ -380,9 +470,7 @@ def can_emit_feedback_write_urls(plan_identity_or_context: Any) -> bool:
     if not _is_formal_adopted_context(plan_identity_or_context):
         return False
     can_write_feedback = bool(plan_identity_or_context.get("can_write_feedback"))
-    if "can_dispatch" in plan_identity_or_context:
-        return bool(plan_identity_or_context.get("can_dispatch")) and can_write_feedback
-    return can_write_feedback
+    return bool(plan_identity_or_context.get("can_dispatch")) and can_write_feedback
 
 
 __all__ = [

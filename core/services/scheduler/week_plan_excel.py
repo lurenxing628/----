@@ -29,12 +29,21 @@ def build_week_plan_export_workbook(
         sheet_title="周计划",
         sanitize_formula=True,
     )
-    if not bool((plan_resolution or {}).get("is_scenario_preview")):
+    if not _needs_summary_sheet(plan_resolution or {}):
         return output
-    return _with_scenario_summary(output, plan_resolution=plan_resolution or {}, export_context=export_context or {})
+    return _with_plan_summary(output, plan_resolution=plan_resolution or {}, export_context=export_context or {})
 
 
-def _with_scenario_summary(
+def _needs_summary_sheet(plan_resolution: Mapping[str, Any]) -> bool:
+    label = _plan_label(plan_resolution)
+    return bool(plan_resolution.get("is_scenario_preview")) or (bool(label) and label != "正式采用方案")
+
+
+def _plan_label(plan_resolution: Mapping[str, Any]) -> str:
+    return _text(plan_resolution.get("user_label") or plan_resolution.get("selected_label") or plan_resolution.get("requested_label"))
+
+
+def _with_plan_summary(
     output: BytesIO,
     *,
     plan_resolution: Mapping[str, Any],
@@ -44,7 +53,7 @@ def _with_scenario_summary(
     wb = load_workbook(output)
     try:
         ws = wb.create_sheet("查询摘要", 0)
-        for key, value in _scenario_summary_rows(plan_resolution, export_context):
+        for key, value in _plan_summary_rows(plan_resolution, export_context):
             ws.append([key, value])
         ws.freeze_panes = "A2"
         ws.column_dimensions["A"].width = 18
@@ -61,12 +70,22 @@ def _with_scenario_summary(
         wb.close()
 
 
-def _scenario_summary_rows(
+def _plan_summary_rows(
     plan_resolution: Mapping[str, Any],
     export_context: Mapping[str, Any],
 ) -> Sequence[Sequence[Any]]:
     week_start = _text(export_context.get("week_start"))
     week_end = _text(export_context.get("week_end"))
+    plan_label = _plan_label(plan_resolution) or "正式采用方案"
+    if not bool(plan_resolution.get("is_scenario_preview")):
+        return [
+            ["导出类型", "周计划导出"],
+            ["方案", plan_label],
+            ["提示", _plan_summary_hint(plan_resolution, plan_label)],
+            ["排产版本", _text(export_context.get("version"))],
+            ["周计划日期", f"{week_start} ～ {week_end}".strip()],
+            ["导出时间", time.strftime("%Y-%m-%d %H:%M:%S")],
+        ]
     scenario_label = _text(plan_resolution.get("scenario_display_name") or plan_resolution.get("scenario_name")) or "模拟预览（未命名）"
     return [
         ["导出类型", "模拟方案预览"],
@@ -81,3 +100,12 @@ def _scenario_summary_rows(
 
 def _text(value: Any) -> str:
     return str(value or "").strip()
+
+
+def _plan_summary_hint(plan_resolution: Mapping[str, Any], plan_label: str) -> str:
+    readonly_reason = _text(plan_resolution.get("readonly_reason"))
+    if readonly_reason:
+        return readonly_reason
+    if plan_label.startswith("历史正式方案"):
+        return "这是历史版本，只能查看，不能当作当前可执行的正式计划。"
+    return "这是查询时选择的排产方案。"

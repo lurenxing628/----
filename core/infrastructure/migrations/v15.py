@@ -35,8 +35,8 @@ CREATE TABLE IF NOT EXISTS OperationExecutionEvents (
     request_fingerprint      TEXT NOT NULL,
     previous_state_revision  TEXT NOT NULL,
     created_at               DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (schedule_id) REFERENCES Schedule(id),
-    FOREIGN KEY (op_id) REFERENCES BatchOperations(id),
+    FOREIGN KEY (schedule_id, schedule_version, op_id) REFERENCES Schedule(id, version, op_id),
+    FOREIGN KEY (op_id, batch_id) REFERENCES BatchOperations(id, batch_id),
     FOREIGN KEY (actual_machine_id) REFERENCES Machines(machine_id),
     FOREIGN KEY (actual_operator_id) REFERENCES Operators(operator_id),
     FOREIGN KEY (affected_machine_id) REFERENCES Machines(machine_id),
@@ -46,6 +46,8 @@ CREATE TABLE IF NOT EXISTS OperationExecutionEvents (
     CHECK(schedule_id > 0),
     CHECK(op_id > 0),
     CHECK(TRIM(batch_id) <> ''),
+    CHECK(TRIM(event_time) <> '' AND datetime(event_time) IS NOT NULL),
+    CHECK((event_type IN ('start', 'resume') AND reported_status = 'processing') OR (event_type = 'pause' AND reported_status = 'paused') OR (event_type = 'exception' AND reported_status = 'exception') OR (event_type = 'finish' AND reported_status = 'completed')),
     CHECK(event_type NOT IN ('pause', 'exception') OR (reason_code IS NOT NULL AND TRIM(reason_code) <> '')),
     CHECK(event_type <> 'exception' OR (severity IS NOT NULL AND TRIM(severity) <> '')),
     CHECK(TRIM(created_by) <> ''),
@@ -56,6 +58,8 @@ CREATE TABLE IF NOT EXISTS OperationExecutionEvents (
 """
 
 _EVENT_INDEX_SQL = (
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_batch_operations_identity_unique ON BatchOperations(id, batch_id)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_schedule_identity_unique ON Schedule(id, version, op_id)",
     "CREATE INDEX IF NOT EXISTS idx_operation_execution_events_op ON OperationExecutionEvents(op_id, event_time)",
     "CREATE INDEX IF NOT EXISTS idx_operation_execution_events_schedule ON OperationExecutionEvents(schedule_id)",
     "CREATE INDEX IF NOT EXISTS idx_operation_execution_events_schedule_op ON OperationExecutionEvents(schedule_id, op_id)",

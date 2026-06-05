@@ -12,15 +12,15 @@ from .scheduler_analysis_labels import (
     objective_label_for,
 )
 from .scheduler_analysis_metrics import build_extra_cards, build_metric_cards, extract_metrics_from_summary, safe_float
-from .scheduler_analysis_overview import build_analysis_labels
+from .scheduler_analysis_overview import analysis_choice_label, build_analysis_labels
 from .scheduler_analysis_trends import (
     build_selected_details,
     build_trend_charts,
     build_trend_rows,
-    safe_int,
     sort_and_enrich_attempts,
 )
 from .scheduler_degradation_presenter import build_primary_degradation, build_summary_degradation_messages
+from .scheduler_history_summary import strategy_display_label
 from .scheduler_summary_display import build_display_secondary_degradation_messages, build_result_state
 
 
@@ -66,6 +66,24 @@ def _comparison_metric_from_algo(algo: Any) -> str:
 
 def _objective_key_from_algo_objective(value: Any) -> str:
     return objective_key_from_objective(value)
+
+
+def _time_budget_seconds_label(value: Any) -> str:
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return "-"
+    if isinstance(value, bool):
+        return "记录异常"
+    if isinstance(value, int):
+        return str(value) if value >= 0 else "记录异常"
+    text = str(value or "").strip()
+    if not text.isdigit():
+        return "记录异常"
+    return str(int(text))
+
+
+def _time_budget_seconds_display(value: Any) -> str:
+    label = _time_budget_seconds_label(value)
+    return f"{label} 秒" if label.isdigit() else label
 
 
 def build_analysis_context(
@@ -123,13 +141,44 @@ def build_analysis_context(
         selected_summary,
         selected_ver=selected_ver,
     )
+    analysis_labels = build_analysis_labels()
     algo_config_snapshot = selected_algo.get("config_snapshot") if isinstance(selected_algo, dict) else None
     algo_config_snapshot_objective_label = "-"
+    algo_config_snapshot_strategy_label = "-"
+    algo_config_snapshot_mode_label = "-"
+    algo_config_snapshot_dispatch_mode_label = "-"
+    algo_config_snapshot_dispatch_rule_label = "-"
+    algo_config_snapshot_time_budget_seconds_label = "-"
+    algo_config_snapshot_time_budget_seconds_display = "-"
+    algo_mode_value = selected_algo.get("mode")
     if isinstance(algo_config_snapshot, dict):
+        algo_mode_value = algo_config_snapshot.get("algo_mode") or algo_mode_value
         algo_config_snapshot_objective_label = objective_label_for(
             algo_config_snapshot.get("objective"),
             algo=selected_algo,
         )
+        algo_config_snapshot_strategy_label = strategy_display_label(algo_config_snapshot.get("sort_strategy"))
+        algo_config_snapshot_mode_label = analysis_choice_label(
+            algo_config_snapshot.get("algo_mode"),
+            analysis_labels.get("mode", {}),
+        )
+        algo_config_snapshot_dispatch_mode_label = analysis_choice_label(
+            algo_config_snapshot.get("dispatch_mode"),
+            analysis_labels.get("dispatch_mode", {}),
+        )
+        algo_config_snapshot_dispatch_rule_label = analysis_choice_label(
+            algo_config_snapshot.get("dispatch_rule"),
+            analysis_labels.get("dispatch_rule", {}),
+        )
+        algo_config_snapshot_time_budget_seconds_label = _time_budget_seconds_label(
+            algo_config_snapshot.get("time_budget_seconds")
+        )
+        algo_config_snapshot_time_budget_seconds_display = _time_budget_seconds_display(
+            algo_config_snapshot.get("time_budget_seconds")
+        )
+    algo_mode_label = analysis_choice_label(algo_mode_value, analysis_labels.get("mode", {}))
+    algo_time_budget_seconds_label = _time_budget_seconds_label(selected_algo.get("time_budget_seconds"))
+    algo_time_budget_seconds_display = _time_budget_seconds_display(selected_algo.get("time_budget_seconds"))
     algo_objective_label = objective_label_for(
         selected_algo.get("objective"),
         algo=selected_algo,
@@ -147,12 +196,21 @@ def build_analysis_context(
         "prev_metrics": prev_metrics,
         "objective_key": objective_key,
         "algo_objective_label": algo_objective_label,
+        "algo_mode_label": algo_mode_label,
+        "algo_time_budget_seconds_label": algo_time_budget_seconds_label,
+        "algo_time_budget_seconds_display": algo_time_budget_seconds_display,
         "best_score_schema_display": best_score_schema_display,
         "compat_fallback": compat_fallback,
         "candidate_comparison_display": candidate_comparison_display,
         "diagnostic_sections": diagnostic_sections,
-        "analysis_labels": build_analysis_labels(),
+        "analysis_labels": analysis_labels,
         "algo_config_snapshot_objective_label": algo_config_snapshot_objective_label,
+        "algo_config_snapshot_strategy_label": algo_config_snapshot_strategy_label,
+        "algo_config_snapshot_mode_label": algo_config_snapshot_mode_label,
+        "algo_config_snapshot_dispatch_mode_label": algo_config_snapshot_dispatch_mode_label,
+        "algo_config_snapshot_dispatch_rule_label": algo_config_snapshot_dispatch_rule_label,
+        "algo_config_snapshot_time_budget_seconds_label": algo_config_snapshot_time_budget_seconds_label,
+        "algo_config_snapshot_time_budget_seconds_display": algo_config_snapshot_time_budget_seconds_display,
         "objective_key_label": objective_key_label,
         "objective_choice_labels": objective_choice_labels(),
         "attempts": attempts,
@@ -170,10 +228,11 @@ def build_analysis_context(
 __all__ = [
     "_comparison_metric_from_algo",
     "_objective_key_from_algo_objective",
+    "_time_budget_seconds_display",
+    "_time_budget_seconds_label",
     "build_analysis_context",
     "build_candidate_comparison_display",
     "extract_metrics_from_summary",
     "objective_label_for",
     "safe_float",
-    "safe_int",
 ]

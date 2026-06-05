@@ -16,8 +16,16 @@ _PLAN_GUARD_FIELD_NAMES = (
     "is_scenario_preview",
     "is_comparison",
     "is_superseded_by_newer_version",
+    "is_official_plan",
+    "is_preview_plan",
+    "is_current_executable_official_version",
     "can_dispatch",
     "can_write_feedback",
+    "plan_identity_error",
+    "plan_identity_blocking_error",
+    "plan_identity_blocking_scope",
+    "result_summary_parse_failed",
+    "result_summary_parse_reason",
 )
 
 

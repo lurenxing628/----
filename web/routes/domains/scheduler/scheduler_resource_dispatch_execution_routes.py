@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Mapping, Optional, cast
+from typing import Any, Mapping
 
-from flask import current_app, g, jsonify, request, send_file
+from flask import current_app, jsonify, request, send_file
 
-from core.infrastructure.errors import AppError, ErrorCode, ValidationError, app_error_http_status, error_response
+from core.infrastructure.errors import AppError, ErrorCode, ValidationError, error_response
 from core.models.operation_execution_event import (
     EXECUTION_ACTION_REPORT_EXCEPTION,
     EXECUTION_EVENT_FINISH,
@@ -13,207 +13,42 @@ from core.models.operation_execution_event import (
     EXECUTION_EVENT_START,
 )
 from core.services.scheduler.operation_execution_feedback_service import ExecutionFeedbackContext
-from core.services.scheduler.operation_execution_labels import execution_action_label
-from core.shared.field_labels import display_field_label
+from core.services.scheduler.operation_execution_scope_read import events_for_scope
 from web.viewmodels.scheduler_resource_dispatch_execution import (
     build_execution_payload,
-    build_task_card,
     event_payload,
     execution_result_payload,
 )
 
 from ...excel_utils import read_uploaded_excel_bytes
 from .scheduler_bp import bp
-from .scheduler_resource_dispatch_query import _request_kwargs
+from .scheduler_resource_dispatch_execution_context import (
+    _actual_record_result_payload,
+    _actual_record_svc,
+    _event_target_from_request,
+    _execution_error_response,
+    _execution_svc,
+    _feedback_context,
+    _feedback_context_for_task_key,
+    _feedback_svc,
+    _json_payload,
+    _read_request_kwargs,
+    _scope_for_event_list,
+    _source_row_for_event_list,
+    _source_row_for_task_key,
+    _task_card_by_identity,
+    _task_card_by_key,
+    _task_card_for_result,
+    _write_request_kwargs,
+)
 
 _EXCEL_MIMETYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-_WRITE_QUERY_REQUIRED_FIELDS = ("version", "plan_role", "period_preset", "query_date", "start_date", "end_date", "scope_type")
-
-
-def _text(value: Any) -> str:
-    return str(value or "").strip()
-
-
-def _positive_int(value: Any) -> Optional[int]:
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
-        return None
-    return parsed if parsed > 0 else None
-
-
-def _execution_svc() -> Any:
-    return g.services.resource_dispatch_execution_service
-
-
-def _feedback_svc() -> Any:
-    return g.services.operation_execution_feedback_service
-
-
-def _actual_record_svc() -> Any:
-    return g.services.resource_dispatch_actual_record_service
-
-
-def _execution_error_response(exc: AppError, *, action: Optional[str] = None):
-    details = dict(exc.details or {})
-    if "field" in details:
-        details.setdefault("field_label", display_field_label(details.get("field")))
-    if action and "action" not in details:
-        details["action"] = action
-    if "action" in details:
-        details.setdefault("action_label", execution_action_label(details.get("action")))
-    details.setdefault("can_retry", _execution_error_can_retry(details.get("reason")))
-    payload = error_response(exc.code, exc.message, details=details or None)
-    return payload, app_error_http_status(exc.code)
-
-
-def _execution_error_can_retry(reason: Any) -> bool:
-    return str(reason or "").strip() in {
-        "stale_state_revision",
-        "idempotency_conflict",
-        "schedule_mismatch",
-        "missing_required_field",
-        "invalid_field_value",
-        "actual_import_validation_failed",
-    }
-
-
-def _json_payload() -> Dict[str, Any]:
-    data = request.get_json(silent=True)
-    if isinstance(data, dict):
-        return dict(data)
-    raise ValidationError("提交内容不是有效 JSON，请刷新后重试。", field="payload")
-
-
-def _write_request_kwargs() -> Dict[str, Any]:
-    raw_query = {
-        "version": request.args.get("version"),
-        "plan_role": request.args.get("plan_role"),
-        "period_preset": request.args.get("period_preset"),
-        "query_date": request.args.get("query_date"),
-        "start_date": request.args.get("start_date") or request.args.get("date_from"),
-        "end_date": request.args.get("end_date") or request.args.get("date_to"),
-        "scope_type": request.args.get("scope_type"),
-    }
-    missing = [key for key in _WRITE_QUERY_REQUIRED_FIELDS if not _text(raw_query.get(key))]
-    if missing:
-        raise ValidationError(
-            "现场记录写入缺少完整计划上下文，请从资源排班页面重新进入。",
-            field="plan_identity",
-            details={"missing_fields": missing},
-        )
-    return _request_kwargs()
-
-
-def _row_matches_feedback_target(row: Mapping[str, Any], *, op_id: int, schedule_id: int, batch_id: str) -> bool:
-    if _positive_int(row.get("op_id")) != int(op_id):
-        return False
-    if _positive_int(row.get("schedule_id")) != int(schedule_id):
-        return False
-    return _text(row.get("batch_id")) == batch_id
-
-
-def _ensure_feedback_target_in_query(context: Mapping[str, Any], op_id: int, payload: Mapping[str, Any]) -> None:
-    schedule_id = _positive_int(payload.get("schedule_id"))
-    batch_id = _text(payload.get("batch_id"))
-    if schedule_id is None or not batch_id:
-        raise ValidationError(
-            "现场记录写入缺少任务定位信息，请刷新资源排班页面后重试。",
-            field="schedule_id" if schedule_id is None else "batch_id",
-            details={"reason": "missing_required_field"},
-        )
-    rows = context.get("rows") if isinstance(context, Mapping) else None
-    if any(
-        isinstance(row, Mapping)
-        and _row_matches_feedback_target(row, op_id=int(op_id), schedule_id=int(schedule_id), batch_id=batch_id)
-        for row in (rows or [])
-    ):
-        return
-    raise AppError(
-        ErrorCode.SCHEDULE_CONFLICT,
-        "当前查询条件下找不到这道工序的现场记录，请刷新资源排班页面后重试。",
-        details={"reason": "schedule_mismatch"},
-    )
-
-
-def _identity_allows_query_membership_check(identity: Mapping[str, Any]) -> bool:
-    return (
-        _text(identity.get("requested_plan_role")) == "adopted"
-        and _text(identity.get("effective_plan_role")) == "adopted"
-        and _text(identity.get("source_table")) == "schedule"
-        and not _text(identity.get("scenario_id"))
-        and bool(identity.get("can_write_feedback"))
-    )
-
-
-def _request_plan_identity_payload(op_id: int, payload: Mapping[str, Any]) -> Dict[str, Any]:
-    query_kwargs = _write_request_kwargs()
-    context = _execution_svc().get_execution_context(**query_kwargs)
-    identity = context.get("plan_identity") if isinstance(context, dict) else None
-    if not isinstance(identity, dict) or not identity:
-        raise ValidationError("当前计划身份不完整，请刷新资源排班页面后重试。", field="plan_identity")
-    if _identity_allows_query_membership_check(identity):
-        _ensure_feedback_target_in_query(context, op_id, payload)
-    return {
-        "version": identity.get("version"),
-        "requested_plan_role": identity.get("requested_plan_role"),
-        "effective_plan_role": identity.get("effective_plan_role"),
-        "source_table": identity.get("source_table"),
-        "scenario_id": identity.get("scenario_id"),
-    }
-
-
-def _feedback_context(op_id: int, payload: Dict[str, Any]) -> ExecutionFeedbackContext:
-    identity_payload = _request_plan_identity_payload(op_id, payload)
-    return ExecutionFeedbackContext(
-        schedule_version=cast(int, identity_payload.get("version")),
-        schedule_id=cast(int, payload.get("schedule_id")),
-        op_id=op_id,
-        batch_id=cast(str, payload.get("batch_id")),
-        expected_state_revision=cast(str, payload.get("expected_state_revision")),
-        created_by=cast(str, payload.get("created_by")),
-        idempotency_key=cast(str, payload.get("idempotency_key")),
-        requested_plan_role=cast(str, identity_payload.get("requested_plan_role")),
-        source_table=cast(str, identity_payload.get("source_table")),
-        effective_plan_role=cast(str, identity_payload.get("effective_plan_role")),
-        scenario_id=identity_payload.get("scenario_id"),
-    )
-
-
-def _task_card_for_result(context: ExecutionFeedbackContext, result: Any) -> dict:
-    card_context = _execution_svc().task_card_for_feedback_context(context, result.state, feedback_write_enabled=True)
-    cards = build_execution_payload(card_context).get("tasks") or []
-    if cards:
-        return cards[0]
-    return build_task_card(
-        {"op_id": context.op_id, "schedule_id": context.schedule_id, "batch_id": result.state.batch_id},
-        result.state,
-        can_write_feedback=True,
-        feedback_write_enabled=True,
-    )
-
-
-def _actual_record_result_payload(context: ExecutionFeedbackContext, result: Any) -> dict:
-    state = result.get("state") if isinstance(result, dict) else None
-    service_result = result.get("result") if isinstance(result, dict) else None
-    if service_result is not None:
-        return execution_result_payload(service_result, _task_card_for_result(context, service_result))
-    card_context = _execution_svc().task_card_for_feedback_context(context, state, feedback_write_enabled=True)
-    cards = build_execution_payload(card_context).get("tasks") or []
-    return {
-        "event": None,
-        "current_status": getattr(state, "current_status", None),
-        "current_status_label": getattr(state, "current_status_label", None),
-        "state_revision": getattr(state, "state_revision", None),
-        "idempotency_reused": False,
-        "task_card": cards[0] if cards else {},
-    }
 
 
 @bp.get("/resource-dispatch/execution/data")
 def resource_dispatch_execution_data():
     try:
-        payload = build_execution_payload(_execution_svc().get_execution_context(**_request_kwargs()))
+        payload = build_execution_payload(_execution_svc().get_execution_context(**_read_request_kwargs()))
         return jsonify({"success": True, "data": payload})
     except AppError as exc:
         payload, status = _execution_error_response(exc)
@@ -226,19 +61,54 @@ def resource_dispatch_execution_data():
 @bp.get("/resource-dispatch/execution/<int:op_id>/events")
 def resource_dispatch_execution_events(op_id: int):
     try:
-        card_payload = build_execution_payload(_execution_svc().get_execution_context(**_request_kwargs()))
-        task_card = next((item for item in card_payload.get("tasks") or [] if int(item.get("op_id") or 0) == int(op_id)), None)
+        target = _event_target_from_request(int(op_id))
+        context = _execution_svc().get_execution_context(**_read_request_kwargs())
+        source_row = _source_row_for_event_list(context, target)
+        card_payload = build_execution_payload(context)
+        task_card = _task_card_by_identity(card_payload, target)
         if task_card is None:
             raise AppError(ErrorCode.NOT_FOUND, "当前查询条件下找不到这道工序的现场记录，请刷新后重试。", details={"reason": "not_found"})
-        states = _feedback_svc().get_execution_state([int(op_id)])
-        state = states.get(int(op_id))
-        events = _feedback_svc().list_execution_events(int(op_id))
+        scope = _scope_for_event_list(context, source_row)
+        state = _feedback_svc().get_execution_state_for_scopes([scope]).get(scope)
+        events = events_for_scope(_feedback_svc(), scope)
         machine_labels, operator_labels = _feedback_svc().resource_labels_for_events(events)
         return jsonify(
             {
                 "success": True,
                 "data": {
-                    "op_id": int(op_id),
+                    "task_card": task_card,
+                    "events": [
+                        event_payload(event, state, machine_labels=machine_labels, operator_labels=operator_labels)
+                        for event in events
+                    ],
+                },
+            }
+        )
+    except AppError as exc:
+        payload, status = _execution_error_response(exc)
+        return jsonify(payload), status
+    except Exception:
+        current_app.logger.exception("现场记录加载失败")
+        return jsonify(error_response(ErrorCode.UNKNOWN_ERROR, "现场记录加载失败，请稍后重试。")), 500
+
+
+@bp.get("/resource-dispatch/execution/tasks/<task_key>/events")
+def resource_dispatch_execution_events_by_task(task_key: str):
+    try:
+        context = _execution_svc().get_execution_context(**_read_request_kwargs())
+        source_row = _source_row_for_task_key(context, task_key)
+        card_payload = build_execution_payload(context)
+        task_card = _task_card_by_key(card_payload, task_key)
+        if task_card is None:
+            raise AppError(ErrorCode.NOT_FOUND, "当前查询条件下找不到这道工序的现场记录，请刷新后重试。", details={"reason": "not_found"})
+        scope = _scope_for_event_list(context, source_row)
+        state = _feedback_svc().get_execution_state_for_scopes([scope]).get(scope)
+        events = events_for_scope(_feedback_svc(), scope)
+        machine_labels, operator_labels = _feedback_svc().resource_labels_for_events(events)
+        return jsonify(
+            {
+                "success": True,
+                "data": {
                     "task_card": task_card,
                     "events": [
                         event_payload(event, state, machine_labels=machine_labels, operator_labels=operator_labels)
@@ -271,12 +141,30 @@ def resource_dispatch_execution_actual(op_id: int):
         return jsonify(error_response(ErrorCode.UNKNOWN_ERROR, "填写实际情况失败，请稍后重试。")), 500
 
 
+@bp.post("/resource-dispatch/execution/tasks/<task_key>/actual")
+def resource_dispatch_execution_actual_by_task(task_key: str):
+    action = "fill_actual"
+    try:
+        payload = _json_payload()
+        context = _feedback_context_for_task_key(task_key, payload)
+        result = _actual_record_svc().record_actual_situation(context, payload)
+        return jsonify({"success": True, "data": _actual_record_result_payload(context, result)})
+    except AppError as exc:
+        payload, status = _execution_error_response(exc, action=action)
+        return jsonify(payload), status
+    except Exception:
+        current_app.logger.exception("填写实际情况失败")
+        return jsonify(error_response(ErrorCode.UNKNOWN_ERROR, "填写实际情况失败，请稍后重试。")), 500
+
+
 def _record_execution_feedback(op_id: int, action: str):
     try:
         payload = _json_payload()
         context = _feedback_context(op_id, payload)
         result = _record_legacy_action(context, action, payload)
-        return jsonify({"success": True, "data": execution_result_payload(result, _task_card_for_result(context, result))})
+        data = execution_result_payload(result, _task_card_for_result(context, result))
+        data["state_revision"] = result.state_revision
+        return jsonify({"success": True, "data": data})
     except AppError as exc:
         payload, status = _execution_error_response(exc, action=action)
         return jsonify(payload), status

@@ -5,6 +5,9 @@
         {% if trend_summary_state.parse_failed_count %}
           趋势摘要不完整：最近 {{ trend_summary_state.parse_failed_count }} 个版本的摘要读取失败，趋势图仅基于可读取版本生成。
         {% endif %}
+        {% if trend_summary_state.version_parse_failed_count %}
+          趋势版本号不完整：最近 {{ trend_summary_state.version_parse_failed_count }} 个版本的版本号记录异常，趋势图已跳过这些坏版本。
+        {% endif %}
         {% if trend_summary_state.metric_parse_failed_count %}
           趋势指标不完整：最近 {{ trend_summary_state.metric_parse_failed_count }} 个版本的指标不是数字，趋势图已跳过这些坏指标。
         {% endif %}

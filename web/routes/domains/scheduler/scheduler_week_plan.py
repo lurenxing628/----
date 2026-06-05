@@ -6,7 +6,9 @@ from typing import Any, Dict, Optional
 from flask import current_app, flash, g, redirect, request, url_for
 
 from core.infrastructure.errors import AppError, BusinessError, ErrorCode, ValidationError
+from core.models.schedule_plan_role import VALID_PLAN_ROLES
 from core.services.common.excel_audit import log_excel_export
+from core.services.scheduler.schedule_plan_option_display import public_plan_role_options
 from core.services.scheduler.schedule_plan_query_service import ROLE_ADOPTED
 from core.services.scheduler.schedule_result_view_context import default_plan_resolution_dict
 from core.services.scheduler.summary.schedule_summary_types import ScheduleResultStatus
@@ -19,7 +21,12 @@ from web.routes.history_summary_logging import (
     log_history_version_option_parse_warnings,
 )
 from web.ui_mode import render_ui_template as render_template
-from web.viewmodels.scheduler_history_summary import decorate_history_version_options, parse_history_summary_state
+from web.viewmodels.scheduler_history_summary import (
+    decorate_history_version_options,
+    format_public_datetime,
+    parse_history_summary_state,
+    strategy_display_label,
+)
 from web.viewmodels.scheduler_summary_display import build_summary_display_state
 
 from .scheduler_bp import (
@@ -65,6 +72,11 @@ def _get_plan_role_arg() -> Optional[str]:
     return text or None
 
 
+def _safe_redirect_plan_role(plan_role: Optional[str]) -> Optional[str]:
+    text = str(plan_role or "").strip()
+    return text if text in VALID_PLAN_ROLES else None
+
+
 def _get_scenario_id_arg() -> Optional[str]:
     text = str(request.args.get("scenario_id") or "").strip()
     return text or None
@@ -87,6 +99,9 @@ def _plan_context_from_data(data: Dict[str, Any], plan_role: Optional[str]) -> D
 def _load_selected_week_plan_summary(services, version: int):
     selected_history_item = services.schedule_history_query_service.get_by_version(version)
     selected_history = selected_history_item.to_dict() if hasattr(selected_history_item, "to_dict") else None
+    if selected_history is not None:
+        selected_history["schedule_time_display"] = format_public_datetime(selected_history.get("schedule_time"))
+        selected_history["strategy_label"] = strategy_display_label(selected_history.get("strategy"))
     parse_state = parse_history_summary_state((selected_history or {}).get("result_summary"))
     log_history_summary_parse_warning(
         parse_state,
@@ -340,7 +355,7 @@ def week_plan_page():
         batch_id=batch_id,
         resource_type=(resource_context or {}).get("resource_type"),
         resource_id=(resource_context or {}).get("resource_id"),
-        plan_role_options=plan_resolution.get("available_roles") or [],
+        plan_role_options=public_plan_role_options(plan_resolution),
         preview_rows=preview_state["preview_rows"],
         total_rows=len(preview_state["rows"]),
         export_url=week_plan_export_url(
@@ -366,7 +381,7 @@ def week_plan_export():
         "week_start": week_start,
         "offset": offset,
         "version": request.args.get("version"),
-        "plan_role": plan_role,
+        "plan_role": _safe_redirect_plan_role(plan_role),
         "scenario_id": scenario_id,
         "resource_context": resource_context,
         "batch_id": batch_id,

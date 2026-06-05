@@ -3,14 +3,14 @@ from __future__ import annotations
 import sqlite3
 from typing import List, Optional
 
-from .migration_operation_execution_contract import has_operation_execution_event_contract
-from .migrations.common import MigrationOutcome, column_exists, fallback_log
+from .migration_operation_execution_contract import operation_execution_event_contract_issues
+from .migrations.common import MigrationOutcome, column_exists, fallback_log, table_exists
 
-CURRENT_SCHEMA_VERSION = 17
+CURRENT_SCHEMA_VERSION = 19
 
 
 class MigrationContractError(RuntimeError):
-    """迁移契约不满足：允许补缺失整表，但不允许静默吞掉复杂残缺库。"""
+    """迁移契约不满足：坏库必须暴露，不能被当前 schema 静默补成好库。"""
 
 
 def build_contract_error(
@@ -23,7 +23,7 @@ def build_contract_error(
     parts = ["检测到非空数据库存在不受支持的残缺结构。"]
     if missing_tables:
         parts.append(f"已识别缺失整表：{', '.join(missing_tables)}。")
-    parts.append("系统只会自动补齐缺失整表；现有表结构残缺请先人工修复或恢复到完整备份后再重试。")
+    parts.append("系统不会用当前 schema.sql 静默补齐缺失整表；请先人工修复或恢复到完整备份后再重试。")
     if bootstrap_error is not None:
         parts.append(f"缺失整表预补齐失败：{bootstrap_error}")
     elif blocked_version is not None and blocked_outcome is not None:
@@ -46,9 +46,47 @@ def build_future_schema_version_error(db_version: int, *, supported_version: int
     )
 
 
+def build_current_schema_contract_error(
+    db_version: int,
+    *,
+    supported_version: int = CURRENT_SCHEMA_VERSION,
+    issues: Optional[List[str]] = None,
+) -> MigrationContractError:
+    current = int(db_version)
+    supported = int(supported_version)
+    visible_issues = _prioritized_contract_issues(issues or [])
+    issue_lines = [f"结构问题：{item}" for item in visible_issues]
+    if issues and len(issues) > len(visible_issues):
+        issue_lines.append(f"其余结构问题 {len(issues) - len(visible_issues)} 项略。")
+    return MigrationContractError(
+        " ".join(
+            [
+                f"检测到数据库 SchemaVersion={current} 等于当前程序支持版本 {supported}，但表结构不满足当前契约。",
+                "为避免陈旧结构静默冒充当前版本，已阻断启动/迁移。",
+                *issue_lines,
+                "请恢复完整备份，或先使用能正确迁移该数据库的程序版本修复结构后再重试。",
+            ]
+        )
+    )
+
+
+def _prioritized_contract_issues(issues: List[str]) -> List[str]:
+    operation_issues = [item for item in issues if "OperationExecutionEvents" in item or "__probe_" in item]
+    other_issues = [item for item in issues if item not in operation_issues]
+    return (operation_issues + other_issues)[:8]
+
+
 def ensure_schema_version_not_newer(db_version: int, *, supported_version: int = CURRENT_SCHEMA_VERSION) -> None:
     if int(db_version) > int(supported_version):
         raise build_future_schema_version_error(int(db_version), supported_version=int(supported_version))
+
+
+def ensure_current_schema_contract(conn: sqlite3.Connection, *, schema_version: Optional[int] = None) -> None:
+    version = int(get_schema_version(conn) if schema_version is None else schema_version)
+    if version == CURRENT_SCHEMA_VERSION:
+        issues = current_schema_contract_issues(conn)
+        if issues:
+            raise build_current_schema_contract_error(version, issues=issues)
 
 
 def ensure_schema_version(conn: sqlite3.Connection, logger=None) -> None:
@@ -125,10 +163,15 @@ def has_no_user_tables(conn: sqlite3.Connection) -> bool:
 
 
 def detect_schema_is_current(conn: sqlite3.Connection) -> bool:
+    return not current_schema_contract_issues(conn)
+
+
+def current_schema_contract_issues(conn: sqlite3.Connection) -> List[str]:
     """
     用“结构特征”判断当前 DB 是否已经包含当前 schema.sql 的关键字段，
     用于 brand-new 空库初始化后的版本快进。
     """
+    issues = []
     needed = [
         ("ResourceTeams", "team_id"),
         ("Operators", "team_id"),
@@ -188,18 +231,28 @@ def detect_schema_is_current(conn: sqlite3.Connection) -> bool:
         ("OperationExecutionEvents", "previous_state_revision"),
         ("OperationExecutionEvents", "created_at"),
     ]
+    missing_tables = set()
     for table, col in needed:
+        if table in missing_tables:
+            continue
+        if not table_exists(conn, table):
+            issues.append(f"missing_table: {table}")
+            missing_tables.add(table)
+            continue
         if not column_exists(conn, table, col):
-            return False
-    return (
-        _has_system_management_tables(conn)
-        and _has_schedule_unique_index(conn)
-        and _has_candidate_indexes(conn)
-        and _has_adjustment_draft_indexes(conn)
-        and _has_adjustment_scenario_indexes(conn)
-        and has_operation_execution_event_contract(conn)
-        and _batch_material_ready_default_is_no(conn)
-    )
+            issues.append(f"missing_column: {table}.{col}")
+    for ok, label in (
+        (_has_system_management_tables(conn), "missing_table: SystemConfig/SystemJobState"),
+        (_has_schedule_unique_index(conn), "bad_index: idx_schedule_version_op_unique"),
+        (_has_candidate_indexes(conn), "bad_index: schedule candidate indexes"),
+        (_has_adjustment_draft_indexes(conn), "bad_index: schedule adjustment draft indexes"),
+        (_has_adjustment_scenario_indexes(conn), "bad_index: schedule adjustment scenario indexes"),
+        (_batch_material_ready_default_is_no(conn), "bad_default: BatchMaterials.ready_status expected no"),
+    ):
+        if not ok:
+            issues.append(label)
+    issues.extend(operation_execution_event_contract_issues(conn))
+    return issues
 
 
 def _batch_material_ready_default_is_no(conn: sqlite3.Connection) -> bool:

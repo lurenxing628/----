@@ -9,11 +9,17 @@ from web.routes.history_summary_logging import (
     log_history_version_option_parse_warnings,
 )
 from web.viewmodels.scheduler_analysis_metrics import extract_metrics_from_summary
-from web.viewmodels.scheduler_analysis_trends import _metric_float_state, _metric_has_parse_failure, safe_int
+from web.viewmodels.scheduler_analysis_trends import (
+    _int_state,
+    _metric_float_state,
+    _metric_has_parse_failure,
+    safe_int,
+)
 from web.viewmodels.scheduler_history_summary import (
     decorate_history_version_options,
     format_public_datetime,
     parse_history_summary_state,
+    strategy_display_label,
 )
 
 from .scheduler_history_resolution import build_requested_history_resolution
@@ -36,6 +42,7 @@ def _parse_analysis_summary(row: Dict[str, Any], *, source: str) -> Dict[str, An
     parsed["result_summary_parse_state"] = parse_state
     parsed["result_summary"] = payload if isinstance(payload, dict) else None
     parsed["schedule_time_display"] = format_public_datetime(parsed.get("schedule_time"))
+    parsed["strategy_label"] = strategy_display_label(parsed.get("strategy"))
     return parsed
 
 
@@ -200,10 +207,12 @@ def _trend_summary_state(raw_hist: List[Dict[str, Any]]) -> Dict[str, Any]:
     parse_failed_count = sum(
         1 for item in raw_hist if bool(((item or {}).get("result_summary_parse_state") or {}).get("parse_failed"))
     )
+    version_parse_failed_count = sum(1 for item in raw_hist if _int_state((item or {}).get("version"))[1])
     metric_parse_failed_count = sum(1 for item in raw_hist if _trend_metric_parse_failed(item))
     return {
-        "incomplete": bool(parse_failed_count or metric_parse_failed_count),
+        "incomplete": bool(parse_failed_count or version_parse_failed_count or metric_parse_failed_count),
         "parse_failed_count": int(parse_failed_count),
+        "version_parse_failed_count": int(version_parse_failed_count),
         "metric_parse_failed_count": int(metric_parse_failed_count),
     }
 

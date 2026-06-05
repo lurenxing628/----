@@ -27,6 +27,86 @@ def _monday_of(d: date) -> date:
     return d - timedelta(days=d.weekday())
 
 
+def _normalize_offset_weeks(offset_weeks: int) -> int:
+    try:
+        return int(offset_weeks)
+    except Exception as e:
+        raise ValidationError("周偏移填写不对，请填写整数。", field="offset_weeks") from e
+
+
+def _date_arg_provided(value: Optional[str]) -> bool:
+    return value is not None and str(value).strip() != ""
+
+
+def _parse_required_date(value: Optional[str], *, field: str, message: str) -> date:
+    parsed = _parse_date(value)
+    if not parsed:
+        raise ValidationError(message, field=field)
+    return parsed
+
+
+def _start_of_day(value: date) -> datetime:
+    return datetime(value.year, value.month, value.day, 0, 0, 0)
+
+
+def _week_range_from_dates(start_day: date, end_day: date) -> WeekRange:
+    start_dt = _start_of_day(start_day)
+    end_dt_exclusive = _start_of_day(end_day) + timedelta(days=1)
+    return WeekRange(
+        week_start_date=start_day,
+        week_end_date=end_day,
+        start_dt=start_dt,
+        end_dt_exclusive=end_dt_exclusive,
+    )
+
+
+def _resolve_explicit_date_range(
+    *,
+    offset_weeks_int: int,
+    start_date: Optional[str],
+    end_date: Optional[str],
+) -> WeekRange:
+    sd = (
+        _parse_required_date(
+            start_date,
+            field="start_date",
+            message="开始日期写法不对，请填写类似 2026-05-20 的日期。",
+        )
+        if _date_arg_provided(start_date)
+        else date.today() + timedelta(days=1)
+    )
+    ed = (
+        _parse_required_date(
+            end_date,
+            field="end_date",
+            message="结束日期写法不对，请填写类似 2026-05-20 的日期。",
+        )
+        if _date_arg_provided(end_date)
+        else sd + timedelta(days=6)
+    )
+    if ed < sd:
+        raise ValidationError("end_date 不能早于 start_date", field="end_date")
+    if offset_weeks_int:
+        sd = sd + timedelta(days=7 * offset_weeks_int)
+        ed = ed + timedelta(days=7 * offset_weeks_int)
+    return _week_range_from_dates(sd, ed)
+
+
+def _resolve_week_mode_range(*, week_start: Optional[str], offset_weeks_int: int) -> WeekRange:
+    if week_start:
+        selected = _parse_required_date(
+            week_start,
+            field="week_start",
+            message="周开始日期写法不对，请填写类似 2026-05-20 的日期。",
+        )
+        monday = _monday_of(selected)
+    else:
+        # 默认：明天所在周（便于用户“从明天开始看排程”）
+        monday = _monday_of(date.today() + timedelta(days=1))
+    monday = monday + timedelta(days=7 * offset_weeks_int)
+    return _week_range_from_dates(monday, monday + timedelta(days=6))
+
+
 @dataclass
 class WeekRange:
     week_start_date: date
@@ -60,56 +140,11 @@ def resolve_week_range(
     - offset_weeks：周偏移（-1 上周，+1 下周）
     - start_date/end_date：可选，期望为 YYYY-MM-DD；若提供则优先使用
     """
-    try:
-        offset_weeks_int = int(offset_weeks)
-    except Exception as e:
-        raise ValidationError("周偏移填写不对，请填写整数。", field="offset_weeks") from e
-
-    start_date_provided = start_date is not None and str(start_date).strip() != ""
-    end_date_provided = end_date is not None and str(end_date).strip() != ""
-
-    sd: Optional[date] = None
-    if start_date_provided:
-        sd = _parse_date(start_date)
-        if not sd:
-            raise ValidationError("开始日期写法不对，请填写类似 2026-05-20 的日期。", field="start_date")
-
-    ed: Optional[date] = None
-    if end_date_provided:
-        ed = _parse_date(end_date)
-        if not ed:
-            raise ValidationError("结束日期写法不对，请填写类似 2026-05-20 的日期。", field="end_date")
-
-    if start_date_provided or end_date_provided:
-        # 区间模式：默认 start_date=明天；end_date 未填则默认 7 天窗口
-        if not sd:
-            sd = date.today() + timedelta(days=1)
-        if not ed:
-            ed = sd + timedelta(days=6)
-        if ed < sd:
-            raise ValidationError("end_date 不能早于 start_date", field="end_date")
-
-        # 区间模式下同样支持按周偏移（用于“上周/下周”切换）
-        if offset_weeks_int:
-            sd = sd + timedelta(days=7 * offset_weeks_int)
-            ed = ed + timedelta(days=7 * offset_weeks_int)
-
-        start_dt = datetime(sd.year, sd.month, sd.day, 0, 0, 0)
-        end_dt_exclusive = datetime(ed.year, ed.month, ed.day, 0, 0, 0) + timedelta(days=1)
-        return WeekRange(week_start_date=sd, week_end_date=ed, start_dt=start_dt, end_dt_exclusive=end_dt_exclusive)
-
-    # 周模式
-    if week_start:
-        d = _parse_date(week_start)
-        if not d:
-            raise ValidationError("周开始日期写法不对，请填写类似 2026-05-20 的日期。", field="week_start")
-        monday = _monday_of(d)
-    else:
-        # 默认：明天所在周（便于用户“从明天开始看排程”）
-        monday = _monday_of(date.today() + timedelta(days=1))
-
-    monday = monday + timedelta(days=7 * offset_weeks_int)
-    sunday = monday + timedelta(days=6)
-    start_dt = datetime(monday.year, monday.month, monday.day, 0, 0, 0)
-    end_dt_exclusive = start_dt + timedelta(days=7)
-    return WeekRange(week_start_date=monday, week_end_date=sunday, start_dt=start_dt, end_dt_exclusive=end_dt_exclusive)
+    offset_weeks_int = _normalize_offset_weeks(offset_weeks)
+    if _date_arg_provided(start_date) or _date_arg_provided(end_date):
+        return _resolve_explicit_date_range(
+            offset_weeks_int=offset_weeks_int,
+            start_date=start_date,
+            end_date=end_date,
+        )
+    return _resolve_week_mode_range(week_start=week_start, offset_weeks_int=offset_weeks_int)

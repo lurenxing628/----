@@ -326,6 +326,15 @@ def plan_role_filter_fields(plan_resolution_or_context: Any = None, **overrides:
         "plan_identity_label": plan_identity.get("user_label") or data.get("user_label") or plan_role_label(effective_role),
         "can_dispatch": _identity_bool(plan_identity, data, "can_dispatch"),
         "can_write_feedback": _identity_bool(plan_identity, data, "can_write_feedback"),
+        "result_summary_parse_failed": bool(
+            plan_identity.get("result_summary_parse_failed") or data.get("result_summary_parse_failed")
+        ),
+        "result_summary_parse_reason": str(
+            plan_identity.get("result_summary_parse_reason") or data.get("result_summary_parse_reason") or ""
+        ).strip(),
+        "schedule_result_status": str(
+            plan_identity.get("schedule_result_status") or data.get("schedule_result_status") or ""
+        ).strip(),
         "is_official_plan": _identity_bool(plan_identity, data, "is_official"),
         "is_preview_plan": _identity_bool(plan_identity, data, "is_preview"),
         "is_current_executable_version": _identity_bool(plan_identity, data, "is_current_executable_version"),

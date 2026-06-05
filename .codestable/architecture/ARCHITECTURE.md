@@ -5,7 +5,7 @@ scope: 项目架构总入口，覆盖 APS 整体结构、核心模块索引、�
 summary: APS 在 Win7 x64、Python 3.8、离线交付约束下的系统地图入口
 status: current
 created: 2026-04-27
-last_reviewed: 2026-06-01
+last_reviewed: 2026-06-04
 tags: [aps, codestable, architecture, win7]
 depends_on: []
 implements: []
@@ -51,6 +51,7 @@ implements: []
 - 排产分析行动入口：`web/routes/domains/scheduler/scheduler_analysis.py` 在候选方案链接绑定后调用 `web/viewmodels/scheduler_analysis_action_hub.py`，把已有推荐结论、代表方案摘要、诊断摘要和下一步入口整理成首屏行动区；`templates/scheduler/analysis_parts/_action_hub.html` 展示该行动区，`templates/scheduler/analysis.html` 的选中版本顺序为版本身份、行动区、告警、详细方案对比、完整诊断、指标、优化过程。行动区只复用已有 `candidate_comparison_display`、`diagnostic_sections` 和 `WorkbenchLink`，不重算候选方案、不改算法、不新增数据库，也不把候选方案变成可写现场记录入口。
 - 甘特任务详情区：`/scheduler/gantt/data` 由 `GanttService` 读取排程明细，并通过 `ExecutionFactProvider` 按 `op_id` 聚合现场执行事实；`core/services/scheduler/gantt_tasks.py` 输出公开任务标题、计划时间、现场实际小结、超期提示和资源/工序/图号字段；`web/viewmodels/scheduler_gantt_task_detail.py` 追加资源派工、计划和现场实际、超期清单链接；`static/js/gantt_render.js` 点击任务后刷新 `#ganttTaskDetail`，`static/js/gantt_popup.js` 继续维护旧弹窗和新详情区。详情区和旧弹窗只展示公开字段，关键链 edge 保留内部 `from/to` 做连线，同时用 `from_label/to_label` 给用户看，避免缺 `op_code` 时把 `op_<数字>` 露出来。
 - 报表工作台回跳：`/reports/`、超期、资源负荷、计划和现场实际、停机影响由 `web/viewmodels/scheduler_reports_workbench.py` 统一装配入口卡、页面级链接、行级动作和保守空状态，并继续复用 `WorkbenchLink` 保留版本、方案、计划身份、返回地址、日期、批次和资源上下文；排产主导航、报表顶部导航、报表筛选隐藏字段和全局计划工作台导航由 `web/viewmodels/scheduler_navigation_links.py` 统一从当前请求生成，模板不再手拼 URL，带上下文进入“首页值班台”也不会丢 plan_id 或 back_to。`ReportEngine`、`execution_review`、`schedule_plan_query_service` 和 `schedule_plan_query_repo` 承接底层过滤，页面和 Excel 导出共用同一批 `batch_id`、`resource_type`、`resource_id` 条件，并把资源负荷、停机影响和计划实际复盘的批次/资源条件下推到计划明细 SQL，避免只把 URL 做好看而数据没过滤。当前 `resource_type/resource_id` 主资源筛选只支持设备和人员，班组上下文进入首页值班台、排产分析、周计划和报表类目标时会禁用链接，不生成会跳 400 的 URL；资源派工继续使用 `scope_type/scope_id/team_id` 保留班组上下文；甘特图不携带班组筛选。排产分析、甘特和周计划通过 `scheduler_navigation_publish.py` 发布导航上下文时，会复制服务端方案身份护栏字段，并把报表行跳转带来的批次和资源范围继续发布给顶部导航，避免旧正式版本、对比方案、模拟预览误启用计划和现场实际入口，也避免用户从具体批次/资源跳转后再导航回全量范围。资源派工现场实际写入地址由 `scheduler_resource_dispatch_query.py` 按服务端归一化 filters 生成，前端不再用裸路径叠加地址栏原始查询串来补 `query_date` 等关键上下文。报表展示、执行复盘、延期诊断遇到坏数字时抛 `ValidationError`，导出行数和阈值额外拒绝负数和小数，不静默按 0 处理；计划和现场实际仍只复盘正式采用方案；停机影响第一版只做设备级说明和设备级回跳，不做任务级明细；内部追踪字段只留在请求参数或服务端内部，不进入页面正文、普通 HTML 属性、导出表头或公开 payload。
+- 工作台主流程回归保护：第一版工作台主流程由 `tests/regression_aps_workbench_flow_contract.py` 锁住“首页值班台 -> 分析 / 甘特 / 资源派工 / 报表 / 计划和现场实际”的用户路线，`tests/regression_scheduler_historical_plan_label_contract.py`、`tests/regression_scheduler_plan_identity_summary_guardrail.py` 和 `tests/regression_web_silent_fallback_contract.py` 锁住历史正式方案、缺失版本、坏摘要、非正式方案不能冒充当前可执行正式方案；`tests/ui_geometry_contract_data.py` 维护关键页面几何路径，`tools/test_registry_data.py` 与 `tools/test_registry_groups_scheduler.py` 负责把这些回归纳入质量门禁登记。测试只证明第一版主流程和护栏现状，不代表第二阶段的现场事实延期解释、甘特资源负荷摘要、停机任务级明细或牵连订单影响面已经完成。
 
 ## 4. 关键架构决定
 

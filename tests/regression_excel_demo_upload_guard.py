@@ -64,8 +64,6 @@ def main() -> None:
     os.environ["APS_EXCEL_TEMPLATE_DIR"] = test_templates
 
     from core.infrastructure.database import ensure_schema
-    from core.infrastructure.errors import ErrorCode
-
     ensure_schema(test_db, logger=None, schema_path=os.path.join(repo_root, "schema.sql"), backup_dir=None)
 
     import importlib
@@ -87,10 +85,10 @@ def main() -> None:
     too_large_body = too_large_resp.get_data(as_text=True)
     if too_large_resp.status_code != 413:
         raise RuntimeError(f"超限上传返回码异常：{too_large_resp.status_code} body={too_large_body[:500]}")
-    if ErrorCode.FILE_TOO_LARGE.value not in too_large_body:
-        raise RuntimeError(f"超限上传未返回统一 FILE_TOO_LARGE 错误：{too_large_body[:500]}")
     if "上传文件超过 1MB" not in too_large_body:
         raise RuntimeError(f"超限上传未返回统一大小提示：{too_large_body[:500]}")
+    if "7005" in too_large_body or "错误码" in too_large_body:
+        raise RuntimeError(f"超限上传 HTML 页面不应显示内部错误码：{too_large_body[:500]}")
 
     normal_bytes = _make_xlsx_bytes(
         ["工号", "姓名", "状态", "班组", "备注"],

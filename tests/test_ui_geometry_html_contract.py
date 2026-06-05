@@ -103,16 +103,20 @@ def test_error_keyword_detector_flags_error_page_title() -> None:
     assert _matched_error_keyword(html, parsed, 200) == "Internal Server Error"
 
 
-def test_ui_geometry_contract_includes_report_workbench_pages() -> None:
-    report_paths = {
+def test_ui_geometry_contract_includes_first_version_workbench_pages() -> None:
+    workbench_paths = {
+        "/?version=1&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-06&batch_id=B_UI_GEOMETRY&resource_type=machine&resource_id=M_UI_GEOMETRY",
+        "/scheduler/analysis?version=1&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-06&batch_id=B_UI_GEOMETRY&resource_type=machine&resource_id=M_UI_GEOMETRY",
+        "/scheduler/gantt?view=machine&version=1&plan_role=adopted&start_date=2026-05-06&end_date=2026-05-06&gantt_batch=B_UI_GEOMETRY&gantt_resource=M_UI_GEOMETRY",
+        "/scheduler/gantt?view=operator&version=1&plan_role=adopted&start_date=2026-05-06&end_date=2026-05-06&gantt_batch=B_UI_GEOMETRY&gantt_resource=O_UI_GEOMETRY",
+        "/scheduler/resource-dispatch?version=1&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-06&scope_type=machine&machine_id=M_UI_GEOMETRY&batch_id=B_UI_GEOMETRY",
         "/reports/?version=1&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-06&batch_id=B_UI_GEOMETRY&resource_type=machine&resource_id=M_UI_GEOMETRY",
         "/reports/overdue?version=1&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-06&batch_id=B_UI_GEOMETRY&resource_type=machine&resource_id=M_UI_GEOMETRY",
         "/reports/utilization?version=1&plan_role=adopted&start_date=2026-05-06&end_date=2026-05-06&resource_type=operator&resource_id=O_UI_GEOMETRY",
         "/reports/execution-review?version=1&date_from=2026-05-06&date_to=2026-05-06&batch_id=B_UI_GEOMETRY&resource_type=machine&resource_id=M_UI_GEOMETRY",
-        "/reports/downtime?version=1&plan_role=adopted&start_date=2026-05-06&end_date=2026-05-06&resource_type=machine&resource_id=M_UI_GEOMETRY",
     }
 
-    assert report_paths.issubset(set(SMOKE_PATHS))
+    assert workbench_paths.issubset(set(SMOKE_PATHS))
 
 
 def test_ui_smoke_pages_render_expected_html_contract(tmp_path, monkeypatch) -> None:
@@ -133,5 +137,7 @@ def test_ui_smoke_pages_render_expected_html_contract(tmp_path, monkeypatch) -> 
         assert matched_error == "", f"{page_path}: matched error keyword {matched_error}"
         for text in expected.get("stable_texts") or ():
             assert text in parsed.visible_text, f"{page_path}: missing text {text}"
+        for text in expected.get("forbidden_texts") or ():
+            assert text not in parsed.visible_text, f"{page_path}: forbidden text {text}"
         for element_id in expected["ids"]:
             assert element_id in parsed.ids, f"{page_path}: missing id {element_id}"

@@ -66,6 +66,18 @@ def _capture_warning_logs(app, monkeypatch):
     return logged
 
 
+def _current_official_plan_context() -> Dict[str, Any]:
+    return {
+        "requested_plan_role": "adopted",
+        "effective_plan_role": "adopted",
+        "plan_role": "adopted",
+        "source_table": "schedule",
+        "is_current_executable_official_version": True,
+        "can_dispatch": True,
+        "can_write_feedback": True,
+    }
+
+
 
 def test_dashboard_logs_warning_when_latest_result_summary_is_invalid(tmp_path, monkeypatch) -> None:
     app, db_path = _build_app(tmp_path, monkeypatch)
@@ -155,6 +167,7 @@ def test_dashboard_accepts_preparsed_result_summary_dict(tmp_path, monkeypatch) 
 
     monkeypatch.setattr(request_services_mod, "BatchService", _StubBatchService)
     monkeypatch.setattr(request_services_mod, "ScheduleHistoryQueryService", _StubHistoryService)
+    monkeypatch.setattr(route_mod, "_plan_resolution_context", lambda _services, _version: _current_official_plan_context())
     monkeypatch.setattr(route_mod, "render_template", lambda _tpl, **ctx: ctx)
 
     with app.test_request_context("/"):

@@ -14,7 +14,9 @@ from core.models.operation_execution_event import (
     EXECUTION_EVENT_PAUSE,
     EXECUTION_EVENT_START,
     OperationExecutionEvent,
+    validate_operation_execution_event_transition,
 )
+from core.models.operation_execution_scope import OperationExecutionScope
 from core.models.operation_execution_state import OperationExecutionState
 from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
 from core.shared.field_labels import display_field_label
@@ -27,7 +29,6 @@ from data.repositories.schedule_repo import ScheduleRepository
 from .operation_execution_feedback_actions import OperationExecutionFeedbackActionsMixin
 from .operation_execution_feedback_support import (
     _ACTION_PAYLOAD_FIELDS,
-    _ALLOWED_ACTIONS_BY_STATUS,
     _REPORTED_STATUS_BY_ACTION,
     ExecutionFeedbackContext,
     ExecutionFeedbackResult,
@@ -35,6 +36,7 @@ from .operation_execution_feedback_support import (
     _event_public_tuple,
     _invalid_field_value,
     _non_negative_int,
+    _normalize_feedback_datetime,
     _optional_int,
     _optional_non_negative_int,
     _optional_text,
@@ -42,6 +44,8 @@ from .operation_execution_feedback_support import (
     _positive_int,
     _required_non_negative_int,
     _required_text,
+    _scope_for_context,
+    _state_for_context,
     _text,
     _validate_known_value,
 )
@@ -71,10 +75,22 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
         self.plan_query_service = SchedulePlanQueryService(conn, logger=logger)
 
     def get_execution_state(self, op_ids: Sequence[int]) -> Dict[int, OperationExecutionState]:
-        return self.event_repo.aggregate_states_by_op_ids(op_ids)
+        raise ValidationError("现场执行状态必须按完整计划身份读取，不能只按 op_id 聚合。", field="operation_execution_scope")
+
+    def get_execution_state_for_scopes(self, scopes: Sequence[OperationExecutionScope]) -> Dict[OperationExecutionScope, OperationExecutionState]:
+        return self.event_repo.aggregate_states_by_scopes(scopes)
+
+    def list_execution_events_for_scope(self, scope: OperationExecutionScope) -> List[OperationExecutionEvent]:
+        return self.event_repo.list_events_by_scope(scope)
+
+    def get_event_by_idempotency_key(self, idempotency_key: str) -> Optional[OperationExecutionEvent]:
+        return self.event_repo.get_by_idempotency_key(idempotency_key)
+
+    def has_event_by_idempotency_key(self, idempotency_key: str) -> bool:
+        return self.get_event_by_idempotency_key(idempotency_key) is not None
 
     def list_execution_events(self, op_id: int) -> List[OperationExecutionEvent]:
-        return self.event_repo.list_events_by_op_id(int(op_id))
+        raise ValidationError("现场执行事件必须按完整计划身份读取，不能只按 op_id 查询。", field="operation_execution_scope")
 
     def record_event(self, context: ExecutionFeedbackContext, *, action: str, **payload: Any) -> ExecutionFeedbackResult:
         normalized_context = self._normalize_context(context)
@@ -103,7 +119,7 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
                     fingerprint=fingerprint,
                 )
             schedule, batch_op = self._load_current_official_schedule(normalized_context)
-            current_state = self.event_repo.aggregate_states_by_op_ids([normalized_context.op_id])[normalized_context.op_id]
+            current_state = _state_for_context(self.event_repo, normalized_context)
             if current_state.state_revision != normalized_context.expected_state_revision:
                 raise _conflict(
                     "stale_state_revision",
@@ -137,7 +153,7 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
                     payload=normalized_payload,
                     fingerprint=fingerprint,
                 )
-            state = self.event_repo.aggregate_states_by_op_ids([normalized_context.op_id])[normalized_context.op_id]
+            state = _state_for_context(self.event_repo, normalized_context)
             return ExecutionFeedbackResult(
                 event=event,
                 state=state,
@@ -147,18 +163,21 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
 
     def _validate_state_transition(self, state: OperationExecutionState, action: str) -> None:
         current_status = state.current_status
-        allowed_actions = _ALLOWED_ACTIONS_BY_STATUS.get(current_status, set())
-        if action in allowed_actions:
-            return
-        raise _conflict(
-            "invalid_state_transition",
-            details={
-                "current_status": current_status,
-                "current_status_label": state.current_status_label,
-                "action": action,
-                "action_label": execution_action_label(action),
-            },
-        )
+        try:
+            validate_operation_execution_event_transition(
+                current_status=current_status,
+                event_type=action_to_event_type(action),
+            )
+        except ValueError as exc:
+            raise _conflict(
+                "invalid_state_transition",
+                details={
+                    "current_status": current_status,
+                    "current_status_label": state.current_status_label,
+                    "action": action,
+                    "action_label": execution_action_label(action),
+                },
+            ) from exc
 
     def _handle_unique_insert_error(
         self,
@@ -180,7 +199,7 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
                 payload=payload,
                 fingerprint=fingerprint,
             )
-        current_revision = self.event_repo.state_revision_for_op(context.op_id)
+        current_revision = self.event_repo.state_revision_for_scope(_scope_for_context(context))
         raise _conflict(
             "stale_state_revision",
             details={
@@ -198,11 +217,12 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
         payload: Dict[str, Any],
         fingerprint: str,
     ) -> ExecutionFeedbackResult:
+        schedule, batch_op = self._load_current_official_schedule(context)
         expected_event = OperationExecutionEvent.from_row(
             self._build_event_payload(
                 context=context,
-                schedule=self.schedule_repo.get(context.schedule_id),
-                batch_id=existing.batch_id,
+                schedule=schedule,
+                batch_id=str(batch_op.batch_id or ""),
                 action=action,
                 payload=payload,
                 fingerprint=fingerprint,
@@ -210,7 +230,7 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
         )
         if existing.request_fingerprint != fingerprint or _event_public_tuple(existing) != _event_public_tuple(expected_event):
             raise _conflict("idempotency_conflict")
-        state = self.event_repo.aggregate_states_by_op_ids([existing.op_id])[existing.op_id]
+        state = _state_for_context(self.event_repo, context)
         return ExecutionFeedbackResult(
             event=existing,
             state=state,
@@ -256,7 +276,7 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
 
     def _normalize_payload(self, action: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         out = {field: payload.get(field) for field in _ACTION_PAYLOAD_FIELDS}
-        out["event_time"] = _required_text(out.get("event_time"), "event_time")
+        out["event_time"] = _normalize_feedback_datetime(_required_text(out.get("event_time"), "event_time"))
         out["actual_machine_id"] = _optional_text(out.get("actual_machine_id"))
         out["actual_operator_id"] = _optional_text(out.get("actual_operator_id"))
         out["reason_code"] = _optional_text(out.get("reason_code"))
@@ -473,9 +493,4 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
             "previous_state_revision": context.expected_state_revision,
         }
 
-
-__all__ = [
-    "ExecutionFeedbackContext",
-    "ExecutionFeedbackResult",
-    "OperationExecutionFeedbackService",
-]
+__all__ = ("ExecutionFeedbackContext", "ExecutionFeedbackResult", "OperationExecutionFeedbackService")

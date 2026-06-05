@@ -2,7 +2,6 @@
 {% block content %}
   <div class="card">
     <h2>{{ title or "发生错误" }}</h2>
-    <p class="error"><strong>错误码：</strong>{{ code or "未知" }}</p>
     <p class="error"><strong>提示：</strong>{{ message or "发生未知错误，请查看日志。" }}</p>
 
     {% if field_label %}

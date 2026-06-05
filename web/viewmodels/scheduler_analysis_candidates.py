@@ -16,16 +16,17 @@ from .scheduler_analysis_candidate_helpers import (
     _adopted_candidate_status_message,
     _adopted_row,
     _candidate_comparison_summary,
-    _candidate_failed_ops,
     _candidate_key_for_role,
     _candidate_kind,
     _candidate_label,
     _candidate_metric,
+    _candidate_metric_parse_failed,
     _candidate_recommendation_card,
     _candidate_rows_by_key,
     _candidate_status,
     _candidate_status_completed,
     _candidate_status_label,
+    _candidate_status_public_value,
     _candidate_technical_score_label,
     _comparison_note,
     _comparison_status_messages,
@@ -42,6 +43,7 @@ from .scheduler_analysis_candidate_helpers import (
     _role_is_comparison,
     _role_source_table,
     _selection_reason_label,
+    _selection_reason_state,
     _warning_message,
 )
 
@@ -78,6 +80,16 @@ def _candidate_display_row(
         is_comparison=bool(is_comparison),
         is_same_as_adopted=is_same_as_adopted,
     )
+    metric_keys = (
+        "failed_ops",
+        "overdue_count",
+        "total_tardiness_hours",
+        "weighted_tardiness_hours",
+        "makespan_hours",
+        "changeover_count",
+    )
+    metric_values = {key: _candidate_metric(candidate, key) for key in metric_keys}
+    metric_failures = {f"{key}_parse_failed": _candidate_metric_parse_failed(candidate, key) for key in metric_keys}
     return {
         "role": role,
         "role_label": role_label,
@@ -85,14 +97,10 @@ def _candidate_display_row(
         "candidate_key": candidate_key,
         "candidate_label": _candidate_label(candidate, option, candidate_key=candidate_key, role=role),
         "kind": _candidate_kind(candidate, option),
-        "status": status,
+        "status": _candidate_status_public_value(status),
         "status_label": status_label,
-        "failed_ops": _candidate_failed_ops(candidate),
-        "overdue_count": _candidate_metric(candidate, "overdue_count"),
-        "total_tardiness_hours": _candidate_metric(candidate, "total_tardiness_hours"),
-        "weighted_tardiness_hours": _candidate_metric(candidate, "weighted_tardiness_hours"),
-        "makespan_hours": _candidate_metric(candidate, "makespan_hours"),
-        "changeover_count": _candidate_metric(candidate, "changeover_count"),
+        **metric_values,
+        **metric_failures,
         "technical_score_label": _candidate_technical_score_label(candidate),
         "plan_role_available": plan_role_available,
         "detail_saved": detail_saved,
@@ -137,11 +145,19 @@ def _summary_metric_lines(row: Dict[str, Any], adopted: Optional[Dict[str, Any]]
     for key, label, unit in _SUMMARY_CARD_METRICS:
         value = row.get(key)
         adopted_value = (adopted or {}).get(key)
+        parse_failed = bool(row.get(f"{key}_parse_failed"))
+        adopted_parse_failed = bool((adopted or {}).get(f"{key}_parse_failed"))
         lines.append(
             {
                 "label": label,
-                "value": _format_metric_value(value, unit),
-                "comparison_text": _format_metric_comparison(value, adopted_value, unit, is_adopted=is_adopted),
+                "value": "记录异常" if parse_failed else _format_metric_value(value, unit),
+                "comparison_text": _format_metric_comparison(
+                    value,
+                    adopted_value,
+                    unit,
+                    is_adopted=is_adopted,
+                    parse_failed=bool(parse_failed or adopted_parse_failed),
+                ),
             }
         )
     return lines
@@ -177,12 +193,15 @@ def _candidate_comparison_display_payload(
     options_by_role: Dict[str, Dict[str, Any]],
     rows: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
-    selection_reason_label = _selection_reason_label(comparison.get("selection_reason_code"))
+    selection_reason = _selection_reason_state(comparison.get("selection_reason_code"))
+    selection_reason_label = str(selection_reason.get("label") or "")
     adopted_status_message = _adopted_candidate_status_message(rows)
-    recommendation_card = _candidate_recommendation_card(
-        rows,
-        selection_reason_label=selection_reason_label,
-    )
+    recommendation_card = None
+    if not bool(selection_reason.get("parse_failed")):
+        recommendation_card = _candidate_recommendation_card(
+            rows,
+            selection_reason_label=selection_reason_label,
+        )
     if adopted_status_message:
         selection_reason_label = ""
     return {
@@ -204,8 +223,9 @@ def _candidate_comparison_display_payload(
         ],
         "failed_candidate_labels": _failed_candidate_labels(comparison),
         "baseline_missing_or_failed": bool(comparison.get("baseline_missing_or_failed")),
-        "selection_reason_code": comparison.get("selection_reason_code"),
+        "selection_reason_code": "",
         "selection_reason_label": selection_reason_label,
+        "selection_reason_parse_failed": bool(selection_reason.get("parse_failed")),
         "recommendation_card": recommendation_card,
         "summary_cards": _candidate_summary_cards(rows),
         "status_messages": _comparison_status_messages(comparison)
@@ -240,8 +260,11 @@ def _incomplete_comparison_display_payload(
         ],
         "failed_candidate_labels": _failed_candidate_labels(comparison),
         "baseline_missing_or_failed": bool(comparison.get("baseline_missing_or_failed")),
-        "selection_reason_code": comparison.get("selection_reason_code"),
+        "selection_reason_code": "",
         "selection_reason_label": _selection_reason_label(comparison.get("selection_reason_code")),
+        "selection_reason_parse_failed": bool(
+            _selection_reason_state(comparison.get("selection_reason_code")).get("parse_failed")
+        ),
         "recommendation_card": None,
         "summary_cards": [],
         "status_messages": _comparison_status_messages(comparison),
@@ -265,6 +288,7 @@ def _no_comparison_display_payload(selected_ver: Optional[int]) -> Dict[str, Any
         "baseline_missing_or_failed": False,
         "selection_reason_code": "",
         "selection_reason_label": "",
+        "selection_reason_parse_failed": False,
         "recommendation_card": None,
         "summary_cards": [],
         "status_messages": [],

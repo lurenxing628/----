@@ -1,0 +1,102 @@
+feature: 2026-06-02-workbench-flow-regression-suite
+roadmap: aps-frontend-workbench
+roadmap_item: workbench-flow-regression-suite
+created: 2026-06-02
+steps:
+  - id: step-1
+    title: 测试骨架
+    action: 新增主流程测试文件，复用首页建库和 HTML 解析思路跑通一条“首页到目标页”路径。
+    exit_signal: 测试能打开首页并访问至少一个目标页。
+    status: done
+  - id: step-2
+    title: 主流程断言
+    action: 补齐分析、甘特、资源派工、超期清单、资源负荷、计划和现场实际的上下文和中文信号断言。
+    exit_signal: 第一版主流程所有路线都有版本、方案、日期、批次或资源上下文证据。
+    status: done
+  - id: step-3
+    title: 护栏断言
+    action: 补护栏断言，并对断言暴露的正式方案身份、历史版本显示、写入口禁用缺口做最小正式修复。
+    exit_signal: 不可写上下文不会生成可点击复盘或写入地址，页面可见文本不露内部字段。
+    status: done
+  - id: step-4
+    title: 几何登记
+    action: 补工作台关键页面路径和稳定信号，保持真实浏览器探针职责不变。
+    exit_signal: 几何合同测试能证明关键路径已登记。
+    status: done
+  - id: step-5
+    title: 门禁登记
+    action: 把新测试加入 required registry 和 scheduler required regression group。
+    exit_signal: registry 合同测试证明新测试会被质量门禁覆盖。
+    status: done
+  - id: step-6
+    title: 验证收口
+    action: 运行本 feature 指定 pytest、registry 合同、几何 HTML 合同，并做一次 dirty quality gate 预跑。
+    exit_signal: 指定测试通过；dirty quality gate 只证明命令链能跑完，最终绑定证明留到拆分提交后的 clean gate。
+    status: done
+checks:
+  - id: check-1
+    title: 范围守护
+    source: 范围守护
+    expect: 只做测试体系和已承诺护栏缺口的最小生产修复；不改算法、外部依赖、第二阶段增强，不把浏览器烟测塞进 required tests。schema 语义只允许触碰 OperationExecutionEvents 身份、状态和迁移合同。
+    status: passed
+    evidence: git diff --name-only 覆盖工作台上下文、链接护栏、页面模板、测试登记、schema.sql 及 v15/v16/v18/v19 迁移；schema 语义变更限于现场记录事件身份、事件状态组合、事件时间格式、坏历史事件 fail-fast、组合外键分组和状态修订号唯一性，schema.sql 保持 495 行且不再一行塞两个 CREATE INDEX；未包含依赖清单或算法实现文件；.drift-cache 只忽略语义雷达机器缓存，.playwright-cli 只忽略浏览器工具本地快照，二者都不隐藏 .codestable/audits / .codestable/checkup 证据。
+  - id: check-2
+    title: 主流程起点
+    source: 验收场景
+    expect: 首页显示计划工作台、首页值班台和今日待处理，并能找到第一版主流程入口。
+    status: passed
+    evidence: tests/regression_aps_workbench_flow_contract.py 和 tests/regression_dashboard_workbench_contract.py 覆盖首页入口。
+  - id: check-3
+    title: 上下文不丢
+    source: 编排骨架
+    expect: 首页到分析、甘特、资源派工、报表和复盘时保留版本、方案、日期、批次或资源上下文。
+    status: passed
+    evidence: tests/regression_scheduler_workbench_links_contract.py、tests/regression_reports_workbench_backlink_contract.py。
+  - id: check-4
+    title: 甘特双视角
+    source: 验收场景
+    expect: 设备甘特使用 view=machine，人员甘特使用 view=operator，并显示任务详情区。
+    status: passed
+    evidence: tests/regression_gantt_task_detail_panel_contract.py 和 tests/regression_gantt_task_detail_js_contract.py。
+  - id: check-5
+    title: 报表明细回跳
+    source: 验收场景
+    expect: 报表明细行回甘特或资源派工时保留批次或资源上下文，不扩大成全量。
+    status: passed
+    evidence: tests/regression_reports_workbench_backlink_contract.py、tests/regression_reports_workbench_navigation_contract.py。
+  - id: check-6
+    title: 非正式复盘禁用
+    source: 流程级约束
+    expect: 非正式、历史、坏摘要、空明细、候选或模拟方案下计划和现场实际入口禁用或回到可用版本，并给中文原因。
+    status: passed
+    evidence: tests/regression_scheduler_plan_identity_summary_guardrail.py、tests/regression_web_silent_fallback_contract.py、tests/regression_scheduler_workbench_link_guardrails.py、tests/regression_scheduler_historical_plan_label_contract.py；资源派工、工作台链接和报表计划状态统一走 web/viewmodels/scheduler_plan_guardrail_messages.py，把 result_summary_parse_reason / schedule_result_status 翻成公开中文，不把 json_decode_error 或 failed 直接显示给用户；周计划版本下拉和所选版本摘要只显示已有中文状态标签或“结果状态未知”，不 raw fallback 到 result_status；所选版本排产方式由 route 补 strategy_display_label，模板不再 raw fallback 到 strategy。
+  - id: check-7
+    title: 内部字段不可见
+    source: 流程级约束
+    expect: 普通页面可见文本不包含 plan_role、scenario_id、source_table、candidate_id、op_id、schedule_id，也不包含 json_decode_error 这类内部错误码。
+    status: passed
+    evidence: tests/regression_aps_workbench_flow_contract.py、tests/regression_frontend_offline_static_assets.py、tests/regression_scheduler_analysis_diagnostic_graph_score_contract.py、tests/regression_scheduler_workbench_link_guardrails.py、tests/regression_web_silent_fallback_contract.py；本地生成全景图按 .gitignore 和测试排除规则跳过，不作为正式用户文档扫描输入，诊断页重点影响样本不再把内部 op_id 拼成“工序 N”，摘要解析失败不再把 json_decode_error 拼进普通页面，周计划未知结果状态和未知策略不直接显示 raw code；候选方案坏指标显示“记录异常 / 无法安全对比”，优化过程和诊断区不再把 True/False 当 1/0 展示。
+  - id: check-8
+    title: 几何路径覆盖
+    source: 验收场景
+    expect: 首页、分析、设备甘特、人员甘特、资源派工、报表中心、超期、资源负荷、计划和现场实际都在几何清单中。
+    status: passed
+    evidence: tests/test_ui_geometry_html_contract.py、tests/ui_geometry_contract_data.py；tests/ui_geometry_probe.mjs 和 tests/ui_geometry_cdp_client.mjs 已把 CDP WebSocket 关闭、输出写入和 Node 退出码收口，tests/test_ui_browser_geometry_env.py + 真实几何测试 10 passed，startup 邻居组合 + 真实几何测试 4 passed，full-test-debt 分片 4032 collected 且 unexpected_failure_count 0。
+  - id: check-9
+    title: 门禁登记
+    source: 挂载点
+    expect: 新主流程测试、甘特详情护栏、v16 迁移合同、历史方案标签合同、诊断页 graph score 展示合同、data route 错误合同和 docs quality 合同被 QUALITY_GATE_GUARD_TESTS 及对应 required regression group 收录。
+    status: passed
+    evidence: tests/regression_quality_gate_registry_split_scope_contract.py、tools/test_registry_data.py、tools/test_registry_groups_scheduler.py、tools/test_registry_groups_misc.py、tools/quality_gate_shared.py；新增 tests/regression_operation_execution_event_time_contract.py、tests/regression_scheduler_data_route_error_contract.py、tests/regression_scheduler_analysis_diagnostic_graph_score_contract.py、tests/regression_aps_three_gap_docs_quality_gate.py 已进入 required registry 和对应分组，Python 3.8 语法扫描真实命令已包含 data route 与 event_time 合同。
+  - id: check-10
+    title: 文件尺寸
+    source: 流程级约束
+    expect: 本 feature 新增/拆分的代码、测试、文档文件不超过 500 行；既有历史长聚合文件只允许做必要注册同步，不能把它写成已经完成拆分。
+    status: passed
+    evidence: wc -l 复核关键修改文件：schema.sql 495 行，core/services/scheduler/operation_execution_feedback_service.py 498 行，data/repositories/operation_execution_event_repo.py 479 行，data/repositories/operation_execution_state_builder.py 282 行，web/viewmodels/scheduler_analysis_candidate_helpers.py 434 行，web/viewmodels/scheduler_analysis_candidates.py 331 行，web/viewmodels/scheduler_analysis_trends.py 365 行，web/viewmodels/scheduler_analysis_diagnostic_helpers.py 309 行，tests/regression_web_silent_fallback_contract.py 411 行，tests/regression_operation_execution_event_time_contract.py 182 行，core/infrastructure/migration_operation_execution_contract.py 488 行，core/infrastructure/operation_execution_event_data_contract.py 162 行，tests/regression_migration_schema_contract.py 448 行，tests/regression_scheduler_analysis_diagnostic_graph_score_contract.py 58 行，roadmap items.yaml 499 行；tests/test_architecture_fitness.py::test_file_size_limit 通过。tools/quality_gate_shared.py 是既有历史长门禁聚合文件，本轮只同步真实命令和路径，拆分不塞进本 feature。
+  - id: check-11
+    title: 门禁事实源
+    source: 质量门禁
+    expect: 技术债务治理台账、用户可见文档扫描边界和 dirty quality gate 预跑证据与本次代码状态一致；不把未绑定门禁说成最终通过。
+    status: passed
+    evidence: 迁移/历史标签/registry 定向组、迁移重建大组、报表和工作台回跳组、现场记录/执行事件扩展组、工作台页面/registry/几何 HTML 扩展组均已通过；新增事件时间契约组 51 passed，现场反馈路线/导入/迁移主流程组 42 passed，当前库坏事件/诊断页 op_id/门禁注册/docs quality 组合 42 passed；公开护栏文案组 28 passed，补证据重排护栏组 35 passed，公开文案+门禁登记+docs+pyright+500行组合 55 passed；浏览器环境契约+真实几何测试 10 passed，startup 邻居组合+真实几何测试 4 passed，full-test-debt 分片 4032 collected / unexpected_failure_count 0；本轮新增 py_compile 通过，候选坏指标/布尔值/周计划策略/事件身份闸门 18 passed，执行事件和只读候选/模拟方案护栏 66 passed，排产分析/周计划/公开护栏 42 passed，git diff --check 和 git diff --cached --check 无输出；ruff、Python 3.8 定向扫描、APS 三缺口范围扫描和架构文件大小测试均通过。in-app Browser 已打开报表、甘特、周计划，确认历史正式方案信号出现、旧“复盘正式方案”文案不再出现、下拉不再重复显示“正式采用方案”；截图为 output/playwright/workbench-flow-regression-suite-reports-history-iab.png。dirty quality gate run_id c2aa7501ca2dc5ccfd2e64006094f584e2c1089b:2026-06-04T22:21:34 完成 16 个门禁步骤、failed 0，manifest 状态为 passed_but_unbound，只代表未绑定预跑；最终 clean proof 需等提交边界干净后再跑。

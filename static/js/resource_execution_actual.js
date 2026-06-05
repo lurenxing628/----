@@ -42,10 +42,8 @@
   function actionDataAttributes(source) {
     return [
       "data-action",
-      "data-op-id",
-      "data-schedule-id",
-      "data-batch-id",
-      "data-state-revision",
+      "data-task-key",
+      "data-state-key",
       "data-machine-id",
       "data-operator-id"
     ].map(function (name) {
@@ -168,12 +166,11 @@
   function executionPayload(button, createdBy, extraPayload) {
     const payload = {};
     const extra = extraPayload || {};
-    payload.schedule_id = button.getAttribute("data-schedule-id") || "";
-    payload.batch_id = button.getAttribute("data-batch-id") || "";
-    payload.expected_state_revision = button.getAttribute("data-state-revision") || "";
+    const taskKey = button.getAttribute("data-task-key") || "";
+    payload.state_key = button.getAttribute("data-state-key") || "";
     payload.created_by = createdBy;
     payload.feedback_person = createdBy;
-    payload.idempotency_key = ["resource-dispatch", "actual", button.getAttribute("data-op-id") || "", String(Date.now())].join("-");
+    payload.idempotency_key = ["resource-dispatch", "actual", taskKey, String(Date.now())].join("-");
     payload.remark = trim(extra.remark);
     Object.keys(extra).forEach(function (key) {
       if (key !== "remark") payload[key] = trim(extra[key]);
@@ -184,10 +181,10 @@
   function replaceExecutionTask(taskCard) {
     if (!state.execution) state.execution = { tasks: [] };
     const tasks = Array.isArray(state.execution.tasks) ? state.execution.tasks.slice() : [];
-    const opId = String((taskCard && taskCard.op_id) || "");
+    const taskKey = String((taskCard && taskCard.task_key) || "");
     let replaced = false;
     for (let i = 0; i < tasks.length; i++) {
-      if (String((tasks[i] && tasks[i].op_id) || "") === opId) {
+      if (String((tasks[i] && tasks[i].task_key) || "") === taskKey) {
         tasks[i] = taskCard;
         replaced = true;
         break;
@@ -202,12 +199,12 @@
   async function postExecutionAction(button) {
     if (!button || button.disabled) return;
     const action = trim(button.getAttribute("data-action"));
-    const opId = trim(button.getAttribute("data-op-id"));
+    const taskKey = trim(button.getAttribute("data-task-key"));
     if (!EXECUTION_ACTION_LABELS[action]) return;
     const actionLabel = EXECUTION_ACTION_LABELS[action];
     const extraPayload = inlineActualPayload(button);
     if (extraPayload === null) return;
-    const postUrl = ns.execution.actualRecordUrl(opId);
+    const postUrl = ns.execution.actualRecordUrl(taskKey);
     if (!postUrl) {
       executionNotice("当前方案不能填写实际情况。");
       return;

@@ -25,45 +25,29 @@ def main() -> None:
 
     conn = sqlite3.connect(":memory:", check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    with open(os.path.join(repo_root, "schema.sql"), "r", encoding="utf-8") as fh:
+        conn.executescript(fh.read())
     conn.executescript(
         """
-        CREATE TABLE BatchOperations (
-            id INTEGER PRIMARY KEY,
-            batch_id TEXT NOT NULL
-        );
-        CREATE TABLE OperationExecutionEvents (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            schedule_version INTEGER NOT NULL,
-            schedule_id INTEGER NOT NULL,
-            op_id INTEGER NOT NULL,
-            batch_id TEXT NOT NULL,
-            source_table TEXT NOT NULL DEFAULT 'schedule',
-            effective_plan_role TEXT NOT NULL DEFAULT 'adopted',
-            scenario_id TEXT,
-            event_type TEXT NOT NULL,
-            reported_status TEXT NOT NULL,
-            event_time DATETIME NOT NULL,
-            actual_machine_id TEXT,
-            actual_operator_id TEXT,
-            quantity_done INTEGER,
-            quantity_scrapped INTEGER,
-            reason_code TEXT,
-            reason_detail TEXT,
-            severity TEXT,
-            impact_minutes INTEGER,
-            affected_machine_id TEXT,
-            affected_operator_id TEXT,
-            handling_status TEXT,
-            suggest_reschedule INTEGER NOT NULL DEFAULT 0,
-            remark TEXT,
-            created_by TEXT NOT NULL,
-            idempotency_key TEXT NOT NULL UNIQUE,
-            request_fingerprint TEXT NOT NULL,
-            previous_state_revision TEXT NOT NULL,
-            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-        );
-        INSERT INTO BatchOperations(id, batch_id)
-        VALUES (1, 'B001'), (2, 'B001'), (3, 'B001'), (4, 'B001');
+        INSERT INTO Parts(part_no, part_name) VALUES ('P001', '测试零件');
+        INSERT INTO Batches(batch_id, part_no, part_name, quantity, ready_status, status)
+        VALUES ('B001', 'P001', '测试零件', 1, 'yes', 'pending');
+        INSERT INTO Machines(machine_id, name, status) VALUES ('MC001', '一号设备', 'active');
+        INSERT INTO Operators(operator_id, name, status) VALUES ('OP001', '一号人员', 'active');
+        INSERT INTO Suppliers(supplier_id, name, status) VALUES ('SUP001', '一号供应商', 'active');
+        INSERT INTO BatchOperations(
+            id, op_code, batch_id, seq, op_type_name, source,
+            machine_id, operator_id, supplier_id, setup_hours, unit_hours, ext_days, status
+        )
+        VALUES
+            (1, 'B001_10', 'B001', 10, '工序A', 'internal', NULL, NULL, NULL, 1, 0, NULL, 'pending'),
+            (2, 'B001_20', 'B001', 20, '工序B', 'internal', 'MC001', 'OP001', NULL, 1, 0, NULL, 'scheduled'),
+            (3, 'B001_30', 'B001', 30, '工序C', 'internal', 'MC001', 'OP001', NULL, 1, 0, NULL, 'completed'),
+            (4, 'B001_40', 'B001', 40, '外协D', 'external', NULL, NULL, 'SUP001', 0, 0, 2, 'skipped');
+        INSERT INTO Schedule(id, op_id, machine_id, operator_id, start_time, end_time, lock_status, version)
+        VALUES
+            (501, 1, 'MC001', 'OP001', '2025-12-31 08:00:00', '2025-12-31 09:00:00', 'unlocked', 5),
+            (502, 2, 'MC001', 'OP001', '2025-12-31 09:00:00', '2025-12-31 10:00:00', 'unlocked', 5);
         """
     )
 

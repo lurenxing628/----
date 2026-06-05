@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import json
-from typing import Any, Dict, Iterable, Optional
+from typing import Any, Dict, Iterable, Optional, Tuple
 
 from core.models.schedule_plan_identity import PlanIdentity
 from core.models.schedule_plan_role import (
@@ -12,8 +11,9 @@ from core.models.schedule_plan_role import (
     is_comparison_plan,
     plan_role_label,
 )
+from core.models.scheduler_history_parser import parse_result_summary_payload
 
-_BLOCKED_RESULT_STATUSES = frozenset(("failed", "simulated"))
+_EXECUTABLE_RESULT_STATUSES = frozenset(("success", "partial"))
 _VALID_PLAN_SOURCE_TABLES = frozenset((SOURCE_SCHEDULE, SOURCE_CANDIDATE_ROWS, SOURCE_ADJUSTMENT_SCENARIO_ROWS))
 
 
@@ -21,27 +21,17 @@ def _text(value: Any) -> str:
     return str(value or "").strip()
 
 
-def _bool_from_summary(raw_summary: Any, key: str) -> bool:
-    try:
-        data = json.loads(str(raw_summary or "{}"))
-    except (TypeError, ValueError):
-        return False
-    return bool(data.get(key)) if isinstance(data, dict) else False
+def _parsed_summary_flag_is_true(parsed: Any, key: str, *, fail_closed: bool = False) -> bool:
+    if parsed.parse_failed:
+        return bool(fail_closed)
+    return bool((parsed.payload or {}).get(key))
 
 
-def _history_is_executable(row: Dict[str, Any]) -> bool:
-    result_status = _text(row.get("result_status")).lower()
-    if result_status in _BLOCKED_RESULT_STATUSES:
-        return False
-    if _bool_from_summary(row.get("result_summary"), "is_simulation"):
-        return False
-    return int(row.get("schedule_row_count") or 0) > 0
-
-
-def latest_executable_official_version(rows: Iterable[Dict[str, Any]]) -> Optional[int]:
+def latest_official_version(rows: Iterable[Dict[str, Any]]) -> Optional[int]:
     for row in rows:
-        if _history_is_executable(row):
-            return int(row.get("version") or 0)
+        version = int(row.get("version") or 0)
+        if version > 0:
+            return version
     return None
 
 
@@ -120,6 +110,51 @@ def _can_write_feedback(
     return status not in ("fallback_to_adopted", "missing_detail", "not_found", "historical_version")
 
 
+def _valid_source(value: Any) -> str:
+    source = _text(value)
+    if source not in _VALID_PLAN_SOURCE_TABLES:
+        raise ValueError("计划身份缺少有效的数据来源，不能当作正式排程。")
+    return source
+
+
+def _int_or_none(value: Any) -> Optional[int]:
+    return int(value) if value is not None else None
+
+
+def _result_status(value: Any) -> Optional[str]:
+    return _text(value).lower() or None
+
+
+def _summary_unavailable(result_summary: Any, summary_parse: Any) -> Tuple[bool, str]:
+    if summary_parse.parse_failed:
+        return True, summary_parse.reason
+    if result_summary is None or _text(result_summary) == "":
+        return True, "排产摘要缺失"
+    return False, ""
+
+
+def _is_current_official_plan(
+    *,
+    is_official: bool,
+    is_current: bool,
+    result_status: Optional[str],
+    source_row_id: Optional[int],
+    summary_available: bool,
+) -> bool:
+    return bool(
+        is_official
+        and is_current
+        and summary_available
+        and result_status in _EXECUTABLE_RESULT_STATUSES
+        and source_row_id is not None
+    )
+
+
+def _detail_saved(source: str, source_row_id: Optional[int], value: Any) -> bool:
+    explicit_saved = str(value or "").strip().lower() == "yes"
+    return bool(explicit_saved or (source == SOURCE_SCHEDULE and source_row_id is not None))
+
+
 def build_plan_identity(
     *,
     version: Optional[int],
@@ -141,13 +176,13 @@ def build_plan_identity(
     requested = _text(requested_role) or ROLE_ADOPTED
     effective = _text(effective_role) or ROLE_ADOPTED
     resolution_status = _text(status) or "not_found"
-    source = _text(source_table)
-    if source not in _VALID_PLAN_SOURCE_TABLES:
-        raise ValueError("计划身份缺少有效的数据来源，不能当作正式排程。")
-    version_value = int(version) if version is not None else None
-    latest_version = int(latest_official_version) if latest_official_version is not None else None
+    source = _valid_source(source_table)
+    version_value = _int_or_none(version)
+    latest_version = _int_or_none(latest_official_version)
     is_preview = _is_preview_plan(scenario_id=scenario_id, source_table=source, status=resolution_status)
-    is_simulation = is_preview or _bool_from_summary(result_summary, "is_simulation")
+    summary_parse = parse_result_summary_payload(result_summary)
+    summary_unavailable, summary_reason = _summary_unavailable(result_summary, summary_parse)
+    is_simulation = is_preview or _parsed_summary_flag_is_true(summary_parse, "is_simulation", fail_closed=True)
     is_current = _is_current_version(version_value, latest_version)
     is_superseded = _is_superseded_version(version_value, latest_version)
     is_official = _is_official_plan(
@@ -158,9 +193,14 @@ def build_plan_identity(
         is_preview=is_preview,
         is_simulation=is_simulation,
     )
-    result_status = _text(schedule_result_status).lower() or None
-    result_ok = result_status not in _BLOCKED_RESULT_STATUSES
-    is_current_official = bool(is_official and is_current and result_ok)
+    result_status = _result_status(schedule_result_status)
+    is_current_official = _is_current_official_plan(
+        is_official=is_official,
+        is_current=is_current,
+        result_status=result_status,
+        source_row_id=source_row_id,
+        summary_available=not summary_unavailable,
+    )
     user_label = _identity_user_label(
         requested_role=requested,
         status=resolution_status,
@@ -190,6 +230,8 @@ def build_plan_identity(
         candidate_key=candidate_key,
         scenario_id=scenario_id,
         schedule_result_status=result_status,
+        result_summary_parse_failed=bool(summary_unavailable),
+        result_summary_parse_reason=summary_reason,
         is_simulation=bool(is_simulation),
         label=label,
         user_label=user_label,
@@ -201,5 +243,5 @@ def build_plan_identity(
         schedule_lock_status=schedule_lock_status,
         can_dispatch=bool(can_write),
         can_write_feedback=bool(can_write),
-        detail_saved=str(detail_saved or "").strip().lower() == "yes" or source == SOURCE_SCHEDULE,
+        detail_saved=_detail_saved(source, source_row_id, detail_saved),
     )

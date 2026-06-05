@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Mapping, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from core.services.common.build_outcome import BuildOutcome
 from core.services.common.degradation import DegradationCollector
@@ -29,6 +29,66 @@ from ._sched_display_utils import (
 from .gantt_range import WeekRange
 
 
+def _week_plan_interval(
+    *,
+    row: Mapping[str, Any],
+    wr: WeekRange,
+    collector: DegradationCollector,
+) -> Optional[Tuple[Any, Any]]:
+    start = _parse_dt(row.get("start_time"))
+    end = _parse_dt(row.get("end_time"))
+    if not start or not end or not (start < end):
+        _record_bad_time_row(collector, scope="week_plan.rows", row=dict(row))
+        return None
+    clipped_start = max(start, wr.start_dt)
+    clipped_end = min(end, wr.end_dt_exclusive)
+    if not (clipped_start < clipped_end):
+        return None
+    return clipped_start, clipped_end
+
+
+def _week_plan_resource_cells(row: Mapping[str, Any]) -> Tuple[str, str]:
+    machine_cell = _display_machine(row.get("machine_id"), row.get("machine_name"), row.get("supplier_name"))
+    operator_cell = _display_operator(row.get("operator_id"), row.get("operator_name"))
+    return machine_cell, operator_cell
+
+
+def _week_plan_segment_row(
+    row: Mapping[str, Any],
+    *,
+    day: Any,
+    start: Any,
+    end: Any,
+    machine_cell: str,
+    operator_cell: str,
+) -> Dict[str, Any]:
+    return {
+        "日期": day.isoformat(),
+        "批次号": row.get("batch_id") or "",
+        "图号": row.get("part_no") or "",
+        "工序": row.get("seq") if row.get("seq") is not None else "",
+        "设备": machine_cell,
+        "人员": operator_cell,
+        "时段": _fmt_day_segment(start, end),
+    }
+
+
+def _week_plan_sort_key(item: Mapping[str, Any]) -> Tuple[Any, Any, Any, Any, Any]:
+    return (
+        item.get("日期") or "",
+        item.get("设备") or "",
+        item.get("人员") or "",
+        item.get("批次号") or "",
+        item.get("工序") or "",
+    )
+
+
+def _week_plan_empty_reason(out: Sequence[Mapping[str, Any]], collector: DegradationCollector) -> Optional[str]:
+    if not out and collector.to_counters().get("bad_time_row_skipped", 0) > 0:
+        return _BAD_TIME_EMPTY_REASON
+    return None
+
+
 def build_week_plan_rows(*, rows: Sequence[Mapping[str, Any]], wr: WeekRange) -> BuildOutcome[List[Dict[str, Any]]]:
     """
     生成周计划行（用于页面预览与导出）。
@@ -38,47 +98,22 @@ def build_week_plan_rows(*, rows: Sequence[Mapping[str, Any]], wr: WeekRange) ->
     collector = DegradationCollector()
     out: List[Dict[str, Any]] = []
     for row in rows:
-        st = _parse_dt(row.get("start_time"))
-        et = _parse_dt(row.get("end_time"))
-        if not st or not et or not (st < et):
-            _record_bad_time_row(collector, scope="week_plan.rows", row=dict(row))
+        interval = _week_plan_interval(row=row, wr=wr, collector=collector)
+        if interval is None:
             continue
-
-        st2 = max(st, wr.start_dt)
-        et2 = min(et, wr.end_dt_exclusive)
-        if not (st2 < et2):
-            continue
-
-        machine_disp = _display_machine(row.get("machine_id"), row.get("machine_name"), row.get("supplier_name"))
-        operator_disp = _display_operator(row.get("operator_id"), row.get("operator_name"))
         # 周计划口径：与甘特图一致。外协/未分配时不硬置为 "-"，而是显示外协提示/供应商。
-        machine_cell = machine_disp
-        operator_cell = operator_disp
-
-        parts = _split_by_day(st2, et2)
-        for d0, a0, b0 in parts:
+        machine_cell, operator_cell = _week_plan_resource_cells(row)
+        for d0, a0, b0 in _split_by_day(*interval):
             out.append(
-                {
-                    "日期": d0.isoformat(),
-                    "批次号": row.get("batch_id") or "",
-                    "图号": row.get("part_no") or "",
-                    "工序": row.get("seq") if row.get("seq") is not None else "",
-                    "设备": machine_cell,
-                    "人员": operator_cell,
-                    "时段": _fmt_day_segment(a0, b0),
-                }
+                _week_plan_segment_row(
+                    row,
+                    day=d0,
+                    start=a0,
+                    end=b0,
+                    machine_cell=machine_cell,
+                    operator_cell=operator_cell,
+                )
             )
 
-    out.sort(
-        key=lambda item: (
-            item.get("日期") or "",
-            item.get("设备") or "",
-            item.get("人员") or "",
-            item.get("批次号") or "",
-            item.get("工序") or "",
-        )
-    )
-    empty_reason = None
-    if not out and collector.to_counters().get("bad_time_row_skipped", 0) > 0:
-        empty_reason = _BAD_TIME_EMPTY_REASON
-    return BuildOutcome.from_collector(out, collector, empty_reason=empty_reason)
+    out.sort(key=_week_plan_sort_key)
+    return BuildOutcome.from_collector(out, collector, empty_reason=_week_plan_empty_reason(out, collector))

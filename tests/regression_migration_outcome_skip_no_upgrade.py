@@ -16,14 +16,15 @@ def main() -> None:
     """
     回归目标：
     - 当 SchemaVersion=1，但 v2 目标表 WorkCalendar 缺失时，
-      ensure_schema() 应先按 schema.sql 补回缺失整表，再继续迁移到当前版本。
-    - 迁移前备份仍必须生成。
+      ensure_schema() 应把数据库判为残缺结构并 fail-fast。
+    - 不允许先按当前 schema.sql 补回缺失整表，再把坏库迁到当前版本。
+    - fail-fast 发生在迁移备份前，避免反复调用制造备份风暴。
     """
     repo_root = find_repo_root()
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
 
-    from core.infrastructure.database import CURRENT_SCHEMA_VERSION, ensure_schema, get_connection
+    from core.infrastructure.database import MigrationContractError, ensure_schema, get_connection
 
     schema_path = os.path.join(repo_root, "schema.sql")
     tmpdir = tempfile.mkdtemp(prefix="aps_regression_migration_skip_")
@@ -44,30 +45,36 @@ def main() -> None:
         except Exception:
             pass
 
-    ensure_schema(test_db, logger=None, schema_path=schema_path, backup_dir=backup_dir)
+    try:
+        ensure_schema(test_db, logger=None, schema_path=schema_path, backup_dir=backup_dir)
+    except MigrationContractError as exc:
+        message = str(exc)
+        assert "不受支持的残缺结构" in message, message
+        assert "不会用当前 schema.sql 静默补齐缺失整表" in message, message
+    else:
+        raise AssertionError("缺失 WorkCalendar 的低版本坏库不应被静默补表并迁移成功")
 
     conn = get_connection(test_db)
     try:
         row_wc = conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='WorkCalendar'"
         ).fetchone()
-        assert row_wc is not None, "预期 WorkCalendar 已被受控补齐"
+        assert row_wc is None, "fail-fast 后不应补回 WorkCalendar"
         row = conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()
         version = int(row["version"] if isinstance(row, sqlite3.Row) else row[0])
-        assert version >= CURRENT_SCHEMA_VERSION, f"预期最终迁移到当前版本，实际 {version}"
+        assert version == 1, f"fail-fast 后 SchemaVersion 应保持 1，实际 {version}"
     finally:
         try:
             conn.close()
         except Exception:
             pass
 
-    expected_suffix = f"before_migrate_v1_to_v{CURRENT_SCHEMA_VERSION}"
     backup_files = [
         name
         for name in os.listdir(backup_dir)
-        if name.startswith("aps_backup_") and expected_suffix in name and name.endswith(".db")
+        if name.startswith("aps_backup_") and "before_migrate" in name and name.endswith(".db")
     ]
-    assert backup_files, f"未找到迁移前备份文件（dir={backup_dir}）"
+    assert not backup_files, f"fail-fast 预检不应生成迁移前备份，实际 {backup_files}"
 
     print("OK")
 

@@ -149,3 +149,43 @@ def test_summary_count_parse_failed_degradation_marker_overrides_success() -> No
     display = build_summary_display_state(summary, result_status="success")
     assert display["summary_count_parse_failed"] is True
     assert display["completion_status"] == "unknown"
+
+
+def test_bad_error_and_missing_resource_counts_are_visible_record_errors() -> None:
+    summary = {
+        "completion_status": "partial",
+        "error_count": "bad-error-count",
+        "errors": ["内部错误详情不外露"],
+        "missing_internal_resource_count": "1.5",
+        "missing_internal_resource_ops": [
+            {"batch_id": "B1", "seq": 10, "missing_fields": ["设备"]},
+        ],
+    }
+
+    display = build_summary_display_state(summary, result_status="partial")
+
+    assert display["error_count_parse_failed"] is True
+    assert display["missing_internal_resource_count_parse_failed"] is True
+    assert display["error_total_label"] == "记录异常"
+    assert display["missing_internal_resource_count_label"] == "记录异常"
+    assert display["summary_count_parse_failed"] is True
+    assert "bad-error-count" not in str(display)
+    assert "1.5" not in str(display)
+
+
+def test_bad_degradation_event_count_is_visible_record_error_without_raw_value() -> None:
+    summary = {
+        "completion_status": "success",
+        "counts": {"op_count": 1, "scheduled_ops": 1, "failed_ops": 0},
+        "degradation_events": [
+            {
+                "code": "resource_pool_degraded",
+                "count": "bad-degradation-count",
+            }
+        ],
+    }
+
+    display = build_summary_display_state(summary, result_status="success")
+
+    assert "资源池资料不完整（数量记录异常）" in str(display["primary_degradation"]["details"])
+    assert "bad-degradation-count" not in str(display)

@@ -165,8 +165,32 @@ export function createCdpClientClass({ ProbeFailure, failurePayload }) {
     });
   }
 
-  close() {
-    try { this.ws.close(); } catch {}
+  async close(timeoutMs = 1000) {
+    this.rejectAll(new Error("CDP client closed"));
+    const ws = this.ws;
+    if (!ws) return;
+    await new Promise((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(undefined);
+      };
+      const timer = setTimeout(finish, timeoutMs);
+      ws.onmessage = null;
+      ws.onerror = finish;
+      ws.onclose = finish;
+      try {
+        if (ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+          finish();
+          return;
+        }
+        ws.close(1000, "probe done");
+      } catch {
+        finish();
+      }
+    });
   }
 }
 }

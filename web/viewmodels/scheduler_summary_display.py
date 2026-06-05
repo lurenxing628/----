@@ -102,6 +102,28 @@ def _safe_positive_int(value: Any) -> Optional[int]:
     return number if number > 0 else None
 
 
+def _non_negative_count_state(value: Any, *, fallback: int) -> Tuple[int, bool]:
+    if value is None or (isinstance(value, str) and value.strip() == ""):
+        return int(max(0, fallback)), False
+    if isinstance(value, bool):
+        return int(max(0, fallback)), True
+    try:
+        if isinstance(value, int):
+            parsed = value
+        else:
+            text = str(value).strip()
+            sign = text[0] if text and text[0] in ("+", "-") else ""
+            digits = text[1:] if sign else text
+            if not digits.isdigit():
+                return int(max(0, fallback)), True
+            parsed = int(text)
+    except (TypeError, ValueError, OverflowError):
+        return int(max(0, fallback)), True
+    if parsed < 0:
+        return int(max(0, fallback)), True
+    return max(int(parsed), int(max(0, fallback))), False
+
+
 def _normalize_missing_resource_fields(value: Any) -> List[str]:
     fields = _normalize_text_list(value)
     return [item for item in fields if item in {"设备", "人员"}]
@@ -162,7 +184,11 @@ def _missing_resource_display_items(value: Any) -> List[Dict[str, Any]]:
 
 
 def _secondary_display_label(item: Dict[str, Any]) -> str:
-    return format_degradation_detail(item.get("label"), item.get("count"))
+    return format_degradation_detail(
+        item.get("label"),
+        item.get("count"),
+        count_parse_failed=bool(item.get("count_parse_failed")),
+    )
 
 
 def _primary_detail_keys(primary_degradation: Optional[Dict[str, Any]]) -> Set[Tuple[str, str, int]]:
@@ -338,25 +364,30 @@ def build_summary_display_state(
     maintenance_diagnostic_count = sum(1 for item in warning_messages if not public_summary_warning_messages([item]))
     warnings_preview = public_warning_messages[:3]
     error_messages = _summary_error_messages(summary_dict)
-    try:
-        error_total = int(summary_dict.get("error_count") or len(error_messages))
-    except Exception:
-        error_total = len(error_messages)
-    error_total = max(error_total, len(error_messages))
+    error_total, error_count_parse_failed = _non_negative_count_state(
+        summary_dict.get("error_count"),
+        fallback=len(error_messages),
+    )
     missing_resource_items = _missing_resource_display_items(summary_dict.get("missing_internal_resource_ops"))
-    try:
-        missing_resource_total = int(summary_dict.get("missing_internal_resource_count") or len(missing_resource_items))
-    except Exception:
-        missing_resource_total = len(missing_resource_items)
-    missing_resource_total = max(missing_resource_total, len(missing_resource_items))
+    missing_resource_total, missing_resource_count_parse_failed = _non_negative_count_state(
+        summary_dict.get("missing_internal_resource_count"),
+        fallback=len(missing_resource_items),
+    )
+    any_count_parse_failed = bool(
+        summary_count_parse_failed
+        or error_count_parse_failed
+        or missing_resource_count_parse_failed
+    )
     parse_state_dict = {
-        "payload": summary if isinstance(summary, dict) else None,
+        "payload": None,
         "parse_failed": False,
         "user_message": None,
         "reason": None,
     }
     if isinstance(parse_state, dict):
-        parse_state_dict.update(parse_state)
+        for key in ("parse_failed", "user_message", "reason", "raw_type"):
+            if key in parse_state:
+                parse_state_dict[key] = parse_state.get(key)
 
     return {
         "result_state": result_state,
@@ -376,17 +407,23 @@ def build_summary_display_state(
         "errors_display": error_messages,
         "error_display_count": len(error_messages),
         "error_total": error_total,
+        "error_total_label": "记录异常" if error_count_parse_failed else f"{error_total} 条",
+        "error_count_parse_failed": error_count_parse_failed,
         "error_hidden_count": max(0, error_total - len(error_messages)),
         "missing_internal_resource_ops": missing_resource_items,
         "missing_internal_resource_count": missing_resource_total,
+        "missing_internal_resource_count_label": "记录异常"
+        if missing_resource_count_parse_failed
+        else f"{missing_resource_total} 道工序",
+        "missing_internal_resource_count_parse_failed": missing_resource_count_parse_failed,
         "missing_internal_resource_hidden_count": max(0, missing_resource_total - len(missing_resource_items)),
         "errors_truncated": bool(summary_dict.get("errors_truncated")),
         "missing_internal_resource_ops_truncated": bool(summary_dict.get("missing_internal_resource_ops_truncated")),
         "summary_truncated": bool(summary_dict.get("summary_truncated")),
         "summary_parse_state": parse_state_dict,
-        "summary_count_parse_failed": summary_count_parse_failed,
+        "summary_count_parse_failed": any_count_parse_failed,
         "summary_count_parse_message": "排产摘要里的数量记录异常，不能按这些数量判断结果，请检查这次排产历史或日志。"
-        if summary_count_parse_failed
+        if any_count_parse_failed
         else None,
     }
 

@@ -1,40 +1,17 @@
--- ============================================================
--- 回转壳体单元智能排产系统（V1） - SQLite Schema
--- 说明：
---   - 所有“布尔概念”统一为字符串枚举，便于 Excel 导入导出与未来扩展
---   - V1 明确不实现并发/资源锁：不包含 ResourceLocks 表
--- ============================================================
-
 PRAGMA foreign_keys = ON;
-
--- ============================================================
--- Schema Version（用于轻量迁移/回滚）
--- 约定：
---   - version 从 0 开始递增
---   - 应用启动时会根据 version 执行必要迁移，并在迁移前自动备份（若提供 backup_dir）
--- ============================================================
-
 CREATE TABLE IF NOT EXISTS SchemaVersion (
-    id              INTEGER PRIMARY KEY CHECK (id = 1),
-    version         INTEGER NOT NULL,
-    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    version INTEGER NOT NULL,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
-
 INSERT OR IGNORE INTO SchemaVersion (id, version) VALUES (1, 0);
-
 CREATE TABLE IF NOT EXISTS ResourceTeams (
     team_id         TEXT PRIMARY KEY,
     name            TEXT NOT NULL UNIQUE,
     status          TEXT NOT NULL DEFAULT 'active',
     remark          TEXT,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
--- ============================================================
--- Personnel Module
--- ============================================================
-
+    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS Operators (
     operator_id     TEXT PRIMARY KEY,
     name            TEXT NOT NULL,
@@ -42,23 +19,14 @@ CREATE TABLE IF NOT EXISTS Operators (
     remark          TEXT,
     team_id         TEXT,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
--- ============================================================
--- Process Module
--- ============================================================
-
+    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS OpTypes (
     op_type_id      TEXT PRIMARY KEY,
     name            TEXT NOT NULL UNIQUE,
     category        TEXT DEFAULT 'internal',
     default_hours   REAL,
     remark          TEXT,
-    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
--- Equipment Module（依赖 OpTypes）
+    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS Machines (
     machine_id      TEXT PRIMARY KEY,
     name            TEXT NOT NULL,
@@ -69,13 +37,7 @@ CREATE TABLE IF NOT EXISTS Machines (
     team_id         TEXT,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (op_type_id) REFERENCES OpTypes(op_type_id)
-);
-
--- 设备停机时间段（预留停机原因；用于“设备资源不可用区间”）
--- 说明：
--- - 与 Machines.status（长期状态）并存：status=active 表示该时间段有效；cancelled 表示已取消
--- - start_time/end_time 建议使用 ISO 格式：YYYY-MM-DD HH:MM:SS（便于排序/比较）
+    FOREIGN KEY (op_type_id) REFERENCES OpTypes(op_type_id));
 CREATE TABLE IF NOT EXISTS MachineDowntimes (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     machine_id      TEXT NOT NULL,
@@ -88,13 +50,9 @@ CREATE TABLE IF NOT EXISTS MachineDowntimes (
     status          TEXT DEFAULT 'active',       -- active/cancelled
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (machine_id) REFERENCES Machines(machine_id) ON DELETE CASCADE
-);
-
+    FOREIGN KEY (machine_id) REFERENCES Machines(machine_id) ON DELETE CASCADE);
 CREATE INDEX IF NOT EXISTS idx_machine_downtimes_machine ON MachineDowntimes(machine_id);
 CREATE INDEX IF NOT EXISTS idx_machine_downtimes_time ON MachineDowntimes(start_time, end_time);
-
--- 人员-设备关联（与设备模块共享）
 CREATE TABLE IF NOT EXISTS OperatorMachine (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     operator_id     TEXT NOT NULL,
@@ -104,10 +62,7 @@ CREATE TABLE IF NOT EXISTS OperatorMachine (
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (operator_id) REFERENCES Operators(operator_id) ON DELETE CASCADE,
     FOREIGN KEY (machine_id) REFERENCES Machines(machine_id) ON DELETE CASCADE,
-    UNIQUE (operator_id, machine_id)
-);
-
--- 人员-工种能力（预留）
+    UNIQUE (operator_id, machine_id));
 CREATE TABLE IF NOT EXISTS OperatorSkill (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     operator_id     TEXT NOT NULL,
@@ -117,14 +72,11 @@ CREATE TABLE IF NOT EXISTS OperatorSkill (
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (operator_id) REFERENCES Operators(operator_id) ON DELETE CASCADE,
     FOREIGN KEY (op_type_id) REFERENCES OpTypes(op_type_id) ON DELETE CASCADE,
-    UNIQUE (operator_id, op_type_id)
-);
-
+    UNIQUE (operator_id, op_type_id));
 CREATE INDEX IF NOT EXISTS idx_operators_status ON Operators(status);
 CREATE INDEX IF NOT EXISTS idx_operators_team_id ON Operators(team_id);
 CREATE INDEX IF NOT EXISTS idx_operator_machine_operator ON OperatorMachine(operator_id);
 CREATE INDEX IF NOT EXISTS idx_operator_machine_machine ON OperatorMachine(machine_id);
-
 CREATE TABLE IF NOT EXISTS Suppliers (
     supplier_id     TEXT PRIMARY KEY,
     name            TEXT NOT NULL,
@@ -133,9 +85,7 @@ CREATE TABLE IF NOT EXISTS Suppliers (
     status          TEXT DEFAULT 'active',
     remark          TEXT,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (op_type_id) REFERENCES OpTypes(op_type_id)
-);
-
+    FOREIGN KEY (op_type_id) REFERENCES OpTypes(op_type_id));
 CREATE TABLE IF NOT EXISTS Parts (
     part_no         TEXT PRIMARY KEY,
     part_name       TEXT NOT NULL,
@@ -143,9 +93,7 @@ CREATE TABLE IF NOT EXISTS Parts (
     route_parsed    TEXT DEFAULT 'no',
     remark          TEXT,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
+    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS PartOperations (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     part_no         TEXT NOT NULL,
@@ -163,9 +111,7 @@ CREATE TABLE IF NOT EXISTS PartOperations (
     FOREIGN KEY (part_no) REFERENCES Parts(part_no) ON DELETE CASCADE,
     FOREIGN KEY (op_type_id) REFERENCES OpTypes(op_type_id),
     FOREIGN KEY (supplier_id) REFERENCES Suppliers(supplier_id),
-    UNIQUE (part_no, seq)
-);
-
+    UNIQUE (part_no, seq));
 CREATE TABLE IF NOT EXISTS ExternalGroups (
     group_id        TEXT PRIMARY KEY,
     part_no         TEXT NOT NULL,
@@ -177,21 +123,13 @@ CREATE TABLE IF NOT EXISTS ExternalGroups (
     remark          TEXT,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (part_no) REFERENCES Parts(part_no) ON DELETE CASCADE,
-    FOREIGN KEY (supplier_id) REFERENCES Suppliers(supplier_id)
-);
-
+    FOREIGN KEY (supplier_id) REFERENCES Suppliers(supplier_id));
 CREATE INDEX IF NOT EXISTS idx_part_operations_part ON PartOperations(part_no);
 CREATE INDEX IF NOT EXISTS idx_part_operations_source ON PartOperations(source);
 CREATE INDEX IF NOT EXISTS idx_external_groups_part ON ExternalGroups(part_no);
-
 CREATE INDEX IF NOT EXISTS idx_machines_status ON Machines(status);
 CREATE INDEX IF NOT EXISTS idx_machines_op_type ON Machines(op_type_id);
 CREATE INDEX IF NOT EXISTS idx_machines_team_id ON Machines(team_id);
-
--- ============================================================
--- Scheduler Module
--- ============================================================
-
 CREATE TABLE IF NOT EXISTS Batches (
     batch_id        TEXT PRIMARY KEY,
     part_no         TEXT NOT NULL,
@@ -200,14 +138,12 @@ CREATE TABLE IF NOT EXISTS Batches (
     due_date        DATE,
     priority        TEXT DEFAULT 'normal',
     ready_status    TEXT DEFAULT 'yes',
-    ready_date      DATE,                       -- 齐套日期（可选）：仅启用齐套检查时作为最早可开工日期（YYYY-MM-DD）
+    ready_date      DATE,
     status          TEXT DEFAULT 'pending',
     remark          TEXT,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (part_no) REFERENCES Parts(part_no)
-);
-
+    FOREIGN KEY (part_no) REFERENCES Parts(part_no));
 CREATE TABLE IF NOT EXISTS BatchOperations (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     op_code         TEXT NOT NULL UNIQUE,
@@ -231,7 +167,6 @@ CREATE TABLE IF NOT EXISTS BatchOperations (
     FOREIGN KEY (supplier_id) REFERENCES Suppliers(supplier_id),
     UNIQUE (batch_id, seq, piece_id)
 );
-
 CREATE TABLE IF NOT EXISTS Schedule (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     op_id           INTEGER NOT NULL,
@@ -246,15 +181,14 @@ CREATE TABLE IF NOT EXISTS Schedule (
     FOREIGN KEY (machine_id) REFERENCES Machines(machine_id),
     FOREIGN KEY (operator_id) REFERENCES Operators(operator_id)
 );
-
 CREATE TABLE IF NOT EXISTS OperationExecutionEvents (
     id                       INTEGER PRIMARY KEY AUTOINCREMENT,
     schedule_version         INTEGER NOT NULL,
     schedule_id              INTEGER NOT NULL,
     op_id                    INTEGER NOT NULL,
     batch_id                 TEXT NOT NULL,
-    source_table             TEXT NOT NULL DEFAULT 'schedule' CHECK(source_table = 'schedule'),
-    effective_plan_role      TEXT NOT NULL DEFAULT 'adopted' CHECK(effective_plan_role = 'adopted'),
+    source_table             TEXT NOT NULL CHECK(source_table = 'schedule'),
+    effective_plan_role      TEXT NOT NULL CHECK(effective_plan_role = 'adopted'),
     scenario_id              TEXT CHECK(scenario_id IS NULL),
     event_type               TEXT NOT NULL CHECK(event_type IN ('start', 'pause', 'resume', 'finish', 'exception')),
     reported_status          TEXT NOT NULL CHECK(reported_status IN ('processing', 'paused', 'exception', 'completed')),
@@ -277,17 +211,19 @@ CREATE TABLE IF NOT EXISTS OperationExecutionEvents (
     request_fingerprint      TEXT NOT NULL,
     previous_state_revision  TEXT NOT NULL,
     created_at               DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (schedule_id) REFERENCES Schedule(id),
-    FOREIGN KEY (op_id) REFERENCES BatchOperations(id),
+    FOREIGN KEY (schedule_id, schedule_version, op_id) REFERENCES Schedule(id, version, op_id),
+    FOREIGN KEY (op_id, batch_id) REFERENCES BatchOperations(id, batch_id),
     FOREIGN KEY (actual_machine_id) REFERENCES Machines(machine_id),
     FOREIGN KEY (actual_operator_id) REFERENCES Operators(operator_id),
     FOREIGN KEY (affected_machine_id) REFERENCES Machines(machine_id),
     FOREIGN KEY (affected_operator_id) REFERENCES Operators(operator_id),
-    UNIQUE(op_id, previous_state_revision),
+    UNIQUE(schedule_version, schedule_id, op_id, batch_id, source_table, effective_plan_role, previous_state_revision),
     CHECK(schedule_version > 0),
     CHECK(schedule_id > 0),
     CHECK(op_id > 0),
     CHECK(TRIM(batch_id) <> ''),
+    CHECK(TRIM(event_time) <> '' AND datetime(event_time) IS NOT NULL),
+    CHECK((event_type IN ('start', 'resume') AND reported_status = 'processing') OR (event_type = 'pause' AND reported_status = 'paused') OR (event_type = 'exception' AND reported_status = 'exception') OR (event_type = 'finish' AND reported_status = 'completed')),
     CHECK(event_type NOT IN ('pause', 'exception') OR (reason_code IS NOT NULL AND TRIM(reason_code) <> '')),
     CHECK(event_type <> 'exception' OR (severity IS NOT NULL AND TRIM(severity) <> '')),
     CHECK(TRIM(created_by) <> ''),
@@ -295,7 +231,6 @@ CREATE TABLE IF NOT EXISTS OperationExecutionEvents (
     CHECK(TRIM(request_fingerprint) <> ''),
     CHECK(TRIM(previous_state_revision) <> '')
 );
-
 CREATE TABLE IF NOT EXISTS ScheduleCandidate (
     id                    INTEGER PRIMARY KEY AUTOINCREMENT,
     version               INTEGER NOT NULL,
@@ -327,7 +262,6 @@ CREATE TABLE IF NOT EXISTS ScheduleCandidate (
     UNIQUE(version, candidate_key),
     UNIQUE(id, version)
 );
-
 CREATE TABLE IF NOT EXISTS ScheduleCandidateRows (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
     version          INTEGER NOT NULL,
@@ -342,7 +276,6 @@ CREATE TABLE IF NOT EXISTS ScheduleCandidateRows (
     FOREIGN KEY(candidate_id, version) REFERENCES ScheduleCandidate(id, version) ON DELETE CASCADE,
     UNIQUE(candidate_id, op_id)
 );
-
 CREATE TABLE IF NOT EXISTS ScheduleCandidateSelection (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     version         INTEGER NOT NULL,
@@ -353,15 +286,7 @@ CREATE TABLE IF NOT EXISTS ScheduleCandidateSelection (
     FOREIGN KEY(candidate_id, version) REFERENCES ScheduleCandidate(id, version) ON DELETE CASCADE,
     UNIQUE(version, role)
 );
-
--- 排产版本号序列表（用于原子分配 version；避免并发下 MAX(version)+1 复用）
--- 说明：
--- - 仅用于分配版本号，不承载业务含义
--- - 版本号对齐策略由代码实现（与 ScheduleHistory.max(version) 对齐）
-CREATE TABLE IF NOT EXISTS ScheduleVersionSeq (
-    version         INTEGER PRIMARY KEY AUTOINCREMENT
-);
-
+CREATE TABLE IF NOT EXISTS ScheduleVersionSeq (version INTEGER PRIMARY KEY AUTOINCREMENT);
 CREATE TABLE IF NOT EXISTS WorkCalendar (
     date            DATE PRIMARY KEY,
     day_type        TEXT DEFAULT 'workday',
@@ -373,12 +298,6 @@ CREATE TABLE IF NOT EXISTS WorkCalendar (
     allow_urgent    TEXT DEFAULT 'yes',
     remark          TEXT
 );
-
--- 人员专属工作日历（可覆盖全局 WorkCalendar）
--- 说明：
--- - 主键：(operator_id, date)
--- - 口径与 WorkCalendar 对齐（day_type/shift*/efficiency/allow*）
--- - 覆盖语义由服务层实现（算法排产时按 operator_id 查询）
 CREATE TABLE IF NOT EXISTS OperatorCalendar (
     operator_id     TEXT NOT NULL,
     date            DATE NOT NULL,
@@ -393,10 +312,8 @@ CREATE TABLE IF NOT EXISTS OperatorCalendar (
     PRIMARY KEY (operator_id, date),
     FOREIGN KEY (operator_id) REFERENCES Operators(operator_id) ON DELETE CASCADE
 );
-
 CREATE INDEX IF NOT EXISTS idx_operator_calendar_operator_date ON OperatorCalendar(operator_id, date);
 CREATE INDEX IF NOT EXISTS idx_operator_calendar_date ON OperatorCalendar(date);
-
 CREATE TABLE IF NOT EXISTS ScheduleConfig (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     config_key      TEXT NOT NULL UNIQUE,
@@ -404,11 +321,6 @@ CREATE TABLE IF NOT EXISTS ScheduleConfig (
     description     TEXT,
     updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
 );
-
--- ============================================================
--- System Settings / Jobs（系统管理：自动备份/自动清理等）
--- ============================================================
-
 CREATE TABLE IF NOT EXISTS SystemConfig (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     config_key      TEXT NOT NULL UNIQUE,
@@ -416,7 +328,6 @@ CREATE TABLE IF NOT EXISTS SystemConfig (
     description     TEXT,
     updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
 );
-
 CREATE TABLE IF NOT EXISTS SystemJobState (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     job_key         TEXT NOT NULL UNIQUE,
@@ -424,39 +335,33 @@ CREATE TABLE IF NOT EXISTS SystemJobState (
     last_run_detail TEXT,
     updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
 );
-
 CREATE INDEX IF NOT EXISTS idx_system_job_state_time ON SystemJobState(last_run_time);
-
 CREATE INDEX IF NOT EXISTS idx_batches_status ON Batches(status);
 CREATE INDEX IF NOT EXISTS idx_batches_priority ON Batches(priority);
 CREATE INDEX IF NOT EXISTS idx_batches_due_date ON Batches(due_date);
 CREATE INDEX IF NOT EXISTS idx_batch_operations_batch ON BatchOperations(batch_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_batch_operations_identity_unique ON BatchOperations(id, batch_id);
 CREATE INDEX IF NOT EXISTS idx_batch_operations_status ON BatchOperations(status);
 CREATE INDEX IF NOT EXISTS idx_schedule_op ON Schedule(op_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_schedule_version_op_unique ON Schedule(version, op_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_schedule_identity_unique ON Schedule(id, version, op_id);
 CREATE INDEX IF NOT EXISTS idx_schedule_machine ON Schedule(machine_id);
 CREATE INDEX IF NOT EXISTS idx_schedule_operator ON Schedule(operator_id);
 CREATE INDEX IF NOT EXISTS idx_schedule_time ON Schedule(start_time, end_time);
 CREATE INDEX IF NOT EXISTS idx_schedule_version_time ON Schedule(version, start_time, end_time);
-CREATE INDEX IF NOT EXISTS idx_operation_execution_events_op
-ON OperationExecutionEvents(op_id, event_time);
-CREATE INDEX IF NOT EXISTS idx_operation_execution_events_schedule
-ON OperationExecutionEvents(schedule_id);
-CREATE INDEX IF NOT EXISTS idx_operation_execution_events_schedule_op
-ON OperationExecutionEvents(schedule_id, op_id);
-CREATE INDEX IF NOT EXISTS idx_operation_execution_events_batch
-ON OperationExecutionEvents(batch_id);
+CREATE INDEX IF NOT EXISTS idx_operation_execution_events_op ON OperationExecutionEvents(op_id, event_time);
+CREATE INDEX IF NOT EXISTS idx_operation_execution_events_schedule ON OperationExecutionEvents(schedule_id);
+CREATE INDEX IF NOT EXISTS idx_operation_execution_events_schedule_op ON OperationExecutionEvents(schedule_id, op_id);
+CREATE INDEX IF NOT EXISTS idx_operation_execution_events_batch ON OperationExecutionEvents(batch_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_operation_execution_events_op_revision_unique
-ON OperationExecutionEvents(op_id, previous_state_revision);
-CREATE INDEX IF NOT EXISTS idx_operation_execution_events_latest_exception
-ON OperationExecutionEvents(op_id, event_type, id);
+ON OperationExecutionEvents(schedule_version, schedule_id, op_id, batch_id, source_table, effective_plan_role, previous_state_revision);
+CREATE INDEX IF NOT EXISTS idx_operation_execution_events_latest_exception ON OperationExecutionEvents(op_id, event_type, id);
 CREATE INDEX IF NOT EXISTS idx_schedule_candidate_version ON ScheduleCandidate(version);
 CREATE INDEX IF NOT EXISTS idx_schedule_candidate_version_kind ON ScheduleCandidate(version, candidate_kind);
 CREATE INDEX IF NOT EXISTS idx_schedule_candidate_rows_version_candidate ON ScheduleCandidateRows(version, candidate_id);
 CREATE INDEX IF NOT EXISTS idx_schedule_candidate_rows_version_candidate_time ON ScheduleCandidateRows(version, candidate_id, start_time, end_time);
 CREATE INDEX IF NOT EXISTS idx_schedule_candidate_rows_time ON ScheduleCandidateRows(start_time, end_time);
 CREATE INDEX IF NOT EXISTS idx_schedule_candidate_selection_version ON ScheduleCandidateSelection(version);
-
 CREATE TABLE IF NOT EXISTS ScheduleAdjustmentDraft (
     draft_id        TEXT PRIMARY KEY,
     base_version    INTEGER NOT NULL,
@@ -470,7 +375,6 @@ CREATE TABLE IF NOT EXISTS ScheduleAdjustmentDraft (
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
 );
-
 CREATE TABLE IF NOT EXISTS ScheduleAdjustmentChange (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
     draft_id           TEXT NOT NULL,
@@ -491,16 +395,9 @@ CREATE TABLE IF NOT EXISTS ScheduleAdjustmentChange (
     FOREIGN KEY(draft_id) REFERENCES ScheduleAdjustmentDraft(draft_id) ON DELETE CASCADE,
     FOREIGN KEY(op_id) REFERENCES BatchOperations(id) ON DELETE CASCADE
 );
-
-CREATE INDEX IF NOT EXISTS idx_schedule_adjustment_draft_base
-ON ScheduleAdjustmentDraft(base_version, base_plan_role);
-
-CREATE INDEX IF NOT EXISTS idx_schedule_adjustment_draft_status
-ON ScheduleAdjustmentDraft(status, updated_at);
-
-CREATE INDEX IF NOT EXISTS idx_schedule_adjustment_change_draft_op
-ON ScheduleAdjustmentChange(draft_id, op_id);
-
+CREATE INDEX IF NOT EXISTS idx_schedule_adjustment_draft_base ON ScheduleAdjustmentDraft(base_version, base_plan_role);
+CREATE INDEX IF NOT EXISTS idx_schedule_adjustment_draft_status ON ScheduleAdjustmentDraft(status, updated_at);
+CREATE INDEX IF NOT EXISTS idx_schedule_adjustment_change_draft_op ON ScheduleAdjustmentChange(draft_id, op_id);
 CREATE TABLE IF NOT EXISTS ScheduleAdjustmentScenario (
     scenario_id        TEXT PRIMARY KEY,
     source_draft_id    TEXT NOT NULL UNIQUE,
@@ -526,7 +423,6 @@ CREATE TABLE IF NOT EXISTS ScheduleAdjustmentScenario (
     created_at         DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at         DATETIME DEFAULT CURRENT_TIMESTAMP
 );
-
 CREATE TABLE IF NOT EXISTS ScheduleAdjustmentScenarioRow (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     scenario_id         TEXT NOT NULL,
@@ -544,23 +440,10 @@ CREATE TABLE IF NOT EXISTS ScheduleAdjustmentScenarioRow (
     FOREIGN KEY(scenario_id) REFERENCES ScheduleAdjustmentScenario(scenario_id) ON DELETE CASCADE,
     FOREIGN KEY(op_id) REFERENCES BatchOperations(id) ON DELETE CASCADE
 );
-
-CREATE INDEX IF NOT EXISTS idx_schedule_adjustment_scenario_base
-ON ScheduleAdjustmentScenario(base_version, base_plan_role, status);
-
-CREATE INDEX IF NOT EXISTS idx_schedule_adjustment_scenario_draft
-ON ScheduleAdjustmentScenario(source_draft_id);
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_schedule_adjustment_scenario_row_op
-ON ScheduleAdjustmentScenarioRow(scenario_id, op_id);
-
-CREATE INDEX IF NOT EXISTS idx_schedule_adjustment_scenario_row_time
-ON ScheduleAdjustmentScenarioRow(scenario_id, start_time, end_time);
-
--- ============================================================
--- Logging Module
--- ============================================================
-
+CREATE INDEX IF NOT EXISTS idx_schedule_adjustment_scenario_base ON ScheduleAdjustmentScenario(base_version, base_plan_role, status);
+CREATE INDEX IF NOT EXISTS idx_schedule_adjustment_scenario_draft ON ScheduleAdjustmentScenario(source_draft_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_schedule_adjustment_scenario_row_op ON ScheduleAdjustmentScenarioRow(scenario_id, op_id);
+CREATE INDEX IF NOT EXISTS idx_schedule_adjustment_scenario_row_time ON ScheduleAdjustmentScenarioRow(scenario_id, start_time, end_time);
 CREATE TABLE IF NOT EXISTS OperationLogs (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     log_time        DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -574,7 +457,6 @@ CREATE TABLE IF NOT EXISTS OperationLogs (
     error_code      TEXT,
     error_message   TEXT
 );
-
 CREATE TABLE IF NOT EXISTS ScheduleHistory (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     schedule_time   DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -586,17 +468,11 @@ CREATE TABLE IF NOT EXISTS ScheduleHistory (
     result_summary  TEXT,
     created_by      TEXT
 );
-
 CREATE INDEX IF NOT EXISTS idx_operation_logs_time ON OperationLogs(log_time);
 CREATE INDEX IF NOT EXISTS idx_operation_logs_level ON OperationLogs(log_level);
 CREATE INDEX IF NOT EXISTS idx_operation_logs_module ON OperationLogs(module);
 CREATE INDEX IF NOT EXISTS idx_schedule_history_time ON ScheduleHistory(schedule_time);
 CREATE INDEX IF NOT EXISTS idx_schedule_history_version ON ScheduleHistory(version);
-
--- ============================================================
--- Material Module（预留）
--- ============================================================
-
 CREATE TABLE IF NOT EXISTS Materials (
     material_id     TEXT PRIMARY KEY,
     name            TEXT NOT NULL,
@@ -607,7 +483,6 @@ CREATE TABLE IF NOT EXISTS Materials (
     remark          TEXT,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
 );
-
 CREATE TABLE IF NOT EXISTS BatchMaterials (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     batch_id        TEXT NOT NULL,

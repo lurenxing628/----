@@ -20,6 +20,7 @@ def test_dashboard_workspace_uses_dedicated_action_grid() -> None:
       workspace_start = source.index("常用工作区")
       workspace_source = source[workspace_start:]
       assert "aps-workspace-actions" in workspace_source
+      assert "aps-dashboard-link-disabled-reason" in workspace_source
       assert "action-bar-flat" not in workspace_source
       assert "'schedule'" not in workspace_source
       assert "'chart'" not in workspace_source

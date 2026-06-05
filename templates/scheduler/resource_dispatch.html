@@ -155,7 +155,7 @@
         <select name="plan_role" class="w-180" data-report-plan-role-select data-initial-plan-role="{{ filters.plan_role }}">
           {% for option in plan_role_options or [] %}
             <option value="{{ option.role }}" {% if option.role == filters.plan_role %}selected{% endif %}>
-              {{ option.label }}
+              {{ option.display_text or option.label }}
             </option>
           {% endfor %}
         </select>

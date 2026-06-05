@@ -71,6 +71,48 @@ def test_normalize_scheduler_manual_args_accepts_same_origin_absolute_src_and_fl
     assert "bad.page" in str(warning or "")
 
 
+def test_get_manual_url_drops_unknown_plan_role_from_return_src(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(manual_src_security_mod, "resolve_manual_id", lambda _endpoint: "scheduler_gantt")
+    app = Flask(__name__)
+    app.add_url_rule(
+        "/scheduler/config/manual",
+        endpoint="scheduler.config_manual_page",
+        view_func=lambda: "",
+    )
+
+    with app.test_request_context("/", base_url="http://localhost/"):
+        url = manual_src_security_mod.get_manual_url(
+            endpoint="scheduler.gantt_page",
+            src="/reports/execution-review?version=12&plan_role=future_role&date_from=2026-05-06",
+        )
+
+    assert url is not None
+    assert "future_role" not in url
+    assert "version%3D12" in url
+    assert "date_from%3D2026-05-06" in url
+
+
+def test_manual_page_direct_src_drops_unknown_plan_role(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        route_mod,
+        "build_page_manual_bundle",
+        lambda raw_page: {"current_manual": {}, "related_manuals": []},
+    )
+
+    app = Flask(__name__)
+    with app.test_request_context("/scheduler/config/manual", base_url="http://localhost/"):
+        safe_src, safe_page, bundle, warning = route_mod._normalize_scheduler_manual_args(
+            "/reports/execution-review?version=12&plan_role=future_role&date_from=2026-05-06",
+            "reports.execution_review_page",
+        )
+
+    assert safe_src == "/reports/execution-review?version=12&date_from=2026-05-06"
+    assert "future_role" not in str(safe_src)
+    assert safe_page == "reports.execution_review_page"
+    assert bundle is not None
+    assert warning is None
+
+
 def test_normalize_scheduler_manual_args_preserves_trailing_question_mark_for_same_origin_absolute_src(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

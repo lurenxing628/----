@@ -4,8 +4,9 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.infrastructure.errors import AppError, ErrorCode
+from core.models.operation_execution_scope import OperationExecutionScope
 from core.services.scheduler.execution_fact_provider import ExecutionFact, ExecutionFactProvider
-from core.services.scheduler.execution_snapshot import collect_execution_snapshot
+from core.services.scheduler.execution_snapshot import build_execution_snapshot
 
 from .schedule_payload_contract import ValidatedSchedulePayload, ValidatedScheduleRow
 
@@ -52,15 +53,71 @@ def _op_seq(op: Any) -> int:
         return 0
 
 
+def _scope_from_fact(fact: ExecutionFact) -> Optional[OperationExecutionScope]:
+    if not getattr(fact, "schedule_version", None) or not getattr(fact, "schedule_id", None):
+        return None
+    if not getattr(fact, "batch_id", None):
+        return None
+    return OperationExecutionScope.from_values(
+        schedule_version=fact.schedule_version,
+        schedule_id=fact.schedule_id,
+        op_id=fact.op_id,
+        batch_id=fact.batch_id,
+        source_table=fact.source_table,
+        effective_plan_role=fact.effective_plan_role,
+        scenario_id=fact.scenario_id,
+    )
+
+
+def _scopes_from_facts(
+    facts: Dict[int, ExecutionFact],
+    op_ids: List[int],
+) -> List[OperationExecutionScope]:
+    scopes: List[OperationExecutionScope] = []
+    missing: List[int] = []
+    for op_id in op_ids:
+        op_id_int = int(op_id)
+        fact = facts.get(op_id_int)
+        scope = _scope_from_fact(fact) if fact is not None else None
+        if scope is None:
+            missing.append(op_id_int)
+            continue
+        scopes.append(scope)
+    if missing:
+        raise _execution_guard_conflict(
+            "现场状态快照缺少排程版本身份，本次没有写入新排程。请刷新后重新排。",
+            reason="execution_scope_missing",
+            op_id=missing[0],
+        )
+    return scopes
+
+
+def _current_facts_for_expected(
+    svc: Any,
+    *,
+    expected_op_ids: List[int],
+    execution_facts: Dict[int, ExecutionFact],
+) -> Dict[int, ExecutionFact]:
+    scopes = _scopes_from_facts(execution_facts, expected_op_ids)
+    return ExecutionFactProvider(svc.conn, logger=getattr(svc, "logger", None)).facts_by_op_id_for_scopes(
+        scopes,
+        include_op_ids=expected_op_ids,
+    )
+
+
 def _validate_execution_revisions(
     svc: Any,
     *,
     expected_revisions: Dict[int, str],
+    execution_facts: Dict[int, ExecutionFact],
 ) -> None:
     if not expected_revisions:
         return
-    current = ExecutionFactProvider(svc.conn, logger=getattr(svc, "logger", None)).facts_by_op_id(
-        sorted(expected_revisions)
+    expected_op_ids = sorted(int(op_id) for op_id in expected_revisions)
+    current = _current_facts_for_expected(
+        svc,
+        expected_op_ids=expected_op_ids,
+        execution_facts=execution_facts,
     )
     for op_id, expected_revision in expected_revisions.items():
         fact = current.get(int(op_id))
@@ -78,11 +135,17 @@ def _validate_execution_snapshot(
     *,
     expected_revision: Optional[str],
     expected_op_ids: Optional[List[int]],
+    execution_facts: Dict[int, ExecutionFact],
 ) -> None:
     op_ids = [int(op_id) for op_id in list(expected_op_ids or []) if int(op_id) > 0]
     if not expected_revision or not op_ids:
         return
-    current = collect_execution_snapshot(svc.conn, op_ids, logger=getattr(svc, "logger", None))
+    current_facts = _current_facts_for_expected(
+        svc,
+        expected_op_ids=op_ids,
+        execution_facts=execution_facts,
+    )
+    current = build_execution_snapshot(current_facts, op_ids)
     if current.revision != str(expected_revision or ""):
         raise _execution_guard_conflict(
             "现场状态刚刚变了，这次重排没有写入。请刷新后重新排。",
@@ -208,8 +271,13 @@ def validate_execution_guard_before_persist(
         svc,
         expected_revision=execution_snapshot_revision,
         expected_op_ids=execution_snapshot_op_ids,
+        execution_facts=execution_facts,
     )
-    _validate_execution_revisions(svc, expected_revisions=execution_guard_state_revisions)
+    _validate_execution_revisions(
+        svc,
+        expected_revisions=execution_guard_state_revisions,
+        execution_facts=execution_facts,
+    )
     rows = _rows_by_op_id(validated_schedule_payload)
     for op_id in sorted(set(execution_fixed_op_ids or set())):
         fact = execution_facts.get(int(op_id))

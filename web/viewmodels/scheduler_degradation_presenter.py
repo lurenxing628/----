@@ -26,11 +26,24 @@ _SUMMARY_DEGRADATION_LABELS = {
 }
 
 
-def _safe_int(value: Any, *, default: int = 0) -> int:
+def _positive_count_state(value: Any) -> Tuple[int, bool]:
+    if value is None or (isinstance(value, str) and value.strip() == ""):
+        return 1, False
+    if isinstance(value, bool):
+        return 1, True
     try:
-        return int(value or 0)
-    except Exception:
-        return int(default)
+        if isinstance(value, int):
+            parsed = value
+        else:
+            text = str(value).strip()
+            sign = text[0] if text and text[0] in ("+", "-") else ""
+            digits = text[1:] if sign else text
+            if not digits.isdigit():
+                return 1, True
+            parsed = int(text)
+    except (TypeError, ValueError, OverflowError):
+        return 1, True
+    return (parsed, False) if parsed >= 1 else (1, True)
 
 
 def _degradation_label_for(*, code: str, message: str) -> str:
@@ -47,19 +60,22 @@ def _public_message_for_event(*, code: str, message: str) -> str:
     return public_degradation_event_message(code) if code else ""
 
 
-def format_degradation_detail(label: Any, count: Any) -> str:
+def format_degradation_detail(label: Any, count: Any, *, count_parse_failed: bool = False) -> str:
     normalized_label = str(label or "").strip()
     if not normalized_label:
         return ""
-    normalized_count = max(1, _safe_int(count, default=1))
+    normalized_count, failed = _positive_count_state(count)
+    if count_parse_failed or failed:
+        return f"{normalized_label}（数量记录异常）"
     return f"{normalized_label}\uff08{normalized_count}\uff09" if normalized_count > 1 else normalized_label
 
 
 def degradation_reason_key(*, code: Any, label: Any, count: Any) -> Tuple[str, str, int]:
+    normalized_count, failed = _positive_count_state(count)
     return (
         str(code or "").strip(),
         str(label or "").strip(),
-        max(1, _safe_int(count, default=1)),
+        0 if failed else normalized_count,
     )
 
 
@@ -120,7 +136,7 @@ def _normalize_summary_degradation_events(selected_summary: Optional[Dict[str, A
         events = [{"code": str(code or "").strip(), "message": "", "count": 1} for code in degraded_causes]
 
     items: List[Dict[str, Any]] = []
-    seen: set[Tuple[str, str]] = set()
+    items_by_key: Dict[Tuple[str, str], Dict[str, Any]] = {}
     for event in events:
         if not isinstance(event, dict):
             continue
@@ -130,17 +146,22 @@ def _normalize_summary_degradation_events(selected_summary: Optional[Dict[str, A
         if not code and not message:
             continue
         dedupe_key = (code, message)
-        if dedupe_key in seen:
+        count, count_parse_failed = _positive_count_state(event.get("count"))
+        existing = items_by_key.get(dedupe_key)
+        if existing is not None:
+            if count_parse_failed:
+                existing["count_parse_failed"] = True
+            else:
+                existing["count"] = int(existing.get("count") or 0) + count
             continue
-        seen.add(dedupe_key)
-        items.append(
-            {
-                "code": code,
-                "label": _degradation_label_for(code=code, message=message),
-                "message": message,
-                "count": max(1, _safe_int(event.get("count"), default=1)),
-            }
-        )
+        items_by_key[dedupe_key] = {
+            "code": code,
+            "label": _degradation_label_for(code=code, message=message),
+            "message": message,
+            "count": count,
+            "count_parse_failed": count_parse_failed,
+        }
+        items.append(items_by_key[dedupe_key])
     return items
 
 
@@ -170,7 +191,11 @@ def build_primary_degradation(
         label = str(item.get("label") or "").strip()
         if not label:
             continue
-        detail = format_degradation_detail(label, item.get("count"))
+        detail = format_degradation_detail(
+            label,
+            item.get("count"),
+            count_parse_failed=bool(item.get("count_parse_failed")),
+        )
         if detail not in details:
             details.append(detail)
         reason_key = degradation_reason_key(code=item.get("code"), label=label, count=item.get("count"))

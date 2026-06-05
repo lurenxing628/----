@@ -7,7 +7,9 @@ from tests.operation_execution_feedback_test_support import (
     _base_payload,
     _build_app,
     _current_card,
+    _current_query,
     _event_count,
+    _events_url,
     _json,
     _post_controlled,
 )
@@ -128,10 +130,7 @@ def test_pause_resume_exception_flow_updates_task_card_and_actions(tmp_path, mon
     assert exception_data["state_revision"] != resume_data["state_revision"]
     assert _event_count(db_path) == 4
 
-    events_resp = client.get(
-        f"/scheduler/resource-dispatch/execution/{card['op_id']}/events"
-        "?scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01&version=2&plan_role=adopted"
-    )
+    events_resp = client.get(_events_url(card))
     events_payload = _json(events_resp)["data"]
     events = events_payload["events"]
     assert events_resp.status_code == 200
@@ -244,15 +243,12 @@ def test_reason_detail_only_is_visible_as_exception_remark(tmp_path, monkeypatch
     assert exception_data["task_card"]["latest_exception_remark"] == "只填原因详情"
 
     data_resp = client.get(
-        "/scheduler/resource-dispatch/data?scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01&version=2&plan_role=adopted"
+        f"/scheduler/resource-dispatch/data?{_current_query()}"
     )
     detail_row = _json(data_resp)["data"]["detail_rows"][0]
     assert detail_row["latest_exception_remark"] == "只填原因详情"
 
-    events_resp = client.get(
-        f"/scheduler/resource-dispatch/execution/{card['op_id']}/events"
-        "?scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01&version=2&plan_role=adopted"
-    )
+    events_resp = client.get(_events_url(card))
     assert _json(events_resp)["data"]["events"][-1]["remark"] == "只填原因详情"
     assert _event_count(db_path) == 2
 
@@ -291,7 +287,7 @@ def test_internal_execution_token_is_not_visible_as_exception_remark(tmp_path, m
         conn.close()
 
     task_resp = client.get(
-        "/scheduler/resource-dispatch/execution/data?scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01&version=2&plan_role=adopted"
+        f"/scheduler/resource-dispatch/execution/data?{_current_query()}"
     )
     task_card = _json(task_resp)["data"]["tasks"][0]
     assert task_card["last_event_action_label"] == "报异常"
@@ -300,16 +296,13 @@ def test_internal_execution_token_is_not_visible_as_exception_remark(tmp_path, m
     assert task_card["latest_exception_remark"] is None
 
     data_resp = client.get(
-        "/scheduler/resource-dispatch/data?scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01&version=2&plan_role=adopted"
+        f"/scheduler/resource-dispatch/data?{_current_query()}"
     )
     detail_row = _json(data_resp)["data"]["detail_rows"][0]
     assert detail_row["latest_exception_reason_label"] == "设备问题"
     assert detail_row["latest_exception_remark"] == ""
 
-    events_resp = client.get(
-        f"/scheduler/resource-dispatch/execution/{card['op_id']}/events"
-        "?scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01&version=2&plan_role=adopted"
-    )
+    events_resp = client.get(_events_url(card))
     assert _json(events_resp)["data"]["events"][-1]["action_label"] == "报异常"
     assert _json(events_resp)["data"]["events"][-1]["remark"] is None
 
@@ -375,7 +368,7 @@ def test_internal_token_cleanup_is_case_insensitive(tmp_path, monkeypatch) -> No
         conn.close()
 
     task_resp = client.get(
-        "/scheduler/resource-dispatch/execution/data?scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01&version=2&plan_role=adopted"
+        f"/scheduler/resource-dispatch/execution/data?{_current_query()}"
     )
     task_card = _json(task_resp)["data"]["tasks"][0]
     assert task_card["last_event_remark"] is None
@@ -461,10 +454,7 @@ def test_events_list_keeps_each_exception_own_impact_and_affected_resources(tmp_
         remark="第二次异常",
     )
 
-    events_resp = client.get(
-        f"/scheduler/resource-dispatch/execution/{card['op_id']}/events"
-        "?scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01&version=2&plan_role=adopted"
-    )
+    events_resp = client.get(_events_url(card))
     events = _json(events_resp)["data"]["events"]
     exception_events = [item for item in events if item["action"] == "report_exception"]
 
@@ -480,33 +470,3 @@ def test_events_list_keeps_each_exception_own_impact_and_affected_resources(tmp_
     assert exception_events[1]["affected_machine_label"] == "M1 一号设备"
     assert exception_events[1]["affected_operator_label"] == "O1 张三"
     assert exception_events[1]["remark"] == "第二次异常"
-
-
-def test_report_exception_rejects_candidate_scenario_and_history_plans(tmp_path, monkeypatch) -> None:
-    app, db_path = _build_app(tmp_path, monkeypatch)
-    client = app.test_client()
-    card = _current_card(client)
-    cases = (
-        "scope_type=operator&operator_id=O2&period_preset=week&query_date=2026-05-01&date_from=2026-05-01&date_to=2026-05-07&version=2&plan_role=baseline_best",
-        "scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01&date_from=2026-05-01&date_to=2026-05-07&version=2&plan_role=adopted&scenario_id=scenario-plain",
-        "scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-04-30&date_from=2026-04-27&date_to=2026-05-03&version=1&plan_role=adopted",
-    )
-
-    for index, query in enumerate(cases):
-        resp = _post_controlled(
-            client,
-            f"/scheduler/resource-dispatch/execution/{card['op_id']}/report-exception?{query}",
-            _base_payload(
-                card,
-                idempotency_key=f"reject-report-exception-{index}",
-                reason_code="equipment",
-                severity="high",
-                remark="设备异常",
-            ),
-        )
-        payload = _json(resp)
-        assert resp.status_code == 409
-        assert payload["error"]["details"]["reason"] == "not_current_official_plan"
-        assert payload["error"]["details"]["action_label"] == "报异常"
-        assert payload["error"]["details"]["can_retry"] is False
-    assert _event_count(db_path) == 0

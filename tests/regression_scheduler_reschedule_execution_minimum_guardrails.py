@@ -249,10 +249,11 @@ def test_execution_fact_missing_actual_resource_rejects_without_using_plan_resou
             """
             INSERT INTO OperationExecutionEvents (
                 schedule_version, schedule_id, op_id, batch_id,
+                source_table, effective_plan_role,
                 event_type, reported_status, event_time,
                 created_by, idempotency_key, request_fingerprint, previous_state_revision
             )
-            VALUES (1, 100, 10, 'B1', 'start', 'processing', '2026-05-01 08:30:00',
+            VALUES (1, 100, 10, 'B1', 'schedule', 'adopted', 'start', 'processing', '2026-05-01 08:30:00',
                     'pytest', 'missing-resource-start', 'missing-resource-fingerprint', '10:0:0')
             """
         )

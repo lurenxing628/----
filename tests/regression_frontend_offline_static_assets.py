@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import sys
+from fnmatch import fnmatch
 from pathlib import Path
 from typing import Iterable, List, Set
 
@@ -26,6 +27,15 @@ USER_VISIBLE_DOC_ROOTS = [
 USER_VISIBLE_DOC_EXCLUDED_DIRS = {
     (REPO_ROOT / "docs" / "dev").resolve(),
 }
+GENERATED_USER_VISIBLE_DOC_GLOBS = (
+    "docs/_panorama_data/**",
+    "docs/*全景图*.html",
+    "docs/*演进时间线.html",
+    "docs/**/*全景图*.html",
+    "docs/**/*演进时间线.html",
+    "docs/v2/panorama.css",
+    "docs/v2/panorama.js",
+)
 
 WORKBENCH_MOCKUP_FORBIDDEN_TEXT = [
     "异常解释",
@@ -157,6 +167,8 @@ def _frontend_files() -> Iterable[Path]:
             resolved_parent = path.parent.resolve()
             if any(excluded == resolved_parent or excluded in resolved_parent.parents for excluded in USER_VISIBLE_DOC_EXCLUDED_DIRS):
                 continue
+            if _is_generated_user_visible_doc(path):
+                continue
             if path not in seen:
                 seen.add(path)
                 yield path
@@ -166,6 +178,14 @@ def _frontend_files() -> Iterable[Path]:
 
 def _line_no(text: str, index: int) -> int:
     return text.count("\n", 0, index) + 1
+
+
+def _is_generated_user_visible_doc(path: Path) -> bool:
+    try:
+        rel = path.relative_to(REPO_ROOT).as_posix()
+    except ValueError:
+        return False
+    return any(fnmatch(rel, pattern) for pattern in GENERATED_USER_VISIBLE_DOC_GLOBS)
 
 
 def _collect_external_resource_violations_from_text(rel: str, text: str) -> List[str]:
@@ -204,6 +224,8 @@ def _user_visible_text_files() -> Iterable[Path]:
                 continue
             resolved_parent = path.parent.resolve()
             if any(excluded == resolved_parent or excluded in resolved_parent.parents for excluded in USER_VISIBLE_DOC_EXCLUDED_DIRS):
+                continue
+            if _is_generated_user_visible_doc(path):
                 continue
             if path not in seen:
                 seen.add(path)

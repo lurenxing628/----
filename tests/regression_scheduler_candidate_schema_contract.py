@@ -128,15 +128,15 @@ def test_candidate_schema_migration_keeps_candidate_tables_independent_from_sche
     conn = get_connection(str(db_path))
     try:
         conn.executescript(
-            """
-            CREATE TABLE SchemaVersion (
-                id INTEGER PRIMARY KEY CHECK (id = 1),
-                version INTEGER NOT NULL,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            );
-            INSERT INTO SchemaVersion (id, version) VALUES (1, 9);
+            SCHEMA_PATH.read_text(encoding="utf-8")
+            + """
+            DROP TABLE IF EXISTS ScheduleCandidateSelection;
+            DROP TABLE IF EXISTS ScheduleCandidateRows;
+            DROP TABLE IF EXISTS ScheduleCandidate;
             CREATE TABLE LegacyRows (id INTEGER PRIMARY KEY, name TEXT);
             INSERT INTO LegacyRows (id, name) VALUES (1, 'keep-me');
+            DELETE FROM SchemaVersion;
+            INSERT INTO SchemaVersion (id, version) VALUES (1, 9);
             """
         )
         conn.commit()

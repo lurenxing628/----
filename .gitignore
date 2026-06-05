@@ -144,11 +144,27 @@ audit/**/_tmp_review/
 # Iris 本地计划文件（本机工具临时产物，不纳入版本控制）
 .iris/
 
-# Codex 本地工具配置与 hook 脚本（本机工作区产物，不纳入版本控制）
+# Codex 本地工具配置、hook 脚本与浏览器快照（本机工作区产物，不纳入版本控制）
 .codex/
+.playwright-cli/
+output/
 reports/quality_gate_long_cache_13_rounds_speedup.html
 
 # Semantic Debt Radar (audit-only)
 .venv-semantic/
 .codestable/semantics/**/__pycache__/
 evidence/SemanticDebt/drift/drift-baseline.json
+# 漂移雷达扫描缓存（parse 树 / signals / history 等机器生成物，不作为审计证据纳入版本控制）
+.drift-cache/
+# 体检调用图扫描脚本和最新快照都纳入版本控制，避免审计证据被隐藏
+
+# CodeStable 审计/全景图本地生成数据，不纳入版本控制
+docs/_panorama_data/
+docs/*全景图*.html
+docs/*演进时间线.html
+docs/**/*全景图*.html
+docs/**/*演进时间线.html
+docs/panorama.css
+docs/panorama.js
+docs/v2/panorama.css
+docs/v2/panorama.js

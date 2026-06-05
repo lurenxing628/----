@@ -8,12 +8,16 @@ import pytest
 
 from core.infrastructure.database import CURRENT_SCHEMA_VERSION, ensure_schema, get_connection
 from core.infrastructure.migration_state import detect_schema_is_current
+from core.infrastructure.operation_execution_event_data_contract import operation_execution_event_sequence_issues
 from core.models.operation_execution_event import (
     EXECUTION_ACTION_REPORT_EXCEPTION,
     EXECUTION_EVENT_EXCEPTION,
     EXECUTION_EVENT_FINISH,
     EXECUTION_EVENT_START,
+    OperationExecutionEvent,
+    validate_operation_execution_event_sequence,
 )
+from core.models.operation_execution_scope import OperationExecutionScope
 from core.services.scheduler.operation_execution_labels import (
     event_type_to_action,
     execution_action_label,
@@ -81,6 +85,21 @@ def _seed_plan(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _seed_second_schedule(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        INSERT INTO ScheduleVersionSeq(version) VALUES (2);
+
+        INSERT INTO Schedule(id, op_id, machine_id, operator_id, start_time, end_time, lock_status, version)
+        VALUES (101, 10, 'M2', 'O2', '2026-05-02 08:00:00', '2026-05-02 09:00:00', 'unlocked', 2);
+
+        INSERT INTO ScheduleHistory(version, strategy, batch_count, op_count, result_status, result_summary, created_by)
+        VALUES (2, 'priority_first', 1, 1, 'success', '{}', 'pytest');
+        """
+    )
+    conn.commit()
+
+
 def _event(**overrides):
     data = {
         "schedule_version": 1,
@@ -104,6 +123,64 @@ def _event(**overrides):
     return data
 
 
+def _insert_raw_event(conn: sqlite3.Connection, **overrides) -> None:
+    payload = _event(**overrides)
+    columns = ", ".join(payload)
+    placeholders = ", ".join("?" for _ in payload)
+    conn.execute(f"INSERT INTO OperationExecutionEvents ({columns}) VALUES ({placeholders})", tuple(payload.values()))
+
+
+def _scope(schedule_version: int, schedule_id: int) -> OperationExecutionScope:
+    return OperationExecutionScope.from_values(
+        schedule_version=schedule_version,
+        schedule_id=schedule_id,
+        op_id=10,
+        batch_id="B1",
+        source_table="schedule",
+        effective_plan_role="adopted",
+    )
+
+
+def _assert_repository_readbacks(repo: OperationExecutionEventRepo, start, exception, finish) -> None:
+    assert repo.get_event_by_id(int(start.id or 0)).id == start.id
+    assert repo.get_by_idempotency_key("key-exception").id == exception.id
+    events = repo.list_events_by_scope(_scope(1, 100))
+    exception_events = [event for event in events if event.event_type == EXECUTION_EVENT_EXCEPTION]
+    assert events[-1].id == finish.id
+    assert exception_events[-1].id == exception.id
+
+
+def _assert_completed_execution_state(state, finish, exception) -> None:
+    _assert_completed_state_header(state, finish, exception)
+    _assert_exception_labels(state)
+    _assert_exception_resource_labels(state)
+    assert state.latest_exception_suggest_reschedule_label == "建议重新排程"
+    assert state.state_revision == f"10:3:{finish.id}"
+
+
+def _assert_completed_state_header(state, finish, exception) -> None:
+    assert state.current_status == "completed"
+    assert state.current_status_label == "已完工"
+    assert state.last_event_id == finish.id
+    assert state.last_event_action_label == "完工"
+    assert state.latest_exception_event_id == exception.id
+
+
+def _assert_exception_labels(state) -> None:
+    assert state.latest_exception_reason_label == "设备问题"
+    assert state.latest_exception_severity_label == "严重"
+    assert state.latest_exception_impact_minutes_label == "预计影响 30 分钟"
+
+
+def _assert_exception_resource_labels(state) -> None:
+    assert state.latest_exception_affected_machine_label == "M2 二号设备"
+    assert state.latest_exception_affected_machine_display_label == "二号设备"
+    assert state.latest_exception_affected_machine_identity_label == "M2 二号设备"
+    assert state.latest_exception_affected_operator_label == "O2 李四"
+    assert state.latest_exception_affected_operator_display_label == "李四"
+    assert state.latest_exception_affected_operator_identity_label == "O2 李四"
+
+
 def test_operation_execution_schema_contract_in_fresh_database(tmp_path: Path) -> None:
     conn = _connect(tmp_path)
     try:
@@ -111,6 +188,8 @@ def test_operation_execution_schema_contract_in_fresh_database(tmp_path: Path) -
         assert int(schema_version["version"]) == CURRENT_SCHEMA_VERSION
         assert "OperationExecutionEvents" in _table_names(conn)
         assert {
+            "idx_schedule_identity_unique",
+            "idx_batch_operations_identity_unique",
             "idx_operation_execution_events_op",
             "idx_operation_execution_events_schedule",
             "idx_operation_execution_events_schedule_op",
@@ -120,11 +199,108 @@ def test_operation_execution_schema_contract_in_fresh_database(tmp_path: Path) -
         } <= _index_names(conn)
         assert _index_columns(conn, "idx_operation_execution_events_op") == ["op_id", "event_time"]
         assert _index_columns(conn, "idx_operation_execution_events_op_revision_unique") == [
+            "schedule_version",
+            "schedule_id",
             "op_id",
+            "batch_id",
+            "source_table",
+            "effective_plan_role",
             "previous_state_revision",
         ]
         assert {"Schedule", "BatchOperations"} <= _foreign_targets(conn, "OperationExecutionEvents")
         assert detect_schema_is_current(conn)
+    finally:
+        conn.close()
+
+
+def test_operation_execution_schema_rejects_direct_identity_mismatch(tmp_path: Path) -> None:
+    conn = _connect(tmp_path)
+    try:
+        _seed_plan(conn)
+        with pytest.raises(sqlite3.IntegrityError):
+            _insert_raw_event(conn, schedule_version=2, idempotency_key="bad-version", previous_state_revision="10:0:bad-version")
+        with pytest.raises(sqlite3.IntegrityError):
+            _insert_raw_event(conn, batch_id="B2", idempotency_key="bad-batch", previous_state_revision="10:0:bad-batch")
+    finally:
+        conn.close()
+
+
+def test_operation_execution_schema_rejects_event_status_pair_mismatch(tmp_path: Path) -> None:
+    conn = _connect(tmp_path)
+    try:
+        _seed_plan(conn)
+        with pytest.raises(sqlite3.IntegrityError):
+            _insert_raw_event(
+                conn,
+                event_type=EXECUTION_EVENT_FINISH,
+                reported_status="processing",
+                idempotency_key="bad-status-pair",
+                previous_state_revision="10:0:bad-status-pair",
+            )
+    finally:
+        conn.close()
+
+
+def test_operation_execution_repository_requires_explicit_plan_identity(tmp_path: Path) -> None:
+    conn = _connect(tmp_path)
+    try:
+        _seed_plan(conn)
+        repo = OperationExecutionEventRepo(conn)
+        with pytest.raises(TypeError, match="source_table"):
+            OperationExecutionEvent(
+                id=None,
+                schedule_version=1,
+                schedule_id=100,
+                op_id=10,
+                batch_id="B1",
+                event_type=EXECUTION_EVENT_START,
+                reported_status="processing",
+                event_time="2026-05-01 08:10:00",
+            )
+        with pytest.raises(ValueError, match="source_table"):
+            repo.insert_event(_event(source_table=None, idempotency_key="missing-source"))
+        with pytest.raises(ValueError, match="effective_plan_role"):
+            repo.insert_event(_event(effective_plan_role=None, idempotency_key="missing-role"))
+    finally:
+        conn.close()
+
+
+def test_operation_execution_repository_rejects_batch_id_that_does_not_match_op(tmp_path: Path) -> None:
+    conn = _connect(tmp_path)
+    try:
+        _seed_plan(conn)
+        repo = OperationExecutionEventRepo(conn)
+        with pytest.raises(ValueError, match="schedule identity"):
+            repo.insert_event(_event(batch_id="B2", idempotency_key="wrong-batch"))
+        created = repo.insert_event(_event(idempotency_key="correct-batch"))
+        assert created.batch_id == "B1"
+    finally:
+        conn.close()
+
+
+def test_operation_execution_repository_rejects_schedule_identity_mismatch(tmp_path: Path) -> None:
+    conn = _connect(tmp_path)
+    try:
+        _seed_plan(conn)
+        _seed_second_schedule(conn)
+        repo = OperationExecutionEventRepo(conn)
+
+        with pytest.raises(ValueError, match="schedule identity"):
+            repo.insert_event(
+                _event(
+                    schedule_version=2,
+                    schedule_id=100,
+                    idempotency_key="wrong-schedule-version",
+                )
+            )
+        with pytest.raises(ValueError, match="schedule identity"):
+            repo.insert_event(
+                _event(
+                    schedule_version=1,
+                    schedule_id=101,
+                    idempotency_key="wrong-schedule-id",
+                )
+            )
     finally:
         conn.close()
 
@@ -167,80 +343,32 @@ def test_operation_execution_repository_appends_and_aggregates_state(tmp_path: P
         )
         conn.commit()
 
-        assert repo.get_event_by_id(int(start.id or 0)).id == start.id
-        assert repo.get_by_idempotency_key("key-exception").id == exception.id
-        assert repo.list_latest_events_by_op_ids([10])[10].id == finish.id
-        assert repo.list_latest_exception_events_by_op_ids([10])[10].id == exception.id
-
-        state = repo.aggregate_states_by_op_ids([10])[10]
-        assert state.current_status == "completed"
-        assert state.current_status_label == "已完工"
-        assert state.last_event_id == finish.id
-        assert state.last_event_action_label == "完工"
-        assert state.latest_exception_event_id == exception.id
-        assert state.latest_exception_reason_label == "设备问题"
-        assert state.latest_exception_severity_label == "严重"
-        assert state.latest_exception_impact_minutes_label == "预计影响 30 分钟"
-        assert state.latest_exception_affected_machine_label == "M2 二号设备"
-        assert state.latest_exception_affected_machine_display_label == "二号设备"
-        assert state.latest_exception_affected_machine_identity_label == "M2 二号设备"
-        assert state.latest_exception_affected_operator_label == "O2 李四"
-        assert state.latest_exception_affected_operator_display_label == "李四"
-        assert state.latest_exception_affected_operator_identity_label == "O2 李四"
-        assert state.latest_exception_suggest_reschedule_label == "建议重新排程"
-        assert state.state_revision == f"10:3:{finish.id}"
+        _assert_repository_readbacks(repo, start, exception, finish)
+        _assert_completed_execution_state(repo.aggregate_states_by_scopes([_scope(1, 100)])[_scope(1, 100)], finish, exception)
     finally:
         conn.close()
 
 
-def test_operation_execution_state_keeps_fractional_minutes(tmp_path: Path) -> None:
+def test_operation_execution_repository_rejects_unscoped_op_reads(tmp_path: Path) -> None:
     conn = _connect(tmp_path)
     try:
         _seed_plan(conn)
         repo = OperationExecutionEventRepo(conn)
-        start = repo.insert_event(
-            _event(
-                event_time="2026-05-01 08:00:30",
-            )
-        )
-        paused = repo.insert_event(
-            _event(
-                event_type="pause",
-                reported_status="paused",
-                event_time="2026-05-01 08:01:00",
-                reason_code="equipment",
-                idempotency_key="key-pause-fractional",
-                request_fingerprint="fingerprint-pause-fractional",
-                previous_state_revision=f"10:1:{start.id}",
-            )
-        )
-        resumed = repo.insert_event(
-            _event(
-                event_type="resume",
-                reported_status="processing",
-                event_time="2026-05-01 08:01:30",
-                idempotency_key="key-resume-fractional",
-                request_fingerprint="fingerprint-resume-fractional",
-                previous_state_revision=f"10:2:{paused.id}",
-            )
-        )
-        finish = repo.insert_event(
-            _event(
-                event_type=EXECUTION_EVENT_FINISH,
-                reported_status="completed",
-                event_time="2026-05-01 08:02:00",
-                quantity_done=10,
-                idempotency_key="key-finish-fractional",
-                request_fingerprint="fingerprint-finish-fractional",
-                previous_state_revision=f"10:3:{resumed.id}",
-            )
-        )
+        repo.insert_event(_event())
         conn.commit()
 
-        state = repo.aggregate_states_by_op_ids([10])[10]
-        assert state.last_event_id == finish.id
-        assert state.actual_duration_minutes == 1.5
-        assert state.pause_duration_minutes == 0.5
+        with pytest.raises(ValueError, match="完整计划身份"):
+            repo.list_events_by_op_id(10)
+        with pytest.raises(ValueError, match="完整计划身份"):
+            repo.list_events_by_op_ids([10])
+        with pytest.raises(ValueError, match="完整计划身份"):
+            repo.list_latest_events_by_op_ids([10])
+        with pytest.raises(ValueError, match="完整计划身份"):
+            repo.list_latest_exception_events_by_op_ids([10])
+        with pytest.raises(ValueError, match="完整计划身份"):
+            repo.aggregate_states_by_op_ids([10])
+        with pytest.raises(ValueError, match="完整计划身份"):
+            repo.state_revision_for_op(10)
     finally:
         conn.close()
 
@@ -273,8 +401,13 @@ def test_operation_execution_database_rejects_bad_values_and_duplicates(tmp_path
         with pytest.raises(Exception):
             repo.insert_event(_event(idempotency_key="key-negative", quantity_done=-1))
         with pytest.raises(Exception):
-            repo.insert_event(_event(idempotency_key="key-start", previous_state_revision="10:1:1"))
-        with pytest.raises(Exception):
-            repo.insert_event(_event(idempotency_key="key-other", previous_state_revision="10:0:0"))
+            repo.insert_event(
+                _event(
+                    idempotency_key="key-duplicate-revision",
+                    request_fingerprint="fingerprint-duplicate-revision",
+                )
+            )
+        _seed_second_schedule(conn)
+        repo.insert_event(_event(schedule_version=2, schedule_id=101, idempotency_key="key-other-version"))
     finally:
         conn.close()

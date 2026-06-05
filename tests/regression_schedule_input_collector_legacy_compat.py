@@ -99,6 +99,7 @@ class _FakeSvc:
         self.conn.commit()
         self.history_repo = SimpleNamespace(get_latest_version=lambda: 5)
         self.op_repo = SimpleNamespace(list_by_batch=lambda _batch_id: list(ops))
+        self.schedule_repo = SimpleNamespace(list_by_version_with_details=lambda _version: [])
 
     def _normalize_text(self, value):
         return None if value is None else str(value).strip()

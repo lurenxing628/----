@@ -11,6 +11,9 @@ from regression_scheduler_candidate_analysis_contract import (
 )
 
 from web.viewmodels.scheduler_analysis_candidates import build_candidate_comparison_display
+from web.viewmodels.scheduler_analysis_diagnostics import build_diagnostic_sections
+from web.viewmodels.scheduler_degradation_presenter import build_primary_degradation
+from web.viewmodels.scheduler_history_summary import format_public_datetime
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -119,6 +122,23 @@ def test_candidate_recommendation_card_is_not_faked_when_comparison_is_missing()
     assert display["recommendation_card"] is None
     assert display["summary_cards"] == []
     assert "本次没有开启方案对比" in display["notice"]
+
+
+def test_candidate_recommendation_card_is_not_faked_when_reason_code_is_unknown() -> None:
+    summary = _comparison_summary()
+    raw_reason = "future_reason_code"
+    summary["algo"]["candidate_comparison"]["selection_reason_code"] = raw_reason
+
+    display = build_candidate_comparison_display(
+        summary,
+        selected_ver=7,
+        plan_role_options=_plan_role_options(),
+    )
+
+    assert display["selection_reason_parse_failed"] is True
+    assert display["recommendation_card"] is None
+    assert "推荐理由记录异常" in display["selection_reason_label"]
+    assert raw_reason not in json.dumps(display, ensure_ascii=False)
 
 
 def test_candidate_recommendation_card_is_not_faked_when_adopted_candidate_did_not_complete() -> None:
@@ -285,3 +305,144 @@ def test_candidate_summary_cards_visible_payload_uses_plain_no_data_copy() -> No
     assert "None" not in visible_text
     assert "nan" not in visible_text
     assert "null" not in visible_text
+
+
+def test_candidate_label_internal_enum_does_not_become_public_label() -> None:
+    summary = _comparison_summary()
+    comparison = summary["algo"]["candidate_comparison"]
+    adopted_key = comparison["adopted_candidate_key"]
+    for candidate in comparison["candidates"]:
+        if candidate["candidate_key"] == adopted_key:
+            candidate["label"] = "critical_chain_best"
+
+    display = build_candidate_comparison_display(
+        summary,
+        selected_ver=7,
+        plan_role_options=_plan_role_options(),
+    )
+
+    visible_text = json.dumps(_visible_summary_card_values(display["summary_cards"]), ensure_ascii=False)
+    assert "critical_chain_best" not in visible_text
+    assert "重点工序优先方案" in visible_text
+
+
+def test_candidate_bad_failed_count_uses_public_record_error_message() -> None:
+    summary = _comparison_summary()
+    summary["algo"]["candidate_comparison"]["failed_candidate_count"] = "bad-count"
+
+    display = build_candidate_comparison_display(
+        summary,
+        selected_ver=7,
+        plan_role_options=_plan_role_options(),
+    )
+    message_text = " ".join(item["text"] for item in display["status_messages"])
+
+    assert "试算方案失败数量记录异常" in message_text
+    assert "bad-count" not in message_text
+
+
+def test_diagnostic_bad_number_and_unknown_graph_message_are_public_errors() -> None:
+    sections = build_diagnostic_sections(
+        {
+            "algo": {
+                "graph_analysis": {
+                    "status": "available",
+                    "node_count": "bad-count",
+                    "message": "Traceback: raw internal_field failure",
+                }
+            }
+        },
+        selected_ver=7,
+    )
+    text = json.dumps(sections, ensure_ascii=False)
+
+    assert "诊断数据异常" in text
+    assert "诊断数据包含无法安全展示的数值，系统已停止本诊断块计算。" in text
+    assert "无法当作 0 展示" not in text
+    assert "raw internal_field" not in text
+
+
+def test_diagnostic_unknown_graph_message_is_not_echoed() -> None:
+    sections = build_diagnostic_sections(
+        {
+            "algo": {
+                "graph_analysis": {
+                    "status": "available",
+                    "node_count": 1,
+                    "edge_count": 0,
+                    "critical_path_minutes": 0,
+                    "cycle_edge_count": 0,
+                    "time_cost_ms": 1,
+                    "message": "Traceback: raw internal_field failure",
+                }
+            }
+        },
+        selected_ver=7,
+    )
+    text = json.dumps(sections, ensure_ascii=False)
+
+    assert "图分析状态记录异常" in text
+    assert "raw internal_field" not in text
+
+
+def test_history_bad_datetime_uses_record_error_label() -> None:
+    assert format_public_datetime("debug raw schedule_time") == "时间记录异常"
+    assert format_public_datetime("2026-02-31 10:00") == "时间记录异常"
+
+
+def test_candidate_missing_status_is_not_rendered_as_table_dash_or_bad_status() -> None:
+    summary = _comparison_summary()
+    summary["algo"]["candidate_comparison"]["candidates"][0]["status"] = ""
+
+    display = build_candidate_comparison_display(
+        summary,
+        selected_ver=7,
+        plan_role_options=_plan_role_options(),
+    )
+    text = json.dumps(display["rows"], ensure_ascii=False)
+
+    assert "状态没有确认" in text
+    assert "状态记录异常" not in text
+
+
+def test_candidate_unknown_status_does_not_keep_raw_bad_value() -> None:
+    summary = _comparison_summary()
+    summary["algo"]["candidate_comparison"]["candidates"][0]["status"] = "future_status"
+
+    display = build_candidate_comparison_display(
+        summary,
+        selected_ver=7,
+        plan_role_options=_plan_role_options(),
+    )
+    text = json.dumps(display["rows"], ensure_ascii=False)
+
+    assert "状态记录异常" in text
+    assert "future_status" not in text
+
+
+def test_degradation_duplicate_later_bad_count_is_not_swallowed() -> None:
+    display = build_primary_degradation(
+        {
+            "degradation_events": [
+                {"code": "resource_pool_degraded", "message": "", "count": 1},
+                {"code": "resource_pool_degraded", "message": "", "count": "bad-count"},
+            ]
+        }
+    )
+
+    assert display is not None
+    assert "资源池资料不完整（数量记录异常）" in display["details"]
+
+
+def test_degradation_duplicate_good_counts_are_accumulated() -> None:
+    display = build_primary_degradation(
+        {
+            "degradation_events": [
+                {"code": "resource_pool_degraded", "message": "", "count": 1},
+                {"code": "resource_pool_degraded", "message": "", "count": 2},
+            ]
+        }
+    )
+
+    assert display is not None
+    assert "资源池资料不完整（3）" in display["details"]

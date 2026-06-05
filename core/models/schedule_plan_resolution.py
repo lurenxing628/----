@@ -87,6 +87,8 @@ class SchedulePlanResolution:
             "is_current_executable_official_version": bool(
                 plan_identity.get("is_current_executable_official_version")
             ),
+            "result_summary_parse_failed": bool(plan_identity.get("result_summary_parse_failed")),
+            "result_summary_parse_reason": plan_identity.get("result_summary_parse_reason") or "",
             "is_superseded_by_newer_version": bool(plan_identity.get("is_superseded_by_newer_version")),
             "schedule_result_status": plan_identity.get("schedule_result_status"),
             "schedule_lock_status": plan_identity.get("schedule_lock_status"),

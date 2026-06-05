@@ -22,7 +22,7 @@ from core.models.schedule_resource_filter import normalize_overdue_resource_filt
 from data.repositories.schedule_plan_query_repo import SchedulePlanQueryRepository
 from data.repositories.schedule_rows import ScheduleDetailRow, ScheduleDispatchRow, ScheduleTimeSpanRow
 
-from .schedule_plan_identity_builder import build_plan_identity, latest_executable_official_version
+from .schedule_plan_identity_builder import build_plan_identity, latest_official_version
 
 
 def _normalize_role(role: Optional[str]) -> str:
@@ -96,7 +96,7 @@ class SchedulePlanQueryService:
             scenario_display_name=resolution.scenario_display_name,
             schedule_result_status=history_row.get("result_status"),
             result_summary=history_row.get("result_summary"),
-            latest_official_version=latest_executable_official_version(self.repo.list_history_identity_rows()),
+            latest_official_version=latest_official_version(self.repo.list_history_identity_rows()),
             schedule_lock_status=source_row.get("lock_status"),
             detail_saved=getattr(option, "detail_saved", None),
         )

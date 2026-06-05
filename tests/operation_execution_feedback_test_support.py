@@ -140,51 +140,101 @@ def _event_count(db_path: str) -> int:
         conn.close()
 
 
-def _event_count_for_op(db_path: str, op_id: int) -> int:
+def _events_for_scope(
+    db_path: str,
+    *,
+    schedule_version: Any = 2,
+    schedule_id: Any = 100,
+    op_id: Any = 10,
+    batch_id: Any = "B1",
+    source_table: Any = "schedule",
+    effective_plan_role: Any = "adopted",
+    scenario_id: Any = None,
+):
     conn = get_connection(db_path)
     try:
-        row = conn.execute("SELECT COUNT(1) AS count FROM OperationExecutionEvents WHERE op_id = ?", (op_id,)).fetchone()
-        return int(row["count"])
-    finally:
-        conn.close()
-
-
-def _events_for_op(db_path: str, op_id: int):
-    conn = get_connection(db_path)
-    try:
+        scenario_clause = "scenario_id IS NULL"
+        params = [
+            int(schedule_version),
+            int(schedule_id),
+            int(op_id),
+            str(batch_id),
+            str(source_table),
+            str(effective_plan_role),
+        ]
+        if scenario_id is not None:
+            scenario_clause = "scenario_id = ?"
+            params.append(str(scenario_id))
         rows = conn.execute(
-            """
-            SELECT event_type, event_time, created_by, quantity_done, quantity_scrapped, reason_code, severity, remark
+            f"""
+            SELECT
+                schedule_version, schedule_id, op_id, batch_id, source_table, effective_plan_role,
+                scenario_id, previous_state_revision,
+                event_type, event_time, created_by, quantity_done, quantity_scrapped, reason_code, severity, remark
             FROM OperationExecutionEvents
-            WHERE op_id = ?
+            WHERE schedule_version = ?
+              AND schedule_id = ?
+              AND op_id = ?
+              AND batch_id = ?
+              AND source_table = ?
+              AND effective_plan_role = ?
+              AND {scenario_clause}
             ORDER BY id ASC
             """,
-            (int(op_id),),
+            params,
         ).fetchall()
         return [dict(row) for row in rows]
     finally:
         conn.close()
 
 
+def _event_count_for_scope(db_path: str, **scope: Any) -> int:
+    return len(_events_for_scope(db_path, **scope))
+
+
+def _events_for_card(db_path: str, card: Dict[str, Any]):
+    return _events_for_scope(
+        db_path,
+        schedule_version=card.get("schedule_version") or card.get("version") or 2,
+        schedule_id=card.get("schedule_id") or 100,
+        op_id=card.get("op_id") or 10,
+        batch_id=card.get("batch_id") or card.get("batch_label") or "B1",
+        source_table=card.get("source_table") or "schedule",
+        effective_plan_role=card.get("effective_plan_role") or "adopted",
+        scenario_id=card.get("scenario_id"),
+    )
+
+
 def _current_card(client) -> Dict[str, Any]:
     resp = client.get(
-        "/scheduler/resource-dispatch/execution/data?scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01&version=2&plan_role=adopted"
+        f"/scheduler/resource-dispatch/execution/data?{_current_query()}"
     )
     assert resp.status_code == 200
     data = _json(resp)["data"]
-    return data["tasks"][0]
+    card = dict(data["tasks"][0])
+    card.setdefault("op_id", 10)
+    card.setdefault("schedule_id", 100)
+    card.setdefault("schedule_version", 2)
+    card.setdefault("version", 2)
+    card.setdefault("batch_id", "B1")
+    card.setdefault("source_table", "schedule")
+    card.setdefault("effective_plan_role", "adopted")
+    card.setdefault("scenario_id", None)
+    card.setdefault("state_revision", "10:0:0")
+    return card
 
 
 def _base_payload(card: Dict[str, Any], **overrides: Any) -> Dict[str, Any]:
     payload = {
         "version": 2,
-        "schedule_id": card["schedule_id"],
-        "batch_id": card["batch_id"],
+        "schedule_id": card.get("schedule_id", 100),
+        "batch_id": card.get("batch_id") or card.get("batch_label") or "B1",
         "requested_plan_role": "adopted",
         "effective_plan_role": "adopted",
         "source_table": "schedule",
         "scenario_id": None,
-        "expected_state_revision": card["state_revision"],
+        "expected_state_revision": card.get("state_revision", "10:0:0"),
+        "state_key": card.get("state_key", ""),
         "event_time": "2026-05-01 08:10:00",
         "created_by": "张三",
         "idempotency_key": "route-key-start",
@@ -207,3 +257,7 @@ def _current_query() -> str:
         "scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01"
         "&date_from=2026-05-01&date_to=2026-05-07&version=2&plan_role=adopted"
     )
+
+
+def _events_url(card: Dict[str, Any]) -> str:
+    return f"/scheduler/resource-dispatch/execution/tasks/{card['task_key']}/events?{_current_query()}"

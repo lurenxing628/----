@@ -13,14 +13,12 @@ from core.models.operation_execution_event import (
     EXECUTION_EVENT_PAUSE,
     EXECUTION_EVENT_RESUME,
     EXECUTION_EVENT_START,
-    EXECUTION_STATUS_COMPLETED,
-    EXECUTION_STATUS_EXCEPTION,
-    EXECUTION_STATUS_PAUSED,
-    EXECUTION_STATUS_PROCESSING,
+    REPORTED_STATUS_BY_EXECUTION_EVENT_TYPE,
     OperationExecutionEvent,
+    parse_operation_event_time,
 )
+from core.models.operation_execution_scope import OperationExecutionScope
 from core.models.operation_execution_state import OperationExecutionState
-from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
 from core.shared.field_labels import display_field_label
 
 from .operation_execution_labels import (
@@ -42,9 +40,9 @@ class ExecutionFeedbackContext:
     expected_state_revision: str
     created_by: str
     idempotency_key: str
-    requested_plan_role: str = ROLE_ADOPTED
-    source_table: str = SOURCE_SCHEDULE
-    effective_plan_role: str = ROLE_ADOPTED
+    requested_plan_role: str
+    source_table: str
+    effective_plan_role: str
     scenario_id: Optional[str] = None
 
 
@@ -56,32 +54,33 @@ class ExecutionFeedbackResult:
     state_revision: str
 
 
-_REPORTED_STATUS_BY_ACTION = {
-    EXECUTION_EVENT_START: EXECUTION_STATUS_PROCESSING,
-    EXECUTION_EVENT_RESUME: EXECUTION_STATUS_PROCESSING,
-    EXECUTION_EVENT_PAUSE: EXECUTION_STATUS_PAUSED,
-    EXECUTION_ACTION_REPORT_EXCEPTION: EXECUTION_STATUS_EXCEPTION,
-    EXECUTION_EVENT_EXCEPTION: EXECUTION_STATUS_EXCEPTION,
-    EXECUTION_EVENT_FINISH: EXECUTION_STATUS_COMPLETED,
-}
+def _scope_for_context(context: ExecutionFeedbackContext) -> OperationExecutionScope:
+    return OperationExecutionScope.from_values(
+        schedule_version=context.schedule_version,
+        schedule_id=context.schedule_id,
+        op_id=context.op_id,
+        batch_id=context.batch_id,
+        source_table=context.source_table,
+        effective_plan_role=context.effective_plan_role,
+        scenario_id=context.scenario_id,
+    )
 
-_ALLOWED_ACTIONS_BY_STATUS = {
-    "not_started": {EXECUTION_EVENT_START},
-    EXECUTION_STATUS_PROCESSING: {
+
+def _state_for_context(event_repo: Any, context: ExecutionFeedbackContext) -> OperationExecutionState:
+    scope = _scope_for_context(context)
+    return event_repo.aggregate_states_by_scopes([scope])[scope]
+
+
+_REPORTED_STATUS_BY_ACTION = {
+    action: REPORTED_STATUS_BY_EXECUTION_EVENT_TYPE[action_to_event_type(action)]
+    for action in (
+        EXECUTION_EVENT_START,
+        EXECUTION_EVENT_RESUME,
         EXECUTION_EVENT_PAUSE,
-        EXECUTION_EVENT_FINISH,
         EXECUTION_ACTION_REPORT_EXCEPTION,
-    },
-    EXECUTION_STATUS_PAUSED: {
-        EXECUTION_EVENT_RESUME,
+        EXECUTION_EVENT_EXCEPTION,
         EXECUTION_EVENT_FINISH,
-        EXECUTION_ACTION_REPORT_EXCEPTION,
-    },
-    EXECUTION_STATUS_EXCEPTION: {
-        EXECUTION_EVENT_RESUME,
-        EXECUTION_EVENT_FINISH,
-    },
-    EXECUTION_STATUS_COMPLETED: set(),
+    )
 }
 
 _ACTION_PAYLOAD_FIELDS = (
@@ -224,13 +223,14 @@ def _conflict(reason: str, *, details: Optional[Dict[str, Any]] = None, message:
 
 
 def _parse_feedback_datetime(value: Any, field: str = "event_time") -> datetime:
-    text = _text(value).replace("/", "-").replace("T", " ").replace("：", ":")
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
-        try:
-            return datetime.strptime(text, fmt)
-        except ValueError:
-            continue
-    raise _invalid_field_value(field, "反馈时间格式不正确，请检查后再提交。")
+    try:
+        return parse_operation_event_time(value)
+    except ValueError:
+        raise _invalid_field_value(field, "反馈时间格式不正确，请检查后再提交。") from None
+
+
+def _normalize_feedback_datetime(value: Any, field: str = "event_time") -> str:
+    return _parse_feedback_datetime(value, field).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _validate_known_value(value: Optional[str], field: str, labels: Dict[str, str]) -> None:

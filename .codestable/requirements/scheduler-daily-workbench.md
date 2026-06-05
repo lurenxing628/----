@@ -3,7 +3,7 @@ doc_type: requirement
 slug: scheduler-daily-workbench
 pitch: 计划员每天打开系统就能知道先看哪版计划、先处理哪些风险、下一步去哪里。
 status: current
-last_reviewed: 2026-06-01
+last_reviewed: 2026-06-04
 implemented_by: [ARCHITECTURE]
 tags: [aps, workbench, scheduler, dashboard]
 ---
@@ -43,3 +43,4 @@ tags: [aps, workbench, scheduler, dashboard]
 
 - 2026-06-01：根据 `dashboard-workbench-risk-todos` 验收结果 backfill 为当前有效能力。
 - 2026-06-01：根据 `reports-workbench-backlink` 验收结果补入报表中心和报表明细回跳能力；超期、资源负荷、计划和现场实际、停机影响可以保留上下文回到甘特、资源派工、首页值班台或正式方案复盘，报表页面和导出按同一批筛选条件取数，未支持的班组维度、未知维度、冲突别名和半截资源筛选不会静默放大全量，坏数字和坏导出行数也不会悄悄按 0 展示。
+- 2026-06-04：根据 `workbench-flow-regression-suite` 验收结果补入第一版主流程回归保护；从首页进入分析、甘特、资源派工、报表和计划现场复盘时会持续测试版本、方案、日期、批次和资源上下文不丢，历史正式方案必须明示历史身份，非正式方案、缺失版本或坏摘要不能冒充当前可执行正式方案。

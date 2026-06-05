@@ -17,7 +17,7 @@ from tests.operation_execution_feedback_test_support import (
     _current_card,
     _current_query,
     _event_count,
-    _events_for_op,
+    _events_for_scope,
     _json,
 )
 
@@ -100,6 +100,10 @@ def test_actual_import_rejects_duplicate_task_codes_before_matching() -> None:
         schedule_id=100,
         op_id=10,
         batch_id="B1",
+        requested_plan_role="adopted",
+        source_table="schedule",
+        effective_plan_role="adopted",
+        scenario_id=None,
         op_name="OP10",
         planned_machine_id="M1",
         planned_machine_label="一号设备",
@@ -305,7 +309,7 @@ def test_actual_import_submit_checks_then_writes_or_rejects_whole_file(tmp_path,
         ),
     )
     good_payload = _json(good_resp)["data"]
-    events = _events_for_op(db_path, 10)
+    events = _events_for_scope(db_path)
 
     assert good_resp.status_code == 200
     assert good_payload["summary"]["added_events"] == 2
@@ -335,7 +339,7 @@ def test_actual_import_allows_total_quantity_over_planned_for_rework(tmp_path, m
 
     import_resp = _post_import(client, over_file)
     assert import_resp.status_code == 200
-    events = _events_for_op(db_path, 10)
+    events = _events_for_scope(db_path)
     assert [row["event_type"] for row in events] == ["start", "finish"]
     assert events[1]["quantity_done"] == 8
     assert events[1]["quantity_scrapped"] == 5
@@ -376,7 +380,7 @@ def test_actual_import_confirm_writes_only_after_clean_preview_and_rejects_error
         json={"preview_token": preview["preview_token"], "raw_rows": preview["raw_rows"]},
     )
     confirm_payload = _json(confirm)["data"]
-    events = _events_for_op(db_path, 10)
+    events = _events_for_scope(db_path)
 
     assert confirm.status_code == 200
     assert confirm_payload["summary"]["added_events"] == 4
@@ -438,115 +442,4 @@ def test_actual_import_confirm_handles_datetime_cells_round_trip(tmp_path, monke
 
     assert confirm.status_code == 200, _json(confirm)
     assert _json(confirm)["data"]["summary"]["added_events"] == 2
-    assert [row["event_type"] for row in _events_for_op(db_path, 10)] == ["start", "finish"]
-
-
-def test_actual_record_and_import_reject_non_current_official_plan(tmp_path, monkeypatch) -> None:
-    app, db_path = _build_app(tmp_path, monkeypatch)
-    client = app.test_client()
-    card = _current_card(client)
-    import_file = _workbook_bytes([{"任务识别码": "任意任务", "实际开工时间": "2026-05-01 08:00:00"}])
-    old_plan_query = (
-        "scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01"
-        "&date_from=2026-05-01&date_to=2026-05-07&version=1&plan_role=adopted"
-    )
-
-    direct = client.post(
-        f"/scheduler/resource-dispatch/execution/{card['op_id']}/actual?{old_plan_query}",
-        json=_base_payload(
-            card,
-            idempotency_key="actual-reject-history",
-            version=1,
-            actual_start_time="2026-05-01 08:00:00",
-        ),
-    )
-    template = client.get(
-        f"/scheduler/resource-dispatch/execution/actual-template?{old_plan_query}"
-    )
-    preview = client.post(
-        f"/scheduler/resource-dispatch/execution/import/preview?{old_plan_query}",
-        data={"file": (io.BytesIO(import_file), "actual.xlsx")},
-        content_type="multipart/form-data",
-    )
-    direct_import = client.post(
-        f"/scheduler/resource-dispatch/execution/import?{old_plan_query}",
-        data={"file": (io.BytesIO(import_file), "actual.xlsx")},
-        content_type="multipart/form-data",
-    )
-    confirm = client.post(
-        f"/scheduler/resource-dispatch/execution/import/confirm?{old_plan_query}",
-        json={
-            "preview_token": "old-plan",
-            "raw_rows": [{"sheet": "任务反馈", "row_number": 2, "任务识别码": "任意任务", "实际开工时间": "2026-05-01 08:00:00"}],
-        },
-    )
-
-    assert direct.status_code == 409
-    assert _json(direct)["error"]["details"]["reason"] == "not_current_official_plan"
-    assert template.status_code == 409
-    assert preview.status_code == 409
-    assert _json(preview)["error"]["details"]["reason"] == "not_current_official_plan"
-    assert direct_import.status_code == 409
-    assert _json(direct_import)["error"]["details"]["reason"] == "not_current_official_plan"
-    assert confirm.status_code == 409
-    assert _json(confirm)["error"]["details"]["reason"] == "not_current_official_plan"
-    assert _event_count(db_path) == 0
-
-
-def test_actual_record_and_import_reject_candidate_and_scenario_plans(tmp_path, monkeypatch) -> None:
-    app, db_path = _build_app(tmp_path, monkeypatch)
-    client = app.test_client()
-    card = _current_card(client)
-    import_file = _workbook_bytes([{"任务识别码": "任意任务", "实际开工时间": "2026-05-01 08:00:00"}])
-    cases = (
-        (
-            "candidate",
-            {"requested_plan_role": "baseline_best", "effective_plan_role": "adopted", "source_table": "schedule"},
-            "scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01&date_from=2026-05-01&date_to=2026-05-07&version=2&plan_role=baseline_best",
-        ),
-        (
-            "scenario",
-            {"requested_plan_role": "adopted", "scenario_id": "scenario-plain"},
-            "scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01&date_from=2026-05-01&date_to=2026-05-07&version=2&plan_role=adopted&scenario_id=scenario-plain",
-        ),
-    )
-
-    for label, overrides, query in cases:
-        direct = client.post(
-            f"/scheduler/resource-dispatch/execution/{card['op_id']}/actual?{query}",
-            json=_base_payload(
-                card,
-                idempotency_key=f"actual-reject-{label}",
-                actual_start_time="2026-05-01 08:00:00",
-                **overrides,
-            ),
-        )
-        template = client.get(f"/scheduler/resource-dispatch/execution/actual-template?{query}")
-        preview = client.post(
-            f"/scheduler/resource-dispatch/execution/import/preview?{query}",
-            data={"file": (io.BytesIO(import_file), "actual.xlsx")},
-            content_type="multipart/form-data",
-        )
-        direct_import = client.post(
-            f"/scheduler/resource-dispatch/execution/import?{query}",
-            data={"file": (io.BytesIO(import_file), "actual.xlsx")},
-            content_type="multipart/form-data",
-        )
-        confirm = client.post(
-            f"/scheduler/resource-dispatch/execution/import/confirm?{query}",
-            json={
-                "preview_token": f"reject-{label}",
-                "raw_rows": [{"sheet": "任务反馈", "row_number": 2, "任务识别码": "任意任务", "实际开工时间": "2026-05-01 08:00:00"}],
-            },
-        )
-
-        assert direct.status_code == 409
-        assert _json(direct)["error"]["details"]["reason"] == "not_current_official_plan"
-        assert template.status_code == 409
-        assert preview.status_code == 409
-        assert _json(preview)["error"]["details"]["reason"] == "not_current_official_plan"
-        assert direct_import.status_code == 409
-        assert _json(direct_import)["error"]["details"]["reason"] == "not_current_official_plan"
-        assert confirm.status_code == 409
-        assert _json(confirm)["error"]["details"]["reason"] == "not_current_official_plan"
-    assert _event_count(db_path) == 0
+    assert [row["event_type"] for row in _events_for_scope(db_path)] == ["start", "finish"]

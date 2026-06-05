@@ -8,12 +8,8 @@ from core.services.personnel import ResourceTeamService
 from core.services.personnel.operator_service import OperatorService
 
 from .operation_execution_feedback_service import OperationExecutionFeedbackService
+from .operation_execution_scope_read import apply_scoped_execution_state_to_rows
 from .plan_overdue_markers import build_overdue_meta_for_plan
-from .resource_dispatch_execution_enrichment import (
-    apply_execution_state_to_row,
-    positive_row_op_ids,
-    row_op_id,
-)
 from .resource_dispatch_page_context import (
     build_page_filters,
     can_query_page,
@@ -30,13 +26,13 @@ from .resource_dispatch_support import (
     extract_overdue_batch_ids_with_meta,
 )
 from .schedule_history_query_service import ScheduleHistoryQueryService
+from .schedule_plan_option_display import public_plan_role_options
 from .schedule_plan_query_service import ROLE_ADOPTED, SchedulePlanQueryService
 from .schedule_result_view_context import (
     normalize_plan_role,
     plan_role_filter_fields,
     plan_role_notice_from_fields,
     resolve_schedule_result_view_context,
-    serialize_plan_role_options,
 )
 from .version_resolution import VersionResolution, require_selected_version, resolve_version_or_latest
 
@@ -249,19 +245,8 @@ class ResourceDispatchService:
         except ValueError as exc:
             raise ValidationError(str(exc), field="plan_role") from exc
 
-    def _enrich_rows_with_execution_state(self, rows: List[Dict[str, Any]]) -> None:
-        op_ids = positive_row_op_ids(rows)
-        if not op_ids:
-            return
-        states = self.feedback_service.get_execution_state(op_ids)
-        for row in rows:
-            op_id = row_op_id(row)
-            if op_id is None:
-                continue
-            state = states.get(op_id)
-            if state is None:
-                continue
-            apply_execution_state_to_row(row, state)
+    def _enrich_rows_with_execution_state(self, rows: List[Dict[str, Any]], plan_role_fields: Dict[str, Any]) -> None:
+        apply_scoped_execution_state_to_rows(self.feedback_service, rows, plan_role_fields)
 
     def build_page_context(
         self,
@@ -388,7 +373,7 @@ class ResourceDispatchService:
                 effective_role=ROLE_ADOPTED,
             )
             payload["filters"].update(plan_role_fields)
-            payload["plan_role_options"] = serialize_plan_role_options([])
+            payload["plan_role_options"] = public_plan_role_options()
             payload["plan_role_notice"] = ""
             payload["status"] = "no_history"
             payload["requested_version"] = version_resolution.requested_version
@@ -433,7 +418,7 @@ class ResourceDispatchService:
         )
         rows = [dict(row) for row in rows]
         rows = self._filter_rows_by_batch(rows, batch_id)
-        self._enrich_rows_with_execution_state(rows)
+        self._enrich_rows_with_execution_state(rows, plan_role_fields)
 
         if normalized_scope_type == "team":
             payload = build_team_scope_payload(
@@ -463,7 +448,7 @@ class ResourceDispatchService:
             batch_id=batch_id,
         )
         payload["filters"].update(plan_role_fields)
-        payload["plan_role_options"] = serialize_plan_role_options(view_context.available_roles)
+        payload["plan_role_options"] = public_plan_role_options(view_context)
         payload["plan_role_notice"] = plan_role_notice_from_fields(plan_role_fields)
         payload["has_history"] = True
         payload["status"] = "ok"

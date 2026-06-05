@@ -19,6 +19,9 @@ from web.routes.reports_request_support import (
 from web.routes.reports_request_support import (
     request_scenario_id as _request_scenario_id,
 )
+from web.routes.reports_request_support import (
+    require_execution_review_adopted_plan as _require_execution_review_adopted_plan,
+)
 
 
 def register_report_export_routes(bp) -> None:
@@ -94,6 +97,7 @@ def register_report_export_routes(bp) -> None:
         started_at = time.time()
         engine = ReportEngine(g.db)
         version = _export_version_or_latest(engine)
+        plan_role, scenario_id = _require_execution_review_adopted_plan()
         date_from = request.args.get("date_from") or ""
         date_to = request.args.get("date_to") or ""
         batch_id = request.args.get("batch_id") or ""
@@ -112,7 +116,8 @@ def register_report_export_routes(bp) -> None:
             target_type="execution_review",
             export_type="计划和现场实际.xlsx",
             version=version,
-            raw_plan_role="adopted",
+            raw_plan_role=plan_role,
+            scenario_id=scenario_id,
             time_range={"date_from": date_from, "date_to": date_to, "batch_id": batch_id},
             started_at=started_at,
         )

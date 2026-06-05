@@ -97,7 +97,8 @@ def test_error_handler_maps_business_error_codes_to_http_status_for_html(
 
     body = response.get_data(as_text=True)
     assert response.status_code == expected_status
-    assert expected_code in body
+    assert expected_code not in body
+    assert "错误码" not in body
     assert f"error:{name}" not in body
     assert "发生错误" in body
 
@@ -419,7 +420,8 @@ def test_render_error_template_renders_rich_error_template_path() -> None:
 
     assert 'class="card"' in body
     assert "配置错误" in body
-    assert "400" in body
+    assert "400" not in body
+    assert "错误码" not in body
     assert "目标字段" in body
 
 
@@ -443,6 +445,7 @@ def test_render_error_template_falls_back_to_minimal_page_when_template_render_f
         )
 
     assert "配置错误" in body
-    assert "400" in body
+    assert "400" not in body
+    assert "错误码" not in body
     assert "目标字段" in body
     assert "<!doctype html>" in body.lower()

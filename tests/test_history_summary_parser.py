@@ -112,7 +112,15 @@ def test_decorate_history_version_options_preserves_status_label_contract() -> N
 def test_history_time_display_uses_chinese_business_format() -> None:
     assert format_public_date("2026-05-04") == "2026年5月4日"
     assert format_public_datetime("2026-05-04 03:20:59") == "2026年5月4日 03:20"
+    assert format_public_datetime("2026-05-04T03:20:59+08:00") == "2026年5月4日 03:20"
     assert format_public_datetime("Wed, 13 May 2026 00:00:00 GMT") == "2026年5月13日 00:00"
+    assert format_public_datetime("2026-99-99 99:99") == "时间记录异常"
+    assert format_public_datetime("2026-02-31 10:00") == "时间记录异常"
+    assert format_public_datetime("2026-05-04 03:20:99") == "时间记录异常"
+    assert format_public_datetime("2026-05-04T03:20:59+99:99") == "时间记录异常"
+    assert format_public_datetime("2026-05-04 03:20:59garbage") == "时间记录异常"
+    assert format_public_datetime("Wed, 13 May 2026 00:00:00 GMTgarbage") == "时间记录异常"
+    assert format_public_datetime("Wed, 13 May 2026 00:00:99 GMT") == "时间记录异常"
 
     decorated = decorate_history_version_options(
         [{"version": 4, "schedule_time": "2026-05-05 10:00:00", "result_status": "ok", "result_summary": "{}"}]
@@ -156,7 +164,8 @@ def test_strategy_display_label_marks_unknown_values_as_history_error() -> None:
     row = decorated[0]
     assert row["strategy_display_state"] == "invalid"
     assert row["strategy_label"] == "历史记录异常"
-    assert "future_strategy" in row["strategy_display_message"]
+    assert "future_strategy" not in row["strategy_display_message"]
+    assert "历史记录里的排产方式" in row["strategy_display_message"]
 
 
 def test_build_history_summary_display_keeps_parse_state_visible() -> None:

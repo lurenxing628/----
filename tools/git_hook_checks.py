@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Small repository-local checks used by git hooks."""
-
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import os
 import subprocess
 import sys
@@ -19,7 +19,6 @@ except ImportError:  # pragma: no cover - direct script execution path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ZERO_SHA = "0" * 40
-
 def _run_git(args: Sequence[str]) -> str:
     result = subprocess.run(
         ["git", *args],
@@ -45,6 +44,8 @@ def _normalize_path(path: str) -> str:
 
 
 def _path_matches_rule(path: str, pattern: str) -> bool:
+    if any(token in pattern for token in ("*", "?", "[")):
+        return fnmatch.fnmatchcase(path, pattern)
     if pattern.endswith("/"):
         return path.startswith(pattern)
     if pattern.endswith("_"):

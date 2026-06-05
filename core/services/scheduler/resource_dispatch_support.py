@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Set
 
 from core.services.common.build_outcome import BuildOutcome
@@ -10,6 +9,7 @@ from core.services.common.degradation import (
 from core.services.scheduler.degradation_messages import public_degradation_events
 
 from ._sched_display_utils import BAD_TIME_EMPTY_REASON as _BAD_TIME_EMPTY_REASON
+from .resource_dispatch_overdue import extract_overdue_batch_ids, extract_overdue_batch_ids_with_meta
 from .resource_dispatch_range import DispatchRange
 from .resource_dispatch_rows import (
     build_dispatch_calendar_matrix,
@@ -21,80 +21,6 @@ from .resource_dispatch_rows import (
 
 def _text(value: Any) -> str:
     return str(value or "").strip()
-
-
-def extract_overdue_batch_ids_with_meta(result_summary: Any) -> Dict[str, Any]:
-    meta: Dict[str, Any] = {
-        "ids": [],
-        "degraded": False,
-        "partial": False,
-        "message": "",
-        "reason": "",
-    }
-    if not result_summary:
-        meta["degraded"] = True
-        meta["message"] = "排产摘要缺失，超期统计和标记可能不完整。"
-        meta["reason"] = "result_summary_missing"
-        return meta
-    try:
-        payload = result_summary if isinstance(result_summary, dict) else json.loads(result_summary or "{}")
-    except Exception as exc:
-        meta["degraded"] = True
-        meta["message"] = "排产摘要读取失败，超期统计和标记可能不完整。"
-        meta["reason"] = f"result_summary_json:{exc.__class__.__name__}"
-        return meta
-    overdue = payload.get("overdue_batches")
-    if overdue is None:
-        meta["degraded"] = True
-        meta["message"] = "排产摘要缺少超期清单，超期统计和标记可能不完整。"
-        meta["reason"] = "overdue_batches_missing"
-        return meta
-    if isinstance(overdue, dict):
-        overdue = overdue.get("items")
-        if overdue is None:
-            meta["degraded"] = True
-            meta["message"] = "排产摘要的超期清单明细缺失，超期统计和标记可能不完整。"
-            meta["reason"] = "overdue_items_missing"
-            return meta
-    if not isinstance(overdue, Sequence) or isinstance(overdue, (str, bytes, bytearray)):
-        meta["degraded"] = True
-        meta["message"] = "排产摘要的超期清单格式不正确，超期统计和标记可能不完整。"
-        meta["reason"] = "overdue_batches_invalid_type"
-        return meta
-    result: List[str] = []
-    seen: Set[str] = set()
-    invalid_items = 0
-    for item in overdue:
-        if isinstance(item, dict):
-            text = _text(item.get("batch_id") or item.get("id") or item.get("value"))
-        else:
-            text = _text(item)
-        if text:
-            if text not in seen:
-                seen.add(text)
-                result.append(text)
-        else:
-            invalid_items += 1
-    if invalid_items > 0 and result:
-        meta["partial"] = True
-        meta["message"] = "排产摘要中的部分超期明细格式不正确，当前仅按已识别条目标记，结果可能仍有遗漏。"
-        meta["reason"] = "overdue_item_partial"
-    elif invalid_items > 0:
-        meta["degraded"] = True
-        meta["message"] = "排产摘要中的超期明细格式不正确，无法识别超期批次，超期统计和标记可能不完整。"
-        meta["reason"] = "overdue_item_invalid"
-    meta["ids"] = result
-    return meta
-
-
-def extract_overdue_batch_ids(result_summary: Any) -> Set[str]:
-    meta = extract_overdue_batch_ids_with_meta(result_summary)
-    result: Set[str] = set()
-    for item in meta.get("ids") or []:
-        text = _text(item)
-        if text:
-            result.add(text)
-    return result
 
 
 def filter_team_rows_by_axis(rows: Sequence[Dict[str, Any]], *, team_id: str, axis: str) -> List[Dict[str, Any]]:

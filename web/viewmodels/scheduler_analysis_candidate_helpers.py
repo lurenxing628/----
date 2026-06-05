@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+import math
+from typing import Any, Dict, List, Optional, Tuple
 
 from core.models.schedule_plan_role import (
     ROLE_ADOPTED,
@@ -29,6 +30,8 @@ _SELECTION_REASON_LABELS = {
     "balanced_critical_health_better": "系统综合查看交期和整体表现后，选择了重点工序优先方案。",
     "balanced_raw_score_best": "系统综合查看交期和整体表现后，选择了整体表现更好、且没有明显增加拖期风险的方案。",
 }
+_DEFAULT_SELECTION_REASON_LABEL = "系统按本次设置自动选择正式采用方案。"
+_INVALID_SELECTION_REASON_LABEL = "推荐理由记录异常，请复核这次方案对比记录。"
 
 _FAILURE_REASON_LABELS = {
     "candidate_time_budget_reached": "试算时间到了，系统没有继续算这套方案",
@@ -44,6 +47,8 @@ _SUMMARY_CARD_METRICS = (
     ("makespan_hours", "总工期", "小时"),
     ("changeover_count", "换型次数", "次"),
 )
+
+_INTEGER_METRIC_KEYS = frozenset(("failed_ops", "overdue_count", "changeover_count"))
 
 
 def _plan_role_label(role: str) -> str:
@@ -120,20 +125,25 @@ def _candidate_key_for_role(
 
 
 def _candidate_metric(candidate: Dict[str, Any], key: str) -> Optional[Any]:
+    value, failed = _candidate_metric_state(candidate, key)
+    return None if failed else value
+
+
+def _candidate_metric_parse_failed(candidate: Dict[str, Any], key: str) -> bool:
+    _value, failed = _candidate_metric_state(candidate, key)
+    return bool(failed)
+
+
+def _candidate_metric_state(candidate: Dict[str, Any], key: str) -> Tuple[Optional[Any], bool]:
     metrics = candidate.get("metrics") if isinstance(candidate, dict) else None
+    value = None
     if isinstance(metrics, dict) and key in metrics:
-        return metrics.get(key)
-    return None
-
-
-def _candidate_failed_ops(candidate: Dict[str, Any]) -> Optional[Any]:
-    metric_value = _candidate_metric(candidate, "failed_ops")
-    if metric_value is not None:
-        return metric_value
-    score = candidate.get("score") if isinstance(candidate, dict) else None
-    if isinstance(score, (list, tuple)) and score:
-        return score[0]
-    return None
+        value = metrics.get(key)
+    elif key == "failed_ops":
+        score = candidate.get("score") if isinstance(candidate, dict) else None
+        if isinstance(score, (list, tuple)) and score:
+            value = score[0]
+    return _coerce_candidate_metric(value, integer=key in _INTEGER_METRIC_KEYS)
 
 
 def _candidate_technical_score_label(candidate: Dict[str, Any]) -> str:
@@ -153,6 +163,34 @@ def _metric_number(value: Any) -> Optional[float]:
     return number
 
 
+def _coerce_candidate_metric(value: Any, *, integer: bool) -> Tuple[Optional[Any], bool]:
+    if value is None or (isinstance(value, str) and value.strip() == ""):
+        return None, False
+    if isinstance(value, bool):
+        return None, True
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None, True
+    if not math.isfinite(number):
+        return None, True
+    if integer:
+        if not float(number).is_integer():
+            return None, True
+        return int(number), False
+    return number, False
+
+
+def _non_negative_int_state(value: Any) -> Tuple[int, bool]:
+    parsed, failed = _coerce_candidate_metric(value, integer=True)
+    if failed:
+        return 0, True
+    if parsed is None:
+        return 0, False
+    number = int(parsed)
+    return (number, False) if number >= 0 else (0, True)
+
+
 def _format_metric_value(value: Any, unit: str) -> str:
     number = _metric_number(value)
     if number is None:
@@ -164,9 +202,11 @@ def _format_metric_value(value: Any, unit: str) -> str:
     return f"{text} {unit}" if unit else text
 
 
-def _format_metric_comparison(value: Any, adopted_value: Any, unit: str, *, is_adopted: bool) -> str:
+def _format_metric_comparison(value: Any, adopted_value: Any, unit: str, *, is_adopted: bool, parse_failed: bool = False) -> str:
     if is_adopted:
         return "作为对比基准"
+    if parse_failed:
+        return "无法安全对比"
     current = _metric_number(value)
     adopted = _metric_number(adopted_value)
     if current is None or adopted is None:
@@ -180,16 +220,30 @@ def _format_metric_comparison(value: Any, adopted_value: Any, unit: str, *, is_a
 
 def _candidate_status_label(status_value: Any) -> str:
     status = str(status_value or "").strip()
-    if not status:
-        return "-"
-    return _CANDIDATE_STATUS_LABELS.get(status, "状态未识别")
+    if not status or status == "missing":
+        return "状态没有确认"
+    return _CANDIDATE_STATUS_LABELS.get(status, "状态记录异常")
+
+
+def _candidate_status_public_value(status_value: Any) -> str:
+    status = str(status_value or "").strip()
+    if not status or status == "missing":
+        return ""
+    return status if status in _CANDIDATE_STATUS_LABELS else "invalid"
 
 
 def _selection_reason_label(reason_code: Any) -> str:
+    return str(_selection_reason_state(reason_code).get("label") or "")
+
+
+def _selection_reason_state(reason_code: Any) -> Dict[str, Any]:
     code = str(reason_code or "").strip()
     if not code:
-        return "系统按本次设置自动选择正式采用方案。"
-    return _SELECTION_REASON_LABELS.get(code, "系统按本次设置自动选择正式采用方案。")
+        return {"label": _DEFAULT_SELECTION_REASON_LABEL, "parse_failed": False}
+    label = _SELECTION_REASON_LABELS.get(code)
+    if label:
+        return {"label": label, "parse_failed": False}
+    return {"label": _INVALID_SELECTION_REASON_LABEL, "parse_failed": True}
 
 
 def _failure_reason_label(reason_value: Any) -> str:
@@ -239,6 +293,10 @@ def _public_candidate_label_text(value: Any) -> str:
         parts = text.replace("graph_w", "", 1).split("_of_", 1)
         if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
             return f"重点工序优先方案 {int(parts[0])}/{int(parts[1])}"
+    has_chinese = any("\u4e00" <= ch <= "\u9fff" for ch in text)
+    has_ascii_letter = any(("a" <= ch.lower() <= "z") for ch in text)
+    if "_" in text or (has_ascii_letter and not has_chinese):
+        return ""
     return text
 
 
@@ -321,8 +379,11 @@ def _warning_message(text: str) -> Dict[str, str]:
 
 def _comparison_status_messages(comparison: Dict[str, Any]) -> List[Dict[str, str]]:
     messages: List[Dict[str, str]] = []
-    failed_count = int(comparison.get("failed_candidate_count") or 0)
+    failed_count, failed_count_parse_failed = _non_negative_int_state(comparison.get("failed_candidate_count"))
     failed_labels = _failed_candidate_labels(comparison)
+    if failed_count_parse_failed:
+        messages.append(_warning_message("试算方案失败数量记录异常，请复核这次方案对比记录。"))
+        failed_count = 0
     if failed_count > 0:
         suffix = f"：{'、'.join(failed_labels)}。" if failed_labels else "。"
         messages.append(_warning_message(f"这次有 {failed_count} 个试算方案没算成功{suffix}系统只在算成功的方案里选结果。"))
@@ -380,7 +441,7 @@ def _candidate_recommendation_card(
     candidate_label = str(adopted.get("candidate_label") or adopted.get("role_label") or "").strip()
     if not candidate_label:
         return None
-    reason = str(selection_reason_label or "").strip() or "系统按本次设置自动选择正式采用方案。"
+    reason = str(selection_reason_label or "").strip() or _DEFAULT_SELECTION_REASON_LABEL
     return {
         "eyebrow": "推荐结论",
         "title": "系统建议采用",
@@ -398,7 +459,7 @@ def _candidate_status(candidate: Dict[str, Any], option: Optional[Dict[str, Any]
     option_status = str((option or {}).get("candidate_status") or "").strip()
     candidate_status = str(candidate.get("status") or "").strip()
     if not option_status or not candidate_status:
-        return ""
+        return "missing"
     if not _candidate_status_completed(option_status):
         return option_status
     if not _candidate_status_completed(candidate_status):

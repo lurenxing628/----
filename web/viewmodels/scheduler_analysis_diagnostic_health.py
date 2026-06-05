@@ -109,7 +109,7 @@ def _public_graph_status_message(graph_public: Dict[str, Any]) -> str:
         return "图分析数据暂时无法读取，请到排产历史查看本次排产提醒。"
     if "internal/external" in raw or "internal / external" in raw:
         return "工序归属数据不完整，请检查工艺路线里的自制/外协设置。"
-    return raw
+    return "图分析状态记录异常，请到排产历史查看本次排产提醒。"
 
 
 def build_overall_health_section(

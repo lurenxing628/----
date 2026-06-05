@@ -4,10 +4,11 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 from core.infrastructure.errors import ValidationError
 from core.models.operation_execution_state import OperationExecutionState
-from core.models.schedule_plan_role import ROLE_ADOPTED
+from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
 from data.repositories.schedule_repo import ScheduleRepository
 
 from .operation_execution_feedback_service import ExecutionFeedbackContext, OperationExecutionFeedbackService
+from .operation_execution_scope_read import states_by_op_id_for_plan_rows
 from .resource_dispatch_range import resolve_dispatch_range
 from .resource_dispatch_rows import prepare_dispatch_rows
 from .resource_dispatch_service import ResourceDispatchService
@@ -26,6 +27,16 @@ def _positive_int(value: Any) -> Optional[int]:
     except (TypeError, ValueError):
         return None
     return parsed if parsed > 0 else None
+
+
+def _context_is_current_official(context: ExecutionFeedbackContext, latest_version: int) -> bool:
+    return (
+        int(context.schedule_version) == int(latest_version)
+        and _text(context.requested_plan_role) == ROLE_ADOPTED
+        and _text(context.effective_plan_role) == ROLE_ADOPTED
+        and _text(context.source_table) == SOURCE_SCHEDULE
+        and not _text(context.scenario_id)
+    )
 
 
 class ResourceDispatchExecutionService:
@@ -109,8 +120,7 @@ class ResourceDispatchExecutionService:
             if not normalized_batch_id or _text((row or {}).get("batch_id")) == normalized_batch_id
         ]
         prepared = prepare_dispatch_rows(rows, scope="resource_dispatch.execution")
-        op_ids = self._op_ids(prepared.value)
-        states = self.feedback_service.get_execution_state(op_ids)
+        states = states_by_op_id_for_plan_rows(self.feedback_service, prepared.value, plan_role_fields)
         return {
             "plan_identity": self._plan_identity(view_context),
             "plan_identity_label": str(plan_role_fields.get("plan_identity_label") or ""),
@@ -130,37 +140,22 @@ class ResourceDispatchExecutionService:
     ) -> Dict[str, Any]:
         schedule = self.schedule_repo.get(int(context.schedule_id))
         if schedule is None:
-            return {
-                "plan_identity": {},
-                "plan_identity_label": "正式采用方案",
-                "can_write_feedback": True,
-                "rows": [],
-                "states": {int(context.op_id): state},
-                "feedback_write_enabled": feedback_write_enabled,
-                "degradation_events": [],
-            }
+            raise ValidationError("现场记录对应的排程行不存在，请刷新后重试。", field="schedule_id")
         rows = self.plan_query_service.list_plan_dispatch_rows_for_resolution(
             version=int(context.schedule_version),
-            source_table="schedule",
+            source_table=_text(context.source_table),
             candidate_id=None,
-            scenario_id=None,
+            scenario_id=_text(context.scenario_id) or None,
             start_time=schedule.start_time,
             end_time=schedule.end_time,
         )
-        row = self._matching_row(rows, int(context.schedule_id), int(context.op_id))
+        row = self._matching_row(rows, context)
+        identity = self._plan_identity_from_context(context)
         return {
-            "plan_identity": {
-                "version": int(context.schedule_version),
-                "requested_plan_role": ROLE_ADOPTED,
-                "effective_plan_role": ROLE_ADOPTED,
-                "source_table": "schedule",
-                "scenario_id": None,
-                "user_label": "正式采用方案",
-                "can_write_feedback": True,
-            },
-            "plan_identity_label": "正式采用方案",
-            "can_write_feedback": True,
-            "rows": [row] if row else [],
+            "plan_identity": identity,
+            "plan_identity_label": str(identity.get("user_label") or ""),
+            "can_write_feedback": bool(identity.get("can_write_feedback")),
+            "rows": [row],
             "states": {int(context.op_id): state},
             "feedback_write_enabled": feedback_write_enabled,
             "degradation_events": [],
@@ -179,14 +174,29 @@ class ResourceDispatchExecutionService:
         return out
 
     @staticmethod
-    def _matching_row(rows: Sequence[Mapping[str, Any]], schedule_id: int, op_id: int) -> Optional[Dict[str, Any]]:
+    def _matching_row(rows: Sequence[Mapping[str, Any]], context: ExecutionFeedbackContext) -> Dict[str, Any]:
         for row in rows:
-            if _positive_int(row.get("schedule_id")) == schedule_id and _positive_int(row.get("op_id")) == op_id:
+            if (
+                _positive_int(row.get("schedule_id")) == int(context.schedule_id)
+                and _positive_int(row.get("op_id")) == int(context.op_id)
+                and _text(row.get("batch_id")) == _text(context.batch_id)
+            ):
                 return dict(row)
-        for row in rows:
-            if _positive_int(row.get("op_id")) == op_id:
-                return dict(row)
-        return None
+        raise ValidationError("现场记录对应的任务不在当前计划身份里，请刷新后重试。", field="plan_identity")
+
+    def _plan_identity_from_context(self, context: ExecutionFeedbackContext) -> Dict[str, Any]:
+        latest_version = self.dispatch_service._latest_version()
+        current_official = _context_is_current_official(context, latest_version)
+        label = "正式采用方案" if current_official else f"历史或对比方案 v{int(context.schedule_version)}"
+        return {
+            "version": int(context.schedule_version),
+            "requested_plan_role": _text(context.requested_plan_role),
+            "effective_plan_role": _text(context.effective_plan_role),
+            "source_table": _text(context.source_table),
+            "scenario_id": _text(context.scenario_id) or None,
+            "user_label": label,
+            "can_write_feedback": current_official,
+        }
 
     @staticmethod
     def _plan_identity(view_context: Any) -> Dict[str, Any]:

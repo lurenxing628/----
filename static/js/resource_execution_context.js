@@ -22,10 +22,10 @@
     return input ? trim(input.value) : "";
   }
 
-  function actualRecordUrl(opId) {
+  function actualRecordUrl(taskKey) {
     const template = trim(state && state.cfg && state.cfg.actualRecordUrlTemplate);
-    if (!template || !opId) return "";
-    const path = template.replace("__OP_ID__", encodeURIComponent(opId));
+    if (!template || !taskKey) return "";
+    const path = template.replace("__TASK_KEY__", encodeURIComponent(taskKey));
     if (path.indexOf("?") >= 0) return path;
     const query = currentQueryString();
     if (!query) return path;

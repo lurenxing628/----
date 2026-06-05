@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from flask import g, has_request_context, request, url_for
 from werkzeug.routing.exceptions import BuildError
 
+from core.models.schedule_plan_role import VALID_PLAN_ROLES
 from web.ui_mode_request import _log_warning
 from web.viewmodels.page_manuals import build_manual_for_endpoint, resolve_manual_id
 
@@ -85,6 +86,29 @@ def _resolve_manual_src(src: Any = None) -> str:
         return "/"
 
 
+def _sanitize_manual_src_context(src: Optional[str]) -> Optional[str]:
+    if not src:
+        return src
+    try:
+        parts = urlsplit(src)
+    except ValueError:
+        return src
+    query = []
+    changed = False
+    for key, value in parse_qsl(parts.query, keep_blank_values=True):
+        if key == "plan_role" and str(value or "").strip() not in VALID_PLAN_ROLES:
+            changed = True
+            continue
+        query.append((key, value))
+    if not changed:
+        return src
+    return urlunsplit(("", "", parts.path or "/", urlencode(query), parts.fragment))
+
+
+def normalize_manual_src_context(raw: Any = None) -> Optional[str]:
+    return _sanitize_manual_src_context(normalize_manual_src(raw))
+
+
 def safe_url_for(endpoint: str, **values: Any) -> Optional[str]:
     """
     url_for 的安全封装：
@@ -132,7 +156,7 @@ def get_manual_url(endpoint: Any = None, src: Any = None) -> Optional[str]:
     current_endpoint = _resolve_manual_endpoint(endpoint)
     if not current_endpoint or resolve_manual_id(current_endpoint) is None:
         return None
-    safe_src = normalize_manual_src(_resolve_manual_src(src))
+    safe_src = normalize_manual_src_context(_resolve_manual_src(src))
     return safe_url_for("scheduler.config_manual_page", page=current_endpoint, src=safe_src)
 
 
@@ -143,7 +167,7 @@ def get_full_manual_section_url(endpoint: Any = None, src: Any = None) -> str:
     manual = build_manual_for_endpoint(current_endpoint, include_sections=False)
     if not manual:
         return ""
-    safe_src = normalize_manual_src(_resolve_manual_src(src))
+    safe_src = normalize_manual_src_context(_resolve_manual_src(src))
     base_url = safe_url_for("scheduler.config_manual_page", src=safe_src)
     if not base_url:
         return ""

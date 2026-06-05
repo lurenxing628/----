@@ -47,12 +47,10 @@
               <tr>
                 <td>{{ loop.index }}</td>
                 <td>{{ r.display_tag or '方案来源未知' }}</td>
-                <td>{{ strategy_zh.get(r.strategy, '未知排产方式') }}</td>
-                {% set row_dispatch_mode = r.dispatch_mode %}
+                <td>{{ r.strategy_label or '历史记录异常' }}</td>
                 {% set row_dispatch_rule = r.dispatch_rule %}
-                <td>
-                  {{ dispatch_mode_zh.get(row_dispatch_mode, '未知派工方式') }}{% if row_dispatch_rule %} / {{ dispatch_rule_zh.get(row_dispatch_rule, '未知派工规则') }}{% endif %}
-                </td>
+                {% set row_dispatch_label = r.dispatch_label or (dispatch_rule_zh.get(row_dispatch_rule) if row_dispatch_rule else '-') %}
+                <td>{{ row_dispatch_label or '派工规则记录异常' }}</td>
                 <td>
                   {% if r.failed_ops_parse_failed %}
                     记录异常

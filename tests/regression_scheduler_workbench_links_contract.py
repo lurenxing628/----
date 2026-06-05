@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Tuple
 from urllib.parse import parse_qs, urlparse
 
 from web.viewmodels.scheduler_workbench_links import (
@@ -20,7 +21,7 @@ def _query_values(url: str) -> dict:
     return {key: values[-1] for key, values in parse_qs(urlparse(url).query).items()}
 
 
-def test_workbench_context_and_link_keep_plan_date_and_resource_params() -> None:
+def _operator_context() -> dict:
     context = build_workbench_plan_context(
         version=12,
         plan_role="adopted",
@@ -34,17 +35,20 @@ def test_workbench_context_and_link_keep_plan_date_and_resource_params() -> None
         resource_label="张三",
         can_write_feedback=True,
     )
+    context["is_current_executable_official_version"] = True
+    return context
 
-    gantt = build_workbench_link(context, "gantt", label="查看人员甘特", view="operator")
-    dispatch = build_workbench_link(context, "resource_dispatch", label="查看排班")
-    week_plan = build_workbench_link(context, "week_plan", label="查看周计划")
-    utilization = build_workbench_link(context, "utilization_report", label="看资源负荷")
-    review = build_workbench_link(context, "execution_review", label="查看计划和实际")
 
+def _assert_url_fragments(url: str, fragments: Tuple[str, ...]) -> None:
+    for fragment in fragments:
+        assert fragment in url
+
+
+def _assert_gantt_link(gantt: dict) -> None:
     assert gantt["target_page"] == "gantt"
     assert gantt["disabled"] is False
     assert "/scheduler/gantt?" in gantt["url"]
-    for fragment in (
+    _assert_url_fragments(gantt["url"], (
         "version=12",
         "plan_role=adopted",
         "start_date=2026-05-25",
@@ -54,8 +58,7 @@ def test_workbench_context_and_link_keep_plan_date_and_resource_params() -> None
         "gantt_batch=B202605-001",
         "gantt_resource=O1",
         "view=operator",
-    ):
-        assert fragment in gantt["url"]
+    ))
     assert gantt["required_params"] == [
         "view",
         "version",
@@ -68,7 +71,9 @@ def test_workbench_context_and_link_keep_plan_date_and_resource_params() -> None
         "gantt_resource",
     ]
 
-    for fragment in (
+
+def _assert_dispatch_link(dispatch: dict) -> None:
+    _assert_url_fragments(dispatch["url"], (
         "version=12",
         "plan_role=adopted",
         "date_from=2026-05-25",
@@ -78,25 +83,28 @@ def test_workbench_context_and_link_keep_plan_date_and_resource_params() -> None
         "scope_type=operator",
         "operator_id=O1",
         "batch_id=B202605-001",
-    ):
-        assert fragment in dispatch["url"]
+    ))
     assert "start_date=" not in dispatch["url"]
     assert "end_date=" not in dispatch["url"]
     assert "query_date" in dispatch["required_params"]
     assert "period_preset" in dispatch["required_params"]
     assert "scope_type" in dispatch["required_params"]
 
+
+def _assert_week_plan_link(week_plan: dict) -> None:
     assert "/scheduler/week-plan?" in week_plan["url"]
-    assert "version=12" in week_plan["url"]
-    assert "plan_role=adopted" in week_plan["url"]
-    assert "week_start=2026-05-25" in week_plan["url"]
-    assert "date_from=2026-05-25" in week_plan["url"]
-    assert "date_to=2026-05-31" in week_plan["url"]
-    assert "query_date=2026-05-28" in week_plan["url"]
-    assert "period_preset=week" in week_plan["url"]
-    assert "batch_id=B202605-001" in week_plan["url"]
-    assert "resource_type=operator" in week_plan["url"]
-    assert "resource_id=O1" in week_plan["url"]
+    _assert_url_fragments(week_plan["url"], (
+        "version=12",
+        "plan_role=adopted",
+        "week_start=2026-05-25",
+        "date_from=2026-05-25",
+        "date_to=2026-05-31",
+        "query_date=2026-05-28",
+        "period_preset=week",
+        "batch_id=B202605-001",
+        "resource_type=operator",
+        "resource_id=O1",
+    ))
     assert week_plan["required_params"] == [
         "version",
         "plan_role",
@@ -110,21 +118,39 @@ def test_workbench_context_and_link_keep_plan_date_and_resource_params() -> None
         "resource_id",
     ]
 
-    assert "start_date=2026-05-25" in utilization["url"]
-    assert "batch_id=B202605-001" in utilization["url"]
-    assert "resource_type=operator" in utilization["url"]
-    assert "resource_id=O1" in utilization["url"]
+
+def _assert_utilization_link(utilization: dict) -> None:
+    _assert_url_fragments(utilization["url"], (
+        "start_date=2026-05-25",
+        "batch_id=B202605-001",
+        "resource_type=operator",
+        "resource_id=O1",
+    ))
     assert "张三" in utilization["context_summary"]
 
-    assert "version=12" in review["url"]
-    assert "plan_role=adopted" in review["url"]
-    assert "date_from=2026-05-25" in review["url"]
-    assert "date_to=2026-05-31" in review["url"]
-    assert "query_date=2026-05-28" in review["url"]
-    assert "period_preset=week" in review["url"]
-    assert "batch_id=B202605-001" in review["url"]
-    assert "resource_type=operator" in review["url"]
-    assert "resource_id=O1" in review["url"]
+
+def _assert_execution_review_link(review: dict) -> None:
+    _assert_url_fragments(review["url"], (
+        "version=12",
+        "plan_role=adopted",
+        "date_from=2026-05-25",
+        "date_to=2026-05-31",
+        "query_date=2026-05-28",
+        "period_preset=week",
+        "batch_id=B202605-001",
+        "resource_type=operator",
+        "resource_id=O1",
+    ))
+
+
+def test_workbench_context_and_link_keep_plan_date_and_resource_params() -> None:
+    context = _operator_context()
+
+    _assert_gantt_link(build_workbench_link(context, "gantt", label="查看人员甘特", view="operator"))
+    _assert_dispatch_link(build_workbench_link(context, "resource_dispatch", label="查看排班"))
+    _assert_week_plan_link(build_workbench_link(context, "week_plan", label="查看周计划"))
+    _assert_utilization_link(build_workbench_link(context, "utilization_report", label="看资源负荷"))
+    _assert_execution_review_link(build_workbench_link(context, "execution_review", label="查看计划和实际"))
 
 
 def test_all_target_pages_preserve_full_workbench_context_matrix() -> None:
@@ -141,6 +167,7 @@ def test_all_target_pages_preserve_full_workbench_context_matrix() -> None:
         resource_label="M1 号设备",
         can_write_feedback=True,
     )
+    context["is_current_executable_official_version"] = True
     expected_by_target = {
         "dashboard": {
             "version": "12",
@@ -347,7 +374,22 @@ def test_primary_resource_links_disable_unsupported_team_context() -> None:
 
 
 def test_dashboard_analysis_and_reports_links_keep_context_without_inventing_period() -> None:
-    context = build_workbench_plan_context(
+    context = _machine_context_without_period()
+
+    dashboard = build_workbench_link(context, "dashboard")
+    analysis = build_workbench_link(context, "analysis")
+    reports = build_workbench_link(context, "reports_index")
+    dispatch = build_workbench_link(context, "resource_dispatch")
+    overdue = build_workbench_link(context, "overdue_report")
+    delay = build_workbench_link(context, "delay_diagnosis", batch_id="B202605-001")
+
+    _assert_dashboard_analysis_reports_context(dashboard, analysis, reports)
+    _assert_dispatch_and_overdue_context(dispatch, overdue)
+    _assert_delay_context(delay)
+
+
+def _machine_context_without_period() -> dict:
+    return build_workbench_plan_context(
         version=12,
         plan_role="adopted",
         date_from="2026-05-25",
@@ -358,47 +400,50 @@ def test_dashboard_analysis_and_reports_links_keep_context_without_inventing_per
         resource_label="M1 号设备",
     )
 
-    dashboard = build_workbench_link(context, "dashboard")
-    analysis = build_workbench_link(context, "analysis")
-    reports = build_workbench_link(context, "reports_index")
-    dispatch = build_workbench_link(context, "resource_dispatch")
-    overdue = build_workbench_link(context, "overdue_report")
-    delay = build_workbench_link(context, "delay_diagnosis", batch_id="B202605-001")
 
+def _assert_shared_context_fragments(link: dict) -> None:
+    _assert_url_fragments(link["url"], (
+        "version=12",
+        "plan_role=adopted",
+        "date_from=2026-05-25",
+        "date_to=2026-05-31",
+        "query_date=2026-05-28",
+    ))
+
+
+def _assert_dashboard_analysis_reports_context(dashboard: dict, analysis: dict, reports: dict) -> None:
     for link in (dashboard, analysis, reports):
-        assert "version=12" in link["url"]
-        assert "plan_role=adopted" in link["url"]
-        assert "date_from=2026-05-25" in link["url"]
-        assert "date_to=2026-05-31" in link["url"]
-        assert "query_date=2026-05-28" in link["url"]
+        _assert_shared_context_fragments(link)
 
-    assert "resource_type=machine" in dashboard["url"]
-    assert "resource_id=M1" in dashboard["url"]
-    assert "resource_type=machine" in analysis["url"]
-    assert "resource_id=M1" in analysis["url"]
-    assert "query_date=2026-05-28" in reports["url"]
-    assert "resource_type=machine" in reports["url"]
-    assert "resource_id=M1" in reports["url"]
-    assert "period_preset=custom" in dispatch["url"]
-    assert "query_date=2026-05-28" in dispatch["url"]
-    assert "scope_type=machine" in dispatch["url"]
-    assert "machine_id=M1" in dispatch["url"]
-    assert "date_from=2026-05-25" in overdue["url"]
-    assert "date_to=2026-05-31" in overdue["url"]
-    assert "query_date=2026-05-28" in overdue["url"]
-    assert "resource_type=machine" in overdue["url"]
-    assert "resource_id=M1" in overdue["url"]
+    _assert_url_fragments(dashboard["url"], ("resource_type=machine", "resource_id=M1"))
+    _assert_url_fragments(analysis["url"], ("resource_type=machine", "resource_id=M1"))
+    _assert_url_fragments(reports["url"], ("resource_type=machine", "resource_id=M1"))
+
+
+def _assert_dispatch_and_overdue_context(dispatch: dict, overdue: dict) -> None:
+    _assert_url_fragments(dispatch["url"], (
+        "period_preset=custom",
+        "query_date=2026-05-28",
+        "scope_type=machine",
+        "machine_id=M1",
+    ))
+    _assert_shared_context_fragments(overdue)
+    _assert_url_fragments(overdue["url"], ("resource_type=machine", "resource_id=M1"))
     assert overdue["target_page"] == "overdue_report"
 
+
+def _assert_delay_context(delay: dict) -> None:
     assert delay["target_page"] == "delay_diagnosis"
     assert "/reports/overdue?" in delay["url"]
-    assert "plan_role=adopted" in delay["url"]
-    assert "date_from=2026-05-25" in delay["url"]
-    assert "date_to=2026-05-31" in delay["url"]
-    assert "query_date=2026-05-28" in delay["url"]
-    assert "batch_id=B202605-001" in delay["url"]
-    assert "resource_type=machine" in delay["url"]
-    assert "resource_id=M1" in delay["url"]
+    _assert_url_fragments(delay["url"], (
+        "plan_role=adopted",
+        "date_from=2026-05-25",
+        "date_to=2026-05-31",
+        "query_date=2026-05-28",
+        "batch_id=B202605-001",
+        "resource_type=machine",
+        "resource_id=M1",
+    ))
     assert delay["label"] == "查看延期说明"
 
 
@@ -417,7 +462,12 @@ def test_target_pages_and_public_label_mappings_are_fixed() -> None:
         "reports_index",
     }
     assert plan_role_label("baseline_best") == "原算法代表方案"
+    assert plan_role_label("future_role") == "未知方案身份"
     assert guardrail_reason_label("data_gap") == "数据不足，暂时不能判断"
+    assert guardrail_reason_label("future_reason") == "未知限制原因"
     assert resource_type_label("machine") == "设备视角"
+    assert resource_type_label("future_resource") == "未知资源视角"
     assert period_preset_label("custom") == "自定义"
+    assert period_preset_label("future_range") == "未知日期范围"
     assert gantt_view_label("operator") == "人员甘特"
+    assert gantt_view_label("future_view") == "未知甘特视图"

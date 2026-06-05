@@ -59,7 +59,7 @@ def register_error_handlers(app):
         return (
             render_error_template(
                 title="发生错误",
-                code=e.code.value,
+                code=None,
                 message=user_message,
                 details=html_details,
                 field_label=field_label,
@@ -75,7 +75,7 @@ def register_error_handlers(app):
         return (
             render_error_template(
                 title="页面不存在",
-                code=ErrorCode.NOT_FOUND.value,
+                code=None,
                 message="页面不存在或已被删除",
                 field_label=None,
             ),
@@ -90,7 +90,7 @@ def register_error_handlers(app):
         return (
             render_error_template(
                 title="文件过大",
-                code=ErrorCode.FILE_TOO_LARGE.value,
+                code=None,
                 message="上传文件超过 16MB，请缩小文件后重试。",
                 field_label=None,
             ),
@@ -106,7 +106,7 @@ def register_error_handlers(app):
         return (
             render_error_template(
                 title="服务器内部错误",
-                code=ErrorCode.UNKNOWN_ERROR.value,
+                code=None,
                 message="服务器内部错误，请查看日志",
                 field_label=None,
             ),

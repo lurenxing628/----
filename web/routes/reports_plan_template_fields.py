@@ -2,9 +2,13 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+from core.services.scheduler.schedule_plan_option_display import public_plan_role_options
+from web.viewmodels.scheduler_plan_guardrail_messages import result_status_label, summary_parse_failure_message
+
 ROLE_ADOPTED = "adopted"
 DEFAULT_PLAN_LABEL = "正式采用方案"
 DEFAULT_PREVIEW_LABEL = "模拟预览（未命名）"
+_EXECUTABLE_RESULT_STATUSES = {"success", "partial"}
 
 
 def _text(value: Any) -> str:
@@ -29,13 +33,36 @@ def _preview_label(plan_resolution: Dict[str, Any]) -> str:
     )
 
 
+def _result_status_label(value: Any) -> str:
+    return result_status_label(value)
+
+
+def _not_executable_text(data: Dict[str, Any], label: str) -> str:
+    if data.get("is_current_executable_official_version") is not False:
+        return ""
+    if data.get("is_comparison") or data.get("is_preview") or data.get("is_scenario_preview"):
+        return ""
+    if data.get("is_superseded_by_newer_version") or data.get("result_summary_parse_failed"):
+        return ""
+    status = _text(data.get("schedule_result_status")).lower()
+    if status in _EXECUTABLE_RESULT_STATUSES:
+        return ""
+    return f"当前排产结果状态是“{_result_status_label(status)}”，不能当作当前可执行正式方案。当前方案：{label}"
+
+
 def report_plan_status(plan_resolution: Dict[str, Any]) -> Dict[str, Any]:
     data = dict(plan_resolution or {})
     label = _plan_label(data)
     fallback_message = _text(data.get("message")) if data.get("is_fallback") else ""
     source_text = f"当前方案：{label}"
+    not_executable_text = _not_executable_text(data, label)
+    if not_executable_text:
+        source_text = not_executable_text
+    if data.get("result_summary_parse_failed"):
+        reason = summary_parse_failure_message(data.get("result_summary_parse_reason"))
+        source_text = f"当前排产摘要读取失败：{reason}。当前方案：{label}。页面仅展示基础历史信息，不能写现场事实。"
     if data.get("is_superseded_by_newer_version"):
-        source_text = f"当前查看：{label}。这个历史版本已被更新的正式排产替代，只能查看，不能写现场事实。"
+        source_text = f"{source_text} 这个历史版本已被更新的正式排产替代，只能查看，不能写现场事实。"
     if fallback_message:
         source_text = f"{source_text}。{fallback_message}"
     return {
@@ -50,7 +77,7 @@ def report_plan_status(plan_resolution: Dict[str, Any]) -> Dict[str, Any]:
 def report_plan_template_fields(plan_resolution: Dict[str, Any], scenario_id: Any) -> Dict[str, Any]:
     data = dict(plan_resolution or {})
     return {
-        "plan_options": data.get("available_roles") or [],
+        "plan_options": public_plan_role_options(data),
         "selected_plan_role": _text(data.get("selected_role")) or ROLE_ADOPTED,
         "requested_plan_role": _text(data.get("requested_role")) or ROLE_ADOPTED,
         "report_plan_status": report_plan_status(data),

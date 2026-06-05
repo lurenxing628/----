@@ -31,7 +31,7 @@ from data.repositories import (
     ScheduleRepository,
 )
 
-from .execution_snapshot import collect_execution_snapshot
+from .execution_snapshot import collect_execution_snapshot_for_plan_rows
 from .gantt_adjustment_validation_service import GanttAdjustmentEvaluation, GanttAdjustmentValidationService
 
 PUBLISH_CONFIRM_TEXT = "正式采用"
@@ -109,7 +109,7 @@ class GanttAdjustmentPublishService:
             latest_version = self.history_repo.get_latest_version()
             if latest_version != scenario.base_version:
                 raise ValidationError("模拟方案的调整依据版本已经不是最新正式版本，请重新模拟后再正式采用。", field="base_version")
-            _check_execution_snapshot_current(self, scenario)
+            _check_execution_snapshot_current(self, scenario, evaluation)
             _validate_scenario_execution_guard(self, scenario=scenario, evaluation=evaluation, scenario_rows=scenario_rows)
             new_version = self.history_repo.allocate_next_version()
             claimed = self.scenario_repo.mark_published(
@@ -270,7 +270,21 @@ def _scenario_snapshot_op_ids(scenario: Any) -> List[int]:
     return sorted(set(op_ids))
 
 
-def _check_execution_snapshot_current(service: GanttAdjustmentPublishService, scenario: Any) -> None:
+def _execution_plan_fields(evaluation: GanttAdjustmentEvaluation) -> Dict[str, Any]:
+    resolution = evaluation.plan_resolution
+    return {
+        "version": getattr(resolution, "version", None),
+        "source_table": getattr(resolution, "source_table", None),
+        "effective_plan_role": getattr(resolution, "selected_role", None),
+        "scenario_id": getattr(resolution, "scenario_id", None),
+    }
+
+
+def _check_execution_snapshot_current(
+    service: GanttAdjustmentPublishService,
+    scenario: Any,
+    evaluation: GanttAdjustmentEvaluation,
+) -> None:
     expected_revision = str(getattr(scenario, "execution_snapshot_revision", "") or "").strip()
     if not expected_revision:
         raise AppError(
@@ -279,7 +293,13 @@ def _check_execution_snapshot_current(service: GanttAdjustmentPublishService, sc
             details={"reason": "missing_execution_snapshot"},
         )
     op_ids = _scenario_snapshot_op_ids(scenario)
-    current = collect_execution_snapshot(service.conn, op_ids, logger=service.logger)
+    current = collect_execution_snapshot_for_plan_rows(
+        service.conn,
+        evaluation.adjusted_rows,
+        _execution_plan_fields(evaluation),
+        op_ids=op_ids,
+        logger=service.logger,
+    )
     if current.revision != expected_revision:
         raise AppError(
             ErrorCode.SCHEDULE_CONFLICT,
@@ -338,7 +358,11 @@ def _validate_scenario_execution_guard(
     scenario_rows: Sequence[Any],
 ) -> None:
     op_ids = _scenario_snapshot_op_ids(scenario)
-    facts = ExecutionFactProvider(service.conn, logger=service.logger).facts_by_op_id(op_ids)
+    facts = ExecutionFactProvider(service.conn, logger=service.logger).facts_by_op_id_for_plan_rows(
+        evaluation.adjusted_rows,
+        _execution_plan_fields(evaluation),
+        include_op_ids=op_ids,
+    )
     exception_op_ids = {
         int(op_id)
         for op_id, fact in facts.items()

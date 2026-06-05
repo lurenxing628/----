@@ -91,7 +91,7 @@ def test_scheduler_analysis_route_uses_request_services(monkeypatch) -> None:
     assert payload["selected_summary_display"]["summary_parse_state"]["parse_failed"] is False
     assert payload["selected_summary_display"]["warning_total"] == 1
     assert payload["selected_summary_display"]["warnings_preview"] == ["冻结窗口存在跳批风险"]
-    assert payload["trend_summary_state"] == {"incomplete": False, "parse_failed_count": 0, "metric_parse_failed_count": 0}
+    assert payload["trend_summary_state"] == {"incomplete": False, "parse_failed_count": 0, "version_parse_failed_count": 0, "metric_parse_failed_count": 0}
     assert "objective_label_for" not in payload
     json.dumps(payload, ensure_ascii=False)
     assert history_service.version_limits == [50]
@@ -110,7 +110,7 @@ def test_scheduler_analysis_route_marks_parse_failure_and_incomplete_trend(monke
     assert response.status_code == 200
     assert payload["selected_summary"] == {}
     assert payload["selected_summary_display"]["summary_parse_state"]["parse_failed"] is True
-    assert payload["trend_summary_state"] == {"incomplete": True, "parse_failed_count": 1, "metric_parse_failed_count": 0}
+    assert payload["trend_summary_state"] == {"incomplete": True, "parse_failed_count": 1, "version_parse_failed_count": 0, "metric_parse_failed_count": 0}
 
 
 def test_scheduler_analysis_route_marks_bad_trend_metric_without_drawing_zero(monkeypatch) -> None:
@@ -123,7 +123,7 @@ def test_scheduler_analysis_route_marks_bad_trend_metric_without_drawing_zero(mo
     payload = response.get_json()
 
     assert response.status_code == 200
-    assert payload["trend_summary_state"] == {"incomplete": True, "parse_failed_count": 0, "metric_parse_failed_count": 1}
+    assert payload["trend_summary_state"] == {"incomplete": True, "parse_failed_count": 0, "version_parse_failed_count": 0, "metric_parse_failed_count": 1}
     assert payload["trend_charts"]["overdue"] is None, "坏趋势指标不能画成 0"
 
 
@@ -141,7 +141,7 @@ def test_scheduler_analysis_route_does_not_plot_missing_trend_metric_as_zero(mon
     payload = response.get_json()
 
     assert response.status_code == 200
-    assert payload["trend_summary_state"] == {"incomplete": False, "parse_failed_count": 0, "metric_parse_failed_count": 0}
+    assert payload["trend_summary_state"] == {"incomplete": False, "parse_failed_count": 0, "version_parse_failed_count": 0, "metric_parse_failed_count": 0}
     assert payload["trend_charts"]["tardiness"] is None, "缺少拖期小时不能画成 0"
 
 

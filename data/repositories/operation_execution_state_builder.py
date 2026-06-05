@@ -9,12 +9,11 @@ from core.models.operation_execution_event import (
     EXECUTION_EVENT_PAUSE,
     EXECUTION_EVENT_RESUME,
     EXECUTION_EVENT_START,
-    EXECUTION_STATUS_COMPLETED,
-    EXECUTION_STATUS_EXCEPTION,
-    EXECUTION_STATUS_NOT_STARTED,
-    EXECUTION_STATUS_PAUSED,
-    EXECUTION_STATUS_PROCESSING,
     OperationExecutionEvent,
+    normalize_operation_event_time,
+    normalize_operation_execution_event_values,
+    parse_operation_event_time,
+    validate_operation_execution_event_sequence,
 )
 from core.models.operation_execution_labels import (
     event_type_to_action,
@@ -27,32 +26,23 @@ from core.models.operation_execution_labels import (
     severity_label,
     suggest_reschedule_label,
 )
+from core.models.operation_execution_scope import (
+    operation_execution_scope_from_event,
+    validate_current_official_execution_scope,
+)
 from core.models.operation_execution_state import OperationExecutionState
 from core.models.resource_identity import ResourceIdentity, build_resource_identity
-
-_REPORTED_STATUS_BY_EVENT_TYPE = {
-    EXECUTION_EVENT_START: EXECUTION_STATUS_PROCESSING,
-    EXECUTION_EVENT_RESUME: EXECUTION_STATUS_PROCESSING,
-    EXECUTION_EVENT_PAUSE: EXECUTION_STATUS_PAUSED,
-    EXECUTION_EVENT_EXCEPTION: EXECUTION_STATUS_EXCEPTION,
-    EXECUTION_EVENT_FINISH: EXECUTION_STATUS_COMPLETED,
-}
 
 
 def _parse_time(value: Optional[str]) -> Optional[datetime]:
     text = str(value or "").strip()
     if not text:
         return None
-    try:
-        return datetime.fromisoformat(text)
-    except ValueError:
-        pass
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
-        try:
-            return datetime.strptime(text, fmt)
-        except ValueError:
-            continue
-    return None
+    return parse_operation_event_time(text)
+
+
+def _event_time(event: OperationExecutionEvent) -> str:
+    return normalize_operation_event_time(event.event_time)
 
 
 def _duration_minutes(start: Optional[str], end: Optional[str]) -> Optional[float]:
@@ -74,9 +64,23 @@ def _suggest_reschedule_bool(value: Any) -> bool:
 
 
 def _current_status(last_event: OperationExecutionEvent) -> str:
-    return last_event.reported_status or _REPORTED_STATUS_BY_EVENT_TYPE.get(
-        last_event.event_type, EXECUTION_STATUS_NOT_STARTED
-    )
+    return last_event.reported_status
+
+
+def _validate_event_contracts(events: Sequence[OperationExecutionEvent]) -> None:
+    for event in events:
+        scope = operation_execution_scope_from_event(event)
+        validate_current_official_execution_scope(
+            source_table=scope.source_table,
+            effective_plan_role=scope.effective_plan_role,
+            scenario_id=scope.scenario_id,
+        )
+        normalize_operation_execution_event_values(
+            event_type=event.event_type,
+            reported_status=event.reported_status,
+            event_time=event.event_time,
+        )
+    validate_operation_execution_event_sequence(events)
 
 
 def _event_remark(event: OperationExecutionEvent) -> Optional[str]:
@@ -98,14 +102,14 @@ def _latest_exception(events: Sequence[OperationExecutionEvent]) -> Optional[Ope
 def _first_event_time(events: Sequence[OperationExecutionEvent], event_type: str) -> Optional[str]:
     for event in events:
         if event.event_type == event_type:
-            return event.event_time
+            return _event_time(event)
     return None
 
 
 def _last_event_time(events: Sequence[OperationExecutionEvent], event_type: str) -> Optional[str]:
     for event in reversed(events):
         if event.event_type == event_type:
-            return event.event_time
+            return _event_time(event)
     return None
 
 
@@ -122,14 +126,14 @@ def _pause_duration_minutes(events: Sequence[OperationExecutionEvent]) -> float:
     pause_started_at: Optional[str] = None
     for event in events:
         if event.event_type == EXECUTION_EVENT_PAUSE:
-            pause_started_at = event.event_time
+            pause_started_at = _event_time(event)
             continue
         if pause_started_at and event.event_type in (
             EXECUTION_EVENT_RESUME,
             EXECUTION_EVENT_FINISH,
             EXECUTION_EVENT_EXCEPTION,
         ):
-            minutes = _duration_minutes(pause_started_at, event.event_time)
+            minutes = _duration_minutes(pause_started_at, _event_time(event))
             if minutes is not None:
                 total += float(minutes)
             pause_started_at = None
@@ -194,11 +198,12 @@ def _exception_fields(
 ) -> Dict[str, Any]:
     if latest_exception is None:
         return _empty_exception_fields()
+    latest_exception_time = _event_time(latest_exception)
     affected_machine = _resource_identity(machine_resources, latest_exception.affected_machine_id)
     affected_operator = _resource_identity(operator_resources, latest_exception.affected_operator_id)
     return {
         "latest_exception_event_id": latest_exception.id,
-        "latest_exception_time": latest_exception.event_time,
+        "latest_exception_time": latest_exception_time,
         "latest_exception_reason_code": latest_exception.reason_code,
         "latest_exception_reason_label": exception_reason_label(latest_exception.reason_code),
         "latest_exception_severity": latest_exception.severity,
@@ -231,6 +236,7 @@ def build_operation_execution_state(
             batch_id=batch_id,
             state_revision=f"{int(op_id)}:0:0",
         )
+    _validate_event_contracts(events)
     last_event = events[-1]
     latest_exception = _latest_exception(events)
     actual_start_time = _first_event_time(events, EXECUTION_EVENT_START)
@@ -240,6 +246,7 @@ def build_operation_execution_state(
     actual_machine = _resource_identity(machine_resources, actual_machine_id)
     actual_operator = _resource_identity(operator_resources, actual_operator_id)
     current_status = _current_status(last_event)
+    last_event_time = _event_time(last_event)
     return OperationExecutionState(
         op_id=int(op_id),
         batch_id=last_event.batch_id or batch_id,
@@ -261,7 +268,7 @@ def build_operation_execution_state(
         actual_operator_label=actual_operator.label or None,
         last_event_id=last_event.id,
         last_event_type=last_event.event_type,
-        last_event_time=last_event.event_time,
+        last_event_time=last_event_time,
         last_event_action_label=execution_action_label(event_type_to_action(last_event.event_type)),
         last_event_remark=_event_remark(last_event),
         **_exception_fields(
@@ -270,7 +277,7 @@ def build_operation_execution_state(
             operator_resources=operator_resources,
         ),
         state_revision=f"{int(op_id)}:{len(events)}:{int(last_event.id or 0)}",
-        updated_at=last_event.event_time,
+        updated_at=last_event_time,
     )
 
 

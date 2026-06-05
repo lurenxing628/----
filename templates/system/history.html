@@ -55,7 +55,7 @@
       <h3>版本详情：v{{ selected.version }}</h3>
       <div class="aps-summary-grid aps-version-summary">
         {{ ui.summary_item('版本', 'v' ~ selected.version) }}
-        {{ ui.summary_item('时间', selected.schedule_time) }}
+        {{ ui.summary_item('时间', selected.schedule_time_display) }}
         {{ ui.summary_item('排产方式', selected.strategy_label, selected.strategy_display_message) }}
         {{ ui.summary_item('结果', selected_summary_display.result_status_label) }}
         {{ ui.summary_item('批次', selected.batch_count) }}
@@ -97,7 +97,7 @@
             <ul class="list-tight">
               {% for item in selected_summary_display.display_secondary_degradation_messages %}
                 <li>
-                  <strong>{{ item.label or item.code or '提示' }}</strong>
+                  <strong>{{ item.label or '提示' }}</strong>
                   {% if item.message %}：{{ item.message }}{% endif %}
                 </li>
               {% endfor %}
@@ -149,7 +149,7 @@
       {% endif %}
       {% if selected_summary_display.error_total %}
         <div class="aps-summary-grid mt-2 aps-summary-health-grid">
-          {% call ui.summary_item_block('错误摘要', selected_summary_display.error_total ~ ' 条', 'danger') %}
+          {% call ui.summary_item_block('错误摘要', selected_summary_display.error_total_label or (selected_summary_display.error_total ~ ' 条'), 'danger') %}
             {% set error_items = selected_summary_display.errors_display or selected_summary_display.errors_preview %}
             {% call ui.flash_details('查看 ' ~ (error_items|length) ~ ' 条错误') %}
               <ul class="list-tight">
@@ -169,7 +169,7 @@
       {% endif %}
       {% if selected_summary_display.missing_internal_resource_count %}
         <div class="flash-card flash-warning mt-2">
-          <div>需要补设备/人员：{{ selected_summary_display.missing_internal_resource_count }} 道工序</div>
+          <div>需要补设备/人员：{{ selected_summary_display.missing_internal_resource_count_label or (selected_summary_display.missing_internal_resource_count ~ ' 道工序') }}</div>
           {% call ui.flash_details('查看需要补设备/人员的工序') %}
             <ul class="list-tight">
               {% for item in selected_summary_display.missing_internal_resource_ops %}
@@ -233,7 +233,7 @@
           {% for r in items %}
             <tr>
               <td>{{ r.id }}</td>
-              <td>{{ r.schedule_time }}</td>
+              <td>{{ r.schedule_time_display }}</td>
               <td>v{{ r.version }}</td>
               <td>
                 {{ r.strategy_label }}
@@ -260,7 +260,7 @@
                       <ul class="list-tight">
                         {% for item in r.result_summary_display.display_secondary_degradation_messages %}
                           <li>
-                            <strong>{{ item.label or item.code or '提示' }}</strong>
+                            <strong>{{ item.label or '提示' }}</strong>
                             {% if item.message %}：{{ item.message }}{% endif %}
                           </li>
                         {% endfor %}
@@ -275,7 +275,7 @@
                   <div class="muted">维护诊断 {{ r.result_summary_display.maintenance_diagnostic_count }} 条</div>
                 {% endif %}
                 {% if r.result_summary_display.error_total %}
-                  <div class="muted">错误 {{ r.result_summary_display.error_total }} 条</div>
+                  <div class="muted">错误 {{ r.result_summary_display.error_total_label or (r.result_summary_display.error_total ~ ' 条') }}</div>
                 {% endif %}
                 {% if r.result_summary_obj or r.result_summary %}
                   <span class="muted">摘要已记录</span>

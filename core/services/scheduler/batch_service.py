@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
@@ -100,7 +100,7 @@ class BatchService:
             raise ValidationError("日期写法不对，请填写类似 2026-05-20 的日期。", field="日期") from exc
 
     @staticmethod
-    def _validate_enum(value: Optional[str], allowed: tuple[str, ...], field: str) -> Optional[str]:
+    def _validate_enum(value: Optional[str], allowed: Tuple[str, ...], field: str) -> Optional[str]:
         if value is None:
             return None
         if value not in allowed:

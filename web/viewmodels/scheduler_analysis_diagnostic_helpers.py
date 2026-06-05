@@ -127,6 +127,8 @@ def _reject_non_finite_text(value: str) -> None:
 def safe_int(value: Any, default: int = 0) -> int:
     if value is None:
         return int(default)
+    if isinstance(value, bool):
+        raise NonFiniteDiagnosticNumber(f"诊断摘要包含布尔值，无法当作数量展示：{value!r}")
     if isinstance(value, float):
         _ensure_finite_number(value, value)
     elif isinstance(value, str):
@@ -135,19 +137,21 @@ def safe_int(value: Any, default: int = 0) -> int:
         return int(value)
     except OverflowError as exc:
         raise NonFiniteDiagnosticNumber(f"诊断摘要包含非有限整数，无法安全展示：{value!r}") from exc
-    except (TypeError, ValueError):
-        return int(default)
+    except (TypeError, ValueError) as exc:
+        raise NonFiniteDiagnosticNumber(f"诊断摘要包含无法读取的数量，无法当作 0 展示：{value!r}") from exc
 
 
 def safe_float(value: Any, default: float = 0.0) -> float:
     if value is None:
         return float(default)
+    if isinstance(value, bool):
+        raise NonFiniteDiagnosticNumber(f"诊断摘要包含布尔值，无法当作数字展示：{value!r}")
     try:
         number = float(value)
     except OverflowError as exc:
         raise NonFiniteDiagnosticNumber(f"诊断摘要包含非有限小数，无法安全展示：{value!r}") from exc
-    except (TypeError, ValueError):
-        return float(default)
+    except (TypeError, ValueError) as exc:
+        raise NonFiniteDiagnosticNumber(f"诊断摘要包含无法读取的数字，无法当作 0 展示：{value!r}") from exc
     _ensure_finite_number(number, value)
     return number
 

@@ -28,6 +28,8 @@ class PlanIdentity:
     candidate_key: Optional[str]
     scenario_id: Optional[str]
     schedule_result_status: Optional[str]
+    result_summary_parse_failed: bool
+    result_summary_parse_reason: str
     is_simulation: bool
     label: str
     user_label: str
@@ -53,6 +55,8 @@ class PlanIdentity:
             "candidate_key": self.candidate_key,
             "scenario_id": self.scenario_id,
             "schedule_result_status": self.schedule_result_status,
+            "result_summary_parse_failed": bool(self.result_summary_parse_failed),
+            "result_summary_parse_reason": self.result_summary_parse_reason,
             "is_simulation": bool(self.is_simulation),
             "label": self.label,
             "user_label": self.user_label,

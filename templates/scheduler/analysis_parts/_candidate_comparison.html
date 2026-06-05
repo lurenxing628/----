@@ -79,12 +79,12 @@
                   <td>
                     {{ row.candidate_label or '-' }}
                   </td>
-                  <td>{{ row.status_label or '-' }}</td>
-                  <td>{{ row.failed_ops if row.failed_ops is not none else '-' }}</td>
-                  <td>{{ row.overdue_count if row.overdue_count is not none else '-' }}</td>
-                  <td>{{ row.total_tardiness_hours if row.total_tardiness_hours is not none else '-' }}</td>
-                  <td>{{ row.makespan_hours if row.makespan_hours is not none else '-' }}</td>
-                  <td>{{ row.changeover_count if row.changeover_count is not none else '-' }}</td>
+                  <td>{{ row.status_label }}</td>
+                  <td>{{ '记录异常' if row.failed_ops_parse_failed else (row.failed_ops if row.failed_ops is not none else '-') }}</td>
+                  <td>{{ '记录异常' if row.overdue_count_parse_failed else (row.overdue_count if row.overdue_count is not none else '-') }}</td>
+                  <td>{{ '记录异常' if row.total_tardiness_hours_parse_failed else (row.total_tardiness_hours if row.total_tardiness_hours is not none else '-') }}</td>
+                  <td>{{ '记录异常' if row.makespan_hours_parse_failed else (row.makespan_hours if row.makespan_hours is not none else '-') }}</td>
+                  <td>{{ '记录异常' if row.changeover_count_parse_failed else (row.changeover_count if row.changeover_count is not none else '-') }}</td>
                   <td>
                     {% if row.links and row.links|length > 0 %}
 	                      <div class="aps-form-actions">

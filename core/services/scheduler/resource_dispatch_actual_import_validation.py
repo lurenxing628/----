@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Any, List, Optional, Sequence, Tuple
 
 from .operation_execution_feedback_support import _parse_feedback_datetime
+from .operation_execution_scope_read import events_for_task_ref, state_for_task_ref
 from .resource_dispatch_actual_records import PausePlan, TaskPlan, parse_int_or_error, text
 
 
@@ -12,8 +13,8 @@ class ResourceDispatchActualImportValidator:
         self.feedback_service = feedback_service
 
     def validate_task_plan(self, plan: TaskPlan, messages: List[str]) -> None:
-        state = self.feedback_service.get_execution_state([plan.task.op_id]).get(plan.task.op_id) or plan.task.state
-        events = self.feedback_service.list_execution_events(plan.task.op_id)
+        state = state_for_task_ref(self.feedback_service, plan.task)
+        events = events_for_task_ref(self.feedback_service, plan.task)
         start_time = plan.actual_start_time or state.actual_start_time
         finish_time = plan.actual_finish_time or state.actual_end_time
         pauses = sorted(plan.pauses or [], key=lambda item: item.start_time)

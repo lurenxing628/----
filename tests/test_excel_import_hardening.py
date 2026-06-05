@@ -17,7 +17,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from core.infrastructure.database import ensure_schema, get_connection
-from core.infrastructure.errors import ErrorCode, ValidationError
+from core.infrastructure.errors import ValidationError
 from core.services.common.excel_service import ImportMode, ImportPreviewRow, RowStatus
 from core.services.common.excel_templates import build_xlsx_bytes
 from core.services.common.excel_validators import (
@@ -409,8 +409,9 @@ def test_file_body_over_limit_returns_file_too_large_error(tmp_path, monkeypatch
 
     body = resp.get_data(as_text=True)
     assert resp.status_code == 413
-    assert ErrorCode.FILE_TOO_LARGE.value in body
     assert "上传文件超过 1MB" in body
+    assert "7005" not in body
+    assert "错误码" not in body
 
 
 def test_scheduler_calendar_preview_rejects_duplicate_dates_after_canonicalization(tmp_path, monkeypatch) -> None:

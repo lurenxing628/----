@@ -3,10 +3,10 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Tuple
 
 from .resource_dispatch_support import build_dispatch_filters
+from .schedule_plan_option_display import public_plan_role_options
 from .schedule_plan_query_service import ROLE_ADOPTED
 from .schedule_result_view_context import (
     plan_role_filter_fields,
-    serialize_plan_role_options,
 )
 
 
@@ -23,13 +23,13 @@ def plan_role_context_for_page(
     normalized_plan_role: str,
 ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
     if selected_version:
-        return plan_role_filter_fields(view_context), serialize_plan_role_options(view_context.available_roles)
+        return plan_role_filter_fields(view_context), public_plan_role_options(view_context)
     return (
         plan_role_filter_fields(
             requested_role=normalized_plan_role,
             effective_role=ROLE_ADOPTED,
         ),
-        serialize_plan_role_options([]),
+        public_plan_role_options(),
     )
 
 

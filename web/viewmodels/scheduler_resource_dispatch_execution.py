@@ -20,6 +20,7 @@ from core.models.operation_execution_labels import (
 )
 from core.models.operation_execution_state import OperationExecutionState
 from core.models.resource_identity import ResourceIdentity, build_resource_identity
+from core.services.scheduler.resource_dispatch_execution_tokens import execution_state_key, execution_task_key
 
 _FEEDBACK_DISABLED_REASON = "现场记录保护还没开启，暂不能填写现场记录。"
 _NOT_CURRENT_OFFICIAL_REASON = "当前不是最新正式采用方案，不能填写现场记录。"
@@ -283,10 +284,16 @@ def build_task_card(row: Mapping[str, Any], state: Any, *, can_write_feedback: b
         disabled_reason = _text(action.get("disabled_reason"))
         if action_key and disabled_reason:
             unavailable_reasons[action_key] = disabled_reason
+    state_revision = current_state.state_revision or f"{op_id}:0:0"
+    task_key = ""
+    state_key = ""
+    if op_id > 0 and schedule_id > 0 and batch_id:
+        task_key = execution_task_key({"schedule_id": schedule_id, "op_id": op_id, "batch_id": batch_id})
+        state_key = execution_state_key(task_key=task_key, state_revision=state_revision)
     return {
-        "op_id": op_id,
-        "schedule_id": schedule_id,
-        "batch_id": batch_id,
+        "task_key": task_key,
+        "state_key": state_key,
+        "batch_label": batch_id,
         "op_name": _op_name(row),
         "part_no": _text(row.get("part_no")),
         "part_name": _text(row.get("part_name")),
@@ -298,7 +305,6 @@ def build_task_card(row: Mapping[str, Any], state: Any, *, can_write_feedback: b
         **_resource_payload("planned_operator_", planned_operator),
         "current_status": status,
         "current_status_label": status_label,
-        "state_revision": current_state.state_revision or f"{op_id}:0:0",
         "actual_start_time": actual_start,
         "actual_end_time": actual_end,
         "actual_time_label": _time_range_label(actual_start, actual_end, empty_label="暂未记录现场实际"),
@@ -414,8 +420,6 @@ def event_payload(
     record_time = getattr(event, "created_at", None)
     return {
         "event_id": getattr(event, "id", None),
-        "op_id": getattr(event, "op_id", None),
-        "schedule_id": getattr(event, "schedule_id", None),
         "action": action,
         "action_label": _execution_action_label(action),
         "event_time": getattr(event, "event_time", None),
@@ -448,7 +452,6 @@ def execution_result_payload(result: Any, task_card: Dict[str, Any]) -> Dict[str
         "event": event_payload(result.event, result.state),
         "current_status": result.state.current_status,
         "current_status_label": result.state.current_status_label,
-        "state_revision": result.state_revision,
         "idempotency_reused": bool(result.idempotency_reused),
         "task_card": task_card,
     }

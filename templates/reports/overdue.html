@@ -29,7 +29,7 @@
           <select name="plan_role" data-report-plan-role-select data-initial-plan-role="{{ selected_plan_role }}">
             {% for it in plan_options %}
               <option value="{{ it.role }}" {% if selected_plan_role == it.role %}selected{% endif %}>
-                {{ it.label }}
+                {{ it.display_text or it.label }}
               </option>
             {% endfor %}
           </select>
@@ -120,7 +120,7 @@
               <td><a class="aps-col-code" href="{{ url_for('scheduler.batch_detail', batch_id=r.batch_id) }}" title="{{ r.batch_id }}">{{ r.batch_id }}</a></td>
               <td><span class="aps-col-code" title="{{ r.part_no or '' }}">{{ r.part_no or '-' }}</span></td>
               <td><span class="aps-col-name" title="{{ r.part_name or '' }}">{{ r.part_name or '-' }}</span></td>
-              <td>{{ r.quantity or '-' }}</td>
+              <td>{{ r.quantity if r.quantity is not none else '-' }}</td>
               <td>{{ r.due_date }}</td>
               <td>{{ r.finish_time or r.as_of_time or '-' }}</td>
               <td>{{ r.delay_days }}</td>

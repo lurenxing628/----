@@ -2,10 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Sequence
 
-from core.models.operation_execution_event import EXECUTION_STATUS_NOT_STARTED
+from core.models.operation_execution_event import EXECUTION_STATUS_NOT_STARTED, OperationExecutionEvent
+from core.models.operation_execution_scope import OperationExecutionScope, operation_execution_scope_from_event
 from data.repositories.operation_execution_event_repo import OperationExecutionEventRepo
+
+from .operation_execution_scope_read import scopes_by_op_id_for_plan_rows
 
 
 @dataclass(frozen=True)
@@ -23,17 +26,28 @@ class ExecutionFact:
     latest_exception_impact_minutes: Optional[int] = None
     latest_exception_handling_status: Optional[str] = None
     latest_exception_suggest_reschedule: bool = False
+    schedule_version: Optional[int] = None
+    schedule_id: Optional[int] = None
+    source_table: Optional[str] = None
+    effective_plan_role: Optional[str] = None
+    scenario_id: Optional[str] = None
 
 
 def _state_value(state, attr: str):
     return None if state is None else getattr(state, attr)
 
 
-def _fact_from_state(op_id: int, state, latest) -> ExecutionFact:
+def _fact_from_state(
+    op_id: int,
+    state,
+    latest,
+    *,
+    scope: Optional[OperationExecutionScope] = None,
+) -> ExecutionFact:
     status = EXECUTION_STATUS_NOT_STARTED if state is None else str(state.current_status or EXECUTION_STATUS_NOT_STARTED)
     return ExecutionFact(
         op_id=int(op_id),
-        batch_id=_state_value(state, "batch_id"),
+        batch_id=_state_value(state, "batch_id") or (None if scope is None else scope.batch_id),
         actual_status=status,
         actual_start_time=_parse_execution_time(_state_value(state, "actual_start_time")),
         actual_end_time=_parse_execution_time(_state_value(state, "actual_end_time")),
@@ -45,6 +59,11 @@ def _fact_from_state(op_id: int, state, latest) -> ExecutionFact:
         latest_exception_impact_minutes=_state_value(state, "latest_exception_impact_minutes"),
         latest_exception_handling_status=_state_value(state, "latest_exception_handling_status"),
         latest_exception_suggest_reschedule=False if state is None else bool(state.latest_exception_suggest_reschedule),
+        schedule_version=None if scope is None else int(scope.schedule_version),
+        schedule_id=None if scope is None else int(scope.schedule_id),
+        source_table=None if scope is None else scope.source_table,
+        effective_plan_role=None if scope is None else scope.effective_plan_role,
+        scenario_id=None if scope is None else scope.scenario_id,
     )
 
 
@@ -77,10 +96,9 @@ def _parse_execution_time(value: Optional[str]) -> Optional[datetime]:
 
 
 class ExecutionFactProvider:
-    """按工序读取现场执行事实。
+    """读取现场执行事实。
 
-    执行事件里的 schedule_id/version 只说明事件提交时用户看到哪版计划；
-    重排读取当前现场事实时，以 op_id 为主线。
+    具体计划页和重排保护必须按计划身份读取。
     """
 
     def __init__(self, conn, logger=None):
@@ -89,20 +107,67 @@ class ExecutionFactProvider:
         self.event_repo = OperationExecutionEventRepo(conn, logger=logger)
 
     def list_by_op_ids(self, op_ids: Sequence[int]) -> List[ExecutionFact]:
-        ids = _positive_op_ids(op_ids)
-        if not ids:
-            return []
-        states = self.event_repo.aggregate_states_by_op_ids(ids)
-        latest_events = self.event_repo.list_latest_events_by_op_ids(ids)
-        facts: List[ExecutionFact] = []
-        for op_id in ids:
-            state = states.get(int(op_id))
-            latest = latest_events.get(int(op_id))
-            facts.append(_fact_from_state(int(op_id), state, latest))
-        return facts
+        raise ValueError("现场执行事实必须按完整计划身份读取，不能只按 op_id 聚合。")
 
     def facts_by_op_id(self, op_ids: Sequence[int]) -> Dict[int, ExecutionFact]:
-        return {int(fact.op_id): fact for fact in self.list_by_op_ids(op_ids)}
+        raise ValueError("现场执行事实必须按完整计划身份读取，不能只按 op_id 聚合。")
+
+    def facts_by_scope(self, scopes: Sequence[OperationExecutionScope]) -> Dict[OperationExecutionScope, ExecutionFact]:
+        normalized = list(dict.fromkeys(scopes or ()))
+        states = self.event_repo.aggregate_states_by_scopes(normalized)
+        latest_events = self._latest_events_by_scope(normalized)
+        return {
+            scope: _fact_from_state(
+                int(scope.op_id),
+                states.get(scope),
+                latest_events.get(scope),
+                scope=scope,
+            )
+            for scope in normalized
+        }
+
+    def facts_by_op_id_for_scopes(
+        self,
+        scopes: Sequence[OperationExecutionScope],
+        *,
+        include_op_ids: Sequence[int] = (),
+    ) -> Dict[int, ExecutionFact]:
+        facts_by_scope = self.facts_by_scope(scopes)
+        out: Dict[int, ExecutionFact] = {}
+        scopes_by_op_id: Dict[int, OperationExecutionScope] = {}
+        for scope, fact in facts_by_scope.items():
+            op_id = int(scope.op_id)
+            existing = scopes_by_op_id.get(op_id)
+            if existing is not None and existing != scope:
+                raise ValueError(f"工序 {op_id} 对应多个现场执行身份，不能按 op_id 合并读取。")
+            scopes_by_op_id[op_id] = scope
+            out[op_id] = fact
+        missing = [op_id for op_id in _positive_op_ids(include_op_ids) if op_id not in out]
+        if missing:
+            raise ValueError(f"现场执行事实缺少完整计划身份：op_id={missing[0]}")
+        return out
+
+    def facts_by_op_id_for_plan_rows(
+        self,
+        rows: Sequence[Any],
+        plan_fields: Mapping[str, Any],
+        *,
+        include_op_ids: Sequence[int] = (),
+    ) -> Dict[int, ExecutionFact]:
+        scopes_by_op_id = scopes_by_op_id_for_plan_rows(rows, plan_fields)
+        return self.facts_by_op_id_for_scopes(
+            list(scopes_by_op_id.values()),
+            include_op_ids=include_op_ids,
+        )
+
+    def _latest_events_by_scope(
+        self,
+        scopes: Sequence[OperationExecutionScope],
+    ) -> Dict[OperationExecutionScope, OperationExecutionEvent]:
+        latest: Dict[OperationExecutionScope, OperationExecutionEvent] = {}
+        for event in self.event_repo.list_events_by_scopes(scopes):
+            latest[operation_execution_scope_from_event(event)] = event
+        return latest
 
 
 __all__ = ["ExecutionFact", "ExecutionFactProvider"]

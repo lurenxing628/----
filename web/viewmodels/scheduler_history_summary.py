@@ -77,7 +77,7 @@ def _strategy_display_state(value: Any) -> Dict[str, str]:
         return {
             "label": "历史记录异常",
             "state": "invalid",
-            "message": f"历史记录里的排产方式“{raw}”没有登记，页面不把它当成正常策略显示。",
+            "message": "历史记录里的排产方式没有登记，页面不把它当成正常策略显示。",
         }
     return {
         "label": _STRATEGY_LABELS[raw],
@@ -107,6 +107,36 @@ def _public_datetime_parts(year: Any, month: Any, day: Any, hour: Any, minute: A
     return f"{_public_date_parts(year, month, day)} {int(hour):02d}:{int(minute):02d}"
 
 
+def _public_datetime_state(
+    year: int,
+    month: int,
+    day: int,
+    hour: int,
+    minute: int,
+    second: int = 0,
+    *,
+    has_time: bool,
+) -> Optional[Dict[str, int]]:
+    try:
+        if has_time:
+            datetime(int(year), int(month), int(day), int(hour), int(minute), int(second))
+        else:
+            date(int(year), int(month), int(day))
+    except ValueError:
+        return None
+    return {"year": int(year), "month": int(month), "day": int(day), "hour": int(hour), "minute": int(minute), "has_time": has_time}
+
+
+def _valid_timezone_suffix(value: Optional[str]) -> bool:
+    text = str(value or "").strip()
+    if not text or text == "Z":
+        return True
+    compact = text.replace(":", "")
+    if len(compact) != 5 or compact[0] not in ("+", "-") or not compact[1:].isdigit():
+        return False
+    return int(compact[1:3]) <= 23 and int(compact[3:5]) <= 59
+
+
 def _parse_public_date_parts(value: Any) -> Optional[Dict[str, int]]:
     if value is None:
         return None
@@ -133,45 +163,53 @@ def _parse_public_date_parts(value: Any) -> Optional[Dict[str, int]]:
         return None
     import re
 
-    iso = re.match(
-        r"^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::\d{1,2}(?:\.\d+)?)?)?",
+    iso = re.fullmatch(
+        r"(\d{4})[-/](\d{1,2})[-/](\d{1,2})"
+        r"(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2})(?:\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?",
         text,
     )
     if iso:
-        return {
-            "year": int(iso.group(1)),
-            "month": int(iso.group(2)),
-            "day": int(iso.group(3)),
-            "hour": int(iso.group(4) or 0),
-            "minute": int(iso.group(5) or 0),
-            "has_time": bool(iso.group(4)),
-        }
-    rfc = re.match(r"^(?:[A-Za-z]{3},\s*)?(\d{1,2})\s+([A-Za-z]{3,9})\s+(\d{4})\s+(\d{1,2}):(\d{2})", text)
+        if not _valid_timezone_suffix(iso.group(7)):
+            return None
+        return _public_datetime_state(
+            int(iso.group(1)),
+            int(iso.group(2)),
+            int(iso.group(3)),
+            int(iso.group(4) or 0),
+            int(iso.group(5) or 0),
+            int(iso.group(6) or 0),
+            has_time=bool(iso.group(4)),
+        )
+    rfc = re.fullmatch(
+        r"(?:[A-Za-z]{3},\s*)?(\d{1,2})\s+([A-Za-z]{3,9})\s+(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{1,2}))?(?:\s+[A-Za-z]{1,5})?",
+        text,
+    )
     if rfc:
         month = _MONTH_NAMES.get(rfc.group(2).lower())
         if month:
-            return {
-                "year": int(rfc.group(3)),
-                "month": month,
-                "day": int(rfc.group(1)),
-                "hour": int(rfc.group(4)),
-                "minute": int(rfc.group(5)),
-                "has_time": True,
-            }
+            return _public_datetime_state(
+                int(rfc.group(3)),
+                month,
+                int(rfc.group(1)),
+                int(rfc.group(4)),
+                int(rfc.group(5)),
+                int(rfc.group(6) or 0),
+                has_time=True,
+            )
     return None
 
 
 def format_public_date(value: Any) -> str:
     parts = _parse_public_date_parts(value)
     if not parts:
-        return str(value or "").strip() or "-"
+        return "时间记录异常" if str(value or "").strip() else "-"
     return _public_date_parts(parts["year"], parts["month"], parts["day"])
 
 
 def format_public_datetime(value: Any) -> str:
     parts = _parse_public_date_parts(value)
     if not parts:
-        return str(value or "").strip() or "-"
+        return "时间记录异常" if str(value or "").strip() else "-"
     return _public_datetime_parts(parts["year"], parts["month"], parts["day"], parts["hour"], parts["minute"])
 
 

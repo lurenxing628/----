@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional
 from flask import current_app, g, jsonify, request, url_for
 
 from core.infrastructure.errors import AppError, BusinessError, ErrorCode, ValidationError, error_response
+from core.services.scheduler.schedule_plan_option_display import public_plan_role_options
 from core.services.scheduler.schedule_result_view_range import normalize_week_offset_for_explicit_range
 from web.error_boundary import json_error_response
 from web.routes.history_summary_logging import (
@@ -297,7 +298,7 @@ def gantt_page():
         plan_role=requested_plan_role(plan_resolution),
         effective_plan_role=selected_plan_role(plan_resolution),
         plan_resolution=plan_resolution,
-        plan_role_options=plan_resolution.get("available_roles") or [],
+        plan_role_options=public_plan_role_options(plan_resolution),
         version_span=version_span,
         range_source=range_source,
         data_url=_gantt_data_url(),

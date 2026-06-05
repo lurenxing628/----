@@ -7,6 +7,8 @@ import pytest
 
 import core.services.scheduler.schedule_service as schedule_service_mod
 from core.infrastructure.errors import AppError, ValidationError
+from core.models.operation_execution_scope import OperationExecutionScope
+from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
 from core.services.scheduler.execution_fact_provider import ExecutionFactProvider
 from core.services.scheduler.operation_execution_feedback_service import OperationExecutionFeedbackService
 from core.services.scheduler.schedule_service import ScheduleService
@@ -28,8 +30,20 @@ def _history_summary(conn, version: int):
     return json.loads(row["result_summary"])
 
 
+def _execution_scope(op_id: int = 10) -> OperationExecutionScope:
+    return OperationExecutionScope.from_values(
+        schedule_version=1,
+        schedule_id=100 if int(op_id) == 10 else 101,
+        op_id=int(op_id),
+        batch_id="B1",
+        source_table=SOURCE_SCHEDULE,
+        effective_plan_role=ROLE_ADOPTED,
+    )
+
+
 def _execution_status(conn, op_id: int) -> str:
-    state = OperationExecutionEventRepo(conn).aggregate_states_by_op_ids([int(op_id)]).get(int(op_id))
+    scope = _execution_scope(op_id)
+    state = OperationExecutionFeedbackService(conn).get_execution_state_for_scopes([scope]).get(scope)
     assert state is not None
     return str(state.current_status)
 
@@ -38,6 +52,23 @@ def _batch_operation_status(conn, op_id: int) -> str:
     row = conn.execute("SELECT status FROM BatchOperations WHERE id = ?", (int(op_id),)).fetchone()
     assert row is not None
     return str(row["status"])
+
+
+def _seed_second_version_plan(conn) -> None:
+    conn.executescript(
+        """
+        INSERT INTO ScheduleVersionSeq(version) VALUES (2);
+
+        INSERT INTO Schedule(id, op_id, machine_id, operator_id, start_time, end_time, lock_status, version)
+        VALUES
+            (200, 10, 'M2', 'O2', '2026-05-02 08:00:00', '2026-05-02 09:00:00', 'unlocked', 2),
+            (201, 20, 'M1', 'O1', '2026-05-02 09:00:00', '2026-05-02 10:00:00', 'unlocked', 2);
+
+        INSERT INTO ScheduleHistory(version, strategy, batch_count, op_count, result_status, result_summary, created_by)
+        VALUES (2, 'priority_first', 1, 2, 'success', '{}', 'pytest');
+        """
+    )
+    conn.commit()
 
 
 def test_reschedule_records_execution_snapshot_and_execution_seed_source(tmp_path: Path, monkeypatch) -> None:
@@ -114,6 +145,59 @@ def test_reschedule_records_execution_snapshot_and_execution_seed_source(tmp_pat
         conn.close()
 
 
+def test_reschedule_ignores_superseded_same_op_execution_fact(tmp_path: Path, monkeypatch) -> None:
+    conn = _connect(tmp_path)
+    try:
+        _seed_two_operation_plan(conn)
+        _seed_second_version_plan(conn)
+        OperationExecutionEventRepo(conn).insert_event(
+            {
+                "schedule_version": 1,
+                "schedule_id": 100,
+                "op_id": 10,
+                "batch_id": "B1",
+                "source_table": "schedule",
+                "effective_plan_role": "adopted",
+                "scenario_id": None,
+                "event_type": "start",
+                "reported_status": "processing",
+                "event_time": "2026-05-01 08:30:00",
+                "actual_machine_id": "M1",
+                "actual_operator_id": "O1",
+                "created_by": "pytest",
+                "idempotency_key": "legacy-v1-start-for-reschedule",
+                "request_fingerprint": "legacy-v1-start-for-reschedule",
+                "previous_state_revision": "10:0:0",
+            }
+        )
+        conn.commit()
+        original_optimize = schedule_service_mod.optimize_schedule
+        captured_seed_op_ids = []
+
+        def optimize_with_capture(**kwargs):
+            captured_seed_op_ids.append([
+                int(seed.get("op_id") or 0)
+                for seed in list(kwargs.get("seed_results") or [])
+                if isinstance(seed, dict)
+            ])
+            return original_optimize(**kwargs)
+
+        monkeypatch.setattr(schedule_service_mod, "optimize_schedule", optimize_with_capture)
+
+        result = ScheduleService(conn).run_schedule(
+            ["B1"],
+            start_dt="2026-05-02 08:00:00",
+            created_by="pytest",
+        )
+
+        assert int(result["version"]) > 2
+        assert captured_seed_op_ids
+        assert all(10 not in seed_ids for seed_ids in captured_seed_op_ids)
+        assert ExecutionFactProvider(conn).facts_by_op_id_for_scopes([_execution_scope(10)])[10].last_event_schedule_version == 1
+    finally:
+        conn.close()
+
+
 def test_paused_operation_is_fixed_and_keeps_execution_status(tmp_path: Path) -> None:
     conn = _connect(tmp_path)
     try:
@@ -180,7 +264,7 @@ def test_exception_operation_blocks_reschedule_in_item13_command(tmp_path: Path)
             suggest_reschedule="yes",
             remark="设备异常，等待处理",
         )
-        fact = ExecutionFactProvider(conn).facts_by_op_id([10])[10]
+        fact = ExecutionFactProvider(conn).facts_by_op_id_for_scopes([_execution_scope(10)])[10]
         assert fact.latest_exception_impact_minutes == 30
         assert fact.latest_exception_handling_status == "new"
         assert fact.latest_exception_suggest_reschedule is True

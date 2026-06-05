@@ -181,8 +181,7 @@ def _format_node_metric_sample(value: Any) -> str:
 
 def _format_graph_score_sample(value: Any) -> str:
     item = safe_dict(value)
-    op_id = safe_text(item.get("op_id"))
-    if not op_id:
+    if not item:
         return ""
     details: List[str] = []
     impact_count = item.get("impact_count")
@@ -195,8 +194,8 @@ def _format_graph_score_sample(value: Any) -> str:
     if bonus is not None:
         details.append(f"排法参考值 {bonus}")
     if details:
-        return f"工序 {op_id}（{'，'.join(details)}）"
-    return f"工序 {op_id}"
+        return f"重点影响样本（{'，'.join(details)}）"
+    return "重点影响样本"
 
 
 def _format_warning_sample(value: Any) -> str:

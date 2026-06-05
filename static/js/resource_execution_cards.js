@@ -20,20 +20,23 @@
 
   function renderExecutionActions(actions, task) {
     const row = task || {};
-    const opId = trim(row.op_id);
+    const taskKey = trim(row.task_key);
+    const stateKey = trim(row.state_key);
     const fillAction = executionAction(actions, "fill_actual");
     const viewAction = executionAction(actions, "view_records");
+    const missingTaskReason = !taskKey
+      ? "缺少任务识别码，无法操作现场记录。"
+      : (!stateKey ? "缺少任务状态码，无法填写实际情况。" : "");
     let fillButton = "";
     if (fillAction) {
       const fillDisabledReason = trim(fillAction.disabled_reason);
-      const fillDisabledAttr = fillAction.enabled === true ? "" : " disabled";
-      const fillTitleAttr = fillDisabledReason ? ' title="' + escapeHtml(fillDisabledReason) + '"' : "";
+      const fillReason = fillDisabledReason || missingTaskReason;
+      const fillDisabledAttr = fillAction.enabled === true && !missingTaskReason ? "" : " disabled";
+      const fillTitleAttr = fillReason ? ' title="' + escapeHtml(fillReason) + '"' : "";
       const fillLabel = trim(fillAction.label) || "填写实际情况";
       fillButton = (
-        '<button type="button" class="btn btn-primary btn-sm aps-execution-action" data-action="fill_actual" data-op-id="' +
-          escapeHtml(row.op_id || "") + '" data-schedule-id="' + escapeHtml(row.schedule_id || "") +
-          '" data-batch-id="' + escapeHtml(row.batch_id || "") +
-          '" data-state-revision="' + escapeHtml(row.state_revision || "") +
+        '<button type="button" class="btn btn-primary btn-sm aps-execution-action" data-action="fill_actual" data-task-key="' +
+          escapeHtml(taskKey) + '" data-state-key="' + escapeHtml(stateKey) +
           '" data-machine-id="' + escapeHtml(row.planned_machine_id || "") +
           '" data-operator-id="' + escapeHtml(row.planned_operator_id || "") + '"' + fillDisabledAttr + fillTitleAttr + '>' + escapeHtml(fillLabel) + '</button> '
       );
@@ -43,7 +46,7 @@
     if (!viewAction) {
       recordsDisabledReason = "当前任务暂不能查看现场记录。";
     }
-    if (!opId && !recordsDisabledReason) {
+    if (!taskKey && !recordsDisabledReason) {
       recordsDisabledReason = "缺少任务识别码，无法查看现场记录";
       recordsDisabledAttr = " disabled";
     }
@@ -51,8 +54,9 @@
     const recordsLabel = trim(viewAction && viewAction.label) || "查看现场记录";
     return (
       fillButton +
-      '<button type="button" class="btn btn-secondary btn-sm aps-execution-events" data-op-id="' +
-        escapeHtml(row.op_id || "") + '" data-loaded="0"' + recordsDisabledAttr + recordsTitleAttr + '>' + escapeHtml(recordsLabel) + '</button>'
+      '<button type="button" class="btn btn-secondary btn-sm aps-execution-events" data-task-key="' +
+        escapeHtml(taskKey) +
+        '" data-loaded="0"' + recordsDisabledAttr + recordsTitleAttr + '>' + escapeHtml(recordsLabel) + '</button>'
     );
   }
 
@@ -152,7 +156,7 @@
           '<div class="aps-execution-card-head">' +
             '<div>' +
               '<div class="aps-execution-title">' + escapeHtml(task.op_name || "未命名工序") + '</div>' +
-              '<div class="text-meta">批次：' + escapeHtml(task.batch_id || "-") + '</div>' +
+              '<div class="text-meta">批次：' + escapeHtml(task.batch_label || "-") + '</div>' +
               '<div class="text-meta">图号 / 物料：' + escapeHtml(task.part_label || "未填写图号或物料") + '</div>' +
             '</div>' +
             '<span class="badge badge-skip">' + escapeHtml(task.current_status_label || "待开工") + '</span>' +
@@ -188,9 +192,10 @@
     });
   }
 
-  function executionEventsUrl(opId) {
-    const base = "/scheduler/resource-dispatch/execution/" + encodeURIComponent(opId) + "/events";
-    return base + currentQueryString();
+  function executionEventsUrl(button, taskKey) {
+    const base = "/scheduler/resource-dispatch/execution/tasks/" + encodeURIComponent(taskKey) + "/events";
+    const query = currentQueryString();
+    return query ? base + query : base;
   }
 
   function renderExecutionRecords(button, data) {
@@ -240,15 +245,15 @@
       button.setAttribute("data-loaded", "0");
       return;
     }
-    const opId = trim(button.getAttribute("data-op-id"));
-    if (!opId) {
-      ns.execution.executionNotice("缺少任务识别码，无法查看现场记录。");
+    const taskKey = trim(button.getAttribute("data-task-key"));
+    if (!taskKey) {
+      ns.execution.executionNotice("缺少任务身份，无法查看现场记录。");
       return;
     }
     button.disabled = true;
     ns.execution.executionNotice("正在加载现场记录，请稍候。");
     try {
-      const resp = await fetch(executionEventsUrl(opId), { headers: { Accept: "application/json" } });
+      const resp = await fetch(executionEventsUrl(button, taskKey), { headers: { Accept: "application/json" } });
       const payload = await resp.json();
       if (!resp.ok || !payload || payload.success !== true) {
         const message = payload && payload.error && payload.error.message ? payload.error.message : "现场记录加载失败，请稍后重试。";

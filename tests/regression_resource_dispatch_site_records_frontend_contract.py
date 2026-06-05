@@ -1,15 +1,28 @@
 from __future__ import annotations
 
+from typing import Tuple
+
 from tests.operation_execution_feedback_test_support import (
     RESOURCE_DISPATCH_TEMPLATE,
     UI_CONTRACT_CSS,
     _build_app,
+    _current_query,
     read_resource_dispatch_script_bundle,
 )
 from tests.resource_dispatch_frontend_support import (
     RESOURCE_DISPATCH_CSS,
     extract_js_function,
 )
+
+
+def _assert_contains_all(text: str, values: Tuple[str, ...]) -> None:
+    for value in values:
+        assert value in text
+
+
+def _assert_contains_none(text: str, values: Tuple[str, ...]) -> None:
+    for value in values:
+        assert value not in text
 
 
 def test_resource_dispatch_page_has_site_records_words_and_excel_entries(tmp_path, monkeypatch) -> None:
@@ -19,49 +32,61 @@ def test_resource_dispatch_page_has_site_records_words_and_excel_entries(tmp_pat
 
     monkeypatch.setattr(rd_routes, "_export_url", lambda _filters: "")
 
-    resp = client.get(
-        "/scheduler/resource-dispatch?scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01&version=2&plan_role=adopted"
-    )
+    resp = client.get(f"/scheduler/resource-dispatch?{_current_query()}")
     body = resp.get_data(as_text=True)
 
     assert resp.status_code == 200
     source = read_resource_dispatch_script_bundle()
     page_contract = body + "\n" + source
-    for expected in ("现场记录", "填写实际情况", "导入实际情况 Excel", "下载填写模板", "查看计划和实际", "查看现场记录"):
-        assert expected in page_contract
-    assert "data-execution-url=" in body
-    assert "data-actual-record-url-template=" in body
-    assert "data-actual-template-url=" in body
-    assert "data-actual-import-url=" in body
-    assert 'data-actual-record-url-template="/scheduler/resource-dispatch/execution/__OP_ID__/actual?' in body
-    assert 'data-actual-template-url="/scheduler/resource-dispatch/execution/actual-template?' in body
-    assert 'data-actual-import-url="/scheduler/resource-dispatch/execution/import?' in body
-    assert "data-actual-import-preview-url=" not in body
-    assert "data-actual-import-confirm-url=" not in body
-    assert 'href="/reports/execution-review?version=2' in body
-    assert "plan_role=adopted" in body
-    assert "query_date=2026-05-01" in body
-    assert "period_preset=week" in body
-    assert "scope_type=operator" in body
-    assert "scope_id=O1" in body
-    assert 'id="rdExecutionCreatedBy"' in body
-    assert "反馈人" in body
-    assert 'id="rdExecutionCreatedBy" class="w-180" autocomplete="off" placeholder="可不填"' in body
-    for forbidden in (
-        "执行事实补录",
-        "执行事件",
-        "事件底座",
-        "生产事实",
-        "事实台账",
-        "执行状态读模型",
-        "这些记录来自人工填写或 Excel 导入，不代表设备自动采集",
-        "请先填写反馈人",
-        "暂停生产",
-        "预览导入",
-        "确认写入",
-        "检查 Excel",
-    ):
-        assert forbidden not in body
+    _assert_contains_all(
+        page_contract,
+        ("现场记录", "填写实际情况", "导入实际情况 Excel", "下载填写模板", "查看计划和实际", "查看现场记录"),
+    )
+    _assert_contains_all(
+        body,
+        (
+            "data-execution-url=",
+            "data-actual-record-url-template=",
+            "data-actual-template-url=",
+            "data-actual-import-url=",
+            'data-actual-record-url-template="/scheduler/resource-dispatch/execution/tasks/__TASK_KEY__/actual?',
+            'data-actual-template-url="/scheduler/resource-dispatch/execution/actual-template?',
+            'data-actual-import-url="/scheduler/resource-dispatch/execution/import?',
+            'href="/reports/execution-review?version=2',
+            "plan_role=adopted",
+            "query_date=2026-05-01",
+            "period_preset=week",
+            "scope_type=operator",
+            "scope_id=O1",
+            'id="rdExecutionCreatedBy"',
+            "反馈人",
+            'id="rdExecutionCreatedBy" class="w-180" autocomplete="off" placeholder="可不填"',
+        ),
+    )
+    _assert_contains_none(
+        body,
+        (
+            "data-actual-import-preview-url=",
+            "data-actual-import-confirm-url=",
+        ),
+    )
+    _assert_contains_none(
+        body,
+        (
+            "执行事实补录",
+            "执行事件",
+            "事件底座",
+            "生产事实",
+            "事实台账",
+            "执行状态读模型",
+            "这些记录来自人工填写或 Excel 导入，不代表设备自动采集",
+            "请先填写反馈人",
+            "暂停生产",
+            "预览导入",
+            "确认写入",
+            "检查 Excel",
+        ),
+    )
 
 
 def test_resource_dispatch_actual_record_url_uses_normalized_filters_when_query_date_missing(tmp_path, monkeypatch) -> None:
@@ -78,7 +103,7 @@ def test_resource_dispatch_actual_record_url_uses_normalized_filters_when_query_
     body = resp.get_data(as_text=True)
 
     assert resp.status_code == 200
-    assert 'data-actual-record-url-template="/scheduler/resource-dispatch/execution/__OP_ID__/actual?' in body
+    assert 'data-actual-record-url-template="/scheduler/resource-dispatch/execution/tasks/__TASK_KEY__/actual?' in body
     assert "query_date=2026-05-01" in body
     assert "start_date=2026-05-01" in body
     assert "end_date=2026-05-07" in body
@@ -92,7 +117,8 @@ def test_resource_dispatch_read_only_page_does_not_emit_actual_write_urls(tmp_pa
     monkeypatch.setattr(rd_routes, "_export_url", lambda _filters: "")
 
     resp = client.get(
-        "/scheduler/resource-dispatch?scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01&version=2&plan_role=baseline_best"
+        "/scheduler/resource-dispatch?scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01"
+        "&date_from=2026-05-01&date_to=2026-05-07&version=2&plan_role=baseline_best"
     )
     body = resp.get_data(as_text=True)
 
@@ -107,7 +133,7 @@ def test_resource_dispatch_read_only_page_does_not_emit_actual_write_urls(tmp_pa
     ):
         assert attr not in body
     for forbidden in (
-        "/scheduler/resource-dispatch/execution/__OP_ID__/actual",
+        "/scheduler/resource-dispatch/execution/tasks/__TASK_KEY__/actual",
         "/scheduler/resource-dispatch/execution/actual-template?",
         "/scheduler/resource-dispatch/execution/import?",
         'id="rdExecutionCreatedBy"',
@@ -124,7 +150,8 @@ def test_resource_dispatch_unqueryable_write_page_does_not_render_none_links(tmp
     monkeypatch.setattr(rd_routes, "_export_url", lambda _filters: "")
 
     resp = client.get(
-        "/scheduler/resource-dispatch?scope_type=team&period_preset=week&query_date=2026-05-01&version=2&plan_role=adopted"
+        "/scheduler/resource-dispatch?scope_type=team&period_preset=week&query_date=2026-05-01"
+        "&date_from=2026-05-01&date_to=2026-05-07&version=2&plan_role=adopted"
     )
     body = resp.get_data(as_text=True)
 
@@ -135,7 +162,7 @@ def test_resource_dispatch_unqueryable_write_page_does_not_render_none_links(tmp
     assert 'data-actual-template-url=' not in body
     assert 'data-actual-import-url=' not in body
     assert "下载填写模板" in body
-    assert "/scheduler/resource-dispatch/execution/__OP_ID__/actual" not in body
+    assert "/scheduler/resource-dispatch/execution/tasks/__TASK_KEY__/actual" not in body
     assert "/scheduler/resource-dispatch/execution/actual-template?" not in body
     assert "/scheduler/resource-dispatch/execution/import?" not in body
 
@@ -148,8 +175,8 @@ def test_resource_dispatch_history_and_scenario_pages_do_not_emit_review_or_writ
     monkeypatch.setattr(rd_routes, "_export_url", lambda _filters: "")
 
     readonly_urls = [
-        "/scheduler/resource-dispatch?scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-04-30&version=1&plan_role=adopted",
-        "/scheduler/resource-dispatch?scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01&version=2&plan_role=adopted&scenario_id=scenario-plain",
+        "/scheduler/resource-dispatch?scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-04-30&date_from=2026-04-30&date_to=2026-05-06&version=1&plan_role=adopted",
+        "/scheduler/resource-dispatch?scope_type=operator&operator_id=O1&period_preset=week&query_date=2026-05-01&date_from=2026-05-01&date_to=2026-05-07&version=2&plan_role=adopted&scenario_id=scenario-plain",
     ]
 
     for url in readonly_urls:
@@ -165,13 +192,39 @@ def test_resource_dispatch_history_and_scenario_pages_do_not_emit_review_or_writ
         ):
             assert attr not in body
         for forbidden in (
-            "/scheduler/resource-dispatch/execution/__OP_ID__/actual",
+            "/scheduler/resource-dispatch/execution/tasks/__TASK_KEY__/actual",
             "/scheduler/resource-dispatch/execution/actual-template?",
             "/scheduler/resource-dispatch/execution/import?",
             'id="rdExecutionCreatedBy"',
             'id="rdActualImportSubmit"',
         ):
             assert forbidden not in body
+
+
+def test_resource_dispatch_execution_entry_rejects_incomplete_plan_context(tmp_path, monkeypatch) -> None:
+    app, _db_path = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+    from web.routes.domains.scheduler import scheduler_resource_dispatch as rd_routes
+
+    monkeypatch.setattr(rd_routes, "_export_url", lambda _filters: "")
+
+    page_resp = client.get("/scheduler/resource-dispatch?version=2")
+    page_body = page_resp.get_data(as_text=True)
+
+    assert page_resp.status_code == 200
+    assert 'data-execution-url=""' in page_body
+    assert "data-actual-record-url-template=" not in page_body
+    assert "/scheduler/resource-dispatch/execution/tasks/__TASK_KEY__/actual" not in page_body
+
+    data_resp = client.get("/scheduler/resource-dispatch/execution/data?version=2")
+    payload = data_resp.get_json()
+
+    assert data_resp.status_code == 400
+    assert payload["success"] is False
+    assert payload["error"]["details"]["field"] == "plan_identity"
+    assert "plan_role" in payload["error"]["details"]["missing_fields"]
+    assert "period_preset" in payload["error"]["details"]["missing_fields"]
+    assert "scope_type" in payload["error"]["details"]["missing_fields"]
 
 
 def test_execution_review_link_keeps_server_side_guard_fields() -> None:
@@ -187,6 +240,7 @@ def test_execution_review_link_keeps_server_side_guard_fields() -> None:
         "period_preset": "week",
         "scope_type": "operator",
         "operator_id": "O1",
+        "is_current_executable_official_version": True,
         "can_write_feedback": True,
         "can_dispatch": True,
     }
@@ -194,7 +248,7 @@ def test_execution_review_link_keeps_server_side_guard_fields() -> None:
         {"effective_plan_role": "baseline_best"},
         {"requested_plan_role": "baseline_best"},
         {"is_scenario_preview": True},
-        {"is_superseded_by_newer_version": True},
+        {"is_current_executable_official_version": False},
         {"is_comparison": True},
     ]
 
@@ -203,6 +257,14 @@ def test_execution_review_link_keeps_server_side_guard_fields() -> None:
         assert link["disabled"] is True
         assert link["url"] == ""
         assert "只复盘正式采用方案" in link["disabled_reason"]
+
+    historical_link = _execution_review_link(
+        dict(base_filters, is_superseded_by_newer_version=True),
+        dict(base_filters, is_superseded_by_newer_version=True),
+    )
+    assert historical_link["disabled"] is True
+    assert historical_link["url"] == ""
+    assert "这是历史正式方案，只能查看" in historical_link["disabled_reason"]
 
     link = _execution_review_link(base_filters, base_filters)
     assert link["disabled"] is False
@@ -238,112 +300,142 @@ def test_resource_dispatch_frontend_uses_actual_record_form_and_one_click_import
     css = UI_CONTRACT_CSS.read_text(encoding="utf-8")
     page_css = RESOURCE_DISPATCH_CSS.read_text(encoding="utf-8")
 
-    assert "bindExecutionActionClicks" in source
-    assert "postExecutionAction" in source
-    assert "executionCreatedBy" in source
-    assert "rdExecutionCreatedBy" in source
-    assert "payload.created_by = createdBy" in source
-    assert "payload.feedback_person = createdBy" in source
-    assert "window.confirm" not in source
-    assert "window.prompt" not in source
-    assert "renderActualInlineForm" in source
-    assert "inlineActualPayload" in source
+    _assert_contains_all(
+        source,
+        (
+            "bindExecutionActionClicks",
+            "postExecutionAction",
+            "executionCreatedBy",
+            "rdExecutionCreatedBy",
+            "payload.created_by = createdBy",
+            "payload.feedback_person = createdBy",
+            "renderActualInlineForm",
+            "inlineActualPayload",
+        ),
+    )
+    _assert_contains_none(source, ("window.confirm", "window.prompt"))
     # 已记录的实际开工/完工只读展示，不预填进可编辑输入框（否则补完工会被后端整单拒绝）。
-    assert "aps-execution-inline-readonly" in source
-    assert "已记录，不可修改" in source
-    assert 'aps-actual-start-time" value="' not in source
-    assert 'aps-actual-finish-time" value="' not in source
-    assert "填写实际情况" in source
-    assert "实际开工时间" in source
-    assert "实际完工时间" in source
-    assert "暂停开始时间" in source
-    assert "暂停结束时间" in source
-    assert "暂停时长分钟" in source
-    assert "异常时间" in source
-    assert "异常说明" in source
-    assert "异常原因" in source
-    assert "严重程度" in source
-    assert "report-exception" not in source
-    assert "影响设备编号" not in source
-    assert "影响人员工号" not in source
-    assert "payload.suggest_reschedule" not in source
-    assert "最近异常" in source
-    assert "影响设备" in source
-    assert "影响人员" in source
-    assert "现场状态" in source
-    assert "紧急异常，请计划员尽快处理。" in source
-    assert "rdActualImportSubmit" in source
-    assert "submitActualImport" in source
-    assert "正在导入实际情况" in source
-    assert "导入结果" in source
-    assert "导入检查结果" not in source
-    assert "<th>工作表</th>" in source
-    assert "<th>Sheet</th>" not in source
-    assert "待检查" not in source
-    assert "将新增" not in source
-    assert "将跳过" not in source
-    assert "可导入" in source
-    assert "空白行" in source
-    assert "renderActualImportResult" in source
-    assert "aps-execution-record-item" in source
-    assert "aps-execution-record-grid" in source
-    assert "actualRecordUrlTemplate" in source
-    assert "actualRecordUrl(opId)" in source
-    assert 'if (path.indexOf("?") >= 0) return path;' in source
-    assert "path + query" in source
-    assert "requested_plan_role: identity.requested_plan_role" not in source
-    assert "effective_plan_role: identity.effective_plan_role" not in source
-    assert "source_table: identity.source_table" not in source
-    assert "scenario_id: identity.scenario_id" not in source
-    assert "当前方案不能填写实际情况。" in source
-    assert "loadExecutionRecords" in source
-    assert "renderExecutionRecords" in source
-    assert "/events" in source
-    assert "aps-execution-events" in source
-    assert "aps-execution-records" in source
-    assert "aps-execution-record-item" in css
-    assert "aps-execution-record-wide" in css
-    assert "aps-execution-inline-form" in css
-    assert "aps-execution-inline-field-wide" in css
-    assert "aps-resource-lane-tabs" in page_css
-    assert "aps-execution-bulk-maintenance" in page_css
-    assert "resize: vertical" in css
-    assert "background: var(--ui-surface-muted" in css
-    assert "--ui-bg-subtle" not in css
-    assert "normalizedUnavailableReasonTexts" in source
-    assert "statusUnavailableReasonSummary" in source
-    assert '"start", "pause", "resume", "finish", "report_exception"' not in source
-    assert 'actions.join("、")' in source
-    assert 'map(escapeHtml).join("；")' not in source
-    assert "第一版" not in source
-    assert 'id="rdExecutionCreatedBy"' in template
-    assert "required" not in template
-    assert "反馈人" in template
-    assert "现场状态" in template
-    assert "最近异常" in template
-    assert "影响资源" in template
-    assert 'method: "POST"' in source
-    assert 'data-op-id="' in source
-    assert 'data-state-revision="' in source
-    assert 'data-machine-id="' in source
-    assert 'data-operator-id="' in source
-    assert 'const base = "/scheduler/resource-dispatch/execution/" + encodeURIComponent(opId) + "/events";' in source
-    assert "idempotency_key" in source
-    for forbidden in (
-        "请先填写反馈人",
-        "填写暂停反馈",
-        "填写继续生产反馈",
-        "填写异常反馈",
-        "暂停生产",
-        "这些记录来自人工填写或 Excel 导入，不代表设备自动采集",
-        "执行事实补录",
-        "执行事件",
-        "事件底座",
-        "生产事实",
-        "事实台账",
-        "执行状态读模型",
-    ):
-        assert forbidden not in source
+    _assert_contains_all(
+        source,
+        (
+            "aps-execution-inline-readonly",
+            "已记录，不可修改",
+            "填写实际情况",
+            "实际开工时间",
+            "实际完工时间",
+            "暂停开始时间",
+            "暂停结束时间",
+            "暂停时长分钟",
+            "异常时间",
+            "异常说明",
+            "异常原因",
+            "严重程度",
+            "最近异常",
+            "影响设备",
+            "影响人员",
+            "现场状态",
+            "紧急异常，请计划员尽快处理。",
+        ),
+    )
+    _assert_contains_none(
+        source,
+        (
+            'aps-actual-start-time" value="',
+            'aps-actual-finish-time" value="',
+            "report-exception",
+            "影响设备编号",
+            "影响人员工号",
+            "payload.suggest_reschedule",
+        ),
+    )
+    _assert_contains_all(
+        source,
+        (
+            "rdActualImportSubmit",
+            "submitActualImport",
+            "正在导入实际情况",
+            "导入结果",
+            "<th>工作表</th>",
+            "可导入",
+            "空白行",
+            "renderActualImportResult",
+        ),
+    )
+    _assert_contains_none(source, ("导入检查结果", "<th>Sheet</th>", "待检查", "将新增", "将跳过"))
+    _assert_contains_all(
+        source,
+        (
+            "aps-execution-record-item",
+            "aps-execution-record-grid",
+            "actualRecordUrlTemplate",
+            "actualRecordUrl(taskKey)",
+            'if (path.indexOf("?") >= 0) return path;',
+            "path + query",
+            "当前方案不能填写实际情况。",
+            "loadExecutionRecords",
+            "renderExecutionRecords",
+            "/events",
+            "aps-execution-events",
+            "aps-execution-records",
+            "normalizedUnavailableReasonTexts",
+            "statusUnavailableReasonSummary",
+            'actions.join("、")',
+            'method: "POST"',
+            'data-task-key="',
+            'data-state-key="',
+            'data-machine-id="',
+            'data-operator-id="',
+            'const base = "/scheduler/resource-dispatch/execution/tasks/" + encodeURIComponent(taskKey) + "/events";',
+            "idempotency_key",
+        ),
+    )
+    _assert_contains_none(
+        source,
+        (
+            "requested_plan_role: identity.requested_plan_role",
+            "effective_plan_role: identity.effective_plan_role",
+            "source_table: identity.source_table",
+            "scenario_id: identity.scenario_id",
+            "__OP_ID__",
+            'data-op-id="',
+            'data-schedule-id="',
+            'data-batch-id="',
+            'data-state-revision="',
+            '"schedule_id="',
+            '"batch_id="',
+            "expected_state_revision",
+            '"start", "pause", "resume", "finish", "report_exception"',
+            'map(escapeHtml).join("；")',
+            "第一版",
+            "请先填写反馈人",
+            "填写暂停反馈",
+            "填写继续生产反馈",
+            "填写异常反馈",
+            "暂停生产",
+            "这些记录来自人工填写或 Excel 导入，不代表设备自动采集",
+            "执行事实补录",
+            "执行事件",
+            "事件底座",
+            "生产事实",
+            "事实台账",
+            "执行状态读模型",
+        ),
+    )
+    _assert_contains_all(
+        css,
+        (
+            "aps-execution-record-item",
+            "aps-execution-record-wide",
+            "aps-execution-inline-form",
+            "aps-execution-inline-field-wide",
+            "resize: vertical",
+            "background: var(--ui-surface-muted",
+        ),
+    )
+    _assert_contains_none(css, ("--ui-bg-subtle",))
+    _assert_contains_all(page_css, ("aps-resource-lane-tabs", "aps-execution-bulk-maintenance"))
+    _assert_contains_all(template, ('id="rdExecutionCreatedBy"', "反馈人", "现场状态", "最近异常", "影响资源"))
+    _assert_contains_none(template, ("required",))
 
 
 def test_resource_dispatch_execution_buttons_follow_available_actions_contract() -> None:

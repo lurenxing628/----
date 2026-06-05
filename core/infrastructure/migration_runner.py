@@ -5,17 +5,19 @@ import sqlite3
 import tempfile
 from typing import Callable, Optional
 
-from .database_bootstrap import bootstrap_missing_tables_from_schema, cleanup_probe_db, missing_schema_tables
+from .database_bootstrap import cleanup_probe_db, missing_schema_tables
 from .migration_backup import release_sqlite_connection_reference, restore_db_file_from_backup
 from .migration_state import (
+    CURRENT_SCHEMA_VERSION,
     MigrationContractError,
     build_contract_error,
+    ensure_current_schema_contract,
     ensure_schema_version,
     ensure_schema_version_not_newer,
     get_schema_version,
     set_schema_version,
 )
-from .migrations.common import MigrationOutcome, fallback_log
+from .migrations.common import MigrationOutcome, fallback_log, table_exists
 
 ConnectionFactory = Callable[[str], sqlite3.Connection]
 
@@ -119,35 +121,31 @@ def _run_preflight_on_probe(
     conn = None
     try:
         conn = connection_factory(probe_path)
-        ensure_schema_version_not_newer(get_schema_version(conn), supported_version=to_version)
-        missing_tables = _prepare_probe_schema(conn, schema_sql)
+        initial_version = get_schema_version(conn)
+        ensure_schema_version_not_newer(initial_version, supported_version=to_version)
+        ensure_current_schema_contract(conn, schema_version=initial_version)
         ensure_schema_version(conn, logger=None)
         current = get_schema_version(conn)
         ensure_schema_version_not_newer(current, supported_version=to_version)
+        _ensure_completed_event_migration_tables(conn, current=current)
         if current >= to_version:
+            if current == CURRENT_SCHEMA_VERSION:
+                ensure_current_schema_contract(conn, schema_version=current)
             return
         with conn:
             for version in range(current + 1, to_version + 1):
                 outcome = run_migration(conn, target_version=version, logger=None)
                 if outcome != MigrationOutcome.APPLIED:
                     raise build_contract_error(
-                        missing_tables=missing_tables,
+                        missing_tables=missing_schema_tables(conn, schema_sql),
                         blocked_version=version,
                         blocked_outcome=outcome,
                     )
                 set_schema_version(conn, version)
+            if to_version == CURRENT_SCHEMA_VERSION:
+                ensure_current_schema_contract(conn, schema_version=to_version)
     finally:
         _close_connection(conn)
-
-
-def _prepare_probe_schema(conn: sqlite3.Connection, schema_sql: str):
-    missing_tables = missing_schema_tables(conn, schema_sql)
-    if missing_tables:
-        try:
-            bootstrap_missing_tables_from_schema(conn, schema_sql, logger=None)
-        except Exception as exc:
-            raise build_contract_error(missing_tables=missing_tables, bootstrap_error=exc) from exc
-    return missing_tables
 
 
 def _resolve_backup_dir(db_path: str, backup_dir: Optional[str], *, logger=None) -> str:
@@ -203,23 +201,35 @@ def _apply_migrations(
     conn = None
     try:
         conn = connection_factory(db_path)
-        ensure_schema_version_not_newer(get_schema_version(conn), supported_version=to_version)
-        if schema_sql:
-            bootstrap_missing_tables_from_schema(conn, schema_sql, logger=logger)
+        initial_version = get_schema_version(conn)
+        ensure_schema_version_not_newer(initial_version, supported_version=to_version)
+        ensure_current_schema_contract(conn, schema_version=initial_version)
         with conn:
             ensure_schema_version(conn, logger=logger)
             current = get_schema_version(conn)
             ensure_schema_version_not_newer(current, supported_version=to_version)
+            _ensure_completed_event_migration_tables(conn, current=current)
             if current >= to_version:
+                if current == CURRENT_SCHEMA_VERSION:
+                    ensure_current_schema_contract(conn, schema_version=current)
                 return
-            _apply_version_range(conn, current=current, to_version=to_version, logger=logger)
+            _apply_version_range(conn, current=current, to_version=to_version, schema_sql=schema_sql, logger=logger)
+            if to_version == CURRENT_SCHEMA_VERSION:
+                ensure_current_schema_contract(conn, schema_version=to_version)
         if logger:
             fallback_log(logger, "info", f"数据库迁移完成：SchemaVersion {current} -> {to_version}")
     finally:
         _close_connection(conn, logger=logger)
 
 
-def _apply_version_range(conn: sqlite3.Connection, *, current: int, to_version: int, logger=None) -> None:
+def _apply_version_range(
+    conn: sqlite3.Connection,
+    *,
+    current: int,
+    to_version: int,
+    schema_sql: Optional[str],
+    logger=None,
+) -> None:
     applied_upto = current
     for version in range(current + 1, to_version + 1):
         outcome = run_migration(conn, target_version=version, logger=logger)
@@ -228,7 +238,13 @@ def _apply_version_range(conn: sqlite3.Connection, *, current: int, to_version: 
             applied_upto = version
             continue
         _log_incomplete_migration(version, applied_upto=applied_upto, outcome=outcome, logger=logger)
-        raise build_contract_error(blocked_version=version, blocked_outcome=outcome)
+        missing_tables = missing_schema_tables(conn, schema_sql) if schema_sql else None
+        raise build_contract_error(missing_tables=missing_tables, blocked_version=version, blocked_outcome=outcome)
+
+
+def _ensure_completed_event_migration_tables(conn: sqlite3.Connection, *, current: int) -> None:
+    if int(current) >= 15 and not table_exists(conn, "OperationExecutionEvents"):
+        raise build_contract_error(missing_tables=["OperationExecutionEvents"])
 
 
 def _log_incomplete_migration(

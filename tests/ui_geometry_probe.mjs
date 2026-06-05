@@ -167,6 +167,15 @@ async function withTimeout(promise, timeoutMs, message) {
   }
 }
 
+async function writeLine(stream, text) {
+  await new Promise((resolve, reject) => {
+    stream.write(`${text}\n`, (error) => {
+      if (error) reject(error);
+      else resolve(undefined);
+    });
+  });
+}
+
 async function preflightDevTools(port) {
   const url = `http://127.0.0.1:${port}/json/version`;
   let response;
@@ -276,59 +285,64 @@ async function waitForPageStable(client, url, viewport) {
 async function inspectPage(port, url, expected, httpStatus) {
   const page = await newPage(port);
   const client = new CdpClient(page.webSocketDebuggerUrl);
-  await client.open();
-  active.push(client);
-  await client.send("Page.enable");
-  await client.send("Runtime.enable");
-  const results = [];
-  let pageLoaded = false;
-  for (const width of [1024, 768]) {
-    await client.send("Emulation.setDeviceMetricsOverride", {
-      width,
-      height: 900,
-      deviceScaleFactor: 1,
-      mobile: false,
-    });
-    client.context = { url, viewport: { width, height: 900 } };
-    if (!pageLoaded) {
-      const loaded = client.waitEvent("Page.loadEventFired");
-      const navigateResult = await client.send("Page.navigate", { url });
-      if (navigateResult.errorText) {
-        fail("page_http_status_failed", {
-          stage: "Page.navigate",
-          url,
-          viewport: { width, height: 900 },
-          message: navigateResult.errorText,
-        });
+  try {
+    await client.open();
+    active.push(client);
+    await client.send("Page.enable");
+    await client.send("Runtime.enable");
+    const results = [];
+    let pageLoaded = false;
+    for (const width of [1024, 768]) {
+      await client.send("Emulation.setDeviceMetricsOverride", {
+        width,
+        height: 900,
+        deviceScaleFactor: 1,
+        mobile: false,
+      });
+      client.context = { url, viewport: { width, height: 900 } };
+      if (!pageLoaded) {
+        const loaded = client.waitEvent("Page.loadEventFired");
+        const navigateResult = await client.send("Page.navigate", { url });
+        if (navigateResult.errorText) {
+          fail("page_http_status_failed", {
+            stage: "Page.navigate",
+            url,
+            viewport: { width, height: 900 },
+            message: navigateResult.errorText,
+          });
+        }
+        await loaded;
+        pageLoaded = true;
       }
-      await loaded;
-      pageLoaded = true;
+      await waitForPageStable(client, url, { width, height: 900 });
+      const expression = buildPageInspectionExpression(httpStatus);
+      await client.send("Runtime.evaluate", {
+        expression: `window.__APS_EXPECTED_SIGNALS__ = ${JSON.stringify(expected || {})};`,
+        returnByValue: true,
+      });
+      await client.send("Runtime.evaluate", {
+        expression: `window.__APS_ERROR_PAGE_KEYWORDS__ = ${JSON.stringify(errorPageKeywords || [])};`,
+        returnByValue: true,
+      });
+      const evaluated = await client.send("Runtime.evaluate", {
+        expression,
+        returnByValue: true,
+        awaitPromise: true,
+      });
+      if (evaluated.exceptionDetails) {
+        throw new Error(`页面检查脚本执行失败：${JSON.stringify(evaluated.exceptionDetails)}`);
+      }
+      if (!evaluated.result || typeof evaluated.result.value !== "string") {
+        throw new Error(`页面检查脚本没有返回 JSON 字符串：${JSON.stringify(evaluated.result || {})}`);
+      }
+      results.push(JSON.parse(evaluated.result.value));
     }
-    await waitForPageStable(client, url, { width, height: 900 });
-    const expression = buildPageInspectionExpression(httpStatus);
-    await client.send("Runtime.evaluate", {
-      expression: `window.__APS_EXPECTED_SIGNALS__ = ${JSON.stringify(expected || {})};`,
-      returnByValue: true,
-    });
-    await client.send("Runtime.evaluate", {
-      expression: `window.__APS_ERROR_PAGE_KEYWORDS__ = ${JSON.stringify(errorPageKeywords || [])};`,
-      returnByValue: true,
-    });
-    const evaluated = await client.send("Runtime.evaluate", {
-      expression,
-      returnByValue: true,
-      awaitPromise: true,
-    });
-    if (evaluated.exceptionDetails) {
-      throw new Error(`页面检查脚本执行失败：${JSON.stringify(evaluated.exceptionDetails)}`);
-    }
-    if (!evaluated.result || typeof evaluated.result.value !== "string") {
-      throw new Error(`页面检查脚本没有返回 JSON 字符串：${JSON.stringify(evaluated.result || {})}`);
-    }
-    results.push(JSON.parse(evaluated.result.value));
+    return results;
+  } finally {
+    await client.close();
+    const index = active.indexOf(client);
+    if (index >= 0) active.splice(index, 1);
   }
-  client.close();
-  return results;
 }
 
 try {
@@ -341,30 +355,31 @@ try {
     const httpStatus = httpResponse.status;
     results.push(...await inspectPage(port, url, expectedByPath[pagePath] || {}, httpStatus));
   }
-  console.log(JSON.stringify(results));
+  await writeLine(process.stdout, JSON.stringify(results));
 } catch (error) {
   if (error instanceof ProbeFailure) {
-    console.error(JSON.stringify(error.details, null, 2));
+    await writeLine(process.stderr, JSON.stringify(error.details, null, 2));
   } else {
-    console.error(JSON.stringify(failurePayload("cdp_websocket_failed", {
+    await writeLine(process.stderr, JSON.stringify(failurePayload("cdp_websocket_failed", {
       stage: "top-level",
       message: String(error && error.stack ? error.stack : error),
     }), null, 2));
   }
   process.exitCode = 1;
 } finally {
-  for (const client of active) client.close();
+  for (const client of [...active]) await client.close();
   try { chrome.kill("SIGTERM"); } catch {}
   const chromeExitWait = await waitForChromeExit(3000);
   if (!chromeExitWait.exited) {
     try { chrome.kill("SIGKILL"); } catch {}
   }
   try { await fs.rm(userDataDir, { recursive: true, force: true }); } catch (error) {
-    console.error(JSON.stringify({
+    await writeLine(process.stderr, JSON.stringify({
       warning_kind: "chrome_profile_cleanup_warning",
       userDataDir,
       chromeExitWait,
       message: String(error && error.stack ? error.stack : error),
     }, null, 2));
   }
+  process.exit(process.exitCode || 0);
 }

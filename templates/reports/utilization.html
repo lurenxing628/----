@@ -29,7 +29,7 @@
           <select name="plan_role" data-report-plan-role-select data-initial-plan-role="{{ selected_plan_role }}">
             {% for it in plan_options %}
               <option value="{{ it.role }}" {% if selected_plan_role == it.role %}selected{% endif %}>
-                {{ it.label }}
+                {{ it.display_text or it.label }}
               </option>
             {% endfor %}
           </select>

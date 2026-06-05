@@ -48,13 +48,13 @@
       {% for card in reports_workbench.entry_cards %}
         {% set link = card.link %}
         {% if link and not link.disabled and link.url %}
-          <a href="{{ link.url }}" class="nav-card" data-report-card="{{ card.key or card.title }}">
+          <a href="{{ link.url }}" class="nav-card" data-report-card="{{ card.title }}">
             <div class="nav-card-title"><svg class="icon"><use href="{{ url_for('static', filename='icons.svg') }}#{{ card.icon_id }}"/></svg> {{ card.title }}</div>
             <div class="nav-card-desc">{{ card.question_text }}</div>
             <div class="text-meta mt-1">{{ card.limitation_text }}</div>
           </a>
         {% else %}
-          <div class="nav-card is-disabled" data-report-card="{{ card.key or card.title }}" aria-disabled="true" title="{{ link.disabled_reason if link else '' }}">
+          <div class="nav-card is-disabled" data-report-card="{{ card.title }}" aria-disabled="true" title="{{ link.disabled_reason if link else '' }}">
             <div class="nav-card-title"><svg class="icon"><use href="{{ url_for('static', filename='icons.svg') }}#{{ card.icon_id }}"/></svg> {{ card.title }}</div>
             <div class="nav-card-desc">{{ card.question_text }}</div>
             <div class="text-meta mt-1">{{ link.disabled_reason if link and link.disabled_reason else card.limitation_text }}</div>

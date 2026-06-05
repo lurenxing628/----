@@ -4,6 +4,7 @@ from typing import Any, Dict, Iterable, List, Optional
 
 from flask import g, has_request_context, request
 
+from core.models.schedule_plan_role import VALID_PLAN_ROLES
 from web.request_resource_context import request_report_resource_context
 from web.viewmodels.scheduler_navigation_links import (
     build_report_navigation_links as build_report_navigation_links_for_context,
@@ -39,14 +40,6 @@ def _request_values() -> Dict[str, str]:
     return {str(key): _text(request.args.get(key)) for key in request.args.keys()}
 
 
-def _is_execution_review_request() -> bool:
-    if not has_request_context():
-        return False
-    endpoint = _text(getattr(request, "endpoint", ""))
-    path = _text(getattr(request, "path", ""))
-    return endpoint == "reports.execution_review_page" or path.rstrip("/") == "/reports/execution-review"
-
-
 def _is_scheduler_request() -> bool:
     return has_request_context() and _text(getattr(request, "path", "")).startswith("/scheduler")
 
@@ -77,14 +70,13 @@ def current_workbench_navigation_context() -> Dict[str, Any]:
     override = _navigation_context_override()
     if override is not None:
         return override
-    is_execution_review = _is_execution_review_request()
-    plan_role = ROLE_ADOPTED if is_execution_review else _request_arg("plan_role")
-    scenario_id = "" if is_execution_review else _request_arg("scenario_id")
+    plan_role = _request_arg("plan_role")
+    scenario_id = _request_arg("scenario_id")
     resource = _request_resource()
     return build_workbench_plan_context(
         version=_request_arg("version"),
         plan_id=_request_arg("plan_id"),
-        plan_role=plan_role or ROLE_ADOPTED,
+        plan_role=plan_role if plan_role in VALID_PLAN_ROLES else ROLE_ADOPTED,
         scenario_id=scenario_id,
         date_from=_request_arg("start_date") or _request_arg("date_from"),
         date_to=_request_arg("end_date") or _request_arg("date_to"),

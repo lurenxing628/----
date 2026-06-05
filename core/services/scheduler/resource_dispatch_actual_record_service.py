@@ -1,18 +1,19 @@
 from __future__ import annotations
 
-import hashlib
 import io
 from dataclasses import replace
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 from core.infrastructure.errors import AppError, ErrorCode, ValidationError
 from core.models.operation_execution_labels import REASON_LABELS, SEVERITY_LABELS
+from core.models.operation_execution_scope import operation_execution_scope_from_event
 from core.models.operation_execution_state import OperationExecutionState
 from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
 from data.repositories.batch_operation_repo import BatchOperationRepository
 from data.repositories.schedule_repo import ScheduleRepository
 
 from .operation_execution_feedback_service import ExecutionFeedbackContext, OperationExecutionFeedbackService
+from .operation_execution_scope_read import state_for_feedback_context, state_for_task_ref
 from .resource_dispatch_actual_excel import build_actual_template_workbook, read_actual_workbook_rows
 from .resource_dispatch_actual_import import ResourceDispatchActualImportPreviewer, preview_payload, preview_token
 from .resource_dispatch_actual_records import (
@@ -20,20 +21,30 @@ from .resource_dispatch_actual_records import (
     PreviewResult,
     TaskPlan,
     TaskRef,
-    datetime_text,
     feedback_person,
     normalize_choice,
     ordered_pauses,
     parse_datetime_or_error,
     parse_int_or_error,
+    plan_identity_from_context,
     planned_event_count,
     resource_label,
     task_code_from_parts,
     task_display_name,
     text,
 )
+from .resource_dispatch_actual_tokens import idempotency_key, manual_plan_token
 from .resource_dispatch_execution_service import ResourceDispatchExecutionService
 from .resource_dispatch_task_ids import public_task_id
+
+
+def _not_current_official_plan_error() -> AppError:
+    details = {"reason": "not_current_official_plan", "can_retry": False}
+    return AppError(
+        ErrorCode.SCHEDULE_CONFLICT,
+        "当前不是最新正式采用方案，不能填写现场记录。",
+        details=details,
+    )
 
 
 class ResourceDispatchActualRecordService:
@@ -41,13 +52,15 @@ class ResourceDispatchActualRecordService:
         self.conn = conn
         self.logger = logger
         self.op_logger = op_logger
-        # 可注入已装配好的 execution/feedback 服务，避免同一请求里重复构造；不注入时自行构造，
-        # 保证本服务可独立使用、不反向依赖 web 装配层。
         self.execution_service = execution_service or ResourceDispatchExecutionService(
-            conn, logger=logger, op_logger=op_logger
+            conn,
+            logger=logger,
+            op_logger=op_logger,
         )
         self.feedback_service = feedback_service or OperationExecutionFeedbackService(
-            conn, logger=logger, op_logger=op_logger
+            conn,
+            logger=logger,
+            op_logger=op_logger,
         )
         self.previewer = ResourceDispatchActualImportPreviewer(self.feedback_service)
         self.schedule_repo = ScheduleRepository(conn, logger=logger)
@@ -118,7 +131,7 @@ class ResourceDispatchActualRecordService:
         self._ensure_context_can_write(context)
         task = self._task_ref_from_feedback_context(context)
         plan = self._task_plan_from_actual_payload(task, payload, row_number=1)
-        token = text(payload.get("idempotency_key")) or self._manual_plan_token(plan)
+        token = text(payload.get("idempotency_key")) or manual_plan_token(plan)
         messages: List[str] = []
         if not self._plan_is_full_replay(plan, token):
             self.previewer.validator.validate_task_plan(plan, messages)
@@ -126,6 +139,18 @@ class ResourceDispatchActualRecordService:
                 raise ValidationError(messages[0], field="actual_record", details={"messages": messages})
         with self.feedback_service.tx_manager.transaction(begin_immediate=True):
             return self._apply_task_plan(plan, import_token=token)
+
+    def actual_payload_replay_state_revision(self, context: ExecutionFeedbackContext, payload: Mapping[str, Any]) -> Optional[str]:
+        task = self._task_ref_from_feedback_context(context)
+        plan = self._task_plan_from_actual_payload(task, payload, row_number=1)
+        token = text(payload.get("idempotency_key")) or manual_plan_token(plan)
+        if not self._plan_is_full_replay(plan, token):
+            return None
+        for key in self._plan_idempotency_keys(plan, token):
+            event = self.feedback_service.get_event_by_idempotency_key(key)
+            if event is not None:
+                return text(getattr(event, "previous_state_revision", None)) or None
+        return None
 
     def _preview_raw_rows(self, raw_rows: Sequence[Mapping[str, Any]], **query_kwargs: Any):
         context = self._execution_context_for_write(**query_kwargs)
@@ -135,7 +160,7 @@ class ResourceDispatchActualRecordService:
         context = self.execution_service.get_execution_context(**query_kwargs)
         identity = context.get("plan_identity") if isinstance(context, dict) else {}
         if not bool((identity or {}).get("can_write_feedback")):
-            raise AppError(ErrorCode.SCHEDULE_CONFLICT, "当前不是最新正式采用方案，不能填写现场记录。", details={"reason": "not_current_official_plan", "can_retry": False})
+            raise _not_current_official_plan_error()
         return context
 
     def _ensure_context_can_write(self, context: ExecutionFeedbackContext) -> None:
@@ -146,7 +171,7 @@ class ResourceDispatchActualRecordService:
             and not text(context.scenario_id)
         )
         if not is_official_schedule:
-            raise AppError(ErrorCode.SCHEDULE_CONFLICT, "当前不是最新正式采用方案，不能填写现场记录。", details={"reason": "not_current_official_plan", "can_retry": False})
+            raise _not_current_official_plan_error()
         self._execution_context_for_write(
             version=context.schedule_version,
             plan_role=context.requested_plan_role,
@@ -175,6 +200,7 @@ class ResourceDispatchActualRecordService:
         *,
         context: Mapping[str, Any],
     ) -> TaskRef:
+        identity = plan_identity_from_context(context)
         op_id = int(row.get("op_id") or 0)
         schedule_id = int(row.get("schedule_id") or 0)
         batch_id = text(row.get("batch_id"))
@@ -190,10 +216,14 @@ class ResourceDispatchActualRecordService:
                 planned_machine_label=planned_machine_label,
                 public_task_id=public_task_id(row),
             ),
-            schedule_version=self._schedule_version_from_context(context, row, schedule_id),
+            schedule_version=int(identity["version"]),
             schedule_id=schedule_id,
             op_id=op_id,
             batch_id=batch_id,
+            requested_plan_role=str(identity["requested_plan_role"]),
+            source_table=str(identity["source_table"]),
+            effective_plan_role=str(identity["effective_plan_role"]),
+            scenario_id=identity["scenario_id"],
             op_name=op_name,
             planned_machine_id=text(row.get("machine_id") or row.get("planned_machine_id")),
             planned_machine_label=planned_machine_label,
@@ -203,20 +233,12 @@ class ResourceDispatchActualRecordService:
             expected_state_revision=state.state_revision,
         )
 
-    def _schedule_version_from_context(self, context: Mapping[str, Any], row: Mapping[str, Any], schedule_id: int) -> int:
-        plan_identity = context.get("plan_identity") if isinstance(context.get("plan_identity"), Mapping) else {}
-        schedule_version = int((plan_identity or {}).get("version") or row.get("version") or 0)
-        if schedule_version > 0:
-            return schedule_version
-        schedule = self.schedule_repo.get(schedule_id)
-        return int(getattr(schedule, "version", 0) or 0) if schedule is not None else 0
-
     def _task_ref_from_feedback_context(self, context: ExecutionFeedbackContext) -> TaskRef:
         schedule = self.schedule_repo.get(int(context.schedule_id))
         batch_op = self.batch_operation_repo.get(int(context.op_id))
         if schedule is None or batch_op is None:
             raise AppError(ErrorCode.NOT_FOUND, "当前任务不存在，请刷新后重试。", details={"reason": "not_found"})
-        state = self.feedback_service.get_execution_state([int(context.op_id)]).get(int(context.op_id))
+        state = state_for_feedback_context(self.feedback_service, context)
         batch_id = text(getattr(batch_op, "batch_id", None) or context.batch_id)
         op_name = text(getattr(batch_op, "op_code", None)) or f"工序{text(getattr(batch_op, 'seq', None))}"
         machine_id = text(getattr(schedule, "machine_id", None))
@@ -244,6 +266,10 @@ class ResourceDispatchActualRecordService:
             schedule_id=int(context.schedule_id),
             op_id=int(context.op_id),
             batch_id=batch_id,
+            requested_plan_role=text(context.requested_plan_role),
+            source_table=text(context.source_table),
+            effective_plan_role=text(context.effective_plan_role),
+            scenario_id=text(context.scenario_id) or None,
             op_name=op_name,
             planned_machine_id=machine_id,
             planned_machine_label=machine_id,
@@ -312,15 +338,19 @@ class ResourceDispatchActualRecordService:
         )
 
     def _apply_task_plan(self, plan: TaskPlan, *, import_token: Optional[str]) -> Dict[str, Any]:
-        current_state = self.feedback_service.get_execution_state([plan.task.op_id])[plan.task.op_id]
+        current_state = state_for_task_ref(self.feedback_service, plan.task)
         context = ExecutionFeedbackContext(
             schedule_version=plan.task.schedule_version,
             schedule_id=plan.task.schedule_id,
             op_id=plan.task.op_id,
             batch_id=plan.task.batch_id,
-            expected_state_revision=plan.task.expected_state_revision or current_state.state_revision,
+            expected_state_revision=text(plan.task.expected_state_revision),
             created_by=plan.feedback_person,
-            idempotency_key=self._idempotency_key(import_token, plan.task.task_code, "actual", plan.row_number),
+            idempotency_key=idempotency_key(import_token, plan.task.task_code, "actual", plan.row_number),
+            requested_plan_role=plan.task.requested_plan_role,
+            source_table=plan.task.source_table,
+            effective_plan_role=plan.task.effective_plan_role,
+            scenario_id=plan.task.scenario_id,
         )
         written = 0
         result: Optional[Any] = None
@@ -335,8 +365,6 @@ class ResourceDispatchActualRecordService:
             written += 1
             context = self._next_context(context, self._revision_for_next_event(result), import_token, plan, "after-start")
             current_state = result.state
-        else:
-            context = replace(context, expected_state_revision=current_state.state_revision)
         if current_state.current_status == "not_started" and not plan.actual_start_time:
             raise ValidationError("填写暂停、异常或完工前，请先填写实际开工。", field="actual_start_time")
         for index, pause in enumerate(ordered_pauses(plan)):
@@ -345,7 +373,11 @@ class ResourceDispatchActualRecordService:
             context = replace(context, expected_state_revision=self._revision_for_next_event(result))
             current_state = result.state
         if plan.exception_time:
-            context = replace(context, created_by=plan.feedback_person, idempotency_key=self._idempotency_key(import_token, plan.task.task_code, "exception", plan.row_number))
+            context = replace(
+                context,
+                created_by=plan.feedback_person,
+                idempotency_key=idempotency_key(import_token, plan.task.task_code, "exception", plan.row_number),
+            )
             result = self.feedback_service.report_exception(
                 context,
                 event_time=plan.exception_time,
@@ -357,7 +389,11 @@ class ResourceDispatchActualRecordService:
             written += 1
             context = replace(context, expected_state_revision=result.state_revision)
         if plan.actual_finish_time:
-            context = replace(context, created_by=plan.feedback_person, idempotency_key=self._idempotency_key(import_token, plan.task.task_code, "finish", plan.row_number))
+            context = replace(
+                context,
+                created_by=plan.feedback_person,
+                idempotency_key=idempotency_key(import_token, plan.task.task_code, "finish", plan.row_number),
+            )
             result = self.feedback_service.finish_operation(
                 context,
                 event_time=plan.actual_finish_time,
@@ -367,7 +403,7 @@ class ResourceDispatchActualRecordService:
             )
             written += 1
         if result is None:
-            state = self.feedback_service.get_execution_state([plan.task.op_id])[plan.task.op_id]
+            state = state_for_task_ref(self.feedback_service, plan.task)
             return {"written": written, "skipped": 1, "state": state, "result": None}
         return {"written": written, "skipped": 0, "state": result.state, "result": result}
 
@@ -379,7 +415,7 @@ class ResourceDispatchActualRecordService:
             return str(result.state_revision)
         op_id = int(getattr(event, "op_id", 0) or 0)
         event_id = int(getattr(event, "id", 0) or 0)
-        events = self.feedback_service.list_execution_events(op_id)
+        events = self.feedback_service.list_execution_events_for_scope(operation_execution_scope_from_event(event))
         for index, item in enumerate(events, start=1):
             if int(getattr(item, "id", 0) or 0) == event_id:
                 return f"{op_id}:{index}:{event_id}"
@@ -397,22 +433,19 @@ class ResourceDispatchActualRecordService:
         keys = self._plan_idempotency_keys(plan, import_token)
         if not keys:
             return False
-        return all(
-            self.feedback_service.event_repo.get_by_idempotency_key(key) is not None
-            for key in keys
-        )
+        return all(self.feedback_service.has_event_by_idempotency_key(key) for key in keys)
 
     def _plan_idempotency_keys(self, plan: TaskPlan, import_token: str) -> List[str]:
         keys: List[str] = []
         if plan.actual_start_time:
-            keys.append(self._idempotency_key(import_token, plan.task.task_code, "actual", plan.row_number))
+            keys.append(idempotency_key(import_token, plan.task.task_code, "actual", plan.row_number))
         for index, pause in enumerate(ordered_pauses(plan)):
-            keys.append(self._idempotency_key(import_token, plan.task.task_code, f"pause-{index}", pause.row_number))
-            keys.append(self._idempotency_key(import_token, plan.task.task_code, f"resume-{index}", pause.row_number))
+            keys.append(idempotency_key(import_token, plan.task.task_code, f"pause-{index}", pause.row_number))
+            keys.append(idempotency_key(import_token, plan.task.task_code, f"resume-{index}", pause.row_number))
         if plan.exception_time:
-            keys.append(self._idempotency_key(import_token, plan.task.task_code, "exception", plan.row_number))
+            keys.append(idempotency_key(import_token, plan.task.task_code, "exception", plan.row_number))
         if plan.actual_finish_time:
-            keys.append(self._idempotency_key(import_token, plan.task.task_code, "finish", plan.row_number))
+            keys.append(idempotency_key(import_token, plan.task.task_code, "finish", plan.row_number))
         return keys
 
     def _apply_pause(
@@ -426,7 +459,7 @@ class ResourceDispatchActualRecordService:
         context = replace(
             context,
             created_by=pause.feedback_person,
-            idempotency_key=self._idempotency_key(import_token, plan.task.task_code, f"pause-{index}", pause.row_number),
+            idempotency_key=idempotency_key(import_token, plan.task.task_code, f"pause-{index}", pause.row_number),
         )
         pause_result = self.feedback_service.pause_operation(
             context,
@@ -437,7 +470,7 @@ class ResourceDispatchActualRecordService:
         context = replace(
             context,
             expected_state_revision=self._revision_for_next_event(pause_result),
-            idempotency_key=self._idempotency_key(import_token, plan.task.task_code, f"resume-{index}", pause.row_number),
+            idempotency_key=idempotency_key(import_token, plan.task.task_code, f"resume-{index}", pause.row_number),
         )
         return self.feedback_service.resume_operation(context, event_time=pause.end_time, remark=pause.remark)
 
@@ -452,46 +485,8 @@ class ResourceDispatchActualRecordService:
         return replace(
             context,
             expected_state_revision=revision,
-            idempotency_key=self._idempotency_key(import_token, plan.task.task_code, action, plan.row_number),
+            idempotency_key=idempotency_key(import_token, plan.task.task_code, action, plan.row_number),
         )
-
-    def _idempotency_key(self, import_token: Optional[str], task_code: str, action: str, row_number: int) -> str:
-        base = import_token or "manual"
-        raw = f"resource-dispatch-actual:{base}:{task_code}:{action}:{row_number}"
-        digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
-        return f"resource-dispatch-actual-{digest}"
-
-    def _manual_plan_token(self, plan: TaskPlan) -> str:
-        parts = [
-            plan.task.task_code,
-            self._token_time("start", plan.actual_start_time),
-            self._token_time("finish", plan.actual_finish_time),
-            f"done:{text(plan.quantity_done)}",
-            f"scrapped:{text(plan.quantity_scrapped)}",
-            self._token_time("exception", plan.exception_time),
-            f"exception_reason:{text(plan.exception_reason_code)}",
-            f"exception_severity:{text(plan.exception_severity)}",
-            f"exception_remark:{text(plan.exception_remark)}",
-            f"remark:{text(plan.remark)}",
-        ]
-        for index, pause in enumerate(ordered_pauses(plan)):
-            parts.extend(
-                [
-                    f"pause:{index}",
-                    self._token_time("pause_start", pause.start_time),
-                    self._token_time("pause_end", pause.end_time),
-                    f"pause_reason:{text(pause.reason_code)}",
-                    f"pause_remark:{text(pause.remark)}",
-                ]
-            )
-        raw = "|".join(parts)
-        digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
-        return f"manual-{digest}"
-
-    def _token_time(self, label: str, value: Any) -> str:
-        if not text(value):
-            return f"{label}:"
-        return f"{label}:{datetime_text(value, field_label=label)}"
 
 
 __all__ = ["ResourceDispatchActualRecordService"]

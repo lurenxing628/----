@@ -4,6 +4,7 @@ import os
 import sqlite3
 import sys
 import tempfile
+from typing import List, Tuple
 
 
 def find_repo_root() -> str:
@@ -25,7 +26,7 @@ def _version_of(db_path: str) -> int:
         conn.close()
 
 
-def _before_migrate_backups(backup_dir: str) -> list[str]:
+def _before_migrate_backups(backup_dir: str) -> List[str]:
     if not os.path.isdir(backup_dir):
         return []
     return [
@@ -52,11 +53,11 @@ def _make_future_db(repo_root: str, db_path: str, backup_dir: str) -> int:
     return future_version
 
 
-def _make_sparse_future_db(db_path: str, future_version: int) -> None:
+def _make_sparse_versioned_db(db_path: str, version: int) -> None:
     conn = sqlite3.connect(db_path)
     try:
         conn.execute("CREATE TABLE SchemaVersion (id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL)")
-        conn.execute("INSERT INTO SchemaVersion (id, version) VALUES (1, ?)", (future_version,))
+        conn.execute("INSERT INTO SchemaVersion (id, version) VALUES (1, ?)", (version,))
         conn.commit()
     finally:
         conn.close()
@@ -102,13 +103,11 @@ def main() -> None:
     assert _version_of(db_path) == future_version
     assert _before_migrate_backups(backup_dir) == []
 
-    original_bootstrap_missing_tables = migration_runner.bootstrap_missing_tables_from_schema
     original_apply_version_range = migration_runner._apply_version_range
 
     def blocked_after_version_check(*args, **kwargs):
-        raise AssertionError("高版本 fail-fast 后不应继续补表或执行迁移")
+        raise AssertionError("高版本 fail-fast 后不应继续执行迁移")
 
-    migration_runner.bootstrap_missing_tables_from_schema = blocked_after_version_check
     migration_runner._apply_version_range = blocked_after_version_check
     try:
         try:
@@ -136,15 +135,14 @@ def main() -> None:
         else:
             raise AssertionError("高版本数据库应在 _apply_migrations 二次保护阶段 fail-fast")
     finally:
-        migration_runner.bootstrap_missing_tables_from_schema = original_bootstrap_missing_tables
         migration_runner._apply_version_range = original_apply_version_range
 
     assert _version_of(db_path) == future_version
     assert _before_migrate_backups(backup_dir) == []
 
     sparse_db_path = os.path.join(tmpdir, "sparse_future.db")
-    _make_sparse_future_db(sparse_db_path, future_version)
-    sparse_calls: list[str] = []
+    _make_sparse_versioned_db(sparse_db_path, future_version)
+    sparse_calls: List[str] = []
 
     def record_sparse_block(name: str):
         def _blocked(*args, **kwargs):
@@ -153,7 +151,6 @@ def main() -> None:
 
         return _blocked
 
-    migration_runner.bootstrap_missing_tables_from_schema = record_sparse_block("bootstrap_missing_tables_from_schema")
     migration_runner._apply_version_range = record_sparse_block("_apply_version_range")
     try:
         try:
@@ -181,12 +178,45 @@ def main() -> None:
         else:
             raise AssertionError("缺业务表的高版本数据库也应在 _apply_migrations 二次保护阶段 fail-fast")
     finally:
-        migration_runner.bootstrap_missing_tables_from_schema = original_bootstrap_missing_tables
         migration_runner._apply_version_range = original_apply_version_range
 
     assert sparse_calls == [], sparse_calls
 
-    backup_calls: list[tuple] = []
+    sparse_low_version = max(1, CURRENT_SCHEMA_VERSION - 1)
+    for sparse_version in (0, sparse_low_version):
+        sparse_low_db_path = os.path.join(tmpdir, f"sparse_low_{sparse_version}.db")
+        sparse_low_backup_dir = os.path.join(tmpdir, f"sparse_low_{sparse_version}_backups")
+        os.makedirs(sparse_low_backup_dir, exist_ok=True)
+        _make_sparse_versioned_db(sparse_low_db_path, sparse_version)
+
+        try:
+            ensure_schema(
+                sparse_low_db_path,
+                logger=None,
+                schema_path=schema_path,
+                backup_dir=sparse_low_backup_dir,
+            )
+        except MigrationContractError as exc:
+            msg = str(exc)
+            assert f"只有 SchemaVersion={sparse_version}" in msg, msg
+            assert "不会用当前 schema.sql 静默补齐成新库" in msg, msg
+        else:
+            raise AssertionError("只有 SchemaVersion 的空壳库不能被当成新库初始化")
+
+        conn_sparse_low = sqlite3.connect(sparse_low_db_path)
+        try:
+            tables = [
+                row[0]
+                for row in conn_sparse_low.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+                )
+            ]
+        finally:
+            conn_sparse_low.close()
+        assert tables == ["SchemaVersion"], tables
+        assert _before_migrate_backups(sparse_low_backup_dir) == []
+
+    backup_calls: List[Tuple] = []
     original_backup_manager = backup_mod.BackupManager
 
     class BombBackupManager:

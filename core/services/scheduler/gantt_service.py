@@ -259,7 +259,7 @@ class GanttService:
         hist = self.history_repo.get_by_version(version)
         return hist.to_dict() if hist else None
 
-    def _execution_facts_by_op_id(self, rows) -> Dict[int, Any]:
+    def _execution_facts_by_op_id(self, rows, plan_resolution: Dict[str, Any]) -> Dict[int, Any]:
         op_ids = []
         seen = set()
         for row in rows or []:
@@ -273,7 +273,16 @@ class GanttService:
             op_ids.append(op_id)
         if not op_ids:
             return {}
-        return ExecutionFactProvider(self.conn, logger=self.logger).facts_by_op_id(op_ids)
+        return ExecutionFactProvider(self.conn, logger=self.logger).facts_by_op_id_for_plan_rows(
+            rows,
+            {
+                "version": plan_resolution.get("version"),
+                "source_table": plan_resolution.get("source_table"),
+                "effective_plan_role": selected_plan_role(plan_resolution),
+                "scenario_id": plan_resolution.get("scenario_id"),
+            },
+            include_op_ids=op_ids,
+        )
 
     def get_gantt_tasks(
         self,
@@ -362,7 +371,7 @@ class GanttService:
             raise ValidationError(str(exc), field="plan_role") from exc
         overdue_set = set(overdue_meta.get("ids") or [])
 
-        execution_facts_by_op_id = self._execution_facts_by_op_id(rows)
+        execution_facts_by_op_id = self._execution_facts_by_op_id(rows, plan_resolution)
         tasks_outcome = build_tasks(
             view=view,
             wr=wr,

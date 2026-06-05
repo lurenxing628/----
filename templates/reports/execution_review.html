@@ -44,7 +44,9 @@
             {{ ui.button('导出 Excel', 'secondary', 'md', type_attr='button', disabled=True, class='aps-disabled-button') }}
           {% endif %}
         </div>
-        {% if not has_history %}
+        {% if execution_review_identity_error %}
+          <div class="aps-filter-note">{{ execution_review_identity_error }}</div>
+        {% elif not has_history %}
           <div class="aps-filter-note">暂无排产历史，请先执行排产后再查看报表。</div>
         {% elif not rows %}
           <div class="aps-filter-note">当前筛选条件下暂无计划任务，请换一个版本、日期或批次后再试。</div>
@@ -58,7 +60,10 @@
         {{ ui.summary_item('批次', batch_filter_label or '全部批次') }}
         {{ ui.summary_item('任务数', count) }}
       </div>
-      <div class="aps-filter-note aps-report-plan-source">{{ report_plan_status.source_text }} 这张表只复盘正式排产结果；模拟预览和对比参考方案不在这里写入或复盘现场事实。</div>
+      <div class="aps-filter-note aps-report-plan-source">{{ report_plan_status.source_text }} 这张表只展示当前筛选出的排产记录和现场实际；模拟预览和对比参考方案不在这里写入或复盘现场事实。</div>
+      {% if execution_review_identity_error %}
+        <div class="aps-filter-note">{{ execution_review_identity_error }}</div>
+      {% endif %}
       {% if report_limits %}
         <div class="aps-filter-note">
           能回答：{{ report_limits.answer_text }} 不能证明：{{ report_limits.limitation_text }}
@@ -81,7 +86,9 @@
   <div class="card">
     <h3>计划和现场实际</h3>
     {% if not rows %}
-      {% if empty_reason == "no_history" %}
+      {% if empty_reason == "unsupported_plan_identity" %}
+        <div class="muted">{{ execution_review_identity_error }}</div>
+      {% elif empty_reason == "no_history" %}
         <div class="muted">暂无排产历史，当前无法复盘现场实际。</div>
       {% else %}
         <div class="muted">当前筛选条件下暂无计划任务，请换一个版本、日期或批次后再试。</div>
@@ -139,6 +146,9 @@
                   {% for link in r.workbench_links %}
                     {% if link.disabled or not link.url %}
                       <span class="table-action-link is-disabled" aria-disabled="true" title="{{ link.disabled_reason }}">{{ link.label }}</span>
+                      {% if link.disabled_reason %}
+                        <div class="muted text-xs">{{ link.disabled_reason }}</div>
+                      {% endif %}
                     {% else %}
                       <a class="table-action-link" href="{{ link.url }}">{{ link.label }}</a>
                     {% endif %}

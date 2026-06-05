@@ -4,9 +4,12 @@ from io import BytesIO
 from urllib.parse import unquote
 
 import openpyxl
+import pytest
 
 from core.infrastructure.database import get_connection
+from core.infrastructure.errors import ValidationError
 from core.services.report import ReportEngine
+from core.services.report.execution_review import _execution_scope
 from core.services.scheduler.operation_execution_labels import action_to_event_type
 from data.repositories.operation_execution_event_repo import OperationExecutionEventRepo
 from tests.operation_execution_feedback_test_support import _build_app
@@ -88,12 +91,13 @@ def _insert_event(repo: OperationExecutionEventRepo, **overrides) -> None:
     repo.insert_event(payload)
 
 
-def _seed_execution_events(db_path: str) -> None:
+def _seed_execution_events(db_path: str, **identity) -> None:
     conn = get_connection(db_path)
     try:
         repo = OperationExecutionEventRepo(conn)
         _insert_event(
             repo,
+            **identity,
             event_type="start",
             event_time="2026-05-01 08:10:00",
             actual_machine_id="M2",
@@ -102,6 +106,7 @@ def _seed_execution_events(db_path: str) -> None:
         )
         _insert_event(
             repo,
+            **identity,
             event_type="pause",
             event_time="2026-05-01 08:20:00",
             reason_code="equipment",
@@ -110,6 +115,7 @@ def _seed_execution_events(db_path: str) -> None:
         )
         _insert_event(
             repo,
+            **identity,
             event_type="resume",
             event_time="2026-05-01 08:35:00",
             remark="继续生产",
@@ -117,6 +123,7 @@ def _seed_execution_events(db_path: str) -> None:
         )
         _insert_event(
             repo,
+            **identity,
             event_type="exception",
             event_time="2026-05-01 08:45:00",
             reason_code="equipment",
@@ -132,6 +139,7 @@ def _seed_execution_events(db_path: str) -> None:
         )
         _insert_event(
             repo,
+            **identity,
             event_type="finish",
             event_time="2026-05-01 09:05:00",
             quantity_done=10,
@@ -201,6 +209,161 @@ def _summary_dict(wb):
     return out
 
 
+def _assert_no_feedback_page(body: str) -> None:
+    assert "2026-05-01 08:10:00" not in body
+    assert "2026-05-01 09:05:00" not in body
+    assert "晚了 10 分钟" not in body
+    assert "二号设备 / 李四" not in body
+    assert "已完工" not in body
+    assert "暂无现场反馈" in body
+
+
+def _assert_feedback_page(body: str) -> None:
+    for text in (
+        "2026-05-01 08:10:00",
+        "2026-05-01 09:05:00",
+        "晚了 10 分钟",
+        "晚了 5 分钟",
+        "15 分钟",
+        "设备问题",
+        "严重",
+        "预计影响 30 分钟",
+        "二号设备 / 李四",
+        "已完工",
+    ):
+        assert text in body
+    assert "report_exception" not in body
+    assert "event_type" not in body
+
+
+def _assert_no_feedback_workbook(wb) -> None:
+    ws = wb["计划和现场实际"]
+    for cell in ("D2", "E2", "G2", "H2", "I2", "J2", "K2", "L2", "M2", "N2", "O2", "P2", "R2", "S2"):
+        assert ws[cell].value == "暂无现场反馈"
+
+
+def _assert_feedback_workbook(wb) -> None:
+    ws = wb["计划和现场实际"]
+    expected = {
+        "D2": "2026-05-01 08:10:00",
+        "E2": "晚了 10 分钟",
+        "G2": "2026-05-01 09:05:00",
+        "H2": "晚了 5 分钟",
+        "I2": "15 分钟",
+        "J2": "设备问题",
+        "K2": "严重",
+        "L2": "预计影响 30 分钟",
+        "M2": "二号设备",
+        "N2": "李四",
+        "O2": "处理中",
+        "P2": "建议重新排程",
+        "R2": "二号设备 / 李四",
+        "S2": "已完工",
+    }
+    for cell, value in expected.items():
+        assert ws[cell].value == value
+
+
+def _assert_matching_feedback_page(client, db_path: str) -> None:
+    before_schedule = _schedule_row(db_path)
+    page = client.get("/reports/execution-review?version=2&date_from=2026-05-01&date_to=2026-05-01&batch_id=B1")
+    body = page.get_data(as_text=True)
+    assert page.status_code == 200
+    assert body.count("<tr>") == 2
+    assert "2026-05-01 09:00:00" in body
+    assert "2026-05-02 08:00:00" not in body
+    _assert_feedback_page(body)
+    assert _schedule_row(db_path) == before_schedule
+
+
+def _assert_empty_feedback_page(client) -> None:
+    empty_page = client.get("/reports/execution-review?version=2&batch_id=NO_SUCH")
+    assert empty_page.status_code == 200
+    assert "当前筛选条件下暂无计划任务" in empty_page.get_data(as_text=True)
+
+
+def _assert_matching_export_response(export_resp) -> None:
+    assert export_resp.status_code == 200
+    disposition = unquote(export_resp.headers.get("Content-Disposition", ""))
+    assert "计划和现场实际-正式采用方案-v2-2026-05-01 至 2026-05-01.xlsx" in disposition
+
+
+def _assert_matching_export_summary(wb) -> None:
+    assert "查询摘要" in wb.sheetnames
+    summary = _summary_dict(wb)
+    assert summary["报表"] == "计划和现场实际"
+    assert summary["计划版本"] == "v2"
+    assert summary["方案"] == "正式采用方案"
+    assert summary["查询日期"] == "2026-05-01 至 2026-05-01"
+    assert summary["批次"] == "B1"
+
+
+def _assert_matching_planned_workbook_row(wb) -> None:
+    ws = wb["计划和现场实际"]
+    assert [cell.value for cell in ws[1]] == EXPECTED_HEADERS
+    assert ws["A2"].value == "B1"
+    assert ws["B2"].value == "OP10 / 车削"
+    assert ws["C2"].value == "2026-05-01 08:00:00"
+    assert ws["F2"].value == "2026-05-01 09:00:00"
+    assert ws["Q2"].value == "一号设备 / 张三"
+
+
+def _assert_no_internal_workbook_values(wb) -> None:
+    all_values = _all_workbook_values(wb)
+    assert "完整身份" not in all_values
+    for token in ("plan_role", "source_table", "event_type", "report_exception", "schedule_id"):
+        assert token not in all_values
+
+
+def _assert_report_index_entry(client) -> None:
+    index_page = client.get("/reports/")
+    assert index_page.status_code == 200
+    index_body = index_page.get_data(as_text=True)
+    assert "计划和现场实际" in index_body
+    assert "/reports/execution-review" in index_body
+
+
+def _assert_dispatch_entry(client) -> None:
+    dispatch_page = client.get("/scheduler/resource-dispatch?version=2&period_preset=custom&start_date=2026-05-01&end_date=2026-05-01")
+    dispatch_body = dispatch_page.get_data(as_text=True)
+    assert dispatch_page.status_code == 200
+    assert "/reports/execution-review" in dispatch_body
+    assert "/scheduler/execution-review" not in dispatch_body
+
+
+def _assert_scenario_nav_disables_execution_review(client) -> None:
+    nav_page = client.get(
+        "/reports/utilization?version=2&plan_role=adopted&scenario_id=scenario-plain"
+        "&date_from=2026-05-01&date_to=2026-05-01&batch_id=B1"
+    )
+    nav_body = nav_page.get_data(as_text=True)
+    assert nav_page.status_code == 200
+    assert "计划和现场实际只复盘正式采用方案" in nav_body
+    assert 'aria-disabled="true"' in nav_body
+    assert "/reports/execution-review?version=2&amp;plan_role" not in nav_body
+    assert "/reports/execution-review?version=2&amp;scenario_id" not in nav_body
+
+
+def _assert_stream_export(db_path: str) -> None:
+    conn = get_connection(db_path)
+    try:
+        engine = ReportEngine(conn)
+        engine.EXPORT_DIRECT_MAX_ROWS = 0
+        export = engine.export_execution_review_xlsx(2, date_from="2026-05-01", date_to="2026-05-01", batch_id="B1")
+        assert export.mode == "stream"
+        export.data.seek(0)
+        wb = openpyxl.load_workbook(BytesIO(export.data.read()), data_only=True)
+        try:
+            assert "计划和现场实际" in wb.sheetnames
+            ws = wb["计划和现场实际"]
+            assert [cell.value for cell in ws[1]] == EXPECTED_HEADERS
+            assert ws["R2"].value == "二号设备 / 李四"
+        finally:
+            wb.close()
+    finally:
+        conn.close()
+
+
 def test_execution_review_page_and_export_show_no_feedback_state(tmp_path, monkeypatch) -> None:
     app, _db_path = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
@@ -231,78 +394,49 @@ def test_execution_review_page_and_export_show_no_feedback_state(tmp_path, monke
         wb.close()
 
 
-def test_execution_review_uses_execution_state_for_actual_times_and_resources(tmp_path, monkeypatch) -> None:
+def test_execution_review_ignores_feedback_when_plan_identity_mismatches(tmp_path, monkeypatch) -> None:
     app, db_path = _build_app(tmp_path, monkeypatch)
     _seed_execution_events(db_path)
-    _insert_out_of_range_plan_row(db_path)
     client = app.test_client()
-    before_schedule = _schedule_row(db_path)
 
     page = client.get("/reports/execution-review?version=2&date_from=2026-05-01&date_to=2026-05-01&batch_id=B1")
     body = page.get_data(as_text=True)
     assert page.status_code == 200
     assert body.count("<tr>") == 2
-    assert "2026-05-01 08:10:00" in body
-    assert "2026-05-01 09:00:00" in body
-    assert "2026-05-01 09:05:00" in body
-    assert "2026-05-02 08:00:00" not in body
-    assert "晚了 10 分钟" in body
-    assert "晚了 5 分钟" in body
-    assert "15 分钟" in body
-    assert "设备问题" in body
-    assert "严重" in body
-    assert "预计影响 30 分钟" in body
-    assert "二号设备 / 李四" in body
-    assert "已完工" in body
-    assert "report_exception" not in body
-    assert "event_type" not in body
-    assert _schedule_row(db_path) == before_schedule
-
-    empty_page = client.get("/reports/execution-review?version=2&batch_id=NO_SUCH")
-    assert empty_page.status_code == 200
-    assert "当前筛选条件下暂无计划任务" in empty_page.get_data(as_text=True)
+    _assert_no_feedback_page(body)
 
     export_resp = client.get(
         "/reports/execution-review/export?version=2&date_from=2026-05-01&date_to=2026-05-01&batch_id=B1"
     )
-    assert export_resp.status_code == 200
-    disposition = unquote(export_resp.headers.get("Content-Disposition", ""))
-    assert "计划和现场实际-正式采用方案-v2-2026-05-01 至 2026-05-01.xlsx" in disposition
+    wb = _load_xlsx(export_resp)
+    try:
+        assert export_resp.status_code == 200
+        _assert_no_feedback_workbook(wb)
+    finally:
+        wb.close()
+
+
+def test_execution_review_uses_matching_execution_state_for_actual_times_and_resources(tmp_path, monkeypatch) -> None:
+    app, db_path = _build_app(tmp_path, monkeypatch)
+    _seed_execution_events(db_path, schedule_version=2, schedule_id=100)
+    _insert_out_of_range_plan_row(db_path)
+    client = app.test_client()
+    before_schedule = _schedule_row(db_path)
+
+    _assert_matching_feedback_page(client, db_path)
+    _assert_empty_feedback_page(client)
+
+    export_resp = client.get(
+        "/reports/execution-review/export?version=2&date_from=2026-05-01&date_to=2026-05-01&batch_id=B1"
+    )
+    _assert_matching_export_response(export_resp)
 
     wb = _load_xlsx(export_resp)
     try:
-        assert "查询摘要" in wb.sheetnames
-        summary = _summary_dict(wb)
-        assert summary["报表"] == "计划和现场实际"
-        assert summary["计划版本"] == "v2"
-        assert summary["方案"] == "正式采用方案"
-        assert summary["查询日期"] == "2026-05-01 至 2026-05-01"
-        assert summary["批次"] == "B1"
-        ws = wb["计划和现场实际"]
-        assert [cell.value for cell in ws[1]] == EXPECTED_HEADERS
-        assert ws["A2"].value == "B1"
-        assert ws["B2"].value == "OP10 / 车削"
-        assert ws["C2"].value == "2026-05-01 08:00:00"
-        assert ws["D2"].value == "2026-05-01 08:10:00"
-        assert ws["E2"].value == "晚了 10 分钟"
-        assert ws["F2"].value == "2026-05-01 09:00:00"
-        assert ws["G2"].value == "2026-05-01 09:05:00"
-        assert ws["H2"].value == "晚了 5 分钟"
-        assert ws["I2"].value == "15 分钟"
-        assert ws["J2"].value == "设备问题"
-        assert ws["K2"].value == "严重"
-        assert ws["L2"].value == "预计影响 30 分钟"
-        assert ws["M2"].value == "二号设备"
-        assert ws["N2"].value == "李四"
-        assert ws["O2"].value == "处理中"
-        assert ws["P2"].value == "建议重新排程"
-        assert ws["Q2"].value == "一号设备 / 张三"
-        assert ws["R2"].value == "二号设备 / 李四"
-        assert ws["S2"].value == "已完工"
-        all_values = _all_workbook_values(wb)
-        assert "完整身份" not in all_values
-        for token in ("plan_role", "source_table", "event_type", "report_exception", "schedule_id"):
-            assert token not in all_values
+        _assert_matching_export_summary(wb)
+        _assert_matching_planned_workbook_row(wb)
+        _assert_feedback_workbook(wb)
+        _assert_no_internal_workbook_values(wb)
     finally:
         wb.close()
     assert _schedule_row(db_path) == before_schedule
@@ -327,51 +461,21 @@ def test_execution_review_validation_and_offline_template_contract(tmp_path, mon
         assert token not in template
 
 
+def test_execution_review_scope_fails_loudly_when_plan_identity_is_incomplete() -> None:
+    with pytest.raises(ValidationError, match="计划数据缺少现场执行身份字段"):
+        _execution_scope({"op_id": 10, "batch_id": "B1"}, 10)
+
+
 def test_execution_review_entry_boundaries_and_stream_export(tmp_path, monkeypatch) -> None:
     app, db_path = _build_app(tmp_path, monkeypatch)
-    _seed_execution_events(db_path)
+    _seed_execution_events(db_path, schedule_version=2, schedule_id=100)
     client = app.test_client()
 
-    index_page = client.get("/reports/")
-    assert index_page.status_code == 200
-    index_body = index_page.get_data(as_text=True)
-    assert "计划和现场实际" in index_body
-    assert "/reports/execution-review" in index_body
-
-    dispatch_page = client.get("/scheduler/resource-dispatch?version=2&period_preset=custom&start_date=2026-05-01&end_date=2026-05-01")
-    dispatch_body = dispatch_page.get_data(as_text=True)
-    assert dispatch_page.status_code == 200
-    assert "/reports/execution-review" in dispatch_body
-    assert "/scheduler/execution-review" not in dispatch_body
+    _assert_report_index_entry(client)
+    _assert_dispatch_entry(client)
 
     missing_scheduler_route = client.get("/scheduler/execution-review")
     assert missing_scheduler_route.status_code == 404
 
-    nav_page = client.get(
-        "/reports/utilization?version=2&plan_role=adopted&scenario_id=scenario-plain"
-        "&date_from=2026-05-01&date_to=2026-05-01&batch_id=B1"
-    )
-    nav_body = nav_page.get_data(as_text=True)
-    assert nav_page.status_code == 200
-    assert "计划和现场实际只复盘正式采用方案" in nav_body
-    assert 'aria-disabled="true"' in nav_body
-    assert "/reports/execution-review?version=2&amp;plan_role" not in nav_body
-    assert "/reports/execution-review?version=2&amp;scenario_id" not in nav_body
-
-    conn = get_connection(db_path)
-    try:
-        engine = ReportEngine(conn)
-        engine.EXPORT_DIRECT_MAX_ROWS = 0
-        export = engine.export_execution_review_xlsx(2, date_from="2026-05-01", date_to="2026-05-01", batch_id="B1")
-        assert export.mode == "stream"
-        export.data.seek(0)
-        wb = openpyxl.load_workbook(BytesIO(export.data.read()), data_only=True)
-        try:
-            assert "计划和现场实际" in wb.sheetnames
-            ws = wb["计划和现场实际"]
-            assert [cell.value for cell in ws[1]] == EXPECTED_HEADERS
-            assert ws["R2"].value == "二号设备 / 李四"
-        finally:
-            wb.close()
-    finally:
-        conn.close()
+    _assert_scenario_nav_disables_execution_review(client)
+    _assert_stream_export(db_path)

@@ -38,6 +38,7 @@ from .scheduler_resource_dispatch_query import (
     _page_url,
     _request_kwargs,
     _sanitize_dispatch_args_from_error,
+    execution_query_missing_context_fields,
 )
 
 _EXCEL_MIMETYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -67,7 +68,16 @@ def _copy_plan_guard_fields(context: dict, identity: dict) -> None:
         "is_scenario_preview",
         "is_comparison",
         "is_superseded_by_newer_version",
+        "is_official_plan",
+        "is_preview_plan",
+        "is_current_executable_official_version",
         "can_dispatch",
+        "can_write_feedback",
+        "plan_identity_error",
+        "plan_identity_blocking_error",
+        "plan_identity_blocking_scope",
+        "result_summary_parse_failed",
+        "result_summary_parse_reason",
     ):
         if key in identity:
             context[key] = identity.get(key)
@@ -173,6 +183,10 @@ def _execution_write_urls(filters: Any, *, can_use_current_query: bool, can_writ
     }
 
 
+def _execution_query_has_full_context() -> bool:
+    return not execution_query_missing_context_fields()
+
+
 @bp.get("/resource-dispatch")
 def resource_dispatch_page():
     loaded_context = _load_resource_dispatch_context(_svc())
@@ -184,10 +198,11 @@ def resource_dispatch_page():
     back_to = _current_back_to()
     set_current_workbench_navigation_context(_workbench_context(filters, filters, back_to=back_to))
     can_use_current_query = bool(context.get("has_history") and context.get("can_query"))
+    can_use_execution_query = can_use_current_query and _execution_query_has_full_context()
     can_write_feedback = can_emit_feedback_write_urls(filters)
     write_urls = _execution_write_urls(
         filters,
-        can_use_current_query=can_use_current_query,
+        can_use_current_query=can_use_execution_query,
         can_write_feedback=can_write_feedback,
     )
 
@@ -197,7 +212,7 @@ def resource_dispatch_page():
         data_url=_data_url(filters),
         export_url=_export_url(filters) if can_use_current_query else None,
         execution_review_link=_execution_review_link(filters, filters, back_to=back_to),
-        execution_data_url=_execution_data_url(filters),
+        execution_data_url=_execution_data_url(filters) if can_use_execution_query else None,
         **write_urls,
         **context,
     )

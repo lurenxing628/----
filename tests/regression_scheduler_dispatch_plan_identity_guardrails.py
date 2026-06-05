@@ -257,6 +257,7 @@ def _build_route_app() -> Flask:
         ("/scheduler/resource-dispatch/data", "scheduler.resource_dispatch_data"),
         ("/scheduler/resource-dispatch/execution/data", "scheduler.resource_dispatch_execution_data"),
         ("/scheduler/resource-dispatch/execution/<int:op_id>/actual", "scheduler.resource_dispatch_execution_actual"),
+        ("/scheduler/resource-dispatch/execution/tasks/<task_key>/actual", "scheduler.resource_dispatch_execution_actual_by_task"),
         ("/scheduler/resource-dispatch/execution/actual-template", "scheduler.resource_dispatch_actual_template"),
         ("/scheduler/resource-dispatch/execution/import", "scheduler.resource_dispatch_actual_import"),
         ("/scheduler/resource-dispatch/export", "scheduler.resource_dispatch_export"),

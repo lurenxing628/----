@@ -4,7 +4,8 @@ from typing import Any, Optional, Tuple
 
 from flask import request
 
-from core.infrastructure.errors import BusinessError, ErrorCode
+from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
+from core.models.schedule_plan_role import ROLE_ADOPTED, plan_role_label
 from core.services.report import ReportEngine
 from core.services.report.report_context_filters import normalize_report_resource_filter
 from core.services.scheduler.version_resolution import (
@@ -61,9 +62,28 @@ def request_resource_filter() -> Tuple[str, str]:
     )
 
 
+def execution_review_plan_identity_error(plan_role: Any = None, scenario_id: Any = None) -> str:
+    raw_role = str(plan_role if plan_role is not None else request.args.get("plan_role") or "").strip()
+    raw_scenario = str(scenario_id if scenario_id is not None else request.args.get("scenario_id") or "").strip()
+    if raw_scenario:
+        return "计划和现场实际只复盘正式采用方案，当前请求带了模拟预览身份，不能当作正式现场复盘显示。"
+    if raw_role and raw_role != ROLE_ADOPTED:
+        return f"计划和现场实际只复盘正式采用方案，当前请求带的是“{plan_role_label(raw_role)}”，不能当作正式现场复盘显示。"
+    return ""
+
+
+def require_execution_review_adopted_plan() -> Tuple[str, None]:
+    error = execution_review_plan_identity_error(request_plan_role(), request_scenario_id())
+    if error:
+        raise ValidationError(error, field="plan_role", details={"reason": "unsupported_execution_review_plan_identity"})
+    return ROLE_ADOPTED, None
+
+
 __all__ = [
+    "execution_review_plan_identity_error",
     "export_version_or_latest",
     "page_version_or_latest",
+    "require_execution_review_adopted_plan",
     "request_plan_role",
     "request_resource_filter",
     "request_scenario_id",

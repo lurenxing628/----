@@ -31,6 +31,18 @@ INTERNAL_PRIVATE_TOKENS = (
     "op_id",
     "schedule_id",
 )
+_URL_DATA_ATTRIBUTE_NAMES = {
+    "data-url",
+    "data-export-url",
+    "data-execution-url",
+    "data-actual-record-url-template",
+    "data-actual-template-url",
+    "data-actual-import-url",
+}
+
+
+def _is_url_data_attribute(name: str) -> bool:
+    return str(name or "").lower() in _URL_DATA_ATTRIBUTE_NAMES
 
 
 class _PageParser(HTMLParser):
@@ -48,15 +60,28 @@ class _PageParser(HTMLParser):
 
     def handle_starttag(self, tag: str, attrs) -> None:
         attr_map = dict(attrs)
+        self._capture_public_attributes(tag, attrs)
+        self._start_script_capture(tag, attr_map)
+        self._capture_input(tag, attr_map)
+        self._start_anchor(tag, attr_map)
+
+    def _capture_public_attributes(self, tag: str, attrs) -> None:
         for name, value in attrs:
             self.public_attribute_parts.append(f"{tag}.{name}={value or ''}")
             if str(name or "").lower().startswith("data-"):
-                self.public_payload_parts.append(f"{name}={value or ''}")
+                if not _is_url_data_attribute(str(name)):
+                    self.public_payload_parts.append(f"{name}={value or ''}")
+
+    def _start_script_capture(self, tag: str, attr_map: Dict[str, str]) -> None:
         if tag == "script":
             script_type = str(attr_map.get("type") or "").lower()
             self._capture_public_json = "json" in script_type
+
+    def _capture_input(self, tag: str, attr_map: Dict[str, str]) -> None:
         if tag == "input":
             self.inputs.append({str(key): str(value or "") for key, value in attr_map.items()})
+
+    def _start_anchor(self, tag: str, attr_map: Dict[str, str]) -> None:
         if tag == "a":
             self._href = str(attr_map.get("href") or "")
             self._link_attrs = {str(key): str(value or "") for key, value in attr_map.items()}
@@ -317,9 +342,18 @@ def _href_with_text_and_class(parser: _PageParser, text: str, path: str, class_n
     raise AssertionError(f"没有找到唯一链接：{text} -> {path} class={class_name}，matches={matches!r}，links={parser.links!r}")
 
 
+_REPORT_CARD_TITLES = {
+    "overdue": "超期清单",
+    "utilization": "资源负荷与利用率",
+    "execution_review": "计划和现场实际",
+    "downtime": "停机影响统计",
+}
+
+
 def _href_for_report_card(parser: _PageParser, card_key: str, path: str) -> str:
+    card_title = _REPORT_CARD_TITLES.get(card_key, card_key)
     for link in parser.links:
-        if link.get("data-report-card") == card_key and urlparse(link["href"]).path == path:
+        if link.get("data-report-card") == card_title and urlparse(link["href"]).path == path:
             return link["href"]
     raise AssertionError(f"没有找到报表卡片链接：{card_key} -> {path}，links={parser.links!r}")
 

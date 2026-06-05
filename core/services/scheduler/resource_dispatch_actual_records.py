@@ -55,6 +55,10 @@ class TaskRef:
     schedule_id: int
     op_id: int
     batch_id: str
+    requested_plan_role: str
+    source_table: str
+    effective_plan_role: str
+    scenario_id: Optional[str]
     op_name: str
     planned_machine_id: str
     planned_machine_label: str
@@ -101,6 +105,35 @@ class PreviewResult:
 
 def text(value: Any) -> str:
     return str(value or "").strip()
+
+
+def plan_identity_from_context(context: Mapping[str, Any]) -> Dict[str, Any]:
+    raw_identity = context.get("plan_identity")
+    identity: Mapping[str, Any] = raw_identity if isinstance(raw_identity, Mapping) else {}
+    missing = [
+        field
+        for field in ("version", "requested_plan_role", "source_table", "effective_plan_role")
+        if not text(identity.get(field))
+    ]
+    try:
+        version = int(identity.get("version") or 0)
+    except (TypeError, ValueError):
+        version = 0
+    if version <= 0 and "version" not in missing:
+        missing.append("version")
+    if missing:
+        raise ValidationError(
+            "当前计划身份不完整，请刷新资源排班页面后重试。",
+            field="plan_identity",
+            details={"missing_fields": missing},
+        )
+    return {
+        "version": version,
+        "requested_plan_role": text(identity.get("requested_plan_role")),
+        "source_table": text(identity.get("source_table")),
+        "effective_plan_role": text(identity.get("effective_plan_role")),
+        "scenario_id": text(identity.get("scenario_id")) or None,
+    }
 
 
 def feedback_person(value: Any) -> str:
@@ -241,6 +274,7 @@ __all__ = [
     "feedback_person",
     "normalize_choice",
     "ordered_pauses",
+    "plan_identity_from_context",
     "parse_datetime_or_error",
     "parse_int_or_error",
     "planned_event_count",

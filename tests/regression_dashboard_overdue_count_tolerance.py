@@ -21,11 +21,11 @@ def _assert_status(resp, name: str, expect: int = 200) -> None:
         raise RuntimeError(f"{name} 返回 {resp.status_code}，期望 {expect}，body={body[:500]}")
 
 
-def _extract_overdue_count(html: str) -> int:
-    m = re.search(r"超期批次</div>\s*<div class=['\"]stat-card-value danger['\"]>\s*(\d+)\s*</div>", html, re.S)
+def _extract_overdue_count_text(html: str) -> str:
+    m = re.search(r"超期批次</div>\s*<div class=['\"]stat-card-value danger['\"]>\s*([^<]+)\s*</div>", html, re.S)
     if not m:
         raise RuntimeError(f"未找到首页“超期批次”统计卡片，body={html[:500]!r}")
-    return int(m.group(1))
+    return m.group(1).strip()
 
 
 def main() -> None:
@@ -64,9 +64,19 @@ def main() -> None:
                 0,
                 0,
                 "success",
-                '{"overdue_batches":{"count":"abc","items":[]}}',
+                '{"overdue_batches":{"count":"2.9","items":[]}}',
                 "reg",
             ),
+        )
+        conn.execute("INSERT INTO Parts (part_no, part_name) VALUES (?, ?)", ("P1", "测试零件"))
+        conn.execute("INSERT INTO Batches (batch_id, part_no, quantity) VALUES (?, ?, ?)", ("B1", "P1", 1))
+        op_cursor = conn.execute(
+            "INSERT INTO BatchOperations (op_code, batch_id, seq, op_type_name) VALUES (?, ?, ?, ?)",
+            ("OP1", "B1", 10, "测试工序"),
+        )
+        conn.execute(
+            "INSERT INTO Schedule (op_id, start_time, end_time, lock_status, version) VALUES (?, ?, ?, ?, ?)",
+            (op_cursor.lastrowid, "2026-05-06 08:00:00", "2026-05-06 10:00:00", "unlocked", 2),
         )
         conn.commit()
     finally:
@@ -87,10 +97,12 @@ def main() -> None:
     html = resp.data.decode("utf-8", errors="ignore")
     if "Internal Server Error" in html or "Traceback" in html:
         raise RuntimeError("脏数据容错失败：首页出现错误页内容")
-    if "abc" in html:
+    if "2.9" in html:
         raise RuntimeError("脏数据容错失败：脏值泄漏到首页展示")
-    if _extract_overdue_count(html) != 0:
-        raise RuntimeError("脏数据容错失败：count='abc' 时首页超期数应为 0")
+    if _extract_overdue_count_text(html) != "数据不足":
+        raise RuntimeError("脏数据容错失败：count='2.9' 时首页超期数不能伪装成 0")
+    if "排产摘要里的超期批次数不是整数" not in html:
+        raise RuntimeError("脏数据容错失败：count='2.9' 应显示数据问题提示")
 
     # 追加历史 list 结构，首页应兼容并展示正确数量
     conn = get_connection(test_db)
@@ -117,7 +129,7 @@ def main() -> None:
     resp2 = client.get("/")
     _assert_status(resp2, "GET / (list overdue_batches)")
     html2 = resp2.data.decode("utf-8", errors="ignore")
-    if _extract_overdue_count(html2) != 1:
+    if _extract_overdue_count_text(html2) != "1":
         raise RuntimeError("list 结构兼容失败：首页超期数应为 1")
 
     print("OK")
@@ -125,4 +137,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

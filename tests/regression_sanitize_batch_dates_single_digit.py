@@ -28,26 +28,16 @@ def main():
     test_db = os.path.join(tmpdir, "aps_sanitize_batch_dates_old.db")
     backup_dir = os.path.join(tmpdir, "backups_migrate")
     os.makedirs(backup_dir, exist_ok=True)
+    schema_path = os.path.join(repo_root, "schema.sql")
 
-    # 1) 构造旧库：Batches 缺少 ready_date（会触发 v0->v1 迁移中的 _sanitize_batch_dates）
+    # 1) 构造完整旧库：结构完整但版本停在 v0，用单数字日期触发 v1 清洗
     conn0 = sqlite3.connect(test_db)
     try:
         conn0.execute("PRAGMA foreign_keys = OFF;")
-        conn0.executescript(
-            """
-            CREATE TABLE Batches (
-                batch_id        TEXT PRIMARY KEY,
-                part_no         TEXT NOT NULL,
-                part_name       TEXT,
-                quantity        INTEGER NOT NULL,
-                due_date        DATE,
-                priority        TEXT DEFAULT 'normal',
-                ready_status    TEXT DEFAULT 'yes',
-                status          TEXT DEFAULT 'pending',
-                remark          TEXT
-            );
-            """
-        )
+        with open(schema_path, "r", encoding="utf-8") as f:
+            conn0.executescript(f.read())
+        conn0.execute("UPDATE SchemaVersion SET version=0 WHERE id=1")
+        conn0.execute("INSERT INTO Parts (part_no, part_name) VALUES (?, ?)", ("P1", "Part1"))
         conn0.execute(
             "INSERT INTO Batches (batch_id, part_no, part_name, quantity, due_date) VALUES (?, ?, ?, ?, ?)",
             ("B001", "P1", "Part1", 1, "2026-1-1"),
@@ -60,7 +50,7 @@ def main():
             pass
 
     # 2) 执行 ensure_schema：应触发迁移并清洗 due_date
-    ensure_schema(test_db, logger=None, schema_path=os.path.join(repo_root, "schema.sql"), backup_dir=backup_dir)
+    ensure_schema(test_db, logger=None, schema_path=schema_path, backup_dir=backup_dir)
 
     # 3) 断言：due_date 被归一化为 ISO（补零）
     conn = get_connection(test_db)
@@ -90,4 +80,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

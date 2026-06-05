@@ -30,6 +30,7 @@ class AdjustmentIssue:
 @dataclass
 class AdjustmentPlanRow:
     schedule_id: int
+    version: int
     op_id: int
     batch_id: str
     piece_id: str
@@ -144,6 +145,7 @@ def _plan_row(row: ScheduleDetailRow) -> AdjustmentPlanRow:
         raise ValidationError("调整依据方案中存在结束时间不晚于开始时间的工序。", field="end_time")
     return AdjustmentPlanRow(
         schedule_id=int(row.get("schedule_id") or 0),
+        version=int(row.get("version") or 0),
         op_id=int(row.get("op_id") or 0),
         batch_id=str(row.get("batch_id") or ""),
         piece_id=str(row.get("piece_id") or ""),

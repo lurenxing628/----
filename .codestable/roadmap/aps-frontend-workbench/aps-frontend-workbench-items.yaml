@@ -1,6 +1,6 @@
 roadmap: aps-frontend-workbench
 created: 2026-05-31
-last_reviewed: 2026-06-01
+last_reviewed: 2026-06-04
 
 items:
   - slug: workbench-context-link-contract
@@ -297,10 +297,9 @@ items:
       - 浏览器几何覆盖 /reports/ 和关键报表明细页
       - 页面不引入外部图表库、外链脚本、外链样式或外链字体
       - 新增或调整 ViewModel 代码保持 Python 3.8 写法，不使用 int | None、list[str] 等新版类型语法
-
   - slug: workbench-flow-regression-suite
     title: 工作台主流程回归测试
-    description: 新增能证明主流程存在的回归测试，覆盖首页跳异常、跳方案、跳甘特、跳资源派工、跳计划和现场实际。
+    description: 新增主流程回归测试，并关闭测试暴露的第一版护栏缺口：正式方案身份、历史 / 缺失版本显示、写入口禁用。
     depends_on:
       - workbench-context-link-contract
       - workbench-nav-entry
@@ -317,33 +316,33 @@ items:
       gantt-task-detail-panel: 测试要覆盖甘特详情区。
       resource-dispatch-execution-lane: 测试要覆盖资源派工和现场记录入口。
       reports-workbench-backlink: 测试要覆盖报表不是死胡同，能回甘特、资源派工和复盘。
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-06-02-workbench-flow-regression-suite
     minimal_loop: false
     primary_paths:
       - tests/regression_aps_workbench_flow_contract.py
       - tests/regression_ui_browser_geometry_smoke.py
       - tests/ui_geometry_contract_data.py
-      - tools/test_registry.py
-      - scripts/run_quality_gate.py
+      - tools/test_registry_data.py
+      - tools/test_registry_groups_scheduler.py
     entrypoints:
-      - "不要只检查网页里有没有某个样式名；要测用户主流程和关键中文文案"
+      - "不要只检查网页里有没有某个样式名；要测用户主流程、关键中文文案和正式方案身份护栏"
       - "这是第一版完整主流程测试，不依赖第二阶段的延期解释接现场事实，也不依赖甘特资源负荷摘要"
       - "浏览器几何测试只覆盖关键页面，不把整站都塞进慢测试"
-      - "优先只改 tools/test_registry.py 登记 aps_frontend_workbench 或等价质量门禁分组；只有现有门禁入口不能识别新分组时，才改 scripts/run_quality_gate.py"
+      - "只允许关闭测试暴露的既有护栏缺口，不扩成第二阶段业务实现"
     test_commands:
       - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_aps_workbench_flow_contract.py"
       - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py"
-    forbidden_paths: [core/algorithms/, schema.sql, vendor/]
+    forbidden_paths: [core/algorithms/, vendor/, "schema.sql（除 OperationExecutionEvents 身份护栏语义改动与 500 行门禁格式压缩外）"]
     exit_checks:
       - 首页到超期解释、方案对比、甘特图、资源派工、计划和现场实际入口都有测试
       - 测试断言版本、方案、日期范围不会跳丢
       - 测试断言从首页待办进入目标页后，目标页自动定位或高亮同一批次/资源；无法定位时显示中文原因
-      - 测试断言非正式方案里的计划和现场实际入口禁用，并显示中文原因
+      - 测试断言正式方案身份、历史 / 缺失版本提示，以及不可写上下文不会出现复盘或写入入口，并显示中文原因
       - 测试断言普通页面不显示内部字段名
       - 浏览器几何覆盖 /、/scheduler/analysis、/scheduler/gantt?view=machine、/scheduler/gantt?view=operator、/scheduler/resource-dispatch、/reports/、/reports/overdue、/reports/utilization、/reports/execution-review
       - 几何测试覆盖 1280、1024、768 三档宽度，检查主内容不重叠、按钮不被遮挡、文字不挤出、关键操作入口可见
-      - 新工作台测试已注册到 tools/test_registry.py 所使用的质量门禁清单
+      - 新工作台测试已注册到 tools/test_registry_data.py 和 tools/test_registry_groups_scheduler.py 所使用的质量门禁清单
       - 最终浏览器兼容证明面向 Chrome 109；如果只用更新版 Chrome，只能标记为布局烟测
 
   - slug: workbench-user-guide-refresh

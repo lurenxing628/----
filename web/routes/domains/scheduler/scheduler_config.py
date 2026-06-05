@@ -14,7 +14,7 @@ from web.routes.form_values import form_yes_no_value
 from web.ui_mode import (
     get_full_manual_section_url,
     get_manual_url,
-    normalize_manual_src,
+    normalize_manual_src_context,
 )
 from web.ui_mode import (
     render_ui_template as render_template,
@@ -120,7 +120,7 @@ def _build_manual_page_url(raw_src: Optional[str], raw_page: Optional[str]) -> s
 
 
 def _normalize_scheduler_manual_args(raw_src: Optional[str], raw_page: Optional[str]) -> Tuple[Optional[str], Optional[str], Optional[Dict[str, Any]], Optional[str]]:
-    safe_src = normalize_manual_src(raw_src)
+    safe_src = normalize_manual_src_context(raw_src)
     bundle = build_page_manual_bundle(raw_page) if raw_page else None
     safe_page = raw_page if bundle else None
     page_warning = None

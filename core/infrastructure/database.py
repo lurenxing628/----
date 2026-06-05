@@ -22,7 +22,7 @@ from .migration_state import (
     MigrationContractError,
 )
 from .migration_state import (
-    detect_schema_is_current as _detect_schema_is_current,
+    ensure_current_schema_contract as _ensure_current_schema_contract,
 )
 from .migration_state import (
     ensure_schema_version as _ensure_schema_version,
@@ -35,12 +35,6 @@ from .migration_state import (
 )
 from .migration_state import (
     has_no_user_tables as _has_no_user_tables,
-)
-from .migration_state import (
-    is_truly_empty_db as _is_truly_empty_db,
-)
-from .migration_state import (
-    list_user_tables as _list_user_tables,
 )
 from .migrations.common import fallback_log
 
@@ -90,6 +84,27 @@ def _rollback_failed_schema_initialization(conn: sqlite3.Connection, init_exc: E
         raise RuntimeError("数据库结构初始化失败，且回滚失败；数据库状态不可信") from rollback_exc
 
 
+def _has_schema_version_table(conn: sqlite3.Connection) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='SchemaVersion' LIMIT 1"
+    ).fetchone()
+    return row is not None
+
+
+def _ensure_no_user_tables_db_can_bootstrap(conn: sqlite3.Connection, initial_version: int) -> None:
+    if int(initial_version) == 0 and not _has_schema_version_table(conn):
+        return
+    raise MigrationContractError(
+        " ".join(
+            [
+                f"检测到数据库只有 SchemaVersion={int(initial_version)}，但没有任何业务表。",
+                "这不是连 SchemaVersion 都不存在的全新空库，系统不会用当前 schema.sql 静默补齐成新库。",
+                "请恢复完整备份，或先用能正确迁移该数据库的程序版本修复结构后再重试。",
+            ]
+        )
+    )
+
+
 def ensure_schema(
     db_path: str, logger=None, schema_path: Optional[str] = None, backup_dir: Optional[str] = None
 ) -> None:
@@ -136,14 +151,18 @@ def ensure_schema(
             # 仅在库中不存在任何业务表时才执行 schema.sql 建表。
             # 旧 schema 的空表库不能走这里，否则 CREATE TABLE IF NOT EXISTS
             # 不会修正既有表结构，后续索引/新列依赖会直接失败。
-            _ensure_schema_version_not_newer(_get_schema_version(conn), supported_version=CURRENT_SCHEMA_VERSION)
+            initial_version = _get_schema_version(conn)
+            _ensure_schema_version_not_newer(initial_version, supported_version=CURRENT_SCHEMA_VERSION)
+            _ensure_current_schema_contract(conn, schema_version=initial_version)
             if _has_no_user_tables(conn):
+                _ensure_no_user_tables_db_can_bootstrap(conn, initial_version)
                 conn.executescript(script)
 
             # 确保 SchemaVersion 表存在，并获取当前版本
             _ensure_schema_version(conn, logger=logger)
             current_version = _get_schema_version(conn)
             _ensure_schema_version_not_newer(current_version, supported_version=CURRENT_SCHEMA_VERSION)
+            _ensure_current_schema_contract(conn, schema_version=current_version)
             conn.commit()
             if logger:
                 fallback_log(logger, "info", "数据库结构检查完成（已确保所有表存在）。")

@@ -6,13 +6,13 @@ from tests.operation_execution_feedback_test_support import (
     _current_card,
     _current_query,
     _event_count,
-    _events_for_op,
+    _events_for_card,
     _json,
 )
 
 
 def _actual_url(card) -> str:
-    return f"/scheduler/resource-dispatch/execution/{card['op_id']}/actual?{_current_query()}"
+    return f"/scheduler/resource-dispatch/execution/tasks/{card['task_key']}/actual?{_current_query()}"
 
 
 def test_actual_record_allows_blank_feedback_person_and_manual_times(tmp_path, monkeypatch) -> None:
@@ -35,13 +35,21 @@ def test_actual_record_allows_blank_feedback_person_and_manual_times(tmp_path, m
         ),
     )
     data = _json(resp)["data"]
-    events = _events_for_op(db_path, card["op_id"])
+    events = _events_for_card(db_path, card)
 
     assert resp.status_code == 200
     assert data["task_card"]["actual_start_time"] == "2026-05-01 08:12:00"
     assert data["task_card"]["actual_end_time"] == "2026-05-01 08:58:00"
     assert [row["event_type"] for row in events] == ["start", "finish"]
     assert [row["event_time"] for row in events] == ["2026-05-01 08:12:00", "2026-05-01 08:58:00"]
+    assert {(row["schedule_version"], row["schedule_id"], row["op_id"], row["batch_id"]) for row in events} == {
+        (2, 100, card["op_id"], card["batch_id"])
+    }
+    assert {(row["source_table"], row["effective_plan_role"], row["scenario_id"]) for row in events} == {
+        ("schedule", "adopted", None)
+    }
+    assert events[0]["previous_state_revision"] == f"{card['op_id']}:0:0"
+    assert events[1]["previous_state_revision"].startswith(f"{card['op_id']}:1:")
     assert events[0]["created_by"] == "未填写反馈人"
     assert events[1]["quantity_done"] == 9
     assert events[1]["quantity_scrapped"] == 1
@@ -63,7 +71,7 @@ def test_actual_record_allows_total_quantity_over_planned_for_rework(tmp_path, m
             quantity_scrapped=5,
         ),
     )
-    events = _events_for_op(db_path, card["op_id"])
+    events = _events_for_card(db_path, card)
 
     assert resp.status_code == 200
     assert events[1]["quantity_done"] == 8
@@ -113,7 +121,84 @@ def test_actual_record_same_idempotency_reuses_existing_events(tmp_path, monkeyp
     assert first.status_code == 200
     assert retry.status_code == 200
     assert _json(retry)["data"]["idempotency_reused"] is True
-    assert [row["event_type"] for row in _events_for_op(db_path, card["op_id"])] == ["start", "finish"]
+    assert [row["event_type"] for row in _events_for_card(db_path, card)] == ["start", "finish"]
+
+
+def test_actual_record_token_route_rejects_stale_state_key_for_new_content(tmp_path, monkeypatch) -> None:
+    app, db_path = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+    card = _current_card(client)
+
+    first = client.post(
+        _actual_url(card),
+        json=_base_payload(
+            card,
+            idempotency_key="actual-stale-state-first",
+            actual_start_time="2026-05-01 08:00:00",
+        ),
+    )
+    stale_append = client.post(
+        _actual_url(card),
+        json=_base_payload(
+            card,
+            idempotency_key="actual-stale-state-new-content",
+            actual_start_time="",
+            pause_start_time="2026-05-01 08:20:00",
+            pause_end_time="2026-05-01 08:30:00",
+            pause_reason="equipment",
+            pause_remark="设备点检",
+        ),
+    )
+    payload = _json(stale_append)
+
+    assert first.status_code == 200
+    assert stale_append.status_code == 409
+    assert payload["error"]["details"]["reason"] == "stale_state_revision"
+    assert [row["event_type"] for row in _events_for_card(db_path, card)] == ["start"]
+
+
+def test_legacy_actual_route_rejects_stale_or_missing_revision_when_appending(tmp_path, monkeypatch) -> None:
+    app, db_path = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+    card = _current_card(client)
+
+    first = client.post(
+        _actual_url(card),
+        json=_base_payload(
+            card,
+            idempotency_key="legacy-stale-first",
+            actual_start_time="2026-05-01 08:00:00",
+        ),
+    )
+    assert first.status_code == 200
+    legacy_url = f"/scheduler/resource-dispatch/execution/{card['op_id']}/actual?{_current_query()}"
+    cases = [
+        (
+            "legacy-stale-append",
+            {},
+            {"pause_start_time": "2026-05-01 08:20:00", "pause_end_time": "2026-05-01 08:30:00", "pause_reason": "equipment", "pause_remark": "设备点检"},
+            409,
+            "stale_state_revision",
+        ),
+        (
+            "legacy-missing-revision-pause",
+            {"expected_state_revision": ""},
+            {"pause_start_time": "2026-05-01 08:40:00", "pause_end_time": "2026-05-01 08:45:00", "pause_reason": "material", "pause_remark": "等待物料"},
+            400,
+            "missing_required_field",
+        ),
+        ("legacy-missing-revision-exception", {"expected_state_revision": ""}, {"exception_time": "2026-05-01 08:50:00", "exception_reason": "quality", "exception_severity": "medium"}, 400, "missing_required_field"),
+        ("legacy-missing-revision-finish", {"expected_state_revision": ""}, {"actual_finish_time": "2026-05-01 09:00:00", "quantity_done": 10}, 400, "missing_required_field"),
+    ]
+    for key, revision_fields, actual_fields, expected_status, expected_reason in cases:
+        resp = client.post(
+            legacy_url,
+            json=_base_payload(card, idempotency_key=key, actual_start_time="", **revision_fields, **actual_fields),
+        )
+        payload = _json(resp)
+        assert resp.status_code == expected_status
+        assert payload["error"]["details"]["reason"] == expected_reason
+    assert [row["event_type"] for row in _events_for_card(db_path, card)] == ["start"]
 
 
 def test_actual_record_reused_idempotency_key_with_new_content_still_validates(tmp_path, monkeypatch) -> None:
@@ -156,7 +241,7 @@ def test_actual_record_reused_idempotency_key_with_new_content_still_validates(t
     assert payload["error"]["details"].get("reason") != "invalid_state_transition"
     assert "已记录实际开工" in payload["error"]["message"]
     # 只有第一次的开工事件落库，非法完工没有写入。
-    assert [row["event_type"] for row in _events_for_op(db_path, card["op_id"])] == ["start"]
+    assert [row["event_type"] for row in _events_for_card(db_path, card)] == ["start"]
 
 
 def test_actual_record_without_client_idempotency_key_can_append_new_pause_and_exception(tmp_path, monkeypatch) -> None:
@@ -201,7 +286,7 @@ def test_actual_record_without_client_idempotency_key_can_append_new_pause_and_e
             exception_remark="尺寸复检",
         ),
     )
-    events = _events_for_op(db_path, card["op_id"])
+    events = _events_for_card(db_path, card)
 
     assert first.status_code == 200
     assert retry.status_code == 200
@@ -252,7 +337,7 @@ def test_actual_record_rejects_overwrite_existing_start_and_finish(tmp_path, mon
             quantity_done=10,
         ),
     )
-    events = _events_for_op(db_path, card["op_id"])
+    events = _events_for_card(db_path, card)
 
     assert first.status_code == 200
     assert overwrite_start.status_code == 400
@@ -304,7 +389,7 @@ def test_actual_record_pause_range_and_duration_write_pause_events(tmp_path, mon
             quantity_done=10,
         ),
     )
-    events = _events_for_op(db_path, card["op_id"])
+    events = _events_for_card(db_path, card)
     task_card = _json(resp)["data"]["task_card"]
 
     assert resp.status_code == 200
@@ -350,7 +435,7 @@ def test_actual_record_rejects_pause_duration_mismatch_and_overlap(tmp_path, mon
         ),
     )
     assert first.status_code == 200
-    first_events = _events_for_op(db_path, card["op_id"])
+    first_events = _events_for_card(db_path, card)
     assert [row["event_type"] for row in first_events] == ["start", "pause", "resume"]
     assert [row["event_time"] for row in first_events] == [
         "2026-05-01 08:00:00",
@@ -392,11 +477,10 @@ def test_actual_record_supports_exception_record_fields(tmp_path, monkeypatch) -
             exception_remark="主轴异常",
         ),
     )
-    events = _events_for_op(db_path, card["op_id"])
+    events = _events_for_card(db_path, card)
 
     assert resp.status_code == 200
     assert [row["event_type"] for row in events] == ["start", "exception"]
     assert events[-1]["reason_code"] == "equipment"
     assert events[-1]["severity"] == "high"
     assert events[-1]["remark"] == "主轴异常"
-

@@ -115,6 +115,85 @@ def _normalize_hours(svc, *, setup_hours: Any, unit_hours: Any) -> Tuple[float, 
     return sh2, uh2
 
 
+def _ensure_external_operation_editable(op: BatchOperation) -> int:
+    if op.id is None:
+        raise BusinessError(ErrorCode.NOT_FOUND, _OPERATION_NOT_FOUND_MESSAGE)
+    if not op.is_external():
+        raise ValidationError("只能编辑外协工序的供应商/周期信息", field="source")
+    return int(op.id)
+
+
+def _validate_supplier_available(svc, sup_id: Optional[str]) -> None:
+    if not sup_id:
+        return
+    supplier = svc.supplier_repo.get(sup_id)
+    if not supplier:
+        raise BusinessError(ErrorCode.NOT_FOUND, f"供应商“{sup_id}”不存在")
+    if (supplier.status or "").strip().lower() != SupplierStatus.ACTIVE.value:
+        raise BusinessError(ErrorCode.RESOURCE_NOT_AVAILABLE, f"供应商“{sup_id}”已停用，不可用于排产。")
+
+
+def _is_merged_external_group(group: Any) -> bool:
+    return bool(group and (str(getattr(group, "merge_mode", None) or "").strip().lower() == MergeMode.MERGED.value))
+
+
+def _raise_merged_ext_days_error(group: Any) -> None:
+    total_days = getattr(group, "total_days", None)
+    total_days_text = f"{total_days} 天" if total_days is not None else "（未设置）"
+    raise ValidationError(
+        f"该外协工序属于“合并周期”外协组，不能逐道设置周期。请在工艺管理中设置该组的合并周期（当前：{total_days_text}）。",
+        field="周期",
+    )
+
+
+def _normalize_positive_ext_days(ext_days: Any) -> float:
+    value = parse_required_float(ext_days, field="外协周期(天)")
+    if float(value) <= 0:
+        raise ValidationError("“外协周期(天)”必须大于 0", field="外协周期(天)")
+    return float(value)
+
+
+def _resolve_external_ext_days_value(
+    svc,
+    *,
+    op: BatchOperation,
+    supplier_provided: bool,
+    ext_days_provided: bool,
+    ext_days: Any,
+) -> Optional[float]:
+    _tmpl, group = svc._get_template_and_group_for_op(op)
+    if _is_merged_external_group(group):
+        if ext_days_provided and svc._normalize_text(ext_days) is not None:
+            _raise_merged_ext_days_error(group)
+        return None
+    if ext_days_provided:
+        return _normalize_positive_ext_days(ext_days)
+    if supplier_provided:
+        raise ValidationError("“外协周期(天)”不能为空", field="外协周期(天)")
+    return None
+
+
+def _build_external_operation_updates(
+    svc,
+    *,
+    supplier_provided: bool,
+    ext_days_provided: bool,
+    sup_id: Optional[str],
+    ext_days_value: Optional[float],
+    status: Any,
+) -> Dict[str, Any]:
+    updates: Dict[str, Any] = {}
+    if supplier_provided:
+        updates["supplier_id"] = sup_id
+    if ext_days_provided or supplier_provided:
+        updates["ext_days"] = ext_days_value
+    if status is not None:
+        st = _normalize_batch_op_status(svc, status)
+        if st is not None:
+            updates["status"] = st
+    return updates
+
+
 def update_internal_operation(
     svc,
     op_id: Any,
@@ -181,55 +260,27 @@ def update_external_operation(
     - 仅更新状态时，不应隐式清空 supplier_id / ext_days
     """
     op = get_operation(svc, op_id)
-    if op.id is None:
-        raise BusinessError(ErrorCode.NOT_FOUND, _OPERATION_NOT_FOUND_MESSAGE)
-    op_id_int = int(op.id)
-    if not op.is_external():
-        raise ValidationError("只能编辑外协工序的供应商/周期信息", field="source")
+    op_id_int = _ensure_external_operation_editable(op)
 
     supplier_provided = supplier_id is not None
     ext_days_provided = ext_days is not None
     sup_id = svc._normalize_text(supplier_id)
-    if sup_id:
-        s = svc.supplier_repo.get(sup_id)
-        if not s:
-            raise BusinessError(ErrorCode.NOT_FOUND, f"供应商“{sup_id}”不存在")
-        if (s.status or "").strip().lower() != SupplierStatus.ACTIVE.value:
-            raise BusinessError(ErrorCode.RESOURCE_NOT_AVAILABLE, f"供应商“{sup_id}”已停用，不可用于排产。")
-
-    # 合并周期（merged）时：周期不在 BatchOperations.ext_days 上维护
-    _tmpl, grp = svc._get_template_and_group_for_op(op)
-    merged_group = bool(grp and (str(getattr(grp, "merge_mode", None) or "").strip().lower() == MergeMode.MERGED.value))
-    if merged_group:
-        if ext_days is not None and svc._normalize_text(ext_days) is not None:
-            td = grp.total_days
-            td_text = f"{td} 天" if td is not None else "（未设置）"
-            raise ValidationError(
-                f"该外协工序属于“合并周期”外协组，不能逐道设置周期。请在工艺管理中设置该组的合并周期（当前：{td_text}）。",
-                field="周期",
-            )
-        # merged：保持 ext_days 为 NULL，避免误导
-        ext_days_value = None
-    else:
-        if ext_days_provided:
-            dv = parse_required_float(ext_days, field="外协周期(天)")
-            if float(dv) <= 0:
-                raise ValidationError("“外协周期(天)”必须大于 0", field="外协周期(天)")
-            ext_days_value = float(dv)
-        elif supplier_provided:
-            raise ValidationError("“外协周期(天)”不能为空", field="外协周期(天)")
-        else:
-            ext_days_value = None
-
-    updates: Dict[str, Any] = {}
-    if supplier_provided:
-        updates["supplier_id"] = sup_id
-    if ext_days_provided or supplier_provided:
-        updates["ext_days"] = ext_days_value
-    if status is not None:
-        st = _normalize_batch_op_status(svc, status)
-        if st is not None:
-            updates["status"] = st
+    _validate_supplier_available(svc, sup_id)
+    ext_days_value = _resolve_external_ext_days_value(
+        svc,
+        op=op,
+        supplier_provided=supplier_provided,
+        ext_days_provided=ext_days_provided,
+        ext_days=ext_days,
+    )
+    updates = _build_external_operation_updates(
+        svc,
+        supplier_provided=supplier_provided,
+        ext_days_provided=ext_days_provided,
+        sup_id=sup_id,
+        ext_days_value=ext_days_value,
+        status=status,
+    )
 
     with svc.tx_manager.transaction():
         svc.op_repo.update(op_id_int, updates)

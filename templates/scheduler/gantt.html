@@ -26,7 +26,7 @@
   {% set current_plan_role = plan_role or 'adopted' %}
   {% set current_scenario_id = scenario_id or '' %}
   {% set current_scenario_label = (plan_resolution.scenario_display_name or scenario_name or '模拟预览（未命名）') if is_scenario_preview else '' %}
-  {% set current_plan_label = current_scenario_label if is_scenario_preview else (plan_resolution.selected_label if plan_resolution else '正式采用方案') %}
+  {% set current_plan_label = current_scenario_label if is_scenario_preview else (plan_resolution.user_label if plan_resolution else '正式采用方案') %}
 
   {{ ui.aps_page_hero(
     '甘特图（' ~ ('设备视图' if view=='machine' else '人员视图') ~ '）',
@@ -144,7 +144,7 @@
           <select name="plan_role" class="w-160" data-report-plan-role-select data-initial-plan-role="{{ effective_plan_role }}">
             {% for option in plan_role_options or [] %}
               <option value="{{ option.role }}" {% if option.role == effective_plan_role %}selected{% endif %}>
-                {{ option.label }}{% if option.candidate_label %} · {{ option.candidate_label }}{% endif %}
+                {{ option.display_text or option.label }}
               </option>
             {% endfor %}
           </select>

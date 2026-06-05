@@ -50,7 +50,7 @@ def is_comparison_plan(
 
 def plan_role_label(role: Optional[str]) -> str:
     normalized = _normalize_role(role)
-    return PLAN_ROLE_LABELS.get(normalized, normalized)
+    return PLAN_ROLE_LABELS.get(normalized, "未知方案身份")
 
 
 def plan_candidate_label(label: Optional[str], *, role: Optional[str] = None, candidate_key: Optional[str] = None) -> str:

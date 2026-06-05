@@ -3,7 +3,7 @@ from __future__ import annotations
 import html
 import json
 import re
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 from flask import current_app, jsonify, render_template, request
 
@@ -135,8 +135,8 @@ def _public_invalid_query_details(details: dict) -> dict:
     invalid_query_keys = details.get("invalid_query_keys")
     if not isinstance(invalid_query_keys, list):
         return {}
-    raw_keys: list[str] = []
-    labels: list[str] = []
+    raw_keys: List[str] = []
+    labels: List[str] = []
     for item in invalid_query_keys:
         key = str(item).strip()
         label = get_user_visible_field_label(key)
@@ -313,7 +313,6 @@ def render_minimal_error_page(
     field_label: Optional[str] = None,
 ) -> str:
     title_text = html.escape(str(title or "发生错误"))
-    code_text = html.escape(str(code or "未知"))
     message_text = html.escape(str(message or "发生未知错误，请查看日志。"))
     details_text = _details_text(details)
     extra_parts = []
@@ -333,14 +332,13 @@ def render_minimal_error_page(
         "body{margin:0;font-family:'Segoe UI',sans-serif;background:#f5f1ea;color:#1f2933;}"
         ".shell{max-width:640px;margin:64px auto;padding:32px;background:#fff;border:1px solid #d9cbb8;"
         "border-radius:18px;box-shadow:0 20px 40px rgba(15,23,42,.08);}"
-        "h1{margin:0 0 12px;font-size:28px;}.code,.message,.hint{margin:12px 0;line-height:1.6;}"
+        "h1{margin:0 0 12px;font-size:28px;}.message,.hint{margin:12px 0;line-height:1.6;}"
         "pre{margin:16px 0 0;padding:16px;border-radius:12px;background:#f8fafc;overflow:auto;white-space:pre-wrap;}"
         "</style>"
         "</head>"
         "<body>"
         "<main class=\"shell\">"
         f"<h1>{title_text}</h1>"
-        f"<p class=\"code\"><strong>错误码：</strong>{code_text}</p>"
         f"<p class=\"message\"><strong>提示：</strong>{message_text}</p>"
         f"{extra_html}"
         "<p class=\"hint\">如果问题反复出现，请联系管理员查看运行日志。</p>"

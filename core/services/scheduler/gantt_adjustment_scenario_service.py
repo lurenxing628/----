@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 from core.infrastructure.errors import ValidationError
 from core.models.schedule_adjustment import (
@@ -13,8 +13,8 @@ from core.models.schedule_adjustment import (
 )
 from data.repositories import ScheduleAdjustmentRepository, ScheduleAdjustmentScenarioRepository
 
-from .execution_snapshot import ExecutionSnapshot, collect_execution_snapshot
-from .gantt_adjustment_validation_service import GanttAdjustmentValidationService
+from .execution_snapshot import ExecutionSnapshot, collect_execution_snapshot_for_plan_rows
+from .gantt_adjustment_validation_service import GanttAdjustmentEvaluation, GanttAdjustmentValidationService
 
 
 def _text(value: Any) -> str:
@@ -26,6 +26,16 @@ def _required_text(value: Any, *, field: str, label: str) -> str:
     if not text:
         raise ValidationError(f"{label}不能为空。", field=field)
     return text
+
+
+def _execution_plan_fields(evaluation: GanttAdjustmentEvaluation) -> Dict[str, Any]:
+    resolution = evaluation.plan_resolution
+    return {
+        "version": getattr(resolution, "version", None),
+        "source_table": getattr(resolution, "source_table", None),
+        "effective_plan_role": getattr(resolution, "selected_role", None),
+        "scenario_id": getattr(resolution, "scenario_id", None),
+    }
 
 
 class GanttAdjustmentScenarioService:
@@ -56,9 +66,11 @@ class GanttAdjustmentScenarioService:
         if not evaluation.can_apply:
             raise ValidationError("草稿还有阻塞问题，不能保存为模拟方案。", field="draft_id")
 
-        execution_snapshot = collect_execution_snapshot(
+        execution_snapshot = collect_execution_snapshot_for_plan_rows(
             self.conn,
-            [row.op_id for row in evaluation.adjusted_rows],
+            evaluation.adjusted_rows,
+            _execution_plan_fields(evaluation),
+            op_ids=[row.op_id for row in evaluation.adjusted_rows],
             logger=self.logger,
         )
         scenario = self._scenario_header(

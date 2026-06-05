@@ -4,8 +4,9 @@ from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, List, Optional, Protocol, cast
 
 from core.infrastructure.errors import ValidationError
+from core.models.operation_execution_scope import OperationExecutionScope
 from core.models.resource_identity import ResourceIdentity, build_resource_identity
-from core.models.schedule_plan_role import ROLE_ADOPTED
+from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
 from core.services.scheduler.schedule_plan_query_service import plan_role_label
 
 from . import calculations
@@ -19,6 +20,73 @@ def _finite_number(value: Any, *, field: str, label: str, default: float = 0.0) 
 
 def _operation_id(value: Any) -> int:
     return parse_report_int(value, field="op_id", label="工序编号", source_label="计划数据", blank_default=0)
+
+
+def _schedule_id(value: Any) -> int:
+    return parse_report_int(value, field="schedule_id", label="排程记录编号", source_label="计划数据", blank_default=0)
+
+
+def _schedule_version(value: Any) -> int:
+    return parse_report_int(value, field="version", label="排产版本", source_label="计划数据", blank_default=0)
+
+
+def _execution_scope(row: Dict[str, Any], op_id: int) -> OperationExecutionScope:
+    schedule_id = _schedule_id(row.get("schedule_id"))
+    version = _schedule_version(row.get("version"))
+    batch_id = str(row.get("batch_id") or "").strip()
+    missing = []
+    if op_id <= 0:
+        missing.append("op_id")
+    if schedule_id <= 0:
+        missing.append("schedule_id")
+    if version <= 0:
+        missing.append("version")
+    if not batch_id:
+        missing.append("batch_id")
+    if missing:
+        raise ValidationError(
+            "计划数据缺少现场执行身份字段，不能生成计划和现场实际复盘。",
+            field=missing[0],
+            details={"missing_fields": missing},
+        )
+    return OperationExecutionScope.from_values(
+        schedule_version=version,
+        schedule_id=schedule_id,
+        op_id=op_id,
+        batch_id=batch_id,
+        source_table=SOURCE_SCHEDULE,
+        effective_plan_role=ROLE_ADOPTED,
+    )
+
+
+def _plan_identity_label(plan_resolution: Dict[str, Any]) -> str:
+    identity = plan_resolution.get("plan_identity") if isinstance(plan_resolution, dict) else None
+    identity_dict = identity if isinstance(identity, dict) else {}
+    return str(identity_dict.get("user_label") or identity_dict.get("label") or plan_role_label(ROLE_ADOPTED))
+
+
+def _filename_part(value: Any) -> str:
+    text = str(value or "").strip() or plan_role_label(ROLE_ADOPTED)
+    for char in '\\/:*?"<>|':
+        text = text.replace(char, "_")
+    return text
+
+
+def _public_report_datetime(value: Any) -> str:
+    def _format_dt(item: datetime) -> str:
+        return f"{item.year}年{item.month}月{item.day}日 {item.hour:02d}:{item.minute:02d}"
+
+    if isinstance(value, datetime):
+        return _format_dt(value)
+    text = str(value or "").strip()
+    if not text:
+        return "未填写计划时间"
+    for pattern in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y/%m/%d %H:%M:%S", "%Y/%m/%d %H:%M"):
+        try:
+            return _format_dt(datetime.strptime(text, pattern))
+        except ValueError:
+            continue
+    return "时间记录异常"
 
 
 class _ExecutionReviewHost(Protocol):
@@ -130,13 +198,13 @@ class ExecutionReviewMixin:
 
     def _execution_review_rows(self, plan_rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         host = cast(_ExecutionReviewHost, self)
-        rows_with_op_ids = [(dict(row or {}), _operation_id((row or {}).get("op_id"))) for row in plan_rows]
-        op_ids = [op_id for _row, op_id in rows_with_op_ids if op_id > 0]
-        states = host.execution_feedback_service.get_execution_state(op_ids)
-        return [
-            self._execution_review_row(row, states.get(op_id))
-            for row, op_id in rows_with_op_ids
+        rows_with_scopes = [
+            (dict(row or {}), _execution_scope(dict(row or {}), _operation_id((row or {}).get("op_id"))))
+            for row in plan_rows
         ]
+        scopes = [scope for _row, scope in rows_with_scopes]
+        states = host.execution_feedback_service.get_execution_state_for_scopes(scopes)
+        return [self._execution_review_row(row, states.get(scope)) for row, scope in rows_with_scopes]
 
     def execution_review(
         self,
@@ -152,6 +220,7 @@ class ExecutionReviewMixin:
         v = int(version or 0)
         resolution = host._resolve_plan(v, ROLE_ADOPTED, None)
         date_bounds = self._execution_review_date_bounds(date_from, date_to)
+        plan_resolution = resolution.to_dict()
         batch_filter = str(batch_id or "").strip()
         plan_rows = self._execution_review_plan_rows(
             version=v,
@@ -163,9 +232,9 @@ class ExecutionReviewMixin:
         rows = self._execution_review_rows(list(plan_rows or []))
         return {
             "version": v,
-            "plan_label": plan_role_label(ROLE_ADOPTED),
+            "plan_label": _plan_identity_label(plan_resolution),
             "plan_role": ROLE_ADOPTED,
-            "plan_resolution": resolution.to_dict(),
+            "plan_resolution": plan_resolution,
             "date_from": date_bounds["date_from"],
             "date_to": date_bounds["date_to"],
             "date_range_label": date_bounds["date_range_label"],
@@ -196,10 +265,11 @@ class ExecutionReviewMixin:
         rows = list(rep.get("rows") or [])
         if not rows:
             raise ValidationError("暂无数据，不能导出。请调整版本、日期或批次后再试。", field="导出")
-        filename = f"计划和现场实际-正式采用方案-v{int(rep['version'])}.xlsx"
+        plan_label = _filename_part(rep.get("plan_label"))
+        filename = f"计划和现场实际-{plan_label}-v{int(rep['version'])}.xlsx"
         if rep.get("date_from") and rep.get("date_to"):
             filename = (
-                f"计划和现场实际-正式采用方案-v{int(rep['version'])}-"
+                f"计划和现场实际-{plan_label}-v{int(rep['version'])}-"
                 f"{rep['date_from']} 至 {rep['date_to']}.xlsx"
             )
         host = cast(_ExecutionReviewHost, self)
@@ -315,8 +385,7 @@ class ExecutionReviewMixin:
 
     @staticmethod
     def _display_time(value: Any) -> str:
-        text = str(value or "").strip()
-        return text or "未填写计划时间"
+        return _public_report_datetime(value)
 
     @staticmethod
     def _actual_value_label(value: Any, has_feedback: bool) -> str:

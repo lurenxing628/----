@@ -24,22 +24,21 @@ def _has_column(conn: sqlite3.Connection, table: str, col: str) -> bool:
 def main():
     """
     回归目标：
-    - 旧库缺少 OperatorMachine.skill_level / OperatorMachine.is_primary 时，
-      ensure_schema() 必须能自动补齐字段，避免业务代码查询时报错：
-        SELECT operator_id, machine_id, skill_level, is_primary FROM OperatorMachine
+    - 残缺旧库只有 OperatorMachine 一张业务表、缺少其它整表时，
+      ensure_schema() 必须 fail-fast，不能用当前 schema.sql 静默补成“看起来可用”的新库。
 
     复现设计：
     - 人工创建一个“旧 OperatorMachine 表”（仅 operator_id/machine_id）
     - 插入 1 条数据
-    - 调用 ensure_schema()（应触发迁移补列与默认值回填）
-    - 断言两列存在，且查询不报错、值为默认值 normal/no
+    - 调用 ensure_schema()
+    - 断言抛出 MigrationContractError，且真实库仍未补出 skill_level/is_primary
     """
 
     repo_root = find_repo_root()
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
 
-    from core.infrastructure.database import ensure_schema, get_connection
+    from core.infrastructure.database import MigrationContractError, ensure_schema, get_connection
 
     tmpdir = tempfile.mkdtemp(prefix="aps_regression_operator_machine_cols_")
     test_db = os.path.join(tmpdir, "aps_operator_machine_cols.db")
@@ -69,24 +68,27 @@ def main():
         except Exception:
             pass
 
-    # 2) 执行 schema 确保/迁移：应自动补列
-    ensure_schema(test_db, logger=None, schema_path=os.path.join(repo_root, "schema.sql"))
+    # 2) 执行 schema 确保/迁移：残缺整库应直接失败，不能静默补齐
+    try:
+        ensure_schema(test_db, logger=None, schema_path=os.path.join(repo_root, "schema.sql"))
+    except MigrationContractError as exc:
+        message = str(exc)
+        assert "不受支持的残缺结构" in message, message
+        assert "不会用当前 schema.sql 静默补齐缺失整表" in message, message
+    else:
+        raise AssertionError("只有 OperatorMachine 的残缺旧库不应被静默补成当前结构")
 
     conn = get_connection(test_db)
     try:
-        assert _has_column(conn, "OperatorMachine", "skill_level"), "迁移失败：未补齐 OperatorMachine.skill_level"
-        assert _has_column(conn, "OperatorMachine", "is_primary"), "迁移失败：未补齐 OperatorMachine.is_primary"
+        assert not _has_column(conn, "OperatorMachine", "skill_level"), "fail-fast 后不应补齐 skill_level"
+        assert not _has_column(conn, "OperatorMachine", "is_primary"), "fail-fast 后不应补齐 is_primary"
 
-        rows = conn.execute(
-            "SELECT operator_id, machine_id, skill_level, is_primary FROM OperatorMachine ORDER BY operator_id, machine_id"
-        ).fetchall()
+        rows = conn.execute("SELECT operator_id, machine_id FROM OperatorMachine ORDER BY operator_id, machine_id").fetchall()
         assert len(rows) == 1, f"预期 1 条 OperatorMachine 记录，实际 {len(rows)}"
 
         r = rows[0]
         assert (r["operator_id"] or "").strip() == "OP001"
         assert (r["machine_id"] or "").strip() == "MC_A1"
-        assert (r["skill_level"] or "").strip() == "normal", f"预期默认 skill_level='normal'，实际 {r['skill_level']!r}"
-        assert (r["is_primary"] or "").strip() == "no", f"预期默认 is_primary='no'，实际 {r['is_primary']!r}"
 
         print("OK")
     finally:
@@ -98,4 +100,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

@@ -3,6 +3,9 @@ from __future__ import annotations
 import sqlite3
 from typing import List
 
+from core.infrastructure.operation_execution_event_data_contract import operation_execution_event_sequence_issues
+from core.models.operation_execution_event import parse_operation_event_time
+
 from .common import MigrationOutcome
 from .v15 import _EVENT_INDEX_SQL, _EVENT_TABLE_SQL
 
@@ -44,9 +47,9 @@ def run(conn: sqlite3.Connection, logger=None) -> MigrationOutcome:
     v16 迁移：修正已经跑过早期 v15 的执行事件表结构。
     """
     if not _table_exists(conn, "OperationExecutionEvents"):
-        _create_current_event_table(conn)
-        return MigrationOutcome.APPLIED
+        return MigrationOutcome.SKIPPED
 
+    _reject_incomplete_legacy_events(conn)
     _drop_event_indexes(conn)
     conn.execute("ALTER TABLE OperationExecutionEvents RENAME TO OperationExecutionEvents_v15_backup")
     _create_current_event_table(conn)
@@ -95,50 +98,57 @@ def _copy_legacy_events(conn: sqlite3.Connection) -> None:
 
 
 def _legacy_select_expr(column: str) -> str:
-    if column == "reason_code":
-        return (
-            "CASE WHEN legacy.event_type IN ('pause', 'exception') "
-            "AND (legacy.reason_code IS NULL OR TRIM(legacy.reason_code) = '') "
-            "THEN 'other' ELSE legacy.reason_code END"
-        )
-    if column == "reason_detail":
-        return _append_legacy_note(
-            _append_legacy_note(
-                "legacy.reason_detail",
-                _missing_reason_condition(),
-                "迁移补齐：早期现场事件缺少原因，已按“其他”保留原事件。",
-            ),
-            _missing_exception_severity_condition(),
-            "迁移补齐：早期异常事件缺少严重程度，已按“中等”保留原事件。",
-        )
-    if column == "severity":
-        return (
-            "CASE WHEN "
-            + _missing_exception_severity_condition()
-            + " THEN 'medium' ELSE legacy.severity END"
-        )
-    if column == "actual_machine_id":
-        return _existing_resource_or_null("legacy.actual_machine_id", "Machines", "machine_id")
-    if column == "actual_operator_id":
-        return _existing_resource_or_null("legacy.actual_operator_id", "Operators", "operator_id")
-    if column == "affected_machine_id":
-        return _existing_resource_or_null("legacy.affected_machine_id", "Machines", "machine_id")
-    if column == "affected_operator_id":
-        return _existing_resource_or_null("legacy.affected_operator_id", "Operators", "operator_id")
     if column == "suggest_reschedule":
         return (
             "CASE LOWER(TRIM(CAST(legacy.suggest_reschedule AS TEXT))) "
             "WHEN '1' THEN 1 WHEN 'yes' THEN 1 WHEN 'true' THEN 1 ELSE 0 END"
         )
-    if column == "remark":
-        return _append_legacy_note(
-            "legacy.remark",
-            _missing_resource_condition(),
-            "迁移补齐：早期现场事件引用的设备或人员已不存在，已保留事件并清空失效资源引用。",
-        )
     if column == "created_at":
-        return "COALESCE(legacy.created_at, CURRENT_TIMESTAMP)"
+        return "legacy.created_at"
     return f"legacy.{column}"
+
+
+def _reject_incomplete_legacy_events(conn: sqlite3.Connection) -> None:
+    blockers = []
+    missing_reason_ids = _legacy_event_ids(conn, _missing_reason_condition())
+    if missing_reason_ids:
+        blockers.append(f"缺少暂停/异常原因的事件 id={', '.join(missing_reason_ids)}")
+    missing_severity_ids = _legacy_event_ids(conn, _missing_exception_severity_condition())
+    if missing_severity_ids:
+        blockers.append(f"缺少异常严重程度的事件 id={', '.join(missing_severity_ids)}")
+    missing_resource_ids = _legacy_event_ids(conn, _missing_resource_condition())
+    if missing_resource_ids:
+        blockers.append(f"引用了不存在设备或人员的事件 id={', '.join(missing_resource_ids)}")
+    bad_reschedule_ids = _legacy_event_ids(conn, _invalid_suggest_reschedule_condition())
+    if bad_reschedule_ids:
+        blockers.append(f"缺少重排建议或重排建议不是 0/1/yes/no/true/false 的事件 id={', '.join(bad_reschedule_ids)}")
+    missing_created_at_ids = _legacy_event_ids(conn, _missing_created_at_condition())
+    if missing_created_at_ids:
+        blockers.append(f"缺少创建时间的事件 id={', '.join(missing_created_at_ids)}")
+    bad_event_time_ids = _invalid_event_time_ids(conn)
+    if bad_event_time_ids:
+        blockers.append(f"事件时间缺失或格式不正确的事件 id={', '.join(bad_event_time_ids)}")
+    bad_status_pair_ids = _legacy_event_ids(conn, _bad_event_status_pair_condition())
+    if bad_status_pair_ids:
+        blockers.append(f"事件类型和上报状态互相矛盾的事件 id={', '.join(bad_status_pair_ids)}")
+    bad_sequence_issues = operation_execution_event_sequence_issues(conn, limit=4)
+    if bad_sequence_issues:
+        blockers.append(f"事件流顺序不合法：{'；'.join(bad_sequence_issues)}")
+    if blockers:
+        raise RuntimeError("早期现场事件数据不完整，不能静默补成当前合法事件；请先人工修复后再迁移：" + "；".join(blockers))
+
+
+def _legacy_event_ids(conn: sqlite3.Connection, condition: str) -> List[str]:
+    rows = conn.execute(
+        f"""
+        SELECT id
+        FROM OperationExecutionEvents AS legacy
+        WHERE {condition}
+        ORDER BY id
+        LIMIT 10
+        """
+    ).fetchall()
+    return [str(row["id"] if isinstance(row, sqlite3.Row) else row[0]) for row in rows]
 
 
 def _missing_reason_condition() -> str:
@@ -150,24 +160,6 @@ def _missing_reason_condition() -> str:
 
 def _missing_exception_severity_condition() -> str:
     return "legacy.event_type = 'exception' AND (legacy.severity IS NULL OR TRIM(legacy.severity) = '')"
-
-
-def _append_legacy_note(value_expr: str, condition: str, note: str) -> str:
-    escaped_note = note.replace("'", "''")
-    return (
-        f"CASE WHEN {condition} THEN "
-        f"CASE WHEN {value_expr} IS NULL OR TRIM({value_expr}) = '' "
-        f"THEN '{escaped_note}' ELSE {value_expr} || '；{escaped_note}' END "
-        f"ELSE {value_expr} END"
-    )
-
-
-def _existing_resource_or_null(value_expr: str, table_name: str, column_name: str) -> str:
-    return (
-        f"CASE WHEN {value_expr} IS NULL OR TRIM({value_expr}) = '' THEN NULL "
-        f"WHEN EXISTS (SELECT 1 FROM {table_name} WHERE {column_name} = {value_expr}) "
-        f"THEN {value_expr} ELSE NULL END"
-    )
 
 
 def _missing_resource_condition() -> str:
@@ -184,3 +176,47 @@ def _missing_resource_condition() -> str:
             f"AND NOT EXISTS (SELECT 1 FROM {table_name} WHERE {column_name} = {value_expr}))"
         )
     return " OR ".join(parts)
+
+
+def _invalid_suggest_reschedule_condition() -> str:
+    return (
+        "legacy.suggest_reschedule IS NULL "
+        "OR TRIM(CAST(legacy.suggest_reschedule AS TEXT)) = '' "
+        "OR LOWER(TRIM(CAST(legacy.suggest_reschedule AS TEXT))) NOT IN ('0', '1', 'no', 'yes', 'false', 'true')"
+    )
+
+
+def _missing_created_at_condition() -> str:
+    return "legacy.created_at IS NULL OR TRIM(CAST(legacy.created_at AS TEXT)) = ''"
+
+
+def _invalid_event_time_ids(conn: sqlite3.Connection) -> List[str]:
+    rows = conn.execute(
+        """
+        SELECT id, event_time
+        FROM OperationExecutionEvents AS legacy
+        ORDER BY id
+        """
+    ).fetchall()
+    bad_ids: List[str] = []
+    for row in rows:
+        event_id = row["id"] if isinstance(row, sqlite3.Row) else row[0]
+        event_time = row["event_time"] if isinstance(row, sqlite3.Row) else row[1]
+        try:
+            parse_operation_event_time(event_time)
+        except ValueError:
+            bad_ids.append(str(event_id))
+        if len(bad_ids) >= 10:
+            break
+    return bad_ids
+
+
+def _bad_event_status_pair_condition() -> str:
+    return (
+        "NOT ("
+        "(legacy.event_type IN ('start', 'resume') AND legacy.reported_status = 'processing') "
+        "OR (legacy.event_type = 'pause' AND legacy.reported_status = 'paused') "
+        "OR (legacy.event_type = 'exception' AND legacy.reported_status = 'exception') "
+        "OR (legacy.event_type = 'finish' AND legacy.reported_status = 'completed')"
+        ")"
+    )

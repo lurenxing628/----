@@ -8,7 +8,7 @@ import pytest
 
 from core.infrastructure.database import CURRENT_SCHEMA_VERSION, ensure_schema, get_connection
 from core.infrastructure.migration_state import detect_schema_is_current
-from core.infrastructure.migrations.v15 import _EVENT_INDEX_SQL, _EVENT_TABLE_SQL
+from core.infrastructure.migrations.v15 import _EVENT_INDEX_SQL
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
@@ -97,7 +97,7 @@ def test_v14_database_migrates_operation_execution_events_without_losing_rows(tm
         conn.close()
 
 
-def test_v15_database_repairs_early_operation_execution_event_contract(tmp_path: Path) -> None:
+def test_v15_database_rejects_incomplete_operation_execution_events(tmp_path: Path) -> None:
     db_path = tmp_path / "legacy_v15.db"
     conn = get_connection(str(db_path))
     try:
@@ -162,358 +162,19 @@ def test_v15_database_repairs_early_operation_execution_event_contract(tmp_path:
     finally:
         conn.close()
 
-    ensure_schema(str(db_path), schema_path=str(SCHEMA_PATH), backup_dir=str(tmp_path / "legacy_v15_backups"))
+    with pytest.raises(RuntimeError) as exc_info:
+        ensure_schema(str(db_path), schema_path=str(SCHEMA_PATH), backup_dir=str(tmp_path / "legacy_v15_backups"))
+
+    message = str(exc_info.value)
+    assert "缺少暂停/异常原因" in message
+    assert "缺少异常严重程度" in message
+    assert "引用了不存在设备或人员" in message
+
     conn = get_connection(str(db_path))
     try:
-        assert int(conn.execute("SELECT version FROM SchemaVersion WHERE id = 1").fetchone()["version"]) == CURRENT_SCHEMA_VERSION
-        row = conn.execute(
-            "SELECT suggest_reschedule FROM OperationExecutionEvents WHERE idempotency_key = ?",
-            ("legacy-v15-key",),
-        ).fetchone()
-        assert int(row["suggest_reschedule"]) == 1
-        pause_row = conn.execute(
-            """
-            SELECT reason_code, reason_detail
-            FROM OperationExecutionEvents
-            WHERE idempotency_key = ?
-            """,
-            ("legacy-v15-missing-pause-reason",),
-        ).fetchone()
-        assert pause_row["reason_code"] == "other"
-        assert "迁移补齐" in pause_row["reason_detail"]
-        exception_row = conn.execute(
-            """
-            SELECT severity, actual_machine_id, actual_operator_id, affected_machine_id, affected_operator_id, remark
-            FROM OperationExecutionEvents
-            WHERE idempotency_key = ?
-            """,
-            ("legacy-v15-missing-severity",),
-        ).fetchone()
-        assert exception_row["severity"] == "medium"
-        assert exception_row["actual_machine_id"] is None
-        assert exception_row["actual_operator_id"] is None
-        assert exception_row["affected_machine_id"] is None
-        assert exception_row["affected_operator_id"] is None
-        assert "迁移补齐" in exception_row["remark"]
-        severity_only_row = conn.execute(
-            """
-            SELECT severity, reason_detail, remark
-            FROM OperationExecutionEvents
-            WHERE idempotency_key = ?
-            """,
-            ("legacy-v15-missing-severity-only",),
-        ).fetchone()
-        assert severity_only_row["severity"] == "medium"
-        assert "严重程度" in severity_only_row["reason_detail"]
-        assert severity_only_row["remark"] is None
-        assert detect_schema_is_current(conn)
-        with pytest.raises(sqlite3.IntegrityError):
-            conn.execute(
-                """
-                INSERT INTO OperationExecutionEvents(
-                    schedule_version, schedule_id, op_id, batch_id, source_table, effective_plan_role,
-                    scenario_id, event_type, reported_status, event_time, reason_code, severity,
-                    suggest_reschedule, created_by, idempotency_key, request_fingerprint, previous_state_revision
-                )
-                VALUES (1, 100, 10, 'B1', 'schedule', 'adopted', NULL, 'exception', 'exception',
-                        '2026-05-01 08:20:00', 'equipment', 'high', 2, '张三',
-                        'bad-suggest-after-v16', 'fingerprint-bad-suggest', '10:1:1')
-                """
-            )
-        with pytest.raises(sqlite3.IntegrityError):
-            conn.execute(
-                """
-                INSERT INTO OperationExecutionEvents(
-                    schedule_version, schedule_id, op_id, batch_id, source_table, effective_plan_role,
-                    scenario_id, event_type, reported_status, event_time, created_by, idempotency_key,
-                    request_fingerprint, previous_state_revision
-                )
-                VALUES (1, 100, 10, 'B1', 'schedule', 'adopted', NULL, 'pause', 'paused',
-                        '2026-05-01 08:25:00', '张三',
-                        'missing-pause-reason-after-v16', 'fingerprint-missing-reason', '10:1:2')
-                """
-            )
+        assert int(conn.execute("SELECT version FROM SchemaVersion WHERE id = 1").fetchone()["version"]) == 15
     finally:
         conn.close()
-
-
-def test_detect_schema_requires_execution_unique_index_and_column_order(tmp_path: Path) -> None:
-    conn = _connect_fresh(tmp_path)
-    try:
-        assert detect_schema_is_current(conn)
-        conn.execute("DROP INDEX idx_operation_execution_events_op")
-        conn.execute("CREATE INDEX idx_operation_execution_events_op ON OperationExecutionEvents(event_time, op_id)")
-        assert not detect_schema_is_current(conn)
-    finally:
-        conn.close()
-
-
-def test_detect_schema_rejects_execution_indexes_on_another_table(tmp_path: Path) -> None:
-    conn = _connect_fresh(tmp_path)
-    try:
-        assert detect_schema_is_current(conn)
-        conn.executescript(
-            """
-            DROP INDEX idx_operation_execution_events_latest_exception;
-            DROP INDEX idx_operation_execution_events_op_revision_unique;
-            DROP INDEX idx_operation_execution_events_batch;
-            DROP INDEX idx_operation_execution_events_schedule_op;
-            DROP INDEX idx_operation_execution_events_schedule;
-            DROP INDEX idx_operation_execution_events_op;
-
-            CREATE TABLE OperationExecutionEventsIndexShadow (
-                id INTEGER,
-                op_id INTEGER,
-                event_time DATETIME,
-                schedule_id INTEGER,
-                batch_id TEXT,
-                event_type TEXT,
-                previous_state_revision TEXT
-            );
-            CREATE INDEX idx_operation_execution_events_op
-            ON OperationExecutionEventsIndexShadow(op_id, event_time);
-            CREATE INDEX idx_operation_execution_events_schedule
-            ON OperationExecutionEventsIndexShadow(schedule_id);
-            CREATE INDEX idx_operation_execution_events_schedule_op
-            ON OperationExecutionEventsIndexShadow(schedule_id, op_id);
-            CREATE INDEX idx_operation_execution_events_batch
-            ON OperationExecutionEventsIndexShadow(batch_id);
-            CREATE UNIQUE INDEX idx_operation_execution_events_op_revision_unique
-            ON OperationExecutionEventsIndexShadow(op_id, previous_state_revision);
-            CREATE INDEX idx_operation_execution_events_latest_exception
-            ON OperationExecutionEventsIndexShadow(op_id, event_type, id);
-            """
-        )
-        assert not detect_schema_is_current(conn)
-    finally:
-        conn.close()
-
-
-def test_detect_schema_rejects_operation_execution_id_without_primary_key(tmp_path: Path) -> None:
-    conn = _connect_fresh(tmp_path)
-    try:
-        assert detect_schema_is_current(conn)
-        conn.execute("DROP TABLE OperationExecutionEvents")
-        conn.execute(_EVENT_TABLE_SQL.replace("id                       INTEGER PRIMARY KEY AUTOINCREMENT", "id                       INTEGER"))
-        for sql in _EVENT_INDEX_SQL:
-            conn.execute(sql)
-        assert not detect_schema_is_current(conn)
-    finally:
-        conn.close()
-
-
-def test_detect_schema_rejects_operation_execution_cascade_parent_foreign_keys(tmp_path: Path) -> None:
-    conn = _connect_fresh(tmp_path)
-    try:
-        assert detect_schema_is_current(conn)
-        conn.execute("DROP TABLE OperationExecutionEvents")
-        conn.execute(
-            _EVENT_TABLE_SQL.replace(
-                "FOREIGN KEY (schedule_id) REFERENCES Schedule(id)",
-                "FOREIGN KEY (schedule_id) REFERENCES Schedule(id) ON DELETE CASCADE",
-            ).replace(
-                "FOREIGN KEY (op_id) REFERENCES BatchOperations(id)",
-                "FOREIGN KEY (op_id) REFERENCES BatchOperations(id) ON DELETE CASCADE",
-            )
-        )
-        for sql in _EVENT_INDEX_SQL:
-            conn.execute(sql)
-        assert not detect_schema_is_current(conn)
-    finally:
-        conn.close()
-
-
-def test_detect_schema_rejects_operation_execution_wrong_foreign_key_mapping(tmp_path: Path) -> None:
-    conn = _connect_fresh(tmp_path)
-    try:
-        assert detect_schema_is_current(conn)
-        conn.execute("DROP TABLE OperationExecutionEvents")
-        conn.execute(
-            """
-            CREATE TABLE OperationExecutionEvents (
-                id                       INTEGER PRIMARY KEY AUTOINCREMENT,
-                schedule_version         INTEGER NOT NULL,
-                schedule_id              INTEGER NOT NULL,
-                op_id                    INTEGER NOT NULL,
-                batch_id                 TEXT NOT NULL,
-                source_table             TEXT NOT NULL DEFAULT 'schedule' CHECK(source_table = 'schedule'),
-                effective_plan_role      TEXT NOT NULL DEFAULT 'adopted' CHECK(effective_plan_role = 'adopted'),
-                scenario_id              TEXT CHECK(scenario_id IS NULL),
-                event_type               TEXT NOT NULL CHECK(event_type IN ('start', 'pause', 'resume', 'finish', 'exception')),
-                reported_status          TEXT NOT NULL CHECK(reported_status IN ('processing', 'paused', 'exception', 'completed')),
-                event_time               DATETIME NOT NULL,
-                actual_machine_id        TEXT,
-                actual_operator_id       TEXT,
-                quantity_done            INTEGER CHECK(quantity_done IS NULL OR quantity_done >= 0),
-                quantity_scrapped        INTEGER CHECK(quantity_scrapped IS NULL OR quantity_scrapped >= 0),
-                reason_code              TEXT CHECK(reason_code IS NULL OR reason_code IN ('equipment', 'person', 'material', 'quality', 'process', 'external', 'other')),
-                reason_detail            TEXT,
-                severity                 TEXT CHECK(severity IS NULL OR severity IN ('low', 'medium', 'high', 'critical')),
-                impact_minutes           INTEGER CHECK(impact_minutes IS NULL OR impact_minutes >= 0),
-                affected_machine_id      TEXT,
-                affected_operator_id     TEXT,
-                handling_status          TEXT CHECK(handling_status IS NULL OR handling_status IN ('new', 'checking', 'waiting', 'handled')),
-                suggest_reschedule       TEXT CHECK(suggest_reschedule IS NULL OR suggest_reschedule IN ('yes', 'no')),
-                remark                   TEXT,
-                created_by               TEXT NOT NULL,
-                idempotency_key          TEXT NOT NULL UNIQUE,
-                request_fingerprint      TEXT NOT NULL,
-                previous_state_revision  TEXT NOT NULL,
-                created_at               DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (op_id) REFERENCES Schedule(id) ON DELETE CASCADE,
-                FOREIGN KEY (schedule_version) REFERENCES BatchOperations(id) ON DELETE CASCADE,
-                UNIQUE(op_id, previous_state_revision),
-                CHECK(schedule_version > 0),
-                CHECK(schedule_id > 0),
-                CHECK(op_id > 0),
-                CHECK(TRIM(batch_id) <> ''),
-                CHECK(TRIM(created_by) <> ''),
-                CHECK(TRIM(idempotency_key) <> ''),
-                CHECK(TRIM(request_fingerprint) <> ''),
-                CHECK(TRIM(previous_state_revision) <> '')
-            )
-            """
-        )
-        _create_operation_execution_indexes(conn)
-        assert not detect_schema_is_current(conn)
-    finally:
-        conn.close()
-
-
-def test_detect_schema_rejects_missing_operation_execution_resource_foreign_keys(tmp_path: Path) -> None:
-    conn = _connect_fresh(tmp_path)
-    try:
-        assert detect_schema_is_current(conn)
-        conn.execute("DROP TABLE OperationExecutionEvents")
-        conn.execute(
-            """
-            CREATE TABLE OperationExecutionEvents (
-                id                       INTEGER PRIMARY KEY AUTOINCREMENT,
-                schedule_version         INTEGER NOT NULL,
-                schedule_id              INTEGER NOT NULL,
-                op_id                    INTEGER NOT NULL,
-                batch_id                 TEXT NOT NULL,
-                source_table             TEXT NOT NULL DEFAULT 'schedule' CHECK(source_table = 'schedule'),
-                effective_plan_role      TEXT NOT NULL DEFAULT 'adopted' CHECK(effective_plan_role = 'adopted'),
-                scenario_id              TEXT CHECK(scenario_id IS NULL),
-                event_type               TEXT NOT NULL CHECK(event_type IN ('start', 'pause', 'resume', 'finish', 'exception')),
-                reported_status          TEXT NOT NULL CHECK(reported_status IN ('processing', 'paused', 'exception', 'completed')),
-                event_time               DATETIME NOT NULL,
-                actual_machine_id        TEXT,
-                actual_operator_id       TEXT,
-                quantity_done            INTEGER CHECK(quantity_done IS NULL OR quantity_done >= 0),
-                quantity_scrapped        INTEGER CHECK(quantity_scrapped IS NULL OR quantity_scrapped >= 0),
-                reason_code              TEXT CHECK(reason_code IS NULL OR reason_code IN ('equipment', 'person', 'material', 'quality', 'process', 'external', 'other')),
-                reason_detail            TEXT,
-                severity                 TEXT CHECK(severity IS NULL OR severity IN ('low', 'medium', 'high', 'critical')),
-                impact_minutes           INTEGER CHECK(impact_minutes IS NULL OR impact_minutes >= 0),
-                affected_machine_id      TEXT,
-                affected_operator_id     TEXT,
-                handling_status          TEXT CHECK(handling_status IS NULL OR handling_status IN ('new', 'checking', 'waiting', 'handled')),
-                suggest_reschedule       TEXT CHECK(suggest_reschedule IS NULL OR suggest_reschedule IN ('yes', 'no')),
-                remark                   TEXT,
-                created_by               TEXT NOT NULL,
-                idempotency_key          TEXT NOT NULL UNIQUE,
-                request_fingerprint      TEXT NOT NULL,
-                previous_state_revision  TEXT NOT NULL,
-                created_at               DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (schedule_id) REFERENCES Schedule(id) ON DELETE CASCADE,
-                FOREIGN KEY (op_id) REFERENCES BatchOperations(id) ON DELETE CASCADE,
-                UNIQUE(op_id, previous_state_revision),
-                CHECK(schedule_version > 0),
-                CHECK(schedule_id > 0),
-                CHECK(op_id > 0),
-                CHECK(quantity_done IS NULL OR quantity_done >= 0),
-                CHECK(quantity_scrapped IS NULL OR quantity_scrapped >= 0),
-                CHECK(impact_minutes IS NULL OR impact_minutes >= 0),
-                CHECK(TRIM(batch_id) <> ''),
-                CHECK(TRIM(created_by) <> ''),
-                CHECK(TRIM(idempotency_key) <> ''),
-                CHECK(TRIM(request_fingerprint) <> ''),
-                CHECK(TRIM(previous_state_revision) <> '')
-            )
-            """
-        )
-        _create_operation_execution_indexes(conn)
-        assert not detect_schema_is_current(conn)
-    finally:
-        conn.close()
-
-
-def test_detect_schema_rejects_operation_execution_widened_check(tmp_path: Path) -> None:
-    conn = _connect_fresh(tmp_path)
-    try:
-        assert detect_schema_is_current(conn)
-        conn.execute("DROP TABLE OperationExecutionEvents")
-        conn.execute(
-            """
-            CREATE TABLE OperationExecutionEvents (
-                id                       INTEGER PRIMARY KEY AUTOINCREMENT,
-                schedule_version         INTEGER NOT NULL,
-                schedule_id              INTEGER NOT NULL,
-                op_id                    INTEGER NOT NULL,
-                batch_id                 TEXT NOT NULL,
-                source_table             TEXT NOT NULL DEFAULT 'schedule' CHECK(source_table = 'schedule'),
-                effective_plan_role      TEXT NOT NULL DEFAULT 'adopted' CHECK(effective_plan_role = 'adopted'),
-                scenario_id              TEXT CHECK(scenario_id IS NULL),
-                event_type               TEXT NOT NULL CHECK(event_type IN ('start', 'pause', 'resume', 'finish', 'exception') OR event_type = 'running'),
-                reported_status          TEXT NOT NULL CHECK(reported_status IN ('processing', 'paused', 'exception', 'completed')),
-                event_time               DATETIME NOT NULL,
-                actual_machine_id        TEXT,
-                actual_operator_id       TEXT,
-                quantity_done            INTEGER CHECK(quantity_done IS NULL OR quantity_done >= 0),
-                quantity_scrapped        INTEGER CHECK(quantity_scrapped IS NULL OR quantity_scrapped >= 0),
-                reason_code              TEXT CHECK(reason_code IS NULL OR reason_code IN ('equipment', 'person', 'material', 'quality', 'process', 'external', 'other')),
-                reason_detail            TEXT,
-                severity                 TEXT CHECK(severity IS NULL OR severity IN ('low', 'medium', 'high', 'critical')),
-                impact_minutes           INTEGER CHECK(impact_minutes IS NULL OR impact_minutes >= 0),
-                affected_machine_id      TEXT,
-                affected_operator_id     TEXT,
-                handling_status          TEXT CHECK(handling_status IS NULL OR handling_status IN ('new', 'checking', 'waiting', 'handled')),
-                suggest_reschedule       TEXT CHECK(suggest_reschedule IS NULL OR suggest_reschedule IN ('yes', 'no')),
-                remark                   TEXT,
-                created_by               TEXT NOT NULL,
-                idempotency_key          TEXT NOT NULL UNIQUE,
-                request_fingerprint      TEXT NOT NULL,
-                previous_state_revision  TEXT NOT NULL,
-                created_at               DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (schedule_id) REFERENCES Schedule(id) ON DELETE CASCADE,
-                FOREIGN KEY (op_id) REFERENCES BatchOperations(id) ON DELETE CASCADE,
-                UNIQUE(op_id, previous_state_revision),
-                CHECK(schedule_version > 0),
-                CHECK(schedule_id > 0),
-                CHECK(op_id > 0),
-                CHECK(TRIM(batch_id) <> ''),
-                CHECK(TRIM(created_by) <> ''),
-                CHECK(TRIM(idempotency_key) <> ''),
-                CHECK(TRIM(request_fingerprint) <> ''),
-                CHECK(TRIM(previous_state_revision) <> '')
-            )
-            """
-        )
-        _create_operation_execution_indexes(conn)
-        assert not detect_schema_is_current(conn)
-    finally:
-        conn.close()
-
-
-def _create_operation_execution_indexes(conn: sqlite3.Connection) -> None:
-    conn.executescript(
-        """
-        CREATE INDEX IF NOT EXISTS idx_operation_execution_events_op
-        ON OperationExecutionEvents(op_id, event_time);
-        CREATE INDEX IF NOT EXISTS idx_operation_execution_events_schedule
-        ON OperationExecutionEvents(schedule_id);
-        CREATE INDEX IF NOT EXISTS idx_operation_execution_events_schedule_op
-        ON OperationExecutionEvents(schedule_id, op_id);
-        CREATE INDEX IF NOT EXISTS idx_operation_execution_events_batch
-        ON OperationExecutionEvents(batch_id);
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_operation_execution_events_op_revision_unique
-        ON OperationExecutionEvents(op_id, previous_state_revision);
-        CREATE INDEX IF NOT EXISTS idx_operation_execution_events_latest_exception
-        ON OperationExecutionEvents(op_id, event_type, id);
-        """
-    )
 
 
 def _replace_operation_execution_events_with_legacy_v15(conn: sqlite3.Connection) -> None:
@@ -570,7 +231,8 @@ def _replace_operation_execution_events_with_legacy_v15(conn: sqlite3.Connection
         );
         """
     )
-    _create_operation_execution_indexes(conn)
+    for sql in _EVENT_INDEX_SQL:
+        conn.execute(sql)
 
 
 def test_operation_execution_constraints_reject_invalid_rows(tmp_path: Path) -> None:

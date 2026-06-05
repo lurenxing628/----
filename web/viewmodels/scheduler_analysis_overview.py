@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict
+from typing import Any, Dict
 
 
 def build_analysis_labels() -> Dict[str, Dict[str, str]]:
@@ -40,4 +40,11 @@ def build_analysis_labels() -> Dict[str, Dict[str, str]]:
     }
 
 
-__all__ = ["build_analysis_labels"]
+def analysis_choice_label(value: Any, labels: Dict[str, str], *, empty_label: str = "-", invalid_label: str = "记录异常") -> str:
+    text = str(value or "").strip()
+    if not text:
+        return empty_label
+    return labels.get(text, invalid_label)
+
+
+__all__ = ["analysis_choice_label", "build_analysis_labels"]

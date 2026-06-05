@@ -45,6 +45,7 @@ _FIELD_QUERY_KEY_DROPS = {
     "version": ("version",),
     "plan_role": ("plan_role",),
 }
+_EXECUTION_QUERY_BASE_REQUIRED_FIELDS = ("version", "plan_role", "period_preset", "scope_type")
 
 
 def _arg_text(name: str, *, default: Optional[str] = None) -> Optional[str]:
@@ -72,6 +73,26 @@ def _request_kwargs() -> Dict[str, Any]:
         "scenario_id": _arg_text("scenario_id"),
         "batch_id": _arg_text("batch_id"),
     }
+
+
+def _has_start_date_arg() -> bool:
+    return bool(_arg_text("start_date") or _arg_text("date_from"))
+
+
+def _has_end_date_arg() -> bool:
+    return bool(_arg_text("end_date") or _arg_text("date_to"))
+
+
+def execution_query_missing_context_fields() -> List[str]:
+    missing = [field for field in _EXECUTION_QUERY_BASE_REQUIRED_FIELDS if not _arg_text(field)]
+    period_preset = str(_arg_text("period_preset") or "").strip().lower()
+    if not _has_start_date_arg():
+        missing.append("start_date")
+    if not _has_end_date_arg():
+        missing.append("end_date")
+    if period_preset != "custom" and not _arg_text("query_date"):
+        missing.append("query_date")
+    return missing
 
 
 def _current_request_args() -> Dict[str, str]:
@@ -123,7 +144,7 @@ def _actual_import_url(filters: Dict[str, Any]) -> str:
 
 
 def _actual_record_url_template(filters: Dict[str, Any]) -> str:
-    base_url = url_for("scheduler.resource_dispatch_execution_actual", op_id=0).replace("/0/actual", "/__OP_ID__/actual", 1)
+    base_url = url_for("scheduler.resource_dispatch_execution_actual_by_task", task_key="__TASK_KEY__")
     query = _query_from_filters(filters)
     encoded = urlencode(query)
     return f"{base_url}?{encoded}" if encoded else base_url

@@ -271,7 +271,7 @@ def test_scheduler_analysis_route_disables_execution_review_for_superseded_plan(
         "/scheduler/analysis?version=12&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-07",
     )
 
-    assert "计划和现场实际只复盘正式采用方案" in " ".join(parser.visible_parts + parser.public_attribute_parts)
+    assert "这是历史正式方案，只能查看" in " ".join(parser.visible_parts + parser.public_attribute_parts)
     assert not any(
         item["href"].startswith("/reports/execution-review")
         for item in parser.links
@@ -412,25 +412,18 @@ def test_scheduler_navigation_publish_keeps_plan_guard_fields() -> None:
         publish_week_plan_navigation_context,
     )
 
-    superseded_plan = {
-        "requested_role": "adopted",
-        "selected_role": "adopted",
-        "is_scenario_preview": False,
-        "is_comparison": False,
-        "is_superseded_by_newer_version": True,
-        "can_dispatch": True,
-        "can_write_feedback": True,
-    }
-    expected_guard_fields = {
-        "requested_plan_role": "adopted",
-        "effective_plan_role": "adopted",
-        "plan_role_status": "resolved_adopted",
-        "is_scenario_preview": False,
-        "is_comparison": False,
-        "is_superseded_by_newer_version": True,
-        "can_dispatch": True,
-        "can_write_feedback": True,
-    }
+    superseded_plan = dict(
+        requested_role="adopted", selected_role="adopted",
+        is_scenario_preview=False, is_comparison=False, is_official=True, is_preview=False,
+        is_superseded_by_newer_version=True, is_current_executable_official_version=False,
+        can_dispatch=True, can_write_feedback=True,
+    )
+    expected_guard_fields = dict(
+        requested_plan_role="adopted", effective_plan_role="adopted",
+        plan_role_status="resolved_adopted", is_scenario_preview=False, is_comparison=False,
+        is_superseded_by_newer_version=True, is_official_plan=True, is_preview_plan=False,
+        is_current_executable_official_version=False, can_dispatch=True, can_write_feedback=True,
+    )
 
     with app.test_request_context("/scheduler/analysis"):
         context = publish_analysis_navigation_context(
@@ -442,12 +435,12 @@ def test_scheduler_navigation_publish_keeps_plan_guard_fields() -> None:
         )
         links = {item["label"]: item for item in build_report_navigation_links()}
 
-        for key, value in expected_guard_fields.items():
-            assert current_workbench_navigation_context()[key] == value
-            assert context[key] == value
+        current_context = current_workbench_navigation_context()
+        assert {key: current_context[key] for key in expected_guard_fields} == expected_guard_fields
+        assert {key: context[key] for key in expected_guard_fields} == expected_guard_fields
         assert links["计划和现场实际"]["disabled"] is True
         assert links["计划和现场实际"]["url"] == ""
-        assert "只复盘正式采用方案" in links["计划和现场实际"]["disabled_reason"]
+        assert "历史正式方案" in links["计划和现场实际"]["disabled_reason"]
 
     with app.test_request_context("/scheduler/gantt"):
         context = publish_gantt_navigation_context(
@@ -459,9 +452,9 @@ def test_scheduler_navigation_publish_keeps_plan_guard_fields() -> None:
             gantt_resource="M-RPT",
         )
 
-        for key, value in expected_guard_fields.items():
-            assert current_workbench_navigation_context()[key] == value
-            assert context[key] == value
+        current_context = current_workbench_navigation_context()
+        assert {key: current_context[key] for key in expected_guard_fields} == expected_guard_fields
+        assert {key: context[key] for key in expected_guard_fields} == expected_guard_fields
         assert current_workbench_navigation_context()["resource_type"] == "machine"
         assert current_workbench_navigation_context()["resource_id"] == "M-RPT"
 
@@ -474,9 +467,9 @@ def test_scheduler_navigation_publish_keeps_plan_guard_fields() -> None:
             date_to="2026-05-07",
         )
 
-        for key, value in expected_guard_fields.items():
-            assert current_workbench_navigation_context()[key] == value
-            assert context[key] == value
+        current_context = current_workbench_navigation_context()
+        assert {key: current_context[key] for key in expected_guard_fields} == expected_guard_fields
+        assert {key: context[key] for key in expected_guard_fields} == expected_guard_fields
 
 
 def test_scheduler_navigation_rejects_conflicting_resource_aliases() -> None:
