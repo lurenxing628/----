@@ -1,0 +1,225 @@
+# PHASE 1 · 全局爆炸半径 + 跨债影响矩阵
+
+> 由 8 组 grep agent(G1三子组+G2..G8,回真实仓库逐符号搜索)+ 1 综合 agent 产出。覆盖 80 条债(已校验:无重复/无遗漏/无越界)。
+> 逐债爆炸半径明细见 `_phase1_blast.json`(80条);本文件是综合层。Phase 2 逐桶 agent 必读本文件相关章节 + `_phase1_blast.json` 本桶成员条目。
+
+## ⚠️ 0. 综合 agent 回代码实证抓出的 16 条纠偏(推翻/修正报告判断,Phase 2 必须采纳)
+
+1. R11 vs R63 身份冲突:PHASE0 §9 把二者列为 B08 的【两个独立桶成员】,但 G5 实证(两份 _normalize_critical_chain_result 在 support:32 / provider:104 逐字复制)判定 R11≡R63 是【同一条债的两条记录】,一次抽单份 helper 即同时消除。Phase2 须按『一个动作』处理,不可当两条分别投工。
+
+2. R11 provenance 自相矛盾:报告 R11 称 gantt_service_support.py『新增未提交(A)』,但 G5 用 git cat-file -e b08162cd 证该文件 b08162cd 已含(与 R63『已提交坐实为 P5』一致)。R11 的『未提交』记述过时,以 R63 记述为准。
+
+3. R29 授权链断裂(已盘上证实):报告引以为据的权威裁定 .codestable/refactors/2026-06-01-test-gate-cleanup/L3_verdicts.csv:174=KEEP/high,经 ls/test -f 复核【整目录在盘上不存在】,仅在 REPORT.md:1468 与 _real_debt.json 内被自引用。结论:R29『保留 vs 薄壳化』授权失据,Phase2 必须重新独立裁定,不能照搬不存在的 CSV。
+
+4. R47 单边 vs 双边打架:报告 why_debt 称『服务侧孪生函数甚至没有这个 raw_value 参数』,G3 实测 service 孪生 config_field_coercion.py:63 同样声明 raw_value(:68)且同样死、调用点 :158/:207 同样传入。是【双栈对称死参数】,非单边;若只删 model 侧会加大双栈分叉。
+
+5. R44 防御方向反了:报告称『web 版 selected_plan_role 多加 or ROLE_ADOPTED 兜底』,G2 实证恰相反——core schedule_result_view_context.selected_plan_role(:201-202)更严格(也处理 None),两版同 ROLE_ADOPTED 常量,收口到 core 只会保持或增强行为。
+
+6. R54 手维列表数量(已盘上证实):报告 location 只点名 3 套 plan-guard 手维列表,盘上 grep 确认存在【第 4 套】dashboard_workbench.py:19-24(12 键,含 plan_role_status/can_write_feedback/plan_identity_error)。R54 收口范围若漏第 4 套则债残留、收口不彻底。
+
+7. LB06 承重机制被高估 + 行号 off-by-one:报告称写死 adopted『污染复盘结论(行数据)』且 location 写 :366/:368;G1a 实证行数据因 core 不收参恒 adopted,真正承重=显示标签身份+nav-context 泄漏+默认日期窗,且盘上真实行号为 :367/:369(报告转录偏移 1 行,文件未 git 修改)。
+
+8. R26 生产消费方计数错:普查证据称该 facade『0 生产消费』,G6 实测有【2 个离线非测试消费者】tools/capture_networkx_phase0_baseline.py:17 与 audit/2026-03/20260316_schedule_audit_probes.py:87。删 shim 前必须先迁这 2 个离线脚本,否则它们 ImportError。
+
+9. R34 monkeypatch 失效证据:报告把 regression_gantt_critical_chain_unavailable.py:59 当 list_overlapping_with_details 的有效续命,G7 实证生产实际调 list_by_version_with_details(由 :60 设其 raise 反证),该 monkeypatch 是无效的,删方法时此条 monkeypatch 应一并清。
+
+10. R38 dup 认定过当:codemap dup_bodies 标三处 list_as_dicts(op_type_repo:73/operator_repo:85/part_repo:71)为『同体(逐字)』,G7 实测三处 SQL 不同(OpTypes/Operators/Parts 各异),实为『结构同形(单行 fetchall)』非字面同体;不影响直删但纠正 dup 工具标定。
+
+11. R70 死副本被误框为 live twin:报告称 _raise_schedule_empty_result『逐字两份(均 loud raise)』,G8 实证 schedule_service.py:46 那份【本文件零调用、不在 __all__、非 facade 委托面】=死副本,只有 input_collector 份是 live;故 schedule_service 份可直删,不需当 twin 收口。
+
+12. R69 except 形态纠偏:报告 why_debt 写裸『except:return 0』,G8 实测为 typed『except (TypeError, ValueError): return 0』,非裸 except;但坏 seq 仍静默归 0,P4 气味成立,收口时护栏文件内应评估改 loud。
+
+13. R50 引用路径纠偏:报告 reference_chain 写真实均值在『sgs.py:150』,G4 实测真路径=core/algorithms/greedy/dispatch/sgs.py:150(顶层 core/algorithms/sgs.py 不存在),同行号同语义,结论成立但路径需更正。
+
+14. LB03 修法方向已被现实推翻:旧报告判 P4『改 loud raise』,G1a 实证工作树已超前治理为 fail-closed 标记 + 可观测字段(非 raise),符合 verdict『读边界加非致命标记』。若 Phase2 仍按旧报告改 loud raise,会与现治理冲突并触发 verdict 警示的『一条 legacy 坏行炸 latest_executable_official_version 全链可用性』事故。
+
+15. R03/R52/R55(+LB08)缺独立对抗 verdict:PHASE0 §6 明示这 4 条 needs_adversarial=True 但 verdict 数组未收录独立结论(标题未精确匹配)。各组已警示不能依赖现成对抗结论,Phase2 owner 须额外谨慎复核『当下债 vs 在途中间态』,尤其 R55(呈现失真,只能补 scope 标记不可裸砍过滤)、R52(差分 oracle 保留 vs 收)。
+
+16. R12 债是否可达存疑:G5 指出 gantt_critical_chain.py:84 丢坏时间行分支近死(Schedule/采纳/候选为 NOT NULL + 引擎写入,schema.sql:240-241),真正触发点仅人工 scenario 调整。Phase2 应先确认 scenario 写入是否已校验 st<et,再决定 dropped_count 可观测投入量级——避免为不可达路径过度投工。
+
+
+## 1. 承重护栏影响专章
+
+承重护栏影响专章(8 条 LB + R56/R58 + N1=R54 + verdict=load_bearing 的 R05/R03,对触碰承重文件的债的约束)。
+
+【承重文件清单(PHASE0 §5)+ 盘上复核】boolean_normalize.py、execution_review.py、navigation_context.py、operation_execution_feedback_service.py、reports_page_support.py、schedule_config_runtime_{coercion,fields,read,snapshot,weights}.py、schedule_plan_identity_builder.py、scheduler_public_errors.py。盘上复核:navigation_context.py / execution_review.py / operation_execution_feedback_service.py / feedback_support.py / scheduler_public_errors.py 均【未 git 修改,提交态≡基线 b08162cd,行号准】;schedule_plan_identity_builder.py 已被超前治理(LB03)且在 16 文件漂移名单;scheduler_navigation_publish.py(R54/R58 territory)在漂移名单(行号已变,R44 报告 :28-29→盘上 :31-32,_publish_context :80,context.update :86)。
+
+【红线统一口径】所有 LB + R56/R58 一律只能①补『我是故意的』中文注释(90 节已起草文案可复用)+②绑契约测试,严禁删/合并/统一/透传参数。LB04(boolean)唯一合法消重=上层 matrix.normalize_yes_no_wide_value 反向 delegate 到下层 boolean_normalize(services→shared 下行),绝不能删 shared 改指 services(会立刻造成 core.models→core.services 越层 + 导入环,破 AST 0 违规)。
+
+【逐条承重段——动同文件的债绝不能碰】
+- LB01(feedback_service.py)::347-354 硬拒(requested/effective_plan_role!=ROLE_ADOPTED 或 source_table!=SOURCE_SCHEDULE 或 scenario_id is not None →raise not_current_official_plan)+ :451-453 写死消毒(source_table=SOURCE_SCHEDULE/effective_plan_role=ROLE_ADOPTED/scenario_id=None)。R17(B11)删 :28-31 死导入、R20(B13)改 :48 import 行时,绝不碰这两段。LB01 端到端写侧拒绝回归已存在(feedback_routes:336 + exception_feedback:485 + event_foundation:272),precondition(c) 实际已满足,只需补注释。
+- LB02/LB05(execution_review.py):141 签名故意不收 plan_role/scenario_id;:112/:123 硬钉 ROLE_ADOPTED、:153 _resolve_plan(v,ROLE_ADOPTED,None)、:166-167 固定标签。R62(同文件清三档死分支 :287-348)绝不碰这五处硬钉,更不能给 :141 加形参。LB02≡LB05 为同点两 finding,一次注释满足。
+- LB06(reports_page_support.py:367/369 报告 :366/368 off-by-one + navigation_context.py:80-82):execution-review 页写死 'adopted',None。verdict 修正:行数据因 core 不收参恒 adopted,真正承重=显示标签身份 + nav-context 泄漏 + 默认日期窗(非报告所称『污染行数据』)。R42 删 :86 plan_id、R56/R57 重构双路径时绝不碰 :80-82 强制分支。
+- LB03(schedule_plan_identity_builder.py):🔧已超前治理为 _parsed_summary_flag_is_true(fail_closed=True)(:141)+ 可观测字段 result_summary_parse_failed(:184-185),符合 verdict『读边界加非致命标记而非 raise』。Phase1 对本债只需:确认 builder/identity/resolution/template_fields 四文件入账 + 立即 git add 守卫测试 regression_scheduler_plan_identity_summary_guardrail.py(防并行 git clean 删 untracked)+ :141 补注释。严禁按旧报告改 loud raise(latest_executable_official_version 全量扫历史,会触发可用性放大事故)。
+- LB07(schedule_config_runtime_coercion.py / read.py / config_snapshot.py service 栈):27 字段双栈锁步。R71(配料表 3 helper)/R47(死参数)收敛绝不碰 :470 graph_downstream_weight 承重置零、:152-153 strict loud raise、:73-80 MISSING_POLICY_ERROR raise。
+- LB08(scheduler_public_errors.py):LEGACY 正则桥 :62/:94/:218/:284 + make_public_error:175。R46 删 :162-164 死别名时严格限定三行,不碰正则桥。注释须钉『文案与正则同生共死』。
+- R56(navigation_context.py:42-47,80-82):靠 endpoint/path 字面量匹配钉 execution_review→强制 adopted,零注释最脆弱。注释挡不住 rename,真正 rename 守卫=regression_plan_vs_actual_review.py:350-359,必须绑牢。
+- R58(scheduler_navigation_publish.py:86 context.update(guard_fields)覆盖回 builder 已 gate 的 can_write_feedback):默认只补注释;仅在 Phase2 验证 builder-gated≡raw 且 keep_plan_guard_fields 契约(:453/468/475)仍绿时,方可剔除 update 中的 can_write_feedback(非删整行)。
+- N1=R54(P5,high,load_bearing):同一 plan-guard 投影被切成【4 套】手维列表(报告只点 3 套,盘上复核确认第 4 套 dashboard_workbench.py:19-24 含 plan_role_status/can_write_feedback/plan_identity_error)。漏拷 is_comparison 或 is_superseded_by_newer_version 任一=fail-OPEN,旧正式版本冒充现行采用方案。唯一合法修法=让 build_workbench_plan_context 承载 guard 字段、4 套统一 delegate 到 plan_role_filter_fields 全集 + 补注释钉死键集单一来源,严禁删某套而不迁下游、严禁透传裸 key。
+- R05(verdict=load_bearing,非 §5 文件):schedule_plan_query_repo.py:461-463 team 双 join + :454-455/:459-460 空 id 全量分支是 column_name 单列表达不了的承重第三轴,塌缩=班组静默失效/整页 500。必须先扩收口点再谈统一。
+- R03(runner.py:216 窄 except CandidateTrialFailure):本身是承重护栏(防 b81f8b3f 删掉的静默吞错复活),绝不能以『统一/简化』改回 except Exception;只补注释。
+
+【B01 必须最先落的理由链】(1) R54 把 guard 字段收口进 build_workbench_plan_context = 确立全站唯一 guard 真相源,4 套手维列表才能 delegate;(2) LB01/LB02/LB05/LB06/R56/R58 的承重注释 = 给 execution_review/navigation_publish/reports_page_support/feedback_service 这些『被 B02/B05/B11/B13 都要触碰的高频文件』钉死哪段不能动;(3) 没有这层注释+契约,B11 删 R17(同 _build_event_payload 函数)、B02 改 R44(同 navigation_publish)、B05 迁 R09(同 resource_dispatch_execution)、B13 改 R20 import 时处于『护栏裸奔期』,极易顺手打穿。故 PHASE0 §10.1 把 B01 列为全局根。
+
+
+## 2. 跨债影响边(49 条,Phase 3 排序硬约束)
+
+| from | → | to | 关系 | 为什么 |
+|---|---|---|---|---|
+| LB06 | → | R42 | 承重先于动同文件 | navigation_context.py 同文件:R42 删 :86 plan_id 读入,绝不能碰 :80-82 is_execution_review→ROLE_ADOPTED/清 scenario_id 的 forced-adopted 护栏。LB06 注释必须先落钉死该段。 |
+| R56 | → | R57 | 承重先于动同文件 | navigation_context.py :80-82 同几行:R56(护栏)与 R57(fallback 收敛)共享。R57 若改 fallback 求证 plan_role,绝不能删 :80-82 强制 adopted;R56 注释先落或同提交。 |
+| LB06 | → | R57 | 承重先于动同文件 | R57 fallback(:81-82)与 LB06 forced-adopted(:80-82)同段;R57 双路径收敛必须保留 80-82,否则 execution-review 只复盘正式方案的护栏破。 |
+| R42 | → | R60 | 同文件同改 | plan_id 死面包屑两面:共享 emit 点 scheduler_workbench_link_query.py:118/154。R60 删字段表条目、R42 删读入/存储,只删一边留半截残渣,必须合并为单次 plan_id 下线。 |
+| R54 | → | R42 | 同文件同改 | build_workbench_plan_context(scheduler_workbench_links.py:183-251):R54 加 guard 字段、R42 删 :187 plan_id 形参/:229 存储,必须同批次否则互撞行号/dict 键位移。 |
+| R54 | → | R44 | 承重先于动同文件 | scheduler_navigation_publish.py 跨桶(R54/R58 B01 + R44 B02)。B01 guard 收口进 build_workbench_plan_context 必须先落,R44 改 :31-32 selected_plan_role 才能动,且不得碰 _PLAN_GUARD_FIELD_NAMES(:12-24)/_plan_guard_fields(:75-77)闸门路径。 |
+| R58 | → | R44 | 同文件同改 | scheduler_navigation_publish.py:R58(:86 context.update 覆盖 can_write_feedback,load_bearing P2 只补注释)与 R44(:31)同文件;R58 注释先落,三债(R44/R54/R58)必须同批或显式串行。 |
+| LB02 | → | R62 | 承重先于动同文件 | execution_review.py:R62 清三档标签死分支(:287-348)绝不能碰 :112/:123/:153/:166-167 写死 ROLE_ADOPTED 的硬钉,更不能给 :141 签名加 plan_role/scenario_id 形参。LB02 注释先落。 |
+| LB02 | → | LB05 | 同文件同改 | 同一承重不对称(execution_review.py:141 + 112/123/153/166-167)的两条独立 finding(不同 _partition),修法合并为同一次注释 + 同一组请求级回归。 |
+| LB01 | → | R17 | 承重先于动同文件 | PHASE0 §3『最危险的边』:operation_execution_feedback_service.py 上 LB01(:347-354 硬拒 + :451-453 写死消毒,:455 _REPORTED_STATUS_BY_ACTION[action] 紧贴)↔ R17(:28-31 死导入)。B01 承重注释必须先落,B11 删 R17 仅动 import 一行 + support.py:64 dict key 一行,绝不碰硬拒/写死区。 |
+| LB01 | → | R20 | 承重先于动同文件 | R20 删 operation_execution_labels service 垫片须改 feedback_service.py:48 import 行(垫片→model);该文件即 LB01 承重文件,改 import 时绝不能碰 347-354/451-453,须等 B01 钉好承重注释(护栏裸奔期勿动)。 |
+| R15 | → | R13 | 同文件同改 | execution_fact_provider.py 跨 3 桶:R13(B11,:20-21,42-43,96)/R15(B06,:66)/R19(B13,:51)。改 datetime 收口须与 B11/B13 进同批或串行,否则后改桶撞行号。 |
+| R13 | → | R18 | 同文件同改 | operation_execution_event_repo.py 相邻方法(:254 list_latest_events / :260 list_latest_exception_events)且退 foundation:172/:173 相邻断言;R13 删死字段后 :96 不再调 :254 使其也成死码,二者必须同批删。 |
+| R15 | → | R17 | 同文件同改 | operation_execution_feedback_support.py:R15(B06,:226 _parse_feedback_datetime raise 版)与 R17(B11,:64 死键)同文件;R17 删死键时不得碰 R15 的 raise 语义(灵魂线),Phase3 须协调。 |
+| R15 | → | R16 | 同文件同改 | operation_execution_state_builder.py:R15(B06,:42 _parse_time)与 R16(B11,:33-39 死表/:76-79 死兜底)同文件,改 datetime 收口与删死表须串行避免撞行号。 |
+| R21 | → | R22 | 修A失效B | R21 若删 gantt_plan_query.py:32-38 default_plan_resolution_dict wrapper + 其续命 test,会让 R22 收口 precondition『务必保留遗留文案“未知的排产方案角色:{role}”』失效。R21 本批只删另 3 个真死 shim,dpr_dict wrapper 留给 R22 处置。 |
+| R21 | → | R44 | 修A失效B | gantt_plan_query.py:46 selected_plan_role re-export 既是 R21 的死 shim,又是 R44 收口要照搬的范式;R21 删 shim 会让 R44 范式悬空,须 R44 先或同批(R44 可改直接 re-export core)。 |
+| R72 | → | R44 | 收口前置 | 两条都是 web 层 plan_role getter 重复(R72 取参 _get_plan_role_arg、R44 selected/requested_plan_role),宜同收口到 scheduler_utils.py 一个公共 helper,否则各建各的=复发 N1『散多处』病根。 |
+| LB07 | → | R71 | parity先于收敛 | R71 是 LB07 双栈锁步的函数级配料表(_float_matches_choice/_normalize_valid_texts/_coerce_degradation_event 三对逐字副本)。必须先把 regression_scheduler_config_spec_sync_contract.py 从『只 pin spec』扩成覆盖这 3 helper 等价行为的 parity 契约 + LB07『故意双栈』承重注释,R71 收敛才能动,否则锁步守卫缺位静默漂移踩灵魂线。 |
+| LB07 | → | R47 | 承重先于动同文件 | schedule_config_runtime_coercion.py(LB07):R47 删 raw_value 死参数(:88 + 调用点 :155/:210)绝不能碰 :470 graph_downstream_weight 承重置零、:152-153 strict 下 blank 的 loud raise、:73-80 MISSING_POLICY_ERROR raise。 |
+| R71 | → | R47 | 同文件同改 | R47 死参数 raw_value 在 model coercion.py:88 与 service config_field_coercion.py:68 双栈对称存在(报告漏报 service 侧),必须两栈对称同删,否则加大 R71/LB07 要消除的逐字分叉。 |
+| R45 | → | R48 | 同文件同改 | 同一物理文件 core/algorithms/greedy/config_adapter.py(27 行)的两种叙述(R45 死壳/R48 整模块迁移残渣),必须合并为一次整文件删除,同提交退 regression_sp06_no_duplicate_defs.py:15 的 NO_CFG_GET_TARGETS 路径。 |
+| R04 | → | R59 | 收口前置 | R59 收口到现有 parse_required_int 会违反自己续命测试(regression_web_silent_fallback_contract.py:67/70 要求 '1.0'/1.0 raise,而 strict_parse:56 abs<=1e-9 接受 3.0→3)。必须先由 R04 给 parse_finite_int/strict_parse 加 min_value + 拒整值 float 严格模式,R59 才能收口。 |
+| R04 | → | R01 | 同文件同改 | schedule_payload_contract.py 跨桶:R04(B05 正整数收口在 :50/6 个调用点)与 R01(B14 死 count/has 函数链 + SP05:54-55)同文件,须同批或串行避免后改桶撞行号。 |
+| R09-sink | → | R09-migrate | 收口前置 | PHASE0 §10.5/§4 唯一批准新建收口点:必须先在 core/shared 建 parse_optional_positive_int(垃圾→None/非正→None),再迁 3 处字节同体。严禁复用 R04 的 parse_finite_int(契约相反:R04 对垃圾 raise,R09 要 None)。 |
+| R07 | → | R09 | 同文件同改 | resource_dispatch_execution_service.py:R07(B01,P4 改 raise,:132-141)↔R09(B05,:23 _positive_int 收口)跨桶硬边。B01 必须先落,R09 改 _positive_int 时该文件可能已被 R07 动过,须串行;R07 还需补 AppError/ErrorCode 导入。 |
+| R08 | → | R09 | 同文件同改 | scheduler_resource_dispatch_execution.py:R08(B01,P6 删死分支 :226-227/:361-362)↔R09(B05,:32 _positive_int 副本)同文件,删死分支与 _positive_int 收口须串行避免撞行号。 |
+| R33 | → | R30 | 修A失效B | R30 删 core.shared.compat_parse 的 parse_compat_date 实现,而 R33 的续命测试 regression_compat_parse_emits_degradation.py:18 经 services.common.compat_parse import 它。若 R30 先删而 R33 测试 import 未先迁到 core.shared=测试红。顺序硬约束:先迁测试 import(R33 步骤1)→删壳(R33)→删 shared 实现(R30)。 |
+| R31 | → | R33 | 同文件同改 | WRITE_INTERNAL_ONLY 经 core/services/common/value_policies.py:11/29 转出,R33 要删整个该 facade。R31 在 common 侧的删改被 R33 吞并;源侧 core/shared/value_policies.py:9 由 R31 删,须协调避免改已删文件。 |
+| R29 | → | R26 | facade晚于收敛 | PHASE0 §10.2:B13 facade 删除晚于 B05/B06/B09 收敛。R26 删顶层 config/summary 5 shim 若早于 R29(B05 number_utils)收敛、仍经老路径走测试,先删 shim 会让测试经老顶层路径红。 |
+| R33 | → | R26 | facade晚于收敛 | 同 §10.2:R26 删 config/summary shim 须晚于 R33(B06 services.common 壳)收敛及其测试 import 迁移。 |
+| R52 | → | R25 | 同文件同改 | graph/ready_queue.py service 垫片(R25)与算法层 get_ready_operation_ids(R52)是同一函数的壳+体,必须同提交删;共享测试 test_ready_queue.py + lazy_runtime:27/metrics_topology:140 枚举摘名。 |
+| R11 | → | R12 | 收口前置 | R11≡R63 两份 _normalize_critical_chain_result(support:32 / provider:104)必须先抽单份到 gantt_critical_chain.py 公共落点,R12 才加 dropped_count/critical_chain_partial;否则 R12 改两份副本=复活 R11/R63。 |
+| R11 | → | R55 | 收口前置 | 同上:R11/R63 统一归一须早于 R55 加 scope=filtered/full;R12+R55 新键须同穿三道白名单(support:32-51/provider:104-128/contract:19-40),否则在归一层被静默剥离=换地方自欺。 |
+| R10 | → | R55 | 同文件同改 | gantt_service.py 跨桶:R10(B14,:60-62 死方法直删)与 R55(B08,:375 filtered 关键链)同文件,Phase3 须同批/串行(PHASE0 §3)。 |
+| R05 | → | R34 | 修A失效B | 资源筛选 collar 族(§4):R05 必须先给 ScheduleResourceFilter/normalize 扩 team 双 join + 空 id 全量语义。若 R34(B12)先把 schedule_repo.list_dispatch_rows_with_resource_context 收敛到 column_name 而 collar 未扩 team,会使 team 静默丢谓词返回全量坏数据,R05 修法失效。 |
+| R34 | → | R35 | 同文件同改 | schedule_repo.py:R34 删 :36/:114/:128 三死方法、R35 删 :61 list_between 夹在其间,同批避免删除后行号二次漂移撞 facade delegation 测试。 |
+| R38 | → | R39 | 同文件同改 | part_repo.py:R38 list_as_dicts(:71)+R39 list_unparsed(:32)同文件,同批改避免行号二次漂移。 |
+| LB08 | → | R46 | 承重先于动同文件 | scheduler_public_errors.py:LB08(LEGACY 正则桥 :62/:94/:218/:284 + make_public_error:175)承重,R46 删 :162-164 死别名 _safe_identifier 时严格不碰正则桥。LB08『文案与正则同生共死』注释先落同批。 |
+| R64 | → | R65 | 同文件同改 | scheduler_navigation_links.py:R64(:66-67)+R65(:74-78 def + :160 死分支)同文件必须同批;R65 删 _target_url 必须同步把 :160 化简为 plain_url 否则 NameError。 |
+| R06 | → | R27 | 同文件同改 | V22 强制:4 个空 delayed 包(dispatch/calendar/batch/gantt)必须同一提交删,且同步改 SP05:310 存在元组 + :315 delayed 无 import 循环;R06(B09)+R27(B14)跨桶同提交,缺一则 SP05 红。 |
+| R68 | → | R68-converge | parity先于收敛 | R68 _meta_bool_state 逐字两份(degradation:123 ↔ downtime_degradation:30)踩灵魂线(used_default 标记)。收敛前必须先补 parity 测试(两路对同一 meta 输出一致),收口点用 summary 上游或 core/shared,严禁新建第二概念模块。 |
+| R22 | → | R22-converge | parity先于收敛 | R22 收口前须补 parity 契约:全 VALID_PLAN_ROLES 断言 default_plan_resolution_dict['plan_identity'] 键集+取值 == build_plan_identity(source_table='schedule').to_dict(),再委托 build_plan_identity + SchedulePlanResolution.to_dict。 |
+| R14 | → | R14-delete | parity先于收敛 | R14 非裸删:先迁灵魂线测试 regression_scheduler_delay_diagnosis_contract.py:328/:358(候选/情景无静默回退)到生产门 diagnose_resolved_plan_overdue,再改 roadmap aps-three-gap-directions-roadmap.md:485-498 + items.yaml:83,最后删死三件套。 |
+| R24 | → | R24-delete | 修A失效B | R24 删 core schedule_diagnostic_contract 前必须先调和 PR-9 networkx roadmap(items.yaml:435 primary_path + :480-481 ruff/pyright exit_checks),否则在途 PR-9 计划落空;铁律绝不反向删 web 孪生(独占 NonFiniteDiagnosticNumber/safe_int/safe_float 护栏)。 |
+| R19 | → | R19-repo | 收口前置 | 分层红线阻断 naive 收口:repo 在 data 层不能 import service 层 snapshot.positive_op_ids。只能 provider(service)→snapshot;repo._positive_ids 须另落 core.shared/core.models 层或保留+补注释。务必保 sorted 给 execution_snapshot 指纹。 |
+| R51 | → | R51-tests | 修A失效B | R51 删 parse_dispatch_rule/parse_strategy 宽容兜底解析器,其续命测试 regression_dispatch_rule/sort_strategy_case_insensitive.py 钉死的正是灵魂线禁止的『坏值静默回退默认枚举』,必须连这两测试一起退,不可保留它们续命(否则复活 P4)。 |
+| R32 | → | R32-raise | 承重先于动同文件 | R32 改 backup.py:335 except→raise(对齐 :340 else)前,顺手收口 system_backup.py:107-113 让通用备份失败 flash 清晰错误而非裸 500(该 500 今天已因 else 分支存在);finally :346-352 .tmp 清理已在。 |
+| B01 | → | B02 | 承重先于动同文件 | PHASE0 §10.1 全局硬约束#1:B01 承重注释 + N1 guard 字段收口进 build_workbench_plan_context + 契约测试必须最先落,否则后续动 execution_review/navigation_publish/reports_workbench/resource_dispatch 文件的 B02(R44)、B11(R17)在护栏裸奔期出错。 |
+
+## 3. 全局排序 DAG
+
+| 节点 | 必须先于 | 理由 |
+|---|---|---|
+| Batch-1 承重注释+测试网(ROOT,纯增量) | Batch-2 B01-guard-sink, Batch-3 B01-structural, Batch-4 B02身份, Batch-5 B03+B04收敛, Batch-6 B05+R01 parse, Batch-7 B06 datetime+dispatch, Batch-9 B08 gantt, Batch-12 B11诊断, Batch-14 B13-facade-LATE | PHASE0 §10.1 全局根:LB01-08+R56/R58/R03 承重注释 + LB04 等价测试 + LB07/R22/R68 parity + 新增 execution-review 请求级负向测试,全部纯增量零结构,铺好安全网与唯一 guard 真相源前,任何收敛/删除都在护栏裸奔期出错。 |
+| Batch-2 B01-guard-sink(R54) | Batch-3 B01-structural, Batch-4 B02身份 | R54 把 guard 字段收口进 build_workbench_plan_context(含报告漏列的第 4 套 dashboard_workbench),确立 build_workbench_plan_context 为唯一 guard 真相源。R42/R60 删 plan_id 形参要 rebase 此签名;R44 动 navigation_publish 须在 guard 收口后。 |
+| Batch-3 B01-structural(R42,R60,R62,R66,R07,R08,R57) | Batch-6 B05+R01 parse, Batch-4 B02身份 | plan_id 整链下线 + 死码清理稳定 resource_dispatch_execution_service/scheduler_resource_dispatch_execution/navigation_context 三文件后,B05 的 R09 才能在稳定行号上迁 _positive_int;R44(navigation_publish)须在 B01 动完该文件后。 |
+| Batch-4 B02身份(R21,R22,R23,R44,R72) | Batch-14 B13-facade-LATE | 方案身份收口族;内部 R21 不删 dpr_dict wrapper(R22 保留遗留文案)、R21 selected_plan_role shim 删与 R44 改指 core 同批。R20(B13 labels 垫片)依赖身份链稳定。 |
+| Batch-5 B03+B04收敛(R41,R45,R47,R48,R71) | Batch-14 B13-facade-LATE | config 双栈收敛(R71/R47 受 LB07 parity 前置)+ config_adapter 整删(R45/R48,独立最早可落)+ R41 enum 收口;均须在 B13 删 config/summary facade 前完成,否则老路径测试红。 |
+| Batch-6 B05+R01 parse(R01,R04,R09,R28,R29,R50,R59) | Batch-7 B06 datetime+dispatch, Batch-14 B13-facade-LATE | R04 扩 parse_finite_int(min_value+拒整值 float)先于 R59 收口;R09 新建 parse_optional_positive_int 先于迁 3 处;R01 同 schedule_payload_contract.py 同批。B05 收敛先于 B13 facade 删除(§10.2)。R29 KEEP/重裁(授权链断裂)。 |
+| Batch-7 B06 datetime+dispatch(R15,R30,R33,R49,R51) | Batch-14 B13-facade-LATE | R15 datetime 收口须与 exec-fact 三文件(R13/R16/R17/R19)串行;R33 迁测试 import 先于 R30 删 shared date 实现;B06 收敛先于 B13(R26/R31)facade 删除(§10.2)。dispatch_rules.py R49/R50/R51 同批。 |
+| Batch-8 B07 collar(R05,R67) | Batch-13 B12 repo死方法 | R05 必须先给 ScheduleResourceFilter 扩 team 双 join + 空 id 全量语义,R34(B12)收敛 list_dispatch_rows_with_resource_context 到 column_name 才不会丢 team 谓词。 |
+| Batch-9 B08 gantt(R10,R11,R12,R55,R63) | (无) | SCC-GANTT:R11≡R63 抽单份 _normalize_critical_chain_result 先于 R12(dropped_count)/R55(scope)加键,新键同穿三道白名单;R10(B14)同 gantt_service.py 同批。自成簇,不阻塞他桶。 |
+| Batch-10 B09+R27 图死版+空包(R02,R06,R25,R27,R52) | Batch-14 B13-facade-LATE | R06+R27(+gantt 空包)V22 同提交 + SP05:310/315;R25+R52 同提交。B09 收敛先于 B13 删 ready_queue 系 facade(§10.2)。 |
+| Batch-11 B10(R46) | (无) | LB08 注释已在 Batch-1;R46 删 :162-164 死别名,纯叶子,弱耦合,Batch-1 后任意时点可落。 |
+| Batch-12 B11诊断(R13,R14,R16,R17,R18,R24) | Batch-14 B13-facade-LATE | R17 删 feedback_service 死导入须在 Batch-1 LB01 注释后(§10.1 最危险边);R14/R24 须先调和 roadmap + 迁灵魂线测试;exec-fact 三文件与 B06/B13 串行。R13 删后 event_repo:254 成死码连带删。 |
+| Batch-13 B12 repo死方法(R34,R35,R36,R37,R38,R39) | (无) | R34 须在 R05 collar 扩 team 后(否则 team 谓词丢);R34+R35 同 schedule_repo、R38+R39 同 part_repo 各自同批;R36/R37 纯死无跨边可任意排期。 |
+| Batch-14 B13-facade-LATE(R19,R20,R26,R31,R43) | (无) | PHASE0 §10.2 facade 删除晚于 B05/B06/B09 收敛 + §10.3 R43 须先认账 roadmap:522 延期 + R20 须在 B01 LB01 注释后改 feedback_service import + R19 受分层红线(repo 不能收 service)。全局最晚批次。 |
+| Batch-15 B15 逐字两份收口(R68,R69,R70) | (无) | R68/R69 踩灵魂线收敛前先补 parity(R68)/评估 except loud(R69 护栏文件);R70 死副本(schedule_service:46)直删 + live(input_collector)收口。独立可并行。 |
+| Batch-16 B16+B17 叶子/P4(R32,R40,R53,R61,R64,R65) | (无) | 全部独立隔离文件:R32/R40 改 raise(灵魂线)、R53/R64/R65 纯叶子删(R65 def 删须同步 :160 化简)、R61 删 filter_plan_rows 保留 filter_downtime 孪生。无关键路径门控,Batch-1 后可并行。 |
+
+## 4. 分批落地建议(16 批)
+
+### Batch-1 承重注释 + 契约/parity 测试网(全局 ROOT,纯增量零结构)
+- **债**: LB01, LB02, LB05, LB06, LB07, LB08, LB03, LB04, R56, R58, R03
+- **理由**: 全部是『补我是故意的注释 + 绑/新建契约测试』,跨多个不同文件互不冲突(无两债改同一行段)。一次铺好承重护栏注释 + 唯一安全网,后续所有结构动作才有保护。含:LB02/LB05/LB06 共同缺口=新增 GET /reports/execution-review?plan_role=非adopted&scenario_id=X 服务端拒绝/回退 adopted 的请求级回归(一次补齐三条 precondition);LB04 新建 boolean_normalize↔matrix 等价契约;LB07 扩 spec-sync parity 覆盖 R71 三 helper;R22/R68 parity;LB03 确认四文件入账 + 立即 git add 守卫测试 + :141 注释;R03 窄 except 承重注释。
+- **验收**: 全部现有契约绿(regression_reports_workbench_navigation_contract / scheduler_workbench_link_guardrails / plan_vs_actual_review / operation_execution_feedback_routes:336 / exception_feedback:485 / event_foundation:272 / user_visible_messages);新增 execution-review 请求级负向测试通过;regression_scheduler_plan_identity_summary_guardrail.py 已 git 跟踪;LB07 spec-sync 扩展后两栈 3 helper parity 绿;零生产逻辑改动(git diff 仅注释+测试)。
+
+### Batch-2 B01 guard 字段收口(N1 真相源)
+- **债**: R54
+- **理由**: 单债独立成批:把 plan-guard 字段收口进 build_workbench_plan_context,让【4 套】手维列表(含报告漏列的 dashboard_workbench.py:19-24)统一 delegate 到 plan_role_filter_fields 全集。这是后续 R42/R60(删 plan_id 形参)与 R44(navigation_publish)的签名地基,必须独立先落、原子完成 5-6 个 SCC-NAV 文件。
+- **验收**: 4 个 guard 契约绿(navigation_contract guard-fields 11 键 / resource_dispatch site_records blocked_fields / link_guardrails 下游逐键 / dashboard_workbench);4 套手维列表全部 delegate 到收口点,grep 确认无残留独立 key 列表;is_comparison/is_superseded_by_newer_version 仍齐全(fail-closed 不退化)。
+
+### Batch-3 B01 plan_id 下线 + 死码清理(SCC-NAV 结构)
+- **债**: R42, R60, R62, R66, R07, R08, R57
+- **理由**: R42+R60 合并为单次 plan_id 整链下线(共享 link_query:118/154);R62 压扁 execution_review 三档死分支;R66 删死 _context_summary;R07 改 loud raise(补 AppError/ErrorCode 导入);R08 删死分支;R57 fallback 收敛(或降级注释)。均 rebase 在 Batch-2 的 build_workbench_plan_context 签名上,且稳定 resource_dispatch_execution 两文件供 B05 后续迁 _positive_int。
+- **验收**: navigation_contract:109/122/126 三 plan_id 断言同步退;roadmap 制度化 3 处(items.yaml:289+acceptance.md:52+checklist.yaml:82)同步删;execution_review 模板 :131-136 死副行 + xlsx:410-415 死回退退;R07 新增 NOT_FOUND raise 回归;R57 flow-contract plan_role 透传断言绿;SP05 拓扑绿;navigation_context.py:80-82 forced-adopted 未被碰。
+
+### Batch-4 B02 plan_role 取参 + 方案身份收口
+- **债**: R21, R22, R23, R44, R72
+- **理由**: 方案身份收口族:R22 委托 build_plan_identity+to_dict(parity 已在 Batch-1);R23 model 层 _normalize_role dedup;R72/R44 web 层 getter 同收口到 scheduler_utils.py 单点;R21 删 3 个真死 shim(保留 dpr_dict wrapper 给 R22)。内部串行:R21 不删 dpr_dict、R21 selected_plan_role shim 删与 R44 改指 core 同批。须在 B01 动完 navigation_publish 之后。
+- **验收**: schedule_result_view_context parity 测试绿(全 VALID_PLAN_ROLES);gantt_plan_query 遗留文案 wrapper『未知的排产方案角色:bad』保留且 test 绿;navigation_contract publish_* 绿;candidate_plan_query/plan_identity_evidence 绿;_PLAN_GUARD_FIELD_NAMES/_plan_guard_fields 闸门路径未被碰。
+
+### Batch-5 B03 config 双栈 + adapter + B04 enum 收口
+- **债**: R41, R45, R47, R48, R71
+- **理由**: R45+R48 整文件删 config_adapter.py(独立最早可落);R71 service 反向复用 model 删 service 侧 3 helper 副本(受 LB07 parity 前置,Phase2 整桶裁决是否仅注释);R47 双栈对称删 raw_value 死参数(model:88+155/210 与 service:68+158/207);R41 enum_display 收口到 enum_normalizers + 改 test_enum_display_consistency 为 loud 暴露。不同文件群,内部冲突自由。
+- **验收**: sp06 NO_CFG_GET_TARGETS 退 config_adapter 路径同提交;spec-sync 扩展 parity 绿、py38 contract 绿、projection_sync 绿;coercion.py:470 承重置零/:152-153 loud raise 未被碰;test_enum_display_consistency 坏 ready/operator 改为 loud 暴露断言绿(符合灵魂线)。
+
+### Batch-6 B05 正整数/解析收口 + R01 死链(parse-int 互锁)
+- **债**: R01, R04, R09, R28, R29, R50, R59
+- **理由**: R04 先扩 parse_finite_int(min_value + 拒整值 float 严格模式)→ R59 收口(否则 R59 撞自己 '1.0' raise 测试);R09 新建 parse_optional_positive_int(唯一批准新建)再迁 3 处(在 Batch-3 稳定文件后);R28 收口 parse_finite_float(改 raise 方向);R50 删死 mean_positive;R01 同 schedule_payload_contract.py 死 count/has 链同批;R29 授权链断裂→KEEP/Phase2 重裁(若薄壳化须先重写 monkeypatch 为身份测试)。
+- **验收**: web_silent_fallback:67/70 绿('1.0'/1.0 仍 raise);persistence_reject_empty 绿;resource_dispatch 四契约绿;test_architecture_fitness:77 R28 白名单条目同步退;SP05:54-55 R01 两符号断言退;parse_optional_positive_int 与 parse_finite_int 契约相反(垃圾→None vs raise)未混用。
+
+### Batch-7 B06 datetime 收口 + dispatch 死码 + compat 半截
+- **债**: R15, R30, R33, R49, R51
+- **理由**: R15 datetime 逐处收口(provider/state_builder 的 None 版 vs support 的 raise 版分清,严禁一刀切),与 exec-fact 三文件 B11/B13 串行;R49 删 5 死别名、R51 删 2 宽容解析器(连退违灵魂线的 case_insensitive 测试)、R50 已在 B05——dispatch_rules.py 三债同批;R33 先迁测试 import 到 core.shared → R30 删 shared date 实现。
+- **验收**: feedback_support:226 raise 语义保留;dispatch_rule/sort_strategy_case_insensitive 测试随解析器退(不续命兜底);value_policies_matrix start/end 断言退;compat_parse degradation date 用例退;exec-fact 三文件与 B11/B13 无行号冲突。
+
+### Batch-8 B07 资源筛选 collar(team-extend 先行)
+- **债**: R05, R67
+- **理由**: R05 必须先给 ScheduleResourceFilter/normalize_schedule_resource_filter 扩 team 双 join + 放开『类型有 id 空=全量』语义并补回归,才能收敛 _normalize_scope_type 与 repo operator/machine 字面量;R67 抽单一别名键清单常量供三处复用。R05 须先于 B12 的 R34 收敛。
+- **验收**: 新增回归:scope_type=team 只返回该 team、空 id 全量视图可查;schedule_plan_query_repo.py:461-463 team 双 join 与空 id 全量分支保留;report_context_filters collar 别名优先级契约绿;invalid_query_cleanup:341 直调 _normalize_scope_type 绿。
+
+### Batch-9 B08 关键链甘特(SCC-GANTT:统一→加键)
+- **债**: R10, R11, R12, R55, R63
+- **理由**: R11≡R63 同一债,先抽单份 _normalize_critical_chain_result 到 gantt_critical_chain.py 公共落点(support+provider 两路改调它);再 R12 加 dropped_count/critical_chain_partial(保留 :84 过滤,DegradationCollector 范式)、R55 加 scope=filtered/full,二者新键同穿三道白名单(support:32-51/provider:104-128/contract:19-40);R10 删 get_latest_version_or_1 同 gantt_service.py 同批。
+- **验收**: gantt_contract_snapshot subset 检查绿(加键不破);critical_chain_unavailable 降级契约绿;新 dropped_count/scope 键端到端不被归一层剥离(穿三白名单验证);:84 过滤未裸删;gantt_service.py R10 删除 + week_plan stub:59 退。
+
+### Batch-10 B09 图死版 + 空包(打包簇)
+- **债**: R02, R06, R25, R27, R52
+- **理由**: R02 删 test-only re-export 包装器(先迁 test import 到真 __all__ home);R06+R27(+gantt 空包)V22 强制 4 空包同提交删 + SP05:310/315 摘名;R25+R52 service 垫片 + 算法 impl 同提交删 + lazy_runtime:27/metrics_topology:140 摘名。须先于 B13 删 ready_queue 系 facade。
+- **验收**: SP05 path topology 绿(:310 元组/:315 delayed 循环摘 4 包);graph 测试绿(test_graph_dispatch_context import 改 home);test_ready_queue 退、lazy_runtime/metrics_topology 枚举摘名;R52 删前确认 sgs_graph ValidationError 已覆盖原合同点。
+
+### Batch-11 B10 错误体制死别名
+- **债**: R46
+- **理由**: LB08 承重注释已在 Batch-1。R46 删 scheduler_public_errors.py:162-164 死别名 _safe_identifier,纯叶子,严格不碰 LEGACY 正则桥/make_public_error。弱耦合可独立。
+- **验收**: user_visible_messages 全套绿;LEGACY_PUBLIC_PATTERNS:62/_LEGACY_CODE_PREFIXES:94/legacy_public_error_message:218/infer_legacy_public_code:284 未被碰;删除范围严格 :162-164 三行。
+
+### Batch-12 B11 执行诊断死码(exec-fact 串行)
+- **债**: R13, R14, R16, R17, R18, R24
+- **理由**: R17 删 feedback_service:28-31 死导入须在 Batch-1 LB01 注释后(最危险边);R13+R18 event_repo 相邻方法同批 + foundation:172/173 退;R16 删死表简化 :77;R14 先迁灵魂线测试 :328/:358 到生产门 + 改 roadmap 再删死三件套;R24 先调和 PR-9 roadmap 再删 core 合同(绝不删 web 孪生)。exec-fact 三文件与 B06/B13 串行。
+- **验收**: delay_diagnosis 灵魂线 :328/:358 迁到生产门后绿;analysis_diagnostic core-only 用例退、web 孪生护栏 NonFiniteDiagnosticNumber 保留;event_foundation:172/173 相邻断言退;feedback_service:347-354/451-453 未被碰;roadmap aps-three-gap/items.yaml + networkx items.yaml:435/480-481 同步修订。
+
+### Batch-13 B12 repo 死方法(按文件聚批)
+- **债**: R34, R35, R36, R37, R38, R39
+- **理由**: R34(三死方法)须在 R05 collar 扩 team 后,+R35 同 schedule_repo 同批(避免行号二次漂移);R38+R39 同 part_repo 同批;R36(batch_operation_repo)/R37(operator_machine_repo,勿误删活近亲 list_links_with_operator_info)纯死无跨边可任意排期。
+- **验收**: facade_delegation 退 :31/:36/:38-41 三死方法断言、保留 :33/:37 活方法;detail_queries 用例退;gantt_critical_chain_unavailable:59 无效 monkeypatch 删;benchmark_fjsp:503 repoint 到 get_plan_time_span_for_resolution;全删后 grep 确认零生产引用。
+
+### Batch-14 B13 facade 残渣(全局最晚)
+- **债**: R19, R20, R26, R31, R43
+- **理由**: PHASE0 §10.2 facade 删除晚于 B05/B06/B09 收敛。R26 删 config/summary 5 shim(先迁 2 离线脚本 + 71 测试 import + SP05:21-82/642-658);R31 WRITE_INTERNAL_ONLY 与 R33 协调(common 侧被吞、源侧自删);R43 先认账 roadmap:522 延期再删 9 wrapper;R20 删 labels 垫片须在 B01 LB01 注释后改 feedback_service:48 import;R19 受分层红线(repo 不能收 service,provider→snapshot,repo 另落 data/model)。
+- **验收**: SP05 冻结面同步(strong/behavior compat 列退);71 处测试 import repoint 到深路径、2 离线脚本迁移;lazy_runtime 绿;R19 provider 收口保 sorted 指纹、repo 不引入越层(test_architecture_fitness 绿);R43 wrapper_import_order_contract 整文件退 + ROUTE_COMPAT/BEHAVIOR/REAL_ROUTE_FILES 改。
+
+### Batch-15 B15 逐字两份收口
+- **债**: R68, R69, R70
+- **理由**: R68 _meta_bool_state 两份收口到 summary 上游/core.shared(parity 在 Batch-1,保 used_default loud);R69 _op_seq 两份收口单点 + 护栏文件内评估坏 seq 改 loud(严禁静默归 0);R70 schedule_service:46 死副本直删 + input_collector live 份收口主链上游(保 ValidationError reason 契约)。同病不同文件,可并行。
+- **验收**: R68 两路 used_default 对同一 meta 一致(parity 绿);R69 收口后坏 seq 不再静默归 0(护栏文件 loud/可观测);R70 facade_delegation 不依赖该符号故直删死副本不红;空结果行为回归(history_not_created/empty_reschedulable_rejected)绿。
+
+### Batch-16 B16 P4 灵魂线 + B17 死叶子(独立并行)
+- **债**: R32, R40, R53, R61, R64, R65
+- **理由**: 全部独立隔离文件、无关键路径门控:R32 backup integrity except→raise(+顺手 system_backup:107-113 flash);R40 material_repo stock_qty except→raise/可观测(service 已挡的防御死角);R53 删 :74 一行;R61 删 filter_plan_rows + 两 helper(保留 filter_downtime 孪生);R64 删 :66-67;R65 删 :74-78 def + 原子化简 :160→plain_url。
+- **验收**: restore_success_condition mock 不触达校验块故 R32 改 raise 不红、migration 阻断契约对齐;R40 numeric_parse_hybrid model 护栏未碰;report_context_filters downtime 孪生 :28/39/51/59 保留、plan 份 :8/66/75/81 退;scheduler_navigation_links build 绿(:160 化简为 plain_url 无 NameError);R53 batch_order 行为契约绿。
+
+
+## 5. 综合小结
+
+全局矩阵覆盖全部 80 条债(72 真债 + 8 承重),按 17 桶归并为 16 个可独立验收批次,排成有向无环序。脊梁结论:【B01 必须最先落】——它是唯一真相源 build_workbench_plan_context guard 收口(R54,N1)+ 5 条 execution_review/navigation 承重注释(LB01/LB02/LB05/LB06/R56/R58)所在,这些文件恰是 B02(R44)、B05(R07/R08/R09)、B11(R17/R20)、B13 都要触碰的高频文件,B01 不先钉护栏=后续全在裸奔期打穿。识别出 6 个必须打包的强连通簇:SCC-NAV(navigation_context+navigation_publish+workbench_links+reports_page_support+reports_workbench+resource_dispatch+dashboard_workbench,4 债同居 navigation_context、3 债跨桶同居 navigation_publish),SCC-GANTT(R11≡R63 抽单份后才能 R12/R55 加键穿三白名单),SCC-EXEC-FACT(execution_fact_provider/event_repo/state_builder/feedback_support/feedback_service 跨 B01/B06/B11/B13 必串行,含最危险边 LB01↔R17 同 _build_event_payload 函数),SCC-CONFIG-DUAL(coercion+read+config_snapshot+config_field_coercion 双栈,LB07/R71/R47),parse-int 互锁(R04 扩 strict_parse 拒整值 float 先于 R59,R09 新建专用 sink 不可与 R04 共用),compat-facade(R33 迁测试 import 先于 R30 删 shared 实现,B13 整体晚于 B05/B06/B09)。最危险的失效模式:R54 漏收第 4 套手维列表(dashboard_workbench,报告漏列、盘上已证)→ fail-open 旧正式版本冒充现行;R05 未先扩 team 轴 R34 就收敛 column_name → team 谓词静默丢;R21 误删 dpr_dict wrapper → R22 遗留文案 precondition 失效;R59 不等 R04 → 撞自己 '1.0' raise 测试。抓到 16 处数字/定性打架,其中 3 处影响修法授权(R29 权威 CSV 盘上不存在已证、R47 双栈对称非单边、R54 是 4 套非 3 套),1 处方向已被现实推翻(LB03 已 fail-closed 治理,旧报告改 loud raise 会触发可用性放大),4 条(R03/R52/R55/LB08)缺独立对抗 verdict 需 Phase2 额外复核。所有 prod_consumers/test_consumers 行号已对照 16 文件工作树漂移名单标注(navigation_context/execution_review/feedback_service 未漂行号准,navigation_publish/workbench_links/reports_workbench/dashboard_workbench 等已漂须落地前回盘)。
