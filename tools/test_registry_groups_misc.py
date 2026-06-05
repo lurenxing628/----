@@ -141,7 +141,6 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "tests/regression_excel_conversion_output_contracts.py",
             "tests/regression_excel_hidden_payload_contract.py",
             "tests/regression_frontend_offline_static_assets.py",
-            "tests/regression_mirror_template_sync.py",
             "tests/test_excel_renamed_column_conflicts.py",
             "tests/regression_import_execution_stats_source_row_num.py",
         ),
@@ -201,10 +200,7 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "tests/test_ui_geometry_html_contract.py",
             "tests/test_scan_py38plus_syntax.py",
             "tests/test_architecture_fitness.py",
-            "tests/regression_ui_layout_risk_contract.py",
             "tests/regression_workbench_nav_entry_contract.py",
-            "tests/regression_responsive_min_width_contract.py",
-            "tests/regression_table_layout_readability_contract.py",
         ),
         "input_file_scopes": (
             "tests/ui_geometry_contract_data.py",

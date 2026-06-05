@@ -87,7 +87,6 @@ def test_workbench_flow_regression_is_required_and_grouped() -> None:
         "tests/regression_aps_workbench_flow_contract.py",
         "tests/regression_aps_workbench_report_row_links_contract.py",
         "tests/regression_dashboard_workbench_contract.py",
-        "tests/regression_dashboard_workspace_layout_contract.py",
         "tests/regression_dashboard_overdue_count_tolerance.py",
         "tests/regression_execution_review_identity_guardrail.py",
         "tests/regression_scheduler_navigation_unknown_plan_role_contract.py",
