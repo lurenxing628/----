@@ -98,3 +98,13 @@ B-14 的 :25/:1858 改接需求自动消解（import 仍有效）。
 2. 改后双跑：第一跑（冷缓存，预期全量重跑）全绿；第二跑（热缓存）全绿且复用条目命中
 3. 语义等价抽查:故意让一个 required 测试失败（本地临时改动，不提交），
    验证门禁必须红且报错指向该测试；恢复后再跑绿 → 证明核销语义未丢
+
+## 7. 执行进度(2026-06-06 续作锚点)
+- ✅ B-12(0506b27d) / M4a(eaf83cbf) / M2(3ed51929+2c47c2fb+0fb44c74) / M3(7a4a9c1a) 全部交付并推送,各自门禁 16/16 绿
+- 对抗审查:M4a CLEAN;M2 两 issue(消费侧死代码/死 import)已收口
+- 累计净 -7300 行、运行产物 -10.2MB;`pytest -m required` 入口已加(1821 nodeids)
+- ▶ P2.1 进行中:按 csv KEEP_TRIM 剪快照尾(manifest:228 巨型清单/startup:60+90/debt_ledger:53/
+  summary markdown 整行/quickref+collect 指纹参数化并簇入 test_long_gate_cache)
+  ⚠ 裁决修正:`test_required_scope_tracks_real_inputs_without_unrelated_markdown` 不删——
+  P0 实战中它拦住过真实覆盖损失(group7 doc scopes 误删),是承重 fail-closed 守卫,只允许瘦身
+- 待办:P2.3 DWT 逐一核对工具死亡再删(registry_split_scope_contract 退役前过 B-8);P2.4 总验证
