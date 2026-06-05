@@ -1,22 +1,9 @@
 """回归测试：greedy 调度的 find_overlap_shift_end 对停机区间做避让时，空区间(end==start)与逆序区间(end<start)不应被误判为重叠返回 shift，只有合法重叠区间才返回其结束时刻。"""
 
-import os
-import sys
 from datetime import datetime
 
 
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_downtime_overlap_skips_invalid_segments() -> None:
 
     from core.algorithms.greedy.downtime import find_overlap_shift_end
 
@@ -35,9 +22,4 @@ def main() -> None:
     seg_valid = (datetime(2026, 1, 1, 10, 45, 0), datetime(2026, 1, 1, 12, 0, 0))
     assert find_overlap_shift_end([seg_valid], start, end) == seg_valid[1], "合法重叠区间应触发 shift"
 
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()
 

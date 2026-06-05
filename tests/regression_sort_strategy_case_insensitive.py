@@ -1,19 +1,7 @@
-import os
-import sys
+"""回归测试：SortStrategy.parse_strategy 对策略名大小写/空白容错（WEIGHTED、" fifo "、Priority_First 各自归一），未知值按 default 回退（R51 灵魂线续命测试）。"""
 
 
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_sort_strategy_case_insensitive() -> None:
 
     from core.algorithms.sort_strategies import SortStrategy, parse_strategy
 
@@ -24,9 +12,4 @@ def main() -> None:
     # 未知值回退 default
     assert parse_strategy("unknown", default=SortStrategy.DUE_DATE_FIRST) == SortStrategy.DUE_DATE_FIRST, "未知值 default 回退失败"
 
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()
 

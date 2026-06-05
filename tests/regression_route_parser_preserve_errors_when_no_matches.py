@@ -1,17 +1,7 @@
 """回归测试：RouteParser.parse 解析无法识别的工艺路线串（如 ABC5）时返回 FAILED，并保留全部细粒度错误——“必须以工序号开头”“尾部工序号 5 缺少工种名”以及“无法识别工艺路线格式”通用错误都不被吞掉。"""
 
-import os
-import sys
 from dataclasses import dataclass
 from typing import List
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 @dataclass
@@ -31,10 +21,7 @@ class _StubSuppliersRepo:
         return []
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_route_parser_preserve_errors_when_no_matches() -> None:
 
     from core.services.process.route_parser import ParseStatus, RouteParser
 
@@ -48,9 +35,4 @@ def main() -> None:
     assert any("尾部工序号 5 缺少工种名" in e for e in errs), f"缺少“尾部工序号 5 缺少工种名”错误：{errs!r}"
     assert any("无法识别工艺路线格式" in e for e in errs), f"缺少“无法识别工艺路线格式”通用错误：{errs!r}"
 
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()
 

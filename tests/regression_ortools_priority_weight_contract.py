@@ -1,21 +1,7 @@
 """回归测试：priority_constants 优先级权重契约——normalize_priority 把 None/空白/未知归一为 normal、大小写不敏感（如 Urgent→urgent），priority_weight_scaled 与 PRIORITY_WEIGHT×100 一致、critical>urgent>normal 严格递减，且 scale 参数按比例生效（如 Urgent,scale=10→20）。"""
 
-import os
-import sys
 
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_ortools_priority_weight_contract() -> None:
 
     from core.algorithms.priority_constants import PRIORITY_WEIGHT, normalize_priority, priority_weight_scaled
 
@@ -43,8 +29,4 @@ def main() -> None:
     )
     assert priority_weight_scaled("Urgent", scale=10) == 20, "scale 参数未按预期生效"
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()
