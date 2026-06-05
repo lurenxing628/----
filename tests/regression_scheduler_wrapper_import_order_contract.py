@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -8,6 +9,14 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _isolated_subprocess_env(tmp_path: Path) -> dict:
+    # 子进程会 import app 并触发 create_app；必须指向隔离数据库，
+    # 否则宿主机本地 db/aps.db 的结构状态会污染"被动 import"契约本身。
+    env = os.environ.copy()
+    env["APS_DB_PATH"] = str(tmp_path / "wrapper_import_contract.db")
+    return env
 
 LEGACY_SCHEDULER_WRAPPERS = (
     "web.routes.scheduler_analysis",
@@ -23,7 +32,7 @@ LEGACY_SCHEDULER_WRAPPERS = (
 
 
 @pytest.mark.parametrize("module_name", LEGACY_SCHEDULER_WRAPPERS)
-def test_legacy_scheduler_wrapper_import_stays_passive_before_app_import(module_name: str) -> None:
+def test_legacy_scheduler_wrapper_import_stays_passive_before_app_import(module_name: str, tmp_path: Path) -> None:
     probe = """
 import importlib
 import json
@@ -57,6 +66,7 @@ print(json.dumps({
         capture_output=True,
         encoding="utf-8",
         errors="replace",
+        env=_isolated_subprocess_env(tmp_path),
     )
     assert completed.returncode == 0, (module_name, completed.stdout, completed.stderr)
     payload = json.loads(completed.stdout.strip().splitlines()[-1])
@@ -69,7 +79,7 @@ print(json.dumps({
     assert "scheduler" in payload["registered_blueprints"]
 
 
-def test_scheduler_root_bp_direct_registration_requires_explicit_route_registration() -> None:
+def test_scheduler_root_bp_direct_registration_requires_explicit_route_registration(tmp_path: Path) -> None:
     probe = """
 import importlib
 import json
@@ -100,6 +110,7 @@ print(json.dumps({
         capture_output=True,
         encoding="utf-8",
         errors="replace",
+        env=_isolated_subprocess_env(tmp_path),
     )
     assert completed.returncode == 0, (completed.stdout, completed.stderr)
     payload = json.loads(completed.stdout.strip().splitlines()[-1])

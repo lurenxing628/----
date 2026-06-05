@@ -72,23 +72,6 @@ def _filename_part(value: Any) -> str:
     return text
 
 
-def _public_report_datetime(value: Any) -> str:
-    def _format_dt(item: datetime) -> str:
-        return f"{item.year}年{item.month}月{item.day}日 {item.hour:02d}:{item.minute:02d}"
-
-    if isinstance(value, datetime):
-        return _format_dt(value)
-    text = str(value or "").strip()
-    if not text:
-        return "未填写计划时间"
-    for pattern in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y/%m/%d %H:%M:%S", "%Y/%m/%d %H:%M"):
-        try:
-            return _format_dt(datetime.strptime(text, pattern))
-        except ValueError:
-            continue
-    return "时间记录异常"
-
-
 class _ExecutionReviewHost(Protocol):
     execution_feedback_service: Any
 
@@ -385,7 +368,10 @@ class ExecutionReviewMixin:
 
     @staticmethod
     def _display_time(value: Any) -> str:
-        return _public_report_datetime(value)
+        # 计划时间保持 ISO 文本口径：页面同一行的实际时间和 Excel 导出共享本标签，
+        # 不做中文友好化转换，避免页面/导出口径分叉（2026-06-05 复审回退）。
+        text = str(value or "").strip()
+        return text or "未填写计划时间"
 
     @staticmethod
     def _actual_value_label(value: Any, has_feedback: bool) -> str:

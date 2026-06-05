@@ -239,7 +239,9 @@ def test_week_plan_export_uses_same_plan_role_and_logs_requested_effective_roles
     assert resp.status_code == 200
     assert "原算法代表方案" in unquote(str(resp.headers.get("Content-Disposition") or ""))
     workbook = openpyxl.load_workbook(io.BytesIO(resp.data))
-    sheet = workbook.active
+    # 非正式方案导出会在第 0 页插入"查询摘要"明示方案身份，数据页按名称取。
+    assert "查询摘要" in workbook.sheetnames
+    sheet = workbook["周计划"]
     assert sheet is not None
     assert sheet["A2"].value == "2026-05-12"
     assert sheet["E2"].value == "M-CANDIDATE 候选设备"

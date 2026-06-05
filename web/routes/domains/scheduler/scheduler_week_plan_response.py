@@ -26,9 +26,13 @@ def send_week_plan_export_file(output, *, version: int, week_start: Any, week_en
     if bool(plan_resolution.get("is_scenario_preview")):
         plan_label = _safe_filename_part(_scenario_display_name(plan_resolution))
     else:
-        user_label = str(plan_resolution.get("user_label") or plan_resolution.get("selected_label") or "").strip()
-        include_plan_label = selected_role != ROLE_ADOPTED or requested_role != selected_role or user_label.startswith("历史正式方案")
-        plan_label = _safe_filename_part(user_label or plan_resolution.get("selected_label")) if include_plan_label else ""
+        # 文件名带"具体方案名"（selected_label，与资源派工/报表导出口径一致）；
+        # 仅历史正式方案例外：历史身份只存在于 user_label，须原样标进文件名。
+        user_label = str(plan_resolution.get("user_label") or "").strip()
+        is_historical = user_label.startswith("历史正式方案")
+        include_plan_label = selected_role != ROLE_ADOPTED or requested_role != selected_role or is_historical
+        label_source = user_label if is_historical else plan_resolution.get("selected_label")
+        plan_label = _safe_filename_part(label_source) if include_plan_label else ""
     plan_suffix = f"_{plan_label}" if plan_label else ""
     filename = f"周计划表_v{version}_{week_start}至{week_end}{plan_suffix}.xlsx"
     return send_file(
