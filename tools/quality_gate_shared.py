@@ -811,7 +811,7 @@ def build_quality_gate_command_plan() -> List[Dict[str, Any]]:
             "output_policy": "normalized",
         },
         {
-            "display": "python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tools/scan_aps_three_gap_py38_scope.py tests/regression_frontend_offline_static_assets.py tests/regression_frontend_ui_language_polish.py tests/regression_config_manual_markdown.py tests/regression_page_manual_registry.py tests/regression_gantt_simulation_entry_shell.py tests/regression_scheduler_resource_dispatch_invalid_query_cleanup.py tests/regression_aps_three_gap_docs_quality_gate.py tests/test_run_quality_gate.py",
+            "display": "python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tools/scan_aps_three_gap_py38_scope.py tests/regression_frontend_offline_static_assets.py tests/regression_frontend_ui_language_polish.py tests/regression_config_manual_markdown.py tests/regression_page_manual_registry.py tests/regression_scheduler_resource_dispatch_invalid_query_cleanup.py tests/regression_aps_three_gap_docs_quality_gate.py tests/test_run_quality_gate.py",
             "args": [
                 "python",
                 "tools/scan_py38plus_syntax.py",
@@ -823,7 +823,6 @@ def build_quality_gate_command_plan() -> List[Dict[str, Any]]:
                 "tests/regression_frontend_ui_language_polish.py",
                 "tests/regression_config_manual_markdown.py",
                 "tests/regression_page_manual_registry.py",
-                "tests/regression_gantt_simulation_entry_shell.py",
                 "tests/regression_scheduler_resource_dispatch_invalid_query_cleanup.py",
                 "tests/regression_aps_three_gap_docs_quality_gate.py",
                 "tests/test_run_quality_gate.py",

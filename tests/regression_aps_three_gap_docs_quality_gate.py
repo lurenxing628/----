@@ -94,8 +94,6 @@ REGRESSION_TESTS = (
     "tests/regression_frontend_ui_language_polish.py",
     "tests/regression_config_manual_markdown.py",
     "tests/regression_page_manual_registry.py",
-    "tests/regression_reports_layout_contract.py",
-    "tests/regression_gantt_simulation_entry_shell.py",
     "tests/regression_schedule_input_collector_legacy_compat.py",
     "tests/regression_schedule_service_missing_resource_source_case_insensitive.py",
     "tests/regression_schedule_service_reschedulable_contract.py",

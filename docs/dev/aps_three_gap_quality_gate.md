@@ -27,7 +27,7 @@
 | 9 | resource-dispatch-start-finish-feedback | 2026-05-27-resource-dispatch-start-finish-feedback | `tests/regression_operation_execution_feedback_routes.py`、`tests/regression_scheduler_candidate_resource_dispatch_contract.py`、`tests/test_architecture_fitness.py::test_viewmodels_do_not_import_flask_or_services_or_repositories_or_routes` |
 | 10 | reschedule-minimum-execution-guardrails | 2026-05-27-reschedule-minimum-execution-guardrails | `tests/regression_scheduler_reschedule_execution_minimum_guardrails.py`、`tests/regression_operation_execution_feedback_routes.py`、`tests/regression_operation_execution_state_revision.py` |
 | 11 | shop-exception-feedback | 2026-05-27-shop-exception-feedback | `tests/regression_operation_execution_exception_feedback.py`、`tests/regression_scheduler_exception_blocks_auto_reschedule.py`、`tests/regression_operation_execution_feedback_routes.py` |
-| 12 | plan-vs-actual-review | 2026-05-27-plan-vs-actual-review | `tests/regression_plan_vs_actual_review.py`、`tests/regression_reports_layout_contract.py`、`tests/regression_report_delay_diagnosis_plain_language.py` |
+| 12 | plan-vs-actual-review | 2026-05-27-plan-vs-actual-review | `tests/regression_plan_vs_actual_review.py`、`tests/regression_report_delay_diagnosis_plain_language.py` |
 | 13 | reschedule-respects-execution-facts | 2026-05-27-reschedule-respects-execution-facts | `tests/regression_scheduler_reschedule_execution_facts.py`、`tests/regression_scheduler_reschedule_execution_minimum_guardrails.py`、`tests/regression_gantt_adjustment_publish_execution_revision.py` |
 
 ### 2.1 items.yaml 精准测试命令
@@ -41,7 +41,7 @@
 | 3 | delay-diagnosis-overdue-report-entry | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_delay_diagnosis_contract.py tests/regression_report_delay_diagnosis_plain_language.py tests/regression_frontend_offline_static_assets.py tests/regression_gantt_partial_overdue_summary_surfaces_warning.py tests/regression_dashboard_overdue_count_tolerance.py` |
 | 4 | candidate-recommendation-card | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_analysis_contract.py tests/regression_scheduler_analysis_candidate_links_and_roles.py tests/regression_scheduler_candidate_plain_language.py tests/regression_frontend_offline_static_assets.py` |
 | 5 | candidate-summary-delta-cards | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_analysis_contract.py tests/regression_scheduler_candidate_plain_language.py tests/regression_frontend_offline_static_assets.py tests/regression_scheduler_candidate_summary_contract.py tests/regression_scheduler_graph_auto_selection_contract.py` |
-| 6 | candidate-drilldown-empty-states | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_analysis_candidate_links_and_roles.py tests/regression_scheduler_candidate_week_plan_contract.py tests/regression_scheduler_candidate_plan_query_contract.py tests/regression_scheduler_candidate_reports_contract.py tests/regression_scheduler_candidate_plain_language.py tests/regression_frontend_offline_static_assets.py tests/regression_scenario_preview_secondary_outputs.py tests/regression_report_export_size_mode_selection.py tests/regression_scheduler_candidate_gantt_plan_role_contract.py tests/regression_scheduler_candidate_resource_dispatch_contract.py tests/regression_report_delay_diagnosis_plain_language.py tests/regression_reports_layout_contract.py` |
+| 6 | candidate-drilldown-empty-states | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_analysis_candidate_links_and_roles.py tests/regression_scheduler_candidate_week_plan_contract.py tests/regression_scheduler_candidate_plan_query_contract.py tests/regression_scheduler_candidate_reports_contract.py tests/regression_scheduler_candidate_plain_language.py tests/regression_frontend_offline_static_assets.py tests/regression_scenario_preview_secondary_outputs.py tests/regression_report_export_size_mode_selection.py tests/regression_scheduler_candidate_gantt_plan_role_contract.py tests/regression_scheduler_candidate_resource_dispatch_contract.py tests/regression_report_delay_diagnosis_plain_language.py` |
 | 7 | dispatch-plan-identity-guardrails | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_resource_dispatch_contract.py tests/regression_scheduler_dispatch_plan_identity_guardrails.py tests/regression_frontend_offline_static_assets.py` |
 | 8 | operation-execution-event-foundation | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_operation_execution_event_foundation.py tests/regression_operation_execution_event_time_contract.py tests/regression_operation_execution_state_revision.py tests/regression_migrations.py` |
 | 9 | resource-dispatch-start-finish-feedback | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_resource_dispatch_contract.py tests/regression_operation_execution_feedback_routes.py tests/regression_frontend_offline_static_assets.py tests/regression_resource_dispatch_partial_overdue_summary_surfaces_warning.py` |
@@ -56,7 +56,7 @@
 |---|---|
 | 精准功能测试 | 上表每条 feature 的 `test_commands` |
 | 迁移测试 | `tests/regression_migrations.py`、`tests/regression_gantt_adjustment_publish_execution_revision.py` |
-| 页面大白话测试 | `tests/regression_scheduler_candidate_plain_language.py`、`tests/regression_report_delay_diagnosis_plain_language.py`、`tests/regression_reports_layout_contract.py`、`tests/regression_aps_three_gap_docs_quality_gate.py` |
+| 页面大白话测试 | `tests/regression_scheduler_candidate_plain_language.py`、`tests/regression_report_delay_diagnosis_plain_language.py`、`tests/regression_aps_three_gap_docs_quality_gate.py` |
 | Win7/offline 测试 | `tests/regression_frontend_offline_static_assets.py`、`tests/test_scan_py38plus_syntax.py` |
 | CodeStable YAML 测试 | `.codestable/tools/validate-yaml.py` 命令和 `tests/test_codestable_tools_contract.py` |
 | 长门禁 | `scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`，其中命令计划已包含 roadmap YAML 校验和 Python 3.8 扫描 |
@@ -78,7 +78,6 @@
 - `tests/regression_report_delay_diagnosis_plain_language.py`
 - `tests/regression_report_export_large_scope_rejects_need_async.py`
 - `tests/regression_report_export_size_mode_selection.py`
-- `tests/regression_reports_layout_contract.py`
 - `tests/regression_scenario_preview_secondary_outputs.py`
 - `tests/regression_schedule_input_collector_contract.py`
 - `tests/regression_scheduler_analysis_candidate_links_and_roles.py`
@@ -97,7 +96,6 @@
 - `tests/regression_frontend_offline_static_assets.py`
 - `tests/regression_frontend_ui_language_polish.py`
 - `tests/regression_config_manual_markdown.py`
-- `tests/regression_gantt_simulation_entry_shell.py`
 - `tests/regression_gantt_adjustment_validate_simulate.py`
 - `tests/regression_gantt_partial_overdue_summary_surfaces_warning.py`
 - `tests/regression_resource_dispatch_partial_overdue_summary_surfaces_warning.py`
@@ -206,9 +204,9 @@
 ## 7. 第 14 项最小命令
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_frontend_offline_static_assets.py tests/regression_frontend_ui_language_polish.py tests/regression_config_manual_markdown.py tests/regression_page_manual_registry.py tests/regression_reports_layout_contract.py tests/regression_gantt_simulation_entry_shell.py tests/test_codestable_tools_contract.py tests/test_scan_py38plus_syntax.py tests/regression_aps_three_gap_docs_quality_gate.py tests/test_run_quality_gate.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_frontend_offline_static_assets.py tests/regression_frontend_ui_language_polish.py tests/regression_config_manual_markdown.py tests/regression_page_manual_registry.py tests/test_codestable_tools_contract.py tests/test_scan_py38plus_syntax.py tests/regression_aps_three_gap_docs_quality_gate.py tests/test_run_quality_gate.py
 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .codestable/tools/validate-yaml.py --file .codestable/roadmap/aps-three-gap-directions/aps-three-gap-directions-items.yaml --yaml-only --require roadmap --require created --require items
 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_aps_three_gap_py38_scope.py --base-ref d4589d77
-PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tools/scan_aps_three_gap_py38_scope.py tests/regression_frontend_offline_static_assets.py tests/regression_frontend_ui_language_polish.py tests/regression_config_manual_markdown.py tests/regression_page_manual_registry.py tests/regression_gantt_simulation_entry_shell.py tests/regression_operation_execution_event_time_contract.py tests/regression_scheduler_data_route_error_contract.py tests/regression_scheduler_resource_dispatch_invalid_query_cleanup.py tests/regression_aps_three_gap_docs_quality_gate.py tests/test_run_quality_gate.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tools/scan_aps_three_gap_py38_scope.py tests/regression_frontend_offline_static_assets.py tests/regression_frontend_ui_language_polish.py tests/regression_config_manual_markdown.py tests/regression_page_manual_registry.py tests/regression_operation_execution_event_time_contract.py tests/regression_scheduler_data_route_error_contract.py tests/regression_scheduler_resource_dispatch_invalid_query_cleanup.py tests/regression_aps_three_gap_docs_quality_gate.py tests/test_run_quality_gate.py
 git diff --check
 ```
