@@ -1,17 +1,8 @@
 """守护新合同：try_solve_bottleneck_batch_order 遇到 NaN/Inf 工时(setup_hours)必须抛 OrtoolsWarmstartError(含"有限数字")可见报错、而非静默跳过，且报错发生在建模前——不得有任何 NewIntervalVar 区间被建出来。"""
 
-import os
-import sys
-from datetime import datetime
+from __future__ import annotations
+
 from types import ModuleType, SimpleNamespace
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 class _FakeExpr:
@@ -74,7 +65,7 @@ class _FakeCpSolver:
         return 0
 
 
-def install_fake_cp_model() -> None:
+def _build_fake_ortools_modules():
     cp_model = ModuleType("ortools.sat.python.cp_model")
     cp_model.CpModel = _FakeCpModel
     cp_model.CpSolver = _FakeCpSolver
@@ -88,18 +79,22 @@ def install_fake_cp_model() -> None:
     sat.python = python
     ortools.sat = sat
 
-    sys.modules["ortools"] = ortools
-    sys.modules["ortools.sat"] = sat
-    sys.modules["ortools.sat.python"] = python
-    sys.modules["ortools.sat.python.cp_model"] = cp_model
+    return {
+        "ortools": ortools,
+        "ortools.sat": sat,
+        "ortools.sat.python": python,
+        "ortools.sat.python.cp_model": cp_model,
+    }
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_ortools_warmstart_skip_nonfinite(monkeypatch) -> None:
+    import sys
+    from datetime import datetime
 
-    install_fake_cp_model()
+    # 类态重置 + sys.modules 假 ortools 全家桶注入均交给 monkeypatch 自动还原（同进程不泄漏）
+    monkeypatch.setattr(_FakeCpModel, "interval_durations", [])
+    for name, mod in _build_fake_ortools_modules().items():
+        monkeypatch.setitem(sys.modules, name, mod)
 
     from core.algorithms.ortools_bottleneck import OrtoolsWarmstartError, try_solve_bottleneck_batch_order
 
@@ -174,9 +169,3 @@ def main() -> None:
         "非有限工时应在建模前报错，"
         f"实际 durations={_FakeCpModel.interval_durations!r}"
     )
-
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()

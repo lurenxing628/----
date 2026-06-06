@@ -10,36 +10,24 @@
 
 from __future__ import annotations
 
-import importlib
-import os
-import sys
-import tempfile
-from pathlib import Path
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
 
 def _assert(condition: bool, message: str) -> None:
     if not condition:
         raise RuntimeError(message)
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_shared_runtime_state(tmp_path, monkeypatch) -> None:
+    import importlib
+    import os
+    import sys
 
-    sys.modules.pop("web.bootstrap.launcher", None)
+    monkeypatch.delitem(sys.modules, "web.bootstrap.launcher", raising=False)
     launcher = importlib.import_module("web.bootstrap.launcher")
 
-    runtime_dir = Path(tempfile.mkdtemp(prefix="aps_runtime_shared_runtime_"))
-    shared_log_dir = Path(tempfile.mkdtemp(prefix="aps_runtime_shared_logs_"))
+    runtime_dir = tmp_path / "runtime"
+    runtime_dir.mkdir()
+    shared_log_dir = tmp_path / "shared_logs"
+    shared_log_dir.mkdir()
     db_path = runtime_dir / "db" / "aps.db"
     db_path.parent.mkdir(parents=True, exist_ok=True)
     db_path.write_text("", encoding="utf-8")
@@ -121,8 +109,3 @@ def main() -> None:
     )
     _assert(bool(reacquired), "清理后应允许重新获取运行时锁")
     launcher.release_runtime_lock(str(shared_log_dir))
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()

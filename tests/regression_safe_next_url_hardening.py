@@ -2,39 +2,6 @@
 
 from __future__ import annotations
 
-import importlib
-import os
-import sys
-import tempfile
-from pathlib import Path
-
-from flask import url_for
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("repo root not found")
-
-
-def _prepare_env(tmpdir: str) -> None:
-    os.environ["APS_ENV"] = "development"
-    os.environ["APS_DB_PATH"] = str(Path(tmpdir) / "aps_test.db")
-    os.environ["APS_LOG_DIR"] = str(Path(tmpdir) / "logs")
-    os.environ["APS_BACKUP_DIR"] = str(Path(tmpdir) / "backups")
-    os.environ["APS_EXCEL_TEMPLATE_DIR"] = str(Path(tmpdir) / "templates_excel")
-    os.environ["SECRET_KEY"] = "aps-safe-next-hardening"
-
-
-def _load_app(repo_root: str):
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-    sys.modules.pop("app", None)
-    app_mod = importlib.import_module("app")
-    return app_mod.create_app()
-
 
 def _assert_equal(actual, expected, message: str) -> None:
     if actual != expected:
@@ -46,11 +13,10 @@ def _assert_is_none(actual, message: str) -> None:
         raise RuntimeError(f"{message}: expected None, actual={actual!r}")
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    tmpdir = tempfile.mkdtemp(prefix="aps_safe_next_hardening_")
-    _prepare_env(tmpdir)
-    app = _load_app(repo_root)
+def test_safe_next_url_hardening(app_client) -> None:
+    import importlib
+
+    app = app_client.application
 
     system_utils = importlib.import_module("web.routes.system_utils")
     ui_mode = importlib.import_module("web.ui_mode")
@@ -123,9 +89,3 @@ def main() -> None:
             scheduler_config._resolve_manual_back_url(None),
             "manual back url should fold empty input to None",
         )
-
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()

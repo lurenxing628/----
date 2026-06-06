@@ -8,33 +8,15 @@
 
 from __future__ import annotations
 
-import os
-import sys
-import tempfile
-from pathlib import Path
 
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def main() -> None:
-    repo_root = find_repo_root()
-    tmpdir = tempfile.mkdtemp(prefix="aps_regression_tojson_")
-    os.environ["APS_ENV"] = "production"
-    os.environ["APS_DB_PATH"] = str(Path(tmpdir) / "aps.db")
-    os.environ["APS_LOG_DIR"] = str(Path(tmpdir) / "logs")
-    os.environ["APS_BACKUP_DIR"] = str(Path(tmpdir) / "backups")
-    os.environ["APS_EXCEL_TEMPLATE_DIR"] = str(Path(tmpdir) / "templates_excel")
-
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-
+def test_tojson_zh_autoescape(tmp_path, monkeypatch) -> None:
     import importlib
+
+    monkeypatch.setenv("APS_ENV", "production")
+    monkeypatch.setenv("APS_DB_PATH", str(tmp_path / "aps.db"))
+    monkeypatch.setenv("APS_LOG_DIR", str(tmp_path / "logs"))
+    monkeypatch.setenv("APS_BACKUP_DIR", str(tmp_path / "backups"))
+    monkeypatch.setenv("APS_EXCEL_TEMPLATE_DIR", str(tmp_path / "templates_excel"))
 
     app_mod = importlib.import_module("app")
     app = app_mod.create_app()
@@ -62,10 +44,3 @@ def main() -> None:
         raise RuntimeError("autoescape 未生效：渲染结果仍包含 <script> 标签")
     if "&lt;script&gt;" not in rendered:
         raise RuntimeError("autoescape 未按预期转义 <script>（缺少 &lt;script&gt;）")
-
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()
-
