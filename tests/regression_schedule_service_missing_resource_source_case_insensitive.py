@@ -1,31 +1,10 @@
 """回归测试：ScheduleService.run_schedule 判定"内部工序缺资源"时，对 op.source 须大小写与首尾空白不敏感——source=" INTERNAL  " 的缺设备/人员工序仍应被识别为内部并把其 op_id 计入传给 persist_schedule 的 missing_internal_resource_op_ids。"""
 
-import os
-import sqlite3
-import sys
 from datetime import datetime
 from types import SimpleNamespace
 
 
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("repo root not found")
-
-
-def load_schema(conn: sqlite3.Connection, repo_root: str) -> None:
-    schema_path = os.path.join(repo_root, "schema.sql")
-    with open(schema_path, "r", encoding="utf-8") as f:
-        conn.executescript(f.read())
-    conn.commit()
-
-
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_schedule_service_missing_resource_source_case_insensitive(schema_conn) -> None:
 
     import core.services.scheduler.schedule_service as schedule_service_mod
     from core.services.scheduler.run.schedule_optimizer import OptimizationOutcome
@@ -110,10 +89,7 @@ def main() -> None:
         schedule_service_mod.build_result_summary = _stub_build_result_summary
         schedule_service_mod.persist_schedule = _stub_persist_schedule
 
-        conn = sqlite3.connect(":memory:", check_same_thread=False)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA foreign_keys = ON;")
-        load_schema(conn, repo_root)
+        conn = schema_conn
 
         svc = ScheduleService(conn)
         svc._get_batch_or_raise = lambda bid: SimpleNamespace(  # type: ignore[assignment]
@@ -161,8 +137,4 @@ def main() -> None:
         for attr_name, original in patched_attrs.items():
             setattr(schedule_service_mod, attr_name, original)
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

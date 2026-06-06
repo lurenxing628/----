@@ -1,8 +1,9 @@
-"""pytest 收集插件：把 tests/ 下「只有 main() 没有 def test_」的 regression_*.py 收集为独立用例，经子进程跑 main_style_regression_runner.py 执行；按 test_debt_registry 把登记的债务节点统一打上 strict xfail；并按 tools.test_registry 的门禁必跑清单自动给对应文件的用例打 `required` marker（人用入口：pytest -m required）。"""
+"""pytest 收集插件与共享 fixture：把 tests/ 下「只有 main() 没有 def test_」的 regression_*.py 收集为独立用例，经子进程跑 main_style_regression_runner.py 执行；按 test_debt_registry 把登记的债务节点统一打上 strict xfail；按 tools.test_registry 的门禁必跑清单自动给对应文件的用例打 `required` marker（人用入口：pytest -m required）；并提供 DB/app 共享 fixture（schema_conn/mem_conn/db_path/db_env/app_client）收口回归测试的建库样板。"""
 
 from __future__ import annotations
 
 import re
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -14,8 +15,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from core.infrastructure.database import ensure_schema  # noqa: E402,I001
 from tools.test_debt_registry import active_xfail_entries_by_nodeid  # noqa: E402,I001
 from tools.test_registry import iter_required_tests  # noqa: E402
+
+SCHEMA_PATH = REPO_ROOT / "schema.sql"
 
 
 _MAIN_DEF_RE = re.compile(r"(?m)^\s*def\s+main\s*\(")
@@ -114,3 +118,61 @@ class RegressionMainItem(pytest.Item):
     def reportinfo(self):
         path = _node_path(self.parent)
         return path, 0, f"regression-main: {path.name}"
+
+
+# ---- 共享 DB/app fixture ----
+# 设计依据（最根因路径）：全仓唯一建表入口 ensure_schema（空库→executescript(schema.sql)
+# →快进 SchemaVersion=CURRENT，不进迁移、不撞 MigrationContractError，与生产 create_app 同路）；
+# 唯一连接工厂 get_connection（FK ON + Row）。app 必须经 importlib 延迟导入，
+# 保证 APS_* 环境变量先于 create_app 生效（test_app_factory_runtime_env_refresh 守护的契约）。
+
+
+@pytest.fixture
+def schema_conn():
+    """:memory: 连接 + 全量 schema.sql（FK ON + Row，对齐生产连接行为）。"""
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON;")
+    conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+    conn.commit()
+    yield conn
+    conn.close()
+
+
+@pytest.fixture
+def mem_conn():
+    """空 :memory: 连接（FK ON + Row），建表交给测试自己（手写最小表场景）。"""
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON;")
+    yield conn
+    conn.close()
+
+
+@pytest.fixture
+def db_path(tmp_path):
+    """临时文件库路径（str），经生产 ensure_schema 建好全部表并满足迁移契约。"""
+    path = tmp_path / "aps_test.db"
+    ensure_schema(str(path), logger=None, schema_path=str(SCHEMA_PATH), backup_dir=None)
+    return str(path)
+
+
+@pytest.fixture
+def db_env(db_path, tmp_path, monkeypatch):
+    """在 db_path 之上设好 APS_* 五件套环境（monkeypatch 自动还原），返回 db_path。"""
+    for name, env in (("logs", "APS_LOG_DIR"), ("backups", "APS_BACKUP_DIR"), ("templates_excel", "APS_EXCEL_TEMPLATE_DIR")):
+        directory = tmp_path / name
+        directory.mkdir()
+        monkeypatch.setenv(env, str(directory))
+    monkeypatch.setenv("APS_ENV", "development")
+    monkeypatch.setenv("APS_DB_PATH", db_path)
+    return db_path
+
+
+@pytest.fixture
+def app_client(db_env):
+    """create_app().test_client()，环境与库已由 db_env 就位（env 先于 create_app）。"""
+    import importlib
+
+    app = importlib.import_module("app").create_app()
+    return app.test_client()

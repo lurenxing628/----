@@ -2,30 +2,23 @@
 
 import os
 import sqlite3
-import sys
 from types import SimpleNamespace
 
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
+SCHEMA_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "schema.sql")
 
 
-def load_schema(conn: sqlite3.Connection, repo_root: str) -> None:
-    schema_path = os.path.join(repo_root, "schema.sql")
+def load_schema(conn: sqlite3.Connection) -> None:
+    schema_path = SCHEMA_PATH
     with open(schema_path, "r", encoding="utf-8") as f:
         conn.executescript(f.read())
     conn.commit()
 
 
-def _make_conn(repo_root: str) -> sqlite3.Connection:
+def _make_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:", check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
-    load_schema(conn, repo_root)
+    load_schema(conn)
     return conn
 
 
@@ -82,7 +75,6 @@ def _reschedulable_ops(batch_id: str):
 
 
 def _run_case(
-    repo_root: str,
     ScheduleService,
     ValidationError,
     *,
@@ -90,7 +82,7 @@ def _run_case(
     simulate: bool,
     expected_message: str,
 ) -> None:
-    conn = _make_conn(repo_root)
+    conn = _make_conn()
     try:
         svc = ScheduleService(conn)
         svc._get_batch_or_raise = lambda bid: _batch_stub(bid, "pending")  # type: ignore[assignment]
@@ -129,10 +121,7 @@ def _run_case(
             pass
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_schedule_service_all_frozen_short_circuit() -> None:
 
     import core.services.scheduler.schedule_service as schedule_service_mod
     from core.infrastructure.errors import ValidationError
@@ -208,7 +197,6 @@ def main() -> None:
     try:
         captured.clear()
         _run_case(
-            repo_root,
             ScheduleService,
             ValidationError,
             captured=captured,
@@ -218,7 +206,6 @@ def main() -> None:
 
         captured.clear()
         _run_case(
-            repo_root,
             ScheduleService,
             ValidationError,
             captured=captured,
@@ -234,8 +221,4 @@ def main() -> None:
         schedule_service_mod.optimize_schedule = original_optimize_schedule
         schedule_service_mod.persist_schedule = original_persist_schedule
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

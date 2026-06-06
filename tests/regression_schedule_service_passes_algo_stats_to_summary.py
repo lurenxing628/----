@@ -1,40 +1,11 @@
 """回归测试：ScheduleService.run_schedule 应把 optimize_schedule 返回的 algo_stats（fallback_counts、param_fallbacks）原样透传到 build_result_summary 的 ctx，并把 strict_mode 透传给 optimize_schedule；通过桩替换 schedule_service 模块级协作函数来校验透传不丢数。"""
 
-import os
-import sqlite3
-import sys
 from datetime import datetime
 from types import SimpleNamespace
 from typing import Any, cast
 
 
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def load_schema(conn: sqlite3.Connection, repo_root: str) -> None:
-    schema_path = os.path.join(repo_root, "schema.sql")
-    with open(schema_path, "r", encoding="utf-8") as f:
-        conn.executescript(f.read())
-    conn.commit()
-
-
-def _make_conn(repo_root: str) -> sqlite3.Connection:
-    conn = sqlite3.connect(":memory:", check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON;")
-    load_schema(conn, repo_root)
-    return conn
-
-
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_schedule_service_passes_algo_stats_to_summary(schema_conn) -> None:
 
     import core.services.scheduler.schedule_service as schedule_service_mod
     from core.services.common.build_outcome import BuildOutcome
@@ -144,7 +115,7 @@ def main() -> None:
     schedule_service_mod.build_result_summary = _stub_build_result_summary
     schedule_service_mod.persist_schedule = lambda *_args, **_kwargs: None
 
-    conn = _make_conn(repo_root)
+    conn = schema_conn
     try:
         ConfigService(conn, logger=None, op_logger=None).restore_default()
         svc = ScheduleService(conn)
@@ -207,8 +178,4 @@ def main() -> None:
     )
     assert captured.get("optimize_strict_mode") is True, f"ScheduleService 未向 optimize_schedule 透传 strict_mode：{captured!r}"
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

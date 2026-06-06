@@ -1,34 +1,16 @@
 """回归测试：collect_schedule_run_input 编排契约——去重批次ID、识别 run_label/可重排工序集/缺内部资源工序/冻结工序、prev_version 与 optimizer_seed_version=prev+1，并按序调用 snapshot/build_algo_operations/freeze_seed/load_downtimes/build_resource_pool/extend_downtime 各注入函数，正确串接 strict_mode、累积 algo_warnings 与各阶段 meta、合并 downtime_map。"""
 
-import os
-import sqlite3
-import sys
 from datetime import datetime
 from types import SimpleNamespace
 from typing import Any, Dict, List
 
 
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-
+def test_schedule_input_collector_contract(schema_conn) -> None:
     from core.services.common.build_outcome import BuildOutcome
     from core.services.scheduler.schedule_input_collector import collect_schedule_run_input
     from core.services.scheduler.schedule_service import ScheduleService
 
-    conn = sqlite3.connect(":memory:", check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    with open(os.path.join(repo_root, "schema.sql"), "r", encoding="utf-8") as fh:
-        conn.executescript(fh.read())
+    conn = schema_conn
     conn.executescript(
         """
         INSERT INTO Parts(part_no, part_name) VALUES ('P001', '测试零件');
@@ -257,9 +239,3 @@ def main() -> None:
     assert captured.get("algo_return_outcome") is True, captured
     assert captured.get("downtime_warnings_before") == ["freeze warning"], captured
     assert captured.get("extend_warnings_before") == ["freeze warning", "pool warning"], captured
-
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()

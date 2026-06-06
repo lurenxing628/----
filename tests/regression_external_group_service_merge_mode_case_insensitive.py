@@ -1,36 +1,11 @@
 """回归测试：ExternalGroupService.set_merge_mode 接受大小写混用的 merge_mode（如 "MERGED"），将其规范化为小写 "merged" 并落库到 ExternalGroups；且 merged 模式下组内 PartOperations 的 ext_days 必须被清空为 NULL。"""
 
-import os
-import sqlite3
-import sys
 
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def load_schema(conn: sqlite3.Connection, repo_root: str) -> None:
-    schema_path = os.path.join(repo_root, "schema.sql")
-    with open(schema_path, "r", encoding="utf-8") as f:
-        conn.executescript(f.read())
-    conn.commit()
-
-
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_external_group_service_merge_mode_case_insensitive(schema_conn) -> None:
 
     from core.services.process.external_group_service import ExternalGroupService
 
-    conn = sqlite3.connect(":memory:", check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON;")
-    load_schema(conn, repo_root)
+    conn = schema_conn
 
     # 准备最小数据：Parts + PartOperations + ExternalGroups
     conn.execute(
@@ -76,8 +51,4 @@ def main() -> None:
     for r in rows:
         assert r["ext_days"] is None, f"merged 模式下 ext_days 应为 NULL：seq={r['seq']} ext_days={r['ext_days']!r}"
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

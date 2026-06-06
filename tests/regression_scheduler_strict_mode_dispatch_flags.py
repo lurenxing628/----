@@ -1,23 +1,5 @@
 """回归测试：strict_mode 下排产配置的 dispatch 相关字段须以正确 field 名抛 ValidationError——build_schedule_config_snapshot 对非法 dispatch_mode、normalize_preset_snapshot 对非法 dispatch_rule、resolve_schedule_params 对空白 sort_strategy/dispatch_mode/dispatch_rule/auto_assign_enabled 及非法 auto_assign_enabled、以及 ConfigService.get_snapshot(strict_mode=True) 对空白 dispatch_mode/auto_assign_enabled，都须报对应字段名。"""
 
-import os
-import sqlite3
-import sys
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def load_schema(conn: sqlite3.Connection, repo_root: str) -> None:
-    with open(os.path.join(repo_root, "schema.sql"), "r", encoding="utf-8") as f:
-        conn.executescript(f.read())
-    conn.commit()
-
 
 class _StubRepo:
     def __init__(self, values):
@@ -25,7 +7,6 @@ class _StubRepo:
 
     def get_value(self, key, default=None):
         return self._values.get(key, default)
-
 
 
 def _default_snapshot_kwargs():
@@ -56,7 +37,6 @@ def _default_snapshot_kwargs():
     }
 
 
-
 def _expect_validation(label, func, field):
     from core.infrastructure.errors import ValidationError
 
@@ -68,11 +48,7 @@ def _expect_validation(label, func, field):
     raise AssertionError(f"{label} 应抛出 ValidationError(field={field!r})")
 
 
-
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_scheduler_strict_mode_dispatch_flags(schema_conn) -> None:
 
     from core.algorithms.greedy.schedule_params import resolve_schedule_params
     from core.services.scheduler.config_service import ConfigService
@@ -209,10 +185,7 @@ def main() -> None:
         "auto_assign_enabled",
     )
 
-    conn = sqlite3.connect(":memory:", check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON;")
-    load_schema(conn, repo_root)
+    conn = schema_conn
 
     try:
         cfg = ConfigService(conn, logger=None, op_logger=None)
@@ -235,8 +208,4 @@ def main() -> None:
     finally:
         conn.close()
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

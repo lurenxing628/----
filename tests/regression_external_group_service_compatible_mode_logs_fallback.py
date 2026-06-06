@@ -1,37 +1,14 @@
 """回归测试：ExternalGroupService.set_merge_mode 在非严格模式下遇到空/0/非法的 per_op_days 时，按 1.0 天兜底写入 ext_days，并分两路输出——内部 logger.warning 保留 raw=/ext_days/compatible mode fallback 便于诊断，用户提示则脱去技术术语只说本次先按 1 天记录、请尽快补成真实周期。"""
 
-import os
-import sqlite3
-import sys
 from unittest.mock import MagicMock
 
 
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def load_schema(conn: sqlite3.Connection, repo_root: str) -> None:
-    with open(os.path.join(repo_root, "schema.sql"), "r", encoding="utf-8") as f:
-        conn.executescript(f.read())
-    conn.commit()
-
-
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_external_group_service_compatible_mode_logs_fallback(schema_conn) -> None:
 
     from core.services.process.external_group_service import ExternalGroupService
 
-    conn = sqlite3.connect(":memory:", check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON;")
+    conn = schema_conn
     try:
-        load_schema(conn, repo_root)
         conn.execute(
             "INSERT INTO Parts (part_no, part_name, route_raw, route_parsed) VALUES (?, ?, ?, ?)",
             ("P001", "零件", "", "yes"),
@@ -97,10 +74,7 @@ def main() -> None:
             assert "本次会先按 1 天记录" in user_msg, f"用户提示未说明处理方式：{user_msg!r}"
             assert "请尽快补成真实周期" in user_msg, f"用户提示未告诉用户下一步该补什么：{user_msg!r}"
 
-        print("OK")
     finally:
         conn.close()
 
 
-if __name__ == "__main__":
-    main()

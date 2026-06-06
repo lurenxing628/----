@@ -1,8 +1,5 @@
 """回归测试：排产策略类字段的大小写归一化贯穿全链路——set_objective 写入与读回都把 MIN_WEIGHTED_TARDINESS 归一为小写，normalize_preset_snapshot 与 build_schedule_config_snapshot 把脏 DB / preset 里带大小写和空格的 sort_strategy/dispatch_mode/dispatch_rule/algo_mode/objective 归一为标准小写值，且 viewmodel 的 objective_key/comparison_metric 能识别大写 objective。"""
 
-import os
-import sqlite3
-import sys
 
 VALID_STRATEGIES = ("priority_first", "due_date_first", "weighted", "fifo")
 VALID_DISPATCH_MODES = ("batch_order", "sgs")
@@ -16,20 +13,6 @@ VALID_ALGO_MODES_MIXED = ("GREEDY", "Improve")
 VALID_OBJECTIVES_MIXED = ("MIN_OVERDUE", "min_tardiness", "MIN_WEIGHTED_TARDINESS", "Min_Changeover")
 
 
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def load_schema(conn: sqlite3.Connection, repo_root: str) -> None:
-    with open(os.path.join(repo_root, "schema.sql"), "r", encoding="utf-8") as f:
-        conn.executescript(f.read())
-    conn.commit()
-
-
 class FakeRepo:
     def __init__(self, values):
         self.values = dict(values or {})
@@ -38,10 +21,7 @@ class FakeRepo:
         return self.values.get(key, default)
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_objective_case_normalization(schema_conn) -> None:
 
     from core.services.scheduler.config_service import ConfigService
     from core.services.scheduler.config_snapshot import ScheduleConfigSnapshot, build_schedule_config_snapshot
@@ -57,10 +37,7 @@ def main() -> None:
         == "weighted_tardiness_hours"
     )
 
-    conn = sqlite3.connect(":memory:", check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON;")
-    load_schema(conn, repo_root)
+    conn = schema_conn
 
     cfg = ConfigService(conn)
     cfg.ensure_defaults()
@@ -202,8 +179,5 @@ def main() -> None:
     )
 
     conn.close()
-    print("OK")
 
 
-if __name__ == "__main__":
-    main()

@@ -1,31 +1,14 @@
 """回归测试：PartService._save_template_no_tx 保存外协工序时若 default_days 为 0（无真实周期），ext_days 应回退为 1.0，ParseResult 状态降级为 PARTIAL，并透出"本次会先按 1 天记录，请补成真实周期"的 warning。"""
 
-import os
 import sqlite3
-import sys
 
 
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-
+def test_part_service_external_default_days_fallback(schema_conn) -> None:
     from core.services.process.part_service import PartService
     from core.services.process.route_parser import ExternalGroup, ParsedOperation, ParseResult, ParseStatus
 
-    schema_sql = open(os.path.join(repo_root, "schema.sql"), "r", encoding="utf-8").read()
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = schema_conn
     try:
-        conn.executescript(schema_sql)
         conn.execute(
             "INSERT INTO Parts (part_no, part_name, route_raw, route_parsed, remark) VALUES (?, ?, ?, ?, ?)",
             ("P001", "外协件", "10表处理", "yes", None),
@@ -79,6 +62,3 @@ def main() -> None:
         except Exception:
             pass
 
-
-if __name__ == "__main__":
-    main()

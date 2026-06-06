@@ -2,25 +2,7 @@
 
 from __future__ import annotations
 
-import os
-import sqlite3
-import sys
 from typing import Any, Dict
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def load_schema(conn: sqlite3.Connection, repo_root: str) -> None:
-    schema_path = os.path.join(repo_root, "schema.sql")
-    with open(schema_path, "r", encoding="utf-8") as f:
-        conn.executescript(f.read())
-    conn.commit()
 
 
 def _assert_float_close(got: Any, expected: float, *, label: str) -> None:
@@ -40,18 +22,12 @@ def _run_case(validate_row, row: Dict[str, Any], *, expected_hours: float) -> No
     _assert_float_close(r.get("可用工时"), expected_hours, label=f"可用工时({r.get('班次开始')}->{r.get('班次结束')})")
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_excel_operator_calendar_cross_midnight(schema_conn) -> None:
 
     from core.services.common.excel_validators import get_operator_calendar_row_validate_and_normalize
     from data.repositories import OperatorRepository
 
-    conn = sqlite3.connect(":memory:", check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON;")
-    load_schema(conn, repo_root)
+    conn = schema_conn
 
     try:
         conn.execute(
@@ -115,9 +91,4 @@ def main() -> None:
         except Exception:
             pass
 
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()
 

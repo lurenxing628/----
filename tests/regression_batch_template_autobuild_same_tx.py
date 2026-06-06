@@ -1,37 +1,13 @@
 """回归测试：BatchService.create_batch_from_template 自动补建零件工艺模板与批次工序时，若因 BatchOperations.op_code 唯一约束冲突失败，必须整体回滚——不残留批次头、批次工序、自动补建的 PartOperations 模板，且 Parts.route_parsed 不被提前写成 yes。"""
 
-import os
-import sqlite3
-import sys
 
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def load_schema(conn: sqlite3.Connection, repo_root: str) -> None:
-    with open(os.path.join(repo_root, "schema.sql"), "r", encoding="utf-8") as f:
-        conn.executescript(f.read())
-    conn.commit()
-
-
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_batch_template_autobuild_same_tx(schema_conn) -> None:
 
     from core.infrastructure.errors import AppError, ErrorCode
     from core.services.scheduler.batch_service import BatchService
 
-    conn = sqlite3.connect(":memory:", check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON;")
+    conn = schema_conn
     try:
-        load_schema(conn, repo_root)
         conn.execute(
             "INSERT INTO OpTypes (op_type_id, name, category) VALUES (?, ?, ?)",
             ("OT_IN", "数铣", "internal"),
@@ -90,10 +66,7 @@ def main() -> None:
         if part_row is None or str(part_row["route_parsed"] or "").strip() != "no":
             raise RuntimeError(f"失败后 route_parsed 不应被提前写成 yes：{dict(part_row) if part_row else None!r}")
 
-        print("OK")
     finally:
         conn.close()
 
 
-if __name__ == "__main__":
-    main()

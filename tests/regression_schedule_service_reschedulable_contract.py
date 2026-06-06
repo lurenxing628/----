@@ -1,34 +1,8 @@
 """回归测试：ScheduleService.run_schedule 的可重排范围收口契约——completed/skipped 工序不进入算法输入、freeze seed 与持久化结果集，total_ops 只统计可重排工序；优化器结果若逃出可重排范围则抛 ValidationError（out_of_scope_schedule_rows）且不落库；completed/cancelled 批次在服务层 fail-fast（「不允许排产」）不再读取工序。"""
 
-import os
-import sqlite3
-import sys
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from typing import Any, cast
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def load_schema(conn: sqlite3.Connection, repo_root: str) -> None:
-    schema_path = os.path.join(repo_root, "schema.sql")
-    with open(schema_path, "r", encoding="utf-8") as f:
-        conn.executescript(f.read())
-    conn.commit()
-
-
-def _make_conn(repo_root: str) -> sqlite3.Connection:
-    conn = sqlite3.connect(":memory:", check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON;")
-    load_schema(conn, repo_root)
-    return conn
 
 
 def _patch_schedule_module(schedule_service_mod, captured):
@@ -164,10 +138,7 @@ def _batch_stub(batch_id: str, status: str) -> SimpleNamespace:
     )
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_schedule_service_reschedulable_contract(schema_conn) -> None:
 
     import core.services.scheduler.schedule_service as schedule_service_mod
     from core.infrastructure.errors import ValidationError
@@ -177,7 +148,7 @@ def main() -> None:
     _patch_schedule_module(schedule_service_mod, captured)
 
     # 场景 1：completed/skipped 不进入算法输入、freeze seed 与结果集
-    conn1 = _make_conn(repo_root)
+    conn1 = schema_conn
     try:
         svc1 = ScheduleService(conn1)
         ops_by_batch = {
@@ -332,8 +303,4 @@ def main() -> None:
         except Exception:
             pass
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

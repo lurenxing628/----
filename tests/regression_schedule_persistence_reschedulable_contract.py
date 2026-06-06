@@ -1,45 +1,21 @@
 """回归测试：守护 build_validated_schedule_payload 的可重排范围契约——排程结果含 allowed_op_ids 之外的工序时抛 ValidationError（out_of_scope_schedule_rows，报越界条数与样本 op_id）而非静默丢弃；只持久化范围内工序，并校验 persist_schedule 后 Schedule 行、各工序/批次 status 与 ScheduleHistory 版本符合预期。"""
 
-import os
-import sqlite3
-import sys
 from datetime import datetime, timedelta
 from types import SimpleNamespace
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("repo root not found")
-
-
-def load_schema(conn: sqlite3.Connection, repo_root: str) -> None:
-    schema_path = os.path.join(repo_root, "schema.sql")
-    with open(schema_path, "r", encoding="utf-8") as f:
-        conn.executescript(f.read())
-    conn.commit()
 
 
 def _make_dt(hours: int) -> datetime:
     return datetime(2026, 1, 1, 8, 0, 0) + timedelta(hours=hours)
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_schedule_persistence_reschedulable_contract(schema_conn) -> None:
 
     from core.infrastructure.errors import ValidationError
     from core.services.scheduler.run.schedule_persistence import build_validated_schedule_payload
     from core.services.scheduler.schedule_persistence import persist_schedule
     from core.services.scheduler.schedule_service import ScheduleService
 
-    conn = sqlite3.connect(":memory:", check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON;")
-    load_schema(conn, repo_root)
+    conn = schema_conn
 
     try:
         conn.execute("INSERT INTO Parts (part_no, part_name, route_parsed) VALUES (?, ?, ?)", ("P001", "part", "yes"))
@@ -188,8 +164,4 @@ def main() -> None:
         except Exception:
             pass
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

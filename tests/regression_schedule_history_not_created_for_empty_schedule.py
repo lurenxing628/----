@@ -1,23 +1,6 @@
 """回归测试：当所选批次只含 completed/skipped 工序、没有可重排工序时，ScheduleService.run_schedule 须抛 ValidationError(「所选批次没有可重排工序，本次未执行排产。」)且数据库快照前后完全不变——不写 ScheduleHistory/Schedule/排产日志、不推进 latest_version、不占用 ScheduleVersionSeq。"""
 
-import os
 import sqlite3
-import sys
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def load_schema(conn: sqlite3.Connection, repo_root: str) -> None:
-    schema_path = os.path.join(repo_root, "schema.sql")
-    with open(schema_path, "r", encoding="utf-8") as f:
-        conn.executescript(f.read())
-    conn.commit()
 
 
 def _snapshot(conn: sqlite3.Connection) -> dict:
@@ -39,19 +22,13 @@ def _snapshot(conn: sqlite3.Connection) -> dict:
     }
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_schedule_history_not_created_for_empty_schedule(schema_conn) -> None:
 
     from core.infrastructure.errors import ValidationError
     from core.infrastructure.logging import OperationLogger
     from core.services.scheduler.schedule_service import ScheduleService
 
-    conn = sqlite3.connect(":memory:", check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON;")
-    load_schema(conn, repo_root)
+    conn = schema_conn
 
     try:
         conn.execute("INSERT INTO Parts (part_no, part_name, route_parsed) VALUES (?, ?, ?)", ("P001", "测试零件", "yes"))
@@ -103,8 +80,4 @@ def main() -> None:
         except Exception:
             pass
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()
