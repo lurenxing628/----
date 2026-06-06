@@ -1,19 +1,8 @@
 """回归测试：七类 Excel「预览→确认」入口（工作日历/人员日历/批次/工序工时/设备/供应商/人员设备关联）在预览与确认之间相关主数据漂移时，confirm 一律拒绝并提示「请重新上传 Excel 并检查」，不按陈旧 preview_baseline 落库。"""
 
 import io
-import os
 import re
-import sys
-import tempfile
 from html import unescape
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 def _make_xlsx_bytes(headers, rows):
@@ -95,35 +84,10 @@ def _assert_need_repreview(case_name: str, html: str) -> None:
         raise RuntimeError(f"{case_name} 未提示“请重新上传 Excel 并检查”")
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_excel_preview_confirm_extra_state_guard(app_client, db_path) -> None:
+    from core.infrastructure.database import get_connection
 
-    tmpdir = tempfile.mkdtemp(prefix="aps_regression_preview_confirm_extra_state_")
-    test_db = os.path.join(tmpdir, "aps_test.db")
-    test_logs = os.path.join(tmpdir, "logs")
-    test_backups = os.path.join(tmpdir, "backups")
-    test_templates = os.path.join(tmpdir, "templates_excel")
-    os.makedirs(test_logs, exist_ok=True)
-    os.makedirs(test_backups, exist_ok=True)
-    os.makedirs(test_templates, exist_ok=True)
-
-    os.environ["APS_ENV"] = "development"
-    os.environ["APS_DB_PATH"] = test_db
-    os.environ["APS_LOG_DIR"] = test_logs
-    os.environ["APS_BACKUP_DIR"] = test_backups
-    os.environ["APS_EXCEL_TEMPLATE_DIR"] = test_templates
-
-    from core.infrastructure.database import ensure_schema, get_connection
-
-    ensure_schema(test_db, logger=None, schema_path=os.path.join(repo_root, "schema.sql"), backup_dir=None)
-
-    import importlib
-
-    app_mod = importlib.import_module("app")
-    app = app_mod.create_app()
-    client = app.test_client()
+    client = app_client
 
     from core.services.equipment.machine_service import MachineService
     from core.services.personnel.operator_service import OperatorService
@@ -132,7 +96,7 @@ def main() -> None:
     from core.services.process.part_service import PartService
     from core.services.scheduler.config_service import ConfigService
 
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
     try:
         op_type_svc = OpTypeService(conn)
         team_svc = ResourceTeamService(conn)
@@ -162,7 +126,7 @@ def main() -> None:
         [{"日期": "2026-04-01", "类型": "holiday", "可用工时": 0, "效率": None, "允许普通件": "no", "允许急件": "no", "说明": "cfg-drift"}],
         "calendar.xlsx",
     )
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
     try:
         ConfigService(conn).set_holiday_default_efficiency(0.6)
     finally:
@@ -199,7 +163,7 @@ def main() -> None:
         ],
         "operator_calendar.xlsx",
     )
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
     try:
         OperatorService(conn).delete("OP_CAL")
     finally:
@@ -224,7 +188,7 @@ def main() -> None:
         "batches.xlsx",
         extra={"auto_generate_ops": "1"},
     )
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
     try:
         conn.execute("UPDATE PartOperations SET setup_hours = ? WHERE part_no = ? AND seq = ?", (2.5, "P_BATCH", 5))
         conn.commit()
@@ -250,7 +214,7 @@ def main() -> None:
         [{"图号": "P_HOURS", "工序": 5, "换型时间(h)": 1.0, "单件工时(h)": 0.5}],
         "part_operation_hours.xlsx",
     )
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
     try:
         conn.execute("UPDATE PartOperations SET source = ? WHERE part_no = ? AND seq = ?", ("external", "P_HOURS", 5))
         conn.commit()
@@ -275,7 +239,7 @@ def main() -> None:
         [{"设备编号": "MC_ADV", "设备名称": "测试设备", "工种": "机加工", "班组": "一班", "状态": "active"}],
         "machines.xlsx",
     )
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
     try:
         ResourceTeamService(conn).update("TM001", name="二班")
     finally:
@@ -299,7 +263,7 @@ def main() -> None:
         [{"供应商ID": "SUP_ADV", "名称": "供应商A", "对应工种": "外协工种", "默认周期": 3.0, "状态": "active", "备注": "supplier-drift"}],
         "suppliers.xlsx",
     )
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
     try:
         OpTypeService(conn).update("OT_SUP", name="改名工种")
     finally:
@@ -323,7 +287,7 @@ def main() -> None:
         [{"工号": "OP_LINK", "设备编号": "MC_LINK", "技能等级": "normal", "主操设备": "yes"}],
         "personnel_links.xlsx",
     )
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
     try:
         MachineService(conn).delete("MC_LINK")
     finally:
@@ -337,9 +301,3 @@ def main() -> None:
         preview["preview_baseline"],
     )
     _assert_need_repreview("人员设备关联主数据漂移", html)
-
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()

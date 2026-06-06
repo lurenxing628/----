@@ -1,18 +1,7 @@
 """回归测试：经 /process/parts/<part>/reparse 重解析工艺路线时，已有内部工序(seq=5)的换型/单件工时(setup_hours/unit_hours)原样保留，新增工序(seq=15)工时回落默认 0，工序归属仍判为 internal。"""
 
 import io
-import os
 import re
-import sys
-import tempfile
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 def _make_xlsx_bytes(headers, rows):
@@ -87,35 +76,10 @@ def _preview_confirm_excel(client, *, preview_url: str, confirm_url: str, header
     _assert_status(f"{filename} confirm", r, 200)
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    tmpdir = tempfile.mkdtemp(prefix="aps_regression_reparse_preserve_hours_")
-    test_db = os.path.join(tmpdir, "aps_test.db")
-    test_logs = os.path.join(tmpdir, "logs")
-    test_backups = os.path.join(tmpdir, "backups")
-    test_templates = os.path.join(tmpdir, "templates_excel")
-    os.makedirs(test_logs, exist_ok=True)
-    os.makedirs(test_backups, exist_ok=True)
-    os.makedirs(test_templates, exist_ok=True)
+def test_process_reparse_preserve_internal_hours(app_client, db_path) -> None:
+    from core.infrastructure.database import get_connection
 
-    os.environ["APS_ENV"] = "development"
-    os.environ["APS_DB_PATH"] = test_db
-    os.environ["APS_LOG_DIR"] = test_logs
-    os.environ["APS_BACKUP_DIR"] = test_backups
-    os.environ["APS_EXCEL_TEMPLATE_DIR"] = test_templates
-
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-
-    from core.infrastructure.database import ensure_schema, get_connection
-
-    ensure_schema(test_db, logger=None, schema_path=os.path.join(repo_root, "schema.sql"))
-
-    import importlib
-
-    app_mod = importlib.import_module("app")
-    app = app_mod.create_app()
-    client = app.test_client()
+    client = app_client
 
     # 1) 导入工种（内部+外部）
     _preview_confirm_excel(
@@ -150,7 +114,7 @@ def main() -> None:
         filename="hours_v1.xlsx",
     )
 
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
     try:
         row_before = conn.execute(
             "SELECT source, setup_hours, unit_hours FROM PartOperations WHERE part_no=? AND seq=?",
@@ -173,7 +137,7 @@ def main() -> None:
     )
     _assert_status("reparse", r, 200)
 
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
     try:
         row_5 = conn.execute(
             "SELECT source, setup_hours, unit_hours FROM PartOperations WHERE part_no=? AND seq=?",
@@ -204,10 +168,4 @@ def main() -> None:
             )
     finally:
         conn.close()
-
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()
 

@@ -1,19 +1,8 @@
 """回归测试：工艺路线 Excel 预览(/process/excel/routes/preview)到确认(/confirm)之间任何外部状态漂移都应被 preview_baseline 拦截——strict_mode 由 yes 改 no、工种改名、供应商置 inactive、供应商默认周期变化时确认都提示「请重新上传 Excel 并检查」且不写入 Parts。"""
 
 import io
-import os
 import re
-import sys
-import tempfile
 from html import unescape
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 def _make_xlsx_bytes(headers, rows):
@@ -116,10 +105,10 @@ def _assert_no_repreview(case_name: str, html: str) -> None:
 
 
 
-def _assert_part_absent(test_db: str, part_no: str, case_name: str) -> None:
+def _assert_part_absent(db_path: str, part_no: str, case_name: str) -> None:
     from core.infrastructure.database import get_connection
 
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
     try:
         row = conn.execute("SELECT COUNT(1) AS cnt FROM Parts WHERE part_no=?", (part_no,)).fetchone()
         if row is None or int(row["cnt"] or 0) != 0:
@@ -128,10 +117,10 @@ def _assert_part_absent(test_db: str, part_no: str, case_name: str) -> None:
         conn.close()
 
 
-def _assert_part_present(test_db: str, part_no: str, case_name: str) -> None:
+def _assert_part_present(db_path: str, part_no: str, case_name: str) -> None:
     from core.infrastructure.database import get_connection
 
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
     try:
         row = conn.execute("SELECT COUNT(1) AS cnt FROM Parts WHERE part_no=?", (part_no,)).fetchone()
         if row is None or int(row["cnt"] or 0) != 1:
@@ -141,40 +130,14 @@ def _assert_part_present(test_db: str, part_no: str, case_name: str) -> None:
 
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-
-    tmpdir = tempfile.mkdtemp(prefix="aps_regression_process_routes_guard_")
-    test_db = os.path.join(tmpdir, "aps_test.db")
-    test_logs = os.path.join(tmpdir, "logs")
-    test_backups = os.path.join(tmpdir, "backups")
-    test_templates = os.path.join(tmpdir, "templates_excel")
-    os.makedirs(test_logs, exist_ok=True)
-    os.makedirs(test_backups, exist_ok=True)
-    os.makedirs(test_templates, exist_ok=True)
-
-    os.environ["APS_ENV"] = "development"
-    os.environ["APS_DB_PATH"] = test_db
-    os.environ["APS_LOG_DIR"] = test_logs
-    os.environ["APS_BACKUP_DIR"] = test_backups
-    os.environ["APS_EXCEL_TEMPLATE_DIR"] = test_templates
-
-    from core.infrastructure.database import ensure_schema, get_connection
-
-    ensure_schema(test_db, logger=None, schema_path=os.path.join(repo_root, "schema.sql"), backup_dir=None)
-
-    import importlib
-
-    app_mod = importlib.import_module("app")
-    app = app_mod.create_app()
-    client = app.test_client()
-
+def test_process_excel_routes_extra_state_guard(app_client, db_path) -> None:
+    from core.infrastructure.database import get_connection
     from core.services.process.op_type_service import OpTypeService
     from core.services.process.supplier_service import SupplierService
 
-    conn = get_connection(test_db)
+    client = app_client
+
+    conn = get_connection(db_path)
     try:
         op_type_svc = OpTypeService(conn)
         supplier_svc = SupplierService(conn)
@@ -196,40 +159,34 @@ def main() -> None:
     preview = _preview_routes(client, part_no="P_STRICT_GUARD", part_name="严格模式件", route_raw="5表处理", strict_mode="yes")
     html = _confirm_routes(client, part_no="P_STRICT_GUARD", preview=preview, strict_mode="no")
     _assert_need_repreview("strict_mode 漂移", html)
-    _assert_part_absent(test_db, "P_STRICT_GUARD", "strict_mode 漂移")
+    _assert_part_absent(db_path, "P_STRICT_GUARD", "strict_mode 漂移")
 
     preview = _preview_routes(client, part_no="P_OPTYPE_GUARD", part_name="工种漂移件", route_raw="5喷砂", strict_mode="no")
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
     try:
         OpTypeService(conn).update("OT_RENAME", name="喷砂改名")
     finally:
         conn.close()
     html = _confirm_routes(client, part_no="P_OPTYPE_GUARD", preview=preview, strict_mode="no")
     _assert_need_repreview("工种配置漂移", html)
-    _assert_part_absent(test_db, "P_OPTYPE_GUARD", "工种配置漂移")
+    _assert_part_absent(db_path, "P_OPTYPE_GUARD", "工种配置漂移")
 
     preview = _preview_routes(client, part_no="P_SUPPLIER_STATUS_GUARD", part_name="供应商状态漂移件", route_raw="5电镀", strict_mode="no")
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
     try:
         SupplierService(conn).update("SUP_STATUS", status="inactive")
     finally:
         conn.close()
     html = _confirm_routes(client, part_no="P_SUPPLIER_STATUS_GUARD", preview=preview, strict_mode="no")
     _assert_need_repreview("供应商状态变化", html)
-    _assert_part_absent(test_db, "P_SUPPLIER_STATUS_GUARD", "供应商状态变化")
+    _assert_part_absent(db_path, "P_SUPPLIER_STATUS_GUARD", "供应商状态变化")
 
     preview = _preview_routes(client, part_no="P_SUPPLIER_GUARD", part_name="供应商漂移件", route_raw="5热处理", strict_mode="no")
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
     try:
         SupplierService(conn).update("SUP_DAYS", default_days=3.0)
     finally:
         conn.close()
     html = _confirm_routes(client, part_no="P_SUPPLIER_GUARD", preview=preview, strict_mode="no")
     _assert_need_repreview("供应商默认周期漂移", html)
-    _assert_part_absent(test_db, "P_SUPPLIER_GUARD", "供应商默认周期漂移")
-
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()
+    _assert_part_absent(db_path, "P_SUPPLIER_GUARD", "供应商默认周期漂移")

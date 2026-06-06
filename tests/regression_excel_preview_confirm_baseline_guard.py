@@ -1,19 +1,8 @@
 """回归测试：Excel 预览-确认两步导入的 preview_baseline 并发护栏——批次/人员日历/工作日历/设备/设备人员关联五条 append 链路，在 preview 之后由旁路并发写入同主键，confirm 必须检测基线漂移、拒绝写入并提示「请重新上传 Excel 并检查」，且各表对应主键计数保持为 1（不重复写）。"""
 
 import io
-import os
 import re
-import sys
-import tempfile
 from html import unescape
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 def _make_xlsx_bytes(headers, rows):
@@ -59,31 +48,12 @@ def _assert_status(name: str, resp, expect_code: int = 200):
         raise RuntimeError(f"{name} 返回 {resp.status_code}，期望 {expect_code}；body={body[:400]}")
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_excel_preview_confirm_baseline_guard(app_client, db_path) -> None:
+    from core.infrastructure.database import get_connection
 
-    tmpdir = tempfile.mkdtemp(prefix="aps_regression_preview_confirm_baseline_")
-    test_db = os.path.join(tmpdir, "aps_test.db")
-    test_logs = os.path.join(tmpdir, "logs")
-    test_backups = os.path.join(tmpdir, "backups")
-    test_templates = os.path.join(tmpdir, "templates_excel")
-    os.makedirs(test_logs, exist_ok=True)
-    os.makedirs(test_backups, exist_ok=True)
-    os.makedirs(test_templates, exist_ok=True)
+    client = app_client
 
-    os.environ["APS_ENV"] = "development"
-    os.environ["APS_DB_PATH"] = test_db
-    os.environ["APS_LOG_DIR"] = test_logs
-    os.environ["APS_BACKUP_DIR"] = test_backups
-    os.environ["APS_EXCEL_TEMPLATE_DIR"] = test_templates
-
-    from core.infrastructure.database import ensure_schema, get_connection
-
-    ensure_schema(test_db, logger=None, schema_path=os.path.join(repo_root, "schema.sql"))
-
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
     try:
         # 批次导入前置：图号必须存在
         conn.execute(
@@ -98,12 +68,6 @@ def main() -> None:
         conn.commit()
     finally:
         conn.close()
-
-    import importlib
-
-    app_mod = importlib.import_module("app")
-    app = app_mod.create_app()
-    client = app.test_client()
 
     # ---------------------------------------------------------
     # 1) 批次：preview 后并发写同主键，confirm 应拒绝并提示重新预览
@@ -135,7 +99,7 @@ def main() -> None:
 
     from core.services.scheduler import BatchService
 
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
     try:
         BatchService(conn).create(
             batch_id="B_CONC",
@@ -164,7 +128,7 @@ def main() -> None:
     if "请重新上传 Excel 并检查" not in html2:
         raise RuntimeError("批次确认未提示“请重新上传 Excel 并检查”")
 
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
     try:
         cnt = conn.execute("SELECT COUNT(1) FROM Batches WHERE batch_id=?", ("B_CONC",)).fetchone()[0]
         if int(cnt) != 1:
@@ -207,7 +171,7 @@ def main() -> None:
 
     from core.services.scheduler import CalendarService
 
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
     try:
         CalendarService(conn).upsert_operator_calendar(
             operator_id="OP001",
@@ -239,7 +203,7 @@ def main() -> None:
     if "请重新上传 Excel 并检查" not in html4:
         raise RuntimeError("人员日历确认未提示“请重新上传 Excel 并检查”")
 
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
     try:
         cnt = conn.execute(
             "SELECT COUNT(1) FROM OperatorCalendar WHERE operator_id=? AND date=?",
@@ -280,7 +244,7 @@ def main() -> None:
     if not preview_baseline5:
         raise RuntimeError("工作日历预览未生成 preview_baseline")
 
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
     try:
         from core.services.scheduler import CalendarService
 
@@ -339,7 +303,7 @@ def main() -> None:
     if not preview_baseline7:
         raise RuntimeError("设备预览未生成 preview_baseline")
 
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
     try:
         from core.services.equipment.machine_service import MachineService
 
@@ -362,7 +326,7 @@ def main() -> None:
     if "请重新上传 Excel 并检查" not in html8:
         raise RuntimeError("设备确认未提示“请重新上传 Excel 并检查”")
 
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
     try:
         cnt = conn.execute("SELECT COUNT(1) FROM Machines WHERE machine_id=?", ("MC_CONC",)).fetchone()[0]
         if int(cnt) != 1:
@@ -373,7 +337,7 @@ def main() -> None:
     # ---------------------------------------------------------
     # 5) 设备人员关联：preview 后并发写同主键，confirm 应拒绝并提示重新预览
     # ---------------------------------------------------------
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
     try:
         from core.services.equipment.machine_service import MachineService
 
@@ -403,7 +367,7 @@ def main() -> None:
     if not preview_baseline9:
         raise RuntimeError("设备人员关联预览未生成 preview_baseline")
 
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
     try:
         from core.services.personnel import OperatorMachineService
 
@@ -426,7 +390,7 @@ def main() -> None:
     if "请重新上传 Excel 并检查" not in html10:
         raise RuntimeError("设备人员关联确认未提示“请重新上传 Excel 并检查”")
 
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
     try:
         cnt = conn.execute(
             "SELECT COUNT(1) FROM OperatorMachine WHERE operator_id=? AND machine_id=?",
@@ -436,9 +400,3 @@ def main() -> None:
             raise RuntimeError(f"设备人员关联并发保护后数量异常：{cnt}")
     finally:
         conn.close()
-
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()

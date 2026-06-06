@@ -1,18 +1,7 @@
 """回归测试：零件工序工时 Excel 导入的 append（只补空工时）模式——页面隐藏 replace 仅留 overwrite/append；预览把已维护工时行标记 SKIP、空工时行标记 UPDATE、external 工序与不存在工序标记 ERROR；含 error 行时 confirm 拒绝整批导入，仅 skip/update 时成功写入；确认 DB 中已维护行不被覆盖、空工时行被补齐、external 行保持不变。"""
 
 import io
-import os
 import re
-import sys
-import tempfile
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 def _make_xlsx_bytes(headers, rows):
@@ -61,35 +50,10 @@ def _assert_status(name: str, resp, expect_code: int = 200):
         raise RuntimeError(f"{name} 返回 {resp.status_code}，期望 {expect_code}；body={body[:500] if body else None}")
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    tmpdir = tempfile.mkdtemp(prefix="aps_regression_part_op_hours_append_")
-    test_db = os.path.join(tmpdir, "aps_test.db")
-    test_logs = os.path.join(tmpdir, "logs")
-    test_backups = os.path.join(tmpdir, "backups")
-    test_templates = os.path.join(tmpdir, "templates_excel")
-    os.makedirs(test_logs, exist_ok=True)
-    os.makedirs(test_backups, exist_ok=True)
-    os.makedirs(test_templates, exist_ok=True)
+def test_process_excel_part_operation_hours_append_fill_empty_only(app_client, db_path) -> None:
+    from core.infrastructure.database import get_connection
 
-    os.environ["APS_ENV"] = "development"
-    os.environ["APS_DB_PATH"] = test_db
-    os.environ["APS_LOG_DIR"] = test_logs
-    os.environ["APS_BACKUP_DIR"] = test_backups
-    os.environ["APS_EXCEL_TEMPLATE_DIR"] = test_templates
-
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-
-    from core.infrastructure.database import ensure_schema, get_connection
-
-    ensure_schema(test_db, logger=None, schema_path=os.path.join(repo_root, "schema.sql"))
-
-    import importlib
-
-    app_mod = importlib.import_module("app")
-    app = app_mod.create_app()
-    client = app.test_client()
+    client = app_client
 
     # 1) 工种导入（internal + external）
     op_types_rows = [
@@ -137,7 +101,7 @@ def main() -> None:
     _assert_status("routes confirm", r, 200)
 
     # 3) 初始化：seq=5 置为已维护工时，seq=10 保持 0（待 append 补齐）
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
     try:
         conn.execute(
             "UPDATE PartOperations SET setup_hours=?, unit_hours=? WHERE part_no=? AND seq=?",
@@ -228,7 +192,7 @@ def main() -> None:
     _assert_status("part_operation_hours append confirm ok", r, 200)
 
     # 7) 验证 DB：seq5 保持原值；seq10 被补齐；seq20 不变
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
     try:
         row5 = conn.execute(
             "SELECT setup_hours, unit_hours FROM PartOperations WHERE part_no=? AND seq=?",
@@ -260,9 +224,3 @@ def main() -> None:
             raise RuntimeError("append 不应更新 external 工序工时")
     finally:
         conn.close()
-
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()

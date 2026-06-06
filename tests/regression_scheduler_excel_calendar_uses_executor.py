@@ -2,20 +2,9 @@
 
 import importlib
 import io
-import os
 import re
-import sys
-import tempfile
 from html import unescape
 from unittest.mock import patch
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 def _make_xlsx_bytes(headers, rows):
@@ -62,41 +51,17 @@ def _assert_status(name: str, resp, expect_code: int = 200) -> None:
         raise RuntimeError(f"{name} 返回 {resp.status_code}，期望 {expect_code}；body={body[:500]}")
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-
-    tmpdir = tempfile.mkdtemp(prefix="aps_regression_calendar_executor_")
-    test_db = os.path.join(tmpdir, "aps_test.db")
-    test_logs = os.path.join(tmpdir, "logs")
-    test_backups = os.path.join(tmpdir, "backups")
-    test_templates = os.path.join(tmpdir, "templates_excel")
-    os.makedirs(test_logs, exist_ok=True)
-    os.makedirs(test_backups, exist_ok=True)
-    os.makedirs(test_templates, exist_ok=True)
-
-    os.environ["APS_ENV"] = "development"
-    os.environ["APS_DB_PATH"] = test_db
-    os.environ["APS_LOG_DIR"] = test_logs
-    os.environ["APS_BACKUP_DIR"] = test_backups
-    os.environ["APS_EXCEL_TEMPLATE_DIR"] = test_templates
-
-    from core.infrastructure.database import ensure_schema, get_connection
-
-    ensure_schema(test_db, logger=None, schema_path=os.path.join(repo_root, "schema.sql"), backup_dir=None)
-
+def test_scheduler_excel_calendar_uses_executor(app_client, db_path) -> None:
+    from core.infrastructure.database import get_connection
     from core.services.scheduler.config_service import ConfigService
 
-    conn = get_connection(test_db)
+    client = app_client
+
+    conn = get_connection(db_path)
     try:
         ConfigService(conn).set_holiday_default_efficiency(0.6)
     finally:
         conn.close()
-
-    app_mod = importlib.import_module("app")
-    app = app_mod.create_app()
-    client = app.test_client()
 
     preview_resp = client.post(
         "/scheduler/excel/calendar/preview",
@@ -174,16 +139,10 @@ def main() -> None:
     if expected_message not in confirm_html:
         raise RuntimeError(f"工作日历确认导入未使用执行器统计结果提示页面：未找到 {expected_message!r}")
 
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
     try:
         row = conn.execute("SELECT COUNT(1) AS cnt FROM WorkCalendar").fetchone()
         if row is None or int(row["cnt"] or 0) != 0:
             raise RuntimeError(f"打桩执行器未写库时，工作日历不应落库：{dict(row) if row else None!r}")
     finally:
         conn.close()
-
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()
