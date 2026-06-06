@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 
-def _patch_schedule_module(schedule_service_mod, captured):
+def _patch_schedule_module(monkeypatch, schedule_service_mod, captured):
     from core.services.common.build_outcome import BuildOutcome
     from core.services.scheduler.run.schedule_optimizer import OptimizationOutcome
 
@@ -114,14 +114,14 @@ def _patch_schedule_module(schedule_service_mod, captured):
         ]
         return None
 
-    schedule_service_mod.build_algo_operations = _stub_build_algo_operations
-    schedule_service_mod.build_freeze_window_seed = _stub_build_freeze_window_seed
-    schedule_service_mod.load_machine_downtimes = _stub_load_machine_downtimes
-    schedule_service_mod.build_resource_pool = _stub_build_resource_pool
-    schedule_service_mod.extend_downtime_map_for_resource_pool = _stub_extend_downtime_map_for_resource_pool
-    schedule_service_mod.optimize_schedule = _stub_optimize_schedule
-    schedule_service_mod.build_result_summary = _stub_build_result_summary
-    schedule_service_mod.persist_schedule = _stub_persist_schedule
+    monkeypatch.setattr(schedule_service_mod, "build_algo_operations", _stub_build_algo_operations)
+    monkeypatch.setattr(schedule_service_mod, "build_freeze_window_seed", _stub_build_freeze_window_seed)
+    monkeypatch.setattr(schedule_service_mod, "load_machine_downtimes", _stub_load_machine_downtimes)
+    monkeypatch.setattr(schedule_service_mod, "build_resource_pool", _stub_build_resource_pool)
+    monkeypatch.setattr(schedule_service_mod, "extend_downtime_map_for_resource_pool", _stub_extend_downtime_map_for_resource_pool)
+    monkeypatch.setattr(schedule_service_mod, "optimize_schedule", _stub_optimize_schedule)
+    monkeypatch.setattr(schedule_service_mod, "build_result_summary", _stub_build_result_summary)
+    monkeypatch.setattr(schedule_service_mod, "persist_schedule", _stub_persist_schedule)
 
 
 def _batch_stub(batch_id: str, status: str) -> SimpleNamespace:
@@ -138,14 +138,14 @@ def _batch_stub(batch_id: str, status: str) -> SimpleNamespace:
     )
 
 
-def test_schedule_service_reschedulable_contract(schema_conn) -> None:
+def test_schedule_service_reschedulable_contract(schema_conn, monkeypatch) -> None:
 
     import core.services.scheduler.schedule_service as schedule_service_mod
     from core.infrastructure.errors import ValidationError
     from core.services.scheduler.schedule_service import ScheduleService
 
     captured = {}
-    _patch_schedule_module(schedule_service_mod, captured)
+    _patch_schedule_module(monkeypatch, schedule_service_mod, captured)
 
     # 场景 1：completed/skipped 不进入算法输入、freeze seed 与结果集
     conn1 = schema_conn
