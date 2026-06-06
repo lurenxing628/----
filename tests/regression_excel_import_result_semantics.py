@@ -1,22 +1,11 @@
 """回归测试：各 Excel 导入（日历/供应商/设备/批次/工序工时/工艺路线）经导出再回灌时，UNCHANGED 行必须计入跳过数且渲染 success 提示（新增=更新=错误=0、跳过>0）；当 error_count>0 时确认页须渲染「导入部分完成」warning 提示并展示错误示例。"""
 
-import importlib
 import io
 import os
 import re
-import sys
-import tempfile
 from unittest.mock import patch
 
 COUNT_RE = re.compile(r"(?:导入完成|导入部分完成)：新增\s*(\d+)，更新\s*(\d+)，跳过\s*(\d+)，错误\s*(\d+)。")
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 def _extract_raw_rows_json(html: str) -> str:
@@ -171,33 +160,10 @@ def _assert_skip_semantics(case_name: str, html: str, *, expect_auto_suffix: boo
         raise RuntimeError(f"{case_name} 未保留 auto_generate_ops 提示后缀")
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_excel_import_result_semantics(app_client, db_path) -> None:
+    from core.infrastructure.database import get_connection
 
-    tmpdir = tempfile.mkdtemp(prefix="aps_regression_excel_result_semantics_")
-    test_db = os.path.join(tmpdir, "aps_test.db")
-    test_logs = os.path.join(tmpdir, "logs")
-    test_backups = os.path.join(tmpdir, "backups")
-    test_templates = os.path.join(tmpdir, "templates_excel")
-    os.makedirs(test_logs, exist_ok=True)
-    os.makedirs(test_backups, exist_ok=True)
-    os.makedirs(test_templates, exist_ok=True)
-
-    os.environ["APS_ENV"] = "development"
-    os.environ["APS_DB_PATH"] = test_db
-    os.environ["APS_LOG_DIR"] = test_logs
-    os.environ["APS_BACKUP_DIR"] = test_backups
-    os.environ["APS_EXCEL_TEMPLATE_DIR"] = test_templates
-
-    from core.infrastructure.database import ensure_schema, get_connection
-
-    ensure_schema(test_db, logger=None, schema_path=os.path.join(repo_root, "schema.sql"), backup_dir=None)
-
-    app_mod = importlib.import_module("app")
-    app = app_mod.create_app()
-    client = app.test_client()
+    client = app_client
 
     from core.services.equipment.machine_service import MachineService
     from core.services.personnel.resource_team_service import ResourceTeamService
@@ -207,7 +173,7 @@ def main() -> None:
     from core.services.scheduler.batch_service import BatchService
     from core.services.scheduler.calendar_service import CalendarService
 
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
     try:
         op_type_svc = OpTypeService(conn)
         team_svc = ResourceTeamService(conn)
@@ -330,7 +296,7 @@ def main() -> None:
     )
     if "导入完成" not in html or "alert alert-success" not in html:
         raise RuntimeError("工作日历真实写路径未渲染 success 提示")
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
     try:
         row = conn.execute(
             "SELECT date, shift_hours, efficiency, allow_normal, allow_urgent, remark FROM WorkCalendar WHERE date=?",
@@ -404,9 +370,3 @@ def main() -> None:
         raise RuntimeError("op_types confirm 未展示错误示例")
     if "alert alert-warning" not in warning_html:
         raise RuntimeError("op_types confirm 未渲染 warning 提示")
-
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()
