@@ -5,30 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
-import sys
-import tempfile
 import urllib.parse
-
-
-def _find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def _setup_runtime() -> str:
-    tmpdir = tempfile.mkdtemp(prefix="aps_reg_gantt_offset_")
-    os.environ["APS_ENV"] = "development"
-    os.environ["APS_DB_PATH"] = os.path.join(tmpdir, "aps_test.db")
-    os.environ["APS_LOG_DIR"] = os.path.join(tmpdir, "logs")
-    os.environ["APS_BACKUP_DIR"] = os.path.join(tmpdir, "backups")
-    os.environ["APS_EXCEL_TEMPLATE_DIR"] = os.path.join(tmpdir, "templates_excel")
-    os.makedirs(os.environ["APS_LOG_DIR"], exist_ok=True)
-    os.makedirs(os.environ["APS_BACKUP_DIR"], exist_ok=True)
-    os.makedirs(os.environ["APS_EXCEL_TEMPLATE_DIR"], exist_ok=True)
-    return tmpdir
 
 
 def _assert_true(cond: bool, msg: str) -> None:
@@ -50,20 +27,8 @@ def _call_data(client, data_url: str, query: dict) -> dict:
     return payload.get("data") or {}
 
 
-def main() -> None:
-    _setup_runtime()
-    repo_root = _find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-
-    from core.infrastructure.database import ensure_schema
-
-    ensure_schema(os.environ["APS_DB_PATH"], logger=None, schema_path=os.path.join(repo_root, "schema.sql"))
-
-    from app import create_app
-
-    app = create_app()
-    client = app.test_client()
+def test_gantt_offset_range_consistency(app_client, repo_root) -> None:
+    client = app_client
 
     resp = client.get("/scheduler/gantt?view=machine&week_start=2026-03-03&offset=1")
     _assert_true(resp.status_code == 200, f"GET /scheduler/gantt 返回 {resp.status_code}")
@@ -110,7 +75,7 @@ def main() -> None:
     _assert_true(new_style_data.get("week_start") == expected_start, "新参数风格 week_start 与有效 start_date 不一致")
     _assert_true(new_style_data.get("week_end") == expected_end, "新参数风格 week_end 与有效 end_date 不一致")
 
-    boot_js_path = os.path.join(repo_root, "static", "js", "gantt_boot.js")
+    boot_js_path = os.path.join(str(repo_root), "static", "js", "gantt_boot.js")
     with open(boot_js_path, "r", encoding="utf-8") as f:
         src = f.read()
     _assert_true(
@@ -132,9 +97,3 @@ def main() -> None:
         explicit_idx < start_idx < end_idx < week_branch_idx < week_idx < offset_idx,
         "gantt_boot.js 缺少 start/end 与 week_start/offset 二选一逻辑",
     )
-
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()

@@ -18,19 +18,9 @@ from __future__ import annotations
 
 import os
 import re
-import sys
-import tempfile
 from collections import defaultdict
 from pathlib import Path
-from typing import DefaultDict, Dict, List, Set, Tuple
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
+from typing import DefaultDict, Dict, List, Tuple
 
 
 def iter_template_files(repo_root: str) -> List[str]:
@@ -84,30 +74,9 @@ def collect_endpoints_from_templates(repo_root: str) -> Tuple[Dict[str, List[str
     return dict(url_refs), dict(safe_refs)
 
 
-def load_app_and_endpoints(repo_root: str) -> Set[str]:
-    # 隔离目录，避免污染真实 db/logs/backups/templates_excel
-    root = tempfile.mkdtemp(prefix="aps_regression_tpl_eps_")
-    os.environ["APS_ENV"] = "development"
-    os.environ["APS_DB_PATH"] = str(Path(root) / "aps_test.db")
-    os.environ["APS_LOG_DIR"] = str(Path(root) / "logs")
-    os.environ["APS_BACKUP_DIR"] = str(Path(root) / "backups")
-    os.environ["APS_EXCEL_TEMPLATE_DIR"] = str(Path(root) / "templates_excel")
-
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-
-    # 注意：app.py import 时会执行 create_app()（并创建全局 app），但环境变量已提前设置，影响可控。
-    import importlib
-
-    app_mod = importlib.import_module("app")
-    app = app_mod.create_app()
-    return set(app.view_functions.keys())
-
-
-def main() -> None:
-    repo_root = find_repo_root()
-    url_refs, safe_refs = collect_endpoints_from_templates(repo_root)
-    registered = load_app_and_endpoints(repo_root)
+def test_template_urlfor_endpoints(app_client, repo_root) -> None:
+    url_refs, safe_refs = collect_endpoints_from_templates(str(repo_root))
+    registered = set(app_client.application.view_functions.keys())
 
     missing_url = {ep: refs for ep, refs in url_refs.items() if ep not in registered}
     missing_safe = {ep: refs for ep, refs in safe_refs.items() if ep not in registered}
@@ -126,11 +95,5 @@ def main() -> None:
             locs = ", ".join(missing_url[ep][:12])
             more = "" if len(missing_url[ep]) <= 12 else f" ... (+{len(missing_url[ep]) - 12})"
             print(f"  - {ep}: {locs}{more}")
-        raise SystemExit(1)
-
-    print("OK: templates url_for endpoints all registered.")
-
-
-if __name__ == "__main__":
-    main()
+        raise AssertionError("模板 url_for 引用的 endpoint 未注册（会导致页面渲染阶段 500）；详见上方输出")
 

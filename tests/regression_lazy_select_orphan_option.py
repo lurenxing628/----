@@ -2,41 +2,14 @@
 
 import os
 import re
-import sys
-import tempfile
 
 
-def _find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def _setup_temp_runtime_env() -> str:
-    tmpdir = tempfile.mkdtemp(prefix="aps_reg_lazy_select_orphan_")
-    os.environ["APS_ENV"] = "development"
-    os.environ["APS_DB_PATH"] = os.path.join(tmpdir, "aps.db")
-    os.environ["APS_LOG_DIR"] = os.path.join(tmpdir, "logs")
-    os.environ["APS_BACKUP_DIR"] = os.path.join(tmpdir, "backups")
-    os.environ["APS_EXCEL_TEMPLATE_DIR"] = os.path.join(tmpdir, "templates_excel")
-    return tmpdir
-
-
-def main():
-    _setup_temp_runtime_env()
-
-    repo_root = _find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-
+def test_lazy_select_orphan_option(app_client, repo_root) -> None:
     from flask import render_template
 
-    from app import create_app  # noqa: WPS433 (repo-local import)
     from web.viewmodels.strict_mode_toggles import build_strict_mode_toggle
 
-    app = create_app()
+    app = app_client.application
 
     missing_mc = "MISSING_MC"
     missing_op = "MISSING_OP"
@@ -123,7 +96,7 @@ def main():
     #    - HTML 必须加载该脚本
     #    - JS 文件内容必须包含关键逻辑片段
     assert "js/batch_detail_linkage.js" in html, "模板未加载 batch_detail_linkage.js"
-    js_path = os.path.join(repo_root, "static", "js", "batch_detail_linkage.js")
+    js_path = os.path.join(str(repo_root), "static", "js", "batch_detail_linkage.js")
     js = open(js_path, "r", encoding="utf-8", errors="replace").read()
     assert "orphanOpt.selected = true" in js, "缺少 orphanOpt.selected 强制选中逻辑"
     assert 'dataset.orphan = "1"' in js or 'data-orphan"' in js, "缺少 data-orphan 标记逻辑"
@@ -135,9 +108,3 @@ def main():
     # - 让某条内部工序 machine_id 或 operator_id 指向 DB 中已删除的资源（保留工序记录）。
     # - 打开批次详情页：GET /scheduler/batches/<batch_id>?lazy_select=1
     # - 首次点开设备/人员下拉：已删除项仍保持选中；另一侧下拉不应被“全禁用”；提示文案为“已删除”。
-
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()

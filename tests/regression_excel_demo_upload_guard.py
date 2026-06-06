@@ -1,20 +1,8 @@
 """回归测试：/excel-demo/preview 上传守卫——超过 EXCEL_MAX_UPLOAD_BYTES(1MB) 的文件须返回 413 并展示统一中文提示「上传文件超过 1MB」且不泄露内部错误码(7005/错误码)；正常 xlsx 须 200 预览出上传内容并带 preview_baseline 隐藏字段。"""
 
 import io
-import os
 import re
-import sys
-import tempfile
 from html import unescape
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
 
 
 def _make_xlsx_bytes(headers, rows) -> bytes:
@@ -45,36 +33,11 @@ def _extract_hidden_input(html: str, name: str) -> str:
 
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-
-    tmpdir = tempfile.mkdtemp(prefix="aps_regression_excel_demo_upload_guard_")
-    test_db = os.path.join(tmpdir, "aps_test.db")
-    test_logs = os.path.join(tmpdir, "logs")
-    test_backups = os.path.join(tmpdir, "backups")
-    test_templates = os.path.join(tmpdir, "templates_excel")
-    os.makedirs(test_logs, exist_ok=True)
-    os.makedirs(test_backups, exist_ok=True)
-    os.makedirs(test_templates, exist_ok=True)
-
-    os.environ["APS_ENV"] = "development"
-    os.environ["APS_DB_PATH"] = test_db
-    os.environ["APS_LOG_DIR"] = test_logs
-    os.environ["APS_BACKUP_DIR"] = test_backups
-    os.environ["APS_EXCEL_TEMPLATE_DIR"] = test_templates
-
-    from core.infrastructure.database import ensure_schema
-    ensure_schema(test_db, logger=None, schema_path=os.path.join(repo_root, "schema.sql"), backup_dir=None)
-
-    import importlib
-
-    app_mod = importlib.import_module("app")
-    app = app_mod.create_app()
+def test_excel_demo_upload_guard(app_client) -> None:
+    app = app_client.application
     app.config["EXCEL_MAX_UPLOAD_BYTES"] = 1 * 1024 * 1024
     app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024
-    client = app.test_client()
+    client = app_client
 
     too_large_resp = client.post(
         "/excel-demo/preview",
@@ -111,9 +74,3 @@ def main() -> None:
         raise RuntimeError("正常文件预览未展示上传内容")
     if not _extract_hidden_input(preview_html, "preview_baseline"):
         raise RuntimeError("正常文件预览缺少 preview_baseline")
-
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()

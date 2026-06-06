@@ -4,40 +4,15 @@ from __future__ import annotations
 
 import os
 import re
-import sys
-import tempfile
 from typing import Any, Dict
 
 
-def _find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def _setup_runtime() -> None:
-    tmpdir = tempfile.mkdtemp(prefix="aps_reg_batch_linkage_")
-    os.environ["APS_ENV"] = "development"
-    os.environ["APS_DB_PATH"] = os.path.join(tmpdir, "aps.db")
-    os.environ["APS_LOG_DIR"] = os.path.join(tmpdir, "logs")
-    os.environ["APS_BACKUP_DIR"] = os.path.join(tmpdir, "backups")
-    os.environ["APS_EXCEL_TEMPLATE_DIR"] = os.path.join(tmpdir, "templates_excel")
-
-
-def main() -> None:
-    _setup_runtime()
-    repo_root = _find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-
+def test_batch_detail_linkage(app_client, repo_root) -> None:
     from flask import render_template
 
-    from app import create_app
     from web.viewmodels.strict_mode_toggles import build_strict_mode_toggle
 
-    app = create_app()
+    app = app_client.application
 
     ctx: Dict[str, Any] = dict(
         title="regression",
@@ -105,7 +80,7 @@ def main() -> None:
     assert re.search(r'"operatorMachines"\s*:\s*null\b', html_null), "operatorMachines=None 时应以 JSON null 注入"
 
     # JS 契约：核心函数与关键分支存在（仅验证语义钩子）
-    js_path = os.path.join(repo_root, "static", "js", "batch_detail_linkage.js")
+    js_path = os.path.join(str(repo_root), "static", "js", "batch_detail_linkage.js")
     with open(js_path, "r", encoding="utf-8") as f:
         js = f.read()
 
@@ -125,9 +100,3 @@ def main() -> None:
     # 关键提示文案约束（防回退）
     assert re.search(r"当前设备/人员组合不匹配", js), "缺少不匹配提示"
     assert re.search(r"已删除：请改选或清空", js), "缺少孤儿资源提示"
-
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()

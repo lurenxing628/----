@@ -2,21 +2,10 @@
 
 from __future__ import annotations
 
-import importlib
 import json
 import os
 import sqlite3
-import sys
-import tempfile
 from unittest import mock
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 def _assert_status(resp, name: str, expect: int = 200) -> str:
@@ -69,39 +58,18 @@ class _FakeManager:
         return []
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-
+def test_restore_success_condition(app_client, db_env) -> None:
     from core.infrastructure.backup import RestoreResult
-    from core.infrastructure.database import ensure_schema
 
-    root = tempfile.mkdtemp(prefix="aps_reg_restore_success_")
-    test_db = os.path.join(root, "aps_test.db")
-    test_logs = os.path.join(root, "logs")
-    test_backups = os.path.join(root, "backups")
-    test_templates = os.path.join(root, "templates_excel")
-    os.makedirs(test_logs, exist_ok=True)
-    os.makedirs(test_backups, exist_ok=True)
-    os.makedirs(test_templates, exist_ok=True)
-
-    os.environ["APS_ENV"] = "development"
-    os.environ["APS_DB_PATH"] = test_db
-    os.environ["APS_LOG_DIR"] = test_logs
-    os.environ["APS_BACKUP_DIR"] = test_backups
-    os.environ["APS_EXCEL_TEMPLATE_DIR"] = test_templates
-
-    ensure_schema(test_db, logger=None, schema_path=os.path.join(repo_root, "schema.sql"), backup_dir=test_backups)
+    test_db = db_env
+    test_backups = os.environ["APS_BACKUP_DIR"]
 
     backup_filename = "aps_backup_20260318_120000_manual.db"
     backup_path = os.path.join(test_backups, backup_filename)
     with open(backup_path, "wb") as f:
         f.write(b"fake")
 
-    app_mod = importlib.import_module("app")
-    app = app_mod.create_app()
-    client = app.test_client()
+    client = app_client
 
     before_restore_path = os.path.join(test_backups, "aps_backup_before.db")
     with open(before_restore_path, "wb") as f:
@@ -229,9 +197,3 @@ def main() -> None:
             raise RuntimeError("restore 失败后不应继续执行 ensure_schema")
         if _restore_log_count(test_db) != rollback_failed_before_count:
             raise RuntimeError("restore_failed_rollback_failed 不应写入 restore success 日志")
-
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()
