@@ -18,7 +18,7 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Tuple
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
@@ -37,7 +37,7 @@ def _load_module(path: str, module_name: str) -> Any:
     return mod
 
 
-def _run_main(mod, argv: list[str]) -> tuple[int, dict]:
+def _run_main(mod, argv: List[str]) -> Tuple[int, Dict]:
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         rc = int(mod.main(argv))
@@ -49,7 +49,7 @@ def _normalize_path(path: str) -> str:
     return os.path.normcase(os.path.abspath(path))
 
 
-def _runner_paths(repo_root: str) -> list[Path]:
+def _runner_paths(repo_root: str) -> List[Path]:
     base = Path(repo_root)
     candidates = [
         base / ".limcode" / "skills" / "aps-start-and-rerun-route" / "scripts" / "run_start_and_rerun_route.py",
@@ -66,7 +66,7 @@ def _exercise_runner(runner_path: Path, label: str) -> None:
 
     start_only_mod = _load_module(str(runner_path), f"aps_runner_start_only_{label}")
     start_only_mod._find_repo_root = lambda: temp_repo
-    reuse_resolve_calls: list[dict] = []
+    reuse_resolve_calls: List[Dict] = []
 
     def _reuse_resolve(self, runtime_dir, preferred_host=None, preferred_port=None, timeout=2.0):
         reuse_resolve_calls.append(
@@ -95,7 +95,7 @@ def _exercise_runner(runner_path: Path, label: str) -> None:
             "build_base_url": lambda self, host, port: f"http://127.0.0.1:{int(port)}",
         },
     )()
-    opened_urls: list[str] = []
+    opened_urls: List[str] = []
     start_only_mod._open_url = lambda url: opened_urls.append(url)
 
     rc, payload = _run_main(start_only_mod, ["start-only", "--db-path", matched_db, "--no-open"])
@@ -112,8 +112,8 @@ def _exercise_runner(runner_path: Path, label: str) -> None:
     rerun_mod = _load_module(str(runner_path), f"aps_runner_rerun_{label}")
     rerun_mod._find_repo_root = lambda: temp_repo
     rerun_db = _normalize_path(str(temp_repo / "rerun.db"))
-    fresh_resolve_calls: list[dict] = []
-    delete_stale_calls: list[str] = []
+    fresh_resolve_calls: List[Dict] = []
+    delete_stale_calls: List[str] = []
 
     def _fresh_resolve(self, runtime_dir, preferred_host=None, preferred_port=None, timeout=2.0):
         fresh_resolve_calls.append(
@@ -165,7 +165,7 @@ def _exercise_runner(runner_path: Path, label: str) -> None:
     orig_popen = rerun_mod.subprocess.Popen
     rerun_mod.subprocess.Popen = _fake_popen
     try:
-        seeded_db: list[str] = []
+        seeded_db: List[str] = []
 
         def _fake_seed(repo_root, db_path, view):
             seeded_db.append(str(db_path))
@@ -176,7 +176,7 @@ def _exercise_runner(runner_path: Path, label: str) -> None:
             }
 
         rerun_mod._seed_and_schedule = _fake_seed
-        verify_calls: list[dict] = []
+        verify_calls: List[Dict] = []
 
         def _fake_verify_route(host: str, port: int, view: str, week_start: str, version: int) -> int:
             verify_calls.append(
@@ -191,7 +191,7 @@ def _exercise_runner(runner_path: Path, label: str) -> None:
             return 11
 
         rerun_mod._verify_route = _fake_verify_route
-        rerun_opened: list[str] = []
+        rerun_opened: List[str] = []
         rerun_mod._open_url = lambda url: rerun_opened.append(url)
 
         rc, payload = _run_main(rerun_mod, ["rerun", "--view", "operator", "--db-path", rerun_db, "--no-open"])
