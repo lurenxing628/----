@@ -1,18 +1,8 @@
 """回归测试：RouteParser strict_mode 对外协供应商缺失/失效的拦截边界——外协工序无可用供应商或 default_days=0 时严格模式判 FAILED 并透出可读错误；
 供应商工种映射加载失败 relaxed 降为 PARTIAL 仅告警、strict 则 FAILED；但与当前路线无关的脏供应商映射只作 warning，不得把纯内部路线或已满足供应商的外协路线误卡成失败。"""
 
-import os
-import sys
 from dataclasses import dataclass
 from typing import List
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 @dataclass
@@ -62,11 +52,7 @@ class _StubSuppliersRepo:
         return list(self.suppliers)
 
 
-
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_route_parser_strict_mode_rejects_supplier_fallback() -> None:
 
     from core.services.process.route_parser import ParseStatus, RouteParser
 
@@ -200,8 +186,4 @@ def main() -> None:
         f"无关供应商脏映射应作为 warning 透出：{result_external.warnings!r}"
     )
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

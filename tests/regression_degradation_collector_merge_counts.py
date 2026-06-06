@@ -1,21 +1,7 @@
 """回归测试：DegradationCollector 对同一 (code, scope, field) 的多次 add（含传入 count 与 DegradationEvent 对象）应按 key 合并为一条，正确累加 count（invalid_number 合并为 4）、保留首个非空 sample，且 to_counters() 按原因码汇总计数。"""
 
-import os
-import sys
 
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_degradation_collector_merge_counts() -> None:
 
     from core.services.common.degradation import DegradationCollector, DegradationEvent
 
@@ -62,8 +48,4 @@ def main() -> None:
     counters = collector.to_counters()
     assert counters == {"invalid_number": 4, "invalid_due_date": 1}, f"collector counters 异常：{counters!r}"
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

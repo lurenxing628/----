@@ -1,17 +1,7 @@
 """回归测试：RouteParser.parse 解析外部工序（如「5表处理」）但供应商库为空时，返回 PARTIAL 状态、工序 source=external、default_days 临时按 1 天处理，并透出含「没有找到可用的外协供应商」的 warning 而非静默吞掉。"""
 
-import os
-import sys
 from dataclasses import dataclass
 from typing import List
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 @dataclass
@@ -43,10 +33,7 @@ class _StubSuppliersRepo:
         return list(self.suppliers)
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_route_parser_missing_supplier_warning() -> None:
 
     from core.services.process.route_parser import ParseStatus, RouteParser
 
@@ -67,8 +54,4 @@ def main() -> None:
         f"未透出缺供应商 warning：{result.warnings!r}"
     )
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

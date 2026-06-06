@@ -1,15 +1,7 @@
-import os
-import sys
+"""回归测试：RouteParser 解析外协工序时，若供应商 default_days=0（无效周期），应返回 PARTIAL 状态、把 default_days 回退为 1.0、并透出『默认周期无效』warning——守护零/无效外协周期不被静默当成 0 天直排。"""
+
 from dataclasses import dataclass
 from typing import List
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 @dataclass
@@ -48,10 +40,7 @@ class _StubSuppliersRepo:
         return list(self.suppliers)
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_route_parser_supplier_default_days_zero_trace() -> None:
 
     from core.services.process.route_parser import ParseStatus, RouteParser
 
@@ -69,8 +58,4 @@ def main() -> None:
     assert abs(float(op.default_days or 0.0) - 1.0) < 1e-9, f"default_days 未回退为 1.0：{op.default_days!r}"
     assert any("默认周期无效" in str(msg) for msg in (result.warnings or [])), f"未透出默认周期无效 warning：{result.warnings!r}"
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

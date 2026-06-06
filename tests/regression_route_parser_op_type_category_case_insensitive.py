@@ -1,18 +1,8 @@
 """回归测试：RouteParser.parse 解析工艺路线时，OpType.category 为大写带空格(如「 INTERNAL 」)仍应归类为 internal 工序，stats 统计 internal=1/external=0。"""
 
-import os
-import sys
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import List
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 @dataclass
@@ -35,10 +25,7 @@ class _StubSuppliersRepo:
         return []
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_route_parser_op_type_category_case_insensitive() -> None:
 
     from core.services.process.route_parser import ParseStatus, RouteParser
 
@@ -54,9 +41,4 @@ def main() -> None:
     assert result.operations and result.operations[0].source == "internal", f"category 大小写容错失败：{result.operations!r}"
     assert result.stats.get("internal") == 1 and result.stats.get("external") == 0, f"统计异常：{result.stats!r}"
 
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()
 

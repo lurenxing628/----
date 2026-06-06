@@ -1,21 +1,8 @@
 """回归测试：GreedyScheduler.schedule 收到显式空 resource_pool={} 时，应将其视为"已提供但为空"而非"未提供"，对缺省 machine_id/operator_id 的内部工序仍进入 auto-assign 分支并失败（failed_ops=1、results 为空），错误信息含"缺少自动派工所需工种信息"。"""
 
-import os
-import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from types import SimpleNamespace
-
-
-def find_repo_root() -> str:
-    """
-    约定：仓库根目录包含 app.py 与 schema.sql。
-    """
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 @dataclass
@@ -45,10 +32,7 @@ class _StubConfigService:
         return self._values.get(key, default)
 
 
-def main():
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_auto_assign_empty_resource_pool():
 
     from core.algorithms import GreedyScheduler
 
@@ -107,8 +91,4 @@ def main():
     # 修复目标：resource_pool={} 时仍进入 auto-assign 分支，并说明自动派工缺少哪类资料。
     assert any("缺少自动派工所需工种信息" in (e or "") for e in (summary.errors or [])), f"错误信息不符合预期：{summary.errors!r}"
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

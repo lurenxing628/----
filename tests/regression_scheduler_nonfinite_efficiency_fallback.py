@@ -1,19 +1,9 @@
 """回归测试：当日历 get_efficiency 返回非有限值（inf）时，GreedyScheduler.schedule 不回退到效率 1.0 继续排产，而是抛 ValidationError 且 field 定位到 efficiency。"""
 
-import os
-import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from typing import Optional
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 @dataclass
@@ -32,10 +22,7 @@ class _StubCalendar:
         return dt + timedelta(days=float(days or 0.0))
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_scheduler_nonfinite_efficiency_fallback() -> None:
 
     from core.algorithms import GreedyScheduler
     from core.infrastructure.errors import ValidationError
@@ -74,8 +61,4 @@ def main() -> None:
     else:
         raise AssertionError("非有限效率不应回退到 1.0 后继续排产")
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

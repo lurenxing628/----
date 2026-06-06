@@ -1,22 +1,9 @@
 """回归测试：dispatch_rules.build_dispatch_key 对 priority 大小写归一化——SLACK 规则下 Urgent 经 tie-break(pr_rank) 排在 normal 前、ATC 规则下 URGENT 经 PRIORITY_WEIGHT 排在 normal 前，混合/全大写写法均不影响优先级权重。"""
 
-import os
-import sys
 from datetime import date, datetime
 
 
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_dispatch_rules_priority_case_insensitive() -> None:
 
     from core.algorithms.dispatch_rules import DispatchInputs, DispatchRule, build_dispatch_key
 
@@ -93,8 +80,4 @@ def main() -> None:
     )
     assert k_urgent_atc < k_normal_atc, f"ATC priority 大小写归一化失败：urgent={k_urgent_atc} normal={k_normal_atc}"
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

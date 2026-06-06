@@ -1,19 +1,9 @@
 """回归测试：GreedyScheduler.schedule 的输入防御——start_dt 误传字符串「2026-01-01 08:00」、machine_id/operator_id 为 int（非 str）、strategy_params 里 priority_weight=None 与 due_weight='abc' 等非法权重时，排产仍成功且不崩溃；结果 machine_id/operator_id 安全转成字符串，非法权重回退默认（priority_weight=0.4、due_weight=0.5）而非 NaN。"""
 
-import os
-import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from typing import Optional
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 @dataclass
@@ -33,10 +23,7 @@ class _StubCalendarService:
         return dt + timedelta(days=float(days or 0.0))
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_scheduler_accepts_start_dt_string_and_safe_weights() -> None:
 
     from core.algorithms import GreedyScheduler
     from core.algorithms.sort_strategies import SortStrategy
@@ -101,9 +88,4 @@ def main() -> None:
     assert abs(float(priority_weight) - 0.4) < 1e-9, f"priority_weight 回退异常：{used_params}"
     assert abs(float(due_weight) - 0.5) < 1e-9, f"due_weight 回退异常：{used_params}"
 
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()
 

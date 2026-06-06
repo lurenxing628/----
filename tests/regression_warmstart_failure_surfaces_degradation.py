@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-import sys
 import time
 from datetime import datetime
 from types import SimpleNamespace
@@ -35,18 +33,7 @@ class _Scheduler:
         raise AssertionError("本回归不应真正调用 schedule()")
 
 
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_warmstart_failure_surfaces_degradation() -> None:
 
     from core.algorithms import ScheduleResult, SortStrategy
     from core.algorithms.evaluation import compute_metrics
@@ -139,8 +126,4 @@ def main() -> None:
     warnings = list(result_summary_obj.get("warnings") or [])
     assert any("OR-Tools 预热失败" in w for w in warnings), warnings
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

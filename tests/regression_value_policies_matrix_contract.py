@@ -1,21 +1,7 @@
 """回归测试：core.services.common.value_policies 字段策略矩阵契约——覆盖 default_days/ext_days/各权重/freeze_window_days/graph_*/due_date/start_time/end_time 等字段无缺项无重复，并逐字段校验 write_mode(REQUIRED/OPTIONAL)、read_mode(COMPAT/FILTER_ONLY)、strict/compat/blank 原因码、has_compat_default 及兼容回退值（如 default_days/ext_days=1.0、freeze_window_days=0、due_date=None、priority_weight/graph 权重不写死运行时默认）。"""
 
-import os
-import sys
 
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_value_policies_matrix_contract() -> None:
 
     from core.services.common.value_policies import (
         READ_COMPAT,
@@ -96,8 +82,4 @@ def main() -> None:
     assert start_time.read_mode == READ_FILTER_ONLY, f"start_time 读取语义异常：{start_time.read_mode!r}"
     assert end_time.read_mode == READ_FILTER_ONLY, f"end_time 读取语义异常：{end_time.read_mode!r}"
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

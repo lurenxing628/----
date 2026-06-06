@@ -1,19 +1,9 @@
 """守护 SGS 评分阶段对 machine_id/operator_id 为 int 的类型安全：历史 BUG 会对 int 调 .strip() 抛异常并 continue 导致候选静默跳过、退化为 candidates[0]；本回归用 batch_order_override 把更晚交期排在首位，断言 GreedyScheduler 仍按 dispatch key(交期)优先排出更紧急的 OP_EARLY，两道工序全部成功排产。"""
 
-import os
-import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from typing import Optional
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 @dataclass
@@ -102,10 +92,7 @@ def _build_case():
     return operations, batches, start_dt
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_sgs_scoring_machine_operator_id_type_safe() -> None:
 
     from core.algorithms import GreedyScheduler
 
@@ -130,8 +117,4 @@ def main() -> None:
     # 关键断言：第一个被排产的应是更早交期的 OP_EARLY。
     assert [result.op_code for result in results] == ["OP_EARLY", "OP_LATE"], results
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

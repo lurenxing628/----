@@ -1,19 +1,9 @@
 """回归测试：GreedyScheduler 处理 seed_results 时，在 _last_algo_stats.fallback_counts 里如实记录被丢弃/过滤的种子计数——重复种子(seed_duplicate_dropped_count)、坏时间种子(seed_bad_time_dropped_count)、重叠过滤(seed_overlap_filtered_count)各为 1。"""
 
-import os
-import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from typing import Optional
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 @dataclass
@@ -31,10 +21,7 @@ class _StubCalendarService:
         return dt + timedelta(days=float(days or 0.0))
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_greedy_scheduler_algo_stats_seed_counts() -> None:
 
     from core.algorithms import GreedyScheduler, ScheduleResult
 
@@ -146,8 +133,4 @@ def main() -> None:
     assert int(fallback_counts.get("seed_bad_time_dropped_count") or 0) == 1, f"坏时间 seed 计数异常：{fallback_counts!r}"
     assert int(fallback_counts.get("seed_overlap_filtered_count") or 0) == 1, f"overlap 过滤计数异常：{fallback_counts!r}"
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

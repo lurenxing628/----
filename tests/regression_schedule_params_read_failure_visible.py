@@ -1,16 +1,5 @@
 """守护 resolve_schedule_params 读配置失败可见性：读取 sort_strategy/priority_weight 等字段抛异常时，无论 strict_mode 与否都必须抛出 ValidationError 并带上对应字段名和中文标签(如"排产策略"/"优先级权重")，绝不静默 fallback 到默认值。"""
 
-import os
-import sys
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
 
 class _ExplodingConfig:
     @property
@@ -59,10 +48,7 @@ def _assert_visible_read_failure(
         raise RuntimeError("配置读取失败后不应静默 fallback")
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_schedule_params_read_failure_visible() -> None:
 
     from core.algorithms.greedy.schedule_params import resolve_schedule_params
     from core.infrastructure.errors import ValidationError
@@ -100,8 +86,4 @@ def main() -> None:
         expected_text="优先级权重",
     )
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

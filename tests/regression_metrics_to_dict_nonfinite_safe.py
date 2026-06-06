@@ -1,21 +1,7 @@
 """回归测试：ScheduleMetrics.to_dict 与 evaluation 负荷统计（_finite_non_negative/_cv）遇到 NaN/Infinity、无法转 float 的坏值或内部计算错误时必须抛错（提示“有限数字”），不得静默归零。"""
 
-import os
-import sys
 
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_metrics_to_dict_nonfinite_safe() -> None:
 
     from core.algorithms import evaluation
     from core.algorithms.evaluation import ScheduleMetrics
@@ -83,8 +69,4 @@ def main() -> None:
     finally:
         evaluation.statistics.pstdev = real_pstdev
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

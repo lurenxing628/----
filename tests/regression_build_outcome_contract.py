@@ -1,21 +1,7 @@
 """回归测试：BuildOutcome 契约——from_collector 正确汇总 value/empty_reason/events/counters，事件按原因码自动去重合并计数，且当传入 counters 与 collector 事件原因码重叠时快速失败抛 ValueError。"""
 
-import os
-import sys
 
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_build_outcome_contract() -> None:
 
     from core.services.common.build_outcome import BuildOutcome
     from core.services.common.degradation import DegradationCollector
@@ -65,8 +51,4 @@ def main() -> None:
     else:
         raise AssertionError("BuildOutcome 遇到 events/counters 原因码重叠时应快速失败")
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

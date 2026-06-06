@@ -1,18 +1,8 @@
 """回归测试：build_result_summary 序列化 end_date 时，字符串(如「2026-02-10」)原样保留、date 对象输出 ISO 字符串，均不抛异常。"""
 
-import os
-import sys
 import time
 from datetime import date, datetime
 from types import SimpleNamespace
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 class _StubSvc:
@@ -74,10 +64,7 @@ def _build_summary_with_end_date(end_date_value):
     return result_summary_obj
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_schedule_summary_end_date_type_guard() -> None:
 
     # 1) end_date 是字符串：不应抛异常，且应保留字符串
     r1 = _build_summary_with_end_date("2026-02-10")
@@ -87,8 +74,4 @@ def main() -> None:
     r2 = _build_summary_with_end_date(date(2026, 2, 11))
     assert r2.get("end_date") == "2026-02-11", f"date end_date 序列化异常：{r2.get('end_date')!r}"
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

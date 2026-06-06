@@ -1,19 +1,9 @@
 """回归测试：当日历服务 get_efficiency 返回大于 1（如 1.2）时，GreedyScheduler 应据此缩短实际工时——setup_hours=12 在效率 1.2 下应得 end_time = start + 10 小时，而非按原始工时排程。"""
 
-import os
-import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from typing import Optional
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 @dataclass
@@ -37,10 +27,7 @@ class _StubCalendarService:
         return dt + timedelta(days=float(days or 0.0))
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_efficiency_greater_than_one_shortens_hours() -> None:
 
     from core.algorithms import GreedyScheduler
 
@@ -87,9 +74,4 @@ def main() -> None:
     assert r.end_time is not None, "end_time 不能为空"
     assert abs((r.end_time - expected_end).total_seconds()) < 1e-6, f"效率>1 未生效：end={r.end_time!r} expected={expected_end!r}"
 
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()
 

@@ -1,19 +1,9 @@
 """回归测试：GreedyScheduler.schedule 在 batch_order 派工模式下，当 bid 赋值首行（读 batch_id）即抛异常时，except 分支不应因 bid 未定义触发 UnboundLocalError；该工序应计入 failed_ops，summary.errors 只暴露含 OP_ERR 的公开文案（请查看系统日志），不泄露原始异常或 UnboundLocalError。"""
 
 import logging
-import os
-import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from types import SimpleNamespace
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 @dataclass
@@ -85,10 +75,7 @@ def _build_quiet_logger() -> logging.Logger:
     return lg
 
 
-def main():
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_batch_order_bid_unboundlocal():
 
     from core.algorithms import GreedyScheduler
 
@@ -125,8 +112,4 @@ def main():
     assert not any("boom" in e for e in summary.errors), f"errors 不应暴露原异常：{summary.errors!r}"
     assert not any("UnboundLocalError" in e for e in summary.errors), f"不应出现 UnboundLocalError：{summary.errors!r}"
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

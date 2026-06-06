@@ -1,16 +1,6 @@
 """回归测试：_record_ortools_failure 记录 OR-Tools 预热失败时，即使 logger.warning 不支持 exc_info 参数也不二次崩溃——只调用一次 warning（含「OR-Tools 预热失败（已忽略）」与异常类型/消息），并把 ortools_warmstart_failed_count 计为 1。"""
 
-import os
-import sys
 from types import SimpleNamespace
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 class _StubLogger:
@@ -34,10 +24,7 @@ class _StubLogger:
         return None
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_optimizer_ortools_logging_exc_info_safe() -> None:
 
     from core.services.scheduler.run.schedule_optimizer_steps import _record_ortools_failure
 
@@ -60,8 +47,5 @@ def main() -> None:
     assert "OR-Tools 预热失败（已忽略）" in warning, warning
     assert "ortools boom (test)" in warning, warning
     assert "RuntimeError: ortools boom (test)" in warning, warning
-    print("OK")
 
 
-if __name__ == "__main__":
-    main()

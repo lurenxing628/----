@@ -1,16 +1,5 @@
 """回归测试：Excel 与路由各层枚举归一化器对大小写/中文/空值的统一行为——批次优先级、齐套状态、日历日类型、yes/no、技能等级、设备/供应商/工种/操作员状态等归一化器，须把混合大小写与中文同义词折叠到标准小写值、空值给默认、未知值原样返回（供上层报错展示），并验证 core/web.routes/service/CalendarAdmin 多个入口委托一致。"""
 
-import os
-import sys
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
 
 def assert_raises(exc_type, fn, *args, **kwargs):
     try:
@@ -22,10 +11,7 @@ def assert_raises(exc_type, fn, *args, **kwargs):
     raise AssertionError(f"期望抛 {exc_type.__name__}，但未抛异常")
 
 
-def main():
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_excel_normalizers_mixed_case():
 
     from core.infrastructure.errors import ValidationError
     from core.services.common.excel_validators import (
@@ -377,9 +363,4 @@ def main():
         got = om_yes_no_stored(raw)
         assert got == expected, f"om_yes_no_stored({raw!r}) 期望 {expected!r}，实际 {got!r}"
 
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()
 

@@ -1,18 +1,8 @@
 """回归测试：当 batch_order dispatch 的 batch_order_override 含重复 batch_id（如 ["B1","B2","B1","B3"]）时，GreedyScheduler.schedule 必须抛 ValidationError(field="batch_order_override")，不得静默去重保留首次后继续排产。"""
 
-import os
-import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from types import SimpleNamespace
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 @dataclass
@@ -137,10 +127,7 @@ def _build_case():
     return operations, batches, start_dt
 
 
-def main():
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_batch_order_override_dedup():
 
     from core.algorithms import GreedyScheduler
     from core.infrastructure.errors import ValidationError
@@ -161,8 +148,4 @@ def main():
     else:
         raise AssertionError("重复 batch_order_override 不应被静默去重后继续排产")
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

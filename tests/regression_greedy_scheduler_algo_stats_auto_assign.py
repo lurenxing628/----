@@ -1,19 +1,9 @@
 """回归测试：当内部工序缺设备/人员而 auto_assign 失败时，GreedyScheduler._last_algo_stats.fallback_counts 必须如实记录尝试与失败计数——internal_auto_assign_attempt_count=1、internal_auto_assign_failed_count=1、auto_assign_missing_op_type_id_count=1，且 failed_ops=1。"""
 
-import os
-import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from typing import Optional
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 @dataclass
@@ -39,10 +29,7 @@ class _StubConfigService:
         return self._values.get(key, default)
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_greedy_scheduler_algo_stats_auto_assign() -> None:
 
     from core.algorithms import GreedyScheduler
 
@@ -99,8 +86,4 @@ def main() -> None:
         f"auto_assign 根因计数异常：{fallback_counts!r}"
     )
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

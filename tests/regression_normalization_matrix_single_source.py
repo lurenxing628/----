@@ -1,21 +1,7 @@
 """守护归一化单一真相源：批次优先级/齐套状态/日历日类型/是否(yes-no)/技能等级的取值口径由 normalization_matrix 统一裁定，路由 normalizers、excel_validators、personnel/operator_machine_normalizers、enum_normalizers 必须与之逐值对齐，且人员/设备详情页直接复用同一个 skill_level_options 函数对象。"""
 
-import os
-import sys
 
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_normalization_matrix_single_source() -> None:
 
     import core.services.common.normalization_matrix as matrix
     import web.routes.equipment_pages as equipment_pages
@@ -114,8 +100,4 @@ def main() -> None:
     if normalize_yes_no_optional("非主操", field="主操设备") != "no":
         raise RuntimeError("人员设备关联主操设备否值归一化未对齐矩阵")
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

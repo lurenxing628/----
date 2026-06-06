@@ -1,24 +1,11 @@
 """回归测试：compute_metrics 计算加权拖期时，批次 priority 应先小写归一化——priority="Urgent" 须命中 urgent 权重 2.0，
 使 tardiness 10h 得出 weighted_tardiness_hours 20h（total_tardiness_hours 仍为 10h）。"""
 
-import os
-import sys
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 
 
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def main():
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_priority_weight_case_insensitive():
 
     from core.algorithms.evaluation import compute_metrics
     from core.algorithms.greedy import ScheduleResult
@@ -52,9 +39,4 @@ def main():
     assert abs(float(m.total_tardiness_hours) - 10.0) < 1e-9, f"total_tardiness_hours 异常：{m.total_tardiness_hours}"
     assert abs(float(m.weighted_tardiness_hours) - 20.0) < 1e-9, f"weighted_tardiness_hours 异常：{m.weighted_tardiness_hours}"
 
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()
 

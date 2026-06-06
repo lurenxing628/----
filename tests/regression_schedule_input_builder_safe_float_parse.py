@@ -1,16 +1,6 @@
 """回归测试：build_algo_operations 对工序数值字段做安全解析——内部工序的空白/非数字 setup_hours、unit_hours 回退为 0.0，外部工序（source 大小写混用仍识别为 external）空白 ext_days 兼容回退为 1.0，全程不抛异常，但会触发真实模板查找并保留 blank_required 等结构化退化事件。"""
 
-import os
-import sys
 from types import SimpleNamespace
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 class _StubSvc:
@@ -29,10 +19,7 @@ class _StubSvc:
         return None
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_schedule_input_builder_safe_float_parse() -> None:
 
     from core.services.scheduler.schedule_input_builder import build_algo_operations
 
@@ -84,9 +71,4 @@ def main() -> None:
     codes = [event.code for event in outcome.events]
     assert "blank_required" in codes, f"兼容读取事件缺少 blank_required：{codes!r}"
 
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()
 

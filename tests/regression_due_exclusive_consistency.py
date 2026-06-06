@@ -1,18 +1,8 @@
 """回归测试：交期判定的“排他下界”口径在三处统计中一致——共享的 due_exclusive() 把交期次日 0 点作为边界，使得完工时间正好落在该边界时，evaluation.compute_metrics、schedule_summary.build_result_summary 与 report.compute_overdue_buckets 都判为逾期 1 单且边界拖期为 0。"""
 
-import os
-import sys
 import time
 from datetime import date, datetime
 from types import SimpleNamespace
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 class _StubSvc:
@@ -30,10 +20,7 @@ class _StubSvc:
         return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_due_exclusive_consistency() -> None:
 
     from core.algorithms.evaluation import compute_metrics
     from core.algorithms.greedy.date_parsers import due_exclusive
@@ -115,8 +102,4 @@ def main() -> None:
     assert len(scheduled) == 1, f"report scheduled overdue 应为 1，实际={scheduled}"
     assert len(unscheduled) == 0, f"report unscheduled overdue 应为 0，实际={unscheduled}"
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

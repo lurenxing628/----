@@ -1,21 +1,7 @@
 """回归测试：parse_compat_float/parse_compat_date 在脏值（非数字、空白、非法日期）下按字段回退到默认值，并向 DegradationCollector 记下 invalid_number/legacy_external_days_defaulted/blank_required/invalid_due_date 退化码、计数各 1，且面向用户的退化文案用业务口径（供应商默认周期/外协周期/优先级权重/交期）而不泄露内部字段名或开发口径。"""
 
-import os
-import sys
 
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_compat_parse_emits_degradation() -> None:
 
     from core.services.common.compat_parse import parse_compat_date, parse_compat_float
     from core.services.common.degradation import DegradationCollector
@@ -66,8 +52,4 @@ def main() -> None:
     assert counters["blank_required"] == 1, f"blank_required 计数异常：{counters!r}"
     assert counters["invalid_due_date"] == 1, f"invalid_due_date 计数异常：{counters!r}"
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

@@ -1,19 +1,9 @@
 """回归测试：GreedyScheduler 自动选机时，固定 operator_id 而 machine_id 缺省的工序，只能选中 op_type_id 匹配的设备（M_OK），不得选用同人可操作但工种不符的 M_BAD，且 operator_id 保持固定值。"""
 
-import os
-import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from typing import Optional
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 @dataclass
@@ -36,10 +26,7 @@ class _Cfg:
     auto_assign_enabled: str = "yes"
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_auto_assign_fixed_operator_respects_op_type() -> None:
 
     from core.algorithms import GreedyScheduler
 
@@ -101,8 +88,4 @@ def main() -> None:
     assert r0.machine_id == "M_OK", f"自动选机应尊重 op_type_id，仅允许 M_OK，实际 {r0.machine_id!r}"
     assert r0.operator_id == "O1", f"operator_id 应保持为固定值 O1，实际 {r0.operator_id!r}"
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

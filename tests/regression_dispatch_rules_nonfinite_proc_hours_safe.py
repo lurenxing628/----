@@ -1,23 +1,10 @@
 """回归测试：dispatch_rules.build_dispatch_key 在 proc_hours 为非有限值（inf）时应退化为 avg_proc_hours（primary 键保持有限、与正常值一致，不把候选错误置顶/置底），且 mean_positive 只统计有限正数、忽略 Inf 与非正值。"""
 
 import math
-import os
-import sys
 from datetime import date, datetime
 
 
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_dispatch_rules_nonfinite_proc_hours_safe() -> None:
 
     from core.algorithms.dispatch_rules import DispatchInputs, DispatchRule, build_dispatch_key, mean_positive
 
@@ -64,9 +51,4 @@ def main() -> None:
     m = mean_positive({"a": 1.0, "b": float("inf"), "c": -2.0, "d": 0.0})
     assert abs(float(m) - 1.0) < 1e-9, f"mean_positive 应忽略 Inf/非正值：m={m!r}"
 
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()
 

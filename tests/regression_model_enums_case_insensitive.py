@@ -1,21 +1,7 @@
 """回归测试：各领域模型 from_row 对枚举/状态类字段做大小写不敏感与去空白规范化——BatchOperation/PartOperation 的 source(internal/external)、status，Batch 的 priority/ready_status/status，ExternalGroup.merge_mode，WorkCalendar/OperatorCalendar 的 day_type/allow_normal/allow_urgent，BatchMaterial.ready_status，Machine/Operator/Supplier/Material.status，MachineDowntime.scope_type/status，Schedule.lock_status 均落到规范小写值。"""
 
-import os
-import sys
 
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_model_enums_case_insensitive() -> None:
 
     from core.models import (
         Batch,
@@ -167,9 +153,4 @@ def main() -> None:
     s = Schedule.from_row({"id": 1, "op_id": 1, "start_time": "x", "end_time": "y", "lock_status": " LOCKED "})
     assert s.lock_status == "locked", f"Schedule.lock_status 未规范化：{s.lock_status!r}"
 
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()
 

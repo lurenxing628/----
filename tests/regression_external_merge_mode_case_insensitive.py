@@ -1,18 +1,8 @@
 """回归测试：greedy.external_groups.schedule_external 对 ext_merge_mode 大小写不敏感——"Merged" 等混用大小写仍按合并外协组排产，按 ext_group_total_days 计算 start/end_time、写入 external_group_cache、不被窗口阻断、不产生 errors。"""
 
-import os
-import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from types import SimpleNamespace
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 @dataclass
@@ -21,10 +11,7 @@ class _StubCalendar:
         return start + timedelta(days=float(days or 0.0))
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_external_merge_mode_case_insensitive() -> None:
 
     from core.algorithms.greedy.external_groups import schedule_external
 
@@ -67,9 +54,4 @@ def main() -> None:
     assert ("B001", "G001") in external_group_cache, "merged 外协组应写入 external_group_cache"
     assert not errors, f"不应产生 errors，实际 errors={errors!r}"
 
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()
 

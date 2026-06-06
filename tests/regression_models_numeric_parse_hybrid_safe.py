@@ -1,21 +1,7 @@
 """回归测试：各 core.models 数据类的 from_row 数字解析——id/version/quantity/seq 等接受 '1.0' 形式、空字符串回落各自旧默认（None 或 0.0），但显式 NaN/Inf/布尔值必须直接 ValueError 并点名字段，绝不静默回落 0 伪装成合法值。"""
 
-import os
-import sys
 
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_models_numeric_parse_hybrid_safe() -> None:
 
     from core.models import (
         Batch,
@@ -222,8 +208,4 @@ def main() -> None:
     cfg = ScheduleConfig.from_row({"id": "1.0", "config_key": "k", "config_value": "v"})
     assert cfg.id == 1, f"ScheduleConfig.id 解析异常：{cfg.id!r}"
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()
