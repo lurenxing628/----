@@ -1,18 +1,5 @@
 """守护 ExcelService.preview_import/_calc_changes 的逐行变更判定：OVERWRITE 模式下文本差异判 UPDATE 且只在 changes 里给出新旧值、数值型(1 vs 1.0)等价不计变更、整行无变化判 UNCHANGED，且读取已有记录时内部异常必须原样抛出而非伪装成普通导入校验失败。"""
 
-import os
-import sqlite3
-import sys
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
 class _DummyBackend:
     def read(self, *_args, **_kwargs):
         raise NotImplementedError
@@ -29,15 +16,10 @@ class _ExplodingMapping:
         raise RuntimeError("existing row exploded")
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-
+def test_excel_service_calc_changes_row(mem_conn) -> None:
     from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
 
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = mem_conn
     try:
         existing_row = conn.execute(
             'SELECT "OP001" AS "工号", "张三" AS "姓名", "active" AS "状态", 1 AS "数量", 1.0 AS "工时"'
@@ -77,13 +59,8 @@ def main() -> None:
         else:
             raise AssertionError("已有记录读取内部异常不应被静默包装")
 
-        print("OK")
     finally:
         try:
             conn.close()
         except Exception:
             pass
-
-
-if __name__ == "__main__":
-    main()

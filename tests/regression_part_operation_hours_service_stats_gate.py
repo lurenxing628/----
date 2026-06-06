@@ -1,27 +1,10 @@
 """回归测试：守护 PartOperationHoursExcelImportService.apply_preview_rows 的统计口径——UNCHANGED/SKIP 计入 skip_count、ERROR 计入 error_count，四类计数之和等于 total_rows；errors_sample 保留 source_row_num/source_sheet_name/message 等定位字段。"""
 
-import os
-import sqlite3
-import sys
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-
+def test_part_operation_hours_service_stats_gate(mem_conn) -> None:
     from core.services.common.excel_service import ImportPreviewRow, RowStatus
     from core.services.process.part_operation_hours_excel_import_service import PartOperationHoursExcelImportService
 
-    conn = sqlite3.connect(":memory:")
+    conn = mem_conn
     try:
         svc = PartOperationHoursExcelImportService(conn)
         preview_rows = [
@@ -59,14 +42,9 @@ def main() -> None:
         assert sample.get("source_sheet_name") == "工时导入", sample
         assert sample.get("message") == "bad row", sample
 
-        print("OK")
     finally:
         try:
             conn.close()
         except Exception:
             pass
-
-
-if __name__ == "__main__":
-    main()
 

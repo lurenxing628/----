@@ -1,28 +1,13 @@
 """回归测试：BatchService.import_from_preview_rows 处理 RowStatus.UNCHANGED 行时，只计入 skip_count，绝不触发 update_no_tx / create_no_tx / create_batch_from_template_no_tx(rebuild) 等写入或重建调用。"""
 
-import os
-import sqlite3
-import sys
 from types import SimpleNamespace
 
 
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-
+def test_batch_import_unchanged_no_rebuild(mem_conn) -> None:
     from core.services.common.excel_service import ImportMode, ImportPreviewRow, RowStatus
     from core.services.scheduler import BatchService
 
-    conn = sqlite3.connect(":memory:")
+    conn = mem_conn
     try:
         svc = BatchService(conn)
         calls = {"replace": 0, "update": 0, "create": 0, "rebuild": 0}
@@ -90,14 +75,9 @@ def main() -> None:
         if any(v != 0 for v in calls.values()):
             raise RuntimeError(f"UNCHANGED 行触发了不应执行的写入/重建调用：{calls!r}")
 
-        print("OK")
     finally:
         try:
             conn.close()
         except Exception:
             pass
-
-
-if __name__ == "__main__":
-    main()
 

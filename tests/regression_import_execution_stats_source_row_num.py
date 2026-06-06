@@ -1,28 +1,11 @@
 """回归测试：execute_preview_rows_transactional 的错误样本以 source_row_num 作为 row（而非 row_num），保留预览阶段/应用阶段原始错误文案、为缺少主键的行套用统一文案，并正确统计 error/new/update/skip 数与实际写库调用。"""
 
-import os
-import sqlite3
-import sys
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-
+def test_import_execution_stats_source_row_num(mem_conn) -> None:
     from core.infrastructure.errors import ValidationError
     from core.services.common.excel_import_executor import execute_preview_rows_transactional
     from core.services.common.excel_service import ImportMode, ImportPreviewRow, RowStatus
 
-    conn = sqlite3.connect(":memory:")
+    conn = mem_conn
     try:
         preview_rows = [
             ImportPreviewRow(
@@ -105,9 +88,3 @@ def main() -> None:
             conn.close()
         except Exception:
             pass
-
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()

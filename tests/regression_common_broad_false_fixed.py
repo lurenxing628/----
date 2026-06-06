@@ -1,26 +1,12 @@
 """回归测试：迁移公共工具 common.table_exists / column_exists 对非法表名/列名（如 "1-bad-table"）须抛 ValueError 而非误判为不存在，且在连接已关闭时须抛 sqlite3.ProgrammingError 而非静默返回 False。"""
 
-import os
 import sqlite3
-import sys
 
 
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py")
-
-
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-
+def test_common_broad_false_fixed(mem_conn) -> None:
     from core.infrastructure.migrations.common import column_exists, table_exists
 
-    conn = sqlite3.connect(":memory:")
+    conn = mem_conn
     try:
         conn.execute("CREATE TABLE TestTable (id INTEGER PRIMARY KEY, name TEXT)")
         conn.commit()
@@ -54,9 +40,3 @@ def main() -> None:
         pass
     else:
         raise AssertionError("预期 column_exists 在关闭连接时抛出 sqlite3.ProgrammingError，而不是静默返回 False")
-
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()

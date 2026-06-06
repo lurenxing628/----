@@ -1,27 +1,10 @@
 """回归测试：execute_preview_rows_transactional 按行状态闸门写库——ERROR/SKIP/UNCHANGED 不写、UPDATE/NEW 才写并正确判定 existed；并守护 APPEND 命中 existing_row_ids 兜底跳过、REPLACE 下 UNCHANGED 行清空后必重建、row_id 为空计错不写、continue_on_app_error 为真按行降级计错继续/为假遇 AppError 直接中断。"""
 
-import os
-import sqlite3
-import sys
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-
+def test_excel_import_executor_status_gate(mem_conn) -> None:
     from core.services.common.excel_import_executor import execute_preview_rows_transactional
     from core.services.common.excel_service import ImportMode, ImportPreviewRow, RowStatus
 
-    conn = sqlite3.connect(":memory:")
+    conn = mem_conn
     try:
         apply_calls = []
         existing_row_ids = {"A1", "S1", "U1"}
@@ -171,13 +154,8 @@ def main() -> None:
             aborted = True
         assert aborted is True, "continue_on_app_error=False 时应直接抛出 AppError"
 
-        print("OK")
     finally:
         try:
             conn.close()
         except Exception:
             pass
-
-
-if __name__ == "__main__":
-    main()
