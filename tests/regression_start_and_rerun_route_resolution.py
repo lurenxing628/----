@@ -162,104 +162,108 @@ def _exercise_runner(runner_path: Path, label: str) -> None:
         popen_env.update(dict(kwargs.get("env") or {}))
         return _DummyProc()
 
+    orig_popen = rerun_mod.subprocess.Popen
     rerun_mod.subprocess.Popen = _fake_popen
-    seeded_db: list[str] = []
+    try:
+        seeded_db: list[str] = []
 
-    def _fake_seed(repo_root, db_path, view):
-        seeded_db.append(str(db_path))
-        return {
-            "version": 7,
-            "week_start": "2026-03-16",
-            "task_count": 11,
-        }
-
-    rerun_mod._seed_and_schedule = _fake_seed
-    verify_calls: list[dict] = []
-
-    def _fake_verify_route(host: str, port: int, view: str, week_start: str, version: int) -> int:
-        verify_calls.append(
-            {
-                "host": host,
-                "port": int(port),
-                "view": view,
-                "week_start": week_start,
-                "version": int(version),
+        def _fake_seed(repo_root, db_path, view):
+            seeded_db.append(str(db_path))
+            return {
+                "version": 7,
+                "week_start": "2026-03-16",
+                "task_count": 11,
             }
+
+        rerun_mod._seed_and_schedule = _fake_seed
+        verify_calls: list[dict] = []
+
+        def _fake_verify_route(host: str, port: int, view: str, week_start: str, version: int) -> int:
+            verify_calls.append(
+                {
+                    "host": host,
+                    "port": int(port),
+                    "view": view,
+                    "week_start": week_start,
+                    "version": int(version),
+                }
+            )
+            return 11
+
+        rerun_mod._verify_route = _fake_verify_route
+        rerun_opened: list[str] = []
+        rerun_mod._open_url = lambda url: rerun_opened.append(url)
+
+        rc, payload = _run_main(rerun_mod, ["rerun", "--view", "operator", "--db-path", rerun_db, "--no-open"])
+        _assert(rc == 0, f"{label}: rerun 应返回 0")
+        _assert(payload["host"] == "127.0.0.1", f"{label}: rerun host 不正确")
+        _assert(int(payload["port"]) == 5715, f"{label}: rerun port 未使用实际 endpoint")
+        _assert(
+            payload["url"] == "http://127.0.0.1:5715/scheduler/gantt?view=operator&week_start=2026-03-16&version=7",
+            f"{label}: rerun url 未使用实际 endpoint",
         )
-        return 11
+        _assert(payload["server_started_now"] is True, f"{label}: rerun server_started_now 不正确")
+        _assert(len(verify_calls) == 1, f"{label}: _verify_route 应被调用一次")
+        _assert(verify_calls[0]["host"] == "127.0.0.1", f"{label}: _verify_route 未收到实际 host")
+        _assert(verify_calls[0]["port"] == 5715, f"{label}: _verify_route 未收到实际 port")
+        _assert(verify_calls[0]["view"] == "operator", f"{label}: _verify_route view 不正确")
+        _assert(not rerun_opened, f"{label}: 传入 --no-open 时不应打开浏览器")
+        _assert(len(fresh_resolve_calls) == 1, f"{label}: fresh-start 前应只检查一次 repo runtime contract")
+        _assert(fresh_resolve_calls[0]["preferred_host"] is None, f"{label}: fresh-start 前不应按 preferred host 探测外部实例")
+        _assert(fresh_resolve_calls[0]["preferred_port"] is None, f"{label}: fresh-start 前不应按 preferred port 探测外部实例")
+        _assert(delete_stale_calls == [str(temp_repo)], f"{label}: fresh-start 前应清理当前 repo runtime 文件")
+        _assert(popen_env.get("APS_DB_PATH") == rerun_db, f"{label}: fresh-start 未把目标 DB 传给子服务环境")
+        _assert(len(seeded_db) == 1 and _normalize_path(seeded_db[0]) == rerun_db, f"{label}: _seed_and_schedule 未收到统一目标 DB")
 
-    rerun_mod._verify_route = _fake_verify_route
-    rerun_opened: list[str] = []
-    rerun_mod._open_url = lambda url: rerun_opened.append(url)
-
-    rc, payload = _run_main(rerun_mod, ["rerun", "--view", "operator", "--db-path", rerun_db, "--no-open"])
-    _assert(rc == 0, f"{label}: rerun 应返回 0")
-    _assert(payload["host"] == "127.0.0.1", f"{label}: rerun host 不正确")
-    _assert(int(payload["port"]) == 5715, f"{label}: rerun port 未使用实际 endpoint")
-    _assert(
-        payload["url"] == "http://127.0.0.1:5715/scheduler/gantt?view=operator&week_start=2026-03-16&version=7",
-        f"{label}: rerun url 未使用实际 endpoint",
-    )
-    _assert(payload["server_started_now"] is True, f"{label}: rerun server_started_now 不正确")
-    _assert(len(verify_calls) == 1, f"{label}: _verify_route 应被调用一次")
-    _assert(verify_calls[0]["host"] == "127.0.0.1", f"{label}: _verify_route 未收到实际 host")
-    _assert(verify_calls[0]["port"] == 5715, f"{label}: _verify_route 未收到实际 port")
-    _assert(verify_calls[0]["view"] == "operator", f"{label}: _verify_route view 不正确")
-    _assert(not rerun_opened, f"{label}: 传入 --no-open 时不应打开浏览器")
-    _assert(len(fresh_resolve_calls) == 1, f"{label}: fresh-start 前应只检查一次 repo runtime contract")
-    _assert(fresh_resolve_calls[0]["preferred_host"] is None, f"{label}: fresh-start 前不应按 preferred host 探测外部实例")
-    _assert(fresh_resolve_calls[0]["preferred_port"] is None, f"{label}: fresh-start 前不应按 preferred port 探测外部实例")
-    _assert(delete_stale_calls == [str(temp_repo)], f"{label}: fresh-start 前应清理当前 repo runtime 文件")
-    _assert(popen_env.get("APS_DB_PATH") == rerun_db, f"{label}: fresh-start 未把目标 DB 传给子服务环境")
-    _assert(len(seeded_db) == 1 and _normalize_path(seeded_db[0]) == rerun_db, f"{label}: _seed_and_schedule 未收到统一目标 DB")
-
-    mismatch_db_mod = _load_module(str(runner_path), f"aps_runner_mismatch_db_{label}")
-    mismatch_db_mod._find_repo_root = lambda: temp_repo
-    mismatch_db_mod._runtime_probe = lambda repo_root: type(
-        "Probe",
-        (),
-        {
-            "resolve_healthy_endpoint": lambda self, runtime_dir, preferred_host=None, preferred_port=None, timeout=2.0: {
-                "host": "127.0.0.1",
-                "port": 5716,
-                "base_url": "http://127.0.0.1:5716",
-                "source": "runtime_files",
-                "health": {"app": "aps", "status": "ok", "contract_version": 1},
+        mismatch_db_mod = _load_module(str(runner_path), f"aps_runner_mismatch_db_{label}")
+        mismatch_db_mod._find_repo_root = lambda: temp_repo
+        mismatch_db_mod._runtime_probe = lambda repo_root: type(
+            "Probe",
+            (),
+            {
+                "resolve_healthy_endpoint": lambda self, runtime_dir, preferred_host=None, preferred_port=None, timeout=2.0: {
+                    "host": "127.0.0.1",
+                    "port": 5716,
+                    "base_url": "http://127.0.0.1:5716",
+                    "source": "runtime_files",
+                    "health": {"app": "aps", "status": "ok", "contract_version": 1},
+                },
+                "read_runtime_host_port": lambda self, runtime_dir: ("127.0.0.1", 5716),
+                "read_runtime_db_path": lambda self, runtime_dir: _normalize_path(str(temp_repo / "other.db")),
+                "build_base_url": lambda self, host, port: f"http://127.0.0.1:{int(port)}",
             },
-            "read_runtime_host_port": lambda self, runtime_dir: ("127.0.0.1", 5716),
-            "read_runtime_db_path": lambda self, runtime_dir: _normalize_path(str(temp_repo / "other.db")),
-            "build_base_url": lambda self, host, port: f"http://127.0.0.1:{int(port)}",
-        },
-    )()
-    try:
-        mismatch_db_mod.main(["start-only", "--db-path", matched_db, "--no-open"])
-        raise RuntimeError(f"{label}: DB 不一致时应拒绝复用")
-    except RuntimeError as e:
-        _assert("runner target DB" in str(e), f"{label}: DB 不一致时错误信息不正确")
+        )()
+        try:
+            mismatch_db_mod.main(["start-only", "--db-path", matched_db, "--no-open"])
+            raise RuntimeError(f"{label}: DB 不一致时应拒绝复用")
+        except RuntimeError as e:
+            _assert("runner target DB" in str(e), f"{label}: DB 不一致时错误信息不正确")
 
-    foreign_endpoint_mod = _load_module(str(runner_path), f"aps_runner_foreign_endpoint_{label}")
-    foreign_endpoint_mod._find_repo_root = lambda: temp_repo
-    foreign_endpoint_mod._runtime_probe = lambda repo_root: type(
-        "Probe",
-        (),
-        {
-            "resolve_healthy_endpoint": lambda self, runtime_dir, preferred_host=None, preferred_port=None, timeout=2.0: {
-                "host": "127.0.0.1",
-                "port": 5717,
-                "base_url": "http://127.0.0.1:5717",
-                "source": "runtime_files",
-                "health": {"app": "aps", "status": "ok", "contract_version": 1},
+        foreign_endpoint_mod = _load_module(str(runner_path), f"aps_runner_foreign_endpoint_{label}")
+        foreign_endpoint_mod._find_repo_root = lambda: temp_repo
+        foreign_endpoint_mod._runtime_probe = lambda repo_root: type(
+            "Probe",
+            (),
+            {
+                "resolve_healthy_endpoint": lambda self, runtime_dir, preferred_host=None, preferred_port=None, timeout=2.0: {
+                    "host": "127.0.0.1",
+                    "port": 5717,
+                    "base_url": "http://127.0.0.1:5717",
+                    "source": "runtime_files",
+                    "health": {"app": "aps", "status": "ok", "contract_version": 1},
+                },
+                "read_runtime_host_port": lambda self, runtime_dir: ("127.0.0.1", 5718),
+                "read_runtime_db_path": lambda self, runtime_dir: matched_db,
+                "build_base_url": lambda self, host, port: f"http://127.0.0.1:{int(port)}",
             },
-            "read_runtime_host_port": lambda self, runtime_dir: ("127.0.0.1", 5718),
-            "read_runtime_db_path": lambda self, runtime_dir: matched_db,
-            "build_base_url": lambda self, host, port: f"http://127.0.0.1:{int(port)}",
-        },
-    )()
-    try:
-        foreign_endpoint_mod.main(["start-only", "--db-path", matched_db, "--no-open"])
-        raise RuntimeError(f"{label}: 实例身份不可证实时应拒绝复用")
-    except RuntimeError as e:
-        _assert("cannot be proven to belong to this repo" in str(e), f"{label}: 实例身份错误信息不正确")
+        )()
+        try:
+            foreign_endpoint_mod.main(["start-only", "--db-path", matched_db, "--no-open"])
+            raise RuntimeError(f"{label}: 实例身份不可证实时应拒绝复用")
+        except RuntimeError as e:
+            _assert("cannot be proven to belong to this repo" in str(e), f"{label}: 实例身份错误信息不正确")
+    finally:
+        rerun_mod.subprocess.Popen = orig_popen
 
 
 def test_start_and_rerun_route_resolution() -> None:
