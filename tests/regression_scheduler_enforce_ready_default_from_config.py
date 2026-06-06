@@ -1,31 +1,13 @@
 """回归测试：run_schedule 未显式传 enforce_ready 时须回退到配置 enforce_ready_default——默认为 yes 时拒绝未齐套批次（抛 ValidationError），默认为 no 时允许排产（scheduled_ops>0）。"""
 
-import os
-import sys
-import tempfile
 
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_scheduler_enforce_ready_default_from_config(db_path) -> None:
 
     from core.infrastructure.database import ensure_schema, get_connection
     from core.infrastructure.errors import ValidationError
     from core.services.scheduler import BatchService, ConfigService, ScheduleService
 
-    tmpdir = tempfile.mkdtemp(prefix="aps_regression_ready_default_")
-    test_db = os.path.join(tmpdir, "aps_ready_default.db")
-    ensure_schema(test_db, logger=None, schema_path=os.path.join(repo_root, "schema.sql"))
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
 
     try:
         # 最小可排数据
@@ -93,7 +75,6 @@ def main() -> None:
         )
         assert int((ret.get("summary") or {}).get("scheduled_ops") or 0) > 0, f"配置默认 no 时应允许排产，返回：{ret}"
 
-        print("OK")
     finally:
         try:
             conn.close()
@@ -101,5 +82,3 @@ def main() -> None:
             pass
 
 
-if __name__ == "__main__":
-    main()

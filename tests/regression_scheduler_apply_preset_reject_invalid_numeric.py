@@ -1,18 +1,7 @@
 """守护 ConfigService.apply_preset 对非法预设的拒绝契约：非数字/NaN/Inf 数值字段、整数字段填小数、choice/yes-no 字段显式空白、以及缺省数值字段都必须抛 ValidationError 或返回 status=rejected，绝不静默回退默认基线；拒绝时不得写入 ACTIVE_PRESET / ACTIVE_PRESET_REASON 行。"""
 
 import json
-import os
-import sys
-import tempfile
 from typing import Optional
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 def _expect_validation_error(fn, title: str, field: Optional[str] = None) -> None:
@@ -37,18 +26,12 @@ def _save_preset_raw(cfg_svc, name: str, payload: dict) -> None:
         )
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_scheduler_apply_preset_reject_invalid_numeric(db_path) -> None:
 
     from core.infrastructure.database import ensure_schema, get_connection
     from core.services.scheduler import ConfigService
 
-    tmpdir = tempfile.mkdtemp(prefix="aps_regression_preset_numeric_")
-    test_db = os.path.join(tmpdir, "aps_preset_numeric.db")
-    ensure_schema(test_db, logger=None, schema_path=os.path.join(repo_root, "schema.sql"))
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
 
     try:
         cfg_svc = ConfigService(conn, logger=None, op_logger=None)
@@ -136,7 +119,6 @@ def main() -> None:
         assert "due_weight" in error_message
         assert "holiday_default_efficiency" in error_message
 
-        print("OK")
     finally:
         try:
             conn.close()
@@ -144,5 +126,3 @@ def main() -> None:
             pass
 
 
-if __name__ == "__main__":
-    main()

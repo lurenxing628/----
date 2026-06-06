@@ -1,17 +1,6 @@
 """回归测试：开启冻结窗口重排时，只冻结 start_time 落在 [start_dt, start_dt+freeze_days) 区间内的工序——窗口起点之前的 B_OUT 不锁定、窗口内的 B_IN 被锁定，且 completed 的 B_TERM 不经 freeze seed 回流新版本。"""
 
-import os
-import sys
-import tempfile
 from datetime import datetime, timedelta
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 def _dt(s: str) -> datetime:
@@ -22,7 +11,7 @@ def _fmt(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
-def main():
+def test_freeze_window_bounds(db_path):
     """
     回归目标：
     冻结窗口（freeze window）读取上一版本排程时，应只冻结窗口区间内的工序：
@@ -38,18 +27,12 @@ def main():
       - 预期：只冻结 B_IN，不冻结 B_OUT，且 completed 的 B_TERM 不能经 seed 回流新版本
     """
 
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
 
     from core.infrastructure.database import ensure_schema, get_connection
     from core.services.scheduler import BatchService, ConfigService, ScheduleService
 
-    tmpdir = tempfile.mkdtemp(prefix="aps_regression_freeze_window_")
-    test_db = os.path.join(tmpdir, "aps_freeze_window_bounds.db")
 
-    ensure_schema(test_db, logger=None, schema_path=os.path.join(repo_root, "schema.sql"))
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
 
     try:
         # 1) 基础数据：工种/设备/人员/人机关联
@@ -197,7 +180,6 @@ def main():
         version2_batch_ids = [(rr["batch_id"] or "").strip() for rr in version2_rows]
         assert "B_TERM" not in version2_batch_ids, f"completed 工序不应经 freeze seed 回流新版本：{version2_batch_ids}"
 
-        print("OK")
     finally:
         try:
             conn.close()
@@ -205,5 +187,3 @@ def main():
             pass
 
 
-if __name__ == "__main__":
-    main()

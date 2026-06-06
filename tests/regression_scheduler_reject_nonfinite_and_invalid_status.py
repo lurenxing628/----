@@ -1,17 +1,5 @@
 """回归测试：调度相关 Service 拒绝非有限数值与非法状态——ConfigService.set_holiday_default_efficiency/set_weights、CalendarService.upsert(efficiency)、ScheduleService.update_internal/external_operation 对 NaN/Inf/负数工时与周期抛 ValidationError；空白工时清空保存为 0、设备/人员可清空为 None；工序 status 走白名单（archived/unknown 拒绝，scheduled/skipped 放行）。"""
 
-import os
-import sys
-import tempfile
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
 
 def _expect_validation_error(fn, title: str) -> None:
     from core.infrastructure.errors import ValidationError
@@ -24,18 +12,12 @@ def _expect_validation_error(fn, title: str) -> None:
     assert ok, f"{title}：应抛出 ValidationError"
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_scheduler_reject_nonfinite_and_invalid_status(db_path) -> None:
 
     from core.infrastructure.database import ensure_schema, get_connection
     from core.services.scheduler import BatchService, CalendarService, ConfigService, ScheduleService
 
-    tmpdir = tempfile.mkdtemp(prefix="aps_regression_scheduler_validation_")
-    test_db = os.path.join(tmpdir, "aps_scheduler_validation.db")
-    ensure_schema(test_db, logger=None, schema_path=os.path.join(repo_root, "schema.sql"))
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
 
     try:
         # 基础数据：内部/外部工序各一条
@@ -141,7 +123,6 @@ def main() -> None:
         op_ex_after = sch_svc.update_external_operation(op_ex.id, status="skipped")
         assert (op_ex_after.status or "").strip().lower() == "skipped", f"外部工序状态更新失败：{op_ex_after.status!r}"
 
-        print("OK")
     finally:
         try:
             conn.close()
@@ -149,5 +130,3 @@ def main() -> None:
             pass
 
 
-if __name__ == "__main__":
-    main()

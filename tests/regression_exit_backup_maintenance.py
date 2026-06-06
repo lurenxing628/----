@@ -3,18 +3,8 @@
 from __future__ import annotations
 
 import os
-import sys
-import tempfile
 import threading
 import time
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 def _list_exit_backups(backup_dir: str) -> list:
@@ -23,27 +13,16 @@ def _list_exit_backups(backup_dir: str) -> list:
     return sorted([f for f in os.listdir(backup_dir) if f.startswith("aps_backup_") and f.endswith("_exit.db")])
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_exit_backup_maintenance(db_path, tmp_path) -> None:
 
     from core.infrastructure.backup import BackupManager, maintenance_window
     from core.infrastructure.database import ensure_schema, get_connection
     from core.services.system import SystemConfigService
     from web.bootstrap import factory as factory_mod
 
-    tmpdir = tempfile.mkdtemp(prefix="aps_reg_exit_backup_maint_")
-    db_path = os.path.join(tmpdir, "aps_test.db")
-    backup_dir = os.path.join(tmpdir, "backups")
+    backup_dir = os.path.join(str(tmp_path), "backups")
     os.makedirs(backup_dir, exist_ok=True)
 
-    ensure_schema(
-        db_path,
-        logger=None,
-        schema_path=os.path.join(repo_root, "schema.sql"),
-        backup_dir=backup_dir,
-    )
 
     conn = get_connection(db_path)
     try:
@@ -87,8 +66,4 @@ def main() -> None:
     if _list_exit_backups(backup_dir):
         raise RuntimeError("维护窗口期间不应生成 *_exit.db")
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

@@ -1,38 +1,20 @@
 """回归测试：run_schedule 的齐套约束开关——enforce_ready=True 时未齐套批次（ready_status!=yes）应被 ValidationError 拒绝排产；enforce_ready=False 时关闭齐套约束，未齐套批次应允许参与并产出排程结果。"""
 
-import os
-import sys
-import tempfile
 
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def main():
+def test_optional_ready_constraint(db_path):
     """
     回归目标：
     - enforce_ready=True：保持旧行为，未齐套（ready_status!=yes）应拒绝排产
     - enforce_ready=False：齐套约束关闭时，允许未齐套批次参与排产
     """
 
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
 
     from core.infrastructure.database import ensure_schema, get_connection
     from core.infrastructure.errors import ValidationError
     from core.services.scheduler import BatchService, ScheduleService
 
-    tmpdir = tempfile.mkdtemp(prefix="aps_regression_ready_constraint_")
-    test_db = os.path.join(tmpdir, "aps_ready_constraint.db")
 
-    ensure_schema(test_db, logger=None, schema_path=os.path.join(repo_root, "schema.sql"))
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
 
     try:
         # 1) 最小可排数据：工种/设备/人员/人机关联
@@ -101,14 +83,10 @@ def main():
         )
         assert int((r.get("summary") or {}).get("scheduled_ops") or 0) > 0, f"enforce_ready=False 时应产生排程结果，实际返回：{r}"
 
-        print("OK")
     finally:
         try:
             conn.close()
         except Exception:
             pass
 
-
-if __name__ == "__main__":
-    main()
 

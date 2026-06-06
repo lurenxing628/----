@@ -1,34 +1,14 @@
 """回归测试：OperatorMachineService 人员设备关联导入在 preview_import_links/apply_import_links 全程保留源行号与源工作表名（__source_row_num=9、__source_sheet_name），缺工号时报 ERROR 并给出"工号不能为空"提示，且预览行 data 不泄漏 __source_* 保留元数据键。"""
 
-import os
-import sys
-import tempfile
 
+def test_excel_source_row_num_preserved(db_path) -> None:
 
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-
-    tmpdir = tempfile.mkdtemp(prefix="aps_regression_source_row_num_")
-    test_db = os.path.join(tmpdir, "aps_test.db")
 
     from core.infrastructure.database import ensure_schema, get_connection
-
-    ensure_schema(test_db, logger=None, schema_path=os.path.join(repo_root, "schema.sql"), backup_dir=None)
-
     from core.services.common.excel_service import ImportMode, RowStatus
     from core.services.personnel.operator_machine_service import OperatorMachineService
 
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
     try:
         svc = OperatorMachineService(conn)
         preview_rows = svc.preview_import_links(
@@ -79,8 +59,4 @@ def main() -> None:
     finally:
         conn.close()
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

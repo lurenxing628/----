@@ -2,20 +2,9 @@
 
 from __future__ import annotations
 
-import os
 import sqlite3
-import sys
-import tempfile
 from datetime import datetime
 from typing import Any
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 def _row_to_dict(row: Any) -> dict:
@@ -38,19 +27,13 @@ def _expect_validation_error(fn, expected_text: str) -> None:
     raise RuntimeError(f"预期抛出 ValidationError：{expected_text}")
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_calendar_no_tx_hardening(db_path) -> None:
 
     from core.infrastructure.database import ensure_schema, get_connection
     from core.services.scheduler import CalendarService
 
-    tmpdir = tempfile.mkdtemp(prefix="aps_reg_calendar_no_tx_hardening_")
-    test_db = os.path.join(tmpdir, "aps_calendar_no_tx.db")
-    ensure_schema(test_db, logger=None, schema_path=os.path.join(repo_root, "schema.sql"))
 
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
     try:
         conn.execute("INSERT INTO Operators (operator_id, name) VALUES (?, ?)", ("OP100", "测试员甲"))
         conn.commit()
@@ -258,8 +241,4 @@ def main() -> None:
         except Exception:
             pass
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

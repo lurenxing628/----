@@ -1,40 +1,23 @@
 """回归测试：个人工作日历（OperatorCalendar）可覆盖全局 WorkCalendar——当全局把某天设为假期不可排产时内部工序应跳到次日；但若该人把该天个人覆盖为可工作日，则其内部工序应能排入该天。"""
 
-import os
-import sys
-import tempfile
 from datetime import datetime
 from types import SimpleNamespace
 
 
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def main():
+def test_operator_calendar_override_allows_work_on_global_holiday(db_path):
     """
     回归目标：
     - 个人工作日历（OperatorCalendar）可覆盖全局 WorkCalendar
     - 当全局把某天设为“假期不可排产”，但个人把该天设为“可工作”，则该人的内部工序应可排入该天
     """
 
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
 
     from core.algorithms.greedy.scheduler import GreedyScheduler
     from core.infrastructure.database import ensure_schema, get_connection
     from core.services.scheduler import CalendarService
 
-    tmpdir = tempfile.mkdtemp(prefix="aps_regression_operator_calendar_override_")
-    test_db = os.path.join(tmpdir, "aps_operator_calendar_override.db")
 
-    ensure_schema(test_db, logger=None, schema_path=os.path.join(repo_root, "schema.sql"), backup_dir=None)
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
 
     try:
         # 必要基础数据：人员
@@ -108,9 +91,4 @@ def main():
         except Exception:
             pass
 
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()
 

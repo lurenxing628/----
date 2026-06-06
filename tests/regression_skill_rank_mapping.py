@@ -1,19 +1,7 @@
 """回归测试：ScheduleService 构建 resource_pool 时技能等级须按 beginner/normal/expert 正确映射排名——开启 auto-assign 后，对同一设备上两名都设为主操的人员（OP001=beginner、OP002=expert），自动分配必须选中技能更高的 OP002，而非因技能映射失效把两者并列成未知。"""
 
-import os
-import sys
-import tempfile
 
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def main():
+def test_skill_rank_mapping(db_path):
     """
     回归目标：
     - ScheduleService 的 resource_pool 构建中，技能等级应按 beginner/normal/expert 正确排序；
@@ -27,18 +15,12 @@ def main():
     - 1 个内部工序缺省 machine/operator，开启 auto-assign 后应选择 OP002（expert）
     """
 
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
 
     from core.infrastructure.database import ensure_schema, get_connection
     from core.services.scheduler import BatchService, ConfigService, ScheduleService
 
-    tmpdir = tempfile.mkdtemp(prefix="aps_regression_skill_rank_")
-    test_db = os.path.join(tmpdir, "aps_skill_rank_test.db")
 
-    ensure_schema(test_db, logger=None, schema_path=os.path.join(repo_root, "schema.sql"))
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
 
     try:
         # 1) 基础数据：工种/设备/人员/人机关联
@@ -100,7 +82,6 @@ def main():
         chosen = (rows[0]["operator_id"] or "").strip()
         assert chosen == "OP002", f"预期选择 expert( OP002 )，实际选择 {chosen!r}"
 
-        print("OK")
     finally:
         try:
             conn.close()
@@ -108,5 +89,3 @@ def main():
             pass
 
 
-if __name__ == "__main__":
-    main()
