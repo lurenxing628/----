@@ -18,6 +18,14 @@ def test_tojson_zh_autoescape(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("APS_BACKUP_DIR", str(tmp_path / "backups"))
     monkeypatch.setenv("APS_EXCEL_TEMPLATE_DIR", str(tmp_path / "templates_excel"))
 
+    # production(DEBUG=False)下 create_app 会 atexit.register(_run_exit_backup)；转同进程 pytest 后，
+    # 该 atexit 会在分片 shard 进程退出、capture 已关闭时 logging 触发 "I/O operation on closed file"，
+    # 被门禁 full-test-debt 误判为 collection_error。被测点(jinja tojson_zh filter)不涉退出备份，
+    # 故阻止其注册(同进程污染收口)。
+    import web.bootstrap.factory as _factory
+
+    monkeypatch.setattr(_factory, "_EXIT_BACKUP_REGISTERED", True)
+
     app_mod = importlib.import_module("app")
     app = app_mod.create_app()
 

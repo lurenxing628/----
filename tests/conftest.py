@@ -82,6 +82,31 @@ def pytest_collection_modifyitems(items):
             item.add_marker(pytest.mark.required)
 
 
+def pytest_sessionfinish(session, exitstatus):
+    """收口 production create_app 同进程化引入的 atexit logging 噪音。
+
+    production(DEBUG=False)下 create_app 会 atexit.register(_run_exit_backup)。main-style 回归
+    测试转 pytest 同进程化后，部分用例用 sys.modules.pop("app") 触发 app.py 顶层 create_app 重跑，
+    会在不同的 factory 模块状态下注册 atexit。进程退出（check_full_test_debt 分片 shard 子进程、
+    pytest capture 流已关闭）时该回调 logging，报 "I/O operation on closed file"，被门禁误判为
+    collection_error。逐对象 unregister 在 reimport 后对不上「旧对象」，故双层收口：
+      1) 尽力 unregister 当前 factory 对象（覆盖未 reimport 的常规情形）；
+      2) 关闭 logging.raiseExceptions——_run_exit_backup 本身 return False、无实际备份副作用，
+         唯一危害就是这条写已关闭流的 logging 错误噪音；仅本进程、session 结束后生效，测试期不受影响。
+    runtime_lock 系列测试用注入的 fake atexit_register、不依赖真 _run_exit_backup，此处为 no-op。
+    """
+    try:
+        import atexit
+        import logging
+
+        from web.bootstrap import factory as _factory
+
+        atexit.unregister(_factory._run_exit_backup)
+        logging.raiseExceptions = False
+    except Exception:  # noqa: BLE001
+        pass
+
+
 class RegressionMainFile(pytest.File):
     def collect(self):
         yield RegressionMainItem.from_parent(self, name=_node_path(self).stem)
