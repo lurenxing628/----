@@ -58,7 +58,7 @@
 | **对应 B 债** | 全体 76 债通用(典型 R05/R22/R59/LB02/R54) |
 | **冲突本质** | B 76 份 dossier 含**约 199 个去重 `tests/xxx.py:line` 锚点(覆盖 ~105 文件,其中 ~86-89 个 KEEP/KEEP_TRIM)**,P6 去前缀+迁子目录后路径全部不复存在;另有 **~22 条 grep 核验命令把 `tests/<旧文件名>.py` 写死**,P6 改名后直接 no-such-file。 |
 | **关键缓和** | P6 是 **git mv(内容不变)**,B 依赖的断言体逐字幸存——**零安全网被删、零承重违规**;B 已有「档案行号一律视为待复核 + 按符号重 grep 回盘」成熟机制(ANCHOR-DRIFT 已吸收过历史漂移)。故定 high 不升 blocker。 |
-| **必做动作** | ① **P6 必须等全部 P0-P7 跑完、tests 定稿后再启动 B,严禁迁移中途穿插 B**;② A 执行 P6 时**产出一份「旧路径→新路径」映射表**(git mv 全程可机械生成,如 `git log --diff-filter=R --summary` 或迁移脚本直接落 csv);③ 交给 B:在 A 定稿后跑一次性脚本,按「去前缀文件名 + 符号名」重新 grep 全部 199 个锚点重生成 dossier;④ 把 B 的 ~22 条 `rg PATTERN tests/具体文件.py` 升级为 `rg -rn PATTERN tests/`(跨改名仍命中符号)。 |
+| **必做动作** | ① **P6 必须等全部 P0-P7 跑完、tests 定稿后再启动 B,严禁迁移中途穿插 B**;② A 执行 P6 时**产出一份「旧路径→新路径」映射表**(git mv 全程可机械生成,如 `git log --diff-filter=R --summary` 或迁移脚本直接落 csv);③ 交给 B:在 A 定稿后跑一次性脚本,按「去前缀文件名 + 符号名」重新 grep 全部 199 个锚点重生成 dossier;④ 把 B 的 ~22 条 `rg PATTERN tests/具体文件.py` 升级为 `rg -rn PATTERN tests/`(跨改名仍命中符号);⑤ **A 自己的路径锚点同样会断,分两机制(2026-06-06 核验更正,勿混述为「硬校验 required」)**：**(硬失败)** `tools/test_registry.py:64-65/77` 的 `count("/")==1` 单层校验作用于 **test-only helper / helper-impact 目标**(`_is_top_level_test_only_helper_path` / `_is_regular_helper_impact_target`，**非 required**),P6 迁子目录会让这些 helper 路径 `raise ValueError`,须放开校验或同步改 `TEST_ONLY_HELPER_IMPACT`;**(软失配)** required/startup 清单走 `normalize_test_paths`(:111-124)**无单层校验、不 raise**,P6 后**静默失配 / 报 missing**,须批量重写 `test_registry_data.py` 的 required+startup 路径。「旧→新」映射须**同时覆盖 B 的 199 dossier 锚点 + A 的 required/startup 清单两套**(本表原只列了 B 锚点)。 |
 | **更新 B 文档** | 在 B 的 `ANCHOR-DRIFT-2026-06-05-POSTCOMMIT.md` 补一节「P6 落地后批量路径重映射 SOP」。 |
 
 ---
@@ -153,19 +153,23 @@
 
 ### 🔴 BLOCKER — P3.4 删 collector 让 R51 续命测试静默归零（时序咬合 / B→A）
 
-- **交界**：`regression_sort_strategy_case_insensitive.py`（HOLD_FOR_R51）与 `regression_dispatch_rule_case_insensitive.py`（KEEP）均为 `def main` 形态（实测 `def main=1 / def test_=0`），靠 `tests/conftest.py:46-106` 的 RegressionMainFile collector 才被当测试运行。B-1 锁它们「不转/不删」→ P3.3 不转 → P3.4 删 collector 后标准收集器找不到 `def test_` → **收集 0 项、exit 0、零报错=假绿**；`:25` 坏值兜底断言（R51 灵魂线 oracle）从此不再运行。R51（Batch-7，远晚于 P3）执行时**删的是尸体、中间回归无网**。
+- **交界**：`regression_sort_strategy_case_insensitive.py`（HOLD_FOR_R51）与 `regression_dispatch_rule_case_insensitive.py`（KEEP）均为 `def main` 形态（af630f64 前实测 `def main=1 / def test_=0`），靠 `tests/conftest.py` 的 collector（`_is_main_style_regression`:34 / `pytest_collect_file`:58 / `RegressionMainFile`:85 / `RegressionMainItem`:90，首个 fixture 在 :130）才被当测试运行。B-1 锁它们「不转/不删」→ P3.3 不转 → P3.4 删 collector 后标准收集器找不到 `def test_` → **收集 0 项、exit 0、零报错=假绿**；`:25` 坏值兜底断言（R51 灵魂线 oracle）从此不再运行。R51（Batch-7，远晚于 P3）执行时**删的是尸体、中间回归无网**。
 - **修法（已写入 PLAN P3.4）**：二选一——①P3.3 把这两文件也转 pytest（`def main→def test_`、`:25` 断言体逐字保留，不违 B-1 语义）；②删 collector 前加「无残留 main-style `regression_*`」守卫。R51 dossier 注：动手前 `pytest <file> --collect-only` 应 >0 用例。
+- **🆕 2026-06-06 复核补强（3-agent + 实跑，B→A）**：
+  - **R51 主体已拆**：两文件已在 `af630f64` 转 pytest（`def test_` 各 1，`:25` 坏值断言逐字保留），原「P3.3 不转→静默归零」路径已断；但守卫断言仍须保留。
+  - **BLOCKER 范围远大于这 2 个**：删 collector 真正卡点是「**全部纯 main-style==0**」(实测 2026-06-06 仍剩 **52**)。其中 **11 个是门禁必跑成员，分两类(10-agent 核验更正)**：**7 个 `required`**(`QUALITY_GATE_REQUIRED_TESTS`，在 `iter_required_tests()` 210 内：dashboard_overdue_count_tolerance、gantt_calendar_load_failed_degraded、gantt_url_persistence、report_export_large_scope/size_mode、safe_next_url_hardening、scheduler_analysis_observability)删 collector 后**静默少跑**(required marker 只能打在已收集 item，收集 0 项即无 item 可标)；**4 个 startup-regression**(`QUALITY_GATE_STARTUP_REGRESSION_ARGS`：app_new_ui_secret_key/security_hardening/session_contract、runtime_lock_reloader)删 collector 后被显式路径命令 **loud fail**(no tests collected / exit 4-5)。前者静默(危险)、后者响亮(易发现)，都须转完；**真正靠守卫断言兜底的是前 7 个**。
+  - **守卫断言 vs 核销器(B-14 已消解后更新)**：守卫断言**不能用 `verify_required_regressions` 核销器替代**——M4a(`eaf83cbf`)已把它瘦身为**只读核销 CLI**(仍在跑，但语义是事后核销 required⊄debt，非「删 collector 当下阻断收集骤降」)；核销器读的是**已收集集**，抓不到「本应收集却没收集」。**结论：P3.4 删 collector 同提交必须自带「无残留 main-style」AST/grep 守卫断言，这是唯一能在删除当下硬拦的兜底。** 三条 AND 卡点见 `PLAN.md` §P3.4。
 
 ### 🟠 B-13 HIGH — sp05 是 R43/R01/R26 串行依赖 + Batch-A G38 门禁载体，不可 P1.1 早删（护栏盲区）
 
 - **交界**：`test_sp05_path_topology_contract.py` 原 csv 判 `DROP`（P1.1 最早就 `git rm`）。但 `R43.md:52` step4 要改其三表（`ROUTE_COMPAT_MODULES:94`/`ROUTE_BEHAVIOR_COMPAT_SYMBOLS:105`/`SCHEDULER_REAL_ROUTE_FILES:150`），`R43.md:65-66` R01(Batch-B)/R26(Batch-D) 强串行依赖同文件，`PHASE4:191` Batch-A go-no-go「G38 SP05 topology contract 绿」。A 早删 → B 的 Batch-A G38 不可满足 + R43 改一个已删文件 + 删 wrapper 的 topology 回归网消失。**这更正了我 §5 首版「sp05 可放心删」的张冠李戴错误（把 sp06 的 `R45:36` 结论安给了 sp05）。**
 - **修法（已落实）**：csv 改 `HOLD_FOR_R43`（A 跳过不删）；sp05 须存活到 R43/R01/R26 全改完再退场/重写；§5 已更正。
 
-### 🟠 B-14 HIGH — P2.2 删 verify_required 炸 `run_quality_gate.py:25` 顶层 import（共享工具接口，B-12 同型漏钉）
+### ✅ B-14 已消解（2026-06-06 commit `eaf83cbf` P2.2-M4a）— 原断言失实，更正存档
 
-- **交界**：`scripts/run_quality_gate.py:25` 是 `from tools import verify_required_regressions_from_full_test_debt ...` **无条件顶层硬 import**（紧邻 B-12 已钉的 :26），`:1858` 真实调用。P2.2-M4 明文删该模块（实测 EXISTS 26722B）。B-12 钉了 :26 漏了同型的 :25。
-- **对 B 的实际冲击降级说明**：实测 **B 计划全树对 `run_quality_gate`/`sync_debt_ledger` 0 命中**，B 各批门禁直跑 `pytest tests/test_architecture_fitness.py`，不照抄 A 的 §1.4 SOP。所以这是 **A 内部一致性债**（A 自己的 P2.4 验证会 ImportError），按 A 必修项处理。
-- **修法（已写入 PLAN P2.2-M4 + P2.4）**：删模块的**同一原子提交**改接/移除 `:25` import + `:1858` 使用点 + §1.4 SOP 第 3 行（换 `pytest -m required`）；落地验 `python -c "import scripts.run_quality_gate"` 不炸。
+- **B-14 当时准确，已按其修法消解（非失实）**：B-14（2026-06-05）预警「`run_quality_gate.py:25` 是 verify_required 无条件顶层 import，删模块须同一原子提交改接否则 ImportError」——经核 **eaf83cbf 父提交 `:25` 确为该 import**（`from tools import verify_required_regressions_from_full_test_debt as required_regressions_verifier`），预警属实。eaf83cbf（M4a）**正是按 B-14 修法做的**：同一提交删该顶层 import 行（diff 实证 `-from tools import verify_required...`）+ 删 `_load_required_regressions_verifier_proof` + 核销器 620→268 行瘦身。**现状（消解后）**：`:25` 上移为 architecture_scan_cache（即 B-12 那行），verify_required 无顶层 import、仅子进程命令字符串在 `:1654`（`["python","tools/verify_required_regressions_from_full_test_debt.py"]`），模块 11758B；实跑 `import scripts.run_quality_gate` 成功。原 `:1858` 调用点行号随之漂移（现 `:1654` 一带）。
+- **现状**：eaf83cbf（P2.2-M4a，2026-06-06 02:55）已把 required 改 `@pytest.mark.required`（conftest 自动打标 1821 nodeid）、核销器瘦身为只读 CLI、§1.4 SOP 第 3 行对齐。删/退役 verify_required **不引发 import 期 ImportError**（实跑 `import scripts.run_quality_gate` 成功且 sys.modules 不含该模块）；真实残留点是运行期子进程调用（`:1654`）+ §1.4 SOP 直跑，非顶层 import。
+- **对 B 无冲击（原结论仍成立）**：B 计划全树对 `run_quality_gate`/`sync_debt_ledger` 0 命中。
 
 ### 🟡 B-15 MEDIUM — oversize 扩产无登记接口（门禁基线联动，J2 真雷）
 

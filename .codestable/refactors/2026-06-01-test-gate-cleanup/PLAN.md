@@ -2,7 +2,7 @@
 
 > 配套：`GOVERNANCE.md`（总纲入口，先读它）、`L3_VERDICTS.md`（裁决依据）、`BASELINE.md`（度量）、`SPEED_AND_READABILITY.md`（提速/可读性细节）、`L3_verdicts.csv`（文件级明细）。
 > 本文是各阶段的执行明细。文件清单从 `L3_verdicts.csv` 取（按 verdict/merge_cluster 筛），不在此重复罗列长清单。
-> 基于当前仓库实测：645 文件 / 3158 函数 / 4073 item / 197 main-style / 脚手架 23026 行 / 缓存 17MB / 全量 330s / push 典型 40s 最坏 180s。
+> **入场基线快照（2026-06-05 重做时的历史值，非现状）**：645 文件 / 3158 函数 / 4073 item / 197 main-style / 脚手架 23026 行 / 缓存 17MB / 全量 330s / push 典型 40s 最坏 180s。**现状见 §P3 进度段（2026-06-06 实测：tests/ 约 606 文件、79 纯 main-style，其中 `regression_*.py` 内 52 待转）。**
 
 ---
 
@@ -118,8 +118,10 @@ git commit -m "test: P1 删快照/死代码 + 补docstring"
 ### P2.2 脚手架瘦身（每条独立 commit）
 - M2 增量引擎塌缩：删 `long_gate_test_body_diff.py`、简化 `long_gate_full_test_debt.py`，缓存退化"指纹命中整体复用否则全跑"。
 - M3 指纹简化：`long_gate_fingerprint.py` 删 Chrome 指纹部分。
-- M4 必跑回归改 `@pytest.mark.required`，删 `verify_required_regressions_from_full_test_debt.py` + `test_registry.py` 大半。**改门禁编排，双跑验证**。
-  - **🟠 B-兼容 HIGH（B-14，见 `_B_COMPAT_SAFEGUARDS.md` §8）**：`scripts/run_quality_gate.py:25` 是 `verify_required_regressions_from_full_test_debt` 的**无条件顶层 import**（与 B-12 的 :26 同型，首版漏钉）。删该模块必须在**同一原子提交**里改接/移除 `:25` import + `:1858` 使用点 + §1.4 SOP 第 3 行（换 `pytest -m required`），否则 `run_quality_gate` 一 load 即 ImportError，连 A 自己的 P2.4 验证都起不来。落地验 `python -c "import scripts.run_quality_gate"` 不炸。
+- M4 必跑回归改 `@pytest.mark.required`，核销器瘦身。**改门禁编排，双跑验证**。
+  - **✅ M4a 已落地（commit `eaf83cbf`，2026-06-06 02:55）**：required 改 `@pytest.mark.required`（conftest 按 registry 自动打标 1821 nodeid）；`verify_required_regressions_from_full_test_debt.py` 620→268 行瘦身为**只读核销 CLI**（保留 payload 校验/核销/组覆盖检查，删父子证明捆绑 + schema v4 机器）；§1.4 SOP 第 3 行已对齐为只读 CLI 形态。
+  - **✅ B-14 已按其修法消解（B-14 当时准确，非失实）**：B-14（2026-06-05）准确预警「删 verify_required 会炸 `run_quality_gate.py:25` 顶层 import，须同一原子提交改接」——经核 **eaf83cbf 父提交 `:25` 确为 `from tools import verify_required_regressions_from_full_test_debt`**。eaf83cbf（M4a）**正是这么修的**：同一提交删该顶层 import 行（diff 实证 `-from tools import verify_required...`）+ 删 `_load_required_regressions_verifier_proof` + 核销器 620→268 行瘦身。**现状（消解后）**：`:25` 上移为 architecture_scan_cache（即 B-12 那行），verify_required 无任何顶层 import、仅子进程命令字符串在 `:1654`，模块 11758B；实跑 `import scripts.run_quality_gate` 成功且 sys.modules 不含它。后续若进一步退役该模块，残留点是 `:1654` 子进程调用 + §1.4 SOP 直跑，非顶层 import。
+  - **M4 剩余（按需）**：`test_registry.py` 大半删减、核销器进一步退役（若仍计划）走 `:1654` 子进程点 + §1.4 SOP，不涉顶层 import。
 - **塌缩 architecture_scan_cache（⚠B-12 HIGH，见 `_B_COMPAT_SAFEGUARDS.md`）**：不可裸删——`test_architecture_fitness.py`（已锁 KEEP）与 `run_quality_gate.py:26` live 门禁经 `quality_gate_operations.py:5` 三段顶层硬 import 直连它，裸删 = collection-error / live 门禁 ImportError。须在删模块的**同一原子提交**里保留 `architecture_*_scan_map`/`aggregate_architecture_scan`/`scan_files_with_cache` 公共 API + 改接 `quality_gate_operations.py:5`、`run_quality_gate.py:26` import + 同步 `test_architecture_scan_cache.py`。
 
 ### P2.3 DROP_WITH_TOOL 随工具删（7 个）
@@ -128,7 +130,7 @@ git commit -m "test: P1 删快照/死代码 + 补docstring"
 ### P2.4 验证
 ```bash
 .venv/bin/python -m pytest tests/test_architecture_fitness.py --collect-only  # B-12:删cache后collection不炸(锁KEEP的守卫仍可import)
-.venv/bin/python -c "import scripts.run_quality_gate"  # B-14:删verify_required/architecture_scan_cache后顶层import(:25/:26)不炸
+.venv/bin/python -c "import scripts.run_quality_gate"  # B-12:删architecture_scan_cache(:25顶层import)后不炸;verify_required本无顶层import(M4a已消解B-14)
 du -sh evidence/QualityGate/   # 应大幅缩小
 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache
@@ -138,25 +140,45 @@ du -sh evidence/QualityGate/   # 应大幅缩小
 
 ## 第 5 章　P3 — main-style → pytest（可读性 + 并行前置）
 
-> 背景：197 个 main-style（35.8%）是"看不懂"+"失败信息差"最大来源，也是 P4 并行前置。conftest 子进程机制在 `tests/conftest.py:51-106`（pytest_collect_file/RegressionMainFile/RegressionMainItem）。
+> 背景：main-style（`def main` 无 `def test_`）是"看不懂"+"失败信息差"最大来源，也是 P4 并行前置。conftest 子进程机制在 `tests/conftest.py`（pytest_collect_file/_is_main_style_regression/RegressionMainFile/RegressionMainItem）。
+>
+> **进度（2026-06-06 实测，10-agent 核验对齐）**：438 个 `regression_*.py` = **52 纯 main-style(待转)** + 367 已转 native + 19 个 `main`+`test_` 并存（精确闭合，零未归类）。collect **3811**、`-m required` **1821 nodeid**、`iter_required_tests()` **210** 项全程不变（净零）。
+> **分支 `cleanup/p3-main-style-to-pytest` 累计转 141 个**：本会话最近 5 commit 共 65（e91b80b6 T1=20 / 1ceba4a2 T2a=15 / 42403977 migration=11 / b9b34f44 T2尾=13 / 30c3d1f2 mem_conn=6）+ 此前 4 批 76（af630f64 先导=10 含拆 R51 BLOCKER / 8e157e40 批次2=41 / 5a7c6ee5 批次3a=16 / 885cec82 批次3b=9），均全门禁 + 多 agent 对抗 + push 验 remote==local。
+>
+> **🎯 P3 完成定义 = 纯 main-style 52→0**。那 19 个 `main`+`test_` 并存文件是历史**双入口设计**（`def main` 在 `if __name__=="__main__"` 下作命令行入口 + `def test_` 供 pytest），早已 native 收集、import 期零副作用、不被 conftest 判为 main-style——**不在 P3 工作面**(可作独立风格清理，绝非验收门槛)。完成线按 52→0 判，不是 71→0。
 
 ### P3.1 先转污染源 C 类（最先，防同进程串味）
 从 `L3_verdicts.csv` 找 main-style 中 monkeypatch 全局且无 finally 的（如 ortools sys.modules 注入、schedule_service 模块函数替换、subprocess.Popen 全局替换）→ 改 `monkeypatch` fixture。
 
-### P3.2 抽共享 fixture 到 conftest（同时做 R3）
-当前 conftest 无 fixture。加 `mem_conn`/`db_conn`/`app_client`（monkeypatch.setenv 设 APS_* 自动还原、delitem sys.modules 强制重 import）。消灭 443 份 find_repo_root 样板。
+### P3.2 抽共享 fixture 到 conftest（同时做 R3）—— ✅ 已落地（42403977 等）
+conftest 已加 7 个 fixture：`db_path`(tmp文件库+生产 ensure_schema 全表)、`db_env`(db_path+APS_*五件套 monkeypatch.setenv 自动还原)、`app_client`(importlib import_module("app").create_app().test_client()，**只导顶层 app**)、`schema_conn`(:memory:+全量schema.sql,FK ON+Row)、`mem_conn`(空:memory:,FK ON+Row)、`schema_path`、`repo_root`。消灭 find_repo_root 样板。
+- **待补 `app_new_ui_client`**(对称 app_client 但导 `app_new_ui`，收口 4 个纯 app_new_ui 测试 create_app_smoke/secret_key_runtime_ensure/security_hardening_enabled/session_contract)：依赖 `db_env`+`monkeypatch`，进入前+退出后各 `monkeypatch.delitem(sys.modules,"app_new_ui",raising=False)`、`monkeypatch.setenv("SECRET_KEY",...)`。⚠ `system_health_route`/`runtime_lock_reloader_parent_skip` 因 production env + 双导 app+app_new_ui 不能用此 fixture，仍手搓。
 
 ### P3.3 批量转换（每批 ~20 文件一 commit）
-`def main()`→`def test_xxx()`、删样板、裸 assert 保留（转后自省=自动可读，**同时完成 R2**）、给每文件加 docstring（**同时完成 R1**）。
+`def main()`→`def test_xxx(<fixtures>)`、删 find_repo_root/序章/footer、裸 assert 保留(转后自省=自动可读，**R2**)、补 docstring(**R1**)。每批闭环：转换→ruff→同进程实跑→多 agent 对抗→全门禁→push 验 remote==local。
+
+**剩余 52 推荐 3 批(风险同质,3-agent 复核 2026-06-06)：**
+- **批 A(~18,零进程副作用,一刀切收益最纯)**：纯路由 `app_client`/`db_env`(reports/system_logs/calendar/operator/excel 等)，env 五件套由 db_env 自动还原=转换收益点。
+- **批 B(~17,受控猴补,统一手法)**：ReportEngine/ScheduleService 类猴补统一改 `monkeypatch.setattr`；带 `sys.modules.pop("app")` 的(`scheduler_run`/`week_plan_no_reschedulable_flash`、`gantt_calendar_load_failed_degraded`)补 `monkeypatch.delitem(sys.modules,"app",raising=False)`。
+- **批 C(~11-13,高风险手搓+逐个实跑对抗)**：app_new_ui×4(用新 fixture) + `ortools_warmstart`(sys.modules 注入假 ortools 4键**全文无还原→必须 monkeypatch.setitem + _FakeCpModel 类态重置**) + scheduler 双 flash + `safe_next_url_hardening`/`tojson_zh_autoescape`(**需 app 对象非 test_client，不能套 app_client**；tojson 还是 `APS_ENV=production`) + check_manual_layout(HTTPServer) + validate_dist + shared_runtime(sys.modules.pop 重导) + system_health(production 双导) + runtime_lock(atexit/signal,最重之一) + config_manual(subprocess node,最重) + `app_db_path_no_dirname`(纯文件名契约+os.chdir,**不套 fixture**，须 monkeypatch.setenv+chdir(tmp_path))。
+- **🥇 优先 11 个门禁必跑成员（两类，删 collector 前必须转完，10-agent 核验更正）**：① **7 个 `required`**（`QUALITY_GATE_REQUIRED_TESTS`，带 required marker，在 `iter_required_tests()` 210 项内）——dashboard_overdue_count_tolerance、gantt_calendar_load_failed_degraded、gantt_url_persistence、report_export_large_scope/size_mode、safe_next_url_hardening、scheduler_analysis_observability：删 collector 后**静默少跑**（silent skip，required marker 只能打在已收集 item）；② **4 个 startup-regression**（`QUALITY_GATE_STARTUP_REGRESSION_ARGS`，经 `pytest -q` 显式路径命令跑）——app_new_ui_secret_key/security_hardening/session_contract、runtime_lock_reloader：删 collector 后被显式路径命令 **loud fail**（no tests collected / exit 4-5，反而易发现）。两类危害形态不同，但都必须转完。
+- **🔴 显式验收(P4 前置)**：每文件不得遗留无 finally 还原的 `sys.modules[...]=`/`module.attr=`/`Class.method=`(memory「module-attr-patch-is-global」铁律)。验收=单跑 + 同进程跑两遍幂等 + 多 agent 对抗。优先收口 ortools 注入 + 2 个 flash。
+- **三陷阱(已踩)**：①PEP604/585 注解(`int|str`/`HTTPServer|None`/`list[str]`)即使 `from __future__ import annotations` 也被 py38 门禁(`tools/scan_aps_three_gap_py38_scope.py`)判 fail→转 `typing.Union/Optional/List`(start_and_rerun/runtime_probe 均踩)；②`cmd|tail;echo $?` 捕获的是 tail 退出码非 cmd，验退出码用 `cmd >log 2>&1;echo $?`；③`app_client` 只导 app，app_new_ui/需 app 对象的(safe_next_url/tojson)不能套。
 
 ### P3.4 移除 collector
-全转完后删 `conftest.py:51-106` + `main_style_regression_runner.py`，并清理 `test_regression_main_isolation_contract.py`。
+全转完(纯 main-style==0)后删 conftest 的 collector(pytest_collect_file/_is_main_style_regression/RegressionMainFile/RegressionMainItem) + `main_style_regression_runner.py`，并清理 `test_regression_main_isolation_contract.py`。**conftest 其余职责(test_debt strict-xfail / required marker / 7 个共享 fixture)与 collector 独立，删 collector 不牵连。**
 
-> **🔴 B-兼容 BLOCKER（见 `_B_COMPAT_SAFEGUARDS.md` §8）**：删 collector 前必须确认**无残留 main-style `regression_*` 文件**（`def main` 无 `def test_`），否则它们会被标准收集器静默跳过（收集 0 项、exit 0、零报错=假绿）。**特别是 B-1 锁了 `HOLD_FOR_R51` 的 `regression_sort_strategy_case_insensitive.py` 与 `regression_dispatch_rule_case_insensitive.py`（R51 续命测试，A 不许转/删）——P3.3 不会转它们 → P3.4 删 collector 后它们静默归零，R51（Batch-7，远晚于 P3）执行时删的是尸体、中间回归无网。** 二选一:①P3.3 把这两文件也转 pytest（`def main→def test_`、`:25` 坏值断言体逐字保留，不违 B-1 语义）;②删 collector 前加守卫断言「无残留 main-style」。删后跑 `pytest tests/regression_sort_strategy_case_insensitive.py --collect-only` 应 >0 用例。
+> **🔴 删 collector 卡点（3 条 AND，机器可判，见 `_B_COMPAT_SAFEGUARDS.md` §8）**：
+> 1. **纯 main-style == 0**：`for f in tests/regression_*.py; grep 'def main(' "$f" && ! grep 'def test_' "$f"` 计数为 0。
+> 2. **删 collector 同提交自带「无残留 main-style」守卫断言** —— ⚠ 真正怕的是 **7 个 `required` 成员**（见 §P3.3）：删 collector 后它们"收集 0 项 / 静默少跑"（required marker 只能打在已收集 item 上，收集 0 项即无 item 可标）。M4a（`eaf83cbf`）已把核销器瘦身为只读 CLI、§1.4 SOP 仍跑它但语义是事后核销非阻断收集——**守卫断言是唯一能在删 collector 当下抓到「main-style 残留」的硬兜底**（另 4 个 startup 成员走显式路径命令会 loud fail，不靠守卫）。
+> 3. 删后 `pytest --collect-only` 总数不净减 + `pytest -m required` 数 == 清单应有数。
+>
+> **R51 续命文件状态(2026-06-06 更新)**：`regression_sort_strategy_case_insensitive.py` / `regression_dispatch_rule_case_insensitive.py` 已在 `af630f64` 转 pytest(`def test_` 各 1，坏值断言体逐字保留，不违 B-1 语义)，原 BLOCKER「P3.3 不转→删 collector 后静默归零」已拆除；但守卫断言仍须保留(防任何新增 main-style 残留触发同型假绿)。
 
 ### P3.5 验证
 ```bash
-.venv/bin/python -m pytest -q tests 2>&1 | tail -10  # 全量,对比基线无新fail(查泄漏)
+.venv/bin/python -m pytest -q tests 2>&1 | tail -10                           # 全量,对比基线无新fail(查泄漏)
+.venv/bin/python -m pytest -p no:randomly <本批+污染源victim> -q              # 同进程跑两遍幂等(查进程级泄漏)
 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
 ```
 
@@ -164,7 +186,7 @@ du -sh evidence/QualityGate/   # 应大幅缩小
 
 ## 第 6 章　P4 — 启用并行 xdist
 
-> 前置：P3 完成 + serial 隔离。详见 `SPEED_AND_READABILITY.md` S1。
+> 前置：P3 完成(纯 main-style==0) + **P3 污染彻底还原**(每文件无未 finally 还原的 sys.modules/module.attr/Class.method 全局写，见 P3.3 🔴 显式验收) + serial 隔离。⚠ **未还原的进程污染(如 ortools `sys.modules` 注入假模块、ScheduleService 类猴补)在子进程隔离下无害，转 xdist 同进程后会随 worker 随机分配制造 flaky**——这是把"污染还原"前移为 P3 验收标准的根因。详见 `SPEED_AND_READABILITY.md` S1。
 - vendor `pytest-xdist`+`execnet` wheel，登记 requirements-dev.txt
 - serial 测试标 `@pytest.mark.serial`（用 `tools/full_test_debt_shards.py` 已有分类），门禁 `pytest -n auto --dist worksteal`
 - 验证：跑 3 次确认无 flaky
@@ -196,6 +218,10 @@ du -sh evidence/QualityGate/   # 应大幅缩小
 - 后缀词表收敛 3 类：`_contract`/`_guard`/`_smoke`，废弃同义词。名字写可观察行为。
 - 一次性脚本迁移 + 改 testpaths + 全量收集验证。
 - **⚠ B-兼容（B-3，见 `_B_COMPAT_SAFEGUARDS.md`）**：P6 会令 B 约 **199 个 dossier 锚点**路径整体失效（git mv 内容不变，按符号可重定位）。**必须等全部 P0-P7 跑完、tests 定稿后再启动 B，严禁迁移中途穿插 B**；迁移脚本须**产出「旧路径→新路径」映射表**交给 B 一次性重生成锚点；提醒 B 把写死 `tests/<文件>.py` 的 ~22 条 grep 命令升级为 `rg -rn PATTERN tests/`。
+- **⚠ 新增（2026-06-06，10-agent 核验）**：P6 迁子目录会触发**两个独立机制的失效，修法不同**（勿混述为「硬校验 required」）：
+  - **(硬失败)** `tools/test_registry.py:64-65/77` 的 `count("/")==1` 单层校验作用于 **test-only helper 路径**（`_is_top_level_test_only_helper_path`）与 **helper-impact 目标**（`_is_regular_helper_impact_target`）——**非 required**。P6 迁子目录会让这些 helper 路径 `raise ValueError`（硬失败），须放开该单层校验或同步改 `TEST_ONLY_HELPER_IMPACT` 路径。
+  - **(软失配)** required/startup 清单走 `normalize_test_paths`（:111-124）**无单层校验、不 raise**，P6 迁子目录后经精确路径匹配**静默失配 / 报 missing**（软失败），须批量重写 `test_registry_data.py` 的 required + startup 路径。
+  - **(c)** 「旧→新」映射须**同时覆盖 B 的 199 dossier 锚点 + A 的 required/startup 清单两套**（本章原只列了 B 锚点）。
 
 ---
 

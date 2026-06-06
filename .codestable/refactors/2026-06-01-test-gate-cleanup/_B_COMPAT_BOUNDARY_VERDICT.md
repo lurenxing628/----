@@ -90,7 +90,9 @@ Now synthesizing the final report.
   - (乙)若 A 坚持删,把"清 sp05 三表"动作从 R43 dossier 上提到 P1.1,且 Batch-A G38 改为"sp05 已由 A 退场、门禁取消、wrapper 删除正确性改由 R43 自带 grep + registrar 护栏(`sp05:484-571` 启动链 passivity 由 domains 叶子独立守)兜底";
   - 无论哪条,同步标注 R01/R26/R43 三债对 sp05 的串行依赖。**sp06/py38 侧 §5 结论正确,唯 sp05 错。**
 
-### ③ [HIGH] P2.2 删 verify_required 炸 `run_quality_gate.py:25` 无条件顶层 import + §1.4 SOP 自指失效
+### ③ [HIGH→✅已消解] P2.2 删 verify_required 炸 `run_quality_gate.py:25` 无条件顶层 import + §1.4 SOP 自指失效
+
+> **✅ 已消解(2026-06-06 commit `eaf83cbf` P2.2-M4a)**:本裁决(2026-06-05)**准确**——其时 `:25` 确为 verify_required 顶层 import(eaf83cbf 父提交实证)。M4a **正是按本裁决修法**:同一提交删该顶层 import 行 + 核销器 620→268 瘦身为只读 CLI + 改 §1.4 SOP 第 3 行。现状 `:25` 上移为 architecture_scan_cache、verify_required 无顶层 import。下文交界/证据为**消解前的历史快照**。详见 `_B_COMPAT_SAFEGUARDS.md` §8 B-14。
 
 - **交界**:`run_quality_gate.py:25`(已实测)是 `from tools import verify_required_regressions_from_full_test_debt as required_regressions_verifier` 的**无条件顶层硬 import**,紧邻 `:26` 的 `architecture_scan_cache`(B-12 已钉)。P2.2-M4 明文删 `verify_required...py`(该文件当前 EXISTS,26722B)。**B-12 精确钉了 `:26`,却漏了 `:25` 这个同型炸点。**
 - **方向 / 涉及债**:共享工具接口;**P2.2-M4 / R15 / R41 / R54**。

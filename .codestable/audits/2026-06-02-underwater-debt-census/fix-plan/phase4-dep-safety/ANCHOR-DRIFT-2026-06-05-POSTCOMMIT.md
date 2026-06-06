@@ -41,3 +41,11 @@ phase4 四层分析（含全部 dossier 对抗核验附录）是在**已包含�
 ## 四、另一处环境事实（非债务，防误判）
 
 本地 `db/aps.db` 是"SchemaVersion=19 但表结构停在旧契约"的半截迁移活标本，会被 v19 fail-fast 契约拦住应用启动——**这是护栏正确行为**。执行批次跑回归时若见 `MigrationContractError`，用隔离 `APS_DB_PATH` 或重建本地库，**禁止放宽迁移契约**。
+
+## 五、P6 落地后批量路径重映射 SOP（A→B 交接，2026-06-06 补，落地 B-3 §62 待办）
+
+> A 的 P6 目录重组（`git mv` 迁 `tests/<模块>/子目录/` + 去前缀）会令 B 全体 ~199 个 `tests/xxx.py:line` dossier 锚点的路径维度整体失效。**B 必须等 A 全部 P0-P7 跑完、tests 定稿后再启动**（B-3 强串行，严禁迁移中途穿插 B）。重映射 SOP：
+> 1. A 在 P6 迁移脚本里**产「旧路径→新路径」映射表**（csv，`git mv` 可机械生成）。
+> 2. B 启动前跑一次性脚本：按「去前缀文件名 + 被测符号名/断言字符串」对全部 199 锚点 `rg -rn PATTERN tests/` 重定位、重生成 dossier（断言体 git mv 逐字幸存，按符号必命中）；档案行号一律视为待复核（§三.4 既有纪律）。
+> 3. **⚠ 不止 B 的 199 锚点**：A 自己的 **required 路径锚点也会断**——`tools/test_registry.py:64/77` 硬校验 required 路径单层 `tests/文件.py`、`tools/test_registry_data.py` 写死单层路径。A 的 P6 须连带放开单层校验 + 重写 test_registry_data.py；映射表**同时覆盖 B 的 199 dossier 锚点和 A 的 required 清单两套**。
+> 4. 权威与细节见 A 的 `.codestable/refactors/2026-06-01-test-gate-cleanup/_B_COMPAT_SAFEGUARDS.md` §B-3（⑤ 项，2026-06-06 补）+ §8（P3.4 删 collector 卡点 / 11 个 required 成员 / 守卫断言时序雷）。
