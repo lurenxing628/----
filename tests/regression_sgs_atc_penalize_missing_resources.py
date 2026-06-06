@@ -1,19 +1,9 @@
 """回归测试：SGS 在 ATC 派工规则下对缺资源候选必须直接抛 ValidationError(field=resource)，而不是用惩罚分把缺 machine_id 的更紧急工序排在后面继续排产；且评分阶段失败后绝不进入正式派工（_schedule_internal 不被调用）。"""
 
-import os
-import sys
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Tuple
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 @dataclass
@@ -93,10 +83,7 @@ class _StubScheduler:
         )
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_sgs_atc_penalize_missing_resources() -> None:
 
     from core.algorithms.dispatch_rules import DispatchRule
     from core.algorithms.greedy.dispatch.sgs import dispatch_sgs
@@ -172,8 +159,4 @@ def main() -> None:
 
     assert sched.calls == [], f"评分阶段失败后不应进入正式派工：calls={sched.calls!r}"
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

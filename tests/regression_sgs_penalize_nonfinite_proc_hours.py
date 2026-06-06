@@ -1,19 +1,9 @@
 """回归测试：SGS 派工（dispatch_sgs）在评分排序阶段遇到工时非有限（setup_hours=inf 不可估算）的候选时直接抛 ValidationError 并把 field 定位到 setup_hours，绝不为其生成惩罚排序 key 后继续正式派工（_schedule_internal 不被调用），即便该候选交期更早。"""
 
-import os
-import sys
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Tuple
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 @dataclass
@@ -88,10 +78,7 @@ class _StubScheduler:
         )
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_sgs_penalize_nonfinite_proc_hours() -> None:
 
     from core.algorithms.dispatch_rules import DispatchRule
     from core.algorithms.greedy.dispatch.sgs import dispatch_sgs
@@ -166,8 +153,4 @@ def main() -> None:
 
     assert sched.calls == [], f"评分阶段失败后不应进入正式派工：calls={sched.calls!r}"
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

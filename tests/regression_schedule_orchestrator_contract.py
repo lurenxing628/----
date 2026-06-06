@@ -1,19 +1,9 @@
 """回归测试：orchestrate_schedule_run 编排契约——空结果先抛 no_actionable_schedule_rows 且不分配版本/不建 summary，越界 op 抛 out_of_scope_schedule_rows、混入非法行抛 invalid_schedule_rows（均在版本分配前失败）；正常路径才分配版本、合并 optimizer/freeze 警告、构造 SummaryBuildContext，并校验 _build_summary_contract 对计数非法/类整数('2.0')值的归一与降级事件。"""
 
-import os
 import sqlite3
-import sys
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from typing import Any, Dict, cast
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("repo root not found")
 
 
 def _make_dt(hours: int) -> datetime:
@@ -78,10 +68,7 @@ def _base_input() -> Any:
     )
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_schedule_orchestrator_contract() -> None:
 
     from core.infrastructure.errors import ValidationError
     from core.services.scheduler.run.schedule_optimizer import OptimizationOutcome
@@ -490,8 +477,5 @@ def main() -> None:
     assert captured_out_of_scope.get("optimize_strict_mode") is True, captured_out_of_scope
 
     conn.close()
-    print("OK")
 
 
-if __name__ == "__main__":
-    main()

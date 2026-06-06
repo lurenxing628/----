@@ -1,18 +1,8 @@
 """回归测试：optimize_schedule 在 priority_weight=0.0、due_weight=1.0 时不把 0.0 当假值误回退——传给 GreedyScheduler.schedule 的 strategy_params 与 OptimizationOutcome.used_params 都须如实保留 priority_weight=0.0 和 due_weight=1.0。"""
 
-import os
-import sys
 from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any, Dict, List
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 class _StubCalendar:
@@ -44,10 +34,7 @@ class _DeterministicClock:
         return current
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_optimizer_zero_weight_cfg_preserved() -> None:
 
     import core.services.scheduler.schedule_optimizer as schedule_optimizer
     import core.services.scheduler.schedule_optimizer_steps as schedule_optimizer_steps
@@ -172,8 +159,4 @@ def main() -> None:
         f"OptimizationOutcome.used_params 未保留 due_weight=1.0：{outcome.used_params!r}"
     )
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

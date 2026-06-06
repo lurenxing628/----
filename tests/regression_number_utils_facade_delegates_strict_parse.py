@@ -1,21 +1,7 @@
 """回归测试：number_utils.parse_finite_float/parse_finite_int 门面必须转调 strict_parse 系列（parse_required/optional_float/int）并透传 field 等参数；allow_none=True 时空白返回 None 保留可空语义，allow_none=False（含缺省）时空白抛 ValidationError 且 field 透传。"""
 
-import os
-import sys
 
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_number_utils_facade_delegates_strict_parse() -> None:
 
     from core.infrastructure.errors import ValidationError
     from core.services.common import number_utils
@@ -85,8 +71,4 @@ def main() -> None:
     else:
         raise AssertionError("parse_finite_float 省略 allow_none 时应默认按必填解析")
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

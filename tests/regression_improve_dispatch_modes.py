@@ -2,19 +2,9 @@
 两种模式且 attempts 留痕一致；收窄 VALID_DISPATCH_MODES 后不得越权扩展（只剩 priority_first/batch_order/slack 一次尝试）；
 strict_mode=True 须透传给支持该关键字的 scheduler 并体现在 attempts 留痕。"""
 
-import os
-import sys
 from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any, Dict, List
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 class _StubCalendar:
@@ -46,10 +36,7 @@ class _DeterministicClock:
         return current
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_improve_dispatch_modes() -> None:
 
     import core.services.scheduler.schedule_optimizer as schedule_optimizer
     import core.services.scheduler.schedule_optimizer_steps as schedule_optimizer_steps
@@ -283,8 +270,4 @@ def main() -> None:
         f"strict_mode=True 时 attempts 留痕应与 scheduler 接口一致：{strict_outcome.attempts!r}"
     )
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

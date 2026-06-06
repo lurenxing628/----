@@ -1,18 +1,8 @@
 """回归测试：optimize_schedule 对带空格/大小写的算法选项（algo_mode=' IMPROVE '、objective、dispatch_mode=' SGS '、dispatch_rule=' CR '）做归一化——outcome 字段归一为小写无空格，multi-start 据归一化值生成且去重出 {(batch_order,cr),(sgs,cr),(sgs,slack),(sgs,atc)} 共 4 个组合，attempts 留痕同样规范化。"""
 
-import os
-import sys
 from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any, Dict, List, Tuple
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 class _StubCalendar:
@@ -44,10 +34,7 @@ class _DeterministicClock:
         return current
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_optimizer_choice_case_normalization() -> None:
 
     import core.services.scheduler.schedule_optimizer as schedule_optimizer
     import core.services.scheduler.schedule_optimizer_steps as schedule_optimizer_steps
@@ -173,8 +160,4 @@ def main() -> None:
     assert len(attempts_pairs) == len(expected_pairs), f"attempts 数量异常：{attempts_pairs!r}"
     assert set(attempts_pairs) == expected_pairs, f"attempts 留痕未规范化：{attempts_pairs!r}"
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

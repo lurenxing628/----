@@ -11,14 +11,6 @@ import tempfile
 import openpyxl
 
 
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
 def _build_source_xlsx(path: str) -> None:
     wb = openpyxl.Workbook()
     try:
@@ -98,10 +90,7 @@ def _build_source_xlsx(path: str) -> None:
             pass
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_unit_excel_converter_diagnostics_visible() -> None:
 
     from core.services.process import UnitExcelConverter
     from scripts import convert_rotary_shell_unit_excel as convert_script
@@ -155,8 +144,4 @@ def main() -> None:
     assert "兼容行数：" in output, output
     assert "人员设备关联会输出 工号/设备编号/技能等级/主操设备 四列；默认补齐会进入诊断汇总。" in output, output
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

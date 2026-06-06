@@ -1,19 +1,10 @@
 """回归测试：UnitExcelConverter.convert 解析"单元产品信息统计"表的多工步零件时，工序工时按工步累加（setup=(20+30+40)/60=1.5h、unit=(40+50+30)/60=2.0h）；且第三行重复填写同一图号/工艺路线（而非留空续接）不会覆盖或改变累加结果——重复行与续接行得到相同工时。"""
 
 import os
-import sys
 import tempfile
 from typing import Tuple
 
 import openpyxl
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 def _build_source_xlsx(path: str, repeat_part_on_third_row: bool) -> None:
@@ -102,10 +93,7 @@ def _extract_hours(converted) -> Tuple[float, float]:
     raise RuntimeError("未找到 P100-5 的工时记录")
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_unit_excel_converter_duplicate_part_rows_no_override() -> None:
 
     from core.services.process import UnitExcelConverter
 
@@ -130,8 +118,4 @@ def main() -> None:
         f"DUP 累计异常：setup={dup_setup_h}, unit={dup_unit_h}"
     )
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

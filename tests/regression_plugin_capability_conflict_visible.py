@@ -1,16 +1,7 @@
 """回归测试：两个插件注册同一 capability 时，PluginManager.load_from_base_dir 按 first_loaded_wins 策略可见地解决冲突——保留先加载的 plugin_a、拒绝 plugin_b，并在 conflicted_capabilities、各插件 statuses（kept/rejected、capabilities/conflicted_capabilities）中如实留痕。"""
 
 import os
-import sys
 import tempfile
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 def _write_plugin(path: str, *, plugin_id: str, capability: str, provider_name: str) -> None:
@@ -30,10 +21,7 @@ def _write_plugin(path: str, *, plugin_id: str, capability: str, provider_name: 
         )
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_plugin_capability_conflict_visible() -> None:
 
     from core.plugins.manager import PluginManager
 
@@ -88,8 +76,4 @@ def main() -> None:
     assert plugin_b.get("capabilities") == [], plugin_b
     assert plugin_b.get("conflicted_capabilities") == ["demo.capability"], plugin_b
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

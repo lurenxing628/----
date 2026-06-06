@@ -1,19 +1,9 @@
 """回归测试：optimize_schedule 在 improve 模式下，当 time.time 显示剩余预算 remaining<1 秒时跳过 OR-Tools warm-start（try_solve_bottleneck_batch_order 被打桩成调用即失败），改走旧贪心路径仍返回完整 OptimizationOutcome（results/summary/used_strategy=priority_first/used_params/best_order/best_score/algo_mode/objective/time_budget 等字段齐全）。"""
 
-import os
-import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from typing import Optional
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 @dataclass
@@ -50,10 +40,7 @@ class _FakeTime:
         return 0.0 if self.calls == 1 else 2.0
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_ortools_budget_guard_skip_when_no_time() -> None:
 
     import core.algorithms.ortools_bottleneck as ob
     import core.services.scheduler.schedule_optimizer as so
@@ -153,8 +140,4 @@ def main() -> None:
         ob.try_solve_bottleneck_batch_order = orig_try_solve
         so.time.time = orig_time
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

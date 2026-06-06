@@ -1,16 +1,6 @@
 """回归测试：各业务服务的状态/类别字段对混合大小写与中文别名容错并归一化——MachineService._normalize_status、Operator/Supplier/OpType 的 _validate_fields（含 allow_partial 不强制默认）、operation_edit_service 的资源可用性校验，以及 list() 必须用归一化后的值查 repo（避免 mixed-case 静默查不到、空白抛 ValidationError）。"""
 
-import os
-import sys
 from typing import Any, Optional, cast
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 def assert_raises(exc_type, fn, *args, **kwargs):
@@ -23,10 +13,7 @@ def assert_raises(exc_type, fn, *args, **kwargs):
     raise AssertionError(f"期望抛 {exc_type.__name__}，但未抛异常")
 
 
-def main():
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_status_category_mixed_case():
 
     from core.infrastructure.errors import BusinessError, ValidationError
     from core.services.equipment.machine_service import MachineService
@@ -187,8 +174,4 @@ def main():
     ot_svc.list(category=" Internal ")
     assert ot_repo.last_category == "internal"
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()
