@@ -2,19 +2,8 @@
 
 from __future__ import annotations
 
-import os
-import sys
-import tempfile
 from datetime import date
 from io import BytesIO
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 def _assert_xlsx(resp, name: str, expect_version: int) -> None:
@@ -199,229 +188,194 @@ def _seed_distinguishable_report_data(conn) -> None:
     )
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-
-    # 隔离目录，避免污染真实 db/logs/backups/templates_excel
-    root = tempfile.mkdtemp(prefix="aps_regression_reports_export_ver_")
-    test_db = os.path.join(root, "aps_test.db")
-    test_logs = os.path.join(root, "logs")
-    test_backups = os.path.join(root, "backups")
-    test_templates = os.path.join(root, "templates_excel")
-    os.makedirs(test_logs, exist_ok=True)
-    os.makedirs(test_backups, exist_ok=True)
-    os.makedirs(test_templates, exist_ok=True)
-
-    os.environ["APS_ENV"] = "development"
-    os.environ["APS_DB_PATH"] = test_db
-    os.environ["APS_LOG_DIR"] = test_logs
-    os.environ["APS_BACKUP_DIR"] = test_backups
-    os.environ["APS_EXCEL_TEMPLATE_DIR"] = test_templates
-
-    from core.infrastructure.database import ensure_schema, get_connection
-
-    ensure_schema(test_db, logger=None, schema_path=os.path.join(repo_root, "schema.sql"))
+def test_reports_export_version_default_latest(app_client, db_path) -> None:
+    from core.infrastructure.database import get_connection
 
     # 准备 v6/v7 两套可区分报表数据，让 latest_version() 稳定落到 v7
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
     try:
         _seed_distinguishable_report_data(conn)
         conn.commit()
     finally:
         conn.close()
 
-    # Flask test_client（不启动 server）
-    import importlib
-
-    app_mod = importlib.import_module("app")
-    app = app_mod.create_app()
-    client = app.test_client()
-
     sd = "2026-01-01"
     ed = "2026-01-07"
 
     # 1) overdue/export
     _assert_overdue_export(
-        client.get("/reports/overdue/export?version=6"),
+        app_client.get("/reports/overdue/export?version=6"),
         "GET /reports/overdue/export（version=6）",
         6,
         "2026-01-02 10:00:00",
         10.0,
     )
     _assert_overdue_export(
-        client.get("/reports/overdue/export"),
+        app_client.get("/reports/overdue/export"),
         "GET /reports/overdue/export（missing version）",
         7,
         "2026-01-03 12:00:00",
         36.0,
     )
     _assert_overdue_export(
-        client.get("/reports/overdue/export?version="),
+        app_client.get("/reports/overdue/export?version="),
         "GET /reports/overdue/export（empty version）",
         7,
         "2026-01-03 12:00:00",
         36.0,
     )
     _assert_overdue_export(
-        client.get("/reports/overdue/export?version=latest"),
+        app_client.get("/reports/overdue/export?version=latest"),
         "GET /reports/overdue/export（version=latest）",
         7,
         "2026-01-03 12:00:00",
         36.0,
     )
-    _assert_invalid_version(client.get("/reports/overdue/export?version=abc"), "GET /reports/overdue/export（invalid version）")
-    _assert_invalid_version(client.get("/reports/overdue/export?version=0"), "GET /reports/overdue/export（version=0）")
+    _assert_invalid_version(app_client.get("/reports/overdue/export?version=abc"), "GET /reports/overdue/export（invalid version）")
+    _assert_invalid_version(app_client.get("/reports/overdue/export?version=0"), "GET /reports/overdue/export（version=0）")
 
     # 2) utilization/export（显式日期按参数，无日期按版本排程范围）
     _assert_utilization_export(
-        client.get(f"/reports/utilization/export?version=6&start_date={sd}&end_date={ed}"),
+        app_client.get(f"/reports/utilization/export?version=6&start_date={sd}&end_date={ed}"),
         "GET /reports/utilization/export（version=6）",
         6,
         2.0,
     )
     _assert_utilization_export(
-        client.get(f"/reports/utilization/export?start_date={sd}&end_date={ed}"),
+        app_client.get(f"/reports/utilization/export?start_date={sd}&end_date={ed}"),
         "GET /reports/utilization/export（missing version）",
         7,
         4.0,
     )
     _assert_utilization_export(
-        client.get(f"/reports/utilization/export?version=&start_date={sd}&end_date={ed}"),
+        app_client.get(f"/reports/utilization/export?version=&start_date={sd}&end_date={ed}"),
         "GET /reports/utilization/export（empty version）",
         7,
         4.0,
     )
     _assert_utilization_export(
-        client.get(f"/reports/utilization/export?version=latest&start_date={sd}&end_date={ed}"),
+        app_client.get(f"/reports/utilization/export?version=latest&start_date={sd}&end_date={ed}"),
         "GET /reports/utilization/export（version=latest）",
         7,
         4.0,
     )
     _assert_utilization_export(
-        client.get("/reports/utilization/export?version=latest"),
+        app_client.get("/reports/utilization/export?version=latest"),
         "GET /reports/utilization/export（version=latest，无日期）",
         7,
         4.0,
     )
     _assert_utilization_export(
-        client.get("/reports/utilization/export"),
+        app_client.get("/reports/utilization/export"),
         "GET /reports/utilization/export（missing version，无日期）",
         7,
         4.0,
     )
     _assert_utilization_export(
-        client.get("/reports/utilization/export?version="),
+        app_client.get("/reports/utilization/export?version="),
         "GET /reports/utilization/export（empty version，无日期）",
         7,
         4.0,
     )
     _assert_utilization_export(
-        client.get("/reports/utilization/export?version=6"),
+        app_client.get("/reports/utilization/export?version=6"),
         "GET /reports/utilization/export（version=6，无日期）",
         6,
         2.0,
     )
     _assert_date_validation(
-        client.get("/reports/utilization/export?version=latest&start_date=bad-date"),
+        app_client.get("/reports/utilization/export?version=latest&start_date=bad-date"),
         "GET /reports/utilization/export（只传坏开始日期）",
         "日期格式不正确",
     )
     _assert_date_validation(
-        client.get(f"/reports/utilization/export?version=latest&start_date={sd}"),
+        app_client.get(f"/reports/utilization/export?version=latest&start_date={sd}"),
         "GET /reports/utilization/export（只传开始日期）",
         "缺少开始日期或结束日期",
     )
     _assert_invalid_version(
-        client.get(f"/reports/utilization/export?version=abc&start_date={sd}&end_date={ed}"),
+        app_client.get(f"/reports/utilization/export?version=abc&start_date={sd}&end_date={ed}"),
         "GET /reports/utilization/export（invalid version）",
     )
     _assert_invalid_version(
-        client.get(f"/reports/utilization/export?version=0&start_date={sd}&end_date={ed}"),
+        app_client.get(f"/reports/utilization/export?version=0&start_date={sd}&end_date={ed}"),
         "GET /reports/utilization/export（version=0）",
     )
     _assert_missing_version(
-        client.get(f"/reports/utilization/export?version=999&start_date={sd}&end_date={ed}"),
+        app_client.get(f"/reports/utilization/export?version=999&start_date={sd}&end_date={ed}"),
         "GET /reports/utilization/export（version=999）",
     )
 
     # 3) downtime/export（显式日期按参数，无日期按版本排程范围）
     _assert_downtime_export(
-        client.get(f"/reports/downtime/export?version=6&start_date={sd}&end_date={ed}"),
+        app_client.get(f"/reports/downtime/export?version=6&start_date={sd}&end_date={ed}"),
         "GET /reports/downtime/export（version=6）",
         6,
         0.0,
     )
     _assert_downtime_export(
-        client.get(f"/reports/downtime/export?start_date={sd}&end_date={ed}"),
+        app_client.get(f"/reports/downtime/export?start_date={sd}&end_date={ed}"),
         "GET /reports/downtime/export（missing version）",
         7,
         2.0,
     )
     _assert_downtime_export(
-        client.get(f"/reports/downtime/export?version=&start_date={sd}&end_date={ed}"),
+        app_client.get(f"/reports/downtime/export?version=&start_date={sd}&end_date={ed}"),
         "GET /reports/downtime/export（empty version）",
         7,
         2.0,
     )
     _assert_downtime_export(
-        client.get(f"/reports/downtime/export?version=latest&start_date={sd}&end_date={ed}"),
+        app_client.get(f"/reports/downtime/export?version=latest&start_date={sd}&end_date={ed}"),
         "GET /reports/downtime/export（version=latest）",
         7,
         2.0,
     )
     _assert_downtime_export(
-        client.get("/reports/downtime/export?version=latest"),
+        app_client.get("/reports/downtime/export?version=latest"),
         "GET /reports/downtime/export（version=latest，无日期）",
         7,
         2.0,
     )
     _assert_downtime_export(
-        client.get("/reports/downtime/export"),
+        app_client.get("/reports/downtime/export"),
         "GET /reports/downtime/export（missing version，无日期）",
         7,
         2.0,
     )
     _assert_downtime_export(
-        client.get("/reports/downtime/export?version="),
+        app_client.get("/reports/downtime/export?version="),
         "GET /reports/downtime/export（empty version，无日期）",
         7,
         2.0,
     )
     _assert_no_data_export(
-        client.get("/reports/downtime/export?version=6"),
+        app_client.get("/reports/downtime/export?version=6"),
         "GET /reports/downtime/export（version=6，无日期）",
     )
     _assert_no_data_export(
-        client.get("/reports/downtime/export?version=5"),
+        app_client.get("/reports/downtime/export?version=5"),
         "GET /reports/downtime/export（version=5，无排程，无日期）",
     )
     _assert_date_validation(
-        client.get("/reports/downtime/export?version=latest&end_date=bad-date"),
+        app_client.get("/reports/downtime/export?version=latest&end_date=bad-date"),
         "GET /reports/downtime/export（只传坏结束日期）",
         "缺少开始日期或结束日期",
     )
     _assert_date_validation(
-        client.get(f"/reports/downtime/export?version=latest&end_date={ed}"),
+        app_client.get(f"/reports/downtime/export?version=latest&end_date={ed}"),
         "GET /reports/downtime/export（只传结束日期）",
         "缺少开始日期或结束日期",
     )
     _assert_invalid_version(
-        client.get(f"/reports/downtime/export?version=abc&start_date={sd}&end_date={ed}"),
+        app_client.get(f"/reports/downtime/export?version=abc&start_date={sd}&end_date={ed}"),
         "GET /reports/downtime/export（invalid version）",
     )
     _assert_invalid_version(
-        client.get(f"/reports/downtime/export?version=0&start_date={sd}&end_date={ed}"),
+        app_client.get(f"/reports/downtime/export?version=0&start_date={sd}&end_date={ed}"),
         "GET /reports/downtime/export（version=0）",
     )
     _assert_missing_version(
-        client.get(f"/reports/downtime/export?version=999&start_date={sd}&end_date={ed}"),
+        app_client.get(f"/reports/downtime/export?version=999&start_date={sd}&end_date={ed}"),
         "GET /reports/downtime/export（version=999）",
     )
-
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()

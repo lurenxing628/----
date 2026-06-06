@@ -1,17 +1,7 @@
 """回归测试：守护 get_connection() 开启 sqlite3 detect_types（PARSE_DECLTYPES|PARSE_COLNAMES）——DATE 列与列名标注 [date] 的查询结果须返回纯 datetime.date（非 str、非 datetime），否则隐式日期转换失效会引入细微行为差异。"""
 
-import os
 import sqlite3
-import sys
 from datetime import date, datetime
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 def _assert_is_date(v, context: str) -> None:
@@ -20,16 +10,12 @@ def _assert_is_date(v, context: str) -> None:
     assert ok, f"{context}：预期返回 datetime.date，实际 type={type(v)} value={v!r}"
 
 
-def main():
+def test_sqlite_detect_types_enabled():
     """
     回归目标：
     - get_connection() 必须开启 sqlite3 的 detect_types（PARSE_DECLTYPES | PARSE_COLNAMES），
       否则 SQLite 的 DATE 隐式类型转换会失效（DATE 变回 str），产生潜在的细微行为差异。
     """
-
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
 
     from core.infrastructure.database import get_connection
 
@@ -55,10 +41,4 @@ def main():
             conn.close()
         except Exception:
             pass
-
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()
 

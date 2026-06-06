@@ -1,48 +1,15 @@
 """回归测试：当 Excel 预览已通过但 apply 阶段引用的工种已被改名失效时，MachineExcelImportService.apply_preview_rows 整批抛 ValidationError（文案含「工种机加工不存在」）不写空设备记录；SupplierExcelImportService 则按行计 error_count=1、new_count/update_count 为 0 并给出错误样本，二者都不静默写入失效引用记录。"""
 
-import os
-import sys
-import tempfile
+from core.infrastructure.database import get_connection
+from core.infrastructure.errors import ValidationError
+from core.services.common.excel_service import ImportMode, ImportPreviewRow, RowStatus
+from core.services.equipment.machine_excel_import_service import MachineExcelImportService
+from core.services.process.op_type_service import OpTypeService
+from core.services.process.supplier_excel_import_service import SupplierExcelImportService
 
 
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-
-    tmpdir = tempfile.mkdtemp(prefix="aps_regression_excel_strict_ref_")
-    test_db = os.path.join(tmpdir, "aps_test.db")
-    test_logs = os.path.join(tmpdir, "logs")
-    test_backups = os.path.join(tmpdir, "backups")
-    test_templates = os.path.join(tmpdir, "templates_excel")
-    os.makedirs(test_logs, exist_ok=True)
-    os.makedirs(test_backups, exist_ok=True)
-    os.makedirs(test_templates, exist_ok=True)
-
-    os.environ["APS_ENV"] = "development"
-    os.environ["APS_DB_PATH"] = test_db
-    os.environ["APS_LOG_DIR"] = test_logs
-    os.environ["APS_BACKUP_DIR"] = test_backups
-    os.environ["APS_EXCEL_TEMPLATE_DIR"] = test_templates
-
-    from core.infrastructure.database import ensure_schema, get_connection
-    from core.infrastructure.errors import ValidationError
-    from core.services.common.excel_service import ImportMode, ImportPreviewRow, RowStatus
-    from core.services.equipment.machine_excel_import_service import MachineExcelImportService
-    from core.services.process.op_type_service import OpTypeService
-    from core.services.process.supplier_excel_import_service import SupplierExcelImportService
-
-    ensure_schema(test_db, logger=None, schema_path=os.path.join(repo_root, "schema.sql"), backup_dir=None)
-
-    conn = get_connection(test_db)
+def test_excel_import_strict_reference_apply(db_path) -> None:
+    conn = get_connection(db_path)
     try:
         op_type_svc = OpTypeService(conn)
         op_type_svc.create("OT_M_STRICT", "机加工", "internal")
@@ -51,7 +18,7 @@ def main() -> None:
         conn.close()
 
     # 1) 设备：apply 阶段工种失效，必须整批失败，且不得静默写空
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
     try:
         OpTypeService(conn).update("OT_M_STRICT", name="机加工-已改名")
         svc = MachineExcelImportService(conn)
@@ -85,7 +52,7 @@ def main() -> None:
         conn.close()
 
     # 2) 供应商：apply 阶段工种失效，应按行计错继续，但不得静默写空
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
     try:
         OpTypeService(conn).update("OT_S_STRICT", name="外协工种-已改名")
         svc = SupplierExcelImportService(conn)
@@ -121,9 +88,3 @@ def main() -> None:
             raise RuntimeError(f"供应商严格引用失效后不应写入记录，实际数量={cnt}")
     finally:
         conn.close()
-
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()
