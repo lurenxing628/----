@@ -2,20 +2,8 @@
 
 from __future__ import annotations
 
-import importlib
-import os
 import re
-import sys
-import tempfile
 from typing import Optional, Tuple
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 def _assert_status(resp, name: str, expect: int = 200) -> None:
@@ -44,31 +32,10 @@ def _fetch_link(conn, operator_id: str, machine_id: str) -> Tuple[Optional[str],
     return row["skill_level"], row["is_primary"]
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_operator_machine_detail_readside_normalization(app_client, db_path) -> None:
+    from core.infrastructure.database import get_connection
 
-    root = tempfile.mkdtemp(prefix="aps_reg_detail_readside_norm_")
-    test_db = os.path.join(root, "aps_test.db")
-    test_logs = os.path.join(root, "logs")
-    test_backups = os.path.join(root, "backups")
-    test_templates = os.path.join(root, "templates_excel")
-    os.makedirs(test_logs, exist_ok=True)
-    os.makedirs(test_backups, exist_ok=True)
-    os.makedirs(test_templates, exist_ok=True)
-
-    os.environ["APS_ENV"] = "development"
-    os.environ["APS_DB_PATH"] = test_db
-    os.environ["APS_LOG_DIR"] = test_logs
-    os.environ["APS_BACKUP_DIR"] = test_backups
-    os.environ["APS_EXCEL_TEMPLATE_DIR"] = test_templates
-
-    from core.infrastructure.database import ensure_schema, get_connection
-
-    ensure_schema(test_db, logger=None, schema_path=os.path.join(repo_root, "schema.sql"))
-
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
     try:
         conn.execute("INSERT INTO Operators (operator_id, name) VALUES (?, ?)", ("OP100", "测试员甲"))
         conn.execute("INSERT INTO Operators (operator_id, name) VALUES (?, ?)", ("OP200", "测试员乙"))
@@ -86,37 +53,33 @@ def main() -> None:
     finally:
         conn.close()
 
-    app_mod = importlib.import_module("app")
-    app = app_mod.create_app()
-    client = app.test_client()
-
-    resp_equipment = client.get("/equipment/MC100")
+    resp_equipment = app_client.get("/equipment/MC100")
     _assert_status(resp_equipment, "GET /equipment/MC100")
     html_equipment = resp_equipment.data.decode("utf-8", errors="ignore")
     assert _selected_skill_value(html_equipment) == "expert", "设备详情页未将 skilled 归一显示为 expert"
     assert _is_primary_checked(html_equipment, "linkform_0"), "设备详情页未将中文“是”归一显示为勾选"
 
-    resp_personnel = client.get("/personnel/OP200")
+    resp_personnel = app_client.get("/personnel/OP200")
     _assert_status(resp_personnel, "GET /personnel/OP200")
     html_personnel = resp_personnel.data.decode("utf-8", errors="ignore")
     assert _selected_skill_value(html_personnel) == "expert", "人员详情页未将 skilled 归一显示为 expert"
     assert not _is_primary_checked(html_personnel, "linkform_0"), "人员详情页未将 off 归一显示为未勾选"
 
-    resp_save_equipment = client.post(
+    resp_save_equipment = app_client.post(
         "/equipment/MC100/link/update",
         data={"operator_id": "OP100", "skill_level": "expert", "is_primary": "yes"},
         follow_redirects=True,
     )
     _assert_status(resp_save_equipment, "POST /equipment/MC100/link/update")
 
-    resp_save_personnel = client.post(
+    resp_save_personnel = app_client.post(
         "/personnel/OP200/link/update",
         data={"machine_id": "MC200", "skill_level": "expert"},
         follow_redirects=True,
     )
     _assert_status(resp_save_personnel, "POST /personnel/OP200/link/update")
 
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
     try:
         skill1, primary1 = _fetch_link(conn, "OP100", "MC100")
         assert skill1 == "expert", f"预期 OP100/MC100.skill_level=expert，实际 {skill1!r}"
@@ -127,9 +90,3 @@ def main() -> None:
         assert primary2 == "no", f"预期 OP200/MC200.is_primary=no，实际 {primary2!r}"
     finally:
         conn.close()
-
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()

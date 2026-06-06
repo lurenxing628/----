@@ -2,20 +2,8 @@
 
 from __future__ import annotations
 
-import importlib
 import io
-import os
-import sys
-import tempfile
 from typing import Any, Dict, List, Optional
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 def _assert_status(resp, name: str, expect: int = 200) -> None:
@@ -55,36 +43,15 @@ def _find_row(rows: List[Dict[str, Any]], **conditions: Any) -> Optional[Dict[st
     return None
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-
-    root = tempfile.mkdtemp(prefix="aps_reg_calendar_export_norm_")
-    test_db = os.path.join(root, "aps_test.db")
-    test_logs = os.path.join(root, "logs")
-    test_backups = os.path.join(root, "backups")
-    test_templates = os.path.join(root, "templates_excel")
-    os.makedirs(test_logs, exist_ok=True)
-    os.makedirs(test_backups, exist_ok=True)
-    os.makedirs(test_templates, exist_ok=True)
-
-    os.environ["APS_ENV"] = "development"
-    os.environ["APS_DB_PATH"] = test_db
-    os.environ["APS_LOG_DIR"] = test_logs
-    os.environ["APS_BACKUP_DIR"] = test_backups
-    os.environ["APS_EXCEL_TEMPLATE_DIR"] = test_templates
-
-    from core.infrastructure.database import ensure_schema, get_connection
+def test_calendar_export_normalization(app_client, db_path) -> None:
+    from core.infrastructure.database import get_connection
     from core.models.enums import CalendarDayType, YesNo
     from core.services.common.normalization_matrix import (
         normalize_calendar_day_type_value,
         normalize_yes_no_narrow_value,
     )
 
-    ensure_schema(test_db, logger=None, schema_path=os.path.join(repo_root, "schema.sql"))
-
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
     try:
         conn.execute("INSERT INTO Operators (operator_id, name) VALUES (?, ?)", ("OP100", "测试员甲"))
         conn.execute(
@@ -105,11 +72,7 @@ def main() -> None:
     finally:
         conn.close()
 
-    app_mod = importlib.import_module("app")
-    app = app_mod.create_app()
-    client = app.test_client()
-
-    resp_global = client.get("/scheduler/excel/calendar/export")
+    resp_global = app_client.get("/scheduler/excel/calendar/export")
     _assert_status(resp_global, "GET /scheduler/excel/calendar/export")
     global_rows = _sheet_rows(resp_global.data)
     global_row = _find_row(global_rows, 日期="2026-02-01")
@@ -122,7 +85,7 @@ def main() -> None:
     assert normalize_yes_no_narrow_value(global_row["允许普通件"]) == YesNo.YES.value
     assert normalize_yes_no_narrow_value(global_row["允许急件"]) == YesNo.NO.value
 
-    resp_operator = client.get("/personnel/excel/operator_calendar/export")
+    resp_operator = app_client.get("/personnel/excel/operator_calendar/export")
     _assert_status(resp_operator, "GET /personnel/excel/operator_calendar/export")
     operator_rows = _sheet_rows(resp_operator.data)
     operator_row = _find_row(operator_rows, 工号="OP100", 日期="2026-02-02")
@@ -134,9 +97,3 @@ def main() -> None:
     assert normalize_calendar_day_type_value(operator_row["类型"]) == CalendarDayType.HOLIDAY.value
     assert normalize_yes_no_narrow_value(operator_row["允许普通件"]) == YesNo.YES.value
     assert normalize_yes_no_narrow_value(operator_row["允许急件"]) == YesNo.NO.value
-
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()
