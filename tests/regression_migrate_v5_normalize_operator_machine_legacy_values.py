@@ -4,17 +4,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
-import sys
-import tempfile
 from typing import Optional, Tuple
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 def _fetch_link(conn: sqlite3.Connection, operator_id: str, machine_id: str) -> Tuple[Optional[str], Optional[str]]:
@@ -29,15 +19,11 @@ def _fetch_link(conn: sqlite3.Connection, operator_id: str, machine_id: str) -> 
     return row[0], row[1]
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_migrate_v5_normalize_operator_machine_legacy_values(tmp_path, schema_path) -> None:
 
     from core.infrastructure.database import CURRENT_SCHEMA_VERSION, ensure_schema, get_connection
 
-    schema_path = os.path.join(repo_root, "schema.sql")
-    tmpdir = tempfile.mkdtemp(prefix="aps_regression_migrate_v5_")
+    tmpdir = str(tmp_path)
     test_db = os.path.join(tmpdir, "aps_migrate_v5.db")
 
     conn0 = sqlite3.connect(test_db)
@@ -115,8 +101,4 @@ def main() -> None:
     ]
     assert backup_files, f"未找到迁移前备份文件（dir={backups_dir}）"
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

@@ -2,19 +2,9 @@
 
 import os
 import sqlite3
-import sys
-import tempfile
 
 
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def main():
+def test_migrate_v2_unify_workcalendar_day_type(tmp_path, schema_path):
     """
     回归目标（v2 迁移）：
     - 当 DB 的 SchemaVersion=1 且 WorkCalendar 存在历史 day_type='weekend' 记录时，
@@ -22,14 +12,10 @@ def main():
     - 迁移前必须生成备份文件，便于失败回滚。
     """
 
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
 
     from core.infrastructure.database import CURRENT_SCHEMA_VERSION, ensure_schema, get_connection
 
-    schema_path = os.path.join(repo_root, "schema.sql")
-    tmpdir = tempfile.mkdtemp(prefix="aps_regression_migrate_v2_")
+    tmpdir = str(tmp_path)
     test_db = os.path.join(tmpdir, "aps_migrate_v2.db")
 
     # 1) 初始化一个“已是 v1 的库”：SchemaVersion=1，并写入一条 weekend
@@ -80,9 +66,4 @@ def main():
     ]
     assert backup_files, f"未找到迁移前备份文件（dir={backups_dir}）"
 
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()
 

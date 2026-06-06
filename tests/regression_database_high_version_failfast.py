@@ -4,17 +4,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
-import sys
-import tempfile
 from typing import List, Tuple
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 def _version_of(db_path: str) -> int:
@@ -38,10 +28,9 @@ def _before_migrate_backups(backup_dir: str) -> List[str]:
     ]
 
 
-def _make_future_db(repo_root: str, db_path: str, backup_dir: str) -> int:
+def _make_future_db(schema_path: str, db_path: str, backup_dir: str) -> int:
     from core.infrastructure.database import CURRENT_SCHEMA_VERSION, ensure_schema
 
-    schema_path = os.path.join(repo_root, "schema.sql")
     ensure_schema(db_path, logger=None, schema_path=schema_path, backup_dir=backup_dir)
     future_version = CURRENT_SCHEMA_VERSION + 1
     conn = sqlite3.connect(db_path)
@@ -72,11 +61,7 @@ def _assert_future_version_error(exc: Exception, *, future_version: int, support
     assert "请升级程序或恢复兼容版本备份" in msg, msg
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-
+def test_database_high_version_failfast(tmp_path, schema_path) -> None:
     from core.infrastructure import backup as backup_mod
     from core.infrastructure import migration_runner
     from core.infrastructure.database import (
@@ -87,13 +72,12 @@ def main() -> None:
     )
     from core.infrastructure.migration_runner import migrate_with_backup, preflight_migration_contract
 
-    tmpdir = tempfile.mkdtemp(prefix="aps_reg_database_high_version_")
+    tmpdir = str(tmp_path)
     db_path = os.path.join(tmpdir, "future.db")
     backup_dir = os.path.join(tmpdir, "backups")
     os.makedirs(backup_dir, exist_ok=True)
-    schema_path = os.path.join(repo_root, "schema.sql")
     schema_sql = open(schema_path, "r", encoding="utf-8").read()
-    future_version = _make_future_db(repo_root, db_path, backup_dir)
+    future_version = _make_future_db(schema_path, db_path, backup_dir)
 
     try:
         ensure_schema(db_path, logger=None, schema_path=schema_path, backup_dir=backup_dir)
@@ -251,8 +235,3 @@ def main() -> None:
     assert backup_calls == [], backup_calls
     assert _version_of(db_path) == future_version
     assert _before_migrate_backups(backup_dir) == []
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()

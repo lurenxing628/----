@@ -176,3 +176,15 @@ def app_client(db_env):
 
     app = importlib.import_module("app").create_app()
     return app.test_client()
+
+
+@pytest.fixture
+def schema_path():
+    """schema.sql 的绝对路径（str），供需自建特定版本旧库（迁移测试）而不能用 db_path 的用例。"""
+    return str(SCHEMA_PATH)
+
+
+@pytest.fixture
+def repo_root():
+    """仓库根 Path，供读取仓库内静态文件（模板等）的用例。"""
+    return REPO_ROOT

@@ -4,16 +4,6 @@ from __future__ import annotations
 
 import os
 import sqlite3
-import sys
-import tempfile
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 def _version_of(db_path: str) -> int:
@@ -27,16 +17,10 @@ def _version_of(db_path: str) -> int:
         conn.close()
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-
+def test_ensure_schema_fastforward_empty_only(tmp_path, schema_path) -> None:
     from core.infrastructure.database import CURRENT_SCHEMA_VERSION, ensure_schema, get_connection
 
-    schema_path = os.path.join(repo_root, "schema.sql")
-
-    empty_root = tempfile.mkdtemp(prefix="aps_reg_schema_empty_")
+    empty_root = str(tmp_path / "empty")
     empty_db = os.path.join(empty_root, "aps_empty.db")
     empty_backups = os.path.join(empty_root, "backups")
     os.makedirs(empty_backups, exist_ok=True)
@@ -52,7 +36,7 @@ def main() -> None:
     ]
     assert not empty_backup_files, f"预期 fresh 空库不产生迁移前备份，实际 {empty_backup_files}"
 
-    nonempty_root = tempfile.mkdtemp(prefix="aps_reg_schema_nonempty_")
+    nonempty_root = str(tmp_path / "nonempty")
     nonempty_db = os.path.join(nonempty_root, "aps_nonempty.db")
     nonempty_backups = os.path.join(nonempty_root, "backups")
     os.makedirs(nonempty_backups, exist_ok=True)
@@ -127,8 +111,3 @@ def main() -> None:
     ]
     assert nonempty_backup_files, f"预期存在迁移前备份（suffix={expected_suffix}），实际为空"
 
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()

@@ -2,16 +2,6 @@
 
 import os
 import sqlite3
-import sys
-import tempfile
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 def _has_column(conn: sqlite3.Connection, table: str, col: str) -> bool:
@@ -23,7 +13,7 @@ def _has_column(conn: sqlite3.Connection, table: str, col: str) -> bool:
     return False
 
 
-def main():
+def test_operator_machine_missing_columns(tmp_path, schema_path):
     """
     回归目标：
     - 残缺旧库只有 OperatorMachine 一张业务表、缺少其它整表时，
@@ -36,13 +26,10 @@ def main():
     - 断言抛出 MigrationContractError，且真实库仍未补出 skill_level/is_primary
     """
 
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
 
     from core.infrastructure.database import MigrationContractError, ensure_schema, get_connection
 
-    tmpdir = tempfile.mkdtemp(prefix="aps_regression_operator_machine_cols_")
+    tmpdir = str(tmp_path)
     test_db = os.path.join(tmpdir, "aps_operator_machine_cols.db")
 
     # 1) 构造旧库：OperatorMachine 缺列
@@ -72,7 +59,7 @@ def main():
 
     # 2) 执行 schema 确保/迁移：残缺整库应直接失败，不能静默补齐
     try:
-        ensure_schema(test_db, logger=None, schema_path=os.path.join(repo_root, "schema.sql"))
+        ensure_schema(test_db, logger=None, schema_path=schema_path)
     except MigrationContractError as exc:
         message = str(exc)
         assert "不受支持的残缺结构" in message, message
@@ -92,7 +79,6 @@ def main():
         assert (r["operator_id"] or "").strip() == "OP001"
         assert (r["machine_id"] or "").strip() == "MC_A1"
 
-        print("OK")
     finally:
         try:
             conn.close()
@@ -100,5 +86,3 @@ def main():
             pass
 
 
-if __name__ == "__main__":
-    main()

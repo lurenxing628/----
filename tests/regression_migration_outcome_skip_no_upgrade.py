@@ -2,19 +2,9 @@
 
 import os
 import sqlite3
-import sys
-import tempfile
 
 
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def main() -> None:
+def test_migration_outcome_skip_no_upgrade(tmp_path, schema_path) -> None:
     """
     回归目标：
     - 当 SchemaVersion=1，但 v2 目标表 WorkCalendar 缺失时，
@@ -22,14 +12,10 @@ def main() -> None:
     - 不允许先按当前 schema.sql 补回缺失整表，再把坏库迁到当前版本。
     - fail-fast 发生在迁移备份前，避免反复调用制造备份风暴。
     """
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
 
     from core.infrastructure.database import MigrationContractError, ensure_schema, get_connection
 
-    schema_path = os.path.join(repo_root, "schema.sql")
-    tmpdir = tempfile.mkdtemp(prefix="aps_regression_migration_skip_")
+    tmpdir = str(tmp_path)
     test_db = os.path.join(tmpdir, "aps_migration_skip.db")
     backup_dir = os.path.join(tmpdir, "backups")
     os.makedirs(backup_dir, exist_ok=True)
@@ -78,8 +64,4 @@ def main() -> None:
     ]
     assert not backup_files, f"fail-fast 预检不应生成迁移前备份，实际 {backup_files}"
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

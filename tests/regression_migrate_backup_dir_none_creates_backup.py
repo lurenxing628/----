@@ -2,19 +2,9 @@
 
 import os
 import sqlite3
-import sys
-import tempfile
 
 
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def main():
+def test_migrate_backup_dir_none_creates_backup(tmp_path, schema_path):
     """
     回归目标：
     - 当 ensure_schema() 触发 DB 迁移，但调用方传入 backup_dir=None 时，
@@ -26,16 +16,12 @@ def main():
     - 断言：<db_dir>/backups 下出现 before_migrate_v4_to_v{CURRENT_SCHEMA_VERSION} 的备份文件
     """
 
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
 
     from core.infrastructure.database import CURRENT_SCHEMA_VERSION, ensure_schema, get_connection
 
-    tmpdir = tempfile.mkdtemp(prefix="aps_regression_migrate_backup_none_")
+    tmpdir = str(tmp_path)
     test_db = os.path.join(tmpdir, "aps_migrate_backup_none.db")
 
-    schema_path = os.path.join(repo_root, "schema.sql")
 
     # 1) 构造完整旧库：结构完整但版本停在 v4，用旧枚举值触发后续迁移
     conn0 = sqlite3.connect(test_db)
@@ -98,8 +84,4 @@ def main():
         except Exception:
             pass
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

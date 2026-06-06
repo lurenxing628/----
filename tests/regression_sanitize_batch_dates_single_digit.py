@@ -2,35 +2,21 @@
 
 import os
 import sqlite3
-import sys
-import tempfile
 
 
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def main():
+def test_sanitize_batch_dates_single_digit(tmp_path, schema_path):
     """
     回归目标：
     - 旧库迁移清洗时，DATE 字段允许单数字月/日（例如 2026-1-1），并稳定归一化为 ISO（2026-01-01）。
     """
 
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
 
     from core.infrastructure.database import CURRENT_SCHEMA_VERSION, ensure_schema, get_connection
 
-    tmpdir = tempfile.mkdtemp(prefix="aps_regression_sanitize_batch_dates_")
+    tmpdir = str(tmp_path)
     test_db = os.path.join(tmpdir, "aps_sanitize_batch_dates_old.db")
     backup_dir = os.path.join(tmpdir, "backups_migrate")
     os.makedirs(backup_dir, exist_ok=True)
-    schema_path = os.path.join(repo_root, "schema.sql")
 
     # 1) 构造完整旧库：结构完整但版本停在 v0，用单数字日期触发 v1 清洗
     conn0 = sqlite3.connect(test_db)
@@ -77,8 +63,4 @@ def main():
         except Exception:
             pass
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()
