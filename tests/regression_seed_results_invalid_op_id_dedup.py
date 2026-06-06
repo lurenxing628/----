@@ -1,17 +1,9 @@
-import os
-import sys
+"""回归测试：GreedyScheduler 处理「op_id 无效（=0）但可经 op_code 或 (batch_id,seq) 匹配到真实工序 id=1」的 seed_results 时（两种 dispatch_mode），不产出 op_id<=0 结果、去重回填到真实工序、total_ops=2、且 op2 复用 seed 时间不早于 seed_end——守护无效 op_id 种子的匹配回填与去重。"""
+
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from typing import Optional
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 @dataclass
@@ -107,9 +99,6 @@ def _build_case():
 
 
 def _run(dispatch_mode: str, *, seed_op_code: str, seed_seq: int):
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
 
     from core.algorithms import GreedyScheduler, ScheduleResult
 
@@ -143,7 +132,7 @@ def _run(dispatch_mode: str, *, seed_op_code: str, seed_seq: int):
     return results, summary, used_params, seed_end
 
 
-def main():
+def test_seed_results_invalid_op_id_dedup():
     # 两种派工模式都应满足：seed 回填 + 去重 + total_ops 正确
     for mode in ("batch_order", "sgs"):
         for tag, seed_op_code, seed_seq in (
@@ -171,9 +160,4 @@ def main():
                 op2.start_time >= seed_end
             ), f"[{mode}|{tag}] op_id=2 应不早于 seed_end={seed_end}，实际 start_time={op2.start_time}"
 
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()
 

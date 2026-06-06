@@ -20,13 +20,7 @@ import re
 from pathlib import Path
 from typing import List, Tuple
 
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 
 def iter_template_files(repo_root: str) -> List[str]:
@@ -74,8 +68,10 @@ def scan_inline_event_jinja(repo_root: str) -> List[Tuple[str, int, str]]:
     return hits
 
 
-def main() -> None:
-    repo_root = find_repo_root()
+def test_template_no_inline_event_jinja() -> None:
+    repo_root = REPO_ROOT
+    if not (os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql"))):
+        raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
     hits = scan_inline_event_jinja(repo_root)
     if hits:
         print("[FAIL] 检测到 inline on* 事件属性中包含 Jinja 插值（存在 XSS/注入风险）：")
@@ -85,8 +81,4 @@ def main() -> None:
             print(f"  ... (+{len(hits) - 50})")
         raise SystemExit(1)
     print("OK: no inline event handlers contain Jinja interpolation.")
-
-
-if __name__ == "__main__":
-    main()
 

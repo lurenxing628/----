@@ -1,17 +1,9 @@
-import os
-import sys
+"""回归测试：GreedyScheduler 处理含重复 seed 工序的 seed_results 时（两种 dispatch_mode），对重复 op_id 去重（seed 工序只出现 1 次）、仅产出 op_id=1/2 共 2 条、total_ops/scheduled_ops/failed_ops 口径正确，且 op2 复用 seed 时间不早于 seed_end——守护旧排产种子去重与时间回填语义。"""
+
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from typing import Optional
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 @dataclass
@@ -91,9 +83,6 @@ def _build_case():
 
 
 def _run(dispatch_mode: str):
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
 
     from core.algorithms import GreedyScheduler, ScheduleResult
 
@@ -126,7 +115,7 @@ def _run(dispatch_mode: str):
     return results, summary, used_params, seed_end
 
 
-def main():
+def test_seed_results_dedup():
     for mode in ("batch_order", "sgs"):
         results, summary, used_params, seed_end = _run(mode)
 
@@ -146,9 +135,4 @@ def main():
         assert op2.start_time is not None, "op_id=2 start_time 为空"
         assert op2.start_time >= seed_end, f"op_id=2 应不早于 seed_end={seed_end}，实际 start_time={op2.start_time}"
 
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()
 

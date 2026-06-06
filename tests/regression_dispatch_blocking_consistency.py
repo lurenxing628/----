@@ -2,19 +2,9 @@
 failed_ops（不被静默过滤）且失败即阻断同批后续工序，scheduled+failed==total；sgs 模式缺资源应抛 ValidationError(field=resource)
 而非生成不可评分兜底 key。"""
 
-import os
-import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from types import SimpleNamespace
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 @dataclass
@@ -119,9 +109,6 @@ def _build_case():
 
 
 def _run(dispatch_mode: str):
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
 
     from core.algorithms import GreedyScheduler
 
@@ -137,7 +124,7 @@ def _run(dispatch_mode: str):
     return results, summary, used_params
 
 
-def main():
+def test_dispatch_blocking_consistency():
     # batch_order 仍走正式派工失败统计：失败即阻断该批次后续工序。
     results, summary, used_params = _run("batch_order")
     assert used_params.get("dispatch_mode") == "batch_order", f"dispatch_mode 解析异常：{used_params!r}"
@@ -157,8 +144,4 @@ def main():
     else:
         raise AssertionError("SGS 不应为缺资源内部工序生成不可评分兜底 key")
 
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

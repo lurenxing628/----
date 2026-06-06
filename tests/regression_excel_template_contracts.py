@@ -822,7 +822,7 @@ def _assert_relation_reverse_header_copy_matches_templates() -> None:
             assert phrase in payload_text, f"{manual_id} 缺少设备/人员关联反向表头说明：{phrase}"
 
 
-def main() -> None:
+def test_excel_template_contracts() -> None:
     _assert_enum_validation_refresh_keeps_other_columns()
     _assert_enum_validation_refresh_splits_contiguous_ranges()
     _assert_process_excel_template_files_match_registered_definitions()
@@ -837,8 +837,4 @@ def main() -> None:
     _assert_broken_existing_template_is_not_silently_overwritten()
     _assert_mismatched_existing_template_is_not_silently_overwritten()
     _assert_mismatched_op_type_template_extra_header_is_not_repaired()
-    print("OK")
 
-
-if __name__ == "__main__":
-    main()

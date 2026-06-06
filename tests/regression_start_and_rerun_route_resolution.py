@@ -20,13 +20,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 
 def _assert(condition: bool, message: str) -> None:
@@ -268,13 +262,8 @@ def _exercise_runner(runner_path: Path, label: str) -> None:
         _assert("cannot be proven to belong to this repo" in str(e), f"{label}: 实例身份错误信息不正确")
 
 
-def main() -> None:
-    repo_root = find_repo_root()
+def test_start_and_rerun_route_resolution() -> None:
+    repo_root = REPO_ROOT
     for runner_path in _runner_paths(repo_root):
         runner_label = runner_path.relative_to(repo_root).parts[0].lstrip(".")
         _exercise_runner(runner_path, runner_label)
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()

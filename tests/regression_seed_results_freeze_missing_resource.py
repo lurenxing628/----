@@ -1,17 +1,9 @@
-import os
-import sys
+"""回归测试：GreedyScheduler 对「缺失一项资源维度的冻结种子」仍冻结其存在的资源——Case A seed 缺 operator_id 但有 machine_id 应冻结设备 M1（占用同设备的 op2 被推迟到 seed 之后）、Case B seed 缺 machine_id 但有 operator_id 应冻结人员 O1；两 case 均 failed_ops=0——守护半残种子的资源冻结不漏。"""
+
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from typing import Optional
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 @dataclass
@@ -72,9 +64,6 @@ def _build_batches():
 
 
 def _run_case(*, dispatch_mode: str, seed_machine_id, seed_operator_id, op_machine_id: str, op_operator_id: str):
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
 
     from core.algorithms import GreedyScheduler, ScheduleResult
 
@@ -132,7 +121,7 @@ def _run_case(*, dispatch_mode: str, seed_machine_id, seed_operator_id, op_machi
     return results, summary, used_strategy, used_params, seed_end
 
 
-def main():
+def test_seed_results_freeze_missing_resource():
     for mode in ("batch_order", "sgs"):
         # Case A：seed 缺 operator_id，但有 machine_id -> 应冻结设备资源
         results, summary, _strategy, used_params, seed_end = _run_case(
@@ -168,9 +157,4 @@ def main():
             op2.start_time >= seed_end
         ), f"[{mode}] seed 缺 machine_id 时仍应冻结 operator=O1；期望 op2.start_time>={seed_end}，实际 {op2.start_time}"
 
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()
 
