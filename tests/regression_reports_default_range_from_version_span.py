@@ -2,18 +2,6 @@
 
 from __future__ import annotations
 
-import os
-import sys
-import tempfile
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
 
 def _assert_status(resp, name: str, expect: int = 200) -> None:
     if resp.status_code != expect:
@@ -26,31 +14,10 @@ def _assert_contains(html: str, needle: str, name: str) -> None:
         raise RuntimeError(f"{name} 未包含期望内容：{needle!r}")
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+def test_reports_default_range_from_version_span(app_client, db_path) -> None:
+    from core.infrastructure.database import get_connection
 
-    root = tempfile.mkdtemp(prefix="aps_regression_reports_range_span_")
-    test_db = os.path.join(root, "aps_test.db")
-    test_logs = os.path.join(root, "logs")
-    test_backups = os.path.join(root, "backups")
-    test_templates = os.path.join(root, "templates_excel")
-    os.makedirs(test_logs, exist_ok=True)
-    os.makedirs(test_backups, exist_ok=True)
-    os.makedirs(test_templates, exist_ok=True)
-
-    os.environ["APS_ENV"] = "development"
-    os.environ["APS_DB_PATH"] = test_db
-    os.environ["APS_LOG_DIR"] = test_logs
-    os.environ["APS_BACKUP_DIR"] = test_backups
-    os.environ["APS_EXCEL_TEMPLATE_DIR"] = test_templates
-
-    from core.infrastructure.database import ensure_schema, get_connection
-
-    ensure_schema(test_db, logger=None, schema_path=os.path.join(repo_root, "schema.sql"))
-
-    conn = get_connection(test_db)
+    conn = get_connection(db_path)
     try:
         conn.execute("INSERT INTO Parts(part_no, part_name) VALUES (?, ?)", ("P_RANGE", "测试零件"))
         conn.execute("INSERT INTO Machines(machine_id, name, status) VALUES (?, ?, ?)", ("MC_R1", "测试设备", "active"))
@@ -92,11 +59,7 @@ def main() -> None:
     finally:
         conn.close()
 
-    import importlib
-
-    app_mod = importlib.import_module("app")
-    app = app_mod.create_app()
-    client = app.test_client()
+    client = app_client
 
     # utilization：无日期参数时，应自动落到 version=9 的排程范围
     r = client.get("/reports/utilization?version=9")
@@ -114,9 +77,3 @@ def main() -> None:
     _assert_contains(dt_html, 'name="start_date" value="2099-01-10"', "downtime start_date")
     _assert_contains(dt_html, 'name="end_date" value="2099-01-10"', "downtime end_date")
     _assert_contains(dt_html, "已按所选版本的排程范围自动带入日期。", "downtime hint")
-
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()
