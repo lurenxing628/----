@@ -2,18 +2,8 @@
 
 import os
 import re
-import sys
-import tempfile
 
 import openpyxl
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 def _build_source_xlsx(path: str) -> None:
@@ -146,20 +136,15 @@ def _assert_op_type_output_layout(path: str) -> None:
             pass
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-
-    from core.infrastructure.database import ensure_schema, get_connection
+def test_unit_excel_converter_merge_steps_and_classify(db_path, tmp_path) -> None:
+    from core.infrastructure.database import get_connection
     from core.services.common.excel_service import ImportMode, RowStatus
     from core.services.personnel import OperatorMachineService
     from core.services.process import UnitExcelConverter
 
-    tmpdir = tempfile.mkdtemp(prefix="aps_regression_unit_converter_")
+    tmpdir = str(tmp_path)
     src_xlsx = os.path.join(tmpdir, "source.xlsx")
     out_dir = os.path.join(tmpdir, "out")
-    db_path = os.path.join(tmpdir, "test.db")
 
     _build_source_xlsx(src_xlsx)
 
@@ -214,7 +199,6 @@ def main() -> None:
     assert abs(hours_map[("P001", 15)][0] - (20.0 / 60.0)) < 1e-6 and abs(hours_map[("P001", 15)][1] - 0.25) < 1e-6
 
     # 6) 与现有导入链路兼容：人员设备关联缺少“技能等级/主操设备”仍可预览通过
-    ensure_schema(db_path, logger=None, schema_path=os.path.join(repo_root, "schema.sql"))
     conn = get_connection(db_path)
     try:
         for r in converted.operators_rows:
@@ -257,8 +241,3 @@ def main() -> None:
     assert _read_headers(output_paths["供应商配置.xlsx"]) == ["供应商编号", "名称", "对应工种", "默认周期", "状态", "备注"]
     _assert_op_type_output_layout(output_paths["工种配置.xlsx"])
 
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()

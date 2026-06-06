@@ -5,19 +5,12 @@ from __future__ import annotations
 import contextlib
 import os
 import random
-import sys
 import threading
 import time
 from collections import OrderedDict
 from typing import Any, Dict, List
 
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 
 class _DummyCursor:
@@ -81,11 +74,8 @@ class ConcurrencyProbeOrderedDict(OrderedDict):
             return super().__len__()
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-
+def test_gantt_critical_chain_cache_thread_safe() -> None:
+    repo_root = REPO_ROOT
     import core.services.scheduler.gantt_critical_chain_provider as provider_module
     from core.services.scheduler.gantt_critical_chain_provider import GanttCriticalChainProvider
     from data.repositories import ScheduleRepository
@@ -161,13 +151,8 @@ def main() -> None:
         if int(compute_count["value"]) <= 0:
             raise RuntimeError("测试桩 compute 未被调用")
 
-        print("OK")
     finally:
         GanttCriticalChainProvider._CRITICAL_CHAIN_CACHE = old_cache
         GanttCriticalChainProvider._CRITICAL_CHAIN_CACHE_LOCK = old_lock
         GanttCriticalChainProvider._CRITICAL_CHAIN_CACHE_MAX = old_max
         provider_module.compute_critical_chain = old_compute
-
-
-if __name__ == "__main__":
-    main()

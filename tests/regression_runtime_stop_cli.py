@@ -21,13 +21,7 @@ from typing import Dict, Tuple
 
 from tests.runtime_cleanup_helper import assert_repo_runtime_stopped
 
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 
 def _contract_paths(log_dir: str) -> Tuple[str, str, str, str, str, str]:
@@ -118,8 +112,8 @@ def _assert_contract_removed(log_dir: str) -> None:
         raise RuntimeError(f"停机后仍残留运行时契约文件：{remaining}")
 
 
-def main() -> None:
-    repo_root = find_repo_root()
+def test_runtime_stop_cli() -> None:
+    repo_root = str(REPO_ROOT)
     log_dir = os.path.join(repo_root, "logs")
     assert_repo_runtime_stopped(repo_root)
     _clear_stale_contract(log_dir)
@@ -185,7 +179,6 @@ def main() -> None:
             )
         _assert_contract_removed(log_dir)
         _assert_contract_removed(env["APS_LOG_DIR"])
-        print("OK")
     finally:
         try:
             if p.poll() is None:
@@ -196,7 +189,3 @@ def main() -> None:
                 p.kill()
             except Exception:
                 pass
-
-
-if __name__ == "__main__":
-    main()

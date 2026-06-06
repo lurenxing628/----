@@ -2,34 +2,12 @@
 
 from __future__ import annotations
 
-import os
-import sys
-import tempfile
 from pathlib import Path
 
 
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-
-    from core.infrastructure.database import ensure_schema, get_connection
+def test_system_config_dirty_fields_contract(db_path, repo_root) -> None:
+    from core.infrastructure.database import get_connection
     from core.services.system.system_config_service import SystemConfigService, _dirty_field_label
-
-    tmpdir = tempfile.mkdtemp(prefix="aps_reg_system_cfg_dirty_")
-    db_path = os.path.join(tmpdir, "aps_test.db")
-    backup_dir = os.path.join(tmpdir, "backups")
-    os.makedirs(backup_dir, exist_ok=True)
-
-    ensure_schema(db_path, logger=None, schema_path=os.path.join(repo_root, "schema.sql"), backup_dir=backup_dir)
 
     conn = get_connection(db_path)
     try:
@@ -84,8 +62,3 @@ def main() -> None:
         assert "settings.dirty_field_labels or settings.dirty_fields" not in text, rel_path
         assert "dirty_labels | join" in text, rel_path
 
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()

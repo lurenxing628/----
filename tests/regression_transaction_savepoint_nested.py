@@ -1,27 +1,12 @@
 """回归测试：TransactionManager 嵌套事务的 savepoint 语义——内层失败只回滚内层、外层失败整体回滚，且当 RELEASE/ROLLBACK TO SAVEPOINT 或 outer commit 失败、或连接缺失/读 in_transaction 抛错无法判断事务所有权时，必须抛错并整体回滚、绝不在不可信状态下静默写入。"""
 
-import os
 import sqlite3
-import sys
-import tempfile
 from unittest import mock
 
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
+from core.infrastructure.transaction import TransactionManager
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-
-    from core.infrastructure.transaction import TransactionManager
-
+def test_transaction_savepoint_nested(mem_conn) -> None:
     class _PatchableConn:
         def __init__(self, inner: sqlite3.Connection):
             self._inner = inner
@@ -63,9 +48,7 @@ def main() -> None:
         def in_transaction(self):
             raise RuntimeError("in_transaction boom")
 
-    tmpdir = tempfile.mkdtemp(prefix="aps_regression_tx_savepoint_")
-    db_path = os.path.join(tmpdir, "tx_savepoint.db")
-    conn = sqlite3.connect(db_path)
+    conn = mem_conn
     try:
         conn.execute("CREATE TABLE IF NOT EXISTS t (id INTEGER PRIMARY KEY AUTOINCREMENT, val TEXT NOT NULL)")
         tm = TransactionManager(conn)
@@ -194,13 +177,8 @@ def main() -> None:
         rows7 = [r[0] for r in conn.execute("SELECT val FROM t ORDER BY id").fetchall()]
         assert rows7 == [], f"事务状态属性缺失时不应写入数据，rows={rows7!r}"
 
-        print("OK")
     finally:
         try:
             conn.close()
         except Exception:
             pass
-
-
-if __name__ == "__main__":
-    main()

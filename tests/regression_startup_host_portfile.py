@@ -29,14 +29,7 @@ from typing import Dict
 from tests.runtime_cleanup_helper import assert_repo_runtime_stopped, cleanup_runtime_process, clear_repo_runtime_state
 
 POLL_INTERVAL_S = 0.1
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 
 def _is_port_open(host: str, port: int) -> bool:
@@ -273,17 +266,11 @@ def _run_case(repo_root: str, aps_host: str) -> None:
         cleanup_runtime_process(repo_root, "app.py", p, env=env)
 
 
-def main() -> None:
-    repo_root = find_repo_root()
+def test_startup_host_portfile() -> None:
+    repo_root = str(REPO_ROOT)
     cases = [
         "localhost",
         "not_a_host",
     ]
     for h in cases:
         _run_case(repo_root, h)
-
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()

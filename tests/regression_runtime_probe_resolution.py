@@ -16,17 +16,11 @@ import io
 import json
 import os
 import sys
-import tempfile
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from typing import Optional, Union
 
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 
 def _assert(condition: bool, message: str) -> None:
@@ -41,7 +35,7 @@ def _load_runtime_probe(repo_root: str):
     return importlib.import_module("web.bootstrap.runtime_probe")
 
 
-def _write_runtime_files(runtime_dir: str, host: str, port: int | str) -> None:
+def _write_runtime_files(runtime_dir: str, host: str, port: Union[int, str]) -> None:
     log_dir = os.path.join(runtime_dir, "logs")
     os.makedirs(log_dir, exist_ok=True)
     with open(os.path.join(log_dir, "aps_host.txt"), "w", encoding="utf-8") as f:
@@ -76,8 +70,8 @@ class _HealthServer:
     def __init__(self, payload: dict, status_code: int = 200) -> None:
         self.payload = dict(payload)
         self.status_code = int(status_code)
-        self.httpd: HTTPServer | None = None
-        self.thread: threading.Thread | None = None
+        self.httpd: Optional[HTTPServer] = None
+        self.thread: Optional[threading.Thread] = None
         self.port = 0
 
     def __enter__(self):
@@ -97,11 +91,10 @@ class _HealthServer:
             self.thread.join(timeout=2)
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    runtime_probe = _load_runtime_probe(repo_root)
+def test_runtime_probe_resolution(tmp_path) -> None:
+    runtime_probe = _load_runtime_probe(str(REPO_ROOT))
 
-    tmpdir = tempfile.mkdtemp(prefix="aps_runtime_probe_")
+    tmpdir = str(tmp_path / "main")
     with _HealthServer(
         {
             "app": "aps",
@@ -170,14 +163,15 @@ def main() -> None:
         _assert(runtime_probe.read_runtime_db_path(tmpdir) is None, "delete_stale_runtime_files 未删除 db_path 文件")
         runtime_probe.delete_stale_runtime_files(tmpdir)
 
-    bad_tmpdir = tempfile.mkdtemp(prefix="aps_runtime_probe_bad_")
+    bad_tmpdir = str(tmp_path / "bad")
     _write_runtime_files(bad_tmpdir, "127.0.0.1", "not_a_port")
     _assert(runtime_probe.read_runtime_host_port(bad_tmpdir) is None, "非法端口文件不应被解析")
 
-    missing_tmpdir = tempfile.mkdtemp(prefix="aps_runtime_probe_missing_")
+    missing_tmpdir = str(tmp_path / "missing")
+    os.makedirs(missing_tmpdir, exist_ok=True)
     _assert(runtime_probe.read_runtime_host_port(missing_tmpdir) is None, "缺失运行时文件时应返回 None")
 
-    delete_fail_tmpdir = tempfile.mkdtemp(prefix="aps_runtime_probe_delete_fail_")
+    delete_fail_tmpdir = str(tmp_path / "delete_fail")
     _write_runtime_files(delete_fail_tmpdir, "127.0.0.1", 5000)
     original_remove = runtime_probe.os.remove
 
@@ -209,9 +203,3 @@ def main() -> None:
     with _HealthServer({"app": "aps", "status": "ok", "contract_version": 2}) as wrong_contract_server:
         wrong_contract = runtime_probe.probe_health(f"http://127.0.0.1:{wrong_contract_server.port}", timeout=2.0)
         _assert(wrong_contract is None, "错误 contract_version 的健康响应不应被接受")
-
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()
