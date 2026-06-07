@@ -75,7 +75,7 @@ REGRESSION_TESTS = (
     "tests/regression_due_exclusive_consistency.py",
     "tests/regression_gantt_adjustment_validate_simulate.py",
     "tests/regression_report_delay_diagnosis_plain_language.py",
-    "tests/regression_gantt_partial_overdue_summary_surfaces_warning.py",
+    "tests/regression_gantt_degradation_surface.py",
     "tests/regression_dashboard_overdue_count_tolerance.py",
     "tests/regression_scheduler_candidate_analysis_contract.py",
     "tests/regression_scheduler_candidate_summary_contract.py",

@@ -164,7 +164,7 @@ def render_ledger_markdown(ledger: Dict[str, Any]) -> str:
         - `RequestServices` 已明确采用 `functools.cached_property` 做惰性构造与单请求缓存；构造成功才缓存，构造异常不写缓存属性，后续访问允许重试。
         - 每个目标文件内的所有路由函数必须在所属批次内一次切换完成，禁止同一文件同时存在容器取用与直接装配两套方式。
         - `system_backup.py`、`system_ui_mode.py`、`system_plugins.py`、`system_logs.py`、`system_utils.py` 中 5 处 `SystemConfigService` 直接装配不在 SP04 两批目标内，但阶段 5 必须列账。
-        - `tests/regression_request_services_lazy_construction.py`、`tests/regression_request_services_failure_propagation.py` 属于 SP04 本批新建回归，执行验证命令时需与已有守卫区分。
+        - `tests/regression_request_services_contract.py`（原 `regression_request_services_lazy_construction.py` / `regression_request_services_failure_propagation.py` 已于 P5.1 合并入此契约文件）属于 SP04 本批新建回归，执行验证命令时需与已有守卫区分。
         - 本节是人工治理说明，不改变当前静默回退门禁分类口径。
 
         ## 受控结构块

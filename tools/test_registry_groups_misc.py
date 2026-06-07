@@ -58,8 +58,6 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
         "label": "Request services, runtime, and error boundary contracts",
         "target_paths": (
             "tests/regression_request_services_contract.py",
-            "tests/regression_request_services_lazy_construction.py",
-            "tests/regression_request_services_failure_propagation.py",
             "tests/regression_factory_request_lifecycle_observability.py",
             "tests/regression_system_request_services_contract.py",
             "tests/regression_maintenance_window_mutex.py",

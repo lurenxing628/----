@@ -116,14 +116,14 @@ items:
       - tests/regression_scheduler_delay_diagnosis_contract.py
       - tests/regression_report_delay_diagnosis_plain_language.py
       - tests/regression_frontend_offline_static_assets.py
-      - tests/regression_gantt_partial_overdue_summary_surfaces_warning.py
+      - tests/regression_gantt_degradation_surface.py
       - tests/regression_dashboard_overdue_count_tolerance.py
     entrypoints:
       - "从 templates/reports/overdue.html 和 web/routes/reports.py 接入超期清单入口"
       - "导出增强走现有 GET /reports/overdue/export，不新增独立导出路由"
       - "页面和导出先说“可能线索、建议复核、证据不足”，不能说系统已经判定根因"
     test_commands:
-      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_delay_diagnosis_contract.py tests/regression_report_delay_diagnosis_plain_language.py tests/regression_frontend_offline_static_assets.py tests/regression_gantt_partial_overdue_summary_surfaces_warning.py tests/regression_dashboard_overdue_count_tolerance.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_delay_diagnosis_contract.py tests/regression_report_delay_diagnosis_plain_language.py tests/regression_frontend_offline_static_assets.py tests/regression_gantt_degradation_surface.py tests/regression_dashboard_overdue_count_tolerance.py"
     forbidden_paths:
       - core/algorithms/
       - installer/
@@ -142,7 +142,7 @@ items:
       - 页面、按钮、空状态、错误提示都使用中文大白话，不出现英文原因码、数据库字段名、函数名、内部异常堆栈
       - 新前端资源不走 CDN、外链字体、外链脚本、外链样式，不引入新前端框架或 Chrome 109 不支持能力
       - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
-      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_delay_diagnosis_contract.py tests/regression_report_delay_diagnosis_plain_language.py tests/regression_frontend_offline_static_assets.py tests/regression_gantt_partial_overdue_summary_surfaces_warning.py tests/regression_dashboard_overdue_count_tolerance.py
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_delay_diagnosis_contract.py tests/regression_report_delay_diagnosis_plain_language.py tests/regression_frontend_offline_static_assets.py tests/regression_gantt_degradation_surface.py tests/regression_dashboard_overdue_count_tolerance.py
     notes: 本 roadmap 的最小闭环。做完后用户能从报表看到一条端到端解释链。
 
   - slug: candidate-recommendation-card
