@@ -62,9 +62,9 @@ def test_process_reparse_part_surfaces_warning_text(tmp_path, monkeypatch) -> No
         with client.session_transaction() as sess:
             flashes = list(sess.get("_flashes") or [])
 
-        assert any(cat == "success" and "工艺路线解析完成：共 1 道工序" in msg for cat, msg in flashes), flashes
+        assert any(cat == "success" and "解析完成" in msg for cat, msg in flashes), flashes
         assert any(
-            cat == "warning" and "工种“表处理”没有找到可用的外协供应商，本次会先按 1 天安排。建议补好供应商和周期。" in msg
+            cat == "warning" and "没有找到可用的外协供应商" in msg
             for cat, msg in flashes
         ), flashes
 

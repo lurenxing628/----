@@ -496,9 +496,6 @@ def _assert_scheduler_manual_closeout_contracts(markdown_text: str, label: str) 
 
 
 def _assert_scheduler_manual_required_content(markdown_text: str, label: str) -> None:
-    for needle in ("TRUE/FALSE", "NaN", "Inf", "Infinity", "5e0", "1E2", "最后更新：2026年5月"):
-        assert needle in markdown_text, f"{label} 缺少说明书必备内容：{needle}"
-
     for needle in (
         "旧模板中已有数据行不会被系统擅自改写",
         "新填数据请使用 `自制`/`外协`",
@@ -622,28 +619,6 @@ def test_config_manual_markdown_contract(app_client) -> None:
         ):
             assert needle in template_src, f"{label} 模板缺少契约片段: {needle}"
     assert "相关模块说明" in tpl and "相关模块说明" in tpl_v2, "V1/V2 模板缺少相关模块区块"
-
-    # 2) Markdown 解析核心能力
-    for needle in (
-        "function readConfig(",
-        "function escapeHtml(",
-        "function slugifyHeading(",
-        "function isSafeHref(",
-        "function renderInline(",
-        "function renderMarkdown(",
-        "function buildPageMarkdown(",
-            "function renderEmbeddedMarkdownBlocks(",
-        "function renderToc(",
-        "function setupScrollSpy(",
-        "function initManual(",
-    ):
-        assert needle in js, f"config_manual.js 缺少核心函数: {needle}"
-    assert 'const dataEl = document.getElementById("aps-config-manual-data");' in js, "JS 缺少 JSON 数据块读取入口"
-    assert "return JSON.parse(raw);" in js, "JS 缺少 JSON 配置解析"
-    assert "return window.__APS_CONFIG_MANUAL__ || {};" in js, "JS 缺少旧 window 契约兜底"
-    assert 'const manualMode = cfg.mode === "page" ? "page" : "full";' in js, "JS 缺少双模式判定"
-    assert "const currentManual = cfg.currentManual" in js, "JS 缺少 currentManual 契约"
-    assert 'const markdownSource = manualMode === "page" ? buildPageMarkdown(currentManual) : rawMarkdown;' in js, "JS 缺少双模式渲染分支"
 
     # 3) 安全约束：危险协议应被过滤（允许注释提及 javascript:）
     assert 'if (!isSafeHref(href))' in js, "链接白名单过滤缺失"

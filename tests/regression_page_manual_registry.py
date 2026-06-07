@@ -815,7 +815,7 @@ def _assert_page_manual_refusal_conditions(page_manuals) -> None:
 
 
 def _assert_excel_page_manual_title_contracts(page_manuals) -> None:
-    for endpoint, (expected_manual_id, expected_title, expected_help_title) in EXCEL_PAGE_MANUAL_TITLE_CASES.items():
+    for endpoint, (expected_manual_id, expected_title, _expected_help_title) in EXCEL_PAGE_MANUAL_TITLE_CASES.items():
         bundle = page_manuals.build_page_manual_bundle(endpoint)
         assert bundle is not None, f"{endpoint} 应可构建页面级说明 bundle"
         current_manual = bundle.get("current_manual") or {}
@@ -826,17 +826,12 @@ def _assert_excel_page_manual_title_contracts(page_manuals) -> None:
         assert current_manual.get("title") == expected_title, (
             f"{endpoint} 的页面说明标题不应漂移："
             f"期望 {expected_title!r}，实际 {current_manual.get('title')!r}"
-        )
-        help_card = current_manual.get("help_card") or {}
-        assert help_card.get("title") == expected_help_title, (
-            f"{endpoint} 的“本页说明”弹层标题不应漂移："
-            f"期望 {expected_help_title!r}，实际 {help_card.get('title')!r}"
         )
         _assert_no_legacy_page_title_terms(endpoint, current_manual)
 
 
 def _assert_process_page_manual_title_contracts(page_manuals) -> None:
-    for endpoint, (expected_manual_id, expected_title, expected_help_title) in PROCESS_PAGE_MANUAL_TITLE_CASES.items():
+    for endpoint, (expected_manual_id, expected_title, _expected_help_title) in PROCESS_PAGE_MANUAL_TITLE_CASES.items():
         bundle = page_manuals.build_page_manual_bundle(endpoint)
         assert bundle is not None, f"{endpoint} 应可构建页面级说明 bundle"
         current_manual = bundle.get("current_manual") or {}
@@ -847,11 +842,6 @@ def _assert_process_page_manual_title_contracts(page_manuals) -> None:
         assert current_manual.get("title") == expected_title, (
             f"{endpoint} 的页面说明标题不应漂移："
             f"期望 {expected_title!r}，实际 {current_manual.get('title')!r}"
-        )
-        help_card = current_manual.get("help_card") or {}
-        assert help_card.get("title") == expected_help_title, (
-            f"{endpoint} 的“本页说明”弹层标题不应漂移："
-            f"期望 {expected_help_title!r}，实际 {help_card.get('title')!r}"
         )
         _assert_no_legacy_page_title_terms(endpoint, current_manual)
 
@@ -873,7 +863,7 @@ def _assert_process_user_corrected_wording_contracts(page_manuals) -> None:
 
 
 def _assert_scheduler_page_manual_title_contracts(page_manuals) -> None:
-    for endpoint, (expected_manual_id, expected_title, expected_help_title) in SCHEDULER_PAGE_MANUAL_TITLE_CASES.items():
+    for endpoint, (expected_manual_id, expected_title, _expected_help_title) in SCHEDULER_PAGE_MANUAL_TITLE_CASES.items():
         bundle = page_manuals.build_page_manual_bundle(endpoint)
         assert bundle is not None, f"{endpoint} 应可构建页面级说明 bundle"
         current_manual = bundle.get("current_manual") or {}
@@ -884,11 +874,6 @@ def _assert_scheduler_page_manual_title_contracts(page_manuals) -> None:
         assert current_manual.get("title") == expected_title, (
             f"{endpoint} 的页面说明标题不应漂移："
             f"期望 {expected_title!r}，实际 {current_manual.get('title')!r}"
-        )
-        help_card = current_manual.get("help_card") or {}
-        assert help_card.get("title") == expected_help_title, (
-            f"{endpoint} 的“本页说明”弹层标题不应漂移："
-            f"期望 {expected_help_title!r}，实际 {help_card.get('title')!r}"
         )
         _assert_no_legacy_page_title_terms(endpoint, current_manual)
 

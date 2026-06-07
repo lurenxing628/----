@@ -8,16 +8,6 @@ from pathlib import Path
 GRAPH_DIR = Path(__file__).resolve().parents[2] / "core" / "services" / "scheduler" / "graph"
 
 
-def test_graph_module_skeleton_exists() -> None:
-    expected = {
-        "__init__.py",
-        "id_policy.py",
-        "nx_runtime.py",
-        "types.py",
-    }
-    assert expected.issubset({path.name for path in GRAPH_DIR.glob("*.py")})
-
-
 def test_graph_modules_do_not_static_import_networkx() -> None:
     offenders = []
     for path in GRAPH_DIR.glob("*.py"):

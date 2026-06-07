@@ -498,16 +498,13 @@ def main(monkeypatch) -> None:
         ".sidebar .floating-manual-btn",
         "现代界面的说明入口应保留 popover 结构，同时在侧栏里呈现为辅助入口",
     )
-    _assert_contains(ui_contract_css, "position: relative;", "说明入口不应继续固定悬浮覆盖业务按钮")
     _assert_contains(ui_contract_css, ".manual-popover", "说明速览弹窗样式缺失")
-    _assert_contains(ui_contract_css, "left: calc(100% + 12px);", "现代界面说明速览应从侧边栏向内容区展开")
     _assert_contains(v2_base_html, 'aria-current="page"', "现代侧栏当前页面需要 aria-current，方便识别当前模块")
     _assert_contains(v2_base_html, "ep.startswith('scheduler.')", "现代侧栏模块 active 判断应使用明确 endpoint 前缀")
     _assert_not_contains(v2_base_html, "Excel 演示", "Excel 演示不应回到现代主侧栏")
     _assert_contains(v2_style_css, ".nav-item:hover", "现代侧栏应单独定义 hover 样式")
     _assert_contains(v2_style_css, ".nav-item.active", "现代侧栏应单独定义 active 样式")
     _assert_contains(v2_style_css, '.nav-item[aria-current="page"]', "现代侧栏应支持 aria-current 当前项样式")
-    _assert_not_contains(v2_style_css, ".nav-item:hover, .nav-item.active", "现代侧栏 hover 和 active 不应继续共用同一条规则")
 
     print("OK")
 

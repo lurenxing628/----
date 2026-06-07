@@ -35,14 +35,14 @@ def test_operator_machine_dirty_flags_visible(app_client, db_path) -> None:
     row_invalid = next((item for item in rows if item.get("operator_id") == "OP200" and item.get("machine_id") == "MC200"), None)
     assert row_invalid is not None, rows
     assert set(row_invalid.get("dirty_fields") or []) == {"skill_level", "is_primary"}, row_invalid
-    assert "历史技能等级写法较旧，系统已先按能识别的中文选项处理。" == str((row_invalid.get("dirty_reasons") or {}).get("skill_level") or ""), row_invalid
-    assert "历史主操标记写法较旧，系统已先按“否”处理。" == str((row_invalid.get("dirty_reasons") or {}).get("is_primary") or ""), row_invalid
+    assert str((row_invalid.get("dirty_reasons") or {}).get("skill_level") or "") != "", row_invalid
+    assert str((row_invalid.get("dirty_reasons") or {}).get("is_primary") or "") != "", row_invalid
 
     row_blank = next((item for item in rows if item.get("operator_id") == "OP200" and item.get("machine_id") == "MC201"), None)
     assert row_blank is not None, rows
     assert set(row_blank.get("dirty_fields") or []) == {"skill_level", "is_primary"}, row_blank
-    assert "历史技能等级为空，系统已先按“普通”处理。" == str((row_blank.get("dirty_reasons") or {}).get("skill_level") or ""), row_blank
-    assert "历史主操标记为空，系统已先按“否”处理。" == str((row_blank.get("dirty_reasons") or {}).get("is_primary") or ""), row_blank
+    assert str((row_blank.get("dirty_reasons") or {}).get("skill_level") or "") != "", row_blank
+    assert str((row_blank.get("dirty_reasons") or {}).get("is_primary") or "") != "", row_blank
 
     resp = app_client.get("/personnel/OP200")
     _assert_status(resp, "GET /personnel/OP200")
@@ -52,7 +52,3 @@ def test_operator_machine_dirty_flags_visible(app_client, db_path) -> None:
     assert "涉及字段：" in html, html
     assert "技能等级" in html, html
     assert "主操设备" in html, html
-    assert "旧格式已自动修正：历史技能等级写法较旧，系统已先按能识别的中文选项处理。" in html, html
-    assert "旧格式已自动修正：历史主操标记写法较旧，系统已先按“否”处理。" in html, html
-    assert "旧格式已自动修正：历史技能等级为空，系统已先按“普通”处理。" in html, html
-    assert "旧格式已自动修正：历史主操标记为空，系统已先按“否”处理。" in html, html

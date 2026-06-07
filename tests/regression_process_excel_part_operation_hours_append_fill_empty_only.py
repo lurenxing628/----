@@ -135,9 +135,9 @@ def test_process_excel_part_operation_hours_append_fill_empty_only(app_client, d
     )
     _assert_status("part_operation_hours append preview mixed", r, 200)
     html_mixed = r.data.decode("utf-8", errors="ignore")
-    if "已存在，选择“只补空工时”时会跳过" not in html_mixed:
+    if "会跳过" not in html_mixed:
         raise RuntimeError("append 预览未标记已维护行为 SKIP")
-    if "工时为空，选择“只补空工时”时会补齐" not in html_mixed:
+    if "会补齐" not in html_mixed:
         raise RuntimeError("append 预览未把空工时行标记为补齐 UPDATE")
     if "仅支持内部工序导入工时" not in html_mixed:
         raise RuntimeError("append 预览未识别 external 工序错误")

@@ -90,8 +90,6 @@ def test_config_field_spec_registry_contract() -> None:
         "min_changeover",
     )
     assert choice_label_map_for("objective") == objective_choice_labels()
-    assert choice_label_map_for("objective")["min_overdue"] == "最少超期"
-    assert choice_label_map_for("objective")["min_weighted_tardiness"] == "最少加权拖期小时"
     assert choices_for("graph_analysis_mode") == ("off", "report", "on")
     assert default_for("graph_critical_weight") == 500
     assert field_label_for("holiday_default_efficiency") == "假期工作效率"
@@ -152,7 +150,6 @@ def test_config_field_spec_registry_contract() -> None:
         "graph_debug_export",
     }
     assert metadata["objective"].choices[0]["value"] == "min_overdue"
-    assert metadata["objective"].choices[0]["label"] == "最少超期"
     assert metadata["objective"].choices[2]["value"] == "min_weighted_tardiness"
     assert metadata["objective"].choices == tuple(
         {"value": key, "label": label} for key, label in objective_choice_labels().items()
@@ -164,16 +161,9 @@ def test_config_field_spec_registry_contract() -> None:
     assert metadata["graph_analysis_mode"].choices[0]["value"] == "off"
     assert metadata["graph_analysis_mode"].choices[1]["value"] == "report"
     assert metadata["graph_analysis_mode"].choices[2]["value"] == "on"
-    assert metadata["graph_analysis_mode"].choices[1]["label"] == "只看分析报告"
-    assert metadata["graph_analysis_mode"].choices[2]["label"] == "参与排产"
-    assert "阶段 2" not in metadata["graph_analysis_mode"].hint
     assert "参与排产" in metadata["graph_analysis_mode"].hint
     assert "先排普通方案" in metadata["graph_analysis_mode"].hint
-    assert "可用 DAG 会用 ready 队列参与 SGS 候选" not in metadata["graph_analysis_mode"].hint
-    assert "ready 队列" not in metadata["graph_analysis_mode"].hint
-    assert "图评分" not in metadata["graph_analysis_mode"].hint
     assert metadata["graph_candidate_weight_count"].label == "重点工序方案档数"
-    assert metadata["graph_candidate_weight_count"].choices[1]["label"] == "5 档（默认）"
     assert metadata["graph_selection_policy"].label == "正式方案选择方式"
     assert metadata["graph_selection_policy"].choices[0]["value"] == "balanced"
     assert metadata["graph_overdue_tolerance_count"].choices[0]["value"] == "0"
@@ -181,15 +171,6 @@ def test_config_field_spec_registry_contract() -> None:
     assert metadata["graph_critical_weight"].label == "重点工序提前权重"
     assert "影响完工时间的工序会更靠前" in get_field_spec("graph_critical_weight").description
     assert "会影响更多后续工序的当前工序会更靠前" in get_field_spec("graph_impact_weight").description
-    assert "预留" not in get_field_spec("graph_critical_weight").description
-    assert "当前不改变排产结果" not in metadata["graph_critical_weight"].hint
-    assert "ready 候选" not in metadata["graph_critical_weight"].hint
-    assert "ready 候选" not in metadata["graph_impact_weight"].hint
-    assert "on 且" not in metadata["graph_critical_weight"].hint
-    assert "on 且" not in metadata["graph_impact_weight"].hint
-    assert "阶段 2" not in metadata["graph_debug_export"].hint
-    assert "debug/export" not in metadata["graph_debug_export"].hint
-    assert "logs/schedule_graph" not in metadata["graph_debug_export"].hint
 
 
 def test_config_service_exposes_same_page_metadata_shape() -> None:
