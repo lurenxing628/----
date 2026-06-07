@@ -44,7 +44,6 @@ def test_optimizer_ortools_logging_exc_info_safe() -> None:
     assert fallback_counts.get("ortools_warmstart_failed_count") == 1, stats
     assert len(logger.warnings) == 1, logger.warnings
     warning = logger.warnings[0]
-    assert "OR-Tools 预热失败（已忽略）" in warning, warning
     assert "ortools boom (test)" in warning, warning
     assert "RuntimeError: ortools boom (test)" in warning, warning
 

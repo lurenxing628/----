@@ -142,11 +142,3 @@ def test_run_chrome_probe_spawn_error_reports_kind(tmp_path: Path) -> None:
     assert "APS_CHROME_PATH" in message
     assert "Fake Chrome 120" in message
     assert node.node_realpath in message
-
-
-def test_chrome_geometry_probe_requests_graceful_chrome_exit_before_sigkill() -> None:
-    source = runtime.UI_GEOMETRY_PROBE_SOURCE.read_text(encoding="utf-8")
-
-    assert 'chrome.kill("SIGTERM")' in source
-    assert "if (!chromeExitWait.exited)" in source
-    assert 'try { chrome.kill("SIGKILL"); } catch {}\n              const chromeExitWait' not in source

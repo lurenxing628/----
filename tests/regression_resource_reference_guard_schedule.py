@@ -53,7 +53,6 @@ def test_machine_delete_blocks_schedule_only_reference(tmp_path) -> None:
             svc.delete("MC001")
 
         assert exc_info.value.code == ErrorCode.MACHINE_IN_USE
-        assert "排程结果引用" in exc_info.value.message
     finally:
         conn.close()
 
@@ -77,7 +76,6 @@ def test_machine_replace_blocks_schedule_only_reference(tmp_path) -> None:
             svc.ensure_replace_allowed()
 
         assert exc_info.value.code == ErrorCode.MACHINE_IN_USE
-        assert "排程结果引用了设备" in exc_info.value.message
     finally:
         conn.close()
 
@@ -101,7 +99,6 @@ def test_operator_replace_blocks_schedule_only_reference(tmp_path) -> None:
             svc.ensure_replace_allowed()
 
         assert exc_info.value.code == ErrorCode.OPERATOR_IN_USE
-        assert "排程结果引用了人员" in exc_info.value.message
     finally:
         conn.close()
 

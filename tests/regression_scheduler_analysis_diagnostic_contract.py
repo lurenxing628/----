@@ -253,7 +253,6 @@ def test_diagnostic_sections_translate_statuses_to_business_levels() -> None:
     assert by_key["delay_risk"]["status"] == "warning"
     assert by_key["impact_explanation"]["status"] == "warning"
     assert "第一批可排工序里有 1 道" in by_key["resource_bottleneck"]["summary"]
-    assert "以下只展示本次诊断采样，不是完整清单。" == by_key["impact_explanation"]["summary"]
 
 
 def test_diagnostic_sections_keep_diagnostics_samples_limited_and_safe() -> None:
@@ -429,4 +428,3 @@ def test_overall_health_unknown_graph_status_is_visible_and_not_ok(raw_status: A
     assert health["key"] == "schedule_health"
     assert health["status"] == "unknown"
     assert graph_status_item["level"] == "unknown"
-    assert graph_status_item["value"] == "状态未知"

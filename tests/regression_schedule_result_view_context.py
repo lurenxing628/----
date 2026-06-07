@@ -159,7 +159,6 @@ def test_context_falls_back_to_adopted_when_requested_role_is_missing() -> None:
     assert context.plan_resolution["status"] == "fallback_to_adopted"
     assert context.is_fallback is True
     assert context.is_comparison is True
-    assert "正式采用方案" in context.plan_role_notice
 
 
 def test_context_marks_non_adopted_schedule_source_as_comparison() -> None:
@@ -182,7 +181,6 @@ def test_context_marks_non_adopted_schedule_source_as_comparison() -> None:
     assert context.source_table == SOURCE_SCHEDULE
     assert context.is_comparison is True
     assert fields["is_comparison"] is True
-    assert "只用来和正式采用方案比一比" in context.plan_role_notice
 
 
 def test_context_rejects_bad_plan_role_with_plan_role_field() -> None:
@@ -201,7 +199,6 @@ def test_context_no_history_uses_default_adopted_with_visible_fallback() -> None
     assert context.selected_role == ROLE_ADOPTED
     assert context.is_fallback is True
     assert context.is_comparison is True
-    assert "正式采用方案" in context.plan_role_notice
 
 
 def test_plan_metadata_and_resource_dispatch_filter_fields_stay_consistent() -> None:

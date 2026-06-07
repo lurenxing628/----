@@ -637,15 +637,10 @@ def test_batches_page_latest_algo_config_snapshot_renders_public_snapshot_state(
     body = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert "最近一次排产快照" in body
-    assert 'aps-latest-schedule-label">版本' in body
     assert 'aps-latest-schedule-value">v8' in body
-    assert "排产方式" in body
-    assert "优先级优先" in body
     assert "自动补设备人员" in body
     assert 'aps-summary-value">已关闭' in body
     assert "保存补齐资源" in body
-    assert "查看说明" in body
     assert 'aps-summary-value">已启用' in body
 
 

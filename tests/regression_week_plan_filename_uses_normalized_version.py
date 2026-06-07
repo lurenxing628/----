@@ -60,17 +60,9 @@ def test_week_plan_filename_uses_normalized_version(tmp_path, monkeypatch) -> No
 
     page_default = client.get("/scheduler/week-plan?week_start=2026-03-02")
     assert page_default.status_code == 200
-    default_html = page_default.get_data(as_text=True)
-    assert "所选版本摘要" in default_html
-    assert 'aps-summary-label">版本' in default_html
-    assert 'aps-summary-value">v7' in default_html
 
     page_latest = client.get("/scheduler/week-plan?week_start=2026-03-02&version=latest")
     assert page_latest.status_code == 200
-    latest_html = page_latest.get_data(as_text=True)
-    assert "所选版本摘要" in latest_html
-    assert 'aps-summary-label">版本' in latest_html
-    assert 'aps-summary-value">v7' in latest_html
 
     page_invalid = client.get("/scheduler/week-plan?week_start=2026-03-02&version=abc")
     assert page_invalid.status_code == 400

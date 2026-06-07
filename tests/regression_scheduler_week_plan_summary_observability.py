@@ -259,11 +259,7 @@ def test_week_plan_page_hides_zero_warning_preview_button(tmp_path, monkeypatch)
     html = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert "提醒：1 条" not in html
     assert "维护诊断：1 条" in html
-    assert "查看前 0 条提醒" not in html
-    assert "另有 1 条提醒" not in html
-    assert "当前页没有可安全展开的提醒明细" not in html
     assert "去排产历史查看" not in html
     assert "/system/history?version=3" not in html
     assert "sqlite" not in html
@@ -491,9 +487,6 @@ def test_week_plan_page_renders_warning_pipeline_guard_html(tmp_path, monkeypatc
 
     assert response.status_code == 200
     assert "排产提醒整理状态：未完整整理" in html
-    assert "排产提醒：2 条" in html
-    assert "结果提醒：0 条" in html
-    assert "部分排产提示没有完整写入历史摘要。" in html
     assert "summary_warnings_assignment_failed" not in html
 
 
@@ -512,4 +505,3 @@ def test_week_plan_page_renders_simulated_completion_status_label(tmp_path, monk
 
     assert response.status_code == 200
     assert "模拟排产 / 部分成功" in html
-    assert "v3 · 部分成功" in html

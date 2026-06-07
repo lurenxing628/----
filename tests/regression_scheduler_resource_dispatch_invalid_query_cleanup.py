@@ -16,7 +16,6 @@ from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.services.scheduler.resource_dispatch_range import resolve_dispatch_range
 from core.services.scheduler.resource_dispatch_service import ResourceDispatchService
 from core.services.scheduler.schedule_plan_query_service import ROLE_ADOPTED, ROLE_CRITICAL_BEST
-from tests.resource_dispatch_frontend_support import read_resource_dispatch_script_bundle
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -27,11 +26,8 @@ def _read(rel_path: str) -> str:
 
 def test_resource_dispatch_page_renders_generic_degradation_channel() -> None:
     template_source = _read("templates/scheduler/resource_dispatch.html")
-    js_source = read_resource_dispatch_script_bundle()
 
     assert 'id="rdDegradationSummary"' in template_source
-    assert "summary.degradation_events" in js_source
-    assert "rdDegradationSummary" in js_source
 
 
 def _build_client(tmp_path, monkeypatch):

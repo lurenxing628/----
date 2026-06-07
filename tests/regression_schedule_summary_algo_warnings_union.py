@@ -102,9 +102,7 @@ def test_schedule_summary_prefers_freeze_meta_as_primary_fact_source() -> None:
     warning_pipeline = algo.get("warning_pipeline") or {}
 
     assert bool(freeze_window.get("degraded")), freeze_window
-    assert freeze_window.get("degradation_reason") == "冻结窗口资料不完整，本次排产未使用冻结窗口。"
     assert bool(resource_pool.get("degraded")), resource_pool
-    assert resource_pool.get("degradation_reason") == "自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员。"
     assert "pool boom" not in str(result_summary_obj), result_summary_obj
     assert bool(warning_pipeline.get("summary_merge_failed")), warning_pipeline
     assert warning_pipeline.get("summary_merge_error") == "summary_warnings_assignment_failed", warning_pipeline

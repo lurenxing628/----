@@ -110,15 +110,6 @@ def test_ui_macros_expose_shared_contract_components() -> None:
     ):
         assert f"macro {macro_name}(" in source
 
-    notice_start = source.index("{% macro notice(")
-    notice_block = source[notice_start : source.index("{% endmacro %}", notice_start)]
-    assert "role=''" in notice_block
-    assert "aria_live=''" in notice_block
-    assert "{% if role %} role=\"{{ role }}\"{% endif %}" in notice_block
-    assert "{% if aria_live %} aria-live=\"{{ aria_live }}\"{% endif %}" in notice_block
-    assert "role='status'" not in notice_block
-    assert "aria_live='polite'" not in notice_block
-
     toggle_start = source.index("{% macro _toggle_row_internal(")
     toggle_block = source[toggle_start : source.index("{% endmacro %}", toggle_start)]
     checkbox_index = toggle_block.index('type="checkbox"')

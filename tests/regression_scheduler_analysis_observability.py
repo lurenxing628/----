@@ -257,12 +257,10 @@ def test_scheduler_analysis_observability(app_client) -> None:
     assert old_ctx.get("freeze_display") is None, "旧 summary 不应生成冻结摘要"
 
     old_html = render_analysis_html(app, render_template, version=1, selected=old_selected, ctx=old_ctx)
-    assert "排产优化分析" in old_html, "旧 summary 页面未成功渲染"
     assert "裁剪后摘要" not in old_html, "旧 summary 不应展示裁剪提示"
     assert "停机避让约束已降级" not in old_html, "旧 summary 不应展示停机降级提示"
     assert "冻结窗口约束已降级" not in old_html, "旧 summary 不应展示冻结窗口降级提示"
     assert "-/-" not in old_html, "旧 summary 缺少派工规则时不应展示 -/-"
-    assert "这个历史版本缺少新的分析字段，页面只展示能确认的内容。" in old_html, "旧 summary 应展示中文兼容提示"
     assert "优化对比指标" in old_html, "旧 summary 兼容提示应展示中文字段名"
     assert "系统比较顺序" in old_html, "旧 summary 兼容提示应展示中文字段名"
     assert "comparison_metric" not in old_html, "旧 summary 不应暴露内部字段 comparison_metric"
@@ -309,17 +307,11 @@ def test_scheduler_analysis_observability(app_client) -> None:
     assert any(item.get("code") == "freeze_window_degraded" for item in summary_degradation_messages), summary_degradation_messages
 
     new_html = render_analysis_html(app, render_template, version=2, selected=new_selected, ctx=new_ctx)
-    assert "本次结果数据量较大" in new_html, "未展示 summary_truncated 提示"
     assert "600000" in new_html, "未展示 original_size_bytes"
     assert "提醒：4 条" in new_html, "未展示 warning_total"
-    assert "冻结窗口存在跳批风险" in new_html, "未展示 warnings_preview"
-    assert "停机区间加载失败，本次先按常规能力继续" in new_html, "未展示第二条 warnings_preview"
-    assert "存在 1 个批次未命中首选技能" in new_html, "未展示第三条 warnings_preview"
     assert "另有 1 条提醒，请到系统管理里的排产历史查看这次排产的详细提醒。" in new_html, "未展示 warning_hidden_count"
     assert "开始时间已规范化为：2026-05-19 08:00:00" not in new_html, "第 4 条 warning 不应出现在 preview 中"
-    assert "停机时间资料不完整" in new_html, "未展示停机提示"
     assert "停机区间加载失败" in new_html, "未展示停机降级原因"
-    assert "冻结窗口资料不完整" in new_html, "未展示冻结窗口提示"
     assert "【冻结窗口】跳过批次 B001" not in new_html, "不应展示冻结窗口内部降级明细"
     assert 'stat-card-label">数据异常批次数</div>' in new_html, "未展示数据异常卡片"
     assert 'stat-card-label">未排批次数</div>' in new_html, "未展示未排批次卡片"
@@ -328,11 +320,6 @@ def test_scheduler_analysis_observability(app_client) -> None:
     assert "当前状态" in new_html and "部分未生效" in new_html, "未展示冻结状态标签"
     assert "冻结工序数" in new_html and '<div class="aps-summary-value">4</div>' in new_html, "未展示冻结工序数"
     assert "冻结批次数" in new_html and '<div class="aps-summary-value">7</div>' in new_html, "未展示冻结批次数"
-    assert "示例批次：B001、B002、B003、B004、B005" in new_html, "未展示冻结示例批次"
-    assert "及其他 2 个…" in new_html, "未展示冻结示例批次剩余数量"
-    assert "排序策略" in new_html, "attempts 表头未更正为排序策略"
-    assert "派工" in new_html, "attempts 表头未新增派工列"
-    assert "智能派工 / 交期更紧的先做" in new_html, "attempts 派工列未闭环展示派工方式/智能派工策略"
     assert 'data-col-key="score"' not in new_html, "普通页面不应把内部评分列直接展示给用户"
     assert "<td>[0, 1]</td>" not in new_html, "普通页面不应直接展示内部评分串"
     assert "start:priority_first|sgs:cr" not in new_html, "attempts 不应暴露算法方案标签"

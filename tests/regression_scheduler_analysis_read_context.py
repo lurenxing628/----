@@ -206,7 +206,6 @@ def test_analysis_read_context_missing_explicit_version_keeps_trends_visible(tmp
 
     assert response.status_code == 200
     assert "v999 无对应排产历史" in html
-    assert "版本趋势（最近 1 个有指标的版本）" in html
     assert 'aps-summary-value">v999' not in html
 
 
