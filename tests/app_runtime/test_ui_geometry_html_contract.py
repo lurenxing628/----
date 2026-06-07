@@ -5,8 +5,12 @@ from __future__ import annotations
 from html.parser import HTMLParser
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
-from tests.ui_geometry_browser_support import _build_app
-from tests.ui_geometry_contract_data import ERROR_PAGE_KEYWORDS, EXPECTED_PAGE_SIGNALS, FULL_UI_CONTRACT_PATHS
+from tests.app_runtime.ui_geometry_browser_support import _build_app
+from tests.app_runtime.ui_geometry_contract_data import (
+    ERROR_PAGE_KEYWORDS,
+    EXPECTED_PAGE_SIGNALS,
+    FULL_UI_CONTRACT_PATHS,
+)
 
 SMOKE_PATHS = FULL_UI_CONTRACT_PATHS
 

@@ -629,8 +629,8 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
     assert tuple(shared.QUALITY_GATE_STARTUP_REGRESSION_ARGS) == tuple(startup_from_registry)
     assert module.QUALITY_GATE_SELFTEST == shared.QUALITY_GATE_SELFTEST_PATH
     assert len(module.REQUIRED_TEST_ARGS) == len(set(module.REQUIRED_TEST_ARGS))
-    assert "tests/regression_entrypoint_meta_failure_visible.py" in module.STARTUP_REGRESSION_ARGS
-    assert "tests/test_launcher_observability.py" in module.STARTUP_REGRESSION_ARGS
+    assert "tests/app_runtime/test_entrypoint_meta_failure_visible.py" in module.STARTUP_REGRESSION_ARGS
+    assert "tests/app_runtime/test_launcher_observability.py" in module.STARTUP_REGRESSION_ARGS
     for high_value_path in (
         "tests/scheduler_analysis/test_scheduler_analysis_observability.py",
         "tests/web_pages/test_system_history_route_contract.py",
@@ -638,21 +638,21 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
         "tests/schedule/summary/test_schedule_summary_input_fallback_contract.py",
         "tests/web_pages/test_error_boundary_contract.py",
         "tests/schedule/route_view/test_route_version_normalizers_contract.py",
-        "tests/regression_gantt_page_version_default_latest.py",
-        "tests/regression_gantt_default_version_span.py",
-        "tests/regression_gantt_adjustment_draft_model.py",
-        "tests/regression_gantt_adjustment_validate_simulate.py",
-        "tests/regression_gantt_draft_save_and_preview.py",
-        "tests/regression_gantt_scenario_publish.py",
+        "tests/gantt/test_gantt_page_version_default_latest.py",
+        "tests/gantt/test_gantt_default_version_span.py",
+        "tests/gantt/test_gantt_adjustment_draft_model.py",
+        "tests/gantt/test_gantt_adjustment_validate_simulate.py",
+        "tests/gantt/test_gantt_draft_save_and_preview.py",
+        "tests/gantt/test_gantt_scenario_publish.py",
         "tests/web_pages/test_scenario_preview_secondary_outputs.py",
         "tests/web_pages/test_reports_page_version_default_latest.py",
-        "tests/regression_gantt_degradation_surface.py",
-        "tests/regression_gantt_frontend_error_boundary.py",
+        "tests/gantt/test_gantt_degradation_surface.py",
+        "tests/gantt/test_gantt_frontend_error_boundary.py",
         "tests/schedule/route_view/test_scheduler_result_navigation_contract.py",
-        "tests/regression_gantt_contract_snapshot.py",
-        "tests/regression_gantt_critical_chain_unavailable.py",
-        "tests/regression_gantt_critical_chain_provider.py",
-        "tests/regression_scheduler_candidate_gantt_plan_role_contract.py",
+        "tests/gantt/test_gantt_contract_snapshot.py",
+        "tests/gantt/test_gantt_critical_chain_unavailable.py",
+        "tests/gantt/test_gantt_critical_chain_provider.py",
+        "tests/gantt/test_scheduler_candidate_gantt_plan_role_contract.py",
         "tests/regression_quality_gate_scan_contract.py",
         "tests/test_codestable_architecture_contract.py",
         "tests/schedule/route_view/test_scheduler_batch_template_warning_surface.py",
@@ -663,8 +663,8 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
         "tests/resource_dispatch/test_resource_dispatch_viewmodel_public_output_contract.py",
         "tests/resource_dispatch/test_resource_dispatch_overdue_summary_formats.py",
         "tests/resource_dispatch/test_resource_dispatch_invalid_summary_surfaces_overdue_degraded.py",
-        "tests/test_ui_browser_geometry_env.py",
-        "tests/test_ui_geometry_html_contract.py",
+        "tests/app_runtime/test_ui_browser_geometry_env.py",
+        "tests/app_runtime/test_ui_geometry_html_contract.py",
         "tests/schedule/route_view/test_scheduler_route_enforce_ready_tristate.py",
         "tests/test_run_full_selftest_report_metadata.py",
         "tests/calendar_maintenance/test_holiday_default_efficiency_read_guard.py",
@@ -672,7 +672,7 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
         "tests/excel_data_io/test_excel_utils_compare_digest_guard.py",
         "tests/excel_data_io/test_excel_conversion_output_contract.py",
         "tests/excel_data_io/test_excel_hidden_payload_contract.py",
-        "tests/regression_frontend_offline_static_assets.py",
+        "tests/app_runtime/test_frontend_offline_static_assets.py",
         "tests/excel_data_io/test_excel_renamed_column_conflicts.py",
         "tests/excel_data_io/test_scheduler_excel_batches_preview_baseline_precision.py",
         "tests/test_check_full_test_debt.py",
@@ -697,8 +697,8 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
         assert high_value_path in module.REQUIRED_TEST_ARGS
 
     for lower_frequency_path in (
-        "tests/regression_gantt_critical_outline_sync.py",
-        "tests/regression_ui_browser_geometry_smoke.py",
+        "tests/gantt/test_gantt_critical_outline_sync.py",
+        "tests/app_runtime/test_ui_browser_geometry_smoke.py",
         "tests/test_long_gate_required_regression_cache.py",
         "tests/test_sync_debt_ledger.py",
         "tests/schedule/route_view/test_scheduler_batches_page_viewmodel.py",

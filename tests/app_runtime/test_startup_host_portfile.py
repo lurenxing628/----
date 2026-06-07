@@ -1,11 +1,16 @@
 """
-回归测试：app_new_ui 启动入口 host/port 文件契约
+回归测试：启动入口加固
 
 验证点：
-1) APS_HOST 设为 hostname/IPv6/非法值时，不应导致 app_new_ui.py 启动崩溃（应回退到 127.0.0.1）。
+1) APS_HOST 设为 hostname/IPv6/非法值时，不应导致 app.py 启动崩溃（应回退到 127.0.0.1）。
 2) 端口文件契约：无论 APS_LOG_DIR 指向哪里，都应写入 <repo_root>/logs/aps_port.txt（仅数字+换行）。
 3) Host 文件契约：无论 APS_LOG_DIR 指向哪里，都应写入 <repo_root>/logs/aps_host.txt（一行 host + 换行）。
-4) 真实子进程只跑代表性 host；完整 host 解析矩阵由纯函数测试覆盖。
+
+策略：
+- 用 subprocess 启动 `python app.py`（APS_ENV=production，避免 reloader）
+- 真实子进程只跑代表性 host；完整 host 解析矩阵由纯函数测试覆盖
+- 等待 logs/aps_port.txt / logs/aps_host.txt 出现并解析实际监听信息
+- 轮询 host:port 可连接后结束进程
 """
 
 from __future__ import annotations
@@ -21,7 +26,11 @@ import urllib.request
 from pathlib import Path
 from typing import Dict
 
-from tests.runtime_cleanup_helper import assert_repo_runtime_stopped, cleanup_runtime_process, clear_repo_runtime_state
+from tests.app_runtime.runtime_cleanup_helper import (
+    assert_repo_runtime_stopped,
+    cleanup_runtime_process,
+    clear_repo_runtime_state,
+)
 
 POLL_INTERVAL_S = 0.1
 from tests._support.paths import REPO_ROOT_STR as REPO_ROOT
@@ -68,6 +77,7 @@ def _wait_for_port_file(path: str, p: subprocess.Popen, timeout_s: float = 12.0)
             try:
                 return _read_port_file(path)
             except Exception:
+                # 可能正在写入，继续等
                 pass
         time.sleep(POLL_INTERVAL_S)
     raise TimeoutError(f"超时：未生成端口文件：{path}")
@@ -84,6 +94,7 @@ def _wait_for_host_file(path: str, p: subprocess.Popen, timeout_s: float = 12.0)
                 if host:
                     return host
             except Exception:
+                # 可能正在写入，继续等
                 pass
         time.sleep(POLL_INTERVAL_S)
     raise TimeoutError(f"超时：未生成 host 文件：{path}")
@@ -165,7 +176,7 @@ def _assert_health(host: str, port: int, p: subprocess.Popen, timeout_s: float =
                 payload.get("app") == "aps"
                 and payload.get("status") == "ok"
                 and int(payload.get("contract_version") or 0) == 1
-                and str(payload.get("ui_mode") or "") == "new_ui"
+                and str(payload.get("ui_mode") or "") == "default"
             ):
                 return
         except Exception:
@@ -177,7 +188,7 @@ def _assert_health(host: str, port: int, p: subprocess.Popen, timeout_s: float =
 def _run_case(repo_root: str, aps_host: str) -> None:
     from web.bootstrap.launcher import default_chrome_profile_dir
 
-    tmpdir = tempfile.mkdtemp(prefix="aps_regression_startup_new_ui_")
+    tmpdir = tempfile.mkdtemp(prefix="aps_regression_startup_")
     test_db = os.path.join(tmpdir, "aps.db")
     test_logs = os.path.join(tmpdir, "logs")
     test_backups = os.path.join(tmpdir, "backups")
@@ -187,7 +198,7 @@ def _run_case(repo_root: str, aps_host: str) -> None:
     os.makedirs(test_templates, exist_ok=True)
 
     env: Dict[str, str] = dict(os.environ)
-    env["APS_ENV"] = "production"
+    env["APS_ENV"] = "production"  # 禁用 reloader，避免父子进程干扰
     env["APS_HOST"] = aps_host
     env["APS_DB_PATH"] = test_db
     env["APS_LOG_DIR"] = test_logs
@@ -204,7 +215,7 @@ def _run_case(repo_root: str, aps_host: str) -> None:
     assert_repo_runtime_stopped(repo_root)
 
     p = subprocess.Popen(
-        [sys.executable, os.path.join(repo_root, "app_new_ui.py")],
+        [sys.executable, os.path.join(repo_root, "app.py")],
         cwd=repo_root,
         env=env,
         stdout=subprocess.DEVNULL,
@@ -216,7 +227,7 @@ def _run_case(repo_root: str, aps_host: str) -> None:
             runtime_file,
             p,
             expected_pid=p.pid,
-            expected_ui_mode="new_ui",
+            expected_ui_mode="default",
             timeout_s=15.0,
         )
         port = _wait_for_port_file(port_file, p, timeout_s=15.0)
@@ -225,6 +236,7 @@ def _run_case(repo_root: str, aps_host: str) -> None:
         if int(contract.get("port") or 0) != port:
             raise RuntimeError(f"runtime contract port 与镜像文件不一致：{contract!r} / {port_file} -> {port}")
         host = _wait_for_host_file(host_file, p, timeout_s=15.0)
+        # 这些用例都应回退到 127.0.0.1（或写入 127.0.0.1 作为可访问 host）
         if host != "127.0.0.1":
             raise RuntimeError(f"host 文件内容不符合预期：{host_file} -> {host!r}（期望 '127.0.0.1'）")
         if str(contract.get("host") or "").strip() != host:
@@ -255,10 +267,10 @@ def _run_case(repo_root: str, aps_host: str) -> None:
         if _normalize_path(str(contract.get("chrome_profile_dir") or "")) != expected_profile:
             raise RuntimeError(f"runtime contract chrome_profile_dir 异常：{contract!r}")
     finally:
-        cleanup_runtime_process(repo_root, "app_new_ui.py", p, env=env)
+        cleanup_runtime_process(repo_root, "app.py", p, env=env)
 
 
-def test_startup_host_portfile_new_ui() -> None:
+def test_startup_host_portfile() -> None:
     repo_root = str(REPO_ROOT)
     cases = [
         "localhost",

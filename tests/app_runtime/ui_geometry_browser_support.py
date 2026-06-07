@@ -16,8 +16,12 @@ from typing import Any, Dict, List, Optional
 from werkzeug.serving import make_server
 
 from tests._support.paths import REPO_ROOT
-from tests.ui_geometry_contract_data import ERROR_PAGE_KEYWORDS, EXPECTED_PAGE_SIGNALS, UI_GEOMETRY_PAGE_PATHS
-from tests.ui_geometry_runtime_support import (
+from tests.app_runtime.ui_geometry_contract_data import (
+    ERROR_PAGE_KEYWORDS,
+    EXPECTED_PAGE_SIGNALS,
+    UI_GEOMETRY_PAGE_PATHS,
+)
+from tests.app_runtime.ui_geometry_runtime_support import (
     ChromeRuntimeInfo,
     NodeRuntimeInfo,
     ServedApp,

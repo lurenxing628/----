@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, List, cast
 
 from tests._support.paths import REPO_ROOT
-from tests.ui_geometry_browser_support import (
+from tests.app_runtime.ui_geometry_browser_support import (
     EXPECTED_PAGE_SIGNALS,
     SMOKE_PATHS,
     _build_app,

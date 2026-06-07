@@ -17,19 +17,18 @@ TESTS_ROOT = REPO_ROOT / "tests"
 if str(TESTS_ROOT) not in sys.path:
     sys.path.insert(0, str(TESTS_ROOT))
 
-from regression_gantt_draft_save_and_preview import (  # noqa: E402
+from core.infrastructure.errors import ValidationError  # noqa: E402
+from core.services.report import ReportEngine  # noqa: E402
+from core.services.scheduler.gantt_adjustment_scenario_service import GanttAdjustmentScenarioService  # noqa: E402
+from core.services.scheduler.gantt_service import GanttService  # noqa: E402
+from core.services.scheduler.resource_dispatch_service import ResourceDispatchService  # noqa: E402
+from tests.gantt.test_gantt_draft_save_and_preview import (  # noqa: E402
     VERSION,
     _build_app,
     _connect,
     _draft_with_change,
     _seed_base,
 )
-
-from core.infrastructure.errors import ValidationError  # noqa: E402
-from core.services.report import ReportEngine  # noqa: E402
-from core.services.scheduler.gantt_adjustment_scenario_service import GanttAdjustmentScenarioService  # noqa: E402
-from core.services.scheduler.gantt_service import GanttService  # noqa: E402
-from core.services.scheduler.resource_dispatch_service import ResourceDispatchService  # noqa: E402
 
 EXPORT_INTERNAL_TERMS = (
     "plan_role",

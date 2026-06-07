@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Set
 
 import pytest
-from regression_gantt_draft_save_and_preview import _build_app
 
 from core.infrastructure.database import CURRENT_SCHEMA_VERSION, ensure_schema, get_connection
 from core.infrastructure.errors import AppError, ValidationError
@@ -19,6 +18,7 @@ from core.services.scheduler.gantt_adjustment_draft_service import GanttAdjustme
 from core.services.scheduler.gantt_adjustment_publish_service import GanttAdjustmentPublishService
 from core.services.scheduler.gantt_adjustment_scenario_service import GanttAdjustmentScenarioService
 from tests._support.paths import REPO_ROOT
+from tests.gantt.test_gantt_draft_save_and_preview import _build_app
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 VERSION = 5

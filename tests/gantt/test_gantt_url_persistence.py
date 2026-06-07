@@ -16,7 +16,7 @@ SCHEMA_PATH = REPO_ROOT / "schema.sql"
 
 
 def _load_gantt_dom_helpers(repo_root: str):
-    helper_path = os.path.join(repo_root, "tests", "regression_gantt_critical_outline_sync.py")
+    helper_path = os.path.join(repo_root, "tests", "gantt", "test_gantt_critical_outline_sync.py")
     spec = importlib.util.spec_from_file_location("regression_gantt_critical_outline_sync", helper_path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"cannot load gantt DOM helper from {helper_path}")

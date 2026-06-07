@@ -9,12 +9,12 @@ from tools.test_registry import iter_startup_regressions
 ShardKind = Literal["serial", "parallel"]
 
 SERIAL_FILE_PATTERNS: Tuple[str, ...] = (
-    "tests/regression_ui_browser_geometry_smoke.py",
-    "tests/regression_runtime_probe_resolution.py",
+    "tests/app_runtime/test_ui_browser_geometry_smoke.py",
+    "tests/app_runtime/test_runtime_probe_resolution.py",
     "tests/regression_*runtime*.py",
     "tests/regression_*port*.py",
-    "tests/regression_check_manual_layout_runtime_resolution.py",
-    "tests/regression_validate_dist_runtime_identity.py",
+    "tests/app_runtime/test_check_manual_layout_runtime_resolution.py",
+    "tests/app_runtime/test_validate_dist_runtime_identity.py",
     "tests/test_startup*.py",
     "tests/test_long_gate*.py",
     "tests/test_long_gate_required_regression_cache.py",
@@ -52,7 +52,10 @@ def classify_nodeid(nodeid: str) -> ShardKind:
         return "serial"
     if name.startswith("smoke_web_phase") or name.startswith("test_startup"):
         return "serial"
-    if any(fnmatch.fnmatch(str(nodeid or ""), pattern) for pattern in SERIAL_NODEID_PATTERNS):
+    # P6：按「文件名::测试名」匹配(剥掉目录段),避免子目录名(如 app_runtime 含 "runtime")
+    # 污染 nodeid 关键词匹配把整目录误判 serial。扁平期目录恒为无关键词的 tests/,行为不变。
+    tail = name + str(nodeid or "")[len(path):]
+    if any(fnmatch.fnmatch(tail, pattern) for pattern in SERIAL_NODEID_PATTERNS):
         return "serial"
     return "parallel"
 
@@ -66,7 +69,7 @@ def classify_nodeid(nodeid: str) -> ShardKind:
 PERF_FILE_PATTERNS: Tuple[str, ...] = (
     "tests/scheduler_graph/test_graph_performance.py",
     "tests/candidate/test_scheduler_candidate_performance_guard.py",
-    "tests/regression_ui_browser_geometry_smoke.py",
+    "tests/app_runtime/test_ui_browser_geometry_smoke.py",
 )
 
 

@@ -7,15 +7,6 @@ import sqlite3
 from pathlib import Path
 
 import pytest
-from regression_gantt_draft_save_and_preview import _build_app
-from regression_gantt_scenario_publish import (
-    SCHEMA_PATH,
-    VERSION,
-    _connect,
-    _saved_scenario,
-    _seed_base,
-    _snapshot_formal,
-)
 
 from core.infrastructure.database import CURRENT_SCHEMA_VERSION, ensure_schema, get_connection
 from core.infrastructure.errors import AppError
@@ -27,6 +18,15 @@ from core.services.scheduler.gantt_adjustment_publish_service import GanttAdjust
 from core.services.scheduler.operation_execution_feedback_service import (
     ExecutionFeedbackContext,
     OperationExecutionFeedbackService,
+)
+from tests.gantt.test_gantt_draft_save_and_preview import _build_app
+from tests.gantt.test_gantt_scenario_publish import (
+    SCHEMA_PATH,
+    VERSION,
+    _connect,
+    _saved_scenario,
+    _seed_base,
+    _snapshot_formal,
 )
 
 

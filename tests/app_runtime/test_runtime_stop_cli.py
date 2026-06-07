@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Dict, Tuple
 
 from tests._support.paths import REPO_ROOT_STR as REPO_ROOT
-from tests.runtime_cleanup_helper import assert_repo_runtime_stopped
+from tests.app_runtime.runtime_cleanup_helper import assert_repo_runtime_stopped
 
 
 def _contract_paths(log_dir: str) -> Tuple[str, str, str, str, str, str]:

@@ -21,9 +21,9 @@ REPORT_CHAIN_SCOPES = {
 }
 
 GEOMETRY_SPLIT_SCOPES = {
-    "tests/ui_geometry_contract_data.py",
-    "tests/ui_geometry_runtime_support.py",
-    "tests/ui_geometry_browser_support.py",
+    "tests/app_runtime/ui_geometry_contract_data.py",
+    "tests/app_runtime/ui_geometry_runtime_support.py",
+    "tests/app_runtime/ui_geometry_browser_support.py",
     "tests/ui_geometry_probe.mjs",
     "tests/ui_geometry_cdp_client.mjs",
     "tests/ui_geometry_probe_page_eval.mjs",
@@ -89,8 +89,8 @@ def test_workbench_flow_regression_is_required_and_grouped() -> None:
         "tests/web_pages/test_dashboard_overdue_count_tolerance.py",
         "tests/operation_execution/test_execution_review_identity_guard.py",
         "tests/schedule/route_view/test_scheduler_navigation_unknown_plan_role_contract.py",
-        "tests/regression_gantt_task_detail_panel_contract.py",
-        "tests/regression_gantt_task_detail_js_contract.py",
+        "tests/gantt/test_gantt_task_detail_panel_contract.py",
+        "tests/gantt/test_gantt_task_detail_js_contract.py",
     }
     scheduler_group = _group("scheduler_analysis_gantt_reports_week_plan")
 
@@ -221,7 +221,7 @@ def test_operation_execution_feedback_regressions_are_required_and_grouped() -> 
         "tests/operation_execution/test_operation_execution_exception_feedback.py",
         "tests/operation_execution/test_operation_execution_exception_surfaces.py",
         "tests/operation_execution/test_operation_execution_scope_read_contract.py",
-        "tests/regression_gantt_adjustment_publish_execution_revision.py",
+        "tests/gantt/test_gantt_adjustment_publish_execution_revision.py",
         "tests/resource_dispatch/test_resource_dispatch_actual_records.py",
         "tests/resource_dispatch/test_resource_dispatch_actual_task_key_frontend_contract.py",
         "tests/resource_dispatch/test_resource_dispatch_actual_import.py",
@@ -303,11 +303,11 @@ def test_panorama_runtime_outputs_are_blocked_by_git_hook() -> None:
 
 
 def test_real_browser_geometry_smoke_stays_manual_acceptance_target() -> None:
-    smoke_test = "tests/regression_ui_browser_geometry_smoke.py"
+    smoke_test = "tests/app_runtime/test_ui_browser_geometry_smoke.py"
     ui_group = _group("ui_layout_presenters_system")
 
     assert smoke_test not in quality_gate_shared.QUALITY_GATE_REQUIRED_TESTS
     assert smoke_test not in quality_gate_shared.QUALITY_GATE_SOURCE_FILES
     assert smoke_test not in set(ui_group["target_paths"])
-    assert "tests/test_ui_browser_geometry_env.py" in set(ui_group["target_paths"])
-    assert "tests/test_ui_geometry_html_contract.py" in set(ui_group["target_paths"])
+    assert "tests/app_runtime/test_ui_browser_geometry_env.py" in set(ui_group["target_paths"])
+    assert "tests/app_runtime/test_ui_geometry_html_contract.py" in set(ui_group["target_paths"])

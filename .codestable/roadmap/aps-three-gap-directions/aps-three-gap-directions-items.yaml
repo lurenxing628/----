@@ -22,13 +22,13 @@ items:
       - data/repositories/schedule_history_repo.py
       - web/viewmodels/scheduler_analysis_candidates.py
       - tests/schedule/route_view/test_scheduler_plan_identity_evidence_contract.py
-      - tests/regression_scheduler_candidate_gantt_plan_role_contract.py
+      - tests/gantt/test_scheduler_candidate_gantt_plan_role_contract.py
     entrypoints:
       - "从本 roadmap 的 5.1 PlanIdentity 和 5.2 EvidenceLink 开始写 feature-design"
       - "重点阅读 core/services/scheduler/schedule_plan_query_service.py 和 data/repositories/schedule_plan_query_repo.py"
       - "检查所有会读取排程结果的页面是否都复用同一套计划身份和中文显示名"
     test_commands:
-      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/schedule/route_view/test_scheduler_plan_identity_evidence_contract.py tests/regression_scheduler_candidate_gantt_plan_role_contract.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/schedule/route_view/test_scheduler_plan_identity_evidence_contract.py tests/gantt/test_scheduler_candidate_gantt_plan_role_contract.py"
     forbidden_paths:
       - installer/
       - vendor/
@@ -42,7 +42,7 @@ items:
       - EvidenceLink.source_table 对行级证据必填；聚合证据和缺数据证据可以为空，不能为了凑字段填假表名
       - 页面、导出、错误提示不能显示内部英文枚举、数据库字段名、函数名或内部异常堆栈
       - 新增 Python 代码保持 Python 3.8 语法，不使用 list[X]、dict[K, V]、X | None
-      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/schedule/route_view/test_scheduler_plan_identity_evidence_contract.py tests/regression_scheduler_candidate_gantt_plan_role_contract.py
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/schedule/route_view/test_scheduler_plan_identity_evidence_contract.py tests/gantt/test_scheduler_candidate_gantt_plan_role_contract.py
     notes: 后续所有子 feature 的共同读取输入；派工确认和现场反馈写入只在后续专门条目中落地。
 
   - slug: delay-diagnosis-core-service
@@ -68,13 +68,13 @@ items:
       - core/services/material/batch_material_service.py
       - tests/scheduler_analysis/test_scheduler_delay_diagnosis_contract.py
       - tests/algorithm/test_due_exclusive_consistency.py
-      - tests/regression_gantt_adjustment_validate_simulate.py
+      - tests/gantt/test_gantt_adjustment_validate_simulate.py
     entrypoints:
       - "从本 roadmap 的 5.2 EvidenceLink 和 5.3 延期诊断服务契约开始写 feature-design"
       - "先接 core/services/scheduler/schedule_delay_diagnosis_service.py，只做只读服务"
       - "物料判断必须先看 Batches、BatchMaterials、Material 和批次物料服务能提供什么数据"
     test_commands:
-      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_analysis/test_scheduler_delay_diagnosis_contract.py tests/algorithm/test_due_exclusive_consistency.py tests/regression_gantt_adjustment_validate_simulate.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_analysis/test_scheduler_delay_diagnosis_contract.py tests/algorithm/test_due_exclusive_consistency.py tests/gantt/test_gantt_adjustment_validate_simulate.py"
     forbidden_paths:
       - core/algorithms/
       - installer/
@@ -93,7 +93,7 @@ items:
       - 候选方案和 scenario 诊断必须使用对应方案行，不能悄悄回到 adopted
       - EvidenceLink 能追到具体来源；行级证据追到来源行，聚合证据写清 aggregation_key 和 contributing_count
       - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
-      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_analysis/test_scheduler_delay_diagnosis_contract.py tests/algorithm/test_due_exclusive_consistency.py tests/regression_gantt_adjustment_validate_simulate.py
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_analysis/test_scheduler_delay_diagnosis_contract.py tests/algorithm/test_due_exclusive_consistency.py tests/gantt/test_gantt_adjustment_validate_simulate.py
     notes: 第一版不改算法，不做 AI 根因，只做保守解释。
 
   - slug: delay-diagnosis-overdue-report-entry
@@ -115,15 +115,15 @@ items:
       - core/services/scheduler/schedule_delay_diagnosis_service.py
       - tests/scheduler_analysis/test_scheduler_delay_diagnosis_contract.py
       - tests/scheduler_analysis/test_report_delay_diagnosis_plain_language.py
-      - tests/regression_frontend_offline_static_assets.py
-      - tests/regression_gantt_degradation_surface.py
+      - tests/app_runtime/test_frontend_offline_static_assets.py
+      - tests/gantt/test_gantt_degradation_surface.py
       - tests/web_pages/test_dashboard_overdue_count_tolerance.py
     entrypoints:
       - "从 templates/reports/overdue.html 和 web/routes/reports.py 接入超期清单入口"
       - "导出增强走现有 GET /reports/overdue/export，不新增独立导出路由"
       - "页面和导出先说“可能线索、建议复核、证据不足”，不能说系统已经判定根因"
     test_commands:
-      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_analysis/test_scheduler_delay_diagnosis_contract.py tests/scheduler_analysis/test_report_delay_diagnosis_plain_language.py tests/regression_frontend_offline_static_assets.py tests/regression_gantt_degradation_surface.py tests/web_pages/test_dashboard_overdue_count_tolerance.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_analysis/test_scheduler_delay_diagnosis_contract.py tests/scheduler_analysis/test_report_delay_diagnosis_plain_language.py tests/app_runtime/test_frontend_offline_static_assets.py tests/gantt/test_gantt_degradation_surface.py tests/web_pages/test_dashboard_overdue_count_tolerance.py"
     forbidden_paths:
       - core/algorithms/
       - installer/
@@ -142,7 +142,7 @@ items:
       - 页面、按钮、空状态、错误提示都使用中文大白话，不出现英文原因码、数据库字段名、函数名、内部异常堆栈
       - 新前端资源不走 CDN、外链字体、外链脚本、外链样式，不引入新前端框架或 Chrome 109 不支持能力
       - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
-      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_analysis/test_scheduler_delay_diagnosis_contract.py tests/scheduler_analysis/test_report_delay_diagnosis_plain_language.py tests/regression_frontend_offline_static_assets.py tests/regression_gantt_degradation_surface.py tests/web_pages/test_dashboard_overdue_count_tolerance.py
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_analysis/test_scheduler_delay_diagnosis_contract.py tests/scheduler_analysis/test_report_delay_diagnosis_plain_language.py tests/app_runtime/test_frontend_offline_static_assets.py tests/gantt/test_gantt_degradation_surface.py tests/web_pages/test_dashboard_overdue_count_tolerance.py
     notes: 本 roadmap 的最小闭环。做完后用户能从报表看到一条端到端解释链。
 
   - slug: candidate-recommendation-card
@@ -161,13 +161,13 @@ items:
       - tests/candidate/test_scheduler_candidate_analysis_contract.py
       - tests/candidate/test_scheduler_analysis_candidate_links_and_roles.py
       - tests/candidate/test_scheduler_candidate_plain_language.py
-      - tests/regression_frontend_offline_static_assets.py
+      - tests/app_runtime/test_frontend_offline_static_assets.py
     entrypoints:
       - "从 templates/scheduler/analysis_parts/_candidate_comparison.html 的方案对比区域接推荐结论卡"
       - "只翻译已有 selection_reason_code、候选 label 和推荐结论"
       - "不要在本条里计算三方案差值，差值留给 candidate-summary-delta-cards"
     test_commands:
-      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/candidate/test_scheduler_candidate_analysis_contract.py tests/candidate/test_scheduler_analysis_candidate_links_and_roles.py tests/candidate/test_scheduler_candidate_plain_language.py tests/regression_frontend_offline_static_assets.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/candidate/test_scheduler_candidate_analysis_contract.py tests/candidate/test_scheduler_analysis_candidate_links_and_roles.py tests/candidate/test_scheduler_candidate_plain_language.py tests/app_runtime/test_frontend_offline_static_assets.py"
     forbidden_paths:
       - core/algorithms/
       - installer/
@@ -184,7 +184,7 @@ items:
       - 页面、导出文件名、导出列名、空状态、错误提示、按钮、弹窗、表格表头都不能出现 plan_role、scenario_id、source_table、candidate_id、event_type
       - 新前端资源不走 CDN、外链字体、外链脚本、外链样式，不引入新前端框架或 Chrome 109 不支持能力
       - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
-      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/candidate/test_scheduler_candidate_analysis_contract.py tests/candidate/test_scheduler_analysis_candidate_links_and_roles.py tests/candidate/test_scheduler_candidate_plain_language.py tests/regression_frontend_offline_static_assets.py
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/candidate/test_scheduler_candidate_analysis_contract.py tests/candidate/test_scheduler_analysis_candidate_links_and_roles.py tests/candidate/test_scheduler_candidate_plain_language.py tests/app_runtime/test_frontend_offline_static_assets.py
     notes: 第一版只做推荐结论壳和中文解释；差值卡在下一条做。
 
   - slug: candidate-summary-delta-cards
@@ -204,13 +204,13 @@ items:
       - tests/candidate/test_scheduler_candidate_summary_contract.py
       - tests/regression_scheduler_graph_auto_selection_contract.py
       - tests/candidate/test_scheduler_candidate_plain_language.py
-      - tests/regression_frontend_offline_static_assets.py
+      - tests/app_runtime/test_frontend_offline_static_assets.py
     entrypoints:
       - "从 core/services/scheduler/run/schedule_candidate_summary.py 读取已有候选摘要"
       - "在 templates/scheduler/analysis_parts/_candidate_comparison.html 固定展示三张摘要卡"
       - "差值固定相对正式采用方案计算，不做任意两方案自由比较"
     test_commands:
-      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/candidate/test_scheduler_candidate_analysis_contract.py tests/candidate/test_scheduler_candidate_plain_language.py tests/regression_frontend_offline_static_assets.py tests/candidate/test_scheduler_candidate_summary_contract.py tests/regression_scheduler_graph_auto_selection_contract.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/candidate/test_scheduler_candidate_analysis_contract.py tests/candidate/test_scheduler_candidate_plain_language.py tests/app_runtime/test_frontend_offline_static_assets.py tests/candidate/test_scheduler_candidate_summary_contract.py tests/regression_scheduler_graph_auto_selection_contract.py"
     forbidden_paths:
       - core/algorithms/
       - schema.sql
@@ -226,7 +226,7 @@ items:
       - 页面、按钮、空状态、错误提示、导出内容都使用中文大白话，不显示内部英文枚举、数据库字段名、函数名
       - 新前端资源不走 CDN、外链字体、外链脚本、外链样式，不引入新前端框架或 Chrome 109 不支持能力
       - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
-      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/candidate/test_scheduler_candidate_analysis_contract.py tests/candidate/test_scheduler_candidate_plain_language.py tests/regression_frontend_offline_static_assets.py tests/candidate/test_scheduler_candidate_summary_contract.py tests/regression_scheduler_graph_auto_selection_contract.py
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/candidate/test_scheduler_candidate_analysis_contract.py tests/candidate/test_scheduler_candidate_plain_language.py tests/app_runtime/test_frontend_offline_static_assets.py tests/candidate/test_scheduler_candidate_summary_contract.py tests/regression_scheduler_graph_auto_selection_contract.py
     notes: 只做代表方案总指标差值，不扩大落库范围。
 
   - slug: candidate-drilldown-empty-states
@@ -263,7 +263,7 @@ items:
       - tests/scheduler_analysis/test_report_delay_diagnosis_plain_language.py
       - tests/scheduler_analysis/test_report_export_size_mode_selection.py
       - tests/candidate/test_scheduler_candidate_plain_language.py
-      - tests/regression_frontend_offline_static_assets.py
+      - tests/app_runtime/test_frontend_offline_static_assets.py
     entrypoints:
       - "从 web/routes/domains/scheduler/scheduler_analysis_links.py 保留并增强跳转"
       - "周计划入口看 templates/scheduler/week_plan.html、web/routes/domains/scheduler/scheduler_week_plan.py、core/services/scheduler/week_plan_excel.py"
@@ -271,7 +271,7 @@ items:
       - "超期清单、资源负荷和停机影响导出路径继续看 web/routes/report_plan_preview.py、web/routes/reports.py、core/services/report/report_engine.py 和 core/services/report/exporters/xlsx.py"
       - "导出工作簿需要检查 core/services/report/exporters/xlsx.py，确认工作表名、列名和空状态都用中文大白话"
     test_commands:
-      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/candidate/test_scheduler_analysis_candidate_links_and_roles.py tests/candidate/test_scheduler_candidate_week_plan_contract.py tests/candidate/test_scheduler_candidate_plan_query_contract.py tests/candidate/test_scheduler_candidate_reports_contract.py tests/candidate/test_scheduler_candidate_plain_language.py tests/regression_frontend_offline_static_assets.py tests/web_pages/test_scenario_preview_secondary_outputs.py tests/scheduler_analysis/test_report_export_size_mode_selection.py tests/regression_scheduler_candidate_gantt_plan_role_contract.py tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py tests/scheduler_analysis/test_report_delay_diagnosis_plain_language.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/candidate/test_scheduler_analysis_candidate_links_and_roles.py tests/candidate/test_scheduler_candidate_week_plan_contract.py tests/candidate/test_scheduler_candidate_plan_query_contract.py tests/candidate/test_scheduler_candidate_reports_contract.py tests/candidate/test_scheduler_candidate_plain_language.py tests/app_runtime/test_frontend_offline_static_assets.py tests/web_pages/test_scenario_preview_secondary_outputs.py tests/scheduler_analysis/test_report_export_size_mode_selection.py tests/gantt/test_scheduler_candidate_gantt_plan_role_contract.py tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py tests/scheduler_analysis/test_report_delay_diagnosis_plain_language.py"
     forbidden_paths:
       - core/algorithms/
       - schema.sql
@@ -295,7 +295,7 @@ items:
       - 页面、按钮、空状态、错误提示、导出内容都使用中文大白话，不显示内部英文枚举、数据库字段名、函数名
       - 新前端资源不走 CDN、外链字体、外链脚本、外链样式，不引入新前端框架或 Chrome 109 不支持能力
       - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
-      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/candidate/test_scheduler_analysis_candidate_links_and_roles.py tests/candidate/test_scheduler_candidate_week_plan_contract.py tests/candidate/test_scheduler_candidate_plan_query_contract.py tests/candidate/test_scheduler_candidate_reports_contract.py tests/candidate/test_scheduler_candidate_plain_language.py tests/regression_frontend_offline_static_assets.py tests/web_pages/test_scenario_preview_secondary_outputs.py tests/scheduler_analysis/test_report_export_size_mode_selection.py tests/regression_scheduler_candidate_gantt_plan_role_contract.py tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py tests/scheduler_analysis/test_report_delay_diagnosis_plain_language.py
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/candidate/test_scheduler_analysis_candidate_links_and_roles.py tests/candidate/test_scheduler_candidate_week_plan_contract.py tests/candidate/test_scheduler_candidate_plan_query_contract.py tests/candidate/test_scheduler_candidate_reports_contract.py tests/candidate/test_scheduler_candidate_plain_language.py tests/app_runtime/test_frontend_offline_static_assets.py tests/web_pages/test_scenario_preview_secondary_outputs.py tests/scheduler_analysis/test_report_export_size_mode_selection.py tests/gantt/test_scheduler_candidate_gantt_plan_role_contract.py tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py tests/scheduler_analysis/test_report_delay_diagnosis_plain_language.py
     notes: 这条是安全收口，避免页面增强后把旧版本或失败候选处理坏。
 
   - slug: dispatch-plan-identity-guardrails
@@ -316,13 +316,13 @@ items:
       - static/js/resource_dispatch.js
       - tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py
       - tests/resource_dispatch/test_scheduler_dispatch_plan_identity_guard.py
-      - tests/regression_frontend_offline_static_assets.py
+      - tests/app_runtime/test_frontend_offline_static_assets.py
     entrypoints:
       - "从 GET /scheduler/resource-dispatch?version=&plan_role=&scenario_id= 接入资源派工页"
       - "导出入口沿用 GET /scheduler/resource-dispatch/export"
       - "本条只做身份提示、禁用和后端拒绝，不新增确认派工写入"
     test_commands:
-      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py tests/resource_dispatch/test_scheduler_dispatch_plan_identity_guard.py tests/regression_frontend_offline_static_assets.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py tests/resource_dispatch/test_scheduler_dispatch_plan_identity_guard.py tests/app_runtime/test_frontend_offline_static_assets.py"
     forbidden_paths:
       - schema.sql
       - core/algorithms/
@@ -339,7 +339,7 @@ items:
       - 导出文件和 payload 带计划身份；页面、Excel 内容、Excel 文件名、导出列名和空状态都不显示 source_table、scenario_id、candidate_id 这类内部字段名
       - 新前端资源不走 CDN、外链字体、外链脚本、外链样式，不引入新前端框架或 Chrome 109 不支持能力
       - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
-      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py tests/resource_dispatch/test_scheduler_dispatch_plan_identity_guard.py tests/regression_frontend_offline_static_assets.py
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py tests/resource_dispatch/test_scheduler_dispatch_plan_identity_guard.py tests/app_runtime/test_frontend_offline_static_assets.py
     notes: 这是车间反馈前必须先做的安全前置。
 
   - slug: operation-execution-event-foundation
@@ -435,14 +435,14 @@ items:
       - web/bootstrap/request_services.py
       - tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py
       - tests/operation_execution/test_operation_execution_feedback_routes.py
-      - tests/regression_frontend_offline_static_assets.py
+      - tests/app_runtime/test_frontend_offline_static_assets.py
       - tests/resource_dispatch/test_resource_dispatch_invalid_summary_surfaces_overdue_degraded.py
     entrypoints:
       - "从 GET /scheduler/resource-dispatch/execution/data 返回任务卡和按钮可用性"
       - "POST /scheduler/resource-dispatch/execution/<op_id>/start 和 /finish 只在受控条件下写入"
       - "最小重排护栏完成前，普通用户页面按钮隐藏或禁用，直接 POST 也拒绝"
     test_commands:
-      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py tests/operation_execution/test_operation_execution_feedback_routes.py tests/regression_frontend_offline_static_assets.py tests/resource_dispatch/test_resource_dispatch_invalid_summary_surfaces_overdue_degraded.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py tests/operation_execution/test_operation_execution_feedback_routes.py tests/app_runtime/test_frontend_offline_static_assets.py tests/resource_dispatch/test_resource_dispatch_invalid_summary_surfaces_overdue_degraded.py"
     forbidden_paths:
       - core/algorithms/
       - installer/
@@ -482,7 +482,7 @@ items:
       - 页面、按钮、空状态、错误提示都使用中文大白话，不显示内部英文枚举、数据库字段名、函数名
       - 新前端资源不走 CDN、外链字体、外链脚本、外链样式，不引入新前端框架或 Chrome 109 不支持能力
       - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
-      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py tests/operation_execution/test_operation_execution_feedback_routes.py tests/regression_frontend_offline_static_assets.py tests/resource_dispatch/test_resource_dispatch_invalid_summary_surfaces_overdue_degraded.py
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py tests/operation_execution/test_operation_execution_feedback_routes.py tests/app_runtime/test_frontend_offline_static_assets.py tests/resource_dispatch/test_resource_dispatch_invalid_summary_surfaces_overdue_degraded.py
     notes: 只跑通开工/完工的后端受控写入和页面预备，不把异常反馈混进本条；最小重排护栏完成前，普通用户页面按钮和直接 POST 都不能真正写入。
 
   - slug: reschedule-minimum-execution-guardrails
@@ -517,14 +517,14 @@ items:
       - tests/operation_execution/test_operation_execution_feedback_routes.py
       - tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py
       - tests/schedule/route_view/test_scheduler_run_surfaces_resource_pool_warning.py
-      - tests/regression_frontend_offline_static_assets.py
+      - tests/app_runtime/test_frontend_offline_static_assets.py
     entrypoints:
       - "从 core/services/scheduler/run/schedule_input_collector.py 接入已开工/已完工工序"
       - "只检查普通重排主链路：schedule_input_collector.py、schedule_optimizer.py、schedule_optimizer_steps.py、schedule_persistence.py、schedule_service.py"
       - "本条不做候选比较、多起点、局部搜索、图排程 ready queue、scenario 保存或 scenario 发布；这些统一放到 reschedule-respects-execution-facts"
       - "同批解除上一条开工/完工按钮保护：资源派工模板、static/js/resource_dispatch.js、反馈 POST route 和直接 POST 测试都要一起验收"
     test_commands:
-      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py tests/operation_execution/test_operation_execution_feedback_routes.py tests/regression_frontend_offline_static_assets.py tests/schedule/route_view/test_scheduler_run_surfaces_resource_pool_warning.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py tests/operation_execution/test_operation_execution_feedback_routes.py tests/app_runtime/test_frontend_offline_static_assets.py tests/schedule/route_view/test_scheduler_run_surfaces_resource_pool_warning.py"
     forbidden_paths:
       - installer/
       - vendor/
@@ -553,7 +553,7 @@ items:
       - 普通用户直接 POST 开工/完工从“保护拒绝”变为“最新正式采用方案可写入”时，必须有回归测试证明事件写入、任务卡刷新、state_revision 更新都正确
       - 候选方案、模拟预览、历史正式方案、非最新正式采用方案仍然拒绝开工/完工 POST，不能因为放开普通用户按钮把计划身份护栏一起放松
       - 必须有页面按钮放开测试和绕过页面直接 POST 放开测试；只测算法最小护栏不算完成
-      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py tests/operation_execution/test_operation_execution_feedback_routes.py tests/regression_frontend_offline_static_assets.py tests/schedule/route_view/test_scheduler_run_surfaces_resource_pool_warning.py
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py tests/operation_execution/test_operation_execution_feedback_routes.py tests/app_runtime/test_frontend_offline_static_assets.py tests/schedule/route_view/test_scheduler_run_surfaces_resource_pool_warning.py
     notes: 这是安全补洞条目，避免现场反馈上线后到完整重排接入前出现危险空窗；本条完成后开工/完工反馈才算可对普通用户放开。
 
   - slug: shop-exception-feedback
@@ -577,13 +577,13 @@ items:
       - tests/operation_execution/test_operation_execution_exception_feedback.py
       - tests/operation_execution/test_operation_execution_feedback_routes.py
       - tests/schedule/service/test_scheduler_exception_blocks_auto_reschedule.py
-      - tests/regression_frontend_offline_static_assets.py
+      - tests/app_runtime/test_frontend_offline_static_assets.py
     entrypoints:
       - "从资源派工任务卡增加暂停、继续生产、报异常动作"
       - "POST /scheduler/resource-dispatch/execution/<op_id>/pause、/resume、/report-exception 在本条落地"
       - "异常中阻止普通自动重排的最小后端护栏必须和异常反馈同批完成"
     test_commands:
-      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/operation_execution/test_operation_execution_exception_feedback.py tests/operation_execution/test_operation_execution_feedback_routes.py tests/schedule/service/test_scheduler_exception_blocks_auto_reschedule.py tests/regression_frontend_offline_static_assets.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/operation_execution/test_operation_execution_exception_feedback.py tests/operation_execution/test_operation_execution_feedback_routes.py tests/schedule/service/test_scheduler_exception_blocks_auto_reschedule.py tests/app_runtime/test_frontend_offline_static_assets.py"
     forbidden_paths:
       - core/algorithms/
       - installer/
@@ -618,7 +618,7 @@ items:
       - 页面、按钮、空状态、错误提示都使用中文大白话，不显示内部英文枚举、数据库字段名、函数名
       - 新前端资源不走 CDN、外链字体、外链脚本、外链样式，不引入新前端框架或 Chrome 109 不支持能力
       - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
-      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/operation_execution/test_operation_execution_exception_feedback.py tests/operation_execution/test_operation_execution_feedback_routes.py tests/schedule/service/test_scheduler_exception_blocks_auto_reschedule.py tests/regression_frontend_offline_static_assets.py
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/operation_execution/test_operation_execution_exception_feedback.py tests/operation_execution/test_operation_execution_feedback_routes.py tests/schedule/service/test_scheduler_exception_blocks_auto_reschedule.py tests/app_runtime/test_frontend_offline_static_assets.py
     notes: 异常复杂度高，必须独立 feature 设计和验收。
 
   - slug: plan-vs-actual-review
@@ -641,7 +641,7 @@ items:
       - core/services/scheduler/operation_execution_feedback_service.py
       - tests/scheduler_analysis/test_plan_vs_actual_review.py
       - tests/operation_execution/test_operation_execution_event_foundation.py
-      - tests/regression_frontend_offline_static_assets.py
+      - tests/app_runtime/test_frontend_offline_static_assets.py
     entrypoints:
       - "只新增 /reports/execution-review 和 /reports/execution-review/export"
       - "报表页面入口看 templates/reports/index.html，新页面拟新增 templates/reports/execution_review.html"
@@ -650,7 +650,7 @@ items:
       - "资源派工页只加跳转到报表入口，不新增 /scheduler/execution-review"
       - "报表数据从执行事件或执行状态读模型取实际时间和实际资源"
     test_commands:
-      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_analysis/test_plan_vs_actual_review.py tests/operation_execution/test_operation_execution_event_foundation.py tests/regression_frontend_offline_static_assets.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_analysis/test_plan_vs_actual_review.py tests/operation_execution/test_operation_execution_event_foundation.py tests/app_runtime/test_frontend_offline_static_assets.py"
     forbidden_paths:
       - core/algorithms/
       - installer/
@@ -671,7 +671,7 @@ items:
       - 页面、按钮、空状态、错误提示、导出文件名、导出列名和导出内容都使用中文大白话，不显示内部英文枚举、数据库字段名、函数名
       - 新前端资源不走 CDN、外链字体、外链脚本、外链样式，不引入新前端框架或 Chrome 109 不支持能力
       - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
-      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_analysis/test_plan_vs_actual_review.py tests/operation_execution/test_operation_execution_event_foundation.py tests/regression_frontend_offline_static_assets.py
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_analysis/test_plan_vs_actual_review.py tests/operation_execution/test_operation_execution_event_foundation.py tests/app_runtime/test_frontend_offline_static_assets.py
     notes: 做完后，延期解释才能进一步区分计划侧原因和现场执行原因。
 
   - slug: reschedule-respects-execution-facts
@@ -710,14 +710,14 @@ items:
       - core/algorithms/greedy/dispatch/sgs_graph.py
       - tests/operation_execution/test_scheduler_reschedule_execution_facts.py
       - tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py
-      - tests/regression_gantt_adjustment_publish_execution_revision.py
+      - tests/gantt/test_gantt_adjustment_publish_execution_revision.py
     entrypoints:
       - "从 schedule_input_collector.py 完整接入 ExecutionFactProvider"
       - "优化器、候选比较、多起点和局部搜索检查 schedule_optimizer.py、schedule_optimizer_steps.py、optimizer_local_search.py、schedule_candidate_runner.py"
       - "普通排程、图排程、scenario 保存和 scenario 发布都要读取同一批执行事实快照"
       - "异常中工序默认阻止普通自动重排，提示计划员先处理异常"
     test_commands:
-      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/operation_execution/test_scheduler_reschedule_execution_facts.py tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py tests/regression_gantt_adjustment_publish_execution_revision.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/operation_execution/test_scheduler_reschedule_execution_facts.py tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py tests/gantt/test_gantt_adjustment_publish_execution_revision.py"
     forbidden_paths:
       - installer/
       - vendor/
@@ -738,7 +738,7 @@ items:
       - persistence 不把 processing、paused、exception、completed 的现场状态覆盖成 scheduled
       - 图排程 fixed_op_ids 也尊重执行事实
       - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
-      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/operation_execution/test_scheduler_reschedule_execution_facts.py tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py tests/regression_gantt_adjustment_publish_execution_revision.py
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/operation_execution/test_scheduler_reschedule_execution_facts.py tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py tests/gantt/test_gantt_adjustment_publish_execution_revision.py
     notes: 已完成完整执行事实接入；普通重排、候选比较、多起点、局部搜索、图排程 ready queue、scenario 保存和 scenario 发布均使用执行事实快照，冲突时不写正式计划。
 
   - slug: aps-three-gap-docs-quality-gate
@@ -761,7 +761,7 @@ items:
       - scripts/run_quality_gate.py
       - tools/quality_gate_shared.py
       - .codestable/tools/validate-yaml.py
-      - tests/regression_frontend_offline_static_assets.py
+      - tests/app_runtime/test_frontend_offline_static_assets.py
       - tests/test_scan_py38plus_syntax.py
       - tests/test_codestable_tools_contract.py
       - docs/aps_frontend_workbench_mockup.html
@@ -770,10 +770,10 @@ items:
       - "先跑每条已完成 feature 的精准测试，再跑 YAML 校验和质量门禁"
       - "用户说明只写中文大白话；内部字段名只允许出现在开发专用说明里"
     test_commands:
-      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_frontend_offline_static_assets.py tests/web_pages/test_frontend_ui_language_polish.py tests/config/test_config_manual_markdown.py tests/web_pages/test_page_manual_registry.py tests/test_codestable_tools_contract.py tests/test_scan_py38plus_syntax.py tests/regression_aps_three_gap_docs_quality_gate.py tests/test_run_quality_gate.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/app_runtime/test_frontend_offline_static_assets.py tests/web_pages/test_frontend_ui_language_polish.py tests/config/test_config_manual_markdown.py tests/web_pages/test_page_manual_registry.py tests/test_codestable_tools_contract.py tests/test_scan_py38plus_syntax.py tests/regression_aps_three_gap_docs_quality_gate.py tests/test_run_quality_gate.py"
       - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .codestable/tools/validate-yaml.py --file .codestable/roadmap/aps-three-gap-directions/aps-three-gap-directions-items.yaml --yaml-only --require roadmap --require created --require items"
       - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_aps_three_gap_py38_scope.py --base-ref d4589d77"
-      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tools/scan_aps_three_gap_py38_scope.py tests/regression_frontend_offline_static_assets.py tests/web_pages/test_frontend_ui_language_polish.py tests/config/test_config_manual_markdown.py tests/web_pages/test_page_manual_registry.py tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py tests/regression_aps_three_gap_docs_quality_gate.py tests/test_run_quality_gate.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tools/scan_aps_three_gap_py38_scope.py tests/app_runtime/test_frontend_offline_static_assets.py tests/web_pages/test_frontend_ui_language_polish.py tests/config/test_config_manual_markdown.py tests/web_pages/test_page_manual_registry.py tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py tests/regression_aps_three_gap_docs_quality_gate.py tests/test_run_quality_gate.py"
       - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache"
     forbidden_paths:
       - vendor/
@@ -786,15 +786,15 @@ items:
       - 每个已完成 feature 的新增或更新测试文件都列入回归测试清单
       - 每个 done feature 的精准测试、迁移测试、页面大白话测试、Win7/offline 相关测试都进入回归清单，不能只写“跑质量门禁”
       - 收尾时必须运行 tests/test_codestable_tools_contract.py，证明 CodeStable YAML 工具仍能在 Python 3.8 口径下工作
-      - tests/regression_frontend_offline_static_assets.py 必须扫描 docs/aps_frontend_workbench_mockup.html，原型页不能引入外链脚本、外链样式、外链字体、CDN 或用户可见旧词
+      - tests/app_runtime/test_frontend_offline_static_assets.py 必须扫描 docs/aps_frontend_workbench_mockup.html，原型页不能引入外链脚本、外链样式、外链字体、CDN 或用户可见旧词
       - Win7 x64、Python 3.8、Chrome 109、离线静态资源验收手册存在，并写清楚本地怎么验收
       - 新前端资源不走 CDN、外链字体、外链脚本、外链样式，不引入新前端框架或 Chrome 109 不支持能力
       - Python 3.8 语法约束测试覆盖新增代码，不升级破坏 Win7 x64 的依赖
-      - 必须运行 Python 3.8 语法风险扫描；如果全仓旧代码仍有历史风险，本条至少要对质量门禁入口、质量门禁 helper、本 roadmap 改动和本条新增测试运行 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_aps_three_gap_py38_scope.py --base-ref d4589d77，以及 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tools/scan_aps_three_gap_py38_scope.py tests/regression_frontend_offline_static_assets.py tests/web_pages/test_frontend_ui_language_polish.py tests/config/test_config_manual_markdown.py tests/web_pages/test_page_manual_registry.py tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py tests/regression_aps_three_gap_docs_quality_gate.py tests/test_run_quality_gate.py；实施 docs-quality-gate 时如果新增了测试文件，也要把新增文件加入扫描
+      - 必须运行 Python 3.8 语法风险扫描；如果全仓旧代码仍有历史风险，本条至少要对质量门禁入口、质量门禁 helper、本 roadmap 改动和本条新增测试运行 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_aps_three_gap_py38_scope.py --base-ref d4589d77，以及 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tools/scan_aps_three_gap_py38_scope.py tests/app_runtime/test_frontend_offline_static_assets.py tests/web_pages/test_frontend_ui_language_polish.py tests/config/test_config_manual_markdown.py tests/web_pages/test_page_manual_registry.py tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py tests/regression_aps_three_gap_docs_quality_gate.py tests/test_run_quality_gate.py；实施 docs-quality-gate 时如果新增了测试文件，也要把新增文件加入扫描
       - 上面固定命令只是当前路线图已有测试和工具的示例，不能当作最终完整扫描范围；docs-quality-gate 收口时必须汇总本 roadmap 所有已完成 feature 新增或修改过的 Python 文件，再一起运行 Python 3.8 语法风险扫描
       - 如果实施时有稳定的 roadmap 起点提交，推荐用 git diff --name-only <roadmap-start-ref>...HEAD -- '*.py' 收集 Python 文件后传给 tools/scan_py38plus_syntax.py；如果没有稳定起点，就按每个已完成 feature acceptance 记录里的 changed Python files 汇总，不能只照抄固定几个测试文件
       - YAML 校验通过
-      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_frontend_offline_static_assets.py tests/web_pages/test_frontend_ui_language_polish.py tests/config/test_config_manual_markdown.py tests/web_pages/test_page_manual_registry.py tests/test_codestable_tools_contract.py tests/test_scan_py38plus_syntax.py tests/regression_aps_three_gap_docs_quality_gate.py tests/test_run_quality_gate.py
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/app_runtime/test_frontend_offline_static_assets.py tests/web_pages/test_frontend_ui_language_polish.py tests/config/test_config_manual_markdown.py tests/web_pages/test_page_manual_registry.py tests/test_codestable_tools_contract.py tests/test_scan_py38plus_syntax.py tests/regression_aps_three_gap_docs_quality_gate.py tests/test_run_quality_gate.py
       - 实施本条 feature 时必须运行并通过 YAML 校验：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .codestable/tools/validate-yaml.py --file .codestable/roadmap/aps-three-gap-directions/aps-three-gap-directions-items.yaml --yaml-only --require roadmap --require created --require items
       - 实施本条 feature 收尾时必须运行质量门禁；若工作区干净，用 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache；若本地还有无关改动，只能用 --allow-dirty-worktree 作为反馈，不能宣称 clean proof
     notes: 已完成用户说明、开发测试说明、回归清单、Win7 离线验收手册、文档质量测试、YAML 校验和 Python 3.8 扫描；clean-worktree 质量门禁需在提交后工作区干净时作为最终证明运行。

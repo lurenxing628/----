@@ -18,7 +18,11 @@ import pytest
 from werkzeug.serving import make_server
 
 from tests._support.paths import REPO_ROOT
-from tests.ui_geometry_contract_data import ERROR_PAGE_KEYWORDS, EXPECTED_PAGE_SIGNALS, UI_GEOMETRY_PAGE_PATHS
+from tests.app_runtime.ui_geometry_contract_data import (
+    ERROR_PAGE_KEYWORDS,
+    EXPECTED_PAGE_SIGNALS,
+    UI_GEOMETRY_PAGE_PATHS,
+)
 
 SMOKE_PATHS = UI_GEOMETRY_PAGE_PATHS
 UI_GEOMETRY_PROBE_SOURCE = REPO_ROOT / "tests" / "ui_geometry_probe.mjs"

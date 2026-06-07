@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from tests import ui_geometry_browser_support as browser
-from tests import ui_geometry_runtime_support as runtime
+from tests.app_runtime import ui_geometry_browser_support as browser
+from tests.app_runtime import ui_geometry_runtime_support as runtime
 
 
 def test_find_chrome_explicit_bad_path_does_not_fallback(monkeypatch, tmp_path: Path) -> None:

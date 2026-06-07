@@ -10,7 +10,7 @@ from tests._support.paths import REPO_ROOT
 
 
 def _load_gantt_dom_helpers():
-    helper_path = REPO_ROOT / "tests" / "regression_gantt_critical_outline_sync.py"
+    helper_path = REPO_ROOT / "tests" / "gantt" / "test_gantt_critical_outline_sync.py"
     spec = importlib.util.spec_from_file_location("regression_gantt_critical_outline_sync", helper_path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"cannot load gantt DOM helper from {helper_path}")
