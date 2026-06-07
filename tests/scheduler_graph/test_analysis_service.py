@@ -14,8 +14,7 @@ from core.services.scheduler.graph import analysis_service
 from core.services.scheduler.graph.analysis_service import ScheduleGraphAnalysisService
 from core.services.scheduler.graph.precedence_builder import GraphBuildContractError, build_precedence_graph
 from core.services.scheduler.graph.types import GraphAnalysisSummary, OperationGraphEdge, OperationGraphNode
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
+from tests._support.paths import REPO_ROOT
 
 
 def _node(**overrides: Any) -> OperationGraphNode:

@@ -12,7 +12,9 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-TESTS_DIR = Path(__file__).resolve().parent
+from tests._support.paths import REPO_ROOT
+
+TESTS_DIR = REPO_ROOT / "tests"
 
 
 def _has_def(tree: ast.Module, name_pred) -> bool:

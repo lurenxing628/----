@@ -9,8 +9,9 @@ from typing import Any, Callable, Dict
 import pytest
 from flask import Flask, g
 
-TESTS_DIR = Path(__file__).resolve().parent
-REPO_ROOT = TESTS_DIR.parent
+from tests._support.paths import REPO_ROOT
+
+TESTS_DIR = REPO_ROOT / "tests"
 if str(TESTS_DIR) not in sys.path:
     sys.path.insert(0, str(TESTS_DIR))
 

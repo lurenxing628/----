@@ -12,13 +12,19 @@ from typing import Dict, Iterable, List, Optional, Set, Tuple, cast
 
 from flask import Flask
 
-from tests._support.paths import REPO_ROOT_STR
-
 QUICKREF_VS_ROUTES_REPORT_REL = "evidence/QualityGate/quickref_vs_routes.md"
 
 
 def find_repo_root() -> str:
-    return REPO_ROOT_STR
+    # 自包含 marker-walk：本文件被门禁当独立脚本跑（python tests/check_quickref_vs_routes.py，
+    # 无 PYTHONPATH），不能依赖 from tests._support.paths（tests 未在 sys.path）。向上探测
+    # app.py+schema.sql 的 marker，与目录深度无关。
+    probe = os.path.dirname(os.path.abspath(__file__))
+    while probe != os.path.dirname(probe):
+        if os.path.exists(os.path.join(probe, "app.py")) and os.path.exists(os.path.join(probe, "schema.sql")):
+            return probe
+        probe = os.path.dirname(probe)
+    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 def _set_isolated_runtime_env(root: str) -> Dict[str, Optional[str]]:

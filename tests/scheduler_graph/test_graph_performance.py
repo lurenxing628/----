@@ -22,8 +22,8 @@ from core.services.scheduler.graph.precedence_builder import build_linear_edges_
 from core.services.scheduler.graph.types import GraphAnalysisSummary, OperationGraphEdge, OperationGraphNode
 from core.services.scheduler.graph.validators import collect_graph_warnings, find_cycle_edges, is_dag
 from core.services.scheduler.run.schedule_graph_report import _project_graph_analysis_payload
+from tests._support.paths import REPO_ROOT
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
 EVIDENCE_PATH = REPO_ROOT / "evidence" / "scheduler_graph" / "performance_2000_nodes.txt"
 
 NODE_COUNT = 2000

@@ -12,8 +12,9 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-TESTS_DIR = Path(__file__).resolve().parent
-REPO_ROOT = TESTS_DIR.parent
+from tests._support.paths import REPO_ROOT
+
+TESTS_DIR = REPO_ROOT / "tests"
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 if str(TESTS_DIR) not in sys.path:
     sys.path.insert(0, str(TESTS_DIR))
