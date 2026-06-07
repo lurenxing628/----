@@ -19,19 +19,19 @@ def _find_repo_root() -> str:
     raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
-def _prepare_env(tmpdir: str) -> None:
-    os.environ["APS_ENV"] = "development"
-    os.environ["APS_DB_PATH"] = str(Path(tmpdir) / "aps_test.db")
-    os.environ["APS_LOG_DIR"] = str(Path(tmpdir) / "logs")
-    os.environ["APS_BACKUP_DIR"] = str(Path(tmpdir) / "backups")
-    os.environ["APS_EXCEL_TEMPLATE_DIR"] = str(Path(tmpdir) / "templates_excel")
-    os.environ["SECRET_KEY"] = "aps-page-manual-registry"
+def _prepare_env(tmpdir: str, monkeypatch) -> None:
+    monkeypatch.setenv("APS_ENV", "development")
+    monkeypatch.setenv("APS_DB_PATH", str(Path(tmpdir) / "aps_test.db"))
+    monkeypatch.setenv("APS_LOG_DIR", str(Path(tmpdir) / "logs"))
+    monkeypatch.setenv("APS_BACKUP_DIR", str(Path(tmpdir) / "backups"))
+    monkeypatch.setenv("APS_EXCEL_TEMPLATE_DIR", str(Path(tmpdir) / "templates_excel"))
+    monkeypatch.setenv("SECRET_KEY", "aps-page-manual-registry")
 
 
-def _load_app(repo_root: str):
+def _load_app(repo_root: str, monkeypatch):
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
-    sys.modules.pop("app", None)
+    monkeypatch.delitem(sys.modules, "app", raising=False)
     app_mod = importlib.import_module("app")
     return app_mod.create_app()
 
@@ -441,11 +441,11 @@ def _ensure_repo_on_path(repo_root: str) -> None:
         sys.path.insert(0, repo_root)
 
 
-def main() -> None:
+def main(monkeypatch) -> None:
     repo_root = _find_repo_root()
     tmpdir = tempfile.mkdtemp(prefix="aps_page_manual_registry_")
-    _prepare_env(tmpdir)
-    app = _load_app(repo_root)
+    _prepare_env(tmpdir, monkeypatch)
+    app = _load_app(repo_root, monkeypatch)
 
     page_manuals = importlib.import_module("web.viewmodels.page_manuals")
     _assert_process_page_manual_title_contracts(page_manuals)
@@ -910,8 +910,8 @@ def _assert_home_page_manual_contract(page_manuals) -> None:
     )
 
 
-def test_page_manual_registry_contract() -> None:
-    main()
+def test_page_manual_registry_contract(monkeypatch) -> None:
+    main(monkeypatch)
 
 
 def test_process_page_manual_title_contracts() -> None:
@@ -986,4 +986,10 @@ def test_blank_default_pages_do_not_conflict_with_common_errors() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    from _pytest.monkeypatch import MonkeyPatch
+
+    _mp = MonkeyPatch()
+    try:
+        main(_mp)
+    finally:
+        _mp.undo()

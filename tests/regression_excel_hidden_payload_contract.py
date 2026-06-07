@@ -16,22 +16,23 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
-def _prepare_env(tmpdir: Path) -> None:
-    os.environ["APS_ENV"] = "development"
-    os.environ["APS_DB_PATH"] = str(tmpdir / "aps_test.db")
-    os.environ["APS_LOG_DIR"] = str(tmpdir / "logs")
-    os.environ["APS_BACKUP_DIR"] = str(tmpdir / "backups")
-    os.environ["APS_EXCEL_TEMPLATE_DIR"] = str(tmpdir / "templates_excel")
-    os.environ["SECRET_KEY"] = "aps-excel-hidden-payload-contract"
+def _prepare_env(tmpdir: Path, monkeypatch) -> None:
+    monkeypatch.setenv("APS_ENV", "development")
+    monkeypatch.setenv("APS_DB_PATH", str(tmpdir / "aps_test.db"))
+    monkeypatch.setenv("APS_LOG_DIR", str(tmpdir / "logs"))
+    monkeypatch.setenv("APS_BACKUP_DIR", str(tmpdir / "backups"))
+    monkeypatch.setenv("APS_EXCEL_TEMPLATE_DIR", str(tmpdir / "templates_excel"))
+    monkeypatch.setenv("SECRET_KEY", "aps-excel-hidden-payload-contract")
 
 
-def _load_app():
+def _load_app(monkeypatch):
     repo_root = str(REPO_ROOT)
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
     for name in list(sys.modules):
         if name == "app" or name.startswith("web.bootstrap.entrypoint") or name.startswith("web.bootstrap.factory"):
-            sys.modules.pop(name, None)
+            monkeypatch.delitem(sys.modules, name, raising=False)
+    monkeypatch.delitem(sys.modules, "app", raising=False)
     app_mod = importlib.import_module("app")
     return app_mod.create_app()
 
@@ -81,10 +82,10 @@ def _encode_preview_payload(rows) -> str:
     return f"aps-preview-json-b64:{encoded}"
 
 
-def main() -> None:
+def main(monkeypatch) -> None:
     tmpdir = Path(tempfile.mkdtemp(prefix="aps_excel_hidden_payload_"))
-    _prepare_env(tmpdir)
-    app = _load_app()
+    _prepare_env(tmpdir, monkeypatch)
+    app = _load_app(monkeypatch)
 
     with app.test_client() as client:
         resp = client.post(
@@ -149,9 +150,15 @@ def main() -> None:
     print("OK")
 
 
-def test_excel_hidden_payload_contract() -> None:
-    main()
+def test_excel_hidden_payload_contract(monkeypatch) -> None:
+    main(monkeypatch)
 
 
 if __name__ == "__main__":
-    main()
+    from _pytest.monkeypatch import MonkeyPatch
+
+    _mp = MonkeyPatch()
+    try:
+        main(_mp)
+    finally:
+        _mp.undo()

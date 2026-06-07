@@ -16,8 +16,11 @@ TESTS_DIR = Path(__file__).resolve().parent
 
 
 def _has_def(tree: ast.Module, name_pred) -> bool:
+    # 只认同步 def——精确对齐原 collector 正则 `^\s*def`（不匹配 `async def`）。async def test_
+    # 在无 pytest-asyncio 时会被 skip、其 main() 永不执行；若把 async def test_ 误算作 has_test，
+    # 会漏判「async test + main」这类静默假绿文件（原 collector 会判其为 main-style 并跑 main）。
     return any(
-        isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and name_pred(node.name)
+        isinstance(node, ast.FunctionDef) and name_pred(node.name)
         for node in ast.walk(tree)
     )
 

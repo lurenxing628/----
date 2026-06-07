@@ -20,6 +20,7 @@ import sys
 import tempfile
 from contextlib import ExitStack
 from pathlib import Path
+from typing import Dict, List, Optional, Set
 from unittest.mock import patch
 from urllib.parse import quote
 
@@ -69,24 +70,24 @@ def find_repo_root() -> str:
     raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
-def _prepare_env(tmpdir: str) -> None:
-    os.environ["APS_ENV"] = "development"
-    os.environ["APS_DB_PATH"] = str(Path(tmpdir) / "aps_test.db")
-    os.environ["APS_LOG_DIR"] = str(Path(tmpdir) / "logs")
-    os.environ["APS_BACKUP_DIR"] = str(Path(tmpdir) / "backups")
-    os.environ["APS_EXCEL_TEMPLATE_DIR"] = str(Path(tmpdir) / "templates_excel")
-    os.environ["SECRET_KEY"] = "aps-manual-entry-scope"
+def _prepare_env(tmpdir: str, monkeypatch) -> None:
+    monkeypatch.setenv("APS_ENV", "development")
+    monkeypatch.setenv("APS_DB_PATH", str(Path(tmpdir) / "aps_test.db"))
+    monkeypatch.setenv("APS_LOG_DIR", str(Path(tmpdir) / "logs"))
+    monkeypatch.setenv("APS_BACKUP_DIR", str(Path(tmpdir) / "backups"))
+    monkeypatch.setenv("APS_EXCEL_TEMPLATE_DIR", str(Path(tmpdir) / "templates_excel"))
+    monkeypatch.setenv("SECRET_KEY", "aps-manual-entry-scope")
 
 
-def _load_app(repo_root: str):
+def _load_app(repo_root: str, monkeypatch):
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
-    sys.modules.pop("app", None)
+    monkeypatch.delitem(sys.modules, "app", raising=False)
     app_mod = importlib.import_module("app")
     return app_mod.create_app()
 
 
-def _mode_headers(ui_mode: str) -> dict[str, str]:
+def _mode_headers(ui_mode: str) -> Dict[str, str]:
     return {"Cookie": f"aps_ui_mode={ui_mode}"}
 
 
@@ -109,8 +110,8 @@ def _assert_not_contains(content: str, needle: str, message: str) -> None:
         raise RuntimeError(f"{message}（出现了不应存在的片段：{needle}）")
 
 
-def _find_legacy_excel_entry_terms(content: str) -> list[str]:
-    hits: list[str] = []
+def _find_legacy_excel_entry_terms(content: str) -> List[str]:
+    hits: List[str] = []
     for line_no, line in enumerate(content.splitlines(), start=1):
         for term in LEGACY_EXCEL_ENTRY_TERMS:
             if _is_historical_legacy_entry_note(line, term):
@@ -155,7 +156,7 @@ def _assert_home_workspace_buttons(app, content: str, label: str) -> None:
         _assert_contains(content, href, f"{label} 首页工作区按钮链接不正确：{button_label}")
 
 
-def _extract_href_by_class(content: str, class_name: str) -> str | None:
+def _extract_href_by_class(content: str, class_name: str) -> Optional[str]:
     exact_pattern = rf'<a href="([^"]+)" class="{re.escape(class_name)}(?:\s[^"]*)?"'
     m = re.search(exact_pattern, content)
     if not m:
@@ -166,7 +167,7 @@ def _extract_href_by_class(content: str, class_name: str) -> str | None:
     return html_module.unescape(m.group(1))
 
 
-def _extract_link_href_by_text(content: str, label: str) -> str | None:
+def _extract_link_href_by_text(content: str, label: str) -> Optional[str]:
     pattern = r'<a href="([^"]+)"[^>]*>(.*?)</a>'
     for href, inner in re.findall(pattern, content, flags=re.S):
         if f"<span>{label}</span>" in inner:
@@ -174,7 +175,7 @@ def _extract_link_href_by_text(content: str, label: str) -> str | None:
     return None
 
 
-def _extract_template_content_by_id(content: str, template_id: str) -> str | None:
+def _extract_template_content_by_id(content: str, template_id: str) -> Optional[str]:
     pattern = rf'<template[^>]*id="{re.escape(template_id)}"[^>]*>(.*?)</template>'
     m = re.search(pattern, content, flags=re.S)
     if not m:
@@ -182,7 +183,7 @@ def _extract_template_content_by_id(content: str, template_id: str) -> str | Non
     return html_module.unescape(m.group(1)).strip()
 
 
-def _collect_renderable_manual_endpoints(app, manual_endpoints: set[str]) -> list[str]:
+def _collect_renderable_manual_endpoints(app, manual_endpoints: Set[str]) -> List[str]:
     renderable = set()
     for rule in app.url_map.iter_rules():
         if rule.endpoint not in manual_endpoints:
@@ -195,11 +196,11 @@ def _collect_renderable_manual_endpoints(app, manual_endpoints: set[str]) -> lis
     return sorted(renderable)
 
 
-def main() -> None:
+def main(monkeypatch) -> None:
     repo_root = find_repo_root()
     tmpdir = tempfile.mkdtemp(prefix="aps_regression_manual_entry_")
-    _prepare_env(tmpdir)
-    app = _load_app(repo_root)
+    _prepare_env(tmpdir, monkeypatch)
+    app = _load_app(repo_root, monkeypatch)
     page_manuals = importlib.import_module("web.viewmodels.page_manuals")
     client = app.test_client()
     manual_text = _assert_manual_markdown_scope(repo_root)
@@ -511,9 +512,11 @@ def main() -> None:
     print("OK")
 
 
-def test_manual_entry_scope_contract() -> None:
-    main()
+def test_manual_entry_scope_contract(monkeypatch) -> None:
+    main(monkeypatch)
 
 
 if __name__ == "__main__":
-    main()
+    import pytest
+
+    raise SystemExit(pytest.main([__file__]))

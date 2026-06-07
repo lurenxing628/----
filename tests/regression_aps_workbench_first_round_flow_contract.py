@@ -58,26 +58,26 @@ class _LinkCollector(HTMLParser):
         self._current_text = []
 
 
-def _prepare_env(tmpdir: str) -> str:
+def _prepare_env(tmpdir: str, monkeypatch) -> str:
     db_path = str(Path(tmpdir) / "aps_test.db")
-    os.environ["APS_ENV"] = "development"
-    os.environ["APS_DB_PATH"] = db_path
-    os.environ["APS_LOG_DIR"] = str(Path(tmpdir) / "logs")
-    os.environ["APS_BACKUP_DIR"] = str(Path(tmpdir) / "backups")
-    os.environ["APS_EXCEL_TEMPLATE_DIR"] = str(Path(tmpdir) / "templates_excel")
-    os.environ["SECRET_KEY"] = "aps-workbench-first-round"
+    monkeypatch.setenv("APS_ENV", "development")
+    monkeypatch.setenv("APS_DB_PATH", db_path)
+    monkeypatch.setenv("APS_LOG_DIR", str(Path(tmpdir) / "logs"))
+    monkeypatch.setenv("APS_BACKUP_DIR", str(Path(tmpdir) / "backups"))
+    monkeypatch.setenv("APS_EXCEL_TEMPLATE_DIR", str(Path(tmpdir) / "templates_excel"))
+    monkeypatch.setenv("SECRET_KEY", "aps-workbench-first-round")
     Path(os.environ["APS_LOG_DIR"]).mkdir(exist_ok=True)
     Path(os.environ["APS_BACKUP_DIR"]).mkdir(exist_ok=True)
     Path(os.environ["APS_EXCEL_TEMPLATE_DIR"]).mkdir(exist_ok=True)
     return db_path
 
 
-def _load_app():
+def _load_app(monkeypatch):
     if str(REPO_ROOT) not in sys.path:
         sys.path.insert(0, str(REPO_ROOT))
     for name in list(sys.modules):
         if name == "app" or name.startswith("web.bootstrap.entrypoint") or name.startswith("web.bootstrap.factory"):
-            sys.modules.pop(name, None)
+            monkeypatch.delitem(sys.modules, name, raising=False)
     app_mod = importlib.import_module("app")
     return app_mod.create_app()
 
@@ -143,12 +143,12 @@ def _insert_first_round_data(db_path: str) -> int:
     return 12
 
 
-def _collector_for_home():
+def _collector_for_home(monkeypatch):
     tmpdir = tempfile.mkdtemp(prefix="aps_workbench_first_round_")
-    db_path = _prepare_env(tmpdir)
+    db_path = _prepare_env(tmpdir, monkeypatch)
     ensure_schema(db_path, logger=None, schema_path=str(SCHEMA_PATH), backup_dir=None)
     version = _insert_first_round_data(db_path)
-    app = _load_app()
+    app = _load_app(monkeypatch)
     client = app.test_client()
     try:
         client.set_cookie("aps_ui_mode", "v1", domain="localhost")
@@ -180,8 +180,8 @@ def _query(href: str) -> Dict[str, List[str]]:
     return parse_qs(urlparse(href).query)
 
 
-def test_first_round_workbench_flow_preserves_context_from_homepage_links() -> None:
-    client, parser = _collector_for_home()
+def test_first_round_workbench_flow_preserves_context_from_homepage_links(monkeypatch) -> None:
+    client, parser = _collector_for_home(monkeypatch)
     visible_text = "\n".join(parser.visible_parts)
 
     assert "计划工作台" in visible_text
@@ -252,8 +252,3 @@ def test_first_round_workbench_flow_preserves_context_from_homepage_links() -> N
         assert expected_text in target_visible_text
         for token in INTERNAL_VISIBLE_TOKENS:
             assert token not in target_visible_text
-
-
-if __name__ == "__main__":
-    test_first_round_workbench_flow_preserves_context_from_homepage_links()
-    print("OK")

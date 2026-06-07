@@ -22,7 +22,7 @@ def _assert_status(resp, name: str, expect: int = 200) -> None:
         raise RuntimeError(f"{name} 返回 {resp.status_code}，期望 {expect}，body={body[:500]}")
 
 
-def main() -> None:
+def main(monkeypatch) -> None:
     repo_root = find_repo_root()
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
@@ -36,11 +36,11 @@ def main() -> None:
     os.makedirs(test_backups, exist_ok=True)
     os.makedirs(test_templates, exist_ok=True)
 
-    os.environ["APS_ENV"] = "development"
-    os.environ["APS_DB_PATH"] = test_db
-    os.environ["APS_LOG_DIR"] = test_logs
-    os.environ["APS_BACKUP_DIR"] = test_backups
-    os.environ["APS_EXCEL_TEMPLATE_DIR"] = test_templates
+    monkeypatch.setenv("APS_ENV", "development")
+    monkeypatch.setenv("APS_DB_PATH", test_db)
+    monkeypatch.setenv("APS_LOG_DIR", test_logs)
+    monkeypatch.setenv("APS_BACKUP_DIR", test_backups)
+    monkeypatch.setenv("APS_EXCEL_TEMPLATE_DIR", test_templates)
 
     from core.infrastructure.database import ensure_schema, get_connection
     from core.infrastructure.logging import OperationLogger
@@ -91,6 +91,7 @@ def main() -> None:
 
     import importlib
 
+    monkeypatch.delitem(sys.modules, "app", raising=False)
     app_mod = importlib.import_module("app")
     app = app_mod.create_app()
     client = app.test_client()
@@ -215,9 +216,11 @@ def main() -> None:
     print("OK")
 
 
-def test_regression_gantt_contract_snapshot() -> None:
-    main()
+def test_regression_gantt_contract_snapshot(monkeypatch) -> None:
+    main(monkeypatch)
 
 
 if __name__ == "__main__":
-    main()
+    import pytest
+
+    raise SystemExit(pytest.main([__file__, "-q"]))

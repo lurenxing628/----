@@ -100,7 +100,7 @@ def test_base_header_mounts_plan_workbench_menu() -> None:
     assert "计划工作台" not in base, "顶层菜单文案应由 UI 宏统一维护，base.html 只负责挂载"
 
 
-def test_workbench_menu_renders_six_core_destinations() -> None:
+def test_workbench_menu_renders_six_core_destinations(db_env) -> None:
     html = _render_workbench_menu()
     parser = _parse_workbench_menu(html)
 
@@ -121,7 +121,7 @@ def test_workbench_menu_renders_six_core_destinations() -> None:
         assert label in text
 
 
-def test_workbench_menu_preserves_report_workbench_context() -> None:
+def test_workbench_menu_preserves_report_workbench_context(db_env) -> None:
     html = _render_workbench_menu(
         "/reports/overdue?version=12&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-07"
         "&query_date=2026-05-06&period_preset=week&batch_id=B-RPT&resource_type=machine&resource_id=M-RPT"
@@ -157,7 +157,7 @@ def test_workbench_menu_preserves_report_workbench_context() -> None:
     assert "计划和现场实际 复盘正式计划和现场事实" not in links
 
 
-def test_workbench_menu_disables_team_context_links_that_would_400() -> None:
+def test_workbench_menu_disables_team_context_links_that_would_400(db_env) -> None:
     html = _render_workbench_menu_with_team_context()
     parser = _parse_workbench_menu(html)
     links = {text: href for href, text in parser.links}
@@ -180,7 +180,7 @@ def test_workbench_menu_disables_team_context_links_that_would_400() -> None:
     assert "resource_type=team" not in dispatch
 
 
-def test_workbench_menu_disables_execution_review_for_non_formal_context() -> None:
+def test_workbench_menu_disables_execution_review_for_non_formal_context(db_env) -> None:
     html = _render_workbench_menu(
         "/reports/utilization?version=12&plan_role=baseline_best&scenario_id=SCN-1"
         "&start_date=2026-05-06&end_date=2026-05-07"
@@ -193,7 +193,7 @@ def test_workbench_menu_disables_execution_review_for_non_formal_context() -> No
     assert not any("计划和现场实际" in text for _href, text in parser.links)
 
 
-def test_workbench_menu_is_readonly_and_hides_internal_fields() -> None:
+def test_workbench_menu_is_readonly_and_hides_internal_fields(db_env) -> None:
     html = _render_workbench_menu()
     parser = _parse_workbench_menu(html)
     forbidden_fragments = (

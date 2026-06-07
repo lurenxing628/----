@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
 import sys
 from pathlib import Path
@@ -63,6 +64,26 @@ def pytest_sessionfinish(session, exitstatus):
         logging.raiseExceptions = False
     except Exception:  # noqa: BLE001
         pass
+
+
+@pytest.fixture(autouse=True)
+def _isolate_os_environ():
+    """运行时兜底：把每个测试对 os.environ 的改动在结束时还原到测试前快照，杜绝裸写
+    os.environ[..]=（未经 monkeypatch）泄漏到后续同进程/同 xdist worker 用例——P4 引入 xdist 的隔离前提。
+
+    P3 main-style→pytest 同进程化后，个别用例与共享 helper（如
+    reports_workbench_backlink_helpers._prepare_env：被 9 个用例 import 的 _client 间接触发）
+    直接 os.environ[..]= 设 APS_*/SECRET_KEY 且无还原，同进程下污染后续用例（拿到僵尸 APS_DB_PATH）。
+    本 autouse 链式保证每个测试 env 隔离，兜住所有裸写泄漏并防未来再漏；monkeypatch.setenv 的
+    用例其 teardown 已先还原，此处二次确认、结果一致（双还原幂等）。
+    """
+    snapshot = dict(os.environ)
+    yield
+    for key in [k for k in os.environ if k not in snapshot]:
+        del os.environ[key]
+    for key, value in snapshot.items():
+        if os.environ.get(key) != value:
+            os.environ[key] = value
 
 
 # ---- 共享 DB/app fixture ----
