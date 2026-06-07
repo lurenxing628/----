@@ -23,7 +23,7 @@
 | 5 | candidate-summary-delta-cards | 2026-05-27-candidate-summary-delta-cards | `tests/regression_scheduler_candidate_summary_contract.py`、`tests/regression_scheduler_graph_auto_selection_contract.py`、`tests/regression_scheduler_candidate_plain_language.py` |
 | 6 | candidate-drilldown-empty-states | 2026-05-27-candidate-drilldown-empty-states | `tests/regression_scheduler_candidate_week_plan_contract.py`、`tests/regression_scheduler_candidate_plan_query_contract.py`、`tests/regression_scheduler_candidate_reports_contract.py`、`tests/regression_scenario_preview_secondary_outputs.py` |
 | 7 | dispatch-plan-identity-guardrails | 2026-05-27-dispatch-plan-identity-guardrails | `tests/regression_scheduler_dispatch_plan_identity_guardrails.py`、`tests/regression_scheduler_candidate_resource_dispatch_contract.py`、`tests/regression_resource_dispatch_public_output_contract.py` |
-| 8 | operation-execution-event-foundation | 2026-05-27-operation-execution-event-foundation | `tests/regression_operation_execution_event_foundation.py`、`tests/regression_operation_execution_state_revision.py`、`tests/regression_migrations.py` |
+| 8 | operation-execution-event-foundation | 2026-05-27-operation-execution-event-foundation | `tests/regression_operation_execution_event_foundation.py`、`tests/regression_operation_execution_state_revision.py`、`tests/migration_db/test_migrations.py` |
 | 9 | resource-dispatch-start-finish-feedback | 2026-05-27-resource-dispatch-start-finish-feedback | `tests/regression_operation_execution_feedback_routes.py`、`tests/regression_scheduler_candidate_resource_dispatch_contract.py`、`tests/test_architecture_fitness.py::test_viewmodels_do_not_import_flask_or_services_or_repositories_or_routes` |
 | 10 | reschedule-minimum-execution-guardrails | 2026-05-27-reschedule-minimum-execution-guardrails | `tests/regression_scheduler_reschedule_execution_minimum_guardrails.py`、`tests/regression_operation_execution_feedback_routes.py`、`tests/regression_operation_execution_state_revision.py` |
 | 11 | shop-exception-feedback | 2026-05-27-shop-exception-feedback | `tests/regression_operation_execution_exception_feedback.py`、`tests/regression_scheduler_exception_blocks_auto_reschedule.py`、`tests/regression_operation_execution_feedback_routes.py` |
@@ -43,7 +43,7 @@
 | 5 | candidate-summary-delta-cards | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_analysis_contract.py tests/regression_scheduler_candidate_plain_language.py tests/regression_frontend_offline_static_assets.py tests/regression_scheduler_candidate_summary_contract.py tests/regression_scheduler_graph_auto_selection_contract.py` |
 | 6 | candidate-drilldown-empty-states | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_analysis_candidate_links_and_roles.py tests/regression_scheduler_candidate_week_plan_contract.py tests/regression_scheduler_candidate_plan_query_contract.py tests/regression_scheduler_candidate_reports_contract.py tests/regression_scheduler_candidate_plain_language.py tests/regression_frontend_offline_static_assets.py tests/regression_scenario_preview_secondary_outputs.py tests/regression_report_export_size_mode_selection.py tests/regression_scheduler_candidate_gantt_plan_role_contract.py tests/regression_scheduler_candidate_resource_dispatch_contract.py tests/regression_report_delay_diagnosis_plain_language.py` |
 | 7 | dispatch-plan-identity-guardrails | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_resource_dispatch_contract.py tests/regression_scheduler_dispatch_plan_identity_guardrails.py tests/regression_frontend_offline_static_assets.py` |
-| 8 | operation-execution-event-foundation | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_operation_execution_event_foundation.py tests/regression_operation_execution_event_time_contract.py tests/regression_operation_execution_state_revision.py tests/regression_migrations.py` |
+| 8 | operation-execution-event-foundation | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_operation_execution_event_foundation.py tests/regression_operation_execution_event_time_contract.py tests/regression_operation_execution_state_revision.py tests/migration_db/test_migrations.py` |
 | 9 | resource-dispatch-start-finish-feedback | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_resource_dispatch_contract.py tests/regression_operation_execution_feedback_routes.py tests/regression_frontend_offline_static_assets.py tests/regression_resource_dispatch_invalid_summary_surfaces_overdue_degraded.py` |
 | 10 | reschedule-minimum-execution-guardrails | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_reschedule_execution_minimum_guardrails.py tests/regression_operation_execution_feedback_routes.py tests/regression_frontend_offline_static_assets.py tests/regression_scheduler_run_surfaces_resource_pool_warning.py` |
 | 11 | shop-exception-feedback | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_operation_execution_exception_feedback.py tests/regression_operation_execution_feedback_routes.py tests/regression_scheduler_exception_blocks_auto_reschedule.py tests/regression_frontend_offline_static_assets.py` |
@@ -55,7 +55,7 @@
 | 类型 | 覆盖方式 |
 |---|---|
 | 精准功能测试 | 上表每条 feature 的 `test_commands` |
-| 迁移测试 | `tests/regression_migrations.py`、`tests/regression_gantt_adjustment_publish_execution_revision.py` |
+| 迁移测试 | `tests/migration_db/test_migrations.py`、`tests/regression_gantt_adjustment_publish_execution_revision.py` |
 | 页面大白话测试 | `tests/regression_scheduler_candidate_plain_language.py`、`tests/regression_report_delay_diagnosis_plain_language.py`、`tests/regression_aps_three_gap_docs_quality_gate.py` |
 | Win7/offline 测试 | `tests/regression_frontend_offline_static_assets.py`、`tests/test_scan_py38plus_syntax.py` |
 | CodeStable YAML 测试 | `.codestable/tools/validate-yaml.py` 命令和 `tests/test_codestable_tools_contract.py` |
@@ -67,7 +67,7 @@
 
 - `tests/regression_gantt_adjustment_publish_execution_revision.py`
 - `tests/regression_gantt_draft_save_and_preview.py`
-- `tests/regression_migrations.py`
+- `tests/migration_db/test_migrations.py`
 - `tests/regression_operation_execution_event_foundation.py`
 - `tests/regression_operation_execution_event_time_contract.py`
 - `tests/regression_operation_execution_exception_feedback.py`

@@ -368,14 +368,14 @@ items:
       - web/bootstrap/request_services.py
       - tests/regression_operation_execution_event_foundation.py
       - tests/regression_operation_execution_state_revision.py
-      - tests/regression_migrations.py
+      - tests/migration_db/test_migrations.py
     entrypoints:
       - "从 schema.sql、core/infrastructure/migrations/__init__.py、core/infrastructure/migrations/v{next}.py 和 migration_state.py 新增执行事件表；v{next}.py 里的 next 要先查当前 CURRENT_SCHEMA_VERSION 再递增"
       - "新增 data/repositories/operation_execution_event_repo.py 和 OperationExecutionEventRepo，repository 负责 SQL，service 负责校验身份、幂等、状态版本和状态聚合"
       - "新增 core/models/operation_execution_event.py 和 core/models/operation_execution_state.py，分别放事件行结构和聚合后的现场状态结构"
       - "先做表结构、迁移、repository 和状态聚合，不做暂停/异常业务页面"
     test_commands:
-      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_operation_execution_event_foundation.py tests/regression_operation_execution_state_revision.py tests/regression_migrations.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_operation_execution_event_foundation.py tests/regression_operation_execution_state_revision.py tests/migration_db/test_migrations.py"
     forbidden_paths:
       - core/algorithms/
       - installer/
@@ -413,7 +413,7 @@ items:
       - 不把 BatchOperations.status 当作现场事实的唯一来源
       - 新库 schema 测试和老库迁移测试通过
       - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
-      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_operation_execution_event_foundation.py tests/regression_operation_execution_state_revision.py tests/regression_migrations.py
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_operation_execution_event_foundation.py tests/regression_operation_execution_state_revision.py tests/migration_db/test_migrations.py
     notes: 调研时当前 schema 是 v14；实现时先确认最新版本，再递增。
 
   - slug: resource-dispatch-start-finish-feedback

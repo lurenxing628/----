@@ -680,7 +680,7 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
         "tests/regression_request_services_contract.py",
         "tests/regression_factory_request_lifecycle_observability.py",
         "tests/regression_maintenance_window_mutex.py",
-        "tests/regression_database_high_version_failfast.py",
+        "tests/migration_db/test_database_high_version_failfast.py",
         "tests/regression_optimizer_outcome_type_contract.py",
         "tests/regression_optimizer_public_summary_projection_contract.py",
         "tests/regression_optimizer_runtime_seam_contract.py",

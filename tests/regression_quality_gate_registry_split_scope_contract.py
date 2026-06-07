@@ -234,8 +234,8 @@ def test_operation_execution_feedback_regressions_are_required_and_grouped() -> 
 
 def test_operation_execution_migration_regressions_are_required_and_grouped() -> None:
     test_paths = {
-        "tests/regression_migration_schema_contract.py",
-        "tests/regression_migrations.py",
+        "tests/migration_db/test_migration_schema_contract.py",
+        "tests/migration_db/test_migrations.py",
         "tests/regression_operation_execution_migration_v16_contract.py",
         "tests/regression_operation_execution_migration_v18_contract.py",
         "tests/regression_operation_execution_migration_v19_contract.py",
