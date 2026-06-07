@@ -1,6 +1,6 @@
 # P6 结果 — 测试目录重组 + 命名规范(测试/门禁去冗 A 阶段收尾)
 
-> 状态:**已收官并 push**。分支 `cleanup/p3-main-style-to-pytest`,P6 提交链 `ff5f305b..017c1920`(14 commit),remote==local 已验。
+> 状态:**已收官并 push**。分支 `cleanup/p3-main-style-to-pytest`,P6 提交链自 `ff5f305b` 起:14 个实现/迁移 commit(`ff5f305b..017c1920`)+ Phase C 文档 commit(`19ed8c7a` 起,含本报告)。每次 push 后 remote==local 已验。
 
 ## 一、做了什么
 
@@ -53,7 +53,7 @@
 ## 四、交接物(A→B)
 
 - **权威映射**:`p6_path_map.csv`(561 行 `old_path,new_path,module,kind`),覆盖 B 的 dossier 锚点 + A 的 required/startup 两套。
-- **B 锚点审计**(`/tmp/p6_b_anchor_audit.md`,只读核查):dossier 全树引用 106 条扁平旧路径,**纯 P6 迁移漂移 CSV 100% 覆盖**(97 精确命中 + 4 dossier 写名不规范但新名都在 CSV)。
+- **B 锚点审计**(只读核查):dossier 全树引用 106 条去重扁平旧路径,**纯 P6 迁移漂移 CSV 100% 覆盖**。106 核销:97 精确命中 + 4 合并改名/命名漂移(近名在 CSV)+ 2 B 待新建 parity/黄金基线(本就无映射)+ 2 真悬空(下条)+ 1 占位示例。详见 ANCHOR-DRIFT SOP §六。
 - **2 条真悬空锚点(非 P6 所致,提示 B 单独裁定)**:
   1. `tests/regression_sp06_no_duplicate_defs.py` —— 已在 `7ca42ca4`(P1.1 删 35 个 DROP 死代码测试,**早于 P6**)删除,CSV/磁盘均无。
   2. `tests/regression_scheduler_candidate_py38_contract.py` —— 已废弃,无改名链;现存 py38 扫描器是 `tests/gate_meta/test_scan_py38plus_syntax.py`。

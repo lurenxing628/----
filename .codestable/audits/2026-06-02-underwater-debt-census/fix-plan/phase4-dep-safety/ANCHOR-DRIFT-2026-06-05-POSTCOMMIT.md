@@ -56,7 +56,12 @@ phase4 四层分析（含全部 dossier 对抗核验附录）是在**已包含�
 
 1. **权威映射表已落地**：`.codestable/refactors/2026-06-01-test-gate-cleanup/p6_path_map.csv`（561 行 `old_path,new_path,module,kind`），机械覆盖全部 P6 `git mv`。§五.3 的 A 自有锚点已连带修复：`tools/test_registry.py` 单层校验已放开（commit `ca982c8d`，`count("/")==1`→`startswith("tests/")`）、`test_registry_data.py`/`full_test_debt_shards.py`/`quality_gate_shared.py`/pyright config/治理台账全部重指新路径（契约三角逐字一致、0 flat 残留，再审核已铁证）。
 
-2. **B 锚点 vs 映射核对结论（只读审计，B 启动前可直接采信）**：dossier 全树引用 **106 条**扁平旧测试路径，**纯 P6 目录重组造成的漂移，CSV 100% 覆盖**——97 条精确命中 CSV old_path；另 4 条是 dossier 写名不规范（如 `regression_aps_workbench_flow_contract`、`regression_scheduler_workbench_link_guardrails`、`run_real_db_replay_check/_smoke`），真测试以规范近名存在且**新名都在 CSV 里**，B 按「去前缀文件名 + 被测符号/断言串」`rg` 重定位即命中（§五.2 既定做法）。
+2. **B 锚点 vs 映射核对结论（只读审计，B 启动前可直接采信）**：dossier 全树引用 **106 条**去重扁平旧测试路径，**纯 P6 目录重组造成的漂移，CSV 100% 覆盖**。106 条账面拆解（B 拿 106 对账时按此核销，避免凭空差额）：
+   - **97 条**精确命中 CSV `old_path`，对应 `new_path` 全部落盘存在（0 反例）。
+   - **4 条**为 dossier 旧名与现存近名不一致（**P5.1 合并改名 / 命名漂移**，非笔误）：`regression_aps_workbench_flow_contract`(P5.1 commit `1fa076fb` 合并为 `aps_workbench_first_round_flow_contract`)、`regression_scheduler_workbench_link_guardrails`(现存近名 `..._links_contract`，复数+contract，与单数+guardrails 在 dossier 中或为并列两测试)、`run_real_db_replay_check/_smoke`(现存近名 `run_real_db_replay_e2e`)——真测试均以近名存在且**新名都在 CSV 里**，B 按「去前缀文件名 + 被测符号/断言串」`rg` 核认对应关系即命中（§五.2 既定做法）。
+   - **2 条**为 **B 待新建的 parity/黄金基线测试**（`regression_boolean_normalize_wide_parity_contract` LB04、`regression_gantt_critical_chain_normalize_parity` R11/C-GANTT）：全 git 历史从未作为测试文件存在,dossier 自身明确标注「收口前不存在、须新建」——**本就不应在 CSV/磁盘**,既非 P6 漂移也非悬空,是 B 收口产物锚点。
+   - **2 条**真悬空（见下 §六.3）+ **1 条**通配占位示例 `tests/xxx.py`（§五.1 例示,剔除）。
+   - 核销:97 + 4 + 2 + 2 + 1 = **106**,账面平。
 
 3. **⚠ 2 条真悬空锚点 ≠ P6 漂移（B 须单独裁定，CSV 不该也无法覆盖）**：这两条是**测试删除/废弃**所致，P6 只迁「迁移时点存在」的文件，故不在映射内：
    - `tests/regression_sp06_no_duplicate_defs.py`：已在 commit `7ca42ca4`（P1.1 删 35 个 DROP 死代码测试，**早于 P6**）删除；磁盘已无、CSV 未收录、`tests/` 全树无 `NO_CFG_GET_TARGETS` 符号。dossier 多处（REPORT.md:1298/1301、R45）仍当【现存】白名单守卫引用——**B 须确认该锚点已废或重指**。
