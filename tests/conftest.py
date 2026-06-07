@@ -15,6 +15,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from core.infrastructure.database import ensure_schema  # noqa: E402,I001
+from tools.full_test_debt_shards import classify_nodeid  # noqa: E402,I001
 from tools.test_debt_registry import active_xfail_entries_by_nodeid  # noqa: E402,I001
 from tools.test_registry import iter_required_tests  # noqa: E402
 
@@ -39,6 +40,10 @@ def pytest_collection_modifyitems(items):
         nodeid_path = str(item.nodeid).split("::", 1)[0].replace("\\", "/")
         if nodeid_path in required_paths:
             item.add_marker(pytest.mark.required)
+        # P4：按 full_test_debt_shards 的单一真相源给需独占进程态的用例打 serial，daily 门禁据此
+        # -m "not serial" 走 xdist 并行、-m serial 串行（与上面 required 同一套自动打标机制）。
+        if classify_nodeid(str(item.nodeid)) == "serial":
+            item.add_marker(pytest.mark.serial)
 
 
 def pytest_sessionfinish(session, exitstatus):
@@ -84,6 +89,33 @@ def _isolate_os_environ():
     for key, value in snapshot.items():
         if os.environ.get(key) != value:
             os.environ[key] = value
+
+
+@pytest.fixture(autouse=True)
+def _isolate_factory_exit_backup_globals():
+    """运行时兜底：把每个测试对 web.bootstrap.factory 退出备份注册全局的改动在结束时还原，并注销
+    可能新注册的 atexit 退出备份回调——与 _isolate_os_environ 并列，是 P4 xdist 同 worker 串跑的隔离前提。
+
+    根因：production（DEBUG=False）下 create_app 会置 _EXIT_BACKUP_REGISTERED=True 并
+    atexit.register(_run_exit_backup)（factory.py:466-468），这是进程级全局、无进程隔离。自研子进程
+    分片下每 shard 独立进程天然干净；xdist 同 worker 长生命周期跨文件复用时该标志与 atexit 回调会残留：
+    污染后续同 worker 用例对标志的断言起点，并在 worker 退出时让 _run_exit_backup 写已关闭的 capture
+    流（报 "I/O operation on closed file"）。此前仅靠个别用例自觉 monkeypatch（tojson_zh_autoescape /
+    factory_request_lifecycle 护了、system_health_route 漏护＝不一致），本 autouse 在 conftest 统一钉死，
+    覆盖所有 production create_app 用例（含未来新增），与 pytest_sessionfinish 的 session 末兜底互补。
+    """
+    import atexit
+
+    from web.bootstrap import factory as _factory
+
+    manager = _factory._EXIT_BACKUP_MANAGER
+    yield
+    # 注销退出备份回调，并把"已注册"标志复位为未注册态——使 flag 与 atexit 状态一致（避免 flag=True 但
+    # 回调已注销的瞬态 desync）。_run_exit_backup 测试态 return False 无副作用、注销它正是本 fixture 目的；
+    # manager 还原测试前快照（它每次 create_app 重新赋值、残留本身无害，还原仅为干净）。
+    atexit.unregister(_factory._run_exit_backup)
+    _factory._EXIT_BACKUP_REGISTERED = False
+    _factory._EXIT_BACKUP_MANAGER = manager
 
 
 # ---- 共享 DB/app fixture ----

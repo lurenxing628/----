@@ -7,6 +7,7 @@ testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py", "regression_*.py"]
 markers = [
     "required: 门禁必跑回归(按 tools.test_registry 分组登记自动打标)；人用入口 pytest -m required",
+    "serial: 需独占进程态、不进 xdist 并行集的测试(口径同 tools.full_test_debt_shards.classify_nodeid 的 serial 清单)；人用入口 pytest -m serial",
 ]
 
 [tool.ruff]

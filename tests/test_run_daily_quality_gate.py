@@ -1,4 +1,4 @@
-"""回归测试：scripts/run_daily_quality_gate 的增量门禁选靶逻辑——_run_collect_only 只打印 collected_count 不泄露 nodeid 并在缺计数时判失败；pre-push ref/新分支 diff 能在无 upstream 时算出 changed_paths；_build_impact_plan 按变更路径匹配 required group、公共/未知 scope 跑全量、纯文档(含 .codestable/README/台账例外) 跳过 pytest；_build_ruff_plan 只 lint 变更的 Python 文件、公共配置或未知范围跑全量；_commands 保持 block-artifacts→ruff→impact→focused 的命令顺序。"""
+"""回归测试：scripts/run_daily_quality_gate 的增量门禁选靶逻辑——_run_collect_only 只打印 collected_count 不泄露 nodeid 并在缺计数时判失败；pre-push ref/新分支 diff 能在无 upstream 时算出 changed_paths；_build_impact_plan 按变更路径匹配 required group、公共/未知 scope 跑全量、纯文档(含 .codestable/README/台账例外) 跳过 pytest；_build_ruff_plan 只 lint 变更的 Python 文件、公共配置或未知范围跑全量；_commands 保持 block-artifacts→ruff→impact(并行 not-serial + 串行 serial 两步)→focused 的命令顺序。"""
 
 from __future__ import annotations
 
@@ -484,14 +484,58 @@ def test_commands_keep_focused_smoke_after_impact_targets() -> None:
     ruff_plan = daily_gate.RuffPlan(["scripts/run_daily_quality_gate.py"], False, "changed Python files")
     commands = daily_gate._commands(["tests/regression_scheduler_run.py"], ruff_plan)
 
-    labels = [label for label, _command in commands]
+    labels = [label for label, _command, _allow in commands]
     assert labels == [
         "block staged runtime artifacts",
         "ruff check changed files",
-        "impact pytest",
+        "impact pytest (parallel)",
+        "impact pytest (serial)",
         "focused pytest",
     ]
     assert commands[1][1][-2:] == ["--", "scripts/run_daily_quality_gate.py"]
     assert "--force-exclude" in commands[1][1]
-    assert commands[2][1][-1] == "tests/regression_scheduler_run.py"
-    assert commands[3][1][-len(daily_gate.FOCUSED_PYTEST_NODEIDS) :] == list(daily_gate.FOCUSED_PYTEST_NODEIDS)
+    # impact 并行步：xdist worksteal + 按 marker 排除 serial，target 仍在末尾（由它筛选收集范围）。
+    # 注意命令含两个 -m（python -m pytest 与 pytest 的 -m markexpr），故按唯一值定位 markexpr。
+    parallel_command = commands[2][1]
+    assert parallel_command[parallel_command.index("-n") + 1] == "auto"
+    assert parallel_command[parallel_command.index("--dist") + 1] == "worksteal"
+    assert "not serial" in parallel_command
+    assert parallel_command[parallel_command.index("not serial") - 1] == "-m"
+    assert parallel_command[-1] == "tests/regression_scheduler_run.py"
+    assert commands[2][2] is True  # 全 not-serial / 全 serial 时该步 no-tests collected＝合法空集
+    # impact 串行步：只跑 serial marker、不带 -n（独占进程态用例不进 xdist）。
+    serial_command = commands[3][1]
+    assert "serial" in serial_command
+    assert serial_command[serial_command.index("serial") - 1] == "-m"
+    assert "-n" not in serial_command
+    assert serial_command[-1] == "tests/regression_scheduler_run.py"
+    assert commands[3][2] is True
+    # focused 串行冒烟仍在最后，且不容忍 no-tests（3 个固定 nodeid 必须收集到）。
+    assert commands[4][1][-len(daily_gate.FOCUSED_PYTEST_NODEIDS) :] == list(daily_gate.FOCUSED_PYTEST_NODEIDS)
+    assert commands[4][2] is False
+
+
+def test_main_split_steps_tolerate_no_tests_but_not_real_failure(monkeypatch) -> None:
+    """钉死 P4 exit-5 容忍语义：impact 并行/串行分流步在「本次无该类用例」(pytest exit 5)时放行，但真失败
+    (exit 1)与 focused 步(allow_no_tests=False)的 exit 5 绝不被吞——allow_no_tests 只吞合法空集、不静默吞错。"""
+    scope = daily_gate.DailyGateScope(
+        changed=daily_gate.ChangedPathSet([], False, "stub"),
+        impact_plan=daily_gate.ImpactPlan(["tests/regression_stub.py"], ["g"], False, "stub"),
+        ruff_plan=daily_gate.RuffPlan([], False, "no python files"),
+    )
+    monkeypatch.setattr(daily_gate, "build_daily_gate_scope", lambda **_kwargs: scope)
+    monkeypatch.setattr(daily_gate, "_gate_env", lambda: {})
+    monkeypatch.setattr(daily_gate, "_run_collect_only", lambda _env: 0)
+
+    # commands 顺序固定为 block-artifacts→impact(并行)→impact(串行)→focused（ruff_plan 全空故无 ruff 步）；
+    # 下表给每步 subprocess.call 的退出码序列与 main 的期望返回码。
+    cases = [
+        ([0, 5, 0, 0], 0),  # 并行步空集(exit5)被 allow_no_tests 容忍 → 通过
+        ([0, 0, 5, 0], 0),  # 串行步空集(exit5)被 allow_no_tests 容忍 → 通过
+        ([0, 1, 0, 0], 1),  # 并行步真失败(exit1)不在容忍集 → 立即返回 1
+        ([0, 0, 0, 5], 5),  # focused 步(allow_no_tests=False)的 exit5 → 不容忍，返回 5
+    ]
+    for codes, expected in cases:
+        returns = iter(codes)
+        monkeypatch.setattr(daily_gate.subprocess, "call", lambda command, **_kwargs: next(returns))
+        assert daily_gate.main([]) == expected, (codes, expected)

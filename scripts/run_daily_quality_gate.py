@@ -39,6 +39,9 @@ FOCUSED_PYTEST_NODEIDS: Tuple[str, ...] = (
 _COLLECT_COUNT_RE = re.compile(r"\b(\d+)\s+(?:tests?|items?) collected\b")
 _TAIL_LINES = 40
 _ZERO_SHA = "0" * 40
+# pytest 在"未收集到任何用例"时的退出码（ExitCode.NO_TESTS_COLLECTED）。impact 集按 serial/not-serial
+# 分两步跑时，某一类本次为空＝合法空集，仅对这两步容忍此退出码（focused 等其余步骤照常按失败处理）。
+_PYTEST_NO_TESTS_EXITCODE = 5
 
 
 class ChangedPathSet(NamedTuple):
@@ -490,35 +493,57 @@ def daily_gate_scope_payload(scope: DailyGateScope) -> Dict[str, object]:
     return payload
 
 
-def _commands(required_targets: Sequence[str], ruff_plan: RuffPlan) -> List[Tuple[str, List[str]]]:
-    commands = [
+def _commands(required_targets: Sequence[str], ruff_plan: RuffPlan) -> List[Tuple[str, List[str], bool]]:
+    # 三元组 (label, command, allow_no_tests)：allow_no_tests=True 的步骤对 pytest「未收集到用例」
+    # 退出码（_PYTEST_NO_TESTS_EXITCODE）视为通过（合法空集），其余步骤一律按非零失败处理。
+    commands: List[Tuple[str, List[str], bool]] = [
         (
             "block staged runtime artifacts",
             [sys.executable, "tools/git_hook_checks.py", "check-staged-artifacts"],
+            False,
         )
     ]
     if ruff_plan.all_files:
-        commands.append(("ruff check full", [sys.executable, "-m", "ruff", "check"]))
+        commands.append(("ruff check full", [sys.executable, "-m", "ruff", "check"], False))
     elif ruff_plan.target_paths:
         commands.append(
             (
                 "ruff check changed files",
                 [sys.executable, "-m", "ruff", "check", "--force-exclude", "--", *ruff_plan.target_paths],
+                False,
             )
         )
 
     normalized_targets = _dedupe_paths(required_targets)
     if normalized_targets:
+        # impact 集分流：not-serial 用例走 xdist 并行（-n auto --dist worksteal），serial 用例
+        # （startup/runtime/portfile/long_gate 等独占进程态，口径见 tools.full_test_debt_shards）单独串行。
+        # serial marker 由 conftest 按 classify_nodeid 自动打标，这里仅按 marker 表达式分流；两步各自
+        # 在本次 impact 集无对应类用例时会 no-tests collected，故 allow_no_tests=True。
         commands.append(
             (
-                "impact pytest",
-                [sys.executable, "-m", "pytest", "-q", *normalized_targets],
+                "impact pytest (parallel)",
+                [
+                    sys.executable, "-m", "pytest", "-q",
+                    "-n", "auto", "--dist", "worksteal",
+                    "-m", "not serial",
+                    *normalized_targets,
+                ],
+                True,
+            )
+        )
+        commands.append(
+            (
+                "impact pytest (serial)",
+                [sys.executable, "-m", "pytest", "-q", "-m", "serial", *normalized_targets],
+                True,
             )
         )
     commands.append(
         (
             "focused pytest",
             [sys.executable, "-m", "pytest", "-q", *FOCUSED_PYTEST_NODEIDS],
+            False,
         )
     )
     return commands
@@ -638,12 +663,19 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return collect_returncode
 
     commands = _commands(impact_plan.target_paths, ruff_plan)
-    for index, (label, command) in enumerate(commands, start=1):
+    for index, (label, command, allow_no_tests) in enumerate(commands, start=1):
         print(f"[daily-fast-gate] {index}/{len(commands)} {label}", flush=True)
-        returncode = subprocess.call(command, cwd=REPO_ROOT, env=env)
-        if int(returncode) != 0:
+        returncode = int(subprocess.call(command, cwd=REPO_ROOT, env=env))
+        if returncode == _PYTEST_NO_TESTS_EXITCODE and allow_no_tests:
+            print(
+                f"[daily-fast-gate] {label}: 本次 impact 集无该类用例"
+                "（pytest no tests collected，exit 5），跳过",
+                flush=True,
+            )
+            continue
+        if returncode != 0:
             print(f"[daily-fast-gate] failed: {label} returncode={returncode}", file=sys.stderr, flush=True)
-            return int(returncode)
+            return returncode
     print("[daily-fast-gate] passed", flush=True)
     return 0
 
