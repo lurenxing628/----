@@ -469,7 +469,6 @@ def test_full_test_debt_proof_is_in_shared_quality_gate_plan() -> None:
         "tools/long_gate_schema.py",
         "tools/long_gate_summary.py",
         "tests/conftest.py",
-        "tests/main_style_regression_runner.py",
         "tests/test_check_full_test_debt.py",
         "tests/test_full_test_debt_registry_contract.py",
         "tests/test_architecture_fitness.py",
@@ -499,7 +498,6 @@ def test_full_test_debt_proof_is_in_shared_quality_gate_plan() -> None:
         "tools/long_gate_schema.py",
         "tools/long_gate_summary.py",
         "tests/conftest.py",
-        "tests/main_style_regression_runner.py",
     ]:
         assert rel_path in tool_paths
 

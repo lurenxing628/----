@@ -32,7 +32,6 @@
     "tools/test_debt_registry.py",
     "tools/test_registry.py",
     "tests/conftest.py",
-    "tests/main_style_regression_runner.py",
     ".codestable/tools/validate-yaml.py",
     "tests/regression_config_manual_markdown.py",
     "tests/regression_frontend_offline_static_assets.py",

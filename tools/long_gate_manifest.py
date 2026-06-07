@@ -449,7 +449,6 @@ def _scopes_for_entry(
         input_scopes.extend(
             [
                 "tests/conftest.py",
-                "tests/main_style_regression_runner.py",
                 "tests/runtime_cleanup_helper.py",
                 "app.py",
                 "app_new_ui.py",

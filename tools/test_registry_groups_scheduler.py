@@ -6,6 +6,7 @@ SCHEDULER_REQUIRED_REGRESSION_GROUPS = (
         "label": "Quality gate and long gate contracts",
         "target_paths": (
             "tests/test_run_quality_gate.py",
+            "tests/test_no_residual_main_style_regression.py",
             "tests/test_sp05_path_topology_contract.py",
             "tests/regression_quality_gate_scan_contract.py",
             "tests/test_codestable_tools_contract.py",

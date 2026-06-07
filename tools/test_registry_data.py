@@ -26,6 +26,7 @@ QUALITY_GATE_STARTUP_REGRESSION_ARGS = (
 )
 
 QUALITY_GATE_GUARD_TESTS = (
+    "tests/test_no_residual_main_style_regression.py",
     "tests/test_sp05_path_topology_contract.py",
     "tests/test_schedule_input_builder_strict_hours_and_ext_days.py",
     "tests/regression_scheduler_wrapper_import_order_contract.py",
@@ -257,7 +258,6 @@ REQUIRED_REGRESSION_COMMON_SCOPES = {
     "input_file_scopes": (
         "tests/conftest.py",
         "conftest.py",
-        "tests/main_style_regression_runner.py",
         "tests/runtime_cleanup_helper.py",
     ),
     "config_file_scopes": (
