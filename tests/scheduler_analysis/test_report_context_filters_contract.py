@@ -12,7 +12,7 @@ from core.services.report.report_context_filters import (
 )
 from core.services.scheduler.schedule_plan_query_service import SchedulePlanQueryService
 from data.repositories.schedule_plan_query_repo import SchedulePlanQueryRepository
-from tests.reports_workbench_backlink_helpers import _client, _xlsx_text
+from tests.web_pages.reports_workbench_backlink_helpers import _client, _xlsx_text
 
 
 def test_downtime_batch_filter_keeps_only_real_schedule_overlap() -> None:

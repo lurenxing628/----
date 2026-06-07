@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from tests.reports_workbench_backlink_helpers import _client
+from tests.web_pages.reports_workbench_backlink_helpers import _client
 
 
 def test_scheduler_navigation_fallback_drops_unknown_plan_role_from_links() -> None:

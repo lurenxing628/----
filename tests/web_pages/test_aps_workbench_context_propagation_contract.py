@@ -5,7 +5,7 @@ import os
 from typing import Dict, List
 from urllib.parse import parse_qs, urlparse
 
-from tests.reports_workbench_backlink_helpers import (
+from tests.web_pages.reports_workbench_backlink_helpers import (
     INTERNAL_VISIBLE_TOKENS,
     _assert_public_output_boundaries,
     _client,

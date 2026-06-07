@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 
 from core.infrastructure.database import get_connection
 from core.services.scheduler.schedule_plan_query_service import ROLE_ADOPTED, SchedulePlanQueryService
-from tests.reports_workbench_backlink_helpers import (
+from tests.web_pages.reports_workbench_backlink_helpers import (
     _client,
     _html_for,
     _parser_for,

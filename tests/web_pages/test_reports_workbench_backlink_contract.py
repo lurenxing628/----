@@ -7,7 +7,7 @@ from typing import Dict, List, Tuple
 from urllib.parse import urlparse
 
 from core.services.report.downtime_impact import compute_downtime_impact
-from tests.reports_workbench_backlink_helpers import (
+from tests.web_pages.reports_workbench_backlink_helpers import (
     _assert_date_from_to,
     _assert_export_headers_hide_internal_tokens,
     _assert_public_output_boundaries,

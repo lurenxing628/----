@@ -633,10 +633,10 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
     assert "tests/test_launcher_observability.py" in module.STARTUP_REGRESSION_ARGS
     for high_value_path in (
         "tests/scheduler_analysis/test_scheduler_analysis_observability.py",
-        "tests/regression_system_history_route_contract.py",
+        "tests/web_pages/test_system_history_route_contract.py",
         "tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py",
         "tests/schedule/summary/test_schedule_summary_input_fallback_contract.py",
-        "tests/regression_error_boundary_contract.py",
+        "tests/web_pages/test_error_boundary_contract.py",
         "tests/schedule/route_view/test_route_version_normalizers_contract.py",
         "tests/regression_gantt_page_version_default_latest.py",
         "tests/regression_gantt_default_version_span.py",
@@ -644,8 +644,8 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
         "tests/regression_gantt_adjustment_validate_simulate.py",
         "tests/regression_gantt_draft_save_and_preview.py",
         "tests/regression_gantt_scenario_publish.py",
-        "tests/regression_scenario_preview_secondary_outputs.py",
-        "tests/regression_reports_page_version_default_latest.py",
+        "tests/web_pages/test_scenario_preview_secondary_outputs.py",
+        "tests/web_pages/test_reports_page_version_default_latest.py",
         "tests/regression_gantt_degradation_surface.py",
         "tests/regression_gantt_frontend_error_boundary.py",
         "tests/schedule/route_view/test_scheduler_result_navigation_contract.py",
@@ -677,8 +677,8 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
         "tests/excel_data_io/test_scheduler_excel_batches_preview_baseline_precision.py",
         "tests/test_check_full_test_debt.py",
         "tests/test_full_test_debt_registry_contract.py",
-        "tests/regression_request_services_contract.py",
-        "tests/regression_factory_request_lifecycle_observability.py",
+        "tests/web_pages/test_request_services_contract.py",
+        "tests/web_pages/test_factory_request_lifecycle_observability.py",
         "tests/calendar_maintenance/test_maintenance_window_mutex.py",
         "tests/migration_db/test_database_high_version_failfast.py",
         "tests/algorithm/test_optimizer_outcome_type_contract.py",
@@ -703,11 +703,11 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
         "tests/test_sync_debt_ledger.py",
         "tests/schedule/route_view/test_scheduler_batches_page_viewmodel.py",
         "tests/config/test_config_manual_markdown.py",
-        "tests/regression_frontend_ui_language_polish.py",
-        "tests/regression_manual_entry_scope.py",
-        "tests/regression_page_manual_registry.py",
+        "tests/web_pages/test_frontend_ui_language_polish.py",
+        "tests/web_pages/test_manual_entry_scope.py",
+        "tests/web_pages/test_page_manual_registry.py",
         "tests/excel_data_io/test_excel_template_contract.py",
-        "tests/regression_reports_export_version_default_latest.py",
+        "tests/web_pages/test_reports_export_version_default_latest.py",
     ):
         assert lower_frequency_path not in module.REQUIRED_TEST_ARGS
 
@@ -1218,7 +1218,7 @@ def test_main_writes_quality_gate_manifest_with_git_and_collection_proof(monkeyp
                 [
                     "tests/test_run_quality_gate.py::test_main_runs_guard_preflight_before_static_and_startup_checks",
                     "tests/test_sp05_path_topology_contract.py::test_scheduler_route_topology",
-                    "tests/regression_system_history_route_contract.py::test_system_history_route_uses_request_services",
+                    "tests/web_pages/test_system_history_route_contract.py::test_system_history_route_uses_request_services",
                 ]
             )
         return ""
@@ -1297,7 +1297,7 @@ def test_main_writes_quality_gate_manifest_with_git_and_collection_proof(monkeyp
     regression_entry = next(
         item
         for item in manifest["collection_proof"]["key_tests"]
-        if item["path"] == "tests/regression_system_history_route_contract.py"
+        if item["path"] == "tests/web_pages/test_system_history_route_contract.py"
     )
     assert regression_entry["execution_mode"] == "default_collect"
 
@@ -1358,7 +1358,7 @@ def test_guard_collect_only_keeps_analysis_and_history_in_default_collect() -> N
 
     output = result.stdout
     assert "tests/scheduler_analysis/test_scheduler_analysis_observability.py::test_scheduler_analysis_observability" in output
-    assert "tests/regression_system_history_route_contract.py::test_system_history_route_uses_request_services" in output
+    assert "tests/web_pages/test_system_history_route_contract.py::test_system_history_route_uses_request_services" in output
     assert (
         "tests/algorithm/test_auto_assign_persist_truthy_variants.py::"
         "test_auto_assign_persist_truthy_variant_is_normalized_before_persistence"

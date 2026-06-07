@@ -17,7 +17,7 @@ REGISTRY_SPLIT_FILES = {
 REPORT_CHAIN_SCOPES = {
     "web/routes/reports*.py",
     "core/services/report/**/*.py",
-    "tests/reports_workbench_backlink_helpers.py",
+    "tests/web_pages/reports_workbench_backlink_helpers.py",
 }
 
 GEOMETRY_SPLIT_SCOPES = {
@@ -31,8 +31,8 @@ GEOMETRY_SPLIT_SCOPES = {
 
 LOW_FREQUENCY_SECTION_3_TESTS = {
     "tests/config/test_config_manual_markdown.py",
-    "tests/regression_frontend_ui_language_polish.py",
-    "tests/regression_page_manual_registry.py",
+    "tests/web_pages/test_frontend_ui_language_polish.py",
+    "tests/web_pages/test_page_manual_registry.py",
 }
 
 
@@ -84,9 +84,9 @@ def test_workbench_flow_regression_is_required_and_grouped() -> None:
     from tools import quality_gate_shared
 
     test_paths = {
-        "tests/regression_aps_workbench_context_propagation_contract.py",
-        "tests/regression_dashboard_workbench_contract.py",
-        "tests/regression_dashboard_overdue_count_tolerance.py",
+        "tests/web_pages/test_aps_workbench_context_propagation_contract.py",
+        "tests/web_pages/test_dashboard_workbench_contract.py",
+        "tests/web_pages/test_dashboard_overdue_count_tolerance.py",
         "tests/operation_execution/test_execution_review_identity_guard.py",
         "tests/schedule/route_view/test_scheduler_navigation_unknown_plan_role_contract.py",
         "tests/regression_gantt_task_detail_panel_contract.py",

@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 import pytest
 
 from core.infrastructure.database import get_connection
-from tests.reports_workbench_backlink_helpers import (
+from tests.web_pages.reports_workbench_backlink_helpers import (
     _assert_public_output_boundaries,
     _client,
     _href_with_text_and_fragment,

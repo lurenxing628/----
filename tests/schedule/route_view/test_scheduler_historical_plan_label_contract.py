@@ -8,7 +8,7 @@ import re
 from urllib.parse import unquote
 
 from core.services.scheduler.schedule_plan_option_display import public_plan_role_options
-from tests.reports_workbench_backlink_helpers import _client, _html_for, _xlsx_sheet_rows
+from tests.web_pages.reports_workbench_backlink_helpers import _client, _html_for, _xlsx_sheet_rows
 from web.viewmodels.scheduler_reports_workbench import build_report_context
 
 

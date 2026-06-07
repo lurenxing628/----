@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 
-from tests.reports_workbench_backlink_helpers import (
+from tests.web_pages.reports_workbench_backlink_helpers import (
     REPO_ROOT,
     _client,
     _href_with_text,
