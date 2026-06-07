@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import importlib
 import importlib.util
 import json
 import os
 import sqlite3
 import sys
-import tempfile
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+SCHEMA_PATH = REPO_ROOT / "schema.sql"
 
 
 def _load_gantt_dom_helpers(repo_root: str):
@@ -26,19 +30,6 @@ def _find_repo_root() -> str:
     if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
         return repo_root
     raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def _setup_runtime() -> str:
-    tmpdir = tempfile.mkdtemp(prefix="aps_reg_gantt_url_")
-    os.environ["APS_ENV"] = "development"
-    os.environ["APS_DB_PATH"] = os.path.join(tmpdir, "aps_test.db")
-    os.environ["APS_LOG_DIR"] = os.path.join(tmpdir, "logs")
-    os.environ["APS_BACKUP_DIR"] = os.path.join(tmpdir, "backups")
-    os.environ["APS_EXCEL_TEMPLATE_DIR"] = os.path.join(tmpdir, "templates_excel")
-    os.makedirs(os.environ["APS_LOG_DIR"], exist_ok=True)
-    os.makedirs(os.environ["APS_BACKUP_DIR"], exist_ok=True)
-    os.makedirs(os.environ["APS_EXCEL_TEMPLATE_DIR"], exist_ok=True)
-    return tmpdir
 
 
 def _assert_true(cond: bool, msg: str) -> None:
@@ -238,16 +229,29 @@ process.stdout.write(JSON.stringify({{ fromNewUrl, persisted, scopeLinks, operat
     _assert_true(result["fromDataState"]["zoomLevel"] == "five-minute", "无 URL 参数时 state zoom 被控件默认值覆盖")
 
 
-def main() -> None:
-    _setup_runtime()
-    repo_root = _find_repo_root()
+def test_gantt_url_persistence_contract(tmp_path, monkeypatch) -> None:
+    test_db = tmp_path / "aps_test.db"
+    test_logs = tmp_path / "logs"
+    test_backups = tmp_path / "backups"
+    test_templates = tmp_path / "templates_excel"
+    test_logs.mkdir(parents=True, exist_ok=True)
+    test_backups.mkdir(parents=True, exist_ok=True)
+    test_templates.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setenv("APS_ENV", "development")
+    monkeypatch.setenv("APS_DB_PATH", str(test_db))
+    monkeypatch.setenv("APS_LOG_DIR", str(test_logs))
+    monkeypatch.setenv("APS_BACKUP_DIR", str(test_backups))
+    monkeypatch.setenv("APS_EXCEL_TEMPLATE_DIR", str(test_templates))
+
+    repo_root = str(REPO_ROOT)
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
 
     from core.infrastructure.database import ensure_schema
 
-    ensure_schema(os.environ["APS_DB_PATH"], logger=None, schema_path=os.path.join(repo_root, "schema.sql"))
-    with sqlite3.connect(os.environ["APS_DB_PATH"]) as conn:
+    ensure_schema(str(test_db), logger=None, schema_path=str(SCHEMA_PATH))
+    with sqlite3.connect(str(test_db)) as conn:
         conn.execute(
             """
             INSERT INTO ScheduleHistory (version, strategy, batch_count, op_count, result_status, result_summary, created_by)
@@ -257,9 +261,8 @@ def main() -> None:
         )
         conn.commit()
 
-    from app import create_app
-
-    app = create_app()
+    sys.modules.pop("app", None)
+    app = importlib.import_module("app").create_app()
     client = app.test_client()
     # 页面 HTML 只校验前端契约（URL 参数回显由 JS 实现）
     resp = client.get("/scheduler/gantt?view=machine&week_start=2026-03-02&version=1")
@@ -299,9 +302,3 @@ def main() -> None:
     _assert_true('ui.depsMode === "critical"' in src, "depsMode 默认值清理逻辑缺失")
 
     _assert_js_url_contract(repo_root)
-
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()

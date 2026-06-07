@@ -20,8 +20,8 @@ from tools.test_registry import iter_startup_regressions
         "tests/test_architecture_fitness.py::test_repository_bundle_consumption_does_not_drift",
         "tests/test_win7_launcher_runtime_paths.py::test_runtime_path",
         "tests/regression_runtime_stop_cli.py::regression_runtime_stop_cli",
-        "tests/regression_check_manual_layout_runtime_resolution.py::regression_check_manual_layout_runtime_resolution",
-        "tests/regression_validate_dist_runtime_identity.py::regression_validate_dist_runtime_identity",
+        "tests/regression_check_manual_layout_runtime_resolution.py::test_check_manual_layout_runtime_resolution",
+        "tests/regression_validate_dist_runtime_identity.py::test_validate_dist_runtime_identity_contract",
     ],
 )
 def test_classify_nodeid_keeps_risky_tests_serial(nodeid: str) -> None:

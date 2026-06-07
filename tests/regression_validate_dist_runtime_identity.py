@@ -10,33 +10,17 @@
 
 from __future__ import annotations
 
-import importlib
 import os
-import sys
-import tempfile
 import threading
 import time
 from pathlib import Path
 
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
+import validate_dist_exe as mod
 
 
 def _assert(condition: bool, message: str) -> None:
     if not condition:
         raise RuntimeError(message)
-
-
-def _load_module(repo_root: str):
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-    sys.modules.pop("validate_dist_exe", None)
-    return importlib.import_module("validate_dist_exe")
 
 
 class _DummyProc:
@@ -58,11 +42,9 @@ def _write_contract(log_dir: Path, host: str, port: int, db_path: str) -> None:
     _write_text(log_dir / "aps_db_path.txt", db_path + "\n")
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    mod = _load_module(repo_root)
-
-    runtime_dir = Path(tempfile.mkdtemp(prefix="aps_validate_identity_contract_"))
+def test_validate_dist_runtime_identity_contract(tmp_path: Path) -> None:
+    runtime_dir = tmp_path / "contract"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
     log_dir = runtime_dir / "logs"
     db_path = runtime_dir / "aps.db"
     db_path.write_text("", encoding="utf-8")
@@ -101,7 +83,8 @@ def main() -> None:
 
     _write_contract(log_dir, "127.0.0.1", 5725, str(db_path))
 
-    delayed_runtime_dir = Path(tempfile.mkdtemp(prefix="aps_validate_identity_wait_"))
+    delayed_runtime_dir = tmp_path / "wait"
+    delayed_runtime_dir.mkdir(parents=True, exist_ok=True)
     delayed_log_dir = delayed_runtime_dir / "logs"
     delayed_db_path = delayed_runtime_dir / "delayed.db"
     delayed_db_path.write_text("", encoding="utf-8")
@@ -133,7 +116,7 @@ def main() -> None:
         _assert("port 文件无效" in str(e), "等待阶段的解析失败信息不正确")
 
     try:
-        mod._wait_for_runtime_contract(str(Path(tempfile.mkdtemp(prefix="aps_validate_identity_exit_")) / "logs"), _DummyProc(exit_code=9), timeout_s=0.1)
+        mod._wait_for_runtime_contract(str(tmp_path / "exit" / "logs"), _DummyProc(exit_code=9), timeout_s=0.1)
         raise RuntimeError("进程提前退出时应拒绝等待结果")
     except RuntimeError as e:
         _assert("host/port/db 契约文件" in str(e), "进程提前退出时错误信息不正确")
@@ -150,9 +133,3 @@ def main() -> None:
         raise RuntimeError("进程提前退出时应被拒绝")
     except RuntimeError as e:
         _assert("页面检查通过后进程已退出" in str(e), "进程退出错误信息不正确")
-
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()

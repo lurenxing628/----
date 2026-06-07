@@ -2,14 +2,10 @@
 
 from __future__ import annotations
 
-import importlib
 import json
 import os
 import re
 import subprocess
-import sys
-import tempfile
-from pathlib import Path
 from typing import Any, Dict, List, Set, Tuple
 
 from flask import url_for
@@ -351,23 +347,6 @@ process.stdout.write(JSON.stringify({
         raise RuntimeError(f"node 输出解析失败：{e} stdout={p.stdout[:500]!r}")
 
 
-def _prepare_env(tmpdir: str) -> None:
-    os.environ["APS_ENV"] = "development"
-    os.environ["APS_DB_PATH"] = str(Path(tmpdir) / "aps_test.db")
-    os.environ["APS_LOG_DIR"] = str(Path(tmpdir) / "logs")
-    os.environ["APS_BACKUP_DIR"] = str(Path(tmpdir) / "backups")
-    os.environ["APS_EXCEL_TEMPLATE_DIR"] = str(Path(tmpdir) / "templates_excel")
-    os.environ["SECRET_KEY"] = "aps-config-manual-markdown"
-
-
-def _load_app(repo_root: str):
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-    sys.modules.pop("app", None)
-    app_mod = importlib.import_module("app")
-    return app_mod.create_app()
-
-
 def _mode_headers(ui_mode: str) -> Dict[str, str]:
     return {"Cookie": f"aps_ui_mode={ui_mode}"}
 
@@ -608,7 +587,7 @@ def _assert_scheduler_manual_required_content(markdown_text: str, label: str) ->
     _assert_history_section_does_not_claim_export_or_restore(markdown_text, label)
 
 
-def main() -> None:
+def test_config_manual_markdown_contract(app_client) -> None:
     repo_root = _find_repo_root()
     js_path = os.path.join(repo_root, "static", "js", "config_manual.js")
     tpl_path = os.path.join(repo_root, "templates", "scheduler", "config_manual.html")
@@ -704,10 +683,8 @@ def main() -> None:
     assert not missing_hashes, f"说明书存在未命中的内部锚点：{missing_hashes[:10]}"
 
     # 7) 行为契约：真实请求验证双模式、JSON 数据块与 noscript 回退
-    tmpdir = tempfile.mkdtemp(prefix="aps_regression_config_manual_")
-    _prepare_env(tmpdir)
-    app = _load_app(repo_root)
-    client = app.test_client()
+    app = app_client.application
+    client = app_client
     material_src = _build_url(app, "material.materials_page") + "?"
 
     for ui_mode in ("v1", "v2"):
@@ -761,7 +738,3 @@ def main() -> None:
         assert first_section_title and f"### {first_section_title}" in page_html, f"{ui_mode} 模式 noscript 缺少当前页关键说明 fallback"
 
     print("OK")
-
-
-if __name__ == "__main__":
-    main()

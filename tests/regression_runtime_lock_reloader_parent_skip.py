@@ -14,10 +14,10 @@ import importlib
 import logging
 import os
 import sys
-import tempfile
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Dict, List, Optional, cast
 
+import pytest
 from flask import Flask
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -36,7 +36,7 @@ def _reset_aps_logger_handlers() -> None:
 
 
 
-def _prepare_import_env(tmpdir: str) -> dict[str, str]:
+def _prepare_import_env(tmpdir: str, monkeypatch) -> Dict[str, str]:
     db_path = str(Path(tmpdir) / "aps.db")
     log_dir = str(Path(tmpdir) / "logs")
     backup_dir = str(Path(tmpdir) / "backups")
@@ -45,15 +45,21 @@ def _prepare_import_env(tmpdir: str) -> dict[str, str]:
     Path(backup_dir).mkdir(parents=True, exist_ok=True)
     Path(template_dir).mkdir(parents=True, exist_ok=True)
 
-    os.environ["APS_ENV"] = "development"
-    os.environ["APS_DB_PATH"] = db_path
-    os.environ["APS_LOG_DIR"] = log_dir
-    os.environ["APS_BACKUP_DIR"] = backup_dir
-    os.environ["APS_EXCEL_TEMPLATE_DIR"] = template_dir
-    os.environ["SECRET_KEY"] = "aps-runtime-lock-reloader-test-key"
-    os.environ.pop("WERKZEUG_RUN_MAIN", None)
-    os.environ.pop("APS_HOST", None)
-    os.environ.pop("APS_PORT", None)
+    monkeypatch.setenv("APS_ENV", "development")
+    monkeypatch.setenv("APS_DB_PATH", db_path)
+    monkeypatch.setenv("APS_LOG_DIR", log_dir)
+    monkeypatch.setenv("APS_BACKUP_DIR", backup_dir)
+    monkeypatch.setenv("APS_EXCEL_TEMPLATE_DIR", template_dir)
+    monkeypatch.setenv("SECRET_KEY", "aps-runtime-lock-reloader-test-key")
+    monkeypatch.delenv("WERKZEUG_RUN_MAIN", raising=False)
+    # entrypoint.py:250-251 会把解析后的 host/port 反写真 os.environ（production 副作用）。
+    # 对本就不存在的变量直接 delenv 不会在 monkeypatch 留下还原记录，production 后续写入的值
+    # 会泄漏到同进程后续用例。故先 setenv 建立还原记录，再 delenv 回到「起点不存在」保真态，
+    # teardown 即可删除 production 写入的值。
+    monkeypatch.setenv("APS_HOST", "")
+    monkeypatch.delenv("APS_HOST", raising=False)
+    monkeypatch.setenv("APS_PORT", "")
+    monkeypatch.delenv("APS_PORT", raising=False)
     return {
         "DATABASE_PATH": db_path,
         "LOG_DIR": log_dir,
@@ -63,16 +69,16 @@ def _prepare_import_env(tmpdir: str) -> dict[str, str]:
 
 
 
-def _load_entry_module(module_name: str):
+def _load_entry_module(module_name: str, monkeypatch):
     repo_root = str(REPO_ROOT)
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
-    sys.modules.pop(module_name, None)
+    monkeypatch.delitem(sys.modules, module_name, raising=False)
     return importlib.import_module(module_name)
 
 
 
-def _new_state() -> dict[str, list]:
+def _new_state() -> Dict[str, List]:
     return {
         "atexit": [],
         "clear_launch_error": [],
@@ -87,7 +93,7 @@ def _new_state() -> dict[str, list]:
 
 
 class _FakeLogger:
-    def __init__(self, state: dict[str, list]) -> None:
+    def __init__(self, state: Dict[str, List]) -> None:
         self._state = state
 
     def info(self, message: str) -> None:
@@ -101,7 +107,7 @@ class _FakeLogger:
 
 
 class _FakeApp:
-    def __init__(self, *, debug: bool, ui_mode: str, paths: dict[str, str], state: dict[str, list]) -> None:
+    def __init__(self, *, debug: bool, ui_mode: str, paths: Dict[str, str], state: Dict[str, List]) -> None:
         self.config = {
             "DEBUG": bool(debug),
             "APP_UI_MODE": str(ui_mode),
@@ -125,7 +131,7 @@ class _FakeApp:
 
 
 
-def _make_deps(fake_app: _FakeApp, state: dict[str, list]):
+def _make_deps(fake_app: _FakeApp, state: Dict[str, List]):
     from web.bootstrap.entrypoint import EntryPointDeps
 
     def _fake_atexit_register(func, *args, **kwargs):
@@ -202,31 +208,43 @@ def _make_deps(fake_app: _FakeApp, state: dict[str, list]):
 
 
 
-def _execute_case(module_name: str, *, ui_mode: str, debug: bool, run_main: str | None):
-    tmpdir = tempfile.mkdtemp(prefix=f"aps_regression_runtime_lock_{module_name}_")
-    paths = _prepare_import_env(tmpdir)
-    mod = _load_entry_module(module_name)
+def _execute_case(
+    module_name: str,
+    *,
+    ui_mode: str,
+    debug: bool,
+    run_main: Optional[str],
+    tmp_path,
+    monkeypatch,
+):
+    case_label = run_main if run_main is not None else "none"
+    case_dir = tmp_path / module_name / case_label
+    case_dir.mkdir(parents=True, exist_ok=True)
+    tmpdir = str(case_dir)
+    paths = _prepare_import_env(tmpdir, monkeypatch)
+    mod = _load_entry_module(module_name, monkeypatch)
     state = _new_state()
     fake_app = _FakeApp(debug=debug, ui_mode=ui_mode, paths=paths, state=state)
     deps = _make_deps(fake_app, state)
 
     if run_main is None:
-        os.environ.pop("WERKZEUG_RUN_MAIN", None)
+        monkeypatch.delenv("WERKZEUG_RUN_MAIN", raising=False)
     else:
-        os.environ["WERKZEUG_RUN_MAIN"] = str(run_main)
+        monkeypatch.setenv("WERKZEUG_RUN_MAIN", str(run_main))
 
     try:
         rc = mod.main([], deps=deps)
     finally:
         _reset_aps_logger_handlers()
         logging.shutdown()
-        sys.modules.pop(module_name, None)
     return rc, state, fake_app
 
 
 
-def _assert_parent_case(module_name: str, ui_mode: str) -> None:
-    rc, state, fake_app = _execute_case(module_name, ui_mode=ui_mode, debug=True, run_main=None)
+def _assert_parent_case(module_name: str, ui_mode: str, tmp_path, monkeypatch) -> None:
+    rc, state, fake_app = _execute_case(
+        module_name, ui_mode=ui_mode, debug=True, run_main=None, tmp_path=tmp_path, monkeypatch=monkeypatch
+    )
     if rc != 0:
         raise RuntimeError(f"{module_name} debug 父进程返回非 0：{rc}")
     if state["acquire_runtime_lock"]:
@@ -248,8 +266,10 @@ def _assert_parent_case(module_name: str, ui_mode: str) -> None:
 
 
 
-def _assert_child_case(module_name: str, ui_mode: str) -> None:
-    rc, state, fake_app = _execute_case(module_name, ui_mode=ui_mode, debug=True, run_main="true")
+def _assert_child_case(module_name: str, ui_mode: str, tmp_path, monkeypatch) -> None:
+    rc, state, fake_app = _execute_case(
+        module_name, ui_mode=ui_mode, debug=True, run_main="true", tmp_path=tmp_path, monkeypatch=monkeypatch
+    )
     if rc != 0:
         raise RuntimeError(f"{module_name} debug 子进程返回非 0：{rc}")
     if len(state["acquire_runtime_lock"]) != 1:
@@ -282,8 +302,10 @@ def _assert_child_case(module_name: str, ui_mode: str) -> None:
 
 
 
-def _assert_production_case(module_name: str, ui_mode: str) -> None:
-    rc, state, fake_app = _execute_case(module_name, ui_mode=ui_mode, debug=False, run_main=None)
+def _assert_production_case(module_name: str, ui_mode: str, tmp_path, monkeypatch) -> None:
+    rc, state, fake_app = _execute_case(
+        module_name, ui_mode=ui_mode, debug=False, run_main=None, tmp_path=tmp_path, monkeypatch=monkeypatch
+    )
     if rc != 0:
         raise RuntimeError(f"{module_name} 非 debug 启动返回非 0：{rc}")
     if len(state["acquire_runtime_lock"]) != 1:
@@ -309,16 +331,11 @@ def _assert_production_case(module_name: str, ui_mode: str) -> None:
 
 
 
-def main() -> None:
-    _assert_parent_case("app", "default")
-    _assert_child_case("app", "default")
-    _assert_production_case("app", "default")
-
-    _assert_parent_case("app_new_ui", "new_ui")
-    _assert_child_case("app_new_ui", "new_ui")
-    _assert_production_case("app_new_ui", "new_ui")
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()
+@pytest.mark.parametrize(
+    ("module_name", "ui_mode"),
+    [("app", "default"), ("app_new_ui", "new_ui")],
+)
+def test_runtime_lock_reloader_parent_skip(module_name, ui_mode, tmp_path, monkeypatch) -> None:
+    _assert_parent_case(module_name, ui_mode, tmp_path, monkeypatch)
+    _assert_child_case(module_name, ui_mode, tmp_path, monkeypatch)
+    _assert_production_case(module_name, ui_mode, tmp_path, monkeypatch)

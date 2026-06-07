@@ -3,29 +3,9 @@
 from __future__ import annotations
 
 import json
-import os
-import sys
-import tempfile
 from typing import Any, Dict, Tuple
 
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
-
-
-def setup_runtime(repo_root: str) -> None:
-    tmpdir = tempfile.mkdtemp(prefix="aps_reg_analysis_observability_")
-    os.environ["APS_ENV"] = "development"
-    os.environ["APS_DB_PATH"] = os.path.join(tmpdir, "aps.db")
-    os.environ["APS_LOG_DIR"] = os.path.join(tmpdir, "logs")
-    os.environ["APS_BACKUP_DIR"] = os.path.join(tmpdir, "backups")
-    os.environ["APS_EXCEL_TEMPLATE_DIR"] = os.path.join(tmpdir, "templates_excel")
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+from flask import render_template
 
 
 def make_metrics(*, overdue_count: int, invalid_due_count: int = 0, unscheduled_batch_count: int = 0) -> Dict[str, Any]:
@@ -262,16 +242,10 @@ def card_by_key(ctx: Dict[str, Any], key: str) -> Dict[str, Any]:
     raise AssertionError(f"未找到卡片：{key}")
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    setup_runtime(repo_root)
-
-    from flask import render_template
-
-    from app import create_app
+def test_scheduler_analysis_observability(app_client) -> None:
     from web.viewmodels.scheduler_analysis_vm import build_analysis_context
 
-    app = create_app()
+    app = app_client.application
 
     old_summary = make_old_summary()
     old_selected, old_hist = build_case_inputs(version=1, summary_obj=old_summary)
@@ -409,9 +383,3 @@ def main() -> None:
     assert "去排产历史查看" not in private_warning_html, "只有内部诊断时不应提供无效历史跳转"
     assert "/system/history?version=4" not in private_warning_html, "只有内部诊断时不应生成历史跳转"
     assert "sqlite" not in private_warning_html, "页面不应泄露内部错误细节"
-
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()

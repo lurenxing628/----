@@ -13,20 +13,11 @@ from __future__ import annotations
 
 import importlib
 import json
-import os
 import sys
-import tempfile
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-
-
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
+from typing import Optional
 
 
 def _assert(condition: bool, message: str) -> None:
@@ -70,8 +61,8 @@ class _HealthHandler(BaseHTTPRequestHandler):
 class _HealthServer:
     def __init__(self, payload: dict) -> None:
         self.payload = dict(payload)
-        self.httpd: HTTPServer | None = None
-        self.thread: threading.Thread | None = None
+        self.httpd: Optional[HTTPServer] = None
+        self.thread: Optional[threading.Thread] = None
         self.port = 0
 
     def __enter__(self):
@@ -90,12 +81,11 @@ class _HealthServer:
             self.thread.join(timeout=2)
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    mod = _load_module(repo_root)
+def test_check_manual_layout_runtime_resolution(repo_root, tmp_path) -> None:
+    mod = _load_module(str(repo_root))
 
     with _HealthServer({"app": "aps", "status": "ok", "contract_version": 1}) as server:
-        runtime_dir = Path(tempfile.mkdtemp(prefix="aps_manual_layout_runtime_"))
+        runtime_dir = tmp_path / "runtime_files"
         _write_runtime_files(runtime_dir, "127.0.0.1", server.port)
 
         base_url, source = mod._resolve_base_url(None, runtime_dir=runtime_dir)
@@ -103,11 +93,11 @@ def main() -> None:
         _assert(source == "runtime_files", "运行时文件解析的 source 不正确")
         _assert(mod._server_is_reachable(base_url) is True, "健康 APS 实例应可达")
 
-    explicit_url, explicit_source = mod._resolve_base_url("http://127.0.0.1:5705/", runtime_dir=Path(tempfile.mkdtemp()))
+    explicit_url, explicit_source = mod._resolve_base_url("http://127.0.0.1:5705/", runtime_dir=tmp_path / "explicit")
     _assert(explicit_url == "http://127.0.0.1:5705", "显式 base_url 未正确规范化")
     _assert(explicit_source == "explicit", "显式 base_url 应优先返回 explicit source")
 
-    fallback_url, fallback_source = mod._resolve_base_url(None, runtime_dir=Path(tempfile.mkdtemp(prefix="aps_manual_layout_default_")))
+    fallback_url, fallback_source = mod._resolve_base_url(None, runtime_dir=tmp_path / "fallback")
     _assert(fallback_url == mod._DEFAULT_BASE_URL, "缺少运行时文件时应回退到默认地址")
     _assert(fallback_source == "default", "缺少运行时文件时 source 应为 default")
 
@@ -122,9 +112,3 @@ def main() -> None:
             mod._server_is_reachable(f"http://127.0.0.1:{other_server.port}") is False,
             "非 APS 健康响应不应被接受",
         )
-
-    print("OK")
-
-
-if __name__ == "__main__":
-    main()

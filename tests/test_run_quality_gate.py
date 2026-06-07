@@ -1364,7 +1364,7 @@ def test_guard_collect_only_keeps_analysis_and_history_in_default_collect() -> N
     )
 
     output = result.stdout
-    assert "tests/regression_scheduler_analysis_observability.py::regression_scheduler_analysis_observability" in output
+    assert "tests/regression_scheduler_analysis_observability.py::test_scheduler_analysis_observability" in output
     assert "tests/regression_system_history_route_contract.py::test_system_history_route_uses_request_services" in output
     assert (
         "tests/regression_auto_assign_persist_truthy_variants.py::"
