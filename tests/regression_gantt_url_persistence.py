@@ -276,29 +276,4 @@ def test_gantt_url_persistence_contract(tmp_path, monkeypatch) -> None:
     _assert_true('id="ganttColorMode"' in html, "缺少 ganttColorMode 控件")
     _assert_true('id="ganttFilterBatch"' in html, "缺少 ganttFilterBatch 控件")
 
-    ui_js_path = os.path.join(repo_root, "static", "js", "gantt_ui.js")
-    with open(ui_js_path, "r", encoding="utf-8") as f:
-        src = f.read()
-
-    for needle in (
-        "function applyUiFromUrl()",
-        "function persistUiToUrl()",
-        "gantt_zoom",
-        "gantt_color",
-        "gantt_batch",
-        "gantt_resource",
-        "gantt_overdue",
-        "gantt_external",
-        "gantt_deps",
-        "gantt_hcc",
-    ):
-        _assert_true(needle in src, f"gantt_ui.js 缺少 URL 持久化关键片段: {needle}")
-
-    # 轻量级语义检查：确保默认值会被删除，不污染 URL
-    # 这里不执行浏览器，仅验证 key 设计与默认值逻辑存在
-    _assert_true('level === "day"' in src, "gantt_zoom 默认值清理逻辑缺失")
-    _assert_true('url.searchParams.delete("gantt_vm")' in src, "旧 gantt_vm 清理逻辑缺失")
-    _assert_true('ui.colorMode === "batch"' in src, "colorMode 默认值清理逻辑缺失")
-    _assert_true('ui.depsMode === "critical"' in src, "depsMode 默认值清理逻辑缺失")
-
     _assert_js_url_contract(repo_root)

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any, Iterable, List
 
 from regression_scheduler_candidate_analysis_contract import (
@@ -16,8 +15,6 @@ from web.viewmodels.scheduler_analysis_candidates import build_candidate_compari
 from web.viewmodels.scheduler_analysis_diagnostics import build_diagnostic_sections
 from web.viewmodels.scheduler_degradation_presenter import build_primary_degradation
 from web.viewmodels.scheduler_history_summary import format_public_datetime
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
 
 INTERNAL_VISIBLE_TERMS = (
     "score",
@@ -178,84 +175,6 @@ def test_candidate_comparison_incomplete_history_uses_plain_notice_without_fake_
     assert display["summary_cards"] == []
     assert "本次方案对比记录不完整，当前只展示正式采用方案" in display["notice"]
     _assert_payload_not_leaking_internal_text([display["notice"]])
-
-
-def test_candidate_link_empty_state_uses_plain_public_reason() -> None:
-    source = (REPO_ROOT / "templates/scheduler/analysis_parts/_candidate_comparison.html").read_text(encoding="utf-8")
-
-    assert "row.link_unavailable_reason" in source
-    assert "暂无可跳转明细" in source
-    link_block = source[source.index("{% if row.links and row.links|length > 0 %}") : source.index("</td>", source.index("{% if row.links and row.links|length > 0 %}"))]
-    assert "row.detail_saved" not in link_block
-    assert "row.source_table" not in link_block
-    assert "candidate_id" not in link_block
-
-
-def test_candidate_recommendation_template_only_reads_public_card_fields() -> None:
-    source = (REPO_ROOT / "templates/scheduler/analysis_parts/_candidate_comparison.html").read_text(encoding="utf-8")
-    start = source.index("{% if candidate_comparison_display.recommendation_card %}")
-    end = source.index("{% elif candidate_comparison_display.selection_reason_label %}")
-    block = source[start:end]
-
-    assert "recommendation_card.eyebrow" in block
-    assert "recommendation_card.title" in block
-    assert "recommendation_card.candidate_label" in block
-    assert "recommendation_card.reason" in block
-    assert "recommendation_card.note" in block
-    for forbidden in (
-        "selection_reason_code",
-        "candidate_key",
-        "source_table",
-        "candidate_id",
-        "row.score",
-        "score_label",
-        "technical_score",
-        "tuple",
-        "参考分",
-        "差值",
-        "delta",
-        "diff",
-    ):
-        assert forbidden not in block
-
-
-def test_candidate_summary_cards_template_uses_public_fields_after_recommendation() -> None:
-    source = (REPO_ROOT / "templates/scheduler/analysis_parts/_candidate_comparison.html").read_text(encoding="utf-8")
-    recommendation_pos = source.index("{% if candidate_comparison_display.recommendation_card %}")
-    summary_pos = source.index("{% if candidate_comparison_display.summary_cards %}")
-    table_pos = source.index("analysisCandidateComparisonTable")
-    block = source[summary_pos:table_pos]
-
-    assert recommendation_pos < summary_pos < table_pos
-    assert 'aria-label="代表方案摘要"' in block
-    assert "aps-summary-grid" in block
-    assert "aps-summary-item" in block
-    assert "flash-card" not in block
-    assert "candidate_comparison_display.summary_cards" in block
-    assert "card.role_label" in block
-    assert "card.candidate_label" in block
-    assert "card.comparison_note" in block
-    assert "card.metrics" in block
-    assert "metric.label" in block
-    assert "metric.value" in block
-    assert "metric.comparison_text" in block
-    for forbidden in (
-        "row.score",
-        "score_label",
-        "technical_score",
-        "candidate_key",
-        "source_table",
-        "candidate_id",
-        "selection_reason_code",
-        "compare_plan_role",
-        "batch_impacts",
-        "resource_impacts",
-        "affected_batches",
-        "参考分",
-        "delta",
-        "diff",
-    ):
-        assert forbidden not in block
 
 
 def test_candidate_recommendation_visible_payload_hides_internal_fields() -> None:

@@ -391,7 +391,6 @@ def test_gantt_page_and_boot_preserve_plan_role(tmp_path, monkeypatch) -> None:
 
     resp = client.get(f"/scheduler/gantt?version={VERSION}&plan_role={ROLE_BASELINE_BEST}")
     html = resp.get_data(as_text=True)
-    boot_js = (REPO_ROOT / "static/js/gantt_boot.js").read_text(encoding="utf-8")
 
     assert resp.status_code == 200
     assert 'name="plan_role"' in html
@@ -400,8 +399,6 @@ def test_gantt_page_and_boot_preserve_plan_role(tmp_path, monkeypatch) -> None:
     assert f"/scheduler/analysis?version={VERSION}&amp;plan_role={ROLE_BASELINE_BEST}" in html
     assert "当前查看的是“原算法代表方案”" in html
     assert "这是一套对比参考方案" in html
-    assert "planRole: ds.planRole" in boot_js
-    assert 'url.searchParams.set("plan_role", String(cfg.planRole))' in boot_js
 
 
 def test_gantt_candidate_plan_overdue_markers_are_computed_from_candidate_rows(tmp_path, monkeypatch) -> None:

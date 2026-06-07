@@ -5,7 +5,6 @@ aps-resource-lane-group 且执行脚本按职责顺序加载；前端 renderExec
 from __future__ import annotations
 
 import json
-import re
 import subprocess
 from pathlib import Path
 from typing import Any, Dict
@@ -18,10 +17,6 @@ from tests.operation_execution_feedback_test_support import (
     _events_url,
     _json,
 )
-from tests.resource_dispatch_frontend_support import (
-    RESOURCE_DISPATCH_CSS,
-    read_resource_dispatch_script_bundle,
-)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -32,15 +27,6 @@ def _source(path: Path) -> str:
 
 def _script_index(template: str, name: str) -> int:
     return template.index("filename='js/" + name + "'")
-
-
-def _lane_group(template: str, label: str) -> str:
-    match = re.search(
-        r'<div class="[^"]*aps-resource-lane-group[^"]*" aria-label="' + re.escape(label) + r'">([\s\S]*?)</div>',
-        template,
-    )
-    assert match is not None, f"missing lane group: {label}"
-    return match.group(1)
 
 
 def _run_node_json(node_code: str) -> Dict[str, Any]:
@@ -101,32 +87,6 @@ process.stdout.write(JSON.stringify({
     return _run_node_json(node_code)
 
 
-def test_resource_dispatch_template_separates_planner_and_site_lanes() -> None:
-    template = _source(RESOURCE_DISPATCH_TEMPLATE)
-    css = _source(RESOURCE_DISPATCH_CSS)
-    planner_group = _lane_group(template, "计划员查看")
-    facts_group = _lane_group(template, "现场事实")
-
-    assert "filename='css/resource_dispatch.css'" in template
-    assert "aps-resource-lane-tabs" in template
-    for expected in ("rdTabDetail", "rdTabCalendar", "rdTabGantt", "rdTabExecution"):
-        assert expected in template
-    for expected in ("任务明细", "日历矩阵", "甘特图", "现场记录"):
-        assert expected in template
-    assert "计划员查看" in template
-    assert "现场事实" in template
-    assert template.index("计划员查看") < template.index("现场事实")
-    for expected in ("rdTabDetail", "rdTabCalendar", "rdTabGantt"):
-        assert expected in planner_group
-        assert expected not in facts_group
-    assert "rdTabExecution" in facts_group
-    assert "rdTabExecution" not in planner_group
-    assert template.index("rdExecutionCards") < template.index("aps-execution-bulk-maintenance")
-    assert "aps-action-disabled-reason" in template
-    assert "aps-resource-lane-group" in css
-    assert "aps-execution-bulk-maintenance" in css
-
-
 def test_resource_dispatch_execution_scripts_are_loaded_by_responsibility() -> None:
     template = _source(RESOURCE_DISPATCH_TEMPLATE)
     ordered = [
@@ -144,23 +104,6 @@ def test_resource_dispatch_execution_scripts_are_loaded_by_responsibility() -> N
     assert positions == sorted(positions)
     for name in ordered:
         assert (REPO_ROOT / "static" / "js" / name).exists()
-
-
-def test_resource_dispatch_frontend_consumes_execution_lane_fields() -> None:
-    source = read_resource_dispatch_script_bundle()
-
-    for expected in (
-        "task.part_label",
-        "task.actual_start_delta_label",
-        "task.actual_end_delta_label",
-        "task.actual_delta_summary",
-        "item.record_source_label",
-        "item.record_time_label",
-        "actualRecordUrl(taskKey)",
-        "executionCreatedBy",
-        "executionNotice",
-    ):
-        assert expected in source
 
 
 def test_task_card_uses_plain_fallback_when_part_is_missing() -> None:

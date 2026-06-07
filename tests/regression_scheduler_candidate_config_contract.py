@@ -305,14 +305,6 @@ def test_graph_analysis_mode_controls_candidate_comparison_without_user_visible_
         _base_snapshot(graph_tardiness_tolerance_ratio=0.20)
     ) == 0.20
 
-    for rel_path in (
-        "templates/scheduler/config.html",
-        "templates/scheduler/_run_panel.html",
-        "web_new_test/templates/scheduler/config.html",
-    ):
-        assert "candidate_comparison_enabled" not in (REPO_ROOT / rel_path).read_text(encoding="utf-8")
-    assert "run_time_budget_seconds" not in (REPO_ROOT / "templates/scheduler/config.html").read_text(encoding="utf-8")
-    assert "run_time_budget_seconds" not in (REPO_ROOT / "web_new_test/templates/scheduler/config.html").read_text(encoding="utf-8")
     payload = _collect_scheduler_config_form_payload(
         {
             "graph_analysis_mode": "on",

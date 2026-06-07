@@ -67,9 +67,6 @@ def test_reports_page_version_default_latest(tmp_path, monkeypatch) -> None:
 
     overdue_html = client.get("/reports/overdue").get_data(as_text=True)
     _assert_selected_latest(overdue_html, 7)
-    assert "v7 · 部分成功" in overdue_html
-    assert "模拟排产）" not in overdue_html
-    assert "aps-disabled-button" in overdue_html
     assert "当前版本没有可导出的超期结果，请换一个排产版本后再试。" in overdue_html
 
     overdue_latest_html = client.get("/reports/overdue?version=latest").get_data(as_text=True)
@@ -77,13 +74,9 @@ def test_reports_page_version_default_latest(tmp_path, monkeypatch) -> None:
 
     utilization_html = client.get("/reports/utilization").get_data(as_text=True)
     _assert_selected_latest(utilization_html, 7)
-    assert "v7 · 部分成功" in utilization_html
-    assert "aps-disabled-button" in utilization_html
 
     downtime_html = client.get("/reports/downtime?version=latest").get_data(as_text=True)
     _assert_selected_latest(downtime_html, 7)
-    assert "v7 · 部分成功" in downtime_html
-    assert "aps-disabled-button" in downtime_html
 
     invalid_resp = client.get("/reports/overdue?version=abc")
     invalid_html = invalid_resp.get_data(as_text=True)

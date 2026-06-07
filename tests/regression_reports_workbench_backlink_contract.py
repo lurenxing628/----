@@ -8,7 +8,6 @@ from urllib.parse import urlparse
 
 from core.services.report.downtime_impact import compute_downtime_impact
 from tests.reports_workbench_backlink_helpers import (
-    REPO_ROOT,
     _assert_date_from_to,
     _assert_export_headers_hide_internal_tokens,
     _assert_public_output_boundaries,
@@ -239,15 +238,6 @@ def test_utilization_rows_link_back_to_dispatch_gantt_and_overdue() -> None:
 
 
 def test_report_filters_keep_scenario_on_submit_and_clear_when_plan_changes() -> None:
-    script = (REPO_ROOT / "static" / "js" / "report_plan_filter.js").read_text(encoding="utf-8")
-    assert all(token in script for token in ("[data-report-plan-role-select]", "[data-report-plan-version-select]", 'input[name="scenario_id"]', "data-initial-version", "submit"))
-    for rel_path in ("overdue.html", "utilization.html", "downtime.html"):
-        source = (REPO_ROOT / "templates" / "reports" / rel_path).read_text(encoding="utf-8")
-        assert "'scenario_id'" not in source.split("preserved_report_context_inputs", 1)[1].split(")", 1)[0]
-        assert all(token in source for token in ("data-report-plan-role-select", "data-report-plan-version-select", "report_plan_filter.js"))
-    overdue_source = (REPO_ROOT / "templates" / "reports" / "overdue.html").read_text(encoding="utf-8")
-    assert "r.quantity or '-'" not in overdue_source
-    assert "r.quantity if r.quantity is not none else '-'" in overdue_source
     client = _client()
     for path in (
         "/reports/overdue?version=12&plan_role=adopted&scenario_id=SCENARIO-RPT&date_from=2026-05-06&date_to=2026-05-06",

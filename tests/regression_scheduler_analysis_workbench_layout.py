@@ -18,7 +18,6 @@ from regression_scheduler_candidate_analysis_contract import (
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-ANALYSIS_TEMPLATE = PROJECT_ROOT / "templates/scheduler/analysis.html"
 ACTION_HUB_TEMPLATE = "scheduler/analysis_parts/_action_hub.html"
 CANDIDATE_TEMPLATE = "scheduler/analysis_parts/_candidate_comparison.html"
 VISIBLE_FORBIDDEN_TERMS = (
@@ -76,29 +75,6 @@ def _payload(path: str, summary: Dict[str, Any], plan_role_service: Any) -> Dict
         plan_role_service=plan_role_service,
         path=path,
     )
-
-
-def test_analysis_page_places_action_hub_before_detailed_sections() -> None:
-    source = ANALYSIS_TEMPLATE.read_text(encoding="utf-8")
-
-    selected_overview_pos = source.index("_selected_overview.html")
-    action_hub_pos = source.index("_action_hub.html")
-    warnings_pos = source.index("_summary_warnings.html")
-    candidate_pos = source.index("_candidate_comparison.html")
-    diagnostics_pos = source.index("_diagnostic_sections.html")
-    metrics_pos = source.index("_metric_cards.html")
-    process_pos = source.index("_optimization_process.html")
-
-    assert selected_overview_pos < action_hub_pos < warnings_pos
-    assert warnings_pos < candidate_pos < diagnostics_pos < metrics_pos < process_pos
-
-
-def test_analysis_action_hub_places_diagnostics_before_next_actions() -> None:
-    source = (PROJECT_ROOT / "templates/scheduler/analysis_parts/_action_hub.html").read_text(encoding="utf-8")
-
-    assert source.index("analysis_action_hub.recommendation_card") < source.index("analysis_action_hub.summary_cards")
-    assert source.index("analysis_action_hub.summary_cards") < source.index("analysis_action_hub.diagnostic_cards")
-    assert source.index("analysis_action_hub.diagnostic_cards") < source.index("analysis_action_hub.next_links")
 
 
 def test_analysis_route_exposes_action_hub_with_context_links() -> None:

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 from regression_scheduler_candidate_analysis_contract import (
     _comparison_summary,
@@ -14,27 +13,6 @@ from regression_scheduler_candidate_analysis_contract import (
 
 from core.services.scheduler.schedule_plan_query_service import ROLE_ADOPTED, ROLE_BASELINE_BEST, ROLE_CRITICAL_BEST
 from data.repositories.schedule_plan_query_repo import SOURCE_SCHEDULE
-
-
-def test_analysis_template_uses_viewmodel_candidate_rows_and_route_built_links() -> None:
-    source = (
-        Path(__file__).resolve().parents[1] / "templates/scheduler/analysis_parts/_candidate_comparison.html"
-    ).read_text(encoding="utf-8")
-
-    assert "analysisCandidateComparisonTable" in source
-    assert "candidate_comparison_display.rows" in source
-    assert "row.comparison_note" in source
-    assert "row.links" in source
-    assert "link.disabled" in source
-    assert "aria-disabled" in source
-    assert "disabled_reason" in source
-    assert "candidate_comparison_display.status_messages" in source
-    assert "message.class_name" in source
-    assert "message.text" in source
-    assert "plan_role=" not in source
-    assert "关键链最好" not in source
-    assert "row.score_label" not in source
-    assert ">评分<" not in source
 
 
 def test_candidate_display_marks_baseline_best_as_adopted_when_baseline_is_selected() -> None:

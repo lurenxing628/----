@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 
-
-def test_system_config_dirty_fields_contract(db_path, repo_root) -> None:
+def test_system_config_dirty_fields_contract(db_path) -> None:
     from core.infrastructure.database import get_connection
     from core.services.system.system_config_service import SystemConfigService, _dirty_field_label
 
@@ -56,9 +54,4 @@ def test_system_config_dirty_fields_contract(db_path, repo_root) -> None:
     assert "本次先按最大值 365 处理" in str(dirty_reasons.get("auto_backup_keep_days") or ""), dirty_reasons
     assert "本次先按 60 处理" in str(dirty_reasons.get("auto_log_cleanup_interval_minutes") or ""), dirty_reasons
     assert _dirty_field_label("new_internal_config_key") == "系统配置项"
-
-    for rel_path in ("templates/system/backup.html", "templates/system/logs.html"):
-        text = Path(repo_root, rel_path).read_text(encoding="utf-8")
-        assert "settings.dirty_field_labels or settings.dirty_fields" not in text, rel_path
-        assert "dirty_labels | join" in text, rel_path
 

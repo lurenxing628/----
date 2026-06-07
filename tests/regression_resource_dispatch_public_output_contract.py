@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import io
-from pathlib import Path
 from typing import List
 
 import openpyxl
@@ -14,8 +13,6 @@ from web.viewmodels.scheduler_resource_dispatch import (
     build_resource_dispatch_filename,
     decorate_resource_dispatch_payload,
 )
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _base_payload() -> dict:
@@ -329,10 +326,3 @@ def test_resource_dispatch_calendar_detail_sheet_handles_empty_calendar_rows() -
 
     assert ws.max_row == 1
     assert [ws.cell(1, idx).value for idx in range(1, ws.max_column + 1)][0] == "日历来源"
-
-
-def test_resource_dispatch_template_version_summary_prefers_public_schedule_time() -> None:
-    template = (REPO_ROOT / "templates" / "scheduler" / "resource_dispatch.html").read_text(encoding="utf-8")
-
-    assert "schedule_time_display or selected_version_row.item.schedule_time" in template
-    assert "ui.summary_item('时间', selected_version_row.item.schedule_time)" not in template

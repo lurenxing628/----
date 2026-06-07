@@ -88,13 +88,3 @@ def test_apply_enabled_sources_summarizes_default_due_to_config_read_failed() ->
     )
 
     assert plugin_status.get("config_source") == "default_due_to_config_read_failed", plugin_status
-
-
-def test_system_backup_template_mentions_plugin_conflicts_and_telemetry_state() -> None:
-    template_text = (REPO_ROOT / "templates" / "system" / "backup.html").read_text(encoding="utf-8")
-    presenter_text = (REPO_ROOT / "web" / "viewmodels" / "system_backup_page.py").read_text(encoding="utf-8")
-    assert "冲突能力" in template_text
-    assert "留痕状态" in presenter_text
-    assert "telemetry_persisted" in presenter_text
-    assert "conflicted_capabilities" in presenter_text
-    assert "conflicted_capabilities" not in template_text

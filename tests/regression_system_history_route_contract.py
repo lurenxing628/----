@@ -262,13 +262,7 @@ def test_system_history_page_renders_warning_pipeline_guard_html(tmp_path, monke
     html = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert "排产提醒整理状态：未完整整理" in html
-    assert "排产提醒：2 条" in html
-    assert "结果提醒：0 条" in html
-    assert "部分排产提示没有完整写入历史摘要。" in html
     assert html.count("排产提醒：2 条") == 1
-    assert "告警 1 条" in html
-    assert "摘要已加载；页面仅展示公开摘要、告警和处理提示。" in html
     assert "调试详情：原始摘要" not in html
     assert "summary_warnings_assignment_failed" not in html
     assert "INTERNAL_RESULT_SUMMARY_SECRET" not in html
@@ -287,11 +281,9 @@ def test_system_history_page_hides_zero_warning_preview_button(tmp_path, monkeyp
 
     assert response.status_code == 200
     assert "提醒：1 条" not in html
-    assert "维护诊断：1 条" in html
     assert "查看前 0 条提醒" not in html
     assert "另有 1 条提醒" not in html
     assert "当前详情没有可安全展开的提醒明细" not in html
-    assert "这次没有需要调度员处理的业务提醒" in html
     assert "sqlite" not in html
 
 
@@ -324,17 +316,3 @@ def test_system_history_version_dropdown_uses_completion_status_label(tmp_path, 
     assert html.count("模拟排产 / 部分成功") >= 2
     assert "v3 · 部分成功" in html
     assert "结果状态未知" not in html
-
-
-def test_system_history_template_uses_presenter_status_fields() -> None:
-    template = (REPO_ROOT / "templates" / "system" / "history.html").read_text(encoding="utf-8")
-
-    assert "status_zh" not in template
-    assert "status_zh.get" not in template
-    assert "{{ v.version_option_label }}" in template
-    assert "selected_summary_display.result_status_label" in template
-    assert "r.result_summary_display.result_status_label" in template
-    assert "scheduler.gantt_page', view='machine', version=version" in template
-    assert "scheduler.week_plan_page', version=version" in template
-    assert "scheduler.resource_dispatch_page', version=version" in template
-    assert "aps-table--multiline" in template

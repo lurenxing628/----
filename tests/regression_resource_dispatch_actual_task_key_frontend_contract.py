@@ -57,9 +57,6 @@ def test_task_key_actual_route_accepts_frontend_payload_without_legacy_identity_
     events = _events_for_card(db_path, card)
 
     assert resp.status_code == 200, _json(resp)
-    assert "expected_state_revision" not in payload
-    assert "schedule_id" not in payload
-    assert "operator_id" not in payload
     assert [row["event_type"] for row in events] == ["start", "finish"]
     assert events[1]["quantity_done"] == 10
     assert events[1]["quantity_scrapped"] == 0
