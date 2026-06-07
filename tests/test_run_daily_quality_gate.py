@@ -499,14 +499,15 @@ def test_commands_keep_focused_smoke_after_impact_targets() -> None:
     parallel_command = commands[2][1]
     assert parallel_command[parallel_command.index("-n") + 1] == "auto"
     assert parallel_command[parallel_command.index("--dist") + 1] == "worksteal"
-    assert "not serial" in parallel_command
-    assert parallel_command[parallel_command.index("not serial") - 1] == "-m"
+    # P5.3：markexpr 叠加 not perf，把性能/重 E2E 剔出 push 快速路径。
+    assert "not serial and not perf" in parallel_command
+    assert parallel_command[parallel_command.index("not serial and not perf") - 1] == "-m"
     assert parallel_command[-1] == "tests/regression_scheduler_run.py"
     assert commands[2][2] is True  # 全 not-serial / 全 serial 时该步 no-tests collected＝合法空集
-    # impact 串行步：只跑 serial marker、不带 -n（独占进程态用例不进 xdist）。
+    # impact 串行步：只跑 serial marker（叠加 not perf 把 ui_browser_geometry 等剔出）、不带 -n。
     serial_command = commands[3][1]
-    assert "serial" in serial_command
-    assert serial_command[serial_command.index("serial") - 1] == "-m"
+    assert "serial and not perf" in serial_command
+    assert serial_command[serial_command.index("serial and not perf") - 1] == "-m"
     assert "-n" not in serial_command
     assert serial_command[-1] == "tests/regression_scheduler_run.py"
     assert commands[3][2] is True

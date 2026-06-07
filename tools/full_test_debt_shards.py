@@ -57,6 +57,24 @@ def classify_nodeid(nodeid: str) -> ShardKind:
     return "parallel"
 
 
+# P5.3 ISOLATE_PERF：性能/重 E2E 用例的单一真相源（口径同 SERIAL_FILE_PATTERNS）。
+# conftest.pytest_collection_modifyitems 据此给被收集的 perf 用例自动打 @pytest.mark.perf；
+# daily 门禁据此 -m "not perf" 把它们剔出每次 push 的快速路径。full gate 不 deselect、仍全量
+# 覆盖（perf marker 对其惰性，sharding 只看文件名/nodeid 不看 marker，正交无误伤）。
+# 注：regression_ui_browser_geometry_smoke 同时属 SERIAL（真浏览器 ~19s，见上 :12），perf 标记
+# 与其 serial 归属并存、不改 serial 分片。
+PERF_FILE_PATTERNS: Tuple[str, ...] = (
+    "tests/scheduler_graph/test_graph_performance.py",
+    "tests/regression_scheduler_candidate_performance_guard.py",
+    "tests/regression_ui_browser_geometry_smoke.py",
+)
+
+
+def is_perf_nodeid(nodeid: str) -> bool:
+    path = nodeid_file(nodeid)
+    return any(fnmatch.fnmatch(path, pattern) for pattern in PERF_FILE_PATTERNS)
+
+
 def split_nodeids(nodeids: Sequence[str], shard_count: int) -> Tuple[List[str], List[List[str]]]:
     if shard_count < 1:
         raise ValueError("shard_count must be >= 1")

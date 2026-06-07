@@ -518,15 +518,17 @@ def _commands(required_targets: Sequence[str], ruff_plan: RuffPlan) -> List[Tupl
     if normalized_targets:
         # impact 集分流：not-serial 用例走 xdist 并行（-n auto --dist worksteal），serial 用例
         # （startup/runtime/portfile/long_gate 等独占进程态，口径见 tools.full_test_debt_shards）单独串行。
-        # serial marker 由 conftest 按 classify_nodeid 自动打标，这里仅按 marker 表达式分流；两步各自
-        # 在本次 impact 集无对应类用例时会 no-tests collected，故 allow_no_tests=True。
+        # serial/perf marker 由 conftest 按 classify_nodeid / is_perf_nodeid 自动打标，这里仅按 marker
+        # 表达式分流。P5.3：两步均叠加 not perf，把性能/重 E2E（PERF_FILE_PATTERNS）剔出 push 快速路径
+        # （full gate 不 deselect、仍全量覆盖）。两步各自在本次 impact 集无对应类用例时会 no-tests
+        # collected，故 allow_no_tests=True。
         commands.append(
             (
                 "impact pytest (parallel)",
                 [
                     sys.executable, "-m", "pytest", "-q",
                     "-n", "auto", "--dist", "worksteal",
-                    "-m", "not serial",
+                    "-m", "not serial and not perf",
                     *normalized_targets,
                 ],
                 True,
@@ -535,7 +537,7 @@ def _commands(required_targets: Sequence[str], ruff_plan: RuffPlan) -> List[Tupl
         commands.append(
             (
                 "impact pytest (serial)",
-                [sys.executable, "-m", "pytest", "-q", "-m", "serial", *normalized_targets],
+                [sys.executable, "-m", "pytest", "-q", "-m", "serial and not perf", *normalized_targets],
                 True,
             )
         )
