@@ -67,4 +67,18 @@ def test_exception_details_are_visible_in_detail_rows_gantt_popup_source_and_exp
 
     wb = openpyxl.load_workbook(io.BytesIO(buffer.getvalue()))
     ws = wb["任务明细"]
-    assert ws.max_row >= 2
+    headers = [cell.value for cell in ws[1]]
+    values = [cell.value for cell in ws[2]]
+    row_map = dict(zip(headers, values))
+    # 导出 sheet 须真把异常详情写入对应中文列：build_resource_dispatch_workbook 的列映射是独立
+    # 代码路径（与上面 detail_rows 的 payload 路径不同源），故在此校验导出内容契约。校验稳定的
+    # 枚举/标签译名值；身份列只校验含 id + 名，不锁“\n完整身份：”多行排版字面（去脆性）。
+    assert row_map["现场状态"] == "异常中"
+    assert row_map["最近异常原因"] == "设备问题"
+    assert row_map["严重程度"] == "紧急"
+    assert row_map["预计影响时间"] == "暂时不知道影响多久"
+    assert row_map["处理状态"] == "等待条件"
+    assert row_map["是否建议重排"] == "暂不建议重新排程"
+    assert row_map["情况说明"] == "等待维修"
+    assert "M2" in row_map["影响设备"] and "二号设备" in row_map["影响设备"]
+    assert "O2" in row_map["影响人员"] and "李四" in row_map["影响人员"]
