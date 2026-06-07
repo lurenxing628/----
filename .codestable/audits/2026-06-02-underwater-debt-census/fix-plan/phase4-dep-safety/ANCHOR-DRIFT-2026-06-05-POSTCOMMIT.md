@@ -49,3 +49,20 @@ phase4 四层分析（含全部 dossier 对抗核验附录）是在**已包含�
 > 2. B 启动前跑一次性脚本：按「去前缀文件名 + 被测符号名/断言字符串」对全部 199 锚点 `rg -rn PATTERN tests/` 重定位、重生成 dossier（断言体 git mv 逐字幸存，按符号必命中）；档案行号一律视为待复核（§三.4 既有纪律）。
 > 3. **⚠ 不止 B 的 199 锚点**：A 自己的 **required 路径锚点也会断**——`tools/test_registry.py:64/77` 硬校验 required 路径单层 `tests/文件.py`、`tools/test_registry_data.py` 写死单层路径。A 的 P6 须连带放开单层校验 + 重写 test_registry_data.py；映射表**同时覆盖 B 的 199 dossier 锚点和 A 的 required 清单两套**。
 > 4. 权威与细节见 A 的 `.codestable/refactors/2026-06-01-test-gate-cleanup/_B_COMPAT_SAFEGUARDS.md` §B-3（⑤ 项，2026-06-06 补）+ §8（P3.4 删 collector 卡点 / 11 个 required 成员 / 守卫断言时序雷）。
+
+## 六、✅ P6 已落地（2026-06-08 补 · 映射已交付待 B 执行重生成）
+
+> A 的 P6（Phase A 加固 + Phase B 8 波迁移 + Phase C 交接）**已全部收官并 push**（分支 `cleanup/p3-main-style-to-pytest`，提交链 `ff5f305b..017c1920`，全门禁 GATE_EXIT=0，两轮 holistic 对抗审核 0 阻塞）。SOP §五 的 A 侧责任**已履行**，B 侧重生成待 B 阶段执行。
+
+1. **权威映射表已落地**：`.codestable/refactors/2026-06-01-test-gate-cleanup/p6_path_map.csv`（561 行 `old_path,new_path,module,kind`），机械覆盖全部 P6 `git mv`。§五.3 的 A 自有锚点已连带修复：`tools/test_registry.py` 单层校验已放开（commit `ca982c8d`，`count("/")==1`→`startswith("tests/")`）、`test_registry_data.py`/`full_test_debt_shards.py`/`quality_gate_shared.py`/pyright config/治理台账全部重指新路径（契约三角逐字一致、0 flat 残留，再审核已铁证）。
+
+2. **B 锚点 vs 映射核对结论（只读审计，B 启动前可直接采信）**：dossier 全树引用 **106 条**扁平旧测试路径，**纯 P6 目录重组造成的漂移，CSV 100% 覆盖**——97 条精确命中 CSV old_path；另 4 条是 dossier 写名不规范（如 `regression_aps_workbench_flow_contract`、`regression_scheduler_workbench_link_guardrails`、`run_real_db_replay_check/_smoke`），真测试以规范近名存在且**新名都在 CSV 里**，B 按「去前缀文件名 + 被测符号/断言串」`rg` 重定位即命中（§五.2 既定做法）。
+
+3. **⚠ 2 条真悬空锚点 ≠ P6 漂移（B 须单独裁定，CSV 不该也无法覆盖）**：这两条是**测试删除/废弃**所致，P6 只迁「迁移时点存在」的文件，故不在映射内：
+   - `tests/regression_sp06_no_duplicate_defs.py`：已在 commit `7ca42ca4`（P1.1 删 35 个 DROP 死代码测试，**早于 P6**）删除；磁盘已无、CSV 未收录、`tests/` 全树无 `NO_CFG_GET_TARGETS` 符号。dossier 多处（REPORT.md:1298/1301、R45）仍当【现存】白名单守卫引用——**B 须确认该锚点已废或重指**。
+   - `tests/regression_scheduler_candidate_py38_contract.py`：无改名链、磁盘无；现存 py38 扫描器是 `tests/gate_meta/test_scan_py38plus_syntax.py`。dossier（_real_debt.json、R02/R71）仍当【现存】py38 契约引用——**B 须裁定指向新扫描器还是确认已废**。
+   - （另:占位符 `tests/xxx.py` 是 SOP §五.1 通配示例，非真锚点，B 重生成时剔除。）
+
+4. **§二.3 的 R43 漂移已消灭确认**：`regression_scheduler_wrapper_import_order_contract.py` P6 中迁为 `tests/excel_data_io/test_scheduler_wrapper_import_order_contract.py`（未删除——R43「执行时整文件删除」属 B 阶段裁定动作，尚未执行）。其 dossier 锚点路径维度按 CSV 重指即可;若 B 仍裁定删除,则该锚点随之消灭。
+
+5. **§三.4 纪律不变**:档案行号一律视为待复核,B 重生成时按符号/断言串现场 `rg` 回盘(断言体 `git mv` 逐字幸存,按符号必命中)。详细逐行命中表见 P6 审计产物（审计脚本与 old→new 对账逻辑已固化,可复跑）。
