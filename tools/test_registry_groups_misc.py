@@ -15,7 +15,7 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "tests/regression_resource_dispatch_task_id_encoding.py",
             "tests/regression_resource_dispatch_overdue_summary_formats.py",
             "tests/regression_resource_dispatch_invalid_summary_surfaces_overdue_degraded.py",
-            "tests/regression_scheduler_excel_batches_preview_baseline_precision.py",
+            "tests/excel_data_io/test_scheduler_excel_batches_preview_baseline_precision.py",
         ),
         "input_file_scopes": (
             "web/routes/domains/scheduler/scheduler_batches.py",
@@ -130,13 +130,13 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
         "group_id": "frontend_manual_excel",
         "label": "Frontend manual and Excel contracts",
         "target_paths": (
-            "tests/test_excel_import_hardening.py",
-            "tests/test_excel_utils_compare_digest_guard.py",
-            "tests/regression_excel_conversion_output_contracts.py",
-            "tests/regression_excel_hidden_payload_contract.py",
+            "tests/excel_data_io/test_excel_import_hardening.py",
+            "tests/excel_data_io/test_excel_utils_compare_digest_guard.py",
+            "tests/excel_data_io/test_excel_conversion_output_contract.py",
+            "tests/excel_data_io/test_excel_hidden_payload_contract.py",
             "tests/regression_frontend_offline_static_assets.py",
-            "tests/test_excel_renamed_column_conflicts.py",
-            "tests/regression_import_execution_stats_source_row_num.py",
+            "tests/excel_data_io/test_excel_renamed_column_conflicts.py",
+            "tests/excel_data_io/test_import_execution_stats_source_row_num.py",
         ),
         "input_file_scopes": (
             "templates_excel/**/*",

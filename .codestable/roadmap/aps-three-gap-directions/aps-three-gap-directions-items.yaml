@@ -67,14 +67,14 @@ items:
       - data/repositories/material_repo.py
       - core/services/material/batch_material_service.py
       - tests/regression_scheduler_delay_diagnosis_contract.py
-      - tests/regression_due_exclusive_consistency.py
+      - tests/algorithm/test_due_exclusive_consistency.py
       - tests/regression_gantt_adjustment_validate_simulate.py
     entrypoints:
       - "从本 roadmap 的 5.2 EvidenceLink 和 5.3 延期诊断服务契约开始写 feature-design"
       - "先接 core/services/scheduler/schedule_delay_diagnosis_service.py，只做只读服务"
       - "物料判断必须先看 Batches、BatchMaterials、Material 和批次物料服务能提供什么数据"
     test_commands:
-      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_delay_diagnosis_contract.py tests/regression_due_exclusive_consistency.py tests/regression_gantt_adjustment_validate_simulate.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_delay_diagnosis_contract.py tests/algorithm/test_due_exclusive_consistency.py tests/regression_gantt_adjustment_validate_simulate.py"
     forbidden_paths:
       - core/algorithms/
       - installer/
@@ -93,7 +93,7 @@ items:
       - 候选方案和 scenario 诊断必须使用对应方案行，不能悄悄回到 adopted
       - EvidenceLink 能追到具体来源；行级证据追到来源行，聚合证据写清 aggregation_key 和 contributing_count
       - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
-      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_delay_diagnosis_contract.py tests/regression_due_exclusive_consistency.py tests/regression_gantt_adjustment_validate_simulate.py
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_delay_diagnosis_contract.py tests/algorithm/test_due_exclusive_consistency.py tests/regression_gantt_adjustment_validate_simulate.py
     notes: 第一版不改算法，不做 AI 根因，只做保守解释。
 
   - slug: delay-diagnosis-overdue-report-entry

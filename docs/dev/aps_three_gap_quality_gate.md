@@ -17,7 +17,7 @@
 | 序号 | roadmap item | feature | 主要测试 |
 |---:|---|---|---|
 | 1 | shared-plan-identity-evidence-contract | 2026-05-27-shared-plan-identity-evidence-contract | `tests/regression_scheduler_plan_identity_evidence_contract.py`、`tests/regression_scheduler_candidate_gantt_plan_role_contract.py` |
-| 2 | delay-diagnosis-core-service | 2026-05-27-delay-diagnosis-core-service | `tests/regression_scheduler_delay_diagnosis_contract.py`、`tests/regression_due_exclusive_consistency.py`、`tests/regression_gantt_adjustment_validate_simulate.py` |
+| 2 | delay-diagnosis-core-service | 2026-05-27-delay-diagnosis-core-service | `tests/regression_scheduler_delay_diagnosis_contract.py`、`tests/algorithm/test_due_exclusive_consistency.py`、`tests/regression_gantt_adjustment_validate_simulate.py` |
 | 3 | delay-diagnosis-overdue-report-entry | 2026-05-27-delay-diagnosis-overdue-report-entry | `tests/regression_report_delay_diagnosis_plain_language.py`、`tests/regression_frontend_offline_static_assets.py`、`tests/regression_gantt_degradation_surface.py`、`tests/regression_dashboard_overdue_count_tolerance.py` |
 | 4 | candidate-recommendation-card | 2026-05-27-candidate-recommendation-card | `tests/candidate/test_scheduler_candidate_analysis_contract.py`、`tests/candidate/test_scheduler_analysis_candidate_links_and_roles.py`、`tests/candidate/test_scheduler_candidate_plain_language.py` |
 | 5 | candidate-summary-delta-cards | 2026-05-27-candidate-summary-delta-cards | `tests/candidate/test_scheduler_candidate_summary_contract.py`、`tests/regression_scheduler_graph_auto_selection_contract.py`、`tests/candidate/test_scheduler_candidate_plain_language.py` |
@@ -37,7 +37,7 @@
 | 序号 | roadmap item | items.yaml test_commands |
 |---:|---|---|
 | 1 | shared-plan-identity-evidence-contract | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_plan_identity_evidence_contract.py tests/regression_scheduler_candidate_gantt_plan_role_contract.py` |
-| 2 | delay-diagnosis-core-service | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_delay_diagnosis_contract.py tests/regression_due_exclusive_consistency.py tests/regression_gantt_adjustment_validate_simulate.py` |
+| 2 | delay-diagnosis-core-service | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_delay_diagnosis_contract.py tests/algorithm/test_due_exclusive_consistency.py tests/regression_gantt_adjustment_validate_simulate.py` |
 | 3 | delay-diagnosis-overdue-report-entry | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_delay_diagnosis_contract.py tests/regression_report_delay_diagnosis_plain_language.py tests/regression_frontend_offline_static_assets.py tests/regression_gantt_degradation_surface.py tests/regression_dashboard_overdue_count_tolerance.py` |
 | 4 | candidate-recommendation-card | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/candidate/test_scheduler_candidate_analysis_contract.py tests/candidate/test_scheduler_analysis_candidate_links_and_roles.py tests/candidate/test_scheduler_candidate_plain_language.py tests/regression_frontend_offline_static_assets.py` |
 | 5 | candidate-summary-delta-cards | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/candidate/test_scheduler_candidate_analysis_contract.py tests/candidate/test_scheduler_candidate_plain_language.py tests/regression_frontend_offline_static_assets.py tests/candidate/test_scheduler_candidate_summary_contract.py tests/regression_scheduler_graph_auto_selection_contract.py` |
@@ -91,7 +91,7 @@
 - `tests/candidate/test_scheduler_candidate_week_plan_contract.py`
 - `tests/regression_scheduler_graph_auto_selection_contract.py`
 - `tests/regression_dashboard_overdue_count_tolerance.py`
-- `tests/regression_due_exclusive_consistency.py`
+- `tests/algorithm/test_due_exclusive_consistency.py`
 - `tests/calendar_maintenance/test_freeze_window_bounds.py`
 - `tests/regression_frontend_offline_static_assets.py`
 - `tests/regression_frontend_ui_language_polish.py`
@@ -115,7 +115,7 @@
 - `tests/regression_scheduler_analysis_diagnostic_graph_score_contract.py`
 - `tests/regression_scheduler_resource_dispatch_invalid_query_cleanup.py`
 - `tests/regression_scheduler_run_surfaces_resource_pool_warning.py`
-- `tests/regression_skill_rank_mapping.py`
+- `tests/algorithm/test_skill_rank_mapping.py`
 - `tests/test_architecture_fitness.py`
 - `tests/test_codestable_tools_contract.py`
 - `tests/test_scan_py38plus_syntax.py`

@@ -248,7 +248,7 @@ def test_operation_execution_migration_regressions_are_required_and_grouped() ->
 
 
 def test_import_execution_stats_regression_is_required_and_grouped() -> None:
-    test_path = "tests/regression_import_execution_stats_source_row_num.py"
+    test_path = "tests/excel_data_io/test_import_execution_stats_source_row_num.py"
     excel_group = _group("frontend_manual_excel")
 
     assert test_path in quality_gate_shared.QUALITY_GATE_REQUIRED_TESTS

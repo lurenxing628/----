@@ -10,7 +10,7 @@ import tempfile
 import time
 import traceback
 
-from excel_preview_confirm_helpers import require_preview_baseline
+from tests.excel_data_io.excel_preview_confirm_helpers import require_preview_baseline
 
 
 def find_repo_root():

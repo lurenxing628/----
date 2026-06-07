@@ -10,7 +10,7 @@ import time
 import traceback
 from datetime import date
 
-from excel_preview_confirm_helpers import build_confirm_payload
+from tests.excel_data_io.excel_preview_confirm_helpers import build_confirm_payload
 
 
 def find_repo_root():

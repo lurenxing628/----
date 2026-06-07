@@ -21,7 +21,7 @@ if str(TESTS_DIR) not in sys.path:
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from excel_preview_confirm_helpers import build_confirm_payload, extract_raw_rows_json
+from tests.excel_data_io.excel_preview_confirm_helpers import build_confirm_payload, extract_raw_rows_json
 
 _STALE_PREVIEW_MESSAGE = "导入被拒绝：数据已变化，请重新上传 Excel 并检查后再确认写入。"
 

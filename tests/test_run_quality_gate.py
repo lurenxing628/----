@@ -668,23 +668,23 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
         "tests/regression_scheduler_route_enforce_ready_tristate.py",
         "tests/test_run_full_selftest_report_metadata.py",
         "tests/calendar_maintenance/test_holiday_default_efficiency_read_guard.py",
-        "tests/test_excel_import_hardening.py",
-        "tests/test_excel_utils_compare_digest_guard.py",
-        "tests/regression_excel_conversion_output_contracts.py",
-        "tests/regression_excel_hidden_payload_contract.py",
+        "tests/excel_data_io/test_excel_import_hardening.py",
+        "tests/excel_data_io/test_excel_utils_compare_digest_guard.py",
+        "tests/excel_data_io/test_excel_conversion_output_contract.py",
+        "tests/excel_data_io/test_excel_hidden_payload_contract.py",
         "tests/regression_frontend_offline_static_assets.py",
-        "tests/test_excel_renamed_column_conflicts.py",
-        "tests/regression_scheduler_excel_batches_preview_baseline_precision.py",
+        "tests/excel_data_io/test_excel_renamed_column_conflicts.py",
+        "tests/excel_data_io/test_scheduler_excel_batches_preview_baseline_precision.py",
         "tests/test_check_full_test_debt.py",
         "tests/test_full_test_debt_registry_contract.py",
         "tests/regression_request_services_contract.py",
         "tests/regression_factory_request_lifecycle_observability.py",
         "tests/calendar_maintenance/test_maintenance_window_mutex.py",
         "tests/migration_db/test_database_high_version_failfast.py",
-        "tests/regression_optimizer_outcome_type_contract.py",
-        "tests/regression_optimizer_public_summary_projection_contract.py",
-        "tests/regression_optimizer_runtime_seam_contract.py",
-        "tests/regression_optimizer_seed_boundary_contract.py",
+        "tests/algorithm/test_optimizer_outcome_type_contract.py",
+        "tests/algorithm/test_optimizer_public_summary_projection_contract.py",
+        "tests/algorithm/test_optimizer_runtime_seam_contract.py",
+        "tests/algorithm/test_optimizer_seed_boundary_contract.py",
         "tests/regression_schedule_summary_invalid_due_and_unscheduled_counts.py",
         "tests/regression_schedule_summary_overdue_warning_append_fallback.py",
         "tests/config/test_schedule_config_snapshot_optional_guard.py",
@@ -706,7 +706,7 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
         "tests/regression_frontend_ui_language_polish.py",
         "tests/regression_manual_entry_scope.py",
         "tests/regression_page_manual_registry.py",
-        "tests/regression_excel_template_contracts.py",
+        "tests/excel_data_io/test_excel_template_contract.py",
         "tests/regression_reports_export_version_default_latest.py",
     ):
         assert lower_frequency_path not in module.REQUIRED_TEST_ARGS
@@ -1360,7 +1360,7 @@ def test_guard_collect_only_keeps_analysis_and_history_in_default_collect() -> N
     assert "tests/regression_scheduler_analysis_observability.py::test_scheduler_analysis_observability" in output
     assert "tests/regression_system_history_route_contract.py::test_system_history_route_uses_request_services" in output
     assert (
-        "tests/regression_auto_assign_persist_truthy_variants.py::"
+        "tests/algorithm/test_auto_assign_persist_truthy_variants.py::"
         "test_auto_assign_persist_truthy_variant_is_normalized_before_persistence"
     ) in output
 

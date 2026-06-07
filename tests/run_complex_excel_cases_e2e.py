@@ -28,7 +28,7 @@ from datetime import date, datetime, timedelta
 from datetime import time as dt_time
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
-from excel_preview_confirm_helpers import build_confirm_payload
+from tests.excel_data_io.excel_preview_confirm_helpers import build_confirm_payload
 
 
 # 确保仓库根目录在 sys.path（允许直接 python tests/xxx.py 运行）

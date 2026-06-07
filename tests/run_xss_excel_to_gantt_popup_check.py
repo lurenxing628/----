@@ -11,7 +11,7 @@ from datetime import date
 from html import unescape as html_unescape
 from typing import Any, Dict, List, Optional
 
-from excel_preview_confirm_helpers import build_confirm_payload
+from tests.excel_data_io.excel_preview_confirm_helpers import build_confirm_payload
 
 XSS = "<img src=x onerror=alert(1)>"
  
