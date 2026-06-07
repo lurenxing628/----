@@ -9,7 +9,7 @@ import pytest
 from core.infrastructure.errors import AppError
 from core.services.scheduler.operation_execution_feedback_service import OperationExecutionFeedbackService
 from core.services.scheduler.schedule_service import ScheduleService
-from tests.regression_scheduler_reschedule_execution_minimum_guardrails import (
+from tests.schedule.service.test_scheduler_reschedule_execution_minimum_guard import (
     _connect,
     _context,
     _counts,

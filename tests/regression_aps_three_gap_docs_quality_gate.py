@@ -70,7 +70,7 @@ DEV_REQUIRED_TERMS = (
 
 REGRESSION_TESTS = (
     "tests/calendar_maintenance/test_freeze_window_bounds.py",
-    "tests/regression_scheduler_plan_identity_evidence_contract.py",
+    "tests/schedule/route_view/test_scheduler_plan_identity_evidence_contract.py",
     "tests/scheduler_analysis/test_scheduler_delay_diagnosis_contract.py",
     "tests/algorithm/test_due_exclusive_consistency.py",
     "tests/regression_gantt_adjustment_validate_simulate.py",
@@ -81,13 +81,13 @@ REGRESSION_TESTS = (
     "tests/candidate/test_scheduler_candidate_summary_contract.py",
     "tests/candidate/test_scheduler_candidate_week_plan_contract.py",
     "tests/resource_dispatch/test_scheduler_dispatch_plan_identity_guard.py",
-    "tests/regression_scheduler_workbench_links_contract.py",
+    "tests/schedule/route_view/test_scheduler_workbench_links_contract.py",
     "tests/regression_web_silent_fallback_contract.py",
     "tests/operation_execution/test_operation_execution_event_foundation.py",
     "tests/operation_execution/test_operation_execution_event_time_contract.py",
     "tests/operation_execution/test_operation_execution_feedback_routes.py",
     "tests/resource_dispatch/test_resource_dispatch_invalid_summary_surfaces_overdue_degraded.py",
-    "tests/regression_scheduler_reschedule_execution_minimum_guardrails.py",
+    "tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py",
     "tests/operation_execution/test_operation_execution_exception_feedback.py",
     "tests/scheduler_analysis/test_plan_vs_actual_review.py",
     "tests/operation_execution/test_scheduler_reschedule_execution_facts.py",
@@ -96,9 +96,9 @@ REGRESSION_TESTS = (
     "tests/regression_frontend_ui_language_polish.py",
     "tests/config/test_config_manual_markdown.py",
     "tests/regression_page_manual_registry.py",
-    "tests/regression_schedule_input_collector_legacy_compat.py",
-    "tests/regression_schedule_service_missing_resource_source_case_insensitive.py",
-    "tests/regression_schedule_service_reschedulable_contract.py",
+    "tests/schedule/service/test_schedule_input_collector_legacy_compat.py",
+    "tests/schedule/service/test_schedule_service_missing_resource_source_case_insensitive.py",
+    "tests/schedule/service/test_schedule_service_reschedulable_contract.py",
     "tests/regression_scheduler_graph_report_mode_service_contract.py",
     "tests/regression_scheduler_data_route_error_contract.py",
     "tests/scheduler_analysis/test_scheduler_analysis_diagnostic_graph_score_contract.py",
@@ -109,7 +109,7 @@ REGRESSION_TESTS = (
     "tests/test_scan_py38plus_syntax.py",
     "tests/regression_aps_three_gap_docs_quality_gate.py",
     "tests/test_run_quality_gate.py",
-    "tests/test_schedule_service_input_merge_context_contract.py",
+    "tests/schedule/service/test_schedule_service_input_merge_context_contract.py",
 )
 
 KEY_PYTHON_FILES = (

@@ -17,7 +17,7 @@ from core.services.scheduler.execution_fact_provider import ExecutionFactProvide
 from core.services.scheduler.operation_execution_feedback_service import OperationExecutionFeedbackService
 from core.services.scheduler.schedule_service import ScheduleService
 from data.repositories.operation_execution_event_repo import OperationExecutionEventRepo
-from tests.regression_scheduler_reschedule_execution_minimum_guardrails import (
+from tests.schedule.service.test_scheduler_reschedule_execution_minimum_guard import (
     _connect,
     _context,
     _counts,

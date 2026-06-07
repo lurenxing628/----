@@ -7,7 +7,7 @@ import pytest
 from core.models.schedule_plan_identity import EvidenceLink
 from core.services.scheduler.schedule_plan_query_service import ROLE_ADOPTED, SchedulePlanQueryService
 from data.repositories.schedule_plan_query_repo import SOURCE_SCHEDULE
-from tests.regression_scheduler_plan_identity_evidence_contract import VERSION, _seed_db
+from tests.schedule.route_view.test_scheduler_plan_identity_evidence_contract import VERSION, _seed_db
 
 
 def test_evidence_link_validates_row_aggregate_and_missing_data_scopes(tmp_path) -> None:

@@ -635,9 +635,9 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
         "tests/scheduler_analysis/test_scheduler_analysis_observability.py",
         "tests/regression_system_history_route_contract.py",
         "tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py",
-        "tests/regression_schedule_summary_input_fallback_contract.py",
+        "tests/schedule/summary/test_schedule_summary_input_fallback_contract.py",
         "tests/regression_error_boundary_contract.py",
-        "tests/regression_route_version_normalizers_contract.py",
+        "tests/schedule/route_view/test_route_version_normalizers_contract.py",
         "tests/regression_gantt_page_version_default_latest.py",
         "tests/regression_gantt_default_version_span.py",
         "tests/regression_gantt_adjustment_draft_model.py",
@@ -648,15 +648,15 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
         "tests/regression_reports_page_version_default_latest.py",
         "tests/regression_gantt_degradation_surface.py",
         "tests/regression_gantt_frontend_error_boundary.py",
-        "tests/regression_scheduler_result_navigation_contract.py",
+        "tests/schedule/route_view/test_scheduler_result_navigation_contract.py",
         "tests/regression_gantt_contract_snapshot.py",
         "tests/regression_gantt_critical_chain_unavailable.py",
         "tests/regression_gantt_critical_chain_provider.py",
         "tests/regression_scheduler_candidate_gantt_plan_role_contract.py",
         "tests/regression_quality_gate_scan_contract.py",
         "tests/test_codestable_architecture_contract.py",
-        "tests/regression_scheduler_batch_template_warning_surface.py",
-        "tests/test_scheduler_run_view_result_contract.py",
+        "tests/schedule/route_view/test_scheduler_batch_template_warning_surface.py",
+        "tests/schedule/route_view/test_scheduler_run_view_result_contract.py",
         "tests/resource_dispatch/test_resource_dispatch_bad_time_rows_surface_degraded.py",
         "tests/resource_dispatch/test_resource_dispatch_export_surfaces_degraded.py",
         "tests/resource_dispatch/test_resource_dispatch_public_output_contract.py",
@@ -665,7 +665,7 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
         "tests/resource_dispatch/test_resource_dispatch_invalid_summary_surfaces_overdue_degraded.py",
         "tests/test_ui_browser_geometry_env.py",
         "tests/test_ui_geometry_html_contract.py",
-        "tests/regression_scheduler_route_enforce_ready_tristate.py",
+        "tests/schedule/route_view/test_scheduler_route_enforce_ready_tristate.py",
         "tests/test_run_full_selftest_report_metadata.py",
         "tests/calendar_maintenance/test_holiday_default_efficiency_read_guard.py",
         "tests/excel_data_io/test_excel_import_hardening.py",
@@ -685,14 +685,14 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
         "tests/algorithm/test_optimizer_public_summary_projection_contract.py",
         "tests/algorithm/test_optimizer_runtime_seam_contract.py",
         "tests/algorithm/test_optimizer_seed_boundary_contract.py",
-        "tests/regression_schedule_summary_invalid_due_and_unscheduled_counts.py",
-        "tests/regression_schedule_summary_overdue_warning_append_fallback.py",
+        "tests/schedule/summary/test_schedule_summary_invalid_due_and_unscheduled_counts.py",
+        "tests/schedule/summary/test_schedule_summary_overdue_warning_append_fallback.py",
         "tests/config/test_schedule_config_snapshot_optional_guard.py",
-        "tests/regression_schedule_summary_freeze_state_contract.py",
+        "tests/schedule/summary/test_schedule_summary_freeze_state_contract.py",
         "tests/test_git_hook_checks.py",
         "tests/test_long_gate_cli_controls.py",
         "tests/test_long_gate_quickref_cache.py",
-        "tests/test_schedule_template_lookup_contract.py",
+        "tests/schedule/service/test_schedule_template_lookup_contract.py",
     ):
         assert high_value_path in module.REQUIRED_TEST_ARGS
 
@@ -701,7 +701,7 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
         "tests/regression_ui_browser_geometry_smoke.py",
         "tests/test_long_gate_required_regression_cache.py",
         "tests/test_sync_debt_ledger.py",
-        "tests/test_scheduler_batches_page_viewmodel.py",
+        "tests/schedule/route_view/test_scheduler_batches_page_viewmodel.py",
         "tests/config/test_config_manual_markdown.py",
         "tests/regression_frontend_ui_language_polish.py",
         "tests/regression_manual_entry_scope.py",
@@ -1176,13 +1176,13 @@ def test_guard_preflight_rejects_untracked_guard_file(monkeypatch):
     monkeypatch.setattr(
         module,
         "_guard_test_tracked",
-        lambda path: path != "tests/test_schedule_input_builder_strict_hours_and_ext_days.py",
+        lambda path: path != "tests/schedule/service/test_schedule_input_builder_strict_hours_and_ext_days.py",
     )
 
     with pytest.raises(module.QualityGateError) as exc_info:
         module._assert_guard_tests_ready()
 
-    assert "untracked=tests/test_schedule_input_builder_strict_hours_and_ext_days.py" in str(exc_info.value)
+    assert "untracked=tests/schedule/service/test_schedule_input_builder_strict_hours_and_ext_days.py" in str(exc_info.value)
 
 
 def test_main_writes_quality_gate_manifest_with_git_and_collection_proof(monkeypatch, tmp_path):

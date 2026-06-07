@@ -88,7 +88,7 @@ def test_workbench_flow_regression_is_required_and_grouped() -> None:
         "tests/regression_dashboard_workbench_contract.py",
         "tests/regression_dashboard_overdue_count_tolerance.py",
         "tests/operation_execution/test_execution_review_identity_guard.py",
-        "tests/regression_scheduler_navigation_unknown_plan_role_contract.py",
+        "tests/schedule/route_view/test_scheduler_navigation_unknown_plan_role_contract.py",
         "tests/regression_gantt_task_detail_panel_contract.py",
         "tests/regression_gantt_task_detail_js_contract.py",
     }
@@ -106,7 +106,7 @@ def test_workbench_flow_regression_is_required_and_grouped() -> None:
 
 
 def test_scheduler_historical_plan_label_contract_is_required_and_grouped() -> None:
-    test_path = "tests/regression_scheduler_historical_plan_label_contract.py"
+    test_path = "tests/schedule/route_view/test_scheduler_historical_plan_label_contract.py"
     scheduler_group = _group("scheduler_analysis_gantt_reports_week_plan")
 
     assert test_path in quality_gate_shared.QUALITY_GATE_REQUIRED_TESTS
@@ -117,9 +117,9 @@ def test_plan_identity_summary_guardrail_is_required_and_grouped() -> None:
     from tools import quality_gate_shared
 
     test_paths = {
-        "tests/regression_scheduler_plan_identity_summary_guardrail.py",
-        "tests/regression_scheduler_plan_identity_evidence_contract.py",
-        "tests/regression_scheduler_plan_identity_evidence_link_contract.py",
+        "tests/schedule/route_view/test_scheduler_plan_identity_summary_guard.py",
+        "tests/schedule/route_view/test_scheduler_plan_identity_evidence_contract.py",
+        "tests/schedule/route_view/test_scheduler_plan_identity_evidence_link_contract.py",
     }
     scheduler_group = _group("scheduler_run_core")
 
@@ -189,7 +189,7 @@ def test_operation_execution_core_regressions_are_required_and_grouped() -> None
         "tests/operation_execution/test_operation_execution_event_time_contract.py",
         "tests/operation_execution/test_operation_execution_state_revision.py",
         "tests/operation_execution/test_scheduler_reschedule_execution_facts.py",
-        "tests/regression_scheduler_reschedule_execution_minimum_guardrails.py",
+        "tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py",
     }
     scheduler_group = _group("scheduler_run_core")
 

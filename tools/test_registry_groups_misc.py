@@ -5,8 +5,8 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
         "group_id": "scheduler_batches_material_resource",
         "label": "Scheduler batches, material, and resource contracts",
         "target_paths": (
-            "tests/regression_scheduler_batches_degraded_visibility.py",
-            "tests/regression_scheduler_batch_template_warning_surface.py",
+            "tests/schedule/route_view/test_scheduler_batches_degraded_visible.py",
+            "tests/schedule/route_view/test_scheduler_batch_template_warning_surface.py",
             "tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py",
             "tests/resource_dispatch/test_resource_dispatch_bad_time_rows_surface_degraded.py",
             "tests/resource_dispatch/test_resource_dispatch_export_surfaces_degraded.py",
