@@ -1,3 +1,5 @@
+"""契约测试：web.bootstrap.request_services.RequestServices 的惰性服务装配契约——公开服务属性集与 cached_property 声明一致且非 __slots__、各服务按需惰性构造并按请求缓存、按签名差异透传 app_logger/op_logger、excel backend 仅在访问 excel_service 时才取；失败传播上 AttributeError 转 RuntimeError 且不缓存失败、非 AttributeError 原样上抛同样不缓存。"""
+
 from __future__ import annotations
 
 from functools import cached_property

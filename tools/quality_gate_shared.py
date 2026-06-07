@@ -135,6 +135,7 @@ QUALITY_GATE_TOOL_PATHS = [
     "tools/quality_gate_scan.py",
     "tools/quality_gate_shared.py",
     "tools/quality_gate_support.py",
+    "tools/scan_anti_regression_gate.py",
     "tools/scan_aps_three_gap_py38_scope.py",
     "tools/scan_py38plus_syntax.py",
     "tools/test_debt_registry.py",
@@ -838,6 +839,12 @@ def build_quality_gate_command_plan() -> List[Dict[str, Any]]:
             "display": "python tests/gate_meta/check_quickref_vs_routes.py",
             "args": ["python", "tests/gate_meta/check_quickref_vs_routes.py"],
             "capture_output": False,
+            "output_policy": "normalized",
+        },
+        {
+            "display": "python tools/scan_anti_regression_gate.py --base-ref d4589d77",
+            "args": ["python", "tools/scan_anti_regression_gate.py", "--base-ref", "d4589d77"],
+            "capture_output": True,
             "output_policy": "normalized",
         },
     ]

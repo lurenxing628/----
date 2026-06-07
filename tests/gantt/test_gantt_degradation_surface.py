@@ -1,3 +1,5 @@
+"""回归测试：甘特图退化场景的服务层与 HTTP 外显契约——坏时间行被跳过并计数、工作日历加载失败降级且内部 message/sample 不泄漏到 HTML、超期标记 invalid 全降级与 partial 部分不完整成对镜像，且前端 JS 正确消费各退化码与统一空原因码。"""
+
 from __future__ import annotations
 
 import importlib

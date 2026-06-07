@@ -1,3 +1,5 @@
+"""回归测试：aps-full-selftest 的 run_full_selftest 报告元数据与质量门禁绑定校验——报告头含 head_sha/git status/质量门禁清单，质量门禁未绑定即失败，并对清单做严格证明核验：接受干净证明清单、重放命令计划（含 full_test_debt），拒绝缺失或被篡改的命令回执、伪造的 collect 证明、各类哈希不匹配、脏工作区/追踪漂移、head 与 checkout 身份不符、proof_scope 缺失或错误，归一化输出忽略时间戳与 pyright 升级提示。"""
+
 from __future__ import annotations
 
 import hashlib

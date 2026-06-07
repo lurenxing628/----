@@ -1,3 +1,5 @@
+"""回归测试：设备/工种/操作员/供应商/零件工时五类台账 Excel 导入服务 apply_preview_rows 的写库防御——非法状态/缺名整体回滚或行级记错、字段去空与状态/备注规范化、班组按 ID 或名称匹配及空值清空、缺列保留既有值、零值 ID 不当空、空周期拒绝，以及零件工时对 NaN/Inf/解析错的行级拦截与意外异常整体回滚。"""
+
 from __future__ import annotations
 
 import sqlite3

@@ -224,6 +224,7 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/app_runtime/test_ui_browser_geometry_env.py",
     "tests/app_runtime/test_ui_geometry_html_contract.py",
     "tests/gate_meta/test_scan_py38plus_syntax.py",
+    "tests/gate_meta/test_anti_regression_gate.py",
     "tests/gate_meta/test_architecture_fitness.py",
     "tests/algorithm/test_skill_rank_mapping.py",
     "tests/schedule/service/test_schedule_service_input_merge_context_contract.py",

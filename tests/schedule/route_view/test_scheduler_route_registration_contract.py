@@ -1,3 +1,5 @@
+"""契约测试：scheduler 路由的注册时机与导入副作用——import web.routes.scheduler 不会注册整张路由图、显式 register_scheduler_routes 才一次性挂载且二次调用稳定、旧 leaf 模块只加载自身不拉起 registrar，以及真实 create_app 工厂确把 run/gantt/analysis/resource-dispatch 路由挂上 url_map。"""
+
 from __future__ import annotations
 
 import importlib

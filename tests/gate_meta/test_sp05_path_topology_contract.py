@@ -1,3 +1,5 @@
+"""契约测试：SP05 scheduler 目录拆分后的服务层与路由层拓扑及兼容矩阵——config/run/summary 等子包就位且延迟子包 __init__ 无 import 副作用、旧根模块强别名或行为兼容门面保真、旧路径已删；旧兼容模块导入扫描能识别包内相对/动态/__import__ 导入且生产代码不新增此类导入；路由根入口被动注册、子叶 import 不拉起 registrar 副作用，safe_next_url 单一策略源、scheduler 手册路径走单一 BASE_DIR 事实源，开发与阶段文档同步迁移后路径。"""
+
 from __future__ import annotations
 
 import ast

@@ -1,10 +1,10 @@
-from tests._support.paths import REPO_ROOT, REPO_ROOT_STR
-
-"""回归测试：ScheduleService.run_schedule 在冻结后无可调整工序时短路——构建算法输入并读取冻结窗口后即抛 ValidationError（区分排产/模拟措辞），绝不继续加载停机区间、构建资源池、扩展停机映射、调用优化器、进入持久化或分配新版本号。"""
+"""回归测试：ScheduleService.run_schedule 在冻结窗口内无可调整工序时短路——构建算法输入并读取冻结窗口后即抛 ValidationError（区分排产/模拟措辞），绝不继续加载停机区间、构建资源池、扩展停机映射、调用优化器、进入持久化或分配新版本号。"""
 
 import os
 import sqlite3
 from types import SimpleNamespace
+
+from tests._support.paths import REPO_ROOT, REPO_ROOT_STR
 
 SCHEMA_PATH = str(REPO_ROOT / "schema.sql")
 

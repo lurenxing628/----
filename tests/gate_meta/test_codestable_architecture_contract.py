@@ -1,3 +1,5 @@
+"""契约测试：.codestable/architecture 与 roadmap 文档可被 yaml 工具校验和检索——架构入口 ARCHITECTURE.md 通过 validate-yaml 必填字段校验且按 slug 可被 search-yaml 检索到，roadmap 的 related_architecture 关联 slug 与对应架构文档双向可查。"""
+
 from __future__ import annotations
 
 import subprocess

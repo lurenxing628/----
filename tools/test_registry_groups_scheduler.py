@@ -6,6 +6,7 @@ SCHEDULER_REQUIRED_REGRESSION_GROUPS = (
         "label": "Quality gate and long gate contracts",
         "target_paths": (
             "tests/gate_meta/test_run_quality_gate.py",
+            "tests/gate_meta/test_anti_regression_gate.py",
             "tests/gate_meta/test_no_residual_main_style_regression.py",
             "tests/gate_meta/test_sp05_path_topology_contract.py",
             "tests/gate_meta/test_quality_gate_scan_contract.py",
@@ -33,6 +34,7 @@ SCHEDULER_REQUIRED_REGRESSION_GROUPS = (
             "tools/verify_required_regressions_from_full_test_debt.py",
             "tools/fast_static_precheck.py",
             "tools/git_hook_checks.py",
+            "tools/scan_anti_regression_gate.py",
             "tools/test_debt_registry.py",
             "tools/test_registry.py",
             "tools/test_registry_data.py",
@@ -72,6 +74,7 @@ SCHEDULER_REQUIRED_REGRESSION_GROUPS = (
             "tools/collect_full_test_debt.py",
             "tools/verify_required_regressions_from_full_test_debt.py",
             "tools/git_hook_checks.py",
+            "tools/scan_anti_regression_gate.py",
             "tools/test_debt_registry.py",
             "tools/test_registry.py",
             "tools/test_registry_data.py",

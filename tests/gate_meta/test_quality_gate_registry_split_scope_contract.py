@@ -1,3 +1,5 @@
+"""契约测试：质量门禁回归测试注册表（test_registry 拆分文件 + quality_gate_shared）的 scope 绑定——拆分后的注册表文件本身、报表链路与几何探针等拆分文件都被纳入对应分组的 input/tool scope，工作台流程/历史方案标签/方案身份/资源派工/运行执行等关键回归测试齐备登记为 required 且归入正确分组，开发者指南列出的回归清单与注册表一致，门禁运行产物与全景图生成物均被 git hook 拦截提交。"""
+
 from __future__ import annotations
 
 import re

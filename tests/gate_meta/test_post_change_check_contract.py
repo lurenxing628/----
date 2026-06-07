@@ -1,3 +1,5 @@
+"""回归测试：aps-post-change-check 改动后自检脚本的契约——get_changed_files 保留 git status 首列状态码解析出改动文件，main 在复杂度超标、复杂度工具缺失、架构扫描或代码质量扫描跳过文件时一律返回非零失败码。"""
+
 from __future__ import annotations
 
 import importlib.util
