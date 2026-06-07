@@ -14,7 +14,6 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "tests/regression_resource_dispatch_viewmodel_public_output_contract.py",
             "tests/regression_resource_dispatch_task_id_encoding.py",
             "tests/regression_resource_dispatch_overdue_summary_formats.py",
-            "tests/regression_resource_dispatch_partial_overdue_summary_surfaces_warning.py",
             "tests/regression_resource_dispatch_invalid_summary_surfaces_overdue_degraded.py",
             "tests/regression_scheduler_excel_batches_preview_baseline_precision.py",
         ),

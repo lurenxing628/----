@@ -660,7 +660,6 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
         "tests/regression_resource_dispatch_public_output_contract.py",
         "tests/regression_resource_dispatch_viewmodel_public_output_contract.py",
         "tests/regression_resource_dispatch_overdue_summary_formats.py",
-        "tests/regression_resource_dispatch_partial_overdue_summary_surfaces_warning.py",
         "tests/regression_resource_dispatch_invalid_summary_surfaces_overdue_degraded.py",
         "tests/test_ui_browser_geometry_env.py",
         "tests/test_ui_geometry_html_contract.py",

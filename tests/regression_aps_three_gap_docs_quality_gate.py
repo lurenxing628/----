@@ -86,7 +86,7 @@ REGRESSION_TESTS = (
     "tests/regression_operation_execution_event_foundation.py",
     "tests/regression_operation_execution_event_time_contract.py",
     "tests/regression_operation_execution_feedback_routes.py",
-    "tests/regression_resource_dispatch_partial_overdue_summary_surfaces_warning.py",
+    "tests/regression_resource_dispatch_invalid_summary_surfaces_overdue_degraded.py",
     "tests/regression_scheduler_reschedule_execution_minimum_guardrails.py",
     "tests/regression_operation_execution_exception_feedback.py",
     "tests/regression_plan_vs_actual_review.py",

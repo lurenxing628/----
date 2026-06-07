@@ -1,4 +1,9 @@
-"""回归测试：当 ScheduleHistory.result_summary 是坏 JSON 时，资源排班页 /scheduler/resource-dispatch 及其 /data 接口仍返回 200 并展示 detail_rows，但把超期标记标为降级——页面含 rdOverdueWarning、data 里 overdue_markers_degraded=True/partial=False 且消息含「超期」，并向 app.logger.warning 记「资源排班超期标记降级」。"""
+"""回归测试：资源排班页 /scheduler/resource-dispatch 及其 /data 接口在 ScheduleHistory.result_summary 异常时，仍返回 200 并展示 detail_rows，但把超期标记按坏值程度浮现为两个分支——
+
+- degraded（全坏 JSON `"{broken json"`）：页面含 rdOverdueWarning、data 里 overdue_markers_degraded=True/partial=False 且消息含「超期」，并向 app.logger.warning 记「资源排班超期标记降级」；此分支下 detail_rows[0].is_overdue 为 False（无法解析摘要故不标超期）。
+- partial（部分项坏的 JSON，含一条有效 batch_id 项与若干坏项）：data 里 overdue_markers_degraded=False/partial=True 且消息含「已识别」，并向 app.logger.warning 记「资源排班超期标记部分不完整」；此分支下 detail_rows[0].is_overdue 为 True（按已识别条目标记）。
+
+两分支的 overdue_markers_degraded / overdue_markers_partial / message 文案 / 日志短语取值相反，是不同坏值边界，各自逐字保留。"""
 
 from __future__ import annotations
 
@@ -12,7 +17,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 
 
-def _build_app(tmp_path, monkeypatch):
+def _build_app(tmp_path, monkeypatch, result_summary):
     repo_root = str(REPO_ROOT)
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
@@ -63,7 +68,7 @@ def _build_app(tmp_path, monkeypatch):
     )
     conn.execute(
         "INSERT INTO ScheduleHistory (version, strategy, batch_count, op_count, result_status, result_summary, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (1, "greedy", 1, 1, "success", "{broken json", "pytest"),
+        (1, "greedy", 1, 1, "success", result_summary, "pytest"),
     )
     conn.commit()
     conn.close()
@@ -74,7 +79,7 @@ def _build_app(tmp_path, monkeypatch):
 
 
 def test_resource_dispatch_invalid_summary_surfaces_overdue_degraded(tmp_path, monkeypatch) -> None:
-    app = _build_app(tmp_path, monkeypatch)
+    app = _build_app(tmp_path, monkeypatch, "{broken json")
     logged = []
 
     def _fake_warning(message, *args, **_kwargs):
@@ -99,3 +104,37 @@ def test_resource_dispatch_invalid_summary_surfaces_overdue_degraded(tmp_path, m
     assert data.get("overdue_markers_partial") is False
     assert "超期" in str(data.get("overdue_markers_message") or "")
     assert any("资源排班超期标记降级" in item for item in logged), logged
+
+
+def test_resource_dispatch_partial_overdue_summary_surfaces_warning(tmp_path, monkeypatch) -> None:
+    result_summary = json.dumps(
+        {"overdue_batches": [{"batch_id": "B001", "hours": 4}, {"hours": 2}, "", None]},
+        ensure_ascii=False,
+    )
+    app = _build_app(tmp_path, monkeypatch, result_summary)
+    logged = []
+
+    def _fake_warning(message, *args, **_kwargs):
+        logged.append(message % args if args else str(message))
+
+    monkeypatch.setattr(app.logger, "warning", _fake_warning)
+    client = app.test_client()
+    query = "scope_type=operator&operator_id=OP001&period_preset=week&query_date=2026-03-02&version=1"
+
+    page_resp = client.get(f"/scheduler/resource-dispatch?{query}")
+    assert page_resp.status_code == 200
+    page_html = page_resp.get_data(as_text=True)
+    assert 'id="rdOverdueWarning"' in page_html
+
+    data_resp = client.get(f"/scheduler/resource-dispatch/data?{query}")
+    assert data_resp.status_code == 200
+    payload = json.loads(data_resp.get_data(as_text=True) or "{}")
+    assert payload.get("success") is True, payload
+    data = payload.get("data") or {}
+    assert len(data.get("detail_rows") or []) == 1
+    assert data.get("overdue_markers_degraded") is False
+    assert data.get("overdue_markers_partial") is True
+    assert "已识别" in str(data.get("overdue_markers_message") or "")
+    detail_rows = data.get("detail_rows") or []
+    assert detail_rows and detail_rows[0].get("is_overdue") is True
+    assert any("资源排班超期标记部分不完整" in item for item in logged), logged

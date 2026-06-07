@@ -44,7 +44,7 @@
 | 6 | candidate-drilldown-empty-states | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_analysis_candidate_links_and_roles.py tests/regression_scheduler_candidate_week_plan_contract.py tests/regression_scheduler_candidate_plan_query_contract.py tests/regression_scheduler_candidate_reports_contract.py tests/regression_scheduler_candidate_plain_language.py tests/regression_frontend_offline_static_assets.py tests/regression_scenario_preview_secondary_outputs.py tests/regression_report_export_size_mode_selection.py tests/regression_scheduler_candidate_gantt_plan_role_contract.py tests/regression_scheduler_candidate_resource_dispatch_contract.py tests/regression_report_delay_diagnosis_plain_language.py` |
 | 7 | dispatch-plan-identity-guardrails | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_resource_dispatch_contract.py tests/regression_scheduler_dispatch_plan_identity_guardrails.py tests/regression_frontend_offline_static_assets.py` |
 | 8 | operation-execution-event-foundation | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_operation_execution_event_foundation.py tests/regression_operation_execution_event_time_contract.py tests/regression_operation_execution_state_revision.py tests/regression_migrations.py` |
-| 9 | resource-dispatch-start-finish-feedback | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_resource_dispatch_contract.py tests/regression_operation_execution_feedback_routes.py tests/regression_frontend_offline_static_assets.py tests/regression_resource_dispatch_partial_overdue_summary_surfaces_warning.py` |
+| 9 | resource-dispatch-start-finish-feedback | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_resource_dispatch_contract.py tests/regression_operation_execution_feedback_routes.py tests/regression_frontend_offline_static_assets.py tests/regression_resource_dispatch_invalid_summary_surfaces_overdue_degraded.py` |
 | 10 | reschedule-minimum-execution-guardrails | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_reschedule_execution_minimum_guardrails.py tests/regression_operation_execution_feedback_routes.py tests/regression_frontend_offline_static_assets.py tests/regression_scheduler_run_surfaces_resource_pool_warning.py` |
 | 11 | shop-exception-feedback | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_operation_execution_exception_feedback.py tests/regression_operation_execution_feedback_routes.py tests/regression_scheduler_exception_blocks_auto_reschedule.py tests/regression_frontend_offline_static_assets.py` |
 | 12 | plan-vs-actual-review | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_plan_vs_actual_review.py tests/regression_operation_execution_event_foundation.py tests/regression_frontend_offline_static_assets.py` |
@@ -98,7 +98,7 @@
 - `tests/regression_config_manual_markdown.py`
 - `tests/regression_gantt_adjustment_validate_simulate.py`
 - `tests/regression_gantt_degradation_surface.py`
-- `tests/regression_resource_dispatch_partial_overdue_summary_surfaces_warning.py`
+- `tests/regression_resource_dispatch_invalid_summary_surfaces_overdue_degraded.py`
 - `tests/regression_schedule_input_collector_legacy_compat.py`
 - `tests/regression_schedule_service_missing_resource_source_case_insensitive.py`
 - `tests/regression_schedule_service_reschedulable_contract.py`

@@ -436,13 +436,13 @@ items:
       - tests/regression_scheduler_candidate_resource_dispatch_contract.py
       - tests/regression_operation_execution_feedback_routes.py
       - tests/regression_frontend_offline_static_assets.py
-      - tests/regression_resource_dispatch_partial_overdue_summary_surfaces_warning.py
+      - tests/regression_resource_dispatch_invalid_summary_surfaces_overdue_degraded.py
     entrypoints:
       - "从 GET /scheduler/resource-dispatch/execution/data 返回任务卡和按钮可用性"
       - "POST /scheduler/resource-dispatch/execution/<op_id>/start 和 /finish 只在受控条件下写入"
       - "最小重排护栏完成前，普通用户页面按钮隐藏或禁用，直接 POST 也拒绝"
     test_commands:
-      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_resource_dispatch_contract.py tests/regression_operation_execution_feedback_routes.py tests/regression_frontend_offline_static_assets.py tests/regression_resource_dispatch_partial_overdue_summary_surfaces_warning.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_resource_dispatch_contract.py tests/regression_operation_execution_feedback_routes.py tests/regression_frontend_offline_static_assets.py tests/regression_resource_dispatch_invalid_summary_surfaces_overdue_degraded.py"
     forbidden_paths:
       - core/algorithms/
       - installer/
@@ -482,7 +482,7 @@ items:
       - 页面、按钮、空状态、错误提示都使用中文大白话，不显示内部英文枚举、数据库字段名、函数名
       - 新前端资源不走 CDN、外链字体、外链脚本、外链样式，不引入新前端框架或 Chrome 109 不支持能力
       - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
-      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_resource_dispatch_contract.py tests/regression_operation_execution_feedback_routes.py tests/regression_frontend_offline_static_assets.py tests/regression_resource_dispatch_partial_overdue_summary_surfaces_warning.py
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_resource_dispatch_contract.py tests/regression_operation_execution_feedback_routes.py tests/regression_frontend_offline_static_assets.py tests/regression_resource_dispatch_invalid_summary_surfaces_overdue_degraded.py
     notes: 只跑通开工/完工的后端受控写入和页面预备，不把异常反馈混进本条；最小重排护栏完成前，普通用户页面按钮和直接 POST 都不能真正写入。
 
   - slug: reschedule-minimum-execution-guardrails

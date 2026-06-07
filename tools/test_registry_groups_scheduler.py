@@ -152,7 +152,6 @@ SCHEDULER_REQUIRED_REGRESSION_GROUPS = (
             "tests/regression_due_exclusive_consistency.py",
             "tests/regression_freeze_window_bounds.py",
             "tests/regression_scheduler_bp_result_summary_guard.py",
-            "tests/test_version_resolution_contract.py",
             "tests/regression_schedule_orchestrator_contract.py",
             "tests/test_schedule_summary_observability.py",
             "tests/test_schedule_params_direct_call_contract.py",

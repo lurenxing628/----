@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from core.infrastructure.errors import ValidationError
-from core.services.scheduler.version_resolution import resolve_version_or_latest
+from core.services.scheduler.version_resolution import VERSION_ERROR_MESSAGE, resolve_version_or_latest
 from web.routes.normalizers import parse_optional_version_int
 
 
@@ -75,3 +75,56 @@ def test_resolve_version_or_latest_missing_explicit_version_is_not_selected() ->
     assert resolution.selected_version is None
     assert resolution.requested_version == 7
     assert resolution.status == "missing_history"
+
+
+# --- 并入自 test_version_resolution_contract.py（P5.1 单挂靠，逐字保留唯一边界）---
+# 已去重：原 test_version_resolution_reports_no_history_without_fallback_version
+# 是 test_resolve_version_or_latest_no_history_does_not_synthesize_v1（遍历 None/""/"latest"，
+# latest_version=0 → has_history False/selected None/status no_history）的逐字子集，故不重复并入。
+
+
+def test_version_resolution_defaults_to_latest() -> None:
+    result = resolve_version_or_latest(None, latest_version=7)
+
+    assert result.has_history is True
+    assert result.selected_version == 7
+    assert result.requested_version is None
+    assert result.status == "ok"
+    assert result.source == "default"
+
+
+def test_version_resolution_accepts_latest_keyword() -> None:
+    result = resolve_version_or_latest("latest", latest_version=9)
+
+    assert result.selected_version == 9
+    assert result.status == "ok"
+    assert result.source == "latest"
+
+
+def test_version_resolution_reports_missing_explicit_history() -> None:
+    # 🔴关键边界：latest_version=9（有历史）+ 请求显式版本不存在 →
+    # has_history True / status missing_history / requested_version==5。
+    # 与 test_resolve_version_or_latest_missing_explicit_version_is_not_selected
+    # 的 latest_version=0（无历史，has_history False）取值相反，绝不可折叠。
+    result = resolve_version_or_latest(
+        "5",
+        latest_version=9,
+        version_exists=lambda version: False,
+    )
+
+    assert result.has_history is True
+    assert result.selected_version is None
+    assert result.requested_version == 5
+    assert result.status == "missing_history"
+
+
+def test_version_resolution_rejects_invalid_explicit_value() -> None:
+    with pytest.raises(ValidationError, match="版本号不对") as exc_info:
+        resolve_version_or_latest("bad", latest_version=9)
+    assert exc_info.value.message == VERSION_ERROR_MESSAGE
+    assert exc_info.value.field == "version"
+
+    with pytest.raises(ValidationError, match="版本号不对") as exc_info:
+        resolve_version_or_latest("0", latest_version=9)
+    assert exc_info.value.message == VERSION_ERROR_MESSAGE
+    assert exc_info.value.field == "version"
