@@ -69,6 +69,11 @@ B 阶段删 R51 续命测试(`regression_sort_strategy_case_insensitive` / `regr
 普通业务测试/源文件」生效。若需 push 前即时防回潮,后续可把门禁接入 `run_daily_quality_gate.py`
 (本 P7 未做,作为收官遗留风险登记)。
 
+**⚠ 已知理论边界(当前零实例)**:规则① 的 `_has_test_function` 用 `ast.walk` 放行任意类名下的
+`test_` 方法,比 pytest 默认 `python_classes=Test*` 略宽——仅含「非 Test* 类内 test_ 方法」的新增
+文件,pytest 实际收集 0 用例、门禁却放行。门禁刻意宁宽勿误伤(误伤会违反 B-兼容铁律),实测落地态
+0 此类实例;若日后需严格对齐 pytest 收集口径可再收紧。
+
 ## 三、基线固化(§1.4 SOP)
 
 门禁基线是**代码态**:`tools/test_registry_data.py`(required/startup + `QUALITY_GATE_SELFTEST_PATH`)、

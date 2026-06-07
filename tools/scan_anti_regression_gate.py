@@ -72,6 +72,9 @@ def _parse(root: str, rel_path: str) -> ast.Module:
 
 
 def _has_test_function(tree: ast.AST) -> bool:
+    # ast.walk 命中任意层级(含类内方法)的 test_ 函数。注:这比 pytest 默认 python_classes=Test*
+    # 略宽——仅含「非 Test* 类内 test_ 方法」的文件 pytest 实际收集 0、本门禁却放行。门禁刻意宁宽勿
+    # 误伤(误伤会违反 B-兼容铁律),且实测落地态 0 此类实例;若日后需对齐 pytest 收集口径再收紧。
     return any(
         isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test_")
         for node in ast.walk(tree)
