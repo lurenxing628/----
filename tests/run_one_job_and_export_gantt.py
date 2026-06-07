@@ -1,4 +1,4 @@
-"""端到端冒烟：通过 Excel 预览/确认依次导入设备-人员-人机-工种-供应商-路线-批次（含外协），补齐内部工序工时后执行 /scheduler/run，再断言甘特 tasks 非空、超期清单为空，并校验 utilization/downtime 报表默认日期按版本排程范围带入；最后把甘特 tasks 与可直接 file:// 打开的预览 HTML 落盘到 evidence/FullE2E。"""
+"""端到端冒烟：通过 Excel 预览/确认依次导入设备-人员-人机-工种-供应商-路线-批次（含外协），补齐内部工序工时后执行 /scheduler/run，再断言甘特 tasks 非空，并校验 utilization/downtime 报表默认日期按版本排程范围带入。"""
 
 import io
 import json

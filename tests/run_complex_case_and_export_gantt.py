@@ -1,4 +1,4 @@
-"""端到端证据脚本（非 test_ 用例，main 风格）：在临时库内造含资源冲突/外协合并周期/短班次/假期/混合优先级的复杂排产案例，跑 run_schedule 后用 GanttService 取设备/人员视图任务，并复用前端 gantt_contract/outline 助手生成可人工查验的甘特图预览 HTML 与 tasks JSON 落到 evidence/FullE2E。"""
+"""甘特图预览生成助手（非 test_ 用例）：build_preview_client_bootstrap 产出复用前端 gantt_contract/outline 的预览客户端 bootstrap JS，_write_html 据此把 tasks/日历/关键链/降级事件落成可人工查验的甘特图预览 HTML；供 regression_gantt_critical_outline_sync 经 exec_module 加载复用。"""
 
 import json
 import os

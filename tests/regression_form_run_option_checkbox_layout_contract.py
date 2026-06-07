@@ -1,4 +1,4 @@
-"""回归测试：流程/批次/Excel 导入各页面的 strict_mode 与 auto_generate_ops 等运行选项统一改用 ui.toggle 紧凑开关字段（aps-form-toggle-field/aps-import-option-list），不再用裸 checkbox 标签；校验 checkbox+隐藏 fallback 字段的顺序与 value、确认页用只读禁用展示、路由统一走 form_toggle_bool，并断言 ui_contract.css 的运行选项样式作用域。"""
+"""回归测试：流程/批次/Excel 导入各页面的 strict_mode 等运行选项统一改用 ui.toggle 紧凑开关字段，不再用裸 checkbox 标签；校验 checkbox+隐藏 fallback 字段的顺序与 value，确认页用只读禁用展示。"""
 
 from __future__ import annotations
 

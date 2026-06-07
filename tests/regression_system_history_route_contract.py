@@ -1,4 +1,4 @@
-"""回归测试：/system/history 路由的契约——从 g.services.schedule_history_query_service 读版本列表/选中版本/最近列表（limit 30/20），把 result_summary 投影成 selected_summary_display（告警预览与隐藏数、主/次降级消息）并暴露 warning_pipeline_display；version 非整数返回 400(code=1001)、0/-1 保留原样查询、缺失版本给"vN 无对应排产历史"提示；页面 HTML 只展示公开摘要与告警，不泄露 INTERNAL_RESULT_SUMMARY_SECRET / sqlite 路径等内部信息，且模板使用 presenter 状态字段。"""
+"""回归测试：/system/history 路由的契约——从 g.services.schedule_history_query_service 读版本列表/选中版本/最近列表（limit 30/20），把 result_summary 投影成 selected_summary_display（告警预览与隐藏数、主/次降级消息）并暴露 warning_pipeline_display；version 非整数返回 400(code=1001)、0/-1 保留原样查询、缺失版本给"vN 无对应排产历史"提示；页面 HTML 只展示公开摘要与告警，不泄露 INTERNAL_RESULT_SUMMARY_SECRET / sqlite 路径等内部信息。"""
 
 from __future__ import annotations
 

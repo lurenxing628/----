@@ -1,4 +1,4 @@
-"""回归测试：方案对比展示(build_candidate_comparison_display)与诊断/降级视图只渲染大白话、绝不泄露内部术语(score/selection_reason_code/candidate_key/source_table/plan_role 等)——对比缺失/原因码未知/采用方案未完成时不伪造推荐卡，坏数值与未知状态走「记录异常」文案，对应模板只读公开字段。"""
+"""回归测试：方案对比展示(build_candidate_comparison_display)与诊断/降级视图只渲染大白话、绝不泄露内部术语(score/selection_reason_code/candidate_key/source_table/plan_role 等)——对比缺失/原因码未知/采用方案未完成时不伪造推荐卡，坏数值与未知状态走「记录异常」文案。"""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""回归测试：greedy 调度算法拆分重构后的结构与行为契约——拆分文件须 <500 行、入口函数(schedule/_schedule_internal/dispatch_sgs/auto_assign_internal_resources/normalize_seed_results 等) <=80 行、圈复杂度 <=15，dispatch 模块不再调用 scheduler 私有回调；并验证 GreedyScheduler 仍走 legacy _schedule_internal 回调、normalize_seed_results 对非法 op_id/seq/坏时序/未知 op_code 的丢弃与回填计数、auto_assign 各资源池缺失/固定机台/pair_rank 非整数场景、SGS 评分钩子不泄漏 monkeypatch、external 工时不重复默认及 strict 模式非有限工时拒绝。"""
+"""回归测试：greedy 调度算法拆分重构后的行为契约——验证 GreedyScheduler 仍走 legacy _schedule_internal 回调、normalize_seed_results 对非法 op_id/seq/坏时序/未知 op_code 的丢弃与回填计数、auto_assign 各资源池缺失/固定机台/pair_rank 非整数场景、SGS 评分钩子不泄漏 monkeypatch、external 工时不重复默认及 strict 模式非有限工时拒绝。"""
 
 from __future__ import annotations
 

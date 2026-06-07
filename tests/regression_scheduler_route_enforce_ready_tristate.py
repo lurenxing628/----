@@ -1,4 +1,4 @@
-"""回归测试：表单开关解析器（form_yes_no_value/form_toggle_bool/form_optional_toggle_bool）按"同名多值优先识别 yes、未提交取默认、非法值不静默而抛 ValidationError"的契约工作；并验证 /scheduler/run、/scheduler/simulate、系统插件/备份/日志开关、工艺新增、批次新增、批次 Excel 预览等路由据此把 enforce_ready（tristate：None/True/False）与 strict_mode 正确传给服务，非法值时闪现错误且不调用服务；同时校验 batches 模板与 scheduler_run_options viewmodel 含对应 toggle。"""
+"""回归测试：表单开关解析器（form_yes_no_value/form_toggle_bool/form_optional_toggle_bool）按"同名多值优先识别 yes、未提交取默认、非法值不静默而抛 ValidationError"的契约工作；并验证 /scheduler/run、/scheduler/simulate、系统插件/备份/日志开关、工艺新增、批次新增、批次 Excel 预览等路由据此把 enforce_ready（tristate：None/True/False）与 strict_mode 正确传给服务，非法值时闪现错误且不调用服务。"""
 
 import os
 import sys

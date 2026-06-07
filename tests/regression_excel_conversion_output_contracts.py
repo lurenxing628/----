@@ -1,4 +1,4 @@
-"""回归测试：templates_excel/转换输出/ 下「工种配置.xlsx」「供应商配置.xlsx」的交付内容须与当前 UnitExcelConverter 转换结果及模板定义（get_template_definition）保持一致——校验表头、冻结首行 A2、表头加粗居中、文本列号格式 @、列宽算法、枚举列的下拉数据校验区间，且供应商启用列只取「启用/停用」。"""
+"""回归测试：templates_excel/转换输出/ 下「工种配置.xlsx」「供应商配置.xlsx」的交付内容须与当前 UnitExcelConverter 转换结果及模板定义（get_template_definition）保持一致——校验表头与转换结果逐行相等，且供应商启用列只取「启用/停用」。"""
 
 from __future__ import annotations
 
