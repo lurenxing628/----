@@ -5,12 +5,11 @@ from __future__ import annotations
 import json
 from typing import Any, Iterable, List
 
-from regression_scheduler_candidate_analysis_contract import (
+from tests.candidate.test_scheduler_candidate_analysis_contract import (
     _comparison_summary,
     _plan_role_options,
     _plan_role_options_for_baseline_adopted,
 )
-
 from web.viewmodels.scheduler_analysis_candidates import build_candidate_comparison_display
 from web.viewmodels.scheduler_analysis_diagnostics import build_diagnostic_sections
 from web.viewmodels.scheduler_degradation_presenter import build_primary_degradation

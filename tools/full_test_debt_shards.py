@@ -65,7 +65,7 @@ def classify_nodeid(nodeid: str) -> ShardKind:
 # 与其 serial 归属并存、不改 serial 分片。
 PERF_FILE_PATTERNS: Tuple[str, ...] = (
     "tests/scheduler_graph/test_graph_performance.py",
-    "tests/regression_scheduler_candidate_performance_guard.py",
+    "tests/candidate/test_scheduler_candidate_performance_guard.py",
     "tests/regression_ui_browser_geometry_smoke.py",
 )
 

@@ -30,7 +30,7 @@ GEOMETRY_SPLIT_SCOPES = {
 }
 
 LOW_FREQUENCY_SECTION_3_TESTS = {
-    "tests/regression_config_manual_markdown.py",
+    "tests/config/test_config_manual_markdown.py",
     "tests/regression_frontend_ui_language_polish.py",
     "tests/regression_page_manual_registry.py",
 }

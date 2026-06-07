@@ -59,7 +59,7 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "tests/regression_request_services_contract.py",
             "tests/regression_factory_request_lifecycle_observability.py",
             "tests/regression_system_request_services_contract.py",
-            "tests/regression_maintenance_window_mutex.py",
+            "tests/calendar_maintenance/test_maintenance_window_mutex.py",
             "tests/migration_db/test_database_high_version_failfast.py",
             "tests/migration_db/test_migration_schema_contract.py",
             "tests/migration_db/test_migrations.py",

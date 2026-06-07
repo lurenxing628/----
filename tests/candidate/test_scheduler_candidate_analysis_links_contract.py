@@ -4,7 +4,15 @@ from __future__ import annotations
 
 import json
 
-from regression_scheduler_candidate_analysis_contract import (
+from core.services.scheduler.schedule_plan_query_service import (
+    ROLE_ADOPTED,
+    ROLE_BASELINE_BEST,
+    ROLE_CRITICAL_BEST,
+    VALID_PLAN_ROLES,
+    SchedulePlanRoleOption,
+)
+from data.repositories.schedule_plan_query_repo import SOURCE_CANDIDATE_ROWS
+from tests.candidate.test_scheduler_candidate_analysis_contract import (
     _build_app,
     _call_analysis_page,
     _comparison_summary,
@@ -18,15 +26,6 @@ from regression_scheduler_candidate_analysis_contract import (
     _PlanRoleServiceMustNotBeCalled,
     _PlanRoleServiceStub,
 )
-
-from core.services.scheduler.schedule_plan_query_service import (
-    ROLE_ADOPTED,
-    ROLE_BASELINE_BEST,
-    ROLE_CRITICAL_BEST,
-    VALID_PLAN_ROLES,
-    SchedulePlanRoleOption,
-)
-from data.repositories.schedule_plan_query_repo import SOURCE_CANDIDATE_ROWS
 
 
 def test_analysis_candidate_links_accept_start_end_date_aliases() -> None:

@@ -7,7 +7,9 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
-from regression_scheduler_candidate_analysis_contract import (
+
+from tests._support.paths import REPO_ROOT as PROJECT_ROOT
+from tests.candidate.test_scheduler_candidate_analysis_contract import (
     _build_app,
     _call_analysis_page,
     _comparison_summary,
@@ -16,8 +18,6 @@ from regression_scheduler_candidate_analysis_contract import (
     _PlanRoleServiceMustNotBeCalled,
     _PlanRoleServiceStub,
 )
-
-from tests._support.paths import REPO_ROOT as PROJECT_ROOT
 
 ACTION_HUB_TEMPLATE = "scheduler/analysis_parts/_action_hub.html"
 CANDIDATE_TEMPLATE = "scheduler/analysis_parts/_candidate_comparison.html"

@@ -69,7 +69,7 @@ DEV_REQUIRED_TERMS = (
 )
 
 REGRESSION_TESTS = (
-    "tests/regression_freeze_window_bounds.py",
+    "tests/calendar_maintenance/test_freeze_window_bounds.py",
     "tests/regression_scheduler_plan_identity_evidence_contract.py",
     "tests/regression_scheduler_delay_diagnosis_contract.py",
     "tests/regression_due_exclusive_consistency.py",
@@ -77,9 +77,9 @@ REGRESSION_TESTS = (
     "tests/regression_report_delay_diagnosis_plain_language.py",
     "tests/regression_gantt_degradation_surface.py",
     "tests/regression_dashboard_overdue_count_tolerance.py",
-    "tests/regression_scheduler_candidate_analysis_contract.py",
-    "tests/regression_scheduler_candidate_summary_contract.py",
-    "tests/regression_scheduler_candidate_week_plan_contract.py",
+    "tests/candidate/test_scheduler_candidate_analysis_contract.py",
+    "tests/candidate/test_scheduler_candidate_summary_contract.py",
+    "tests/candidate/test_scheduler_candidate_week_plan_contract.py",
     "tests/regression_scheduler_dispatch_plan_identity_guardrails.py",
     "tests/regression_scheduler_workbench_links_contract.py",
     "tests/regression_web_silent_fallback_contract.py",
@@ -94,7 +94,7 @@ REGRESSION_TESTS = (
     "tests/regression_gantt_adjustment_publish_execution_revision.py",
     "tests/regression_frontend_offline_static_assets.py",
     "tests/regression_frontend_ui_language_polish.py",
-    "tests/regression_config_manual_markdown.py",
+    "tests/config/test_config_manual_markdown.py",
     "tests/regression_page_manual_registry.py",
     "tests/regression_schedule_input_collector_legacy_compat.py",
     "tests/regression_schedule_service_missing_resource_source_case_insensitive.py",

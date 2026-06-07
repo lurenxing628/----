@@ -4,15 +4,14 @@ from __future__ import annotations
 
 import json
 
-from regression_scheduler_candidate_analysis_contract import (
+from core.services.scheduler.schedule_plan_query_service import ROLE_ADOPTED, ROLE_BASELINE_BEST, ROLE_CRITICAL_BEST
+from data.repositories.schedule_plan_query_repo import SOURCE_SCHEDULE
+from tests.candidate.test_scheduler_candidate_analysis_contract import (
     _comparison_summary,
     _plan_role_options,
     _plan_role_options_for_baseline_adopted,
     _plan_role_options_with_baseline_source,
 )
-
-from core.services.scheduler.schedule_plan_query_service import ROLE_ADOPTED, ROLE_BASELINE_BEST, ROLE_CRITICAL_BEST
-from data.repositories.schedule_plan_query_repo import SOURCE_SCHEDULE
 
 
 def test_candidate_display_marks_baseline_best_as_adopted_when_baseline_is_selected() -> None:

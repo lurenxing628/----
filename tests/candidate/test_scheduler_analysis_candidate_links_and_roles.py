@@ -12,7 +12,7 @@ from core.services.scheduler.schedule_plan_query_service import (
     ROLE_CRITICAL_BEST,
 )
 from tests._support.paths import REPO_ROOT as PROJECT_ROOT
-from tests.regression_scheduler_candidate_analysis_contract import (
+from tests.candidate.test_scheduler_candidate_analysis_contract import (
     _build_app,
     _call_analysis_page,
     _comparison_summary,
