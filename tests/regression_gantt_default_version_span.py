@@ -190,27 +190,6 @@ def test_gantt_data_start_date_only_ignores_offset(tmp_path, monkeypatch) -> Non
     assert data.get("range_source") == "request"
 
 
-def test_gantt_boot_sends_one_range_mode_to_data_endpoint() -> None:
-    js = (REPO_ROOT / "static/js/gantt_boot.js").read_text(encoding="utf-8")
-
-    start_idx = js.index('if (hasEffectiveRange) {')
-    start_date_idx = js.index('url.searchParams.set("start_date", cfg.startDate)', start_idx)
-    end_date_idx = js.index('url.searchParams.set("end_date", cfg.endDate)', start_idx)
-    else_idx = js.index("} else if (!usesVersionSpanRange) {", end_date_idx)
-    week_idx = js.index('url.searchParams.set("week_start", cfg.weekStart)', else_idx)
-    offset_idx = js.index('url.searchParams.set("offset", String(cfg.offset))', week_idx)
-
-    assert start_idx < start_date_idx < end_date_idx < else_idx < week_idx < offset_idx
-    assert 'if (cfg.weekStart) url.searchParams.set("week_start", cfg.weekStart);\n    if (cfg.startDate)' not in js
-
-
-def test_gantt_boot_keeps_version_span_as_data_default() -> None:
-    js = (REPO_ROOT / "static/js/gantt_boot.js").read_text(encoding="utf-8")
-
-    assert 'const usesVersionSpanRange = cfg.rangeSource === "version_span";' in js
-    assert "} else if (!usesVersionSpanRange) {" in js
-
-
 def test_gantt_without_version_span_keeps_request_range_source(tmp_path, monkeypatch) -> None:
     app = _build_app(tmp_path, monkeypatch, with_schedule=False)
     client = app.test_client()

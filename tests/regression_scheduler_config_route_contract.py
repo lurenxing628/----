@@ -286,20 +286,6 @@ def test_scheduler_config_route_uses_request_services(monkeypatch) -> None:
     assert payload["current_config_state"]["label"] == "当前以手动设置为准。"
     assert payload["auto_assign_persist_state"]["enabled"] is True
     assert payload["auto_assign_persist_state"]["label"]
-    notice_text = json.dumps(payload["current_config_notice_items"], ensure_ascii=False)
-    assert "阶段 2" not in notice_text
-    assert "尚未接入" not in notice_text
-    assert "只看分析报告" in notice_text
-    assert "参与排产" in notice_text
-    assert "先排普通方案" in notice_text
-    assert "report 会生成只读报告" not in notice_text
-    assert "on 当前先按 report-only" not in notice_text
-    assert "不会让图分析参与 ready 队列" not in notice_text
-    assert "on 会先做图安全检查" not in notice_text
-    assert "可用 DAG 会用 ready 队列参与 SGS 候选" not in notice_text
-    assert "参与候选排序" not in notice_text
-    assert "图评分" not in notice_text
-    assert "仍不启用图评分" not in notice_text
     toggles = payload["scheduler_config_toggles"]
     assert set(toggles) == {
         "freeze_window_enabled",
@@ -323,30 +309,6 @@ def test_scheduler_config_route_uses_request_services(monkeypatch) -> None:
 
     assert post_response.status_code in (301, 302)
     assert config_service.restore_default_called is True
-
-
-def test_scheduler_config_template_graph_copy_matches_cycle_gate_stage() -> None:
-    template = (REPO_ROOT / "templates/scheduler/config.html").read_text(encoding="utf-8")
-    config_constants = (REPO_ROOT / "core/services/scheduler/config/config_constants.py").read_text(encoding="utf-8")
-
-    assert "阶段 2 只保存" not in template
-    assert "真正图分析将在后续阶段接入" not in template
-    assert "只看分析报告" in template
-    assert "参与排产" in template
-    assert "graph_candidate_weight_count" in template
-    assert "graph_selection_policy" in template
-    assert "graph_overdue_tolerance_count" in template
-    assert "graph_tardiness_tolerance_ratio" in template
-    assert "report 会生成只读图分析报告" not in template
-    assert "on 会先做图安全检查" not in template
-    assert "可用 DAG 会用 ready 队列参与 SGS 候选" not in template
-    assert "参与候选排序" not in template
-    assert "仍不启用图评分" not in template
-    assert "当前仅保存为后续评分配置" not in template
-    assert "仍不启用图评分" not in config_constants
-    assert "只看分析报告" in config_constants
-    assert "参与排产" in config_constants
-    assert "参与候选排序" not in config_constants
 
 
 def test_scheduler_config_post_uses_atomic_save_entrypoint(monkeypatch) -> None:

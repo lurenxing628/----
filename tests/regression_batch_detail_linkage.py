@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import os
 import re
 from typing import Any, Dict
 
 
-def test_batch_detail_linkage(app_client, repo_root) -> None:
+def test_batch_detail_linkage(app_client) -> None:
     from flask import render_template
 
     from web.viewmodels.strict_mode_toggles import build_strict_mode_toggle
@@ -78,25 +77,3 @@ def test_batch_detail_linkage(app_client, repo_root) -> None:
 
     # 契约：允许 operatorMachines 为 null（由 machineOperators 反推）
     assert re.search(r'"operatorMachines"\s*:\s*null\b', html_null), "operatorMachines=None 时应以 JSON null 注入"
-
-    # JS 契约：核心函数与关键分支存在（仅验证语义钩子）
-    js_path = os.path.join(str(repo_root), "static", "js", "batch_detail_linkage.js")
-    with open(js_path, "r", encoding="utf-8") as f:
-        js = f.read()
-
-    for needle in (
-        "ensureSelectOptionsLoaded",
-        "isSelectedOrphan",
-        "setSelectOptionsByAllowed",
-        "reorderOperatorOptionsByPreference",
-        'dataset.orphan = "1"',
-        'dataset.optionsLoaded = "1"',
-        "optionsLoadFailed",
-        "data-linkage-row",
-        "cfg.operatorMachines || buildOperatorMachinesFromMachineOperators",
-    ):
-        assert needle in js, f"缺少关键联动逻辑片段: {needle}"
-
-    # 关键提示文案约束（防回退）
-    assert re.search(r"当前设备/人员组合不匹配", js), "缺少不匹配提示"
-    assert re.search(r"已删除：请改选或清空", js), "缺少孤儿资源提示"

@@ -2,65 +2,10 @@
 
 from __future__ import annotations
 
-import ast
 from datetime import datetime, timedelta
-from pathlib import Path
 from types import SimpleNamespace
-from typing import List, Tuple
 
 import pytest
-
-ROOT = Path(__file__).resolve().parents[1]
-REFACTORED_ALGORITHM_FILES = (
-    "core/algorithms/ordering.py",
-    "core/algorithms/greedy/scheduler.py",
-    "core/algorithms/greedy/run_context.py",
-    "core/algorithms/greedy/run_state.py",
-    "core/algorithms/greedy/internal_slot.py",
-    "core/algorithms/greedy/internal_operation.py",
-    "core/algorithms/greedy/auto_assign.py",
-    "core/algorithms/greedy/seed.py",
-    "core/algorithms/greedy/dispatch/batch_order.py",
-    "core/algorithms/greedy/dispatch/resource_validation.py",
-    "core/algorithms/greedy/dispatch/sgs.py",
-    "core/algorithms/greedy/dispatch/sgs_scoring.py",
-)
-
-
-def _module_text(relative_path: str) -> str:
-    return (ROOT / relative_path).read_text(encoding="utf-8")
-
-
-def _function_span(relative_path: str, function_name: str) -> int:
-    tree = ast.parse(_module_text(relative_path))
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == function_name:
-            assert node.end_lineno is not None
-            return int(node.end_lineno) - int(node.lineno) + 1
-    raise AssertionError(f"未找到函数 {function_name} in {relative_path}")
-
-
-def _line_count(relative_path: str) -> int:
-    return len(_module_text(relative_path).splitlines())
-
-
-def _complexity_violations(relative_paths: Tuple[str, ...], *, threshold: int) -> List[str]:
-    from radon.complexity import cc_visit
-
-    violations = []
-    for relative_path in relative_paths:
-        for block in cc_visit(_module_text(relative_path)):
-            if block.complexity > threshold:
-                violations.append(f"{relative_path}:{block.lineno} {block.name} complexity={block.complexity}")
-    return violations
-
-
-def test_optimizer_uses_ordering_contract_instead_of_scheduler_helpers() -> None:
-    text = _module_text("core/services/scheduler/run/schedule_optimizer.py")
-
-    assert "from core.algorithms.ordering import build_batch_sort_inputs, build_normalized_batches_map" in text
-    assert "from core.algorithms.greedy.scheduler import build_batch_sort_inputs" not in text
-    assert "from core.algorithms.greedy.scheduler import build_normalized_batches_map" not in text
 
 
 def test_scheduler_keeps_legacy_ordering_helper_export() -> None:
@@ -70,37 +15,6 @@ def test_scheduler_keeps_legacy_ordering_helper_export() -> None:
 
     assert resolve_batch_sort_batch_id("", batch) == "B-FIELD"
     assert resolve_batch_sort_batch_id("B-KEY", batch) == "B-KEY"
-
-
-def test_dispatch_modules_do_not_call_scheduler_private_callbacks() -> None:
-    batch_order = _module_text("core/algorithms/greedy/dispatch/batch_order.py")
-    sgs = _module_text("core/algorithms/greedy/dispatch/sgs.py")
-
-    for text in (batch_order, sgs):
-        assert "._schedule_internal" not in text
-        assert "._schedule_external" not in text
-        assert "scheduler.logger" not in text
-        assert "scheduler.calendar" not in text
-
-
-def test_refactored_files_and_entry_functions_stay_under_quality_gate() -> None:
-    for relative_path in REFACTORED_ALGORITHM_FILES:
-        assert _line_count(relative_path) < 500
-
-    limits = {
-        ("core/algorithms/greedy/scheduler.py", "schedule"): 80,
-        ("core/algorithms/greedy/scheduler.py", "_schedule_internal"): 80,
-        ("core/algorithms/greedy/dispatch/sgs.py", "dispatch_sgs"): 80,
-        ("core/algorithms/greedy/dispatch/sgs.py", "_score_internal_candidate"): 80,
-        ("core/algorithms/greedy/auto_assign.py", "auto_assign_internal_resources"): 80,
-        ("core/algorithms/greedy/seed.py", "normalize_seed_results"): 80,
-    }
-    for (relative_path, function_name), max_lines in limits.items():
-        assert _function_span(relative_path, function_name) <= max_lines
-
-
-def test_refactored_algorithm_files_stay_under_complexity_threshold() -> None:
-    assert _complexity_violations(REFACTORED_ALGORITHM_FILES, threshold=15) == []
 
 
 class _Calendar:

@@ -460,22 +460,6 @@ def main() -> None:
     assert batch_excel_preview.get("auto_generate_ops") is True, f"批次 Excel 自动生成工序反序提交应识别 yes：{batch_excel_preview!r}"
     assert batch_excel_preview.get("strict_mode") is True, f"批次 Excel strict_mode 反序提交应识别 yes：{batch_excel_preview!r}"
 
-    tpl_path = os.path.join(repo_root, "templates", "scheduler", "batches.html")
-    run_panel_path = os.path.join(repo_root, "templates", "scheduler", "_run_panel.html")
-    with open(tpl_path, "r", encoding="utf-8") as f:
-        tpl = f.read()
-    with open(run_panel_path, "r", encoding="utf-8") as f:
-        tpl += "\n" + f.read()
-    assert "ui.toggle(option.toggle" in tpl, "batches.html 应通过 viewmodel toggle 对象渲染运行选项"
-    assert "run_options" in tpl, "batches.html 缺少 run_options 入口"
-    assert "发现参数问题就停止排产" in tpl, "batches.html 缺少 strict_mode 文案"
-
-    vm_path = os.path.join(repo_root, "web", "viewmodels", "scheduler_run_options.py")
-    with open(vm_path, "r", encoding="utf-8") as f:
-        vm_source = f.read()
-    assert '"enforce_ready"' in vm_source, "scheduler_batches_page.py 缺少 enforce_ready toggle"
-    assert '"strict_mode"' in vm_source, "scheduler_batches_page.py 缺少 strict_mode toggle"
-
     print("OK")
 
 

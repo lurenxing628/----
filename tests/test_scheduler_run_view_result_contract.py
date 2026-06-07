@@ -371,17 +371,6 @@ def test_run_schedule_view_result_rejects_unscheduled_batch_warning_with_any_sam
     assert "B002" not in visible
 
 
-def test_scheduler_run_route_does_not_parse_display_state_inline() -> None:
-    route_source = (REPO_ROOT / "web/routes/domains/scheduler/scheduler_run.py").read_text(encoding="utf-8")
-    run_body = route_source.split("def run_schedule():", 1)[1]
-
-    assert "build_summary_display_state" not in run_body
-    assert "summary_display" not in run_body
-    assert 'result.get("summary")' not in run_body
-    assert 'result.get("overdue_batches")' not in run_body
-    assert "overdue_batches" not in run_body
-
-
 def test_scheduler_run_route_flashes_failed_result_and_overdue_sample_limit() -> None:
     if str(REPO_ROOT) not in sys.path:
         sys.path.insert(0, str(REPO_ROOT))

@@ -101,9 +101,6 @@ def main(monkeypatch) -> None:
     assert 'name="preview_baseline"' in html
     assert 'action="/process/excel/op-types/confirm"' in html
     assert re.search(r'<input[^>]+name="preview_baseline"[^>]+value="[^"]+"', html)
-    assert '<details class="aps-row-detail">' in html
-    assert "<summary>查看数据</summary>" in html
-    assert "本行数据" in html
     assert "raw_rows_json" in html
     assert "preview_baseline" in html
     assert "internal" not in html

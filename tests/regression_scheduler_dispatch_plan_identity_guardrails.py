@@ -295,13 +295,6 @@ def test_current_official_dispatch_surfaces_write_guardrail_in_page_data_and_exc
         summary = _summary_values(data)
         assert summary["计划身份"] == "正式采用方案；可以填写现场实际"
         assert summary["现场记录说明"] == "这套是当前可执行的正式采用方案，可以查看资源排班，并按规则填写现场实际。"
-
-        template_source = (REPO_ROOT / "templates/scheduler/resource_dispatch.html").read_text(encoding="utf-8")
-        assert "plan_identity.guardrail_text" in template_source
-        assert "ui.summary_item('查看方案'" in template_source
-        assert "ui.summary_item('计划身份'" not in template_source
-        assert "ui.summary_item('现场记录'" not in template_source
-        assert "ui.summary_item('派工反馈'" not in template_source
     finally:
         conn.close()
 

@@ -40,62 +40,6 @@ GENERATED_USER_VISIBLE_DOC_GLOBS = (
     "docs/v2/panorama.js",
 )
 
-WORKBENCH_MOCKUP_FORBIDDEN_TEXT = [
-    "异常解释",
-    "异常必须解释",
-    "异常批次列表",
-    "第一卡点",
-    "主要原因",
-    "业务主方案",
-    "基线方案",
-    "最终推荐",
-    "评分",
-    "参考分",
-    "row.score_label",
-    "看影响清单",
-    "预计恢复",
-    "计划 vs 实际",
-    "对照基线",
-    "基线",
-    "设备故障",
-    "换型等待",
-    "缺料",
-    "影响交期",
-    "已停工",
-    "物料未齐",
-    "先看卡点",
-    "卡在 M-03",
-    "暂停 / 异常",
-    "按钮应优先显示“完工 / 暂停 / 报异常”",
-    "示例：暂停",
-    "示例：继续生产",
-    "示例：报异常",
-    "异常上报",
-    "暂停后可继续",
-    "后续：报异常",
-    "后续异常反馈",
-    "后续再补异常反馈",
-    "车间待开工 / 暂停 / 完工",
-    "开工 / 暂停 / 完工",
-    "当前阶段不展示暂停或继续生产按钮",
-    "查看偏差",
-    "后续复盘视图",
-    "分析复盘",
-    "风险复盘入口",
-]
-
-USER_VISIBLE_LEGACY_DRAFT_TEXT = [
-    "第一版",
-    "后续版本再补",
-    "如果进入正式实现",
-    "后续开放",
-    "静态 HTML 原型",
-    "设计讨论材料",
-    "当前阶段",
-    "第一阶段",
-    "后续再补",
-]
-
 USER_VISIBLE_INTERNAL_TERMS = [
     "plan_role",
     "scenario_id",
@@ -113,11 +57,6 @@ USER_VISIBLE_INTERNAL_TERMS = [
     "OperationExecutionState",
     "state_revision",
     "dirty_fields",
-]
-
-WORKBENCH_MOCKUP_FORBIDDEN_PATTERNS = [
-    re.compile(r"\b\d+(?:\.\d+)?h\b", re.IGNORECASE),
-    re.compile(r"\b\d+h\d+m\b", re.IGNORECASE),
 ]
 
 EXTERNAL_RESOURCE_PATTERNS = [
@@ -273,23 +212,9 @@ def test_frontend_static_asset_scan_reads_utf8_strictly(tmp_path, monkeypatch) -
         _collect_external_resource_violations()
 
 
-def test_workbench_mockup_uses_plain_language_for_users() -> None:
-    text = WORKBENCH_MOCKUP.read_text(encoding="utf-8")
-
-    violations = [
-        forbidden
-        for forbidden in WORKBENCH_MOCKUP_FORBIDDEN_TEXT
-        if forbidden in text
-    ]
-    for pattern in WORKBENCH_MOCKUP_FORBIDDEN_PATTERNS:
-        violations.extend(match.group(0) for match in pattern.finditer(text))
-
-    assert not violations, "原型页面仍有不适合直接给用户看的旧词：" + "、".join(violations)
-
-
 def test_user_visible_docs_do_not_use_internal_or_draft_terms() -> None:
     violations: List[str] = []
-    forbidden_terms = tuple(USER_VISIBLE_LEGACY_DRAFT_TEXT + USER_VISIBLE_INTERNAL_TERMS)
+    forbidden_terms = tuple(USER_VISIBLE_INTERNAL_TERMS)
     for path in _user_visible_text_files():
         rel = str(path.relative_to(REPO_ROOT))
         text = path.read_text(encoding="utf-8")

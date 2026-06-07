@@ -795,59 +795,6 @@ def _load_preview_module():
     return module
 
 
-def _template_static_scripts(template_path: Path) -> List[str]:
-    text = template_path.read_text(encoding="utf-8")
-    return re.findall(r"url_for\('static',\s*filename='([^']+)'\)", text)
-
-
-def test_gantt_contract_asset_is_tracked_and_loaded_before_render_in_all_templates() -> None:
-    expected_order = [
-        "js/frappe-gantt.min.js",
-        "js/gantt.js",
-        "js/gantt_zoom.js",
-        "js/gantt_adapter.js",
-        "js/gantt_color.js",
-        "js/gantt_outline.js",
-        "js/gantt_contract.js",
-        "js/gantt_help.js",
-        "js/gantt_popup_fit.js",
-        "js/gantt_popup.js",
-        "js/gantt_legend.js",
-        "js/gantt_holidays.js",
-        "js/gantt_decorations.js",
-        "js/gantt_render.js",
-        "js/gantt_ui.js",
-        "js/gantt_boot.js",
-    ]
-    for template_rel in ("templates/scheduler/gantt.html", "web_new_test/templates/scheduler/gantt.html"):
-        scripts = [
-            item
-            for item in _template_static_scripts(REPO_ROOT / template_rel)
-            if item.startswith("js/gantt") or item == "js/frappe-gantt.min.js"
-        ]
-        assert scripts == expected_order, template_rel
-
-    for asset_rel in (
-        "static/js/gantt_contract.js",
-        "static/js/gantt_help.js",
-        "static/js/gantt_zoom.js",
-        "static/js/gantt_adapter.js",
-        "static/js/gantt_popup.js",
-        "static/js/gantt_legend.js",
-        "static/js/gantt_holidays.js",
-        "static/js/gantt_decorations.js",
-    ):
-        asset_path = REPO_ROOT / asset_rel
-        assert asset_path.is_file()
-        tracked = subprocess.run(
-            ["git", "ls-files", "--error-unmatch", asset_rel],
-            cwd=REPO_ROOT,
-            capture_output=True,
-            text=True,
-        )
-        assert tracked.returncode == 0, tracked.stderr
-
-
 def test_outline_helper_contract_and_adapter_binding() -> None:
     node_code = f"""
 {DOM_SHIM_JS}

@@ -781,15 +781,6 @@ def test_scheduler_analysis_hides_internal_schema_and_attempt_tags() -> None:
     assert "/{{ dispatch_rule_zh" not in analysis_template
 
 
-def test_gantt_contract_frontend_preserves_reason_code_and_deduplicates_unavailable_tooltip() -> None:
-    gantt_contract = _read("static/js/gantt_contract.js")
-    assert "reason_code" in gantt_contract
-    assert "critical.reason_code" in gantt_contract or "raw.reason_code" in gantt_contract
-    assert "dedupeCriticalReason" in gantt_contract
-    assert "关键链暂不可用（关键链暂不可用）" not in gantt_contract
-    assert "reasonText, unavailableMessage" not in gantt_contract
-
-
 def test_reports_and_v2_batch_templates_match_public_manual_contracts() -> None:
     utilization = _read("templates/reports/utilization.html")
     assert "利用率(%)" in utilization

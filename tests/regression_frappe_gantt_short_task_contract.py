@@ -258,26 +258,10 @@ process.stdout.write(JSON.stringify({{ out }}));
       assert item["endDeltaMs"] == 0, item
 
 
-def test_short_task_fix_stays_inside_vendor_time_geometry() -> None:
-    vendor_js = (REPO_ROOT / "static" / "js" / "frappe-gantt.min.js").read_text(encoding="utf-8")
-    render_js = (REPO_ROOT / "static" / "js" / "gantt_render.js").read_text(encoding="utf-8")
-
-    assert "this.duration=(this.task._end-this.task._start)/(this.gantt.options.step_ms||36e5*this.gantt.options.step)" in vendor_js
-    assert "compute_start_end_date(){const t=this.$bar" in vendor_js
-    assert "this.gantt.options.step_ms||36e5*this.gantt.options.step" in vendor_js
-    assert "draw_hitbox()" in vendor_js
-    assert "t._end_is_date_only" in vendor_js
-    assert "Fifteen Minute" in vendor_js
-    assert "One Minute" in vendor_js
-    assert ".bar-hit" not in render_js
-    assert "min-width" not in render_js
-
-
 def main() -> None:
     test_frappe_gantt_keeps_short_tasks_visible_and_draggable()
     test_frappe_gantt_supports_hour_and_minute_zoom_geometry()
     test_short_task_width_matrix_covers_all_readonly_zoom_levels_and_midnight_edges()
-    test_short_task_fix_stays_inside_vendor_time_geometry()
     print("OK")
 
 

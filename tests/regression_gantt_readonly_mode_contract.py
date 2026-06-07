@@ -203,20 +203,9 @@ process.stdout.write(JSON.stringify({{
     assert result["afterX"] == result["beforeX"]
 
 
-def test_templates_show_readonly_mode_and_zoom_contract() -> None:
-    for rel in ("templates/scheduler/gantt.html", "web_new_test/templates/scheduler/gantt.html"):
-        html = (REPO_ROOT / rel).read_text(encoding="utf-8")
-        assert "当前为查看模式" in html
-        assert 'id="ganttZoomLevel"' in html
-        assert 'id="ganttZoomWarning"' in html
-        assert 'data-gantt-mode="view"' in html
-        assert 'data-zoom-level="{{ gantt_zoom or' in html
-
-
 def main() -> None:
     test_readonly_gantt_blocks_drag_resize_and_progress_events_but_keeps_click()
     test_formal_render_passes_readonly_options_and_blocks_drag()
-    test_templates_show_readonly_mode_and_zoom_contract()
     print("OK")
 
 

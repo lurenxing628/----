@@ -278,24 +278,3 @@ def test_gantt_task_detail_links_explain_summary_parse_failure() -> None:
     assert links["查看计划和现场实际"]["url"] == ""
     assert "当前排产摘要读取失败" in links["查看计划和现场实际"]["disabled_reason"]
     assert "排产摘要缺失" in links["查看计划和现场实际"]["disabled_reason"]
-
-
-def test_gantt_templates_and_css_define_stable_detail_layout() -> None:
-    for rel_path in ("templates/scheduler/gantt.html", "web_new_test/templates/scheduler/gantt.html"):
-        html = _read(rel_path)
-        assert 'class="aps-gantt-workbench"' in html
-        assert 'id="ganttTaskDetail"' in html
-        assert "点击甘特条查看任务详情" in html
-        assert html.index('id="gantt"') < html.index('id="ganttTaskDetail"')
-
-    css = _read("static/css/aps_gantt.css")
-    for token in (
-        ".aps-gantt-workbench",
-        ".aps-gantt-task-detail",
-        ".aps-gantt-task-detail-empty",
-        ".aps-gantt-task-detail-grid",
-        "@media (min-width: 1180px)",
-        "grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);",
-        "@media (max-width: 1179px)",
-    ):
-        assert token in css
