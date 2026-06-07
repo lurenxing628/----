@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+import importlib
 import json
 import subprocess
 import sys
 from pathlib import Path
+from typing import Dict
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
-def _run_probe(source: str, *args: str) -> dict[str, object]:
+def _run_probe(source: str, *args: str) -> Dict[str, object]:
     completed = subprocess.run(
         [sys.executable, "-c", source, *args],
         cwd=str(REPO_ROOT),
@@ -20,6 +22,12 @@ def _run_probe(source: str, *args: str) -> dict[str, object]:
     assert completed.returncode == 0, (completed.stdout, completed.stderr)
     output_lines = [line for line in completed.stdout.splitlines() if line.strip()]
     return json.loads(output_lines[-1])
+
+
+# ===========================================================================
+# 模块加载层契约（子进程探针隔离 import 副作用）
+# 迁入自: tests/test_scheduler_route_registration_contract.py（原 A 文件，本目标文件原身）
+# ===========================================================================
 
 
 def test_import_scheduler_root_does_not_register_full_scheduler_graph() -> None:
@@ -99,3 +107,22 @@ print(json.dumps({
     assert payload["loaded_registrar"] is False
     assert payload["loaded_analysis"] is False
     assert payload["loaded_run"] is True
+
+
+# ===========================================================================
+# 应用工厂层契约（真实 create_app 后 scheduler 路由确已挂上 url_map）
+# 迁入自: tests/test_scheduler_routes_still_registered_by_factory.py（原 B 文件，已 rm 删）
+# 复用 conftest db_env fixture（五件套 env + ensure_schema 建库）替原 _load_app_factory 私有 helper；
+# 保留 sys.modules.pop("app", None) + importlib.import_module("app").create_app()（需 app 对象取 url_map）。
+# ===========================================================================
+
+
+def test_scheduler_routes_are_registered_by_factory(db_env) -> None:
+    sys.modules.pop("app", None)
+    app = importlib.import_module("app").create_app()
+    rules = {rule.rule for rule in app.url_map.iter_rules()}
+
+    assert "/scheduler/run" in rules
+    assert "/scheduler/gantt" in rules
+    assert "/scheduler/analysis" in rules
+    assert "/scheduler/resource-dispatch" in rules

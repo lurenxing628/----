@@ -81,7 +81,7 @@ REGRESSION_TESTS = (
     "tests/regression_scheduler_candidate_summary_contract.py",
     "tests/regression_scheduler_candidate_week_plan_contract.py",
     "tests/regression_scheduler_dispatch_plan_identity_guardrails.py",
-    "tests/regression_scheduler_workbench_link_guardrails.py",
+    "tests/regression_scheduler_workbench_links_contract.py",
     "tests/regression_web_silent_fallback_contract.py",
     "tests/regression_operation_execution_event_foundation.py",
     "tests/regression_operation_execution_event_time_contract.py",

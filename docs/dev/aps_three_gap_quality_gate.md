@@ -104,7 +104,7 @@
 - `tests/regression_schedule_service_reschedulable_contract.py`
 - `tests/regression_scheduler_delay_diagnosis_contract.py`
 - `tests/regression_scheduler_dispatch_plan_identity_guardrails.py`
-- `tests/regression_scheduler_workbench_link_guardrails.py`
+- `tests/regression_scheduler_workbench_links_contract.py`
 - `tests/regression_web_silent_fallback_contract.py`
 - `tests/regression_scheduler_exception_blocks_auto_reschedule.py`
 - `tests/regression_scheduler_graph_report_mode_service_contract.py`

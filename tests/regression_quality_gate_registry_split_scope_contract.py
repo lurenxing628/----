@@ -84,8 +84,7 @@ def test_workbench_flow_regression_is_required_and_grouped() -> None:
     from tools import quality_gate_shared
 
     test_paths = {
-        "tests/regression_aps_workbench_flow_contract.py",
-        "tests/regression_aps_workbench_report_row_links_contract.py",
+        "tests/regression_aps_workbench_context_propagation_contract.py",
         "tests/regression_dashboard_workbench_contract.py",
         "tests/regression_dashboard_overdue_count_tolerance.py",
         "tests/regression_execution_review_identity_guardrail.py",

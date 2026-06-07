@@ -18,10 +18,24 @@ from tests.reports_workbench_backlink_helpers import (
     _visible_text,
 )
 
+# ---------------------------------------------------------------------------
+# 合并体：workbench/首页/报表行 链接跳转时的上下文透传契约。
+# 由 P5.1 MERGE 簇合并而来（方案 B：只合 flow + report_row，first_round 保持独立）。
+# 共用 reports_workbench_backlink_helpers._client()（v1 UI + reports 种子，非 conftest app_client）。
+# 去重仅限唯一逐字完全相同的无副作用 helper `_assert_query_values`（原 flow:22 / report_row:13，留一份）。
+# ---------------------------------------------------------------------------
 
+
+# 共享 helper（原两文件逐字相同，去重保留一份）
 def _assert_query_values(query: Dict[str, List[str]], expected: Dict[str, str]) -> None:
     for key, value in expected.items():
         assert query[key] == [value], (key, query)
+
+
+# ===========================================================================
+# 迁入自 tests/regression_aps_workbench_flow_contract.py
+# （4 个 test + 其本地 helper；含 ★B-6 / R57-PINNED）
+# ===========================================================================
 
 
 def _target_parser(client, href: str):
@@ -332,6 +346,9 @@ def test_workbench_main_flow_from_home_keeps_context_and_reaches_first_version_p
         _assert_home_link_keeps_context(target_parser, expected_home_query)
 
 
+# ★B-6 / R57-PINNED — 非 adopted（plan_role=baseline_best）复盘入口被有意禁用，
+# 且首页链接逐字透传非 adopted 的 plan_role（绝不改写成 adopted）。
+# 整函数原样搬入：:346/:347/:352/:353/:354/:355 透传断言禁去重、禁与主流程 adopted 同义合并。
 def test_workbench_non_adopted_review_entry_is_disabled_and_plain_chinese() -> None:
     client = _client()
     path = (
@@ -431,3 +448,82 @@ def test_workbench_superseded_adopted_home_entry_keeps_guardrail() -> None:
     _assert_public_output_boundaries(home_parser)
     _assert_no_execution_review_links(home_parser)
     assert "这是历史正式方案，只能查看" in home_html
+
+
+# ===========================================================================
+# 迁入自 tests/regression_aps_workbench_report_row_links_contract.py
+# （1 个 public test + 2 私有 helper；其本地 _assert_query_values 与上方逐字相同已去重）
+# ===========================================================================
+
+
+def test_workbench_report_rows_keep_batch_and_resource_context_when_returning_to_action_pages() -> None:
+    client = _client()
+
+    _assert_overdue_row_workbench_links(client)
+    _assert_utilization_row_workbench_links(client)
+
+
+def _assert_overdue_row_workbench_links(client) -> None:
+    overdue = _parser_for(
+        client,
+        "/reports/overdue?version=12&plan_role=adopted&date_from=2026-05-06&date_to=2026-05-06"
+        "&batch_id=B-RPT&resource_type=machine&resource_id=M-RPT",
+    )
+    gantt = _query(_href_with_text_and_fragment(overdue, "定位甘特", "/scheduler/gantt", "gantt_batch=B-RPT"))
+    dispatch = _query(_href_with_text_and_fragment(overdue, "回资源派工", "/scheduler/resource-dispatch", "batch_id=B-RPT"))
+
+    _assert_query_values(
+        gantt,
+        {
+            "version": "12",
+            "plan_role": "adopted",
+            "start_date": "2026-05-06",
+            "end_date": "2026-05-06",
+            "gantt_batch": "B-RPT",
+            "gantt_resource": "M-RPT",
+        },
+    )
+    _assert_query_values(
+        dispatch,
+        {
+            "version": "12",
+            "plan_role": "adopted",
+            "date_from": "2026-05-06",
+            "date_to": "2026-05-06",
+            "batch_id": "B-RPT",
+            "scope_type": "machine",
+            "machine_id": "M-RPT",
+        },
+    )
+
+
+def _assert_utilization_row_workbench_links(client) -> None:
+    utilization = _parser_for(
+        client,
+        "/reports/utilization?version=12&plan_role=adopted&start_date=2026-05-06&end_date=2026-05-06"
+        "&resource_type=operator&resource_id=O-RPT",
+    )
+    row_dispatch = _query(
+        _href_with_text_and_fragment(utilization, "查看资源排班", "/scheduler/resource-dispatch", "operator_id=O-RPT")
+    )
+    row_gantt = _query(_href_with_text_and_fragment(utilization, "定位甘特", "/scheduler/gantt", "gantt_resource=O-RPT"))
+
+    _assert_query_values(
+        row_dispatch,
+        {
+            "version": "12",
+            "date_from": "2026-05-06",
+            "date_to": "2026-05-06",
+            "scope_type": "operator",
+            "operator_id": "O-RPT",
+        },
+    )
+    _assert_query_values(
+        row_gantt,
+        {
+            "start_date": "2026-05-06",
+            "end_date": "2026-05-06",
+            "view": "operator",
+            "gantt_resource": "O-RPT",
+        },
+    )

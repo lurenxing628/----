@@ -320,7 +320,7 @@ items:
     feature: 2026-06-02-workbench-flow-regression-suite
     minimal_loop: false
     primary_paths:
-      - tests/regression_aps_workbench_flow_contract.py
+      - tests/regression_aps_workbench_context_propagation_contract.py
       - tests/regression_ui_browser_geometry_smoke.py
       - tests/ui_geometry_contract_data.py
       - tools/test_registry_data.py
@@ -331,7 +331,7 @@ items:
       - "浏览器几何测试只覆盖关键页面，不把整站都塞进慢测试"
       - "只允许关闭测试暴露的既有护栏缺口，不扩成第二阶段业务实现"
     test_commands:
-      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_aps_workbench_flow_contract.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_aps_workbench_context_propagation_contract.py"
       - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py"
     forbidden_paths: [core/algorithms/, vendor/, "schema.sql（除 OperationExecutionEvents 身份护栏语义改动与 500 行门禁格式压缩外）"]
     exit_checks:
