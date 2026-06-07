@@ -1,8 +1,22 @@
+"""回归测试：RouteParser 外协供应商（映射 / 选择 / 周期）契约。
+
+合并自两份原回归（物理文件合并、并文件不并函数，各 test 保留独立语义）：
+1. 单供应商 default_days=0（无效周期）→ PARTIAL + 回退 1.0 + 透出『默认周期无效』warning，
+   守护零/无效外协周期不被静默当成 0 天直排（原 default_days_zero_trace）。
+2. 多供应商有效选择契约：最高 supplier_id 为 effective、仅 active、blank category=internal、
+   snapshot 形状、inactive-only=缺供应商、非 effective 供应商 stale issue 忽略
+   （原 supplier_effective_selection_contract）。
+
+stub 统一为宽版（_OpType.category 可空；_Supplier 带 default_days 可为 float/str/None + status 默认 active；
+_StubSuppliersRepo.list(status=None) 支持按 status 过滤），覆盖两组全部用例的字段与坏值需求。
+注解用 typing.Optional/Union（非 PEP604 `X | Y`），过 py38 门禁 scan_aps_three_gap_py38_scope。
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 from types import SimpleNamespace
-from typing import List
+from typing import List, Optional, Union
 
 from core.services.process.part_service import PartService
 from core.services.process.route_parser import ParseStatus, RouteParser
@@ -12,14 +26,14 @@ from core.services.process.route_parser import ParseStatus, RouteParser
 class _OpType:
     op_type_id: str
     name: str
-    category: str | None
+    category: Optional[str]
 
 
 @dataclass
 class _Supplier:
     supplier_id: str
     op_type_id: str
-    default_days: float | str | None
+    default_days: Optional[Union[float, str]]
     status: str = "active"
 
 
@@ -41,7 +55,7 @@ class _StubOpTypesRepo:
 class _StubSuppliersRepo:
     suppliers: List[_Supplier]
 
-    def list(self, status: str | None = None):
+    def list(self, status: Optional[str] = None):
         rows = list(self.suppliers)
         if status is None:
             return rows
@@ -57,6 +71,32 @@ class _SnapshotService(PartService):
         return self._parser.parse(str(route_raw or ""), part_no=part_no, strict_mode=bool(strict_mode))
 
 
+# ---------------------------------------------------------------------------
+# 原 regression_route_parser_supplier_default_days_zero_trace.py
+# 单供应商 default_days=0（无效周期）→ PARTIAL + 回退 1.0 + warning。
+# 复用上方统一宽版 stub（_Supplier.status 默认 "active"，list() 无参兼容 status=None）。
+# ---------------------------------------------------------------------------
+def test_route_parser_supplier_default_days_zero_trace() -> None:
+
+    parser = RouteParser(
+        op_types_repo=_StubOpTypesRepo(op_types=[_OpType(op_type_id="OT_EXT", name="表处理", category="external")]),
+        suppliers_repo=_StubSuppliersRepo(suppliers=[_Supplier(supplier_id="SUP_ZERO", op_type_id="OT_EXT", default_days=0.0)]),
+        logger=None,
+    )
+    result = parser.parse("5表处理", part_no="P_SUP_ZERO")
+
+    assert result.status in (ParseStatus.PARTIAL, ParseStatus.PARTIAL.value), f"supplier default_days=0 应返回 PARTIAL：{result.status!r}"
+    assert len(result.operations or []) == 1, f"解析工序数量异常：{result.operations!r}"
+    op = result.operations[0]
+    assert op.supplier_id == "SUP_ZERO", f"供应商映射异常：{op.supplier_id!r}"
+    assert abs(float(op.default_days or 0.0) - 1.0) < 1e-9, f"default_days 未回退为 1.0：{op.default_days!r}"
+    assert any("默认周期无效" in str(msg) for msg in (result.warnings or [])), f"未透出默认周期无效 warning：{result.warnings!r}"
+
+
+# ---------------------------------------------------------------------------
+# 原 regression_supplier_effective_selection_contract.py
+# 多供应商有效选择契约（6 函数，逐字搬迁，函数体不动）。
+# ---------------------------------------------------------------------------
 def test_part_service_route_parse_baseline_snapshot_uses_highest_supplier_id_as_effective_supplier() -> None:
     parser = RouteParser(
         op_types_repo=_StubOpTypesRepo(op_types=[_OpType(op_type_id="OT_EXT", name="表处理", category="external")]),
