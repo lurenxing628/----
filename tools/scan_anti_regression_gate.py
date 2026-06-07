@@ -65,7 +65,7 @@ def is_production_source_path(rel_path: str) -> bool:
     return rel_path in ROOT_SOURCE_FILES or rel_path.startswith(SOURCE_ROOTS)
 
 
-def _parse(root: str, rel_path: str) -> ast.AST:
+def _parse(root: str, rel_path: str) -> ast.Module:
     with open(os.path.join(root, rel_path), encoding="utf-8") as handle:
         return ast.parse(handle.read(), filename=rel_path)
 
