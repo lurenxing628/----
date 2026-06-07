@@ -28,13 +28,20 @@ def test_path_classification() -> None:
     assert not gate.is_production_source_path("tests/test_x.py")
 
 
-def test_main_style_only_flags_main_without_test(tmp_path: Path) -> None:
-    bad = tmp_path / "tests" / "test_bad.py"
-    good = tmp_path / "tests" / "test_good.py"
-    _write(bad, '"""d."""\ndef main():\n    return 0\n')
-    _write(good, '"""d."""\ndef main():\n    return 0\n\ndef test_ok():\n    assert True\n')
-    flagged = gate.scan_main_style(str(tmp_path), ["tests/test_bad.py", "tests/test_good.py"])
-    assert flagged == ["tests/test_bad.py"]
+def test_missing_test_function_flags_all_zero_collect_shells(tmp_path: Path) -> None:
+    """规则① 须含 test 函数:main-style/纯 import 空壳/async-main 三类伪回归(pytest 收集 0 用例)全拦;
+    模块级 def test_ 与类内 test_ 方法(unittest 风格)均放行。补 docstring 也救不了空壳。"""
+    cases = {
+        "tests/test_main_only.py": '"""d."""\ndef main():\n    return 0\n',
+        "tests/test_empty_shell.py": '"""d."""\nimport os\n\nprint(os)\n',
+        "tests/test_async_main.py": '"""d."""\nasync def main():\n    return 0\n',
+        "tests/test_func_ok.py": '"""d."""\ndef test_ok():\n    assert True\n',
+        "tests/test_class_ok.py": '"""d."""\nimport unittest\n\n\nclass T(unittest.TestCase):\n    def test_ok(self):\n        assert True\n',
+    }
+    for rel, body in cases.items():
+        _write(tmp_path / rel, body)
+    flagged = gate.scan_missing_test_function(str(tmp_path), list(cases))
+    assert flagged == ["tests/test_main_only.py", "tests/test_empty_shell.py", "tests/test_async_main.py"]
 
 
 def test_missing_docstring_flags_only_undocumented(tmp_path: Path) -> None:
@@ -82,4 +89,4 @@ def test_added_set_excludes_deletions(tmp_path: Path) -> None:
 def test_live_repo_is_currently_clean() -> None:
     """固化锁:P7 落地时实仓自 d4589d77 以来的新增文件零违规,锁住治理成果不回潮。"""
     result = gate.scan_added(gate.DEFAULT_BASE_REF, str(REPO_ROOT))
-    assert result == {"main_style": [], "missing_docstring": [], "uncovered_source": []}
+    assert result == {"missing_test_function": [], "missing_docstring": [], "uncovered_source": []}

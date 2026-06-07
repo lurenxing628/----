@@ -7,7 +7,8 @@
 ## 一、KPI 仪表盘(治理前 2026-06-05 → 治理后 2026-06-08)
 
 > 治理前基线源:`BASELINE.md` / `baseline.json` / `SPEED_AND_READABILITY.md`(measured_at 2026-06-05)。
-> 治理后值:HEAD `05bf1648` 实测。**带 ⚠ 的行口径不同、不可直接相减**,已注明。
+> 治理后值:P7 收官 HEAD 实测(2026-06-08)。**带 ⚠ 的行口径不同、不可直接相减**,已注明;
+> `evidence/QualityGate/*` 为 `.gitignore` 忽略的运行时再生产物,门禁数字以「自行重跑」为权威复核口径。
 
 ### 1.1 规模
 
@@ -39,7 +40,8 @@
 |---|---|---|---|
 | collect-only | 0.87s | 0.77s | `pytest --collect-only -q tests` |
 | ⚠ 全量回归 | 330.44s(纯单进程 `pytest -q tests`) | full_test_debt 187.9s(`--sharded --shard-count 3`) | **口径不同**(单进程 vs 3 片);不可写成"330→188 提速" |
-| full gate(long gate) | — | executed 9 / failed 0 / 总 210.4s | `evidence/QualityGate/long_gate/summary.json`(head 017c1920,generated 2026-06-08) |
+| full gate(17 步 command-plan) | — | **17/17 步全过,GATE_EXIT=0** | `scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`,末次绿态 HEAD;第 17 步 = 防回潮门禁 |
+| └ long gate(可缓存子集 10 entry) | — | executed 8 / reused 1 / planned_only 1 / failed 0 / 总 ~204.4s | ⚠ `evidence/QualityGate/long_gate/summary.json` 是 `.gitignore` 忽略的**运行时再生产物**(每跑覆盖、不入库),仅供本机即时核对;权威复核请自行重跑门禁 |
 | push / daily gate | 典型 ~40s / 最坏 ~180s(治理前实测) | 未在治理期单独留计时凭证 | ⚠ 诚实标注:P6/P7 阶段 evidence 仅有 full gate 证据;push 提速主要由 P0(scope 收窄)+ P4(xdist 并行)贡献,数据见各自 RESULT |
 
 ## 二、P7 防回潮门禁(固化成果不回潮)
@@ -58,7 +60,14 @@ B 阶段删 R51 续命测试(`regression_sort_strategy_case_insensitive` / `regr
 以 tmp git 仓库铁证此点(删既有 + 加新 → 门禁返回 0)。落地态三规则均零违规。
 
 接入:工具登记 `QUALITY_GATE_TOOL_PATHS` + `pyrightconfig.tools.json`(pyright 类检);GUARD 测试登记
-`QUALITY_GATE_GUARD_TESTS` + `quality_gate` 组 target_paths/input+tool_file_scopes(编辑工具触发 daily 自测)。
+`QUALITY_GATE_GUARD_TESTS` + `quality_gate` 组 target_paths/input+tool_file_scopes。
+
+**⚠ 覆盖层级限制(诚实标注)**:防回潮 enforcement(扫新增文件的第 17 步)**只在 full gate
+(`run_quality_gate.py`,CI/手动)运行,daily/pre-push 快门禁不跑**——本地 push 前新增违规文件不会被
+即时拦截,要等 full gate 才暴露。`quality_gate` 组的 tool/input_file_scopes 只让「**编辑门禁工具
+本身或 gate_meta**」时在 daily 触发 GUARD **自测**(保护扫描逻辑不退化),并不让 daily 对「新增的
+普通业务测试/源文件」生效。若需 push 前即时防回潮,后续可把门禁接入 `run_daily_quality_gate.py`
+(本 P7 未做,作为收官遗留风险登记)。
 
 ## 三、基线固化(§1.4 SOP)
 

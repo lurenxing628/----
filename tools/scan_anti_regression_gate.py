@@ -3,7 +3,8 @@
 
 只看 `git diff --diff-filter=A`(新增文件),删除/既有文件天然不入视野——B 阶段删既有测试
 (R51 续命测试等)永不被本门禁阻断,且绝不依赖任何 KEEP/HOLD 禁删白名单。三条规则:
-  ① main-style:新增的收集型测试文件(匹配 python_files)必须含 def test_,不得是只有 def main 的脚本;
+  ① 须含 test 函数:新增的收集型测试文件(匹配 python_files)必须含 test 函数(模块级 def test_
+     或类内 test_ 方法),否则即 main-style 脚本/纯 import 空壳/async-main 伪回归(pytest 收集 0 用例);
   ② docstring:新增的收集型测试文件必须有模块级 docstring;
   ③ scope:新增的生产源文件(core/data/web/desktop/plugins + app/app_new_ui/config.py)必须落在
      某 required 回归组的 *_file_scopes glob 内,否则改它不触发任何回归(无守护)。
@@ -77,18 +78,11 @@ def _has_test_function(tree: ast.AST) -> bool:
     )
 
 
-def _has_main_function(tree: ast.AST) -> bool:
-    return any(isinstance(node, ast.FunctionDef) and node.name == "main" for node in ast.walk(tree))
-
-
-def scan_main_style(root: str, test_paths: Sequence[str]) -> List[str]:
-    """新增测试文件只有 def main、无 def test_ —— 是没转 pytest 的 main-style 脚本(回潮)。"""
-    violations = []
-    for rel_path in test_paths:
-        tree = _parse(root, rel_path)
-        if _has_main_function(tree) and not _has_test_function(tree):
-            violations.append(rel_path)
-    return violations
+def scan_missing_test_function(root: str, test_paths: Sequence[str]) -> List[str]:
+    """新增收集型测试文件须含 test 函数(模块级 def test_ 或类内 test_ 方法,ast.walk 全覆盖)。
+    无任何 test 函数者 = 没转 pytest 的 main-style 脚本 / 纯 import 空壳 / 只有 async def main 的伪回归——
+    pytest 实际收集 0 个真实用例,放行即名存实亡的回潮。"""
+    return [rel_path for rel_path in test_paths if not _has_test_function(_parse(root, rel_path))]
 
 
 def scan_missing_docstring(root: str, test_paths: Sequence[str]) -> List[str]:
@@ -120,14 +114,14 @@ def scan_added(base_ref: str, root: str) -> Dict[str, List[str]]:
     test_paths = [p for p in added if is_collected_test_path(p)]
     source_paths = [p for p in added if is_production_source_path(p)]
     return {
-        "main_style": scan_main_style(root, test_paths),
+        "missing_test_function": scan_missing_test_function(root, test_paths),
         "missing_docstring": scan_missing_docstring(root, test_paths),
         "uncovered_source": scan_uncovered_source(source_paths, load_scope_globs()),
     }
 
 
 _RULE_HINTS = {
-    "main_style": "新增测试文件须含 def test_(不得是只有 def main 的 main-style 脚本)",
+    "missing_test_function": "新增收集型测试文件须含 test 函数(模块级 def test_ 或类内 test_ 方法),否则 pytest 收集 0 用例",
     "missing_docstring": "新增测试文件须有模块级 docstring",
     "uncovered_source": "新增生产源文件须落在某 required 回归组 scope glob 内(否则改它不触发回归)",
 }
