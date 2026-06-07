@@ -9,8 +9,8 @@ from core.infrastructure.database import ensure_schema, get_connection
 from core.infrastructure.migration_state import detect_schema_is_current
 from core.infrastructure.migrations.v8 import run as run_v8
 from core.services.material.batch_material_service import BatchMaterialService
+from tests._support.paths import REPO_ROOT
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 
 

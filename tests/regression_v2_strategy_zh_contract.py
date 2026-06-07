@@ -2,9 +2,8 @@
 
 import os
 
+from tests._support.paths import REPO_ROOT_STR as REPO_ROOT
 from web.viewmodels.scheduler_history_summary import strict_strategy_display_label
-
-REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 
 def _read(path: str) -> str:

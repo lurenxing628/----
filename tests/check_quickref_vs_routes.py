@@ -12,15 +12,13 @@ from typing import Dict, Iterable, List, Optional, Set, Tuple, cast
 
 from flask import Flask
 
+from tests._support.paths import REPO_ROOT_STR
+
 QUICKREF_VS_ROUTES_REPORT_REL = "evidence/QualityGate/quickref_vs_routes.md"
 
 
 def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
+    return REPO_ROOT_STR
 
 
 def _set_isolated_runtime_env(root: str) -> Dict[str, Optional[str]]:

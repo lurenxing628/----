@@ -8,7 +8,7 @@ import os
 import sys
 from typing import Dict, List, Optional, Set, Tuple
 
-REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+from tests._support.paths import REPO_ROOT_STR as REPO_ROOT
 
 
 def collect_py_files(*rel_dirs: str) -> List[str]:

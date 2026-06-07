@@ -10,8 +10,8 @@ from types import SimpleNamespace
 from typing import Any, Dict, Optional
 
 from core.infrastructure.database import ensure_schema, get_connection
+from tests._support.paths import REPO_ROOT
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 
 

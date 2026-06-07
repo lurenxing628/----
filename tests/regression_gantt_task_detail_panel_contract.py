@@ -8,6 +8,7 @@ from typing import Tuple
 from core.services.scheduler.gantt_critical_chain import compute_critical_chain_from_rows
 from core.services.scheduler.gantt_range import resolve_week_range
 from core.services.scheduler.gantt_tasks import build_tasks
+from tests._support.paths import REPO_ROOT
 from tests.operation_execution_feedback_test_support import (
     _base_payload,
     _build_app,
@@ -15,8 +16,6 @@ from tests.operation_execution_feedback_test_support import (
     _current_query,
     _json,
 )
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _read(rel_path: str) -> str:

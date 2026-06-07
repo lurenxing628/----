@@ -11,7 +11,7 @@ from typing import Iterable, List, Set
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from tests._support.paths import REPO_ROOT
 
 FRONTEND_ROOTS = [
     REPO_ROOT / "templates",

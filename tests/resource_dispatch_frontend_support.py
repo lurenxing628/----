@@ -6,7 +6,8 @@ import re
 from pathlib import Path
 from typing import Tuple
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from tests._support.paths import REPO_ROOT
+
 RESOURCE_DISPATCH_TEMPLATE = REPO_ROOT / "templates" / "scheduler" / "resource_dispatch.html"
 UI_CONTRACT_CSS = REPO_ROOT / "static" / "css" / "ui_contract.css"
 RESOURCE_DISPATCH_CSS = REPO_ROOT / "static" / "css" / "resource_dispatch.css"

@@ -14,8 +14,9 @@ from core.infrastructure.migration_state import detect_schema_is_current
 from core.models.schedule_adjustment import DRAFT_STATUS_DISCARDED
 from core.services.scheduler.gantt_adjustment_draft_service import GanttAdjustmentDraftService
 from data.repositories import ScheduleAdjustmentRepository, ScheduleHistoryRepository
+from tests._support.paths import REPO_ROOT
 
-SCHEMA_PATH = Path(__file__).resolve().parents[1] / "schema.sql"
+SCHEMA_PATH = REPO_ROOT / "schema.sql"
 
 
 def _connect_fresh_schema(tmp_path: Path) -> sqlite3.Connection:

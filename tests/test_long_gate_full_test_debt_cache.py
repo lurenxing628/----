@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import pytest
 
+from tests._support.paths import REPO_ROOT, REPO_ROOT_STR
 from tools import long_gate_fingerprint as fingerprint_mod
 from tools.long_gate_cache import decide_reuse, write_success
 from tools.long_gate_collect import build_collect_nodeids_payload, write_collect_nodeids
@@ -26,7 +27,7 @@ from tools.test_registry import test_only_helper_impacts_for_path as helper_impa
 
 
 def _repo_root() -> str:
-    return str(Path(__file__).resolve().parents[1])
+    return REPO_ROOT_STR
 
 
 def _import_run_quality_gate():

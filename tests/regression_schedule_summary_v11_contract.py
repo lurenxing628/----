@@ -8,13 +8,11 @@ from datetime import datetime
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
 
+from tests._support.paths import REPO_ROOT_STR
+
 
 def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
+    return REPO_ROOT_STR
 
 
 class _StubSvc:

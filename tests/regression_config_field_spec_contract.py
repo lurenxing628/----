@@ -16,8 +16,8 @@ from core.services.scheduler.config_snapshot import (
     build_schedule_config_snapshot,
 )
 from core.services.scheduler.config_validator import normalize_preset_snapshot
+from tests._support.paths import REPO_ROOT
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 
 

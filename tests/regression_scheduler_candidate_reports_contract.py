@@ -17,9 +17,9 @@ import openpyxl
 from core.infrastructure.database import ensure_schema, get_connection
 from core.services.report import ReportEngine
 from data.repositories.schedule_plan_query_repo import SOURCE_SCHEDULE
+from tests._support.paths import REPO_ROOT
 from web.routes.report_plan_preview import default_plan_resolution
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 VERSION = 17
 EXPORT_INTERNAL_TERMS = (

@@ -10,8 +10,8 @@ from core.infrastructure.errors import BusinessError, ErrorCode
 from core.services.equipment.machine_downtime_service import MachineDowntimeService
 from core.services.material.material_service import MaterialService
 from core.services.process.supplier_service import SupplierService
+from tests._support.paths import REPO_ROOT
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 
 

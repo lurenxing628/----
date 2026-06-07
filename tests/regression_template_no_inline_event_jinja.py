@@ -20,7 +20,7 @@ import re
 from pathlib import Path
 from typing import List, Tuple
 
-REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+from tests._support.paths import REPO_ROOT_STR as REPO_ROOT
 
 
 def iter_template_files(repo_root: str) -> List[str]:

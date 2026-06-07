@@ -7,9 +7,8 @@ from pathlib import Path
 
 from core.plugins.manager import PluginManager
 from core.services.common.excel_backend_factory import get_excel_backend
+from tests._support.paths import REPO_ROOT
 from web.bootstrap.plugins import _apply_enabled_sources
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _status_by_id(plugin_status: dict, plugin_id: str) -> dict:

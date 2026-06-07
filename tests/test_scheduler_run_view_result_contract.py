@@ -11,9 +11,8 @@ import pytest
 from flask import Flask, g, get_flashed_messages
 
 from core.infrastructure.errors import ValidationError
+from tests._support.paths import REPO_ROOT
 from web.viewmodels.scheduler_run_view_result import build_run_schedule_view_result
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _reset_scheduler_route_modules() -> None:

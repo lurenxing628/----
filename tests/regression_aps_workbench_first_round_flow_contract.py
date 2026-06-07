@@ -13,8 +13,8 @@ from typing import Dict, List
 from urllib.parse import parse_qs, urlparse
 
 from core.infrastructure.database import ensure_schema, get_connection
+from tests._support.paths import REPO_ROOT
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 
 INTERNAL_VISIBLE_TOKENS = (

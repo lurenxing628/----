@@ -15,8 +15,7 @@ from core.algorithms.dispatch_rules import DispatchRule
 from core.algorithms.greedy.dispatch.sgs_scoring import _score_internal_candidate
 from core.algorithms.greedy.run_state import ScheduleRunState
 from core.infrastructure.errors import ValidationError
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from tests._support.paths import REPO_ROOT
 
 
 def _reset_scheduler_route_modules() -> None:

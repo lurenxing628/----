@@ -12,9 +12,9 @@ from pathlib import Path
 
 import pytest
 
+from tests._support.paths import REPO_ROOT
 from tools.quality_gate_shared import FULL_TEST_DEBT_ALLOWED_ACTIVE_XFAIL_NODEIDS, QUALITY_GATE_SELFTEST_PATH
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
 COLLECTOR = REPO_ROOT / "tools" / "collect_full_test_debt.py"
 BASELINE_BEGIN = "<!-- APS-FULL-PYTEST-BASELINE:BEGIN -->"
 BASELINE_END = "<!-- APS-FULL-PYTEST-BASELINE:END -->"

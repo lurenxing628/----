@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from tests._support.paths import REPO_ROOT
 
 
 def test_scheduler_graph_modules_do_not_import_networkx_during_module_import() -> None:

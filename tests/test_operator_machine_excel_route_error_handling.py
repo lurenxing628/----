@@ -13,8 +13,8 @@ from unittest.mock import patch
 import openpyxl
 
 from core.infrastructure.database import ensure_schema
+from tests._support.paths import REPO_ROOT_STR as REPO_ROOT
 
-REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 SCHEMA_PATH = os.path.join(REPO_ROOT, "schema.sql")
 
 

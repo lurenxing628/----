@@ -9,7 +9,8 @@ import textwrap
 from pathlib import Path
 from typing import Optional
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from tests._support.paths import REPO_ROOT
+
 SEARCH_TOOL = REPO_ROOT / ".codestable" / "tools" / "search-yaml.py"
 VALIDATE_TOOL = REPO_ROOT / ".codestable" / "tools" / "validate-yaml.py"
 

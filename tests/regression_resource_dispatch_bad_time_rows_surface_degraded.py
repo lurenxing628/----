@@ -8,8 +8,7 @@ from pathlib import Path
 
 from core.services.scheduler._sched_display_utils import bad_time_row_sample
 from core.services.scheduler.resource_dispatch_service import ResourceDispatchService
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from tests._support.paths import REPO_ROOT
 
 
 def _load_schema(conn: sqlite3.Connection) -> None:

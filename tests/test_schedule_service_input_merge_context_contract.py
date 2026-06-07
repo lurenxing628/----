@@ -11,8 +11,7 @@ from typing import Any, cast
 from core.services.scheduler.config.config_field_spec import default_snapshot_values
 from core.services.scheduler.config.config_snapshot import ScheduleConfigSnapshot
 from core.services.scheduler.summary.optimizer_public_summary import project_public_algo_summary
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from tests._support.paths import REPO_ROOT
 
 
 class _SummaryContract:

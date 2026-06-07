@@ -9,13 +9,12 @@ from types import SimpleNamespace
 
 import pytest
 
+from tests._support.paths import REPO_ROOT
 from web.bootstrap.entrypoint import _write_launch_error_with_observability
 from web.bootstrap.launcher_contracts import release_runtime_lock
 from web.bootstrap.launcher_network import pick_port
 from web.bootstrap.launcher_observability import launcher_log_warning
 from web.bootstrap.launcher_processes import _run_powershell_text, set_process_log_context
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_launcher_log_warning_writes_state_dir_launcher_log(tmp_path: Path) -> None:

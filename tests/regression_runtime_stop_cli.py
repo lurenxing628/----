@@ -19,9 +19,8 @@ import urllib.request
 from pathlib import Path
 from typing import Dict, Tuple
 
+from tests._support.paths import REPO_ROOT_STR as REPO_ROOT
 from tests.runtime_cleanup_helper import assert_repo_runtime_stopped
-
-REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 
 def _contract_paths(log_dir: str) -> Tuple[str, str, str, str, str, str]:

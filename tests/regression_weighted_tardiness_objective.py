@@ -7,8 +7,7 @@ from pathlib import Path
 
 from core.algorithms.evaluation import ScheduleMetrics, objective_score
 from core.services.scheduler.config_service import ConfigService
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from tests._support.paths import REPO_ROOT
 
 
 def _load_schema(conn: sqlite3.Connection) -> None:

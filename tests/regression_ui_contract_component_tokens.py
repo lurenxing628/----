@@ -9,9 +9,8 @@ from types import SimpleNamespace
 
 from jinja2 import Environment, FileSystemLoader
 
+from tests._support.paths import REPO_ROOT
 from web.viewmodels.ui_presenters import UiSummaryItem
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _read(rel_path: str) -> str:

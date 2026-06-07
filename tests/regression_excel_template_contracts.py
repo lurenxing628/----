@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Mapping, Match, Sequence, Tuple
 from openpyxl import Workbook, load_workbook
 from openpyxl.worksheet.datavalidation import DataValidation
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from tests._support.paths import REPO_ROOT
 
 PROCESS_TEMPLATE_FILES = (
     "工种配置.xlsx",

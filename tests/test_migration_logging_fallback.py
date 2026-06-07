@@ -16,8 +16,8 @@ from core.infrastructure.migrations.v3 import run as run_v3
 from core.infrastructure.migrations.v4 import run as run_v4
 from core.infrastructure.migrations.v5 import run as run_v5
 from core.infrastructure.migrations.v6 import run as run_v6
+from tests._support.paths import REPO_ROOT_STR as REPO_ROOT
 
-REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 SCHEMA_PATH = os.path.join(REPO_ROOT, "schema.sql")
 
 

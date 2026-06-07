@@ -7,7 +7,7 @@ import os
 import subprocess
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from tests._support.paths import REPO_ROOT
 
 
 def test_report_plan_filter_restores_scenario_when_identity_returns_to_initial() -> None:

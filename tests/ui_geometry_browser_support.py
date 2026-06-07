@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional
 
 from werkzeug.serving import make_server
 
+from tests._support.paths import REPO_ROOT
 from tests.ui_geometry_contract_data import ERROR_PAGE_KEYWORDS, EXPECTED_PAGE_SIGNALS, UI_GEOMETRY_PAGE_PATHS
 from tests.ui_geometry_runtime_support import (
     ChromeRuntimeInfo,
@@ -28,7 +29,6 @@ from tests.ui_geometry_runtime_support import (
     _timeout_output_text,
 )
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
 SMOKE_PATHS = UI_GEOMETRY_PAGE_PATHS
 UI_GEOMETRY_PROBE_SOURCE = REPO_ROOT / "tests" / "ui_geometry_probe.mjs"
 UI_GEOMETRY_CDP_CLIENT_SOURCE = REPO_ROOT / "tests" / "ui_geometry_cdp_client.mjs"

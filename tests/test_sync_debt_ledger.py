@@ -11,6 +11,8 @@ from pathlib import Path
 
 import pytest
 
+from tests._support.paths import REPO_ROOT, REPO_ROOT_STR
+
 
 def _architecture_scan_fact(path, *, line_count=0, silent_entries=None, complexity_entries=None):
     from tools import architecture_scan_cache
@@ -79,7 +81,7 @@ def _computed_silent_id(entry):
 
 
 def _repo_root() -> str:
-    return str(Path(__file__).resolve().parents[1])
+    return REPO_ROOT_STR
 
 
 def _import_sync_debt_ledger():

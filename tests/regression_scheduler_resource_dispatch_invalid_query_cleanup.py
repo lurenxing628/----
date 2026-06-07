@@ -16,8 +16,7 @@ from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.services.scheduler.resource_dispatch_range import resolve_dispatch_range
 from core.services.scheduler.resource_dispatch_service import ResourceDispatchService
 from core.services.scheduler.schedule_plan_query_service import ROLE_ADOPTED, ROLE_CRITICAL_BEST
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from tests._support.paths import REPO_ROOT
 
 
 def _read(rel_path: str) -> str:

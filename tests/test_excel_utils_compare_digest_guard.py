@@ -12,6 +12,7 @@ from flask import Flask
 
 from core.infrastructure.errors import ValidationError
 from core.services.common.excel_service import ImportMode
+from tests._support.paths import REPO_ROOT
 from web.routes import excel_utils as excel_utils_mod
 from web.routes.excel_utils import (
     build_preview_baseline_token,
@@ -19,8 +20,6 @@ from web.routes.excel_utils import (
     parse_preview_rows_json,
     preview_baseline_matches,
 )
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _baseline_kwargs():

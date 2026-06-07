@@ -11,7 +11,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Dict, List, Optional, Set
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from tests._support.paths import REPO_ROOT
+
 CONFIG_ROOT = REPO_ROOT / "core/services/scheduler/config"
 _SERVICE_COMMON_NEUTRAL_HELPERS = (
     "core.services.common.compat_parse",

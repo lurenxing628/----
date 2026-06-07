@@ -9,9 +9,8 @@ from core.infrastructure.database import ensure_schema
 from core.plugins import PluginManager, get_plugin_registry
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.openpyxl_backend import OpenpyxlBackend
+from tests._support.paths import REPO_ROOT
 from web.bootstrap.plugins import bootstrap_plugins
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _write_demo_plugin(base_dir: Path) -> None:

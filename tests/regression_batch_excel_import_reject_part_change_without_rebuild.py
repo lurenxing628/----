@@ -11,8 +11,7 @@ import pytest
 from core.infrastructure.errors import ValidationError
 from core.services.common.excel_service import ImportMode, ImportPreviewRow, RowStatus
 from core.services.scheduler.batch_service import BatchService
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from tests._support.paths import REPO_ROOT
 
 
 def _load_schema(conn: sqlite3.Connection) -> None:

@@ -9,8 +9,9 @@ from typing import Set
 import pytest
 
 from core.infrastructure.database import CURRENT_SCHEMA_VERSION, ensure_schema, get_connection
+from tests._support.paths import REPO_ROOT
 
-SCHEMA_PATH = Path(__file__).resolve().parents[1] / "schema.sql"
+SCHEMA_PATH = REPO_ROOT / "schema.sql"
 
 
 def _connect_fresh_schema(tmp_path: Path) -> sqlite3.Connection:

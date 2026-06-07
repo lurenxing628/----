@@ -10,7 +10,8 @@ import sys
 from html import unescape
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from tests._support.paths import REPO_ROOT
+
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 
 

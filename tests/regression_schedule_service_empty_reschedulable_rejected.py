@@ -1,10 +1,12 @@
+from tests._support.paths import REPO_ROOT, REPO_ROOT_STR
+
 """回归测试：ScheduleService.run_schedule 在所选批次没有可重排工序（工序全部 completed/skipped 或为空）时，必须抛 ValidationError 提示「没有可重排工序，本次未执行排产/模拟排产」，并且短路在分配新版本号之前——不调用 build_algo_operations / optimize_schedule / persist_schedule / allocate_next_version。"""
 
 import os
 import sqlite3
 from types import SimpleNamespace
 
-SCHEMA_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "schema.sql")
+SCHEMA_PATH = str(REPO_ROOT / "schema.sql")
 
 
 def load_schema(conn: sqlite3.Connection) -> None:

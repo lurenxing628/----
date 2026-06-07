@@ -26,8 +26,8 @@ from core.services.scheduler.operation_execution_labels import (
     execution_status_label,
 )
 from data.repositories import OperationExecutionEventRepo, OperationExecutionEventRepository
+from tests._support.paths import REPO_ROOT
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 
 

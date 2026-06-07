@@ -7,7 +7,8 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+from tests._support.paths import REPO_ROOT
+
 MAIN_ISS = REPO_ROOT / "installer" / "aps_win7.iss"
 LEGACY_ISS = REPO_ROOT / "installer" / "aps_win7_legacy.iss"
 CHECKLIST_MD = REPO_ROOT / "installer" / "SYNC_CHECKLIST.md"

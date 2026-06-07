@@ -21,8 +21,8 @@ from core.services.scheduler.schedule_summary import build_result_summary
 from core.services.scheduler.schedule_summary_types import SummaryBuildContext
 from data.repositories.schedule_history_repo import ScheduleHistoryRepository
 from data.repositories.schedule_repo import ScheduleRepository
+from tests._support.paths import REPO_ROOT
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 INTERNAL_SECRET = "INTERNAL_OPTIMIZER_SECRET"
 

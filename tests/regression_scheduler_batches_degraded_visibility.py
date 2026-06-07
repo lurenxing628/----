@@ -12,9 +12,8 @@ import pytest
 from flask import Flask, g
 
 from core.services.scheduler.config_service import ConfigService
+from tests._support.paths import REPO_ROOT
 from web.viewmodels.scheduler_summary_display import build_summary_display_state
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _read(rel_path: str) -> str:

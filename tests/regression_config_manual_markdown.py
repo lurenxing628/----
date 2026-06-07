@@ -10,6 +10,8 @@ from typing import Any, Dict, List, Set, Tuple
 
 from flask import url_for
 
+from tests._support.paths import REPO_ROOT_STR
+
 LEGACY_EXCEL_ENTRY_TERMS = (
     "零件工艺路线（Excel导入/导出）",
     "零件工序工时（Excel导入/导出）",
@@ -38,11 +40,7 @@ MANUAL_BATCH_MAINTENANCE_SECTIONS = (
 
 
 def _find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
+    return REPO_ROOT_STR
 
 
 def _read(path: str) -> str:

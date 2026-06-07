@@ -4,7 +4,9 @@ from __future__ import annotations
 import os
 import sys
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from tests._support.paths import REPO_ROOT, REPO_ROOT_STR
+
+sys.path.insert(0, REPO_ROOT_STR)
 
 
 def test_parse_seq_rejects_bool_and_scientific() -> None:

@@ -14,7 +14,7 @@ import ast
 from pathlib import Path
 from typing import List
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from tests._support.paths import REPO_ROOT
 
 
 def _called_name(func: ast.AST) -> str:

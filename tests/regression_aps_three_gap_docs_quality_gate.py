@@ -5,9 +5,9 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from tests._support.paths import REPO_ROOT
 from tools import quality_gate_shared
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
 USER_GUIDE = REPO_ROOT / "static" / "docs" / "aps_three_gap_user_guide.md"
 DEV_GUIDE = REPO_ROOT / "docs" / "dev" / "aps_three_gap_quality_gate.md"
 

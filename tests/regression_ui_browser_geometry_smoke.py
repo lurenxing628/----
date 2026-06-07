@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, cast
 
+from tests._support.paths import REPO_ROOT
 from tests.ui_geometry_browser_support import (
     EXPECTED_PAGE_SIGNALS,
     SMOKE_PATHS,
@@ -116,7 +117,7 @@ def test_ui_browser_geometry_smoke_covers_scheduler_run_page() -> None:
     assert "详情格式异常" in cast(List[str], logs_signals["diagnostic_texts"])
     assert "当前版本的排产摘要读取失败" in cast(List[str], history_version_signals["diagnostic_texts"])
     assert EXPECTED_PAGE_SIGNALS["/system/history"]["ids"] == ["systemHistoryTable"]
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = REPO_ROOT
     probe_source = (repo_root / "tests" / "ui_geometry_probe_page_eval.mjs").read_text(encoding="utf-8")
     assert '"/scheduler/": ["runEnforceReady", "runStrictMode"]' in probe_source
     assert "multilineTableComputedOk('#systemLogsTable')" in probe_source

@@ -12,9 +12,9 @@ from core.services.equipment.machine_service import MachineService
 from core.services.personnel.operator_service import OperatorService
 from core.services.process.part_service import PartService
 from core.services.scheduler.batch_service import BatchService
+from tests._support.paths import REPO_ROOT
 from web.routes import system_backup as system_backup_mod
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 
 

@@ -7,9 +7,9 @@ from pathlib import Path
 
 from core.infrastructure.database import ensure_schema, get_connection
 from core.services.equipment.machine_service import MachineService
+from tests._support.paths import REPO_ROOT
 from web.routes import equipment_pages as equipment_pages_mod
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 
 

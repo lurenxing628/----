@@ -7,8 +7,8 @@ from pathlib import Path
 
 from core.infrastructure.database import ensure_schema
 from core.services.scheduler.config.config_service import ConfigService
+from tests._support.paths import REPO_ROOT
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 
 EXPECTED_GRAPH_DEFAULTS = {

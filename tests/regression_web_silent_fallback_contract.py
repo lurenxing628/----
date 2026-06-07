@@ -9,8 +9,7 @@ import pytest
 from flask import Flask, g
 
 from core.infrastructure.errors import ValidationError
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from tests._support.paths import REPO_ROOT
 
 
 class _ExplodingFloat:

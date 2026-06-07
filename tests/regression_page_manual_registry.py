@@ -10,13 +10,11 @@ import tempfile
 from pathlib import Path
 from typing import Dict, List, Set
 
+from tests._support.paths import REPO_ROOT_STR
+
 
 def _find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
+    return REPO_ROOT_STR
 
 
 def _prepare_env(tmpdir: str, monkeypatch) -> None:

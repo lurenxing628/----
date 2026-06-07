@@ -15,8 +15,7 @@ from core.services.scheduler.schedule_input_collector import collect_schedule_ru
 
 # 说明：本文件保留原命名以延续审查上下文，
 # 但当前约束已经从“legacy compat”收紧为“legacy signature 必须显式拒绝”。
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from tests._support.paths import REPO_ROOT
 
 
 class _FakeSvc:

@@ -11,6 +11,7 @@ from core.services.scheduler.schedule_plan_query_service import (
     ROLE_BASELINE_BEST,
     ROLE_CRITICAL_BEST,
 )
+from tests._support.paths import REPO_ROOT as PROJECT_ROOT
 from tests.regression_scheduler_candidate_analysis_contract import (
     _build_app,
     _call_analysis_page,
@@ -20,7 +21,6 @@ from tests.regression_scheduler_candidate_analysis_contract import (
     _PlanRoleServiceStub,
 )
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PLAN_ROLE_CONSTANT_NAMES = {"ROLE_ADOPTED", "ROLE_BASELINE_BEST", "ROLE_CRITICAL_BEST"}
 PLAN_SOURCE_CONSTANT_NAMES = {"SOURCE_SCHEDULE", "SOURCE_CANDIDATE_ROWS"}
 PLAN_ROLE_CONSTANT_PATH = "core/models/schedule_plan_role.py"

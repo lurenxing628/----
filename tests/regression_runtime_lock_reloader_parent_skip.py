@@ -20,8 +20,7 @@ from typing import Any, Dict, List, Optional, cast
 import pytest
 from flask import Flask
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-
+from tests._support.paths import REPO_ROOT
 
 
 def _reset_aps_logger_handlers() -> None:

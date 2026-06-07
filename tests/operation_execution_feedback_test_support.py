@@ -9,13 +9,13 @@ from pathlib import Path
 from typing import Any, Dict
 
 from core.infrastructure.database import ensure_schema, get_connection
+from tests._support.paths import REPO_ROOT
 from tests.resource_dispatch_frontend_support import (
     RESOURCE_DISPATCH_TEMPLATE,
     UI_CONTRACT_CSS,
     read_resource_dispatch_script_bundle,
 )
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 
 

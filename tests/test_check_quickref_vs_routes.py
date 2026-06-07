@@ -9,9 +9,11 @@ from pathlib import Path
 
 from flask import Flask
 
+from tests._support.paths import REPO_ROOT, REPO_ROOT_STR
+
 
 def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[1]
+    return REPO_ROOT
 
 
 def _import_check_quickref_vs_routes():

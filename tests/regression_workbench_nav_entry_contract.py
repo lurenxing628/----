@@ -9,7 +9,7 @@ from typing import Dict, List, Optional, Tuple
 
 from flask import render_template_string
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from tests._support.paths import REPO_ROOT
 
 
 class _WorkbenchMenuParser(HTMLParser):

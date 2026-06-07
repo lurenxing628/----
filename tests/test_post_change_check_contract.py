@@ -4,7 +4,7 @@ import importlib.util
 from pathlib import Path
 from types import SimpleNamespace
 
-ROOT = Path(__file__).resolve().parents[1]
+from tests._support.paths import REPO_ROOT as ROOT
 
 
 def _load_post_change_check_module():

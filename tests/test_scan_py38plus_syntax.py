@@ -8,9 +8,9 @@ import sys
 import textwrap
 from pathlib import Path
 
+from tests._support.paths import REPO_ROOT
 from tools import scan_py38plus_syntax as py38scan
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
 SCAN_TOOL = REPO_ROOT / "tools" / "scan_py38plus_syntax.py"
 
 

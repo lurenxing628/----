@@ -18,6 +18,7 @@ from core.algorithms.sort_strategies import SortStrategy
 from core.infrastructure.errors import ValidationError
 from core.services.scheduler.schedule_summary import build_result_summary
 from core.shared.field_labels import display_field_label
+from tests._support.paths import REPO_ROOT
 from web.routes.domains.scheduler import scheduler_config as scheduler_config_route
 from web.routes.domains.scheduler.scheduler_user_messages import scheduler_user_visible_app_error_message
 from web.viewmodels.scheduler_run_view_result import build_run_schedule_view_result
@@ -26,7 +27,6 @@ from web.viewmodels.scheduler_summary_display import (
     build_summary_display_state,
 )
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 
 

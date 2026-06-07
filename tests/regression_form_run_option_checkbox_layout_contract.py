@@ -10,9 +10,8 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+from tests._support.paths import REPO_ROOT
 from web.viewmodels.ui_presenters import UiToggleRow
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _read(rel_path: str) -> str:

@@ -7,6 +7,7 @@ import json
 import sys
 from pathlib import Path
 
+from tests._support.paths import REPO_ROOT, REPO_ROOT_STR
 from tools import long_gate_fingerprint as fingerprint_mod
 from tools import long_gate_manifest as manifest_mod
 from tools import quality_gate_shared
@@ -30,7 +31,7 @@ def _debt_entry(repo_root):
 
 
 def _import_run_quality_gate():
-    repo_root = str(Path(__file__).resolve().parents[1])
+    repo_root = REPO_ROOT_STR
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
     sys.modules.pop("scripts.run_quality_gate", None)

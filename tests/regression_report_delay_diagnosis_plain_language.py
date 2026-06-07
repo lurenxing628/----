@@ -11,8 +11,8 @@ from urllib.parse import unquote
 from openpyxl import load_workbook
 
 from core.infrastructure.database import ensure_schema, get_connection
+from tests._support.paths import REPO_ROOT
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
 TESTS_ROOT = REPO_ROOT / "tests"
 if str(TESTS_ROOT) not in sys.path:
     sys.path.insert(0, str(TESTS_ROOT))

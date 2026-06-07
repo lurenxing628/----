@@ -11,8 +11,7 @@ from core.infrastructure.database import ensure_schema, get_connection
 from core.infrastructure.errors import BusinessError, ErrorCode
 from core.services.equipment.machine_service import MachineService
 from core.services.personnel.operator_service import OperatorService
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from tests._support.paths import REPO_ROOT
 
 
 def _new_conn(tmp_path):

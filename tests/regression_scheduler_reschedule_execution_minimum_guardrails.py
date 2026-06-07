@@ -18,8 +18,8 @@ from core.services.scheduler.operation_execution_feedback_service import (
     OperationExecutionFeedbackService,
 )
 from core.services.scheduler.schedule_service import ScheduleService
+from tests._support.paths import REPO_ROOT
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 
 

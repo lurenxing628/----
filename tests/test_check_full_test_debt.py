@@ -12,7 +12,8 @@ from typing import Any, Dict, List, Optional
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from tests._support.paths import REPO_ROOT
+
 KNOWN_DEBT_NODEID = (
     "tests/test_operator_machine_exception_paths.py"
     "::test_normalize_skill_level_optional_only_converts_value_error"

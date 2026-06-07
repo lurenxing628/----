@@ -9,8 +9,8 @@ from typing import Any, Callable, Iterable, List
 from core.infrastructure.database import ensure_schema, get_connection
 from core.services.scheduler.schedule_plan_query_service import SchedulePlanQueryService
 from data.repositories.schedule_candidate_repo import ScheduleCandidateRepository
+from tests._support.paths import REPO_ROOT
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 
 

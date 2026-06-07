@@ -8,8 +8,7 @@ from typing import List
 
 from core.infrastructure.transaction import TransactionManager
 from data.repositories.schedule_history_repo import ScheduleHistoryRepository
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from tests._support.paths import REPO_ROOT
 
 
 def _make_connection() -> sqlite3.Connection:

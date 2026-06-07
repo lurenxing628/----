@@ -20,7 +20,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Optional, Union
 
-REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+from tests._support.paths import REPO_ROOT_STR as REPO_ROOT
 
 
 def _assert(condition: bool, message: str) -> None:

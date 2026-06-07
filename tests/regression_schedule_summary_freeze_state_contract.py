@@ -9,13 +9,11 @@ import time
 from datetime import datetime
 from types import SimpleNamespace
 
+from tests._support.paths import REPO_ROOT_STR
+
 
 def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("repo root not found")
+    return REPO_ROOT_STR
 
 
 REPO_ROOT = find_repo_root()

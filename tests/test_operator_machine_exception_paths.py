@@ -12,8 +12,8 @@ from core.infrastructure.errors import ValidationError
 from core.services.common.excel_service import ImportPreviewRow, RowStatus
 from core.services.personnel.operator_machine_query_service import OperatorMachineQueryService
 from core.services.personnel.operator_machine_service import OperatorMachineService
+from tests._support.paths import REPO_ROOT_STR as REPO_ROOT
 
-REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 SCHEMA_PATH = os.path.join(REPO_ROOT, "schema.sql")
 
 

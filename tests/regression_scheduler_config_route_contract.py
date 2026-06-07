@@ -16,9 +16,8 @@ from werkzeug.datastructures import MultiDict
 from core.infrastructure.errors import ValidationError
 from core.services.scheduler.config.config_field_spec import field_label_for
 from core.services.scheduler.config_service import ConfigService
+from tests._support.paths import REPO_ROOT
 from web.routes.domains.scheduler.scheduler_config_display_state import build_auto_assign_persist_display_state
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _load_schema(conn: sqlite3.Connection) -> None:

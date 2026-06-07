@@ -21,13 +21,13 @@ from core.services.scheduler.schedule_plan_query_service import ROLE_ADOPTED, RO
 from core.services.scheduler.schedule_result_view_context import plan_role_filter_fields
 from data.repositories.schedule_candidate_repo import ScheduleCandidateRepository
 from data.repositories.schedule_plan_query_repo import SOURCE_CANDIDATE_ROWS, SOURCE_SCHEDULE
+from tests._support.paths import REPO_ROOT
 from web.viewmodels.scheduler_resource_dispatch import (
     build_resource_dispatch_filename,
     decorate_resource_dispatch_context,
     decorate_resource_dispatch_payload,
 )
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
 VERSION = 7
 HISTORICAL_VERSION = 6
 

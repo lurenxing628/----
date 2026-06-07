@@ -11,8 +11,7 @@ from core.infrastructure.errors import AppError, BusinessError
 from data.repositories.config_repo import ConfigRepository
 from data.repositories.external_group_repo import ExternalGroupRepository
 from data.repositories.schedule_history_repo import ScheduleHistoryRepository
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from tests._support.paths import REPO_ROOT
 
 
 def _make_connection() -> sqlite3.Connection:

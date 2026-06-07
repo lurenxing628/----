@@ -23,8 +23,9 @@ from core.services.scheduler.run.schedule_persistence import (
     persist_schedule_run_with_candidates,
 )
 from core.services.scheduler.schedule_service import ScheduleService
+from tests._support.paths import REPO_ROOT
 
-SCHEMA_PATH = Path(__file__).resolve().parents[1] / "schema.sql"
+SCHEMA_PATH = REPO_ROOT / "schema.sql"
 
 
 class _OpLogger:

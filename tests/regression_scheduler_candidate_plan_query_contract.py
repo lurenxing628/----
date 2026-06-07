@@ -21,8 +21,9 @@ from core.services.scheduler.schedule_plan_query_service import (
 from core.services.scheduler.schedule_result_view_context import resolve_schedule_result_view_context
 from data.repositories.schedule_candidate_repo import ScheduleCandidateRepository
 from data.repositories.schedule_plan_query_repo import SOURCE_CANDIDATE_ROWS, SOURCE_SCHEDULE
+from tests._support.paths import REPO_ROOT
 
-SCHEMA_PATH = Path(__file__).resolve().parents[1] / "schema.sql"
+SCHEMA_PATH = REPO_ROOT / "schema.sql"
 VERSION = 7
 
 COMMON_DETAIL_KEYS = {

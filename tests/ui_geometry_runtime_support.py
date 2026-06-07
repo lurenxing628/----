@@ -17,9 +17,9 @@ from typing import Any, Dict, List, Optional, Tuple, cast
 import pytest
 from werkzeug.serving import make_server
 
+from tests._support.paths import REPO_ROOT
 from tests.ui_geometry_contract_data import ERROR_PAGE_KEYWORDS, EXPECTED_PAGE_SIGNALS, UI_GEOMETRY_PAGE_PATHS
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
 SMOKE_PATHS = UI_GEOMETRY_PAGE_PATHS
 UI_GEOMETRY_PROBE_SOURCE = REPO_ROOT / "tests" / "ui_geometry_probe.mjs"
 REQUIRED_BROWSER_ENV_OVERLAY = {

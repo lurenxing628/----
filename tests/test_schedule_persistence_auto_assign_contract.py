@@ -19,8 +19,7 @@ from core.services.scheduler.run.schedule_persistence import (
     persist_schedule,
 )
 from core.services.scheduler.schedule_service import ScheduleService
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from tests._support.paths import REPO_ROOT
 
 
 def _load_schema(conn: sqlite3.Connection) -> None:

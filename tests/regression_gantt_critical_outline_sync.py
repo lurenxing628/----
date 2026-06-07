@@ -9,7 +9,7 @@ import subprocess
 from pathlib import Path
 from typing import List
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from tests._support.paths import REPO_ROOT
 
 
 def test_gantt_contract_clears_unavailable_critical_chain_payload() -> None:
@@ -1627,7 +1627,7 @@ process.stdout.write(JSON.stringify({{
 
 
 def test_gantt_templates_use_contract_rendered_help_list() -> None:
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = REPO_ROOT
     for rel_path in ("templates/scheduler/gantt.html", "web_new_test/templates/scheduler/gantt.html"):
         html = (repo_root / rel_path).read_text(encoding="utf-8")
         assert 'id="ganttHelpList"' in html

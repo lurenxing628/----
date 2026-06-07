@@ -8,6 +8,7 @@ import subprocess
 from pathlib import Path
 from typing import Any, Dict
 
+from tests._support.paths import REPO_ROOT
 from tests.operation_execution_feedback_test_support import (
     RESOURCE_DISPATCH_TEMPLATE,
     _base_payload,
@@ -16,8 +17,6 @@ from tests.operation_execution_feedback_test_support import (
     _events_url,
     _json,
 )
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _source(path: Path) -> str:

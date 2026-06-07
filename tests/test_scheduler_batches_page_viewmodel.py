@@ -15,6 +15,7 @@ import pytest
 
 from core.infrastructure.database import ensure_schema, get_connection
 from core.services.scheduler.config_service import ConfigService
+from tests._support.paths import REPO_ROOT
 from web.viewmodels.scheduler_batches_page import (
     ScheduleHistoryDisplayValueError,
     build_batch_rows,
@@ -22,7 +23,6 @@ from web.viewmodels.scheduler_batches_page import (
     build_latest_schedule_history_panel_state,
 )
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 
 _SCHEMA_TEMPLATE_DIR: Optional[tempfile.TemporaryDirectory] = None

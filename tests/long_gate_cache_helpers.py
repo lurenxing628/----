@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
 
+from tests._support.paths import REPO_ROOT, REPO_ROOT_STR
 from tools import long_gate_fingerprint as fingerprint_mod
 from tools import quality_gate_shared, quality_gate_support
 from tools.long_gate_cache import evaluate_reuse, write_success
@@ -24,7 +25,7 @@ from tools.long_gate_schema import stable_json_hash
 
 
 def _repo_root() -> str:
-    return str(Path(__file__).resolve().parents[1])
+    return REPO_ROOT_STR
 
 
 def _import_run_quality_gate():

@@ -10,7 +10,7 @@ from urllib.parse import urlencode
 import pytest
 from flask import Flask, g, get_flashed_messages
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from tests._support.paths import REPO_ROOT
 
 
 def _reset_scheduler_route_modules() -> None:

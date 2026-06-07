@@ -26,9 +26,9 @@ from core.services.scheduler.config.config_snapshot import ScheduleConfigSnapsho
 from core.services.scheduler.config.config_validator import normalize_preset_snapshot
 from core.services.scheduler.run import schedule_orchestrator
 from core.services.scheduler.run.schedule_optimizer import OptimizationOutcome
+from tests._support.paths import REPO_ROOT
 from web.routes.domains.scheduler.scheduler_config import _collect_scheduler_config_form_payload
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 
 

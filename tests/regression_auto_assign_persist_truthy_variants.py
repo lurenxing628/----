@@ -7,8 +7,7 @@ from pathlib import Path
 
 from core.infrastructure.database import ensure_schema, get_connection
 from core.services.scheduler import BatchService, ConfigService, ScheduleService
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from tests._support.paths import REPO_ROOT
 
 
 def _seed_minimal_schedule_case(conn) -> int:

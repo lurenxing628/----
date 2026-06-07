@@ -10,9 +10,8 @@ import openpyxl
 
 from core.services.scheduler.resource_dispatch_excel import build_resource_dispatch_workbook
 from core.services.scheduler.resource_dispatch_service import ResourceDispatchService
+from tests._support.paths import REPO_ROOT
 from web.viewmodels.scheduler_resource_dispatch import decorate_resource_dispatch_payload
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _load_schema(conn: sqlite3.Connection) -> None:

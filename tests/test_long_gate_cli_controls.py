@@ -11,9 +11,11 @@ from typing import Sequence
 
 import pytest
 
+from tests._support.paths import REPO_ROOT, REPO_ROOT_STR
+
 
 def _repo_root() -> str:
-    return str(Path(__file__).resolve().parents[1])
+    return REPO_ROOT_STR
 
 
 def _import_run_quality_gate():

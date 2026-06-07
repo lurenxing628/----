@@ -13,9 +13,9 @@ import pytest
 from core.infrastructure.database import ensure_schema, get_connection
 from core.services.personnel.operator_service import OperatorService
 from core.services.scheduler.config_service import ConfigService
+from tests._support.paths import REPO_ROOT
 from web.routes.excel_utils import encode_preview_rows_payload
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 
 

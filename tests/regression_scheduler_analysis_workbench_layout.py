@@ -17,7 +17,8 @@ from regression_scheduler_candidate_analysis_contract import (
     _PlanRoleServiceStub,
 )
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+from tests._support.paths import REPO_ROOT as PROJECT_ROOT
+
 ACTION_HUB_TEMPLATE = "scheduler/analysis_parts/_action_hub.html"
 CANDIDATE_TEMPLATE = "scheduler/analysis_parts/_candidate_comparison.html"
 VISIBLE_FORBIDDEN_TERMS = (

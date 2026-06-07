@@ -16,10 +16,11 @@ from core.services.scheduler.resource_pool_builder import (
 )
 from core.services.scheduler.schedule_input_collector import collect_schedule_run_input
 from core.services.scheduler.schedule_service import ScheduleService
+from tests._support.paths import REPO_ROOT, REPO_ROOT_STR
 
 
 def _load_schema(conn: sqlite3.Connection) -> None:
-    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    repo_root = REPO_ROOT_STR
     with open(os.path.join(repo_root, "schema.sql"), "r", encoding="utf-8") as fh:
         conn.executescript(fh.read())
     conn.commit()

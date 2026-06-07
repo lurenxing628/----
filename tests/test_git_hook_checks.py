@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 from pre_commit.clientlib import load_config
 
+from tests._support.paths import REPO_ROOT, REPO_ROOT_STR
 from tools import git_hook_cache, git_hook_checks
 
 
@@ -825,7 +826,7 @@ def test_multi_ref_unknown_scope_command_matches_full_scope_payload(monkeypatch)
 
 
 def test_daily_gate_module_adds_repo_root_for_direct_script_execution(monkeypatch) -> None:
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = REPO_ROOT
     original_path = list(sys.path)
     filtered_path = [
         path
@@ -948,7 +949,7 @@ def test_same_executable_path_accepts_current_interpreter_realpath() -> None:
 
 
 def test_pre_commit_config_wires_quality_gate_and_ruff_hooks() -> None:
-    config = load_config(str(Path(__file__).resolve().parents[1] / ".pre-commit-config.yaml"))
+    config = load_config(str(REPO_ROOT / ".pre-commit-config.yaml"))
     hooks = {
         str(hook["id"]): hook
         for repo in config["repos"]

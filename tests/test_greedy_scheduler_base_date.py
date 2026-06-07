@@ -7,7 +7,8 @@ import sys
 from datetime import date, datetime
 from types import SimpleNamespace
 
-REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+from tests._support.paths import REPO_ROOT_STR as REPO_ROOT
+
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 

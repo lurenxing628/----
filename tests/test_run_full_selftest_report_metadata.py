@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from tests._support.paths import REPO_ROOT
 
 
 def _load_module():

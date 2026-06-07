@@ -20,8 +20,8 @@ from core.infrastructure.database import (
 )
 from core.infrastructure.migration_state import detect_schema_is_current
 from core.infrastructure.migrations import v18, v19
+from tests._support.paths import REPO_ROOT
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 
 
