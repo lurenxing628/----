@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Tuple
 
-from tests.operation_execution_feedback_test_support import (
+from tests.operation_execution.operation_execution_feedback_test_support import (
     _build_app,
     _current_query,
     read_resource_dispatch_script_bundle,

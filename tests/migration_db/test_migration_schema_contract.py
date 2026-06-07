@@ -12,7 +12,7 @@ from core.infrastructure.migration_operation_execution_contract import operation
 from core.infrastructure.migration_state import detect_schema_is_current
 from core.infrastructure.migrations.v15 import _EVENT_INDEX_SQL, _EVENT_TABLE_SQL
 from tests._support.paths import REPO_ROOT
-from tests.operation_execution_feedback_test_support import _seed_execution_feedback_context
+from tests.operation_execution.operation_execution_feedback_test_support import _seed_execution_feedback_context
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 

@@ -9,7 +9,7 @@ from core.services.scheduler.gantt_critical_chain import compute_critical_chain_
 from core.services.scheduler.gantt_range import resolve_week_range
 from core.services.scheduler.gantt_tasks import build_tasks
 from tests._support.paths import REPO_ROOT
-from tests.operation_execution_feedback_test_support import (
+from tests.operation_execution.operation_execution_feedback_test_support import (
     _base_payload,
     _build_app,
     _current_card,

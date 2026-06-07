@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from core.infrastructure.database import get_connection
-from tests.operation_execution_feedback_test_support import (
+from tests.operation_execution.operation_execution_feedback_test_support import (
     _base_payload,
     _build_app,
     _current_card,

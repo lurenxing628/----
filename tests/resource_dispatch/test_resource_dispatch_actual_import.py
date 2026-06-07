@@ -13,7 +13,7 @@ from core.infrastructure.errors import ValidationError
 from core.models.operation_execution_state import OperationExecutionState
 from core.services.scheduler.resource_dispatch_actual_import import ResourceDispatchActualImportPreviewer
 from core.services.scheduler.resource_dispatch_actual_records import TaskRef
-from tests.operation_execution_feedback_test_support import (
+from tests.operation_execution.operation_execution_feedback_test_support import (
     _base_payload,
     _build_app,
     _current_card,

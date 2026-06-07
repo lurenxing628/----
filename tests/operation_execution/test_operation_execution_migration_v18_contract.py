@@ -5,9 +5,9 @@ from __future__ import annotations
 import sqlite3
 
 import pytest
-from operation_execution_migration_support import connect_legacy_v17_execution_schema
 
 from core.infrastructure.migrations import v18
+from tests.operation_execution.operation_execution_migration_support import connect_legacy_v17_execution_schema
 
 
 def _connect() -> sqlite3.Connection:

@@ -14,7 +14,7 @@ from core.services.report import ReportEngine
 from core.services.report.execution_review import _execution_scope
 from core.services.scheduler.operation_execution_labels import action_to_event_type
 from data.repositories.operation_execution_event_repo import OperationExecutionEventRepo
-from tests.operation_execution_feedback_test_support import _build_app
+from tests.operation_execution.operation_execution_feedback_test_support import _build_app
 
 EXPECTED_HEADERS = [
     "批次",

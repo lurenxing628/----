@@ -66,7 +66,7 @@ items:
       - data/repositories/batch_material_repo.py
       - data/repositories/material_repo.py
       - core/services/material/batch_material_service.py
-      - tests/regression_scheduler_delay_diagnosis_contract.py
+      - tests/scheduler_analysis/test_scheduler_delay_diagnosis_contract.py
       - tests/algorithm/test_due_exclusive_consistency.py
       - tests/regression_gantt_adjustment_validate_simulate.py
     entrypoints:
@@ -74,7 +74,7 @@ items:
       - "先接 core/services/scheduler/schedule_delay_diagnosis_service.py，只做只读服务"
       - "物料判断必须先看 Batches、BatchMaterials、Material 和批次物料服务能提供什么数据"
     test_commands:
-      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_delay_diagnosis_contract.py tests/algorithm/test_due_exclusive_consistency.py tests/regression_gantt_adjustment_validate_simulate.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_analysis/test_scheduler_delay_diagnosis_contract.py tests/algorithm/test_due_exclusive_consistency.py tests/regression_gantt_adjustment_validate_simulate.py"
     forbidden_paths:
       - core/algorithms/
       - installer/
@@ -93,7 +93,7 @@ items:
       - 候选方案和 scenario 诊断必须使用对应方案行，不能悄悄回到 adopted
       - EvidenceLink 能追到具体来源；行级证据追到来源行，聚合证据写清 aggregation_key 和 contributing_count
       - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
-      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_delay_diagnosis_contract.py tests/algorithm/test_due_exclusive_consistency.py tests/regression_gantt_adjustment_validate_simulate.py
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_analysis/test_scheduler_delay_diagnosis_contract.py tests/algorithm/test_due_exclusive_consistency.py tests/regression_gantt_adjustment_validate_simulate.py
     notes: 第一版不改算法，不做 AI 根因，只做保守解释。
 
   - slug: delay-diagnosis-overdue-report-entry
@@ -113,8 +113,8 @@ items:
       - core/services/report/report_engine.py
       - core/services/report/exporters/xlsx.py
       - core/services/scheduler/schedule_delay_diagnosis_service.py
-      - tests/regression_scheduler_delay_diagnosis_contract.py
-      - tests/regression_report_delay_diagnosis_plain_language.py
+      - tests/scheduler_analysis/test_scheduler_delay_diagnosis_contract.py
+      - tests/scheduler_analysis/test_report_delay_diagnosis_plain_language.py
       - tests/regression_frontend_offline_static_assets.py
       - tests/regression_gantt_degradation_surface.py
       - tests/regression_dashboard_overdue_count_tolerance.py
@@ -123,7 +123,7 @@ items:
       - "导出增强走现有 GET /reports/overdue/export，不新增独立导出路由"
       - "页面和导出先说“可能线索、建议复核、证据不足”，不能说系统已经判定根因"
     test_commands:
-      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_delay_diagnosis_contract.py tests/regression_report_delay_diagnosis_plain_language.py tests/regression_frontend_offline_static_assets.py tests/regression_gantt_degradation_surface.py tests/regression_dashboard_overdue_count_tolerance.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_analysis/test_scheduler_delay_diagnosis_contract.py tests/scheduler_analysis/test_report_delay_diagnosis_plain_language.py tests/regression_frontend_offline_static_assets.py tests/regression_gantt_degradation_surface.py tests/regression_dashboard_overdue_count_tolerance.py"
     forbidden_paths:
       - core/algorithms/
       - installer/
@@ -142,7 +142,7 @@ items:
       - 页面、按钮、空状态、错误提示都使用中文大白话，不出现英文原因码、数据库字段名、函数名、内部异常堆栈
       - 新前端资源不走 CDN、外链字体、外链脚本、外链样式，不引入新前端框架或 Chrome 109 不支持能力
       - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
-      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_delay_diagnosis_contract.py tests/regression_report_delay_diagnosis_plain_language.py tests/regression_frontend_offline_static_assets.py tests/regression_gantt_degradation_surface.py tests/regression_dashboard_overdue_count_tolerance.py
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_analysis/test_scheduler_delay_diagnosis_contract.py tests/scheduler_analysis/test_report_delay_diagnosis_plain_language.py tests/regression_frontend_offline_static_assets.py tests/regression_gantt_degradation_surface.py tests/regression_dashboard_overdue_count_tolerance.py
     notes: 本 roadmap 的最小闭环。做完后用户能从报表看到一条端到端解释链。
 
   - slug: candidate-recommendation-card
@@ -260,8 +260,8 @@ items:
       - tests/candidate/test_scheduler_candidate_plan_query_contract.py
       - tests/candidate/test_scheduler_candidate_reports_contract.py
       - tests/regression_scenario_preview_secondary_outputs.py
-      - tests/regression_report_delay_diagnosis_plain_language.py
-      - tests/regression_report_export_size_mode_selection.py
+      - tests/scheduler_analysis/test_report_delay_diagnosis_plain_language.py
+      - tests/scheduler_analysis/test_report_export_size_mode_selection.py
       - tests/candidate/test_scheduler_candidate_plain_language.py
       - tests/regression_frontend_offline_static_assets.py
     entrypoints:
@@ -271,7 +271,7 @@ items:
       - "超期清单、资源负荷和停机影响导出路径继续看 web/routes/report_plan_preview.py、web/routes/reports.py、core/services/report/report_engine.py 和 core/services/report/exporters/xlsx.py"
       - "导出工作簿需要检查 core/services/report/exporters/xlsx.py，确认工作表名、列名和空状态都用中文大白话"
     test_commands:
-      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/candidate/test_scheduler_analysis_candidate_links_and_roles.py tests/candidate/test_scheduler_candidate_week_plan_contract.py tests/candidate/test_scheduler_candidate_plan_query_contract.py tests/candidate/test_scheduler_candidate_reports_contract.py tests/candidate/test_scheduler_candidate_plain_language.py tests/regression_frontend_offline_static_assets.py tests/regression_scenario_preview_secondary_outputs.py tests/regression_report_export_size_mode_selection.py tests/regression_scheduler_candidate_gantt_plan_role_contract.py tests/regression_scheduler_candidate_resource_dispatch_contract.py tests/regression_report_delay_diagnosis_plain_language.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/candidate/test_scheduler_analysis_candidate_links_and_roles.py tests/candidate/test_scheduler_candidate_week_plan_contract.py tests/candidate/test_scheduler_candidate_plan_query_contract.py tests/candidate/test_scheduler_candidate_reports_contract.py tests/candidate/test_scheduler_candidate_plain_language.py tests/regression_frontend_offline_static_assets.py tests/regression_scenario_preview_secondary_outputs.py tests/scheduler_analysis/test_report_export_size_mode_selection.py tests/regression_scheduler_candidate_gantt_plan_role_contract.py tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py tests/scheduler_analysis/test_report_delay_diagnosis_plain_language.py"
     forbidden_paths:
       - core/algorithms/
       - schema.sql
@@ -295,7 +295,7 @@ items:
       - 页面、按钮、空状态、错误提示、导出内容都使用中文大白话，不显示内部英文枚举、数据库字段名、函数名
       - 新前端资源不走 CDN、外链字体、外链脚本、外链样式，不引入新前端框架或 Chrome 109 不支持能力
       - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
-      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/candidate/test_scheduler_analysis_candidate_links_and_roles.py tests/candidate/test_scheduler_candidate_week_plan_contract.py tests/candidate/test_scheduler_candidate_plan_query_contract.py tests/candidate/test_scheduler_candidate_reports_contract.py tests/candidate/test_scheduler_candidate_plain_language.py tests/regression_frontend_offline_static_assets.py tests/regression_scenario_preview_secondary_outputs.py tests/regression_report_export_size_mode_selection.py tests/regression_scheduler_candidate_gantt_plan_role_contract.py tests/regression_scheduler_candidate_resource_dispatch_contract.py tests/regression_report_delay_diagnosis_plain_language.py
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/candidate/test_scheduler_analysis_candidate_links_and_roles.py tests/candidate/test_scheduler_candidate_week_plan_contract.py tests/candidate/test_scheduler_candidate_plan_query_contract.py tests/candidate/test_scheduler_candidate_reports_contract.py tests/candidate/test_scheduler_candidate_plain_language.py tests/regression_frontend_offline_static_assets.py tests/regression_scenario_preview_secondary_outputs.py tests/scheduler_analysis/test_report_export_size_mode_selection.py tests/regression_scheduler_candidate_gantt_plan_role_contract.py tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py tests/scheduler_analysis/test_report_delay_diagnosis_plain_language.py
     notes: 这条是安全收口，避免页面增强后把旧版本或失败候选处理坏。
 
   - slug: dispatch-plan-identity-guardrails
@@ -314,15 +314,15 @@ items:
       - web/routes/domains/scheduler/scheduler_resource_dispatch.py
       - web/viewmodels/scheduler_resource_dispatch.py
       - static/js/resource_dispatch.js
-      - tests/regression_scheduler_candidate_resource_dispatch_contract.py
-      - tests/regression_scheduler_dispatch_plan_identity_guardrails.py
+      - tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py
+      - tests/resource_dispatch/test_scheduler_dispatch_plan_identity_guard.py
       - tests/regression_frontend_offline_static_assets.py
     entrypoints:
       - "从 GET /scheduler/resource-dispatch?version=&plan_role=&scenario_id= 接入资源派工页"
       - "导出入口沿用 GET /scheduler/resource-dispatch/export"
       - "本条只做身份提示、禁用和后端拒绝，不新增确认派工写入"
     test_commands:
-      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_resource_dispatch_contract.py tests/regression_scheduler_dispatch_plan_identity_guardrails.py tests/regression_frontend_offline_static_assets.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py tests/resource_dispatch/test_scheduler_dispatch_plan_identity_guard.py tests/regression_frontend_offline_static_assets.py"
     forbidden_paths:
       - schema.sql
       - core/algorithms/
@@ -339,7 +339,7 @@ items:
       - 导出文件和 payload 带计划身份；页面、Excel 内容、Excel 文件名、导出列名和空状态都不显示 source_table、scenario_id、candidate_id 这类内部字段名
       - 新前端资源不走 CDN、外链字体、外链脚本、外链样式，不引入新前端框架或 Chrome 109 不支持能力
       - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
-      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_resource_dispatch_contract.py tests/regression_scheduler_dispatch_plan_identity_guardrails.py tests/regression_frontend_offline_static_assets.py
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py tests/resource_dispatch/test_scheduler_dispatch_plan_identity_guard.py tests/regression_frontend_offline_static_assets.py
     notes: 这是车间反馈前必须先做的安全前置。
 
   - slug: operation-execution-event-foundation
@@ -366,8 +366,8 @@ items:
       - core/services/scheduler/operation_execution_feedback_service.py
       - core/services/scheduler/operation_execution_labels.py
       - web/bootstrap/request_services.py
-      - tests/regression_operation_execution_event_foundation.py
-      - tests/regression_operation_execution_state_revision.py
+      - tests/operation_execution/test_operation_execution_event_foundation.py
+      - tests/operation_execution/test_operation_execution_state_revision.py
       - tests/migration_db/test_migrations.py
     entrypoints:
       - "从 schema.sql、core/infrastructure/migrations/__init__.py、core/infrastructure/migrations/v{next}.py 和 migration_state.py 新增执行事件表；v{next}.py 里的 next 要先查当前 CURRENT_SCHEMA_VERSION 再递增"
@@ -375,7 +375,7 @@ items:
       - "新增 core/models/operation_execution_event.py 和 core/models/operation_execution_state.py，分别放事件行结构和聚合后的现场状态结构"
       - "先做表结构、迁移、repository 和状态聚合，不做暂停/异常业务页面"
     test_commands:
-      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_operation_execution_event_foundation.py tests/regression_operation_execution_state_revision.py tests/migration_db/test_migrations.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/operation_execution/test_operation_execution_event_foundation.py tests/operation_execution/test_operation_execution_state_revision.py tests/migration_db/test_migrations.py"
     forbidden_paths:
       - core/algorithms/
       - installer/
@@ -413,7 +413,7 @@ items:
       - 不把 BatchOperations.status 当作现场事实的唯一来源
       - 新库 schema 测试和老库迁移测试通过
       - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
-      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_operation_execution_event_foundation.py tests/regression_operation_execution_state_revision.py tests/migration_db/test_migrations.py
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/operation_execution/test_operation_execution_event_foundation.py tests/operation_execution/test_operation_execution_state_revision.py tests/migration_db/test_migrations.py
     notes: 调研时当前 schema 是 v14；实现时先确认最新版本，再递增。
 
   - slug: resource-dispatch-start-finish-feedback
@@ -433,16 +433,16 @@ items:
       - core/services/scheduler/operation_execution_feedback_service.py
       - web/viewmodels/scheduler_resource_dispatch_execution.py
       - web/bootstrap/request_services.py
-      - tests/regression_scheduler_candidate_resource_dispatch_contract.py
-      - tests/regression_operation_execution_feedback_routes.py
+      - tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py
+      - tests/operation_execution/test_operation_execution_feedback_routes.py
       - tests/regression_frontend_offline_static_assets.py
-      - tests/regression_resource_dispatch_invalid_summary_surfaces_overdue_degraded.py
+      - tests/resource_dispatch/test_resource_dispatch_invalid_summary_surfaces_overdue_degraded.py
     entrypoints:
       - "从 GET /scheduler/resource-dispatch/execution/data 返回任务卡和按钮可用性"
       - "POST /scheduler/resource-dispatch/execution/<op_id>/start 和 /finish 只在受控条件下写入"
       - "最小重排护栏完成前，普通用户页面按钮隐藏或禁用，直接 POST 也拒绝"
     test_commands:
-      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_resource_dispatch_contract.py tests/regression_operation_execution_feedback_routes.py tests/regression_frontend_offline_static_assets.py tests/regression_resource_dispatch_invalid_summary_surfaces_overdue_degraded.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py tests/operation_execution/test_operation_execution_feedback_routes.py tests/regression_frontend_offline_static_assets.py tests/resource_dispatch/test_resource_dispatch_invalid_summary_surfaces_overdue_degraded.py"
     forbidden_paths:
       - core/algorithms/
       - installer/
@@ -482,7 +482,7 @@ items:
       - 页面、按钮、空状态、错误提示都使用中文大白话，不显示内部英文枚举、数据库字段名、函数名
       - 新前端资源不走 CDN、外链字体、外链脚本、外链样式，不引入新前端框架或 Chrome 109 不支持能力
       - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
-      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_candidate_resource_dispatch_contract.py tests/regression_operation_execution_feedback_routes.py tests/regression_frontend_offline_static_assets.py tests/regression_resource_dispatch_invalid_summary_surfaces_overdue_degraded.py
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py tests/operation_execution/test_operation_execution_feedback_routes.py tests/regression_frontend_offline_static_assets.py tests/resource_dispatch/test_resource_dispatch_invalid_summary_surfaces_overdue_degraded.py
     notes: 只跑通开工/完工的后端受控写入和页面预备，不把异常反馈混进本条；最小重排护栏完成前，普通用户页面按钮和直接 POST 都不能真正写入。
 
   - slug: reschedule-minimum-execution-guardrails
@@ -514,7 +514,7 @@ items:
       - web/routes/domains/scheduler/scheduler_resource_dispatch.py
       - web/routes/domains/scheduler/scheduler_week_plan.py
       - web/viewmodels/scheduler_resource_dispatch_execution.py
-      - tests/regression_operation_execution_feedback_routes.py
+      - tests/operation_execution/test_operation_execution_feedback_routes.py
       - tests/regression_scheduler_reschedule_execution_minimum_guardrails.py
       - tests/regression_scheduler_run_surfaces_resource_pool_warning.py
       - tests/regression_frontend_offline_static_assets.py
@@ -524,7 +524,7 @@ items:
       - "本条不做候选比较、多起点、局部搜索、图排程 ready queue、scenario 保存或 scenario 发布；这些统一放到 reschedule-respects-execution-facts"
       - "同批解除上一条开工/完工按钮保护：资源派工模板、static/js/resource_dispatch.js、反馈 POST route 和直接 POST 测试都要一起验收"
     test_commands:
-      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_reschedule_execution_minimum_guardrails.py tests/regression_operation_execution_feedback_routes.py tests/regression_frontend_offline_static_assets.py tests/regression_scheduler_run_surfaces_resource_pool_warning.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_reschedule_execution_minimum_guardrails.py tests/operation_execution/test_operation_execution_feedback_routes.py tests/regression_frontend_offline_static_assets.py tests/regression_scheduler_run_surfaces_resource_pool_warning.py"
     forbidden_paths:
       - installer/
       - vendor/
@@ -553,7 +553,7 @@ items:
       - 普通用户直接 POST 开工/完工从“保护拒绝”变为“最新正式采用方案可写入”时，必须有回归测试证明事件写入、任务卡刷新、state_revision 更新都正确
       - 候选方案、模拟预览、历史正式方案、非最新正式采用方案仍然拒绝开工/完工 POST，不能因为放开普通用户按钮把计划身份护栏一起放松
       - 必须有页面按钮放开测试和绕过页面直接 POST 放开测试；只测算法最小护栏不算完成
-      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_reschedule_execution_minimum_guardrails.py tests/regression_operation_execution_feedback_routes.py tests/regression_frontend_offline_static_assets.py tests/regression_scheduler_run_surfaces_resource_pool_warning.py
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_reschedule_execution_minimum_guardrails.py tests/operation_execution/test_operation_execution_feedback_routes.py tests/regression_frontend_offline_static_assets.py tests/regression_scheduler_run_surfaces_resource_pool_warning.py
     notes: 这是安全补洞条目，避免现场反馈上线后到完整重排接入前出现危险空窗；本条完成后开工/完工反馈才算可对普通用户放开。
 
   - slug: shop-exception-feedback
@@ -574,8 +574,8 @@ items:
       - core/services/scheduler/run/schedule_input_collector.py
       - core/services/scheduler/schedule_service.py
       - core/services/scheduler/run/schedule_persistence.py
-      - tests/regression_operation_execution_exception_feedback.py
-      - tests/regression_operation_execution_feedback_routes.py
+      - tests/operation_execution/test_operation_execution_exception_feedback.py
+      - tests/operation_execution/test_operation_execution_feedback_routes.py
       - tests/regression_scheduler_exception_blocks_auto_reschedule.py
       - tests/regression_frontend_offline_static_assets.py
     entrypoints:
@@ -583,7 +583,7 @@ items:
       - "POST /scheduler/resource-dispatch/execution/<op_id>/pause、/resume、/report-exception 在本条落地"
       - "异常中阻止普通自动重排的最小后端护栏必须和异常反馈同批完成"
     test_commands:
-      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_operation_execution_exception_feedback.py tests/regression_operation_execution_feedback_routes.py tests/regression_scheduler_exception_blocks_auto_reschedule.py tests/regression_frontend_offline_static_assets.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/operation_execution/test_operation_execution_exception_feedback.py tests/operation_execution/test_operation_execution_feedback_routes.py tests/regression_scheduler_exception_blocks_auto_reschedule.py tests/regression_frontend_offline_static_assets.py"
     forbidden_paths:
       - core/algorithms/
       - installer/
@@ -618,7 +618,7 @@ items:
       - 页面、按钮、空状态、错误提示都使用中文大白话，不显示内部英文枚举、数据库字段名、函数名
       - 新前端资源不走 CDN、外链字体、外链脚本、外链样式，不引入新前端框架或 Chrome 109 不支持能力
       - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
-      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_operation_execution_exception_feedback.py tests/regression_operation_execution_feedback_routes.py tests/regression_scheduler_exception_blocks_auto_reschedule.py tests/regression_frontend_offline_static_assets.py
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/operation_execution/test_operation_execution_exception_feedback.py tests/operation_execution/test_operation_execution_feedback_routes.py tests/regression_scheduler_exception_blocks_auto_reschedule.py tests/regression_frontend_offline_static_assets.py
     notes: 异常复杂度高，必须独立 feature 设计和验收。
 
   - slug: plan-vs-actual-review
@@ -639,8 +639,8 @@ items:
       - web/viewmodels/page_manuals_reports.py
       - templates/scheduler/resource_dispatch.html
       - core/services/scheduler/operation_execution_feedback_service.py
-      - tests/regression_plan_vs_actual_review.py
-      - tests/regression_operation_execution_event_foundation.py
+      - tests/scheduler_analysis/test_plan_vs_actual_review.py
+      - tests/operation_execution/test_operation_execution_event_foundation.py
       - tests/regression_frontend_offline_static_assets.py
     entrypoints:
       - "只新增 /reports/execution-review 和 /reports/execution-review/export"
@@ -650,7 +650,7 @@ items:
       - "资源派工页只加跳转到报表入口，不新增 /scheduler/execution-review"
       - "报表数据从执行事件或执行状态读模型取实际时间和实际资源"
     test_commands:
-      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_plan_vs_actual_review.py tests/regression_operation_execution_event_foundation.py tests/regression_frontend_offline_static_assets.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_analysis/test_plan_vs_actual_review.py tests/operation_execution/test_operation_execution_event_foundation.py tests/regression_frontend_offline_static_assets.py"
     forbidden_paths:
       - core/algorithms/
       - installer/
@@ -671,7 +671,7 @@ items:
       - 页面、按钮、空状态、错误提示、导出文件名、导出列名和导出内容都使用中文大白话，不显示内部英文枚举、数据库字段名、函数名
       - 新前端资源不走 CDN、外链字体、外链脚本、外链样式，不引入新前端框架或 Chrome 109 不支持能力
       - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
-      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_plan_vs_actual_review.py tests/regression_operation_execution_event_foundation.py tests/regression_frontend_offline_static_assets.py
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_analysis/test_plan_vs_actual_review.py tests/operation_execution/test_operation_execution_event_foundation.py tests/regression_frontend_offline_static_assets.py
     notes: 做完后，延期解释才能进一步区分计划侧原因和现场执行原因。
 
   - slug: reschedule-respects-execution-facts
@@ -708,7 +708,7 @@ items:
       - core/infrastructure/migrations/v{next}.py
       - core/algorithms/greedy/scheduler.py
       - core/algorithms/greedy/dispatch/sgs_graph.py
-      - tests/regression_scheduler_reschedule_execution_facts.py
+      - tests/operation_execution/test_scheduler_reschedule_execution_facts.py
       - tests/regression_scheduler_reschedule_execution_minimum_guardrails.py
       - tests/regression_gantt_adjustment_publish_execution_revision.py
     entrypoints:
@@ -717,7 +717,7 @@ items:
       - "普通排程、图排程、scenario 保存和 scenario 发布都要读取同一批执行事实快照"
       - "异常中工序默认阻止普通自动重排，提示计划员先处理异常"
     test_commands:
-      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_reschedule_execution_facts.py tests/regression_scheduler_reschedule_execution_minimum_guardrails.py tests/regression_gantt_adjustment_publish_execution_revision.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/operation_execution/test_scheduler_reschedule_execution_facts.py tests/regression_scheduler_reschedule_execution_minimum_guardrails.py tests/regression_gantt_adjustment_publish_execution_revision.py"
     forbidden_paths:
       - installer/
       - vendor/
@@ -738,7 +738,7 @@ items:
       - persistence 不把 processing、paused、exception、completed 的现场状态覆盖成 scheduled
       - 图排程 fixed_op_ids 也尊重执行事实
       - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
-      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_scheduler_reschedule_execution_facts.py tests/regression_scheduler_reschedule_execution_minimum_guardrails.py tests/regression_gantt_adjustment_publish_execution_revision.py
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/operation_execution/test_scheduler_reschedule_execution_facts.py tests/regression_scheduler_reschedule_execution_minimum_guardrails.py tests/regression_gantt_adjustment_publish_execution_revision.py
     notes: 已完成完整执行事实接入；普通重排、候选比较、多起点、局部搜索、图排程 ready queue、scenario 保存和 scenario 发布均使用执行事实快照，冲突时不写正式计划。
 
   - slug: aps-three-gap-docs-quality-gate
@@ -773,7 +773,7 @@ items:
       - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_frontend_offline_static_assets.py tests/regression_frontend_ui_language_polish.py tests/config/test_config_manual_markdown.py tests/regression_page_manual_registry.py tests/test_codestable_tools_contract.py tests/test_scan_py38plus_syntax.py tests/regression_aps_three_gap_docs_quality_gate.py tests/test_run_quality_gate.py"
       - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .codestable/tools/validate-yaml.py --file .codestable/roadmap/aps-three-gap-directions/aps-three-gap-directions-items.yaml --yaml-only --require roadmap --require created --require items"
       - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_aps_three_gap_py38_scope.py --base-ref d4589d77"
-      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tools/scan_aps_three_gap_py38_scope.py tests/regression_frontend_offline_static_assets.py tests/regression_frontend_ui_language_polish.py tests/config/test_config_manual_markdown.py tests/regression_page_manual_registry.py tests/regression_scheduler_resource_dispatch_invalid_query_cleanup.py tests/regression_aps_three_gap_docs_quality_gate.py tests/test_run_quality_gate.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tools/scan_aps_three_gap_py38_scope.py tests/regression_frontend_offline_static_assets.py tests/regression_frontend_ui_language_polish.py tests/config/test_config_manual_markdown.py tests/regression_page_manual_registry.py tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py tests/regression_aps_three_gap_docs_quality_gate.py tests/test_run_quality_gate.py"
       - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache"
     forbidden_paths:
       - vendor/
@@ -790,7 +790,7 @@ items:
       - Win7 x64、Python 3.8、Chrome 109、离线静态资源验收手册存在，并写清楚本地怎么验收
       - 新前端资源不走 CDN、外链字体、外链脚本、外链样式，不引入新前端框架或 Chrome 109 不支持能力
       - Python 3.8 语法约束测试覆盖新增代码，不升级破坏 Win7 x64 的依赖
-      - 必须运行 Python 3.8 语法风险扫描；如果全仓旧代码仍有历史风险，本条至少要对质量门禁入口、质量门禁 helper、本 roadmap 改动和本条新增测试运行 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_aps_three_gap_py38_scope.py --base-ref d4589d77，以及 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tools/scan_aps_three_gap_py38_scope.py tests/regression_frontend_offline_static_assets.py tests/regression_frontend_ui_language_polish.py tests/config/test_config_manual_markdown.py tests/regression_page_manual_registry.py tests/regression_scheduler_resource_dispatch_invalid_query_cleanup.py tests/regression_aps_three_gap_docs_quality_gate.py tests/test_run_quality_gate.py；实施 docs-quality-gate 时如果新增了测试文件，也要把新增文件加入扫描
+      - 必须运行 Python 3.8 语法风险扫描；如果全仓旧代码仍有历史风险，本条至少要对质量门禁入口、质量门禁 helper、本 roadmap 改动和本条新增测试运行 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_aps_three_gap_py38_scope.py --base-ref d4589d77，以及 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tools/scan_aps_three_gap_py38_scope.py tests/regression_frontend_offline_static_assets.py tests/regression_frontend_ui_language_polish.py tests/config/test_config_manual_markdown.py tests/regression_page_manual_registry.py tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py tests/regression_aps_three_gap_docs_quality_gate.py tests/test_run_quality_gate.py；实施 docs-quality-gate 时如果新增了测试文件，也要把新增文件加入扫描
       - 上面固定命令只是当前路线图已有测试和工具的示例，不能当作最终完整扫描范围；docs-quality-gate 收口时必须汇总本 roadmap 所有已完成 feature 新增或修改过的 Python 文件，再一起运行 Python 3.8 语法风险扫描
       - 如果实施时有稳定的 roadmap 起点提交，推荐用 git diff --name-only <roadmap-start-ref>...HEAD -- '*.py' 收集 Python 文件后传给 tools/scan_py38plus_syntax.py；如果没有稳定起点，就按每个已完成 feature acceptance 记录里的 changed Python files 汇总，不能只照抄固定几个测试文件
       - YAML 校验通过

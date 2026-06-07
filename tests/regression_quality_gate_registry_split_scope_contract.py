@@ -87,7 +87,7 @@ def test_workbench_flow_regression_is_required_and_grouped() -> None:
         "tests/regression_aps_workbench_context_propagation_contract.py",
         "tests/regression_dashboard_workbench_contract.py",
         "tests/regression_dashboard_overdue_count_tolerance.py",
-        "tests/regression_execution_review_identity_guardrail.py",
+        "tests/operation_execution/test_execution_review_identity_guard.py",
         "tests/regression_scheduler_navigation_unknown_plan_role_contract.py",
         "tests/regression_gantt_task_detail_panel_contract.py",
         "tests/regression_gantt_task_detail_js_contract.py",
@@ -125,13 +125,13 @@ def test_plan_identity_summary_guardrail_is_required_and_grouped() -> None:
 
     assert test_paths <= set(quality_gate_shared.QUALITY_GATE_REQUIRED_TESTS)
     assert test_paths <= set(scheduler_group["target_paths"])
-    assert "tests/operation_execution_state_revision_support.py" in set(scheduler_group["input_file_scopes"])
+    assert "tests/operation_execution/operation_execution_state_revision_support.py" in set(scheduler_group["input_file_scopes"])
 
 
 def test_resource_dispatch_result_status_label_contract_is_required_and_grouped() -> None:
     from tools import quality_gate_shared
 
-    test_path = "tests/regression_resource_dispatch_result_status_label_contract.py"
+    test_path = "tests/resource_dispatch/test_resource_dispatch_result_status_label_contract.py"
     scheduler_group = _group("scheduler_analysis_gantt_reports_week_plan")
 
     assert test_path in quality_gate_shared.QUALITY_GATE_REQUIRED_TESTS
@@ -141,7 +141,7 @@ def test_resource_dispatch_result_status_label_contract_is_required_and_grouped(
 def test_resource_dispatch_site_records_frontend_contract_is_required_and_grouped() -> None:
     from tools import quality_gate_shared
 
-    test_path = "tests/regression_resource_dispatch_site_records_frontend_contract.py"
+    test_path = "tests/resource_dispatch/test_resource_dispatch_site_records_frontend_contract.py"
     scheduler_group = _group("scheduler_analysis_gantt_reports_week_plan")
 
     assert test_path in quality_gate_shared.QUALITY_GATE_REQUIRED_TESTS
@@ -152,12 +152,12 @@ def test_resource_dispatch_site_records_frontend_contract_is_required_and_groupe
 def test_resource_dispatch_workbench_lane_contract_is_required_and_grouped() -> None:
     from tools import quality_gate_shared
 
-    test_path = "tests/regression_resource_dispatch_workbench_lane_contract.py"
+    test_path = "tests/resource_dispatch/test_resource_dispatch_workbench_lane_contract.py"
     scheduler_group = _group("scheduler_analysis_gantt_reports_week_plan")
 
     assert test_path in quality_gate_shared.QUALITY_GATE_REQUIRED_TESTS
     assert test_path in set(scheduler_group["target_paths"])
-    assert "tests/operation_execution_feedback_test_support.py" in set(scheduler_group["input_file_scopes"])
+    assert "tests/operation_execution/operation_execution_feedback_test_support.py" in set(scheduler_group["input_file_scopes"])
 
 
 def test_scheduler_data_route_error_contract_is_required_and_grouped() -> None:
@@ -172,8 +172,8 @@ def test_scheduler_data_route_error_contract_is_required_and_grouped() -> None:
 
 def test_scheduler_analysis_diagnostic_contracts_are_required_and_grouped() -> None:
     test_paths = {
-        "tests/regression_scheduler_analysis_diagnostic_error_contract.py",
-        "tests/regression_scheduler_analysis_diagnostic_graph_score_contract.py",
+        "tests/scheduler_analysis/test_scheduler_analysis_diagnostic_error_contract.py",
+        "tests/scheduler_analysis/test_scheduler_analysis_diagnostic_graph_score_contract.py",
     }
     scheduler_group = _group("scheduler_analysis_gantt_reports_week_plan")
 
@@ -184,11 +184,11 @@ def test_scheduler_analysis_diagnostic_contracts_are_required_and_grouped() -> N
 
 def test_operation_execution_core_regressions_are_required_and_grouped() -> None:
     test_paths = {
-        "tests/regression_operation_execution_event_foundation.py",
-        "tests/regression_operation_execution_event_sequence_contract.py",
-        "tests/regression_operation_execution_event_time_contract.py",
-        "tests/regression_operation_execution_state_revision.py",
-        "tests/regression_scheduler_reschedule_execution_facts.py",
+        "tests/operation_execution/test_operation_execution_event_foundation.py",
+        "tests/operation_execution/test_operation_execution_event_sequence_contract.py",
+        "tests/operation_execution/test_operation_execution_event_time_contract.py",
+        "tests/operation_execution/test_operation_execution_state_revision.py",
+        "tests/operation_execution/test_scheduler_reschedule_execution_facts.py",
         "tests/regression_scheduler_reschedule_execution_minimum_guardrails.py",
     }
     scheduler_group = _group("scheduler_run_core")
@@ -208,7 +208,7 @@ def test_three_gap_docs_quality_contract_is_required_and_grouped() -> None:
 
 def test_three_gap_contract_tests_are_required_in_registry() -> None:
     expected_paths = {
-        "tests/regression_operation_execution_event_time_contract.py",
+        "tests/operation_execution/test_operation_execution_event_time_contract.py",
         "tests/regression_scheduler_data_route_error_contract.py",
     }
 
@@ -217,14 +217,14 @@ def test_three_gap_contract_tests_are_required_in_registry() -> None:
 
 def test_operation_execution_feedback_regressions_are_required_and_grouped() -> None:
     test_paths = {
-        "tests/regression_operation_execution_feedback_routes.py",
-        "tests/regression_operation_execution_exception_feedback.py",
-        "tests/regression_operation_execution_exception_surfaces.py",
-        "tests/regression_operation_execution_scope_read_contract.py",
+        "tests/operation_execution/test_operation_execution_feedback_routes.py",
+        "tests/operation_execution/test_operation_execution_exception_feedback.py",
+        "tests/operation_execution/test_operation_execution_exception_surfaces.py",
+        "tests/operation_execution/test_operation_execution_scope_read_contract.py",
         "tests/regression_gantt_adjustment_publish_execution_revision.py",
-        "tests/regression_resource_dispatch_actual_records.py",
-        "tests/regression_resource_dispatch_actual_task_key_frontend_contract.py",
-        "tests/regression_resource_dispatch_actual_import.py",
+        "tests/resource_dispatch/test_resource_dispatch_actual_records.py",
+        "tests/resource_dispatch/test_resource_dispatch_actual_task_key_frontend_contract.py",
+        "tests/resource_dispatch/test_resource_dispatch_actual_import.py",
     }
     scheduler_group = _group("scheduler_analysis_gantt_reports_week_plan")
 
@@ -236,15 +236,15 @@ def test_operation_execution_migration_regressions_are_required_and_grouped() ->
     test_paths = {
         "tests/migration_db/test_migration_schema_contract.py",
         "tests/migration_db/test_migrations.py",
-        "tests/regression_operation_execution_migration_v16_contract.py",
-        "tests/regression_operation_execution_migration_v18_contract.py",
-        "tests/regression_operation_execution_migration_v19_contract.py",
+        "tests/operation_execution/test_operation_execution_migration_v16_contract.py",
+        "tests/operation_execution/test_operation_execution_migration_v18_contract.py",
+        "tests/operation_execution/test_operation_execution_migration_v19_contract.py",
     }
     runtime_group = _group("request_services_runtime_error_boundary")
 
     assert test_paths <= set(quality_gate_shared.QUALITY_GATE_REQUIRED_TESTS)
     assert test_paths <= set(runtime_group["target_paths"])
-    assert "tests/operation_execution_migration_support.py" in set(runtime_group["input_file_scopes"])
+    assert "tests/operation_execution/operation_execution_migration_support.py" in set(runtime_group["input_file_scopes"])
 
 
 def test_import_execution_stats_regression_is_required_and_grouped() -> None:

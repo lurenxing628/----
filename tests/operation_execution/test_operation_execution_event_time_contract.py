@@ -16,7 +16,7 @@ from core.models.operation_execution_event import (
 from data.repositories.operation_execution_event_repo import OperationExecutionEventRepo
 from data.repositories.operation_execution_state_builder import build_operation_execution_state
 from tests._support.paths import REPO_ROOT
-from tests.operation_execution_feedback_test_support import _seed_execution_feedback_context
+from tests.operation_execution.operation_execution_feedback_test_support import _seed_execution_feedback_context
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 

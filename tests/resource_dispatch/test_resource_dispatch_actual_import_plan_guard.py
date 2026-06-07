@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import io
 
-from tests.operation_execution_feedback_test_support import (
+from tests.operation_execution.operation_execution_feedback_test_support import (
     _base_payload,
     _build_app,
     _current_card,
     _event_count,
     _json,
 )
-from tests.regression_resource_dispatch_actual_import import _workbook_bytes
+from tests.resource_dispatch.test_resource_dispatch_actual_import import _workbook_bytes
 
 
 def test_actual_record_and_import_reject_non_current_official_plan(tmp_path, monkeypatch) -> None:

@@ -9,8 +9,8 @@ import openpyxl
 from core.infrastructure.database import get_connection
 from core.services.scheduler.resource_dispatch_excel import build_resource_dispatch_workbook
 from core.services.scheduler.resource_dispatch_service import ResourceDispatchService
-from tests.operation_execution_feedback_test_support import _build_app, _current_card, _json
-from tests.regression_operation_execution_exception_feedback import _post
+from tests.operation_execution.operation_execution_feedback_test_support import _build_app, _current_card, _json
+from tests.operation_execution.test_operation_execution_exception_feedback import _post
 from web.viewmodels.scheduler_resource_dispatch import decorate_resource_dispatch_payload
 
 

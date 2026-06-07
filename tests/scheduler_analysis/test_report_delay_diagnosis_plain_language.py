@@ -17,7 +17,7 @@ TESTS_ROOT = REPO_ROOT / "tests"
 if str(TESTS_ROOT) not in sys.path:
     sys.path.insert(0, str(TESTS_ROOT))
 
-from regression_scheduler_delay_diagnosis_contract import (  # noqa: E402
+from tests.scheduler_analysis.test_scheduler_delay_diagnosis_contract import (  # noqa: E402
     VERSION,
     _seed_base,
     _seed_candidates,

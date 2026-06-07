@@ -632,9 +632,9 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
     assert "tests/regression_entrypoint_meta_failure_visible.py" in module.STARTUP_REGRESSION_ARGS
     assert "tests/test_launcher_observability.py" in module.STARTUP_REGRESSION_ARGS
     for high_value_path in (
-        "tests/regression_scheduler_analysis_observability.py",
+        "tests/scheduler_analysis/test_scheduler_analysis_observability.py",
         "tests/regression_system_history_route_contract.py",
-        "tests/regression_scheduler_resource_dispatch_invalid_query_cleanup.py",
+        "tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py",
         "tests/regression_schedule_summary_input_fallback_contract.py",
         "tests/regression_error_boundary_contract.py",
         "tests/regression_route_version_normalizers_contract.py",
@@ -657,12 +657,12 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
         "tests/test_codestable_architecture_contract.py",
         "tests/regression_scheduler_batch_template_warning_surface.py",
         "tests/test_scheduler_run_view_result_contract.py",
-        "tests/regression_resource_dispatch_bad_time_rows_surface_degraded.py",
-        "tests/regression_resource_dispatch_export_surfaces_degraded.py",
-        "tests/regression_resource_dispatch_public_output_contract.py",
-        "tests/regression_resource_dispatch_viewmodel_public_output_contract.py",
-        "tests/regression_resource_dispatch_overdue_summary_formats.py",
-        "tests/regression_resource_dispatch_invalid_summary_surfaces_overdue_degraded.py",
+        "tests/resource_dispatch/test_resource_dispatch_bad_time_rows_surface_degraded.py",
+        "tests/resource_dispatch/test_resource_dispatch_export_surfaces_degraded.py",
+        "tests/resource_dispatch/test_resource_dispatch_public_output_contract.py",
+        "tests/resource_dispatch/test_resource_dispatch_viewmodel_public_output_contract.py",
+        "tests/resource_dispatch/test_resource_dispatch_overdue_summary_formats.py",
+        "tests/resource_dispatch/test_resource_dispatch_invalid_summary_surfaces_overdue_degraded.py",
         "tests/test_ui_browser_geometry_env.py",
         "tests/test_ui_geometry_html_contract.py",
         "tests/regression_scheduler_route_enforce_ready_tristate.py",
@@ -1357,7 +1357,7 @@ def test_guard_collect_only_keeps_analysis_and_history_in_default_collect() -> N
     )
 
     output = result.stdout
-    assert "tests/regression_scheduler_analysis_observability.py::test_scheduler_analysis_observability" in output
+    assert "tests/scheduler_analysis/test_scheduler_analysis_observability.py::test_scheduler_analysis_observability" in output
     assert "tests/regression_system_history_route_contract.py::test_system_history_route_uses_request_services" in output
     assert (
         "tests/algorithm/test_auto_assign_persist_truthy_variants.py::"

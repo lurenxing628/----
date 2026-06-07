@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Dict
 
 from tests._support.paths import REPO_ROOT
-from tests.operation_execution_feedback_test_support import (
+from tests.operation_execution.operation_execution_feedback_test_support import (
     RESOURCE_DISPATCH_TEMPLATE,
     _base_payload,
     _build_app,

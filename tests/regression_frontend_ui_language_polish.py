@@ -10,7 +10,7 @@ import openpyxl
 import pytest
 
 from tests._support.paths import REPO_ROOT
-from tests.resource_dispatch_frontend_support import read_resource_dispatch_script_bundle
+from tests.resource_dispatch.resource_dispatch_frontend_support import read_resource_dispatch_script_bundle
 
 
 def _read(rel_path: str) -> str:

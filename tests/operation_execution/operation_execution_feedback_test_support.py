@@ -10,7 +10,7 @@ from typing import Any, Dict
 
 from core.infrastructure.database import ensure_schema, get_connection
 from tests._support.paths import REPO_ROOT
-from tests.resource_dispatch_frontend_support import (
+from tests.resource_dispatch.resource_dispatch_frontend_support import (
     RESOURCE_DISPATCH_TEMPLATE,
     UI_CONTRACT_CSS,
     read_resource_dispatch_script_bundle,

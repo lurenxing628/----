@@ -16,7 +16,7 @@ from core.services.scheduler.operation_execution_feedback_service import Executi
 from core.services.scheduler.resource_dispatch_actual_records import TaskRef
 from core.services.scheduler.schedule_plan_query_service import SchedulePlanQueryService
 from data.repositories.operation_execution_event_repo import OperationExecutionEventRepo
-from tests.operation_execution_feedback_test_support import (
+from tests.operation_execution.operation_execution_feedback_test_support import (
     _base_payload,
     _build_app,
     _current_card,

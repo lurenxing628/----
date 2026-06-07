@@ -6,10 +6,6 @@ import sqlite3
 from pathlib import Path
 
 import pytest
-from operation_execution_migration_support import (
-    connect_legacy_v17_execution_schema,
-    prepare_legacy_v17_execution_schema,
-)
 
 from core.infrastructure import migration_runner
 from core.infrastructure.database import (
@@ -21,6 +17,10 @@ from core.infrastructure.database import (
 from core.infrastructure.migration_state import detect_schema_is_current
 from core.infrastructure.migrations import v18, v19
 from tests._support.paths import REPO_ROOT
+from tests.operation_execution.operation_execution_migration_support import (
+    connect_legacy_v17_execution_schema,
+    prepare_legacy_v17_execution_schema,
+)
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 

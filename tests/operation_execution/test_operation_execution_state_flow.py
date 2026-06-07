@@ -8,7 +8,12 @@ import pytest
 
 from core.infrastructure.errors import AppError
 from core.services.scheduler.operation_execution_feedback_service import OperationExecutionFeedbackService
-from tests.operation_execution_state_revision_support import _connect, _context, _event_count, _seed_plan
+from tests.operation_execution.operation_execution_state_revision_support import (
+    _connect,
+    _context,
+    _event_count,
+    _seed_plan,
+)
 
 
 def test_pause_resume_exception_and_finish_state_flow_is_aggregated(tmp_path: Path) -> None:

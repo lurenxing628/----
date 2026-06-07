@@ -6,13 +6,13 @@ import json
 from typing import Any, Dict
 
 import pytest
-from regression_scheduler_analysis_diagnostic_contract import (
+
+import web.viewmodels.scheduler_analysis_diagnostics as diagnostics
+from tests.scheduler_analysis.test_scheduler_analysis_diagnostic_contract import (
     _full_graph_summary,
     _iter_text,
     _summary_with_graph,
 )
-
-import web.viewmodels.scheduler_analysis_diagnostics as diagnostics
 from web.viewmodels.scheduler_analysis_diagnostic_helpers import format_hours, safe_float, safe_int
 from web.viewmodels.scheduler_analysis_diagnostics import build_diagnostic_sections
 

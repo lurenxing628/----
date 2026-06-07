@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tests.regression_scheduler_dispatch_plan_identity_guardrails import VERSION, _dispatch_payload, _seed_db
+from tests.resource_dispatch.test_scheduler_dispatch_plan_identity_guard import VERSION, _dispatch_payload, _seed_db
 
 
 def test_failed_or_simulated_official_result_is_not_labeled_current_official(tmp_path: Path) -> None:
