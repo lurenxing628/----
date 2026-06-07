@@ -10,7 +10,7 @@ from typing import List, Sequence
 
 import pytest
 
-from tests.long_gate_cache_helpers import (
+from tests.gate_meta.long_gate_cache_helpers import (
     _entry_by_id,
     _entry_display,
     _fingerprint_for,
@@ -255,7 +255,7 @@ def test_startup_bad_proof_file_invalidates_success_cache_without_runner(monkeyp
 @pytest.mark.parametrize(
     "changed_path",
     [
-        "tests/regression_runtime_probe_resolution.py",
+        "tests/app_runtime/test_runtime_probe_resolution.py",
         "web/bootstrap/runtime.py",
         "app.py",
         "app_new_ui.py",

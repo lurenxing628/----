@@ -202,7 +202,7 @@ items:
       - core/services/scheduler/run/schedule_candidate_summary.py
       - tests/candidate/test_scheduler_candidate_analysis_contract.py
       - tests/candidate/test_scheduler_candidate_summary_contract.py
-      - tests/regression_scheduler_graph_auto_selection_contract.py
+      - tests/scheduler_graph/test_scheduler_graph_auto_selection_contract.py
       - tests/candidate/test_scheduler_candidate_plain_language.py
       - tests/app_runtime/test_frontend_offline_static_assets.py
     entrypoints:
@@ -210,7 +210,7 @@ items:
       - "在 templates/scheduler/analysis_parts/_candidate_comparison.html 固定展示三张摘要卡"
       - "差值固定相对正式采用方案计算，不做任意两方案自由比较"
     test_commands:
-      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/candidate/test_scheduler_candidate_analysis_contract.py tests/candidate/test_scheduler_candidate_plain_language.py tests/app_runtime/test_frontend_offline_static_assets.py tests/candidate/test_scheduler_candidate_summary_contract.py tests/regression_scheduler_graph_auto_selection_contract.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/candidate/test_scheduler_candidate_analysis_contract.py tests/candidate/test_scheduler_candidate_plain_language.py tests/app_runtime/test_frontend_offline_static_assets.py tests/candidate/test_scheduler_candidate_summary_contract.py tests/scheduler_graph/test_scheduler_graph_auto_selection_contract.py"
     forbidden_paths:
       - core/algorithms/
       - schema.sql
@@ -226,7 +226,7 @@ items:
       - 页面、按钮、空状态、错误提示、导出内容都使用中文大白话，不显示内部英文枚举、数据库字段名、函数名
       - 新前端资源不走 CDN、外链字体、外链脚本、外链样式，不引入新前端框架或 Chrome 109 不支持能力
       - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
-      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/candidate/test_scheduler_candidate_analysis_contract.py tests/candidate/test_scheduler_candidate_plain_language.py tests/app_runtime/test_frontend_offline_static_assets.py tests/candidate/test_scheduler_candidate_summary_contract.py tests/regression_scheduler_graph_auto_selection_contract.py
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/candidate/test_scheduler_candidate_analysis_contract.py tests/candidate/test_scheduler_candidate_plain_language.py tests/app_runtime/test_frontend_offline_static_assets.py tests/candidate/test_scheduler_candidate_summary_contract.py tests/scheduler_graph/test_scheduler_graph_auto_selection_contract.py
     notes: 只做代表方案总指标差值，不扩大落库范围。
 
   - slug: candidate-drilldown-empty-states
@@ -762,18 +762,18 @@ items:
       - tools/quality_gate_shared.py
       - .codestable/tools/validate-yaml.py
       - tests/app_runtime/test_frontend_offline_static_assets.py
-      - tests/test_scan_py38plus_syntax.py
-      - tests/test_codestable_tools_contract.py
+      - tests/gate_meta/test_scan_py38plus_syntax.py
+      - tests/gate_meta/test_codestable_tools_contract.py
       - docs/aps_frontend_workbench_mockup.html
     entrypoints:
       - "从 static/docs/、web/viewmodels/page_manuals_*.py、docs/dev/ 和测试清单收口"
       - "先跑每条已完成 feature 的精准测试，再跑 YAML 校验和质量门禁"
       - "用户说明只写中文大白话；内部字段名只允许出现在开发专用说明里"
     test_commands:
-      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/app_runtime/test_frontend_offline_static_assets.py tests/web_pages/test_frontend_ui_language_polish.py tests/config/test_config_manual_markdown.py tests/web_pages/test_page_manual_registry.py tests/test_codestable_tools_contract.py tests/test_scan_py38plus_syntax.py tests/regression_aps_three_gap_docs_quality_gate.py tests/test_run_quality_gate.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/app_runtime/test_frontend_offline_static_assets.py tests/web_pages/test_frontend_ui_language_polish.py tests/config/test_config_manual_markdown.py tests/web_pages/test_page_manual_registry.py tests/gate_meta/test_codestable_tools_contract.py tests/gate_meta/test_scan_py38plus_syntax.py tests/gate_meta/test_aps_three_gap_docs_quality_gate.py tests/gate_meta/test_run_quality_gate.py"
       - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .codestable/tools/validate-yaml.py --file .codestable/roadmap/aps-three-gap-directions/aps-three-gap-directions-items.yaml --yaml-only --require roadmap --require created --require items"
       - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_aps_three_gap_py38_scope.py --base-ref d4589d77"
-      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tools/scan_aps_three_gap_py38_scope.py tests/app_runtime/test_frontend_offline_static_assets.py tests/web_pages/test_frontend_ui_language_polish.py tests/config/test_config_manual_markdown.py tests/web_pages/test_page_manual_registry.py tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py tests/regression_aps_three_gap_docs_quality_gate.py tests/test_run_quality_gate.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tools/scan_aps_three_gap_py38_scope.py tests/app_runtime/test_frontend_offline_static_assets.py tests/web_pages/test_frontend_ui_language_polish.py tests/config/test_config_manual_markdown.py tests/web_pages/test_page_manual_registry.py tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py tests/gate_meta/test_aps_three_gap_docs_quality_gate.py tests/gate_meta/test_run_quality_gate.py"
       - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache"
     forbidden_paths:
       - vendor/
@@ -785,16 +785,16 @@ items:
       - 用户说明、页面示例、导出示例不能出现 plan_role、scenario_id、source_table、candidate_id、event_type、ReasonCode、score tuple 这类给程序看的名字；开发说明出现这些名字时必须放在开发专用小节
       - 每个已完成 feature 的新增或更新测试文件都列入回归测试清单
       - 每个 done feature 的精准测试、迁移测试、页面大白话测试、Win7/offline 相关测试都进入回归清单，不能只写“跑质量门禁”
-      - 收尾时必须运行 tests/test_codestable_tools_contract.py，证明 CodeStable YAML 工具仍能在 Python 3.8 口径下工作
+      - 收尾时必须运行 tests/gate_meta/test_codestable_tools_contract.py，证明 CodeStable YAML 工具仍能在 Python 3.8 口径下工作
       - tests/app_runtime/test_frontend_offline_static_assets.py 必须扫描 docs/aps_frontend_workbench_mockup.html，原型页不能引入外链脚本、外链样式、外链字体、CDN 或用户可见旧词
       - Win7 x64、Python 3.8、Chrome 109、离线静态资源验收手册存在，并写清楚本地怎么验收
       - 新前端资源不走 CDN、外链字体、外链脚本、外链样式，不引入新前端框架或 Chrome 109 不支持能力
       - Python 3.8 语法约束测试覆盖新增代码，不升级破坏 Win7 x64 的依赖
-      - 必须运行 Python 3.8 语法风险扫描；如果全仓旧代码仍有历史风险，本条至少要对质量门禁入口、质量门禁 helper、本 roadmap 改动和本条新增测试运行 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_aps_three_gap_py38_scope.py --base-ref d4589d77，以及 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tools/scan_aps_three_gap_py38_scope.py tests/app_runtime/test_frontend_offline_static_assets.py tests/web_pages/test_frontend_ui_language_polish.py tests/config/test_config_manual_markdown.py tests/web_pages/test_page_manual_registry.py tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py tests/regression_aps_three_gap_docs_quality_gate.py tests/test_run_quality_gate.py；实施 docs-quality-gate 时如果新增了测试文件，也要把新增文件加入扫描
+      - 必须运行 Python 3.8 语法风险扫描；如果全仓旧代码仍有历史风险，本条至少要对质量门禁入口、质量门禁 helper、本 roadmap 改动和本条新增测试运行 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_aps_three_gap_py38_scope.py --base-ref d4589d77，以及 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tools/scan_aps_three_gap_py38_scope.py tests/app_runtime/test_frontend_offline_static_assets.py tests/web_pages/test_frontend_ui_language_polish.py tests/config/test_config_manual_markdown.py tests/web_pages/test_page_manual_registry.py tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py tests/gate_meta/test_aps_three_gap_docs_quality_gate.py tests/gate_meta/test_run_quality_gate.py；实施 docs-quality-gate 时如果新增了测试文件，也要把新增文件加入扫描
       - 上面固定命令只是当前路线图已有测试和工具的示例，不能当作最终完整扫描范围；docs-quality-gate 收口时必须汇总本 roadmap 所有已完成 feature 新增或修改过的 Python 文件，再一起运行 Python 3.8 语法风险扫描
       - 如果实施时有稳定的 roadmap 起点提交，推荐用 git diff --name-only <roadmap-start-ref>...HEAD -- '*.py' 收集 Python 文件后传给 tools/scan_py38plus_syntax.py；如果没有稳定起点，就按每个已完成 feature acceptance 记录里的 changed Python files 汇总，不能只照抄固定几个测试文件
       - YAML 校验通过
-      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/app_runtime/test_frontend_offline_static_assets.py tests/web_pages/test_frontend_ui_language_polish.py tests/config/test_config_manual_markdown.py tests/web_pages/test_page_manual_registry.py tests/test_codestable_tools_contract.py tests/test_scan_py38plus_syntax.py tests/regression_aps_three_gap_docs_quality_gate.py tests/test_run_quality_gate.py
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/app_runtime/test_frontend_offline_static_assets.py tests/web_pages/test_frontend_ui_language_polish.py tests/config/test_config_manual_markdown.py tests/web_pages/test_page_manual_registry.py tests/gate_meta/test_codestable_tools_contract.py tests/gate_meta/test_scan_py38plus_syntax.py tests/gate_meta/test_aps_three_gap_docs_quality_gate.py tests/gate_meta/test_run_quality_gate.py
       - 实施本条 feature 时必须运行并通过 YAML 校验：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .codestable/tools/validate-yaml.py --file .codestable/roadmap/aps-three-gap-directions/aps-three-gap-directions-items.yaml --yaml-only --require roadmap --require created --require items
       - 实施本条 feature 收尾时必须运行质量门禁；若工作区干净，用 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache；若本地还有无关改动，只能用 --allow-dirty-worktree 作为反馈，不能宣称 clean proof
     notes: 已完成用户说明、开发测试说明、回归清单、Win7 离线验收手册、文档质量测试、YAML 校验和 Python 3.8 扫描；clean-worktree 质量门禁需在提交后工作区干净时作为最终证明运行。

@@ -17,11 +17,11 @@ SERIAL_FILE_PATTERNS: Tuple[str, ...] = (
     "tests/app_runtime/test_validate_dist_runtime_identity.py",
     "tests/test_startup*.py",
     "tests/test_long_gate*.py",
-    "tests/test_long_gate_required_regression_cache.py",
-    "tests/test_long_gate_startup_regression_cache.py",
-    "tests/test_long_gate_full_test_debt_cache.py",
-    "tests/test_run_quality_gate.py",
-    "tests/test_architecture_fitness.py",
+    "tests/gate_meta/test_long_gate_required_regression_cache.py",
+    "tests/gate_meta/test_long_gate_startup_regression_cache.py",
+    "tests/gate_meta/test_long_gate_full_test_debt_cache.py",
+    "tests/gate_meta/test_run_quality_gate.py",
+    "tests/gate_meta/test_architecture_fitness.py",
     "tests/test_win7*.py",
 )
 

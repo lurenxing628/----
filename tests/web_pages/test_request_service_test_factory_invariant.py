@@ -15,8 +15,8 @@ TESTS_DIR = REPO_ROOT / "tests"
 if str(TESTS_DIR) not in sys.path:
     sys.path.insert(0, str(TESTS_DIR))
 
-import run_complex_excel_cases_e2e as complex_mod
-import run_real_db_replay_e2e as replay_mod
+from tests._scripts_e2e import run_complex_excel_cases_e2e as complex_mod
+from tests._scripts_e2e import run_real_db_replay_e2e as replay_mod
 
 
 class _NoopDb:

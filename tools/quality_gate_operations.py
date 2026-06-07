@@ -813,7 +813,7 @@ def architecture_silent_scan_entries() -> List[Dict[str, Any]]:
     """返回当前架构门禁真正比较的静默回退条目。
 
     边界说明：启动链范围保留四类分类的全量扫描结果；非启动链范围当前只续管
-    旧 `tests/test_architecture_fitness.py` 计数器迁移而来的遗留静默吞异常命中，
+    旧 `tests/gate_meta/test_architecture_fitness.py` 计数器迁移而来的遗留静默吞异常命中，
     不据此把 `silent_default_fallback` / `observable_degrade` 扩展为全仓新增门禁。
     """
     entries = []

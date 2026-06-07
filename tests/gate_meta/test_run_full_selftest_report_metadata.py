@@ -620,4 +620,4 @@ def test_full_selftest_explicit_guard_subset_comes_from_shared_registry() -> Non
     shared = _load_shared_module()
 
     assert tuple(module._explicit_guard_tests()) == tuple(shared.iter_quality_gate_required_tests())
-    assert "tests/test_run_full_selftest_report_metadata.py" in module._explicit_guard_tests()
+    assert "tests/gate_meta/test_run_full_selftest_report_metadata.py" in module._explicit_guard_tests()

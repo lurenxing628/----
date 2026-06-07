@@ -4,7 +4,7 @@
 把架构规则写成 pytest 用例，跑 pytest 即可同时验证功能测试和架构合规。
 参考：Neal Ford《Building Evolutionary Architectures》的 Fitness Function 模式。
 
-运行：pytest tests/test_architecture_fitness.py -v
+运行：pytest tests/gate_meta/test_architecture_fitness.py -v
 """
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ import os
 import re
 from typing import Dict, List, Set
 
-from architecture_fitness_support import (
+from tests.gate_meta.architecture_fitness_support import (
     REPO_ROOT,
     collect_py_files,
     find_dependency_cycles,
@@ -21,7 +21,6 @@ from architecture_fitness_support import (
     used_stable_degradation_codes,
     viewmodel_import_violations,
 )
-
 from tools.quality_gate_support import (
     COMPLEXITY_THRESHOLD,
     CORE_DIRS,

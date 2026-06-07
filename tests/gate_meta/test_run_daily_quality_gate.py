@@ -186,7 +186,7 @@ def test_impact_plan_selects_matching_required_group(monkeypatch) -> None:
             },
             {
                 "group_id": "frontend_manual_excel",
-                "target_paths": ["tests/regression_excel_hidden_payload_contract.py"],
+                "target_paths": ["tests/excel_data_io/test_excel_hidden_payload_contract.py"],
                 "input_file_scopes": ["templates_excel/**/*"],
                 "config_file_scopes": [],
                 "tool_file_scopes": [],
@@ -210,7 +210,7 @@ def test_impact_plan_runs_all_required_groups_for_common_scope(monkeypatch) -> N
         [
             {
                 "group_id": "quality_gate",
-                "target_paths": ["tests/test_run_quality_gate.py"],
+                "target_paths": ["tests/gate_meta/test_run_quality_gate.py"],
                 "input_file_scopes": ["scripts/run_quality_gate.py"],
                 "config_file_scopes": [],
                 "tool_file_scopes": [],
@@ -218,7 +218,7 @@ def test_impact_plan_runs_all_required_groups_for_common_scope(monkeypatch) -> N
             },
             {
                 "group_id": "scheduler_config",
-                "target_paths": ["tests/regression_scheduler_config_route_contract.py"],
+                "target_paths": ["tests/config/test_scheduler_config_route_contract.py"],
                 "input_file_scopes": ["web/routes/scheduler_config.py"],
                 "config_file_scopes": [],
                 "tool_file_scopes": [],
@@ -239,8 +239,8 @@ def test_impact_plan_runs_all_required_groups_for_common_scope(monkeypatch) -> N
     assert plan.all_required_groups is True
     assert plan.selected_group_ids == ["quality_gate", "scheduler_config"]
     assert plan.target_paths == [
-        "tests/test_run_quality_gate.py",
-        "tests/regression_scheduler_config_route_contract.py",
+        "tests/gate_meta/test_run_quality_gate.py",
+        "tests/config/test_scheduler_config_route_contract.py",
     ]
     assert "common quality gate scope changed" in plan.reason
 
@@ -251,7 +251,7 @@ def test_impact_plan_runs_all_required_groups_for_unknown_scope(monkeypatch) -> 
         [
             {
                 "group_id": "quality_gate",
-                "target_paths": ["tests/test_run_quality_gate.py"],
+                "target_paths": ["tests/gate_meta/test_run_quality_gate.py"],
                 "input_file_scopes": ["scripts/run_quality_gate.py"],
                 "config_file_scopes": [],
                 "tool_file_scopes": [],
@@ -272,7 +272,7 @@ def test_impact_plan_runs_all_required_groups_for_unknown_scope(monkeypatch) -> 
 
     assert plan.all_required_groups is True
     assert plan.selected_group_ids == ["quality_gate", "scheduler_run_core"]
-    assert plan.target_paths == ["tests/test_run_quality_gate.py", "tests/regression_scheduler_run.py"]
+    assert plan.target_paths == ["tests/gate_meta/test_run_quality_gate.py", "tests/regression_scheduler_run.py"]
     assert "outside known required regression scopes" in plan.reason
 
 
@@ -282,7 +282,7 @@ def test_docs_only_changes_skip_required_pytest(monkeypatch) -> None:
         [
             {
                 "group_id": "quality_gate",
-                "target_paths": ["tests/test_run_quality_gate.py"],
+                "target_paths": ["tests/gate_meta/test_run_quality_gate.py"],
                 "input_file_scopes": ["开发文档/**/*.md"],
                 "config_file_scopes": [],
                 "tool_file_scopes": [],
@@ -305,7 +305,7 @@ def test_governance_ledger_doc_is_not_docs_only(monkeypatch) -> None:
         [
             {
                 "group_id": "quality_gate",
-                "target_paths": ["tests/test_run_quality_gate.py"],
+                "target_paths": ["tests/gate_meta/test_run_quality_gate.py"],
                 "input_file_scopes": ["开发文档/技术债务治理台账.md"],
                 "config_file_scopes": [],
                 "tool_file_scopes": [],
@@ -320,7 +320,7 @@ def test_governance_ledger_doc_is_not_docs_only(monkeypatch) -> None:
 
     assert plan.all_required_groups is False
     assert plan.selected_group_ids == ["quality_gate"]
-    assert plan.target_paths == ["tests/test_run_quality_gate.py"]
+    assert plan.target_paths == ["tests/gate_meta/test_run_quality_gate.py"]
 
 
 def test_codestable_only_changes_skip_required_pytest(monkeypatch) -> None:
@@ -329,7 +329,7 @@ def test_codestable_only_changes_skip_required_pytest(monkeypatch) -> None:
         [
             {
                 "group_id": "quality_gate",
-                "target_paths": ["tests/test_run_quality_gate.py"],
+                "target_paths": ["tests/gate_meta/test_run_quality_gate.py"],
                 "input_file_scopes": [".codestable/**/*.yaml"],
                 "config_file_scopes": [],
                 "tool_file_scopes": [],
@@ -354,7 +354,7 @@ def test_readme_only_changes_skip_required_pytest(monkeypatch) -> None:
         [
             {
                 "group_id": "quality_gate",
-                "target_paths": ["tests/test_run_quality_gate.py"],
+                "target_paths": ["tests/gate_meta/test_run_quality_gate.py"],
                 "input_file_scopes": ["README.md"],
                 "config_file_scopes": [],
                 "tool_file_scopes": [],
@@ -377,7 +377,7 @@ def test_docs_paths_do_not_force_full_gate_for_mixed_known_changes(monkeypatch) 
         [
             {
                 "group_id": "quality_gate",
-                "target_paths": ["tests/test_run_quality_gate.py"],
+                "target_paths": ["tests/gate_meta/test_run_quality_gate.py"],
                 "input_file_scopes": ["scripts/run_quality_gate.py"],
                 "config_file_scopes": [],
                 "tool_file_scopes": [],
@@ -400,7 +400,7 @@ def test_docs_paths_do_not_force_full_gate_for_mixed_known_changes(monkeypatch) 
 
     assert plan.all_required_groups is False
     assert plan.selected_group_ids == ["quality_gate"]
-    assert plan.target_paths == ["tests/test_run_quality_gate.py"]
+    assert plan.target_paths == ["tests/gate_meta/test_run_quality_gate.py"]
 
 
 def test_ruff_plan_targets_changed_python_files(monkeypatch) -> None:
@@ -460,7 +460,7 @@ def test_unknown_range_keeps_required_pytest_and_full_ruff(monkeypatch) -> None:
         [
             {
                 "group_id": "quality_gate",
-                "target_paths": ["tests/test_run_quality_gate.py"],
+                "target_paths": ["tests/gate_meta/test_run_quality_gate.py"],
                 "input_file_scopes": ["scripts/run_quality_gate.py"],
                 "config_file_scopes": [],
                 "tool_file_scopes": [],
@@ -474,7 +474,7 @@ def test_unknown_range_keeps_required_pytest_and_full_ruff(monkeypatch) -> None:
     ruff_plan = daily_gate._build_ruff_plan(changed, impact_plan)
 
     assert impact_plan.all_required_groups is True
-    assert impact_plan.target_paths == ["tests/test_run_quality_gate.py"]
+    assert impact_plan.target_paths == ["tests/gate_meta/test_run_quality_gate.py"]
     assert impact_plan.reason == "branch diff failed"
     assert ruff_plan.all_files is True
     assert ruff_plan.reason == "branch diff failed"

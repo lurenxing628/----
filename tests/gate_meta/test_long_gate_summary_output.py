@@ -94,7 +94,7 @@ def _patch_gate_environment(monkeypatch, module, repo_root: Path, *, statuses: S
 def _successful_result(display: str) -> dict:
     if display == "python -m pytest --collect-only -q tests":
         return {
-            "stdout": "tests/test_long_gate_summary_output.py::test_collect_summary\n",
+            "stdout": "tests/gate_meta/test_long_gate_summary_output.py::test_collect_summary\n",
             "stderr": "",
             "returncode": 0,
         }
@@ -312,7 +312,7 @@ def test_failed_collect_records_failure_and_prints_copyable_command(monkeypatch,
 
     def fake_run_command(display, args, capture_output=False, env_overlay=None):
         if display == "python -m pytest --collect-only -q tests":
-            stdout = "FAILED tests/test_long_gate_summary_output.py::test_bad - nope\n"
+            stdout = "FAILED tests/gate_meta/test_long_gate_summary_output.py::test_bad - nope\n"
             return {"stdout": stdout, "stderr": "collect failed\n", "returncode": 1}
         return _successful_result(display)
 
@@ -327,15 +327,15 @@ def test_failed_collect_records_failure_and_prints_copyable_command(monkeypatch,
     failure = summary["failure"]
     assert summary["counts"]["failed"] == 1
     assert failure["entry_id"] == "pytest_collect_all"
-    assert failure["copyable_nodeids"] == ["tests/test_long_gate_summary_output.py::test_bad"]
-    assert failure["copyable_command"] == "python -m pytest -q tests/test_long_gate_summary_output.py::test_bad"
+    assert failure["copyable_nodeids"] == ["tests/gate_meta/test_long_gate_summary_output.py::test_bad"]
+    assert failure["copyable_command"] == "python -m pytest -q tests/gate_meta/test_long_gate_summary_output.py::test_bad"
     assert failure["receipt_path"].startswith("evidence/QualityGate/receipts/")
     assert failure["stdout_log_path"].startswith("evidence/QualityGate/logs/")
     assert failure["stderr_log_path"].startswith("evidence/QualityGate/logs/")
-    assert "FAILED tests/test_long_gate_summary_output.py::test_bad" in failure["stdout_tail"]
+    assert "FAILED tests/gate_meta/test_long_gate_summary_output.py::test_bad" in failure["stdout_tail"]
     assert "collect failed" in failure["stderr_tail"]
     assert "copyable rerun:" in combined
-    assert "python -m pytest -q tests/test_long_gate_summary_output.py::test_bad" in combined
+    assert "python -m pytest -q tests/gate_meta/test_long_gate_summary_output.py::test_bad" in combined
 
 
 def test_enabled_static_entry_failure_records_summary_failure(monkeypatch, tmp_path):
@@ -348,7 +348,7 @@ def test_enabled_static_entry_failure_records_summary_failure(monkeypatch, tmp_p
     def fake_run_command(display, args, capture_output=False, env_overlay=None):
         if display == "python -m ruff check":
             return {
-                "stdout": "unexpected failure: tests/test_long_gate_summary_output.py::test_debt\n",
+                "stdout": "unexpected failure: tests/gate_meta/test_long_gate_summary_output.py::test_debt\n",
                 "stderr": "full debt failed\n",
                 "returncode": 1,
             }

@@ -194,7 +194,7 @@ def test_required_parent_scope_includes_group_specific_scope_union():
     assert "chrome_version" not in required_entry["env_keys"]
     assert "chrome_executable_identity" not in required_entry["env_keys"]
     assert "chrome_headless_preflight" not in required_entry["env_keys"]
-    assert "tests/ui_geometry_contract_data.py" in required_entry["input_file_scopes"]
+    assert "tests/app_runtime/ui_geometry_contract_data.py" in required_entry["input_file_scopes"]
     assert ".gitignore" in required_entry["config_file_scopes"]
     assert required_entry["output_result_files"] == ["evidence/QualityGate/required_regressions.json"]
 

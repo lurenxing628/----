@@ -4,7 +4,7 @@ import os
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
-QUALITY_GATE_SELFTEST_PATH = "tests/test_run_quality_gate.py"
+QUALITY_GATE_SELFTEST_PATH = "tests/gate_meta/test_run_quality_gate.py"
 
 QUALITY_GATE_STARTUP_REGRESSION_ARGS = (
     "tests/app_runtime/test_runtime_probe_resolution.py",
@@ -26,8 +26,8 @@ QUALITY_GATE_STARTUP_REGRESSION_ARGS = (
 )
 
 QUALITY_GATE_GUARD_TESTS = (
-    "tests/test_no_residual_main_style_regression.py",
-    "tests/test_sp05_path_topology_contract.py",
+    "tests/gate_meta/test_no_residual_main_style_regression.py",
+    "tests/gate_meta/test_sp05_path_topology_contract.py",
     "tests/schedule/service/test_schedule_input_builder_strict_hours_and_ext_days.py",
     "tests/excel_data_io/test_scheduler_wrapper_import_order_contract.py",
     "tests/schedule/route_view/test_scheduler_route_registration_contract.py",
@@ -102,7 +102,7 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/schedule/route_view/test_scheduler_plan_identity_summary_guard.py",
     "tests/resource_dispatch/test_resource_dispatch_result_status_label_contract.py",
     "tests/web_pages/test_workbench_nav_entry_contract.py",
-    "tests/regression_quality_gate_registry_split_scope_contract.py",
+    "tests/gate_meta/test_quality_gate_registry_split_scope_contract.py",
     "tests/candidate/test_week_plan_filename_uses_normalized_version.py",
     "tests/gantt/test_gantt_degradation_surface.py",
     "tests/schedule/route_view/test_scheduler_result_navigation_contract.py",
@@ -123,10 +123,10 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/scheduler_analysis/test_scheduler_analysis_diagnostic_contract.py",
     "tests/scheduler_analysis/test_scheduler_analysis_diagnostic_error_contract.py",
     "tests/scheduler_analysis/test_scheduler_analysis_diagnostic_graph_score_contract.py",
-    "tests/regression_quality_gate_scan_contract.py",
-    "tests/regression_aps_three_gap_docs_quality_gate.py",
-    "tests/test_codestable_architecture_contract.py",
-    "tests/test_codestable_tools_contract.py",
+    "tests/gate_meta/test_quality_gate_scan_contract.py",
+    "tests/gate_meta/test_aps_three_gap_docs_quality_gate.py",
+    "tests/gate_meta/test_codestable_architecture_contract.py",
+    "tests/gate_meta/test_codestable_tools_contract.py",
     "tests/web_pages/test_request_services_contract.py",
     "tests/web_pages/test_factory_request_lifecycle_observability.py",
     "tests/web_pages/test_system_request_services_contract.py",
@@ -159,12 +159,12 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/scheduler_analysis/test_scheduler_delay_diagnosis_contract.py",
     "tests/resource_dispatch/test_scheduler_dispatch_plan_identity_guard.py",
     "tests/schedule/service/test_scheduler_exception_blocks_auto_reschedule.py",
-    "tests/regression_scheduler_graph_auto_selection_contract.py",
-    "tests/regression_scheduler_graph_report_mode_service_contract.py",
+    "tests/scheduler_graph/test_scheduler_graph_auto_selection_contract.py",
+    "tests/scheduler_graph/test_scheduler_graph_report_mode_service_contract.py",
     "tests/schedule/route_view/test_scheduler_run_surfaces_resource_pool_warning.py",
     "tests/schedule/route_view/test_scheduler_run_view_result_contract.py",
     "tests/schedule/service/test_schedule_template_lookup_contract.py",
-    "tests/regression_scheduler_data_route_error_contract.py",
+    "tests/gate_meta/test_scheduler_data_route_error_contract.py",
     "tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py",
     "tests/resource_dispatch/test_resource_dispatch_bad_time_rows_surface_degraded.py",
     "tests/resource_dispatch/test_resource_dispatch_export_surfaces_degraded.py",
@@ -200,14 +200,14 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/resource_dispatch/test_resource_dispatch_site_records_frontend_contract.py",
     "tests/resource_dispatch/test_resource_dispatch_workbench_lane_contract.py",
     "tests/web_pages/test_error_field_label_source.py",
-    "tests/test_run_full_selftest_report_metadata.py",
-    "tests/test_check_full_test_debt.py",
-    "tests/test_full_test_debt_registry_contract.py",
+    "tests/gate_meta/test_run_full_selftest_report_metadata.py",
+    "tests/gate_meta/test_check_full_test_debt.py",
+    "tests/gate_meta/test_full_test_debt_registry_contract.py",
     "tests/app_runtime/test_fast_static_precheck.py",
-    "tests/test_git_hook_checks.py",
-    "tests/test_benchmark_full_test_debt_shards.py",
-    "tests/test_long_gate_cli_controls.py",
-    "tests/test_long_gate_quickref_cache.py",
+    "tests/gate_meta/test_git_hook_checks.py",
+    "tests/gate_meta/test_benchmark_full_test_debt_shards.py",
+    "tests/gate_meta/test_long_gate_cli_controls.py",
+    "tests/gate_meta/test_long_gate_quickref_cache.py",
     "tests/web_pages/test_ui_mode.py",
     "tests/app_runtime/test_safe_next_url_hardening.py",
     "tests/app_runtime/test_safe_next_url_observability.py",
@@ -223,8 +223,8 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/schedule/route_view/test_scheduler_route_enforce_ready_tristate.py",
     "tests/app_runtime/test_ui_browser_geometry_env.py",
     "tests/app_runtime/test_ui_geometry_html_contract.py",
-    "tests/test_scan_py38plus_syntax.py",
-    "tests/test_architecture_fitness.py",
+    "tests/gate_meta/test_scan_py38plus_syntax.py",
+    "tests/gate_meta/test_architecture_fitness.py",
     "tests/algorithm/test_skill_rank_mapping.py",
     "tests/schedule/service/test_schedule_service_input_merge_context_contract.py",
 )
@@ -232,10 +232,10 @@ QUALITY_GATE_GUARD_TESTS = (
 QUALITY_GATE_REQUIRED_TESTS = (QUALITY_GATE_SELFTEST_PATH, *QUALITY_GATE_GUARD_TESTS)
 
 TEST_ONLY_HELPER_IMPACT = {
-    "tests/long_gate_cache_helpers.py": (
-        "tests/test_long_gate_debt_ledger_cache.py",
-        "tests/test_long_gate_required_regression_cache.py",
-        "tests/test_long_gate_startup_regression_cache.py",
+    "tests/gate_meta/long_gate_cache_helpers.py": (
+        "tests/gate_meta/test_long_gate_debt_ledger_cache.py",
+        "tests/gate_meta/test_long_gate_required_regression_cache.py",
+        "tests/gate_meta/test_long_gate_startup_regression_cache.py",
     ),
     "tests/web_pages/reports_workbench_backlink_helpers.py": (
         "tests/scheduler_analysis/test_report_context_filters_contract.py",

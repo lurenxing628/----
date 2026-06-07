@@ -161,7 +161,7 @@ def test_resource_dispatch_workbench_lane_contract_is_required_and_grouped() -> 
 
 
 def test_scheduler_data_route_error_contract_is_required_and_grouped() -> None:
-    test_path = "tests/regression_scheduler_data_route_error_contract.py"
+    test_path = "tests/gate_meta/test_scheduler_data_route_error_contract.py"
     runtime_group = _group("request_services_runtime_error_boundary")
 
     assert test_path in quality_gate_shared.QUALITY_GATE_REQUIRED_TESTS
@@ -198,7 +198,7 @@ def test_operation_execution_core_regressions_are_required_and_grouped() -> None
 
 
 def test_three_gap_docs_quality_contract_is_required_and_grouped() -> None:
-    test_path = "tests/regression_aps_three_gap_docs_quality_gate.py"
+    test_path = "tests/gate_meta/test_aps_three_gap_docs_quality_gate.py"
     quality_group = _group("quality_gate")
 
     assert test_path in quality_gate_shared.QUALITY_GATE_REQUIRED_TESTS
@@ -209,7 +209,7 @@ def test_three_gap_docs_quality_contract_is_required_and_grouped() -> None:
 def test_three_gap_contract_tests_are_required_in_registry() -> None:
     expected_paths = {
         "tests/operation_execution/test_operation_execution_event_time_contract.py",
-        "tests/regression_scheduler_data_route_error_contract.py",
+        "tests/gate_meta/test_scheduler_data_route_error_contract.py",
     }
 
     assert expected_paths <= set(quality_gate_shared.QUALITY_GATE_REQUIRED_TESTS)

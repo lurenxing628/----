@@ -68,7 +68,7 @@ def _successful_result_for_display(display: str, nodeid_suffix: str = "test_qual
     if display == "python -m pyright --version":
         return {"stdout": "pyright 1.1.406", "stderr": "", "returncode": 0}
     if display == "python -m pytest --collect-only -q tests":
-        return {"stdout": f"tests/test_run_quality_gate.py::{nodeid_suffix}\n", "stderr": "", "returncode": 0}
+        return {"stdout": f"tests/gate_meta/test_run_quality_gate.py::{nodeid_suffix}\n", "stderr": "", "returncode": 0}
     return {"stdout": "", "stderr": "", "returncode": 0}
 
 
@@ -306,7 +306,7 @@ def test_main_runs_guard_preflight_before_static_and_startup_checks(monkeypatch,
         if display == "python -m pyright --version":
             return "pyright 1.1.406"
         if display == "python -m pytest --collect-only -q tests":
-            return "tests/test_run_quality_gate.py::test_main_runs_guard_preflight_before_static_and_startup_checks\n"
+            return "tests/gate_meta/test_run_quality_gate.py::test_main_runs_guard_preflight_before_static_and_startup_checks\n"
         return ""
 
     monkeypatch.setattr(module, "_run_command", fake_run_command)
@@ -357,12 +357,12 @@ def test_main_runs_guard_preflight_before_static_and_startup_checks(monkeypatch,
     assert displays.index("python -m ruff check") < displays.index("python -m pyright -p pyrightconfig.gate.json")
     assert displays.index("python -m pyright -p pyrightconfig.gate.json") < displays.index(tool_pyright_display)
     assert displays.index(tool_pyright_display) < displays.index(
-        "python -m pytest -q tests/test_architecture_fitness.py"
+        "python -m pytest -q tests/gate_meta/test_architecture_fitness.py"
     )
     assert displays.index("guard_preflight") < displays.index(
-        "python -m pytest -q tests/test_architecture_fitness.py"
+        "python -m pytest -q tests/gate_meta/test_architecture_fitness.py"
     )
-    assert displays.index("python -m pytest -q tests/test_architecture_fitness.py") < displays.index(
+    assert displays.index("python -m pytest -q tests/gate_meta/test_architecture_fitness.py") < displays.index(
         "python scripts/sync_debt_ledger.py check"
     )
     assert displays.index(required_display) < displays.index(
@@ -409,7 +409,7 @@ def test_main_executes_every_shared_command_when_plan_inserts_preflight(monkeypa
         if display == "python -m pyright --version":
             return "pyright 1.1.406"
         if display == "python -m pytest --collect-only -q tests":
-            return "tests/test_run_quality_gate.py::test_main_executes_every_shared_command_when_plan_inserts_preflight\n"
+            return "tests/gate_meta/test_run_quality_gate.py::test_main_executes_every_shared_command_when_plan_inserts_preflight\n"
         return ""
 
     monkeypatch.setattr(module, "_run_command", fake_run_command)
@@ -471,10 +471,10 @@ def test_full_test_debt_proof_is_in_shared_quality_gate_plan() -> None:
         "tools/long_gate_schema.py",
         "tools/long_gate_summary.py",
         "tests/conftest.py",
-        "tests/test_check_full_test_debt.py",
-        "tests/test_full_test_debt_registry_contract.py",
-        "tests/test_architecture_fitness.py",
-        "tests/check_quickref_vs_routes.py",
+        "tests/gate_meta/test_check_full_test_debt.py",
+        "tests/gate_meta/test_full_test_debt_registry_contract.py",
+        "tests/gate_meta/test_architecture_fitness.py",
+        "tests/gate_meta/check_quickref_vs_routes.py",
         "pyproject.toml",
         "开发文档/技术债务治理台账.md",
     ]:
@@ -510,7 +510,7 @@ def test_full_test_debt_proof_is_in_shared_quality_gate_plan() -> None:
 def test_quality_gate_receipt_proof_requires_execution_mode_fields() -> None:
     shared = _shared_quality_registry()
     command = _small_quality_gate_plan()[0]
-    stdout = "tests/test_run_quality_gate.py::test_quality_gate_receipt_proof_requires_execution_mode_fields\n"
+    stdout = "tests/gate_meta/test_run_quality_gate.py::test_quality_gate_receipt_proof_requires_execution_mode_fields\n"
     payload = shared.build_quality_gate_command_receipt(
         command,
         run_id="run-1",
@@ -600,7 +600,7 @@ def test_main_fails_when_required_command_proof_is_missing(monkeypatch, tmp_path
         if display == "python -m pyright --version":
             return "pyright 1.1.406"
         if display == "python -m pytest --collect-only -q tests":
-            return "tests/test_run_quality_gate.py::test_main_fails_when_required_command_proof_is_missing\n"
+            return "tests/gate_meta/test_run_quality_gate.py::test_main_fails_when_required_command_proof_is_missing\n"
         return ""
 
     monkeypatch.setattr(module, "_run_command", fake_run_command)
@@ -653,8 +653,8 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
         "tests/gantt/test_gantt_critical_chain_unavailable.py",
         "tests/gantt/test_gantt_critical_chain_provider.py",
         "tests/gantt/test_scheduler_candidate_gantt_plan_role_contract.py",
-        "tests/regression_quality_gate_scan_contract.py",
-        "tests/test_codestable_architecture_contract.py",
+        "tests/gate_meta/test_quality_gate_scan_contract.py",
+        "tests/gate_meta/test_codestable_architecture_contract.py",
         "tests/schedule/route_view/test_scheduler_batch_template_warning_surface.py",
         "tests/schedule/route_view/test_scheduler_run_view_result_contract.py",
         "tests/resource_dispatch/test_resource_dispatch_bad_time_rows_surface_degraded.py",
@@ -666,7 +666,7 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
         "tests/app_runtime/test_ui_browser_geometry_env.py",
         "tests/app_runtime/test_ui_geometry_html_contract.py",
         "tests/schedule/route_view/test_scheduler_route_enforce_ready_tristate.py",
-        "tests/test_run_full_selftest_report_metadata.py",
+        "tests/gate_meta/test_run_full_selftest_report_metadata.py",
         "tests/calendar_maintenance/test_holiday_default_efficiency_read_guard.py",
         "tests/excel_data_io/test_excel_import_hardening.py",
         "tests/excel_data_io/test_excel_utils_compare_digest_guard.py",
@@ -675,8 +675,8 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
         "tests/app_runtime/test_frontend_offline_static_assets.py",
         "tests/excel_data_io/test_excel_renamed_column_conflicts.py",
         "tests/excel_data_io/test_scheduler_excel_batches_preview_baseline_precision.py",
-        "tests/test_check_full_test_debt.py",
-        "tests/test_full_test_debt_registry_contract.py",
+        "tests/gate_meta/test_check_full_test_debt.py",
+        "tests/gate_meta/test_full_test_debt_registry_contract.py",
         "tests/web_pages/test_request_services_contract.py",
         "tests/web_pages/test_factory_request_lifecycle_observability.py",
         "tests/calendar_maintenance/test_maintenance_window_mutex.py",
@@ -689,9 +689,9 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
         "tests/schedule/summary/test_schedule_summary_overdue_warning_append_fallback.py",
         "tests/config/test_schedule_config_snapshot_optional_guard.py",
         "tests/schedule/summary/test_schedule_summary_freeze_state_contract.py",
-        "tests/test_git_hook_checks.py",
-        "tests/test_long_gate_cli_controls.py",
-        "tests/test_long_gate_quickref_cache.py",
+        "tests/gate_meta/test_git_hook_checks.py",
+        "tests/gate_meta/test_long_gate_cli_controls.py",
+        "tests/gate_meta/test_long_gate_quickref_cache.py",
         "tests/schedule/service/test_schedule_template_lookup_contract.py",
     ):
         assert high_value_path in module.REQUIRED_TEST_ARGS
@@ -699,8 +699,8 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
     for lower_frequency_path in (
         "tests/gantt/test_gantt_critical_outline_sync.py",
         "tests/app_runtime/test_ui_browser_geometry_smoke.py",
-        "tests/test_long_gate_required_regression_cache.py",
-        "tests/test_sync_debt_ledger.py",
+        "tests/gate_meta/test_long_gate_required_regression_cache.py",
+        "tests/gate_meta/test_sync_debt_ledger.py",
         "tests/schedule/route_view/test_scheduler_batches_page_viewmodel.py",
         "tests/config/test_config_manual_markdown.py",
         "tests/web_pages/test_frontend_ui_language_polish.py",
@@ -818,7 +818,7 @@ def test_main_rebuilds_ignored_receipts_without_dirtying_clean_worktree(monkeypa
         if display == "python -m pyright --version":
             return "pyright 1.1.406"
         if display == "python -m pytest --collect-only -q tests":
-            return "tests/test_run_quality_gate.py::test_quality_gate_receipts\n"
+            return "tests/gate_meta/test_run_quality_gate.py::test_quality_gate_receipts\n"
         return ""
 
     monkeypatch.setattr(module, "_run_command", fake_run_command)
@@ -1160,13 +1160,13 @@ def test_repo_identity_fails_closed_when_git_identity_is_unavailable(monkeypatch
 def test_guard_preflight_rejects_missing_guard_file(monkeypatch):
     module = _import_run_quality_gate()
 
-    monkeypatch.setattr(module, "_guard_test_exists", lambda path: path != "tests/test_sp05_path_topology_contract.py")
+    monkeypatch.setattr(module, "_guard_test_exists", lambda path: path != "tests/gate_meta/test_sp05_path_topology_contract.py")
     monkeypatch.setattr(module, "_guard_test_tracked", lambda _path: True)
 
     with pytest.raises(module.QualityGateError) as exc_info:
         module._assert_guard_tests_ready()
 
-    assert "missing=tests/test_sp05_path_topology_contract.py" in str(exc_info.value)
+    assert "missing=tests/gate_meta/test_sp05_path_topology_contract.py" in str(exc_info.value)
 
 
 def test_guard_preflight_rejects_untracked_guard_file(monkeypatch):
@@ -1216,8 +1216,8 @@ def test_main_writes_quality_gate_manifest_with_git_and_collection_proof(monkeyp
         if display == "python -m pytest --collect-only -q tests":
             return "\n".join(
                 [
-                    "tests/test_run_quality_gate.py::test_main_runs_guard_preflight_before_static_and_startup_checks",
-                    "tests/test_sp05_path_topology_contract.py::test_scheduler_route_topology",
+                    "tests/gate_meta/test_run_quality_gate.py::test_main_runs_guard_preflight_before_static_and_startup_checks",
+                    "tests/gate_meta/test_sp05_path_topology_contract.py::test_scheduler_route_topology",
                     "tests/web_pages/test_system_history_route_contract.py::test_system_history_route_uses_request_services",
                 ]
             )
@@ -1291,7 +1291,7 @@ def test_main_writes_quality_gate_manifest_with_git_and_collection_proof(monkeyp
     assert manifest["collection_proof"]["default_collect_nodeids"]
     assert manifest["collection_proof"]["collected_count"] == 3
     quality_gate_entry = next(
-        item for item in manifest["collection_proof"]["key_tests"] if item["path"] == "tests/test_run_quality_gate.py"
+        item for item in manifest["collection_proof"]["key_tests"] if item["path"] == "tests/gate_meta/test_run_quality_gate.py"
     )
     assert quality_gate_entry["execution_mode"] == "default_collect"
     regression_entry = next(
@@ -1392,7 +1392,7 @@ def test_main_allow_dirty_worktree_marks_manifest_unbound(monkeypatch, tmp_path,
         if display == "python -m pyright --version":
             return "pyright 1.1.406"
         if display == "python -m pytest --collect-only -q tests":
-            return "tests/test_run_quality_gate.py::test_main_allow_dirty_worktree_marks_manifest_unbound\n"
+            return "tests/gate_meta/test_run_quality_gate.py::test_main_allow_dirty_worktree_marks_manifest_unbound\n"
         return ""
 
     monkeypatch.setattr(module, "_run_command", fake_run_command)
@@ -1446,7 +1446,7 @@ def test_main_writes_running_then_passed_manifest(monkeypatch, tmp_path):
         if display == "python -m pyright --version":
             return "pyright 1.1.406"
         if display == "python -m pytest --collect-only -q tests":
-            return "tests/test_run_quality_gate.py::test_main_writes_running_then_passed_manifest\n"
+            return "tests/gate_meta/test_run_quality_gate.py::test_main_writes_running_then_passed_manifest\n"
         return ""
 
     monkeypatch.setattr(module, "_run_command", fake_run_command)
@@ -1823,7 +1823,7 @@ def test_main_long_gate_cache_reuses_collect_only_success(monkeypatch, tmp_path,
             return {"stdout": "pyright 1.1.406", "stderr": "", "returncode": 0}
         if display == "python -m pytest --collect-only -q tests":
             return {
-                "stdout": "tests/test_run_quality_gate.py::test_main_long_gate_cache_reuses_collect_only_success\n",
+                "stdout": "tests/gate_meta/test_run_quality_gate.py::test_main_long_gate_cache_reuses_collect_only_success\n",
                 "stderr": "",
                 "returncode": 0,
             }
@@ -1838,7 +1838,7 @@ def test_main_long_gate_cache_reuses_collect_only_success(monkeypatch, tmp_path,
         (repo_root / "evidence" / "QualityGate" / "collect_nodeids.json").read_text(encoding="utf-8")
     )
     assert collect_payload["nodeids"] == [
-        "tests/test_run_quality_gate.py::test_main_long_gate_cache_reuses_collect_only_success"
+        "tests/gate_meta/test_run_quality_gate.py::test_main_long_gate_cache_reuses_collect_only_success"
     ]
     assert collect_payload["nodeid_hash"]
     assert collect_payload["collect_stdout_log_path"].startswith("evidence/QualityGate/logs/")
@@ -2938,7 +2938,7 @@ def test_main_fails_when_tracked_status_changes_during_gate(monkeypatch, tmp_pat
         if display == "python -m pyright --version":
             return "pyright 1.1.406"
         if display == "python -m pytest --collect-only -q tests":
-            return "tests/test_run_quality_gate.py::test_main_fails_when_tracked_status_changes_during_gate\n"
+            return "tests/gate_meta/test_run_quality_gate.py::test_main_fails_when_tracked_status_changes_during_gate\n"
         return ""
 
     monkeypatch.setattr(module, "_run_command", fake_run_command)

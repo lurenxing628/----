@@ -26,7 +26,7 @@ def _run_probe(source: str, *args: str) -> Dict[str, object]:
 
 # ===========================================================================
 # 模块加载层契约（子进程探针隔离 import 副作用）
-# 迁入自: tests/test_scheduler_route_registration_contract.py（原 A 文件，本目标文件原身）
+# 迁入自: tests/schedule/route_view/test_scheduler_route_registration_contract.py（原 A 文件，本目标文件原身）
 # ===========================================================================
 
 

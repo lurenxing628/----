@@ -8,7 +8,7 @@
 - 排产后做 sanity checks：时间合法、资源不冲突、避开停机、merged 外协组一致性等。
 
 运行示例：
-  python tests/run_complex_excel_cases_e2e.py --out evidence/ComplexExcelCases --repeat 3
+  python tests/_scripts_e2e/run_complex_excel_cases_e2e.py --out evidence/ComplexExcelCases --repeat 3
 """
 
 from __future__ import annotations

@@ -12,12 +12,12 @@ from tools.test_registry import iter_startup_regressions
     "nodeid",
     [
         "tests/app_runtime/test_ui_browser_geometry_smoke.py::test_ui_pages_do_not_create_body_level_overflow_in_real_browser",
-        "tests/test_long_gate_full_test_debt_cache.py::test_runner_records_nodeid_incremental_mode_without_running_whole_entry",
-        "tests/test_long_gate_cli_controls.py::test_controls",
-        "tests/test_long_gate_summary_output.py::test_summary",
-        "tests/test_long_gate_manifest.py::test_manifest",
-        "tests/test_run_quality_gate.py::test_quality_gate",
-        "tests/test_architecture_fitness.py::test_repository_bundle_consumption_does_not_drift",
+        "tests/gate_meta/test_long_gate_full_test_debt_cache.py::test_runner_records_nodeid_incremental_mode_without_running_whole_entry",
+        "tests/gate_meta/test_long_gate_cli_controls.py::test_controls",
+        "tests/gate_meta/test_long_gate_summary_output.py::test_summary",
+        "tests/gate_meta/test_long_gate_manifest.py::test_manifest",
+        "tests/gate_meta/test_run_quality_gate.py::test_quality_gate",
+        "tests/gate_meta/test_architecture_fitness.py::test_repository_bundle_consumption_does_not_drift",
         "tests/app_runtime/test_win7_launcher_runtime_paths.py::test_runtime_path",
         "tests/app_runtime/test_runtime_stop_cli.py::regression_runtime_stop_cli",
         "tests/app_runtime/test_check_manual_layout_runtime_resolution.py::test_check_manual_layout_runtime_resolution",
@@ -47,7 +47,7 @@ def test_split_nodeids_has_no_duplicates_or_omissions() -> None:
         "tests/test_public_a.py::test_two",
         "tests/test_public_b.py::test_one",
         "tests/app_runtime/test_ui_browser_geometry_smoke.py::test_browser",
-        "tests/test_long_gate_required_regression_cache.py::test_runner",
+        "tests/gate_meta/test_long_gate_required_regression_cache.py::test_runner",
     ]
 
     serial, shards = split_nodeids(nodeids, 2)
@@ -57,7 +57,7 @@ def test_split_nodeids_has_no_duplicates_or_omissions() -> None:
     assert len(flattened) == len(nodeids)
     assert serial == [
         "tests/app_runtime/test_ui_browser_geometry_smoke.py::test_browser",
-        "tests/test_long_gate_required_regression_cache.py::test_runner",
+        "tests/gate_meta/test_long_gate_required_regression_cache.py::test_runner",
     ]
     assert shards == [
         ["tests/test_public_a.py::test_one", "tests/test_public_a.py::test_two"],

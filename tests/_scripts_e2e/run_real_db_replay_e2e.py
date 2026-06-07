@@ -10,8 +10,8 @@ from __future__ import annotations
 - 输出 summary.md + 导出物
 
 运行示例：
-  python tests/run_real_db_replay_e2e.py
-  python tests/run_real_db_replay_e2e.py --max-batches 50 --max-ops 2000
+  python tests/_scripts_e2e/run_real_db_replay_e2e.py
+  python tests/_scripts_e2e/run_real_db_replay_e2e.py --max-batches 50 --max-ops 2000
 """
 
 import argparse

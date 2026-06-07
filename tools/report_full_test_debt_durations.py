@@ -38,9 +38,9 @@ def _payload_reports(payload: Mapping[str, Any]) -> List[Dict[str, Any]]:
 
 def _category_for_path(path: str) -> str:
     rel_path = str(path or "").replace("\\", "/")
-    if rel_path == "tests/regression_ui_browser_geometry_smoke.py":
+    if rel_path == "tests/app_runtime/test_ui_browser_geometry_smoke.py":
         return "browser"
-    if rel_path == "tests/test_architecture_fitness.py":
+    if rel_path == "tests/gate_meta/test_architecture_fitness.py":
         return "architecture"
     if rel_path.startswith("tests/test_long_gate_"):
         return "long_gate"

@@ -138,11 +138,11 @@ def classify_quality_gate_command(command: Mapping[str, Any]) -> str:
         path in args for path in quality_gate_shared.QUALITY_GATE_TOOL_PATHS
     ):
         return ENTRY_PYRIGHT_TOOLS_FULL
-    if display == "python -m pytest -q tests/test_architecture_fitness.py":
+    if display == "python -m pytest -q tests/gate_meta/test_architecture_fitness.py":
         return ENTRY_ARCHITECTURE_FITNESS
     if display == "python scripts/sync_debt_ledger.py check":
         return ENTRY_DEBT_LEDGER_SYNC
-    if display == "python tests/check_quickref_vs_routes.py":
+    if display == "python tests/gate_meta/check_quickref_vs_routes.py":
         return ENTRY_QUICKREF_VS_ROUTES
 
     pytest_targets = _pytest_q_targets(args)
@@ -449,7 +449,7 @@ def _scopes_for_entry(
         input_scopes.extend(
             [
                 "tests/conftest.py",
-                "tests/runtime_cleanup_helper.py",
+                "tests/app_runtime/runtime_cleanup_helper.py",
                 "app.py",
                 "app_new_ui.py",
                 "config.py",
@@ -582,9 +582,9 @@ def _scopes_for_entry(
         )
         tool_scopes.extend(
             [
-                "tests/check_quickref_vs_routes.py",
-                "tests/test_check_quickref_vs_routes.py",
-                "tests/test_long_gate_quickref_cache.py",
+                "tests/gate_meta/check_quickref_vs_routes.py",
+                "tests/gate_meta/test_check_quickref_vs_routes.py",
+                "tests/gate_meta/test_long_gate_quickref_cache.py",
             ]
         )
         dependency_scopes.extend(

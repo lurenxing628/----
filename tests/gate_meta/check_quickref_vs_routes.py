@@ -16,7 +16,7 @@ QUICKREF_VS_ROUTES_REPORT_REL = "evidence/QualityGate/quickref_vs_routes.md"
 
 
 def find_repo_root() -> str:
-    # 自包含 marker-walk：本文件被门禁当独立脚本跑（python tests/check_quickref_vs_routes.py，
+    # 自包含 marker-walk：本文件被门禁当独立脚本跑（python tests/gate_meta/check_quickref_vs_routes.py，
     # 无 PYTHONPATH），不能依赖 from tests._support.paths（tests 未在 sys.path）。向上探测
     # app.py+schema.sql 的 marker，与目录深度无关。
     probe = os.path.dirname(os.path.abspath(__file__))

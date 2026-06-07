@@ -702,7 +702,7 @@ function applyPayload(barElement, payload) {
 
 
 def _preview_bootstrap() -> str:
-    module_path = REPO_ROOT / "tests" / "run_complex_case_and_export_gantt.py"
+    module_path = REPO_ROOT / "tests" / "_scripts_e2e" / "run_complex_case_and_export_gantt.py"
     spec = importlib.util.spec_from_file_location("run_complex_case_and_export_gantt", module_path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"cannot load preview helper from {module_path}")
@@ -785,7 +785,7 @@ def _gantt_boot_js() -> str:
 
 
 def _load_preview_module():
-    module_path = REPO_ROOT / "tests" / "run_complex_case_and_export_gantt.py"
+    module_path = REPO_ROOT / "tests" / "_scripts_e2e" / "run_complex_case_and_export_gantt.py"
     spec = importlib.util.spec_from_file_location("run_complex_case_and_export_gantt", module_path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"cannot load preview helper from {module_path}")

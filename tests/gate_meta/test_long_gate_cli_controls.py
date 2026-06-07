@@ -88,7 +88,7 @@ def _patch_gate_environment(monkeypatch, module, repo_root: Path, *, statuses: S
 def _successful_result(display: str) -> dict:
     if display == "python -m pytest --collect-only -q tests":
         return {
-            "stdout": "tests/test_long_gate_cli_controls.py::test_collect\n",
+            "stdout": "tests/gate_meta/test_long_gate_cli_controls.py::test_collect\n",
             "stderr": "",
             "returncode": 0,
         }
@@ -185,7 +185,7 @@ def test_custom_cache_dir_reads_writes_success_cache_and_summary(monkeypatch, tm
     assert success_cache_path.exists()
     success_cache = json.loads(success_cache_path.read_text(encoding="utf-8"))
     success_stdout = (repo_root / success_cache["stdout_log_path"]).read_text(encoding="utf-8")
-    assert "tests/test_long_gate_cli_controls.py::test_collect" in success_stdout
+    assert "tests/gate_meta/test_long_gate_cli_controls.py::test_collect" in success_stdout
     assert success_cache["stdout_log_path"].startswith(cache_dir + "/logs/")
     assert default_success_cache_path.exists()
     assert success_cache_path != default_success_cache_path
@@ -286,8 +286,8 @@ def test_force_planned_entry_is_reported_but_does_not_enable_cache(monkeypatch, 
     repo_root.mkdir()
     _patch_gate_environment(monkeypatch, module, repo_root, statuses=[[], []])
     planned_command = {
-        "display": "python -m pytest -q tests/test_architecture_fitness.py",
-        "args": ["python", "-m", "pytest", "-q", "tests/test_architecture_fitness.py"],
+        "display": "python -m pytest -q tests/gate_meta/test_architecture_fitness.py",
+        "args": ["python", "-m", "pytest", "-q", "tests/gate_meta/test_architecture_fitness.py"],
         "capture_output": False,
         "output_policy": "normalized",
     }
@@ -304,7 +304,7 @@ def test_force_planned_entry_is_reported_but_does_not_enable_cache(monkeypatch, 
     assert module.main(["--long-gate-cache", "--long-gate-force-rerun", "architecture_fitness"]) == 0
 
     planned = _entry_by_id(_load_summary(repo_root), "architecture_fitness")
-    assert "python -m pytest -q tests/test_architecture_fitness.py" in calls
+    assert "python -m pytest -q tests/gate_meta/test_architecture_fitness.py" in calls
     assert planned["cache_status"] == "planned"
     assert planned["decision"] == "planned_only"
     assert planned["reason"].endswith("force rerun ignored because planned entries are not enabled")

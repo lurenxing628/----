@@ -13,7 +13,7 @@ from .quality_gate_shared import (
 
 def build_default_note(source: str, fallback_kind: Optional[str] = None, scope_tag: Optional[str] = None) -> str:
     if source == "migrated_from_architecture_fitness_counter":
-        return "从 tests/test_architecture_fitness.py 的旧内联事实迁移"
+        return "从 tests/gate_meta/test_architecture_fitness.py 的旧内联事实迁移"
     if source == "baseline_scan" and scope_tag == "render_bridge":
         return "渲染桥接可观测降级，SP02 仅落账并留给 SP09 处理"
     if source == "baseline_scan" and fallback_kind:

@@ -12,7 +12,7 @@ from __future__ import annotations
 - 可选导出甘特图 JSON（machine/operator 视图），便于肉眼对比
 
 运行示例：
-  python tests/run_synthetic_case.py --mode both --objective min_tardiness --time-budget 20 --export-gantt-dir evidence/Synthetic
+  python tests/_scripts_e2e/run_synthetic_case.py --mode both --objective min_tardiness --time-budget 20 --export-gantt-dir evidence/Synthetic
 """
 
 import argparse

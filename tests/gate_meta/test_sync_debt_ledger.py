@@ -115,11 +115,11 @@ def _import_test_debt_registry():
 BASELINE_BEGIN = "<!-- APS-FULL-PYTEST-BASELINE:BEGIN -->"
 BASELINE_END = "<!-- APS-FULL-PYTEST-BASELINE:END -->"
 P0_TEST_DEBT_NODEIDS = [
-    "tests/test_operator_machine_exception_paths.py::test_list_by_operator_propagates_unexpected_readside_normalization_errors",
-    "tests/test_operator_machine_exception_paths.py::test_normalize_skill_level_optional_only_converts_value_error",
-    "tests/test_operator_machine_exception_paths.py::test_normalize_skill_level_stored_only_falls_back_for_value_error",
-    "tests/test_operator_machine_exception_paths.py::test_resolve_write_values_only_converts_validation_error",
-    "tests/test_query_services.py::test_operator_machine_query_service_lists_with_names_and_linkage_rows",
+    "tests/excel_data_io/test_operator_machine_exception_paths.py::test_list_by_operator_propagates_unexpected_readside_normalization_errors",
+    "tests/excel_data_io/test_operator_machine_exception_paths.py::test_normalize_skill_level_optional_only_converts_value_error",
+    "tests/excel_data_io/test_operator_machine_exception_paths.py::test_normalize_skill_level_stored_only_falls_back_for_value_error",
+    "tests/excel_data_io/test_operator_machine_exception_paths.py::test_resolve_write_values_only_converts_validation_error",
+    "tests/models_domain/test_query_services.py::test_operator_machine_query_service_lists_with_names_and_linkage_rows",
 ]
 BASELINE_SHA = "a" * 40
 VERIFIED_SHA = "b" * 40
@@ -2138,7 +2138,7 @@ def test_import_current_payload_blocked_classification_lists_nodeid(monkeypatch,
     baseline_path = tmp_path / "baseline.md"
     _write_baseline(baseline_path, _baseline_payload())
 
-    blocked_nodeid = "tests/test_run_quality_gate.py::test_quality_gate_self_failure"
+    blocked_nodeid = "tests/gate_meta/test_run_quality_gate.py::test_quality_gate_self_failure"
     current_payload = _baseline_payload(
         importable=False,
         classifications={
@@ -2399,7 +2399,7 @@ def test_import_test_debt_baseline_command_rejects_blocked_classifications(monke
     module = _import_sync_debt_ledger()
     baseline_path = tmp_path / "blocked_baseline.md"
     payload = _baseline_payload()
-    payload["classifications"]["required_or_quality_gate_self_failure"] = ["tests/test_run_quality_gate.py::test_self"]
+    payload["classifications"]["required_or_quality_gate_self_failure"] = ["tests/gate_meta/test_run_quality_gate.py::test_self"]
     payload["summary"]["classification_counts"]["required_or_quality_gate_self_failure"] = 1
     payload["summary"]["failed_nodeid_count"] = 6
     _write_baseline(baseline_path, payload)
@@ -2423,7 +2423,7 @@ def test_import_test_debt_baseline_command_rejects_blocked_classifications(monke
         (
             lambda payload: payload["classifications"].__setitem__(
                 "required_or_quality_gate_self_failure",
-                ["tests/test_run_quality_gate.py::test_self"],
+                ["tests/gate_meta/test_run_quality_gate.py::test_self"],
             ),
             "required_or_quality_gate_self_failure",
         ),

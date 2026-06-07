@@ -14,7 +14,7 @@ def test_build_distribution_reports_serial_and_parallel_counts(tmp_path: Path) -
         json.dumps(
             {
                 "collected_nodeids": [
-                    "tests/test_run_quality_gate.py::test_a",
+                    "tests/gate_meta/test_run_quality_gate.py::test_a",
                     "tests/test_alpha.py::test_a",
                     "tests/test_alpha.py::test_b",
                     "tests/test_beta.py::test_a",

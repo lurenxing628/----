@@ -141,13 +141,13 @@ QUALITY_GATE_TOOL_PATHS = [
     "tools/test_registry.py",
     "tests/conftest.py",
     ".codestable/tools/validate-yaml.py",
-    "tests/regression_config_manual_markdown.py",
-    "tests/regression_frontend_offline_static_assets.py",
-    "tests/regression_page_manual_registry.py",
-    "tests/regression_aps_three_gap_docs_quality_gate.py",
-    "tests/regression_operation_execution_event_time_contract.py",
-    "tests/regression_scheduler_data_route_error_contract.py",
-    "tests/regression_scheduler_resource_dispatch_invalid_query_cleanup.py",
+    "tests/config/test_config_manual_markdown.py",
+    "tests/app_runtime/test_frontend_offline_static_assets.py",
+    "tests/web_pages/test_page_manual_registry.py",
+    "tests/gate_meta/test_aps_three_gap_docs_quality_gate.py",
+    "tests/operation_execution/test_operation_execution_event_time_contract.py",
+    "tests/gate_meta/test_scheduler_data_route_error_contract.py",
+    "tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py",
 ]
 QUALITY_GATE_SOURCE_FILES = tuple(
     dict.fromkeys(
@@ -160,11 +160,11 @@ QUALITY_GATE_SOURCE_FILES = tuple(
             QUALITY_GATE_PYRIGHT_GATE_CONFIG,
             QUALITY_GATE_PYRIGHT_TOOLS_CONFIG,
             *QUALITY_GATE_TOOL_PATHS,
-            "tests/regression_frontend_ui_language_polish.py",
-            "tests/test_architecture_fitness.py",
+            "tests/web_pages/test_frontend_ui_language_polish.py",
+            "tests/gate_meta/test_architecture_fitness.py",
             *QUALITY_GATE_REQUIRED_TESTS,
             *QUALITY_GATE_STARTUP_REGRESSION_ARGS,
-            "tests/check_quickref_vs_routes.py",
+            "tests/gate_meta/check_quickref_vs_routes.py",
         )
     )
 )
@@ -214,8 +214,8 @@ REQUEST_SERVICE_SCAN_SCOPE_PATTERNS = [
     "web/ui_mode_store.py",
     "web/render_bridge.py",
     "web/manual_src_security.py",
-    "tests/run_real_db_replay_e2e.py",
-    "tests/run_complex_excel_cases_e2e.py",
+    "tests/_scripts_e2e/run_real_db_replay_e2e.py",
+    "tests/_scripts_e2e/run_complex_excel_cases_e2e.py",
 ]
 REQUEST_SERVICE_TARGET_FILES = [
     "web/routes/domains/scheduler/scheduler_run.py",
@@ -248,8 +248,8 @@ REQUEST_SERVICE_TARGET_FILES = [
     "web/manual_src_security.py",
 ]
 REQUEST_SERVICE_TARGET_SYMBOLS = {
-    "tests/run_real_db_replay_e2e.py": ["_create_test_app", "_open_db"],
-    "tests/run_complex_excel_cases_e2e.py": ["create_test_app", "_open_db"],
+    "tests/_scripts_e2e/run_real_db_replay_e2e.py": ["_create_test_app", "_open_db"],
+    "tests/_scripts_e2e/run_complex_excel_cases_e2e.py": ["create_test_app", "_open_db"],
 }
 REQUEST_SERVICE_TARGET_ALLOWED_HELPERS: List[Dict[str, Any]] = []
 REPOSITORY_BUNDLE_DRIFT_SCOPE_PATTERNS = ["core/services/scheduler/**/*.py", "tests/**/*.py", "tools/**/*.py", "web/routes/**/*.py"]
@@ -263,11 +263,11 @@ FALLBACK_KIND_VALUES = {
 ENTRY_STATUS_VALUES = {"open", "in_progress", "blocked", "fixed"}
 TEST_DEBT_MODE_VALUES = {"xfail", "fixed"}
 FULL_TEST_DEBT_ALLOWED_ACTIVE_XFAIL_NODEIDS = (
-    "tests/test_operator_machine_exception_paths.py::test_list_by_operator_propagates_unexpected_readside_normalization_errors",
-    "tests/test_operator_machine_exception_paths.py::test_normalize_skill_level_optional_only_converts_value_error",
-    "tests/test_operator_machine_exception_paths.py::test_normalize_skill_level_stored_only_falls_back_for_value_error",
-    "tests/test_operator_machine_exception_paths.py::test_resolve_write_values_only_converts_validation_error",
-    "tests/test_query_services.py::test_operator_machine_query_service_lists_with_names_and_linkage_rows",
+    "tests/excel_data_io/test_operator_machine_exception_paths.py::test_list_by_operator_propagates_unexpected_readside_normalization_errors",
+    "tests/excel_data_io/test_operator_machine_exception_paths.py::test_normalize_skill_level_optional_only_converts_value_error",
+    "tests/excel_data_io/test_operator_machine_exception_paths.py::test_normalize_skill_level_stored_only_falls_back_for_value_error",
+    "tests/excel_data_io/test_operator_machine_exception_paths.py::test_resolve_write_values_only_converts_validation_error",
+    "tests/models_domain/test_query_services.py::test_operator_machine_query_service_lists_with_names_and_linkage_rows",
 )
 UI_MODE_SCOPE_TAG_VALUES = {"startup_guard", "render_bridge"}
 
@@ -761,8 +761,8 @@ def build_quality_gate_command_plan() -> List[Dict[str, Any]]:
             "output_policy": "normalized",
         },
         {
-            "display": "python -m pytest -q tests/test_architecture_fitness.py",
-            "args": ["python", "-m", "pytest", "-q", "tests/test_architecture_fitness.py"],
+            "display": "python -m pytest -q tests/gate_meta/test_architecture_fitness.py",
+            "args": ["python", "-m", "pytest", "-q", "tests/gate_meta/test_architecture_fitness.py"],
             "capture_output": False,
             "output_policy": "normalized",
         },
@@ -809,7 +809,7 @@ def build_quality_gate_command_plan() -> List[Dict[str, Any]]:
             "output_policy": "normalized",
         },
         {
-            "display": "python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tools/scan_aps_three_gap_py38_scope.py tests/regression_frontend_offline_static_assets.py tests/regression_frontend_ui_language_polish.py tests/regression_config_manual_markdown.py tests/regression_page_manual_registry.py tests/regression_scheduler_resource_dispatch_invalid_query_cleanup.py tests/regression_aps_three_gap_docs_quality_gate.py tests/test_run_quality_gate.py",
+            "display": "python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tools/scan_aps_three_gap_py38_scope.py tests/app_runtime/test_frontend_offline_static_assets.py tests/web_pages/test_frontend_ui_language_polish.py tests/config/test_config_manual_markdown.py tests/web_pages/test_page_manual_registry.py tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py tests/gate_meta/test_aps_three_gap_docs_quality_gate.py tests/gate_meta/test_run_quality_gate.py",
             "args": [
                 "python",
                 "tools/scan_py38plus_syntax.py",
@@ -817,13 +817,13 @@ def build_quality_gate_command_plan() -> List[Dict[str, Any]]:
                 "scripts/run_quality_gate.py",
                 "tools/quality_gate_shared.py",
                 "tools/scan_aps_three_gap_py38_scope.py",
-                "tests/regression_frontend_offline_static_assets.py",
-                "tests/regression_frontend_ui_language_polish.py",
-                "tests/regression_config_manual_markdown.py",
-                "tests/regression_page_manual_registry.py",
-                "tests/regression_scheduler_resource_dispatch_invalid_query_cleanup.py",
-                "tests/regression_aps_three_gap_docs_quality_gate.py",
-                "tests/test_run_quality_gate.py",
+                "tests/app_runtime/test_frontend_offline_static_assets.py",
+                "tests/web_pages/test_frontend_ui_language_polish.py",
+                "tests/config/test_config_manual_markdown.py",
+                "tests/web_pages/test_page_manual_registry.py",
+                "tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py",
+                "tests/gate_meta/test_aps_three_gap_docs_quality_gate.py",
+                "tests/gate_meta/test_run_quality_gate.py",
             ],
             "capture_output": True,
             "output_policy": "normalized",
@@ -835,8 +835,8 @@ def build_quality_gate_command_plan() -> List[Dict[str, Any]]:
             "output_policy": "normalized",
         },
         {
-            "display": "python tests/check_quickref_vs_routes.py",
-            "args": ["python", "tests/check_quickref_vs_routes.py"],
+            "display": "python tests/gate_meta/check_quickref_vs_routes.py",
+            "args": ["python", "tests/gate_meta/check_quickref_vs_routes.py"],
             "capture_output": False,
             "output_policy": "normalized",
         },

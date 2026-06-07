@@ -33,13 +33,13 @@
     "tools/test_registry.py",
     "tests/conftest.py",
     ".codestable/tools/validate-yaml.py",
-    "tests/regression_config_manual_markdown.py",
-    "tests/regression_frontend_offline_static_assets.py",
-    "tests/regression_page_manual_registry.py",
-    "tests/regression_aps_three_gap_docs_quality_gate.py",
-    "tests/regression_operation_execution_event_time_contract.py",
-    "tests/regression_scheduler_data_route_error_contract.py",
-    "tests/regression_scheduler_resource_dispatch_invalid_query_cleanup.py"
+    "tests/config/test_config_manual_markdown.py",
+    "tests/app_runtime/test_frontend_offline_static_assets.py",
+    "tests/web_pages/test_page_manual_registry.py",
+    "tests/gate_meta/test_aps_three_gap_docs_quality_gate.py",
+    "tests/operation_execution/test_operation_execution_event_time_contract.py",
+    "tests/gate_meta/test_scheduler_data_route_error_contract.py",
+    "tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py"
   ],
   "exclude": [
     "**/node_modules",

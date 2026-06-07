@@ -24,11 +24,11 @@ ALLOWED_TEST_DEBT_NODEIDS = list(FULL_TEST_DEBT_ALLOWED_ACTIVE_XFAIL_NODEIDS)
 
 def test_allowed_active_xfail_nodeids_are_locked_to_historical_baseline() -> None:
     assert ALLOWED_TEST_DEBT_NODEIDS == [
-        "tests/test_operator_machine_exception_paths.py::test_list_by_operator_propagates_unexpected_readside_normalization_errors",
-        "tests/test_operator_machine_exception_paths.py::test_normalize_skill_level_optional_only_converts_value_error",
-        "tests/test_operator_machine_exception_paths.py::test_normalize_skill_level_stored_only_falls_back_for_value_error",
-        "tests/test_operator_machine_exception_paths.py::test_resolve_write_values_only_converts_validation_error",
-        "tests/test_query_services.py::test_operator_machine_query_service_lists_with_names_and_linkage_rows",
+        "tests/excel_data_io/test_operator_machine_exception_paths.py::test_list_by_operator_propagates_unexpected_readside_normalization_errors",
+        "tests/excel_data_io/test_operator_machine_exception_paths.py::test_normalize_skill_level_optional_only_converts_value_error",
+        "tests/excel_data_io/test_operator_machine_exception_paths.py::test_normalize_skill_level_stored_only_falls_back_for_value_error",
+        "tests/excel_data_io/test_operator_machine_exception_paths.py::test_resolve_write_values_only_converts_validation_error",
+        "tests/models_domain/test_query_services.py::test_operator_machine_query_service_lists_with_names_and_linkage_rows",
     ]
 
 
@@ -451,7 +451,7 @@ def test_collect_full_test_debt_writes_current_payload_and_stderr_preview(tmp_pa
 
 def test_collect_full_test_debt_writes_raw_baseline_machine_block(tmp_path: Path) -> None:
     _write(
-        tmp_path / "tests" / "test_run_quality_gate.py",
+        tmp_path / "tests" / "gate_meta" / "test_run_quality_gate.py",
         '''
         def test_quality_gate_self_failure():
             assert False, "required failure"
@@ -467,7 +467,7 @@ def test_collect_full_test_debt_writes_raw_baseline_machine_block(tmp_path: Path
     assert baseline_payload["baseline_kind"] == "raw_before_isolation"
     assert baseline_payload["importable"] is False
     assert payload["summary"] == baseline_payload["summary"]
-    assert "tests/test_run_quality_gate.py::test_quality_gate_self_failure" in baseline_payload["classifications"][
+    assert "tests/gate_meta/test_run_quality_gate.py::test_quality_gate_self_failure" in baseline_payload["classifications"][
         "required_or_quality_gate_self_failure"
     ]
 

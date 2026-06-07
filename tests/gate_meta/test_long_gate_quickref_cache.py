@@ -63,7 +63,7 @@ def test_quickref_vs_routes_is_enabled_and_declares_output_file(tmp_path):
         "config.py",
         "schema.sql",
         "requirements.txt",
-        "tests/check_quickref_vs_routes.py",
+        "tests/gate_meta/check_quickref_vs_routes.py",
     ],
 )
 def test_quickref_fingerprint_tracks_doc_routes_app_resources_config_and_dependencies(tmp_path, changed_path):

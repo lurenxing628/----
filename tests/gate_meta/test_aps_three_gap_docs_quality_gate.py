@@ -99,16 +99,16 @@ REGRESSION_TESTS = (
     "tests/schedule/service/test_schedule_input_collector_legacy_compat.py",
     "tests/schedule/service/test_schedule_service_missing_resource_source_case_insensitive.py",
     "tests/schedule/service/test_schedule_service_reschedulable_contract.py",
-    "tests/regression_scheduler_graph_report_mode_service_contract.py",
-    "tests/regression_scheduler_data_route_error_contract.py",
+    "tests/scheduler_graph/test_scheduler_graph_report_mode_service_contract.py",
+    "tests/gate_meta/test_scheduler_data_route_error_contract.py",
     "tests/scheduler_analysis/test_scheduler_analysis_diagnostic_graph_score_contract.py",
     "tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py",
     "tests/algorithm/test_skill_rank_mapping.py",
-    "tests/test_architecture_fitness.py",
-    "tests/test_codestable_tools_contract.py",
-    "tests/test_scan_py38plus_syntax.py",
-    "tests/regression_aps_three_gap_docs_quality_gate.py",
-    "tests/test_run_quality_gate.py",
+    "tests/gate_meta/test_architecture_fitness.py",
+    "tests/gate_meta/test_codestable_tools_contract.py",
+    "tests/gate_meta/test_scan_py38plus_syntax.py",
+    "tests/gate_meta/test_aps_three_gap_docs_quality_gate.py",
+    "tests/gate_meta/test_run_quality_gate.py",
     "tests/schedule/service/test_schedule_service_input_merge_context_contract.py",
 )
 
@@ -196,7 +196,7 @@ def test_developer_guide_mentions_every_item_test_command_file() -> None:
     dev_text = _read(DEV_GUIDE)
     test_files = sorted(set(re.findall(r"tests/[A-Za-z0-9_./:-]+\.py", items_text)))
 
-    assert "tests/regression_aps_three_gap_docs_quality_gate.py" in test_files
+    assert "tests/gate_meta/test_aps_three_gap_docs_quality_gate.py" in test_files
     missing = [path for path in test_files if path not in dev_text]
     assert missing == []
 

@@ -31,9 +31,9 @@ from tools.test_registry import (
 # 门禁自指用例——它们已在各自 required regression group 的 target_paths 与 CI 全量门禁里覆盖，
 # 无需在每次 push 的 focused 冒烟里重复支付（这几个又慢，是最慢榜常客）。
 FOCUSED_PYTEST_NODEIDS: Tuple[str, ...] = (
-    "tests/test_scheduler_batches_page_viewmodel.py::test_batches_filter_state_preserves_default_and_empty_status_contract",
-    "tests/test_scheduler_batches_page_viewmodel.py::test_batch_rows_filter_ready_and_add_public_labels",
-    "tests/test_ui_geometry_html_contract.py::test_ui_smoke_pages_render_expected_html_contract",
+    "tests/schedule/route_view/test_scheduler_batches_page_viewmodel.py::test_batches_filter_state_preserves_default_and_empty_status_contract",
+    "tests/schedule/route_view/test_scheduler_batches_page_viewmodel.py::test_batch_rows_filter_ready_and_add_public_labels",
+    "tests/app_runtime/test_ui_geometry_html_contract.py::test_ui_smoke_pages_render_expected_html_contract",
 )
 
 _COLLECT_COUNT_RE = re.compile(r"\b(\d+)\s+(?:tests?|items?) collected\b")

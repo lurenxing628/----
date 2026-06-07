@@ -50,7 +50,7 @@ BASELINE_REQUIRED_REPORT_FIELDS = (
 TEST_DEBT_FAMILY = "operator_machine_normalization_contract_drift"
 
 P0_TEST_DEBT_SEED_METADATA: Dict[str, Dict[str, Any]] = {
-    "tests/test_operator_machine_exception_paths.py::test_list_by_operator_propagates_unexpected_readside_normalization_errors": {
+    "tests/excel_data_io/test_operator_machine_exception_paths.py::test_list_by_operator_propagates_unexpected_readside_normalization_errors": {
         "debt_id": "test-debt:operator-machine-list-by-operator-stale-patch",
         "reason": "测试仍在 patch 已不存在的技能等级归一化旧入口，无法验证 list_by_operator 的异常传播合同。",
         "domain": "personnel.operator_machine",
@@ -62,7 +62,7 @@ P0_TEST_DEBT_SEED_METADATA: Dict[str, Dict[str, Any]] = {
         "owner": "personnel.operator_machine",
         "exit_condition": "更新读侧异常传播测试的旧 patch 目标，让该 nodeid 定向 pytest 普通通过，并从正式 full pytest 债务基线移除。",
     },
-    "tests/test_operator_machine_exception_paths.py::test_normalize_skill_level_optional_only_converts_value_error": {
+    "tests/excel_data_io/test_operator_machine_exception_paths.py::test_normalize_skill_level_optional_only_converts_value_error": {
         "debt_id": "test-debt:operator-machine-normalize-skill-level-optional-stale-patch",
         "reason": "测试仍在 patch 已不存在的 normalize_skill_level 旧入口，无法验证可选技能等级归一化合同。",
         "domain": "personnel.operator_machine",
@@ -74,7 +74,7 @@ P0_TEST_DEBT_SEED_METADATA: Dict[str, Dict[str, Any]] = {
         "owner": "personnel.operator_machine",
         "exit_condition": "更新测试 patch 目标或改成公开入口验证，让该 nodeid 定向 pytest 普通通过，并从正式 full pytest 债务基线移除。",
     },
-    "tests/test_operator_machine_exception_paths.py::test_normalize_skill_level_stored_only_falls_back_for_value_error": {
+    "tests/excel_data_io/test_operator_machine_exception_paths.py::test_normalize_skill_level_stored_only_falls_back_for_value_error": {
         "debt_id": "test-debt:operator-machine-normalize-skill-level-stored-stale-patch",
         "reason": "测试仍在 patch 已不存在的 normalize_skill_level 旧入口，无法验证落库存储技能等级归一化合同。",
         "domain": "personnel.operator_machine",
@@ -86,7 +86,7 @@ P0_TEST_DEBT_SEED_METADATA: Dict[str, Dict[str, Any]] = {
         "owner": "personnel.operator_machine",
         "exit_condition": "更新测试 patch 目标或改成公开入口验证，让该 nodeid 定向 pytest 普通通过，并从正式 full pytest 债务基线移除。",
     },
-    "tests/test_operator_machine_exception_paths.py::test_resolve_write_values_only_converts_validation_error": {
+    "tests/excel_data_io/test_operator_machine_exception_paths.py::test_resolve_write_values_only_converts_validation_error": {
         "debt_id": "test-debt:operator-machine-resolve-write-values-return-contract",
         "reason": "测试仍期待写入解析错误时返回 None，但当前合同是返回旧值和错误消息、调用方跳过写入。",
         "domain": "personnel.operator_machine",
@@ -98,7 +98,7 @@ P0_TEST_DEBT_SEED_METADATA: Dict[str, Dict[str, Any]] = {
         "owner": "personnel.operator_machine",
         "exit_condition": "按当前“返回旧值和错误消息、调用方跳过写入”的合同更新测试，或先改实现再同步测试；该 nodeid 定向 pytest 普通通过后，从正式 full pytest 债务基线移除。",
     },
-    "tests/test_query_services.py::test_operator_machine_query_service_lists_with_names_and_linkage_rows": {
+    "tests/models_domain/test_query_services.py::test_operator_machine_query_service_lists_with_names_and_linkage_rows": {
         "debt_id": "test-debt:operator-machine-query-service-dirty-fields-contract",
         "reason": "测试仍按普通字段精确相等，未覆盖查询服务当前返回 dirty_fields/dirty_reasons 的读侧归一化合同。",
         "domain": "personnel.operator_machine",

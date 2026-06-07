@@ -9,7 +9,7 @@ from typing import Dict, List, Sequence
 
 import pytest
 
-from tests.long_gate_cache_helpers import (
+from tests.gate_meta.long_gate_cache_helpers import (
     _entry_by_id,
     _entry_display,
     _fake_successful_command,
@@ -151,8 +151,8 @@ def test_required_scope_tracks_real_inputs_without_unrelated_markdown(tmp_path):
         "tools/long_gate_manifest.py",
         "tools/long_gate_fingerprint.py",
         "scripts/run_quality_gate.py",
-        "tests/long_gate_cache_helpers.py",
-        "tests/ui_geometry_contract_data.py",
+        "tests/gate_meta/long_gate_cache_helpers.py",
+        "tests/app_runtime/ui_geometry_contract_data.py",
     ]:
         assert path in all_scopes
     assert "tools/quality_gate_*.py" in all_scopes
@@ -284,7 +284,7 @@ def test_required_tampered_parent_cache_reruns_parent(monkeypatch, tmp_path, mut
 @pytest.mark.parametrize(
     "changed_path",
     [
-        "tests/test_run_quality_gate.py",
+        "tests/gate_meta/test_run_quality_gate.py",
         "scripts/sync_debt_ledger.py",
         "tools/test_registry.py",
         "tools/quality_gate_shared.py",
@@ -307,8 +307,8 @@ def test_required_tampered_parent_cache_reruns_parent(monkeypatch, tmp_path, mut
         "tools/quality_gate_operations.py",
         "tools/quality_gate_scan.py",
         "tools/test_debt_registry.py",
-        "tests/long_gate_cache_helpers.py",
-        "tests/ui_geometry_contract_data.py",
+        "tests/gate_meta/long_gate_cache_helpers.py",
+        "tests/app_runtime/ui_geometry_contract_data.py",
         ".gitignore",
         "pyproject.toml",
         "requirements.txt",

@@ -15,10 +15,10 @@ import pytest
 from tests._support.paths import REPO_ROOT
 
 KNOWN_DEBT_NODEID = (
-    "tests/test_operator_machine_exception_paths.py"
+    "tests/excel_data_io/test_operator_machine_exception_paths.py"
     "::test_normalize_skill_level_optional_only_converts_value_error"
 )
-FIXED_DEBT_NODEID = "tests/test_query_services.py::test_operator_machine_query_service_lists_with_names_and_linkage_rows"
+FIXED_DEBT_NODEID = "tests/models_domain/test_query_services.py::test_operator_machine_query_service_lists_with_names_and_linkage_rows"
 
 
 def _import_checker():
@@ -235,7 +235,7 @@ def test_check_full_test_debt_candidate_mismatch_lists_nodeids() -> None:
 
 def test_check_full_test_debt_blocked_classification_lists_nodeids() -> None:
     checker = _import_checker()
-    nodeid = "tests/test_run_quality_gate.py::test_quality_gate_self_failure"
+    nodeid = "tests/gate_meta/test_run_quality_gate.py::test_quality_gate_self_failure"
     payload = _payload(
         collected_nodeids=[nodeid],
         reports=[

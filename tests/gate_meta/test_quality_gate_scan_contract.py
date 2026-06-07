@@ -599,12 +599,12 @@ def test_strict_silent_fallback_cli_reports_drift_to_stderr(monkeypatch, capsys)
 
 
 def test_request_service_target_symbols_include_nested_custom_test_factory_open_db() -> None:
-    assert "_open_db" in shared_mod.REQUEST_SERVICE_TARGET_SYMBOLS["tests/run_real_db_replay_e2e.py"]
-    assert "_open_db" in shared_mod.REQUEST_SERVICE_TARGET_SYMBOLS["tests/run_complex_excel_cases_e2e.py"]
+    assert "_open_db" in shared_mod.REQUEST_SERVICE_TARGET_SYMBOLS["tests/_scripts_e2e/run_real_db_replay_e2e.py"]
+    assert "_open_db" in shared_mod.REQUEST_SERVICE_TARGET_SYMBOLS["tests/_scripts_e2e/run_complex_excel_cases_e2e.py"]
 
 
 def test_request_service_architecture_filter_tracks_nested_open_db_in_custom_test_factory(monkeypatch) -> None:
-    rel_path = "tests/run_real_db_replay_e2e.py"
+    rel_path = "tests/_scripts_e2e/run_real_db_replay_e2e.py"
     monkeypatch.setattr(ops_mod, "REQUEST_SERVICE_TARGET_FILES", [])
     monkeypatch.setattr(ops_mod, "REQUEST_SERVICE_TARGET_SYMBOLS", {rel_path: ["_create_test_app", "_open_db"]})
     monkeypatch.setattr(ops_mod, "REQUEST_SERVICE_TARGET_ALLOWED_HELPERS", [], raising=False)

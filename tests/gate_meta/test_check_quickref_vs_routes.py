@@ -22,7 +22,7 @@ def _import_check_quickref_vs_routes():
         sys.path.insert(0, str(repo_root))
     module_name = "tests.check_quickref_vs_routes"
     sys.modules.pop(module_name, None)
-    module_path = repo_root / "tests" / "check_quickref_vs_routes.py"
+    module_path = repo_root / "tests" / "gate_meta" / "check_quickref_vs_routes.py"
     spec = importlib.util.spec_from_file_location(module_name, module_path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"无法加载模块：{module_path}")
