@@ -19,9 +19,11 @@ def find_repo_root():
     兼容不同目录结构：优先 tests/ 上一级，其次扫描 D:\\Github 下子目录。
     """
     here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
+    probe = here
+    while probe != os.path.dirname(probe):
+        if os.path.exists(os.path.join(probe, "app.py")) and os.path.exists(os.path.join(probe, "schema.sql")):
+            return probe
+        probe = os.path.dirname(probe)
 
     base = r"D:\Github"
     try:

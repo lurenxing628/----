@@ -25,7 +25,17 @@ import sys
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+def _find_repo_root() -> str:
+    probe = os.path.dirname(os.path.abspath(__file__))
+    while probe != os.path.dirname(probe):
+        if os.path.exists(os.path.join(probe, "app.py")) and os.path.exists(os.path.join(probe, "schema.sql")):
+            return probe
+        probe = os.path.dirname(probe)
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+
+REPO_ROOT = _find_repo_root()
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 

@@ -14,9 +14,11 @@ from excel_preview_confirm_helpers import build_confirm_payload
 
 def find_repo_root():
     here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
+    probe = here
+    while probe != os.path.dirname(probe):
+        if os.path.exists(os.path.join(probe, "app.py")) and os.path.exists(os.path.join(probe, "schema.sql")):
+            return probe
+        probe = os.path.dirname(probe)
     raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 

@@ -20,9 +20,11 @@ def find_repo_root():
     """
     # 1) 优先：tests/ 的上一级目录（脚本与代码同仓库时最可靠）
     here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
+    probe = here
+    while probe != os.path.dirname(probe):
+        if os.path.exists(os.path.join(probe, "app.py")) and os.path.exists(os.path.join(probe, "schema.sql")):
+            return probe
+        probe = os.path.dirname(probe)
 
     # 2) 兼容：按既有约定扫描 D:\Github
     base = r"D:\Github"

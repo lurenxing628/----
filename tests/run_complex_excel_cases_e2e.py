@@ -30,8 +30,18 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from excel_preview_confirm_helpers import build_confirm_payload
 
+
 # 确保仓库根目录在 sys.path（允许直接 python tests/xxx.py 运行）
-_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+def _probe_repo_root() -> str:
+    probe = os.path.dirname(os.path.abspath(__file__))
+    while probe != os.path.dirname(probe):
+        if os.path.exists(os.path.join(probe, "app.py")) and os.path.exists(os.path.join(probe, "schema.sql")):
+            return probe
+        probe = os.path.dirname(probe)
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+
+_REPO_ROOT = _probe_repo_root()
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
@@ -43,9 +53,11 @@ if _REPO_ROOT not in sys.path:
 
 def find_repo_root() -> str:
     here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
+    probe = here
+    while probe != os.path.dirname(probe):
+        if os.path.exists(os.path.join(probe, "app.py")) and os.path.exists(os.path.join(probe, "schema.sql")):
+            return probe
+        probe = os.path.dirname(probe)
     raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
