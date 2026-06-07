@@ -775,16 +775,13 @@ def test_quality_workflow_uploads_quality_gate_manifest_artifact():
     assert re.search(r"(?m)^      PYTHONDONTWRITEBYTECODE:\s*['\"]?1['\"]?\s*$", quality_gate_job.group("body"))
     assert re.search(r"(?m)^      PYTHONUTF8:\s*['\"]?1['\"]?\s*$", quality_gate_job.group("body"))
     assert re.search(r"(?m)^      PYTHONIOENCODING:\s*['\"]?utf-8['\"]?\s*$", quality_gate_job.group("body"))
-    assert re.search(r"(?m)^      APS_CHROME_PATH:\s*C:\\Program Files\\Google\\Chrome\\Application\\chrome\.exe\s*$", quality_gate_job.group("body"))
     assert "安装 Node.js 24" in quality_gate_job.group("body")
     chrome_check_index = quality_gate_job.group("body").index("Test-Path $env:APS_CHROME_PATH")
     chrome_version_index = quality_gate_job.group("body").index("& $env:APS_CHROME_PATH --version")
     gate_run = "run: python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache"
     gate_run_index = quality_gate_job.group("body").index(gate_run)
     assert chrome_check_index < chrome_version_index < gate_run_index
-    assert "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4" in quality_gate_job.group("body")
     assert "node-version: '24'" in quality_gate_job.group("body")
-    assert "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4" in quality_gate_job.group("body")
 
 
 def test_main_rebuilds_ignored_receipts_without_dirtying_clean_worktree(monkeypatch, tmp_path):

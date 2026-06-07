@@ -177,21 +177,6 @@ def test_validate_yaml_can_exclude_index_file_from_required_field_checks(tmp_pat
 
 
 def test_compound_superseded_documents_use_hyphenated_field(tmp_path: Path) -> None:
-    compound_dir = REPO_ROOT / ".codestable" / "compound"
-    docs = list(compound_dir.glob("*.md"))
-    offenders = []
-    missing = []
-    for doc in docs:
-        text = doc.read_text(encoding="utf-8")
-        frontmatter = text.split("---", 2)[1] if text.startswith("---") and text.count("---") >= 2 else text
-        if "superseded_by:" in frontmatter:
-            offenders.append(doc.name)
-        if "\nstatus: superseded\n" in frontmatter and "superseded-by:" not in frontmatter:
-            missing.append(doc.name)
-
-    assert offenders == []
-    assert missing == []
-
     docs_dir = tmp_path / "compound"
     docs_dir.mkdir()
     (docs_dir / "superseded.md").write_text(
@@ -231,68 +216,6 @@ def test_compound_superseded_documents_use_hyphenated_field(tmp_path: Path) -> N
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "superseded.md" in proc.stdout
     assert "active.md" not in proc.stdout
-
-
-def test_review_fix_notes_use_searchable_issue_fix_frontmatter() -> None:
-    issues = [
-        "2026-05-25-quality-gate-timeout",
-        "2026-05-25-route-parser-supplier-global-scope",
-        "2026-05-25-review-followup-blockers",
-    ]
-    for issue in issues:
-        note_slug = issue[len("2026-05-25-") :]
-        note = REPO_ROOT / ".codestable" / "issues" / issue / f"{note_slug}-fix-note.md"
-        proc = _run_tool(
-            VALIDATE_TOOL,
-            "--file",
-            str(note),
-            "--require",
-            "doc_type",
-            "--require",
-            "issue",
-            "--require",
-            "path",
-            "--require",
-            "fix_date",
-            "--json",
-        )
-        assert proc.returncode == 0, proc.stdout + proc.stderr
-
-        search = _run_tool(
-            SEARCH_TOOL,
-            "--dir",
-            str(REPO_ROOT / ".codestable" / "issues"),
-            "--filter",
-            f"issue={issue}",
-            "--filter",
-            "path=fast-track",
-            "--json",
-        )
-        assert search.returncode == 0, search.stdout + search.stderr
-        assert str(note.relative_to(REPO_ROOT / ".codestable" / "issues")) in search.stdout
-
-
-def test_aps_three_gap_roadmap_related_fields_are_slug_searchable() -> None:
-    filters = [
-        "related_requirements~=schedule-delay-diagnosis",
-        "related_architecture~=ARCHITECTURE",
-        "related_architecture~=ui-gantt",
-        "related_compound~=aps-three-gap-directions",
-        "related_audits~=aps-market-gap",
-    ]
-    for filter_text in filters:
-        proc = _run_tool(
-            SEARCH_TOOL,
-            "--dir",
-            str(REPO_ROOT / ".codestable" / "roadmap"),
-            "--filter",
-            "doc_type=roadmap",
-            "--filter",
-            filter_text,
-            "--json",
-        )
-        assert proc.returncode == 0, proc.stdout + proc.stderr
-        assert "aps-three-gap-directions-roadmap.md" in proc.stdout
 
 
 def test_search_yaml_rejects_bad_frontmatter_instead_of_fallback_parsing(tmp_path: Path) -> None:

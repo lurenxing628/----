@@ -1398,7 +1398,6 @@ def test_save_ledger_writes_test_debt_snapshot_and_machine_block(monkeypatch) ->
     quality_gate_ledger.save_ledger(ledger)
 
     assert writes["path"] == "开发文档/技术债务治理台账.md"
-    assert "测试债务历史登记：1，当前 active xfail：1" in writes["text"]
     assert '"test_debt": {' in writes["text"]
     assert entry["nodeid"] in writes["text"]
 

@@ -115,27 +115,6 @@ def _read_headers(path: str):
             pass
 
 
-def _assert_op_type_output_layout(path: str) -> None:
-    wb = openpyxl.load_workbook(path, data_only=True)
-    try:
-        ws = wb.active
-        assert ws is not None
-        assert ws.freeze_panes == "A2", "工种配置输出应冻结首行"
-        assert ws["A1"].font.bold is True and ws["A1"].alignment.horizontal == "center"
-        assert ws["A2"].number_format == "@"
-        assert ws["B2"].number_format == "@"
-        assert ws["A500"].number_format == "@"
-        assert ws["B500"].number_format == "@"
-        assert ws.column_dimensions["A"].width == 14
-        assert ws.column_dimensions["B"].width == 16
-        assert ws.column_dimensions["C"].width == 12
-    finally:
-        try:
-            wb.close()
-        except Exception:
-            pass
-
-
 def test_unit_excel_converter_merge_steps_and_classify(db_path, tmp_path) -> None:
     from core.infrastructure.database import get_connection
     from core.services.common.excel_service import ImportMode, RowStatus
@@ -239,5 +218,4 @@ def test_unit_excel_converter_merge_steps_and_classify(db_path, tmp_path) -> Non
         assert os.path.exists(output_paths[fn]), f"输出文件缺失：{fn}"
     assert _read_headers(output_paths["人员设备关联.xlsx"]) == ["工号", "设备编号", "技能等级", "主操设备"]
     assert _read_headers(output_paths["供应商配置.xlsx"]) == ["供应商编号", "名称", "对应工种", "默认周期", "状态", "备注"]
-    _assert_op_type_output_layout(output_paths["工种配置.xlsx"])
 

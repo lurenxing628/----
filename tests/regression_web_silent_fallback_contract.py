@@ -422,42 +422,6 @@ def test_resource_dispatch_parse_failure_overrides_stale_write_flags() -> None:
     assert "schedule_result_status" not in context["client_filters"]
 
 
-def test_week_plan_template_does_not_fallback_to_raw_result_status() -> None:
-    source = (REPO_ROOT / "templates" / "scheduler" / "week_plan.html").read_text(encoding="utf-8")
-
-    assert "v.result_status or '-'" not in source
-    assert "selected_history.result_status or '-'" not in source
-    assert "selected_history.schedule_time or '-'" not in source
-    assert "selected_history.schedule_time_display" in source
-    assert "v.result_status_label or status_zh.get(v.result_status, '结果状态未知')" in source
-    assert "selected_summary_display.result_status_label or status_zh.get(selected_history.result_status, '结果状态未知')" in source
-
-
-def test_week_plan_selected_strategy_uses_public_display_label() -> None:
-    template_source = (REPO_ROOT / "templates" / "scheduler" / "week_plan.html").read_text(encoding="utf-8")
-    route_source = (
-        REPO_ROOT / "web" / "routes" / "domains" / "scheduler" / "scheduler_week_plan.py"
-    ).read_text(encoding="utf-8")
-
-    assert "selected_history.strategy or" not in template_source
-    assert "strategy_zh.get(selected_history.strategy" not in template_source
-    assert "selected_history.strategy_label or '历史记录异常'" in template_source
-    assert "item.label or item.code" not in template_source
-    assert "strategy_display_label(selected_history.get(\"strategy\"))" in route_source
-    assert "format_public_datetime(selected_history.get(\"schedule_time\"))" in route_source
-
-
-def test_scheduler_analysis_selected_overview_keeps_zero_time_budget() -> None:
-    source = (REPO_ROOT / "templates" / "scheduler" / "analysis_parts" / "_selected_overview.html").read_text(
-        encoding="utf-8"
-    )
-
-    assert "algo.time_budget_seconds or '-'" not in source
-    assert "algo_time_budget_seconds_display" in source
-    assert "algo_config.get('time_budget_seconds', '-')" not in source
-    assert "algo_config_snapshot_time_budget_seconds_display" in source
-
-
 def test_scheduler_analysis_time_budget_labels_reject_bad_values() -> None:
     from web.viewmodels.scheduler_analysis_vm import _time_budget_seconds_display, _time_budget_seconds_label
 

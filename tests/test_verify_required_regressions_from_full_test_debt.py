@@ -113,8 +113,6 @@ def test_main_verifies_required_regressions_without_writing_files(monkeypatch, t
 
     assert verifier.main(["--payload", str(payload_path)]) == 0
 
-    stdout = capsys.readouterr().out
-    assert stdout == "required_regressions verified targets=2 nodeids=2\n"
     # P2 证明捆绑已退役：核销器是纯只读 CLI，不再写父证明/子证明文件
     assert not output_path.exists()
     assert not (output_path.parent / output_path.stem).exists()

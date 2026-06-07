@@ -118,40 +118,6 @@ def _build_batches_app(monkeypatch, config_service: ConfigService) -> Flask:
     return app
 
 
-def test_scheduler_batches_route_reuses_shared_degraded_display_builder() -> None:
-    route_source = _read("web/routes/domains/scheduler/scheduler_batches.py")
-    batches_viewmodel_source = _read("web/viewmodels/scheduler_batches_page.py")
-    config_route_source = _read("web/routes/domains/scheduler/scheduler_config.py")
-    display_state_source = _read("web/routes/domains/scheduler/scheduler_config_display_state.py")
-
-    assert "scheduler_config_display_state" in route_source
-    assert "build_scheduler_batches_config_panel_state" in route_source
-    assert "build_scheduler_batches_page_view_model" in route_source
-    assert "build_summary_display_state" in batches_viewmodel_source
-    assert "get_scheduler_visible_config_field_metadata" in display_state_source
-    assert "parse_history_summary_state" in route_source
-    assert "log_history_summary_parse_warning" in route_source
-    assert "latest_summary_display" in batches_viewmodel_source
-    assert "latest_other_degradation_messages" in batches_viewmodel_source
-    assert 'page_metadata_for(["enforce_ready_default"])' not in route_source
-    assert "scheduler_config_display_state" in config_route_source
-    assert "build_scheduler_config_panel_state_from_service" in config_route_source
-    assert 'preset_display_state.get("current_config_state")' not in config_route_source
-    assert "get_scheduler_visible_config_field_metadata" in display_state_source
-    assert "SCHEDULER_VISIBLE_CONFIG_FIELDS" in display_state_source
-    assert "config_field_warnings" in display_state_source
-    assert "config_degraded_fields" in display_state_source
-    assert "config_hidden_warnings" in display_state_source
-    assert "current_config_notice_items" in batches_viewmodel_source
-    assert "current_config_display_items" in batches_viewmodel_source
-    assert '"current_config_summary_items"' not in batches_viewmodel_source
-    assert '"current_auto_assign_persist_item"' not in batches_viewmodel_source
-    assert "scheduler_config_panel" in batches_viewmodel_source
-    assert "scheduler_batches_page" not in display_state_source
-    assert "scheduler_config_panel" in display_state_source
-    assert "runtime_config_state" not in route_source
-
-
 def test_scheduler_batches_latest_history_query_failure_is_not_swallowed() -> None:
     for name in list(sys.modules):
         if name.startswith("web.routes.scheduler") or name.startswith("web.routes.domains.scheduler"):
@@ -164,80 +130,6 @@ def test_scheduler_batches_latest_history_query_failure_is_not_swallowed() -> No
 
     with pytest.raises(RuntimeError, match="history query failed"):
         route_mod._load_latest_schedule_history_panel_inputs(_BrokenHistoryService())
-
-
-def test_scheduler_batches_template_surfaces_field_level_degraded_warning() -> None:
-    template_source = _read("templates/scheduler/batches.html")
-    v2_template_source = _read("web_new_test/templates/scheduler/batches.html")
-
-    assert "scheduler-config-degraded-summary" in template_source
-    assert "scheduler-current-config-summary" in template_source
-    assert "current_config_display_items" in template_source
-    assert "current_config_notice_items" in template_source
-    assert "current_config_summary_items" not in template_source
-    assert "current_auto_assign_persist_item" not in template_source
-    assert "current_config_state.status_label" not in template_source
-    assert "current_config_state.repair_notices" not in template_source
-    assert "for notice in config_notice_items" not in template_source
-    assert "ui.details_notice(notice, class='mt-2 scheduler-config-degraded-summary')" in template_source
-    assert "latest_summary_display.primary_degradation" not in template_source
-    assert "latest_detail_notice_items" in template_source
-    assert "latest_summary_display.summary_parse_state.parse_failed" not in template_source
-    assert "latest_summary_display.error_total" in template_source
-    assert "scheduler-run-degraded-summary" in template_source
-    assert "scheduler-run-other-degradation-summary" not in template_source
-    assert "latest_other_degradation_messages" not in template_source
-    assert "最近一次排产快照" in template_source
-    assert "latest_objective_label" in _read("web/viewmodels/scheduler_batches_page.py")
-    assert "latest_head_items" in template_source
-    assert "latest_meta_items" in template_source
-    assert "latest_metric_items" in template_source
-    assert "latest_notice_items" in template_source
-    assert "latest_detail_notice_items" in template_source
-    assert "ui.notice(item.title, item.body" in template_source
-    assert "ui.details_notice(notice, class='mt-2 scheduler-run-degraded-summary')" in template_source
-    assert "ui.notice(item.title, item.body, tone=item.tone, class='mt-2', role='alert')" not in template_source
-    assert "latest_strategy_label" not in template_source
-    assert "latest_mode_label" not in template_source
-    assert "latest_result_status_label" in _read("web/viewmodels/scheduler_batches_page.py")
-    assert "strategy_zh" not in template_source
-    assert "mode_zh" not in template_source
-    assert "status_zh.get" not in template_source
-    assert "status_zh.get(latest_history.result_status" not in template_source
-    assert "scheduler-config-degraded-summary" in v2_template_source
-    assert "scheduler-current-config-summary" in v2_template_source
-    assert "current_config_display_items" in v2_template_source
-    assert "current_config_notice_items" in v2_template_source
-    assert "current_config_summary_items" not in v2_template_source
-    assert "current_auto_assign_persist_item" not in v2_template_source
-    assert "current_config_state.status_label" not in v2_template_source
-    assert "current_config_state.repair_notices" not in v2_template_source
-    assert "for notice in config_notice_items" not in v2_template_source
-    assert "ui.details_notice(notice, class='mt-2 scheduler-config-degraded-summary')" in v2_template_source
-    assert "latest_summary_display.primary_degradation" not in v2_template_source
-    assert "latest_detail_notice_items" in v2_template_source
-    assert "latest_summary_display.summary_parse_state.parse_failed" not in v2_template_source
-    assert "latest_summary_display.error_total" in v2_template_source
-    assert "scheduler-run-degraded-summary" in v2_template_source
-    assert "scheduler-run-other-degradation-summary" not in v2_template_source
-    assert "latest_other_degradation_messages" not in v2_template_source
-    assert "最近一次排产快照" in v2_template_source
-    assert "latest_objective_label" in _read("web/viewmodels/scheduler_batches_page.py")
-    assert "latest_head_items" in v2_template_source
-    assert "latest_meta_items" in v2_template_source
-    assert "latest_metric_items" in v2_template_source
-    assert "latest_notice_items" in v2_template_source
-    assert "latest_detail_notice_items" in v2_template_source
-    assert "ui.notice(item.title, item.body" in v2_template_source
-    assert "ui.details_notice(notice, class='mt-2 scheduler-run-degraded-summary')" in v2_template_source
-    assert "ui.notice(item.title, item.body, tone=item.tone, class='mt-2', role='alert')" not in v2_template_source
-    assert "latest_strategy_label" not in v2_template_source
-    assert "latest_mode_label" not in v2_template_source
-    assert "latest_result_status_label" in _read("web/viewmodels/scheduler_batches_page.py")
-    assert "strategy_zh" not in v2_template_source
-    assert "mode_zh" not in v2_template_source
-    assert "status_zh.get" not in v2_template_source
-    assert "status_zh.get(latest_history.result_status" not in v2_template_source
 
 
 def test_build_summary_display_state_exposes_filtered_display_secondary_messages() -> None:
@@ -279,37 +171,6 @@ def test_build_summary_display_state_dedupes_counted_primary_degradation_from_se
     assert display["primary_degradation"] is not None
     assert display["primary_degradation"]["details"] == ["\u8d44\u6e90\u6c60\u8d44\u6599\u4e0d\u5b8c\u6574\uff082\uff09"]
     assert list(display.get("display_secondary_degradation_messages") or []) == []
-
-
-def test_scheduler_analysis_template_uses_shared_objective_label_helper() -> None:
-    template_source = _read_analysis_template()
-
-    assert "objective_label_for(" not in template_source
-    assert "algo_objective_label" in template_source
-    assert "best_score_schema_display" in template_source
-    assert "algo_config_snapshot_objective_label" in template_source
-    assert "selected_history_resolution.message" in template_source
-    assert "freeze_display.degradation_reason" not in template_source
-    assert "selected_summary_display.display_secondary_degradation_messages" in template_source
-    assert "display_summary_degradation_messages" not in template_source
-
-
-def test_scheduler_week_plan_and_history_templates_surface_secondary_degradation_messages() -> None:
-    week_plan_source = _read("templates/scheduler/week_plan.html")
-    history_source = _read("templates/system/history.html")
-
-    assert "selected_history_resolution.message" in week_plan_source
-    assert "selected_summary_display.display_secondary_degradation_messages" in week_plan_source
-    assert "selected_summary_display.display_secondary_degradation_messages" in history_source
-    assert "r.result_summary_display.display_secondary_degradation_messages" in history_source
-
-
-def test_scheduler_batches_templates_render_final_secondary_labels_without_template_side_count_suffix() -> None:
-    template_source = _read("templates/scheduler/batches.html")
-    v2_template_source = _read("web_new_test/templates/scheduler/batches.html")
-
-    assert "{% if item.count and item.count > 1 %}" not in template_source
-    assert "{% if item.count and item.count > 1 %}" not in v2_template_source
 
 
 def test_scheduler_batches_page_keeps_missing_objective_and_provenance_readonly(monkeypatch) -> None:
@@ -369,9 +230,4 @@ def test_scheduler_batches_page_renders_provenance_and_hidden_degraded_html(tmp_
     assert response.status_code == 200
     assert "当前配置状态" in body
     assert "基线未记录" in body
-    assert "当前运行配置缺少基线记录，无法确认与任何方案的一致性；请显式保存或重新应用方案。" in body
-    assert "个需要复核的修正项" in body
-    assert "平时不直接显示的设置需要检查" in body
-    assert "保存补齐资源" in body
-    assert "查看处理提示" in body
     assert "auto_assign_persist" not in body

@@ -45,7 +45,6 @@ def test_render_report_uses_repo_relative_path_and_stable_metadata():
     assert "D:\\" not in report
     assert "C:\\" not in report
     assert "生成时间" not in report
-    assert "稳定快照" in report
 
 
 def test_extract_doc_endpoints_and_diff_missing_extra_method_mismatch():

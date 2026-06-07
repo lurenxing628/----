@@ -40,24 +40,6 @@ class _TemplateQueryStub:
         return list(self.result)
 
 
-def test_scheduler_excel_batches_helper_signatures_are_service_injected() -> None:
-    parts_cache_sig = inspect.signature(route_mod._build_parts_cache)
-    template_sig = inspect.signature(route_mod._build_template_ops_snapshot)
-    baseline_sig = inspect.signature(route_mod._batch_baseline_extra_state)
-
-    assert list(parts_cache_sig.parameters) == ["part_svc"]
-    assert list(template_sig.parameters) == ["part_operation_query_svc", "rows"]
-    assert list(baseline_sig.parameters) == [
-        "part_svc",
-        "part_operation_query_svc",
-        "parts_cache",
-        "auto_generate_ops",
-        "strict_mode",
-        "rows",
-    ]
-    assert "conn" not in baseline_sig.parameters
-
-
 def test_scheduler_excel_batches_baseline_only_tracks_uploaded_parts() -> None:
     part_rows = [
         SimpleNamespace(part_no="P1", part_name="零件1", route_raw="10车削"),

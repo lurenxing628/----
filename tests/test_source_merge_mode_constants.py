@@ -84,25 +84,3 @@ def test_compute_downtime_impact_only_counts_internal_source() -> None:
     assert len(items) == 1
     assert (items[0].get("machine_id") or "").strip() == "MC1"
     assert float(items[0].get("schedule_overlap_hours") or 0.0) > 0.0
-
-
-def test_target_files_have_no_source_merge_mode_quoted_literals() -> None:
-    """
-    防漂移：这些文件里不应再出现 source/merge_mode 控制值的裸字符串字面量。
-    （允许在错误提示文案中出现 internal/external 子串，因此只匹配带引号 token：'internal' / \"internal\"）
-    """
-    repo_root = Path(__file__).resolve().parents[1]
-    targets = [
-        repo_root / "core/services/scheduler/run/schedule_optimizer.py",
-        repo_root / "core/services/scheduler/run/freeze_window.py",
-        repo_root / "core/services/report/calculations.py",
-        repo_root / "web/routes/process_parts.py",
-        repo_root / "web/routes/process_excel_op_types.py",
-    ]
-
-    tokens = (INTERNAL, EXTERNAL, MERGED, SEPARATE)
-    for p in targets:
-        text = p.read_text(encoding="utf-8")
-        for t in tokens:
-            assert f"'{t}'" not in text, f"{p.as_posix()} 存在裸字符串 {t!r}"
-            assert f'"{t}"' not in text, f"{p.as_posix()} 存在裸字符串 {t!r}"

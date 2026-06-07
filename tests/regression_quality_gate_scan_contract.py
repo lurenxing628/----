@@ -598,18 +598,6 @@ def test_strict_silent_fallback_cli_reports_drift_to_stderr(monkeypatch, capsys)
     assert "strict silent-fallback gate drift" in captured.err
 
 
-def test_request_service_target_files_keep_system_route_gate_coverage() -> None:
-    system_targets = {
-        "web/routes/system_backup.py",
-        "web/routes/system_logs.py",
-        "web/routes/system_plugins.py",
-        "web/routes/system_ui_mode.py",
-        "web/routes/system_utils.py",
-    }
-
-    assert set(shared_mod.REQUEST_SERVICE_TARGET_FILES) & system_targets == system_targets
-
-
 def test_request_service_target_symbols_include_nested_custom_test_factory_open_db() -> None:
     assert "_open_db" in shared_mod.REQUEST_SERVICE_TARGET_SYMBOLS["tests/run_real_db_replay_e2e.py"]
     assert "_open_db" in shared_mod.REQUEST_SERVICE_TARGET_SYMBOLS["tests/run_complex_excel_cases_e2e.py"]

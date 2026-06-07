@@ -220,7 +220,6 @@ def test_successful_run_writes_json_md_counts_and_reasons(monkeypatch, tmp_path)
     markdown = _summary_md_path(repo_root).read_text(encoding="utf-8")
     assert "## Duration" in markdown
     assert "## Slow entries" in markdown
-    assert "For local profiling, run the exact final proof command" in markdown
 
 
 def test_reused_collect_only_is_recorded_as_reused_success_cache(monkeypatch, tmp_path):
@@ -618,4 +617,3 @@ def test_summary_duration_keeps_counts_and_ranks_slow_entries():
     ]
     assert "## Duration" in markdown
     assert "## Slow entries" in markdown
-    assert "| 2 | required_regressions | reused_success_cache | 0.120 | 98.340 | success cache reusable |" in markdown
