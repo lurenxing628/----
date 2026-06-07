@@ -57,12 +57,13 @@ def _normalize_env_keys(keys: Sequence[str]) -> List[str]:
     return out
 
 
-def _is_top_level_test_only_helper_path(path: str) -> bool:
+def _is_test_only_helper_path(path: str) -> bool:
+    # P6：helper 可落在 tests/ 任意子目录(去掉旧的单层 count("/")==1 约束),仍须是 tests/ 下的 *_helpers.py。
     normalized = _normalize_registry_path(path)
     name = os.path.basename(normalized)
     return (
         normalized.startswith("tests/")
-        and normalized.count("/") == 1
+        and normalized.count("/") >= 1
         and normalized.endswith(".py")
         and name.endswith("_helpers.py")
         and name != "conftest.py"
@@ -74,7 +75,8 @@ def _is_regular_helper_impact_target(path: str) -> bool:
     name = os.path.basename(normalized)
     if normalized == "conftest.py" or normalized.endswith("/conftest.py"):
         return False
-    if not normalized.startswith("tests/") or normalized.count("/") != 1 or not normalized.endswith(".py"):
+    # P6：target 可落在 tests/ 任意子目录(去掉旧的单层 count("/")==1 约束)。
+    if not normalized.startswith("tests/") or normalized.count("/") < 1 or not normalized.endswith(".py"):
         return False
     if name.endswith("_helpers.py"):
         return False
@@ -88,14 +90,14 @@ def iter_test_only_helper_impacts(
     rows: Dict[str, List[str]] = {}
     for helper_path, target_paths in sorted(impacts.items()):
         helper = _normalize_registry_path(helper_path)
-        if not _is_top_level_test_only_helper_path(helper):
-            raise ValueError("test-only helper impact helper must be top-level tests/*_helpers.py: " + helper)
+        if not _is_test_only_helper_path(helper):
+            raise ValueError("test-only helper impact helper must be tests/**/*_helpers.py: " + helper)
         targets = normalize_test_paths(list(target_paths or []))
         if not targets:
             raise ValueError("test-only helper impact targets are empty: " + helper)
         for target in targets:
             if not _is_regular_helper_impact_target(target):
-                raise ValueError("test-only helper impact target must be a top-level test file: " + target)
+                raise ValueError("test-only helper impact target must be a test file under tests/: " + target)
         rows[helper] = targets
     return rows
 
