@@ -16,11 +16,11 @@
 - roadmap 同退：`.codestable/roadmap/aps-frontend-workbench/aps-frontend-workbench-items.yaml:289` **仅此 1 处真实**（registry 声称的 acceptance.md:52 / checklist.yaml:82 是幻觉——目录无 checklist 文件、acceptance 内 0 个 plan_id）。
 - **内部顺序**：R42 与 R60 之间**无先后，必须合并单次提交**；唯一硬分工=emit:118/154 归 R42 删、R60 不动。整子簇执行顺序见下「关键内部顺序」（先迁测试 → 再删生产 → 跑测试自证）。
 
-### 子簇 AS-2 = {R64, R65}「scheduler_navigation_links.py 同文件死叶子」— 行号原子，强建议同提交
-- 原子原因：**两债同物理文件且都做删除，行号互相漂移**。R64 删 :66-67（`_has_navigation_date_range` def，位于 R65 `_target_url` :74 上方）；R65 删 :74-78 def + 化简 :160 + 删孤儿 import :4/:6。R64 先落则 R65 的 :74-78/:160 上移 ~2-3 行；R65 先落则删 :4/:6 import 把 R64 的 :66 大幅上移。
-- **逻辑零耦合**（重要区分）：R64 的 `_has_navigation_date_range` 不被 R65 任何符号引用，R65 改的 `_target_url`/import 也不碰 R64——即使分提交也**不会 NameError**。原子性只为「避免行号二次漂移」，不是逻辑硬约束。两债均建议按**符号定位**而非裸行号。
-- **R65 自身内部三件套硬原子**（缺一即 NameError，破 build）：① 删 `def _target_url`(:74-78) ② 把 :160 `_plain_link(label, plain_url or _target_url(...), ...)` 化简为 `_plain_link(label, plain_url, ...)` ③ 删孤儿 import :4 `urlencode` + :6 `query_for_target`。**:7 `TARGET_PAGE_PATHS` 绝不可删**（实盘 :177 `build_report_navigation_links` 真用，是本债最大误删爆炸点）。
-- **内部顺序**：同次提交则按原始行号自上而下删（先 :66-67 再 :74-78）一次算好补丁；若分提交，建议 **R65 先、R64 后**（R65 在文件下半，先删不冲 R64 的 :66-67；反之 R64 先删会冲 R65 锚点行号），但因均按符号定位，顺序为软约束。
+### 子簇 AS-2 = {R64, R65}「scheduler_navigation_links.py 同文件死叶子」— 2026-06-08 已 fixed
+- **执行终态**：R64 `_has_navigation_date_range` 已删除;R65 `_target_url` 已删除,旧 `plain_url or _target_url(...)` 已化简为直接使用 `plain_url`,本文件 `urlencode`/`query_for_target` 孤儿 import 已删除。
+- **护栏终态**：`TARGET_PAGE_PATHS` 仍保留并继续服务 `build_report_navigation_links`;`tests/web_pages/test_reports_workbench_navigation_contract.py::test_all_nav_specs_have_nonempty_plain_url` 已钉住 specs 第 3 字段非空不变量。
+- **历史原子原因**：两债同文件且都做删除,同提交是为了避免行号二次漂移;逻辑上 R64 与 R65 仍是零耦合。
+- **后续交接**：R42/R67 后续进入 `scheduler_navigation_links.py` 时,所有锚点必须按符号重 rg。G02 删除前的 `:66/:74/:160/:177` 等裸行号只作历史证据。
 
 ### 孤立债 AS-3 = {R66}「scheduler_reports_workbench.py 私有死副本 _context_summary」— 可独立
 - 不与 AS-1/AS-2 任何成员共文件、共符号、共行。唯一交互见 §B（同文件 R54 跨簇行号前置 + 跨文件 R42 仅「读它确认 LIVE 别误删」）。
@@ -53,7 +53,7 @@
 - **R66→R54 同文件行号前置（新增/明确）**：R54 改 :36 区间漂移 R66 的 :150，新增「R54 先 / R66 按 suffix 符号重定位」软序边。
 
 ### 降级
-- **R65↔R42 节奏脱钩（降级为弱）**：同 `scheduler_navigation_links.py` 但 R42 在该文件无任何改点（R42 真实点在 navigation_context/reports_page_support/workbench_links/link_query），与 R65 的 _target_url/specs **无符号交集、无行号撞车**。R42 体量大且 Batch-3 门控，R65 Batch-1 后无门控 → **不建议同提交，降为弱同文件提示边**。
+- **R65↔R42 节奏脱钩（降级为弱）**：同 `scheduler_navigation_links.py`,但 R65 已 fixed;后续只剩“同文件旧行号已上移”的提示。R42 进入该文件前按符号重 rg。
 - **R64↔R42 / R66↔LB02/LB06**：同上，same_file 噪声 → 降为非阻塞提示。
 - **R60↔R54（navigation_links 元组）**：registry hint 称 R54 相邻 navigation_links，但 R54 `all_files` **不含 scheduler_navigation_links.py**，`_REPORT_CONTEXT_FIELD_NAMES` 唯一定义/消费均在 navigation_links（R60 改），R54 收的是别表 → **零行号冲突，降级为「无 R54↔R60 协调依赖」**。
 
@@ -68,9 +68,9 @@
 - `navigation_context.py:80` — `scenario_id=scenario_id`（同函数承重数据面）。
 - `reports_page_support.py` build_report_context 内 execution-review→`plan_role='adopted'/scenario_id=None` 强制分支（LB06 承重，已 fixed）。
 - **link_query:117/119/120 与 :153/:155**（version/plan_role/scenario_id）— C1 最危灾难链：删 :118/:154 plan_id 时误伤前后紧邻的真身份参数 → URL 丢身份 → version 解析**静默错位**（无报错）。实盘已证 plan_id 被三个真消费身份参数前后夹住。
-- `scheduler_navigation_links.py:7` `TARGET_PAGE_PATHS` import — R65 三件套**绝不可删**（:177 真用）。
+- `scheduler_navigation_links.py` 的 `TARGET_PAGE_PATHS` import — R65 已完成后仍保留,后续改本文件时绝不可删（`build_report_navigation_links` 真用）。
 - `scheduler_navigation_links.py` 三张表/判空元组其余键（back_to/scenario_id/date_*/resource_*/scope_*/version/plan_role）— R60 只删 plan_id 一项。
-- `scheduler_navigation_links.py:47-63 _has_navigation_context` / :70-71 `_use_plain_scheduler_chrome` / :35-36 `_has_value` / :31 `_text` — R64/R65 相邻活函数，误删即 NameError。注：`_has_value` 在 :49（留）与 :67（R64 删）两用，删 :67 后 :49 仍在不成孤儿；:63 用的是 `_text` 非 `_has_value`（registry 口误，已核）。
+- `scheduler_navigation_links.py` 的 `_has_navigation_context` / `_use_plain_scheduler_chrome` / `_has_value` / `_text` — R64/R65 已完成后这些活函数仍必须保留;当前行号按符号重 rg,误删即 NameError。
 
 ### 跨簇承重前置（门控簇内结构动作）
 - **R54 必须先落（Batch-2）**，门控 AS-1 的 R42 删形参（rebase 在 R54 新签名后）+ AS-3 的 R66 删除（按 suffix 符号重定位，R54 漂移 :150）。
@@ -78,7 +78,7 @@
 
 ## E) fixed 成员残留动作（前置已完成，标残留）
 
-本簇成员**无一是 fixed**（R42/R60/R64/R65/R66 全 planned）。fixed 仅作为 R42 的**毗邻前置护栏**，已落地，残留动作 = 仅认账/禁区约束，不再改：
+本簇成员中 **R64/R65 已 fixed**（G02 于 2026-06-08 完成）,R42/R60/R66 仍按原批次待后续处理。其他 fixed 仅作为 R42 的**毗邻前置护栏**，已落地，残留动作 = 仅认账/禁区约束，不再改：
 - **R56**（navigation_context.py:79 fixed）：偏离铁律 3（走结构路线删字面量本体，护栏重定位到页级 identity_error+blocked，未 fail-open，契约 `regression_execution_review_identity_guardrail` 钉死）。残留 = **owner 认账此偏离**（corrections D 节）；R42 执行时只把 :79 当禁区，不连带改。
 - **R57**（navigation_context.py fixed）：已收敛，残留 = 无；R42 删 plan_id 不触解析路径。
 - **LB06**（reports_page_support.py fixed）：优于计划（更硬 fail-closed），残留 = **仅缺认账注释**（corrections D 节，勿粘 §90 LB-B4 反向 fail-open 文案）；R42 只把 adopted/scenario_id 强制分支当禁区。

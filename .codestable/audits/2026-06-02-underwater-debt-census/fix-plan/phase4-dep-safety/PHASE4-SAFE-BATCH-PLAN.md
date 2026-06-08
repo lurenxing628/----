@@ -75,7 +75,7 @@ ROOT  承重注释 + 共享前置门（纯增量零结构，零入边，最先�
 Batch-A  独立死叶子 / 零前置 / owner=false（最早可落）
   G02(R64+R65)* G14(R10) G16(R45≡R48) G21(R28) G28(R23)
   G31(R38part+R39) G32(R38 op_type/operator) G35(R36) G37(R02) G11(R11≡R63) G38(R06+R27+gantt)
-  2026-06-08 执行补登：G14/G28/G31/G32/G35/G37 已在 `_registry.json` 与对应 dossier 登记 fixed；本清单保留批次归属，不表示这些单元仍待执行。
+  2026-06-08 执行补登：G02/G14/G28/G31/G32/G35/G37 已在 `_registry.json` 与对应 dossier 登记 fixed；本清单保留批次归属，不表示这些单元仍待执行。
   [+ LEAF-DUP-P4 纯删叶子：R53 / R61 / R70 随 A 落；LB04 安全网归 ROOT/Batch-A 之交]
   *G02(R64/R65) 同文件 scheduler_navigation_links.py，改点不同不可同质化（见 §1.2）；与 R42(G01)/R67(G34) 同文件四单元串行块
   *G03(R66) 受 E04 软序，实际延后到 G04(R54) 后按符号重定位；G25(R49旁支) 并回 Batch-B 的 G24 一次原子执行，不在 Batch-A 单独落
@@ -103,10 +103,10 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 
 > **⚠简化声明**：序列总览中 LEAF-DUP-P4 簇的 11 债（R69/R03/R41/R68/R32/R40/R53/R61/R70/R43/LB04）未单独成 G 编号原子单元（它们在 _interference_rebuilt §1 未占 G## 槽位，原 registry 以「Batch-1/5/15」桶标），本计划按其性质归入 Batch-A（纯删叶子 R53/R61/R70/R10 类 + LB04 安全网前置）与 Batch-B/Batch-D（R69/R03/R41/R68/R32/R40/R43 按 §3/OWNER 裁后门控落）。归并处已在对应批次显式登记，不静默吞。LB04 作为「所有 yes/no 收敛动作安全网前置」归 ROOT/Batch-A 之交（注释 + 全矩阵 parity，零结构）。
 >
-> **⚠简化声明补登（红队第1轮 RT3-P01 采纳·原计划全文零命中的 2 漏债）**：**R64 / R65** 两条 `kind:real / load_bearing:false / needs_adversarial:false` 活债（registry B17-LEAF-DEAD 单元）此前被整份计划吞掉——既非 §0.2 列的对消/作废 7 条，也不在上述 11 债内，是静默蒸发。实证：R64 = **真零调用死 helper** `_has_navigation_date_range`（`web/viewmodels/scheduler_navigation_links.py:66-67`，全仓零调用）、R65 = 同文件孪生但**性质不同——是 `_target_url:74-78 def` 的 P6 死分支**（红队第2轮·1号 RT22 采纳纠正：R65 **非零调用死 helper**，`_target_url` 在 `:160 _plain_link(label, plain_url or _target_url(...), ...)` 有真实引用，只是被 `or` 短路恒真遮蔽——9 条 spec 的 plain_url 字面量 9/9 非空，dossier R65 §52 定性为死分支非死码）；registry `planned_batch_hint` 明写「R64 与 R65 打包同一原子提交（同文件）」。**致命点：R64/R65 与 R42（G01，Batch-C）same_file**（同 `scheduler_navigation_links.py`），R64 死 helper `:66-67` 紧邻活近亲 `_has_navigation_context:47`（被 `:71/:114/:142/:175` 真用）。**现登记入 Batch-A 纯删叶子**（owner=false），R64/R65 同文件同原子提交；**但 R64 与 R65 改点不同、不可同质化**：R64 改 `:66-67`（纯删死 def）；R65 是**死分支三件套硬原子**——① 删 def `:74-78` + ② 化简 `:160`（去 ` or _target_url(...)` 留 `plain_url`）+ ③ 删孤儿 import `:4 urlencode`/`:6 query_for_target`（删 def 后变 F401），缺①②任一即 NameError（`:160` 残引用已删符号）。删序须按符号重 rg、与 G01 在该文件的改区行号对账，禁误伤 `_has_navigation_context`、禁误删护栏 `:7 TARGET_PAGE_PATHS`（`:177 build_report_navigation_links` 真用）。下述 Batch-A 成员清单已补登。
+> **⚠简化声明补登（红队第1轮 RT3-P01 采纳·原计划全文零命中的 2 漏债；2026-06-08 已执行）**：**R64 / R65** 两条 `kind:real / load_bearing:false / needs_adversarial:false` 活债（registry B17-LEAF-DEAD 单元）此前被整份计划吞掉——既非 §0.2 列的对消/作废 7 条，也不在上述 11 债内，是静默蒸发。历史实证：R64 = **真零调用死 helper** `_has_navigation_date_range`（执行前 `web/viewmodels/scheduler_navigation_links.py:66-67`，全仓零调用）、R65 = 同文件孪生但**性质不同——是 `_target_url` 的 P6 死分支**（红队第2轮·1号 RT22 采纳纠正：R65 **非零调用死 helper**，执行前 `_target_url` 在 `_plain_link(label, plain_url or _target_url(...), ...)` 有真实引用，只是被 `or` 短路恒真遮蔽——9 条 spec 的 plain_url 字面量 9/9 非空，dossier R65 §52 定性为死分支非死码）。**2026-06-08 终态**：G02 已登记 fixed，R64/R65 已同一原子提交完成；当前 `_has_navigation_date_range` / `_target_url` / 旧 `plain_url or _target_url(...)` 均零命中；`TARGET_PAGE_PATHS` 保留并继续服务报表导航；`test_all_nav_specs_have_nonempty_plain_url` 护栏已落。**后续交接**：R42/R67 再进 `scheduler_navigation_links.py` 时必须按当前符号重 rg，禁信 G02 执行前旧裸行号；禁误伤 `_has_navigation_context`、`_use_plain_scheduler_chrome`、`_has_value`、`TARGET_PAGE_PATHS`。
 >
-> **⚠单文件三批四单元串行编排块（红队第2轮·2号 P-RT22-01 采纳·205 行 `scheduler_navigation_links.py` 是跨两批四单元战场）**：第1轮 RT3-P01 只钉了「R64/R65↔R42 same_file」一对，**漏了同文件第三、第四单元**——实盘该 205 行文件被 **Batch-A 的 R64(`:66-67`)/R65(`:74-78`+`:160`+`:4/:6`) + Batch-C/G01 的 R42(`:40 build_workbench_plan_context` 调用区) + Batch-C/G34 的 R67(`_REPORT_CONTEXT_FIELD_NAMES:11-28` 元组 + `:186 preserved_report_context_fields` 遍历点)** 四处编辑触碰。R67.md:156-166 自述「R42 同文件碰撞面应扩到本文件抄点③④，串行避 diff-hunk 互撞须同覆盖本文件」。**炸点**：Batch-A 先删 R64/R65 后文件从 205 行缩到约 195 行，其下所有锚点（含 R67 的 `:186`）系统性上移；跑到 Batch-C 时 R42(`:40`)/R67(`:11-28`/`:186`) 行号已全漂，且 G01 与 G34 在同文件同批还要互相串行（E17 只说「diff-hunk 串行」未说先后），三方混改易让 G01 的 `:40` 收口误碰 R67 元组首键 `plan_id`（R67.md:52「禁改 superset 元组里 plan_id 等非资源键，那是 R42 地盘」）。**编排块硬序**（类比 §1.3 dispatch_rules 显式硬序）：
-> 1. **Batch-A**：R64/R65 先落（死分支三件套见 §1.2 前置安全网），删后立即 `rg` 复核 `_has_navigation_context:47`/`preserved_report_context_fields:186`/`_REPORT_CONTEXT_FIELD_NAMES:11` 在位（`_REPORT_CONTEXT_FIELD_NAMES:11` 在 R64/R65 上方不位移，其下锚点全上移）。
+> **⚠单文件三批四单元串行编排块（红队第2轮·2号 P-RT22-01 采纳·`scheduler_navigation_links.py` 跨两批四单元战场；G02 已落）**：第1轮 RT3-P01 只钉了「R64/R65↔R42 same_file」一对，**漏了同文件第三、第四单元**——历史实盘该文件被 **Batch-A/G02 的 R64/R65 + Batch-C/G01 的 R42 + Batch-C/G34 的 R67** 四处编辑触碰。R67.md:156-166 自述「R42 同文件碰撞面应扩到本文件抄点③④，串行避 diff-hunk 互撞须同覆盖本文件」。**当前炸点**：Batch-A/G02 已删除 R64/R65，旧行号下方所有锚点（含 R67 的旧 `:186`）已经系统性上移；跑到 Batch-C 时 R42/R67 的裸行号已全漂，且 G01 与 G34 在同文件同批还要互相串行（E17 只说「diff-hunk 串行」未说先后），三方混改易让 G01 的旧 `:40` 收口误碰 R67 元组首键 `plan_id`（R67.md:52「禁改 superset 元组里 plan_id 等非资源键，那是 R42 地盘」）。**编排块硬序/交接**（类比 §1.3 dispatch_rules 显式硬序）：
+> 1. **Batch-A/G02 已完成**：当前只做交接复核，确认 `_has_navigation_context` / `preserved_report_context_fields` / `_REPORT_CONTEXT_FIELD_NAMES` / `TARGET_PAGE_PATHS` 按当前符号仍在；不要再按旧 R64/R65 行号重复删除。
 > 2. **Batch-C 进该文件前**：对 R42(`:40 build_workbench_plan_context`)、R67(`_REPORT_CONTEXT_FIELD_NAMES` 元组 + `preserved_report_context_fields`) **全部按符号重 rg**，禁信本档裸行号。
 > 3. **E17 拆两条件分支**（与 §1.4 G34/O18 联动）：「O18=保现状/仅注释 → R67↔R42 零冲突，无需串行」；「O18=收编③④ → R67 元组拼接 MUST 晚于 R42 删 collar 形参之后、且不得触碰元组内 `plan_id` 成员、并先过 `web.viewmodels→core.services.report` 分层门（违则分层 0 红）」。
 > 在 §1.4 G01/G34 与本 §1.0 序列中「R64/R65 same_file」一律读作「R64/R65/R42/R67 四单元 same_file 串行块」。
@@ -169,9 +169,9 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 
 ### 1.2 Batch-A — 独立死叶子 / 零前置 / owner=false（最早可落）
 
-**成员（调度单元 + 债）**：G14(R10 死方法 `gantt_service:60-62`)、G16(R45≡R48 整文件删 `config_adapter.py`)、G21(R28 收口 `parse_finite_float`)、G28(R23 dedup `_normalize_role` 收口 model)、G31(R38 part 份 + R39 `list_unparsed`)、G32(R38 op_type:73/operator:85 两份)、G35(R36 两死方法)、G37(R02 test-only 壳)、G11(R11≡R63 去重 `_normalize` 收口 `gantt_critical_chain.py`)、G38(R06+R27+gantt 四空包同提交)。**G03(R66)** 仅登记归属，受 E04 软序实际延后到 G04(R54) 后执行；**G25(R49 旁支)** 不在 Batch-A 单独执行，并回 Batch-B 的 G24 一次原子。**+ 纯删叶子**（原 LEAF-DUP-P4 桶，按 ⚠简化声明归入此批）：R53(`batch_order.py:74` 一行)、R61(plan 死簇 `:160/164/172-187` + 重定向负向测试)、R70(`schedule_service.py:46-50` 死副本)。**+ G02(R64+R65)**（权威源 `_interference_rebuilt.md:17` 定义 G02={R64,R65} NAV-PLANID；红队 RT3-P01 补登，B17-LEAF-DEAD；红队第2轮 RT22 纠 R65 性质）：R64 = 真零调用死 helper，删 `web/viewmodels/scheduler_navigation_links.py:66-67 _has_navigation_date_range`（全仓零调用）；R65 = `_target_url` **死分支三件套**（非零调用死码）——删 def `:74-78` + 化简 `:160`（去 ` or _target_url(...)` 留 `plain_url`）+ 删孤儿 import `:4 urlencode`/`:6 query_for_target`；**两者同文件同一原子提交但改点不同、不可同质化**；与 R42（G01）same_file，删序按符号重 rg。
+**成员（调度单元 + 债）**：G14(R10 死方法 `gantt_service:60-62`)、G16(R45≡R48 整文件删 `config_adapter.py`)、G21(R28 收口 `parse_finite_float`)、G28(R23 dedup `_normalize_role` 收口 model)、G31(R38 part 份 + R39 `list_unparsed`)、G32(R38 op_type:73/operator:85 两份)、G35(R36 两死方法)、G37(R02 test-only 壳)、G11(R11≡R63 去重 `_normalize` 收口 `gantt_critical_chain.py`)、G38(R06+R27+gantt 四空包同提交)。**G03(R66)** 仅登记归属，受 E04 软序实际延后到 G04(R54) 后执行；**G25(R49 旁支)** 不在 Batch-A 单独执行，并回 Batch-B 的 G24 一次原子。**+ 纯删叶子**（原 LEAF-DUP-P4 桶，按 ⚠简化声明归入此批）：R53(`batch_order.py:74` 一行)、R61(plan 死簇 `:160/164/172-187` + 重定向负向测试)、R70(`schedule_service.py:46-50` 死副本)。**+ G02(R64+R65，2026-06-08 已 fixed)**：权威源 `_interference_rebuilt.md:17` 定义 G02={R64,R65} NAV-PLANID；历史动作是 R64 删除 `_has_navigation_date_range`、R65 完成 `_target_url` 死分支三件套并保留 `TARGET_PAGE_PATHS`。当前本段只保留批次归属和历史原因，不再表示 R64/R65 待删；后续 R42/R67 进入同文件时按当前符号重 rg。
 
-> **2026-06-08 执行补登**：G14/G28/G31/G32/G35/G37 已在 `_registry.json` 与对应 dossier 登记 fixed。上方成员段保留批次归属和执行纪律，不再表示这些单元仍待执行；后续不要重复处理 R10/R23/R36/R38/R39/R02。
+> **2026-06-08 执行补登**：G02/G14/G28/G31/G32/G35/G37 已在 `_registry.json` 与对应 dossier 登记 fixed。上方成员段保留批次归属和执行纪律，不再表示这些单元仍待执行；后续不要重复处理 R64/R65/R10/R23/R36/R38/R39/R02。G02 的旧 `scheduler_navigation_links.py` 裸行号已经随删除上移,后续 Batch-C 的 R42/R67 必须按符号重 rg。
 
 **是否原子**：可执行成员**互相独立**（跨文件零碰撞），可各自单提交；簇内多债（G31 R38part+R39、G38 四空包）须各自原子同提交（见前置）。G03 是软序延后项，G25 是并回 G24 的同债旁支，不按 Batch-A 独立提交。整批 owner=false。
 
@@ -188,12 +188,11 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 - G25(R49 旁支)：**本轮不在 Batch-A 单独落**；与 G24（Batch-B）的 R49 主体、R50、R51 并回一次原子 diff。执行时仍按 file:line 定点删旁支行，禁符号名全局删；删后 `rg parse_dispatch_rule` 必须零生产残引用。
 - R61：删函数 + 改测试同 PR 原子；禁删 live 孪生 `_row_text:156`/`normalize_report_resource_filter:119`/`filter_downtime_*:274`。
 - R70：保 `:7 ValidationError import`（`:217` 仍用）。
-- **R64/R65（红队 RT3-P01 补登 + 红队第2轮 RT22 纠 R65 性质）**：两条在 `web/viewmodels/scheduler_navigation_links.py` 同文件同一原子提交（registry 强建打包），但**性质/改点不同、禁同质化为「两份死 helper」**：
-  - **R64 = 真零调用死 helper**：删 `:66-67 _has_navigation_date_range`；删前 `rg _has_navigation_date_range` 确认全仓零调用。
-  - **R65 = `_target_url` 死分支三件套硬原子**（非零调用——`_target_url` 在 `:160` 有真实引用，被 `plain_url or _target_url(...)` 的 `or` 短路恒真遮蔽，9 specs plain_url 字面量 9/9 非空）：① 删 def `:74-78`；② 化简 `:160` 去 ` or _target_url(...)` 留 `plain_url`；③ 删孤儿 import `:4 urlencode`/`:6 query_for_target`（删 def 后变 F401）。**缺①②任一即 NameError**（`:160` 残引用已删符号，dossier R65 §52 已警「只删 def 不化简 :160→NameError」），三件套必同一原子提交。
-  - **护栏**：补不变量护栏 `test_all_nav_specs_have_nonempty_plain_url`（化简 `:160` 行为等价的唯一依据是「9 specs plain_url 恒非空」，无护栏则未来加空串 spec 即静默回退死分支）。
-  - **禁误伤活近亲 `_has_navigation_context:47`**（被 `:71/:114/:142/:175` 真用）+ **禁误删护栏 `:7 TARGET_PAGE_PATHS`**（`:177 build_report_navigation_links` 真用，误删则报表导航条全挂 NameError）。
-  - 与 R42（Batch-C/G01）+ R67（Batch-C/G34）same_file——本文件升「三批四单元串行编排块」（见下「⚠单文件三批四单元串行块」总纲）。
+- **R64/R65（G02，红队 RT3-P01 补登 + 红队第2轮 RT22 纠 R65 性质）**：2026-06-08 已按同文件同一原子提交完成,下列要点现在作为复核/交接,不再作为待施工步骤：
+  - **R64 终态**：`_has_navigation_date_range` 已删除,当前全仓零命中。
+  - **R65 终态**：`_target_url` 已删除;旧 `plain_url or _target_url(...)` 已化简为 `plain_url`;本文件 `urlencode`/`query_for_target` 孤儿 import 已删除;`TARGET_PAGE_PATHS` 保留。
+  - **护栏已落**：`test_all_nav_specs_have_nonempty_plain_url` 已钉住 specs 第 3 字段非空不变量。
+  - **后续交接**：`_has_navigation_context`、`_use_plain_scheduler_chrome`、`TARGET_PAGE_PATHS`、`_REPORT_CONTEXT_FIELD_NAMES`、`preserved_report_context_fields` 均按当前符号重 rg 复核;R42/R67 进本文件时不要信 G02 删除前的旧行号。
 
 **不可碰清单（按符号）**：G14(R10) 活近亲 `resolve_version:60`（旧 :64；误删静默炸周计划版本解析）；G35(R36)/G31/G32 各 repo 活近亲；R37（在 Batch-A 候选但归 RESOURCE-REPO）活近亲 `list_links_with_operator_info:92`；R53 禁区 `:39/:58/:75`；R64/R65 活近亲 `_has_navigation_context:47`（误删炸导航 chrome 判定）；G11 禁 `_copy_critical_chain_result:104`（6 处缓存浅拷，非 strip 点，爆点 #10/V3⑪：天然保键，越改越接近误删）+ 禁 `support:58 return raw`。
 
@@ -752,7 +751,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 | 🟡 中 | `tests/gate_meta/test_sp05_path_topology_contract.py` | R06+R27+gantt 空包(+R01/R26/R43 别段)| G38 四包一次性同提交；禁碰 :173 def/:318 断言 |
 | 🟡 中 | `tests/config/test_config_service_component_contract.py` | R33+R30(交界)| G23 内 R33 步2/3 在 R30 之后 |
 | 🟢 低-中 | `execution_snapshot.py` | R19+R01+R46(__all__ 块)| E16 已降伪串行边；R19 强制保 `sorted:40`（sha256 指纹）|
-| 🟢 低 | `web/.../reports_export_support.py`+`scheduler_navigation_links.py`(两元组)| R42+R60+R67(+R64/R65 G02)| E17 diff-hunk 串行；R65 删 `_target_url` 三件套（:7 TARGET_PAGE_PATHS 禁删）；**本文件即三批四单元串行块**（见 §1.0）|
+| 🟢 低 | `web/.../reports_export_support.py`+`scheduler_navigation_links.py`(两元组)| R42+R60+R67(+R64/R65 G02 已 fixed)| E17 diff-hunk 串行；G02 已完成,后续只复核 `TARGET_PAGE_PATHS` 仍保留并按符号重 rg 当前 navigation_links 锚点；**本文件即三批四单元串行块**（见 §1.0）|
 | 🔴 承重邻 | `models/operation_execution_scope.py` | R09 收口家(:9)+LB01 最终底(:36-50)| E28 同文件承重毗邻；R09 收编禁碰 :36-50；**承重文件 +1=6** |
 | 🟡 中 | `web/viewmodels/scheduler_reports_workbench.py`(L1)| R54·L1(12 键别名源键)+R66+R42/R60 邻 | R54 五套同窗口；禁向 16 键看齐 |
 | 🟡 中 | `web/viewmodels/dashboard_workbench_context.py`(L4)| R54·L4(16 键≡L2)| R54 五套同窗口；删 :191 形参后 :92 dict 键 TypeError（爆点 #21）|

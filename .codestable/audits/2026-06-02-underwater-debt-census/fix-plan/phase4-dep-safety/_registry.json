@@ -7111,7 +7111,7 @@
   "id": "R64",
   "bucket": "B17",
   "home": "B17",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P6",
   "partition": "delta-web-workbench",
@@ -7125,7 +7125,7 @@
   "all_files": [
    "scheduler_navigation_links.py"
   ],
-  "current_evidence_2026_06_05": "web/viewmodels/scheduler_navigation_links.py:66-67 死 helper _has_navigation_date_range 原样存在;全仓 grep 仅 :66 def 一处零调用,未删",
+  "current_evidence_2026_06_05": "2026-06-08 B 执行终态: web/viewmodels/scheduler_navigation_links.py 中 _has_navigation_date_range 已删除; `rg _has_navigation_date_range core/ web/ data/ tests/` 零命中。活近亲 _has_navigation_context/_use_plain_scheduler_chrome/_has_value 保留。与 R65 同提交完成。",
   "cluster": "C01",
   "same_file_siblings": [
    "R65"
@@ -7150,26 +7150,26 @@
   ],
   "verdict": null,
   "adv_precondition": null,
-  "planned_batch_hint": "Batch-16(B16+B17 独立叶子,Phase1 §4)。无关键路径门控,Batch-1 后任意时点可落。建议与 R65 打包成同一原子提交(同文件)。",
-  "planned_deps_hint": "与 R65 同文件(scheduler_navigation_links.py),Phase1 co_change_within_group=[R65]。建议与 R65 同次提交(同文件减少行号二次漂移),但 R64 本身与 R65 无逻辑耦合(各删各的 def),即使分开也不互相 NameError。无其他跨债边。",
-  "planned_fix_hint": "直删 :66-67 整个 def(并删一行相邻空行,从 :64-65 两空行中收掉一行,保持 PEP8 2-blank 间距,避免 E303;E 规则对非测试文件启用)。不需补『我是故意的』注释(非承重)。删除范围严格限定 :66-67 这一个 def,不碰相邻的 _has_navigation_context(:47-63,被 :71/:114/:142/:175 真用)与 _use_plain_scheduler_chrome(:70-71)。无 call-site 需修(它根本没有调用点)。无 import 孤儿(_has_value 仍被 :49/:63/:67之外多处用,context.get 是 builtin)。",
+  "planned_batch_hint": "Batch-A/G02 已于 2026-06-08 执行完成;本条仅保留批次归属和历史证据,不再表示仍待执行。",
+  "planned_deps_hint": "已与 R65 在同一原子提交完成。后续 Batch-C 进入 scheduler_navigation_links.py 时,必须按符号重 rg 当前锚点,不要再按旧 :66-67 行号重复删除。",
+  "planned_fix_hint": "2026-06-08 已执行完毕,勿重复操作。历史修法为删除 _has_navigation_date_range 这个零调用死 helper,并保留 _has_navigation_context/_use_plain_scheduler_chrome/_has_value 等活近亲。当前该符号全仓零命中。",
   "phase1_blast": {
    "co_change_within_group": [
     "R65"
    ],
    "contract_topology_tests": [],
-   "downstream_effect": "仅可读性/误导,无运行期影响。删除后行为零变化(_has_value 仍被 :49/:67 之外的 _has_navigation_context 等使用,不受影响)。",
+   "downstream_effect": "仅可读性/误导,无运行期影响。2026-06-08 删除后行为零变化,_has_value 仍被 _has_navigation_context 使用。",
    "fix_invalidation_risk": "none。",
    "id": "R64",
    "lb_colocation_danger": "none — scheduler_navigation_links.py 不在承重清单。",
-   "location_status": "✅准 — web/viewmodels/scheduler_navigation_links.py:66 def _has_navigation_date_range(:67 body 用 _has_value(date_from/date_to))。全仓 grep 仅命中 def 自身。",
+   "location_status": "✅已清理 — _has_navigation_date_range 当前全仓零命中;旧 :66-67 仅为执行前证据。",
    "pathology": "P6:本提交新建即死,全仓零引用(含 tests),收口拆分遗留死码。",
-   "planned_fix_class": "直删(删 :66-67,纯叶子)",
+   "planned_fix_class": "已直删(2026-06-08;纯叶子)",
    "prod_consumers": [
-    "生产零引用(已grep证实) — 全仓 _has_navigation_date_range 仅 :66 def 一处;调用方为空"
+    "生产零引用 — 2026-06-08 清理后 `rg _has_navigation_date_range core/ web/ data/` 零命中"
    ],
    "test_consumers": [
-    "无 — grep _has_navigation_date_range 在 tests/ 下零命中"
+    "无 — 2026-06-08 清理后 `rg _has_navigation_date_range tests/` 零命中"
    ]
   },
   "owner_pending": false,
@@ -7179,7 +7179,7 @@
   "id": "R65",
   "bucket": "B17",
   "home": "B17",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P6",
   "partition": "delta-web-workbench",
@@ -7193,7 +7193,7 @@
   "all_files": [
    "scheduler_navigation_links.py"
   ],
-  "current_evidence_2026_06_05": "web/viewmodels/scheduler_navigation_links.py:74-78 死 def _target_url 原样在;:160 仍是 `plain_url or _target_url(...)` 未化简;孤儿 import urlencode(:4)/query_for_target(:6) 均未删,三件套全未动",
+  "current_evidence_2026_06_05": "2026-06-08 B 执行终态: web/viewmodels/scheduler_navigation_links.py 中 _target_url def 已删除;旧 `plain_url or _target_url(...)` 已化简为直接使用 plain_url;本文件 urlencode/query_for_target import 已删除; TARGET_PAGE_PATHS import 保留并继续服务 build_report_navigation_links; tests/web_pages/test_reports_workbench_navigation_contract.py 已有 test_all_nav_specs_have_nonempty_plain_url 护栏。",
   "cluster": "C01",
   "same_file_siblings": [
    "R64"
@@ -7218,26 +7218,26 @@
   ],
   "verdict": null,
   "adv_precondition": null,
-  "planned_batch_hint": "Batch-16(Phase1 §4 明列 R65『def 删须同步 :160 化简』)。与 R64 打包同一原子提交。Batch-1 后任意时点,无门控。",
-  "planned_deps_hint": "与 R64 同文件(co_change=[R64])。建议同次提交。无跨桶同文件边。R65 自身的三件套是『原子』:def 删 + :160 化简必须同次,否则留对已删函数引用→NameError;import 删虽不致 NameError 但属同一动作。",
-  "planned_fix_hint": "原子三件套(必须同一次提交,缺一即破):①删 def _target_url(:74-78);②把 :160 从 `link = _plain_link(label, plain_url or _target_url(context, str(target_page), view=view), target_page=str(target_page or key))` 化简为 `link = _plain_link(label, plain_url, target_page=str(target_page or key))`(去掉 ` or _target_url(...)`);③删两个就此孤儿的 import:第 4 行 `from urllib.parse import urlencode` 与第 6 行 `from .scheduler_workbench_link_query im",
+  "planned_batch_hint": "Batch-A/G02 已于 2026-06-08 执行完成;本条仅保留批次归属和历史证据,不再表示仍待执行。",
+  "planned_deps_hint": "已与 R64 在同一原子提交完成。后续 Batch-C 进入 scheduler_navigation_links.py 时,必须按符号重 rg 当前锚点;R65 三件套旧行号已失效。",
+  "planned_fix_hint": "2026-06-08 已执行完毕,勿重复操作。历史修法为三件套同提交:删 _target_url、把旧 `plain_url or _target_url(...)` 化简为 `plain_url`、删本文件 urlencode/query_for_target 两个孤儿 import。当前 _target_url 与旧短路表达式全仓零命中;TARGET_PAGE_PATHS 仍保留。",
   "phase1_blast": {
    "co_change_within_group": [
     "R64"
    ],
    "contract_topology_tests": [],
-   "downstream_effect": "仅可读性/误导,无运行期影响。⚠️删 _target_url 必须同步把 :160 简化为 `plain_url`(去掉 `or _target_url(...)`),否则留下对已删函数的引用→NameError。_target_url 内用的 TARGET_PAGE_PATHS/query_for_target 在 :177 与 scheduler_workbench_links.py 另有使用,不会因删 _target_url 而孤儿。",
-   "fix_invalidation_risk": "none — 但删除是『原子』动作:def(:74-78)与 :160 死分支化简必须同一次改,否则破坏 build_scheduler_navigation_links。",
+   "downstream_effect": "仅可读性/误导,无运行期影响。2026-06-08 三件套已同提交完成;TARGET_PAGE_PATHS 仍在本文件为 build_report_navigation_links 使用,query_for_target 在 scheduler_workbench_links.py 等处仍有真实使用。",
+   "fix_invalidation_risk": "none — 已按三件套同提交完成,未留下 _target_url 悬空引用。",
    "id": "R65",
    "lb_colocation_danger": "none — scheduler_navigation_links.py 不在承重清单。",
-   "location_status": "✅准 — web/viewmodels/scheduler_navigation_links.py:74-78 def _target_url,:160 唯一调用点(`plain_url or _target_url(...)`)。specs(:143-153)共 9 条,第 3 字段(plain_url)全为非空字面量路径('/scheduler/' 等),已 Read 证实 → :160 plain_url 恒真,_target_url 永不求值。",
+   "location_status": "✅已清理 — _target_url 与旧 `plain_url or _target_url(...)` 当前全仓零命中;旧 :74-78/:160 仅为执行前证据。specs 第 3 字段非空不变量已由 test_all_nav_specs_have_nonempty_plain_url 护住。",
    "pathology": "P6 死分支:9 条 spec 第 3 字段全非空字面量,故 :160 `plain_url or _target_url` 中 _target_url 恒不触达。",
-   "planned_fix_class": "直删(删 :74-78 def + 同步把 :160 化简为 plain_url,二者必须同次提交)",
+   "planned_fix_class": "已直删并化简(2026-06-08;三件套同提交)",
    "prod_consumers": [
-    "web/viewmodels/scheduler_navigation_links.py:160 (唯一引用点,但 plain_url 恒真使 _target_url 永不被调用 — 死分支)"
+    "无 — 2026-06-08 清理后 `rg _target_url core/ web/ data/` 零命中;旧唯一引用点已化简为 plain_url"
    ],
    "test_consumers": [
-    "无 — grep _target_url 在 tests/ 下零命中"
+    "无 — 2026-06-08 清理后 `rg _target_url tests/` 零命中;新增护栏只检查 specs plain_url 非空"
    ]
   },
   "owner_pending": false,

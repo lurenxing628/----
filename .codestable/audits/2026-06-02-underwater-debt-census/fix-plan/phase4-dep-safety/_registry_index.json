@@ -1386,7 +1386,7 @@
  "R64": {
   "id": "R64",
   "bucket": "B17",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,
@@ -1395,7 +1395,7 @@
   "siblings": [
    "R65"
   ],
-  "batch": "Batch-16(B16+B17 独",
+  "batch": "Batch-A/G02 已 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
@@ -1404,7 +1404,7 @@
  "R65": {
   "id": "R65",
   "bucket": "B17",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,
@@ -1413,7 +1413,7 @@
   "siblings": [
    "R64"
   ],
-  "batch": "Batch-16(Phase1 §4",
+  "batch": "Batch-A/G02 已 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
