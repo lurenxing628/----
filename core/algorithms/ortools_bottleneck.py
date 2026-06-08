@@ -21,9 +21,6 @@ from core.algorithms.priority_constants import priority_weight_scaled
 from core.algorithms.value_domains import INTERNAL
 from core.infrastructure.logging import safe_log
 
-_parse_due_date = parse_date
-_due_exclusive = due_exclusive
-
 
 class OrtoolsWarmstartError(RuntimeError):
     """OR-Tools warm-start 真失败：交给上层现有降级链路展示。"""

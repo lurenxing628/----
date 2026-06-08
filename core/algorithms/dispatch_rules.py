@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import math
-import statistics
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Optional, Tuple
 
 from .greedy.date_parsers import due_exclusive
 from .priority_constants import PRIORITY_RANK, PRIORITY_WEIGHT, normalize_priority
@@ -20,19 +19,6 @@ class DispatchRule(Enum):
     SLACK = "slack"  # 余量（越小越紧急）
     CR = "cr"  # critical ratio（越小越紧急）
     ATC = "atc"  # apparent tardiness cost（越大越紧急；这里用 -ATC 变成越小越好）
-
-
-_due_exclusive = due_exclusive
-
-
-def parse_dispatch_rule(value: Any, default: DispatchRule = DispatchRule.SLACK) -> DispatchRule:
-    if isinstance(value, DispatchRule):
-        return value
-    try:
-        # 容错：大小写/空白（例如 "CR" / " atc "）
-        return DispatchRule(str(value).strip().lower())
-    except ValueError:
-        return default
 
 
 @dataclass(frozen=True)
@@ -107,26 +93,3 @@ def build_dispatch_key(inp: DispatchInputs) -> Tuple[float, ...]:
         float(inp.seq),
         float(inp.op_id),
     )
-
-
-def mean_positive(values: Dict[str, float]) -> float:
-    """
-    仅对严格为正（>0）的值取均值。
-
-    说明：
-    - 名称语义：positive => >0
-    - 空/无正值返回 0.0
-    """
-    vals = []
-    for v in values.values():
-        if v is None:
-            continue
-        try:
-            fv = float(v)
-        except (TypeError, ValueError, OverflowError):
-            continue
-        if math.isfinite(fv) and fv > 0:
-            vals.append(fv)
-    if not vals:
-        return 0.0
-    return float(statistics.fmean(vals))

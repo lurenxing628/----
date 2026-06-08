@@ -49,12 +49,12 @@
 | R12 | GANTT | 🟢🟢🟢·🟢🟢 | 🟢 | 2026-06-08 已 fixed：保留 :84 坏时间过滤，仅补 DegradationCollector 计数；`_empty_result`、正常结果、单份 `_normalize`、contract available=False 分支与 JS 状态归一均保留 `dropped_count` / `critical_chain_partial` | 已验证混合坏行不改变有效链、全坏行可见 dropped_count、provider cache copy 不剥新键；R55 scope 按 O09 未做。 |
 | R11 / R63 | GANTT | 🟢🟢🟢·🟢🟢 | 🟢 | 2026-06-08 已 fixed：两份 _normalize 已收口为 `gantt_critical_chain.py:67-88` 单份 helper；support/provider 两路调用同一函数；parity 测试覆盖 11 个 legacy 边界 | 已保留 available=0→True + bool(is_available) 包裹；未 return raw；未误删 provider _copy:108-114。A1 前置已满足，后续 R12/R55 只能在单份 helper 上加键。 |
 | R10 | GANTT | 🟢🟢🟢·🟢🟢 | 🟢 | 删死方法 get_latest_version_or_1 零调用 | 删 :60-62+stub:59 后立即 grep 复核活方法 resolve_version:64 在（名字均含 version，误删静默炸周计划版本解析）。 |
-| R51 | COMPAT-DISPATCH | 🟡🔴🟡·🟡🟡 | 🟡 | 删两宽容解析器+续命测试 :25 兜底断言（`parse_*("unknown",default)==default` 正是 P4 静默回退）；若保留/迁移 :25 = 把已铲兜底钉成契约 → 未来复用复活静默兜底 | 两测试整体退场禁迁移禁保留 :25 断言禁保留函数改 raise；收口点 schedule_params:277/346 + optimizer_config:166/189 loud raise 已在位（只读确认）；A2 同 diff 删 :28-35 后重盘 R49/R50 行号。r1-LAYER 标红=灵魂线复活红线，但实为「序错/续命即复活」的 loud 风险非静默炸，综合黄。 |
+| R51 | COMPAT-DISPATCH | ✅ fixed | 🟢 | 2026-06-08 已 fixed：两宽容解析器与两份续命测试已删除，`:25` 兜底断言未迁移未保留，未新增任何 try/except 或默认兜底 | 收口点 schedule_params:277/346 + optimizer_config:166/189 loud raise 只读确认在位；旧 r1-LAYER 标红作为历史红线保留，当前复活风险已通过“整退测试 + 删函数”关闭。 |
 | R30 | COMPAT-DISPATCH | 🟡🟡🟡·🟡🟡 | 🟡 | 删 shared date 三常量后若 facade re-export（services.common.value_policies:6-8/:24-26）未同窗删 → ImportError 打挂 facade 全表面（但只炸测试面 = 响声债非静默 fail-open） | R33 步1 迁 import 先；删 shared 三常量与 R31/facade 删 re-export 同窗口；import 块按行精删死保 float/int/is_blank/READ_COMPAT；date 回退语义与 float/int 不可统一。 |
 | R33 | COMPAT-DISPATCH | 🟡🟡🟢·🟡🟡 | 🟡 | 删三 re-export 壳；死保元组 degradation:15（其性质 r1=真承重实现 20+生产直连 vs r2-SOUL=17 行纯 re-export 壳，内部矛盾未拍定，见回炉）；删元组只动 :14/:16/:19，:15/:17/:18 全保留 | 三步硬序 R33步1（迁 emits_degradation:18+matrix:18）→R30（删实现）→R33步2/3（删 :411+元组三条+三壳）；绝不碰 core.shared 三模块全文；degradation:15 无论性质都死保。 |
 | R29 | COMPAT-DISPATCH | 🟡⏸🟡·🟡🟡 | 🟡 | number_utils 全量 delegation-facade owner-pending；有 2 个活生产消费者（excel_calendar_rows:8/excel_validators:26）非死壳，薄壳化须同改 | 只标 owner-pending 不给终态；KEEP 仅补注释；走 B 薄壳化前置=先重写 monkeypatch 为身份测试，真续命点是 `regression_number_utils_facade_delegates_strict_parse.py:45-48`（非 dossier 误指的 warmstart:136）。 |
-| R49 | COMPAT-DISPATCH | 🟡🟢🟡·🟢🟢 | 🟢 | 删 5 行死模块别名；按符号名全局删 `_parse_due_date` 会铲 sgs_scoring:34 活函数 NameError 炸派工评分（另 ordering:59 第 3 个同前缀活函数 dossier 漏列） | file:line 定点删 5 行禁符号名全局删；import 行保留；dispatch_rules:25 卷入 A2 原子 diff。 |
-| R50 | COMPAT-DISPATCH | 🟢🟢🟢·🟢🟢 | 🟢 | 删 mean_positive 死函数 + import statistics | 保留 import math:3（:78/:95/:128 真用，误删启动 ImportError）；外科退测试只动 :20+:61-63 死保 :26-59 build_dispatch_key 回退活契约。 |
+| R49 | COMPAT-DISPATCH | ✅ fixed | 🟢 | 2026-06-08 已 fixed：5 行死模块别名已定点删除；未按符号名全局删 `_parse_due_date`，`sgs_scoring.py` 活函数与 `evaluation._parse_due_date_state` 保留 | 旧 file:line 锚点仅保留为历史证据；后续禁再按旧 G25/G24 行号重复施工。 |
+| R50 | COMPAT-DISPATCH | ✅ fixed | 🟢 | 2026-06-08 已 fixed：`mean_positive` 死函数与 `import statistics` 已删除 | `import math` 与 `build_dispatch_key` 非有限工时回退活契约保留，相关测试仍覆盖 `avg_proc_hours` 回退。 |
 | R52 | GRAPH-ERR-DIAG | ✅ fixed | 🟢 | 2026-06-08 已按 O07 裁定方向 B 保留：`ready_queue.py:103` 全量扫描版不再当待删生产实现，而是明确作为 incremental-vs-fullscan 差分 oracle | 已补「我是故意的」注释；不删 impl、不删 R25 垫片、不新建 `test_sgs_graph_ready.py`。旧方向 A 的 31 用例分流/异常类 parity/枚举退场分析只作为历史禁区保留，当前执行路线已废弃。 |
 | R14 | GRAPH-ERR-DIAG | 🔴🔴🟡·🟡🟡 | 🔴 | 删死门 _resolve_strict_plan:134（非 scenario 走 resolve_existing_plan loud raise「无回退」）；把 :328 候选灵魂线平移活门 diagnose（活门走 resolve_plan fallback_to_adopted 静默不 raise）→ 解析被 fallback 吃→「非 scenario 缺角色应 raise（无静默回退）」灵魂线覆盖被悄悄丢；撞 LB01 同符号承重 | 跨簇 LB01 承重裁断先行（:134-139 让位）；owner 裁 :328 改钉 resolve_existing_plan 层禁平移活门；:358 scenario 灵魂线两门同源可平移；删死门不得顺手修 resolve_plan 静默回退（铁律 4）；改 roadmap:485-498+items.yaml:83。r1 两透镜红，r2 降黄但双门 owner_pending 维持红（删动作牵动灵魂线覆盖）。 |
 | R24 | GRAPH-ERR-DIAG | 🔴🟡🟡·🟡🟡 | 🟡 | 路 A 删 core 死副本安全；路 B 把活 web 路径改指零消费 core 合同 → core 对 NaN/Inf/bool 静默透传 vs web 孪生 safe_int/safe_float loud raise NonFiniteDiagnosticNumber → 丢护栏退化静默吞坏值（P4）+ 立零消费 core 为收口点违铁律 5 | 只走路 A 删 core（owner 默认推 A，路 B 强制前置护栏先下沉+3 parity 反例）；先调和 networkx roadmap items.yaml:435/:480/:481（:480 ruff+:481 pyright 都含 core 文件名只摘 core 保留 web helpers）；测试逐条剪混合用例 :83 单行；绝不反删 web 孪生护栏。r1-LB 标红=路 B 隐患，路 A 安全故综合黄。 |
@@ -126,7 +126,7 @@
 | **R69 锚点**（LEAF-DUP-P4） | r1-LB🔴：「runtime_support :178/:193 两处 return 0 漏登」 | r2：那是 `_seed_op_id`/`_seed_seq` 两个无关函数的 return 0，不在 `_op_seq` 收口范围（顺手统一反而是 Q1 越界误删）。**但 R69 因灵魂线另立红，非此项**。 |
 | **R03 (B) 禁区**（LEAF-DUP-P4） | r1-LB「dashboard_workbench:156 被别名 `comparison.get("n")` 遮蔽，rg 零命中禁区失踪」 | r2 实测 :156 = `if comparison.get("baseline_missing_or_failed")` 真键直命中无别名遮蔽，helpers:390 同；别名 `n` 陷阱是 R42/build_workbench_plan_context 的不波及 baseline 键。禁区在场。 |
 | **R30/R33 facade**（COMPAT-DISPATCH） | 「facade 漏改 ImportError 打挂 facade 全表面/存活消费者」夸大 | 两 facade 均无活生产消费者只有 3 测试 import = **CI 响声债（loud ImportError 立即可见）非静默 fail-open 坏数据不流入生产**。 |
-| **R51 复活**（COMPAT-DISPATCH） | r1-LAYER🔴「灵魂线复活红线」 | 灵魂线复活是「序错/续命即复活」的 loud 风险（删错碰收口点 raise 或测试保留报红），非静默炸；前置全绑（两测试整退禁迁）即黄。 |
+| **R51 复活**（COMPAT-DISPATCH） | r1-LAYER🔴「灵魂线复活红线」 | 2026-06-08 已 fixed：两续命测试整退且函数删除，未把 `unknown -> default` 兜底重新钉成契约；该红线转为历史留档。 |
 | **R55 三门**（GANTT） | r1-SOUL🔴 | 红因是 owner_pending+needs_adversarial+verdict=null 三流程门未过却被排进可执行 A3，是**流程门未通过**非「会炸」；分析已透，门过后降黄。 |
 | **R24 路 B**（GRAPH-ERR-DIAG） | r1-LB🔴 | 红因是路 B（改指零消费 core 丢护栏）；只走路 A（删 core 死副本）安全，owner 默认推路 A，综合黄。 |
 | **R34「不存在」**（RESOURCE-REPO/也涉 PLAN-IDENTITY） | dossier 正文「repoint 目标 get_plan_time_span_for_resolution 不存在」 | Layer1 + verify + 本轮回盘三纠：旧锚存在于 schedule_plan_query_service.py:210；R23 后现盘为 :206，执行按符号重 rg。纯删安全。 |
@@ -201,11 +201,11 @@
 - 必须先落 parity/注释：normalize parity 黄金基线已落，当前 `tests/gantt/test_gantt_critical_chain_normalize_parity.py` 已扩到覆盖 R12 新键；R12 dropped_count 已双补 :54 与结果出口并穿 _normalize 白名单 + contract:22-39；R55 scope 调用点显式赋值禁反推。
 - 测试迁移序：删旧符号前先建 parity（snapshot subset 抓不到字段分叉）；R55 owner+怀疑者过 PHASE0 §6 三问后才锁终态。
 
-**C-COMPAT-DISPATCH（R30🟡 / R33🟡 / R29🟡 / R49🟢 / R50🟢 / R51🟡）**
-- 原子性最终判定：A1 硬序 R33步1（迁 import）→R30（删实现+三常量与 R31/facade 同窗删 re-export）→R33步2/3；A2{R49/R50/R51}同改 dispatch_rules.py 一次性删从大行号往小（R51 删 :28-35 致下移 7~8 行）。
+**C-COMPAT-DISPATCH（R30🟡 / R33🟡 / R29🟡 / R49✅fixed / R50✅fixed / R51✅fixed）**
+- 原子性最终判定：A1 硬序 R33步1（迁 import）→R30（删实现+三常量与 R31/facade 同窗删 re-export）→R33步2/3；A2{R49/R50/R51}已在 2026-06-08 G24 同原子 diff fixed，旧“从大行号往小删”只作历史执行依据。
 - 承重禁区（按符号）：core.shared 三模块全文、degradation:15+身份测试:375-390+forbidden:355、import math:3、compat_parse float/int import 块、sgs_scoring:34 同名活函数、收口点 schedule_params/optimizer_config（只读）。
-- 必须先落 parity/注释：R51 收口点 loud raise 只读确认；R29 KEEP 仅补注释。
-- 测试迁移序：R51 两续命测试整体退场禁迁移禁保留 :25 兜底断言（保留=复活 P4）；R29 走 B 先重写 number_utils_facade 测试为身份测试。
+- 必须先落 parity/注释：R51 收口点 loud raise 已只读确认且本次未动；R29 KEEP 仅补注释。
+- 测试迁移序：R51 两续命测试已整体退场，未迁移未保留 :25 兜底断言；R29 走 B 先重写 number_utils_facade 测试为身份测试。
 
 **C-GRAPH-ERR-DIAG（R52🟢已fixed / R14🔴 / R24🟡 / LB08🟡 / R46🟡 / R02🟢 / R06·R27🟢已fixed / R25🟢已fixed）**
 - 原子性最终判定：R52/R25 已按 O07 方向 B fixed，只补认账注释，未删 impl/垫片，未新建迁移测试；R06+R27+gantt 四空包同一原子提交已完成；LB08 注释先落→R46 才删；R18 风格 R46 按符号重 grep（LB08 插行后下移）。

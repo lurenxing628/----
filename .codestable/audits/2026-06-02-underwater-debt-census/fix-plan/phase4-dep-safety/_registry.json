@@ -3346,7 +3346,7 @@
   "id": "R50",
   "bucket": "B05",
   "home": "B05",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P6",
   "partition": "core-algorithms",
@@ -3359,10 +3359,10 @@
   "primary_file": "dispatch_rules.py",
   "all_files": [
    "dispatch_rules.py",
-   "regression_dispatch_rules_nonfinite_proc_hours_safe.py",
+   "tests/resource_dispatch/test_dispatch_rules_nonfinite_proc_hours_safe.py",
    "sgs.py"
   ],
-  "current_evidence_2026_06_05": "dispatch_rules.py:112 def mean_positive 死函数整体仍在(:132 statistics.fmean);全仓生产引用 grep=0(仅定义),尚未删除——按计划须跟 B06 dispatch_rules.py 三债(R49/R51)同批,当前未动",
+  "current_evidence_2026_06_05": "2026-06-08 B 执行核销：R50/G24 已 fixed。core/algorithms/dispatch_rules.py 中 mean_positive 与仅它使用的 import statistics 已删除；import math 保留并继续服务 build_dispatch_key；tests/resource_dispatch/test_dispatch_rules_nonfinite_proc_hours_safe.py 仅退 mean_positive 续命断言，build_dispatch_key 非有限 proc_hours 回退契约保留。",
   "cluster": "C01",
   "same_file_siblings": [
    "R49",
@@ -3396,7 +3396,7 @@
   ],
   "verdict": null,
   "adv_precondition": null,
-  "planned_batch_hint": "Batch-7(B06 dispatch_rules.py 三债同批)而非 Batch-6——R50 物理同文件于 R49/R51，跟 B06 走避免行号互撞。独立无前置(不依赖 F)。",
+  "planned_batch_hint": "Batch-B/G24 已 fixed。R50 已随 R49/R51 同一原子 diff 删除；本字段仅保留历史批次归属，不表示仍待执行。",
   "planned_deps_hint": "同文件 dispatch_rules.py 还驻 R49(死别名)、R51(parse_dispatch_rule/parse_strategy 宽容解析器)@B06→**三者删除须同批改 dispatch_rules.py 避免互撞行号**(Phase1 Batch-7 dispatch_rules.py 三债同批)。本会话见 dispatch_rules.py:28 parse_dispatch_rule(R51 territory)、:25 _due_exclusive(R49 territory 别名)同文件。co-change 组(Phase1)：R49/R51。",
   "planned_fix_hint": "直删 dispatch_rules.py:112-132 def mean_positive 整函数 + 顶部 `import statistics`(若仅 mean_positive 用——本会话见 :4 import statistics，须 grep 确认删函数后 statistics 全文件零引用再删 import，否则留)。**外科式**退测试：仅删 regression_dispatch_rules_nonfinite_proc_hours_safe.py:20 的 `mean_positive` import 名 + :61-63 三行用例；**保留 :26-59**(build_dispatch_key 非有限回退活契约)。删前再 grep 一次全仓 mean_positive 零生产引用复核。",
   "phase1_blast": {
@@ -3411,15 +3411,13 @@
    "fix_invalidation_risk": "none。但同文件 dispatch_rules.py 还驻 R49(:25 死别名)、R51(:28 parse_dispatch_rule),三者删除须同批改 dispatch_rules.py 避免互撞行号。",
    "id": "R50",
    "lb_colocation_danger": "none",
-   "location_status": "✅准 core/algorithms/dispatch_rules.py:112 def mean_positive(空/无正值→0.0)。⚠️报告 reference_chain 写真实均值在'sgs.py:150',盘上真路径=core/algorithms/greedy/dispatch/sgs.py:150 _average_proc_hours(:168 sum(samples)/len、:170 increment dispatch_key_avg_proc_hours_fallback_count)——顶层 core/algorithms/sgs.py 不存在,但同行号同语义,结论成立",
+   "location_status": "✅已删 — 2026-06-08 已删除 core/algorithms/dispatch_rules.py 旧 def mean_positive 与 import statistics；真实生产均值仍在 core/algorithms/greedy/dispatch/sgs.py:_average_proc_hours，未触碰。",
    "pathology": "P6(死代码,直删类)",
    "planned_fix_class": "直删 + 退测试(删 regression_dispatch_rules_nonfinite_proc_hours_safe.py 的 mean_positive import 与:62-63 用例)",
    "prod_consumers": [
     "生产零引用(已grep证实):全仓 core/web/data/scripts 对 mean_positive 调用=0,真实 avg_proc_hours 在 greedy/dispatch/sgs.py:166-170 内联 sum/len"
    ],
-   "test_consumers": [
-    "tests/resource_dispatch/test_dispatch_rules_nonfinite_proc_hours_safe.py:20(import mean_positive)/:62/:63(唯一续命)"
-   ]
+   "test_consumers": []
   },
   "owner_pending": false,
   "lb_no_touch": null
@@ -3869,7 +3867,7 @@
   "id": "R49",
   "bucket": "B06",
   "home": "B06",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P6",
   "partition": "core-algorithms",
@@ -3885,7 +3883,7 @@
    "evaluation.py",
    "ortools_bottleneck.py"
   ],
-  "current_evidence_2026_06_05": "5 处死别名全在原样:dispatch_rules.py:25 _due_exclusive = due_exclusive;evaluation.py:40 _parse_due_date = parse_date、:41 _due_exclusive = due_exclusive(活近亲 :26 _parse_due_date_state 仍在,未误删);ortools_bottleneck.py:24 _parse_due_date = parse_date、:25 _due_exclusive = due_exclusive;三文件 git status 空(未改)。",
+  "current_evidence_2026_06_05": "2026-06-08 B 执行核销：R49/G24 已 fixed。5 处死别名已从 dispatch_rules.py / evaluation.py / ortools_bottleneck.py 删除；evaluation.py:_parse_due_date_state 与 sgs_scoring.py:_parse_due_date 活函数均保留；date_parsers 的 parse_date/due_exclusive import 仍服务真实裸调用。",
   "cluster": "C01",
   "same_file_siblings": [
    "R50",
@@ -3911,7 +3909,7 @@
   ],
   "verdict": null,
   "adv_precondition": null,
-  "planned_batch_hint": "Batch-7(B06,dispatch_rules.py 三债同批 R49/R50/R51)。本桶内第 1(零风险,先落清场)。",
+  "planned_batch_hint": "Batch-B/G24 已 fixed。R49 含 G25 旁支已随 R50/R51 同一原子 diff 删除；本字段仅保留历史批次归属，不表示仍待执行。",
   "planned_deps_hint": "dispatch_rules.py:25 与 R51:28(parse_dispatch_rule)、R50(B05,:112 mean_positive)同文件,须同批删避免行号互撞;evaluation.py / ortools_bottleneck.py 两处完全独立。无前置/后置硬序。",
   "planned_fix_hint": "直删 5 行私有别名(c8a5a49c『日期解析收敛』时模块切到共享 date_parsers 后遗留的兼容垫片,同一提交里调用点已改裸名,垫片从出生零消费):dispatch_rules.py:25、evaluation.py:40-41、ortools_bottleneck.py:24-25。无任何替换,纯删。",
   "phase1_blast": {
@@ -3926,7 +3924,7 @@
    "fix_invalidation_risk": "none。dispatch_rules.py 一处与 R50:112/R51:28 同文件,须同批删避免行号互撞;evaluation.py/ortools_bottleneck.py 两处独立。",
    "id": "R49",
    "lb_colocation_danger": "none",
-   "location_status": "✅准 5处死别名:core/algorithms/dispatch_rules.py:25 _due_exclusive=due_exclusive;core/algorithms/evaluation.py:40 _parse_due_date=parse_date/:41 _due_exclusive=due_exclusive;core/algorithms/ortools_bottleneck.py:24 _parse_due_date/:25 _due_exclusive",
+   "location_status": "✅已删 — 2026-06-08 已删除旧 5 处死别名；仅保留 evaluation.py:_parse_due_date_state 与 sgs_scoring.py:_parse_due_date 两个活近亲。",
    "pathology": "P6(机械改造残渣,直删类)",
    "planned_fix_class": "直删(5行别名,无引用)",
    "prod_consumers": [
@@ -3943,7 +3941,7 @@
   "id": "R51",
   "bucket": "B06",
   "home": "B06",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "medium",
   "pathology": "P3",
   "partition": "core-algorithms",
@@ -3960,7 +3958,7 @@
    "schedule_params.py",
    "sort_strategies.py"
   ],
-  "current_evidence_2026_06_05": "两宽容解析器全在原样:dispatch_rules.py:28 parse_dispatch_rule 仍 :34-35 except ValueError: return default;sort_strategies.py:161 parse_strategy 仍 :172-173 except Exception: return default(违灵魂线的静默回退默认枚举);两续命测试 tests/resource_dispatch/test_dispatch_rule_case_insensitive.py 与 regression_sort_strategy_case_insensitive.py 均仍存在未退;两文件 git status 空。",
+  "current_evidence_2026_06_05": "2026-06-08 B 执行核销：R51/G24 已 fixed。parse_dispatch_rule 与 parse_strategy 两个宽容解析器已删除；tests/resource_dispatch/test_dispatch_rule_case_insensitive.py 与 tests/algorithm/test_sort_strategy_case_insensitive.py 已整体退场，未迁移、未保留坏值 default 静默回退断言。",
   "cluster": "C01",
   "same_file_siblings": [
    "R49",
@@ -4026,7 +4024,7 @@
   ],
   "verdict": null,
   "adv_precondition": null,
-  "planned_batch_hint": "Batch-7(B06,dispatch_rules.py 三债同批)。本桶内第 2(紧随 R49,清场宽容解析器;灵魂线相关,优先级高于 R30/R33 的纯死壳)。",
+  "planned_batch_hint": "Batch-B/G24 已 fixed。R51 已随 R49/R50 同一原子 diff 删除；本字段仅保留历史批次归属，不表示仍待执行。",
   "planned_deps_hint": "dispatch_rules.py:28 与 R49:25、R50(B05,:112)同文件,须同批删避免行号互撞;sort_strategies.py:161 parse_strategy 独立。无前置硬序(B05 R50 已在 Batch-6 收敛,Batch-7 时 dispatch_rules.py 已稳定)。",
   "planned_fix_hint": "直删两个宽容解析器 + **连退其续命测试**(灵魂线红线 #1:坏数据不准静默兜底;这两函数的『非法→静默默认枚举』正是被铲除的 P4,留着=有人误复用就把静默兜底重引回派工/排序参数入口):删 dispatch_rules.py:28-35 parse_dispatch_rule、sort_strategies.py:161-173 parse_strategy。同步**整体退场**两测试 tests/resource_dispatch/test_dispatch_rule_case_insensitive.py 与 tests/algorithm/test_sort_strategy_case_insensitive.py——它们 :25 钉死的『parse_*(\"unknown\", default=X) == X』正是灵魂线禁止的兜底语义,**严禁保留它们续命**,必须随解析器一起退(否则等于把 P4 钉成契约)",
   "phase1_blast": {
@@ -4041,16 +4039,13 @@
    "fix_invalidation_risk": "none。parse_dispatch_rule 与 R49:25/R50:112 同文件 dispatch_rules.py,须同批;parse_strategy 在 sort_strategies.py 独立。",
    "id": "R51",
    "lb_colocation_danger": "none",
-   "location_status": "✅准 core/algorithms/dispatch_rules.py:28 parse_dispatch_rule(except→default) / core/algorithms/sort_strategies.py:161 parse_strategy(except→default);core/algorithms/__init__.py 实测不导出二者",
+   "location_status": "✅已删 — 2026-06-08 已删除 core/algorithms/dispatch_rules.py:parse_dispatch_rule 与 core/algorithms/sort_strategies.py:parse_strategy；core/algorithms/__init__.py 本就不导出二者。",
    "pathology": "P3(生产零引用 + 宽容兜底违灵魂线)",
    "planned_fix_class": "删+退测试(删2宽容解析器 + 退 regression_dispatch_rule/sort_strategy_case_insensitive.py;这两测试钉的是违灵魂的兜底语义,正该随之退,不可保留它们续命)",
    "prod_consumers": [
     "生产零引用(已grep证实):core/web/data/scripts 对 parse_dispatch_rule/parse_strategy 调用=0;__init__ __all__ 不导出。生产 string→enum 走严格:schedule_params.py:277 SortStrategy(strategy_key)/:346 DispatchRule(rule_key) 前置 _require_choice:71 抛 ValidationError;optimizer_config.py:166 require_choice"
    ],
-   "test_consumers": [
-    "tests/resource_dispatch/test_dispatch_rule_case_insensitive.py:18/20-25(钉 parse_dispatch_rule('unknown',default=)→静默默认)",
-    "tests/algorithm/test_sort_strategy_case_insensitive.py:18/20-25(钉 parse_strategy('unknown',default=)→静默默认)"
-   ]
+   "test_consumers": []
   },
   "owner_pending": false,
   "lb_no_touch": null

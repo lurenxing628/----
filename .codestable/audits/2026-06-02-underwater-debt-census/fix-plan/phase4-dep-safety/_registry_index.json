@@ -563,7 +563,7 @@
  "R50": {
   "id": "R50",
   "bucket": "B05",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,
@@ -573,7 +573,7 @@
    "R49",
    "R51"
   ],
-  "batch": "Batch-7(B06 dispat",
+  "batch": "Batch-B/G24 已 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
@@ -656,7 +656,7 @@
  "R49": {
   "id": "R49",
   "bucket": "B06",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,
@@ -666,7 +666,7 @@
    "R50",
    "R51"
   ],
-  "batch": "Batch-7(B06,dispat",
+  "batch": "Batch-B/G24 已 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
@@ -675,7 +675,7 @@
  "R51": {
   "id": "R51",
   "bucket": "B06",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "P3",
   "lb": false,
@@ -685,7 +685,7 @@
    "R49",
    "R50"
   ],
-  "batch": "Batch-7(B06,dispat",
+  "batch": "Batch-B/G24 已 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,

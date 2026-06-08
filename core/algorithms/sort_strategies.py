@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import date, datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from .priority_constants import PRIORITY_ORDER, PRIORITY_SCORE, normalize_priority
 
@@ -156,18 +156,3 @@ class StrategyFactory:
     @classmethod
     def get_available_strategies(cls) -> List[Dict[str, str]]:
         return [{"key": s.value, "name": cls.create(s).get_name()} for s in SortStrategy]
-
-
-def parse_strategy(value: Any, default: SortStrategy = SortStrategy.PRIORITY_FIRST) -> SortStrategy:
-    """
-把字符串/枚举解析为 SortStrategy（容错：非法返回 default）。
-"""
-    if isinstance(value, SortStrategy):
-        return value
-    try:
-        s = str(value or "").strip().lower()
-        if not s:
-            return default
-        return SortStrategy(s)
-    except Exception:
-        return default

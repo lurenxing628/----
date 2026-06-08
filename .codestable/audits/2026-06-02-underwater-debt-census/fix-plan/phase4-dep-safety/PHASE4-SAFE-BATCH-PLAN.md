@@ -78,12 +78,12 @@ Batch-A  独立死叶子 / 零前置 / owner=false（最早可落）
   2026-06-08 执行补登：G02/G14/G16/G21/G28/G31/G32/G35/G37/R53/R61/R70 已在 `_registry.json` 与对应 dossier 登记 fixed；本清单保留批次归属，不表示这些单元仍待执行。G16 的旧 sp06 锚点已随 A P1.1 删除测试文件变为 no-op；G21 采用保留 `_safe_float` 名的薄包装方案，fitness 白名单经实测保留；R53 已删旧 `batch_order.py:74` 空操作行；R61 已删旧 report_context_filters.py 计划行 Python 过滤死簇并把负向测试重定向到 `normalize_report_resource_filter`；R70 已删旧 `schedule_service.py:46-50` 死副本。
   [+ LEAF-DUP-P4 纯删叶子：R53(2026-06-08 已 fixed) / R61(2026-06-08 已 fixed) / R70(2026-06-08 已 fixed) 随 A 落；LB04 安全网归 ROOT/Batch-A 之交]
   *G02(R64/R65) 同文件 scheduler_navigation_links.py，改点不同不可同质化（见 §1.2）；与 R42(G01)/R67(G34) 同文件四单元串行块
-  *G03(R66) 受 E04 软序，实际延后到 G04(R54) 后按符号重定位；G25(R49旁支) 并回 Batch-B 的 G24 一次原子执行，不在 Batch-A 单独落
+  *G03(R66) 受 E04 软序，实际延后到 G04(R54) 后按符号重定位；G25(R49旁支) 已并回 Batch-B 的 G24 一次原子执行，不在 Batch-A 单独落
 
 Batch-B  依赖 ROOT 承重门 / 单门控前置
   G06(R62)←G05 ┃ G07(R17/R20)←G07a🔒 ┃ G08(R15/R17/R20)←与G07同原子
   G12(R12)←G11 ┃ G13(R55)⏸本轮跳过(O09) ┃ G19(R01+R04)←GF1 ┃ G20(R59)←GF1
-  G24(R49含G25旁支+R50+R51) ┃ G40(R46)←G40a🔒⏸ ┃ G30(R34+R35) ┃ G36(R37) ┃ G39(R52+R25 KEEP注释)
+  G24(R49含G25旁支+R50+R51，2026-06-08 已fixed) ┃ G40(R46)←G40a🔒⏸ ┃ G30(R34+R35) ┃ G36(R37) ┃ G39(R52+R25 KEEP注释)
 
 Batch-C  身份族收敛 / 收口委托（依赖承重族 + parity）
   G04(R58→R54→R44)←LB03+R22parity；同批带走 E03→G01 ┃ G01(R42+R60)←G04
@@ -169,7 +169,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 
 ### 1.2 Batch-A — 独立死叶子 / 零前置 / owner=false（最早可落）
 
-**成员（调度单元 + 债）**：G14(R10 死方法 `gantt_service:60-62`)、G16(R45≡R48 整文件删 `config_adapter.py`，2026-06-08 已 fixed)、G21(R28 收口 `parse_finite_float`，2026-06-08 已 fixed)、G28(R23 dedup `_normalize_role` 收口 model)、G31(R38 part 份 + R39 `list_unparsed`)、G32(R38 op_type:73/operator:85 两份)、G35(R36 两死方法)、G37(R02 test-only 壳)、G11(R11≡R63 去重 `_normalize` 收口 `gantt_critical_chain.py`，2026-06-08 已 fixed)、G38(R06+R27+gantt 四空包同提交，2026-06-08 已 fixed)。**G03(R66)** 仅登记归属，受 E04 软序实际延后到 G04(R54) 后执行；**G25(R49 旁支)** 不在 Batch-A 单独执行，并回 Batch-B 的 G24 一次原子。**+ 纯删叶子**（原 LEAF-DUP-P4 桶，按 ⚠简化声明归入此批）：R53(`batch_order.py` 旧 :74 一行，2026-06-08 已 fixed)、R61(plan 死簇 `:160/164/172-187` + 重定向负向测试)、R70(`schedule_service.py` 旧 :46-50 死副本，2026-06-08 已 fixed)。**+ G02(R64+R65，2026-06-08 已 fixed)**：权威源 `_interference_rebuilt.md:17` 定义 G02={R64,R65} NAV-PLANID；历史动作是 R64 删除 `_has_navigation_date_range`、R65 完成 `_target_url` 死分支三件套并保留 `TARGET_PAGE_PATHS`。当前本段只保留批次归属和历史原因，不再表示 R64/R65 待删；后续 R42/R67 进入同文件时按符号重 rg。
+**成员（调度单元 + 债）**：G14(R10 死方法 `gantt_service:60-62`)、G16(R45≡R48 整文件删 `config_adapter.py`，2026-06-08 已 fixed)、G21(R28 收口 `parse_finite_float`，2026-06-08 已 fixed)、G28(R23 dedup `_normalize_role` 收口 model)、G31(R38 part 份 + R39 `list_unparsed`)、G32(R38 op_type:73/operator:85 两份)、G35(R36 两死方法)、G37(R02 test-only 壳)、G11(R11≡R63 去重 `_normalize` 收口 `gantt_critical_chain.py`，2026-06-08 已 fixed)、G38(R06+R27+gantt 四空包同提交，2026-06-08 已 fixed)。**G03(R66)** 仅登记归属，受 E04 软序实际延后到 G04(R54) 后执行；**G25(R49 旁支)** 已并回 Batch-B 的 G24 一次原子 fixed，不在 Batch-A 单独执行。**+ 纯删叶子**（原 LEAF-DUP-P4 桶，按 ⚠简化声明归入此批）：R53(`batch_order.py` 旧 :74 一行，2026-06-08 已 fixed)、R61(plan 死簇 `:160/164/172-187` + 重定向负向测试)、R70(`schedule_service.py` 旧 :46-50 死副本，2026-06-08 已 fixed)。**+ G02(R64+R65，2026-06-08 已 fixed)**：权威源 `_interference_rebuilt.md:17` 定义 G02={R64,R65} NAV-PLANID；历史动作是 R64 删除 `_has_navigation_date_range`、R65 完成 `_target_url` 死分支三件套并保留 `TARGET_PAGE_PATHS`。当前本段只保留批次归属和历史原因，不再表示 R64/R65 待删；后续 R42/R67 进入同文件时按符号重 rg。
 
 > **2026-06-08 执行补登**：G02/G11/G14/G16/G21/G28/G31/G32/G35/G37/G38/R53/R61/R70 已在 `_registry.json` 与对应 dossier 登记 fixed。上方成员段保留批次归属和执行纪律，不再表示这些单元仍待执行；后续不要重复处理 R64/R65/R11/R63/R10/R45/R48/R28/R23/R36/R38/R39/R02/R06/R27/gantt 空包/R53/R61/R70。G02 的旧 `scheduler_navigation_links.py` 裸行号已经随删除上移,后续 Batch-C 的 R42/R67 必须按符号重 rg；G11 已把单份 `_normalize_critical_chain_result` 收口到 `gantt_critical_chain.py:67-88`，后续 R12/R55 只能在该单份 helper 上继续改；G16 的旧 sp06 锚点已随 A P1.1 删除测试文件变为 no-op；G21 的 `_safe_float` 保名薄包装仍需保留 fitness 白名单；G38 已把 SP05 service 拓扑元组收回 `("config", "run", "summary")`，并删除四空包 no-import 循环；R53 已删旧 `batch_order.py:74` no-op，现盘 :39 形参/:58 真消费/:74 return 均保留；R61 已删 report_context_filters.py 旧计划行 Python 过滤死簇，当前 live `filter_downtime_rows_for_report_context` / `_row_text` / `normalize_report_resource_filter` 均保留；R70 已删旧 `schedule_service.py:46-50` 死副本，`ValidationError` import 与 run/input_collector live helper 均保留。
 
@@ -177,7 +177,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 
 **为何这批**：全是「零前置、零 owner 裁断、误删均 loud（ImportError/NameError/SyntaxError/测试红）非静默炸」的死叶子，最早可落腾出心智空间。**例外** G03 受 E04 软序（R54 改 reports_workbench:36 漂移 R66:150）→ 实际宜紧随 Batch-C 的 G04 按 suffix 符号重定位（此处只登记其归属，落地时延后）。
 
-> **⚠本批重 rg 纪律（C5 逐批落地）**：Batch-A 多为整段/整方法删，**删任一处即位移其下所有锚点**，故每删一处后立即 `rg` 复核活近亲在位（go-no-go 即此）。**本批高危锚点符号清单（执行前 rg 现场定位，弃裸行号）**：G02 `_has_navigation_date_range`/`_target_url`/`urlencode`/`query_for_target`（删后复核 `_has_navigation_context`/`TARGET_PAGE_PATHS`/`_REPORT_CONTEXT_FIELD_NAMES`/`preserved_report_context_fields` 在位）、G14 `resolve_version`、G25 `parse_dispatch_rule`（与 G24 串行）、G37 `report.py:180` 兄弟壳、G38 `_assert_init_has_no_imports`、G11 `_copy_critical_chain_result`/`_normalize`。G02 与 R42(G01)/R67(G34) same_file，删后其下锚点系统性上移，交接给 Batch-C（见 §1.0 三批四单元串行块）。
+> **⚠本批重 rg 纪律（C5 逐批落地）**：Batch-A 多为整段/整方法删，**删任一处即位移其下所有锚点**，故每删一处后立即 `rg` 复核活近亲在位（go-no-go 即此）。**本批高危锚点符号清单（执行前 rg 现场定位，弃裸行号）**：G02 `_has_navigation_date_range`/`_target_url`/`urlencode`/`query_for_target`（删后复核 `_has_navigation_context`/`TARGET_PAGE_PATHS`/`_REPORT_CONTEXT_FIELD_NAMES`/`preserved_report_context_fields` 在位）、G14 `resolve_version`、G25 `parse_dispatch_rule`（2026-06-08 已并回 G24 fixed）、G37 `report.py:180` 兄弟壳、G38 `_assert_init_has_no_imports`、G11 `_copy_critical_chain_result`/`_normalize`。G02 与 R42(G01)/R67(G34) same_file，删后其下锚点系统性上移，交接给 Batch-C（见 §1.0 三批四单元串行块）。
 
 **前置安全网（逐条点名）**：
 - G11(R11≡R63)：2026-06-08 已 fixed；已先建 normalize parity 黄金基线并扩到 11 个 legacy 边界（钉 `available=0→True` + `bool()` 包裹差异），再把单份 helper 收口到 `gantt_critical_chain.py:67-88`；support/provider 两路仅改调用目标，未 `return raw`，未误删 `_copy_critical_chain_result`。A1 前置已满足，后续 G12/G13 仍只许在单份 helper 上继续改。
@@ -186,7 +186,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 - G16(R45≡R48)：2026-06-08 已 fixed；`config_adapter.py` 已删，旧 `tests/regression_sp06_no_duplicate_defs.py` 已由 A P1.1 删除，旧清单同步步骤为 no-op；继续禁碰 `core/algorithms/greedy/schedule_params.py`（same_file 误标零碰撞）。
 - R53：2026-06-08 已 fixed；已删旧 `batch_order.py:74` `_ = scheduled_count` 空操作行；现盘 :39 形参、:58 真消费、:74 return 均保留；`sgs.py:127` 同形态行不是本债，未动。
 - G21(R28)：2026-06-08 已 fixed；采用方案 b，`_safe_float` 保名薄包装到 `parse_finite_float(value, field="ext_days", allow_none=True)`。已跑 `pytest -k test_no_new_local_parse_helpers`，fitness 白名单 `:77` 必须保留；后续只做残留 rg，禁重复删除白名单。
-- G25(R49 旁支)：**本轮不在 Batch-A 单独落**；与 G24（Batch-B）的 R49 主体、R50、R51 并回一次原子 diff。执行时仍按 file:line 定点删旁支行，禁符号名全局删；删后 `rg parse_dispatch_rule` 必须零生产残引用。
+- G25(R49 旁支)：**2026-06-08 已并回 G24 fixed**，不在 Batch-A 单独落。旧要求是与 G24（Batch-B）的 R49 主体、R50、R51 并回一次原子 diff，按 file:line 定点删旁支行、禁符号名全局删；现盘禁再按旧 G25 锚点重复施工。
 - R61：2026-06-08 已 fixed；已删旧计划行 Python 过滤死簇并同步重定向测试；当前仍禁删 live 孪生 `_row_text:156`/`normalize_report_resource_filter:119`/`filter_downtime_*:244`。
 - R70：2026-06-08 已 fixed；旧 `schedule_service.py:46-50` 死副本已删，仍保 `ValidationError` import（并发拒绝路径仍用）。
 - **R64/R65（G02，红队 RT3-P01 补登 + 红队第2轮 RT22 纠 R65 性质）**：2026-06-08 已按同文件同一原子提交完成,下列要点现在作为复核/交接,不再作为待施工步骤：
@@ -207,11 +207,11 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 
 ### 1.3 Batch-B — 依赖 ROOT 承重门 / 单门控前置
 
-> **2026-06-08 执行补登**：G12(R12) 已 fixed。已在 R11/R63 单份归一前置满足后，只补关键链坏时间行可观测信号：`dropped_count` / `critical_chain_partial` 穿过 `_empty_result`、单份 `_normalize_critical_chain_result`、`gantt_contract.py` 的 available=False 分支与前端 `gantt_contract.js` 状态归一。G30(R34+R35) 已 fixed：按 O10 纯删口径删除 `schedule_repo.py` 四个死方法，退四件套测试/脚本引用，`benchmark_fjsp.py` 改指既有 `SchedulePlanQueryRepository.get_plan_time_span`。G39(R52+R25) 已 fixed：按 O07 方向 B 只补「我是故意的」注释，保留全量扫描 oracle 与 R25 service 垫片，不删 impl、不新建 `test_sgs_graph_ready.py`。R55/G13 仍按 O09 本轮跳过，未随 R12 改 scope。
+> **2026-06-08 执行补登**：G12(R12) 已 fixed。已在 R11/R63 单份归一前置满足后，只补关键链坏时间行可观测信号：`dropped_count` / `critical_chain_partial` 穿过 `_empty_result`、单份 `_normalize_critical_chain_result`、`gantt_contract.py` 的 available=False 分支与前端 `gantt_contract.js` 状态归一。G24(R49+R50+R51，含 G25 旁支) 已 fixed：同一原子 diff 删除 5 行死别名、`mean_positive`、`statistics` import、`parse_dispatch_rule`、`parse_strategy` 与两份续命测试；`import math`、非有限工时回退契约、同名前缀活函数和 schedule_params/optimizer_config loud raise 收口点未动。G30(R34+R35) 已 fixed：按 O10 纯删口径删除 `schedule_repo.py` 四个死方法，退四件套测试/脚本引用，`benchmark_fjsp.py` 改指既有 `SchedulePlanQueryRepository.get_plan_time_span`。G39(R52+R25) 已 fixed：按 O07 方向 B 只补「我是故意的」注释，保留全量扫描 oracle 与 R25 service 垫片，不删 impl、不新建 `test_sgs_graph_ready.py`。R55/G13 仍按 O09 本轮跳过，未随 R12 改 scope。
 
-**成员（调度单元 + 债）**：G06(R62)←G05；G07(R17/R20)←G07a🔒；G08(R15/R17/R20)与 G07 同原子；G12(R12)←G11；G13(R55)⏸**本轮跳过，仅保留暂停占位**；G19(R01+R04)←GF1；G20(R59)←GF1；G24(R49 含 G25 旁支 + R50 + R51)；G40(R46)←G40a🔒⏸；G30(R34+R35)已 fixed；G36(R37)；G39(R52+R25)已 fixed，按 O07 仅 KEEP 注释、不删 impl/垫片、不新建迁移测试。
+**成员（调度单元 + 债）**：G06(R62)←G05；G07(R17/R20)←G07a🔒；G08(R15/R17/R20)与 G07 同原子；G12(R12)←G11；G13(R55)⏸**本轮跳过，仅保留暂停占位**；G19(R01+R04)←GF1；G20(R59)←GF1；G24(R49 含 G25 旁支 + R50 + R51)已 fixed；G40(R46)←G40a🔒⏸；G30(R34+R35)已 fixed；G36(R37)；G39(R52+R25)已 fixed，按 O07 仅 KEEP 注释、不删 impl/垫片、不新建迁移测试。
 
-**是否原子**：簇内强原子——G07/G08（R17/R20 跨 service+support 同原子提交）；G19（R01 先删→R04 后收口必同 PR）；G24（R49 主体 + G25 旁支 + R50/R51 一次原子 diff 从大行号往小删）；G39 只做 O07 已裁的保留注释动作，历史“迁测试+删 impl+删 R25 垫片”路线作废不执行；G12 单独穿单份 `_normalize` 白名单，G13/R55 本轮不随 G12 改。跨成员无序（除门控前置）。
+**是否原子**：簇内强原子——G07/G08（R17/R20 跨 service+support 同原子提交）；G19（R01 先删→R04 后收口必同 PR）；G24 已按「R49 主体 + G25 旁支 + R50/R51 一次原子 diff」执行完，后续禁再按旧锚点重复施工；G39 只做 O07 已裁的保留注释动作，历史“迁测试+删 impl+删 R25 垫片”路线作废不执行；G12 单独穿单份 `_normalize` 白名单，G13/R55 本轮不随 G12 改。跨成员无序（除门控前置）。
 
 **为何这批**：每个成员恰有一个 ROOT 承重门或 GF1/G11 前置；前置绿后即可落，不涉身份族大收敛（那在 Batch-C）。
 
@@ -223,8 +223,8 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 - **G40(R46)🔒⏸**：←G40a（LB08 注释先落）；R46 删 `:162-164` 按符号 grep 重定位（LB08 插行后下移）；**同名陷阱 `v4_sanitizers.py:37 _safe_identifier` 活函数**（按符号名跨文件删→v4 迁移 NameError），文件+行号+符号三锁定。
 - **G12(R12)🟢 fixed**：←G11；已保留 `:84` 坏时间行过滤，仅补 collector；`:54` 与 `:328-334` 双补 dropped_count 并穿 `_normalize` 白名单；爆点 #14 已处理，contract available=False 分支显式保留 `dropped_count` / `critical_chain_partial`。JS 状态归一也保留新键，R55 scope 未做。
 - **G13(R55)🟡⏸**：←G11；**O09 已裁本轮不做**，这里只保留暂停占位。重启条件=怀疑者过 PHASE0 §6 三问 + R11/R63 单份化前置就绪；未重启前不得随 G12 同改 `_normalize`。三问原文见 §3 O09：① 当下债 vs 在途中间态、② `:385 None 回退`是否有意、③ 裸删 vs 补 scope 标记；禁破坏 `:385 None 回退` + support:55-56 分流判据。
-- **G24(R49+R50+R51)**：一次原子 diff 从大行号往小删（R51 删 `:28-35` 致下移 7~8 行）；R51 **两续命测试整体退场，禁迁移禁保留 `:25` 兜底断言**（保留=复活 P4 静默回退）；R50 保 `import math:3`；R49 主体 `parse_dispatch_rule` 等 def 真宿主 **`core/algorithms/dispatch_rules.py`**（非 greedy 子目录，按符号 rg 定行）；收口点 `schedule_params:277/346`+`optimizer_config:166/189` loud raise 已在位（只读确认）。
-- **R49-self 执行口径（红队 RT3-P02 采纳·同债拆两批须钉同提交序）**：R49 的 G25 旁支不再作为 Batch-A 独立动作；并回 G24（Batch-B 主体 `dispatch_rules.py:28-35`）一次原子执行。动手前按当前盘 `rg parse_dispatch_rule` 校准真实调用图，删后 `rg parse_dispatch_rule` 全仓零生产残引用方算闭合。
+- **G24(R49+R50+R51)🟢 fixed**：2026-06-08 已按一次原子 diff 执行，旧「从大行号往小删」是执行前口径。已删除 R49 5 行死别名、R50 `mean_positive` + `import statistics`、R51 `parse_dispatch_rule` / `parse_strategy` 与两份 case-insensitive 续命测试；R51 `:25` 静默兜底断言未迁移未保留；R50 `import math` 保留；R49 活近亲 `evaluation._parse_due_date_state` / `sgs_scoring._parse_due_date` 未动；收口点 `schedule_params:277/346` + `optimizer_config:166/189` loud raise 只读确认在位。
+- **R49-self 执行口径（红队 RT3-P02 采纳·同债拆两批须钉同提交序）🟢 fixed**：R49 的 G25 旁支已并回 G24 一次原子执行。现盘禁再按旧 Batch-A/G25 锚点单独施工；后续复核只看全仓是否还有 `parse_dispatch_rule` / `parse_strategy` / R49 死别名残留。
 - **G20(R59)🟡**：←GF1；F1 落地后才收口（裸收口撞续命测试 `:247/:250`）；保留 blank 短路 `:62-63`。
 - **G30(R34+R35)🟢 fixed**：2026-06-08 已按 O10 纯删口径闭合。已删除 `schedule_repo.py` 旧 `get_version_time_span` / `list_between` / `list_overlapping_with_details` / `list_dispatch_rows_with_resource_context` 四个死方法；`benchmark_fjsp.py` 改指 repo 层既有 `SchedulePlanQueryRepository.get_plan_time_span(version=..., source_table=SOURCE_SCHEDULE, candidate_id=None)`；facade 仅保留两条活方法返回类型断言（现 `test_schedule_service_facade_delegation.py:29-33`）。后续禁再按旧删点施工，活近亲现为 `schedule_repo.py:36` / `:79`。
 - **G06(R62)🟡**：←G05；按符号 `_resource_pair_payload`+`!=` 重 grep 禁照抄行号；**payload+dict+模板（`!=`副行 + title 改回 `_label`，爆点 #5：title 第四处 Jinja undefined→`title=""` UI 降级）+xlsx 四处同 commit**；收口面**零现成断言须先写 3 套 parity 快照**（升为硬前置门非建议）；禁碰 `:58-236` 护栏段 + 禁删 state 层 latest_*/counterpart_* 真身份键。
@@ -741,7 +741,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 | 🟠 高 | `gantt_service.py` | R10+R55(+R34/R21/R63/R11/R12 弱) | 同 PR 物理串行；R10 fixed 后 grep `resolve_version:60`（旧 :64） |
 | 🟠 高 | `scheduler_navigation_publish.py` | R58(承重邻)+R54+R44 | G04 硬序 R58→R54→R44（重 rg :6/:36-37）|
 | 🟠 高 | `web/.../scheduler_workbench_links.py` | R42+R54(跨簇)+R60 邻 | E03 硬序 R54 先→R42 rebase；禁动 dict guard 段/禁翻 fail-open |
-| 🟠 高 | `algorithms/dispatch_rules.py` | R49+R50+R51 | G24 一次原子 diff 从大行号往小删；保 `import math:3` |
+| 🟠 高 | `algorithms/dispatch_rules.py` | R49+R50+R51 ✅ fixed | G24 已一次原子 diff 闭合；保 `import math` 与 `build_dispatch_key`，禁再按旧行号重复删 |
 | 🟠 高 | `schedule_payload_contract.py` | R01+R04 | G19 强序 R01 先删(缩 R04 收口面 6→5)→R04 后收口；必同 PR |
 | 🟠 高 | `data/repositories/schedule_repo.py` | R34+R35 | O10 已裁纯删；G30 一原子 diff 自下而上 |
 | 🟡 中 | `config_snapshot.py`+`schedule_config_runtime_coercion.py`(双栈)| LB07(承重)+R71+R47 | G15 硬序 LB07 注释+parity 先→R47+R71 同批 |
