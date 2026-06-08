@@ -226,11 +226,34 @@ def test_report_numeric_helpers_keep_empty_values_but_reject_bad_service_numbers
     from core.services.report.execution_review import ExecutionReviewMixin
     from core.services.report.exporters import export_utilization_xlsx
     from core.services.report.report_engine import ReportEngine
+    from core.services.report.report_number_parsing import parse_report_int, parse_report_nonnegative_int
     from web.routes import reports_export_support
     from web.viewmodels import scheduler_reports_workbench as reports_vm
 
     assert reports_vm.decorate_utilization_rows([{"machine_id": "M1", "utilization": ""}], {}, resource_type="machine")[0]["utilization_percent"] is None
     assert reports_vm.decorate_utilization_rows([{"machine_id": "M1", "utilization": 0.125}], {}, resource_type="machine")[0]["utilization_percent"] == 12.5
+    assert reports_export_support.report_nonnegative_int("", field="导出行数") == 0
+    assert (
+        parse_report_nonnegative_int(
+            None,
+            field="导出行数",
+            label="导出行数",
+            source_label="报表导出数据",
+            blank_default=5,
+        )
+        == 5
+    )
+    assert (
+        parse_report_nonnegative_int(
+            "   ",
+            field="导出行数",
+            label="导出行数",
+            source_label="报表导出数据",
+            blank_default=5,
+        )
+        == 5
+    )
+    assert parse_report_int("2000.0", field="版本号", label="版本号", source_label="报表导出数据") == 2000
 
     with pytest.raises(reports_vm.ReportPresentationValueError, match="利用率"):
         reports_vm.decorate_utilization_rows([{"machine_id": "M1", "utilization": "坏数据"}], {}, resource_type="machine")

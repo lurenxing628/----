@@ -3427,7 +3427,7 @@
   "id": "R59",
   "bucket": "B05",
   "home": "B05",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P5",
   "partition": "delta-report-core",
@@ -3441,15 +3441,15 @@
   "all_files": [
    "report_number_parsing.py"
   ],
-  "current_evidence_2026_06_05": "report_number_parsing.py:9 _INT_TEXT_PATTERN=re.compile(r'^[+-]?\\d+$') + :54 _parse_plain_report_int(用该私有正则,拒 '2000.0')仍原样;未收口到 parse_required_int(reject_integer_float)且 F1 不存在;无『刻意拒整值 float』注释,parse_report_nonnegative_int 仍走私有正则路径",
+  "current_evidence_2026_06_05": "2026-06-08 B执行终态:G20/R59 已 fixed。report_number_parsing.py 已删除 import re、_INT_TEXT_PATTERN、_parse_plain_report_int；parse_report_nonnegative_int 保留 blank→blank_default 短路，非 blank 委派 parse_required_int(..., min_value=0, reject_integer_float=True)，并继续包装成原报表友好 ValidationError 文案；parse_report_int / __all__ 未动。测试已在 test_web_silent_fallback_contract.py 钉住 blank default、'1.0'/1.0/2.000 仍 raise，以及 parse_report_int('2000.0') 兄弟语义不被误改。",
   "cluster": "ISOLATED",
   "same_file_siblings": [],
   "interference_edges": [],
   "verdict": null,
   "adv_precondition": null,
-  "planned_batch_hint": "Batch-6(B05)。桶内须排在 R04 的 F1 之后(互锁)。独立文件，F1 落地后即可。",
-  "planned_deps_hint": "**先做：R04 的 F1(strict_parse reject_integer_float)**——这是 R59 与 R04 的隐藏互锁(Phase1 R59 fix_invalidation)：R59 不等 F1 直接收口现 parse_required_int 会撞自己 :67/:70/:77 测试。无同文件跨桶边(独立文件)。co-change 组(Phase1)：R04/R09/R28。注意：同文件兄弟 parse_report_int(非债)当前也经 parse_required_int 接受 '2000.0'，**不在本债范围，勿顺手改**(它是别的 field 语义)。",
-  "planned_fix_hint": "**强依赖 R04 的 F1**(strict_parse 加 reject_integer_float)。落地：把 parse_report_nonnegative_int 改为委派——`number=parse_required_int(value, field=label, min_value=0, reject_integer_float=True)`，包在与 parse_report_int:48-51 同款 try/except ValidationError→友好消息(label/source_label)模式里，**保留** :44-47 的 blank_default 短路(blank→return blank_default，因 strict_parse 对 blank raise，此短路必须留)。然后删 _parse_plain_report_int(:54-70) ",
+  "planned_batch_hint": "Batch-B/G20 已执行。R59 独立文件，已在 GF1 默认 False + strict 模式前置满足后收口。",
+  "planned_deps_hint": "已满足：R04/GF1 已先落地并证明默认 False；R59 已按 G20 收口。同文件兄弟 parse_report_int 仍接受 '2000.0'，本次未顺手改。",
+  "planned_fix_hint": "2026-06-08 已执行：parse_report_nonnegative_int 先保留 blank→blank_default 短路，非 blank 委派 parse_required_int(value, field=label, min_value=0, reject_integer_float=True)，捕获 ValidationError 后继续抛报表友好文案；已删除 _parse_plain_report_int、_INT_TEXT_PATTERN 和孤儿 import re。",
   "phase1_blast": {
    "co_change_within_group": [
     "R04",
@@ -3457,21 +3457,21 @@
     "R28"
    ],
    "contract_topology_tests": [
-    "tests/web_pages/test_web_silent_fallback_contract.py(灵魂线续命:坏数据必须 raise;:67/:70 钉死 '1.0'/1.0 也要 raise)"
+    "tests/web_pages/test_web_silent_fallback_contract.py(灵魂线续命:坏数据必须 raise；已补 blank_default 守卫，继续钉死 '1.0'/1.0/2.000 raise)"
    ],
-   "downstream_effect": "导出行数档位(direct/stream/reject)+ web 导出表单整数参数。私有正则_INT_TEXT_PATTERN 拒任何带小数点串,收口点 parse_required_int(strict_parse:46-58)经 float() 接受 3.0→3。",
-   "fix_invalidation_risk": "⚠️**与 R04 互锁的隐藏冲突**:若 R59 直接收口到现有 parse_required_int,会**违反自己的续命测试**——regression_web_silent_fallback_contract.py:67/70 要求 '1.0'/1.0 抛错,而 parse_required_int 接受整值 float(strict_parse:56 abs<=1e-9→3.0通过),测试由绿变红。故 R59 收口**依赖 R04 先给 strict_parse 加'拒整值float'严格模式**;在该模式落地前,R59 只能保留私有正则+补 parity 测试钉死差异,不能裸收口。",
+   "downstream_effect": "导出行数档位(direct/stream/reject)+ web 导出表单整数参数。当前已通过 parse_required_int(..., reject_integer_float=True) 保持导出行数字段拒绝整值 float 的语义。",
+   "fix_invalidation_risk": "已消解：GF1 已先落地，R59 收口显式传 reject_integer_float=True；blank 短路已迁出保留；友好错误文案继续由 report_number_parsing 包装。",
    "id": "R59",
    "lb_colocation_danger": "none",
-   "location_status": "✅准 core/services/report/report_number_parsing.py:9 _INT_TEXT_PATTERN=re.compile(r'^[+-]?\\d+$')、:54 _parse_plain_report_int、:73 parse_report_nonnegative_int(同文件 parse_report_int:36 委派 parse_required_int、parse_report_float:12 委派 parse_required_float——三兄弟唯它例外手搓正则)",
+   "location_status": "✅2026-06-08 已 fixed：_INT_TEXT_PATTERN 与 _parse_plain_report_int 已删除；parse_report_nonnegative_int 当前在 report_number_parsing.py:51，委派 parse_required_int(..., reject_integer_float=True)",
    "pathology": "P5(语义漂移:私有正则只认纯整数,拒'2000.0')",
-   "planned_fix_class": "需先扩收口点(依赖 R04 的 strict_parse reject-integer-float 模式)→ 再收口;否则补注释+parity测试钉死'拒2000.0'差异(暂不收口)",
+   "planned_fix_class": "已完成：依赖 GF1 后收口到 parse_required_int(strict integer-float reject 模式)，保留 blank 短路并删除私有正则",
    "prod_consumers": [
     "core/services/report/report_engine.py:29 import,:72/81/82/86(_export_nonnegative_int → 导出行数/direct_max/stream_max 档位决策)",
     "web/routes/reports_export_support.py:10 import,:45(包装 report_nonnegative_int:44)"
    ],
    "test_consumers": [
-    "tests/web_pages/test_web_silent_fallback_contract.py:48/61/64/67/70(钉死 report_nonnegative_int '1.5'/'1.0'/1.0/'-1' 全 raise ValidationError match'导出行数')"
+    "tests/web_pages/test_web_silent_fallback_contract.py(钉死 report_nonnegative_int blank default，且 '1.5'/'-1'/'1.0'/1.0/ReportEngine '2.000' 全 raise ValidationError match'导出行数')"
    ]
   },
   "owner_pending": false,

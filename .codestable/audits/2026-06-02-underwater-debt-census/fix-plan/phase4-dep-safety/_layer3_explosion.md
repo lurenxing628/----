@@ -41,7 +41,7 @@
 |---|---|---|---|---|---|
 | R09 | PARSE-INT | 🔴🔴🔴·🔴🔴 | 🔴 | A/B 副本 `int(value)`（5.9→5/True→1）vs C 收口点 STRICT（5.9→None/True→None）；按「字节对齐 A/B」新建宽松 sink 把 C 一并收口 → C 经用户输入路径（request.args schedule_id）放宽 → 5.9 当 op_id=5 进 `_row_matches_feedback_target` 误命中相邻行 → 现场记录静默写到错任务 | owner 先裁 C 取严格 None 还是放宽 A/B（裁前不进批次）；收编只动 A/B 两 Optional 副本收口到已存在 scope.py:9，C 保持不动；分两路 parity（test_AB 零漂移 + test_C_float_bool 钉 5.9/3.0/True）；STRICT 4 处一字不碰；persistence_errors.py:13 归 R04 禁区不归 R09 收编面（矛盾指令，见回炉）；B 副本 `or 0` 外层兜底审计（5.9→int→5 变 None or 0=0 塌成 0 另一条坏数据流）；强串行 R07/R08 后重 grep。5 透镜全红，最高置信红。 |
 | R04 | PARSE-INT | 🔴🔴🔴·🟡🟡 | 🟢 fixed | 旧爆点：F1 `reject_integer_float` 默认 True 会让 sgs_graph 等调用方 3.0 由接受变 raise；ValidationError 非 ValueError 子类，漏改 except 会让脏 op_id 上抛炸链 | 2026-06-08 已按 G19 fixed：GF1 默认 False 且有 parity；R01 先删后 R04 收口，剩余 5 处调用点均捕获 ValidationError；哨兵 B/C 只注释+parity，LB08 文案/正则桥与 STRICT-4 未动。 |
-| R59 | PARSE-INT | 🟡🟡·🟡🟡 | 🟡 | F1 前裸收口 `'1.0'`/`1.0`→1 撞续命测试 :247/:250 raise（CI 显性红良性）；删 _parse_plain_report_int 漏迁 blank 短路 → 导出空值由降级 0 变报错中断 | F1 先落+默认 False 后委托 reject_integer_float=True；保留 blank 短路（:62-63）；文案漂移 owner 认账（friendly 串→strict 串，match 仍过但可观测变）；禁动兄弟 parse_report_int:36。 |
+| R59 | PARSE-INT | 🟡🟡·🟡🟡 | 🟢 fixed | 旧爆点：F1 前裸收口 `'1.0'`/`1.0`→1 撞续命测试 :247/:250 raise；删 _parse_plain_report_int 漏迁 blank 短路会让导出空值由降级 0 变报错中断 | 2026-06-08 已按 G20 fixed：GF1 已先落且默认 False；R59 保留 blank 短路，非 blank 委派 `parse_required_int(..., min_value=0, reject_integer_float=True)` 并继续包装友好文案；已删除私有正则与私有解析函数；禁区 `parse_report_int` / `__all__` 未动。 |
 | R28 | PARSE-INT | 🟢🟢·🟢— | 🟢 | 2026-06-08 已 fixed：_safe_float 已保名收口到 parse_finite_float，静默吞错→loud raise 正方向，上游已 parse_optional_float 严校 | 已用 allow_none=True；`pytest -k test_no_new_local_parse_helpers` 证明 fitness 白名单保留；未动消费点工时兜底。 |
 | R01 | PARSE-INT | 🟢🟢·🟢— | 🟢 fixed | 死簇闭合自环零外部边，误删均 loud（ImportError/SyntaxError/SP05 红） | 2026-06-08 已 fixed：`_iter/count/has` 死链、payload `__all__`、两层旧导出和 SP05 续命断言已同一原子清理；旧门面只剩 `persist_schedule`。 |
 | R08 | PARSE-INT | 🟡🟡🟡·🟡🟢 | 🟡 | 死分支 (T,F) 不可达依赖 service:127≡:130 同源不变式（无守卫即脆）；删死分支必保 feedback_write_enabled 参数（:234 活消费），误删参数→「填写实际」按钮门禁塌缩静默放开误填现场记录 | owner 裁「是否总开关预埋」；先钉 :127≡:130 同源守卫；候选 A 只删 :25/:227-228/:367-368 保参数；等本文件在途 task_key 重构 diff 落定再动（行号已漂+1~6）；R08→R09 串行。 |
@@ -189,11 +189,11 @@
 
 ### tier2 簇
 
-**C-PARSE-INT（R09🔴 / R04🟢fixed / R59🟡 / R28🟢 / R01🟢fixed / R08🟡）**
-- 原子性最终判定：G19 已 fixed，R01 先删→R04 按新行号收口同 PR已闭合；F1（R04+R59 共用）已默认 False 自带 parity，后续继续门控 R59；R08 等在途 task_key 重构落定再动。
+**C-PARSE-INT（R09🔴 / R04🟢fixed / R59🟢fixed / R28🟢 / R01🟢fixed / R08🟡）**
+- 原子性最终判定：G19 已 fixed，R01 先删→R04 按新行号收口同 PR已闭合；G20 已 fixed，R59 在 F1 默认 False 前置满足后收口并保留 blank 短路；R08 等在途 task_key 重构落定再动。
 - 承重禁区（按符号）：STRICT 真 loud raise scope:9 + feedback_support:161（auto_assign:114/public_errors:167 是 →0 哨兵，分类回写见回炉#6）；R04 哨兵 B/C 仅注释禁改 raise + LB08 文案/正则桥；R08 feedback_write_enabled 参数（:234 活消费）+ service:127≡:130 同源不变式。
 - 必须先落 parity/注释：R09 两路 parity（test_AB + test_C_float_bool 含 B 副本 `or 0` 审计）；R04 F1 含 sgs_graph 风格调用断言；R08 先钉 :127≡:130 守卫。
-- 测试迁移序：R59 先 parity 钉 '1.0' raise + blank 短路→F1 后收口；R01 删函数+删 SP05 断言已在 G19 同提交完成。
+- 测试迁移序：R59 已在 G20 中钉住 '1.0'/1.0 raise + blank 短路并完成 F1 后收口；R01 删函数+删 SP05 断言已在 G19 同提交完成。
 
 **C-GANTT（R10🟢 / R11·R63🟢 / R12🟢 / R55🟡⏸）**
 - 原子性最终判定：A1{R11≡R63}已 fixed 且已先于 A2{R12}/A3{R55}；R12 已 fixed 并穿单份 _normalize + contract unavailable 分支；R55 后续按 O09 重启条件另行处理；R10 已 fixed。
