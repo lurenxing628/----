@@ -122,7 +122,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 
 **前置安全网（逐条点名，含 Layer3 强制前置）**：
 - **GF1·reject_integer_float 是「ROOT 新建受控参数」非「现有参数改默认值」**（强制前置；红队第1轮 RT1-P0-1/RT2-问题2 采纳纠定性）：**全仓 rg 零命中——`reject_integer_float` 当前不存在；真符号 `core/shared/strict_parse.py:81 def parse_required_int(value, *, field, min_value)` 无任何 float 拒绝参数，文件仅 130 行无 `:46` 锚点（旧锚点 `:46` 作废）**。GF1 实为「在 `core/shared/strict_parse.py:81 parse_required_int` 新增 `reject_integer_float: bool = False` kwarg（按符号 rg 定真实行，弃 `:46`）+ 透传链 + parity」三件套，**不是确认默认值**。加参数 + 默认 False 与「ROOT 纯增量零结构」自洽（不改现有调用方行为），但执行者须知是新增；落点显式登记 ①新建 kwarg 落 `core/shared/strict_parse.py:81` + ②确认 `core/services/common/strict_parse.py` 是否同步该参数 + ③8 处 algorithms 调用方（sgs_graph 等）的 `parse_required_int` 调用确认默认 False 不回归。自带 parity `True→3.0 raise / False→3.0 接受`，含 sgs_graph 风格 `parse_required_int` 调用断言。**默认 True 会炸 sgs_graph 等 8 处 algorithms 调用方**（3.0 由接受变 raise 排程静默回归）。门控 G19(R04)/G20(R59)。O38 已裁合规：加 kwarg 默认 False 非新建模块。
-- **G33a·R05 扩 collar（含爆点 #19/#20 闭合）**：步1 扩 `normalize_schedule_resource_filter` 成 team 谓词产出点——接口含 `include_team_context` 信号（步3 搬谓词漏带该布尔即 `no such column: o.team_id`，爆点 #19）；放开空 id=全量 + 中文注释「id 空→全量（故意）」；**给派工轨单独入口，禁裸改 `:65-66 raise`**（双轨共用收口点，裸改污染超期/明细轨 + 报表轨，爆点 #20）；collar 只产 SQL fragment 文本 + 参数，**禁反向 import data SQL builder**（model→data 越层 + 环，分层违规）。步2 落 5 条 parity（team-only / operator-空-全量 / machine-空-全量 / team-空-裁断 / bad-raise）。
+- **G33a·R05 扩 collar（含爆点 #19/#20 闭合）**：步1 扩 `normalize_schedule_resource_filter` 成 team 谓词产出点——接口含 `include_team_context` 信号（步3 搬谓词漏带该布尔即 `no such column: o.team_id`，爆点 #19）；放开空 id=全量 + 中文注释「id 空→全量（故意）」；**给派工轨单独入口，禁裸改 `:65-66 raise`**（双轨共用收口点，裸改污染超期/明细轨 + 报表轨，爆点 #20）；collar 只产 SQL fragment 文本 + 参数，**禁反向 import data SQL builder**（model→data 越层 + 环，分层违规）。步2 落 5 条 parity（team-only / operator-空-全量 / machine-空-全量 / team-空-全量 / bad-raise）。
 - **G27p·R22 parity 升级（含爆点 #22/#23 闭合）**：升「键集 + 取值」exact 双断言——对 no_history 实参断言 `result_summary_parse_failed` 具体取值（爆点 #22：`_summary_unavailable(None,·)=(True,'排产摘要缺失')` 致 False→True 翻转，键集 parity 抓不到）；加「bad-role 仍抛 `field=plan_role`」断言（爆点 #23：删 view_context:74 破 R21 wrapper 精度唯一上游）；`evidence_contract:194` 升 24 键 exact（superset 双重逃逸口）。**view_context:74 `normalize_plan_role` 绝不删/绕过**。
 - **G05·LB02/LB05 注释**：仅 `:209` 上方 + 五硬钉（`:58`/`:180-181`/`:191-192`/`:221`/`:236`）旁补注释；既有回归即 **`tests/operation_execution/test_execution_review_identity_guard.py`（盘上 173 行，4 组反例全绿，与 R56 共用该护栏，经 test_registry:289 注册，核存在用 `rg <name> tools/test_registry*` 非 `fd`）**；注释须交叉引用 web 真定义宿主（`reports_request_support.py:75` / `reports_execution_review_context.py:8`，**非 reports_page_support**）+ v19 DB CHECK 双列（爆点 #6/#18：读侧无 DB CHECK 兜底，此硬钉是读路径唯一最后一道）+ schema:284 candidate_rows 第二表。
 - **G07a·LB01 注释**：两处「我是故意的」注释先落且锚符号上方（门控整个 service 文件删改）；禁区 `:369-374`/`:381-382`/`:471-473` 只补注释；**文案禁出现「写死冗余」式措辞**（埋删除诱因）。
@@ -147,7 +147,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 **收口行为差异检查项（None vs raise 反例）**：
 - GF1：`reject_integer_float=False` 时 `3.0→接受`（现状），`=True` 时 `3.0→raise`（R04/R59 收口后行为），parity 双向各一例。
 - R22 parity：no_history 实参 → `result_summary_parse_failed` 取值（False[旧] vs True[收口后]）；bad-role → 抛 `field=plan_role`（保）vs 静默归 adopted（破，禁）。
-- R05 parity：team-only → team 双 join 谓词在；operator/machine 空 id → 全量（非 raise）；team 空 → 裁断；bad → raise。
+- R05 parity：team-only → team 双 join 谓词在；operator/machine 空 id → 全量（非 raise）；team 空 → 全量（非 raise，按 O16 空班组=看全部）；bad → raise。
 - LB07：`非dict→None 不抛` / `count 坏值→1 不抛` / `空 choices→True` / `except continue 静默跳` / `_handle_missing_value` INHERIT_LEGACY 两栈差异逐字保真。
 
 **批后门禁**（措辞遵 §1.1 ⚠门禁可执行性总纲）：
@@ -295,7 +295,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 - R22：no_history result_summary_parse_failed False[旧] vs True[收口后]（owner 取向）；bad-role 抛 field=plan_role（保）。
 - R09：C 路 5.9→None（严格保）vs A/B 5.9→5（宽松，owner 取向）；B 副本 5.9→None or 0=0（塌 0 坏流，爆点 #12）。
 - R15：空值→None（provider 本地）vs 坏值→raise/可观测；R19 sorted 保（sha256 指纹）。
-- R05：team-only 谓词在 / 空 id 全量（非 raise）/ team 空裁断 / bad raise。
+- R05：team-only 谓词在 / 空 id 全量（非 raise）/ team 空全量（非 raise）/ bad raise。
 
 **批后门禁**：fitness 21 项全绿 + **0 分层违规（R29/R72 core→flask 禁、R05 collar model→data 禁造环、R19 repo data→service 越层禁、LB04 导入环禁）**；语义雷达 `.codestable/semantics/` 无新漂移（R54 三基数键、R22 plan_role、R09 op_id 语义均为雷达盯防概念，收敛后须降漂移不升）；v18/v19 DB CHECK 不破（R22 收口 no_history 翻转 DB 层不兜底须验注释覆盖；R09 op_id 收编不撼 OperationExecutionEvents CHECK）；本批专项契约：R54 三基数分组 parity + 第 6 手维面同步 + L5 OR 兜底反例全绿、R42 删点含 :92 + 四参逐字 parity 绿、R22 键集+取值 exact + bad-role raise 绿、R09 双路 parity（AB 零漂移 + C float/bool）绿、R05 五 parity + smoke:177-194 绿、R47 blank+invalid 两路 degradation 绿、R19 positive_op_ids 黄金用例绿（E16 __all__ 对账已降伪串行边备查，非门）、R13 退场四处同原子（形参 :43 + 实参 :123 + 字段 + 孤儿 `_latest_events_by_scope`）删后无 TypeError、R33 facade 三步删序后 regression_config_service_component_contract 绿。
 
@@ -432,8 +432,8 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 ### R05（RESOURCE-REPO，ROOT step1/2 + Batch-C/G33 step3，3 透镜全红，爆点 #19/#20）
 - **灾难链**：collar（column_name 单列 team→空串 + SUPPORTED 无 team + :66 类型有 id 空 raise）结构表达不了承重三轴；步3 先收敛把派工读取收口到未扩 team 现状 collar→team 双 join 谓词（repo:462-463）凭空消失→班组视角静默返全量坏数据；空 id 直塞→collar:66 raise→全量视图整页 500；且 normalize_schedule_resource_filter 是双轨共用收口点（超期/明细轨+报表轨），裸改 :65-66 raise 污染另两轨；team 谓词依赖 build_schedule_detail_sql(include_team_context=True)，搬谓词漏带该布尔→no such column: o.team_id。
 - **旧计划为何炸**：旧计划「步3 先收敛收口到现状 collar」——collar 没扩 team 谓词，搬谓词即消失；裸改 :65-66 污染另两轨；漏带 include_team_context 布尔即 SQL 报错。
-- **修正安全路径（硬序不可换）**：① 步1 扩 collar（team 谓词接口含 include_team_context 信号 + 放开 id 空=全量 + 中文注释，禁 except 吞错/默认空串静默放行，给派工轨单独入口禁裸改 :65-66 raise）；② 步2 落 5 条 parity（team-only/operator-空-全量/machine-空-全量/team-空-裁断/bad-raise）；③ 步3 才搬 :462-463/:455/:460 进收口点；④ collar 只产 SQL fragment 文本+参数**禁反向 import data SQL builder**（model→data 越层+环）；⑤ 禁误并毗邻 `_normalize_team_axis:65`（展示轴）；⑥ 行号系统性 +1 漂移按符号 rg。
-- **owner 闸门**：collar 形态 + `(team,"")` 语义（空 team 字符串裁断 vs 全量）。
+- **修正安全路径（硬序不可换）**：① 步1 扩 collar（team 谓词接口含 include_team_context 信号 + 放开 id 空=全量 + 中文注释，禁 except 吞错/默认空串静默放行，给派工轨单独入口禁裸改 :65-66 raise）；② 步2 落 5 条 parity（team-only/operator-空-全量/machine-空-全量/team-空-全量/bad-raise）；③ 步3 才搬 :462-463/:455/:460 进收口点；④ collar 只产 SQL fragment 文本+参数**禁反向 import data SQL builder**（model→data 越层+环）；⑤ 禁误并毗邻 `_normalize_team_axis:65`（展示轴）；⑥ 行号系统性 +1 漂移按符号 rg。
+- **owner 闸门**：collar 形态 + `(team,"")` 语义已裁（O16：空班组=看全部）。
 
 > **⚠简化声明**：R69 在 _layer3_explosion §二.1 标红清单列为第 6 条，但其调度归属在 LEAF-DUP-P4 桶（未占 G## 槽位），本计划归 Batch-D；与其余 10 条（均有 G 编号原子单元）的批次性质不同，已在 §1 序列总览 ⚠简化声明登记。
 
