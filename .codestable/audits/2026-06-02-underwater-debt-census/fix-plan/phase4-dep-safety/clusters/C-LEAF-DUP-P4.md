@@ -51,10 +51,10 @@
 - 禁区: **只删 :70-72，必保 :69 的 float 转换**（误连删则坏值仍落 REAL 列退化）。生产路径不可达（service 层 `_norm_float` 已拦），改 raise 零行为影响。
 
 ### AS-7 · R53（死空操作面包屑直删）— 单成员独立
-- 成员: R53（**纯删 `core/algorithms/greedy/dispatch/batch_order.py:74` 一行 `_ = scheduled_count`**，rg 确认）。owner_pending=false。
+- 成员: R53（**2026-06-08 已 fixed**；已纯删旧 `core/algorithms/greedy/dispatch/batch_order.py:74` 一行 `_ = scheduled_count`）。owner_pending=false。
 - 原子原因: 单行纯删，ISOLATED，无 unused-arg 复发（:58 仍真用 `scheduled_count`）。
-- 禁区（正确性，非承重）: :39 形参 / :58 真消费 / :75 return，误删均被契约测试 `test_greedy_refactor_contracts.py:250` 响亮拦截。
-- Batch-16 独立叶子，可与 R61 合并为「杂项叶子删除」小提交。
+- 禁区（正确性，非承重）: 现盘 :39 形参 / :58 真消费 / :74 return（旧 :75），误删均被契约测试 `test_greedy_refactor_contract.py` 响亮拦截。
+- 终态验证: `tests/algorithm/test_greedy_refactor_contract.py` + `tests/algorithm/test_greedy_scheduler_base_date.py` 共 28 passed；`sgs.py:127` 同形态行非本债未动。
 
 ### AS-8 · R61（出生即死死簇直删 + 测试重定向）— 单成员独立（删函数+改测试同 PR 原子）
 - 成员: R61（独占 `core/services/report/report_context_filters.py`）。owner_pending=false。
@@ -140,7 +140,7 @@
 ### 非承重但「正确性禁区」（不门控批次，删时勿碰）
 - R70: `schedule_service.py:7` import 行（:217 仍用）。
 - R40: `material_repo.py:69` float 转换（只删 :70-72）。
-- R53: `batch_order.py:39/:58/:75`（形参/真消费/return）。
+- R53: `batch_order.py:39/:58/:74`（形参/真消费/return；旧 return :75 已因删 no-op 上移）。
 - R61: `_row_text:156` / `normalize_report_resource_filter:119` / `filter_downtime_*:274`（live 孪生/共享，禁删）。
 - R69: 护栏文件 except 改 loud 属灵魂线（非承重禁区），可正常改 except→loud，不受「仅注释」限制。
 
@@ -149,8 +149,8 @@ R69（坏 seq→loud）、R32（integrity except→raise）、R40（float except
 
 ## E) fixed 成员残留动作
 
-本簇成员**无一在 fixed 名单**（R68/R69/R70/R03/R32/R40/R53/R61/LB04/R41/R43 全为 planned）。fixed 项（LB06/R56/R57/R07/R16/LB03）作为 **DAG 前置已完成**，与本簇的交集仅为：
+本簇成员中 **R53 已在 2026-06-08 fixed**；R68/R69/R70/R03/R32/R40/R61/LB04/R41/R43 仍按各自状态推进。fixed 项（LB06/R56/R57/R07/R16/LB03）作为 **DAG 前置已完成**，与本簇的交集仅为：
 - **LB03/LB06** 与 LB04 同属 Batch-1 承重注释网，但改不同文件、不同行段，互不阻塞。残留动作（他簇）: LB03 缺认账注释（勿粘 §90 LB-B4 反向文案，现盘已 fail-CLOSED）、LB06 缺认账注释。**不在本簇 owner 范围**，仅记录为前置已完成。
 - **R56**（fixed，偏离铁律 3 走结构路线删字面量匹配）、**R07**（fixed，偏离错误类）需 owner 认账偏离——他簇残留，本簇无依赖。
 
-本簇内**无 fixed 成员需补认账注释**；所有承重认账注释（LB04 / R03-A）属本簇**未落的 planned 动作**，非 fixed 残留，已在 D 节列为 Batch-1 前置。
+本簇内 **R53 fixed 只需保留终态登记，无承重认账注释**；所有承重认账注释（LB04 / R03-A）属本簇**未落的 planned 动作**，非 fixed 残留，已在 D 节列为 Batch-1 前置。

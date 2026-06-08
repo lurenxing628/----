@@ -6984,7 +6984,7 @@
   "id": "R53",
   "bucket": "B17",
   "home": "B17",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P6",
   "partition": "core-algorithms",
@@ -6999,15 +6999,15 @@
    "batch_order.py",
    "run_state.py"
   ],
-  "current_evidence_2026_06_05": "core/algorithms/greedy/dispatch/batch_order.py:74 仍是 `_ = scheduled_count` 死空操作面包屑(参数真消费在 :58 _coerce_state),计划要求删此一行,未动",
+  "current_evidence_2026_06_05": "2026-06-08 B执行终态:core/algorithms/greedy/dispatch/batch_order.py 旧 :74 `_ = scheduled_count` 死空操作行已删除;现盘 :39 形参、:58 真消费、:74 return 保留;tests/algorithm/test_greedy_refactor_contract.py + test_greedy_scheduler_base_date.py 共 28 passed。",
   "cluster": "ISOLATED",
   "same_file_siblings": [],
   "interference_edges": [],
   "verdict": null,
   "adv_precondition": null,
-  "planned_batch_hint": "Batch-16(独立叶子,Phase1 §4 列 R53『删 :74 一行』)。无门控,Batch-1 后任意时点;可与 R61 合并成『杂项叶子删除』小提交,或单独落。",
+  "planned_batch_hint": "Batch-16(独立叶子,Phase1 §4 列 R53『删 :74 一行』)。2026-06-08 已 fixed;本字段仅保留历史批次归属,不表示仍待执行。",
   "planned_deps_hint": "无 — Phase1 co_change=[],fix_invalidation_risk=none。独立单文件,与本桶其余 3 条不同文件。",
-  "planned_fix_hint": "直删 :74 这一行 `_ = scheduled_count`(整行,连同其单独占行)。不碰 :39 形参声明(对外签名,benchmark/契约依赖)、不碰 :58 真消费、不碰 :75 return。非承重,不补注释。删后 scheduled_count 仍在 :58 被『用』(作为 kwarg 传入 _coerce_state),无 unused-arg 风险,无需补任何替代抑制行。",
+  "planned_fix_hint": "2026-06-08 已执行:直删旧 :74 这一行 `_ = scheduled_count`(整行,连同其单独占行)。现盘不碰 :39 形参声明(对外签名,benchmark/契约依赖)、不碰 :58 真消费、不碰 :74 return(旧 :75 上移)。非承重,不补注释。删后 scheduled_count 仍在 :58 被『用』(作为 kwarg 传入 _coerce_state),无 unused-arg 风险,无需补任何替代抑制行。",
   "phase1_blast": {
    "co_change_within_group": [],
    "contract_topology_tests": [],
@@ -7015,14 +7015,14 @@
    "fix_invalidation_risk": "none。",
    "id": "R53",
    "lb_colocation_danger": "none — batch_order.py 不在承重清单。",
-   "location_status": "✅准 — core/algorithms/greedy/dispatch/batch_order.py:74 `_ = scheduled_count`。形参 scheduled_count:39 真消费在 :58(_coerce_state→ScheduleRunState.from_legacy);:75 return 用 run_state.scheduled_count(property),与 :74 无关。注:sgs.py:127 另有一行同样的 `_ = scheduled_count`(独立,非本债)。",
+   "location_status": "2026-06-08 已fixed — core/algorithms/greedy/dispatch/batch_order.py 旧 :74 `_ = scheduled_count` 已删除。现盘形参 scheduled_count:39 真消费在 :58(_coerce_state→ScheduleRunState.from_legacy);:74 return 用 run_state.scheduled_count(property)。注:sgs.py:127 另有一行同样的 `_ = scheduled_count`(独立,非本债)。",
    "pathology": "P6:重构成 ScheduleRunState 后 scheduled_count 真消费已移入 _coerce_state,:74 是压制『未使用参数』告警的空操作面包屑,实际参数早被用。",
-   "planned_fix_class": "直删(删 :74 一行)",
+   "planned_fix_class": "已直删(删旧 :74 一行)",
    "prod_consumers": [
-    "不适用(空操作弃值行) — 参数真消费在 batch_order.py:58 (_coerce_state(scheduled_count=...)),返回真值在 :75 (run_state.scheduled_count property)"
+    "不适用(空操作弃值行) — 参数真消费在 batch_order.py:58 (_coerce_state(scheduled_count=...)),返回真值在现盘 :74 (run_state.scheduled_count property)"
    ],
    "test_consumers": [
-    "无 — :74 这行无任何测试引用;batch_order 行为由 tests/algorithm/test_greedy_refactor_contract.py、tests/algorithm/test_greedy_ordering_contract.py、tests/regression_batch_order_* 覆盖,均不依赖该 no-op"
+    "无 — 旧 :74 no-op 无任何测试引用;batch_order 行为由 tests/algorithm/test_greedy_refactor_contract.py、tests/algorithm/test_greedy_ordering_contract.py、tests/regression_batch_order_* 覆盖,均不依赖该 no-op"
    ]
   },
   "owner_pending": false,

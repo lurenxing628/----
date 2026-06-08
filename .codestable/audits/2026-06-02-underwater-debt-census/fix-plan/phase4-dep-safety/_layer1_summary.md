@@ -429,8 +429,8 @@ R40 | 真实行号: MaterialRepository.update=material_repo.py:51-82，病灶 ex
 - VERIFY: R40 | 核验: PASS | 行号复核: 一致(update=:51-82, float=:69, except=:70, 静默保留=:72, 漂移+2行属实) | 争议点: 无 | 承重误删风险: 无(lb=false, lb_no_touch=null, 未混入删除/统一/透传/加形参) | 需升级第三方裁: n。独立 grep 确认:唯一生产调用方 material_service.py:113,上游:100 _norm_float→:38 ValidationError 强校验,except 死角不可达;data 层 import 仅 core.models,方向A删except零越层;tests 零续命;owner_pending 未擅自给终态/分批次。
 
 ### R53
-- DOSSIER: R53 | 真实行号: `_ = scheduled_count`→core/algorithms/greedy/dispatch/batch_order.py:74（形参:39 真消费:58 经_coerce_state→from_legacy, return:75读property） | 漂移: 无（0行，old_location/evidence/实测三者一致） | 修法类: 直删:74整行（非承重不补注；删后 scheduled_count 仍在:58作kwarg被真用，linter不报unused-arg，无需noqa；禁区:39签名/:58真消费/:75 return） | 同文件兄弟需协调: 无（ISOLATED，siblings=[]，无干扰边，不撞行号/dict键） | 最大爆炸风险: 仅"删错行"——误删:58/:39/:75 均被现有契约测试 test_greedy_refactor_contracts.py:250 `assert==6` 响亮拦截；正确删:74零下游（两条调用路径——生产传state非None走早返回、测试传scheduled_count=5走from_legacy——删前删后return值均不变） | 与既有分析冲突: 无 | 前置: 无（独立单文件叶子，Batch-16，无门控，可与R61合并或单落） | owner_pending: n
-- VERIFY: R53 | 核验: PASS | 行号复核: 一致(:39 形参/:58 真消费/:74 死行/:75 return 四行独立 rg+read 坐实,漂移 0) | 争议点: 无 | 承重误删风险: 无(lb=false,档案给"直删"未越界,无统一/透传/加形参) | 需升级第三方裁: n
+- DOSSIER: R53 | 状态: 2026-06-08 已 fixed | 终态行号: 旧 `_ = scheduled_count` 已从 core/algorithms/greedy/dispatch/batch_order.py 删除；现盘形参:39 真消费:58 return:74 均保留 | 修法类: 已直删旧 :74 整行（非承重不补注；删后 scheduled_count 仍在 :58 作 kwarg 被真用，linter 不报 unused-arg；禁区现盘 :39 签名/:58 真消费/:74 return） | 同文件兄弟需协调: 无（ISOLATED，siblings=[]，无干扰边，不撞行号/dict键；sgs.py:127 同形态行非本债未动） | 最大爆炸风险复核: 未误删 :39/:58/:74；`tests/algorithm/test_greedy_refactor_contract.py` + `tests/algorithm/test_greedy_scheduler_base_date.py` 28 passed | 与既有分析冲突: 无 | 前置: 已满足 | owner_pending: n
+- VERIFY: R53 | 核验: PASS | 行号复核: 执行后 batch_order.py `_ = scheduled_count` 零命中；:39 形参/:58 真消费/:74 return 三行独立 rg+read 坐实；sgs.py:127 为非本债残留 | 争议点: 无 | 承重误删风险: 无(lb=false,档案给"直删"未越界,无统一/透传/加形参) | 需升级第三方裁: n
 
 ### R61
 - DOSSIER: All 12 fields written.档案落档于 `/Users/lurenxing/Documents/GitHub/----/docs/_panorama_data/phase4_dep_safety/dossiers/R61.md`。
