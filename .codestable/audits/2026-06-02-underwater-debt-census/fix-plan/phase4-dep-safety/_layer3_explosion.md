@@ -31,7 +31,7 @@
 | LB07 | CONFIG-DUAL | 🟢🔴🟡·🟡🟡·🟢🟢 | 🟡 | 30/30 双栈字段 parity 当前成立但三 helper 在 tests/ 零命中=「碰巧等价非守卫等价」；注释+扩 parity 前置门未落时，R71/R47 任何函数体改动处于「测试绿但护栏破」静默失效区；单边改 helper → 算法栈 vs 配置页栈对同字段口径静默分叉污染排产 | 两栈 @dataclass 上方补注释（对侧路径互填）+ 扩 spec_sync_contract 覆盖三 helper 逐分支（含「非dict→None 不抛」「count 坏值→1 不抛」「空 choices→True」「except continue 静默跳」逐字保真，含 `_handle_missing_value` 的 INHERIT_LEGACY 两栈不对称——见新爆点）；Batch-1 ROOT 最先落；禁区 coercion:470 置零/:71-72 等 loud raise 族/30 字段表只补注释。r1-LAYER 标红=parity 守卫缺口实证在场。 |
 | R71 | CONFIG-DUAL | 🟢🟡🟡·🔴🟡·🟡🟡 | 🟡 | 三 helper byte 等价，收口 service→core.models 合法无环；但守卫缺口下收敛若顺手把 `except continue`/`return None` 改 loud raise = 静默→loud 反转，下游降级读取从「静默丢弃」变「崩」 | 硬前置 LB07 注释+helper parity 先绿；owner 裁物理收敛 vs 仅 parity；逐字保真已存在吞错语义（改 loud 另立债）；与 R47 同批改后统一回盘；禁新建第三模块。r2-LB 标红=守卫为空时序错即静默漂移。 |
 | R47 | CONFIG-DUAL | 🟡🔴🟡·🔴🟢·🟡🔴 | 🟡 | 删死参 `_record_blank_choice_degradation` 的 raw_value 安全，但同文件 `_record_invalid_choice_degradation` 是结构孪生且 raw_value 是活参（:116/:119 读）；`raw_value=raw_value` 全栈 8 处文本逐字相同，盲 grep/sed 必误删活参 → invalid 降级证据静默丢失，且现成 blank parity 测试不覆盖 invalid 路（测试绿但护栏破） | 按调用函数名逐块手删（只删 model:88/:159/:214 + service:68/:158/:211 死点），禁全局替换/sed；禁碰 invalid 4 活实参（model:173/:225 / service:170/:222）；删后跑 blank+invalid 两路 degradation 回归；守门测试真名 `_emit_blank_required`（非 dossier 误写 `_emit_ln`）；与 R71 同批回盘。r1-LAYER/r2-LB/r3-SOUL 标红=误删活参静默降质。 |
-| R45 / R48 | CONFIG-DUAL | 🟢🟢🟢·🟢—·🟢🟢 | 🟢 | config_adapter.py 27 行死壳生产零引用，合并单提交整删 | 同提交退 sp06:15（漏退→FileNotFoundError loud）；禁碰 schedule_params.py（same_file 误标零碰撞）。 |
+| R45 / R48 | CONFIG-DUAL | 🟢🟢🟢·🟢—·🟢🟢 | 🟢 | 2026-06-08 已 fixed：旧 27 行 `config_adapter.py` 死壳已删除，当前生产/测试/工具零引用 | 旧 sp06 文件已由 A P1.1 删除，`NO_CFG_GET_TARGETS` 零命中，退行 no-op；后续只做残留 rg，禁碰 schedule_params.py（same_file 误标零碰撞）。 |
 | R31 | CONFIG-DUAL | 🟢🟢🟢·🟢—·🟢🟢 | 🟢 | WRITE_INTERNAL_ONLY 死常量三处零消费 | R33 删 common facade 不晚于 R31 删 shared 源 :9（反序→facade :11 残留 import loud ImportError）；只删 :9 禁碰 :6/:7/:8 活常量。 |
 | R26 | CONFIG-DUAL | 🟢🟡🟡·🟡—·🟢🟡 | 🟡 | 顶层 5 shim 删；误删只 loud ImportError；但 2 离线消费者（tools:17/audit:87）活引用先删即炸、CI 不跑=延迟暴露 | 晚于 R29(B05)/R33(B06)/R52(B09) 三桶收敛+R71 收口；迁 2 离线消费者（手动验证清单）；重指基数用 ~93 处/53 文件（非旧值 71）；改 SP05 BEHAVIOR_* 两字典（:20-31/:33-82）非 STRONG_*，:638 第二处不碰；owner 裁解冻。 |
 
@@ -182,7 +182,7 @@
 - 测试迁移序：R13 先 scope_read_contract（契约源头）→reschedule→生产删字段最后；R17 删 :81 死键确认 :80 活键不动、6 文件常量不碰。
 
 **C-CONFIG-DUAL（LB07🟡 / R71🟡 / R47🟡 / R45·R48🟢 / R31🟢 / R26🟡）**
-- 原子性最终判定：LB07 注释+扩 parity 是 R71 物理收敛/R47 删参的唯一准入门 Batch-1 ROOT 先落；R47+R71 同批改后统一回盘（禁按旧行号核 :470/:153 禁区）；R45≡R48 合并单提交。
+- 原子性最终判定：LB07 注释+扩 parity 是 R71 物理收敛/R47 删参的唯一准入门 Batch-1 ROOT 先落；R47+R71 同批改后统一回盘（禁按旧行号核 :470/:153 禁区）；R45≡R48 已 fixed，不再施工，旧 sp06 锚点为 no-op。
 - 承重禁区（按符号）：coercion `graph_downstream_weight=0` 置零(:470) + loud raise 族(MISSING_POLICY_ERROR:71-72 等按符号语义认定非行号) + 30 字段锁步表 + read_runtime_cfg_raw_value 入口 + `_handle_missing_value` INHERIT_LEGACY 两栈不对称（新爆点，须纳 parity）；R47 invalid 4 活实参 + collector.add(blank_required)；R31 :6/:7/:8 活常量。
 - 必须先落 parity/注释：LB07 三 helper 逐分支 + `_handle_missing_value` 真值表逐字保真（含「非dict→None 不抛」「count 坏值→1 不抛」）；R47 守门真名 `_emit_blank_required`（非 `_emit_ln`）。
 - 测试迁移序：R31/R33 删序（R33 删 facade 不晚于 R31 删源）；R26 晚于 R29/R33/R52 三桶收敛 + 迁 2 离线消费者。

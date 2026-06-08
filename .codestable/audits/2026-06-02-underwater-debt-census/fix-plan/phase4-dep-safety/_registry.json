@@ -2309,7 +2309,7 @@
   "id": "R45",
   "bucket": "B03",
   "home": "B03",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P6",
   "partition": "core-models",
@@ -2325,7 +2325,7 @@
    "regression_sp06_no_duplicate_defs.py",
    "schedule_params.py"
   ],
-  "current_evidence_2026_06_05": "core/algorithms/greedy/config_adapter.py 仍存在(实测 27 行未删),:10 CriticalConfigReadResult/:16 read_schedule_config_value/:26 read_critical_schedule_config 原样;grep 全仓三符号生产零引用(死壳成立)但文件未删,tests/regression_sp06_no_duplicate_defs.py:15 仍把该路径列入 NO_CFG_GET_TARGETS,未退。",
+  "current_evidence_2026_06_05": "2026-06-08 B 执行终态补登: core/algorithms/greedy/config_adapter.py 已由 f0443fd9 删除;CriticalConfigReadResult/read_schedule_config_value/read_critical_schedule_config/config_adapter 在 core/web/data/tests/tools 当前零命中;tests/regression_sp06_no_duplicate_defs.py 已由 A P1.1 删除,NO_CFG_GET_TARGETS 全树零命中,原旧 sp06 清单同步步骤已变为 no-op;core/algorithms/greedy/schedule_params.py 仍存在且本次未触碰。R45 与 R48 同一动作已完成。",
   "cluster": "C01",
   "same_file_siblings": [
    "R48"
@@ -2370,28 +2370,28 @@
   ],
   "verdict": null,
   "adv_precondition": null,
-  "planned_batch_hint": "Batch-5(B03,与 R48 合并)。独立最早可落、零 LB 耦合,可视调度提前到 Batch-1 之后任意点。",
-  "planned_deps_hint": "Phase1 边:R45→R48(同一物理文件的两种叙述,合并为一次整文件删除)、co_change_within_group=[R48]。与 LB07/R71/R47 双栈收敛【正交】(adapter 只 import FROM model 的 ensure_schedule_config_snapshot,该符号经 schedule_params.py:98 仍活,删壳不动双栈本体、不引入跨层 import)。最早可独立落(Batch-1 之后任意时点)。",
-  "planned_fix_hint": "【删+退测试·与 R48 合并为一次整文件删除】删除 core/algorithms/greedy/config_adapter.py 整文件(R45 死壳视角与 R48 迁移残渣视角是同一物理文件,合并处理)+ 同一提交从 tests/regression_sp06_no_duplicate_defs.py:15 的 NO_CFG_GET_TARGETS 列表移除该路径(否则文件删后 path.read_text 抛 FileNotFoundError,测试红)。前置自证:grep 三符号生产零引用(已核)。",
+  "planned_batch_hint": "Batch-A/G16 已于 2026-06-08 补登 fixed；保留批次归属为历史，不再待执行。",
+  "planned_deps_hint": "已完成。R45/R48 是同一物理文件删除动作；旧 sp06 退行因 A P1.1 已删文件变为 no-op。后续不得重复删除，也不得把动作扩散到 core/algorithms/greedy/schedule_params.py。",
+  "planned_fix_hint": "已完成: core/algorithms/greedy/config_adapter.py 已删除；旧 tests/regression_sp06_no_duplicate_defs.py 路径已不存在且 NO_CFG_GET_TARGETS 零命中。历史修法为删除 adapter 死壳，非收口、非新增模块、非温柔兜底。",
   "phase1_blast": {
    "co_change_within_group": [
     "R48"
    ],
    "contract_topology_tests": [
-    "tests/regression_sp06_no_duplicate_defs.py:15（路径成员续命测试：文件被删后 path.read_text 会 FileNotFoundError，删文件必须同步从 NO_CFG_GET_TARGETS 移除此路径）"
+    "2026-06-08 终态: tests/regression_sp06_no_duplicate_defs.py 已由 A P1.1 删除,NO_CFG_GET_TARGETS 全树零命中;历史旧 sp06 清单同步步骤为 no-op。"
    ],
    "downstream_effect": "无运行期影响——纯死代码。删除消除‘本分区收口点有此外部用法’的假象。git grep 证实无任何 tests/ import 这3个符号(只有sp06的路径成员)。",
-   "fix_invalidation_risk": "none（与LB07/R71/R47的config双栈收敛互不影响——adapter只是死消费方，删它不动双栈本体）。唯一约束=须与退sp06路径同提交。",
+   "fix_invalidation_risk": "none。adapter 已删除且生产/测试/工具当前零引用；LB07/R71/R47 的 config 双栈本体与 schedule_params.py 未触碰。旧唯一约束 sp06 退路径因 A P1.1 已删文件变为 no-op。",
    "id": "R45",
    "lb_colocation_danger": "none（greedy/config_adapter.py 非承重文件）。它 import 的 ensure_schedule_config_snapshot 属LB07 model栈但仍由 schedule_params.py:98 活着，删adapter壳不影响LB07承重。",
-   "location_status": "✅准。core/algorithms/greedy/config_adapter.py:10 class CriticalConfigReadResult、:16 read_schedule_config_value、:26 read_critical_schedule_config（薄封装 ensure_schedule_config_snapshot+getattr+吞异常成error字段）。全文件27行(报告R48称‘28行’，实测27，⚠️微差)。与R48为同一文件。",
+   "location_status": "2026-06-08 fixed。旧行号 core/algorithms/greedy/config_adapter.py:10/:16/:26 仅作历史证据；当前文件已不存在，三符号与 config_adapter 字符串在 core/web/data/tests/tools 零命中。与 R48 为同一已完成删除动作。",
    "pathology": "P6，load_bearing=false。死壳：包在本分区收口点 ensure_schedule_config_snapshot 外的一层薄封装，无任何生产或测试代码调用其函数；唯一引用是 SP06 查重守卫把文件‘路径’列进清单。该facade本身(schedule_config_runtime)仍活(schedule_params.py用)，死的只是这层adapter壳。",
-   "planned_fix_class": "删+退测试（整文件删除 + tests/regression_sp06_no_duplicate_defs.py:15 从 NO_CFG_GET_TARGETS 移除该路径，同一提交）",
+   "planned_fix_class": "已完成：整文件删除；旧 sp06 退路径因测试文件已删为 no-op。",
    "prod_consumers": [
-    "生产零引用(已grep证实)"
+    "当前生产零引用；config_adapter 与三符号在 core/web/data 零命中"
    ],
    "test_consumers": [
-    "tests/regression_sp06_no_duplicate_defs.py:15（仅把文件路径列入 NO_CFG_GET_TARGETS 清单做AST重复定义/banned-helper扫描，不import任何符号）"
+    "当前测试零引用；tests/regression_sp06_no_duplicate_defs.py 已不存在，NO_CFG_GET_TARGETS 零命中"
    ]
   },
   "owner_pending": false,
@@ -2488,7 +2488,7 @@
   "id": "R48",
   "bucket": "B03",
   "home": "B03",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P3",
   "partition": "core-algorithms",
@@ -2504,7 +2504,7 @@
    "regression_sp06_no_duplicate_defs.py",
    "schedule_params.py"
   ],
-  "current_evidence_2026_06_05": "与 R45 同一物理文件 config_adapter.py 未删(27 行原样,read_schedule_config_value:16/read_critical_schedule_config:26 仍是吞异常塞 .error 字段的旧门面);替代路径 schedule_params.py 的 _snapshot_attr loud raise 虽已就位,但旧门面残渣未删除、sp06:15 路径未退。git diff b08162cd 对该文件零变更。",
+  "current_evidence_2026_06_05": "2026-06-08 B 执行终态补登: 与 R45 同一物理文件 core/algorithms/greedy/config_adapter.py 已由 f0443fd9 删除;read_schedule_config_value/read_critical_schedule_config/CriticalConfigReadResult/config_adapter 在 core/web/data/tests/tools 当前零命中;替代路径 core/algorithms/greedy/schedule_params.py 仍保留 loud raise 真相源且本次未触碰;旧 sp06 文件已由 A P1.1 删除,旧清单同步步骤为 no-op。",
   "cluster": "C01",
   "same_file_siblings": [
    "R45"
@@ -2549,29 +2549,29 @@
   ],
   "verdict": null,
   "adv_precondition": null,
-  "planned_batch_hint": "Batch-5(与 R45 合并为单次整文件删除)。独立、零 LB 耦合、最早可落。",
-  "planned_deps_hint": "Phase1 边:R45→R48(同文件同改,合并为一次整文件删除 + 退 sp06 路径)、co_change_within_group=[R45]。与 config 双栈(LB07/R71/R47)收敛正交——删 adapter 不改双栈,新路径 _snapshot_attr 已是收敛后形态。无 SP05 拓扑牵连。",
-  "planned_fix_hint": "【删+退测试·与 R45 同一次整文件删除】见 R45:删除 config_adapter.py 整文件 + 同提交退 tests/regression_sp06_no_duplicate_defs.py:15 路径。R48 与 R45 不是两次动作,是同一文件删除的两个叙述视角,务必合并为单提交,避免重复投工或半删。无 SP05 牵连(已核)。",
+  "planned_batch_hint": "Batch-A/G16 已于 2026-06-08 补登 fixed；保留批次归属为历史，不再待执行。",
+  "planned_deps_hint": "已完成。R48 与 R45 同一文件同一删除动作；旧 sp06 退行因 A P1.1 已删文件变为 no-op。与 config 双栈仍正交，schedule_params.py 禁碰。",
+  "planned_fix_hint": "已完成: core/algorithms/greedy/config_adapter.py 已删除；旧 tests/regression_sp06_no_duplicate_defs.py 路径已不存在且 NO_CFG_GET_TARGETS 零命中。R48/R45 不是两次动作，后续不得重复投工。",
   "phase1_blast": {
    "co_change_within_group": [
     "R45"
    ],
    "contract_topology_tests": [
-    "tests/regression_sp06_no_duplicate_defs.py:15（路径成员续命；删文件须同步移除）",
+    "2026-06-08 终态: tests/regression_sp06_no_duplicate_defs.py 已由 A P1.1 删除,NO_CFG_GET_TARGETS 全树零命中;历史旧 sp06 清单同步步骤为 no-op。",
     "注：tests/gate_meta/test_sp05_path_topology_contract.py 未列 config_adapter（已核，SP05只映射 config_snapshot 系列），故删此文件不撞SP05拓扑契约"
    ],
    "downstream_effect": "无运行期影响：替代路径已就位(schedule_params.py:59 _snapshot_attr：snapshot为None或缺字段即 raise ValidationError，符合灵魂暗线‘缺数据loud raise不兜底’)。删旧门面反而消除‘错误塞进结果对象绕过校验’的误用风险。",
-   "fix_invalidation_risk": "none。与config双栈(LB07/R71/R47)收敛正交——删adapter不改双栈，反而新路径 _snapshot_attr 已是收敛后形态。唯一约束=与R45同一文件、同提交删除并退sp06路径。",
+   "fix_invalidation_risk": "none。adapter 已删除且生产/测试/工具当前零引用；config 双栈与 schedule_params.py 未触碰。旧唯一约束 sp06 退路径因 A P1.1 已删文件变为 no-op。",
    "id": "R48",
    "lb_colocation_danger": "none（非承重；属 core.algorithms 分区）。adapter 是 import FROM model 方向，删它不引入跨层import、不动LB07 model栈本体。",
-   "location_status": "⚠️行号已变(轻微)：报告称‘全文件28行’，实测 core/algorithms/greedy/config_adapter.py 为27行；符号 read_schedule_config_value:16 / read_critical_schedule_config:26 ✅命中。与R45为同一文件的两种叙述(R45=死壳视角，R48=整模块迁移残渣视角)。",
+   "location_status": "2026-06-08 fixed。旧行号 core/algorithms/greedy/config_adapter.py:10/:16/:26 仅作历史证据；当前文件已不存在，三符号与 config_adapter 字符串在 core/web/data/tests/tools 零命中。与 R45 为同一已完成删除动作。",
    "pathology": "P3，load_bearing=false。整模块迁移残渣：配置校验链路重构(fd4b6a9c引入→e02cb914拆除)留下的半截迁移。新路径已全面取代旧门面——git log -S 'read_critical_schedule_config(' 确认最后调用点在 e02cb914 被删，改由 schedule_params.py:59 _snapshot_attr 内联 getattr快照+缺字段即抛ValidationError。旧门面‘把错误塞进 .error 字段’的风格与新路径‘缺字段即抛’相反，若被误用会绕过快照校验。",
-   "planned_fix_class": "删+退测试（与R45合并为一次整文件删除 + 退 sp06 NO_CFG_GET_TARGETS 路径；无SP05拓扑牵连）",
+   "planned_fix_class": "已完成：整文件删除；旧 sp06 退路径因测试文件已删为 no-op；无 SP05 拓扑牵连。",
    "prod_consumers": [
-    "生产零引用(已grep证实)"
+    "当前生产零引用；config_adapter 与三符号在 core/web/data 零命中"
    ],
    "test_consumers": [
-    "tests/regression_sp06_no_duplicate_defs.py:15（同R45，仅路径成员）"
+    "当前测试零引用；tests/regression_sp06_no_duplicate_defs.py 已不存在，NO_CFG_GET_TARGETS 零命中"
    ]
   },
   "owner_pending": false,

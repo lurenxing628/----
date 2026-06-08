@@ -19,11 +19,12 @@
   - ⚠️ 行号方向回盘(纠 R71 §5 笔误，已被 R71 对抗核验确认): R47 的 `_record_blank_choice_degradation` 在两栈中均**位于三 helper 之下**(model :83 vs helper :31/:49; service :63 vs helper :29/:45)。删 R47 死参只推移其**下方**符号，**不动三 helper 定义行**。但仍须同批统一回盘(R47 实参 :159/:214 与 helper 调用点混居函数体)。
 - **owner 裁断门(阻塞终态非阻塞分析)**: LB07/R71 owner_pending=true，owner 须先裁「永久双栈仅 parity 锁步」vs「R71 物理收敛到 model」。**LB07 注释+扩 parity + R47 直删终态修法在任一裁断下都成立可先行**; R71 物理收敛动作待裁。
 
-### 原子子簇 ASC-2 — config_adapter 整文件删 【R45 ≡ R48 单提交】
-- **成员**: R45(死壳视角), R48(整模块迁移残渣视角) — 同一物理文件 `core/algorithms/greedy/config_adapter.py`(回盘 27 行) 的**两个叙述视角，同 same_symbol=read_critical_schedule_config**。
-- **原子原因**: 非两次动作，是**一次整文件删除**。拆成两提交 → 第二次面对"文件已不存在"空操作或重复退测试。
-- **内部顺序**: 无先后，**合并单提交**整文件删 + **同提交**退 `tests/regression_sp06_no_duplicate_defs.py:15`(NO_CFG_GET_TARGETS 路径成员)。漏退 → `path.read_text` 抛 FileNotFoundError → sp06 红(响亮非静默)。
-- **独立性**: 零 LB 耦合、生产零引用、owner_pending=false → C01 簇内**最早最低风险一刀**，可 Batch-1 之后任意点先落，与 ASC-1 双栈收敛**正交**(adapter 只 import FROM model 的 ensure_schedule_config_snapshot，删它不动双栈本体; `_snapshot_attr@greedy/schedule_params.py:59` 已是收敛后 loud-raise 形态)。
+### 原子子簇 ASC-2 — config_adapter 整文件删 【R45 ≡ R48 已 fixed】
+- **成员**: R45(死壳视角), R48(整模块迁移残渣视角) — 同一物理文件 `core/algorithms/greedy/config_adapter.py`(历史回盘 27 行) 的**两个叙述视角，同 same_symbol=read_critical_schedule_config**。
+- **2026-06-08 执行终态**: `core/algorithms/greedy/config_adapter.py` 已删除；`CriticalConfigReadResult` / `read_schedule_config_value` / `read_critical_schedule_config` / `config_adapter` 在 `core/ web/ data/ tests/ tools/` 当前零命中。
+- **旧 sp06 退行口径**: `tests/regression_sp06_no_duplicate_defs.py` 已由 A P1.1 整删，`NO_CFG_GET_TARGETS` 全树零命中；历史清单同步步骤为 **no-op**，不得为补这一步恢复旧测试文件。
+- **原子原因**: 非两次动作，是**一次整文件删除**。现在已完成，后续不再重复投工。
+- **独立性**: 零 LB 耦合、生产零引用、owner_pending=false；与 ASC-1 双栈收敛**正交**。`core/algorithms/greedy/schedule_params.py` 是活文件，仍禁碰。
 
 ### 原子子簇 ASC-3 — WRITE_INTERNAL_ONLY 源定义删 【R31 独立，跨簇绑 R33】
 - **成员**: R31(死常量源定义 `core/shared/value_policies.py:9`) — 簇内**独立**，无本簇同文件兄弟(同文件兄弟 R33 在 C01 的 compat_parse.py 子簇，不在本簇)。
@@ -64,8 +65,10 @@
 - **R26↔R71 降为软相关**(转出边、非原子串行): 见上假碰撞条; R71 先 R26 后是排期天然序，非硬阻塞。
 - **LB07→R47/R71 维持承重前置硬边**(未变): parity 先于收敛, 唯一不降。
 
-### 本簇无"已修(fixed)漂移"删除
-- corrections E 节 fixed 名单 (LB03/LB06/R07/R16/R56/R57) **均不在本簇 7 成员内**，故本簇无因 fixed 而删的边。本簇 7 成员状态全部 `planned`(回盘逐一确认与 status evidence 一致)。
+### 本簇新增 R45/R48 fixed 补登
+- corrections E 节原 fixed 名单 (LB03/LB06/R07/R16/R56/R57) **均不在本簇 7 成员内**，这个判断仍保留。
+- 2026-06-08 B 执行终态补登新增 **R45/R48 fixed**：`config_adapter.py` 已删除，旧 sp06 退行因测试文件已由 A P1.1 删除变为 no-op。
+- 本簇其余成员仍按原计划归属处理，尤其 LB07/R71/R47 的承重/双栈收敛没有因为 R45/R48 fixed 而自动完成。
 
 ## D. 承重前置
 
@@ -88,12 +91,11 @@
 
 ## E. fixed 成员残留动作
 
-**本簇 7 成员中无 fixed 成员**。corrections E 节 fixed 名单(LB03/LB06/R07/R16/R56/R57)均在本簇之外。本簇全部 `planned`、回盘与 status evidence 逐一一致, 无"已修漏标/已标未修"错位:
+**本簇 7 成员中 R45/R48 已 fixed，其余成员仍按原计划处理。** corrections E 节旧 fixed 名单(LB03/LB06/R07/R16/R56/R57)均在本簇之外；2026-06-08 另补登 G16/ASC-2:
 - LB07/R71: 承重注释+helper parity 两件计划工作均未落, 6 处 def 仍逐字双栈, parity 守卫缺口实证在场。
 - R47: 两栈对称死参未删、4 调用点未改。
-- R45/R48: config_adapter.py 27 行原样、sp06:15 路径未退、生产零引用。
+- R45/R48: **已 fixed**。`core/algorithms/greedy/config_adapter.py` 已删除；旧 `tests/regression_sp06_no_duplicate_defs.py` 已由 A P1.1 删除，旧清单同步 no-op；生产/测试/工具当前零引用。
 - R26: 5 shim 全在纯转出、2 离线消费者仍老路径、SP05 仍冻结。
 - R31: 三处 :9/:11/:29 原样。
 
 **作为前置已完成的他簇 fixed 残留动作 (本簇依赖侧)**: 无——本簇无任何边指向 fixed 成员。R26 的硬前置 R29/R33/R52 与软前置 R71 均为 `planned`(非 fixed), 须在其收敛后 R26 方可动, 属正常 DAG 前置非 fixed 认账。
-

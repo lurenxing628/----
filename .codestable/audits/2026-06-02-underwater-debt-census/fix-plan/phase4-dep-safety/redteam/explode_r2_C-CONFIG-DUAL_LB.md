@@ -9,7 +9,7 @@
 - **承重禁区行（coercion.py 实测）**：置零 `:470`；loud raise 族 `:72`(MISSING_POLICY_ERROR)/`:153`/`:165`/`:208`/`:220`/`:258`/`:302`/`:385`(TypeError)。registry "73-80" 旧值作废，**禁区按符号语义认定不按行号**。
 - **R47 死参真相（关键纠偏）**：`raw_value: Any` 形参在 coercion 出现 **4 次**：`:88`(`_record_blank_choice_degradation`=死)、`:106`(`_record_invalid_choice_degradation`=活，:116/:119 读)、`:124`(`_choice_with_degradation`=活，:150/:166 读)、`:182`(`_yes_no_with_degradation`=活，:203/:220 读)。R47 只删 :88 死参 + 其 blank 分支两实参(:159/:214)。service 对称(:68 死 / :86/:128/:179 活)。
 - **R71 三 helper**：model coercion `:31`/`:49`、read `:68`；service field_coercion `:45`/`:29`、snapshot `:153`。`rg` 全 tests/ 三 helper **零命中** → 改任一函数体测试不红 = **护栏未建即破**。收口方向 `core.services→core.models` 合法（config/ 已有 config_page_outcome.py/config_field_spec.py import core.models），model 反向 import core.services **NONE** 不成环。
-- **R45/R48**：config_adapter.py 27 行，`rg` 生产/测试零符号引用，唯一 sp06:15 路径成员。
+- **R45/R48**：旧 config_adapter.py 27 行，`rg` 生产/测试零符号引用，唯一外部引用曾是旧 sp06 路径成员；2026-06-08 已 fixed。
 - **R31/R33**：WRITE_INTERNAL_ONLY 仅 3 处(shared :9 源 / common facade :11 import / :29 __all__)，common facade 37 行存在，matrix_contract:18 经 common facade import。
 - **Q3 迁移耦合**：本簇符号与 v18/v19 DB CHECK **零耦合**，Q3 不适用。
 
@@ -36,7 +36,7 @@
 ### 🟢 R45 ≡ R48（config_adapter 整文件删，单提交）
 **判定：绿（纯死叶子，零承重耦合，误删响亮非静默）。**
 - Q1/Q9：config_adapter.py 非承重、无禁区行、`load_bearing=false`；27 行生产/测试零符号引用（rg 实证）。registry 把 schedule_params.py 误标 same_file 是假边（不同文件，R45 删壳不进 schedule_params.py），zero 碰撞。
-- 唯一约束：**单提交整删 + 同提交退 sp06:15 路径成员**，漏退 → `path.read_text` 抛 FileNotFoundError → sp06 红（**响亮非静默**，CI 即捕）。`:22-23` 吞异常随整文件删除消除，**不改写为 raise**（无消费方，超范围）。与双栈收敛正交，Batch-1 后任意点可先落。
+- 唯一约束(历史)：旧 sp06 清单若仍指向已删文件 → `path.read_text` 抛 FileNotFoundError → sp06 红（**响亮非静默**，CI 即捕）。2026-06-08 终态下 adapter 已删、旧 sp06 文件已由 A P1.1 删除，清单同步 no-op。`:22-23` 吞异常随整文件删除消除，**不改写为 raise**（无消费方，超范围）。与双栈收敛正交。
 
 ### 🟢 R31（WRITE_INTERNAL_ONLY 源定义删，跨簇绑 R33）
 **判定：绿（死常量直删，唯一序陷阱是 loud 非静默）。**

@@ -20,7 +20,7 @@
 | R47 调用点 | model :155→:159 / :210→:214 ; service :158 / :207→:211 | ✅6 编辑点 |
 | R71 三 helper | `_float_matches_choice` coercion:31↔field_coercion:45 ; `_normalize_valid_texts` coercion:49↔:29 ; `_coerce_degradation_event` read:68↔config_snapshot:153 | ✅零漂移,byte-for-byte 已逐行核 |
 | R71 收口方向 | service→models 合法边已存在(config_page_outcome.py/config_field_spec.py 已 import core.models);model 栈不反向 import services | ✅不成环 |
-| R45/R48 | config_adapter.py **27 行**,符号 :10/:16/:26,except :22;生产零引用(唯一外部 sp06:15);sp06 read_text:73 | ✅死壳 |
+| R45/R48 | 旧 config_adapter.py **27 行**,符号 :10/:16/:26,except :22;生产零引用(唯一外部为旧 sp06 路径成员);sp06 read_text:73 | ✅死壳，2026-06-08 已 fixed |
 | R31 | shared 源 :9 / common facade import :11 / __all__ :29(全 3 处);R33 facade 文件仍 37 行未删 | ✅一致 |
 | R26 | SP05 BEHAVIOR_* 在 :20/:33(registry 误标 STRONG :15 坐实);2 离线消费者 tools:17/audit:87 活引用 | ✅verdict=depends |
 
@@ -40,9 +40,9 @@
 - **判定依据**:三对 helper byte-for-byte 等价已逐行核(`_coerce_degradation_event` 双栈 :68-94 ↔ :153-179 完全相同)。收口方向 service→models 合法不成环(已核)。**但本簇主透镜最尖锐爆点在此**:Q5 收口等价——`_coerce_degradation_event` 非 dict → `return None`(:72/:156 静默丢弃)、三字段空 → None(:78/:163)、坏 count → except → count=1(:86/:171);`_float_matches_choice` 含非数字 choices → `except Exception: continue`(静默跳过)。
 - **灾难链(若违)**:收敛/parity 时一旦「顺手」把 `return None` 改 loud raise 或动 `count` 下限 → 算法侧降级事件读取从「静默丢弃」突变「崩」、或两栈对 choices 匹配/count 口径分叉 → **静默→loud 方向反转 / 口径无声分叉污染排产**(灵魂线正中)。修正:R71 收敛**必须逐字保真**这些已存在吞错行为(parity 守卫钉死,不得"修好它",改 loud 需另立债);硬前置 LB07 注释+helper-parity 先 green;与 R47 同批同方向(批内先删死参后收敛,parity 比对更干净)。owner_pending 只标双栈去留待裁,不给物理收敛终态。
 
-### 🟢 R45 ≡ R48 [config_adapter 整文件删/owner_pending=false] — 绿(单提交整删 + 同提交退 sp06:15)
+### 🟢 R45 ≡ R48 [config_adapter 整文件删/owner_pending=false] — 绿(2026-06-08 已 fixed，旧 sp06 清单 no-op)
 - **判定依据**:同一物理文件两视角,非两次动作=一次整文件删。生产零引用三重证实(符号名+字符串 config_adapter+SP05 排除)。Q1-Q6 全绿:非承重(config_adapter.py 零 LB)、删只减 algorithms→models 合法边(Q2 绿)、无迁移耦合(`_snapshot_attr@schedule_params.py:59` 已 loud-raise 收敛后形态,Q3 绿)、非收口无 parity(Q5 不适用)。灵魂线:`except :22` 吞异常成 .error 随整文件删消失=净收益,无消费方不必改 raise。
-- **唯一约束链**:漏退 sp06:15(NO_CFG_GET_TARGETS)→ read_text:73 抛 FileNotFoundError → sp06 红(**响亮非静默**,CI 立拦)。禁区:绝不顺手动 schedule_params.py(LB07/R33/R51 居所,registry same_file 误标,零碰撞)。
+- **唯一约束链(历史)**:旧 sp06 清单若仍指向已删文件 → read_text:73 抛 FileNotFoundError → sp06 红(**响亮非静默**,CI 立拦)。2026-06-08 终态下旧 sp06 文件已由 A P1.1 删除，清单同步 no-op。禁区:绝不顺手动 schedule_params.py(LB07/R33/R51 居所,registry same_file 误标,零碰撞)。
 
 ### 🟢 R31 [WRITE_INTERNAL_ONLY 死常量/owner_pending=false] — 绿(条件:R33 删 facade 不晚于 R31 删源)
 - **判定依据**:三处 :9/:11/:29 零漂移,死常量零生产零测试消费(16 FieldPolicy 无一用、compat_parse 只比 WRITE_OPTIONAL)。Q1-Q6 全绿:非承重无禁区(只删 :9,禁动 :6/:7/:8 三活常量)、删一行不新增 import 只减边(Q2 绿)、非收口无 parity。

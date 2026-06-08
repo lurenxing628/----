@@ -47,7 +47,7 @@
 ## 回盘判无硬伤的靶点（明说，免得被当漏查）
 
 - **R42+R60（G01）同提交闸门成立**：回盘 `dashboard_workbench_context.py` 真实路径在 `web/viewmodels/`（非 routes/domains），`:92` 是 `_context_kwargs` 字典 `"plan_id"` 键、`:119` 经 `**_context_kwargs` 展开流入 collar、`:191` 是 collar def `plan_id: Any = None` 形参——计划「删 :191 形参 MUST 同删 :92 字典键否则 TypeError 500」逻辑正确，爆点 #21 闭合无误。
-- **R45≡R48（G16）整删合理**：registry 确认两编号同指 `config_adapter.py` 死壳（R45 死壳/R48 迁移残渣），一次整删 + 同提交退 sp06:15 正确。
+- **R45≡R48（G16）整删合理**：registry 确认两编号同指 `config_adapter.py` 死壳（R45 死壳/R48 迁移残渣）；2026-06-08 终态已 fixed，旧 sp06 文件已由 A P1.1 删除，清单同步 no-op。
 - **R25+R52（G39）同提交声明在位**：§1.3「R52 迁 31 测试 + 删 impl + R25 垫片同提交」+ RK18 缓解，原子声明完整。test_ready_queue 实盘 31 用例确认（dossier ~23 失真已被 V4⑦ 纠回）。
 - **R06+R27+gantt（G38）四包同提交在位**：sp05 contract `_assert_init_has_no_imports:173` def + `:316/:409` 断言实盘在位，「四包一次性原子提交、保 :173 def、:638 第二处不碰」声明完整。
 - **R34+R35（G30）repoint 目标存在**：`get_plan_time_span_for_resolution` 实盘在 `schedule_plan_query_service.py:210`（§5.3 verify 纠 dossier「不存在」为「存在」正确）；活近亲 `schedule_repo.py:71 list_version_rows_by_op_ids_start_range`/`:160 list_by_version_with_details` 在位，不可碰清单准。

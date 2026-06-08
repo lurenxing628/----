@@ -17,7 +17,7 @@
 | R71 三 helper 双栈 | model coercion `:31/:49` + read `:68`;service field_coercion `:45/:29` + snapshot `:153`,零漂移 | rg |
 | **parity 守卫缺口** | 三 helper 名在 `tests/` **零命中** → 删/改任一 helper 体不会让任何测试变红,LB07 锁步守卫缺位**实证在场** | rg tests/ |
 | R71 收口方向 | service 当前**未** import `core.models.schedule_config_runtime`(R71 确未动);model 栈**不**反向 import core.services → 收敛 `core.services→core.models` 合法、不成环 | rg(双向皆空) |
-| R45/R48 | config_adapter.py **27 行**,生产零引用(全仓除自身仅 sp06:15 路径成员),sp06 `:73 path.read_text` 漏退=loud FileNotFoundError | wc/rg |
+| R45/R48 | 旧 config_adapter.py **27 行**,生产零引用(全仓除自身仅旧 sp06 路径成员),旧 sp06 `:73 path.read_text` 漏清单=loud FileNotFoundError | wc/rg |
 | R31 | `WRITE_INTERNAL_ONLY` 仅 3 命中:shared 源 `:9` / common facade `:11`(import)/`:29`(__all__),零消费 | rg |
 | R26 双 config_snapshot | 顶层 shim 199B vs 深 17655B = **不同物理文件**(假碰撞坐实);2 离线消费者活引用 `tools/...:17`+`audit/...:87` 坐实 | ls/rg |
 | R26 前置 facade | `core/services/common/{number_utils,value_policies}.py` **仍在**=R29/R33 未收敛 → R26 晚序硬约束成立 | ls |
@@ -48,7 +48,7 @@
 收口收到**已存在**的 model 三符号(coercion `:31/:49`、read `:68`),`core.services→core.models` 合法下行边、不成环(双向 rg 实证)。禁止新建第三模块。三 helper 现有 `except Exception:continue`/`count=1`/非dict→None 是**已存在行为,parity 须逐字保真,禁顺手改 loud raise**(改了=反转 静默→loud 方向,排产侧降级读取从「静默丢弃」变「崩」)。前置:parity 守卫缺口实证在场(tests/ 零命中)→ 必须先扩 parity 再收敛。owner_pending 物理收敛待裁。Q2/Q3/Q5 绿。
 
 ### 🟢 R45 ≡ R48 — config_adapter 整文件删【单提交,最低风险一刀】
-同一物理文件两视角,**合并单提交**整删 27 行 + 同提交退 sp06:15。生产零引用(rg 三重证:符号名+文件名字符串+SP05 排除)。`schedule_params.py` 是 `core/algorithms/greedy/` 同目录他文件(registry same_file 误标),删 adapter 零碰 LB07/R33/R51。删壳方向 algorithms→models 合法,只减边。唯一约束链=漏退 sp06:15 → `:73 read_text` loud FileNotFoundError(非静默)。owner_pending=false。与双栈收敛正交。Q1-Q6 全绿。
+同一物理文件两视角，历史要求合并同一删除动作，2026-06-08 已 fixed。生产零引用(rg 三重证:符号名+文件名字符串+SP05 排除)。`schedule_params.py` 是 `core/algorithms/greedy/` 同目录他文件(registry same_file 误标),删 adapter 零碰 LB07/R33/R51。删壳方向 algorithms→models 合法,只减边。历史唯一约束链=旧 sp06 清单仍指向已删文件 → `:73 read_text` loud FileNotFoundError(非静默)；当前旧 sp06 文件已由 A P1.1 删除，清单同步 no-op。owner_pending=false。与双栈收敛正交。Q1-Q6 全绿。
 
 ### 🟢 R31 — WRITE_INTERNAL_ONLY 源定义直删【条件绿:删序锁死】
 三处零消费(16 FieldPolicy 无一赋值、compat_parse 三分支只比 WRITE_OPTIONAL)。**删序硬约束(唯一陷阱):R33 删 common facade `:11/:29` 须不晚于 R31 删 shared 源 `:9`**,否则 facade 残留 `import WRITE_INTERNAL_ONLY` → loud ImportError(CI 拦,非静默)。禁顺手动 `:6/:7/:8`(活常量,16 处在用)。删一行只减边,零越层。Q1-Q6 绿(条件=删序)。

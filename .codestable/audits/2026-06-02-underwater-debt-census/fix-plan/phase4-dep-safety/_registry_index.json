@@ -387,7 +387,7 @@
  "R45": {
   "id": "R45",
   "bucket": "B03",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,
@@ -396,7 +396,7 @@
   "siblings": [
    "R48"
   ],
-  "batch": "Batch-5(B03,与 R48 ",
+  "batch": "Batch-A/G16 已 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
@@ -424,7 +424,7 @@
  "R48": {
   "id": "R48",
   "bucket": "B03",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P3",
   "lb": false,
@@ -433,7 +433,7 @@
   "siblings": [
    "R45"
   ],
-  "batch": "Batch-5(与 R45 合并为单",
+  "batch": "Batch-A/G16 已 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
