@@ -104,6 +104,130 @@ def test_batch_quantity_float_is_rejected_without_truncation(tmp_path) -> None:
         conn.close()
 
 
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        (None, None),
+        ("", None),
+        ("  ", None),
+        (2, 2.0),
+        ("2.5", 2.5),
+    ],
+)
+def test_batch_safe_float_accepts_optional_ext_days(raw, expected) -> None:
+    assert BatchService._safe_float(raw) == expected
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "bad",
+        float("nan"),
+        "nan",
+        float("inf"),
+        "inf",
+        True,
+        False,
+    ],
+)
+def test_batch_safe_float_rejects_invalid_ext_days_loudly(raw) -> None:
+    with pytest.raises(ValidationError) as exc_info:
+        BatchService._safe_float(raw)
+
+    assert exc_info.value.field == "ext_days"
+
+
+def test_batch_template_preserves_optional_ext_days_values(tmp_path) -> None:
+    conn, _db_path = _new_conn(tmp_path)
+    try:
+        conn.execute(
+            "INSERT INTO Parts (part_no, part_name, route_raw, route_parsed, remark) VALUES (?, ?, ?, ?, ?)",
+            ("P_EXT", "外协件", None, "yes", None),
+        )
+        conn.execute(
+            """
+            INSERT INTO PartOperations
+            (part_no, seq, op_type_id, op_type_name, source, supplier_id, ext_days, ext_group_id, setup_hours, unit_hours, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("P_EXT", 10, None, "表处理", "external", None, None, None, 0.0, 0.0, "active"),
+        )
+        conn.execute(
+            """
+            INSERT INTO PartOperations
+            (part_no, seq, op_type_id, op_type_name, source, supplier_id, ext_days, ext_group_id, setup_hours, unit_hours, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("P_EXT", 20, None, "喷涂", "external", None, 2.5, None, 0.0, 0.0, "active"),
+        )
+        conn.commit()
+
+        BatchService(conn, logger=None, op_logger=None).create_batch_from_template(
+            batch_id="B_EXT",
+            part_no="P_EXT",
+            quantity=1,
+            priority="normal",
+            ready_status="yes",
+        )
+
+        rows = conn.execute(
+            "SELECT seq, ext_days FROM BatchOperations WHERE batch_id=? ORDER BY seq",
+            ("B_EXT",),
+        ).fetchall()
+        assert [int(row["seq"]) for row in rows] == [10, 20]
+        assert rows[0]["ext_days"] is None
+        assert abs(float(rows[1]["ext_days"] or 0.0) - 2.5) < 1e-9
+    finally:
+        conn.close()
+
+
+def test_batch_copy_preserves_optional_ext_days_values(tmp_path) -> None:
+    conn, _db_path = _new_conn(tmp_path)
+    try:
+        conn.execute(
+            "INSERT INTO Parts (part_no, part_name, route_raw, route_parsed, remark) VALUES (?, ?, ?, ?, ?)",
+            ("P_COPY", "复制件", None, "yes", None),
+        )
+        conn.execute(
+            """
+            INSERT INTO Batches
+            (batch_id, part_no, part_name, quantity, due_date, priority, ready_status, ready_date, status, remark)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("B_SRC", "P_COPY", "复制件", 1, None, "normal", "yes", None, "pending", None),
+        )
+        conn.execute(
+            """
+            INSERT INTO BatchOperations
+            (op_code, batch_id, piece_id, seq, op_type_id, op_type_name, source, machine_id, operator_id, supplier_id, setup_hours, unit_hours, ext_days, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("B_SRC_10", "B_SRC", None, 10, None, "表处理", "external", None, None, None, 0.0, 0.0, None, "scheduled"),
+        )
+        conn.execute(
+            """
+            INSERT INTO BatchOperations
+            (op_code, batch_id, piece_id, seq, op_type_id, op_type_name, source, machine_id, operator_id, supplier_id, setup_hours, unit_hours, ext_days, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("B_SRC_20", "B_SRC", None, 20, None, "喷涂", "external", None, None, None, 0.0, 0.0, 2.5, "scheduled"),
+        )
+        conn.commit()
+
+        BatchService(conn, logger=None, op_logger=None).copy_batch("B_SRC", "B_DST")
+
+        rows = conn.execute(
+            "SELECT seq, ext_days, status FROM BatchOperations WHERE batch_id=? ORDER BY seq",
+            ("B_DST",),
+        ).fetchall()
+        assert [int(row["seq"]) for row in rows] == [10, 20]
+        assert rows[0]["ext_days"] is None
+        assert abs(float(rows[1]["ext_days"] or 0.0) - 2.5) < 1e-9
+        assert {row["status"] for row in rows} == {"pending"}
+    finally:
+        conn.close()
+
+
 def test_batch_validator_accepts_parts_cache_without_conn() -> None:
     validator = get_batch_row_validate_and_normalize(
         parts_cache={"P001": object()},
