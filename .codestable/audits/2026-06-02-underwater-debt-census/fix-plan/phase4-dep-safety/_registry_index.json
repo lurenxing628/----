@@ -248,7 +248,7 @@
  "R62": {
   "id": "R62",
   "bucket": "B01",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P3",
   "lb": false,
@@ -258,7 +258,7 @@
    "LB02",
    "LB05"
   ],
-  "batch": "Batch-3 B01-struct",
+  "batch": "Batch-B/G06 fixed 2026-06-08",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,

@@ -18,7 +18,7 @@
 | **G03** | NAV-PLANID | {R66} AS-3 | 孤立,删私有死副本 _context_summary(suffix 签名定位):150-163 | 单债;红线=不动 workbench_links:258 LIVE 同名异签 |
 | **G04** | NAV-GUARD | {R58, R54, R44} SEQ-NAV | 三债同物理文件 navigation_publish.py(M/MM 漂移态),任一先落即移彼此行号；**R54 跨 5 物理文件**(见内部顺序) | 硬序 R58(纯注释:91 上方)→R54(B01 guard 收口+parity)→R44(B02 收 selected_plan_role 到 core,动手前重 rg :6/:36-37)。〔红队第1轮修订 R2-P1〕**R54 五套手维面必须同窗口、按符号收口、收口后逐套重 rg 复核字段集一致**：L2 navigation_publish.py:12(16键 G04 物理含)、L4 dashboard_workbench_context.py:8(16键≡L2 逐字)、L3 resource_dispatch.py:64(15键缺 plan_role_status)、L1 reports_workbench.py:36(12键别名源键缺三阻断态)、L5 gantt_task_detail.py:8(别名元组)；**分三组基数各钉 parity 守卫，禁任意 surface 向 16 键看齐**(补 plan_role_status=统一改行为违 R54 承重红线) |
 | **G05** | EXEC-REVIEW | {LB02, LB05} A1 | 🔒 同一承重不对称两 finding,钉同段(签名:209+五硬钉:58/:180-181/:191-192/:221/:236),同一次注释+同一组回归 | 无先后一次落地;只增注释行不动 dict 键序 |
-| **G06** | EXEC-REVIEW | {R62} A2 | 三档身份死分支(dict 三连键+模板 !=+xlsx or)三处消费方强原子,删一处不同步即半截残骸 | 被 G05 门控(A1 先 Batch-1,R62 后 Batch-3);动手按符号名 _resource_pair_payload+!= 重 grep |
+| **G06** | EXEC-REVIEW | {R62} A2 ✅ fixed | 2026-06-08 已 fixed。历史原子原因是三档身份死分支(dict 三连键+模板 !=+xlsx or)三处消费方强原子,删一处不同步即半截残骸 | 已在 G05 前置满足后按符号名 _resource_pair_payload+!= 重 grep 执行；payload/dict/模板 title+死副行/xlsx 同一原子 diff 闭合，护栏区未动 |
 | **G07** | EXEC-FACT | {LB01, R17, R20} A1(service) | 🔒 LB01 承重门控同文件 service.py 删改;R17 删:12/R20 改:52 同 import 块行号耦合;最危险边 LB01↔R17 同 _build_event_payload | 强序 LB01 注释先落(符号上方)→R17 删 service:12→R20 改 service:52(R17 后重 rg) |
 | **G08** | EXEC-FACT | {R15, R17, R20} A2(support) | 同文件 support.py;R17 删:11/:81 推导式项→位移 R15:225/R20:24 | R15 先(已落地,守:225 raise)→R17 删:81/:11→R20 改:24;宜与 G07 同原子提交(R17/R20 跨 service+support) |
 | **G09** | EXEC-FACT | {R15, R19, R13} A3(provider) ⏸ | 同文件 provider.py 删改互移行号;先收口语义(R15/R19)后删死物(R13) | O03/O05/O06/O37 已裁：强序 R15 先(SCC 最前置,收口解析)→R19 改:70-82→R13 末(删字段)；R13 删前 owner 再确认 |
@@ -116,7 +116,7 @@ ROOT（承重注释 + 共享前置门，纯增量零结构，最先落）
   ├─ GF1   reject_integer_float 默认 False + parity          [门控 G19/G20]
   ├─ G15a  LB07 双栈 @dataclass 注释 + 扩 spec_sync parity    [门控 G15 收敛/R47 删参]🔒
   ├─ G07a  LB01 两处「我是故意的」注释                          [门控 G07 service 删改]🔒
-  ├─ G05   LB02/LB05 承重注释 + 回归(173 行既有)               [门控 G06]🔒
+  ├─ G05   LB02/LB05 承重注释 + 回归(173 行既有)               [已门控 G06 fixed]🔒
   ├─ G40a  LB08 承重注释 + 绑 regression 契约                  [门控 G40 删 R46]🔒⏸(O35 已裁 internal_operation 产出点)
   ├─ G33a  R05 步1 扩 collar + 步2 五条 parity                [门控 G33 步3 收敛]🔒⏸
   ├─ LB03  B01 承重注释 + guard 收口(全局承重族,他簇)          [门控 G27/全 B02 身份族]🔒
@@ -129,7 +129,7 @@ Batch-A（独立死叶子 / 零前置 / owner=false，最早可落）
   *G03 受 E04 软序 → 实际延后紧随 G04；G25 并回 G24，不在 Batch-A 单独落
 
 Batch-B（依赖 ROOT 承重门 / 单门控前置）
-  G06(R62)         ← G05
+  G06(R62 fixed)   ← G05
   G07(R17/R20)     ← G07a 🔒
   G08(R15/R17/R20) ← 与 G07 同原子提交(R17/R20 跨 service+support)
   G12(R12)         ← G11
@@ -189,7 +189,7 @@ Batch-D（facade 删除最晚 / 跨 owner-pending 收口）
 | 危险度 | 物理文件 | 命中债 | 改动段（互相位移/互撞点） | 顺序约束 |
 |---|---|---|---|---|
 | 🔴 最危 | `core/services/scheduler/operation_execution_feedback_service.py` | **LB01**(承重) + R17 + R20 | LB01 硬拒:369-371/第二门:381/写死消毒:471-473/审计 dict:347-356；R17 删死 import:12；R20 改 labels import:52；**LB01↔R17 同 _build_event_payload(:455-494)函数体**(最危险边) | G07 强序：LB01 注释先落→R17 删:12→R20 改:52(R17 后重 rg)；🔒承重门控全文件删改 |
-| 🔴 最危 | `core/services/report/execution_review.py` | **LB02+LB05**(承重) + R62 | 承重五硬钉:58/:180-181/:191-192/:221/:236+签名:209(禁加形参)；R62 三档死分支:358-441(dict 三连键+_resource_pair_payload:417+早退:437-441)；护栏区:58-236 vs 死分支:358-441 零重叠但 A1 注释下推 R62 行号 | G05 注释先落(Batch-1)→G06 后做(Batch-3)；R62 按符号名+!= 重 grep,绝不照抄行号；禁碰禁区+禁加形参 |
+| 🔴 最危 | `core/services/report/execution_review.py` | **LB02+LB05**(承重) + R62 | 承重五硬钉:58/:180-181/:191-192/:221/:236+签名:209(禁加形参)；R62 三档死分支已于 2026-06-08 清理；护栏区:58-236 vs 死分支区零重叠 | G05 注释先落→G06 已 fixed；后续只保留禁区提醒：禁碰 adopted-only 硬钉、禁加形参、禁按旧 R62 行号重复施工 |
 | 🔴 最危 | `core/services/scheduler/gantt_critical_chain_provider.py` | R12 + R55 + R13(EXEC-FACT 跨簇,实为 execution_fact_provider 不同文件);R11/R63 已 fixed | R11/R63 旧 _normalize staticmethod 已删;provider 现于 :157 调 `gantt_critical_chain.py:67-88` 单份 helper；R12 加 dropped_count;R55 加 scope；`_copy:108-114` 与 normalize helper 仍是两件事,**禁误删 _copy** | G11 统一单份 helper 前置已满足→G12/G13 加键穿三道白名单；A2/A3 仍需按当前行号重 rg |
 | 🟠 高 | `core/services/scheduler/gantt_service.py` | R10 + R55 + (R34/R21/R63/R11/R12 同文件弱) | R10 删死方法:60-62(禁误删活 resolve_version:64)；R55 filtered 病灶:344/:384/:385 None 回退；相距 280+ 行物理不重叠 | 同 PR 物理串行(PHASE0§3)；R10 任意序删后 grep:64；R34/R21 勿两 PR 并发改 |
 | 🟠 高 | `core/services/scheduler/scheduler_navigation_publish.py` | **R58**(承重邻) + R54 + R44 | R58 注释:91 上方；R54 _PLAN_GUARD_FIELD_NAMES:12/_plan_guard_fields:82；R44 删 selected_plan_role def:36-37+import:6-7；M/MM 漂移态任一先落即移彼此行号 | G04 硬序 R58(注释)→R54(guard 收口)→R44(删 def,重 rg :6/:36-37)；禁动:91 整行/禁剔键 |

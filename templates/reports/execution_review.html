@@ -135,12 +135,12 @@
                 <td>{{ r.exception_reason_label }}</td>
                 <td>{{ r.exception_severity_label }}</td>
                 <td>{{ r.exception_impact_minutes_label }}</td>
-                <td title="{{ r.exception_affected_machine_identity_label }}">{{ r.exception_affected_machine_label }}{% if r.exception_affected_machine_identity_label and r.exception_affected_machine_identity_label != r.exception_affected_machine_label %}<div class="text-meta">{{ r.exception_affected_machine_identity_label }}</div>{% endif %}</td>
-                <td title="{{ r.exception_affected_operator_identity_label }}">{{ r.exception_affected_operator_label }}{% if r.exception_affected_operator_identity_label and r.exception_affected_operator_identity_label != r.exception_affected_operator_label %}<div class="text-meta">{{ r.exception_affected_operator_identity_label }}</div>{% endif %}</td>
+                <td title="{{ r.exception_affected_machine_label }}">{{ r.exception_affected_machine_label }}</td>
+                <td title="{{ r.exception_affected_operator_label }}">{{ r.exception_affected_operator_label }}</td>
                 <td>{{ r.exception_handling_status_label }}</td>
                 <td>{{ r.exception_suggest_reschedule_label }}</td>
-                <td title="{{ r.planned_resource_identity_label }}">{{ r.planned_resource_label }}{% if r.planned_resource_identity_label and r.planned_resource_identity_label != r.planned_resource_label %}<div class="text-meta">{{ r.planned_resource_identity_label }}</div>{% endif %}</td>
-                <td title="{{ r.actual_resource_identity_label }}">{{ r.actual_resource_label }}{% if r.actual_resource_identity_label and r.actual_resource_identity_label != r.actual_resource_label %}<div class="text-meta">{{ r.actual_resource_identity_label }}</div>{% endif %}</td>
+                <td title="{{ r.planned_resource_label }}">{{ r.planned_resource_label }}</td>
+                <td title="{{ r.actual_resource_label }}">{{ r.actual_resource_label }}</td>
                 <td>{{ r.feedback_status_label }}</td>
                 <td>
                   {% for link in r.workbench_links %}

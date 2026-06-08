@@ -12,6 +12,7 @@ from core.infrastructure.database import get_connection
 from core.infrastructure.errors import ValidationError
 from core.services.report import ReportEngine
 from core.services.report.execution_review import _execution_scope
+from core.services.report.exporters.xlsx import export_execution_review_xlsx
 from core.services.scheduler.operation_execution_labels import action_to_event_type
 from data.repositories.operation_execution_event_repo import OperationExecutionEventRepo
 from tests.operation_execution.operation_execution_feedback_test_support import _build_app
@@ -37,6 +38,17 @@ EXPECTED_HEADERS = [
     "实际资源",
     "现场反馈状态",
 ]
+
+DEAD_EXECUTION_REVIEW_LABEL_KEYS = (
+    "exception_affected_machine_identity_label",
+    "exception_affected_machine_export_label",
+    "exception_affected_operator_identity_label",
+    "exception_affected_operator_export_label",
+    "planned_resource_identity_label",
+    "planned_resource_export_label",
+    "actual_resource_identity_label",
+    "actual_resource_export_label",
+)
 
 
 def _load_xlsx(resp):
@@ -444,6 +456,65 @@ def test_execution_review_uses_matching_execution_state_for_actual_times_and_res
     assert _schedule_row(db_path) == before_schedule
 
 
+def test_execution_review_rows_do_not_emit_dead_label_aliases(tmp_path, monkeypatch) -> None:
+    _app, db_path = _build_app(tmp_path, monkeypatch)
+    _seed_execution_events(db_path, schedule_version=2, schedule_id=100)
+    conn = get_connection(db_path)
+    try:
+        report = ReportEngine(conn).execution_review(2, date_from="2026-05-01", date_to="2026-05-01", batch_id="B1")
+    finally:
+        conn.close()
+
+    assert report["rows"]
+    row = report["rows"][0]
+    for key in DEAD_EXECUTION_REVIEW_LABEL_KEYS:
+        assert key not in row
+    assert row["planned_resource_label"] == "一号设备 / 张三"
+    assert row["actual_resource_label"] == "二号设备 / 李四"
+
+
+def test_execution_review_xlsx_uses_canonical_labels_when_legacy_export_aliases_exist() -> None:
+    row = {
+        "batch_id_label": "B1",
+        "operation_label": "OP10 / 车削",
+        "planned_start_time_label": "2026-05-01 08:00:00",
+        "actual_start_time_label": "2026-05-01 08:10:00",
+        "start_deviation_label": "晚了 10 分钟",
+        "planned_end_time_label": "2026-05-01 09:00:00",
+        "actual_end_time_label": "2026-05-01 09:05:00",
+        "end_deviation_label": "晚了 5 分钟",
+        "pause_duration_label": "15 分钟",
+        "exception_reason_label": "设备问题",
+        "exception_severity_label": "严重",
+        "exception_impact_minutes_label": "预计影响 30 分钟",
+        "exception_affected_machine_label": "影响设备",
+        "exception_affected_operator_label": "影响人员",
+        "exception_handling_status_label": "处理中",
+        "exception_suggest_reschedule_label": "建议重新排程",
+        "planned_resource_label": "计划资源",
+        "actual_resource_label": "实际资源",
+        "feedback_status_label": "已完工",
+        "exception_affected_machine_export_label": "旧影响设备",
+        "exception_affected_operator_export_label": "旧影响人员",
+        "planned_resource_export_label": "旧计划资源",
+        "actual_resource_export_label": "旧实际资源",
+    }
+
+    wb = openpyxl.load_workbook(export_execution_review_xlsx([row]), data_only=True)
+    try:
+        ws = wb["计划和现场实际"]
+        assert [cell.value for cell in ws[1]] == EXPECTED_HEADERS
+        assert ws["M2"].value == "影响设备"
+        assert ws["N2"].value == "影响人员"
+        assert ws["Q2"].value == "计划资源"
+        assert ws["R2"].value == "实际资源"
+        all_values = _all_workbook_values(wb)
+        for token in ("旧影响设备", "旧影响人员", "旧计划资源", "旧实际资源"):
+            assert token not in all_values
+    finally:
+        wb.close()
+
+
 def test_execution_review_validation_and_offline_template_contract(tmp_path, monkeypatch) -> None:
     app, _db_path = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
@@ -458,8 +529,10 @@ def test_execution_review_validation_and_offline_template_contract(tmp_path, mon
 
     with open("templates/reports/execution_review.html", encoding="utf-8") as fh:
         template = fh.read()
-    forbidden = ("http://", "https://", "cdn", "reason_code", "event_type", "report_exception")
+    forbidden = ("http://", "https://", "cdn", "reason_code", "event_type", "report_exception", "text-meta")
     for token in forbidden:
+        assert token not in template
+    for token in DEAD_EXECUTION_REVIEW_LABEL_KEYS:
         assert token not in template
 
 

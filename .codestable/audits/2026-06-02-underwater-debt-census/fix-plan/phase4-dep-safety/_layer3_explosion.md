@@ -20,7 +20,7 @@
 | R44 | NAV-GUARD | 🟢🟢🟢·🟢🟢·🟢🟢 | 🟢 | core 收口点比 web 更防御，只喂模板显示 kwarg 不碰闸门；唯一差 None→AttributeError vs "adopted"（生产不可达） | 排 SEQ-NAV 末位（R58→R54→R44），动手前重盘 :6/:36-37；仅动 :6-7 import+:36-37 删 def；owner 裁 None 边界。 |
 | LB02 | EXEC-REVIEW | 🟢🟡🟢·🟢🟢·🟢🟢 | 🟢 | 纯护栏注释；被注释挡住的灾难链=他人给 :209 加 plan_role/scenario_id 形参→helpers 透传→resolve_plan_view scenario 非空切 _resolve_scenario_plan 换 source_table→预览静默冒充正式复盘并导出 | 仅 :209 上方+五处硬钉（:58/:180-181/:191-192/:221/:236）旁补注释，零删/零透传/零加形参；注释须交叉引用 web 真定义宿主（reports_request_support.py:75 / reports_execution_review_context.py:8，非 reports_page_support）+ v19 DB CHECK 双列；勿粘 §90 LB-B4 反向 fail-OPEN 文案。 |
 | LB05 | EXEC-REVIEW | 🟢🟡🟢·🟢🟢·🟢🟢 | 🟢 | ≡LB02 第二 finding，同点同动作，一次注释满足两条 | 同 LB02；:58 第 7 钉是新增且方向与不变量一致非削弱。 |
-| R62 | EXEC-REVIEW | 🟡🟡🟡·🟡🟡·🟢🟡 | 🟡 | 三键恒等删 no-op 行为等价，但原子面是「四处」含模板 title 属性；漏改 title → Jinja undefined → `title=""` 可观测 UI 降级；漏穿 xlsx/dict 留半截残骸 | A1 注释先落（Batch-1）→ R62 后做（Batch-3）；按符号 `_resource_pair_payload`+`!=` 重 grep 禁照抄行号；payload+dict+模板（`!=`副行+title 改回 _label）+xlsx 四处同 commit；收口面**零现成断言**须先写 3 套 parity 快照（升为硬前置门非建议）；禁碰 :58-236 护栏段、禁删 state 层 latest_*/counterpart_* 真身份键。 |
+| R62 | EXEC-REVIEW | 🟡🟡🟡·🟡🟡·🟢🟡 | 🟢 fixed | 2026-06-08 已按原子面「四处」清理：三键恒等 no-op 字段、模板 title+`text-meta` 死副行、xlsx `or` 死回退同一 diff 闭合 | 已按符号 `_resource_pair_payload`+`!=` 重 grep；payload+dict+模板（`!=`副行+title 改回 _label）+xlsx 四处同 commit；已补 dict/xlsx/模板守卫；未碰 :58-236 护栏段，未删 state 层 latest_*/counterpart_* 真身份键。 |
 | LB01 | EXEC-FACT | 🟢🟢🟡·🟢🟢·🟢🟢 | 🟢 | 纯补两处注释；被注释挡住的灾难链=以「repo 已 validate 故写死冗余」名义删 :471-473 写死消毒 → scenario/candidate 现场事件落库污染重排护栏 | 注释先落且锚符号上方（门控整个 service 文件删改）；禁区 :369-374/:381-382/:471-473 只补注释；文案禁出现「写死冗余」式措辞；交叉引用 schema:284 candidate_rows 第二表 + v19 CHECK。 |
 | R17 | EXEC-FACT | 🟡🔴🔴·🟡🔴·🟡— | 🟡 | 删 service:12 死 import + support:81 推导式死键安全，但同 `_build_event_payload` 函数体毗邻 LB01 写死 :471-473；「顺手清理」打穿写死消毒，误删 :80 活键则 report_exception 静默拒 | LB01 注释先落（裸奔期禁动 service 文件）；只删 service:12+support:11+support:81 三行，删 :81 非 :80 活键；绝不重构 _build_event_payload；删后重 rg（:225/:52/:471 上移）。r1-LAYER/r1-SOUL 标红=毗邻爆面，r2-LB/r3 复核降黄（删的是 import 行不碰 :471-475，无 dict 键位移耦合）。 |
 | R15 | EXEC-FACT | 🔴🔴🔴·🔴🔴·🟡🔴 | 🔴 | provider:87-95 空→None（合法 optional）+ 坏→None（P4 残留）双静默；收口符号 parse_operation_event_time **空值也 raise** → 整体 delegate 把「任务未开始」合法空时间炸成 raise → _fact_from_state:52/53 内联 kwarg 构造、facts_by_scope 链全程**裸奔无 except** → 正常读历史计划 500 / 上层吞掉则执行事实全空喂重排 | owner 先裁（owner_pending）；收口必须分支级非整体 delegate——`if not text: return None` 留在 provider 本地，仅坏值走收口符号；坏值方向选 loud raise（须确认下游接得住）或可观测降级标记，禁更深 return None；先补三处 required/optional parity（含空值分支断言）；启动探针喂 not-a-date 边界须不冲突。r3-LAY 单标黄（只看 Q2/Q3 分层/迁移维度无虞），其余 4 透镜全红。 |
@@ -169,11 +169,11 @@
 - 必须先落 parity/注释：R54 逐键四态 parity（含 L5 is_comparison_plan 反例 + reports 第二注入路径阻断态）+ collar 扩 3 键产出点；R58 注释钉 :88/:91 双入口；N1 注释钉「真闸在 feedback_service:369-382 双 raise，本字段仅 query 优化短路」（禁引 dossier 幻觉的 :89/:70-84）。
 - 测试迁移序：删任一手维列表前先令对应契约测试改读 collar 输出，删列表与改测试同 commit。
 
-**C-EXEC-REVIEW（LB02🟢 / LB05🟢 / R62🟡）**
-- 原子性最终判定：LB02/LB05 一次注释满足两条；R62 三处消费方（dict / 模板 `!=`副行+title / xlsx `or`）+ 早退块 :438-440 强原子同 commit。
+**C-EXEC-REVIEW（LB02🟢 / LB05🟢 / R62🟢 fixed）**
+- 原子性最终判定：LB02/LB05 一次注释满足两条；R62 三处消费方（dict / 模板 `!=`副行+title / xlsx `or`）+ 早退块已于 2026-06-08 强原子同 commit 闭合。
 - 承重禁区（按符号）：`execution_review` 签名 :209（不收 plan_role/scenario_id）、五处硬钉 :58/:180-181/:191-192/:221/:236、:65/:69 兜底、`_resolve_plan` Protocol:121；state 层 latest_*/counterpart_* 真身份键（删 R62 绝不触）。
-- 必须先落 parity/注释：A1 注释交叉引用 web 真定义宿主（reports_request_support.py:75 / reports_execution_review_context.py:8）+ v19 DB CHECK 双列 + schema:284 candidate_rows 第二表；R62 收口面**零现成断言**须先写 3 套 parity 快照（dict/xlsx/模板含 title）红→绿基线。
-- 测试迁移序：A1 注释先落 Batch-1 → R62 后做 Batch-3，按符号 `_resource_pair_payload`+`!=` 重 grep 禁照抄行号。
+- 必须先落 parity/注释：A1 注释交叉引用 web 真定义宿主（reports_request_support.py:75 / reports_execution_review_context.py:8）+ v19 DB CHECK 双列 + schema:284 candidate_rows 第二表；R62 已补 dict/xlsx/模板含 title 的守卫。
+- 测试迁移序：A1 注释先落 → R62 已后做 fixed；后续按符号 `_resource_pair_payload`+`!=` 重 grep 仅作复核，禁照抄旧行号重复施工。
 
 **C-EXEC-FACT（LB01🟢 / R17🟡 / R15🔴 / R19🔴 / R18🟢 / R20🟢 / R13🟡）**
 - 原子性最终判定：LB01 注释门控整个 service 文件删改先落；R17 三行净删；R20 改 :52 与 R17 串行；provider 三债串行序待拍（回炉#1）；R18+R13 共注释覆盖 repo:399-405 整组合批。
@@ -251,7 +251,7 @@
 | 2 | **guard 第 6 面 `_PUBLIC_FILTER_DROP_KEYS`** | NAV-GUARD/R54 | 计划漏列第 6 个手维面 | `scheduler_resource_dispatch.py:40-73` 脱敏 drop 集（:270 `if key not in _PUBLIC_FILTER_DROP_KEYS`）含三关键键 + L1-L5 都没有的 is_current_executable_version:69/schedule_result_status:63/scenario_name:72，机制≠guard 投影但键集独立手维；R54 统一时误当第 7 套 guard 去并/漏同步 → 公开 filters 漏脱敏/误删。 |
 | 3 | **L5 `is_comparison_plan` 二次衍生 OR 兜底** | NAV-GUARD/R54 | 计划「禁统一键名」未点名具体丢键路径 | `scheduler_gantt_task_detail.py:98 context["is_comparison"]=bool(get(is_comparison) or data.get("is_comparison_plan"))` + 别名元组 :13——L5 唯一吃 is_comparison_plan 回退别名；收口源 view_context 用 `is_comparison_plan(role,source_table)` 函数重算不读原始键，统一时丢回退 → 「源键 True 但函数重算 False」的 gantt 比较版 fail-OPEN。 |
 | 4 | **N1 蕴含链幻觉锚点** | NAV-GUARD/N1 | 承重链注释自身就是错链 | cluster D/corrections C 钉 N1 注释引 `_can_write_feedback:89`/`_is_official_plan:70-84` 在 execution_context.py——实盘该文件无此二符号（:129-130 是裸 `bool(identity.get("can_write_feedback"))`）；真闸在 feedback_service:369-382 双 raise，本字段仅 query 优化短路；照计划守不存在的禁区行=守空气，注释须钉真闸。 |
-| 5 | **R62 模板 title 第四处** | EXEC-REVIEW/R62 | 原子面少算一处 | 簇文 §A2 只列模板 `!=` 死副行 :138/139/142/143，漏同行 `title="{{ r.X_identity_label }}"` 也读 identity_label；删键漏改 title → Jinja undefined → `title=""` 可观测 UI 降级（非逐字节等价）；parity 须断 title 属性前后相等。 |
+| 5 | **R62 模板 title 第四处** | EXEC-REVIEW/R62 | ✅ 已执行闭合 | 2026-06-08 已把四个 `title="{{ r.X_identity_label }}"` 改回 `title="{{ r.X_label }}"`，并删除同行 `text-meta` 死副行；模板守卫已断旧 identity/export 键不再残留。 |
 | 6 | **A1 注释缺 v19 DB CHECK 交叉引用** | EXEC-REVIEW/LB02·LB05 | 失忆债残留 | 三 dossier 把 :57/:58 仅当「第 7 处硬钉」，未点明与 v19 `CHECK(source_table='schedule')`+`CHECK(effective_plan_role='adopted')` 双列 1:1 对应；读侧无 DB CHECK 兜底（v19 只护写表），A1 注释须补「此硬钉是 v19 CHECK 服务层前哨，读侧唯一最后一道」。 |
 | 7 | **R15 收口符号空值即 raise** | EXEC-FACT/R15 | 比计划口径更狠一层 | 计划只写「区分空值→None vs 坏值→raise」，但 `parse_operation_event_time:80` **空值本身就 raise**；provider 调用点 `_fact_from_state:52/53` 内联进 ExecutionFact kwarg 构造、facts_by_scope 链全程**裸奔无 except**——整体 delegate 把合法空时间炸 raise=正常读历史 500，收口必须分支级保 `if not text: return None` 在 provider 本地。 |
 | 8 | **启动探针喂 not-a-date** | EXEC-FACT/R15·R17 | 迁移耦合门未列入清单 | `migration_operation_execution_contract.py:349/355` 启动主动 INSERT `event_time:"not-a-date"`+`source_table:candidate_rows` 靠拒绝判库迁移态；R15 改 provider 时间解析边界 / R17 删 EXECUTION_EVENT_EXCEPTION 链须先确认不撼探针对「坏 event_time 必被拒」的预期，簇文档只提 schema.sql CHECK 未列启动探针。 |

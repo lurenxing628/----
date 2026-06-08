@@ -1513,7 +1513,7 @@
   "id": "R62",
   "bucket": "B01",
   "home": "B01",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P3",
   "partition": "delta-report-core",
@@ -1526,9 +1526,10 @@
   "primary_file": "execution_review.py",
   "all_files": [
    "execution_review.py",
+   "execution_review.html",
    "xlsx.py"
   ],
-  "current_evidence_2026_06_05": "execution_review.py 三档身份仍压扁未清:_resource_pair_payload :401 `return {display_label,identity_label,export_label}` 三键恒=display;:341/342、:344/345、:356-358、:363-365 四组 *_label/*_identity_label/*_export_label 仍并列同值。模板 templates/reports/execution_review.html:138/139/142/143 `!= *_label` 死副行仍在;xlsx.py:410/411/414/415 `*_export_label or *_label` 死回退仍在。计划 Batch-3『三键压单+删模板!=副行+删xlsx or回退』三处原子同删未执行(注:有新测试,但针对 adopted-only 拦截即 LB02/05/06,非 R62 三档收敛)。",
+  "current_evidence_2026_06_05": "2026-06-08 B执行终态:R62/G06 已 fixed。execution_review.py 报表行只保留 exception_affected_machine_label/exception_affected_operator_label/planned_resource_label/actual_resource_label；_resource_pair_payload 与无反馈 actual 分支仅返回 display_label。templates/reports/execution_review.html 四个 title 均改读 *_label 且 text-meta 死副行已删除。xlsx.py _execution_review_values 直接读取 *_label，不再读取 *_export_label or *_label。新增/扩展 tests/scheduler_analysis/test_plan_vs_actual_review.py 覆盖 dict 键消失、旧 export_label 不覆盖正式 label、模板无旧 identity/export 残留。LB02/LB05 adopted-only 护栏段未动，state 层 latest_*/counterpart_* 真身份键未动。",
   "cluster": "C01",
   "same_file_siblings": [
    "LB02",
@@ -1562,9 +1563,9 @@
   ],
   "verdict": null,
   "adv_precondition": null,
-  "planned_batch_hint": "Batch-3 B01-structural。LB02/LB05 承重注释(Batch-1)先落。",
+  "planned_batch_hint": "Batch-B/G06 已于 2026-06-08 执行完成；本字段仅保留历史前置关系：LB02/LB05 承重注释先落，R62 后清三档死分支。",
   "planned_deps_hint": "PHASE0 §2 同文件 LB02/LB05(承重 high)。LB02→R62 边(承重先于动同文件):LB02 注释先落(Batch-1),R62 清三档死分支绝不碰 :112/123/153/141/166-167 写死 ROLE_ADOPTED 硬钉,更不给 :141 签名加 plan_role/scenario_id 形参。",
-  "planned_fix_hint": "P3 半截收敛(删 no-op,非删行为):三处消费方原子同改——(a)_resource_pair_payload:348 收成单 display 键 + 四组 _label 三连(:287-292/303-305/310-312)压成单键;(b)同步删模板 :131/132/135/136 的 `{% if *_identity_label != *_label %}` 死副行(按 `!=` 模式定位,文件已漂);(c)删 xlsx :410/411/414/415 的 `*_export_label or *_label` 死回退。【绝不碰 :100-174 的 ROLE_ADOPTED 强制段(LB02/LB05),R62 与护栏在不同方法】。关键区分:R62 目标=execution_review 报表的 *_resource_identity_label/*_resource_",
+  "planned_fix_hint": "2026-06-08 已执行完毕，勿重复操作。历史修法为 P3 半截收敛：execution_review.py 只保留四组公开 *_label，_resource_pair_payload/actual 无反馈分支收成单 display_label；模板删除 identity_label != label 的 text-meta 死副行并把 title 改回 *_label；xlsx 导出删除 *_export_label or *_label 死回退，直接读 *_label。执行中严格未碰 ROLE_ADOPTED/None 护栏段，未删 state 层 latest_*/counterpart_* 真身份键。",
   "phase1_blast": {
    "co_change_within_group": [
     "LB02 (execution_review.py 同文件, 承重 high) — PHASE0 §2",
