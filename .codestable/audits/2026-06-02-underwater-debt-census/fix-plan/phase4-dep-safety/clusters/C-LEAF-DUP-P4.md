@@ -24,11 +24,11 @@
 - owner_pending=false，但收口家落点 + loud 方向是 owner 设计前置（registry hint），排 Batch-15 第三落（R70/R68 之后，非技术阻塞）。
 
 ### AS-3 · R70（死副本纯删）— 单成员独立
-- 成员: R70（**纯删 `schedule_service.py:46-50` 死副本**，rg 确认死副本在 :46）。
+- 成员: R70（**2026-06-08 已 fixed**；已纯删旧 `schedule_service.py:46-50` 死副本）。
 - 原子原因: 单文件单点纯删，零前置零收口。
 - 关键纠偏: twin 框架**不成立**——live 唯一在 `run/schedule_input_collector.py:79`（注意 `run/` 子目录，顶层同名壳无此符号），死副本零调用。**不动 live 一字**。
-- 禁区（删时严禁碰）: `schedule_service.py:7` 的 `ValidationError` import（`:217` 仍用，删则 NameError）。
-- Batch-15 本桶最先落（零前置零风险）。
+- 禁区（删时严禁碰）: `schedule_service.py` 的 `ValidationError` import（并发拒绝路径仍用，删则 NameError）。
+- Batch-15 本桶最先落（零前置零风险），已完成。
 
 ### AS-4 · R03（候选 FAILED 态承重护栏 + 下游脚手架）— 内部两段拆分
 - 成员: R03（独占 `run/schedule_candidate_runner.py`，B14 独占文件，ISOLATED）。owner_pending=true。
@@ -138,7 +138,7 @@
 - **missing 态四态 parity 门**: (B) 段任何清理前必须先有 None/missing/failed/completed 四态 parity（`_baseline_missing_or_failed:267 return True` 使 missing 可达），**禁裸删 `dashboard_workbench.py:156`**。
 
 ### 非承重但「正确性禁区」（不门控批次，删时勿碰）
-- R70: `schedule_service.py:7` import 行（:217 仍用）。
+- R70: 2026-06-08 已 fixed；仍保 `schedule_service.py` 的 `ValidationError` import（并发拒绝路径仍用）。
 - R40: `material_repo.py:69` float 转换（只删 :70-72）。
 - R53: `batch_order.py:39/:58/:74`（形参/真消费/return；旧 return :75 已因删 no-op 上移）。
 - R61: `_row_text:156` / `normalize_report_resource_filter:119` / `filter_downtime_*:274`（live 孪生/共享，禁删）。
@@ -149,8 +149,8 @@ R69（坏 seq→loud）、R32（integrity except→raise）、R40（float except
 
 ## E) fixed 成员残留动作
 
-本簇成员中 **R53 已在 2026-06-08 fixed**；R68/R69/R70/R03/R32/R40/R61/LB04/R41/R43 仍按各自状态推进。fixed 项（LB06/R56/R57/R07/R16/LB03）作为 **DAG 前置已完成**，与本簇的交集仅为：
+本簇成员中 **R53、R70 已在 2026-06-08 fixed**；R68/R69/R03/R32/R40/R61/LB04/R41/R43 仍按各自状态推进。fixed 项（LB06/R56/R57/R07/R16/LB03）作为 **DAG 前置已完成**，与本簇的交集仅为：
 - **LB03/LB06** 与 LB04 同属 Batch-1 承重注释网，但改不同文件、不同行段，互不阻塞。残留动作（他簇）: LB03 缺认账注释（勿粘 §90 LB-B4 反向文案，现盘已 fail-CLOSED）、LB06 缺认账注释。**不在本簇 owner 范围**，仅记录为前置已完成。
 - **R56**（fixed，偏离铁律 3 走结构路线删字面量匹配）、**R07**（fixed，偏离错误类）需 owner 认账偏离——他簇残留，本簇无依赖。
 
-本簇内 **R53 fixed 只需保留终态登记，无承重认账注释**；所有承重认账注释（LB04 / R03-A）属本簇**未落的 planned 动作**，非 fixed 残留，已在 D 节列为 Batch-1 前置。
+本簇内 **R53/R70 fixed 只需保留终态登记，无承重认账注释**；所有承重认账注释（LB04 / R03-A）属本簇**未落的 planned 动作**，非 fixed 残留，已在 D 节列为 Batch-1 前置。

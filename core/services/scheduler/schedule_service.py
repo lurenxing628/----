@@ -42,14 +42,6 @@ def _normalized_status_text(value: Any) -> str:
 def _get_snapshot_with_strict_mode(cfg_svc: Any, *, strict_mode: bool) -> Any:
     return cfg_svc.get_snapshot(strict_mode=bool(strict_mode))
 
-
-def _raise_schedule_empty_result(message: str, *, reason: str) -> None:
-    exc = ValidationError(message, field="排产")
-    exc.details = dict(exc.details or {})
-    exc.details["reason"] = reason
-    raise exc
-
-
 class ScheduleService:
     """
     排产服务（Phase 6：先做“非算法部分”）。

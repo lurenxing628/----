@@ -409,12 +409,12 @@ R68 | 真实行号: `_meta_bool_state`→degradation.py:123-140 ↔ downtime_deg
 - VERIFY: R69 | 核验: PASS | 行号复核: 一致（定义 guard:49/runtime_support:19，消费者 :206/:212/:216，门禁 gate:132/topology:87，均经 rg 回盘坐实；档案已自爆并修正 blast 过期值 :143/:149→:206/:212、gate :126→:132） | 争议点: 无 | 承重误删风险: 无（lb=false、lb_no_touch=null，修法明确不删/不统一后仍静默/不加形参，收口点 contracts.py 已存在且无环、上游 batch_operation:81 已清洗 seq、灵魂线改 loud/补可观测合规、owner 设计前置未越权） | 需升级第三方裁: n
 
 ### R70
-- DOSSIER: R70 | 真实行号: 死副本 `schedule_service.py:46`（体 46-50）/ live `run/schedule_input_collector.py:79`(+:173/:228/:251/:356) | 漂移: 行号无漂移；但 registry 裸路径 `schedule_input_collector.py` 须纠偏为 `run/` 子目录（同名顶层文件无此符号） | 修法类: 纯删死码（不收口/不建helper/不动live/保:7 import，:217 仍用 ValidationError） | 同文件兄弟需协调: 无（ISOLATED，siblings=[]，R68/R69 仅同批触不同文件） | 最大爆炸风险: 删错对象(误删live份)→:173/:228/:251/:356 NameError 排产空结果路径崩；或顺手删:7 import→:217 NameError | 与既有分析冲突: 无 | 前置: 无（B15 内最先落，仅 F-语法/分层门） | owner_pending: n
+- DOSSIER: R70 | 状态: 2026-06-08 已 fixed | 终态行号: 旧死副本 `schedule_service.py:46-50` 已删除 / live `run/schedule_input_collector.py:79`(+:173/:228/:251/:356) 未动 | 漂移: 执行前行号无漂移；registry 裸路径 `schedule_input_collector.py` 纠偏为 `run/` 子目录（同名顶层文件无此符号） | 修法类: 已纯删死码（不收口/不建helper/不动live/保 ValidationError import） | 同文件兄弟需协调: 无（ISOLATED，siblings=[]，R68/R69 仅同批触不同文件） | 最大爆炸风险复核: 未误删 live 份，未删 ValidationError import；删后 `schedule_service.py` 对 `_raise_schedule_empty_result` 零命中 | 与既有分析冲突: 已消解 registry 旧「删+收口」措辞 | 前置: 已满足 | owner_pending: n
 
-档案: /Users/lurenxing/Documents/GitHub/----/docs/_panorama_data/phase4_dep_safety/dossiers/R70.md
-- VERIFY: R70 | 核验: PASS | 行号复核: 一致 | 争议点: 仅 registry 旧 `planned_fix_class` 残留「删+收口」措辞，与档案 §4「纯删不收口」张力，但档案结论正确（twin 不成立、两份字节相同 IDENTICAL、live 已单点），不影响修法 | 承重误删风险: 无（lb=false、纯删未混入统一/透传/加形参/删import） | 需升级第三方裁: n
+档案: /Users/lurenxing/Documents/GitHub/----/.codestable/audits/2026-06-02-underwater-debt-census/fix-plan/phase4-dep-safety/dossiers/R70.md
+- VERIFY: R70 | 核验: PASS | 行号复核: 执行后仅 `run/schedule_input_collector.py` 保留 `_raise_schedule_empty_result` 定义/调用/注入；`schedule_service.py` 的 `ValidationError` import 仍服务并发拒绝路径 | 争议点: 无 | 承重误删风险: 无（lb=false、纯删未混入统一/透传/加形参/删import） | 需升级第三方裁: n
 
-独立回盘佐证：全仓 `rg` 行号零漂移；死副本本文件 `grep -c`=1（仅 def）且 :19 import 不引 live `_raise`，确认零调用；顶层同名文件 grep exit=1（无符号，185B 转发壳），路径纠偏成立；两份 `diff`=IDENTICAL；tests/ 0 命中；`git diff b08162cd` 空（planned 一致）；:7 import 须保（:217 仍用 ValidationError）。结论已 Edit 追加至档案「## 对抗核验」节。
+2026-06-08 执行后回盘佐证：`schedule_service.py` 已无 `_raise_schedule_empty_result`；`run/schedule_input_collector.py` 仍保留 live 定义/调用/注入；`schedule_service.py:7` 的 `ValidationError` import 仍服务现盘 :209 并发拒绝路径。执行前逐字节对照、tests 零符号 pin 与路径纠偏证据保留在 R70 dossier 的历史核验节。
 
 ### R32
 - DOSSIER: Task #2 is the umbrella for all 73 dossiers — I'll leave it in_progress (this is one of many). My R32 dossier is done and written to disk (gitignored path, immune to parallel git).

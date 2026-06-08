@@ -134,7 +134,7 @@
 | Batch-12 B11诊断(R13,R14,R16,R17,R18,R24) | Batch-14 B13-facade-LATE | R17 删 feedback_service 死导入须在 Batch-1 LB01 注释后(§10.1 最危险边);R14/R24 须先调和 roadmap + 迁灵魂线测试;exec-fact 三文件与 B06/B13 串行。R13 删后 event_repo:254 成死码连带删。 |
 | Batch-13 B12 repo死方法(R34,R35,R36,R37,R38,R39) | (无) | R34 须在 R05 collar 扩 team 后(否则 team 谓词丢);R34+R35 同 schedule_repo、R38+R39 同 part_repo 各自同批;R36/R37 纯死无跨边可任意排期。 |
 | Batch-14 B13-facade-LATE(R19,R20,R26,R31,R43) | (无) | PHASE0 §10.2 facade 删除晚于 B05/B06/B09 收敛 + §10.3 R43 须先认账 roadmap:522 延期 + R20 须在 B01 LB01 注释后改 feedback_service import + R19 受分层红线(repo 不能收 service)。全局最晚批次。 |
-| Batch-15 B15 逐字两份收口(R68,R69,R70) | (无) | R68/R69 踩灵魂线收敛前先补 parity(R68)/评估 except loud(R69 护栏文件);R70 死副本(schedule_service:46)直删 + live(input_collector)收口。独立可并行。 |
+| Batch-15 B15 逐字两份收口 + R70 死副本清理(R68,R69,R70) | (无) | R68/R69 踩灵魂线收敛前先补 parity(R68)/评估 except loud(R69 护栏文件);R70 已纠偏为死副本(schedule_service:46)直删，live(input_collector)保持不动且天然单点，无需再动。独立可并行。 |
 | Batch-16 B16+B17 叶子/P4(R32,R40,R53,R61,R64,R65) | (无) | 全部独立隔离文件:R32/R40 改 raise(灵魂线)、R53/R64/R65 纯叶子删(R65 def 删须同步 :160 化简)、R61 删 filter_plan_rows 保留 filter_downtime 孪生。无关键路径门控,Batch-1 后可并行。 |
 
 ## 4. 分批落地建议(16 批)
@@ -209,9 +209,9 @@
 - **理由**: PHASE0 §10.2 facade 删除晚于 B05/B06/B09 收敛。R26 删 config/summary 5 shim(先迁 2 离线脚本 + 71 测试 import + SP05:21-82/642-658);R31 WRITE_INTERNAL_ONLY 与 R33 协调(common 侧被吞、源侧自删);R43 先认账 roadmap:522 延期再删 9 wrapper;R20 删 labels 垫片须在 B01 LB01 注释后改 feedback_service:48 import;R19 受分层红线(repo 不能收 service,provider→snapshot,repo 另落 data/model)。
 - **验收**: SP05 冻结面同步(strong/behavior compat 列退);71 处测试 import repoint 到深路径、2 离线脚本迁移;lazy_runtime 绿;R19 provider 收口保 sorted 指纹、repo 不引入越层(test_architecture_fitness 绿);R43 wrapper_import_order_contract 整文件退 + ROUTE_COMPAT/BEHAVIOR/REAL_ROUTE_FILES 改。
 
-### Batch-15 B15 逐字两份收口
+### Batch-15 B15 逐字两份收口 + R70 死副本清理
 - **债**: R68, R69, R70
-- **理由**: R68 _meta_bool_state 两份收口到 summary 上游/core.shared(parity 在 Batch-1,保 used_default loud);R69 _op_seq 两份收口单点 + 护栏文件内评估坏 seq 改 loud(严禁静默归 0);R70 schedule_service:46 死副本直删 + input_collector live 份收口主链上游(保 ValidationError reason 契约)。同病不同文件,可并行。
+- **理由**: R68 _meta_bool_state 两份收口到 summary 上游/core.shared(parity 在 Batch-1,保 used_default loud);R69 _op_seq 两份收口单点 + 护栏文件内评估坏 seq 改 loud(严禁静默归 0);R70 已纠偏为 schedule_service:46 死副本直删，input_collector live 份保留原状并继续承担 ValidationError reason 契约。同病不同文件,可并行。
 - **验收**: R68 两路 used_default 对同一 meta 一致(parity 绿);R69 收口后坏 seq 不再静默归 0(护栏文件 loud/可观测);R70 facade_delegation 不依赖该符号故直删死副本不红;空结果行为回归(history_not_created/empty_reschedulable_rejected)绿。
 
 ### Batch-16 B16 P4 灵魂线 + B17 死叶子(独立并行)

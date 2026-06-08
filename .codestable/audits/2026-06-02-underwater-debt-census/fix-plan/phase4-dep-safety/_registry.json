@@ -6805,7 +6805,7 @@
   "id": "R70",
   "bucket": "B15",
   "home": "B15",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P5",
   "partition": "",
@@ -6820,15 +6820,15 @@
    "schedule_input_collector.py",
    "schedule_service.py"
   ],
-  "current_evidence_2026_06_05": "schedule_service.py:46-50 死副本 _raise_schedule_empty_result 仍在(本文件零调用方,grep 仅命中 def 自身);live 份仍在 input_collector.py:79 + :173/:228/:251/:356 调用。计划要求纯删 schedule_service.py:46-50 未执行;tests/ 无任何 _raise_schedule_empty_result 单点 grep 守卫测试。git diff vs b08162cd 该文件零改动。",
+  "current_evidence_2026_06_05": "2026-06-08 B执行终态:core/services/scheduler/schedule_service.py 旧 :46-50 死副本 _raise_schedule_empty_result 已删除;live 份仍在 core/services/scheduler/run/schedule_input_collector.py:79 + :173/:228/:251/:356; schedule_service.py 的 ValidationError import 保留并仍服务并发拒绝路径。",
   "cluster": "ISOLATED",
   "same_file_siblings": [],
   "interference_edges": [],
   "verdict": null,
   "adv_precondition": null,
-  "planned_batch_hint": "Batch-15（独立并行，PHASE1 §4）。本桶内最先落：零前置、零风险、纯删，先落以缩小本桶面。",
+  "planned_batch_hint": "Batch-15（独立并行，PHASE1 §4）。2026-06-08 已 fixed;本字段仅保留历史批次归属,不表示仍待执行。",
   "planned_deps_hint": "无跨桶同文件边（pack cross_bucket_same_file_edges=[]）。同桶 R68/R69 co_change 仅'同批'语义、触不同文件，无 file 冲突。无前置/后置依赖，Batch-15 内可最先落。",
-  "planned_fix_hint": "【纯删，不收口、不新建 helper】删除 schedule_service.py:46-50 整个死 `_raise_schedule_empty_result` 函数定义。删后全仓仅剩 input_collector:79 一处定义=天然单点，R70 即闭合，无需任何'收口到上游 helper'动作（Phase1 已证 twin 框架不成立）。不动 input_collector:79 一个字节。不删 schedule_service.py:7 的 `from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError`——ValidationError 在同文件 :217 仍被 `raise ValidationError(\"系统正在执行排产...\")` 使用，删 import 会 NameE",
+  "planned_fix_hint": "2026-06-08 已执行:【纯删，不收口、不新建 helper】已删除 schedule_service.py 旧 :46-50 整个死 `_raise_schedule_empty_result` 函数定义。删后全仓仅剩 run/schedule_input_collector.py:79 一处定义=天然单点，R70 即闭合，无需任何'收口到上游 helper'动作（Phase1 已证 twin 框架不成立）。未动 input_collector:79；未删 schedule_service.py:7 的 `from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError`——ValidationError 在同文件并发拒绝路径仍被使用。",
   "phase1_blast": {
    "co_change_within_group": [
     "R68",
@@ -6838,18 +6838,18 @@
     "tests/schedule/service/test_schedule_service_facade_delegation.py — facade 委托契约,grep 证实【不引用 _raise/empty_result】,故直删 schedule_service.py:46 死副本不会让它红"
    ],
    "downstream_effect": "排产空结果错误体结构一致性:ValidationError(field='排产')+details['reason']。两份分叉会让 reason 装配不一致。删 schedule_service 死副本零行为影响;收口 input_collector live 份需保 reason 契约。",
-   "fix_invalidation_risk": "none — schedule_service.py:46 死副本可直删(facade_delegation 契约不依赖);live 份可收口到主链共同上游单 helper。两步互不冲突,也不影响 R68/R69。",
+   "fix_invalidation_risk": "none — schedule_service.py 旧 :46 死副本已直删(facade_delegation 契约不依赖);live 份保留为 run/schedule_input_collector.py:79 单点 helper,不再执行额外收口。该动作不影响 R68/R69。",
    "id": "R70",
    "lb_colocation_danger": "none — schedule_service.py 不在承重清单(虽是 facade,但本函数非 facade 委托面)。",
-   "location_status": "⚠️关键纠偏 — schedule_service.py:46 ↔ schedule_input_collector.py:79,两份函数体逐字节相同 ✅;但报告『逐字两份(均 loud raise)』框架掩盖了实情:schedule_service.py:46 那份【在本文件内零调用】(grep 计数=1=仅 def,不在 __all__,未被 facade_delegation 测试触达),实为死副本;live 的是 input_collector 那份(:173/:228/:251/:356)。",
+   "location_status": "2026-06-08 已fixed — schedule_service.py 旧 :46-50 死副本已删除;live 的是 run/schedule_input_collector.py:79 那份(:173/:228/:251/:356)。关键纠偏仍成立:报告『逐字两份(均 loud raise)』框架掩盖了一活一死实情。",
    "pathology": "P5(均 loud raise,低危):排产空结果异常装配两份,改其一漏其二致报错结构分叉。",
-   "planned_fix_class": "删+收口(schedule_service.py:46 死副本直删;input_collector live 份收口到主链共同上游 single helper,保 ValidationError reason 契约)",
+   "planned_fix_class": "已纯删(schedule_service.py 旧 :46 死副本直删;input_collector live 份保持单点 helper,未做额外收口,保 ValidationError reason 契约)",
    "prod_consumers": [
     "core/services/scheduler/run/schedule_input_collector.py:173 (live)",
     "core/services/scheduler/run/schedule_input_collector.py:228 (live)",
     "core/services/scheduler/run/schedule_input_collector.py:251 (live)",
     "core/services/scheduler/run/schedule_input_collector.py:356 (live,传 raise_schedule_empty_result_fn=)",
-    "core/services/scheduler/schedule_service.py:46 — 该副本零调用方(死码,非 live twin)"
+    "core/services/scheduler/schedule_service.py 旧 :46 — 该副本零调用方(死码,非 live twin),2026-06-08 已删除"
    ],
    "test_consumers": [
     "无直接 _raise_schedule_empty_result 符号引用;空结果行为由 tests/schedule/service/test_schedule_history_not_created_for_empty_schedule.py、tests/schedule/service/test_schedule_service_empty_reschedulable_rejected.py 等行为级覆盖(import ScheduleService,不 pin 私有符号)"
