@@ -16,15 +16,17 @@ from core.models.operation_execution_event import (
     EXECUTION_EVENT_EXCEPTION,
     EXECUTION_EVENT_FINISH,
     EXECUTION_EVENT_START,
+    EXECUTION_STATUS_EXCEPTION,
     OperationExecutionEvent,
     validate_operation_execution_event_sequence,
 )
-from core.models.operation_execution_scope import OperationExecutionScope
-from core.services.scheduler.operation_execution_labels import (
+from core.models.operation_execution_labels import (
     event_type_to_action,
     execution_action_label,
     execution_status_label,
 )
+from core.models.operation_execution_scope import OperationExecutionScope
+from core.services.scheduler.operation_execution_feedback_support import _REPORTED_STATUS_BY_ACTION
 from data.repositories import OperationExecutionEventRepo, OperationExecutionEventRepository
 from tests._support.paths import REPO_ROOT
 
@@ -384,6 +386,11 @@ def test_operation_execution_labels_keep_status_and_action_plain_chinese() -> No
     assert event_type_to_action("exception") == EXECUTION_ACTION_REPORT_EXCEPTION
     assert execution_action_label(EXECUTION_ACTION_REPORT_EXCEPTION) == "报异常"
     assert execution_action_label("exception") == "报异常"
+
+
+def test_report_exception_action_is_the_only_feedback_exception_status_key() -> None:
+    assert EXECUTION_EVENT_EXCEPTION not in _REPORTED_STATUS_BY_ACTION
+    assert _REPORTED_STATUS_BY_ACTION[EXECUTION_ACTION_REPORT_EXCEPTION] == EXECUTION_STATUS_EXCEPTION
 
 
 def test_operation_execution_database_rejects_bad_values_and_duplicates(tmp_path: Path) -> None:

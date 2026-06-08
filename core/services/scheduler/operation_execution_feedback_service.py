@@ -9,12 +9,20 @@ from core.infrastructure.errors import AppError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models.operation_execution_event import (
     EXECUTION_ACTION_REPORT_EXCEPTION,
-    EXECUTION_EVENT_EXCEPTION,
     EXECUTION_EVENT_FINISH,
     EXECUTION_EVENT_PAUSE,
     EXECUTION_EVENT_START,
     OperationExecutionEvent,
     validate_operation_execution_event_transition,
+)
+from core.models.operation_execution_labels import (
+    HANDLING_STATUS_LABELS,
+    REASON_LABELS,
+    SEVERITY_LABELS,
+    action_to_event_type,
+    event_type_to_action,
+    execution_action_label,
+    public_execution_remark,
 )
 from core.models.operation_execution_scope import OperationExecutionScope
 from core.models.operation_execution_state import OperationExecutionState
@@ -48,15 +56,6 @@ from .operation_execution_feedback_support import (
     _state_for_context,
     _text,
     _validate_known_value,
-)
-from .operation_execution_labels import (
-    HANDLING_STATUS_LABELS,
-    REASON_LABELS,
-    SEVERITY_LABELS,
-    action_to_event_type,
-    event_type_to_action,
-    execution_action_label,
-    public_execution_remark,
 )
 from .schedule_plan_query_service import SchedulePlanQueryService
 

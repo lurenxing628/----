@@ -10,10 +10,10 @@ import pytest
 
 from core.infrastructure.database import get_connection
 from core.infrastructure.errors import ValidationError
+from core.models.operation_execution_labels import action_to_event_type
 from core.services.report import ReportEngine
 from core.services.report.execution_review import _execution_scope
 from core.services.report.exporters.xlsx import export_execution_review_xlsx
-from core.services.scheduler.operation_execution_labels import action_to_event_type
 from data.repositories.operation_execution_event_repo import OperationExecutionEventRepo
 from tests.operation_execution.operation_execution_feedback_test_support import _build_app
 

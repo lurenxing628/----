@@ -5349,7 +5349,7 @@
   "id": "R17",
   "bucket": "B11",
   "home": "B11",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P6",
   "partition": "scheduler-exec-diag",
@@ -5366,7 +5366,7 @@
    "operation_execution_feedback_support.py",
    "service.py"
   ],
-  "current_evidence_2026_06_05": "原样未动:operation_execution_feedback_support.py:65 仍有死键 EXECUTION_EVENT_EXCEPTION: EXECUTION_STATUS_EXCEPTION(行号较盘上 :64 下移 1)、:11 仍 import EXECUTION_EVENT_EXCEPTION;feedback_service.py:12 死导入仍在(grep 证 body 零使用)。死键不可达性仍成立:labels.py:90-94 event_type_to_action 把 EXECUTION_EVENT_EXCEPTION 恒归一为 REPORT_EXCEPTION,故 'exception' 键永不命中。计划三行删除未执行",
+  "current_evidence_2026_06_05": "2026-06-08 B执行终态:G07/G08 已 fixed。feedback_service.py 删除 EXECUTION_EVENT_EXCEPTION 死导入；feedback_support.py 删除 _REPORTED_STATUS_BY_ACTION 推导式里的 EXECUTION_EVENT_EXCEPTION 输入项及随之孤立 import，仅保留 EXECUTION_ACTION_REPORT_EXCEPTION 活键。新增 test_report_exception_action_is_the_only_feedback_exception_status_key 断言死键不回潮、活键仍映射 exception。未触碰 _build_event_payload 的 SOURCE_SCHEDULE/ROLE_ADOPTED/None 消毒层，也未触碰 support _parse_feedback_datetime raise 灵魂线。",
   "cluster": "C01",
   "same_file_siblings": [
    "LB01",
@@ -5400,9 +5400,9 @@
   ],
   "verdict": null,
   "adv_precondition": null,
-  "planned_batch_hint": "Batch-12,桶内第 1 步(最先做,前置仅 Batch-1 LB01 注释;尽早清掉承重文件里的死导入)。",
-  "planned_deps_hint": "硬排序:必须排在 Batch-1 B01 落 LB01 我是故意的承重注释 + 绑契约测试【之后】,B11 才能动 feedback_service.py(PHASE0 §3/§10.1 最危险边,护栏裸奔期勿动)。同文件协调:feedback_support.py 同居 R15(B06,_parse_feedback_datetime raise 版 :226),删死键不得碰 R15 的 raise 语义(灵魂线);feedback_service.py 同居 LB01(B01)与 R20(B13,:48 import 行)。R17 跨 support+service 两文件,宜一次原子提交",
-  "planned_fix_hint": "直删 3 行:(1) operation_execution_feedback_service.py:12 删 EXECUTION_EVENT_EXCEPTION 导入;(2) operation_execution_feedback_support.py:64 删 EXECUTION_EVENT_EXCEPTION 死键;(3) operation_execution_feedback_support.py:11 删随之孤立的 EXECUTION_EVENT_EXCEPTION 导入。保留 _REPORTED_STATUS_BY_ACTION 其余键(EXECUTION_ACTION_REPORT_EXCEPTION:63 是活键,经归一后 'report_exception' 命中)。承重铁律:feedback_service.py 是 LB01 文件,删 :12 时绝不碰 :347-",
+  "planned_batch_hint": "Batch-B/G07+G08 已于 2026-06-08 执行完成；本字段仅保留历史前置关系：LB01 承重注释先落，R17 再删死导入/死键。",
+  "planned_deps_hint": "已满足：LB01 写侧承重注释在代码中已存在；本次仅删 R17 死 import/死键并与 R20 同提交协调行号。R15 provider 残债未混入本簇，仍留给 G09。",
+  "planned_fix_hint": "2026-06-08 已执行完毕，勿重复操作。历史修法为：删 operation_execution_feedback_service.py 的 EXECUTION_EVENT_EXCEPTION 死导入；删 operation_execution_feedback_support.py 中 _REPORTED_STATUS_BY_ACTION 推导式的 EXECUTION_EVENT_EXCEPTION 死项及其孤立 import；保留 EXECUTION_ACTION_REPORT_EXCEPTION 活键并用测试锁住。",
   "phase1_blast": {
    "co_change_within_group": [],
    "contract_topology_tests": [
@@ -6026,7 +6026,7 @@
   "id": "R20",
   "bucket": "B13",
   "home": "B13",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P3",
   "partition": "scheduler-exec-diag",
@@ -6045,7 +6045,7 @@
    "scheduler_resource_dispatch_execution.py",
    "state_builder.py"
   ],
-  "current_evidence_2026_06_05": "core/services/scheduler/operation_execution_labels.py 仍是36行纯转出垫片(从core.models转出15符号+__all__原样)；3生产消费方仍经service shim(feedback_service.py:50/feedback_support.py:27/scheduler_resource_dispatch_execution_context.py:11 均 from .operation_execution_labels)，2测试同样未迁；B01的LB01承重注释前置未见落地。",
+  "current_evidence_2026_06_05": "2026-06-08 B执行终态:G07/G08 已 fixed。core/services/scheduler/operation_execution_labels.py 纯转出垫片已删除；feedback_service.py、feedback_support.py、scheduler_resource_dispatch_execution_context.py、test_operation_execution_event_foundation.py、test_plan_vs_actual_review.py 均改为直接 import core.models.operation_execution_labels；docs_quality_gate 的 KEY_PYTHON_FILES 与 docs/dev/aps_three_gap_quality_gate.md 已同步摘除旧路径。漏改旧路会 ImportError loud，未新增任何兜底。",
   "cluster": "C01",
   "same_file_siblings": [],
   "interference_edges": [
@@ -6080,9 +6080,9 @@
    "verdict_kind": "real_debt"
   },
   "adv_precondition": null,
-  "planned_batch_hint": "Batch-14。本桶内排第 3 位（前置=B01 的 LB01 承重注释，属 Batch-1 ROOT，较早可清）。与 B11 的 R17 在 feedback_service.py 上须协调。",
-  "planned_deps_hint": "PHASE0 §3 最危险边相关：operation_execution_feedback_service.py 上 LB01(B01) ↔ R20 改 :48 import。Phase1 边 LB01→R20『承重先于动同文件』：B01 承重注释必须先落，R20 才能改 feedback_service:48。与 R17(B11) 也同居 feedback_service（R17 删 :28-31 死导入）——R20 改 :48、R17 改 :28-31，行号不同但同文件，须与 B11 串行或同批协调避免撞行号。",
-  "planned_fix_hint": "推荐方向 (A) 删垫片（与既有 6 处直连 model 的事实对齐，比方向 B『收编统一门面』改动小且符合现状）：(1) 把 3 个生产导入方改连 model——feedback_service.py:48 与 feedback_support.py:26 的相对 `from .operation_execution_labels import ...` 改为 `from core.models.operation_execution_labels import ...`；scheduler_resource_dispatch_execution_routes.py:16 已是绝对 service 路径，改为 core.models.operation_execution_labels；(2) 2 个测试导入方（event_foundation.py:17、plan_vs_actual_",
+  "planned_batch_hint": "Batch-B/G07+G08 已于 2026-06-08 执行完成；本字段仅保留历史前置关系：LB01 承重注释先落，R20 与 R17 同原子协调。",
+  "planned_deps_hint": "已满足：LB01 承重注释在代码中已存在；R20 与 R17 同批处理 service/support 两个 import 块，未触碰 LB01 写侧消毒区。假边 R08/R09/R12 不构成前置。",
+  "planned_fix_hint": "2026-06-08 已执行完毕，勿重复操作。历史修法为：5 个生产/测试 import 改直连 core.models.operation_execution_labels，删除 core/services/scheduler/operation_execution_labels.py 纯转出垫片，并同步摘掉 docs_quality_gate 与开发者指南里的旧路径。",
   "phase1_blast": {
    "co_change_within_group": [],
    "contract_topology_tests": [
