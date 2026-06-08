@@ -7,8 +7,8 @@
 
 | 债 | 锚点 | 真实 file:line | 旧值漂移 |
 |---|---|---|---|
-| R10 | 死方法 `get_latest_version_or_1` | gantt_service.py:60-62 | 无（活方法 `resolve_version`:64 禁触） |
-| R10 | 测试 stub 镜像 | regression_scheduler_week_plan_summary_observability.py:59-60 | 无 |
+| R10 | 死方法 `get_latest_version_or_1` | 已删除（旧 `gantt_service.py:60-62`；现 `:60` 是活方法 `resolve_version`） | 2026-06-08 fixed |
+| R10 | 测试 stub 镜像 | 已删除（旧 `regression_scheduler_week_plan_summary_observability.py:59-60`） | 2026-06-08 fixed |
 | R11/R63 | support 版 `_normalize` def / 调用 | gantt_service_support.py:32 / :58 | 无 |
 | R11/R63 | provider 版 `_normalize` def / 调用 | gantt_critical_chain_provider.py:113 / :180 | +9（旧 :104-128/:171，旧值并入相邻 `_copy`:104） |
 | R11/R63 | 收口落点（已存在） | gantt_critical_chain.py（两路 :7/:19 已 import） | — |
@@ -18,7 +18,7 @@
 | 公共 | 出口分叉 | gantt_service.py:384(support)/:386(provider get_critical_chain) | 旧 375/377 是 build_tasks 块 |
 | 公共 | 三道白名单 | provider `_copy`:104 / 两份 `_normalize`:32+:113 / contract `_public_critical_chain`:19（`:40 return raw` 透传） | — |
 
-承重/精度禁区行确认：`_copy_critical_chain_result`(provider:104) 与 `_normalize`(:113) 是两个独立 staticmethod，收口只动 `_normalize`，**禁误删 `_copy`**；`resolve_version`(gantt_service.py:64) 是活方法，R10 删 :60-62 后须 grep 复核 :64 仍在。`gantt_critical_chain.py` 仅 import `._sched_utils`/`.gantt_task_labels`，不反向 import support/provider → 收口下沉 `_normalize` 到它**无环、0 越层**。
+承重/精度禁区行确认：`_copy_critical_chain_result`(provider:104) 与 `_normalize`(:113) 是两个独立 staticmethod，收口只动 `_normalize`，**禁误删 `_copy`**；`resolve_version`(gantt_service.py:60，旧 :64) 是活方法，R10 fixed 后仍须按符号复核它在位。`gantt_critical_chain.py` 仅 import `._sched_utils`/`.gantt_task_labels`，不反向 import support/provider → 收口下沉 `_normalize` 到它**无环、0 越层**。
 
 ## A) 原子子簇拆分（必须同批/同提交 vs 可独立）
 
@@ -40,17 +40,17 @@
 - **内部顺序**：**A1 先于 A3**（强偏序）。scope 须穿三道白名单：主闸 `_normalize`、provider `_copy_critical_chain_result`(:104-110，当前只复制 ids/edges/edge_type_stats/reason_code，**会丢 scope，须补**)、contract `_public_critical_chain` unavailable 分支(:22-39 build 固定键，会吞 scope；:40 透传分支保留)。
 - **红线**：严禁裸删 filtered 过滤逻辑（裸删=把 filtered 视图改成整版，反砍业务=违灵魂线）；禁破坏 support:55-56 `if not filters: return None` 分流判据 + gantt_service.py:385 None 回退（有意降级，scope 修法不动）。owner_pending=true → **终态修法（scope 落点写法、本轮是否做）待 owner+怀疑者复核**（needs_adversarial=true 且 registry verdict=null，PHASE0 §6 三问：None 回退是否有意/裸删 vs 补标记/当下债 vs 在途态）。
 
-### 独立成员：`{R10}` —— 同 PR 但逻辑独立
-- **是否原子**：R10 删 gantt_service.py:60-62 死方法 + stub:59-60，与 A1/A2/A3 **逻辑零重叠**（删头部死叶子 vs 改中段/底层归一）。**非原子**：不门控也不被门控任何收口动作。
-- **为何仍同 PR**：纯物理约束——R10 与 R55 共居 gantt_service.py，PHASE0 §3「同文件不得两 PR 并发改」。R10 删 :60-62 后 R55 的 :384 上移 3 行，但 R55 按符号名定位不受影响；**任意顺序皆安全**。推荐 R10 先删（缩短文件）。
-- 精度禁区：删 :60-62 后须 grep 复核 `def resolve_version`(:64) 仍在（相邻活方法，名字也含 version，误删即静默炸周计划版本解析）。owner_pending=false，纯删除无 parity，反需删 stub。
+### 已完成成员：`{R10}` —— 2026-06-08 已 fixed
+- **执行终态**：R10 已删除 `gantt_service.py` 中的 `get_latest_version_or_1` 死方法和测试镜像 stub；`rg get_latest_version_or_1 core/ web/ data/ tests/` 零命中。
+- **与 A1/A2/A3 的关系**：R10 与 A1/A2/A3 **逻辑零重叠**（已删头部死叶子 vs 后续改中段/底层归一），不门控也不被门控任何收口动作；后续勿重复处理 R10。
+- **精度禁区现状**：`def resolve_version` 保留在 `gantt_service.py:60`（旧 :64），生产路由 `scheduler_gantt.py:187` 仍调用它。
 
 ### 严格偏序总链
 ```
 A1{R11≡R63}（统一单份 _normalize）
         ├──> A2{R12}（加 dropped_count/critical_chain_partial）
         └──> A3{R55}（加 scope=filtered/full）   ← owner 门控本轮是否做
-R10（独立，同 PR 物理串行，任意顺序）
+R10（已 fixed，勿重复处理）
 ```
 A2 与 A3 强烈建议**同一次改 `_normalize`**（共用三道白名单，避免两轮穿白名单 + 两轮改同函数）。
 
@@ -82,12 +82,12 @@ A2 与 A3 强烈建议**同一次改 `_normalize`**（共用三道白名单，�
 - **新增 `R12 ⟂ R55 同批边（共用三道白名单）`**：二者新键（dropped_count/critical_chain_partial vs scope）落同一 `_normalize`+`_copy`+contract 白名单，宜同 PR 一次穿白名单。非偏序，是「同批协同」边。
 
 ### 降级（硬依赖 → 软约束）
-- **降 `R10↔R55`：硬「同文件撞」→ 软「同 PR 物理串行」**：R10 删 :60-62 / R55 改 :384，相距 280+ 行，物理不重叠，任意顺序安全（R55 按符号定位）。仅 PHASE0 §3「勿两 PR 并发改 gantt_service.py」，无致命撞车。
+- **降 `R10↔R55`：硬「同文件撞」→ 软「同 PR 物理串行」**：R10 旧 :60-62 死方法已 fixed；R55 后续按符号定位改中段，物理不重叠。仅 PHASE0 §3「勿两 PR 并发改 gantt_service.py」，无致命撞车。
 - **降 `R12↔{R10/R11/R21/R34/R63}` same_file 噪声 → 非约束**：见上「删除」，gantt_critical_chain.py 内 R12 `same_file_siblings=[]`，唯一真共址是 R55（why 同含 gantt_critical_chain.py + gantt_service.py），但 R12 在 :84/:328-334、R55 在 :344-384（gantt_service.py 侧），文件内行段隔开 >300 行，仅键集需协调键名不冲突。
 - **降 `R55→R21/R44/R72`：同文件 → 消费者只读触发条件**：R55 不改 scheduler_gantt.py，只依赖其 :345-351 把 resource_type/resource_id 传到 :344；降为「他债改该段时勿砍触发条件」的软提醒。
 
 ### 本簇不涉及的 corrections B/E 项（确认无关，不误用）
-- R02↔R25、R45↔{LB07,R33,R51}、R32↔R15、LB04↔{LB07,R33}、R26↔R43、config_snapshot R26↔R71、R13↔R18 解耦、R05→R34 降级、R20↔R08/R09 —— 均**不含本簇五债**（R20↔R12 那条已在上「删除」处理）。本簇无 fixed 成员（R10/R11/R12/R55/R63 均 planned/owner_pending，无一在 LB06/R56/R57/R07/R16/LB03 已修清单）。
+- R02↔R25、R45↔{LB07,R33,R51}、R32↔R15、LB04↔{LB07,R33}、R26↔R43、config_snapshot R26↔R71、R13↔R18 解耦、R05→R34 降级、R20↔R08/R09 —— 均**不含本簇五债**（R20↔R12 那条已在上「删除」处理）。本簇当前仅 R10 已 fixed；R11/R12/R55/R63 仍 planned/owner_pending，且无一落在 LB06/R56/R57/R07/R16/LB03 已修清单。
 
 ## D) 承重前置（门控簇内哪些结构动作 + 禁区行）
 
@@ -105,7 +105,7 @@ A2 与 A3 强烈建议**同一次改 `_normalize`**（共用三道白名单，�
 5. `gantt_contract.py:19-40` `_public_critical_chain` —— 白名单依赖归一后 `available is False` 分支；:40 `return raw` 透传分支保留新键（partial/scope 主场景透过），unavailable 分支(:22-39) 须确认新键合理保留/置默认。
 6. `gantt_critical_chain.py:84` `if not st or not et or not (st < et): continue` —— R12 **禁删/改条件**（删它 → None 流入 :114 sort/:262 max → TypeError → 出口 try/except 接住 → 整链 available:False 功能回归 = 过度激进）。
 7. `gantt_critical_chain.py:312-359` 出口 try/except（:338-341 出口A / :352-359 出口B）—— R12 不碰（其领地是注入点+三白名单）；若另有 P4 出口吞错债（R55 档曾提及但实为呈现失真，不在此），需独立处理，A2 不顺手动。
-8. `gantt_service.py:64-69` `resolve_version` —— R10 删 :60-62 死方法的**操作精度禁区**（活方法，名字含 version，误删即静默炸周计划版本解析）；删后立即 grep 复核 :64 在。
+8. `gantt_service.py:60-65` `resolve_version`（旧 :64-69）—— R10 fixed 后必须保留的**操作精度禁区**（活方法，名字含 version，误删即静默炸周计划版本解析）；后续按符号 grep 复核在位。
 9. `gantt_service.py:385-390` filters 空→None→fallback provider full —— R55 灵魂线「有意降级」回退，scope 修法不得破坏；`gantt_service_support.py:55-56` `if not filters: return None` 分流判据同禁动。
 10. `gantt_critical_chain.py:347` 算法不变量注释「输入：某一 version 的全量排程（不按周截断）」—— 只读，R55 scope 修法只在算法外加标记，不动算法。
 
@@ -113,14 +113,14 @@ A2 与 A3 强烈建议**同一次改 `_normalize`**（共用三道白名单，�
 
 ## E) fixed 成员残留动作（认账注释）
 
-**本簇无 fixed 成员。** R10/R11/R12/R55/R63 五债状态：
-- R10 planned（owner_pending=false，可直删）
+**本簇已有 fixed 成员：R10 已于 2026-06-08 B 执行 fixed。** R10/R11/R12/R55/R63 五债状态：
+- R10 fixed（已删除死方法 + 测试 stub，勿重复处理）
 - R11 planned（owner_pending=true）
 - R12 planned（owner_pending=false）
 - R55 planned（owner_pending=true，needs_adversarial=true 且 verdict=null）
 - R63 planned（owner_pending=false）
 
-无一落在 corrections E 节已修清单（LB03/LB06/R07/R16/R56/R57）。故**无 fixed 前置残留动作、无需补认账注释**（认账注释属 LB03/R07/R56 等已修偏离债，不涉本簇）。
+除 R10 外，其余成员无一落在 corrections E 节已修清单（LB03/LB06/R07/R16/R56/R57）。R10 是纯删叶子，不产生 fixed 前置门，也无需补认账注释（认账注释属 LB03/R07/R56 等已修偏离债，不涉本簇）。
 
 唯一「待 owner」残留：
 - A1 的 R11（owner_pending=true）裁断点 = 合并取 support 的 `bool()` 包裹写法 vs provider 裸写法（建议保留 `bool()`）；与 R63 终态修法合并为单 work item。
@@ -128,4 +128,4 @@ A2 与 A3 强烈建议**同一次改 `_normalize`**（共用三道白名单，�
 
 ## 返回串
 
-簇 C-GANTT | 原子子簇:3个 [A1{R11≡R63}同一物理动作 / A2{R12} / A3{R55}] + R10独立同PR | 关键内部顺序:A1(统一单份_normalize)→A2(加dropped_count/critical_chain_partial)+A3(加scope=filtered/full,二者同改_normalize)；R10任意序但同PR串行(删:60-62后grep复核resolve_version:64) | 跨簇边:对簇外无收口/parity/承重前置,仅R55→R21/R44/R72消费者只读触发条件勿砍+R34/R21同gantt_service.py勿并发改(PHASE0§3) | 边变化:删[R12↔R20假边(R20在context.py不碰gantt_tasks)、R12↔gantt_service.py五债same_file噪声]/新[A1→A2、A1→A3收口前置硬边、R12⟂R55同批穿白名单]/降[R10↔R55硬撞→软同PR串行、R55→消费者软提醒] | 承重前置:本簇lb=false无承重点,门=A1必先建normalize parity黄金基线(钉bool(is_available)差异)否则禁收口;禁区:support:58禁return raw、provider _copy:104禁误删(独立于_normalize:113)、:84过滤禁删(否则None→TypeError整链降级)、resolve_version:64禁误删、:385 None回退+:55-56分流判据禁破坏
+簇 C-GANTT | 原子子簇:3个 [A1{R11≡R63}同一物理动作 / A2{R12} / A3{R55}] + R10已 fixed | 关键内部顺序:A1(统一单份_normalize)→A2(加dropped_count/critical_chain_partial)+A3(加scope=filtered/full,二者同改_normalize)；R10 已完成（死方法+stub 已删，`resolve_version` 保留，勿重复处理） | 跨簇边:对簇外无收口/parity/承重前置,仅R55→R21/R44/R72消费者只读触发条件勿砍+R34/R21同gantt_service.py勿并发改(PHASE0§3) | 边变化:删[R12↔R20假边(R20在context.py不碰gantt_tasks)、R12↔gantt_service.py五债same_file噪声]/新[A1→A2、A1→A3收口前置硬边、R12⟂R55同批穿白名单]/降[R10↔R55硬撞→软同PR串行、R55→消费者软提醒] | 承重前置:本簇lb=false无承重点,门=A1必先建normalize parity黄金基线(钉bool(is_available)差异)否则禁收口;禁区:support:58禁return raw、provider _copy:104禁误删(独立于_normalize:113)、:84过滤禁删(否则None→TypeError整链降级)、resolve_version:60禁误删、:385 None回退+:55-56分流判据禁破坏

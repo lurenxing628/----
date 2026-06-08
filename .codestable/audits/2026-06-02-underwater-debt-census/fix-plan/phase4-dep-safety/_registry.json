@@ -4521,7 +4521,7 @@
   "verdict": null,
   "adv_precondition": null,
   "planned_batch_hint": "Batch-9,内部次序在 R11/R63 之后,与 R12 同批(共用白名单)。与 R10(B14)同 gantt_service.py 需 Phase3 跨桶同批协调。",
-  "planned_deps_hint": "【依赖 R11/R63 先统一】:scope 落单份 _normalize,与 R12 dropped_count 共用三道白名单宜同批(Phase1 边 R11→R55 收口前置)。【同 gantt_service.py 跨桶 R10(B14,:60-62)】:动 gantt_service.py 须与 R10 同批/串行(PHASE0 §3),B08 改 :335/:375 区域、R10 删 :60-62 区域,互不重叠但同文件协调避免行号二次漂移,不碰对方逻辑。",
+  "planned_deps_hint": "【依赖 R11/R63 先统一】:scope 落单份 _normalize,与 R12 dropped_count 共用三道白名单宜同批(Phase1 边 R11→R55 收口前置)。【同 gantt_service.py 跨桶 R10】:R10 已 fixed,旧 :60-62 死方法已删,当前 :60 是 live resolve_version;后续动 gantt_service.py 仍须串行(PHASE0 §3),但不得再按 R10 旧行号操作。",
   "planned_fix_hint": "补 scope 标记(呈现失真正确修法=补 scope=filtered/full,严禁裸删过滤):在结果 dict 加 `scope` 键。语义来源=调用点知情:support 路径 critical_chain_for_plan_detail_filter(:54-58)收到 filters 非空 → scope='filtered';provider 路径 get_critical_chain(:171)无 filter → scope='full'。scope 须落进【R11/R63 统一后的单份 _normalize helper】并默认 'full'、由 filtered 调用点显式置 'filtered'(loud/显式,非静默推断)。穿三道白名单:单 _normalize(主闸,build fixed dict 必须认 scope 键)+ provider _copy_cr",
   "phase1_blast": {
    "co_change_within_group": [
@@ -4535,7 +4535,7 @@
    "downstream_effect": "只读显示正确性:带任一过滤(单设备/单批次)时关键链 ids/edges/makespan(完工时间)是子集内部链冒充整版,偏离整版真值且无提示。不损坏数据,blast=medium。",
    "fix_invalidation_risk": "scope=filtered/full 标记须穿同三道白名单(support:32-51/provider:104-128/contract:19-40),与 R12 共用——若 R11/R63 已统一归一,scope 与 dropped_count 都落单份,宜同批。无独立对抗 verdict:落手前需怀疑者复核'当下债 vs 在途中间态';若强删过滤而非补 scope 标记=违灵魂线呈现失真不补反砍。",
    "id": "R55",
-   "lb_colocation_danger": "非 §5 承重文件;但 gantt_service.py 跨桶同文件 R10(B14,:60-62),动 gantt_service.py 须与 R10 进同批次/串行(PHASE0 §3),不得碰 R10 的承重逻辑。",
+   "lb_colocation_danger": "非 §5 承重文件;但 gantt_service.py 跨桶同文件 R10 已 fixed,当前 :60 是 live resolve_version。后续动 gantt_service.py 须串行(PHASE0 §3),不得按 R10 旧死方法行号操作。",
    "location_status": "✅准:gantt_service.py:335(detail_filters)、:336/:340-343(list_plan_detail_rows_between_for_resolution 喂周窗口 wr.start_str/wr.end_exclusive_str + 子集 detail_filters)、:375 critical_chain_for_plan_detail_filter、gantt_service_support.py:57(compute_critical_chain_from_rows 子集 rows)均在。算法不变量 gantt_critical_chain.py:347'输入:某一 version 的全量排程(不按周截断)'✅。grep 证全仓无 scope=filtered/scope_full 标记。",
    "pathology": "呈现失真:filtered 关键链把周窗口+资源/批次子集 rows 喂进'要求整版输入'的算法,算出的 ids/edges/makespan_end 经同一 contract 以 available:True + 同名 makespan 键对外,无 scope=filtered 标记。⚠️ PHASE0 §6:R55 needs_adversarial 但无独立对抗 verdict,需额外谨慎复核(不能依赖现成对抗结论)。",
    "planned_fix_class": "补scope标记 (scope=filtered/full,不裸删过滤;穿三道白名单。⚠️ 无独立 verdict 需怀疑者额外复核)",
@@ -4629,7 +4629,7 @@
   "verdict": null,
   "adv_precondition": null,
   "planned_batch_hint": "Batch-9(B08 关键链甘特,SCC-GANTT)。内部【最先】:统一归一是 R12/R55 的硬前置。本桶自成簇不阻塞他桶。",
-  "planned_deps_hint": "R11≡R63 同一动作(本条即代表该统一动作)。【必须早于】R12(加 dropped_count)与 R55(加 scope):若不先统一,R12/R55 各改两副本=复活本债(Phase1 边 R11→R12、R11→R55 收口前置)。同 gantt_service.py 跨桶 R10(B14,:60-62 死方法)须同批/串行(PHASE0 §3)。",
+  "planned_deps_hint": "R11≡R63 同一动作(本条即代表该统一动作)。【必须早于】R12(加 dropped_count)与 R55(加 scope):若不先统一,R12/R55 各改两副本=复活本债(Phase1 边 R11→R12、R11→R55 收口前置)。同 gantt_service.py 跨桶 R10 已 fixed,后续仅需串行并保护当前 :60 live resolve_version。",
   "planned_fix_hint": "收口到【已存在】公共落点:抽单份 `_normalize_critical_chain_result` 到两文件已共同 import 的 core/services/scheduler/gantt_critical_chain.py(§4 收口点族『关键链』=gantt_critical_chain 公共落点,非新建)。support 版(:32-51 module 级函数)与 provider 版(:104-128 staticmethod)两路都改调它(或 support import provider 范式,但落到 gantt_critical_chain.py 更中性)。逐字保留归一行为:is_available 默认 True、available 时清 reason/reason_code、edge_type_stats 四键默认{process,machine,operator",
   "phase1_blast": {
    "co_change_within_group": [
@@ -6524,10 +6524,10 @@
   "lb_no_touch": "verdict-confirmed 承重:runner.py narrow-except CandidateTrialFailure 防 b81f8b3f 删掉的静默吞错复活;只补注释,禁改回 except Exception"
  },
  "R10": {
-  "id": "R10",
-  "bucket": "B14",
-  "home": "B14",
-  "status_2026_06_05": "planned",
+ "id": "R10",
+ "bucket": "B14",
+ "home": "B14",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P6",
   "partition": "scheduler-gantt",
@@ -6543,7 +6543,7 @@
    "regression_scheduler_week_plan_summary_observability.py",
    "scheduler_week_plan.py"
   ],
-  "current_evidence_2026_06_05": "gantt_service.py:60-62 死方法 get_latest_version_or_1 仍在且名实矛盾未消 (`return v if v > 0 else 0`);测试镜像 stub 仍在 regression_scheduler_week_plan_summary_observability.py:59。计划的直删(方法+stub)未执行,resolve_version:64 活方法未触碰。",
+  "current_evidence_2026_06_05": "2026-06-08 B 执行终态:get_latest_version_or_1 死方法已从 core/services/scheduler/gantt_service.py 删除,测试镜像 stub 已从 tests/candidate/test_scheduler_week_plan_summary_observability.py 删除;rg get_latest_version_or_1 core/ web/ data/ tests/ 零命中;活方法 resolve_version 保留在 gantt_service.py:60,生产消费者 scheduler_gantt.py:187 仍调用它。",
   "cluster": "C01",
   "same_file_siblings": [
    "R55"
@@ -6609,8 +6609,8 @@
   "verdict": null,
   "adv_precondition": null,
   "planned_batch_hint": "Batch-9(B08 SCC-GANTT)，与 R55 同批。自成簇，不阻塞他桶。Low 优先级。",
-  "planned_deps_hint": "gantt_service.py 跨桶与 R55(B08，filtered 关键链冒充整版，落点 :375 critical_chain_for_plan_detail_filter)共居。R10(删 :60-62)与 R55(在 :375 加 scope)改不同区域但同文件，须同批或串行。Phase1 边 R10→R55『同文件同改』；Phase1 Batch-9(B08 SCC-GANTT)已把 R10 与 R55/R11/R12/R63 归同批。",
-  "planned_fix_hint": "直删。(1) 删 gantt_service.py:60-62 整个 get_latest_version_or_1 方法；(2) 删测试镜像 stub tests/candidate/test_scheduler_week_plan_summary_observability.py:59-60(`def get_latest_version_or_1(self): return 3`)——它仅为镜像 API 表面存在、从不被调用。验收前确认 resolve_version(:64)未被触碰(它是活的版本解析路径)。",
+  "planned_deps_hint": "2026-06-08 fixed 后仅保留历史关系说明:gantt_service.py 跨桶与 R55(B08，filtered 关键链冒充整版，落点按符号重 rg)共居。R10 已删除旧 :60-62 死方法，当前 :60 是活方法 resolve_version；后续 R55 按符号定位，不得再按 R10 旧行号操作。",
+  "planned_fix_hint": "2026-06-08 已执行完毕，勿重复操作。历史修法为:删除 get_latest_version_or_1 死方法 + 删除 tests/candidate/test_scheduler_week_plan_summary_observability.py 中测试镜像 stub。当前 get_latest_version_or_1 全仓零命中；当前 gantt_service.py:60 是活方法 resolve_version，禁止按旧 :60-62 删除。",
   "phase1_blast": {
    "co_change_within_group": [],
    "contract_topology_tests": [],
@@ -6618,9 +6618,9 @@
    "fix_invalidation_risk": "gantt_service.py 跨桶:R55(B08,filtered关键链冒充整版)同文件——须与B08同批次或串行",
    "id": "R10",
    "lb_colocation_danger": "none",
-   "location_status": "✅准 — gantt_service.py:60 def get_latest_version_or_1,:61-62 体 `v=int(history_repo.get_latest_version() or 0); return v if v>0 else 0`——名字承诺or_1实际返回0,矛盾确认。:64 resolve_version 是另一个live方法(独立)。",
+   "location_status": "✅fixed — 旧 gantt_service.py:60-62 get_latest_version_or_1 与旧测试 stub 已删除；当前 gantt_service.py:60 是 live resolve_version，生产路由 scheduler_gantt.py 仍调用它。",
    "pathology": "P6 — 零真实caller死方法;周计划路由 scheduler_week_plan.py:278/284/377 只调 resolve_week_range/get_week_plan_rows,从不碰它;名字or_1与返回0矛盾误导未来读者。",
-   "planned_fix_class": "删+退测试 — 删 gantt_service.py:60-62 + stub:59;与R55(B08)协调同文件",
+   "planned_fix_class": "已完成删+退测试 — get_latest_version_or_1 全仓零命中；后续勿重复处理 R10",
    "prod_consumers": [
     "生产零引用(已grep证实):Flask路由/registry已排除;唯一命中是测试stub定义非调用"
    ],
