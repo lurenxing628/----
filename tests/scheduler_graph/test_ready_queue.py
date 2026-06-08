@@ -79,6 +79,7 @@ def _incremental_ready_ids(graph_state, ops_by_batch, *, blocked_batches=None):
 
 
 def _full_scan_ready_ids(graph_state):
+    # 我是故意的：用旧全量扫描当 oracle，对照生产增量 ready queue。
     return get_ready_operation_ids(
         schedulable_op_ids=set(graph_state["op_by_id"]),
         completed_or_fixed_op_ids=graph_state["completed_or_fixed_op_ids"],

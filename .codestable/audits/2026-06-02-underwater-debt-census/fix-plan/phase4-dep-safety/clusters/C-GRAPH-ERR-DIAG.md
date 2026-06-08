@@ -27,12 +27,15 @@
 - **禁区行（执行后复核）**：`:175 def _assert_init_has_no_imports` 保留，`:408` web 空域循环仍调用；`:312` 元组里 `config/run/summary`（真业务包）仍保留；`:317` 起 lingering/strong-compat 断言未动；`:637` 第二处三元组未动。
 
 ### 子簇 A3 — R52 + R25（**同提交**；R52 决策门先行）
-- **成员**：R52(算法层 `core/algorithms/greedy/dispatch/ready_queue.py:103` impl body)、R25(service 层 `core/services/scheduler/graph/ready_queue.py` 11 行垫片 shell)。
-- **原子原因**：**同符号 `get_ready_operation_ids` 的 shell+body**。impl 一删，垫片 :9 import 立即 ImportError；二者必须同一提交。两文件物理隔离（algorithm 层 vs service 层），不撞行号、无 dict 键位移。
-- **内部顺序**：
-  1. **R52 决策门先裁**（R52 owner_pending=true）：方向 A(删 impl+垫片) vs 方向 B(保留作 incremental-vs-fullscan 差分 oracle 加「我是故意的」注释)。R25 命运由 R52 决定。
-  2. 若走方向 A：**先迁约 23 个 LIVE-only sgs_graph 测试 + 三条唯一 ValidationError 契约**（test_ready_queue.py :302/:326/:361）到新建 `tests/scheduler_graph/test_sgs_graph_ready.py`（当前不存在），并把 6 处差分 oracle(:275/278/281/284/296)改成对 LIVE 路径字面量期望；6 处迁完后再删 impl+垫片。**绝不裸删整 test_ready_queue.py**（裸删 = LIVE sgs_graph 行为覆盖一次性蒸发）。
-  3. 同提交退两处模块名枚举：`regression_scheduler_graph_lazy_runtime_contract.py:27`、`test_metrics_topology.py:140`。
+- **成员**：R52(算法层 `core/algorithms/greedy/dispatch/ready_queue.py:103` impl body)、R25(service 层 `core/services/scheduler/graph/ready_queue.py` 补注释后 13 行垫片 shell)。
+- **2026-06-08 B 执行终态**：已 fixed。O07 已裁方向 B：保留 `get_ready_operation_ids` 全量扫描版当 incremental-vs-fullscan 差分 oracle，R25 service 垫片同步保留；三处已补「我是故意的」注释（impl、垫片、`_full_scan_ready_ids` 测试 helper）。
+- **原子原因**：**同符号 `get_ready_operation_ids` 的 shell+body**。历史删除路线里 impl 一删，垫片 import 立即 ImportError；二者必须同一提交。当前 KEEP 路线没有删除动作，两文件物理隔离（algorithm 层 vs service 层），不撞行号、无 dict 键位移。
+- **已完成的内部顺序（历史执行记录，勿重复处理）**：
+  1. 已执行 owner 裁后方向 B，不再走方向 A 删除路线。
+  2. 已在 `core/algorithms/greedy/dispatch/ready_queue.py:103` 的 `get_ready_operation_ids` docstring 补明「我是故意的」差分 oracle。
+  3. 已在 `core/services/scheduler/graph/ready_queue.py` docstring 补明该垫片随 oracle 保留给兼容测试，不是生产 SGS live ready queue。
+  4. 已在 `tests/scheduler_graph/test_ready_queue.py` 的 `_full_scan_ready_ids` helper 上补明旧全量扫描是 oracle。
+- **当前禁区**：不删 impl、不删 R25 垫片、不新建 `tests/scheduler_graph/test_sgs_graph_ready.py`、不迁 `test_ready_queue.py` import、不退 lazy_runtime/metrics_topology 模块枚举。旧方向 A 的 31 用例迁移/异常类 parity/枚举退场分析只作为未来重启删除路线的禁区。
 - **parity 反例（删前必证，不可抹平）**：全量版坏 op_id raise `ReadyQueueContractError`，LIVE 版 raise `ValidationError(field=graph_ready_context)`——**异常类不同**，parity 须断言「均拒绝」而非「同类型」；None 输入 LIVE `_prepare_graph_ready_state` `return None` 不 raise，全量版无 None 入口，**该分支不可 cross-check，须两路分别写**。
 - **路径钉死**：取代者 sgs_graph 在**算法层** `core/algorithms/greedy/dispatch/`，非 service 目录（纠 registry phase1_blast 误标）。roadmap 备忘措辞勿误指 service。
 
@@ -82,7 +85,7 @@
 - **R14→LB01 维持承重硬边**（不降）：同符号 `_resolve_strict_plan`，R14 让位 LB01。
 
 ### 本簇 fixed 影响（E 节详）
-- **2026-06-08 B 执行后补登：R02 已 fixed。** 其余 R06/R25/R27/R46 owner_pending=false 仍按计划给终态；R52/LB08/R14/R24 owner_pending=true 待裁。LB03/LB06/R07/R16/R56/R57 已 fixed，均不在本簇，仍不门控本簇任何结构动作。
+- **2026-06-08 B 执行后补登：R02、R25、R52 已 fixed。** R25/R52 已按 O07 方向 B 保留并补认账注释；R06/R27/gantt 已 fixed；R46 owner_pending=false 仍按计划给终态；LB08/R14/R24 owner_pending=true 待裁。LB03/LB06/R07/R16/R56/R57 已 fixed，均不在本簇，仍不门控本簇任何结构动作。
 
 ## D. 承重前置（LB/N1/N2/R03/R58 门控的结构动作 + 禁区行）
 
@@ -99,21 +102,21 @@
 
 ### 灵魂线（loud raise / 可观测）禁区——本簇删除动作绝不削弱：
 - **R02 / A1**：`schedule_graph_resource_matching_context.py:28-45 GraphInputContractError` raise（:33/:43）。
-- **R52 / A3**：`ready_queue.py ReadyQueueContractError` 抛错链 + LIVE `sgs_graph.py ValidationError`；方向 A 删全量版前须证 LIVE 校验不弱于全量版（dossier §7：LIVE 等价或更严，仅异常类不同）。
+- **R52 / A3**：`ready_queue.py ReadyQueueContractError` 抛错链 + LIVE `sgs_graph.py ValidationError`；本轮 O07 已裁 KEEP 并 fixed，抛错链保留给差分/合同测试。若未来重启方向 A 删全量版，仍须先证 LIVE 校验不弱于全量版（dossier §7：LIVE 等价或更严，仅异常类不同）。
 - **R14 / A5**：:328 候选「无静默回退」灵魂线不可被 fallback_to_adopted 吃掉（owner 须重钉 `resolve_existing_plan` 层）；删死门**不得**顺手修 `resolve_plan` 静默回退隐患。
 - **R24 / A6**：web 孪生 `NonFiniteDiagnosticNumber` loud raise 护栏绝不碰；路 B 把活路径改指零消费 core 会退化为静默吞错（踩 P4），故路 B 须另立 P5、护栏先下沉。
 
 ### 分层 0 违规确认
-全 9 债均为「纯删 / 插注释 / 退测试 / 改 yaml」，**不新增任何 import**，0 AST 越层、0 导入环。R25/R52 删 service→algorithm 边只减不增。
+全 9 债均为「纯删 / 插注释 / 退测试 / 改 yaml / KEEP 认账」，**不新增任何 import**，0 AST 越层、0 导入环。R25/R52 本轮保留既有 service→algorithm 边并补认账注释，不新增分层风险。
 
 ## E. fixed 成员残留动作（认账注释）
 
-**本簇 9 成员中 R02 已于 2026-06-08 B 执行 fixed。** corrections E 节旧 fixed 态 = LB03/LB06/R07/R16/R56/R57，全部在他簇，**不门控本簇任何结构动作**。R02 只是 test-only 壳清理，不产生固定前置门；其余成员仍按上文顺序和 owner 裁决执行。
+**本簇 9 成员中 R02、R25、R52 已于 2026-06-08 B 执行 fixed。** corrections E 节旧 fixed 态 = LB03/LB06/R07/R16/R56/R57，全部在他簇，**不门控本簇任何结构动作**。R02 只是 test-only 壳清理，不产生固定前置门；R25/R52 是 O07 KEEP 认账注释闭合，不产生删除前置；其余成员仍按上文顺序和 owner 裁决执行。
 
-唯一与「认账」相关的是 LB08 本身要**新增**承重认账注释（D 节），但那是本簇待落的承重前置，非「fixed 前置已完成的残留动作」。
+当前已完成的「认账」动作是 R25/R52 KEEP 注释；LB08 本身仍要**新增**承重认账注释（D 节），那是本簇待落的承重前置。
 
 ---
 
 ## 返回摘要
 
-簇 C-GRAPH-ERR-DIAG | 原子子簇：6 个 — A1(R02 已 fixed)/A2(R06+R27+gantt 已 fixed)/A3(R52+R25 同提交,R52 决策门先)/A4(LB08→R46 承重先)/A5(R14 独立,LB01 让位)/A6(R24 独立) | 关键内部顺序：R02 已完成（历史步骤：先拆测试 import 再删壳，勿重复处理）；R06/R27/gantt 已一次性同提交完成（SP05 现盘 :312 三元组、旧 delayed 循环已删）；R52 先裁 A/B→先迁 23 测试+3 契约到新文件→再删 impl+R25 垫片；LB08 注释先落再 R46 删 :162-164；R14 三步前置(迁灵魂线/改 roadmap/确认)后删；R24 先调和 networkx roadmap 再删 core+测试单行剪 :83 | 跨簇边：R14→LB01(承重先,同符号 _resolve_strict_plan,硬)；R46→R09(_positive_int:167 软位移)/R01/R19(__all__ 块不撞)；R14→LB02/LB05/R61(report_engine 避让)；R24‖R14(roadmap 范式同可并行)；R52→R50(sgs.py 弱) | 边变化：删 R02↔R25(假 same_file)；R06+R27+gantt 同 SP05 两行原子边已关闭、R24 测试 :83 单行剪；降 R46↔R09 为软位移(R09 收口点已存在) | 承重前置：LB08 注释+绑 regression 契约先于 R46 删行(禁区 :62/:94/:142/:175/:218/:284/:340)；跨簇 LB01 裁断先于 R14 删 :134-139；灵魂线 raise(GraphInputContractError/ReadyQueueContractError/NonFiniteDiagnosticNumber/:328 无回退)全程不削弱；分层 0 违规
+簇 C-GRAPH-ERR-DIAG | 原子子簇：6 个 — A1(R02 已 fixed)/A2(R06+R27+gantt 已 fixed)/A3(R52+R25 已 fixed, O07 KEEP)/A4(LB08→R46 承重先)/A5(R14 独立,LB01 让位)/A6(R24 独立) | 关键内部顺序：R02 已完成（历史步骤：先拆测试 import 再删壳，勿重复处理）；R06/R27/gantt 已一次性同提交完成（SP05 现盘 :312 三元组、旧 delayed 循环已删）；R52/R25 已按 O07 方向 B 保留，全量扫描 impl+R25 垫片+差分 helper 已补「我是故意的」注释，旧迁测试/删除路线不执行；LB08 注释先落再 R46 删 :162-164；R14 三步前置(迁灵魂线/改 roadmap/确认)后删；R24 先调和 networkx roadmap 再删 core+测试单行剪 :83 | 跨簇边：R14→LB01(承重先,同符号 _resolve_strict_plan,硬)；R46→R09(_positive_int:167 软位移)/R01/R19(__all__ 块不撞)；R14→LB02/LB05/R61(report_engine 避让)；R24‖R14(roadmap 范式同可并行)；R52→R50(sgs.py 弱) | 边变化：删 R02↔R25(假 same_file)；R06+R27+gantt 同 SP05 两行原子边已关闭、R24 测试 :83 单行剪；降 R46↔R09 为软位移(R09 收口点已存在) | 承重前置：LB08 注释+绑 regression 契约先于 R46 删行(禁区 :62/:94/:142/:175/:218/:284/:340)；跨簇 LB01 裁断先于 R14 删 :134-139；灵魂线 raise(GraphInputContractError/ReadyQueueContractError/NonFiniteDiagnosticNumber/:328 无回退)全程不削弱；分层 0 违规

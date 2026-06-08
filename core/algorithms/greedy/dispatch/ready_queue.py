@@ -108,7 +108,11 @@ def get_ready_operation_ids(
     predecessor_op_ids_by_op_id: Mapping[int, Iterable[Any]],
     sort_key_by_op_id: Mapping[int, Tuple[int, int, int]],
 ) -> List[int]:
-    """Return schedulable op_ids whose predecessors are all completed or fixed."""
+    """Return schedulable op_ids whose predecessors are all completed or fixed.
+
+    我是故意的：这份全量扫描版保留给测试当差分 oracle，用来对照
+    生产 SGS 的增量 ready queue；生产 SGS 不调用这个 helper。
+    """
 
     schedulable_ids = _op_id_set(schedulable_op_ids, field="schedulable_op_ids")
     completed_or_fixed_ids = _op_id_set(completed_or_fixed_op_ids, field="completed_or_fixed_op_ids")

@@ -52,7 +52,7 @@
 | **G36** | RESOURCE-REPO | {R37} ✅ fixed | **2026-06-08 已 fixed**。已直删 operator_machine_repo.py 旧 :82-90 的死方法;同文件零碰撞 | 活近亲 list_links_with_operator_info 保留并上移到 :82(误删会静默炸人机分组) |
 | **G37** | GRAPH-ERR-DIAG | {R02} A1 | 独立单债,test-only re-export 壳,生产零消费 | 单债内两步不可颠倒:先拆测试 import(只 build_first_wave_ready_nodes 改指)→后删壳:461-475 |
 | **G38** | GRAPH-ERR-DIAG | {R06, R27, gantt 空包} A2 | **2026-06-08 已 fixed**；同收口点同两行风险已一次性关闭(SP05 现盘 :312 三元组,旧 delayed 循环已删) | 已按"四包同提交"执行:一次改 :312 成三元组+删旧 delayed 循环+删四个 tracked `__init__.py`;后续勿重复处理 |
-| **G39** | GRAPH-ERR-DIAG | {R52, R25} A3 | O07 已裁 B 保留：impl 留作差分 oracle，R25 垫片保留 | 只补「我是故意的」注释；不删 impl、不删垫片、不新建 `test_sgs_graph_ready.py` |
+| **G39** | GRAPH-ERR-DIAG | {R52, R25} A3 ✅ fixed | O07 已裁 B 保留：impl 留作差分 oracle，R25 垫片保留 | 已补「我是故意的」注释；未删 impl、未删垫片、未新建 `test_sgs_graph_ready.py` |
 | **G40** | GRAPH-ERR-DIAG | {LB08, R46} A4 🔒⏸ | 🔒 同文件 scheduler_public_errors.py,LB08 注释钉死承重边界后 R46 才能保护下删:162-164 | LB08 注释先落(或同提交先于 R46)→R46 删:162-164(按符号 grep 重定位,不照搬);O35 已裁：注释产出点按 `internal_operation.py:119/148/150/152/154` 实证改写，禁贴 planned/auto_assign |
 | **G41** | GRAPH-ERR-DIAG | {R14} A5 ⏸ | 独立单债,delay 诊断死三件套;非裸删,删前三步前置+跨簇 LB01 同符号让位 | 前置三步(迁灵魂线测试/改 roadmap/确认无树外调用)后删:42-54+:114-139;删死门不得顺手修 resolve_plan 静默回退(铁律 4) |
 | **G42** | GRAPH-ERR-DIAG | {R24} A6 | O23 已改裁保留不删：core 预留件留作诊断回归 core 契约层未来地基 | 只补「故意保留」注释 + 事实记录；不删 core 文件、不剪测试、不调和 roadmap；路 B 改活 web 路径仍违铁律 5 |
@@ -140,7 +140,7 @@ Batch-B（依赖 ROOT 承重门 / 单门控前置）
   G40(R46)         ← G40a 🔒⏸
   G30(R34+R35)     ← O10 已裁纯删（E18 软自 G33；未来若迁活孪生才回升前置）
   G36(R37)
-  G39(R52+R25)     ← O07 已裁 KEEP：保留 impl+垫片，只补注释
+  G39(R52+R25)     ← ✅ fixed：O07 已裁 KEEP，保留 impl+垫片，已补注释
 
 Batch-C（身份族收敛 / 收口委托，依赖承重族 + parity）
   G04(R58→R54→R44) ← LB03(B01) + R22 parity；同批带走 E03→G01

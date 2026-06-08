@@ -4788,7 +4788,7 @@
   "id": "R25",
   "bucket": "B09",
   "home": "B09",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "medium",
   "pathology": "P3",
   "partition": "scheduler-config-summary-graph",
@@ -4808,7 +4808,7 @@
    "test_metrics_topology.py",
    "test_ready_queue.py"
   ],
-  "current_evidence_2026_06_05": "core/services/scheduler/graph/ready_queue.py 仍是 11 行纯 re-export 垫片(:9 import + :11 __all__,未删);lazy_runtime:27 与 metrics_topology:140 仍枚举该模块名;networkx roadmap 仅有 PR-5 原设计文(把 shim 描述为有意兼容导出),无计划要求补的'已被 sgs_graph 取代、shim 一并下线'失忆备忘。",
+  "current_evidence_2026_06_05": "2026-06-08 B/G39 fixed：O07 已裁方向 B 保留。core/services/scheduler/graph/ready_queue.py 补注释后是 13 行 re-export 垫片，并已补「我是故意的」注释，随 R52 全量扫描 oracle 留给兼容/差分测试；不删垫片、不退 lazy_runtime:29 与 metrics_topology:142 模块枚举、不补 networkx 下线备忘。",
   "cluster": "C01",
   "same_file_siblings": [
    "R52"
@@ -4849,31 +4849,31 @@
    "verdict_kind": "real_debt"
   },
   "adv_precondition": null,
-  "planned_batch_hint": "Batch-10（PHASE1 §4）。与 R52 同提交单元；须晚于 test 迁移。",
-  "planned_deps_hint": "co_change=R52（同一函数的 shell+body，必须同提交删）。隐含前置：R52 修法里的 test_ready_queue.py 测试迁移必须先于/同步于删垫片（否则 :16 import 红）。无 load_bearing colocation。",
-  "planned_fix_hint": "删垫片 + 退测试枚举 + roadmap 备忘，与 R52 同提交。步骤：①删除 core/services/scheduler/graph/ready_queue.py 整文件。②从 tests/scheduler_graph/test_scheduler_graph_lazy_runtime_contract.py:27 与 tests/scheduler_graph/test_metrics_topology.py:140 的模块名枚举数组里摘掉 \"core.services.scheduler.graph.ready_queue\"（两处都是字面量行，实证）。③在 networkx items.yaml PR-5 notes（:178 区）补一句'ready_queue helper 已被 sgs_graph._prepare_graph_ready_state 取代、service 层兼容 shim",
+  "planned_batch_hint": "Batch-B/G39 已 fixed；O07 裁保留，不执行旧删垫片路线。",
+  "planned_deps_hint": "co_change=R52（同一函数的 shell+body）已按 KEEP 路线闭合：R52 全量扫描 oracle 与 R25 service 垫片均保留并补「我是故意的」注释。无 load_bearing colocation。",
+  "planned_fix_hint": "O07 已裁方向 B：不删 core/services/scheduler/graph/ready_queue.py，不退 lazy_runtime/metrics_topology 模块枚举，不新建 test_sgs_graph_ready.py。仅补注释说明该 service 垫片随 R52 全量扫描 oracle 一起保留给兼容/差分测试，不是生产 SGS live ready queue 路径。",
   "phase1_blast": {
    "co_change_within_group": [
     "R52"
    ],
    "contract_topology_tests": [
-    "tests/scheduler_graph/test_scheduler_graph_lazy_runtime_contract.py:27(懒加载模块枚举,删垫片必摘名)",
-    "tests/scheduler_graph/test_metrics_topology.py:140(同上)"
+    "tests/scheduler_graph/test_scheduler_graph_lazy_runtime_contract.py:29(懒加载模块枚举,删垫片必摘名)",
+    "tests/scheduler_graph/test_metrics_topology.py:142(同上)"
    ],
-   "downstream_effect": "无排产产出影响(SGS不调它);仅移除一层service兼容面 + 两处模块枚举断言。",
+   "downstream_effect": "无排产产出影响(SGS不调它);保留一层 service 兼容面给既有兼容/差分测试,并用注释消除失忆风险。",
    "fix_invalidation_risk": "none(但属B13 facade删除,须晚于B09收敛;此垫片本身就是B09产物)",
    "id": "R25",
    "lb_colocation_danger": "none",
-   "location_status": "✅准 — core/services/scheduler/graph/ready_queue.py 实测11行纯 re-export(:9 from core.algorithms.greedy.dispatch.ready_queue import ReadyQueueContractError,get_ready_operation_ids;:11 __all__),自述桥意图。",
+   "location_status": "✅准 — core/services/scheduler/graph/ready_queue.py 补注释后实测13行 re-export(:11 from core.algorithms.greedy.dispatch.ready_queue import ReadyQueueContractError,get_ready_operation_ids;:13 __all__),自述桥意图+KEEP注释。",
    "pathology": "P3 — 被 sgs_graph.py 取代的未接线service垫片;LIVE SGS 走 sgs.py:16,23 from .sgs_graph import _prepare_graph_ready_state(:201调用),全程不碰此垫片。",
-   "planned_fix_class": "删+退测试 — 与R52(底层impl)同提交删;同步删 test_ready_queue.py + 从 lazy_runtime:27/metrics_topology:140 枚举摘 'core.services.scheduler.graph.ready_queue'",
+   "planned_fix_class": "KEEP+认账注释 — O07 已裁保留 R25 service 垫片,随 R52 全量扫描 oracle 供兼容/差分测试使用;不删文件、不退枚举",
    "prod_consumers": [
     "生产零引用(已grep证实):无生产import该service垫片;sgs.py用_prepare_graph_ready_state,schedule_graph_dispatch_context不import ready_queue"
    ],
    "test_consumers": [
-    "tests/scheduler_graph/test_ready_queue.py:16(import经垫片)",
-    "tests/scheduler_graph/test_scheduler_graph_lazy_runtime_contract.py:27(模块名枚举数组)",
-    "tests/scheduler_graph/test_metrics_topology.py:140(模块名枚举数组)"
+    "tests/scheduler_graph/test_ready_queue.py:18(import经垫片)",
+    "tests/scheduler_graph/test_scheduler_graph_lazy_runtime_contract.py:29(模块名枚举数组)",
+    "tests/scheduler_graph/test_metrics_topology.py:142(模块名枚举数组)"
    ]
   },
   "owner_pending": false,
@@ -4883,7 +4883,7 @@
   "id": "R52",
   "bucket": "B09",
   "home": "B09",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "medium",
   "pathology": "P3",
   "partition": "core-algorithms",
@@ -4900,7 +4900,7 @@
    "test_metrics_topology.py",
    "test_ready_queue.py"
   ],
-  "current_evidence_2026_06_05": "core/algorithms/greedy/dispatch/ready_queue.py:103-135 get_ready_operation_ids 全量扫描 impl 仍在(:138 __all__);生产零直接调用(仅 R25 shim 转发);迁移文件 tests/scheduler_graph/test_sgs_graph_ready.py 不存在,test_ready_queue.py:16 仍经 shim import——owner 决策门(方向 A 收 vs B 保)未裁断,按计划保持未动手。",
+  "current_evidence_2026_06_05": "2026-06-08 B/G39 fixed：O07 已裁方向 B 保留。core/algorithms/greedy/dispatch/ready_queue.py:103-139 get_ready_operation_ids 全量扫描 impl 仍在并已补「我是故意的」注释；它只作为 incremental-vs-fullscan 差分 oracle，生产 SGS 不调用。R25 shim 同步保留，未新建 tests/scheduler_graph/test_sgs_graph_ready.py。",
   "cluster": "C01",
   "same_file_siblings": [
    "R25"
@@ -4921,33 +4921,33 @@
   ],
   "verdict": null,
   "adv_precondition": null,
-  "planned_batch_hint": "Batch-10（PHASE1 §4）。与 R25 同提交；owner 决策前不可动手，决策=收时须先做测试迁移。",
-  "planned_deps_hint": "co_change=R25（service 垫片，同提交删）。无 load_bearing colocation（ReadyQueueContractError 抛错链全在死函数内、生产无人捕获）。B09 须早于 B13 facade 删除（PHASE0 §10.2）但本 impl 在 Batch-10 自删。",
-  "planned_fix_hint": "【owner 决策项——见 open_questions，两个合法方向，绝不可裸删整 test 文件】。方向 A（收/删，与 R25 同提交）：①先把 test_ready_queue.py 里 ~23 个 LIVE-only sgs_graph 测试 + 三条唯一 ValidationError 契约（'不能同时是固定'/'固定/已完成工序冲突'/'后继工序'/rejects_unknown_link_scope）迁到 sgs_graph 自有测试文件（如 tests/scheduler_graph/test_sgs_graph_ready.py），保住唯一的 LIVE 行为覆盖。②6 处差分 oracle 断言（:275/278/281/284/296）的期望值本就是字面量 [1]/[2,3]/[3]/[4]，迁移后改为对 LIVE 增量路径的直接期望值断言（失去 cross-chec",
+  "planned_batch_hint": "Batch-B/G39 已 fixed；O07 裁方向 B 保留 oracle。",
+  "planned_deps_hint": "co_change=R25 已按 KEEP 路线闭合：impl 与 service 垫片均保留并补「我是故意的」注释。无 load_bearing colocation；ReadyQueueContractError 抛错链继续只服务差分/合同测试。",
+  "planned_fix_hint": "O07 已裁方向 B：不删 impl、不删 R25 垫片、不新建 test_sgs_graph_ready.py。仅在 impl、R25 垫片、差分 helper 处补「我是故意的」注释，说明全量扫描版是 incremental-vs-fullscan 差分 oracle，生产 SGS 不调用。",
   "phase1_blast": {
    "co_change_within_group": [
     "R25"
    ],
    "contract_topology_tests": [
-    "tests/scheduler_graph/test_scheduler_graph_lazy_runtime_contract.py:27(经R25垫片)",
-    "tests/scheduler_graph/test_metrics_topology.py:140(经R25垫片)"
+    "tests/scheduler_graph/test_scheduler_graph_lazy_runtime_contract.py:29(经R25垫片)",
+    "tests/scheduler_graph/test_metrics_topology.py:142(经R25垫片)"
    ],
-   "downstream_effect": "删除移除 incremental-vs-fullscan 差分覆盖与一层service垫片;生产路径不受影响。删前须确认 sgs_graph.py:20-160 的 ValidationError(field=graph_ready_context) 校验语义已覆盖原 helper 的坏op_id/前后置/排序key/图对象误传合同点(经核对已等价或更严)。",
+   "downstream_effect": "保留 incremental-vs-fullscan 差分覆盖与一层 service 垫片;生产路径不受影响。注释钉明全量版只作 oracle,不再作为待删生产实现处理。",
    "fix_invalidation_risk": "none",
    "id": "R52",
    "lb_colocation_danger": "none(ReadyQueueContractError 抛错链全在死函数内,生产无人捕获)",
-   "location_status": "✅准 — core/algorithms/greedy/dispatch/ready_queue.py:103 def get_ready_operation_ids(全量扫描版),:138 __all__;生产0直接调用,git 84812566 已改为 sgs_graph 增量前沿。",
-   "pathology": "P3 — 同'就绪集合计算'两套实现:生产用 sgs_graph 增量Kahn入度递减,全量版退居仅测试引用;被 test_ready_queue.py:270 当 incremental-vs-fullscan 差分oracle,非纯死残渣。",
-   "planned_fix_class": "删+退测试 — 与R25(service垫片)同提交;needs_adversarial 无独立verdict(PHASE0 §6),owner须裁'差分oracle保留 vs 旧抽象收';若保留应显式标注oracle用途而非裸删",
+   "location_status": "✅准 — core/algorithms/greedy/dispatch/ready_queue.py:103 def get_ready_operation_ids(全量扫描版),:142 __all__;生产0直接调用,git 84812566 已改为 sgs_graph 增量前沿。",
+   "pathology": "P3 — 同'就绪集合计算'两套实现:生产用 sgs_graph 增量Kahn入度递减,全量版退居仅测试引用;被 test_ready_queue.py:273/:290 当 incremental-vs-fullscan 差分 oracle,非纯死残渣。",
+   "planned_fix_class": "KEEP+认账注释 — O07 已裁保留差分 oracle;显式标注用途,不删 impl、不删 R25 垫片、不迁测试",
    "prod_consumers": [
     "生产零引用(已grep证实):get_ready_operation_ids( 全仓唯一调用在测试;greedy/dispatch/__init__.py:13-16 只导出 dispatch_batch_order/dispatch_sgs,不导出ready符号"
    ],
    "test_consumers": [
-    "tests/scheduler_graph/test_ready_queue.py:16(import),31,80(_full_scan_ready_ids内),193,210,221,239(调用)",
-    "tests/scheduler_graph/test_ready_queue.py:270,287,340,365(差分oracle test_incremental_ready_queue_matches_full_scan)"
+    "tests/scheduler_graph/test_ready_queue.py:18(import),81(_full_scan_ready_ids内，具体调用按符号重 rg)",
+    "tests/scheduler_graph/test_ready_queue.py:273,290(差分oracle test_incremental_ready_queue_matches_full_scan；5 处字面量断言在 :278/:281/:284/:287/:299)"
    ]
   },
-  "owner_pending": true,
+  "owner_pending": false,
   "lb_no_touch": null
  },
  "LB08": {

@@ -834,7 +834,7 @@
  "R25": {
   "id": "R25",
   "bucket": "B09",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "P3",
   "lb": false,
@@ -843,7 +843,7 @@
   "siblings": [
    "R52"
   ],
-  "batch": "Batch-10（PHASE1 §4",
+  "batch": "Batch-B/G39 已 fixed",
   "owner_pending": false,
   "needs_adv": true,
   "adv_refuted": false,
@@ -852,7 +852,7 @@
  "R52": {
   "id": "R52",
   "bucket": "B09",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "P3",
   "lb": false,
@@ -861,8 +861,8 @@
   "siblings": [
    "R25"
   ],
-  "batch": "Batch-10（PHASE1 §4",
-  "owner_pending": true,
+  "batch": "Batch-B/G39 已 fixed",
+  "owner_pending": false,
   "needs_adv": true,
   "adv_refuted": false,
   "title": "ready_queue.get_ready_operation_ids 全量扫描版:生产已换增量前沿,经 service 再导出垫片仅供测试"
