@@ -30,7 +30,7 @@
 1. **承重先钉**——所有 load_bearing 点（LB01/LB02/LB05/LB07/LB08/LB03/R03-A/R05-step1/R22-parity/N1/N2）先以「我是故意的」注释 + 绑契约/parity 钉死，再谈任何删改。承重注释是 13 条 H 硬边的共同 source（零入边纯 source），构成 ROOT 批。**注释写错方向（fail-CLOSED 写成 fail-OPEN）比漏边更危险**（见 §3.2 方向硬门）。
 2. **guard 真相源收口**——所有 P5 收口动作只许收口到「已存在」的真相源符号（绝不新建模块）：R09→`operation_execution_scope.py:9 parse_positive_execution_int`、R54 五套手维面→`PlanIdentity.to_dict` + view_context `plan_role_filter_fields`/`default_plan_resolution_dict`、R41 5 族→`enum_normalizers.py` 已存在 *_label、R69→`schedule_input_contracts.py`、R11/R63→单份 `_normalize`。收口前先把真相源**扩成产出点**（R54 的 collar 扩 3 键、R05 的 collar 扩 team 谓词），扩产是独立承重前置改动，须过 owner 审。
 3. **SCC 按文件原子串行**——同物理文件被 ≥2 债命中（24 重灾区文件）时，按符号自下而上、或按显式硬序（如 EXEC-FACT provider 链 R15→R19→R13、PARSE-INT R01→R04、dispatch_rules R49→R51→R50、CONFIG facade R33→R30/R31）一次原子提交或显式串行 + 逐步重 rg；中间提交允许红（如 R01 删函数 + 删 SP05 断言必须同提交，否则中间态必红）。
-4. **facade 最晚**——所有 re-export 壳 / 顶层 shim 的删除（G18/R26、G23/R33、G16/R45≡R48、G17/R31、G37/R02、R29 薄壳化）排在所有「下游收敛」之后；R26（G18）是全局最晚批（Batch-D），须晚于 R29/R33/R52 三桶收敛（E07/E08/E09 硬前置）。
+4. **facade 最晚**——所有 re-export 壳 / 顶层 shim 的删除（G18/R26、G23/R33、G16/R45≡R48、G17/R31、G37/R02（⚠ **test-only 例外**：生产零下游消费者，其「下游收敛」= 同步改 1 处测试 import、在 Batch-A 自带完成 → 故实际归 **Batch-A 早删、非 Batch-D**；见 §1.1 Batch-A 成员清单 + G37「先拆测试 import 再删壳」前置安全网，及 dossier R02.md 字段 8 生产零消费证据）、R29 薄壳化）排在所有「下游收敛」之后；R26（G18）是全局最晚批（Batch-D），须晚于 R29/R33/R52 三桶收敛（E07/E08/E09 硬前置）。
 
 > **脊梁的失败模式（为什么是这个顺序）**：颠倒任一步即静默炸——承重不先钉则后续删改打穿消毒/护栏（LB01↔R17 同 `_build_event_payload`）；收口不先扩产则裸 delegate 抹键 fail-OPEN（R54 collar 不产 3 键时「5 套 delegate」=直接脏写历史现场，爆点 #1）；SCC 不串行则行号互撞致 Edit old_string 失配 + 半截残骸；facade 不最晚则先删壳致下游 ImportError（loud，但延迟暴露——R26 的 2 离线消费者 CI 不跑）。
 
