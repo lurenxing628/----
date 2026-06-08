@@ -22,18 +22,6 @@ class BatchOperationRepository(BaseRepository):
         )
         return BatchOperation.from_row(row) if row else None
 
-    def get_by_op_code(self, op_code: str) -> Optional[BatchOperation]:
-        row = self.fetchone(
-            """
-            SELECT id, op_code, batch_id, piece_id, seq, op_type_id, op_type_name, source,
-                   machine_id, operator_id, supplier_id, setup_hours, unit_hours, ext_days, status, created_at
-            FROM BatchOperations
-            WHERE op_code = ?
-            """,
-            (op_code,),
-        )
-        return BatchOperation.from_row(row) if row else None
-
     def list_by_batch(self, batch_id: str) -> List[BatchOperation]:
         rows = self.fetchall(
             """
@@ -44,19 +32,6 @@ class BatchOperationRepository(BaseRepository):
             ORDER BY seq, piece_id
             """,
             (batch_id,),
-        )
-        return [BatchOperation.from_row(r) for r in rows]
-
-    def list_by_status(self, status: str) -> List[BatchOperation]:
-        rows = self.fetchall(
-            """
-            SELECT id, op_code, batch_id, piece_id, seq, op_type_id, op_type_name, source,
-                   machine_id, operator_id, supplier_id, setup_hours, unit_hours, ext_days, status, created_at
-            FROM BatchOperations
-            WHERE status = ?
-            ORDER BY created_at DESC, batch_id, seq
-            """,
-            (status,),
         )
         return [BatchOperation.from_row(r) for r in rows]
 
@@ -150,4 +125,3 @@ class BatchOperationRepository(BaseRepository):
 
     def delete_by_batch(self, batch_id: str) -> None:
         self.execute("DELETE FROM BatchOperations WHERE batch_id = ?", (batch_id,))
-

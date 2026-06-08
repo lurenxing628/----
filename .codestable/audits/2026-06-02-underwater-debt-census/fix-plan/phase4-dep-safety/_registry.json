@@ -5699,7 +5699,7 @@
   "id": "R36",
   "bucket": "B12",
   "home": "B12",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P6",
   "partition": "data-repos",
@@ -5713,32 +5713,32 @@
   "all_files": [
    "batch_operation_repo.py"
   ],
-  "current_evidence_2026_06_05": "batch_operation_repo.py:25 get_by_op_code(:25-35) 与 :50 list_by_status(:50-61) 两死方法仍在;grep 源码/测试各仅 def 行零消费;git diff b08162cd UNCHANGED,未删。",
+  "current_evidence_2026_06_05": "2026-06-08 B 执行后: batch_operation_repo.py 旧 :25-35 get_by_op_code 与旧 :50-61 list_by_status 已删除；rg -n \"get_by_op_code|list_by_status|['\\\"]get_by_op_code['\\\"]|['\\\"]list_by_status['\\\"]\" core web data tests tools scripts 开发文档/技术债务治理台账.md tools/test_registry_data.py tools/full_test_debt_shards.py pyrightconfig.tools.json 无命中；活方法 get/list_by_batch/create/update/delete_by_batch 保留。",
   "cluster": "ISOLATED",
   "same_file_siblings": [],
   "interference_edges": [],
   "verdict": null,
   "adv_precondition": null,
-  "planned_batch_hint": "Batch-13，纯死无跨边可任意排期（本桶最早可落之一，零风险）。优先级 low。",
-  "planned_deps_hint": "无。batch_operation_repo.py 仅此一债，co_change_within_group=[]。可任意排期。",
-  "planned_fix_hint": "直删 batch_operation_repo.py:25-35（get_by_op_code 整方法）+ :50-61（list_by_status 整方法）两段，一并删。op_code 虽是 schema UNIQUE 业务键但从未接线按 code 取行；list_by_status 无人按状态批量取批次工序。",
+  "planned_batch_hint": "已在 Batch-A/G35 落地；纯死无跨边，独立闭合。",
+  "planned_deps_hint": "已满足：batch_operation_repo.py 仅此一债，co_change_within_group=[]，无后续依赖残留。",
+  "planned_fix_hint": "已执行：直删 batch_operation_repo.py 旧 :25-35 get_by_op_code 与旧 :50-61 list_by_status 两段；未新增 helper，未改 import，未动活方法。",
   "phase1_blast": {
    "co_change_within_group": [],
    "contract_topology_tests": [
     "无(facade delegation/SP05 均不枚举 batch_operation_repo 这两方法)"
    ],
-   "downstream_effect": "可直接删,零引用点。op_code 虽是schema UNIQUE业务键但从未接线取行;list_by_status 无人按状态批量取批次工序。",
+   "downstream_effect": "已直接删除，零引用点。op_code 虽是schema UNIQUE业务键但从未接线取行；list_by_status 无人按状态批量取批次工序。",
    "fix_invalidation_risk": "none",
    "id": "R36",
    "lb_colocation_danger": "none(batch_operation_repo.py 非承重文件)",
-   "location_status": "✅准。batch_operation_repo.py:25 get_by_op_code、:50 list_by_status 两个def行号与盘上一致。文件不在漂移名单。",
-   "pathology": "P6 两个定义后零消费的死查询方法",
-   "planned_fix_class": "直删(两方法一并)",
+   "location_status": "✅已删除 — batch_operation_repo.py 已无 get_by_op_code/list_by_status；活方法 get/list_by_batch/create/update/delete_by_batch 保留。",
+   "pathology": "P6 两个定义后零消费的死查询方法 — 已清理",
+   "planned_fix_class": "已直删(两方法一并)",
    "prod_consumers": [
-    "两方法生产全零引用(已grep证实:全仓.py 仅各自def行,0调用含测试/模板/动态getattr)。BatchOperationRepository 经 repository_bundle.op_repo/batch_service.batch_op_repo/resource_dispatch_actual_record_service.batch_operation_repo 实例化,实际被调=get/list_by_batch/create/delete_by_batch/list_by_part/update/mark_deleted,不含这两个"
+    "无 — 两个 def 已删除，rg 全仓无 get_by_op_code/list_by_status 残留。BatchOperationRepository 真实活用仍为 get/list_by_batch/create/update/delete/delete_by_batch。"
    ],
    "test_consumers": [
-    "无(已grep证实零引用)"
+    "无"
    ]
   },
   "owner_pending": false,
