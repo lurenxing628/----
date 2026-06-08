@@ -59,9 +59,6 @@ class _GanttServiceStub:
     def __init__(self, rows=None):
         self.rows = list(rows or [])
 
-    def get_latest_version_or_1(self):
-        return 3
-
     def resolve_week_range(self, **_kwargs):
         return _WeekRange()
 
