@@ -86,11 +86,11 @@
 | R66 | NAV-PLANID | 🟢🟢🟡 | 🟢 | 死副本 reports_workbench.py:150 纯删；跨文件误删 LIVE 同名异签 workbench_links.py:258（:448 真调）→ context_summary 文案静默丢失/NameError | 严格按 suffix 签名定位本文件 :150 绝不跨文件批量 rename；R54 改 :36 后按 suffix 符号实时重定位禁照搬 :150。 |
 | R22 | PLAN-IDENTITY | 🔴🔴🟡 | 🔴 | 收口委托 build_plan_identity 后 no_history 页 `result_summary_parse_failed` 取值 **False→True 翻转**（`_summary_unavailable(None,·)=(True,'排产摘要缺失')`），下游 reports_plan_template_fields:45/61 + 3 套手维列表渲染态翻转（无历史方案被标「摘要解析失败」）；且删 view_context:74 normalize_plan_role 行→R21 wrapper field=="plan_role" raise 精度失效→bad role builder 静默归一 adopted（计划「键集 exact==」parity 抓不到取值翻转，evidence_contract:194 superset 双重逃逸） | parity 升级为「键集+取值」exact 双断言（对 no_history 实参断言 result_summary_parse_failed 具体取值）+「bad-role 仍抛 field=plan_role」断言；evidence_contract:194 升 24 键 exact；view_context:74 normalize_plan_role 绝不删/绕过（R21 wrapper 精度唯一上游来源）；owner 裁 no_history 取值保旧 False 还是接受新 True；B01/LB03 先行 R22 只 CALL 不改 builder:158/PlanIdentity.to_dict:46-71。LB+LAYER 两透镜红（不同红因互补），SOUL 黄（触发面窄 medium），综合红（行为变化确凿）。 |
 | R21 | PLAN-IDENTITY | 🟢🟡🟡 | 🟡 | 纯删 3 死 shim 安全；误删 dpr_dict wrapper :32-39（+ :11-13 命脉 import 别名）→ R22 precondition 失效+契约测试红；误判整模块死连带删 4 LIVE range 函数→甘特周计划范围静默断裂 | R22 先锁「wrapper 保留」约束 R21 紧随同提交；整文件保留只删 :42/:46/:59 三段+三 import；禁删 :11-13 import 别名（清 import 时显式跳过）；删后跑 `default_plan_resolution_dict("bad")` 自证；R22 锚 wrapper 用符号名（删 import 致上移~9 行）。 |
-| R23 | PLAN-IDENTITY | 🟢🟡🟢 | 🟢 | 两份 _normalize_role 字节级相同纯 dedup 收口到已存在 model；误并入 view_context:65 normalize_plan_role（带 VALID 校验抛 ValidationError）→ resolve_plan("bogus") 抛错类型 ValueError→ValidationError 抛点前移→上游 catch ValueError 静默漏接错误角色当合法放行 | 收口仅 model:21+service:28 两份字节重复体绝不并入 view_context:65；resolve_plan 双段 :105-108 只换 :106 符号来源不改语义；与 R34 软序 R23 先删 :28-30。 |
+| R23 | PLAN-IDENTITY | 🟢🟡🟢 | 🟢 | 两份 _normalize_role 字节级相同纯 dedup 收口到已存在 model；误并入 view_context:65 normalize_plan_role（带 VALID 校验抛 ValidationError）→ resolve_plan("bogus") 抛错类型 ValueError→ValidationError 抛点前移→上游 catch ValueError 静默漏接错误角色当合法放行 | 已收口为 model:21 真相源 + service:17 import/:102 调用，绝不并入 view_context:65；resolve_plan 双段 :101-104 只换 :102 符号来源不改语义；与 R34 软序：R23 最小落法后续锚点净上移 4 行，R34 按符号重 rg。 |
 | R72 | PLAN-IDENTITY | 🟢🟢🟡 | 🟢 | 两份 _get_plan_role_arg 字节级相同纯 dedup 落 web scheduler_utils.py；分层红线绝不下沉 core（core→flask 越层）；必补 `from flask import request`（现仅 import g，latent NameError） | owner 裁公开名+与 R44 落点共识；必补 request import；空串→None 语义原样保留禁加 ROLE_ADOPTED 兜底；落地前实时 rg 重盘 week_plan.py 高频漂移行号。 |
 | R05 | RESOURCE-REPO | 🔴🔴🔴 | 🔴 | collar（column_name 单列 team→空串 + SUPPORTED 无 team + :66 类型有 id 空 raise）结构表达不了承重三轴；步3 先收敛把派工读取收口到未扩 team 现状 collar → team 双 join 谓词（repo:462-463）凭空消失 → 班组视角静默返全量坏数据；空 id 直塞→collar:66 raise→全量视图整页 500；且 normalize_schedule_resource_filter 是双轨共用收口点（超期/明细轨+报表轨），裸改 :65-66 raise 污染另两轨；team 谓词依赖 build_schedule_detail_sql(include_team_context=True)，搬谓词漏带该布尔→no such column: o.team_id | 硬序不可换：步1 扩 collar（team 谓词接口含 include_team_context 信号 + 放开 id 空=全量 + 中文注释，禁 except 吞错/默认空串静默放行，给派工轨单独入口禁裸改 :65-66 raise）→步2 落 5 条 parity（team-only/operator-空-全量/machine-空-全量/team-空-裁断/bad-raise）→步3 才搬 :462-463/:455/:460 进收口点；collar 只产 SQL fragment 文本+参数禁反向 import data SQL builder（model→data 越层+环）；禁误并毗邻 _normalize_team_axis:65（展示轴）；行号系统性 +1 漂移按符号 rg 现盘。3 透镜全红。 |
 | R67 | RESOURCE-REPO | 🟡🟡🟡 | 🟡 | 抽单一常量；半截去重（只换 1-2 处其余手抄）=「看似统一实则分裂」未来改别名更易漏→某入口静默缺一资源 key；第 4 处 scheduler_navigation_links.py 不在 all_files 漏它=半截 | ①②纯 6 键必收（喂收口点零新增依赖）；③④ superset 全收或全不收 tuple 保序；第 4 处 owner 未拍前保持现状/仅注释；禁动收口点签名 :119-127；R67↔R42 diff-hunk 串行。 |
-| R34 | RESOURCE-REPO | 🟢🟢🟡 | 🟢 | 纯删死方法（repoint 目标 get_plan_time_span_for_resolution:210 存在，dossier 正文「不存在」已纠）；删错全响亮 AttributeError | 禁误删活近亲 schedule_repo.py:71/:160 及 facade 断言 :33/:37；facade :11 ScheduleDetailRow 被死 :36+活 :37 共用，只删 :12/:14 保 :11（理由钉「:37 活方法仍用」）；detail_queries 若迁活孪生 list_dispatch_rows 须排 R05 之后（落点是 R05 team-join 战场）；与 R35 同 commit。 |
+| R34 | RESOURCE-REPO | 🟢🟢🟡 | 🟢 | 纯删死方法（repoint 目标 get_plan_time_span_for_resolution 旧锚 :210 存在，R23 后现盘 :206，dossier 正文「不存在」已纠）；删错全响亮 AttributeError | 禁误删活近亲 schedule_repo.py:71/:160 及 facade 断言 :33/:37；facade :11 ScheduleDetailRow 被死 :36+活 :37 共用，只删 :12/:14 保 :11（理由钉「:37 活方法仍用」）；detail_queries 若迁活孪生 list_dispatch_rows 须排 R05 之后（落点是 R05 team-join 战场）；与 R35 同 commit。 |
 | R35 | RESOURCE-REPO | 🟢🟢🟢 | 🟢 | list_between 死方法零引用纯删 | 与 R34 同 commit 按符号名自下而上删（:61-69 夹在 R34 删段间防行号二次漂移）。 |
 | R36 | RESOURCE-REPO | 🟢🟢🟢 | 🟢 | get_by_op_code/list_by_status 两死方法 ISOLATED 零碰撞纯删 | 从后往前删；本桶最早可落之一。 |
 | R37 | RESOURCE-REPO | 🟢🟢🟡 | 🟢 | 死方法 list_links_with_machine_names:82-90 纯删；活近亲 list_links_with_operator_info:92 一字之差，误删活的→静默炸设备页人机联动分组 | diff 严格锁 :82-90，删后立即 grep 活近亲 :92 仍在；R37↔R41 伪干扰删边。 |
@@ -129,7 +129,7 @@
 | **R51 复活**（COMPAT-DISPATCH） | r1-LAYER🔴「灵魂线复活红线」 | 灵魂线复活是「序错/续命即复活」的 loud 风险（删错碰收口点 raise 或测试保留报红），非静默炸；前置全绑（两测试整退禁迁）即黄。 |
 | **R55 三门**（GANTT） | r1-SOUL🔴 | 红因是 owner_pending+needs_adversarial+verdict=null 三流程门未过却被排进可执行 A3，是**流程门未通过**非「会炸」；分析已透，门过后降黄。 |
 | **R24 路 B**（GRAPH-ERR-DIAG） | r1-LB🔴 | 红因是路 B（改指零消费 core 丢护栏）；只走路 A（删 core 死副本）安全，owner 默认推路 A，综合黄。 |
-| **R34「不存在」**（RESOURCE-REPO/也涉 PLAN-IDENTITY） | dossier 正文「repoint 目标 get_plan_time_span_for_resolution 不存在」 | Layer1 + verify + 本轮回盘三纠：存在于 schedule_plan_query_service.py:210。纯删安全。 |
+| **R34「不存在」**（RESOURCE-REPO/也涉 PLAN-IDENTITY） | dossier 正文「repoint 目标 get_plan_time_span_for_resolution 不存在」 | Layer1 + verify + 本轮回盘三纠：旧锚存在于 schedule_plan_query_service.py:210；R23 后现盘为 :206，执行按符号重 rg。纯删安全。 |
 | **R13 死字段「直删」**（EXEC-FACT） | registry「无脑直删」 | 被 5 处测试读活「死」定性被推翻，须先迁测试，但非会炸（漏退即 TypeError 响亮可接受）；r1-SOUL 红（连带删 latest 链静默信号消失）是另一维度，债本身黄。 |
 
 > **跨轮规律**：r1-LB 在 LEAF-DUP-P4 的 3 条红全系**自身 rg 回盘误判**（把薄壳别名当失踪、把同名函数当承重、把无关 return 0 当漏口），r2 逐符号独立回盘全部推翻——这是 cs-audit-verify 提示的「别拿被测对象自身当核查基线会自污染」的典型，最终以 r2 逐符号 rg 为准。但 R69/R03/R41 在 SOUL 透镜下另有**灵魂线维度**的独立红/黄（与锚点维度正交），不被 r2-LB 的锚点推翻所抵消——同一债不同透镜的红因须分维度对账，不可互相抵消。
@@ -228,7 +228,7 @@
 - 测试迁移序：R42+R60 共享 contract :109/:122/:126 只迁一次（去 plan_id 留 back_to）先于删生产。
 
 **C-PLAN-IDENTITY（R22🔴 / R21🟡 / R23🟢 / R72🟢）**
-- 原子性最终判定：B01/LB03 先行→Batch-1 parity（24 键 exact + bad-role raise 双断言）→R22 收口→R21 删 3 shim（严守保留 wrapper+不影响 :74）；R23 与 R34 软序 R23 先删 :28-30。
+- 原子性最终判定：B01/LB03 先行→Batch-1 parity（24 键 exact + bad-role raise 双断言）→R22 收口→R21 删 3 shim（严守保留 wrapper+不影响 :74）；R23 与 R34 软序：R23 最小落法后续锚点净上移 4 行，R34 后续按符号重 rg。
 - 承重禁区（按符号）：view_context:74 normalize_plan_role（R21 wrapper field=plan_role 精度唯一上游来源，R22 绝不删/绕）、builder:158 build_plan_identity + PlanIdentity.to_dict:46-71（LB03 承重 R22 只 CALL）、gantt_plan_query.py:32-39 wrapper + :11-13 import 别名 + :50-156 四 LIVE range 函数、normalize_plan_role:65（R23 绝不并入第三变体）。
 - 必须先落 parity/注释：R22 parity 升「键集+取值」exact + evidence_contract:194 升 24 键 exact（双重逃逸口）；R72 必补 `from flask import request`。
 - 测试迁移序：R22 先升 parity 再收口；续命测试 :294-301 R21/R22 都不碰（R22 保留 wrapper）。
@@ -237,7 +237,7 @@
 - 原子性最终判定：R05 硬序步1扩collar→步2 落 5 parity→步3 才搬 repo 字面量（不可换序）；R34↔R35 同 commit；R38↔R39 part 份硬同批；R34 detail_queries 若迁活孪生须排 R05 之后（落点是 R05 team-join 战场）。
 - 承重禁区（按符号，行号系统性 +1 漂移按符号 rg 现盘）：repo team 双 join :462-463 + 空 id 全量 :455/:460、collar :65-66 raise（双轨共用收口点禁裸改给派工轨单独入口）、_normalize_team_axis:65（展示轴禁误并）、R34 活近亲 schedule_repo.py:71/:160 + facade :11 ScheduleDetailRow（:37 活方法仍用保留）、R37 活近亲 :92、R67 收口点签名 :119-127。
 - 必须先落 parity/注释：R05 步1 collar 接口含 include_team_context 信号（禁反向 import data SQL builder=越层+环）+ 中文注释「id 空→全量（故意）」；5 条 parity（team-only/operator-空/machine-空/team-空-裁断/bad-raise）先于步3。
-- 测试迁移序：R05 步3 前先迁 smoke:177-194 + 续命 :340；R34 删前先退 facade 断言 + detail_queries 10 用例 + benchmark:503 repoint。
+- 测试迁移序：R05 步3 前先迁 smoke:177-194 + 续命 :340；R34 删前先退 facade 断言 + detail_queries 10 用例 + benchmark:505 repoint。
 
 ---
 

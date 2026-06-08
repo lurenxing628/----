@@ -14,6 +14,7 @@ from core.models.schedule_plan_role import (
     SOURCE_CANDIDATE_ROWS,
     SOURCE_SCHEDULE,
     VALID_PLAN_ROLES,
+    _normalize_role,
     is_comparison_plan,
     plan_candidate_label,
     plan_role_label,
@@ -23,11 +24,6 @@ from data.repositories.schedule_plan_query_repo import SchedulePlanQueryReposito
 from data.repositories.schedule_rows import ScheduleDetailRow, ScheduleDispatchRow, ScheduleTimeSpanRow
 
 from .schedule_plan_identity_builder import build_plan_identity, latest_official_version
-
-
-def _normalize_role(role: Optional[str]) -> str:
-    text = str(role or "").strip()
-    return text or ROLE_ADOPTED
 
 
 def _resolution_status(role: Optional[str], *, source_table: Optional[str] = None) -> str:
