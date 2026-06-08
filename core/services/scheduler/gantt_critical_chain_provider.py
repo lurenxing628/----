@@ -16,7 +16,11 @@ from typing import (
 
 from core.models.schedule_plan_role import SOURCE_SCHEDULE
 
-from .gantt_critical_chain import compute_critical_chain, compute_critical_chain_from_rows
+from .gantt_critical_chain import (
+    _normalize_critical_chain_result,
+    compute_critical_chain,
+    compute_critical_chain_from_rows,
+)
 from .schedule_plan_query_service import ROLE_ADOPTED, SchedulePlanQueryService
 from .schedule_result_view_context import default_plan_resolution_dict, selected_plan_role
 
@@ -110,33 +114,6 @@ class GanttCriticalChainProvider:
         return out
 
     @staticmethod
-    def _normalize_critical_chain_result(raw: Any) -> Dict[str, Any]:
-        if not isinstance(raw, dict):
-            raw = {}
-        available = raw.get("available")
-        if isinstance(available, bool):
-            is_available = available
-        else:
-            is_available = True
-        reason_text = str(raw.get("reason") or "").strip()
-        reason_code = str(raw.get("reason_code") or raw.get("reason") or "").strip()
-        if is_available:
-            reason_text = ""
-            reason_code = ""
-        return {
-            "ids": list(raw.get("ids") or []),
-            "edges": [dict(edge) if isinstance(edge, dict) else edge for edge in list(raw.get("edges") or [])],
-            "makespan_end": raw.get("makespan_end"),
-            "edge_type_stats": dict(
-                raw.get("edge_type_stats") or {"process": 0, "machine": 0, "operator": 0, "unknown": 0}
-            ),
-            "edge_count": int(raw.get("edge_count") or 0),
-            "available": is_available,
-            "reason": reason_text,
-            "reason_code": reason_code or ("unknown" if not is_available else ""),
-        }
-
-    @staticmethod
     def _critical_chain_cacheable(result: Dict[str, Any]) -> bool:
         return bool(result.get("available", True))
 
@@ -177,7 +154,7 @@ class GanttCriticalChainProvider:
                 raw = {"available": False, "reason": "rows_load_exception", "reason_code": "rows_load_exception"}
             else:
                 raw = compute_critical_chain_from_rows([dict(row) for row in rows])
-        computed = self._normalize_critical_chain_result(raw)
+        computed = _normalize_critical_chain_result(raw)
         computed["cache_hit"] = False
 
         if not self._critical_chain_cacheable(computed):

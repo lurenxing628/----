@@ -169,9 +169,9 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 
 ### 1.2 Batch-A — 独立死叶子 / 零前置 / owner=false（最早可落）
 
-**成员（调度单元 + 债）**：G14(R10 死方法 `gantt_service:60-62`)、G16(R45≡R48 整文件删 `config_adapter.py`，2026-06-08 已 fixed)、G21(R28 收口 `parse_finite_float`，2026-06-08 已 fixed)、G28(R23 dedup `_normalize_role` 收口 model)、G31(R38 part 份 + R39 `list_unparsed`)、G32(R38 op_type:73/operator:85 两份)、G35(R36 两死方法)、G37(R02 test-only 壳)、G11(R11≡R63 去重 `_normalize` 收口 `gantt_critical_chain.py`)、G38(R06+R27+gantt 四空包同提交)。**G03(R66)** 仅登记归属，受 E04 软序实际延后到 G04(R54) 后执行；**G25(R49 旁支)** 不在 Batch-A 单独执行，并回 Batch-B 的 G24 一次原子。**+ 纯删叶子**（原 LEAF-DUP-P4 桶，按 ⚠简化声明归入此批）：R53(`batch_order.py:74` 一行)、R61(plan 死簇 `:160/164/172-187` + 重定向负向测试)、R70(`schedule_service.py:46-50` 死副本)。**+ G02(R64+R65，2026-06-08 已 fixed)**：权威源 `_interference_rebuilt.md:17` 定义 G02={R64,R65} NAV-PLANID；历史动作是 R64 删除 `_has_navigation_date_range`、R65 完成 `_target_url` 死分支三件套并保留 `TARGET_PAGE_PATHS`。当前本段只保留批次归属和历史原因，不再表示 R64/R65 待删；后续 R42/R67 进入同文件时按当前符号重 rg。
+**成员（调度单元 + 债）**：G14(R10 死方法 `gantt_service:60-62`)、G16(R45≡R48 整文件删 `config_adapter.py`，2026-06-08 已 fixed)、G21(R28 收口 `parse_finite_float`，2026-06-08 已 fixed)、G28(R23 dedup `_normalize_role` 收口 model)、G31(R38 part 份 + R39 `list_unparsed`)、G32(R38 op_type:73/operator:85 两份)、G35(R36 两死方法)、G37(R02 test-only 壳)、G11(R11≡R63 去重 `_normalize` 收口 `gantt_critical_chain.py`，2026-06-08 已 fixed)、G38(R06+R27+gantt 四空包同提交)。**G03(R66)** 仅登记归属，受 E04 软序实际延后到 G04(R54) 后执行；**G25(R49 旁支)** 不在 Batch-A 单独执行，并回 Batch-B 的 G24 一次原子。**+ 纯删叶子**（原 LEAF-DUP-P4 桶，按 ⚠简化声明归入此批）：R53(`batch_order.py:74` 一行)、R61(plan 死簇 `:160/164/172-187` + 重定向负向测试)、R70(`schedule_service.py:46-50` 死副本)。**+ G02(R64+R65，2026-06-08 已 fixed)**：权威源 `_interference_rebuilt.md:17` 定义 G02={R64,R65} NAV-PLANID；历史动作是 R64 删除 `_has_navigation_date_range`、R65 完成 `_target_url` 死分支三件套并保留 `TARGET_PAGE_PATHS`。当前本段只保留批次归属和历史原因，不再表示 R64/R65 待删；后续 R42/R67 进入同文件时按符号重 rg。
 
-> **2026-06-08 执行补登**：G02/G14/G16/G21/G28/G31/G32/G35/G37 已在 `_registry.json` 与对应 dossier 登记 fixed。上方成员段保留批次归属和执行纪律，不再表示这些单元仍待执行；后续不要重复处理 R64/R65/R10/R45/R48/R28/R23/R36/R38/R39/R02。G02 的旧 `scheduler_navigation_links.py` 裸行号已经随删除上移,后续 Batch-C 的 R42/R67 必须按符号重 rg；G16 的旧 sp06 锚点已随 A P1.1 删除测试文件变为 no-op；G21 的 `_safe_float` 保名薄包装仍需保留 fitness 白名单。
+> **2026-06-08 执行补登**：G02/G11/G14/G16/G21/G28/G31/G32/G35/G37 已在 `_registry.json` 与对应 dossier 登记 fixed。上方成员段保留批次归属和执行纪律，不再表示这些单元仍待执行；后续不要重复处理 R64/R65/R11/R63/R10/R45/R48/R28/R23/R36/R38/R39/R02。G02 的旧 `scheduler_navigation_links.py` 裸行号已经随删除上移,后续 Batch-C 的 R42/R67 必须按符号重 rg；G11 已把单份 `_normalize_critical_chain_result` 收口到 `gantt_critical_chain.py:67-88`，后续 R12/R55 只能在该单份 helper 上继续改；G16 的旧 sp06 锚点已随 A P1.1 删除测试文件变为 no-op；G21 的 `_safe_float` 保名薄包装仍需保留 fitness 白名单。
 
 **是否原子**：可执行成员**互相独立**（跨文件零碰撞），可各自单提交；簇内多债（G31 R38part+R39、G38 四空包）须各自原子同提交（见前置）。G03 是软序延后项，G25 是并回 G24 的同债旁支，不按 Batch-A 独立提交。整批 owner=false。
 
@@ -180,7 +180,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 > **⚠本批重 rg 纪律（C5 逐批落地）**：Batch-A 多为整段/整方法删，**删任一处即位移其下所有锚点**，故每删一处后立即 `rg` 复核活近亲在位（go-no-go 即此）。**本批高危锚点符号清单（执行前 rg 现场定位，弃裸行号）**：G02 `_has_navigation_date_range`/`_target_url`/`urlencode`/`query_for_target`（删后复核 `_has_navigation_context`/`TARGET_PAGE_PATHS`/`_REPORT_CONTEXT_FIELD_NAMES`/`preserved_report_context_fields` 在位）、G14 `resolve_version`、G25 `parse_dispatch_rule`（与 G24 串行）、G37 `report.py:180` 兄弟壳、G38 `_assert_init_has_no_imports`、G11 `_copy_critical_chain_result`/`_normalize`。G02 与 R42(G01)/R67(G34) same_file，删后其下锚点系统性上移，交接给 Batch-C（见 §1.0 三批四单元串行块）。
 
 **前置安全网（逐条点名）**：
-- G11(R11≡R63)：**先建 normalize parity 黄金基线**（钉 `available=0→True` + `bool()` 包裹差异，5 边界），无 parity 不得收口；收口取 support 的 `bool()` 写法；A1 早于 A2/A3（G12/G13），禁拆两人各删一份（调用悬空）。
+- G11(R11≡R63)：2026-06-08 已 fixed；已先建 normalize parity 黄金基线并扩到 11 个 legacy 边界（钉 `available=0→True` + `bool()` 包裹差异），再把单份 helper 收口到 `gantt_critical_chain.py:67-88`；support/provider 两路仅改调用目标，未 `return raw`，未误删 `_copy_critical_chain_result`。A1 前置已满足，后续 G12/G13 仍只许在单份 helper 上继续改。
 - G38(R06+R27+gantt 空包)：**四包一次性原子提交**（`:310` 改三元组 + 删 `:315-316` + 删四目录），逐增量摘致中间态 old_string 失配；保留 `_assert_init_has_no_imports:173` 定义；`:638` 第二处三元组不碰。
 - G37(R02)：先拆测试 import（`:11` 单符号改指 resource_matching_context）→ 后删壳 `:461-475`；禁连删兄弟壳 `:478`（report.py:180 承重）。
 - G16(R45≡R48)：2026-06-08 已 fixed；`config_adapter.py` 已删，旧 `tests/regression_sp06_no_duplicate_defs.py` 已由 A P1.1 删除，旧清单同步步骤为 no-op；继续禁碰 `core/algorithms/greedy/schedule_params.py`（same_file 误标零碰撞）。
@@ -194,11 +194,11 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
   - **护栏已落**：`test_all_nav_specs_have_nonempty_plain_url` 已钉住 specs 第 3 字段非空不变量。
   - **后续交接**：`_has_navigation_context`、`_use_plain_scheduler_chrome`、`TARGET_PAGE_PATHS`、`_REPORT_CONTEXT_FIELD_NAMES`、`preserved_report_context_fields` 均按当前符号重 rg 复核;R42/R67 进本文件时不要信 G02 删除前的旧行号。
 
-**不可碰清单（按符号）**：G14(R10) 活近亲 `resolve_version:60`（旧 :64；误删静默炸周计划版本解析）；G35(R36)/G31/G32 各 repo 活近亲；R37（在 Batch-A 候选但归 RESOURCE-REPO）活近亲 `list_links_with_operator_info:92`；R53 禁区 `:39/:58/:75`；R64/R65 活近亲 `_has_navigation_context:47`（误删炸导航 chrome 判定）；G11 禁 `_copy_critical_chain_result:104`（6 处缓存浅拷，非 strip 点，爆点 #10/V3⑪：天然保键，越改越接近误删）+ 禁 `support:58 return raw`。
+**不可碰清单（按符号）**：G14(R10) 活近亲 `resolve_version:60`（旧 :64；误删静默炸周计划版本解析）；G35(R36)/G31/G32 各 repo 活近亲；R37（在 Batch-A 候选但归 RESOURCE-REPO）活近亲 `list_links_with_operator_info:92`；R53 禁区 `:39/:58/:75`；R64/R65 活近亲 `_has_navigation_context:47`（误删炸导航 chrome 判定）；G11 已 fixed 后仍禁 `_copy_critical_chain_result:108`（缓存浅拷，非 normalize 点）+ 禁 `support:36 return raw`。
 
 **收口行为差异检查项**：G11 收口 `available=0`：取 `bool(available)` 会把 `0→False`（静默放宽，禁），须保 support 的写法令 `available=0→True`；G28(R23) 已收口为 model:21 真相源 + service:17 import/:102 调用，**绝不并入 view_context:65**（带 VALID 校验抛 ValidationError，错误类型前移致上游 catch ValueError 静默漏接）。
 
-**批后门禁**：fitness 21 项全绿 + 0 分层违规；语义雷达无新漂移；v18/v19 不破；本批专项：G11 normalize parity 5 边界绿、G38 SP05 topology contract 绿（`:173 def`/`:318 断言` 不碰）、G16 已 fixed 后以残留 `rg` 证 `config_adapter`/三符号/`NO_CFG_GET_TARGETS` 零命中且 `schedule_params.py` 在位、G21 已 fixed 后以 `_safe_float` 现函数体 + `test_no_new_local_parse_helpers` 证明 allowlist 保留正确、删后逐个 grep 复核活近亲在位（resolve_version:60（旧 :64） / list_links_with_operator_info:92 / sgs_scoring:34 / ordering:59 / _copy:104）。
+**批后门禁**：fitness 21 项全绿 + 0 分层违规；语义雷达无新漂移；v18/v19 不破；本批专项：G11 已 fixed 后以 `test_gantt_critical_chain_normalize_parity.py` 11 边界绿 + `rg` 证单份 `_normalize_critical_chain_result` + `_copy_critical_chain_result` 在位，G38 SP05 topology contract 绿（`:173 def`/`:318 断言` 不碰）、G16 已 fixed 后以残留 `rg` 证 `config_adapter`/三符号/`NO_CFG_GET_TARGETS` 零命中且 `schedule_params.py` 在位、G21 已 fixed 后以 `_safe_float` 现函数体 + `test_no_new_local_parse_helpers` 证明 allowlist 保留正确、删后逐个 grep 复核活近亲在位（resolve_version:60（旧 :64） / list_links_with_operator_info:92 / sgs_scoring:34 / ordering:59 / _copy:108）。
 
 **go-no-go 判据**：每个死叶子删后立即 grep 活近亲在位 + 该文件相关测试绿 → 放行下一叶子。任一活近亲 grep 落空 → 误删，立即 revert。
 
@@ -227,7 +227,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 - **G06(R62)🟡**：←G05；按符号 `_resource_pair_payload`+`!=` 重 grep 禁照抄行号；**payload+dict+模板（`!=`副行 + title 改回 `_label`，爆点 #5：title 第四处 Jinja undefined→`title=""` UI 降级）+xlsx 四处同 commit**；收口面**零现成断言须先写 3 套 parity 快照**（升为硬前置门非建议）；禁碰 `:58-236` 护栏段 + 禁删 state 层 latest_*/counterpart_* 真身份键。
 - **G36(R37)**：直删 `:82-90`，删后立即 grep 活近亲 `:92`。
 
-**不可碰清单（按符号）**：LB01 `:369-374/:381-382/:471-473`；R15 provider `if not text: return None` 空值短路 + support:228 raise；R19 `snapshot:40 return sorted`（事实承重）；R52 ReadyQueueContractError 抛错链 loud raise；R46 同名陷阱 `v4_sanitizers:37`；R12 `_copy:104`/`:84 过滤`/sort:114/max:262/出口 try-except；R55 `:385 None 回退`；R51 收口点 schedule_params/optimizer_config（只读）；R50 `import math:3`；R34 活近亲 schedule_repo.py:71/:160 + facade `:33/:37`；STRICT-4 全程。
+**不可碰清单（按符号）**：LB01 `:369-374/:381-382/:471-473`；R15 provider `if not text: return None` 空值短路 + support:228 raise；R19 `snapshot:40 return sorted`（事实承重）；R52 ReadyQueueContractError 抛错链 loud raise；R46 同名陷阱 `v4_sanitizers:37`；R12 `_copy:108`/`:84 过滤`/sort:114/max:262/出口 try-except；R55 `:385 None 回退`；R51 收口点 schedule_params/optimizer_config（只读）；R50 `import math:3`；R34 活近亲 schedule_repo.py:71/:160 + facade `:33/:37`；STRICT-4 全程。
 
 **收口行为差异检查项（None vs raise 反例逐条）**：
 - R15：空值 `""→None`（保 provider 本地，非 raise）vs 坏值 `"not-a-date"→raise/可观测`（收口符号）——爆点 #7 的核心反例。
@@ -237,7 +237,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 - R62：三键恒等删行为等价（no-op），但 title 属性前后须逐字相等（漏改→`title=""`）。
 - R12：全坏行 → `available=False` 分支须带 dropped_count（漏→最该报警处无信号）。
 
-**批后门禁**：fitness 21 项全绿 + 0 分层违规（R52 收口 ready_queue→sgs_graph 不得越层/造环；R19 repo 收 service=data→service 越层禁）；语义雷达无新漂移；**v18/v19 DB CHECK 不破（R15/R17 改 event_time 解析 + 启动探针 `:349/355` 仍须被拒，专项验）**；本批专项契约：R04 6-except 全接 ValidationError 绿 + GF1 parity 绿、R15 三 required/optional parity（含空值）绿、R52 impl 保留 + 「我是故意的」注释（O07 方向 B，**不新建 test_sgs_graph_ready.py**；既有 `tests/scheduler_graph/test_ready_queue.py` 仍全绿、差分 oracle 注释到位）+ 异常「均拒绝」断言绿、R62 三套 parity 快照（dict/xlsx/模板含 title）绿、R12 dropped_count 穿白名单 + available=False 分支保键绿、R11/R63 normalize 5 边界绿。
+**批后门禁**：fitness 21 项全绿 + 0 分层违规（R52 收口 ready_queue→sgs_graph 不得越层/造环；R19 repo 收 service=data→service 越层禁）；语义雷达无新漂移；**v18/v19 DB CHECK 不破（R15/R17 改 event_time 解析 + 启动探针 `:349/355` 仍须被拒，专项验）**；本批专项契约：R04 6-except 全接 ValidationError 绿 + GF1 parity 绿、R15 三 required/optional parity（含空值）绿、R52 impl 保留 + 「我是故意的」注释（O07 方向 B，**不新建 test_sgs_graph_ready.py**；既有 `tests/scheduler_graph/test_ready_queue.py` 仍全绿、差分 oracle 注释到位）+ 异常「均拒绝」断言绿、R62 三套 parity 快照（dict/xlsx/模板含 title）绿、R12 dropped_count 穿白名单 + available=False 分支保键绿、R11/R63 已 fixed 后 normalize 11 边界绿。
 
 **go-no-go 判据**：每个簇前置绿 + 该簇专项 parity 绿 + 活近亲 grep 在位 → 放行。R52/O07 已裁 KEEP：G39 只补注释，若出现删 impl、删 R25 垫片或新建 `test_sgs_graph_ready.py` → STOP。R15 收口若整体 delegate（未分支级保空值）→ STOP。（E16「__all__ 串行对账」已经红队第2轮 P-RT22-02 判为伪串行边降登记备查，不再作 R19 收口 go-no-go 门。）
 
@@ -734,7 +734,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 |---|---|---|---|
 | 🔴 最危 | `operation_execution_feedback_service.py` | LB01(承重)+R17+R20 | G07 强序 LB01 注释先→R17 删 :12→R20 改 :52；LB01↔R17 同 `_build_event_payload` 最危险边 |
 | 🔴 最危 | `report/execution_review.py` | LB02+LB05(承重)+R62 | G05 注释先(ROOT)→G06 后；R62 按符号+`!=` 重 grep 禁照抄行号 |
-| 🔴 最危 | `gantt_critical_chain_provider.py` | R11/R63+R12+R55(+R13 跨簇) | G11 单份 helper 先→G12/G13 加键穿三白名单；禁误删 `_copy:104` |
+| 🔴 最危 | `gantt_critical_chain_provider.py` | R12+R55(+R13 跨簇)，R11/R63 已 fixed | G11 单份 helper 前置已满足→G12/G13 加键穿三白名单；禁误删 `_copy:108` |
 | 🟠 高 | `gantt_service.py` | R10+R55(+R34/R21/R63/R11/R12 弱) | 同 PR 物理串行；R10 fixed 后 grep `resolve_version:60`（旧 :64） |
 | 🟠 高 | `scheduler_navigation_publish.py` | R58(承重邻)+R54+R44 | G04 硬序 R58→R54→R44（重 rg :6/:36-37）|
 | 🟠 高 | `web/.../scheduler_workbench_links.py` | R42+R54(跨簇)+R60 邻 | E03 硬序 R54 先→R42 rebase；禁动 dict guard 段/禁翻 fail-open |

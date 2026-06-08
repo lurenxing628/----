@@ -2,6 +2,8 @@
 
 > skeptic 第2轮,只读不改。回盘日 2026-06-05,行号 rg 实测当前工作区,不信旧值。
 > 成员债 R10 / R11 / R12 / R55 / R63。基线:r1 LB(explode_r1_C-GANTT_LB.md,8678B)+ C-GANTT.md 计划 + 5 dossier + _layer1/2。
+
+> **✅ 2026-06-08 B 执行补登**：A1 `{R11≡R63}` 已 fixed。单份 `_normalize_critical_chain_result` 已收口到 `gantt_critical_chain.py:67-88`；support/provider 旧副本已删，两路调用同一 helper，parity 11 边界已落。本红队文中 A1 的“黄/条件”判断现转为已满足；R12/R55 仍未执行。
 > 默认怀疑:多维度存疑即红;不放过「测试绿但护栏已破」的静默失效。
 
 ## 0) 本轮独立回盘(全部命中,与计划行号一致,旧值已失真)

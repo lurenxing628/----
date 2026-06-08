@@ -59,7 +59,7 @@ phase4 四层分析（含全部 dossier 对抗核验附录）是在**已包含�
 2. **B 锚点 vs 映射核对结论（只读审计，B 启动前可直接采信）**：dossier 全树引用 **106 条**去重扁平旧测试路径，**纯 P6 目录重组造成的漂移，CSV 100% 覆盖**。106 条账面拆解（B 拿 106 对账时按此核销，避免凭空差额）：
    - **97 条**精确命中 CSV `old_path`，对应 `new_path` 全部落盘存在（0 反例）。
    - **4 条**为 dossier 旧名与现存近名不一致（**P5.1 合并改名 / 命名漂移**，非笔误）：`regression_aps_workbench_flow_contract`(P5.1 commit `1fa076fb` 合并为 `aps_workbench_first_round_flow_contract`)、`regression_scheduler_workbench_link_guardrails`(现存近名 `..._links_contract`，复数+contract，与单数+guardrails 在 dossier 中或为并列两测试)、`run_real_db_replay_check/_smoke`(现存近名 `run_real_db_replay_e2e`)——真测试均以近名存在且**新名都在 CSV 里**，B 按「去前缀文件名 + 被测符号/断言串」`rg` 核认对应关系即命中（§五.2 既定做法）。
-   - **2 条**为 **B 待新建的 parity/黄金基线测试**（`regression_boolean_normalize_wide_parity_contract` LB04、`regression_gantt_critical_chain_normalize_parity` R11/C-GANTT）：全 git 历史从未作为测试文件存在,dossier 自身明确标注「收口前不存在、须新建」——**本就不应在 CSV/磁盘**,既非 P6 漂移也非悬空,是 B 收口产物锚点。
+   - **2 条**为 **B 待新建的 parity/黄金基线测试**（`regression_boolean_normalize_wide_parity_contract` LB04、`regression_gantt_critical_chain_normalize_parity` R11/C-GANTT）：全 git 历史从未作为测试文件存在,dossier 自身明确标注「收口前不存在、须新建」——**本就不应在 CSV/磁盘**,既非 P6 漂移也非悬空,是 B 收口产物锚点。**2026-06-08 补登**：R11/C-GANTT 已在 B 执行中落为 `tests/gantt/test_gantt_critical_chain_normalize_parity.py`；LB04 仍按后续批次现场重 rg。
    - **2 条**真悬空（见下 §六.3）+ **1 条**通配占位示例 `tests/xxx.py`（§五.1 例示,剔除）。
    - 核销:97 + 4 + 2 + 2 + 1 = **106**,账面平。
 

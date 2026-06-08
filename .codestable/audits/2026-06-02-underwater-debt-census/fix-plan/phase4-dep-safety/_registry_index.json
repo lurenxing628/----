@@ -726,7 +726,7 @@
  "R11": {
   "id": "R11",
   "bucket": "B08",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P5",
   "lb": false,
@@ -736,8 +736,8 @@
    "R55",
    "R63"
   ],
-  "batch": "Batch-9,与 R63 同一 w",
-  "owner_pending": true,
+  "batch": "Batch-A/G11 已 fixed",
+  "owner_pending": false,
   "needs_adv": true,
   "adv_refuted": false,
   "title": "关键链结果归一函数 _normalize_critical_chain_result 被逐字复制成第二份私有实现"
@@ -781,7 +781,7 @@
  "R63": {
   "id": "R63",
   "bucket": "B08",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "P5",
   "lb": false,
@@ -791,7 +791,7 @@
    "R11",
    "R55"
   ],
-  "batch": "Batch-9(B08 关键链甘特,",
+  "batch": "Batch-A/G11 已 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,

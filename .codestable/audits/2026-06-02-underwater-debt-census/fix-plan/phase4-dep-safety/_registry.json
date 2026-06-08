@@ -4200,7 +4200,7 @@
   "id": "R11",
   "bucket": "B08",
   "home": "B08",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P5",
   "partition": "scheduler-gantt",
@@ -4217,7 +4217,7 @@
    "gantt_service.py",
    "gantt_service_support.py"
   ],
-  "current_evidence_2026_06_05": "gantt_service_support.py:32-51 仍有独立 _normalize_critical_chain_result(module 函数),provider 仍有第二份;repo 内 `def _normalize_critical_chain_result` 恰好 2 处(support.py:32 + provider.py:113),gantt_critical_chain.py 无统一公共 helper(仅 _empty_result:54/_unavailable_result:71)。R11≡R63 同一动作,未抽取。",
+  "current_evidence_2026_06_05": "2026-06-08 B 执行后:G11/R11≡R63 已 fixed。单份 `_normalize_critical_chain_result` 已收口到既有公共落点 core/services/scheduler/gantt_critical_chain.py:67-88;support 路径 gantt_service_support.py:7 import/:36 调用,provider 路径 gantt_critical_chain_provider.py:19-23 import/:157 调用;旧 support/provider 两份 def 已删除,全仓 `def _normalize_critical_chain_result` 仅 1 处。新增 tests/gantt/test_gantt_critical_chain_normalize_parity.py 钉住 11 个边界,包含 available=0→True、非 dict、reason_code fallback、partial edge_type_stats 不补齐。provider `_copy_critical_chain_result`:108-114 保留。",
   "cluster": "C01",
   "same_file_siblings": [
    "R55",
@@ -4275,9 +4275,9 @@
    "verdict_kind": "real_debt"
   },
   "adv_precondition": null,
-  "planned_batch_hint": "Batch-9,与 R63 同一 work item 最先落。",
+  "planned_batch_hint": "Batch-A/G11 已 fixed;与 R63 同一 work item 已一次收口完成。",
   "planned_deps_hint": "R11≡R63(Phase1 纠偏#1)。与 R63 合并为单动作,该动作必须早于 R12+R55。",
-  "planned_fix_hint": "【不单独投工】=R63 同一动作。R11 与 R63 由同一次『抽单份 _normalize_critical_chain_result 到 gantt_critical_chain.py 公共落点』同时消除。修法、收口点、红线全部见 R63 条目(收口到 gantt_critical_chain.py 公共落点,绝不简化为 return raw)。Phase3 排期把 R11/R63 合并为单个 work item,不可当两条分别派工(否则重复投入且可能两人撞改同两文件)。",
+  "planned_fix_hint": "2026-06-08 已 fixed:与 R63 同一动作完成。已把单份 `_normalize_critical_chain_result` 收口到 gantt_critical_chain.py 公共落点,support/provider 两路改调该 helper;保留 support 的 bool(is_available) 写法,未改成 return raw,未误删 provider `_copy_critical_chain_result`。",
   "phase1_blast": {
    "co_change_within_group": [
     "R63",
@@ -4308,7 +4308,7 @@
     "tests/gantt/test_gantt_task_detail_panel_contract.py:128 (compute_critical_chain_from_rows 公开标签)"
    ]
   },
-  "owner_pending": true,
+  "owner_pending": false,
   "lb_no_touch": null
  },
  "R12": {
@@ -4557,7 +4557,7 @@
   "id": "R63",
   "bucket": "B08",
   "home": "B08",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "medium",
   "pathology": "P5",
   "partition": "delta-gantt-resource",
@@ -4574,7 +4574,7 @@
    "gantt_service.py",
    "gantt_service_support.py"
   ],
-  "current_evidence_2026_06_05": "与 R11 同一债:gantt_service_support.py:32-51 与 gantt_critical_chain_provider.py:113-137 两份 _normalize_critical_chain_result 逐字段语义相同且均在盘上,未收口到 gantt_critical_chain.py 公共落点;git diff b08162cd 对这两符号区域为空(provider 仅 typing import 重排、gantt_service 仅 _execution_facts_by_op_id 改签名,均非 B08 修复),且 tests/ 未新增单一归一来源 parity 契约。",
+  "current_evidence_2026_06_05": "2026-06-08 B 执行后:与 R11 同一债已 fixed。旧 support/provider 两份 `_normalize_critical_chain_result` 已合并为 core/services/scheduler/gantt_critical_chain.py:67-88 单份 helper;support 路径 gantt_service_support.py:36 与 provider 路径 gantt_critical_chain_provider.py:157 均调用该 helper;新增 tests/gantt/test_gantt_critical_chain_normalize_parity.py 覆盖 11 个 legacy 边界。`rg -n \"def _normalize_critical_chain_result\" core/services/scheduler tests/gantt` 仅剩单份定义+两路调用+测试断言;provider `_copy_critical_chain_result`:108-114 未动。",
   "cluster": "C01",
   "same_file_siblings": [
    "R11",
@@ -4628,9 +4628,9 @@
   ],
   "verdict": null,
   "adv_precondition": null,
-  "planned_batch_hint": "Batch-9(B08 关键链甘特,SCC-GANTT)。内部【最先】:统一归一是 R12/R55 的硬前置。本桶自成簇不阻塞他桶。",
+  "planned_batch_hint": "Batch-A/G11 已 fixed;统一归一前置已满足,后续 R12/R55 只能在单份 helper 上继续改。",
   "planned_deps_hint": "R11≡R63 同一动作(本条即代表该统一动作)。【必须早于】R12(加 dropped_count)与 R55(加 scope):若不先统一,R12/R55 各改两副本=复活本债(Phase1 边 R11→R12、R11→R55 收口前置)。同 gantt_service.py 跨桶 R10 已 fixed,后续仅需串行并保护当前 :60 live resolve_version。",
-  "planned_fix_hint": "收口到【已存在】公共落点:抽单份 `_normalize_critical_chain_result` 到两文件已共同 import 的 core/services/scheduler/gantt_critical_chain.py(§4 收口点族『关键链』=gantt_critical_chain 公共落点,非新建)。support 版(:32-51 module 级函数)与 provider 版(:104-128 staticmethod)两路都改调它(或 support import provider 范式,但落到 gantt_critical_chain.py 更中性)。逐字保留归一行为:is_available 默认 True、available 时清 reason/reason_code、edge_type_stats 四键默认{process,machine,operator",
+  "planned_fix_hint": "2026-06-08 已 fixed:单份 `_normalize_critical_chain_result` 已收口到 core/services/scheduler/gantt_critical_chain.py,旧 support/provider 副本已删除,两路调用改指该 helper。逐字保留 is_available 默认 True、available 时清 reason/reason_code、edge_type_stats 默认、reason_code fallback、edges 浅拷与 bool(is_available) 出参。",
   "phase1_blast": {
    "co_change_within_group": [
     "R11",

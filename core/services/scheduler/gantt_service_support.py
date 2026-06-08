@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional
 
 from core.services.common.degradation import DegradationCollector, DegradationEvent
 
-from .gantt_critical_chain import compute_critical_chain_from_rows
+from .gantt_critical_chain import _normalize_critical_chain_result, compute_critical_chain_from_rows
 
 
 def _text(value: Any) -> str:
@@ -27,28 +27,6 @@ def plan_detail_filter_kwargs(
     if batch_id_text:
         filters["batch_id"] = batch_id_text
     return filters
-
-
-def _normalize_critical_chain_result(raw: Any) -> Dict[str, Any]:
-    if not isinstance(raw, dict):
-        raw = {}
-    available = raw.get("available")
-    is_available = available if isinstance(available, bool) else True
-    reason = _text(raw.get("reason"))
-    reason_code = _text(raw.get("reason_code") or raw.get("reason"))
-    if is_available:
-        reason = ""
-        reason_code = ""
-    return {
-        "ids": list(raw.get("ids") or []),
-        "edges": [dict(edge) if isinstance(edge, dict) else edge for edge in list(raw.get("edges") or [])],
-        "makespan_end": raw.get("makespan_end"),
-        "edge_type_stats": dict(raw.get("edge_type_stats") or {"process": 0, "machine": 0, "operator": 0, "unknown": 0}),
-        "edge_count": int(raw.get("edge_count") or 0),
-        "available": bool(is_available),
-        "reason": reason,
-        "reason_code": reason_code or ("unknown" if not is_available else ""),
-    }
 
 
 def critical_chain_for_plan_detail_filter(rows: Any, filters: Dict[str, str]) -> Optional[Dict[str, Any]]:

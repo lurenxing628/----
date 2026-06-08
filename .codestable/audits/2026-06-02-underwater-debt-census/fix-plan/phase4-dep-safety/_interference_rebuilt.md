@@ -23,9 +23,9 @@
 | **G08** | EXEC-FACT | {R15, R17, R20} A2(support) | 同文件 support.py;R17 删:11/:81 推导式项→位移 R15:225/R20:24 | R15 先(已落地,守:225 raise)→R17 删:81/:11→R20 改:24;宜与 G07 同原子提交(R17/R20 跨 service+support) |
 | **G09** | EXEC-FACT | {R15, R19, R13} A3(provider) ⏸ | 同文件 provider.py 删改互移行号;先收口语义(R15/R19)后删死物(R13) | O03/O05/O06/O37 已裁：强序 R15 先(SCC 最前置,收口解析)→R19 改:70-82→R13 末(删字段)；R13 删前 owner 再确认 |
 | **G10** | EXEC-FACT | {R18, R19, R13关心:399} A4(repo) ⏸ | R18 改:401+R13 关心:399 同组 6 格 stub 共用一条护栏注释合批;R19:67 物理隔离仅文件级串行 | R18+R13(repo):399 共注释合批;R19 repo 处独立保守串行,无逻辑先后 |
-| **G11** | GANTT | {R11≡R63} A1 | 同一物理动作（去重两份 _normalize:32+:113 收口到 gantt_critical_chain.py）,非两动作 | 无先后本就一次落地;禁拆两人各删一份(调用悬空) |
-| **G12** | GANTT | {R12} A2 | 加 dropped_count/critical_chain_partial,**必须加在 G11 统一后的单份** helper | G11 先于 G12(强偏序);_empty_result:54 也须带 dropped_count |
-| **G13** | GANTT | {R55} A3 ⏸ | **O09 已裁本轮不做**；仅保留暂停占位，重启条件=怀疑者过三问 + R11/R63 单份化前置就绪 | 本轮不得随 G12 同改 _normalize；禁破坏 `:385 None 回退` + support:55-56 分流判据 |
+| **G11** | GANTT | {R11≡R63} A1 ✅ fixed | **2026-06-08 已 fixed**。同一物理动作已完成:两份 _normalize 已收口到 `gantt_critical_chain.py:67-88` 单份 helper,新增 parity 11 边界 | 后续勿重复处理;R12/R55 前置已满足,只能在单份 helper 上继续改;禁误删 provider `_copy:108` |
+| **G12** | GANTT | {R12} A2 | 加 dropped_count/critical_chain_partial,**必须加在 G11 统一后的单份** helper | G11 前置已满足;_empty_result:54 也须带 dropped_count |
+| **G13** | GANTT | {R55} A3 ⏸ | **O09 已裁本轮不做**；仅保留暂停占位，重启条件=怀疑者过三问 + R11/R63 单份化前置已满足 | 本轮不得随 G12 同改 _normalize；禁破坏 `:385 None 回退` + support:55-56 分流判据 |
 | **G14** | GANTT | {R10} | 删死方法 gantt_service.py:60-62+stub:59-60,逻辑零重叠,纯物理同 PR | 与 G11/12/13 同 PR(PHASE0§3 同文件勿并发改),任意序;删后 grep 复核 resolve_version:64 在 |
 | **G15** | CONFIG-DUAL | {LB07, R71, R47} ASC-1 ⏸ | 🔒 config 双栈 helper 锁步收敛;LB07 承重安全网前置 R71/R47;R71 owner 已裁仅 parity 守卫、不物理合并 | 硬序 LB07 先(注释+扩 parity,Batch-1 ROOT)→R47 对称删动作；R71 只落 parity 守卫，物理收敛本轮不做 |
 | **G16** | CONFIG-DUAL | {R45 ≡ R48} ASC-2 ✅ fixed | 同一物理文件 config_adapter.py 整文件删已完成；两叙述视角=一次删除 | 2026-06-08 补登 fixed：旧 sp06 文件已由 A P1.1 删除，清单同步步骤为 no-op；后续只做残留 rg，不碰 schedule_params.py |
@@ -125,7 +125,7 @@ ROOT（承重注释 + 共享前置门，纯增量零结构，最先落）
 Batch-A（独立死叶子 / 零前置 / owner=false，最早可落）
   G14(R10) G16(R45≡R48已fixed/no-op) G21(R28已fixed)
   G28(R23) G31(R38part+R39) G32(R38 op_type/operator) G35(R36) G37(R02)
-  G11(R11≡R63) G38(R06+R27+gantt)
+  G11(R11≡R63已fixed) G38(R06+R27+gantt)
   *G03 受 E04 软序 → 实际延后紧随 G04；G25 并回 G24，不在 Batch-A 单独落
 
 Batch-B（依赖 ROOT 承重门 / 单门控前置）
@@ -190,7 +190,7 @@ Batch-D（facade 删除最晚 / 跨 owner-pending 收口）
 |---|---|---|---|---|
 | 🔴 最危 | `core/services/scheduler/operation_execution_feedback_service.py` | **LB01**(承重) + R17 + R20 | LB01 硬拒:369-371/第二门:381/写死消毒:471-473/审计 dict:347-356；R17 删死 import:12；R20 改 labels import:52；**LB01↔R17 同 _build_event_payload(:455-494)函数体**(最危险边) | G07 强序：LB01 注释先落→R17 删:12→R20 改:52(R17 后重 rg)；🔒承重门控全文件删改 |
 | 🔴 最危 | `core/services/report/execution_review.py` | **LB02+LB05**(承重) + R62 | 承重五硬钉:58/:180-181/:191-192/:221/:236+签名:209(禁加形参)；R62 三档死分支:358-441(dict 三连键+_resource_pair_payload:417+早退:437-441)；护栏区:58-236 vs 死分支:358-441 零重叠但 A1 注释下推 R62 行号 | G05 注释先落(Batch-1)→G06 后做(Batch-3)；R62 按符号名+!= 重 grep,绝不照抄行号；禁碰禁区+禁加形参 |
-| 🔴 最危 | `core/services/scheduler/gantt_critical_chain_provider.py` | R11/R63 + R12 + R55 + R13(EXEC-FACT 跨簇,实为 execution_fact_provider 不同文件) | R11/R63 去重 _normalize:113(call:180)；R12 加 dropped_count;R55 加 scope(须补 _copy:104-110)；`_copy:104` 与 `_normalize:113` 两独立 staticmethod **禁误删 _copy** | G11 统一单份 helper 先→G12/G13 加键穿三道白名单；A1 先于 A2/A3 强偏序 |
+| 🔴 最危 | `core/services/scheduler/gantt_critical_chain_provider.py` | R12 + R55 + R13(EXEC-FACT 跨簇,实为 execution_fact_provider 不同文件);R11/R63 已 fixed | R11/R63 旧 _normalize staticmethod 已删;provider 现于 :157 调 `gantt_critical_chain.py:67-88` 单份 helper；R12 加 dropped_count;R55 加 scope；`_copy:108-114` 与 normalize helper 仍是两件事,**禁误删 _copy** | G11 统一单份 helper 前置已满足→G12/G13 加键穿三道白名单；A2/A3 仍需按当前行号重 rg |
 | 🟠 高 | `core/services/scheduler/gantt_service.py` | R10 + R55 + (R34/R21/R63/R11/R12 同文件弱) | R10 删死方法:60-62(禁误删活 resolve_version:64)；R55 filtered 病灶:344/:384/:385 None 回退；相距 280+ 行物理不重叠 | 同 PR 物理串行(PHASE0§3)；R10 任意序删后 grep:64；R34/R21 勿两 PR 并发改 |
 | 🟠 高 | `core/services/scheduler/scheduler_navigation_publish.py` | **R58**(承重邻) + R54 + R44 | R58 注释:91 上方；R54 _PLAN_GUARD_FIELD_NAMES:12/_plan_guard_fields:82；R44 删 selected_plan_role def:36-37+import:6-7；M/MM 漂移态任一先落即移彼此行号 | G04 硬序 R58(注释)→R54(guard 收口)→R44(删 def,重 rg :6/:36-37)；禁动:91 整行/禁剔键 |
 | 🟠 高 | `web/.../scheduler_workbench_links.py` | R42(NAV-PLANID) + R54(NAV-GUARD,跨簇) + R60 邻 | R54 加 guard 字段(签名:187/dict:229-258,已落:206-207)；R42 删 plan_id 形参:191/dict:233；**同符号 build_workbench_plan_context co-change MUST 同批** | E03 硬序 R54 先→R42 后 rebase 新签名；禁动 dict:229-258 guard 段/禁翻:292-304 fail-open;LIVE _context_summary:258 别误删(R66 跨文件红线) |
@@ -462,7 +462,7 @@ Batch-D（facade 删除最晚 / 跨 owner-pending 收口）
 
 原子簇 42 个（G01–G42）+1 共享前置门 GF1 = 43 调度单元（多债强原子 20 / 单债 22 / 承重门 5🔒；原待裁清单已裁后分流，R29/R52/R24 走 KEEP，R55 本轮暂停）。
 验环：**无环（DAG 成立，环成员=空）**——13 条 H 硬边全单向收敛，唯一双向标记的 E16/E24/E11 均为 S 软序可定向。
-批次草案（序）：ROOT（GF1 默认 False + LB01/LB02/LB05/LB07/LB08/LB03/R05-step1/R22-parity 承重注释+parity，纯增量零结构）→ Batch-A（零前置死叶子 G14/G16已fixed-no-op/G21已fixed/G28/G31/G32/G35/G37/G11/G38，G03 延后，G25 并回 G24）→ Batch-B（单门控前置 G06/G07/G08/G12/G19/G20/G24含G25旁支/G40/G30/G36/G39 KEEP；G13/R55 本轮跳过）→ Batch-C（身份族收敛 G04→G01/G27/G09/G10/G29/G15/G22/G33/G34/G17/G23）→ Batch-D（facade 最晚 G18←三桶收敛 + G26 KEEP/G41/G42 KEEP）。
+批次草案（序）：ROOT（GF1 默认 False + LB01/LB02/LB05/LB07/LB08/LB03/R05-step1/R22-parity 承重注释+parity，纯增量零结构）→ Batch-A（零前置死叶子 G14/G16已fixed-no-op/G21已fixed/G28/G31/G32/G35/G37/G11已fixed/G38，G03 延后，G25 并回 G24）→ Batch-B（单门控前置 G06/G07/G08/G12←G11前置已满足/G19/G20/G24含G25旁支/G40/G30/G36/G39 KEEP；G13/R55 本轮跳过且 G11 前置已满足）→ Batch-C（身份族收敛 G04→G01/G27/G09/G10/G29/G15/G22/G33/G34/G17/G23）→ Batch-D（facade 最晚 G18←三桶收敛 + G26 KEEP/G41/G42 KEEP）。
 重灾区：**24 文件**（红队第1轮 +5：operation_execution_scope.py + R54 缺席四文件）≥2 债顺序敏感，最危 3 个=feedback_service.py(LB01↔R17 同 _build_event_payload)、execution_review.py(承重五钉↔R62)、gantt_critical_chain_provider.py(_copy↔_normalize 误删)；**6 承重文件**全标禁区（含 operation_execution_scope.py R09 收口家↔LB01 最终底同文件）。
 边总变化：旧 146 −删 27（假边 22+已修对消 5）+新 **19**（同符号 co-change/收口前置硬边/N1N2 邻接/facade 删序 +红队 E28/E29 同文件承重毗邻）~降 18（硬→软/解耦/方向反转）= 重建约 **138 边，跨簇有效约束边 29 条（H 13/S 14/P 2）**，真门控分层硬边仍 13 条。
 与旧 DAG 主要差异：R09 收口点已存在→作废建模块改双路 parity；R13 解耦 R18 各自独立，按 O06 先迁 3 测试后删、删前 owner 再确认；R34 纯删（repoint 目标存在）+R05→R34 降软；R54 升 5 套手维面（gantt_task_detail 别名元组+**三基数 16/15/12 禁统一键名**）；R56 入 fixed（偏离铁律 3 待认账）；新债 N1（can_write_feedback 失忆债门控 R08）/N2（return 0 sentinel）补注释+绑契约；R03 四态 parity（missing 态:267 生产可达，非全死分支）；R29 误标纠回 planned 后 O20 裁 KEEP，E07 改为 R29/G26 先闭合、R26/G18 后删 facade；批次由 16 收缩为 ROOT+4 大批，待裁项按裁后口径执行。
