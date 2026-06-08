@@ -5808,7 +5808,7 @@
   "id": "R38",
   "bucket": "B12",
   "home": "B12",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P6",
   "partition": "data-repos",
@@ -5824,7 +5824,7 @@
    "operator_repo.py",
    "part_repo.py"
   ],
-  "current_evidence_2026_06_05": "三处 list_as_dicts 均仍在:op_type_repo.py:73 / part_repo.py:71 / operator_repo.py:85(SQL 各异,结构同形非字面同体);grep 全仓仅三条 def 行零调用;三文件 git diff b08162cd 均 UNCHANGED,未删。",
+  "current_evidence_2026_06_05": "2026-06-08 B 执行后: 三处 list_as_dicts 已全部删除（op_type_repo.py 旧 :73-74、operator_repo.py 旧 :85-86、part_repo.py 旧 :71-72）；rg -n \"list_unparsed|def list_as_dicts\" data/repositories core web tests tools scripts 无命中；三 repo 活方法 list/create/delete_all/引用检查仍在。",
   "cluster": "C02",
   "same_file_siblings": [
    "R39"
@@ -5841,9 +5841,9 @@
   ],
   "verdict": null,
   "adv_precondition": null,
-  "planned_batch_hint": "Batch-13，与 R39 同 part_repo.py 子批同提交；op_type/operator 两份随簇。优先级 low。无跨边可任意排期。",
-  "planned_deps_hint": "【同文件同改·硬】part_repo.py 的 list_as_dicts(:71) 与 R39 的 list_unparsed(:32) 同文件——R38 删 part 份须与 R39 同批改 part_repo.py 避免行号二次漂移（Phase1 边 R38↔R39）。op_type_repo/operator_repo 两份无其他同文件债，随 R38 簇走。",
-  "planned_fix_hint": "分别直删三处 list_as_dicts：op_type_repo.py:73-74、operator_repo.py:85-86、part_repo.py:71-72。⚠️因三处 SQL 不同（非一份逐字副本），每处须独立按各自 grep 证零引用后删，不可当『删一份代表三份』；三处恰好都零引用，故可同批一并删，但记账上是三次独立删除。绝不可为『消重』抽公共 helper（=新建零消费活代码，违收口点规则）。",
+  "planned_batch_hint": "已在 Batch-A 资源仓储 mini-batch 落地；R38 三处 list_as_dicts 与 R39 list_unparsed 同提交删除，避免 part_repo.py 行号二次漂移。",
+  "planned_deps_hint": "已满足：part_repo.py 的 R38 份与 R39 同提交删除；op_type_repo/operator_repo 两份随 R38 一并删除。后续无依赖残留。",
+  "planned_fix_hint": "已执行：分别直删三处 list_as_dicts（op_type_repo.py 旧 :73-74、operator_repo.py 旧 :85-86、part_repo.py 旧 :71-72）。未抽 helper，未新增兜底，未动活方法。",
   "phase1_blast": {
    "co_change_within_group": [
     "R39"
@@ -5851,18 +5851,18 @@
    "contract_topology_tests": [
     "无"
    ],
-   "downstream_effect": "三处可一并删,零引用点。SQL虽不同但都无人调,删除不影响任何页面/算法联动。",
-   "fix_invalidation_risk": "none。part_repo.py 的 list_as_dicts(:71)与 R39 的 list_unparsed(:32)同文件,宜与R39同批改 part_repo.py。",
+   "downstream_effect": "三处已一并删，零引用点。SQL虽不同但都无人调，删除不影响任何页面/算法联动。",
+   "fix_invalidation_risk": "none。part_repo.py 的 list_as_dicts 旧锚点已与 R39 list_unparsed 同提交删除，行号二次漂移约束已关闭。",
    "id": "R38",
    "lb_colocation_danger": "none(三 repo 均非承重文件)",
-   "location_status": "✅准但dup认定需修正:op_type_repo.py:73、operator_repo.py:85、part_repo.py:71 三处def行号与盘上一致;但 codemap dup_bodies 标'同体'不精确——三处SQL不同(SELECT op_type_id,name,category FROM OpTypes / operator_id,name,status,remark,team_id FROM Operators / part_no,part_name,route_raw FROM Parts),是'结构同形(单行fetchall)'非字面同体。三文件均不在漂移名单。",
-   "pathology": "P6 结构同形死簇(三处零消费)",
-   "planned_fix_class": "直删(三处一并)",
+   "location_status": "✅已删除 — op_type_repo.py、operator_repo.py、part_repo.py 已无 def list_as_dicts；rg 全仓无调用/字符串残留。三处 SQL 不同的结构同形死簇按三笔独立删除闭合。",
+   "pathology": "P6 结构同形死簇(三处零消费) — 已清理",
+   "planned_fix_class": "已直删(三处一并)",
    "prod_consumers": [
-    "三处 list_as_dicts 生产全零引用(已grep证实:含templates/web字符串引用,全仓仅三条def行)"
+    "无 — 三处 def 已删除，rg 全仓无 list_as_dicts 残留"
    ],
    "test_consumers": [
-    "无(已grep证实零引用)"
+    "无"
    ]
   },
   "owner_pending": false,
@@ -5872,7 +5872,7 @@
   "id": "R39",
   "bucket": "B12",
   "home": "B12",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P6",
   "partition": "data-repos",
@@ -5886,7 +5886,7 @@
   "all_files": [
    "part_repo.py"
   ],
-  "current_evidence_2026_06_05": "part_repo.py:32 def list_unparsed()→self.list(route_parsed='no')(:32-33) 死薄封装仍在,被封装的活方法 list(:20)未动;grep 全仓仅 :32 def 行零调用;git diff b08162cd UNCHANGED,未删。",
+  "current_evidence_2026_06_05": "2026-06-08 B 执行后: part_repo.py 旧 :32-33 def list_unparsed 已删除；被封装的活方法 PartRepository.list 仍在 part_repo.py:20 并继续服务真实调用方；rg -n \"list_unparsed|def list_as_dicts\" data/repositories core web tests tools scripts 无命中。",
   "cluster": "C02",
   "same_file_siblings": [
    "R38"
@@ -5903,9 +5903,9 @@
   ],
   "verdict": null,
   "adv_precondition": null,
-  "planned_batch_hint": "Batch-13，与 R38 part 份同 part_repo.py 子批同提交。优先级 low。无跨边可任意排期。",
-  "planned_deps_hint": "【同文件同改·硬】与 R38 的 part_repo.list_as_dicts(:71) 同 part_repo.py——同批改避免行号二次漂移（Phase1 边 R38↔R39）。无其他依赖。",
-  "planned_fix_hint": "直删 part_repo.py:32-33 整个 list_unparsed 方法。其内部转调的 self.list(route_parsed='no') 走的是活方法 list(:20)，不受影响。零引用点需同步退场。",
+  "planned_batch_hint": "已在 Batch-A 资源仓储 mini-batch 落地；与 R38 part 份同提交删除。",
+  "planned_deps_hint": "已满足：R39 list_unparsed 与 R38 part_repo.list_as_dicts 同提交删除，无其他依赖残留。",
+  "planned_fix_hint": "已执行：直删 part_repo.py 旧 :32-33 整个 list_unparsed 方法；活方法 PartRepository.list 不动。",
   "phase1_blast": {
    "co_change_within_group": [
     "R38"
@@ -5913,18 +5913,18 @@
    "contract_topology_tests": [
     "无"
    ],
-   "downstream_effect": "可直接删,零引用点。",
-   "fix_invalidation_risk": "none。与R38(part_repo.py list_as_dicts:71)同文件,同批改 part_repo.py 避免行号二次漂移。",
+   "downstream_effect": "已直接删除，零引用点。",
+   "fix_invalidation_risk": "none。已与 R38(part_repo.py list_as_dicts 旧锚点)同提交删除，行号二次漂移约束已关闭。",
    "id": "R39",
    "lb_colocation_danger": "none(part_repo.py 非承重文件)",
-   "location_status": "✅准。part_repo.py:32 list_unparsed 与盘上一致(内部转调 self.list(route_parsed='no'))。文件不在漂移名单。",
-   "pathology": "P6 纯死方法(零消费含测试)",
-   "planned_fix_class": "直删",
+   "location_status": "✅已删除 — part_repo.py 已无 list_unparsed；活方法 PartRepository.list 仍在 part_repo.py:20。",
+   "pathology": "P6 纯死方法(零消费含测试) — 已清理",
+   "planned_fix_class": "已直删",
    "prod_consumers": [
-    "生产零引用(已grep证实:全仓.py 仅:32 def 行,0调用含测试)"
+    "无 — def 已删除，rg 全仓无 list_unparsed 残留"
    ],
    "test_consumers": [
-    "无(已grep证实零引用)"
+    "无"
    ]
   },
   "owner_pending": false,

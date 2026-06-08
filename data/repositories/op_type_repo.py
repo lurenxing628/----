@@ -70,9 +70,6 @@ class OpTypeRepository(BaseRepository):
     def delete_all(self) -> None:
         self.execute("DELETE FROM OpTypes")
 
-    def list_as_dicts(self) -> List[Dict[str, Any]]:
-        return self.fetchall("SELECT op_type_id, name, category FROM OpTypes ORDER BY name")
-
     # -------------------------
     # 引用检查（给 Service 层做删除/清空保护）
     # -------------------------
@@ -151,4 +148,3 @@ class OpTypeRepository(BaseRepository):
             )
             is not None
         )
-

@@ -82,9 +82,6 @@ class OperatorRepository(BaseRepository):
     def delete_all(self) -> None:
         self.execute("DELETE FROM Operators")
 
-    def list_as_dicts(self) -> List[Dict[str, Any]]:
-        return self.fetchall("SELECT operator_id, name, status, remark, team_id FROM Operators ORDER BY operator_id")
-
     # -------------------------
     # 引用检查（给 Service 层做删除/清空保护）
     # -------------------------
