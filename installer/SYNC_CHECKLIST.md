@@ -57,7 +57,7 @@
 执行：
 
 ```powershell
-python tests/verify_installer_iss_sync.py
+python tests/gate_meta/verify_installer_iss_sync.py
 ```
 
 若脚本返回非零，说明共享实现已发生漂移，需要先修复再继续改动。

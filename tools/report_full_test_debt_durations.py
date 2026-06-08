@@ -42,7 +42,7 @@ def _category_for_path(path: str) -> str:
         return "browser"
     if rel_path == "tests/gate_meta/test_architecture_fitness.py":
         return "architecture"
-    if rel_path.startswith("tests/test_long_gate_"):
+    if rel_path.startswith("tests/gate_meta/test_long_gate_"):
         return "long_gate"
     if "scheduler_batches" in rel_path:
         return "scheduler_batches"

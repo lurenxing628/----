@@ -39,7 +39,7 @@ from tools.test_registry import (
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 LEDGER_PATH = os.path.join(REPO_ROOT, "开发文档", "技术债务治理台账.md")
 STAGE_RECORD_PATH = os.path.join(REPO_ROOT, "开发文档", "阶段留痕与验收记录.md")
-TEST_ARCH_FITNESS_PATH = os.path.join(REPO_ROOT, "tests", "test_architecture_fitness.py")
+TEST_ARCH_FITNESS_PATH = os.path.join(REPO_ROOT, "tests", "gate_meta", "test_architecture_fitness.py")
 QUALITY_GATE_MANIFEST_REL = os.path.join("evidence", "QualityGate", "quality_gate_manifest.json")
 QUALITY_GATE_RECEIPTS_DIR_REL = os.path.join("evidence", "QualityGate", "receipts")
 QUALITY_GATE_LOGS_DIR_REL = os.path.join("evidence", "QualityGate", "logs")

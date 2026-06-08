@@ -7,6 +7,10 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+_REPO_ROOT_FOR_IMPORT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT_FOR_IMPORT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT_FOR_IMPORT))
+
 from tests._support.paths import REPO_ROOT
 
 MAIN_ISS = REPO_ROOT / "installer" / "aps_win7.iss"

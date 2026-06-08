@@ -29,16 +29,21 @@ def test_duration_report_groups_call_file_and_category_totals() -> None:
                 "when": "call",
                 "duration": 3.0,
             },
+            {
+                "nodeid": "tests/gate_meta/test_long_gate_cache.py::test_cache",
+                "when": "call",
+                "duration": 1.0,
+            },
         ],
     }
 
-    report = build_duration_report(payload, top_nodeids=2, top_files=3)
+    report = build_duration_report(payload, top_nodeids=2, top_files=4)
     call_section = report.split("Top 2 call nodeids", 1)[1].split(
-        "Top 3 files by setup/call/teardown duration",
+        "Top 4 files by setup/call/teardown duration",
         1,
     )[0]
 
-    assert "reports: 4" in report
+    assert "reports: 5" in report
     assert "tests/app_runtime/test_ui_browser_geometry_smoke.py::test_browser" in call_section
     assert "tests/gate_meta/test_architecture_fitness.py::test_arch" in call_section
     assert "tests/schedule/route_view/test_scheduler_batches_page_viewmodel.py::test_page" not in call_section
@@ -47,6 +52,8 @@ def test_duration_report_groups_call_file_and_category_totals() -> None:
     assert "9.500s  tests/app_runtime/test_ui_browser_geometry_smoke.py" in report
     assert "9.000s  tests/app_runtime/test_ui_browser_geometry_smoke.py" in report
     assert "9.500s  browser" in report
+    assert "1.000s  long_gate" in report
     assert "browser" in report
+    assert "long_gate" in report
     assert "scheduler_batches" in report
     assert "architecture" in report

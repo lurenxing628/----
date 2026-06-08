@@ -19,6 +19,7 @@ from tools.test_registry import iter_startup_regressions
         "tests/gate_meta/test_run_quality_gate.py::test_quality_gate",
         "tests/gate_meta/test_architecture_fitness.py::test_repository_bundle_consumption_does_not_drift",
         "tests/app_runtime/test_win7_launcher_runtime_paths.py::test_runtime_path",
+        "tests/app_runtime/test_startup_host_portfile.py::test_startup_host_portfile",
         "tests/app_runtime/test_runtime_stop_cli.py::regression_runtime_stop_cli",
         "tests/app_runtime/test_check_manual_layout_runtime_resolution.py::test_check_manual_layout_runtime_resolution",
         "tests/app_runtime/test_validate_dist_runtime_identity.py::test_validate_dist_runtime_identity_contract",

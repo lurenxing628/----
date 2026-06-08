@@ -11,18 +11,18 @@ ShardKind = Literal["serial", "parallel"]
 SERIAL_FILE_PATTERNS: Tuple[str, ...] = (
     "tests/app_runtime/test_ui_browser_geometry_smoke.py",
     "tests/app_runtime/test_runtime_probe_resolution.py",
-    "tests/regression_*runtime*.py",
-    "tests/regression_*port*.py",
+    "tests/app_runtime/test_*runtime*.py",
+    "tests/app_runtime/test_*port*.py",
     "tests/app_runtime/test_check_manual_layout_runtime_resolution.py",
     "tests/app_runtime/test_validate_dist_runtime_identity.py",
-    "tests/test_startup*.py",
-    "tests/test_long_gate*.py",
+    "tests/app_runtime/test_startup*.py",
+    "tests/gate_meta/test_long_gate*.py",
     "tests/gate_meta/test_long_gate_required_regression_cache.py",
     "tests/gate_meta/test_long_gate_startup_regression_cache.py",
     "tests/gate_meta/test_long_gate_full_test_debt_cache.py",
     "tests/gate_meta/test_run_quality_gate.py",
     "tests/gate_meta/test_architecture_fitness.py",
-    "tests/test_win7*.py",
+    "tests/app_runtime/test_win7*.py",
 )
 
 SERIAL_EXACT_PATHS = frozenset(iter_startup_regressions())

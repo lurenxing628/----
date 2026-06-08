@@ -67,7 +67,7 @@ def test_added_set_excludes_deletions(tmp_path: Path) -> None:
     _git("init", "-q")
     _git("config", "user.email", "t@example.com")
     _git("config", "user.name", "t")
-    legacy = tmp_path / "tests" / "regression_sort_strategy_case_insensitive.py"
+    legacy = tmp_path / "tests" / "algorithm" / "test_sort_strategy_case_insensitive.py"
     _write(legacy, '"""R51 续命测试。"""\ndef test_legacy():\n    assert True\n')
     _git("add", "-A")
     _git("commit", "-qm", "base")
@@ -80,7 +80,7 @@ def test_added_set_excludes_deletions(tmp_path: Path) -> None:
 
     added = gate._git_added_python_files(base, str(tmp_path))
     assert "tests/test_new_feature.py" in added
-    assert "tests/regression_sort_strategy_case_insensitive.py" not in added
+    assert "tests/algorithm/test_sort_strategy_case_insensitive.py" not in added
     # 整轮门禁对「删既有 + 加合规新文件」返回 0:删除不阻断,新文件合规
     result = gate.scan_added(base, str(tmp_path))
     assert not any(result.values())
