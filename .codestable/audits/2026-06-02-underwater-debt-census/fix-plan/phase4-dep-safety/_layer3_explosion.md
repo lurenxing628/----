@@ -93,7 +93,7 @@
 | R34 | RESOURCE-REPO | 🟢🟢🟡 | 🟢 | 纯删死方法（repoint 目标 get_plan_time_span_for_resolution 旧锚 :210 存在，R23 后现盘 :206，dossier 正文「不存在」已纠）；删错全响亮 AttributeError | 禁误删活近亲 schedule_repo.py:71/:160 及 facade 断言 :33/:37；facade :11 ScheduleDetailRow 被死 :36+活 :37 共用，只删 :12/:14 保 :11（理由钉「:37 活方法仍用」）；detail_queries 若迁活孪生 list_dispatch_rows 须排 R05 之后（落点是 R05 team-join 战场）；与 R35 同 commit。 |
 | R35 | RESOURCE-REPO | 🟢🟢🟢 | 🟢 | list_between 死方法零引用纯删 | 与 R34 同 commit 按符号名自下而上删（:61-69 夹在 R34 删段间防行号二次漂移）。 |
 | R36 | RESOURCE-REPO | 🟢🟢🟢 | 🟢 | get_by_op_code/list_by_status 两死方法 ISOLATED 零碰撞纯删 | 从后往前删；本桶最早可落之一。 |
-| R37 | RESOURCE-REPO | 🟢🟢🟡 | 🟢 | 死方法 list_links_with_machine_names:82-90 纯删；活近亲 list_links_with_operator_info:92 一字之差，误删活的→静默炸设备页人机联动分组 | diff 严格锁 :82-90，删后立即 grep 活近亲 :92 仍在；R37↔R41 伪干扰删边。 |
+| R37 | RESOURCE-REPO | 🟢🟢🟢 | 🟢 | 2026-06-08 已 fixed：死方法 list_links_with_machine_names 已删除；活近亲 list_links_with_operator_info 保留并上移到 :82 | 已确认生产/测试源码死符号零命中；R37↔R41 伪干扰仍不构成约束。 |
 | R38 | RESOURCE-REPO | 🟢🟢🟢 | 🟢 | 三处 list_as_dicts 结构同形非同体（SQL 列集各异）三笔独立删 | 禁抽 helper（造零消费活死代码）；part 份与 R39 同 part_repo.py 硬同批。 |
 | R39 | RESOURCE-REPO | 🟢🟢🟢 | 🟢 | list_unparsed 死壳 :32-33 纯删，被包活方法 list:20 多消费者不孤立 | 与 R38 part 份同 commit（删 R39 致下方上移 2 行 R38 patch 同基线）按符号名删。 |
 
@@ -235,7 +235,7 @@
 
 **C-RESOURCE-REPO（R05🔴 / R67🟡 / R34🟢 / R35🟢 / R36🟢 / R37🟢 / R38🟢 / R39🟢）**
 - 原子性最终判定：R05 硬序步1扩collar→步2 落 5 parity→步3 才搬 repo 字面量（不可换序）；R34↔R35 同 commit；R38↔R39 part 份硬同批；R34 detail_queries 若迁活孪生须排 R05 之后（落点是 R05 team-join 战场）。
-- 承重禁区（按符号，行号系统性 +1 漂移按符号 rg 现盘）：repo team 双 join :462-463 + 空 id 全量 :455/:460、collar :65-66 raise（双轨共用收口点禁裸改给派工轨单独入口）、_normalize_team_axis:65（展示轴禁误并）、R34 活近亲 schedule_repo.py:71/:160 + facade :11 ScheduleDetailRow（:37 活方法仍用保留）、R37 活近亲 :92、R67 收口点签名 :119-127。
+- 承重禁区（按符号，行号系统性 +1 漂移按符号 rg 现盘）：repo team 双 join :462-463 + 空 id 全量 :455/:460、collar :65-66 raise（双轨共用收口点禁裸改给派工轨单独入口）、_normalize_team_axis:65（展示轴禁误并）、R34 活近亲 schedule_repo.py:71/:160 + facade :11 ScheduleDetailRow（:37 活方法仍用保留）、R37 已 fixed 后活近亲 :82（旧 :92，禁再按旧 :82-90 施工）、R67 收口点签名 :119-127。
 - 必须先落 parity/注释：R05 步1 collar 接口含 include_team_context 信号（禁反向 import data SQL builder=越层+环）+ 中文注释「id 空→全量（故意）」；5 条 parity（team-only/operator-空/machine-空/team-空-裁断/bad-raise）先于步3。
 - 测试迁移序：R05 步3 前先迁 smoke:177-194 + 续命 :340；R34 删前先退 facade 断言 + detail_queries 10 用例 + benchmark:505 repoint。
 

@@ -5748,7 +5748,7 @@
   "id": "R37",
   "bucket": "B12",
   "home": "B12",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P6",
   "partition": "data-repos",
@@ -5764,7 +5764,7 @@
    "operator_machine_query_service.py",
    "operator_machine_repo.py"
   ],
-  "current_evidence_2026_06_05": "operator_machine_repo.py:82 list_links_with_machine_names(:82-90) 死方法仍在,活近亲 list_links_with_operator_info(:92)亦在;grep 全仓 machine_names 后缀方法仅 :82 def 行零调用;git diff b08162cd UNCHANGED,未删。",
+  "current_evidence_2026_06_05": "2026-06-08 B 执行后:R37/G36 已 fixed。`operator_machine_repo.py` 的死方法 `list_links_with_machine_names` 已删除;生产/测试源码 `rg list_links_with_machine_names data core tests web -g '*.py'` 零命中。活近亲 `list_links_with_operator_info` 保留并上移到 operator_machine_repo.py:82,facade/equipment_pages/tests 仍调用它。",
   "cluster": "C01",
   "same_file_siblings": [],
   "interference_edges": [
@@ -5779,23 +5779,23 @@
   ],
   "verdict": null,
   "adv_precondition": null,
-  "planned_batch_hint": "Batch-13，纯死无跨边可任意排期。优先级 low。因高误删风险，建议单独成 commit 或紧盯 diff 行范围（仅 :82-90）。",
-  "planned_deps_hint": "无。operator_machine_repo.py 仅此一债，co_change=[]。可任意排期。",
-  "planned_fix_hint": "直删 operator_machine_repo.py:82-90 整个 list_links_with_machine_names 方法。零引用点需同步退场。",
+  "planned_batch_hint": "Batch-B/G36 已 fixed。已按符号精确删除死方法,未触碰 R41/equipment_pages。",
+  "planned_deps_hint": "无。R37 已完成;operator_machine_repo.py 仍仅此一债,co_change=[]。",
+  "planned_fix_hint": "2026-06-08 已 fixed:已直删 operator_machine_repo.py 旧 :82-90 整个 list_links_with_machine_names 方法。活近亲 list_links_with_operator_info 保留。",
   "phase1_blast": {
    "co_change_within_group": [],
    "contract_topology_tests": [
     "无"
    ],
-   "downstream_effect": "可直接删,零引用点。绝不能误删活近亲 list_links_with_operator_info(:92,活→equipment_pages.py:142),二者命名对称(machine_names vs operator_info)最易混。",
+   "downstream_effect": "已直接删除,零引用点。绝不能误删活近亲 list_links_with_operator_info(执行后当前 :82,活→equipment_pages.py:142),二者命名对称(machine_names vs operator_info)最易混。",
    "fix_invalidation_risk": "none",
    "id": "R37",
    "lb_colocation_danger": "none(operator_machine_repo.py 非承重文件)",
-   "location_status": "✅准。operator_machine_repo.py:82 list_links_with_machine_names 与盘上一致;活近亲 list_links_with_operator_info 在:92。文件不在漂移名单。",
+   "location_status": "✅已 fixed。list_links_with_machine_names 已从 operator_machine_repo.py 删除;活近亲 list_links_with_operator_info 仍在 operator_machine_repo.py:82。文件不在漂移名单。",
    "pathology": "P6 被facade兄弟方法淹没的死查询",
    "planned_fix_class": "直删",
    "prod_consumers": [
-    "生产零引用(已grep证实:全仓仅:82 def 行)。其query facade operator_machine_query_service.py 代理了 list_simple_rows/list_with_names_by_machine/list_with_names_by_operator/list_links_with_operator_info/list_simple_rows_for_machine_operator_sets,唯独漏暴露 list_links_with_machine_names"
+    "生产零引用(2026-06-08 执行后已grep证实:生产/测试源码零命中)。其query facade operator_machine_query_service.py 代理了 list_simple_rows/list_with_names_by_machine/list_with_names_by_operator/list_links_with_operator_info/list_simple_rows_for_machine_operator_sets,唯独漏暴露 list_links_with_machine_names"
    ],
    "test_consumers": [
     "无(已grep证实零引用)"

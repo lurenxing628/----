@@ -195,11 +195,11 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
   - **护栏已落**：`test_all_nav_specs_have_nonempty_plain_url` 已钉住 specs 第 3 字段非空不变量。
   - **后续交接**：`_has_navigation_context`、`_use_plain_scheduler_chrome`、`TARGET_PAGE_PATHS`、`_REPORT_CONTEXT_FIELD_NAMES`、`preserved_report_context_fields` 均按当前符号重 rg 复核;R42/R67 进本文件时不要信 G02 删除前的旧行号。
 
-**不可碰清单（按符号）**：G14(R10) 活近亲 `resolve_version:60`（旧 :64；误删静默炸周计划版本解析）；G35(R36)/G31/G32 各 repo 活近亲；R37（在 Batch-A 候选但归 RESOURCE-REPO）活近亲 `list_links_with_operator_info:92`；R53 已 fixed 后仍禁 `:39/:58/:74 return`；R64/R65 活近亲 `_has_navigation_context:47`（误删炸导航 chrome 判定）；G11 已 fixed 后仍禁 `_copy_critical_chain_result:108`（缓存浅拷，非 normalize 点）+ 禁 `support:36 return raw`。
+**不可碰清单（按符号）**：G14(R10) 活近亲 `resolve_version:60`（旧 :64；误删静默炸周计划版本解析）；G35(R36)/G31/G32 各 repo 活近亲；R37 已 fixed 后活近亲 `list_links_with_operator_info:82`（旧 :92，后续禁再按旧 `:82-90` 施工）；R53 已 fixed 后仍禁 `:39/:58/:74 return`；R64/R65 活近亲 `_has_navigation_context:47`（误删炸导航 chrome 判定）；G11 已 fixed 后仍禁 `_copy_critical_chain_result:108`（缓存浅拷，非 normalize 点）+ 禁 `support:36 return raw`。
 
 **收口行为差异检查项**：G11 收口 `available=0`：取 `bool(available)` 会把 `0→False`（静默放宽，禁），须保 support 的写法令 `available=0→True`；G28(R23) 已收口为 model:21 真相源 + service:17 import/:102 调用，**绝不并入 view_context:65**（带 VALID 校验抛 ValidationError，错误类型前移致上游 catch ValueError 静默漏接）。
 
-**批后门禁**：fitness 21 项全绿 + 0 分层违规；语义雷达无新漂移；v18/v19 不破；本批专项：G11 已 fixed 后以 `test_gantt_critical_chain_normalize_parity.py` 11 边界绿 + `rg` 证单份 `_normalize_critical_chain_result` + `_copy_critical_chain_result` 在位，G38 SP05 topology contract 绿（现盘 `:175 def`/`:317` 起 strong-compat 断言不碰）、G16 已 fixed 后以残留 `rg` 证 `config_adapter`/三符号/`NO_CFG_GET_TARGETS` 零命中且 `schedule_params.py` 在位、G21 已 fixed 后以 `_safe_float` 现函数体 + `test_no_new_local_parse_helpers` 证明 allowlist 保留正确、R53 已 fixed 后以 `tests/algorithm/test_greedy_refactor_contract.py` + `tests/algorithm/test_greedy_scheduler_base_date.py` 28 passed 和 `rg` 证 batch_order.py no-op 零命中、删后逐个 grep 复核活近亲在位（resolve_version:60（旧 :64） / list_links_with_operator_info:92 / sgs_scoring:34 / ordering:59 / _copy:108）。
+**批后门禁**：fitness 21 项全绿 + 0 分层违规；语义雷达无新漂移；v18/v19 不破；本批专项：G11 已 fixed 后以 `test_gantt_critical_chain_normalize_parity.py` 11 边界绿 + `rg` 证单份 `_normalize_critical_chain_result` + `_copy_critical_chain_result` 在位，G38 SP05 topology contract 绿（现盘 `:175 def`/`:317` 起 strong-compat 断言不碰）、G16 已 fixed 后以残留 `rg` 证 `config_adapter`/三符号/`NO_CFG_GET_TARGETS` 零命中且 `schedule_params.py` 在位、G21 已 fixed 后以 `_safe_float` 现函数体 + `test_no_new_local_parse_helpers` 证明 allowlist 保留正确、R53 已 fixed 后以 `tests/algorithm/test_greedy_refactor_contract.py` + `tests/algorithm/test_greedy_scheduler_base_date.py` 28 passed 和 `rg` 证 batch_order.py no-op 零命中、删后逐个 grep 复核活近亲在位（resolve_version:60（旧 :64） / list_links_with_operator_info:82（旧 :92） / sgs_scoring:34 / ordering:59 / _copy:108）。
 
 **go-no-go 判据**：每个死叶子删后立即 grep 活近亲在位 + 该文件相关测试绿 → 放行下一叶子。任一活近亲 grep 落空 → 误删，立即 revert。
 
@@ -228,7 +228,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 - **G20(R59)🟡**：←GF1；F1 落地后才收口（裸收口撞续命测试 `:247/:250`）；保留 blank 短路 `:62-63`。
 - **G30(R34+R35)🟢**：O10 已裁纯删；repoint 目标 `get_plan_time_span_for_resolution` 存在（旧锚 :210，R23 后现盘 :206，执行按符号重 rg）；R34↔R35 同 commit 按符号自下而上；若未来改裁迁 detail_queries 活孪生，才回升为 R05 后置前置（落点是 R05 team-join 战场）；facade `:11 ScheduleDetailRow` 只删 `:12/:14` 保 `:11`（`:37` 活方法仍用）。
 - **G06(R62)🟡**：←G05；按符号 `_resource_pair_payload`+`!=` 重 grep 禁照抄行号；**payload+dict+模板（`!=`副行 + title 改回 `_label`，爆点 #5：title 第四处 Jinja undefined→`title=""` UI 降级）+xlsx 四处同 commit**；收口面**零现成断言须先写 3 套 parity 快照**（升为硬前置门非建议）；禁碰 `:58-236` 护栏段 + 禁删 state 层 latest_*/counterpart_* 真身份键。
-- **G36(R37)**：直删 `:82-90`，删后立即 grep 活近亲 `:92`。
+- **G36(R37)🟢 fixed**：2026-06-08 已按符号删除 `list_links_with_machine_names` 死方法（旧锚 `operator_machine_repo.py:82-90`）；源码内该符号零命中。活近亲 `list_links_with_operator_info` 保留并上移到 `operator_machine_repo.py:82`，后续禁再按旧行号 `:82-90` 施工。
 
 **不可碰清单（按符号）**：LB01 `:369-374/:381-382/:471-473`；R15 provider `if not text: return None` 空值短路 + support:228 raise；R19 `snapshot:40 return sorted`（事实承重）；R52 ReadyQueueContractError 抛错链 loud raise；R46 同名陷阱 `v4_sanitizers:37`；R12 `_copy:108`/`:84 过滤`/sort:114/max:262/出口 try-except；R55 `:385 None 回退`；R51 收口点 schedule_params/optimizer_config（只读）；R50 `import math:3`；R34 活近亲 schedule_repo.py:71/:160 + facade `:33/:37`；STRICT-4 全程。
 

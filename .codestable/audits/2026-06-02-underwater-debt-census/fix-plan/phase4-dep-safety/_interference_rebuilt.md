@@ -49,7 +49,7 @@
 | **G33** | RESOURCE-REPO | {R05} AC-3 🔒⏸ | 🔒 收口点扩容三原子小步,步内不可换序;本簇唯一承重(verdict=LB) | O15/O16 已裁：强序 步1 扩 collar(含 include_team_context + 派工轨单独入口 + 空 id 全量)→步2 补 5 条 parity→步3 收敛 repo:461-463/:454-460+_normalize_scope_type |
 | **G34** | RESOURCE-REPO | {R67} AC-4 ⏸ | 抽单一常量,4 处手抄须全收或①②必收③④酌情;半截去重比现状更危险 | O18 已裁：①②必收，第 4 处 superset 保现状（③④全收或全不收）；常量须 tuple 保序 |
 | **G35** | RESOURCE-REPO | {R36} | ISOLATED,直删 batch_operation_repo.py:25-35/50-61 两方法 | 单债从后往前删;本桶最早可落之一 |
-| **G36** | RESOURCE-REPO | {R37} | 直删 operator_machine_repo.py:82-90;同文件零碰撞 | 单债;删后 grep 活近亲 list_links_with_operator_info:92 仍在(误删静默炸人机分组) |
+| **G36** | RESOURCE-REPO | {R37} ✅ fixed | **2026-06-08 已 fixed**。已直删 operator_machine_repo.py 旧 :82-90 的死方法;同文件零碰撞 | 活近亲 list_links_with_operator_info 保留并上移到 :82(误删会静默炸人机分组) |
 | **G37** | GRAPH-ERR-DIAG | {R02} A1 | 独立单债,test-only re-export 壳,生产零消费 | 单债内两步不可颠倒:先拆测试 import(只 build_first_wave_ready_nodes 改指)→后删壳:461-475 |
 | **G38** | GRAPH-ERR-DIAG | {R06, R27, gantt 空包} A2 | **2026-06-08 已 fixed**；同收口点同两行风险已一次性关闭(SP05 现盘 :312 三元组,旧 delayed 循环已删) | 已按"四包同提交"执行:一次改 :312 成三元组+删旧 delayed 循环+删四个 tracked `__init__.py`;后续勿重复处理 |
 | **G39** | GRAPH-ERR-DIAG | {R52, R25} A3 | O07 已裁 B 保留：impl 留作差分 oracle，R25 垫片保留 | 只补「我是故意的」注释；不删 impl、不删垫片、不新建 `test_sgs_graph_ready.py` |
