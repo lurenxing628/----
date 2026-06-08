@@ -494,7 +494,7 @@
  "R04": {
   "id": "R04",
   "bucket": "B05",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P5",
   "lb": false,
@@ -503,7 +503,7 @@
   "siblings": [
    "R01"
   ],
-  "batch": "Batch-6(B05 正整数/解析",
+  "batch": "Batch-B/G19 已 fixed",
   "owner_pending": false,
   "needs_adv": true,
   "adv_refuted": false,
@@ -1204,7 +1204,7 @@
  "R01": {
   "id": "R01",
   "bucket": "B14",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "P6",
   "lb": false,
@@ -1213,7 +1213,7 @@
   "siblings": [
    "R04"
   ],
-  "batch": "Batch-6(B05 + R01 ",
+  "batch": "Batch-B/G19 已 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,

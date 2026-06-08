@@ -227,6 +227,37 @@ def test_sgs_auto_assign_failed_op_ids_from_errors_does_not_guess_when_batch_mis
     assert auto_assign_failed_op_ids_from_errors(errors=errors, operations=operations) == set()
 
 
+@pytest.mark.parametrize(
+    ("raw_value", "expected"),
+    [
+        (None, 0),
+        ("x", 0),
+        (-3, 0),
+        (3.0, 3),
+    ],
+)
+def test_auto_assign_error_positive_int_sentinel_keeps_bad_values_at_zero(raw_value: Any, expected: int) -> None:
+    from core.services.scheduler.run.auto_assign_resource_errors import _positive_int
+
+    assert _positive_int(raw_value) == expected
+
+
+@pytest.mark.parametrize(
+    ("raw_value", "expected"),
+    [
+        (None, None),
+        (0, None),
+        (3.0, 3),
+    ],
+)
+def test_schedule_persistence_error_positive_int_sentinel_keeps_bad_values_as_none(
+    raw_value: Any, expected: Any
+) -> None:
+    from core.services.scheduler.run.schedule_persistence_errors import _positive_int
+
+    assert _positive_int(raw_value) == expected
+
+
 def test_auto_assign_failed_op_ids_from_errors_accepts_sgs_public_sequence_format() -> None:
     from core.services.scheduler.run.auto_assign_resource_errors import auto_assign_failed_op_ids_from_errors
 

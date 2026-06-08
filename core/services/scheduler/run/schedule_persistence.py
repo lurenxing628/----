@@ -13,8 +13,6 @@ from .schedule_payload_contract import (
     ValidatedSchedulePayload,
     ValidatedScheduleRow,
     build_validated_schedule_payload,
-    count_actionable_schedule_rows,
-    has_actionable_schedule_rows,
 )
 from .schedule_payload_contract import (
     validate_payload_before_persist as _validate_payload_before_persist,

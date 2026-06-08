@@ -82,7 +82,7 @@ Batch-A  独立死叶子 / 零前置 / owner=false（最早可落）
 
 Batch-B  依赖 ROOT 承重门 / 单门控前置
   G06(R62，2026-06-08 已fixed) ┃ G07(R17/R20)←G07a🔒 ┃ G08(R15/R17/R20)←与G07同原子
-  G12(R12)←G11 ┃ G13(R55)⏸本轮跳过(O09) ┃ G19(R01+R04)←GF1 ┃ G20(R59)←GF1
+  G12(R12)←G11 ┃ G13(R55)⏸本轮跳过(O09) ┃ G19(R01+R04，2026-06-08 已fixed)←GF1 ┃ G20(R59)←GF1
   G24(R49含G25旁支+R50+R51，2026-06-08 已fixed) ┃ G40(R46)←G40a🔒⏸ ┃ G30(R34+R35) ┃ G36(R37) ┃ G39(R52+R25 KEEP注释)
 
 Batch-C  身份族收敛 / 收口委托（依赖承重族 + parity）
@@ -228,6 +228,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 - **G24(R49+R50+R51)🟢 fixed**：2026-06-08 已按一次原子 diff 执行，旧「从大行号往小删」是执行前口径。已删除 R49 5 行死别名、R50 `mean_positive` + `import statistics`、R51 `parse_dispatch_rule` / `parse_strategy` 与两份 case-insensitive 续命测试；R51 `:25` 静默兜底断言未迁移未保留；R50 `import math` 保留；R49 活近亲 `evaluation._parse_due_date_state` / `sgs_scoring._parse_due_date` 未动；收口点 `schedule_params:277/346` + `optimizer_config:166/189` loud raise 只读确认在位。
 - **R49-self 执行口径（红队 RT3-P02 采纳·同债拆两批须钉同提交序）🟢 fixed**：R49 的 G25 旁支已并回 G24 一次原子执行。现盘禁再按旧 Batch-A/G25 锚点单独施工；后续复核只看全仓是否还有 `parse_dispatch_rule` / `parse_strategy` / R49 死别名残留。
 - **G20(R59)🟡**：←GF1；F1 落地后才收口（裸收口撞续命测试 `:247/:250`）；保留 blank 短路 `:62-63`。
+- **G19(R01+R04)🟢 fixed**：2026-06-08 已按强序完成。R01 先删 `_iter/count/has` 死链、两层旧导出和 SP05 续命断言；R04 后把 `_strict_positive_int` 收口到 `parse_required_int(..., reject_integer_float=True)`，剩余 5 处调用点捕获 `ValidationError`；B/C 哨兵只补注释和 parity，LB08 文案/正则桥与 STRICT-4 未动。GF1 已落地且默认 False，后续 G20 可视为前置满足。
 - **G30(R34+R35)🟢 fixed**：2026-06-08 已按 O10 纯删口径闭合。已删除 `schedule_repo.py` 旧 `get_version_time_span` / `list_between` / `list_overlapping_with_details` / `list_dispatch_rows_with_resource_context` 四个死方法；`benchmark_fjsp.py` 改指 repo 层既有 `SchedulePlanQueryRepository.get_plan_time_span(version=..., source_table=SOURCE_SCHEDULE, candidate_id=None)`；facade 仅保留两条活方法返回类型断言（现 `test_schedule_service_facade_delegation.py:29-33`）。后续禁再按旧删点施工，活近亲现为 `schedule_repo.py:36` / `:79`。
 - **G06(R62)🟢 fixed**：2026-06-08 已按符号 `_resource_pair_payload`+`!=` 重盘执行；payload+dict+模板（`!=`副行 + title 改回 `_label`）+xlsx 四处同一原子 diff 闭合，并补 dict/xlsx/模板三类守卫。禁区已守住：未碰 `:58-236` adopted-only 护栏段，未删 state 层 latest_*/counterpart_* 真身份键。后续禁再按旧锚点重复施工。
 - **G36(R37)🟢 fixed**：2026-06-08 已按符号删除 `list_links_with_machine_names` 死方法（旧锚 `operator_machine_repo.py:82-90`）；源码内该符号零命中。活近亲 `list_links_with_operator_info` 保留并上移到 `operator_machine_repo.py:82`，后续禁再按旧行号 `:82-90` 施工。
@@ -418,10 +419,11 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 - **修正安全路径（V3④选项 I）**：① 先扩 collar 成 3 键 guard 产出点（走 view_context default_plan_resolution_dict 的 fail-CLOSED 默认）当**独立承重前置改动审**（ROOT）；② 再 6 面 delegate；③ 5 套跨 3 基数（16/15/12），**禁向 16 键看齐**（补 plan_role_status=统一改行为违承重红线），分三组各钉 parity；④ 第 6 手维面 `_PUBLIC_FILTER_DROP_KEYS`（同步面禁 delegate，爆点 #2）；⑤ L5 OR 兜底反例必拦（爆点 #3）；⑥ reports 第二注入路径禁并（丢 3 阻断态）；⑦ 与 R42/R60 同改 collar 签名 MUST 同批。
 - **owner 闸门**：collar 入参形态（plan_resolution 入参 vs 局部源）+ fail-CLOSED 默认形态（F门-1/2/3）。
 
-### R04（PARSE-INT，Batch-B/G19，r1-LB/SOUL 红，双爆点）
+### R04（PARSE-INT，Batch-B/G19，r1-LB/SOUL 红，双爆点，2026-06-08 已 fixed）
 - **灾难链**：F1 `reject_integer_float` 默认 True→sgs_graph 8 处 algorithms 调用方 3.0 由接受变 raise 排程静默回归；ValidationError 非 ValueError 子类，6 处 except 漏改任一→脏 op_id 由静默 skip 变 ValidationError 一路上抛炸排程统计/持久化。
 - **旧计划为何炸**：F1 默认值若取 True 立刻炸现有调用方；6 处 except 异常逃逸若漏改任一即上抛。
 - **修正安全路径**：① F1 必默认 False + 自带 parity（True→3.0 raise/False→3.0 接受，含 sgs_graph 风格调用断言，ROOT/GF1）；② R01 先删→R04 按新行号重 rg（缩收口面 6→5）；③ 6 处 except 同 PR 加 ValidationError 不可拆；④ 哨兵 B(auto_assign:114→0)/C(persistence:13→None) 仅注释禁改 raise；⑤ LB08 文案/正则桥不碰。
+- **执行终态**：已按上述路径落地；R01 死链已删，R04 收口后实际剩余 5 处调用点均捕获 `ValidationError`，B/C 哨兵继续保持 `→0` / `→None`，并由新增 parity 钉住。
 - **owner 闸门**：哨兵 B/C 注释（不改 raise）；persistence:13 归属（V1⑤归 R04 禁区）。
 
 ### R42（NAV-PLANID，Batch-C/G01，r1-LAY 红，爆点 #21）
@@ -744,7 +746,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 | 🟠 高 | `scheduler_navigation_publish.py` | R58(承重邻)+R54+R44 | G04 硬序 R58→R54→R44（重 rg :6/:36-37）|
 | 🟠 高 | `web/.../scheduler_workbench_links.py` | R42+R54(跨簇)+R60 邻 | E03 硬序 R54 先→R42 rebase；禁动 dict guard 段/禁翻 fail-open |
 | 🟠 高 | `algorithms/dispatch_rules.py` | R49+R50+R51 ✅ fixed | G24 已一次原子 diff 闭合；保 `import math` 与 `build_dispatch_key`，禁再按旧行号重复删 |
-| 🟠 高 | `schedule_payload_contract.py` | R01+R04 | G19 强序 R01 先删(缩 R04 收口面 6→5)→R04 后收口；必同 PR |
+| 🟠 高 | `schedule_payload_contract.py` | R01+R04 ✅ fixed | G19 已按强序闭合；后续禁按旧行号重复施工，现盘 `_strict_positive_int` 只剩 5 个调用点 |
 | 🟠 高 | `data/repositories/schedule_repo.py` | R34+R35 | O10 已裁纯删；G30 一原子 diff 自下而上 |
 | 🟡 中 | `config_snapshot.py`+`schedule_config_runtime_coercion.py`(双栈)| LB07(承重)+R71+R47 | G15 硬序 LB07 注释+parity 先→R47+R71 同批 |
 | 🟡 中 | `web/viewmodels/scheduler_resource_dispatch_execution.py` | R08+R09(B 副本)| O01/O02 已裁；G22 串行 R08 先→R09 后，只收 A/B Optional 副本 |

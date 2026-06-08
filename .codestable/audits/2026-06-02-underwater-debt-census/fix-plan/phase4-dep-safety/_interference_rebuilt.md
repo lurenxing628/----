@@ -31,11 +31,11 @@
 | **G16** | CONFIG-DUAL | {R45 ≡ R48} ASC-2 ✅ fixed | 同一物理文件 config_adapter.py 整文件删已完成；两叙述视角=一次删除 | 2026-06-08 补登 fixed：旧 sp06 文件已由 A P1.1 删除，清单同步步骤为 no-op；后续只做残留 rg，不碰 schedule_params.py |
 | **G17** | CONFIG-DUAL | {R31} ASC-3 | 删 shared 源 value_policies.py:9 死常量,跨簇绑 R33 删序 | 单债;R33 不晚于 R31(否则 facade:11 残 import loud ImportError) |
 | **G18** | CONFIG-DUAL | {R26} ASC-4 ⏸ | 5 顶层 shim 删,三步迁移须同窗口,但与本簇余成员无原子绑定,Batch-14 全局最晚 | 晚于 R29/R33/R52 三桶收敛(facade 删晚于收敛硬约束) |
-| **G19** | PARSE-INT | {R01, R04} A1 | 同文件 schedule_payload_contract.py 强行号互撞(R04:72 落在 R01 删的 _iter:67-87 内) | 强序 R01 先删(:67-87 含:72,缩收口面 6→5)→R04 后收口(剩 5 点,6 处 except 同步加 ValidationError 不可拆);必同 PR;依赖 F1 |
+| **G19** | PARSE-INT | {R01, R04} A1 ✅ fixed | **2026-06-08 已 fixed**。同文件 schedule_payload_contract.py 强行号互撞已按原子顺序闭合：R01 先删死链缩 R04 收口面，R04 后收口并同步异常面 | 已执行：删 `_iter/count/has` 死链、旧 re-export 和 SP05 续命断言；`_strict_positive_int` 委托 `parse_required_int(..., reject_integer_float=True)`；剩余 5 处调用点捕获 `ValidationError`；B/C 哨兵仅注释+parity |
 | **G20** | PARSE-INT | {R59} A2 | 独立文件 report_number_parsing.py,与 R04 共享 F1 门(reject_integer_float) | F1 落地后 R59 才收口(否则撞续命测试:247/:250);F1 后可独立提交 |
 | **G21** | PARSE-INT | {R28} A3 | **2026-06-08 已 fixed**。完全独立叶子,已保留 `_safe_float` 名并收口到已存在 parse_finite_float,不改 number_utils 任何行,不依赖 F1 | 已落地: `allow_none=True`;fitness 白名单:77 经 `-k test_no_new_local_parse_helpers` 实测保留 |
 | **G22** | PARSE-INT | {R08, R09} A4 ⏸ | 同文件 viewmodel 串行避免行号互撞;R09 跨子簇(B 副本归此,A 副本归 G19 邻域) | R08 先(B01)→R09 后(B05)串行;O01/O02 已裁：只收编 A/B 两 Optional 副本，C 严格保持不动，persistence_errors:13 归 R04 禁区+注释；R09 双路 parity(C 严格 5.9→None vs A/B 宽松 5.9→5) |
-| **GF1** | PARSE-INT | F1(reject_integer_float 非债) | A1/A2 共享前置门,加在 strict_parse:46 经:81 透传,**必默认 False**(默认 True 炸 sgs_graph 等 parse_required_int 调用方) | 最先落+默认 False+自带 parity;门控 G19(R04)/G20(R59) |
+| **GF1** | PARSE-INT | F1(reject_integer_float 非债) ✅ fixed | A1/A2 共享前置门已在 `strict_parse` 落地并经 `parse_required_int` 透传，**默认 False**(默认 True 会炸 sgs_graph 等 parse_required_int 调用方) | 2026-06-08 已由 G19 自证默认兼容与严格拒绝两路；G19 已消费，后续继续门控 G20(R59) |
 | **G23** | COMPAT-DISPATCH | {R33, R30} A1 | 同改 config_service_component_contract 测试+R30 删 shared 实现/R33 删壳 re-export,删序错即 ImportError | 硬序 R33 步1(迁两测试 import)→R30(删 shared 实现/三 FieldPolicy/三常量)→R33 步2/3(删壳+:411 断言) |
 | **G24** | COMPAT-DISPATCH | {R49, R50, R51} A2 | **2026-06-08 已 fixed**。同物理文件 dispatch_rules.py 三债行号互撞的风险已通过一次原子 diff 关闭 | 已按符号定位删除 R49 死别名、R51 两解析器、R50 `mean_positive` + `import statistics`，并连退两份续命测试；`import math` / `build_dispatch_key` / 活同名前缀函数保留 |
 | **G25** | COMPAT-DISPATCH | {R49 之 evaluation/ortools 4 行} A3 | **2026-06-08 已并回 G24 fixed**，不再作为 Batch-A 独立动作 | `evaluation.py` / `ortools_bottleneck.py` 的 R49 死别名已同原子删除；后续禁再按旧 G25 锚点单独施工 |
@@ -134,7 +134,7 @@ Batch-B（依赖 ROOT 承重门 / 单门控前置）
   G08(R15/R17/R20) ← 与 G07 同原子提交(R17/R20 跨 service+support)
   G12(R12)         ← G11
   G13(R55)⏸        ← O09 已裁本轮不做，仅暂停占位
-  G19(R01+R04)     ← GF1（+ E24 与 G40a 认账协同）
+  G19(R01+R04)     ← GF1（2026-06-08 已 fixed，+ E24 与 G40a 认账协同）
   G20(R59)         ← GF1
   G24(R49含G25旁支+R50+R51) ← schedule_params/optimizer_config 收口点只读在位（已满足，2026-06-08 已 fixed）
   G40(R46)         ← G40a 🔒⏸
@@ -195,7 +195,7 @@ Batch-D（facade 删除最晚 / 跨 owner-pending 收口）
 | 🟠 高 | `core/services/scheduler/scheduler_navigation_publish.py` | **R58**(承重邻) + R54 + R44 | R58 注释:91 上方；R54 _PLAN_GUARD_FIELD_NAMES:12/_plan_guard_fields:82；R44 删 selected_plan_role def:36-37+import:6-7；M/MM 漂移态任一先落即移彼此行号 | G04 硬序 R58(注释)→R54(guard 收口)→R44(删 def,重 rg :6/:36-37)；禁动:91 整行/禁剔键 |
 | 🟠 高 | `web/.../scheduler_workbench_links.py` | R42(NAV-PLANID) + R54(NAV-GUARD,跨簇) + R60 邻 | R54 加 guard 字段(签名:187/dict:229-258,已落:206-207)；R42 删 plan_id 形参:191/dict:233；**同符号 build_workbench_plan_context co-change MUST 同批** | E03 硬序 R54 先→R42 后 rebase 新签名；禁动 dict:229-258 guard 段/禁翻:292-304 fail-open;LIVE _context_summary:258 别误删(R66 跨文件红线) |
 | 🟠 高 | `core/algorithms/dispatch_rules.py` | R49 + R50 + R51 ✅ fixed | 旧风险：R49 删:25；R51 删首函数:28-35；R50 删末函数:112-132+import statistics:4；删任一处位移其下,R51 删首函数上移 R49/R50 ~7-8 行 | G24 已闭合；现盘保留 `import math`、`DispatchInputs`、`build_dispatch_key`，禁再按旧行号重复删 |
-| 🟠 高 | `core/models/schedule_payload_contract.py` | R01 + R04 | R01 删 _iter:67-87/count:90/has:94-95/__all__:414-415/孤儿 import:5；R04 收口 _strict_positive_int:50+6 调用点(**:72 落在 R01 删的 _iter body 内**) | G19 强序 R01 先删(:67-87 缩 R04 收口面 6→5)→R04 后收口(剩 5 点 rg 重定位,6 处 except 同步加 ValidationError);必同 PR |
+| 🟠 高 | `core/services/scheduler/run/schedule_payload_contract.py` | R01 + R04 ✅ fixed | 旧风险：R01 删 _iter/count/has/__all__ 与 R04 收口 `_strict_positive_int` 同文件互移行号，且 R04 旧 :72 落在 R01 删除体内 | G19 已闭合；后续禁按旧行号重复施工。现盘无 `_iter/count/has` 残留，`_strict_positive_int` 只剩 5 个调用点。 |
 | 🟠 高 | `data/repositories/schedule_repo.py` | R34 + R35 ✅ fixed | 旧删点 R34(:36-59/:114-126/:128-158)+R35(:61-69) 已删除 | G30 已闭合；后续只需保护活近亲 `list_version_rows_by_op_ids_start_range`:36 与 `list_by_version_with_details`:79 |
 | 🟡 中 | `core/services/scheduler/config/config_snapshot.py` + `core/models/schedule_config_runtime_coercion.py`(双栈对称) | **LB07**(承重) + R71 + R47 | LB07 双栈 @dataclass:7/:24 注释；R71 三 helper 收敛；R47 删死参 raw_value(model:83/service:63,在三 helper 之下)；改任一函数体位移彼此锚行 | G15 硬序 LB07 注释+parity 先(Batch-1)→R47+R71 同批(先删 R47 死参再 R71 收敛);禁碰 coercion loud raise 块(按符号非行号) |
 | 🟡 中 | `web/viewmodels/scheduler_resource_dispatch_execution.py` | R08 + R09(B 副本) | R08 改死常量:25/死分支:227-228/:367-368；R09 改 B 副本 def:33+调用点:257/:258/:353；同文件删行位移彼此锚点 | O01/O02 已裁：G22 串行 R08 先(B01)→R09 后(B05)；只收 A/B Optional 副本，C 严格不动，persistence_errors:13 归 R04 禁区+注释 |

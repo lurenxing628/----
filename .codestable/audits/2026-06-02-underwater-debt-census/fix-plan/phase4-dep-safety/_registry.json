@@ -2879,7 +2879,7 @@
   "id": "R04",
   "bucket": "B05",
   "home": "B05",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P5",
   "partition": "scheduler-run",
@@ -2898,7 +2898,7 @@
    "schedule_payload_contract.py",
    "schedule_persistence_errors.py"
   ],
-  "current_evidence_2026_06_05": "schedule_payload_contract.py:50 _strict_positive_int 仍是原样私有实现(None/bool/float/<=0 raise ValueError),未委托 strict_parse,无『故意/适配』护栏注释;前置 F1 缺失——strict_parse.py 全文无 reject_integer_float 形参(_parse_finite_int:56 仍 abs<=1e-9 接受 3.0);两哨兵也无『禁止收口』注释",
+  "current_evidence_2026_06_05": "2026-06-08 B执行终态:G19/R04 已 fixed。GF1 前置已在 core/shared/strict_parse.py 落地 reject_integer_float 且默认 False；schedule_payload_contract.py 的 _strict_positive_int 已委托 parse_required_int(field='op_id', min_value=1, reject_integer_float=True)；R01 删除后剩余 5 处调用点均同步捕获 ValidationError；auto_assign_resource_errors.py 与 schedule_persistence_errors.py 两个错误路径哨兵仅补『故意降级』注释并由 parity 测试钉住 →0/→None 语义；LB08 文案/正则桥与 STRICT-4 未动。",
   "cluster": "C01",
   "same_file_siblings": [
    "R01"
@@ -2968,9 +2968,9 @@
    "verdict_kind": "load_bearing"
   },
   "adv_precondition": null,
-  "planned_batch_hint": "Batch-6(B05 正整数/解析收口)。桶内顺序：F1 之后即可做；与 R01@B14 同批或串行。",
-  "planned_deps_hint": "先做：F1(strict_parse reject_integer_float)。同文件硬边：schedule_payload_contract.py 还有 R01@B14(死 count/has 链 + SP05:54-55 两符号断言)→**B05 动它须与 B14 同批次或串行**，避免后改桶撞行号(R04 改 :50 区，R01 改 count/has 区，物理分离但同文件)。co-change 组(Phase1)：R59/R09/R28。R59 与 R04 共享 F1 的 reject_integer_float 产物。",
-  "planned_fix_hint": "依赖前置 F1(strict_parse 加 reject_integer_float 严格模式 + min_value 已有)。**两个哨兵永不动**(auto_assign→0 / persistence→None 在错误处理路径，改 raise=灵魂线红)。只对 _strict_positive_int 做收口：把其函数体改为委托 `core.shared.strict_parse.parse_required_int(value, field='op_id', min_value=1, reject_integer_float=True)`(对齐同 partition 范例 optimizer_config.py:72-85)。为保 6 处 `except (TypeError, ValueError)` 仍能捕获(ValidationError 会逃逸)，采用**最小爆炸面方案*",
+  "planned_batch_hint": "Batch-B/G19 已于 2026-06-08 执行完成；本字段仅保留历史前置关系：GF1 先满足，R01 与 R04 同原子处理。",
+  "planned_deps_hint": "已满足：GF1 默认 False + 严格模式已先绿；R01 先删死链，R04 再按删后行号收口到 parse_required_int；R59 仍可复用 GF1 作为后续 G20 前置。",
+  "planned_fix_hint": "2026-06-08 已执行完毕，勿重复操作。历史修法为：R01 删除 _iter/count/has 死链和旧门面导出；R04 把 _strict_positive_int 收口到 parse_required_int(..., reject_integer_float=True)，剩余 5 处调用点捕获 ValidationError；B/C 哨兵只补注释并加 parity，不改 raise/降级行为。",
   "phase1_blast": {
    "co_change_within_group": [
     "R59",
@@ -6368,7 +6368,7 @@
   "id": "R01",
   "bucket": "B14",
   "home": "B14",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "medium",
   "pathology": "P6",
   "partition": "scheduler-run",
@@ -6384,7 +6384,7 @@
    "schedule_persistence.py",
    "test_sp05_path_topology_contract.py"
   ],
-  "current_evidence_2026_06_05": "schedule_payload_contract.py:90/94 仍定义 count_actionable_schedule_rows/has_actionable_schedule_rows (依赖 _iter_actionable_results:67、__all__:414-415);两层 re-export 仍在 (run/schedule_persistence.py:16-17 + scheduler/schedule_persistence.py:3,5);SP05 test_sp05_path_topology_contract.py:54-55 仍列两符号。计划的 5 站点+SP05 同提交删除完全未动,原样死码。",
+  "current_evidence_2026_06_05": "2026-06-08 B执行终态:G19/R01 已 fixed。schedule_payload_contract.py 中 _iter_actionable_results/count_actionable_schedule_rows/has_actionable_schedule_rows 死链与 __all__ 两条目已删除；run/schedule_persistence.py 与 scheduler/schedule_persistence.py 旧 re-export 已摘除，旧门面 __all__ 只保留 persist_schedule；SP05 的 schedule_persistence 公开面期望已退成仅 persist_schedule；core/tests/tools/scripts/web/data 源码残留 rg 为 0。",
   "cluster": "C01",
   "same_file_siblings": [
    "R04"
@@ -6433,9 +6433,9 @@
   ],
   "verdict": null,
   "adv_precondition": null,
-  "planned_batch_hint": "Batch-6(B05 + R01 parse 互锁)，与 R04 同批。独立于 B01 全局根。Medium 优先级。",
-  "planned_deps_hint": "schedule_payload_contract.py 跨桶与 R04(B05 正整数/datetime 收口，落点 _strict_positive_int :50 + 6 调用点 :72/:149/:198/:308/:324/:372)共居。R04 与 R01 改不同区域(R04=_strict_positive_int 簇，R01=_iter/count/has 簇，互不重叠)但同文件，必须同批次或显式串行避免行号互撞。Phase1 边 R04→R01『同文件同改』；Phase1 Batch-6 已把二者归同批。二者间无前后置顺序要求，仅共居约束。",
-  "planned_fix_hint": "直删，5 个站点 + SP05 必须同一提交。(1) 删 schedule_payload_contract.py 的死簇 _iter_actionable_results(:67-87)+count(:90-91)+has(:94-95)——三者构成闭合死环(_iter 仅被 count 调、count 仅被 has 调、has 无人调)，整簇删除；(2) 删 schedule_payload_contract.py:414-415 两个 __all__ 条目；(3) 删 run/schedule_persistence.py:16-17 两行(只删这两行，保留 :12-15/:18 的 import 块结构，确保 build_validated_schedule_payload 等仍被导入)；(4) 改 scheduler/schedule_persistence.py:3(去掉 co",
+  "planned_batch_hint": "Batch-B/G19 已于 2026-06-08 执行完成；本字段仅保留历史前置关系：R01 与 R04 同原子处理，R01 先删后 R04 收口。",
+  "planned_deps_hint": "已满足：R01 与 R04 同文件强串行已在 G19 内闭合；R01 先删 _iter/count/has 后，R04 收口面由 6 点缩为 5 点并按符号重 rg。",
+  "planned_fix_hint": "2026-06-08 已执行完毕，勿重复操作。历史修法为：删除 schedule_payload_contract.py 的 _iter/count/has 死链和 __all__ 两条目，摘 run 与旧 scheduler 门面的 count/has 导出，并同步把 SP05 schedule_persistence 公开面期望退成仅 persist_schedule。",
   "phase1_blast": {
    "co_change_within_group": [],
    "contract_topology_tests": [

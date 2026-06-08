@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, Iterator, List, Optional, Set, Tuple, cast
+from typing import Any, Dict, List, Optional, Set, Tuple, cast
 
 from core.infrastructure.errors import ValidationError
 from core.models.enums import SourceType
+from core.shared.strict_parse import parse_required_int
 
 from .schedule_persistence_errors import raise_no_actionable_schedule_error
 
@@ -48,12 +49,7 @@ class ValidatedSchedulePayload:
 
 
 def _strict_positive_int(value: Any) -> int:
-    if value is None or isinstance(value, bool) or isinstance(value, float):
-        raise ValueError(f"invalid positive integer: {value!r}")
-    number = int(value)
-    if number <= 0:
-        raise ValueError(f"invalid positive integer: {value!r}")
-    return number
+    return parse_required_int(value, field="op_id", min_value=1, reject_integer_float=True)
 
 
 def _resource_text(value: Any) -> str:
@@ -62,37 +58,6 @@ def _resource_text(value: Any) -> str:
 
 def _source_text(value: Any) -> str:
     return str(value or "").strip().lower()
-
-
-def _iter_actionable_results(results: List[Any], *, allowed_op_ids: Optional[Set[int]] = None) -> Iterator[Tuple[int, Any]]:
-    for result in results:
-        if result is None or getattr(result, "op_id", None) is None:
-            continue
-        try:
-            op_id = _strict_positive_int(getattr(result, "op_id", None))
-        except (TypeError, ValueError):
-            continue
-        if allowed_op_ids is not None and op_id not in allowed_op_ids:
-            continue
-
-        start_time = getattr(result, "start_time", None)
-        end_time = getattr(result, "end_time", None)
-        if not isinstance(start_time, datetime) or not isinstance(end_time, datetime):
-            continue
-        try:
-            if not (start_time < end_time):
-                continue
-        except Exception:
-            continue
-        yield op_id, result
-
-
-def count_actionable_schedule_rows(results: List[Any], *, allowed_op_ids: Optional[Set[int]] = None) -> int:
-    return sum(1 for _op_id, _result in _iter_actionable_results(results, allowed_op_ids=allowed_op_ids))
-
-
-def has_actionable_schedule_rows(results: List[Any], *, allowed_op_ids: Optional[Set[int]] = None) -> bool:
-    return count_actionable_schedule_rows(results, allowed_op_ids=allowed_op_ids) > 0
 
 
 def _raise_invalid_schedule_rows_error(validation_errors: List[str]) -> None:
@@ -147,7 +112,7 @@ def _operation_sources(operations: Optional[List[Any]]) -> Tuple[Dict[int, str],
     for index, op in enumerate(list(operations or [])):
         try:
             op_id = _strict_positive_int(getattr(op, "id", None))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, ValidationError):
             continue
         source = _source_text(getattr(op, "source", ""))
         if source not in _ALLOWED_RESULT_SOURCES:
@@ -196,7 +161,7 @@ def _build_validated_schedule_row(
         return None, None, f"{identity}: 排产结果为空"
     try:
         op_id = _strict_positive_int(getattr(result, "op_id", None))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, ValidationError):
         return None, None, f"{identity}: 工序编号不合法"
     if allowed_op_ids is not None and op_id not in allowed_op_ids:
         return None, int(op_id), None
@@ -306,7 +271,7 @@ def _allowed_operation_ids(reschedulable_operations: List[Any]) -> Tuple[Set[int
     for op in list(reschedulable_operations or []):
         try:
             allowed_op_ids.add(_strict_positive_int(getattr(op, "id", None)))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, ValidationError):
             continue
     return allowed_op_ids, op_source_by_id, list(operation_source_errors)
 
@@ -322,7 +287,7 @@ def _validate_payload_row(
     identity = f"payload.schedule_rows[{index}],op_id={getattr(row, 'op_id', None)}"
     try:
         op_id = _strict_positive_int(getattr(row, "op_id", None))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, ValidationError):
         return None, [f"{identity}: 工序编号不合法"]
     if op_id not in allowed_op_ids:
         errors.append(f"{identity}: 工序超出本次可重排范围")
@@ -370,7 +335,7 @@ def _validate_scheduled_ids(raw_scheduled_op_ids: List[Any]) -> Tuple[Set[int], 
     for raw_op_id in raw_scheduled_op_ids:
         try:
             scheduled_id = _strict_positive_int(raw_op_id)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, ValidationError):
             errors.append(f"payload.scheduled_op_ids: 工序编号不合法 {raw_op_id!r}")
             continue
         if scheduled_id in scheduled_ids:
@@ -411,7 +376,5 @@ __all__ = [
     "ValidatedSchedulePayload",
     "ValidatedScheduleRow",
     "build_validated_schedule_payload",
-    "count_actionable_schedule_rows",
-    "has_actionable_schedule_rows",
     "validate_payload_before_persist",
 ]

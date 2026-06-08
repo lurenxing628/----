@@ -53,8 +53,6 @@ SERVICE_BEHAVIOR_COMPAT_PUBLIC_SYMBOLS = {
         "orchestrate_schedule_run",
     ),
     "core.services.scheduler.schedule_persistence": (
-        "count_actionable_schedule_rows",
-        "has_actionable_schedule_rows",
         "persist_schedule",
     ),
     "core.services.scheduler.schedule_summary": (

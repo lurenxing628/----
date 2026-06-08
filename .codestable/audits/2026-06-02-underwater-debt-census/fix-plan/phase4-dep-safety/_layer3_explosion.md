@@ -40,10 +40,10 @@
 | 债 | 簇 | 投票（r1LB/r1LAY/r1SOUL · r2LB/r2SOUL） | 终判 | 灾难链一句 | 强制前置 / 禁区 / 顺序 |
 |---|---|---|---|---|---|
 | R09 | PARSE-INT | 🔴🔴🔴·🔴🔴 | 🔴 | A/B 副本 `int(value)`（5.9→5/True→1）vs C 收口点 STRICT（5.9→None/True→None）；按「字节对齐 A/B」新建宽松 sink 把 C 一并收口 → C 经用户输入路径（request.args schedule_id）放宽 → 5.9 当 op_id=5 进 `_row_matches_feedback_target` 误命中相邻行 → 现场记录静默写到错任务 | owner 先裁 C 取严格 None 还是放宽 A/B（裁前不进批次）；收编只动 A/B 两 Optional 副本收口到已存在 scope.py:9，C 保持不动；分两路 parity（test_AB 零漂移 + test_C_float_bool 钉 5.9/3.0/True）；STRICT 4 处一字不碰；persistence_errors.py:13 归 R04 禁区不归 R09 收编面（矛盾指令，见回炉）；B 副本 `or 0` 外层兜底审计（5.9→int→5 变 None or 0=0 塌成 0 另一条坏数据流）；强串行 R07/R08 后重 grep。5 透镜全红，最高置信红。 |
-| R04 | PARSE-INT | 🔴🔴🔴·🟡🟡 | 🔴 | F1 `reject_integer_float` 默认 True → sgs_graph 8 处等 algorithms 调用方 3.0 由接受变 raise 排程静默回归；ValidationError 非 ValueError 子类，6 处 except 漏改任一 → 脏 op_id 由静默 skip 变 ValidationError 一路上抛炸排程统计/持久化 | F1 必默认 False+自带 parity（True→3.0 raise/False→3.0 接受，含 sgs_graph 风格调用断言）；6 处 except 同 PR 加 ValidationError 不可拆；R01 先删→R04 按新行号重 rg；哨兵 B(auto_assign:114→0)/C(persistence:13→None)仅注释禁改 raise；LB08 文案/正则桥不碰。r1 两透镜红，r2 复核降黄（前置全绑即可做），综合维持红（F1+异常逃逸双爆点）。 |
+| R04 | PARSE-INT | 🔴🔴🔴·🟡🟡 | 🟢 fixed | 旧爆点：F1 `reject_integer_float` 默认 True 会让 sgs_graph 等调用方 3.0 由接受变 raise；ValidationError 非 ValueError 子类，漏改 except 会让脏 op_id 上抛炸链 | 2026-06-08 已按 G19 fixed：GF1 默认 False 且有 parity；R01 先删后 R04 收口，剩余 5 处调用点均捕获 ValidationError；哨兵 B/C 只注释+parity，LB08 文案/正则桥与 STRICT-4 未动。 |
 | R59 | PARSE-INT | 🟡🟡·🟡🟡 | 🟡 | F1 前裸收口 `'1.0'`/`1.0`→1 撞续命测试 :247/:250 raise（CI 显性红良性）；删 _parse_plain_report_int 漏迁 blank 短路 → 导出空值由降级 0 变报错中断 | F1 先落+默认 False 后委托 reject_integer_float=True；保留 blank 短路（:62-63）；文案漂移 owner 认账（friendly 串→strict 串，match 仍过但可观测变）；禁动兄弟 parse_report_int:36。 |
 | R28 | PARSE-INT | 🟢🟢·🟢— | 🟢 | 2026-06-08 已 fixed：_safe_float 已保名收口到 parse_finite_float，静默吞错→loud raise 正方向，上游已 parse_optional_float 严校 | 已用 allow_none=True；`pytest -k test_no_new_local_parse_helpers` 证明 fitness 白名单保留；未动消费点工时兜底。 |
-| R01 | PARSE-INT | 🟢🟢·🟢— | 🟢 | 死簇闭合自环零外部边，误删均 loud（ImportError/SyntaxError/SP05 红） | 同删孤儿 Iterator:5；只删 run import :16-17 保 :13-15；与 R04 同 PR R01 先删；删函数+删 SP05 断言同提交。 |
+| R01 | PARSE-INT | 🟢🟢·🟢— | 🟢 fixed | 死簇闭合自环零外部边，误删均 loud（ImportError/SyntaxError/SP05 红） | 2026-06-08 已 fixed：`_iter/count/has` 死链、payload `__all__`、两层旧导出和 SP05 续命断言已同一原子清理；旧门面只剩 `persist_schedule`。 |
 | R08 | PARSE-INT | 🟡🟡🟡·🟡🟢 | 🟡 | 死分支 (T,F) 不可达依赖 service:127≡:130 同源不变式（无守卫即脆）；删死分支必保 feedback_write_enabled 参数（:234 活消费），误删参数→「填写实际」按钮门禁塌缩静默放开误填现场记录 | owner 裁「是否总开关预埋」；先钉 :127≡:130 同源守卫；候选 A 只删 :25/:227-228/:367-368 保参数；等本文件在途 task_key 重构 diff 落定再动（行号已漂+1~6）；R08→R09 串行。 |
 | R55 | GANTT | 🟡🟡🔴·🟡🟡 | 🟡 | 加 scope=filtered/full；裸删 filtered 过滤=filtered 视图变整版反砍业务；helper 内靠「filters 空否」反推 scope，provider full 路径无 filters 上下文反推必错 | owner+怀疑者过 PHASE0 §6 三问（owner_pending+needs_adversarial+verdict=null）后才锁终态；A1 先；scope 调用点显式赋值禁反推；禁破坏 :385 None 回退+support:55-56 分流判据；穿单份 _normalize+contract unavailable 分支（_copy 无须补）。r1-SOUL 标红=三门未过却排进可执行，是流程红非「会炸」红。 |
 | R12 | GANTT | 🟢🟢🟢·🟢🟢 | 🟢 | 2026-06-08 已 fixed：保留 :84 坏时间过滤，仅补 DegradationCollector 计数；`_empty_result`、正常结果、单份 `_normalize`、contract available=False 分支与 JS 状态归一均保留 `dropped_count` / `critical_chain_partial` | 已验证混合坏行不改变有效链、全坏行可见 dropped_count、provider cache copy 不剥新键；R55 scope 按 O09 未做。 |
@@ -112,7 +112,7 @@
 | R14 | GRAPH-ERR-DIAG | r1-LB/r1-LAY 红，r1-SOUL/r2×2 黄；双门 owner_pending | 删死门把候选灵魂线平移活门→fallback 吃 raise→「无静默回退」覆盖被悄丢；撞 LB01。综合维持红。 |
 | R69 | LEAF-DUP-P4 | r1×3 + r2-SOUL 红（r2-LB 仅锚点维度绿） | loud 化把 seq=0 合法短路也卷入 raise→双热路径可用性放大；r2-LB 推翻的是锚点不是灵魂线。 |
 | R54 | NAV-GUARD | r1-SOUL/r3-SOUL 红，r1-LB/LAY/r2×2/r3-LAY 黄 | collar 当前不产 3 fail-open 键，「5 套 delegate」=直接抹键 fail-OPEN 脏写。r3-SOUL 挖出 collar 扩产前裸 delegate 必连环炸，综合红。 |
-| R04 | PARSE-INT | r1-LB/r1-SOUL 红，r2×2 黄 | F1 默认值 + 6 处 except 异常逃逸双爆点；r2 复核「前置全绑可做」降黄，综合维持红（双爆点叠加）。 |
+| R04 | PARSE-INT | ✅ fixed | 2026-06-08 已按 G19 安全路径执行，F1 默认 False、R04 收口和 5 处 ValidationError 捕获已落，B/C 哨兵仅注释+parity。 |
 | R42 | NAV-PLANID | r1-LAY 红，r1-LB/r1-SOUL 黄 | dossier 漏 dashboard_workbench_context.py:92 删点，照单删 :191 形参 dashboard 启动即 TypeError 500。修法清单不完整=红。 |
 | R22 | PLAN-IDENTITY | r1-LB/r1-LAY 红（两红因互补），r1-SOUL 黄 | no_history result_summary_parse_failed False→True 取值翻转 + 删 view_context:74 破 bad-role raise 护栏；parity 只验键集抓不到。 |
 | R05 | RESOURCE-REPO | r1×3 全红 | 承重三轴塌缩 + 双轨共用收口点裸改污染 + team 谓词 builder 耦合(include_team_context)；硬序步1扩collar先于步3收敛。 |
@@ -146,8 +146,8 @@
 | 2 | COMPAT-DISPATCH degradation 性质 | **各轮自相矛盾未拍定**：r1-LB/r1-LAYER 称 degradation.py 是「真承重实现 385B 20+生产直连」，r2-SOUL 逐字推翻为「17 行纯 re-export 壳」 | 回炉用一次 `wc -l + cat` 拍定 degradation.py 究竟是壳还是真实现——结论不撼「:15 死保」但执行者据「真实现 vs 壳」判断是否可删的认知会反转。 |
 | 3 | R22 收口（PLAN-IDENTITY） | **收口行为等价未验透 + 两红因是否同一动作未合并**：LB 透镜红因=no_history result_summary_parse_failed False→True 取值翻转；LAYER 透镜红因=删 view_context:74 破 bad-role raise——两红因都关于 R22 但 SOUL 透镜判黄（触发面窄 medium） | 回炉合并三透镜：parity 必须同时含「键集+取值 exact」+「bad-role 仍抛 field=plan_role」双断言，且 owner 显式裁 no_history 取值语义（保旧 False vs 接受新 True）——这是「收口没验行为等价」的标准回炉项。 |
 | 4 | R54 collar 扩产（NAV-GUARD） | **轮次间认知跃迁未闭合**：r1/r2 假设「collar 能内部产 guard 全集」，r3-SOUL 实读 collar 187-258 当前**不产** 3 fail-open 键、无 plan_resolution 入参 | 回炉把「collar 扩成 3 键 guard 产出点 + fail-CLOSED 默认」立为独立承重前置改动 owner 审过，再谈「5 套 delegate」；否则裸 delegate=连环 fail-OPEN，r3 这个发现 r1/r2 都没攻到。 |
-| 5 | R09↔R04 persistence_errors:13 归属 | **争议未解（跨债矛盾指令）**：R04 dossier 列其为「禁收口的错误路径降级哨兵仅注释」，_layer2_residual:37 列为「R09 第 3 份未收编 Optional 副本 owner 复核收编」，两份计划相反指令 | 回炉 owner 裁定 schedule_persistence_errors.py:13 归 R04 禁区还是 R09 收编面——按 R09 收编它会违 R04 灵魂线在错误路径抛二次异常。 |
-| 6 | STRICT 4 处分类（PARSE-INT） | **基线口径失真未回写**：_layer2_residual「STRICT 4 处 `->int` loud raise 一字不碰」部分失真，实测 auto_assign:114 与 scheduler_public_errors:167 body 是 `except: return 0`（→0 哨兵非 loud raise） | 回炉回写残留表：STRICT 真 loud raise 仅 scope:9 + feedback_support:161 两处，auto_assign:114/public_errors:167 是 →0 哨兵——分类依据打架虽不撼 R09 结论但误导执行者对 R04 哨兵补注释的判断。 |
+| 5 | R09↔R04 persistence_errors:13 归属 | **已裁已执行**：O02 已裁 `schedule_persistence_errors.py:13` 归 R04 禁区，不纳入 R09 收编面 | 2026-06-08 G19 已在 R04 下只补注释 + parity，保持坏 id → None；后续 G22/R09 禁把它当 Optional 第 3 副本收编。 |
+| 6 | STRICT 4 处分类（PARSE-INT） | **已回写执行口径**：auto_assign:114 是 →0 错误路径哨兵，不是 R09 STRICT 收编面 | 2026-06-08 G19 已只给 auto_assign:114 补 R04 哨兵注释并加 →0 parity；STRICT-4 本体未动。 |
 | 7 | R52 全量版 18 用例归属（GRAPH-ERR-DIAG） | **历史方向 A 风险，已由 O07 KEEP 规避**：dossier「~23 LIVE-only」实测 31 用例，约 18 个走 `_ready()`→全量版断 ReadyQueueContractError（异常类≠LIVE ValidationError），迁移方案没安排这 18 个归属 | 当前不回炉迁移：2026-06-08 已按方向 B 保留全量版与测试，只补认账注释。若未来重启删除路线，必须重新分桶 31 用例并单独裁定 18 个全量版合同用例归属。 |
 | 8 | R41 改面范围（LEAF-DUP-P4） | **收口非等价面被严重低估**：r1/dossier 只盯 ready 一处，r2-SOUL 逐 def 对照发现改面是全 6 枚举族（空串「-」→default-label、unknown 透传→「未知」、operator「停用/休假」→「停用」、ready 空串翻面），owner 裁断门从 4 处扩到 ≥6 处 | 回炉 owner 裁断材料须覆盖全 6 族×5 类，parity 逐格；且把 test_enum_display_consistency.py:18/19/25/26 改 loud 暴露列为硬门（禁贴回收口输出复活静默）。 |
 | 9 | R69 双消费者 parity（LEAF-DUP-P4） | **收口等价的 seq=0 合法路径只在 SOUL 透镜攻到**：`_op_seq` 体 `int(getattr(op,"seq",0) or 0)` 两层兜 None/0/空串，与 except 域正交；loud 化误把 seq=0 卷入 raise=可用性放大，且 guard:207 + runtime:262 双短路两份须原子同改 | 回炉 parity 必须两份同钉 seq=0/None（走短路不 raise）+ seq="abc"（loud raise），证明 loud 化没污染合法 0 短路；LB 透镜只盯锚点没攻到这个等价分叉。 |
@@ -189,11 +189,11 @@
 
 ### tier2 簇
 
-**C-PARSE-INT（R09🔴 / R04🔴 / R59🟡 / R28🟢 / R01🟢 / R08🟡）**
-- 原子性最终判定：R01 先删→R04 按新行号收口同 PR；R04 6 处 except 同 PR 加 ValidationError 不可拆；F1（R04+R59 共用）必默认 False 自带 parity；R08 等在途 task_key 重构落定再动。
+**C-PARSE-INT（R09🔴 / R04🟢fixed / R59🟡 / R28🟢 / R01🟢fixed / R08🟡）**
+- 原子性最终判定：G19 已 fixed，R01 先删→R04 按新行号收口同 PR已闭合；F1（R04+R59 共用）已默认 False 自带 parity，后续继续门控 R59；R08 等在途 task_key 重构落定再动。
 - 承重禁区（按符号）：STRICT 真 loud raise scope:9 + feedback_support:161（auto_assign:114/public_errors:167 是 →0 哨兵，分类回写见回炉#6）；R04 哨兵 B/C 仅注释禁改 raise + LB08 文案/正则桥；R08 feedback_write_enabled 参数（:234 活消费）+ service:127≡:130 同源不变式。
 - 必须先落 parity/注释：R09 两路 parity（test_AB + test_C_float_bool 含 B 副本 `or 0` 审计）；R04 F1 含 sgs_graph 风格调用断言；R08 先钉 :127≡:130 守卫。
-- 测试迁移序：R59 先 parity 钉 '1.0' raise + blank 短路→F1 后收口；R01 删函数+删 SP05 断言必须同提交（中间提交必红）。
+- 测试迁移序：R59 先 parity 钉 '1.0' raise + blank 短路→F1 后收口；R01 删函数+删 SP05 断言已在 G19 同提交完成。
 
 **C-GANTT（R10🟢 / R11·R63🟢 / R12🟢 / R55🟡⏸）**
 - 原子性最终判定：A1{R11≡R63}已 fixed 且已先于 A2{R12}/A3{R55}；R12 已 fixed 并穿单份 _normalize + contract unavailable 分支；R55 后续按 O09 重启条件另行处理；R10 已 fixed。
@@ -259,7 +259,7 @@
 | 10 | **R47 死参与活参 1:1 字面量混居** | CONFIG-DUAL/R47 | 盲删活参静默降质 | `raw_value=raw_value` 全栈 8 处文本逐字相同，死参（`_record_blank_choice_degradation`）与活参（`_record_invalid_choice_degradation`，:116/:119 读）紧邻；现成 blank parity 测试不覆盖 invalid 路 → 盲 grep/sed 删活参=invalid 降级证据静默丢失且测试全绿。 |
 | 11 | **`_handle_missing_value` 两栈非 byte 等价** | CONFIG-DUAL/LB07·R71 | parity 范围漏掉真实不对称 | service `config_field_coercion.py:115` 多一条 `if policy==MISSING_POLICY_INHERIT_LEGACY_OMISSION` 分支 + 返回 Tuple，model 栈无此分支返回裸 Any；LB07 parity 守卫范围（3 helper+spec）不覆盖它，R71 收敛/「DRY 统一」该函数 → legacy-omission 语义静默丢失或解包错位且 parity 全绿。 |
 | 12 | **R09 B 副本 `or 0` 外层兜底塌成 0** | PARSE-INT/R09 | 与放宽方向相反的另一条坏数据流 | B 副本 `:257/:258 _positive_int(...) or 0`——若 A/B 收口到 scope 严格版（catch→None），`5.9` 由 `int→5` 变 `None or 0=0`，op_id/schedule_id 从 5 塌成 0（scope <=0 非法值被 `or 0` 静默吃成 0）注入 task_card；cluster 字段7 只讲「C 放宽」漏此点。 |
-| 13 | **persistence_errors:13 双重认领矛盾指令** | PARSE-INT/R04↔R09 | 跨债相反指令未拍 | R04 dossier 列其为「禁收口的错误路径降级哨兵仅注释」，_layer2_residual:37 列为「R09 第 3 份未收编 Optional 副本 owner 复核收编」；按 R09 收编它会违 R04 灵魂线在错误路径抛二次异常。 |
+| 13 | **persistence_errors:13 双重认领矛盾指令** | PARSE-INT/R04↔R09 | 已裁已执行 | O02 已裁归 R04 禁区；2026-06-08 G19 已仅补注释+parity 并保持 →None，后续 R09 不再收编该点。 |
 | 14 | **contract available=False 分支吞 R12 dropped_count** | GANTT/R12 | 第三道真卡口 计划只标两道 | `gantt_contract.py:22-39` available=False 时硬重建固定 5 键 dict 丢 dropped_count/critical_chain_partial；最该报警的「全坏行」恰落 available=False 分支被吞——计划只把「两份 _normalize」列卡口、明示「contract:40 透传不卡」对 available=False 路径是错的，须在 :22-39 显式保留新键。 |
 | 15 | **R69 seq=0 合法短路被 loud 化击穿** | LEAF-DUP-P4/R69 | loud 化反向爆点 | `_op_seq` 体 `int(getattr(op,"seq",0) or 0)` 两层兜 None/0/空串，:207/:262 `completed_seq<=0` 把这当合法「无有效完成态」短路（放空不报错）；P4 粗暴把 seq=0 也卷入 raise → `_completed_downstream_rows`+`_downstream_operations` 双热路径从静默放空翻成 raise 可用性放大，loud 只能动 except 域。 |
 | 16 | **R52 `_full_scan_ready_ids:81` 隐性二次爆点** | GRAPH-ERR-DIAG/R52 | 历史方向 A 风险已由 KEEP 规避 | 该 helper 继续保留并已补注释；若未来重启删除路线，删当前 `:81` helper 与改差分 oracle 字面量期望仍必须同一原子动作顺序锁死。 |

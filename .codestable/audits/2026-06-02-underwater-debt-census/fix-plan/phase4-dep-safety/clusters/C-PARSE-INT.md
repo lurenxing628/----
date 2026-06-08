@@ -1,5 +1,8 @@
 # C-PARSE-INT 原子簇分析（只读不改）
 
+> **2026-06-08 B 执行补登：G19(R01+R04) 已 fixed。** 执行顺序为 R01 先删 `_iter/count/has` 死链并退 SP05，R04 后收口 `_strict_positive_int` 到 `parse_required_int(..., reject_integer_float=True)`，剩余 5 处调用点均捕获 `ValidationError`；B/C 哨兵只补注释与 parity，行为保持 `→0` / `→None`。
+> **GF1 状态：已落地。** `core/shared/strict_parse.py` 已有 `reject_integer_float`，默认 `False`，并有 `tests/models_domain/test_strict_parse_blank_required.py` 钉默认兼容与严格拒绝两路。后续 G20(R59) 可把 GF1 视为已满足前置，但仍需单簇自证。
+
 > 簇 id: C-PARSE-INT（C01 的手工原子子簇）
 > 成员债: R01 / R04 / R09 / R28 / R59 / R08
 > 主要文件: schedule_payload_contract.py / strict_parse.py / report_number_parsing.py / batch_service.py / resource_dispatch_execution_service.py / scheduler_resource_dispatch_execution.py / operation_execution_scope.py
@@ -16,7 +19,7 @@
 | R09 | B05 / P5 收口 / false / **owner_pending true** | resource_dispatch_execution_service.py:24 + scheduler_resource_dispatch_execution.py:33（2 旧副本） | 收口点 `parse_positive_execution_int` **已存在** operation_execution_scope.py:9；`parse_optional_positive_int` 全仓=0（新建前提作废）；C 路 context.py:28 已收口 |
 | R08 | B01 / P6 死码 / false / **owner_pending true** | scheduler_resource_dispatch_execution.py | 死常量 `_FEEDBACK_DISABLED_REASON:25`、死分支① `:227-228`、死分支② `:367-368`；活路径 `:234`；消费者 context.py:229/237/246（**非** routes.py，registry 误标） |
 
-**F1（共享前置，非债，是 R04+R59 共用的 strict_parse 改造）**：`reject_integer_float` 形参全仓 rg=**0**（未落地）。须加在 `core/shared/strict_parse.py:46 _parse_finite_int` 并经 `:81 parse_required_int` 透传，**默认 False**——回盘 `parse_required_int` 在 core/algorithms（sgs_graph.py 8 处等）大量被调，默认 True 会把它们的 `3.0` 由接受变 raise（配置/排程回归）。
+**F1（共享前置，非债，是 R04+R59 共用的 strict_parse 改造）**：2026-06-08 已落地，`reject_integer_float` 已加在 `core/shared/strict_parse.py` 并经 `parse_required_int` 透传，**默认 False**。默认兼容与严格拒绝两路已由 `tests/models_domain/test_strict_parse_blank_required.py` 覆盖；后续 G20(R59) 仍须跑自身受影响测试。
 
 **收口点全部已存在，本簇零新建模块**：R04/R59→`parse_required_int(strict_parse:81)`；R28→`parse_finite_float(number_utils:14/23)`；R09→`parse_positive_execution_int(operation_execution_scope:9)`（corrections A 已确认，不新建 parse_optional_positive_int）。
 
@@ -112,7 +115,7 @@ R02↔R25、R45↔{LB07,R33,R51}、R32↔R15、LB04↔{LB07,R33}、config_snapsh
 
 ## E) fixed 成员作为前置已完成 — 残留动作（认账注释）
 
-本簇 6 成员里 **R28 已 fixed**（2026-06-08 Batch-A/G21）；R01/R04/R59 仍 planned，R09/R08 仍 planned+owner_pending。其他 fixed 态来自**毗邻前置**（corrections E：LB03/LB06/R07/R16/R56/R57 已结构性消除）：
+本簇 6 成员里 **R28 已 fixed**（2026-06-08 Batch-A/G21），**R01/R04 已 fixed**（2026-06-08 Batch-B/G19）；R59 仍 planned，R09/R08 仍 planned+owner_pending。其他 fixed 态来自**毗邻前置**（corrections E：LB03/LB06/R07/R16/R56/R57 已结构性消除）：
 
 1. **R07（已 fixed，A4/A1 邻域前置）**：resource_dispatch_execution_service.py 改 raise 已完成，但**偏离**——用 `ValidationError(field=schedule_id)` 而非计划的 `AppError/ErrorCode.NOT_FOUND`，与写门禁 feedback_service.py:385 跨文件错误类不对称，且缺 schedule=None→raise 专项回归。
    - **残留动作**：owner 须**认账**此偏离 + 裁是否统一错误类（改则补 AppError/ErrorCode 导入）。
@@ -128,8 +131,8 @@ R02↔R25、R45↔{LB07,R33,R51}、R32↔R15、LB04↔{LB07,R33}、config_snapsh
 
 ## 返回摘要
 
-簇 C-PARSE-INT | 原子子簇 4 个：A1{R01+R04 同文件强行号互撞}、A2{R59 依赖F1独立文件}、A3{R28 完全独立叶子，已fixed}、A4{R08+R09 同viewmodel串行+双owner_pending}；F1（reject_integer_float）为 A1/A2 共享前置门、必默认False。
-关键内部顺序：F1先→A1 内 R01先删(:67-87含:72)R04后收口(剩5点,6处except同步加ValidationError)→A2 R59收口；A4 R08先(B01)R09后(B05)串行(:367-368锚)；R09 A/B两副本须分两路parity(C严格5.9→None vs A/B宽松5.9→5)。
-跨簇边：R04→LB08禁区毗邻(认账)、R09→R07前置已完成(认账偏离)、R28→number_utils软约束。
-边变化：删 R20↔{R08,R09}假边、R01↔{R19,R46}__all__弱标签；新 R04⇄R59 F1互锁、R04→6处except同改、R09双副本分裂边；降 R28↔{R04,R29,R33}硬→软、R09→R07待做→已完成、R01↔{R26,R43}降为rg重定位纪律。
-承重前置：F1默认False+parity先绿门控R04/R59收口；N1注释+service:127≡:130同源守卫门控R08删死分支；LB08文案/正则桥禁区(:126+)绕开R04哨兵注释；本簇自身零LB主体。
+簇 C-PARSE-INT | 原子子簇 4 个：A1{R01+R04 同文件强行号互撞，2026-06-08 已fixed}、A2{R59 依赖F1独立文件}、A3{R28 完全独立叶子，已fixed}、A4{R08+R09 同viewmodel串行+双owner_pending}；F1（reject_integer_float）已落地且默认False。
+关键内部顺序：A1 已完成（R01先删→R04后收口，剩5点均接ValidationError）；A2 R59 后续可在 GF1 已满足前提下独立收口；A4 R08先(B01)R09后(B05)串行(:367-368锚)；R09 A/B两副本须分两路parity(C严格5.9→None vs A/B宽松5.9→5)。
+跨簇边：R04→LB08禁区毗邻已在 G19 中绕开；R09→R07前置已完成(认账偏离)、R28→number_utils软约束。
+边变化：删 R20↔{R08,R09}假边、R01↔{R19,R46}__all__弱标签；R04⇄R59 的 F1 互锁现只剩 GF1→R59；R09双副本分裂边仍待执行；降 R28↔{R04,R29,R33}硬→软、R09→R07待做→已完成、R01↔{R26,R43}降为rg重定位纪律。
+承重前置：F1默认False+parity已绿并门控后续 R59 收口；N1注释+service:127≡:130同源守卫门控R08删死分支；LB08文案/正则桥禁区(:126+)已在R04哨兵注释中绕开；本簇自身零LB主体。
