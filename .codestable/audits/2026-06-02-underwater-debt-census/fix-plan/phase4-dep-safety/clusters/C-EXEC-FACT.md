@@ -2,6 +2,8 @@
 
 > ✅ **2026-06-08 B 执行补登**：G07/G08 中的 R17/R20 已 fixed 并同原子处理。R17 删除 feedback service/support 里的死导入与 `_REPORTED_STATUS_BY_ACTION` 死项；R20 删除 service 层 `operation_execution_labels.py` 纯转出垫片并改 5 个消费方直连 model。`R15` 在 G08 只作为 support 侧已落地 raise 禁区被守住，provider 坏时间解析残债仍留给 G09。
 
+> ✅ **2026-06-09 ROOT 执行补登**：G07a/LB01 已 fixed。`_load_current_official_schedule` 上方已补写侧 fail-CLOSED 第一闸注释，`_build_event_payload` 写死 `SOURCE_SCHEDULE/ROLE_ADOPTED/None` 上方已补落库前消毒注释；硬拒条件、`can_write_feedback` 第二硬门和三写死字段均未改。后续同文件动作仍须按符号重 rg，禁把 LB01 注释解读成可透传 context。
+
 > 簇 id: C-EXEC-FACT | 成员债: LB01 R13 R15 R17 R18 R19 R20 | 簇内分区 scheduler-exec-diag
 > 回盘日 2026-06-05 / HEAD c2aa7501 / 全部行号经本轮 rg 复盘（不信旧值）
 > 性质: SCC 串行链，含「最危险的边」LB01↔R17（同 `_build_event_payload` 函数体）

@@ -3,7 +3,7 @@
   "id": "LB01",
   "bucket": "B01",
   "home": "B01",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "high",
   "pathology": "P2",
   "partition": "scheduler-exec-diag",
@@ -11,7 +11,7 @@
   "load_bearing": true,
   "needs_adversarial": false,
   "adv_refuted": false,
-  "title": "现场反馈写侧 adopted-only 护栏:硬拒 scenario/非正式方案 + 强制写死计划身份常量,但无注释保护",
+  "title": "原始债名:现场反馈写侧 adopted-only 护栏:硬拒 scenario/非正式方案 + 强制写死计划身份常量,但无注释保护",
   "old_location_DONT_TRUST": "core/services/scheduler/operation_execution_feedback_service.py:347-354 + 451-453",
   "primary_file": "operation_execution_feedback_service.py",
   "all_files": [
@@ -19,7 +19,7 @@
    "schedule_delay_diagnosis_service.py",
    "support.py"
   ],
-  "current_evidence_2026_06_05": "operation_execution_feedback_service.py:373-378 硬拒分支(requested/effective_plan_role!=ROLE_ADOPTED|source_table!=SOURCE_SCHEDULE|scenario_id is not None→raise)+ :475-477 _build_event_payload 写死 SOURCE_SCHEDULE/ROLE_ADOPTED/None 均原样在,生产逻辑未变;但 :370-378 与 :470-477 上方零 # 注释(grep 故意/消毒/纵深=0命中)。文件虽 git-modified,但改的是 OperationExecutionScope 按身份读取(他桶/B11 工作),计划要求的『我是故意的』消毒层注释未补。",
+  "current_evidence_2026_06_05": "2026-06-09 G07a 已落地: core/services/scheduler/operation_execution_feedback_service.py:_load_current_official_schedule 上方补写侧 fail-CLOSED 第一闸注释; _build_event_payload 的 source_table=SOURCE_SCHEDULE/effective_plan_role=ROLE_ADOPTED/scenario_id=None 上方补落库前消毒注释。四条件硬拒、can_write_feedback 第二硬门、三写死字段均未改。现盘测试名按 P6 后路径重盘: feedback_guard_routes.py::test_write_post_rejects_candidate_preview_and_history_query_context、exception_plan_guard.py::test_report_exception_rejects_candidate_scenario_and_history_plans 等覆盖在位。",
   "cluster": "C01",
   "same_file_siblings": [
    "R17"
@@ -60,31 +60,33 @@
    ],
    "contract_topology_tests": [
     "tests/operation_execution/test_operation_execution_event_foundation.py (schema/CHECK 基础契约 + 写入禁线)",
-    "tests/operation_execution/test_operation_execution_feedback_routes.py (路由级写侧 adopted-only 契约)",
-    "tests/operation_execution/test_operation_execution_exception_feedback.py (异常写侧 adopted-only 契约)"
+    "tests/operation_execution/test_operation_execution_feedback_routes.py (路由级写侧 adopted 正向与 body 身份绕过拒绝)",
+    "tests/operation_execution/test_operation_execution_feedback_guard_routes.py (start/finish 写侧非正式身份 409 且不落事件)",
+    "tests/operation_execution/test_operation_execution_exception_plan_guard.py (异常写侧非正式身份 409 且不落事件)"
    ],
-   "downstream_effect": "若把 451-453 三写死改成透传 context.* 或删 348-354 拒绝分支：现场反馈可写到 candidate/scenario 预览方案 → execution_fact_provider:35 纯按 op_id 读无过滤 → schedule_execution_guardrails:186 把预览态当真实现场喂入重排护栏 → 坏数据进排产决策(数据完整性事故)。反向：repo:191-193 不强制常量，改透传后仅剩 schema CHECK:256-258 兜底，合法 adopted 反馈反而触发 IntegrityError→AppError(DB_INTEGRITY_ERROR) 变用户侧报错。",
+   "downstream_effect": "若把当前三写死改成透传 context.* 或删硬拒分支：现场反馈可写到 candidate/scenario 预览方案 → execution_fact_provider 纯按 op_id 读无过滤 → schedule_execution_guardrails 把预览态当真实现场喂入重排护栏 → 坏数据进排产决策(数据完整性事故)。反向：repo 当前已有 validate_current_official_execution_scope loud 校验，改透传后边界值会从写侧消毒变成用户侧报错，拒与消毒不是可互换的重复逻辑。",
    "fix_invalidation_risk": "若 B11 先删 R17 并顺手『清理/重构』_build_event_payload，会打穿 LB01 消毒层。修法顺序必须 B01 注释先落、再让 B11 动 R17(PHASE0 §10.1)。严禁以『context 都有这些字段了为何不透传』之名把写死改成 context.source_table/effective_plan_role/scenario_id。",
    "id": "LB01",
    "lb_colocation_danger": "PHASE0 §3 标的『最危险的边』：R17(B11) 删 EXECUTION_EVENT_EXCEPTION 死键(operation_execution_feedback_support.py:64)+死导入(service.py:12)，其编辑触及的正是 _build_event_payload 这同一函数(service.py:455 reported_status=_REPORTED_STATUS_BY_ACTION[action] 行紧贴 LB01 的 451-453 三写死)。动 R17 时绝不能碰 347-354 硬拒分支与 451-453 三个写死常量；R17 合法改动仅限删 import 一行 + 删 support.py:64 dict key 一行。",
-   "location_status": "✅准 — core/services/scheduler/operation_execution_feedback_service.py:347-354 (_load_current_official_schedule 硬拒 requested/effective_plan_role!=ROLE_ADOPTED、source_table!=SOURCE_SCHEDULE、scenario_id is not None) + :451-453 (_build_event_payload 写死 source_table=SOURCE_SCHEDULE/effective_plan_role=ROLE_ADOPTED/scenario_id=None)。文件未被 git 修改，提交态≡基线 b08162cd，盘上行号与报告完全一致。",
+   "location_status": "✅2026-06-09 重盘 — core/services/scheduler/operation_execution_feedback_service.py:_load_current_official_schedule 硬拒 requested/effective_plan_role!=ROLE_ADOPTED、source_table!=SOURCE_SCHEDULE、scenario_id is not None + _build_event_payload 写死 source_table=SOURCE_SCHEDULE/effective_plan_role=ROLE_ADOPTED/scenario_id=None。旧绝对行号作废,后续按符号 rg 定位。",
    "pathology": "P2 承重护栏(load_bearing=true, refuted=false)。现场反馈写侧 adopted-only 纵深防御：上游 guard A 硬拒 + 持久化前消毒层写死，三重护栏(路由 _identity_allows + 此处校验 + schema CHECK)。改动点本体零注释。",
-   "planned_fix_class": "P2 承重—仅补注释+绑契约测试：在 347-354 与 451-453 各补一条『我是故意硬拒/故意写死、故意忽略 context 是护栏』中文注释(90 节已起草文案可复用)；契约测试已存在(feedback_routes:336 + exception_feedback:485 端到端拒绝 + event_foundation:272 schema 底)，precondition(c) 已满足，注释落地即闭环。零删除/零透传。",
+   "planned_fix_class": "fixed: P2 承重仅补注释+绑契约测试。2026-06-09 已在 _load_current_official_schedule 与 _build_event_payload 两处补明 fail-CLOSED/落库前消毒/不透传 context 的中文注释；既有 feedback_routes + feedback_guard_routes + exception_plan_guard + event_foundation 契约覆盖在位。零删除/零透传。",
    "prod_consumers": [
-    "core/services/scheduler/operation_execution_feedback_service.py:79 (record_event 定义)",
-    "core/services/scheduler/operation_execution_feedback_service.py:105 (record_event 调 _load_current_official_schedule)",
-    "core/services/scheduler/operation_execution_feedback_service.py:122 + :202 (调 _build_event_payload)",
+    "core/services/scheduler/operation_execution_feedback_service.py record_event 定义",
+    "core/services/scheduler/operation_execution_feedback_service.py record_event 调 _load_current_official_schedule",
+    "core/services/scheduler/operation_execution_feedback_service.py 调 _build_event_payload",
     "core/services/scheduler/operation_execution_feedback_actions.py:84,102,112,121,143 (record_start/finish/pause/report_exception → record_event)",
-    "data/repositories/operation_execution_event_repo.py:191-193 (insert_event 用 payload.get('source_table') or 'schedule' 透传，不强制常量 → 证明 451-453 写死非冗余而是承重)",
+    "data/repositories/operation_execution_event_repo.py insert_event 调 validate_current_official_execution_scope 做 loud 校验;与 service 写死消毒层不是同一语义",
     "core/infrastructure/migration_operation_execution_contract.py:265-267 (启动探针主动 INSERT candidate_rows/baseline_best/__probe_scenario__，CHECK 不拒就拒判库已迁移)",
-    "schema.sql:256-258 (三条无条件 CHECK(source_table='schedule')/CHECK(effective_plan_role='adopted')/CHECK(scenario_id IS NULL) = 最终承重底)",
-    "core/services/scheduler/execution_fact_provider.py:35 (_fact_from_state 纯按 op_id) → core/services/scheduler/run/schedule_execution_guardrails.py:186 (facts_by_op_id 喂重排护栏，无 role/scenario 过滤)"
+    "schema.sql 三条无条件 CHECK(source_table='schedule')/CHECK(effective_plan_role='adopted')/CHECK(scenario_id IS NULL) = 最终承重底",
+    "core/services/scheduler/execution_fact_provider.py (_fact_from_state 纯按 op_id) → core/services/scheduler/run/schedule_execution_guardrails.py (facts_by_op_id 喂重排护栏，无 role/scenario 过滤)"
    ],
    "test_consumers": [
-    "tests/operation_execution/test_operation_execution_feedback_routes.py:336 (test_write_post_rejects_candidate_preview_and_history_query_context — POST start 带 plan_role=baseline_best / plan_role=adopted&scenario_id=scenario-plain / version=1 历史 三 case → 409 not_current_official_plan 且 _event_count==0；这是端到端写侧拒绝回归，直接覆盖 LB01 precondition(c)，并非报告说的『缺端到端回归』)",
-    "tests/operation_execution/test_operation_execution_exception_feedback.py:485 (test_report_exception_rejects_candidate_scenario_and_history_plans — 同三 case → 409 not_current_official_plan)",
-    "tests/operation_execution/test_operation_execution_event_foundation.py:272 (repo 级 insert_event source_table='candidate_rows' must raise — schema CHECK 底)",
-    "tests/operation_execution/test_operation_execution_feedback_routes.py:294-296,369-371 (adopted/schedule happy path 正向)"
+    "tests/operation_execution/test_operation_execution_feedback_guard_routes.py::test_write_post_rejects_candidate_preview_and_history_query_context — POST start 带 baseline_best/scenario/history 三 case → 409 not_current_official_plan 且 _event_count==0",
+    "tests/operation_execution/test_operation_execution_exception_plan_guard.py::test_report_exception_rejects_candidate_scenario_and_history_plans — 同三 case → 409 not_current_official_plan",
+    "tests/operation_execution/test_operation_execution_state_revision.py 覆盖 _build_event_payload 把 candidate/scenario 身份消毒成 schedule/adopted/None",
+    "tests/operation_execution/test_operation_execution_event_foundation.py::test_operation_execution_repository_requires_explicit_plan_identity — repo/schema 底层拒绝缺身份/错身份",
+    "tests/operation_execution/test_operation_execution_feedback_routes.py adopted/schedule happy path 正向"
    ]
   },
   "owner_pending": false,

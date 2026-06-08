@@ -68,7 +68,7 @@
 ```
 ROOT  承重注释 + 共享前置门（纯增量零结构，零入边，最先落）
   GF1·reject_integer_float 默认 False+parity ┃ G15a·LB07 双栈注释+spec_sync parity🔒
-  G07a·LB01 两处注释🔒 ┃ G05·LB02/LB05 注释+回归🔒 ┃ G40a·LB08 注释+绑契约🟢 fixed
+  G07a·LB01 两处注释🟢 fixed ┃ G05·LB02/LB05 注释+回归🔒 ┃ G40a·LB08 注释+绑契约🟢 fixed
   G33a·R05 步1 扩collar+步2 五parity🔒⏸ ┃ LB03·B01 承重注释+guard 收口🔒 ┃ G27p·R22 24键 exact parity🟢 fixed
   [+认账注释 R56禁区行/R07错误类/LB06双宿主/N1真闸/N2 sentinel，均按 OWNER-DECISIONS 裁后口径]
 
@@ -78,6 +78,8 @@ Batch-A  独立死叶子 / 零前置 / owner=false（最早可落）
   2026-06-08 执行补登：G02/G14/G16/G21/G28/G31/G32/G35/G37/R53/R61/R70 已在 `_registry.json` 与对应 dossier 登记 fixed；本清单保留批次归属，不表示这些单元仍待执行。G16 的旧 sp06 锚点已随 A P1.1 删除测试文件变为 no-op；G21 采用保留 `_safe_float` 名的薄包装方案，fitness 白名单经实测保留；R53 已删旧 `batch_order.py:74` 空操作行；R61 已删旧 report_context_filters.py 计划行 Python 过滤死簇并把负向测试重定向到 `normalize_report_resource_filter`；R70 已删旧 `schedule_service.py:46-50` 死副本。
   [+ LEAF-DUP-P4 纯删叶子：R53(2026-06-08 已 fixed) / R61(2026-06-08 已 fixed) / R70(2026-06-08 已 fixed) 随 A 落；LB04 安全网归 ROOT/Batch-A 之交]
   *G02(R64/R65) 同文件 scheduler_navigation_links.py，改点不同不可同质化（见 §1.2）；与 R42(G01)/R67(G34) 同文件四单元串行块
+
+> **2026-06-09 ROOT 执行补登**：G07a/LB01 已 fixed。`core/services/scheduler/operation_execution_feedback_service.py` 只补两处承重注释：`_load_current_official_schedule` 上方钉写侧 fail-CLOSED 第一闸，`_build_event_payload` 写死 `SOURCE_SCHEDULE/ROLE_ADOPTED/None` 上方钉落库前消毒层；硬拒条件、`can_write_feedback` 第二硬门和三写死字段均未改。后续 R17/R20/R14 仍须按符号重 rg，严禁把这些注释解读成可透传 context。
   *G03(R66) 受 E04 软序，实际延后到 G04(R54) 后按符号重定位；G25(R49旁支) 已并回 Batch-B 的 G24 一次原子执行，不在 Batch-A 单独落
 
 Batch-B  依赖 ROOT 承重门 / 单门控前置

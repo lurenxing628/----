@@ -2,7 +2,7 @@
  "LB01": {
   "id": "LB01",
   "bucket": "B01",
-  "status": "planned",
+  "status": "fixed",
   "sev": "high",
   "path": "P2",
   "lb": true,
@@ -15,7 +15,7 @@
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
-  "title": "现场反馈写侧 adopted-only 护栏:硬拒 scenario/非正式方案 + 强制写死计划身份常量,但无注释保护"
+  "title": "原始债名:现场反馈写侧 adopted-only 护栏:硬拒 scenario/非正式方案 + 强制写死计划身份常量,但无注释保护"
  },
  "LB02": {
   "id": "LB02",

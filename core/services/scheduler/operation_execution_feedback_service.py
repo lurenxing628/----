@@ -363,7 +363,8 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
         text = json.dumps(raw, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
-    # 现场事实写闸在这里：只有当前正式 schedule/adopted、无 scenario，且 plan_identity 允许回写时才继续。
+    # 写侧 fail-CLOSED 第一闸：现场事实只能写到当前正式 schedule/adopted、无 scenario 的方案上。
+    # 这里拒绝请求身份；_build_event_payload 再做落库身份消毒，两层纵深不可互相替代。
     def _load_current_official_schedule(self, context: ExecutionFeedbackContext):
         if (
             context.requested_plan_role != ROLE_ADOPTED
@@ -468,7 +469,8 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
             "schedule_id": context.schedule_id,
             "op_id": context.op_id,
             "batch_id": batch_id,
-            # 写入前最终消毒：现场事件永远落到正式 schedule/adopted/no-scenario 身份。
+            # 写入前最终消毒：故意不透传 context 中的同名身份字段。
+            # 即便上游校验被绕过，现场事件也只能落到正式 schedule/adopted/no-scenario 身份。
             "source_table": SOURCE_SCHEDULE,
             "effective_plan_role": ROLE_ADOPTED,
             "scenario_id": None,
