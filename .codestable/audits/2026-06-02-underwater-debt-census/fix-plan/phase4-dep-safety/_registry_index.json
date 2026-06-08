@@ -47,7 +47,7 @@
   "cluster": "C01",
   "siblings": [],
   "batch": "Batch-1(纯增量,Phase1",
-  "owner_pending": true,
+  "owner_pending": false,
   "needs_adv": true,
   "adv_refuted": true,
   "title": "_bool_from_summary 静默吞掉损坏的 result_summary JSON,影响 is_official/可执行版本/可派工判定"
@@ -127,7 +127,7 @@
   "adv_refuted": false,
   "title": "feedback_write_enabled 休眠开关 + 生产不可达的'保护未开启'提示"
  },
-"R42": {
+ "R42": {
   "id": "R42",
   "bucket": "B01",
   "status": "fixed",
@@ -148,7 +148,7 @@
   "adv_refuted": false,
   "title": "plan_id 是死面包屑:从 request 读入、存进工作台上下文、回吐进所有导航/导出 URL,却从不进任何 resolver/query,且被在途 roadmap 制度化保留"
  },
-"R54": {
+ "R54": {
   "id": "R54",
   "bucket": "B01",
   "status": "fixed",
@@ -208,7 +208,7 @@
   "adv_refuted": false,
   "title": "导航上下文双构建路径:fallback直接信任未经PlanIdentity解析的raw plan_role/scenario_id"
  },
-"R58": {
+ "R58": {
   "id": "R58",
   "bucket": "B01",
   "status": "fixed",
@@ -227,7 +227,7 @@
   "adv_refuted": false,
   "title": "navigation_publish把builder已gate的can_write_feedback用原始值覆盖回去(护栏被动削弱)"
  },
-"R60": {
+ "R60": {
   "id": "R60",
   "bucket": "B01",
   "status": "fixed",
@@ -285,14 +285,14 @@
  "R21": {
   "id": "R21",
   "bucket": "B02",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "P3",
   "lb": false,
   "file": "gantt_plan_query.py",
   "cluster": "C01",
   "siblings": [],
-  "batch": "Batch-4(B02 身份族);与",
+  "batch": "Batch-C/G27 已 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
@@ -301,15 +301,15 @@
  "R22": {
   "id": "R22",
   "bucket": "B02",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "P5",
   "lb": false,
   "file": "schedule_result_view_context.py",
   "cluster": "C01",
   "siblings": [],
-  "batch": "parity 测试=Batch-1(",
-  "owner_pending": true,
+  "batch": "Batch-C/G27 已 fixed",
+  "owner_pending": false,
   "needs_adv": true,
   "adv_refuted": false,
   "title": "default_plan_resolution_dict 手搓 plan_identity(23键)+resolution(45键)双私有实现,绕过 build_plan_identity 与 SchedulePlanResolution.to_dict,且无 parity 测试"
@@ -330,7 +330,7 @@
   "adv_refuted": false,
   "title": "_normalize_role 在 schedule_plan_role 与 schedule_plan_query_service 字节级重复,且无 plan_role 归一收口点"
  },
-"R44": {
+ "R44": {
   "id": "R44",
   "bucket": "B02",
   "status": "fixed",

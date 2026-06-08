@@ -69,7 +69,7 @@
 ROOT  承重注释 + 共享前置门（纯增量零结构，零入边，最先落）
   GF1·reject_integer_float 默认 False+parity ┃ G15a·LB07 双栈注释+spec_sync parity🔒
   G07a·LB01 两处注释🔒 ┃ G05·LB02/LB05 注释+回归🔒 ┃ G40a·LB08 注释+绑契约🟢 fixed
-  G33a·R05 步1 扩collar+步2 五parity🔒⏸ ┃ LB03·B01 承重注释+guard 收口🔒 ┃ G27p·R22 24键 exact parity⏸
+  G33a·R05 步1 扩collar+步2 五parity🔒⏸ ┃ LB03·B01 承重注释+guard 收口🔒 ┃ G27p·R22 24键 exact parity🟢 fixed
   [+认账注释 R56禁区行/R07错误类/LB06双宿主/N1真闸/N2 sentinel，均按 OWNER-DECISIONS 裁后口径]
 
 Batch-A  独立死叶子 / 零前置 / owner=false（最早可落）
@@ -87,7 +87,7 @@ Batch-B  依赖 ROOT 承重门 / 单门控前置
 
 Batch-C  身份族收敛 / 收口委托（依赖承重族 + parity）
   G04(R58→R54→R44)←LB03+R22parity；同批带走 E03→G01 ┃ G01(R42+R60)←G04
-  G27(R22+R21)←LB03+G27p ┃ G09(R15→R19→R13)⏸ ┃ G10(R18+R19+R13)⏸ ┃ G29(R72)⏸
+  G27(R22+R21)←LB03+G27p（2026-06-08 已 fixed） ┃ G09(R15→R19→R13)⏸ ┃ G10(R18+R19+R13)⏸ ┃ G29(R72)⏸
   G15(R47+R71)⏸←G15a🔒 ┃ G22(R08+R09)⏸ ┃ G33(R05步3)🔒⏸←G33a ┃ G34(R67)⏸
   G17(R31)←E05/E06 同G23窗口 ┃ G23(R30+R33)←R33步1先
 
@@ -97,9 +97,9 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
   G42(R24 KEEP注释+事实记录)←O23 已裁保留不删（‖G41 可并行）
 ```
 
-**11 标红债批次落位一行速查**：R05→ROOT(G33a step1/2)🔒 + Batch-C(G33 step3)⏸；R22→ROOT(G27p parity) + Batch-C(G27)🔴⏸；R54→ROOT(collar 扩产前置) + Batch-C(G04)🔴⏸；R42→Batch-C(G01，E03 rebase R54 后)🔴；R04→Batch-B(G19，依 GF1)🔴；R09→Batch-C(G22)🔴⏸；R15→Batch-B(G08) + Batch-C(G09 provider 链)🔴⏸；R19→Batch-B/C(G08/G09/G10 三处)🔴⏸；R52→Batch-B(G39 KEEP注释，O07 已裁保留)🔴；R14→Batch-D(G41)🔴⏸；R69→Batch-D/LEAF 桶(owner 定 loud 方向后落)🔴⏸。
+**11 标红债批次落位一行速查**：R05→ROOT(G33a step1/2)🔒 + Batch-C(G33 step3)⏸；R22→ROOT(G27p parity) + Batch-C(G27)🟢 fixed；R54→ROOT(collar 扩产前置) + Batch-C(G04)🔴⏸；R42→Batch-C(G01，E03 rebase R54 后)🔴；R04→Batch-B(G19，依 GF1)🔴；R09→Batch-C(G22)🔴⏸；R15→Batch-B(G08) + Batch-C(G09 provider 链)🔴⏸；R19→Batch-B/C(G08/G09/G10 三处)🔴⏸；R52→Batch-B(G39 KEEP注释，O07 已裁保留)🔴；R14→Batch-D(G41)🔴⏸；R69→Batch-D/LEAF 桶(owner 定 loud 方向后落)🔴⏸。
 
-**6 硬阻断新爆点闭合落位**：#1 collar 不产 3 键→ROOT 扩产前置 owner 闸门 F门(R54)；#7 R15 空值即 raise→Batch-B G08 前置安全网（分支级保 `if not text: return None`）+ Batch-C G09 owner 闸门；#19/#20 R05 双轨+builder 耦合→ROOT G33a step1 扩产前置（含 include_team_context 信号 + 派工轨单独入口）；#21 R42 :92 漏删→Batch-C G01 前置安全网（删点清单补 :92 同提交）；#22/#23 R22 双翻→ROOT G27p parity 升「键集+取值 exact + bad-role raise」双断言 + Batch-C G27 owner 闸门。
+**6 硬阻断新爆点闭合落位**：#1 collar 不产 3 键→ROOT 扩产前置 owner 闸门 F门(R54)；#7 R15 空值即 raise→Batch-B G08 前置安全网（分支级保 `if not text: return None`）+ Batch-C G09 owner 闸门；#19/#20 R05 双轨+builder 耦合→ROOT G33a step1 扩产前置（含 include_team_context 信号 + 派工轨单独入口）；#21 R42 :92 漏删→Batch-C G01 前置安全网（删点清单补 :92 同提交）；#22/#23 R22 双翻→2026-06-08 已由 G27 补齐「键集+取值 exact + bad-role raise」断言并按 O14 收口，状态 fixed。
 
 > **⚠简化声明**：序列总览中 LEAF-DUP-P4 簇的 11 债（R69/R03/R41/R68/R32/R40/R53/R61/R70/R43/LB04）未单独成 G 编号原子单元（它们在 _interference_rebuilt §1 未占 G## 槽位，原 registry 以「Batch-1/5/15」桶标），本计划按其性质归入 Batch-A（纯删叶子 R53/R61/R70/R10 类 + LB04 安全网前置）与 Batch-B/Batch-D（R69/R03/R41/R68/R32/R40/R43 按 §3/OWNER 裁后门控落）。归并处已在对应批次显式登记，不静默吞。LB04 作为「所有 yes/no 收敛动作安全网前置」归 ROOT/Batch-A 之交（注释 + 全矩阵 parity，零结构）。
 >
@@ -254,9 +254,11 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 
 ### 1.4 Batch-C — 身份族收敛 / 收口委托（依赖承重族 + parity）
 
-**成员（调度单元 + 债）**：G04(R58→R54→R44)←LB03+R22parity；G01(R42+R60)←G04(E03)；G27(R22+R21)←LB03+G27p；G09(R15→R19→R13)⏸；G10(R18+R19+R13关心:399)⏸；G29(R72)⏸；G15(R47+R71)⏸←G15a🔒；G22(R08+R09)⏸；G33(R05 步3)🔒⏸←G33a；G34(R67)⏸；G17(R31)；G23(R30+R33)。
+**成员（调度单元 + 债）**：G04(R58→R54→R44)←LB03+R22parity；G01(R42+R60)←G04(E03)；G27(R22+R21，2026-06-08 已 fixed)←LB03+G27p；G09(R15→R19→R13)⏸；G10(R18+R19+R13关心:399)⏸；G29(R72)⏸；G15(R47+R71)⏸←G15a🔒；G22(R08+R09)⏸；G33(R05 步3)🔒⏸←G33a；G34(R67)⏸；G17(R31)；G23(R30+R33)。
 
 > **2026-06-08 执行补登**：G04(R58/R54/R44) 与 G01(R42/R60) 已 fixed，并已在 `_registry.json`、`_registry_index.json` 与对应 dossier 登记。G04 终态：R58 只补承重说明，不做 Phase2 剔键；R54 把五个 guard 投影面收口到既有 `build_workbench_plan_context` / `plan_guard_fields_for_context`，保留各自键面形状与 L5 OR；R44 收口到 core 的 `selected_plan_role`，不碰 guard 闸门。G01 终态：`plan_id` 死面包屑整链下线，`version/plan_role/scenario_id/back_to` 等真上下文键保留。
+>
+> **2026-06-08 G27 执行补登**：G27(R22/R21) 已 fixed。实盘侦察发现 G27p parity 证据不足，本次先补 `tests/schedule/summary/test_schedule_result_view_context.py::test_default_plan_resolution_identity_matches_canonical_no_history_identity`，用 `VALID_PLAN_ROLES` 逐值断言 `default_plan_resolution_dict(role)["plan_identity"] == build_plan_identity(...).to_dict()`，并钉住 no_history 的 `result_summary_parse_failed=True`。随后 R22 删除手写 `plan_identity` 字典，收口到既有 `build_plan_identity(...).to_dict()`，保留 `normalize_plan_role`，不改 builder / `PlanIdentity.to_dict`；O14 裁定的用户可见文案同步改为中性「本方案暂无排产摘要」。R21 仅删除 `gantt_plan_query.py` 的 `resolve_plan` / `selected_plan_role` / `_has_explicit_gantt_range` 三个死 shim 与专属 import，`default_plan_resolution_dict` wrapper、遗留 bad-role 文案和四个 LIVE range 函数均保留。
 
 **是否原子**：身份族强原子——G04（R58→R54→R44 同 nav_publish 硬序）+ E03 硬同批带走 G01（R54→R42/R60 同符号 `build_workbench_plan_context` rebase）；G27（R22 先→R21 后同窗口）；G09（provider 链 R15→R19→R13 同文件串行 + 逐步重 rg）；G22（R08 先→R09 后串行）；G23（R33 步1→R30→R33 步2/3 硬序）；G33（R05 步1→步2→步3 不可换序）。
 
@@ -279,7 +281,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
   - V2⑫终态删点清单：补 :92、剔 dashboard_workbench:121 与两幻觉 roadmap 行、含 emit:118/154 双 plan_style；R42⇔R60 单次提交 rebase 在 R54 后。
   - 爆点 #12（V2⑫）：`:57 navigation_context` 走 `**kwargs` 链全程 plan_id=0 命中→不含 plan_id，删 :191 形参对 :57 安全无 TypeError；co-change 只查真名 `build_workbench_plan_context`（**红队 RT3 噪音采纳：全仓零 `as n` 别名，原 D2「别名 `n(`」纪律是幻觉前提已删，全真名 import**）。**collar 调用方口径（一致性 P2 收口，以 verdict_V2 + RT22 备注统一）：共 8 个生产调用方文件**（navigation_context、dashboard_workbench_context、resource_dispatch、gantt_task_detail、reports_workbench、navigation_links、analysis_links + navigation_context.py 第二注入路径），**其中仅 3 个真传 plan_id**（navigation_context:78、reports_workbench:79、dashboard_workbench_context:92）会触 TypeError 面，其余 5 个不传 plan_id 删形参安全。删形参前 rg 全 8 调用方复核无遗漏真传点。
   - E03 补：collar 第 6 调用方 `analysis_links.py:24` 未传 plan_id（只读确认点，删形参安全）。
-- **G27(R22+R21)🔴**（R22 标红 + 爆点 #22/#23）：←LB03+G27p（24 键 exact + 取值 + bad-role raise 三断言已在 ROOT 落）；R22 先收口（只 CALL `build_plan_identity`/`to_dict` 不改 builder）→ R21 后删 3 死 shim `:42/46/59`+import（**严守保留 dpr_dict wrapper `:32-39` + `:11-13` import 别名 + `:50-156` 四 LIVE range 函数**，误删→甘特周计划范围静默断裂）；view_context `:74 normalize_plan_role` 绝不删（R21 wrapper field=plan_role 精度唯一上游）。V2③安全路径三步：24 键 exact+no_history 取值断言+evidence_contract:194 升 exact（ROOT，即 G27p）→删 :77-100 委托但 :74 normalize 绝不删→no_history 取值交 owner。
+- **G27(R22+R21)🔴（2026-06-08 已 fixed，以下为执行纪律归档）**：←LB03+G27p；本次实盘补齐 24 键 exact + no_history 取值 parity 后，R22 已收口到 `build_plan_identity(...).to_dict()`，只 CALL 不改 builder；R21 已删 3 死 shim 与专属 import。**已复核保留** dpr_dict wrapper、`_default_plan_resolution_dict` import 别名、bad-role loud 文案、`normalize_plan_role`、builder / `PlanIdentity.to_dict`、以及四个 LIVE range 函数。
 - **G09(R15→R19→R13)🔴⏸**（R15/R19 标红 + V1①串行序）：同 provider.py 文件；**O03/O05/O06/O37 已裁串行序 R15→R19→R13**（R13 dossier「R13 先」判负）：删上方位移下方锚点，故先改最下方语义 R15(`:85-95` 不位移任何人)→中段 R19(`:70`)→最后删最上方死字段 R13(`:23-24/:56-57`)；R13 按 O06 先迁 3 测试后删，删前 owner 再确认一次；R13↔R18 解耦（不碰 repo:399/401）。**R13 退场面是四处同一原子提交（红队第2轮·2号 P-RT22-03 采纳·原 G09 只点字段两行会致 TypeError）**——R13.md:50-52 列明：① 删字段 `:23-24`；② 删 `_fact_from_state` 的 `latest` 形参（按符号定位，现 `:43`）；③ 删赋值 `:56-57`；④ 删调用点实参 `latest_events.get(scope)`（现 `:123`）；⑤ 评估连带删孤儿 `_latest_events_by_scope:163-170` + `:118` 调用（删字段后成孤儿）。**只删字段两行而漏 `:43` 形参/`:123` 实参→形参悬空；若删 `:43` 形参却漏 `:123` 实参→下次调用 `_fact_from_state(..., latest_events.get(scope), ...)` 即 TypeError（facts 主链热路径，读历史/重排）**。注：`:56-57` 落在 `_fact_from_state` 体（`:40-62`）内，**紧贴 R15 的 `_parse_execution_time` 调用 `:54/55`**（仅隔 1-2 行）——R15(G08,Batch-B)先改、R13(G09,Batch-C)后删，G09 动手前对该函数体整体重 rg，按键名 `last_event_schedule_version=` 而非裸行号。R19 canonical 强制 sorted（`snapshot:40` 事实承重 sha256 指纹，爆点 #9：三函数零符号级测试，naive 统一不排序版→静默漂移无拦截）+ 注释「指纹依赖排序」；先补 positive_op_ids 黄金用例（F-fingerprint 门）。**E16 降为登记备查·无依赖（红队第2轮·2号 P-RT22-02 采纳·原「R01/R46/R19 共享 `__all__:118-122` 串行」是伪串行边）**：实盘三个 `__all__` 在三个不同文件物理零重叠——R01 改 `core/services/scheduler/run/schedule_payload_contract.py:410`（删条目）、R19 改 `execution_snapshot.py:118/122 positive_op_ids`（`:118-122` 锚点**只属本文件**）、**R46 根本不动任何 `__all__`**（`core/models/scheduler_public_errors.py:163 _safe_identifier` 不在 `__all__:340-349`，导出的是 `public_safe_identifier`）；`sym:__all__` 是同符号名同居的 registry 误判，三债顺序无关、可任意先后，**禁照 `:118-122` 锚点去 execution_snapshot.py 找 R01/R46 的导出条目**（不在那里）。
 - **G10(R18+R19关心:67+R13关心:399)🟢⏸**：R18+R13(repo):399 共一条护栏注释合批（六格 stub raise 是契约护栏非死码，foundation 测试 :365/:367 断言 raise，禁直删/禁退断言/禁改 return {} 静默）；R19 repo 处物理隔离仅文件级串行（保私有版补「顺序无关」注释禁下沉）；R13 不碰 repo（属 R18），先迁 scope_read_contract→reschedule 测试再删生产。
 - **G22(R08+R09)🔴⏸**（R09 标红 + 爆点 #12/#13）：←N1 注释(E26，先钉 service:127≡:130 同源守卫)+R07 前置(E25 已满足)；

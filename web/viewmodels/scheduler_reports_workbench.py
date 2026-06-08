@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Optional
 
+from .scheduler_plan_guardrail_messages import summary_unavailable_guardrail_text
 from .scheduler_report_limitations import build_report_limitations
 from .scheduler_report_values import ReportPresentationValueError, _optional_number, _sum_number, downtime_summary
 from .scheduler_workbench_links import (
@@ -76,7 +77,12 @@ def build_report_context(
         back_to=back_to,
         is_preview=bool(data.get("is_scenario_preview") or data.get("is_preview")),
         can_write_feedback=can_write,
-        guardrail_text="当前排产摘要读取失败，页面仅展示基础历史信息，不能写现场事实。" if parse_failed else "",
+        guardrail_text=summary_unavailable_guardrail_text(
+            data.get("result_summary_parse_reason"),
+            blocked_action="不能写现场事实",
+        )
+        if parse_failed
+        else "",
         guardrail_reason_type="data_gap" if parse_failed else "",
     )
     if parse_failed:

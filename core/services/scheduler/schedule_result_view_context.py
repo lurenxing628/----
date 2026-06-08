@@ -13,6 +13,7 @@ from core.models.schedule_plan_role import (
 )
 from data.repositories.schedule_plan_query_repo import SOURCE_SCHEDULE
 
+from .schedule_plan_identity_builder import build_plan_identity
 from .version_resolution import VersionResolution, require_selected_version, resolve_version_or_latest
 
 _PLAN_ROLE_COMPARE_HINT = "当前查看的是对比方案，只用来和正式采用方案比一比；现场执行仍以“正式采用方案”为准。"
@@ -74,32 +75,24 @@ def default_plan_resolution_dict(plan_role: Optional[str] = None) -> Dict[str, A
     requested_role = normalize_plan_role(plan_role)
     selected_label = plan_role_label(ROLE_ADOPTED)
     is_fallback = requested_role != ROLE_ADOPTED
-    plan_identity = {
-        "version": None,
-        "requested_plan_role": requested_role,
-        "effective_plan_role": ROLE_ADOPTED,
-        "plan_resolution_status": "fallback_to_adopted" if is_fallback else "resolved_adopted",
-        "source_table": SOURCE_SCHEDULE,
-        "source_row_id": None,
-        "candidate_id": None,
-        "candidate_key": None,
-        "scenario_id": None,
-        "schedule_result_status": None,
-        "result_summary_parse_failed": True,
-        "result_summary_parse_reason": "排产摘要缺失",
-        "is_simulation": False,
-        "label": selected_label,
-        "user_label": "对比参考方案" if is_fallback else selected_label,
-        "is_official": not is_fallback,
-        "is_preview": False,
-        "is_current_executable_version": False,
-        "is_current_executable_official_version": False,
-        "is_superseded_by_newer_version": False,
-        "schedule_lock_status": None,
-        "can_dispatch": False,
-        "can_write_feedback": False,
-        "detail_saved": True,
-    }
+    status = "fallback_to_adopted" if is_fallback else "resolved_adopted"
+    plan_identity = build_plan_identity(
+        version=None,
+        requested_role=requested_role,
+        effective_role=ROLE_ADOPTED,
+        status=status,
+        source_table=SOURCE_SCHEDULE,
+        source_row_id=None,
+        candidate_id=None,
+        candidate_key=None,
+        scenario_id=None,
+        scenario_display_name="",
+        schedule_result_status=None,
+        result_summary=None,
+        latest_official_version=None,
+        schedule_lock_status=None,
+        detail_saved=None,
+    ).to_dict()
     return {
         "version": None,
         "requested_role": requested_role,
@@ -109,7 +102,7 @@ def default_plan_resolution_dict(plan_role: Optional[str] = None) -> Dict[str, A
         "source_table": SOURCE_SCHEDULE,
         "candidate_id": None,
         "candidate_key": None,
-        "status": "fallback_to_adopted" if is_fallback else "resolved_adopted",
+        "status": status,
         "message": ""
         if not is_fallback
         else f"你原本选择的是“{plan_role_label(requested_role)}”，但当前版本没有保存这套方案明细，已显示正式采用方案。",

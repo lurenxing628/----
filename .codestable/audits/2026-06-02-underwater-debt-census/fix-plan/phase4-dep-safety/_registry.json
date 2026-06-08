@@ -344,7 +344,7 @@
     "tests/schedule/route_view/test_scheduler_plan_identity_summary_guard.py:114 (test_dashboard_invalid_plan_identity_is_visible_gap_instead_of_500 — 可见缺口而非 500)"
    ]
   },
-  "owner_pending": true,
+  "owner_pending": false,
   "lb_no_touch": "已超前治理为 fail-closed(_parsed_summary_flag_is_true fail_closed=True)+ 可观测字段;禁按旧报告改 loud raise(latest_executable_official_version 全量扫历史=可用性放大事故);仅认账注释 + git add 守卫测试"
  },
  "LB05": {
@@ -1686,7 +1686,7 @@
   "id": "R21",
   "bucket": "B02",
   "home": "B02",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "medium",
   "pathology": "P3",
   "partition": "scheduler-plan-identity",
@@ -1768,9 +1768,9 @@
   ],
   "verdict": null,
   "adv_precondition": null,
-  "planned_batch_hint": "Batch-4(B02 身份族);与 R22/R44 同批,内部:R22 收口(需 dpr_dict 在)→ R21 删 3 死 shim → 与 R44 协调 selected_plan_role。",
+  "planned_batch_hint": "Batch-C/G27 已 fixed；与 R22 同窗口，顺序为 R22 收口后清 3 个死 shim。",
   "planned_deps_hint": "①R22:R21 必须【保留】default_plan_resolution_dict wrapper(:32-39),否则 R22'保留遗留文案包装'precondition 失效——这是硬约束,本批只删另 3 个。②R44:selected_plan_role shim(:46)是 R44 收口要照搬的 re-export 范式;R21 删它会让该范式悬空,但 R44 可改为直接 re-export core(非硬阻塞),二者宜同批。co_change:R22、R44。",
-  "planned_fix_hint": "删【3 个真死 shim】+ 连带清理其专属 import,但【保留】default_plan_resolution_dict wrapper 与【整文件】:\n- 删 resolve_plan(:42-43)→ 同步删 import _resolve_plan(:14-16);\n- 删 selected_plan_role(:46-47)→ 同步删 import _selected_plan_role(:17-19);\n- 删 _has_explicit_gantt_range(:59-71)→ 同步删 import _has_explicit_display_range(:23-25);\n- 【保留】default_plan_resolution_dict(:32-39)及其遗留文案重抛逻辑(把 ValidationError 重写成'未知的排产方案角色：{role}')—— R22 收",
+  "planned_fix_hint": "2026-06-08 已执行：删 resolve_plan / selected_plan_role / _has_explicit_gantt_range 三个真死 shim，同步清 _resolve_plan / _selected_plan_role / _has_explicit_display_range 三个专属 import；保留 default_plan_resolution_dict wrapper、其 _default_plan_resolution_dict import、整文件 LIVE range 函数。",
   "phase1_blast": {
    "co_change_within_group": [
     "R22",
@@ -1795,13 +1795,14 @@
    ]
   },
   "owner_pending": false,
-  "lb_no_touch": null
+  "lb_no_touch": null,
+  "current_evidence_2026_06_08": "G27 执行终态：core/services/scheduler/gantt_plan_query.py 仅删除 resolve_plan、selected_plan_role、_has_explicit_gantt_range 三个死 shim 及其专属 import；default_plan_resolution_dict wrapper 与 ValidationError(\"未知的排产方案角色：{role}\") 文案保留，get_version_time_span_dates / resolve_gantt_range_for_version / attach_gantt_range_metadata / build_empty_week_plan_payload 四个 LIVE 函数保留。验证：tests/schedule/summary/test_schedule_result_view_context.py、tests/gantt/test_gantt_page_version_default_latest.py 绿。"
  },
  "R22": {
   "id": "R22",
   "bucket": "B02",
   "home": "B02",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "medium",
   "pathology": "P5",
   "partition": "scheduler-plan-identity",
@@ -1854,9 +1855,9 @@
    "verdict_kind": "real_debt"
   },
   "adv_precondition": null,
-  "planned_batch_hint": "parity 测试=Batch-1(全局 ROOT 纯增量网,PHASE1 Batch-1 已点名'R22 parity');收口动作=Batch-4(B02 身份族,在 B01 之后)。",
+  "planned_batch_hint": "ROOT/G27p parity 实盘补齐 + Batch-C/G27 收口已 fixed。",
   "planned_deps_hint": "必须先做:Batch-1 parity 测试就位 + B01(R54 guard 收口 + 承重注释)先落(全局#1)。同改/协调:R21——R21 绝不可删 gantt_plan_query.py:32-39 的 default_plan_resolution_dict wrapper(R22 收口 precondition'保留遗留文案包装'依赖它),R21 删 dpr_dict 会让本约束失效。co-change 组:R21、R44(同 Batch-4 方案身份族)。",
-  "planned_fix_hint": "【已发生漂移的实锤(本轮新抓)】盘上 python 比对:canonical PlanIdentity.to_dict 现 24 键,手搓内层 22 键,差集恰为 {result_summary_parse_failed, result_summary_parse_reason} —— LB03 在途给 canonical 加了这两键、手搓侧未跟,报告时键集漂移0、今天=2,病理已现形;且 reports_plan_template_fields.py:37 已读 result_summary_parse_failed。\n\n【修法,严格按 _adv_precondition】第1步(归 Batch-1 纯增量网,先于收口):补 parity 契约测试——对 VALID_PLAN_ROLES 全集断言 default_plan_resolution_dict(role)['plan_iden",
+  "planned_fix_hint": "2026-06-08 已执行：补齐 default_plan_resolution_dict(role)[\"plan_identity\"] == build_plan_identity(...).to_dict() 的 24 键取值 exact parity；随后将默认身份字典收口到既有 builder，不改 builder / PlanIdentity.to_dict；O14 裁定的 no_history=True 已落，前端文案改中性。",
   "phase1_blast": {
    "co_change_within_group": [
     "R21",
@@ -1889,8 +1890,9 @@
     "tests/schedule/route_view/test_scheduler_plan_identity_evidence_contract.py:10,639 (build_plan_identity 23键契约，收口后的 parity 参照源)"
    ]
   },
-  "owner_pending": true,
-  "lb_no_touch": null
+  "owner_pending": false,
+  "lb_no_touch": null,
+  "current_evidence_2026_06_08": "G27 执行终态：core/services/scheduler/schedule_result_view_context.py 的 default_plan_resolution_dict 已删除手写 plan_identity 字典，改为调用既有 build_plan_identity(...).to_dict()；normalize_plan_role 仍在函数入口校验，schedule_plan_identity_builder.py 与 PlanIdentity.to_dict 未改。测试新增 tests/schedule/summary/test_schedule_result_view_context.py::test_default_plan_resolution_identity_matches_canonical_no_history_identity，按 VALID_PLAN_ROLES 逐值断言默认 plan_identity 与 builder 完全一致，并钉住 no_history result_summary_parse_failed=True。用户可见文案同步改为“本方案暂无排产摘要”，避免把无历史页说成解析失败/缺失。"
  },
  "R23": {
   "id": "R23",
@@ -6520,9 +6522,9 @@
   "lb_no_touch": "verdict-confirmed 承重:runner.py narrow-except CandidateTrialFailure 防 b81f8b3f 删掉的静默吞错复活;只补注释,禁改回 except Exception"
  },
  "R10": {
- "id": "R10",
- "bucket": "B14",
- "home": "B14",
+  "id": "R10",
+  "bucket": "B14",
+  "home": "B14",
   "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P6",
