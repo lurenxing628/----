@@ -3,6 +3,7 @@
 > 只读不改、只产计划。行号均经 2026-06-05 rg 回盘，不信旧值。
 > 成员债 9：R02 R06 R25 R27 R52 LB08 R46 R14 R24
 > 主要文件：schedule_graph_dispatch_context.py / ready_queue.py(两层) / scheduler_dispatch 空包 __init__.py / scheduler_public_errors.py / schedule_delay_diagnosis_service.py / schedule_diagnostic_contract.py
+> **2026-06-08 B 执行补登：G40a/LB08 + G40/R46 已 fixed。** LB08 承重注释已在 `LEGACY_PUBLIC_PATTERNS` 上方存在并指向真实中文模板产出点 `internal_operation/resource_validation`；R46 私有死别名 `_safe_identifier` 已删除。legacy 正则桥、`public_safe_identifier`、`_positive_int`、`make_public_error`、`legacy_public_error_message`、`infer_legacy_public_code`、`__all__` 和 `v4_sanitizers.py` 同名活函数均未动。
 
 ---
 
@@ -39,11 +40,11 @@
 - **parity 反例（删前必证，不可抹平）**：全量版坏 op_id raise `ReadyQueueContractError`，LIVE 版 raise `ValidationError(field=graph_ready_context)`——**异常类不同**，parity 须断言「均拒绝」而非「同类型」；None 输入 LIVE `_prepare_graph_ready_state` `return None` 不 raise，全量版无 None 入口，**该分支不可 cross-check，须两路分别写**。
 - **路径钉死**：取代者 sgs_graph 在**算法层** `core/algorithms/greedy/dispatch/`，非 service 目录（纠 registry phase1_blast 误标）。roadmap 备忘措辞勿误指 service。
 
-### 子簇 A4 — LB08 + R46（**承重先于动同文件**；LB08 注释先落）
-- **成员**：LB08(承重 true，legacy 正则反解桥，`scheduler_public_errors.py:62` 上方插注释 + 绑契约)、R46(死别名直删 `:162-164`)。
+### 子簇 A4 — LB08 + R46（**已 fixed**）
+- **成员**：LB08(承重 true，legacy 正则反解桥，已补护栏注释 + 绑既有契约)、R46(死别名已直删)。
 - **原子原因**：**同物理文件 `core/models/scheduler_public_errors.py`，且 LB08 注释钉死承重边界后 R46 才能在保护下删**。两段物理分离（:61/:62 插入点 vs :162-164 删除段），不撞 dict 键，但**双向行号位移**：LB08 插 N 行使 :162-164 下移；R46 删 3 行使 :175/:218/:284/:340 上移——互不抵消但都让对方绝对行号失效。
-- **内部顺序**：**LB08 注释先落（或同提交先于 R46 删行）**。LB08 owner_pending=true（注释逐字文案的产出点指向待裁：planned_fix 草稿指 `auto_assign_resource_errors.py` 错位，真产出点是 `core/algorithms/greedy/internal_operation.py:119/148/150/154` + `dispatch/resource_validation.py:86`）。R46 落地后行号 +N，**务必按符号名重新 grep 定位 :162-164，不可照搬旧值**。
-- **承重禁区行（R46 删时神圣）**：`LEGACY_PUBLIC_PATTERNS:62`、`_LEGACY_CODE_PREFIXES:94`、`public_safe_identifier:142`(活,8 处消费)、`make_public_error:175`、`legacy_public_error_message:218`、`infer_legacy_public_code:284`、`_positive_int:167`(R09 同文件,跨簇)、`__all__:340-`(LEGACY 导出 :342/:345/:346)。R46 删段 :162-164 与全部禁区零重叠。
+- **已完成的内部顺序（历史执行记录，勿重复处理）**：LB08 注释已先落，且按 O35 裁定指向真实产出点 `core/algorithms/greedy/internal_operation.py` + `dispatch/resource_validation.py`，未沿用 planned 草稿里 `auto_assign_resource_errors.py` 消费方误指；随后 R46 已按符号重定位删除 `_safe_identifier` 三行死别名。
+- **承重禁区行（R46 删时神圣）**：现盘 `LEGACY_PUBLIC_PATTERNS:63`、`_LEGACY_CODE_PREFIXES:95`、`public_safe_identifier:143`(活,8 处消费)、`make_public_error:171`、`legacy_public_error_message:214`、`infer_legacy_public_code:280`、`_positive_int:163`(R09 同文件,跨簇)、`__all__:336-`(LEGACY 导出 :338/:341/:342)。R46 执行前删段 :162-164 与全部禁区零重叠，执行后 models 层 `_safe_identifier` 已无命中。
 - **同名陷阱**：`v4_sanitizers.py:37 _safe_identifier`(独立函数,:121/:122 活调用)绝不能误删。
 
 ### 子簇 A5 — R14（独立单债，owner 裁迁移目标 + 跨簇 LB01 让位）
@@ -62,7 +63,7 @@
 | 本簇债 | 指向他簇债 | 关系类型 | 顺序 |
 |---|---|---|---|
 | **R52** | **R50**(@sgs.py 同文件) | 同文件非同符号弱边 | R52 不动 sgs.py（impl 在 ready_queue.py），无真撞；仅簇内共现登记，**无硬序**。 |
-| **R46** | **R09**(@scheduler_public_errors.py `_positive_int:167`) | 同文件、行号协调（修A失效B=否，仅位移） | R09 前置 F3 门（收口点 `parse_positive_execution_int` 已存在，见 C 节降级）落地远晚于 R46。**R46 先删 → R09 后续动 :167 时按符号 grep 重定位**。clamp-to-0(:172) ≠ None-语义 sink，R09 owner 勿误并。 |
+| **R46** | **R09**(@scheduler_public_errors.py `_positive_int`，现盘 :163) | 同文件、行号协调（修A失效B=否，仅位移） | R09 前置 F3 门（收口点 `parse_positive_execution_int` 已存在，见 C 节降级）落地远晚于 R46。**R46 先删 → R09 后续动 `_positive_int` 时按符号 grep 重定位**。clamp-to-0 语义 ≠ None-语义 sink，R09 owner 勿误并。 |
 | **R46** | **R01 / R19**(@`__all__` 同符号块) | 同 `__all__` 块同居，非同行编辑 | R46 删段 :162-164 **不触 `__all__`**（`_safe_identifier` 本就不在表内）→ 与 R01/R19 编辑物理不重叠，**顺序不敏感、可任意先后**。 |
 | **LB08** | **R04 / R09**(@auto_assign_resource_errors.py / scheduler_public_errors.py) | 同文件非同符号 | LB08 纯插注释不删，禁区不重叠；R04/R09 各自动各自段。**无硬序**。 |
 | **R14** | **LB01**(@schedule_delay_diagnosis_service.py `_resolve_strict_plan` 同符号) | **承重先于动同文件 + 修A可能违B禁区** | **最硬跨簇前置**：R14 删 `_resolve_strict_plan:134-139` 前，LB01(承重)若禁区覆盖该符号则 R14 删除违 LB01 禁区。**R14 删除必须让位/晚于 LB01 承重裁断**。 |
@@ -81,21 +82,21 @@
 - **新 R24 测试 :82/:83 单行剪除点**：registry phase1_blast 只说「移 :10-13 core import + 3 个 core-only 用例」，**漏标**混合用例 :82 首行 :83 `empty_diagnostic_sections()` 须单行剪除（corrections A 节 R24 已锚定）。
 
 ### 降级
-- **R46→R09 由「同文件硬边」降为「软位移协调」**：二者无调用关系(fix_invalidation=none)，R09 收口点 `parse_positive_execution_int` **已存在**(corrections A 节 R09)，前提「批准新建 parse_optional_positive_int」作废；R46 与 R09 仅行号位移协调，非硬阻塞。
+- **R46→R09 由「同文件硬边」降为「软位移协调」且 R46 侧已消费**：二者无调用关系(fix_invalidation=none)，R09 收口点 `parse_positive_execution_int` **已存在**(corrections A 节 R09)，前提「批准新建 parse_optional_positive_int」作废；R46 已删后，R09 后续动 `_positive_int` 必须按符号重定位。
 - **R14→LB01 维持承重硬边**（不降）：同符号 `_resolve_strict_plan`，R14 让位 LB01。
 
 ### 本簇 fixed 影响（E 节详）
-- **2026-06-08 B 执行后补登：R02、R25、R52 已 fixed。** R25/R52 已按 O07 方向 B 保留并补认账注释；R06/R27/gantt 已 fixed；R46 owner_pending=false 仍按计划给终态；LB08/R14/R24 owner_pending=true 待裁。LB03/LB06/R07/R16/R56/R57 已 fixed，均不在本簇，仍不门控本簇任何结构动作。
+- **2026-06-08 B 执行后补登：R02、R25、R52、LB08、R46 已 fixed。** R25/R52 已按 O07 方向 B 保留并补认账注释；R06/R27/gantt 已 fixed；LB08 已补承重护栏注释，R46 已删除 `_safe_identifier` 私有死别名且未触碰 LB08/R09 禁区；R14/R24 owner_pending=true 待裁。LB03/LB06/R07/R16/R56/R57 已 fixed，均不在本簇，仍不门控本簇任何结构动作。
 
 ## D. 承重前置（LB/N1/N2/R03/R58 门控的结构动作 + 禁区行）
 
 本簇唯一**簇内**承重点 = **LB08**（load_bearing=true）；唯一**跨簇**承重门 = **LB01**（他簇，门控 R14）。N1/N2/R03/R58 不在本簇。
 
 ### LB08（簇内承重，门控 A4 子簇 R46）
-- **必须先落的承重动作**：在 `scheduler_public_errors.py:62` 上方(:61 空行)插「我是故意的」护栏注释（钉死三件事：①正则把已渲染中文串反解回 code，与 make_public_error 结构化产出并存；②文案与正则同生共死，改文案不同步正则=静默降级通用文案+code 丢失；③终态让老路径走 make_public_error 端到端带 code 后才删正则）+ 绑**已存在**契约 `tests/schedule/route_view/test_scheduler_user_visible_messages.py:678`(+:695/:721/:743/:758)。**绝不删/统一/透传正则桥**。
-- **门控的结构动作**：R46 删 :162-164——LB08 注释先落，钉死承重边界后 R46 才删。
-- **禁区行（动同文件 R46 时绝不碰）**：`:62 LEGACY_PUBLIC_PATTERNS`、`:94 _LEGACY_CODE_PREFIXES`、`:142 public_safe_identifier`、`:175 make_public_error`、`:218 legacy_public_error_message`、`:284 infer_legacy_public_code`、`:340- __all__`(LEGACY 导出 :342/:345/:346)。
-- **owner_pending=true**：注释逐字文案产出点指向待裁（产出真点 = greedy/internal_operation.py + dispatch/resource_validation.py，非 auto_assign）。
+- **已落的承重动作**：`scheduler_public_errors.py:62` 已有「我是故意的」护栏注释（钉死三件事：①正则把已渲染中文串反解回 code，与 make_public_error 结构化产出并存；②文案与正则同生共死，改文案不同步正则=静默降级通用文案+code 丢失；③终态让老路径走 make_public_error 端到端带 code 后才删正则）+ 绑**已存在**契约 `tests/schedule/route_view/test_scheduler_user_visible_messages.py:680`(+:696/:722/:744/:759)。**绝不删/统一/透传正则桥**。
+- **门控的结构动作**：R46 执行前删段 :162-164——已在 LB08 注释存在后 fixed。
+- **禁区行（动同文件 R46 时绝不碰）**：现盘 `:63 LEGACY_PUBLIC_PATTERNS`、`:95 _LEGACY_CODE_PREFIXES`、`:143 public_safe_identifier`、`:171 make_public_error`、`:214 legacy_public_error_message`、`:280 infer_legacy_public_code`、`:336- __all__`(LEGACY 导出 :338/:341/:342)。
+- **owner 裁定**：O35 已裁，注释逐字文案按真实产出点落地（产出真点 = greedy/internal_operation.py + dispatch/resource_validation.py，非 auto_assign）；LB08 当前 fixed，owner_pending=false。
 
 ### LB01（跨簇承重，门控 A5 子簇 R14）
 - R14 删 `_resolve_strict_plan`(schedule_delay_diagnosis_service.py:134-139)前，**LB01 承重裁断必须先行**；在 LB01 放行前，:134-139 按「潜在禁区行」对待，R14 删除让位。
@@ -111,12 +112,12 @@
 
 ## E. fixed 成员残留动作（认账注释）
 
-**本簇 9 成员中 R02、R25、R52 已于 2026-06-08 B 执行 fixed。** corrections E 节旧 fixed 态 = LB03/LB06/R07/R16/R56/R57，全部在他簇，**不门控本簇任何结构动作**。R02 只是 test-only 壳清理，不产生固定前置门；R25/R52 是 O07 KEEP 认账注释闭合，不产生删除前置；其余成员仍按上文顺序和 owner 裁决执行。
+**本簇 9 成员中 R02、R25、R52、LB08、R46 已于 2026-06-08 B 执行 fixed。** corrections E 节旧 fixed 态 = LB03/LB06/R07/R16/R56/R57，全部在他簇，**不门控本簇任何结构动作**。R02 只是 test-only 壳清理，不产生固定前置门；R25/R52 是 O07 KEEP 认账注释闭合，不产生删除前置；LB08/R46 已闭合 G40 前置与删除链；其余成员仍按上文顺序和 owner 裁决执行。
 
-当前已完成的「认账」动作是 R25/R52 KEEP 注释；LB08 本身仍要**新增**承重认账注释（D 节），那是本簇待落的承重前置。
+当前已完成的「认账」动作是 R25/R52 KEEP 注释与 LB08 承重护栏注释；R46 删除已消费该前置。
 
 ---
 
 ## 返回摘要
 
-簇 C-GRAPH-ERR-DIAG | 原子子簇：6 个 — A1(R02 已 fixed)/A2(R06+R27+gantt 已 fixed)/A3(R52+R25 已 fixed, O07 KEEP)/A4(LB08→R46 承重先)/A5(R14 独立,LB01 让位)/A6(R24 独立) | 关键内部顺序：R02 已完成（历史步骤：先拆测试 import 再删壳，勿重复处理）；R06/R27/gantt 已一次性同提交完成（SP05 现盘 :312 三元组、旧 delayed 循环已删）；R52/R25 已按 O07 方向 B 保留，全量扫描 impl+R25 垫片+差分 helper 已补「我是故意的」注释，旧迁测试/删除路线不执行；LB08 注释先落再 R46 删 :162-164；R14 三步前置(迁灵魂线/改 roadmap/确认)后删；R24 先调和 networkx roadmap 再删 core+测试单行剪 :83 | 跨簇边：R14→LB01(承重先,同符号 _resolve_strict_plan,硬)；R46→R09(_positive_int:167 软位移)/R01/R19(__all__ 块不撞)；R14→LB02/LB05/R61(report_engine 避让)；R24‖R14(roadmap 范式同可并行)；R52→R50(sgs.py 弱) | 边变化：删 R02↔R25(假 same_file)；R06+R27+gantt 同 SP05 两行原子边已关闭、R24 测试 :83 单行剪；降 R46↔R09 为软位移(R09 收口点已存在) | 承重前置：LB08 注释+绑 regression 契约先于 R46 删行(禁区 :62/:94/:142/:175/:218/:284/:340)；跨簇 LB01 裁断先于 R14 删 :134-139；灵魂线 raise(GraphInputContractError/ReadyQueueContractError/NonFiniteDiagnosticNumber/:328 无回退)全程不削弱；分层 0 违规
+簇 C-GRAPH-ERR-DIAG | 原子子簇：6 个 — A1(R02 已 fixed)/A2(R06+R27+gantt 已 fixed)/A3(R52+R25 已 fixed, O07 KEEP)/A4(LB08+R46 已 fixed)/A5(R14 独立,LB01 让位)/A6(R24 独立) | 关键内部顺序：R02 已完成（历史步骤：先拆测试 import 再删壳，勿重复处理）；R06/R27/gantt 已一次性同提交完成（SP05 现盘 :312 三元组、旧 delayed 循环已删）；R52/R25 已按 O07 方向 B 保留，全量扫描 impl+R25 垫片+差分 helper 已补「我是故意的」注释，旧迁测试/删除路线不执行；LB08 注释已按 O35 指向真实产出点并先于 R46 存在，R46 已删除 `_safe_identifier` 死别名；R14 三步前置(迁灵魂线/改 roadmap/确认)后删；R24 先调和 networkx roadmap 再删 core+测试单行剪 :83 | 跨簇边：R14→LB01(承重先,同符号 _resolve_strict_plan,硬)；R46→R09(_positive_int 后续按符号重定位)/R01/R19(__all__ 块不撞)；R14→LB02/LB05/R61(report_engine 避让)；R24‖R14(roadmap 范式同可并行)；R52→R50(sgs.py 弱) | 边变化：删 R02↔R25(假 same_file)；R06+R27+gantt 同 SP05 两行原子边已关闭、R24 测试 :83 单行剪；R46↔R09 软位移已消费 R46 侧 | 承重前置：LB08 代码护栏已保护 R46 删除(现盘禁区 :63/:95/:143/:171/:214/:280/:336 未动)；跨簇 LB01 裁断先于 R14 删 :134-139；灵魂线 raise(GraphInputContractError/ReadyQueueContractError/NonFiniteDiagnosticNumber/:328 无回退)全程不削弱；分层 0 违规

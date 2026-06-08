@@ -53,7 +53,7 @@
 | **G37** | GRAPH-ERR-DIAG | {R02} A1 | 独立单债,test-only re-export 壳,生产零消费 | 单债内两步不可颠倒:先拆测试 import(只 build_first_wave_ready_nodes 改指)→后删壳:461-475 |
 | **G38** | GRAPH-ERR-DIAG | {R06, R27, gantt 空包} A2 | **2026-06-08 已 fixed**；同收口点同两行风险已一次性关闭(SP05 现盘 :312 三元组,旧 delayed 循环已删) | 已按"四包同提交"执行:一次改 :312 成三元组+删旧 delayed 循环+删四个 tracked `__init__.py`;后续勿重复处理 |
 | **G39** | GRAPH-ERR-DIAG | {R52, R25} A3 ✅ fixed | O07 已裁 B 保留：impl 留作差分 oracle，R25 垫片保留 | 已补「我是故意的」注释；未删 impl、未删垫片、未新建 `test_sgs_graph_ready.py` |
-| **G40** | GRAPH-ERR-DIAG | {LB08, R46} A4 🔒⏸ | 🔒 同文件 scheduler_public_errors.py,LB08 注释钉死承重边界后 R46 才能保护下删:162-164 | LB08 注释先落(或同提交先于 R46)→R46 删:162-164(按符号 grep 重定位,不照搬);O35 已裁：注释产出点按 `internal_operation.py:119/148/150/152/154` 实证改写，禁贴 planned/auto_assign |
+| **G40** | GRAPH-ERR-DIAG | {LB08, R46} A4 🟢 fixed | 同文件 scheduler_public_errors.py,LB08 注释已钉死承重边界后 R46 已删除私有死别名 | LB08 注释已先落且按 O35 指向 `internal_operation.py:119/148/150/152/154` / resource_validation；R46 已按符号 grep 删除 `_safe_identifier`，同名 `v4_sanitizers.py:37` 活函数与 legacy 正则桥未动 |
 | **G41** | GRAPH-ERR-DIAG | {R14} A5 ⏸ | 独立单债,delay 诊断死三件套;非裸删,删前三步前置+跨簇 LB01 同符号让位 | 前置三步(迁灵魂线测试/改 roadmap/确认无树外调用)后删:42-54+:114-139;删死门不得顺手修 resolve_plan 静默回退(铁律 4) |
 | **G42** | GRAPH-ERR-DIAG | {R24} A6 | O23 已改裁保留不删：core 预留件留作诊断回归 core 契约层未来地基 | 只补「故意保留」注释 + 事实记录；不删 core 文件、不剪测试、不调和 roadmap；路 B 改活 web 路径仍违铁律 5 |
 
@@ -117,7 +117,7 @@ ROOT（承重注释 + 共享前置门，纯增量零结构，最先落）
   ├─ G15a  LB07 双栈 @dataclass 注释 + 扩 spec_sync parity    [门控 G15 收敛/R47 删参]🔒
   ├─ G07a  LB01 两处「我是故意的」注释                          [门控 G07 service 删改]🔒
   ├─ G05   LB02/LB05 承重注释 + 回归(173 行既有)               [已门控 G06 fixed]🔒
-  ├─ G40a  LB08 承重注释 + 绑 regression 契约                  [门控 G40 删 R46]🔒⏸(O35 已裁 internal_operation 产出点)
+  ├─ G40a  LB08 承重注释 + 绑 regression 契约                  [门控 G40 删 R46]🟢 fixed(O35 已裁 internal_operation 产出点)
   ├─ G33a  R05 步1 扩 collar + 步2 五条 parity                [门控 G33 步3 收敛]🔒⏸
   ├─ LB03  B01 承重注释 + guard 收口(全局承重族,他簇)          [门控 G27/全 B02 身份族]🔒
   └─ G27p  R22 24 键 exact parity 先落                        [门控 G27 收敛]⏸
@@ -137,7 +137,7 @@ Batch-B（依赖 ROOT 承重门 / 单门控前置）
   G19(R01+R04)     ← GF1（2026-06-08 已 fixed，+ E24 与 G40a 认账协同）
   G20(R59)         ← GF1
   G24(R49含G25旁支+R50+R51) ← schedule_params/optimizer_config 收口点只读在位（已满足，2026-06-08 已 fixed）
-  G40(R46)         ← G40a 🔒⏸
+  G40(R46)         ← G40a 🟢 fixed
   G30(R34+R35)     ← 已 fixed：O10 纯删已执行（E18 仅留历史软边）
   G36(R37)
   G39(R52+R25)     ← ✅ fixed：O07 已裁 KEEP，保留 impl+垫片，已补注释
@@ -202,7 +202,7 @@ Batch-D（facade 删除最晚 / 跨 owner-pending 收口）
 | 🟡 中 | `core/services/scheduler/gantt_plan_query.py` | R21 + R22(precondition) | R21 删 3 死 shim:42/46/59+import:14-25；R22 收口委托(dpr_dict wrapper:32-39 是 R22 precondition,R21 删 import 区上移 wrapper ~9 行) | G27 硬序 R22 先(parity+收口)→R21 后(严守保留:32-39 wrapper+:50-156 LIVE 函数);R22 用符号名锚 |
 | 🟡 中 | `core/services/scheduler/schedule_plan_query_service.py` | R23 + R34 | R23 最小落法：import 增 `_normalize_role` 一行 + 删本地 `_normalize_role` 重复块（含分隔空行）→其后行号净上移 4；R34 benchmark repoint 旧锚 `get_plan_time_span_for_resolution:210` 落 R23 后为 `:206`(不改体) | E19 软序 R23 先落让 R34 基于删后符号重 rg 定位;R23 不碰:105-108 双段 |
 | 🟡 中 | `core/data/repositories/part_repo.py` | R38(part 份) + R39 | R39 删 list_unparsed:32→R38 list_as_dicts:71 上移 2 | G31 同 commit 按符号名;分 hunk 则先 R39 再以新行号定位 R38 |
-| 🟡 中 | `core/models/scheduler_public_errors.py` | **LB08**(承重) + R46 | LB08 注释:62 上方+禁区:62/:94/:142/:175/:218/:284/:340；R46 删死别名:162-164；双向行号位移(LB08 插 N 行下移:162;R46 删 3 行上移禁区);**含 R09 _positive_int:167 跨簇毗邻** | G40 LB08 注释先落→R46 删:162-164(按符号 grep 重定位);R46 删段与禁区零重叠 |
+| 🟢 fixed | `core/models/scheduler_public_errors.py` | **LB08**(承重) + R46 | LB08 注释已在 LEGACY_PUBLIC_PATTERNS 上方；R46 死别名已删；禁区:62/:94/:142/:175/:218/:284/:340 未动；**含 R09 _positive_int 毗邻后续按符号重定位** | G40 已 fixed：LB08 注释先落→R46 删 `_safe_identifier`；R46 删段与禁区零重叠 |
 | 🟡 中 | `core/services/common/value_policies.py`(壳) + `core/shared/value_policies.py`(源) | R30 + R33 + R31 | R30 删 shared 三常量+三 FieldPolicy；R33 删 service 壳 re-export(:11/:29)；R31 删 shared 源:9；删序错即 ImportError | E05/E06 硬序 R33 步1→R30→R33 步2/3;R31 不晚于 R33;死保 config_contract:15 degradation |
 | 🟡 中 | `tests/gate_meta/test_sp05_path_topology_contract.py` | R06 + R27 + gantt 空包(+R01/R26/R43 改别段) | R06/R27/gantt 同改点已 fixed；R01 改 schedule_persistence 键块:53-56；R26 改 SERVICE_BEHAVIOR_*:20-82；R43 改 ROUTE_* 段 | G38 已完成(现盘 :312 三元组+旧 delayed 循环已删);后续 R01/R26/R43 串行各改各段重 rg,禁碰现盘 :175 def/:317 起断言 |
 | 🟡 中 | `tests/config/test_config_service_component_contract.py` | R33 + R30(交界) | R33 删:14/:16/:19 元组+:393-411 身份断言；交界:411 `parse_compat_date is` 在 R30 删实现后失效由 R33 步2 删 | G23 内 R33 步2/3 在 R30 之后 |
@@ -462,7 +462,7 @@ Batch-D（facade 删除最晚 / 跨 owner-pending 收口）
 
 原子簇 42 个（G01–G42）+1 共享前置门 GF1 = 43 调度单元（多债强原子 20 / 单债 22 / 承重门 5🔒；原待裁清单已裁后分流，R29/R52/R24 走 KEEP，R55 本轮暂停）。
 验环：**无环（DAG 成立，环成员=空）**——13 条 H 硬边全单向收敛，唯一双向标记的 E16/E24/E11 均为 S 软序可定向。
-批次草案（序）：ROOT（GF1 默认 False + LB01/LB02/LB05/LB07/LB08/LB03/R05-step1/R22-parity 承重注释+parity，纯增量零结构）→ Batch-A（零前置死叶子 G14/G16已fixed-no-op/G21已fixed/G28/G31/G32/G35/G37/G11已fixed/G38已fixed，G03 延后，G25 已并回 G24）→ Batch-B（单门控前置 G06/G07/G08/G12←G11前置已满足/G19/G20/G24含G25旁支已fixed/G40/G30/G36/G39 KEEP；G13/R55 本轮跳过且 G11 前置已满足）→ Batch-C（身份族收敛 G04→G01/G27/G09/G10/G29/G15/G22/G33/G34/G17/G23）→ Batch-D（facade 最晚 G18←三桶收敛 + G26 KEEP/G41/G42 KEEP）。
+批次草案（序）：ROOT（GF1 默认 False + LB01/LB02/LB05/LB07/LB08已fixed/LB03/R05-step1/R22-parity 承重注释+parity，纯增量零结构）→ Batch-A（零前置死叶子 G14/G16已fixed-no-op/G21已fixed/G28/G31/G32/G35/G37/G11已fixed/G38已fixed，G03 延后，G25 已并回 G24）→ Batch-B（单门控前置 G06/G07/G08/G12←G11前置已满足/G19/G20/G24含G25旁支已fixed/G40已fixed/G30/G36/G39 KEEP；G13/R55 本轮跳过且 G11 前置已满足）→ Batch-C（身份族收敛 G04→G01/G27/G09/G10/G29/G15/G22/G33/G34/G17/G23）→ Batch-D（facade 最晚 G18←三桶收敛 + G26 KEEP/G41/G42 KEEP）。
 重灾区：**24 文件**（红队第1轮 +5：operation_execution_scope.py + R54 缺席四文件）≥2 债顺序敏感，最危 3 个=feedback_service.py(LB01↔R17 同 _build_event_payload)、execution_review.py(承重五钉↔R62)、gantt_critical_chain_provider.py(_copy↔_normalize 误删)；**6 承重文件**全标禁区（含 operation_execution_scope.py R09 收口家↔LB01 最终底同文件）。
 边总变化：旧 146 −删 27（假边 22+已修对消 5）+新 **19**（同符号 co-change/收口前置硬边/N1N2 邻接/facade 删序 +红队 E28/E29 同文件承重毗邻）~降 18（硬→软/解耦/方向反转）= 重建约 **138 边，跨簇有效约束边 29 条（H 13/S 14/P 2）**，真门控分层硬边仍 13 条。
 与旧 DAG 主要差异：R09 收口点已存在→作废建模块改双路 parity；R13 解耦 R18 各自独立，按 O06 先迁 3 测试后删、删前 owner 再确认；R34 纯删（repoint 目标存在）+R05→R34 降软；R54 升 5 套手维面（gantt_task_detail 别名元组+**三基数 16/15/12 禁统一键名**）；R56 入 fixed（偏离铁律 3 待认账）；新债 N1（can_write_feedback 失忆债门控 R08）/N2（return 0 sentinel）补注释+绑契约；R03 四态 parity（missing 态:267 生产可达，非全死分支）；R29 误标纠回 planned 后 O20 裁 KEEP，E07 改为 R29/G26 先闭合、R26/G18 后删 facade；批次由 16 收缩为 ROOT+4 大批，待裁项按裁后口径执行。

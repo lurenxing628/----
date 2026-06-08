@@ -4950,14 +4950,14 @@
   "id": "LB08",
   "bucket": "B10",
   "home": "B10",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "medium",
   "pathology": "P3",
   "partition": "core-models",
   "kind": "load_bearing",
   "load_bearing": true,
   "needs_adversarial": true,
-  "adv_refuted": null,
+  "adv_refuted": false,
   "title": "legacy 错误串正则重解析:把已渲染中文串反解回 code,两代错误体制并存",
   "old_location_DONT_TRUST": "core/models/scheduler_public_errors.py:62-103,218-290",
   "primary_file": "scheduler_public_errors.py",
@@ -4966,7 +4966,7 @@
    "scheduler_public_errors.py",
    "scheduler_summary_display.py"
   ],
-  "current_evidence_2026_06_05": "core/models/scheduler_public_errors.py git diff vs b08162cd 为空(提交态≡基线);LEGACY_PUBLIC_PATTERNS 在 :62 仍是原样,其上方 :61 为空行、无任何「⚠️ 反解中文串/与 make_public_error 并存/终态删正则」的承重护栏注释;计划要求的①补「别动我」注释 + ②绑 regression_scheduler_user_visible_messages 续命契约 均未落(该测试文件 git diff vs 基线亦为空)。承重正则桥本身完整未被误删(符合红线),但规定的注释+契约动作尚未执行。",
+  "current_evidence_2026_06_05": "2026-06-08 B执行终态:G40a/LB08 已 fixed。core/models/scheduler_public_errors.py:62 已有承重护栏注释,说明 LEGACY_PUBLIC_PATTERNS 是老中文错误串到公开错误码的反解桥,改 internal_operation/resource_validation 中文模板时必须同步这里；LEGACY_PUBLIC_PATTERNS、_LEGACY_CODE_PREFIXES、legacy_public_error_message、infer_legacy_public_code、make_public_error 均保留未删。既有契约 tests/schedule/route_view/test_scheduler_user_visible_messages.py 继续覆盖 legacy 中文串反解和 build_public_error_records 公共错误体。提交证据:fae8829b refactor(phase4): add ROOT safety guards。",
   "cluster": "C01",
   "same_file_siblings": [
    "R46"
@@ -5000,9 +5000,9 @@
   ],
   "verdict": null,
   "adv_precondition": "",
-  "planned_batch_hint": "Batch-1(全局 ROOT · 纯增量零结构 · 承重注释+契约测试网)。与其他 LB 注释互不冲突(无两债改同一行段),铺好护栏网后 R46 等结构动作才有保护。",
-  "planned_deps_hint": "与 R46 同文件同桶(co_change_within_group=[R46])。Phase1 边 LB08→R46『承重先于动同文件』:LB08 注释必须先落(或同提交先于 R46 删行),钉死哪段是承重不可碰。本桶 cross_bucket_same_file_edges=[](无跨桶同文件冲突)。LB08 注释入全局 ROOT Batch-1,R46 删除入 Batch-11。无 LB07/R71 类 parity 前置(LB08 不是双栈等价实现,是产出↔解析桥)。",
-  "planned_fix_hint": "承重,只补注释+绑契约测试,严禁删/合并/统一/透传正则桥。【动作1·钉注释】在 scheduler_public_errors.py:62(LEGACY_PUBLIC_PATTERNS 定义行)上方(当前 :61 为空行)逐字贴入90节LB-B3起草文案:`# ⚠️ 这组正则把已渲染的中文错误串反解回 code,与下方 make_public_error(结构化体制)并存。` / `# 它强耦合具体中文模板字面:改任何被 auto_assign_resource_errors 发出的错误文案,` / `# 都必须同步更新这里的 pattern,否则错误会静默降级为通用文案。` / `# 终态:让老路径也走 make_public_error 端到端带 code,然后删除本组正则。`(注:该文案对产出点的指向有误,见 open_questions#1,需 owner 裁断逐字贴 vs 更正",
+  "planned_batch_hint": "ROOT/G40a 已执行。LB08 承重注释已按 O35 裁定指向 internal_operation/resource_validation 产出的中文模板,作为 R46 删除前置。",
+  "planned_deps_hint": "已满足：LB08 承重注释已先于 R46 存在；R46 删除时未触碰 LEGACY 正则桥/make_public_error。本桶 cross_bucket_same_file_edges=[](无跨桶同文件冲突)。无 LB07/R71 类 parity 前置(LB08 不是双栈等价实现,是产出↔解析桥)。",
+  "planned_fix_hint": "2026-06-08 已执行：仅在 LEGACY_PUBLIC_PATTERNS 上方补承重注释并绑定既有 test_scheduler_user_visible_messages 契约；注释按 O35 裁定指向 internal_operation/resource_validation,未贴 planned 草稿里 auto_assign 消费方误指文案。零删除、零统一、零透传正则桥。",
   "phase1_blast": {
    "co_change_within_group": [
     "R46"
@@ -5011,12 +5011,12 @@
     "tests/schedule/route_view/test_scheduler_user_visible_messages.py — 这是 LB08 的续命/契约测试:改任一 LEGACY 模板中文文案而不同步正则,该测试断言会红(legacy 模板字面与正则强耦合)"
    ],
    "downstream_effect": "用户可见错误信息的脱敏与归类。改任一中文错误文案 → legacy 正则 fullmatch 静默失配 → 错误降级为通用文案『排产执行遇到问题…』,归类 code 丢失(infer_legacy_public_code 返回空)。属呈现层降级,不影响算法。",
-   "fix_invalidation_risk": "若有人先改 legacy 中文文案不同步正则,会让 regression_scheduler_user_visible_messages 红并使下游 code 归类失效;故 LB08 的『补注释』必须明确钉『文案与正则同生共死』。",
+   "fix_invalidation_risk": "已通过注释和既有契约钉住：改 internal_operation/resource_validation 中文模板不同步正则,会让 regression_scheduler_user_visible_messages 相关断言红并使下游 code 归类失效。",
    "id": "LB08",
-   "lb_colocation_danger": "scheduler_public_errors.py 即 LB08 本体=承重。动同文件的 R46 时绝不能碰:LEGACY_PUBLIC_PATTERNS(:62)/_LEGACY_CODE_PREFIXES(:94)/legacy_public_error_message(:218)/infer_legacy_public_code(:284) 这套正则桥,以及 make_public_error(:175) 结构化产出。",
-   "location_status": "✅准 — scheduler_public_errors.py: LEGACY_PUBLIC_PATTERNS:62, _LEGACY_CODE_PREFIXES:94, legacy_public_error_message:218, infer_legacy_public_code:284 全部精确命中(__all__ 在 :342/:345/:346)。",
+   "lb_colocation_danger": "scheduler_public_errors.py 即 LB08 本体=承重。动同文件的 R46 时绝不能碰现盘 LEGACY_PUBLIC_PATTERNS(:63)/_LEGACY_CODE_PREFIXES(:95)/legacy_public_error_message(:214)/infer_legacy_public_code(:280) 这套正则桥,以及 make_public_error(:171) 结构化产出。",
+   "location_status": "✅ fixed — scheduler_public_errors.py:LEGACY_PUBLIC_PATTERNS 上方已有承重注释；LEGACY_PUBLIC_PATTERNS/_LEGACY_CODE_PREFIXES/legacy_public_error_message/infer_legacy_public_code 全部保留。",
    "pathology": "P3(承重 load_bearing=true):legacy 中文错误串正则反解桥,与结构化 make_public_error 两代体制并存。",
-   "planned_fix_class": "补注释+契约测试(承重:只补『我是故意保留两代桥』注释 + 绑现有 regression_scheduler_user_visible_messages 续命断言,零删除/统一/透传)",
+   "planned_fix_class": "补注释+契约测试已完成(承重:只补『我是故意保留两代桥』注释 + 绑现有 regression_scheduler_user_visible_messages 续命断言,零删除/统一/透传)",
    "prod_consumers": [
     "core/services/scheduler/run/auto_assign_resource_errors.py:6 (import infer_legacy_public_code, legacy_public_error_message)",
     "core/services/scheduler/run/auto_assign_resource_errors.py:42 (legacy_public_error_message)",
@@ -5024,22 +5024,22 @@
     "core/services/scheduler/run/auto_assign_resource_errors.py:157 (infer_legacy_public_code)",
     "web/viewmodels/scheduler_summary_display.py:13 (import legacy_public_error_message)",
     "web/viewmodels/scheduler_summary_display.py:63 (legacy_public_error_message)",
-    "core/models/scheduler_public_errors.py:276 (同文件 public_error_message_from_detail→legacy_public_error_message)",
-    "core/models/scheduler_public_errors.py:325,327,336 (同文件 build_public_error_records→legacy+infer+make_public_error)"
+    "core/models/scheduler_public_errors.py:257/272 (同文件 public_error_message_from_detail→legacy_public_error_message)",
+    "core/models/scheduler_public_errors.py:317/321/323/332 (同文件 build_public_error_records→legacy+infer+make_public_error)"
    ],
    "test_consumers": [
-    "tests/schedule/route_view/test_scheduler_user_visible_messages.py:678 (test_legacy_error_with_sensitive_tail_is_generic,parametrize 4 条 raw,钉死 legacy 模板「自制工序未补全设备或人员，无法排产：工序 B001_05」)",
-    "tests/schedule/route_view/test_scheduler_user_visible_messages.py:694,721,743,758 (build_public_error_records 系列,走 legacy_public_error_message)"
+    "tests/schedule/route_view/test_scheduler_user_visible_messages.py:680 (test_legacy_error_with_sensitive_tail_is_generic,parametrize 4 条 raw,钉死 legacy 模板「自制工序未补全设备或人员，无法排产：工序 B001_05」)",
+    "tests/schedule/route_view/test_scheduler_user_visible_messages.py:697/723/745/760 (build_public_error_records 系列,走 legacy_public_error_message)"
    ]
   },
-  "owner_pending": true,
-  "lb_no_touch": "scheduler_public_errors.py LEGACY 正则桥(把中文串反解回 code,与 make_public_error 并存);禁删正则桥、禁改被 auto_assign_resource_errors 发出的文案而不同步正则;注释钉「文案与正则同生共死」"
+  "owner_pending": false,
+  "lb_no_touch": "scheduler_public_errors.py LEGACY 正则桥(把中文串反解回 code,与 make_public_error 并存);禁删正则桥、禁改被 internal_operation/resource_validation 产出的中文模板而不同步正则;注释钉「文案与正则同生共死」"
  },
  "R46": {
   "id": "R46",
   "bucket": "B10",
   "home": "B10",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P6",
   "partition": "core-models",
@@ -5053,7 +5053,7 @@
   "all_files": [
    "scheduler_public_errors.py"
   ],
-  "current_evidence_2026_06_05": "core/models/scheduler_public_errors.py:162-164 仍逐字保留误导注释 `# Backward-compatible private alias for callers inside this module.` + `def _safe_identifier(...)` + `return public_safe_identifier(...)`;计划要求直删这三行,但仍在原位;全仓 grep `_safe_identifier` 仅命中 :163-164 def 自身(v4_sanitizers.py:37 为独立局部函数),实证零引用即死码,尚未删除。",
+  "current_evidence_2026_06_05": "2026-06-08 B执行终态:G40/R46 已 fixed。core/models/scheduler_public_errors.py 已删除误导注释 `# Backward-compatible private alias for callers inside this module.`、`def _safe_identifier(...)` 与 `return public_safe_identifier(...)` 三行死别名；public_safe_identifier、_positive_int、make_public_error、LEGACY_PUBLIC_PATTERNS/_LEGACY_CODE_PREFIXES、legacy_public_error_message、infer_legacy_public_code、__all__ 均未动。词边界 rg `_safe_identifier` 在 scheduler_public_errors.py 已无命中；同名活函数 core/infrastructure/migrations/v4_sanitizers.py:37 及 :121/:122 调用保留。",
   "cluster": "C01",
   "same_file_siblings": [
    "LB08"
@@ -5094,23 +5094,23 @@
   ],
   "verdict": null,
   "adv_precondition": null,
-  "planned_batch_hint": "Batch-11(B10)· 纯叶子弱耦合,LB08 注释(Batch-1)落定后任意时点可独立落。严格 :162-164 三行删,不碰 LEGACY 正则桥/make_public_error。",
-  "planned_deps_hint": "与 LB08 同文件同桶(co_change_within_group=[LB08])。Phase1 边 LB08→R46:必须在 LB08 注释落定后(或同提交先于本删行)删,删时严格不碰 LB08 正则桥/make_public_error。fix_invalidation_risk=none(删 R46 不影响 LB08 修法,二者无调用关系),唯一约束是避免与 LB08 注释先后改同文件撞行号。无跨桶边。",
-  "planned_fix_hint": "直删 :162-164 三行(误导注释 + def + return 转发体),含误导注释一并删(注释本身就是 :162)。grep 已证全仓零生产/测试/动态引用,无需迁移任何消费方。删后:public_safe_identifier(:142,活,8 处生产消费)、make_public_error(:175)、LEGACY_PUBLIC_PATTERNS/_LEGACY_CODE_PREFIXES/legacy_public_error_message/infer_legacy_public_code(:62/:94/:218/:284 正则桥)、__all__(:340-351)一律不碰。删除范围严格限定 :162-164,维持上下两空行 PEP8 间距(:160-161 与 :165-166 各保留)。",
+  "planned_batch_hint": "Batch-B/G40 已执行。R46 是纯叶子死别名删除，已在 LB08 代码护栏存在后按符号重定位落地。",
+  "planned_deps_hint": "已满足：LB08 承重注释在 LEGACY_PUBLIC_PATTERNS 上方已存在；R46 删除未触碰 LB08 正则桥/make_public_error。fix_invalidation_risk=none(删 R46 不影响 LB08 修法,二者无调用关系)。无跨桶边。",
+  "planned_fix_hint": "2026-06-08 已执行：直删误导注释 + def _safe_identifier + return public_safe_identifier 三行死别名。未迁移任何消费方，因为全仓零引用；public_safe_identifier、make_public_error、LEGACY_PUBLIC_PATTERNS/_LEGACY_CODE_PREFIXES、legacy_public_error_message、infer_legacy_public_code、_positive_int、__all__ 一律未动。",
   "phase1_blast": {
    "co_change_within_group": [
     "LB08"
    ],
    "contract_topology_tests": [],
-   "downstream_effect": "无运行期影响,纯死函数 + 误导性注释。删除后行为零变化。",
-   "fix_invalidation_risk": "none — 删 R46 不影响 LB08 修法(二者无调用关系);但必须在同一次提交里与 LB08 注释协调,避免两人先后改同文件撞行号。",
+   "downstream_effect": "无运行期影响,纯死函数 + 误导性注释已删除。行为零变化。",
+   "fix_invalidation_risk": "已消解 — LB08 代码护栏已存在，R46 删除未触碰 LB08 修法(二者无调用关系)。",
    "id": "R46",
-   "lb_colocation_danger": "同居 LB08 承重文件 scheduler_public_errors.py。删 _safe_identifier(:162-164,含注释)时绝不能误删/改动 LEGACY 正则桥(:62/:94/:218/:284)与 make_public_error(:175)/public_safe_identifier(:142)。删除范围严格限定 :162-164 三行。",
-   "location_status": "✅准 — core/models/scheduler_public_errors.py:163 def _safe_identifier,:164 body(转发 public_safe_identifier)。词边界 grep 排除 public_/v4_ 后仅命中 def 自身,不在 __all__(:349 只有 public_safe_identifier)。",
+   "lb_colocation_danger": "同居 LB08 承重文件 scheduler_public_errors.py。R46 执行前目标曾是 _safe_identifier(:162-164,含注释)，现已删除且 models 层零命中。后续动同文件时绝不能误删/改动现盘 LEGACY 正则桥(:63/:95/:214/:280)与 make_public_error(:171)/public_safe_identifier(:143)。",
+   "location_status": "✅ fixed — core/models/scheduler_public_errors.py 中 _safe_identifier 私有死别名已删除；词边界 grep 排除 v4_sanitizers 同名活函数后无残留，不在 __all__。",
    "pathology": "P6 死别名:注释自称『module 内部 caller 用』,实测模块内外零调用(:197/:200 全用 public_safe_identifier)。",
-   "planned_fix_class": "直删(删 :162-164,纯叶子)",
+   "planned_fix_class": "直删已完成(纯叶子)",
    "prod_consumers": [
-    "生产零引用(已grep证实) — 全仓仅 def:163 自身;模块内 :164/:197/:200 及外部 resource_validation.py/summary_size_guard_fields.py/scheduler_summary_display.py 一律调 public_safe_identifier"
+    "生产零引用(已grep证实) — 执行前仅 def:163 自身和转发体;执行后 core/models/scheduler_public_errors.py 对 _safe_identifier 零命中;外部 resource_validation.py/summary_size_guard_fields.py/scheduler_summary_display.py 一律调 public_safe_identifier"
    ],
    "test_consumers": [
     "无 — grep _safe_identifier(排除 public_/v4_) 在 tests/ 下零命中"

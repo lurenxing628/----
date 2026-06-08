@@ -870,7 +870,7 @@
  "LB08": {
   "id": "LB08",
   "bucket": "B10",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "P3",
   "lb": true,
@@ -879,16 +879,16 @@
   "siblings": [
    "R46"
   ],
-  "batch": "Batch-1(全局 ROOT · ",
-  "owner_pending": true,
+  "batch": "ROOT/G40a 已 fixed",
+  "owner_pending": false,
   "needs_adv": true,
-  "adv_refuted": null,
+  "adv_refuted": false,
   "title": "legacy 错误串正则重解析:把已渲染中文串反解回 code,两代错误体制并存"
  },
  "R46": {
   "id": "R46",
   "bucket": "B10",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,
@@ -897,7 +897,7 @@
   "siblings": [
    "LB08"
   ],
-  "batch": "Batch-11(B10)· 纯叶子",
+  "batch": "Batch-B/G40 已 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,

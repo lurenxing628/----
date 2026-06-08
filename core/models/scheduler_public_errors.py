@@ -160,11 +160,6 @@ def public_safe_label(value: Any, *, max_chars: int = 80) -> str:
     return text[:max_chars]
 
 
-# Backward-compatible private alias for callers inside this module.
-def _safe_identifier(value: Any, *, max_chars: int = 80) -> str:
-    return public_safe_identifier(value, max_chars=max_chars)
-
-
 def _positive_int(value: Any) -> int:
     try:
         number = int(value or 0)

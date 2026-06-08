@@ -58,8 +58,8 @@
 | R52 | GRAPH-ERR-DIAG | ✅ fixed | 🟢 | 2026-06-08 已按 O07 裁定方向 B 保留：`ready_queue.py:103` 全量扫描版不再当待删生产实现，而是明确作为 incremental-vs-fullscan 差分 oracle | 已补「我是故意的」注释；不删 impl、不删 R25 垫片、不新建 `test_sgs_graph_ready.py`。旧方向 A 的 31 用例分流/异常类 parity/枚举退场分析只作为历史禁区保留，当前执行路线已废弃。 |
 | R14 | GRAPH-ERR-DIAG | 🔴🔴🟡·🟡🟡 | 🔴 | 删死门 _resolve_strict_plan:134（非 scenario 走 resolve_existing_plan loud raise「无回退」）；把 :328 候选灵魂线平移活门 diagnose（活门走 resolve_plan fallback_to_adopted 静默不 raise）→ 解析被 fallback 吃→「非 scenario 缺角色应 raise（无静默回退）」灵魂线覆盖被悄悄丢；撞 LB01 同符号承重 | 跨簇 LB01 承重裁断先行（:134-139 让位）；owner 裁 :328 改钉 resolve_existing_plan 层禁平移活门；:358 scenario 灵魂线两门同源可平移；删死门不得顺手修 resolve_plan 静默回退（铁律 4）；改 roadmap:485-498+items.yaml:83。r1 两透镜红，r2 降黄但双门 owner_pending 维持红（删动作牵动灵魂线覆盖）。 |
 | R24 | GRAPH-ERR-DIAG | 🔴🟡🟡·🟡🟡 | 🟡 | 路 A 删 core 死副本安全；路 B 把活 web 路径改指零消费 core 合同 → core 对 NaN/Inf/bool 静默透传 vs web 孪生 safe_int/safe_float loud raise NonFiniteDiagnosticNumber → 丢护栏退化静默吞坏值（P4）+ 立零消费 core 为收口点违铁律 5 | 只走路 A 删 core（owner 默认推 A，路 B 强制前置护栏先下沉+3 parity 反例）；先调和 networkx roadmap items.yaml:435/:480/:481（:480 ruff+:481 pyright 都含 core 文件名只摘 core 保留 web helpers）；测试逐条剪混合用例 :83 单行；绝不反删 web 孪生护栏。r1-LB 标红=路 B 隐患，路 A 安全故综合黄。 |
-| LB08 | GRAPH-ERR-DIAG | 🟡🟡🟡·🟡🟡 | 🟡 | 承重 legacy 正则反解桥；删→legacy 中文串 fullmatch 失配静默降级通用文案+code 丢失（P4）；注释逐字文案产出点指错（planned 指 auto_assign 是消费方，真产出在 internal_operation.py:119/148/150/152/154+resource_validation:86） | 仅补注释+绑契约 regression_scheduler_user_visible_messages.py:678 绝不删/统一/透传；注释先落钉死承重边界 R46 才删；产出点 owner 按实证改写禁贴 planned 草稿（否则注释指消费方=埋新失忆债）；禁区 :62/:94/:142/:175/:218/:284/:340。 |
-| R46 | GRAPH-ERR-DIAG | 🟡🟡🟡·🟡🟡 | 🟡 | 死别名 _safe_identifier 直删；同名陷阱 v4_sanitizers.py:37 _safe_identifier 活函数（SQL 标识符 sanitize），按符号名跨文件删→v4 迁移 NameError 崩 | 文件+行号+符号三锁定删 scheduler_public_errors.py:163-165；LB08 注释先落后行号下移须按符号重 grep；禁区与 LB08 零重叠。 |
+| LB08 | GRAPH-ERR-DIAG | 🟢 fixed | 🟢 fixed | 承重 legacy 正则反解桥；删→legacy 中文串 fullmatch 失配静默降级通用文案+code 丢失（P4）；注释逐字文案产出点已按 O35 指向 internal_operation/resource_validation | 已仅补注释+绑既有契约，绝未删/统一/透传正则桥；注释已先落钉死承重边界，R46 已在其后删除；禁区 :62/:94/:142/:175/:218/:284/:340 未动。 |
+| R46 | GRAPH-ERR-DIAG | 🟢 fixed | 🟢 fixed | 死别名 _safe_identifier 已直删；同名陷阱 v4_sanitizers.py:37 _safe_identifier 活函数（SQL 标识符 sanitize）保留 | 已按文件+符号三锁定删除 scheduler_public_errors.py 的私有死别名；LB08 正则桥、public_safe_identifier、_positive_int、make_public_error、__all__ 未动。 |
 | R02 | GRAPH-ERR-DIAG | 🟢🟢🟢·🟢🟢 | 🟢 | 死壳直删，先拆测试 import :11 单符号改指 resource_matching_context 后三符号留原路径 | 先拆 import 再删壳 :461-475；禁连删兄弟壳 :478（report.py:180 承重）+ GraphInputContractError 守卫。 |
 | R06 / R27 | GRAPH-ERR-DIAG | 🟢🟡🟡·🟡🟡 | 🟢 | **2026-06-08 已 fixed**；四空包同提交直删已完成；SP05 现盘 :312 仅留 config/run/summary；旧 delayed 循环已删；_assert_init_has_no_imports 现盘 :175 定义与 :408 web 调用仍在 | 已按一次性原子提交执行；保留 :175 定义；:312 内 config/run/summary 真包未摘；:637 第二处三元组未动。 |
 | R25 | GRAPH-ERR-DIAG | ✅ fixed | 🟢 | 2026-06-08 已随 R52 按 O07 KEEP 闭合：service 垫片补注释后 13 行，继续保留给兼容/差分测试，不再执行旧删垫片路线 | 已补「我是故意的」注释；不退 lazy_runtime/metrics_topology 模块枚举；R52 决策门已裁方向 B。 |
@@ -207,10 +207,10 @@
 - 必须先落 parity/注释：R51 收口点 loud raise 已只读确认且本次未动；R29 KEEP 仅补注释。
 - 测试迁移序：R51 两续命测试已整体退场，未迁移未保留 :25 兜底断言；R29 走 B 先重写 number_utils_facade 测试为身份测试。
 
-**C-GRAPH-ERR-DIAG（R52🟢已fixed / R14🔴 / R24🟡 / LB08🟡 / R46🟡 / R02🟢 / R06·R27🟢已fixed / R25🟢已fixed）**
-- 原子性最终判定：R52/R25 已按 O07 方向 B fixed，只补认账注释，未删 impl/垫片，未新建迁移测试；R06+R27+gantt 四空包同一原子提交已完成；LB08 注释先落→R46 才删；R18 风格 R46 按符号重 grep（LB08 插行后下移）。
+**C-GRAPH-ERR-DIAG（R52🟢已fixed / R14🔴 / R24🟡 / LB08🟢已fixed / R46🟢已fixed / R02🟢 / R06·R27🟢已fixed / R25🟢已fixed）**
+- 原子性最终判定：R52/R25 已按 O07 方向 B fixed，只补认账注释，未删 impl/垫片，未新建迁移测试；R06+R27+gantt 四空包同一原子提交已完成；LB08 注释已先落且 R46 已按符号重 grep 删除私有死别名。
 - 承重禁区（按符号）：LB08 LEGACY_PUBLIC_PATTERNS:62 等正则桥（删→静默降级通用文案）、R52 ReadyQueueContractError 抛错链 loud raise、R24 web 孪生 NonFiniteDiagnosticNumber/safe_int/safe_float、R46 同名陷阱 v4_sanitizers:37、R14 _resolve_strict_plan（撞 LB01）、R02 兄弟壳 :478+GraphInputContractError 守卫、R06 _assert_init_has_no_imports 现盘 :175 + SP05 现盘 :637 第二处三元组。
-- 必须先落 parity/注释：R52/R25 已落 KEEP 注释；旧方向 A 的 parity/测试迁移要求仅作为未来重启删除路线的禁区，不是当前待执行项。LB08 注释产出点按实证 internal_operation.py:119/148/150/152/154 改写禁贴 planned 草稿。
+- 必须先落 parity/注释：R52/R25 已落 KEEP 注释；旧方向 A 的 parity/测试迁移要求仅作为未来重启删除路线的禁区，不是当前待执行项。LB08 注释产出点已按实证 internal_operation.py:119/148/150/152/154 改写，禁贴 planned 草稿。
 - 测试迁移序：R52 当前不迁不删；若未来重启方向 A，才恢复 31 用例分流与 4 条 ValidationError 契约迁移。R14 候选灵魂线 :328 owner 裁改钉 resolve_existing_plan 层禁平移活门。
 
 **C-LEAF-DUP-P4（R70🟢 / R43🟡 / R69🔴 / R03🟡 / R41🟡 / R68🟡 / R32🟡 / R40🟡 / R53🟢 / R61🟢 / LB04🟡）**
