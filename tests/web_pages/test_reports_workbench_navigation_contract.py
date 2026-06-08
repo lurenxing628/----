@@ -150,6 +150,25 @@ def test_scheduler_nav_template_uses_python_link_builder() -> None:
     assert "url_for(" not in macro
 
 
+def test_all_nav_specs_have_nonempty_plain_url() -> None:
+    from web.viewmodels.scheduler_navigation_links import build_scheduler_navigation_links
+
+    links = build_scheduler_navigation_links({})
+
+    assert [item["url"] for item in links] == [
+        "/scheduler/",
+        "/scheduler/batches",
+        "/scheduler/config",
+        "/scheduler/resource-dispatch",
+        "/scheduler/gantt?view=machine",
+        "/scheduler/gantt?view=operator",
+        "/scheduler/analysis",
+        "/scheduler/week-plan",
+        "/scheduler/calendar",
+    ]
+    assert all(item["url"] for item in links)
+
+
 def test_scheduler_navigation_does_not_cross_wire_gantt_resource_between_views() -> None:
     app = _client().application
     from web.navigation_context import build_scheduler_navigation_links
