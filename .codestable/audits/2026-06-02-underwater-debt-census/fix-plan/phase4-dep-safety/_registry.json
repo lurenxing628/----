@@ -4736,7 +4736,7 @@
   "id": "R06",
   "bucket": "B09",
   "home": "B09",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P3",
   "partition": "scheduler-dispatch",
@@ -4748,7 +4748,7 @@
   "old_location_DONT_TRUST": "core/services/scheduler/dispatch/__init__.py",
   "primary_file": "__init__.py",
   "all_files": [],
-  "current_evidence_2026_06_05": "core/services/scheduler/dispatch/__init__.py 仍为 0 字节空包(未删);test_sp05_path_topology_contract.py:310 元组仍含 batch/dispatch/gantt/calendar,:315-316 delayed 循环仍枚举四个空包,均未改。",
+  "current_evidence_2026_06_05": "2026-06-08 B执行终态:core/services/scheduler/dispatch/__init__.py 已随 batch/calendar/gantt 四空包同提交删除;test_sp05_path_topology_contract.py:312 元组仅保留 config/run/summary;旧 delayed-package 循环已删;_assert_init_has_no_imports 定义仍保留给 web 域检查。",
   "cluster": "ISOLATED",
   "same_file_siblings": [
    "R27"
@@ -6635,7 +6635,7 @@
   "id": "R27",
   "bucket": "B14",
   "home": "B14",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P3",
   "partition": "scheduler-config-summary-graph",
@@ -6647,7 +6647,7 @@
   "old_location_DONT_TRUST": "core/services/scheduler/calendar/__init__.py (0字节) + core/services/scheduler/batch/__init__.py (1字节)",
   "primary_file": "__init__.py",
   "all_files": [],
-  "current_evidence_2026_06_05": "4 个空 delayed 包全部仍存在且 0 字节:core/services/scheduler/{calendar,batch,dispatch,gantt}/__init__.py;SP05 test_sp05_path_topology_contract.py:310 存在性元组仍含 batch/dispatch/gantt/calendar、:315-316 delayed-package 循环仍遍历这 4 包。V22 同提交直删(4 目录+2 SP05 站点)完全未动。",
+  "current_evidence_2026_06_05": "2026-06-08 B执行终态:core/services/scheduler/{calendar,batch,dispatch,gantt}/__init__.py 四个 tracked 空包已同提交删除;SP05 test_sp05_path_topology_contract.py:312 存在性元组仅含 config/run/summary;旧 :315-316 delayed-package 循环已删除。V22 同提交直删完成。",
   "cluster": "ISOLATED",
   "same_file_siblings": [
    "R06"

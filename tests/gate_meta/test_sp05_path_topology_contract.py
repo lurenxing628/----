@@ -309,13 +309,10 @@ def _reset_scheduler_route_modules() -> None:
 
 
 def test_sp05_service_topology_and_strong_compatibility() -> None:
-    for package_name in ("config", "run", "summary", "batch", "dispatch", "gantt", "calendar"):
+    for package_name in ("config", "run", "summary"):
         package_dir = REPO_ROOT / "core/services/scheduler" / package_name
         assert package_dir.is_dir()
         assert (package_dir / "__init__.py").is_file()
-
-    for delayed_package in ("batch", "dispatch", "gantt", "calendar"):
-        _assert_init_has_no_imports(REPO_ROOT / "core/services/scheduler" / delayed_package / "__init__.py")
 
     lingering_root_files = [path for path in SERVICE_ROOTS_WITHOUT_COMPAT if (REPO_ROOT / path).exists()]
     assert lingering_root_files == []

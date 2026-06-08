@@ -61,7 +61,7 @@
 | LB08 | GRAPH-ERR-DIAG | 🟡🟡🟡·🟡🟡 | 🟡 | 承重 legacy 正则反解桥；删→legacy 中文串 fullmatch 失配静默降级通用文案+code 丢失（P4）；注释逐字文案产出点指错（planned 指 auto_assign 是消费方，真产出在 internal_operation.py:119/148/150/152/154+resource_validation:86） | 仅补注释+绑契约 regression_scheduler_user_visible_messages.py:678 绝不删/统一/透传；注释先落钉死承重边界 R46 才删；产出点 owner 按实证改写禁贴 planned 草稿（否则注释指消费方=埋新失忆债）；禁区 :62/:94/:142/:175/:218/:284/:340。 |
 | R46 | GRAPH-ERR-DIAG | 🟡🟡🟡·🟡🟡 | 🟡 | 死别名 _safe_identifier 直删；同名陷阱 v4_sanitizers.py:37 _safe_identifier 活函数（SQL 标识符 sanitize），按符号名跨文件删→v4 迁移 NameError 崩 | 文件+行号+符号三锁定删 scheduler_public_errors.py:163-165；LB08 注释先落后行号下移须按符号重 grep；禁区与 LB08 零重叠。 |
 | R02 | GRAPH-ERR-DIAG | 🟢🟢🟢·🟢🟢 | 🟢 | 死壳直删，先拆测试 import :11 单符号改指 resource_matching_context 后三符号留原路径 | 先拆 import 再删壳 :461-475；禁连删兄弟壳 :478（report.py:180 承重）+ GraphInputContractError 守卫。 |
-| R06 / R27 | GRAPH-ERR-DIAG | 🟢🟡🟡·🟡🟡 | 🟡 | 四空包同提交直删；逐增量摘→中间态 old_string 失配；漏删 _assert_init_has_no_imports:173 调用块边界→:409 NameError | 四包一次性原子提交（:310 改三元组+删 :315-316+删四目录）；保留 :173 定义；:310 内 config/run/summary 真包只留不摘；:638 第二处三元组不碰。 |
+| R06 / R27 | GRAPH-ERR-DIAG | 🟢🟡🟡·🟡🟡 | 🟢 | **2026-06-08 已 fixed**；四空包同提交直删已完成；SP05 现盘 :312 仅留 config/run/summary；旧 delayed 循环已删；_assert_init_has_no_imports 现盘 :175 定义与 :408 web 调用仍在 | 已按一次性原子提交执行；保留 :175 定义；:312 内 config/run/summary 真包未摘；:637 第二处三元组未动。 |
 | R25 | GRAPH-ERR-DIAG | 🟡🟡🟡·—🟡 | 🟡 | 删 service 垫片 11 行；先删垫片而 R52 未迁测试→test_ready_queue.py:16 import + _full_scan_ready_ids:79 双红 | 与 R52 同提交且晚于测试迁移；同提交退两处模块路径断言；命运由 R52 决策门定。 |
 | R70 | LEAF-DUP-P4 | 🔴🟢🟢·🟢🟢 | 🟢 | 纯删 schedule_service.py:46-50 死副本，live 在 run/input_collector.py:79 | 保 :7 ValidationError import（:217 仍用）。r1-LB 误判「:46 是承重正式函数 _raise_schedule_empty_result」，r2 逐符号 rg 推翻（:46 就是死副本本体本文件零调用），见回炉。 |
 | R43 | LEAF-DUP-P4 | 🔴🟢🟡·🟡🟡 | 🟡 | 删 9 wrapper + compat + 清 scheduler_config.py:95 软 fallback；roadmap 延期行 :522（dossier 体内 :521 自污染） | owner 认账 roadmap 延期决定；删 wrapper 与迁/删测试同 PR；迁 22 文件（19 plain+3 契约）；R43↔R26 共碰 scheduler_config.py+SP05 串行。r1-LB 误判「scheduler_run.py 仅 8 行薄壳=wrapper 失踪」，r2 推翻（:8 薄壳即债本体，9 wrapper 实存），见回炉。 |
@@ -207,9 +207,9 @@
 - 必须先落 parity/注释：R51 收口点 loud raise 只读确认；R29 KEEP 仅补注释。
 - 测试迁移序：R51 两续命测试整体退场禁迁移禁保留 :25 兜底断言（保留=复活 P4）；R29 走 B 先重写 number_utils_facade 测试为身份测试。
 
-**C-GRAPH-ERR-DIAG（R52🔴 / R14🔴 / R24🟡 / LB08🟡 / R46🟡 / R02🟢 / R06·R27🟡 / R25🟡）**
-- 原子性最终判定：R52 方向 A 先新建 test_sgs_graph_ready.py 按 31 用例分流→再删 impl+R25 垫片同提交；R06+R27+gantt 四空包同一原子提交；LB08 注释先落→R46 才删；R18 风格 R46 按符号重 grep（LB08 插行后下移）。
-- 承重禁区（按符号）：LB08 LEGACY_PUBLIC_PATTERNS:62 等正则桥（删→静默降级通用文案）、R52 ReadyQueueContractError 抛错链 loud raise、R24 web 孪生 NonFiniteDiagnosticNumber/safe_int/safe_float、R46 同名陷阱 v4_sanitizers:37、R14 _resolve_strict_plan（撞 LB01）、R02 兄弟壳 :478+GraphInputContractError 守卫、R06 _assert_init_has_no_imports:173+SP05:638 第二处三元组。
+**C-GRAPH-ERR-DIAG（R52🔴 / R14🔴 / R24🟡 / LB08🟡 / R46🟡 / R02🟢 / R06·R27🟢已fixed / R25🟡）**
+- 原子性最终判定：R52 方向 A 先新建 test_sgs_graph_ready.py 按 31 用例分流→再删 impl+R25 垫片同提交；R06+R27+gantt 四空包同一原子提交已完成；LB08 注释先落→R46 才删；R18 风格 R46 按符号重 grep（LB08 插行后下移）。
+- 承重禁区（按符号）：LB08 LEGACY_PUBLIC_PATTERNS:62 等正则桥（删→静默降级通用文案）、R52 ReadyQueueContractError 抛错链 loud raise、R24 web 孪生 NonFiniteDiagnosticNumber/safe_int/safe_float、R46 同名陷阱 v4_sanitizers:37、R14 _resolve_strict_plan（撞 LB01）、R02 兄弟壳 :478+GraphInputContractError 守卫、R06 _assert_init_has_no_imports 现盘 :175 + SP05 现盘 :637 第二处三元组。
 - 必须先落 parity/注释：R52 parity 异常类只断「均拒绝」+ None 分支两路分别写 + 删 _full_scan_ready_ids:79 helper 与改 6 oracle 原子；LB08 注释产出点按实证 internal_operation.py:119/148/150/152/154 改写禁贴 planned 草稿。
 - 测试迁移序：R52 先迁后删（含 31 用例 + 4 ValidationError 契约，行号按符号 :299/:311/:326/:352）；R14 候选灵魂线 :328 owner 裁改钉 resolve_existing_plan 层禁平移活门。
 

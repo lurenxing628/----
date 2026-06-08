@@ -21,9 +21,10 @@
 
 ### 子簇 A2 — R06 + R27 + gantt 空包（**强制同一提交**）
 - **成员**：R06(dispatch 空包)、R27(calendar+batch 空包)、gantt 空包(无独立 id，V22 同批带走)。
+- **2026-06-08 B 执行终态**：已 fixed。四个空包的 tracked `__init__.py` 已同提交删除；SP05 service 拓扑存在性元组已收回 `("config", "run", "summary")`；旧 delayed-package no-import 循环已删除。
 - **原子原因**：**同收口点同两行**。三方都改 `tests/gate_meta/test_sp05_path_topology_contract.py` 的**同一 :310 存在性循环行**（`for package_name in ("config","run","summary","batch","dispatch","gantt","calendar")`）和**同一 :315 delayed 循环行**（`for delayed_package in ("batch","dispatch","gantt","calendar")`）。逐增量摘会产生中间态（七元组→六元组→…），第二次提交按过时行内容 old_string 匹配会失配/误删。空包目录本身是不同目录的不同 `__init__.py`、互不撞行号，但 SP05 两行是物理同改点。
-- **内部顺序**：**无先后，只有「四包同提交」单一安全顺序**——一次性把 :310 改成 `("config","run","summary")`、:315-316 整块删除，同提交删 dispatch/calendar/batch/gantt 四目录。
-- **禁区行（删块时绝不越界）**：`:173 def _assert_init_has_no_imports`（:409 web 空域循环仍调用，连定义删→NameError）；:310 元组里 `config/run/summary`（真业务包）只保留不摘；:318 起 lingering/strong-compat 断言不碰。
+- **已完成的内部顺序（历史执行记录，勿重复处理）**：已按「四包同提交」单一安全顺序一次性执行：现盘 SP05 `:312` 只遍历 `("config", "run", "summary")`，旧 `:317-318` delayed 循环块已删除，同提交删 dispatch/calendar/batch/gantt 四个 tracked `__init__.py`。
+- **禁区行（执行后复核）**：`:175 def _assert_init_has_no_imports` 保留，`:408` web 空域循环仍调用；`:312` 元组里 `config/run/summary`（真业务包）仍保留；`:317` 起 lingering/strong-compat 断言未动；`:637` 第二处三元组未动。
 
 ### 子簇 A3 — R52 + R25（**同提交**；R52 决策门先行）
 - **成员**：R52(算法层 `core/algorithms/greedy/dispatch/ready_queue.py:103` impl body)、R25(service 层 `core/services/scheduler/graph/ready_queue.py` 11 行垫片 shell)。
@@ -115,4 +116,4 @@
 
 ## 返回摘要
 
-簇 C-GRAPH-ERR-DIAG | 原子子簇：6 个 — A1(R02 已 fixed)/A2(R06+R27+gantt 同提交)/A3(R52+R25 同提交,R52 决策门先)/A4(LB08→R46 承重先)/A5(R14 独立,LB01 让位)/A6(R24 独立) | 关键内部顺序：R02 已完成（历史步骤：先拆测试 import 再删壳，勿重复处理）；R06/R27/gantt 四包一次性同提交改 SP05 :310/删 :315-316；R52 先裁 A/B→先迁 23 测试+3 契约到新文件→再删 impl+R25 垫片；LB08 注释先落再 R46 删 :162-164；R14 三步前置(迁灵魂线/改 roadmap/确认)后删；R24 先调和 networkx roadmap 再删 core+测试单行剪 :83 | 跨簇边：R14→LB01(承重先,同符号 _resolve_strict_plan,硬)；R46→R09(_positive_int:167 软位移)/R01/R19(__all__ 块不撞)；R14→LB02/LB05/R61(report_engine 避让)；R24‖R14(roadmap 范式同可并行)；R52→R50(sgs.py 弱) | 边变化：删 R02↔R25(假 same_file)；新 R06+R27+gantt 同 SP05 两行原子边、R24 测试 :83 单行剪；降 R46↔R09 为软位移(R09 收口点已存在) | 承重前置：LB08 注释+绑 regression 契约先于 R46 删行(禁区 :62/:94/:142/:175/:218/:284/:340)；跨簇 LB01 裁断先于 R14 删 :134-139；灵魂线 raise(GraphInputContractError/ReadyQueueContractError/NonFiniteDiagnosticNumber/:328 无回退)全程不削弱；分层 0 违规
+簇 C-GRAPH-ERR-DIAG | 原子子簇：6 个 — A1(R02 已 fixed)/A2(R06+R27+gantt 已 fixed)/A3(R52+R25 同提交,R52 决策门先)/A4(LB08→R46 承重先)/A5(R14 独立,LB01 让位)/A6(R24 独立) | 关键内部顺序：R02 已完成（历史步骤：先拆测试 import 再删壳，勿重复处理）；R06/R27/gantt 已一次性同提交完成（SP05 现盘 :312 三元组、旧 delayed 循环已删）；R52 先裁 A/B→先迁 23 测试+3 契约到新文件→再删 impl+R25 垫片；LB08 注释先落再 R46 删 :162-164；R14 三步前置(迁灵魂线/改 roadmap/确认)后删；R24 先调和 networkx roadmap 再删 core+测试单行剪 :83 | 跨簇边：R14→LB01(承重先,同符号 _resolve_strict_plan,硬)；R46→R09(_positive_int:167 软位移)/R01/R19(__all__ 块不撞)；R14→LB02/LB05/R61(report_engine 避让)；R24‖R14(roadmap 范式同可并行)；R52→R50(sgs.py 弱) | 边变化：删 R02↔R25(假 same_file)；R06+R27+gantt 同 SP05 两行原子边已关闭、R24 测试 :83 单行剪；降 R46↔R09 为软位移(R09 收口点已存在) | 承重前置：LB08 注释+绑 regression 契约先于 R46 删行(禁区 :62/:94/:142/:175/:218/:284/:340)；跨簇 LB01 裁断先于 R14 删 :134-139；灵魂线 raise(GraphInputContractError/ReadyQueueContractError/NonFiniteDiagnosticNumber/:328 无回退)全程不削弱；分层 0 违规

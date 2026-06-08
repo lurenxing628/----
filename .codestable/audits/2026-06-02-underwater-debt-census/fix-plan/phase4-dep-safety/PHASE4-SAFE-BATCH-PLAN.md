@@ -169,9 +169,9 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 
 ### 1.2 Batch-A — 独立死叶子 / 零前置 / owner=false（最早可落）
 
-**成员（调度单元 + 债）**：G14(R10 死方法 `gantt_service:60-62`)、G16(R45≡R48 整文件删 `config_adapter.py`，2026-06-08 已 fixed)、G21(R28 收口 `parse_finite_float`，2026-06-08 已 fixed)、G28(R23 dedup `_normalize_role` 收口 model)、G31(R38 part 份 + R39 `list_unparsed`)、G32(R38 op_type:73/operator:85 两份)、G35(R36 两死方法)、G37(R02 test-only 壳)、G11(R11≡R63 去重 `_normalize` 收口 `gantt_critical_chain.py`，2026-06-08 已 fixed)、G38(R06+R27+gantt 四空包同提交)。**G03(R66)** 仅登记归属，受 E04 软序实际延后到 G04(R54) 后执行；**G25(R49 旁支)** 不在 Batch-A 单独执行，并回 Batch-B 的 G24 一次原子。**+ 纯删叶子**（原 LEAF-DUP-P4 桶，按 ⚠简化声明归入此批）：R53(`batch_order.py:74` 一行)、R61(plan 死簇 `:160/164/172-187` + 重定向负向测试)、R70(`schedule_service.py:46-50` 死副本)。**+ G02(R64+R65，2026-06-08 已 fixed)**：权威源 `_interference_rebuilt.md:17` 定义 G02={R64,R65} NAV-PLANID；历史动作是 R64 删除 `_has_navigation_date_range`、R65 完成 `_target_url` 死分支三件套并保留 `TARGET_PAGE_PATHS`。当前本段只保留批次归属和历史原因，不再表示 R64/R65 待删；后续 R42/R67 进入同文件时按符号重 rg。
+**成员（调度单元 + 债）**：G14(R10 死方法 `gantt_service:60-62`)、G16(R45≡R48 整文件删 `config_adapter.py`，2026-06-08 已 fixed)、G21(R28 收口 `parse_finite_float`，2026-06-08 已 fixed)、G28(R23 dedup `_normalize_role` 收口 model)、G31(R38 part 份 + R39 `list_unparsed`)、G32(R38 op_type:73/operator:85 两份)、G35(R36 两死方法)、G37(R02 test-only 壳)、G11(R11≡R63 去重 `_normalize` 收口 `gantt_critical_chain.py`，2026-06-08 已 fixed)、G38(R06+R27+gantt 四空包同提交，2026-06-08 已 fixed)。**G03(R66)** 仅登记归属，受 E04 软序实际延后到 G04(R54) 后执行；**G25(R49 旁支)** 不在 Batch-A 单独执行，并回 Batch-B 的 G24 一次原子。**+ 纯删叶子**（原 LEAF-DUP-P4 桶，按 ⚠简化声明归入此批）：R53(`batch_order.py:74` 一行)、R61(plan 死簇 `:160/164/172-187` + 重定向负向测试)、R70(`schedule_service.py:46-50` 死副本)。**+ G02(R64+R65，2026-06-08 已 fixed)**：权威源 `_interference_rebuilt.md:17` 定义 G02={R64,R65} NAV-PLANID；历史动作是 R64 删除 `_has_navigation_date_range`、R65 完成 `_target_url` 死分支三件套并保留 `TARGET_PAGE_PATHS`。当前本段只保留批次归属和历史原因，不再表示 R64/R65 待删；后续 R42/R67 进入同文件时按符号重 rg。
 
-> **2026-06-08 执行补登**：G02/G11/G14/G16/G21/G28/G31/G32/G35/G37 已在 `_registry.json` 与对应 dossier 登记 fixed。上方成员段保留批次归属和执行纪律，不再表示这些单元仍待执行；后续不要重复处理 R64/R65/R11/R63/R10/R45/R48/R28/R23/R36/R38/R39/R02。G02 的旧 `scheduler_navigation_links.py` 裸行号已经随删除上移,后续 Batch-C 的 R42/R67 必须按符号重 rg；G11 已把单份 `_normalize_critical_chain_result` 收口到 `gantt_critical_chain.py:67-88`，后续 R12/R55 只能在该单份 helper 上继续改；G16 的旧 sp06 锚点已随 A P1.1 删除测试文件变为 no-op；G21 的 `_safe_float` 保名薄包装仍需保留 fitness 白名单。
+> **2026-06-08 执行补登**：G02/G11/G14/G16/G21/G28/G31/G32/G35/G37/G38 已在 `_registry.json` 与对应 dossier 登记 fixed。上方成员段保留批次归属和执行纪律，不再表示这些单元仍待执行；后续不要重复处理 R64/R65/R11/R63/R10/R45/R48/R28/R23/R36/R38/R39/R02/R06/R27/gantt 空包。G02 的旧 `scheduler_navigation_links.py` 裸行号已经随删除上移,后续 Batch-C 的 R42/R67 必须按符号重 rg；G11 已把单份 `_normalize_critical_chain_result` 收口到 `gantt_critical_chain.py:67-88`，后续 R12/R55 只能在该单份 helper 上继续改；G16 的旧 sp06 锚点已随 A P1.1 删除测试文件变为 no-op；G21 的 `_safe_float` 保名薄包装仍需保留 fitness 白名单；G38 已把 SP05 service 拓扑元组收回 `("config", "run", "summary")`，并删除四空包 no-import 循环。
 
 **是否原子**：可执行成员**互相独立**（跨文件零碰撞），可各自单提交；簇内多债（G31 R38part+R39、G38 四空包）须各自原子同提交（见前置）。G03 是软序延后项，G25 是并回 G24 的同债旁支，不按 Batch-A 独立提交。整批 owner=false。
 
@@ -181,7 +181,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 
 **前置安全网（逐条点名）**：
 - G11(R11≡R63)：2026-06-08 已 fixed；已先建 normalize parity 黄金基线并扩到 11 个 legacy 边界（钉 `available=0→True` + `bool()` 包裹差异），再把单份 helper 收口到 `gantt_critical_chain.py:67-88`；support/provider 两路仅改调用目标，未 `return raw`，未误删 `_copy_critical_chain_result`。A1 前置已满足，后续 G12/G13 仍只许在单份 helper 上继续改。
-- G38(R06+R27+gantt 空包)：**四包一次性原子提交**（`:310` 改三元组 + 删 `:315-316` + 删四目录），逐增量摘致中间态 old_string 失配；保留 `_assert_init_has_no_imports:173` 定义；`:638` 第二处三元组不碰。
+- G38(R06+R27+gantt 空包)：2026-06-08 已 fixed；已按**四包一次性原子提交**执行：`tests/gate_meta/test_sp05_path_topology_contract.py:312` 仅保留 `("config", "run", "summary")`，旧 `:315-316` delayed 循环已删除，四个空包 `batch/calendar/dispatch/gantt` 的 tracked `__init__.py` 已删除；`_assert_init_has_no_imports` 定义保留在现盘 `:175`，web 域调用仍在 `:408`，`:637` 第二处三元组未动。
 - G37(R02)：先拆测试 import（`:11` 单符号改指 resource_matching_context）→ 后删壳 `:461-475`；禁连删兄弟壳 `:478`（report.py:180 承重）。
 - G16(R45≡R48)：2026-06-08 已 fixed；`config_adapter.py` 已删，旧 `tests/regression_sp06_no_duplicate_defs.py` 已由 A P1.1 删除，旧清单同步步骤为 no-op；继续禁碰 `core/algorithms/greedy/schedule_params.py`（same_file 误标零碰撞）。
 - G21(R28)：2026-06-08 已 fixed；采用方案 b，`_safe_float` 保名薄包装到 `parse_finite_float(value, field="ext_days", allow_none=True)`。已跑 `pytest -k test_no_new_local_parse_helpers`，fitness 白名单 `:77` 必须保留；后续只做残留 rg，禁重复删除白名单。
@@ -198,7 +198,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 
 **收口行为差异检查项**：G11 收口 `available=0`：取 `bool(available)` 会把 `0→False`（静默放宽，禁），须保 support 的写法令 `available=0→True`；G28(R23) 已收口为 model:21 真相源 + service:17 import/:102 调用，**绝不并入 view_context:65**（带 VALID 校验抛 ValidationError，错误类型前移致上游 catch ValueError 静默漏接）。
 
-**批后门禁**：fitness 21 项全绿 + 0 分层违规；语义雷达无新漂移；v18/v19 不破；本批专项：G11 已 fixed 后以 `test_gantt_critical_chain_normalize_parity.py` 11 边界绿 + `rg` 证单份 `_normalize_critical_chain_result` + `_copy_critical_chain_result` 在位，G38 SP05 topology contract 绿（`:173 def`/`:318 断言` 不碰）、G16 已 fixed 后以残留 `rg` 证 `config_adapter`/三符号/`NO_CFG_GET_TARGETS` 零命中且 `schedule_params.py` 在位、G21 已 fixed 后以 `_safe_float` 现函数体 + `test_no_new_local_parse_helpers` 证明 allowlist 保留正确、删后逐个 grep 复核活近亲在位（resolve_version:60（旧 :64） / list_links_with_operator_info:92 / sgs_scoring:34 / ordering:59 / _copy:108）。
+**批后门禁**：fitness 21 项全绿 + 0 分层违规；语义雷达无新漂移；v18/v19 不破；本批专项：G11 已 fixed 后以 `test_gantt_critical_chain_normalize_parity.py` 11 边界绿 + `rg` 证单份 `_normalize_critical_chain_result` + `_copy_critical_chain_result` 在位，G38 SP05 topology contract 绿（现盘 `:175 def`/`:317` 起 strong-compat 断言不碰）、G16 已 fixed 后以残留 `rg` 证 `config_adapter`/三符号/`NO_CFG_GET_TARGETS` 零命中且 `schedule_params.py` 在位、G21 已 fixed 后以 `_safe_float` 现函数体 + `test_no_new_local_parse_helpers` 证明 allowlist 保留正确、删后逐个 grep 复核活近亲在位（resolve_version:60（旧 :64） / list_links_with_operator_info:92 / sgs_scoring:34 / ordering:59 / _copy:108）。
 
 **go-no-go 判据**：每个死叶子删后立即 grep 活近亲在位 + 该文件相关测试绿 → 放行下一叶子。任一活近亲 grep 落空 → 误删，立即 revert。
 
@@ -748,7 +748,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 | 🟡 中 | `data/repositories/part_repo.py` | R38(part)+R39 | G31 已 fixed（旧风险记录：同 commit 按符号名） |
 | 🟡 中 | `models/scheduler_public_errors.py` | LB08(承重)+R46(+R09 :167 毗邻)| G40 LB08 注释先→R46 删 :162-164 按符号重定位 |
 | 🟡 中 | `common/value_policies.py`(壳)+`shared/value_policies.py`(源)| R30+R33+R31 | E05/E06 硬序 R33 步1→R30→R33 步2/3；死保 degradation:15 |
-| 🟡 中 | `tests/gate_meta/test_sp05_path_topology_contract.py` | R06+R27+gantt 空包(+R01/R26/R43 别段)| G38 四包一次性同提交；禁碰 :173 def/:318 断言 |
+| 🟡 中 | `tests/gate_meta/test_sp05_path_topology_contract.py` | R06+R27+gantt 空包(+R01/R26/R43 别段)| G38 已 fixed；后续别段仍禁碰现盘 :175 def/:317 起 strong-compat 断言 |
 | 🟡 中 | `tests/config/test_config_service_component_contract.py` | R33+R30(交界)| G23 内 R33 步2/3 在 R30 之后 |
 | 🟢 低-中 | `execution_snapshot.py` | R19+R01+R46(__all__ 块)| E16 已降伪串行边；R19 强制保 `sorted:40`（sha256 指纹）|
 | 🟢 低 | `web/.../reports_export_support.py`+`scheduler_navigation_links.py`(两元组)| R42+R60+R67(+R64/R65 G02 已 fixed)| E17 diff-hunk 串行；G02 已完成,后续只复核 `TARGET_PAGE_PATHS` 仍保留并按符号重 rg 当前 navigation_links 锚点；**本文件即三批四单元串行块**（见 §1.0）|

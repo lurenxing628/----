@@ -816,7 +816,7 @@
  "R06": {
   "id": "R06",
   "bucket": "B09",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P3",
   "lb": false,
@@ -1256,7 +1256,7 @@
  "R27": {
   "id": "R27",
   "bucket": "B14",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P3",
   "lb": false,
