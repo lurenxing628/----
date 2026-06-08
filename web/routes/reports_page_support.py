@@ -101,7 +101,6 @@ def _publish_report_context(
 ) -> Dict[str, Any]:
     context = build_report_context(
         version=version,
-        plan_id=_request_text("plan_id"),
         plan_resolution=plan_resolution,
         date_from=date_from,
         date_to=date_to,
@@ -140,7 +139,7 @@ def reports_index_context(engine: ReportEngine, services) -> Dict[str, Any]:
     versions = engine.list_versions(limit=1)
     has_history = bool(versions)
     latest_version = versions[0] if has_history else None
-    report_context = build_report_context(plan_id=_request_text("plan_id"), back_to=_request_text("back_to"))
+    report_context = build_report_context(back_to=_request_text("back_to"))
     overdue_count = 0
     if has_history:
         request_ctx = _standard_request_context(

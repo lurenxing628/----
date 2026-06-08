@@ -786,7 +786,7 @@
   "id": "R42",
   "bucket": "B01",
   "home": "B01",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "medium",
   "pathology": "P6",
   "partition": "web-all",
@@ -807,7 +807,7 @@
    "scheduler_workbench_link_query.py",
    "scheduler_workbench_links.py"
   ],
-  "current_evidence_2026_06_05": "plan_id 死面包屑全链原样保留:navigation_context.py:77 plan_id=_request_arg('plan_id')、reports_page_support.py:104/143、dashboard.py:241(读)→scheduler_workbench_links.py:190形参/:232 dict存储→scheduler_reports_workbench.py:60/79 透传→scheduler_workbench_link_query.py:118/154 回吐URL。git grep core/+data/ \\bplan_id\\b=0(仍真死面包屑未被消费)。计划 Batch-3 整链下线+退 navigation_contract 断言+删 roadmap 3处,全未动。",
+  "current_evidence_2026_06_05": "2026-06-08 B 执行终态: plan_id 死面包屑已与 R60 同一原子下线。navigation_context/reports_page_support/dashboard 不再读入 plan_id; build_workbench_plan_context/build_report_context 不再接收或写出 plan_id; scheduler_workbench_link_query 两条 URL emit 已删除 plan_id; tests/web_pages/test_reports_workbench_navigation_contract.py 改为断言 URL 与隐藏表单均不再含 plan_id 且 back_to 仍保留;.codestable/roadmap/aps-frontend-workbench/aps-frontend-workbench-items.yaml 已摘掉保留 plan_id 的验收口径。",
   "cluster": "C01",
   "same_file_siblings": [
    "LB06",
@@ -959,7 +959,7 @@
   "id": "R54",
   "bucket": "B01",
   "home": "B01",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "high",
   "pathology": "P5",
   "partition": "delta-web-workbench",
@@ -978,7 +978,7 @@
    "scheduler_workbench_links.py",
    "workbench_links.py"
   ],
-  "current_evidence_2026_06_05": "guard 字段投影仍 4 套独立手维 key,未收口到单一真相源,且已比计划快照更分化:scheduler_reports_workbench.py:36 _copy_plan_guard_fields(13键 mapping)/ scheduler_navigation_publish.py:12 _PLAN_GUARD_FIELD_NAMES(+ :81 plan_role_filter_fields)/ scheduler_resource_dispatch.py:64 _copy_plan_guard_fields(15+键元组)/ dashboard_workbench_context.py:8 _PLAN_GUARD_FIELD_NAMES(含 plan_identity_error)。build_workbench_plan_context(scheduler_workbench_links.py:186)未新增 guard/plan_resolution 收口入参,仅本地 _feedback_guard_context 算 can_write。P5 收口未发生(fail-open 风险仍在,且加剧)。",
+  "current_evidence_2026_06_05": "2026-06-08 B 执行终态: plan-guard 字段投影已收口到既有 build_workbench_plan_context + plan_guard_fields_for_context。报告、派工、dashboard、甘特详情、导航发布五个面改为通过收口点/共享 helper 取 guard 字段;保留 L1/L3/L4/L2/L5 各自基数差异和 L5 is_comparison_plan OR 兼容;_PUBLIC_FILTER_DROP_KEYS 脱敏同步面未 delegate;R58 的 context.update(guard_fields) 保留并补“我是故意的”注释。",
   "cluster": "C01",
   "same_file_siblings": [
    "R44",
@@ -1105,7 +1105,7 @@
     "tests/resource_dispatch/test_scheduler_dispatch_plan_identity_guard.py:419-435 (fields[is_current_executable_official_version]护栏)"
    ]
   },
-  "owner_pending": true,
+  "owner_pending": false,
   "lb_no_touch": "N1=high+load_bearing:plan-guard 字段投影散成 4 套手维列表(盘上已恶化,本轮新增 2 份);唯一合法修法=收口进 build_workbench_plan_context 全 4 套 delegate;漏拷 is_comparison/is_superseded_by_newer_version 任一=fail-OPEN 旧正式冒充现行"
  },
  "R56": {
@@ -1314,7 +1314,7 @@
   "id": "R58",
   "bucket": "B01",
   "home": "B01",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P2",
   "partition": "delta-web-workbench",
@@ -1329,7 +1329,7 @@
    "scheduler_navigation_publish.py",
    "workbench_links.py"
   ],
-  "current_evidence_2026_06_05": "scheduler_navigation_publish.py:91 context.update(guard_fields) 仍用未门控 guard_fields 原始 can_write_feedback 覆盖 :88 builder 已 gate 的值(护栏被动削弱原样在);:85-93 _publish_context 上方/:91 旁零 # 注释。计划默认动作『只补承重注释(Batch-1)』未执行。",
+  "current_evidence_2026_06_05": "2026-06-08 B 执行终态: scheduler_navigation_publish.py 仍保留 context.update(guard_fields) 的旧导航上下文语义,但已在覆盖点上方补“我是故意的”注释,明确未门控 guard 覆盖 builder 内部可写判断是已知兼容语义,真正写入口仍走 can_emit_feedback_write_urls。未做 Phase2 剔 can_write_feedback,未删整行 update,未透传新兜底。",
   "cluster": "C01",
   "same_file_siblings": [
    "R44",
@@ -1409,7 +1409,7 @@
   "id": "R60",
   "bucket": "B01",
   "home": "B01",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P6",
   "partition": "delta-web-workbench",
@@ -1425,7 +1425,7 @@
    "scheduler_workbench_link_query.py",
    "workbench_links.py"
   ],
-  "current_evidence_2026_06_05": "plan_id 合同字段表原样保留:scheduler_navigation_links.py:12 plan_id 在 _REPORT_CONTEXT_FIELD_NAMES 元组、:52 _has_navigation_context 判空仍含;reports_export_support.py:14 plan_id 在 _EXPORT_CONTEXT_KEYS;emit 点 scheduler_workbench_link_query.py:118/154 与 R42 共点未删。两张字段表与回吐链全未清(与 R42 同批未执行)。",
+  "current_evidence_2026_06_05": "2026-06-08 B 执行终态: plan_id 已从 scheduler_navigation_links.py 的 _REPORT_CONTEXT_FIELD_NAMES 与 _has_navigation_context 判空集、reports_export_support.py 的 _EXPORT_CONTEXT_KEYS、scheduler_workbench_link_query.py 两条 URL emit 中删除。与 R42 同一原子完成;version/plan_role/scenario_id/back_to 等真上下文键保留。",
   "cluster": "C01",
   "same_file_siblings": [
    "R42"
@@ -1948,14 +1948,14 @@
   "id": "R44",
   "bucket": "B02",
   "home": "B02",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P5",
   "partition": "web-all",
   "kind": "real",
   "load_bearing": false,
   "needs_adversarial": true,
-  "adv_refuted": false,
+  "adv_refuted": true,
   "title": "scheduler_navigation_publish.selected_plan_role 是 core schedule_result_view_context.selected_plan_role 的副本",
   "old_location_DONT_TRUST": "web/routes/domains/scheduler/scheduler_navigation_publish.py:28-29",
   "primary_file": "scheduler_navigation_publish.py",
@@ -1966,7 +1966,7 @@
    "scheduler_navigation_publish.py",
    "scheduler_week_plan.py"
   ],
-  "current_evidence_2026_06_05": "scheduler_navigation_publish.py:36-37 仍是本地 def selected_plan_role(return str(plan_resolution.get('selected_role') or ROLE_ADOPTED)),未改为从 core.schedule_result_view_context re-export(:7 import 仅含 default_plan_resolution_dict, plan_role_filter_fields,无 selected_plan_role);安全闸门 _PLAN_GUARD_FIELD_NAMES @12-29 未被碰(符合禁区);无 parity 测试。行号已漂(债 index 标 :28-29,实为 :36-37)。未收口。",
+  "current_evidence_2026_06_05": "2026-06-08 B 执行终态: scheduler_navigation_publish.py 已删除本地 selected_plan_role 副本,改为直接从 core.services.scheduler.schedule_result_view_context 导入既有 selected_plan_role;requested_plan_role 与 guard 字段闸门未被顺手统一;tests/web_pages/test_reports_workbench_navigation_contract.py 增加 web/core selected_plan_role parity,覆盖 None 输入走 core 更防御行为。",
   "cluster": "C01",
   "same_file_siblings": [
    "R54",
@@ -2066,7 +2066,7 @@
     "tests/web_pages/test_reports_workbench_navigation_contract.py:409-413 (import publish_* 函数，非 selected_plan_role；无测试钉本地 getter 实现)"
    ]
   },
-  "owner_pending": true,
+  "owner_pending": false,
   "lb_no_touch": null
  },
  "R72": {

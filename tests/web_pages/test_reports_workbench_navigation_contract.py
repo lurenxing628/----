@@ -1,4 +1,4 @@
-"""回归测试：报表/排产页顶部导航的链接构造契约——build_scheduler_navigation_links 等始终透传 plan_role/plan_id/batch_id/资源筛选与 back_to 上下文，设备甘特图与人员甘特图之间不串线 gantt_resource，被新版本替代的正式方案禁用「计划和现场实际」入口（显示历史正式方案只读提示），上下文不全时导航降级为 disabled，且 scheduler_nav 宏只用 Python 链接构造器、不在模板里读 request.args/url_for。"""
+"""回归测试：报表/排产页顶部导航的链接构造契约——build_scheduler_navigation_links 等始终透传 plan_role/batch_id/资源筛选与 back_to 上下文，不再回吐已下线的 plan_id，设备甘特图与人员甘特图之间不串线 gantt_resource，被新版本替代的正式方案禁用「计划和现场实际」入口（显示历史正式方案只读提示），上下文不全时导航降级为 disabled，且 scheduler_nav 宏只用 Python 链接构造器、不在模板里读 request.args/url_for。"""
 
 from __future__ import annotations
 
@@ -104,7 +104,7 @@ def test_execution_review_navigation_keeps_formal_plan_role() -> None:
         assert query["resource_id"] == ["M-RPT"]
 
 
-def test_report_navigation_keeps_plan_id_and_return_context() -> None:
+def test_report_navigation_drops_plan_id_and_keeps_return_context() -> None:
     client = _client()
     parser = _parser_for(
         client,
@@ -121,11 +121,11 @@ def test_report_navigation_keeps_plan_id_and_return_context() -> None:
         ("导出 Excel", "/reports/utilization/export"),
     ):
         query = _query(_href_with_text(parser, text, path))
-        assert query["plan_id"] == ["PLAN-RPT"]
+        assert "plan_id" not in query
         assert query["back_to"] == ["/scheduler/resource-dispatch?scope_type=operator"]
 
     hidden_inputs = _input_values(parser)
-    assert hidden_inputs["plan_id"] == ["PLAN-RPT"]
+    assert "plan_id" not in hidden_inputs
     assert hidden_inputs["back_to"] == ["/scheduler/resource-dispatch?scope_type=operator"]
 
 
@@ -491,6 +491,20 @@ def test_scheduler_navigation_publish_keeps_plan_guard_fields() -> None:
         current_context = current_workbench_navigation_context()
         assert {key: current_context[key] for key in expected_guard_fields} == expected_guard_fields
         assert {key: context[key] for key in expected_guard_fields} == expected_guard_fields
+
+
+def test_scheduler_navigation_selected_plan_role_uses_core_contract() -> None:
+    from core.services.scheduler.schedule_result_view_context import selected_plan_role as core_selected_plan_role
+    from web.routes.domains.scheduler.scheduler_navigation_publish import selected_plan_role
+
+    for plan_resolution in (
+        {"selected_role": "baseline_best"},
+        {"selected_role": None},
+        {"selected_role": ""},
+        {},
+        None,
+    ):
+        assert selected_plan_role(plan_resolution) == core_selected_plan_role(plan_resolution)
 
 
 def test_scheduler_navigation_rejects_conflicting_resource_aliases() -> None:

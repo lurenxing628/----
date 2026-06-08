@@ -6,6 +6,9 @@ from typing import Tuple
 from urllib.parse import parse_qs, urlparse
 
 from web.viewmodels.scheduler_workbench_links import (
+    FULL_PLAN_GUARD_FIELDS,
+    REPORT_PLAN_GUARD_FIELDS,
+    RESOURCE_PLAN_GUARD_FIELDS,
     TARGET_PAGE_PATHS,
     build_workbench_link,
     build_workbench_links,
@@ -620,6 +623,51 @@ def test_execution_review_guardrail_uses_full_plan_identity() -> None:
     assert historical["disabled"] is True
     assert historical["url"] == ""
     assert "历史正式方案" in historical["disabled_reason"]
+
+
+def test_plan_guard_fields_keep_each_surface_shape() -> None:
+    plan_resolution = {
+        "requested_role": "adopted",
+        "selected_role": "adopted",
+        "status": "resolved_adopted",
+        "is_scenario_preview": False,
+        "is_comparison": False,
+        "is_superseded_by_newer_version": True,
+        "is_official": True,
+        "is_preview": False,
+        "is_current_executable_official_version": False,
+        "can_dispatch": True,
+        "can_write_feedback": True,
+        "plan_identity_error": "identity-error",
+        "plan_identity_blocking_error": True,
+        "plan_identity_blocking_scope": "workbench_continuation",
+        "result_summary_parse_failed": False,
+        "result_summary_parse_reason": "",
+    }
+
+    report_context = build_workbench_plan_context(
+        plan_role="adopted",
+        plan_resolution=plan_resolution,
+        plan_guard_fields=REPORT_PLAN_GUARD_FIELDS,
+    )
+    resource_context = build_workbench_plan_context(
+        plan_role="adopted",
+        plan_resolution=plan_resolution,
+        plan_guard_fields=RESOURCE_PLAN_GUARD_FIELDS,
+    )
+    full_context = build_workbench_plan_context(
+        plan_role="adopted",
+        plan_resolution=plan_resolution,
+        plan_guard_fields=FULL_PLAN_GUARD_FIELDS,
+    )
+
+    assert report_context["is_superseded_by_newer_version"] is True
+    assert "plan_role_status" not in report_context
+    assert "plan_identity_error" not in report_context
+    assert resource_context["plan_identity_error"] == "identity-error"
+    assert "plan_role_status" not in resource_context
+    assert full_context["plan_role_status"] == "resolved_adopted"
+    assert full_context["plan_identity_blocking_scope"] == "workbench_continuation"
 
 
 def test_execution_review_requires_current_executable_identity_before_read_only_review() -> None:

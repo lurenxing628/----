@@ -5,6 +5,8 @@
 > 收口点(均已存在,禁新建): build_workbench_plan_context(workbench_links.py:187) / selected_plan_role(view_context:201) / gate _feedback_guard_context(workbench_links.py:149) / can_emit_feedback_write_urls(workbench_links.py:469)
 > 本档案只产计划。承重(R54/R58/N1/N2)唯一合法修法 = 收口已存在点 + 绑契约/parity + 「我是故意的」注释；禁删/统一键名/透传/翻 fail-closed→fail-open。
 
+> **2026-06-08 B 执行终态：G04 fixed。** R58 只补承重注释；R54 已把五个 guard 投影面收口到既有 `build_workbench_plan_context` / `plan_guard_fields_for_context`，并保留各自键面形状；R44 已收口到 core `selected_plan_role`。本档旧行号只作历史计划证据，后续不要重复处理 R54/R58/R44。
+
 ## 0) rg 回盘锚点（当前工作区，不信旧值）
 
 | 锚点 | 实盘 file:line |
@@ -83,7 +85,7 @@
 
 ## E) fixed 成员残留动作（认账注释）
 
-- 本簇三成员 R54/R44/R58 **均非 fixed**（R54/R58 status=planned,R44 status=planned）。
+- 本簇三成员 R54/R44/R58 **均已 fixed**（2026-06-08 B 执行补登）。旧计划段保留执行纪律，不再表示待办。
 - 簇内已 fixed 前置（作为 DAG 起点已完成,残留=认账注释,不属本簇修法,但门控/邻接）：
   - **LB06**（reports_page_support.py,与 R54 共址 reports_workbench 链）：仅缺认账注释（corrections D）。
   - **R56**（load_bearing,navigation_context/reports_page_support/reports_execution_review_context 同提交）：走高风险结构路线删 `_is_execution_review_request` 本体,偏离铁律3,护栏未 fail-open,owner 须认账偏离（corrections D）。

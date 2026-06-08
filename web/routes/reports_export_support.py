@@ -11,7 +11,6 @@ from core.services.report.report_number_parsing import parse_report_nonnegative_
 from web.routes.report_plan_preview import report_export_filters
 
 _EXPORT_CONTEXT_KEYS = (
-    "plan_id",
     "back_to",
     "date_from",
     "date_to",

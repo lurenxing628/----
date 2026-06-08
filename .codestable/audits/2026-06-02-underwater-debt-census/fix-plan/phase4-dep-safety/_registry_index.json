@@ -127,10 +127,10 @@
   "adv_refuted": false,
   "title": "feedback_write_enabled 休眠开关 + 生产不可达的'保护未开启'提示"
  },
- "R42": {
+"R42": {
   "id": "R42",
   "bucket": "B01",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "P6",
   "lb": false,
@@ -148,10 +148,10 @@
   "adv_refuted": false,
   "title": "plan_id 是死面包屑:从 request 读入、存进工作台上下文、回吐进所有导航/导出 URL,却从不进任何 resolver/query,且被在途 roadmap 制度化保留"
  },
- "R54": {
+"R54": {
   "id": "R54",
   "bucket": "B01",
-  "status": "planned",
+  "status": "fixed",
   "sev": "high",
   "path": "P5",
   "lb": true,
@@ -163,7 +163,7 @@
    "R66"
   ],
   "batch": "Batch-2(B01 guard ",
-  "owner_pending": true,
+  "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
   "title": "execution_review放行护栏依赖的plan-guard字段投影切成3套手维key列表(本轮新增2份)"
@@ -208,10 +208,10 @@
   "adv_refuted": false,
   "title": "导航上下文双构建路径:fallback直接信任未经PlanIdentity解析的raw plan_role/scenario_id"
  },
- "R58": {
+"R58": {
   "id": "R58",
   "bucket": "B01",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P2",
   "lb": true,
@@ -227,10 +227,10 @@
   "adv_refuted": false,
   "title": "navigation_publish把builder已gate的can_write_feedback用原始值覆盖回去(护栏被动削弱)"
  },
- "R60": {
+"R60": {
   "id": "R60",
   "bucket": "B01",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,
@@ -330,10 +330,10 @@
   "adv_refuted": false,
   "title": "_normalize_role 在 schedule_plan_role 与 schedule_plan_query_service 字节级重复,且无 plan_role 归一收口点"
  },
- "R44": {
+"R44": {
   "id": "R44",
   "bucket": "B02",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P5",
   "lb": false,
@@ -344,9 +344,9 @@
    "R58"
   ],
   "batch": "Batch-4(B02 身份族),且",
-  "owner_pending": true,
+  "owner_pending": false,
   "needs_adv": true,
-  "adv_refuted": false,
+  "adv_refuted": true,
   "title": "scheduler_navigation_publish.selected_plan_role 是 core schedule_result_view_context.selected_plan_role 的副本"
  },
  "R72": {

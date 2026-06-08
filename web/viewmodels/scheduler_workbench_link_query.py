@@ -115,7 +115,6 @@ def _append_date_range_as_date_from_to(query: List[Tuple[str, str]], context: Di
 
 def _append_plan_query(query: List[Tuple[str, str]], context: Dict[str, Any]) -> None:
     _append_param(query, "version", context.get("version"))
-    _append_param(query, "plan_id", context.get("plan_id"))
     _append_param(query, "plan_role", context.get("plan_role"))
     _append_param(query, "scenario_id", context.get("scenario_id"))
 
@@ -151,7 +150,6 @@ def target_uses_primary_resource_filter(target_page: str) -> bool:
 def _append_target_plan_query(query: List[Tuple[str, str]], context: Dict[str, Any], plan_style: str) -> None:
     if plan_style == "execution_review":
         _append_param(query, "version", context.get("version"))
-        _append_param(query, "plan_id", context.get("plan_id"))
         _append_param(query, "plan_role", context.get("plan_role"))
         return
     _append_plan_query(query, context)

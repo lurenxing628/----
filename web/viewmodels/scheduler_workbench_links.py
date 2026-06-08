@@ -5,6 +5,7 @@ from urllib.parse import urlencode
 
 from core.models.schedule_plan_role import plan_role_label as _core_plan_role_label
 from core.models.schedule_resource_filter import SUPPORTED_SCHEDULE_RESOURCE_TYPES
+from core.services.scheduler.schedule_result_view_context import plan_role_filter_fields
 
 from .scheduler_plan_guardrail_messages import summary_parse_failure_message
 from .scheduler_workbench_link_query import (
@@ -100,12 +101,76 @@ _DATE_RANGE_REQUIRED_TARGETS = {
     "reports_index",
 }
 
+REPORT_PLAN_GUARD_FIELDS = (
+    "requested_plan_role",
+    "effective_plan_role",
+    "is_scenario_preview",
+    "is_comparison",
+    "is_superseded_by_newer_version",
+    "is_official_plan",
+    "is_preview_plan",
+    "is_current_executable_official_version",
+    "can_dispatch",
+    "can_write_feedback",
+    "result_summary_parse_failed",
+    "result_summary_parse_reason",
+)
+
+RESOURCE_PLAN_GUARD_FIELDS = (
+    "requested_plan_role",
+    "effective_plan_role",
+    "is_scenario_preview",
+    "is_comparison",
+    "is_superseded_by_newer_version",
+    "is_official_plan",
+    "is_preview_plan",
+    "is_current_executable_official_version",
+    "can_dispatch",
+    "can_write_feedback",
+    "plan_identity_error",
+    "plan_identity_blocking_error",
+    "plan_identity_blocking_scope",
+    "result_summary_parse_failed",
+    "result_summary_parse_reason",
+)
+
+FULL_PLAN_GUARD_FIELDS = (
+    "requested_plan_role",
+    "effective_plan_role",
+    "plan_role_status",
+    "is_scenario_preview",
+    "is_comparison",
+    "is_superseded_by_newer_version",
+    "is_official_plan",
+    "is_preview_plan",
+    "is_current_executable_official_version",
+    "can_dispatch",
+    "can_write_feedback",
+    "plan_identity_error",
+    "plan_identity_blocking_error",
+    "plan_identity_blocking_scope",
+    "result_summary_parse_failed",
+    "result_summary_parse_reason",
+)
+
+
 def _text(value: Any) -> str:
     return str(value or "").strip()
 
 
 def _has_value(value: Any) -> bool:
     return value is not None and _text(value) != ""
+
+
+def plan_guard_fields_for_context(plan_resolution: Any, field_names: Iterable[str]) -> Dict[str, Any]:
+    source = dict(plan_resolution) if isinstance(plan_resolution, dict) else {}
+    fields = plan_role_filter_fields(source)
+    out: Dict[str, Any] = {}
+    for key in field_names:
+        value = source.get(key) if key in source and source.get(key) is not None else fields.get(key)
+        if value is not None:
+            out[key] = value
+    return out
 
 
 def plan_role_label(value: Any, *, is_preview: bool = False, scenario_display_label: str = "") -> str:
@@ -188,8 +253,9 @@ def build_workbench_plan_context(
     *,
     version: Any = None,
     version_label: str = "",
-    plan_id: Any = None,
     plan_role: Any = ROLE_ADOPTED,
+    plan_resolution: Optional[Dict[str, Any]] = None,
+    plan_guard_fields: Iterable[str] = (),
     plan_role_label_value: str = "",
     scenario_id: Any = None,
     scenario_display_label: str = "",
@@ -230,7 +296,6 @@ def build_workbench_plan_context(
     return {
         "version": version,
         "version_label": public_version_label,
-        "plan_id": _text(plan_id) or None,
         "plan_role": plan_role_text,
         "plan_role_label": public_plan_role_label,
         "scenario_id": scenario_text,
@@ -252,6 +317,7 @@ def build_workbench_plan_context(
         "capacity_source_label": _text(capacity_source_label),
         "capacity_gap_text": _text(capacity_gap_text),
         "back_to": _text(back_to) or None,
+        **plan_guard_fields_for_context(plan_resolution, plan_guard_fields),
     }
 
 
@@ -475,6 +541,9 @@ def can_emit_feedback_write_urls(plan_identity_or_context: Any) -> bool:
 
 __all__ = [
     "TARGET_PAGE_PATHS",
+    "FULL_PLAN_GUARD_FIELDS",
+    "REPORT_PLAN_GUARD_FIELDS",
+    "RESOURCE_PLAN_GUARD_FIELDS",
     "build_workbench_plan_context",
     "build_workbench_link",
     "build_workbench_links",
@@ -482,6 +551,7 @@ __all__ = [
     "gantt_view_label",
     "guardrail_reason_label",
     "period_preset_label",
+    "plan_guard_fields_for_context",
     "plan_role_label",
     "resource_type_label",
 ]

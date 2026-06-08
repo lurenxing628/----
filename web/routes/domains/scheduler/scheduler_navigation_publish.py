@@ -4,37 +4,22 @@ from typing import Any, Dict, Optional
 
 from core.infrastructure.errors import ValidationError
 from core.services.scheduler.schedule_plan_query_service import ROLE_ADOPTED
-from core.services.scheduler.schedule_result_view_context import default_plan_resolution_dict, plan_role_filter_fields
+from core.services.scheduler.schedule_result_view_context import (
+    default_plan_resolution_dict,
+    selected_plan_role,
+)
 from web.navigation_context import publish_workbench_navigation_context, set_current_workbench_navigation_context
 from web.request_resource_context import request_report_resource_context
+from web.viewmodels.scheduler_workbench_links import (
+    FULL_PLAN_GUARD_FIELDS,
+    plan_guard_fields_for_context,
+)
 
 _GANTT_RESOURCE_VIEWS = {"machine", "operator"}
-_PLAN_GUARD_FIELD_NAMES = (
-    "requested_plan_role",
-    "effective_plan_role",
-    "plan_role_status",
-    "is_scenario_preview",
-    "is_comparison",
-    "is_superseded_by_newer_version",
-    "is_official_plan",
-    "is_preview_plan",
-    "is_current_executable_official_version",
-    "can_dispatch",
-    "can_write_feedback",
-    "plan_identity_error",
-    "plan_identity_blocking_error",
-    "plan_identity_blocking_scope",
-    "result_summary_parse_failed",
-    "result_summary_parse_reason",
-)
 
 
 def requested_plan_role(plan_resolution: Dict[str, Any]) -> str:
     return str(plan_resolution.get("requested_role") or ROLE_ADOPTED)
-
-
-def selected_plan_role(plan_resolution: Dict[str, Any]) -> str:
-    return str(plan_resolution.get("selected_role") or ROLE_ADOPTED)
 
 
 def scenario_display_label(plan_resolution: Dict[str, Any]) -> str:
@@ -78,8 +63,7 @@ def resolve_navigation_plan_context(
 
 
 def _plan_guard_fields(plan_resolution: Dict[str, Any]) -> Dict[str, Any]:
-    fields = plan_role_filter_fields(plan_resolution)
-    return {key: fields.get(key) for key in _PLAN_GUARD_FIELD_NAMES if fields.get(key) is not None}
+    return plan_guard_fields_for_context(plan_resolution, FULL_PLAN_GUARD_FIELDS)
 
 
 def _publish_context(plan_resolution: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
@@ -88,6 +72,8 @@ def _publish_context(plan_resolution: Dict[str, Any], **kwargs: Any) -> Dict[str
         can_write_feedback=guard_fields.get("can_write_feedback"),
         **kwargs,
     )
+    # 我是故意的：这里保留旧导航上下文语义，用未门控 guard 字段覆盖 builder 内部的可写判断；
+    # 真正写入口仍走 can_emit_feedback_write_urls。
     context.update(guard_fields)
     set_current_workbench_navigation_context(context)
     return context

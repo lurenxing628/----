@@ -7,7 +7,6 @@ from .scheduler_workbench_links import TARGET_PAGE_PATHS, build_workbench_link, 
 ROLE_ADOPTED = "adopted"
 
 _REPORT_CONTEXT_FIELD_NAMES = (
-    "plan_id",
     "back_to",
     "scenario_id",
     "date_from",
@@ -47,7 +46,6 @@ def _has_navigation_context(context: Dict[str, Any]) -> bool:
         _has_value(context.get(key))
         for key in (
             "version",
-            "plan_id",
             "date_from",
             "date_to",
             "query_date",

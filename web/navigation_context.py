@@ -75,7 +75,6 @@ def current_workbench_navigation_context() -> Dict[str, Any]:
     resource = _request_resource()
     return build_workbench_plan_context(
         version=_request_arg("version"),
-        plan_id=_request_arg("plan_id"),
         plan_role=plan_role if plan_role in VALID_PLAN_ROLES else ROLE_ADOPTED,
         scenario_id=scenario_id,
         date_from=_request_arg("start_date") or _request_arg("date_from"),

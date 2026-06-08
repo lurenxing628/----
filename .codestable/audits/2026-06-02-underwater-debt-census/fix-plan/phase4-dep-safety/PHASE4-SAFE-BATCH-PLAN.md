@@ -256,11 +256,16 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 
 **成员（调度单元 + 债）**：G04(R58→R54→R44)←LB03+R22parity；G01(R42+R60)←G04(E03)；G27(R22+R21)←LB03+G27p；G09(R15→R19→R13)⏸；G10(R18+R19+R13关心:399)⏸；G29(R72)⏸；G15(R47+R71)⏸←G15a🔒；G22(R08+R09)⏸；G33(R05 步3)🔒⏸←G33a；G34(R67)⏸；G17(R31)；G23(R30+R33)。
 
+> **2026-06-08 执行补登**：G04(R58/R54/R44) 与 G01(R42/R60) 已 fixed，并已在 `_registry.json`、`_registry_index.json` 与对应 dossier 登记。G04 终态：R58 只补承重说明，不做 Phase2 剔键；R54 把五个 guard 投影面收口到既有 `build_workbench_plan_context` / `plan_guard_fields_for_context`，保留各自键面形状与 L5 OR；R44 收口到 core 的 `selected_plan_role`，不碰 guard 闸门。G01 终态：`plan_id` 死面包屑整链下线，`version/plan_role/scenario_id/back_to` 等真上下文键保留。
+
 **是否原子**：身份族强原子——G04（R58→R54→R44 同 nav_publish 硬序）+ E03 硬同批带走 G01（R54→R42/R60 同符号 `build_workbench_plan_context` rebase）；G27（R22 先→R21 后同窗口）；G09（provider 链 R15→R19→R13 同文件串行 + 逐步重 rg）；G22（R08 先→R09 后串行）；G23（R33 步1→R30→R33 步2/3 硬序）；G33（R05 步1→步2→步3 不可换序）。
 
 **为何这批**：集中所有「收口委托到真相源」+ 裁后身份/承重收敛；依赖 ROOT 的承重注释族 + parity 全绿。这是误删风险最高的批（6 承重文件多在此动手）。
 
 **前置安全网（逐条点名，含全部相关标红债 + 硬阻断爆点）**：
+
+> **2026-06-08 补充说明**：下方 G04/G01 的安全网条目现在作为执行前归档保留，用来解释为什么当时必须按这个顺序做；G04/G01 已 fixed，勿按这些 MUST 文字重复执行 R58/R54/R44/R42/R60。
+
 - **G04(R58→R54→R44)🔴**（R54 标红 + 爆点 #1/#2/#3）：
   - **爆点 #1（硬阻断）**：collar `build_workbench_plan_context` 真宿主 **`web/viewmodels/scheduler_workbench_links.py:187`**（红队 RT1-P1-4/RT2-问题1 采纳订正宿主目录：`web/routes/domains/scheduler/` 下只有 `scheduler_analysis_links.py`，无 workbench_links；全计划凡引 collar 须带 `web/viewmodels/` 前缀，否则扩 collar 第一步即找不到文件——D1「prose 改了表没同步」残瑕第 5 处）。该 collar `:187-258` 当前**不产** is_comparison/is_superseded/is_current_executable 三 fail-open 键、无 plan_resolution 入参（实盘 grep 该三键 + plan_resolution 在该文件零命中，`plan_id:191` 形参在）→ 「5 套 delegate 到 collar」前 **MUST 先在 ROOT 把 collar 扩成 3 键 guard 产出点（fail-CLOSED 默认）**，裸 delegate=抹键 fail-OPEN 脏写历史现场（不可逆）。V3④裁选项 I（先扩产 + 过 owner 审，再 6 面 delegate）。
   - R54 五套手维面跨 5 文件 3 基数，**禁向 16 键看齐**（L3 的 15 键补 plan_role_status=统一改行为违承重红线）；分三组基数（L2/L4=16、L3=15、L1=12）各钉 parity 守卫；逐键四态 parity（缺失/None/False/True×拦放）。

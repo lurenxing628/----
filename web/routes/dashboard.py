@@ -238,7 +238,6 @@ def _workbench_navigation_context_from_request(services: Any, version: int) -> D
     resource = request_report_resource_context()
     context = {
         "version": str(version) if version > 0 else "",
-        "plan_id": _request_arg("plan_id"),
         "date_from": _request_arg("date_from") or _request_arg("start_date"),
         "date_to": _request_arg("date_to") or _request_arg("end_date"),
         "query_date": _request_arg("query_date"),
