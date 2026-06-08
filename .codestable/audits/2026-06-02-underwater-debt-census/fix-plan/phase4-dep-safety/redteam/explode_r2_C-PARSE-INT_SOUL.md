@@ -23,7 +23,7 @@
 | R59 续命测试 :247 `report_nonnegative_int("1.0")` / :250 `(1.0)` | 均 `pytest.raises(ValidationError, match="导出行数")` | 一致 |
 | R08 死分支 viewmodel :227-228 / :367-368 + 常量 :25 | 在 | 一致 |
 | R08 service 同源 :127≡:130 同 key `can_write_feedback` bool() | 一致；context :229/237/246 硬传 `feedback_write_enabled=True` | (T,F) 不可达坐实 |
-| R28 `_safe_float:56` `except Exception→None`；收口 `parse_finite_float` overload 已存在 | 一致 | |
+| R28 `_safe_float:56` 旧 `except Exception→None` 已删；当前收口 `parse_finite_float(..., allow_none=True)` overload 已存在 | fixed | 2026-06-08 已落地 |
 | R01 死簇 :67/:90/:91/:94/:95 + __all__:414-415；全仓消费方（排 plumbing）= **空** | 一致，零外部边 | |
 
 ---
@@ -91,16 +91,16 @@
 
 条件：F1 先落 → 收口委托 `reject_integer_float=True, min_value=0` + **保留 blank 短路** + parity 钉 :247/:250 维持 + 对照 `parse_report_int("2000.0")` 接受（禁顺手统一兄弟 field）。F1 前只能停「注释+parity 临时态」。
 
-### 🟡 R28 — P4 静默吞错改 raise（条件可做，唯一软风险=allow_none 用错）
-**判定 🟡黄**（完全独立叶子，不依赖 F1）
+### 🟢 R28 — P4 静默吞错改 raise（2026-06-08 已 fixed）
+**判定 🟢绿**（完全独立叶子，不依赖 F1，已闭合）
 
-证据：`_safe_float:56 except Exception→None`（垃圾/NaN/inf/bool 静默放行）；收口 `parse_finite_float`(overload 已存在)对四类全 raise=P4 正方向；上游 batch_operation:92/part_operation:75 已 `parse_optional_float` 严校 → 爆炸半径极小（except 几乎不可达）。
+证据：当前 `_safe_float:56-57` 已保名薄包装到 `parse_finite_float(value, field="ext_days", allow_none=True)`；收口 `parse_finite_float`(overload 已存在)对垃圾/NaN/inf/bool 全 raise=P4 正方向；上游 batch_operation:92/part_operation:75 已 `parse_optional_float` 严校 → 爆炸半径极小。
 
 灾难链（仅在收口用错时）：
 > `allow_none=False` → None ext_days 直接 raise → **炸所有 ext_days 为空的正常批次**（ext_days 合法可空）。必须 `allow_none=True`。
 > 越界把消费点 `setup/unit_hours = float(... or 0.0)`(:170-171/:70-71)一并统一 → 「未填工时」由默认 0 变建批次失败 → **静默炸建批次/复制工序主流程**。禁动。
 
-条件：`allow_none=True`；动手前先跑 `pytest -k allowlist` 定夺退/留 fitness 白名单 :77（探测器看名还是看体未定）；禁碰 setup/unit_hours 兜底。
+已闭合条件：`allow_none=True` 已落；`pytest -k test_no_new_local_parse_helpers` 已定夺 fitness 白名单 :77 保留；setup/unit_hours 兜底未碰。
 
 ### 🟢 R01 — 纯删死簇（安全）
 **判定 🟢绿**

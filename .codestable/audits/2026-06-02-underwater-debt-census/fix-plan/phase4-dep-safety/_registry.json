@@ -3141,7 +3141,7 @@
   "id": "R28",
   "bucket": "B05",
   "home": "B05",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P4",
   "partition": "scheduler-config-summary-graph",
@@ -3161,7 +3161,7 @@
    "part_operation.py",
    "test_architecture_fitness.py"
   ],
-  "current_evidence_2026_06_05": "batch_service.py:55 _safe_float 仍是 try float(value) except Exception: return None 静默吞错版,未改 raise/未收口到 parse_finite_float(batch_service:15 仍只 import parse_finite_int);test_architecture_fitness.py:64/:77 的 _safe_float 白名单条目仍在(修复要求同步删)",
+  "current_evidence_2026_06_05": "2026-06-08 B 执行后: batch_service.py:56 _safe_float 已按方案 b 保名薄包装,函数体为 return parse_finite_float(value, field=\"ext_days\", allow_none=True);batch_service.py:15 已 import parse_finite_float。旧 try float(value) / except Exception: return None 静默吞错分支已不存在。tests/gate_meta/test_architecture_fitness.py 的 _safe_float 白名单条目按实测保留,因为探测器按函数名命中;窄验证 test_no_new_local_parse_helpers 通过。",
   "cluster": "C01",
   "same_file_siblings": [],
   "interference_edges": [
@@ -3192,9 +3192,9 @@
   ],
   "verdict": null,
   "adv_precondition": null,
-  "planned_batch_hint": "Batch-6(B05)。完全独立叶子，F 落地后任意时点可做，无前置。",
-  "planned_deps_hint": "无桶内/跨桶同文件硬边(lb_colocation=none)。co-change 组(Phase1)：R04/R09/R59(同为本桶解析收口，但无代码耦合)。fitness 白名单退条目是机械守卫，不构成对他债失效。完全独立可任意排期。",
-  "planned_fix_hint": "把 _safe_float 收口到 parse_finite_float(allow_none=True)：垃圾→raise ValidationError(灵魂线正方向)、blank/None→None(因 ext_days 是 Optional，空值合法必须保留)、合法→float。落地两选一：(a)删 _safe_float、两消费点改 `parse_finite_float(tmpl.ext_days, field='ext_days', allow_none=True)`(需在 batch_service 或调用模块补 import parse_finite_float)；(b)保留 _safe_float 名但函数体改为 `return parse_finite_float(value, field='ext_days', allow_none=True)`(最小改面)。**严",
+  "planned_batch_hint": "已在 Batch-A/G21 落地。R28 是完全独立叶子,不依赖 F1;本登记仅保留历史批次归属和已完成证据。",
+  "planned_deps_hint": "已满足:无桶内/跨桶同文件硬边(lb_colocation=none)。R04/R09/R59 只是同桶解析收口组,与 R28 无代码耦合。R28 未改 number_utils.py,仅调用既有 parse_finite_float。",
+  "planned_fix_hint": "已执行方案 b:保留 _safe_float 名,函数体收口到 parse_finite_float(value, field=\"ext_days\", allow_none=True)。坏值/NaN/inf/bool 由统一解析器 loud raise ValidationError;blank/None 继续返回 None,保留 ext_days Optional 合法语义。tests/gate_meta/test_architecture_fitness.py:77 白名单经实测应保留,不是漏退。",
   "phase1_blast": {
    "co_change_within_group": [
     "R04",
@@ -3202,15 +3202,15 @@
     "R59"
    ],
    "contract_topology_tests": [
-    "tests/gate_meta/test_architecture_fitness.py(白名单守卫:删/收口 _safe_float 必须同步删:77 白名单条目,否则:254 stale_entries 断言红)"
+    "tests/gate_meta/test_architecture_fitness.py(白名单守卫:方案 b 保留 _safe_float 名时必须保留:77 白名单条目;2026-06-08 已用 -k test_no_new_local_parse_helpers 实测通过)"
    ],
-   "downstream_effect": "ext_days 上游已严格校验(core/models/batch_operation.py:92 parse_optional_float、part_operation.py:75 同),_safe_float 几乎见不到坏值=冗余防御。收口到 parse_finite_float 仅当 ext_days 真坏时由静默None→raise ValidationError(更合灵魂线)。极小爆炸半径。注意:web/routes/process_bp.py:28 另有同名 _safe_float(value,field)但那个是 raise 版(R41邻居),与本债不同符号。",
-   "fix_invalidation_risk": "收口/删除必须同步退 test_architecture_fitness.py:77 白名单条目(否则 stale_entries 红)。这是机械守卫,不构成对他债修法的失效。",
+   "downstream_effect": "ext_days 上游已严格校验(core/models/batch_operation.py:92 parse_optional_float、part_operation.py:75 同),_safe_float 实际流入仍是 None 或合法 float。收口后正常建批次/复制工序保持行为不变;只有坏值/NaN/inf/bool 从旧静默放行改为 ValidationError loud raise。注意:web/routes/process_bp.py:28 另有同名 _safe_float(value,field)但那个是 raise 版(R41邻居),与本债不同符号。",
+   "fix_invalidation_risk": "方案 b 保名薄包装会继续命中 LOCAL_PARSE_HELPER_NAMES,故 test_architecture_fitness.py:77 白名单必须保留。只有未来删除 _safe_float 函数名时才退该白名单。",
    "id": "R28",
    "lb_colocation_danger": "none",
-   "location_status": "✅准 core/services/scheduler/batch_service.py:56 def _safe_float(嵌套于类内,value None/空串→None,except Exception→None 静默吞)",
+   "location_status": "✅fixed — core/services/scheduler/batch_service.py:56 def _safe_float 当前为 parse_finite_float(value, field=\"ext_days\", allow_none=True) 薄包装;旧 except Exception 静默吞错分支已删除。",
    "pathology": "P4(灵魂线:静默吞错)",
-   "planned_fix_class": "收口到 parse_finite_float(=改 raise 方向,符合P4灵魂线;严禁加兜底)+ 同步退 fitness 白名单条目",
+   "planned_fix_class": "已收口到 parse_finite_float(=改 raise 方向,符合P4灵魂线;未加兜底)+ 实测保留 fitness 白名单条目",
    "prod_consumers": [
     "core/services/scheduler/batch_template_ops.py:172 svc._safe_float(tmpl.ext_days)",
     "core/services/scheduler/batch_copy.py:72 svc._safe_float(op.ext_days)"

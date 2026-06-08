@@ -33,7 +33,7 @@
 | **G18** | CONFIG-DUAL | {R26} ASC-4 ⏸ | 5 顶层 shim 删,三步迁移须同窗口,但与本簇余成员无原子绑定,Batch-14 全局最晚 | 晚于 R29/R33/R52 三桶收敛(facade 删晚于收敛硬约束) |
 | **G19** | PARSE-INT | {R01, R04} A1 | 同文件 schedule_payload_contract.py 强行号互撞(R04:72 落在 R01 删的 _iter:67-87 内) | 强序 R01 先删(:67-87 含:72,缩收口面 6→5)→R04 后收口(剩 5 点,6 处 except 同步加 ValidationError 不可拆);必同 PR;依赖 F1 |
 | **G20** | PARSE-INT | {R59} A2 | 独立文件 report_number_parsing.py,与 R04 共享 F1 门(reject_integer_float) | F1 落地后 R59 才收口(否则撞续命测试:247/:250);F1 后可独立提交 |
-| **G21** | PARSE-INT | {R28} A3 | 完全独立叶子,收口到已存在 parse_finite_float,不改 number_utils 任何行,不依赖 F1 | 任意排期;唯一同步=退/留 fitness 白名单:77 |
+| **G21** | PARSE-INT | {R28} A3 | **2026-06-08 已 fixed**。完全独立叶子,已保留 `_safe_float` 名并收口到已存在 parse_finite_float,不改 number_utils 任何行,不依赖 F1 | 已落地: `allow_none=True`;fitness 白名单:77 经 `-k test_no_new_local_parse_helpers` 实测保留 |
 | **G22** | PARSE-INT | {R08, R09} A4 ⏸ | 同文件 viewmodel 串行避免行号互撞;R09 跨子簇(B 副本归此,A 副本归 G19 邻域) | R08 先(B01)→R09 后(B05)串行;O01/O02 已裁：只收编 A/B 两 Optional 副本，C 严格保持不动，persistence_errors:13 归 R04 禁区+注释；R09 双路 parity(C 严格 5.9→None vs A/B 宽松 5.9→5) |
 | **GF1** | PARSE-INT | F1(reject_integer_float 非债) | A1/A2 共享前置门,加在 strict_parse:46 经:81 透传,**必默认 False**(默认 True 炸 sgs_graph 等 parse_required_int 调用方) | 最先落+默认 False+自带 parity;门控 G19(R04)/G20(R59) |
 | **G23** | COMPAT-DISPATCH | {R33, R30} A1 | 同改 config_service_component_contract 测试+R30 删 shared 实现/R33 删壳 re-export,删序错即 ImportError | 硬序 R33 步1(迁两测试 import)→R30(删 shared 实现/三 FieldPolicy/三常量)→R33 步2/3(删壳+:411 断言) |
@@ -123,7 +123,7 @@ ROOT（承重注释 + 共享前置门，纯增量零结构，最先落）
   └─ G27p  R22 24 键 exact parity 先落                        [门控 G27 收敛]⏸
 
 Batch-A（独立死叶子 / 零前置 / owner=false，最早可落）
-  G14(R10) G16(R45≡R48已fixed/no-op) G21(R28)
+  G14(R10) G16(R45≡R48已fixed/no-op) G21(R28已fixed)
   G28(R23) G31(R38part+R39) G32(R38 op_type/operator) G35(R36) G37(R02)
   G11(R11≡R63) G38(R06+R27+gantt)
   *G03 受 E04 软序 → 实际延后紧随 G04；G25 并回 G24，不在 Batch-A 单独落
@@ -462,7 +462,7 @@ Batch-D（facade 删除最晚 / 跨 owner-pending 收口）
 
 原子簇 42 个（G01–G42）+1 共享前置门 GF1 = 43 调度单元（多债强原子 20 / 单债 22 / 承重门 5🔒；原待裁清单已裁后分流，R29/R52/R24 走 KEEP，R55 本轮暂停）。
 验环：**无环（DAG 成立，环成员=空）**——13 条 H 硬边全单向收敛，唯一双向标记的 E16/E24/E11 均为 S 软序可定向。
-批次草案（序）：ROOT（GF1 默认 False + LB01/LB02/LB05/LB07/LB08/LB03/R05-step1/R22-parity 承重注释+parity，纯增量零结构）→ Batch-A（零前置死叶子 G14/G16已fixed-no-op/G21/G28/G31/G32/G35/G37/G11/G38，G03 延后，G25 并回 G24）→ Batch-B（单门控前置 G06/G07/G08/G12/G19/G20/G24含G25旁支/G40/G30/G36/G39 KEEP；G13/R55 本轮跳过）→ Batch-C（身份族收敛 G04→G01/G27/G09/G10/G29/G15/G22/G33/G34/G17/G23）→ Batch-D（facade 最晚 G18←三桶收敛 + G26 KEEP/G41/G42 KEEP）。
+批次草案（序）：ROOT（GF1 默认 False + LB01/LB02/LB05/LB07/LB08/LB03/R05-step1/R22-parity 承重注释+parity，纯增量零结构）→ Batch-A（零前置死叶子 G14/G16已fixed-no-op/G21已fixed/G28/G31/G32/G35/G37/G11/G38，G03 延后，G25 并回 G24）→ Batch-B（单门控前置 G06/G07/G08/G12/G19/G20/G24含G25旁支/G40/G30/G36/G39 KEEP；G13/R55 本轮跳过）→ Batch-C（身份族收敛 G04→G01/G27/G09/G10/G29/G15/G22/G33/G34/G17/G23）→ Batch-D（facade 最晚 G18←三桶收敛 + G26 KEEP/G41/G42 KEEP）。
 重灾区：**24 文件**（红队第1轮 +5：operation_execution_scope.py + R54 缺席四文件）≥2 债顺序敏感，最危 3 个=feedback_service.py(LB01↔R17 同 _build_event_payload)、execution_review.py(承重五钉↔R62)、gantt_critical_chain_provider.py(_copy↔_normalize 误删)；**6 承重文件**全标禁区（含 operation_execution_scope.py R09 收口家↔LB01 最终底同文件）。
 边总变化：旧 146 −删 27（假边 22+已修对消 5）+新 **19**（同符号 co-change/收口前置硬边/N1N2 邻接/facade 删序 +红队 E28/E29 同文件承重毗邻）~降 18（硬→软/解耦/方向反转）= 重建约 **138 边，跨簇有效约束边 29 条（H 13/S 14/P 2）**，真门控分层硬边仍 13 条。
 与旧 DAG 主要差异：R09 收口点已存在→作废建模块改双路 parity；R13 解耦 R18 各自独立，按 O06 先迁 3 测试后删、删前 owner 再确认；R34 纯删（repoint 目标存在）+R05→R34 降软；R54 升 5 套手维面（gantt_task_detail 别名元组+**三基数 16/15/12 禁统一键名**）；R56 入 fixed（偏离铁律 3 待认账）；新债 N1（can_write_feedback 失忆债门控 R08）/N2（return 0 sentinel）补注释+绑契约；R03 四态 parity（missing 态:267 生产可达，非全死分支）；R29 误标纠回 planned 后 O20 裁 KEEP，E07 改为 R29/G26 先闭合、R26/G18 后删 facade；批次由 16 收缩为 ROOT+4 大批，待裁项按裁后口径执行。

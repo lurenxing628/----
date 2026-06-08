@@ -12,7 +12,7 @@
 | R01 | B14 / P6 死码 / false / false | schedule_payload_contract.py | `_iter_actionable_results:67`(body 67-87)、`count:90`、`has:94-95`、`__all__:414-415`、`typing import Iterator:5`（删死簇后孤儿，须同删） |
 | R04 | B05 / P5 收口 / false / false | schedule_payload_contract.py（+strict_parse.py 收口点） | `_strict_positive_int:50`，6 调用点 `:72/:149/:198/:308/:324/:372`（:72 在 R01 删区内！）；6 处 except `(TypeError,ValueError)` 须同步加 `ValidationError` |
 | R59 | B05 / P5 漂移 / false / false | report_number_parsing.py（+strict_parse 收口点） | `_INT_TEXT_PATTERN:9`、`_parse_plain_report_int:54`、`parse_report_nonnegative_int:73`；续命测试 `regression_web_silent_fallback_contract.py:241/244/247/250` |
-| R28 | B05 / P4 静默吞错 / false / false | batch_service.py（+number_utils 收口点） | `_safe_float:56`(@staticmethod :55)，消费点 batch_template_ops.py:172 / batch_copy.py:72；fitness 白名单 test_architecture_fitness.py:77 |
+| R28 | B05 / P4 静默吞错 / false / false / **2026-06-08 已 fixed** | batch_service.py（+number_utils 收口点） | `_safe_float:56`(@staticmethod :55，body :57 已薄包装到 `parse_finite_float(..., allow_none=True)`)，消费点 batch_template_ops.py:172 / batch_copy.py:72；fitness 白名单 test_architecture_fitness.py:77 实测保留 |
 | R09 | B05 / P5 收口 / false / **owner_pending true** | resource_dispatch_execution_service.py:24 + scheduler_resource_dispatch_execution.py:33（2 旧副本） | 收口点 `parse_positive_execution_int` **已存在** operation_execution_scope.py:9；`parse_optional_positive_int` 全仓=0（新建前提作废）；C 路 context.py:28 已收口 |
 | R08 | B01 / P6 死码 / false / **owner_pending true** | scheduler_resource_dispatch_execution.py | 死常量 `_FEEDBACK_DISABLED_REASON:25`、死分支① `:227-228`、死分支② `:367-368`；活路径 `:234`；消费者 context.py:229/237/246（**非** routes.py，registry 误标） |
 
@@ -35,10 +35,10 @@
 - **与 R04 共享 F1 产物**（`reject_integer_float`）：R59 裸收口（F1 前）会让 `'1.0'`/`1.0` 由 raise 变接受 1，直撞续命测试 :247/:250（显性 CI 红）。故 **F1 落地后 R59 才能收口**；F1 前 R59 只能停「注释 + parity 钉死差异」临时态。
 - **可与 A1 同批也可单独**：R59 与 R01/R04 不同文件、不撞行号，只共享 F1。F1 一旦落地，R59 可独立提交。**A2 独立于 A1 的物理改动，仅同享 F1 门**。
 
-### A3 = {R28}（完全独立叶子）　原子原因：无
-- batch_service.py 孤儿债（`same_file_siblings=[]`），收口到已存在 `parse_finite_float`，**不改 number_utils.py 任何一行**。
+### A3 = {R28}（完全独立叶子，2026-06-08 已 fixed）　原子原因：无
+- batch_service.py 孤儿债（`same_file_siblings=[]`），已收口到既有 `parse_finite_float`，**未改 number_utils.py 任何一行**。
 - 与 R04/R09/R59 是 co-change 组但 registry 明示「无代码耦合」，不共用被改符号，**不依赖 F1**（走 parse_finite_float 自己的 raise，与 reject_integer_float 无关）。
-- **可任意排期，不阻塞/不被阻塞**。唯一同步动作：退/留 fitness 白名单 test_architecture_fitness.py:77（按方案 a 删/b 留，动手前先跑 `pytest -k allowlist` 定夺）。
+- 已执行方案 b：保留 `_safe_float` 名，函数体为 `return parse_finite_float(value, field="ext_days", allow_none=True)`。`pytest -k test_no_new_local_parse_helpers` 已证明 fitness 白名单 test_architecture_fitness.py:77 必须保留。后续不要重复删除白名单或改消费点。
 
 ### A4 = {R08, R09}　原子原因：同物理文件 viewmodel scheduler_resource_dispatch_execution.py，须串行避免行号互撞
 - **同文件**：R08 改 `:25/:227-228/:367-368`（文件中下部）；R09 改 B 副本 def `:33` + 调用点 `:257/:258/:353`。物理区段不重叠，但同文件删行会位移彼此锚点。
@@ -48,7 +48,7 @@
 
 ### 独立性总结
 - **A1（R01+R04）原子内核**：必须同 PR。
-- **A3（R28）**：完全独立叶子。
+- **A3（R28）**：完全独立叶子，已 fixed，后续只做残留核查。
 - **F1 门**：A1 的 R04 + A2 的 R59 共用，最先落、默认 False。
 - **A2（R59）**：F1 后独立。
 - **A4（R08+R09）**：同文件串行 R08→R09，**双 owner_pending 阻塞**，R09 还跨 A1/A4。
@@ -62,7 +62,7 @@
 | R09 | → R20（operation_execution_labels.py） | **假边，删** | registry 标 R20 same_file:scheduler_resource_dispatch_execution.py，但 R20 primary=operation_execution_labels.py（context.py:11），不碰本文件。corrections B 明列 R20↔{R08,R09,R12} 三边全假。 |
 | R09 | → R15/R17（operation_execution_feedback_support.py STRICT `_positive_int:161`→raise） | 禁区毗邻（非依赖） | R15/R17 在另一文件的 STRICT 写入闸，是 R09 禁区（严禁误删当重复）。无收口竞争，仅「别碰」。 |
 | R09 | → R46/LB08（scheduler_public_errors.py） | 禁区毗邻 | STRICT `_positive_int:167`→raise 写入闸，R09 禁碰。 |
-| R28 | → R04/R29/R33（number_utils.py 同住） | 软约束（无代码耦合） | 三债住 R28 收口目标模块 number_utils.py，但 R28 只**调用** parse_finite_float 不改其一行。仅当 R04/R29/R33 改 parse_finite_float 签名/边界语义才产生顺序敏感；当前无此声明 → 软约束。 |
+| R28 | → R04/R29/R33（number_utils.py 同住） | 软约束（无代码耦合，已 fixed） | 三债住 R28 收口目标模块 number_utils.py，但 R28 只**调用** parse_finite_float 不改其一行。R28 已落地；仅当未来 R04/R29/R33 改 parse_finite_float 签名/边界语义才需要复核 R28 相关测试。 |
 | R01 | → R26/R43（test_sp05_path_topology_contract.py） | **假边/弱边，降级** | corrections B：R26↔R43 是 scheduler_config.py basename 假碰撞；R01 改 SP05 的 schedule_persistence 模块键块(:53-56)，R26/R43 改别的模块键条目，同文件不同区。R01 改 SP05 时须 rg 重定位模块键当前行（别照 :54-55）。 |
 | R01 | → R19/R46（sym:__all__） | **弱标签，非边** | 不同文件各自的 __all__，非同一列表，无行号互撞，无顺序敏感。 |
 
@@ -82,7 +82,7 @@
 7. **新增/确认 R04→6 处 except 同步改边**（异常类型逃逸灾难链）：ValidationError 非 ValueError 子类，6 处 except 须同 PR 加捕 ValidationError，不可拆。
 
 ### 降级（硬→软）
-8. **R28↔{R04,R29,R33}（number_utils.py same_file）降为软约束**：R28 只调用不改 parse_finite_float，无代码耦合（registry 明示）。从同文件硬边降为「仅当他债改 parse_finite_float 签名才敏感」的条件软边。
+8. **R28↔{R04,R29,R33}（number_utils.py same_file）降为软约束且 R28 已 fixed**：R28 只调用不改 parse_finite_float，无代码耦合（registry 明示）。从同文件硬边降为「仅当他债改 parse_finite_float 签名才敏感」的条件软边。
 9. **R09→R07 降为「前置已完成」**：corrections E 标 R07 已 fixed（偏离用 ValidationError 待认账）。该边从「待做前置」降为「已满足，剩认账」。
 
 ### 本簇不涉及的 corrections B 假边（仅记录，本簇成员不在两端，无需处理）
@@ -112,7 +112,7 @@ R02↔R25、R45↔{LB07,R33,R51}、R32↔R15、LB04↔{LB07,R33}、config_snapsh
 
 ## E) fixed 成员作为前置已完成 — 残留动作（认账注释）
 
-本簇 6 成员**无一是 fixed**（R01/R04/R28/R59 status=planned；R09/R08 status=planned+owner_pending）。fixed 态来自**毗邻前置**（corrections E：LB03/LB06/R07/R16/R56/R57 已结构性消除）：
+本簇 6 成员里 **R28 已 fixed**（2026-06-08 Batch-A/G21）；R01/R04/R59 仍 planned，R09/R08 仍 planned+owner_pending。其他 fixed 态来自**毗邻前置**（corrections E：LB03/LB06/R07/R16/R56/R57 已结构性消除）：
 
 1. **R07（已 fixed，A4/A1 邻域前置）**：resource_dispatch_execution_service.py 改 raise 已完成，但**偏离**——用 `ValidationError(field=schedule_id)` 而非计划的 `AppError/ErrorCode.NOT_FOUND`，与写门禁 feedback_service.py:385 跨文件错误类不对称，且缺 schedule=None→raise 专项回归。
    - **残留动作**：owner 须**认账**此偏离 + 裁是否统一错误类（改则补 AppError/ErrorCode 导入）。
@@ -120,13 +120,15 @@ R02↔R25、R45↔{LB07,R33,R51}、R32↔R15、LB04↔{LB07,R33}、config_snapsh
 
 2. **R16/R56/R57（已 fixed，非本簇直接邻）**：corrections D：R56 走高风险结构路线删 `_is_execution_review_request` 本体（违铁律3），owner 须认账 + 确认契约测试同提交入账。与本簇无直接耦合，仅作 DAG 前置已完成态记录。
 
-3. **R29（corrections E：误标 → planned owner-pending）**：number_utils.py 仍全量 delegation-facade、4 兄弟全薄壳，半截迁移不对称客观在场。与 R28 同住 number_utils.py，但 R28 只调用 parse_finite_float 不改文件，**R29 不阻塞 R28**（软约束，见 C-8）。
+3. **R28（本簇 fixed 成员）**：`_safe_float` 已保名收口到 `parse_finite_float(..., allow_none=True)`；旧静默吞错分支已删除；fitness 白名单保留已由 `test_no_new_local_parse_helpers` 证明。后续残留动作只有避免重复施工。
+
+4. **R29（corrections E：误标 → planned owner-pending）**：number_utils.py 仍全量 delegation-facade、4 兄弟全薄壳，半截迁移不对称客观在场。与 R28 同住 number_utils.py，但 R28 只调用 parse_finite_float 不改文件，**R29 不阻塞 R28**（软约束，见 C-8）。
 
 **残留动作清单**：仅 R07 偏离需 owner 认账（错误类不对称 + 缺回归）；其余 fixed 前置已硬完成，无本簇阻塞。
 
 ## 返回摘要
 
-簇 C-PARSE-INT | 原子子簇 4 个：A1{R01+R04 同文件强行号互撞}、A2{R59 依赖F1独立文件}、A3{R28 完全独立叶子}、A4{R08+R09 同viewmodel串行+双owner_pending}；F1（reject_integer_float）为 A1/A2 共享前置门、必默认False。
+簇 C-PARSE-INT | 原子子簇 4 个：A1{R01+R04 同文件强行号互撞}、A2{R59 依赖F1独立文件}、A3{R28 完全独立叶子，已fixed}、A4{R08+R09 同viewmodel串行+双owner_pending}；F1（reject_integer_float）为 A1/A2 共享前置门、必默认False。
 关键内部顺序：F1先→A1 内 R01先删(:67-87含:72)R04后收口(剩5点,6处except同步加ValidationError)→A2 R59收口；A4 R08先(B01)R09后(B05)串行(:367-368锚)；R09 A/B两副本须分两路parity(C严格5.9→None vs A/B宽松5.9→5)。
 跨簇边：R04→LB08禁区毗邻(认账)、R09→R07前置已完成(认账偏离)、R28→number_utils软约束。
 边变化：删 R20↔{R08,R09}假边、R01↔{R19,R46}__all__弱标签；新 R04⇄R59 F1互锁、R04→6处except同改、R09双副本分裂边；降 R28↔{R04,R29,R33}硬→软、R09→R07待做→已完成、R01↔{R26,R43}降为rg重定位纪律。

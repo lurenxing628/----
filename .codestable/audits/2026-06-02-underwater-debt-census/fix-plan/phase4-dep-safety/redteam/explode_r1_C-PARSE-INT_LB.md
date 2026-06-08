@@ -66,9 +66,9 @@
 ### 🟢 R28 — 完全独立叶子，收口改 raise 方向（安全）
 **判定绿。**
 
-证据：`_safe_float` @staticmethod batch_service.py:56(@:55)，2 消费点 batch_template_ops.py:172 / batch_copy.py:72；收口点 `parse_finite_float`(number_utils.py:14/:19/:23 已存在 overload)。上游模型层已 `ext_days=parse_optional_float(...)`：part_operation.py:75 / batch_operation.py:92 → 流入 `_safe_float` 恒为 None 或合法 float，except 分支几乎不可达。收口走 services→shared 合法方向，不改 number_utils 一行。
+证据：2026-06-08 已 fixed。`_safe_float` @staticmethod batch_service.py:56(@:55)，当前函数体 :57 已为 `parse_finite_float(..., allow_none=True)`；2 消费点 batch_template_ops.py:172 / batch_copy.py:72 不变；收口点 `parse_finite_float`(number_utils.py:14/:19/:23 已存在 overload)。上游模型层已 `ext_days=parse_optional_float(...)`：part_operation.py:75 / batch_operation.py:92 → 流入 `_safe_float` 恒为 None 或合法 float。收口走 services→shared 合法方向，未改 number_utils 一行。
 
-**唯一纪律**（非红）：必 `allow_none=True`（ext_days 合法可空，用 False 会炸空值批次）；退/留 fitness 白名单 test_architecture_fitness.py:77（先跑 `pytest -k allowlist` 定夺）；禁越界动两消费点 `setup_hours/unit_hours = float(... or 0.0)` 工时兜底（动它=静默炸建批次）。同名异符号 process_bp.py `_safe_float(value,field)`(R41 raise版)禁误碰。
+**执行结果**（非红）：已使用 `allow_none=True`（ext_days 合法可空）；fitness 白名单 test_architecture_fitness.py:77 经 `pytest -k test_no_new_local_parse_helpers` 实测保留；未越界动两消费点 `setup_hours/unit_hours = float(... or 0.0)` 工时兜底。同名异符号 process_bp.py `_safe_float(value,field)`(R41 raise版)未误碰。
 
 ### 🟢 R01 — 死簇纯删，零生产消费（安全）
 **判定绿。**

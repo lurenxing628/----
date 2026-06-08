@@ -531,18 +531,18 @@
  "R28": {
   "id": "R28",
   "bucket": "B05",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P4",
   "lb": false,
   "file": "batch_service.py",
   "cluster": "C01",
   "siblings": [],
-  "batch": "Batch-6(B05)。完全独立叶",
+  "batch": "已在 Batch-A/G21 落地",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
-  "title": "batch_service._safe_float 重造浮点解析并静默吞错,绕过 parse_finite_float"
+  "title": "batch_service._safe_float 已收口到 parse_finite_float,保留 allowlist"
  },
  "R29": {
   "id": "R29",
