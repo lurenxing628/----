@@ -1,4 +1,4 @@
-"""回归测试：ScheduleRepository 明细查询契约——list_overlapping_with_details / list_by_version_with_details 返回固定的 COMMON_DETAIL_KEYS 行形状、按版本过滤、外协行 machine/operator 为 None 而 supplier_name 仍解析；list_dispatch_rows_with_resource_context 额外带班组上下文（DISPATCH_DETAIL_KEYS），按 operator/machine/team scope（大小写与空白归一）过滤、对全 operator/machine scope 剔除未分配行、并用 LEFT JOIN 保留未分配外协行。"""
+"""回归测试：ScheduleRepository 明细查询契约——list_by_version_with_details 返回固定的 COMMON_DETAIL_KEYS 行形状、按版本过滤、外协行 machine/operator 为 None 而 supplier_name 仍解析。"""
 
 from __future__ import annotations
 
@@ -31,13 +31,6 @@ COMMON_DETAIL_KEYS = {
     "machine_name",
     "operator_name",
     "supplier_name",
-}
-
-DISPATCH_DETAIL_KEYS = COMMON_DETAIL_KEYS | {
-    "machine_team_id",
-    "machine_team_name",
-    "operator_team_id",
-    "operator_team_name",
 }
 
 
@@ -164,26 +157,6 @@ def _ids(rows: List[Dict[str, Any]]) -> List[int]:
     return [int(row["schedule_id"]) for row in rows]
 
 
-def test_schedule_overlap_detail_query_keeps_row_shape_order_and_overlap_contract() -> None:
-    repo = _repo()
-
-    rows = repo.list_overlapping_with_details(
-        start_time="2026-05-01 08:30",
-        end_time="2026-05-01 10:00",
-        version=1,
-    )
-
-    assert _ids(rows) == [2, 1, 4]
-    assert set(rows[0]) == COMMON_DETAIL_KEYS
-    assert all("machine_team_id" not in row for row in rows)
-    assert all("operator_team_id" not in row for row in rows)
-
-    external = rows[2]
-    assert external["machine_id"] is None
-    assert external["operator_id"] is None
-    assert external["supplier_name"] == "外协供应商"
-
-
 def test_schedule_detail_query_for_version_uses_same_common_shape() -> None:
     repo = _repo()
 
@@ -192,109 +165,3 @@ def test_schedule_detail_query_for_version_uses_same_common_shape() -> None:
     assert _ids(rows) == [2, 1, 4, 3]
     assert set(rows[0]) == COMMON_DETAIL_KEYS
     assert all("machine_team_id" not in row for row in rows)
-
-
-def test_schedule_dispatch_query_includes_team_context_and_operator_scope() -> None:
-    repo = _repo()
-
-    rows = repo.list_dispatch_rows_with_resource_context(
-        start_time="2026-05-01 00:00",
-        end_time="2026-05-02 00:00",
-        version=1,
-        scope_type="operator",
-        scope_id="O1",
-    )
-
-    assert _ids(rows) == [1]
-    row = rows[0]
-    assert set(row) == DISPATCH_DETAIL_KEYS
-    assert row["machine_team_id"] == "T-M"
-    assert row["machine_team_name"] == "设备班组"
-    assert row["operator_team_id"] == "T-O"
-    assert row["operator_team_name"] == "人员班组"
-
-
-def test_schedule_dispatch_query_keeps_machine_and_team_scope_filters() -> None:
-    repo = _repo()
-
-    machine_rows = repo.list_dispatch_rows_with_resource_context(
-        start_time="2026-05-01 00:00",
-        end_time="2026-05-02 00:00",
-        version=1,
-        scope_type="machine",
-        scope_id="M2",
-    )
-    team_rows = repo.list_dispatch_rows_with_resource_context(
-        start_time="2026-05-01 00:00",
-        end_time="2026-05-02 00:00",
-        version=1,
-        scope_type="team",
-        scope_id="T-2",
-    )
-
-    assert _ids(machine_rows) == [2]
-    assert _ids(team_rows) == [2, 3]
-
-
-def test_schedule_dispatch_query_filters_unassigned_rows_for_all_operator_and_machine_scopes() -> None:
-    repo = _repo()
-
-    operator_rows = repo.list_dispatch_rows_with_resource_context(
-        start_time="2026-05-01 08:30",
-        end_time="2026-05-01 10:00",
-        version=3,
-        scope_type="operator",
-        scope_id=None,
-    )
-    machine_rows = repo.list_dispatch_rows_with_resource_context(
-        start_time="2026-05-01 08:30",
-        end_time="2026-05-01 10:00",
-        version=3,
-        scope_type="machine",
-        scope_id="",
-    )
-    all_rows = repo.list_dispatch_rows_with_resource_context(
-        start_time="2026-05-01 08:30",
-        end_time="2026-05-01 10:00",
-        version=3,
-    )
-
-    assert _ids(operator_rows) == [6]
-    assert _ids(machine_rows) == [7]
-    assert _ids(all_rows) == [6, 7]
-
-
-def test_schedule_dispatch_query_normalizes_scope_type_for_all_operator_and_machine_scopes() -> None:
-    repo = _repo()
-
-    operator_rows = repo.list_dispatch_rows_with_resource_context(
-        start_time="2026-05-01 08:30",
-        end_time="2026-05-01 10:00",
-        version=3,
-        scope_type=" Operator ",
-    )
-    machine_rows = repo.list_dispatch_rows_with_resource_context(
-        start_time="2026-05-01 08:30",
-        end_time="2026-05-01 10:00",
-        version=3,
-        scope_type=" Machine ",
-    )
-
-    assert _ids(operator_rows) == [6]
-    assert _ids(machine_rows) == [7]
-
-
-def test_schedule_dispatch_query_keeps_left_join_for_unassigned_external_rows() -> None:
-    repo = _repo()
-
-    rows = repo.list_dispatch_rows_with_resource_context(
-        start_time="2026-05-01 08:30",
-        end_time="2026-05-01 10:00",
-        version=1,
-    )
-
-    assert _ids(rows) == [2, 1, 4]
-    external = rows[2]
-    assert external["machine_name"] is None
-    assert external["operator_name"] is None
-    assert external["supplier_name"] == "外协供应商"

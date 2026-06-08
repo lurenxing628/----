@@ -57,7 +57,6 @@ def test_gantt_payload_surfaces_critical_chain_unavailable(monkeypatch) -> None:
         def _repo_raise(_version: int):
             raise RuntimeError("repo boom")
 
-        monkeypatch.setattr(svc.schedule_repo, "list_overlapping_with_details", lambda *_args, **_kwargs: [])
         monkeypatch.setattr(svc.schedule_repo, "list_by_version_with_details", _repo_raise)
         monkeypatch.setattr(
             svc,

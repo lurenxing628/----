@@ -1012,7 +1012,7 @@
  "R34": {
   "id": "R34",
   "bucket": "B12",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "P3",
   "lb": false,
@@ -1021,16 +1021,16 @@
   "siblings": [
    "R35"
   ],
-  "batch": "Batch-13（B12 repo ",
-  "owner_pending": true,
+  "batch": "Batch-B/G30 已 fixed",
+  "owner_pending": false,
   "needs_adv": true,
-  "adv_refuted": false,
+  "adv_refuted": true,
   "title": "schedule_repo 版本-only 查询方法群:plan-role 迁移残渣,仅测试/类型契约续命"
  },
  "R35": {
   "id": "R35",
   "bucket": "B12",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,
@@ -1039,7 +1039,7 @@
   "siblings": [
    "R34"
   ],
-  "batch": "Batch-13，与 R34 同 s",
+  "batch": "Batch-B/G30 已 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,

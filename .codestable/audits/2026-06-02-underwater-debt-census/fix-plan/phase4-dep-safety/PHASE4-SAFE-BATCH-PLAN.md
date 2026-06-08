@@ -207,9 +207,9 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 
 ### 1.3 Batch-B — 依赖 ROOT 承重门 / 单门控前置
 
-> **2026-06-08 执行补登**：G12(R12) 已 fixed。已在 R11/R63 单份归一前置满足后，只补关键链坏时间行可观测信号：`dropped_count` / `critical_chain_partial` 穿过 `_empty_result`、单份 `_normalize_critical_chain_result`、`gantt_contract.py` 的 available=False 分支与前端 `gantt_contract.js` 状态归一。G39(R52+R25) 已 fixed：按 O07 方向 B 只补「我是故意的」注释，保留全量扫描 oracle 与 R25 service 垫片，不删 impl、不新建 `test_sgs_graph_ready.py`。R55/G13 仍按 O09 本轮跳过，未随 R12 改 scope。
+> **2026-06-08 执行补登**：G12(R12) 已 fixed。已在 R11/R63 单份归一前置满足后，只补关键链坏时间行可观测信号：`dropped_count` / `critical_chain_partial` 穿过 `_empty_result`、单份 `_normalize_critical_chain_result`、`gantt_contract.py` 的 available=False 分支与前端 `gantt_contract.js` 状态归一。G30(R34+R35) 已 fixed：按 O10 纯删口径删除 `schedule_repo.py` 四个死方法，退四件套测试/脚本引用，`benchmark_fjsp.py` 改指既有 `SchedulePlanQueryRepository.get_plan_time_span`。G39(R52+R25) 已 fixed：按 O07 方向 B 只补「我是故意的」注释，保留全量扫描 oracle 与 R25 service 垫片，不删 impl、不新建 `test_sgs_graph_ready.py`。R55/G13 仍按 O09 本轮跳过，未随 R12 改 scope。
 
-**成员（调度单元 + 债）**：G06(R62)←G05；G07(R17/R20)←G07a🔒；G08(R15/R17/R20)与 G07 同原子；G12(R12)←G11；G13(R55)⏸**本轮跳过，仅保留暂停占位**；G19(R01+R04)←GF1；G20(R59)←GF1；G24(R49 含 G25 旁支 + R50 + R51)；G40(R46)←G40a🔒⏸；G30(R34+R35)；G36(R37)；G39(R52+R25)已 fixed，按 O07 仅 KEEP 注释、不删 impl/垫片、不新建迁移测试。
+**成员（调度单元 + 债）**：G06(R62)←G05；G07(R17/R20)←G07a🔒；G08(R15/R17/R20)与 G07 同原子；G12(R12)←G11；G13(R55)⏸**本轮跳过，仅保留暂停占位**；G19(R01+R04)←GF1；G20(R59)←GF1；G24(R49 含 G25 旁支 + R50 + R51)；G40(R46)←G40a🔒⏸；G30(R34+R35)已 fixed；G36(R37)；G39(R52+R25)已 fixed，按 O07 仅 KEEP 注释、不删 impl/垫片、不新建迁移测试。
 
 **是否原子**：簇内强原子——G07/G08（R17/R20 跨 service+support 同原子提交）；G19（R01 先删→R04 后收口必同 PR）；G24（R49 主体 + G25 旁支 + R50/R51 一次原子 diff 从大行号往小删）；G39 只做 O07 已裁的保留注释动作，历史“迁测试+删 impl+删 R25 垫片”路线作废不执行；G12 单独穿单份 `_normalize` 白名单，G13/R55 本轮不随 G12 改。跨成员无序（除门控前置）。
 
@@ -226,11 +226,11 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 - **G24(R49+R50+R51)**：一次原子 diff 从大行号往小删（R51 删 `:28-35` 致下移 7~8 行）；R51 **两续命测试整体退场，禁迁移禁保留 `:25` 兜底断言**（保留=复活 P4 静默回退）；R50 保 `import math:3`；R49 主体 `parse_dispatch_rule` 等 def 真宿主 **`core/algorithms/dispatch_rules.py`**（非 greedy 子目录，按符号 rg 定行）；收口点 `schedule_params:277/346`+`optimizer_config:166/189` loud raise 已在位（只读确认）。
 - **R49-self 执行口径（红队 RT3-P02 采纳·同债拆两批须钉同提交序）**：R49 的 G25 旁支不再作为 Batch-A 独立动作；并回 G24（Batch-B 主体 `dispatch_rules.py:28-35`）一次原子执行。动手前按当前盘 `rg parse_dispatch_rule` 校准真实调用图，删后 `rg parse_dispatch_rule` 全仓零生产残引用方算闭合。
 - **G20(R59)🟡**：←GF1；F1 落地后才收口（裸收口撞续命测试 `:247/:250`）；保留 blank 短路 `:62-63`。
-- **G30(R34+R35)🟢**：O10 已裁纯删；repoint 目标 `get_plan_time_span_for_resolution` 存在（旧锚 :210，R23 后现盘 :206，执行按符号重 rg）；R34↔R35 同 commit 按符号自下而上；若未来改裁迁 detail_queries 活孪生，才回升为 R05 后置前置（落点是 R05 team-join 战场）；facade `:11 ScheduleDetailRow` 只删 `:12/:14` 保 `:11`（`:37` 活方法仍用）。
+- **G30(R34+R35)🟢 fixed**：2026-06-08 已按 O10 纯删口径闭合。已删除 `schedule_repo.py` 旧 `get_version_time_span` / `list_between` / `list_overlapping_with_details` / `list_dispatch_rows_with_resource_context` 四个死方法；`benchmark_fjsp.py` 改指 repo 层既有 `SchedulePlanQueryRepository.get_plan_time_span(version=..., source_table=SOURCE_SCHEDULE, candidate_id=None)`；facade 仅保留两条活方法返回类型断言（现 `test_schedule_service_facade_delegation.py:29-33`）。后续禁再按旧删点施工，活近亲现为 `schedule_repo.py:36` / `:79`。
 - **G06(R62)🟡**：←G05；按符号 `_resource_pair_payload`+`!=` 重 grep 禁照抄行号；**payload+dict+模板（`!=`副行 + title 改回 `_label`，爆点 #5：title 第四处 Jinja undefined→`title=""` UI 降级）+xlsx 四处同 commit**；收口面**零现成断言须先写 3 套 parity 快照**（升为硬前置门非建议）；禁碰 `:58-236` 护栏段 + 禁删 state 层 latest_*/counterpart_* 真身份键。
 - **G36(R37)🟢 fixed**：2026-06-08 已按符号删除 `list_links_with_machine_names` 死方法（旧锚 `operator_machine_repo.py:82-90`）；源码内该符号零命中。活近亲 `list_links_with_operator_info` 保留并上移到 `operator_machine_repo.py:82`，后续禁再按旧行号 `:82-90` 施工。
 
-**不可碰清单（按符号）**：LB01 `:369-374/:381-382/:471-473`；R15 provider `if not text: return None` 空值短路 + support:228 raise；R19 `snapshot:40 return sorted`（事实承重）；R52 ReadyQueueContractError 抛错链 loud raise；R46 同名陷阱 `v4_sanitizers:37`；R12 `_copy:108`/`:84 过滤`/sort:114/max:262/出口 try-except；R55 `:385 None 回退`；R51 收口点 schedule_params/optimizer_config（只读）；R50 `import math:3`；R34 活近亲 schedule_repo.py:71/:160 + facade `:33/:37`；STRICT-4 全程。
+**不可碰清单（按符号）**：LB01 `:369-374/:381-382/:471-473`；R15 provider `if not text: return None` 空值短路 + support:228 raise；R19 `snapshot:40 return sorted`（事实承重）；R52 ReadyQueueContractError 抛错链 loud raise；R46 同名陷阱 `v4_sanitizers:37`；R12 `_copy:108`/`:84 过滤`/sort:114/max:262/出口 try-except；R55 `:385 None 回退`；R51 收口点 schedule_params/optimizer_config（只读）；R50 `import math:3`；G30 fixed 后 R34 活近亲 `schedule_repo.py:36` / `:79` + facade `:29-33`；STRICT-4 全程。
 
 **收口行为差异检查项（None vs raise 反例逐条）**：
 - R15：空值 `""→None`（保 provider 本地，非 raise）vs 坏值 `"not-a-date"→raise/可观测`（收口符号）——爆点 #7 的核心反例。
@@ -599,7 +599,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 
 ## 6. 产物索引
 
-> 各产物一句话导航（全部在 `docs/_panorama_data/phase4_dep_safety/`，本目录 gitignored）。
+> 各产物一句话导航（权威副本在 `.codestable/audits/2026-06-02-underwater-debt-census/fix-plan/phase4-dep-safety/`；`docs/_panorama_data/phase4_dep_safety/` 只是 gitignored 旧镜像/缓存，本轮不得作为落点）。
 
 | 产物 | 一句话导航 |
 |---|---|

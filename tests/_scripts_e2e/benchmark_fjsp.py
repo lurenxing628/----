@@ -445,8 +445,10 @@ def run_one_case(
 ) -> Dict[str, Any]:
     # Local imports (after sys.path)
     from core.infrastructure.database import ensure_schema, get_connection
+    from core.models.schedule_plan_role import SOURCE_SCHEDULE
     from core.services.scheduler.schedule_service import ScheduleService
-    from data.repositories import ScheduleHistoryRepository, ScheduleRepository
+    from data.repositories import ScheduleHistoryRepository
+    from data.repositories.schedule_plan_query_repo import SchedulePlanQueryRepository
 
     meta = DATASET_SOURCES[instance_key]
     text = load_instance_text(instance_key, allow_download=allow_download)
@@ -501,8 +503,12 @@ def run_one_case(
         except Exception:
             makespan_h = None
 
-        span_repo = ScheduleRepository(conn, logger=None)
-        span = span_repo.get_version_time_span(version)
+        span_repo = SchedulePlanQueryRepository(conn, logger=None)
+        span = span_repo.get_plan_time_span(
+            version=version,
+            source_table=SOURCE_SCHEDULE,
+            candidate_id=None,
+        )
         out["schedule_span"] = span
         if makespan_h is None and span:
             st = datetime.strptime(span["start_time"], "%Y-%m-%d %H:%M:%S")

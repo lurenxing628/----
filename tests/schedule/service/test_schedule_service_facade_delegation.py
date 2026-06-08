@@ -6,15 +6,10 @@ import sqlite3
 import sys
 from datetime import datetime
 from types import SimpleNamespace
-from typing import List, Optional, get_type_hints
+from typing import List, get_type_hints
 
 from data.repositories.schedule_repo import ScheduleRepository
-from data.repositories.schedule_rows import (
-    ScheduleDetailRow,
-    ScheduleDispatchRow,
-    ScheduleSeedRow,
-    ScheduleTimeSpanRow,
-)
+from data.repositories.schedule_rows import ScheduleDetailRow, ScheduleSeedRow
 from tests._support.paths import REPO_ROOT_STR
 
 
@@ -31,17 +26,11 @@ def test_schedule_service_constructor_keeps_public_signature_contract() -> None:
 
 
 def test_schedule_repository_dict_rows_have_named_return_contracts() -> None:
-    assert get_type_hints(ScheduleRepository.get_version_time_span)["return"] == Optional[ScheduleTimeSpanRow]
     assert (
         get_type_hints(ScheduleRepository.list_version_rows_by_op_ids_start_range)["return"]
         == List[ScheduleSeedRow]
     )
-    assert get_type_hints(ScheduleRepository.list_overlapping_with_details)["return"] == List[ScheduleDetailRow]
     assert get_type_hints(ScheduleRepository.list_by_version_with_details)["return"] == List[ScheduleDetailRow]
-    assert (
-        get_type_hints(ScheduleRepository.list_dispatch_rows_with_resource_context)["return"]
-        == List[ScheduleDispatchRow]
-    )
 
 
 def test_schedule_service_repository_bundle_aliases_stay_in_sync() -> None:

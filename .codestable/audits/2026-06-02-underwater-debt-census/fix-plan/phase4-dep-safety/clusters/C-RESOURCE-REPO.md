@@ -11,10 +11,10 @@
 |---|---|---|---|---|
 | R05 | `_normalize_scope_type` 服务私写 | resource_dispatch_service.py:59-63 | 收口点 `schedule_resource_filter.py` | collar :8 `SUPPORTED_SCHEDULE_RESOURCE_TYPES={machine,operator}`（**无 team**）；:19 `column_name`；:43/:59 `normalize_*` |
 | R05 | repo 内联 `list_dispatch_rows` | schedule_plan_query_repo.py:430（team 双 join :462） | 活孪生本身 | 禁区行 :454-455/:459-460 空 id 全量 + :461-463 team 双 join |
-| R34 | `get_version_time_span` | schedule_repo.py:36-59 | 活孪生 `schedule_plan_query_repo.get_plan_time_span`:257 | repoint 目标 `get_plan_time_span_for_resolution` **存在**（旧锚 schedule_plan_query_service.py:210；R23 后现盘 :206，执行按符号重 rg；dossier 正文误判“不存在”，verify 已纠正） |
-| R34 | `list_overlapping_with_details` | schedule_repo.py:114-126 | — | 死孪生 |
-| R34 | `list_dispatch_rows_with_resource_context` | schedule_repo.py:128-158 | — | 与 R05 的 list_dispatch_rows 不同符号不同文件 |
-| R35 | `list_between` | schedule_repo.py:61-69 | 无孪生（纯死） | 夹在 R34 删段 :59↘:114 之间 |
+| R34 | `get_version_time_span` | **已删除**（旧锚 schedule_repo.py:36-59） | 活孪生 `schedule_plan_query_repo.get_plan_time_span`:257 | 2026-06-08 fixed；benchmark 已改指 repo 层活孪生 |
+| R34 | `list_overlapping_with_details` | **已删除**（旧锚 schedule_repo.py:114-126） | — | 死孪生已退场 |
+| R34 | `list_dispatch_rows_with_resource_context` | **已删除**（旧锚 schedule_repo.py:128-158） | — | 与 R05 的 list_dispatch_rows 不同符号不同文件；未迁 detail_queries |
+| R35 | `list_between` | **已删除**（旧锚 schedule_repo.py:61-69） | 无孪生（纯死） | 已随 R34 同原子 diff 删除 |
 | R36 | `get_by_op_code` / `list_by_status` | **已删除**（旧锚 batch_operation_repo.py:25-35 / 50-61） | 无 | ISOLATED，2026-06-08 fixed |
 | R37 | `list_links_with_machine_names` | **已删除**（旧锚 operator_machine_repo.py:82-90） | 无 | 活近亲 `list_links_with_operator_info` 保留并上移到 :82 |
 | R38 | `list_as_dicts`×3 | **已删除**（旧锚 op_type_repo.py:73 / operator_repo.py:85 / part_repo.py:71） | 无 | 结构同形 SQL 各异，已按三笔独立删闭合，禁抽 helper |
@@ -25,10 +25,10 @@
 
 本簇 9 债拆成 **4 个原子子簇 + 2 个独立单点**。
 
-### 子簇 AC-1 = {R34, R35}（schedule_repo.py，硬同批，唯一行号坐标耦合）
+### 子簇 AC-1 = {R34, R35}（schedule_repo.py，硬同批，唯一行号坐标耦合；2026-06-08 已落地）
 - **原子原因（同物理文件改一处顶掉另一处行号）**：R34 删 :36-59 / :114-126 / :128-158 三段，R35 删 :61-69，R35 段正夹在 R34 第一段(止:59)与第二段(起:114)之间。任一先单独提交都让对方行号二次漂移（删 R34 第一段→R35 上移 ~24 行；删 R35→R34 第二/三段上移 9 行），且 facade_delegation 活方法断言位置随之漂移、易误定位。
-- **内部顺序**：**无功能先后**，作一个原子 diff。执行纪律：同提交内 **按符号名（非行号）定位、自下而上删**（先 :128-158 → :114-126 → :61-69 → :36-59，边删边算偏移最稳）。R35 owner_pending=false；R34 已由 O10 裁定纯删，owner_pending=false，AC-1 进入 Batch-B/G30 执行口径。
-- 同批连带退场（R34 名下，R35 不碰）：facade_delegation.py:34/39/42-43 三断言 + :16/:14 两 import；detail_queries.py:170+9 处（共 10）；gantt_critical_chain_unavailable.py:60 无效 monkeypatch；benchmark_fjsp.py:505 repoint。删错全是**响亮 AttributeError，无静默炸点**。
+- **执行结果**：已按符号名同原子删除四个死方法；`test_schedule_service_facade_delegation.py` 仅保留活方法断言；`test_schedule_repository_detail_queries.py` 仅保留 `list_by_version_with_details` 活用例；`gantt_critical_chain_unavailable.py` 删除无效 monkeypatch；`benchmark_fjsp.py` 改指 `SchedulePlanQueryRepository.get_plan_time_span`。活近亲现为 `schedule_repo.py:36` / `:79`。
+- **历史顺序说明**：原计划要求同提交内按符号名自下而上删，原因是旧 R35 段夹在 R34 旧删段之间；现在旧删点已不存在，后续不得再按旧行号施工。
 
 ### 子簇 AC-2 = {R38(part 份), R39}（part_repo.py，硬同批，行号坐标耦合；2026-06-08 已落地）
 - **原子原因**：R39 `list_unparsed`:32 在上，R38 `list_as_dicts`:71 在下；删 R39 致下方行号上移 2 行（R38→~:69）。R39 先落而 R38 patch 基于旧行号 :71 即打偏。
@@ -96,7 +96,7 @@
 - **分层红线**：collar 在 core.models，只产 SQL fragment 文本+参数序列，**禁让 core.models 反向 import data.repositories 的 SQL builder**（否则 model→data 越层+导入环）。0 AST 违规要求。
 
 ### 其余成员承重=无禁区
-- R34/R35/R36/R37/R38/R39 全 load_bearing=false、lb_no_touch=null、文件非承重，**纯直删无承重禁区**。R34/R35 唯一“禁区”是相邻**活方法保护**（非承重）：list_version_rows_by_op_ids_start_range:71 + list_by_version_with_details:160 + 其 facade 断言 :32-34/:37 必须保留。R37 已 fixed 后同理保当前 `list_links_with_operator_info:82`。
+- R34/R35/R36/R37/R38/R39 全 load_bearing=false、lb_no_touch=null、文件非承重，**纯直删无承重禁区**。G30 fixed 后 R34/R35 唯一剩余“禁区”是相邻**活方法保护**（非承重）：`list_version_rows_by_op_ids_start_range` 当前 `schedule_repo.py:36` + `list_by_version_with_details` 当前 `schedule_repo.py:79` + 其 facade 活断言当前 `test_schedule_service_facade_delegation.py:29-33` 必须保留。R37 已 fixed 后同理保当前 `list_links_with_operator_info:82`。
 - R67 禁区是**契约/越界**（非承重）：收口点签名 report_context_filters.py:119-127 禁动；superset 非资源键成员禁改。
 
 ### corrections C 节新承重 N1/N2（不在本簇成员，但毗邻提示）

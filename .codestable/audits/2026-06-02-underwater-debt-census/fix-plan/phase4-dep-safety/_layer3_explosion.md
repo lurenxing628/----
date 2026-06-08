@@ -90,8 +90,8 @@
 | R72 | PLAN-IDENTITY | 🟢🟢🟡 | 🟢 | 两份 _get_plan_role_arg 字节级相同纯 dedup 落 web scheduler_utils.py；分层红线绝不下沉 core（core→flask 越层）；必补 `from flask import request`（现仅 import g，latent NameError） | owner 裁公开名+与 R44 落点共识；必补 request import；空串→None 语义原样保留禁加 ROLE_ADOPTED 兜底；落地前实时 rg 重盘 week_plan.py 高频漂移行号。 |
 | R05 | RESOURCE-REPO | 🔴🔴🔴 | 🔴 | collar（column_name 单列 team→空串 + SUPPORTED 无 team + :66 类型有 id 空 raise）结构表达不了承重三轴；步3 先收敛把派工读取收口到未扩 team 现状 collar → team 双 join 谓词（repo:462-463）凭空消失 → 班组视角静默返全量坏数据；空 id 直塞→collar:66 raise→全量视图整页 500；且 normalize_schedule_resource_filter 是双轨共用收口点（超期/明细轨+报表轨），裸改 :65-66 raise 污染另两轨；team 谓词依赖 build_schedule_detail_sql(include_team_context=True)，搬谓词漏带该布尔→no such column: o.team_id | 硬序不可换：步1 扩 collar（team 谓词接口含 include_team_context 信号 + 放开 id 空=全量 + 中文注释，禁 except 吞错/默认空串静默放行，给派工轨单独入口禁裸改 :65-66 raise）→步2 落 5 条 parity（team-only/operator-空-全量/machine-空-全量/team-空-裁断/bad-raise）→步3 才搬 :462-463/:455/:460 进收口点；collar 只产 SQL fragment 文本+参数禁反向 import data SQL builder（model→data 越层+环）；禁误并毗邻 _normalize_team_axis:65（展示轴）；行号系统性 +1 漂移按符号 rg 现盘。3 透镜全红。 |
 | R67 | RESOURCE-REPO | 🟡🟡🟡 | 🟡 | 抽单一常量；半截去重（只换 1-2 处其余手抄）=「看似统一实则分裂」未来改别名更易漏→某入口静默缺一资源 key；第 4 处 scheduler_navigation_links.py 不在 all_files 漏它=半截 | ①②纯 6 键必收（喂收口点零新增依赖）；③④ superset 全收或全不收 tuple 保序；第 4 处 owner 未拍前保持现状/仅注释；禁动收口点签名 :119-127；R67↔R42 diff-hunk 串行。 |
-| R34 | RESOURCE-REPO | 🟢🟢🟡 | 🟢 | 纯删死方法（repoint 目标 get_plan_time_span_for_resolution 旧锚 :210 存在，R23 后现盘 :206，dossier 正文「不存在」已纠）；删错全响亮 AttributeError | 禁误删活近亲 schedule_repo.py:71/:160 及 facade 断言 :33/:37；facade :11 ScheduleDetailRow 被死 :36+活 :37 共用，只删 :12/:14 保 :11（理由钉「:37 活方法仍用」）；detail_queries 若迁活孪生 list_dispatch_rows 须排 R05 之后（落点是 R05 team-join 战场）；与 R35 同 commit。 |
-| R35 | RESOURCE-REPO | 🟢🟢🟢 | 🟢 | list_between 死方法零引用纯删 | 与 R34 同 commit 按符号名自下而上删（:61-69 夹在 R34 删段间防行号二次漂移）。 |
+| R34 | RESOURCE-REPO | 🟢🟢🟡 | 🟢 | 2026-06-08 已 fixed：纯删三个死方法，benchmark 改指既有 SchedulePlanQueryRepository.get_plan_time_span，未迁 detail_queries 活孪生 | 后续禁再按旧删点施工；活近亲现为 schedule_repo.py:36/:79，facade 活断言现为 :29-33。 |
+| R35 | RESOURCE-REPO | 🟢🟢🟢 | 🟢 | 2026-06-08 已 fixed：list_between 死方法零引用纯删 | 已与 R34 同 commit 处理；后续无剩余动作。 |
 | R36 | RESOURCE-REPO | 🟢🟢🟢 | 🟢 | get_by_op_code/list_by_status 两死方法 ISOLATED 零碰撞纯删 | 从后往前删；本桶最早可落之一。 |
 | R37 | RESOURCE-REPO | 🟢🟢🟢 | 🟢 | 2026-06-08 已 fixed：死方法 list_links_with_machine_names 已删除；活近亲 list_links_with_operator_info 保留并上移到 :82 | 已确认生产/测试源码死符号零命中；R37↔R41 伪干扰仍不构成约束。 |
 | R38 | RESOURCE-REPO | 🟢🟢🟢 | 🟢 | 三处 list_as_dicts 结构同形非同体（SQL 列集各异）三笔独立删 | 禁抽 helper（造零消费活死代码）；part 份与 R39 同 part_repo.py 硬同批。 |
@@ -235,7 +235,7 @@
 
 **C-RESOURCE-REPO（R05🔴 / R67🟡 / R34🟢 / R35🟢 / R36🟢 / R37🟢 / R38🟢 / R39🟢）**
 - 原子性最终判定：R05 硬序步1扩collar→步2 落 5 parity→步3 才搬 repo 字面量（不可换序）；R34↔R35 同 commit；R38↔R39 part 份硬同批；R34 detail_queries 若迁活孪生须排 R05 之后（落点是 R05 team-join 战场）。
-- 承重禁区（按符号，行号系统性 +1 漂移按符号 rg 现盘）：repo team 双 join :462-463 + 空 id 全量 :455/:460、collar :65-66 raise（双轨共用收口点禁裸改给派工轨单独入口）、_normalize_team_axis:65（展示轴禁误并）、R34 活近亲 schedule_repo.py:71/:160 + facade :11 ScheduleDetailRow（:37 活方法仍用保留）、R37 已 fixed 后活近亲 :82（旧 :92，禁再按旧 :82-90 施工）、R67 收口点签名 :119-127。
+- 承重禁区（按符号，行号系统性 +1 漂移按符号 rg 现盘）：repo team 双 join :462-463 + 空 id 全量 :455/:460、collar :65-66 raise（双轨共用收口点禁裸改给派工轨单独入口）、_normalize_team_axis:65（展示轴禁误并）、G30 fixed 后 R34 活近亲 schedule_repo.py:36/:79 + facade 活断言 :29-33、R37 已 fixed 后活近亲 :82（旧 :92，禁再按旧 :82-90 施工）、R67 收口点签名 :119-127。
 - 必须先落 parity/注释：R05 步1 collar 接口含 include_team_context 信号（禁反向 import data SQL builder=越层+环）+ 中文注释「id 空→全量（故意）」；5 条 parity（team-only/operator-空/machine-空/team-空-裁断/bad-raise）先于步3。
 - 测试迁移序：R05 步3 前先迁 smoke:177-194 + 续命 :340；R34 删前先退 facade 断言 + detail_queries 10 用例 + benchmark:505 repoint。
 

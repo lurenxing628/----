@@ -5554,7 +5554,7 @@
   "id": "R34",
   "bucket": "B12",
   "home": "B12",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "medium",
   "pathology": "P3",
   "partition": "data-repos",
@@ -5575,7 +5575,7 @@
    "schedule_repo.py",
    "test_schedule_repository_detail_queries.py"
   ],
-  "current_evidence_2026_06_05": "schedule_repo.py:36/114/128 三个死方法 def 行仍原样存在;git diff b08162cd 该文件 UNCHANGED。四件套退场零落地:facade_delegation.py:34/39/42-43 三条 get_type_hints 断言+ScheduleDispatchRow/ScheduleTimeSpanRow import 仍在;detail_queries.py:170/200/220/227/242/249/256/270/276/290 十个用例仍调死方法;gantt_critical_chain_unavailable.py:60 无效 monkeypatch 仍在;benchmark_fjsp.py:505 仍走 span_repo.get_version_time_span(version) 未 repoint 到 SchedulePlanQueryService。",
+  "current_evidence_2026_06_05": "2026-06-08 B 执行后:R34/G30 已 fixed。schedule_repo.py 旧 :36-59 get_version_time_span、旧 :114-126 list_overlapping_with_details、旧 :128-158 list_dispatch_rows_with_resource_context 已删除；test_schedule_service_facade_delegation.py 仅保留 list_version_rows_by_op_ids_start_range/list_by_version_with_details 两条活方法返回类型契约；test_schedule_repository_detail_queries.py 仅保留 list_by_version_with_details 活用例；gantt_critical_chain_unavailable.py 已删除无效 list_overlapping_with_details monkeypatch；benchmark_fjsp.py 已改用既有 SchedulePlanQueryRepository.get_plan_time_span(version=..., source_table=SOURCE_SCHEDULE, candidate_id=None)。",
   "cluster": "C01",
   "same_file_siblings": [
    "R35"
@@ -5604,9 +5604,9 @@
    "verdict_kind": "real_debt"
   },
   "adv_precondition": null,
-  "planned_batch_hint": "Batch-B/G30（B12 repo 死方法），与 R35 同 schedule_repo.py 子批同提交。O10 已裁纯删；不再受 R05 硬前置门控。",
+  "planned_batch_hint": "Batch-B/G30 已 fixed。R34 与 R35 已在同一原子 diff 中清理；本字段仅保留历史批次归属，不表示仍待执行。",
   "planned_deps_hint": "【同文件同改·硬】R35（list_between:61 夹在三死方法之间，同 schedule_repo.py）——必须同提交，避免删后行号二次漂移撞 facade delegation 断言。【条件软边·R05】O10 已裁 R34 纯删，当前与 R05 解耦；仅未来改裁为“迁 detail_queries 用例到活孪生 list_dispatch_rows”时，迁移落点才回升为 R05 team-join 战场的硬前置。",
-  "planned_fix_hint": "删 schedule_repo.py 三死方法（:36-59 / :114-126 / :128-158），活孪生全覆盖且更安全（schedule_plan_query_repo.py:257/311/430 带 source_table+candidate_id+scenario_id+未知source raise ValueError，防候选/情景冒充 adopted）。同步四件套：(1) 退 test_schedule_service_facade_delegation.py:34(get_version_time_span)/:39(list_overlapping_with_details)/:42-43(list_dispatch_rows_with_resource_context) 三条 get_type_hints 断言，保留 :36-37(list_version_rows_by_op_ids_start_range)/:40(list_by_version_with_details) 两条活断言。",
+  "planned_fix_hint": "2026-06-08 已执行:删除 schedule_repo.py 三个死方法；同步退 test_schedule_service_facade_delegation.py 三条死方法类型契约和对应 unused import；按 O10 纯删 detail_queries.py 死方法续命用例，不迁活孪生；删除 gantt_critical_chain_unavailable.py 无效 monkeypatch；benchmark_fjsp.py 改指既有 SchedulePlanQueryRepository.get_plan_time_span + SOURCE_SCHEDULE。未新增模块，未新增兜底，未触碰 schedule_plan_query_repo.py 的 R05 战场。",
   "phase1_blast": {
    "co_change_within_group": [
     "R35"
@@ -5618,7 +5618,7 @@
    "fix_invalidation_risk": "none(删的是更不安全的version-only盲路径,护栏在活孪生)。须 repoint benchmark_fjsp.py:505 到活孪生(可用 repo 层 get_plan_time_span keyword-only 参数,或服务层 get_plan_time_span_for_resolution 现盘 :206)否则基准脚本报错。与R35强同批(同 schedule_repo.py,避免删 list_between 后行号二次漂移)。R05 仅保留条件软边:当前 O10 纯删已解耦;未来若改裁迁 detail_queries 到活孪生才需排在 R05 后。",
    "id": "R34",
    "lb_colocation_danger": "none(schedule_repo.py 非承重文件)",
-   "location_status": "✅准。schedule_repo.py:36 get_version_time_span、:114 list_overlapping_with_details、:128 list_dispatch_rows_with_resource_context 三个def行号与盘上完全一致。文件不在漂移名单。",
+   "location_status": "✅已删除 — schedule_repo.py 已无 get_version_time_span/list_overlapping_with_details/list_dispatch_rows_with_resource_context；活近亲 list_version_rows_by_op_ids_start_range 与 list_by_version_with_details 保留。",
    "pathology": "P3 plan-role迁移残渣(版本-only死孪生)+ needs_adversarial(verdict=real_debt refuted)",
    "planned_fix_class": "删+退测试(删3方法+退facade delegation 3断言+退detail_queries用例+删:60无效monkeypatch+repoint benchmark:505)",
    "prod_consumers": [
@@ -5637,7 +5637,7 @@
   "id": "R35",
   "bucket": "B12",
   "home": "B12",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P6",
   "partition": "data-repos",
@@ -5651,7 +5651,7 @@
   "all_files": [
    "schedule_repo.py"
   ],
-  "current_evidence_2026_06_05": "schedule_repo.py:61 def list_between(...) 整方法体(:61-69)仍在;全仓(data/core/tests/scripts/web)仅 :61 def 行零调用零测试;git diff b08162cd UNCHANGED,未删。",
+  "current_evidence_2026_06_05": "2026-06-08 B 执行后:R35/G30 已 fixed。schedule_repo.py 旧 :61-69 list_between 已与 R34 同提交删除；rg list_between data core tests scripts web 无生产/测试调用残留。",
   "cluster": "C01",
   "same_file_siblings": [
    "R34"
@@ -5668,9 +5668,9 @@
   ],
   "verdict": null,
   "adv_precondition": null,
-  "planned_batch_hint": "Batch-B/G30，与 R34 同 schedule_repo.py 子批同提交。优先级 low。本身无依赖可任意排期，因同文件被 R34 绑定到同批。",
+  "planned_batch_hint": "Batch-B/G30 已 fixed。R35 已随 R34 在同一原子 diff 中删除；本字段仅保留历史批次归属，不表示仍待执行。",
   "planned_deps_hint": "【同文件同改·硬】与 R34 同 schedule_repo.py（R35 :61 夹在 R34 三死方法 :36/:114/:128 之间）。Phase1 边 R34↔R35：必须同提交，避免任一先删后行号二次漂移。无其他依赖。",
-  "planned_fix_hint": "直删 schedule_repo.py:61-69 整个 list_between 方法。无任何引用点需同步退场（grep 已证零调用零测试）。",
+  "planned_fix_hint": "2026-06-08 已执行:直删 schedule_repo.py 旧 :61-69 整个 list_between 方法。无任何引用点需同步退场，未新增替代符号。",
   "phase1_blast": {
    "co_change_within_group": [
     "R34"
@@ -5682,7 +5682,7 @@
    "fix_invalidation_risk": "none。与R34同 schedule_repo.py,宜同批改(R34删:36/:114/:128 会动该文件,list_between:61 在其间,同批避免行号二次漂移)。",
    "id": "R35",
    "lb_colocation_danger": "none(schedule_repo.py 非承重文件)",
-   "location_status": "✅准。schedule_repo.py:61 list_between 与盘上一致。文件不在漂移名单。",
+   "location_status": "✅已删除 — schedule_repo.py 已无 def list_between；同文件活方法保留。",
    "pathology": "P6 纯死方法(全仓零引用含测试)",
    "planned_fix_class": "直删",
    "prod_consumers": [

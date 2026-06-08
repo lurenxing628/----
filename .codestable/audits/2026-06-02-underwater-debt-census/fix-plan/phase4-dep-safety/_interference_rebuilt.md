@@ -43,7 +43,7 @@
 | **G27** | PLAN-IDENTITY | {R22, R21} ① ⏸ | dpr_dict wrapper precondition 强耦合;R21 删 import 区位移 R22 wrapper 锚 | 硬序同窗口 R22 先(parity 24 键 exact Batch-1→收口委托 build_plan_identity/to_dict)→R21 后(删 3 死 shim+3 import,严守保留:32-39 wrapper) |
 | **G28** | PLAN-IDENTITY | {R23} ② | 独立先落(无前置债),收口 model _normalize_role | 单债;软序与同文件 R34 协调(R23 先落后 R34 按符号重 rg 定位);与 R22 无序约束 |
 | **G29** | PLAN-IDENTITY | {R72} ③ ⏸ | 独立叶子,收口落点 web scheduler_utils,与 R44 协调非排序 | O19 已裁：web/core 各落各点 + 补 request import；与 R21/R55/R44 同文件行号联动，谁后做谁重 rg |
-| **G30** | RESOURCE-REPO | {R34, R35} AC-1 | 同物理文件 schedule_repo.py 硬同批,R35:61-69 夹在 R34 删段:59↘:114 之间 | O10 已裁纯删；无功能先后作一原子 diff,按符号名自下而上删；若未来另改裁迁 detail_queries 活孪生，才回升为 R05 后置前置 |
+| **G30** | RESOURCE-REPO | {R34, R35} AC-1 ✅ fixed | 同物理文件 schedule_repo.py 硬同批,R35:61-69 夹在 R34 删段:59↘:114 之间 | 2026-06-08 已按 O10 纯删闭合；旧四个死方法已删除，benchmark 已改指 `SchedulePlanQueryRepository.get_plan_time_span`，活近亲现为 schedule_repo.py:36/:79 |
 | **G31** | RESOURCE-REPO | {R38-part, R39} AC-2 | 同文件 part_repo.py 硬同批,删 R39:32 致 R38:71 上移 2 | 无功能先后同 commit 按符号名;分 hunk 则先 R39 再以新行号定位 R38 |
 | **G32** | RESOURCE-REPO | {R38 op_type:73/operator:85 份} AC-2′ | R38 三处 list_as_dicts 死簇,op_type/operator 两份无同文件兄弟,SQL 列集各异禁抽 helper | 可独立删,随 R38 同 PR 但物理隔离;记三笔独立删 |
 | **G33** | RESOURCE-REPO | {R05} AC-3 🔒⏸ | 🔒 收口点扩容三原子小步,步内不可换序;本簇唯一承重(verdict=LB) | O15/O16 已裁：强序 步1 扩 collar(含 include_team_context + 派工轨单独入口 + 空 id 全量)→步2 补 5 条 parity→步3 收敛 repo:461-463/:454-460+_normalize_scope_type |
@@ -138,7 +138,7 @@ Batch-B（依赖 ROOT 承重门 / 单门控前置）
   G20(R59)         ← GF1
   G24(R49含G25旁支+R50+R51) ← schedule_params/optimizer_config 收口点只读在位（已满足）
   G40(R46)         ← G40a 🔒⏸
-  G30(R34+R35)     ← O10 已裁纯删（E18 软自 G33；未来若迁活孪生才回升前置）
+  G30(R34+R35)     ← 已 fixed：O10 纯删已执行（E18 仅留历史软边）
   G36(R37)
   G39(R52+R25)     ← ✅ fixed：O07 已裁 KEEP，保留 impl+垫片，已补注释
 
@@ -196,7 +196,7 @@ Batch-D（facade 删除最晚 / 跨 owner-pending 收口）
 | 🟠 高 | `web/.../scheduler_workbench_links.py` | R42(NAV-PLANID) + R54(NAV-GUARD,跨簇) + R60 邻 | R54 加 guard 字段(签名:187/dict:229-258,已落:206-207)；R42 删 plan_id 形参:191/dict:233；**同符号 build_workbench_plan_context co-change MUST 同批** | E03 硬序 R54 先→R42 后 rebase 新签名；禁动 dict:229-258 guard 段/禁翻:292-304 fail-open;LIVE _context_summary:258 别误删(R66 跨文件红线) |
 | 🟠 高 | `core/algorithms/dispatch_rules.py` | R49 + R50 + R51 | R49 删:25；R51 删首函数:28-35；R50 删末函数:112-132+import statistics:4；删任一处位移其下,R51 删首函数上移 R49/R50 ~7-8 行 | G24 一次原子 diff 按符号名/快照同删；心智序 R49→R51→R50,从大行号往小删；保 import math:3、:39 DispatchInputs |
 | 🟠 高 | `core/models/schedule_payload_contract.py` | R01 + R04 | R01 删 _iter:67-87/count:90/has:94-95/__all__:414-415/孤儿 import:5；R04 收口 _strict_positive_int:50+6 调用点(**:72 落在 R01 删的 _iter body 内**) | G19 强序 R01 先删(:67-87 缩 R04 收口面 6→5)→R04 后收口(剩 5 点 rg 重定位,6 处 except 同步加 ValidationError);必同 PR |
-| 🟠 高 | `core/data/repositories/schedule_repo.py` | R34 + R35 | R34 删:36-59/:114-126/:128-158；R35 删:61-69(**夹在 R34 删段:59↘:114 之间**) | O10 已裁纯删；G30 一原子 diff 按符号名自下而上删(:128-158→:114-126→:61-69→:36-59) |
+| 🟠 高 | `data/repositories/schedule_repo.py` | R34 + R35 ✅ fixed | 旧删点 R34(:36-59/:114-126/:128-158)+R35(:61-69) 已删除 | G30 已闭合；后续只需保护活近亲 `list_version_rows_by_op_ids_start_range`:36 与 `list_by_version_with_details`:79 |
 | 🟡 中 | `core/services/scheduler/config/config_snapshot.py` + `core/models/schedule_config_runtime_coercion.py`(双栈对称) | **LB07**(承重) + R71 + R47 | LB07 双栈 @dataclass:7/:24 注释；R71 三 helper 收敛；R47 删死参 raw_value(model:83/service:63,在三 helper 之下)；改任一函数体位移彼此锚行 | G15 硬序 LB07 注释+parity 先(Batch-1)→R47+R71 同批(先删 R47 死参再 R71 收敛);禁碰 coercion loud raise 块(按符号非行号) |
 | 🟡 中 | `web/viewmodels/scheduler_resource_dispatch_execution.py` | R08 + R09(B 副本) | R08 改死常量:25/死分支:227-228/:367-368；R09 改 B 副本 def:33+调用点:257/:258/:353；同文件删行位移彼此锚点 | O01/O02 已裁：G22 串行 R08 先(B01)→R09 后(B05)；只收 A/B Optional 副本，C 严格不动，persistence_errors:13 归 R04 禁区+注释 |
 | 🟡 中 | `core/services/scheduler/gantt_plan_query.py` | R21 + R22(precondition) | R21 删 3 死 shim:42/46/59+import:14-25；R22 收口委托(dpr_dict wrapper:32-39 是 R22 precondition,R21 删 import 区上移 wrapper ~9 行) | G27 硬序 R22 先(parity+收口)→R21 后(严守保留:32-39 wrapper+:50-156 LIVE 函数);R22 用符号名锚 |
@@ -467,4 +467,4 @@ Batch-D（facade 删除最晚 / 跨 owner-pending 收口）
 边总变化：旧 146 −删 27（假边 22+已修对消 5）+新 **19**（同符号 co-change/收口前置硬边/N1N2 邻接/facade 删序 +红队 E28/E29 同文件承重毗邻）~降 18（硬→软/解耦/方向反转）= 重建约 **138 边，跨簇有效约束边 29 条（H 13/S 14/P 2）**，真门控分层硬边仍 13 条。
 与旧 DAG 主要差异：R09 收口点已存在→作废建模块改双路 parity；R13 解耦 R18 各自独立，按 O06 先迁 3 测试后删、删前 owner 再确认；R34 纯删（repoint 目标存在）+R05→R34 降软；R54 升 5 套手维面（gantt_task_detail 别名元组+**三基数 16/15/12 禁统一键名**）；R56 入 fixed（偏离铁律 3 待认账）；新债 N1（can_write_feedback 失忆债门控 R08）/N2（return 0 sentinel）补注释+绑契约；R03 四态 parity（missing 态:267 生产可达，非全死分支）；R29 误标纠回 planned 后 O20 裁 KEEP，E07 改为 R29/G26 先闭合、R26/G18 后删 facade；批次由 16 收缩为 ROOT+4 大批，待裁项按裁后口径执行。
 红队第1轮：**采纳 11 / 驳回 0 / 降级保留 3（按提示采纳精度）**。关键修订=补 E28(R09 收口家↔LB01 最终底同文件)/E29(N1↔R09 C 路同文件)两 S 边；§3 补登 5 文件(承重 5→6、重灾区 19→24)；新增 §3.1 `_positive_int` family 对照表(STRICT 4 禁删 vs Optional 5 收候选，O02 后定 schedule_persistence_errors:13 归 R04 禁区+注释)+§3.2 fail-CLOSED 方向硬门(防认账注释粘反向 fail-OPEN)；R54 三基数(16/15/12)分组 parity 禁向 16 键看齐；facade 删序方向修正 A14→R33→R31、E06/A15→R33→{R30,R31}；E03 补 collar 第 6 调用方 analysis_links:24(未传 plan_id 安全)。全图仍无环。
-产物：/Users/lurenxing/Documents/GitHub/----/docs/_panorama_data/phase4_dep_safety/_interference_rebuilt.md
+产物权威副本：/Users/lurenxing/Documents/GitHub/----/.codestable/audits/2026-06-02-underwater-debt-census/fix-plan/phase4-dep-safety/_interference_rebuilt.md（docs/_panorama_data 仅旧镜像/缓存，不作为本轮落点）
