@@ -38,12 +38,12 @@
 
 本计划**继承**旧 MASTER-PLAN 的核心约束体系（承重只补注释、灵魂线不新增兜底、P5 收口已存在点、分层 0 违规、parity 先于收敛），并在其上做 6 类**本轮校正**（全部经 dossier + 第二双眼睛 verify 双核 + 红队 3 轮 + 5 份回炉裁定确认；逐条映射见 §5）：
 
-- **C1 修法被实质推翻**：R09 收口点已存在（作废「新建 parse_optional_positive_int」批，改双路 parity 收编 2+1 副本）；R34 纯删（repoint 目标 `get_plan_time_span_for_resolution:210` 存在，非「收敛重构」）；R13 解耦 R18（死字段被 3 测试读活，升 owner 二次确认）；R18 stub raise 是契约护栏非死码；R17 改删 `:81` 推导式项（非旧 `:64`）；R15 收口去 `parse_operation_event_time`（非 strict_parse）；R03 四态 parity（missing 态 `:267` 生产可达，非全死分支）；R44 方向反转（core 更防御，非「web 多兜底」）。
+- **C1 修法被实质推翻**：R09 收口点已存在（作废「新建 parse_optional_positive_int」批，O01/O02 已裁为只收编 A/B 两副本 + 双路 parity）；R34 纯删（O10 已裁，repoint 目标 `get_plan_time_span_for_resolution:210` 存在，非「收敛重构」）；R13 解耦 R18（O06 已裁先迁 3 测试后删，删前 owner 再确认）；R18 stub raise 是契约护栏非死码；R17 改删 `:81` 推导式项（非旧 `:64`）；R15 收口去 `parse_operation_event_time`（非 strict_parse）；R03 四态 parity（missing 态 `:267` 生产可达，非全死分支）；R44 方向反转（core 更防御，非「web 多兜底」）。
 - **C2 干扰图净化**：旧 146 边 → 删 **29**（假边 22 + 已修对消 5 + **方向并 2**）+ 新 19（含红队 E28/E29 同文件承重毗邻）+ 降 18 = 重建 **~136 边**，跨簇有效约束边 29 条（H 13/S 14/P 2），真门控分层硬边仅 **13 条 H 边**，全图无环（环成员=空）。〔权威 `_layer2_residual.md:9`：删 29/重建 ~136；旧文「删 27/~138」漏算「方向并 2」已订正。〕
 - **C3 R54 升 5 套手维面**：非旧报告 3 套 / registry 4 套；跨 5 物理文件 + 3 种字段基数（L2/L4=16 键、L3=15 键缺 plan_role_status、L1=12 键缺三阻断态 + 别名源键、L5 别名元组）；**禁统一键名**（分三组基数各钉 parity，禁向 16 键看齐 = 统一改行为违承重红线）。
 - **C4 新引入债 N1/N2 + R56 入 fixed**：执行重构新增 N1（can_write_feedback 失忆债，门控 R08 删死分支）/ N2（`_event_id_for_revision` return 0 sentinel）补注释 + 绑契约；R56 走高风险结构路线（违铁律 3）已入 fixed，退化为 R42 删 plan_id 的**禁区行**（`:79` plan_role 强制 adopted）+ owner 认账偏离。
-- **C5 R29 误标纠回 planned**：权威 CSV 整目录 ABSENT，number_utils 仍全量 delegation-facade、4 兄弟全薄壳；**重新入排**（G26，KEEP vs 薄壳化，owner 裁），并因此**复活** R26→R29 facade 删序前置（E07）。
-- **C6 批次结构收缩**：旧 16 批因含已推翻/已完成占位（新建模块、R13+R18 同原子、R34 收敛重构、R56 承重待做）；重建为 **ROOT + 4 大批（A/B/C/D）**，owner_pending 单元后置 Batch-C/D，只标不给终态。
+- **C5 R29 误标纠回 planned**：权威 CSV 整目录 ABSENT，number_utils 仍全量 delegation-facade、4 兄弟全薄壳；**重新入排后 O20 已裁 KEEP+注释**，并因此把 E07 纠成 **R29/G26 先闭合、R26/G18 后删 facade**（KEEP 注释即闭合）。
+- **C6 批次结构收缩**：旧 16 批因含已推翻/已完成占位（新建模块、R13+R18 同原子、R34 收敛重构、R56 承重待做）；重建为 **ROOT + 4 大批（A/B/C/D）**，原 owner_pending 单元已按 OWNER-DECISIONS 裁后口径分流到对应批次。
 
 ### 0.3 本计划覆盖的硬清单（一条都不许丢，逐条在批次中出现）
 
@@ -51,7 +51,7 @@
 - **6 个硬阻断新爆点**（照 cluster/dossier 直接执行即炸）：#1 collar 不产 3 键（R54）、#7 R15 空值即 raise、#19 R05 team 谓词 builder 耦合 + #20 R05 双轨共用收口点、#21 R42 dashboard_workbench_context.py:92 漏删点、#22 R22 no_history 取值翻转 + #23 R22 删 view_context:74 破 bad-role raise。每条在 Layer4 出批次前逐条闭合（见对应批次前置安全网 / owner 闸门）。
 - **6 承重文件全标禁区**：operation_execution_feedback_service.py（LB01）、execution_review.py（LB02/LB05）、scheduler_navigation_publish.py + navigation_context.py（LB06/R56 + R58）、config_snapshot/coercion 双栈（LB07）、scheduler_public_errors.py（LB08）、schedule_plan_identity_builder.py（LB03）、**operation_execution_scope.py（R09 收口家 + LB01 最终底同住）**。〔**计数说明（一致性 P2 收口）**：行内列出 7 个 .py basename，但 **scheduler_navigation_publish.py 与 navigation_context.py 同属 LB06/R56 一个承重槽，算 1 个承重点**（参 `_layer2_residual.md:25`），加上 LB01/LB02-LB05/LB07/LB08/LB03/operation_execution_scope = **6 个承重点**；config 双栈（config_snapshot + coercion）同理算 1 个 LB07 槽（占多 .py）。「6 承重」与「7 basename」无矛盾。〕
 - **STRICT-4 一字不碰**：`scope.py:9` + `feedback_support:161`（真 loud raise）；`public_errors:167` + `auto_assign:114`（V1⑥裁定：实为 `except: return 0` →0 哨兵，分类失真，禁区注释须纠偏，禁收口当「→raise/写入闸门」）。
-- **Optional-5 收编面**：viewmodel:33（B 副本）+ service:24（A 副本，含调用点 :169/:180/:181）已认；persistence_errors:13（第 3 份，V1⑤裁定归 R04 禁区不归 R09 收编面，建议保持现状 + 注释，是否统一待 owner）。
+- **Optional-5 收编面**：viewmodel:33（B 副本）+ service:24（A 副本，含调用点 :169/:180/:181）已认；persistence_errors:13（第 3 份，V1⑤/O02 裁定归 R04 禁区不归 R09 收编面，保持现状 + 注释）。
 
 ---
 
@@ -70,18 +70,19 @@ ROOT  承重注释 + 共享前置门（纯增量零结构，零入边，最先�
   GF1·reject_integer_float 默认 False+parity ┃ G15a·LB07 双栈注释+spec_sync parity🔒
   G07a·LB01 两处注释🔒 ┃ G05·LB02/LB05 注释+回归🔒 ┃ G40a·LB08 注释+绑契约🔒⏸
   G33a·R05 步1 扩collar+步2 五parity🔒⏸ ┃ LB03·B01 承重注释+guard 收口🔒 ┃ G27p·R22 24键 exact parity⏸
-  [+认账注释 R56禁区行/R07错误类/LB06双宿主/N1真闸/N2 sentinel，均 owner_pending]
+  [+认账注释 R56禁区行/R07错误类/LB06双宿主/N1真闸/N2 sentinel，均按 OWNER-DECISIONS 裁后口径]
 
 Batch-A  独立死叶子 / 零前置 / owner=false（最早可落）
-  G02(R64+R65)* G03(R66)* G14(R10) G16(R45≡R48) G21(R28) G25(R49旁支4行) G28(R23)
+  G02(R64+R65)* G14(R10) G16(R45≡R48) G21(R28) G28(R23)
   G31(R38part+R39) G32(R38 op_type/operator) G35(R36) G37(R02) G11(R11≡R63) G38(R06+R27+gantt)
   [+ LEAF-DUP-P4 纯删叶子：R53 / R61 / R70 随 A 落；LB04 安全网归 ROOT/Batch-A 之交]
   *G02(R64/R65) 同文件 scheduler_navigation_links.py，改点不同不可同质化（见 §1.2）；与 R42(G01)/R67(G34) 同文件四单元串行块
+  *G03(R66) 受 E04 软序，实际延后到 G04(R54) 后按符号重定位；G25(R49旁支) 并回 Batch-B 的 G24 一次原子执行，不在 Batch-A 单独落
 
 Batch-B  依赖 ROOT 承重门 / 单门控前置
   G06(R62)←G05 ┃ G07(R17/R20)←G07a🔒 ┃ G08(R15/R17/R20)←与G07同原子
-  G12(R12)←G11 ┃ G13(R55)⏸←G11 ┃ G19(R01+R04)←GF1 ┃ G20(R59)←GF1
-  G24(R49+R50+R51) ┃ G40(R46)←G40a🔒⏸ ┃ G30(R34+R35)⏸ ┃ G36(R37) ┃ G39(R52+R25)⏸
+  G12(R12)←G11 ┃ G13(R55)⏸本轮跳过(O09) ┃ G19(R01+R04)←GF1 ┃ G20(R59)←GF1
+  G24(R49含G25旁支+R50+R51) ┃ G40(R46)←G40a🔒⏸ ┃ G30(R34+R35) ┃ G36(R37) ┃ G39(R52+R25 KEEP注释)
 
 Batch-C  身份族收敛 / 收口委托（依赖承重族 + parity）
   G04(R58→R54→R44)←LB03+R22parity；同批带走 E03→G01 ┃ G01(R42+R60)←G04
@@ -91,15 +92,15 @@ Batch-C  身份族收敛 / 收口委托（依赖承重族 + parity）
 
 Batch-D  facade 删除最晚 / 跨 owner-pending 收口
   G18(R26)←G26+G23+G39 三桶收敛(E07/E08/E09)+E10 软自 G15
-  G26(R29)⏸←owner KEEP vs 薄壳化 ┃ G41(R14)⏸←LB01让位(E13)+三步前置
-  G42(R24)⏸←networkx roadmap 调和+owner 裁删 vs 重构（‖G41 可并行）
+  G26(R29 KEEP注释)←O20 已裁保留 ┃ G41(R14)⏸←LB01让位(E13)+三步前置
+  G42(R24 KEEP注释+事实记录)←O23 已裁保留不删（‖G41 可并行）
 ```
 
-**11 标红债批次落位一行速查**：R05→ROOT(G33a step1/2)🔒 + Batch-C(G33 step3)⏸；R22→ROOT(G27p parity) + Batch-C(G27)🔴⏸；R54→ROOT(collar 扩产前置) + Batch-C(G04)🔴⏸；R42→Batch-C(G01，E03 rebase R54 后)🔴；R04→Batch-B(G19，依 GF1)🔴；R09→Batch-C(G22)🔴⏸；R15→Batch-B(G08) + Batch-C(G09 provider 链)🔴⏸；R19→Batch-B/C(G08/G09/G10 三处)🔴⏸；R52→Batch-B(G39)🔴⏸；R14→Batch-D(G41)🔴⏸；R69→Batch-B/15(G 外 LEAF 桶，owner 定 loud 方向后落)🔴⏸。
+**11 标红债批次落位一行速查**：R05→ROOT(G33a step1/2)🔒 + Batch-C(G33 step3)⏸；R22→ROOT(G27p parity) + Batch-C(G27)🔴⏸；R54→ROOT(collar 扩产前置) + Batch-C(G04)🔴⏸；R42→Batch-C(G01，E03 rebase R54 后)🔴；R04→Batch-B(G19，依 GF1)🔴；R09→Batch-C(G22)🔴⏸；R15→Batch-B(G08) + Batch-C(G09 provider 链)🔴⏸；R19→Batch-B/C(G08/G09/G10 三处)🔴⏸；R52→Batch-B(G39 KEEP注释，O07 已裁保留)🔴；R14→Batch-D(G41)🔴⏸；R69→Batch-D/LEAF 桶(owner 定 loud 方向后落)🔴⏸。
 
 **6 硬阻断新爆点闭合落位**：#1 collar 不产 3 键→ROOT 扩产前置 owner 闸门 F门(R54)；#7 R15 空值即 raise→Batch-B G08 前置安全网（分支级保 `if not text: return None`）+ Batch-C G09 owner 闸门；#19/#20 R05 双轨+builder 耦合→ROOT G33a step1 扩产前置（含 include_team_context 信号 + 派工轨单独入口）；#21 R42 :92 漏删→Batch-C G01 前置安全网（删点清单补 :92 同提交）；#22/#23 R22 双翻→ROOT G27p parity 升「键集+取值 exact + bad-role raise」双断言 + Batch-C G27 owner 闸门。
 
-> **⚠简化声明**：序列总览中 LEAF-DUP-P4 簇的 11 债（R69/R03/R41/R68/R32/R40/R53/R61/R70/R43/LB04）未单独成 G 编号原子单元（它们在 _interference_rebuilt §1 未占 G## 槽位，原 registry 以「Batch-1/5/15」桶标），本计划按其性质归入 Batch-A（纯删叶子 R53/R61/R70/R10 类 + LB04 安全网前置）与 Batch-B/Batch-D（owner_pending 的 R69/R03/R41/R68/R32/R40/R43 随各自门控落）。归并处已在对应批次显式登记，不静默吞。LB04 作为「所有 yes/no 收敛动作安全网前置」归 ROOT/Batch-A 之交（注释 + 全矩阵 parity，零结构）。
+> **⚠简化声明**：序列总览中 LEAF-DUP-P4 簇的 11 债（R69/R03/R41/R68/R32/R40/R53/R61/R70/R43/LB04）未单独成 G 编号原子单元（它们在 _interference_rebuilt §1 未占 G## 槽位，原 registry 以「Batch-1/5/15」桶标），本计划按其性质归入 Batch-A（纯删叶子 R53/R61/R70/R10 类 + LB04 安全网前置）与 Batch-B/Batch-D（R69/R03/R41/R68/R32/R40/R43 按 §3/OWNER 裁后门控落）。归并处已在对应批次显式登记，不静默吞。LB04 作为「所有 yes/no 收敛动作安全网前置」归 ROOT/Batch-A 之交（注释 + 全矩阵 parity，零结构）。
 >
 > **⚠简化声明补登（红队第1轮 RT3-P01 采纳·原计划全文零命中的 2 漏债）**：**R64 / R65** 两条 `kind:real / load_bearing:false / needs_adversarial:false` 活债（registry B17-LEAF-DEAD 单元）此前被整份计划吞掉——既非 §0.2 列的对消/作废 7 条，也不在上述 11 债内，是静默蒸发。实证：R64 = **真零调用死 helper** `_has_navigation_date_range`（`web/viewmodels/scheduler_navigation_links.py:66-67`，全仓零调用）、R65 = 同文件孪生但**性质不同——是 `_target_url:74-78 def` 的 P6 死分支**（红队第2轮·1号 RT22 采纳纠正：R65 **非零调用死 helper**，`_target_url` 在 `:160 _plain_link(label, plain_url or _target_url(...), ...)` 有真实引用，只是被 `or` 短路恒真遮蔽——9 条 spec 的 plain_url 字面量 9/9 非空，dossier R65 §52 定性为死分支非死码）；registry `planned_batch_hint` 明写「R64 与 R65 打包同一原子提交（同文件）」。**致命点：R64/R65 与 R42（G01，Batch-C）same_file**（同 `scheduler_navigation_links.py`），R64 死 helper `:66-67` 紧邻活近亲 `_has_navigation_context:47`（被 `:71/:114/:142/:175` 真用）。**现登记入 Batch-A 纯删叶子**（owner=false），R64/R65 同文件同原子提交；**但 R64 与 R65 改点不同、不可同质化**：R64 改 `:66-67`（纯删死 def）；R65 是**死分支三件套硬原子**——① 删 def `:74-78` + ② 化简 `:160`（去 ` or _target_url(...)` 留 `plain_url`）+ ③ 删孤儿 import `:4 urlencode`/`:6 query_for_target`（删 def 后变 F401），缺①②任一即 NameError（`:160` 残引用已删符号）。删序须按符号重 rg、与 G01 在该文件的改区行号对账，禁误伤 `_has_navigation_context`、禁误删护栏 `:7 TARGET_PAGE_PATHS`（`:177 build_report_navigation_links` 真用）。下述 Batch-A 成员清单已补登。
 >
@@ -120,12 +121,12 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 > **⚠本批重 rg 纪律（C5 逐批落地）**：ROOT 是全文行号位移的**源头**（在多承重文件锚符号上方插注释行），故 ROOT 执行前与执行后均须按符号重 rg。**本批高危锚点符号清单（执行前 rg 现场定位，弃裸行号）**：LB01 `_build_event_payload`/写死消毒块、LB02/LB05 五硬钉 + `execution_review` 签名、LB07 双栈 `@dataclass` + `_handle_missing_value`、LB03 `build_plan_identity`/`PlanIdentity.to_dict`、R05 `normalize_schedule_resource_filter`/`_normalize_team_axis`、R22 `normalize_plan_role`、GF1 `parse_required_int`。**ROOT 注释落地后须把「下游删点已位移」交接给 Batch-B/C**（Batch-B 已有「⚠行号位移总纲」承接，Batch-C 靠它兜）。
 
 **前置安全网（逐条点名，含 Layer3 强制前置）**：
-- **GF1·reject_integer_float 是「ROOT 新建受控参数」非「现有参数改默认值」**（强制前置；红队第1轮 RT1-P0-1/RT2-问题2 采纳纠定性）：**全仓 rg 零命中——`reject_integer_float` 当前不存在；真符号 `core/shared/strict_parse.py:81 def parse_required_int(value, *, field, min_value)` 无任何 float 拒绝参数，文件仅 130 行无 `:46` 锚点（旧锚点 `:46` 作废）**。GF1 实为「在 `core/shared/strict_parse.py:81 parse_required_int` 新增 `reject_integer_float: bool = False` kwarg（按符号 rg 定真实行，弃 `:46`）+ 透传链 + parity」三件套，**不是确认默认值**。加参数 + 默认 False 与「ROOT 纯增量零结构」自洽（不改现有调用方行为），但执行者须知是新增；落点显式登记 ①新建 kwarg 落 `core/shared/strict_parse.py:81` + ②确认 `core/services/common/strict_parse.py` 是否同步该参数 + ③8 处 algorithms 调用方（sgs_graph 等）的 `parse_required_int` 调用确认默认 False 不回归。自带 parity `True→3.0 raise / False→3.0 接受`，含 sgs_graph 风格 `parse_required_int` 调用断言。**默认 True 会炸 sgs_graph 等 8 处 algorithms 调用方**（3.0 由接受变 raise 排程静默回归）。门控 G19(R04)/G20(R59)。owner 闸门见 §3 O38（GF1 新建参数是否违铁律 3「绝不新建模块」精神——加 kwarg 非新建模块，倾向不违，待 owner 确认）。
+- **GF1·reject_integer_float 是「ROOT 新建受控参数」非「现有参数改默认值」**（强制前置；红队第1轮 RT1-P0-1/RT2-问题2 采纳纠定性）：**全仓 rg 零命中——`reject_integer_float` 当前不存在；真符号 `core/shared/strict_parse.py:81 def parse_required_int(value, *, field, min_value)` 无任何 float 拒绝参数，文件仅 130 行无 `:46` 锚点（旧锚点 `:46` 作废）**。GF1 实为「在 `core/shared/strict_parse.py:81 parse_required_int` 新增 `reject_integer_float: bool = False` kwarg（按符号 rg 定真实行，弃 `:46`）+ 透传链 + parity」三件套，**不是确认默认值**。加参数 + 默认 False 与「ROOT 纯增量零结构」自洽（不改现有调用方行为），但执行者须知是新增；落点显式登记 ①新建 kwarg 落 `core/shared/strict_parse.py:81` + ②确认 `core/services/common/strict_parse.py` 是否同步该参数 + ③8 处 algorithms 调用方（sgs_graph 等）的 `parse_required_int` 调用确认默认 False 不回归。自带 parity `True→3.0 raise / False→3.0 接受`，含 sgs_graph 风格 `parse_required_int` 调用断言。**默认 True 会炸 sgs_graph 等 8 处 algorithms 调用方**（3.0 由接受变 raise 排程静默回归）。门控 G19(R04)/G20(R59)。O38 已裁合规：加 kwarg 默认 False 非新建模块。
 - **G33a·R05 扩 collar（含爆点 #19/#20 闭合）**：步1 扩 `normalize_schedule_resource_filter` 成 team 谓词产出点——接口含 `include_team_context` 信号（步3 搬谓词漏带该布尔即 `no such column: o.team_id`，爆点 #19）；放开空 id=全量 + 中文注释「id 空→全量（故意）」；**给派工轨单独入口，禁裸改 `:65-66 raise`**（双轨共用收口点，裸改污染超期/明细轨 + 报表轨，爆点 #20）；collar 只产 SQL fragment 文本 + 参数，**禁反向 import data SQL builder**（model→data 越层 + 环，分层违规）。步2 落 5 条 parity（team-only / operator-空-全量 / machine-空-全量 / team-空-裁断 / bad-raise）。
 - **G27p·R22 parity 升级（含爆点 #22/#23 闭合）**：升「键集 + 取值」exact 双断言——对 no_history 实参断言 `result_summary_parse_failed` 具体取值（爆点 #22：`_summary_unavailable(None,·)=(True,'排产摘要缺失')` 致 False→True 翻转，键集 parity 抓不到）；加「bad-role 仍抛 `field=plan_role`」断言（爆点 #23：删 view_context:74 破 R21 wrapper 精度唯一上游）；`evidence_contract:194` 升 24 键 exact（superset 双重逃逸口）。**view_context:74 `normalize_plan_role` 绝不删/绕过**。
 - **G05·LB02/LB05 注释**：仅 `:209` 上方 + 五硬钉（`:58`/`:180-181`/`:191-192`/`:221`/`:236`）旁补注释；既有回归即 **`tests/operation_execution/test_execution_review_identity_guard.py`（盘上 173 行，4 组反例全绿，与 R56 共用该护栏，经 test_registry:289 注册，核存在用 `rg <name> tools/test_registry*` 非 `fd`）**；注释须交叉引用 web 真定义宿主（`reports_request_support.py:75` / `reports_execution_review_context.py:8`，**非 reports_page_support**）+ v19 DB CHECK 双列（爆点 #6/#18：读侧无 DB CHECK 兜底，此硬钉是读路径唯一最后一道）+ schema:284 candidate_rows 第二表。
 - **G07a·LB01 注释**：两处「我是故意的」注释先落且锚符号上方（门控整个 service 文件删改）；禁区 `:369-374`/`:381-382`/`:471-473` 只补注释；**文案禁出现「写死冗余」式措辞**（埋删除诱因）。
-- **G40a·LB08 注释**：钉死承重边界（正则反解桥），R46 才能保护下删；注释产出点按实证 `internal_operation.py:119/148/150/152/154` 改写，**禁贴 planned 草稿指 auto_assign（消费方非产出点）**；文案产出点 owner_pending（待裁）。
+- **G40a·LB08 注释**：钉死承重边界（正则反解桥），R46 才能保护下删；O35 已裁注释产出点按实证 `internal_operation.py:119/148/150/152/154` 改写，**禁贴 planned 草稿指 auto_assign（消费方非产出点）**。
 - **G15a·LB07 注释 + 扩 spec_sync parity**：两栈 @dataclass 上方补注释（对侧路径互填）+ 扩 spec_sync_contract 覆盖三 helper 逐分支 + **`_handle_missing_value` INHERIT_LEGACY 两栈不对称**（爆点 #11：service `config_field_coercion.py:115` 多一条 legacy-omission 分支返 Tuple，model 栈无、返裸 Any，parity 须显式覆盖否则「DRY 统一」静默丢语义且 parity 全绿）。
 - **LB03·B01 承重注释 + guard 收口**：全局承重族先落，门控 G27 全 B02 身份族；R22 只 CALL `build_plan_identity`/`PlanIdentity.to_dict:46-71` 不改 builder。
 - **LB04 安全网**：boolean_normalize 仅 `:33` 上方补注释（algorithms 标「前瞻」）+ 新建全矩阵 parity 网；**绝对禁删 shared 改指 services**（core.models→core.services.common→core.models.enums 导入环 + 越层）；是 Batch-A 所有 yes/no 收敛动作的安全网前置。
@@ -157,19 +158,19 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 
 **go-no-go 判据**：ROOT 全部承重注释 + parity 落地且上述门禁全绿 → 放行 Batch-A/B。任一承重 parity 红（尤其 R22 取值翻转断言、R05 双轨 parity、GF1 默认值）→ STOP，回查注释/parity 是否误触函数体。
 
-**owner 裁断闸门（只列「待裁」绝不给终态）**：
-- F门-R54-collar：collar 扩 3 键产出点的入参形态（plan_resolution 入参 vs 局部源）+ fail-CLOSED 默认形态（见 §3 owner 表 F门-1/2/3）。
-- R05 collar 形态 + `(team,"")` 语义（空 team 字符串的裁断 vs 全量）。
-- R22：no_history 取值保旧 False vs 接受新 True（涉用户可见文案「排产摘要缺失」翻转，须 owner 拍）。
-- LB08 注释逐字文案产出点（待裁）。
-- R56 偏离铁律 3 认账 / R07 错误类是否统一（ValidationError vs AppError/NOT_FOUND）/ persistence_errors:13 归属（V1⑤裁定归 R04 禁区，是否统一待 owner）/ LB03·LB06 认账注释。
-- N1/N2 注释文案（owner_pending）。
+**owner 裁后执行口径（2026-06-05 已全裁，照 §3/OWNER 执行）**：
+- F门-R54-collar：选 plan_resolution 入参 + fail-CLOSED 默认形态，先扩 3 键产出点再允许 delegate。
+- R05 collar：含 include_team_context 信号 + 派工轨单独入口；`(team,"")` 语义为全量。
+- R22：no_history 接受新 True；前端文案须改中性，不写成解析失败吓用户。
+- LB08：注释文案产出点按 `internal_operation.py` 实证，禁写到 auto_assign 消费方。
+- R56 认账接受；R07 按 O31 统一成 AppError/ErrorCode.NOT_FOUND，并补 schedule=None→raise 回归测试；persistence_errors:13 归 R04 禁区保持现状+注释；LB03/LB06 落认账注释。
+- N1 钉 feedback_service:369-382 真写闸；N2 钉 `_event_id_for_revision` 非末位缺 id 必抛错契约。
 
 ### 1.2 Batch-A — 独立死叶子 / 零前置 / owner=false（最早可落）
 
-**成员（调度单元 + 债）**：G03(R66 死副本 `_context_summary:150-163`)、G14(R10 死方法 `gantt_service:60-62`)、G16(R45≡R48 整文件删 `config_adapter.py`)、G21(R28 收口 `parse_finite_float`)、G25(R49 旁支 evaluation:40-41/ortools:24-25 四行)、G28(R23 dedup `_normalize_role` 收口 model)、G31(R38 part 份 + R39 `list_unparsed`)、G32(R38 op_type:73/operator:85 两份)、G35(R36 两死方法)、G37(R02 test-only 壳)、G11(R11≡R63 去重 `_normalize` 收口 `gantt_critical_chain.py`)、G38(R06+R27+gantt 四空包同提交)。**+ 纯删叶子**（原 LEAF-DUP-P4 桶，按 ⚠简化声明归入此批）：R53(`batch_order.py:74` 一行)、R61(plan 死簇 `:160/164/172-187` + 重定向负向测试)、R70(`schedule_service.py:46-50` 死副本)。**+ G02(R64+R65)**（权威源 `_interference_rebuilt.md:17` 定义 G02={R64,R65} NAV-PLANID；红队 RT3-P01 补登，B17-LEAF-DEAD；红队第2轮 RT22 纠 R65 性质）：R64 = 真零调用死 helper，删 `web/viewmodels/scheduler_navigation_links.py:66-67 _has_navigation_date_range`（全仓零调用）；R65 = `_target_url` **死分支三件套**（非零调用死码）——删 def `:74-78` + 化简 `:160`（去 ` or _target_url(...)` 留 `plain_url`）+ 删孤儿 import `:4 urlencode`/`:6 query_for_target`；**两者同文件同一原子提交但改点不同、不可同质化**；与 R42（G01）same_file，删序按符号重 rg。
+**成员（调度单元 + 债）**：G14(R10 死方法 `gantt_service:60-62`)、G16(R45≡R48 整文件删 `config_adapter.py`)、G21(R28 收口 `parse_finite_float`)、G28(R23 dedup `_normalize_role` 收口 model)、G31(R38 part 份 + R39 `list_unparsed`)、G32(R38 op_type:73/operator:85 两份)、G35(R36 两死方法)、G37(R02 test-only 壳)、G11(R11≡R63 去重 `_normalize` 收口 `gantt_critical_chain.py`)、G38(R06+R27+gantt 四空包同提交)。**G03(R66)** 仅登记归属，受 E04 软序实际延后到 G04(R54) 后执行；**G25(R49 旁支)** 不在 Batch-A 单独执行，并回 Batch-B 的 G24 一次原子。**+ 纯删叶子**（原 LEAF-DUP-P4 桶，按 ⚠简化声明归入此批）：R53(`batch_order.py:74` 一行)、R61(plan 死簇 `:160/164/172-187` + 重定向负向测试)、R70(`schedule_service.py:46-50` 死副本)。**+ G02(R64+R65)**（权威源 `_interference_rebuilt.md:17` 定义 G02={R64,R65} NAV-PLANID；红队 RT3-P01 补登，B17-LEAF-DEAD；红队第2轮 RT22 纠 R65 性质）：R64 = 真零调用死 helper，删 `web/viewmodels/scheduler_navigation_links.py:66-67 _has_navigation_date_range`（全仓零调用）；R65 = `_target_url` **死分支三件套**（非零调用死码）——删 def `:74-78` + 化简 `:160`（去 ` or _target_url(...)` 留 `plain_url`）+ 删孤儿 import `:4 urlencode`/`:6 query_for_target`；**两者同文件同一原子提交但改点不同、不可同质化**；与 R42（G01）same_file，删序按符号重 rg。
 
-**是否原子**：各成员**互相独立**（跨文件零碰撞），可各自单提交；簇内多债（G31 R38part+R39、G38 四空包）须各自原子同提交（见前置）。整批 owner=false。
+**是否原子**：可执行成员**互相独立**（跨文件零碰撞），可各自单提交；簇内多债（G31 R38part+R39、G38 四空包）须各自原子同提交（见前置）。G03 是软序延后项，G25 是并回 G24 的同债旁支，不按 Batch-A 独立提交。整批 owner=false。
 
 **为何这批**：全是「零前置、零 owner 裁断、误删均 loud（ImportError/NameError/SyntaxError/测试红）非静默炸」的死叶子，最早可落腾出心智空间。**例外** G03 受 E04 软序（R54 改 reports_workbench:36 漂移 R66:150）→ 实际宜紧随 Batch-C 的 G04 按 suffix 符号重定位（此处只登记其归属，落地时延后）。
 
@@ -181,7 +182,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 - G37(R02)：先拆测试 import（`:11` 单符号改指 resource_matching_context）→ 后删壳 `:461-475`；禁连删兄弟壳 `:478`（report.py:180 承重）。
 - G16(R45≡R48)：合并单提交整删 + **同提交退 sp06:15**（漏退→FileNotFoundError loud）；禁碰 schedule_params.py（same_file 误标零碰撞）。
 - G21(R28)：必 `allow_none=True`（否则炸空 ext_days 批次）；先跑 `pytest -k allowlist` 定 fitness 白名单 `:77` 退/留。
-- G25(R49 旁支)：**file:line 定点删 5 行，禁符号名全局删**（铲 `sgs_scoring:34`/`ordering:59` 活同前缀函数 NameError）；import 行保留。**R49-self 跨批串行：G25 旁支与 G24（Batch-B）主体是同一债两半，须晚于或同 G24 主体删，删后 `rg parse_dispatch_rule` 零残引用（红队 RT3-P02，详见 §1.3 G24 后 R49-self 串行边）；推荐并回 G24 一次原子免跨批。**
+- G25(R49 旁支)：**本轮不在 Batch-A 单独落**；与 G24（Batch-B）的 R49 主体、R50、R51 并回一次原子 diff。执行时仍按 file:line 定点删旁支行，禁符号名全局删；删后 `rg parse_dispatch_rule` 必须零生产残引用。
 - R61：删函数 + 改测试同 PR 原子；禁删 live 孪生 `_row_text:156`/`normalize_report_resource_filter:119`/`filter_downtime_*:274`。
 - R70：保 `:7 ValidationError import`（`:217` 仍用）。
 - **R64/R65（红队 RT3-P01 补登 + 红队第2轮 RT22 纠 R65 性质）**：两条在 `web/viewmodels/scheduler_navigation_links.py` 同文件同一原子提交（registry 强建打包），但**性质/改点不同、禁同质化为「两份死 helper」**：
@@ -199,13 +200,13 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 
 **go-no-go 判据**：每个死叶子删后立即 grep 活近亲在位 + 该文件相关测试绿 → 放行下一叶子。任一活近亲 grep 落空 → 误删，立即 revert。
 
-**owner 裁断闸门**：本批无 owner_pending 债（全 owner=false）。R61/R70/R53 等若 owner 对「纯删」有异议在此前拦截，否则按 false 落。
+**owner 裁后门控**：本批无未裁债（全 owner=false）。R61/R70/R53 等若 owner 对「纯删」有异议在此前拦截，否则按 false 落。
 
 ### 1.3 Batch-B — 依赖 ROOT 承重门 / 单门控前置
 
-**成员（调度单元 + 债）**：G06(R62)←G05；G07(R17/R20)←G07a🔒；G08(R15/R17/R20)与 G07 同原子；G12(R12)←G11；G13(R55)⏸←G11；G19(R01+R04)←GF1；G20(R59)←GF1；G24(R49+R50+R51)；G40(R46)←G40a🔒⏸；G30(R34+R35)⏸；G36(R37)；G39(R52+R25)⏸。
+**成员（调度单元 + 债）**：G06(R62)←G05；G07(R17/R20)←G07a🔒；G08(R15/R17/R20)与 G07 同原子；G12(R12)←G11；G13(R55)⏸**本轮跳过，仅保留暂停占位**；G19(R01+R04)←GF1；G20(R59)←GF1；G24(R49 含 G25 旁支 + R50 + R51)；G40(R46)←G40a🔒⏸；G30(R34+R35)；G36(R37)；G39(R52+R25)按 O07 仅 KEEP 注释、不删 impl/垫片、不新建迁移测试。
 
-**是否原子**：簇内强原子——G07/G08（R17/R20 跨 service+support 同原子提交）；G19（R01 先删→R04 后收口必同 PR）；G24（R49/R50/R51 一次原子 diff 从大行号往小删）；G39（R52 迁 31 测试 + 删 impl + R25 垫片同提交）；G12/G13 同改单份 `_normalize` 宜同批穿白名单。跨成员无序（除门控前置）。
+**是否原子**：簇内强原子——G07/G08（R17/R20 跨 service+support 同原子提交）；G19（R01 先删→R04 后收口必同 PR）；G24（R49 主体 + G25 旁支 + R50/R51 一次原子 diff 从大行号往小删）；G39 只做 O07 已裁的保留注释动作，历史“迁测试+删 impl+删 R25 垫片”路线作废不执行；G12 单独穿单份 `_normalize` 白名单，G13/R55 本轮不随 G12 改。跨成员无序（除门控前置）。
 
 **为何这批**：每个成员恰有一个 ROOT 承重门或 GF1/G11 前置；前置绿后即可落，不涉身份族大收敛（那在 Batch-C）。
 
@@ -213,14 +214,14 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 - **⚠行号位移总纲（红队第1轮 RT1-P1-5 采纳·贯穿 Batch-B/C 所有同文件删点）**：ROOT 批已对多个承重文件**插入注释行**（G07a 在 LB01 锚符号上方两处、G05 LB02/LB05 五硬钉旁、G15a LB07 两栈上方、LB03 builder 上方等），这些插入令该文件**所有**后续删点行号系统性下移——不止同簇删点。故 Batch-B/C 正文里所有「删 :NN 非 :MM 活键」式裸行号断言（如下文 R17「删 :81 非 :80」、R09 收编面、R47 死活参 8 处逐字相同）**一律以 `<符号名/键名>` rg 现场定位为准，删除前对每个锚点重 rg，信旧裸行号即误删相邻活键**；本档所有 :NN 是 2026-06-05 实盘值，ROOT 注释落地后必漂。**R01 先删** `_iter:67-87`（含 `:72`，缩 R04 收口面 6→5）→ R04 后收口剩 5 点 + **6 处 except 同 PR 加 ValidationError 不可拆**（漏改任一→脏 op_id 由静默 skip 变 ValidationError 上抛炸排程统计/持久化）；R01 删函数 + 删 SP05 断言必同提交（中间提交必红，显式声明）；同删孤儿 `typing:5 Iterator`。E24 与 G40a 认账协同（R04 哨兵 B/C 仅注释禁改 raise）。
 - **G08(R15/R17/R20)🔴**（R15 标红，含爆点 #7）：R15 收口 `parse_operation_event_time` **空值本身就 raise**（爆点 #7），整体 delegate 把合法空时间炸 raise=正常读历史 500；**收口必分支级**——`if not text: return None` 留在 provider 本地，仅坏值走收口符号；坏值方向 loud raise（须确认下游接得住）或可观测降级标记；先补三处 required/optional parity（含空值分支断言）。R17 只删 service:12+support:11+support:81 三行（删 :81 非 :80 活键），**绝不重构 `_build_event_payload`**（毗邻 LB01 写死消毒 :471-473，爆点）；R20 改 :52 与 R17 串行（R17 删 :12 后 :52 上移重 rg）。爆点 #8：启动探针 `migration_operation_execution_contract.py:349/355` INSERT `event_time:"not-a-date"` 靠拒绝判库迁移态，R15/R17 改前须确认不撼「坏 event_time 必被拒」预期。
 - **G07(R17/R20)🔴**（含 LB01 最危险边）：←G07a（LB01 注释先落，裸奔期禁动 service 文件）；R17↔LB01 同 `_build_event_payload` 函数体（最危险边），「顺手清理」打穿写死消毒；R20 漏改即 ImportError（loud 非静默）。
-- **G39(R52+R25)🔴⏸**（R52 标红，owner 决策门）：**两份同名 ready_queue.py 防混（红队 RT1-P0-2/RT2-问题3 采纳）：impl=`core/algorithms/greedy/dispatch/ready_queue.py:103 get_ready_operation_ids`（真删点）、R25 垫片=`core/services/scheduler/graph/ready_queue.py:9`（仅 11 行 re-export，删 impl 后此 `:9 import` 才 ImportError）；删点文件+行号+符号三锁定，禁裸写 `ready_queue.py:103`**。**✅ O07 已裁方向 B：保留 impl 当差分校验尺子 + 补「我是故意的」注释（禁裸留无注释）**——`core/algorithms/greedy/dispatch/ready_queue.py:103 get_ready_operation_ids` 与 R25 垫片**均不删、不新建 `test_sgs_graph_ready.py`**，既有 `tests/scheduler_graph/test_ready_queue.py` 原样存活，**P7 rule①② 对 R52 不适用**。下述「方向 A 删除」编排已被 O07 否决、仅存技术分析（不执行，论证为何不可裸删）：曾拟走 A 先新建 `tests/scheduler_graph/test_sgs_graph_ready.py` 按 **31 用例**全量分流（dossier「~23」严重失真，V4⑦：23 个走全量版 `_ready()`→`get_ready_operation_ids` 删即全断含 **16 个 ReadyQueueContractError 合同（红队 RT3-P03 采纳：实盘 `rg -c ReadyQueueContractError test_ready_queue.py`=16，非旧值 15，±1 漂移会致 A2 漏接 1 合同覆盖）** + 4 个 LIVE ValidationError 契约 `:299/:311/:326/:352` + 2 个差分 oracle 两路都改）；爆点 #16：`_full_scan_ready_ids:79` helper 体调 impl，删 :79 与改 **2 个差分 oracle 函数**（`:270 branch_join` 含 4 字面量 :275/278/281/284、`:287 fixed_predecessor` 含 1 字面量 :296，共 **5 处字面量行**；权威 verdict_V4，旧文「6 oracle」是把 5 字面量误记为 6）的字面量同原子；parity 异常类不同只能断「均拒绝」禁断同类型；None 分支两路分别写；同提交退 lazy_runtime:27+metrics_topology:140。
+- **G39(R52+R25)🔴**（R52 标红，O07 已裁保留）：**两份同名 ready_queue.py 防混（红队 RT1-P0-2/RT2-问题3 采纳）：impl=`core/algorithms/greedy/dispatch/ready_queue.py:103 get_ready_operation_ids`（历史拟删点，本轮不删）、R25 垫片=`core/services/scheduler/graph/ready_queue.py:9`（仅 11 行 re-export，本轮也不删）**。**✅ O07 已裁方向 B：保留 impl 当差分校验尺子 + 补「我是故意的」注释（禁裸留无注释）**——`core/algorithms/greedy/dispatch/ready_queue.py:103 get_ready_operation_ids` 与 R25 垫片**均不删、不新建 `test_sgs_graph_ready.py`**，既有 `tests/scheduler_graph/test_ready_queue.py` 原样存活，**P7 rule①② 对 R52 不适用**。下述「方向 A 删除」编排已被 O07 否决、仅存技术分析（不执行，论证为何不可裸删）：曾拟走 A 先新建 `tests/scheduler_graph/test_sgs_graph_ready.py` 按 **31 用例**全量分流（dossier「~23」严重失真，V4⑦：23 个走全量版 `_ready()`→`get_ready_operation_ids` 删即全断含 **16 个 ReadyQueueContractError 合同（红队 RT3-P03 采纳：实盘 `rg -c ReadyQueueContractError test_ready_queue.py`=16，非旧值 15，±1 漂移会致 A2 漏接 1 合同覆盖）** + 4 个 LIVE ValidationError 契约 `:299/:311/:326/:352` + 2 个差分 oracle 两路都改）；爆点 #16：`_full_scan_ready_ids:79` helper 体调 impl，删 :79 与改 **2 个差分 oracle 函数**（`:270 branch_join` 含 4 字面量 :275/278/281/284、`:287 fixed_predecessor` 含 1 字面量 :296，共 **5 处字面量行**；权威 verdict_V4，旧文「6 oracle」是把 5 字面量误记为 6）的字面量同原子；parity 异常类不同只能断「均拒绝」禁断同类型；None 分支两路分别写；同提交退 lazy_runtime:27+metrics_topology:140。
 - **G40(R46)🔒⏸**：←G40a（LB08 注释先落）；R46 删 `:162-164` 按符号 grep 重定位（LB08 插行后下移）；**同名陷阱 `v4_sanitizers.py:37 _safe_identifier` 活函数**（按符号名跨文件删→v4 迁移 NameError），文件+行号+符号三锁定。
 - **G12(R12)🟡**：←G11；保留 `:84` 仅补 collector；`:54` 与 `:328-334` 双补 dropped_count 且穿 `_normalize` 白名单；**爆点 #14：contract available=False 分支 `:22-39` 须显式保留新键**（最该报警的「全坏行」恰落此分支被吞，计划只标「contract:40 透传不卡」对 available=False 路径是错的）。
-- **G13(R55)🟡⏸**：←G11；**owner + 怀疑者过 PHASE0 §6 三问后才锁终态**（三问原文见 §3 O09：① 当下债 vs 在途中间态、② `:385 None 回退`是否有意、③ 裸删 vs 补 scope 标记；触发条件 owner_pending+needs_adversarial+verdict=null）；scope 调用点显式赋值禁反推；禁破坏 `:385 None 回退` + support:55-56 分流判据；穿单份 `_normalize` + contract unavailable 分支（`_copy` 无须补）。
+- **G13(R55)🟡⏸**：←G11；**O09 已裁本轮不做**，这里只保留暂停占位。重启条件=怀疑者过 PHASE0 §6 三问 + R11/R63 单份化前置就绪；未重启前不得随 G12 同改 `_normalize`。三问原文见 §3 O09：① 当下债 vs 在途中间态、② `:385 None 回退`是否有意、③ 裸删 vs 补 scope 标记；禁破坏 `:385 None 回退` + support:55-56 分流判据。
 - **G24(R49+R50+R51)**：一次原子 diff 从大行号往小删（R51 删 `:28-35` 致下移 7~8 行）；R51 **两续命测试整体退场，禁迁移禁保留 `:25` 兜底断言**（保留=复活 P4 静默回退）；R50 保 `import math:3`；R49 主体 `parse_dispatch_rule` 等 def 真宿主 **`core/algorithms/dispatch_rules.py`**（非 greedy 子目录，按符号 rg 定行）；收口点 `schedule_params:277/346`+`optimizer_config:166/189` loud raise 已在位（只读确认）。
-- **R49-self 跨批串行边（红队 RT3-P02 采纳·同债拆两批须钉同提交序）**：R49 被拆成 G25（Batch-A 旁支 4~5 行）+ G24（Batch-B 主体 `dispatch_rules.py:28-35`），两半共享 `parse_dispatch_rule` 调用图（被 greedy 内 `dispatch/sgs_scoring.py`/`dispatch/sgs.py`/`scheduler.py` 多文件消费）。**Batch-A 早于 Batch-B 落地会致：G25 先删旁支调用点而 G24 主体实现还在→实现变孤儿（死码堆积，无 loud）；反向 G24 先删实现而 G25 旁支未清→调用悬空 NameError**。硬序：**G25 旁支删点须晚于或同 G24 主体删**，且删后 `rg parse_dispatch_rule` 全仓零残引用方算闭合；或直接把 R49 旁支并回 G24 一次原子（推荐，免跨批）。owner 未指定时按「并回 G24 一次原子」执行。
+- **R49-self 执行口径（红队 RT3-P02 采纳·同债拆两批须钉同提交序）**：R49 的 G25 旁支不再作为 Batch-A 独立动作；并回 G24（Batch-B 主体 `dispatch_rules.py:28-35`）一次原子执行。动手前按当前盘 `rg parse_dispatch_rule` 校准真实调用图，删后 `rg parse_dispatch_rule` 全仓零生产残引用方算闭合。
 - **G20(R59)🟡**：←GF1；F1 落地后才收口（裸收口撞续命测试 `:247/:250`）；保留 blank 短路 `:62-63`。
-- **G30(R34+R35)🟢⏸**：R34 owner 裁 detail_queries（纯删 vs 迁活孪生）；纯删 repoint 目标 `get_plan_time_span_for_resolution:210` 存在；R34↔R35 同 commit 按符号自下而上；**detail_queries 若迁活孪生须排 R05 之后**（落点是 R05 team-join 战场，E18 回升硬前置）；facade `:11 ScheduleDetailRow` 只删 `:12/:14` 保 `:11`（`:37` 活方法仍用）。
+- **G30(R34+R35)🟢**：O10 已裁纯删；repoint 目标 `get_plan_time_span_for_resolution:210` 存在；R34↔R35 同 commit 按符号自下而上；若未来改裁迁 detail_queries 活孪生，才回升为 R05 后置前置（落点是 R05 team-join 战场）；facade `:11 ScheduleDetailRow` 只删 `:12/:14` 保 `:11`（`:37` 活方法仍用）。
 - **G06(R62)🟡**：←G05；按符号 `_resource_pair_payload`+`!=` 重 grep 禁照抄行号；**payload+dict+模板（`!=`副行 + title 改回 `_label`，爆点 #5：title 第四处 Jinja undefined→`title=""` UI 降级）+xlsx 四处同 commit**；收口面**零现成断言须先写 3 套 parity 快照**（升为硬前置门非建议）；禁碰 `:58-236` 护栏段 + 禁删 state 层 latest_*/counterpart_* 真身份键。
 - **G36(R37)**：直删 `:82-90`，删后立即 grep 活近亲 `:92`。
 
@@ -236,13 +237,12 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 
 **批后门禁**：fitness 21 项全绿 + 0 分层违规（R52 收口 ready_queue→sgs_graph 不得越层/造环；R19 repo 收 service=data→service 越层禁）；语义雷达无新漂移；**v18/v19 DB CHECK 不破（R15/R17 改 event_time 解析 + 启动探针 `:349/355` 仍须被拒，专项验）**；本批专项契约：R04 6-except 全接 ValidationError 绿 + GF1 parity 绿、R15 三 required/optional parity（含空值）绿、R52 impl 保留 + 「我是故意的」注释（O07 方向 B，**不新建 test_sgs_graph_ready.py**；既有 `tests/scheduler_graph/test_ready_queue.py` 仍全绿、差分 oracle 注释到位）+ 异常「均拒绝」断言绿、R62 三套 parity 快照（dict/xlsx/模板含 title）绿、R12 dropped_count 穿白名单 + available=False 分支保键绿、R11/R63 normalize 5 边界绿。
 
-**go-no-go 判据**：每个簇前置绿 + 该簇专项 parity 绿 + 活近亲 grep 在位 → 放行。R52 owner 未裁 A/B → G39 STOP（不进批）。R15 收口若整体 delegate（未分支级保空值）→ STOP。（E16「__all__ 串行对账」已经红队第2轮 P-RT22-02 判为伪串行边降登记备查，不再作 R19 收口 go-no-go 门。）
+**go-no-go 判据**：每个簇前置绿 + 该簇专项 parity 绿 + 活近亲 grep 在位 → 放行。R52/O07 已裁 KEEP：G39 只补注释，若出现删 impl、删 R25 垫片或新建 `test_sgs_graph_ready.py` → STOP。R15 收口若整体 delegate（未分支级保空值）→ STOP。（E16「__all__ 串行对账」已经红队第2轮 P-RT22-02 判为伪串行边降登记备查，不再作 R19 收口 go-no-go 门。）
 
-**owner 裁断闸门（只列「待裁」）**：
-- R52 A/B 决策门 + 子门 A1（16 个 RQErr 合同随删，红队 RT3-P03 纠正实盘=16 非 15）vs A2（改写为 LIVE 等价断言保留，V4⑦建议）。
-- R55 PHASE0 §6 三问（owner_pending+needs_adversarial+verdict=null）。
-- R34 detail_queries 纯删 vs 迁活孪生（迁则排 R05 后）。
-- R15 坏值方向 loud raise vs 可观测降级（须确认下游 `_fact_from_state:52/53` 裸奔链接得住）；R15/R19 双 owner_pending 同批裁（见 §2/§3）。
+**owner 裁后门控（照 §3/OWNER 执行）**：
+- R55/O09：本轮不做，仅保留重启条件说明，不进入本批执行门。
+- R34/O10：纯删；若未来改裁迁活孪生，才回升为 R05 后置前置。
+- R15/O03：坏值 loud raise，合法空时间仍留本地 `return None`；R15/R19/O05 同批裁定已完成。
 
 ### 1.4 Batch-C — 身份族收敛 / 收口委托（依赖承重族 + parity）
 
@@ -250,7 +250,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 
 **是否原子**：身份族强原子——G04（R58→R54→R44 同 nav_publish 硬序）+ E03 硬同批带走 G01（R54→R42/R60 同符号 `build_workbench_plan_context` rebase）；G27（R22 先→R21 后同窗口）；G09（provider 链 R15→R19→R13 同文件串行 + 逐步重 rg）；G22（R08 先→R09 后串行）；G23（R33 步1→R30→R33 步2/3 硬序）；G33（R05 步1→步2→步3 不可换序）。
 
-**为何这批**：集中所有「收口委托到真相源」+ owner_pending 身份/承重收敛；依赖 ROOT 的承重注释族 + parity 全绿。这是误删风险最高的批（6 承重文件多在此动手）。
+**为何这批**：集中所有「收口委托到真相源」+ 裁后身份/承重收敛；依赖 ROOT 的承重注释族 + parity 全绿。这是误删风险最高的批（6 承重文件多在此动手）。
 
 **前置安全网（逐条点名，含全部相关标红债 + 硬阻断爆点）**：
 - **G04(R58→R54→R44)🔴**（R54 标红 + 爆点 #1/#2/#3）：
@@ -267,19 +267,19 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
   - 爆点 #12（V2⑫）：`:57 navigation_context` 走 `**kwargs` 链全程 plan_id=0 命中→不含 plan_id，删 :191 形参对 :57 安全无 TypeError；co-change 只查真名 `build_workbench_plan_context`（**红队 RT3 噪音采纳：全仓零 `as n` 别名，原 D2「别名 `n(`」纪律是幻觉前提已删，全真名 import**）。**collar 调用方口径（一致性 P2 收口，以 verdict_V2 + RT22 备注统一）：共 8 个生产调用方文件**（navigation_context、dashboard_workbench_context、resource_dispatch、gantt_task_detail、reports_workbench、navigation_links、analysis_links + navigation_context.py 第二注入路径），**其中仅 3 个真传 plan_id**（navigation_context:78、reports_workbench:79、dashboard_workbench_context:92）会触 TypeError 面，其余 5 个不传 plan_id 删形参安全。删形参前 rg 全 8 调用方复核无遗漏真传点。
   - E03 补：collar 第 6 调用方 `analysis_links.py:24` 未传 plan_id（只读确认点，删形参安全）。
 - **G27(R22+R21)🔴**（R22 标红 + 爆点 #22/#23）：←LB03+G27p（24 键 exact + 取值 + bad-role raise 三断言已在 ROOT 落）；R22 先收口（只 CALL `build_plan_identity`/`to_dict` 不改 builder）→ R21 后删 3 死 shim `:42/46/59`+import（**严守保留 dpr_dict wrapper `:32-39` + `:11-13` import 别名 + `:50-156` 四 LIVE range 函数**，误删→甘特周计划范围静默断裂）；view_context `:74 normalize_plan_role` 绝不删（R21 wrapper field=plan_role 精度唯一上游）。V2③安全路径三步：24 键 exact+no_history 取值断言+evidence_contract:194 升 exact（ROOT，即 G27p）→删 :77-100 委托但 :74 normalize 绝不删→no_history 取值交 owner。
-- **G09(R15→R19→R13)🔴⏸**（R15/R19 标红 + V1①串行序）：同 provider.py 文件；**V1①裁定串行序 R15→R19→R13**（R13 dossier「R13 先」判负）：删上方位移下方锚点，故先改最下方语义 R15(`:85-95` 不位移任何人)→中段 R19(`:70`)→最后删最上方死字段 R13(`:23-24/:56-57`)；R15/R19 双 owner_pending 同批裁，R13 殿后升 owner 确认；R13↔R18 解耦（不碰 repo:399/401）。**R13 退场面是四处同一原子提交（红队第2轮·2号 P-RT22-03 采纳·原 G09 只点字段两行会致 TypeError）**——R13.md:50-52 列明：① 删字段 `:23-24`；② 删 `_fact_from_state` 的 `latest` 形参（按符号定位，现 `:43`）；③ 删赋值 `:56-57`；④ 删调用点实参 `latest_events.get(scope)`（现 `:123`）；⑤ 评估连带删孤儿 `_latest_events_by_scope:163-170` + `:118` 调用（删字段后成孤儿）。**只删字段两行而漏 `:43` 形参/`:123` 实参→形参悬空；若删 `:43` 形参却漏 `:123` 实参→下次调用 `_fact_from_state(..., latest_events.get(scope), ...)` 即 TypeError（facts 主链热路径，读历史/重排）**。注：`:56-57` 落在 `_fact_from_state` 体（`:40-62`）内，**紧贴 R15 的 `_parse_execution_time` 调用 `:54/55`**（仅隔 1-2 行）——R15(G08,Batch-B)先改、R13(G09,Batch-C)后删，G09 动手前对该函数体整体重 rg，按键名 `last_event_schedule_version=` 而非裸行号。R19 canonical 强制 sorted（`snapshot:40` 事实承重 sha256 指纹，爆点 #9：三函数零符号级测试，naive 统一不排序版→静默漂移无拦截）+ 注释「指纹依赖排序」；先补 positive_op_ids 黄金用例（F-fingerprint 门）。**E16 降为登记备查·无依赖（红队第2轮·2号 P-RT22-02 采纳·原「R01/R46/R19 共享 `__all__:118-122` 串行」是伪串行边）**：实盘三个 `__all__` 在三个不同文件物理零重叠——R01 改 `core/services/scheduler/run/schedule_payload_contract.py:410`（删条目）、R19 改 `execution_snapshot.py:118/122 positive_op_ids`（`:118-122` 锚点**只属本文件**）、**R46 根本不动任何 `__all__`**（`core/models/scheduler_public_errors.py:163 _safe_identifier` 不在 `__all__:340-349`，导出的是 `public_safe_identifier`）；`sym:__all__` 是同符号名同居的 registry 误判，三债顺序无关、可任意先后，**禁照 `:118-122` 锚点去 execution_snapshot.py 找 R01/R46 的导出条目**（不在那里）。
+- **G09(R15→R19→R13)🔴⏸**（R15/R19 标红 + V1①串行序）：同 provider.py 文件；**O03/O05/O06/O37 已裁串行序 R15→R19→R13**（R13 dossier「R13 先」判负）：删上方位移下方锚点，故先改最下方语义 R15(`:85-95` 不位移任何人)→中段 R19(`:70`)→最后删最上方死字段 R13(`:23-24/:56-57`)；R13 按 O06 先迁 3 测试后删，删前 owner 再确认一次；R13↔R18 解耦（不碰 repo:399/401）。**R13 退场面是四处同一原子提交（红队第2轮·2号 P-RT22-03 采纳·原 G09 只点字段两行会致 TypeError）**——R13.md:50-52 列明：① 删字段 `:23-24`；② 删 `_fact_from_state` 的 `latest` 形参（按符号定位，现 `:43`）；③ 删赋值 `:56-57`；④ 删调用点实参 `latest_events.get(scope)`（现 `:123`）；⑤ 评估连带删孤儿 `_latest_events_by_scope:163-170` + `:118` 调用（删字段后成孤儿）。**只删字段两行而漏 `:43` 形参/`:123` 实参→形参悬空；若删 `:43` 形参却漏 `:123` 实参→下次调用 `_fact_from_state(..., latest_events.get(scope), ...)` 即 TypeError（facts 主链热路径，读历史/重排）**。注：`:56-57` 落在 `_fact_from_state` 体（`:40-62`）内，**紧贴 R15 的 `_parse_execution_time` 调用 `:54/55`**（仅隔 1-2 行）——R15(G08,Batch-B)先改、R13(G09,Batch-C)后删，G09 动手前对该函数体整体重 rg，按键名 `last_event_schedule_version=` 而非裸行号。R19 canonical 强制 sorted（`snapshot:40` 事实承重 sha256 指纹，爆点 #9：三函数零符号级测试，naive 统一不排序版→静默漂移无拦截）+ 注释「指纹依赖排序」；先补 positive_op_ids 黄金用例（F-fingerprint 门）。**E16 降为登记备查·无依赖（红队第2轮·2号 P-RT22-02 采纳·原「R01/R46/R19 共享 `__all__:118-122` 串行」是伪串行边）**：实盘三个 `__all__` 在三个不同文件物理零重叠——R01 改 `core/services/scheduler/run/schedule_payload_contract.py:410`（删条目）、R19 改 `execution_snapshot.py:118/122 positive_op_ids`（`:118-122` 锚点**只属本文件**）、**R46 根本不动任何 `__all__`**（`core/models/scheduler_public_errors.py:163 _safe_identifier` 不在 `__all__:340-349`，导出的是 `public_safe_identifier`）；`sym:__all__` 是同符号名同居的 registry 误判，三债顺序无关、可任意先后，**禁照 `:118-122` 锚点去 execution_snapshot.py 找 R01/R46 的导出条目**（不在那里）。
 - **G10(R18+R19关心:67+R13关心:399)🟢⏸**：R18+R13(repo):399 共一条护栏注释合批（六格 stub raise 是契约护栏非死码，foundation 测试 :365/:367 断言 raise，禁直删/禁退断言/禁改 return {} 静默）；R19 repo 处物理隔离仅文件级串行（保私有版补「顺序无关」注释禁下沉）；R13 不碰 repo（属 R18），先迁 scope_read_contract→reschedule 测试再删生产。
 - **G22(R08+R09)🔴⏸**（R09 标红 + 爆点 #12/#13）：←N1 注释(E26，先钉 service:127≡:130 同源守卫)+R07 前置(E25 已满足)；
-  - **R09 owner 先裁 C 取严格 None 还是放宽 A/B**（裁前不进批）；收编**只动 A/B 两 Optional 副本收口到 scope.py:9，C 保持不动**；STRICT-4 一字不碰（§3.1 family 对照，全仓 **12 处**同名异义函数极易误删 STRICT 当重复）。
+  - **R09/O01 已裁 C 严格**；收编**只动 A/B 两 Optional 副本收口到 scope.py:9，C 保持不动**；STRICT-4 一字不碰（§3.1 family 对照，全仓 **12 处**同名异义函数极易误删 STRICT 当重复）。
   - 分两路 parity：test_AB 零漂移 + test_C_float_bool 钉 5.9/3.0/True（C 严格 5.9→None vs A/B 宽松 5.9→5）。
   - 爆点 #12：B 副本 `:257/:258 _positive_int(...) or 0` 外层兜底——若收口到 scope 严格版（catch→None），`5.9` 由 `int→5` 变 `None or 0=0`，op_id 塌成 0 注入 task_card（另一条坏数据流，须审计）。
-  - 爆点 #13（V1⑤裁定）：`persistence_errors:13` 归 **R04 禁区**不归 R09 收编面（按 R09 收编它会违 R04 灵魂线在错误路径抛二次异常）；建议保持现状+注释，是否统一待 owner。
+  - 爆点 #13（V1⑤/O02 裁定）：`persistence_errors:13` 归 **R04 禁区**不归 R09 收编面（按 R09 收编它会违 R04 灵魂线在错误路径抛二次异常）；保持现状+注释。
   - **连带（V1）**：R09 收编串行链真正待收编 Optional 副本只剩 `resource_dispatch_execution_service.py:24` + `scheduler_resource_dispatch_execution.py viewmodel:33`。
   - E28：R09 收编**禁碰同文件 `:36-50` LB01 最终底**（删空行/调 import/移函数都漂 raise 锚点，按符号定位）；R08 候选 A 只删 `:25/:227-228/:367-368` 保 `feedback_write_enabled` 参数（`:234` 活消费，误删→「填写实际」按钮门禁塌缩静默放开误填）；R08→R09 串行。
 - **G33(R05 步3)🔴🔒⏸**（R05 标红 + 爆点 #19/#20，步1/2 已在 ROOT）：←G33a（collar 已扩 team 谓词 + 5 parity 绿）；步3 才搬 `repo:462-463/:455/:460` 进收口点；**不可换序**（步3 先收敛把派工读取收口到未扩 team 现状 collar→team 双 join 谓词凭空消失→班组视角静默返全量坏数据）；步3 前先迁 smoke:177-194 + 续命 :340。
-- **G15(R47+R71)🟡⏸**：←G15a🔒（LB07 注释+parity 绿）；R47+R71 同批（先删 R47 死参再 R71 收敛）；**R47 按调用函数名逐块手删**（只删 model:88/:159/:214+service:68/:158/:211 死点，爆点 #10：死参活参 `raw_value=raw_value` 全栈 8 处逐字相同，盲 grep/sed 必误删 `_record_invalid_choice_degradation` 活参 :116/:119→invalid 降级证据静默丢，blank parity 测试不覆盖 invalid 路）；删后跑 blank+invalid 两路 degradation 回归；R71 物理收敛 vs 仅 parity 待 owner（逐字保真吞错语义，改 loud 另立债）。
-- **G34(R67)🟡⏸**：①②纯 6 键必收（喂收口点零新增依赖）；③④ superset 全收或全不收 tuple 保序；第 4 处 `scheduler_navigation_links.py`（`_REPORT_CONTEXT_FIELD_NAMES:11-28` 元组 + `:186 preserved_report_context_fields`）owner 未拍前保持现状/仅注释；禁动收口点签名 `:119-127`。**R67↔R42 同文件串行（E17 拆两条件分支，红队第2轮 P-RT22-04 采纳）**：(a)「O18=保现状/仅注释 → R67↔R42 零冲突，无需串行」；(b)「O18=收编③④ → R67 对 `_REPORT_CONTEXT_FIELD_NAMES` 做元组拼接（`(...前缀键..., *REPORT_RESOURCE_FILTER_ARG_KEYS)`，R67.md:46/76），该元组**首键 `plan_id` 是 R42 地盘**——拼接 MUST 晚于 R42 删 collar 形参之后、**禁碰元组内 `plan_id` 成员**、且 **MUST 先过 `web.viewmodels → core.services.report` 分层门**（R67.md:115/130：收编第 4 处新增跨层边，违则分层 0 红，AST/分层门拦）」。本文件归「三批四单元串行编排块」（见 §1.0 ⚠单文件三批四单元串行块总纲），G34 进该文件前对元组/遍历点按符号重 rg。
-- **G29(R72)🟢⏸**：dedup 落 `web scheduler_utils.py`，**分层红线绝不下沉 core**（core→flask 越层）；必补 `from flask import request`（现仅 import g，latent NameError）；空串→None 语义原样保留禁加 ROLE_ADOPTED 兜底；owner 裁公开名 + 与 R44 落点共识。
+- **G15(R47+R71)🟡⏸**：←G15a🔒（LB07 注释+parity 绿）；R47+R71 同批（先删 R47 死参；R71 按 O17 仅 parity 守卫、不物理合并）；**R47 按调用函数名逐块手删**（只删 model:88/:159/:214+service:68/:158/:211 死点，爆点 #10：死参活参 `raw_value=raw_value` 全栈 8 处逐字相同，盲 grep/sed 必误删 `_record_invalid_choice_degradation` 活参 :116/:119→invalid 降级证据静默丢，blank parity 测试不覆盖 invalid 路）；删后跑 blank+invalid 两路 degradation 回归；R71 改 loud 另立债。
+- **G34(R67)🟡⏸**：①②纯 6 键必收（喂收口点零新增依赖）；O18 已裁第 4 处保现状，③④保持现状/仅注释；禁动收口点签名 `:119-127`。**R67↔R42 同文件串行（E17 拆两条件分支，红队第2轮 P-RT22-04 采纳）**：(a)「O18=保现状/仅注释 → R67↔R42 零冲突，无需串行」；(b)历史备选「若未来收编③④ → R67 对 `_REPORT_CONTEXT_FIELD_NAMES` 做元组拼接（`(...前缀键..., *REPORT_RESOURCE_FILTER_ARG_KEYS)`，R67.md:46/76），该元组**首键 `plan_id` 是 R42 地盘**——拼接 MUST 晚于 R42 删 collar 形参之后、**禁碰元组内 `plan_id` 成员**、且 **MUST 先过 `web.viewmodels → core.services.report` 分层门**」。本文件归「三批四单元串行编排块」（见 §1.0 ⚠单文件三批四单元串行块总纲），G34 进该文件前对元组/遍历点按符号重 rg。
+- **G29(R72)🟢⏸**：dedup 落 `web scheduler_utils.py`，**分层红线绝不下沉 core**（core→flask 越层）；必补 `from flask import request`（现仅 import g，latent NameError）；空串→None 语义原样保留禁加 ROLE_ADOPTED 兜底；按 O19 的公开名 + web/core 各落各点执行。
 - **G17(R31)+G23(R30+R33)**：E05/E06 硬序 **R33 步1（迁两测试 import）→R30（删 shared 实现 + 三 FieldPolicy + 三常量）→R33 步2/3（删壳 + `:411` 断言）**；R31 不晚于 R33（A14 方向修正：壳 import 源，先删壳 R33 再删源 R31，否则 facade:11 残 import loud ImportError）；**死保 degradation:15**（V4②裁定：无论叫壳叫实现都死保，config_contract:15 不动，删元组只动 `:14/:16/:19`）；绝不碰 core.shared 三模块全文。
 
 **不可碰清单（按符号，6 承重文件集中区）**：
@@ -301,15 +301,15 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 
 **go-no-go 判据**：
 - 身份族（G04→G01/G27）：collar 已扩 3 键（ROOT 闸门绿）+ R54 三基数 parity 绿 + R42 :92 删点在清单 + R22 取值/bad-role 断言绿 → 放行；任一缺 → STOP。
-- provider 链（G09）：R15/R19 owner 已裁同批 + sorted 保（E16 __all__ 已降备查非门）→ 放行；R13 升 owner 确认未回 → R13 殿后步 STOP（R15/R19 可先落）；R13 放行须含退场四处同原子（形参 :43 + 实参 :123 + 字段 + 孤儿）。
-- R09（G22）：owner 已裁 C 严格 vs A/B 宽松 + STRICT-4 grep 确认未动 + 两路 parity 绿 → 放行；裁前不进批。
+- provider 链（G09）：O03/O05/O37 已裁，R15/R19 同批 + sorted 保（E16 __all__ 已降备查非门）→ 放行；R13 按 O06 删前 owner 再确认，未回则 R13 殿后步 STOP（R15/R19 可先落）；R13 放行须含退场四处同原子（形参 :43 + 实参 :123 + 字段 + 孤儿）。
+- R09（G22）：O01/O02 已裁，C 严格 vs A/B 宽松 + STRICT-4 grep 确认未动 + 两路 parity 绿 → 放行。
 - R05（G33 步3）：collar 已扩（步1/2 ROOT 绿）→ 放行步3；collar 未扩 → 步3 STOP（裸搬谓词消失）。
 
-**owner 裁断闸门（只列「待裁」绝不给终态）**：R54 collar 形态 F门-1/2/3；R22 no_history 取值取向；R09 C 严格 vs A/B 宽松（+ persistence_errors:13 归属确认）；R15 坏值方向 + R13 删/留二次确认 + R15/R19 同批裁；R71 物理收敛 vs 仅 parity；R67 第 4 处 superset 收编；R72 公开名 + 落点；R34 detail_queries（若迁排 R05 后）；R47/R71 同批（owner 裁 R71 收敛形态）。
+**owner 裁后门控（照 §3/OWNER 执行）**：R54 collar 形态 F门-1/2/3；R22 no_history 取值取向；R09 C 严格 vs A/B 宽松（+ persistence_errors:13 归 R04）；R15 坏值 loud raise + R13 删前再确认 + R15/R19 同批裁；R71 仅 parity；R67 第 4 处 superset 保现状；R72 web/core 各落各点 + request import；R34 纯删（若未来迁活孪生才排 R05 后）；R47/R71 同批执行。
 
 ### 1.5 Batch-D — facade 删除最晚 / 跨 owner-pending 收口
 
-**成员（调度单元 + 债）**：G18(R26 顶层 5 shim 删)←三桶收敛；G26(R29 number_utils 薄壳化)⏸；G41(R14 删死门 `_resolve_strict_plan`)🔴⏸；G42(R24 删 core 死副本 networkx)⏸。**+ owner_pending 的 LEAF-DUP-P4 残余**（按 ⚠简化声明归入此批，随各自 owner 门落）：R69🔴⏸、R03⏸、R41⏸、R68⏸、R32⏸、R40⏸、R43⏸。
+**成员（调度单元 + 债）**：G18(R26 顶层 5 shim 删)←三桶收敛；G26(R29 KEEP 注释，O20 已裁保留)；G41(R14 删死门 `_resolve_strict_plan`)🔴⏸；G42(R24 KEEP 注释 + 事实记录，O23 已裁保留不删)。**+ 需门控的 LEAF-DUP-P4 残余**（按 ⚠简化声明归入此批，随各自 owner 门落）：R69🔴⏸、R03⏸、R41⏸、R68⏸、R32⏸、R40⏸、R43⏸。
 
 **是否原子**：G18 单文件三步迁移须同窗口；G41/G42 各自独立可并行；R69 两份 `_op_seq` 原子同改；R43↔R26 共碰 scheduler_config.py+SP05 串行。
 
@@ -319,10 +319,10 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 
 **前置安全网（逐条点名，含标红债 R14/R69）**：
 - **G18(R26)🟡**：晚于 R29(G26)/R33(G23)/R52(G39) 三桶收敛（E07/E08/E09）+ E10 软自 G15；迁 2 离线消费者（tools:17/audit:87 手动验证清单，CI 不跑=延迟暴露）；改 SP05 BEHAVIOR_* 两字典（:20-31/:33-82）非 STRONG_*，`:638` 第二处不碰；重指基数用 ~93 处/53 文件（非旧值 71）；R26↔R01/R43 SP05 同文件串行各改各段（E11）。
-- **G26(R29)🟡⏸**：**owner 裁 KEEP vs 薄壳化**（KEEP 则不阻塞 G18，B 收敛则前置 G18）；KEEP 仅补注释；走 B 薄壳化前置=先重写 monkeypatch 为身份测试，**真续命点 `regression_number_utils_facade_delegates_strict_parse.py:45-48`**（V4⑪：dossier 误指 warmstart:136 monkeypatch 的是 ortools/cp_model 与 number_utils 零关系）；2 活消费者 `excel_validators:26`/`scheduler_excel_calendar_rows:8` 须同改。
+- **G26(R29)🟡**：**O20 已裁 KEEP + 显性「有意保留」注释**，不阻塞 G18；不走薄壳化，不改 2 活消费者 `excel_validators:26`/`scheduler_excel_calendar_rows:8`。历史 B 薄壳化路线（重写 monkeypatch、改活消费者）本轮作废。
 - **G41(R14)🔴⏸**（R14 标红）：←LB01 承重裁断先行（E13，`:134-139` 让位，撞 LB01 同符号 `_resolve_strict_plan`）；三步前置（迁灵魂线测试 / 改 roadmap:485-498+items.yaml:83 / 确认无树外调用）；**owner 裁 `:328` 候选灵魂线改钉 resolve_existing_plan 层禁平移活门 diagnose**（活门走 resolve_plan fallback_to_adopted 静默不 raise→「非 scenario 缺角色应 raise」灵魂线被悄丢）；`:358 scenario` 灵魂线两门同源可平移；**删死门不得顺手修 resolve_plan 静默回退（铁律 4）**。
-- **G42(R24)🟡⏸**：只走路 A 删 core 死副本（owner 默认推 A）；路 B（改活 web 路径指零消费 core 合同）违铁律 5 须另立 P5（core 对 NaN/Inf/bool 静默透传 vs web 孪生 safe_int/safe_float loud raise NonFiniteDiagnosticNumber，丢护栏）；先调和 networkx roadmap items.yaml:435/:480/:481（:480 ruff+:481 pyright 只摘 core 保 web helpers）；测试逐条剪混合用例 `:83` 单行；**绝不反删 web 孪生护栏**；‖ G41 可并行。
-- **R69🔴⏸**（标红 + 爆点 #15，V5⑨裁定）：owner_pending=false（收口家 `schedule_input_contracts.py` 已确认无环），但 owner 设计前置定 loud raise vs 可观测降级方向；**两份 `_op_seq`（guard:49/runtime:19 def + guard:206/212/runtime:216 三消费）原子同改**；parity 两份同钉 `seq=0/None→走短路不 raise`（合法）+ `seq="abc"→loud raise`（坏类型）；**loud 只动 except 域，`or 0` 兜的 None/0/空串绝不卷入**（爆点 #15：`completed_seq<=0` 合法短路，卷入 raise→双热路径可用性放大）；**禁碰 `_seed_seq:190`/`_seed_op_id:175` 及 runtime:261-262**（V5⑨：`:262` 是 `_seed_seq` 张冠李戴非 R69）。
+- **G42(R24)🟡**：**O23 已改裁保留不删**——core 预留件留作「诊断回归 core 契约层」未来地基，只补「故意保留」注释 + 事实记录 `.codestable/compound/2026-06-05-decision-r24-diagnostic-contract-keep.md`；不删 core 文件，不剪测试，不调和 networkx roadmap，PR-9 roadmap 引用保留不动。路 B（改活 web 路径指零消费 core 合同）仍违铁律 5，绝不执行；**绝不反删 web 孪生护栏**；‖ G41 可并行。
+- **R69🔴⏸**（标红 + 爆点 #15，V5⑨裁定）：O24 已裁 loud raise；收口家 `schedule_input_contracts.py` 已确认无环；**两份 `_op_seq`（guard:49/runtime:19 def + guard:206/212/runtime:216 三消费）原子同改**；parity 两份同钉 `seq=0/None→走短路不 raise`（合法）+ `seq="abc"→loud raise`（坏类型）；**loud 只动 except 域，`or 0` 兜的 None/0/空串绝不卷入**（爆点 #15：`completed_seq<=0` 合法短路，卷入 raise→双热路径可用性放大）；**禁碰 `_seed_seq:190`/`_seed_op_id:175` 及 runtime:261-262**（V5⑨：`:262` 是 `_seed_seq` 张冠李戴非 R69）。
 - **R03⏸**（四态 parity）：(A) 承重注释段安全随 ROOT（`:216` 上方禁碰 `:28/:216/:217`）；(B) 段 owner 裁 ScheduleCandidate.status 枚举契约前禁动，先建 None/missing/failed/completed 四态 parity，**missing 态 `:267 return True` 生产可达保留 + 补不可达注释**（下游 6 处消费 dashboard_workbench:156 等，非 1 处，爆点）；绝不裸删 6 消费点。
 - **R41🟡⏸**（爆点 ⑧/V5⑧）：排 ROOT/Batch-A 之交的 LB04 安全网之后；**改面是全 6 枚举族**（machine/operator/day_type/batch_status/priority/ready+process_bp 的 _source_zh/_merge_mode_zh，经 *_bp 薄壳扇出 13+ 页面），非 2 文件；**5 族可收口到 `enum_normalizers.py` 已存在 *_label，`batch_status_zh` 无 canonical 收口点必留私有**（强建 batch_status_label=新 P5 违铁律 5，禁）；owner ≥6 处裁断硬门；测试 `test_enum_display_consistency.py:18/19/25/26/59-61` 改 loud 暴露**禁贴回收口输出复活静默**。
 - **R68/R32/R40🟡⏸**：R68 parity 先于收敛，逐符号删禁碰 downtime `_meta_int_state:23`，禁压扁 `(bool,parse_failed)` 二元组；R32 owner 裁硬 raise vs 可观测降级（禁区 `:339 else raise 不改弱`/`:343 os.replace 不加二次兜底`/finally 保留，强制回归项=else 未被连带改弱）；R40 方向 A 只删 material_repo `:70-72` 保 `:69 float`（生产 service `_norm_float` 已拦改 raise 零行为影响），方向 B 引 core.ValidationError 造 data→core 耦合不推荐，owner 裁错误分类。
@@ -333,20 +333,20 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 **收口行为差异检查项（None vs raise 反例逐条）**：
 - R14：非 scenario 缺角色 → raise[灵魂线，保]vs fallback_to_adopted 静默[活门 diagnose，禁平移]。
 - R69：seq=0/None → 短路不 raise[合法]vs seq="abc" → loud raise[坏类型]；except 域外的 `or 0` 路径绝不卷入。
-- R24：core 死副本删[路 A，安全]vs core 对 NaN/Inf 静默透传[路 B 收口点，禁]。
+- R24：O23 已裁 KEEP，历史“路 A 删 core”作废；本轮只补注释+事实记录，路 B 改活 web 路径仍禁。
 - R03：missing 态 `:267 return True` 生产可达保留 vs failed 态不可达收敛。
 - R41：ready 空串「未齐套」→「齐套」反转（最危险，调度员误放行）/ operator「停用/休假」→「停用」丢休假 / unknown 透传→「未知」丢值——owner 逐项裁。
 - R40：service `_norm_float` 已 raise（拦在前），data 层 `:70-72` 删后零行为影响。
 
-**批后门禁**：fitness 21 项全绿 + 0 分层违规（R24 路 B core→web 越层禁、R40 方向 B data→core 耦合不推荐）；语义雷达无新漂移（R41 枚举族 zh-label、R03 baseline 态、R69 seq 语义均盯防概念）；v18/v19 不破；本批专项契约：R69 两份 parity（seq=0/None 不 raise + seq=abc raise）绿、R03 四态 parity 绿、R41 全 6 族×5 类 parity + 测试 loud 暴露绿、R26 SP05 BEHAVIOR_* 迁移 + 2 离线消费者手验绿、R14 灵魂线测试迁移后 resolve 行为绿、R24 路 A core 删后 web 孪生护栏在位。
+**批后门禁**：fitness 21 项全绿 + 0 分层违规（R24 路 B core→web 越层禁、R40 方向 B data→core 耦合不推荐）；语义雷达无新漂移（R41 枚举族 zh-label、R03 baseline 态、R69 seq 语义均盯防概念）；v18/v19 不破；本批专项契约：R69 两份 parity（seq=0/None 不 raise + seq=abc raise）绿、R03 四态 parity 绿、R41 全 6 族×5 类 parity + 测试 loud 暴露绿、R26 SP05 BEHAVIOR_* 迁移 + 2 离线消费者手验绿、R14 灵魂线测试迁移后 resolve 行为绿、R24 仅 KEEP 注释 + 事实记录且 web 孪生护栏在位。
 
 **go-no-go 判据**：
 - R26（G18）：R29/R33/R52 三桶已收敛 + 2 离线消费者已迁手验 → 放行；任一桶未收敛 → STOP（facade 不可早删）。
-- R14（G41）：LB01 承重裁断已落 + owner 裁 :328 钉层 + 三步前置齐 → 放行；owner 未裁 → STOP。
+- R14（G41）：LB01 承重裁断已落 + O21/O22 钉层 + 三步前置齐 → 放行；任一前置缺失 → STOP。
 - R69：owner 已定 loud vs 降级方向 + 两份 parity 绿 → 放行。
 - R41：LB04 安全网（ROOT/Batch-A 之交）已落 + owner ≥6 裁断已回 + 测试改 loud 不贴回 → 放行。
 
-**owner 裁断闸门（只列「待裁」）**：R29 KEEP vs 薄壳化；R14 `:328` 钉层（resolve_existing_plan vs 平移）+ 灵魂线两门处置；R24 路 A vs 路 B；R69 loud raise vs 可观测降级方向；R03 ScheduleCandidate.status 枚举契约 + missing/failed 态处置；R41 ≥6 处枚举族裁断（含 ready 空串文案、operator 停用/休假、unknown 透传 vs 「未知」、空串「-」vs default-label、5 族收口 vs 仅 machine）；R32 硬 raise vs 可观测降级；R40 错误分类；R43 roadmap 延期认账 + wrapper 删/迁。
+**owner 裁后门控（照 §3/OWNER 执行）**：R14 按 O21/O22 钉 resolve_existing_plan 层，`:358` 可平移；R69/O24 loud raise；R03/O25 missing 态保留；R41/O26 第三选项 C；R32/O27 硬 raise；R40/O28 方向 A；R43/O29 认账提前删。R29/O20 与 R24/O23 走 KEEP。
 
 ---
 
@@ -357,7 +357,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 ### R09（PARSE-INT，Batch-C/G22，5 透镜全红，最高置信）
 - **灾难链**：A/B 副本 `int(value)`（5.9→5/True→1）vs C 收口点 STRICT（5.9→None/True→None）；按「字节对齐 A/B」新建宽松 sink 把 C 一并收口→C 经用户输入路径（request.args schedule_id）放宽→5.9 当 op_id=5 进 `_row_matches_feedback_target` 误命中相邻行→现场记录静默写到错任务。
 - **旧计划为何炸**：旧 MASTER-PLAN「唯一批准新建 parse_optional_positive_int」——收口点其实**已存在**（scope.py:9，执行重构新建 loud raise），照旧建模块 + 字节对齐 A/B 会把 C 路严格语义静默放宽。
-- **修正安全路径**：① owner 先裁 C 取严格 None 还是放宽 A/B（裁前不进批）；② 收编**只动 A/B 两 Optional 副本**（viewmodel:33 + service:24）收口到 scope.py:9，C 不动；③ STRICT-4（scope:9/feedback_support:161/public_errors:167/auto_assign:114）一字不碰（§3.1 family，全仓 12 处同前缀同名异义）；④ 分两路 parity（test_AB 零漂移 + test_C_float_bool 钉 5.9/3.0/True）；⑤ B 副本 `or 0` 外层兜底审计（5.9→None or 0=0 塌 0 坏流，爆点 #12）；⑥ persistence_errors:13 归 R04 禁区不收编（V1⑤）；⑦ 禁碰同文件 :36-50 LB01 最终底（E28）；⑧ 强串行 R07/R08 后重 grep。
+- **修正安全路径**：① O01/O02 已裁：C 路保持严格，A/B 两 Optional 副本按宽松语义收编；② 收编**只动 A/B 两 Optional 副本**（viewmodel:33 + service:24）收口到 scope.py:9，C 不动；③ STRICT-4（scope:9/feedback_support:161/public_errors:167/auto_assign:114）一字不碰（§3.1 family，全仓 12 处同前缀同名异义）；④ 分两路 parity（test_AB 零漂移 + test_C_float_bool 钉 5.9/3.0/True）；⑤ B 副本 `or 0` 外层兜底审计（5.9→None or 0=0 塌 0 坏流，爆点 #12）；⑥ persistence_errors:13 归 R04 禁区不收编（V1⑤/O02）；⑦ 禁碰同文件 :36-50 LB01 最终底（E28）；⑧ 强串行 R07/R08 后重 grep。
 - **`_positive_int` family 实盘对照表（红队第1轮 RT1-P2-6 采纳·G22 收编前先逐行核返回类型，杜绝按裸 `_positive_int` 全局替换）**：`rg "def _positive_int"` 实盘 12 处同前缀，**收编只动 `-> Optional[int]` 的 A/B 两份，STRICT `-> int` 四份一字不碰**——
   | # | file:line | 返回类型 | 分类 | 动作 |
   |---|---|---|---|---|
@@ -372,38 +372,38 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
   | 9 | `operation_execution_feedback_support.py:161` | `int` | **STRICT-4** | 一字不碰 |
   | 10-12 | `_positive_int_set`×3 / `_positive_int_text`×1 / data_contract `_positive_int(value, field_name)` 同名异签 | 异签 | 异签族 | 不卷入收编 |
   执行前对每行 `-> Optional[int]` vs `-> int` 现场重核，**真正待收编只剩 #2 viewmodel:33 + #4 service:24 两份**（V1 连带口径），其余全禁。
-- **owner 闸门**：C 严格 None vs 放宽 A/B（语义取向）；persistence_errors:13 是否统一（建议保持现状+注释）。
+- **owner 裁后门控**：O01 保 C 严格、A/B 宽松；O02 persistence_errors:13 归 R04 禁区 + 注释。
 
 ### R15（EXEC-FACT，Batch-B/G08 + Batch-C/G09，r1×3+r2×2 红）
 - **灾难链**：provider:85-95 空→None（合法 optional）+ 坏→None（P4 残留）双静默；收口符号 `parse_operation_event_time` **空值也 raise**→整体 delegate 把「任务未开始」合法空时间炸 raise→`_fact_from_state:52/53` 内联 kwarg 构造、facts_by_scope 链全程**裸奔无 except**→正常读历史计划 500 / 上层吞掉则执行事实全空喂重排。
 - **旧计划为何炸**：旧计划写「区分空值→None vs 坏值→raise」，但没意识到收口符号 `:80` **空值本身就 raise**（爆点 #7 比计划口径更狠一层）；整体 delegate 会把合法空时间也炸。
 - **修正安全路径**：① 收口必**分支级**——`if not text: return None` 留在 provider 本地，仅坏值走收口符号；② 坏值方向 loud raise（须确认 `_fact_from_state` 裸奔链接得住）或可观测降级标记，禁更深 return None；③ 先补三处 required/optional parity（含空值分支断言）；④ 启动探针 `migration_operation_execution_contract.py:349/355` 喂 not-a-date 边界须不冲突（爆点 #8）；⑤ provider 链串行序 R15→R19→R13（V1①）。
-- **owner 闸门**：坏值方向 loud raise vs 可观测降级；R15/R19 双 owner_pending 同批裁。
+- **owner 裁后门控**：O03 已裁坏值 loud raise、合法空时间仍 `return None`；O05 已裁 R15/R19 同批。
 
 ### R19（EXEC-FACT，Batch-B/C 三处 G08/G09/G10，多轮红）
 - **灾难链**：snapshot:40 `return sorted(out)` 喂 :78→:91 sha256 指纹（事实承重）；naive「三处统一到不排序版」或让 snapshot 走不排序→同输入 sha256 漂移→下游 4 处 guard/publish/scenario 快照比对静默失真（三函数零符号级测试无拦截）；repo 收 service=data→service 越层、provider 反向 import snapshot=环。
 - **旧计划为何炸**：旧计划把三份 `_normalize`/排序视作「重复可统一」，统一到不排序版即静默漂移指纹，且无单测拦截。
 - **修正安全路径**：① canonical 强制 sorted + 「指纹依赖排序」注释（等同承重待遇，爆点 #9）；② provider 收口同层（收 sorted 后 missing[0]:147 文案变须 parity 断言）；③ repo 保私有版补「顺序无关」注释禁下沉（避越层/环）；④ 先补 positive_op_ids 黄金用例（F-fingerprint 门）；⑤ **E16 是伪串行边，降登记备查（红队第2轮 P-RT22-02）**——R19 的 `__all__` = `execution_snapshot.py:118/122`（`:122 positive_op_ids`），与 R01（`schedule_payload_contract.py:410`）、R46（`core/models/scheduler_public_errors.py` 根本不动 `__all__`）物理零重叠，三债顺序无关，无须串行对账。
-- **owner 闸门**：repo 落点（保私有 vs 收口，避越层）；与 R15 同批裁。
+- **owner 裁后门控**：O04 repo 保私有版 + 注释，避越层/环；O05 与 R15 同批裁。
 
 ### R52（GRAPH-ERR-DIAG，Batch-B/G39，r1×3+r2×2 全红）
 - **灾难链**：裸删 impl `core/algorithms/greedy/dispatch/ready_queue.py:103 get_ready_operation_ids`→R25 垫片 `core/services/scheduler/graph/ready_queue.py:9 import` ImportError→`tests/scheduler_graph/test_ready_queue.py` 整文件 **31 用例**蒸发（dossier「~23」失真）+ 4 条 LIVE ValidationError 契约 + `_full_scan_ready_ids:79` helper 一并炸→LIVE sgs_graph 行为覆盖一次性清零。**（红队第1轮 RT1-P0-2/RT2-问题3 采纳补全前缀：仓内两份同名 ready_queue.py——impl=`core/algorithms/greedy/dispatch/`、R25 垫片=`core/services/scheduler/graph/`，垫片仅 11 行 `:103` 越界；裸写 `ready_queue.py:103` 会在垫片上找 `:103` 致 Edit old_string 必失配或删错文件，删点须文件+行号+符号三锁定）。**
 - **旧计划为何炸**：dossier「~23 LIVE-only」方向倒置（V4⑦：实测 31 用例，23 个走全量版 `_ready()`→`get_ready_operation_ids` 删即全断含 16 个 ReadyQueueContractError 合同，红队 RT3-P03 纠实盘=16 非 15），迁移方案没安排这些归属。
 - **爆点编号说明（一致性 P3 收口·#17 去向）**：`_layer3_explosion §三` 23 爆点中 **#17 = 「R52 dossier『~23 测试』严重失真」（迁移清单 18 用例无归属）**，是本条 R52 的同源子爆点，与 **#16（`_full_scan_ready_ids:79` helper 二次爆点）紧邻并同属 R52 测试迁移战场**；本计划正文以「31 用例全量分流 + 16 RQErr 合同 + #16 helper/oracle 同原子」一并闭合 #16/#17，#17 未单独点名是因已并入 R52 测试归属安全路径（②③），非跳号漏引。全计划「23 爆点」编号 #1–#23 连续无缺号。
 - **修正安全路径**：① **✅ O07 已裁方向 B**（保留 impl 作差分校验尺子 + 「我是故意的」注释，禁裸留无注释）——impl `core/algorithms/greedy/dispatch/ready_queue.py:103` 与 R25 垫片均不删、**不新建 `test_sgs_graph_ready.py`**，既有 `tests/scheduler_graph/test_ready_queue.py` 原样存活，P7 rule①② 不适用；② 〔作废·方向 A 不执行〕曾拟走 A 先新建 `test_sgs_graph_ready.py` 按 31 用例全量分流（LIVE→新文件、full_scan 差分→改字面量 + 删 :79 helper、ReadyQueueContractError 全量合同 owner 显式裁归属）；③ 爆点 #16：删 :79 helper 与改 **2 个差分 oracle 函数**（`:270 branch_join` 4 字面量 :275/278/281/284 + `:287 fixed_predecessor` 1 字面量 :296 = 共 **5 处字面量行**，权威 verdict_V4；旧文「6 oracle」误记）的字面量同原子；④ parity 异常类不同只能断「均拒绝」禁断同类型；⑤ None 分支两路分别写；⑥ 同提交退 lazy_runtime:27+metrics_topology:140；⑦ 契约行号按符号重定位（:299/:311/:326/:352）。
-- **owner 闸门**：A 删 vs B 保留作差分 oracle；子门 A1（16 RQErr 合同随删，红队 RT3-P03 纠实盘=16）vs A2（改写 LIVE 等价断言保留，V4⑦建议）。
+- **owner 裁后门控**：O07 已裁 B 保留作差分 oracle；方向 A 删除路线只作历史技术分析，不执行。
 
-### R14（GRAPH-ERR-DIAG，Batch-D/G41，r1-LB/LAY 红 + 双门 owner_pending）
+### R14（GRAPH-ERR-DIAG，Batch-D/G41，r1-LB/LAY 红 + 双门已裁）
 - **灾难链**：删死门 `_resolve_strict_plan:134`（非 scenario 走 resolve_existing_plan loud raise「无回退」）；把 `:328` 候选灵魂线平移活门 diagnose（活门走 resolve_plan fallback_to_adopted 静默不 raise）→解析被 fallback 吃→「非 scenario 缺角色应 raise（无静默回退）」灵魂线覆盖被悄丢；撞 LB01 同符号承重。
 - **旧计划为何炸**：旧计划当作普通死门删除，没看到平移 :328 到活门会让灵魂线被 fallback 静默吞，且撞 LB01 同符号。
 - **修正安全路径**：① 跨簇 LB01 承重裁断先行（E13，:134-139 让位）；② owner 裁 `:328` 改钉 resolve_existing_plan 层**禁平移活门**；③ `:358 scenario` 灵魂线两门同源可平移；④ 删死门不得顺手修 resolve_plan 静默回退（铁律 4）；⑤ 三步前置（迁灵魂线测试 / 改 roadmap:485-498+items.yaml:83 / 确认无树外调用）。
-- **owner 闸门**：`:328` 钉 resolve_existing_plan 层 vs 平移活门；灵魂线两门处置。
+- **owner 裁后门控**：O21/O22 已裁按 resolve_existing_plan 层钉住 `:328`，灵魂线两门按裁定处理。
 
 ### R69（LEAF-DUP-P4，Batch-D/15，r1×3+r2-SOUL 红，V5⑨拍定）
 - **灾难链**：坏 seq 静默 return 0（persistence_guard:49+runtime_support:19 两份）；P4 改 loud 若粗暴把 `seq=0/None`（合法默认，`int(getattr(op,"seq",0) or 0)` 兜）也卷入 raise→guard:207/:212+runtime:217 把 seq=0 当合法短路（放空/排除非错误）翻成 `_completed_downstream_rows`+`_downstream_operations` 双热路径 raise 可用性放大。
 - **旧计划为何炸**：「P4 一律改 loud」会把 `or 0` 兜的合法 seq=0/None 短路也卷入 raise；且 dossier 锚点 `:262` 张冠李戴（V5⑨：那是 `_seed_seq` 非 `_op_seq`）。
 - **修正安全路径**：① 两份 `_op_seq`（guard:49/runtime:19 def + guard:206/212/runtime:216 三消费）原子同改；② **loud 只动 `except (TypeError,ValueError)` 域**，`or 0` 兜的 None/0/空串绝不卷入；③ parity 两份同钉 seq=0/None→短路不 raise + seq="abc"→loud raise；④ 收口家 `schedule_input_contracts.py` 已存在无环（V5⑨）；⑤ 禁碰 `_seed_seq:190`/`_seed_op_id:175`/runtime:261-262。
-- **owner 闸门**：owner_pending=false 但设计前置定 loud raise（建议）vs 可观测降级方向。
+- **owner 裁后门控**：O24 已裁 loud raise；`or 0` 兜的 None/0/空串不卷入。
 
 ### R54（NAV-GUARD，ROOT 扩产 + Batch-C/G04，r1/r3-SOUL 红，V3④拍定）
 - **灾难链**：5 套手维 guard 列表收口时漏拷 is_comparison/is_superseded（fail-OPEN 键）或抹 L5 `is_comparison_plan` OR 兜底→`_is_current_official_identity:294 not None`=True→旧/比较版冒充现行采用版→can_emit_feedback_write_urls:469 放行→向历史/比较方案脏写现场事实（不可逆）。
@@ -421,7 +421,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 - **灾难链**：dossier 漏 `dashboard_workbench_context.py:92` 删点（plan_id 落点迁同名不同文件，经 `:119 build_workbench_plan_context(**_context_kwargs)` 的 `**` 展开真实流入被删形参）→删 `:191` 形参后 dashboard 值班台首页 TypeError 500 启动即炸；C1 emit 误删邻参（link_query:117-120 三真身份参夹住 plan_id）→URL 丢 version 静默错位。
 - **旧计划为何炸**：删点清单不完整（漏 :92），照单删 :191 形参 dashboard 启动即 TypeError 500（V2⑫确认 TypeError 面=3 个显式传 plan_id 调用方）。
 - **修正安全路径**：① 删点清单 MUST 显式分两文件两行（红队 RT1-P1-3 采纳拆跨文件行号）：**`web/viewmodels/scheduler_workbench_links.py:191`（collar `plan_id` 形参删）+ `web/viewmodels/dashboard_workbench_context.py:92`（`"plan_id"` 字典键，经 `:119 build_workbench_plan_context(**_context_kwargs)` 的 `**` 展开真实流入；删 collar 形参后此键无消费方即 TypeError 500）**——两者是「删形参/被展开命中」因果对，非同文件两行；dashboard 实盘仅 136 行，按 `:191` 去 dashboard 删会越界失配，按符号定位；② emit :118/154 按符号删 plan_id 单行绝不连片（唯一归 R42，R60 不重复删）；③ parity 扩「删后 version/plan_role/scenario_id/back_to 逐字==删前」含 emit-A/emit-B 两 plan_style；④ R54 先落 R42 rebase；⑤ 与 R60 单次提交；⑥ co-change 同查真名 `build_workbench_plan_context`（**红队 RT3 噪音采纳删幻觉规约：全仓零 `as n` 别名，全用真名 import，原「别名 `n(`」co-change 纪律建在不存在前提上，已删；只查真名即可**）。collar **共 8 个生产调用方文件**（计数以 verdict_V2 + RT22 备注为准，一致性 P2 收口；多出 navigation_context），**其中仅 3 个真传 plan_id**（navigation_context:78、reports_workbench:79、dashboard_workbench_context:92）触 TypeError 面，余 5 不传安全。
-- **owner 闸门**：无独立 owner_pending（随 R54 collar 闸门 + R60 同提交）；R56 禁区行方向认账（:79 fail-CLOSED）。
+- **owner 裁后门控**：无独立未裁项（随 R54 collar 闸门 + R60 同提交）；R56 禁区行按 O30 认账，`:79` fail-CLOSED 方向不许写反。
 
 ### R22（PLAN-IDENTITY，ROOT parity + Batch-C/G27，r1-LB/LAY 红，爆点 #22/#23，V2③拍定）
 - **灾难链**：收口委托 build_plan_identity 后 no_history 页 `result_summary_parse_failed` 取值 **False→True 翻转**（`_summary_unavailable(None,·)=(True,'排产摘要缺失')`），下游 reports_plan_template_fields:45/61+3 套手维列表渲染态翻转（无历史方案被标「摘要解析失败」）；且删 view_context:74 normalize_plan_role 行→R21 wrapper `field=="plan_role"` raise 精度失效→bad role builder 静默归一 adopted；24 键 parity 仍全绿（典型测试绿护栏破）。
@@ -573,7 +573,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 | Batch-13 R34/身份族 | **Batch-C** 身份族收敛 | G04→G01/G27 collar 扩产 + parity |
 | Batch-14 facade（R26） | **Batch-D** 最晚 | E07/E08/E09：R26 晚于 R29/R33/R52 三桶收敛 |
 | Batch-15 LEAF 残余（R69/R68 等） | **Batch-D**（owner 门后落） | C5：R29 复活；R69 owner 定 loud 方向 |
-| 旧 16 批 owner_pending 分散 | **Batch-C/D 后置集中** | C6：16 owner_pending 单元只标不给终态 |
+| 旧 16 批 owner_pending 分散 | **Batch-C/D 后置集中** | C6：原 16 owner_pending 中 R29/R52/R24 已裁 KEEP，R55 本轮暂停，其余按裁后门控落 |
 
 ### 5.2 与旧计划最大的 5 个差异（核心）
 
@@ -583,9 +583,9 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 
 3. **R13 解耦 R18 + R34 纯删（repoint 目标存在）**：旧批「R13+R18 同原子」「R34 收敛到 column_name」均被推翻——R13 死字段被 5 测试读活升 owner、R18 stub raise 是契约护栏；R34 的 get_plan_time_span_for_resolution:210 存在故纯删，R05→R34 由硬降软（C1）。
 
-4. **批次由 16 收缩为 ROOT+4，owner_pending 后置只标不给终态**：旧 16 批含大量已推翻/已完成占位；重建为 ROOT（承重+前置门）→A（死叶子）→B（单门控）→C（身份族）→D（facade 最晚），16 个 owner_pending 单元集中 Batch-C/D，裁断前不锁 patch（C6）。
+4. **批次由 16 收缩为 ROOT+4，owner_pending 后置按裁后口径执行**：旧 16 批含大量已推翻/已完成占位；重建为 ROOT（承重+前置门）→A（死叶子）→B（单门控）→C（身份族）→D（facade 最晚）。原待裁清单已由 owner 裁定分流：R29/R52/R24 走 KEEP，R55 本轮暂停，其余按裁后门控落（C6）。
 
-5. **R56 入 fixed + R29 误标纠回 planned 复活 R26 前置 + N1/N2 新债入账**：R56 走高风险结构路线已 fixed（违铁律 3 待认账，退化为 R42 禁区行）；R29 权威 CSV ABSENT 纠回 planned，复活 R26→R29 facade 删序前置（E07）；执行重构新增 N1（can_write_feedback 失忆债门控 R08）/N2（return 0 sentinel）补注释+绑契约（C4/C5）。
+5. **R56 入 fixed + R29 误标纠回 planned 复活 R26 前置 + N1/N2 新债入账**：R56 走高风险结构路线已 fixed（违铁律 3 待认账，退化为 R42 禁区行）；R29 权威 CSV ABSENT 纠回 planned，E07 已纠为 R29/G26 先闭合、R26/G18 后删 facade；执行重构新增 N1（can_write_feedback 失忆债门控 R08）/N2（return 0 sentinel）补注释+绑契约（C4/C5）。
 
 ### 5.3 verify 纠 dossier 自身错误（最终以 verify 为准，不撼批次仅纠引用）
 - R43 roadmap 延期行 521→**522**；R47 parity 方法名 `_emit_ln`→`_emit_blank_required`；R54 键数 L1=13/L4=12→**L1=12/L4=16**；R34 repoint 目标「不存在」→**存在(service:210)**；R29 续命点 warmstart:136→**regression_number_utils_facade_delegates_strict_parse.py:45-48**；R69 锚点 :262→**`_seed_seq` 非 `_op_seq`**（V5⑨）。
@@ -615,7 +615,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 
 ---
 
-> **装配完成声明**：本计划装配自上述全部输入，11 标红债 + 6 硬阻断新爆点逐条落位于对应批次的前置安全网或 owner 闸门（无一遗漏，见 §0.3 + §1.0 速查 + §2 + §4 top5）。所有 file:line 为 2026-06-05 实盘值，**执行时一律按符号重 rg 回盘**，权威路径以 `_layer2_residual.md` 为准。owner_pending 债只列「待裁」（§3 共 38 闸门），未裁不锁 patch、不分配执行批次。任何简化/合并以「⚠简化声明」显式标注，无静默截断。红队第1轮 9 项采纳已逐条修订，见 §7。
+> **装配完成声明**：本计划装配自上述全部输入，11 标红债 + 6 硬阻断新爆点逐条落位于对应批次的前置安全网或 owner 闸门（无一遗漏，见 §0.3 + §1.0 速查 + §2 + §4 top5）。所有 file:line 为 2026-06-05 实盘值，**执行时一律按符号重 rg 回盘**，权威路径以 `_layer2_residual.md` 为准。§3 共 38 闸门已在 2026-06-05 全部裁定，执行时按裁定列落地；任何简化/合并以「⚠简化声明」显式标注，无静默截断。红队第1轮 9 项采纳已逐条修订，见 §7。
 
 ---
 
@@ -638,7 +638,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 | 11 | RT1-P2-7 / RT2-问题4 / RT3 | R34 repoint 目标存在 / R26 5 shim 清单未展开 / 各「无硬伤」靶点 | **驳回（登记备查）** | `get_plan_time_span_for_resolution:210` 存在 ✓；R26 5 shim 待 G18 落地前补（非本轮硬伤） | 无需改文（C1 校正成立；R26 shim 清单留 §1.5 执行前补） |
 | 12 | RT2-问题4 | R26「顶层 5 shim」清单本计划未展开 | **驳回（登记备查）** | E07/E08/E09 三桶→R26 方向正确，仅 shim 明细待补，非反序硬伤 | §1.5 G18 已注「2 离线消费者 + 三桶硬前置」，5 shim 执行前从 B14 补 |
 | 13 | RT2 §2 / RT3 §回盘 | 13 H 边/dispatch 三债/R45≡R48/R25+R52 等批次序无反序 | **驳回（确认正确）** | 逐条对照批次拓扑方向全对，脊梁第 1/4 步设防到位 | 无需改文 |
-| 14 | RT3 / RT1 总结 | R69 等 11 标红债 owner_pending 未被偷给终态 | **驳回（确认合规）** | 11 标红债均带 ⏸ owner 闸门只列待裁，R69 owner_pending=false 仍只给方向选项 | 无需改文 |
+| 14 | RT3 / RT1 总结 | R69 等 11 标红债 owner_pending 未被偷给终态 | **驳回（裁前合规；裁后已解除）** | 该条记录的是 2026-06-05 前状态；现 38 闸门已裁，按 OWNER-DECISIONS 执行 | 已由裁后口径补丁同步正文 |
 
 **修订后全局一致性自检**：批次总数仍 5（ROOT+A/B/C/D）；G 编号 42 + GF1 不变；owner 闸门 37→**38**（新增 O38·GF1 合规性）；标红债仍 11；债登记 73 + **R64/R65 补登 2**（此前漏登非净化错，registry B17-LEAF-DEAD 本就在册）；RQErr 合同 15→**16**（实盘纠正）；collar 宿主全文应为 `web/viewmodels/`（爆点 #1 已订正，§0.3/§3.2 残留裸写引用执行时按本记录宿主为准）。无采纳项触碰脊梁四步或 13 H 边方向。
 
@@ -654,7 +654,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 | 2 | plan_rt2_2 P-RT22-01 | `scheduler_navigation_links.py`（205 行）是三批四单元战场（R64/R65@A + R42@C/G01 + R67@C/G34），计划只钉 R64/R65↔R42 一对，漏 R67 第三方；Batch-A 删点先位移全文，Batch-C 三方混改 R42 `:40` 易碰 R67 元组里 plan_id 键 | 高 | **采纳** | `:11 _REPORT_CONTEXT_FIELD_NAMES` 元组（R64/R65 上方不位移）+ `:186 preserved_report_context_fields`（R67 遍历点，在 R64/R65 下方会上移）；`:40 build_workbench_plan_context`（R42）；文件 205 行 | §1.0 新增「⚠单文件三批四单元串行编排块」总纲（三步硬序 + 重 rg）；§1.4 G01/G34 与 §1.0 序列「R64/R65 same_file」一律读作四单元串行块 |
 | 3 | plan_rt2_2 P-RT22-02 | E16「R01/R46/R19 共享 `__all__:118-122` 串行对账」是伪串行边——三个 `__all__` 在三不同文件，`:118-122` 只属 execution_snapshot.py，会把改 R01/R46 引到错文件 | 中 | **采纳** | R01=`schedule_payload_contract.py:410`、R19=`execution_snapshot.py:118/122`、R46=`core/models/scheduler_public_errors.py` **根本不动 `__all__`**（`_safe_identifier:163` 不在 `__all__:340-349`，导出 `public_safe_identifier`） | §1.4 G09 + §2 R19：E16 降「登记备查·无依赖」，拆三条独立事实，三债顺序无关；同步降 §1.3 Batch-B go-no-go / §1.4 Batch-C 门禁 + go-no-go 三处依赖 |
 | 4 | plan_rt2_2 P-RT22-03 | G09(R13) 退场清单漏 `_fact_from_state` 的 `latest` 形参（`:43`）+ 调用点实参（`:123`），只删字段两行→形参悬空/调用 TypeError；`:56-57` 紧贴 R15 `:54/55` 同函数体 | 中 | **采纳** | `_fact_from_state:40` 形参 `latest:43`，赋值 `:56-57`，调用点实参 `latest_events.get(scope):123`，孤儿 `_latest_events_by_scope:163-170`+`:118` | §1.4 G09：R13 退场补全四处同原子（字段 :23-24 + 形参 :43 + 实参 :123 + 孤儿 `_latest_events_by_scope`），并注 `:56-57` 紧贴 R15 按键名 rg；同步 Batch-C 门禁/go-no-go |
-| 5 | plan_rt2_2 P-RT22-04 | R67 第4处 O18 一旦裁「收编③④」则元组拼接撞 R42 的 plan_id 键 + 新增 viewmodels→core.services.report 跨层边，E17 单句「diff-hunk 串行」未防分层门 | 低-中 | **采纳** | R67 superset 元组首键 `plan_id`（R42 地盘）；O18 owner_pending；收编第4处新增 `web.viewmodels→core.services.report` 跨层边 | §1.4 G34：E17 拆两条件分支（保现状=零冲突 / 收编③④=晚于 R42 删形参+禁碰 plan_id 成员+先过分层门），分层门风险从 dossier 提 G34 正文 |
+| 5 | plan_rt2_2 P-RT22-04 | R67 第4处 O18 一旦裁「收编③④」则元组拼接撞 R42 的 plan_id 键 + 新增 viewmodels→core.services.report 跨层边，E17 单句「diff-hunk 串行」未防分层门 | 低-中 | **采纳** | R67 superset 元组首键 `plan_id`（R42 地盘）；O18 已裁第 4 处保现状；历史收编第4处才会新增 `web.viewmodels→core.services.report` 跨层边 | §1.4 G34：E17 拆两条件分支（保现状=零冲突 / 历史收编③④=晚于 R42 删形参+禁碰 plan_id 成员+先过分层门），分层门风险从 dossier 提 G34 正文 |
 | 6 | plan_rt2_3 问题1 | `test_no_new_local_parse_helpers` 第二断言 `stale_entries`（:254-256）——删/收编 parse helper 令白名单 3 项失效致 fitness 第11项转红，门禁零处提示须同退白名单 | 中 | **采纳** | `:254-256 stale_entries = LOCAL_PARSE_HELPER_ALLOWLIST - found_allowlist`；白名单 3 项 `_sched_utils:_safe_int`/`batch_service:_safe_float`/`system_config_service:_get_int`；**本轮删点全不在 `LOCAL_PARSE_HELPER_NAMES` 集合** | §1.1 ⚠门禁可执行性总纲(1)：补防御性总纲「删/收编命中 NAMES 集的函数须同退白名单」，并标注本轮 3 白名单项经核未落入删点（防御性非必触发） |
 | 7 | plan_rt2_3 问题2 | 语义雷达「无新漂移」无法机器判红——run_drift_scan.py 自述不直接 fail，exit 0/1 都正常，CI 跑它永远绿 | 中 | **采纳** | `run_drift_scan.py:2-4` 头注释「只读、不直接 fail，drift exit 0/1 都正常」 | §1.1 ⚠门禁总纲(2)：拆两半——(a) `run_semantic_guards.py` exit 0 作机器门 / (b) drift 对比 baseline findings 数 >0 人工裁断；同步 ROOT 批后门禁 |
 | 8 | plan_rt2_3 问题3 | ROOT 门禁「regression_execution_review_identity_guardrail/spec_sync」用简称且 fd 搜不到（文件实存经 test_registry 注册），裸名抽查会误判缺失 | 低 | **采纳** | `tests/operation_execution/test_execution_review_identity_guard.py`（实存，test_registry:289）+ `tests/config/test_scheduler_config_spec_sync_contract.py`（实存，test_registry:56） | §1.1 ⚠门禁总纲(3)：门禁清单写全路径名 + 标 test_registry 注册，核存在用 `rg <name> tools/test_registry*` 非 `fd`；同步 ROOT 批后门禁 |
@@ -679,16 +679,16 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 | H3 | E03 | G04(R54) → G01(R42/R60) | R54 guard 字段落 workbench_links:206-207 后，R42 删 plan_id 形参 :191 须 rebase 其后（签名互撞），MUST 同批 |
 | H4 | E05 | G23(R33) → G17(R31) | R33 删 value_policies 壳须不晚于 R31 删 shared 源 :9，否则 facade:11 残 import loud ImportError |
 | H5 | E06 | G23(R33) → G17(R30,R31) | 三常量 re-export：壳 R33 先停 import，R30/R31 两 shared 侧删动作彼此无序（A14 已纠 R33→{R30,R31}）|
-| H6 | E07 | G18(R26) → G26(R29) | facade 删晚于收敛：R26 顶层 shim 2 离线消费者经老路径，先删 shim 致其测试红（PHASE0§10.2）|
-| H7 | E08 | G18(R26) → G23(R33) | 同上（B06 桶）|
-| H8 | E09 | G18(R26) → G39(R52) | 同上（B09 桶）|
-| H9 | E12 | G27(R22) → LB03(B01 承重)| LB03 承重注释+guard 收口须全局先落于 B02 身份族；R22 先落 24 键 exact parity 钉键集再收敛 |
-| H10 | E13 | G41(R14) → G07(LB01) | R14 删 :134-139 前 LB01 承重裁断必先行（同符号 `_resolve_strict_plan`，删除让位）|
+| H6 | E07 | G26(R29) → G18(R26) | facade 删晚于收敛：R26 顶层 shim 2 离线消费者经老路径，先删 shim 致其测试红（PHASE0§10.2）；O20 KEEP 时该边视为已满足 |
+| H7 | E08 | G23(R33) → G18(R26) | 同上（B06 桶）|
+| H8 | E09 | G39(R52) → G18(R26) | 同上（B09 桶）；O07 KEEP 注释完成后才视为收敛 |
+| H9 | E12 | LB03(B01 承重)+G27p(R22 parity) → G27(R22/R21)| LB03 承重注释+guard 收口须全局先落于 B02 身份族；R22 先落 24 键 exact parity 钉键集再收敛 |
+| H10 | E13 | G07a(LB01 承重注释) → G41(R14) | R14 删 :134-139 前 LB01 承重裁断必先行（同符号 `_resolve_strict_plan`，删除让位）|
 | H11 | E16(部分)| G09/G10(R19) ↔ G19(R01)/G40(R46) | `__all__` 同符号块高顺序敏感——**已经 P-RT22-02 判为伪串行边降「登记备查」**（三 `__all__` 在三不同文件物理零重叠，三债顺序无关，不再作机器门；列此仅为 13 计数溯源）|
 | H12 | E26(注释面)| N1 → G22(R08)/G04(R54/R58) | R08 删死分支依赖 service:127≡:130 同源，N1「我是故意的」注释+绑 parity 守卫须先于 R08 删（H 仅约束注释面，行号面 S）|
 | H13 | GF1 两门 | （= H1/H2 的 GF1 共享前置门归并计）| `_interference_rebuilt §4.1` 把「GF1 两门」单列以凑 13 计数；实质即 E01+E02 的 GF1 source 性质 |
 
-> **H 边计数溯源**：`_interference_rebuilt §4.1:259` 明列 13 H = E01,E02,E03,E05,E06,E07,E08,E09,E12,E13,E16(部分),E26(注释面),GF1 两门。其中「GF1 两门」与 E01/E02 同源（H13 即 H1/H2 的 source 归并），E16 已降伪串行边但仍计入 H 计数溯源。**另有 GANTT 内收口前置硬边 A08(R11/R63→R12)/A09(R11/R63→R55) 是单元内/簇内硬序**（G11 先于 G12/G13），已在 §1.2 G11 前置安全网「A1 早于 A2/A3」固化，不计入跨簇 13 H（避免重复计数）。A11/A12/A13(R26→R29/R33/R52) 即 E07/E08/E09 的来源边，A14(R33→R31) 即 E05 的方向修正，均不增条数。
+> **H 边计数溯源**：`_interference_rebuilt §4.1:259` 明列 13 H = E01,E02,E03,E05,E06,E07,E08,E09,E12,E13,E16(部分),E26(注释面),GF1 两门。其中「GF1 两门」与 E01/E02 同源（H13 即 H1/H2 的 source 归并），E16 已降伪串行边但仍计入 H 计数溯源。**另有 GANTT 内收口前置硬边 A08(R11/R63→R12)/A09(R11/R63→R55) 是单元内/簇内硬序**（G11 先于 G12；R55 本轮跳过），已在 §1.2 G11 前置安全网固化，不计入跨簇 13 H（避免重复计数）。A11/A12/A13(R29/R33/R52→R26) 即 E07/E08/E09 的来源边，A14(R33→R31) 即 E05 的方向修正，均不增条数。
 
 ## 10. 附录 · E03–E29 edge-id 对照速查表（C2 内联自包含）
 
@@ -700,13 +700,13 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 | E04 | G04(R54)→G03(R66) | S | R54 改 reports_workbench:36 漂移 R66:150，R66 按 suffix 符号重定位 |
 | E05 | G23(R33)→G17(R31) | **H** | facade 删序：先删壳 import 再删 shared 源，否则 facade:11 残 import ImportError |
 | E06 | G23(R33)→G17(R30,R31) | **H** | 三常量 re-export，壳 R33 先停 import；R30/R31 同窗口同 diff |
-| E07 | G18(R26)→G26(R29) | **H** | facade 删晚于收敛（2 离线消费者）|
-| E08 | G18(R26)→G23(R33) | **H** | facade 删晚于收敛（B06 桶）|
-| E09 | G18(R26)→G39(R52) | **H** | facade 删晚于收敛（B09 桶）|
-| E10 | G18(R26)→G15(R71) | S | 转出边：R71(B03) 先 R26(B14) 后天然满足，不同文件不撞行号 |
+| E07 | G26(R29)→G18(R26) | **H** | facade 删晚于收敛（2 离线消费者）；O20 KEEP 时该前置以 KEEP 注释闭合 |
+| E08 | G23(R33)→G18(R26) | **H** | facade 删晚于收敛（B06 桶）|
+| E09 | G39(R52)→G18(R26) | **H** | facade 删晚于收敛（B09 桶）；O07 KEEP 注释完成后闭合 |
+| E10 | G15(R71)→G18(R26) | S | 转出边：R71(B03) 先 R26(B14) 后天然满足，不同文件不撞行号 |
 | E11 | G18(R26)↔G19(R01)/R43 | S | SP05 同文件各改各段串行避 git 行号漂移误合，无逻辑依赖 |
-| E12 | G27(R22)→LB03(B01 承重)| **H** | parity 先于收敛 + same_symbol build_plan_identity；LB03 先落 |
-| E13 | G41(R14)→G07(LB01)| **H** | 承重让位 + same_symbol `_resolve_strict_plan`；LB01 裁断先行 |
+| E12 | LB03(B01 承重)+G27p(R22 parity)→G27(R22/R21)| **H** | parity 先于收敛 + same_symbol build_plan_identity；LB03 先落 |
+| E13 | G07a(LB01 承重注释)→G41(R14)| **H** | 承重让位 + same_symbol `_resolve_strict_plan`；LB01 裁断先行 |
 | E14 | G41(R14)→G05(LB02/LB05)/R61 | S | report_engine 邻域避让，迁灵魂线测试触碰邻域须避让 |
 | E15 | G40(R46)→G22(R09)| S | `_positive_int:167` 软位移，R46 删 :162-164 后 R09 动 :167 按符号 grep 重定位 |
 | E16 | G09/G10(R19)↔G19(R01)/G40(R46)| **S（伪串行降级）**| 原标「__all__ 同符号块串行」，P-RT22-02 判**伪串行边**（三 `__all__` 三文件零重叠，三债顺序无关，不再作门）|
@@ -738,9 +738,9 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 | 🟠 高 | `web/.../scheduler_workbench_links.py` | R42+R54(跨簇)+R60 邻 | E03 硬序 R54 先→R42 rebase；禁动 dict guard 段/禁翻 fail-open |
 | 🟠 高 | `algorithms/dispatch_rules.py` | R49+R50+R51 | G24 一次原子 diff 从大行号往小删；保 `import math:3` |
 | 🟠 高 | `schedule_payload_contract.py` | R01+R04 | G19 强序 R01 先删(缩 R04 收口面 6→5)→R04 后收口；必同 PR |
-| 🟠 高 | `data/repositories/schedule_repo.py` | R34+R35 | G30 一原子 diff 自下而上；R34 owner 门挂起 |
+| 🟠 高 | `data/repositories/schedule_repo.py` | R34+R35 | O10 已裁纯删；G30 一原子 diff 自下而上 |
 | 🟡 中 | `config_snapshot.py`+`schedule_config_runtime_coercion.py`(双栈)| LB07(承重)+R71+R47 | G15 硬序 LB07 注释+parity 先→R47+R71 同批 |
-| 🟡 中 | `web/viewmodels/scheduler_resource_dispatch_execution.py` | R08+R09(B 副本)| G22 串行 R08 先→R09 后；双 owner_pending 挂起 |
+| 🟡 中 | `web/viewmodels/scheduler_resource_dispatch_execution.py` | R08+R09(B 副本)| O01/O02 已裁；G22 串行 R08 先→R09 后，只收 A/B Optional 副本 |
 | 🟡 中 | `gantt_plan_query.py` | R21+R22(precondition)| G27 硬序 R22 先→R21 后（严守保留 :32-39 wrapper+:50-156 LIVE）|
 | 🟡 中 | `schedule_plan_query_service.py` | R23+R34 | E19 软序 R23 先让 R34 基于删后行号定位 |
 | 🟡 中 | `data/repositories/part_repo.py` | R38(part)+R39 | G31 同 commit 按符号名 |
