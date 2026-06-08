@@ -317,14 +317,14 @@
  "R23": {
   "id": "R23",
   "bucket": "B02",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P5",
   "lb": false,
   "file": "schedule_plan_role.py",
   "cluster": "C01",
   "siblings": [],
-  "batch": "Batch-4(B02 身份族)内最",
+  "batch": "Batch-A/G28 已 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
@@ -800,14 +800,14 @@
  "R02": {
   "id": "R02",
   "bucket": "B09",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,
   "file": "schedule_graph_dispatch_context.py",
   "cluster": "C01",
   "siblings": [],
-  "batch": "Batch-10（PHASE1 §4",
+  "batch": "Batch-A/G37 已 fixed",
   "owner_pending": false,
   "needs_adv": true,
   "adv_refuted": false,
@@ -1048,14 +1048,14 @@
  "R36": {
   "id": "R36",
   "bucket": "B12",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,
   "file": "batch_operation_repo.py",
   "cluster": "ISOLATED",
   "siblings": [],
-  "batch": "Batch-13，纯死无跨边可任意排",
+  "batch": "Batch-A/G35 已 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
@@ -1080,7 +1080,7 @@
  "R38": {
   "id": "R38",
   "bucket": "B12",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,
@@ -1089,7 +1089,7 @@
   "siblings": [
    "R39"
   ],
-  "batch": "Batch-13，与 R39 同 p",
+  "batch": "Batch-A/G31+G32 已 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
@@ -1098,7 +1098,7 @@
  "R39": {
   "id": "R39",
   "bucket": "B12",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,
@@ -1107,7 +1107,7 @@
   "siblings": [
    "R38"
   ],
-  "batch": "Batch-13，与 R38 par",
+  "batch": "Batch-A/G31 已 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
@@ -1238,7 +1238,7 @@
  "R10": {
   "id": "R10",
   "bucket": "B14",
-  "status": "planned",
+  "status": "fixed",
   "sev": "low",
   "path": "P6",
   "lb": false,
@@ -1247,7 +1247,7 @@
   "siblings": [
    "R55"
   ],
-  "batch": "Batch-9(B08 SCC-GA",
+  "batch": "Batch-A/G14 已 fixed",
   "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": false,
