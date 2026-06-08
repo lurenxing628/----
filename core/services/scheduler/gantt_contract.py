@@ -16,16 +16,26 @@ _CRITICAL_REASON_LABELS = {
 _ALLOWED_CRITICAL_REASON_CODES = frozenset(_CRITICAL_REASON_LABELS)
 
 
+def _public_dropped_count(value: Any) -> int:
+    try:
+        return max(0, int(value or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
 def _public_critical_chain(chain: Dict[str, Any]) -> Dict[str, Any]:
     raw = dict(chain or {})
     reason = str(raw.get("reason") or "").strip()
     if bool(raw.get("available") is False):
+        dropped_count = _public_dropped_count(raw.get("dropped_count"))
         out = {
             "available": False,
             "ids": [],
             "edges": [],
             "edge_count": 0,
             "edge_type_stats": {},
+            "dropped_count": dropped_count,
+            "critical_chain_partial": bool(raw.get("critical_chain_partial")) or dropped_count > 0,
         }
         if "cache_hit" in raw:
             out["cache_hit"] = bool(raw.get("cache_hit"))

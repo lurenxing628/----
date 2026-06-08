@@ -451,6 +451,8 @@ def test_cache_hit_result_is_isolated_from_caller_mutation(monkeypatch) -> None:
             "edges": [{"from": "A", "to": "B", "edge_type": "process"}],
             "edge_type_stats": {"process": 1, "machine": 0, "operator": 0, "unknown": 0},
             "edge_count": 1,
+            "dropped_count": 2,
+            "critical_chain_partial": True,
         }
 
     monkeypatch.setattr(provider_module, "compute_critical_chain_from_rows", _fake_compute_from_rows)
@@ -468,6 +470,8 @@ def test_cache_hit_result_is_isolated_from_caller_mutation(monkeypatch) -> None:
     assert second["ids"] == ["ORIGINAL"]
     assert second["edges"] == [{"from": "A", "to": "B", "edge_type": "process"}]
     assert second["edge_type_stats"]["process"] == 1
+    assert second["dropped_count"] == 2
+    assert second["critical_chain_partial"] is True
     second["ids"].append("CACHE-HIT-MUTATED")
     second["edges"][0]["to"] = "CACHE-HIT-MUTATED"
     second["edge_type_stats"]["machine"] = 99
@@ -476,6 +480,8 @@ def test_cache_hit_result_is_isolated_from_caller_mutation(monkeypatch) -> None:
     assert third["ids"] == ["ORIGINAL"]
     assert third["edges"] == [{"from": "A", "to": "B", "edge_type": "process"}]
     assert third["edge_type_stats"] == {"process": 1, "machine": 0, "operator": 0, "unknown": 0}
+    assert third["dropped_count"] == 2
+    assert third["critical_chain_partial"] is True
 
 
 def test_clear_cache_blocks_in_flight_compute_from_repopulating_cache(monkeypatch) -> None:

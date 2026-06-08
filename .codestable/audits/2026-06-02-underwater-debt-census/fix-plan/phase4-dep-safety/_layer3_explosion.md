@@ -46,7 +46,7 @@
 | R01 | PARSE-INT | 🟢🟢·🟢— | 🟢 | 死簇闭合自环零外部边，误删均 loud（ImportError/SyntaxError/SP05 红） | 同删孤儿 Iterator:5；只删 run import :16-17 保 :13-15；与 R04 同 PR R01 先删；删函数+删 SP05 断言同提交。 |
 | R08 | PARSE-INT | 🟡🟡🟡·🟡🟢 | 🟡 | 死分支 (T,F) 不可达依赖 service:127≡:130 同源不变式（无守卫即脆）；删死分支必保 feedback_write_enabled 参数（:234 活消费），误删参数→「填写实际」按钮门禁塌缩静默放开误填现场记录 | owner 裁「是否总开关预埋」；先钉 :127≡:130 同源守卫；候选 A 只删 :25/:227-228/:367-368 保参数；等本文件在途 task_key 重构 diff 落定再动（行号已漂+1~6）；R08→R09 串行。 |
 | R55 | GANTT | 🟡🟡🔴·🟡🟡 | 🟡 | 加 scope=filtered/full；裸删 filtered 过滤=filtered 视图变整版反砍业务；helper 内靠「filters 空否」反推 scope，provider full 路径无 filters 上下文反推必错 | owner+怀疑者过 PHASE0 §6 三问（owner_pending+needs_adversarial+verdict=null）后才锁终态；A1 先；scope 调用点显式赋值禁反推；禁破坏 :385 None 回退+support:55-56 分流判据；穿单份 _normalize+contract unavailable 分支（_copy 无须补）。r1-SOUL 标红=三门未过却排进可执行，是流程红非「会炸」红。 |
-| R12 | GANTT | 🟡🔴🟡·🟡🟡 | 🟡 | 加 dropped_count/critical_chain_partial；裸删 :84 过滤→None 流入 sort:114/max:262→TypeError→出口 try/except 接住→整链 available:False 功能回归；新键不穿 _normalize 白名单被剥离；_empty_result:54 available:True 不带 dropped（全坏行最该报警反而无信号） | A1{R11≡R63}先；保留 :84 仅补 collector；:54 与 :328-334 双补 dropped_count；contract available=False 分支（:22-39）须显式保留新键（r1-LAYER 标红的真因——计划只说 contract:40 透传不卡，漏 available=False 硬重建分支吞 dropped_count）。 |
+| R12 | GANTT | 🟢🟢🟢·🟢🟢 | 🟢 | 2026-06-08 已 fixed：保留 :84 坏时间过滤，仅补 DegradationCollector 计数；`_empty_result`、正常结果、单份 `_normalize`、contract available=False 分支与 JS 状态归一均保留 `dropped_count` / `critical_chain_partial` | 已验证混合坏行不改变有效链、全坏行可见 dropped_count、provider cache copy 不剥新键；R55 scope 按 O09 未做。 |
 | R11 / R63 | GANTT | 🟢🟢🟢·🟢🟢 | 🟢 | 2026-06-08 已 fixed：两份 _normalize 已收口为 `gantt_critical_chain.py:67-88` 单份 helper；support/provider 两路调用同一函数；parity 测试覆盖 11 个 legacy 边界 | 已保留 available=0→True + bool(is_available) 包裹；未 return raw；未误删 provider _copy:108-114。A1 前置已满足，后续 R12/R55 只能在单份 helper 上加键。 |
 | R10 | GANTT | 🟢🟢🟢·🟢🟢 | 🟢 | 删死方法 get_latest_version_or_1 零调用 | 删 :60-62+stub:59 后立即 grep 复核活方法 resolve_version:64 在（名字均含 version，误删静默炸周计划版本解析）。 |
 | R51 | COMPAT-DISPATCH | 🟡🔴🟡·🟡🟡 | 🟡 | 删两宽容解析器+续命测试 :25 兜底断言（`parse_*("unknown",default)==default` 正是 P4 静默回退）；若保留/迁移 :25 = 把已铲兜底钉成契约 → 未来复用复活静默兜底 | 两测试整体退场禁迁移禁保留 :25 断言禁保留函数改 raise；收口点 schedule_params:277/346 + optimizer_config:166/189 loud raise 已在位（只读确认）；A2 同 diff 删 :28-35 后重盘 R49/R50 行号。r1-LAYER 标红=灵魂线复活红线，但实为「序错/续命即复活」的 loud 风险非静默炸，综合黄。 |
@@ -195,10 +195,10 @@
 - 必须先落 parity/注释：R09 两路 parity（test_AB + test_C_float_bool 含 B 副本 `or 0` 审计）；R04 F1 含 sgs_graph 风格调用断言；R08 先钉 :127≡:130 守卫。
 - 测试迁移序：R59 先 parity 钉 '1.0' raise + blank 短路→F1 后收口；R01 删函数+删 SP05 断言必须同提交（中间提交必红）。
 
-**C-GANTT（R10🟢 / R11·R63🟢 / R12🟡 / R55🟡）**
-- 原子性最终判定：A1{R11≡R63}已 fixed 且已先于 A2{R12}/A3{R55}；R12 与 R55 后续同批一次穿白名单（同改单份 _normalize + contract unavailable 分支）；R10 已 fixed。
+**C-GANTT（R10🟢 / R11·R63🟢 / R12🟢 / R55🟡⏸）**
+- 原子性最终判定：A1{R11≡R63}已 fixed 且已先于 A2{R12}/A3{R55}；R12 已 fixed 并穿单份 _normalize + contract unavailable 分支；R55 后续按 O09 重启条件另行处理；R10 已 fixed。
 - 承重禁区（按符号）：support:58 禁 `return raw`、`_copy_critical_chain_result:104`（6 处缓存浅拷，非 strip 点）、:84 过滤、sort:114/max:262、出口 try/except :338-341/:352-359、:385 None 回退 + support:55-56 分流判据、`_is_current_official_identity` 方向；R10 邻接活方法 resolve_version:64。
-- 必须先落 parity/注释：normalize parity 黄金基线已落，当前 `tests/gantt/test_gantt_critical_chain_normalize_parity.py` 钉住 11 个边界；R12 dropped_count 后续双补 :54 与 :328-334 且穿 _normalize 白名单 + contract:22-39；R55 scope 调用点显式赋值禁反推。
+- 必须先落 parity/注释：normalize parity 黄金基线已落，当前 `tests/gantt/test_gantt_critical_chain_normalize_parity.py` 已扩到覆盖 R12 新键；R12 dropped_count 已双补 :54 与结果出口并穿 _normalize 白名单 + contract:22-39；R55 scope 调用点显式赋值禁反推。
 - 测试迁移序：删旧符号前先建 parity（snapshot subset 抓不到字段分叉）；R55 owner+怀疑者过 PHASE0 §6 三问后才锁终态。
 
 **C-COMPAT-DISPATCH（R30🟡 / R33🟡 / R29🟡 / R49🟢 / R50🟢 / R51🟡）**

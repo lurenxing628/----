@@ -1714,7 +1714,15 @@ def test_gantt_contract_critical_unavailable_message_maps_reason_code() -> None:
 loadScript({_gantt_contract_js()});
 loadScript({_gantt_help_js()});
 const api = window.__APS_GANTT__.contract;
-const critical = {{ ids: ["T1"], edges: [], available: false, reason: "关键工序关系计算异常", reason_code: "repo_exception" }};
+const critical = {{
+  ids: ["T1"],
+  edges: [],
+  available: false,
+  reason: "关键工序关系计算异常",
+  reason_code: "repo_exception",
+  dropped_count: 2,
+  critical_chain_partial: true,
+}};
 const state = {{}};
 const normalized = api.applyCriticalChainToState(state, critical);
 const messages = api.buildDegradationMessages({{
@@ -1728,7 +1736,11 @@ process.stdout.write(JSON.stringify({{ messages, help, tooltip, normalized, stat
 
     assert "关键工序关系计算异常" in str(result)
     assert result["normalized"]["reason_code"] == "repo_exception"
+    assert result["normalized"]["dropped_count"] == 2
+    assert result["normalized"]["critical_chain_partial"] is True
     assert result["state"]["critical"]["reason_code"] == "repo_exception"
+    assert result["state"]["critical"]["dropped_count"] == 2
+    assert result["state"]["critical"]["critical_chain_partial"] is True
     assert result["tooltip"]["reasonText"] in ("-", "关键工序关系计算异常")
     assert result["tooltip"]["unavailableMessage"].count("关键工序关系计算异常") == 1
     public_text = " ".join(

@@ -24,7 +24,7 @@
 | **G09** | EXEC-FACT | {R15, R19, R13} A3(provider) ⏸ | 同文件 provider.py 删改互移行号;先收口语义(R15/R19)后删死物(R13) | O03/O05/O06/O37 已裁：强序 R15 先(SCC 最前置,收口解析)→R19 改:70-82→R13 末(删字段)；R13 删前 owner 再确认 |
 | **G10** | EXEC-FACT | {R18, R19, R13关心:399} A4(repo) ⏸ | R18 改:401+R13 关心:399 同组 6 格 stub 共用一条护栏注释合批;R19:67 物理隔离仅文件级串行 | R18+R13(repo):399 共注释合批;R19 repo 处独立保守串行,无逻辑先后 |
 | **G11** | GANTT | {R11≡R63} A1 ✅ fixed | **2026-06-08 已 fixed**。同一物理动作已完成:两份 _normalize 已收口到 `gantt_critical_chain.py:67-88` 单份 helper,新增 parity 11 边界 | 后续勿重复处理;R12/R55 前置已满足,只能在单份 helper 上继续改;禁误删 provider `_copy:108` |
-| **G12** | GANTT | {R12} A2 | 加 dropped_count/critical_chain_partial,**必须加在 G11 统一后的单份** helper | G11 前置已满足;_empty_result:54 也须带 dropped_count |
+| **G12** | GANTT | {R12} A2 ✅ fixed | **2026-06-08 已 fixed**。已在 G11 统一后的单份 helper 加 `dropped_count` / `critical_chain_partial`，并穿 `_empty_result`、`_normalize`、contract unavailable 分支与 JS 状态归一 | G11 前置已满足；R55/G13 仍按 O09 跳过，后续不得复活双副本 |
 | **G13** | GANTT | {R55} A3 ⏸ | **O09 已裁本轮不做**；仅保留暂停占位，重启条件=怀疑者过三问 + R11/R63 单份化前置已满足 | 本轮不得随 G12 同改 _normalize；禁破坏 `:385 None 回退` + support:55-56 分流判据 |
 | **G14** | GANTT | {R10} | 删死方法 gantt_service.py:60-62+stub:59-60,逻辑零重叠,纯物理同 PR | 与 G11/12/13 同 PR(PHASE0§3 同文件勿并发改),任意序;删后 grep 复核 resolve_version:64 在 |
 | **G15** | CONFIG-DUAL | {LB07, R71, R47} ASC-1 ⏸ | 🔒 config 双栈 helper 锁步收敛;LB07 承重安全网前置 R71/R47;R71 owner 已裁仅 parity 守卫、不物理合并 | 硬序 LB07 先(注释+扩 parity,Batch-1 ROOT)→R47 对称删动作；R71 只落 parity 守卫，物理收敛本轮不做 |
@@ -313,7 +313,7 @@ Batch-D（facade 删除最晚 / 跨 owner-pending 收口）
 | A07 | R19→R01/R46（__all__ 同符号登记） | EXEC-FACT/GRAPH | S(伪串行降级) | 红队第2轮 P-RT22-02 已判伪串行：三处 `__all__` 在三文件，R46 不动 `__all__`；仅登记备查 |
 | A08 | R11/R63→R12（收口前置硬边 A1→A2） | GANTT | H | R12 加键必须在统一后单份 helper |
 | A09 | R11/R63→R55（历史收口前置，本轮暂停） | GANTT | H(暂停占位) | O09 已裁 R55 本轮不做；仅保留重启条件，不能触发本轮执行 |
-| A10 | R12⟂R55（历史同批提醒，本轮作废） | GANTT | S(作废) | O09 已裁 R55 不随 G12 改 _normalize |
+| A10 | R12⟂R55（历史同批提醒，本轮作废） | GANTT | S(作废) | O09 已裁 R55 不随 G12 改 _normalize；R12 已单独 fixed，R55 仍 paused |
 | A11 | R29→R26（facade 删晚于收敛） | CONFIG-DUAL | H | 普查"0 消费者"被推翻,2 离线消费者；O20 KEEP 注释闭合后才放行 R26 |
 | A12 | R33→R26（facade 删晚于收敛） | CONFIG-DUAL | H | 同上；G23 收敛先于 G18 |
 | A13 | R52→R26（facade 删晚于收敛） | CONFIG-DUAL | H | 同上；O07 KEEP 注释闭合后才放行 R26 |

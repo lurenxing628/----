@@ -3,7 +3,7 @@
 > 成员债 R10 / R11 / R12 / R55 / R63；主文件 gantt_service.py / gantt_service_support.py / gantt_critical_chain.py（+ provider / contract）
 > 回盘日 2026-06-05，行号已 rg 复核当前工作区，不信旧值。自成簇 C01（B08+B14 SCC-GANTT），不阻塞他桶。
 
-> **✅ 2026-06-08 B 执行补登**：A1 `{R11≡R63}` 已 fixed。单份 `_normalize_critical_chain_result` 已落 `gantt_critical_chain.py:67-88`，support 调用点为 `gantt_service_support.py:36`，provider 调用点为 `gantt_critical_chain_provider.py:157`；新增 `tests/gantt/test_gantt_critical_chain_normalize_parity.py` 11 个边界守住 legacy 行为。A1→A2/A3 的前置已满足，但 R12/R55 仍未执行。
+> **✅ 2026-06-08 B 执行补登**：A1 `{R11≡R63}` 已 fixed。单份 `_normalize_critical_chain_result` 已落 `gantt_critical_chain.py:67-88`，support 调用点为 `gantt_service_support.py:36`，provider 调用点为 `gantt_critical_chain_provider.py:157`；新增 `tests/gantt/test_gantt_critical_chain_normalize_parity.py` 11 个 legacy 边界。A2 `{R12}` 已 fixed：保留坏时间行过滤，只补 `dropped_count` / `critical_chain_partial`，并穿透 empty/normalize/contract/JS 状态。A3 `{R55}` 仍按 O09 跳过。
 
 ## 0) 行号回盘（当前工作区，全部命中，旧 old_location 已失真）
 
@@ -32,7 +32,7 @@
 - **动作**：抽单份 `_normalize_critical_chain_result(raw)` 到已存在落点 `gantt_critical_chain.py`，support:58 / provider:180 两路改调它；逐字保留 8 键归一不变量；收口取/补 support 的 `bool(is_available)` 显式包裹（provider:134 裸传，两路当前等价但 support 写法更稳）。**绝不 `return raw`、不删键、不改默认值**（灾难链：support:58 改 return raw → 缺 available/edge_type_stats 默认 → collect_gantt_degradation_events:70 判 available 失效，降级该报不报=灵魂线违规）。
 - owner_pending：R11=true（其档全程「若获批」）/ R63=false（其档给终态）。合并 work item 以 R63 终态修法为准，R11 的 owner 裁断点（保留哪份写法）并入。
 
-### 原子子簇 A2：`{R12}` —— 在统一后的单份 helper 加 `dropped_count`/`critical_chain_partial`
+### 原子子簇 A2：`{R12}` —— 在统一后的单份 helper 加 `dropped_count`/`critical_chain_partial`（2026-06-08 已 fixed）
 - **原子原因（收口前置）**：R12 给关键链结果加可观测降级键，必须加在 A1 统一后的**单份** helper + 注入点（gantt_critical_chain.py:312-334）。若 A1 未先合并，R12 要改两份副本 = 复活 A1 这条 P5。Phase1 已标 `R11→R12` 收口前置边。
 - **内部顺序**：**A1 先于 A2**（强偏序）。A2 与 A3 之间无强先后，但都晚于 A1。
 - **动作**：保留 :84 过滤本身（刻意韧性，删它 → None 流入 :114 sort/:262 max → TypeError 被出口 try/except 接住 → 整链 available:False 功能回归）；照搬 gantt_tasks.py:192-196 的 `DegradationCollector`+`record_bad_time_row`(helper _sched_display_utils.py:84，code `bad_time_row_skipped`)，scope 取关键链专属（如 `gantt.critical_chain`，勿混 gantt_tasks 的 `gantt.tasks`）；注入点 :328-334 加 `dropped_count:int`+`critical_chain_partial:bool`；**`_empty_result`(:54) 也须带 dropped_count**（否则「全坏行」最该报警的场景反而无信号，自相矛盾）。新键须穿三道白名单（卡口是两份/收口后单份 `_normalize`，contract:40 `return raw` 透传不卡）。owner_pending=false。
@@ -89,7 +89,7 @@ A2 与 A3 强烈建议**同一次改 `_normalize`**（共用三道白名单，�
 - **降 `R55→R21/R44/R72`：同文件 → 消费者只读触发条件**：R55 不改 scheduler_gantt.py，只依赖其 :345-351 把 resource_type/resource_id 传到 :344；降为「他债改该段时勿砍触发条件」的软提醒。
 
 ### 本簇不涉及的 corrections B/E 项（确认无关，不误用）
-- R02↔R25、R45↔{LB07,R33,R51}、R32↔R15、LB04↔{LB07,R33}、R26↔R43、config_snapshot R26↔R71、R13↔R18 解耦、R05→R34 降级、R20↔R08/R09 —— 均**不含本簇五债**（R20↔R12 那条已在上「删除」处理）。2026-06-08 后本簇当前 R10 与 R11/R63 已 fixed；R12/R55 仍 planned。
+- R02↔R25、R45↔{LB07,R33,R51}、R32↔R15、LB04↔{LB07,R33}、R26↔R43、config_snapshot R26↔R71、R13↔R18 解耦、R05→R34 降级、R20↔R08/R09 —— 均**不含本簇五债**（R20↔R12 那条已在上「删除」处理）。2026-06-08 后本簇当前 R10、R11/R63 与 R12 已 fixed；R55 仍 planned/paused。
 
 ## D) 承重前置（门控簇内哪些结构动作 + 禁区行）
 
@@ -118,7 +118,7 @@ A2 与 A3 强烈建议**同一次改 `_normalize`**（共用三道白名单，�
 **本簇已有 fixed 成员：R10 与 A1{R11≡R63} 已于 2026-06-08 B 执行 fixed。** R10/R11/R12/R55/R63 五债状态：
 - R10 fixed（已删除死方法 + 测试 stub，勿重复处理）
 - R11 fixed（与 R63 同一动作，旧 owner_pending 冲突已按 PHASE4/OWNER/R63 终态消解）
-- R12 planned（owner_pending=false）
+- R12 fixed（保留坏时间行过滤，仅补 dropped_count / critical_chain_partial 与契约穿透）
 - R55 planned（owner_pending=true，needs_adversarial=true 且 verdict=null）
 - R63 fixed（单份 `_normalize_critical_chain_result` 已收口到 `gantt_critical_chain.py:67-88`）
 
@@ -131,4 +131,4 @@ A1 历史裁断点已关闭：R11/R63 收口时保留了 support 的 `bool(is_av
 
 ## 返回串
 
-簇 C-GANTT | 原子子簇:3个 [A1{R11≡R63}已 fixed / A2{R12} / A3{R55}] + R10已 fixed | 关键内部顺序:A1(统一单份_normalize)已满足→A2(加dropped_count/critical_chain_partial)+A3(加scope=filtered/full,二者同改_normalize)；R10 已完成（死方法+stub 已删，`resolve_version` 保留，勿重复处理） | 跨簇边:对簇外无收口/parity/承重前置,仅R55→R21/R44/R72消费者只读触发条件勿砍+R34/R21同gantt_service.py勿并发改(PHASE0§3) | 边变化:删[R12↔R20假边(R20在context.py不碰gantt_tasks)、R12↔gantt_service.py五债same_file噪声]/新[A1→A2、A1→A3收口前置硬边已由 fixed 满足、R12⟂R55同批穿白名单]/降[R10↔R55硬撞→软同PR串行、R55→消费者软提醒] | 承重前置:本簇lb=false无承重点,A1 parity 黄金基线已落并固定 11 边界;剩余禁区:provider _copy:108 禁误删、gantt_critical_chain.py:84 过滤禁删(否则None→TypeError整链降级)、resolve_version:60禁误删、:385 None回退+:55-56分流判据禁破坏
+簇 C-GANTT | 原子子簇:3个 [A1{R11≡R63}已 fixed / A2{R12}已 fixed / A3{R55}仍跳过] + R10已 fixed | 关键内部顺序:A1(统一单份_normalize)已满足→A2(加dropped_count/critical_chain_partial)已完成；A3(scope=filtered/full)待 O09 重启后再做；R10 已完成（死方法+stub 已删，`resolve_version` 保留，勿重复处理） | 跨簇边:对簇外无收口/parity/承重前置,仅R55→R21/R44/R72消费者只读触发条件勿砍+R34/R21同gantt_service.py勿并发改(PHASE0§3) | 边变化:删[R12↔R20假边(R20在context.py不碰gantt_tasks)、R12↔gantt_service.py五债same_file噪声]/新[A1→A2、A1→A3收口前置硬边已由 fixed 满足、R55 后续仍需穿同 helper]/降[R10↔R55硬撞→软同PR串行、R55→消费者软提醒] | 承重前置:本簇lb=false无承重点,A1 parity 黄金基线已落并固定 11 边界;剩余禁区:provider _copy:108 禁误删、gantt_critical_chain.py:84 过滤禁删(否则None→TypeError整链降级)、resolve_version:60禁误删、:385 None回退+:55-56分流判据禁破坏

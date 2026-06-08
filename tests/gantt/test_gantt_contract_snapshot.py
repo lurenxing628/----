@@ -142,7 +142,18 @@ def main(monkeypatch) -> None:
             raise RuntimeError(f"task.meta 缺少字段：{k}")
 
     cc = data.get("critical_chain") or {}
-    for k in ("ids", "edges", "makespan_end", "edge_type_stats", "edge_count", "available", "reason", "cache_hit"):
+    for k in (
+        "ids",
+        "edges",
+        "makespan_end",
+        "edge_type_stats",
+        "edge_count",
+        "dropped_count",
+        "critical_chain_partial",
+        "available",
+        "reason",
+        "cache_hit",
+    ):
         if k not in cc:
             raise RuntimeError(f"critical_chain 缺少字段：{k}")
     if cc.get("available") is not True:
@@ -176,7 +187,18 @@ def main(monkeypatch) -> None:
     if int(data_empty.get("task_count") or 0) != 0 or (data_empty.get("tasks") or []):
         raise RuntimeError(f"空数据版本 tasks 应为空：task_count={data_empty.get('task_count')} tasks={data_empty.get('tasks')}")
     cc_empty = data_empty.get("critical_chain") or {}
-    for k in ("ids", "edges", "makespan_end", "edge_type_stats", "edge_count", "available", "reason", "cache_hit"):
+    for k in (
+        "ids",
+        "edges",
+        "makespan_end",
+        "edge_type_stats",
+        "edge_count",
+        "dropped_count",
+        "critical_chain_partial",
+        "available",
+        "reason",
+        "cache_hit",
+    ):
         if k not in cc_empty:
             raise RuntimeError(f"空数据版本 critical_chain 缺少字段：{k}")
     if cc_empty.get("available") is not True:

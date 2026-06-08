@@ -4315,7 +4315,7 @@
   "id": "R12",
   "bucket": "B08",
   "home": "B08",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P4",
   "partition": "scheduler-gantt",
@@ -4332,7 +4332,7 @@
    "gantt_tasks.py",
    "provider.py"
   ],
-  "current_evidence_2026_06_05": "gantt_critical_chain.py:84 仍是 `if not st or not et or not (st < et): continue`(位于 _build_nodes),全文件无 dropped_count/critical_chain_partial/partial/skipped/degraded 任何可观测键,计划要求补留痕(非裸删)未落地。",
+  "current_evidence_2026_06_05": "2026-06-08 B 执行后:R12/G12 已 fixed。保留 `_build_nodes` 坏时间行过滤,用 DegradationCollector + record_bad_time_row(scope=\"gantt.critical_chain\") 统计坏时间行;`_empty_result`、正常结果、单份 `_normalize_critical_chain_result` 均带 `dropped_count` 与 `critical_chain_partial`;`gantt_contract.py` available=False 分支与 `static/js/gantt_contract.js` 前端状态透传均保留新键。R55 scope 本轮未做。",
   "cluster": "C01",
   "same_file_siblings": [],
   "interference_edges": [
@@ -4392,9 +4392,9 @@
    "verdict_kind": "real_debt"
   },
   "adv_precondition": null,
-  "planned_batch_hint": "Batch-9,内部次序在 R11/R63 之后,与 R55 同批。鉴于丢行分支近死,优先级在本桶内偏低,但灵魂线合规必做(低投入)。",
-  "planned_deps_hint": "【依赖 R11/R63 先统一】:dropped_count 必须落到单份 _normalize,否则改两副本复活 R11/R63(Phase1 边 R11→R12 收口前置)。与 R55 共用三道白名单,宜同批改(统一后=单 _normalize + provider _copy:95-101 + contract:19-40)。同 gantt_service.py 无直接交集(R12 在 gantt_critical_chain.py),但同桶 R55 在 gantt_service.py 与 R10(B14)协调。",
-  "planned_fix_hint": "补可观测(P4 正确修法=补可观测降级标记,严禁加兜底):照搬 gantt_tasks 的 DegradationCollector 范式,在 _build_nodes(:79-100)统计 :84 丢弃行数(改为返回 nodes+dropped_count,或线程化一个 collector),经 _compute_critical_chain_from_loaded_rows(:312-334)把 `dropped_count`(int)+ `critical_chain_partial`(bool=dropped_count>0)注入结果 dict。【保留 :84 过滤本身】——删了会让 start/end=None 流入 :114 _build_process_prev 排序与 :262 _sink_id 的 max→TypeError→被 :340/:358 try/except ",
+  "planned_batch_hint": "Batch-B/G12 已 fixed;R11/R63 单份归一前置已满足后执行。R55/G13 仍按 O09 本轮跳过,未随 R12 同改 scope。",
+  "planned_deps_hint": "R12 已在 R11/R63 单份 `_normalize_critical_chain_result` 前置满足后落地;新键只穿当前单份 helper、contract unavailable 分支与前端状态透传。R55 仍 planned/paused,后续只需在同一 helper 上继续加 scope,不得回头复活双副本。",
+  "planned_fix_hint": "2026-06-08 已 fixed:保留 `_build_nodes` 坏时间过滤,仅旁路计数 `bad_time_row_skipped`;结果新增 `dropped_count` 与 `critical_chain_partial`,全坏行 `_empty_result` 也带信号;normalize、contract available=False 分支、JS normalize/apply state 均保留新键。未改 sort/max、出口 try/except、R55 filtered/full scope。",
   "phase1_blast": {
    "co_change_within_group": [
     "R11",
@@ -4409,7 +4409,7 @@
    "fix_invalidation_risk": "依赖 R11/R63 先把两份 _normalize 统一为单份,否则 dropped_count 要改两份副本=复活 R11/R63。与 R55 共用三道白名单,宜同批改 support:32-51 / provider:104-128 / contract:19-40。源头优先级:Schedule/采纳/候选为 NOT NULL+引擎写入(schema.sql:240-241),丢行分支近死,真正触发点是人工 scenario 调整——可先确认 scenario 写入是否已校验 st<et 再决定投入。",
    "id": "R12",
    "lb_colocation_danger": "非 §5 承重文件;但 :84 过滤本身是'丢一行坏数据仍出有用链'的刻意韧性,不可删,只可'丢行+留痕'(照搬 gantt_tasks 的 _record_bad_time_row/DegradationCollector 范式)。",
-   "location_status": "✅准:`if not st or not et or not (st < et): continue` 确在 core/services/scheduler/gantt_critical_chain.py:84,位于 _build_nodes(:79)。全文件 grep 无 partial/dropped/skipped/degraded 字样,信号缺口属实。兄弟范式 gantt_tasks.py:195-196 (_record_bad_time_row + DegradationCollector) ✅,helper 在 _sched_display_utils.py:84。",
+   "location_status": "✅已 fixed:坏时间过滤仍在 `_build_nodes`,但现已用 DegradationCollector 记录 `bad_time_row_skipped`;`_empty_result`、正常结果出口、单份 `_normalize_critical_chain_result`、contract unavailable 分支与 JS state 均保留 `dropped_count` / `critical_chain_partial`。兄弟范式 record_bad_time_row 仍来自 _sched_display_utils.py。",
    "pathology": "P4 灵魂线缺口:_build_nodes 静默丢坏时间行却仍报 available:True,无 partial/dropped 信号。bad 时间行被悄悄剔除→真正瓶颈工序可能被排除,链路结论被污染而用户看到 available:True 以为完整。",
    "planned_fix_class": "补可观测 (dropped_count + critical_chain_partial,DegradationCollector 范式,穿三白名单;保留 :84 过滤。P4 严禁加兜底)",
    "prod_consumers": [

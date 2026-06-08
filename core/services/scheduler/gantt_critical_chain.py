@@ -3,6 +3,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
+from core.services.common.degradation import DegradationCollector
+
+from ._sched_display_utils import record_bad_time_row as _record_bad_time_row
 from ._sched_utils import _safe_int
 from .gantt_task_labels import public_task_label as _public_task_label
 
@@ -51,13 +54,20 @@ def _minutes_between(a: Optional[datetime], b: Optional[datetime]) -> Optional[i
         return None
 
 
-def _empty_result() -> Dict[str, Any]:
+def _dropped_count(value: Any) -> int:
+    return max(0, _safe_int(value, default=0))
+
+
+def _empty_result(*, dropped_count: int = 0) -> Dict[str, Any]:
+    dropped = _dropped_count(dropped_count)
     return {
         "ids": [],
         "edges": [],
         "makespan_end": None,
         "edge_type_stats": {"process": 0, "machine": 0, "operator": 0, "unknown": 0},
         "edge_count": 0,
+        "dropped_count": dropped,
+        "critical_chain_partial": dropped > 0,
         "available": True,
         "reason": "",
         "reason_code": "",
@@ -74,6 +84,7 @@ def _normalize_critical_chain_result(raw: Any) -> Dict[str, Any]:
     if is_available:
         reason = ""
         reason_code = ""
+    dropped = _dropped_count(raw.get("dropped_count"))
     return {
         "ids": list(raw.get("ids") or []),
         "edges": [dict(edge) if isinstance(edge, dict) else edge for edge in list(raw.get("edges") or [])],
@@ -82,6 +93,8 @@ def _normalize_critical_chain_result(raw: Any) -> Dict[str, Any]:
             raw.get("edge_type_stats") or {"process": 0, "machine": 0, "operator": 0, "unknown": 0}
         ),
         "edge_count": int(raw.get("edge_count") or 0),
+        "dropped_count": dropped,
+        "critical_chain_partial": bool(raw.get("critical_chain_partial")) or dropped > 0,
         "available": bool(is_available),
         "reason": reason,
         "reason_code": reason_code or ("unknown" if not is_available else ""),
@@ -100,12 +113,14 @@ def _unavailable_result(reason: str) -> Dict[str, Any]:
     return result
 
 
-def _build_nodes(rows: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+def _build_nodes(rows: List[Dict[str, Any]], *, collector: Optional[DegradationCollector] = None) -> Dict[str, Dict[str, Any]]:
     nodes: Dict[str, Dict[str, Any]] = {}
     for r in rows:
         st = _parse_dt(r.get("start_time"))
         et = _parse_dt(r.get("end_time"))
         if not st or not et or not (st < et):
+            if collector is not None:
+                _record_bad_time_row(collector, scope="gantt.critical_chain", row=dict(r))
             continue
         op_code = (r.get("op_code") or "").strip()
         task_id = op_code or f"op_{r.get('op_id')}"
@@ -334,9 +349,11 @@ def _edge_type_stats(edges: List[Dict[str, Any]]) -> Dict[str, int]:
 
 
 def _compute_critical_chain_from_loaded_rows(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
-    nodes = _build_nodes(rows)
+    collector = DegradationCollector()
+    nodes = _build_nodes(rows, collector=collector)
+    dropped = _dropped_count((collector.to_counters() or {}).get("bad_time_row_skipped"))
     if not nodes:
-        return _empty_result()
+        return _empty_result(dropped_count=dropped)
 
     proc_prev = _build_process_prev(nodes)
     mach_prev = _build_prev_by_resource(nodes, resource_key="machine_id")
@@ -355,6 +372,8 @@ def _compute_critical_chain_from_loaded_rows(rows: List[Dict[str, Any]]) -> Dict
         "makespan_end": makespan_end,
         "edge_type_stats": _edge_type_stats(edges),
         "edge_count": len(edges),
+        "dropped_count": dropped,
+        "critical_chain_partial": dropped > 0,
     }
 
 
