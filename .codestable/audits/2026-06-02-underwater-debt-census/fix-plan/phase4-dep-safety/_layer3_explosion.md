@@ -72,7 +72,7 @@
 | R32 | LEAF-DUP-P4 | 🟢🟢🟡·—🟡 | 🟡 | integrity except:335 warning 吞→落 :343 os.replace 升正式（重症放行/轻症 :341 raise 倒挂）；system_backup:181 只 catch MaintenanceWindowError→RuntimeError 裸 500 | owner 裁硬 raise vs 可观测降级（dossier 灾难链描述偏大，:342 已 raise 拦不通过份，仅「PRAGMA 执行异常」窄路 fail-open）；禁区 :339 else raise 不改弱/:343 os.replace 不加二次兜底/finally 保留；强制回归项=else 未被连带改弱。 |
 | R40 | LEAF-DUP-P4 | 🟢🟢🟡·—🟡 | 🟡 | 删 material_repo.py:70-72 静默回退坏值；误连删 :69 float→坏值落 REAL 列退化；生产 service _norm_float 已拦改 raise 零行为影响 | 方向 A 只删 :70-72 保 :69 float；方向 B 引 core.ValidationError 造 data→core 错误耦合不推荐；owner 裁错误分类。 |
 | R53 | LEAF-DUP-P4 | 🟢🟢🟢·—🟢 | 🟢 | **2026-06-08 已 fixed**；旧 batch_order.py:74 `_ = scheduled_count` 一行已纯删 | :58 仍真用故无 unused-arg 复发；现盘禁区 :39/:58/:74 return；sgs.py:127 同形态行非本债未动。 |
-| R61 | LEAF-DUP-P4 | 🟢🟢🟢·—🟢 | 🟢 | 直删 plan 死簇 :160/164/172-187 + 重定向负向测试 | 禁删 live 孪生 _row_text:156/normalize_report_resource_filter:119/filter_downtime_*:274；删函数+改测试同 PR 原子。 |
+| R61 | LEAF-DUP-P4 | 🟢🟢🟢·—🟢 | 🟢 | **2026-06-08 已 fixed**；旧 plan 死簇 :160/164/172-187 已删除，负向测试已重定向到 `normalize_report_resource_filter` | 禁删 live 孪生 _row_text:156/normalize_report_resource_filter:119/filter_downtime_*:244；后续不要重复删。 |
 | LB04 | LEAF-DUP-P4 | 🟡🔴🟢·🟢🟢 | 🟡 | boolean_normalize 真叶子；以「统一到 matrix/DRY」名义删 shared 改指 services → core.models→core.services.common→core.models.enums 导入环+越层击穿 0 违规；单边改 matrix 别名集→personnel/plugin/system_config 链 vs 调度开关链对同串给相反 yes/no 静默无报警 | 仅 :33 上方补注释（algorithms 标「前瞻」）+ 新建全矩阵 parity 网；绝对禁删 shared 改指 services；唯一合法消重=matrix 反向 delegate 到 shared 本批不执行；是 Batch-1 所有 yes/no 收敛动作的安全网前置。r1-LAYER 标红=主透镜核心爆点+安全网前置，计划只补注释故 r1-SOUL/r2 标绿，综合黄（前置门性质）。 |
 
 ### tier1 簇（3 簇）
@@ -214,7 +214,7 @@
 - 测试迁移序：R52 先迁后删（含 31 用例 + 4 ValidationError 契约，行号按符号 :299/:311/:326/:352）；R14 候选灵魂线 :328 owner 裁改钉 resolve_existing_plan 层禁平移活门。
 
 **C-LEAF-DUP-P4（R70🟢 / R43🟡 / R69🔴 / R03🟡 / R41🟡 / R68🟡 / R32🟡 / R40🟡 / R53🟢 / R61🟢 / LB04🟡）**
-- 原子性最终判定：LB04 注释+parity 网是 Batch-1 所有 yes/no 收敛动作安全网前置；R69 两份 `_op_seq` 原子同改；R61 删函数+重定向负向测试同 PR；R68 parity 先于收敛（Batch-1→Batch-15）；R43↔R26 共碰 scheduler_config.py+SP05 串行。
+- 原子性最终判定：LB04 注释+parity 网是 Batch-1 所有 yes/no 收敛动作安全网前置；R69 两份 `_op_seq` 原子同改；R61 已完成“删函数+重定向负向测试”原子动作，后续只保留禁区提醒；R68 parity 先于收敛（Batch-1→Batch-15）；R43↔R26 共碰 scheduler_config.py+SP05 串行。
 - 承重禁区（按符号）：LB04 boolean_normalize（禁删 shared 改指 services=环+越层）、R69 `_op_seq` 两份（禁碰 `_seed_*`、loud 只动 except 域）、R03 CandidateTrialFailure:28/except:216/_failed_plan:217、R41 test_enum_display_consistency:59-61 钉静默断言、R68 downtime _meta_int_state:23（禁碰禁压扁二元组）、R32 :339 else raise+:343 os.replace、R40 :69 float、R70 :7 ValidationError import。
 - 必须先落 parity/注释：LB04 全矩阵 parity（algorithms 标「前瞻」）；R69 两份同钉 seq=0/None 不 raise + 坏类型 raise；R03 四态 parity（missing 态保留+补不可达注释）；R41 全 6 族×5 类逐格；R68 钉 `(bool,parse_failed)` 二元组禁压扁。
 - 测试迁移序：R41 测试改 loud 暴露禁贴回收口输出（复活硬门）；R32 强制回归项=else 未被连带改弱。

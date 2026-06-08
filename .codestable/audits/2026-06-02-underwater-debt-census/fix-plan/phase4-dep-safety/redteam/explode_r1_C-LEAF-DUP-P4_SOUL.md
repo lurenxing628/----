@@ -59,7 +59,7 @@
 
 - **R70**：纯删 schedule_service.py:46-50 死副本(回盘 :46 def/:47 ValidationError)，live 唯一在 run/schedule_input_collector.py:79（顶层壳无此符号），保 :7 import(:217 仍用 ValidationError)。零承重零收口零测试迁移。
 - **R53**：纯删 batch_order.py:74 `_ = scheduled_count`，:58 仍真用故无 unused-arg 复发；禁区 :39/:58/:75。sgs.py:127 同形态行非本债。
-- **R61**：直删 :160/:164/:172-187 死簇 + 重定向 :64-84 负向测试到 normalize_report_resource_filter(零覆盖损失)；禁删 _row_text:156 / normalize_report_resource_filter:119 / filter_downtime_*:274 live 孪生。
+- **R61**：2026-06-08 已 fixed；旧 :160/:164/:172-187 死簇已删除，:64-84 负向测试已重定向到 normalize_report_resource_filter(零覆盖损失)；后续仍禁删 _row_text:156 / normalize_report_resource_filter:119 / filter_downtime_*:244 live 孪生。
 - **LB04**：纯增量。回盘 boolean_normalize.py 仅 import `__future__`+`typing`=真叶子；matrix `:5 from core.models.enums`、coercion `:6 from core.shared.boolean_normalize`=models→shared 合法下行；algorithms 零消费(rg ZERO)。禁删 shared 改指 services(造 models↔services 环+越层)，注释里 algorithms 标「前瞻」。
 
 ---
@@ -71,4 +71,3 @@
 3. **【R68 异形邻居】downtime :27 `return 0, True` 是 `_meta_int_state`(int 首位)**，与 `_meta_bool_state`(bool 首位) 同 `(_, parse_failed)` 二元组形态、相邻同文件。计划「严禁动 _meta_int_state」成立，但未点出二者二元组同形=误并/误压扁时 int/bool 首位混淆的具体撞点。收口排程须显式隔离两符号。
 4. **【R43 roadmap 行号污染回灌风险】**R43 dossier 在 4 处(字段1/2/12/索引)把真相源 522 反向改成 521，本轮回盘实测延期文案在 :522、:521 为空行。Layer4 出批次若照抄 R43 dossier 的 521 会回灌错误锚点——已在黄区显式纠为 522(与 L1§F/cluster 一致)。
 5. **【R32 倒挂未列为独立校验项】**「校验跑不起来(重症)放行、校验跑通但≠ok(轻症)raise」的倒挂，计划修法只对齐 except→else，但未把「确认 :340-342 else 在修后仍 raise、未被连带改弱」列为强制回归断言项(parity 用例 4)。Layer4 须把 else 分支未改弱纳入 R32 验收门。
-

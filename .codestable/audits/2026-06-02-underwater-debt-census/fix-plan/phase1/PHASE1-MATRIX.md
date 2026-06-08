@@ -135,7 +135,7 @@
 | Batch-13 B12 repo死方法(R34,R35,R36,R37,R38,R39) | (无) | R34 须在 R05 collar 扩 team 后(否则 team 谓词丢);R34+R35 同 schedule_repo、R38+R39 同 part_repo 各自同批;R36/R37 纯死无跨边可任意排期。 |
 | Batch-14 B13-facade-LATE(R19,R20,R26,R31,R43) | (无) | PHASE0 §10.2 facade 删除晚于 B05/B06/B09 收敛 + §10.3 R43 须先认账 roadmap:522 延期 + R20 须在 B01 LB01 注释后改 feedback_service import + R19 受分层红线(repo 不能收 service)。全局最晚批次。 |
 | Batch-15 B15 逐字两份收口 + R70 死副本清理(R68,R69,R70) | (无) | R68/R69 踩灵魂线收敛前先补 parity(R68)/评估 except loud(R69 护栏文件);R70 已纠偏为死副本(schedule_service:46)直删，live(input_collector)保持不动且天然单点，无需再动。独立可并行。 |
-| Batch-16 B16+B17 叶子/P4(R32,R40,R53,R61,R64,R65) | (无) | 全部独立隔离文件:R32/R40 改 raise(灵魂线)、R53/R64/R65 纯叶子删(R65 def 删须同步 :160 化简)、R61 删 filter_plan_rows 保留 filter_downtime 孪生。无关键路径门控,Batch-1 后可并行。 |
+| Batch-16 B16+B17 叶子/P4(R32,R40,R53,R61,R64,R65) | (无) | 全部独立隔离文件:R32/R40 改 raise(灵魂线)、R53/R61/R64/R65 纯叶子删(R65 def 删须同步 :160 化简)。2026-06-08:R53/R61 已 fixed；R61 旧 filter_plan_rows 死簇已删，filter_downtime 孪生现盘 :244 保留。无关键路径门控,Batch-1 后可并行。 |
 
 ## 4. 分批落地建议(16 批)
 
@@ -216,7 +216,7 @@
 
 ### Batch-16 B16 P4 灵魂线 + B17 死叶子(独立并行)
 - **债**: R32, R40, R53, R61, R64, R65
-- **理由**: 全部独立隔离文件、无关键路径门控:R32 backup integrity except→raise(+顺手 system_backup:107-113 flash);R40 material_repo stock_qty except→raise/可观测(service 已挡的防御死角);R53 删 :74 一行;R61 删 filter_plan_rows + 两 helper(保留 filter_downtime 孪生);R64 删 :66-67;R65 删 :74-78 def + 原子化简 :160→plain_url。
+- **理由**: 全部独立隔离文件、无关键路径门控:R32 backup integrity except→raise(+顺手 system_backup:107-113 flash);R40 material_repo stock_qty except→raise/可观测(service 已挡的防御死角);R53 删 :74 一行(2026-06-08 已 fixed);R61 删 filter_plan_rows + 两 helper并重定向负向测试(2026-06-08 已 fixed,保留 filter_downtime 孪生);R64 删 :66-67;R65 删 :74-78 def + 原子化简 :160→plain_url。
 - **验收**: restore_success_condition mock 不触达校验块故 R32 改 raise 不红、migration 阻断契约对齐;R40 numeric_parse_hybrid model 护栏未碰;report_context_filters downtime 孪生 :28/39/51/59 保留、plan 份 :8/66/75/81 退;scheduler_navigation_links build 绿(:160 化简为 plain_url 无 NameError);R53 batch_order 行为契约绿。
 
 

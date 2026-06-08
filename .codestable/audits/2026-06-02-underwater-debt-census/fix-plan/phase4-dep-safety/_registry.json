@@ -7032,7 +7032,7 @@
   "id": "R61",
   "bucket": "B17",
   "home": "B17",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P6",
   "partition": "delta-report-core",
@@ -7048,7 +7048,7 @@
    "report_context_filters.py",
    "report_engine.py"
   ],
-  "current_evidence_2026_06_05": "core/services/report/report_context_filters.py:172-187 死函数 filter_plan_rows_for_report_context 及 helper _plan_row_matches_batch(:160)/_plan_row_matches_resource(:164) 原样存在;tests/scheduler_analysis/test_report_context_filters_contract.py:8/66/75/81 仍 import/调用它(两条负向测试未重定向到 normalize_report_resource_filter),整簇未删未退测试",
+  "current_evidence_2026_06_05": "2026-06-08 B执行终态:core/services/report/report_context_filters.py 旧死簇 filter_plan_rows_for_report_context + _plan_row_matches_batch + _plan_row_matches_resource 已删除;tests/scheduler_analysis/test_report_context_filters_contract.py 已删除死入口 import,三条负向断言改为直接调用 normalize_report_resource_filter;filter_downtime_rows_for_report_context/_row_text/normalize_report_resource_filter live 链均保留。",
   "cluster": "C01",
   "same_file_siblings": [],
   "interference_edges": [
@@ -7079,29 +7079,26 @@
   ],
   "verdict": null,
   "adv_precondition": null,
-  "planned_batch_hint": "Batch-16(独立叶子)。Phase1 §4 列 R61『删+退测试,保留 filter_downtime 孪生』。无门控,Batch-1 后任意时点;与 R64/R65/R53 互不依赖,可单独成一小提交。",
+  "planned_batch_hint": "Batch-16(独立叶子)。2026-06-08 已 fixed;本字段仅保留历史批次归属,不表示仍待执行。",
   "planned_deps_hint": "无 — Phase1 co_change_within_group=[],fix_invalidation_risk 明示『无其他债依赖』。完全独立,与本桶 R64/R65/R53 不同文件,任意先后。",
-  "planned_fix_hint": "删死簇:①filter_plan_rows_for_report_context(:172-187);②仅供它的 helper _plan_row_matches_batch(:160-161)与 _plan_row_matches_resource(:164-169)(及其间空行)。【必须保留】:_row_text(:156,被 downtime 孪生 :191/:221/:239/:253 真用)、normalize_report_resource_filter(:119,被 :282 downtime 份 + report_engine.py:146/167/279/383 + web/request_resource_context.py:39 + web/routes/reports_request_support.py:54 真用)、整个 filter_downtime_row",
+  "planned_fix_hint": "2026-06-08 已执行:删死簇 filter_plan_rows_for_report_context + 仅供它的 helper _plan_row_matches_batch/_plan_row_matches_resource;测试侧删除 filter_plan_rows_for_report_context import,把班组不支持/缺少设备编号/缺少人员编号三条负向断言重定向到 normalize_report_resource_filter。严格保留 _row_text、normalize_report_resource_filter、filter_downtime_rows_for_report_context 以及 report_engine/web live 下游。",
   "phase1_blast": {
    "co_change_within_group": [],
    "contract_topology_tests": [
-    "tests/scheduler_analysis/test_report_context_filters_contract.py:66/75/81 — 续命合同测试,删 filter_plan_rows_for_report_context 会让这 3 处 import+调用红,必须同步退测试。注意:同文件的孪生 filter_downtime_rows_for_report_context 是真活(report_engine:406),其测试 :28/:39/:51/:59 必须保留"
+    "tests/scheduler_analysis/test_report_context_filters_contract.py — 2026-06-08 已重定向:不再 import/call filter_plan_rows_for_report_context;班组不支持/缺少设备编号/缺少人员编号三条负向断言直接调用 normalize_report_resource_filter;downtime 四测仍保留并覆盖 live 孪生"
    ],
    "downstream_effect": "运行期零(死)。删除收益=去维护成本 + 消除『报表计划行在此 Python 过滤』的层级误导(实际走 SQL)。",
-   "fix_invalidation_risk": "删 filter_plan_rows_for_report_context + 两个私有 helper(:160/:164/:172-187)须与退 regression_report_context_filters_contract.py:8/66/75/81 同批;绝不能误删孪生 filter_downtime(:274,report_engine live)及其测试。无其他债依赖。",
+   "fix_invalidation_risk": "none — 2026-06-08 已同一原子改完代码与测试。filter_plan_rows_for_report_context/_plan_row_matches_batch/_plan_row_matches_resource 已零命中;filter_downtime_rows_for_report_context、_row_text、normalize_report_resource_filter 仍在并被 live 下游使用。",
    "id": "R61",
    "lb_colocation_danger": "none — report_context_filters.py 不在承重清单。",
-   "location_status": "⚠️行号已变 — 报告 location 写 160-187,实测 def filter_plan_rows_for_report_context 在 :172(:172-187);:160 是私有 helper _plan_row_matches_batch,:164 是 _plan_row_matches_resource。三者构成同一死簇。",
+   "location_status": "2026-06-08 已fixed — 执行前报告 location 写 160-187,实测 def filter_plan_rows_for_report_context 在 :172(:172-187),:160/:164 为两个私有 helper;执行后三者已从 report_context_filters.py 删除。",
    "pathology": "P6:出生即死(实际计划行过滤在 SQL 层),40 行实现 + helper 只被合同测试供养给『存活假信号』。",
-   "planned_fix_class": "删+退测试(删 filter_plan_rows_for_report_context :172-187 + 仅供它的 helper :160/:164,同步退 regression_report_context_filters_contract.py:8/66/75/81;保留 filter_downtime 孪生及其测试)",
+   "planned_fix_class": "已直删+测试重定向(删 filter_plan_rows_for_report_context + 两个仅供它的 helper;测试负向断言改挂 normalize_report_resource_filter;保留 filter_downtime 孪生及其测试)",
    "prod_consumers": [
-    "生产零引用(已grep证实) — report_engine.py:28 仅 import 孪生 filter_downtime_rows_for_report_context,:406 仅调 downtime 份;计划行过滤实由 SQL 完成:data/repositories/schedule_plan_query_repo.py:331,362 append_detail_filters(来自 schedule_resource_sql_filters.py:22)。_plan_row_matches_batch/_plan_row_matches_resource(:160/:164)仅喂这条死函数(:184/:185)"
+    "生产零引用(已grep证实) — 2026-06-08 已删除死簇。report_engine.py:28 仍仅 import live 孪生 filter_downtime_rows_for_report_context + normalize_report_resource_filter,:406 仍仅调 downtime 份;计划行过滤实由 SQL 完成。"
    ],
    "test_consumers": [
-    "tests/scheduler_analysis/test_report_context_filters_contract.py:8 (import filter_plan_rows_for_report_context)",
-    "tests/scheduler_analysis/test_report_context_filters_contract.py:66 (调用)",
-    "tests/scheduler_analysis/test_report_context_filters_contract.py:75 (调用)",
-    "tests/scheduler_analysis/test_report_context_filters_contract.py:81 (调用)"
+    "tests/scheduler_analysis/test_report_context_filters_contract.py — 2026-06-08 已移除死入口 import/call,保留并重定向 loud 校验断言到 normalize_report_resource_filter"
    ]
   },
   "owner_pending": false,

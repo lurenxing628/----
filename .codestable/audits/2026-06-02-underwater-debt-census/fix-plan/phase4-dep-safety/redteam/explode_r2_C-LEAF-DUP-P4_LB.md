@@ -18,7 +18,7 @@
 | R32 | 🟢 | 🟢 | backup.py:335 except warning→:343 os.replace;else raise :338-342。改 raise 只动 :335-337。 |
 | R40 | 🟢 | 🟢 | material_repo.py:69 float / :70-72 静默回退坏值。只删 :70-72 保 :69。 |
 | R53 | 🟢 | 🟢 | batch_order.py:74 死 `_ = scheduled_count`;:58 真消费在场,删后无 unused-arg 复发。 |
-| R61 | 🟢 | 🟢 | 死簇 :160/:164/:172;live 孪生 `filter_downtime_*:274`、`_row_text:156`、`normalize_report_resource_filter:119` 在场禁删。 |
+| R61 | 🟢 | 🟢 | 2026-06-08 已 fixed；旧死簇 :160/:164/:172 已删；live 孪生 `filter_downtime_*:244`、`_row_text:156`、`normalize_report_resource_filter:119` 在场禁删。 |
 
 **净结论:8🟢 + 2🟡(R43/R03 均 owner_pending,非技术红),0🔴。** r1 的 3 红被本轮 rg 逐一推翻。
 
@@ -40,7 +40,7 @@
 - R70 禁区:`schedule_service.py:7` ValidationError import(:217 仍用,删则 NameError)+ :44-52 死副本本体只删不连带。
 - R40 禁区:`material_repo.py:69` float 转换(只删 :70-72,误连删则坏值落 REAL 列退化)。
 - R53 禁区:batch_order.py:39/:58/:75(:58 真消费在场,故删 :74 无 unused-arg 复发)。
-- R61 禁区:`_row_text:156`/`normalize_report_resource_filter:119`/`filter_downtime_*:274`(live 孪生一字不动)。
+- R61 禁区:`_row_text:156`/`normalize_report_resource_filter:119`/`filter_downtime_*:244`(live 孪生一字不动)。
 - R32 禁区:backup.py:338-342 else raise 不改弱/:343 os.replace 不加二次兜底。
 
 ---
