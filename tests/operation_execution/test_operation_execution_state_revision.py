@@ -16,8 +16,8 @@ from core.services.scheduler.operation_execution_feedback_service import (
     OperationExecutionFeedbackService,
 )
 from core.services.scheduler.operation_execution_scope_read import scope_from_feedback_context
-from core.services.scheduler.schedule_plan_query_service import ROLE_BASELINE_BEST
-from data.repositories.schedule_plan_query_repo import SOURCE_CANDIDATE_ROWS
+from core.services.scheduler.schedule_plan_query_service import ROLE_ADOPTED, ROLE_BASELINE_BEST
+from data.repositories.schedule_plan_query_repo import SOURCE_CANDIDATE_ROWS, SOURCE_SCHEDULE
 from tests.operation_execution.operation_execution_state_revision_support import (
     _connect,
     _context,
@@ -74,6 +74,36 @@ def test_start_operation_uses_previous_revision_and_reuses_same_idempotency_key(
         assert _event_count(conn) == 1
     finally:
         conn.close()
+
+
+def test_event_payload_sanitizes_identity_to_current_official_schedule() -> None:
+    context = ExecutionFeedbackContext(
+        schedule_version=1,
+        schedule_id=100,
+        op_id=10,
+        batch_id="B1",
+        expected_state_revision="10:0:0",
+        created_by="pytest",
+        idempotency_key="payload-sanitize",
+        requested_plan_role=ROLE_BASELINE_BEST,
+        source_table=SOURCE_CANDIDATE_ROWS,
+        effective_plan_role=ROLE_BASELINE_BEST,
+        scenario_id="scenario-draft",
+    )
+
+    payload = OperationExecutionFeedbackService._build_event_payload(
+        object(),
+        context=context,
+        schedule=object(),
+        batch_id="B1",
+        action="start",
+        payload={"event_time": "2026-05-01 08:10:00"},
+        fingerprint="fingerprint",
+    )
+
+    assert payload["source_table"] == SOURCE_SCHEDULE
+    assert payload["effective_plan_role"] == ROLE_ADOPTED
+    assert payload["scenario_id"] is None
 
 
 def test_idempotency_is_rechecked_inside_transaction_before_revision_check(tmp_path: Path, monkeypatch) -> None:

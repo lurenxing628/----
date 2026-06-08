@@ -22,6 +22,7 @@ def _text(value: Any) -> str:
 
 
 def _parsed_summary_flag_is_true(parsed: Any, key: str, *, fail_closed: bool = False) -> bool:
+    # 排产摘要看不懂时必须按 fail-closed 处理；不能把解析失败当成普通 False 放行。
     if parsed.parse_failed:
         return bool(fail_closed)
     return bool((parsed.payload or {}).get(key))
@@ -182,6 +183,7 @@ def build_plan_identity(
     is_preview = _is_preview_plan(scenario_id=scenario_id, source_table=source, status=resolution_status)
     summary_parse = parse_result_summary_payload(result_summary)
     summary_unavailable, summary_reason = _summary_unavailable(result_summary, summary_parse)
+    # is_simulation 是派工/反馈的灵魂线；摘要解析失败时按模拟方案处理，禁止写现场事实。
     is_simulation = is_preview or _parsed_summary_flag_is_true(summary_parse, "is_simulation", fail_closed=True)
     is_current = _is_current_version(version_value, latest_version)
     is_superseded = _is_superseded_version(version_value, latest_version)

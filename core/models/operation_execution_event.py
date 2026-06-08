@@ -154,6 +154,7 @@ def _event_scope(event: Any) -> OperationExecutionScope:
 
 
 def _event_id_for_revision(event: Any, *, index: int, total: int) -> int:
+    # 只有序列最后一个新事件允许 id=0 哨兵；前面任何事件缺 id 都必须响亮失败。
     raw = _event_field(event, "id")
     value = parse_int(raw, default=None)
     if value is not None and value > 0:

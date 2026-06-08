@@ -127,6 +127,7 @@ def _ensure_feedback_target_in_query(context: Mapping[str, Any], op_id: int, pay
 
 
 def _identity_allows_query_membership_check(identity: Mapping[str, Any]) -> bool:
+    # 这里只是查询结果成员检查的短路；真正写闸在 OperationExecutionFeedbackService._load_current_official_schedule。
     return bool(identity.get("can_write_feedback"))
 
 

@@ -38,6 +38,7 @@ def normalize_yes_no_wide(
     true_aliases: Optional[Sequence[str]] = None,
     false_aliases: Optional[Sequence[str]] = None,
 ) -> str:
+    # 这是 core 低层宽口径；不要改指 services.common.normalization_matrix，反向导入会把 core/services 绕成环。
     default_norm = _normalize_default_yes_no(default)
     if value is None:
         return default_norm

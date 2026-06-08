@@ -59,6 +59,7 @@ _PATH_LIKE_RE = re.compile(
     re.IGNORECASE,
 )
 
+# 这些正则是老中文错误串到公开错误码的反解桥；改 internal_operation/resource_validation 的中文模板时必须同步这里。
 LEGACY_PUBLIC_PATTERNS: Tuple[Pattern[str], ...] = (
     re.compile(rf"^自制工序未补全设备或人员，无法排产：工序 (?P<op>{_PUBLIC_ID_PATTERN})$"),
     re.compile(rf"^自制工序未补全设备或人员，而且系统自动分配失败：工序 (?P<op>{_PUBLIC_ID_PATTERN})$"),

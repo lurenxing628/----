@@ -34,7 +34,21 @@ def test_strict_parse_blank_required() -> None:
     assert parse_optional_float("", field="默认周期") is None, "optional float 空白应返回 None"
     assert abs(parse_required_float("1.25", field="默认周期", min_value=0.5) - 1.25) < 1e-9, "required float 解析异常"
 
-    assert parse_required_int("12.0", field="锁定天数") == 12, "整数形浮点字符串应支持解析"
+    assert parse_required_int("12.0", field="锁定天数") == 12, "默认应继续支持整数形浮点字符串"
+    assert parse_required_int(12.0, field="锁定天数") == 12, "默认应继续支持整数形浮点数"
+    assert parse_required_int("12.0", field="锁定天数", reject_integer_float=False) == 12
+    assert parse_required_int("12", field="锁定天数", reject_integer_float=True) == 12
+    assert parse_required_int(12, field="锁定天数", reject_integer_float=True) == 12
+    _expect_validation(
+        "required_int.reject_integer_float_text",
+        lambda: parse_required_int("12.0", field="锁定天数", reject_integer_float=True),
+        "锁定天数",
+    )
+    _expect_validation(
+        "required_int.reject_integer_float_number",
+        lambda: parse_required_int(12.0, field="锁定天数", reject_integer_float=True),
+        "锁定天数",
+    )
     _expect_validation("required_int.decimal", lambda: parse_required_int("12.5", field="锁定天数"), "锁定天数")
     _expect_validation(
         "required_int.min_value",
@@ -51,5 +65,4 @@ def test_strict_parse_blank_required() -> None:
         lambda: parse_required_date("2026-03-05 12:00", field="交期"),
         "交期",
     )
-
 

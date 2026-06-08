@@ -85,6 +85,8 @@ def default_plan_resolution_dict(plan_role: Optional[str] = None) -> Dict[str, A
         "candidate_key": None,
         "scenario_id": None,
         "schedule_result_status": None,
+        "result_summary_parse_failed": True,
+        "result_summary_parse_reason": "排产摘要缺失",
         "is_simulation": False,
         "label": selected_label,
         "user_label": "对比参考方案" if is_fallback else selected_label,

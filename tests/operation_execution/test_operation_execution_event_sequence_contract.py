@@ -116,6 +116,24 @@ def test_operation_execution_event_sequence_contract_rejects_invalid_flows() -> 
         )
 
 
+def test_operation_execution_event_sequence_allows_missing_id_only_on_last_event() -> None:
+    validate_operation_execution_event_sequence([_event()])
+
+    with pytest.raises(ValueError, match="id is required before following event"):
+        validate_operation_execution_event_sequence(
+            [
+                _event(),
+                _event(
+                    id=2,
+                    event_type=EXECUTION_EVENT_FINISH,
+                    reported_status="completed",
+                    event_time="2026-05-01 09:00:00",
+                    previous_state_revision="10:1:0",
+                ),
+            ]
+        )
+
+
 def test_operation_execution_repository_rejects_invalid_event_sequence(tmp_path: Path) -> None:
     conn = _connect(tmp_path)
     try:

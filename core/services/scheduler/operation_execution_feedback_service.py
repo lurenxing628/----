@@ -364,6 +364,7 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
         text = json.dumps(raw, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
+    # 现场事实写闸在这里：只有当前正式 schedule/adopted、无 scenario，且 plan_identity 允许回写时才继续。
     def _load_current_official_schedule(self, context: ExecutionFeedbackContext):
         if (
             context.requested_plan_role != ROLE_ADOPTED
@@ -468,6 +469,7 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
             "schedule_id": context.schedule_id,
             "op_id": context.op_id,
             "batch_id": batch_id,
+            # 写入前最终消毒：现场事件永远落到正式 schedule/adopted/no-scenario 身份。
             "source_table": SOURCE_SCHEDULE,
             "effective_plan_role": ROLE_ADOPTED,
             "scenario_id": None,

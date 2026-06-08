@@ -8,9 +8,11 @@ from core.infrastructure.errors import ValidationError
 from core.models.enums import YesNo
 from core.plugins.manager import _normalize_yes_no as plugin_yes_no
 from core.services.common.excel_validators import _normalize_yesno as core_excel_yesno
+from core.services.common.normalization_matrix import normalize_yes_no_wide_value
 from core.services.scheduler.calendar_admin import CalendarAdmin
 from core.services.scheduler.number_utils import to_yes_no
 from core.services.system.system_config_service import _normalize_yes_no as system_yes_no
+from core.shared.boolean_normalize import normalize_yes_no_wide
 from web.routes.normalizers import _normalize_yesno as route_yesno
 
 
@@ -23,6 +25,54 @@ def test_to_yes_no_wide_truthy_and_falsy_and_default() -> None:
 
     assert to_yes_no(None, default=YesNo.YES.value) == YesNo.YES.value
     assert to_yes_no(None, default=YesNo.NO.value) == YesNo.NO.value
+
+
+def _wide_outcome(func, raw, *, default: str, unknown_policy: str):
+    try:
+        return "ok", func(raw, default=default, unknown_policy=unknown_policy)
+    except ValueError as exc:
+        return "error", str(exc)
+
+
+@pytest.mark.parametrize("default", (YesNo.YES.value, YesNo.NO.value))
+@pytest.mark.parametrize("unknown_policy", ("no", "default", "passthrough", "raise"))
+def test_shared_and_service_wide_yesno_normalizers_stay_in_lockstep(default: str, unknown_policy: str) -> None:
+    values = (
+        None,
+        "",
+        "yes",
+        "YES",
+        " y ",
+        "no",
+        "NO",
+        "true",
+        True,
+        "false",
+        False,
+        "1",
+        1,
+        "0",
+        0,
+        "on",
+        "off",
+        "是",
+        "否",
+        "maybe",
+        "  Maybe  ",
+        "2",
+    )
+    for raw in values:
+        assert _wide_outcome(
+            normalize_yes_no_wide,
+            raw,
+            default=default,
+            unknown_policy=unknown_policy,
+        ) == _wide_outcome(
+            normalize_yes_no_wide_value,
+            raw,
+            default=default,
+            unknown_policy=unknown_policy,
+        )
 
 
 def test_system_config_yes_no_unknown_is_no() -> None:

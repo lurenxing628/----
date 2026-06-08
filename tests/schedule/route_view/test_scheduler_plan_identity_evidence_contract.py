@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from core.infrastructure.database import ensure_schema, get_connection
+from core.infrastructure.errors import ValidationError
 from core.models.schedule_candidate import ScheduleCandidate, ScheduleCandidateRows, ScheduleCandidateSelection
 from core.services.scheduler.schedule_plan_identity_builder import build_plan_identity
 from core.services.scheduler.schedule_plan_query_service import (
@@ -24,6 +25,32 @@ from tests._support.paths import REPO_ROOT
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 VERSION = 7
+EXPECTED_PLAN_IDENTITY_KEYS = (
+    "version",
+    "requested_plan_role",
+    "effective_plan_role",
+    "plan_resolution_status",
+    "source_table",
+    "source_row_id",
+    "candidate_id",
+    "candidate_key",
+    "scenario_id",
+    "schedule_result_status",
+    "result_summary_parse_failed",
+    "result_summary_parse_reason",
+    "is_simulation",
+    "label",
+    "user_label",
+    "is_official",
+    "is_preview",
+    "is_current_executable_version",
+    "is_current_executable_official_version",
+    "is_superseded_by_newer_version",
+    "schedule_lock_status",
+    "can_dispatch",
+    "can_write_feedback",
+    "detail_saved",
+)
 
 
 def _connect_fresh_schema(tmp_path):
@@ -193,30 +220,7 @@ def _seed_db(tmp_path):
 def _identity_dict(resolution):
     data = resolution.to_dict()
     identity = data["plan_identity"]
-    assert set(identity) >= {
-        "version",
-        "requested_plan_role",
-        "effective_plan_role",
-        "plan_resolution_status",
-        "source_table",
-        "source_row_id",
-        "candidate_id",
-        "candidate_key",
-        "scenario_id",
-        "schedule_result_status",
-        "is_simulation",
-        "label",
-        "user_label",
-        "is_official",
-        "is_preview",
-        "is_current_executable_version",
-        "is_current_executable_official_version",
-        "is_superseded_by_newer_version",
-        "schedule_lock_status",
-        "can_dispatch",
-        "can_write_feedback",
-        "detail_saved",
-    }
+    assert tuple(identity) == EXPECTED_PLAN_IDENTITY_KEYS
     return identity
 
 
@@ -242,6 +246,8 @@ def test_current_adopted_plan_identity_can_dispatch_and_write_feedback(tmp_path)
         assert identity["is_current_executable_version"] is True
         assert identity["is_current_executable_official_version"] is True
         assert identity["is_superseded_by_newer_version"] is False
+        assert identity["result_summary_parse_failed"] is False
+        assert identity["result_summary_parse_reason"] == ""
         assert identity["schedule_lock_status"] == "locked"
         assert identity["can_dispatch"] is True
         assert identity["can_write_feedback"] is True
@@ -282,6 +288,40 @@ def test_failed_or_simulated_official_result_cannot_dispatch_or_write_feedback(
         assert identity["can_write_feedback"] is False
     finally:
         conn.close()
+
+
+def test_bad_result_summary_fails_closed_for_official_identity(tmp_path) -> None:
+    conn = _seed_db(tmp_path)
+    try:
+        conn.execute(
+            """
+            UPDATE ScheduleHistory
+               SET result_status = 'success', result_summary = ?
+             WHERE version = ?
+            """,
+            ("{bad-json", VERSION),
+        )
+        conn.commit()
+
+        identity = _identity_dict(SchedulePlanQueryService(conn).resolve_plan(VERSION, ROLE_ADOPTED))
+
+        assert identity["result_summary_parse_failed"] is True
+        assert identity["result_summary_parse_reason"]
+        assert identity["is_simulation"] is True
+        assert identity["is_current_executable_official_version"] is False
+        assert identity["can_dispatch"] is False
+        assert identity["can_write_feedback"] is False
+    finally:
+        conn.close()
+
+
+def test_bad_plan_role_still_raises_with_plan_role_field() -> None:
+    from core.services.scheduler.schedule_result_view_context import normalize_plan_role
+
+    with pytest.raises(ValidationError) as exc_info:
+        normalize_plan_role("bad_role")
+
+    assert exc_info.value.field == "plan_role"
 
 
 def test_history_candidate_fallback_and_same_source_comparison_cannot_write_feedback(tmp_path) -> None:

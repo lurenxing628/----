@@ -9,6 +9,8 @@ from urllib.parse import urlparse
 import pytest
 
 from core.infrastructure.database import get_connection
+from core.models.schedule_plan_role import ROLE_ADOPTED
+from core.services.report.execution_review import ExecutionReviewMixin
 from tests.web_pages.reports_workbench_backlink_helpers import (
     _assert_public_output_boundaries,
     _client,
@@ -56,6 +58,56 @@ def _assert_no_adopted_continuation_links(parser) -> None:
     assert all(urlparse(href).path != "/scheduler/resource-dispatch" for href in hrefs)
     assert all(urlparse(href).path != "/reports/execution-review" for href in hrefs)
     assert all("plan_role=adopted" not in href or "scenario_id=SCENARIO-RPT" in href for href in hrefs)
+
+
+class _ReviewResolution:
+    def to_dict(self):
+        return {"plan_identity": {"user_label": "正式采用方案"}}
+
+
+class _NoFeedbackService:
+    def get_execution_state_for_scopes(self, scopes):
+        return {}
+
+
+class _ReviewHost(ExecutionReviewMixin):
+    def __init__(self) -> None:
+        self.calls = []
+        self.execution_feedback_service = _NoFeedbackService()
+
+    def _resolve_plan(self, version, plan_role, scenario_id=None):
+        self.calls.append(("resolve", version, plan_role, scenario_id))
+        return _ReviewResolution()
+
+    def _list_plan_rows_between(self, **kwargs):
+        self.calls.append(("between", kwargs))
+        return []
+
+    def _list_plan_rows_all(self, **kwargs):
+        self.calls.append(("all", kwargs))
+        return []
+
+
+def test_execution_review_service_hard_pins_adopted_null_scope() -> None:
+    host = _ReviewHost()
+
+    host.execution_review(
+        12,
+        date_from="2026-05-06",
+        date_to="2026-05-06",
+        resource_type="machine",
+        resource_id="M-RPT",
+    )
+    host.execution_review(12)
+
+    assert host.calls[0] == ("resolve", 12, ROLE_ADOPTED, None)
+    assert host.calls[1][0] == "between"
+    assert host.calls[1][1]["plan_role"] == ROLE_ADOPTED
+    assert host.calls[1][1]["scenario_id"] is None
+    assert host.calls[2] == ("resolve", 12, ROLE_ADOPTED, None)
+    assert host.calls[3][0] == "all"
+    assert host.calls[3][1]["plan_role"] == ROLE_ADOPTED
+    assert host.calls[3][1]["scenario_id"] is None
 
 
 def test_execution_review_direct_candidate_request_is_visible_blocked() -> None:

@@ -49,6 +49,7 @@ def _execution_scope(row: Dict[str, Any], op_id: int) -> OperationExecutionScope
             field=missing[0],
             details={"missing_fields": missing},
         )
+    # 现场复盘只认正式 schedule/adopted 身份；读侧硬钉与 OperationExecutionEvents 的 v19 CHECK 同向。
     return OperationExecutionScope.from_values(
         schedule_version=version,
         schedule_id=schedule_id,
@@ -158,6 +159,7 @@ class ExecutionReviewMixin:
     ):
         host = cast(_ExecutionReviewHost, self)
         if date_bounds["start_time"] and date_bounds["end_time"]:
+            # 复盘报表不接收可变 plan_role/scenario_id；候选和模拟方案只在入口处可见拦截。
             plan_rows = host._list_plan_rows_between(
                 version=version,
                 plan_role=ROLE_ADOPTED,
@@ -169,6 +171,7 @@ class ExecutionReviewMixin:
                 batch_id=batch_filter,
             )
         else:
+            # 无日期筛选时同样硬钉正式 adopted/null，不能把对比方案当现场事实复盘来源。
             plan_rows = host._list_plan_rows_all(
                 version=version,
                 plan_role=ROLE_ADOPTED,
@@ -201,6 +204,7 @@ class ExecutionReviewMixin:
     ) -> Dict[str, Any]:
         host = cast(_ExecutionReviewHost, self)
         v = int(version or 0)
+        # 先按正式 adopted/null 解析身份，再进入复盘计算，避免下游读路径被查询参数放宽。
         resolution = host._resolve_plan(v, ROLE_ADOPTED, None)
         date_bounds = self._execution_review_date_bounds(date_from, date_to)
         plan_resolution = resolution.to_dict()
@@ -216,6 +220,7 @@ class ExecutionReviewMixin:
         return {
             "version": v,
             "plan_label": _plan_identity_label(plan_resolution),
+            # 返回给页面/导出层的身份也硬钉 adopted，和上面的读路径保持同一条防线。
             "plan_role": ROLE_ADOPTED,
             "plan_resolution": plan_resolution,
             "date_from": date_bounds["date_from"],

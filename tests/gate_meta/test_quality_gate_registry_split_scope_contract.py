@@ -130,6 +130,24 @@ def test_plan_identity_summary_guardrail_is_required_and_grouped() -> None:
     assert "tests/operation_execution/operation_execution_state_revision_support.py" in set(scheduler_group["input_file_scopes"])
 
 
+def test_phase4_root_safety_nets_are_required_and_grouped() -> None:
+    run_core_tests = {
+        "tests/models_domain/test_strict_parse_blank_required.py",
+        "tests/models_domain/test_schedule_resource_filter.py",
+        "tests/models_domain/test_yesno_normalization_contract.py",
+        "tests/resource_dispatch/test_scheduler_resource_dispatch_smoke.py",
+    }
+    config_tests = {
+        "tests/config/test_scheduler_config_spec_sync_contract.py",
+    }
+    run_core_group = _group("scheduler_run_core")
+    config_group = _group("scheduler_config")
+
+    assert run_core_tests | config_tests <= set(quality_gate_shared.QUALITY_GATE_REQUIRED_TESTS)
+    assert run_core_tests <= set(run_core_group["target_paths"])
+    assert config_tests <= set(config_group["target_paths"])
+
+
 def test_resource_dispatch_result_status_label_contract_is_required_and_grouped() -> None:
     from tools import quality_gate_shared
 

@@ -20,6 +20,7 @@ class ConfigFieldPageMetadata:
     choices: Tuple[Dict[str, str], ...] = field(default_factory=tuple)
 
 
+# 与 core.models.schedule_config_runtime_fields.RuntimeConfigFieldSpec 双栈锁步；服务侧多出的页面元数据不能改变运行期语义。
 @dataclass(frozen=True)
 class ConfigFieldSpec:
     key: str
