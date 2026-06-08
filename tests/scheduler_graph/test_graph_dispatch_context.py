@@ -10,11 +10,11 @@ import pytest
 from core.services.scheduler.graph.input_adapter import GraphInputContractError
 from core.services.scheduler.graph.types import OperationGraphEdge, OperationGraphNode
 from core.services.scheduler.run.schedule_graph_dispatch_context import (
-    build_first_wave_ready_nodes,
     build_graph_resource_matching_projection,
     build_predecessor_successor_maps,
     graph_score_weights,
 )
+from core.services.scheduler.run.schedule_graph_resource_matching_context import build_first_wave_ready_nodes
 
 
 def _node(node_id: str, op_id: int) -> OperationGraphNode:

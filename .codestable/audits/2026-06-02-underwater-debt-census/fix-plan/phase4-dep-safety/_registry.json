@@ -4667,7 +4667,7 @@
   "id": "R02",
   "bucket": "B09",
   "home": "B09",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "low",
   "pathology": "P6",
   "partition": "scheduler-run",
@@ -4686,7 +4686,7 @@
    "schedule_graph_report.py",
    "test_graph_dispatch_context.py"
   ],
-  "current_evidence_2026_06_05": "schedule_graph_dispatch_context.py:461-475 转发包装器 build_first_wave_ready_nodes 仍在(:468 懒 import 真 impl),未删;test_graph_dispatch_context.py:11 仍从 dispatch_context 整块 import 该符号(import 未拆分);git status 对该文件零未提交改动。",
+  "current_evidence_2026_06_05": "2026-06-08 B 执行终态:tests/scheduler_graph/test_graph_dispatch_context.py 已拆分 import,build_first_wave_ready_nodes 改从 schedule_graph_resource_matching_context 真实现导入;core/services/scheduler/run/schedule_graph_dispatch_context.py 的 build_first_wave_ready_nodes 转发壳已删除;兄弟壳 build_graph_resource_matching_projection 保留;resource_matching_context.py 的 GraphInputContractError 灵魂守卫未动。",
   "cluster": "C01",
   "same_file_siblings": [],
   "interference_edges": [

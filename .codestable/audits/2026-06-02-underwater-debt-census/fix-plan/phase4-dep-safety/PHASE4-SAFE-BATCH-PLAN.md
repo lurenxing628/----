@@ -75,7 +75,7 @@ ROOT  承重注释 + 共享前置门（纯增量零结构，零入边，最先�
 Batch-A  独立死叶子 / 零前置 / owner=false（最早可落）
   G02(R64+R65)* G14(R10) G16(R45≡R48) G21(R28) G28(R23)
   G31(R38part+R39) G32(R38 op_type/operator) G35(R36) G37(R02) G11(R11≡R63) G38(R06+R27+gantt)
-  2026-06-08 执行补登：G28/G31/G32/G35 已在 `_registry.json` 与对应 dossier 登记 fixed；本清单保留批次归属，不表示这些单元仍待执行。
+  2026-06-08 执行补登：G28/G31/G32/G35/G37 已在 `_registry.json` 与对应 dossier 登记 fixed；本清单保留批次归属，不表示这些单元仍待执行。
   [+ LEAF-DUP-P4 纯删叶子：R53 / R61 / R70 随 A 落；LB04 安全网归 ROOT/Batch-A 之交]
   *G02(R64/R65) 同文件 scheduler_navigation_links.py，改点不同不可同质化（见 §1.2）；与 R42(G01)/R67(G34) 同文件四单元串行块
   *G03(R66) 受 E04 软序，实际延后到 G04(R54) 后按符号重定位；G25(R49旁支) 并回 Batch-B 的 G24 一次原子执行，不在 Batch-A 单独落
@@ -171,7 +171,7 @@ Batch-D  facade 删除最晚 / 跨 owner-pending 收口
 
 **成员（调度单元 + 债）**：G14(R10 死方法 `gantt_service:60-62`)、G16(R45≡R48 整文件删 `config_adapter.py`)、G21(R28 收口 `parse_finite_float`)、G28(R23 dedup `_normalize_role` 收口 model)、G31(R38 part 份 + R39 `list_unparsed`)、G32(R38 op_type:73/operator:85 两份)、G35(R36 两死方法)、G37(R02 test-only 壳)、G11(R11≡R63 去重 `_normalize` 收口 `gantt_critical_chain.py`)、G38(R06+R27+gantt 四空包同提交)。**G03(R66)** 仅登记归属，受 E04 软序实际延后到 G04(R54) 后执行；**G25(R49 旁支)** 不在 Batch-A 单独执行，并回 Batch-B 的 G24 一次原子。**+ 纯删叶子**（原 LEAF-DUP-P4 桶，按 ⚠简化声明归入此批）：R53(`batch_order.py:74` 一行)、R61(plan 死簇 `:160/164/172-187` + 重定向负向测试)、R70(`schedule_service.py:46-50` 死副本)。**+ G02(R64+R65)**（权威源 `_interference_rebuilt.md:17` 定义 G02={R64,R65} NAV-PLANID；红队 RT3-P01 补登，B17-LEAF-DEAD；红队第2轮 RT22 纠 R65 性质）：R64 = 真零调用死 helper，删 `web/viewmodels/scheduler_navigation_links.py:66-67 _has_navigation_date_range`（全仓零调用）；R65 = `_target_url` **死分支三件套**（非零调用死码）——删 def `:74-78` + 化简 `:160`（去 ` or _target_url(...)` 留 `plain_url`）+ 删孤儿 import `:4 urlencode`/`:6 query_for_target`；**两者同文件同一原子提交但改点不同、不可同质化**；与 R42（G01）same_file，删序按符号重 rg。
 
-> **2026-06-08 执行补登**：G28/G31/G32/G35 已在 `_registry.json` 与对应 dossier 登记 fixed。上方成员段保留批次归属和执行纪律，不再表示这些单元仍待执行；后续不要重复处理 R23/R36/R38/R39。
+> **2026-06-08 执行补登**：G28/G31/G32/G35/G37 已在 `_registry.json` 与对应 dossier 登记 fixed。上方成员段保留批次归属和执行纪律，不再表示这些单元仍待执行；后续不要重复处理 R23/R36/R38/R39/R02。
 
 **是否原子**：可执行成员**互相独立**（跨文件零碰撞），可各自单提交；簇内多债（G31 R38part+R39、G38 四空包）须各自原子同提交（见前置）。G03 是软序延后项，G25 是并回 G24 的同债旁支，不按 Batch-A 独立提交。整批 owner=false。
 

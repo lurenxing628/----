@@ -12,10 +12,11 @@
 
 ### 子簇 A1 — R02（独立单债，可任意时点最先落）
 - **成员**：R02。
+- **2026-06-08 B 执行终态**：已 fixed。测试 import 已拆分到真实实现，dispatch_context 的 `build_first_wave_ready_nodes` 转发壳已删除；兄弟壳与 `GraphInputContractError` 守卫未动。
 - **原子原因**：无。R02 主文件 `schedule_graph_dispatch_context.py:461-475`（test-only re-export 壳），生产零消费，与本簇任何成员**不同物理文件、不同收口点**。registry 标的 `R02↔R25 same_file` 是假边（见 C 节）。
-- **内部顺序（单债内两步，不可颠倒）**：
-  1. 先拆 `tests/scheduler_graph/test_graph_dispatch_context.py:10-15` 的 4 符号 import 块——**只**把 `build_first_wave_ready_nodes`(:11) 单拎改指 `schedule_graph_resource_matching_context`(真 `__all__` home :132)；`build_graph_resource_matching_projection`(:12,兄弟活壳)/`build_predecessor_successor_maps`(:13,:396 真定义)/`graph_score_weights`(:14,:41 真定义) 三符号**留在原 dispatch_context import**。严禁整块换路径（后三符号在 resource_matching_context 不存在 → ImportError）。
-  2. 后删壳 :461-475（连 476-477 收尾空行）。
+- **已完成的内部顺序（历史执行记录，勿重复处理）**：
+  1. 已先拆 `tests/scheduler_graph/test_graph_dispatch_context.py:10-15` 的 4 符号 import 块——**只**把 `build_first_wave_ready_nodes`(:11) 单拎改指 `schedule_graph_resource_matching_context`(真 `__all__` home :132)；`build_graph_resource_matching_projection`(:12,兄弟活壳)/`build_predecessor_successor_maps`(:13,:396 真定义)/`graph_score_weights`(:14,:41 真定义) 三符号**留在原 dispatch_context import**。严禁整块换路径（后三符号在 resource_matching_context 不存在 → ImportError）。
+  2. 已后删壳 :461-475（连 476-477 收尾空行）。
 - **禁区**：兄弟壳 `build_graph_resource_matching_projection`(:478，report.py:180 唯一生产消费=事实承重)不可连删；`schedule_graph_resource_matching_context.py:28-45` 灵魂守卫 `GraphInputContractError` 不可碰（删的是 dispatch 层壳，守卫在 resource 层 impl）。
 
 ### 子簇 A2 — R06 + R27 + gantt 空包（**强制同一提交**）
@@ -80,7 +81,7 @@
 - **R14→LB01 维持承重硬边**（不降）：同符号 `_resolve_strict_plan`，R14 让位 LB01。
 
 ### 本簇 fixed 影响（E 节详）
-- 本簇 9 债**无一在 fixed 名单**（LB03/LB06/R07/R16/R56/R57 已 fixed，均不在本簇）。R02/R06/R25/R27/R46 owner_pending=false 给终态；R52/LB08/R14/R24 owner_pending=true 待裁。无 fixed 前置门控本簇。
+- **2026-06-08 B 执行后补登：R02 已 fixed。** 其余 R06/R25/R27/R46 owner_pending=false 仍按计划给终态；R52/LB08/R14/R24 owner_pending=true 待裁。LB03/LB06/R07/R16/R56/R57 已 fixed，均不在本簇，仍不门控本簇任何结构动作。
 
 ## D. 承重前置（LB/N1/N2/R03/R58 门控的结构动作 + 禁区行）
 
@@ -106,7 +107,7 @@
 
 ## E. fixed 成员残留动作（认账注释）
 
-**本簇 9 成员（R02/R06/R25/R27/R52/LB08/R46/R14/R24）无一在 fixed 名单。** corrections E 节 fixed 态 = LB03/LB06/R07/R16/R56/R57，全部在他簇，**不门控本簇任何结构动作**，无 fixed 前置完成项需在本簇标残留认账注释。
+**本簇 9 成员中 R02 已于 2026-06-08 B 执行 fixed。** corrections E 节旧 fixed 态 = LB03/LB06/R07/R16/R56/R57，全部在他簇，**不门控本簇任何结构动作**。R02 只是 test-only 壳清理，不产生固定前置门；其余成员仍按上文顺序和 owner 裁决执行。
 
 唯一与「认账」相关的是 LB08 本身要**新增**承重认账注释（D 节），但那是本簇待落的承重前置，非「fixed 前置已完成的残留动作」。
 
@@ -114,4 +115,4 @@
 
 ## 返回摘要
 
-簇 C-GRAPH-ERR-DIAG | 原子子簇：6 个 — A1(R02 独立)/A2(R06+R27+gantt 同提交)/A3(R52+R25 同提交,R52 决策门先)/A4(LB08→R46 承重先)/A5(R14 独立,LB01 让位)/A6(R24 独立) | 关键内部顺序：R02 先拆测试 import 再删壳；R06/R27/gantt 四包一次性同提交改 SP05 :310/删 :315-316；R52 先裁 A/B→先迁 23 测试+3 契约到新文件→再删 impl+R25 垫片；LB08 注释先落再 R46 删 :162-164；R14 三步前置(迁灵魂线/改 roadmap/确认)后删；R24 先调和 networkx roadmap 再删 core+测试单行剪 :83 | 跨簇边：R14→LB01(承重先,同符号 _resolve_strict_plan,硬)；R46→R09(_positive_int:167 软位移)/R01/R19(__all__ 块不撞)；R14→LB02/LB05/R61(report_engine 避让)；R24‖R14(roadmap 范式同可并行)；R52→R50(sgs.py 弱) | 边变化：删 R02↔R25(假 same_file)；新 R06+R27+gantt 同 SP05 两行原子边、R24 测试 :83 单行剪；降 R46↔R09 为软位移(R09 收口点已存在) | 承重前置：LB08 注释+绑 regression 契约先于 R46 删行(禁区 :62/:94/:142/:175/:218/:284/:340)；跨簇 LB01 裁断先于 R14 删 :134-139；灵魂线 raise(GraphInputContractError/ReadyQueueContractError/NonFiniteDiagnosticNumber/:328 无回退)全程不削弱；分层 0 违规
+簇 C-GRAPH-ERR-DIAG | 原子子簇：6 个 — A1(R02 已 fixed)/A2(R06+R27+gantt 同提交)/A3(R52+R25 同提交,R52 决策门先)/A4(LB08→R46 承重先)/A5(R14 独立,LB01 让位)/A6(R24 独立) | 关键内部顺序：R02 已完成（历史步骤：先拆测试 import 再删壳，勿重复处理）；R06/R27/gantt 四包一次性同提交改 SP05 :310/删 :315-316；R52 先裁 A/B→先迁 23 测试+3 契约到新文件→再删 impl+R25 垫片；LB08 注释先落再 R46 删 :162-164；R14 三步前置(迁灵魂线/改 roadmap/确认)后删；R24 先调和 networkx roadmap 再删 core+测试单行剪 :83 | 跨簇边：R14→LB01(承重先,同符号 _resolve_strict_plan,硬)；R46→R09(_positive_int:167 软位移)/R01/R19(__all__ 块不撞)；R14→LB02/LB05/R61(report_engine 避让)；R24‖R14(roadmap 范式同可并行)；R52→R50(sgs.py 弱) | 边变化：删 R02↔R25(假 same_file)；新 R06+R27+gantt 同 SP05 两行原子边、R24 测试 :83 单行剪；降 R46↔R09 为软位移(R09 收口点已存在) | 承重前置：LB08 注释+绑 regression 契约先于 R46 删行(禁区 :62/:94/:142/:175/:218/:284/:340)；跨簇 LB01 裁断先于 R14 删 :134-139；灵魂线 raise(GraphInputContractError/ReadyQueueContractError/NonFiniteDiagnosticNumber/:328 无回退)全程不削弱；分层 0 违规
