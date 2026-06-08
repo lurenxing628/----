@@ -26,7 +26,7 @@
 **证据(本轮回盘)**:
 - model `core/models/schedule_config_runtime_snapshot.py:7-39` 与 service `core/services/scheduler/config/config_snapshot.py:24-56` 各 **30 字段、byte-for-byte 逐字段同名同序同默认**(本轮 sed dump 双侧逐行确认)。
 - 两栈注释 `rg 故意|刻意|双栈|parity|锁步|逐字段|mirror` → **ZERO 命中**(注释未落)。
-- parity 守卫缺口: `tests/regression_scheduler_config_spec_sync_contract.py`(47行) 对三 helper `_float_matches_choice/_normalize_valid_texts/_coerce_degradation_event/ensure_*/normalize_weight_triplet/coerce_*` **全部零命中** → 删/改任一 helper 不会让该测试红，守卫缺口实证在场。
+- parity 守卫缺口: `tests/config/test_scheduler_config_spec_sync_contract.py`(47行) 对三 helper `_float_matches_choice/_normalize_valid_texts/_coerce_degradation_event/ensure_*/normalize_weight_triplet/coerce_*` **全部零命中** → 删/改任一 helper 不会让该测试红，守卫缺口实证在场。
 - 承重禁区行回盘: 置零 model `coercion.py:470` ✅；service 对侧 helper `config_snapshot.py:89`(调用:295/:450) ✅；loud raise `MISSING_POLICY_ERROR` model `coercion.py:71-72` ✅(registry 旧值 :73-80 有 ~2-7 行漂移，按符号语义认定正确)；strict 空值 raise :153/:208 ✅。
 
 **为何绿而非红**: 计划修法严格 = 补注释(纯文档零结构)+扩 parity(纯加测试)，两者在 owner 任一裁断(永久双栈 vs R71 收敛)下都成立、都可先行。**没有删/统一/透传动作触碰 30 字段表或禁区行。** 这正是 P3 承重的正确治理——钉住而非收敛掉。

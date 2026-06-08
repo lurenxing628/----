@@ -39,7 +39,7 @@
 
 §1.1 ⚠门禁可执行性总纲(1)-(4) 四条 + 各批「批后门禁」均实盘抽查：
 
-- **6 个门禁载体测试/脚本全部 EXIST**：`tests/test_architecture_fitness.py`✓、`tests/regression_execution_review_identity_guardrail.py`✓（R56，fd 搜不到经 test_registry 注册，总纲(3) 正确）、`tests/regression_scheduler_config_spec_sync_contract.py`✓、`tests/regression_migrations.py`✓、`tests/regression_migration_schema_contract.py`✓、`tests/regression_number_utils_facade_delegates_strict_parse.py`✓（R29 真续命点）。
+- **6 个门禁载体测试/脚本全部 EXIST**：`tests/gate_meta/test_architecture_fitness.py`✓、`tests/operation_execution/test_execution_review_identity_guard.py`✓（R56，fd 搜不到经 test_registry 注册，总纲(3) 正确）、`tests/config/test_scheduler_config_spec_sync_contract.py`✓、`tests/migration_db/test_migrations.py`✓、`tests/migration_db/test_migration_schema_contract.py`✓、`tests/models_domain/test_number_utils_facade_delegates_strict_parse.py`✓（R29 真续命点）。
 - **总纲(1) stale_entries 第二断言坐实**：`test_architecture_fitness.py:229 def` + `:254 stale_entries = LOCAL_PARSE_HELPER_ALLOWLIST - found_allowlist` + `:256 assert`✓；白名单 `:75` 三项。「本轮删点全不在 LOCAL_PARSE_HELPER_NAMES」属防御性总纲，可机器自检。
 - **总纲(2) 语义雷达拆两半正确**：`run_drift_scan.py:2-4` 头注释逐字坐实「只读、不直接 fail、exit 0/1 都正常」✓——CI 跑它永远绿，正名为(a)`run_semantic_guards.py` exit 0 机器门 +(b) drift findings 对比 baseline 人工裁断，两脚本均 EXIST✓。
 - **总纲(4) v19 DB CHECK 正名正确**：CHECK 在 v19 非 v18，经 regression_migrations + regression_migration_schema_contract 机器验，两测试均 EXIST✓。

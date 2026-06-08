@@ -59,9 +59,9 @@
     "LB02/LB05/LB06(同属 execution_review『只复盘正式采用方案』adopted-only 护栏纵深，写侧↔读侧对称)"
    ],
    "contract_topology_tests": [
-    "tests/regression_operation_execution_event_foundation.py (schema/CHECK 基础契约 + 写入禁线)",
-    "tests/regression_operation_execution_feedback_routes.py (路由级写侧 adopted-only 契约)",
-    "tests/regression_operation_execution_exception_feedback.py (异常写侧 adopted-only 契约)"
+    "tests/operation_execution/test_operation_execution_event_foundation.py (schema/CHECK 基础契约 + 写入禁线)",
+    "tests/operation_execution/test_operation_execution_feedback_routes.py (路由级写侧 adopted-only 契约)",
+    "tests/operation_execution/test_operation_execution_exception_feedback.py (异常写侧 adopted-only 契约)"
    ],
    "downstream_effect": "若把 451-453 三写死改成透传 context.* 或删 348-354 拒绝分支：现场反馈可写到 candidate/scenario 预览方案 → execution_fact_provider:35 纯按 op_id 读无过滤 → schedule_execution_guardrails:186 把预览态当真实现场喂入重排护栏 → 坏数据进排产决策(数据完整性事故)。反向：repo:191-193 不强制常量，改透传后仅剩 schema CHECK:256-258 兜底，合法 adopted 反馈反而触发 IntegrityError→AppError(DB_INTEGRITY_ERROR) 变用户侧报错。",
    "fix_invalidation_risk": "若 B11 先删 R17 并顺手『清理/重构』_build_event_payload，会打穿 LB01 消毒层。修法顺序必须 B01 注释先落、再让 B11 动 R17(PHASE0 §10.1)。严禁以『context 都有这些字段了为何不透传』之名把写死改成 context.source_table/effective_plan_role/scenario_id。",
@@ -81,10 +81,10 @@
     "core/services/scheduler/execution_fact_provider.py:35 (_fact_from_state 纯按 op_id) → core/services/scheduler/run/schedule_execution_guardrails.py:186 (facts_by_op_id 喂重排护栏，无 role/scenario 过滤)"
    ],
    "test_consumers": [
-    "tests/regression_operation_execution_feedback_routes.py:336 (test_write_post_rejects_candidate_preview_and_history_query_context — POST start 带 plan_role=baseline_best / plan_role=adopted&scenario_id=scenario-plain / version=1 历史 三 case → 409 not_current_official_plan 且 _event_count==0；这是端到端写侧拒绝回归，直接覆盖 LB01 precondition(c)，并非报告说的『缺端到端回归』)",
-    "tests/regression_operation_execution_exception_feedback.py:485 (test_report_exception_rejects_candidate_scenario_and_history_plans — 同三 case → 409 not_current_official_plan)",
-    "tests/regression_operation_execution_event_foundation.py:272 (repo 级 insert_event source_table='candidate_rows' must raise — schema CHECK 底)",
-    "tests/regression_operation_execution_feedback_routes.py:294-296,369-371 (adopted/schedule happy path 正向)"
+    "tests/operation_execution/test_operation_execution_feedback_routes.py:336 (test_write_post_rejects_candidate_preview_and_history_query_context — POST start 带 plan_role=baseline_best / plan_role=adopted&scenario_id=scenario-plain / version=1 历史 三 case → 409 not_current_official_plan 且 _event_count==0；这是端到端写侧拒绝回归，直接覆盖 LB01 precondition(c)，并非报告说的『缺端到端回归』)",
+    "tests/operation_execution/test_operation_execution_exception_feedback.py:485 (test_report_exception_rejects_candidate_scenario_and_history_plans — 同三 case → 409 not_current_official_plan)",
+    "tests/operation_execution/test_operation_execution_event_foundation.py:272 (repo 级 insert_event source_table='candidate_rows' must raise — schema CHECK 底)",
+    "tests/operation_execution/test_operation_execution_feedback_routes.py:294-296,369-371 (adopted/schedule happy path 正向)"
    ]
   },
   "owner_pending": false,
@@ -113,7 +113,7 @@
    "scheduler_reports_workbench.py",
    "workbench_links.py"
   ],
-  "current_evidence_2026_06_05": "execution_review.py:192 execution_review() 签名仍刻意不含 plan_role/scenario_id,:163-164/:174-175/:204/:219 硬钉 ROLE_ADOPTED/None 原样在;计划两动作之一已落:新增请求级负向契约测试 tests/regression_execution_review_identity_guardrail.py(plan_role=baseline_best/scenario_id=SCENARIO-RPT 在页与导出均可见拦截+400);但 :188-205 上方零 # 注释,§90 LB-A2『刻意不对称』本地护栏注释未补。",
+  "current_evidence_2026_06_05": "execution_review.py:192 execution_review() 签名仍刻意不含 plan_role/scenario_id,:163-164/:174-175/:204/:219 硬钉 ROLE_ADOPTED/None 原样在;计划两动作之一已落:新增请求级负向契约测试 tests/operation_execution/test_execution_review_identity_guard.py(plan_role=baseline_best/scenario_id=SCENARIO-RPT 在页与导出均可见拦截+400);但 :188-205 上方零 # 注释,§90 LB-A2『刻意不对称』本地护栏注释未补。",
   "cluster": "C01",
   "same_file_siblings": [
    "LB05",
@@ -243,10 +243,10 @@
     "R54(scheduler_reports_workbench.py guard 字段投影)"
    ],
    "contract_topology_tests": [
-    "tests/regression_reports_workbench_navigation_contract.py",
-    "tests/regression_reports_workbench_backlink_contract.py",
+    "tests/web_pages/test_reports_workbench_navigation_contract.py",
+    "tests/web_pages/test_reports_workbench_backlink_contract.py",
     "tests/regression_scheduler_workbench_link_guardrails.py",
-    "tests/regression_plan_vs_actual_review.py"
+    "tests/scheduler_analysis/test_plan_vs_actual_review.py"
    ],
    "downstream_effect": "若给 execution_review 补 plan_role/scenario_id 透传：report_plan_helpers:56-106 按 role/scenario 取明细 → query_service:182 _resolve_scenario_plan 换 source_table=SOURCE_ADJUSTMENT_SCENARIO_ROWS → 预览/对比方案明细拼进『计划vs实际』并经 export_execution_review_xlsx:178 导出；返回 dict(:164-176) 不携带/不拦截 is_scenario_preview → 预览静默冒充正式，无 loud failure(违灵魂线)。",
    "fix_invalidation_risk": "最大缺口=全仓无 GET /reports/execution-review?plan_role=<非adopted>&scenario_id=X 断言服务端拒绝/回退 adopted 的请求级回归(现有 backlink:355/plan_vs_actual:358-359 仅是链接生成/导航的负向 not-in 断言)。若 R62 重构或他人以『统一四报表签名』之名加 plan_role 形参，CI 全绿但 service 层契约已破。注释必须钉回 :141。",
@@ -263,10 +263,10 @@
     "core/services/scheduler/schedule_plan_query_service.py:176 (resolve_plan_view: scenario_id 非空即转 scenario), :460 (_resolve_scenario_plan), :494 (is_scenario_preview=True 返回 SOURCE_ADJUSTMENT_SCENARIO_ROWS → 证明 role/scenario 一旦透传就换取数源表)"
    ],
    "test_consumers": [
-    "tests/regression_plan_vs_actual_review.py:204,234,311,330,365 (execution_review 页+导出行为，唯一直接打 service 的测试文件)",
-    "tests/regression_plan_vs_actual_review.py:358-359 (负向: nav_body 不含 /reports/execution-review?...plan_role / ...scenario_id)",
-    "tests/regression_reports_workbench_navigation_contract.py:84 (test_execution_review_navigation_keeps_formal_plan_role — 导航链接 plan_role=adopted)",
-    "tests/regression_reports_workbench_backlink_contract.py:347 (test_non_adopted_report_nav_disables_execution_review_link), :355 (负向: 不含 execution-review?version=12&plan_role=baseline_best)",
+    "tests/scheduler_analysis/test_plan_vs_actual_review.py:204,234,311,330,365 (execution_review 页+导出行为，唯一直接打 service 的测试文件)",
+    "tests/scheduler_analysis/test_plan_vs_actual_review.py:358-359 (负向: nav_body 不含 /reports/execution-review?...plan_role / ...scenario_id)",
+    "tests/web_pages/test_reports_workbench_navigation_contract.py:84 (test_execution_review_navigation_keeps_formal_plan_role — 导航链接 plan_role=adopted)",
+    "tests/web_pages/test_reports_workbench_backlink_contract.py:347 (test_non_adopted_report_nav_disables_execution_review_link), :355 (负向: 不含 execution-review?version=12&plan_role=baseline_best)",
     "tests/regression_scheduler_workbench_link_guardrails.py:149 (禁用断言), :170 (test_execution_review_rejects_scenario_identity_from_extra_params)"
    ]
   },
@@ -292,7 +292,7 @@
    "schedule_orchestrator.py",
    "schedule_plan_identity_builder.py"
   ],
-  "current_evidence_2026_06_05": "P4 静默吞噬已治理(adv_refuted)。schedule_plan_identity_builder.py:24-27 _parsed_summary_flag_is_true(...,fail_closed=False) parse_failed时返回bool(fail_closed);:185 build_plan_identity 调用处显式 fail_closed=True(由静默 return False 改 fail-closed 判模拟);新增可观测字段 :233-234 result_summary_parse_failed/_reason;守卫测试 tests/regression_scheduler_plan_identity_summary_guardrail.py 已纳管(git status=A,不再 untracked)。唯一缺口:计划第3动作『:185/:24-27 认账 fail-closed 注释』未补(零 # 注释),但债本体的坏数据静默兜底已结构性消除。",
+  "current_evidence_2026_06_05": "P4 静默吞噬已治理(adv_refuted)。schedule_plan_identity_builder.py:24-27 _parsed_summary_flag_is_true(...,fail_closed=False) parse_failed时返回bool(fail_closed);:185 build_plan_identity 调用处显式 fail_closed=True(由静默 return False 改 fail-closed 判模拟);新增可观测字段 :233-234 result_summary_parse_failed/_reason;守卫测试 tests/schedule/route_view/test_scheduler_plan_identity_summary_guard.py 已纳管(git status=A,不再 untracked)。唯一缺口:计划第3动作『:185/:24-27 认账 fail-closed 注释』未补(零 # 注释),但债本体的坏数据静默兜底已结构性消除。",
   "cluster": "C01",
   "same_file_siblings": [],
   "interference_edges": [
@@ -321,7 +321,7 @@
     "治理文件 schedule_plan_identity.py/schedule_plan_resolution.py 被 R54(guard 字段投影)+dashboard 等多债共享 is_current_executable_official_version 投影"
    ],
    "contract_topology_tests": [
-    "tests/regression_scheduler_plan_identity_summary_guardrail.py (新建未跟踪守卫，钉 fail-closed 语义 + 可见缺口契约 + 不提升旧版本)"
+    "tests/schedule/route_view/test_scheduler_plan_identity_summary_guard.py (新建未跟踪守卫，钉 fail-closed 语义 + 可见缺口契约 + 不提升旧版本)"
    ],
    "downstream_effect": "治理已生效：坏 summary 不再静默当『非模拟』，fail_closed=True 判为模拟→is_current_executable_official_version/can_write_feedback False→禁派工禁写反馈 + 前台『当前排产摘要读取失败』可见缺口。verdict 警示的『原地改 raise 会让一条 legacy 坏行炸全链可用性』被规避(用标记而非 raise)。latest_executable_official_version(:41-45)仍全量扫历史，但 fail_closed 仅影响单行身份判定不抛错，无可用性放大。",
    "fix_invalidation_risk": "治理已落但守卫测试 regression_scheduler_plan_identity_summary_guardrail.py 仍 untracked——并行 Claude 的 git clean/checkout 会删它(MEMORY 已记此坑 concurrent-claude-git-clean-wipes-untracked)，删后治理裸奔。必须立即 git add。若他人按旧报告『P4 改 loud raise』动手，会与现治理(fail-closed 标记)冲突并引入 verdict 警示的可用性放大事故。",
@@ -339,9 +339,9 @@
     "下游身份链消费 is_current_executable_official_version/can_write_feedback: web/viewmodels/scheduler_workbench_links.py:287, web/routes/dashboard.py:135, web/routes/domains/scheduler/scheduler_resource_dispatch.py:72, scheduler_navigation_publish.py:21"
    ],
    "test_consumers": [
-    "tests/regression_scheduler_plan_identity_summary_guardrail.py:25 (test_bad_current_result_summary_is_visible_gap_and_blocks_feedback_urls — 坏 JSON→『当前排产摘要读取失败』可见+禁写 URL)",
-    "tests/regression_scheduler_plan_identity_summary_guardrail.py:77 (test_bad_newer_summary_does_not_promote_previous_official_version — fail-closed 端到端: parse_failed→is_current_executable_official_version False/can_write_feedback False，不提升旧版本)",
-    "tests/regression_scheduler_plan_identity_summary_guardrail.py:114 (test_dashboard_invalid_plan_identity_is_visible_gap_instead_of_500 — 可见缺口而非 500)"
+    "tests/schedule/route_view/test_scheduler_plan_identity_summary_guard.py:25 (test_bad_current_result_summary_is_visible_gap_and_blocks_feedback_urls — 坏 JSON→『当前排产摘要读取失败』可见+禁写 URL)",
+    "tests/schedule/route_view/test_scheduler_plan_identity_summary_guard.py:77 (test_bad_newer_summary_does_not_promote_previous_official_version — fail-closed 端到端: parse_failed→is_current_executable_official_version False/can_write_feedback False，不提升旧版本)",
+    "tests/schedule/route_view/test_scheduler_plan_identity_summary_guard.py:114 (test_dashboard_invalid_plan_identity_is_visible_gap_instead_of_500 — 可见缺口而非 500)"
    ]
   },
   "owner_pending": true,
@@ -454,8 +454,8 @@
     "R54(guard 字段投影)"
    ],
    "contract_topology_tests": [
-    "tests/regression_plan_vs_actual_review.py",
-    "tests/regression_reports_workbench_navigation_contract.py",
+    "tests/scheduler_analysis/test_plan_vs_actual_review.py",
+    "tests/web_pages/test_reports_workbench_navigation_contract.py",
     "tests/regression_scheduler_workbench_link_guardrails.py"
    ],
    "downstream_effect": "同 LB02：统一签名加 plan_role/scenario_id → operation_execution_event_repo.py:267 aggregate_states_by_op_ids 喂任何 op_id 都照配 → 模拟/历史方案明细以『计划和现场实际』正式身份呈现给车间(预览冒充既成事实，数据完整性事故) + 与 web 层 forbidden-params 守卫产生认知错位。",
@@ -474,8 +474,8 @@
     "core/services/scheduler/operation_execution_feedback_service.py:347-362 (写侧 LB01 硬拒，印证读侧硬钉是对称设计而非疏漏)"
    ],
    "test_consumers": [
-    "tests/regression_plan_vs_actual_review.py:204,234,311,330,350-359,365 (execution_review 页+导出 service 级行为 + nav 负向断言)",
-    "tests/regression_reports_workbench_navigation_contract.py:84 (keeps_formal_plan_role)",
+    "tests/scheduler_analysis/test_plan_vs_actual_review.py:204,234,311,330,350-359,365 (execution_review 页+导出 service 级行为 + nav 负向断言)",
+    "tests/web_pages/test_reports_workbench_navigation_contract.py:84 (keeps_formal_plan_role)",
     "tests/regression_scheduler_workbench_link_guardrails.py:131,149,170 (链接禁用/拒 scenario，仅钉 viewmodel link builder)"
    ]
   },
@@ -601,9 +601,9 @@
     "LB02/LB05(底层 core execution_review service，本债是其 web 层对应)"
    ],
    "contract_topology_tests": [
-    "tests/regression_reports_workbench_navigation_contract.py",
+    "tests/web_pages/test_reports_workbench_navigation_contract.py",
     "tests/regression_scheduler_workbench_link_guardrails.py",
-    "tests/regression_scheduler_workbench_links_contract.py"
+    "tests/schedule/route_view/test_scheduler_workbench_links_contract.py"
    ],
    "downstream_effect": "若把 :367/:369 的 'adopted',None 改成 request_plan_role()/request_scenario_id()：page_plan_resolution 走 resolve_plan_view→_resolve_scenario_plan(query_service:182) → 渲染『模拟方案甲』/preview 标签盖在 adopted 行上(header≠body 自欺，违灵魂线不自欺) + nav context 经 :373 published override 泄漏 plan_role/scenario_id 进下游链接(navigation_context:77-79 先读 override，绕过 :80-82) + 默认日期窗用 preview span 计算。",
    "fix_invalidation_risk": "测试盲区=无 GET /reports/execution-review?plan_role=&scenario_id= 断言渲染标签仍 adopted / 发布 nav context plan_role=adopted 的页路由级回归(现有只钉 viewmodel link builder，:367/:369 无覆盖)。若 R56/R57 重构 navigation_context 或他人以『统一报表页都从 request 读 plan_role』之名动手，CI 绿但标签/nav 不变量破。绝不可给 core execution_review() 加形参(行数据承重在 core，须原样保留)。",
@@ -621,10 +621,10 @@
     "web/routes/reports_export_routes.py:115 (export 路由 raw_plan_role='adopted' 写死，仅供 log_report_export 记账)"
    ],
    "test_consumers": [
-    "tests/regression_reports_workbench_navigation_contract.py:84 (keeps_formal_plan_role), :130 (superseded adopted 历史)",
+    "tests/web_pages/test_reports_workbench_navigation_contract.py:84 (keeps_formal_plan_role), :130 (superseded adopted 历史)",
     "tests/regression_scheduler_workbench_link_guardrails.py:131,149,170 (link builder 禁用/拒 scenario — 仅钉 viewmodel，不钉 :367/:369 页路由)",
-    "tests/regression_scheduler_workbench_links_contract.py:281 (viewmodel link builder)",
-    "tests/regression_scheduler_plan_identity_summary_guardrail.py:59-74 (execution-review 页坏摘要可见性，间接经 :367 链路)"
+    "tests/schedule/route_view/test_scheduler_workbench_links_contract.py:281 (viewmodel link builder)",
+    "tests/schedule/route_view/test_scheduler_plan_identity_summary_guard.py:59-74 (execution-review 页坏摘要可见性，间接经 :367 链路)"
    ]
   },
   "owner_pending": false,
@@ -678,8 +678,8 @@
     "R08 (scheduler_resource_dispatch_execution.py, 同执行车道, viewmodel)"
    ],
    "contract_topology_tests": [
-    "tests/test_sp05_path_topology_contract.py:166,516 — PIN scheduler_resource_dispatch_execution_routes.py 模块拓扑(非本 service 文件;routes 模块须保留,删法不涉及它)",
-    "tests/regression_operation_execution_feedback_routes.py:336-358 — 写门禁(preview/candidate/stale 被 not_current_official_plan 拒)独立于本展示卡,佐证卡的 can_write_feedback 不授权任何写"
+    "tests/gate_meta/test_sp05_path_topology_contract.py:166,516 — PIN scheduler_resource_dispatch_execution_routes.py 模块拓扑(非本 service 文件;routes 模块须保留,删法不涉及它)",
+    "tests/operation_execution/test_operation_execution_feedback_routes.py:336-358 — 写门禁(preview/candidate/stale 被 not_current_official_plan 拒)独立于本展示卡,佐证卡的 can_write_feedback 不授权任何写"
    ],
    "downstream_effect": "仅影响单条写入成功后的回显卡正确性,不影响写门禁(门禁独立强校验:operation_execution_feedback_service.py:347-365 _load_current_official_schedule 在写事务内 schedule_repo.get→None 即 raise NOT_FOUND;resource_dispatch_actual_record_service.py:214-218 _task_ref_from_feedback_context 同样先 raise NOT_FOUND)。故建卡时 schedule 行已在同连接证存在,131-141 分支生产不可达;转 raise 不影响 happy path。",
    "fix_invalidation_risk": "(1) 导入缺口:本文件 :5 仅 `from core.infrastructure.errors import ValidationError`,修法须补 `AppError, ErrorCode`。(2) 同文件 R09(B05)重构 _positive_int,若 B05 先落会移 131-141 行号——须串行(PHASE0 §10.1 B01 先于动本文件的桶;§10.5 R09 新建 parse_optional_positive_int 先于其迁移)。(3) 改 raise 前须锁定 routes:264-265/278-279 两调用点恒在建卡前已过 schedule 存在性写门禁(已证)。",
@@ -695,7 +695,7 @@
     "web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py:278-279 — _record_legacy_action 写步骤,随后建卡"
    ],
    "test_consumers": [
-    "tests/regression_scheduler_candidate_resource_dispatch_contract.py:364,382 — 仅用 ResourceDispatchExecutionService.get_execution_context(非 task_card_for_feedback_context);未 PIN schedule=None 静默兜底分支(131-141)。结论:转 raise 不破现有测试,需新增一条该分支转 raise 的回归测试。"
+    "tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py:364,382 — 仅用 ResourceDispatchExecutionService.get_execution_context(非 task_card_for_feedback_context);未 PIN schedule=None 静默兜底分支(131-141)。结论:转 raise 不破现有测试,需新增一条该分支转 raise 的回归测试。"
    ]
   },
   "owner_pending": false,
@@ -758,7 +758,7 @@
     "R07 (resource_dispatch_execution_service.py, 同执行车道, service)"
    ],
    "contract_topology_tests": [
-    "tests/regression_resource_dispatch_workbench_lane_contract.py (执行车道契约;但不 PIN 死文案,删分支不破)"
+    "tests/resource_dispatch/test_resource_dispatch_workbench_lane_contract.py (执行车道契约;但不 PIN 死文案,删分支不破)"
    ],
    "downstream_effect": "删死分支+死文案不改任何生产行为((True,False)不可达)。真写门禁=operation_execution_feedback_service.py:361(not can_write_feedback 即 raise)+ resource_dispatch_actual_record_service.py:137-149(_execution_context_for_write/_ensure_context_can_write 仅基于 can_write_feedback/plan_role/source_table/scenario,全程不读 feedback_write_enabled)。'还没开启'文案真实用户永不可见。",
    "fix_invalidation_risk": "(1) 方案A(默认):仅删 viewmodel:226-227 与 361-362 的 feedback_write_enabled 分支 + :24 常量,保留参数,无测试断(已 grep 证)。(2) 方案B(彻底收口 feedback_write_enabled→can_write_feedback):须同步改 4 处签名 service:129 默认参 + routes:184/192/201 三 kwarg + test:164-175 build_task_card 调用,去 kwarg 后再删分支。(3) 两法前应向 'resource dispatch execution lane' roadmap(commit 65870e47)owner 确认近期不上线真'现场记录保护总开关'。(4) 同文件 R09 须串行避免移行号。",
@@ -775,7 +775,7 @@
     "web/viewmodels/scheduler_resource_dispatch_execution.py:226-227,361-362 — 消费(死分支);:233 build_available_actions 用 can_write and feedback_write_enabled"
    ],
    "test_consumers": [
-    "tests/regression_resource_dispatch_workbench_lane_contract.py:174 — test_task_card_uses_plain_fallback_when_part_is_missing 传 (can_write_feedback=False, feedback_write_enabled=False);因 can_write=False 在 :224/:233 双重短路,死分支不执行;断言只覆盖 part_label/actual_time_label/actual_delta_summary",
+    "tests/resource_dispatch/test_resource_dispatch_workbench_lane_contract.py:174 — test_task_card_uses_plain_fallback_when_part_is_missing 传 (can_write_feedback=False, feedback_write_enabled=False);因 can_write=False 在 :224/:233 双重短路,死分支不执行;断言只覆盖 part_label/actual_time_label/actual_delta_summary",
     "(无)— git grep 全仓 tests 零处断言 '现场记录保护'/FEEDBACK_DISABLED/_FEEDBACK_DISABLED_REASON 字符串"
    ]
   },
@@ -921,7 +921,7 @@
     "R54(同改build_workbench_plan_context: R42删:187形参+:229存储, R54在同函数加guard字段)"
    ],
    "contract_topology_tests": [
-    "tests/regression_reports_workbench_navigation_contract.py:109/122/126 (契约: 断言plan_id经URL+隐藏表单透传, 删plan_id必须同步退这3断言)"
+    "tests/web_pages/test_reports_workbench_navigation_contract.py:109/122/126 (契约: 断言plan_id经URL+隐藏表单透传, 删plan_id必须同步退这3断言)"
    ],
    "downstream_effect": "所有工作台/报表/导出链接URL多挂一个无效plan_id,误导维护者以为它做方案定位. 删除链需同步改3处roadmap验收制度化(见co_change roadmap项)+navigation_contract测试. 无功能依赖,误删风险低,但触碰in-progress feature契约,需先与roadmap对齐. 制度化危险:被写进exit_check/acceptance/checklist把零消费参数变成永久供养验收项.",
    "fix_invalidation_risk": "①必须与R60同删(共享link_query:118/154,只删一边留半截字段表=新P3残渣). ②删build_workbench_plan_context的plan_id形参/键会让R54的guard字段收口rebase. ③roadmap 3处制度化项(items.yaml:289/acceptance.md:52/checklist.yaml:82)若不同步删,未来LLM看roadmap会重新供养,本次删了下次又长回来. ④navigation_contract测试3断言不退则CI红.",
@@ -946,9 +946,9 @@
     "DEATH PROOF: git grep -nP '\\bplan_id\\b' core/ data/ = 0命中(143个substring全是plan_identity/plan_idempotency,_plan_idempotency_keys是无关import_token幂等键)"
    ],
    "test_consumers": [
-    "tests/regression_reports_workbench_navigation_contract.py:109 (URL含plan_id=PLAN-RPT)",
-    "tests/regression_reports_workbench_navigation_contract.py:122 (assert query['plan_id']==['PLAN-RPT'])",
-    "tests/regression_reports_workbench_navigation_contract.py:126 (assert hidden_inputs['plan_id']==['PLAN-RPT'])",
+    "tests/web_pages/test_reports_workbench_navigation_contract.py:109 (URL含plan_id=PLAN-RPT)",
+    "tests/web_pages/test_reports_workbench_navigation_contract.py:122 (assert query['plan_id']==['PLAN-RPT'])",
+    "tests/web_pages/test_reports_workbench_navigation_contract.py:126 (assert hidden_inputs['plan_id']==['PLAN-RPT'])",
     "(全仓plan_id测试足迹仅此1文件3行,删除会红)"
    ]
   },
@@ -1068,10 +1068,10 @@
     "R60(plan_id字段表与guard字段投影在navigation_links.py同文件相邻,删plan_id字段表时勿动guard相关)"
    ],
    "contract_topology_tests": [
-    "tests/regression_reports_workbench_navigation_contract.py (契约: 11 guard键经 navigation_publish 必须齐全)",
-    "tests/regression_resource_dispatch_site_records_frontend_contract.py (契约: execution_review_link 服务端guard字段保全 + :296-299 反向断言前端JS不得自拷requested/effective/source_table/scenario_id)",
+    "tests/web_pages/test_reports_workbench_navigation_contract.py (契约: 11 guard键经 navigation_publish 必须齐全)",
+    "tests/resource_dispatch/test_resource_dispatch_site_records_frontend_contract.py (契约: execution_review_link 服务端guard字段保全 + :296-299 反向断言前端JS不得自拷requested/effective/source_table/scenario_id)",
     "tests/regression_scheduler_workbench_link_guardrails.py (契约: 下游放行判定逐键)",
-    "tests/regression_dashboard_workbench_contract.py (契约: dashboard第4套投影)"
+    "tests/web_pages/test_dashboard_workbench_contract.py (契约: dashboard第4套投影)"
    ],
    "downstream_effect": "报表全入口卡+行级动作+甘特/周计划/分析/派工导航上下文4条链全依赖手拷字段完整性;漏拷is_comparison或is_superseded_by_newer_version任一=fail-open,旧正式版本冒充现行采用方案放行execution_review写侧护栏. 收口正解=让收口点build_workbench_plan_context(workbench_links.py:183-251)承载guard字段(目前签名完全不收guard,4处builder输出后才手补挂),4套手维列表统一delegate. 注意:R54修复范围必须含dashboard_workbench第4套(报告漏列),否则收口不彻底.",
    "fix_invalidation_risk": "①若R42/R60先从build_workbench_plan_context签名删plan_id而R54后改→R54需rebase到新签名(links.py:183-251整块漂移);反之R54先加guard字段,R42删plan_id时dict键位移. 二者MUST同批次. ②若只收编报告点名的3套而漏dashboard_workbench第4套→收口不完整,债残留. ③若B11(R17 operation_execution_feedback)或B02在R54收口前touch navigation_publish→行号再漂. ④收口后必须保留/迁移上述4个契约测试断言,删任一手维列表前确认其契约测试改读收口点输出.",
@@ -1096,13 +1096,13 @@
     "core/services/scheduler/schedule_result_view_context.py:277-326 (收口点plan_role_filter_fields,唯一真相全集)"
    ],
    "test_consumers": [
-    "tests/regression_reports_workbench_navigation_contract.py:406-443 (test_scheduler_navigation_publish_keeps_plan_guard_fields: 钉11键经navigation_publish透传齐全+execution_review顶导被禁)",
-    "tests/regression_resource_dispatch_site_records_frontend_contract.py:177-211 (test_execution_review_link_keeps_server_side_guard_fields: 6个blocked_fields逐一验证拦截)",
+    "tests/web_pages/test_reports_workbench_navigation_contract.py:406-443 (test_scheduler_navigation_publish_keeps_plan_guard_fields: 钉11键经navigation_publish透传齐全+execution_review顶导被禁)",
+    "tests/resource_dispatch/test_resource_dispatch_site_records_frontend_contract.py:177-211 (test_execution_review_link_keeps_server_side_guard_fields: 6个blocked_fields逐一验证拦截)",
     "tests/regression_scheduler_workbench_link_guardrails.py:23-50 (can_emit_feedback_write_urls逐字段护栏)",
     "tests/regression_scheduler_workbench_link_guardrails.py:120-162 (_is_formal_adopted_context下游读端逐键)",
-    "tests/regression_dashboard_workbench_contract.py:101-103,145-147,236 (dashboard第4套guard字段)",
-    "tests/regression_schedule_result_view_context.py:176,222-233 (收口点plan_role_filter_fields输出键对齐)",
-    "tests/regression_scheduler_dispatch_plan_identity_guardrails.py:419-435 (fields[is_current_executable_official_version]护栏)"
+    "tests/web_pages/test_dashboard_workbench_contract.py:101-103,145-147,236 (dashboard第4套guard字段)",
+    "tests/schedule/summary/test_schedule_result_view_context.py:176,222-233 (收口点plan_role_filter_fields输出键对齐)",
+    "tests/resource_dispatch/test_scheduler_dispatch_plan_identity_guard.py:419-435 (fields[is_current_executable_official_version]护栏)"
    ]
   },
   "owner_pending": true,
@@ -1179,9 +1179,9 @@
     "LB06(同文件承重, PHASE0§5: R56,R57在navigation_context本桶内协调)"
    ],
    "contract_topology_tests": [
-    "tests/regression_plan_vs_actual_review.py:350-359 (护栏契约: 复盘页不得泄漏scenario_id/plan_role, R56的本质行为锁)",
-    "tests/regression_scheduler_workbench_links_contract.py (execution_review放行/禁用契约)",
-    "tests/regression_page_manual_registry.py:512 (endpoint字面量登记, 路由重命名的连带破坏面)"
+    "tests/scheduler_analysis/test_plan_vs_actual_review.py:350-359 (护栏契约: 复盘页不得泄漏scenario_id/plan_role, R56的本质行为锁)",
+    "tests/schedule/route_view/test_scheduler_workbench_links_contract.py (execution_review放行/禁用契约)",
+    "tests/web_pages/test_page_manual_registry.py:512 (endpoint字面量登记, 路由重命名的连带破坏面)"
    ],
    "downstream_effect": "全站导航chrome. 复盘页若泄漏scenario_id则正式方案复盘被模拟方案身份污染,违背收口目标. 字面量匹配脆弱性:路由重命名/删if特例=护栏静默失效且无注释提示这是有意护栏. 修法只能补'我是故意的'注释(说明为何用字面量匹配+为何强制adopted/清scenario_id)+绑既有契约测试,严禁删/统一/透传(load_bearing+P2红线).",
    "fix_invalidation_risk": "①若R42或其他nav重构先落并位移navigation_context行号→注释需随护栏块移动. ②注释/契约测试治标不治本:endpoint重命名脆弱性仍在(注释挡不住rename,契约测试regression_plan_vs_actual_review:350-359是真正的rename守卫,必须绑牢). ③若未来有人把字面量匹配'优化'成集中常量/删if特例,即便有注释仍会失护栏——所以契约测试必须覆盖'换路由名/换path后scenario_id不泄漏'断言. ④override路径(navigation_context:77-79 _navigation_context_override)绕过本护栏,补注释需说明override场景由publish侧(navigation_publish已含guard)负责.",
@@ -1198,11 +1198,11 @@
     "兄弟强制点: web/viewmodels/scheduler_workbench_link_query.py:5-16 (_EXECUTION_REVIEW_FORBIDDEN_EXTRA_PARAMS: URL侧禁带plan_role/scenario_id/is_*的负向清单,与R56同护栏目标不同收口面)"
    ],
    "test_consumers": [
-    "tests/regression_plan_vs_actual_review.py:350-359 (最强契约: 访问/reports/utilization带scenario_id后断言execution-review链接不含plan_role/scenario_id+顶导禁用'只复盘正式采用方案')",
-    "tests/regression_scheduler_workbench_links_contract.py:283-295 (preview context禁用execution_review)",
-    "tests/regression_scheduler_workbench_links_contract.py:307-327 (execution_review参数收敛)",
-    "tests/regression_page_manual_registry.py:512 (endpoint字面量'reports.execution_review_page'登记, 重命名会撞此处)",
-    "tests/regression_reports_workbench_navigation_contract.py:408,439 (current_workbench_navigation_context行为断言)"
+    "tests/scheduler_analysis/test_plan_vs_actual_review.py:350-359 (最强契约: 访问/reports/utilization带scenario_id后断言execution-review链接不含plan_role/scenario_id+顶导禁用'只复盘正式采用方案')",
+    "tests/schedule/route_view/test_scheduler_workbench_links_contract.py:283-295 (preview context禁用execution_review)",
+    "tests/schedule/route_view/test_scheduler_workbench_links_contract.py:307-327 (execution_review参数收敛)",
+    "tests/web_pages/test_page_manual_registry.py:512 (endpoint字面量'reports.execution_review_page'登记, 重命名会撞此处)",
+    "tests/web_pages/test_reports_workbench_navigation_contract.py:408,439 (current_workbench_navigation_context行为断言)"
    ]
   },
   "owner_pending": false,
@@ -1282,7 +1282,7 @@
     "R42 (navigation_context.py:86 plan_id 死面包屑读入点) — 与 R57 fallback 同块 build_workbench_plan_context 调用"
    ],
    "contract_topology_tests": [
-    "tests/regression_reports_workbench_navigation_contract.py (导航上下文契约)",
+    "tests/web_pages/test_reports_workbench_navigation_contract.py (导航上下文契约)",
     "tests/regression_aps_workbench_flow_contract.py (新增工作台流契约,PIN fallback 原样透传 plan_role) — 注意此为工作树未提交新测试"
    ],
    "downstream_effect": "fallback 把 request.args 原样塞进所有导航/回跳链接 query。非复盘 scheduler 页带 ?plan_role=adopted&version=旧版 时仍按 adopted 透传下游重新取数,可能旧版本误标 adopted(正是 commit 想消灭的显示层自欺,generic fallback 仍漏)。安全网:fallback 从不设 guard 字段(grep 证 navigation_context.py 零 is_current_executable_official_version/is_official_plan/is_superseded),故 _is_formal_adopted_context→False,execution-review 入口在 fallback 页恒 disabled。",
@@ -1302,7 +1302,7 @@
     "templates/components/reports_nav_macros.html:15 — build_report_navigation_links(active)"
    ],
    "test_consumers": [
-    "tests/regression_reports_workbench_navigation_contract.py:439,456,458,459,471 — 直接断言 current_workbench_navigation_context() 字典值",
+    "tests/web_pages/test_reports_workbench_navigation_contract.py:439,456,458,459,471 — 直接断言 current_workbench_navigation_context() 字典值",
     "tests/regression_aps_workbench_flow_contract.py:363-396 (新增未跟踪) test_workbench_non_adopted_review_entry_is_disabled_and_plain_chinese — 走 /scheduler/analysis?plan_role=baseline_best 的 fallback 路径,断言 home_query['plan_role']==['baseline_best'] 原样透传 + execution-review 入口 disabled",
     "tests/regression_aps_workbench_flow_contract.py:100-300 (新) test_workbench_main_flow... — 全程断言 plan_role=adopted 在 fallback 跨页透传"
    ]
@@ -1381,7 +1381,7 @@
     "R44 (scheduler_navigation_publish.py 同文件, B02, P5) — PHASE0 §3 三债同文件硬约束"
    ],
    "contract_topology_tests": [
-    "tests/regression_reports_workbench_navigation_contract.py::test_scheduler_navigation_publish_keeps_plan_guard_fields (PIN guard_fields 覆盖语义,包含 can_write_feedback==True for superseded)"
+    "tests/web_pages/test_reports_workbench_navigation_contract.py::test_scheduler_navigation_publish_keeps_plan_guard_fields (PIN guard_fields 覆盖语义,包含 can_write_feedback==True for superseded)"
    ],
    "downstream_effect": "当前零消费:grep 证 nav 链接(scheduler_navigation_links.py)不传播 can_write_feedback,真正写链接放行走 resource_dispatch 的 can_emit_feedback_write_urls(scheduler_workbench_links.py:381,检 _is_formal_adopted_context 含 is_superseded/is_current_executable)非此 nav context。潜伏:nav context 的 can_write_feedback 已是非门控真值,未来据此渲染写按钮即绕过门控。",
    "fix_invalidation_risk": "(1) 契约测试 :453/468/475 PIN can_write_feedback==True(superseded)——若按任务允许的'剔除 update 里的 can_write_feedback'让 builder-gated 值存活:本 superseded 用例 builder gate 也产 True(plan_role=adopted且非preview,builder 不查 superseded),故测试仍绿;但任何收口必须先验证 builder-gated≡raw 后才能剔除。(2) 同文件 R44/R54 任一先落即移 :86 行号,R58 需重新定位 `context.update(guard_fields)` 符号。(3) 三债必须同批/串行(PHASE0 §3)。",
@@ -1398,8 +1398,8 @@
     "web/viewmodels/scheduler_workbench_link_query.py:15 — can_write_feedback 在 query 字段白名单(但 grep 证 scheduler_navigation_links.py 不传播 can_write_feedback 到任何 nav 链接)"
    ],
    "test_consumers": [
-    "tests/regression_reports_workbench_navigation_contract.py:406 test_scheduler_navigation_publish_keeps_plan_guard_fields — 构造 superseded_plan(can_write_feedback=True) 并断言 :453,468,475 三处 context['can_write_feedback']==True 且 current_workbench_navigation_context()['can_write_feedback']==True(即 PIN 了被覆盖回的原始值)",
-    "tests/regression_reports_workbench_navigation_contract.py:429,446,462 — 三个 publish_*_navigation_context 调用点"
+    "tests/web_pages/test_reports_workbench_navigation_contract.py:406 test_scheduler_navigation_publish_keeps_plan_guard_fields — 构造 superseded_plan(can_write_feedback=True) 并断言 :453,468,475 三处 context['can_write_feedback']==True 且 current_workbench_navigation_context()['can_write_feedback']==True(即 PIN 了被覆盖回的原始值)",
+    "tests/web_pages/test_reports_workbench_navigation_contract.py:429,446,462 — 三个 publish_*_navigation_context 调用点"
    ]
   },
   "owner_pending": false,
@@ -1484,7 +1484,7 @@
     "R54(同文件navigation_links.py相邻: 删_REPORT_CONTEXT_FIELD_NAMES里plan_id行勿误动相邻其他字段;该文件也import build_workbench_plan_context)"
    ],
    "contract_topology_tests": [
-    "tests/regression_reports_workbench_navigation_contract.py:109/122/126 (契约: 字段表→隐藏表单透传plan_id, 与R42共享, 删除同退)"
+    "tests/web_pages/test_reports_workbench_navigation_contract.py:109/122/126 (契约: 字段表→隐藏表单透传plan_id, 与R42共享, 删除同退)"
    ],
    "downstream_effect": "所有工作台/报表链接URL与隐藏表单多挂无效plan_id;误导维护者按plan_id做方案解析. 影响面=R42子集(纯字段表+URL,无新增独立面). 删字段表条目(navigation_links:12, export_support:14)+退navigation_contract断言即可.",
    "fix_invalidation_risk": "①与R42必须同删,单独删R60留下R42的读入/存储=plan_id仍被读被存只是不进字段表,变更隐蔽残渣. ②字段表是元组,删行要保持元组其余成员完整. ③navigation_contract测试若先适配R42已退断言,R60无额外测试改动;若各自为政会重复改同测试. ④export_support:14与navigation_links:12两张表都要清,漏一张则隐藏表单/导出仍挂plan_id.",
@@ -1503,7 +1503,7 @@
     "DEATH PROOF: 与R42同, core/+data/ zero \\bplan_id\\b consumer; web层无args.get('plan_id')作解析键"
    ],
    "test_consumers": [
-    "tests/regression_reports_workbench_navigation_contract.py:109/122/126 (与R42同一组断言:URL含plan_id+hidden_inputs['plan_id'])"
+    "tests/web_pages/test_reports_workbench_navigation_contract.py:109/122/126 (与R42同一组断言:URL含plan_id+hidden_inputs['plan_id'])"
    ]
   },
   "owner_pending": false,
@@ -1784,7 +1784,7 @@
     "R44"
    ],
    "contract_topology_tests": [
-    "tests/regression_schedule_result_view_context.py:294-301 (test_gantt_plan_query_wrapper_keeps_legacy_bad_role_message — 删 dpr_dict wrapper 即变红的续命/契约测试)；无 SP05 path topology 引用本模块(已 grep test_sp05_path_topology_contract.py 为空)"
+    "tests/schedule/summary/test_schedule_result_view_context.py:294-301 (test_gantt_plan_query_wrapper_keeps_legacy_bad_role_message — 删 dpr_dict wrapper 即变红的续命/契约测试)；无 SP05 path topology 引用本模块(已 grep test_sp05_path_topology_contract.py 为空)"
    ],
    "downstream_effect": "删 4 死符号(及那条仅测 wrapper 透传行为的测试)安全，不影响任何运行路径(真存活调用方 gantt_service 直引 LIVE range 函数、scheduler_gantt 的 selected_plan_role 来自 scheduler_navigation_publish)；但 gantt_plan_query.py 整文件不可删——含 4 个被 gantt_service 真用的 range 辅助函数，误判整模块死会打断甘特周计划范围解析。",
    "fix_invalidation_risk": "两条交叉失效:①删 default_plan_resolution_dict wrapper(:32-38)+其续命 test 会使 R22 precondition「务必保留 gantt_plan_query:32-38 遗留文案包装」失效——故 R21 本批只删另 3 个真死 shim(resolve_plan/selected_plan_role/_has_explicit_gantt_range)，dpr_dict wrapper 去留交给 R22 处置;②删 selected_plan_role shim(:46) 会抽掉 R44 收口所照搬的 re-export 先例(R44 可改为直接 re-export core 兜底)，二者宜同批。",
@@ -1794,11 +1794,11 @@
    "pathology": "P3 — 收口迁移做了一半:解析规则已收口到 schedule_result_view_context、老调用方已迁走，但收口后空壳 shim 没删，留 4 个零生产消费的假在用符号(1 个靠测试人工续命)，制造 gantt_plan_query 仍是解析入口的假象。",
    "planned_fix_class": "删+退测试（删 resolve_plan/selected_plan_role/_has_explicit_gantt_range 3 个真死 shim + 退对应断言；default_plan_resolution_dict wrapper 与 R22 协调保留遗留文案，整文件保留）",
    "prod_consumers": [
-    "4 个死 shim 生产零引用(已 grep 证实):grep 'gantt_plan_query\\.' 全仓仅命中 tests/regression_schedule_result_view_context.py:298；resolve_plan/selected_plan_role/_has_explicit_gantt_range 零外部 attr-access",
+    "4 个死 shim 生产零引用(已 grep 证实):grep 'gantt_plan_query\\.' 全仓仅命中 tests/schedule/summary/test_schedule_result_view_context.py:298；resolve_plan/selected_plan_role/_has_explicit_gantt_range 零外部 attr-access",
     "同文件 LIVE 辅助函数(不可删)被 core/services/scheduler/gantt_service.py:12-17 真用:attach_gantt_range_metadata/build_empty_week_plan_payload/get_version_time_span_dates/resolve_gantt_range_for_version"
    ],
    "test_consumers": [
-    "tests/regression_schedule_result_view_context.py:295-298 (唯一续命测试，经 gantt_plan_query.default_plan_resolution_dict('bad') 触发)"
+    "tests/schedule/summary/test_schedule_result_view_context.py:295-298 (唯一续命测试，经 gantt_plan_query.default_plan_resolution_dict('bad') 触发)"
    ]
   },
   "owner_pending": false,
@@ -1878,8 +1878,8 @@
     "R44"
    ],
    "contract_topology_tests": [
-    "tests/regression_schedule_result_view_context.py:294-301 (test_gantt_plan_query_wrapper_keeps_legacy_bad_role_message — 钉 gantt_plan_query 遗留文案 '未知的排产方案角色：bad'，R22 收口须保留此包装才能保持绿)",
-    "tests/regression_scheduler_plan_identity_evidence_contract.py:197-229 (PlanIdentity 23键契约，可直接复用为 R22 parity 基准)"
+    "tests/schedule/summary/test_schedule_result_view_context.py:294-301 (test_gantt_plan_query_wrapper_keeps_legacy_bad_role_message — 钉 gantt_plan_query 遗留文案 '未知的排产方案角色：bad'，R22 收口须保留此包装才能保持绿)",
+    "tests/schedule/route_view/test_scheduler_plan_identity_evidence_contract.py:197-229 (PlanIdentity 23键契约，可直接复用为 R22 parity 基准)"
    ],
    "downstream_effect": "改坏手搓 dict → no_history/missing_history 页 plan_role_filter_fields 经 _identity_bool(:271-274，缺键静默 False) → 资源派工(resource_dispatch_service.py:386/397、resource_dispatch_execution_service.py:79、resource_dispatch_page_context.py:26/28)与报表 plan_role 过滤字段全 False 误判或 KeyError；但写/派工安全闸门另走真 identity re-resolve(operation_execution_feedback_service.py:355-362、resource_dispatch_actual_record_service.py:134-152)，手搓 dict 仅供只读无历史页。委托后多出 schedule_result_status/lock_status/detail_saved 三键下游均 .get() 读取，无害；外层 :142 is_official 用方括号取值，收口后改 .get() 反更稳。",
    "fix_invalidation_risk": "三重前后约束:①precondition 须先补 parity 测试(全 VALID_PLAN_ROLES 断言 default_plan_resolution_dict['plan_identity'] 键集+取值 == build_plan_identity(source_table='schedule').to_dict()) 再收口;②收口须保留 gantt_plan_query.py:32-38 遗留文案包装——这恰是 R21 想删的 wrapper，故 R21 删 dpr_dict wrapper 会让 R22 此约束失效，二者必须协调;③全局#1 要求 B01 承重注释 + build_workbench_plan_context guard 收口先落，R22 才动方案身份族。",
@@ -1900,8 +1900,8 @@
     "web/routes/domains/scheduler/scheduler_navigation_publish.py:7,72 (R44 同文件)"
    ],
    "test_consumers": [
-    "tests/regression_schedule_result_view_context.py:18 (直接 import),298 (经 gantt_plan_query.default_plan_resolution_dict 续命)",
-    "tests/regression_scheduler_plan_identity_evidence_contract.py:10,639 (build_plan_identity 23键契约，收口后的 parity 参照源)"
+    "tests/schedule/summary/test_schedule_result_view_context.py:18 (直接 import),298 (经 gantt_plan_query.default_plan_resolution_dict 续命)",
+    "tests/schedule/route_view/test_scheduler_plan_identity_evidence_contract.py:10,639 (build_plan_identity 23键契约，收口后的 parity 参照源)"
    ]
   },
   "owner_pending": true,
@@ -1956,7 +1956,7 @@
   "phase1_blast": {
    "co_change_within_group": [],
    "contract_topology_tests": [
-    "无测试直接钉 _normalize_role(模块私有，grep tests/ 为空)；行为变化会被 tests/regression_scheduler_candidate_plan_query_contract.py 与 tests/regression_scheduler_plan_identity_evidence_contract.py 的 resolve_plan 用例间接捕获，但它们不锁实现位置，dedup 不会变红"
+    "无测试直接钉 _normalize_role(模块私有，grep tests/ 为空)；行为变化会被 tests/candidate/test_scheduler_candidate_plan_query_contract.py 与 tests/schedule/route_view/test_scheduler_plan_identity_evidence_contract.py 的 resolve_plan 用例间接捕获，但它们不锁实现位置，dedup 不会变红"
    ],
    "downstream_effect": "让 query_service import core.models.schedule_plan_role._normalize_role(service→model 合法层向)，两版今日字节级一致，resolve_plan 的 role 归一行为零变化；唯一收益是消除'改一处漏另一处'。",
    "fix_invalidation_risk": "none — 纯 dedup，import 方向 service→model 合法、不引跨层违规，不影响任何其它债修法。",
@@ -2078,7 +2078,7 @@
     "R21"
    ],
    "contract_topology_tests": [
-    "tests/regression_reports_workbench_navigation_contract.py:409-422 (本模块唯一契约测试，钉 publish_* 导航发布面与 requested_plan_role= 字段，不钉 selected_plan_role getter，统一不会变红)；无 SP05 拓扑引用"
+    "tests/web_pages/test_reports_workbench_navigation_contract.py:409-422 (本模块唯一契约测试，钉 publish_* 导航发布面与 requested_plan_role= 字段，不钉 selected_plan_role getter，统一不会变红)；无 SP05 拓扑引用"
    ],
    "downstream_effect": "selected_plan_role 仅喂 effective_plan_role= 模板显示 kwarg(scheduler_week_plan.py:337、scheduler_gantt.py:298)，不碰任何安全闸门——真闸门(can_dispatch/can_write_feedback/is_scenario_preview/is_superseded_by_newer_version/plan_role_status)走独立 _PLAN_GUARD_FIELD_NAMES/_plan_guard_fields 路径(:12-24,:75-88)；统一到 core(对 None 更稳)只会保持或增强行为，绝不改变缺 selected_role 时的角色。",
    "fix_invalidation_risk": "两条:①R44 照搬 gantt_plan_query.py:46 selected_plan_role re-export 作收口范式，若 R21 先删该 shim 则范式悬空(可改为直接 re-export core，非硬阻塞);②硬约束:scheduler_navigation_publish.py 被 R54/R58(B01) 同文件改，全局#1 要求 B01 先落，R44 须排在 B01 动本文件之后，否则撞行号/逻辑(且本文件已是漂移态，行号本就敏感)。",
@@ -2093,7 +2093,7 @@
     "sibling requested_plan_role 消费方:scheduler_gantt.py:233/243/255/265/275/297、scheduler_week_plan.py:336、scheduler_week_plan_query.py:9/77、scheduler_navigation_publish.py:107/135/166(内部)"
    ],
    "test_consumers": [
-    "tests/regression_reports_workbench_navigation_contract.py:409-413 (import publish_* 函数，非 selected_plan_role；无测试钉本地 getter 实现)"
+    "tests/web_pages/test_reports_workbench_navigation_contract.py:409-413 (import publish_* 函数，非 selected_plan_role；无测试钉本地 getter 实现)"
    ]
   },
   "owner_pending": true,
@@ -2301,9 +2301,9 @@
     "R47"
    ],
    "contract_topology_tests": [
-    "tests/test_sp05_path_topology_contract.py:22,35,36（SP05拓扑：config_snapshot 顶层shim→config.config_snapshot 映射 + 符号白名单）",
-    "tests/regression_config_snapshot_projection_sync.py:89-101（字段注解去重守卫，删/合并字段会红）",
-    "tests/regression_scheduler_config_spec_sync_contract.py:7-19（spec parity，两栈spec不一致即红）",
+    "tests/gate_meta/test_sp05_path_topology_contract.py:22,35,36（SP05拓扑：config_snapshot 顶层shim→config.config_snapshot 映射 + 符号白名单）",
+    "tests/config/test_config_snapshot_projection_sync.py:89-101（字段注解去重守卫，删/合并字段会红）",
+    "tests/config/test_scheduler_config_spec_sync_contract.py:7-19（spec parity，两栈spec不一致即红）",
     "tests/regression_scheduler_candidate_py38_contract.py:16,18（文件须存在且py38合规）"
    ],
    "downstream_effect": "承重护栏：动它=动整条排产配置正确性链。错误改法(删一栈/统一/透传)会让‘算法实际用的配置’与‘配置页校验/保存的配置’口径分叉，且model侧回落是静默的(坏/缺数据兜成默认)→排产用错权重/降级判定且无声。正确改法只补‘我是故意双栈’注释+绑parity契约测试，零删除。",
@@ -2325,12 +2325,12 @@
     "core/services/scheduler/config/config_validator.py:10,271 + config_preset_service.py + config_presets.py + config_read_service.py + config_write_service.py + config_service.py（service栈大量消费）"
    ],
    "test_consumers": [
-    "tests/regression_config_snapshot_projection_sync.py:10,12,89-101（双栈字段注解去重守卫）,132-153（service快照保留model降级事件 parity）",
-    "tests/regression_scheduler_config_spec_sync_contract.py:3,4,7-19（model↔service spec parity）",
+    "tests/config/test_config_snapshot_projection_sync.py:10,12,89-101（双栈字段注解去重守卫）,132-153（service快照保留model降级事件 parity）",
+    "tests/config/test_scheduler_config_spec_sync_contract.py:3,4,7-19（model↔service spec parity）",
     "tests/regression_scheduler_candidate_py38_contract.py:16,18（同时列两栈文件做py38 AST门禁）",
-    "tests/regression_config_field_spec_contract.py:11,13,283-285",
-    "tests/test_sp05_path_topology_contract.py:22,35,36（config_snapshot 路径映射 + ScheduleConfigSnapshot 在导出白名单）",
-    "tests/regression_schedule_optimizer_cfg_snapshot_contract.py / regression_scheduler_candidate_config_contract.py / regression_scheduler_graph_on_mode_contract.py 等十余处 ScheduleConfigSnapshot 构造"
+    "tests/config/test_config_field_spec_contract.py:11,13,283-285",
+    "tests/gate_meta/test_sp05_path_topology_contract.py:22,35,36（config_snapshot 路径映射 + ScheduleConfigSnapshot 在导出白名单）",
+    "tests/algorithm/test_schedule_optimizer_cfg_snapshot_contract.py / regression_scheduler_candidate_config_contract.py / regression_scheduler_graph_on_mode_contract.py 等十余处 ScheduleConfigSnapshot 构造"
    ]
   },
   "owner_pending": true,
@@ -2589,7 +2589,7 @@
    ],
    "contract_topology_tests": [
     "tests/regression_sp06_no_duplicate_defs.py:15（路径成员续命；删文件须同步移除）",
-    "注：tests/test_sp05_path_topology_contract.py 未列 config_adapter（已核，SP05只映射 config_snapshot 系列），故删此文件不撞SP05拓扑契约"
+    "注：tests/gate_meta/test_sp05_path_topology_contract.py 未列 config_adapter（已核，SP05只映射 config_snapshot 系列），故删此文件不撞SP05拓扑契约"
    ],
    "downstream_effect": "无运行期影响：替代路径已就位(schedule_params.py:59 _snapshot_attr：snapshot为None或缺字段即 raise ValidationError，符合灵魂暗线‘缺数据loud raise不兜底’)。删旧门面反而消除‘错误塞进结果对象绕过校验’的误用风险。",
    "fix_invalidation_risk": "none。与config双栈(LB07/R71/R47)收敛正交——删adapter不改双栈，反而新路径 _snapshot_attr 已是收敛后形态。唯一约束=与R45同一文件、同提交删除并退sp06路径。",
@@ -2683,8 +2683,8 @@
     "R47"
    ],
    "contract_topology_tests": [
-    "tests/regression_scheduler_config_spec_sync_contract.py（现存最接近的parity续命测试，但只覆盖 list_*_config_fields 的 spec，删/改任一helper函数体不会让它变红=守卫缺口；R71收敛前必须把它扩到比较这3个helper的等价行为）",
-    "tests/regression_config_snapshot_projection_sync.py:132-153（degradation事件保留，间接续命 _coerce_degradation_event）"
+    "tests/config/test_scheduler_config_spec_sync_contract.py（现存最接近的parity续命测试，但只覆盖 list_*_config_fields 的 spec，删/改任一helper函数体不会让它变红=守卫缺口；R71收敛前必须把它扩到比较这3个helper的等价行为）",
+    "tests/config/test_config_snapshot_projection_sync.py:132-153（degradation事件保留，间接续命 _coerce_degradation_event）"
    ],
    "downstream_effect": "同LB07：这组helper决定配置默认值校正与降级判定。若model与service两份各自drift(LLM改一边忘另一边)，算法侧与配置页侧对同一字段的合法值/降级口径分叉，静默污染排产正确性。",
    "fix_invalidation_risk": "R71收敛(service反向复用model+删service侧helper)会让‘走service老路径的测试’的等价假设改变；且它本身受LB07承重约束(红线2:load_bearing只补注释)。硬先后=先补helper级parity契约测试(扩 spec-sync 测试)→再动收敛，否则LB07锁步守卫缺位、漂移无声。不得先于LB07承重注释。",
@@ -2702,8 +2702,8 @@
     "core/services/scheduler/config/config_snapshot.py:185（service孪生 _coerce_degradation_event）"
    ],
    "test_consumers": [
-    "tests/regression_config_snapshot_projection_sync.py:132-153（构造带 degradation_events 的快照，间接走 _coerce_degradation_event 路径）",
-    "tests/regression_scheduler_config_spec_sync_contract.py:7-19（只pin spec字段，未pin这3个helper——见 contract_topology_tests 的缺口说明）",
+    "tests/config/test_config_snapshot_projection_sync.py:132-153（构造带 degradation_events 的快照，间接走 _coerce_degradation_event 路径）",
+    "tests/config/test_scheduler_config_spec_sync_contract.py:7-19（只pin spec字段，未pin这3个helper——见 contract_topology_tests 的缺口说明）",
     "tests/regression_scheduler_candidate_py38_contract.py:16,18（把两栈文件纳py38 AST门禁，但不校验helper等价）"
    ]
   },
@@ -2883,7 +2883,7 @@
     "LB04"
    ],
    "contract_topology_tests": [
-    "tests/test_enum_display_consistency.py(行为钉死续命测试:收口到 enum_normalizers 改文案/坏值口径后,:23/:59/:60/:61 会红)"
+    "tests/web_pages/test_enum_display_consistency.py(行为钉死续命测试:收口到 enum_normalizers 改文案/坏值口径后,:23/:59/:60/:61 会红)"
    ],
    "downstream_effect": "统一到收口点 core/services/common/enum_normalizers(operator_status_label:82/machine_status_label:124/source_type_label:159/batch_priority_label:209/ready_status_label:220/calendar_day_type_label:231)会改变:operator inactive '停用/休假'→'停用';ready 未知/None 由静默'未齐套'→passthrough'未知/原值暴露';source 未归一别名(外协/外)由误判'自制'→收口归一。影响设备页/人员页/排产批次页/日历页状态列文案。",
    "fix_invalidation_risk": "none。注意 day_type_zh 收口点 calendar_day_type_label 已在生产被 personnel_excel_operator_calendar.py:86/scheduler_excel_calendar.py:56 使用(导出路径已收口、显示路径未收口),是同概念双口径的实证。",
@@ -2899,7 +2899,7 @@
     "web/routes/process_bp.py:16/22 _merge_mode_zh/_source_zh → process_parts.py:17 import,:166/167/288"
    ],
    "test_consumers": [
-    "tests/test_enum_display_consistency.py:4-61 钉死 machine_status_zh/operator_status_zh/ready_zh 输出(:18 'weird'→'weird';:23 inactive→'停用/休假';:59 ready_zh('weird')=='未齐套';:61 ready_zh(None)=='未齐套')"
+    "tests/web_pages/test_enum_display_consistency.py:4-61 钉死 machine_status_zh/operator_status_zh/ready_zh 输出(:18 'weird'→'weird';:23 inactive→'停用/休假';:59 ready_zh('weird')=='未齐套';:61 ready_zh(None)=='未齐套')"
    ]
   },
   "owner_pending": true,
@@ -3023,7 +3023,7 @@
     "core/services/scheduler/run/schedule_persistence_errors.py:24/56/77(_positive_int→None 哨兵)"
    ],
    "test_consumers": [
-    "tests/regression_schedule_persistence_reject_empty_actionable_schedule.py(走 schedule_payload_contract)",
+    "tests/schedule/service/test_schedule_persistence_reject_empty_actionable_schedule.py(走 schedule_payload_contract)",
     "tests/scheduler_graph/test_ready_queue.py"
    ]
   },
@@ -3143,7 +3143,7 @@
     "R59"
    ],
    "contract_topology_tests": [
-    "tests/test_sp05_path_topology_contract.py:166/516(SP05 拓扑契约钉死 scheduler_resource_dispatch_execution_routes.py 模块路径——重命名/移动该模块会红,但删函数体本身不触发)"
+    "tests/gate_meta/test_sp05_path_topology_contract.py:166/516(SP05 拓扑契约钉死 scheduler_resource_dispatch_execution_routes.py 模块路径——重命名/移动该模块会红,但删函数体本身不触发)"
    ],
    "downstream_effect": "三处契约=垃圾→None、非正→None,用于遍历可信DB行/已校验路由整数时'跳过坏行'。安全不变量由别处 RAISE 守(routes:132-136 抛 SCHEDULE_CONFLICT、:117-124 抛 ValidationError),非本助手。换 parse_finite_int(垃圾raise)会让 _op_ids/任务卡/_matching_row 整页渲染崩。",
    "fix_invalidation_risk": "R09 是 PHASE0 §4 唯一批准的新建收口点(parse_optional_positive_int)。必须先建 sink 再迁3处(B05内部排序)。严禁复用 R04 扩出的 parse_finite_int——契约相反(R04 sink 对垃圾 raise,R09 要 None)。同时不得动 STRICT 变体(operation_execution_feedback_support.py:162、operation_execution_event_repo.py:96 _required_positive_int、scheduler_public_errors.py:167)——它们是 raise 写入闸门,不在本簇。",
@@ -3158,11 +3158,11 @@
     "web/viewmodels/scheduler_resource_dispatch_execution.py:256/257/347(build_task_card/任务列表)"
    ],
    "test_consumers": [
-    "tests/test_sp05_path_topology_contract.py:166/516",
-    "tests/regression_resource_dispatch_workbench_lane_contract.py",
-    "tests/regression_resource_dispatch_site_records_frontend_contract.py",
-    "tests/regression_scheduler_dispatch_plan_identity_guardrails.py",
-    "tests/regression_scheduler_candidate_resource_dispatch_contract.py"
+    "tests/gate_meta/test_sp05_path_topology_contract.py:166/516",
+    "tests/resource_dispatch/test_resource_dispatch_workbench_lane_contract.py",
+    "tests/resource_dispatch/test_resource_dispatch_site_records_frontend_contract.py",
+    "tests/resource_dispatch/test_scheduler_dispatch_plan_identity_guard.py",
+    "tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py"
    ]
   },
   "owner_pending": true,
@@ -3233,7 +3233,7 @@
     "R59"
    ],
    "contract_topology_tests": [
-    "tests/test_architecture_fitness.py(白名单守卫:删/收口 _safe_float 必须同步删:77 白名单条目,否则:254 stale_entries 断言红)"
+    "tests/gate_meta/test_architecture_fitness.py(白名单守卫:删/收口 _safe_float 必须同步删:77 白名单条目,否则:254 stale_entries 断言红)"
    ],
    "downstream_effect": "ext_days 上游已严格校验(core/models/batch_operation.py:92 parse_optional_float、part_operation.py:75 同),_safe_float 几乎见不到坏值=冗余防御。收口到 parse_finite_float 仅当 ext_days 真坏时由静默None→raise ValidationError(更合灵魂线)。极小爆炸半径。注意:web/routes/process_bp.py:28 另有同名 _safe_float(value,field)但那个是 raise 版(R41邻居),与本债不同符号。",
    "fix_invalidation_risk": "收口/删除必须同步退 test_architecture_fitness.py:77 白名单条目(否则 stale_entries 红)。这是机械守卫,不构成对他债修法的失效。",
@@ -3247,7 +3247,7 @@
     "core/services/scheduler/batch_copy.py:72 svc._safe_float(op.ext_days)"
    ],
    "test_consumers": [
-    "tests/test_architecture_fitness.py:77 LOCAL_PARSE_HELPER_ALLOWLIST 含 'core/services/scheduler/batch_service.py:_safe_float'(:249 命中放行,:254 stale_entries 守卫)"
+    "tests/gate_meta/test_architecture_fitness.py:77 LOCAL_PARSE_HELPER_ALLOWLIST 含 'core/services/scheduler/batch_service.py:_safe_float'(:249 命中放行,:254 stale_entries 守卫)"
    ]
   },
   "owner_pending": false,
@@ -3353,7 +3353,7 @@
     "R30"
    ],
    "contract_topology_tests": [
-    "tests/regression_number_utils_facade_delegates_strict_parse.py(delegation-facade 续命测试:薄壳化后模块级 parse_required/optional_* 名消失、parse_finite_*.__globals__ 变 shared.number_utils → :23 AttributeError、:50/:54 断言失效)"
+    "tests/models_domain/test_number_utils_facade_delegates_strict_parse.py(delegation-facade 续命测试:薄壳化后模块级 parse_required/optional_* 名消失、parse_finite_*.__globals__ 变 shared.number_utils → :23 AttributeError、:50/:54 断言失效)"
    ],
    "downstream_effect": "薄壳化(对齐4兄弟)生产零行为变化(两消费方只用 parse_finite_*,运行期字节等价);但会击穿上述 monkeypatch 测试。",
    "fix_invalidation_risk": "⚠️FINDING-ERROR(影响修法授权):报告引以为据的权威裁定 `.codestable/refactors/2026-06-01-test-gate-cleanup/L3_verdicts.csv:174 = KEEP/high` 在盘上**整目录不存在**(test -f 实测 ABSENT;refactors/ 下无 2026-06-01-test-gate-cleanup),该 KEEP/high 仅在审计报告 REPORT.md:1468 与 _real_debt.json 内被自引用,无法回盘复核。结论:此债的'保留 vs 收口'授权链断裂——Phase2 须重新独立裁定,不能照搬不存在的 CSV。若仍要薄壳化:必先把 monkeypatch 测试重写成 *_reexports_shared_identity 同一性测试(否则红)。",
@@ -3367,7 +3367,7 @@
     "web/routes/domains/scheduler/scheduler_excel_calendar_rows.py:8 (import parse_finite_float)"
    ],
    "test_consumers": [
-    "tests/regression_number_utils_facade_delegates_strict_parse.py:23-26/45-48/50-55(monkeypatch common.number_utils 模块级 parse_required/optional_*int/float,断言 parse_finite_* 转调它们;:69-84 钉灵魂不变量:空白+allow_none→None 否则 raise ValidationError)"
+    "tests/models_domain/test_number_utils_facade_delegates_strict_parse.py:23-26/45-48/50-55(monkeypatch common.number_utils 模块级 parse_required/optional_*int/float,断言 parse_finite_* 转调它们;:69-84 钉灵魂不变量:空白+allow_none→None 否则 raise ValidationError)"
    ]
   },
   "owner_pending": true,
@@ -3449,7 +3449,7 @@
     "生产零引用(已grep证实):全仓 core/web/data/scripts 对 mean_positive 调用=0,真实 avg_proc_hours 在 greedy/dispatch/sgs.py:166-170 内联 sum/len"
    ],
    "test_consumers": [
-    "tests/regression_dispatch_rules_nonfinite_proc_hours_safe.py:20(import mean_positive)/:62/:63(唯一续命)"
+    "tests/resource_dispatch/test_dispatch_rules_nonfinite_proc_hours_safe.py:20(import mean_positive)/:62/:63(唯一续命)"
    ]
   },
   "owner_pending": false,
@@ -3489,7 +3489,7 @@
     "R28"
    ],
    "contract_topology_tests": [
-    "tests/regression_web_silent_fallback_contract.py(灵魂线续命:坏数据必须 raise;:67/:70 钉死 '1.0'/1.0 也要 raise)"
+    "tests/web_pages/test_web_silent_fallback_contract.py(灵魂线续命:坏数据必须 raise;:67/:70 钉死 '1.0'/1.0 也要 raise)"
    ],
    "downstream_effect": "导出行数档位(direct/stream/reject)+ web 导出表单整数参数。私有正则_INT_TEXT_PATTERN 拒任何带小数点串,收口点 parse_required_int(strict_parse:46-58)经 float() 接受 3.0→3。",
    "fix_invalidation_risk": "⚠️**与 R04 互锁的隐藏冲突**:若 R59 直接收口到现有 parse_required_int,会**违反自己的续命测试**——regression_web_silent_fallback_contract.py:67/70 要求 '1.0'/1.0 抛错,而 parse_required_int 接受整值 float(strict_parse:56 abs<=1e-9→3.0通过),测试由绿变红。故 R59 收口**依赖 R04 先给 strict_parse 加'拒整值float'严格模式**;在该模式落地前,R59 只能保留私有正则+补 parity 测试钉死差异,不能裸收口。",
@@ -3503,7 +3503,7 @@
     "web/routes/reports_export_support.py:10 import,:45(包装 report_nonnegative_int:44)"
    ],
    "test_consumers": [
-    "tests/regression_web_silent_fallback_contract.py:48/61/64/67/70(钉死 report_nonnegative_int '1.5'/'1.0'/1.0/'-1' 全 raise ValidationError match'导出行数')"
+    "tests/web_pages/test_web_silent_fallback_contract.py:48/61/64/67/70(钉死 report_nonnegative_int '1.5'/'1.0'/1.0/'-1' 全 raise ValidationError match'导出行数')"
    ]
   },
   "owner_pending": false,
@@ -3599,7 +3599,7 @@
     "R49"
    ],
    "contract_topology_tests": [
-    "tests/regression_aps_three_gap_docs_quality_gate.py(路径/文档质量门:state_builder 模块路径被钉)"
+    "tests/gate_meta/test_aps_three_gap_docs_quality_gate.py(路径/文档质量门:state_builder 模块路径被钉)"
    ],
    "downstream_effect": "现场时间字符串解析。收口点 core/shared/strict_parse.py:113 parse_required_datetime/:127 parse_optional_datetime 内部正是同套 strip/replace+循环 strptime。收口须逐处分清:provider/state_builder 靠 None 表达'无时间'(合法 optional),support 对坏时间 raise(写校验链,合灵魂线)——不能一刀切。",
    "fix_invalidation_risk": "收口 support:226 的 raise 版必须保持 raise 语义(改 None=违灵魂线);收口 provider/state_builder 的 None 版若误判成 required+raise,会把'正常缺时间'变报错。与 B11/B13 在同三文件的删改须串行,否则后改者撞行号。",
@@ -3614,8 +3614,8 @@
     "data/repositories/operation_execution_state_builder.py:59/60(_parse_time)"
    ],
    "test_consumers": [
-    "tests/regression_scheduler_reschedule_execution_facts.py:10(import ExecutionFactProvider)",
-    "tests/regression_aps_three_gap_docs_quality_gate.py:136(钉 data/repositories/operation_execution_state_builder.py 路径)"
+    "tests/operation_execution/test_scheduler_reschedule_execution_facts.py:10(import ExecutionFactProvider)",
+    "tests/gate_meta/test_aps_three_gap_docs_quality_gate.py:136(钉 data/repositories/operation_execution_state_builder.py 路径)"
    ]
   },
   "owner_pending": true,
@@ -3694,8 +3694,8 @@
     "R29"
    ],
    "contract_topology_tests": [
-    "tests/regression_value_policies_matrix_contract.py:94-95(矩阵契约续命:删 start_time/end_time 策略会红)",
-    "tests/regression_compat_parse_emits_degradation.py:39(date 降级用例续命)"
+    "tests/config/test_value_policies_matrix_contract.py:94-95(矩阵契约续命:删 start_time/end_time 策略会红)",
+    "tests/models_domain/test_compat_parse_emits_degradation.py:39(date 降级用例续命)"
    ],
    "downstream_effect": "删 parse_compat_date + due_date/start_time/end_time 三日期策略 + VALUE_DATETIME/READ_FILTER_ONLY 常量(未连线脚手架)。删后需退矩阵契约 start_time/end_time 断言 + 降级测试 date 用例。",
    "fix_invalidation_risk": "⚠️**与 R33 强耦合同链**:R30 删的是 core.shared 的 date 实现/策略,R33 删的是 core.services.common 的 re-export 空壳。R33 的续命测试 regression_compat_parse_emits_degradation.py:18 正是经 services.common.compat_parse import parse_compat_date——若 R30 先删 parse_compat_date 而 R33 的测试 import 未先迁到 core.shared,测试会红。**顺序硬约束:先迁测试 import(R33步骤1)→ 删壳(R33)→ 删 shared 实现(R30)**;且 B13 facade 删除晚于 B05/B06 收敛(PHASE0 §10.2)。",
@@ -3708,9 +3708,9 @@
     "生产零引用(已grep证实):parse_compat_date 调用形态全仓 core/web/data/scripts=0,仅 core/services/common/compat_parse.py:4 re-export(=R33 的壳)。对照 float/int 分支(parse_compat_float/int)经 field_parse.py 活跃消费,仅 date 分支死。真坏时间留痕走 _sched_display_utils.py:84 record_bad_time_row,绕开 value_policies"
    ],
    "test_consumers": [
-    "tests/regression_compat_parse_emits_degradation.py:18(经 services.common.compat_parse import)/:39(调用 parse_compat_date)",
-    "tests/regression_value_policies_matrix_contract.py:94-95(pin start_time/end_time.read_mode==READ_FILTER_ONLY)",
-    "tests/regression_config_service_component_contract.py"
+    "tests/models_domain/test_compat_parse_emits_degradation.py:18(经 services.common.compat_parse import)/:39(调用 parse_compat_date)",
+    "tests/config/test_value_policies_matrix_contract.py:94-95(pin start_time/end_time.read_mode==READ_FILTER_ONLY)",
+    "tests/config/test_config_service_component_contract.py"
    ]
   },
   "owner_pending": false,
@@ -3746,7 +3746,7 @@
    "strict_parse.py",
    "value_policies.py"
   ],
-  "current_evidence_2026_06_05": "三壳全在且仍纯 re-export:core/services/common/compat_parse.py:3-13 仍 from core.shared.compat_parse import + __all__,field_parse.py/value_policies.py 同;硬序前置 R33 步骤1 未做——tests/regression_compat_parse_emits_degradation.py:18 与 regression_value_policies_matrix_contract.py:18 仍 import core.services.common.*(未迁 core.shared);config_service_component_contract.py:14/:403/:411 的 parse_compat_date 身份断言与 _SERVICE_COMMON_NEUTRAL_HELPERS 条目仍在。",
+  "current_evidence_2026_06_05": "三壳全在且仍纯 re-export:core/services/common/compat_parse.py:3-13 仍 from core.shared.compat_parse import + __all__,field_parse.py/value_policies.py 同;硬序前置 R33 步骤1 未做——tests/models_domain/test_compat_parse_emits_degradation.py:18 与 regression_value_policies_matrix_contract.py:18 仍 import core.services.common.*(未迁 core.shared);config_service_component_contract.py:14/:403/:411 的 parse_compat_date 身份断言与 _SERVICE_COMMON_NEUTRAL_HELPERS 条目仍在。",
   "cluster": "C01",
   "same_file_siblings": [
    "R30",
@@ -3875,7 +3875,7 @@
     "R29"
    ],
    "contract_topology_tests": [
-    "tests/regression_config_service_component_contract.py:393/402 *_reexports_shared_identity(facade-delegation/身份续命测试:删壳即红)"
+    "tests/config/test_config_service_component_contract.py:393/402 *_reexports_shared_identity(facade-delegation/身份续命测试:删壳即红)"
    ],
    "downstream_effect": "删三 .py 生产运行期零影响(无人调)。",
    "fix_invalidation_risk": "⚠️删除前序(灵魂线保护):(1)先把 regression_compat_parse_emits_degradation.py:18 与 regression_value_policies_matrix_contract.py:18 的 import 从 services.common.* 改指 core.shared.*(保降级发射/策略矩阵覆盖,承重点在 core.shared 非壳);(2)删 regression_config_service_component_contract.py:13 元组条目 + :393/:402 两身份断言;(3)最后删三 .py。与 R30 同链(R33删壳须先于/同批 R30删实现),且整体晚于 B05/B06 收敛(PHASE0 §10.2)。R29 是同 common/ 家族但**反例**(有意保留,不可连带删)。",
@@ -3888,9 +3888,9 @@
     "生产零引用(已grep证实):core/web/data/scripts 对 services.common.{compat_parse,field_parse,value_policies} 引用=0;生产直连 core.shared.*(如 core.shared.field_parse 被 greedy/external_groups、schedule_config_runtime_coercion、run/schedule_input_builder 等)"
    ],
    "test_consumers": [
-    "tests/regression_config_service_component_contract.py:13(_SERVICE_COMMON_NEUTRAL_HELPERS 元组含三者)/:355(run层FORBIDDEN白名单)/:393-399(service_value_policies is-identity)/:402-405(service_compat_parse is-identity)",
-    "tests/regression_compat_parse_emits_degradation.py:18(经壳import)",
-    "tests/regression_value_policies_matrix_contract.py:18(经壳import)"
+    "tests/config/test_config_service_component_contract.py:13(_SERVICE_COMMON_NEUTRAL_HELPERS 元组含三者)/:355(run层FORBIDDEN白名单)/:393-399(service_value_policies is-identity)/:402-405(service_compat_parse is-identity)",
+    "tests/models_domain/test_compat_parse_emits_degradation.py:18(经壳import)",
+    "tests/config/test_value_policies_matrix_contract.py:18(经壳import)"
    ]
   },
   "owner_pending": false,
@@ -3991,7 +3991,7 @@
    "schedule_params.py",
    "sort_strategies.py"
   ],
-  "current_evidence_2026_06_05": "两宽容解析器全在原样:dispatch_rules.py:28 parse_dispatch_rule 仍 :34-35 except ValueError: return default;sort_strategies.py:161 parse_strategy 仍 :172-173 except Exception: return default(违灵魂线的静默回退默认枚举);两续命测试 tests/regression_dispatch_rule_case_insensitive.py 与 regression_sort_strategy_case_insensitive.py 均仍存在未退;两文件 git status 空。",
+  "current_evidence_2026_06_05": "两宽容解析器全在原样:dispatch_rules.py:28 parse_dispatch_rule 仍 :34-35 except ValueError: return default;sort_strategies.py:161 parse_strategy 仍 :172-173 except Exception: return default(违灵魂线的静默回退默认枚举);两续命测试 tests/resource_dispatch/test_dispatch_rule_case_insensitive.py 与 regression_sort_strategy_case_insensitive.py 均仍存在未退;两文件 git status 空。",
   "cluster": "C01",
   "same_file_siblings": [
    "R49",
@@ -4059,14 +4059,14 @@
   "adv_precondition": null,
   "planned_batch_hint": "Batch-7(B06,dispatch_rules.py 三债同批)。本桶内第 2(紧随 R49,清场宽容解析器;灵魂线相关,优先级高于 R30/R33 的纯死壳)。",
   "planned_deps_hint": "dispatch_rules.py:28 与 R49:25、R50(B05,:112)同文件,须同批删避免行号互撞;sort_strategies.py:161 parse_strategy 独立。无前置硬序(B05 R50 已在 Batch-6 收敛,Batch-7 时 dispatch_rules.py 已稳定)。",
-  "planned_fix_hint": "直删两个宽容解析器 + **连退其续命测试**(灵魂线红线 #1:坏数据不准静默兜底;这两函数的『非法→静默默认枚举』正是被铲除的 P4,留着=有人误复用就把静默兜底重引回派工/排序参数入口):删 dispatch_rules.py:28-35 parse_dispatch_rule、sort_strategies.py:161-173 parse_strategy。同步**整体退场**两测试 tests/regression_dispatch_rule_case_insensitive.py 与 tests/regression_sort_strategy_case_insensitive.py——它们 :25 钉死的『parse_*(\"unknown\", default=X) == X』正是灵魂线禁止的兜底语义,**严禁保留它们续命**,必须随解析器一起退(否则等于把 P4 钉成契约)",
+  "planned_fix_hint": "直删两个宽容解析器 + **连退其续命测试**(灵魂线红线 #1:坏数据不准静默兜底;这两函数的『非法→静默默认枚举』正是被铲除的 P4,留着=有人误复用就把静默兜底重引回派工/排序参数入口):删 dispatch_rules.py:28-35 parse_dispatch_rule、sort_strategies.py:161-173 parse_strategy。同步**整体退场**两测试 tests/resource_dispatch/test_dispatch_rule_case_insensitive.py 与 tests/algorithm/test_sort_strategy_case_insensitive.py——它们 :25 钉死的『parse_*(\"unknown\", default=X) == X』正是灵魂线禁止的兜底语义,**严禁保留它们续命**,必须随解析器一起退(否则等于把 P4 钉成契约)",
   "phase1_blast": {
    "co_change_within_group": [
     "R49",
     "R50"
    ],
    "contract_topology_tests": [
-    "tests/regression_dispatch_rule_case_insensitive.py + tests/regression_sort_strategy_case_insensitive.py(行为续命:它们钉死的正是灵魂线禁止的'坏值静默回退默认枚举',删解析器须连这两测试一起退)"
+    "tests/resource_dispatch/test_dispatch_rule_case_insensitive.py + tests/algorithm/test_sort_strategy_case_insensitive.py(行为续命:它们钉死的正是灵魂线禁止的'坏值静默回退默认枚举',删解析器须连这两测试一起退)"
    ],
    "downstream_effect": "代码本身生产零 blast。危险面='复活'(误以为是规范解析器复用,会把已铲除的 P4 静默兜底重新引回派工/排序参数入口)。",
    "fix_invalidation_risk": "none。parse_dispatch_rule 与 R49:25/R50:112 同文件 dispatch_rules.py,须同批;parse_strategy 在 sort_strategies.py 独立。",
@@ -4079,8 +4079,8 @@
     "生产零引用(已grep证实):core/web/data/scripts 对 parse_dispatch_rule/parse_strategy 调用=0;__init__ __all__ 不导出。生产 string→enum 走严格:schedule_params.py:277 SortStrategy(strategy_key)/:346 DispatchRule(rule_key) 前置 _require_choice:71 抛 ValidationError;optimizer_config.py:166 require_choice"
    ],
    "test_consumers": [
-    "tests/regression_dispatch_rule_case_insensitive.py:18/20-25(钉 parse_dispatch_rule('unknown',default=)→静默默认)",
-    "tests/regression_sort_strategy_case_insensitive.py:18/20-25(钉 parse_strategy('unknown',default=)→静默默认)"
+    "tests/resource_dispatch/test_dispatch_rule_case_insensitive.py:18/20-25(钉 parse_dispatch_rule('unknown',default=)→静默默认)",
+    "tests/algorithm/test_sort_strategy_case_insensitive.py:18/20-25(钉 parse_strategy('unknown',default=)→静默默认)"
    ]
   },
   "owner_pending": false,
@@ -4132,9 +4132,9 @@
     "R67"
    ],
    "contract_topology_tests": [
-    "tests/regression_scheduler_resource_dispatch_invalid_query_cleanup.py:341 (直接调 _normalize_scope_type,删/改名即红的续命测试)",
-    "tests/regression_schedule_service_facade_delegation.py:39 (facade-delegation 契约;守的是兄弟方法 schedule_repo.list_dispatch_rows_with_resource_context=R34,collar 扩 team 会波及)",
-    "tests/regression_report_context_filters_contract.py (collar 别名优先级契约)"
+    "tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py:341 (直接调 _normalize_scope_type,删/改名即红的续命测试)",
+    "tests/schedule/service/test_schedule_service_facade_delegation.py:39 (facade-delegation 契约;守的是兄弟方法 schedule_repo.list_dispatch_rows_with_resource_context=R34,collar 扩 team 会波及)",
+    "tests/scheduler_analysis/test_report_context_filters_contract.py (collar 别名优先级契约)"
    ],
    "downstream_effect": "派工读取链对 operator/machine 的列映射与超期/明细轨各写一套,改一处忘另一处口径漂移。若统一漏 team:班组视角静默返回全量(坏数据)或整页 500。影响 /scheduler/resource-dispatch 页面 + /data JSON(operator_rows/machine_rows/cross_team_rows) + /export 三入口。",
    "fix_invalidation_risk": "强前置:必须先给 ScheduleResourceFilter/normalize_schedule_resource_filter 扩 team 轴(产出双 join 谓词)+放开'类型有 id 空=全量'语义,并补回归断言(scope_type=team 只返回该 team、空 id 全量视图可查),否则任何'统一 _normalize_scope_type→collar'动作作废。跨桶:若 R34(B12)先把 schedule_repo.list_dispatch_rows_with_resource_context 收敛到 column_name 而 collar 未扩 team,会连带使 R05 修法失效/team 静默丢谓词。",
@@ -4152,10 +4152,10 @@
     "data/repositories/schedule_resource_sql_filters.py:36 + data/repositories/schedule_plan_query_repo.py:396 (另一轨 column_name 收口点)"
    ],
    "test_consumers": [
-    "tests/regression_scheduler_resource_dispatch_invalid_query_cleanup.py:341 (直接调 svc._normalize_scope_type('bad'))",
-    "tests/test_scheduler_resource_dispatch_smoke.py:177,182,190,194 (scope_type=team&team_id=TEAM-OP 活用例:班组轴/cross_team_rows/operator_rows)",
-    "tests/regression_report_context_filters_contract.py:89-103 (上层 report collar 别名契约)",
-    "tests/regression_schedule_service_facade_delegation.py:39 (兄弟 collar 方法 list_dispatch_rows_with_resource_context 的 facade 委派返回类型)"
+    "tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py:341 (直接调 svc._normalize_scope_type('bad'))",
+    "tests/resource_dispatch/test_scheduler_resource_dispatch_smoke.py:177,182,190,194 (scope_type=team&team_id=TEAM-OP 活用例:班组轴/cross_team_rows/operator_rows)",
+    "tests/scheduler_analysis/test_report_context_filters_contract.py:89-103 (上层 report collar 别名契约)",
+    "tests/schedule/service/test_schedule_service_facade_delegation.py:39 (兄弟 collar 方法 list_dispatch_rows_with_resource_context 的 facade 委派返回类型)"
    ]
   },
   "owner_pending": true,
@@ -4204,7 +4204,7 @@
     "R05"
    ],
    "contract_topology_tests": [
-    "tests/regression_report_context_filters_contract.py (collar 别名归一契约;改 normalize_report_resource_filter 签名/语义会红)"
+    "tests/scheduler_analysis/test_report_context_filters_contract.py (collar 别名归一契约;改 normalize_report_resource_filter 签名/语义会红)"
    ],
    "downstream_effect": "仅维护面;漏同步导致某入口(报表页筛选/导出 URL/导出路由)少认一个资源别名 key,筛选静默缺失。不损坏数据,blast=low。",
    "fix_invalidation_risk": "none (纯收敛抽常量,不影响其他债修法;与 R05 不同收口点不冲突)",
@@ -4221,7 +4221,7 @@
     "下游 request_resource_filter: web/routes/reports_page_support.py:59,371、web/routes/reports_export_routes.py:32,60,100,128"
    ],
    "test_consumers": [
-    "tests/regression_report_context_filters_contract.py:89-103 (收口点别名优先级契约:machine+operator_id、machine+machine_id 等)"
+    "tests/scheduler_analysis/test_report_context_filters_contract.py:89-103 (收口点别名优先级契约:machine+operator_id、machine+machine_id 等)"
    ]
   },
   "owner_pending": true,
@@ -4324,9 +4324,9 @@
     "R55"
    ],
    "contract_topology_tests": [
-    "tests/regression_gantt_contract_snapshot.py (关键链字段集快照;line 122 用 subset 检查 required_top_keys - set(data.keys()),加键不会红)",
-    "tests/regression_gantt_critical_chain_provider.py (provider 归一/缓存契约)",
-    "tests/regression_gantt_critical_chain_unavailable.py (available:False 降级契约)"
+    "tests/gantt/test_gantt_contract_snapshot.py (关键链字段集快照;line 122 用 subset 检查 required_top_keys - set(data.keys()),加键不会红)",
+    "tests/gantt/test_gantt_critical_chain_provider.py (provider 归一/缓存契约)",
+    "tests/gantt/test_gantt_critical_chain_unavailable.py (available:False 降级契约)"
    ],
    "downstream_effect": "给 reason_code 兜底规则/edge_type_stats/新增字段只改一份→filtered(support)与 unfiltered(provider)两路 payload 字段不一致,前端契约在两条路径下分叉。makespan/reason_code 透到 JS gantt_contract.js/gantt_legend.js。",
    "fix_invalidation_risk": "本修法(抽单份 helper 到 §4 公共落点 gantt_critical_chain.py,两路复用)是 R12/R55 的前置:若不先统一,R12 加 dropped_count、R55 加 scope 会分别改两份副本=复活本债。即 R11/R63 必须早于 R12+R55。",
@@ -4341,10 +4341,10 @@
     "出口汇入: core/services/scheduler/gantt_service.py:375/377 → :389 → core/services/scheduler/gantt_contract.py:89 (_public_critical_chain)"
    ],
    "test_consumers": [
-    "tests/regression_gantt_critical_chain_provider.py:93-498 (get_critical_chain × 多 + monkeypatch compute_critical_chain_from_rows:113-491)",
-    "tests/regression_gantt_critical_chain_unavailable.py:143,164,173 (compute_from_rows + provider.get_critical_chain)",
-    "tests/regression_gantt_contract_snapshot.py:143-184 (critical_chain 字段集快照)",
-    "tests/regression_gantt_task_detail_panel_contract.py:128 (compute_critical_chain_from_rows 公开标签)"
+    "tests/gantt/test_gantt_critical_chain_provider.py:93-498 (get_critical_chain × 多 + monkeypatch compute_critical_chain_from_rows:113-491)",
+    "tests/gantt/test_gantt_critical_chain_unavailable.py:143,164,173 (compute_from_rows + provider.get_critical_chain)",
+    "tests/gantt/test_gantt_contract_snapshot.py:143-184 (critical_chain 字段集快照)",
+    "tests/gantt/test_gantt_task_detail_panel_contract.py:128 (compute_critical_chain_from_rows 公开标签)"
    ]
   },
   "owner_pending": true,
@@ -4449,8 +4449,8 @@
     "R55"
    ],
    "contract_topology_tests": [
-    "tests/regression_gantt_contract_snapshot.py (字段集快照;line 122 subset 检查 + :144/:178 仅查已知键存在,加 dropped_count/critical_chain_partial 新键不会红,安全)",
-    "tests/regression_gantt_critical_chain_unavailable.py:215-248 (边级'不静默'政策契约,坐实节点级 :84 静默是已立政策的缺口)"
+    "tests/gantt/test_gantt_contract_snapshot.py (字段集快照;line 122 subset 检查 + :144/:178 仅查已知键存在,加 dropped_count/critical_chain_partial 新键不会红,安全)",
+    "tests/gantt/test_gantt_critical_chain_unavailable.py:215-248 (边级'不静默'政策契约,坐实节点级 :84 静默是已立政策的缺口)"
    ],
    "downstream_effect": "P4 修法补 dropped_count + critical_chain_partial,经 reason/新字段透到契约→JS。严禁裸删 :84 过滤:删后 start/end=None 流入 :114 排序与 :262 max→TypeError→被 :340/:358 try/except 接住→整链降为 available:False(过度激进、功能回归)。新键必须同穿三道白名单否则在归一层被静默剥离=换地方自欺。",
    "fix_invalidation_risk": "依赖 R11/R63 先把两份 _normalize 统一为单份,否则 dropped_count 要改两份副本=复活 R11/R63。与 R55 共用三道白名单,宜同批改 support:32-51 / provider:104-128 / contract:19-40。源头优先级:Schedule/采纳/候选为 NOT NULL+引擎写入(schema.sql:240-241),丢行分支近死,真正触发点是人工 scenario 调整——可先确认 scenario 写入是否已校验 st<et 再决定投入。",
@@ -4466,10 +4466,10 @@
     "出口三道白名单: gantt_service_support.py:32-51 / gantt_critical_chain_provider.py:104-128 / gantt_contract.py:19-40"
    ],
    "test_consumers": [
-    "tests/regression_gantt_critical_chain_unavailable.py:215-248 (边级时间异常 raise ValueError'时间字段缺失'的政策契约)",
-    "tests/regression_gantt_critical_outline_sync.py:1842 (degradation_counters bad_time_row_skipped 计数)",
-    "tests/regression_gantt_contract_snapshot.py:143-184 (关键链字段集)",
-    "tests/regression_gantt_critical_chain_provider.py (compute_from_rows monkeypatch)"
+    "tests/gantt/test_gantt_critical_chain_unavailable.py:215-248 (边级时间异常 raise ValueError'时间字段缺失'的政策契约)",
+    "tests/gantt/test_gantt_critical_outline_sync.py:1842 (degradation_counters bad_time_row_skipped 计数)",
+    "tests/gantt/test_gantt_contract_snapshot.py:143-184 (关键链字段集)",
+    "tests/gantt/test_gantt_critical_chain_provider.py (compute_from_rows monkeypatch)"
    ]
   },
   "owner_pending": false,
@@ -4585,7 +4585,7 @@
     "R12"
    ],
    "contract_topology_tests": [
-    "tests/regression_gantt_contract_snapshot.py (字段集快照,subset 检查,可加 scope 键不破)"
+    "tests/gantt/test_gantt_contract_snapshot.py (字段集快照,subset 检查,可加 scope 键不破)"
    ],
    "downstream_effect": "只读显示正确性:带任一过滤(单设备/单批次)时关键链 ids/edges/makespan(完工时间)是子集内部链冒充整版,偏离整版真值且无提示。不损坏数据,blast=medium。",
    "fix_invalidation_risk": "scope=filtered/full 标记须穿同三道白名单(support:32-51/provider:104-128/contract:19-40),与 R12 共用——若 R11/R63 已统一归一,scope 与 dropped_count 都落单份,宜同批。无独立对抗 verdict:落手前需怀疑者复核'当下债 vs 在途中间态';若强删过滤而非补 scope 标记=违灵魂线呈现失真不补反砍。",
@@ -4600,9 +4600,9 @@
     "makespan_end 经 gantt_contract.py:89 → static/js/gantt_legend.js:147-185 ('完工'显示) + static/js/gantt_contract.js:109-129"
    ],
    "test_consumers": [
-    "tests/regression_gantt_contract_snapshot.py:143-184 (关键链字段集)",
-    "tests/regression_gantt_task_detail_panel_contract.py:128 (compute_critical_chain_from_rows)",
-    "tests/regression_gantt_critical_chain_provider.py (provider 路径,无 filter 对照)"
+    "tests/gantt/test_gantt_contract_snapshot.py:143-184 (关键链字段集)",
+    "tests/gantt/test_gantt_task_detail_panel_contract.py:128 (compute_critical_chain_from_rows)",
+    "tests/gantt/test_gantt_critical_chain_provider.py (provider 路径,无 filter 对照)"
    ]
   },
   "owner_pending": true,
@@ -4701,8 +4701,8 @@
     "R55"
    ],
    "contract_topology_tests": [
-    "tests/regression_gantt_contract_snapshot.py (字段集快照,subset 检查)",
-    "tests/regression_gantt_critical_chain_provider.py (provider 归一契约)"
+    "tests/gantt/test_gantt_contract_snapshot.py (字段集快照,subset 检查)",
+    "tests/gantt/test_gantt_critical_chain_provider.py (provider 归一契约)"
    ],
    "downstream_effect": "给关键链 reason_code/edge_type_stats 加键只改一处则 filtered(support)与 unfiltered(provider)两路 payload 不一致,需第三处 gantt_contract.py:19 白名单同步。",
    "fix_invalidation_risk": "与 R11 同一修法(抽单份 helper),必须早于 R12(加 dropped_count)与 R55(加 scope),否则两副本各改一遍=复活重复债。",
@@ -4717,10 +4717,10 @@
     "出口: gantt_service.py:375/377 → :389 build_gantt_contract → gantt_contract.py:89"
    ],
    "test_consumers": [
-    "tests/regression_gantt_critical_chain_provider.py:93-498",
-    "tests/regression_gantt_critical_chain_unavailable.py:143,164",
-    "tests/regression_gantt_contract_snapshot.py:143-184",
-    "tests/regression_gantt_task_detail_panel_contract.py:128"
+    "tests/gantt/test_gantt_critical_chain_provider.py:93-498",
+    "tests/gantt/test_gantt_critical_chain_unavailable.py:143,164",
+    "tests/gantt/test_gantt_contract_snapshot.py:143-184",
+    "tests/gantt/test_gantt_task_detail_panel_contract.py:128"
    ]
   },
   "owner_pending": false,
@@ -4821,13 +4821,13 @@
   "adv_precondition": null,
   "planned_batch_hint": "Batch-10（PHASE1 §4）。须与 R27（B14）跨桶同提交，Phase 3 协调进同批。",
   "planned_deps_hint": "co_change=R27（B14）。这是本桶【唯一跨桶硬约束】：V22 强制 4 个空 delayed 包（batch+dispatch+gantt+calendar）同一提交删、同步改 SP05:310+315；R06 在 B09、R27 在 B14。PHASE1 §4 已把 R27 拉进 Batch-10 与本桶同落。Phase 3 排序必须把 R06↔R27 串进同一批次/同一提交。",
-  "planned_fix_hint": "直删 + 改 SP05 两处。步骤：①删除 core/services/scheduler/dispatch/ 目录（连同 0 字节 __init__.py）。②改 tests/test_sp05_path_topology_contract.py:310 存在性元组：从 (\"config\", \"run\", \"summary\", \"batch\", \"dispatch\", \"gantt\", \"calendar\") 摘掉 batch/dispatch/gantt/calendar 四个，留 (\"config\", \"run\", \"summary\")。③SP05:315-316 的 delayed 包循环 for delayed_package in (\"batch\", \"dispatch\", \"gantt\", \"calendar\"): _assert_init_has_no_imports(..",
+  "planned_fix_hint": "直删 + 改 SP05 两处。步骤：①删除 core/services/scheduler/dispatch/ 目录（连同 0 字节 __init__.py）。②改 tests/gate_meta/test_sp05_path_topology_contract.py:310 存在性元组：从 (\"config\", \"run\", \"summary\", \"batch\", \"dispatch\", \"gantt\", \"calendar\") 摘掉 batch/dispatch/gantt/calendar 四个，留 (\"config\", \"run\", \"summary\")。③SP05:315-316 的 delayed 包循环 for delayed_package in (\"batch\", \"dispatch\", \"gantt\", \"calendar\"): _assert_init_has_no_imports(..",
   "phase1_blast": {
    "co_change_within_group": [
     "R27"
    ],
    "contract_topology_tests": [
-    "tests/test_sp05_path_topology_contract.py:310,315(SP05 强制4个空delayed包存在,删包必同步改这两行)"
+    "tests/gate_meta/test_sp05_path_topology_contract.py:310,315(SP05 强制4个空delayed包存在,删包必同步改这两行)"
    ],
    "downstream_effect": "无运行期影响(零import)。",
    "fix_invalidation_risk": "none",
@@ -4840,8 +4840,8 @@
     "生产零引用(已grep证实):grep scheduler.dispatch/scheduler/dispatch(排除resource_dispatch、greedy/dispatch、schedule_graph_dispatch)=0命中"
    ],
    "test_consumers": [
-    "tests/test_sp05_path_topology_contract.py:310(存在性元组断言 dispatch 目录+__init__存在)",
-    "tests/test_sp05_path_topology_contract.py:315(delayed包无import循环断言)"
+    "tests/gate_meta/test_sp05_path_topology_contract.py:310(存在性元组断言 dispatch 目录+__init__存在)",
+    "tests/gate_meta/test_sp05_path_topology_contract.py:315(delayed包无import循环断言)"
    ]
   },
   "owner_pending": false,
@@ -4914,13 +4914,13 @@
   "adv_precondition": null,
   "planned_batch_hint": "Batch-10（PHASE1 §4）。与 R52 同提交单元；须晚于 test 迁移。",
   "planned_deps_hint": "co_change=R52（同一函数的 shell+body，必须同提交删）。隐含前置：R52 修法里的 test_ready_queue.py 测试迁移必须先于/同步于删垫片（否则 :16 import 红）。无 load_bearing colocation。",
-  "planned_fix_hint": "删垫片 + 退测试枚举 + roadmap 备忘，与 R52 同提交。步骤：①删除 core/services/scheduler/graph/ready_queue.py 整文件。②从 tests/regression_scheduler_graph_lazy_runtime_contract.py:27 与 tests/scheduler_graph/test_metrics_topology.py:140 的模块名枚举数组里摘掉 \"core.services.scheduler.graph.ready_queue\"（两处都是字面量行，实证）。③在 networkx items.yaml PR-5 notes（:178 区）补一句'ready_queue helper 已被 sgs_graph._prepare_graph_ready_state 取代、service 层兼容 shim",
+  "planned_fix_hint": "删垫片 + 退测试枚举 + roadmap 备忘，与 R52 同提交。步骤：①删除 core/services/scheduler/graph/ready_queue.py 整文件。②从 tests/scheduler_graph/test_scheduler_graph_lazy_runtime_contract.py:27 与 tests/scheduler_graph/test_metrics_topology.py:140 的模块名枚举数组里摘掉 \"core.services.scheduler.graph.ready_queue\"（两处都是字面量行，实证）。③在 networkx items.yaml PR-5 notes（:178 区）补一句'ready_queue helper 已被 sgs_graph._prepare_graph_ready_state 取代、service 层兼容 shim",
   "phase1_blast": {
    "co_change_within_group": [
     "R52"
    ],
    "contract_topology_tests": [
-    "tests/regression_scheduler_graph_lazy_runtime_contract.py:27(懒加载模块枚举,删垫片必摘名)",
+    "tests/scheduler_graph/test_scheduler_graph_lazy_runtime_contract.py:27(懒加载模块枚举,删垫片必摘名)",
     "tests/scheduler_graph/test_metrics_topology.py:140(同上)"
    ],
    "downstream_effect": "无排产产出影响(SGS不调它);仅移除一层service兼容面 + 两处模块枚举断言。",
@@ -4935,7 +4935,7 @@
    ],
    "test_consumers": [
     "tests/scheduler_graph/test_ready_queue.py:16(import经垫片)",
-    "tests/regression_scheduler_graph_lazy_runtime_contract.py:27(模块名枚举数组)",
+    "tests/scheduler_graph/test_scheduler_graph_lazy_runtime_contract.py:27(模块名枚举数组)",
     "tests/scheduler_graph/test_metrics_topology.py:140(模块名枚举数组)"
    ]
   },
@@ -4992,7 +4992,7 @@
     "R25"
    ],
    "contract_topology_tests": [
-    "tests/regression_scheduler_graph_lazy_runtime_contract.py:27(经R25垫片)",
+    "tests/scheduler_graph/test_scheduler_graph_lazy_runtime_contract.py:27(经R25垫片)",
     "tests/scheduler_graph/test_metrics_topology.py:140(经R25垫片)"
    ],
    "downstream_effect": "删除移除 incremental-vs-fullscan 差分覆盖与一层service垫片;生产路径不受影响。删前须确认 sgs_graph.py:20-160 的 ValidationError(field=graph_ready_context) 校验语义已覆盖原 helper 的坏op_id/前后置/排序key/图对象误传合同点(经核对已等价或更严)。",
@@ -5075,7 +5075,7 @@
     "R46"
    ],
    "contract_topology_tests": [
-    "tests/regression_scheduler_user_visible_messages.py — 这是 LB08 的续命/契约测试:改任一 LEGACY 模板中文文案而不同步正则,该测试断言会红(legacy 模板字面与正则强耦合)"
+    "tests/schedule/route_view/test_scheduler_user_visible_messages.py — 这是 LB08 的续命/契约测试:改任一 LEGACY 模板中文文案而不同步正则,该测试断言会红(legacy 模板字面与正则强耦合)"
    ],
    "downstream_effect": "用户可见错误信息的脱敏与归类。改任一中文错误文案 → legacy 正则 fullmatch 静默失配 → 错误降级为通用文案『排产执行遇到问题…』,归类 code 丢失(infer_legacy_public_code 返回空)。属呈现层降级,不影响算法。",
    "fix_invalidation_risk": "若有人先改 legacy 中文文案不同步正则,会让 regression_scheduler_user_visible_messages 红并使下游 code 归类失效;故 LB08 的『补注释』必须明确钉『文案与正则同生共死』。",
@@ -5095,8 +5095,8 @@
     "core/models/scheduler_public_errors.py:325,327,336 (同文件 build_public_error_records→legacy+infer+make_public_error)"
    ],
    "test_consumers": [
-    "tests/regression_scheduler_user_visible_messages.py:678 (test_legacy_error_with_sensitive_tail_is_generic,parametrize 4 条 raw,钉死 legacy 模板「自制工序未补全设备或人员，无法排产：工序 B001_05」)",
-    "tests/regression_scheduler_user_visible_messages.py:694,721,743,758 (build_public_error_records 系列,走 legacy_public_error_message)"
+    "tests/schedule/route_view/test_scheduler_user_visible_messages.py:678 (test_legacy_error_with_sensitive_tail_is_generic,parametrize 4 条 raw,钉死 legacy 模板「自制工序未补全设备或人员，无法排产：工序 B001_05」)",
+    "tests/schedule/route_view/test_scheduler_user_visible_messages.py:694,721,743,758 (build_public_error_records 系列,走 legacy_public_error_message)"
    ]
   },
   "owner_pending": true,
@@ -5204,7 +5204,7 @@
   "all_files": [
    "execution_fact_provider.py"
   ],
-  "current_evidence_2026_06_05": "execution_fact_provider.py:23-24 死字段 last_event_schedule_version/last_event_schedule_id 仍在,且 :56-57 仍从 latest 赋值、:43 _fact_from_state 仍收 latest 形参;计划要求删字段+去掉无用 latest 查询,均未做。注:resource-dispatch scope 重构把 latest 来源由 event_repo.list_latest_events_by_op_ids 改为 _latest_events_by_scope(:118),并把 list_by_op_ids 改成 raise(:110),但字段未删——反而被测试 tests/regression_scheduler_reschedule_execution_facts.py:196 .last_event_schedule_version==1 与 scope_read_contract:108/190 主动读活,计划框定的死字段删除未落地",
+  "current_evidence_2026_06_05": "execution_fact_provider.py:23-24 死字段 last_event_schedule_version/last_event_schedule_id 仍在,且 :56-57 仍从 latest 赋值、:43 _fact_from_state 仍收 latest 形参;计划要求删字段+去掉无用 latest 查询,均未做。注:resource-dispatch scope 重构把 latest 来源由 event_repo.list_latest_events_by_op_ids 改为 _latest_events_by_scope(:118),并把 list_by_op_ids 改成 raise(:110),但字段未删——反而被测试 tests/operation_execution/test_scheduler_reschedule_execution_facts.py:196 .last_event_schedule_version==1 与 scope_read_contract:108/190 主动读活,计划框定的死字段删除未落地",
   "cluster": "C01",
   "same_file_siblings": [
    "R15",
@@ -5252,8 +5252,8 @@
     "其拖挂的 data/repositories/operation_execution_event_repo.py:254 list_latest_events_by_op_ids 唯一生产调用方=core/services/scheduler/execution_fact_provider.py:96(本债一并删,删后该repo方法也成纯死码)"
    ],
    "test_consumers": [
-    "tests/regression_operation_execution_event_foundation.py:172 (断言 list_latest_events_by_op_ids([10])[10].id==finish.id;若连带删该repo方法须同退此行)",
-    "tests/regression_scheduler_reschedule_execution_facts.py:183 (经 ExecutionFactProvider.facts_by_op_id 只读 latest_exception_impact_minutes/handling_status/suggest_reschedule,不读两死字段,删字段零影响)"
+    "tests/operation_execution/test_operation_execution_event_foundation.py:172 (断言 list_latest_events_by_op_ids([10])[10].id==finish.id;若连带删该repo方法须同退此行)",
+    "tests/operation_execution/test_scheduler_reschedule_execution_facts.py:183 (经 ExecutionFactProvider.facts_by_op_id 只读 latest_exception_impact_minutes/handling_status/suggest_reschedule,不读两死字段,删字段零影响)"
    ]
   },
   "owner_pending": false,
@@ -5325,7 +5325,7 @@
   "adv_precondition": null,
   "planned_batch_hint": "Batch-12,桶内最后批之一(前置文档+测试迁移);owner 裁断迁移目标前不得删生产方法。可与 R24 并行。",
   "planned_deps_hint": "桶内无同文件硬边(schedule_delay_diagnosis_service.py 独占)。与 R24 共享动 roadmap 再删范式但 roadmap 文件不同(aps-three-gap vs networkx),可并行。注意 items.yaml(aps-three-gap)落地前确认 :83 实际行号(.codestable 本分支有改动)。",
-  "planned_fix_hint": "非裸删,按 verdict precondition 三步走再删:(1) 迁灵魂线测试——tests/regression_scheduler_delay_diagnosis_contract.py:328 reads_candidate_rows_without_fallback(期望 ValueError 所选方案没有可查看的明细)与 :358 reads_scenario_rows_without_fallback(期望 模拟方案明细不存在)改指到活路径。⚠️核心纠偏::358 场景断言在生产门经 _resolve_scenario_plan 仍被覆盖,可改断言 diagnose_resolved_plan_overdue(经 report_engine 喂入)或直接 resolve_plan_view;但 :328 候选严格语义【仅死门 resolve_existing_plan ",
+  "planned_fix_hint": "非裸删,按 verdict precondition 三步走再删:(1) 迁灵魂线测试——tests/scheduler_analysis/test_scheduler_delay_diagnosis_contract.py:328 reads_candidate_rows_without_fallback(期望 ValueError 所选方案没有可查看的明细)与 :358 reads_scenario_rows_without_fallback(期望 模拟方案明细不存在)改指到活路径。⚠️核心纠偏::358 场景断言在生产门经 _resolve_scenario_plan 仍被覆盖,可改断言 diagnose_resolved_plan_overdue(经 report_engine 喂入)或直接 resolve_plan_view;但 :328 候选严格语义【仅死门 resolve_existing_plan ",
   "phase1_blast": {
    "co_change_within_group": [],
    "contract_topology_tests": [
@@ -5342,7 +5342,7 @@
     "生产零引用。死三件套构成自洽子图:diagnose_batch:122→diagnose_plan_overdue→_resolve_strict_plan:49,生产入口实际走 core/services/report/report_engine.py:200 与 :213 调 diagnose_resolved_plan_overdue(活门),活web路由=web/routes/reports_page_support.py:230"
    ],
    "test_consumers": [
-    "tests/regression_scheduler_delay_diagnosis_contract.py:262/332/349/362/382 (diagnose_plan_overdue)",
+    "tests/scheduler_analysis/test_scheduler_delay_diagnosis_contract.py:262/332/349/362/382 (diagnose_plan_overdue)",
     ":397/405 (diagnose_batch)",
     "⚠️灵魂线:328 reads_candidate_rows_without_fallback(期望 ValueError 所选方案没有可查看的明细)+ :358 reads_scenario_rows_without_fallback(期望 模拟方案明细不存在)——V15:这两条'无静默回退'用例删前必须先迁到生产门(diagnose_resolved_plan_overdue 经 report_engine 喂入,或直接断言 resolve_existing_plan/resolve_plan_view),绝不能随死门一起删"
    ]
@@ -5486,7 +5486,7 @@
     "死键 'exception' 永不被索引命中:_normalize_action(feedback_service.py:247-248)= event_type_to_action(action_to_event_type(text)),经 labels.py:91-102 验证无论输入 'exception'/'report_exception' 恒归一为 'report_exception',:249成员校验与:455索引用的都是归一后 action;死导入 feedback_service.py:12 经grep body 内零使用(:278用的是PAUSE+REPORT_EXCEPTION)。生产零有效消费。"
    ],
    "test_consumers": [
-    "无测试直接索引 _REPORTED_STATUS_BY_ACTION['exception'] 这个键(tests/regression_operation_execution_event_foundation.py:13/140 引用的是 EXECUTION_EVENT_EXCEPTION 常量本身,非这张表的死键)"
+    "无测试直接索引 _REPORTED_STATUS_BY_ACTION['exception'] 这个键(tests/operation_execution/test_operation_execution_event_foundation.py:13/140 引用的是 EXECUTION_EVENT_EXCEPTION 常量本身,非这张表的死键)"
    ]
   },
   "owner_pending": false,
@@ -5530,7 +5530,7 @@
   "adv_precondition": null,
   "planned_batch_hint": "Batch-12,桶内第 2 步,与 R13 同一原子提交;须与 B13 R19 在 event_repo 上串行。",
   "planned_deps_hint": "强同批 R13(同 operation_execution_event_repo.py 相邻方法 :254/:260,同 foundation 测试相邻断言 :172/:173,同批避免二次行号漂移)。跨桶同文件串行:event_repo.py 同居 R19(B13,_positive_ids :63),Phase3 须与 B13 串行。",
-  "planned_fix_hint": "直删 + 退测试 + 清孤儿:(1) 删方法 :260-265;(2) 退 tests/regression_operation_execution_event_foundation.py:173 一行断言(与 R13 退的 :172 相邻);(3) 从 operation_execution_event_repo.py 导入块摘掉随之孤立的 EXECUTION_EVENT_EXCEPTION(原 :7),保留 OperationExecutionEvent。无兜底、无行为改动。",
+  "planned_fix_hint": "直删 + 退测试 + 清孤儿:(1) 删方法 :260-265;(2) 退 tests/operation_execution/test_operation_execution_event_foundation.py:173 一行断言(与 R13 退的 :172 相邻);(3) 从 operation_execution_event_repo.py 导入块摘掉随之孤立的 EXECUTION_EVENT_EXCEPTION(原 :7),保留 OperationExecutionEvent。无兜底、无行为改动。",
   "phase1_blast": {
    "co_change_within_group": [
     "R13"
@@ -5549,7 +5549,7 @@
     "生产零引用(已grep证实:全仓除:260定义外0生产命中)。最新异常态真实生产来源是 state_builder._latest_exception(:91)+OperationExecutionState.latest_exception_* 字段,不经此方法"
    ],
    "test_consumers": [
-    "tests/regression_operation_execution_event_foundation.py:173 (assert repo.list_latest_exception_events_by_op_ids([10])[10].id==exception.id;删方法须同退此行)"
+    "tests/operation_execution/test_operation_execution_event_foundation.py:173 (assert repo.list_latest_exception_events_by_op_ids([10])[10].id==exception.id;删方法须同退此行)"
    ]
   },
   "owner_pending": false,
@@ -5607,7 +5607,7 @@
     "生产零引用(已grep证实:全仓 schedule_diagnostic_contract 唯一命中=测试)。活渲染路径是web孪生:web/viewmodels/scheduler_analysis_diagnostic_helpers.py:41 build_item/:62 build_section → scheduler_analysis_diagnostics.py:108 build_diagnostic_sections → scheduler_analysis_vm.py:122 → analysis.html,全程不import core合同"
    ],
    "test_consumers": [
-    "tests/regression_scheduler_analysis_diagnostic_contract.py:10-13 (import core 三件套)+ :22/:23/:33/:66/:67/:77/:78 (core-only 形状测试,约:21-82);同一测试文件 :17 还import了web孪生 build_diagnostic_sections 并大量测它(:86起),故删core只需移:10-13 core import + 那3个core-only用例,不动整文件/不碰web孪生测试"
+    "tests/scheduler_analysis/test_scheduler_analysis_diagnostic_contract.py:10-13 (import core 三件套)+ :22/:23/:33/:66/:67/:77/:78 (core-only 形状测试,约:21-82);同一测试文件 :17 还import了web孪生 build_diagnostic_sections 并大量测它(:86起),故删core只需移:10-13 core import + 那3个core-only用例,不动整文件/不碰web孪生测试"
    ]
   },
   "owner_pending": true,
@@ -5731,7 +5731,7 @@
     "R35"
    ],
    "contract_topology_tests": [
-    "tests/regression_schedule_service_facade_delegation.py:31(get_version_time_span)/:36(list_overlapping_with_details)/:38-41(list_dispatch_rows_with_resource_context)——get_type_hints 命名返回类型契约,删三死方法须退这3条断言;保留:33(list_version_rows_by_op_ids_start_range,活→freeze_window:177)+:37(list_by_version_with_details,活→gantt_critical_chain:68)两条活方法断言"
+    "tests/schedule/service/test_schedule_service_facade_delegation.py:31(get_version_time_span)/:36(list_overlapping_with_details)/:38-41(list_dispatch_rows_with_resource_context)——get_type_hints 命名返回类型契约,删三死方法须退这3条断言;保留:33(list_version_rows_by_op_ids_start_range,活→freeze_window:177)+:37(list_by_version_with_details,活→gantt_critical_chain:68)两条活方法断言"
    ],
    "downstream_effect": "删三死方法:生产零影响(活孪生全覆盖且更安全,带 _require_candidate_id/_require_scenario_id/未知source raise,防候选/情景冒充adopted)。须退:facade delegation 3断言+detail_queries 相关用例+gantt_critical_chain_unavailable:59无效monkeypatch+repoint benchmark_fjsp:503。",
    "fix_invalidation_risk": "none(删的是更不安全的version-only盲路径,护栏在活孪生)。须 repoint benchmark_fjsp.py:503 到孪生 SchedulePlanQueryService.get_plan_time_span_for_resolution(version,ROLE_ADOPTED) 否则基准脚本报错。与R35强同批(同 schedule_repo.py,避免删 list_between 后行号二次漂移)。R55(B08,ScheduleResourceFilter同族)在 gantt_service.py 非本文件,不直接同改但属资源筛选收口族,Phase2/3 资源筛选族协调时留意。",
@@ -5744,9 +5744,9 @@
     "三方法生产全零引用(已grep证实)。活孪生:schedule_plan_query_repo.py:257 get_plan_time_span/:311 list_detail_rows_between/:430 list_dispatch_rows(带 source_table+candidate_id+scenario_id);活生产链=schedule_plan_query_service.py:218/281/399、gantt_plan_query.py:50-56、gantt_service.py:187、resource_dispatch_service.py:424、resource_dispatch_execution_service.py:95/142"
    ],
    "test_consumers": [
-    "list_overlapping_with_details: tests/test_schedule_repository_detail_queries.py:168 + tests/regression_gantt_critical_chain_unavailable.py:59(无效monkeypatch,生产实际调 list_by_version_with_details,由:60设其raise反证)",
+    "list_overlapping_with_details: tests/schedule/service/test_schedule_repository_detail_queries.py:168 + tests/gantt/test_gantt_critical_chain_unavailable.py:59(无效monkeypatch,生产实际调 list_by_version_with_details,由:60设其raise反证)",
     "list_dispatch_rows_with_resource_context: test_schedule_repository_detail_queries.py:198/218/225/240/247/254/268/274/288",
-    "get_version_time_span(裸): tests/benchmark_fjsp.py:503"
+    "get_version_time_span(裸): tests/_scripts_e2e/benchmark_fjsp.py:503"
    ]
   },
   "owner_pending": true,
@@ -6209,7 +6209,7 @@
   "phase1_blast": {
    "co_change_within_group": [],
    "contract_topology_tests": [
-    "tests/regression_aps_three_gap_docs_quality_gate.py:122(KEY_PYTHON_FILES 元组pin该路径,:181断言出现在开发者指南;删文件须同步摘元组+删指南条目否则文档同步门禁红——记账失败非安全失守)"
+    "tests/gate_meta/test_aps_three_gap_docs_quality_gate.py:122(KEY_PYTHON_FILES 元组pin该路径,:181断言出现在开发者指南;删文件须同步摘元组+删指南条目否则文档同步门禁红——记账失败非安全失守)"
    ],
    "downstream_effect": "删垫片改5处直连model:行为字节级一致(model是严格超集15⊂17);灵魂暗线由model函数实现(execution_status_label→'状态未识别'),删垫片无法削弱。",
    "fix_invalidation_risk": "none(但改 feedback_service.py 须等B01先给LB01钉承重注释,见ordering)",
@@ -6224,8 +6224,8 @@
     "web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py:16"
    ],
    "test_consumers": [
-    "tests/regression_operation_execution_event_foundation.py:17",
-    "tests/regression_plan_vs_actual_review.py:10"
+    "tests/operation_execution/test_operation_execution_event_foundation.py:17",
+    "tests/scheduler_analysis/test_plan_vs_actual_review.py:10"
    ]
   },
   "owner_pending": false,
@@ -6289,9 +6289,9 @@
   "phase1_blast": {
    "co_change_within_group": [],
    "contract_topology_tests": [
-    "tests/test_sp05_path_topology_contract.py:21-31(SERVICE_STRONG_COMPAT_MODULES)",
-    "tests/test_sp05_path_topology_contract.py:329-340(strong alias + __all__ + is-identity断言)",
-    "tests/test_sp05_path_topology_contract.py:642-658(文档树断言config_service.py标注'兼容薄门面')"
+    "tests/gate_meta/test_sp05_path_topology_contract.py:21-31(SERVICE_STRONG_COMPAT_MODULES)",
+    "tests/gate_meta/test_sp05_path_topology_contract.py:329-340(strong alias + __all__ + is-identity断言)",
+    "tests/gate_meta/test_sp05_path_topology_contract.py:642-658(文档树断言config_service.py标注'兼容薄门面')"
    ],
    "downstream_effect": "误删任一shim:破SP05 + 71处测试import + 2个离线脚本。删了只会响亮ImportError(不破安全不变量),honors灵魂暗线。",
    "fix_invalidation_risk": "B13 facade删除须晚于B05(R29 number_utils)/B06(R33)/B09(R52)收敛(PHASE0 §10.2):若这些桶仍经顶层config/summary老路径走测试,先删shim会让测试经老路径红。删前必须3步:迁2离线脚本到深路径 + 重指71处测试import + 改SP05(:21-82删5条+:642-658文档断言)",
@@ -6306,8 +6306,8 @@
     "(核心core/web生产=0:全走 .config.config_service / .summary.schedule_summary 或 __getattr__)"
    ],
    "test_consumers": [
-    "全仓71处import / 约53个测试文件经5个shim进,如 tests/regression_config_service_strict_blank_contract.py:9、regression_schedule_summary_cfg_snapshot_contract.py、regression_config_validator_preset_degradation.py 等",
-    "tests/test_sp05_path_topology_contract.py:21-31,34-79(把5个列为strong/behavior-compat)"
+    "全仓71处import / 约53个测试文件经5个shim进,如 tests/config/test_config_service_strict_blank_contract.py:9、regression_schedule_summary_cfg_snapshot_contract.py、regression_config_validator_preset_degradation.py 等",
+    "tests/gate_meta/test_sp05_path_topology_contract.py:21-31,34-79(把5个列为strong/behavior-compat)"
    ]
   },
   "owner_pending": true,
@@ -6422,7 +6422,7 @@
    "scheduler_run.py",
    "test_sp05_path_topology_contract.py"
   ],
-  "current_evidence_2026_06_05": "web/routes/scheduler_run.py:5-8 仍是 _scheduler_compat.load_scheduler_route_module+sys.modules别名残渣；9个顶层wrapper+_scheduler_compat.py 全在(ls确认)，tests/regression_scheduler_wrapper_import_order_contract.py 整文件仍在；roadmap p1-scheduler-debt-cleanup-roadmap.md:522『先保留旧wrapper避免冲击启动链』延期决定未认账。三前置(roadmap认账/迁15测试/退契约)零落地。",
+  "current_evidence_2026_06_05": "web/routes/scheduler_run.py:5-8 仍是 _scheduler_compat.load_scheduler_route_module+sys.modules别名残渣；9个顶层wrapper+_scheduler_compat.py 全在(ls确认)，tests/excel_data_io/test_scheduler_wrapper_import_order_contract.py 整文件仍在；roadmap p1-scheduler-debt-cleanup-roadmap.md:522『先保留旧wrapper避免冲击启动链』延期决定未认账。三前置(roadmap认账/迁15测试/退契约)零落地。",
   "cluster": "C01",
   "same_file_siblings": [],
   "interference_edges": [
@@ -6464,10 +6464,10 @@
   "phase1_blast": {
    "co_change_within_group": [],
    "contract_topology_tests": [
-    "tests/regression_scheduler_wrapper_import_order_contract.py(整文件,删wrapper须删/改它)",
-    "tests/test_sp05_path_topology_contract.py:94 ROUTE_COMPAT_MODULES",
-    "tests/test_sp05_path_topology_contract.py:105 ROUTE_BEHAVIOR_COMPAT_SYMBOLS",
-    "tests/test_sp05_path_topology_contract.py:150 SCHEDULER_REAL_ROUTE_FILES"
+    "tests/excel_data_io/test_scheduler_wrapper_import_order_contract.py(整文件,删wrapper须删/改它)",
+    "tests/gate_meta/test_sp05_path_topology_contract.py:94 ROUTE_COMPAT_MODULES",
+    "tests/gate_meta/test_sp05_path_topology_contract.py:105 ROUTE_BEHAVIOR_COMPAT_SYMBOLS",
+    "tests/gate_meta/test_sp05_path_topology_contract.py:150 SCHEDULER_REAL_ROUTE_FILES"
    ],
    "downstream_effect": "删除无生产安全失守(_scheduler_compat.py:9 importlib.import_module 缺目标抛ModuleNotFoundError,无静默兜底);启动链passivity由 domains叶子+registrar级测试(SP05:484-571)独立守护,删wrapper不解护栏。",
    "fix_invalidation_risk": "roadmap p1-scheduler-debt-cleanup-roadmap.md:522 明示'先保留旧wrapper,避免一次改动冲击启动链'—— 现删属抢跑该延期决定(非安全问题);须先认账/修订roadmap。排本组最晚",
@@ -6480,8 +6480,8 @@
     "生产零引用(已grep证实):web/core/data 对顶层wrapper路径0非测试命中;factory.py:449只import根模块web.routes.scheduler;registrar直接import domains叶子"
    ],
    "test_consumers": [
-    "15个测试文件 import web.routes.scheduler_xxx,如 tests/test_scheduler_run_view_result_contract.py、regression_scheduler_ops_update_route_contract.py、regression_scheduler_config_route_contract.py 等",
-    "tests/regression_scheduler_wrapper_import_order_contract.py:12-22(LEGACY_SCHEDULER_WRAPPERS 全9个,断言wrapper自身import旁路无副作用)"
+    "15个测试文件 import web.routes.scheduler_xxx,如 tests/schedule/route_view/test_scheduler_run_view_result_contract.py、regression_scheduler_ops_update_route_contract.py、regression_scheduler_config_route_contract.py 等",
+    "tests/excel_data_io/test_scheduler_wrapper_import_order_contract.py:12-22(LEGACY_SCHEDULER_WRAPPERS 全9个,断言wrapper自身import旁路无副作用)"
    ]
   },
   "owner_pending": true,
@@ -6562,7 +6562,7 @@
   "phase1_blast": {
    "co_change_within_group": [],
    "contract_topology_tests": [
-    "tests/test_sp05_path_topology_contract.py:54-55(删函数须同步删此两行断言,否则拓扑契约红——正是它在做的事)"
+    "tests/gate_meta/test_sp05_path_topology_contract.py:54-55(删函数须同步删此两行断言,否则拓扑契约红——正是它在做的事)"
    ],
    "downstream_effect": "纯死代码,无生产路径受影响;删 count/has+_iter_actionable_results+两处re-export+payload_contract/persistence __all__条目+SP05:54-55。",
    "fix_invalidation_risk": "schedule_payload_contract.py 跨桶:R04(B05,正整数/datetime收口)同文件——须与B05同批次或串行,避免后改桶撞行号",
@@ -6575,7 +6575,7 @@
     "生产零引用(已grep证实):除 has() 内部调 count()(:95)外,core/web/data 无任何 count_actionable_schedule_rows(/has_actionable_schedule_rows( 调用点"
    ],
    "test_consumers": [
-    "tests/test_sp05_path_topology_contract.py:54-55(SERVICE_BEHAVIOR_COMPAT_PUBLIC_SYMBOLS 断言 schedule_persistence 公开两符号存在)"
+    "tests/gate_meta/test_sp05_path_topology_contract.py:54-55(SERVICE_BEHAVIOR_COMPAT_PUBLIC_SYMBOLS 断言 schedule_persistence 公开两符号存在)"
    ]
   },
   "owner_pending": false,
@@ -6617,7 +6617,7 @@
   "phase1_blast": {
    "co_change_within_group": [],
    "contract_topology_tests": [
-    "tests/regression_scheduler_candidate_runner_contract.py(pin CANDIDATE_STATUS_FAILED + CandidateTrialFailure 行为,b81f8b3f治理后的窄捕获正确性)"
+    "tests/candidate/test_scheduler_candidate_runner_contract.py(pin CANDIDATE_STATUS_FAILED + CandidateTrialFailure 行为,b81f8b3f治理后的窄捕获正确性)"
    ],
    "downstream_effect": "若清理下游计数+UI分支:牵动已落库 ScheduleCandidate.status 枚举契约(completed/failed/skipped/not_run)+ 2个viewmodel + 候选公开摘要字段,blast中等。",
    "fix_invalidation_risk": "needs_adversarial 但 PHASE0 §6 无独立verdict,额外谨慎;倾向:窄except留,下游计数管道按债登记但低优先(勿裸删枚举契约面)",
@@ -6633,10 +6633,10 @@
     "web/viewmodels/scheduler_analysis_candidates.py:194,206,230,242,260,265"
    ],
    "test_consumers": [
-    "tests/regression_scheduler_candidate_runner_contract.py:15,470,576,632,647,648(raise CandidateTrialFailure + 断言FAILED态)",
-    "tests/regression_scheduler_candidate_summary_contract.py:87,149,170,195,230,293,295",
-    "tests/regression_dashboard_workbench_contract.py:83",
-    "tests/regression_scheduler_candidate_display_contract.py:84,98 / _analysis_contract:218,221,388 / _analysis_links_contract:287,288,305,306,334 / _persistence_contract:183"
+    "tests/candidate/test_scheduler_candidate_runner_contract.py:15,470,576,632,647,648(raise CandidateTrialFailure + 断言FAILED态)",
+    "tests/candidate/test_scheduler_candidate_summary_contract.py:87,149,170,195,230,293,295",
+    "tests/web_pages/test_dashboard_workbench_contract.py:83",
+    "tests/candidate/test_scheduler_candidate_display_contract.py:84,98 / _analysis_contract:218,221,388 / _analysis_links_contract:287,288,305,306,334 / _persistence_contract:183"
    ]
   },
   "owner_pending": true,
@@ -6737,7 +6737,7 @@
   "adv_precondition": null,
   "planned_batch_hint": "Batch-9(B08 SCC-GANTT)，与 R55 同批。自成簇，不阻塞他桶。Low 优先级。",
   "planned_deps_hint": "gantt_service.py 跨桶与 R55(B08，filtered 关键链冒充整版，落点 :375 critical_chain_for_plan_detail_filter)共居。R10(删 :60-62)与 R55(在 :375 加 scope)改不同区域但同文件，须同批或串行。Phase1 边 R10→R55『同文件同改』；Phase1 Batch-9(B08 SCC-GANTT)已把 R10 与 R55/R11/R12/R63 归同批。",
-  "planned_fix_hint": "直删。(1) 删 gantt_service.py:60-62 整个 get_latest_version_or_1 方法；(2) 删测试镜像 stub tests/regression_scheduler_week_plan_summary_observability.py:59-60(`def get_latest_version_or_1(self): return 3`)——它仅为镜像 API 表面存在、从不被调用。验收前确认 resolve_version(:64)未被触碰(它是活的版本解析路径)。",
+  "planned_fix_hint": "直删。(1) 删 gantt_service.py:60-62 整个 get_latest_version_or_1 方法；(2) 删测试镜像 stub tests/candidate/test_scheduler_week_plan_summary_observability.py:59-60(`def get_latest_version_or_1(self): return 3`)——它仅为镜像 API 表面存在、从不被调用。验收前确认 resolve_version(:64)未被触碰(它是活的版本解析路径)。",
   "phase1_blast": {
    "co_change_within_group": [],
    "contract_topology_tests": [],
@@ -6752,7 +6752,7 @@
     "生产零引用(已grep证实):Flask路由/registry已排除;唯一命中是测试stub定义非调用"
    ],
    "test_consumers": [
-    "tests/regression_scheduler_week_plan_summary_observability.py:59(_GanttServiceStub.get_latest_version_or_1 镜像def,通读测试从不被invoke)"
+    "tests/candidate/test_scheduler_week_plan_summary_observability.py:59(_GanttServiceStub.get_latest_version_or_1 镜像def,通读测试从不被invoke)"
    ]
   },
   "owner_pending": false,
@@ -6788,13 +6788,13 @@
   "adv_precondition": null,
   "planned_batch_hint": "Batch-10(B09 + R27 图死版+空包)，必须与 R06 V22 同提交。独立于 B01 根；早于 B13 facade 删除(§10.2)。Low 优先级但被 R06 配对门控。",
   "planned_deps_hint": "硬 V22 同提交与 R06(B09，dispatch/__init__)——Phase0 §2 note + Phase1 边 R06→R27『同文件同改』+ bucket pack co_change_within_group:[R06]。4 空包 + SP05:310/315 必须一个提交落地；删 calendar/batch(R27)而漏 dispatch(R06)+gantt 或反之，都留 SP05 红。故 R27 不能单独落地，须并入 R06 的批次。Phase1 Batch-10(B09+R27)已归同批。",
-  "planned_fix_hint": "直删，V22 同提交两件事缺一不可。(1) 删 4 个空包目录 core/services/scheduler/{batch,calendar,dispatch,gantt}/(每个仅一个空 __init__.py)；(2) 改 tests/test_sp05_path_topology_contract.py——从 :310 存在性元组移除 batch/calendar/dispatch/gantt(留 'config','run','summary')，并删除整个 :315-316 delayed-package 循环块(4 包全删后该循环无对象，删块比留空元组更干净)。跨桶联合：R27(本桶)占 calendar+batch，R06(B09)占 dispatch，gantt 无独立 id 但 V22 扫全 4 包→必须与 R06 同一提交。若团队日后真要分包，届时重建包目录即可，不必",
+  "planned_fix_hint": "直删，V22 同提交两件事缺一不可。(1) 删 4 个空包目录 core/services/scheduler/{batch,calendar,dispatch,gantt}/(每个仅一个空 __init__.py)；(2) 改 tests/gate_meta/test_sp05_path_topology_contract.py——从 :310 存在性元组移除 batch/calendar/dispatch/gantt(留 'config','run','summary')，并删除整个 :315-316 delayed-package 循环块(4 包全删后该循环无对象，删块比留空元组更干净)。跨桶联合：R27(本桶)占 calendar+batch，R06(B09)占 dispatch，gantt 无独立 id 但 V22 扫全 4 包→必须与 R06 同一提交。若团队日后真要分包，届时重建包目录即可，不必",
   "phase1_blast": {
    "co_change_within_group": [
     "R06"
    ],
    "contract_topology_tests": [
-    "tests/test_sp05_path_topology_contract.py:310,315(唯一钉死4空包存在+__init__无import;自指pin,删包必同步改这两行)"
+    "tests/gate_meta/test_sp05_path_topology_contract.py:310,315(唯一钉死4空包存在+__init__无import;自指pin,删包必同步改这两行)"
    ],
    "downstream_effect": "误删空包目录破SP05:310-316存在断言;无active roadmap把它们当待下沉预留位(.limcode/plans/.../05.plan.md:226,230-233 明确批次逻辑保留顶层)。",
    "fix_invalidation_risk": "none",
@@ -6807,8 +6807,8 @@
     "生产零引用(已grep证实):scheduler.calendar/batch 作为包的生产引用=0;resource_dispatch_range.py:3 `import calendar` 经确认解析到Python标准库非本空包"
    ],
    "test_consumers": [
-    "tests/test_sp05_path_topology_contract.py:310(存在性元组含 batch/calendar)",
-    "tests/test_sp05_path_topology_contract.py:315(4个delayed包无import循环断言)"
+    "tests/gate_meta/test_sp05_path_topology_contract.py:310(存在性元组含 batch/calendar)",
+    "tests/gate_meta/test_sp05_path_topology_contract.py:315(4个delayed包无import循环断言)"
    ]
   },
   "owner_pending": false,
@@ -6849,7 +6849,7 @@
    ],
    "contract_topology_tests": [
     "tests/regression_sp06_no_duplicate_defs.py — 只查【单文件内】重复 def(TARGETS=assembly/evaluation/calendar_admin 三文件,不含本二者),跨文件逐字两份它抓不到,收敛不会红也不会被它挡",
-    "tests/test_sp05_path_topology_contract.py:90 — SERVICE_ROOTS_WITHOUT_COMPAT 列 旧路径 core/services/scheduler/schedule_summary_degradation.py,断言该旧根路径不存在(文件已在 summary/ 子目录);抽公共到 summary 上游/core.shared 不会触发,只要别在旧根建文件"
+    "tests/gate_meta/test_sp05_path_topology_contract.py:90 — SERVICE_ROOTS_WITHOUT_COMPAT 列 旧路径 core/services/scheduler/schedule_summary_degradation.py,断言该旧根路径不存在(文件已在 summary/ 子目录);抽公共到 summary 上游/core.shared 不会触发,只要别在旧根建文件"
    ],
    "downstream_effect": "降级摘要正确性:resource_pool 降级路径与 downtime 降级路径对同一 meta 给出不同 used_default → 前端降级提示分叉。属灵魂线(坏 meta 的 used_default 标记)。",
    "fix_invalidation_risk": "P5+灵魂线:收敛前必须先补 parity 测试(两路对同一 meta 输出一致),否则收口后无回归网。收口点应选 summary 包上游或 core/shared,不得新建第二概念模块(违收口规则)。无其他债依赖本函数,不会让别的债修法失效。",
@@ -6866,7 +6866,7 @@
     "core/services/scheduler/summary/schedule_summary_downtime_degradation.py:118 (downtime extend_ok)"
    ],
    "test_consumers": [
-    "无直接 _meta_bool_state 符号引用;两文件被 tests/regression_frontend_ui_language_polish.py、tests/test_sp05_path_topology_contract.py、tests/regression_sp06_no_duplicate_defs.py 引用(均为文件级,不 pin 本函数)"
+    "无直接 _meta_bool_state 符号引用;两文件被 tests/web_pages/test_frontend_ui_language_polish.py、tests/gate_meta/test_sp05_path_topology_contract.py、tests/regression_sp06_no_duplicate_defs.py 引用(均为文件级,不 pin 本函数)"
    ]
   },
   "owner_pending": false,
@@ -6906,8 +6906,8 @@
     "R70"
    ],
    "contract_topology_tests": [
-    "tests/regression_aps_three_gap_docs_quality_gate.py:126 — 列 persistence_guard.py 路径的文档门禁;收口 _op_seq 到单点若不挪动/删除该文件则不会红(只动函数体)",
-    "tests/test_sp05_path_topology_contract.py:87 — SERVICE_ROOTS_WITHOUT_COMPAT 列旧路径 core/services/scheduler/schedule_input_runtime_support.py,断言旧根不存在;收口不在旧根建文件即不红"
+    "tests/gate_meta/test_aps_three_gap_docs_quality_gate.py:126 — 列 persistence_guard.py 路径的文档门禁;收口 _op_seq 到单点若不挪动/删除该文件则不会红(只动函数体)",
+    "tests/gate_meta/test_sp05_path_topology_contract.py:87 — SERVICE_ROOTS_WITHOUT_COMPAT 列旧路径 core/services/scheduler/schedule_input_runtime_support.py,断言旧根不存在;收口不在旧根建文件即不红"
    ],
    "downstream_effect": "工序排序键 seq。坏 seq 静默归 0 → persistence guard 的 revision 校验 `completed_seq<=0 短路 return`(:144)与 `_op_seq(op)<=completed_seq`(:149)比较被污染,可能漏判后继工序需重算。属护栏文件内静默兜底(灵魂线红区)。",
    "fix_invalidation_risk": "P4气味:收口到单一 _op_seq 时,若沿用静默 return 0 = 违灵魂线红线(护栏文件内尤甚)。建议收口点同时把 except 改 loud raise 或补可观测降级日志。无跨债依赖。",
@@ -6922,7 +6922,7 @@
     "core/services/scheduler/run/schedule_input_runtime_support.py:216 (seq=_op_seq(op))"
    ],
    "test_consumers": [
-    "无直接 _op_seq 符号引用;persistence_guard.py 被 tests/regression_aps_three_gap_docs_quality_gate.py:126 与 tests/test_sp05_path_topology_contract.py 列入文件清单"
+    "无直接 _op_seq 符号引用;persistence_guard.py 被 tests/gate_meta/test_aps_three_gap_docs_quality_gate.py:126 与 tests/gate_meta/test_sp05_path_topology_contract.py 列入文件清单"
    ]
   },
   "owner_pending": false,
@@ -6962,7 +6962,7 @@
     "R69"
    ],
    "contract_topology_tests": [
-    "tests/regression_schedule_service_facade_delegation.py — facade 委托契约,grep 证实【不引用 _raise/empty_result】,故直删 schedule_service.py:46 死副本不会让它红"
+    "tests/schedule/service/test_schedule_service_facade_delegation.py — facade 委托契约,grep 证实【不引用 _raise/empty_result】,故直删 schedule_service.py:46 死副本不会让它红"
    ],
    "downstream_effect": "排产空结果错误体结构一致性:ValidationError(field='排产')+details['reason']。两份分叉会让 reason 装配不一致。删 schedule_service 死副本零行为影响;收口 input_collector live 份需保 reason 契约。",
    "fix_invalidation_risk": "none — schedule_service.py:46 死副本可直删(facade_delegation 契约不依赖);live 份可收口到主链共同上游单 helper。两步互不冲突,也不影响 R68/R69。",
@@ -6979,7 +6979,7 @@
     "core/services/scheduler/schedule_service.py:46 — 该副本零调用方(死码,非 live twin)"
    ],
    "test_consumers": [
-    "无直接 _raise_schedule_empty_result 符号引用;空结果行为由 tests/regression_schedule_history_not_created_for_empty_schedule.py、tests/regression_schedule_service_empty_reschedulable_rejected.py 等行为级覆盖(import ScheduleService,不 pin 私有符号)"
+    "无直接 _raise_schedule_empty_result 符号引用;空结果行为由 tests/schedule/service/test_schedule_history_not_created_for_empty_schedule.py、tests/schedule/service/test_schedule_service_empty_reschedulable_rejected.py 等行为级覆盖(import ScheduleService,不 pin 私有符号)"
    ]
   },
   "owner_pending": false,
@@ -7028,8 +7028,8 @@
   "phase1_blast": {
    "co_change_within_group": [],
    "contract_topology_tests": [
-    "tests/regression_restore_success_condition.py — mock 掉 manager,不触达 :334 校验块,改 except→raise 不会让它红",
-    "tests/regression_system_backup_presenter_contract.py — presenter 层,不 pin backup() 吞咽行为;_adv_evidence 已证『tests 下无任何用例钉死这条宽松吞咽』"
+    "tests/app_runtime/test_restore_success_condition.py — mock 掉 manager,不触达 :334 校验块,改 except→raise 不会让它红",
+    "tests/web_pages/test_system_backup_presenter_contract.py — presenter 层,不 pin backup() 吞咽行为;_adv_evidence 已证『tests 下无任何用例钉死这条宽松吞咽』"
    ],
    "downstream_effect": "备份/恢复可信度:无法运行 integrity_check 的库(IO/锁/database disk image malformed)被当可信备份落地 → restore() 自动回滚拿坏快照盖活库可放大损坏。改 raise 后:migration_runner.py:189 重抛→按 :61 契约『取不到可用备份即阻断迁移』,更正确。",
    "fix_invalidation_risk": "precondition(非阻塞):改 :335 except→raise(对齐 :340 else)前,顺手收口 system_backup.py:107-113 让通用备份失败 flash 清晰错误而非裸 500(该 500 今天已因 else 分支存在);finally :346-352 .tmp 清理已在,抛错不残半成品。可独立后补:_copy_db_file(:354-372)/migration_backup.py:52-58 加 integrity 复检封堵旧快照盲拷。无跨债依赖。",
@@ -7049,10 +7049,10 @@
     "core/infrastructure/migration_backup.py:52-58 (restore_db_file_from_backup shutil.copy2 盲拷)"
    ],
    "test_consumers": [
-    "tests/regression_backup_restore_pending_verify_code.py:38 (真 manager.backup(manual))",
-    "tests/smoke_phase0_phase1.py:378 (bm.backup auto_test)",
-    "tests/regression_maintenance_window_mutex.py:54,73,124,206,216 (真 backup)",
-    "tests/regression_restore_success_condition.py:109+ (全程 mock.patch BackupManager+ensure_schema,不触达 integrity 校验)"
+    "tests/migration_db/test_backup_restore_pending_verify_code.py:38 (真 manager.backup(manual))",
+    "tests/_scripts_e2e/smoke_phase0_phase1.py:378 (bm.backup auto_test)",
+    "tests/calendar_maintenance/test_maintenance_window_mutex.py:54,73,124,206,216 (真 backup)",
+    "tests/app_runtime/test_restore_success_condition.py:109+ (全程 mock.patch BackupManager+ensure_schema,不触达 integrity 校验)"
    ]
   },
   "owner_pending": true,
@@ -7101,7 +7101,7 @@
     "core/services/material/material_service.py:113 (self.repo.update,唯一调用方) — 上游 :99-100 已 `_norm_float(stock_qty, field='库存数量', min_v=0.0)` 强校验,坏值在 service 层即被 ValidationError(:38/:40)拦下,repo 的 except 分支生产路径不可达"
    ],
    "test_consumers": [
-    "tests/regression_models_numeric_parse_hybrid_safe.py:168-175 — pin 的是 MODEL 层 Material.from_row(NaN→raise,''→0.0),非 repo 的 except 吞咽;属相邻护栏不是本债续命"
+    "tests/models_domain/test_models_numeric_parse_hybrid_safe.py:168-175 — pin 的是 MODEL 层 Material.from_row(NaN→raise,''→0.0),非 repo 的 except 吞咽;属相邻护栏不是本债续命"
    ]
   },
   "owner_pending": true,
@@ -7149,7 +7149,7 @@
     "不适用(空操作弃值行) — 参数真消费在 batch_order.py:58 (_coerce_state(scheduled_count=...)),返回真值在 :75 (run_state.scheduled_count property)"
    ],
    "test_consumers": [
-    "无 — :74 这行无任何测试引用;batch_order 行为由 tests/test_greedy_refactor_contracts.py、tests/test_greedy_ordering_contract.py、tests/regression_batch_order_* 覆盖,均不依赖该 no-op"
+    "无 — :74 这行无任何测试引用;batch_order 行为由 tests/algorithm/test_greedy_refactor_contract.py、tests/algorithm/test_greedy_ordering_contract.py、tests/regression_batch_order_* 覆盖,均不依赖该 no-op"
    ]
   },
   "owner_pending": false,
@@ -7175,7 +7175,7 @@
    "report_context_filters.py",
    "report_engine.py"
   ],
-  "current_evidence_2026_06_05": "core/services/report/report_context_filters.py:172-187 死函数 filter_plan_rows_for_report_context 及 helper _plan_row_matches_batch(:160)/_plan_row_matches_resource(:164) 原样存在;tests/regression_report_context_filters_contract.py:8/66/75/81 仍 import/调用它(两条负向测试未重定向到 normalize_report_resource_filter),整簇未删未退测试",
+  "current_evidence_2026_06_05": "core/services/report/report_context_filters.py:172-187 死函数 filter_plan_rows_for_report_context 及 helper _plan_row_matches_batch(:160)/_plan_row_matches_resource(:164) 原样存在;tests/scheduler_analysis/test_report_context_filters_contract.py:8/66/75/81 仍 import/调用它(两条负向测试未重定向到 normalize_report_resource_filter),整簇未删未退测试",
   "cluster": "C01",
   "same_file_siblings": [],
   "interference_edges": [
@@ -7212,7 +7212,7 @@
   "phase1_blast": {
    "co_change_within_group": [],
    "contract_topology_tests": [
-    "tests/regression_report_context_filters_contract.py:66/75/81 — 续命合同测试,删 filter_plan_rows_for_report_context 会让这 3 处 import+调用红,必须同步退测试。注意:同文件的孪生 filter_downtime_rows_for_report_context 是真活(report_engine:406),其测试 :28/:39/:51/:59 必须保留"
+    "tests/scheduler_analysis/test_report_context_filters_contract.py:66/75/81 — 续命合同测试,删 filter_plan_rows_for_report_context 会让这 3 处 import+调用红,必须同步退测试。注意:同文件的孪生 filter_downtime_rows_for_report_context 是真活(report_engine:406),其测试 :28/:39/:51/:59 必须保留"
    ],
    "downstream_effect": "运行期零(死)。删除收益=去维护成本 + 消除『报表计划行在此 Python 过滤』的层级误导(实际走 SQL)。",
    "fix_invalidation_risk": "删 filter_plan_rows_for_report_context + 两个私有 helper(:160/:164/:172-187)须与退 regression_report_context_filters_contract.py:8/66/75/81 同批;绝不能误删孪生 filter_downtime(:274,report_engine live)及其测试。无其他债依赖。",
@@ -7225,10 +7225,10 @@
     "生产零引用(已grep证实) — report_engine.py:28 仅 import 孪生 filter_downtime_rows_for_report_context,:406 仅调 downtime 份;计划行过滤实由 SQL 完成:data/repositories/schedule_plan_query_repo.py:331,362 append_detail_filters(来自 schedule_resource_sql_filters.py:22)。_plan_row_matches_batch/_plan_row_matches_resource(:160/:164)仅喂这条死函数(:184/:185)"
    ],
    "test_consumers": [
-    "tests/regression_report_context_filters_contract.py:8 (import filter_plan_rows_for_report_context)",
-    "tests/regression_report_context_filters_contract.py:66 (调用)",
-    "tests/regression_report_context_filters_contract.py:75 (调用)",
-    "tests/regression_report_context_filters_contract.py:81 (调用)"
+    "tests/scheduler_analysis/test_report_context_filters_contract.py:8 (import filter_plan_rows_for_report_context)",
+    "tests/scheduler_analysis/test_report_context_filters_contract.py:66 (调用)",
+    "tests/scheduler_analysis/test_report_context_filters_contract.py:75 (调用)",
+    "tests/scheduler_analysis/test_report_context_filters_contract.py:81 (调用)"
    ]
   },
   "owner_pending": false,

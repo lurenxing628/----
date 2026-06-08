@@ -27,7 +27,7 @@
    - **选项 A1（随 impl 同删，接受丢 ReadyQueueContractError 合同覆盖）**——前提须先逐分支证 LIVE 的 ValidationError 路径**语义已等价或更严**（不能用「均拒绝」一句带过；§7 已列反例：传图对象两路都 raise 但异常类不同，None 输入 LIVE `:38 return None` 不 raise 而全量版无 None 入口，这两个分支不可 cross-check）。
    - **选项 A2（把 15 个 RQErr 合同改写为对 LIVE ValidationError 的等价断言后迁入新文件）**——保住「坏输入被拒」覆盖，但断言须改异常类型且逐条核 match 文案，工作量大。
    - **建议**：8 正向行为用例随删（LIVE 8 个已覆盖等价正向场景）；15 个 RQErr 合同走 A2 选保留为 LIVE 契约（拒绝路径覆盖珍贵，不宜裸丢）。**【待 owner 裁 A1 vs A2】**
-5. 删 R25 垫片时同步改模块路径字符串断言：`tests/regression_scheduler_graph_lazy_runtime_contract.py:27`、`tests/scheduler_graph/test_metrics_topology.py:140`（loud fail，非静默）。
+5. 删 R25 垫片时同步改模块路径字符串断言：`tests/scheduler_graph/test_scheduler_graph_lazy_runtime_contract.py:27`、`tests/scheduler_graph/test_metrics_topology.py:140`（loud fail，非静默）。
 
 **【对批次计划的影响】**
 - **dossier §11 测试迁移清单须回写**：把「~23 个 LIVE-only sgs_graph 用例迁出」更正为「8 个 LIVE 用例迁出 + 23 个全量版用例（含 15 RQErr 合同）随删/改写归属待 owner 裁」。照旧 dossier 文字会误迁错桶。
@@ -46,7 +46,7 @@
 - **经壳的活生产消费者 ~13 处**（`from core.services.common.degradation import ...`）：`resource_sheet_builder.py:8`、`route_sheet_builder.py:7`、`template_builder.py:9`、`template_validation.py:5`、`schedule_summary_degradation.py:7`、`build_outcome.py:6`、`resource_dispatch_support.py:6`、`web/bootstrap/plugins.py:11`、`gantt_service_support.py:5`、`_sched_display_utils.py:6`、`resource_dispatch_rows.py:7`、`gantt_tasks.py:10`、`gantt_week_plan.py:6`、`gantt_service.py:6`。另有一批直连 `core.shared.degradation`（schedule_params:9、external_groups:8、config/* 等），不经壳。
 
 **对 R33/R26 批次的影响裁断**：
-- **R33 结论完全不变，但其 dossier §178 措辞须再纠**：R33 对抗核验把 degradation 改称「反例（真承重实现，非壳）」——**仍不准**。正确表述应为「**反例：活桥接 re-export 壳（壳在 services/common，实现在 core.shared，~13 活生产消费者经它进），与三死壳同处 common/ 但性质相反——它是『被生产经它进』的活兼容层，绝不能当死兼容壳删**」。`tests/regression_config_service_component_contract.py:15` 的 degradation 元组条目**死保不变**（删元组只动 `:14/:16/:19`，死保 `:15`）。
+- **R33 结论完全不变，但其 dossier §178 措辞须再纠**：R33 对抗核验把 degradation 改称「反例（真承重实现，非壳）」——**仍不准**。正确表述应为「**反例：活桥接 re-export 壳（壳在 services/common，实现在 core.shared，~13 活生产消费者经它进），与三死壳同处 common/ 但性质相反——它是『被生产经它进』的活兼容层，绝不能当死兼容壳删**」。`tests/config/test_config_service_component_contract.py:15` 的 degradation 元组条目**死保不变**（删元组只动 `:14/:16/:19`，死保 `:15`）。
 - **执行者认知反转点已堵**：dispute 提的「据『真实现 vs 壳』判断是否可删的认知会反转」——本裁定钉死：**无论叫壳还是实现，degradation 都不可删**（删壳→13 活消费者 loud ImportError；shared 实现更不能碰）。结论方向唯一。
 - **R26 不受影响**：R26 是 scheduler/ 顶层 5 shim，与 common/degradation 无文件重叠；其字段 8 排除 `degradation` 出生产扫描口径正确（degradation 经的是 common/ 壳不是 scheduler 顶层 shim）。
 - **爆炸半径修正**：_layer3 §128「两 facade 均无活生产消费者只有 3 测试 import」是讲 R30/R33 的 compat_parse/value_policies 壳——**不含 degradation 壳**；degradation 壳恰相反是 ~13 活消费者，不可混入「无活消费者」那批。
@@ -55,10 +55,10 @@
 
 ## 争议 ⑪：R29 monkeypatch 指错文件修正（COMPAT-DISPATCH / B05 / owner_pending=true）
 
-**【裁定】** dossier/Layer1 指错文件，爆点 §11 对：R29 薄壳化前置的真 monkeypatch 续命点是 **`tests/regression_number_utils_facade_delegates_strict_parse.py` 的 `:45-48`**（把 number_utils 的 4 个 parse 函数替换为 fake 以验证「门面确实转调」）；dossier A4/Layer1 指的 **`regression_ortools_warmstart_failure_contract.py:136` 与 number_utils 毫无关系**——该处 `:136 test_ortools_nonfinite_hours_is_visible` monkeypatch 的是 **ortools/cp_model**（`sys.modules` 注 fake ortools），全文件零 number_utils 引用。照误指改 warmstart 会以为前置满足、实则真续命点没动。
+**【裁定】** dossier/Layer1 指错文件，爆点 §11 对：R29 薄壳化前置的真 monkeypatch 续命点是 **`tests/models_domain/test_number_utils_facade_delegates_strict_parse.py` 的 `:45-48`**（把 number_utils 的 4 个 parse 函数替换为 fake 以验证「门面确实转调」）；dossier A4/Layer1 指的 **`regression_ortools_warmstart_failure_contract.py:136` 与 number_utils 毫无关系**——该处 `:136 test_ortools_nonfinite_hours_is_visible` monkeypatch 的是 **ortools/cp_model**（`sys.modules` 注 fake ortools），全文件零 number_utils 引用。照误指改 warmstart 会以为前置满足、实则真续命点没动。
 
 **【证据】file:line**：
-- 真文件 `tests/regression_number_utils_facade_delegates_strict_parse.py`（3978 字节）：`:19 from core.services.common import number_utils`；`:23-26` 存原函数（parse_required_float/optional_float/required_int/optional_int）；**`:45-48` 四行 rebind**（`number_utils.parse_required_float = fake_required_float` … `:48`）；`:57-60` restore；`:67` 断言 `number_utils 未转调 strict_parse 门面：{calls!r}`。这是「门面 delegation 身份测试」的本体。
+- 真文件 `tests/models_domain/test_number_utils_facade_delegates_strict_parse.py`（3978 字节）：`:19 from core.services.common import number_utils`；`:23-26` 存原函数（parse_required_float/optional_float/required_int/optional_int）；**`:45-48` 四行 rebind**（`number_utils.parse_required_float = fake_required_float` … `:48`）；`:57-60` restore；`:67` 断言 `number_utils 未转调 strict_parse 门面：{calls!r}`。这是「门面 delegation 身份测试」的本体。
 - 误指文件 `regression_ortools_warmstart_failure_contract.py`（7621 字节）：`:136 def test_ortools_nonfinite_hours_is_visible(monkeypatch)`；该测试经 `_install_fake_cp_model`（`:53`）`monkeypatch.setitem(sys.modules, "ortools..." )`（`:81-84`）注 fake ortools。`rg number_utils` 在该文件 **0 命中**。**与 number_utils/R29 无关，铁证误指。**
 - R29 本体 `core/services/common/number_utils.py`（44 行）= delegation-facade：`:5 from core.shared.strict_parse import (...)`，定义 `parse_finite_float`（:14/:19/:23 三 overload）、`parse_finite_int`（:31/:36/:40），转调 strict_parse。**真实现在 `core.shared.strict_parse`，本文件是全量委托门面。**
 - R29 活生产消费者 = **2 处**（与 _layer3 §55 一致）：`core/services/common/excel_validators.py:26`、`web/routes/domains/scheduler/scheduler_excel_calendar_rows.py:8`（后者只用 parse_finite_float）。**非死壳，薄壳化须同改这 2 处。**

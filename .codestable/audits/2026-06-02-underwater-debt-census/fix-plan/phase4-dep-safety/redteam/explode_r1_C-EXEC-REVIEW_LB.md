@@ -19,7 +19,7 @@
 - R62 模板 `!=` 死副行 + **title 属性**：`templates/reports/execution_review.html :138/:139/:142/:143`，每行 `title="{{ r.X_identity_label }}"` + `{% if X_identity_label and X_identity_label != X_label %}<div class=text-meta>`。
 - R62 xlsx `or` 死回退：`core/services/report/exporters/xlsx.py :410/:411/:414/:415`，未漂。
 - 灾难链下游坐实：`report_plan_helpers.py` `_resolve_plan`(:29-37)/`_list_plan_rows_between`(:56-73)/`_list_plan_rows_all`(:83-100) **完整透传** plan_role/scenario_id → `schedule_plan_query_service.resolve_plan_view`(:176-185) → scenario_key 非空切 `_resolve_scenario_plan`(:185)换 `source_table=SOURCE_ADJUSTMENT_SCENARIO_ROWS`(import :13)，**无 raise，静默换源表**。
-- 护栏测试存在：`tests/regression_execution_review_identity_guardrail.py`(6186B, 6 测试函数)，三组负向反例(baseline_best :63 / future_role :78 / scenario SCENARIO-RPT :95) + `_export_links()==[]`(:72/:88/:103) + 历史 adopted 可见 :136 + 参数化导出拒非正式身份 :162。**fail-CLOSED 坐实，parity 盲区已闭合。**
+- 护栏测试存在：`tests/operation_execution/test_execution_review_identity_guard.py`(6186B, 6 测试函数)，三组负向反例(baseline_best :63 / future_role :78 / scenario SCENARIO-RPT :95) + `_export_links()==[]`(:72/:88/:103) + 历史 adopted 可见 :136 + 参数化导出拒非正式身份 :162。**fail-CLOSED 坐实，parity 盲区已闭合。**
 - 消歧坐实：R62 无前缀键(planned_resource_identity_label / actual_resource_identity_label / *_export_label)全仓消费者**仅 3 文件**(execution_review.py / 模板 / xlsx.py)；state 层真身份 `latest_*_identity_label`(operation_execution_state.py:45/:50) + `counterpart_resource_identity_label` 是**另一键空间**，R62 不触及。
 
 ---

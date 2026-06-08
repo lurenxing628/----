@@ -20,7 +20,7 @@
 本簇拆 **3 个原子子簇 + 1 个孤立 owner-pending 节点**。
 
 ### A1 · compat-facade 收敛链 {R33, R30}（必须同提交 + 硬内部顺序）
-- **原子原因**：① 二者都改 `tests/regression_config_service_component_contract.py`（R33 删 :14/:16/:19 元组条目 + :393-399/:402-411 身份断言；交界行 `:411 parse_compat_date is` 在 R30 删实现后必失效，由 R33 步骤2 删）；② R30 删 `core.shared` 的 `parse_compat_date`/三 FieldPolicy/三常量，R33 删 `core.services.common` 三壳——壳 re-export 这些符号，删序错即 ImportError 或测试红。
+- **原子原因**：① 二者都改 `tests/config/test_config_service_component_contract.py`（R33 删 :14/:16/:19 元组条目 + :393-399/:402-411 身份断言；交界行 `:411 parse_compat_date is` 在 R30 删实现后必失效，由 R33 步骤2 删）；② R30 删 `core.shared` 的 `parse_compat_date`/三 FieldPolicy/三常量，R33 删 `core.services.common` 三壳——壳 re-export 这些符号，删序错即 ImportError 或测试红。
 - **内部顺序（硬，registry deps_hint + 两 dossier 双证）**：
   1. **R33 步骤1**（迁 `emits_degradation:18` + `matrix_contract:18` 两测试 import 从 `core.services.common.*` → `core.shared.*`）——为 R30 解锁，最先；
   2. **R30**（删 shared 实现：`parse_compat_date`@:198-215 / `_date_fallback`@:143-150 / date import :11/:14 / 三 FieldPolicy :179-208 / 三常量 :12/:16/:17 + 退 date 用例）；

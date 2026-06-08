@@ -21,7 +21,7 @@
 
 - **成员**：R22（收口委托）、R21（删 3 死 shim）。
 - **原子原因（precondition 前置 + parity 先于收敛）**：
-  - R21 的 `gantt_plan_query.py:32-39` `default_plan_resolution_dict` wrapper（try → `_default_plan_resolution_dict`，except 重抛 loud 文案「未知的排产方案角色：{role}」）是 **R22 收口的 precondition**：契约测试 `tests/regression_schedule_result_view_context.py:294-301`（`test_gantt_plan_query_wrapper_keeps_legacy_bad_role_message`）钉死该遗留文案。
+  - R21 的 `gantt_plan_query.py:32-39` `default_plan_resolution_dict` wrapper（try → `_default_plan_resolution_dict`，except 重抛 loud 文案「未知的排产方案角色：{role}」）是 **R22 收口的 precondition**：契约测试 `tests/schedule/summary/test_schedule_result_view_context.py:294-301`（`test_gantt_plan_query_wrapper_keeps_legacy_bad_role_message`）钉死该遗留文案。
   - R21 **绝不可先删该 wrapper**，否则 R22「保留遗留文案包装」约束失效、契约测试变红。
   - R21 删的另 3 个 shim（resolve_plan:42 / selected_plan_role:46 / _has_explicit_gantt_range:59）与 R22 在 **同物理文件 gantt_plan_query.py 相邻但不同区段**，R21 删 import 区(:14-25)会让 wrapper 行号上移约 9 行 → R22 若用 file:line 锚 wrapper 须重盘，**建议 R22 用符号名 `default_plan_resolution_dict` 锚定**。
 - **内部顺序（谁先谁后）**：

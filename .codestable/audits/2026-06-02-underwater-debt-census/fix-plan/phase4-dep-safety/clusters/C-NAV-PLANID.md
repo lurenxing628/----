@@ -12,7 +12,7 @@
   1. **同符号 co-change**（registry interference_edge `same_symbol=true, sym:build_workbench_plan_context`）：R42 删该函数读入/存储侧（`scheduler_workbench_links.py:191` 形参 + `:233` dict 键），R60 删字段表承认侧（`scheduler_navigation_links.py:12/52`、`reports_export_support.py:14`），操作同一死数据流两端。
   2. **共享 emit 点**（实盘双证）：`scheduler_workbench_link_query.py:118`（`_append_plan_query` 内 `_append_param(query,"plan_id",context.get("plan_id"))`）与 `:154`（`_append_target_plan_query` 的 `execution_review` 分支，:152 `if plan_style=="execution_review"`）既是 R42 回吐点也是 R60 承认面。**这两行只能删一次，由 R42 统一删，R60 不得重复删**——分两次删=同点双删冲突/键位移。
   3. **半截即残渣**（无安全中间态）：只删一边 = 字段表认一个无人写入的键（R42 先 → R60 后的中间态）或 emit 引用已删的键（R60 先 → R42 后的中间态），均落新 P3 债（corrections C2/灾难链①）。
-- 测试同退（共享同一组断言，只迁一次）：`tests/regression_reports_workbench_navigation_contract.py:109`（fixture URL 去 `plan_id=PLAN-RPT` 片段）/ `:122`（删 `query["plan_id"]` 断言）/ `:126`（删 `hidden_inputs["plan_id"]` 断言），**保留 :123/:127 back_to 断言**。
+- 测试同退（共享同一组断言，只迁一次）：`tests/web_pages/test_reports_workbench_navigation_contract.py:109`（fixture URL 去 `plan_id=PLAN-RPT` 片段）/ `:122`（删 `query["plan_id"]` 断言）/ `:126`（删 `hidden_inputs["plan_id"]` 断言），**保留 :123/:127 back_to 断言**。
 - roadmap 同退：`.codestable/roadmap/aps-frontend-workbench/aps-frontend-workbench-items.yaml:289` **仅此 1 处真实**（registry 声称的 acceptance.md:52 / checklist.yaml:82 是幻觉——目录无 checklist 文件、acceptance 内 0 个 plan_id）。
 - **内部顺序**：R42 与 R60 之间**无先后，必须合并单次提交**；唯一硬分工=emit:118/154 归 R42 删、R60 不动。整子簇执行顺序见下「关键内部顺序」（先迁测试 → 再删生产 → 跑测试自证）。
 

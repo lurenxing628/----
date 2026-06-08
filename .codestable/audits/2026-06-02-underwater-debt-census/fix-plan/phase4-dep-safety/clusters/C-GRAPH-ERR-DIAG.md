@@ -20,7 +20,7 @@
 
 ### 子簇 A2 — R06 + R27 + gantt 空包（**强制同一提交**）
 - **成员**：R06(dispatch 空包)、R27(calendar+batch 空包)、gantt 空包(无独立 id，V22 同批带走)。
-- **原子原因**：**同收口点同两行**。三方都改 `tests/test_sp05_path_topology_contract.py` 的**同一 :310 存在性循环行**（`for package_name in ("config","run","summary","batch","dispatch","gantt","calendar")`）和**同一 :315 delayed 循环行**（`for delayed_package in ("batch","dispatch","gantt","calendar")`）。逐增量摘会产生中间态（七元组→六元组→…），第二次提交按过时行内容 old_string 匹配会失配/误删。空包目录本身是不同目录的不同 `__init__.py`、互不撞行号，但 SP05 两行是物理同改点。
+- **原子原因**：**同收口点同两行**。三方都改 `tests/gate_meta/test_sp05_path_topology_contract.py` 的**同一 :310 存在性循环行**（`for package_name in ("config","run","summary","batch","dispatch","gantt","calendar")`）和**同一 :315 delayed 循环行**（`for delayed_package in ("batch","dispatch","gantt","calendar")`）。逐增量摘会产生中间态（七元组→六元组→…），第二次提交按过时行内容 old_string 匹配会失配/误删。空包目录本身是不同目录的不同 `__init__.py`、互不撞行号，但 SP05 两行是物理同改点。
 - **内部顺序**：**无先后，只有「四包同提交」单一安全顺序**——一次性把 :310 改成 `("config","run","summary")`、:315-316 整块删除，同提交删 dispatch/calendar/batch/gantt 四目录。
 - **禁区行（删块时绝不越界）**：`:173 def _assert_init_has_no_imports`（:409 web 空域循环仍调用，连定义删→NameError）；:310 元组里 `config/run/summary`（真业务包）只保留不摘；:318 起 lingering/strong-compat 断言不碰。
 
@@ -72,7 +72,7 @@
 - **删 R02↔R25 `same_file`**：registry interference_edge 标 `{R02,R25,same_file:true,@schedule_graph_dispatch_context.py}` **误**。回盘：R25 primary_file = `core/services/scheduler/graph/ready_queue.py`，R02 = `schedule_graph_dispatch_context.py`，**不同文件**。downstream「删 dispatch→matching 模块边」实为函数内懒 import(:468)非模块级边。→ 该边删除，R02 与 R25 仅同簇 C01 弱共现，调度互不争行号。
 
 ### 新增（registry 未登记、本轮回盘补的真协同点）
-- **新 R06+R27+gantt「同 SP05 两行」原子边**：registry 把 R06/R27 标 `same_file_siblings`（basename `__init__.py` 撞名）+ ISOLATED，**漏标真碰撞点**——三方实改 `tests/test_sp05_path_topology_contract.py` 同 :310/:315 两行。本簇据 dossier §5/§6 升为「四包必须同一原子提交」硬边（gantt 无独立 id 由二者带走）。
+- **新 R06+R27+gantt「同 SP05 两行」原子边**：registry 把 R06/R27 标 `same_file_siblings`（basename `__init__.py` 撞名）+ ISOLATED，**漏标真碰撞点**——三方实改 `tests/gate_meta/test_sp05_path_topology_contract.py` 同 :310/:315 两行。本簇据 dossier §5/§6 升为「四包必须同一原子提交」硬边（gantt 无独立 id 由二者带走）。
 - **新 R24 测试 :82/:83 单行剪除点**：registry phase1_blast 只说「移 :10-13 core import + 3 个 core-only 用例」，**漏标**混合用例 :82 首行 :83 `empty_diagnostic_sections()` 须单行剪除（corrections A 节 R24 已锚定）。
 
 ### 降级
@@ -87,7 +87,7 @@
 本簇唯一**簇内**承重点 = **LB08**（load_bearing=true）；唯一**跨簇**承重门 = **LB01**（他簇，门控 R14）。N1/N2/R03/R58 不在本簇。
 
 ### LB08（簇内承重，门控 A4 子簇 R46）
-- **必须先落的承重动作**：在 `scheduler_public_errors.py:62` 上方(:61 空行)插「我是故意的」护栏注释（钉死三件事：①正则把已渲染中文串反解回 code，与 make_public_error 结构化产出并存；②文案与正则同生共死，改文案不同步正则=静默降级通用文案+code 丢失；③终态让老路径走 make_public_error 端到端带 code 后才删正则）+ 绑**已存在**契约 `tests/regression_scheduler_user_visible_messages.py:678`(+:695/:721/:743/:758)。**绝不删/统一/透传正则桥**。
+- **必须先落的承重动作**：在 `scheduler_public_errors.py:62` 上方(:61 空行)插「我是故意的」护栏注释（钉死三件事：①正则把已渲染中文串反解回 code，与 make_public_error 结构化产出并存；②文案与正则同生共死，改文案不同步正则=静默降级通用文案+code 丢失；③终态让老路径走 make_public_error 端到端带 code 后才删正则）+ 绑**已存在**契约 `tests/schedule/route_view/test_scheduler_user_visible_messages.py:678`(+:695/:721/:743/:758)。**绝不删/统一/透传正则桥**。
 - **门控的结构动作**：R46 删 :162-164——LB08 注释先落，钉死承重边界后 R46 才删。
 - **禁区行（动同文件 R46 时绝不碰）**：`:62 LEGACY_PUBLIC_PATTERNS`、`:94 _LEGACY_CODE_PREFIXES`、`:142 public_safe_identifier`、`:175 make_public_error`、`:218 legacy_public_error_message`、`:284 infer_legacy_public_code`、`:340- __all__`(LEGACY 导出 :342/:345/:346)。
 - **owner_pending=true**：注释逐字文案产出点指向待裁（产出真点 = greedy/internal_operation.py + dispatch/resource_validation.py，非 auto_assign）。

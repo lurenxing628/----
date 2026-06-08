@@ -55,13 +55,13 @@
 
 ### R24（条件：先调和 networkx roadmap + 不走路 B）
 core 死副本 `core/services/scheduler/analysis/schedule_diagnostic_contract.py`（`empty_diagnostic_sections:73` 等 5 符号）生产零消费（实测 `rg core/ web/ data/` 零命中，唯一引用 = test）。**路 B = 🔴级隐患**：core 对 NaN/Inf/bool 静默透传；web 孪生 `web/viewmodels/scheduler_analysis_diagnostic_helpers.py` `safe_int:127`/`safe_float:144` loud raise `NonFiniteDiagnosticNumber:101`（raise :106/131/139/141/148/152/154）。路 B 把活路径改指零消费 core = **丢护栏退化为静默吞坏值（P4）+ 立零消费 core 为收口点违铁律 5，须另立 P5**。
-**修正（路 A）**：① 先改 `networkx-...items.yaml:435 primary_paths` 移 core + :480/:481 ruff/pyright **只摘 core 文件名**保留 web helpers 路径 + 加 note；② 删 core 整文件；③ 测试逐条剪 `tests/regression_scheduler_analysis_diagnostic_contract.py`：删 core import（:9-13 块，含 `empty_diagnostic_sections:13`）+ 纯 core 用例，**混合用例 :83 `assert empty_diagnostic_sections() == []` 单行剪除**（实测 :83 字面就是此串、非别名，r1/簇文件锚点准）保留 web 断言。
+**修正（路 A）**：① 先改 `networkx-...items.yaml:435 primary_paths` 移 core + :480/:481 ruff/pyright **只摘 core 文件名**保留 web helpers 路径 + 加 note；② 删 core 整文件；③ 测试逐条剪 `tests/scheduler_analysis/test_scheduler_analysis_diagnostic_contract.py`：删 core import（:9-13 块，含 `empty_diagnostic_sections:13`）+ 纯 core 用例，**混合用例 :83 `assert empty_diagnostic_sections() == []` 单行剪除**（实测 :83 字面就是此串、非别名，r1/簇文件锚点准）保留 web 断言。
 **禁区**：web 孪生护栏 `NonFiniteDiagnosticNumber:101`/`safe_int:127`/`safe_float:144`/`build_item:41`/`build_section:62` 绝不反删。
 
 ### LB08（条件：承重只补注释 + 产出点已实证待裁）
 承重 true，legacy 正则反解桥 `LEGACY_PUBLIC_PATTERNS:62`。修法仅补注释+绑契约，绝不删/统一/透传。**误碰灾难链**：删正则桥 → `legacy_public_error_message:218` 对 legacy 中文串 fullmatch 失配 → 静默降级通用文案 + code 丢失（P4）。
 **owner_pending#1 实证**：planned 草稿指 `auto_assign_resource_errors`（消费/反解方）错位；**真产出点 = `core/algorithms/greedy/internal_operation.py:119/148/150/152/154` + `core/algorithms/greedy/dispatch/resource_validation.py:86`**（实测产 raw 中文串「无法排产/无法自动分配/工时不合法/缺少自动派工所需工种信息」）。
-**前置**：LB08 注释先落钉死承重边界 → R46 才在保护下删。绑已存在契约 `tests/regression_scheduler_user_visible_messages.py:678 test_legacy_error_with_sensitive_tail_is_generic`（+ :694/:721 build_public_error_records）。禁区 :62/:94/:142/:167(R09)/:175/:218/:284/:340。
+**前置**：LB08 注释先落钉死承重边界 → R46 才在保护下删。绑已存在契约 `tests/schedule/route_view/test_scheduler_user_visible_messages.py:678 test_legacy_error_with_sensitive_tail_is_generic`（+ :694/:721 build_public_error_records）。禁区 :62/:94/:142/:167(R09)/:175/:218/:284/:340。
 
 ### R06 + R27（条件：四包+gantt 同一原子提交）
 四空包 `core/services/scheduler/{batch,dispatch,gantt,calendar}/__init__.py` 实测均 **0 字节**、生产零引用（"imports" 全是 `n`/`ln`-aliased 异物 false positive）。碰撞点 = 同一 SP05 测试 **:310 七元组循环 + :315/:316 四元组 delayed 循环**（实测命中）。**灾难链**：逐增量摘 → 中间态过时 old_string 失配/误删；或删目录漏改 SP05 → `is_dir()` 红（loud）；或漏删某包却整删 :315-316 → 失 `_assert_init_has_no_imports:173` 守卫=未来塞 import 不被发现（静默劣化）。

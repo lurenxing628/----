@@ -16,13 +16,13 @@
 | R05 禁区·空id全量 | schedule_plan_query_repo.py:455 operator `<> ''` / :460 machine `<> ''` | 承重，在 |
 | R05 禁区·team双join | schedule_plan_query_repo.py:462 `((o.team_id=?) OR (m.team_id=?))` | 承重第三轴，在（dossier 写 :461-463，实盘双join行=:462） |
 | R05 服务私写 | resource_dispatch_service.py:59 `_normalize_scope_type` / :65 `_normalize_team_axis` | 在，:269/:353 两消费点 |
-| R05 续命测试 | tests/regression_scheduler_resource_dispatch_invalid_query_cleanup.py:340 `_normalize_scope_type("bad")` | 删/改名即红，坐实 |
+| R05 续命测试 | tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py:340 `_normalize_scope_type("bad")` | 删/改名即红，坐实 |
 | R34 死方法 | schedule_repo.py:36/:114/:128 | 在 |
 | R34 repoint 目标 | schedule_plan_query_service.py:210 `get_plan_time_span_for_resolution` | **存在**（dossier 正文误判，Layer1+verify 已纠，实盘坐实） |
 | R34 活方法保护 | schedule_repo.py:71 `list_version_rows_by_op_ids_start_range` / :160 `list_by_version_with_details` | 活，禁误删 |
 | R34 facade 断言 | facade_delegation.py:31/:36(死)/:37(活)/:39-40 | :37 是活方法 |
 | R34 detail_queries 消费 | rg -c = **10**（registry 写"六个"是 registry 笔误） | 坐实 |
-| R34 critical_chain monkeypatch | tests/regression_gantt_critical_chain_unavailable.py:59 patch 死方法 / :60·:162·:171·:186 用活方法 | :59 删安全，:60 起禁动 |
+| R34 critical_chain monkeypatch | tests/gantt/test_gantt_critical_chain_unavailable.py:59 patch 死方法 / :60·:162·:171·:186 用活方法 | :59 删安全，:60 起禁动 |
 | R35 list_between | schedule_repo.py:61-69（夹在 R34 :59↘:114） | 零引用，坐标耦合真 |
 | R36 | batch_operation_repo.py:25 / :50 | ISOLATED 零引用 |
 | R37 死方法 | operator_machine_repo.py:82-90 | 在 |

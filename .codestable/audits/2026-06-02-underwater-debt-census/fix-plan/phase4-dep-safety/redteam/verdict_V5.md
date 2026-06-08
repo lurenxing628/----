@@ -26,7 +26,7 @@
 
 ### 裁定 8.3：测试硬门——test_enum_display_consistency 钉静默断言禁贴回收口输出复活
 
-【裁定】`tests/test_enum_display_consistency.py` 钉死旧静默口径的断言，收口后**必须改 loud 暴露/passthrough 真口径，绝不删了重钉静默、绝不把收口输出贴回断言来"对齐"**——后者=接受静默改写复活（灵魂线击穿）。硬门，列复活红线。
+【裁定】`tests/web_pages/test_enum_display_consistency.py` 钉死旧静默口径的断言，收口后**必须改 loud 暴露/passthrough 真口径，绝不删了重钉静默、绝不把收口输出贴回断言来"对齐"**——后者=接受静默改写复活（灵魂线击穿）。硬门，列复活红线。
 
 【证据】_layer3_explosion.md:218（"R41 test_enum_display_consistency:59-61 钉静默断言"）+ :220（"测试改 loud 暴露禁贴回收口输出（复活硬门）"）。dossier 字段2 实测 `:59-61` 仍断言 `ready_zh("weird"/""/None)=="未齐套"`。
 

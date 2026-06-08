@@ -59,7 +59,7 @@ r3 rg 实测三文件 import：
 
 ### 🟢 LB02 —— 承重不对称（刻意只复盘 ROLE_ADOPTED）· 纯注释
 - 判定 **🟢 绿（修法=仅注释 + 回归既有契约，零删/零透传/零加形参）**。
-- 证据（r3 实测）：签名 :209 确不收 plan_role/scenario_id；五处硬钉 :58/:180-181/:191-192/:221/:236 全在；契约 `tests/regression_execution_review_identity_guardrail.py` 存在（173 行，6 test fn，service+页+导出三层负向）。parity 盲区已闭合，**无需新建测试**。
+- 证据（r3 实测）：签名 :209 确不收 plan_role/scenario_id；五处硬钉 :58/:180-181/:191-192/:221/:236 全在；契约 `tests/operation_execution/test_execution_review_identity_guard.py` 存在（173 行，6 test fn，service+页+导出三层负向）。parity 盲区已闭合，**无需新建测试**。
 - 绿的前提（禁区，不可越）：A1 注释**仅**在 :209 上方 + 五处硬钉旁补 `#`，不动任何表达式、不位移返回 dict（:233-244）键序。落注释后回归四组反例零变色；任一变色=误改表达式，立即回退。
 - 主透镜补强：A1 注释须**显式钉回 v19 CHECK 双列**（见上 ★Q3），非仅写「兄弟报表签名不对称」。
 

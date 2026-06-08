@@ -50,7 +50,7 @@ phase4 四层分析（含全部 dossier 对抗核验附录）是在**已包含�
 > 3. **⚠ 不止 B 的 199 锚点**：A 自己的 **required 路径锚点也会断**——`tools/test_registry.py:64/77` 硬校验 required 路径单层 `tests/文件.py`、`tools/test_registry_data.py` 写死单层路径。A 的 P6 须连带放开单层校验 + 重写 test_registry_data.py；映射表**同时覆盖 B 的 199 dossier 锚点和 A 的 required 清单两套**。
 > 4. 权威与细节见 A 的 `.codestable/refactors/2026-06-01-test-gate-cleanup/_B_COMPAT_SAFEGUARDS.md` §B-3（⑤ 项，2026-06-06 补）+ §8（P3.4 删 collector 卡点 / 11 个 required 成员 / 守卫断言时序雷）。
 
-## 六、✅ P6 已落地（2026-06-08 补 · 映射已交付待 B 执行重生成）
+## 六、✅ P6 已落地（2026-06-08 补 · 映射已交付；路径维度已于 2026-06-08 代 B 执行，见 §七）
 
 > A 的 P6（Phase A 加固 + Phase B 8 波迁移 + Phase C 交接）**已全部收官并 push**（分支 `cleanup/p3-main-style-to-pytest`，提交链 `ff5f305b..017c1920`，全门禁 GATE_EXIT=0，两轮 holistic 对抗审核 0 阻塞）。SOP §五 的 A 侧责任**已履行**，B 侧重生成待 B 阶段执行。
 
@@ -71,3 +71,15 @@ phase4 四层分析（含全部 dossier 对抗核验附录）是在**已包含�
 4. **§二.3 的 R43 漂移已消灭确认**：`regression_scheduler_wrapper_import_order_contract.py` P6 中迁为 `tests/excel_data_io/test_scheduler_wrapper_import_order_contract.py`（未删除——R43「执行时整文件删除」属 B 阶段裁定动作，尚未执行）。其 dossier 锚点路径维度按 CSV 重指即可;若 B 仍裁定删除,则该锚点随之消灭。
 
 5. **§三.4 纪律不变**:档案行号一律视为待复核,B 重生成时按符号/断言串现场 `rg` 回盘(断言体 `git mv` 逐字幸存,按符号必命中)。详细逐行命中表见 P6 审计产物（审计脚本与 old→new 对账逻辑已固化,可复跑）。
+
+## 七、2026-06-08 A 收官终态补登（remap 已代执行 + 两新机制 + test_registry 行号弃用）
+
+A 全部 P0–P7 已收官（B 真实漂移基线 = `3f8f7c5f`，B 产物入库定稿点；抬头 `c2aa7501` 仅分析快照）。在 §五/§六 交付映射表的基础上，本轮**已代 B 机械执行路径维度重映射**，并补两项 A 引入的新机制约束：
+
+1. **路径重映射已实际落地（非仅交付映射表）**：同目录脚本 `.codestable/refactors/2026-06-01-test-gate-cleanup/remap_b_anchors.py` 已按 `p6_path_map.csv` 对 **PHASE4 主计划 + 76 dossiers + `_registry.json`（两套副本）** 完成 old→new 路径字符串替换（IN_CSV 残留 0；PHASE4/dossiers/OWNER 导航文档 0 残留）。B 不再需要「重生成 dossier 路径维度」，只需在执行每个原子簇时按符号/断言串 `rg` 校准**行号**（§三.4/§六.5 纪律）。§六.2/§六.3 的 6 个删除/合并/待新建文件不在映射表，已在相关 dossier 就地回写终态。
+
+2. **⚠ test_registry 等 tools/ 注册表的绝对行号锚点一律弃用**：B 计划/dossier 多处写 `test_registry:289`（exec_review 注册）、`test_registry:56`（spec_sync 注册）这类对 `tools/test_registry_*.py` 的**绝对行号**引用——A 的 P6 重写了 `test_registry_data.py`/`test_registry_groups_*.py`，这些行号已全漂（实测 exec_review 现散在 `test_registry_groups_scheduler.py` + `test_registry_data.py`，行号随版本变）。**一律按测试文件全路径名 `rg <new_path> tools/test_registry*` 重定位，弃裸行号。** 另 LB07 的 spec_sync 测试 A 后已脱离 required/daily 门禁组（只在 full gate 收集），B「rg 核存在即视为已纳门禁」前提不成立，须直接 `pytest <file>` 验。
+
+3. **两个 A 新机制 B 须感知（详见 `_B_COMPAT_SAFEGUARDS.md` §9 + PHASE4 §1.1 总纲 (5)(6)）**：① **P7 防回潮门禁**（full gate 第 17 步）——规则③ B 零触发、规则①② 仅新建独立测试触发（须 docstring + test 函数 + 落 P6 子目录）、删测试永不触发；② **P4 xdist 并行**——B 自建 oracle 默认落并行面，含全局态污染须 `monkeypatch` 或强制 serial，批后单测一律裸单进程 `-p no:cacheprovider` 验、不经 daily gate。
+
+4. **副本权威性**：本文档权威副本 = git tracked 的 `.codestable/audits/.../phase4-dep-safety/ANCHOR-DRIFT-2026-06-05-POSTCOMMIT.md`；`docs/_panorama_data/` 镜像 `.gitignore` 忽略、可能陈旧（D7-02 核查曾见镜像滞后权威两节），一切以 `.codestable` 为准。

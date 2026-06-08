@@ -393,7 +393,7 @@ R10 | 真实行号: get_latest_version_or_1→gantt_service.py:60-62, 测试 stu
 ### R27
 - DOSSIER: 档案完成，12 字段齐全，无残留占位符，已 git add 兜底。返回结果。
 
-R27 | 真实行号: 4空包`{calendar,batch,dispatch,gantt}/__init__.py`均0字节(SP05存在元组 tests/test_sp05_path_topology_contract.py:310、delayed循环:315-316、辅助函数:173) | 漂移: 行号无(精准命中);batch字节1→0微差;证据漂移1处(downstream引用的.limcode/.../05.plan.md在工作区不存在) | 修法类: 直删(删calendar+batch目录+摘:310元组+删:315-316循环块,非承重) | 同文件兄弟需协调: R06(dispatch空包)硬绑同提交——非先后是「V22同批原子落地」,共改同一行:310/:315,分次会编辑冲突或留SP05红 | 最大爆炸风险: 跨债漏删一半→残留空包失去no-imports守卫,未来塞import静默不被测;漏改SP05则响亮AssertionError(好事) | 与既有分析冲突: 无 | 前置: R06+gantt空包同提交;早于B13;独立B01;注:"V22"是批次代号非DB迁移脚本(v22.py不存在) | owner_pending: n
+R27 | 真实行号: 4空包`{calendar,batch,dispatch,gantt}/__init__.py`均0字节(SP05存在元组 tests/gate_meta/test_sp05_path_topology_contract.py:310、delayed循环:315-316、辅助函数:173) | 漂移: 行号无(精准命中);batch字节1→0微差;证据漂移1处(downstream引用的.limcode/.../05.plan.md在工作区不存在) | 修法类: 直删(删calendar+batch目录+摘:310元组+删:315-316循环块,非承重) | 同文件兄弟需协调: R06(dispatch空包)硬绑同提交——非先后是「V22同批原子落地」,共改同一行:310/:315,分次会编辑冲突或留SP05红 | 最大爆炸风险: 跨债漏删一半→残留空包失去no-imports守卫,未来塞import静默不被测;漏改SP05则响亮AssertionError(好事) | 与既有分析冲突: 无 | 前置: R06+gantt空包同提交;早于B13;独立B01;注:"V22"是批次代号非DB迁移脚本(v22.py不存在) | owner_pending: n
 
 档案路径: /Users/lurenxing/Documents/GitHub/----/docs/_panorama_data/phase4_dep_safety/dossiers/R27.md
 - VERIFY: R27 | 核验: PASS | 行号复核: 一致(:173/:309/:310/:315-316/:409/:638 逐行精准命中,零漂移) | 争议点: 无;独立 grep 多出4处 scheduler.calendar/gantt 命中经逐条挑战全是误命中(形参属性访问/字符串scope标签/负向护栏断言,非包import);:638 仅钉真包config/run/summary恰印证"无第二处钉空包" | 承重误删风险: 无(lb=false纯减法,0 AST越层) | 需升级第三方裁: n

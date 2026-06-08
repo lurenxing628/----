@@ -76,7 +76,7 @@
 
 ## 本轮新发现漏项（计划未覆盖的爆点 / 缺失前置）
 
-**漏项①（中危·会误导执行者）**：cluster A4 + corrections E 称 R29 薄壳化前置「先重写 monkeypatch 为身份测试（…regression_ortools_warmstart_failure_contract.py:136 经 monkeypatch 续命）」——**指错文件**。回盘 `regression_ortools_warmstart_failure_contract.py:136` 是 `_install_fake_cp_model` monkeypatch sys.modules['ortools…']，**与 number_utils 无关**。真正 monkeypatch number_utils 续命的是 `tests/regression_number_utils_facade_delegates_strict_parse.py:45-48`（`number_utils.parse_required_float = fake_*` 等 4 处赋值替换 + :67 「未转调 strict_parse 门面」断言）。执行者若按 A4 去改 warmstart 测试，会**以为前置已满足而实则没动真续命点** → 薄壳化后 facade_delegates 测试红。
+**漏项①（中危·会误导执行者）**：cluster A4 + corrections E 称 R29 薄壳化前置「先重写 monkeypatch 为身份测试（…regression_ortools_warmstart_failure_contract.py:136 经 monkeypatch 续命）」——**指错文件**。回盘 `regression_ortools_warmstart_failure_contract.py:136` 是 `_install_fake_cp_model` monkeypatch sys.modules['ortools…']，**与 number_utils 无关**。真正 monkeypatch number_utils 续命的是 `tests/models_domain/test_number_utils_facade_delegates_strict_parse.py:45-48`（`number_utils.parse_required_float = fake_*` 等 4 处赋值替换 + :67 「未转调 strict_parse 门面」断言）。执行者若按 A4 去改 warmstart 测试，会**以为前置已满足而实则没动真续命点** → 薄壳化后 facade_delegates 测试红。
 
 **漏项②（中危·A4 漏列）**：R29 facade **有 2 个活生产消费者**，A4/E 均称「死壳/半截迁移」未提消费者：`web/routes/domains/scheduler/scheduler_excel_calendar_rows.py:8` + `core/services/common/excel_validators.py:26` 均 `from core.services.common.number_utils import parse_finite_float`。故 R29 是**活 delegation facade**（非死壳）；KEEP 安全，但薄壳化/内联须同步改这 2 个生产 import 站点，A4 缺失此前置 → 漏改即 ImportError 炸生产 Excel 校验/日历行路径。
 

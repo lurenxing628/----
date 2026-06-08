@@ -44,7 +44,7 @@
 1. 改X=步3 先收敛(把 repo :452-463 字面量 + 服务 `_normalize_scope_type` 收敛到**未扩 team 的现状 collar**)→ 静默: `("team","TEAM-OP")` 走 collar column_name 返空串→无谓词→**班组视角静默返全量坏数据(无报错,最难发现)**→坏数据流到 `/resource-dispatch` 页 + `/data` JSON(cross_team_rows) + `/export`。
 2. 改X=直塞空 id 进现状 collar → collar :66 raise → 「全部人员/全部设备」全量视图**整页 500**(smoke `test_scheduler_resource_dispatch_smoke.py:177-194` 班组活用例为证)。
 
-**Q6 续命测试坐实**: `tests/regression_scheduler_resource_dispatch_invalid_query_cleanup.py:340` 直调 `svc._normalize_scope_type("bad")`——改名/删即响亮红。
+**Q6 续命测试坐实**: `tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py:340` 直调 `svc._normalize_scope_type("bad")`——改名/删即响亮红。
 
 **修正建议(承重前置·步内不可换序,owner_pending 暂不给终态)**:
 - 前置门: **步1 扩 collar(加 team 双 join 谓词接口 + 放开「类型有/id空=全量」,收口点写明中文注释「id 空→全量视图(故意,派工全部人员/设备入口)」,禁 except 吞错/默认空串静默放行) → 步2 落 5 条 parity(team-only / operator-空-全量 / machine-空-全量 / team-空-未定义裁断 / bad-raise) → 步3 才搬 :462-463/:455/:460 进收口点**。parity 先于收敛是硬序。

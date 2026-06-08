@@ -54,7 +54,7 @@
 
 **灾难链**：候选A 删死分支须**保留 `feedback_write_enabled` 参数**（仍被 :234 消费）。若以「DRY/参数没用了」名义连参数删 → :234 门禁判定塌成只看 can_write → 已完工/非可填态也亮「填写实际」按钮 → **静默放开误填现场记录**。另：(T,F) 不可达依赖 service:127≡:130 同源，无测试守卫时未来有人拆开同源 → 死分支变可达 → 删除引入回归。
 
-**修正建议**：owner 先裁「是否未来总开关预埋」(commit 65870e47 lane)；先在 `tests/regression_resource_dispatch_workbench_lane_contract.py` 钉 `can_write_feedback==feedback_write_enabled` 不变式守卫，再删；候选A 保参数只删分支+常量；R08(B01)先于 R09(B05) 同文件串行(:367 锚)；等本文件在途 task_key 重构 diff 落定再动（行号已漂 +1~+6）。
+**修正建议**：owner 先裁「是否未来总开关预埋」(commit 65870e47 lane)；先在 `tests/resource_dispatch/test_resource_dispatch_workbench_lane_contract.py` 钉 `can_write_feedback==feedback_write_enabled` 不变式守卫，再删；候选A 保参数只删分支+常量；R08(B01)先于 R09(B05) 同文件串行(:367 锚)；等本文件在途 task_key 重构 diff 落定再动（行号已漂 +1~+6）。
 
 ### 🟡 R59 — F1 互锁，裸收口撞续命测试（条件可做）
 **判定黄：F1 落地前只能停「注释+parity」临时态，F1 后可独立收口。**

@@ -62,7 +62,7 @@ R69 不在本簇成员（C-COMPAT-DISPATCH 成员为 R30/R33/R29/R49/R50/R51）�
 
 **判定 🟡（owner-pending，只标不给终态）**：number_utils 仍全量 delegation-facade 到 core.shared.strict_parse（`:5 from core.shared.strict_parse import` + `:14/:31 parse_finite_float/int` 薄壳）。半截迁移不对称客观在场。授权 CSV：`docs/_panorama_data/phase4_dep_safety/*.csv` 无匹配（ABSENT 证实）。
 
-**薄壳化前置硬约束（Q6，dossier A4 正确但续命点指错——本轮纠正）**：dossier A4/Layer1 称 monkeypatch 续命点是 `regression_ortools_warmstart_failure_contract.py:136`——**回盘证伪**：该文件 monkeypatch 的是 `sys.modules["ortools..."]`（:81-84）与 `builtins.__import__`（:109），**与 number_utils 无关**。真正的 number_utils monkeypatch 续命点是 **`tests/regression_number_utils_facade_delegates_strict_parse.py:45-48`**（`number_utils.parse_required_float = fake_...` 替换四个 delegate 目标，:50-55 验薄壳真转调 strict_parse）。**薄壳化（收编 number_utils）后这套 monkeypatch 失去 patch 目标会失效，须先把它重写为身份测试**（断言 `number_utils.parse_finite_float is shared.parse_finite_float`），否则老路径测试红。
+**薄壳化前置硬约束（Q6，dossier A4 正确但续命点指错——本轮纠正）**：dossier A4/Layer1 称 monkeypatch 续命点是 `regression_ortools_warmstart_failure_contract.py:136`——**回盘证伪**：该文件 monkeypatch 的是 `sys.modules["ortools..."]`（:81-84）与 `builtins.__import__`（:109），**与 number_utils 无关**。真正的 number_utils monkeypatch 续命点是 **`tests/models_domain/test_number_utils_facade_delegates_strict_parse.py:45-48`**（`number_utils.parse_required_float = fake_...` 替换四个 delegate 目标，:50-55 验薄壳真转调 strict_parse）。**薄壳化（收编 number_utils）后这套 monkeypatch 失去 patch 目标会失效，须先把它重写为身份测试**（断言 `number_utils.parse_finite_float is shared.parse_finite_float`），否则老路径测试红。
 
 **修正建议**：本 Layer 只标 owner-pending。(KEEP) 仅补「有意保留半截 facade」显性注释 + 上交 open_question；(B 薄壳化) **前置**先重写 `regression_number_utils_facade_delegates_strict_parse.py` 的 monkeypatch 为身份测试，再收编。**不给终态**。
 

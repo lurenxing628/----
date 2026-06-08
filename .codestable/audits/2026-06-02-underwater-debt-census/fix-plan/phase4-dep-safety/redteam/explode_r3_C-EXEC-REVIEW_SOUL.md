@@ -24,7 +24,7 @@ R62 三档键区（全命中）：
 - 模板死副行 templates/reports/execution_review.html :138/139/142/143（`!=` 模式实测命中）
 - xlsx 死回退 core/services/report/exporters/xlsx.py :410/411/414/415（`or` 回退，未漂）
 
-护栏测试 tests/regression_execution_review_identity_guardrail.py（6186B, 6 个 test）实测存在：
+护栏测试 tests/operation_execution/test_execution_review_identity_guard.py（6186B, 6 个 test）实测存在：
 candidate→blocked(:59) / unknown role 不泄漏 raw(:76,:86 `future_role not in body`) / scenario→blocked(:91) / 资源筛选导出只含正式行(:107) / **历史 adopted 可见可导出(:136)** / 导出拒非正式身份返回 **400**(:162-173)。
 
 灾难链物理可达坐实：`report_plan_helpers._resolve_plan`:37 透传 plan_role/scenario_id → `resolve_plan_view`:176 → scenario_key 非空切 `_resolve_scenario_plan`:185 → 换 source_table（SOURCE_ADJUSTMENT_SCENARIO_ROWS import :13）。**加形参=静默换源表无 raise**。

@@ -1,5 +1,8 @@
 # Fixed 态确认 + R29 误标复核
 
+> **⚠️ 2026-06-08 A 收官路径终态（B 执行前必读）**：`tests/regression_aps_workbench_flow_contract.py` 已由 A 的 **P5.1（commit `1fa076fb`）合并**入 `tests/web_pages/test_aps_workbench_context_propagation_contract.py`（含 ★R57-PINNED 标记，PIN 断言 `home_query[plan_role]==[baseline_best]` 已逐条迁入）。R57 锚点重指该合并目标，按函数名 `rg` 定位、弃裸行号。详见 `_B_COMPAT_SAFEGUARDS.md §B-6`。
+
+
 只读核验，grep 回盘当前工作区，确认 6 条 fixed 债 + 复核 R29。
 基线对照：committed≡b08162cd；工作树漂移以 `git status --porcelain` 实测为准。
 
@@ -13,7 +16,7 @@
 - 旧符号 `_bool_from_summary`：全仓 grep 零命中（已不存在）。
 - 现态 `core/services/scheduler/schedule_plan_identity_builder.py:24` `_parsed_summary_flag_is_true(parsed, key, *, fail_closed=False)`，parse 失败时 `:26 return bool(fail_closed)`；调用处 `:185 _parsed_summary_flag_is_true(summary_parse,"is_simulation",fail_closed=True)`——P4 由静默「安全默认 False（非模拟）」改为 **fail-CLOSED 判模拟**。
 - 新增可观测字段 `:233 result_summary_parse_failed=bool(summary_unavailable)`（registry 引 :233-234，盘上 :233 命中，行号微移在容忍内）。
-- 守卫测试 `tests/regression_scheduler_plan_identity_summary_guardrail.py` 实测 **git status=`A`（已 staged，不再 untracked）**，15502 字节在盘——MEMORY 记的 git clean 删 untracked 风险已被入账消解。
+- 守卫测试 `tests/schedule/route_view/test_scheduler_plan_identity_summary_guard.py` 实测 **git status=`A`（已 staged，不再 untracked）**，15502 字节在盘——MEMORY 记的 git clean 删 untracked 风险已被入账消解。
 
 **偏离计划：无（且优于计划）。** verdict 推荐「读边界加非致命完整性标记而非 raise」，现态正落在此方向（fail-closed + parse_failed 标记），未走 verdict 警示的「原地改 loud raise→latest_executable_official_version 全量扫历史一条 legacy 坏行炸全链」可用性放大事故。
 
@@ -34,7 +37,7 @@
 
 **新债/不对称：无新增不对称（反而消除了与兄弟页的方言不一致）。** 注：registry 引 reports_page_support 旧行号 :366/:368 系 off-by-one，新文件已是 :397/:399。
 
-**残留动作：** `:397`/`:399` 上方仍缺逐字「此处故意忽略 request 的 plan_role/scenario_id 是护栏」注释（lb_no_touch 禁区：禁改成从 request 读、禁给 core execution_review() 加形参）。契约由 `tests/regression_execution_review_identity_guardrail.py`（git=`AM`）绑死，下文 R56 列出断言。
+**残留动作：** `:397`/`:399` 上方仍缺逐字「此处故意忽略 request 的 plan_role/scenario_id 是护栏」注释（lb_no_touch 禁区：禁改成从 request 读、禁给 core execution_review() 加形参）。契约由 `tests/operation_execution/test_execution_review_identity_guard.py`（git=`AM`）绑死，下文 R56 列出断言。
 
 ---
 
@@ -63,7 +66,7 @@
 - 护栏迁到**页级**（reports_page_support.py `execution_review_page_context`）：非 adopted/scenario 请求经 `execution_review_plan_identity_error`（reports_request_support.py:65）判定，命中即 blocked 报告 + blocked_plan_resolution（can_write_feedback=False / is_current_executable_official_version=False）。
 - `web/navigation_context.py` 实测 git=`MM`（工作树漂移），即此结构重定位在场。
 
-**未 fail-open 证明：✅。** `execution_review_plan_identity_error` 逻辑（reports_request_support.py:65）：有 scenario→拦；role 非空且 ≠adopted→拦；返回错误串即触发 blocked。契约测试 `tests/regression_execution_review_identity_guardrail.py`（git=`AM`）实测断言：
+**未 fail-open 证明：✅。** `execution_review_plan_identity_error` 逻辑（reports_request_support.py:65）：有 scenario→拦；role 非空且 ≠adopted→拦；返回错误串即触发 blocked。契约测试 `tests/operation_execution/test_execution_review_identity_guard.py`（git=`AM`）实测断言：
 - `:59 test_..._direct_candidate_request_is_visible_blocked`：`?plan_role=baseline_best`→「计划和现场实际只复盘正式采用方案」可见 + 无 export links + 无 adopted 续跳链接。
 - `:76 test_..._unknown_plan_role_does_not_leak_raw_role`：未知 role 不泄漏 raw（`future_role` 不出现）。
 - `:91 test_..._direct_scenario_request_is_visible_blocked`：带 scenario→「模拟预览身份」可见 blocked。
@@ -120,7 +123,7 @@
 2. **债本体仍在场（结构未消除）：** `core/services/common/number_utils.py` 实测 44 行，`:14/:23 parse_finite_float` + `:31/:40 parse_finite_int` 仍是**全量函数体 delegation-facade**（真有 overload + 函数体，delegate 到 `core.shared.strict_parse` 的 parse_optional/required_*）；4 兄弟 compat_parse/value_policies/degradation/field_parse **全 defs=0**（纯 re-export 壳）。半截迁移的不对称客观存在，债没被消除也没被裁掉。
    - 注：registry current_evidence 说「delegate 到 core/shared/number_utils.py」，实盘 delegate 目标是 `core.shared.strict_parse`（number_utils.py 确存在但本 facade 的 import 指向 strict_parse）；不影响「全量 facade vs 薄壳不对称」结论，仅 delegate 目标模块名需校正。
 
-3. **facade 测试仍在：** `tests/regression_number_utils_facade_delegates_strict_parse.py` 在盘——薄壳化会击穿其 monkeypatch（与 verdict=depends 一致，需先重写为身份测试）。
+3. **facade 测试仍在：** `tests/models_domain/test_number_utils_facade_delegates_strict_parse.py` 在盘——薄壳化会击穿其 monkeypatch（与 verdict=depends 一致，需先重写为身份测试）。
 
 **R29 纠正建议：** `not_applicable` → **`planned`（owner-pending 待裁）**。理由：not_applicable 表「债不成立/不适用」，但债客观成立（半截迁移不对称在场）、verdict=depends（非安全单边收口）、且 KEEP vs 收敛的授权 CSV 已不在盘——属「待 owner 裁断该保留 delegation-facade 还是补齐迁移」，正是 planned + owner_pending 的语义，绝非 not_applicable。owner_pending=true 已正确置位，仅 status 字段需从 not_applicable 改 planned。给 owner 两条路：(A) KEEP——补一行「本模块刻意保留 delegation-facade 形态」显性注释；(B) 薄壳化——必先把 facade-delegation monkeypatch 测试重写为 `*_reexports_shared_identity` 身份测试再动，否则测试红。任一路均不在本会话写生产代码（铁律7）。
 

@@ -35,7 +35,7 @@
 
 ### R29 — 🟡黄/owner-pending（只标不给终态；薄壳化前置在计划里指错了文件）
 - 客观在场：`number_utils.py:5` import + parse_finite_float/int 全量 delegate→`core.shared.strict_parse`，半截迁移不对称。授权 CSV ABSENT → planned(owner-pending)。
-- **本轮新发现（计划失准）**：簇文档/A4 称薄壳化前置须「先重写 `regression_ortools_warmstart_failure_contract.py:136` 的 monkeypatch」——回盘该 monkeypatch 是给 **ortools/cp_model**（:81-84/:109/:124）的，**与 number_utils 无关**。R29 真正的 delegation 续命/身份测试是 `tests/regression_number_utils_facade_delegates_strict_parse.py`（:23-51 monkeypatch number_utils.parse_required_* 成 fake 再断言 parse_finite_* delegate）。**若 R29 走 B 收敛/薄壳化，须先重写这份测试，warmstart:136 是误指**。KEEP 路只补注释，不阻塞。本 Layer 不给终态。
+- **本轮新发现（计划失准）**：簇文档/A4 称薄壳化前置须「先重写 `regression_ortools_warmstart_failure_contract.py:136` 的 monkeypatch」——回盘该 monkeypatch 是给 **ortools/cp_model**（:81-84/:109/:124）的，**与 number_utils 无关**。R29 真正的 delegation 续命/身份测试是 `tests/models_domain/test_number_utils_facade_delegates_strict_parse.py`（:23-51 monkeypatch number_utils.parse_required_* 成 fake 再断言 parse_finite_* delegate）。**若 R29 走 B 收敛/薄壳化，须先重写这份测试，warmstart:136 是误指**。KEEP 路只补注释，不阻塞。本 Layer 不给终态。
 
 ---
 

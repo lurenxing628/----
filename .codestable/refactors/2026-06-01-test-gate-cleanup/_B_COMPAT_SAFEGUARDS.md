@@ -27,7 +27,7 @@
 | **证据** | A:`L3_verdicts.csv` 原 431/432 行同簇;`PLAN.md` P5.1「断言条数≥之和」。 B:`R51.md:35-44`「直删 `sort_strategies.py:161-173` 整个 `parse_strategy` + **两续命测试整体退场,严禁保留 :25 兜底续命**」;`PHASE4-SAFE-BATCH-PLAN.md:213`(G24)。 实读:`regression_sort_strategy_case_insensitive.py:25` 确为坏值兜底断言;`regression_sort_strategies_priority_case_insensitive.py` `grep parse_strategy 计数=0`,测的是 StrategyFactory 存活算法,两文件契约**不同**,原合并判定有误。 |
 | **必做动作（已落实)** | csv 已改:`regression_sort_strategy_case_insensitive.py` → `verdict=HOLD_FOR_R51`、merge_cluster 清空(A 阶段**不合并·不剪·不删·不迁**,命运绑 R51);`regression_sort_strategies_priority_case_insensitive.py` → `verdict=KEEP`、merge_cluster 清空(独立保留,不进任何簇)。 |
 | **A 执行时校验** | 合并阶段确认 `sort_strategy_case_insensitive` 簇**已不存在**:`rg "sort_strategy_case_insensitive" L3_verdicts.csv` 应仅命中 `HOLD_FOR_R51` 那一行的文件名,无 `MERGE:` 行。 |
-| **交棒给 B** | R51 执行(Batch-7,与 R49/R50 同原子,从大行号往小删)时,`git rm tests/regression_sort_strategy_case_insensitive.py` + `git rm tests/regression_dispatch_rule_case_insensitive.py` + 删 `sort_strategies.py:161-173`,**不写 parity**(R51.md:77-86 行为故意不等价)。 |
+| **交棒给 B** | R51 执行(Batch-7,与 R49/R50 同原子,从大行号往小删)时,`git rm tests/algorithm/test_sort_strategy_case_insensitive.py` + `git rm tests/resource_dispatch/test_dispatch_rule_case_insensitive.py` + 删 `sort_strategies.py:161-173`,**不写 parity**(R51.md:77-86 行为故意不等价)。 |
 
 > **关联**:R51 的**另一续命测试** `regression_dispatch_rule_case_insensitive.py`(csv 行 323,A 判 `KEEP`)同样要随 R51 整体退场。csv 已加标注:**A 勿在 P7 防回潮门禁里把它锁成「有价值测试」**,否则 B 删它时会触发新门禁。
 
@@ -52,6 +52,8 @@
 
 ### B-3 P6 目录迁移令 B 约 199 个锚点的路径维度整体失效（全体 76 债通用）
 
+> **✅ 2026-06-08 已解锁 + A 侧已执行**：A 全部 P0–P7 已收官（P6 定稿），B-3 的「P6 后、tests 定稿后再启 B」时序闸**已满足**，B 现可启动。「旧→新路径映射表」= `.codestable/refactors/2026-06-01-test-gate-cleanup/p6_path_map.csv`（561 行）已落地；B 的 ~199 dossier 锚点 + 84 门禁载体路径 + `_registry.json` 已由同目录 `remap_b_anchors.py` 一次性机械重映射完成（IN_CSV 残留 0，PHASE4/dossiers/OWNER 导航文档 0 残留）；6 个 P1 删 / P5 合并文件不在表内、已就地回写终态。下表为原始预案，保留作背景。
+
 | 项 | 内容 |
 |---|---|
 | **触发阶段** | P6 目录重组(626 文件迁 `tests/<模块>/<子模块>/` + 去前缀 + 改 testpaths) |
@@ -65,14 +67,16 @@
 
 ### B-12 锁 `architecture_fitness=KEEP` 后，P2.2 删 `architecture_scan_cache.py` 会断其 import 链（🔴红队 2026-06-05 补，HIGH）
 
+> **✅ 2026-06-08 已消解**：A 的 P2.2 实际走「塌缩缓存层」（提交 `0506b27d`）而非裸删——`tools/architecture_scan_cache.py` 仍存（公共 API 全保留）、三段 import 链通、`tests/gate_meta/test_architecture_fitness.py` collect 21 项无 error。预警的 collection-error 未发生，B go-no-go 载体健康、无需 B 侧动作。（注：`architecture_*_scan_map`/`*_scan_entries` 系列 API 实际散在 `quality_gate_operations` 等、非全定义于 `architecture_scan_cache.py`，但塌缩已保 import 链通，不影响结论。）下表为原始预案。
+
 | 项 | 内容 |
 |---|---|
 | **触发阶段** | P2.2 脚手架瘦身（PLAN.md「删 `architecture_scan_cache.py` + 缓存」） |
 | **对应 B 债** | B 全批次 go-no-go（R15/R28 + C-EXEC-FACT 分层红线靠 `test_architecture_fitness.py` 守） |
 | **冲突本质** | 我已把 `test_architecture_fitness.py` 锁 `KEEP`，但它到 `architecture_scan_cache` 是**三段顶层硬 import**：`test_architecture_fitness.py:25 → tools/quality_gate_support.py:32 → tools/quality_gate_operations.py:5 → tools/architecture_scan_cache.py`。P2.2 裸删该模块 → architecture_fitness **一 import 即 collection-error** → A 的 P2 门禁红、B go-no-go 起不来。**这是锁 KEEP 后新生的配套义务，首轮漏写（红队 RT2 抓出）。** |
-| **A 自身前置矛盾（非本加固引入）** | `scripts/run_quality_gate.py:26` 顶层 `from tools.architecture_scan_cache import architecture_scan_cache_metadata`（:1951 调用）+ `tests/test_architecture_scan_cache.py`（csv:8 判 KEEP_TRIM）都直连该模块——**A 一边要删模块、一边留 live 门禁入口和自测，P2.2 本身就与 A 自己冲突**，先于本加固存在。 |
-| **必做动作** | P2.2「删 `architecture_scan_cache.py`」必须改为「**塌缩缓存层**」并放**同一原子提交**：①保留 `aggregate_architecture_scan`/`scan_files_with_cache`/`architecture_oversize_scan_map`/`architecture_complexity_scan_map`/`architecture_silent_scan_entries` 的公共 API 行为（移壳或留薄实现）；②改接 `tools/quality_gate_operations.py:5` 与 `scripts/run_quality_gate.py:26` 的 import；③同步处理 `tests/test_architecture_scan_cache.py`。 |
-| **验证** | `.venv/bin/python -m pytest tests/test_architecture_fitness.py --collect-only`（删 cache 后 collection 不炸）+ `.venv/bin/python scripts/run_quality_gate.py --require-clean-worktree`（live 门禁不 ImportError）。 |
+| **A 自身前置矛盾（非本加固引入）** | `scripts/run_quality_gate.py:26` 顶层 `from tools.architecture_scan_cache import architecture_scan_cache_metadata`（:1951 调用）+ `tests/gate_meta/test_architecture_scan_cache.py`（csv:8 判 KEEP_TRIM）都直连该模块——**A 一边要删模块、一边留 live 门禁入口和自测，P2.2 本身就与 A 自己冲突**，先于本加固存在。 |
+| **必做动作** | P2.2「删 `architecture_scan_cache.py`」必须改为「**塌缩缓存层**」并放**同一原子提交**：①保留 `aggregate_architecture_scan`/`scan_files_with_cache`/`architecture_oversize_scan_map`/`architecture_complexity_scan_map`/`architecture_silent_scan_entries` 的公共 API 行为（移壳或留薄实现）；②改接 `tools/quality_gate_operations.py:5` 与 `scripts/run_quality_gate.py:26` 的 import；③同步处理 `tests/gate_meta/test_architecture_scan_cache.py`。 |
+| **验证** | `.venv/bin/python -m pytest tests/gate_meta/test_architecture_fitness.py --collect-only`（删 cache 后 collection 不炸）+ `.venv/bin/python scripts/run_quality_gate.py --require-clean-worktree`（live 门禁不 ImportError）。 |
 | **门级纪律** | **P2.2 真正落地前必须解决此项**（P2 早于 P5/P6，有窗口）；未解决前 `test_architecture_fitness.py` 的 KEEP 是空头支票。 |
 
 ---
@@ -104,7 +108,7 @@
 | **P5.1 合并** | `scheduler_route_registration` 簇 | 合并 commit 记录 wrapper import 锚点新位置 | B-5 |
 | **P5.2 剪尾** | `test_enum_display_consistency.py` | 行级手术保留 `:18/:19-20/:23/:59-61` | B-4 |
 | **P6 迁移** | 626 文件迁子目录去前缀 | 🟠 等 A 全部 P0-P7 跑完再启 B;产「旧→新路径映射表」;B 一次性脚本重生成 199 锚点 | B-3 |
-| **P2.2 删工具** | 删 verify_required / 简化 long_gate / **塌缩 architecture_scan_cache** | 🔴**B-12 HIGH**：删 `architecture_scan_cache.py` 必须改「塌缩缓存层」——保留 `architecture_*_scan_map`/`aggregate_architecture_scan`/`scan_files_with_cache` 公共 API + 改接 `quality_gate_operations.py:5`、`run_quality_gate.py:26` + 同步 `test_architecture_scan_cache.py`，放同一原子提交；否则锁 KEEP 的 `test_architecture_fitness.py` collection-error（A 门禁红 + B go-no-go 起不来）。验证 `pytest test_architecture_fitness.py --collect-only` | B-12 |
+| **P2.2 删工具** | 删 verify_required / 简化 long_gate / **塌缩 architecture_scan_cache** | 🔴**B-12 HIGH**：删 `architecture_scan_cache.py` 必须改「塌缩缓存层」——保留 `architecture_*_scan_map`/`aggregate_architecture_scan`/`scan_files_with_cache` 公共 API + 改接 `quality_gate_operations.py:5`、`run_quality_gate.py:26` + 同步 `test_architecture_scan_cache.py`，放同一原子提交；否则锁 KEEP 的 `test_architecture_fitness.py` collection-error（A 门禁红 + B go-no-go 起不来）。验证 `pytest tests/gate_meta/test_architecture_fitness.py --collect-only`（✅2026-06-08 已消解：A 走塌缩非裸删，模块仍存、collect 21 无 error）| B-12 |
 | **A 收尾** | 台账对齐 | 已改 `csv:620`→KEEP、`sort_strategy` 簇解散;`architecture_fitness` 列入禁删清单 | B-11/B-1 |
 
 ---
@@ -195,3 +199,15 @@
 - **#11「B 改静默回退→台账 stale→go-no-go 红→须重刷静默台账」= 伪**：`tools/quality_gate_operations.py:812-830` 门禁非启动链只续管 `legacy_swallow_hit=True`，B 的 6 个目标文件 silent 台账命中全 0 → silent 侧 fitness 不会红；`refresh --mode scan-startup-baseline` 只刷启动链，对这些文件 no-op。
 - **#12「B 照抄 §1.4 SOP 撞已删 verify_required 卡死」= 伪**：B 计划 0 处引用 A 的 §1.4 SOP / `run_quality_gate`；真问题是 A 内部债（已并入 B-14）。
 - **#13「P3.3 改写 HOLD 文件 + P7 锁禁删致 B git rm 触发门禁」= 伪**：`PLAN.md:200` 已写明「P7 只拦新增违规，不锁既有测试的删除」并点名这两文件 B 仍要删。（这两文件的**真**风险是上面的 BLOCKER collector 删除，非 P7 锁删。）
+
+---
+
+## 9. P4 并行机制对 B 的约束（2026-06-08 A 收官后补，holistic critic 抓的 8 维之外盲区）
+
+A 的 P4（提交 `337a7672`）给 daily gate 接入 pytest-xdist 并行 + serial 分流，B 全部产物制定于其之前、对该机制**零感知**（PHASE4/dossiers/ANCHOR-DRIFT/_B_COMPAT 原文 grep `xdist|worksteal|serial 分流` = 0）。机制实体：`tests/conftest.py` 的 `pytest_collection_modifyitems` 按 `tools/full_test_debt_shards.classify_nodeid` 自动给 serial 用例打 marker；`scripts/run_daily_quality_gate.py` 把 impact 步拆 not-serial（`-n auto --dist worksteal` 并行）/ serial（串行）两步、命令为三元组 `(label, command, allow_no_tests)`。对 B 的三层约束：
+
+- **(1) B 自建 oracle 默认落并行面**：`classify_nodeid` 的 serial 判定靠文件名/路径模式（`SERIAL_FILE_PATTERNS`/`SERIAL_NODEID_PATTERNS`/`SERIAL_EXACT_PATHS`），覆盖 runtime/startup/port/long_gate/win7 等真进程独占测试。现有逻辑 parity 形态测试实测全判 `parallel`（如 `tests/algorithm/test_sort_strategy_case_insensitive.py`、`tests/resource_dispatch/test_dispatch_rule_case_insensitive.py`——注：这两个恰是 R51 待 `git rm` 退场的续命测试，此处仅借其路径形态示例 `classify_nodeid` 的并行判定，非 B 要保留的 oracle）。**B 起草每个新 parity 测试前先 `.venv/bin/python -c 'import tools.full_test_debt_shards as s; print(s.classify_nodeid("<拟用路径>"))'` 预判**。
+- **(2) 全局态污染 oracle 会被 xdist 同 worker 跨文件复用污染致 flaky**：凡含全局模块属性赋值（`mod.X.attr=`，记忆铁律「mod.X.attr 赋值就是改全局模块」）/ `os.environ` 写 / 全局单例改的 oracle，要么走 pytest `monkeypatch` fixture 自动还原，要么文件名纳入 `SERIAL_FILE_PATTERNS` 强制串行。R54 四态 / R09 双路 parity 等含全局改写的 oracle 须逐个判（当前生产 oracle 是纯函数 parity、风险低，但 B 新建的须逐个核）。
+- **(3) 批后单测验证一律用裸单进程**：`.venv/bin/python -m pytest <file> -p no:cacheprovider`，**不经 daily gate**（避开 xdist；且 daily gate 的 impact 步已是 serial/not-serial 两步三元组形状，与 B 计划各批「批后门禁」旧叙述的单步门禁形态不同——B 若必须经 daily gate 验，须按现状两步形状）。serial 不变量复核：`.venv/bin/python -m pytest --collect-only -q -m serial 2>/dev/null | tail -1` 对齐基线，每批后确认未漂移。
+
+> **副本权威性提醒**：B 计划权威目录是 git tracked 的 `.codestable/audits/.../phase4-dep-safety/`（本文件 §0 顶部已指明）；`docs/_panorama_data/phase4_dep_safety/` 是 `.gitignore` 忽略的工作镜像，**可能陈旧**（曾出现 ANCHOR-DRIFT 镜像滞后于权威副本两节）。一切以 `.codestable` 副本为准；读到 docs 镜像与 `.codestable` 不一致时，信 `.codestable`。

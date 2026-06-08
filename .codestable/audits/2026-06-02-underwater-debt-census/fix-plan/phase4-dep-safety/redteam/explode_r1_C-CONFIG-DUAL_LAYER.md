@@ -21,7 +21,7 @@
 
 **证据（本轮回盘）**：
 - 两栈 @dataclass：model `schedule_config_runtime_snapshot.py:7-8` / service `config/config_snapshot.py:24-25`，逐字段 parity 当前成立。
-- **parity 守卫缺口实锤**：`rg "_float_matches_choice|_normalize_valid_texts|_coerce_degradation_event" tests/regression_scheduler_config_spec_sync_contract.py` → **exit=1 零命中**。即：删/改任一 helper 函数体**不会让任何测试变红**。三 helper（决定 choices 匹配 / 空白归一 / 降级判定口径）当前是「碰巧等价」而非「被守卫等价」。
+- **parity 守卫缺口实锤**：`rg "_float_matches_choice|_normalize_valid_texts|_coerce_degradation_event" tests/config/test_scheduler_config_spec_sync_contract.py` → **exit=1 零命中**。即：删/改任一 helper 函数体**不会让任何测试变红**。三 helper（决定 choices 匹配 / 空白归一 / 降级判定口径）当前是「碰巧等价」而非「被守卫等价」。
 - 两栈无任何「我是故意的/双栈/parity」注释（与 evidence 一致）。
 
 **完整灾难链**：LB07 注释+helper-parity 不先落 → 后续 LLM（或 R71 收敛半途）单边改一个 helper（如把 `_float_matches_choice` 空 choices 的 `return True` 误改，或 `_coerce_degradation_event` 的 `count=max(1,...)` 下限改掉）→ **无任何测试拦截** → model 栈（喂算法/排产）与 service 栈（喂配置页）对同一字段的合法值/降级口径**静默分叉** → 算法用一套口径排产、配置页存另一套 → 排产正确性被污染**且无 loud 信号**（踩灵魂暗线）。

@@ -58,7 +58,7 @@
   - **:180-181 / :191-192** `_list_plan_rows_between/_all(plan_role=ROLE_ADOPTED, scenario_id=None)`
   - **:221** `host._resolve_plan(v, ROLE_ADOPTED, None)`
   - **:236** 返回 dict `"plan_role": ROLE_ADOPTED`
-- **必须先落**：A1（LB02+LB05）的「我是故意的」§90 LB-A2 注释 + 绑既有契约 `tests/regression_execution_review_identity_guardrail.py`（173 行，4+ 组反例已存在，**parity 盲区已闭合，无需新建测试**，仅回归）。
+- **必须先落**：A1（LB02+LB05）的「我是故意的」§90 LB-A2 注释 + 绑既有契约 `tests/operation_execution/test_execution_review_identity_guard.py`（173 行，4+ 组反例已存在，**parity 盲区已闭合，无需新建测试**，仅回归）。
 - **门控的结构动作**：A2（R62）清死分支**绝不可碰**上述五处禁区行 + :209 签名，**绝不顺手「统一四张报表签名」加形参**（灾难链：加形参 → report_plan_helpers 透传 → resolve_plan_view scenario 非空切 `_resolve_scenario_plan` 换 source_table → 预览静默冒充正式复盘，违灵魂线）。R62 合法操作仅限 :358-441 死分支区 + 模板 + xlsx。
 - **owner_pending=false**（三成员均）：A1 可直接给终态注释修法（被铁律 3 锁死为仅注释+回归）；R62 给默认收敛终态（删 no-op，行为不变）。**owner_pending 不触发**——本簇无需 owner 裁断，但 R62 若 owner 要恢复真三档身份则反向（当前无规划文档，默认收敛）。
 - **灵魂线**：A1 注释不新增兜底/静默回退（既有测试已验页面 loud 拦截+导出链置空）；R62 删的 `or`/`!=` 是「展示降级」非「错误吞噬」，删除清 P3 残骸、不触灵魂线。

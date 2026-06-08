@@ -10,7 +10,7 @@
 
 ## 问题 1(真硬伤·中)· 跨 ROOT/Batch-B/C 所有 parse-helper 删点 + 收口债
 
-**问题**:`tests/test_architecture_fitness.py:229 test_no_new_local_parse_helpers` 不只查「新增」,还有第二条断言 `:254-256`:
+**问题**:`tests/gate_meta/test_architecture_fitness.py:229 test_no_new_local_parse_helpers` 不只查「新增」,还有第二条断言 `:254-256`:
 ```python
 stale_entries = sorted(LOCAL_PARSE_HELPER_ALLOWLIST - found_allowlist)
 assert not stale_entries, "局部解析函数白名单存在失效项..."
@@ -31,7 +31,7 @@ assert not stale_entries, "局部解析函数白名单存在失效项..."
 
 ## 问题 3(口径瑕疵·低)· ROOT「regression_execution_review_identity_guardrail(R56)绿」用简称且 fd 不可见
 
-**问题**:文件**确实存在**(`tests/regression_execution_review_identity_guardrail.py`,9 个 def,经注册表 `tools/test_registry_groups_scheduler.py:289` 引用),门禁可机器判定 ✓。但 `fd` 按文件名搜不到(因其为 regression_ 前缀长名,执行者若按计划裸名 `fd regression_execution_review_identity` 会误判「文件不存在」)。同类:计划写「spec_sync」简称,真实文件是 `tests/regression_scheduler_config_spec_sync_contract.py`(注册表 :56 引用)。
+**问题**:文件**确实存在**(`tests/operation_execution/test_execution_review_identity_guard.py`,9 个 def,经注册表 `tools/test_registry_groups_scheduler.py:289` 引用),门禁可机器判定 ✓。但 `fd` 按文件名搜不到(因其为 regression_ 前缀长名,执行者若按计划裸名 `fd regression_execution_review_identity` 会误判「文件不存在」)。同类:计划写「spec_sync」简称,真实文件是 `tests/config/test_scheduler_config_spec_sync_contract.py`(注册表 :56 引用)。
 
 **为什么会绊**:执行者抽查门禁存在性时按计划简称 rg/fd 会落空,误以为门禁缺失而绕过。非分析硬伤,是检索口径瑕疵。
 
@@ -41,7 +41,7 @@ assert not stale_entries, "局部解析函数白名单存在失效项..."
 
 **问题**:计划每批门禁均写「v18/v19 DB CHECK 不破」。实盘 `rg CHECK core/infrastructure/migrations/v18.py` **零命中**——source_table='schedule' / effective_plan_role='adopted' 两 CHECK 全在 `v19.py:14-19`。v18 不含任何 CHECK 列。
 
-**为什么会绊**:门禁措辞把 v18 与 CHECK 绑定,执行者验证「v18 CHECK」会查无对象;真正可机器判定的 CHECK 门禁载体是 `v19.py` + `tests/regression_migrations.py` / `tests/regression_migration_schema_contract.py`(已确认存在,可跑红)。
+**为什么会绊**:门禁措辞把 v18 与 CHECK 绑定,执行者验证「v18 CHECK」会查无对象;真正可机器判定的 CHECK 门禁载体是 `v19.py` + `tests/migration_db/test_migrations.py` / `tests/migration_db/test_migration_schema_contract.py`(已确认存在,可跑红)。
 
 **修正建议**:门禁正名为「v19 DB CHECK 不破(source_table/effective_plan_role 两列),经 regression_migrations + regression_migration_schema_contract 机器验证;v18 仅作 schema 前置无 CHECK」。
 
