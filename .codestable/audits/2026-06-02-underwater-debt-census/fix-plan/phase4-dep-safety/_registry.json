@@ -96,7 +96,7 @@
   "id": "LB02",
   "bucket": "B01",
   "home": "B01",
-  "status_2026_06_05": "in_progress",
+  "status_2026_06_05": "fixed",
   "severity": "medium",
   "pathology": "P2",
   "partition": "scheduler-plan-identity",
@@ -115,7 +115,7 @@
    "scheduler_reports_workbench.py",
    "workbench_links.py"
   ],
-  "current_evidence_2026_06_05": "execution_review.py:192 execution_review() 签名仍刻意不含 plan_role/scenario_id,:163-164/:174-175/:204/:219 硬钉 ROLE_ADOPTED/None 原样在;计划两动作之一已落:新增请求级负向契约测试 tests/operation_execution/test_execution_review_identity_guard.py(plan_role=baseline_best/scenario_id=SCENARIO-RPT 在页与导出均可见拦截+400);但 :188-205 上方零 # 注释,§90 LB-A2『刻意不对称』本地护栏注释未补。",
+  "current_evidence_2026_06_05": "2026-06-09 台账回写: LB02 已 fixed。core/services/report/execution_review.py 读侧 adopted-only 硬钉已有本地保护性注释（如 _execution_scope 的 v19 CHECK 前哨注释、_execution_review_plan_rows 的两处 adopted/None 注释），tests/operation_execution/test_execution_review_identity_guard.py 已覆盖 plan_role=baseline_best、future_role、adopted+scenario_id 与导出拒非正式身份。后续勿按旧“服务层零注释”证据重复施工。",
   "cluster": "C01",
   "same_file_siblings": [
    "LB05",
@@ -353,7 +353,7 @@
   "id": "LB05",
   "bucket": "B01",
   "home": "B01",
-  "status_2026_06_05": "in_progress",
+  "status_2026_06_05": "fixed",
   "severity": "high",
   "pathology": "P2",
   "partition": "core-svc-domain",
@@ -369,7 +369,7 @@
    "report_engine.py",
    "scheduler_workbench_link_query.py"
   ],
-  "current_evidence_2026_06_05": "与 LB02 同处 execution_review.py:192(同一不对称两 finding)。:163/:174 _list_plan_rows_* 硬钉 plan_role=ROLE_ADOPTED,scenario_id=None + :204 _resolve_plan(v,ROLE_ADOPTED,None)+ :219 固定标签均在;契约测试 regression_execution_review_identity_guardrail.py 已绑(service/页路由双覆盖),但服务层本地『我是故意的』注释仍未钉回。",
+  "current_evidence_2026_06_05": "2026-06-09 台账回写: LB05 已 fixed。与 LB02 同一 adopted-only 读侧护栏，core/services/report/execution_review.py 中计划行读取、无日期读取、scope 构造均已有保护性注释，tests/operation_execution/test_execution_review_identity_guard.py 已作为页/导出级契约。后续若要放开历史正式版本，仍必须按档案 precondition 走 loud raise + 作用域过滤 + 契约测试，不得静默透传 request 身份。",
   "cluster": "C01",
   "same_file_siblings": [
    "LB02",
@@ -650,7 +650,7 @@
   "all_files": [
    "resource_dispatch_execution_service.py"
   ],
-  "current_evidence_2026_06_05": "resource_dispatch_execution_service.py:141-143 task_card_for_feedback_context 中 schedule is None 已改为 raise(:143 raise ValidationError('现场记录对应的排程行不存在，请刷新后重试。',field='schedule_id')),P4 坏数据静默兜底为『正式采用方案/can_write_feedback=True』死卡的支路已消除,下游 :144-162 不再返回伪 adopted 可写卡。注:错误类型与计划(AppError/ErrorCode.NOT_FOUND)不同,用了 ValidationError;且未见 schedule=None→raise 的专项回归测试(grep tests/ 零命中『现场记录对应的排程行不存在』),但 loud-raise 修复意图已满足。",
+  "current_evidence_2026_06_05": "2026-06-09 台账回写: R07 fixed 但非 B 战果；schedule is None loud-raise 修复在 6759b0f9（B 基线祖先）已落地。现盘 resource_dispatch_execution_service.py::task_card_for_feedback_context 使用 ValidationError('现场记录对应的排程行不存在，请刷新后重试。', field='schedule_id')，旧的伪 adopted/can_write_feedback=True 静默卡片支路已消除。偏离 O31：错误类型/文案不是计划要求的 AppError(ErrorCode.NOT_FOUND)，且仍缺 schedule=None→raise 专项回归测试。",
   "cluster": "C01",
   "same_file_siblings": [
    "R09"
@@ -1822,7 +1822,7 @@
    "schedule_result_view_context.py",
    "view_context.py"
   ],
-  "current_evidence_2026_06_05": "schedule_result_view_context.py:73 default_plan_resolution_dict 仍手搓 plan_identity dict(@77-100,22键)+外层 dict(@101-147),未委托 build_plan_identity/SchedulePlanResolution.to_dict;canonical PlanIdentity.to_dict 已含 result_summary_parse_failed/reason(schedule_plan_identity.py:58-59)但手搓侧 @77-100 仍缺这两键(drift=2 现形,sed grep 确认 NOT PRESENT);tests/ 无任何 parity 契约测试(grep parity/build_plan_identity/result_summary_parse 全空)。计划第1步 parity 测试与第2步收口均未落地。",
+  "current_evidence_2026_06_05": "2026-06-09 台账回写: R22 fixed 仅覆盖内层 plan_identity 收口。core/services/scheduler/schedule_result_view_context.py::default_plan_resolution_dict 已用 build_plan_identity(...).to_dict() 生成 plan_identity，并由 tests/schedule/summary/test_schedule_result_view_context.py::test_default_plan_resolution_identity_matches_canonical_no_history_identity 钉 exact parity。外层 resolution dict 仍刻意保留为轻量默认外壳，未委托 SchedulePlanResolution.to_dict，也未宣称外层 exact parity；缺少 result_summary_parse_failed/_reason、schedule_result_status、schedule_lock_status、detail_saved 等外层键时下游仍按 .get() 只读兜底处理。无历史默认路径 detail_saved 由旧硬写 True 变为 False 已显式登记：当前无 behavior-gating 消费方，影响按低风险文案差异处理。",
   "cluster": "C01",
   "same_file_siblings": [],
   "interference_edges": [
@@ -1875,7 +1875,7 @@
    "lb_colocation_danger": "none — schedule_result_view_context.py 不在承重护栏文件名单（承重的是同族 schedule_plan_identity_builder.py 的 LB03，属 B01，R22 只 CALL build_plan_identity 不改它）。",
    "location_status": "✅准 — core/services/scheduler/schedule_result_view_context.py:73 def，plan_identity dict@77，外层 dict@101-147，no_history 调用@440 / missing_history 调用@448（报告 437-449 准）。本文件不在 16 个工作树漂移名单，行号未变。",
    "pathology": "P5 — default_plan_resolution_dict 手搓 plan_identity(23键)+resolution(外层)双私有实现，绕过 build_plan_identity / SchedulePlanResolution.to_dict，且无 parity 测试；手搓外层反缺 schedule_result_status/schedule_lock_status/detail_saved 三键，已先一步靠缺键偏离。",
-   "planned_fix_class": "需先补 parity 契约测试 → 收口到 build_plan_identity + SchedulePlanResolution.to_dict（务必保留 gantt_plan_query 遗留文案包装；属方案身份收口族）",
+   "planned_fix_class": "2026-06-09 已完成内层 plan_identity 收口: 先补 parity 契约测试,再把 plan_identity 委托到 build_plan_identity(...).to_dict()；外层 resolution dict 刻意保留为轻量默认外壳,不委托 SchedulePlanResolution.to_dict,不宣称外层 exact parity；保留 gantt_plan_query 遗留文案包装。",
    "prod_consumers": [
     "core/services/scheduler/schedule_result_view_context.py:152 (内部 _resolution_to_dict fallback)",
     "core/services/scheduler/schedule_result_view_context.py:440 (no_history 路径)",
@@ -2160,11 +2160,140 @@
   "owner_pending": true,
   "lb_no_touch": null
  },
+ "N1": {
+  "id": "N1",
+  "bucket": "B02",
+  "home": "B02",
+  "status_2026_06_05": "planned",
+  "severity": "medium",
+  "pathology": "P2",
+  "partition": "scheduler-dispatch",
+  "kind": "load_bearing",
+  "load_bearing": true,
+  "needs_adversarial": true,
+  "adv_refuted": false,
+  "title": "can_write_feedback 失忆债：查询成员资格闸门从显式身份合取退化为单字段依赖",
+  "old_location_DONT_TRUST": "web/routes/domains/scheduler/scheduler_resource_dispatch_execution_context.py:129-130",
+  "primary_file": "scheduler_resource_dispatch_execution_context.py",
+  "all_files": [
+   "scheduler_resource_dispatch_execution_context.py",
+   "operation_execution_feedback_service.py"
+  ],
+  "current_evidence_2026_06_05": "2026-06-09 新债登记: _identity_allows_query_membership_check 以 bool(identity.get('can_write_feedback')) 判断查询成员资格，行为依赖远端 plan identity 已蕴含 adopted/schedule/no-scenario。真写闸门仍在 operation_execution_feedback_service.py 的 adopted-only/plan_identity.can_write_feedback 双重 raise，本字段当前只是查询优化短路；风险是后续维护者忘记 can_write_feedback 的来源链，把它当裸 UI 开关放宽。",
+  "cluster": "C01",
+  "same_file_siblings": [
+   "R09"
+  ],
+  "interference_edges": [
+   {
+    "other": "R54",
+    "why": [
+     "同属 plan guard / can_write_feedback 概念"
+    ],
+    "same_file": false,
+    "same_symbol": false
+   },
+   {
+    "other": "R09",
+    "why": [
+     "file:scheduler_resource_dispatch_execution_context.py"
+    ],
+    "same_file": true,
+    "same_symbol": false
+   }
+  ],
+  "verdict": null,
+  "adv_precondition": null,
+  "planned_batch_hint": "新增登记，不在本轮执行；后续只允许补保护性注释 + 绑契约测试。",
+  "planned_deps_hint": "动 R08/R09 或 can_write_feedback 收口前先重 rg 本符号；不得把 can_write_feedback 放宽成 OR/preview 旁路。",
+  "planned_fix_hint": "承重修法仅限: 在 _identity_allows_query_membership_check 附近补“我是故意的”注释，钉 can_write_feedback 来自 plan identity adopted-only 来源链；补契约测试证明非 adopted/scenario/candidate 身份即便带裸字段也不能写/派工。不得改写函数体，不得新增兜底。",
+  "phase1_blast": {
+   "co_change_within_group": [
+    "R54",
+    "R58",
+    "R09"
+   ],
+   "contract_topology_tests": [
+    "待补: 写/派工闸门不信裸 can_write_feedback"
+   ],
+   "downstream_effect": "若未来把 can_write_feedback 当裸授权字段使用，会绕开 adopted-only 真闸门；当前真写路径仍会在服务层 loud raise。",
+   "fix_invalidation_risk": "误修为 OR 条件、preview 旁路或默认 True 会直接削弱写侧护栏。",
+   "id": "N1",
+   "lb_colocation_danger": "同文件有 R09 正整数收口，按符号定位避免误改 _positive_int 家族。",
+   "location_status": "✅准 — web/routes/domains/scheduler/scheduler_resource_dispatch_execution_context.py 的查询成员资格闸门收敛到 can_write_feedback 单字段。",
+   "pathology": "P2/失忆债",
+   "planned_fix_class": "承重注释 + 契约测试",
+   "prod_consumers": [
+    "web/routes/domains/scheduler/scheduler_resource_dispatch_execution_context.py"
+   ],
+   "test_consumers": []
+  },
+  "owner_pending": false,
+  "lb_no_touch": "禁把 can_write_feedback 放宽成 or/默认 True/preview 旁路；禁削弱 operation_execution_feedback_service.py 写侧 adopted-only loud raise"
+ },
+ "N2": {
+  "id": "N2",
+  "bucket": "B02",
+  "home": "B02",
+  "status_2026_06_05": "planned",
+  "severity": "medium",
+  "pathology": "P2",
+  "partition": "operation-execution",
+  "kind": "load_bearing",
+  "load_bearing": true,
+  "needs_adversarial": true,
+  "adv_refuted": false,
+  "title": "_event_id_for_revision 末位 return 0 哨兵缺保护注释",
+  "old_location_DONT_TRUST": "core/models/operation_execution_event.py:156-163",
+  "primary_file": "operation_execution_event.py",
+  "all_files": [
+   "operation_execution_event.py"
+  ],
+  "current_evidence_2026_06_05": "2026-06-09 新债登记: _event_id_for_revision 的末位 return 0 是 revision 链 previous_event_id 的哨兵；非末位缺 id 已 loud raise。风险是后续维护者为 DRY/统一把 0 哨兵删掉或把非末位 raise 改软，导致 revision 拼接语义漂移。",
+  "cluster": "C01",
+  "same_file_siblings": [],
+  "interference_edges": [
+   {
+    "other": "LB01",
+    "why": [
+     "同属现场执行事件写侧身份/事件链"
+    ],
+    "same_file": false,
+    "same_symbol": false
+   }
+  ],
+  "verdict": null,
+  "adv_precondition": null,
+  "planned_batch_hint": "新增登记，不在本轮执行；后续只允许补保护性注释 + 绑契约测试。",
+  "planned_deps_hint": "动 operation execution event/revision 拼接前先补契约；不得顺手统一其他 return 0 哨兵。",
+  "planned_fix_hint": "承重修法仅限: 在 _event_id_for_revision 末位 return 0 附近补注释，说明末位无后继、其 id 不参与下游拼接故允许 0；补测试钉非末位缺 id 必须 raise。不得删除非末位 raise，不得把坏数据改成静默兜底。",
+  "phase1_blast": {
+   "co_change_within_group": [
+    "LB01"
+   ],
+   "contract_topology_tests": [
+    "待补: 非末位缺 event id 必抛错，末位允许 previous_event_id=0"
+   ],
+   "downstream_effect": "previous_event_id/revision 拼接可读性与历史链一致性；误改会让缺 id 的中间事件静默混入链路。",
+   "fix_invalidation_risk": "删掉 if index < total 的 raise 或把末位 0 改成其他默认都会改变 revision 链语义。",
+   "id": "N2",
+   "lb_colocation_danger": "同文件其他 0 哨兵不属本债，禁止顺手统一。",
+   "location_status": "✅准 — core/models/operation_execution_event.py::_event_id_for_revision 末位 return 0，非末位缺 id loud raise。",
+   "pathology": "P2/失忆债",
+   "planned_fix_class": "承重注释 + 契约测试",
+   "prod_consumers": [
+    "operation execution event revision 链"
+   ],
+   "test_consumers": []
+  },
+  "owner_pending": false,
+  "lb_no_touch": "禁删非末位缺 id 的 loud raise；禁把末位 return 0 统一成静默泛兜底函数"
+ },
  "LB07": {
   "id": "LB07",
   "bucket": "B03",
   "home": "B03",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "medium",
   "pathology": "P3",
   "partition": "core-models",
@@ -2187,7 +2316,7 @@
    "schedule_config_runtime_weights.py",
    "schedule_params.py"
   ],
-  "current_evidence_2026_06_05": "承重双栈快照本体未动:model schedule_config_runtime_snapshot.py:7 @dataclass 与 service config/config_snapshot.py:24 @dataclass 上方均【无】计划要求的'故意双栈/逐字段同步'注释(grep 故意|刻意|双栈|parity|两栈 两文件 ZERO 命中);两个 parity 测试 spec_sync_contract.py / projection_sync.py 对 baseline b08162cd 零 diff,且无任何 tests/ 按名绑定三 helper。承重修复(补注释+扩 parity)两侧都未落地。",
+  "current_evidence_2026_06_05": "2026-06-09 台账回写: LB07 已 fixed。core/models/schedule_config_runtime_snapshot.py 与 core/services/scheduler/config/config_snapshot.py 的 ScheduleConfigSnapshot 类定义上方均已有“双栈锁步；字段增删必须同步”保护性注释；tests/config/test_config_snapshot_projection_sync.py 与 tests/config/test_scheduler_config_spec_sync_contract.py 已覆盖字段注解去重、spec 同步、snapshot helper 同步、权重三元组/文本 normalizer/降级事件 coercer 同步。后续 R71/R47 若继续收敛，仍必须先保持这些 sync 契约全绿。",
   "cluster": "C01",
   "same_file_siblings": [
    "R47",
@@ -2307,7 +2436,7 @@
     "tests/algorithm/test_schedule_optimizer_cfg_snapshot_contract.py / regression_scheduler_candidate_config_contract.py / regression_scheduler_graph_on_mode_contract.py 等十余处 ScheduleConfigSnapshot 构造"
    ]
   },
-  "owner_pending": true,
+  "owner_pending": false,
   "lb_no_touch": "schedule_config_runtime_* 双栈 ScheduleConfigSnapshot 27 字段锁步;禁单边加字段;收敛前先补 parity;禁碰 coercion:470 graph_downstream_weight 置零 / :152-153 strict loud raise / :73-80 MISSING_POLICY_ERROR raise"
  },
  "R45": {
@@ -3231,7 +3360,7 @@
   "id": "R29",
   "bucket": "B05",
   "home": "B05",
-  "status_2026_06_05": "not_applicable",
+  "status_2026_06_05": "fixed",
   "severity": "medium",
   "pathology": "P3",
   "partition": "core-infra-shared",
@@ -3239,7 +3368,7 @@
   "load_bearing": false,
   "needs_adversarial": true,
   "adv_refuted": false,
-  "title": "common/number_utils.py 是 core/shared/number_utils.py 的全量函数体拷贝, 而同目录 4 个兄弟模块都已是薄 re-export 壳(半截收口)",
+  "title": "common/number_utils.py 现盘已是 strict_parse 薄委托兼容门面(O20 KEEP)",
   "old_location_DONT_TRUST": "core/services/common/number_utils.py:23",
   "primary_file": "number_utils.py",
   "all_files": [
@@ -3252,7 +3381,7 @@
    "scheduler_excel_calendar_rows.py",
    "value_policies.py"
   ],
-  "current_evidence_2026_06_05": "计划裁定 KEEP(不写生产代码,owner 裁断 pending);common/number_utils.py:23/40 仍是全量函数体 delegation-facade(4 兄弟 compat_parse/value_policies/degradation/field_parse 均 defs=0 纯 re-export 壳);授权 CSV .codestable/refactors/2026-06-01-test-gate-cleanup 仍 ABSENT;facade 测试仍存在;计划建议的可选『刻意保留 delegation-facade』显性注释未补",
+  "current_evidence_2026_06_05": "2026-06-09 台账回写: R29 对齐 O20 KEEP/闭合口径，owner_pending=false。现盘 core/services/common/number_utils.py 已不是旧“全量函数体拷贝”，parse_finite_float/parse_finite_int 均为薄委托 strict_parse(parse_optional_float/parse_required_float/parse_optional_int/parse_required_int) 的兼容门面；4 个兄弟模块仍为 re-export 壳。当前不再执行薄壳化/删除动作，后续若重启 facade 收敛须重写对应 facade 测试后另立任务。",
   "cluster": "C01",
   "same_file_siblings": [],
   "interference_edges": [
@@ -3318,9 +3447,9 @@
    "verdict_kind": "depends"
   },
   "adv_precondition": null,
-  "planned_batch_hint": "Batch-6(B05)但**不写代码**——KEEP，仅补显性注释(可选)+上交 open_question。不阻塞任何批次。",
-  "planned_deps_hint": "KEEP 则无。若走(B)收敛：受 PHASE0 §10.2『facade 删除晚于收敛』约束的是 R26(B13)删顶层 config/summary shim——R29 若薄壳化须早于 R26(否则老路径测试红)；但 R29 是 common/number_utils，与 R26 的 config/summary 不同物理文件，仅排序约束。co-change 组(Phase1)标 R33/R30(B06)系同 common 目录壳化节奏，非 R29 本体耦合。",
-  "planned_fix_hint": "**本会话独立重裁结论=KEEP 现状(不写生产代码)**。理由三条：①薄壳化生产零收益——两消费方只用 parse_finite_*，薄壳后运行期字节等价；②会击穿绿测试 regression_number_utils_facade_delegates_strict_parse.py(monkeypatch 失效)；③报告据以判 KEEP/high 的权威 CSV 整目录已不在盘，『有意双份 vs 半截迁移残渣』的裁断需有项目记忆的 owner 拍板，不能照搬不存在的授权也不宜单方面推翻。**给 owner 的两条路**：(A)KEEP——可在 common/number_utils.py 顶部补一行注释『本模块刻意保留 delegation-facade 形态(非 4 兄弟的透明 re-export 壳)，由 regression_number_utils_facade_delegat",
+  "planned_batch_hint": "O20 KEEP 已闭合；现盘 common/number_utils.py 为 strict_parse 薄委托兼容门面，本轮只回写台账与注释，不再排薄壳化/删除批次。",
+  "planned_deps_hint": "KEEP 口径下无前置。若未来下线 facade，须另立任务并先迁生产 import 与 facade 契约测试；不得按旧“全量函数体拷贝”证据重复施工。",
+  "planned_fix_hint": "O20 KEEP: 保留 core/services/common/number_utils.py 作为 common 层兼容门面；当前实现已薄委托 strict_parse。不得把本模块当死壳删除；不得在本轮改运行逻辑。",
   "phase1_blast": {
    "co_change_within_group": [
     "R33",
@@ -3344,7 +3473,7 @@
     "tests/models_domain/test_number_utils_facade_delegates_strict_parse.py:23-26/45-48/50-55(monkeypatch common.number_utils 模块级 parse_required/optional_*int/float,断言 parse_finite_* 转调它们;:69-84 钉灵魂不变量:空白+allow_none→None 否则 raise ValidationError)"
    ]
   },
-  "owner_pending": true,
+  "owner_pending": false,
   "lb_no_touch": null
  },
  "R50": {
@@ -5496,7 +5625,7 @@
   "id": "R24",
   "bucket": "B11",
   "home": "B11",
-  "status_2026_06_05": "planned",
+  "status_2026_06_05": "fixed",
   "severity": "medium",
   "pathology": "P3",
   "partition": "scheduler-config-summary-graph",
@@ -5515,7 +5644,7 @@
    "scheduler_analysis_diagnostic_helpers.py",
    "scheduler_analysis_diagnostics.py"
   ],
-  "current_evidence_2026_06_05": "core/services/scheduler/analysis/schedule_diagnostic_contract.py 整文件仍在(mtime 5月24,git diff 空),build_diagnostic_link/item/section/empty 四 def 原样,生产零消费(grep core/web/data 除自身外零命中,仅 tests 续命);前置 roadmap 调和未做:networkx-scheduler-graph-introduction-items.yaml:435 primary_path + :480 ruff + :481 pyright exit_check 仍指向该 core 文件。计划(先改 roadmap 摘除→删 core→清 core-only 测试)未启动",
+  "current_evidence_2026_06_05": "2026-06-09 台账回写: R24 按 O23 KEEP 口径 fixed。core/services/scheduler/analysis/schedule_diagnostic_contract.py 整文件刻意保留为诊断合同事实记录/兼容面，不再执行旧“路A删 core”计划；活渲染与非有限数字 loud raise 护栏仍在 web/viewmodels/scheduler_analysis_diagnostic_helpers.py，绝不可反向删除 web 孪生。当前仅登记 KEEP 决策与保护性注释口径，后续若要改为 core 规范收口点，必须另立任务并先下沉 web 侧护栏。",
   "cluster": "ISOLATED",
   "same_file_siblings": [],
   "interference_edges": [],
@@ -5525,29 +5654,29 @@
    "verdict_kind": "real_debt"
   },
   "adv_precondition": null,
-  "planned_batch_hint": "Batch-12,桶内最后批之一(前置 roadmap 调和);owner 裁断删 core vs 整体重构前不得删。可与 R14 并行。",
-  "planned_deps_hint": "桶内无同文件硬边。与 R14 共享动 roadmap 再删范式但 roadmap 文件不同(networkx vs aps-three-gap),可并行。注意 networkx items.yaml 的 :480/:481 exit_checks 是把 core 文件与 web helpers 列在同一条 ruff/pyright 命令里——只摘 core 文件名,保留 web helpers 路径(它们是活路径仍需门禁)。",
-  "planned_fix_hint": "非裸删,先调和过时 PR-9 roadmap 再删 core 这份:(1) 改 .codestable/roadmap/networkx-scheduler-graph-introduction/networkx-scheduler-graph-introduction-items.yaml:把 schedule_diagnostic_contract.py 从 :435 primary_paths 移除、从 :480 ruff 与 :481 pyright exit_checks 命令里摘掉,并加 note 标注该收口已被 web 路径(scheduler_analysis_diagnostic_helpers)取代;(2) 删 core 文件 core/services/scheduler/analysis/schedule_diagnostic_contract.py(整文件);(3",
+  "planned_batch_hint": "O23 已裁 KEEP，本轮仅回写台账与保留事实，不再排删 core 批次。",
+  "planned_deps_hint": "KEEP 口径下无删文件前置。networkx roadmap 旧 exit_check 仍可作为历史计划证据保留，但不得据此重启旧路A裸删；若未来改走 core 规范收口点，需另立设计并先迁 web loud-raise 护栏。",
+  "planned_fix_hint": "O23 KEEP: 刻意保留 core/services/scheduler/analysis/schedule_diagnostic_contract.py 作为诊断合同事实记录/兼容面，并用注释说明它不是活渲染护栏来源。绝不删除 web/viewmodels/scheduler_analysis_diagnostic_helpers.py 的 NonFiniteDiagnosticNumber/safe_int/safe_float loud-raise 护栏；绝不把活 web 路径裸改指这份 core 合同。",
   "phase1_blast": {
    "co_change_within_group": [],
    "contract_topology_tests": [
-    "regression_scheduler_analysis_diagnostic_contract.py 的 core-only 段(:21-82)——核心是这份测试在给零消费的core续命;web键集断言:229-240 是硬编码字面量与core解耦,删core不影响"
+    "tests/scheduler_analysis/test_scheduler_analysis_diagnostic_contract.py 的 core-only 段仍给 KEEP 的 core 合同续命;web 键集断言与 core 解耦。O23 KEEP 后不剪 core-only 测试。"
    ],
-   "downstream_effect": "误删core合同:破 regression_scheduler_analysis_diagnostic_contract 的 core-only 用例,零生产页面/零安全不变量影响(web孪生承载活渲染)。绝不能反向删web孪生——它独占非有限数字护栏 NonFiniteDiagnosticNumber/safe_int/safe_float(helpers:101-148),core合同纯dict拼装无任何护栏。",
-   "fix_invalidation_risk": "PR-9(networkx roadmap,status:planned未开工)把 schedule_diagnostic_contract.py 列为 primary_path(networkx-scheduler-graph-introduction-items.yaml:435)+ruff/pyright exit_checks(:480-481)。删前必须先调和过时roadmap:把该文件从:435/:480-481移除并标注'收口已被web路径取代',否则在途PR-9计划落空。若团队坚持core成规范收口点=整体重构(web build_item/section 改指core+护栏下沉+测试一次性迁),不能单点删。",
+   "downstream_effect": "O23 KEEP 保留 core 合同:继续满足 scheduler_analysis_diagnostic_contract 的 core-only 用例,零生产页面/零安全不变量影响(web孪生承载活渲染)。绝不能反向删web孪生——它独占非有限数字护栏 NonFiniteDiagnosticNumber/safe_int/safe_float(helpers:101-148),core合同纯dict拼装无任何护栏。",
+   "fix_invalidation_risk": "旧路 A 删除曾要求先调和 PR-9 networkx roadmap 的 primary_path/ruff/pyright exit_check；O23 KEEP 后该删除前置作废。若未来坚持把 core 立为规范收口点，必须另立整体重构: web build_item/section 改指 core + 护栏下沉 + 测试一次性迁，不能单点裸改。",
    "id": "R24",
-   "lb_colocation_danger": "none(core合同文件无承重逻辑;承重的灵魂线护栏在web孪生 helpers:101-148,不在删除范围)",
+   "lb_colocation_danger": "none(core合同文件无承重逻辑;承重的灵魂线护栏在web孪生 helpers:101-148,不在本次 KEEP 注释范围)",
    "location_status": "⚠️行号微偏但范围覆盖准:schedule_diagnostic_contract.py 三个def实为 :12 build_diagnostic_link/:25 build_diagnostic_item/:46 build_diagnostic_section(location/reference写的13/24/45 各偏-1,非漂移,是报告初记微偏);__all__ 在:78-80。文件不在漂移名单。",
    "pathology": "P3 零生产消费的孪生副本(被web本地副本架空)+ needs_adversarial(verdict=real_debt refuted)",
-   "planned_fix_class": "删(但前置:先调和 PR-9 networkx roadmap items.yaml:435/:480-481,再删core文件+core-only测试;绝不删web孪生)",
+   "planned_fix_class": "O23 KEEP+保护性注释 — 保留 core schedule_diagnostic_contract 作为诊断合同事实记录/兼容面；不删 core 文件、不剪 core-only 测试、不改 roadmap 为删除前置；绝不反删 web 孪生或把活路径裸改指 core 合同。",
    "prod_consumers": [
     "生产零引用(已grep证实:全仓 schedule_diagnostic_contract 唯一命中=测试)。活渲染路径是web孪生:web/viewmodels/scheduler_analysis_diagnostic_helpers.py:41 build_item/:62 build_section → scheduler_analysis_diagnostics.py:108 build_diagnostic_sections → scheduler_analysis_vm.py:122 → analysis.html,全程不import core合同"
    ],
    "test_consumers": [
-    "tests/scheduler_analysis/test_scheduler_analysis_diagnostic_contract.py:10-13 (import core 三件套)+ :22/:23/:33/:66/:67/:77/:78 (core-only 形状测试,约:21-82);同一测试文件 :17 还import了web孪生 build_diagnostic_sections 并大量测它(:86起),故删core只需移:10-13 core import + 那3个core-only用例,不动整文件/不碰web孪生测试"
+    "tests/scheduler_analysis/test_scheduler_analysis_diagnostic_contract.py:10-13 import core 三件套并保留 core-only 形状测试；同一测试文件还 import web 孪生 build_diagnostic_sections 并大量测它。O23 KEEP 后不剪这些 core-only 测试。"
    ]
   },
-  "owner_pending": true,
+  "owner_pending": false,
   "lb_no_touch": null
  },
  "R34": {

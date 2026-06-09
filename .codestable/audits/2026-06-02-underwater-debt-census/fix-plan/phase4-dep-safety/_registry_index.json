@@ -20,7 +20,7 @@
  "LB02": {
   "id": "LB02",
   "bucket": "B01",
-  "status": "in_progress",
+  "status": "fixed",
   "sev": "medium",
   "path": "P2",
   "lb": true,
@@ -55,7 +55,7 @@
  "LB05": {
   "id": "LB05",
   "bucket": "B01",
-  "status": "in_progress",
+  "status": "fixed",
   "sev": "high",
   "path": "P2",
   "lb": true,
@@ -365,10 +365,50 @@
   "adv_refuted": false,
   "title": "_get_plan_role_arg 在 gantt 与 week_plan 路由各一份(N1 家族)"
  },
+ "N1": {
+  "id": "N1",
+  "bucket": "B02",
+  "status": "planned",
+  "sev": "medium",
+  "path": "P2",
+  "lb": true,
+  "file": "scheduler_resource_dispatch_execution_context.py",
+  "cluster": "C01",
+  "siblings": [
+   "R54",
+   "R58",
+   "R08",
+   "R09"
+  ],
+  "batch": "新增登记:后续只补注释+契约",
+  "owner_pending": false,
+  "needs_adv": true,
+  "adv_refuted": false,
+  "title": "can_write_feedback 查询成员资格闸门失忆债"
+ },
+ "N2": {
+  "id": "N2",
+  "bucket": "B02",
+  "status": "planned",
+  "sev": "medium",
+  "path": "P2",
+  "lb": true,
+  "file": "operation_execution_event.py",
+  "cluster": "C01",
+  "siblings": [
+   "LB01",
+   "R08"
+  ],
+  "batch": "新增登记:后续只补注释+契约",
+  "owner_pending": false,
+  "needs_adv": true,
+  "adv_refuted": false,
+  "title": "_event_id_for_revision 末位 return 0 哨兵缺保护注释"
+ },
  "LB07": {
   "id": "LB07",
   "bucket": "B03",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "P3",
   "lb": true,
@@ -379,7 +419,7 @@
    "R71"
   ],
   "batch": "Batch-1(全局 ROOT,纯增",
-  "owner_pending": true,
+  "owner_pending": false,
   "needs_adv": false,
   "adv_refuted": null,
   "title": "ScheduleConfigSnapshot 配置快照/校正引擎整栈双实现,锁步手工同步"
@@ -547,7 +587,7 @@
  "R29": {
   "id": "R29",
   "bucket": "B05",
-  "status": "not_applicable",
+  "status": "fixed",
   "sev": "medium",
   "path": "P3",
   "lb": false,
@@ -555,10 +595,10 @@
   "cluster": "C01",
   "siblings": [],
   "batch": "Batch-6(B05)但**不写代",
-  "owner_pending": true,
+  "owner_pending": false,
   "needs_adv": true,
   "adv_refuted": false,
-  "title": "common/number_utils.py 是 core/shared/number_utils.py 的全量函数体拷贝, 而同目录 4 个兄弟模块都已是薄 re-export 壳(半截收口)"
+  "title": "common/number_utils.py 现盘已是 strict_parse 薄委托兼容门面(O20 KEEP)"
  },
  "R50": {
   "id": "R50",
@@ -996,15 +1036,15 @@
  "R24": {
   "id": "R24",
   "bucket": "B11",
-  "status": "planned",
+  "status": "fixed",
   "sev": "medium",
   "path": "P3",
   "lb": false,
   "file": "schedule_diagnostic_contract.py",
   "cluster": "ISOLATED",
   "siblings": [],
-  "batch": "Batch-12,桶内最后批之一(前",
-  "owner_pending": true,
+  "batch": "O23 KEEP 已 fixed,不再排删 core 批次",
+  "owner_pending": false,
   "needs_adv": true,
   "adv_refuted": false,
   "title": "analysis/schedule_diagnostic_contract.py 是 web 侧 LIVE 诊断构造器的零生产消费孪生副本"
