@@ -15,6 +15,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from core.infrastructure.database import ensure_schema  # noqa: E402,I001
+from tests._support.excel_templates import point_env_at_shared, publish_shared_dir, reset_shared_dir  # noqa: E402,I001
 from tools.full_test_debt_shards import classify_nodeid, is_perf_nodeid  # noqa: E402,I001
 from tools.test_debt_registry import active_xfail_entries_by_nodeid  # noqa: E402,I001
 from tools.test_registry import iter_required_tests  # noqa: E402
@@ -159,13 +160,23 @@ def db_path(tmp_path):
     return str(path)
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _shared_excel_templates(tmp_path_factory):
+    """session 起始把 11 个交付模板预建到一个共享 WARM 目录并登记，省掉各用例
+    create_app→ensure_excel_templates 的 COLD 重建。改写/独立目录类用例不走它。"""
+    publish_shared_dir(str(tmp_path_factory.mktemp("shared_excel_templates")))
+    yield
+    reset_shared_dir()
+
+
 @pytest.fixture
 def db_env(db_path, tmp_path, monkeypatch):
     """在 db_path 之上设好 APS_* 五件套环境（monkeypatch 自动还原），返回 db_path。"""
-    for name, env in (("logs", "APS_LOG_DIR"), ("backups", "APS_BACKUP_DIR"), ("templates_excel", "APS_EXCEL_TEMPLATE_DIR")):
+    for name, env in (("logs", "APS_LOG_DIR"), ("backups", "APS_BACKUP_DIR")):
         directory = tmp_path / name
         directory.mkdir()
         monkeypatch.setenv(env, str(directory))
+    point_env_at_shared(monkeypatch)
     monkeypatch.setenv("APS_ENV", "development")
     monkeypatch.setenv("APS_DB_PATH", db_path)
     return db_path

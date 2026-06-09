@@ -13,6 +13,7 @@ from typing import cast
 import openpyxl
 from openpyxl.worksheet.worksheet import Worksheet
 
+from tests._support.excel_templates import point_env_at_shared
 from tests._support.paths import REPO_ROOT
 
 
@@ -46,7 +47,7 @@ def test_scheduler_resource_dispatch_page_data_export_and_dashboard_entry(tmp_pa
     monkeypatch.setenv("APS_DB_PATH", str(test_db))
     monkeypatch.setenv("APS_LOG_DIR", str(test_logs))
     monkeypatch.setenv("APS_BACKUP_DIR", str(test_backups))
-    monkeypatch.setenv("APS_EXCEL_TEMPLATE_DIR", str(test_templates))
+    point_env_at_shared(monkeypatch)
 
     from core.infrastructure.database import ensure_schema, get_connection
 

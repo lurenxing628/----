@@ -17,6 +17,7 @@ import openpyxl
 from core.infrastructure.database import ensure_schema, get_connection
 from core.services.report import ReportEngine
 from data.repositories.schedule_plan_query_repo import SOURCE_SCHEDULE
+from tests._support.excel_templates import point_env_at_shared
 from tests._support.paths import REPO_ROOT
 from web.routes.report_plan_preview import default_plan_resolution
 
@@ -51,7 +52,7 @@ def _build_app(tmp_path, monkeypatch):
     monkeypatch.setenv("APS_DB_PATH", str(test_db))
     monkeypatch.setenv("APS_LOG_DIR", str(test_logs))
     monkeypatch.setenv("APS_BACKUP_DIR", str(test_backups))
-    monkeypatch.setenv("APS_EXCEL_TEMPLATE_DIR", str(test_templates))
+    point_env_at_shared(monkeypatch)
 
     from core.infrastructure.database import ensure_schema, get_connection
 
@@ -85,7 +86,7 @@ def _build_empty_app(tmp_path, monkeypatch):
     monkeypatch.setenv("APS_DB_PATH", str(test_db))
     monkeypatch.setenv("APS_LOG_DIR", str(test_logs))
     monkeypatch.setenv("APS_BACKUP_DIR", str(test_backups))
-    monkeypatch.setenv("APS_EXCEL_TEMPLATE_DIR", str(test_templates))
+    point_env_at_shared(monkeypatch)
 
     ensure_schema(str(test_db), logger=None, schema_path=str(SCHEMA_PATH), backup_dir=None)
     sys.modules.pop("app", None)

@@ -10,6 +10,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
+from tests._support.excel_templates import point_env_at_shared
 from tests._support.paths import REPO_ROOT, REPO_ROOT_STR
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
@@ -239,7 +240,7 @@ def test_gantt_url_persistence_contract(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("APS_DB_PATH", str(test_db))
     monkeypatch.setenv("APS_LOG_DIR", str(test_logs))
     monkeypatch.setenv("APS_BACKUP_DIR", str(test_backups))
-    monkeypatch.setenv("APS_EXCEL_TEMPLATE_DIR", str(test_templates))
+    point_env_at_shared(monkeypatch)
 
     repo_root = str(REPO_ROOT)
     if repo_root not in sys.path:

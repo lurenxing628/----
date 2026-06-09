@@ -15,6 +15,7 @@ from typing import Dict, List
 from urllib.parse import parse_qs, urlparse
 
 from core.infrastructure.database import ensure_schema, get_connection
+from tests._support.excel_templates import point_env_at_shared
 from tests._support.paths import REPO_ROOT
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
@@ -66,7 +67,7 @@ def _prepare_env(tmpdir: str, monkeypatch) -> str:
     monkeypatch.setenv("APS_DB_PATH", db_path)
     monkeypatch.setenv("APS_LOG_DIR", str(Path(tmpdir) / "logs"))
     monkeypatch.setenv("APS_BACKUP_DIR", str(Path(tmpdir) / "backups"))
-    monkeypatch.setenv("APS_EXCEL_TEMPLATE_DIR", str(Path(tmpdir) / "templates_excel"))
+    point_env_at_shared(monkeypatch)
     monkeypatch.setenv("SECRET_KEY", "aps-workbench-first-round")
     Path(os.environ["APS_LOG_DIR"]).mkdir(exist_ok=True)
     Path(os.environ["APS_BACKUP_DIR"]).mkdir(exist_ok=True)

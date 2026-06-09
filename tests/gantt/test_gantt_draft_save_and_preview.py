@@ -17,6 +17,7 @@ from core.services.scheduler.gantt_adjustment_scenario_service import GanttAdjus
 from core.services.scheduler.gantt_service import GanttService
 from core.services.scheduler.schedule_plan_query_service import SchedulePlanQueryService
 from data.repositories import ScheduleAdjustmentRepository
+from tests._support.excel_templates import point_env_at_shared
 from tests._support.paths import REPO_ROOT
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
@@ -347,7 +348,7 @@ def _build_app(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("APS_DB_PATH", str(db_path))
     monkeypatch.setenv("APS_LOG_DIR", str(tmp_path / "logs"))
     monkeypatch.setenv("APS_BACKUP_DIR", str(tmp_path / "backups"))
-    monkeypatch.setenv("APS_EXCEL_TEMPLATE_DIR", str(tmp_path / "templates_excel"))
+    point_env_at_shared(monkeypatch)
     (tmp_path / "logs").mkdir(exist_ok=True)
     (tmp_path / "backups").mkdir(exist_ok=True)
     (tmp_path / "templates_excel").mkdir(exist_ok=True)

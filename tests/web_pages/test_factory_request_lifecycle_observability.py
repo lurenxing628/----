@@ -16,6 +16,7 @@ from flask import Flask, Response, g, request
 import core.infrastructure.backup as backup_mod
 import web.bootstrap.factory as factory_mod
 import web.error_boundary as error_boundary_mod
+from tests._support.excel_templates import point_env_at_shared
 from web.bootstrap.entrypoint import create_app_with_mode
 
 _BeforeHook = Callable[[], Any]
@@ -110,7 +111,7 @@ def _build_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Flask:
     monkeypatch.setenv("APS_DB_PATH", str(tmp_path / "aps.db"))
     monkeypatch.setenv("APS_LOG_DIR", str(tmp_path / "logs"))
     monkeypatch.setenv("APS_BACKUP_DIR", str(tmp_path / "backups"))
-    monkeypatch.setenv("APS_EXCEL_TEMPLATE_DIR", str(tmp_path / "templates_excel"))
+    point_env_at_shared(monkeypatch)
     monkeypatch.setenv("SECRET_KEY", "aps-factory-observability-test")
     monkeypatch.setattr(factory_mod, "_EXIT_BACKUP_REGISTERED", True)
     monkeypatch.setattr(factory_mod, "_EXIT_BACKUP_MANAGER", None)

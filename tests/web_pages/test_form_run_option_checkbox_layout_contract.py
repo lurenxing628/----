@@ -10,6 +10,7 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+from tests._support.excel_templates import point_env_at_shared
 from tests._support.paths import REPO_ROOT
 from web.viewmodels.ui_presenters import UiToggleRow
 
@@ -70,7 +71,7 @@ def _build_app(tmp_path, monkeypatch):
     monkeypatch.setenv("APS_DB_PATH", str(test_db))
     monkeypatch.setenv("APS_LOG_DIR", str(test_logs))
     monkeypatch.setenv("APS_BACKUP_DIR", str(test_backups))
-    monkeypatch.setenv("APS_EXCEL_TEMPLATE_DIR", str(test_templates))
+    point_env_at_shared(monkeypatch)
 
     repo_root = str(REPO_ROOT)
     if repo_root not in sys.path:

@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import os
 
+from tests._support.excel_templates import point_env_at_shared
+
 
 def test_app_db_path_no_dirname(tmp_path, monkeypatch) -> None:
     import importlib
@@ -21,7 +23,7 @@ def test_app_db_path_no_dirname(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("APS_DB_PATH", "aps_test.db")  # 关键：无目录
     monkeypatch.setenv("APS_LOG_DIR", str(tmp_path / "logs"))
     monkeypatch.setenv("APS_BACKUP_DIR", str(tmp_path / "backups"))
-    monkeypatch.setenv("APS_EXCEL_TEMPLATE_DIR", str(tmp_path / "templates_excel"))
+    point_env_at_shared(monkeypatch)
 
     # 注意：app.py import 时会执行 create_app()（并创建全局 app），环境变量已提前设置，影响可控。
     app_mod = importlib.import_module("app")

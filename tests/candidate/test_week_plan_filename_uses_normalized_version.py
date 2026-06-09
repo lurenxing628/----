@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 import openpyxl
 
+from tests._support.excel_templates import point_env_at_shared
 from tests._support.paths import REPO_ROOT
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
@@ -33,7 +34,7 @@ def _build_app(tmp_path, monkeypatch, *, with_history: bool = True):
     monkeypatch.setenv("APS_DB_PATH", str(test_db))
     monkeypatch.setenv("APS_LOG_DIR", str(test_logs))
     monkeypatch.setenv("APS_BACKUP_DIR", str(test_backups))
-    monkeypatch.setenv("APS_EXCEL_TEMPLATE_DIR", str(test_templates))
+    point_env_at_shared(monkeypatch)
 
     from core.infrastructure.database import ensure_schema, get_connection
 

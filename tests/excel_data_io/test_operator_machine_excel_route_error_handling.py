@@ -13,6 +13,7 @@ from unittest.mock import patch
 import openpyxl
 
 from core.infrastructure.database import ensure_schema
+from tests._support.excel_templates import point_env_at_shared
 from tests._support.paths import REPO_ROOT_STR as REPO_ROOT
 
 SCHEMA_PATH = os.path.join(REPO_ROOT, "schema.sql")
@@ -56,7 +57,7 @@ def test_personnel_excel_preview_hides_internal_runtime_error(monkeypatch) -> No
         monkeypatch.setenv("APS_DB_PATH", test_db)
         monkeypatch.setenv("APS_LOG_DIR", test_logs)
         monkeypatch.setenv("APS_BACKUP_DIR", test_backups)
-        monkeypatch.setenv("APS_EXCEL_TEMPLATE_DIR", test_templates)
+        point_env_at_shared(monkeypatch)
 
         ensure_schema(test_db, logger=None, schema_path=SCHEMA_PATH, backup_dir=None)
 

@@ -26,6 +26,7 @@ from urllib.parse import quote
 
 from flask import url_for
 
+from tests._support.excel_templates import point_env_at_shared
 from tests._support.paths import REPO_ROOT_STR
 
 LEGACY_EXCEL_ENTRY_TERMS = (
@@ -73,7 +74,7 @@ def _prepare_env(tmpdir: str, monkeypatch) -> None:
     monkeypatch.setenv("APS_DB_PATH", str(Path(tmpdir) / "aps_test.db"))
     monkeypatch.setenv("APS_LOG_DIR", str(Path(tmpdir) / "logs"))
     monkeypatch.setenv("APS_BACKUP_DIR", str(Path(tmpdir) / "backups"))
-    monkeypatch.setenv("APS_EXCEL_TEMPLATE_DIR", str(Path(tmpdir) / "templates_excel"))
+    point_env_at_shared(monkeypatch)
     monkeypatch.setenv("SECRET_KEY", "aps-manual-entry-scope")
 
 

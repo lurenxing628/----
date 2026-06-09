@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional
 
 from werkzeug.serving import make_server
 
+from tests._support.excel_templates import point_env_at_shared
 from tests._support.paths import REPO_ROOT
 from tests.app_runtime.ui_geometry_contract_data import (
     ERROR_PAGE_KEYWORDS,
@@ -47,7 +48,7 @@ def _build_app(tmp_path, monkeypatch):
     monkeypatch.setenv("APS_DB_PATH", str(tmp_path / "aps_ui_geometry.db"))
     monkeypatch.setenv("APS_LOG_DIR", str(tmp_path / "logs"))
     monkeypatch.setenv("APS_BACKUP_DIR", str(tmp_path / "backups"))
-    monkeypatch.setenv("APS_EXCEL_TEMPLATE_DIR", str(tmp_path / "templates_excel"))
+    point_env_at_shared(monkeypatch)
     (tmp_path / "logs").mkdir(parents=True, exist_ok=True)
     (tmp_path / "backups").mkdir(parents=True, exist_ok=True)
     (tmp_path / "templates_excel").mkdir(parents=True, exist_ok=True)

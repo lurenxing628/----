@@ -7,6 +7,7 @@ import os
 import sys
 import tempfile
 
+from tests._support.excel_templates import point_env_at_shared
 from tests._support.paths import REPO_ROOT_STR
 
 
@@ -38,7 +39,7 @@ def main(monkeypatch) -> None:
     monkeypatch.setenv("APS_DB_PATH", test_db)
     monkeypatch.setenv("APS_LOG_DIR", test_logs)
     monkeypatch.setenv("APS_BACKUP_DIR", test_backups)
-    monkeypatch.setenv("APS_EXCEL_TEMPLATE_DIR", test_templates)
+    point_env_at_shared(monkeypatch)
 
     from core.infrastructure.database import ensure_schema, get_connection
     from core.infrastructure.logging import OperationLogger
