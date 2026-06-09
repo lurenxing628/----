@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Tuple
 from urllib.parse import parse_qs, urlparse
 
-from core.models.schedule_plan_role import SOURCE_CANDIDATE_ROWS, SOURCE_SCHEDULE
+from core.models.schedule_plan_role import PLAN_ROLE_LABELS, SOURCE_CANDIDATE_ROWS, SOURCE_SCHEDULE
 from core.services.scheduler.schedule_result_view_context import plan_role_filter_fields
 from web.viewmodels.scheduler_workbench_link_query import plan_guard_fields_for_resolution
 from web.viewmodels.scheduler_workbench_links import (
@@ -485,6 +485,13 @@ def test_target_pages_and_public_label_mappings_are_fixed() -> None:
     assert period_preset_label("future_range") == "未知日期范围"
     assert gantt_view_label("operator") == "人员甘特"
     assert gantt_view_label("future_view") == "未知甘特视图"
+
+
+def test_workbench_plan_role_labels_delegate_to_core_labels() -> None:
+    for role, label in PLAN_ROLE_LABELS.items():
+        assert plan_role_label(role) == label
+    assert plan_role_label(None) == PLAN_ROLE_LABELS["adopted"]
+    assert plan_role_label("future_role") == "未知方案身份"
 
 
 # ===========================================================================

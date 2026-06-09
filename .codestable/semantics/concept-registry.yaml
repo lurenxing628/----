@@ -17,7 +17,7 @@ concepts:
       baseline_best: { user_label: 原算法代表方案,        source_table: candidate_rows }
       critical_best: { user_label: 重点工序优先代表方案,  source_table: candidate_rows }
     failure_policy:
-      # 实测：模型层 plan_role_label() 对未知值返回原值(容忍，纯展示)；
+      # 实测：模型层 plan_role_label() 对未知值返回“未知方案身份”(容忍，纯展示)；
       # 缺失/空值经 _normalize_role 回落 adopted。
       # 严格校验发生在 schedule_plan_query_service.resolve_plan_view(ValueError→ValidationError)。
       missing_value: adopted_at_model_layer

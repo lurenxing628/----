@@ -42,6 +42,10 @@ def test_missing_role_normalizes_to_adopted_label(value):
     assert pr.plan_role_label(value) == VALID_LABELS["adopted"]
 
 
+def test_unknown_role_uses_unknown_label():
+    assert pr.plan_role_label("future_role") == "未知方案身份"
+
+
 @given(st.sampled_from(["baseline_best", "critical_best"]))
 def test_comparison_roles_flagged(role):
     assert pr.is_comparison_role(role) is True

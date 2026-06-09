@@ -17,7 +17,7 @@
 - 标签映射唯一来源：`PLAN_ROLE_LABELS` / `plan_role_label()`。
 - 合法值集唯一来源：`VALID_PLAN_ROLES`。
 - 比较判定：`is_comparison_role()` / `is_comparison_plan()`。
-- 失败语义(实测)：模型层 `plan_role_label()` 对未知值返回原值(纯展示容忍)；缺失/空经 `_normalize_role` 回落 `adopted`；**严格校验在** `schedule_plan_query_service.resolve_plan_view`(`ValueError → ValidationError`)。
+- 失败语义(实测)：模型层 `plan_role_label()` 对未知值返回“未知方案身份”(纯展示容忍)；缺失/空经 `_normalize_role` 回落 `adopted`；**严格校验在** `schedule_plan_query_service.resolve_plan_view`(`ValueError → ValidationError`)。
 - 用户可见规则：页面/导出/报表标题/错误消息不得直接展示 plan_role/source_table/candidate_id/scenario_id(ARCHITECTURE.md:65)。
 
 ## 禁止含义(改这个概念前必读)

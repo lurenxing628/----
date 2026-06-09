@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 from urllib.parse import urlencode
 
+from core.models.schedule_plan_role import ROLE_ADOPTED
 from core.models.schedule_plan_role import plan_role_label as _core_plan_role_label
 from core.models.schedule_resource_filter import SUPPORTED_SCHEDULE_RESOURCE_TYPES
 
@@ -21,14 +22,6 @@ from .scheduler_workbench_link_query import (
     query_for_target,
     target_uses_primary_resource_filter,
 )
-
-ROLE_ADOPTED = "adopted"
-
-_PLAN_ROLE_LABELS = {
-    "adopted": "正式采用方案",
-    "baseline_best": "原算法代表方案",
-    "critical_best": "重点工序优先代表方案",
-}
 
 _GUARDRAIL_REASON_LABELS = {
     "plan_not_writable": "当前方案不可写",
@@ -70,7 +63,7 @@ def plan_role_label(value: Any, *, is_preview: bool = False, scenario_display_la
     if is_preview:
         return _text(scenario_display_label) or "模拟预览（未命名）"
     text = _text(value) or ROLE_ADOPTED
-    return _PLAN_ROLE_LABELS.get(text) or _core_plan_role_label(text)
+    return _core_plan_role_label(text)
 
 
 def guardrail_reason_label(value: Any) -> str:
