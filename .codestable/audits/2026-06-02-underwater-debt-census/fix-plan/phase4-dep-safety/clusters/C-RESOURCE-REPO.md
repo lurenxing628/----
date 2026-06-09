@@ -19,7 +19,7 @@
 | R37 | `list_links_with_machine_names` | **已删除**（旧锚 operator_machine_repo.py:82-90） | 无 | 活近亲 `list_links_with_operator_info` 保留并上移到 :82 |
 | R38 | `list_as_dicts`×3 | **已删除**（旧锚 op_type_repo.py:73 / operator_repo.py:85 / part_repo.py:71） | 无 | 结构同形 SQL 各异，已按三笔独立删闭合，禁抽 helper |
 | R39 | `list_unparsed` | **已删除**（旧锚 part_repo.py:32，体:33 转调活方法 list:20） | 无 | 已与 R38 part 份同提交，行号漂移风险已关闭 |
-| R67 | 6 键别名清单 4 处手抄 | request_resource_context.py:22-27 / reports_request_support.py:56-61 / reports_export_support.py:23-28(`_EXPORT_CONTEXT_KEYS`:13) / scheduler_navigation_links.py:22-27(`_REPORT_CONTEXT_FIELD_NAMES`:11/190) | 常量 home=`report_context_filters.py`（收口点 `normalize_report_resource_filter`:119 同模块）；`REPORT_RESOURCE_FILTER_ARG_KEYS` 全仓 **NOT FOUND** | 第 4 处不在 registry all_files，漏它=半截去重 |
+| R67 | 6 键别名清单 4 处手抄 | request_resource_context.py:22-27 / reports_request_support.py:56-61 / reports_export_support.py:23-28(`_EXPORT_CONTEXT_KEYS`:13) / scheduler_navigation_links.py:22-27(`_REPORT_CONTEXT_FIELD_NAMES`:11/190) | 常量 home=`report_context_filters.py`（收口点 `normalize_report_resource_filter`:119 同模块）；`REPORT_RESOURCE_FILTER_ARG_KEYS` 普查时全仓 NOT FOUND（✅ 2026-06-10 G34 已落地该常量，①②收编、③④按 O18 保现状仅注释） | 第 4 处不在 registry all_files，漏它=半截去重 |
 
 ## A) 原子子簇（必须同批 / 可独立）
 
@@ -43,9 +43,9 @@
 - owner_pending=true：F-决策① collar 加 team 谓词的接口形态；F-决策② `(team,"")` 语义=全量 or loud raise。**暂不分批、不给终态**。
 - 毗邻勿伤：`_normalize_team_axis`(resource_dispatch_service.py:65-69，65870e47 新增第四套本地校验苗头) 管展示轴，**不在 R05 收口范围**。
 
-### 子簇 AC-4 = {R67}（抽单一常量，自身不可拆但 owner_pending）
+### 子簇 AC-4 = {R67}（抽单一常量；✅ 2026-06-10 已按 O18 收口 fixed，owner_pending 已消）
 - **原子原因**：4 处手抄须**全收或全不收①②、③④酌情**——半截去重（只换 1~2 处）反造“看似统一实则分裂”假象，比现状更危险。①② 纯 6 键（喂收口点，零新增依赖）必收；③④ 是 superset 元组（资源键尾块），收编要元组拼接 `(...前缀, *KEYS)`，且 ④ 跨层边待 AST 门。
-- owner_pending=true：F-决策 是否收编第 4 处 superset + tuple 可读性。常量须 **tuple 保序**（③④依赖 URL/字段遍历序）。**禁动**收口点签名/6 关键字参顺序、**禁改** superset 非资源键成员（R42 + navigation 地盘）、**禁统一 4 处读取逻辑**。
+- ~~owner_pending=true~~ → **O18 已裁（2026-06-10 落地）**：①② 收编进新常量 `REPORT_RESOURCE_FILTER_ARG_KEYS`（home=report_context_filters.py，tuple 保序=收口点签名参数序，常量↔签名一致性契约已落 tests/scheduler_analysis/test_report_context_filters_contract.py）；③④ superset **保持现状仅注释**（两 superset 不同形禁互抄：③ 现盘 14 键缺 scenario_id、④ 现盘 15 键含 scenario_id，普查时 15/16，R42 已删 plan_id）。「禁动收口点签名/6 关键字参顺序、禁改 superset 非资源键成员、禁统一 4 处读取逻辑」三禁全守。
 
 ### 独立单点
 - **R36**（batch_operation_repo.py 旧 :25-35 / :50-61，ISOLATED，2026-06-08 已落地）：零碰撞零跨边，两个死方法已从后往前直删，owner_pending=false。后续勿重复执行 G35/R36。
@@ -110,4 +110,4 @@
 
 ## 返回摘要
 
-簇 C-RESOURCE-REPO | 原子子簇 4+2 独立：AC-1{R34,R35} schedule_repo.py 硬同批、AC-2{R38-part,R39} 已 fixed、AC-2′{R38 op_type/operator 份}已 fixed、AC-3{R05}收口三步、AC-4{R67}抽常量；独立单点 R36 已 fixed / R37 已 fixed | 关键内部顺序：AC-1 无功能先后但按符号名自下而上同 commit；R05 步1扩 collar→步2 parity→步3 收敛不可换；R67 全收或①②必收③④酌情忌半截 | 跨簇硬边 0：AC-2↔C02 已闭合，R67↔R42(C01)diff-hunk 串行软边（覆盖 reports_export_support.py+scheduler_navigation_links.py），R05→R34 软约束 | 边变化：删 R37↔R41 伪干扰、删/降权 R34↔gantt 簇内 7 弱边；新 R67↔R42 第二共享文件边；降 R05→R34 硬→软、R13↔R18 解耦 | 承重前置：仅 R05 verdict=LB——✅ 2026-06-10 已按硬序收口完毕，旧禁区 repo:461-463/:454-460 内联谓词已退场（收敛进 collar :116-124，team 双 join/空 id 全量语义逐分支等价），后续触碰按 collar 符号 rg；余皆纯删无承重禁区
+簇 C-RESOURCE-REPO | 原子子簇 4+2 独立：AC-1{R34,R35} schedule_repo.py 硬同批、AC-2{R38-part,R39} 已 fixed、AC-2′{R38 op_type/operator 份}已 fixed、AC-3{R05}收口三步、AC-4{R67}抽常量（✅ 2026-06-10 O18 收口 fixed：①②收编 REPORT_RESOURCE_FILTER_ARG_KEYS+契约，③④保现状注释）；独立单点 R36 已 fixed / R37 已 fixed | 关键内部顺序：AC-1 无功能先后但按符号名自下而上同 commit；R05 步1扩 collar→步2 parity→步3 收敛不可换；R67 全收或①②必收③④酌情忌半截 | 跨簇硬边 0：AC-2↔C02 已闭合，R67↔R42(C01)diff-hunk 串行软边（覆盖 reports_export_support.py+scheduler_navigation_links.py），R05→R34 软约束 | 边变化：删 R37↔R41 伪干扰、删/降权 R34↔gantt 簇内 7 弱边；新 R67↔R42 第二共享文件边；降 R05→R34 硬→软、R13↔R18 解耦 | 承重前置：仅 R05 verdict=LB——✅ 2026-06-10 已按硬序收口完毕，旧禁区 repo:461-463/:454-460 内联谓词已退场（收敛进 collar :116-124，team 双 join/空 id 全量语义逐分支等价），后续触碰按 collar 符号 rg；余皆纯删无承重禁区

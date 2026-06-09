@@ -243,3 +243,25 @@ def test_plan_detail_repository_pushes_batch_and_resource_filters_to_bottom_sql(
     )
     assert "TRIM(COALESCE(s.operator_id, '')) = ?" in captured["sql"]
     assert captured["params"][-2:] == ("B-RPT", "O-RPT")
+
+
+def test_report_resource_filter_arg_keys_match_normalizer_signature() -> None:
+    # R67 收口契约:常量是 web 侧抄键的单一来源,必须与 normalize_report_resource_filter
+    # 的 6 个参数名按签名序逐一对应——签名加参/改名而忘改常量(或反之)在此红灯。
+    import inspect
+
+    from core.services.report.report_context_filters import (
+        REPORT_RESOURCE_FILTER_ARG_KEYS,
+        normalize_report_resource_filter,
+    )
+
+    assert REPORT_RESOURCE_FILTER_ARG_KEYS == (
+        "resource_type",
+        "resource_id",
+        "scope_type",
+        "scope_id",
+        "machine_id",
+        "operator_id",
+    )
+    signature_params = tuple(inspect.signature(normalize_report_resource_filter).parameters)
+    assert signature_params == REPORT_RESOURCE_FILTER_ARG_KEYS

@@ -7,7 +7,10 @@ from flask import request
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.models.schedule_plan_role import ROLE_ADOPTED, plan_role_label
 from core.services.report import ReportEngine
-from core.services.report.report_context_filters import normalize_report_resource_filter
+from core.services.report.report_context_filters import (
+    REPORT_RESOURCE_FILTER_ARG_KEYS,
+    normalize_report_resource_filter,
+)
 from core.services.scheduler.version_resolution import (
     VersionResolution,
     require_selected_version,
@@ -52,13 +55,9 @@ def request_scenario_id() -> Optional[str]:
 
 
 def request_resource_filter() -> Tuple[str, str]:
+    # R67 收编:6 键名单一来源 = 收口点常量,勿在此手维第二份键名列表。
     return normalize_report_resource_filter(
-        request.args.get("resource_type"),
-        request.args.get("resource_id"),
-        scope_type=request.args.get("scope_type"),
-        scope_id=request.args.get("scope_id"),
-        machine_id=request.args.get("machine_id"),
-        operator_id=request.args.get("operator_id"),
+        **{key: request.args.get(key) for key in REPORT_RESOURCE_FILTER_ARG_KEYS}
     )
 
 

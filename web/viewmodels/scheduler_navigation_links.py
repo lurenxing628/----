@@ -6,6 +6,9 @@ from .scheduler_workbench_links import TARGET_PAGE_PATHS, build_workbench_link, 
 
 ROLE_ADOPTED = "adopted"
 
+# O18(R67) 裁定保持现状:这是含资源 6 键的导航上下文 superset(15 键,含 scenario_id,
+# 与 reports_export_support 的 14 键 superset 不同形,禁互抄;普查时 16/15 键,R42 已删 plan_id),不收编进
+# REPORT_RESOURCE_FILTER_ARG_KEYS——若未来收编须晚于 R42 纪律并先过 web.viewmodels→core.services.report 分层门。
 _REPORT_CONTEXT_FIELD_NAMES = (
     "back_to",
     "scenario_id",
