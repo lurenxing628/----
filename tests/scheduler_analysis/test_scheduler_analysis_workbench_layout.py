@@ -66,9 +66,9 @@ def _render_part(part_name: str, **ctx: Any) -> str:
     return template.render(**ctx)
 
 
-def _payload(path: str, summary: Dict[str, Any], plan_role_service: Any) -> Dict[str, Any]:
+def _payload(monkeypatch, path: str, summary: Dict[str, Any], plan_role_service: Any) -> Dict[str, Any]:
     history_service = _HistoryServiceStub(summary)
-    app, route_mod = _build_app()
+    app, route_mod = _build_app(monkeypatch)
     return _call_analysis_page(
         app,
         route_mod,
@@ -78,8 +78,8 @@ def _payload(path: str, summary: Dict[str, Any], plan_role_service: Any) -> Dict
     )
 
 
-def test_analysis_route_exposes_action_hub_with_context_links() -> None:
-    payload = _payload(
+def test_analysis_route_exposes_action_hub_with_context_links(monkeypatch) -> None:
+    payload = _payload(monkeypatch,
         "/scheduler/analysis?version=7&date_from=2026-05-25&date_to=2026-05-31",
         _comparison_summary(),
         _PlanRoleServiceStub(_plan_role_options()),
@@ -100,8 +100,8 @@ def test_analysis_route_exposes_action_hub_with_context_links() -> None:
     assert "周计划" not in [link["label"] for link in hub["next_links"]]
 
 
-def test_analysis_action_hub_next_links_keep_resource_batch_and_date_context() -> None:
-    payload = _payload(
+def test_analysis_action_hub_next_links_keep_resource_batch_and_date_context(monkeypatch) -> None:
+    payload = _payload(monkeypatch,
         (
             "/scheduler/analysis?version=7&date_from=2026-05-25&date_to=2026-05-31"
             "&query_date=2026-05-28&period_preset=week"
@@ -132,8 +132,8 @@ def test_analysis_action_hub_next_links_keep_resource_batch_and_date_context() -
     assert "batch_id=B-001" in links["超期清单"]["url"]
 
 
-def test_analysis_action_hub_shows_disabled_reason_when_date_range_is_missing() -> None:
-    payload = _payload(
+def test_analysis_action_hub_shows_disabled_reason_when_date_range_is_missing(monkeypatch) -> None:
+    payload = _payload(monkeypatch,
         "/scheduler/analysis?version=7",
         _comparison_summary(),
         _PlanRoleServiceStub(_plan_role_options()),
@@ -151,8 +151,8 @@ def test_analysis_action_hub_shows_disabled_reason_when_date_range_is_missing() 
     assert "资源排班" in visible
 
 
-def test_analysis_action_hub_renders_visible_business_text_without_internal_terms() -> None:
-    payload = _payload(
+def test_analysis_action_hub_renders_visible_business_text_without_internal_terms(monkeypatch) -> None:
+    payload = _payload(monkeypatch,
         "/scheduler/analysis?version=7&date_from=2026-05-25&date_to=2026-05-31",
         _comparison_summary(),
         _PlanRoleServiceStub(_plan_role_options()),
@@ -171,8 +171,8 @@ def test_analysis_action_hub_renders_visible_business_text_without_internal_term
         assert forbidden not in visible
 
 
-def test_analysis_action_hub_shows_plain_empty_state_without_candidate_comparison() -> None:
-    payload = _payload(
+def test_analysis_action_hub_shows_plain_empty_state_without_candidate_comparison(monkeypatch) -> None:
+    payload = _payload(monkeypatch,
         "/scheduler/analysis?version=7",
         {"algo": {"metrics": {"overdue_count": 0}}},
         _PlanRoleServiceMustNotBeCalled(),
@@ -191,8 +191,8 @@ def test_analysis_action_hub_shows_plain_empty_state_without_candidate_compariso
         assert forbidden not in visible
 
 
-def test_detailed_candidate_part_does_not_repeat_action_hub_recommendation() -> None:
-    payload = _payload(
+def test_detailed_candidate_part_does_not_repeat_action_hub_recommendation(monkeypatch) -> None:
+    payload = _payload(monkeypatch,
         "/scheduler/analysis?version=7&date_from=2026-05-25&date_to=2026-05-31",
         _comparison_summary(),
         _PlanRoleServiceStub(_plan_role_options()),
@@ -211,8 +211,8 @@ def test_detailed_candidate_part_does_not_repeat_action_hub_recommendation() -> 
     assert visible.count("正式采用方案") >= 1
 
 
-def test_detailed_candidate_part_keeps_legacy_recommendation_without_action_hub_context() -> None:
-    payload = _payload(
+def test_detailed_candidate_part_keeps_legacy_recommendation_without_action_hub_context(monkeypatch) -> None:
+    payload = _payload(monkeypatch,
         "/scheduler/analysis?version=7&date_from=2026-05-25&date_to=2026-05-31",
         _comparison_summary(),
         _PlanRoleServiceStub(_plan_role_options()),

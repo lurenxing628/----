@@ -67,10 +67,10 @@ def test_candidate_role_and_source_constants_have_one_definition() -> None:
     assert duplicates == {}
 
 
-def test_analysis_candidate_links_and_roles_stay_stable() -> None:
+def test_analysis_candidate_links_and_roles_stay_stable(monkeypatch) -> None:
     history_service = _HistoryServiceStub(_comparison_summary())
     plan_role_service = _PlanRoleServiceStub(_plan_role_options())
-    app, route_mod = _build_app()
+    app, route_mod = _build_app(monkeypatch)
 
     payload = _call_analysis_page(
         app,
@@ -108,7 +108,7 @@ def test_analysis_candidate_links_and_roles_stay_stable() -> None:
         assert links[4]["target_page"] == "overdue_report"
 
 
-def test_analysis_candidate_links_are_hidden_when_candidate_detail_is_not_saved() -> None:
+def test_analysis_candidate_links_are_hidden_when_candidate_detail_is_not_saved(monkeypatch) -> None:
     options = [
         option
         if option.role != ROLE_BASELINE_BEST
@@ -126,7 +126,7 @@ def test_analysis_candidate_links_are_hidden_when_candidate_detail_is_not_saved(
     ]
     history_service = _HistoryServiceStub(_comparison_summary())
     plan_role_service = _PlanRoleServiceStub(options)
-    app, route_mod = _build_app()
+    app, route_mod = _build_app(monkeypatch)
 
     payload = _call_analysis_page(
         app,
@@ -143,7 +143,7 @@ def test_analysis_candidate_links_are_hidden_when_candidate_detail_is_not_saved(
     assert rows[ROLE_CRITICAL_BEST]["links"]
 
 
-def test_analysis_candidate_links_are_hidden_when_representative_candidate_did_not_complete() -> None:
+def test_analysis_candidate_links_are_hidden_when_representative_candidate_did_not_complete(monkeypatch) -> None:
     summary = _comparison_summary()
     comparison = summary["algo"]["candidate_comparison"]
     for candidate in comparison["candidates"]:
@@ -153,7 +153,7 @@ def test_analysis_candidate_links_are_hidden_when_representative_candidate_did_n
             candidate["status"] = "skipped"
     history_service = _HistoryServiceStub(summary)
     plan_role_service = _PlanRoleServiceStub(_plan_role_options())
-    app, route_mod = _build_app()
+    app, route_mod = _build_app(monkeypatch)
 
     payload = _call_analysis_page(
         app,
@@ -171,7 +171,7 @@ def test_analysis_candidate_links_are_hidden_when_representative_candidate_did_n
     assert "状态是已跳过" in rows[ROLE_CRITICAL_BEST]["link_unavailable_reason"]
 
 
-def test_analysis_candidate_links_use_plan_option_status_when_summary_is_stale() -> None:
+def test_analysis_candidate_links_use_plan_option_status_when_summary_is_stale(monkeypatch) -> None:
     options = [
         option
         if option.role != ROLE_BASELINE_BEST
@@ -189,7 +189,7 @@ def test_analysis_candidate_links_use_plan_option_status_when_summary_is_stale()
     ]
     history_service = _HistoryServiceStub(_comparison_summary())
     plan_role_service = _PlanRoleServiceStub(options)
-    app, route_mod = _build_app()
+    app, route_mod = _build_app(monkeypatch)
 
     payload = _call_analysis_page(
         app,
@@ -205,7 +205,7 @@ def test_analysis_candidate_links_use_plan_option_status_when_summary_is_stale()
     assert "状态是失败" in rows[ROLE_BASELINE_BEST]["link_unavailable_reason"]
 
 
-def test_analysis_candidate_links_are_hidden_when_plan_option_status_is_missing() -> None:
+def test_analysis_candidate_links_are_hidden_when_plan_option_status_is_missing(monkeypatch) -> None:
     options = [
         option
         if option.role != ROLE_BASELINE_BEST
@@ -223,7 +223,7 @@ def test_analysis_candidate_links_are_hidden_when_plan_option_status_is_missing(
     ]
     history_service = _HistoryServiceStub(_comparison_summary())
     plan_role_service = _PlanRoleServiceStub(options)
-    app, route_mod = _build_app()
+    app, route_mod = _build_app(monkeypatch)
 
     payload = _call_analysis_page(
         app,
@@ -239,7 +239,7 @@ def test_analysis_candidate_links_are_hidden_when_plan_option_status_is_missing(
     assert "状态没有确认" in rows[ROLE_BASELINE_BEST]["link_unavailable_reason"]
 
 
-def test_analysis_candidate_links_are_hidden_when_summary_status_is_missing() -> None:
+def test_analysis_candidate_links_are_hidden_when_summary_status_is_missing(monkeypatch) -> None:
     summary = _comparison_summary()
     comparison = summary["algo"]["candidate_comparison"]
     for candidate in comparison["candidates"]:
@@ -247,7 +247,7 @@ def test_analysis_candidate_links_are_hidden_when_summary_status_is_missing() ->
             candidate["status"] = ""
     history_service = _HistoryServiceStub(summary)
     plan_role_service = _PlanRoleServiceStub(_plan_role_options())
-    app, route_mod = _build_app()
+    app, route_mod = _build_app(monkeypatch)
 
     payload = _call_analysis_page(
         app,

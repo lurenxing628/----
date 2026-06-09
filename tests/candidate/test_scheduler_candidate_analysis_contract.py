@@ -317,14 +317,14 @@ def _add_plan_target_routes(app: Flask) -> None:
     app.add_url_rule("/scheduler/resource-dispatch", endpoint="scheduler.resource_dispatch_page", view_func=_noop)
 
 
-def _build_app() -> Tuple[Flask, Any]:
+def _build_app(monkeypatch) -> Tuple[Flask, Any]:
     _reset_scheduler_modules()
     import web.routes.scheduler_analysis as route_mod
 
     def _render_context(_tpl: str, **ctx: Any) -> Dict[str, Any]:
         return ctx
 
-    route_mod.render_template = _render_context
+    monkeypatch.setattr(route_mod, "render_template", _render_context)
 
     app = Flask(__name__)
     app.secret_key = "aps-scheduler-candidate-analysis"
@@ -350,10 +350,10 @@ def _call_analysis_page(
         return route_mod.analysis_page()
 
 
-def test_analysis_route_builds_candidate_comparison_rows_with_shared_role_labels_and_links() -> None:
+def test_analysis_route_builds_candidate_comparison_rows_with_shared_role_labels_and_links(monkeypatch) -> None:
     history_service = _HistoryServiceStub(_comparison_summary())
     plan_role_service = _PlanRoleServiceStub(_plan_role_options())
-    app, route_mod = _build_app()
+    app, route_mod = _build_app(monkeypatch)
 
     payload = _call_analysis_page(
         app,
@@ -414,10 +414,10 @@ def test_analysis_route_builds_candidate_comparison_rows_with_shared_role_labels
     json.dumps(payload, ensure_ascii=False)
 
 
-def test_analysis_candidate_links_keep_resource_and_date_context() -> None:
+def test_analysis_candidate_links_keep_resource_and_date_context(monkeypatch) -> None:
     history_service = _HistoryServiceStub(_comparison_summary())
     plan_role_service = _PlanRoleServiceStub(_plan_role_options())
-    app, route_mod = _build_app()
+    app, route_mod = _build_app(monkeypatch)
 
     payload = _call_analysis_page(
         app,

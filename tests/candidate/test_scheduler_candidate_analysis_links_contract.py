@@ -28,10 +28,10 @@ from tests.candidate.test_scheduler_candidate_analysis_contract import (
 )
 
 
-def test_analysis_candidate_links_accept_start_end_date_aliases() -> None:
+def test_analysis_candidate_links_accept_start_end_date_aliases(monkeypatch) -> None:
     history_service = _HistoryServiceStub(_comparison_summary())
     plan_role_service = _PlanRoleServiceStub(_plan_role_options())
-    app, route_mod = _build_app()
+    app, route_mod = _build_app(monkeypatch)
 
     payload = _call_analysis_page(
         app,
@@ -61,10 +61,10 @@ def test_analysis_candidate_links_accept_start_end_date_aliases() -> None:
     assert "period_preset=custom" in links["资源排班"]["url"]
 
 
-def test_analysis_candidate_links_without_date_are_disabled_with_reason() -> None:
+def test_analysis_candidate_links_without_date_are_disabled_with_reason(monkeypatch) -> None:
     history_service = _HistoryServiceStub(_comparison_summary())
     plan_role_service = _PlanRoleServiceStub(_plan_role_options())
-    app, route_mod = _build_app()
+    app, route_mod = _build_app(monkeypatch)
 
     payload = _call_analysis_page(
         app,
@@ -87,7 +87,7 @@ def test_analysis_candidate_links_without_date_are_disabled_with_reason() -> Non
     assert "日期范围" in links["周计划"]["disabled_reason"]
 
 
-def test_analysis_route_hides_candidate_links_when_detail_was_not_saved() -> None:
+def test_analysis_route_hides_candidate_links_when_detail_was_not_saved(monkeypatch) -> None:
     options = [
         option
         if option.role != ROLE_BASELINE_BEST
@@ -105,7 +105,7 @@ def test_analysis_route_hides_candidate_links_when_detail_was_not_saved() -> Non
     ]
     history_service = _HistoryServiceStub(_comparison_summary())
     plan_role_service = _PlanRoleServiceStub(options)
-    app, route_mod = _build_app()
+    app, route_mod = _build_app(monkeypatch)
 
     payload = _call_analysis_page(
         app,
@@ -263,9 +263,9 @@ def test_analysis_candidate_empty_role_label_stays_placeholder() -> None:
     assert _plan_role_label(None) == "-"
 
 
-def test_analysis_route_shows_clear_notice_when_candidate_comparison_is_missing() -> None:
+def test_analysis_route_shows_clear_notice_when_candidate_comparison_is_missing(monkeypatch) -> None:
     history_service = _HistoryServiceStub({"algo": {"metrics": {"overdue_count": 0}}})
-    app, route_mod = _build_app()
+    app, route_mod = _build_app(monkeypatch)
 
     payload = _call_analysis_page(
         app,
@@ -282,14 +282,14 @@ def test_analysis_route_shows_clear_notice_when_candidate_comparison_is_missing(
     assert "本次没有开启方案对比，只生成了正式采用方案" in display["notice"]
 
 
-def test_analysis_route_shows_incomplete_notice_when_candidate_detail_is_missing() -> None:
+def test_analysis_route_shows_incomplete_notice_when_candidate_detail_is_missing(monkeypatch) -> None:
     summary = _comparison_summary(incomplete=True)
     comparison = summary["algo"]["candidate_comparison"]
     comparison["failed_candidate_count"] = 1
     comparison["baseline_missing_or_failed"] = True
     comparison["skipped_candidate_labels"] = ["关键链候选 4/5"]
     history_service = _HistoryServiceStub(summary)
-    app, route_mod = _build_app()
+    app, route_mod = _build_app(monkeypatch)
 
     payload = _call_analysis_page(
         app,
@@ -313,10 +313,10 @@ def test_analysis_route_shows_incomplete_notice_when_candidate_detail_is_missing
     assert "本次方案对比记录不完整，当前只展示正式采用方案" in display["notice"]
 
 
-def test_analysis_route_surfaces_plan_role_integrity_error_without_fake_links() -> None:
+def test_analysis_route_surfaces_plan_role_integrity_error_without_fake_links(monkeypatch) -> None:
     summary = _comparison_summary(failed_extra=True)
     history_service = _HistoryServiceStub(summary)
-    app, route_mod = _build_app()
+    app, route_mod = _build_app(monkeypatch)
 
     payload = _call_analysis_page(
         app,
@@ -336,10 +336,10 @@ def test_analysis_route_surfaces_plan_role_integrity_error_without_fake_links() 
     assert not any(row.get("links") for row in display["rows"])
 
 
-def test_analysis_route_classifies_plan_role_detail_errors_before_missing_links() -> None:
+def test_analysis_route_classifies_plan_role_detail_errors_before_missing_links(monkeypatch) -> None:
     summary = _comparison_summary(failed_extra=True)
     history_service = _HistoryServiceStub(summary)
-    app, route_mod = _build_app()
+    app, route_mod = _build_app(monkeypatch)
 
     payload = _call_analysis_page(
         app,
@@ -357,10 +357,10 @@ def test_analysis_route_classifies_plan_role_detail_errors_before_missing_links(
     assert "跳转关系不完整" not in display["notice"]
 
 
-def test_analysis_route_validates_plan_role_targets_before_attaching_links() -> None:
+def test_analysis_route_validates_plan_role_targets_before_attaching_links(monkeypatch) -> None:
     summary = _comparison_summary(failed_extra=True)
     history_service = _HistoryServiceStub(summary)
-    app, route_mod = _build_app()
+    app, route_mod = _build_app(monkeypatch)
 
     payload = _call_analysis_page(
         app,
@@ -378,10 +378,10 @@ def test_analysis_route_validates_plan_role_targets_before_attaching_links() -> 
     assert not any(row.get("links") for row in display["rows"])
 
 
-def test_analysis_route_rejects_plan_role_target_drift_before_attaching_links() -> None:
+def test_analysis_route_rejects_plan_role_target_drift_before_attaching_links(monkeypatch) -> None:
     summary = _comparison_summary(failed_extra=True)
     history_service = _HistoryServiceStub(summary)
-    app, route_mod = _build_app()
+    app, route_mod = _build_app(monkeypatch)
 
     payload = _call_analysis_page(
         app,
@@ -399,10 +399,10 @@ def test_analysis_route_rejects_plan_role_target_drift_before_attaching_links() 
     assert not any(row.get("links") for row in display["rows"])
 
 
-def test_analysis_route_classifies_missing_adopted_role_without_link_notice() -> None:
+def test_analysis_route_classifies_missing_adopted_role_without_link_notice(monkeypatch) -> None:
     summary = _comparison_summary(failed_extra=True)
     history_service = _HistoryServiceStub(summary)
-    app, route_mod = _build_app()
+    app, route_mod = _build_app(monkeypatch)
 
     payload = _call_analysis_page(
         app,
